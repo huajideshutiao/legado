@@ -1,6 +1,7 @@
 package io.legado.app.model.fileBook
 
 import android.net.Uri
+import androidx.core.net.toUri
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
 import io.legado.app.lib.webdav.WebDav
@@ -60,7 +61,7 @@ suspend fun FileBook.saveBookFile(
     str: String,
     fileName: String,
     source: BaseSource? = null
-): Uri = Uri.parse(FileBookProviders.get().saveBookFile(str, fileName, source))
+): Uri = FileBookProviders.get().saveBookFile(str, fileName, source).toUri()
 
 /**
  * 保存输入流到文件 (返回 Uri 重载, 对应原 `FileBook.saveBookFile(inputStream, fileName): Uri`)。
@@ -70,7 +71,7 @@ suspend fun FileBook.saveBookFile(
 fun FileBook.saveBookFile(
     inputStream: InputStream,
     fileName: String
-): Uri = Uri.parse(FileBookProviders.get().saveBookFile(inputStream, fileName))
+): Uri = FileBookProviders.get().saveBookFile(inputStream, fileName).toUri()
 
 // ---------- importRemoteBook ----------
 

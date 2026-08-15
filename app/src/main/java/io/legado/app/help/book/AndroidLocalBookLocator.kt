@@ -112,7 +112,7 @@ class AndroidLocalBookLocator : LocalBookLocator {
         return try {
             when {
                 bookUrl.startsWith("file:") -> {
-                    val uri: Uri = Uri.parse(bookUrl)
+                    val uri: Uri = bookUrl.toUri()
                     val path = uri.path ?: return null
                     File(path).absolutePath
                 }

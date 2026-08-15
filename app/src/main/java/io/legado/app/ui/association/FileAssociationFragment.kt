@@ -1,5 +1,6 @@
 package io.legado.app.ui.association
 
+import android.annotation.SuppressLint
 import android.net.Uri
 import android.os.Bundle
 import androidx.core.net.toUri
@@ -189,6 +190,7 @@ class FileAssociationFragment() : Fragment() {
         }
     }
 
+    @SuppressLint("Recycle") // openOutputStream 由下方 .use 关闭, lint 追踪不到回调内传递的流
     private fun importBook(treeUri: Uri?, uri: Uri) {
         lifecycleScope.launch {
             runCatching {

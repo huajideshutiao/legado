@@ -12,6 +12,7 @@ import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.graphics.PorterDuffXfermode
 import android.graphics.Shader
+import androidx.core.graphics.createBitmap
 import coil3.size.Size
 import coil3.transform.Transformation
 
@@ -58,7 +59,7 @@ class BookInfoBgTransformation(private val land: Boolean = false) : Transformati
         val height = input.height
 
         // Coil3 无 BitmapPool，直接 createBitmap（配合 SRC 模式覆盖旧数据）
-        val result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val result = createBitmap(width, height)
 
         val canvas = Canvas(result)
         val paint = threadPaint.get()!!

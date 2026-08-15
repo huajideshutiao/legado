@@ -153,7 +153,7 @@ object FileBookAccessorImpl : FileBookAccessor {
         saveFileName: String?,
         filter: ((String) -> Boolean)?
     ): List<Book> {
-        val archiveFileDoc = FileDoc.fromUri(Uri.parse(archiveFileUri), false)
+        val archiveFileDoc = FileDoc.fromUri(archiveFileUri.toUri(), false)
         val files = ArchiveUtils.deCompress(archiveFileDoc, filter = filter)
         if (files.isEmpty()) {
             throw NoStackTraceException(appString(AppStringKey.unsupport_archivefile_entry))
@@ -172,7 +172,7 @@ object FileBookAccessorImpl : FileBookAccessor {
 
     /** 导入本地文件 (原 `FileBook.importLocalFile(Uri)`)。Uri 传 String 形式。 */
     override fun importLocalFile(uriStr: String): Book {
-        return importLocalFile(FileDoc.fromUri(Uri.parse(uriStr), false))
+        return importLocalFile(FileDoc.fromUri(uriStr.toUri(), false))
     }
 
     /**
@@ -318,7 +318,7 @@ object FileBookAccessorImpl : FileBookAccessor {
             book.origin = newBook.origin
             book.bookUrl = newBook.bookUrl
         } else {
-            book.bookUrl = FileDoc.fromUri(Uri.parse(fileUriStr), false).toString()
+            book.bookUrl = FileDoc.fromUri(fileUriStr.toUri(), false).toString()
         }
         book.save()
         return true

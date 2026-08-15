@@ -4,8 +4,10 @@ import android.os.ProxyFileDescriptorCallback
 import android.system.ErrnoException
 import android.system.OsConstants
 import android.util.Log
+import androidx.annotation.RequiresApi
 import java.io.IOException
 
+@RequiresApi(26)
 class WebDavPfdCallback(
     private val webDav: WebDav,
     private val size: Long,

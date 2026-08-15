@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Matrix
 import android.os.Build
 import android.util.Base64
+import androidx.core.graphics.createBitmap
 import com.script.jsdispatch.JsApi
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
@@ -87,7 +88,7 @@ object BitmapImageOps : ImageOps {
         }
         val width = if (horizontal) bitmaps.sumOf { it.width } else bitmaps.maxOf { it.width }
         val height = if (horizontal) bitmaps.maxOf { it.height } else bitmaps.sumOf { it.height }
-        val result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val result = createBitmap(width, height)
         val canvas = Canvas(result)
         var offset = 0f
         for (b in bitmaps) {

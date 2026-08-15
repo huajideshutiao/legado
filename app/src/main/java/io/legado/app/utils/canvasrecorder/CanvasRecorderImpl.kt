@@ -3,6 +3,7 @@ package io.legado.app.utils.canvasrecorder
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import androidx.core.graphics.createBitmap
 import io.legado.app.utils.canvasrecorder.pools.CanvasPool
 
 class CanvasRecorderImpl : BaseCanvasRecorder() {
@@ -18,13 +19,13 @@ class CanvasRecorderImpl : BaseCanvasRecorder() {
             return
         }
         if (bitmap == null) {
-            bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            bitmap = createBitmap(width, height)
         }
         if (bitmap!!.width != width || bitmap!!.height != height) {
             if (bitmap!!.isMutable && canReconfigure(width, height)) {
                 bitmap!!.reconfigure(width, height, Bitmap.Config.ARGB_8888)
             } else {
-                bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                bitmap = createBitmap(width, height)
             }
         }
     }

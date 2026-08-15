@@ -1,6 +1,7 @@
 package io.legado.app.help.book
 
 import android.graphics.BitmapFactory
+import android.os.Build
 import android.os.ParcelFileDescriptor
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
@@ -234,6 +235,11 @@ object BookHelp {
     @Throws(IOException::class, FileNotFoundException::class)
     fun getBookPFD(book: Book): ParcelFileDescriptor? {
         if (book.bookUrl.startsWith(BookType.webDavTag)) {
+            // ProxyFileDescriptorCallback/openProxyFileDescriptor 是 API 26+ (minSdk 24),
+            // 低版本无此能力, 返回 null 由调用方走降级/报错, 避免类加载崩溃
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+                return null
+            }
             val webDavUrl = book.getRemoteUrl()!!
             val webdav = kotlin.runCatching {
                 io.legado.app.lib.webdav.WebDav.fromPath(webDavUrl)

@@ -1,5 +1,6 @@
 package io.legado.app.model.fileBook
 
+import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
@@ -83,6 +84,7 @@ class PdfFile(var book: Book) {
      *
      * @return
      */
+    @SuppressLint("Recycle") // fileDescriptor 作为字段保存, 由 closePdf() 统一关闭
     private fun readPdf(): PdfRenderer? {
         kotlin.runCatching {
             val uri = book.getLocalUri()

@@ -552,7 +552,7 @@ class AndroidPlatformCapabilities(
     }
 
     override fun openImportFile(filePath: String) {
-        val uri = Uri.parse(filePath)
+        val uri = filePath.toUri()
         activity.supportFragmentManager.commit {
             add(
                 io.legado.app.ui.association.FileAssociationFragment(uri),
@@ -1216,15 +1216,15 @@ class AndroidPlatformCapabilities(
                             Row(
                                 Modifier
                                     .selectable(
-                                        selected = typeState.value == value,
+                                        selected = typeState.intValue == value,
                                         role = Role.RadioButton,
-                                        onClick = { typeState.value = value },
+                                        onClick = { typeState.intValue = value },
                                     )
                                     .padding(top = 4.dp, end = 16.dp, bottom = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 AppRadioButton(
-                                    selected = typeState.value == value,
+                                    selected = typeState.intValue == value,
                                     onClick = null,
                                 )
                                 Text(label, color = AppTheme.colors.primaryText, fontSize = 15.sp)
@@ -1269,7 +1269,7 @@ class AndroidPlatformCapabilities(
             }
             okButton {
                 AppConfig.bookExportFileName = fileNameState.value
-                AppConfig.exportType = if (typeState.value == 1) 1 else 0
+                AppConfig.exportType = if (typeState.intValue == 1) 1 else 0
                 AppConfig.exportCharset =
                     charsetState.value.takeIf { it.isNotBlank() } ?: "UTF-8"
                 AppConfig.exportNoChapterName = noChapterNameState.value
@@ -1756,9 +1756,9 @@ class AndroidPlatformCapabilities(
             defaultNavItems
         }
         val navItems = mutableStateListOf<BottomNavConfigItem>().apply { addAll(initialItems) }
-        val height = mutableStateOf(AppConfig.bottomBarHeight)
-        val iconSize = mutableStateOf(AppConfig.bottomBarIconSize)
-        val labelMode = mutableStateOf(AppConfig.bottomBarLabelMode)
+        val height = mutableIntStateOf(AppConfig.bottomBarHeight)
+        val iconSize = mutableIntStateOf(AppConfig.bottomBarIconSize)
+        val labelMode = mutableIntStateOf(AppConfig.bottomBarLabelMode)
 
         activity.alert(title = androidAppString("bottom_nav_config")) {
             customView {
@@ -1775,14 +1775,14 @@ class AndroidPlatformCapabilities(
                 AppConfig.showHome = newShowHome
                 AppConfig.showDiscovery = newShowDiscovery
                 AppConfig.bottomNavItemOrder = newOrder
-                if (AppConfig.bottomBarHeight != height.value) {
-                    AppConfig.bottomBarHeight = height.value; changed = true
+                if (AppConfig.bottomBarHeight != height.intValue) {
+                    AppConfig.bottomBarHeight = height.intValue; changed = true
                 }
-                if (AppConfig.bottomBarIconSize != iconSize.value) {
-                    AppConfig.bottomBarIconSize = iconSize.value; changed = true
+                if (AppConfig.bottomBarIconSize != iconSize.intValue) {
+                    AppConfig.bottomBarIconSize = iconSize.intValue; changed = true
                 }
-                if (AppConfig.bottomBarLabelMode != labelMode.value) {
-                    AppConfig.bottomBarLabelMode = labelMode.value; changed = true
+                if (AppConfig.bottomBarLabelMode != labelMode.intValue) {
+                    AppConfig.bottomBarLabelMode = labelMode.intValue; changed = true
                 }
                 // 对照原版: 有变更才 recreateActivities()
                 if (changed) postEvent(EventBus.RECREATE, "")
@@ -1791,9 +1791,9 @@ class AndroidPlatformCapabilities(
                 // 对照原版 neutralButton: 恢复默认值但不关闭对话框
                 navItems.clear()
                 navItems.addAll(defaultNavItems.map { it.copy(enabled = true) })
-                height.value = AppConfigConstants.BOTTOM_BAR_HEIGHT_DEFAULT
-                iconSize.value = AppConfigConstants.BOTTOM_BAR_ICON_DEFAULT
-                labelMode.value = AppConfigConstants.BOTTOM_BAR_LABEL_DEFAULT
+                height.intValue = AppConfigConstants.BOTTOM_BAR_HEIGHT_DEFAULT
+                iconSize.intValue = AppConfigConstants.BOTTOM_BAR_ICON_DEFAULT
+                labelMode.intValue = AppConfigConstants.BOTTOM_BAR_LABEL_DEFAULT
             }
             cancelButton()
         }
@@ -1813,12 +1813,12 @@ class AndroidPlatformCapabilities(
             initSort = 0
             AppConfig.bookshelfSort = 0
         }
-        val groupStyle = mutableStateOf(initGroupStyle)
-        val bookshelfSort = mutableStateOf(initSort)
+        val groupStyle = mutableIntStateOf(initGroupStyle)
+        val bookshelfSort = mutableIntStateOf(initSort)
         val fixedWidthMode = mutableStateOf(AppConfig.bookshelfFixedWidthMode)
         val gridWidthText = mutableStateOf(AppConfig.bookshelfGridWidth.toString())
-        val introLines = mutableStateOf(AppConfig.bookshelfListIntroLines)
-        val selectedCols = mutableStateOf(BookSource.exploreStyleCols(bookshelfLayout))
+        val introLines = mutableIntStateOf(AppConfig.bookshelfListIntroLines)
+        val selectedCols = mutableIntStateOf(BookSource.exploreStyleCols(bookshelfLayout))
         val isVideo = mutableStateOf(BookSource.exploreStyleIsVideo(bookshelfLayout))
         val showUnread = mutableStateOf(AppConfig.showUnread)
         val showLastUpdateTime = mutableStateOf(AppConfig.showLastUpdateTime)
@@ -1846,8 +1846,8 @@ class AndroidPlatformCapabilities(
             okButton {
                 var notifyMain = false
                 var recreate = false
-                if (AppConfig.bookGroupStyle != groupStyle.value) {
-                    AppConfig.bookGroupStyle = groupStyle.value
+                if (AppConfig.bookGroupStyle != groupStyle.intValue) {
+                    AppConfig.bookGroupStyle = groupStyle.intValue
                     notifyMain = true
                 }
                 if (AppConfig.showUnread != showUnread.value) {
@@ -1870,19 +1870,19 @@ class AndroidPlatformCapabilities(
                     AppConfig.bookshelfListShowIntro = showIntro.value
                     postEvent(EventBus.BOOKSHELF_REFRESH, "")
                 }
-                if (AppConfig.bookshelfListIntroLines != introLines.value) {
-                    AppConfig.bookshelfListIntroLines = introLines.value
+                if (AppConfig.bookshelfListIntroLines != introLines.intValue) {
+                    AppConfig.bookshelfListIntroLines = introLines.intValue
                     postEvent(EventBus.BOOKSHELF_REFRESH, "")
                 }
-                if (AppConfig.bookshelfSort != bookshelfSort.value) {
-                    AppConfig.bookshelfSort = bookshelfSort.value
+                if (AppConfig.bookshelfSort != bookshelfSort.intValue) {
+                    AppConfig.bookshelfSort = bookshelfSort.intValue
                     // 排序变更走 BOOKSHELF_REFRESH 重建 flow (对照 BookshelfScreen2 sortTick 契约)
                     postEvent(EventBus.BOOKSHELF_REFRESH, "")
                 }
                 // 对照原版 makeLayoutStyle: 视频置 EXPLORE_STYLE_VIDEO_FLAG, 列数取低 3 位
                 val newLayout =
                     (if (isVideo.value) BookSource.EXPLORE_STYLE_VIDEO_FLAG else 0) or
-                        (selectedCols.value and BookSource.EXPLORE_STYLE_COLS_MASK)
+                        (selectedCols.intValue and BookSource.EXPLORE_STYLE_COLS_MASK)
                 val newGridWidth = gridWidthText.value.toIntOrNull() ?: 120
                 if (bookshelfLayout != newLayout ||
                     AppConfig.bookshelfFixedWidthMode != fixedWidthMode.value ||

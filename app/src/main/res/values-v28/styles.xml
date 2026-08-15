@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- android:dialogCornerRadius 需要 API 28+ (minSdk 24), 单独声明在 v28 资源目录 -->
+    <style name="Base.AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:dialogCornerRadius">@dimen/arco_radius_default</item>
+    </style>
+
+</resources>

@@ -2,6 +2,7 @@
 
 package io.legado.app.utils
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.graphics.Color
 import android.net.Uri
@@ -131,6 +132,7 @@ fun Activity.setLightStatusBar(isLightBar: Boolean) {
 /**
  * 设置导航栏颜色
  */
+@SuppressLint("InlinedApi") // SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR 是内联常量, API<26 被忽略, 安全
 fun Activity.setNavigationBarColorAuto(@ColorInt color: Int) {
     val isLightBor = ColorUtils.isColorLight(color)
     window.navigationBarColor = color

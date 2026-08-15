@@ -65,7 +65,10 @@ fun EditText.showSoftInput() {
 }
 
 fun View.disableAutoFill() {
-    importantForAutofill = IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+    // setImportantForAutofill 是 API 26+ (minSdk 24), 低版本无此能力, 直接跳过
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        importantForAutofill = IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+    }
 }
 
 fun RecyclerView.setEdgeEffectColor(@ColorInt color: Int) {

@@ -30,5 +30,7 @@ android {
 
     lint {
         checkDependencies = true
+        // x86_64 ABI 是刻意决策: 与 :app splits 对齐, 只编 arm64-v8a + armeabi-v7a
+        disable += "ChromeOsAbiSupport"
     }
 }

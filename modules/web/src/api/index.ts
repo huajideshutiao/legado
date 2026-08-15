@@ -5,7 +5,7 @@ import API, {
   legado_http_entry_point,
   setWebsocketOnMessage,
 } from './api'
-import ajax from './axios'
+import ajax, { type ApiResponse } from './axios'
 import { validatorHttpUrl } from '@/utils/utils'
 import { toast } from '@/utils/toast'
 
@@ -19,10 +19,10 @@ const connectionStore = useConnectionStore()
 const LeagdoApiResponseKeys: string[] = Array.of('isSuccess', 'errorMsg')
 
 /** Interceptor: check if resp is LeagdoApiResponse*/
-const responseCheckInterceptor = (resp: any) => {
+const responseCheckInterceptor = (resp: ApiResponse) => {
   let isLeagdoApiResponse = true
   try {
-    const data = resp.data
+    const data = resp.data as Record<string, unknown>
 
     for (const key of LeagdoApiResponseKeys) {
       if (!(key in data)) {

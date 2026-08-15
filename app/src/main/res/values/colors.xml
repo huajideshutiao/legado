@@ -1,116 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="background_menu">@color/arco_fill_2</color>
-    <color name="arco_success">#FF00B42A</color>
-    <color name="arco_text_3">#FF909090</color>
     <color name="arco_bg_page">#FFF8F8F8</color>
-    <color name="arco_bg_card">#FFFFFFFF</color>
     <!-- Arco Design 风格：主色统一为 arcoblue-6，accent 与 primary 一致 -->
     <color name="primary">@color/arco_primary</color>
     <color name="primaryDark">@color/arco_primary_active</color>
     <color name="accent">@color/arco_primary</color>
 
-    <color name="disabled">@color/md_light_disabled</color>
-
-    <color name="divider">#66666666</color>
-
-    <color name="lightBlue_color">#FF578FCC</color>
-
-    <!-- Arco Design 语义色：danger / success -->
-    <color name="error">@color/arco_danger</color>
-    <color name="success">@color/arco_success</color>
-
-
     <!-- Arco Design 背景色：fill-1 / bg_card / fill-2 -->
     <color name="background">@color/arco_bg_page</color>
-    <color name="background_card">@color/arco_bg_card</color>
 
     <color name="transparent">#00000000</color>
 
-    <color name="transparent10">#10000000</color>
-
-    <color name="highlight">#d3321b</color>
-
-    <color name="review_voted">#E53935</color>
-
-    <color name="btn_bg">#100e0e0e</color>
-    <color name="btn_bg_press_2">#20000000</color>
-
-
-    <!-- Arco Design 文字色阶：text-1 / text-2 / text-3 -->
-    <color name="primaryText">@color/arco_text_1</color>
-    <color name="secondaryText">@color/arco_text_2</color>
-    <color name="tv_text_summary">@color/arco_text_3</color>
     <color name="menu_color_default">#383838</color>
 
-
-
-    <color name="darker_gray">#aaaaaaaa</color>
-
-    <!-- 分格线背景色 -->
-    <color name="bg_divider_line">@color/background_menu</color>
     <!--statusBarBackground-->
 
     <!--base-color-->
-    <color name="translucent">#99343434</color>
-    <color name="white">#ffffff</color>
 
     <!-- btn -->
 
     <!--"control" means checkbox / radio button-->
 
     <!--LIGHT-->
-    <!--12%-->
-    <color name="ate_switch_track_disabled_light">#1F000000</color>
-    <!-- 26% -->
-    <color name="ate_control_disabled_light">#43000000</color>
-    <color name="ate_switch_track_normal_light">#43000000</color>
-    <!-- 38% -->
-    <color name="ate_text_disabled_light">#61000000</color>
-    <!-- 54% -->
-    <color name="ate_control_normal_light">#8A000000</color>
-    <!-- 87% -->
-    <!--Grey 50, #FAFAFA, Opacity  100%-->
-    <color name="ate_switch_thumb_normal_light">#FFFAFAFA</color>
-    <!--Grey 400, #BDBDBD, Opacity  100%-->
-    <color name="ate_switch_thumb_disabled_light">#FFBDBDBD</color>
-    <!---->
 
     <!--DARK-->
-    <!--10%-->
-    <color name="ate_switch_track_disabled_dark">#1AFFFFFF</color>
-    <!--12%-->
-    <!-- 30% -->
-    <color name="ate_control_disabled_dark">#4DFFFFFF</color>
-    <color name="ate_switch_track_normal_dark">#4DFFFFFF</color>
-    <color name="ate_text_disabled_dark">#4DFFFFFF</color>
-    <!-- 70% -->
-    <color name="ate_control_normal_dark">#B3FFFFFF</color>
-    <!-- 100% -->
-    <!--Grey 400, #BDBDBD, Opacity  100%-->
-    <color name="ate_switch_thumb_normal_dark">#FFBDBDBD</color>
-    <!--Grey 800, #424242, Opacity 100%-->
-    <color name="ate_switch_thumb_disabled_dark">#FF424242</color>
-    <!---->
-
-    <color name="book_ant_10">#141414</color>
 
     <!-- ==================== Arco Design Light 色板 ==================== -->
     <!-- 主色 arcoblue 系列 -->
     <color name="arco_primary">#FF165DFF</color>
     <color name="arco_primary_active">#FF0E42D2</color>
-    <!-- 主色 disabled（arcoblue-3，用于按钮 disabled 态填充） -->
-    <color name="arco_primary_disabled">#FF94BDFF</color>
-    <!-- 功能色 -->
-    <color name="arco_danger">#FFF53F3F</color>
     <!-- 填充色 fill-1/2/3（去掉 Arco 原本的冷偏，保证用户任意 accentColor 不打架） -->
     <color name="arco_fill_1">#FFF8F8F8</color>
     <color name="arco_fill_2">#FFF3F3F3</color>
     <color name="arco_fill_3">#FFE6E6E6</color>
-    <!-- 文字色阶 text-1/2/3/4 -->
-    <color name="arco_text_1">#FF212121</color>
-    <color name="arco_text_2">#FF595959</color>
-    <color name="arco_text_4">#FFCDCDCD</color>
     <!-- 边框 -->
     <!-- 页面/卡片背景 -->
     <!-- ThemeConfig 默认色引用（light） -->

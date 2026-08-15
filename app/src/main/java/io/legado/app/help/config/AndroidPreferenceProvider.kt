@@ -2,6 +2,7 @@ package io.legado.app.help.config
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 import io.legado.app.utils.defaultSharedPreferences
 import splitties.init.appCtx
 
@@ -84,7 +85,7 @@ private const val LEGACY_MIGRATED_KEY = "legadoConfigSpMigrated"
 private fun migrateLegacyConfigOnce(target: SharedPreferences) {
     if (target.getBoolean(LEGACY_MIGRATED_KEY, false)) return
     val legacy = appCtx.getSharedPreferences("legado_config", Context.MODE_PRIVATE)
-    target.edit().apply {
+    target.edit {
         legacy.all.forEach { (key, value) ->
             if (value == null || target.contains(key)) return@forEach
             when (value) {
@@ -97,7 +98,7 @@ private fun migrateLegacyConfigOnce(target: SharedPreferences) {
             }
         }
         putBoolean(LEGACY_MIGRATED_KEY, true)
-    }.apply()
+    }
 }
 
 /**

@@ -2,8 +2,8 @@ package io.legado.app.service
 
 import android.annotation.SuppressLint
 import android.content.Intent
-import android.net.Uri
 import androidx.core.app.NotificationCompat
+import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import coil3.toBitmap
 import io.legado.app.R
@@ -286,7 +286,7 @@ class ExportBookService : BaseService() {
         }
 
         override fun deleteExportUri(uri: String) {
-            FileDoc.fromUri(Uri.parse(uri), false).delete()
+            FileDoc.fromUri(uri.toUri(), false).delete()
         }
 
         override fun postExportEvent(bookUrl: String) {
@@ -310,7 +310,7 @@ class ExportBookService : BaseService() {
         }
 
         override suspend fun exportToWebDav(uri: String, filename: String) {
-            AppWebDav.exportWebDav(Uri.parse(uri), filename)
+            AppWebDav.exportWebDav(uri.toUri(), filename)
         }
 
         // ==================== EPUB/CBZ 导出 (ExportBookEpubShared) 平台依赖 ====================

@@ -79,10 +79,6 @@ type BookSoure = BaseSource & {
   // 段评规则
   ruleReview?: ReviewRule
 }
-type RuleSearch = {
-  checkKeyWord?: string
-  [prop: string]: string
-}
 /* type ExploreRule = {
     [prop:string]: string
 }
@@ -98,68 +94,6 @@ type ContentRule = {
 type ReviewRule = {
     [prop:string]: string
 } */
-type RssSource = BaseSource & {
-  sourceUrl: string
-  // 名称
-  sourceName: string
-  // 图标
-  sourceIcon: string
-  // 分组
-  sourceGroup?: string
-  // 注释
-  sourceComment?: string
-  // 是否启用
-  enabled: boolean
-  // 自定义变量说明
-  variableComment?: string
-  /**登录检测js**/
-  loginCheckJs?: string
-  /**封面解密js**/
-  coverDecodeJs?: string
-  /**分类Url**/
-  sortUrl?: string
-  /**是否单url源**/
-  singleUrl: boolean
-  /*列表规则*/
-  /**列表样式,0,1,2**/
-  articleStyle: number
-  /**列表规则**/
-  ruleArticles?: string
-  /**下一页规则**/
-  ruleNextPage?: string
-  /**标题规则**/
-  ruleTitle?: string
-  /**发布日期规则**/
-  rulePubDate?: string
-  /*webView规则*/
-  /**描述规则**/
-  ruleDescription?: string
-  /**图片规则**/
-  ruleImage?: string
-  /**链接规则**/
-  ruleLink?: string
-  /**正文规则**/
-  ruleContent?: string
-  /**正文url白名单**/
-  contentWhitelist?: string
-  /**正文url黑名单**/
-  contentBlacklist?: string
-  /**
-   * 跳转url拦截,
-   * js, 返回true拦截,js变量url,可以通过js打开url,比如调用阅读搜索,添加书架等,简化规则写法,不用webView js注入
-   * **/
-  shouldOverrideUrlLoading?: string
-  /**webView样式**/
-  style?: string
-  enableJs: boolean
-  loadWithBaseUrl: boolean
-  /**注入js**/
-  injectJs?: string
-  /*其它规则*/
-  /**最后更新时间，用于排序**/
-  lastUpdateTime: number
-  customOrder: number
-}
 type Source = BookSoure
 
 export { Source, BookSoure }

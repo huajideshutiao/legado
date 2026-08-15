@@ -111,7 +111,7 @@ const redo = () => {
 const saveSource = () => {
   const source = store.currentSource
   if (isInvaildSource(source)) {
-    normalizeSource(source)
+    normalizeSource(source as Record<string, unknown>)
     API.saveSource(source).then(({ data }) => {
       const sourceName = getSourceName(source)
       if (data.isSuccess) {

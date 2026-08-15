@@ -5,67 +5,17 @@
     https://www.google.com/design/spec/style/color.html#color-color-palette -->
 
     <!-- Light semantic colors -->
-    <!-- 12% -->
-    <color name="md_light_disabled">#61000000</color>
     <!-- 54% -->
     <color name="md_light_secondary">#8A000000</color>
-    <color name="md_light_primary_icon">#8A000000</color>
     <!-- 87% -->
     <color name="md_light_primary_text">#DE000000</color>
 
     <!-- Dark semantic colors -->
-    <!-- 30% -->
-    <color name="md_dark_disabled">#4DFFFFFF</color>
-    <!-- 70% -->
-    <color name="md_dark_secondary">#B3FFFFFF</color>
-    <color name="md_dark_primary_icon">#B3FFFFFF</color>
     <!-- 100% -->
     <color name="md_dark_primary_text">#FFFFFFFF</color>
 
-    <!-- Red -->
-    <color name="md_red_100">#FFCDD2</color>
-    <color name="md_red_600">#E53935</color>
-    <color name="md_red_A200">#FF5252</color>
-
-    <!-- Pink -->
-    <color name="md_pink_800">#AD1457</color>
-
-    <!-- Blue -->
-    <color name="md_blue_100">#BBDEFB</color>
-    <color name="md_blue_800">#1565C0</color>
-    <color name="md_blue_A200">#448AFF</color>
-
-    <!-- Light Blue -->
-    <color name="md_light_blue_700">#0288D1</color>
-
-    <!-- Deep Orange -->
-    <color name="md_deep_orange_800">#D84315</color>
-
-    <!-- Orange -->
-    <color name="md_orange_700">#F57C00</color>
-
-    <!-- Yellow -->
-    <color name="md_yellow_700">#FBC02D</color>
-
-    <!-- Green -->
-    <color name="md_green_600">#43A047</color>
-
     <!-- Grey -->
     <color name="md_grey_50">#FAFAFA</color>
-    <color name="md_grey_100">#F5F5F5</color>
-    <color name="md_grey_200">#EEEEEE</color>
-    <color name="md_grey_300">#E0E0E0</color>
-    <color name="md_grey_500">#9E9E9E</color>
-    <color name="md_grey_800">#424242</color>
-    <color name="md_grey_850">#303030</color>
     <color name="md_grey_900">#212121</color>
-
-    <!-- Blue Grey -->
-    <color name="md_blue_grey_600">#546E7A</color>
-    <color name="md_blue_grey_700">#455A64</color>
-
-    <!-- Black & White -->
-    <color name="md_black_1000">#000000</color>
-    <color name="md_white_1000">#FFFFFF</color>
 
 </resources>

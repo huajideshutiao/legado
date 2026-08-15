@@ -1,5 +1,6 @@
 package io.legado.app.utils
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -8,9 +9,9 @@ import android.os.ParcelFileDescriptor
 import androidx.appcompat.app.AppCompatActivity
 import androidx.documentfile.provider.DocumentFile
 import androidx.fragment.app.Fragment
-import io.legado.app.help.i18n.androidAppString
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
 import okhttp3.MediaType
@@ -32,6 +33,7 @@ fun Uri.isFileScheme() = this.scheme == "file"
 /**
  * 读取URI
  */
+@SuppressLint("Recycle") // openInputStream 由下方 .use 关闭, lint 追踪不到回调内传递的流
 fun AppCompatActivity.readUri(
     uri: Uri?,
     success: (fileDoc: FileDoc, inputStream: InputStream) -> Unit
@@ -72,6 +74,7 @@ fun AppCompatActivity.readUri(
 /**
  * 读取URI
  */
+@SuppressLint("Recycle") // openInputStream 由下方 .use 关闭, lint 追踪不到回调内传递的流
 fun Fragment.readUri(uri: Uri?, success: (fileDoc: FileDoc, inputStream: InputStream) -> Unit) {
     uri ?: return
     try {
@@ -136,9 +139,8 @@ fun Uri.writeBytes(
     byteArray: ByteArray
 ): Boolean {
     if (this.isContentScheme()) {
-        context.contentResolver.openOutputStream(this)?.let {
+        context.contentResolver.openOutputStream(this)?.use {
             it.write(byteArray)
-            it.close()
             return true
         }
         return false

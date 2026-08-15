@@ -25,7 +25,7 @@
             v-if="field.type === 'String' && !field.namespace"
             class="web-textarea"
             :placeholder="field.hint || ''"
-            :value="source[field.id]"
+            :value="textValue(field)"
             @input="updateField(field, $event)"
             :rows="field.id === 'bookSourceComment' ? 1 : 2"
           ></textarea>
@@ -34,7 +34,7 @@
             v-else-if="field.type === 'String' && field.namespace"
             class="web-textarea"
             :placeholder="field.hint || ''"
-            :value="(source[field.namespace] || {})[field.id]"
+            :value="textValue(field)"
             @input="updateNsField(field, $event)"
             :rows="2"
           ></textarea>
@@ -43,14 +43,14 @@
             v-else-if="field.type === 'Number'"
             class="web-input"
             type="number"
-            :value="source[field.id]"
+            :value="textValue(field)"
             @input="updateField(field, $event)"
           />
 
           <select
             v-else-if="field.type === 'Array'"
             class="web-select"
-            :value="source[field.id]"
+            :value="textValue(field)"
             @change="updateField(field, $event)"
           >
             <option
@@ -65,7 +65,7 @@
           <label v-else-if="field.type === 'Boolean'" class="web-switch">
             <input
               type="checkbox"
-              :checked="source[field.id]"
+              :checked="boolValue(field)"
               @change="updateBoolField(field, $event)"
             />
             <span class="web-switch__slider"></span>
@@ -77,30 +77,62 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{ config: Record<string, any> }>()
+interface SourceField {
+  id: string
+  title?: string
+  required?: boolean
+  type?: string
+  namespace?: string
+  hint?: string
+  array?: string[]
+}
+
+defineProps<{ config: Record<string, { name: string; children: SourceField[] }> }>()
 
 const store = useSourceStore()
-const source = computed(() => store.currentSource as Record<string, any>)
+const source = computed(() => store.currentSource as Record<string, unknown>)
 const activeTab = ref('base')
 
-function updateField(field: any, e: Event) {
+/** 取字段值: 普通字段直接取; namespace 字段取命名空间对象内的子字段 */
+function fieldValue(field: SourceField): unknown {
+  if (field.namespace) {
+    const ns = source.value[field.namespace]
+    return ns && typeof ns === 'object' ? (ns as Record<string, unknown>)[field.id] : undefined
+  }
+  return source.value[field.id]
+}
+
+/** 文本/数值类字段值 (textarea/input/select 的 :value 需要) */
+function textValue(field: SourceField): string | number | null | undefined {
+  const v = fieldValue(field)
+  return typeof v === 'string' || typeof v === 'number' ? v : null
+}
+
+/** 布尔类字段值 (checkbox 的 :checked 需要) */
+function boolValue(field: SourceField): boolean | undefined {
+  const v = fieldValue(field)
+  return typeof v === 'boolean' ? v : undefined
+}
+
+function updateField(field: SourceField, e: Event) {
   const target = e.target as HTMLInputElement
   const val = field.type === 'Number' ? parseFloat(target.value) || 0 : target.value
   store.currentSource = { ...store.currentSource, [field.id]: val }
 }
 
-function updateNsField(field: any, e: Event) {
+function updateNsField(field: SourceField, e: Event) {
   const target = e.target as HTMLInputElement
+  const nsObj = (source.value[field.namespace!] ?? {}) as Record<string, unknown>
   store.currentSource = {
     ...store.currentSource,
-    [field.namespace]: {
-      ...(source.value[field.namespace] || {}),
+    [field.namespace!]: {
+      ...nsObj,
       [field.id]: target.value,
     },
   }
 }
 
-function updateBoolField(field: any, e: Event) {
+function updateBoolField(field: SourceField, e: Event) {
   const target = e.target as HTMLInputElement
   store.currentSource = { ...store.currentSource, [field.id]: target.checked }
 }

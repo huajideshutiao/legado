@@ -3,14 +3,7 @@
 
 import type { webReadConfig } from '@/web'
 import ajax from './axios'
-import type {
-  BaseBook,
-  Book,
-  BookChapter,
-  BookProgress,
-  BookGroup,
-  SeachBook,
-} from '@/book'
+import type { BaseBook, Book, BookChapter, BookGroup, BookProgress, SeachBook } from '@/book'
 import type { Source } from '@/source'
 
 export type LeagdoApiResponse<T> = {
@@ -41,7 +34,7 @@ export const setApiEntryPoint = (
 
 // 书架API
 const getReadConfig = async (http_url = legado_http_entry_point) => {
-  const { data } = await ajax.get('getReadConfig', {
+  const { data } = await ajax.get<LeagdoApiResponse<string>>('getReadConfig', {
     baseURL: http_url.toString(),
   })
   if (data.isSuccess) {
@@ -51,10 +44,10 @@ const getReadConfig = async (http_url = legado_http_entry_point) => {
   }
 }
 const saveReadConfig = (config: webReadConfig) =>
-  ajax.post('saveReadConfig', config)
+  ajax.post<LeagdoApiResponse<unknown>>('saveReadConfig', config)
 
 const saveBookProgress = (bookProgress: BookProgress) =>
-  ajax.post('saveBookProgress', bookProgress)
+  ajax.post<LeagdoApiResponse<unknown>>('saveBookProgress', bookProgress)
 
 const saveBookProgressWithBeacon = (bookProgress: BookProgress) => {
   if (!bookProgress) return
@@ -64,18 +57,22 @@ const saveBookProgressWithBeacon = (bookProgress: BookProgress) => {
   )
 }
 
-const getGroups = () => ajax.get('getGroups')
+const getGroups = () => ajax.get<LeagdoApiResponse<BookGroup[]>>('getGroups')
 
 const getBookShelf = (groupId?: number | string) => {
   const url = groupId !== undefined ? `getBookshelf?groupId=${groupId}` : 'getBookshelf'
-  return ajax.get(url)
+  return ajax.get<LeagdoApiResponse<Book[]>>(url)
 }
 
 const getChapterList = (bookUrl: string) =>
-  ajax.get('getChapterList?url=' + encodeURIComponent(bookUrl))
+  ajax.get<LeagdoApiResponse<BookChapter[]>>(
+    'getChapterList?url=' + encodeURIComponent(bookUrl),
+  )
 
 const getBookContent = (bookUrl: string, chapterIndex: number) =>
-  ajax.get('getBookContent?url=' + encodeURIComponent(bookUrl) + '&index=' + chapterIndex)
+  ajax.get<LeagdoApiResponse<string>>(
+    'getBookContent?url=' + encodeURIComponent(bookUrl) + '&index=' + chapterIndex,
+  )
 
 const search = (
   searchKey: string,
@@ -104,16 +101,16 @@ const search = (
   }
 }
 
-const saveBook = (book: BaseBook) => ajax.post('saveBook', book)
-const deleteBook = (book: BaseBook) => ajax.post('deleteBook', book)
+const saveBook = (book: BaseBook) => ajax.post<LeagdoApiResponse<unknown>>('saveBook', book)
+const deleteBook = (book: BaseBook) => ajax.post<LeagdoApiResponse<unknown>>('deleteBook', book)
 
-const getSources = () => ajax.get('getBookSources')
+const getSources = () => ajax.get<LeagdoApiResponse<Source[]>>('getBookSources')
 
-const saveSource = (data: Source) => ajax.post('saveBookSource', data)
+const saveSource = (data: Source) => ajax.post<LeagdoApiResponse<unknown>>('saveBookSource', data)
 
-const saveSources = (data: Source[]) => ajax.post('saveBookSources', data)
+const saveSources = (data: Source[]) => ajax.post<LeagdoApiResponse<unknown>>('saveBookSources', data)
 
-const deleteSource = (data: Source[]) => ajax.post('deleteBookSources', data)
+const deleteSource = (data: Source[]) => ajax.post<LeagdoApiResponse<unknown>>('deleteBookSources', data)
 
 const debug = (
   sourceUrl: string,

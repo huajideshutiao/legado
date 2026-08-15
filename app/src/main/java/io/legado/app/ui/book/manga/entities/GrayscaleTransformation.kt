@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
+import androidx.core.graphics.createBitmap
 import coil3.size.Size
 import coil3.transform.Transformation
 
@@ -12,7 +13,7 @@ class GrayscaleTransformation : Transformation() {
     override val cacheKey: String = "io.legado.app.model.GrayscaleTransformation"
 
     override suspend fun transform(input: Bitmap, size: Size): Bitmap {
-        val resultBitmap = Bitmap.createBitmap(input.width, input.height, Bitmap.Config.ARGB_8888)
+        val resultBitmap = createBitmap(input.width, input.height)
         val canvas = Canvas(resultBitmap)
         val paint = Paint()
         val matrix = ColorMatrix(

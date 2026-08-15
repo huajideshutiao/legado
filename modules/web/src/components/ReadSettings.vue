@@ -81,7 +81,7 @@ import API from '@api'
 import settings from '@/config/themeConfig'
 
 const store = useBookStore()
-const themes = settings.themes.map((t: any) => t.content)
+const themes = settings.themes.map(t => t.content)
 const fontNames = settings.fonts
 const fontDisplay = ['默认', '宋体', '楷体']
 

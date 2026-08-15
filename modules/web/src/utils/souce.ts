@@ -34,7 +34,7 @@ export const convertSourcesToMap = (sources: Source[]): Map<string, Source> => {
   return map
 }
 
-export const normalizeSource = (source: any) => {
+export const normalizeSource = (source: Record<string, unknown>) => {
   for (const key in source) {
     const value = source[key]
     if (
@@ -44,7 +44,7 @@ export const normalizeSource = (source: any) => {
     ) {
       delete source[key]
     } else if (value instanceof Object) {
-      normalizeSource(value)
+      normalizeSource(value as Record<string, unknown>)
     }
   }
 }

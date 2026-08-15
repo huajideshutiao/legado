@@ -13,6 +13,8 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({ name: 'WelcomePage' })
+
 const router = useRouter()
 
 const goTo = (path: string) => {

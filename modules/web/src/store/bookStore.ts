@@ -96,7 +96,7 @@ export const useBookStore = defineStore('book', {
           ) {
             toast.info('书架数据已更新')
           }
-          this.shelf = data.sort((a: any, b: any) => {
+          this.shelf = data.sort((a: Book, b: Book) => {
             const x = a['durChapterTime'] || 0
             const y = b['durChapterTime'] || 0
             return y - x

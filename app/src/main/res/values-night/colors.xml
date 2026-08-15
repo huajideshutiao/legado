@@ -1,48 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="background_menu">@color/md_grey_800</color>
-    <color name="arco_text_3">#FF909090</color>
-    <color name="arco_bg_card">#FF2A2A2A</color>
     <!-- Arco Design 暗色主题：主色 arcoblue-6 dark -->
     <color name="primary">@color/arco_primary</color>
     <color name="primaryDark">@color/arco_primary_active</color>
     <color name="accent">@color/arco_primary</color>
 
-    <color name="disabled">@color/md_dark_disabled</color>
-
     <color name="background">@color/md_grey_900</color>
-    <color name="background_card">@color/md_grey_850</color>
 
-    <color name="transparent10">#10ffffff</color>
-
-    <color name="bg_divider_line">@color/background_menu</color>
-
-    <color name="btn_bg">#14e0e0e0</color>
-    <color name="btn_bg_press_2">#20ffffff</color>
-
-    <color name="darker_gray">#66666666</color>
-
-    <!-- Arco Design 暗色文字色阶 -->
-    <color name="primaryText">@color/arco_text_1</color>
-    <color name="secondaryText">@color/arco_text_2</color>
-    <color name="tv_text_summary">@color/arco_text_3</color>
     <color name="menu_color_default">#b7b7b7</color>
-
 
     <!--statusBarBackground-->
 
     <!-- ==================== Arco Design Dark 色板（覆盖 light） ==================== -->
     <!-- 主色 arcoblue-6 dark（暗色主色更亮以保证对比度） -->
     <color name="arco_primary">#FF3C7EFF</color>
-    <!-- 主色 disabled dark（arcoblue-3 dark，用于按钮 disabled 态填充） -->
-    <color name="arco_primary_disabled">#FF2748A5</color>
     <!-- 填充色 dark fill-1/2/3（同 light，全部去掉冷偏用纯灰） -->
     <color name="arco_fill_1">#FF171717</color>
     <color name="arco_fill_2">#FF232323</color>
     <color name="arco_fill_3">#FF2A2A2A</color>
-    <!-- 文字色阶 dark text-1/2/3 -->
-    <color name="arco_text_1">#FFF8F8F8</color>
-    <color name="arco_text_2">#FFCDCDCD</color>
     <!-- 边框 dark -->
     <!-- 卡片背景 dark -->
     <!-- ThemeConfig 默认色引用（dark 覆盖 light 同名，由系统 nightMode 自动选择） -->

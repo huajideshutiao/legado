@@ -27,8 +27,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.node.Ref
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -73,7 +73,6 @@ fun LazyItemScope.MangaPageCell(state: MangaRenderState, item: MangaPage, index:
     val viewRef = remember { Ref<MangaPageImageView>() }
     val horizontal = state.horizontal
     val isLastImage = item.imageCount > 0 && item.index == item.imageCount - 1
-    val context = LocalContext.current
 
     val cellModifier = when {
         horizontal -> Modifier.fillParentMaxSize()
@@ -82,7 +81,8 @@ fun LazyItemScope.MangaPageCell(state: MangaRenderState, item: MangaPage, index:
             .then(
                 if (isLastImage) {
                     val minHeight = with(LocalDensity.current) {
-                        (context.resources.displayMetrics.heightPixels * 2 / 3).toDp()
+                        // LocalResources 随 Configuration 变更失效 (LocalContext.resources 不会)
+                        (LocalResources.current.displayMetrics.heightPixels * 2 / 3).toDp()
                     }
                     Modifier.heightIn(min = minHeight)
                 } else {

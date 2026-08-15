@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:state_pressed="false">
-        <inset android:drawable="@drawable/shape_fillet_btn" android:inset="4dp" />
-    </item>
-    <item android:state_pressed="true">
-        <inset android:drawable="@drawable/shape_fillet_btn_press" android:inset="4dp" />
-    </item>
-</selector>

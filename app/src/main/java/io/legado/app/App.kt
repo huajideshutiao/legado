@@ -332,6 +332,10 @@ class App : Application() {
      * 创建通知ID
      */
     private fun createNotificationChannels() {
+        // NotificationChannel 是 API 26+ (minSdk 24), 低版本直接跳过, 否则 API 24/25 崩溃
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return
+        }
         val downloadChannel = NotificationChannel(
             channelIdDownload,
             androidAppString("action_download"),

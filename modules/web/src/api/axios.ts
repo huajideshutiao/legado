@@ -1,9 +1,9 @@
 /** @type {string} localStorage保存自定义阅读http服务接口的键值 */
 export const baseURL_localStorage_key = 'remoteUrl'
-const SECOND = 1000
 
 const baseURL =
-  (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API) ||
+  (typeof import.meta !== 'undefined' &&
+    (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_API) ||
   (typeof localStorage !== 'undefined' ? localStorage.getItem(baseURL_localStorage_key) : null) ||
   (typeof location !== 'undefined' ? location.origin : '')
 
@@ -12,14 +12,33 @@ interface FetchConfig {
   timeout?: number
 }
 
+/** 请求参数: RequestInit + 额外 baseURL (仅随 options 传递, URL 拼接走 defaults.baseURL) */
+type RequestOptions = RequestInit & { baseURL?: string }
+
+interface RequestConfig extends FetchConfig {
+  url: string
+  options?: RequestOptions
+}
+
+export interface ApiResponse<T = unknown> {
+  data: T
+  status: number
+  headers: Headers
+  config: RequestConfig
+}
+
 interface RequestInterceptor {
-  onFulfilled?: (config: FetchConfig & { url: string; options?: RequestInit }) => any
-  onRejected?: (error: any) => any
+  onFulfilled?: (
+    config: RequestConfig,
+  ) => RequestConfig | undefined | Promise<RequestConfig | undefined>
+  onRejected?: (error: unknown) => unknown
 }
 
 interface ResponseInterceptor {
-  onFulfilled?: (response: any) => any
-  onRejected?: (error: any) => any
+  onFulfilled?: (
+    response: ApiResponse,
+  ) => ApiResponse | undefined | Promise<ApiResponse | undefined>
+  onRejected?: (error: unknown) => unknown
 }
 
 class FetchWrapper {
@@ -48,13 +67,13 @@ class FetchWrapper {
     }
   }
 
-  async _request(url: string, options: RequestInit = {}): Promise<any> {
+  async _request<T = unknown>(url: string, options: RequestOptions = {}): Promise<ApiResponse<T>> {
     const fullUrl = url.startsWith('http') ? url : this.defaults.baseURL + url
-    let req = { url: fullUrl, options }
+    let req: RequestConfig = { url: fullUrl, options }
 
     for (const interceptor of this._reqInterceptors) {
       if (interceptor.onFulfilled) {
-        req = await interceptor.onFulfilled(req) || req
+        req = (await interceptor.onFulfilled(req)) || req
       }
     }
 
@@ -62,37 +81,43 @@ class FetchWrapper {
       ...req.options,
       headers: {
         'Content-Type': 'application/json',
-        ...((req.options as any)?.headers || {}),
+        ...(req.options?.headers || {}),
       },
     })
-    const data = await response.json()
-    let result = { data, status: response.status, headers: response.headers, config: req }
+    const data = (await response.json()) as T
+    let result: ApiResponse<T> = {
+      data,
+      status: response.status,
+      headers: response.headers,
+      config: req,
+    }
 
     for (const interceptor of this._resInterceptors) {
       if (interceptor.onFulfilled) {
-        result = await interceptor.onFulfilled(result) || result
+        // 响应拦截器只校验/透传 LeagdoApiResponse 信封, 不改变 data 类型
+        result = ((await interceptor.onFulfilled(result)) ?? result) as ApiResponse<T>
       }
     }
 
     return result
   }
 
-  get(url: string, config?: { baseURL?: string; timeout?: number }) {
-    return this._request(url, {
+  get<T = unknown>(url: string, config?: FetchConfig) {
+    return this._request<T>(url, {
       method: 'GET',
-      ...(config?.baseURL ? { baseURL: config.baseURL } as any : {}),
+      ...(config?.baseURL ? { baseURL: config.baseURL } : {}),
     })
   }
 
-  post(url: string, data?: any, config?: { baseURL?: string }) {
-    return this._request(url, {
+  post<T = unknown>(url: string, data?: unknown, config?: FetchConfig) {
+    return this._request<T>(url, {
       method: 'POST',
       body: JSON.stringify(data),
-      ...(config?.baseURL ? { baseURL: config.baseURL } as any : {}),
+      ...(config?.baseURL ? { baseURL: config.baseURL } : {}),
     })
   }
 
-  async _simpleGet(url: string): Promise<any> {
+  async _simpleGet(url: string): Promise<{ data: unknown }> {
     const fullUrl = url.startsWith('http') ? url : this.defaults.baseURL + url
     const response = await fetch(fullUrl, {
       headers: { 'Content-Type': 'application/json' },
@@ -100,7 +125,7 @@ class FetchWrapper {
     return { data: await response.json() }
   }
 
-  async _simplePost(url: string, data?: any): Promise<any> {
+  async _simplePost(url: string, data?: unknown): Promise<{ data: unknown }> {
     const fullUrl = url.startsWith('http') ? url : this.defaults.baseURL + url
     const response = await fetch(fullUrl, {
       method: 'POST',

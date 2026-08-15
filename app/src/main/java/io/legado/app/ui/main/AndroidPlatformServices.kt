@@ -145,7 +145,7 @@ private class AndroidFilePickerService(
      * 这样阅读背景、封面和其它文件导入都不会因 URI scheme 丢失而失败。
      */
     private fun materializeUri(uriString: String): String? {
-        val uri = Uri.parse(uriString)
+        val uri = uriString.toUri()
         return when (uri.scheme?.lowercase()) {
             "content" -> runCatching {
                 val resolver = appCtx.contentResolver
@@ -200,7 +200,7 @@ private class AndroidFilePickerService(
         // 自加的限制, 会把 heic/avif 等新格式静默拒掉 (表现为"选本地图片作封面无效")
         if (mimeTypes.isNotEmpty()) return true
         if (extensions.isEmpty()) return true
-        val path = Uri.parse(uriString).lastPathSegment ?: return true
+        val path = uriString.toUri().lastPathSegment ?: return true
         val name = path.substringAfterLast(':').substringAfterLast('/')
         val extension = name.substringAfterLast('.', "").lowercase()
         return extension.isEmpty() || extensions.any { it.trimStart('.').lowercase() == extension }
@@ -362,7 +362,7 @@ private class AndroidMediaService : MediaService {
                 if (player === failed) player = null
                 true
             }
-            newPlayer.setDataSource(appCtx, Uri.parse(url), headers)
+            newPlayer.setDataSource(appCtx, url.toUri(), headers)
             newPlayer.prepareAsync()
         }.onFailure {
             AppLog.put("AndroidMediaService.playMedia 失败: ${it.localizedMessage}")

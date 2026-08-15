@@ -159,7 +159,7 @@ export const msgbox = {
       cancelButtonText?: string
     },
   ): Promise<{ action: string; value: string }> {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       const overlay = document.createElement('div')
       overlay.className = 'web-confirm-overlay'
 

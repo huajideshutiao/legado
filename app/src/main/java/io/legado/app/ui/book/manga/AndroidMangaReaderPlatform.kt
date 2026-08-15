@@ -1,5 +1,6 @@
 package io.legado.app.ui.book.manga
 
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.ColorMatrix
@@ -12,6 +13,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.node.Ref
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.net.toUri
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
@@ -173,6 +175,7 @@ object AndroidMangaReaderPlatform : MangaReaderScreenModel.Platform {
     }
 
     // 保存图片: destPath 为 CreateDocument 返回的文件 Uri; 优先本地缓存, 本地书走 FileBook
+    @SuppressLint("Recycle") // openOutputStream 均以 .use 关闭, lint 追踪不到嵌套 use 内的流
     override suspend fun saveImage(
         url: String,
         book: Book?,
@@ -182,7 +185,7 @@ object AndroidMangaReaderPlatform : MangaReaderScreenModel.Platform {
         withContext(Dispatchers.IO) {
             book ?: return@withContext false
             runCatching {
-                val uri = android.net.Uri.parse(destPath)
+                val uri = destPath.toUri()
                 val image = BookHelp.getImage(book, url)
                 if (image.exists()) {
                     appCtx.contentResolver.openOutputStream(uri)?.use { out ->

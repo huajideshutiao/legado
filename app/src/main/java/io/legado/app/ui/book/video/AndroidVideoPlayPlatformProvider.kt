@@ -38,6 +38,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -50,6 +52,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.ByteArrayDataSource
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
@@ -82,6 +85,9 @@ class AndroidVideoPlayPlatformProvider(
         onPlaybackEnded: () -> Unit,
     ): VideoPlayerController = AndroidVideoPlayerController(activity, screenModel, onPlaybackEnded)
 
+    // media3 UnstableApi: PlayerView 控制接口 (setShowBuffering/resizeMode 等)。
+    // 用 androidx.annotation.OptIn (lint UnsafeOptInUsageError 只认此形式, kotlin.OptIn 不被识别)
+    @androidx.annotation.OptIn(markerClass = [UnstableApi::class])
     @Composable
     override fun Render(
         controller: VideoPlayerController,
@@ -97,8 +103,12 @@ class AndroidVideoPlayPlatformProvider(
         // 交给 shared 宽边判定显示 视频 + 选集网格 (平板横屏原先被无条件拽进全屏, 列表消失)
         val config = LocalConfiguration.current
         val isLandscape = config.orientation == Configuration.ORIENTATION_LANDSCAPE
-        val isPhone = minOf(config.screenWidthDp, config.screenHeightDp) <
-            DesignTokens.wideScreenMinWidth.value.toInt()
+        // 用 LocalWindowInfo.containerSize (px→dp) 替代 config.screenWidthDp/HeightDp:
+        // 后者在不同 targetSdk 下 insets 行为不一致且取整, 不适合做宽边判定
+        val windowSize = LocalWindowInfo.current.containerSize
+        val isPhone = with(LocalDensity.current) {
+            minOf(windowSize.width, windowSize.height).toDp() < DesignTokens.wideScreenMinWidth
+        }
         LaunchedEffect(isLandscape, isPhone) {
             screenModel.setFullScreen(isLandscape && isPhone)
         }

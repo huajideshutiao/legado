@@ -103,7 +103,7 @@ import API, {
 import { validatorHttpUrl } from '@/utils/utils'
 import { toast } from '@/utils/toast'
 import { msgbox } from '@/utils/toast'
-import type { Book, SeachBook } from '@/book'
+import type { BaseBook, Book, SeachBook } from '@/book'
 import type { webReadConfig } from '@/web'
 
 const store = useBookStore()
@@ -232,7 +232,7 @@ const handleBookClick = async (book: SeachBook | Book) => {
     author,
     durChapterIndex = 0,
     durChapterPos = 0,
-  } = book as any
+  } = book as BaseBook & Partial<Pick<Book, 'durChapterIndex' | 'durChapterPos'>>
 
   toDetail(bookUrl, name, author, durChapterIndex, durChapterPos, isSeachBook)
 }

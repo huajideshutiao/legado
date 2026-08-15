@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?><!-- Arco Text 按钮文字色：text_2 / pressed=text_1 / disabled=text_4 -->
-<selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:color="@color/arco_text_4" android:state_enabled="false" />
-    <item android:color="@color/arco_text_1" android:state_pressed="true" />
-    <item android:color="@color/arco_text_2" />
-</selector>

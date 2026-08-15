@@ -1,5 +1,6 @@
 package io.legado.app.data
 
+import android.annotation.SuppressLint
 import android.os.Build
 import android.util.Log
 import androidx.room3.Room
@@ -59,6 +60,9 @@ val appDb by lazy {
  * 依赖 AndroidSQLiteConnection (Android 平台), Locale.CHINESE (java.util), DefaultData (app 端)。
  * 原 AppDatabase.dbCallback companion 属性, 下沉后改为顶层 val (companion 已在 shared/commonMain)。
  */
+// AndroidSQLiteConnection/db 是 androidx.sqlite 内部 API (@RestrictTo), 但 setLocale 无公开
+// 替代路径 (BookmarkDao collate localized 依赖它), 属刻意使用, 抑制 RestrictedApi
+@SuppressLint("RestrictedApi")
 val dbCallback = object : androidx.room3.RoomDatabase.Callback() {
 
     override suspend fun onCreate(connection: SQLiteConnection) {
