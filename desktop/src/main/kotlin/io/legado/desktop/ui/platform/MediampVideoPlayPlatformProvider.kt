@@ -66,7 +66,7 @@ import org.openani.mediamp.features.AudioLevelController
 import org.openani.mediamp.features.Buffering
 import org.openani.mediamp.features.PlaybackSpeed
 import org.openani.mediamp.source.UriMediaData
-import org.openani.mediamp.togglePause
+import org.openani.mediamp.togglePlayWhenReady
 import kotlin.concurrent.Volatile
 
 /**
@@ -221,7 +221,7 @@ class MediampVideoPlayerController(
         scope.launch {
             runCatching {
                 player.setMediaData(UriMediaData(url, headers))
-                player.resume()
+                player.play()
                 if (startMs > 0) player.seekTo(startMs)
             }.onFailure { e ->
                 AppLog.put("mediamp 加载失败: ${e.message}", e)
@@ -239,7 +239,7 @@ class MediampVideoPlayerController(
     override val durationMs: Long get() = player.mediaProperties.value?.durationMillis ?: 0L
     override val bufferedMs: Long get() = durationMs
 
-    override fun playPause() = player.togglePause()
+    override fun playPause() = player.togglePlayWhenReady()
     override fun seekTo(positionMs: Long) = player.seekTo(positionMs)
     override fun seekBy(deltaMs: Long) = player.skip(deltaMs)
     override fun setSpeed(speed: Float) {

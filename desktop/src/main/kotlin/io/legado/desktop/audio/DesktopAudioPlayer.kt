@@ -19,6 +19,7 @@ import org.openani.mediamp.features.PlaybackSpeed
 import org.openani.mediamp.source.UriMediaData
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.Volatile
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * 桌面端音频播放器 (mediamp-mpv 引擎, mpv 内核 = FFmpeg 全格式)。
@@ -181,8 +182,8 @@ class DesktopAudioPlayer {
         val gen = prepareGeneration.incrementAndGet()
         prepareJob = prepareScope.launch {
             try {
-                withTimeout(PREPARE_TIMEOUT_MS) { prepareInternal(theUrl) }
-            } catch (e: TimeoutCancellationException) {
+                withTimeout(PREPARE_TIMEOUT_MS.milliseconds) { prepareInternal(theUrl) }
+            } catch (_: TimeoutCancellationException) {
                 // setMediaData 挂起即收掉加载态, 避免 LOADING 永久残留
                 if (!released && gen == prepareGeneration.get()) {
                     listener?.onError("prepare timeout")
@@ -232,7 +233,7 @@ class DesktopAudioPlayer {
             if (playerState.mediaStatus == MediaStatus.Ready) {
                 if (!playerState.isPlaying) {
                     // READY/PAUSED/PAUSED_BUFFERING → resume (位置由 mpv 保留)
-                    engine.resume()
+                    engine.play()
                     // loadfile 发起后再 apply 暂存 seek (mpv 加载中即可 seek)
                     applyPendingSeek(engine)
                     applySpeed(engine)

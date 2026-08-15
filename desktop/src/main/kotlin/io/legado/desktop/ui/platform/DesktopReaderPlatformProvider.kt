@@ -192,9 +192,9 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
                 content = content,
                 onReplace = onReplace(screenModel),
                 onBookmark = onBookmark(screenModel),
-                onReadAloud = onReadAloud(screenModel),
+                onReadAloud = onReadAloud(),
                 onSearchContent = onSearchContent(screenModel),
-                onShare = onShare(screenModel),
+                onShare = onShare(),
             )
         }
     }
@@ -222,9 +222,9 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
                 selectedText = text,
                 onReplace = onReplace(screenModel),
                 onBookmark = onBookmark(screenModel),
-                onReadAloud = onReadAloud(screenModel),
+                onReadAloud = onReadAloud(),
                 onSearchContent = onSearchContent(screenModel),
-                onShare = onShare(screenModel),
+                onShare = onShare(),
             )
         }
     }
@@ -328,7 +328,7 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
     /** 下载解码字节写入 [dest], 返回最终绝对路径 (写入后按魔数修正扩展名); 失败返回 null。 */
     private suspend fun writeImageBytes(
         src: String,
-        book: io.legado.app.data.entities.Book?,
+        book: Book?,
         bookSource: io.legado.app.data.entities.BookSource?,
         dest: File,
     ): String? = try {
@@ -365,7 +365,7 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
      * 朗读选中文字 (T7: 按 contentSelectSpeakMod 偏好, 对照 app 端 AndroidReaderPlatformProvider.
      * onReadAloud 语义: ==1 朗读当前进度章节; 桌面无单句 TTS, 否则分支也回退为朗读当前进度章节)。
      */
-    private fun onReadAloud(screenModel: ReaderScreenModel): (String) -> Unit = { _ ->
+    private fun onReadAloud(): (String) -> Unit = { _ ->
         when (
             PreferenceProviders.get().getInt(PreferKey.contentSelectSpeakMod, 0)
         ) {
@@ -380,7 +380,7 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
         screenModel.searchContentTextCallback()
 
     /** 分享 (对照原版 menu_share_str; 桌面端无系统分享 UI, 写剪贴板) */
-    private fun onShare(screenModel: ReaderScreenModel): (String) -> Unit = { text ->
+    private fun onShare(): (String) -> Unit = { text ->
         DesktopPlatformCapabilities.shareText(text)
     }
 
@@ -583,8 +583,8 @@ private class DesktopReadAloudControls(
 }
 
 private class DesktopReadMenuController(
-    private val navigator: AppNavigator,
-    private val screenModel: ReaderScreenModel,
+    navigator: AppNavigator,
+    screenModel: ReaderScreenModel,
 ) : ReadMenuController {
     override val state: ReadMenuState = DesktopReadMenuState(navigator, screenModel)
     override fun showMenu() = (state as DesktopReadMenuState).show()
@@ -744,7 +744,7 @@ private class DesktopReadMenuState(
             val source = AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
             if (source != null) {
                 SourceVerificationHelpShared.startBrowser(
-                    source, url, book.originName ?: "章节", false, false
+                    source, url, book.originName, saveResult = false, refetchAfterSuccess = false
                 )
             } else {
                 DesktopPlatformCapabilities.openExternalUrl(url.substringBefore(",{"))
@@ -811,7 +811,6 @@ private class DesktopReadMenuState(
             // 源/书变量编辑 (对照原版 ReadMenu showSourceVariableDialog/showBookVariableDialog)
             SourceAction.SET_SOURCE_VARIABLE -> screenModel.showSourceVariableDialog()
             SourceAction.SET_BOOK_VARIABLE -> screenModel.showBookVariableDialog()
-            else -> Unit
         }
     }
 

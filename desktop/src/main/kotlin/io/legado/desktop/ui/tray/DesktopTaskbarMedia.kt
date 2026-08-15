@@ -428,7 +428,7 @@ internal object DesktopTaskbarMedia {
         runCommand {
             when (id) {
                 BTN_PREV -> if (audioActive) AudioPlayShared.prev()
-                else if (aloudActive) aloud!!.controller.prevParagraph()
+                else if (aloudActive) aloud.controller.prevParagraph()
 
                 BTN_TOGGLE -> if (audioActive) {
                     // 对照原版通知 action: PLAY→pause / PAUSE→resume / 其他→loadOrUpPlayUrl
@@ -438,15 +438,15 @@ internal object DesktopTaskbarMedia {
                         else -> AudioPlayShared.loadOrUpPlayUrl()
                     }
                 } else if (aloudActive) {
-                    val c = aloud!!.controller
+                    val c = aloud.controller
                     if (c.state.value == ReadAloudState.PAUSED) c.resume() else c.pause()
                 }
 
                 BTN_NEXT -> if (audioActive) AudioPlayShared.next()
-                else if (aloudActive) aloud!!.controller.nextParagraph()
+                else if (aloudActive) aloud.controller.nextParagraph()
 
                 BTN_STOP -> if (audioActive) AudioPlayShared.stop()
-                else if (aloudActive) aloud!!.controller.stop()
+                else if (aloudActive) aloud.controller.stop()
             }
         }
     }
@@ -467,7 +467,7 @@ internal object DesktopTaskbarMedia {
                     // 原版: 朗读在跑 → 成对切换 (ReadAloud.pause + AudioPlay.pause / 两者 resume);
                     // 否则音频在跑 → 切音频; 再否则不处理 (原版还走前台 Activity/兜底朗读, 桌面端无)
                     if (aloudActive) {
-                        val c = aloud!!.controller
+                        val c = aloud.controller
                         if (c.state.value == ReadAloudState.PAUSED) {
                             c.resume()
                             if (audioActive) AudioPlayShared.resume()
@@ -485,13 +485,13 @@ internal object DesktopTaskbarMedia {
                 }
 
                 VK_MEDIA_NEXT_TRACK -> if (audioActive) AudioPlayShared.next()
-                else if (aloudActive) aloud!!.controller.nextParagraph()
+                else if (aloudActive) aloud.controller.nextParagraph()
 
                 VK_MEDIA_PREV_TRACK -> if (audioActive) AudioPlayShared.prev()
-                else if (aloudActive) aloud!!.controller.prevParagraph()
+                else if (aloudActive) aloud.controller.prevParagraph()
 
                 VK_MEDIA_STOP -> if (audioActive) AudioPlayShared.stop()
-                else if (aloudActive) aloud!!.controller.stop()
+                else if (aloudActive) aloud.controller.stop()
             }
         }
     }
@@ -705,7 +705,6 @@ internal object DesktopTaskbarMedia {
                 hwnd,
                 WinUser.GWL_WNDPROC
             )
-                ?: return
             oldWndProc = Pointer.nativeValue(old)
             val fnPtr = com.sun.jna.CallbackReference.getFunctionPointer(thumbWndProc)
             DesktopTaskbarDwm.SubclassWin32.INSTANCE.SetWindowLongPtrW(
@@ -837,7 +836,7 @@ internal object DesktopTaskbarMedia {
                 val bitmaps = mutableListOf<Pair<WinDef.HBITMAP, WinDef.HBITMAP>>()
                 try {
                     for (glyph in glyphs) {
-                        val (hbm, hbmMask) = createThumbBitmap(ICON_SIZE, glyph)
+                        val (hbm, hbmMask) = ICON_SIZE.createThumbBitmap(glyph)
                             ?: error("createThumbBitmap 失败 glyph=$glyph")
                         bitmaps += hbm to hbmMask
                         // ImageList_Add 复制位图入列, 返回后即可释放 GDI 对象
@@ -865,13 +864,12 @@ internal object DesktopTaskbarMedia {
      * 照 thumbbar_test.c (已实测悬停不崩、图标正常显示) 构造按钮图标:
      * 32bpp 预乘 alpha DIB + 1bpp 透明掩码, ImageList_Add(hbm, hbmMask) 添加。
      */
-    private fun createThumbBitmap(
-        size: Int,
+    private fun Int.createThumbBitmap(
         glyph: ThumbGlyph
     ): Pair<WinDef.HBITMAP, WinDef.HBITMAP>? {
-        val img = drawGlyphImage(size, glyph)
+        val img = drawGlyphImage(this, glyph)
         val hbm = toPremultipliedHBitmap(img) ?: return null
-        val hbmMask = createMaskDib(size, img) ?: run {
+        val hbmMask = createMaskDib(this, img) ?: run {
             runCatching { GDI32.INSTANCE.DeleteObject(hbm) }
             return null
         }
@@ -1092,7 +1090,7 @@ internal object DesktopTaskbarMedia {
     internal fun mainWindowHandle(): Pointer? = mainHwnd?.pointer
 
     /** THUMBBUTTON 结构 stride (仅支持 x64 = 552; writeButton 偏移与任务栏链路其余部分同为 x64 假设)。 */
-    private val BUTTON_STRIDE = 552L
+    private const val BUTTON_STRIDE = 552L
 
     private const val START_TIMEOUT_SECONDS = 10L
 }
