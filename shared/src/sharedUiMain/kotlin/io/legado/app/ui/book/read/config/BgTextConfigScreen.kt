@@ -1,4 +1,4 @@
-package io.legado.app.ui.book.read.config
+﻿package io.legado.app.ui.book.read.config
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -36,7 +36,7 @@ import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppDetailSeekBar
-import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.StrokeTextChip
@@ -432,7 +432,7 @@ fun BgTextConfigScreen(
             },
             cancelButton = AlertButton(text = cancelStr),
         ) {
-            AppOutlinedTextField(
+            AppUnderlineTextField(
                 value = editName,
                 onValueChange = { editName = it },
                 singleLine = true,

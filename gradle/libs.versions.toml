@@ -3,8 +3,8 @@ cronet = "143.7445.0"
 # 默认工具链跟随 Android/iOS/JVM 依赖的 KLIB ABI；OHOS 通过 enableOhosTarget
 # 在 settings/build-logic 中单独切到 CPF Kotlin 2.2.21-0.4.0。
 kotlin = "2.3.20"
-composeMultiplatform = "1.10.1"
-composeMultiplatformOfficial = "1.10.1"
+composeMultiplatform = "1.11.1"
+composeMultiplatformOfficial = "1.11.1"
 # 鸿蒙专用的版本通过 gradle.properties 或命令行参数开启强制替换
 kotlin-ohos = "2.2.21-0.5.0-12"
 composeMultiplatform-ohos = "1.9.2-0.5.0-25"
@@ -34,10 +34,9 @@ libarchive = "1.1.6"
 kotlinxSerializationJson = "1.11.0"
 coroutines = "1.11.0"
 atomicfu = "0.33.0"
-# 必须与 composeMultiplatform 基线匹配, 独立追新会编译通过但运行时崩
-skiko = "0.9.37.4"
 # 必须与 composeMultiplatform 基线匹配: 0.41.0 起对 CMP 1.10 编译, 在 1.9.2 上运行时 NoSuchMethodError
 # 0.43.0 含 inlineCode 字号/TextUnit 崩溃修复与同步 parseMarkdown API
+# (注: 0.43.0 按 CMP 1.10 编译; 升 CMP 1.11 后若运行时 NoSuchMethodError 需同步升级 mikepenz 版本)
 multiplatformMarkdown = "0.43.0"
 material = "1.14.0"
 media = "1.8.0"
@@ -61,10 +60,12 @@ rhino = "1.9.1"
 media3 = "1.10.1"
 webkit = "1.16.0"
 activity = "1.13.0"
-composeFoundationAndroid = "1.11.4"
 lifecycle = "2.10.0"
-# 必须与 composeMultiplatform 基线匹配 (CMP 1.9.x ↔ JetBrains lifecycle 2.9.4)
-lifecycleMultiplatform = "2.9.4"
+# 必须与 composeMultiplatform 基线匹配 (CMP 1.11.x ↔ JetBrains lifecycle 2.10.0;
+# CMP 1.10.x ↔ 2.9.4)。Android target 不再单独钉 androidx foundation:
+# CMP 1.11.1 的安卓映射即 androidx foundation 1.11.2 (含 1.11 的 ActionMode
+# SelectionContainer 复制后闪"仅全选"过渡帧修复), 桌面/安卓同基线。
+lifecycleMultiplatform = "2.10.0"
 room = "3.0.1"
 sqlite = "2.7.0"
 recyclerview = "1.4.0"
@@ -96,7 +97,6 @@ mediamp-mpv-runtime = { module = "org.openani.mediamp:mediamp-mpv-runtime", vers
 mediamp-mpv-runtime-windows-x64 = { module = "org.openani.mediamp:mediamp-mpv-runtime-windows-x64", version.ref = "mediamp" }
 mediamp-mpv-runtime-linux-x64 = { module = "org.openani.mediamp:mediamp-mpv-runtime-linux-x64", version.ref = "mediamp" }
 mediamp-mpv-runtime-macos-arm64 = { module = "org.openani.mediamp:mediamp-mpv-runtime-macos-arm64", version.ref = "mediamp" }
-skiko = { module = "org.jetbrains.skiko:skiko", version.ref = "skiko" }
 compose-multiplatform-export = { module = "org.jetbrains.compose.export:export", version.ref = "composeMultiplatform" }
 activity-ktx = { module = "androidx.activity:activity-ktx", version.ref = "activity" }
 cronet-api = { module = "org.chromium.net:cronet-api", version.ref = "cronet" }
@@ -161,12 +161,6 @@ coil3-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", versio
 coil3-network-ktor3 = { module = "io.coil-kt.coil3:coil-network-ktor3", version.ref = "coil3" }
 coil3-core = { module = "io.coil-kt.coil3:coil", version.ref = "coil3" }
 compose-activity = { module = "androidx.activity:activity-compose", version.ref = "activity" }
-compose-foundation-android = { module = "androidx.compose.foundation:foundation", version.ref = "composeFoundationAndroid" }
-# AS @Preview 渲染器 (ComposeViewAdapter)。走 androidx 坐标而非 CMP 转发, 才能与实际解析到的
-# androidx.compose.ui:ui-android 同版本 (ComposeViewAdapter 用 ui 的 internal API, 版本错开会
-# NoSuchMethodError)。:shared 在 androidMain 源集 implementation 声明 (IDE 预览取该源集运行期
-# 类路径, 顶层 androidRuntimeClasspath 进不了 AGP 模型), 见 shared/build.gradle.kts。
-compose-ui-tooling-android = { module = "androidx.compose.ui:ui-tooling", version.ref = "composeFoundationAndroid" }
 compose-lifecycle-runtime = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
 compose-lifecycle-runtime-multiplatform = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycleMultiplatform" }
 reorderable = { module = "sh.calvin.reorderable:reorderable", version.ref = "reorderable" }

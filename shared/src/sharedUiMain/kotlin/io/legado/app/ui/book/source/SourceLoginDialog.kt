@@ -1,4 +1,4 @@
-package io.legado.app.ui.book.source
+﻿package io.legado.app.ui.book.source
 
 // I18N KEYS (已注册于 ResourceProvider.jvm.kt):
 //   "login_source" / "ok" / "show_login_header" / "del_login_header" / "log" /
@@ -47,7 +47,7 @@ import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppFilletTextButton
-import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.GridPackLayout
@@ -364,7 +364,7 @@ private fun LoginRow(
     val colors = AppTheme.colors
     when (rowUi.type) {
         // 外围间距由 AppTextField 组件统一 (左右下各 4dp), 调用点不再叠加
-        RowUi.Type.text -> AppOutlinedTextField(
+        RowUi.Type.text -> AppUnderlineTextField(
             value = loginData[rowUi.name] ?: "",
             onValueChange = { loginData[rowUi.name] = it },
             label = rowUi.name,
@@ -372,7 +372,7 @@ private fun LoginRow(
             modifier = modifier
         )
 
-        RowUi.Type.password -> AppOutlinedTextField(
+        RowUi.Type.password -> AppUnderlineTextField(
             value = loginData[rowUi.name] ?: "",
             onValueChange = { loginData[rowUi.name] = it },
             label = rowUi.name,
@@ -425,7 +425,7 @@ private fun SelectRow(
         Text(rowUi.name, color = colors.primaryText, modifier = Modifier.padding(end = 8.dp))
         // 自定义实现替代 MD3 ExposedDropdownMenuBox: Box + TextField + AppDropdownMenu
         Box(modifier = Modifier.weight(1f)) {
-            AppOutlinedTextField(
+            AppUnderlineTextField(
                 value = loginData[rowUi.name] ?: "",
                 onValueChange = {},
                 readOnly = true,

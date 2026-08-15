@@ -4,24 +4,13 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
-import android.content.res.Resources
-import android.icu.text.SimpleDateFormat
 import android.media.AudioManager
 import android.net.Uri
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
-import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -33,18 +22,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
-import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
@@ -66,15 +50,9 @@ import androidx.media3.ui.PlayerView
 import io.legado.app.constant.AppLog
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.main.MainActivity
-import io.legado.app.utils.dpToPx
 import io.legado.app.utils.toggleSystemBar
-import kotlinx.coroutines.delay
-import java.util.Locale
-import kotlin.math.abs
 
 class AndroidVideoPlayPlatformProvider(
     private val activity: MainActivity,
@@ -116,28 +94,26 @@ class AndroidVideoPlayPlatformProvider(
         val gestureText by screenModel.gestureText.collectAsState()
         // 锁定态: 旁路全部手势并隐藏控制层, 仅留解锁钮 (对照 app 端 isLocked)
         var locked by remember { mutableStateOf(false) }
-        // 进度回显: 控制层可见时 500ms 轮询 (对照 app 原 AppVideoControlsHost + desktop 轮询)
+        // 进度回显: 控制层可见时 500ms 轮询 + 5s 自动隐藏 (shared 统一, 缓冲中也计时)
         var positionMs by remember { mutableLongStateOf(0L) }
         var bufferedMs by remember { mutableLongStateOf(0L) }
         var durationMs by remember { mutableLongStateOf(0L) }
         var seeking by remember { mutableStateOf(false) }
-        LaunchedEffect(androidController, uiState.controlsVisible) {
-            while (uiState.controlsVisible) {
+        // 自动隐藏条件: 播放/缓冲中计时 (用户拍板: 缓冲中也自动隐藏), 拖动 seek 时暂停
+        val playingOrBuffering = uiState.isPlaying ||
+            (uiState.playWhenReady && uiState.playbackState == Player.STATE_BUFFERING)
+        VideoPlaybackPoller(
+            controlsVisible = uiState.controlsVisible,
+            autoHideActive = playingOrBuffering,
+            seeking = seeking,
+            locked = locked,
+            onAutoHide = screenModel::onToggleControls,
+            poll = {
                 positionMs = androidController.positionMs
                 bufferedMs = androidController.bufferedMs
                 durationMs = androidController.durationMs
-                delay(500)
-            }
-        }
-        // 自动隐藏 (原 controllerShowTimeoutMs=5s, 仅播放/缓冲中计时, 拖动 seek 时暂停)
-        val playingOrBuffering = uiState.isPlaying ||
-            (uiState.playWhenReady && uiState.playbackState == Player.STATE_BUFFERING)
-        LaunchedEffect(uiState.controlsVisible, playingOrBuffering, seeking, locked) {
-            if (uiState.controlsVisible && playingOrBuffering && !seeking && !locked) {
-                delay(5000)
-                screenModel.onToggleControls()
-            }
-        }
+            },
+        )
         // 播放器层错误 (重试后仍失败): 显示错误占位 + 重试 (对齐 desktop playError/MediampFailedHint)
         var playError by remember { mutableStateOf<String?>(null) }
         DisposableEffect(androidController) {
@@ -150,14 +126,44 @@ class AndroidVideoPlayPlatformProvider(
         // 播放缓冲中 (URL 就绪后): 小缓冲圈 (原 show_buffering=when_playing), 控制层可叠
         val showBuffering = error == null && playError == null && !showLoading &&
             uiState.playWhenReady && uiState.playbackState == Player.STATE_BUFFERING
-        // 手势处理(对照 app VideoGestureHandler): 单击切控制层/双击播放暂停/长按 2x 倍速/
-        // 左半竖滑亮度/右半竖滑音量/横滑进度
-        val gestureHandler = remember(androidController) {
-            AndroidVideoGestureHandler(
-                activity = activity,
-                player = androidController.player,
+        // 手势处理 (shared VideoGestureController): 单击切控制层/双击播放暂停/长按 2x 倍速/
+        // 左半竖滑亮度/右半竖滑音量/横滑进度 (仅平台读写槽注入)
+        val audioManager = activity.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        val gestureController = remember(androidController, audioManager, maxVolume) {
+            VideoGestureController(
+                isPlaying = { androidController.player.isPlaying },
+                positionMs = { androidController.player.currentPosition },
+                durationMs = { androidController.player.duration },
+                speed = { androidController.player.playbackParameters.speed },
+                setSpeed = { speed ->
+                    androidController.player.playbackParameters = PlaybackParameters(
+                        speed,
+                        androidController.player.playbackParameters.pitch,
+                    )
+                },
+                onPlayPause = {
+                    val p = androidController.player
+                    if (p.isPlaying) p.pause() else p.play()
+                },
+                seekTo = { androidController.player.seekTo(it) },
+                readBrightness = {
+                    val a = activity.window.attributes
+                    if (a.screenBrightness <= 0f) 0f else a.screenBrightness
+                },
+                writeBrightness = { value ->
+                    activity.window.attributes = activity.window.attributes.apply {
+                        screenBrightness = value
+                    }
+                },
+                readVolume = { audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() },
+                writeVolume = { value ->
+                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, value.toInt(), 0)
+                },
                 onToggleControls = screenModel::onToggleControls,
                 onGestureText = screenModel::onGestureText,
+                volumeMax = maxVolume.toFloat(),
+                volumeStep = 1f,
             )
         }
         Box(modifier.fillMaxSize()) {
@@ -174,9 +180,9 @@ class AndroidVideoPlayPlatformProvider(
                 update = { it.player = androidController.player },
                 modifier = Modifier.fillMaxSize(),
             )
-            // 手势层 (对照 app VideoGestureOverlay): 锁定态旁路
-            AndroidVideoGestureOverlay(
-                handler = gestureHandler,
+            // 手势层 (shared 统一: 单击/双击/长按 + 滑动/抬手, 锁定态旁路)
+            VideoGestureOverlay(
+                handler = gestureController,
                 locked = locked,
                 modifier = Modifier.fillMaxSize(),
             )
@@ -231,9 +237,9 @@ class AndroidVideoPlayPlatformProvider(
                             modifier = Modifier.align(Alignment.Center),
                         )
                     },
-                    // 锁定钮 (对照 app VideoLockToggle): 锁定后隐藏控制层
+                    // 锁定钮 (对照 app VideoLockToggle): 锁定后隐藏控制层 (shared 统一组件)
                     leadingContent = {
-                        AndroidVideoLockToggle(
+                        VideoLockToggle(
                             locked = false,
                             onClick = {
                                 locked = true
@@ -265,9 +271,9 @@ class AndroidVideoPlayPlatformProvider(
                     modifier = Modifier.fillMaxSize(),
                 )
             }
-            // 锁定态: 仅留半透明小锁钮, 点击解锁 (对照 app VideoLockToggle)
+            // 锁定态: 仅留半透明小锁钮, 点击解锁 (对照 app VideoLockToggle; shared 统一组件)
             if (locked) {
-                AndroidVideoLockToggle(
+                VideoLockToggle(
                     locked = true,
                     onClick = { locked = false },
                     modifier = Modifier
@@ -275,29 +281,19 @@ class AndroidVideoPlayPlatformProvider(
                         .padding(start = 16.dp),
                 )
             }
-            // 缓冲圈 (原 show_buffering=when_playing, 叠于控制层之上)
+            // 缓冲圈 (原 show_buffering=when_playing, 叠于控制层之上; shared 统一组件)
             if (showBuffering) {
-                CircularProgressIndicator(
-                    color = AppTheme.colors.accent,
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(48.dp),
+                VideoBufferingIndicator(
+                    modifier = Modifier.align(Alignment.Center),
                 )
             }
-            // 手势反馈文字(原 tv_video_speed, 叠于控制层之上)
+            // 手势反馈文字(原 tv_video_speed, 叠于控制层之上; shared 统一组件)
             gestureText?.let {
-                Text(
+                VideoGestureFeedbackText(
                     text = it,
-                    color = AppTheme.colors.primaryText,
-                    fontSize = 24.sp,
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .padding(top = 16.dp)
-                        .background(
-                            colorResource(io.legado.app.R.color.arco_fill_3),
-                            DesignTokens.shapeDefault
-                        )
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                        .padding(top = 16.dp),
                 )
             }
         }
@@ -326,231 +322,8 @@ class AndroidVideoPlayPlatformProvider(
     }
 }
 
-private enum class AndroidGestureMode { NONE, PROGRESS, BRIGHTNESS, VOLUME }
 
-/**
- * 手势逻辑 (逐项对照 app VideoPlayActivity.VideoGestureHandler / origin VideoGestureListener)。
- *
- * 单击切控制层 / 双击播放暂停 / 长按 2x 倍速 (松手恢复) /
- * 左半屏竖滑亮度 / 右半屏竖滑音量 / 横滑进度 (松手 seek)。
- *
- * 竖滑相对调节复用共享状态机 [VideoGestureAdjuster] (进模式读当前值 + 增量 +
- * 碰顶/底重置, 与原版逐行等价): 音量走整数步进 (step=1f, 对照原版 .toInt() 截断
- * 语义), 亮度走连续浮点。
- */
-private class AndroidVideoGestureHandler(
-    private val activity: MainActivity,
-    private val player: ExoPlayer,
-    private val onToggleControls: () -> Unit,
-    private val onGestureText: (String?) -> Unit,
-) {
-    private var originalSpeed = 1f
-    var speedBoosted = false
-        private set
-    private var position = 0L
-    private val screenWidth get() = Resources.getSystem().displayMetrics.widthPixels
-
-    // 手势响应区高度: 350dp 转 px; onGestureMove 的 height 参数为 Float (共享调整器签名),
-    // dpToPx 返回 Int, 需显式转 Float (对照桌面端 Mediamp 实现传 Float)
-    private val screenHeight = 350f.dpToPx()
-    private var gestureMode = AndroidGestureMode.NONE
-    private var startX = 0f
-    private var startY = 0f
-    private val deadZoneSize by lazy { 15f.dpToPx() }
-    private val audioManager by lazy { activity.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
-    private val maxVolume by lazy { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }
-    private val brightnessAdjuster by lazy { VideoGestureAdjuster() }
-    private val volumeAdjuster by lazy { VideoGestureAdjuster(max = maxVolume.toFloat()) }
-    private var lastScrollTime = 0L
-    private val scrollThrottleInterval = 32L //ms
-    private val progressTimeFormat by lazy {
-        SimpleDateFormat("mm:ss", Locale.getDefault())
-    }
-
-    fun onDoubleTap() {
-        if (player.isPlaying) player.pause() else player.play()
-    }
-
-    fun onSingleTap() {
-        onToggleControls()
-    }
-
-    fun onDown(x: Float, y: Float) {
-        startX = x
-        startY = y
-    }
-
-    fun onLongPress() {
-        originalSpeed = player.playbackParameters.speed
-        speedBoosted = true
-        val targetSpeed = originalSpeed * 2f
-        player.playbackParameters = PlaybackParameters(targetSpeed, player.playbackParameters.pitch)
-        onGestureText(String.format(Locale.getDefault(), "%.1fX", targetSpeed))
-    }
-
-    fun onScroll(x: Float, y: Float) {
-        val currentTime = System.currentTimeMillis()
-        if (currentTime - lastScrollTime < scrollThrottleInterval) {
-            return
-        }
-        lastScrollTime = currentTime
-        if (gestureMode == AndroidGestureMode.NONE) {
-            val deltaX = abs(x - startX)
-            val deltaY = abs(y - startY)
-
-            if (deltaX < deadZoneSize && deltaY < deadZoneSize) return
-
-            gestureMode = when {
-                deltaX > deltaY -> AndroidGestureMode.PROGRESS
-                startX < screenWidth / 2 -> {
-                    // 进模式读当前亮度 (系统默认 <=0 按 0, 对照原版)
-                    brightnessAdjuster.onGestureStart(startY) {
-                        if (activity.window.attributes.screenBrightness <= 0f) 0f
-                        else activity.window.attributes.screenBrightness
-                    }
-                    AndroidGestureMode.BRIGHTNESS
-                }
-
-                else -> {
-                    // 进模式读当前音量 (0..maxVolume, 对照原版 getStreamVolume)
-                    volumeAdjuster.onGestureStart(startY) {
-                        audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat()
-                    }
-                    AndroidGestureMode.VOLUME
-                }
-            }
-        }
-        when (gestureMode) {
-            AndroidGestureMode.PROGRESS -> {
-                position = (player.currentPosition + (x - startX) / screenWidth * 180000).toLong()
-                    .coerceIn(0, player.duration)
-                onGestureText(
-                    String.format(
-                        "%s/%s",
-                        progressTimeFormat.format(position),
-                        progressTimeFormat.format(player.duration)
-                    )
-                )
-            }
-
-            AndroidGestureMode.BRIGHTNESS -> {
-                // 相对调节 + 碰顶/底重置 (共享状态机, 逐行对照原版亮度段)
-                val deltaBrightness = brightnessAdjuster.onGestureMove(y, screenHeight)
-                activity.window.attributes = activity.window.attributes.apply {
-                    screenBrightness = deltaBrightness
-                }
-                onGestureText(
-                    String.format(
-                        Locale.getDefault(),
-                        "亮度: %d%%",
-                        (deltaBrightness * 100).toInt()
-                    )
-                )
-            }
-
-            AndroidGestureMode.VOLUME -> {
-                // step=1f: AudioManager 整数步进, 对照原版 .toInt().coerceIn(0, maxVolume)
-                // 的截断 + 边界判定语义 (状态机内部碰顶/底重置, 逐行等价)
-                val deltaVolume = volumeAdjuster.onGestureMove(y, screenHeight, step = 1f).toInt()
-                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, deltaVolume, 0)
-                onGestureText(
-                    String.format(Locale.getDefault(), "音量: %d%%", deltaVolume * 100 / maxVolume)
-                )
-            }
-
-            AndroidGestureMode.NONE -> {}
-        }
-    }
-
-    fun onUp() {
-        if (speedBoosted) {
-            player.playbackParameters =
-                PlaybackParameters(originalSpeed, player.playbackParameters.pitch)
-            speedBoosted = false
-        }
-        when (gestureMode) {
-            AndroidGestureMode.PROGRESS -> {
-                player.seekTo(position)
-                player.play()
-            }
-
-            else -> {}
-        }
-        gestureMode = AndroidGestureMode.NONE
-        onGestureText(null)
-    }
-}
-
-/** 手势层 (对照 app VideoGestureOverlay): 单击/双击/长按 + 滑动/抬手, 锁定态旁路。 */
-@Composable
-private fun AndroidVideoGestureOverlay(
-    handler: AndroidVideoGestureHandler,
-    locked: Boolean,
-    modifier: Modifier,
-) {
-    Box(
-        modifier
-            .pointerInput(handler, locked) {
-                if (locked) return@pointerInput
-                detectTapGestures(
-                    onTap = { handler.onSingleTap() },
-                    onDoubleTap = { handler.onDoubleTap() },
-                    onLongPress = { handler.onLongPress() },
-                )
-            }
-            .pointerInput(handler, locked) {
-                if (locked) return@pointerInput
-                // 滑动/抬手: 越过 slop 才消费(同时打断 tap 层); 长按倍速期间不响应滑动
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    handler.onDown(down.position.x, down.position.y)
-                    var dragging = false
-                    try {
-                        while (true) {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                            if (change.changedToUpIgnoreConsumed()) break
-                            if (handler.speedBoosted) continue
-                            if (!dragging) {
-                                val slop = viewConfiguration.touchSlop
-                                val delta = change.position - down.position
-                                dragging = abs(delta.x) > slop || abs(delta.y) > slop
-                            }
-                            if (dragging) {
-                                change.consume()
-                                handler.onScroll(change.position.x, change.position.y)
-                            }
-                        }
-                    } finally {
-                        handler.onUp()
-                    }
-                }
-            }
-    )
-}
-
-/** 锁定/解锁钮 (对照 app VideoLockToggle): 复用锁矢量, 白 tint 同其余控制钮。 */
-@Composable
-private fun AndroidVideoLockToggle(
-    locked: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier
-            .size(48.dp)
-            .clip(CircleShape)
-            .clickable { onClick() },
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            painter = rememberPainter("ic_lock_outline"),
-            contentDescription = null,
-            tint = Color.White.copy(alpha = if (locked) 0.5f else 1f),
-            modifier = Modifier.size(32.dp),
-        )
-    }
-}
+/** 锁定/解锁钮已收拢为 shared [VideoLockToggle] (见 VideoPlayerScreenContent.kt)。 */
 
 @SuppressLint("UnsafeOptInUsageError")
 private class AndroidVideoPlayerController(

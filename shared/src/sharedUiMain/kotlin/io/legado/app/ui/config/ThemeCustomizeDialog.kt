@@ -1,4 +1,4 @@
-package io.legado.app.ui.config
+﻿package io.legado.app.ui.config
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -38,7 +38,7 @@ import io.legado.app.help.config.ThemeConfigData
 import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
@@ -292,7 +292,7 @@ fun ThemeCustomizeDialog(
             ) {
                 // 主题名字段: EDIT_CONFIG / NEW_CONFIG 显示, EDIT_PREFS 隐藏
                 if (mode != MODE_EDIT_PREFS) {
-                    AppOutlinedTextField(
+                    AppUnderlineTextField(
                         value = themeName,
                         onValueChange = { themeName = it },
                         label = stringResource(Res.string.theme_name),

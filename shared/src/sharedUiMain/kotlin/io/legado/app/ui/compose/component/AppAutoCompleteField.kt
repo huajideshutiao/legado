@@ -1,4 +1,4 @@
-package io.legado.app.ui.compose.component
+﻿package io.legado.app.ui.compose.component
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -60,7 +60,7 @@ fun AppAutoCompleteField(
         LaunchedEffect(Unit) { runCatching { focusRequester.requestFocus() } }
     }
     Box(modifier) {
-        AppOutlinedTextField(
+        AppUnderlineTextField(
             value = value,
             onValueChange = onValueChange,
             modifier = Modifier

@@ -66,9 +66,9 @@ class CodeEditorSearchTarget(
             )
         }
         val range = searchHighlight.ranges[index]
-        editor.onValueChange(
-            editor.value.copy(selection = TextRange(range.first, range.last + 1))
-        )
+        editor.edit {
+            selection = TextRange(range.first, range.last + 1)
+        }
     }
 
     override fun replace(
@@ -86,7 +86,9 @@ class CodeEditorSearchTarget(
             find(keyword, useRegex, matchCase, wholeWord, forward = true)
             return
         }
-        editor.onValueChange(editor.value.insertAtCursor(replacement))
+        // 对齐旧 editor.onValueChange(editor.value.insertAtCursor(replacement)):
+        // 替换整个选区 (非仅插入)
+        editor.edit { replace(selection.min, selection.max, replacement) }
         // 文本已变, 强制重算匹配区间再定位下一个 (对齐原版 replace 后 find(forward=true))
         val fresh = buildSearchRanges(keyword, useRegex, matchCase, wholeWord, editor.value.text)
         searchHighlight.update(keyword, useRegex, matchCase, wholeWord, fresh, -1)
@@ -107,14 +109,12 @@ class CodeEditorSearchTarget(
             replaced = replaced.replaceRange(ranges[i].first, ranges[i].last + 1, replacement)
         }
         if (replaced != text) {
-            editor.onValueChange(
-                editor.value.copy(
-                    text = replaced,
-                    selection = TextRange(
-                        editor.value.selection.min.coerceAtMost(replaced.length)
-                    ),
+            editor.edit {
+                replace(0, length, replaced)
+                selection = TextRange(
+                    editor.value.selection.min.coerceAtMost(replaced.length)
                 )
-            )
+            }
         }
         // 对齐原版 replaceAll 末尾的 reHighlightSearch: 当前命中态清空, 匹配区间重算
         val fresh = buildSearchRanges(

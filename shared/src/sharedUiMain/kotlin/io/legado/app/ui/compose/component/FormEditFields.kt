@@ -1,4 +1,4 @@
-package io.legado.app.ui.compose.component
+﻿package io.legado.app.ui.compose.component
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
@@ -34,7 +34,7 @@ fun FormEditFields(entities: List<EditEntity>) {
 @Composable
 private fun FormTextField(entity: EditEntity) {
     var value by remember(entity) { mutableStateOf(entity.value.orEmpty()) }
-    AppOutlinedTextField(
+    AppUnderlineTextField(
         value = value,
         onValueChange = {
             value = it

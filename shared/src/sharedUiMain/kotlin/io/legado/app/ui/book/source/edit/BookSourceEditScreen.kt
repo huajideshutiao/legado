@@ -42,13 +42,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isCtrlPressed
-import androidx.compose.ui.input.key.isShiftPressed
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
@@ -176,31 +169,8 @@ fun BookSourceEditScreen(
         modifier
             .fillMaxSize()
             .focusRequester(rootFocusRequester)
-            // 桌面端键盘监听: Ctrl+Z 撤销 / Ctrl+Shift+Z、Ctrl+Y 重做 (对照 ReplaceEditScreen;
-            // 目标是最后聚焦字段 activeEditor, 与底部辅助条 undo/redo 同一目标)
-            .onPreviewKeyEvent { event ->
-                if (event.type != KeyEventType.KeyDown || !event.isCtrlPressed) {
-                    return@onPreviewKeyEvent false
-                }
-                when (event.key) {
-                    Key.Z if event.isShiftPressed -> {
-                        activeEditor.value?.redo()
-                        activeEditor.value != null
-                    }
-
-                    Key.Z -> {
-                        activeEditor.value?.undo()
-                        activeEditor.value != null
-                    }
-
-                    Key.Y -> {
-                        activeEditor.value?.redo()
-                        activeEditor.value != null
-                    }
-
-                    else -> false
-                }
-            }
+            // 桌面端 Ctrl+Z/Y 撤销/重做由新版 BasicTextField 原生处理 (KeyCommand.UNDO/REDO →
+            // 同一个 undoState), 无需手写按键路由
             // 无字段持焦时根节点自己持焦, 保证键盘事件可达 (对照 ReplaceEditScreen)
             .focusable()
     ) {
@@ -644,8 +614,8 @@ private fun CodeField(
         }
     }
     CodeTextField(
-        value = editor.value,
-        onValueChange = { editor.onValueChange(it) },
+        value = editor.textFieldState,
+        inputTransformation = editor.inputTransformation,
         syntax = syntax,
         label = rememberString(entity.hint),
         // 对照原版 CodeView: 书源编辑条目开行号 (isLineNumberEnabled=true)

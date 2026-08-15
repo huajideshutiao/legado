@@ -40,16 +40,12 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.drop
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isCtrlPressed
-import androidx.compose.ui.input.key.isShiftPressed
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
@@ -137,6 +133,14 @@ fun JsEditScreen(
         }
     }
     val emit: (String) -> Unit = { lastEmitted = it; onCodeChange(it) }
+    // 观察编辑器文本变化 → emit (用户输入/undo/redo/辅助键插入统一写入 state,
+    // 不再逐路径手动 emit; 只读文本, 选区/光标移动不触发; drop(1) 跳过初始发射)
+    val currentEmit by rememberUpdatedState(emit)
+    LaunchedEffect(editor) {
+        snapshotFlow { editor.textFieldState.text.toString() }
+            .drop(1)
+            .collect { currentEmit(it) }
+    }
     // 查找高亮状态: CodeTextField 叠加全量黄底 + 当前命中强调色 (对齐原版 CodeView 查找高亮)
     val searchHighlight = remember { CodeSearchHighlightState() }
     val focusManager = LocalFocusManager.current
@@ -146,35 +150,8 @@ fun JsEditScreen(
             // ime 避让在根 (对齐原版 Activity adjustResize): 键盘弹出时编辑区/工具栏
             // 不被键盘覆盖, 收起动画期间提前归零 (imeDismissPadding)
             .imeDismissPadding()
-            // 桌面端键盘监听: Ctrl+Z 撤销 / Ctrl+Shift+Z、Ctrl+Y 重做 (对照 BookSourceEditScreen
-            // 根 Column); undo/redo 后回写 emit, 否则外部保存丢数据; 消费 Ctrl+Z 压住桌面
-            // BasicTextField 内置撤销栈, 避免与 CodeEditorState 手写撤销栈双重撤销
-            .onPreviewKeyEvent { event ->
-                if (event.type != KeyEventType.KeyDown || !event.isCtrlPressed) {
-                    return@onPreviewKeyEvent false
-                }
-                when (event.key) {
-                    Key.Z if event.isShiftPressed -> {
-                        editor.redo()
-                        emit(editor.value.text)
-                        true
-                    }
-
-                    Key.Z -> {
-                        editor.undo()
-                        emit(editor.value.text)
-                        true
-                    }
-
-                    Key.Y -> {
-                        editor.redo()
-                        emit(editor.value.text)
-                        true
-                    }
-
-                    else -> false
-                }
-            }
+            // 桌面端 Ctrl+Z/Y 撤销/重做由新版 BasicTextField 原生处理 (KeyCommand.UNDO/REDO →
+            // 同一个 undoState), 文本变化经编辑器观察器 emit 回写, 无需手写按键路由
     ) {
         AppTitleBar(
             title = stringResource(Res.string.js_edit),
@@ -219,14 +196,8 @@ fun JsEditScreen(
                 .onGloballyPositioned { editWindowY = it.positionInWindow().y.roundToInt() },
         ) {
             CodeTextField(
-                value = editor.value,
-                onValueChange = {
-                    // emit 必须取调整后的 editor.value (回车自动缩进/退格整段删会改写文本),
-                    // 旧实现 emit(it.text) 写调整前值 → 保存的代码缺缩进 (与书源编辑 entity
-                    // 分叉同源问题)
-                    editor.onValueChange(it)
-                    emit(editor.value.text)
-                },
+                value = editor.textFieldState,
+                inputTransformation = editor.inputTransformation,
                 syntax = rememberCodeSyntax(js = true),
                 label = stringResource(Res.string.code),
                 fontSize = 14.sp,
@@ -266,9 +237,9 @@ fun JsEditScreen(
         val keyboardState = remember { KeyboardToolbarState() }
         KeyboardToolbar(
             state = keyboardState,
-            onSendText = { editor.insertAtCursor(it); emit(editor.value.text) },
-            onUndo = { editor.undo(); emit(editor.value.text) },
-            onRedo = { editor.redo(); emit(editor.value.text) },
+            onSendText = { editor.insertAtCursor(it) },
+            onUndo = { editor.undo() },
+            onRedo = { editor.redo() },
             onShowConfig = onShowKeyboardConfig,
             target = { CodeEditorSearchTarget(editor, searchHighlight) { focusManager.clearFocus() } },
         )

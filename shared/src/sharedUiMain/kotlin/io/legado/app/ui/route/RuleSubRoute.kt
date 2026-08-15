@@ -1,4 +1,4 @@
-package io.legado.app.ui.route
+﻿package io.legado.app.ui.route
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -30,7 +30,7 @@ import io.legado.app.ui.association.RuleSubUiEvent
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppDropdownMenu
-import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.AppNavigator
@@ -184,7 +184,7 @@ fun RuleSubRoute(
  * 规则订阅编辑弹窗 (新增/编辑): 类型下拉 + 名称/URL 输入, 校验非空 + isAbsUrl 后回调 onConfirm。
  *
  * 对照 app 端 `RuleSubActivity.showEditDialog`: alert title (add/edit) + customView
- * (Row 类型下拉 + AppOutlinedTextField 名称 + AppOutlinedTextField URL) + okButton 校验 + cancelButton。
+ * (Row 类型下拉 + AppUnderlineTextField 名称 + AppUnderlineTextField URL) + okButton 校验 + cancelButton。
  */
 @Composable
 private fun RuleSubEditDialog(
@@ -239,14 +239,14 @@ private fun RuleSubEditDialog(
                     }
                 }
             }
-            AppOutlinedTextField(
+            AppUnderlineTextField(
                 value = name,
                 onValueChange = { name = it },
                 label = stringResource(Res.string.name),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
-            AppOutlinedTextField(
+            AppUnderlineTextField(
                 value = url,
                 onValueChange = { url = it },
                 label = "Url",

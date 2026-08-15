@@ -117,10 +117,11 @@ class AndroidReaderPlatformProvider(
     }
 
     override fun getBatteryLevel(): Int {
-        val manager = appCtx.getSystemService(BatteryManager::class.java) ?: return -1
+        // 读取失败/无电池统一回落 100 (用户拍板 2026-08: 电量恒显示, 与 desktop 一致)
+        val manager = appCtx.getSystemService(BatteryManager::class.java) ?: return 100
         return runCatching {
             manager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
-        }.getOrDefault(-1)
+        }.getOrDefault(100)
     }
 
     /**
@@ -185,29 +186,13 @@ class AndroidReaderPlatformProvider(
         activity.showImageActionMenu(src, x, y)
     }
 
-    /** 替换 (对照原版 menu_replace): 打开替换规则编辑页, pattern=选中文本(去行首尾空白),
-     *  scope=书名;书源URL (原版 scopes=book.name + bookSourceUrl joinToString(";")) */
-    private fun onReplace(screenModel: ReaderScreenModel): (String) -> Unit = { text ->
-        val book = screenModel.viewModel.book.value
-        AppNavigatorProviders.get().push(
-            AppRoute.ReplaceEdit(
-                pattern = text.lineSequence().joinToString("\n") { it.trim() },
-                scope = listOfNotNull(book?.name, book?.origin).joinToString(";"),
-            )
-        )
-    }
+    /** 替换 (T1: 已提共享 ReaderScreenModel.replaceTextCallback, 保留闭包装配) */
+    private fun onReplace(screenModel: ReaderScreenModel): (String) -> Unit =
+        screenModel.replaceTextCallback()
 
-    /** 书签 (对照原版 menu_bookmark): 用选中文本建书签, 弹 BookmarkDialog */
-    private fun onBookmark(screenModel: ReaderScreenModel): (String) -> Unit = onBookmark@{ text ->
-        val book = screenModel.viewModel.book.value ?: return@onBookmark
-        val bookmark = Bookmark(bookName = book.name, bookAuthor = book.author).apply {
-            chapterIndex = screenModel.viewModel.durChapterIndex.value
-            chapterPos = screenModel.viewModel.durChapterPos.value
-            chapterName = screenModel.currentChapter?.title ?: ""
-            bookText = text.trim()
-        }
-        screenModel.postDialogEvent(ReaderDialogEvent.AddBookmark(bookmark))
-    }
+    /** 书签 (T1: 已提共享 ReaderScreenModel.bookmarkTextCallback) */
+    private fun onBookmark(screenModel: ReaderScreenModel): (String) -> Unit =
+        screenModel.bookmarkTextCallback()
 
     /** 朗读选中文字 (对照原版 menu_aloud): 默认模式 TTS 朗读选中文本;
      *  contentSelectSpeakMod=1 的 aloudStartSelect(从选中处朗读章节) 依赖 View 层选区位置,
@@ -223,11 +208,9 @@ class AndroidReaderPlatformProvider(
         }
     }
 
-    /** 全文搜索 (对照原版 menu_search_content): 设置搜索词后走既有搜索路由 */
-    private fun onSearchContent(screenModel: ReaderScreenModel): (String) -> Unit = { text ->
-        screenModel.searchContentQuery = text
-        screenModel.menuState.clickSearch()
-    }
+    /** 全文搜索 (T1: 已提共享 ReaderScreenModel.searchContentTextCallback) */
+    private fun onSearchContent(screenModel: ReaderScreenModel): (String) -> Unit =
+        screenModel.searchContentTextCallback()
 
     /** 分享 (对照原版 menu_share_str) */
     private fun onShare(screenModel: ReaderScreenModel): (String) -> Unit = { text ->
@@ -517,7 +500,8 @@ private class AndroidReaderMenuState(
         bgColor = theme.bgColor
         textColor = theme.textColor
         // 窗口背景图 (原 ThemeConfig.curBgImagePath 非空) 时顶栏透明, 让窗口背景图透出
-        hasBgImage = !ThemeConfig.curBgImagePath.isNullOrBlank()
+        // (T6: 判定收敛 shared hasBgImageByPath, 与 LocalThemeStoreProvider.current.bgImagePath 同一数据源)
+        hasBgImage = hasBgImageByPath(ThemeConfig.curBgImagePath)
     }
 
     // 书源操作按钮 (对照 app 端 ReadMenu.runMenuIn sourceAction 赋值)

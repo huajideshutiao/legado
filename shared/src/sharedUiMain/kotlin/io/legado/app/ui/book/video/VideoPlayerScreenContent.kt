@@ -68,6 +68,7 @@ import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.handleMediaKeys
+import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -906,6 +907,67 @@ fun ErrorOverlay(error: String, onRetry: () -> Unit) {
                     .padding(horizontal = 16.dp, vertical = 8.dp),
             )
         }
+    }
+}
+
+// ---- 手势反馈标签 / 缓冲圈 / 锁定钮 ----
+// 注: 原 app AndroidVideoPlayPlatformProvider 与 desktop MediampVideoPlayPlatformProvider
+// 各写一份且细节分化 (标签: app 灰底 arco_fill_3 + primaryText + 24sp vs desktop 半透明黑
+// 0x80000000 + 白字 + 20sp; 缓冲圈: app accent vs desktop 白; 锁钮: 两份逐字节相同)。
+// 收拢为本文件统一实现, 两端渲染层直接复用, 消除跨端重复与颜色/尺寸分化。
+
+/**
+ * 手势/按键反馈标签 (长按倍速 "2.0X"、音量、亮度、进度等), 叠于视频控制层之上。
+ * 原 app tv_video_speed: 底色 arco_fill_3 (亮 #FFE6E6E6 / 暗 #FF2A2A2A, 跟随主题) +
+ * primaryText + 24sp, 与移动端/master 一致; 调用方负责定位 (一般 TopCenter + 顶部 padding)。
+ */
+@Composable
+fun VideoGestureFeedbackText(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = text,
+        color = AppTheme.colors.primaryText,
+        fontSize = 24.sp,
+        modifier = modifier
+            .background(rememberColor("arco_fill_3"), DesignTokens.shapeDefault)
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+    )
+}
+
+/** 缓冲圈 (叠于控制层之上): 统一收拢, 颜色默认主题强调色 (与移动端一致)。 */
+@Composable
+fun VideoBufferingIndicator(
+    color: Color = AppTheme.colors.accent,
+    modifier: Modifier = Modifier,
+) {
+    CircularProgressIndicator(
+        color = color,
+        modifier = modifier.size(48.dp),
+    )
+}
+
+/** 锁定/解锁钮 (原 app/desktop 两份完全相同的 private 实现, 收拢为共享实现)。 */
+@Composable
+fun VideoLockToggle(
+    locked: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier
+            .size(48.dp)
+            .clip(CircleShape)
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            painter = rememberPainter("ic_lock_outline"),
+            contentDescription = null,
+            tint = Color.White.copy(alpha = if (locked) 0.5f else 1f),
+            modifier = Modifier.size(32.dp),
+        )
     }
 }
 

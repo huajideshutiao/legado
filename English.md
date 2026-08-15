@@ -41,29 +41,18 @@ platforms:
 
 # Function [![](https://img.shields.io/badge/-Function-F5F5F5.svg)](#Function-)
 
-You can customize the book source, set your own rules, and capture web page data. The rules are simple and easy to understand. There are rules in the software. List bookshelf, grid bookshelf switch freely. The book source rules support search and discovery, and all the functions of finding books and reading books are all customized, making it easier to find books.
-* Custom ebook sources, set your own rules to capture web data, the rules are simple and easy to understand, the software has a rule description.
-* eBook sources rules support search and discovery, all find books and read books function all custom, find books more convenient.
-* Schedule updating your library for new chapters.
-* Online reading from web sources that can be imported in bulk
-* Local reading of Auto-download episodes.
-* Local reading of TXT or EPUB files
-* ebook Wishlist
-* Big text viewer. You can open eBook and txt in 1GB size
-* Automatic text replacement for removing ad in content
-* List bookshelf, grid bookshelf free to switch.
-* Subscription content, you can subscribe to any content you want to see, see what you want to see
-* A configurable reader with fonts, background, page transitions mode and other settings
-* Timer. Set interval time to listen ebook, time up, ebook  turn off completely.
-* TTS book reader. tts can optionally be install“smartvoice-4.1.0” or ”Speech Services by Google“  Give your baby a storybook to listen to and teach your baby to talk, 
-* Dark mode and E-Ink mode support and Web service support
-* Create backups to local or WebDav server
-* Decentralization web3
-* Support replacement purification, it is very convenient to remove the content of advertisement replacement.
-* Support local TXT, EPUB reading, manual browsing, intelligent scanning.
-* Support highly customized reading interface, switch font, color, background, line spacing, paragraph spacing, bold, simplified and traditional conversion.
-* Support multiple page turning modes, covering, emulating, sliding, scrolling, etc.
-
+1. Custom book sources, set your own rules to capture web data. The rules are simple and easy to
+   understand, with built-in rule documentation in the app.<br>
+2. List bookshelf and grid bookshelf, freely switchable.<br>
+3. Book source rules support search and discovery; all book-finding and reading features are fully
+   customizable, making it easier to find books.<br>
+4. Subscription content: subscribe to whatever you want to see.<br>
+5. Text replacement and purification, making it easy to remove ads and replace content.<br>
+6. Local TXT and EPUB reading, with manual browsing and smart scanning.<br>
+7. Highly customizable reading interface: font, color, background, line spacing, paragraph spacing,
+   bold, simplified/traditional conversion, etc.<br>
+8. Multiple page-turning modes: cover, simulation, slide, scroll, etc.<br>
+9. Open source, continuously optimized, no ads.
 
 <a href="#readme">
     <img src="https://img.shields.io/badge/-Top-orange.svg" alt="#" align="right">
@@ -73,16 +62,12 @@ You can customize the book source, set your own rules, and capture web page data
 
 #### Android
 
-* [Releases](https://github.com/gedoor/legado/releases/latest)
-* [Google play - $1.99](https://play.google.com/store/apps/details?id=io.legado.play.release)
-* [Coolapk](https://www.coolapk.com/apk/io.legado.app.release)
-* [\#Beta](https://kunfei.lanzoui.com/b0f810h4b)
-* [IzzyOnDroid F-Droid Repository](https://apt.izzysoft.de/fdroid/index/apk/io.legado.app.release)
+* [Releases](https://github.com/huajideshutiao/legado/releases/latest)
 
+#### iOS
 
-#### IOS
-
-* Stopped(No release) - [Github](https://github.com/gedoor/YueDuFlutter)
+* Unsigned IPA - [GitHub Releases](https://github.com/huajideshutiao/legado/releases/latest) (
+  sideload with SideStore / AltStore)
 
 <a href="#readme">
     <img src="https://img.shields.io/badge/-Top-orange.svg" alt="#" align="right">

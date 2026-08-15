@@ -1,23 +1,15 @@
 package io.legado.desktop.ui.platform
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Button
-import androidx.compose.material.CircularProgressIndicator
-import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
@@ -33,27 +25,27 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import io.legado.app.constant.AppLog
 import io.legado.app.ui.book.video.ErrorOverlay
 import io.legado.app.ui.book.video.LoadingOverlay
 import io.legado.app.ui.book.video.PlatformPlayer
+import io.legado.app.ui.book.video.VideoBufferingIndicator
 import io.legado.app.ui.book.video.VideoCenterControls
 import io.legado.app.ui.book.video.VideoControlsOverlay
-import io.legado.app.ui.book.video.VideoGestureAdjuster
+import io.legado.app.ui.book.video.VideoGestureController
+import io.legado.app.ui.book.video.VideoGestureFeedbackText
+import io.legado.app.ui.book.video.VideoGestureOverlay
+import io.legado.app.ui.book.video.VideoLockToggle
+import io.legado.app.ui.book.video.VideoPlaybackPoller
 import io.legado.app.ui.book.video.VideoPlayPlatformProvider
 import io.legado.app.ui.book.video.VideoPlayScreenModel
 import io.legado.app.ui.book.video.VideoPlayerController
 import io.legado.app.ui.book.video.toDurationTime
-import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.desktop.audio.DesktopScreenBrightness
 import io.legado.desktop.audio.DesktopSystemVolume
@@ -99,7 +91,7 @@ import kotlin.math.abs
  *   + currentPositionMillis + mediaProperties.durationMillis 驱动控制层。
  * - **交互** (对标 app 端 VideoGestureHandler): 鼠标单击切控制层 / 双击播放暂停 /
  *   长按 2x 倍速 (松手恢复) / 横滑进度 (松手 seek) / 左半竖滑亮度 (WMI 系统亮度) /
- *   右半竖滑音量 (WASAPI 系统音量) (见 [DesktopVideoGestureHandler]); 键盘统一由共享
+ *   右半竖滑音量 (WASAPI 系统音量) (shared [VideoGestureController]); 键盘统一由共享
  *   VideoPlayerScreenContent 根节点的 handleMediaKeys 捕获 (Space 播放/暂停, ←/→=seek ∓10s,
  *   长按 →=2x 倍速, ↑/↓=上/下一章), 本类不再挂独立键盘处理器。
  *
@@ -351,11 +343,18 @@ private fun MediampRender(
         }
     }
 
-    // ---- 控制层回显轮询 (控制层可见时 500ms; 对照 app 端 AppVideoControlsHost) ----
+    // ---- 控制层回显轮询 + 自动隐藏 (shared 统一; 缓冲中也计时, 用户拍板 2026-08) ----
     var positionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
-    LaunchedEffect(uiState.controlsVisible) {
-        while (uiState.controlsVisible) {
+    var seeking by remember { mutableStateOf(false) }
+    var locked by remember { mutableStateOf(false) }
+    VideoPlaybackPoller(
+        controlsVisible = uiState.controlsVisible,
+        autoHideActive = isPlaying || isBuffering,
+        seeking = seeking,
+        locked = locked,
+        onAutoHide = screenModel::onToggleControls,
+        poll = {
             positionMs = controller.positionMs
             durationMs = controller.durationMs
             // 回显到共享 UiState (缓冲圈/自动隐藏依赖)
@@ -368,19 +367,8 @@ private fun MediampRender(
                     PlatformPlayer.STATE_READY
                 },
             )
-            delay(500)
-        }
-    }
-
-    // 自动隐藏 (5s, 仅播放中计时; 拖动 seek 暂停; 锁定态不隐藏)
-    var seeking by remember { mutableStateOf(false) }
-    var locked by remember { mutableStateOf(false) }
-    LaunchedEffect(uiState.controlsVisible, isPlaying, seeking, locked) {
-        if (uiState.controlsVisible && isPlaying && !seeking && !locked) {
-            delay(5000)
-            screenModel.onToggleControls()
-        }
-    }
+        },
+    )
 
     val error = uiState.error
     val showLoading = error == null && playError == null &&
@@ -395,11 +383,38 @@ private fun MediampRender(
     // 手势反馈文字 (键盘长按倍速与鼠标手势共用 ScreenModel 级 flow, null 时隐藏)
     val gestureText by screenModel.gestureText.collectAsState()
 
-    // 鼠标手势 (对照 app AndroidVideoGestureHandler): 单击切控制层/双击播放暂停/
-    // 长按 2x 倍速/横滑进度/左半竖滑亮度/右半竖滑音量 (见类注释)
-    val gestureHandler = remember(controller) {
-        DesktopVideoGestureHandler(
-            controller = controller,
+    // 鼠标手势 (shared VideoGestureController): 单击切控制层/双击播放暂停/
+    // 长按 2x 倍速/横滑进度/左半竖滑亮度/右半竖滑音量 (仅平台读写槽注入)
+    val gestureController = remember(controller) {
+        VideoGestureController(
+            isPlaying = { controller.isPlaying },
+            positionMs = { controller.positionMs },
+            durationMs = { controller.durationMs },
+            speed = {
+                runCatching {
+                    controller.player.features[PlaybackSpeed.Key]?.value ?: 1f
+                }.getOrDefault(1f)
+            },
+            setSpeed = { controller.setSpeed(it) },
+            onPlayPause = { controller.playPause() },
+            seekTo = { controller.seekTo(it) },
+            readBrightness = {
+                DesktopScreenBrightness.get()?.let { it / 100f } ?: 0.5f
+            },
+            writeBrightness = { DesktopScreenBrightness.set((it * 100).toInt()) },
+            readVolume = {
+                DesktopSystemVolume.getVolume() ?: mediampVolumeNormalized(controller)
+            },
+            writeVolume = { level ->
+                // WASAPI 不可用 (无音频设备/COM 失败) 时回落写 mediamp 音量 (mpv volume),
+                // 避免"手势百分比在动、实际无声" (与亮度读失败回落同思路)
+                val wroteSystem = DesktopSystemVolume.setVolume(level)
+                if (!wroteSystem) {
+                    controller.player.features[AudioLevelController.Key]?.let { vc ->
+                        runCatching { vc.setVolume(level * vc.maxVolume) }
+                    }
+                }
+            },
             onToggleControls = screenModel::onToggleControls,
             onGestureText = screenModel::onGestureText,
         )
@@ -421,9 +436,9 @@ private fun MediampRender(
             mediampPlayer = controller.player,
             modifier = Modifier.fillMaxSize(),
         )
-        // 手势层 (对照 app VideoGestureOverlay): 锁定态旁路
-        DesktopVideoGestureOverlay(
-            handler = gestureHandler,
+        // 手势层 (shared 统一: 单击/双击/长按 + 滑动/抬手, 锁定态旁路)
+        VideoGestureOverlay(
+            handler = gestureController,
             locked = locked,
             modifier = Modifier.fillMaxSize(),
         )
@@ -479,7 +494,7 @@ private fun MediampRender(
                     )
                 },
                 leadingContent = {
-                    DesktopVideoLockToggle(
+                    VideoLockToggle(
                         locked = false,
                         onClick = {
                             locked = true
@@ -496,9 +511,9 @@ private fun MediampRender(
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        // 锁定态: 仅留半透明小锁钮 (对照 app AndroidVideoLockToggle)
+        // 锁定态: 仅留半透明小锁钮 (shared 统一组件)
         if (locked && playError == null) {
-            DesktopVideoLockToggle(
+            VideoLockToggle(
                 locked = true,
                 onClick = { locked = false },
                 modifier = Modifier
@@ -506,26 +521,19 @@ private fun MediampRender(
                     .padding(start = 16.dp),
             )
         }
-        // 缓冲圈 (叠于控制层之上)
+        // 缓冲圈 (叠于控制层之上; shared 统一组件, 颜色统一主题强调色)
         if (showBuffering) {
-            CircularProgressIndicator(
-                color = Color.White,
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .size(48.dp),
+            VideoBufferingIndicator(
+                modifier = Modifier.align(Alignment.Center),
             )
         }
-        // 手势反馈文字 (对照 app tv_video_speed, 叠于所有层之上)
+        // 手势反馈文字 (对照 app tv_video_speed, 叠于所有层之上; shared 统一组件)
         gestureText?.let {
-            Text(
+            VideoGestureFeedbackText(
                 text = it,
-                color = Color.White,
-                fontSize = 20.sp,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(top = 16.dp)
-                    .background(Color(0x80000000), RoundedCornerShape(8.dp))
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                    .padding(top = 16.dp),
             )
         }
     }
@@ -547,235 +555,14 @@ private fun FailedMediampRender(
     }
 }
 
-private enum class DesktopGestureMode { NONE, PROGRESS, BRIGHTNESS, VOLUME }
+/** mediamp 播放器音量归一化到 0..1 (mpv maxVolume=2; 仅系统音量读取失败时兜底参照, 原 DesktopVideoGestureHandler 私有方法)。 */
+private fun mediampVolumeNormalized(controller: MediampVideoPlayerController): Float = runCatching {
+    val vc = controller.player.features[AudioLevelController.Key] ?: return 0.5f
+    (vc.volume.value / vc.maxVolume.coerceAtLeast(1f)).coerceIn(0f, 1f)
+}.getOrDefault(0.5f)
 
-/**
- * 鼠标手势 (逐项对照 app AndroidVideoGestureHandler / origin VideoGestureListener)。
- *
- * 单击切控制层 / 双击播放暂停 / 长按 2x 倍速 (松手恢复) /
- * 横滑进度 (整宽映射 ±3 分钟, 松手 seek + 自动续播) /
- * 左半屏竖滑亮度 (WMI 系统亮度) / 右半屏竖滑音量 (WASAPI 系统音量)。
- *
- * 竖滑相对调节走共享状态机 [VideoGestureAdjuster] (进模式读当前值 + 增量 + 碰顶/底
- * 重置, 对照原版逐行等价); 与 app 端差异仅在读写平台实现 (Android=窗口亮度/AudioManager,
- * desktop=WMI/WASAPI)。mediamp 播放器音量 ([AudioLevelController], mpv volume) 不再被
- * 手势改动 (手势调系统音量, 对照原版语义), 仅作系统音量读取失败时的兜底参照。
- */
-private class DesktopVideoGestureHandler(
-    private val controller: MediampVideoPlayerController,
-    private val onToggleControls: () -> Unit,
-    private val onGestureText: (String?) -> Unit,
-) {
-    /** 长按倍速中 (拖动层据此跳过滑动, 对照 app) */
-    var speedBoosted = false
-        private set
-    private var originalSpeed = 1f
-    private var position = 0L
-    private var gestureMode = DesktopGestureMode.NONE
-    private var startX = 0f
-    private var startY = 0f
-    private var lastScrollTime = 0L
-    private val scrollThrottleInterval = 32L // ms, 对照 app
-    private val volumeController by lazy { controller.player.features[AudioLevelController.Key] }
-    private val brightnessAdjuster = VideoGestureAdjuster()
-    private val volumeAdjuster = VideoGestureAdjuster()
 
-    fun onSingleTap() = onToggleControls()
-
-    fun onDoubleTap() = controller.playPause()
-
-    fun onDown(x: Float, y: Float) {
-        startX = x
-        startY = y
-    }
-
-    /** 长按 → 当前倍速 ×2 (对照 app onLongPress), 松手恢复 */
-    fun onLongPress() {
-        val current = runCatching {
-            controller.player.features[PlaybackSpeed.Key]?.value ?: 1f
-        }.getOrDefault(1f)
-        originalSpeed = current
-        speedBoosted = true
-        val target = current * 2f
-        controller.setSpeed(target)
-        onGestureText("%.1fX".format(target))
-    }
-
-    fun onScroll(x: Float, y: Float, width: Float, height: Float) {
-        val currentTime = System.currentTimeMillis()
-        if (currentTime - lastScrollTime < scrollThrottleInterval) {
-            return
-        }
-        lastScrollTime = currentTime
-        if (gestureMode == DesktopGestureMode.NONE) {
-            val deltaX = abs(x - startX)
-            val deltaY = abs(y - startY)
-            // 越过 slop 才判方向 (拖动层已过滤, 这里只选主轴)
-            if (deltaX < 4f && deltaY < 4f) return
-            gestureMode = when {
-                // 主轴横滑 → 进度
-                deltaX > deltaY -> DesktopGestureMode.PROGRESS
-                // 对照原版: 按下点 x < 宽/2 → 左半屏亮度; 否则右半屏音量
-                startX < width / 2 -> {
-                    // 进模式读一次当前亮度 (0..1; 失败回落 0.5 仍可相对调节)
-                    brightnessAdjuster.onGestureStart(startY) {
-                        DesktopScreenBrightness.get()?.let { it / 100f } ?: 0.5f
-                    }
-                    DesktopGestureMode.BRIGHTNESS
-                }
-
-                else -> {
-                    // 进模式读一次当前系统音量 (0..1; 失败回落 mediamp 音量归一值)
-                    volumeAdjuster.onGestureStart(startY) {
-                        DesktopSystemVolume.getVolume() ?: mediampVolumeNormalized()
-                    }
-                    DesktopGestureMode.VOLUME
-                }
-            }
-        }
-        when (gestureMode) {
-            DesktopGestureMode.PROGRESS -> {
-                // 对照 app: 整宽映射 ±3 分钟, 相对当前进度
-                position = (controller.positionMs + (x - startX) / width * 180_000).toLong()
-                    .coerceIn(0L, controller.durationMs)
-                onGestureText(
-                    "%s / %s".format(
-                        position.toDurationTime(),
-                        controller.durationMs.toDurationTime(),
-                    )
-                )
-            }
-
-            DesktopGestureMode.VOLUME -> {
-                // 相对调节 + 碰顶/底重置 (共享状态机, 对照原版); 写系统音量。
-                // WASAPI 不可用 (无音频设备/COM 失败) 时回落写 mediamp 音量 (mpv volume),
-                // 避免"手势百分比在动、实际无声" (与亮度读失败回落同思路)
-                val level = volumeAdjuster.onGestureMove(y, height)
-                val wroteSystem = DesktopSystemVolume.setVolume(level)
-                if (!wroteSystem) {
-                    volumeController?.let { vc ->
-                        runCatching { vc.setVolume(level * vc.maxVolume) }
-                    }
-                }
-                onGestureText("音量: %d%%".format((level * 100).toInt()))
-            }
-
-            DesktopGestureMode.BRIGHTNESS -> {
-                // 相对调节 + 碰顶/底重置 (共享状态机, 对照原版); 写系统亮度
-                val level = brightnessAdjuster.onGestureMove(y, height)
-                DesktopScreenBrightness.set((level * 100).toInt())
-                onGestureText("亮度: %d%%".format((level * 100).toInt()))
-            }
-
-            DesktopGestureMode.NONE -> {}
-        }
-    }
-
-    /** mediamp 播放器音量归一化到 0..1 (mpv maxVolume=2; 仅系统音量读取失败时兜底参照)。 */
-    private fun mediampVolumeNormalized(): Float = runCatching {
-        val vc = volumeController ?: return 0.5f
-        (vc.volume.value / vc.maxVolume.coerceAtLeast(1f)).coerceIn(0f, 1f)
-    }.getOrDefault(0.5f)
-
-    fun onUp() {
-        if (speedBoosted) {
-            controller.setSpeed(originalSpeed)
-            speedBoosted = false
-        }
-        when (gestureMode) {
-            DesktopGestureMode.PROGRESS -> {
-                controller.seekTo(position)
-                // 对照 app: seek 后自动续播 (拖动预览不改播放态)
-                if (!controller.isPlaying) controller.playPause()
-            }
-
-            else -> {}
-        }
-        gestureMode = DesktopGestureMode.NONE
-        onGestureText(null)
-    }
-}
-
-/**
- * 手势层 (对照 app AndroidVideoGestureOverlay): 单击/双击/长按 + 滑动/抬手, 锁定态旁路。
- * 拖动越过 touchSlop 才消费事件 (同时打断 tap 层); 长按倍速期间不响应滑动 (对照 app)。
- */
-@Composable
-private fun DesktopVideoGestureOverlay(
-    handler: DesktopVideoGestureHandler,
-    locked: Boolean,
-    modifier: Modifier,
-) {
-    Box(
-        modifier
-            .pointerInput(handler, locked) {
-                if (locked) return@pointerInput
-                detectTapGestures(
-                    onTap = { handler.onSingleTap() },
-                    onDoubleTap = { handler.onDoubleTap() },
-                    onLongPress = { handler.onLongPress() },
-                )
-            }
-            .pointerInput(handler, locked) {
-                if (locked) return@pointerInput
-                // 滑动/抬手: 越过 slop 才消费(同时打断 tap 层); 长按倍速期间不响应滑动
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    handler.onDown(down.position.x, down.position.y)
-                    var dragging = false
-                    val width = size.width.toFloat()
-                    val height = size.height.toFloat()
-                    try {
-                        while (true) {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                            if (change.changedToUpIgnoreConsumed()) break
-                            if (handler.speedBoosted) continue
-                            if (!dragging) {
-                                val slop = viewConfiguration.touchSlop
-                                val delta = change.position - down.position
-                                dragging = abs(delta.x) > slop || abs(delta.y) > slop
-                            }
-                            if (dragging) {
-                                change.consume()
-                                handler.onScroll(
-                                    change.position.x,
-                                    change.position.y,
-                                    width,
-                                    height
-                                )
-                            }
-                        }
-                    } finally {
-                        handler.onUp()
-                    }
-                }
-            }
-    )
-}
-
-/** 锁定/解锁钮 (对照 app AndroidVideoLockToggle): 复用锁矢量, 白 tint 同其余控制钮 */
-@Composable
-private fun DesktopVideoLockToggle(
-    locked: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier
-            .size(48.dp)
-            .clip(CircleShape)
-            .clickable { onClick() },
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            painter = rememberPainter("ic_lock_outline"),
-            contentDescription = null,
-            tint = Color.White.copy(alpha = if (locked) 0.5f else 1f),
-            modifier = Modifier.size(32.dp),
-        )
-    }
-}
+/** 锁定/解锁钮已收拢为 shared [VideoLockToggle] (见 VideoPlayerScreenContent.kt)。 */
 
 /** 播放失败占位: 重试 + 浏览器打开播放地址 */
 @Composable

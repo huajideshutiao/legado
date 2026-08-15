@@ -1,4 +1,4 @@
-package io.legado.app.ui.association
+﻿package io.legado.app.ui.association
 
 import android.graphics.Bitmap
 import android.widget.ImageView
@@ -34,7 +34,7 @@ import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.source.SourceVerificationHelp
 import io.legado.app.model.ImageProvider
 import io.legado.app.ui.compose.component.AppDropdownMenu
-import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
@@ -142,7 +142,7 @@ object VerificationCodeDialog {
                             .fillMaxWidth()
                             .height(100.dp),
                     )
-                    AppOutlinedTextField(
+                    AppUnderlineTextField(
                         value = code,
                         onValueChange = { code = it },
                         label = rememberString("verification_code"),

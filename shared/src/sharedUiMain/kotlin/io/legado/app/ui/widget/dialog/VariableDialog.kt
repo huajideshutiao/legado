@@ -1,4 +1,4 @@
-package io.legado.app.ui.widget.dialog
+﻿package io.legado.app.ui.widget.dialog
 
 // 对照原版 app 端 VariableDialog.kt + dialog_variable.xml 的 KMP 共享版。
 // 原版是单变量编辑器: 一次编辑一个变量的原始文本 (书源变量 = getVariable() 的原始 JSON 文本;
@@ -16,9 +16,6 @@ package io.legado.app.ui.widget.dialog
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -28,9 +25,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.ui.compose.SelectableText
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
-import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.theme.AppTheme
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
@@ -123,7 +121,7 @@ private fun VariableEditDialogContent(
         ) {
             // 变量原文编辑框 (对照 TextInputLayout + tv_variable: hint "variable" 浮动 label,
             // 初始单行贴合高度, 多行输入随内容增高 —— 对齐 wrap_content 语义)
-            AppOutlinedTextField(
+            AppUnderlineTextField(
                 value = text,
                 onValueChange = onTextChange,
                 modifier = Modifier.fillMaxWidth(),
@@ -138,18 +136,16 @@ private fun VariableEditDialogContent(
                 modifier = Modifier.padding(4.dp),
             )
             // 注释正文 (对照 tv_comment: secondaryText + 默认 14sp + 4dp 四周 padding + textIsSelectable)
-            // 去掉固定 120dp 限高: 原版 NestedScrollView wrap_content, 超高才在剩余空间内滚动
-            SelectionContainer {
-                Text(
-                    text = comment.orEmpty(),
-                    color = AppTheme.colors.secondaryText,
-                    fontSize = 14.sp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
-                        .padding(4.dp),
-                )
-            }
+            // 去掉固定 120dp 限高: 原版 NestedScrollView wrap_content, 超高才在剩余空间内滚动;
+            // SelectableText (readOnly BasicTextField): 长按拖选/拖手柄越界自动滚动
+            SelectableText(
+                text = comment.orEmpty(),
+                color = AppTheme.colors.secondaryText,
+                fontSize = 14.sp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(4.dp),
+            )
         }
     }
 }

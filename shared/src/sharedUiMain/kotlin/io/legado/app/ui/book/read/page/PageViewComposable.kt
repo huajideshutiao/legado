@@ -83,7 +83,7 @@ import org.jetbrains.compose.resources.decodeToImageBitmap
  * 桌面端无系统栏 inset，避让恒为 no-op。
  *
  * @param textPage 当前页内容，null 时显示加载占位
- * @param batteryLevel 电池电量 0-100，传 -1 表示不显示
+ * @param batteryLevel 电池电量 0-100 (读取失败回落 100 恒显示, 用户拍板 2026-08)
  * @param clockText 当前系统时间 HH:mm，随 timeChanged 刷新
  * @param drawTick 页内容原地变更版本号（朗读高亮等），透传给 [PageContentCanvas] 强制重绘
  * @param selection 页内文字选择状态, 透传给 [PageContentCanvas] (绘制块内订阅 tick 重绘)

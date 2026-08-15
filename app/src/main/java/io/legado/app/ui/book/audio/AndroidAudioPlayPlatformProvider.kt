@@ -3,6 +3,13 @@ package io.legado.app.ui.book.audio
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.Dp
 
+/**
+ * Android 端 [AudioPlayPlatformProvider] 实现: 复用 shared [SharedAudioPlayScreenContent]
+ * (封面/模糊背景/歌词/弹窗 slot 全端共享, 见 AudioPlaySharedSlots.kt / LrcViewShared.kt)。
+ *
+ * 视觉参数已全部收拢为 shared 默认 (评论钮/图标/回显标签底色/透明度/内边距/按压底),
+ * 本类与 desktop/iOS/鸿蒙 端同为纯透传, 不再有平台覆盖。
+ */
 class AndroidAudioPlayPlatformProvider : AudioPlayPlatformProvider {
     @Composable
     override fun Content(
@@ -20,7 +27,7 @@ class AndroidAudioPlayPlatformProvider : AudioPlayPlatformProvider {
         sidePanelSlot: @Composable (AudioPlaySidePanelKind) -> Unit,
         onTapOutsideSidePanel: (() -> Unit)?,
     ) {
-        AudioPlayAndroidContent(
+        SharedAudioPlayScreenContent(
             state = state,
             onBack = onBack,
             onOpenChangeSource = onOpenChangeSource,

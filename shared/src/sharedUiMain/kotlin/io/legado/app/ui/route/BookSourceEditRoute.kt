@@ -9,7 +9,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.platform.LocalClipboardManager
 import io.legado.app.constant.BookSourceType
 import io.legado.app.data.entities.BookSource
@@ -238,15 +237,13 @@ fun BookSourceEditRoute(
                         // (保留光标位置); 旧实现用 setText → 光标跳末尾且撤销历史清空。
                         // entity.value 经 editor.onChanged 单向同步, 这里不再单独写。
                         val len = formatted.length
-                        editor.onValueChange(
-                            TextFieldValue(
-                                formatted,
-                                TextRange(
-                                    old.selection.min.coerceAtMost(len),
-                                    old.selection.max.coerceAtMost(len),
-                                ),
+                        editor.edit {
+                            replace(0, length, formatted)
+                            selection = TextRange(
+                                old.selection.min.coerceAtMost(len),
+                                old.selection.max.coerceAtMost(len),
                             )
-                        )
+                        }
                     }
                 }
             },

@@ -35,6 +35,8 @@ import io.legado.app.ui.book.read.page.PageSelectionState
 import io.legado.app.ui.book.read.page.detectClickArea
 import io.legado.app.ui.book.searchContent.SearchResult
 import io.legado.app.ui.root.PlatformCapabilityProviders
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.FlowBus
@@ -78,7 +80,7 @@ interface ReaderPlatformProvider {
         screenModel: ReaderScreenModel,
     ): ReadMenuController
 
-    /** 当前电池电量 0-100，-1 表示不显示 */
+    /** 当前电池电量 0-100；读取失败/无电池统一回落 100 (用户拍板 2026-08: 电量恒显示) */
     fun getBatteryLevel(): Int
 
     /** 路由进入：注册平台窗口副作用（亮屏/系统栏等） */
@@ -880,6 +882,95 @@ class ReaderScreenModel(
             readBook.updateWebBookProgress(null)
         }
     }
+
+    // region 选中文字动作回调（T1: app/desktop 两端 onReplace/onBookmark/onSearchContent 提为共享）
+
+    /**
+     * 替换选中文本回调（对照原版 menu_replace）：打开替换规则编辑页,
+     * pattern=选中文本(去行首尾空白), scope=书名;书源URL。
+     * 由 app/desktop 的浮动/对话框菜单 `onReplace` 槽引用, 两端不再各自实现。
+     */
+    fun replaceTextCallback(): (String) -> Unit = { text ->
+        val book = viewModel.book.value
+        AppNavigatorProviders.get().push(
+            AppRoute.ReplaceEdit(
+                pattern = text.lineSequence().joinToString("\n") { it.trim() },
+                scope = listOfNotNull(book?.name, book?.origin).joinToString(";"),
+            )
+        )
+    }
+
+    /**
+     * 书签回调（对照原版 menu_bookmark）：用选中文本建书签, 弹 BookmarkDialog
+     * （ReaderRoute 处理 [ReaderDialogEvent.AddBookmark]）。由 app/desktop 的
+     * 浮动/对话框菜单 `onBookmark` 槽引用。
+     */
+    fun bookmarkTextCallback(): (String) -> Unit = onBookmark@{ text ->
+        val book = viewModel.book.value ?: return@onBookmark
+        val bookmark = Bookmark(bookName = book.name, bookAuthor = book.author).apply {
+            chapterIndex = viewModel.durChapterIndex.value
+            chapterPos = viewModel.durChapterPos.value
+            chapterName = currentChapter?.title ?: ""
+            bookText = text.trim()
+        }
+        postDialogEvent(ReaderDialogEvent.AddBookmark(bookmark))
+    }
+
+    /**
+     * 全文搜索回调（对照原版 menu_search_content）：设置搜索词后走既有搜索路由。
+     * 由 app/desktop 的浮动/对话框菜单 `onSearchContent` 槽引用。
+     */
+    fun searchContentTextCallback(): (String) -> Unit = { text ->
+        searchContentQuery = text
+        menuState.clickSearch()
+    }
+
+    // endregion
+
+    // region 进度条抬手跳转（T5: app/desktop 统一 page 跳页 + 章节跳转确认推导）
+
+    /** 章节跳转确认标志: 首次拖动弹确认, 确认后不再弹 (对照原版 ReadMenu.confirmSkipToChapter)。
+     *  未持久化, 退出阅读页 ScreenModel 销毁重建时自然重置。 */
+    private var confirmSkipToChapter = false
+
+    /**
+     * 进度条抬手跳转（对照 app 端 ReadMenu.onSeekStop）：
+     * - `progressBarBehavior == "page"`: 直接按页跳转 [ReadBookViewModelShared.skipToPage]
+     * - 否则: 首次弹「章节跳转确认」（由平台弹, 经 [showConfirm] 回调用例回调确认后的指令）,
+     *   确认后存跳转前进度快照再跳章（返回键可恢复）; 已确认过则直接跳。
+     *
+     * 平台 `ReadMenuState.onSeekStop(progress)` 调用本方法, 只负责弹确认框:
+     * ```
+     * override fun onSeekStop(progress: Int) {
+     *     screenModel.onSeekStop(progress) { onConfirm -> 弹确认框; 确认时 onConfirm() }
+     * }
+     * ```
+     */
+    fun onSeekStop(progress: Int, showConfirm: ((onConfirm: () -> Unit) -> Unit)) {
+        val behavior = PreferenceProviders.get()
+            .getString(PreferKey.progressBarBehavior, "page")
+        when (behavior) {
+            // 对照原版 onStopTrackingTouch "page" 分支: 直接按页跳转 (原版 page 分支不存快照)
+            "page" -> viewModel.skipToPage(progress)
+
+            // 对照原版 "chapter" 分支: 首次拖动弹"章节跳转确认", 取消/关闭恢复原进度;
+            // 确认后走原版 skipToChapter 语义: 先存跳转前进度快照再跳章 (返回键可恢复)
+            else -> {
+                if (confirmSkipToChapter) {
+                    saveCurrentBookProgress()
+                    viewModel.loadChapter(progress)
+                } else {
+                    showConfirm {
+                        confirmSkipToChapter = true
+                        saveCurrentBookProgress()
+                        viewModel.loadChapter(progress)
+                    }
+                }
+            }
+        }
+    }
+
+    // endregion
 }
 
 /** 阅读页对话框事件 (由平台菜单状态触发, Route 层渲染对应 shared Composable 对话框) */

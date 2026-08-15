@@ -1,4 +1,4 @@
-package io.legado.app.ui.dialog
+﻿package io.legado.app.ui.dialog
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
@@ -9,7 +9,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
-import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.ok
@@ -55,7 +55,7 @@ fun TextInputDialog(
     ) {
         // 外围间距由 AppTextField 组件统一 (左右下各 4dp), 调用点不再叠加
         // 多行 (singleLine 默认 false), 对齐原版 DialogEditTextBinding 的 AutoCompleteTextView
-        AppOutlinedTextField(
+        AppUnderlineTextField(
             value = text,
             onValueChange = { text = it },
             label = hint,

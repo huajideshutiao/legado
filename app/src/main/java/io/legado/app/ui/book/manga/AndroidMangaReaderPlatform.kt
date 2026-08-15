@@ -55,11 +55,12 @@ object AndroidMangaReaderPlatform : MangaReaderScreenModel.Platform {
         )
 
     override fun getBatteryLevel(): Int {
-        // ACTION_BATTERY_CHANGED 是 sticky 广播, registerReceiver(receiver=null) 直接取最近一次
+        // ACTION_BATTERY_CHANGED 是 sticky 广播, registerReceiver(receiver=null) 直接取最近一次;
+        // 失败/无电池统一回落 100 (用户拍板 2026-08: 电量恒显示, 与 desktop 一致)
         val intent = appCtx.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
         val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
-        return if (level >= 0 && scale > 0) (level * 100 / scale) else -1
+        return if (level >= 0 && scale > 0) (level * 100 / scale) else 100
     }
 
     override fun toggleHorizontal(): Boolean {

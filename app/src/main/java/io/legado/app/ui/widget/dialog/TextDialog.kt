@@ -5,10 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
@@ -18,6 +14,7 @@ import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.help.IntentData
 import io.legado.app.lib.theme.space
 import io.legado.app.ui.compose.MarkdownContentSelectable
+import io.legado.app.ui.compose.SelectableText
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.theme.AppTheme
 
@@ -63,30 +60,27 @@ class TextDialog() : BaseComposeDialogFragment() {
                         .padding(colorsSpaceMd())
                 )
 
-                Mode.HTML.name -> SelectionContainer(
-                    Modifier
+                Mode.HTML.name -> SelectableText(
+                    text = AnnotatedString.fromHtml(content),
+                    color = colors.secondaryText,
+                    modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .verticalScroll(rememberScrollState())
                         .padding(colorsSpaceMd())
-                ) {
-                    Text(AnnotatedString.fromHtml(content), color = colors.secondaryText)
-                }
+                )
 
-                else -> SelectionContainer(
-                    Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState())
-                        .padding(colorsSpaceMd())
-                ) {
-                    val text = if (content.length >= 32 * 1024) {
+                else -> SelectableText(
+                    text = if (content.length >= 32 * 1024) {
                         content.take(32 * 1024) + "\n\n数据太大，无法全部显示…"
                     } else {
                         content
-                    }
-                    Text(text, color = colors.secondaryText)
-                }
+                    },
+                    color = colors.secondaryText,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(colorsSpaceMd())
+                )
             }
         }
         LaunchedEffect(Unit) {

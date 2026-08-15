@@ -4,6 +4,7 @@ import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.toArgb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.AppWebDavShared
@@ -24,6 +25,7 @@ import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.book.read.ReaderDialogEvent
+import io.legado.app.ui.compose.platform.OhosThemeStoreProvider
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
@@ -41,7 +43,7 @@ import kotlinx.serialization.Serializable
  * 菜单状态/导航回调对齐 iOS [IosReadMenuState] (visibleState 可切, click 经 navigator/screenModel)。
  *
  * ArkTS 侧 TODO: legado_napi.cpp 实现 registerBatteryCallback + BatteryBridgeHandler.ets
- * 桥未就绪时 getBatteryLevel 返回 -1 (不显示, 同未启用电池监控的 iOS 设备)。
+ * 桥未就绪时 getBatteryLevel 回落 100 (电量恒显示, 用户拍板 2026-08, 与 desktop 一致)。
  */
 object OhosReaderPlatformProvider : ReaderPlatformProvider {
 
@@ -205,14 +207,14 @@ object OhosReaderPlatformProvider : ReaderPlatformProvider {
         (screenModel.menuController.state as? OhosReadMenuState)?.autoPage = false
     }
 
-    // 经 napi Battery 桥查询 @ohos.batteryInfo.batterySOC; 桥未就绪/超时返回 -1
+    // 经 napi Battery 桥查询 @ohos.batteryInfo.batterySOC; 桥未就绪/超时回落 100 (用户拍板 2026-08: 电量恒显示)
     override fun getBatteryLevel(): Int {
-        if (!OhosNativeBridge.isBatteryBridgeReady()) return -1
-        val result = OhosNativeBridge.invokeBatterySync("getLevel") ?: return -1
+        if (!OhosNativeBridge.isBatteryBridgeReady()) return 100
+        val result = OhosNativeBridge.invokeBatterySync("getLevel") ?: return 100
         val resp = runCatching {
             KS_JSON.decodeFromString(BatteryResponse.serializer(), result)
         }.getOrNull()
-        return resp?.level ?: -1
+        return resp?.level ?: 100
     }
 }
 
@@ -246,11 +248,16 @@ private class OhosReadMenuState(
     // 菜单栏配色 (对照原版 ReadMenu.upColorConfig, 逻辑见 shared createReadMenuColors):
     // 纯色阅读背景时 immersive=true, 顶/底栏用阅读背景色(含 bgAlpha 透明度)+阅读文字色,
     // 文字对比度由阅读配色自身保证; 图片阅读背景时沉浸式为 false, ReadMenuOverlay 走
-    // AppTheme 默认色 (与原版非沉浸式行为一致)。fallbackBgColor 传 0: 非沉浸式时
-    // Composable 不消费 bgColor, 仅沉浸式解析失败时兜底。hasBgImage 语义为「窗口背景图」
-    // (app 端 ThemeConfig.curBgImagePath), 鸿蒙无此概念恒 false。
+    // AppTheme 默认色 (与原版非沉浸式行为一致)。fallbackBgColor 统一传主题底栏背景色
+    // (T6: 原传 0 的历史差异已对齐, 见 ReadMenuThemeHelper.createReadMenuColors KDoc;
+    // 经 OhosThemeStoreProvider 读持久层, 与 AppTheme.colors.bottomBackground 同源,
+    // 无需 @Composable 上下文)。
+    // hasBgImage 语义为「窗口背景图」(app 端 ThemeConfig.curBgImagePath), 鸿蒙无此概念恒 false。
     private val menuTheme: ReadMenuColors
-        get() = createReadMenuColors(ReadBookConfigProviders.get().config, fallbackBgColor = 0)
+        get() = createReadMenuColors(
+            ReadBookConfigProviders.get().config,
+            OhosThemeStoreProvider().bottomBackground.toArgb(),
+        )
     override val immersive: Boolean get() = menuTheme.immersive
     override val bgColor: Int get() = menuTheme.bgColor
     override val textColor: Int get() = menuTheme.textColor

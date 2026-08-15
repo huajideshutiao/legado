@@ -8,26 +8,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Surface
-import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isCtrlPressed
-import androidx.compose.ui.input.key.isShiftPressed
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.ui.compose.SelectableText
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.DialogTitleBar
@@ -57,7 +49,8 @@ import org.jetbrains.compose.resources.stringResource
  * - 标题栏: [DialogTitleBar] (disableEdit=true 时标题 "code view", 否则空串), 右侧保存按钮
  *   (仅可编辑模式显示, 图标 ic_save + contentDescription action_save)
  * - 代码区: 可编辑模式用 [CodeTextField] (语法高亮 + 等宽 + 垂直滚动) + [KeyboardToolbar];
- *   只读模式用 [SelectionContainer] + [Text] (同样着色, 支持文本选择复制)
+ *   只读模式用 [SelectableText] (readOnly BasicTextField, 同样着色, 支持文本选择复制 +
+ *   拖选/拖手柄越界自动滚动)
  *
  * 与 app 端差异 (平台限制, 严禁改变可编辑/只读的交互语义):
  * - app 端通过 Fragment arguments + IntentData 传 code; KMP 版由调用方直接传参。
@@ -93,34 +86,9 @@ fun CodeDialogContent(
     val focusManager = LocalFocusManager.current
 
     Column(
-        Modifier
-            .fillMaxWidth()
-            // 桌面端键盘监听: Ctrl+Z 撤销 / Ctrl+Shift+Z、Ctrl+Y 重做 (对照 BookSourceEditScreen
-            // 根 Column); 消费 Ctrl+Z 压住桌面 BasicTextField 内置撤销栈, 避免与 CodeEditorState
-            // 手写撤销栈双重撤销
-            .onPreviewKeyEvent { event ->
-                if (event.type != KeyEventType.KeyDown || !event.isCtrlPressed) {
-                    return@onPreviewKeyEvent false
-                }
-                when (event.key) {
-                    Key.Z if event.isShiftPressed -> {
-                        editor.redo()
-                        true
-                    }
-
-                    Key.Z -> {
-                        editor.undo()
-                        true
-                    }
-
-                    Key.Y -> {
-                        editor.redo()
-                        true
-                    }
-
-                    else -> false
-                }
-            },
+        Modifier.fillMaxWidth(),
+        // 桌面端 Ctrl+Z/Y 撤销/重做由新版 BasicTextField 原生处理 (KeyCommand.UNDO/REDO →
+        // 同一个 undoState), 无需手写按键路由
     ) {
         DialogTitleBar(
             title = title,
@@ -136,25 +104,24 @@ fun CodeDialogContent(
                 }
             }
         }
-        // 代码区: 等宽字体 + 垂直滚动, 高度上限 480dp (避免超长内容撑爆 Dialog)
+        // 代码区: 等宽字体 + 内部滚动, 高度上限 480dp (避免超长内容撑爆 Dialog)
         if (disableEdit) {
-            SelectionContainer {
-                Text(
-                    text = rememberHighlightedCode(code, syntax),
-                    color = colors.primaryText,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 13.sp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 480.dp)
-                        .verticalScroll(rememberScrollState()),
-                )
-            }
+            // SelectableText (readOnly BasicTextField): 语法高亮 span 保留,
+            // 长按拖选/拖手柄越界自动滚动 (SelectionContainer 无自动滚动)
+            SelectableText(
+                text = rememberHighlightedCode(code, syntax),
+                color = colors.primaryText,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 13.sp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 480.dp),
+            )
         } else {
             // 无边框无背景 (showIndicator=false), 对齐 app 端 CodeView 内嵌呈现
             CodeTextField(
-                value = editor.value,
-                onValueChange = { editor.onValueChange(it) },
+                value = editor.textFieldState,
+                inputTransformation = editor.inputTransformation,
                 syntax = syntax,
                 showIndicator = false,
                 fontSize = 13.sp,

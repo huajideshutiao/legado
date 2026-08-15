@@ -8,8 +8,14 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActionScope
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.KeyboardActionHandler
+import androidx.compose.foundation.text.input.OutputTransformation
+import androidx.compose.foundation.text.input.TextFieldDecorator
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material.ExperimentalMaterialApi
@@ -20,14 +26,20 @@ import androidx.compose.material.TextFieldDefaults
 import androidx.compose.material.TextFieldDefaults.indicatorLine
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.takeOrElse
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
@@ -94,9 +106,24 @@ fun AppTextField(
             fontSize = effectiveFontSize,
             lineHeight = effectiveFontSize * 1.5f,
         )
+        // 新版 TextFieldState API (受控双同步): 用户编辑 → onValueChange;
+        // 外部 value → state (程序化修改)。旧版 value/onValueChange 契约保持不变。
+        // state 用初始值初始化: snapshotFlow 收集即发首帧, 若 state 初始为空会把空串
+        // 推给 onValueChange 清空外部值 (书源编辑界面初始赋值后字段被清空的问题)。
+        val state = remember { TextFieldState(value) }
+        val currentValue by rememberUpdatedState(value)
+        val currentOnValueChange by rememberUpdatedState(onValueChange)
+        LaunchedEffect(state) {
+            snapshotFlow { state.text.toString() }
+                .collect { if (it != currentValue) currentOnValueChange(it) }
+        }
+        LaunchedEffect(state, value) {
+            if (state.text.toString() != value) {
+                state.edit { replace(0, length, value) }
+            }
+        }
         BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
+            state = state,
             modifier = Modifier
                 .fillMaxWidth()
                 .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
@@ -113,14 +140,16 @@ fun AppTextField(
             readOnly = readOnly,
             textStyle = effectiveTextStyle.copy(color = textColor),
             keyboardOptions = keyboardOptions,
-            keyboardActions = keyboardActions,
-            singleLine = singleLine,
-            maxLines = maxLines,
-            minLines = minLines,
-            visualTransformation = visualTransformation,
+            onKeyboardAction = keyboardActions.toKeyboardActionHandler(keyboardOptions.imeAction),
+            lineLimits = if (singleLine) {
+                TextFieldLineLimits.SingleLine
+            } else {
+                TextFieldLineLimits.MultiLine(minLines, maxLines)
+            },
+            outputTransformation = visualTransformation.asOutputTransformation(),
             interactionSource = interactionSource,
             cursorBrush = SolidColor(colors.cursorColor(isError).value),
-            decorationBox = { innerTextField ->
+            decorator = TextFieldDecorator { innerTextField ->
                 AppDecorationBox(
                     text = value,
                     innerTextField = innerTextField,
@@ -182,9 +211,28 @@ fun AppTextField(
             fontSize = effectiveFontSize,
             lineHeight = effectiveFontSize * 1.5f,
         )
+        // 新版 TextFieldState API: TextFieldValue 契约 (文本+选区) 经双同步保留。
+        // state 用初始文本+选区初始化 (见 String 重载注释: 防首帧快照把空串推给外部)。
+        val state = remember { TextFieldState(value.text, value.selection) }
+        val currentValue by rememberUpdatedState(value)
+        val currentOnValueChange by rememberUpdatedState(onValueChange)
+        LaunchedEffect(state) {
+            snapshotFlow { state.text.toString() to state.selection }
+                .collect { (text, selection) ->
+                    val newValue = TextFieldValue(text, selection)
+                    if (newValue != currentValue) currentOnValueChange(newValue)
+                }
+        }
+        LaunchedEffect(state, value) {
+            if (state.text.toString() != value.text || state.selection != value.selection) {
+                state.edit {
+                    replace(0, length, value.text)
+                    selection = value.selection
+                }
+            }
+        }
         BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
+            state = state,
             modifier = Modifier
                 .fillMaxWidth()
                 .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
@@ -201,14 +249,16 @@ fun AppTextField(
             readOnly = readOnly,
             textStyle = effectiveTextStyle.copy(color = textColor),
             keyboardOptions = keyboardOptions,
-            keyboardActions = keyboardActions,
-            singleLine = singleLine,
-            maxLines = maxLines,
-            minLines = minLines,
-            visualTransformation = visualTransformation,
+            onKeyboardAction = keyboardActions.toKeyboardActionHandler(keyboardOptions.imeAction),
+            lineLimits = if (singleLine) {
+                TextFieldLineLimits.SingleLine
+            } else {
+                TextFieldLineLimits.MultiLine(minLines, maxLines)
+            },
+            outputTransformation = visualTransformation.asOutputTransformation(),
             interactionSource = interactionSource,
             cursorBrush = SolidColor(colors.cursorColor(isError).value),
-            decorationBox = { innerTextField ->
+            decorator = TextFieldDecorator { innerTextField ->
                 AppDecorationBox(
                     text = value.text,
                     innerTextField = innerTextField,
@@ -369,3 +419,70 @@ internal fun AppTextFieldImpl(
         }
     }
 }
+
+/**
+ * 旧 [KeyboardActions] → 新版 [KeyboardActionHandler] 映射。
+ *
+ * 新版 onKeyboardAction 回调不带 ImeAction (仅给 performDefaultAction), 而旧 KeyboardActions
+ * 按 ImeAction 分发 (onDone/onSearch/...)。字段已配置 keyboardOptions.imeAction, 实际触发的
+ * 就是该 action, 故按 imeAction 选对应回调 (无对应回调则返回 null 走框架默认行为;
+ * KeyboardActions(onAny=...) 工厂会把同一 lambda 填进全部六个回调, 故无需单独回落 onAny)。
+ * scope.defaultKeyboardAction() 映射到新回调的 performDefaultAction (即当前 action 的默认行为)。
+ */
+internal fun KeyboardActions.toKeyboardActionHandler(imeAction: ImeAction): KeyboardActionHandler? {
+    val handler =
+        when (imeAction) {
+            ImeAction.Done -> onDone
+            ImeAction.Go -> onGo
+            ImeAction.Next -> onNext
+            ImeAction.Previous -> onPrevious
+            ImeAction.Search -> onSearch
+            ImeAction.Send -> onSend
+            else -> null
+        } ?: return null
+    return KeyboardActionHandler { performDefaultAction ->
+        val scope = object : KeyboardActionScope {
+            override fun defaultKeyboardAction(action: ImeAction) {
+                performDefaultAction()
+            }
+        }
+        handler(scope)
+    }
+}
+
+/**
+ * 旧 [VisualTransformation] → 新版 [OutputTransformation] 适配。
+ *
+ * 项目内使用场景均为等长变换 (PasswordVisualTransformation 掩码 1:1), 直接整体替换缓冲区文本,
+ * 选区/光标位置不变, 无需偏移映射。非等长变换 (增删字符) 不适用, 需另行实现 offsetMapping。
+ */
+internal fun VisualTransformation.asOutputTransformation(): OutputTransformation {
+    val visualTransformation = this
+    return OutputTransformation {
+        val original = asCharSequence().toString()
+        val transformedText = visualTransformation.filter(AnnotatedString(original)).text
+        if (transformedText.text != original) {
+            replace(0, length, transformedText)
+        }
+    }
+}
+
+/**
+ * 旧 [VisualTransformation] (纯样式着色, 文本不变) → 新版 [OutputTransformation] 适配。
+ *
+ * 缓冲区是字符存储, replace 注入 AnnotatedString 会丢弃 span 样式; 正确做法是把
+ * 变换产出的 SpanStyle 区间逐段 [TextFieldBuffer.addStyle] 到呈现缓冲区
+ * (布局层合并 outputAnnotations 渲染)。语法高亮/查找高亮等"只上色不改字"场景用这个;
+ * 文本本身变化的变换 (密码掩码) 用 [asOutputTransformation]。
+ */
+internal fun VisualTransformation.asHighlightOutputTransformation(): OutputTransformation =
+    OutputTransformation {
+        val original = asCharSequence().toString()
+        val annotated = filter(AnnotatedString(original)).text
+        if (annotated.text != original) {
+            replace(0, length, annotated.text)
+        }
+        annotated.spanStyles.forEach { span ->
+            addStyle(span.item, span.start.coerceIn(0, length), span.end.coerceIn(0, length))
+        }
+    }

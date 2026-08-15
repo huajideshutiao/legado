@@ -115,10 +115,11 @@ enum class AudioPlaySidePanelKind { TOC, REVIEW }
  * - [coverSlot]: 封面图加载 (app: Glide+AndroidView; desktop: OkHttp+ImageIO)
  * - [blurBgSlot]: 模糊封面背景加载槽 (app: blurConfig+TransitionDrawable 淡入+onBlurCoverLoaded 回调; desktop: null 复用 coverSlot)
  * - [lrcSlot]: 歌词渲染 (app: 自绘 LrcView; desktop: LazyColumn 简化版)
- * - [titleBarTrailingSlot]: 标题栏尾部 (app: review+overflow; desktop: 无)
+ * - [titleBarTrailingSlot]: 标题栏尾部 (默认评论钮, 四端一致; 见 SharedAudioPlayScreenContent)
  * - [timerDialogSlot]/[speedDialogSlot]: 定时/倍速弹窗 (app: Popup; desktop: AlertDialog)
  *
- * 默认参数对齐 desktop 视觉; app 端采用时通过参数覆盖差异 (titleBarHorizontalPadding/playMenuAlpha 等)。
+ * 视觉参数 (图标/回显标签底色/控制排透明度/内边距/按压底) 已统一为 app 原版值,
+ * 不再暴露平台参数 (原 desktop 半透明黑标签/1f 透明度/8dp 标题栏内边距等已移除)。
  *
  * @param title 标题 (书名)
  * @param subTitle 副标题 (章节名)
@@ -152,17 +153,9 @@ enum class AudioPlaySidePanelKind { TOC, REVIEW }
  * @param coverSlot 封面加载槽 (url, modifier) → 平台图片加载 Composable
  * @param blurBgSlot 模糊封面背景加载槽 (null=复用 coverSlot; app 端走 blurConfig + 淡入 + 回调)
  * @param lrcSlot 歌词渲染槽 (modifier) → 平台歌词 Composable
- * @param titleBarTrailingSlot 标题栏尾部槽 (app: review+overflow; desktop: 空)
+ * @param titleBarTrailingSlot 标题栏尾部槽 (默认评论钮, 四端一致)
  * @param timerDialogSlot 定时弹窗槽 (initial, onProgressChanged, onDismiss)
  * @param speedDialogSlot 倍速弹窗槽 (initial, onProgressChanged, onDismiss)
- * @param timerIconKey 定时钮图标 key (desktop: ic_time_add_24dp; app: ic_timer_black_24dp)
- * @param speedIconKey 倍速钮图标 key (desktop: ic_speed; app: ic_fast_forward)
- * @param chapterListIconKey 目录钮图标 key (desktop: ic_toc; app: ic_chapter_list)
- * @param filletLabelColor 回显标签底色 (desktop: 0x66000000; app: arco_fill_3)
- * @param playMenuButtonPressedBgEnabled 控制钮是否启用按压态背景 (app: true; desktop: false)
- * @param playMenuAlpha 控制排整体透明度 (app: 0.7f; desktop: 1f)
- * @param titleBarHorizontalPadding 标题栏横向内边距 (app: 0dp; desktop: 8dp)
- * @param playModeIconPadding 播放模式钮图标内边距 (app: 8dp; desktop: 4dp)
  */
 @Composable
 fun AudioPlayScreenContent(
@@ -202,14 +195,6 @@ fun AudioPlayScreenContent(
     titleBarTrailingSlot: @Composable RowScope.() -> Unit = {},
     timerDialogSlot: @Composable (initial: Int, onProgressChanged: (Int) -> Unit, onDismiss: () -> Unit) -> Unit,
     speedDialogSlot: @Composable (initial: Float, onProgressChanged: (Float) -> Unit, onDismiss: () -> Unit) -> Unit,
-    timerIconKey: String = "ic_time_add_24dp",
-    speedIconKey: String = "ic_speed",
-    chapterListIconKey: String = "ic_toc",
-    filletLabelColor: Color = Color(0x66000000),
-    playMenuButtonPressedBgEnabled: Boolean = false,
-    playMenuAlpha: Float = 1f,
-    titleBarHorizontalPadding: Dp = 8.dp,
-    playModeIconPadding: Dp = 4.dp,
     /** 宽屏右侧面板宽度 (0=不启用; 由路由层按窗口宽计算)。 */
     sidePanelWidth: Dp = 0.dp,
     /** 面板当前是否显示 (驱动滑入/滑出与左侧挤压动画)。 */
@@ -289,7 +274,6 @@ fun AudioPlayScreenContent(
                 onOpenChangeSource = onOpenChangeSource,
                 overflowActions = overflowActions,
                 trailingSlot = titleBarTrailingSlot,
-                horizontalPadding = titleBarHorizontalPadding,
             )
             // 歌名 (章节名) 不再单独置顶, 随封面一起走 (见下方封面区 AudioSongTitle)
             BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
@@ -400,23 +384,21 @@ fun AudioPlayScreenContent(
                         )
                     }
                 }
-                // 定时回显标签 (左上)
+                // 定时回显标签 (左上; 底色统一 arco_fill_3 跟随主题)
                 if (timerMinute > 0) {
                     FilletLabel(
                         text = "${timerMinute}m",
-                        iconKey = timerIconKey,
-                        bgColor = filletLabelColor,
+                        iconKey = "ic_timer_black_24dp",
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .padding(16.dp),
                     )
                 }
-                // 倍速回显标签 (右上)
+                // 倍速回显标签 (右上; 底色统一 arco_fill_3 跟随主题)
                 if (speed != 1f) {
                     FilletLabel(
                         text = "%.1fX".format(speed),
                         iconKey = null,
-                        bgColor = filletLabelColor,
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .padding(16.dp),
@@ -442,12 +424,6 @@ fun AudioPlayScreenContent(
                 nextEnabled = nextEnabled,
                 onStop = onStop,
                 accentColor = accentColor,
-                timerIconKey = timerIconKey,
-                speedIconKey = speedIconKey,
-                chapterListIconKey = chapterListIconKey,
-                playMenuButtonPressedBgEnabled = playMenuButtonPressedBgEnabled,
-                playMenuAlpha = playMenuAlpha,
-                playModeIconPadding = playModeIconPadding,
                 onTogglePlay = onTogglePlay,
                 onPrev = onPrev,
                 onNext = onNext,
@@ -504,14 +480,12 @@ private fun AudioTitleBar(
     onOpenChangeSource: () -> Unit,
     overflowActions: AudioPlayOverflowActions?,
     trailingSlot: @Composable RowScope.() -> Unit,
-    horizontalPadding: Dp,
 ) {
     Row(
         Modifier
             .fillMaxWidth()
             .transitionStatusBarPadding()
-            .heightIn(min = 56.dp)
-            .padding(horizontal = horizontalPadding),
+            .heightIn(min = 56.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onBack) {
@@ -670,17 +644,18 @@ private fun CoverImage(
 }
 
 // ---- 定时/倍速回显标签 (圆角填充底 + 可选图标 + 白字) ----
+// 底色统一 arco_fill_3 (亮 #FFE6E6E6 / 暗 #FF2A2A2A, 跟随主题), 与移动端/master 一致;
+// 原 desktop 半透明黑 0x66000000 已移除 (见 AudioPlayScreenContent 参数收拢)。
 
 @Composable
 private fun FilletLabel(
     text: String,
     iconKey: String?,
-    bgColor: Color,
     modifier: Modifier = Modifier,
 ) {
     Row(
         modifier
-            .background(bgColor, DesignTokens.shapeDefault)
+            .background(rememberColor("arco_fill_3"), DesignTokens.shapeDefault)
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -848,12 +823,6 @@ private fun PlayMenu(
     nextEnabled: Boolean,
     onStop: (() -> Unit)?,
     accentColor: Color,
-    timerIconKey: String,
-    speedIconKey: String,
-    chapterListIconKey: String,
-    playMenuButtonPressedBgEnabled: Boolean,
-    playMenuAlpha: Float,
-    playModeIconPadding: Dp,
     onTogglePlay: () -> Unit,
     onPrev: () -> Unit,
     onNext: () -> Unit,
@@ -870,16 +839,16 @@ private fun PlayMenu(
         Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .alpha(playMenuAlpha)
+            // 控制排整体透明度 (统一 app 原版 0.7f)
+            .alpha(0.7f)
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // 定时
         Box {
             PlayMenuButton(
-                iconKey = timerIconKey,
+                iconKey = "ic_timer_black_24dp",
                 contentDescription = stringResource(Res.string.set_timer),
-                pressedBgEnabled = playMenuButtonPressedBgEnabled,
             ) { showTimer = true }
             if (showTimer) {
                 timerDialogSlot(timerMinute, onSetTimer) { showTimer = false }
@@ -889,9 +858,8 @@ private fun PlayMenu(
         // 倍速
         Box {
             PlayMenuButton(
-                iconKey = speedIconKey,
+                iconKey = "ic_fast_forward",
                 contentDescription = stringResource(Res.string.speed),
-                pressedBgEnabled = playMenuButtonPressedBgEnabled,
             ) { showSpeed = true }
             if (showSpeed) {
                 speedDialogSlot(speed, onSetSpeed) { showSpeed = false }
@@ -903,7 +871,6 @@ private fun PlayMenu(
             iconKey = "ic_skip_previous",
             contentDescription = stringResource(Res.string.previous_chapter),
             enabled = prevEnabled,
-            pressedBgEnabled = playMenuButtonPressedBgEnabled,
         ) { onPrev() }
         // 播放/暂停 (圆形白底)
         Box(contentAlignment = Alignment.Center) {
@@ -938,7 +905,6 @@ private fun PlayMenu(
             iconKey = "ic_skip_next",
             contentDescription = stringResource(Res.string.next_chapter),
             enabled = nextEnabled,
-            pressedBgEnabled = playMenuButtonPressedBgEnabled,
         ) { onNext() }
         Spacer(Modifier.weight(1f))
         // 停止 (desktop 独有, app 端 onStop=null 不渲染)
@@ -946,7 +912,6 @@ private fun PlayMenu(
             PlayMenuButton(
                 iconKey = "ic_stop_black_24dp",
                 contentDescription = stringResource(Res.string.stop),
-                pressedBgEnabled = playMenuButtonPressedBgEnabled,
             ) { onStop() }
             Spacer(Modifier.weight(1f))
         }
@@ -954,27 +919,24 @@ private fun PlayMenu(
         PlayMenuButton(
             iconKey = playModeIconKey(playMode),
             contentDescription = stringResource(Res.string.play_mode),
-            iconPadding = playModeIconPadding,
-            pressedBgEnabled = playMenuButtonPressedBgEnabled,
+            iconPadding = 8.dp,
         ) { onChangePlayMode() }
         Spacer(Modifier.weight(1f))
         // 目录
         PlayMenuButton(
-            iconKey = chapterListIconKey,
+            iconKey = "ic_chapter_list",
             contentDescription = stringResource(Res.string.chapter_list),
-            pressedBgEnabled = playMenuButtonPressedBgEnabled,
         ) { onOpenToc() }
     }
 }
 
-/** 46dp 圆钮: 按压态圆形底 (可选) + 白图标/禁用 25% 白 */
+/** 46dp 圆钮: 按压态圆形底 (统一启用) + 白图标/禁用 25% 白 */
 @Composable
 private fun PlayMenuButton(
     iconKey: String,
     contentDescription: String,
     enabled: Boolean = true,
-    iconPadding: Dp = 4.dp,
-    pressedBgEnabled: Boolean,
+    iconPadding: Dp = 8.dp,
     onClick: () -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
@@ -985,7 +947,7 @@ private fun PlayMenuButton(
             .size(46.dp)
             .clip(CircleShape)
             .then(
-                if (pressedBgEnabled && pressed) Modifier.background(pressedBg)
+                if (pressed) Modifier.background(pressedBg)
                 else Modifier,
             )
             .clickable(

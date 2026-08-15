@@ -1,4 +1,4 @@
-// I18N KEYS (新增, 待 ResourceProvider.jvm.kt 补全桌面端字面量):
+﻿// I18N KEYS (新增, 待 ResourceProvider.jvm.kt 补全桌面端字面量):
 // - custom_page_key: "自定义翻页按键" (已存在 jvmMain)
 // - prev_page_key: "上一页按键"
 // - next_page_key: "下一页按键"
@@ -32,7 +32,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
@@ -123,14 +123,14 @@ fun PageKeyDialog(
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    AppOutlinedTextField(
+                    AppUnderlineTextField(
                         value = prev,
                         onValueChange = { prev = it },
                         label = stringResource(Res.string.prev_page_key),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    AppOutlinedTextField(
+                    AppUnderlineTextField(
                         value = next,
                         onValueChange = { next = it },
                         label = stringResource(Res.string.next_page_key),

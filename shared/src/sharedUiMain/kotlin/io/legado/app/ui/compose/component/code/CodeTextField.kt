@@ -21,6 +21,9 @@ import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.InputTransformation
+import androidx.compose.foundation.text.input.TextFieldDecorator
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.LocalTextStyle
 import androidx.compose.material.Surface
@@ -38,6 +41,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -70,7 +74,6 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.OffsetMapping
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -94,7 +97,9 @@ import io.legado.app.ui.compose.component.TextFieldBottomInset
 import io.legado.app.ui.compose.component.TextFieldHorizontalPadding
 import io.legado.app.ui.compose.component.TextFieldLabelToText
 import io.legado.app.ui.compose.component.appFieldDefaultMinHeight
+import io.legado.app.ui.compose.component.asHighlightOutputTransformation
 import io.legado.app.ui.compose.component.code.CursorLineBringIntoViewNode.Companion.WaitFrames
+import io.legado.app.ui.compose.component.toKeyboardActionHandler
 import io.legado.app.ui.compose.platform.rememberImeAnimating
 import io.legado.app.ui.compose.platform.rememberImeVisible
 import io.legado.app.ui.compose.theme.AppTheme
@@ -232,8 +237,7 @@ fun buildSearchRanges(
 @OptIn(ExperimentalMaterialApi::class)
 @Composable
 fun CodeTextField(
-    value: TextFieldValue,
-    onValueChange: (TextFieldValue) -> Unit,
+    value: TextFieldState,
     modifier: Modifier = Modifier,
     syntax: CodeSyntaxScheme = CodeSyntaxScheme.None,
     enabled: Boolean = true,
@@ -252,6 +256,8 @@ fun CodeTextField(
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
     searchHighlight: CodeSearchHighlightState? = null,
     autoComplete: Boolean = true,
+    /** 输入修正 (自动缩进等), 由调用方编辑器 (CodeEditorState) 提供; null = 不做修正 */
+    inputTransformation: InputTransformation? = null,
     /**
      * 键盘弹出动画期间的瞬移滚动器 (可选): 收到光标行**窗口坐标** rect, 滚动容器应以
      * 无动画滚动 (scrollToItem/scrollBy 瞬时) 把该行保持在视口底部上方 —— 视口逐帧收缩
@@ -273,6 +279,12 @@ fun CodeTextField(
     // 短文本 (renderRange 默认全区间) 无感知。
     val imeAnimating = rememberImeAnimating()
     val transformation = rememberCodeHighlightTransformation(syntax, searchHighlight, renderRange)
+    // 呈现变换只实例化一次 (随 transformation 重建): 变换闭包只读 cache/version/renderRange,
+    // 重组时新建实例会令字段内部以新变换重算呈现文本; 稳定实例在渲染输入未变时复用,
+    // 只在着色结果/窗口变化 (transformation 重建) 时才换新
+    val highlightOutputTransformation = remember(transformation) {
+        transformation.asHighlightOutputTransformation()
+    }
     val colors = AppFieldColors
     val themeColors = AppTheme.colors
     // 字体跟随主题默认 (原版 CodeView 未设置等宽字体, 用系统默认字体)
@@ -280,49 +292,29 @@ fun CodeTextField(
     // 行号列与文本同处滚动容器, 需统一行高: 默认字体下 CJK 回退与拉丁字符的自然行高不一致,
     // 强制固定行高才能保证逐行对齐 (对齐原版 Canvas 逐行画号不受行高变化影响)。
     // 行号列只在文本含换行时出现 (对齐原版 enterPosSize > 0 条件)。
-    // 行号计数增量跟踪: 常规编辑在 onValueChange 里按前后文 diff 求新行数 (O(编辑距离)),
-    // 外部整体改写 (撤销/重载/查找替换等不经本字段 onValueChange 的写入) 走组合期全量重算,
-    // 避免每次按键 O(n) 扫描全文。
-    // 门槛用内容比较 (非实例同一性): 补全确认 applyMatch / Tab 插入 / 辅助键
-    // insertAtCursor/undo/redo/setText 全部绕过增量路径, 且 adjustInput 对多数编辑原样返回
-    // 传入实例 (内容变了实例没换), 若以 `!==` 为门槛, 首帧单行后行号计数永远停 1;
-    // 内容比较在常规输入下 (增量路径已同步缓存) 与引用比较同价, 直写路径下兜底重算。
-    var lastLineCountText by remember { mutableStateOf(value.text) }
-    var lineCount by remember { mutableIntStateOf(countLineNumbers(value.text)) }
-    // 换行标志随行数增量维护 (行号列可见性判定): 常规编辑在 trackedValueChange 里按
-    // newlineDelta 增量更新, 直写路径 (撤销/重载等) 走组合期内容比较兜底 (语义同 lineCount)
-    var hasNewline by remember { mutableStateOf(value.text.contains('\n')) }
-    if (lastLineCountText != value.text) {
-        lastLineCountText = value.text
-        lineCount = countLineNumbers(value.text)
-        hasNewline = value.text.contains('\n')
-    }
-    // 拦截节点 (bringIntoView 挂起恢复时) 读最新 selection 的同步数据源 (见 cursorLineRect):
-    // 点击/输入在 trackedValueChange 里同步写入 (早于同帧的 bringIntoView 拦截), 外部直写
-    // (undo/redo/setText 等不经本字段 onValueChange 的写入) 由组合期赋值兜底
-    var latestValue by remember { mutableStateOf(value) }
-    if (latestValue != value) latestValue = value
-    // 行数增量 + 转发: 文本内容不变时只更新增量, 行号串 (remember(lineCount)) 不重建。
-    // lambda 用 remember 固定 + rememberUpdatedState 读最新 onValueChange: 同一实例传给
-    // BasicTextField, 无文本变化的重组不触发字段内部额外重建
-    val currentOnValueChange by rememberUpdatedState(onValueChange)
-    val trackedValueChange: (TextFieldValue) -> Unit = remember {
-        { newValue: TextFieldValue ->
-            // 同步写入拦截节点数据源 (见 latestValue): 点击/输入后同帧的 bringIntoView
-            // 拦截必须读到本次 selection 更新, 重组路径 (rememberUpdatedState) 晚一帧
-            latestValue = newValue
-            val newText = newValue.text
-            if (newText != lastLineCountText) {
-                val delta = newlineDelta(lastLineCountText, newText)
-                lineCount += delta
-                // 换行标志增量更新: 新增换行必为多行; 仅当删到行数回 1 (无换行) 才需精确归零,
-                // 避免每次按键 O(n) 扫描全文
-                if (delta > 0) hasNewline = true
-                else if (lineCount <= 1) hasNewline = false
-                lastLineCountText = newText
+    // 行号计数/换行标志: 观察 TextFieldState 文本变化 (用户输入/程序化 edit/undo/redo 均触发),
+    // 观察器按 newlineDelta 增量更新 —— 常规按键 O(编辑距离), 不再每次按键 O(n) 扫描全文。
+    // 不做组合期内容比较兜底: 所有直写路径 (setText/undo/redo/edit) 都走 state.edit, 观察器
+    // 必然触发; 兜底反而让每次按键在组合期多两次全量扫描 (countLineNumbers/contains), 且
+    // 观察器晚到一帧永远看到"已同步" → 增量路径被架空。状态变量按 value 实例键控:
+    // 调用方换 state 实例 (rememberCodeEditorState 的 key 重建) 时随新文本重新初始化。
+    // (拦截节点需要的最新选区直接读 value.selection —— TextFieldState 是活引用, 无需镜像;
+    // 旧 latestValue 同步数据源是为"value 经重组滞后"的旧契约服务的, 迁移后冗余)
+    var lastLineCountText by remember(value) { mutableStateOf(value.text.toString()) }
+    var lineCount by remember(value) { mutableIntStateOf(countLineNumbers(value.text.toString())) }
+    var hasNewline by remember(value) { mutableStateOf(value.text.toString().contains('\n')) }
+    LaunchedEffect(value) {
+        snapshotFlow { value.text.toString() }
+            .collect { newText ->
+                if (newText != lastLineCountText) {
+                    val delta = newlineDelta(lastLineCountText, newText)
+                    lineCount += delta
+                    // 换行标志增量更新: 新增换行必为多行; 仅当删到行数回 1 (无换行) 才需精确归零
+                    if (delta > 0) hasNewline = true
+                    else if (lineCount <= 1) hasNewline = false
+                    lastLineCountText = newText
+                }
             }
-            currentOnValueChange(newValue)
-        }
     }
     // 行号列可见性直接按文本内容判定, 与 lineCount 缓存解耦: 缓存可能因直写路径滞后, 若以
     // lineCount > 1 为门槛, "初始单行后内容变多行"时行号列永不出现 (对齐原版 TextWatcher
@@ -358,21 +350,21 @@ fun CodeTextField(
     // 聚焦快照: 本字段本次聚焦时的文本。组合期写入, null → 文本 只写一次 (收敛, 不循环重组)
     var focusSnapshotText by remember { mutableStateOf<String?>(null) }
     if (isFocused) {
-        if (focusSnapshotText == null) focusSnapshotText = value.text
+        if (focusSnapshotText == null) focusSnapshotText = value.text.toString()
     } else {
         focusSnapshotText = null
     }
     // (token, 行文本) → 候选快照: 输入快照未变 (光标在 token 内移动/焦点翻转/撤销回退) 时
     // 复用上次 fuzzy 评分结果, 跳过 ~100 词表评分与行内词扫描
     val completionCache = remember { CompletionSnapshotCache() }
-    val autoMatches = remember(value.text, value.selection, isFocused, autoComplete, readOnly) {
+    val autoMatches = remember(value.text.toString(), value.selection, isFocused, autoComplete, readOnly) {
         if (!autoComplete || !isFocused || readOnly || !value.selection.collapsed) {
             emptyList()
-        } else if (focusSnapshotText == value.text) {
+        } else if (focusSnapshotText == value.text.toString()) {
             // 聚焦后文本未变: 不弹 (对齐原版仅文本变化触发过滤; 移动光标/纯聚焦不弹)
             emptyList()
         } else {
-            val text = value.text
+            val text = value.text.toString()
             val cursor = value.selection.start
             val tokenStart = findTokenStart(text, cursor)
             val token = text.substring(tokenStart, cursor)
@@ -390,14 +382,18 @@ fun CodeTextField(
     // autoDismissedText: ESC/确认后当前文本不再弹候选, 文本变化后恢复 (对齐原版 dismissDropDown)
     var autoSelectedIndex by remember { mutableIntStateOf(-1) }
     var autoDismissedText by remember { mutableStateOf<String?>(null) }
-    val matches = if (autoDismissedText == value.text) emptyList() else autoMatches
+    val matches = if (autoDismissedText == value.text.toString()) emptyList() else autoMatches
     LaunchedEffect(matches) { autoSelectedIndex = -1 }
     // 确认候选 (键盘回车/Tab 与点击共用), 对齐原版 replaceText 后 dismissDropDown
     val applyMatch: (Int) -> Unit = { index ->
-        val (newText, newSelection) = applyCompletion(value.text, value.selection, matches[index])
+        val (newText, newSelection) =
+            applyCompletion(value.text.toString(), value.selection, matches[index])
         autoDismissedText = newText
         autoSelectedIndex = -1
-        onValueChange(value.copy(text = newText, selection = newSelection))
+        value.edit {
+            replace(0, length, newText)
+            selection = newSelection
+        }
     }
     // 键盘事件: onPreviewKeyEvent 挂在字段外层 Box (BasicTextField 的祖先), 预览阶段先于字段
     // 内部 keyInput, 弹层 focusable=false 不抢焦点, 按键由字段统一接收 (原版 popup 亦如此)。
@@ -428,7 +424,12 @@ fun CodeTextField(
                 Key.Tab -> if (event.isShiftPressed || matches.isEmpty()) {
                     // Shift+Tab 不参与补全 (保留焦点后退语义); 无候选时插入 "\t"
                     if (matches.isEmpty() && !event.isShiftPressed) {
-                        onValueChange(insertTabAtSelection(value))
+                        val start = value.selection.min
+                        val end = value.selection.max
+                        value.edit {
+                            replace(start, end, "\t")
+                            selection = TextRange(start + 1)
+                        }
                         true
                     } else {
                         false
@@ -439,7 +440,7 @@ fun CodeTextField(
                 }
 
                 Key.Escape -> if (matches.isEmpty()) false else {
-                    autoDismissedText = value.text
+                    autoDismissedText = value.text.toString()
                     true
                 }
 
@@ -470,7 +471,7 @@ fun CodeTextField(
      * 却被要求算第 n 个字符)。凡是 getLineForOffset / getHorizontalPosition 这类按偏移
      * 查询的调用, 一律只用本值; 按行号查询 (getLineStart/getLineTop) 可用原始布局。
      */
-    val syncedLayout = textLayout?.takeIf { it.layoutInput.text.text == value.text }
+    val syncedLayout = textLayout?.takeIf { it.layoutInput.text.text == value.text.toString() }
     // 文本块在字段内的起点 Y (px): contentPadding.top + label 占位, 行内 Y 由 layout 提供
     val textTopPx = with(density) {
         (contentPadding.calculateTopPadding() +
@@ -515,18 +516,18 @@ fun CodeTextField(
     // 焦点系统按整个字段 bounds 发起请求, 长字段 (高 > 视口) 会把字段底对齐视口底, 表现
     // 为点击跳到底部; 拦截后统一以光标行为目标, 最多滚动到光标行可见
     val cursorLineRect: () -> Rect? = {
-        // 布局过期时返回 null: 拦截节点会退回子请求自身的 bounds (BasicTextField 用其内部
-        // 新布局算, 准确) —— 否则按回车后光标仍被软键盘挡住
+        // 布局过期 (文本刚变, onTextLayout 未回传) 时返回 null: 拦截节点等帧重取,
+        // 仍取不到则丢弃本次请求 (见 CursorLineBringIntoViewNode) —— 布局就绪后的
+        // 光标可见性由下方 IME 滚动订阅补足
         val layout = syncedLayout
-        // 拦截节点在挂起恢复时 (同帧, 早于重组) 调用本 lambda: 不能用组合期捕获的 value
-        // 算 rect (点击后 selection 已更新而重组未跑, 旧 lambda 会算出旧光标行, 长文本下
-        // 画面大幅跳错), 一律经 latestValue 取最新 selection。点击只改 selection 不改文本,
-        // 旧布局仍与最新文本同步, 可直接按最新 selection 取行; 输入改了文本则旧布局与新文本
-        // 不同步, 退回子请求 bounds
-        if (layout == null || layout.layoutInput.text.text != latestValue.text) {
+        // TextFieldState 是活引用: 本 lambda 在挂起恢复时 (同帧, 早于重组) 调用,
+        // 直接读 value 的 text/selection 恒为最新 (点击改选区后重组未跑也能拿到新光标),
+        // 无需旧契约的 latestValue 镜像。布局需与当前文本同步, 否则取行会越界。
+        val currentText = value.text.toString()
+        if (layout == null || layout.layoutInput.text.text != currentText) {
             null
         } else {
-            val cursor = latestValue.selection.start.coerceIn(0, latestValue.text.length)
+            val cursor = value.selection.start.coerceIn(0, currentText.length)
             // getLineForOffset 是视觉行 (含软换行), 与原版 layout.getLineForOffset 同语义
             val line = layout.getLineForOffset(cursor)
             Rect(
@@ -572,7 +573,7 @@ fun CodeTextField(
     // true→false, 视口已稳定) 后一次 bringIntoView 收尾 (幂等, 已可见则不滚)。
     val imeVisible = rememberImeVisible()
     val searchActive = searchHighlight != null && searchHighlight.keyword.isNotEmpty()
-    LaunchedEffect(value.text, value.selection, isFocused, imeVisible, imeAnimating, searchActive) {
+    LaunchedEffect(value.text.toString(), value.selection, isFocused, imeVisible, imeAnimating, searchActive) {
         if (!imeVisible) return@LaunchedEffect
         // 查找定位场景: 字段失焦 (面板持焦) 时仅查找激活才滚
         if (!isFocused && !searchActive) return@LaunchedEffect
@@ -646,8 +647,8 @@ fun CodeTextField(
                 ).coerceIn(from, lastLine)
                 Triple(
                     buildVisualLineNumbers(
-                        value.text, layout, from, to,
-                        logicalLineBefore(value.text, layout, from),
+                        value.text.toString(), layout, from, to,
+                        logicalLineBefore(value.text.toString(), layout, from),
                     ),
                     // 空行行度量不自洽 (skia bug 11321 家族), getLineTop 可能为负
                     // (行顶不可能在段落顶之上), 钳回 0 防 padding 负值崩溃
@@ -734,8 +735,8 @@ fun CodeTextField(
                 .cursorLineBringIntoView(cursorLineRectState)
         ) {
             BasicTextField(
-                value = value,
-                onValueChange = trackedValueChange,
+                state = value,
+                inputTransformation = inputTransformation,
                 modifier = Modifier
                     .fillMaxWidth()
                     .then(
@@ -751,14 +752,12 @@ fun CodeTextField(
                 readOnly = readOnly,
                 textStyle = codeStyle.copy(color = textColor),
                 keyboardOptions = keyboardOptions,
-                keyboardActions = keyboardActions,
-                singleLine = false,
-                maxLines = Int.MAX_VALUE,
-                visualTransformation = transformation,
+                onKeyboardAction = keyboardActions.toKeyboardActionHandler(keyboardOptions.imeAction),
+                outputTransformation = highlightOutputTransformation,
                 interactionSource = interactionSource,
                 cursorBrush = SolidColor(colors.cursorColor(isError).value),
-                onTextLayout = { textLayout = it },
-                decorationBox = { innerTextField ->
+                onTextLayout = { getResult -> textLayout = getResult() },
+                decorator = TextFieldDecorator { innerTextField ->
                     // 行号列包在 innerTextField 外层: 行号只在外部无界高度 + 滚动容器场景启用,
                     // 此时字段整体随容器滚动, 行号与文本同步; 若字段自身有界 (内部滚动), decoration
                     // 内容不随文本滚动, 行号会钉在顶部 (当前无线号使用场景, 保持现状)。
@@ -800,7 +799,7 @@ fun CodeTextField(
                         }
                     }
                     AppDecorationBox(
-                        text = value.text,
+                        text = value.text.toString(),
                         innerTextField = fieldContent,
                         enabled = enabled,
                         singleLine = false,
@@ -1127,16 +1126,6 @@ private class CursorLineBringIntoViewElement(
 private fun Modifier.cursorLineBringIntoView(cursorLineRect: State<() -> Rect?>): Modifier =
     this.then(CursorLineBringIntoViewElement(cursorLineRect))
 
-/** Tab 键无候选时插入 "\t" (对齐原版 EditText 硬件 Tab 行为; Compose 字段默认 Tab 走焦点移动, 需消费) */
-private fun insertTabAtSelection(value: TextFieldValue): TextFieldValue {
-    val sel = value.selection
-    val start = sel.min
-    return value.copy(
-        text = value.text.replaceRange(start, sel.max, "\t"),
-        selection = TextRange(start + 1),
-    )
-}
-
 /**
  * TextMeasurer 实测文本单行宽度; 空串返 0, 超长/异常返 null (调用方回退 0.6em/1em 估算)。
  * [density] 必须传真实屏幕密度 (LocalDensity, 含 fontScale), 否则 sp 字号按 Density(1f)
@@ -1174,7 +1163,7 @@ private fun measureFirstBaseline(
     }
 }
 
-/** [CodeTextField] 的 String 重载: 无需保留选区/composition 的场景 */
+/** [CodeTextField] 的 String 重载: 无需保留选区/composition 的场景, 内部持有 TextFieldState 双同步 */
 @Composable
 fun CodeTextField(
     value: String,
@@ -1195,15 +1184,22 @@ fun CodeTextField(
     searchHighlight: CodeSearchHighlightState? = null,
     autoComplete: Boolean = true,
 ) {
-    var fieldValue by remember { mutableStateOf(TextFieldValue(value)) }
-    // 外部值被改写 (如撤销/重载) 时同步回本地状态
-    if (fieldValue.text != value) fieldValue = fieldValue.copy(text = value)
+    // state 用初始值初始化 (防 snapshotFlow 首帧把空串推给外部清空值); 无输入修正
+    // (对齐旧 String 重载语义: 修正只在 CodeEditorState 提供的编辑器路径生效)
+    val state = remember { TextFieldState(value) }
+    val currentValue by rememberUpdatedState(value)
+    val currentOnValueChange by rememberUpdatedState(onValueChange)
+    LaunchedEffect(state) {
+        snapshotFlow { state.text.toString() }
+            .collect { if (it != currentValue) currentOnValueChange(it) }
+    }
+    LaunchedEffect(state, value) {
+        if (state.text.toString() != value) {
+            state.edit { replace(0, length, value) }
+        }
+    }
     CodeTextField(
-        value = fieldValue,
-        onValueChange = {
-            fieldValue = it
-            onValueChange(it.text)
-        },
+        value = state,
         modifier = modifier,
         syntax = syntax,
         enabled = enabled,

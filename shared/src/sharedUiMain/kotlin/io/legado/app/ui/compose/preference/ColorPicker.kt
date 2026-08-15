@@ -1,4 +1,4 @@
-package io.legado.app.ui.compose.preference
+﻿package io.legado.app.ui.compose.preference
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -46,7 +46,7 @@ import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialogContent
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
@@ -254,7 +254,7 @@ fun ColorPickerDialogContent(
                     )
                 }
                 // hex 输入
-                AppOutlinedTextField(
+                AppUnderlineTextField(
                     value = hex,
                     onValueChange = { input ->
                         hex = input

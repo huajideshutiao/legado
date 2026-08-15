@@ -309,9 +309,16 @@ fun AppMenuCheckbox(
     }
 }
 
-/** 输入框：MD2 下划线形态 (委托 [AppTextField])，accent 聚焦下划线+浮动 label，对齐 TextInputLayout(boxBackgroundMode=none) 行为 */
+/**
+ * 输入框：MD2 下划线形态 (委托 [AppTextField])，accent 聚焦下划线+浮动 label，对齐
+ * TextInputLayout(boxBackgroundMode=none) 行为。
+ *
+ * 曾用名 AppOutlinedTextField (误导: 实为下划线形态, 非 outlined 边框盒, 2026 重命名)。
+ * 相比直接调 [AppTextField] 的增值: 统一 16sp 字号 + 常用参数 (label/placeholder/
+ * readOnly/singleLine/visualTransformation/trailingIcon) 透传, 表单/密码框/对话框字段共用。
+ */
 @Composable
-fun AppOutlinedTextField(
+fun AppUnderlineTextField(
     value: String,
     onValueChange: (String) -> Unit,
     modifier: Modifier = Modifier,

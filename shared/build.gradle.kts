@@ -215,7 +215,6 @@ kotlin {
                 api(libs.androidx.documentfile)
                 implementation(libs.core.ktx)
                 implementation(libs.coil3.gif)
-                implementation(libs.compose.foundation.android)
                 implementation(libs.compose.activity)
                 // SVG 解码 (ImageProvider.android.kt 内联 SvgDecode 依赖 androidsvg)
                 implementation(libs.androidsvg)

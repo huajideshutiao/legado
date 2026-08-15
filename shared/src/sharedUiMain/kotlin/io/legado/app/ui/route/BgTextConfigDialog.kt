@@ -1,4 +1,4 @@
-package io.legado.app.ui.route
+﻿package io.legado.app.ui.route
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.Surface
@@ -30,7 +30,7 @@ import io.legado.app.ui.compose.component.AppAlertDialogContent
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -377,7 +377,7 @@ private fun UrlInputDialog(
             cancelButton = AlertButton(text = stringResource(Res.string.cancel)),
             modifier = Modifier.appDialogSize(),
         ) {
-            AppOutlinedTextField(
+            AppUnderlineTextField(
                 value = url,
                 onValueChange = { url = it },
                 label = "url",

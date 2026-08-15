@@ -1,4 +1,4 @@
-package io.legado.app.ui.main.home
+﻿package io.legado.app.ui.main.home
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
@@ -12,7 +12,7 @@ import io.legado.app.help.HomeTabHelpShared
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
-import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.utils.postEvent
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
@@ -114,7 +114,7 @@ fun HomeTabEditDialog(
                 null
             },
         ) {
-            AppOutlinedTextField(
+            AppUnderlineTextField(
                 value = title,
                 onValueChange = { title = it },
                 label = stringResource(Res.string.home_tab_title),

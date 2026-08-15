@@ -9,13 +9,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
@@ -29,6 +25,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.ui.compose.SelectableText
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppTextButton
@@ -131,8 +128,11 @@ fun CrashLogsDialogContent(
  * 单条崩溃日志内容查看对话框 (项目对话框规范: TitleBar + 内容 + 底部按钮栏)。
  *
  * 替代原 [io.legado.app.ui.widget.dialog.TextDialog] (M3 AlertDialog) 调用:
- * - 宽度对齐 [io.legado.app.base.BaseComposeDialogFragment] (0.9 屏宽, 上限 800dp)
+ * - 尺寸对齐 [io.legado.app.base.BaseComposeDialogFragment] fullHeight 模式:
+ *   宽 0.9 屏宽 (上限 800dp), 高固定 0.8 屏高 (统一对话框高度规范)
  * - 顶部 [DialogTitleBar] (返回 + 文件名)
+ * - 正文用 [SelectableText] (readOnly BasicTextField): 长按拖选/拖手柄越界自动滚动,
+ *   对齐 master 分支原生 TextView 手感 (SelectionContainer 无自动滚动)
  * - 底部按钮栏: 复制 + 取消 + 确定 ([AppTextButton], 对齐 BookmarkDialog)
  * - 超长内容截断 (32KB, 对齐原 TextDialog)
  *
@@ -156,7 +156,7 @@ private fun CrashLogViewDialog(
         Surface(
             shape = DesignTokens.shapeDefault,
             color = colors.fillet,
-            modifier = Modifier.appDialogSize(),
+            modifier = Modifier.appDialogSize(fullHeight = true),
         ) {
             Column(Modifier.fillMaxWidth()) {
                 DialogTitleBar(
@@ -169,18 +169,16 @@ private fun CrashLogViewDialog(
                 } else {
                     content
                 }
-                SelectionContainer {
-                    Text(
-                        text = displayText,
-                        color = colors.secondaryText,
-                        fontSize = 15.sp,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 400.dp)
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
-                            .verticalScroll(rememberScrollState()),
-                    )
-                }
+                // 正文区: weight 占满 0.8 屏高下的剩余空间, 超长内部滚动 (视口恒定, 按钮行恒可见)
+                SelectableText(
+                    text = displayText,
+                    color = colors.secondaryText,
+                    fontSize = 15.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                )
                 // 底部按钮栏 (对齐 BookmarkDialog: 左侧 contextual + 右侧 cancel/ok)
                 Row(Modifier.fillMaxWidth()) {
                     AppTextButton(text = copyText) {

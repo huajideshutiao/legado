@@ -449,6 +449,22 @@ object FileUtilsBase {
     }
 
     /**
+     * 按文件头魔数校正图片扩展名: 已匹配则不动, 否则 renameTo 追加真实扩展名。
+     *
+     * 原 desktop 阅读页 fixImageExtension 与漫画 fixExtension 各写一份逐字相同,
+     * 收拢至此单一实现 (对照 app 端 FileUtils.saveImage 的魔数改名语义)。
+     *
+     * @return 最终文件 (未改名时即原文件)
+     */
+    fun fixImageExtension(dest: File): File {
+        val ext = getImageExtension(dest)
+        if (dest.name.endsWith(ext, ignoreCase = true)) return dest
+        val renamed = File(dest.parentFile, dest.nameWithoutExtension + ext)
+        dest.renameTo(renamed)
+        return renamed
+    }
+
+    /**
      * 获取格式化后的文件/目录创建或最后修改时间
      */
     @JvmOverloads

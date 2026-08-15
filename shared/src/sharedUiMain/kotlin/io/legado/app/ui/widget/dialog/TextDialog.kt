@@ -8,9 +8,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
@@ -21,6 +18,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.MarkdownContentSelectable
+import io.legado.app.ui.compose.SelectableText
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.appDialogSize
@@ -38,11 +36,12 @@ private const val MAX_TEXT_LENGTH = 32 * 1024
 /**
  * 通用文本展示对话框，保留旧调用方的确定/中性按钮契约，同时支持 Markdown、HTML 和纯文本模式。
  *
- * 布局 = AppDialog + Surface + Column(标题固定 / 正文 weight(1f)+verticalScroll / 按钮行钉底)。
+ * 布局 = AppDialog + Surface + Column(标题固定 / 正文 weight(1f)+[SelectableText] / 按钮行钉底)。
  * 不用 M2 AlertDialog: 其 BaselineLayout 在 CMP 桌面按"未钳制的标题+正文高"汇报, 长文本时
  * 对话框超 Surface 封顶, 滚动视口 > 可视区, 滚动错位 (内容下移/顶部空白/按钮被推出屏幕外,
- * 用户多轮实测复现)。weight+scroll 方案视口恒定 (正文区 = 对话框剩余空间), 与
- * AppAlertDialogContent/AppLogDialog 同一已验证模式。
+ * 用户多轮实测复现)。weight+内部滚动方案视口恒定 (正文区 = 对话框剩余空间), 与
+ * AppAlertDialogContent/AppLogDialog 同一已验证模式。正文选择用 [SelectableText]
+ * (readOnly BasicTextField, 拖选/拖手柄越界自动滚动, 对齐 master 原生 TextView)。
  */
 @Composable
 fun TextDialog(
@@ -93,14 +92,13 @@ fun TextDialog(
                             } else {
                                 content
                             }
-                            SelectionContainer {
-                                Text(
-                                    text = displayText,
-                                    color = colors.secondaryText,
-                                    fontSize = 15.sp,
-                                    modifier = Modifier.verticalScroll(rememberScrollState()),
-                                )
-                            }
+                            // SelectableText (readOnly BasicTextField): 长按拖选/拖手柄越界自动滚动,
+                            // 对齐 master 分支原生 TextView (SelectionContainer 无自动滚动)
+                            SelectableText(
+                                text = displayText,
+                                color = colors.secondaryText,
+                                fontSize = 15.sp,
+                            )
                         }
                     }
                 }

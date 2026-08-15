@@ -1,4 +1,4 @@
-package io.legado.app.ui.config
+﻿package io.legado.app.ui.config
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,7 +24,7 @@ import io.legado.app.help.DirectLinkUploadRule
 import io.legado.app.help.DirectLinkUploadStoreProviders
 import io.legado.app.help.getRuleShared
 import io.legado.app.ui.compose.component.AppCheckbox
-import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
@@ -150,19 +150,19 @@ fun DirectLinkUploadConfigDialog(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
         ) {
-            AppOutlinedTextField(
+            AppUnderlineTextField(
                 value = uploadUrl,
                 onValueChange = { uploadUrl = it },
                 label = stringResource(Res.string.upload_url),
                 modifier = Modifier.fillMaxWidth(),
             )
-            AppOutlinedTextField(
+            AppUnderlineTextField(
                 value = downloadUrlRule,
                 onValueChange = { downloadUrlRule = it },
                 label = stringResource(Res.string.download_url_rule),
                 modifier = Modifier.fillMaxWidth(),
             )
-            AppOutlinedTextField(
+            AppUnderlineTextField(
                 value = summary,
                 onValueChange = { summary = it },
                 label = stringResource(Res.string.summary),

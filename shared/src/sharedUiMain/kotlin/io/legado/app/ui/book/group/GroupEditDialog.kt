@@ -1,4 +1,4 @@
-// I18N KEYS: group_edit, group_add, allow_drop_down_refresh, book_sort_default, book_sort_reading_time, book_sort_update_time, book_sort_name, book_sort_manual, book_sort_comprehensive, book_sort_author
+﻿// I18N KEYS: group_edit, group_add, allow_drop_down_refresh, book_sort_default, book_sort_reading_time, book_sort_update_time, book_sort_name, book_sort_manual, book_sort_comprehensive, book_sort_author
 package io.legado.app.ui.book.group
 
 import androidx.compose.foundation.clickable
@@ -38,7 +38,7 @@ import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppDropdownMenu
-import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
@@ -75,7 +75,7 @@ import org.jetbrains.compose.resources.stringResource
  * 但去掉对 Android Fragment / registerHandleFile / appDb / ViewModel 的依赖, 改为纯
  * @Composable + 回调形式:
  * - 调用方传入 [group] (null=新增) 与 [onConfirm] / [onDismiss] / [onDelete] 回调
- * - 字段: 分组名 (AppOutlinedTextField) + 排序 (AppDropdownMenu, 7 项对照 @array/book_sort)
+ * - 字段: 分组名 (AppUnderlineTextField) + 排序 (AppDropdownMenu, 7 项对照 @array/book_sort)
  *   + 允许下拉刷新 (AppCheckbox)
  * - 确认时把字段写回 [group] (编辑态) 或新 [BookGroup] (新增态), 通过 [onConfirm] 回传;
  *   实际 DB 持久化 (viewModel.upGroup / addGroup) 由调用方决定
@@ -201,7 +201,7 @@ fun GroupEditDialog(
                             .weight(1f)
                             .padding(start = 8.dp),
                     ) {
-                        AppOutlinedTextField(
+                        AppUnderlineTextField(
                             value = groupName,
                             onValueChange = { groupName = it },
                             label = stringResource(Res.string.group_name),

@@ -1,4 +1,4 @@
-package io.legado.app.ui.main.home
+﻿package io.legado.app.ui.main.home
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -42,7 +42,7 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTextButton
@@ -282,7 +282,7 @@ fun HomeSectionEditDialog(
                         .verticalScroll(rememberScrollState())
                         .padding(start = 16.dp, top = 8.dp, end = 16.dp),
                 ) {
-                    AppOutlinedTextField(
+                    AppUnderlineTextField(
                         value = title,
                         onValueChange = { title = it },
                         label = stringResource(Res.string.home_section_title),

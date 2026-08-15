@@ -136,7 +136,7 @@ private val mangaMenuKey = listOf(AppShortcut(Key.Menu))
  * @param autoPageSpeed 自动翻页速度（横向=秒/页，纵向=滚动速度系数）
  * @param loading 加载中标记（覆盖层）
  * @param error 错误消息（null=无错误）
- * @param batteryLevel 电池电量 0-100, -1 不显示 (原版信息条不含电池, 暂未使用)
+ * @param batteryLevel 电池电量 0-100 (读取失败回落 100 恒显示, 用户拍板 2026-08; 原版信息条不含电池)
  * @param systemTime 系统时间 HH:mm
  * @param currentPage 章节内当前页 (0-based)
  * @param pageCount 章节内总页数

@@ -278,7 +278,6 @@ dependencies {
 
     implementation(compose.runtime)
     implementation(compose.foundation)
-    implementation(libs.compose.foundation.android)
     implementation(compose.material)
     implementation(compose.ui)
     implementation(libs.compose.activity)

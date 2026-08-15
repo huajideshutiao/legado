@@ -1,4 +1,4 @@
-package io.legado.app.ui.book.info.edit
+﻿package io.legado.app.ui.book.info.edit
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -38,7 +38,7 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.Book
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppOutlinedButton
-import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.bringIntoViewOnIme
 import io.legado.app.ui.compose.platform.imeDismissPadding
@@ -184,14 +184,14 @@ fun BookInfoEditScreen(
                     .weight(1f)
                     .padding(start = 4.dp),
             ) {
-                AppOutlinedTextField(
+                AppUnderlineTextField(
                     value = state.name,
                     onValueChange = { actions.onNameChange(it) },
                     label = stringResource(Res.string.book_name),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                AppOutlinedTextField(
+                AppUnderlineTextField(
                     value = state.author,
                     onValueChange = { actions.onAuthorChange(it) },
                     label = stringResource(Res.string.author),
@@ -218,7 +218,7 @@ fun BookInfoEditScreen(
                 .padding(horizontal = 4.dp),
         ) {
             var coverUrlFocused by remember { mutableStateOf(false) }
-            AppOutlinedTextField(
+            AppUnderlineTextField(
                 value = state.coverUrl,
                 onValueChange = { actions.onCoverUrlChange(it) },
                 label = stringResource(Res.string.cover_path),
@@ -246,7 +246,7 @@ fun BookInfoEditScreen(
                 }
             }
             var introFocused by remember { mutableStateOf(false) }
-            AppOutlinedTextField(
+            AppUnderlineTextField(
                 value = state.intro,
                 onValueChange = { actions.onIntroChange(it) },
                 label = stringResource(Res.string.book_intro),
@@ -257,7 +257,7 @@ fun BookInfoEditScreen(
                     .bringIntoViewOnIme(introFocused),
             )
             var bookUrlFocused by remember { mutableStateOf(false) }
-            AppOutlinedTextField(
+            AppUnderlineTextField(
                 value = state.bookUrl,
                 onValueChange = { actions.onBookUrlChange(it) },
                 label = stringResource(Res.string.book_url),

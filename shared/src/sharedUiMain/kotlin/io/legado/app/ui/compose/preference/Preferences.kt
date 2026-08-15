@@ -1,4 +1,4 @@
-package io.legado.app.ui.compose.preference
+﻿package io.legado.app.ui.compose.preference
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -48,7 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
-import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.rememberNavigationBarPaddingValues
@@ -208,7 +208,7 @@ fun LazyListScope.editTextPreference(
             // 替代 stringResource(R.string.cancel): commonMain 走 stringResource(Res.string.cancel)
             cancelButton = AlertButton(text = stringResource(Res.string.cancel)),
         ) {
-            AppOutlinedTextField(
+            AppUnderlineTextField(
                 value = text,
                 onValueChange = { text = it },
                 singleLine = true,

@@ -1,4 +1,4 @@
-package io.legado.app.ui.book.import.remote
+﻿package io.legado.app.ui.book.import.remote
 
 // I18N KEYS (已注册于 ResourceProvider.jvm.kt / ios Localizable.strings):
 //   "action_save" to "保存",
@@ -28,7 +28,7 @@ import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.Server
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
@@ -134,7 +134,7 @@ fun ServerConfigDialog(
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = 16.dp),
                 ) {
-                    AppOutlinedTextField(
+                    AppUnderlineTextField(
                         value = name,
                         onValueChange = { name = it },
                         label = stringResource(Res.string.name),
@@ -149,21 +149,21 @@ fun ServerConfigDialog(
                         Text("TYPE", color = colors.accent, modifier = Modifier.padding(8.dp))
                         Text("WEBDAV", color = colors.primaryText)
                     }
-                    AppOutlinedTextField(
+                    AppUnderlineTextField(
                         value = url,
                         onValueChange = { url = it },
                         label = "url",
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    AppOutlinedTextField(
+                    AppUnderlineTextField(
                         value = username,
                         onValueChange = { username = it },
                         label = "username",
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    AppOutlinedTextField(
+                    AppUnderlineTextField(
                         value = password,
                         onValueChange = { password = it },
                         label = "password",

@@ -1,4 +1,4 @@
-package io.legado.app.ui.config
+﻿package io.legado.app.ui.config
 
 import android.net.Uri
 import android.os.Bundle
@@ -41,7 +41,7 @@ import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ThemeConfig
-import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.component.AppTextButton
@@ -239,7 +239,7 @@ class ThemeCustomizeDialog() : BaseComposeDialogFragment() {
             ) {
                 // 主题名字段：EDIT_CONFIG / NEW_CONFIG 显示，EDIT_PREFS 隐藏
                 if (mode != MODE_EDIT_PREFS) {
-                    AppOutlinedTextField(
+                    AppUnderlineTextField(
                         value = themeName,
                         onValueChange = { themeName = it },
                         label = rememberString("theme_name"),

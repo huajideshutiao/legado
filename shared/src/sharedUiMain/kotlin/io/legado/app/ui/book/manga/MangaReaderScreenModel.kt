@@ -64,8 +64,12 @@ class MangaReaderScreenModel : ScreenModel {
         val config: MangaReaderConfig
             get() = MangaReaderConfig.DEFAULT
 
-        /** 当前电池电量 0-100, -1 表示不显示 (对照 ReaderPlatformProvider.getBatteryLevel) */
-        fun getBatteryLevel(): Int = -1
+        /**
+         * 当前电池电量 0-100。
+         * 读取失败/无电池统一回落 100 (用户拍板 2026-08: 电量恒显示; 台式机 AC 供电视为满电),
+         * 不再使用 -1=不显示语义 (原 app/shared 契约, 与 desktop 100 不一致, 已统一)。
+         */
+        fun getBatteryLevel(): Int = 100
 
         /**
          * 保存图片到本地 (对照 app 端 BaseReadViewModel.saveImage)。
@@ -185,8 +189,8 @@ class MangaReaderScreenModel : ScreenModel {
     // shared.error 是事件流 (replay=1), 直接进 combine 会在未发射时卡住整条链, 先转本地状态
     private val errorMsg = MutableStateFlow<String?>(null)
 
-    // 信息条: 电池电量 (对照 ReaderScreenModel._batteryLevel)
-    private val _batteryLevel = MutableStateFlow(platform?.getBatteryLevel() ?: -1)
+    // 信息条: 电池电量 (对照 ReaderScreenModel._batteryLevel; 平台缺失回落 100 恒显示)
+    private val _batteryLevel = MutableStateFlow(platform?.getBatteryLevel() ?: 100)
     val batteryLevel: StateFlow<Int> = _batteryLevel.asStateFlow()
 
     // 信息条: 系统时间, 每分钟刷新
@@ -265,7 +269,7 @@ class MangaReaderScreenModel : ScreenModel {
 
     /** 平台收到电量变化时调用, 更新信息条电量 */
     fun refreshBattery() {
-        _batteryLevel.value = platform?.getBatteryLevel() ?: -1
+        _batteryLevel.value = platform?.getBatteryLevel() ?: 100
     }
 
     /**

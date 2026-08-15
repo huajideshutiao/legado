@@ -8,9 +8,6 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
@@ -19,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.help.toast.Toasters
+import io.legado.app.ui.compose.SelectableText
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppTextButton
@@ -50,9 +48,10 @@ import org.jetbrains.compose.resources.stringResource
  * 跨端"文字选择"对话框 (desktop / iOS / 鸿蒙共享, 下沉自三份平行实现)。
  *
  * 阅读页正文为自绘 Canvas (PageContentCanvas), 不能套 [SelectionContainer]
- * (对 Canvas 自绘文字无效), 故改为弹窗形式: 用 [SelectionContainer] 包 [Text] 渲染整章正文,
- * 用户拖选文字后由 sharedUiMain 已下沉的 ComposeTextToolbar (AppTheme 注入 LocalTextToolbar)
- * 自动弹出"复制/全选"菜单, 复刻 app 端 ActionMode 文字选择 + TextActionMenu。
+ * (对 Canvas 自绘文字无效), 故改为弹窗形式: 用 [SelectableText] (readOnly BasicTextField)
+ * 渲染整章正文, 用户拖选文字后由 sharedUiMain 已下沉的 ComposeTextToolbar (AppTheme 注入
+ * LocalTextToolbar) 自动弹出"复制/全选"菜单, 复刻 app 端 ActionMode 文字选择 + TextActionMenu。
+ * (拖选/拖手柄越界自动滚动由 BasicTextField 原生提供, 对齐 master 分支原生 TextView)
  *
  * # 操作菜单 (对照原版 TextActionMenu 的 content_select_action.xml 菜单项,
  * 全部按钮集中底部一排, 顺序同原版: 替换/复制/书签/朗读/查词/全文搜索/浏览器/分享 + 关闭)
@@ -67,9 +66,9 @@ import org.jetbrains.compose.resources.stringResource
  *   系统搜索引擎 (无独立"浏览器搜索"按钮, 原版只有一个浏览器项)
  * - 关闭: 同上排在末尾
  *
- * 浏览器搜索按钮读取剪贴板的设计原因: [SelectionContainer] 选区信息经
- * SelectionRegistrar internal API 暴露, 外部不易拿到; 简化为"用户选中 → 点
- * ComposeTextToolbar 的'复制' → 剪贴板有内容 → 点底部按钮执行后续操作"。
+ * 浏览器搜索按钮读取剪贴板的设计原因: 文本选择组件的选区信息不对外暴露,
+ * 外部不易拿到; 简化为"用户选中 → 点 ComposeTextToolbar 的'复制' → 剪贴板有内容 →
+ * 点底部按钮执行后续操作"。
  *
  * @param chapterName 章节名 (标题 + 复制章节标题用)
  * @param content 章节正文 (整章文字, 用户可拖选)
@@ -177,22 +176,20 @@ fun TextSelectionDialog(
                         }
                     },
                 )
-                // 内容区: SelectionContainer 包 Text, 用户拖选文字后自动弹 ComposeTextToolbar;
-                // 选中文本菜单形态下展示页内选中的文字 (仍可二次拖选/原生复制)
+                // 内容区: SelectableText (readOnly BasicTextField) 渲染整章/选中文本,
+                // 长按拖选后自动弹 ComposeTextToolbar; 拖选/拖手柄越界自动滚动 (对齐原生 TextView)
                 Box(
                     Modifier
                         .fillMaxWidth()
                         .heightIn(max = 480.dp)
-                        .verticalScroll(rememberScrollState())
                         .padding(16.dp),
                 ) {
-                    SelectionContainer {
-                        Text(
-                            text = selectedText ?: content,
-                            color = colors.primaryText,
-                            fontSize = 16.sp,
-                        )
-                    }
+                    SelectableText(
+                        text = selectedText ?: content,
+                        color = colors.primaryText,
+                        fontSize = 16.sp,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
                 // 底部按钮栏: 全部动作集中一排 (对照原版 TextActionMenu 的 content_select_action.xml
                 // 菜单项顺序: 替换/复制/书签/朗读/查词/全文搜索/浏览器/分享 + 关闭; 2026-08-05 用户
@@ -287,7 +284,7 @@ fun TextSelectionDialog(
 /**
  * 取选中文本/剪贴板 → [encodeURI] 拼接搜索引擎 URL → [openUrl] 打开系统浏览器。
  *
- * 文本源为空时弹 toast 提示 (整章形态下 SelectionContainer 选中后需点 ComposeTextToolbar
+ * 文本源为空时弹 toast 提示 (整章形态下选中后需点 ComposeTextToolbar
  * 的"复制"按钮才会写入剪贴板; 选中文本形态直接取参, 一般不会为空)。
  */
 private fun openInBrowser(

@@ -6,6 +6,7 @@ import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.toArgb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.BookSource
@@ -27,6 +28,7 @@ import io.legado.app.help.tts.IosReadAloudHost
 import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
+import io.legado.app.ui.compose.platform.IosThemeStoreProvider
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
@@ -142,18 +144,11 @@ object IosReaderPlatformProvider : ReaderPlatformProvider {
      */
     private fun onTextAction(screenModel: ReaderScreenModel, text: String, action: String) {
         when (action) {
-            "replace" -> {
-                val book = screenModel.viewModel.book.value
-                AppNavigatorProviders.get().push(
-                    AppRoute.ReplaceEdit(
-                        pattern = text.lineSequence().joinToString("\n") { it.trim() },
-                        scope = listOfNotNull(book?.name, book?.origin).joinToString(";"),
-                    )
-                )
-            }
+            // T1: 替换/书签/全文搜索复用共享回调 (见 ReaderScreenModel.replaceTextCallback 等)
+            "replace" -> screenModel.replaceTextCallback().invoke(text)
 
             "copy" -> PlatformCapabilityProviders.get().copyToClipboard(text)
-            "bookmark" -> onBookmark(screenModel, text)
+            "bookmark" -> screenModel.bookmarkTextCallback().invoke(text)
             "aloud" -> {
                 // 朗读选中文本: 系统 TTS 引擎 (AVSpeechSynthesizer, 宿主启动经
                 // registerIosSystemTtsEngine 注册到 TtsEngineProvider; 未注册时提示)
@@ -166,10 +161,7 @@ object IosReaderPlatformProvider : ReaderPlatformProvider {
             }
 
             "dict" -> dictWord = text
-            "search_content" -> {
-                screenModel.searchContentQuery = text
-                screenModel.menuState.clickSearch()
-            }
+            "search_content" -> screenModel.searchContentTextCallback().invoke(text)
 
             "browser" -> {
                 val url = if (text.isAbsUrl()) {
@@ -240,26 +232,14 @@ object IosReaderPlatformProvider : ReaderPlatformProvider {
         return runCatching { bytes.toUIImage() }.getOrNull()
     }
 
-    /** 书签 (对照原版 menu_bookmark): 用选中文本建书签, 弹 BookmarkDialog (ReaderRoute 处理 AddBookmark)。 */
-    private fun onBookmark(screenModel: ReaderScreenModel, text: String) {
-        val book = screenModel.viewModel.book.value ?: return
-        val bookmark = Bookmark(bookName = book.name, bookAuthor = book.author).apply {
-            chapterIndex = screenModel.viewModel.durChapterIndex.value
-            chapterPos = screenModel.viewModel.durChapterPos.value
-            chapterName = screenModel.currentChapter?.title ?: ""
-            bookText = text.trim()
-        }
-        screenModel.postDialogEvent(ReaderDialogEvent.AddBookmark(bookmark))
-    }
-
-    // UIDevice 电池监控: 返回 0~100, 未启用或未知返回 -1
+    // UIDevice 电池监控: 返回 0~100, 未启用或未知回落 100 (用户拍板 2026-08: 电量恒显示)
     override fun getBatteryLevel(): Int {
         val device = UIDevice.currentDevice
         if (!device.batteryMonitoringEnabled) {
             device.batteryMonitoringEnabled = true
         }
         val level = device.batteryLevel
-        return if (level < 0f) -1 else (level * 100).toInt()
+        return if (level < 0f) 100 else (level * 100).toInt()
     }
 
     /** 朗读控制桥: 长按面板动作落到 [IosReadAloudHost] + 偏好项 (对照 desktop DesktopReadAloudControls)。 */
@@ -296,11 +276,16 @@ private class IosReadMenuState(
     // 菜单栏配色 (对照原版 ReadMenu.upColorConfig, 逻辑见 shared createReadMenuColors):
     // 纯色阅读背景时 immersive=true, 顶/底栏用阅读背景色(含 bgAlpha 透明度)+阅读文字色,
     // 文字对比度由阅读配色自身保证; 图片阅读背景时沉浸式为 false, ReadMenuOverlay 走
-    // AppTheme 默认色 (与原版非沉浸式行为一致)。fallbackBgColor 传 0: 非沉浸式时
-    // Composable 不消费 bgColor, 仅沉浸式解析失败时兜底。hasBgImage 语义为「窗口背景图」
-    // (app 端 ThemeConfig.curBgImagePath), iOS 无此概念恒 false。
+    // AppTheme 默认色 (与原版非沉浸式行为一致)。fallbackBgColor 统一传主题底栏背景色
+    // (T6: 原传 0 的历史差异已对齐, 见 ReadMenuThemeHelper.createReadMenuColors KDoc;
+    // 经 IosThemeStoreProvider 读持久层, 与 AppTheme.colors.bottomBackground 同源,
+    // 无需 @Composable 上下文)。
+    // hasBgImage 语义为「窗口背景图」(app 端 ThemeConfig.curBgImagePath), iOS 无此概念恒 false。
     private val menuTheme: ReadMenuColors
-        get() = createReadMenuColors(ReadBookConfigProviders.get().config, fallbackBgColor = 0)
+        get() = createReadMenuColors(
+            ReadBookConfigProviders.get().config,
+            IosThemeStoreProvider().bottomBackground.toArgb(),
+        )
     override val immersive: Boolean get() = menuTheme.immersive
     override val bgColor: Int get() = menuTheme.bgColor
     override val textColor: Int get() = menuTheme.textColor

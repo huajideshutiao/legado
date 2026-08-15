@@ -122,7 +122,7 @@ private const val LONG_PRESS_TIMEOUT = 600L
  * - 列命中只查当前页（滚动模式行级滚动由 delegate 折算偏移，列坐标仍以当前页为基准）
  *
  * @param viewModel 阅读 ViewModel，提供 prevTextPage/curTextPage/nextTextPage 流
- * @param batteryLevel 电池电量 0-100，传 -1 表示不显示
+ * @param batteryLevel 电池电量 0-100 (读取失败回落 100 恒显示, 用户拍板 2026-08)
  * @param clockText 当前系统时间 HH:mm，随 timeChanged 刷新
  * @param onClick 单击回调（动作 0=菜单，由调用方处理；翻页/切章在本 Composable 内消费）
  * @param onLongClick 长按回调（仅非文字非图片区域回落：空白长按；文字长按由页内选择接管，

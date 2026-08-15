@@ -2,33 +2,26 @@ package io.legado.desktop.ui.platform
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import coil3.compose.AsyncImagePainter
@@ -52,6 +45,7 @@ import io.legado.app.ui.book.manga.config.MangaFooterConfig
 import io.legado.app.ui.book.manga.config.isNoOp
 import io.legado.app.ui.book.manga.config.toColorMatrix
 import io.legado.app.ui.book.manga.entities.MangaCellState
+import io.legado.app.ui.book.manga.render.MangaReaderBackground
 import io.legado.app.utils.FileUtilsBase
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
@@ -134,14 +128,14 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
     ) {
         // MangaModel 必须带书籍上下文; 空 book 时 Coil 会接受 null data 并保持 Empty/Loading。
         if (book == null) {
-            Box(modifier.background(Color.Black), contentAlignment = Alignment.Center) {
+            Box(modifier.background(MangaReaderBackground), contentAlignment = Alignment.Center) {
                 Text("漫画图片缺少书籍上下文", color = Color.White)
             }
             return
         }
-        // 内部重试计数保留原有"重新加载"按钮; shared 单元格的 retryTick 变化同样重建 ImageRequest
-        var internalRetryTick by remember(url) { mutableStateOf(0) }
-        val request = remember(url, book, source, internalRetryTick, retryTick) {
+        // 仅消费 shared 单元格传入的 retryTick ("重新加载"点击 → 自增 → 重建 ImageRequest);
+        // 原内部 internalRetryTick 与兜底"重新加载"文本已移除 (shared MangaPageCell 覆盖层统一负责)
+        val request = remember(url, book, source, retryTick) {
             ImageRequest.Builder(PlatformContext.INSTANCE)
                 // MangaModel 走 MangaModelFetcher: 图片缓存 + AnalyzeUrl(防盗链 header) + 解密,
                 // 与 app 端同一条链路; 裸 url 直连对需要处理的源必然全失败
@@ -187,7 +181,9 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
         val colorFilter = remember(colorFilterConfig, grayEnabled) {
             buildColorFilter(colorFilterConfig, grayEnabled)
         }
-        Box(modifier.background(Color.Black), contentAlignment = Alignment.Center) {
+        // 容器底色统一 shared MangaReaderBackground (0xFF141414); 加载中/失败占位由
+        // shared 单元格覆盖层统一展示 (转圈/进度/重新加载), 平台槽不再自带
+        Box(modifier.background(MangaReaderBackground), contentAlignment = Alignment.Center) {
             when (state) {
                 is AsyncImagePainter.State.Success -> {
                     // 等比渲染: 按图片固有宽高比显式定高 (CMP Image 不再按 intrinsicSize 自适配,
@@ -211,22 +207,8 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
                         colorFilter = colorFilter,
                     )
                 }
-                // 失败/加载中占位由 shared 单元格覆盖层统一展示, 此处保留兜底
-                is AsyncImagePainter.State.Error -> Text(
-                    text = "重新加载",
-                    color = Color.White,
-                    fontSize = 18.sp,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .clickable { internalRetryTick++ }
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                )
-
-                else -> CircularProgressIndicator(
-                    color = Color.White,
-                    strokeWidth = 4.dp,
-                    modifier = Modifier.size(48.dp),
-                )
+                // 加载中/失败: 留空, shared 单元格覆盖层展示转圈/进度/重新加载 (retryTick 驱动重建)
+                else -> Unit
             }
         }
     }
@@ -299,19 +281,13 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
             val dest = File(destPath)
             dest.parentFile?.mkdirs()
             dest.writeBytes(bytes)
-            fixExtension(dest)
+            // 路由建议名恒为 `.jpg`, 与实际格式不符时按魔数改名 (shared 统一 helper, 与阅读页一致)
+            FileUtilsBase.fixImageExtension(dest)
             true
         }.getOrElse {
             AppLog.put("保存图片出错\n${it.localizedMessage}", it)
             false
         }
-    }
-
-    /** 路由建议名恒为 `.jpg`, 与实际格式不符时按魔数改名 (与 app 端一致)。 */
-    private fun fixExtension(dest: File) {
-        val ext = FileUtilsBase.getImageExtension(dest)
-        if (dest.name.endsWith(ext, ignoreCase = true)) return
-        dest.renameTo(File(dest.parentFile, dest.nameWithoutExtension + ext))
     }
 
     override fun updateColorFilter(config: MangaColorFilterConfig) {

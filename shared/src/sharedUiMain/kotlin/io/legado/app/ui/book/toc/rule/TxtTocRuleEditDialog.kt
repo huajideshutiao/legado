@@ -1,4 +1,4 @@
-package io.legado.app.ui.book.toc.rule
+﻿package io.legado.app.ui.book.toc.rule
 
 // I18N KEYS (need to register in ResourceProvider.jvm.kt):
 //   "txt_toc_rule_edit_name" to "名称",
@@ -32,7 +32,7 @@ import androidx.compose.ui.unit.dp
 import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.TxtTocRule
 import io.legado.app.help.toast.Toasters
-import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.theme.AppTheme
@@ -214,7 +214,7 @@ fun TxtTocRuleEditDialog(
                     .verticalScroll(rememberScrollState())
                     .padding(16.dp),
             ) {
-                AppOutlinedTextField(
+                AppUnderlineTextField(
                     value = name,
                     onValueChange = { name = it },
                     label = nameLabelText,
@@ -222,7 +222,7 @@ fun TxtTocRuleEditDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.heightIn(min = 8.dp))
-                AppOutlinedTextField(
+                AppUnderlineTextField(
                     value = ruleContent,
                     onValueChange = { ruleContent = it },
                     label = ruleLabelText,
@@ -230,7 +230,7 @@ fun TxtTocRuleEditDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.heightIn(min = 8.dp))
-                AppOutlinedTextField(
+                AppUnderlineTextField(
                     value = example,
                     onValueChange = { example = it },
                     label = exampleLabelText,

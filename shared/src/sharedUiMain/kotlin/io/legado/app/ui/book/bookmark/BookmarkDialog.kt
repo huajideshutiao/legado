@@ -1,4 +1,4 @@
-package io.legado.app.ui.book.bookmark
+﻿package io.legado.app.ui.book.bookmark
 
 // I18N KEYS (need to register in ResourceProvider.jvm.kt):
 //   "bookmark_content" to "内容",
@@ -25,7 +25,7 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
@@ -102,13 +102,13 @@ fun BookmarkDialog(
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = 16.dp),
                 ) {
-                    AppOutlinedTextField(
+                    AppUnderlineTextField(
                         value = bookText,
                         onValueChange = { bookText = it },
                         label = contentLabel,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    AppOutlinedTextField(
+                    AppUnderlineTextField(
                         value = content,
                         onValueChange = { content = it },
                         label = noteLabel,

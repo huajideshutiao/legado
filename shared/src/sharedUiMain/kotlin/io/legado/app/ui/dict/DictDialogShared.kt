@@ -6,9 +6,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.Tab
 import androidx.compose.material.TabRow
@@ -23,12 +20,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
-import io.legado.app.ui.compose.toHtmlAnnotatedString
 import io.legado.app.data.entities.DictRule
+import io.legado.app.ui.compose.SelectableText
 import io.legado.app.ui.compose.component.AppScrollTabRow
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.toHtmlAnnotatedString
 
 /**
  * 词典查询对话框内容 (KMP 共享, app/iOS 复用)。
@@ -53,8 +50,8 @@ import io.legado.app.ui.compose.theme.AppTheme
  *
  * - initData 加载启用的字典规则列表 → rules 非空时自动 query(0)
  * - 规则 ≤4 用 [TabRow], >4 用 [AppScrollTabRow] (复刻 app 端 setupTabLayoutMode)
- * - [SelectionContainer] + [verticalScroll] + [Text]([AnnotatedString.fromHtml]) 渲染查询结果
- *   (HTML 渲染, 链接可点击; SelectionContainer 支持复制结果文字)
+ * - [SelectableText] (readOnly BasicTextField) 渲染查询结果
+ *   (HTML 渲染, 链接着色; 长按拖选/拖手柄越界自动滚动, 支持复制结果文字)
  * - loading 时 [CircularProgressIndicator] 顶部居中
  *
  * @param word 待查单词 (调用方保证非空)
@@ -145,20 +142,15 @@ fun DictDialogContent(
             }
         }
         Box(Modifier.fillMaxWidth()) {
-            SelectionContainer(
-                Modifier
+            // SelectableText (readOnly BasicTextField): 长按拖选/拖手柄越界自动滚动, 对齐原生
+            // TextView; HTML 渲染的链接经 toHtmlAnnotatedString 内建 LinkAnnotation 着色
+            SelectableText(
+                text = html.toHtmlAnnotatedString(),
+                color = colors.secondaryText,
+                modifier = Modifier
                     .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-            ) {
-                // 词典结果按 HTML 渲染，链接可点击(fromHtml 内建 LinkAnnotation)
-                Text(
-                    text = html.toHtmlAnnotatedString(),
-                    color = colors.secondaryText,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                )
-            }
+                    .padding(16.dp),
+            )
             if (loading) {
                 CircularProgressIndicator(
                     color = colors.accent,

@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.AlertDialog
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
@@ -35,6 +37,9 @@ import io.legado.app.model.AudioPlayShared
 import io.legado.app.model.BookCoverShared.CoverRatio
 import io.legado.app.ui.bookshelf.defaultCoverFilePath
 import io.legado.app.ui.compose.component.AppSlider
+import io.legado.app.ui.compose.platform.rememberColor
+import io.legado.app.ui.compose.platform.rememberPainter
+import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.image_cover_default
@@ -57,8 +62,8 @@ import kotlin.math.roundToInt
  *   歌词用 [LrcViewShared] (复刻原版 LrcView), 取色用 [rememberLrcColors]
  *   (复刻原版 updateLrcColor → setColors + SeekBar tint)
  *
- * Android 端差异仅经参数覆盖 (titleBarTrailingSlot=评论钮 + app 端默认值),
- * iOS/OHOS/desktop 走默认参数。
+ * 视觉参数 (评论钮/图标/回显标签底色/透明度/内边距/按压底) 已统一为共享默认 (app 原版值),
+ * 四端 provider 均为纯透传, 不再有平台覆盖。
  */
 @Composable
 fun SharedAudioPlayScreenContent(
@@ -70,15 +75,19 @@ fun SharedAudioPlayScreenContent(
     onOpenReview: () -> Unit,
     overflowActions: AudioPlayOverflowActions,
     onEvent: (AudioPlayUiEvent) -> Unit,
-    titleBarTrailingSlot: @Composable RowScope.() -> Unit = {},
-    timerIconKey: String = "ic_time_add_24dp",
-    speedIconKey: String = "ic_speed",
-    chapterListIconKey: String = "ic_toc",
-    filletLabelColor: Color = Color(0x66000000),
-    playMenuButtonPressedBgEnabled: Boolean = false,
-    playMenuAlpha: Float = 1f,
-    titleBarHorizontalPadding: Dp = 8.dp,
-    playModeIconPadding: Dp = 4.dp,
+    titleBarTrailingSlot: @Composable RowScope.() -> Unit = {
+        // 评论入口 (reviewUrl 非空才显示; hasReview 随书源切换刷新)。
+        // 原 app/desktop/iOS/鸿蒙四端 provider 各写一份逐字相同, 收拢为共享默认。
+        if (state.hasReview) {
+            IconButton(onClick = onOpenReview) {
+                Icon(
+                    painter = rememberPainter("ic_edit"),
+                    contentDescription = rememberString("review"),
+                    tint = Color.White,
+                )
+            }
+        }
+    },
     sidePanelWidth: Dp = 0.dp,
     sidePanelVisible: Boolean = false,
     sidePanelKind: AudioPlaySidePanelKind? = null,
@@ -141,14 +150,6 @@ fun SharedAudioPlayScreenContent(
         speedDialogSlot = { initial, onProgressChanged, onDismiss ->
             AudioPlaySpeedDialog(initial, onProgressChanged, onDismiss)
         },
-        timerIconKey = timerIconKey,
-        speedIconKey = speedIconKey,
-        chapterListIconKey = chapterListIconKey,
-        filletLabelColor = filletLabelColor,
-        playMenuButtonPressedBgEnabled = playMenuButtonPressedBgEnabled,
-        playMenuAlpha = playMenuAlpha,
-        titleBarHorizontalPadding = titleBarHorizontalPadding,
-        playModeIconPadding = playModeIconPadding,
         sidePanelWidth = sidePanelWidth,
         sidePanelVisible = sidePanelVisible,
         sidePanelKind = sidePanelKind,

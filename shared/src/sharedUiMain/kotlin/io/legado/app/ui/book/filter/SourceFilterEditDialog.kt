@@ -1,4 +1,4 @@
-package io.legado.app.ui.book.filter
+﻿package io.legado.app.ui.book.filter
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -31,7 +31,7 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.book.search.SearchScopeDialog
 import io.legado.app.ui.compose.component.AppCheckbox
-import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
@@ -167,14 +167,14 @@ fun SourceFilterEditDialog(
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp),
             ) {
-                AppOutlinedTextField(
+                AppUnderlineTextField(
                     value = name,
                     onValueChange = { name = it },
                     label = nameLabel,
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                AppOutlinedTextField(
+                AppUnderlineTextField(
                     value = pattern,
                     onValueChange = { pattern = it },
                     label = patternLabel,

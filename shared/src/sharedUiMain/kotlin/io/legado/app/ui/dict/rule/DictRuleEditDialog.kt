@@ -1,4 +1,4 @@
-package io.legado.app.ui.dict.rule
+﻿package io.legado.app.ui.dict.rule
 
 // I18N KEYS (need to register in ResourceProvider.jvm.kt):
 //   "dict_rule_edit_name" to "名称",
@@ -29,7 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.DictRule
 import io.legado.app.help.toast.Toasters
-import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.theme.AppTheme
@@ -197,7 +197,7 @@ fun DictRuleEditDialog(
                     .verticalScroll(rememberScrollState())
                     .padding(16.dp),
             ) {
-                AppOutlinedTextField(
+                AppUnderlineTextField(
                     value = name,
                     onValueChange = { name = it },
                     label = nameLabelText,
@@ -205,7 +205,7 @@ fun DictRuleEditDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.heightIn(min = 8.dp))
-                AppOutlinedTextField(
+                AppUnderlineTextField(
                     value = urlRule,
                     onValueChange = { urlRule = it },
                     label = urlRuleLabelText,
@@ -213,7 +213,7 @@ fun DictRuleEditDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.heightIn(min = 8.dp))
-                AppOutlinedTextField(
+                AppUnderlineTextField(
                     value = showRule,
                     onValueChange = { showRule = it },
                     label = showRuleLabelText,

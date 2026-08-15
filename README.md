@@ -10,11 +10,11 @@
   
 Legado / 开源阅读
 <br>
-Legado is a free and open source novel reader built with Kotlin Multiplatform, running on Android,
-Desktop (Windows / macOS / Linux), iOS and HarmonyOS.
+Legado 是一款基于 Kotlin Multiplatform 构建的自由开源阅读应用，支持 Android、桌面端（Windows / macOS /
+Linux）、iOS 和鸿蒙。
 </div>
 
-[![](https://img.shields.io/badge/-Contents:-696969.svg)](#contents) [![](https://img.shields.io/badge/-Platform-F5F5F5.svg)](#Platform-支持平台-) [![](https://img.shields.io/badge/-Function-F5F5F5.svg)](#Function-主要功能-) [![](https://img.shields.io/badge/-Community-F5F5F5.svg)](#Community-交流社区-) [![](https://img.shields.io/badge/-API-F5F5F5.svg)](#API-) [![](https://img.shields.io/badge/-Other-F5F5F5.svg)](#Other-其他-) [![](https://img.shields.io/badge/-Grateful-F5F5F5.svg)](#Grateful-感谢-) [![](https://img.shields.io/badge/-Interface-F5F5F5.svg)](#Interface-界面-)
+[![](https://img.shields.io/badge/-Contents:-696969.svg)](#contents) [![](https://img.shields.io/badge/-Platform-F5F5F5.svg)](#Platform-支持平台-) [![](https://img.shields.io/badge/-Function-F5F5F5.svg)](#Function-主要功能-) [![](https://img.shields.io/badge/-Download-F5F5F5.svg)](#Download-下载-) [![](https://img.shields.io/badge/-Community-F5F5F5.svg)](#Community-交流社区-) [![](https://img.shields.io/badge/-API-F5F5F5.svg)](#API-) [![](https://img.shields.io/badge/-Other-F5F5F5.svg)](#Other-其他-) [![](https://img.shields.io/badge/-Grateful-F5F5F5.svg)](#Grateful-感谢-) [![](https://img.shields.io/badge/-Interface-F5F5F5.svg)](#Interface-界面-)
 
 >新用户？
 >
@@ -23,7 +23,6 @@ Desktop (Windows / macOS / Linux), iOS and HarmonyOS.
 
 # Platform-支持平台 [![](https://img.shields.io/badge/-Platform-F5F5F5.svg)](#Platform-支持平台-)
 
-<details><summary>中文</summary>
 Legado 已基于 Kotlin Multiplatform (KMP) 重构，同一套代码覆盖以下平台：
 
 | 平台                           | 状态                                   |
@@ -34,16 +33,13 @@ Legado 已基于 Kotlin Multiplatform (KMP) 重构，同一套代码覆盖以下
 | 鸿蒙（HarmonyOS / OpenHarmony）  | 🚧 理论可用，构建时需开启 `enableOhosTarget` 开关 |
 
 > 注：除 Android 外，其余平台目前处于开发/理论支持阶段，功能以 Android 版为准。
-</details>
 
 <a href="#readme">
     <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">
 </a>
 
 # Function-主要功能 [![](https://img.shields.io/badge/-Function-F5F5F5.svg)](#Function-主要功能-)
-[English](English.md)
 
-<details><summary>中文</summary>
 1.自定义书源，自己设置规则，抓取网页数据，规则简单易懂，软件内有规则说明。<br>
 2.列表书架，网格书架自由切换。<br>
 3.书源规则支持搜索及发现，所有找书看书功能全部自定义，找书更方便。<br>
@@ -53,7 +49,21 @@ Legado 已基于 Kotlin Multiplatform (KMP) 重构，同一套代码覆盖以下
 7.支持高度自定义阅读界面，切换字体、颜色、背景、行距、段距、加粗、简繁转换等。<br>
 8.支持多种翻页模式，覆盖、仿真、滑动、滚动等。<br>
 9.软件开源，持续优化，无广告。
-</details>
+
+<a href="#readme">
+    <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">
+</a>
+
+# Download-下载 [![](https://img.shields.io/badge/-Download-F5F5F5.svg)](#Download-下载-)
+
+#### Android
+
+* [发行版（Releases）](https://github.com/huajideshutiao/legado/releases/latest)
+
+#### iOS
+
+* 未签名 IPA - [GitHub Releases](https://github.com/huajideshutiao/legado/releases/latest)（可用
+  SideStore / AltStore 自签侧载）
 
 <a href="#readme">
     <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">

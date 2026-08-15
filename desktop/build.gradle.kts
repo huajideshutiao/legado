@@ -87,7 +87,7 @@ private fun ohosVersion(key: String): String =
     ohosCatalog.findVersion(key).get().requiredVersion
 
 val activeComposeVersion =
-    if (isHarmonyMode) ohosVersion("composeMultiplatform-ohos") else "1.7.1"
+    if (isHarmonyMode) ohosVersion("composeMultiplatform-ohos") else ohosVersion("composeMultiplatform")
 
 configurations.configureEach {
     resolutionStrategy.eachDependency {
@@ -95,6 +95,8 @@ configurations.configureEach {
             requested.version == activeComposeVersion
         ) {
             // CPF 基线 (如 1.9.2-0.5.0-25) 的 Desktop JVM 平台制品 = 主版本 (1.9.2)
+            // 仅鸿蒙模式真正生效 (CPF 版本带后缀 → 重写为主版本); 非鸿蒙模式下
+            // activeComposeVersion = 主版本 (如 1.11.1), useVersion 是同版本 no-op。
             useVersion(activeComposeVersion.substringBefore("-"))
             because("CPF does not publish Desktop JVM variants")
         }
@@ -262,13 +264,14 @@ tasks.matching { it.name == "createRuntimeImage" }.configureEach {
         // Kotlin internal 属性 getter 带模块名后缀 ($compose), 用前缀匹配兼容
         val getter = taskClass.methods.firstOrNull { it.name.startsWith("getCompressionLevel") }
             ?: error("getCompressionLevel not found")
-        val prop = getter.invoke(this) as org.gradle.api.provider.Property<Any?>
+        val prop = getter.invoke(this) as Property<Any>
         val zip = Class.forName(
             "org.jetbrains.compose.desktop.application.internal.RuntimeCompressionLevel",
             true,
             taskClass.classLoader,
         ).enumConstants?.firstOrNull { it.toString() == "ZIP" }
             ?: error("RuntimeCompressionLevel.ZIP not found")
+        // Property<*> 的 set 签名是 set(Nothing?) 无法传值, 按运行期擦除 cast 为 Property<Any>
         prop.set(zip)
         logger.lifecycle("[legado-desktop] jlink --compress=2 (zip) 已启用")
     }.onFailure {

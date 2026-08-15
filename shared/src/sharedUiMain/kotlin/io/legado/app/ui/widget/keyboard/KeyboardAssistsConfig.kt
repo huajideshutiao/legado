@@ -1,4 +1,4 @@
-package io.legado.app.ui.widget.keyboard
+﻿package io.legado.app.ui.widget.keyboard
 
 // 下沉说明：辅助按键配置 UI（原 app 端 KeyboardAssistsConfig BaseComposeDialogFragment 下沉）。
 // 数据实体 KeyboardAssist/DAO 在 commonMain (AppDbProviders.keyboardAssistsDao), 本文件只画 UI:
@@ -34,7 +34,7 @@ import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.component.appDialogSize
@@ -175,14 +175,14 @@ internal fun KeyboardAssistsConfigOverlayContent(overlay: AppOverlay.Dialog, nav
             cancelButton = AlertButton(stringResource(Res.string.cancel)) { showEdit = false },
         ) {
             Column(Modifier.padding(horizontal = 24.dp)) {
-                AppOutlinedTextField(
+                AppUnderlineTextField(
                     value = key.value,
                     onValueChange = { key.value = it },
                     label = "key",
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                AppOutlinedTextField(
+                AppUnderlineTextField(
                     value = value.value,
                     onValueChange = { value.value = it },
                     label = "value",

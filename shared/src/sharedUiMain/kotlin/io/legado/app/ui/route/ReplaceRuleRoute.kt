@@ -1,4 +1,4 @@
-package io.legado.app.ui.route
+﻿package io.legado.app.ui.route
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -35,7 +35,7 @@ import io.legado.app.ui.association.ImportReplaceRuleItemsVm
 import io.legado.app.ui.association.ImportReplaceRuleViewModelShared
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
@@ -246,7 +246,7 @@ private fun ReplaceGroupManageDialog(
                 )
                 if (editing != null) {
                     Column(Modifier.padding(16.dp)) {
-                        AppOutlinedTextField(
+                        AppUnderlineTextField(
                             value = editing!!.second,
                             onValueChange = { editing = editing!!.first to it },
                             label = stringResource(Res.string.group_name),

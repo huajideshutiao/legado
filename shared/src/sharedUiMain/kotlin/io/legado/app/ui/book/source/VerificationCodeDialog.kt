@@ -1,4 +1,4 @@
-package io.legado.app.ui.book.source
+﻿package io.legado.app.ui.book.source
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
@@ -31,7 +31,7 @@ import io.legado.app.help.source.SourceHelp
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppDropdownMenu
-import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.widget.dialog.PhotoViewDialog
 import kotlinx.coroutines.launch
@@ -175,7 +175,7 @@ fun VerificationCodeDialog(
                         modifier = Modifier.padding(vertical = 8.dp),
                     )
                 }
-                AppOutlinedTextField(
+                AppUnderlineTextField(
                     value = code,
                     onValueChange = { code = it },
                     label = stringResource(Res.string.verification_code),
