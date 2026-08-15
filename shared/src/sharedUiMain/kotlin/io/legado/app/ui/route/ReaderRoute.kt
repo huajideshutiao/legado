@@ -539,6 +539,10 @@ fun ReaderRoute(
                 }
 
                 RouteResults.BOOK_SOURCE_EDIT -> {
+                    // 对照原版 ReadBookActivity.sourceEditActivity: 仅 resultCode==RESULT_OK
+                    // (真正保存) 才回调; BookSourceEditRoute 退出未保存时 pop 不带 payload,
+                    // 此处忽略, 避免误触发书源引用刷新/菜单重绘
+                    if (result.payload !is RouteResultPayload.BookSourceEdit) return@collect
                     screenModel.viewModel.upBookSource()
                     screenModel.menuState.refresh()
                 }
@@ -548,7 +552,9 @@ fun ReaderRoute(
                 RouteResults.BOOK_INFO -> when (result.payload) {
                     is RouteResultPayload.Deleted -> navigator.pop()
                     is RouteResultPayload.Ok -> navigator.pop(RouteResultPayload.Deleted)
-                    else -> Unit
+                    // 书籍详情正常返回 (未删书): 补载缺失章节 (对照原版
+                    // bookInfoActivity 回调 else 分支 → ReadBook.loadOrUpContent)
+                    else -> screenModel.viewModel.loadOrUpContent()
                 }
 
                 RouteResults.CHANGE_CHAPTER_SOURCE -> {

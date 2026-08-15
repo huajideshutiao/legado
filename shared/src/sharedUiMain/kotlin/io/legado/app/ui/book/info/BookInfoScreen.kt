@@ -23,10 +23,8 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
-import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.appendInlineContent
@@ -76,6 +74,7 @@ import io.legado.app.ui.compose.component.rememberPullToRefreshState
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.platform.transitionStatusBarHeight
 import io.legado.app.ui.compose.platform.transitionStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -330,7 +329,7 @@ private fun PortraitLayout(
                         )
                     }
                     Column(Modifier.fillMaxWidth()) {
-                        Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
+                        Spacer(Modifier.height(transitionStatusBarHeight()))
                         Spacer(Modifier.height(56.dp)) // actionBarSize
                         if (state.useDevFeat) TopSectionHorizontal(state, coverSlot)
                         else TopSectionVertical(state, coverSlot, land = false)
@@ -411,7 +410,7 @@ private fun LandscapeLayout(
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = 8.dp),
                 ) {
-                    Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
+                    Spacer(Modifier.height(transitionStatusBarHeight()))
                     ActionsRow(state, actions, Modifier)
                     KindsSection(state, actions, Modifier)
                     IntroSection(state, actions, introImageSlot, Modifier.padding(start = 8.dp, bottom = 8.dp))

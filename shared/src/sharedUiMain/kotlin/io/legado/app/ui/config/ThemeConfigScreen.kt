@@ -67,7 +67,9 @@ fun ThemeConfigScreen(
     val icons = stringArrayResource(Res.array.icons)
     // 换图标图集：按 mipmap 名解析预览 painter（复刻 IconListPreference：getIdentifier + getCompatDrawable）。
     // 图标是自适应图标(AdaptiveIconDrawable)，painterResource 不支持，Android actual 内部转 bitmap 后包 BitmapPainter。
-    val iconPainters = rememberLauncherIconPainters(icons)
+    // 仅在"换图标"项展示时求值 (桌面/鸿蒙 launcherIconChangeSupported=false 隐藏该项,
+    // 同时跳过 rememberLauncherIconPainters 调用, 对应端 actual 返回空列表)。
+    val iconPainters = if (iconChangeSupported) rememberLauncherIconPainters(icons) else emptyList()
 
     val titleBookshelfLayout = stringResource(Res.string.bookshelf_layout)
     val titleSearchLayout = stringResource(Res.string.search_layout)

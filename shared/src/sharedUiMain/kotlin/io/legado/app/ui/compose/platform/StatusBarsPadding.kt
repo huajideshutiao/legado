@@ -6,6 +6,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 
 /**
  * 跨平台状态栏沉浸 padding。
@@ -91,6 +93,27 @@ fun Modifier.transitionStatusBarPadding(): Modifier {
         return this.padding(top = with(density) { frozenPx.toDp() })
     }
     return statusBarFixedPadding()
+}
+
+/**
+ * 转场安全的状态栏高度 (Dp): 语义同 [transitionStatusBarPadding], 以高度值返回,
+ * 供滚动内容区的顶部占位 spacer 使用 (如书籍详情页封面/简介区 —— 顶栏走冻结
+ * padding 不动, 内容区若仍逐帧读实时 insets, 会在系统栏显隐动画期间被上抬)。
+ */
+@Composable
+fun transitionStatusBarHeight(): Dp {
+    val frozenPx = LocalTransitionFrozenStatusBarHeightPx.current
+    if (frozenPx != null) {
+        if (frozenPx <= 0) return 0.dp
+        val density = LocalDensity.current
+        return with(density) { frozenPx.toDp() }
+    }
+    // 非转场: 事件化高度 (隐藏时 0, 显示时固定状态栏高, 仅显隐翻转时重排一次)
+    val hidden = rememberStatusBarHidden()
+    val heightPx = rememberVisibleStatusBarHeightPx()
+    if (hidden || heightPx <= 0) return 0.dp
+    val density = LocalDensity.current
+    return with(density) { heightPx.toDp() }
 }
 
 /**

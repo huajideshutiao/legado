@@ -20,6 +20,9 @@ import org.jetbrains.compose.resources.stringResource
  * 支持 key 清单 (来源: app 端 B 类 Composable 实际使用清单) 见 ComposeResourceLookup;
  * 未识别 key 兜底: Painter → 占位图标 `ic_material_help`; String → key 本身;
  * Color → Color.Unspecified (调用方应保证 key 命中, 否则不绘制)。
+ *
+ * [rememberColor] 的色值定义统一在 ColorPalette.kt (单一数据源): Android 优先读
+ * 系统资源 (values-night/动态主题), 资源缺失时回退色板; 其余端直接查色板。
  */
 @Composable
 fun rememberPainter(key: String): Painter {

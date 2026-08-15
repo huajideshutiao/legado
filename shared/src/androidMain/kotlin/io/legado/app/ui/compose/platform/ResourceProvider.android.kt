@@ -10,6 +10,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.colorResource
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toBitmap
+import io.legado.app.ui.compose.theme.LocalAppColors
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -57,6 +58,10 @@ actual fun rememberLauncherIconPainters(iconValues: List<String>): List<Painter?
 actual fun rememberColor(key: String): Color {
     val context = LocalContext.current
     val id = resolveResourceId(context, key, "color")
-    return colorResource(id)
+    if (id != 0) return colorResource(id)
+    // 资源缺失 (getIdentifier 返回 0, 如被 lint 清理删除的颜色) 时回退共享色板
+    // (ColorPalette.kt), 避免 colorResource(0) 抛 Resources$NotFoundException;
+    // 仍存在的资源键 (background/arco_* 等) 不受影响, values-night 与动态主题照常走资源。
+    return resolvePaletteColor(key, LocalAppColors.current.isDark)
 }
 

@@ -15,12 +15,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -48,6 +50,20 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /**
+ * 是否位于对话框窗口内 (由 [AppDialog] / [AppBottomSheetDialog] 在内容根部提供)。
+ *
+ * 对话框是独立窗口, 系统栏避让由窗口自身承担:
+ * - `decorFitsSystemWindows = true` (本应用对话框默认) 时窗口内容区已避开状态栏;
+ * - Android 15+ (targetSdk 35+ 强制 edge-to-edge) 时窗口虽为全屏, 但本应用弹层内容
+ *   为 0.8~0.92 锚点高、底部贴齐或居中, 顶部均不触及状态栏区域。
+ *
+ * 因此对话框内的顶栏组件 (如 [AppTitleBar]) 不应再叠加状态栏 padding, 否则出现
+ * 双重避让 → 弹窗顶部多出一层状态栏高的空白带。路由页 (非对话框) 默认 false,
+ * 顶栏继续按页面语义做状态栏沉浸 padding。
+ */
+val LocalDialogWindow = staticCompositionLocalOf { false }
+
+/**
  * 对话框统一窗口, 带 app 版 Animation.Dialog 动画: 进入 decelerate 中心缩放
  * (系统 dialog_enter.xml: 200ms scale 0.96→1 + 淡入), 退出 accelerate 淡出
  * (系统 dialog_exit.xml: 150ms); 时长/插值器读平台动画 spec (Android 端动态读系统动画缩放),
@@ -72,50 +88,58 @@ fun AppDialog(
         if (AppConfigProviders.get().isEInkMode) onDismissRequest() else dismissing = true
     }
     if (AppConfigProviders.get().isEInkMode) {
-        Dialog(onDismissRequest = onDismissRequest, properties = properties, content = content)
+        Dialog(
+            onDismissRequest = onDismissRequest,
+            properties = properties,
+            content = {
+                CompositionLocalProvider(LocalDialogWindow provides true) { content() }
+            },
+        )
         return
     }
     // 对话框动画平台 spec (时长/插值器按平台对话框转场语义, Android 动态读系统动画时长缩放)
     val dialogSpec = remember { PlatformCapabilityProviders.get().dialogTransitionSpec }
     Dialog(onDismissRequest = { dismissing = true }, properties = properties) {
-        // Android 补平台 dim 0.6 (对齐桌面/iOS 0.6 scrim); E-Ink 分支在上方已跳过 (对齐原版 E-Ink 清 dim)
-        if (dim) PlatformDialogDim()
-        val progress = remember { Animatable(0f) }
-        // 进入: 缩放 enterScaleFrom→1 + 淡入 (对齐系统 dialog_enter.xml, 参数读平台 spec)
-        LaunchedEffect(Unit) {
-            progress.animateTo(
-                1f,
-                tween(
-                    durationMillis = dialogSpec.enterDurationMillis,
-                    easing = dialogSpec.enterEasing.toComposeEasing(),
-                )
-            )
-        }
-        // 退出: 淡出播完再关闭 (对齐系统 dialog_exit.xml, 参数读平台 spec)
-        LaunchedEffect(dismissing) {
-            if (dismissing) {
+        CompositionLocalProvider(LocalDialogWindow provides true) {
+            // Android 补平台 dim 0.6 (对齐桌面/iOS 0.6 scrim); E-Ink 分支在上方已跳过 (对齐原版 E-Ink 清 dim)
+            if (dim) PlatformDialogDim()
+            val progress = remember { Animatable(0f) }
+            // 进入: 缩放 enterScaleFrom→1 + 淡入 (对齐系统 dialog_enter.xml, 参数读平台 spec)
+            LaunchedEffect(Unit) {
                 progress.animateTo(
-                    0f,
+                    1f,
                     tween(
-                        durationMillis = dialogSpec.exitDurationMillis,
-                        easing = dialogSpec.exitEasing.toComposeEasing(),
+                        durationMillis = dialogSpec.enterDurationMillis,
+                        easing = dialogSpec.enterEasing.toComposeEasing(),
                     )
                 )
-                onDismissRequest()
             }
-        }
-        val p = progress.value
-        // 不套 fillMaxSize: 对话框窗口是 wrap_content, 撑满会占掉整个可用空间;
-        // Box 尺寸跟随内容, 缩放/淡入只作用于内容框本身
-        Box(
-            Modifier.graphicsLayer {
-                val scale = dialogSpec.enterScaleFrom + (1f - dialogSpec.enterScaleFrom) * p
-                scaleX = scale
-                scaleY = scale
-                alpha = if (dialogSpec.enterFadeIn) p else 1f
-            },
-        ) {
-            content()
+            // 退出: 淡出播完再关闭 (对齐系统 dialog_exit.xml, 参数读平台 spec)
+            LaunchedEffect(dismissing) {
+                if (dismissing) {
+                    progress.animateTo(
+                        0f,
+                        tween(
+                            durationMillis = dialogSpec.exitDurationMillis,
+                            easing = dialogSpec.exitEasing.toComposeEasing(),
+                        )
+                    )
+                    onDismissRequest()
+                }
+            }
+            val p = progress.value
+            // 不套 fillMaxSize: 对话框窗口是 wrap_content, 撑满会占掉整个可用空间;
+            // Box 尺寸跟随内容, 缩放/淡入只作用于内容框本身
+            Box(
+                Modifier.graphicsLayer {
+                    val scale = dialogSpec.enterScaleFrom + (1f - dialogSpec.enterScaleFrom) * p
+                    scaleX = scale
+                    scaleY = scale
+                    alpha = if (dialogSpec.enterFadeIn) p else 1f
+                },
+            ) {
+                content()
+            }
         }
     }
 }
@@ -165,10 +189,12 @@ fun AppBottomSheetDialog(
     }
     if (AppConfigProviders.get().isEInkMode) {
         Dialog(onDismissRequest = onDismissRequest, properties = properties) {
-            BottomSheetScaffold(
-                onDismissRequest = onDismissRequest,
-                maxHeight = maxHeight
-            ) { content() }
+            CompositionLocalProvider(LocalDialogWindow provides true) {
+                BottomSheetScaffold(
+                    onDismissRequest = onDismissRequest,
+                    maxHeight = maxHeight
+                ) { content() }
+            }
         }
         return
     }
@@ -238,7 +264,13 @@ fun AppBottomSheetDialog(
                 }
 
                 override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-                    settleDrag(available.y)
+                    // 本回调只在"内部列表赢得手势并 fling"时触发 (两条拖拽路径互斥:
+                    // 面板跟手的 pointerInput 路径赢得手势时列表无 fling, 不会走到这里;
+                    // 列表赢得手势时 pointerInput 已让位, 关闭判定由 pointerInput 路径负责)。
+                    // 因此这里的 fling 必然是列表自身滚动 (滚到顶/底的剩余惯性), 速度
+                    // 不得触发"快速下拉关闭"——只按位移判定 (滚到顶后继续下拉、位移达
+                    // 阈值仍可关闭) 或回弹复位面板残留位移 (滚动尾段把面板带起的一点位移)。
+                    settleDrag(0f)
                     return available
                 }
             }
@@ -323,7 +355,11 @@ fun AppBottomSheetDialog(
                         settleDrag(velocityTracker.calculateVelocity().y)
                     }
                 },
-        ) { content() }
+        ) {
+            // 标记内容位于对话框窗口内: 顶栏 (AppTitleBar) 据此跳过状态栏 padding
+            // (窗口已自行避让系统栏 / sheet 贴底不达状态栏, 避免双重避让顶部空白)
+            CompositionLocalProvider(LocalDialogWindow provides true) { content() }
+        }
     }
 }
 

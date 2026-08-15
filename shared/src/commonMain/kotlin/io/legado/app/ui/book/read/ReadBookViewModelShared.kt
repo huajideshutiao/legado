@@ -1458,10 +1458,12 @@ class ReadBookViewModelShared(
     }
 
     /**
-     * 书源编辑后刷新 (对照 app 端 ReadBookViewModel.upBookSource(success) + BaseReadViewModel.upSource/onUpSource)。
+     * 书源编辑保存后刷新书源引用 (对照 app 端 ReadBookViewModel.upBookSource(success)
+     * + BaseReadViewModel.upSource/onUpSource: `ReadBook.bookSource = appDb.bookSourceDao.getBookSource(book.origin)`)。
      *
-     * 重新从 DB 加载书源 (app 端 onUpSource: `ReadBook.bookSource = appDb.bookSourceDao.getBookSource(book.origin)`)
-     * 并刷新当前章正文。success 在书源加载完成后触发。
+     * 只更新引用不重载正文: 当前章已排版内容保持不变, 新书源 (含新 jslib, 保存时已
+     * SharedJsScope.remove 旧作用域) 在后续 JS 调用/翻章/手动刷新时自然生效,
+     * 与 app 端 upBookSource 行为一致。success 在书源加载完成后触发。
      */
     fun upBookSource(success: (() -> Unit)? = null) {
         scope.launch {
@@ -1472,13 +1474,27 @@ class ReadBookViewModelShared(
                     AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
                 }.getOrNull()
                 readBook.updateBookSource(source)
-                // 刷新当前章 (对照 app 端 upSource 后内容刷新)
-                processedContentCache.remove(readBook.durChapterIndex.value)
-                readBook.clearTextChapter()
-                val index = readBook.durChapterIndex.value
-                launchChapterLoad(index) { loadContent(index) }
             }
             success?.invoke()
+        }
+    }
+
+    /**
+     * 子页返回后补载缺失章节 (对照 app 端 `ReadBook.loadOrUpContent`):
+     * 当前章/前后章滑窗为空时补装载, 已装载的不重载 (不刷新正文)。
+     * 用于书籍详情等子页返回阅读页后 (原版 bookInfoActivity 回调 else 分支)。
+     */
+    fun loadOrUpContent() {
+        val book = readBook.book.value ?: return
+        val durIndex = readBook.durChapterIndex.value
+        if (readBook.curTextChapter.value == null) {
+            launchChapterLoad(durIndex) { loadContent(durIndex) }
+        }
+        if (readBook.nextTextChapter.value == null && durIndex + 1 < readBook.chapterSize) {
+            launchChapterLoad(durIndex + 1) { loadContent(durIndex + 1) }
+        }
+        if (readBook.prevTextChapter.value == null && durIndex - 1 >= 0) {
+            launchChapterLoad(durIndex - 1) { loadContent(durIndex - 1) }
         }
     }
     // endregion
