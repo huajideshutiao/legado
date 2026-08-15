@@ -1,7 +1,6 @@
 package io.legado.app.ui.config
 
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.tooling.preview.Preview
 import io.legado.app.constant.PreferKey
 import io.legado.app.ui.compose.platform.rememberLauncherIconPainters
 import io.legado.app.ui.compose.preference.PreferenceScreen
@@ -9,7 +8,6 @@ import io.legado.app.ui.compose.preference.iconListPreference
 import io.legado.app.ui.compose.preference.preference
 import io.legado.app.ui.compose.preference.switchPreference
 import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.preview.LegadoThemePreview
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.book_info_horizontal_layout
 import legado.shared.generated.resources.book_info_horizontal_layout_summary
@@ -152,66 +150,4 @@ fun ThemeConfigScreen(
             )
         }
     }
-}
-
-// ===== @Preview 合并自 androidMain 的 config/ThemeConfigScreenPreviews.kt =====
-
-/**
- * [ThemeConfigScreen.kt] 中 [ThemeConfigScreen] 的 @Preview。
- *
- * ThemeConfigScreen 用 rememberStringArray 取图标名/值, rememberLauncherIconPainters
- * 解析 launcher 图标 painter (平台 actual: Android 端转 Bitmap, 其他端可能返回空/占位)。
- * rememberString 在 jvm Preview 端未命中 key 时返回 key 本身, 部分文案为 key 字符串。
- */
-
-@Preview
-@Composable
-fun ThemeConfigScreenPreview() = LegadoThemePreview {
-    ThemeConfigScreen(
-        fontScaleSummary = "1.0 倍",
-        onBookshelfLayout = {},
-        onSearchLayout = {},
-        onCoverConfig = {},
-        onWelcomeStyle = {},
-        onBottomNavConfig = {},
-        onThemeList = {},
-        onCustomizeDayTheme = {},
-        onCustomizeNightTheme = {},
-        onFontScale = {},
-    )
-}
-
-@Preview
-@Composable
-fun ThemeConfigScreenDarkPreview() = LegadoThemePreview(dark = true) {
-    ThemeConfigScreen(
-        fontScaleSummary = "1.0 倍",
-        onBookshelfLayout = {},
-        onSearchLayout = {},
-        onCoverConfig = {},
-        onWelcomeStyle = {},
-        onBottomNavConfig = {},
-        onThemeList = {},
-        onCustomizeDayTheme = {},
-        onCustomizeNightTheme = {},
-        onFontScale = {},
-    )
-}
-
-@Preview
-@Composable
-fun ThemeConfigScreenLargeFontPreview() = LegadoThemePreview {
-    // 大字体 + 多行的态
-    ThemeConfigScreen(
-        fontScaleSummary = "1.3 倍",
-        onBookshelfLayout = {},
-        onSearchLayout = {},
-        onCoverConfig = {},
-        onWelcomeStyle = {},
-        onBottomNavConfig = {},
-        onThemeList = {},
-        onCustomizeDayTheme = {},
-        onCustomizeNightTheme = {},
-        onFontScale = {},
-    )
 }

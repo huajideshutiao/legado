@@ -31,7 +31,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.BookSourcePart
@@ -50,7 +49,6 @@ import io.legado.app.ui.compose.platform.rememberNavigationBarPaddingValues
 import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import io.legado.app.ui.preview.LegadoThemePreview
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.add_book_source
 import legado.shared.generated.resources.book_source
@@ -587,97 +585,4 @@ private fun CheckSourceProgress(msg: String, onCancel: () -> Unit) {
             modifier = Modifier.clickable { onCancel() },
         )
     }
-}
-
-// ===== @Preview 合并自 androidMain 的 book/source/BookSourceListScreenPreviews.kt =====
-
-/**
- * [BookSourceListScreen] 的 @Preview。
- *
- * 假数据: [BookSourcePart] 列表用纯内存对象构造, [BookSourceListState] /
- * [BookSourceListCallbacks] 用默认值 + 假数据填充。
- */
-
-private val previewSources = listOf(
-    BookSourcePart(
-        bookSourceUrl = "https://source1.com",
-        bookSourceName = "测试书源1",
-        bookSourceGroup = "默认",
-        enabled = true,
-        enabledExplore = true,
-        hasLoginUrl = false,
-        hasExploreUrl = true,
-        respondTime = 200L,
-        weight = 100,
-    ),
-    BookSourcePart(
-        bookSourceUrl = "https://source2.com",
-        bookSourceName = "测试书源2",
-        bookSourceGroup = "默认",
-        enabled = true,
-        enabledExplore = false,
-        hasLoginUrl = true,
-        hasExploreUrl = false,
-        respondTime = 350L,
-        weight = 80,
-    ),
-    BookSourcePart(
-        bookSourceUrl = "https://source3.com",
-        bookSourceName = "测试书源3(禁用)",
-        bookSourceGroup = "备用",
-        enabled = false,
-        enabledExplore = false,
-        hasLoginUrl = false,
-        hasExploreUrl = false,
-        respondTime = 1200L,
-        weight = 0,
-    ),
-)
-
-private val previewState = BookSourceListState(
-    sources = previewSources,
-    selected = setOf("https://source2.com"),
-    searchKey = "",
-    groups = listOf("默认", "备用"),
-)
-
-private val previewCallbacks = BookSourceListCallbacks(
-    getSourceHost = { url ->
-        // 简易 host 提取: 去掉 scheme 后取到首个 / 之前的部分 (Preview 用, 避免平台依赖)
-        url.substringAfter("://").substringBefore("/").ifEmpty { "#" }
-    },
-)
-
-private val previewStateChecking = previewState.copy(
-    checkSourceVisible = true,
-    checkSourceMsg = "正在校验 2/3...",
-)
-
-private val previewStateEmpty = BookSourceListState(
-    sources = emptyList(),
-    groups = listOf("默认"),
-)
-
-@Preview
-@Composable
-fun BookSourceListScreenPreview() = LegadoThemePreview {
-    BookSourceListScreen(state = previewState, callbacks = previewCallbacks)
-}
-
-@Preview
-@Composable
-fun BookSourceListScreenCheckingPreview() = LegadoThemePreview {
-    BookSourceListScreen(state = previewStateChecking, callbacks = previewCallbacks)
-}
-
-@Preview
-@Composable
-fun BookSourceListScreenEmptyPreview() = LegadoThemePreview {
-    BookSourceListScreen(state = previewStateEmpty, callbacks = previewCallbacks)
-}
-
-@Preview
-@Composable
-fun BookSourceListScreenDarkPreview() = LegadoThemePreview(dark = true) {
-    BookSourceListScreen(state = previewState, callbacks = previewCallbacks)
 }

@@ -42,9 +42,6 @@ import legado.shared.generated.resources.ic_add
 import legado.shared.generated.resources.ok
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
-import io.legado.app.ui.preview.previewGroupSample
 
 /**
  * 书架分组管理对话框。
@@ -178,58 +175,4 @@ private fun RuleItemScope.GroupManageItem(
                 .padding(8.dp),
         )
     }
-}
-
-// ===== @Preview 合并自 androidMain 的 book/group/GroupDialogsPreviews.kt (GroupManageDialog) =====
-
-// ---- GroupManageDialog ----
-
-
-private val previewGroups = listOf(
-    previewGroupSample,
-    BookGroup(groupId = 2, groupName = "已完结", order = 1),
-    BookGroup(groupId = 4, groupName = "待读", order = 2, enableRefresh = false),
-)
-
-
-@Preview
-@Composable
-fun GroupManageDialogPreview() = LegadoThemePreview {
-    GroupManageDialog(
-        groups = previewGroups,
-        onAddGroup = {},
-        onEditGroup = {},
-        onUpdateGroup = {},
-        onPersistOrder = {},
-        onDismiss = {},
-        canAddGroup = { true },
-    )
-}
-
-@Preview
-@Composable
-fun GroupManageDialogEmptyPreview() = LegadoThemePreview {
-    GroupManageDialog(
-        groups = emptyList(),
-        onAddGroup = {},
-        onEditGroup = {},
-        onUpdateGroup = {},
-        onPersistOrder = {},
-        onDismiss = {},
-        canAddGroup = { true },
-    )
-}
-
-@Preview
-@Composable
-fun GroupManageDialogDarkPreview() = LegadoThemePreview(dark = true) {
-    GroupManageDialog(
-        groups = previewGroups,
-        onAddGroup = {},
-        onEditGroup = {},
-        onUpdateGroup = {},
-        onPersistOrder = {},
-        onDismiss = {},
-        canAddGroup = { true },
-    )
 }

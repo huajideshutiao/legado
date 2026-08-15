@@ -22,10 +22,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.height
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * alert DSL 的按钮槽：文案 + 点击回调。dismissOnClick=false 时点击不关闭对话框
@@ -202,99 +198,4 @@ private fun AlertTextButton(button: AlertButton, onDismissRequest: () -> Unit) {
         button.onClick?.invoke()
         if (button.dismissOnClick) onDismissRequest()
     }
-}
-
-// ===== @Preview 合并自 androidMain 的 compose/component/AppAlertDialogPreviews.kt =====
-
-/**
- * [AppAlertDialog.kt] 中各 Composable 的 @Preview。
- * - [AppAlertDialog]: alert 对话框 (含 Dialog 窗口)
- * - [AppAlertDialogContent]: alert 正文 (不含窗口, 适合预览样式)
- * - [AppSelectorDialog]: 列表选择型 alert
- * - [AppSelectorList]: 列表正文
- *
- * 注: 含 Dialog/Popup 的 Composable 在 IDE Preview 中可能渲染受限,
- * 故优先 Preview 不含窗口的 [AppAlertDialogContent] / [AppSelectorList]。
- */
-
-@Preview
-@Composable
-fun AppAlertDialogContentPreview() = LegadoThemePreview {
-    Box(Modifier.padding(16.dp)) {
-        AppAlertDialogContent(
-            onDismissRequest = {},
-            title = "对话框标题",
-            message = "这是对话框的正文内容, 用于提示用户确认操作。",
-            okButton = AlertButton(text = "确认"),
-            cancelButton = AlertButton(text = "取消"),
-            widthFraction = 0.9f,
-        )
-    }
-}
-
-@Preview
-@Composable
-fun AppAlertDialogContentDarkPreview() = LegadoThemePreview(dark = true) {
-    Box(Modifier.padding(16.dp)) {
-        AppAlertDialogContent(
-            onDismissRequest = {},
-            title = "深色对话框",
-            message = "深色主题下的对话框内容。",
-            okButton = AlertButton(text = "确认"),
-            cancelButton = AlertButton(text = "取消"),
-        )
-    }
-}
-
-@Preview
-@Composable
-fun AppAlertDialogContentWithCustomViewPreview() = LegadoThemePreview {
-    Box(Modifier.padding(16.dp)) {
-        AppAlertDialogContent(
-            onDismissRequest = {},
-            title = "带自定义视图",
-            okButton = AlertButton(text = "确认"),
-            cancelButton = AlertButton(text = "取消"),
-        ) {
-            Column(Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
-                Text("自定义内容行 1")
-                Spacer(Modifier.height(8.dp))
-                Text("自定义内容行 2")
-            }
-        }
-    }
-}
-
-@Preview
-@Composable
-fun AppAlertDialogPreview() = LegadoThemePreview {
-    AppAlertDialog(
-        onDismissRequest = {},
-        title = "对话框标题",
-        message = "完整对话框 (含 Dialog 窗口)。",
-        okButton = AlertButton(text = "确认"),
-        cancelButton = AlertButton(text = "取消"),
-    )
-}
-
-@Preview
-@Composable
-fun AppSelectorListPreview() = LegadoThemePreview {
-    Box(Modifier.padding(16.dp)) {
-        AppSelectorList(
-            items = listOf("选项一", "选项二", "选项三", "选项四"),
-            onItemClick = {},
-        )
-    }
-}
-
-@Preview
-@Composable
-fun AppSelectorDialogPreview() = LegadoThemePreview {
-    AppSelectorDialog(
-        onDismissRequest = {},
-        title = "选择一项",
-        items = listOf("选项一", "选项二", "选项三"),
-        onItemSelected = {},
-    )
 }

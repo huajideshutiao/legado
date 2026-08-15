@@ -58,7 +58,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
@@ -69,7 +68,6 @@ import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import io.legado.app.ui.preview.LegadoThemePreview
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.chapter_list
 import legado.shared.generated.resources.flow_sys
@@ -463,108 +461,3 @@ private fun BottomIconButton(
         )
     }
 }
-
-// ===== @Preview 合并自 androidMain 的 book/read/config/ReadConfigDialogPreviews.kt (ReadAloudDialog) =====
-
-// ===== ReadAloudDialog =====
-
-@Preview
-@Composable
-fun ReadAloudDialogPlayingPreview() = LegadoThemePreview {
-    ReadAloudDialog(
-        isPlaying = true,
-        initialTimer = 0,
-        initialSpeechRate = 5,
-        initialFollowSys = false,
-        onPlayPause = {},
-        onStop = {},
-        onPrev = {},
-        onNext = {},
-        onPrevParagraph = {},
-        onNextParagraph = {},
-        onSetTimer = {},
-        onAdjustSpeed = {},
-        onFollowSysChange = {},
-        onOpenChapterList = {},
-        onShowMenuBar = {},
-        onBackstage = {},
-        onOpenSettings = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun ReadAloudDialogPausedPreview() = LegadoThemePreview {
-    ReadAloudDialog(
-        isPlaying = false,
-        initialTimer = 30,
-        initialSpeechRate = 15,
-        initialFollowSys = false,
-        onPlayPause = {},
-        onStop = {},
-        onPrev = {},
-        onNext = {},
-        onPrevParagraph = {},
-        onNextParagraph = {},
-        onSetTimer = {},
-        onAdjustSpeed = {},
-        onFollowSysChange = {},
-        onOpenChapterList = {},
-        onShowMenuBar = {},
-        onBackstage = {},
-        onOpenSettings = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun ReadAloudDialogFollowSysPreview() = LegadoThemePreview {
-    ReadAloudDialog(
-        isPlaying = true,
-        initialTimer = 0,
-        initialSpeechRate = 5,
-        initialFollowSys = true,
-        onPlayPause = {},
-        onStop = {},
-        onPrev = {},
-        onNext = {},
-        onPrevParagraph = {},
-        onNextParagraph = {},
-        onSetTimer = {},
-        onAdjustSpeed = {},
-        onFollowSysChange = {},
-        onOpenChapterList = {},
-        onShowMenuBar = {},
-        onBackstage = {},
-        onOpenSettings = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun ReadAloudDialogDarkPreview() = LegadoThemePreview(dark = true) {
-    ReadAloudDialog(
-        isPlaying = true,
-        initialTimer = 60,
-        initialSpeechRate = 10,
-        initialFollowSys = false,
-        onPlayPause = {},
-        onStop = {},
-        onPrev = {},
-        onNext = {},
-        onPrevParagraph = {},
-        onNextParagraph = {},
-        onSetTimer = {},
-        onAdjustSpeed = {},
-        onFollowSysChange = {},
-        onOpenChapterList = {},
-        onShowMenuBar = {},
-        onBackstage = {},
-        onOpenSettings = {},
-        onDismiss = {},
-    )
-}
-

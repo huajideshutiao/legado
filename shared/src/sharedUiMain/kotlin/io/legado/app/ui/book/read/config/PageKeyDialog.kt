@@ -29,7 +29,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
@@ -38,7 +37,6 @@ import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import io.legado.app.ui.preview.LegadoThemePreview
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.custom_page_key
 import legado.shared.generated.resources.next_page_key
@@ -208,45 +206,3 @@ private fun buildKeyMappings(prev: String, next: String): Map<Int, String> {
         .forEach { result[it] = "next_page" }
     return result
 }
-
-// ===== @Preview 合并自 androidMain 的 book/read/config/ReadConfigDialogPreviews.kt (PageKeyDialog) =====
-
-// ===== PageKeyDialog =====
-
-private val previewKeyMappings = mapOf(
-    21 to "prev_page",  // KEYCODE_DPAD_LEFT
-    22 to "next_page",  // KEYCODE_DPAD_RIGHT
-    19 to "prev_page",  // KEYCODE_DPAD_UP
-    20 to "next_page",  // KEYCODE_DPAD_DOWN
-)
-
-@Preview
-@Composable
-fun PageKeyDialogPreview() = LegadoThemePreview {
-    PageKeyDialog(
-        keyMappings = previewKeyMappings,
-        onConfirm = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun PageKeyDialogEmptyPreview() = LegadoThemePreview {
-    PageKeyDialog(
-        keyMappings = emptyMap(),
-        onConfirm = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun PageKeyDialogDarkPreview() = LegadoThemePreview(dark = true) {
-    PageKeyDialog(
-        keyMappings = previewKeyMappings,
-        onConfirm = {},
-        onDismiss = {},
-    )
-}
-

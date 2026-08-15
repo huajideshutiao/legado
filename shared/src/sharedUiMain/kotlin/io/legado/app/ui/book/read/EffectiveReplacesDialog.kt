@@ -47,8 +47,6 @@ import legado.shared.generated.resources.ic_add
 import legado.shared.generated.resources.source_filter_rule_manage
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 净化替换临时生效对话框 (KMP 共享, app + desktop 复用)。
@@ -186,83 +184,3 @@ fun EffectiveReplacesDialog(
         }
     }
 }
-
-// ===== @Preview 合并自 androidMain 的 book/read/ReadDialogsPreviews.kt (EffectiveReplacesDialog) =====
-
-// ===== EffectiveReplacesDialog =====
-
-
-/**
- * [EffectiveReplacesDialog.kt] / [EffectiveReplacesScreen.kt] / [ContentEditDialog.kt] 的 @Preview。
- *
- * 假数据: [Book] / [ReplaceRule] 用纯内存对象构造, 不依赖 DB。
- */
-
-private val previewReplaceRules = listOf(
-    ReplaceRule(
-        id = 1L,
-        name = "净化广告",
-        pattern = "<ad>.*?</ad>",
-        replacement = "",
-    ),
-    ReplaceRule(
-        id = 2L,
-        name = "繁简转换",
-        pattern = "[繁體]",
-        replacement = "[简体]",
-    ),
-    ReplaceRule(
-        id = 3L,
-        name = "去除水印",
-        pattern = "本章未完.*?请翻页",
-        replacement = "",
-    ),
-)
-
-
-private val previewBook = Book(
-    name = "三体",
-    author = "刘慈欣",
-    bookUrl = "preview://book",
-)
-
-
-@Preview
-@Composable
-fun EffectiveReplacesDialogPreview() = LegadoThemePreview {
-    EffectiveReplacesDialog(
-        book = previewBook,
-        items = previewReplaceRules,
-        onAddRule = {},
-        onItemClick = {},
-        onManageAll = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun EffectiveReplacesDialogEmptyPreview() = LegadoThemePreview {
-    EffectiveReplacesDialog(
-        book = previewBook,
-        items = emptyList(),
-        onAddRule = {},
-        onItemClick = {},
-        onManageAll = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun EffectiveReplacesDialogDarkPreview() = LegadoThemePreview(dark = true) {
-    EffectiveReplacesDialog(
-        book = previewBook,
-        items = previewReplaceRules,
-        onAddRule = {},
-        onItemClick = {},
-        onManageAll = {},
-        onDismiss = {},
-    )
-}
-

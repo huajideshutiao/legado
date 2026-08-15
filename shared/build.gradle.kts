@@ -177,17 +177,6 @@ kotlin {
                 implementation("org.jetbrains.compose.foundation:foundation:$composeVersion")
                 implementation("org.jetbrains.compose.material:material:$composeVersion")
                 implementation("org.jetbrains.compose.ui:ui:$composeVersion")
-                // CMP 1.10+: androidx.compose.ui.tooling.preview.Preview 注解在 commonMain 可用
-                // (org.jetbrains.compose.ui:ui-tooling-preview 的 commonMain 声明; android 变体
-                // 转发到 androidx.compose.ui:ui-tooling-preview, 与 androidMain 的
-                // components-ui-tooling-preview 解析到同一 androidx 构件, 无重复类)。
-                // @Preview 函数合并进 sharedUiMain 后在此声明, IDE/desktop 插件按 FQN 识别。
-                // 2026-08: CPF compose-ohos fork 无 ui-tooling-preview 的 ohosArm64 变体
-                // (依赖解析失败), ohos target 排除; sharedUiMain 的 @Preview 在 ohos 由
-                // ui-ohosarm64 自带的 tooling.preview 注解承担 (若有缺则报错时再补兼容层)。
-                if (!enableOhosTarget) {
-                    implementation("org.jetbrains.compose.ui:ui-tooling-preview:$composeVersion")
-                }
                 // 书架 DB 流门控 (repeatOnLifecycle); ohos 依赖链不含本源集, 不受 fork 影响
                 implementation(libs.compose.lifecycle.runtime.multiplatform)
             }
@@ -228,13 +217,6 @@ kotlin {
                 implementation(libs.coil3.gif)
                 implementation(libs.compose.foundation.android)
                 implementation(libs.compose.activity)
-                implementation("org.jetbrains.compose.components:components-ui-tooling-preview:$composeVersion")
-                // sharedUiMain 的 @Preview 渲染器 (ComposeViewAdapter 在 ui-tooling, 不在 ui-tooling-preview)。
-                // androidLibrary 插件无 buildType, 无 debugImplementation; IDE 预览从 androidMain 源集声明的
-                // 依赖取类路径 (AndroidGradleClassJarProvider.getModuleExternalLibraries), 顶层
-                // add("androidRuntimeClasspath") 进不了该模型, 只能在此 implementation。改动后须 Gradle
-                // sync (只编译不 sync 时 IDE 仍用旧模型); 随 AAR 发布但 release 构建被 R8 裁剪。
-                implementation(libs.compose.ui.tooling.android)
                 // SVG 解码 (ImageProvider.android.kt 内联 SvgDecode 依赖 androidsvg)
                 implementation(libs.androidsvg)
                 // AndroidWebView slot 的夜间模式 (原 WebViewUtil.applyCommonSettings → setDarkeningAllowed)
@@ -248,7 +230,6 @@ kotlin {
             dependencies {
                 implementation("net.sf.kxml:kxml2:2.3.0")
                 implementation(libs.androidx.sqlite.bundled)
-                implementation("org.jetbrains.compose.components:components-ui-tooling-preview:$composeVersion")
                 // SVG 栅格化 (SvgRasterizer): 纯 Java 轻量渲染器, 替代 Android 端 SvgUtils 兜底
                 implementation("com.github.weisj:jsvg:2.0.0")
             }

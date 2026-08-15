@@ -5,17 +5,12 @@ import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,10 +22,8 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.positionInParent
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import io.legado.app.ui.compose.theme.LocalEInk
-import io.legado.app.ui.preview.LegadoThemePreview
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.first
 import kotlin.math.roundToInt
@@ -119,30 +112,3 @@ fun AppScrollTabRow(
         }
     }
 }
-
-// ===== @Preview 合并自 androidMain 的 compose/component/SmallComponentsPreviews.kt (AppScrollTabRow) =====
-
-// ---- AppScrollTabRow ----
-
-@Preview
-@Composable
-fun AppScrollTabRowPreview() = LegadoThemePreview {
-    var selected by remember { mutableStateOf(1) }
-    Box(Modifier.padding(8.dp)) {
-        AppScrollTabRow(
-            tabCount = 4,
-            selectedIndex = selected,
-            indicatorColor = io.legado.app.ui.compose.theme.AppTheme.colors.accent,
-            modifier = Modifier.fillMaxWidth(),
-            tab = { i ->
-                Text(
-                    text = "Tab ${i + 1}",
-                    color = if (i == selected) io.legado.app.ui.compose.theme.AppTheme.colors.accent
-                    else io.legado.app.ui.compose.theme.AppTheme.colors.secondaryText,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                )
-            },
-        )
-    }
-}
-

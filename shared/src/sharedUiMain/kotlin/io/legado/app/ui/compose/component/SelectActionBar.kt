@@ -1,6 +1,5 @@
 package io.legado.app.ui.compose.component
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,8 +25,6 @@ import legado.shared.generated.resources.more_menu
 import legado.shared.generated.resources.revert_selection
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /** SelectActionBar 溢出菜单项：文案 + 点击(点击后自动收起菜单) */
 data class SelectAction(val text: String, val onClick: () -> Unit)
@@ -109,82 +106,5 @@ fun SelectActionBar(
                 }
             }
         }
-    }
-}
-
-// ===== @Preview 合并自 androidMain 的 compose/component/SelectActionBarPreviews.kt =====
-
-/**
- * [SelectActionBar.kt] 中 [SelectActionBar] 的 @Preview。
- *
- * SelectActionBar 内部用 rememberString 取 i18n 文案, jvm Preview 端
- * 未识别 key 时返回 key 本身作 fallback, 故渲染可见 (文案为 select_all_count 等)。
- */
-
-@Preview
-@Composable
-fun SelectActionBarNoneSelectedPreview() = LegadoThemePreview {
-    Box(Modifier.padding(8.dp)) {
-        SelectActionBar(
-            selectCount = 0,
-            allCount = 10,
-            onSelectAll = {},
-            onRevertSelection = {},
-            mainActionText = "删除",
-            onMainAction = {},
-            modifier = Modifier.fillMaxWidth(),
-        )
-    }
-}
-
-@Preview
-@Composable
-fun SelectActionBarPartialSelectedPreview() = LegadoThemePreview {
-    Box(Modifier.padding(8.dp)) {
-        SelectActionBar(
-            selectCount = 3,
-            allCount = 10,
-            onSelectAll = {},
-            onRevertSelection = {},
-            mainActionText = "删除",
-            onMainAction = {},
-            actions = listOf(
-                SelectAction("全选") {},
-                SelectAction("反选") {},
-            ),
-            modifier = Modifier.fillMaxWidth(),
-        )
-    }
-}
-
-@Preview
-@Composable
-fun SelectActionBarAllSelectedPreview() = LegadoThemePreview {
-    Box(Modifier.padding(8.dp)) {
-        SelectActionBar(
-            selectCount = 10,
-            allCount = 10,
-            onSelectAll = {},
-            onRevertSelection = {},
-            mainActionText = "删除",
-            onMainAction = {},
-            modifier = Modifier.fillMaxWidth(),
-        )
-    }
-}
-
-@Preview
-@Composable
-fun SelectActionBarDarkPreview() = LegadoThemePreview(dark = true) {
-    Box(Modifier.padding(8.dp)) {
-        SelectActionBar(
-            selectCount = 5,
-            allCount = 8,
-            onSelectAll = {},
-            onRevertSelection = {},
-            mainActionText = "删除",
-            onMainAction = {},
-            modifier = Modifier.fillMaxWidth(),
-        )
     }
 }

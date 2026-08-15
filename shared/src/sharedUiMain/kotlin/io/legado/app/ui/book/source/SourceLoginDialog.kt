@@ -30,14 +30,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.BookChapter
-import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.rule.FlexChildStyle
 import io.legado.app.data.entities.rule.RowUi
 import io.legado.app.help.coroutine.IoDispatcher
@@ -55,7 +53,6 @@ import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.GridPackLayout
 import io.legado.app.ui.compose.component.toGridPackSpec
 import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.preview.LegadoThemePreview
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.GSON
@@ -465,63 +462,4 @@ private fun SelectRow(
             }
         }
     }
-}
-
-// ===== @Preview 合并自 androidMain 的 book/source/SourceLoginDialogPreviews.kt =====
-
-/**
- * [SourceLoginDialog] 的 @Preview。
- *
- * 假数据: [BookSource] 用纯内存对象构造, 含/不含 loginUi 两种场景。
- * loginUi 为 JSON 数组字符串 (无 @js:/<js> 前缀, BaseSource.loginUi() 直接解析)。
- */
-
-private val previewSource = BookSource(
-    bookSourceUrl = "https://test.com",
-    bookSourceName = "测试书源",
-).apply {
-    loginUrl = "https://test.com/login"
-    // 对照 RowUi @Serializable 字段: name/type/action/chars
-    loginUi = """[
-        {"name":"用户名","type":"text"},
-        {"name":"密码","type":"password"},
-        {"name":"记住我","type":"toggle"},
-        {"name":"服务器","type":"select","chars":["线1","线2","线3"]},
-        {"name":"登录","type":"button","action":"login()"}
-    ]"""
-}
-
-private val previewSourceNoLogin = BookSource(
-    bookSourceUrl = "https://no-login.com",
-    bookSourceName = "无登录书源",
-)
-
-@Preview
-@Composable
-fun SourceLoginDialogPreview() = LegadoThemePreview {
-    SourceLoginDialog(
-        source = previewSource,
-        onDismiss = {},
-        onOpenUrl = {},
-    )
-}
-
-@Preview
-@Composable
-fun SourceLoginDialogNoLoginPreview() = LegadoThemePreview {
-    SourceLoginDialog(
-        source = previewSourceNoLogin,
-        onDismiss = {},
-        onOpenUrl = {},
-    )
-}
-
-@Preview
-@Composable
-fun SourceLoginDialogDarkPreview() = LegadoThemePreview(dark = true) {
-    SourceLoginDialog(
-        source = previewSource,
-        onDismiss = {},
-        onOpenUrl = {},
-    )
 }

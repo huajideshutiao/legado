@@ -35,7 +35,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AppDialogSizes
@@ -43,7 +42,6 @@ import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import io.legado.app.ui.preview.LegadoThemePreview
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.ic_add
@@ -301,61 +299,5 @@ fun NumberPickerDialog(
         shape = DesignTokens.dialogShape,
         // 显式容器色, 避免默认色与项目其他对话框 (8dp 圆角) 视觉割裂
         backgroundColor = AppTheme.colors.fillet,
-    )
-}
-
-// ===== @Preview 合并自 androidMain 的 dialog/NumberPickerDialogPreviews.kt =====
-
-/**
- * [NumberPickerDialog.kt] 中 [NumberPickerDialog] 的 @Preview。
- */
-
-@Preview
-@Composable
-fun NumberPickerDialogPreview() = LegadoThemePreview {
-    NumberPickerDialog(
-        title = "字号",
-        value = 18,
-        range = 12..36,
-        onConfirm = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun NumberPickerDialogLargeRangePreview() = LegadoThemePreview {
-    NumberPickerDialog(
-        title = "换源间隔(ms)",
-        value = 500,
-        range = 0..3000,
-        onConfirm = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun NumberPickerDialogWithNeutralPreview() = LegadoThemePreview {
-    NumberPickerDialog(
-        title = "端口",
-        value = 8080,
-        range = 1024..65535,
-        onConfirm = {},
-        onDismiss = {},
-        neutralButtonText = "默认",
-        onNeutral = {},
-    )
-}
-
-@Preview
-@Composable
-fun NumberPickerDialogDarkPreview() = LegadoThemePreview(dark = true) {
-    NumberPickerDialog(
-        title = "字号",
-        value = 16,
-        range = 12..36,
-        onConfirm = {},
-        onDismiss = {},
     )
 }

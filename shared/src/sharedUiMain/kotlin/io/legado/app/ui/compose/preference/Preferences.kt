@@ -44,7 +44,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AlertButton
@@ -55,15 +54,10 @@ import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.rememberNavigationBarPaddingValues
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import io.legado.app.ui.preview.LegadoThemePreview
 import io.legado.app.utils.ColorUtils
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
-import legado.shared.generated.resources.ic_check
-import legado.shared.generated.resources.ic_more_vert
-import legado.shared.generated.resources.ic_search
 import legado.shared.generated.resources.ok
-import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -461,130 +455,5 @@ internal fun prefTextColors(isBottomBackground: Boolean): Pair<Color, Color> {
         title to summary
     } else {
         AppTheme.colors.primaryText to AppTheme.colors.summaryText
-    }
-}
-
-// ===== @Preview 合并自 androidMain 的 compose/preference/ColorPickerPreviews.kt =====
-
-/**
- * colorPreference 的 @Preview: 行尾颜色格子 + 点击弹取色盘。
- *
- * colorPreference 是 LazyListScope 扩展, 需包在 [PreferenceScreen] 中。
- * 点击交互在 Preview 中受限, 但可预览行尾颜色格子的视觉。
- */
-@Preview
-@Composable
-fun ColorPreferencePreview() = LegadoThemePreview {
-    PreferenceScreen(modifier = Modifier.fillMaxWidth()) {
-        colorPreference(
-            prefKey = "preview_color",
-            title = "颜色项",
-            summary = "点击选择颜色",
-            defaultValue = 0xFF165DFF.toInt(),
-        )
-    }
-}
-
-/**
- * ColorPickerDialogContent 的 @Preview: 取色盘正文 (不含 Dialog 窗口)。
- *
- * 直接 Preview Content 可避免 Dialog 窗口在 IDE 中的渲染限制,
- * 更清晰地预览 SV 面板 / Hue 滑条 / hex 输入 / 预设色格。
- */
-// ===== @Preview 合并自 androidMain 的 compose/preference/PreferencesPreviews.kt =====
-
-/**
- * [Preferences.kt] 中 Preference DSL 的 @Preview。
- *
- * PreferenceRow/SingleChoiceDialog 是 internal/private 不可直接 Preview,
- * 但可用公开的 [PreferenceScreen] + preference/preferenceCategory/switchPreference/
- * listPreference/editTextPreference DSL 组合一个示例设置页来 Preview。
- *
- * 注: editTextPreference/listPreference 点击会弹 AppAlertDialog, Preview 中点击交互受限,
- * 但可预览行样式 + 行尾 widget。
- */
-
-@Preview
-@Composable
-fun PreferenceScreenPreview() = LegadoThemePreview {
-    PreferenceScreen(modifier = Modifier.fillMaxWidth()) {
-        preferenceCategory("分组标题")
-        preference(
-            title = "普通项",
-            summary = "副标题描述",
-            onClick = {},
-        )
-        preference(
-            title = "仅标题项(无副标题)",
-            onClick = {},
-        )
-        switchPreference(
-            prefKey = "preview_switch",
-            title = "开关项",
-            summary = "副标题描述",
-            defaultValue = false,
-            checked = true,
-        )
-        switchPreference(
-            prefKey = "preview_switch_disabled",
-            title = "禁用开关项",
-            summary = "禁用副标题",
-            enabled = false,
-            checked = false,
-        )
-        listPreference(
-            prefKey = "preview_list",
-            title = "单选项",
-            entries = listOf("选项一", "选项二", "选项三"),
-            values = listOf("1", "2", "3"),
-            defaultValue = "1",
-        )
-        editTextPreference(
-            prefKey = "preview_edit",
-            title = "输入项",
-            summary = "可输入文本",
-            defaultValue = "默认值",
-        )
-    }
-}
-
-@Preview
-@Composable
-fun PreferenceScreenDarkPreview() = LegadoThemePreview(dark = true) {
-    PreferenceScreen(modifier = Modifier.fillMaxWidth()) {
-        preferenceCategory("深色分组")
-        preference(title = "深色普通项", summary = "深色副标题", onClick = {})
-        switchPreference(
-            prefKey = "preview_switch_dark",
-            title = "深色开关",
-            defaultValue = true,
-            checked = true,
-        )
-    }
-}
-
-/**
- * iconListPreference 的 @Preview: 行尾图标预览 + 点击弹带图标的单选。
- *
- * icons 需在 @Composable 上下文中先 rememberPainter 构造好再传入 LazyListScope
- * (LazyListScope 非 @Composable, 不能在 item lambda 外调 rememberPainter)。
- */
-@Preview
-@Composable
-fun PreferenceScreenWithIconListPreview() = LegadoThemePreview {
-    val icons = listOf(
-        painterResource(Res.drawable.ic_check),
-        painterResource(Res.drawable.ic_search),
-        painterResource(Res.drawable.ic_more_vert),
-    )
-    PreferenceScreen(modifier = Modifier.fillMaxWidth()) {
-        iconListPreference(
-            prefKey = "preview_icon_list",
-            title = "图标单选项",
-            entries = listOf("选项一", "选项二", "选项三"),
-            values = listOf("1", "2", "3"),
-            icons = icons,
-            defaultValue = "1",
-        )
     }
 }

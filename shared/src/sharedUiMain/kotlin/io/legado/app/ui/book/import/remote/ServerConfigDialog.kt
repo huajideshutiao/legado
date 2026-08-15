@@ -24,7 +24,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.Server
 import io.legado.app.ui.compose.component.AppDialog
@@ -34,8 +33,6 @@ import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import io.legado.app.ui.preview.LegadoThemePreview
-import io.legado.app.ui.preview.previewServers
 import io.legado.app.utils.KS_JSON
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.action_save
@@ -178,38 +175,4 @@ fun ServerConfigDialog(
             }
         }
     }
-}
-
-// ===== @Preview 合并自 androidMain 的 book/import/remote/ServerDialogsPreviews.kt (ServerConfigDialog) =====
-
-// ---- ServerConfigDialog ----
-
-@Preview
-@Composable
-fun ServerConfigDialogPreview() = LegadoThemePreview {
-    ServerConfigDialog(
-        server = previewServers.first(),
-        onSave = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun ServerConfigDialogNewPreview() = LegadoThemePreview {
-    ServerConfigDialog(
-        server = null,
-        onSave = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun ServerConfigDialogDarkPreview() = LegadoThemePreview(dark = true) {
-    ServerConfigDialog(
-        server = previewServers.first(),
-        onSave = {},
-        onDismiss = {},
-    )
 }

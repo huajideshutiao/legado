@@ -22,7 +22,6 @@ package io.legado.app.ui.book.read.config
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -67,8 +66,6 @@ import legado.shared.generated.resources.search_content
 import legado.shared.generated.resources.select_action
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 点击区域动作配置 (9 个区域 × 单击动作)。
@@ -290,59 +287,4 @@ fun ClickActionDialog(
             },
         )
     }
-}
-
-// ===== @Preview 合并自 androidMain 的 book/read/config/ReadConfigDialogPreviews.kt (ClickActionDialog) =====
-
-// ===== ClickActionDialog =====
-
-@Preview
-@Composable
-fun ClickActionDialogPreview() = LegadoThemePreview {
-    // 用 ClickActionConfig 默认值 (TL=2/TR=1/MC=0 等)
-    ClickActionDialog(
-        clickActionConfig = ClickActionConfig(),
-        onConfirm = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun ClickActionDialogAllMenuPreview() = LegadoThemePreview {
-    // 所有区域都设为"菜单"(0)
-    ClickActionDialog(
-        clickActionConfig = ClickActionConfig(
-            tl = 0, tc = 0, tr = 0,
-            ml = 0, mc = 0, mr = 0,
-            bl = 0, bc = 0, br = 0,
-        ),
-        onConfirm = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun ClickActionDialogMixedPreview() = LegadoThemePreview {
-    // 混合配置: 上区域翻页, 中区域菜单, 下区域朗读
-    ClickActionDialog(
-        clickActionConfig = ClickActionConfig(
-            tl = 2, tc = 2, tr = 1,
-            ml = 0, mc = 0, mr = 0,
-            bl = 5, bc = 6, br = 5,
-        ),
-        onConfirm = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun ClickActionDialogDarkPreview() = LegadoThemePreview(dark = true) {
-    ClickActionDialog(
-        clickActionConfig = ClickActionConfig(),
-        onConfirm = {},
-        onDismiss = {},
-    )
 }

@@ -64,7 +64,6 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -81,7 +80,6 @@ import io.legado.app.ui.compose.platform.transitionStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
-import io.legado.app.ui.preview.LegadoThemePreview
 import io.legado.app.utils.format
 import io.legado.app.utils.toDurationTime
 import kotlinx.coroutines.delay
@@ -1015,141 +1013,6 @@ private fun playModeIconKey(mode: AudioPlayShared.PlayMode): String = when (mode
     AudioPlayShared.PlayMode.SINGLE_LOOP -> "ic_play_mode_single_loop"
     AudioPlayShared.PlayMode.RANDOM -> "ic_play_mode_random"
     AudioPlayShared.PlayMode.LIST_LOOP -> "ic_play_mode_list_loop"
-}
-
-// ===== @Preview 合并自 androidMain 的 book/audio/AudioPlayScreenPreviews.kt =====
-
-/**
- * [AudioPlayScreenContent] 的 @Preview。
- *
- * coverSlot/lrcSlot/对话框 slot 均用占位实现 (真实实现依赖 Coil/平台歌词组件)。
- */
-
-private val previewAudioCoverSlot: @Composable (String?, Modifier) -> Unit = { _, modifier ->
-    Box(
-        modifier.background(Color(0xFF34495E), DesignTokens.shapeDefault),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text("封面", color = Color.White)
-    }
-}
-
-private val previewLrcSlot: @Composable (Modifier) -> Unit = { modifier ->
-    Box(modifier, contentAlignment = Alignment.Center) {
-        Text("这里是歌词滚动区", color = Color(0xFF888888))
-    }
-}
-
-@Preview
-@Composable
-fun AudioPlayScreenContentPlayingPreview() = LegadoThemePreview {
-    AudioPlayScreenContent(
-        title = "三体(有声剧)",
-        subTitle = "第十二章 黑暗森林",
-        coverUrl = null,
-        coverVisible = true,
-        timerMinute = 0,
-        speed = 1.0f,
-        progressMs = 754_000,
-        durationMs = 1_800_000,
-        bufferMs = 1_200_000,
-        isPlaying = true,
-        loading = false,
-        playMode = AudioPlayShared.PlayMode.LIST_LOOP,
-        prevEnabled = true,
-        nextEnabled = true,
-        accentColor = Color(0xFF165DFF),
-        onBack = {},
-        onOpenChangeSource = {},
-        onCoverClick = {},
-        onTogglePlay = {},
-        onPrev = {},
-        onNext = {},
-        onChangePlayMode = {},
-        onOpenToc = {},
-        onSeek = {},
-        onSetTimer = {},
-        onSetSpeed = {},
-        coverSlot = previewAudioCoverSlot,
-        lrcSlot = previewLrcSlot,
-        timerDialogSlot = { _, _, _ -> },
-        speedDialogSlot = { _, _, _ -> },
-    )
-}
-
-@Preview
-@Composable
-fun AudioPlayScreenContentPausedLoadingPreview() = LegadoThemePreview {
-    AudioPlayScreenContent(
-        title = "三体(有声剧)",
-        subTitle = "第十三章 面壁者",
-        coverUrl = null,
-        coverVisible = true,
-        timerMinute = 30,
-        speed = 1.5f,
-        progressMs = 0,
-        durationMs = 0,
-        bufferMs = 0,
-        isPlaying = false,
-        loading = true,
-        playMode = AudioPlayShared.PlayMode.SINGLE_LOOP,
-        prevEnabled = false,
-        nextEnabled = true,
-        accentColor = Color(0xFF165DFF),
-        onBack = {},
-        onOpenChangeSource = {},
-        onCoverClick = {},
-        onTogglePlay = {},
-        onPrev = {},
-        onNext = {},
-        onChangePlayMode = {},
-        onOpenToc = {},
-        onSeek = {},
-        onSetTimer = {},
-        onSetSpeed = {},
-        onStop = {},
-        coverSlot = previewAudioCoverSlot,
-        lrcSlot = previewLrcSlot,
-        timerDialogSlot = { _, _, _ -> },
-        speedDialogSlot = { _, _, _ -> },
-    )
-}
-
-@Preview
-@Composable
-fun AudioPlayScreenContentDarkPreview() = LegadoThemePreview(dark = true) {
-    AudioPlayScreenContent(
-        title = "三体(有声剧)",
-        subTitle = "第十二章 黑暗森林",
-        coverUrl = null,
-        coverVisible = true,
-        timerMinute = 0,
-        speed = 1.0f,
-        progressMs = 754_000,
-        durationMs = 1_800_000,
-        bufferMs = 1_500_000,
-        isPlaying = true,
-        loading = false,
-        playMode = AudioPlayShared.PlayMode.RANDOM,
-        prevEnabled = true,
-        nextEnabled = true,
-        accentColor = Color(0xFF165DFF),
-        onBack = {},
-        onOpenChangeSource = {},
-        onCoverClick = {},
-        onTogglePlay = {},
-        onPrev = {},
-        onNext = {},
-        onChangePlayMode = {},
-        onOpenToc = {},
-        onSeek = {},
-        onSetTimer = {},
-        onSetSpeed = {},
-        coverSlot = previewAudioCoverSlot,
-        lrcSlot = previewLrcSlot,
-        timerDialogSlot = { _, _, _ -> },
-        speedDialogSlot = { _, _, _ -> },
-    )
 }
 
 /**

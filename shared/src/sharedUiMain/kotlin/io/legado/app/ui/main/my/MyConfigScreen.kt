@@ -2,7 +2,6 @@ package io.legado.app.ui.main.my
 
 import androidx.compose.runtime.Composable
 import io.legado.app.constant.PreferKey
-import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.preference.PreferenceScreen
 import io.legado.app.ui.compose.preference.listPreference
 import io.legado.app.ui.compose.preference.preference
@@ -10,6 +9,13 @@ import io.legado.app.ui.compose.preference.preferenceCategory
 import io.legado.app.ui.compose.preference.switchPreference
 import io.legado.app.ui.compose.theme.AppTheme
 import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.about
+import legado.shared.generated.resources.backup_restore
+import legado.shared.generated.resources.book_source
+import legado.shared.generated.resources.book_source_manage
+import legado.shared.generated.resources.book_source_manage_desc
+import legado.shared.generated.resources.bookmark
+import legado.shared.generated.resources.dict_rule
 import legado.shared.generated.resources.ic_bookmark
 import legado.shared.generated.resources.ic_cfg_about
 import legado.shared.generated.resources.ic_cfg_backup
@@ -21,32 +27,23 @@ import legado.shared.generated.resources.ic_cfg_web
 import legado.shared.generated.resources.ic_history
 import legado.shared.generated.resources.ic_import
 import legado.shared.generated.resources.ic_translate
-import legado.shared.generated.resources.outline_filter_alt_24
-import legado.shared.generated.resources.about
-import legado.shared.generated.resources.backup_restore
-import legado.shared.generated.resources.book_source
-import legado.shared.generated.resources.book_source_manage
-import legado.shared.generated.resources.book_source_manage_desc
-import legado.shared.generated.resources.bookmark
-import legado.shared.generated.resources.dict_rule
 import legado.shared.generated.resources.other
 import legado.shared.generated.resources.other_setting
+import legado.shared.generated.resources.outline_filter_alt_24
 import legado.shared.generated.resources.read_record
 import legado.shared.generated.resources.replace_purify
 import legado.shared.generated.resources.rule_subscription
 import legado.shared.generated.resources.source_filter_rule
 import legado.shared.generated.resources.theme_mode
+import legado.shared.generated.resources.theme_mode_v
 import legado.shared.generated.resources.theme_setting
 import legado.shared.generated.resources.theme_setting_s
 import legado.shared.generated.resources.txt_toc_rule
 import legado.shared.generated.resources.web_dav_set_import_old
 import legado.shared.generated.resources.web_service
-import legado.shared.generated.resources.theme_mode_v
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringArrayResource
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 我的页设置内容（迁 pref_main.xml）。逐条对齐原条目顺序/key/默认值/图标。
@@ -240,113 +237,4 @@ fun MyConfigScreen(
             )
         }
     }
-}
-
-// ===== @Preview 合并自 androidMain 的 main/my/MyConfigScreenPreviews.kt =====
-
-/**
- * [MyConfigScreen.kt] 中 [MyConfigScreen] 的 @Preview。
- *
- * MyConfigScreen 内部用 rememberString/rememberStringArray/rememberPainter 取 i18n 资源,
- * jvm Preview 端未识别 key 时 rememberString 返回 key 本身、rememberStringArray 返回空 List、
- * rememberPainter 返回 ic_material_help 占位, 故 Preview 可渲染但部分文案为 key 字符串。
- *
- * MyConfigScreen 自身已用 AppTheme 包裹, 但 LegadoThemePreview 会再包一层 AppTheme
- * (嵌套 AppTheme 仅多套一次 CompositionLocal, 不影响渲染)。
- */
-
-@Preview
-@Composable
-fun MyConfigScreenPreview() = LegadoThemePreview {
-    MyConfigScreen(
-        webServiceChecked = false,
-        webServiceSummary = "未启用",
-        onThemeModeChange = {},
-        onWebServiceChange = {},
-        onWebServiceLongClick = {},
-        onThemeSetting = {},
-        onWebDavSetting = {},
-        onOtherSetting = {},
-        onBookSourceManage = {},
-        onReplaceManage = {},
-        onSourceFilterRuleManage = {},
-        onTxtTocRuleManage = {},
-        onDictRuleManage = {},
-        onRuleSubManage = {},
-        onBookmark = {},
-        onReadRecord = {},
-        onAbout = {},
-    )
-}
-
-@Preview
-@Composable
-fun MyConfigScreenWebServiceOnPreview() = LegadoThemePreview {
-    MyConfigScreen(
-        webServiceChecked = true,
-        webServiceSummary = "已启用 · http://192.168.1.100:1122",
-        onThemeModeChange = {},
-        onWebServiceChange = {},
-        onWebServiceLongClick = {},
-        onThemeSetting = {},
-        onWebDavSetting = {},
-        onOtherSetting = {},
-        onBookSourceManage = {},
-        onReplaceManage = {},
-        onSourceFilterRuleManage = {},
-        onTxtTocRuleManage = {},
-        onDictRuleManage = {},
-        onRuleSubManage = {},
-        onBookmark = {},
-        onReadRecord = {},
-        onAbout = {},
-    )
-}
-
-@Preview
-@Composable
-fun MyConfigScreenDarkPreview() = LegadoThemePreview(dark = true) {
-    MyConfigScreen(
-        webServiceChecked = false,
-        webServiceSummary = "未启用",
-        onThemeModeChange = {},
-        onWebServiceChange = {},
-        onWebServiceLongClick = {},
-        onThemeSetting = {},
-        onWebDavSetting = {},
-        onOtherSetting = {},
-        onBookSourceManage = {},
-        onReplaceManage = {},
-        onSourceFilterRuleManage = {},
-        onTxtTocRuleManage = {},
-        onDictRuleManage = {},
-        onRuleSubManage = {},
-        onBookmark = {},
-        onReadRecord = {},
-        onAbout = {},
-    )
-}
-
-@Preview
-@Composable
-fun MyConfigScreenWithRssEntryPreview() = LegadoThemePreview {
-    MyConfigScreen(
-        webServiceChecked = false,
-        webServiceSummary = "未启用",
-        onThemeModeChange = {},
-        onWebServiceChange = {},
-        onWebServiceLongClick = {},
-        onThemeSetting = {},
-        onWebDavSetting = {},
-        onOtherSetting = {},
-        onBookSourceManage = {},
-        onReplaceManage = {},
-        onSourceFilterRuleManage = {},
-        onTxtTocRuleManage = {},
-        onDictRuleManage = {},
-        onRuleSubManage = {},
-        onBookmark = {},
-        onReadRecord = {},
-        onAbout = {},
-    )
 }

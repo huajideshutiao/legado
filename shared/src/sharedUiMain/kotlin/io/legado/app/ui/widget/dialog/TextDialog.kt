@@ -18,7 +18,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.MarkdownContentSelectable
@@ -27,7 +26,6 @@ import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import io.legado.app.ui.preview.LegadoThemePreview
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.copy
@@ -138,60 +136,4 @@ fun TextDialog(
 
 enum class TextDialogMode {
     MD, HTML, TEXT,
-}
-
-// ===== @Preview 合并自 androidMain 的 widget/dialog/TextDialogPreviews.kt =====
-
-/**
- * [TextDialog.kt] 中 [TextDialog] 的 @Preview。
- */
-
-@Preview
-@Composable
-fun TextDialogPreview() = LegadoThemePreview {
-    TextDialog(
-        title = "错误信息",
-        content = "这是一段错误信息的正文, 用于展示给用户。\n第二行内容。\n第三行内容。",
-        onConfirm = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun TextDialogLongContentPreview() = LegadoThemePreview {
-    TextDialog(
-        title = "长文本展示",
-        content = buildString {
-            repeat(50) { i ->
-                appendLine("第 ${i + 1} 行: 这是一段用于测试长文本滚动展示效果的内容。")
-            }
-        },
-        onConfirm = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun TextDialogWithNeutralPreview() = LegadoThemePreview {
-    TextDialog(
-        title = "确认操作",
-        content = "请确认是否执行此操作, 操作不可撤销。",
-        onConfirm = {},
-        onDismiss = {},
-        neutralButtonText = "默认",
-        onNeutral = {},
-    )
-}
-
-@Preview
-@Composable
-fun TextDialogDarkPreview() = LegadoThemePreview(dark = true) {
-    TextDialog(
-        title = "深色主题",
-        content = "深色主题下的文本对话框内容展示。",
-        onConfirm = {},
-        onDismiss = {},
-    )
 }

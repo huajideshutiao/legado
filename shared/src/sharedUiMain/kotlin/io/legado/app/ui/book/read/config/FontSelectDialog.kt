@@ -36,8 +36,6 @@ import legado.shared.generated.resources.system_typeface
 import legado.shared.generated.resources.system_typefaces
 import org.jetbrains.compose.resources.stringArrayResource
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /** 字体文件正则（对齐 app 端 `FontSelectDialog.fontRegex`：.ttf / .otf，大小写不敏感）。 */
 val fontFileRegex: Regex = Regex("(?i).*\\.[ot]tf")
@@ -209,54 +207,4 @@ private fun FontRow(
             preview?.invoke(item)
         }
     }
-}
-
-// ===== @Preview 合并自 androidMain 的 book/read/config/FontAndConverterDialogPreviews.kt (FontSelectDialog) =====
-
-// ---- FontSelectDialog ----
-
-private val previewFontItems = listOf(
-    FontItem(path = "/fonts/SourceHanSerif.otf", name = "思源宋体"),
-    FontItem(path = "/fonts/SourceHanSans.otf", name = "思源黑体"),
-    FontItem(path = "/fonts/FZKai.ttf", name = "方正楷体"),
-    FontItem(path = "/fonts/LXGWWenKai.ttf", name = "霞鹜文楷"),
-)
-
-@Preview
-@Composable
-fun FontSelectDialogPreview() = LegadoThemePreview {
-    FontSelectDialog(
-        fontItems = previewFontItems,
-        curFontPath = previewFontItems[1].path,
-        curFontName = previewFontItems[1].name,
-        onSelectFont = {},
-        onSelectDefault = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun FontSelectDialogEmptyPreview() = LegadoThemePreview {
-    FontSelectDialog(
-        fontItems = emptyList(),
-        curFontPath = "",
-        curFontName = "",
-        onSelectFont = {},
-        onSelectDefault = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun FontSelectDialogDarkPreview() = LegadoThemePreview(dark = true) {
-    FontSelectDialog(
-        fontItems = previewFontItems,
-        curFontPath = previewFontItems[1].path,
-        curFontName = previewFontItems[1].name,
-        onSelectFont = {},
-        onSelectDefault = {},
-        onDismiss = {},
-    )
 }

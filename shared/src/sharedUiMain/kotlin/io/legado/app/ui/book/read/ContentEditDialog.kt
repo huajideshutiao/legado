@@ -32,7 +32,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.help.toast.Toasters
@@ -44,7 +43,6 @@ import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import io.legado.app.ui.preview.LegadoThemePreview
 import kotlinx.coroutines.launch
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.action_save
@@ -336,66 +334,4 @@ fun ContentEditDialog(
             }
         }
     }
-}
-
-// ===== @Preview 合并自 androidMain 的 book/read/ReadDialogsPreviews.kt (ContentEditDialog) =====
-
-// ===== ContentEditDialog =====
-
-@Preview
-@Composable
-fun ContentEditDialogPreview() = LegadoThemePreview {
-    ContentEditDialog(
-        chapterName = "第一章 科学边界",
-        content = buildString {
-            appendLine("物理学在这一切之中扮演了什么角色?")
-            appendLine("杨冬在心中默默问自己。")
-            appendLine("她看着窗外, 那颗恒星的影像已经在屏幕上消散,")
-            appendLine("只剩下空荡荡的宇宙, 像一个无声的嘲弄。")
-        },
-        onSubmit = {},
-        onDismiss = {},
-        onReset = {},
-        clipTextSink = {},
-    )
-}
-
-@Preview
-@Composable
-fun ContentEditDialogLongContentPreview() = LegadoThemePreview {
-    ContentEditDialog(
-        chapterName = "第二章 疯狂年代",
-        content = buildString {
-            repeat(30) { i ->
-                appendLine("第 ${i + 1} 段: 这是一段用于测试长正文滚动展示效果的占位内容, ")
-                appendLine("用于验证长正文时输入框随内容增高 + 正文区滚动的展示效果。")
-            }
-        },
-        onSubmit = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun ContentEditDialogEmptyContentPreview() = LegadoThemePreview {
-    ContentEditDialog(
-        chapterName = "空章节",
-        content = "",
-        onSubmit = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun ContentEditDialogDarkPreview() = LegadoThemePreview(dark = true) {
-    ContentEditDialog(
-        chapterName = "第一章 科学边界",
-        content = "物理学在这一切之中扮演了什么角色?",
-        onSubmit = {},
-        onDismiss = {},
-        onReset = {},
-        clipTextSink = {},
-    )
 }

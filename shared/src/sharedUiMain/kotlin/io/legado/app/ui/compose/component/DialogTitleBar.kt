@@ -22,9 +22,6 @@ import io.legado.app.ui.compose.theme.AppTheme
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.ic_arrow_back
 import org.jetbrains.compose.resources.painterResource
-import androidx.compose.foundation.layout.padding
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * Dialog 通用标题栏，复刻 dialog_title_bar：底栏色背景 + 返回箭头(dismiss) + 标题 + 右侧菜单槽。
@@ -90,49 +87,3 @@ fun DialogTitleBar(
         actions()
     }
 }
-
-// ===== @Preview 合并自 androidMain 的 compose/component/SmallComponentsPreviews.kt (DialogTitleBar) =====
-
-// ---- DialogTitleBar ----
-
-@Preview
-@Composable
-fun DialogTitleBarPreview() = LegadoThemePreview {
-    DialogTitleBar(
-        title = "对话框标题",
-        onBack = {},
-    )
-}
-
-@Preview
-@Composable
-fun DialogTitleBarWithSubtitlePreview() = LegadoThemePreview {
-    DialogTitleBar(
-        title = "对话框标题",
-        subtitle = "副标题",
-        onBack = {},
-    )
-}
-
-@Preview
-@Composable
-fun DialogTitleBarWithActionsPreview() = LegadoThemePreview {
-    DialogTitleBar(
-        title = "带动作",
-        onBack = {},
-        actions = {
-            Text("动作1", modifier = Modifier.padding(end = 8.dp))
-            Text("动作2")
-        },
-    )
-}
-
-@Preview
-@Composable
-fun DialogTitleBarNoBackPreview() = LegadoThemePreview {
-    DialogTitleBar(
-        title = "无返回按钮",
-        onBack = null,
-    )
-}
-

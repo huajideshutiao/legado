@@ -29,19 +29,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEach
 import androidx.compose.ui.util.lerp
 import io.legado.app.ui.compose.theme.LocalEInk
-import kotlin.math.abs
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.material.Text
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
+import kotlin.math.abs
 
 /**
  * KMP-pure 双指缩放/平移 Modifier，复刻 TouchImageView 交互语义：
@@ -238,45 +229,4 @@ fun Modifier.zoomable(
             translationX = offsetX.value
             translationY = offsetY.value
         }
-}
-
-// ===== @Preview 合并自 androidMain 的 compose/component/ZoomablePreviews.kt =====
-
-/**
- * [Zoomable.kt] 中 [Modifier.zoomable] 的 @Preview。
- *
- * zoomable 是 Modifier 扩展, Preview 中可渲染但手势交互受限;
- * 主要预览被缩放内容的初始视觉 (1x 状态)。
- */
-
-@Preview
-@Composable
-fun ZoomablePreview() = LegadoThemePreview {
-    Box(Modifier.padding(16.dp)) {
-        Box(
-            Modifier
-                .size(240.dp)
-                .background(Color(0x33165DFF))
-                .zoomable(),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("双指缩放/平移\n双击切换 1x/2x")
-        }
-    }
-}
-
-@Preview
-@Composable
-fun ZoomableDarkPreview() = LegadoThemePreview(dark = true) {
-    Box(Modifier.padding(16.dp)) {
-        Box(
-            Modifier
-                .size(240.dp)
-                .background(Color(0x55165DFF))
-                .zoomable(),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("深色缩放区")
-        }
-    }
 }

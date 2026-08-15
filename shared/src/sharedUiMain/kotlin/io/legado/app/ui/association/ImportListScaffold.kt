@@ -16,7 +16,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppTextButton
@@ -24,7 +23,6 @@ import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.preview.LegadoThemePreview
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.ok
@@ -164,92 +162,4 @@ private fun ImportListItem(
                 .padding(8.dp),
         )
     }
-}
-
-// ===== @Preview 合并自 androidMain 的 association/AssociationPreviews.kt (ImportListScaffold) =====
-
-// ===== ImportListScaffold =====
-
-@Preview
-@Composable
-fun ImportListScaffoldPreview() = LegadoThemePreview {
-    ImportListScaffold(
-        title = "导入书源",
-        loading = false,
-        errorText = null,
-        itemCount = 5,
-        selectCount = 2,
-        isSelectAll = false,
-        itemLabel = { index -> "书源 ${index + 1}" },
-        itemState = { index -> if (index % 2 == 0) "已导入" else "可导入" },
-        itemChecked = { index -> index % 3 == 0 },
-        onItemChecked = { _, _ -> },
-        onOpen = {},
-        onToggleAll = {},
-        onCancel = {},
-        onOk = {},
-    )
-}
-
-@Preview
-@Composable
-fun ImportListScaffoldLoadingPreview() = LegadoThemePreview {
-    ImportListScaffold(
-        title = "导入书源",
-        loading = true,
-        errorText = null,
-        itemCount = 5,
-        selectCount = 0,
-        isSelectAll = false,
-        itemLabel = { index -> "书源 ${index + 1}" },
-        itemState = { _ -> "" },
-        itemChecked = { _ -> false },
-        onItemChecked = { _, _ -> },
-        onOpen = {},
-        onToggleAll = {},
-        onCancel = {},
-        onOk = {},
-    )
-}
-
-@Preview
-@Composable
-fun ImportListScaffoldErrorPreview() = LegadoThemePreview {
-    ImportListScaffold(
-        title = "导入书源",
-        loading = false,
-        errorText = "网络连接失败, 请检查 URL 或稍后重试。",
-        itemCount = 0,
-        selectCount = 0,
-        isSelectAll = false,
-        itemLabel = { _ -> "" },
-        itemState = { _ -> "" },
-        itemChecked = { _ -> false },
-        onItemChecked = { _, _ -> },
-        onOpen = {},
-        onToggleAll = {},
-        onCancel = {},
-        onOk = {},
-    )
-}
-
-@Preview
-@Composable
-fun ImportListScaffoldSelectAllPreview() = LegadoThemePreview {
-    ImportListScaffold(
-        title = "导入替换规则",
-        loading = false,
-        errorText = null,
-        itemCount = 3,
-        selectCount = 3,
-        isSelectAll = true,
-        itemLabel = { index -> "规则 ${index + 1}" },
-        itemState = { _ -> "已勾选" },
-        itemChecked = { _ -> true },
-        onItemChecked = { _, _ -> },
-        onOpen = {},
-        onToggleAll = {},
-        onCancel = {},
-        onOk = {},
-    )
 }

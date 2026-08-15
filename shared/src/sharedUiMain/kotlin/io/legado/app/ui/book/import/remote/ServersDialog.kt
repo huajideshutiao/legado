@@ -65,9 +65,6 @@ import legado.shared.generated.resources.sure_del
 import legado.shared.generated.resources.text_default
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
-import io.legado.app.ui.preview.previewServers
 
 /**
  * 服务器列表选择对话框 (KMP 共享, app/desktop/iOS 复用)。
@@ -252,55 +249,3 @@ private fun ServerItem(
         }
     }
 }
-
-// ===== @Preview 合并自 androidMain 的 book/import/remote/ServerDialogsPreviews.kt (ServersDialog) =====
-
-// ---- ServersDialog ----
-
-/** [ServersDialog] / [ServerConfigDialog] 的 @Preview (WebDav 服务器管理)。 */
-
-@Preview
-@Composable
-fun ServersDialogPreview() = LegadoThemePreview {
-    ServersDialog(
-        servers = previewServers,
-        initialServerId = previewServers.first().id,
-        onAddServer = {},
-        onEditServer = {},
-        onDeleteServer = {},
-        onSelectDefault = {},
-        onConfirm = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun ServersDialogEmptyPreview() = LegadoThemePreview {
-    ServersDialog(
-        servers = emptyList(),
-        initialServerId = 0L,
-        onAddServer = {},
-        onEditServer = {},
-        onDeleteServer = {},
-        onSelectDefault = {},
-        onConfirm = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun ServersDialogDarkPreview() = LegadoThemePreview(dark = true) {
-    ServersDialog(
-        servers = previewServers,
-        initialServerId = previewServers[1].id,
-        onAddServer = {},
-        onEditServer = {},
-        onDeleteServer = {},
-        onSelectDefault = {},
-        onConfirm = {},
-        onDismiss = {},
-    )
-}
-

@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -32,12 +31,10 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.help.config.LocalReadConfigProviders
-import io.legado.app.help.config.ReadConfigProviders
 import io.legado.app.help.config.ReadTipConfigShared
 import io.legado.app.help.image.ReaderImageCache
 import io.legado.app.ui.book.read.ReadBookEvents
@@ -46,11 +43,9 @@ import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.book.read.page.delegate.ScrollPageDelegateCompose
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
-import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.navigationBarFixedPadding
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.statusBarFixedPadding
-import io.legado.app.ui.preview.LegadoThemePreview
 import io.legado.app.utils.formatTimeOfDay
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.flow.combine
@@ -841,56 +836,3 @@ fun ScrollPageView(
         }
     }
 }
-
-// ===== @Preview 合并自 androidMain 的 book/read/page/ReadPagePreviews.kt (PageViewComposable) =====
-
-// ===== PageViewComposable =====
-
-
-/**
- * 包装 [LegadoThemePreview], 在其基础上注入 [LocalReadConfigProviders] (走 stub prefs)。
- */
-@Composable
-private fun LegadoReadConfigPreview(
-    dark: Boolean = false,
-    content: @Composable () -> Unit,
-) {
-    LegadoThemePreview(dark = dark) {
-        val prefs = LocalPreferenceStoreProvider.current
-        val providers = ReadConfigProviders(prefs)
-        CompositionLocalProvider(LocalReadConfigProviders provides providers) {
-            Box(Modifier.fillMaxSize()) { content() }
-        }
-    }
-}
-
-
-@Preview
-@Composable
-fun PageViewComposableEmptyPreview() = LegadoReadConfigPreview {
-    // textPage=null 时显示加载占位 (背景色取自 stub ReadBookConfig)
-    PageViewComposable(
-        textPage = null,
-        batteryLevel = 75,
-    )
-}
-
-@Preview
-@Composable
-fun PageViewComposableWithEmptyPagePreview() = LegadoReadConfigPreview {
-    // 用 TextPage.emptyTextPage (无文字行, 仅显示 tip 占位)
-    PageViewComposable(
-        textPage = TextPage.emptyTextPage,
-        batteryLevel = 50,
-    )
-}
-
-@Preview
-@Composable
-fun PageViewComposableNoBatteryPreview() = LegadoReadConfigPreview {
-    PageViewComposable(
-        textPage = TextPage.emptyTextPage,
-        batteryLevel = -1,
-    )
-}
-

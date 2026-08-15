@@ -22,7 +22,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.SourceFilterRule
 import io.legado.app.ui.compose.component.AlertButton
@@ -40,8 +39,6 @@ import io.legado.app.ui.compose.component.dragSelectable
 import io.legado.app.ui.compose.platform.rememberNavigationBarPaddingValues
 import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.preview.LegadoThemePreview
-import io.legado.app.ui.preview.previewFilterRules
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.add
 import legado.shared.generated.resources.cancel
@@ -401,79 +398,3 @@ private fun RuleItemScope.SourceFilterRuleItem(
         }
     }
 }
-
-// ===== @Preview 合并自 androidMain 的 book/filter/SourceFilterRulePreviews.kt (SourceFilterRuleScreen) =====
-
-// ---- SourceFilterRuleScreen ----
-
-
-/** [SourceFilterRuleScreen] / [SourceFilterEditDialog] 的 @Preview。 */
-
-private val noOpFilterActions = object : SourceFilterRuleUiActions {
-    override fun onBack() {}
-    override fun onSearchKeyChange(key: String) {}
-    override fun onToggleSelected(item: SourceFilterRule, checked: Boolean) {}
-    override fun onSelectAll(all: Boolean) {}
-    override fun onRevertSelection() {}
-    override fun onMoveItem(from: Int, to: Int) {}
-    override fun onPersistOrder() {}
-    override fun onDeleteSelection() {}
-    override fun onDeleteRule(rule: SourceFilterRule) {}
-    override fun onDeleteAll() {}
-    override fun onEnableSelection() {}
-    override fun onDisableSelection() {}
-    override fun onTopSelect() {}
-    override fun onBottomSelect() {}
-    override fun onExportSelection() {}
-    override fun onEditRule(rule: SourceFilterRule) {}
-    override fun onToTop(rule: SourceFilterRule) {}
-    override fun onToBottom(rule: SourceFilterRule) {}
-    override fun onToggleEnabled(rule: SourceFilterRule, enabled: Boolean) {}
-    override fun onAddRule() {}
-    override fun onImportLocal() {}
-    override fun onImportOnline() {}
-}
-
-
-@Preview
-@Composable
-fun SourceFilterRuleScreenPreview() = LegadoThemePreview {
-    SourceFilterRuleScreen(
-        state = SourceFilterRuleUiState(rules = previewFilterRules),
-        actions = noOpFilterActions,
-    )
-}
-
-@Preview
-@Composable
-fun SourceFilterRuleScreenEmptyPreview() = LegadoThemePreview {
-    SourceFilterRuleScreen(
-        state = SourceFilterRuleUiState(),
-        actions = noOpFilterActions,
-    )
-}
-
-@Preview
-@Composable
-fun SourceFilterRuleScreenSearchingPreview() = LegadoThemePreview {
-    SourceFilterRuleScreen(
-        state = SourceFilterRuleUiState(
-            rules = previewFilterRules.take(1),
-            searchKey = "同人",
-        ),
-        actions = noOpFilterActions,
-    )
-}
-
-@Preview
-@Composable
-fun SourceFilterRuleScreenDarkPreview() = LegadoThemePreview(dark = true) {
-    SourceFilterRuleScreen(
-        state = SourceFilterRuleUiState(
-            rules = previewFilterRules,
-            selected = setOf(previewFilterRules[0].id),
-        ),
-        actions = noOpFilterActions,
-    )
-}
-

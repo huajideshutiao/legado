@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
@@ -35,7 +34,6 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
@@ -43,7 +41,6 @@ import io.legado.app.ui.compose.platform.transitionStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
-import io.legado.app.ui.preview.LegadoThemePreview
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.clear
 import legado.shared.generated.resources.ic_arrow_back
@@ -257,95 +254,6 @@ fun OverflowMenu(
             content {
                 expanded = false
                 onExpandedChange(false)
-            }
-        }
-    }
-}
-
-// ===== @Preview 合并自 androidMain 的 compose/component/AppTitleBarPreviews.kt =====
-
-/**
- * [AppTitleBar.kt] 中各 Composable 的 @Preview。
- * - [AppTitleBar]: 顶栏 (标题/返回/动作槽)
- * - [AppSearchField]: 搜索框
- * - [OverflowMenu]: 溢出菜单
- */
-
-@Preview
-@Composable
-fun AppTitleBarPreview() = LegadoThemePreview {
-    AppTitleBar(
-        title = "页面标题",
-        onBack = {},
-    )
-}
-
-@Preview
-@Composable
-fun AppTitleBarDarkPreview() = LegadoThemePreview(dark = true) {
-    AppTitleBar(
-        title = "深色页面标题",
-        onBack = {},
-    )
-}
-
-@Preview
-@Composable
-fun AppTitleBarWithActionsPreview() = LegadoThemePreview {
-    AppTitleBar(
-        title = "带动作页标题",
-        onBack = {},
-        actions = {
-            Text("动作1", modifier = Modifier.padding(end = 8.dp))
-            Text("动作2")
-        },
-    )
-}
-
-@Preview
-@Composable
-fun AppTitleBarWithSearchContentPreview() = LegadoThemePreview {
-    var value by remember { mutableStateOf("") }
-    AppTitleBar(
-        title = "搜索",
-        onBack = {},
-        titleContent = {
-            AppSearchField(
-                value = value,
-                onValueChange = { value = it },
-                hint = "搜索书籍/作者",
-            )
-        },
-    )
-}
-
-@Preview
-@Composable
-fun AppSearchFieldFilledPreview() = LegadoThemePreview {
-    Box(Modifier.padding(16.dp)) {
-        AppSearchField(
-            value = "已输入文本",
-            onValueChange = {},
-            hint = "搜索书籍/作者",
-            onSearch = {},
-        )
-    }
-}
-
-@Preview
-@Composable
-fun OverflowMenuPreview() = LegadoThemePreview {
-    Box(Modifier.padding(16.dp)) {
-        OverflowMenu { dismiss ->
-            DropdownMenuItem(
-                onClick = { dismiss() },
-            ) {
-                Text("菜单项1")
-            }
-            DropdownMenuItem(
-                onClick = { dismiss() },
-            ) {
-                Text("菜单项2")
             }
         }
     }

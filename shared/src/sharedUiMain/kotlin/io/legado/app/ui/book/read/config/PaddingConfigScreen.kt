@@ -31,8 +31,6 @@ import legado.shared.generated.resources.padding_right
 import legado.shared.generated.resources.padding_top
 import legado.shared.generated.resources.showLine
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 边距配置控制器：把 app 端 `ReadBookConfig` 的边距/分隔线字段读写抽象为接口，
@@ -227,55 +225,3 @@ private fun PaddingSeekBar(
         },
     )
 }
-
-// ===== @Preview 合并自 androidMain 的 book/read/config/ReadConfigPrefsPreviews.kt (PaddingConfigScreen) =====
-
-// ===== PaddingConfigScreen =====
-
-/**
- * [PaddingConfigScreen.kt] / [TipConfigScreen.kt] / [ReadAloudConfigScreen.kt] / [MoreConfigScreen.kt] 的 @Preview。
- *
- * Controller 接口用内存 stub 实现, 字段返回常见默认值。
- * ReadAloudConfigScreen / MoreConfigScreen 走 PreferenceScreen, 内部通过
- * LocalPreferenceStoreProvider (LegadoThemePreview 已注入 stub) 读写 prefs, 无需额外注入。
- */
-
-/** Preview 期 [PaddingConfigController] stub, 所有字段返回常见默认值 (与 ReadBookConfig 默认对齐)。 */
-private class PreviewPaddingConfigController : PaddingConfigController {
-    override var showHeaderLine: Boolean = true
-    override var showFooterLine: Boolean = false
-    override var headerPaddingTop: Int = 0
-    override var headerPaddingBottom: Int = 0
-    override var headerPaddingLeft: Int = 16
-    override var headerPaddingRight: Int = 16
-    override var paddingTop: Int = 0
-    override var paddingBottom: Int = 0
-    override var paddingLeft: Int = 16
-    override var paddingRight: Int = 16
-    override var footerPaddingTop: Int = 0
-    override var footerPaddingBottom: Int = 0
-    override var footerPaddingLeft: Int = 16
-    override var footerPaddingRight: Int = 16
-}
-
-/** Preview 期 onPostConfig noop。 */
-private val noopPostConfig: (List<ReadConfigChange>) -> Unit = {}
-
-@Preview
-@Composable
-fun PaddingConfigScreenPreview() = LegadoThemePreview {
-    PaddingConfigScreen(
-        controller = PreviewPaddingConfigController(),
-        onPostConfig = noopPostConfig,
-    )
-}
-
-@Preview
-@Composable
-fun PaddingConfigScreenDarkPreview() = LegadoThemePreview(dark = true) {
-    PaddingConfigScreen(
-        controller = PreviewPaddingConfigController(),
-        onPostConfig = noopPostConfig,
-    )
-}
-

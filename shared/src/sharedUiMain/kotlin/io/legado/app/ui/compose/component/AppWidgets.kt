@@ -1,24 +1,14 @@
 package io.legado.app.ui.compose.component
 
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.ButtonDefaults
-import androidx.compose.material.Checkbox
-import androidx.compose.material.CheckboxDefaults
-import androidx.compose.material.OutlinedButton
-import androidx.compose.material.LocalTextStyle
-import androidx.compose.material.Text
-import androidx.compose.material.TextButton
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.calculateEndPadding
@@ -28,9 +18,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSizeIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.ButtonDefaults
+import androidx.compose.material.Checkbox
+import androidx.compose.material.CheckboxDefaults
+import androidx.compose.material.LocalTextStyle
+import androidx.compose.material.OutlinedButton
+import androidx.compose.material.Text
+import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,16 +52,6 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.width
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * MD2 风格组件包装件（plan §1.8）：包装 androidx.compose.material (M2) 组件并
@@ -346,155 +334,4 @@ fun AppOutlinedTextField(
         trailingIcon = trailingIcon,
         textStyle = LocalTextStyle.current.copy(fontSize = 16.sp),
     )
-}
-
-// ===== @Preview 合并自 androidMain 的 compose/component/AppWidgetsPreviews.kt =====
-
-/**
- * [AppWidgets.kt] 中各 Composable 的 @Preview。
- * - [AppOutlinedButton]: 描边按钮
- * - [AppFilletTextButton]: 圆角填充小按钮 (chip 形态)
- * - [AppTextButton]: 文本按钮
- * - [AppSwitch]: 自绘开关
- * - [AppCheckbox]: 复选框
- * - [AppMenuCheckbox]: 菜单勾选框 (DropdownMenu 内用)
- * - [AppOutlinedTextField]: 输入框
- */
-
-@Preview
-@Composable
-fun AppOutlinedButtonPreview() = LegadoThemePreview {
-    Box(Modifier.padding(16.dp)) {
-        AppOutlinedButton(text = "描边按钮", onClick = {})
-    }
-}
-
-@Preview
-@Composable
-fun AppOutlinedButtonDisabledPreview() = LegadoThemePreview {
-    Box(Modifier.padding(16.dp)) {
-        AppOutlinedButton(text = "禁用按钮", enabled = false, onClick = {})
-    }
-}
-
-@Preview
-@Composable
-fun AppFilletTextButtonPreview() = LegadoThemePreview {
-    Box(Modifier.padding(16.dp)) {
-        AppFilletTextButton(text = "圆角小按钮", onClick = {})
-    }
-}
-
-@Preview
-@Composable
-fun AppTextButtonPreview() = LegadoThemePreview {
-    Box(Modifier.padding(16.dp)) {
-        AppTextButton(text = "文本按钮", onClick = {})
-    }
-}
-
-@Preview
-@Composable
-fun AppSwitchPreview() = LegadoThemePreview {
-    var checked by remember { mutableStateOf(true) }
-    Box(Modifier.padding(16.dp)) {
-        AppSwitch(checked = checked, onCheckedChange = { checked = it })
-    }
-}
-
-@Preview
-@Composable
-fun AppSwitchUncheckedPreview() = LegadoThemePreview {
-    Box(Modifier.padding(16.dp)) {
-        AppSwitch(checked = false, onCheckedChange = {})
-    }
-}
-
-@Preview
-@Composable
-fun AppSwitchDisabledPreview() = LegadoThemePreview {
-    Box(Modifier.padding(16.dp)) {
-        AppSwitch(checked = true, onCheckedChange = null, enabled = false)
-    }
-}
-
-@Preview
-@Composable
-fun AppCheckboxPreview() = LegadoThemePreview {
-    var checked by remember { mutableStateOf(true) }
-    Box(Modifier.padding(16.dp)) {
-        AppCheckbox(checked = checked, onCheckedChange = { checked = it })
-    }
-}
-
-@Preview
-@Composable
-fun AppMenuCheckboxCheckedPreview() = LegadoThemePreview {
-    Box(Modifier.padding(16.dp)) {
-        AppMenuCheckbox(checked = true)
-    }
-}
-
-@Preview
-@Composable
-fun AppMenuCheckboxUncheckedPreview() = LegadoThemePreview {
-    Box(Modifier.padding(16.dp)) {
-        AppMenuCheckbox(checked = false)
-    }
-}
-
-@Preview
-@Composable
-fun AppOutlinedTextFieldPreview() = LegadoThemePreview {
-    var value by remember { mutableStateOf("输入内容") }
-    Box(Modifier.padding(16.dp)) {
-        AppOutlinedTextField(
-            value = value,
-            onValueChange = { value = it },
-            label = "标签",
-            singleLine = true,
-            modifier = Modifier.width(200.dp),
-        )
-    }
-}
-
-@Preview
-@Composable
-fun AppOutlinedTextFieldPasswordPreview() = LegadoThemePreview {
-    var value by remember { mutableStateOf("password") }
-    Box(Modifier.padding(16.dp)) {
-        AppOutlinedTextField(
-            value = value,
-            onValueChange = { value = it },
-            label = "密码",
-            singleLine = true,
-            visualTransformation = PasswordVisualTransformation(),
-            modifier = Modifier.width(200.dp),
-        )
-    }
-}
-
-@Preview
-@Composable
-fun AppWidgetsGalleryPreview() = LegadoThemePreview {
-    Column(
-        Modifier.padding(16.dp).fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        AppOutlinedButton(text = "描边按钮", onClick = {})
-        AppTextButton(text = "文本按钮", onClick = {})
-        AppFilletTextButton(text = "圆角按钮", onClick = {})
-        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            AppSwitch(checked = true, onCheckedChange = {})
-            Spacer(Modifier.width(16.dp))
-            AppSwitch(checked = false, onCheckedChange = {})
-        }
-        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            AppCheckbox(checked = true, onCheckedChange = {})
-            Spacer(Modifier.width(16.dp))
-            AppMenuCheckbox(checked = true)
-            Spacer(Modifier.width(16.dp))
-            AppMenuCheckbox(checked = false)
-        }
-    }
 }

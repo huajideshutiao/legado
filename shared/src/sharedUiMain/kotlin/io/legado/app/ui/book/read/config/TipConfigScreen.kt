@@ -36,10 +36,12 @@ import legado.shared.generated.resources.hide
 import legado.shared.generated.resources.hide_when_status_bar_show
 import legado.shared.generated.resources.left
 import legado.shared.generated.resources.middle
+import legado.shared.generated.resources.read_tip
 import legado.shared.generated.resources.right
 import legado.shared.generated.resources.show
 import legado.shared.generated.resources.show_hide
 import legado.shared.generated.resources.text_color
+import legado.shared.generated.resources.tip_color
 import legado.shared.generated.resources.tip_divider_color
 import legado.shared.generated.resources.title_center
 import legado.shared.generated.resources.title_font_size
@@ -47,12 +49,8 @@ import legado.shared.generated.resources.title_hide
 import legado.shared.generated.resources.title_left
 import legado.shared.generated.resources.title_margin_bottom
 import legado.shared.generated.resources.title_margin_top
-import legado.shared.generated.resources.read_tip
-import legado.shared.generated.resources.tip_color
 import org.jetbrains.compose.resources.stringArrayResource
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * Tip 配置控制器：把 app 端 `ReadBookConfig` / `ReadTipConfig` 的字段读写抽象为接口，
@@ -459,48 +457,3 @@ private fun TipRow(label: String, value: String, onClick: () -> Unit) {
         )
     }
 }
-
-// ===== @Preview 合并自 androidMain 的 book/read/config/ReadConfigPrefsPreviews.kt (TipConfigScreen) =====
-
-// ===== TipConfigScreen =====
-
-
-/** Preview 期 onPostConfig noop。 */
-private val noopPostConfig: (List<ReadConfigChange>) -> Unit = {}
-
-/** Preview 期 [TipConfigController] stub, 字段返回常见默认值。 */
-private class PreviewTipConfigController : TipConfigController {
-    override var titleMode: Int = 1
-    override var titleSize: Int = 4
-    override var titleTop: Int = 0
-    override var titleBottom: Int = 0
-    override var headerMode: Int = 1
-    override var footerMode: Int = 0
-    override var tipHeaderLeft: Int = 0
-    override var tipHeaderMiddle: Int = 1
-    override var tipHeaderRight: Int = 2
-    override var tipFooterLeft: Int = 3
-    override var tipFooterMiddle: Int = 4
-    override var tipFooterRight: Int = 5
-    override var tipColor: Int = 0
-    override var tipDividerColor: Int = -1
-}
-
-@Preview
-@Composable
-fun TipConfigScreenPreview() = LegadoThemePreview {
-    TipConfigScreen(
-        controller = PreviewTipConfigController(),
-        onPostConfig = noopPostConfig,
-    )
-}
-
-@Preview
-@Composable
-fun TipConfigScreenDarkPreview() = LegadoThemePreview(dark = true) {
-    TipConfigScreen(
-        controller = PreviewTipConfigController(),
-        onPostConfig = noopPostConfig,
-    )
-}
-

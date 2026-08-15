@@ -20,7 +20,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
@@ -29,7 +28,6 @@ import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import io.legado.app.ui.preview.LegadoThemePreview
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.auto_page_speed
 import legado.shared.generated.resources.chapter_list
@@ -227,49 +225,4 @@ private fun ReadMenuIconButton(
             modifier = Modifier.padding(top = 4.dp),
         )
     }
-}
-
-// ===== @Preview 合并自 androidMain 的 book/read/config/ReadConfigScreenPreviews.kt (AutoReadPanel) =====
-
-// ===== AutoReadPanel =====
-
-/** Preview 期 [AutoReadController] stub。 */
-private class PreviewAutoReadController(
-    override var autoReadSpeed: Int = 10,
-) : AutoReadController
-
-/** Preview 期 [AutoReadActions] stub。 */
-private object NoopAutoReadActions : AutoReadActions {
-    override fun openChapterList() {}
-    override fun showMenuBar() {}
-    override fun autoPageStop() {}
-    override fun showPageAnimConfig() {}
-    override fun upTtsSpeechRate() {}
-}
-
-@Preview
-@Composable
-fun AutoReadPanelPreview() = LegadoThemePreview {
-    AutoReadPanel(
-        controller = PreviewAutoReadController(autoReadSpeed = 10),
-        actions = NoopAutoReadActions,
-    )
-}
-
-@Preview
-@Composable
-fun AutoReadPanelFastPreview() = LegadoThemePreview {
-    AutoReadPanel(
-        controller = PreviewAutoReadController(autoReadSpeed = 60),
-        actions = NoopAutoReadActions,
-    )
-}
-
-@Preview
-@Composable
-fun AutoReadPanelDarkPreview() = LegadoThemePreview(dark = true) {
-    AutoReadPanel(
-        controller = PreviewAutoReadController(autoReadSpeed = 30),
-        actions = NoopAutoReadActions,
-    )
 }

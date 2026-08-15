@@ -48,8 +48,6 @@ import legado.shared.generated.resources.code_view
 import legado.shared.generated.resources.ic_save
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 代码查看/编辑对话框内容 (KMP 共享, desktop / iOS 复用)。
@@ -220,62 +218,3 @@ fun CodeDialog(
         }
     }
 }
-
-// ===== @Preview 合并自 androidMain 的 widget/dialog/CommonDialogsPreviews.kt (CodeDialogContent) =====
-
-// ---- CodeDialogContent ----
-
-private val previewJsCode = """
-// 书源正文净化脚本
-function purify(text) {
-    return text
-        .replace(/^.*最新章节.*$/gm, '')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim();
-}
-purify(result);
-""".trimIndent()
-
-@Preview
-@Composable
-fun CodeDialogContentEditablePreview() = LegadoThemePreview {
-    CodeDialogContent(
-        code = previewJsCode,
-        disableEdit = false,
-        onDismiss = {},
-        onSave = {},
-    )
-}
-
-@Preview
-@Composable
-fun CodeDialogContentReadOnlyPreview() = LegadoThemePreview {
-    CodeDialogContent(
-        code = previewJsCode,
-        disableEdit = true,
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun CodeDialogContentEmptyPreview() = LegadoThemePreview {
-    CodeDialogContent(
-        code = "",
-        disableEdit = false,
-        onDismiss = {},
-        onSave = {},
-    )
-}
-
-@Preview
-@Composable
-fun CodeDialogContentDarkPreview() = LegadoThemePreview(dark = true) {
-    CodeDialogContent(
-        code = previewJsCode,
-        disableEdit = false,
-        onDismiss = {},
-        onSave = {},
-    )
-}
-

@@ -1,10 +1,7 @@
 package io.legado.app.ui.book.read.page
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -20,25 +17,21 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.drawText
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import io.legado.app.help.config.LocalReadConfigProviders
-import io.legado.app.help.config.ReadConfigProviders
 import io.legado.app.help.image.ReaderImageCache
+import io.legado.app.ui.book.read.page.TextLayoutCache.Companion.COLUMN_BATCH
+import io.legado.app.ui.book.read.page.TextLayoutCache.Companion.build
 import io.legado.app.ui.book.read.page.entities.TextLayoutCacheHandle
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.column.BaseColumn
 import io.legado.app.ui.book.read.page.entities.column.ImageColumn
 import io.legado.app.ui.book.read.page.entities.column.ReviewColumn
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
-import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
-import io.legado.app.ui.preview.LegadoThemePreview
 import kotlinx.coroutines.yield
 import legado.shared.generated.resources.Res
-import legado.shared.generated.resources.image_loading_error
 import org.jetbrains.compose.resources.decodeToImageBitmap
 
 /**
@@ -623,37 +616,4 @@ private fun DrawScope.drawReviewColumn(
     if (countTopLeft.x >= size.width || countTopLeft.y >= size.height) return
     // 缓存布局零 measure 重放
     drawText(layout.layout, topLeft = countTopLeft)
-}
-
-// ===== @Preview 合并自 androidMain 的 book/read/page/ReadPagePreviews.kt (PageContentCanvas) =====
-
-// ===== PageContentCanvas =====
-
-
-/**
- * 包装 [LegadoThemePreview], 在其基础上注入 [LocalReadConfigProviders] (走 stub prefs)。
- */
-@Composable
-private fun LegadoReadConfigPreview(
-    dark: Boolean = false,
-    content: @Composable () -> Unit,
-) {
-    LegadoThemePreview(dark = dark) {
-        val prefs = LocalPreferenceStoreProvider.current
-        val providers = ReadConfigProviders(prefs)
-        CompositionLocalProvider(LocalReadConfigProviders provides providers) {
-            Box(Modifier.fillMaxSize()) { content() }
-        }
-    }
-}
-
-
-@Preview
-@Composable
-fun PageContentCanvasEmptyPreview() = LegadoReadConfigPreview {
-    // 用 emptyTextPage (无文字行), 仅渲染空 Canvas, 验证测量/绘制链路不崩
-    PageContentCanvas(
-        textPage = TextPage.emptyTextPage,
-        modifier = Modifier.fillMaxSize(),
-    )
 }

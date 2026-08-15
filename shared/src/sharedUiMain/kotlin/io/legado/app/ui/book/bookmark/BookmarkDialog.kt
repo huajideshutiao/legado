@@ -20,7 +20,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.Bookmark
@@ -32,8 +31,6 @@ import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import io.legado.app.ui.preview.LegadoThemePreview
-import io.legado.app.ui.preview.previewBookmarks
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.bookmark
 import legado.shared.generated.resources.bookmark_content
@@ -139,60 +136,3 @@ fun BookmarkDialog(
         }
     }
 }
-
-// ===== @Preview 合并自 androidMain 的 book/bookmark/BookmarkPreviews.kt (BookmarkDialog) =====
-
-// ---- BookmarkDialog ----
-
-/**
- * [BookmarkDialog] 与 [AllBookmarkScreen] 的 @Preview。
- *
- * 假数据取 PreviewData.previewBookmarks (跨两本书, 验证按书分组吸顶)。
- */
-
-private val previewBookmark = previewBookmarks.first()
-
-@Preview
-@Composable
-fun BookmarkDialogPreview() = LegadoThemePreview {
-    BookmarkDialog(
-        bookmark = previewBookmark,
-        onConfirm = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun BookmarkDialogWithDeletePreview() = LegadoThemePreview {
-    BookmarkDialog(
-        bookmark = previewBookmark,
-        showDelete = true,
-        onConfirm = {},
-        onDismiss = {},
-        onDelete = {},
-    )
-}
-
-@Preview
-@Composable
-fun BookmarkDialogEmptyNotePreview() = LegadoThemePreview {
-    BookmarkDialog(
-        bookmark = previewBookmarks[1],
-        onConfirm = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun BookmarkDialogDarkPreview() = LegadoThemePreview(dark = true) {
-    BookmarkDialog(
-        bookmark = previewBookmark,
-        showDelete = true,
-        onConfirm = {},
-        onDismiss = {},
-        onDelete = {},
-    )
-}
-

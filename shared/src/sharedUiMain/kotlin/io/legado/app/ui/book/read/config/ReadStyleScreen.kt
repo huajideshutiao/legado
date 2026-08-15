@@ -30,7 +30,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.PageAnim
@@ -43,7 +42,6 @@ import io.legado.app.ui.compose.component.RadioChip
 import io.legado.app.ui.compose.component.StrokeTextChip
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import io.legado.app.ui.preview.LegadoThemePreview
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.add
 import legado.shared.generated.resources.font_weight_text
@@ -577,105 +575,3 @@ private fun AddStyleItem(textColor: Color, onClick: () -> Unit) {
         )
     }
 }
-
-// ===== @Preview 合并自 androidMain 的 book/read/config/ReadConfigScreenPreviews.kt (ReadStyleScreen) =====
-
-// ===== ReadStyleScreen =====
-
-/**
- * [ReadStyleScreen.kt] / [BgTextConfigScreen.kt] / [AutoReadPanel.kt] 的 @Preview。
- *
- * Controller / Actions 接口用内存 stub 实现, 字段返回常见默认值 (与 AppConfig 真实默认对齐)。
- */
-
-/**
- * Preview 期 [ReadStyleController] stub。
- *
- * 字段用 mutableStateOf 兜底, 让 Compose 可重组; 内部不持久化, set 时仅更新内存。
- */
-private class PreviewReadStyleController : ReadStyleController {
-    override var textBold: Int = 0
-    override var chineseType: Int = 0
-    override var pageAnim: Int = PageAnim.coverPageAnim
-    override var shareLayout: Boolean = false
-    override var textSize: Int = 20
-    override var letterSpacing: Float = 0.1f
-    override var lineSpacingExtra: Int = 10
-    override var paragraphSpacing: Int = 0
-    override var styleSelect: Int = 0
-    override var paragraphIndent: String = ""
-    override val configList: List<ReadStyleConfig> = listOf(
-        ReadStyleConfig(name = "默认").apply {
-            textColor = 0xFF3E3D3B.toInt()
-            bgMeanColor = 0xFFFFFFFF.toInt()
-        },
-        ReadStyleConfig(name = "护眼").apply {
-            bgStr = "#C7EDCC"
-            textColorStr = "#3E3D3B"
-            textColor = 0xFF3E3D3B.toInt()
-            bgMeanColor = 0xFFC7EDCC.toInt()
-        },
-        ReadStyleConfig(name = "夜间").apply {
-            bgStr = "#000000"
-            textColorStr = "#ADADAD"
-            textColor = 0xFFADADAD.toInt()
-            bgMeanColor = 0xFF000000.toInt()
-        },
-    )
-
-    override fun curTextColor(): Int = configList[styleSelect].textColor
-    override fun addStyle(): Int = 0
-    override fun save() {}
-}
-
-/** Preview 期 [ReadStyleActions] stub, 所有回调空实现。 */
-private object NoopReadStyleActions : ReadStyleActions {
-    override fun showFontSelect() {}
-    override fun showChineseConverter() {}
-    override fun showPaddingConfig() {}
-    override fun showTipConfig() {}
-    override fun showBgTextConfig(index: Int) {}
-    override fun onUpPageAnim() {}
-    override fun onPostConfig(changes: List<ReadConfigChange>) {}
-    override fun onPostActionBarChange() {}
-}
-
-/** bgPreviewSlot 占位: 简单色块 + 选中描边, 不渲染真实 Bitmap。 */
-@Composable
-private fun previewBgPreviewSlot(
-    config: ReadStyleConfig,
-    selected: Boolean,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit,
-) {
-    Box(
-        Modifier
-            .size(100.dp, 150.dp)
-            .background(Color(config.bgMeanColor)),
-    )
-}
-
-@Preview
-@Composable
-fun ReadStyleScreenPreview() = LegadoThemePreview {
-    ReadStyleScreen(
-        controller = PreviewReadStyleController(),
-        actions = NoopReadStyleActions,
-        bgPreviewSlot = { config, selected, onClick, onLongClick ->
-            previewBgPreviewSlot(config, selected, onClick, onLongClick)
-        },
-    )
-}
-
-@Preview
-@Composable
-fun ReadStyleScreenDarkPreview() = LegadoThemePreview(dark = true) {
-    ReadStyleScreen(
-        controller = PreviewReadStyleController().apply { styleSelect = 2 },
-        actions = NoopReadStyleActions,
-        bgPreviewSlot = { config, selected, onClick, onLongClick ->
-            previewBgPreviewSlot(config, selected, onClick, onLongClick)
-        },
-    )
-}
-

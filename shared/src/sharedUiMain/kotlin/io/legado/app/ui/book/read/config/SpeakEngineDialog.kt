@@ -59,8 +59,6 @@ import legado.shared.generated.resources.speak_engine
 import legado.shared.generated.resources.system_default
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 朗读引擎选择对话框 (KMP 共享, app + desktop 复用)。
@@ -259,85 +257,3 @@ private fun EngineRow(
         }
     }
 }
-
-// ===== @Preview 合并自 androidMain 的 book/read/config/ReadConfigDialogPreviews.kt (SpeakEngineDialog) =====
-
-// ===== SpeakEngineDialog =====
-
-/**
- * [SpeakEngineDialog.kt] / [ReadAloudDialog.kt] / [PageKeyDialog.kt] / [ClickActionDialog.kt] 的 @Preview。
- *
- * 假数据: [HttpTTS] 列表 / [ClickActionConfig] 用纯内存对象构造, 不依赖 DB。
- */
-
-private val previewEngines = listOf(
-    HttpTTS(
-        id = 1L,
-        name = "朗读引擎 A",
-        url = "https://tts.example.com/a",
-    ),
-    HttpTTS(
-        id = 2L,
-        name = "朗读引擎 B",
-        url = "https://tts.example.com/b",
-    ),
-    HttpTTS(
-        id = 3L,
-        name = "朗读引擎 C",
-        url = "https://tts.example.com/c",
-    ),
-)
-
-@Preview
-@Composable
-fun SpeakEngineDialogPreview() = LegadoThemePreview {
-    SpeakEngineDialog(
-        engines = previewEngines,
-        selectedEngineUrl = "1",
-        onSelectEngine = {},
-        onEditEngines = {},
-        onDeleteEngine = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun SpeakEngineDialogSysDefaultPreview() = LegadoThemePreview {
-    // 选中"系统默认"
-    SpeakEngineDialog(
-        engines = previewEngines,
-        selectedEngineUrl = null,
-        onSelectEngine = {},
-        onEditEngines = {},
-        onDeleteEngine = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun SpeakEngineDialogEmptyPreview() = LegadoThemePreview {
-    SpeakEngineDialog(
-        engines = emptyList(),
-        selectedEngineUrl = null,
-        onSelectEngine = {},
-        onEditEngines = {},
-        onDeleteEngine = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun SpeakEngineDialogDarkPreview() = LegadoThemePreview(dark = true) {
-    SpeakEngineDialog(
-        engines = previewEngines,
-        selectedEngineUrl = "2",
-        onSelectEngine = {},
-        onEditEngines = {},
-        onDeleteEngine = {},
-        onDismiss = {},
-    )
-}
-

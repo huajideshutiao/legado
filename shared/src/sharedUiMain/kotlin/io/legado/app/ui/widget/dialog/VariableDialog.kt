@@ -26,14 +26,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.preview.LegadoThemePreview
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.ok
@@ -154,52 +152,4 @@ private fun VariableEditDialogContent(
             }
         }
     }
-}
-
-// ===== @Preview 合并自 androidMain 的 widget/dialog/CommonDialogsPreviews.kt (VariableDialog (源变量/书籍变量, 对照原版单变量编辑器)) =====
-
-// ---- VariableDialog (源变量/书籍变量, 对照原版单变量编辑器) ----
-
-private val previewSourceVariable = """{
-  "cookie": "session=abc123; uid=88888",
-  "token": "eyJhbGciOiJIUzI1NiJ9.preview",
-  "baseUrl": "https://preview.invalid"
-}"""
-
-private val previewBookVariable = """{
-  "lastReadTime": "1700000000000",
-  "chapterOffset": "12"
-}"""
-
-@Preview
-@Composable
-fun SourceVariableDialogPreview() = LegadoThemePreview {
-    SourceVariableDialog(
-        initialJson = previewSourceVariable,
-        comment = "cookie\n源变量可在js中通过source.getVariable()获取",
-        onSave = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun BookVariableDialogPreview() = LegadoThemePreview {
-    BookVariableDialog(
-        initialCustom = previewBookVariable,
-        comment = """书籍变量可在js中通过book.getVariable("custom")获取""",
-        onSave = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun VariableDialogDarkPreview() = LegadoThemePreview(dark = true) {
-    SourceVariableDialog(
-        initialJson = previewSourceVariable,
-        comment = "源变量可在js中通过source.getVariable()获取",
-        onSave = {},
-        onDismiss = {},
-    )
 }

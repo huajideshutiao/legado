@@ -24,7 +24,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.RuleSub
@@ -35,7 +34,6 @@ import io.legado.app.ui.compose.platform.rememberNavigationBarPaddingValues
 import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import io.legado.app.ui.preview.LegadoThemePreview
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.add
 import legado.shared.generated.resources.book_source
@@ -276,79 +274,3 @@ private fun typeName(type: Int): String = when (type) {
     5 -> stringResource(Res.string.tts)
     else -> stringResource(Res.string.book_source)
 }
-
-// ===== @Preview 合并自 androidMain 的 association/AssociationPreviews.kt (RuleSubScreen) =====
-
-// ===== RuleSubScreen =====
-
-/**
- * association 模块下 [RuleSubScreen] 与 [ImportListScaffold] 的 @Preview。
- *
- * 假数据: [RuleSub] / 引擎列表用纯内存对象构造, 不依赖 DB / 网络。
- * RuleSubUiActions 用 noop 实现 (Preview 期不触发实际跳转)。
- */
-
-private val previewRuleSubs = listOf(
-    RuleSub(
-        id = 1L,
-        name = "起点书源订阅",
-        url = "https://example.com/source1.json",
-        type = 0,
-        customOrder = 0,
-    ),
-    RuleSub(
-        id = 2L,
-        name = "RSS 源订阅",
-        url = "https://example.com/rss.json",
-        type = 1,
-        customOrder = 1,
-    ),
-    RuleSub(
-        id = 3L,
-        name = "替换规则订阅",
-        url = "https://example.com/replace.json",
-        type = 2,
-        customOrder = 2,
-    ),
-)
-
-/** Preview 期 noop [RuleSubUiActions], 所有回调空实现。 */
-private object NoopRuleSubActions : RuleSubUiActions {
-    override fun onBack() {}
-    override fun onAdd() {}
-    override fun onEdit(ruleSub: RuleSub) {}
-    override fun onOpenSubscription(ruleSub: RuleSub) {}
-    override fun onMove(from: Int, to: Int) {}
-    override fun onPersistOrder() {}
-    override fun onToTop(ruleSub: RuleSub) {}
-    override fun onToBottom(ruleSub: RuleSub) {}
-    override fun onDelete(ruleSub: RuleSub) {}
-}
-
-@Preview
-@Composable
-fun RuleSubScreenPreview() = LegadoThemePreview {
-    RuleSubScreen(
-        state = RuleSubUiState(ruleSubs = previewRuleSubs),
-        actions = NoopRuleSubActions,
-    )
-}
-
-@Preview
-@Composable
-fun RuleSubScreenEmptyPreview() = LegadoThemePreview {
-    RuleSubScreen(
-        state = RuleSubUiState(ruleSubs = emptyList()),
-        actions = NoopRuleSubActions,
-    )
-}
-
-@Preview
-@Composable
-fun RuleSubScreenDarkPreview() = LegadoThemePreview(dark = true) {
-    RuleSubScreen(
-        state = RuleSubUiState(ruleSubs = previewRuleSubs),
-        actions = NoopRuleSubActions,
-    )
-}
-

@@ -24,7 +24,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.SourceFilterRule
@@ -38,8 +37,6 @@ import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import io.legado.app.ui.preview.LegadoThemePreview
-import io.legado.app.ui.preview.previewFilterRules
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.add
 import legado.shared.generated.resources.cancel
@@ -323,38 +320,4 @@ private fun ScopeRow(
                 .size(24.dp),
         )
     }
-}
-
-// ===== @Preview 合并自 androidMain 的 book/filter/SourceFilterRulePreviews.kt (SourceFilterEditDialog) =====
-
-// ---- SourceFilterEditDialog ----
-
-@Preview
-@Composable
-fun SourceFilterEditDialogPreview() = LegadoThemePreview {
-    SourceFilterEditDialog(
-        rule = previewFilterRules.first(),
-        onConfirm = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun SourceFilterEditDialogNewPreview() = LegadoThemePreview {
-    SourceFilterEditDialog(
-        rule = null,
-        onConfirm = {},
-        onDismiss = {},
-    )
-}
-
-@Preview
-@Composable
-fun SourceFilterEditDialogDarkPreview() = LegadoThemePreview(dark = true) {
-    SourceFilterEditDialog(
-        rule = previewFilterRules.first(),
-        onConfirm = {},
-        onDismiss = {},
-    )
 }

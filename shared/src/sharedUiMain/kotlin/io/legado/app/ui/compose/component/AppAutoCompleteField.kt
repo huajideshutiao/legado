@@ -1,24 +1,24 @@
 package io.legado.app.ui.compose.component
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.clickable
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
@@ -31,8 +31,6 @@ import io.legado.app.ui.compose.theme.AppTheme
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.ic_clear_all
 import org.jetbrains.compose.resources.painterResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 复刻 widget.text.AutoCompleteTextView（DialogEditTextBinding 的历史下拉输入框）：
@@ -118,60 +116,5 @@ fun AppAutoCompleteField(
                 }
             }
         }
-    }
-}
-
-// ===== @Preview 合并自 androidMain 的 compose/component/AppAutoCompleteFieldPreviews.kt =====
-
-/**
- * [AppAutoCompleteField.kt] 中 [AppAutoCompleteField] 的 @Preview。
- *
- * 该组件依赖 Popup (聚焦时弹历史候选下拉), Preview 中可能无法触发 Popup;
- * 但可预览输入框本身的样式。
- */
-
-@Preview
-@Composable
-fun AppAutoCompleteFieldPreview() = LegadoThemePreview {
-    var value by remember { mutableStateOf("") }
-    Box(Modifier.padding(16.dp)) {
-        AppAutoCompleteField(
-            value = value,
-            onValueChange = { value = it },
-            label = "搜索历史",
-            values = listOf("三体", "刘慈欣", "科幻小说", "黑暗森林"),
-            onDelete = {},
-            modifier = Modifier.fillMaxWidth(),
-        )
-    }
-}
-
-@Preview
-@Composable
-fun AppAutoCompleteFieldFilledPreview() = LegadoThemePreview {
-    var value by remember { mutableStateOf("三") }
-    Box(Modifier.padding(16.dp)) {
-        AppAutoCompleteField(
-            value = value,
-            onValueChange = { value = it },
-            label = "搜索历史",
-            values = listOf("三体", "刘慈欣", "科幻小说", "黑暗森林"),
-            modifier = Modifier.fillMaxWidth(),
-        )
-    }
-}
-
-@Preview
-@Composable
-fun AppAutoCompleteFieldNoHistoryPreview() = LegadoThemePreview {
-    var value by remember { mutableStateOf("测试") }
-    Box(Modifier.padding(16.dp)) {
-        AppAutoCompleteField(
-            value = value,
-            onValueChange = { value = it },
-            label = "无历史",
-            values = emptyList(),
-            modifier = Modifier.fillMaxWidth(),
-        )
     }
 }
