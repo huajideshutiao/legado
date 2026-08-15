@@ -99,7 +99,7 @@ object NCXDocumentV2 {
         val label = readNavLabel(navpointElement)
         //Log.d(TAG,"label:"+label);
         var tocResourceRoot: String = book.spine.tocResource!!.getHref()
-            ?.substringBeforeLast('/') ?: ""
+            .substringBeforeLast('/')
         if (tocResourceRoot.length == book.spine.tocResource!!.getHref()
                 .length
         ) {

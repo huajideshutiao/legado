@@ -4,6 +4,7 @@ package io.legado.app.help.book
 
 import android.net.Uri
 import androidx.core.net.toUri
+import io.legado.app.App
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
@@ -16,7 +17,6 @@ import io.legado.app.utils.inputStream
 import io.legado.app.utils.isUri
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.runBlocking
-import splitties.init.appCtx
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
@@ -61,7 +61,7 @@ fun Book.getLocalUri(): Uri {
         Uri.fromFile(File(bookUrl))
     }
     //先检测uri是否有效,这个比较快
-    uri.inputStream(appCtx).getOrNull()?.use {
+    uri.inputStream(App.instance).getOrNull()?.use {
         localUriCache[bookUrl] = uri
     }?.let {
         return uri
@@ -75,7 +75,7 @@ fun Book.getLocalUri(): Uri {
         val treeUri = defaultBookDir.toUri()
         val treeFileDoc = FileDoc.fromUri(treeUri, true)
         if (!treeFileDoc.exists()) {
-            appCtx.toastOnUi("书籍保存目录失效，请重新设置！")
+            App.instance.toastOnUi("书籍保存目录失效，请重新设置！")
         } else {
             val fileDoc = treeFileDoc.find(originName, 5, 100)
             if (fileDoc != null) {

@@ -16,9 +16,11 @@ import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import io.legado.app.App
 import io.legado.app.constant.AppLog
 import io.legado.app.help.IntentData
 import io.legado.app.help.config.AppConfig
+import io.legado.app.notificationManager
 import io.legado.app.ui.root.BrowserService
 import io.legado.app.ui.root.CrashLogProvider
 import io.legado.app.ui.root.ExternalRequestService
@@ -48,8 +50,6 @@ import io.legado.app.utils.share
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-import splitties.init.appCtx
-import splitties.systemservices.notificationManager
 import java.io.File
 import java.io.FileOutputStream
 
@@ -130,7 +130,7 @@ private class AndroidFilePickerService(
             val modeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
                 Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             runCatching {
-                appCtx.contentResolver.takePersistableUriPermission(uri, modeFlags)
+                App.instance.contentResolver.takePersistableUriPermission(uri, modeFlags)
             }.onFailure {
                 AppLog.put("AndroidFilePickerService.pickDirectory takePersistableUriPermission 失败: ${it.localizedMessage}")
             }
@@ -148,7 +148,7 @@ private class AndroidFilePickerService(
         val uri = uriString.toUri()
         return when (uri.scheme?.lowercase()) {
             "content" -> runCatching {
-                val resolver = appCtx.contentResolver
+                val resolver = App.instance.contentResolver
                 val displayName = resolver.query(
                     uri,
                     arrayOf(OpenableColumns.DISPLAY_NAME),
@@ -175,7 +175,7 @@ private class AndroidFilePickerService(
                 val safeName = sourceName.map { c ->
                     if (c.isLetterOrDigit() || c == '.' || c == '_' || c == '-') c else '_'
                 }.joinToString("").ifBlank { "picked_${System.currentTimeMillis()}" }
-                val targetDir = File(appCtx.cacheDir, "file_picker").apply { mkdirs() }
+                val targetDir = File(App.instance.cacheDir, "file_picker").apply { mkdirs() }
                 val target = File(targetDir, "${System.currentTimeMillis()}_$safeName")
                 resolver.openInputStream(uri)?.use { input ->
                     FileOutputStream(target).use { output -> input.copyTo(output) }
@@ -362,7 +362,7 @@ private class AndroidMediaService : MediaService {
                 if (player === failed) player = null
                 true
             }
-            newPlayer.setDataSource(appCtx, url.toUri(), headers)
+            newPlayer.setDataSource(App.instance, url.toUri(), headers)
             newPlayer.prepareAsync()
         }.onFailure {
             AppLog.put("AndroidMediaService.playMedia 失败: ${it.localizedMessage}")
@@ -388,7 +388,7 @@ private class AndroidMediaService : MediaService {
 private class AndroidNotificationService : NotificationService {
     override fun notify(id: Int, title: String, content: String) {
         kotlin.runCatching {
-            val notification = NotificationCompat.Builder(appCtx, CHANNEL_ID_DEFAULT)
+            val notification = NotificationCompat.Builder(App.instance, CHANNEL_ID_DEFAULT)
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .setContentTitle(title)
                 .setContentText(content)

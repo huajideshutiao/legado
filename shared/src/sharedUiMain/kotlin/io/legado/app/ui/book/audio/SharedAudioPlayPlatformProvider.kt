@@ -4,13 +4,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.Dp
 
 /**
- * iOS 音频播放平台 UI: 复用 shared [SharedAudioPlayScreenContent]
- * (封面/模糊背景/歌词/弹窗 slot 全端共享, 见 AudioPlaySharedSlots.kt / LrcViewShared.kt)。
+ * 音频播放页平台 UI provider 的共享默认实现 (2026-08 去重)。
  *
- * 视觉参数已全部收拢为 shared 默认 (评论钮/图标/回显标签底色/透明度/内边距/按压底),
- * 本类与 app/desktop/鸿蒙 端同为纯透传。AVPlayer 播控由 IosAudioPlayCommander 承载。
+ * 原 app/desktop/iOS/鸿蒙 四端各有一份逐字相同的纯透传副本
+ * (AndroidAudioPlayPlatformProvider / DesktopAudioPlayPlatformProvider /
+ * IosAudioPlayPlatformProvider / OhosAudioPlayPlatformProvider), 视觉参数收拢后
+ * 已零平台差异, 现收敛为本对象, 四端宿主统一注册:
+ * - app MainActivity → `AudioPlayPlatformProviders.register(SharedAudioPlayPlatformProvider)`
+ * - desktop Main.kt → 同上
+ * - iOS MainViewController / ohos MainOhos → 同上
+ *
+ * 复用 shared [SharedAudioPlayScreenContent] (封面/模糊背景/歌词/弹窗 slot 全端共享,
+ * 见 AudioPlaySharedSlots.kt / LrcViewShared.kt); 歌词取色 [rememberLrcColors] 同源。
+ * 鸿蒙未注册 BookImageLoaders (coil3 无 ohosArm64 变体) 时, 封面 slot 走
+ * getOrNull 回退直接显示内置默认封面 (见 SharedAudioCoverSlot)。
  */
-object IosAudioPlayPlatformProvider : AudioPlayPlatformProvider {
+object SharedAudioPlayPlatformProvider : AudioPlayPlatformProvider {
 
     @Composable
     override fun Content(

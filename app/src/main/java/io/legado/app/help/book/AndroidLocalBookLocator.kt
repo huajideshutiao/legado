@@ -3,10 +3,10 @@ package io.legado.app.help.book
 import android.net.Uri
 import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
+import io.legado.app.App
 import io.legado.app.data.entities.Book
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.utils.isContentScheme
-import splitties.init.appCtx
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
@@ -70,7 +70,7 @@ class AndroidLocalBookLocator : LocalBookLocator {
             val uri = book.bookUrl.toUri()
             when {
                 uri.isContentScheme() -> {
-                    DocumentFile.fromSingleUri(appCtx, uri)?.lastModified() ?: 0L
+                    DocumentFile.fromSingleUri(App.instance, uri)?.lastModified() ?: 0L
                 }
                 else -> {
                     val path = getLocalPath(book) ?: uri.path ?: return 0L

@@ -36,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -48,6 +49,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppTitleBar
@@ -69,6 +71,7 @@ import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.TextToolbarFindReplaceEffect
 import io.legado.app.ui.widget.text.EditEntity
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.emptyFlow
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.action_save
@@ -164,6 +167,20 @@ fun BookSourceEditScreen(
     LaunchedEffect(Unit) { runCatching { rootFocusRequester.requestFocus() } }
     LaunchedEffect(requestFocusSignal) {
         requestFocusSignal.collect { runCatching { rootFocusRequester.requestFocus() } }
+    }
+    // 屏幕级文本变化观察器 (对齐 rememberCodeEditorState 的观察语义): 本屏编辑器经 fieldEditors
+    // 普通 map 创建 (editorOf 非 @Composable, 不走 rememberCodeEditorState), 若只挂字段级
+    // 观察器, LazyColumn 回收离屏字段时观察中断 —— 而工具栏撤销/重做/辅助键插入/查找替换都以
+    // 激活编辑器为目标, 字段滚出视口后编辑仍可发生, 漏同步 → entity.value 不更新 → 保存丢修改。
+    // 观察器挂屏幕层只盯激活编辑器 (唯一可被编辑的编辑器): 文本变化 → onChanged → entity 同步。
+    // drop(1) 跳过初始发射 (首次无激活编辑器 / 聚焦瞬间的幂等回写), 对齐旧 onChanged 只在
+    // 变化后触发的语义。
+    LaunchedEffect(activeEditor) {
+        snapshotFlow { activeEditor.value?.let { it.textFieldState.text.toString() } }
+            .drop(1)
+            .collect {
+                activeEditor.value?.let { editor -> editor.onChanged?.invoke(editor.value) }
+            }
     }
     Column(
         modifier
@@ -596,6 +613,10 @@ private fun CodeField(
     }
     // 查找面板防抖协程作用域: 防抖任务挂在字段 scope, 随字段离开组合自动取消
     val searchRefreshScope = rememberCoroutineScope()
+    // 字段最大行数 (对齐原版 BookSourceEditAdapter 的 editText.maxLines = sourceEditMaxLine):
+    // 默认 Int.MAX_VALUE 不限制 (字段高度 = 内容高度); 用户设置后大字段按配置行数截断、
+    // 超出部分字段内部滚动。进入页面时读取一次 (配置变化下次进入生效, 同原版)。
+    val editMaxLine = remember { AppConfigProviders.get().sourceEditMaxLine }
     // 回调 lambda 经 rememberUpdatedState 稳定: 父级重组传新 lambda 引用时本字段不重组
     val latestOnEditorActive by rememberUpdatedState(onEditorActive)
     val latestOnFieldFocus by rememberUpdatedState(onFieldFocus)
@@ -620,6 +641,7 @@ private fun CodeField(
         label = rememberString(entity.hint),
         // 对照原版 CodeView: 书源编辑条目开行号 (isLineNumberEnabled=true)
         showLineNumbers = true,
+        maxLines = editMaxLine,
         // 对照原版 CodeView: EditText 默认 16sp (原版未设 textSize)
         fontSize = 16.sp,
         // 查找高亮只叠加在聚焦字段上 (原版查找作用于 lastActiveCodeView)

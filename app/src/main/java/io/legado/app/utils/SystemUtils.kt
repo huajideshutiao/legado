@@ -1,6 +1,6 @@
 package io.legado.app.utils
 
-import splitties.init.appCtx
+import io.legado.app.App
 
 /**
  * 安卓端屏幕尺寸等系统信息工具。
@@ -38,8 +38,8 @@ object SystemUtils {
 fun registerAndroidScreenInfoProvider() {
     ScreenInfoProviders.register(object : ScreenInfoProvider {
         override val screenWidthPx: Int
-            get() = appCtx.resources.displayMetrics.widthPixels
+            get() = App.instance.resources.displayMetrics.widthPixels
         override val screenHeightPx: Int
-            get() = appCtx.resources.displayMetrics.heightPixels
+            get() = App.instance.resources.displayMetrics.heightPixels
     })
 }

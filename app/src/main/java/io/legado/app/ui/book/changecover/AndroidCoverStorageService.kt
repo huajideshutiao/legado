@@ -1,9 +1,9 @@
 package io.legado.app.ui.book.changecover
 
+import io.legado.app.App
 import io.legado.app.constant.AppLog
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.MD5Utils
-import splitties.init.appCtx
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -18,7 +18,7 @@ class AndroidCoverStorageService : CoverStorageService {
 
     override fun persistCover(srcPath: String, displayName: String): String? {
         val src = File(srcPath)
-        val externalFilesDir = appCtx.getExternalFilesDir(null)
+        val externalFilesDir = App.instance.getExternalFilesDir(null)
         if (!src.isFile || externalFilesDir == null) return null
         return runCatching {
             val suffix = displayName.substringAfterLast(".")
@@ -32,7 +32,7 @@ class AndroidCoverStorageService : CoverStorageService {
                 }
             }
             // 清理 file_picker 临时物化文件 (仅限缓存目录内, 不碰用户原文件)
-            val filePickerDir = File(appCtx.cacheDir, "file_picker")
+            val filePickerDir = File(App.instance.cacheDir, "file_picker")
             if (src.parentFile == filePickerDir) {
                 runCatching { src.delete() }
             }

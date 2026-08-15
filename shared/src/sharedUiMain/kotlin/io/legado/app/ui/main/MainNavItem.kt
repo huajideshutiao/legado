@@ -1,16 +1,12 @@
 package io.legado.app.ui.main
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.Icon
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -29,7 +25,7 @@ import io.legado.app.ui.compose.theme.LocalEInk
  *
  * @param bar 栏背景 (E-Ink 白 / 有壁纸透明 / 否则 bottomBackground)
  * @param item 未选中项的图标与文字色
- * @param accent 选中或按压时的图标与文字色
+ * @param accent 选中时的图标与文字色
  */
 internal data class MainNavColors(val bar: Color, val item: Color, val accent: Color)
 
@@ -67,6 +63,8 @@ internal fun showNavLabel(labelMode: Int, selected: Boolean, tagCount: Int): Boo
 /**
  * 单个导航项 (图标在上、标签在下), 底栏与侧栏共用同一份渲染。
  *
+ * 按压反馈走 Compose 默认指示 (ripple)；选中态图标/文字切 accent (原版
+ * Selector.setPressedColor 的手动按压变色已移除)。
  * 占位方向差异全部由 [modifier] 决定: 底栏传 weight+fillMaxSize, 侧栏传 fillMaxWidth+height。
  */
 @Composable
@@ -79,17 +77,10 @@ internal fun MainNavItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val interaction = remember { MutableInteractionSource() }
-    // 原版无 ripple 溅射, 按压反馈走 Selector.setPressedColor(accentColor) 的图标/文字变色
-    val pressed by interaction.collectIsPressedAsState()
-    val tint = if (selected || pressed) colors.accent else colors.item
+    val tint = if (selected) colors.accent else colors.item
     val label = rememberString(tag.labelKey())
     Column(
-        modifier.clickable(
-            interactionSource = interaction,
-            indication = null,
-            onClick = onClick,
-        ),
+        modifier.clickable(onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {

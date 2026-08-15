@@ -3,9 +3,9 @@ package io.legado.app.utils
 import android.net.Uri
 import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
+import io.legado.app.App
 import io.legado.app.constant.AppPattern.archiveFileRegex
 import io.legado.app.utils.compress.LibArchiveUtils
-import splitties.init.appCtx
 import java.io.File
 
 /**
@@ -26,7 +26,7 @@ object ArchiveUtils {
 
     // 临时目录 下次启动自动删除
     val TEMP_PATH: String by lazy {
-        appCtx.externalCache.getFile(TEMP_FOLDER_NAME).createFolderReplace().absolutePath
+        App.instance.externalCache.getFile(TEMP_FOLDER_NAME).createFolderReplace().absolutePath
     }
 
     fun deCompress(

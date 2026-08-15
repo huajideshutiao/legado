@@ -9,7 +9,7 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
-import splitties.init.appCtx
+import io.legado.app.App
 
 fun <T> ActivityResultLauncher<T?>.launch() {
     launch(null)
@@ -26,7 +26,7 @@ class SelectImageContract : ActivityResultContract<Int?, SelectImageContract.Res
         val intent = Intent(Intent.ACTION_GET_CONTENT)
             .addCategory(Intent.CATEGORY_OPENABLE)
             .setType("image/*")
-        if (intent.resolveActivity(appCtx.packageManager) == null) {
+        if (intent.resolveActivity(App.instance.packageManager) == null) {
             useFallback = true
             val request = PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
             return delegate.createIntent(context, request)

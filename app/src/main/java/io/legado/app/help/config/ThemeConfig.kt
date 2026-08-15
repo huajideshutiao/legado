@@ -13,6 +13,7 @@ import androidx.annotation.Keep
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.graphics.drawable.toDrawable
 import androidx.core.graphics.toColorInt
+import io.legado.app.App
 import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
@@ -38,7 +39,6 @@ import io.legado.app.utils.removePref
 import io.legado.app.utils.stackBlur
 import io.legado.app.utils.toJson
 import kotlinx.serialization.Serializable
-import splitties.init.appCtx
 
 @Keep
 object ThemeConfig {
@@ -63,7 +63,7 @@ object ThemeConfig {
 
     /** 当前日/夜模式的背景图路径,未设置为 null */
     val curBgImagePath: String?
-        get() = appCtx.getPrefString(
+        get() = App.instance.getPrefString(
             if (AppConfig.isNightTheme) PreferKey.bgImageN else PreferKey.bgImage
         )
 
@@ -298,7 +298,7 @@ object ThemeConfig {
     fun delConfig(index: Int) {
         configList.removeAt(index)
         save()
-        applyTheme(appCtx)
+        applyTheme(App.instance)
     }
 
     fun upConfig() {
@@ -309,14 +309,14 @@ object ThemeConfig {
     fun clearBg() {
         bgDrawableCache = null
         bgCacheKey = null
-        val bgImagePath = appCtx.getPrefString(PreferKey.bgImage)
-        appCtx.externalFiles.getFile(PreferKey.bgImage).listFiles()?.forEach {
+        val bgImagePath = App.instance.getPrefString(PreferKey.bgImage)
+        App.instance.externalFiles.getFile(PreferKey.bgImage).listFiles()?.forEach {
             if (it.absolutePath != bgImagePath) {
                 it.delete()
             }
         }
-        val bgImageNPath = appCtx.getPrefString(PreferKey.bgImageN)
-        appCtx.externalFiles.getFile(PreferKey.bgImageN).listFiles()?.forEach {
+        val bgImageNPath = App.instance.getPrefString(PreferKey.bgImageN)
+        App.instance.externalFiles.getFile(PreferKey.bgImageN).listFiles()?.forEach {
             if (it.absolutePath != bgImageNPath) {
                 it.delete()
             }

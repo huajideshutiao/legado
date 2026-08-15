@@ -17,6 +17,7 @@ import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.setLiveProgress
 import io.legado.app.model.CacheBook
 import io.legado.app.model.webBook.WebBook
+import io.legado.app.notificationManager
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.servicePendingIntent
 import kotlinx.coroutines.Job
@@ -26,8 +27,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import splitties.init.appCtx
-import splitties.systemservices.notificationManager
 import java.util.concurrent.Executors
 import kotlin.math.min
 

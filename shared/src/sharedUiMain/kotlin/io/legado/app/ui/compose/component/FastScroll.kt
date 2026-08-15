@@ -10,7 +10,10 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -59,15 +62,26 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /**
- * 快速滚动条触摸区(命中区)宽度。
+ * 快速滚动条平台表现配置。
  *
- * 移动端保持细触摸条即可(手指命中面积由触摸本身保证, 15dp 不挡内容);
- * 桌面端鼠标命中面积小、容易点不到, 故桌面端(JVM) actual 加宽到 24dp。
+ * 各端只声明表现差异 (尺寸 / 常显 / 悬停高亮), 共享实现 [FastScrollbar] 据此统一推导
+ * 可见性与高亮状态, 不在共享代码里散落平台分支。
+ *
+ * - 移动端: 窄触摸条 + 滚动时短暂显示 + 仅按住高亮;
+ * - 桌面端: 鼠标命中区加宽 + 常显 + 悬停即高亮加宽 (提前响应按压)。
  */
-internal expect val fastScrollTouchWidth: Dp
+internal data class FastScrollPlatformConfig(
+    /** 触摸区(命中区)宽度。移动端手指命中面积由触摸本身保证; 桌面端鼠标命中面积小, 需加宽。 */
+    val touchWidth: Dp,
+    /** 滑块可见宽度。 */
+    val thumbWidth: Dp,
+    /** 常显: 不随滚动静止自动隐藏。 */
+    val alwaysVisible: Boolean = false,
+    /** 悬停即进入按压高亮态 (主题色 + 加宽), 等于提前响应按压。 */
+    val hoverHighlight: Boolean = false,
+)
 
-/** 快速滚动条滑块可见宽度(移动端 5dp, 桌面端 8dp)。 */
-internal expect val fastScrollThumbWidth: Dp
+internal expect val fastScrollPlatform: FastScrollPlatformConfig
 
 private val FastScrollThumbHeight = 100.dp
 private const val FastScrollHideDelayMillis = 1_000L
@@ -78,13 +92,15 @@ private data class FastScrollMetrics(
     val itemCount: Int,
     val visibleItemCount: Int,
     val positionFraction: Float,
+    /** 列表是否实际可滚动 (内容超出视口), 决定滚动条是否显示。 */
+    val needsScroll: Boolean,
 )
 
 /**
  * 带快速滚动条的 LazyColumn。
  *
  * 迁移前的界面普遍使用 FastScrollRecyclerView；这个共享实现把同等的拖动跳转能力
- * 补回 Compose/KMP，并在内容不足一屏时自动隐藏。
+ * 补回 Compose/KMP，并在内容无需滚动 (不超视口) 时自动隐藏滚动条。
  *
  * @param fastScrollEnabled 是否启用快速滚动条 (对照原版 FastScrollRecyclerView.setFastScrollEnabled)。
  * 关闭时仅隐藏滚动条, 列表本身不受影响。
@@ -175,6 +191,7 @@ private fun BoxScope.LazyListFastScrollbar(state: LazyListState) {
             FastScrollMetrics(
                 itemCount = itemCount,
                 visibleItemCount = visibleCount,
+                needsScroll = state.canScrollBackward || state.canScrollForward,
                 positionFraction = when {
                     !state.canScrollBackward -> 0f
                     !state.canScrollForward -> 1f
@@ -234,6 +251,7 @@ private fun BoxScope.LazyGridFastScrollbar(state: LazyGridState) {
             FastScrollMetrics(
                 itemCount = itemCount,
                 visibleItemCount = visibleCount,
+                needsScroll = state.canScrollBackward || state.canScrollForward,
                 positionFraction = when {
                     !state.canScrollBackward -> 0f
                     !state.canScrollForward -> 1f
@@ -274,7 +292,8 @@ private fun BoxScope.FastScrollbar(
     isDragged: Boolean,
     scrollToFraction: suspend (Float) -> Unit,
 ) {
-    if (metrics.itemCount <= metrics.visibleItemCount || metrics.visibleItemCount <= 0) return
+    // 内容无需滚动时不显示滚动条 (桌面常显/悬停高亮只对可滚动列表生效)。
+    if (!metrics.needsScroll || metrics.visibleItemCount <= 0) return
 
     val colors = AppTheme.colors
     val scope = rememberCoroutineScope()
@@ -282,21 +301,26 @@ private fun BoxScope.FastScrollbar(
     var trackHeightPx by remember { mutableIntStateOf(0) }
     var dragFraction by remember { mutableStateOf<Float?>(null) }
     var scrollJob by remember { mutableStateOf<Job?>(null) }
-    var scrollbarVisible by remember { mutableStateOf(false) }
+    var scrollbarVisible by remember { mutableStateOf(fastScrollPlatform.alwaysVisible) }
     val thumbHeightPx = with(density) { FastScrollThumbHeight.toPx() }
         .coerceAtMost(trackHeightPx.toFloat())
     val travelPx = (trackHeightPx - thumbHeightPx).coerceAtLeast(0f)
     val positionFraction = dragFraction ?: metrics.positionFraction
+    // 交互激活态: 按住 或 (桌面悬停, 等于提前响应按压)。
+    val hoverInteraction = remember { MutableInteractionSource() }
+    val hovered by hoverInteraction.collectIsHoveredAsState()
+    val active = dragFraction != null || (fastScrollPlatform.hoverHighlight && hovered)
     val selectedScale by animateFloatAsState(
-        targetValue = if (dragFraction != null) 1.5f else 1f,
+        targetValue = if (active) 1.5f else 1f,
         animationSpec = tween(200),
         label = "fastScrollHandleScale",
     )
 
-    // 对照原版 FastScroller: 任何滚动(拖拽/惯性/滚轮/程序滚动)都显示, 静止约 1s 后隐藏;
+    // 可见性策略: 桌面常显; 移动端任何滚动(拖拽/惯性/滚轮/程序滚动)都显示, 静止约 1s 后隐藏;
     // 拖动 handle 期间保持显示 (原版 mHandleView.isSelected 语义)。
     LaunchedEffect(isDragged, isScrollInProgress, dragFraction) {
         when {
+            fastScrollPlatform.alwaysVisible -> scrollbarVisible = true
             dragFraction != null || isDragged -> scrollbarVisible = true
             isScrollInProgress -> scrollbarVisible = true
             else -> {
@@ -329,7 +353,8 @@ private fun BoxScope.FastScrollbar(
         Box(
             Modifier
                 .fillMaxHeight()
-                .width(fastScrollTouchWidth)
+                .width(fastScrollPlatform.touchWidth)
+                .hoverable(hoverInteraction)
                 .onSizeChanged { trackHeightPx = it.height }
                 .pointerInput(metrics.itemCount, trackHeightPx, thumbHeightPx) {
                     detectVerticalDragGestures(
@@ -351,10 +376,10 @@ private fun BoxScope.FastScrollbar(
                         scaleX = selectedScale
                         transformOrigin = TransformOrigin(1f, 0.5f)
                     }
-                    .width(fastScrollThumbWidth)
+                    .width(fastScrollPlatform.thumbWidth)
                     .height(with(density) { thumbHeightPx.toDp() })
                     .background(
-                        if (dragFraction != null) {
+                        if (active) {
                             colors.accent
                         } else if (colors.isDark) {
                             Color(0x66666666)

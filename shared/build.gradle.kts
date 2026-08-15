@@ -1,3 +1,4 @@
+import org.jetbrains.kotlin.gradle.plugin.KotlinDependencyHandler
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 
 plugins {
@@ -29,7 +30,7 @@ val isMacHost = System.getProperty("os.name").startsWith("Mac", ignoreCase = tru
 // klib 编译 (语法/类型/签名校验) 不需要 Xcode; 只有 link 成 framework 才必须 mac。
 val enableIosTarget = providers.gradleProperty("enableIosTarget").orNull?.toBoolean() ?: isMacHost
 val enableOhosTarget = providers.gradleProperty("enableOhosTarget").orNull?.toBoolean() ?: false
-val composeVersion = libs.versions.composeMultiplatformOfficial.get()
+val composeVersion = libs.versions.cmp.get()
 val nativeInteropSourcePatterns = listOf(
     "io/legado/app/help/crypto/MbedTls*.native.kt",
     "io/legado/app/help/crypto/MbedTlsOps.native.kt",
@@ -37,7 +38,7 @@ val nativeInteropSourcePatterns = listOf(
 )
 val nativeInteropSourceRoot = file("src/nativeMain/kotlin")
 val stageNativeInteropForIos = if (enableIosTarget) {
-    tasks.register<org.gradle.api.tasks.Sync>("stageNativeInteropForIos") {
+    tasks.register<Sync>("stageNativeInteropForIos") {
         from(nativeInteropSourceRoot) {
             include(*nativeInteropSourcePatterns.toTypedArray())
         }
@@ -45,7 +46,7 @@ val stageNativeInteropForIos = if (enableIosTarget) {
     }
 } else null
 val stageNativeInteropForOhos = if (enableOhosTarget) {
-    tasks.register<org.gradle.api.tasks.Sync>("stageNativeInteropForOhos") {
+    tasks.register<Sync>("stageNativeInteropForOhos") {
         from(nativeInteropSourceRoot) {
             include(*nativeInteropSourcePatterns.toTypedArray())
         }
@@ -89,6 +90,22 @@ val stageNativeInteropForOhos = if (enableOhosTarget) {
 // ohosArm64 只存在于 CPF 分支 KGP, 本脚本无法静态引用, 交给 build-logic 的约定插件声明。
 if (enableOhosTarget) {
     pluginManager.apply("legado.kmp.ohos")
+}
+
+// JVM+Android 共享依赖 (原自定义 jvmAndAndroidMain 源集依赖; 源集已删, 共享代码改由
+// jvmMain / androidMain 两个模板源集显式挂同一源码根 src/jvmAndAndroidMain/kotlin)。
+// 依赖随之两目标各自声明, 统一走本 helper 防止两份漂移; okhttp/quickjs 用 api,
+// desktop 模块经 shared jvm target 仍可见 (与旧源集 api 面一致)。
+private val sharedLibs = extensions.getByType<VersionCatalogsExtension>().named("libs")
+
+fun KotlinDependencyHandler.sharedJvmAndroidDeps() {
+    api(sharedLibs.findLibrary("quick-chinese-transfer-core").get())
+    implementation(sharedLibs.findLibrary("hutool-crypto").get())
+    api(project(":modules:quickjs"))
+    api(sharedLibs.findLibrary("okhttp").get())
+    implementation(sharedLibs.findLibrary("coil3-network-okhttp").get())
+    implementation(sharedLibs.findLibrary("nanohttpd-nanohttpd").get())
+    implementation(sharedLibs.findLibrary("nanohttpd-websocket").get())
 }
 
 kotlin {
@@ -195,22 +212,15 @@ kotlin {
         val skikoUiMain by creating {
             dependsOn(sharedUiMain)
         }
-        val jvmAndAndroidMain by creating {
-            dependsOn(commonMain.get())
-            dependencies {
-                api(libs.quick.chinese.transfer.core)
-                implementation(libs.hutool.crypto)
-                api(project(":modules:quickjs"))
-                api(libs.okhttp)
-                implementation(libs.coil3.network.okhttp)
-                implementation(libs.nanohttpd.nanohttpd)
-                implementation(libs.nanohttpd.websocket)
-            }
-        }
         androidMain {
-            dependsOn(jvmAndAndroidMain)
             dependsOn(nonOhosUiMain)
+            // 共享 JVM+Android 源码根 (原自定义 jvmAndAndroidMain 源集):
+            // 自定义中间源集被 IDE 退回 common 分析上下文导致误报, 删源集后由
+            // jvmMain / androidMain 两个模板源集显式挂同一源码根, 编译语义不变,
+            // IDE 按原生模板源集分析 (okhttp / JVM stdlib 均可见)。
+            kotlin.srcDir("src/jvmAndAndroidMain/kotlin")
             dependencies {
+                sharedJvmAndroidDeps()
                 implementation(libs.kotlinx.coroutines.android)
                 api(libs.androidx.documentfile)
                 implementation(libs.core.ktx)
@@ -223,14 +233,16 @@ kotlin {
             }
         }
         jvmMain {
-            dependsOn(jvmAndAndroidMain)
             dependsOn(nonOhosUiMain)
             dependsOn(skikoUiMain)
+            // 同 androidMain: 挂共享 JVM+Android 源码根 (原自定义 jvmAndAndroidMain 源集)。
+            kotlin.srcDir("src/jvmAndAndroidMain/kotlin")
             dependencies {
-                implementation("net.sf.kxml:kxml2:2.3.0")
+                sharedJvmAndroidDeps()
+                implementation(libs.kxml2)
                 implementation(libs.androidx.sqlite.bundled)
                 // SVG 栅格化 (SvgRasterizer): 纯 Java 轻量渲染器, 替代 Android 端 SvgUtils 兜底
-                implementation("com.github.weisj:jsvg:2.0.0")
+                implementation(libs.jsvg)
             }
         }
         val nativeMain = if (enableIosTarget || enableOhosTarget) {
@@ -241,9 +253,9 @@ kotlin {
                     *nativeInteropSourcePatterns.toTypedArray(),
                 )
                 dependencies {
-                    implementation("io.ktor:ktor-server-core:3.1.0")
-                    implementation("io.ktor:ktor-server-cio:3.1.0")
-                    implementation("io.ktor:ktor-server-websockets:3.1.0")
+                    implementation(libs.ktor.server.core)
+                    implementation(libs.ktor.server.cio)
+                    implementation(libs.ktor.server.websockets)
                 }
             }
         } else null
@@ -260,10 +272,9 @@ kotlin {
                 dependsOn(nonOhosUiMain)
                 dependencies {
                     implementation(libs.androidx.sqlite.framework)
-                    implementation(libs.krypto)
                     implementation(libs.coil3.network.ktor3)
-                    implementation("io.ktor:ktor-client-core:3.1.0")
-                    implementation("io.ktor:ktor-client-cio:3.1.0")
+                    implementation(libs.ktor.client.core)
+                    implementation(libs.ktor.client.cio)
                 }
             }
             // 显式 dependsOn 会让 KGP 回退到 pre-1.9.20 默认边 (只连 commonMain),
@@ -282,9 +293,9 @@ kotlin {
                 dependsOn(nativeMain!!)
                 dependsOn(sharedUiMain)
                 dependencies {
-                    implementation("androidx.sqlite:sqlite-framework:2.7.0-alpha01-0.3.0")
-                    implementation("io.ktor:ktor-client-core:3.1.0")
-                    implementation("io.ktor:ktor-client-cio:3.1.0")
+                    implementation(libs.androidx.sqlite.framework)
+                    implementation(libs.ktor.client.core)
+                    implementation(libs.ktor.client.cio)
                     // K/N 2.x link 检查: OhosTargetConventionPlugin 的 sharedLib.export 导出
                     // compose export klib, 其依赖必须声明为 API 依赖 (implementation 会被
                     // linkDebugSharedOhosArm64 拒绝: "exported in the debugShared binary are
@@ -315,8 +326,8 @@ kotlin {
             dependsOn(commonTest.get())
             dependencies {
                 implementation(libs.junit)
-                implementation("org.jetbrains.kotlin:kotlin-test")
-                implementation("org.jetbrains.kotlin:kotlin-reflect")
+                implementation(libs.jetbrains.kotlin.test)
+                implementation(libs.kotlin.reflect)
             }
         }
         matching { it.name == "androidHostTest" }.configureEach {
@@ -339,11 +350,6 @@ tasks.matching {
     doFirst {
         outputs.files.forEach { output -> project.delete(output) }
     }
-}
-
-if (enableOhosTarget) {
-    // 0.4.0 时代 composeGenerateKnRenderBackendOhosArm64 生成任务已随 CPF 0.5.0 移除
-    // (渲染后端元数据改为 OhosRenderBackendMetadataResolver 配置期解析), 无 dependsOn 需求
 }
 
 if (enableIosTarget) {

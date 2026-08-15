@@ -1,8 +1,8 @@
 package io.legado.app.help
 
+import io.legado.app.App
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.externalFiles
-import splitties.init.appCtx
 
 /**
  * [RuleBigDataProvider] app 端实现 (Android 专属)。
@@ -16,7 +16,8 @@ import splitties.init.appCtx
  */
 object RuleBigDataHelp : RuleBigDataProvider {
 
-    private val ruleDataDir = FileUtils.createFolderIfNotExist(appCtx.externalFiles, "ruleData")
+    private val ruleDataDir =
+        FileUtils.createFolderIfNotExist(App.instance.externalFiles, "ruleData")
     internal val bookData = FileUtils.createFolderIfNotExist(ruleDataDir, "book")
 
     // 注入 appCtx.externalFiles/ruleData/book 路径, 纯逻辑委托 shared commonMain

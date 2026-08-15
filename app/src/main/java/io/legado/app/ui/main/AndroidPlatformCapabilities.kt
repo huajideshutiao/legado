@@ -57,6 +57,7 @@ import androidx.documentfile.provider.DocumentFile
 import androidx.fragment.app.commit
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
+import io.legado.app.App
 import io.legado.app.base.AppContextWrapper
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
@@ -196,7 +197,6 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import splitties.init.appCtx
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Collections
@@ -338,10 +338,10 @@ class AndroidPlatformCapabilities(
                 setDataAndType(uri, mimeType)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            if (targetIntent.resolveActivity(appCtx.packageManager) != null) {
-                appCtx.startActivity(targetIntent)
+            if (targetIntent.resolveActivity(App.instance.packageManager) != null) {
+                App.instance.startActivity(targetIntent)
             } else {
-                appCtx.toastOnUi(androidAppString("can_not_open"))
+                App.instance.toastOnUi(androidAppString("can_not_open"))
             }
         } catch (e: Exception) {
             AppLog.put("打开链接失败", e, true)
@@ -519,7 +519,7 @@ class AndroidPlatformCapabilities(
             }
         }
         // 对照 getLocalFonts: externalFiles/font
-        scanFontDir(items, File(FileUtils.getPath(appCtx.externalFiles, "font")), fontRegex)
+        scanFontDir(items, File(FileUtils.getPath(App.instance.externalFiles, "font")), fontRegex)
         // 对照 mergeFontItems: 同名去重 (先扫的 pref 目录优先) + 按名排序
         items.distinctBy { it.name }.sortedBy { it.name }
     }
@@ -1482,7 +1482,7 @@ class AndroidPlatformCapabilities(
     // 对照 BookshelfManageActivity.exportAllUseBookSource / viewModel.saveAllUseBookSourceToFile
     override fun exportAllUseBookSource() {
         Coroutine.async {
-            val path = "${appCtx.filesDir}/shareBookSource.json"
+            val path = "${App.instance.filesDir}/shareBookSource.json"
             FileUtils.delete(path)
             val file = FileUtils.createFileWithReplace(path)
             val sources = appDb.bookDao.getAllUseBookSource()
@@ -1512,7 +1512,7 @@ class AndroidPlatformCapabilities(
     override fun exportBookshelf(books: List<Book>) {
         Coroutine.async {
             if (books.isEmpty()) throw NoStackTraceException("书籍不能为空")
-            val path = "${appCtx.filesDir}/bookshelf.json"
+            val path = "${App.instance.filesDir}/bookshelf.json"
             FileUtils.delete(path)
             val file = FileUtils.createFileWithReplace(path)
             // 对齐原 GSON 行为: prettyPrint + 2 空格缩进 + 不序列化 null 字段
@@ -1950,7 +1950,7 @@ class AndroidPlatformCapabilities(
             FileUtils.delete(activity.getDir("hws_webview", Context.MODE_PRIVATE), true)
             activity.toastOnUi(androidAppString("clear_webview_data_success"))
             delay(3000)
-            appCtx.restart()
+            App.instance.restart()
         }.onError {
             AppLog.put("清理 WebView 数据失败\n${it.localizedMessage}", it)
         }
@@ -2109,17 +2109,17 @@ class AndroidPlatformCapabilities(
     private fun saveLogInternal() {
         Coroutine.async {
             val backupPath = AppConfig.backupPath ?: let {
-                appCtx.toastOnUi("未设置备份目录")
+                App.instance.toastOnUi("未设置备份目录")
                 return@async
             }
             if (!AppConfig.recordLog) {
-                appCtx.toastOnUi("未开启日志记录，请去其他设置里打开记录日志")
+                App.instance.toastOnUi("未开启日志记录，请去其他设置里打开记录日志")
                 delay(3000)
             }
             val doc = FileDoc.fromUri(backupPath.toUri(), true)
             copyLogs(doc)
             copyHeapDump(doc)
-            appCtx.toastOnUi("已保存至备份目录")
+            App.instance.toastOnUi("已保存至备份目录")
         }.onError {
             AppLog.put("保存日志出错\n${it.localizedMessage}", it, true)
         }
@@ -2128,21 +2128,21 @@ class AndroidPlatformCapabilities(
     private fun createHeapDumpInternal() {
         Coroutine.async {
             val backupPath = AppConfig.backupPath ?: let {
-                appCtx.toastOnUi("未设置备份目录")
+                App.instance.toastOnUi("未设置备份目录")
                 return@async
             }
             if (!AppConfig.recordHeapDump) {
-                appCtx.toastOnUi("未开启堆转储记录，请去其他设置里打开记录堆转储")
+                App.instance.toastOnUi("未开启堆转储记录，请去其他设置里打开记录堆转储")
                 delay(3000)
             }
-            appCtx.toastOnUi("开始创建堆转储")
+            App.instance.toastOnUi("开始创建堆转储")
             System.gc()
             CrashHandler.doHeapDump(true)
             val doc = FileDoc.fromUri(backupPath.toUri(), true)
             if (!copyHeapDump(doc)) {
-                appCtx.toastOnUi("未找到堆转储文件")
+                App.instance.toastOnUi("未找到堆转储文件")
             } else {
-                appCtx.toastOnUi("已保存至备份目录")
+                App.instance.toastOnUi("已保存至备份目录")
             }
         }.onError {
             AppLog.put("保存堆转储失败\n${it.localizedMessage}", it)
@@ -2150,7 +2150,7 @@ class AndroidPlatformCapabilities(
     }
 
     private fun copyLogs(doc: FileDoc) {
-        val cacheDir = appCtx.externalCache
+        val cacheDir = App.instance.externalCache
         val logFiles = File(cacheDir, "logs")
         val crashFiles = File(cacheDir, "crash")
         val logcatFile = File(cacheDir, "logcat.txt")
@@ -2172,7 +2172,7 @@ class AndroidPlatformCapabilities(
     }
 
     private fun copyHeapDump(doc: FileDoc): Boolean {
-        val heapFile = FileDoc.fromFile(File(appCtx.externalCache, "heapDump")).list()
+        val heapFile = FileDoc.fromFile(File(App.instance.externalCache, "heapDump")).list()
             ?.firstOrNull() ?: return false
         doc.find("heapDump")?.delete()
         val heapDumpDoc = doc.createFolderIfNotExist("heapDump")

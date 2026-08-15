@@ -5,8 +5,8 @@ import android.content.SharedPreferences
 import androidx.annotation.ColorInt
 import androidx.core.content.edit
 import androidx.core.graphics.toColorInt
+import io.legado.app.App
 import io.legado.app.lib.theme.ThemeStore.saveTheme
-import splitties.init.appCtx
 
 /**
  * 主题存储，基于 SharedPreferences 的全局主题管理。
@@ -84,18 +84,18 @@ object ThemeStore {
         val p = prefs()
         val bgColor = p.getInt(
             ThemeStorePrefKeys.KEY_BACKGROUND_COLOR,
-            ThemeUtils.resolveColor(appCtx, android.R.attr.colorBackground)
+            ThemeUtils.resolveColor(App.instance, android.R.attr.colorBackground)
         )
         val bottomBgColor = p.getInt(
             ThemeStorePrefKeys.KEY_BOTTOM_BACKGROUND,
-            ThemeUtils.resolveColor(appCtx, android.R.attr.colorBackground)
+            ThemeUtils.resolveColor(App.instance, android.R.attr.colorBackground)
         )
         return ThemeValues(
             primaryColor = bgColor,
             accentColor = p.getInt(
                 ThemeStorePrefKeys.KEY_ACCENT_COLOR,
                 ThemeUtils.resolveColor(
-                    appCtx,
+                    App.instance,
                     androidx.appcompat.R.attr.colorAccent,
                     // Arco: 极端兜底色对齐 arcoblue-6（colorAccent attr 解析失败时才触发）
                     "#165DFF".toColorInt()
@@ -109,16 +109,16 @@ object ThemeStore {
             ),
             textColorPrimary = p.getInt(
                 ThemeStorePrefKeys.KEY_TEXT_COLOR_PRIMARY,
-                ThemeUtils.resolveColor(appCtx, android.R.attr.textColorPrimary)
+                ThemeUtils.resolveColor(App.instance, android.R.attr.textColorPrimary)
             ),
             textColorSecondary = p.getInt(
                 ThemeStorePrefKeys.KEY_TEXT_COLOR_SECONDARY,
-                ThemeUtils.resolveColor(appCtx, android.R.attr.textColorSecondary)
+                ThemeUtils.resolveColor(App.instance, android.R.attr.textColorSecondary)
             )
         )
     }
 
-    internal fun prefs(context: Context = appCtx): SharedPreferences {
+    internal fun prefs(context: Context = App.instance): SharedPreferences {
         return context.getSharedPreferences(
             ThemeStorePrefKeys.CONFIG_PREFS_KEY_DEFAULT,
             Context.MODE_PRIVATE

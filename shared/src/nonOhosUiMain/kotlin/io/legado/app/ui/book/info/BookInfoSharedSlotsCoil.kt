@@ -63,7 +63,7 @@ fun SharedBlurCoverBgCoil(
         if (containerSize == IntSize.Zero) return@LaunchedEffect
         val w = (containerSize.width / 8).coerceAtLeast(1)
         val h = (containerSize.height / 8).coerceAtLeast(1)
-        bitmap = loader.loadImageOrNull(cover, book?.origin, w, h)
+        bitmap = loader.loadImageOrNull(cover, book.origin, w, h)
     }
     Box(modifier.onSizeChanged { containerSize = it }) {
         // 模糊封面铺满 + 渐变蒙版 + 压暗 (对照原版 BookInfoBgTransformation)

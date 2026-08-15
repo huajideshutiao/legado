@@ -4,7 +4,7 @@ import android.content.SharedPreferences
 import androidx.core.content.edit
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
-import splitties.init.appCtx
+import io.legado.app.App
 
 fun SharedPreferences.getString(key: String): String? {
     return getString(key, null)
@@ -63,7 +63,7 @@ fun SharedPreferences.remove(key: String) {
 }
 
 fun LifecycleOwner.observeSharedPreferences(
-    prefs: SharedPreferences = appCtx.defaultSharedPreferences,
+    prefs: SharedPreferences = App.instance.defaultSharedPreferences,
     l: SharedPreferences.OnSharedPreferenceChangeListener
 ) {
     val observer = object : DefaultLifecycleObserver {

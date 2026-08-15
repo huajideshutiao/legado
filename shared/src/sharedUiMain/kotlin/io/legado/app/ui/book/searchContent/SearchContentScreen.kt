@@ -2,8 +2,6 @@ package io.legado.app.ui.book.searchContent
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,7 +25,6 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -348,7 +345,7 @@ private fun RefreshBar(visible: Boolean, modifier: Modifier) {
     }
 }
 
-/** 对照 fb_stop：mini(40dp) accent 圆钮，按压加深，搜索中可见 */
+/** 对照 fb_stop：mini(40dp) accent 圆钮，按压用 Compose 默认指示，搜索中可见 */
 @Composable
 private fun StopFab(
     state: SearchContentUiState,
@@ -357,21 +354,14 @@ private fun StopFab(
 ) {
     if (!state.searching) return
     val colors = AppTheme.colors
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val bg = if (pressed) {
-        Color(ColorUtils.darkenColor(colors.accent.toArgb()))
-    } else {
-        colors.accent
-    }
     val tint = if (ColorUtils.isColorLight(colors.accent.toArgb())) Color.Black else Color.White
     Box(
         modifier
             .padding(16.dp)
             .shadow(6.dp, CircleShape)
             .size(40.dp)
-            .background(bg, CircleShape)
-            .clickable(interactionSource = interaction, indication = null) {
+            .background(colors.accent, CircleShape)
+            .clickable {
                 actions.onStopSearch()
             },
         contentAlignment = Alignment.Center,

@@ -1,5 +1,6 @@
 package io.legado.app.help
 
+import io.legado.app.App
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.DirectLinkUpload.getConfig
 import io.legado.app.help.DirectLinkUpload.putConfig
@@ -17,7 +18,6 @@ import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.toJson
 import io.legado.app.utils.toJsonElement
 import kotlinx.coroutines.currentCoroutineContext
-import splitties.init.appCtx
 import java.io.File
 
 /**
@@ -67,7 +67,8 @@ object DirectLinkUpload : DirectLinkUploadStoreProvider, DirectLinkUploadDefault
             mContentType = "application/zip"
             mFile = when (file) {
                 is File -> {
-                    val zipFile = File(FileUtils.getPath(appCtx.externalCache, "upload", mFileName))
+                    val zipFile =
+                        File(FileUtils.getPath(App.instance.externalCache, "upload", mFileName))
                     zipFile.createFileReplace()
                     ZipUtils.zipFile(file, zipFile)
                     zipFile
@@ -101,7 +102,7 @@ object DirectLinkUpload : DirectLinkUploadStoreProvider, DirectLinkUploadDefault
     private val defaultRulesCache: List<DirectLinkUploadRule> by lazy {
         // 单一数据源在 shared/commonMain/composeResources/files/defaultData/ (打进 assets, 前缀含模块限定名)
         val json = String(
-            appCtx.assets.open("${DEFAULT_DATA_ASSET_PREFIX}directLinkUpload.json")
+            App.instance.assets.open("${DEFAULT_DATA_ASSET_PREFIX}directLinkUpload.json")
                 .readBytes()
         )
         GSON.fromJsonArray<DirectLinkUploadRule>(json).getOrThrow()

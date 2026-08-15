@@ -1,10 +1,7 @@
-﻿package io.legado.app.ui.compose.preference
+package io.legado.app.ui.compose.preference
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -319,7 +316,7 @@ fun LazyListScope.iconListPreference(
     }
 }
 
-/** 行骨架：复刻 view_preference（透明底 + 按压 btn_bg + 图标 accent + 双行文本 + 行尾 widget） */
+/** 行骨架：复刻 view_preference（透明底 + 图标 accent + 双行文本 + 行尾 widget；按压用 Compose 默认指示） */
 @Composable
 internal fun PreferenceRow(
     title: String,
@@ -332,15 +329,8 @@ internal fun PreferenceRow(
     widget: (@Composable () -> Unit)? = null,
 ) {
     val (titleColor, summaryColor) = prefTextColors(isBottomBackground)
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val focused by interaction.collectIsFocusedAsState()
-    // bg_prefs_color: 按压/聚焦态 btn_bg，否则透明
-    val pressBg = if (AppTheme.colors.isDark) Color(0x14e0e0e0) else Color(0x100e0e0e)
     val clickModifier = if ((onClick != null || onLongClick != null) && enabled) {
         Modifier.combinedClickable(
-            interactionSource = interaction,
-            indication = null,
             onClick = { onClick?.invoke() },
             onLongClick = onLongClick,
         )
@@ -349,7 +339,6 @@ internal fun PreferenceRow(
         Modifier
             .fillMaxWidth()
             .then(clickModifier)
-            .background(if (pressed || focused) pressBg else Color.Transparent)
             .then(
                 if (enabled) Modifier else Modifier
                     .alpha(0.38f)

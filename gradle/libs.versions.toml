@@ -1,11 +1,30 @@
 [versions]
-cronet = "143.7445.0"
-# 默认工具链跟随 Android/iOS/JVM 依赖的 KLIB ABI；OHOS 通过 enableOhosTarget
-# 在 settings/build-logic 中单独切到 CPF Kotlin 2.2.21-0.4.0。
+# ===== 构建工具链 =====
+agp = "8.13.2"
 kotlin = "2.3.20"
-composeMultiplatform = "1.11.1"
-composeMultiplatformOfficial = "1.11.1"
-# 鸿蒙专用的版本通过 gradle.properties 或命令行参数开启强制替换
+# KSP2 与 Kotlin 版本解耦; 2.2.21-2.0.4 的 KSP1 在 KMP expect/actual 上会抛
+# "Unexpected symbol type null", 必须用 2.3.x 的 KSP2。
+ksp = "2.3.11"
+desugar = "2.1.5"
+
+# ===== Compose Multiplatform (Android/桌面共用基线) =====
+cmp = "1.11.1"
+# 必须与 cmp 基线匹配: 0.41.0 起对 CMP 1.10 编译, 在 1.9.2 上运行时 NoSuchMethodError
+# 0.43.0 含 inlineCode 字号/TextUnit 崩溃修复与同步 parseMarkdown API
+# (注: 0.43.0 按 CMP 1.10 编译; 升 CMP 1.11 后若运行时 NoSuchMethodError 需同步升级 mikepenz 版本)
+multiplatformMarkdown = "0.43.0"
+# 桌面视频播放引擎: open-ani/mediamp (Compose Multiplatform 播放抽象, 替代自研 libmpv 直通渲染)。
+# 0.3.0 于 2026-08-09 发布 (基于 CMP 1.11 基线), 与 CMP 1.11.1 + Kotlin 2.3.20 匹配。
+mediamp = "0.3.0"
+# 必须与 cmp 基线匹配 (CMP 1.11.x ↔ JetBrains lifecycle 2.10.0;
+# CMP 1.10.x ↔ 2.9.4)。Android target 不再单独钉 androidx foundation:
+# CMP 1.11.1 的安卓映射即 androidx foundation 1.11.2 (含 1.11 的 ActionMode
+# SelectionContainer 复制后闪"仅全选"过渡帧修复), 桌面/安卓同基线。
+lifecycleMultiplatform = "2.10.0"
+
+# ===== 鸿蒙 (CPF fork) 专属版本 =====
+# 默认工具链跟随 Android/iOS/JVM 依赖的 KLIB ABI; OHOS 通过 enableOhosTarget
+# 在 settings/build-logic 中单独切到 CPF Kotlin 2.2.21-0.4.0。
 kotlin-ohos = "2.2.21-0.5.0-12"
 composeMultiplatform-ohos = "1.9.2-0.5.0-25"
 # CPF ohos 配套库版本 (2026-08: 0.5.0 仅发布 kotlin/compose/androidx 主体,
@@ -19,74 +38,105 @@ androidx-ohos = "2.9.4-0.5.0-25"
 room-ohos = "3.0.0-alpha01-0.3.0"
 stately-ohos = "2.1.0-0.4.0"
 
-krypto = "4.0.10"
-ksoup = "0.2.6"
-# KSP2 与 Kotlin 版本解耦; 2.2.21-2.0.4 的 KSP1 在 KMP expect/actual 上会抛
-# "Unexpected symbol type null", 必须用 2.3.x 的 KSP2。
-ksp = "2.3.7"
-agp = "8.13.2"
-appcompat = "1.7.1"
-constraintlayout = "2.2.1"
-core = "1.18.0"
-fragment = "1.8.9"
-documentfile = "1.1.0"
-libarchive = "1.1.6"
-kotlinxSerializationJson = "1.11.0"
+# ===== JetBrains 官方库 (kotlinx) =====
 coroutines = "1.11.0"
+kotlinxSerializationJson = "1.11.0"
 atomicfu = "0.33.0"
-# 必须与 composeMultiplatform 基线匹配: 0.41.0 起对 CMP 1.10 编译, 在 1.9.2 上运行时 NoSuchMethodError
-# 0.43.0 含 inlineCode 字号/TextUnit 崩溃修复与同步 parseMarkdown API
-# (注: 0.43.0 按 CMP 1.10 编译; 升 CMP 1.11 后若运行时 NoSuchMethodError 需同步升级 mikepenz 版本)
-multiplatformMarkdown = "0.43.0"
-material = "1.14.0"
+jbrApi = "1.10.1"
+slf4jNop = "2.0.18"
+
+# ===== AndroidX / Google 官方库 =====
+core = "1.18.0"
+appcompat = "1.7.1"
+activity = "1.13.0"
+fragment = "1.8.9"
+lifecycle = "2.10.0"
 media = "1.8.0"
-# 桌面视频播放引擎: open-ani/mediamp (Compose Multiplatform 播放抽象, 替代自研 libmpv 直通渲染)。
-# 0.2.1 基于 CMP 1.10.1 + Kotlin 2.3.10 编译, 故上方 composeMultiplatform 必须 >= 1.10.1。
-mediamp = "0.2.1"
-nanoHttpd = "2.3.1"
-okhttp = "5.3.2"
-okio = "3.18.1"
-quickChineseTransfer = "0.2.16"
-playServicesCronet = "18.1.1"
-splitties = "3.0.0"
-desugar = "2.1.5"
+media3 = "1.10.1"
+webkit = "1.16.0"
+documentfile = "1.1.0"
+constraintlayout = "2.2.1"
+recyclerview = "1.4.0"
+sqlite = "2.7.0"
+room = "3.0.1"
 collection = "1.6.0"
+material = "1.14.0"
+libarchive = "1.1.6"
+playServicesCronet = "18.1.1"
+# Android Baseline Profile: 生成器 (benchmark 模块) 与 profileinstaller 必须同源版本族
+macrobenchmark = "1.4.1"
+profileinstaller = "1.4.1"
+testJunit = "1.3.0"
+testRunner = "1.7.0"
+espresso = "3.7.0"
+uiautomator = "2.4.0"
+
+# ===== 网络栈 =====
+okhttp = "5.4.0"
+okio = "3.18.1"
+ktor = "3.5.2"
+cronet = "143.7445.0"
+coil3 = "3.3.0"
+
+# ===== HTML / XML / SVG 解析 =====
+ksoup = "0.2.6"
+kxml2 = "2.3.0"
+jsvg = "2.1.0"
+androidsvg = "1.4"
+
+# ===== 压缩 / 文档格式 =====
+commonsCompress = "1.28.0"
+junrar = "8.1.0"
+xz = "1.12"
+pdfbox = "3.0.8"
+# TwelveMonkeys ImageIO 插件集 (imageio-webp 提供 WebP 解码; 编码走 Skiko, 见 DesktopImageOps)
+twelvemonkeys = "3.14.0"
+
+# ===== JS 引擎 / 加密 / 简繁转换 =====
+rhino = "1.9.1"
 hutool = "5.8.22"
 # 桌面端 JVM 用: SunJCE 无 PKCS7Padding, 书源 java.createSymmetricCrypto('AES/CBC/PKCS7Padding')
 # 在桌面端报 "Cannot find any provider supporting AES/CBC/PKCS7Padding"; bcprov (Oracle 签名,
 # 通过 JCE provider 认证) 补齐 PKCS7Padding/SM4/RC4 等算法。版本与本地 gradle 缓存一致。
+# ⚠️ 2026-08-15 起已禁用 (desktop/build.gradle.kts 有完整教训注释): BC 类一旦进运行时
+# classpath, hutool SecureUtil 会经 GlobalBouncyCastleProvider 用 BC 的 RSA Cipher,
+# 触发分段加密 → 网易云 weapi 全部 200 空体。如需 PKCS7Padding 请走 PKCS7→PKCS5 字节级
+# 等价替换 (SymmetricCryptoAndroid.normalizePkcs7Padding), 不要再加回 bcprov。
 bouncycastle = "1.79"
-rhino = "1.9.1"
-media3 = "1.10.1"
-webkit = "1.16.0"
-activity = "1.13.0"
-lifecycle = "2.10.0"
-# 必须与 composeMultiplatform 基线匹配 (CMP 1.11.x ↔ JetBrains lifecycle 2.10.0;
-# CMP 1.10.x ↔ 2.9.4)。Android target 不再单独钉 androidx foundation:
-# CMP 1.11.1 的安卓映射即 androidx foundation 1.11.2 (含 1.11 的 ActionMode
-# SelectionContainer 复制后闪"仅全选"过渡帧修复), 桌面/安卓同基线。
-lifecycleMultiplatform = "2.10.0"
-room = "3.0.1"
-sqlite = "2.7.0"
-recyclerview = "1.4.0"
-annotation = "1.10.0"
-espresso = "3.7.0"
-testJunit = "1.3.0"
-testRunner = "1.7.0"
-# Android Baseline Profile: 生成器 (benchmark 模块) 与 profileinstaller 必须同源版本族
-macrobenchmark = "1.4.1"
-profileinstaller = "1.4.1"
-uiautomator = "2.4.0"
-androidsvg = "1.4"
-junit = "4.13.2"
-coil3 = "3.3.0"
+quickChineseTransfer = "0.2.16"
+
+# ===== 嵌入式服务 / JSON =====
+nanoHttpd = "2.3.1"
+json = "20260814"
+
+# ===== 桌面 JVM 专属 =====
+jna = "5.19.1"
+
+# ===== UI 组件 =====
 reorderable = "3.1.0"
 
+# ===== 测试 =====
+junit = "4.13.2"
+
 [libraries]
-ksp-api = { module = "com.google.devtools.ksp:symbol-processing-api", version.ref = "ksp" }
+# ===== 构建工具链 =====
+foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "cmp" }
+jetbrains-material = { module = "org.jetbrains.compose.material:material", version.ref = "cmp" }
+kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "kotlin" }
+kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect" }
+# KSP 处理器模块 (quickjs-processor) 直接字符串引用 symbol-processing-api, 无需 catalog 条目
+desugar = { module = "com.android.tools:desugar_jdk_libs_nio", version.ref = "desugar" }
+
+# ===== Compose Multiplatform / UI =====
+compose-activity = { module = "androidx.activity:activity-compose", version.ref = "activity" }
+compose-lifecycle-runtime = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
+compose-lifecycle-runtime-multiplatform = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycleMultiplatform" }
 multiplatformMarkdown = { module = "com.mikepenz:multiplatform-markdown-renderer", version.ref = "multiplatformMarkdown" }
 multiplatformMarkdown-coil3 = { module = "com.mikepenz:multiplatform-markdown-renderer-coil3", version.ref = "multiplatformMarkdown" }
-# 桌面视频: mediamp-mpv 后端 (KMP 自动选 desktop 变体)
+reorderable = { module = "sh.calvin.reorderable:reorderable", version.ref = "reorderable" }
+material = { module = "com.google.android.material:material", version.ref = "material" }
+
+# ===== 桌面视频 (mediamp-mpv, KMP 自动选 desktop 变体) =====
 mediamp-mpv = { module = "org.openani.mediamp:mediamp-mpv", version.ref = "mediamp" }
 # mpv native runtime: 不随 mediamp-mpv 传递, 需显式 runtimeOnly。聚合工件 (mediamp-mpv-runtime)
 # 是单一 JVM variant, 依赖全部平台 runtime jar; desktop 已按构建平台改用下方 per-platform
@@ -97,73 +147,97 @@ mediamp-mpv-runtime = { module = "org.openani.mediamp:mediamp-mpv-runtime", vers
 mediamp-mpv-runtime-windows-x64 = { module = "org.openani.mediamp:mediamp-mpv-runtime-windows-x64", version.ref = "mediamp" }
 mediamp-mpv-runtime-linux-x64 = { module = "org.openani.mediamp:mediamp-mpv-runtime-linux-x64", version.ref = "mediamp" }
 mediamp-mpv-runtime-macos-arm64 = { module = "org.openani.mediamp:mediamp-mpv-runtime-macos-arm64", version.ref = "mediamp" }
-compose-multiplatform-export = { module = "org.jetbrains.compose.export:export", version.ref = "composeMultiplatform" }
-activity-ktx = { module = "androidx.activity:activity-ktx", version.ref = "activity" }
-cronet-api = { module = "org.chromium.net:cronet-api", version.ref = "cronet" }
-cronet-embedded = { module = "org.chromium.net:cronet-embedded", version.ref = "cronet" }
-fragment-ktx = { module = "androidx.fragment:fragment-ktx", version.ref = "fragment" }
-fragment-compose = { module = "androidx.fragment:fragment-compose", version.ref = "fragment" }
-androidx-annotation = { module = "androidx.annotation:annotation", version.ref = "annotation" }
-androidx-sqlite-bundled = { module = "androidx.sqlite:sqlite-bundled", version.ref = "sqlite" }
-androidx-sqlite-framework = { module = "androidx.sqlite:sqlite-framework", version.ref = "sqlite" }
-androidx-collection = { module = "androidx.collection:collection", version.ref = "collection" }
-androidx-media3-exoplayer-hls = { module = "androidx.media3:media3-exoplayer-hls", version.ref = "media3" }
-androidx-media3-ui = { module = "androidx.media3:media3-ui", version.ref = "media3" }
-appcompat-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
-androidx-constraintlayout = { module = "androidx.constraintlayout:constraintlayout", version.ref = "constraintlayout" }
+
+# ===== JetBrains 官方库 (kotlinx) =====
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlinx-coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "coroutines" }
+kotlinx-atomicfu = { module = "org.jetbrains.kotlinx:atomicfu", version.ref = "atomicfu" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
+jetbrains-kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test" }
+jbr-api = { module = "org.jetbrains.runtime:jbr-api", version.ref = "jbrApi" }
+runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "cmp" }
+slf4j-nop = { module = "org.slf4j:slf4j-nop", version.ref = "slf4jNop" }
+
+# ===== AndroidX / Google 官方库 =====
 core-ktx = { module = "androidx.core:core-ktx", version.ref = "core" }
-androidx-espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
-androidx-benchmark-macro = { module = "androidx.benchmark:benchmark-macro-junit4", version.ref = "macrobenchmark" }
-androidx-profileinstaller = { module = "androidx.profileinstaller:profileinstaller", version.ref = "profileinstaller" }
-androidx-uiautomator = { module = "androidx.test.uiautomator:uiautomator", version.ref = "uiautomator" }
-krypto = { module = "com.soywiz.korlibs.krypto:krypto", version.ref = "krypto" }
-ksoup = { module = "com.fleeksoft.ksoup:ksoup", version.ref = "ksoup" }
-play-services-cronet = { module = "com.google.android.gms:play-services-cronet", version.ref = "playServicesCronet" }
-hutool-crypto = { module = "cn.hutool:hutool-crypto", version.ref = "hutool" }
-# 桌面端 JCE 补丁 provider (见 bouncycastle version 注释); 仅 desktop jvm 依赖, 不进 Android APK
-bcprov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
-libarchive = { module = "me.zhanghai.android.libarchive:library", version.ref = "libarchive" }
+appcompat-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
+activity-ktx = { module = "androidx.activity:activity-ktx", version.ref = "activity" }
+fragment-ktx = { module = "androidx.fragment:fragment-ktx", version.ref = "fragment" }
 lifecycle-service = { module = "androidx.lifecycle:lifecycle-service", version.ref = "lifecycle" }
 media-media = { module = "androidx.media:media", version.ref = "media" }
-media3-datasource-okhttp = { module = "androidx.media3:media3-datasource-okhttp", version.ref = "media3" }
 media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = "media3" }
-nanohttpd-nanohttpd = { module = "org.nanohttpd:nanohttpd", version.ref = "nanoHttpd" }
-nanohttpd-websocket = { module = "org.nanohttpd:nanohttpd-websocket", version.ref = "nanoHttpd" }
-okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
-okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
-quick-chinese-transfer-core = { module = "com.github.liuyueyi.quick-chinese-transfer:quick-transfer-core", version.ref = "quickChineseTransfer" }
-room-common = { module = "androidx.room3:room3-common", version.ref = "room" }
-room-compiler = { module = "androidx.room3:room3-compiler", version.ref = "room" }
-room-runtime = { module = "androidx.room3:room3-runtime", version.ref = "room" }
-room-testing = { module = "androidx.room3:room3-testing", version.ref = "room" }
-androidsvg = { module = "com.caverock:androidsvg-aar", version.ref = "androidsvg" }
-splitties-appctx = { module = "com.louiscad.splitties:splitties-appctx", version.ref = "splitties" }
-splitties-systemservices = { module = "com.louiscad.splitties:splitties-systemservices", version.ref = "splitties" }
-splitties-views = { module = "com.louiscad.splitties:splitties-views", version.ref = "splitties" }
-androidx-junit = { module = "androidx.test.ext:junit", version.ref = "testJunit" }
-androidx-runner = { module = "androidx.test:runner", version.ref = "testRunner" }
-androidx-recyclerview = { module = "androidx.recyclerview:recyclerview", version.ref = "recyclerview" }
+androidx-media3-exoplayer-hls = { module = "androidx.media3:media3-exoplayer-hls", version.ref = "media3" }
+androidx-media3-ui = { module = "androidx.media3:media3-ui", version.ref = "media3" }
+media3-datasource-okhttp = { module = "androidx.media3:media3-datasource-okhttp", version.ref = "media3" }
 androidx-webkit = { module = "androidx.webkit:webkit", version.ref = "webkit" }
 androidx-documentfile = { module = "androidx.documentfile:documentfile", version.ref = "documentfile" }
-desugar = { module = "com.android.tools:desugar_jdk_libs_nio", version.ref = "desugar" }
-junit = { module = "junit:junit", version.ref = "junit" }
-kotlinx-atomicfu = { module = "org.jetbrains.kotlinx:atomicfu", version.ref = "atomicfu" }
-kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
-kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
-kotlinx-coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "coroutines" }
-kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
-kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "kotlin" }
-material = { module = "com.google.android.material:material", version.ref = "material" }
-mozilla-rhino = { module = "org.mozilla:rhino", version.ref = "rhino" }
+androidx-constraintlayout = { module = "androidx.constraintlayout:constraintlayout", version.ref = "constraintlayout" }
+androidx-recyclerview = { module = "androidx.recyclerview:recyclerview", version.ref = "recyclerview" }
+androidx-sqlite-bundled = { module = "androidx.sqlite:sqlite-bundled", version.ref = "sqlite" }
+androidx-sqlite-framework = { module = "androidx.sqlite:sqlite-framework", version.ref = "sqlite" }
+room-common = { module = "androidx.room3:room3-common", version.ref = "room" }
+room-runtime = { module = "androidx.room3:room3-runtime", version.ref = "room" }
+room-compiler = { module = "androidx.room3:room3-compiler", version.ref = "room" }
+room-testing = { module = "androidx.room3:room3-testing", version.ref = "room" }
+androidx-collection = { module = "androidx.collection:collection", version.ref = "collection" }
+libarchive = { module = "me.zhanghai.android.libarchive:library", version.ref = "libarchive" }
+androidx-profileinstaller = { module = "androidx.profileinstaller:profileinstaller", version.ref = "profileinstaller" }
+androidx-benchmark-macro = { module = "androidx.benchmark:benchmark-macro-junit4", version.ref = "macrobenchmark" }
+androidx-espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
+androidx-junit = { module = "androidx.test.ext:junit", version.ref = "testJunit" }
+androidx-runner = { module = "androidx.test:runner", version.ref = "testRunner" }
+androidx-uiautomator = { module = "androidx.test.uiautomator:uiautomator", version.ref = "uiautomator" }
+
+# ===== 网络栈 =====
+okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
+ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
+ktor-client-cio = { module = "io.ktor:ktor-client-cio", version.ref = "ktor" }
+ktor-server-core = { module = "io.ktor:ktor-server-core", version.ref = "ktor" }
+ktor-server-cio = { module = "io.ktor:ktor-server-cio", version.ref = "ktor" }
+ktor-server-websockets = { module = "io.ktor:ktor-server-websockets", version.ref = "ktor" }
+cronet-api = { module = "org.chromium.net:cronet-api", version.ref = "cronet" }
+cronet-embedded = { module = "org.chromium.net:cronet-embedded", version.ref = "cronet" }
+play-services-cronet = { module = "com.google.android.gms:play-services-cronet", version.ref = "playServicesCronet" }
 coil3-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil3" }
 coil3-gif = { module = "io.coil-kt.coil3:coil-gif", version.ref = "coil3" }
 coil3-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil3" }
 coil3-network-ktor3 = { module = "io.coil-kt.coil3:coil-network-ktor3", version.ref = "coil3" }
-coil3-core = { module = "io.coil-kt.coil3:coil", version.ref = "coil3" }
-compose-activity = { module = "androidx.activity:activity-compose", version.ref = "activity" }
-compose-lifecycle-runtime = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
-compose-lifecycle-runtime-multiplatform = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycleMultiplatform" }
-reorderable = { module = "sh.calvin.reorderable:reorderable", version.ref = "reorderable" }
+
+# ===== HTML / XML / SVG 解析 =====
+ksoup = { module = "com.fleeksoft.ksoup:ksoup", version.ref = "ksoup" }
+kxml2 = { module = "net.sf.kxml:kxml2", version.ref = "kxml2" }
+jsvg = { module = "com.github.weisj:jsvg", version.ref = "jsvg" }
+androidsvg = { module = "com.caverock:androidsvg-aar", version.ref = "androidsvg" }
+
+# ===== 压缩 / 文档格式 =====
+commons-compress = { module = "org.apache.commons:commons-compress", version.ref = "commonsCompress" }
+junrar = { module = "com.github.junrar:junrar", version.ref = "junrar" }
+ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "cmp" }
+xz = { module = "org.tukaani:xz", version.ref = "xz" }
+pdfbox = { module = "org.apache.pdfbox:pdfbox", version.ref = "pdfbox" }
+# WebP 解码 (ImageIO SPI, 纯 Java); 已替代归档的 com.github.gotson:webp-imageio
+imageio-webp = { module = "com.twelvemonkeys.imageio:imageio-webp", version.ref = "twelvemonkeys" }
+
+# ===== JS 引擎 / 加密 / 简繁转换 =====
+mozilla-rhino = { module = "org.mozilla:rhino", version.ref = "rhino" }
+hutool-crypto = { module = "cn.hutool:hutool-crypto", version.ref = "hutool" }
+# 桌面端 JCE 补丁 provider (见 bouncycastle version 注释); 已禁用, 仅 desktop jvm 曾依赖
+bcprov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
+quick-chinese-transfer-core = { module = "com.github.liuyueyi.quick-chinese-transfer:quick-transfer-core", version.ref = "quickChineseTransfer" }
+
+# ===== 嵌入式服务 / JSON =====
+nanohttpd-nanohttpd = { module = "org.nanohttpd:nanohttpd", version.ref = "nanoHttpd" }
+nanohttpd-websocket = { module = "org.nanohttpd:nanohttpd-websocket", version.ref = "nanoHttpd" }
+json = { module = "org.json:json", version.ref = "json" }
+
+# ===== 桌面 JVM 专属 =====
+jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
+jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
+
+# ===== 测试 =====
+junit = { module = "junit:junit", version.ref = "junit" }
 
 [bundles]
 coroutines = ["kotlinx-coroutines-core", "kotlinx-coroutines-android"]
@@ -171,15 +245,15 @@ androidTest = ["androidx-espresso-core", "androidx-junit", "androidx-runner"]
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
-androidx-baselineprofile = { id = "androidx.baselineprofile", version.ref = "macrobenchmark" }
 android-library = { id = "com.android.library", version.ref = "agp" }
 android-kmp-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
+androidx-baselineprofile = { id = "androidx.baselineprofile", version.ref = "macrobenchmark" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlin-parcelize = { id = "org.jetbrains.kotlin.plugin.parcelize", version.ref = "kotlin" }
-ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
-room = { id = "androidx.room3", version.ref = "room" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
-kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
-compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
+compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "cmp" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+room = { id = "androidx.room3", version.ref = "room" }

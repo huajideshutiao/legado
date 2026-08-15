@@ -18,7 +18,7 @@ import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.IosPlatformCapabilities
 import io.legado.app.ui.IosPlatformServices
 import io.legado.app.ui.book.audio.AudioPlayPlatformProviders
-import io.legado.app.ui.book.audio.IosAudioPlayPlatformProvider
+import io.legado.app.ui.book.audio.SharedAudioPlayPlatformProvider
 import io.legado.app.ui.book.manga.IosMangaReaderPlatform
 import io.legado.app.ui.book.manga.MangaReaderScreenModel
 import io.legado.app.ui.book.read.IosReaderPlatformProvider
@@ -59,7 +59,7 @@ fun MainViewController(): UIViewController = ComposeUIViewController {
     // iOS 平台服务 + 4 个媒体 Provider stub (对照 Android MainActivity onActivityCreated)
     PlatformServiceProviders.register(IosPlatformServices)
     ReaderPlatformProviders.register(IosReaderPlatformProvider)
-    AudioPlayPlatformProviders.register(IosAudioPlayPlatformProvider)
+    AudioPlayPlatformProviders.register(SharedAudioPlayPlatformProvider)
     MangaReaderScreenModel.Providers.register(IosMangaReaderPlatform)
     VideoPlayPlatformProviders.register(IosVideoPlayPlatformProvider)
 

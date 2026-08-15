@@ -12,10 +12,10 @@ import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.IntentAction
+import io.legado.app.downloadManager
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.openFileUri
 import io.legado.app.utils.toastOnUi
-import splitties.systemservices.downloadManager
 
 /**
  * 下载文件，监听下载完成后自动打开

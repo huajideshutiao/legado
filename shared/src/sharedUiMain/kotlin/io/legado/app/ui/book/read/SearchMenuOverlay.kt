@@ -40,14 +40,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -65,15 +61,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.ui.compose.platform.platformNavigationBarPadding
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
-import io.legado.app.ui.compose.platform.platformNavigationBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.ColorUtils
-import legado.shared.generated.resources.Res
-import org.jetbrains.compose.resources.painterResource
-import org.jetbrains.compose.resources.stringResource
 
 /**
  * SearchMenu 状态接口：暴露 shared Composable 所需的状态属性 + 动作回调。
@@ -146,7 +139,6 @@ fun SearchMenuOverlay(state: SearchMenuState) {
     val bg = AppTheme.colors.bottomBackground
     // 等价 app 端 getPrimaryTextColor(isColorLight(bg))：md_light/dark_primary_text
     val textColor = if (ColorUtils.isColorLight(bg.toArgb())) Color(0xDE000000) else Color.White
-    val pressedBg = Color(ColorUtils.darkenColor(bg.toArgb()))
     fun spec(duration: Int): FiniteAnimationSpec<IntOffset> =
         if (eInk) snap() else tween(duration, easing = AccelerateDecelerateEasing)
     Box(Modifier.fillMaxSize()) {
@@ -165,14 +157,14 @@ fun SearchMenuOverlay(state: SearchMenuState) {
             ReadMenuFab(
                 iconKey = "ic_arrow_right",
                 contentDescription = "上个结果",
-                bg = bg, pressedBg = pressedBg, tint = textColor,
+                bg = bg, tint = textColor,
                 modifier = Modifier.align(Alignment.CenterStart),
                 iconModifier = Modifier.rotate(180f),
             ) { state.navigate(-1) }
             ReadMenuFab(
                 iconKey = "ic_arrow_right",
                 contentDescription = "下个结果",
-                bg = bg, pressedBg = pressedBg, tint = textColor,
+                bg = bg, tint = textColor,
                 modifier = Modifier.align(Alignment.CenterEnd),
             ) { state.navigate(1) }
         }

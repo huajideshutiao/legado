@@ -8,7 +8,7 @@ import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.net.Network
 import android.os.Build
-import splitties.systemservices.connectivityManager
+import io.legado.app.connectivityManager
 
 /**
  * 监测网络变化

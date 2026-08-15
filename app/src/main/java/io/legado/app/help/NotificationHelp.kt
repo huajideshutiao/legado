@@ -5,8 +5,8 @@ import android.os.Build
 import androidx.annotation.ColorInt
 import androidx.core.app.NotificationCompat
 import io.legado.app.BuildConfig
+import io.legado.app.notificationManager
 import io.legado.app.utils.LogUtils
-import splitties.systemservices.notificationManager
 
 /**
  * 通知工具: 统一给长耗时前台任务套上 Android 16 "实时更新 (Live Update)" 能力。

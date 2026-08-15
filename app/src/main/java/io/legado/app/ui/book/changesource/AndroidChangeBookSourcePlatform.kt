@@ -1,5 +1,6 @@
 package io.legado.app.ui.book.changesource
 
+import io.legado.app.App
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookHelp
@@ -7,7 +8,6 @@ import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.SourceConfig
 import io.legado.app.utils.toastOnUi
-import splitties.init.appCtx
 
 /**
  * Android 端 [ChangeBookSourcePlatform] 实现 (顶级类)。
@@ -107,7 +107,7 @@ class AndroidChangeBookSourcePlatform : ChangeBookSourcePlatform {
 
     /** 委托 [appCtx.toastOnUi], 走 Android Toast。 */
     override fun toastOnUi(msg: String) {
-        appCtx.toastOnUi(msg)
+        App.instance.toastOnUi(msg)
     }
 }
 

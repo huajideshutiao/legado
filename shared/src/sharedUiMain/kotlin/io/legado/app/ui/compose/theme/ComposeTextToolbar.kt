@@ -3,8 +3,6 @@ package io.legado.app.ui.compose.theme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
@@ -22,7 +20,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.TextToolbar
@@ -157,14 +154,11 @@ private fun ToolbarCard(eInk: Boolean, content: @Composable () -> Unit) {
 @Composable
 private fun ToolbarItem(text: String, onClick: () -> Unit) {
     val color = AppTheme.colors.primaryText
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
     Box(
         Modifier
             .height(44.dp)
             .defaultMinSize(minWidth = 44.dp)
-            .background(if (pressed) color.copy(alpha = 0.12f) else Color.Transparent)
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .clickable(onClick = onClick)
             .padding(horizontal = 12.dp),
         contentAlignment = Alignment.Center,
     ) {

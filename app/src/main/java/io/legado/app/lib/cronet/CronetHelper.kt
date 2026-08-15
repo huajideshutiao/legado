@@ -4,6 +4,7 @@ package io.legado.app.lib.cronet
 
 import android.net.http.X509TrustManagerExtensions
 import androidx.annotation.Keep
+import io.legado.app.App
 import io.legado.app.help.http.SSLHelper
 import io.legado.app.help.http.cookieJarHeader
 import io.legado.app.help.http.okHttpClient
@@ -18,7 +19,6 @@ import org.chromium.net.ExperimentalCronetEngine
 import org.chromium.net.UploadDataProvider
 import org.chromium.net.UrlRequest
 import org.json.JSONObject
-import splitties.init.appCtx
 
 internal const val BUFFER_SIZE = 32 * 1024
 
@@ -35,7 +35,7 @@ val cronetEngine: ExperimentalCronetEngine?
         if (cronetEngineInitialized) {
             return cronetEngineCache
         }
-        synchronized(appCtx) {
+        synchronized(App.instance) {
             if (cronetEngineInitialized) {
                 return cronetEngineCache
             }
@@ -58,7 +58,7 @@ private fun createCronetEngine(): ExperimentalCronetEngine? {
         LogUtils.d("Cronet", "Failed to disable cert verify: ${it.message}")
     }
 
-    val providers = CronetProvider.getAllProviders(appCtx)
+    val providers = CronetProvider.getAllProviders(App.instance)
 
     // 1. 优先尝试系统原生 HttpEngine (Android 14+) 或其他外部 Provider (GMS 等)
     providers.find {
@@ -100,7 +100,7 @@ private fun createCronetEngine(): ExperimentalCronetEngine? {
 }
 
 private fun ExperimentalCronetEngine.Builder.applyConfig() {
-    setStoragePath(appCtx.externalCache.absolutePath)
+    setStoragePath(App.instance.externalCache.absolutePath)
     enableHttpCache(HTTP_CACHE_DISK, (1024 * 1024 * 50).toLong())
     enableQuic(true)
     enableHttp2(true)

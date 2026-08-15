@@ -1,11 +1,11 @@
 package io.legado.app.constant
 
 import android.util.Log
+import io.legado.app.App
 import io.legado.app.BuildConfig
 import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.toastOnUi
-import splitties.init.appCtx
 
 /**
  * AppLog 的安卓副作用实现(原 app 侧 AppLog 的 LogUtils/toast/DEBUG logcat/recordLog 面)。
@@ -25,7 +25,7 @@ private val androidAppLogHost = object : AppLogHost {
     }
 
     override fun toast(message: String) {
-        appCtx.toastOnUi(message)
+        App.instance.toastOnUi(message)
     }
 
     override fun debugPrint(tag: String, message: String, throwable: Throwable?) {

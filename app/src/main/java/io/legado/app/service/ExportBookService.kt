@@ -6,6 +6,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import coil3.toBitmap
+import io.legado.app.App
 import io.legado.app.R
 import io.legado.app.base.BaseService
 import io.legado.app.constant.AppConst
@@ -28,6 +29,7 @@ import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.setLiveOngoing
 import io.legado.app.model.ReadBook
 import io.legado.app.model.fileBook.FileBook
+import io.legado.app.notificationManager
 import io.legado.app.ui.main.MainActivity
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.activityPendingIntent
@@ -44,8 +46,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import splitties.init.appCtx
-import splitties.systemservices.notificationManager
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -65,7 +65,7 @@ class ExportBookService : BaseService() {
         val epubScope: String? = null
     )
 
-    private val groupKey = "${appCtx.packageName}.exportBook"
+    private val groupKey = "${App.instance.packageName}.exportBook"
     private val waitExportBooks = linkedMapOf<String, ExportConfig>()
     private var exportJob: Job? = null
     private var notificationContentText = androidAppString("service_starting")
@@ -335,7 +335,7 @@ class ExportBookService : BaseService() {
         }
 
         override fun getBuiltinAsset(assetPath: String): ByteArray =
-            appCtx.assets.open(assetPath).readBytes()
+            App.instance.assets.open(assetPath).readBytes()
 
         override fun listTemplateFiles(
             dirPath: String

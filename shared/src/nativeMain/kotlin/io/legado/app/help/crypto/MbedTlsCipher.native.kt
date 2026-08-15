@@ -33,8 +33,8 @@ import kotlinx.cinterop.value
  * mbedTLS cipher/gcm 层对称加解密 (iOS/鸿蒙主实现)。
  *
  * - AES: ECB/CBC/CFB(=CFB128, 对齐 JCA)/OFB/CTR 走 cipher 通用层; GCM 走 gcm.h 专用 API,
- *   密文 = cipher || tag(16B), 对齐 JCA AES/GCM/NoPadding; PCBC 无 mbedTLS 原生实现, 点名抛异常
- *   由 actual 回落 (iOS krypto 支持 PCBC)。
+ *   密文 = cipher || tag(16B), 对齐 JCA AES/GCM/NoPadding; PCBC 无 mbedTLS 原生实现,
+ *   点名抛异常 (两端一致, 已移除 krypto 回落)。
  * - DES/DESede: 仅 ECB/CBC (cipher_wrap 仅注册这两种); DESede 24B 密钥→DES-EDE3, 16B→DES-EDE。
  * - padding 统一 Kotlin 层实现 (mbedTLS cipher 层 padding 仅支持 CBC 且无 ISO10126),
  *   语义对齐 krypto/JCA/hutool: PKCS7 逐字节校验, ZERO 仅在不对齐时补零、解密剥全部尾零。

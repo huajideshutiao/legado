@@ -8,7 +8,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -38,18 +37,13 @@ import androidx.compose.material.RadioButton
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -67,13 +61,11 @@ import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
-import io.legado.app.ui.compose.platform.handleMediaKeys
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.format
-import kotlinx.coroutines.delay
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.full_screen
@@ -110,8 +102,9 @@ import kotlin.math.abs
  * 布局对照 app: 非全屏才显示标题栏; 手机横屏视频全屏不列列表; 手机竖屏与平板/桌面 (任意方向)
  * 视频最大高 2/3 + 下方选集网格; 全屏/无列表时视频撑满。
  *
- * 键盘事件: 最外层 Box 消费共享 handleMediaKeys (空格/←/→/↑/↓/Esc), 回调由调用方注入
- * (与 [VideoControlsOverlay] 按钮共用同一 lambda)。
+ * 键盘事件: 空格/←/→/↑/↓ 由 VideoPlayRoute 的 AppShortcutHandler 快捷键栈统一分发
+ * (桌面 Window / Android Activity 层无条件收键, 不依赖 Compose 焦点; 含 → 长短按:
+ * 短按 seek +10s / 长按 2x 倍速松手恢复), 本层不再挂键盘处理器。
  *
  * @param bookName 书名 (标题栏文字, 对照 Activity titleText)
  * @param curChapterIndex 当前章节索引 (0-based)
@@ -119,11 +112,8 @@ import kotlin.math.abs
  * @param onPrevChapter 上一章回调
  * @param onNextChapter 下一章回调
  * @param videoRenderSlot 平台渲染层槽 (接收 Modifier, 内部叠加控件/加载/错误)
- * @param onPlayPause 播放/暂停回调 (Spacebar 触发)
- * @param onSeekDelta 相对 seek 偏移 (←/→ 触发, 毫秒)
- * @param onSpeedChange 倍速切换 (长按 → 触发 2x, 松开恢复 1x)
- * @param controlsVisible 控制层可见状态 (键盘事件感知)
- * @param onToggleControls 显隐控制层 (Escape 触发)
+ * @param controlsVisible 控制层可见状态
+ * @param onToggleControls 显隐控制层
  * @param onTitleClick 标题区点击回调 (对照 Activity onTitleClick)
  * @param titleActions 标题栏右侧 actions (由 Route 注入 refresh/shelf/overflowMenu)
  * @param isFullScreen 全屏态 (隐藏标题栏与选集网格, 对照 Activity isFullScreen)
@@ -140,12 +130,6 @@ fun VideoPlayerScreenContent(
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
     videoRenderSlot: @Composable (Modifier) -> Unit,
-    // 键盘事件回调 (默认空 lambda 保持向后兼容)
-    onPlayPause: () -> Unit = {},
-    onSeekDelta: (Long) -> Unit = {},
-    onSpeedChange: (Float) -> Unit = {},
-    // 手势/按键反馈文字 (键盘长按倍速 2.0X 等; 转发给 handleMediaKeys, 由渲染层经 ScreenModel 显示)
-    onGestureText: (String?) -> Unit = {},
     controlsVisible: Boolean = false,
     onToggleControls: () -> Unit = {},
     // 平台自定义顶栏 (null = 用 shared VideoTitleBar; 传 {} 隐藏)
@@ -161,42 +145,10 @@ fun VideoPlayerScreenContent(
     // 容器背景 (对照 app: 页面走主题背景色, 黑底只在视频渲染区内)
     containerColor: Color = AppTheme.colors.background,
 ) {
-    val scope = rememberCoroutineScope()
-    // 键盘事件焦点: onPreviewKeyEvent 需焦点路径上有节点持焦才触发, 进入即取焦点
-    // (desktop 端渲染槽另有 focusRequester, 后取焦者生效, 根节点 handler 均在焦点路径上)
-    // requestFocus 一次性请求在组合初期可能失败, 循环重试兜底 (同音频页 AudioPlayScreenContent,
-    // 用户拍板 2026-08: 避免"必须点一下界面才有键盘交互")
-    val keyFocusRequester = remember { FocusRequester() }
-    var keyFocusHeld by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        repeat(30) {
-            if (keyFocusHeld) return@LaunchedEffect
-            runCatching { keyFocusRequester.requestFocus() }
-            delay(50)
-        }
-    }
-
     Box(
         Modifier
             .fillMaxSize()
             .background(containerColor)
-            // 键盘快捷键: 消费共享 handleMediaKeys
-            // (Space=播放/暂停, ←/→=seek ∓10s, 长按 →=2x 倍速, ↑/↓=上/下一章;
-            //  Esc/Backspace 走 Route onBack 多层级返回, 对齐安卓端 onBackPressedDispatcher:
-            //  全屏→退出全屏 / 否则返回)
-            .handleMediaKeys(
-                onTogglePlayPause = onPlayPause,
-                onSeekDelta = onSeekDelta,
-                onPrev = onPrevChapter,
-                onNext = onNextChapter,
-                onSpeedChange = onSpeedChange,
-                onGestureText = onGestureText,
-                onBack = onBack,
-                scope = scope,
-            )
-            .focusRequester(keyFocusRequester)
-            .focusable()
-            .onFocusChanged { keyFocusHeld = it.isFocused }
     ) {
         Column(Modifier.fillMaxSize()) {
             if (!isFullScreen) {

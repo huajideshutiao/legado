@@ -308,21 +308,28 @@ class AudioPlayManager(
     /**
      * 用书源的 musicCover 规则计算封面 URL, 空规则就用书的默认 cover。
      *
-     * 对标 app 端 `AudioPlayService.loadCoverUrl`。
+     * 对标 app 端 `AudioPlayService.loadCoverUrl`; 多级回落对齐 desktop 版
+     * (2026-08 修): 规则求值失败/结果 null/空白时兜底书籍默认封面, 不再把
+     * evalJS 的 null 经 toString() 变成字符串 "null" 当 URL 推送 —— 否则 UI
+     * 加载 "null" 失败回落默认封面, 真实书封面被顶掉。
      */
     private fun loadCoverUrl(bookSource: BookSource, book: Book, chapter: BookChapter) {
         Coroutine.async(scope = scope) {
             val musicCover = bookSource.contentRule.musicCover
             AudioPlayShared.durCoverUrl = if (!musicCover.isNullOrBlank()) {
-                val rule = analyzeRuleFactory.create(
-                    book, bookSource, chapter, currentCoroutineContext()
-                )
-                rule.evalJS(musicCover).toString()
+                runCatching {
+                    val rule = analyzeRuleFactory.create(
+                        book, bookSource, chapter, currentCoroutineContext()
+                    )
+                    rule.evalJS(musicCover)?.toString()?.takeIf { it.isNotBlank() }
+                }.getOrNull() ?: book.getDisplayCover()
             } else book.getDisplayCover()
         }.onSuccess {
-            val coverUrl = AudioPlayShared.durCoverUrl ?: return@onSuccess
-            postEvent(EventBus.AUDIO_COVER, coverUrl)
-            listener.onLoadCover(coverUrl)
+            val coverUrl = AudioPlayShared.durCoverUrl
+            if (!coverUrl.isNullOrBlank()) {
+                postEvent(EventBus.AUDIO_COVER, coverUrl)
+                listener.onLoadCover(coverUrl)
+            }
         }
     }
 

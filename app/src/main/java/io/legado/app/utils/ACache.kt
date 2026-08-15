@@ -1,7 +1,7 @@
 //Copyright (c) 2017. 章钦豪. All rights reserved.
 package io.legado.app.utils
 
-import splitties.init.appCtx
+import io.legado.app.App
 import java.io.File
 
 /**
@@ -69,9 +69,9 @@ class ACache private constructor(
 fun registerAndroidACacheDirProvider() {
     ACacheProviders.register(object : ACacheDirProvider {
         override fun getCacheDir(cacheName: String): File =
-            File(appCtx.cacheDir, cacheName)
+            File(App.instance.cacheDir, cacheName)
 
         override fun getFilesDir(cacheName: String): File =
-            File(appCtx.filesDir, cacheName)
+            File(App.instance.filesDir, cacheName)
     })
 }

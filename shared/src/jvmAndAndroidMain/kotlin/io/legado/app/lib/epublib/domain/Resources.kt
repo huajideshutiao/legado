@@ -52,7 +52,7 @@ class Resources : Serializable {
 
         // first try and create a unique id based on the resource's href
         if (resource.id.isNullOrBlank()) {
-            resourceId = resource.getHref()?.substringBeforeLast('.') ?: ""
+            resourceId = resource.getHref().substringBeforeLast('.')
             resourceId = resourceId.substringAfterLast('/')
         }
 

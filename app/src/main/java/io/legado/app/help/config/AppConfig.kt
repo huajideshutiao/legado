@@ -2,6 +2,7 @@ package io.legado.app.help.config
 
 import android.content.SharedPreferences
 import android.os.Build
+import io.legado.app.App
 import io.legado.app.BuildConfig
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
@@ -19,7 +20,6 @@ import io.legado.app.utils.removePref
 import io.legado.app.utils.sysConfiguration
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.runBlocking
-import splitties.init.appCtx
 
 @Suppress("MemberVisibilityCanBePrivate", "ConstPropertyName")
 object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
@@ -29,7 +29,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var userAgent by cachedPref(
         PreferKey.userAgent,
         { getPrefUserAgent() },
-        { appCtx.putPrefString(PreferKey.userAgent, it) },
+        { App.instance.putPrefString(PreferKey.userAgent, it) },
     )
     var themeMode by cachedStringPref(PreferKey.themeMode, "0")
     var useDefaultCover by cachedBoolPref(PreferKey.useDefaultCover, false)
@@ -52,15 +52,15 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         reloadCachedPref(key)
         when (key) {
             PreferKey.useZhLayout -> ReadBookConfig.useZhLayout =
-                appCtx.getPrefBoolean(PreferKey.useZhLayout)
+                App.instance.getPrefBoolean(PreferKey.useZhLayout)
 
             PreferKey.cronet -> if (isCronet) {
                 io.legado.app.help.http.Cronet.preDownload { success ->
                     if (success) {
                         io.legado.app.help.http.recreateOkHttpClient()
-                        appCtx.toastOnUi(androidAppString("cronet_enabled"))
+                        App.instance.toastOnUi(androidAppString("cronet_enabled"))
                     } else {
-                        appCtx.toastOnUi(androidAppString("cronet_download_failed"))
+                        App.instance.toastOnUi(androidAppString("cronet_download_failed"))
                     }
                 }
             }
@@ -76,7 +76,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         }
         set(value) {
             if (isNightTheme != value) {
-                appCtx.putPrefString(PreferKey.themeMode, if (value) "2" else "1")
+                App.instance.putPrefString(PreferKey.themeMode, if (value) "2" else "1")
             }
         }
 
@@ -119,8 +119,8 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     var bookshelfLayout: Int
         get() {
-            val value = appCtx.getPrefInt(PreferKey.bookshelfLayout, 0)
-            if (!appCtx.getPrefBoolean("bookshelfLayoutMigrated", false)) {
+            val value = App.instance.getPrefInt(PreferKey.bookshelfLayout, 0)
+            if (!App.instance.getPrefBoolean("bookshelfLayoutMigrated", false)) {
                 val migrated = when (value) {
                     1 -> 3
                     2 -> 4
@@ -128,14 +128,14 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                     4 -> 6
                     else -> value
                 }
-                appCtx.putPrefInt(PreferKey.bookshelfLayout, migrated)
-                appCtx.putPrefBoolean("bookshelfLayoutMigrated", true)
+                App.instance.putPrefInt(PreferKey.bookshelfLayout, migrated)
+                App.instance.putPrefBoolean("bookshelfLayoutMigrated", true)
                 return migrated
             }
             return value
         }
         set(value) {
-            appCtx.putPrefInt(PreferKey.bookshelfLayout, value)
+            App.instance.putPrefInt(PreferKey.bookshelfLayout, value)
         }
 
     var bookshelfFixedWidthMode by boolPref(PreferKey.bookshelfFixedWidthMode, false)
@@ -187,11 +187,11 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     var exportCharset: String
         get() {
-            val c = appCtx.getPrefString(PreferKey.exportCharset)
+            val c = App.instance.getPrefString(PreferKey.exportCharset)
             return if (c.isNullOrBlank()) "UTF-8" else c
         }
         set(value) {
-            appCtx.putPrefString(PreferKey.exportCharset, value)
+            App.instance.putPrefString(PreferKey.exportCharset, value)
         }
 
     var exportUseReplace by boolPref(PreferKey.exportUseReplace, true)
@@ -277,7 +277,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     }
 
     private fun getPrefUserAgent(): String {
-        val ua = appCtx.getPrefString(PreferKey.userAgent)
+        val ua = App.instance.getPrefString(PreferKey.userAgent)
         if (ua.isNullOrBlank()) {
             return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + BuildConfig.Cronet_Main_Version + " Safari/537.36"
         }
@@ -289,11 +289,11 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     var sourceEditMaxLine: Int
         get() {
-            val maxLine = appCtx.getPrefInt(PreferKey.sourceEditMaxLine, Int.MAX_VALUE)
+            val maxLine = App.instance.getPrefInt(PreferKey.sourceEditMaxLine, Int.MAX_VALUE)
             return if (maxLine < 10) Int.MAX_VALUE else maxLine
         }
         set(value) {
-            appCtx.putPrefInt(PreferKey.sourceEditMaxLine, value)
+            App.instance.putPrefInt(PreferKey.sourceEditMaxLine, value)
         }
 
     var audioPlayUseWakeLock by boolPref(PreferKey.audioPlayWakeLock)
@@ -303,8 +303,8 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             * clickActionML * clickActionMC * clickActionMR
             * clickActionBL * clickActionBC * clickActionBR != 0
         ) {
-            appCtx.putPrefInt(PreferKey.clickActionMC, 0)
-            appCtx.toastOnUi("当前没有配置菜单区域,自动恢复中间区域为菜单.")
+            App.instance.putPrefInt(PreferKey.clickActionMC, 0)
+            App.instance.toastOnUi("当前没有配置菜单区域,自动恢复中间区域为菜单.")
         }
     }
 
@@ -347,7 +347,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     /** 恢复默认 UA:清 pref 并立即重载缓存,不等监听器 */
     fun resetUserAgent() {
-        appCtx.removePref(PreferKey.userAgent)
+        App.instance.removePref(PreferKey.userAgent)
         reloadCachedPref(PreferKey.userAgent)
     }
 

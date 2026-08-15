@@ -1027,7 +1027,7 @@ class ObsoleteUrlFactory(private var client: OkHttpClient) : URLStreamHandlerFac
         private val FIELD_NAME_COMPARATOR =
             java.util.Comparator { a: String?, b: String? ->
                 // @FindBugsSuppressWarnings("ES_COMPARING_PARAMETER_STRING_WITH_EQ")
-                if (a === b) {
+                if (a == b) {
                     return@Comparator 0
                 } else if (a == null) {
                     return@Comparator -1

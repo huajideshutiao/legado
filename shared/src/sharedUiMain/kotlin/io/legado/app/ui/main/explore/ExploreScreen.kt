@@ -13,8 +13,6 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.animateScrollBy
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -61,6 +59,7 @@ import io.legado.app.data.entities.PinnedExplore
 import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.data.entities.rule.RowUi
 import io.legado.app.ui.compose.component.AppDropdownMenu
+import io.legado.app.ui.compose.component.AppFilletTextButton
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.GridPackLayout
 import io.legado.app.ui.compose.component.estimateGridHeight
@@ -406,7 +405,7 @@ private fun PinnedSection(pinned: List<PinnedExplore>, actions: ExploreUiActions
         )
         FlowRow(Modifier.fillMaxWidth()) {
             pinned.forEach { pin ->
-                FilletTag(
+                AppFilletTextButton(
                     text = "${pin.sourceName}-${pin.categoryName}",
                     onClick = { actions.onOpenPinned(pin) },
                     onLongClick = { actions.onRemovePinned(pin) },
@@ -564,7 +563,7 @@ private fun KindFlow(actions: ExploreUiActions, source: BookSource, kinds: List<
         modifier = Modifier.fillMaxWidth(),
     ) {
         kinds.forEach { kind ->
-            FilletTag(
+            AppFilletTextButton(
                 text = kind.title,
                 onClick = {
                     val kindUrl = kind.url
@@ -705,51 +704,6 @@ private fun GroupMenu(groups: List<String>, onGroup: (String) -> Unit) {
                 }
             }
         }
-    }
-}
-
-/**
- * 圆角文字标签 (复刻 item_fillet_text / AppFilletTextButton 视觉, 另加长按)。
- * 收藏项需长按删除、分类项需被 GridPackLayout 定格拉伸, 故不复用无长按的 AppFilletTextButton。
- * 整格尺寸 (对照原 TextView minimumHeight+FILL) 由外层布局的固定约束给出, 4dp inset 在内。
- */
-@Composable
-private fun FilletTag(
-    text: String,
-    modifier: Modifier = Modifier,
-    onLongClick: (() -> Unit)? = null,
-    onClick: () -> Unit,
-) {
-    val isDark = AppTheme.colors.isDark
-    // btn_bg: light #100e0e0e / night #14e0e0e0
-    val normalBg = if (isDark) Color(0x14e0e0e0) else Color(0x100e0e0e)
-    // 按压 arco_fill_3: light #FFE6E6E6 / night #FF2A2A2A
-    val pressedBg = if (isDark) Color(0xFF2A2A2A) else Color(0xFFE6E6E6)
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    Box(
-        modifier
-            .padding(4.dp)
-            .clip(DesignTokens.shapeDefault)
-            .background(if (pressed) pressedBg else normalBg)
-            .combinedClickable(
-                interactionSource = interaction,
-                indication = null,
-                onLongClick = onLongClick,
-                onClick = onClick,
-            )
-            // 原 XML padding 16×12 自视图外缘计 (含 4dp inset), 此处已扣除 inset
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text,
-            color = AppTheme.colors.secondaryText,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            // 显式 14sp 自然行高, 不吃 M3 bodyLarge 的 16sp/24sp 行高
-            style = TextStyle(fontSize = 14.sp),
-        )
     }
 }
 

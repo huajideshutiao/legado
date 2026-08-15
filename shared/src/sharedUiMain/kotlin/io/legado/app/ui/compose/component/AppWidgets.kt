@@ -32,8 +32,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -45,6 +47,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -84,16 +87,28 @@ fun AppOutlinedButton(
 
 /**
  * 复刻 selector_fillet_btn_bg + item_fillet_text：半透明 btn_bg 填充 + 8dp 圆角 + 4dp inset，
- * 按压切 arco_fill_3；字色 secondaryText 14sp 自然行高。contentPadding 语义同原 XML(自视图外缘计，
+ * 按压切 arco_fill_3；字色 [textColor] 14sp 自然行高。contentPadding 语义同原 XML(自视图外缘计，
  * 含 4dp inset)，内层实际内边距要减掉 inset，否则 chip 会比原生大一圈。
+ *
+ * master 端各屏共用的 fillet 胶囊 (item_fillet_text / IntroButtonSpan / setUpExploreOptions /
+ * activity_source_debug) 在 Compose 下统一收拢到本组件，差异走参数：
+ * - [alpha]/[bold]：对齐 setUpExploreOptions 标题 chip 与搜索选项的 0.8/1.0/0.5 语义
+ *   (KindChip 组名 label、SearchOptionChip 选中/未选中、ExploreOptionsRow 标题)
+ * - [onLongClick]：收藏/历史词长按删除等
+ * - [onClick] 为 null 时纯展示不可点 (书籍详情分类组名 label)
+ * - [focusable] 为 false 时桌面端不抢输入法焦点 (书源调试 HelpPanel 场景)
  */
 @Composable
 fun AppFilletTextButton(
     text: String,
     modifier: Modifier = Modifier,
+    textColor: Color = AppTheme.colors.secondaryText,
     contentPadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 12.dp), // arco lg × md
+    alpha: Float = 1f,
+    bold: Boolean = false,
+    focusable: Boolean = true,
     onLongClick: (() -> Unit)? = null,
-    onClick: () -> Unit,
+    onClick: (() -> Unit)? = null,
 ) {
     val isDark = AppTheme.colors.isDark
     // btn_bg: light @color/btn_bg #100e0e0e / night #14e0e0e0
@@ -113,23 +128,28 @@ fun AppFilletTextButton(
     }
     Box(
         modifier
+            .alpha(alpha)
             .padding(4.dp) // inset 4dp
             .clip(DesignTokens.shapeDefault)
             .background(if (pressed) pressedBg else normalBg)
-            .combinedClickable(
-                interactionSource = interaction,
-                indication = null,
-                onLongClick = onLongClick,
-                onClick = onClick,
+            .then(
+                if (onClick != null || onLongClick != null) Modifier.combinedClickable(
+                    interactionSource = interaction,
+                    indication = null,
+                    onClick = { onClick?.invoke() },
+                    onLongClick = onLongClick,
+                ) else Modifier
             )
+            .then(if (focusable) Modifier else Modifier.focusProperties { canFocus = false })
             .padding(innerPadding),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text,
-            color = AppTheme.colors.secondaryText,
+            color = textColor,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            fontWeight = if (bold) FontWeight.Bold else null,
             // 不继承 LocalTextStyle：M3 bodyLarge 的 24sp lineHeight 会把小 chip 撑高
             style = TextStyle(fontSize = 14.sp),
         )

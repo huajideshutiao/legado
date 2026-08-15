@@ -7,6 +7,7 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
+import io.legado.app.App
 import io.legado.app.R
 import io.legado.app.base.BaseService
 import io.legado.app.constant.AppConst
@@ -15,6 +16,7 @@ import io.legado.app.constant.NotificationId
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.setLiveOngoing
+import io.legado.app.powerManager
 import io.legado.app.receiver.NetworkChangedListener
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.sendToClip
@@ -24,9 +26,7 @@ import io.legado.app.utils.startService
 import io.legado.app.utils.stopService
 import io.legado.app.utils.toastOnUi
 import io.legado.app.web.WebServerManager
-import splitties.init.appCtx
-import splitties.systemservices.powerManager
-import splitties.systemservices.wifiManager
+import io.legado.app.wifiManager
 
 /**
  * Web 服务 Android Service 壳。
@@ -61,7 +61,7 @@ class WebService : BaseService() {
         }
 
         fun serve() {
-            appCtx.startService<WebService> {
+            App.instance.startService<WebService> {
                 action = "serve"
             }
         }

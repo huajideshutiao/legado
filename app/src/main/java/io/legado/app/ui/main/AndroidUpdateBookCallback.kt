@@ -2,6 +2,7 @@ package io.legado.app.ui.main
 
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import io.legado.app.App
 import io.legado.app.R
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
@@ -21,7 +22,6 @@ import io.legado.app.utils.servicePendingIntent
 import io.legado.app.utils.startForegroundService
 import io.legado.app.utils.stopService
 import io.legado.app.utils.toastOnUi
-import splitties.init.appCtx
 
 /**
  * [UpdateBookCallback] 的 Android 实现 (单例, 由 [io.legado.app.App] 注册为默认实现)。
@@ -59,16 +59,16 @@ object AndroidUpdateBookCallback : UpdateBookCallback {
     ) {
         // Activity 可见时不显示通知 (与原 updateUpdateNotification 一致)
         if (isActivityVisible) {
-            appCtx.stopService<UpdateBookService>()
+            App.instance.stopService<UpdateBookService>()
             return
         }
-        appCtx.startForegroundService<UpdateBookService>()
-        if (NotificationManagerCompat.from(appCtx).areNotificationsEnabled()) {
+        App.instance.startForegroundService<UpdateBookService>()
+        if (NotificationManagerCompat.from(App.instance).areNotificationsEnabled()) {
             // title/content 已由 UpdateBookShared 计算 (appString(AppStringKey.update_toc /
             // force_refresh_book) → "update_toc" / "force_refresh_book"
             // 多语言文案 + "count/total"), 这里直接用
             val notificationBuilder =
-                NotificationCompat.Builder(appCtx, AppConst.channelIdDownload)
+                NotificationCompat.Builder(App.instance, AppConst.channelIdDownload)
                     .setSmallIcon(R.drawable.ic_update)
                     .setOngoing(true)
                     .setOnlyAlertOnce(true)
@@ -82,13 +82,13 @@ object AndroidUpdateBookCallback : UpdateBookCallback {
                     .addAction(
                         R.drawable.ic_stop_black_24dp,
                         androidAppString("cancel"),
-                        appCtx.servicePendingIntent<UpdateBookService>(IntentAction.stop)
+                        App.instance.servicePendingIntent<UpdateBookService>(IntentAction.stop)
                     )
                     .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             try {
                 val notification = notificationBuilder.build()
                 NotificationHelp.logPromotable(notification)
-                NotificationManagerCompat.from(appCtx)
+                NotificationManagerCompat.from(App.instance)
                     .notify(NotificationId.UpdateBookService, notification)
             } catch (e: Exception) {
                 AppLog.put("更新通知失败\n${e.localizedMessage}", e)
@@ -97,11 +97,11 @@ object AndroidUpdateBookCallback : UpdateBookCallback {
     }
 
     override fun onProgressCancel() {
-        appCtx.stopService<UpdateBookService>()
+        App.instance.stopService<UpdateBookService>()
     }
 
     override fun toastForceRefreshBusy() {
-        appCtx.toastOnUi(androidAppString("force_refresh_busy"))
+        App.instance.toastOnUi(androidAppString("force_refresh_busy"))
     }
 
     override fun toastForceRefreshStart(count: Int) {

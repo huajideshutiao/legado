@@ -2,6 +2,7 @@ package io.legado.app.model.webBook
 
 import androidx.room3.immediateTransaction
 import androidx.room3.useWriterConnection
+import io.legado.app.App
 import io.legado.app.api.controller.BookControllerImageProviderImpl
 import io.legado.app.api.controller.ImageControllerProviders
 import io.legado.app.api.controller.ReadBookStateProviderImpl
@@ -47,7 +48,6 @@ import io.legado.app.model.fileBook.ZipFileWrapperFactoryProviders
 import io.legado.app.utils.RegexReplacer
 import io.legado.app.utils.RegexReplacers
 import io.legado.app.utils.replace
-import splitties.init.appCtx
 
 /**
  * webBook 编排层下沉配套 provider 安卓实现。
@@ -449,23 +449,23 @@ object WebBookProvidersImpl :
 
     /** 包装 ThemeConfig.applyBuiltin (清 pref + applyDayNight 含 postEvent) */
     override fun applyBuiltin(isNight: Boolean) {
-        ThemeConfig.applyBuiltin(appCtx, isNight)
+        ThemeConfig.applyBuiltin(App.instance, isNight)
     }
 
     /** 包装 ThemeConfig.applyConfig (applyConfigToPrefs + applyDayNight 含 postEvent) */
     override fun applyConfig(config: ThemeConfigData) {
-        ThemeConfig.applyConfig(appCtx, config.toThemeConfig())
+        ThemeConfig.applyConfig(App.instance, config.toThemeConfig())
     }
 
     /** 包装 reader 夜间按钮: AppConfig.isNightTheme = isNight + applyDayNight (含 applyTheme + postEvent) */
     override fun applyDayNight(isNight: Boolean) {
         AppConfig.isNightTheme = isNight
-        ThemeConfig.applyDayNight(appCtx)
+        ThemeConfig.applyDayNight(App.instance)
     }
 
     /** 包装 ThemeConfig.getBuiltinConfigs (默认日间 + 默认夜间, isBuiltin=true) */
     override fun getBuiltinConfigs(): List<ThemeConfigData> =
-        ThemeConfig.getBuiltinConfigs(appCtx).map { it.toThemeConfigData() }
+        ThemeConfig.getBuiltinConfigs(App.instance).map { it.toThemeConfigData() }
 
     /** 包装 ThemeConfig.save (configList → themeConfig.json) */
     override fun save() {

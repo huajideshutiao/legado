@@ -7,7 +7,7 @@ kotlin {
     jvm()
     androidLibrary {
         namespace = 'com.script.quickjs'
-        compileSdk = 36
+        compileSdk = 37
         minSdk = 24
     }
 
@@ -20,26 +20,23 @@ kotlin {
                 api project(':modules:js-api')
             }
         }
-        jvmAndAndroidMain {
-            dependsOn(commonMain)
-        }
+        // 注: 曾有空的自定义 jvmAndAndroidMain 中间源集 (dependsOn commonMain),
+        // 无任何文件/依赖, 纯冗余接线 (默认层级模板已把 androidMain/jvmMain 连到 commonMain), 已删除。
         androidMain {
-            dependsOn(jvmAndAndroidMain)
             dependencies {
                 implementation(libs.androidx.collection)
                 implementation(project(':modules:quickjs-android-native'))
             }
         }
         jvmMain {
-            dependsOn(jvmAndAndroidMain)
             dependencies {
-                implementation("org.json:json:20240303")
+                implementation(libs.json)
             }
         }
         jvmTest {
             dependencies {
                 implementation(libs.junit)
-                implementation("org.jetbrains.kotlin:kotlin-test")
+                implementation(libs.jetbrains.kotlin.test)
             }
         }
     }
@@ -55,7 +52,7 @@ def jvmNativeDir = layout.buildDirectory.dir("libs/jvm/native").get().asFile
 def jvmNativeBuildDir = layout.buildDirectory.dir("intermediates/cmake-jvm").get().asFile
 def cppDir = project(':modules:quickjs-android-native').file("src/main/cpp")
 
-String nativeLibName() {
+static String nativeLibName() {
     String osName = System.getProperty("os.name").toLowerCase()
     if (osName.contains("windows")) {
         return "legado_quickjs.dll"

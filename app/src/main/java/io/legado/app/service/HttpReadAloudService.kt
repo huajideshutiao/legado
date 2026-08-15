@@ -25,6 +25,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
+import io.legado.app.App
 import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
@@ -43,7 +44,6 @@ import io.legado.app.help.tts.ReadAloudQueue
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.model.analyzeRule.AnalyzeUrl
-import io.legado.app.ui.book.read.page.entities.TextChapter
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.servicePendingIntent
 import io.legado.app.utils.toastOnUi
@@ -62,7 +62,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import splitties.init.appCtx
 import java.io.File
 import java.io.InputStream
 import kotlin.time.Duration.Companion.seconds
@@ -90,7 +89,7 @@ class HttpReadAloudService : BaseReadAloudService(),
         SimpleCache(
             File(cacheDir, "httpTTS_cache"),
             LeastRecentlyUsedCacheEvictor(128 * 1024 * 1024),
-            StandaloneDatabaseProvider(appCtx)
+            StandaloneDatabaseProvider(App.instance)
         )
     }
     private val cacheDataSinkFactory by lazy {

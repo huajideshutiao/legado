@@ -33,9 +33,9 @@ class FunctionRegistry(options: RJPathOptions) {
 class LengthFunction : FunctionExtension {
     override val name: String = "length"
 
-    override fun evaluate(args: List<JsonElement>): JsonElement {
-        require(args.size == 1) { "length() expects exactly one argument" }
-        val value = args[0]
+    override fun evaluate(arguments: List<JsonElement>): JsonElement {
+        require(arguments.size == 1) { "length() expects exactly one argument" }
+        val value = arguments[0]
         val result = when (value) {
             is JsonPrimitive -> {
                 if (value.isString) {
@@ -50,9 +50,6 @@ class LengthFunction : FunctionExtension {
             is JsonObject -> {
                 JsonPrimitive(value.size.toDouble())
             }
-            else -> {
-                JsonPrimitive(0.0)
-            }
         }
         return result
     }
@@ -64,9 +61,9 @@ class LengthFunction : FunctionExtension {
 class CountFunction : FunctionExtension {
     override val name: String = "count"
 
-    override fun evaluate(args: List<JsonElement>): JsonElement {
-        require(args.size == 1) { "count() expects exactly one argument" }
-        val value = args[0]
+    override fun evaluate(arguments: List<JsonElement>): JsonElement {
+        require(arguments.size == 1) { "count() expects exactly one argument" }
+        val value = arguments[0]
         return when (value) {
             is JsonArray -> JsonPrimitive(value.size.toDouble())
             is JsonObject -> JsonPrimitive(value.size.toDouble())
@@ -81,9 +78,9 @@ class CountFunction : FunctionExtension {
 class MatchFunction(private val options: RJPathOptions) : FunctionExtension {
     override val name: String = "match"
 
-    override fun evaluate(args: List<JsonElement>): JsonElement {
-        require(args.size == 2) { "match() expects exactly two arguments" }
-        val (str, pattern) = args.map { it.jsonPrimitive.content }
+    override fun evaluate(arguments: List<JsonElement>): JsonElement {
+        require(arguments.size == 2) { "match() expects exactly two arguments" }
+        val (str, pattern) = arguments.map { it.jsonPrimitive.content }
         return JsonPrimitive(options.regexMatchMode.matches(Regex(pattern), str))
     }
 }
@@ -94,9 +91,9 @@ class MatchFunction(private val options: RJPathOptions) : FunctionExtension {
 class SearchFunction : FunctionExtension {
     override val name: String = "search"
 
-    override fun evaluate(args: List<JsonElement>): JsonElement {
-        require(args.size == 2) { "search() expects exactly two arguments" }
-        val (str, substr) = args.map { it.jsonPrimitive.content }
+    override fun evaluate(arguments: List<JsonElement>): JsonElement {
+        require(arguments.size == 2) { "search() expects exactly two arguments" }
+        val (str, substr) = arguments.map { it.jsonPrimitive.content }
         return JsonPrimitive(str.contains(substr))
     }
 }
@@ -107,8 +104,8 @@ class SearchFunction : FunctionExtension {
 class ValueFunction : FunctionExtension {
     override val name: String = "value"
 
-    override fun evaluate(args: List<JsonElement>): JsonElement {
-        require(args.size == 1) { "value() expects exactly one argument" }
-        return args[0]
+    override fun evaluate(arguments: List<JsonElement>): JsonElement {
+        require(arguments.size == 1) { "value() expects exactly one argument" }
+        return arguments[0]
     }
 } 

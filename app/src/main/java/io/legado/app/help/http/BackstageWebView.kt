@@ -11,6 +11,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import io.legado.app.App
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppConst.timeLimit
 import io.legado.app.exception.NoStackTraceException
@@ -25,7 +26,6 @@ import kotlinx.coroutines.withTimeout
 import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
-import splitties.init.appCtx
 import java.lang.ref.WeakReference
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -111,7 +111,7 @@ class BackstageWebView(
 
     @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
     private fun createWebView(): WebView {
-        val webView = WebView(appCtx)
+        val webView = WebView(App.instance)
         val settings = webView.settings
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true

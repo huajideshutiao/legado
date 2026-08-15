@@ -54,7 +54,7 @@ class CustomUrlUpdateChecker(
                 .onFailure { if (firstError == null) firstError = it }
         }
         if (releases.isEmpty() && firstError != null) {
-            throw firstError!!
+            throw firstError
         }
         // 渠道过滤 + 取版本号最新 (与 app 端 filter appVariant 语义一致)
         val best = releases

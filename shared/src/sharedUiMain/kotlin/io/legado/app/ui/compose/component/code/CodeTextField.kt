@@ -1,5 +1,6 @@
 package io.legado.app.ui.compose.component.code
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -23,7 +24,9 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.InputTransformation
 import androidx.compose.foundation.text.input.TextFieldDecorator
+import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.LocalTextStyle
 import androidx.compose.material.Surface
@@ -35,6 +38,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -251,6 +255,20 @@ fun CodeTextField(
     fontSize: TextUnit = 16.sp,
     // 默认最小高度 = 顶留白 + 固定行高 + 底部 4dp, 单行字段高度贴合内容 (消除 minHeight 死区)
     minHeight: Dp = appFieldDefaultMinHeight(label != null, fontSize),
+    /**
+     * 最小/最大行数 (对齐原版 BookSourceEditAdapter 的 editText.maxLines = sourceEditMaxLine):
+     * 内容不足 [minLines] 行时字段按 [minLines] 行高撑开; 超过 [maxLines] 行时字段按 [maxLines]
+     * 行高截断, 装饰层滚动容器驱动内容滚动, 光标 bringIntoView 命中滚动容器自动可见。
+     * 默认不限制 (Int.MAX_VALUE = 内容自适应)。
+     *
+     * 行号列始终在装饰层滚动容器内 (内容层, 见 fieldContent): 不限制时容器无滚动空间, 行号
+     * 随字段整体参与外部滚动; [maxLines] 有限时容器滚动, 行号随文本平移 —— 两种场景行号
+     * 均跟随, 对齐原版 EditText 内部滚动时自绘行号。maxLines 有限时行号窗口/补全弹层锚点/
+     * 光标 rect 均按滚动偏移修正; 高亮窗口恒全区间 (基于可见区域的高亮窗口感知不到装饰层
+     * 滚动, span 是文本属性随平移, 滚动后仍有着色)。
+     */
+    minLines: Int = 1,
+    maxLines: Int = Int.MAX_VALUE,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
@@ -319,6 +337,9 @@ fun CodeTextField(
     // 行号列可见性直接按文本内容判定, 与 lineCount 缓存解耦: 缓存可能因直写路径滞后, 若以
     // lineCount > 1 为门槛, "初始单行后内容变多行"时行号列永不出现 (对齐原版 TextWatcher
     // 每次文本变化无条件重算的语义; hasNewline 与 lineCount 同步增量维护, 判定等价 contains)
+    // 行号列与文本同处装饰层滚动容器 (始终, 见 fieldContent): 默认无内部滚动 (行号随字段
+    // 参与外部滚动), maxLines 有限时随容器滚动 —— 窗口行号统一由"外部可见区域 +
+    // internalScroll 偏移"驱动 (见 gutterWindow)。
     val gutterShown = showLineNumbers && hasNewline
     // 固定行高 fontSize*1.5, 单行/多行一致: 单行与多行的垂直几何统一 (行高恒定, 高度只随行数增长,
     // 回车换行时行距不跳变); 也是内容推导 minHeight 与行号逐行对齐的前提
@@ -477,6 +498,24 @@ fun CodeTextField(
         (contentPadding.calculateTopPadding() +
             if (label != null) TextFieldLabelToText else 0.dp).toPx()
     }
+    // 行数限制 (maxLines 有限) 的内部滚动: 装饰层滚动容器包住 行号+文本 整体滚动 —— 行号
+    // 跟随文本平移 (对齐原版 EditText 内部滚动时自绘行号); BasicTextField 不设内部滚动
+    // (lineLimits 只保 minLines, maxLines 由本容器高度限制, 见 lineLimits 调用处注释)。
+    // 默认 (maxLines 不限制) 时容器无滚动空间 (内容高 = 容器高), 行号随字段整体参与外部
+    // 滚动, 行为与不包容器一致 —— 一个结构覆盖两种场景, 行号始终在内容层。
+    val internalScroll = remember { ScrollState(0) }
+    // 滚动容器最大高度 = maxLines 行高 (行高固定 fontSize*1.5, 见 codeStyle); 不限制时
+    // Infinity (容器恒等于内容高度, 无滚动)
+    val maxContentHeight = if (maxLines == Int.MAX_VALUE) {
+        Dp.Infinity
+    } else {
+        with(density) { (maxLines * codeStyle.lineHeight.toPx()).toDp() }
+    }
+    // 文本可见区域 (相对文本顶, px): 外部滚动贡献 (字段窗口位置, onGloballyPositioned 更新)
+    // 与内部滚动贡献 (internalScroll) 叠加 —— 行号窗口统一由 `externalVisibleTopPx +
+    // internalScroll.value` 驱动, 两种滚动场景一个公式, 不按 maxLines 分分支
+    var externalVisibleTopPx by remember { mutableFloatStateOf(0f) }
+    var externalVisibleHeightPx by remember { mutableFloatStateOf(0f) }
     // 字段在窗口中的位置: Popup 的 offset 锚点是窗口内容根 (见 ComposeTextToolbar 的
     // anchorBounds 注释), 自动补全弹层要锚定光标, 组件内相对偏移必须换算成窗口坐标。
     // 常挂跟踪: 挂载即回调一次取最新值 (首次弹层可见时不再用 Zero 错位一帧),
@@ -488,14 +527,23 @@ fun CodeTextField(
         val pos = coords.positionInWindow()
         val offset = IntOffset(pos.x.roundToInt(), pos.y.roundToInt())
         if (offset != fieldWindowOffset) fieldWindowOffset = offset
+        // 可见区域 (相对文本顶): 行号窗口的统一信号源 —— 在任何早退 (IME 动画/高亮窗口)
+        // 之前更新, 外部滚动时字段窗口位置变 (本回调触发), 内部滚动由 internalScroll 提供
+        val visible = coords.boundsInWindow()
+        externalVisibleTopPx = visible.top - pos.y - textTopPx
+        externalVisibleHeightPx = visible.height
         // IME 动画期间冻结窗口重算: 视口逐帧变化会反复触发下方全量 buildAnnotatedString
         // (见 imeAnimating 声明处); 动画结束后按最终视口重算一次。
         // fieldWindowOffset 更新保留在冻结前: 补全弹层锚点仍需跟随滚动/位置变化。
         if (imeAnimating) return@onGloballyPositioned
+        // maxLines 有限时文本在装饰层滚动容器 (internalScroll) 内平移, 本回调挂在字段根
+        // (滚动容器外), 位置不变 → 高亮窗口不跟随 → 恒全区间挂载: span 是文本属性随平移,
+        // 滚动后新显示的行仍有着色 (窗口化高亮需按 internalScroll 重建 transformation,
+        // 滚动逐帧 O(n) 重布局, 得不偿失, 见 maxLines KDoc)。
+        if (maxLines != Int.MAX_VALUE) return@onGloballyPositioned
         // 可见区间 → 着色挂载窗口 (对照原版 updateVisibleSpans: getLocalVisibleRect +
         // getLineForVertical ±10 行判定 / ±20 行挂载, 窗口仍被覆盖时提前返回不重挂)
         val layout = textLayout ?: return@onGloballyPositioned
-        val visible = coords.boundsInWindow()
         if (visible.height <= 0f) return@onGloballyPositioned
         val topInText = visible.top - pos.y - textTopPx
         val bottomInText = visible.bottom - pos.y - textTopPx
@@ -530,13 +578,15 @@ fun CodeTextField(
             val cursor = value.selection.start.coerceIn(0, currentText.length)
             // getLineForOffset 是视觉行 (含软换行), 与原版 layout.getLineForOffset 同语义
             val line = layout.getLineForOffset(cursor)
+            // 行号/文本在装饰层滚动容器内平移, 光标行 rect 减去滚动偏移 internalScroll.value
+            // (默认无内部滚动时恒 0)
             Rect(
                 left = 0f,
                 // coerceAtLeast(0f): 桌面端 skia 空行度量不自洽 (bug 11321 家族),
                 // getLineTop 对空行可能返回负值, 行顶不可能在段落顶之上, 钳回 0
-                top = textTopPx + layout.getLineTop(line).coerceAtLeast(0f),
+                top = textTopPx + layout.getLineTop(line).coerceAtLeast(0f) - internalScroll.value,
                 right = 0f, // 宽度由 responder 节点在请求时以自身实际宽度补齐
-                bottom = textTopPx + layout.getLineBottom(line),
+                bottom = textTopPx + layout.getLineBottom(line) - internalScroll.value,
             )
         }
     }
@@ -638,13 +688,19 @@ fun CodeTextField(
             // 逐键闪变 (估算串与挂载窗口不匹配)
             lastGutterWindow ?: Triple(buildLineNumbers(lineCount), 0f, 0)
         } else {
-            remember(layout, renderRange, gutterShown) {
+            // 可见区域 = 外部滚动贡献 (externalVisibleTopPx, onGloballyPositioned 更新) +
+            // 内部滚动贡献 (internalScroll.value) —— 两种滚动场景一个公式; 渲染余量 ±5 行
+            // (行号先于文本进入视口) 避免快速滚动闪白
+            remember(layout, externalVisibleTopPx, externalVisibleHeightPx, internalScroll.value, gutterShown) {
                 val lastLine = layout.lineCount - 1
-                val from = layout.getLineForOffset(renderRange.first.coerceIn(0, value.text.length))
-                    .coerceIn(0, lastLine)
-                val to = layout.getLineForOffset(
-                    renderRange.last.coerceIn(0, value.text.length)
-                ).coerceIn(from, lastLine)
+                val visibleTop = externalVisibleTopPx + internalScroll.value
+                val firstVisible =
+                    layout.getLineForVerticalPosition(visibleTop).coerceIn(0, lastLine)
+                val lastVisible = layout.getLineForVerticalPosition(
+                    visibleTop + externalVisibleHeightPx
+                ).coerceIn(firstVisible, lastLine)
+                val from = (firstVisible - 5).coerceAtLeast(0)
+                val to = (lastVisible + 5).coerceAtMost(lastLine)
                 Triple(
                     buildVisualLineNumbers(
                         value.text.toString(), layout, from, to,
@@ -693,11 +749,13 @@ fun CodeTextField(
             // 避免弹层逐键闪回字段角落; 无历史 (首帧) 才退回 Zero
             lastPopupOffset
         } else {
-            remember(layout, value.selection, gutterWidthPx, contentPadding, density, fieldWindowOffset, label != null) {
+            remember(layout, value.selection, gutterWidthPx, contentPadding, density, fieldWindowOffset, label != null, internalScroll.value) {
                 val cursor = value.selection.start.coerceIn(0, value.text.length)
                 val line = layout.getLineForOffset(cursor)
-                // 弹层挂在光标行下沿 (原版 dropDownAnchor 幽灵 View 覆盖光标行, 下拉在其下方)
-                val y = (textTopPx + layout.getLineBottom(line)).roundToInt()
+                // 弹层挂在光标行下沿 (原版 dropDownAnchor 幽灵 View 覆盖光标行, 下拉在其下方);
+                // 行号/文本在装饰层滚动容器内平移, 锚点减去滚动偏移 internalScroll.value
+                // (默认无内部滚动时恒 0)
+                val y = (textTopPx + layout.getLineBottom(line) - internalScroll.value).roundToInt()
                 var x = with(density) {
                     contentPadding.calculateStartPadding(LayoutDirection.Ltr).toPx()
                 }.roundToInt()
@@ -751,51 +809,77 @@ fun CodeTextField(
                 enabled = enabled,
                 readOnly = readOnly,
                 textStyle = codeStyle.copy(color = textColor),
+                // maxLines 有限时由装饰层滚动容器限制高度 (见 fieldContent), BasicTextField
+                // 不设内部滚动 (内部滚动是文本内容平移, decoration 层行号无法跟随) ——
+                // lineLimits 只保 minLines 撑高
+                lineLimits = TextFieldLineLimits.MultiLine(minLines, Int.MAX_VALUE),
                 keyboardOptions = keyboardOptions,
                 onKeyboardAction = keyboardActions.toKeyboardActionHandler(keyboardOptions.imeAction),
                 outputTransformation = highlightOutputTransformation,
                 interactionSource = interactionSource,
                 cursorBrush = SolidColor(colors.cursorColor(isError).value),
                 onTextLayout = { getResult -> textLayout = getResult() },
+                // 行号列与文本同处装饰层滚动容器 (内容层): maxLines 有限时本容器限制高度
+                // 并滚动, 行号随文本平移 (对齐原版 EditText 内部滚动自绘行号); 默认
+                // (不限制) 时容器无滚动空间, 行号随字段整体参与外部滚动, 行为一致。
+                // label/placeholder 由
+                // AppDecorationBox 全宽渲染 (hint 从 contentPadding 起点 4dp 开始, 不被
+                // CodeView gutter 挤开; LineNumberGutter 的 5dp/11dp/6dp 几何与
+                // CodeView.onDraw 的 paddingLeft-11dp / paddingLeft-6dp 对齐)
+                // foundation 1.11+ 新版 state 版 BasicTextField 已无 decorationBox,
+                // 装饰改用 TextFieldDecorator (fun interface, 语义等价: 包裹内层文本字段)
                 decorator = TextFieldDecorator { innerTextField ->
-                    // 行号列包在 innerTextField 外层: 行号只在外部无界高度 + 滚动容器场景启用,
-                    // 此时字段整体随容器滚动, 行号与文本同步; 若字段自身有界 (内部滚动), decoration
-                    // 内容不随文本滚动, 行号会钉在顶部 (当前无线号使用场景, 保持现状)。
-                    // label/placeholder 由
-                    // AppDecorationBox 全宽渲染 (hint 从 contentPadding 起点 4dp 开始, 不被
-                    // CodeView gutter 挤开; LineNumberGutter 的 5dp/11dp/6dp 几何与
-                    // CodeView.onDraw 的 paddingLeft-11dp / paddingLeft-6dp 对齐)
                     val fieldContent: @Composable () -> Unit = {
-                        if (gutterShown) {
-                            // 分隔线画在 Row 上, 覆盖整个文本区高度: 行号列 Box 只与行号等高,
-                            // 长行软换行时文本区比行号列高, 画在行号列上会提前截断
-                            Row(
+                        // 滚动偏移 (internalScroll.value) 同时驱动 gutterWindow 窗口与补全
+                        // 弹层/光标 rect 的修正 (maxLines 有限时); BasicTextField 不设内部
+                        // 滚动 (lineLimits 只保 minLines), 光标 bringIntoView 命中本容器。
+                        // maxLines 不限制 (Int.MAX_VALUE) 时容器高 = 内容高, 无内部滚动空间,
+                        // 行号随字段整体参与外部滚动 —— 此时不能挂 verticalScroll:
+                        // CMP 1.11 新版 CoreTextField (TextFieldCoreModifier) 会给 decorator
+                        // 传 maxHeight = Constraints.Infinity, verticalScroll 收到 Infinity
+                        // 约束会抛 "Vertically scrollable component was measured with an
+                        // infinity maximum height constraints"。仅 maxLines 有限时才需要
+                        // heightIn(max=有限行高) + verticalScroll 的内部滚动容器。
+                        val scrollModifier =
+                            if (maxLines == Int.MAX_VALUE) {
                                 Modifier
-                                    .fillMaxWidth()
-                                    .drawBehind {
-                                        gutterWidthPx?.let { gW ->
-                                            // 对齐原版 lineX = paddingLeft - 6f*density
-                                            val dividerX = gW - 6.dp.toPx()
-                                            drawLine(
-                                                color = themeColors.secondaryText.copy(alpha = LineDividerAlpha),
-                                                start = Offset(dividerX, 0f),
-                                                end = Offset(dividerX, size.height),
-                                                strokeWidth = 1.dp.toPx(),
-                                            )
-                                        }
-                                    }
-                            ) {
-                                LineNumberGutter(
-                                    numbersText = numbersText,
-                                    textStyle = codeStyle,
-                                    baselineShift = gutterBaselineShift,
-                                    topOffsetPx = numbersTopPx,
-                                    widthPx = gutterWidthPx,
-                                )
-                                Box(Modifier.weight(1f)) { innerTextField() }
+                            } else {
+                                Modifier
+                                    .heightIn(max = maxContentHeight)
+                                    .verticalScroll(internalScroll)
                             }
-                        } else {
-                            innerTextField()
+                        Box(scrollModifier) {
+                            if (gutterShown) {
+                                // 分隔线画在 Row 上, 覆盖整个文本区高度: 行号列 Box 只与行号等高,
+                                // 长行软换行时文本区比行号列高, 画在行号列上会提前截断
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .drawBehind {
+                                            gutterWidthPx?.let { gW ->
+                                                // 对齐原版 lineX = paddingLeft - 6f*density
+                                                val dividerX = gW - 6.dp.toPx()
+                                                drawLine(
+                                                    color = themeColors.secondaryText.copy(alpha = LineDividerAlpha),
+                                                    start = Offset(dividerX, 0f),
+                                                    end = Offset(dividerX, size.height),
+                                                    strokeWidth = 1.dp.toPx(),
+                                                )
+                                            }
+                                        }
+                                ) {
+                                    LineNumberGutter(
+                                        numbersText = numbersText,
+                                        textStyle = codeStyle,
+                                        baselineShift = gutterBaselineShift,
+                                        topOffsetPx = numbersTopPx,
+                                        widthPx = gutterWidthPx,
+                                    )
+                                    Box(Modifier.weight(1f)) { innerTextField() }
+                                }
+                            } else {
+                                innerTextField()
+                            }
                         }
                     }
                     AppDecorationBox(
@@ -1181,6 +1265,9 @@ fun CodeTextField(
     fontSize: TextUnit = 16.sp,
     // 默认最小高度 = 顶留白 + 固定行高 + 底部 4dp, 单行字段高度贴合内容 (消除 minHeight 死区)
     minHeight: Dp = appFieldDefaultMinHeight(label != null, fontSize),
+    /** 最小/最大行数, 语义见 state 重载 (默认不限制) */
+    minLines: Int = 1,
+    maxLines: Int = Int.MAX_VALUE,
     searchHighlight: CodeSearchHighlightState? = null,
     autoComplete: Boolean = true,
 ) {
@@ -1212,6 +1299,8 @@ fun CodeTextField(
         showLineNumbers = showLineNumbers,
         minHeight = minHeight,
         fontSize = fontSize,
+        minLines = minLines,
+        maxLines = maxLines,
         searchHighlight = searchHighlight,
         autoComplete = autoComplete,
     )

@@ -46,9 +46,16 @@ class DesktopAudioPlayController(private val player: DesktopAudioPlayer) : Audio
     override val bufferedPosition: Long
         get() = player.currentPosition
 
-    // 由 isPlaying 派生; 播放中=READY, 否则=IDLE (upPlayProgressForLrc 用 IDLE 守卫切歌)
+    // 由 isPlaying 派生; 播放中=READY, 否则=IDLE (upPlayProgressForLrc 用 IDLE 守卫切歌)。
+    // 2026-08 修: play() 的 playing=true 在 controlScope 异步翻转, onReady 后立即调
+    // upPlayProgressForLrc 时会误判 IDLE 导致歌词不推进 —— prepared 即视为 READY
+    // (Media3 语义: pause 后仍 STATE_READY, 仅 stop/未加载为 IDLE)。
     override val playbackState: Int
-        get() = if (player.isPlaying) AudioPlayController.STATE_READY else AudioPlayController.STATE_IDLE
+        get() = if (player.isPlaying || player.isPrepared) {
+            AudioPlayController.STATE_READY
+        } else {
+            AudioPlayController.STATE_IDLE
+        }
 
     // 映射到实际播放态; 写值转 play()/pause()
     override var playWhenReady: Boolean

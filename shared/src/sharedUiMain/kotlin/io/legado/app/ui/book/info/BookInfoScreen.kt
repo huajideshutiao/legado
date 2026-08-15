@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -44,7 +45,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -67,6 +67,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.book.isWebFile
 import io.legado.app.ui.compose.component.AppDropdownMenu
+import io.legado.app.ui.compose.component.AppFilletTextButton
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.PullToRefreshDefaults
 import io.legado.app.ui.compose.component.pullToRefresh
@@ -831,13 +832,17 @@ private fun KindsSection(
         groups.forEach { (groupName, items) ->
             FlowRow(Modifier.fillMaxWidth()) {
                 if (groups.size > 1 || groupName != otherLabel) {
-                    KindChip(groupName, label = true)
+                    // 组名 label: 加粗 + 0.8 透明, 不可点
+                    AppFilletTextButton(
+                        text = groupName,
+                        alpha = 0.8f,
+                        bold = true,
+                    )
                 }
                 items.forEach { (value, fullKind) ->
                     if (value.isNotEmpty()) {
-                        KindChip(
-                            value,
-                            label = false,
+                        AppFilletTextButton(
+                            text = value,
                             onClick = { actions.onSearchKind(fullKind, true) },
                             onLongClick = { actions.onSearchKind(value, false) },
                         )
@@ -866,47 +871,6 @@ private fun buildKindGroups(
         }
     }
     return groups.map { (k, v) -> k to v.toList() }
-}
-
-/** 对照 item_fillet_text+selector_fillet_btn_bg; label=组名样式(加粗+0.8 透明,不可点) */
-@Composable
-private fun KindChip(
-    text: String,
-    label: Boolean,
-    onClick: (() -> Unit)? = null,
-    onLongClick: (() -> Unit)? = null,
-) {
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val bg = if (pressed) rememberColor("arco_fill_3") else rememberColor("btn_bg")
-    Box(
-        Modifier
-            .padding(4.dp) // selector inset
-            .clip(DesignTokens.shapeDefault)
-            .background(bg)
-            .then(
-                if (onClick != null) Modifier.combinedClickable(
-                    interactionSource = interaction,
-                    indication = null,
-                    onLongClick = onLongClick,
-                    onClick = onClick,
-                ) else Modifier
-            )
-            // 原 XML padding 16×12 自视图外缘计(含 4dp inset)，此处已扣除 inset
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = text,
-            color = AppTheme.colors.secondaryText,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            fontWeight = if (label) FontWeight.Bold else null,
-            // 显式 style: 不继承 M3 bodyLarge 的 24sp lineHeight, 保持原 TextView 自然行高
-            style = TextStyle(fontSize = 14.sp),
-            modifier = if (label) Modifier.alpha(0.8f) else Modifier,
-        )
-    }
 }
 
 // ---- 简介(可选中; <button>=胶囊动作、<img>=整宽图, 对照 setIntroWithActions) ----
@@ -1014,24 +978,14 @@ private fun IntroRichText(part: IntroTextPart, onAction: (String) -> Unit) {
             Placeholder(w, h, PlaceholderVerticalAlign.TextCenter),
         ) {
             DisableSelection {
-                val interaction = remember { MutableInteractionSource() }
-                val pressed by interaction.collectIsPressedAsState()
-                val bg = if (pressed) rememberColor("arco_fill_3")
-                else rememberColor("btn_bg")
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .padding(4.dp)
-                        .clip(DesignTokens.shapeDefault)
-                        .background(bg)
-                        .clickable(
-                            interactionSource = interaction,
-                            indication = null,
-                        ) { onAction(chunk.action) },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(chunk.label, color = secondary, fontSize = 14.sp, maxLines = 1)
-                }
+                // 复刻 IntroButtonSpan: 14×10 外缘内边距 (含 4dp inset) 的行内胶囊,
+                // 背景/按压/文字统一走共享 AppFilletTextButton
+                AppFilletTextButton(
+                    text = chunk.label,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                    onClick = { onAction(chunk.action) },
+                )
             }
         }
     }

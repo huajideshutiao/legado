@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.os.Build
 import androidx.annotation.Keep
+import io.legado.app.App
 import io.legado.app.BuildConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.http.Cronet
@@ -15,7 +16,6 @@ import io.legado.app.utils.LogUtils
 import okhttp3.Request
 import org.chromium.net.CronetEngine
 import org.chromium.net.CronetProvider
-import splitties.init.appCtx
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -36,8 +36,8 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
     private var cacheInstall = false
 
     init {
-        val cpuAbi = getCpuAbi(appCtx)
-        val dir = appCtx.getDir("cronet", Context.MODE_PRIVATE)
+        val cpuAbi = getCpuAbi(App.instance)
+        val dir = App.instance.getDir("cronet", Context.MODE_PRIVATE)
         soFile = File(dir, cpuAbi).apply { mkdirs() }.resolve(soName)
     }
 
@@ -70,7 +70,7 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
 
     fun hasExternalProvider(): Boolean {
         return try {
-            CronetProvider.getAllProviders(appCtx).any {
+            CronetProvider.getAllProviders(App.instance).any {
                 it.isEnabled && it.name != CronetProvider.PROVIDER_NAME_FALLBACK && it.name != CronetProvider.PROVIDER_NAME_APP_PACKAGED
             }
         } catch (_: Throwable) {
@@ -93,8 +93,8 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
             if (download) return@async
             download = true
             Coroutine.async {
-                val downloadFileTmp = File(appCtx.cacheDir, "so_download/$soName.tmp")
-                val downloadFile = File(appCtx.cacheDir, "so_download/$soName")
+                val downloadFileTmp = File(App.instance.cacheDir, "so_download/$soName.tmp")
+                val downloadFile = File(App.instance.cacheDir, "so_download/$soName")
                 val result = if (downloadFile.exists()) true
                 else try {
                     val webDav = WebDav(aarUrl, Authorization("", ""))
@@ -108,10 +108,10 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
                         "cronet.aar", fileSize
                     )
                     val entry = remoteZip.entries().asSequence().find {
-                        it.name.startsWith("jni/${getCpuAbi(appCtx)}/libcronet") && it.name.endsWith(
+                        it.name.startsWith("jni/${getCpuAbi(App.instance)}/libcronet") && it.name.endsWith(
                             ".so"
                         )
-                    } ?: throw IOException("SO entry not found for ${getCpuAbi(appCtx)}")
+                    } ?: throw IOException("SO entry not found for ${getCpuAbi(App.instance)}")
 
                     downloadFileTmp.parentFile?.mkdirs()
                     remoteZip.getInputStream(entry).use { input ->

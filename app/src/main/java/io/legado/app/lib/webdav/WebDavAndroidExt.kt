@@ -1,13 +1,13 @@
 package io.legado.app.lib.webdav
 
 import android.net.Uri
+import io.legado.app.App
 import io.legado.app.constant.AppLog
 import io.legado.app.utils.inputStream
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
-import splitties.init.appCtx
 
 /**
  * WebDav Android 端扩展: 上传 [Uri] (ContentScheme 或 File scheme)。
@@ -24,7 +24,7 @@ import splitties.init.appCtx
 suspend fun WebDav.upload(uri: Uri, contentType: String = "application/octet-stream") {
     kotlin.runCatching {
         withContext(IO) {
-            val byteArray = uri.inputStream(appCtx).getOrThrow().use { it.readBytes() }
+            val byteArray = uri.inputStream(App.instance).getOrThrow().use { it.readBytes() }
             upload(byteArray, contentType)
         }
     }.onFailure {

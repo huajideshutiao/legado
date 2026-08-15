@@ -671,7 +671,7 @@ fun BookInfoRoute(
     // 计算 menuState (对照 Activity Content 内 menuState 构造)
     val menuState = BookInfoMenuState(
         isLocal = currentBook.origin == BookType.localTag,
-        isWebDav = currentBook.origin?.startsWith(BookType.webDavTag) == true,
+        isWebDav = currentBook.origin.startsWith(BookType.webDavTag),
         hasSource = bookSource != null,
         sourceHasLogin = bookSource?.hasLogin() == true,
         sourceHasReviewRule = !bookSource?.reviewRule?.reviewUrl.isNullOrBlank(),

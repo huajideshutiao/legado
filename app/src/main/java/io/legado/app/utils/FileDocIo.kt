@@ -8,9 +8,9 @@ import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
 import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
+import io.legado.app.App
+import io.legado.app.downloadManager
 import io.legado.app.exception.NoStackTraceException
-import splitties.init.appCtx
-import splitties.systemservices.downloadManager
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
@@ -36,7 +36,7 @@ internal object FileDocIo {
     fun fromUri(uri: Uri, isDir: Boolean): FileDoc {
         if (uri.isContentScheme()) {
             val doc = if (isDir) {
-                DocumentFile.fromTreeUri(appCtx, uri)!!
+                DocumentFile.fromTreeUri(App.instance, uri)!!
             } else if (uri.host == "downloads") {
                 val query = DownloadManager.Query()
                 query.setFilterById(uri.lastPathSegment!!.toLong())
@@ -44,13 +44,13 @@ internal object FileDocIo {
                     if (it.moveToFirst()) {
                         val lUriColum = it.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI)
                         val lUri = it.getString(lUriColum)
-                        DocumentFile.fromSingleUri(appCtx, lUri.toUri())!!
+                        DocumentFile.fromSingleUri(App.instance, lUri.toUri())!!
                     } else {
-                        DocumentFile.fromSingleUri(appCtx, uri)!!
+                        DocumentFile.fromSingleUri(App.instance, uri)!!
                     }
                 }
             } else {
-                DocumentFile.fromSingleUri(appCtx, uri)!!
+                DocumentFile.fromSingleUri(App.instance, uri)!!
             }
             return FileDoc(doc.name ?: "", isDir, doc.length(), doc.lastModified(), doc.uri)
         }
@@ -63,9 +63,9 @@ internal object FileDocIo {
             return null
         }
         return if (fileDoc.isDir) {
-            DocumentFile.fromTreeUri(appCtx, fileDoc.uri)
+            DocumentFile.fromTreeUri(App.instance, fileDoc.uri)
         } else {
-            DocumentFile.fromSingleUri(appCtx, fileDoc.uri)
+            DocumentFile.fromSingleUri(App.instance, fileDoc.uri)
         }
     }
 
@@ -84,7 +84,7 @@ internal object FileDocIo {
                 val docList = arrayListOf<FileDoc>()
                 var cursor: Cursor? = null
                 try {
-                    cursor = appCtx.contentResolver.query(
+                    cursor = App.instance.contentResolver.query(
                         childrenUri,
                         projection,
                         null,
@@ -156,19 +156,19 @@ internal object FileDocIo {
     }
 
     fun openInputStream(fileDoc: FileDoc): Result<InputStream> {
-        return fileDoc.uri.inputStream(appCtx)
+        return fileDoc.uri.inputStream(App.instance)
     }
 
     fun openOutputStream(fileDoc: FileDoc): Result<OutputStream> {
-        return fileDoc.uri.outputStream(appCtx)
+        return fileDoc.uri.outputStream(App.instance)
     }
 
     fun openReadPfd(fileDoc: FileDoc): Result<ParcelFileDescriptor> {
-        return fileDoc.uri.toReadPfd(appCtx)
+        return fileDoc.uri.toReadPfd(App.instance)
     }
 
     fun openWritePfd(fileDoc: FileDoc): Result<ParcelFileDescriptor> {
-        return fileDoc.uri.toWritePfd(appCtx)
+        return fileDoc.uri.toWritePfd(App.instance)
     }
 
     fun exists(fileDoc: FileDoc, fileName: String, vararg subDirs: String): Boolean {
@@ -189,7 +189,7 @@ internal object FileDocIo {
 
     fun writeText(fileDoc: FileDoc, text: String) {
         if (fileDoc.uri.isContentScheme()) {
-            fileDoc.uri.writeText(appCtx, text)
+            fileDoc.uri.writeText(App.instance, text)
         } else {
             FileIoBase.writeText(fileDoc.uri.path!!, text)
         }
@@ -212,12 +212,12 @@ fun DocumentFile.listFileDocs(filter: FileDocFilter? = null): ArrayList<FileDoc>
 
 @Throws(Exception::class)
 fun DocumentFile.openInputStream(): InputStream? {
-    return appCtx.contentResolver.openInputStream(uri)
+    return App.instance.contentResolver.openInputStream(uri)
 }
 
 @Throws(Exception::class)
 fun DocumentFile.openOutputStream(): OutputStream? {
-    return appCtx.contentResolver.openOutputStream(uri)
+    return App.instance.contentResolver.openOutputStream(uri)
 }
 
 @Throws(Exception::class)

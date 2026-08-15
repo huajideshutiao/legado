@@ -16,6 +16,7 @@ import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.setLiveProgress
 import io.legado.app.model.CheckSourceShared
 import io.legado.app.model.Debug
+import io.legado.app.notificationManager
 import io.legado.app.ui.main.MainActivity
 import io.legado.app.utils.activityPendingIntent
 import io.legado.app.utils.onEachParallel
@@ -30,7 +31,6 @@ import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
-import splitties.systemservices.notificationManager
 import java.util.concurrent.Executors
 import kotlin.math.min
 

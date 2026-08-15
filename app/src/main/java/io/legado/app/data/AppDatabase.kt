@@ -7,12 +7,12 @@ import androidx.room3.Room
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.driver.AndroidSQLiteConnection
 import androidx.sqlite.driver.AndroidSQLiteDriver
+import io.legado.app.App
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AndroidAppDatabaseProvider.appDb
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.help.DefaultData
 import org.intellij.lang.annotations.Language
-import splitties.init.appCtx
 import java.util.Locale
 
 /**
@@ -36,7 +36,7 @@ object AndroidAppDatabaseProvider : AppDatabaseProvider {
  * AppDatabase::class.java / AppDatabase.DATABASE_NAME 从 shared/commonMain 引用。
  */
 val appDb by lazy {
-    Room.databaseBuilder(appCtx, AppDatabase::class.java, AppDatabase.DATABASE_NAME)
+    Room.databaseBuilder(App.instance, AppDatabase::class.java, AppDatabase.DATABASE_NAME)
         // Room 3 移除了 SupportSQLiteOpenHelper, 改由 driver 打开框架 SQLite
         .setDriver(AndroidSQLiteDriver())
         // 包名已由 io.legado.app 改为 shutiao.reader（DB v80 时），新包名最低从 v80 起，

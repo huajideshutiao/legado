@@ -12,7 +12,7 @@ import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.browser.OhosWebViewSlot
 import io.legado.app.ui.OhosPlatformCapabilities
 import io.legado.app.ui.book.audio.AudioPlayPlatformProviders
-import io.legado.app.ui.book.audio.OhosAudioPlayPlatformProvider
+import io.legado.app.ui.book.audio.SharedAudioPlayPlatformProvider
 import io.legado.app.ui.book.manga.MangaReaderScreenModel
 import io.legado.app.ui.book.manga.OhosMangaReaderPlatform
 import io.legado.app.ui.book.read.OhosReaderPlatformProvider
@@ -67,7 +67,7 @@ fun MainOhos() {
     remember { PlatformServiceProviders.register(OhosPlatformServices) }
     // 注册 4 个媒体平台 Provider stub (Reader/Audio/Manga/Video, no-op 占位)
     remember { ReaderPlatformProviders.register(OhosReaderPlatformProvider) }
-    remember { AudioPlayPlatformProviders.register(OhosAudioPlayPlatformProvider) }
+    remember { AudioPlayPlatformProviders.register(SharedAudioPlayPlatformProvider) }
     remember { MangaReaderScreenModel.Providers.register(OhosMangaReaderPlatform) }
     remember { VideoPlayPlatformProviders.register(OhosVideoPlayPlatformProvider) }
 

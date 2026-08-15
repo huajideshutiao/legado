@@ -2,9 +2,9 @@ package io.legado.app.help.tts
 
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import io.legado.app.App
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.utils.toastOnUi
-import splitties.init.appCtx
 
 /**
  * Android TextToSpeech 引擎封装。
@@ -30,7 +30,7 @@ class TextToSpeechEngine(private val engineName: String? = null) {
     val isSpeaking: Boolean get() = tts?.isSpeaking ?: false
 
     /** init 失败时回调,默认弹 toast */
-    var onInitFailed: () -> Unit = { appCtx.toastOnUi(androidAppString("tts_init_failed")) }
+    var onInitFailed: () -> Unit = { App.instance.toastOnUi(androidAppString("tts_init_failed")) }
 
     /** Utterance 进度回调,需要在 [ensureReady] 之前或之后设置均可 */
     var progressListener: UtteranceProgressListener? = null
@@ -57,9 +57,9 @@ class TextToSpeechEngine(private val engineName: String? = null) {
         if (tts != null) return // 初始化中
         val listener = TextToSpeech.OnInitListener { status -> onInit(status) }
         tts = if (engineName.isNullOrBlank()) {
-            TextToSpeech(appCtx, listener)
+            TextToSpeech(App.instance, listener)
         } else {
-            TextToSpeech(appCtx, listener, engineName)
+            TextToSpeech(App.instance, listener, engineName)
         }
     }
 

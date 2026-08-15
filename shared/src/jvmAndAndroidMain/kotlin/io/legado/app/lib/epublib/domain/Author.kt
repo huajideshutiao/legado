@@ -23,11 +23,10 @@ class Author(var firstname: String?, var lastname: String?) : Serializable {
         return StringUtil.hashCode(firstname, lastname)
     }
 
-    override fun equals(authorObject: Any?): Boolean {
-        if (authorObject !is Author) {
+    override fun equals(other: Any?): Boolean {
+        if (other !is Author) {
             return false
         }
-        val other = authorObject
         return StringUtil.equals(firstname, other.firstname)
             && StringUtil.equals(lastname, other.lastname)
     }

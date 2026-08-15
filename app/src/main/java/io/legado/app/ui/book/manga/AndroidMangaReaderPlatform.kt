@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.node.Ref
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.net.toUri
+import io.legado.app.App
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
@@ -30,7 +31,6 @@ import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.toJson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import splitties.init.appCtx
 import java.io.FileInputStream
 
 object AndroidMangaReaderPlatform : MangaReaderScreenModel.Platform {
@@ -57,7 +57,8 @@ object AndroidMangaReaderPlatform : MangaReaderScreenModel.Platform {
     override fun getBatteryLevel(): Int {
         // ACTION_BATTERY_CHANGED 是 sticky 广播, registerReceiver(receiver=null) 直接取最近一次;
         // 失败/无电池统一回落 100 (用户拍板 2026-08: 电量恒显示, 与 desktop 一致)
-        val intent = appCtx.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val intent =
+            App.instance.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
         val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
         return if (level >= 0 && scale > 0) (level * 100 / scale) else 100
@@ -189,13 +190,13 @@ object AndroidMangaReaderPlatform : MangaReaderScreenModel.Platform {
                 val uri = destPath.toUri()
                 val image = BookHelp.getImage(book, url)
                 if (image.exists()) {
-                    appCtx.contentResolver.openOutputStream(uri)?.use { out ->
+                    App.instance.contentResolver.openOutputStream(uri)?.use { out ->
                         FileInputStream(image).use { it.copyTo(out) }
                     }
                     true
                 } else if (book.isLocal) {
                     io.legado.app.model.fileBook.FileBook.getImage(book, url)?.use { input ->
-                        appCtx.contentResolver.openOutputStream(uri)
+                        App.instance.contentResolver.openOutputStream(uri)
                             ?.use { out -> input.copyTo(out) }
                         true
                     } ?: false

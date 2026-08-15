@@ -2,6 +2,7 @@ package io.legado.app.model.fileBook
 
 import android.net.Uri
 import androidx.core.net.toUri
+import io.legado.app.App
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.BookType
 import io.legado.app.data.appDb
@@ -46,7 +47,6 @@ import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.openOutputStream
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
-import splitties.init.appCtx
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileNotFoundException
@@ -95,7 +95,7 @@ object FileBookAccessorImpl : FileBookAccessor {
      */
     override fun getBookInputStream(book: Book): InputStream {
         val uri = book.getLocalUri()
-        val inputStream = uri.inputStream(appCtx).getOrNull() ?: let {
+        val inputStream = uri.inputStream(App.instance).getOrNull() ?: let {
             book.removeLocalUriCache()
             val localArchiveUri = book.getArchiveUri()
             val webDavUrl = book.getRemoteUrl()
@@ -124,7 +124,7 @@ object FileBookAccessorImpl : FileBookAccessor {
             val uri = book.bookUrl.toUri()
             if (uri.isContentScheme()) {
                 return@runCatching androidx.documentfile.provider.DocumentFile
-                    .fromSingleUri(appCtx, uri)!!.lastModified()
+                    .fromSingleUri(App.instance, uri)!!.lastModified()
             }
             val file = File(uri.path!!)
             if (file.exists()) {
@@ -326,7 +326,11 @@ object FileBookAccessorImpl : FileBookAccessor {
 
     /** 获取封面缓存路径 (原 `FileBook.getCoverPath`)。 */
     override fun getCoverPath(bookUrl: String): String =
-        FileUtils.getPath(appCtx.externalFiles, "covers", "${MD5Utils.md5Encode16(bookUrl)}.jpg")
+        FileUtils.getPath(
+            App.instance.externalFiles,
+            "covers",
+            "${MD5Utils.md5Encode16(bookUrl)}.jpg"
+        )
 
     /** 合并在线书籍信息 (原 `FileBook.mergeBook`)。 */
     override fun mergeBook(localBook: Book, onLineBook: Book?): Book {

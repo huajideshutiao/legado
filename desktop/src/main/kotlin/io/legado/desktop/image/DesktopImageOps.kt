@@ -3,6 +3,12 @@ package io.legado.desktop.image
 import io.legado.app.help.image.ImageOps
 import io.legado.app.help.image.ImageRef
 import io.legado.app.ui.compose.platform.jvmGetString
+import org.jetbrains.skia.Bitmap
+import org.jetbrains.skia.ColorAlphaType
+import org.jetbrains.skia.ColorType
+import org.jetbrains.skia.EncodedImageFormat
+import org.jetbrains.skia.Image
+import org.jetbrains.skia.ImageInfo
 import java.awt.Color
 import java.awt.Graphics
 import java.awt.geom.AffineTransform
@@ -32,7 +38,10 @@ import kotlin.math.sin
  *
  * # 实现
  * 内持 `java.awt.image.BufferedImage`, 用 `javax.imageio.ImageIO` 编解码。
- * webp 编解码靠 `com.github.gotson:webp-imageio` 的 ImageIO SPI (classpath 即生效)。
+ * webp 解码靠 `com.twelvemonkeys.imageio:imageio-webp` 的 ImageIO SPI (classpath 即生效,
+ * 纯 Java, 活跃维护); webp 编码走 Skia (Skiko) `Image.encodeToData(WEBP)` —
+ * ImageIO 生态无活跃 WebP writer (gotson 归档 / sejda 2020 停更), Skiko 由 JetBrains 官方
+ * 持续维护且 Compose Desktop 必带。
  * 对应 app 端 `BitmapImageOps` 内持 `android.graphics.Bitmap`。
  * jpg 编码时透明区铺黑底 (与 app 端 Bitmap.compress(JPEG) 的透明转黑行为一致)。
  *
@@ -57,23 +66,74 @@ object DesktopImageOps : ImageOps {
     }
 
     override fun encode(img: ImageRef, format: String, quality: Int): ByteArray {
-        val formatName = when (format.lowercase()) {
+        val lower = format.lowercase()
+        // WebP 编码走 Skia (Skiko): ImageIO 生态无活跃 writer (gotson 归档 / sejda 2020 停更),
+        // Skia EncodedImageFormat.WEBP 由 JetBrains 官方持续维护 (Compose Desktop 必带)
+        if (lower == "webp") return encodeWebpSkia(bufferedImageOf(img), quality)
+        val formatName = when (lower) {
             "png" -> "png"
             "jpg", "jpeg" -> "jpg"
-            // webp 编码由 com.github.gotson:webp-imageio 的 ImageIO SPI 提供 (jar 内置各平台 native)
-            "webp" -> "webp"
             else -> throw IllegalArgumentException(jvmGetString("image_encode_unsupported_format", format))
         }
         val out = ByteArrayOutputStream()
-        // webp native writer 只认 INT_RGB/INT_ARGB 光栅, jpg 不支持 alpha, 均需先归一化
-        val image = normalizeForWrite(bufferedImageOf(img), formatName)
+        // jpg 不支持 alpha, 需先归一化铺黑底; png 通吃无需转换
+        val image = if (formatName == "jpg") normalizeForWrite(
+            bufferedImageOf(img),
+            "jpg"
+        ) else bufferedImageOf(img)
         // quality 映射: jpg 用 ImageWriter + JPEG ImageWriteParam 压缩比 (0..1),
-        // 与 app 端 Bitmap.compress(JPEG, quality) 语义一致; png/webp 无质量概念忽略
-        // (app 端 PNG 同样忽略 quality), webp writer 不支持压缩参数时走默认质量
+        // 与 app 端 Bitmap.compress(JPEG, quality) 语义一致; png 无质量概念忽略
         if (!writeWithQuality(image, formatName, quality, out)) {
             throw IllegalStateException(jvmGetString("image_encode_write_failed", formatName))
         }
         return out.toByteArray()
+    }
+
+    /**
+     * WebP 编码 (Skia/Skiko 路径)。
+     *
+     * BufferedImage (ARGB 直通) → RGBA_8888 预乘像素 → Skia Bitmap → Image.encodeToData(WEBP, quality)。
+     * quality 语义对齐 app 端 Bitmap.compress(WEBP, quality) (0..100)。
+     */
+    private fun encodeWebpSkia(image: BufferedImage, quality: Int): ByteArray {
+        val w = image.width
+        val h = image.height
+        // getRGB 返回直通 (非预乘) ARGB; 透明像素在 webp 中保留 alpha
+        val argb = image.getRGB(0, 0, w, h, null, 0, w)
+        val pixels = ByteArray(w * h * 4)
+        var i = 0
+        for (p in argb) {
+            val a = (p ushr 24) and 0xFF
+            val r = (p ushr 16) and 0xFF
+            val g = (p ushr 8) and 0xFF
+            val b = p and 0xFF
+            // 直通 → 预乘 (Skia RGBA_8888_PREMUL 期望; 整数近似对齐 Skia SkColorConvert)
+            pixels[i++] = ((r * a + 127) / 255).toByte()
+            pixels[i++] = ((g * a + 127) / 255).toByte()
+            pixels[i++] = ((b * a + 127) / 255).toByte()
+            pixels[i++] = a.toByte()
+        }
+        val bitmap = Bitmap()
+        return bitmap.use { bmp ->
+            check(
+                bmp.installPixels(
+                    ImageInfo(w, h, ColorType.RGBA_8888, ColorAlphaType.PREMUL),
+                    pixels,
+                    w * 4
+                )
+            ) {
+                jvmGetString("image_encode_write_failed", "webp")
+            }
+            Image.makeFromBitmap(bmp).use { skImage ->
+                skImage.encodeToData(EncodedImageFormat.WEBP, quality.coerceIn(0, 100))?.bytes
+                    ?: throw IllegalStateException(
+                        jvmGetString(
+                            "image_encode_write_failed",
+                            "webp"
+                        )
+                    )
+            }
+        }
     }
 
     /**
@@ -103,23 +163,17 @@ object DesktopImageOps : ImageOps {
         return true
     }
 
-    /** 按目标格式把图转成 writer 能接受的 raster 类型; 已匹配时原样返回。 */
+    /** 按目标格式把图转成 writer 能接受的 raster 类型 (现仅 jpg 需铺黑底归一化; png/webp 通吃)。 */
     private fun normalizeForWrite(image: BufferedImage, formatName: String): BufferedImage {
-        val target = when (formatName) {
-            "jpg" -> BufferedImage.TYPE_INT_RGB
-            "webp" -> BufferedImage.TYPE_INT_ARGB
-            else -> return image // png writer 通吃, 不必转换
-        }
-        if (image.type == target) return image
-        val copy = BufferedImage(image.width, image.height, target)
+        if (formatName != "jpg") return image
+        if (image.type == BufferedImage.TYPE_INT_RGB) return image
+        val copy = BufferedImage(image.width, image.height, BufferedImage.TYPE_INT_RGB)
         val g = copy.createGraphics()
         try {
-            if (target == BufferedImage.TYPE_INT_RGB) {
-                // jpg 无 alpha 通道, 透明区先铺黑底再绘制
-                // (与 app 端 Bitmap.compress(JPEG) 的透明转黑行为、漫画阅读界面黑底一致)
-                g.color = Color.BLACK
-                g.fillRect(0, 0, image.width, image.height)
-            }
+            // jpg 无 alpha 通道, 透明区先铺黑底再绘制
+            // (与 app 端 Bitmap.compress(JPEG) 的透明转黑行为、漫画阅读界面黑底一致)
+            g.color = Color.BLACK
+            g.fillRect(0, 0, image.width, image.height)
             g.drawImage(image, 0, 0, null)
         } finally {
             g.dispose()

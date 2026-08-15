@@ -3,10 +3,10 @@ package io.legado.app.help.media
 import android.media.AudioManager
 import androidx.media.AudioFocusRequestCompat
 import androidx.media.AudioManagerCompat
+import io.legado.app.audioManager
 import io.legado.app.constant.AppLog
 import io.legado.app.help.MediaHelp
 import io.legado.app.help.config.AppConfig
-import splitties.systemservices.audioManager
 
 /**
  * 音频焦点状态机:

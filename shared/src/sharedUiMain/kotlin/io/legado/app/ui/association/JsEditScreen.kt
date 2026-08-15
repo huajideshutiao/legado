@@ -42,8 +42,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
-import kotlinx.coroutines.flow.drop
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -133,14 +131,12 @@ fun JsEditScreen(
         }
     }
     val emit: (String) -> Unit = { lastEmitted = it; onCodeChange(it) }
-    // 观察编辑器文本变化 → emit (用户输入/undo/redo/辅助键插入统一写入 state,
-    // 不再逐路径手动 emit; 只读文本, 选区/光标移动不触发; drop(1) 跳过初始发射)
     val currentEmit by rememberUpdatedState(emit)
-    LaunchedEffect(editor) {
-        snapshotFlow { editor.textFieldState.text.toString() }
-            .drop(1)
-            .collect { currentEmit(it) }
-    }
+    // 编辑器文本变化 → onChanged → emit (用户输入/undo/redo/辅助键插入统一写入 state,
+    // 不再逐路径手动 emit): 由 rememberCodeEditorState 内置观察器驱动 (只读文本, 选区/光标
+    // 移动不触发, drop(1) 跳初始发射), 与 BookSourceEditScreen 同一同步模式, 不再自建
+    // 观察器 (旧自建 LaunchedEffect 与内置观察器重复空转)
+    editor.onChanged = { currentEmit(it.text) }
     // 查找高亮状态: CodeTextField 叠加全量黄底 + 当前命中强调色 (对齐原版 CodeView 查找高亮)
     val searchHighlight = remember { CodeSearchHighlightState() }
     val focusManager = LocalFocusManager.current

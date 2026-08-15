@@ -110,10 +110,10 @@ android {
     }
     buildTypes {
         release {
-            if (project.hasProperty("RELEASE_STORE_FILE")) {
-                signingConfig = signingConfigs.getByName("myConfig")
+            signingConfig = if (project.hasProperty("RELEASE_STORE_FILE")) {
+                signingConfigs.getByName("myConfig")
             } else {
-                signingConfig = signingConfigs.getByName("debug")
+                signingConfigs.getByName("debug")
             }
             vcsInfo {
                 include = false
@@ -276,10 +276,10 @@ dependencies {
     implementation(libs.activity.ktx)
     implementation(libs.fragment.ktx)
 
-    implementation(compose.runtime)
-    implementation(compose.foundation)
-    implementation(compose.material)
-    implementation(compose.ui)
+    implementation(libs.runtime)
+    implementation(libs.foundation)
+    implementation(libs.jetbrains.material)
+    implementation(libs.ui)
     implementation(libs.compose.activity)
     implementation(libs.compose.lifecycle.runtime)
 
@@ -298,10 +298,6 @@ dependencies {
     implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.media3.exoplayer.hls)
     implementation(libs.media3.datasource.okhttp)
-
-    implementation(libs.splitties.appctx)
-    implementation(libs.splitties.systemservices)
-    implementation(libs.splitties.views)
 
     implementation(libs.room.runtime)
     androidTestImplementation(libs.room.testing)

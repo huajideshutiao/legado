@@ -8,6 +8,7 @@ import io.legado.app.constant.EventBus
 import io.legado.app.constant.Status
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.isNotShelf
@@ -227,26 +228,7 @@ class AudioPlayScreenModel : ScreenModel {
                 scope.launch {
                     AudioPlayShared.inBookshelf = !event.book.isNotShelf
                     val book = event.book
-                    // 目录来源与原版 BaseReadViewModel.upBook 一致:
-                    // 内存交接 (IntentData, 带 bookUrl 校验) → DB → 回源拉取
-                    val handoff = IntentData.chapterList
-                        ?.takeIf { it.firstOrNull()?.bookUrl == book.bookUrl }
-                    val dbList = handoff ?: runCatching {
-                        AppDbProviders.get().bookChapterDao.getChapterList(book.bookUrl)
-                    }.getOrDefault(emptyList())
-                    val list = dbList.ifEmpty {
-                        // 超时保护: 原版无此限制, 但挂起无上限会让页面一直停在初始化前
-                        withTimeoutOrNull(DIRECTORY_FETCH_TIMEOUT_MS) {
-                            fetchChapterListFromSource(
-                                book,
-                                AudioPlayBookBridges.get().getBookSource(book),
-                            )
-                        }.orEmpty()
-                    }
-                    AudioPlayShared.chapterList = list.ifEmpty { null }
-                    // 目录到货后同步章节计数: upData 分支(重进同书)不会重算 simulatedChapterSize,
-                    // 首次进入目录未就绪时其值为 0, 重进仍为 0 → 列表循环/切章边界失效
-                    if (list.isNotEmpty()) AudioPlayShared.updateChapterList(list)
+                    val list = ensureChapterList(book)
                     if (AudioPlayShared.book?.bookUrl == book.bookUrl) {
                         AudioPlayShared.upData(book)
                     } else {
@@ -362,6 +344,47 @@ class AudioPlayScreenModel : ScreenModel {
                 )
             }
         }
+    }
+
+    /**
+     * 确保目录就绪并写回 [AudioPlayShared] (对照原版 AudioPlayViewModel.initData 的
+     * upBook 挂起语义: 打开目录前目录必已就绪, 否则未入架书目录空白)。
+     *
+     * 来源优先级与原版 BaseReadViewModel.upBook 一致: IntentData 内存交接 (带 bookUrl
+     * 校验) → DB → 回源拉取 (30s 超时保护)。全部失败时返回空列表。目录到货后同步章节
+     * 计数: upData 分支(重进同书)不会重算 simulatedChapterSize, 首次进入目录未就绪时
+     * 其值为 0, 重进仍为 0 → 列表循环/切章边界失效。
+     *
+     * [allowCached] 为 true 时 (目录面板入口) 若 [AudioPlayShared] 已有同书目录直接复用,
+     * 避免与 Init 的异步加载并发重复回源; Init 走 false, 保持原版"每次进入都重新确保目录
+     * (handoff 可能带换源后的新目录)"的语义。
+     */
+    suspend fun ensureChapterList(
+        book: Book,
+        allowCached: Boolean = true,
+    ): List<BookChapter> {
+        if (allowCached) {
+            AudioPlayShared.chapterList
+                ?.takeIf { it.firstOrNull()?.bookUrl == book.bookUrl }
+                ?.let { return it }
+        }
+        val handoff = IntentData.chapterList
+            ?.takeIf { it.firstOrNull()?.bookUrl == book.bookUrl }
+        val dbList = handoff ?: runCatching {
+            AppDbProviders.get().bookChapterDao.getChapterList(book.bookUrl)
+        }.getOrDefault(emptyList())
+        val list = dbList.ifEmpty {
+            // 超时保护: 原版无此限制, 但挂起无上限会让页面一直停在初始化前
+            withTimeoutOrNull(DIRECTORY_FETCH_TIMEOUT_MS) {
+                fetchChapterListFromSource(
+                    book,
+                    AudioPlayBookBridges.get().getBookSource(book),
+                )
+            }.orEmpty()
+        }
+        AudioPlayShared.chapterList = list.ifEmpty { null }
+        if (list.isNotEmpty()) AudioPlayShared.updateChapterList(list)
+        return list
     }
 
     override fun onPreRemoved() {

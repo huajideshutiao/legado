@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import androidx.core.graphics.createBitmap
+import io.legado.app.App
 import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -15,7 +16,6 @@ import io.legado.app.utils.FileUtils
 import io.legado.app.utils.SystemUtils
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.printOnDebug
-import splitties.init.appCtx
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -89,7 +89,7 @@ class PdfFile(var book: Book) {
         kotlin.runCatching {
             val uri = book.getLocalUri()
             if (uri.isContentScheme()) {
-                fileDescriptor = appCtx.contentResolver.openFileDescriptor(uri, "r")?.also {
+                fileDescriptor = App.instance.contentResolver.openFileDescriptor(uri, "r")?.also {
                     pdfRenderer = PdfRenderer(it)
                 }
             } else {

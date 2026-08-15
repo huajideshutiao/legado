@@ -1,6 +1,6 @@
 package io.legado.app.help.media
 
-import splitties.init.appCtx
+import io.legado.app.App
 
 /**
  * 安卓宿主启动早期注册 [MediaNotificationController] 的 actual 实现。
@@ -25,6 +25,6 @@ import splitties.init.appCtx
  */
 fun registerAndroidMediaNotificationProvider() {
     MediaNotificationProviders.register(
-        AndroidMediaNotificationController(appCtx, "legadoMedia")
+        AndroidMediaNotificationController(App.instance, "legadoMedia")
     )
 }

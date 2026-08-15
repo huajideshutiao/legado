@@ -4,7 +4,6 @@ import io.legado.app.data.entities.Book
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.model.fileBook.FileBook
-import splitties.init.appCtx
 
 /**
  * Android 端 [BookshelfManagePlatform] 实现 (顶级类)。

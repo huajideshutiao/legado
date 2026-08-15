@@ -15,6 +15,7 @@ import coil3.request.SuccessResult
 import coil3.request.transformations
 import coil3.toBitmap
 import coil3.transform.Transformation
+import io.legado.app.App
 import io.legado.app.R
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
@@ -37,7 +38,6 @@ import io.legado.app.utils.putPrefString
 import io.legado.app.utils.toJson
 import io.legado.app.utils.topCrop
 import kotlinx.coroutines.CoroutineScope
-import splitties.init.appCtx
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.random.Random
@@ -90,7 +90,7 @@ object BookCover {
     // 列表滑动时 bakedPath 会被频繁调用,提前 mkdirs 一次就够了
     // internal: 供顶层扩展函数 DefaultCoverEntry.bakedPath 注入此目录, 委托 shared 路径计算
     internal val coversDir: File by lazy {
-        FileUtils.createFolderIfNotExist(appCtx.externalFiles, "covers", "default")
+        FileUtils.createFolderIfNotExist(App.instance.externalFiles, "covers", "default")
     }
 
     init {
@@ -110,7 +110,7 @@ object BookCover {
     @SuppressLint("UseCompatLoadingForDrawables")
     fun newDefaultDrawable(ratio: CoverRatio, seed: String?): Drawable {
         val list = currentCovers()
-        val fallback = appCtx.resources.getDrawable(R.drawable.image_cover_default, null)
+        val fallback = App.instance.resources.getDrawable(R.drawable.image_cover_default, null)
         if (list.isEmpty()) {
             return shellOf(fallback)
         }
@@ -129,7 +129,7 @@ object BookCover {
                 // .9.png 走 createFromPath 才能保留 ninePatchChunk,让外层 FIT_XY 拉伸
                 Drawable.createFromPath(path)
             } else {
-                BitmapFactory.decodeFile(path)?.toDrawable(appCtx.resources)
+                BitmapFactory.decodeFile(path)?.toDrawable(App.instance.resources)
             }
         }.getOrNull() ?: return shellOf(fallback)
         drawableCache.put(cacheKey, loaded)
@@ -137,7 +137,7 @@ object BookCover {
     }
 
     private fun shellOf(drawable: Drawable): Drawable {
-        return drawable.constantState?.newDrawable(appCtx.resources) ?: drawable
+        return drawable.constantState?.newDrawable(App.instance.resources) ?: drawable
     }
 
     private fun currentCovers(): List<DefaultCoverEntry> {
@@ -161,7 +161,7 @@ object BookCover {
     }
 
     private fun loadCovers(prefKey: String): List<DefaultCoverEntry> {
-        val raw = appCtx.getPrefString(prefKey).orEmpty()
+        val raw = App.instance.getPrefString(prefKey).orEmpty()
         if (raw.isBlank()) return emptyList()
         // 旧版本存的是单个路径或路径列表 -- 解析失败的旧值忽略,用户重新选图即可。
         val entries = GSON.fromJsonArray<DefaultCoverEntry>(raw).getOrNull() ?: return emptyList()
@@ -197,7 +197,7 @@ object BookCover {
             }
         }
         existing.add(entry)
-        appCtx.putPrefString(prefKey, GSON.toJson(existing))
+        App.instance.putPrefString(prefKey, GSON.toJson(existing))
         upDefaultCover()
     }
 
@@ -205,7 +205,7 @@ object BookCover {
         val existing = currentEntries(prefKey).toMutableList()
         val target = existing.firstOrNull { it.id == id } ?: return
         existing.remove(target)
-        appCtx.putPrefString(prefKey, GSON.toJson(existing))
+        App.instance.putPrefString(prefKey, GSON.toJson(existing))
         runCatching {
             if (target.ninePatch) {
                 File(coversDir, "${target.id}.9.png").delete()
@@ -220,7 +220,7 @@ object BookCover {
 
     fun clearDefaultCovers(prefKey: String) {
         currentEntries(prefKey).toList().forEach { removeDefaultCover(prefKey, it.id) }
-        appCtx.putPrefString(prefKey, "")
+        App.instance.putPrefString(prefKey, "")
         upDefaultCover()
     }
 
@@ -230,7 +230,7 @@ object BookCover {
     fun listDefaultCovers(prefKey: String): List<DefaultCoverEntry> = currentEntries(prefKey)
 
     private fun currentEntries(prefKey: String): List<DefaultCoverEntry> {
-        val raw = appCtx.getPrefString(prefKey).orEmpty()
+        val raw = App.instance.getPrefString(prefKey).orEmpty()
         if (raw.isBlank()) return emptyList()
         return GSON.fromJsonArray<DefaultCoverEntry>(raw).getOrNull().orEmpty()
     }
@@ -254,7 +254,7 @@ object BookCover {
      * 媒体通知/MediaSession 通用的默认封面 Bitmap。
      */
     val notificationDefaultCover: Bitmap by lazy {
-        BitmapFactory.decodeResource(appCtx.resources, R.drawable.icon_read_book)
+        BitmapFactory.decodeResource(App.instance.resources, R.drawable.icon_read_book)
     }
 
     /**

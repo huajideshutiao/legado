@@ -25,6 +25,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import io.legado.app.App
 import io.legado.app.BuildConfig
 import io.legado.app.constant.AppConst
 import io.legado.app.data.appDb
@@ -75,7 +76,6 @@ import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import splitties.init.appCtx
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -118,7 +118,7 @@ class AndroidReaderPlatformProvider(
 
     override fun getBatteryLevel(): Int {
         // 读取失败/无电池统一回落 100 (用户拍板 2026-08: 电量恒显示, 与 desktop 一致)
-        val manager = appCtx.getSystemService(BatteryManager::class.java) ?: return 100
+        val manager = App.instance.getSystemService(BatteryManager::class.java) ?: return 100
         return runCatching {
             manager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
         }.getOrDefault(100)

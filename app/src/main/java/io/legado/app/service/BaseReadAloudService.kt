@@ -39,7 +39,9 @@ import io.legado.app.model.BookCover
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.model.ReadTimeRecorder
+import io.legado.app.notificationManager
 import io.legado.app.receiver.MediaButtonReceiver
+import io.legado.app.telephonyManager
 import io.legado.app.ui.book.read.page.entities.TextChapter
 import io.legado.app.ui.main.MainActivity
 import io.legado.app.utils.LogUtils
@@ -52,8 +54,6 @@ import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Dispatchers.Main
 import kotlinx.coroutines.launch
-import splitties.systemservices.notificationManager
-import splitties.systemservices.telephonyManager
 
 /**
  * 朗读服务

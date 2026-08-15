@@ -36,10 +36,10 @@ import androidx.core.view.marginBottom
 import androidx.core.view.updateLayoutParams
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager.widget.ViewPager
+import io.legado.app.bottomPadding
+import io.legado.app.topPadding
 import io.legado.app.utils.canvasrecorder.CanvasRecorder
 import io.legado.app.utils.canvasrecorder.record
-import splitties.views.bottomPadding
-import splitties.views.topPadding
 
 private tailrec fun getCompatActivity(context: Context?): AppCompatActivity? {
     return when (context) {

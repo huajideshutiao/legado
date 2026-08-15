@@ -11,8 +11,10 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import org.openani.mediamp.MediaStatus
 import org.openani.mediamp.MediampPlayer
-import org.openani.mediamp.PlaybackState
+import org.openani.mediamp.PlayerState
+import org.openani.mediamp.errorOrNull
 import org.openani.mediamp.features.PlaybackSpeed
 import org.openani.mediamp.source.UriMediaData
 import java.util.concurrent.atomic.AtomicInteger
@@ -25,7 +27,7 @@ import kotlin.concurrent.Volatile
  * 自 mediamp-mpv 迁移后不再用 jlayer (仅 MP3 + 自研进度/结束检测), 改为复用桌面
  * 视频端同一套 open-ani/mediamp + mpv 后端:
  * - 格式: FFmpeg 全格式 (MP3/M4A/AAC/FLAC/WAV/OGG/OPUS 等), 不再局限 MP3
- * - 结束检测: mpv 原生 eof-reached → PlaybackState.FINISHED (根治 jlayer play()
+ * - 结束检测: mpv 原生 eof-reached → MediaStatus.Ended (根治 jlayer play()
  *   返回值语义反噬导致的"播完不切下一首")
  * - 时长/进度: mpv time-pos/duration 属性 (精确, 不再墙钟估算)
  * - seek: mpv 原生 seek absolute+exact (无需重新下载跳帧)
@@ -73,6 +75,10 @@ class DesktopAudioPlayer {
     /** 已 setMediaData 且 READY (可 resume) */
     @Volatile
     private var prepared: Boolean = false
+
+    /** 是否已 prepare (setMediaData 完成, 可 resume); 供 DesktopAudioPlayController.playbackState 派生用 */
+    val isPrepared: Boolean
+        get() = prepared
 
     /** 已发起 loadfile (resume), seek 可直接下发; 否则 seek 暂存 [pendingSeekMs] */
     @Volatile
@@ -196,7 +202,7 @@ class DesktopAudioPlayer {
             listener?.onError(engineError)
             return
         }
-        // 新一轮会话: 期间 FINISHED 一律抑制 (setMediaData 内部 stopPlayback 会发 FINISHED)
+        // 新一轮会话: 0.3.0 起 stopPlayback 只回 Idle (不再发 FINISHED), Ended 仅来自自然播完
         resetSession()
         currentCoroutineContext().ensureActive()
         engine.setMediaData(UriMediaData(theUrl, headers))
@@ -222,24 +228,18 @@ class DesktopAudioPlayer {
                 prepare()
                 return@launch
             }
-            when (engine.getCurrentPlaybackState()) {
-                PlaybackState.READY, PlaybackState.PAUSED, PlaybackState.PAUSED_BUFFERING -> {
+            val playerState = engine.state.value
+            if (playerState.mediaStatus == MediaStatus.Ready) {
+                if (!playerState.isPlaying) {
+                    // READY/PAUSED/PAUSED_BUFFERING → resume (位置由 mpv 保留)
                     engine.resume()
                     // loadfile 发起后再 apply 暂存 seek (mpv 加载中即可 seek)
                     applyPendingSeek(engine)
                     applySpeed(engine)
-                    sessionActive = true
-                    loaded = true
-                    playing = true
                 }
-
-                PlaybackState.PLAYING -> {
-                    sessionActive = true
-                    loaded = true
-                    playing = true
-                }
-
-                else -> {}
+                sessionActive = true
+                loaded = true
+                playing = true
             }
         }
     }
@@ -334,30 +334,35 @@ class DesktopAudioPlayer {
         return ensureEngine()
     }
 
-    /** 状态采集: playbackState/currentPositionMillis/mediaProperties → 缓存字段 */
+    /** 状态采集: state (PlayerState v2)/currentPositionMillis/mediaProperties → 缓存字段 */
     private fun startStateCollectors(engine: MediampPlayer) {
         controlScope.launch {
-            engine.playbackState.collect { onStateChanged(it) }
+            engine.state.collect { onStateChanged(it) }
         }
         controlScope.launch {
             engine.currentPositionMillis.collect { currentPositionMs = it }
         }
         controlScope.launch {
             engine.mediaProperties.collect { p ->
-                if (p != null && p.durationMillis > 0) durationMs = p.durationMillis
+                val duration = p?.durationMillis
+                if (duration != null && duration > 0) durationMs = duration
             }
         }
     }
 
-    private fun onStateChanged(state: PlaybackState) {
-        when (state) {
-            PlaybackState.PLAYING -> playing = true
+    /**
+     * v2 状态模型 (PlayerState/MediaStatus, 替代废弃的 PlaybackState):
+     * - Ready: 按 playWhenReady×isBuffering 派生 playing (等价旧 PLAYING/PAUSED/PAUSED_BUFFERING)
+     * - Ended: 自然播完 (等价旧 FINISHED; 0.3.0 起 stopPlayback 只回 Idle, 不再产生 FINISHED)
+     * - Error: 致命错误 (等价旧 ERROR), 原因经 errorOrNull 携带
+     */
+    private fun onStateChanged(state: PlayerState) {
+        when (state.mediaStatus) {
+            MediaStatus.Ready -> playing = state.isPlaying
 
-            PlaybackState.PAUSED, PlaybackState.PAUSED_BUFFERING -> playing = false
-
-            PlaybackState.FINISHED -> {
+            MediaStatus.Ended -> {
                 if (sessionActive) {
-                    // 自然播完 (mpv eof-reached / idle-active) → 切下一首由上层处理
+                    // 自然播完 (mpv eof-reached) → 切下一首由上层处理
                     sessionActive = false
                     loaded = false
                     playing = false
@@ -365,15 +370,18 @@ class DesktopAudioPlayer {
                 }
             }
 
-            PlaybackState.ERROR -> {
+            is MediaStatus.Error -> {
                 if (!released) {
                     loaded = false
                     playing = false
-                    listener?.onError("play error")
+                    listener?.onError(state.errorOrNull?.message ?: "play error")
                 }
             }
 
-            else -> {}
+            MediaStatus.Idle, MediaStatus.Opening, MediaStatus.Released -> {
+                // 等价旧 CREATED/DESTROYED: 旧代码 else 分支同样不做处理
+            }
+
         }
     }
 

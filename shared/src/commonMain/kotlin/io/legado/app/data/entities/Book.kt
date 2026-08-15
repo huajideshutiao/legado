@@ -141,7 +141,6 @@ data class Book(
     // 依赖"同书"语义的调用点全仓已核实: 集合操作均是字段谓词/bookUrl 显式比较, 无整
     // Book equals 依赖 (核对日期同上)。hashCode 随 data class 自动生成, 与 equals 一致。
 
-    @Transient
     @delegate:Ignore
     override val variableMap: HashMap<String, String> by lazy {
         decodeStringMapOrNull(variable) ?: hashMapOf()

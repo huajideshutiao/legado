@@ -184,7 +184,7 @@ actual class ImageBitmapLoader actual constructor() {
                     failUrls.add(failKey(null, url))
                     null
                 } else {
-                    response.body?.bytes()
+                    response.body.bytes()
                 }
             }
         }.getOrNull()

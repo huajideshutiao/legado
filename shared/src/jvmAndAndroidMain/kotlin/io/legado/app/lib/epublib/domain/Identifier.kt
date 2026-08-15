@@ -47,12 +47,12 @@ class Identifier
             .defaultIfNull(value).hashCode()
     }
 
-    override fun equals(otherIdentifier: Any?): Boolean {
-        if (otherIdentifier !is Identifier) {
+    override fun equals(other: Any?): Boolean {
+        if (other !is Identifier) {
             return false
         }
-        return StringUtil.equals(scheme, otherIdentifier.scheme)
-            && StringUtil.equals(value, otherIdentifier.value)
+        return StringUtil.equals(scheme, other.scheme)
+            && StringUtil.equals(value, other.value)
     }
 
     override fun toString(): String {

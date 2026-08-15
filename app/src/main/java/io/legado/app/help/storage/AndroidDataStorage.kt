@@ -1,11 +1,11 @@
 package io.legado.app.help.storage
 
 import android.os.Environment
+import io.legado.app.App
 import io.legado.app.help.book.BookHelp
 import io.legado.app.model.BookCover
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.externalFiles
-import splitties.init.appCtx
 import java.io.File
 
 /**
@@ -20,9 +20,9 @@ object AndroidDataStorage : DataStorage {
 
     override val coversDir: String get() = BookCover.coversDir.absolutePath
 
-    override val backgroundsDir: String get() = FileUtils.getPath(appCtx.externalFiles, "bg")
+    override val backgroundsDir: String get() = FileUtils.getPath(App.instance.externalFiles, "bg")
 
-    override val fontsDir: String get() = FileUtils.getPath(appCtx.externalFiles, "font")
+    override val fontsDir: String get() = FileUtils.getPath(App.instance.externalFiles, "font")
 
     override val backupDir: String get() = Backup.backupPath
 
@@ -34,7 +34,7 @@ object AndroidDataStorage : DataStorage {
                 .getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
             val dir = File(documents, "legado")
             if (dir.isDirectory || dir.mkdirs()) dir.absolutePath else null
-        }.getOrNull() ?: FileUtils.getPath(appCtx.externalFiles, "export")
+        }.getOrNull() ?: FileUtils.getPath(App.instance.externalFiles, "export")
 
     /**
      * 备份落地目录由用户经 SAF 选 (PreferKey.backupPath), 返回 null 让调用方拉起目录选择器,

@@ -77,7 +77,7 @@ class EpubWriter(@set:Suppress("unused") @get:Suppress("unused") var bookProcess
                 book.resources.remove(currentTocResource.getHref())
             }
             book.spine.tocResource = tocResource
-            book.resources.add(tocResource ?: return)
+            book.resources.add(tocResource)
         } catch (ex: Exception) {
             AppLog.put(
                 "Error writing table of contents: " + ex.javaClass.getName() + ": " + ex.message,

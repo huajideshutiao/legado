@@ -5,14 +5,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -26,7 +22,7 @@ import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.ColorUtils
 
 /**
- * 复刻 StrokeTextView（描边小按钮）：1dp 描边圆角 + 按压半透明底（transparent30）。
+ * 复刻 StrokeTextView（描边小按钮）：1dp 描边圆角，按压用 Compose 默认指示。
  * 阅读页底部弹窗中 isBottomBackground=true 时文字/描边取底栏反推文字色，由调用方传 [textColor]。
  */
 @Composable
@@ -39,8 +35,6 @@ fun StrokeTextChip(
     onClick: () -> Unit,
 ) {
     val shape = RoundedCornerShape(cornerRadius)
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
     @OptIn(ExperimentalFoundationApi::class)
     Text(
         text = text,
@@ -50,11 +44,8 @@ fun StrokeTextChip(
         textAlign = TextAlign.Center,
         modifier = modifier
             .clip(shape)
-            .background(if (pressed) Color(0x30000000) else Color.Transparent)
             .border(DesignTokens.strokeThin, textColor, shape)
             .combinedClickable(
-                interactionSource = interaction,
-                indication = null,
                 onLongClick = onLongClick,
                 onClick = onClick,
             )

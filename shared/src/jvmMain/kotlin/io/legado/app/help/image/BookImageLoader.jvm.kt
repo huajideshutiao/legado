@@ -18,7 +18,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import okhttp3.OkHttpClient
 import okio.FileSystem
 import okio.buffer
 import java.io.File
@@ -50,7 +49,7 @@ private val jvmBookImageLoader: ImageLoader by lazy {
                 CoverDecodeFetcher.Factory(
                     SourceOriginHeaderFetcher.Factory(
                         OkHttpNetworkFetcherFactory(callFactory = {
-                            OkHttpClientProviders.get().okHttpClient as OkHttpClient
+                            OkHttpClientProviders.get().okHttpClient
                         })
                     )
                 )

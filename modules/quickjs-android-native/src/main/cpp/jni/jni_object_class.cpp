@@ -1198,9 +1198,6 @@ void JavaObjectClass::finalizer(JSRuntime *rt, JSValueConst val) {
     auto globalRef = (jobject) JS_GetOpaque(val, classId);
     if (!globalRef || !cachedJvm) return;
 
-    // 插桩: 记录 JavaObject 被 JS 引擎释放(异常对象/Java 返回值生命周期)
-    LOGE("JavaObjectClass finalizer");
-
     JNIEnv *env = nullptr;
     jint ret = cachedJvm->GetEnv((void **) &env, JNI_VERSION_1_6);
     if (ret == JNI_EDETACHED) {

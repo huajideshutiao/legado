@@ -33,11 +33,11 @@ class MediaType(
     }
 
 
-    override fun equals(otherMediaType: Any?): Boolean {
-        if (otherMediaType !is MediaType) {
+    override fun equals(other: Any?): Boolean {
+        if (other !is MediaType) {
             return false
         }
-        return name == otherMediaType.name
+        return name == other.name
     }
 
     override fun toString(): String {

@@ -2,6 +2,7 @@ package io.legado.app.model
 
 import android.content.Context
 import android.content.Intent
+import io.legado.app.App
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.IntentAction
 import io.legado.app.data.appDb
@@ -15,7 +16,6 @@ import io.legado.app.utils.StringUtils
 import io.legado.app.utils.startForegroundServiceCompat
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.runBlocking
-import splitties.init.appCtx
 
 object ReadAloud {
     // 延迟到首次真正需要时再查 DAO, 避免类加载期 runBlocking 阻塞主线程
@@ -37,7 +37,7 @@ object ReadAloud {
     }
 
     fun upReadAloudClass() {
-        stop(appCtx)
+        stop(App.instance)
         aloudClassOrNull = getReadAloudClass()
     }
 

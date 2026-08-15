@@ -88,15 +88,11 @@ class CoverDecodeFetcher(
             }
             val diskCache = imageLoader.diskCache
             val diskSnapshot = diskCache?.openSnapshot(diskKey)
-            if (diskSnapshot != null) {
-                try {
-                    val bytes = diskSnapshot.data.toFile().readBytes()
-                    if (bytes.isNotEmpty()) {
-                        decodedBytesCache[url] = bytes
-                        return@run bytes
-                    }
-                } finally {
-                    diskSnapshot.close()
+            diskSnapshot?.use { diskSnapshot ->
+                val bytes = diskSnapshot.data.toFile().readBytes()
+                if (bytes.isNotEmpty()) {
+                    decodedBytesCache[url] = bytes
+                    return@run bytes
                 }
             }
             // 缓存未命中: 下载原始字节 + 执行解密JS。
@@ -136,7 +132,7 @@ class CoverDecodeFetcher(
                     failUrls.add(url)
                     throw NoStackTraceException("加载封面失败 HTTP ${resp.code}")
                 }
-                resp.body?.bytes() ?: throw NoStackTraceException("封面响应体为空")
+                resp.body.bytes()
             }
         }
     }

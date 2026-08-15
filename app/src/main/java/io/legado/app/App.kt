@@ -93,17 +93,28 @@ import io.legado.app.web.registerAndroidWebServerPlatform
 import io.legado.app.web.utils.registerAndroidWebAssetSource
 import io.legado.app.web.utils.registerAndroidWebStrings
 import kotlinx.coroutines.launch
-import splitties.init.appCtx
-import splitties.systemservices.notificationManager
 import java.net.URL
 import java.util.concurrent.TimeUnit
 
 class App : Application() {
 
+    companion object {
+        init {
+            if (BuildConfig.DEBUG) {
+                System.setProperty("kotlinx.coroutines.debug", "on")
+            }
+        }
+
+        /** splitties.init.appCtx 替代: 全局 Application 实例 (onCreate 早期赋值)。 */
+        lateinit var instance: App
+            private set
+    }
+
     private lateinit var oldConfig: Configuration
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         // Android-KMP library 不生成 BuildConfig，由宿主注入 ApplicationInfo 可调试状态。
         registerAndroidDebugState(this)
         // 注册 shared 模块的 ApplicationContext, 供 commonMain 的 stringRes(resId) 使用
@@ -114,7 +125,7 @@ class App : Application() {
         // 打开 content scheme 本地书籍 (contentResolver.openFileDescriptor); 未注册时
         // content scheme 路径返回 null (PFD 获取失败, EpubFile 记录错误日志)
         registerEpubApplicationContext(this)
-        registerAndroidAppFilesDir(appCtx)
+        registerAndroidAppFilesDir(instance)
         // 注册 appString 平台 provider (commonMain 非 UI 层字符串通道): 先暖缓存同步
         // 上下文常用 key (填热 Compose Resources AsyncCache), 再注册 provider (取值走
         // androidAppString 直取, 缓存命中后零 IO; 须在 Locale.setDefault 之后 —
@@ -157,7 +168,7 @@ class App : Application() {
         // 注册 Coil3 BookImageLoader (Compose 图片加载, 替代 Glide 迁移批 1 共享面接线)
         // 依赖 OkHttpClientProviders (上一步 registerAndroidWebBookProviders 已注册),
         // ImageLoader 内部 lazy 构建故注册本身不触发网络栈初始化
-        registerAndroidBookImageLoader(appCtx)
+        registerAndroidBookImageLoader(instance)
         // JsExtensions 压缩方法 (getZip/Rar/7zByteArrayContent 等) 走 ArchiveProviders,
         // app 端委托 ArchiveUtils/LibArchiveUtils (libarchive 全格式)
         ArchiveProviders.register(AndroidArchiveProvider)
@@ -173,7 +184,7 @@ class App : Application() {
         registerAndroidFileBookProviders()
         registerAndroidPasswordProvider()
         // 注册 ServiceLaunchers (commonMain Download/CacheBook/UpdateBook 启动入口)
-        registerAndroidServiceLauncher(appCtx)
+        registerAndroidServiceLauncher(instance)
         // 注册 UpdateBookCallback 默认实现: shared BookshelfViewModel 据此构造 UpdateBookShared
         // 刷新引擎 (书架菜单/下拉刷新、自动更新、条目转圈状态、进度通知均依赖它;
         // iOS/鸿蒙端在 registerNativeUpdateBookCallback 注册, 桌面端在 Main.kt 注册)
@@ -184,7 +195,7 @@ class App : Application() {
         // - WebStrings: cannot_empty 文案注入 WebSocketServer
         // 须在任何 WebServerManager.start()/stop() 之前注册 (用户触发 Web 服务开关时)
         registerAndroidWebServerPlatform { WebService.serve() }
-        registerAndroidWebAssetSource(appCtx)
+        registerAndroidWebAssetSource(instance)
         registerAndroidWebStrings(androidAppString("cannot_empty"))
         // 注册 AudioPlay 平台 provider (commonMain AudioPlayShared 调用
         // AudioPlayCommanders/AudioPlayBookBridges 派发 Service 命令与 Book 操作,
@@ -235,7 +246,7 @@ class App : Application() {
             io.legado.app.api.ShortCuts.buildShortCuts(this@App)
             DefaultData.upVersion()
             // Arco: 清理旧版本遗留的 barElevation 偏好值（elevation 已移除）
-            appCtx.removePref(PreferKey.barElevation)
+            instance.removePref(PreferKey.barElevation)
             AppFreezeMonitor.init(this@App)
             DispatchersMonitor.init()
         }
@@ -258,7 +269,7 @@ class App : Application() {
             // 须在 CookieStoreProvider 之后 (bridge 通过 CookieStoreProviders.get() 间接访问存储)
             registerSharedCookieJarBridge()
             URL.setURLStreamHandlerFactory(ObsoleteUrlFactory(okHttpClient))
-            launch { installGmsTlsProvider(appCtx) }
+            launch { installGmsTlsProvider(instance) }
             initQuickJs()
             //初始化封面
             BookCover.toString()
@@ -379,18 +390,8 @@ class App : Application() {
         )
     }
 
-    @Suppress("UnusedExpression")
     private fun initQuickJs() {
         // 触发当前 JS 引擎单例初始化,预加载 bootstrap (quickjs 预编译 bytecode / rhino 加载类)
         JsEngines.get()
     }
-
-    companion object {
-        init {
-            if (BuildConfig.DEBUG) {
-                System.setProperty("kotlinx.coroutines.debug", "on")
-            }
-        }
-    }
-
 }

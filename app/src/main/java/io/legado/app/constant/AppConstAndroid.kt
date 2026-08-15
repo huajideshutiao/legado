@@ -2,9 +2,9 @@ package io.legado.app.constant
 
 import android.content.pm.PackageManager
 import androidx.annotation.Keep
+import io.legado.app.App
 import io.legado.app.BuildConfig
 import io.legado.app.help.update.AppVariant
-import splitties.init.appCtx
 import java.security.MessageDigest
 
 /**
@@ -27,7 +27,10 @@ data class AppInfo(
 private val appInfoInternal: AppInfo by lazy {
     val appInfo = AppInfo()
     @Suppress("DEPRECATION")
-    appCtx.packageManager.getPackageInfo(appCtx.packageName, PackageManager.GET_ACTIVITIES)
+    App.instance.packageManager.getPackageInfo(
+        App.instance.packageName,
+        PackageManager.GET_ACTIVITIES
+    )
         ?.let {
             appInfo.versionName = it.versionName!!
             appInfo.appVariant = when {
@@ -52,7 +55,10 @@ val AppConst.appInfo: AppInfo get() = appInfoInternal
 @Suppress("DEPRECATION")
 private val sha256Signature: String by lazy {
     val packageInfo =
-        appCtx.packageManager.getPackageInfo(appCtx.packageName, PackageManager.GET_SIGNATURES)
+        App.instance.packageManager.getPackageInfo(
+            App.instance.packageName,
+            PackageManager.GET_SIGNATURES
+        )
     MessageDigest.getInstance("SHA-256")
         .digest(packageInfo.signatures!![0].toByteArray())
         .joinToString("") { "%02x".format(it) }

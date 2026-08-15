@@ -24,7 +24,7 @@ val enableOhosTarget = providers.gradleProperty("enableOhosTarget").orNull?.toBo
 val catalog = extensions.getByType<VersionCatalogsExtension>().named("libs")
 fun version(alias: String) = catalog.findVersion(alias).get().requiredVersion
 val kotlinVersion = version(if (enableOhosTarget) "kotlin-ohos" else "kotlin")
-val composeVersion = version(if (enableOhosTarget) "composeMultiplatform-ohos" else "composeMultiplatform")
+val composeVersion = version(if (enableOhosTarget) "composeMultiplatform-ohos" else "cmp")
 
 dependencies {
     // 与主构建工具链对齐，避免约定插件向子项目注入旧版 Kotlin/Compose 插件。

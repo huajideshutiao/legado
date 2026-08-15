@@ -1023,7 +1023,7 @@ private fun AutoPageRevealOverlay(
                 modifier = Modifier
                     .fillMaxSize()
                     .drawWithContent {
-                        clipRect(bottom = revealHeight.coerceIn(0f, size.height.toFloat())) {
+                        clipRect(bottom = revealHeight.coerceIn(0f, size.height)) {
                             this@drawWithContent.drawContent()
                         }
                     },

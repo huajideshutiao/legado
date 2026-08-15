@@ -25,10 +25,10 @@ import io.legado.app.help.config.ThemeConfig
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.ui.compose.platform.AndroidAppConfigProvider
-import io.legado.app.ui.compose.platform.dispatchShortcut
 import io.legado.app.ui.compose.platform.AndroidEventBusProvider
 import io.legado.app.ui.compose.platform.AndroidPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.AndroidThemeStoreProvider
+import io.legado.app.ui.compose.platform.AppKeyRouter
 import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
@@ -216,18 +216,19 @@ abstract class BaseComposeActivity(
     /**
      * 页面级快捷键的 Activity 层桥接：Android 触摸模式下硬件键能否进入 Compose 焦点链
      * 不可靠（2026-08 用户实测音量键不翻页），故在 Activity 层无条件收键后送
-     * [dispatchShortcut]。对照原版 ReadBookActivity.dispatchKeyEvent →
+     * [AppKeyRouter.dispatchPlatform]（统一路由: 全屏 Esc → 统一返回 → F5 刷新 →
+     * 快捷键栈捕获+冒泡两阶段）。对照原版 ReadBookActivity.dispatchKeyEvent →
      * keyHandler.dispatchKeyEvent 的 Activity 层拦截语义（原版连 onKeyUp 也消费，迁移版
      * repeatPolicy=TRIGGER 已内建抬起消费语义，KeyDown/KeyUp 都直接送分发即可）。
      *
      * 注册栈只在页面组合时非空（如阅读页 [io.legado.app.ui.compose.platform.VolumeKeyPageTurnHandler]），
-     * 故桥接自然只在该页面生效，无全局开关。只走冒泡阶段（preemptive = false）：带修饰键/
-     * 功能键的组合仍由 Compose 捕获阶段分发（BackKeyHandler.onPreviewKeyEvent），不抢占
-     * 输入框文本输入；未命中时交还原链路（系统音量等）。
+     * 故桥接自然只在该页面生效，无全局开关。两阶段均从 Activity 层可达（不再依赖焦点链,
+     * 顺带修复阅读/漫画方向键在无焦点场景的响应）; 未命中时交还原链路（系统音量等），
+     * 带修饰键/功能键的组合由捕获阶段消费, 不抢占输入框文本输入。
      */
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
         val composeEvent = KeyEvent(event)
-        if (dispatchShortcut(composeEvent, preemptive = false)) {
+        if (AppKeyRouter.dispatchPlatform(composeEvent)) {
             return true
         }
         return super.dispatchKeyEvent(event)

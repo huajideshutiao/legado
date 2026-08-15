@@ -76,12 +76,12 @@ import io.legado.app.ui.book.read.page.turnPage
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.AppBackHandler
-import io.legado.app.ui.compose.platform.AppShortcut
 import io.legado.app.ui.compose.platform.AppShortcutHandler
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.PageTurnThrottle
 import io.legado.app.ui.compose.platform.VolumeKeyPageTurnHandler
 import io.legado.app.ui.compose.platform.performBack
+import io.legado.app.ui.compose.platform.readerDirectionalKeys
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -352,12 +352,12 @@ fun ReaderRoute(
     // 上下滚动模式 ↑/↓=翻页、←/→=章节切换 (原版 ReadBookKeyHandler 的 prevKeys/nextKeys
     // 含 ↑↓ 翻页, 用户拍板改为章节切换)。
     // 翻页去抖已由 AppShortcuts 分发的按住过滤承担 (系统 repeat 只触发一次、快速连按每次生效,
-    // 见 dispatchShortcut 的 KEY_REPEAT_WINDOW_MS); 动画中按键由 delegate abortAnim 打断重翻
+    // 见 dispatchShortcut 的按住态判定); 动画中按键由 delegate abortAnim 打断重翻
     // (对照原版 keyTurnPage → nextPageByAnim → abortAnim 语义)。章节切换保留独立去抖,
     // 防快速连按误触连切章。
     val chapterTurnThrottle = remember { PageTurnThrottle() }
     AppShortcutHandler(
-        shortcuts = ReaderShortcuts.arrows,
+        shortcuts = readerDirectionalKeys,
         enabled = { isTopEntry && !screenModel.menuState.isVisible },
     ) { shortcut ->
         // 分发时读当前翻页方向 (scroll=上下滚动, 其余=左右翻页), 不依赖重组
@@ -1126,28 +1126,6 @@ fun ReaderRoute(
 /** 字号可调范围，对照 ReadStyleScreen 字号 seekBar（内部 0..45，展示值 +5）。 */
 private const val MIN_TEXT_SIZE = 5
 private const val MAX_TEXT_SIZE = 50
-
-/**
- * 阅读页快捷键。用户拍板 (2026-08): 键盘只保留方向键, 键位随翻页方向自适应——
- * 左右翻页模式 ←/→=翻页、↑/↓=章节切换; 上下滚动模式 ↑/↓=翻页、←/→=章节切换;
- * PageUp/PageDown/Space 不再绑定 (原版 ReadBookKeyHandler 的 prevKeys/nextKeys 含 ↑↓ 翻页,
- * 用户拍板改为章节切换)。均无修饰键, 走冒泡阶段分发。
- */
-private object ReaderShortcuts {
-    // 显式 preemptive = true: 捕获阶段拦截方向键。
-    // 1) 避开 FocusTargetNode 焦点导航在冒泡阶段抢先消费方向键 (焦点在阅读页与根节点/其他
-    //    路由页面的 focusable 间移动时, 按键会被吞掉不触发快捷键);
-    // 2) 仅当阅读页是栈顶且菜单隐藏时才命中 (enabled), 此时页面上无输入框, 抢占不吞输入;
-    //    非顶层 (目录/换源等子页) 时 enabled=false, 捕获阶段放行, 输入框/焦点导航不受影响。
-    val arrows = listOf(
-        AppShortcut(Key.DirectionLeft, preemptive = true),
-        AppShortcut(Key.DirectionRight, preemptive = true),
-        AppShortcut(Key.DirectionUp, preemptive = true),
-        AppShortcut(Key.DirectionDown, preemptive = true),
-    )
-    // 音量键翻页已收敛到共享 VolumeKeyPageTurnHandler (TRIGGER + 200ms 节流,
-    // 与漫画一致), 不再在此声明快捷键列表
-}
 
 /**
  * 触发重排的配置事件：原版这些分支都落到 `ChapterProvider.upStyle/upLayout` +

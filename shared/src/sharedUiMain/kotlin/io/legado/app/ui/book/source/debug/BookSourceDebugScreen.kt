@@ -1,12 +1,9 @@
 package io.legado.app.ui.book.source.debug
 
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -32,22 +29,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.ui.compose.component.AppFilletTextButton
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.linkifyText
 import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import legado.shared.generated.resources.Res
@@ -322,43 +316,19 @@ private fun HelpLabel(text: String) {
 }
 
 /**
- * 复刻原布局 fillet 按钮：selector_fillet_btn_bg + primaryText 14sp（区别于 item_fillet_text 的 secondaryText）。
- *
- * 对照原 `BookSourceDebugActivity.FilletChip`, 宽高/边距/圆角/颜色/按压态逻辑全部保持一致,
- * 仅将 setQuery / selector 等平台调用替换为外部回调。
+ * 复刻原布局 fillet 按钮 (selector_fillet_btn_bg)：收拢到共享 [AppFilletTextButton]，
+ * 差异参数化：primaryText 14sp (区别于 item_fillet_text 的 secondaryText)、
+ * 16×8 外缘内边距、桌面端不抢输入法焦点 (搜索框失焦 -> helpVisible=false ->
+ * HelpPanel 按下即消失, 长按无法触发)。
  */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FilletChip(text: String, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
-    val isDark = AppTheme.colors.isDark
-    // btn_bg: light #100e0e0e / night #14e0e0e0；按压 arco_fill_3
-    val normalBg = if (isDark) Color(0x14e0e0e0) else Color(0x100e0e0e)
-    val pressedBg = if (isDark) Color(0xFF2A2A2A) else Color(0xFFE6E6E6)
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    Box(
-        Modifier
-            .padding(4.dp) // drawable inset 4dp
-            .clip(DesignTokens.shapeDefault)
-            .background(if (pressed) pressedBg else normalBg)
-            // 复刻 app 端 TextView 不抢输入法焦点: 桌面端 combinedClickable 默认会抢占焦点
-            // 导致搜索框失焦 -> helpVisible=false -> HelpPanel 按下即消失, 长按无法触发
-            .focusProperties { canFocus = false }
-            .combinedClickable(
-                interactionSource = interaction,
-                indication = null,
-                onLongClick = onLongClick,
-                onClick = onClick,
-            )
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text,
-            color = AppTheme.colors.primaryText,
-            fontSize = 14.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
+    AppFilletTextButton(
+        text = text,
+        textColor = AppTheme.colors.primaryText,
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        focusable = false,
+        onLongClick = onLongClick,
+        onClick = onClick,
+    )
 }

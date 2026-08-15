@@ -183,7 +183,7 @@ object EpubParser {
         val guideEl = opfDoc.getElementsByTag("guide").firstOrNull()
         if (guideEl != null) {
             for (ref in guideEl.getElementsByTag("reference")) {
-                if (ref.attr("type")?.equals("cover", ignoreCase = true) == true) {
+                if (ref.attr("type").equals("cover", ignoreCase = true) == true) {
                     val href = ref.attr("href").ifBlank { continue }
                     val resolved = resolvePath(opfPath, href)
                     return resources[resolved]

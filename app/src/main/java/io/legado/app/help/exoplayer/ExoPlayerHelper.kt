@@ -24,13 +24,11 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.extractor.DefaultExtractorsFactory
+import io.legado.app.App
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.externalCache
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.encodeToString
 import okhttp3.CacheControl
-import splitties.init.appCtx
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -163,10 +161,10 @@ object ExoPlayerHelper {
      * Exoplayer 内置的缓存
      */
     private val cache: Cache by lazy {
-        val databaseProvider = StandaloneDatabaseProvider(appCtx)
+        val databaseProvider = StandaloneDatabaseProvider(App.instance)
         return@lazy SimpleCache(
             //Exoplayer的缓存路径
-            File(appCtx.externalCache, "exoplayer"),
+            File(App.instance.externalCache, "exoplayer"),
             //100M的缓存
             LeastRecentlyUsedCacheEvictor((100 * 1024 * 1024).toLong()),
             //记录缓存的数据库

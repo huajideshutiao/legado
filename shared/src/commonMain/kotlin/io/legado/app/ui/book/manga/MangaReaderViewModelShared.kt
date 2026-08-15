@@ -354,8 +354,9 @@ class MangaReaderViewModelShared(
             ReadTimeRecorder.setBook(ReadTimeRecorder.Source.MANGA, book.name)
         }
         val chapterList = prefetchedList ?: _chapterList.value
-        chapterSize = chapterList?.size
-            ?: withContext(IoDispatcher) { AppDbProviders.get().bookChapterDao.getChapterCount(book.bookUrl) }
+        // _chapterList.value 非空 (StateFlow<List<BookChapter>>), chapterList 恒非空,
+        // 原 `?: withContext(getChapterCount)` 兜底为不可达死代码, 一并移除
+        chapterSize = chapterList.size
         simulatedChapterSize = if (book.readSimulating()) book.simulatedTotalChapterNum()
         else chapterSize
         if (isDiffBook || _durChapterIndex.value != book.durChapterIndex) {

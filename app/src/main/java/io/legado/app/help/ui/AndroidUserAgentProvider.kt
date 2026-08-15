@@ -1,9 +1,9 @@
 package io.legado.app.help.ui
 
 import android.webkit.WebSettings
+import io.legado.app.App
 import io.legado.app.help.UserAgentProvider
 import io.legado.app.help.UserAgentProviders
-import splitties.init.appCtx
 
 /**
  * [UserAgentProvider] 的 app 端实现。
@@ -18,7 +18,7 @@ object AndroidUserAgentProvider : UserAgentProvider {
     override fun get(): String = getWebViewUA()
 
     override fun getWebViewUA(): String {
-        return WebSettings.getDefaultUserAgent(appCtx)
+        return WebSettings.getDefaultUserAgent(App.instance)
     }
 }
 

@@ -29,25 +29,25 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.toColorInt
-import io.legado.app.help.i18n.androidAppString
+import io.legado.app.App
 import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.base.ComposeDialog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ThemeConfig
-import io.legado.app.ui.compose.component.AppUnderlineTextField
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.component.AppTextButton
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.platform.rememberPainter
+import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.preference.ColorPickerDialogContent
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -62,9 +62,6 @@ import io.legado.app.utils.inputStream
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.readUri
 import io.legado.app.utils.toastOnUi
-import org.jetbrains.compose.resources.getString
-import org.jetbrains.compose.resources.stringResource
-import splitties.init.appCtx
 import java.io.FileOutputStream
 
 /**
@@ -471,7 +468,7 @@ class ThemeCustomizeDialog() : BaseComposeDialogFragment() {
                 }
                 success(file.absolutePath)
             }.onFailure {
-                appCtx.toastOnUi(it.localizedMessage)
+                App.instance.toastOnUi(it.localizedMessage)
             }
         }
     }

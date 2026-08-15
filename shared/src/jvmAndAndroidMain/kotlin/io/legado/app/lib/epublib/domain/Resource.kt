@@ -271,11 +271,11 @@ open class Resource : Serializable {
      * 
      * @return whether the given resourceObject is a resource and whether its href is equal to this one.
      */
-    override fun equals(resourceObject: Any?): Boolean {
-        if (resourceObject !is Resource) {
+    override fun equals(other: Any?): Boolean {
+        if (other !is Resource) {
             return false
         }
-        return href == resourceObject.getHref()
+        return href == other.getHref()
     }
 
     override fun toString(): String {

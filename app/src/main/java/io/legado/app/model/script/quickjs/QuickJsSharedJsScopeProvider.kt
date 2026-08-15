@@ -4,6 +4,7 @@ import androidx.collection.LruCache
 import com.script.quickjs.QuickJsContext
 import com.script.quickjs.QuickJsEngine
 import com.script.quickjs.ScriptBindings
+import io.legado.app.App
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.http.newCallStrResponse
 import io.legado.app.help.http.okHttpClient
@@ -20,7 +21,6 @@ import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isJsonObject
 import kotlinx.coroutines.runBlocking
-import splitties.init.appCtx
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
@@ -48,7 +48,7 @@ object QuickJsSharedJsScopeProvider : SharedJsScopeProvider {
      */
     private const val PER_THREAD_LRU_SIZE = 4
 
-    private val cacheFolder = File(appCtx.cacheDir, "shareJs")
+    private val cacheFolder = File(App.instance.cacheDir, "shareJs")
     private val aCache = ACache.get(cacheFolder)
 
     private class BytecodeEntry(

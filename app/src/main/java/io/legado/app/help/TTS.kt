@@ -2,12 +2,12 @@ package io.legado.app.help
 
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import io.legado.app.App
 import io.legado.app.constant.AppLog
 import io.legado.app.help.tts.TextToSpeechEngine
 import io.legado.app.utils.buildMainHandler
 import io.legado.app.utils.splitNotBlank
 import io.legado.app.utils.toastOnUi
-import splitties.init.appCtx
 
 /**
  * 一次性朗读单段文本(选词朗读、RSS 朗读)。
@@ -79,7 +79,7 @@ class TTS {
             }
         }.onFailure {
             AppLog.put("tts朗读出错", it)
-            appCtx.toastOnUi(it.localizedMessage)
+            App.instance.toastOnUi(it.localizedMessage)
         }
     }
 

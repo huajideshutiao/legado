@@ -2,47 +2,30 @@
 
 package io.legado.app.help.crypto
 
-import korlibs.crypto.AES
-import korlibs.crypto.CipherMode
-import korlibs.crypto.CipherPadding
-import korlibs.crypto.CipherWithModeAndPadding
-import korlibs.crypto.HMAC
-import korlibs.crypto.MD5
-import korlibs.crypto.SHA1
-import korlibs.crypto.SHA256
-import korlibs.crypto.SHA512
-import korlibs.crypto.SecureRandom
-import kotlinx.cinterop.UByteVar
-import kotlinx.cinterop.addressOf
-import kotlinx.cinterop.convert
-import kotlinx.cinterop.reinterpret
-import kotlinx.cinterop.usePinned
-import platform.CoreCrypto.CC_SHA224
-import platform.CoreCrypto.CC_SHA384
-
 /**
- * iOS actual: 摘要 / HMAC / AES。主实现 mbedTLS ([MbedTlsOps]),
- * 任意异常回落既有 krypto (korlibs.crypto) + CommonCrypto (SHA-224/384) 路径。
+ * iOS actual: 摘要 / HMAC / AES。纯 mbedTLS 实现 ([MbedTlsOps]), 无第三方回落:
+ * 2026-08 已移除 korlibs krypto (仓库归档) — mbedTLS md 层已覆盖 MD5/SHA1/SHA224/
+ * SHA256/SHA384/SHA512/RIPEMD160, SHA3 由纯 Kotlin [Sha3Native] 补齐; AES 各模式
+ * (ECB/CBC/CFB/OFB/CTR/GCM) 由 MbedTlsCipher 提供。
+ *
+ * 行为回退: PCBC 模式 mbedTLS 无原生实现 (MbedTlsCipher 点名抛异常), 移除 krypto
+ * 后 iOS 不再支持 PCBC (与鸿蒙端一致); 书源脚本极少使用 PCBC, 属可接受回退。
  *
  * 注意: mbedTLS 目标码需 mac 侧编 libmbedtls.a 链入 (见 shared/src/cinterop/mbedtls/README.md);
- * 缺 .a 是链接期失败而非运行期, runtime 回落救不了缺符号。
+ * 缺 .a 是链接期失败而非运行期。
  *
  * 行为字节级对齐 jvmAndAndroidMain (javax.crypto / hutool)。
  */
 actual object NativeDigestOps {
 
-    actual fun digest(algorithm: String, data: ByteArray): ByteArray = mbedTlsOrFallback(
-        { MbedTlsOps.digest(algorithm, data) },
-        { kryptoDigest(algorithm, data) }
-    )
+    actual fun digest(algorithm: String, data: ByteArray): ByteArray =
+        MbedTlsOps.digest(algorithm, data)
 }
 
 actual object NativeHmacOps {
 
-    actual fun hmac(algorithm: String, key: ByteArray, data: ByteArray): ByteArray = mbedTlsOrFallback(
-        { MbedTlsOps.hmac(algorithm, key, data) },
-        { kryptoHmac(algorithm, key, data) }
-    )
+    actual fun hmac(algorithm: String, key: ByteArray, data: ByteArray): ByteArray =
+        MbedTlsOps.hmac(algorithm, key, data)
 }
 
 actual object NativeAesOps {
@@ -59,10 +42,7 @@ actual object NativeAesOps {
         mode: String,
         padding: String,
         iv: ByteArray?
-    ): ByteArray = mbedTlsOrFallback(
-        { MbedTlsOps.cipherEncrypt("AES", mode, padding, key, iv, data) },
-        { aes(key, toMode(mode), toPadding(padding), iv).encrypt(data) }
-    )
+    ): ByteArray = MbedTlsOps.cipherEncrypt("AES", mode, padding, key, iv, data)
 
     actual fun decrypt(
         key: ByteArray,
@@ -70,118 +50,8 @@ actual object NativeAesOps {
         mode: String,
         padding: String,
         iv: ByteArray?
-    ): ByteArray = mbedTlsOrFallback(
-        { MbedTlsOps.cipherDecrypt("AES", mode, padding, key, iv, data) },
-        { aes(key, toMode(mode), toPadding(padding), iv).decrypt(data) }
-    )
+    ): ByteArray = MbedTlsOps.cipherDecrypt("AES", mode, padding, key, iv, data)
 
-    /** 主走 mbedTLS CTR_DRBG; 回落 krypto SecureRandom (SecRandomCopyBytes)。 */
-    actual fun randomKey(size: Int): ByteArray = mbedTlsOrFallback(
-        { MbedTlsOps.random(size) },
-        { SecureRandom.nextBytes(size) }
-    )
-
-    private fun aes(
-        key: ByteArray,
-        mode: CipherMode,
-        padding: CipherPadding,
-        iv: ByteArray?
-    ) = CipherWithModeAndPadding(AES(key), mode, padding, iv)
-
-    private fun toMode(mode: String): CipherMode = when (mode) {
-        "ECB" -> CipherMode.ECB
-        "CBC" -> CipherMode.CBC
-        "PCBC" -> CipherMode.PCBC
-        "CFB" -> CipherMode.CFB
-        "OFB" -> CipherMode.OFB
-        "CTR" -> CipherMode.CTR
-        else -> throw UnsupportedOperationException("NativeAesOps: unsupported AES mode '$mode' on iOS")
-    }
-
-    private fun toPadding(padding: String): CipherPadding = when (padding) {
-        "NOPADDING" -> CipherPadding.NoPadding
-        "PKCS7PADDING" -> CipherPadding.PKCS7Padding
-        "ANSIX923PADDING" -> CipherPadding.ANSIX923Padding
-        "ISO10126PADDING" -> CipherPadding.ISO10126Padding
-        "ZEROPADDING" -> CipherPadding.ZeroPadding
-        else -> throw UnsupportedOperationException("NativeAesOps: unsupported AES padding '$padding' on iOS")
-    }
-}
-
-private const val CC_SHA224_LEN = 28
-private const val CC_SHA384_LEN = 48
-
-/** krypto/CommonCrypto 摘要回落路径 (mbedTLS 异常时)。 */
-private fun kryptoDigest(algorithm: String, data: ByteArray): ByteArray {
-    return when (normalizeDigestName(algorithm)) {
-        "MD5" -> MD5.digest(data).bytes
-        "SHA1" -> SHA1.digest(data).bytes
-        "SHA224" -> ccSha224(data)
-        "SHA256" -> SHA256.digest(data).bytes
-        "SHA384" -> ccSha384(data)
-        "SHA512" -> SHA512.digest(data).bytes
-        else -> throw IllegalArgumentException("Unsupported digest algorithm: $algorithm")
-    }
-}
-
-/** krypto/CommonCrypto HMAC 回落路径 (mbedTLS 异常时)。 */
-private fun kryptoHmac(algorithm: String, key: ByteArray, data: ByteArray): ByteArray {
-    // 去掉 HMAC/Hmac 前缀 (含连字符变体) 后归一为标准摘要名
-    val upper = algorithm.uppercase()
-    val stripped = when {
-        upper.startsWith("HMAC-") -> upper.substring(5)
-        upper.startsWith("HMAC") -> upper.substring(4)
-        else -> upper
-    }
-    return when (normalizeDigestName(stripped)) {
-        "MD5" -> HMAC.hmacMD5(key, data).bytes
-        "SHA1" -> HMAC.hmacSHA1(key, data).bytes
-        "SHA224" -> hmacRfc2104(64, key, data, ::ccSha224)
-        "SHA256" -> HMAC.hmacSHA256(key, data).bytes
-        "SHA384" -> hmacRfc2104(128, key, data, ::ccSha384)
-        "SHA512" -> HMAC.hmacSHA512(key, data).bytes
-        else -> throw IllegalArgumentException("Unsupported HMac algorithm: $algorithm")
-    }
-}
-
-/** 摘要名归一: 去连字符 + 大写 (MD5 / SHA1 / SHA224 / SHA256 / SHA384 / SHA512)。 */
-private fun normalizeDigestName(algorithm: String): String =
-    algorithm.uppercase().replace("-", "")
-
-/** CommonCrypto one-shot SHA-224 (usePinned 不能对空数组取址, 空输入用 1 字节占位 + len=0)。 */
-private fun ccSha224(data: ByteArray): ByteArray {
-    val out = ByteArray(CC_SHA224_LEN)
-    val input = if (data.isEmpty()) ByteArray(1) else data
-    input.usePinned { inPin ->
-        out.usePinned { outPin ->
-            CC_SHA224(inPin.addressOf(0), data.size.convert(), outPin.addressOf(0).reinterpret<UByteVar>())
-        }
-    }
-    return out
-}
-
-/** CommonCrypto one-shot SHA-384。 */
-private fun ccSha384(data: ByteArray): ByteArray {
-    val out = ByteArray(CC_SHA384_LEN)
-    val input = if (data.isEmpty()) ByteArray(1) else data
-    input.usePinned { inPin ->
-        out.usePinned { outPin ->
-            CC_SHA384(inPin.addressOf(0), data.size.convert(), outPin.addressOf(0).reinterpret<UByteVar>())
-        }
-    }
-    return out
-}
-
-/** RFC 2104 HMAC, 供 krypto 未提供的 SHA-224/SHA-384 复用 CommonCrypto 摘要。 */
-private fun hmacRfc2104(
-    blockSize: Int,
-    key: ByteArray,
-    data: ByteArray,
-    digest: (ByteArray) -> ByteArray
-): ByteArray {
-    var k = if (key.size > blockSize) digest(key) else key
-    if (k.size < blockSize) k = k.copyOf(blockSize)
-    val iPad = ByteArray(blockSize) { (k[it].toInt() xor 0x36).toByte() }
-    val oPad = ByteArray(blockSize) { (k[it].toInt() xor 0x5C).toByte() }
-    return digest(oPad + digest(iPad + data))
+    /** mbedTLS CTR_DRBG 熵源生成随机 AES 密钥 (对齐 hutool KeyUtil.generateKey 的 SecureRandom 语义)。 */
+    actual fun randomKey(size: Int): ByteArray = MbedTlsOps.random(size)
 }

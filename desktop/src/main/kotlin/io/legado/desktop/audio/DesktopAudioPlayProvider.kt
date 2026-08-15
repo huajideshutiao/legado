@@ -6,7 +6,6 @@ import io.legado.app.constant.EventBus
 import io.legado.app.constant.Status
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
-import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.removeType
 import io.legado.app.help.media.SleepTimer
@@ -16,22 +15,15 @@ import io.legado.app.model.AudioPlayBookBridges
 import io.legado.app.model.AudioPlayCommander
 import io.legado.app.model.AudioPlayCommanders
 import io.legado.app.model.AudioPlayShared
-import io.legado.app.model.LrcParser
 import io.legado.app.model.ReadTimeRecorder
-import io.legado.app.model.analyzeRule.AnalyzeRuleCore
-import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
-import io.legado.app.model.webBook.WebBook
+import io.legado.app.model.audio.AudioPlayManager
+import io.legado.app.model.audio.AudioPlayManagerListener
 import io.legado.app.ui.compose.platform.jvmGetString
-import io.legado.app.utils.FlowBus
 import io.legado.app.utils.postEvent
 import io.legado.desktop.help.tts.DesktopReadAloudHost
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
@@ -39,32 +31,39 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * 桌面端 AudioPlay 平台 provider (对应 app 端 [io.legado.app.model.AudioPlayProvidersImpl])。
  *
- * 实现 [AudioPlayCommander] + [AudioPlayBookBridge] 两个接口, 编排 [DesktopAudioPlayer]
- * (mediamp-mpv 引擎, FFmpeg 全格式) + [SleepTimer] + 状态推送, 等价 app 端
- * [io.legado.app.service.AudioPlayService] 的核心播放逻辑。
+ * 实现 [AudioPlayCommander] + [AudioPlayBookBridge] + [AudioPlayManagerListener],
+ * 播放引擎用 [DesktopAudioPlayer] (mediamp-mpv 引擎, FFmpeg 全格式);
+ * **章节加载/封面/歌词/进度编排全部委托 shared [AudioPlayManager]**
+ * (与 app/iOS/鸿蒙同源, 2026-08 去重: 原 desktop 手抄的 doLoadPlayUrl /
+ * loadCoverUrl / loadLrcData / startProgressReport / refreshChapter 副本已删除,
+ * 适配器 [DesktopAudioPlayController] + [DesktopAudioPlayAnalyzeRuleFactory] 复用)。
  *
  * # 与 app 端 AudioPlayService 行为对照
  * - play/pause/resume/stop: 直接调 [DesktopAudioPlayer] 对应方法 + postEvent(AUDIO_STATE)
  * - adjustProgress: player.seekTo (mpv 原生 seek, 不再重新拉流跳帧)
  * - adjustSpeed: player.setSpeed (mpv speed 属性, 保音高)
- * - loadPlayUrl: 用 [WebBook.getContentAwait] 拿直链 URL (与 app 端一致),
- *   跳过 AnalyzeUrl 二次解析 (app 端用 AnalyzeUrl.getMediaItem 主要为 setCookie + headers;
- *   桌面端目前传空 headers 播直链, 需 cookie/header 的书源可能播放失败, 属已知限制,
- *   mediamp UriMediaData 已支持 headers, 待 provider 接入 AnalyzeUrl 解析即可生效)
+ * - loadPlayUrl/refreshChapter/loadCoverUrl/loadLrcData/进度上报/歌词推进: shared
+ *   [AudioPlayManager] 统一编排 (与 app/iOS/鸿蒙同源), 本类只做平台副作用
+ *   (triggerPlay 起播 / toast / SMTC 同步)
  * - setTimer/addTimer: 复用 shared commonMain 的 [SleepTimer] (行为与 app 端完全一致)
  * - saveRead/save/getBookSource: 直接调 AppDbProviders 暴露的 DAO (等价 app 端 BookExtensions)
  *
  * # 不实现 (与 app 端 AudioPlayService 差异)
- * - MediaSession/Notification/WakeLock/AudioFocus: Android 专属, 桌面端无对应概念 (托盘/任务栏/通知由 DesktopMediaTray/DesktopTaskbarMedia 承载)
  * - MediaSession/Notification/WakeLock/AudioFocus: Android 专属, 桌面端无对应概念
+ *   (托盘/任务栏/通知由 DesktopMediaTray/DesktopTaskbarMedia 承载)
  *
  * 注册时机: desktop Main.kt, 在所有依赖 provider (AppDbProviders/OkHttpClientProviders/JsEngines 等)
  * 注册之后。模式参考 [io.legado.app.model.AudioPlayProvidersImpl] / registerAndroidAudioPlayProviders。
  */
-class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
+class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge, AudioPlayManagerListener {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val player = DesktopAudioPlayer()
+
+    /** 播放器控制适配 (mediamp-mpv) + 章节编排 (shared manager), 与 app/iOS/鸿蒙同构。 */
+    private val controller = DesktopAudioPlayController(player)
+    private val manager =
+        AudioPlayManager(controller, scope, DesktopAudioPlayAnalyzeRuleFactory, this)
 
     /** 对应 AudioPlayService.isRun */
     @Volatile private var running = false
@@ -79,20 +78,12 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
     @Volatile private var currentUrl: String = ""
 
     private var sleepTimer: SleepTimer? = null
-    private var progressJob: Job? = null
 
     /** prepare 完成后要 seek 到的起始位置 */
     @Volatile private var pendingStartPos: Int = 0
 
-    /** 正在加载的章节 index 集合, 防并发 */
-    private val loadingChapters = arrayListOf<Int>()
-
     /** 播放器错误后是否已自动重试过一次 (onReady 时重置) */
     private val hasRefreshedOnPlayError = AtomicBoolean(false)
-
-    /** 上次已发布的歌词行号 (仅变化时发) */
-    @Volatile
-    private var lastLrcPosition = -1
 
     init {
         // 注册 player 回调, 桥接到 AudioPlayShared 状态 + EventBus
@@ -124,13 +115,15 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
                 AudioPlayShared.status = Status.PLAY
                 postEvent(EventBus.AUDIO_STATE, Status.PLAY)
                 postEvent(EventBus.AUDIO_SPEED, playSpeed)
-                startProgressReport()
+                // 进度上报 + 歌词推进走 shared manager (与 app/iOS/鸿蒙同源)
+                manager.upPlayProgress()
+                manager.upPlayProgressForLrc()
                 // SMTC: 开始播放即上卡 (位置用本次 seek 目标, 避免等首个进度 tick)
                 syncSmtc(positionMs = if (startPos > 0) startPos.toLong() else AudioPlayShared.durChapterPos.toLong())
             }
 
             override fun onEndOfMedia() {
-                progressJob?.cancel()
+                manager.cancelProgressJobs()
                 AudioPlayShared.playPositionChanged(player.duration.toInt())
                 AudioPlayShared.next()
                 // 末章停止等后续状态变化会再同步, 这里先刷一次 (幂等)
@@ -140,13 +133,13 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
             override fun onError(message: String?) {
                 // 首次错误静默 refreshChapter 重试; 第二次才 STOP+日志+toast
                 if (hasRefreshedOnPlayError.compareAndSet(false, true)) {
-                    refreshChapter()
+                    manager.refreshChapter()
                     return
                 }
                 val msg = jvmGetString("desktop_audio_play_error", message ?: "")
                 AppLog.put(msg, null, true)
                 Toasters.get().toast(msg)
-                progressJob?.cancel()
+                manager.cancelProgressJobs()
                 paused = true
                 AudioPlayShared.status = Status.STOP
                 postEvent(EventBus.AUDIO_STATE, Status.STOP)
@@ -162,16 +155,6 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
         get() = running
 
     override var pendingTimerMinute: Int = 0
-
-    /**
-     * 清掉当前章节 URL 并重新加载 (播放器报错后自动重试)。
-     */
-    private fun refreshChapter() {
-        val chapter = AudioPlayShared.durChapter ?: return
-        chapter.resourceUrl = null
-        AudioPlayShared.durPlayUrl = ""
-        loadPlayUrl()
-    }
 
     override fun play() {
         ensureRunning()
@@ -202,7 +185,7 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
 
     override fun stop() {
         if (!running) return
-        progressJob?.cancel()
+        manager.cancelProgressJobs()
         // 精确回写当前位置 (不依赖进度 tick)。对照 origin onDestroy: 先取位置再释放
         // (exoPlayer.currentPosition 在 release 前读), 这里须在 player.stop() 之前读,
         // 否则 stopPlayback 会重置播放器位置导致落库进度不精确。
@@ -226,7 +209,7 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
 
     override fun stopPlay() {
         if (!running) return
-        progressJob?.cancel()
+        manager.cancelProgressJobs()
         player.stop()
         paused = true
         ReadTimeRecorder.end(ReadTimeRecorder.Source.AUDIO)
@@ -243,7 +226,7 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
         player.pause()
         paused = true
         ReadTimeRecorder.end(ReadTimeRecorder.Source.AUDIO)
-        progressJob?.cancel()
+        manager.cancelProgressJobs()
         AudioPlayShared.status = Status.PAUSE
         postEvent(EventBus.AUDIO_STATE, Status.PAUSE)
         syncSmtc()
@@ -261,15 +244,19 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
         ReadTimeRecorder.start(ReadTimeRecorder.Source.AUDIO, AudioPlayShared.book?.name ?: "")
         AudioPlayShared.status = Status.PLAY
         postEvent(EventBus.AUDIO_STATE, Status.PLAY)
-        startProgressReport()
+        manager.upPlayProgress()
+        manager.upPlayProgressForLrc()
         syncSmtc()
     }
 
     override fun adjustSpeed(adjust: Float) {
         if (!running) return
         playSpeed = adjust
+        manager.playSpeed = adjust
         player.setSpeed(adjust)
         postEvent(EventBus.AUDIO_SPEED, playSpeed)
+        // 变速后 lrc 推进 delay 需按新速率重算 (对齐 app/iOS)
+        manager.upPlayProgressForLrc()
         syncSmtc()
     }
 
@@ -278,6 +265,9 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
         player.seekTo(position.toLong())
         AudioPlayShared.durChapterPos = position
         postEvent(EventBus.AUDIO_PROGRESS, position)
+        // seek 后歌词位置失效, 重算 (对齐 app/iOS)
+        manager.resetLrcPosition()
+        manager.upPlayProgressForLrc()
         syncSmtc(positionMs = position.toLong())
     }
 
@@ -291,9 +281,29 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
         sleepTimer?.add()
     }
 
+    /** 章节加载/封面/歌词编排全走 shared manager (与 app/iOS/鸿蒙同源)。 */
     override fun loadPlayUrl() {
         ensureRunning()
-        scope.launch { doLoadPlayUrl() }
+        manager.loadPlayUrl()
+    }
+
+    // ===== AudioPlayManagerListener (shared manager 的平台副作用回调) =====
+
+    override fun onTriggerPlay(playNew: Boolean) {
+        scope.launch { triggerPlay(playNew) }
+    }
+
+    override fun onLoadCover(url: String?) {
+        // 封面已由 manager postEvent(AUDIO_COVER) 推送 UI; SMTC 卡封面读 durCoverUrl, 刷新一次
+        syncSmtc()
+    }
+
+    override fun onResetCoverCache() {
+        // desktop 无通知/MediaSession 封面缓存, 无需处理
+    }
+
+    override fun onToast(message: String) {
+        Toasters.get().toast(message)
     }
 
     // ===== 编排逻辑 =====
@@ -306,6 +316,8 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
         if (running) return
         running = true
         paused = true
+        // shared manager 的歌词推进 delay 按此速率缩放
+        manager.playSpeed = playSpeed
         // SMTC: 首次播放时激活 (幂等)
         DesktopSmtc.init()
         sleepTimer = SleepTimer(
@@ -325,16 +337,18 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
     }
 
     /**
-     * 已有 durPlayUrl 时启动播放。
+     * 已有 durPlayUrl 时启动播放 (shared manager 加载完成后经 [onTriggerPlay] 回调进入;
+     * play/playNew 命令在 url 为空时兜底走 [AudioPlayManager.loadPlayUrl] 补齐资源)。
      */
-    private suspend fun triggerPlay(playNew: Boolean) {
+    private fun triggerPlay(playNew: Boolean) {
         val playUrl = AudioPlayShared.durPlayUrl
         if (playUrl.isEmpty()) {
-            doLoadPlayUrl()
+            manager.loadPlayUrl()
             return
         }
         if (currentUrl == playUrl && !playNew && running && player.isPlaying) return
         player.stop()
+        manager.cancelProgressJobs()
         paused = false
         val startPos = if (playNew) 0 else AudioPlayShared.book?.durChapterPos ?: 0
         currentUrl = playUrl
@@ -347,206 +361,6 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
         player.setUrl(playUrl, emptyMap())
         player.prepare()
     }
-
-    /**
-     * 加载当前章节播放 URL。
-     *
-     * 流程: 取 chapter.resourceUrl, 没有则 [WebBook.getContentAwait] fetch → 写回 → triggerPlay。
-     * 同章节防并发 (loadingChapters)。
-     */
-    private suspend fun doLoadPlayUrl() {
-        val index = AudioPlayShared.durChapterIndex
-        if (!addLoading(index)) return
-        try {
-            val book = AudioPlayShared.book
-            val source = AudioPlayShared.bookSource
-            if (book == null || source == null) {
-                AppLog.put("book or source is null", null, true)
-                Toasters.get().toast("book or source is null")
-                return
-            }
-            AudioPlayShared.upDurChapter()
-            val chapter = AudioPlayShared.durChapter ?: return
-            if (chapter.isVolume) {
-                AudioPlayShared.skipTo(index + 1)
-                return
-            }
-            postEvent(EventBus.AUDIO_LOADING, true)
-            // 拉链接窗口置 LOADING, 与 shared AudioPlayManager.loadPlayUrl 对齐
-            AudioPlayShared.status = Status.LOADING
-            postEvent(EventBus.AUDIO_STATE, Status.LOADING)
-            AudioPlayShared.durLrcData = null
-            // 并行加载封面 (musicCover 规则) + 歌词, 不阻塞播放 URL 加载
-            scope.launch { loadCoverUrl(source, book, chapter) }
-            scope.launch { loadLrcData(source, book, chapter) }
-            // 取直链 URL (getContentAwait 已用 AnalyzeUrl 解析过书源规则, 返回直链)
-            val content = chapter.resourceUrl
-                ?: WebBook.getContentAwait(source, book, chapter, needSave = false)
-            if (content.isEmpty()) {
-                AppLog.put(jvmGetString("desktop_audio_no_resource_url"), null, true)
-                postEvent(EventBus.AUDIO_LOADING, false)
-                AudioPlayShared.status = Status.STOP
-                postEvent(EventBus.AUDIO_STATE, Status.STOP)
-                syncSmtc(stopped = true)
-                return
-            }
-            if (chapter.resourceUrl != content) {
-                chapter.resourceUrl = content
-                if (AudioPlayShared.inBookshelf) {
-                    AppDbProviders.get().bookChapterDao.update(chapter)
-                }
-            }
-            // 切章后旧 URL 结果作废 (不清 LOADING, 切章流程的 stopPlay 已处理)
-            if (chapter.index != AudioPlayShared.book?.durChapterIndex) {
-                return
-            }
-            AudioPlayShared.durPlayUrl = content
-            triggerPlay(
-                playNew = AudioPlayShared.durChapterIndex + 1 ==
-                    AudioPlayShared.simulatedChapterSize &&
-                    AudioPlayShared.durChapterPos == AudioPlayShared.durAudioSize
-            )
-        } catch (e: Exception) {
-            AppLog.put(jvmGetString("desktop_audio_load_failed", e.message ?: ""), e, true)
-            postEvent(EventBus.AUDIO_LOADING, false)
-            AudioPlayShared.status = Status.STOP
-            postEvent(EventBus.AUDIO_STATE, Status.STOP)
-            syncSmtc(stopped = true)
-        } finally {
-            removeLoading(index)
-        }
-    }
-
-    /**
-     * 用书源的 musicCover 规则计算封面 URL, 空规则就用书的默认 cover。
-     *
-     * 此前桌面端未实现, 音频页封面圆形图与模糊背景恒空 (durCoverUrl 一直为 null)。
-     * 求值失败/结果空时回落书籍默认封面, 仍空则不 post (UI 保持占位)。
-     */
-    private suspend fun loadCoverUrl(
-        bookSource: BookSource,
-        book: Book,
-        chapter: BookChapter,
-    ) {
-        try {
-            // 切章后旧章封面作废
-            if (chapter.index != AudioPlayShared.durChapterIndex) return
-            val musicCover = bookSource.contentRule.musicCover
-            val coverUrl = if (musicCover.isNullOrBlank()) {
-                book.getDisplayCover()
-            } else {
-                // 规则求值失败/结果空时兜底书籍默认封面 (否则 durCoverUrl 恒 null,
-                // 音频页封面与模糊背景不显示)
-                runCatching {
-                    val rule = AnalyzeRuleFactories.create(book, bookSource)
-                    rule.coroutineContext = currentCoroutineContext()
-                    rule.setBaseUrl(chapter.url)
-                    rule.chapter = chapter
-                    rule.evalJS(musicCover)?.toString()?.takeIf { it.isNotBlank() }
-                }.getOrNull() ?: book.getDisplayCover()
-            }
-            if (chapter.index != AudioPlayShared.durChapterIndex) return
-            AudioPlayShared.durCoverUrl = coverUrl
-            if (!coverUrl.isNullOrBlank()) {
-                postEvent(EventBus.AUDIO_COVER, coverUrl)
-            }
-            syncSmtc()
-        } catch (e: Exception) {
-            AppLog.put(jvmGetString("desktop_cover_load_failed", e.message ?: ""), e)
-        }
-    }
-
-    /**
-     * 用书源的 subContent 规则计算歌词数据。
-     *
-     * subContent 经 [AnalyzeRuleCore.evalJS] 求值, 期望返回 List<String> (每元素为多行 LRC 文本);
-     * 用 [LrcParser.parse] 解析为 (timeMs, text) 列表, 写入 [AudioPlayShared.durLrcData]
-     * 并 postEvent(AUDIO_LRC) / (AUDIO_LRCPROGRESS=0) 触发 UI 刷新。
-     *
-     * 经 [AnalyzeRuleFactories] 创建规则实例 (desktop 端拿到 DesktopAnalyzeRule, JS 扩展面完整);
-     * JS 引擎 / 网络 (ajax) 经 desktop Main.kt 已注册的 JsEngines / SourceNetworkProviders 走通。
-     */
-    private suspend fun loadLrcData(
-        bookSource: BookSource,
-        book: Book,
-        chapter: BookChapter,
-    ) {
-        try {
-            val subContent = bookSource.contentRule.subContent
-            if (subContent.isNullOrBlank()) return
-            // 切章后旧章歌词作废
-            if (chapter.index != AudioPlayShared.durChapterIndex) return
-            val rule = AnalyzeRuleFactories.create(book, bookSource)
-            rule.coroutineContext = currentCoroutineContext()
-            rule.setBaseUrl(chapter.url)
-            rule.chapter = chapter
-            val raw = rule.evalJS(subContent) as? List<*> ?: return
-            val parsed = LrcParser.parse(raw)
-            if (parsed.isEmpty()) return
-            if (chapter.index != AudioPlayShared.durChapterIndex) return
-            AudioPlayShared.durLrcData = parsed
-            postEvent(EventBus.AUDIO_LRC, parsed)
-            postEvent(EventBus.AUDIO_LRCPROGRESS, 0)
-        } catch (e: Exception) {
-            AppLog.put(jvmGetString("desktop_lrc_load_failed", e.message ?: ""), e, true)
-        }
-    }
-
-    /**
-     * 每秒发送播放进度。
-     */
-    private fun startProgressReport() {
-        progressJob?.cancel()
-        progressJob = scope.launch {
-            while (isActive) {
-                val pos = player.currentPosition.toInt()
-                AudioPlayShared.durChapterPos = pos
-                postEvent(EventBus.AUDIO_PROGRESS, pos)
-                // mpv 无独立缓冲概念暴露给进度条, 缓冲条用已播位置近似
-                // (原 desktop 不 post 导致缓冲条恒空)
-                postEvent(EventBus.AUDIO_BUFFER_PROGRESS, pos)
-                // 时长兜底: mediamp READY 时 duration 未知 (-1), loadfile 后变已知;
-                // 心跳补发 AUDIO_SIZE, 否则 UI 时长恒 0/旧值 (对齐 shared AudioPlayManager)
-                val duration = player.duration
-                if (duration > 0 && duration.toInt() != AudioPlayShared.durAudioSize) {
-                    AudioPlayShared.durAudioSize = duration.toInt()
-                    postEvent(EventBus.AUDIO_SIZE, AudioPlayShared.durAudioSize)
-                    AudioPlayShared.saveDurChapter(duration)
-                }
-                // 同步推进歌词高亮 (AUDIO_LRCPROGRESS 约定发行下标, 不是毫秒)
-                val lrc = AudioPlayShared.durLrcData
-                if (!lrc.isNullOrEmpty()) {
-                    // 无订阅不推进 (节能); 仅行号变化时发
-                    if (FlowBus.withSticky(EventBus.AUDIO_LRCPROGRESS).subscriptionCount.value > 0) {
-                        val curMs = pos + LRC_OFFSET_MS
-                        var line = 0
-                        while (line + 1 < lrc.size && lrc[line + 1].first <= curMs) {
-                            line++
-                        }
-                        if (line != lastLrcPosition) {
-                            lastLrcPosition = line
-                            postEvent(EventBus.AUDIO_LRCPROGRESS, line)
-                        }
-                    }
-                }
-                delay(1000)
-            }
-        }
-    }
-
-    // 同章节防并发
-    private fun addLoading(index: Int): Boolean = synchronized(loadingChapters) {
-        if (loadingChapters.contains(index)) return false
-        loadingChapters.add(index)
-        true
-    }
-
-    private fun removeLoading(index: Int) = synchronized(loadingChapters) {
-        loadingChapters.remove(index)
-    }
-
-    // ===== AudioPlayBookBridge =====
-    // saveRead/save/getBookSource (desktop 无 BookExtensions, 直接调 DAO)
 
     /**
      * 同步 SMTC 媒体卡 (Win11 音量浮层/锁屏卡; 非 Windows 直接跳过)。
@@ -573,6 +387,9 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
             DesktopSmtc.release()
         }
     }
+
+    // ===== AudioPlayBookBridge =====
+    // saveRead/save/getBookSource (desktop 无 BookExtensions, 直接调 DAO)
 
     override fun saveRead(book: Book) {
         // 对应 app 端 Book.saveRead(): PATCH 进度字段 + flush ReadTimeRecorder
@@ -618,11 +435,6 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
             null
         }
     }
-
-    private companion object {
-        /** 歌词同步补偿偏移量 (毫秒), 与 shared AudioPlayManager.lrcOffsetMs 一致 */
-        private const val LRC_OFFSET_MS = 60L
-    }
 }
 
 /**
@@ -630,7 +442,8 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
  *
  * 必须在所有依赖 provider (AppDbProviders / OkHttpClientProviders / JsEngines /
  * SourceHelpAccessors / registerDesktopWebBookProviders) 注册之后调用,
- * 因 doLoadPlayUrl 经 [WebBook.getContentAwait] 间接访问 appDb + webBook 编排层 + JS 引擎。
+ * 因 manager.loadPlayUrl 经 [io.legado.app.model.webBook.WebBook.getContentAwait]
+ * 间接访问 appDb + webBook 编排层 + JS 引擎。
  *
  * 调用时机: desktop Main.kt, 在 registerDesktopWebBookProviders() / registerDesktopJsEngines() 之后。
  */

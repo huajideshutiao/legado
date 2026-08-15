@@ -196,7 +196,7 @@ fun BookSourceDebugRoute(
         AppSelectorDialog(
             onDismissRequest = { showFxSelector = false },
             title = strSelectExplore,
-            items = screenModel.exploreKinds.map { it.title ?: "" },
+            items = screenModel.exploreKinds.map { it.title },
             onItemSelected = { index ->
                 showFxSelector = false
                 screenModel.dispatch(BookSourceDebugUiEvent.SelectExplore(index))

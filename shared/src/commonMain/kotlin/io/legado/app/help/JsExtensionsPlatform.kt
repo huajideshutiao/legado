@@ -41,7 +41,7 @@ internal expect object JsExtensionsPlatform {
      * 替代 queryTTF 中 `MessageDigest.getInstance("SHA-256").digest(bytes).toHexString()`
      * (java.security.MessageDigest 是 JVM 专属)。各端 actual 用本平台等价实现:
      * - jvmAndAndroid: java.security.MessageDigest
-     * - iOS/鸿蒙: com.soywiz.krypto.SHA256
+     * - iOS/鸿蒙: NativeDigestOps.digest (mbedTLS md 层)
      *
      * 输出小写 hex (与 [kotlin.ByteArray.toHexString] 默认 lowercase 一致)。
      */

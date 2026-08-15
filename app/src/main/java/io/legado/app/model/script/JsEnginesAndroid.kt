@@ -1,6 +1,7 @@
 package io.legado.app.model.script
 
 import android.provider.Settings
+import io.legado.app.App
 import io.legado.app.constant.AndroidIdHolder
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.BookSource
@@ -69,7 +70,7 @@ fun registerAndroidJsEngines() {
     RuleBigDataProviders.impl = RuleBigDataHelp
 
     AndroidIdHolder.value = Settings.System.getString(
-        splitties.init.appCtx.contentResolver, Settings.Secure.ANDROID_ID
+        App.instance.contentResolver, Settings.Secure.ANDROID_ID
     ) ?: "null"
     SourceCacheProviders.impl = object : SourceCacheProvider {
         override fun get(key: String) = CacheManager.get(key)
@@ -145,7 +146,7 @@ fun registerAndroidJsEngines() {
                 // 单一数据源在 shared/commonMain/composeResources/files/defaultData/,
                 // 由 compose 资源插件打进 assets (前缀含模块限定名, 同 AndroidWebAssetSource)。
                 return String(
-                    splitties.init.appCtx.assets
+                    App.instance.assets
                         .open("$DEFAULT_DATA_ASSET_PREFIX$name").readBytes()
                 )
             }

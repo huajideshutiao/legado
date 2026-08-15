@@ -224,7 +224,7 @@ object AppWebDavShared {
         var lastBackupFile: WebDavFile? = null
         WebDav(rootWebDavUrl, auth).listFiles().reversed().forEach { webDavFile ->
             if (webDavFile.displayName.startsWith("backup")) {
-                if (lastBackupFile == null || webDavFile.lastModify > lastBackupFile!!.lastModify) {
+                if (lastBackupFile == null || webDavFile.lastModify > lastBackupFile.lastModify) {
                     lastBackupFile = webDavFile
                 }
             }

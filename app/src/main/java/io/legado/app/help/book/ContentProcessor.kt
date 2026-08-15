@@ -1,11 +1,14 @@
 package io.legado.app.help.book
 
 import android.os.Build
+import io.legado.app.App
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.help.book.AndroidContentProcessorDeps.getChapterFiles
+import io.legado.app.help.book.AndroidContentProcessorDeps.isAndroid8
+import io.legado.app.help.book.AndroidContentProcessorDeps.toastOnUi
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.runBlocking
-import splitties.init.appCtx
 import java.lang.ref.WeakReference
 
 /**
@@ -106,7 +109,7 @@ class ContentProcessor private constructor(
 private object AndroidContentProcessorDeps : ContentProcessorDeps {
     override val isAndroid8: Boolean = Build.VERSION.SDK_INT in 26..27
 
-    override fun toastOnUi(msg: String) = appCtx.toastOnUi(msg)
+    override fun toastOnUi(msg: String) = App.instance.toastOnUi(msg)
 
     override fun getChapterFiles(book: Book): Set<String> =
         BookHelp.getChapterFiles(book)

@@ -16,7 +16,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import io.legado.app.constant.AppLog
@@ -41,6 +43,10 @@ import io.legado.app.ui.book.audio.AudioPlayUiEvent
 import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.platform.AppShortcutHandler
+import io.legado.app.ui.compose.platform.MediaKeyLongPressState
+import io.legado.app.ui.compose.platform.hasActiveBackLayer
+import io.legado.app.ui.compose.platform.mediaPlaybackKeys
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
@@ -88,6 +94,62 @@ fun AudioPlayRoute(
     val state by screenModel.state.collectAsState()
     val platform = AudioPlayPlatformProviders.getOrNull()
     val scope = rememberCoroutineScope()
+
+    // 音频页键盘快捷键 (方向键/空格): 走共享 AppShortcutHandler 快捷键栈分发。
+    // 对照 ReaderRoute 阅读页 / MangaReaderScreenContent 漫画页方向键模式 —— 快捷键栈在
+    // 桌面 Window onKeyEvent (Main.kt) / Android Activity dispatchKeyEvent
+    // (BaseComposeActivity) 层无条件收键, 不依赖 Compose 焦点链; 而原 handleMediaKeys
+    // 依赖焦点 (onPreviewKeyEvent), 桌面端未持焦时按键完全无响应
+    // (2026-08 用户实测: 视频页正常、音频页无反应), 已收拢到快捷键栈。
+    // 键位 (对照原 handleMediaKeys 语义):
+    //   ←/→ = 进度 ∓10s (← TRIGGER 按住连续后退; → 短按松开 seek +10s / 长按 当前倍速×2
+    //   松手恢复, 长短按由 MediaKeyLongPressState 判定, 恢复原 handleMediaKeys 完整语义)
+    //   ↑/↓ = 上/下一章 (受 prevEnabled/nextEnabled 门控); Space = 播放/暂停
+    // 媒体键 preemptive=true 捕获阶段抢占: 与 Compose 焦点系统单一所有者 (点 ⋯ 后按空格
+    // 不再弹菜单+暂停双触发); 弹层打开时 hasActiveBackLayer() 让位 (弹层方向键导航优先)。
+    val backStack by navigator.backStack.collectAsState()
+    val isTopEntry = backStack.lastOrNull()?.id == entry.id
+    // 右方向键长短按状态 (页面组合存活, 计时协程挂页面 scope)
+    val keyLongPress = remember { MediaKeyLongPressState() }
+    // 长按前倍速 (界面内临时捕获): 长按激活时记录, 松手恢复, 不覆盖用户已设倍速
+    val prePressSpeed = remember { mutableStateOf(1f) }
+    // 长短按阈值取平台 ViewConfiguration (与全应用 clickable 键盘长按手感一致)
+    val longPressTimeoutMs = LocalViewConfiguration.current.longPressTimeoutMillis
+    AppShortcutHandler(
+        shortcuts = mediaPlaybackKeys,
+        // 媒体键捕获阶段抢占 (preemptive=true), 弹层打开时让位 (菜单/对话框方向键导航优先)
+        enabled = { isTopEntry && !hasActiveBackLayer() },
+        onKeyUp = { shortcut ->
+            // 右方向键: 长按松开恢复倍速 / 窗口内松开执行短按 seek (KeyUp 判定)
+            if (shortcut.key == Key.DirectionRight) {
+                keyLongPress.onRelease(
+                    onShortPress = {
+                        val s = screenModel.state.value
+                        screenModel.dispatch(
+                            AudioPlayUiEvent.Seek((s.progressMs + 10_000).coerceAtMost(s.durationMs))
+                        )
+                    },
+                    onLongPressRelease = {
+                        screenModel.dispatch(AudioPlayUiEvent.SetSpeed(prePressSpeed.value))
+                    },
+                )
+            }
+        },
+    ) { shortcut ->
+        when (shortcut.key) {
+            Key.Spacebar -> screenModel.dispatch(AudioPlayUiEvent.TogglePlay)
+            Key.DirectionLeft -> screenModel.dispatch(
+                AudioPlayUiEvent.Seek((state.progressMs - 10_000).coerceAtLeast(0))
+            )
+            Key.DirectionRight -> keyLongPress.onPress(scope, longPressTimeoutMs) {
+                // 长按激活: 记录长按前倍速, 切 当前倍速×2 (与视频页长按语义一致, 不加配置项)
+                prePressSpeed.value = screenModel.state.value.speed
+                screenModel.dispatch(AudioPlayUiEvent.SetSpeed(prePressSpeed.value * 2f))
+            }
+            Key.DirectionUp -> if (state.prevEnabled) screenModel.dispatch(AudioPlayUiEvent.Prev)
+            Key.DirectionDown -> if (state.nextEnabled) screenModel.dispatch(AudioPlayUiEvent.Next)
+        }
+    }
 
     // 初始化标题 (对照 viewModel.initData 中 titleData.postValue(book.name) + applyBookmarkPosition)
     LaunchedEffect(book) {
@@ -260,14 +322,27 @@ fun AudioPlayRoute(
             // 对照 app 端 AudioPlayActivity.openChapterList: 未加书架的书目录不落库, 走内存传递。
             // 宽屏面板与窄屏弹窗共用同一数据源 (IntentData.chapterList), 两个分支都要传,
             // 否则 TocScreenModel 只能读 DB (未加书架书目录不在 DB) → 目录空白。
-            IntentData.chapterList = AudioPlayShared.chapterList
-            if (sidePanelWidth > 0.dp) {
-                // 宽屏: 右侧面板 (互斥: 直接覆盖评论面板)
-                panelKind = AudioPlaySidePanelKind.TOC
+            val openToc = {
+                IntentData.chapterList = AudioPlayShared.chapterList
+                if (sidePanelWidth > 0.dp) {
+                    // 宽屏: 右侧面板 (互斥: 直接覆盖评论面板)
+                    panelKind = AudioPlaySidePanelKind.TOC
+                } else {
+                    // 窄屏: 全高底部弹窗 (对照阅读页 ReaderDialogEvent.Toc → TocDialogHost;
+                    // 原 push Toc 全屏路由, 迁移后选章经 onOpenChapter 直接处理, 不再走 RouteResults.TOC 回传)
+                    showTocDialog = true
+                }
+            }
+            if (AudioPlayShared.chapterList.isNullOrEmpty()) {
+                // 首次点目录可能早于 Init 异步目录加载完成 (对照原版 initData 的 upBook
+                // 挂起语义: 打开目录前目录必已就绪) → 先等目录齐 (内存→DB→回源) 再开面板/弹窗,
+                // 否则未入架书目录空白 (且回源失败时仍可读 DB 兜底)
+                scope.launch {
+                    screenModel.ensureChapterList(book)
+                    openToc()
+                }
             } else {
-                // 窄屏: 全高底部弹窗 (对照阅读页 ReaderDialogEvent.Toc → TocDialogHost;
-                // 原 push Toc 全屏路由, 迁移后选章经 onOpenChapter 直接处理, 不再走 RouteResults.TOC 回传)
-                showTocDialog = true
+                openToc()
             }
         },
         onOpenBookSourceEdit = { sourceUrl ->
@@ -474,3 +549,4 @@ fun AudioPlayRoute(
         )
     }
 }
+

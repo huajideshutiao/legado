@@ -3,8 +3,8 @@ package io.legado.app.help.config
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
+import io.legado.app.App
 import io.legado.app.utils.defaultSharedPreferences
-import splitties.init.appCtx
 
 /**
  * [PreferenceProvider] 安卓端实现。
@@ -20,7 +20,7 @@ import splitties.init.appCtx
  */
 class AndroidPreferenceProvider : PreferenceProvider {
 
-    private val prefs = appCtx.defaultSharedPreferences.also {
+    private val prefs = App.instance.defaultSharedPreferences.also {
         migrateLegacyConfigOnce(it)
     }
 
@@ -84,7 +84,7 @@ private const val LEGACY_MIGRATED_KEY = "legadoConfigSpMigrated"
 @Suppress("UNCHECKED_CAST")
 private fun migrateLegacyConfigOnce(target: SharedPreferences) {
     if (target.getBoolean(LEGACY_MIGRATED_KEY, false)) return
-    val legacy = appCtx.getSharedPreferences("legado_config", Context.MODE_PRIVATE)
+    val legacy = App.instance.getSharedPreferences("legado_config", Context.MODE_PRIVATE)
     target.edit {
         legacy.all.forEach { (key, value) ->
             if (value == null || target.contains(key)) return@forEach

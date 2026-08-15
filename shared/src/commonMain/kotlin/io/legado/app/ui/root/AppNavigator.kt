@@ -208,7 +208,7 @@ class AppNavigator(
         // 栈顶 Overlay 挂起 (窗口已隐藏) 时跳过关闭, 继续 pop 路由: 返回键应作用于可见的路由层
         val topOverlay = overlayBackStack.peek()
         if (topOverlay != null && !isTopOverlaySuspended() && dismissTopOverlay()) {
-            if (topOverlay != null && payload !is RouteResultPayload.None) {
+            if (payload !is RouteResultPayload.None) {
                 _overlayResults.tryEmit(OverlayResult(topOverlay.key, payload))
             }
             return true

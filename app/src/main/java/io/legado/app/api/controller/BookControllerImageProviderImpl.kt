@@ -7,6 +7,9 @@ import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.size.Scale
 import coil3.toBitmap
+import io.legado.app.App
+import io.legado.app.api.controller.BookControllerImageProviderImpl.getCover
+import io.legado.app.api.controller.BookControllerImageProviderImpl.getImg
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
@@ -15,7 +18,6 @@ import io.legado.app.model.BookCover
 import io.legado.app.model.ImageProvider
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
-import splitties.init.appCtx
 import java.io.ByteArrayOutputStream
 import kotlin.time.Duration.Companion.seconds
 
@@ -73,13 +75,13 @@ object BookControllerImageProviderImpl : ImageControllerProvider {
     }
 
     private suspend fun loadCoverForWeb(path: String?): Bitmap {
-        val loader = coil3.SingletonImageLoader.get(appCtx)
+        val loader = coil3.SingletonImageLoader.get(App.instance)
         val data: Any = if (AppConfig.useDefaultCover || path.isNullOrBlank()) {
             BookCover.newDefaultDrawable()
         } else {
             path
         }
-        val request = ImageRequest.Builder(appCtx as PlatformContext)
+        val request = ImageRequest.Builder(App.instance as PlatformContext)
             .data(data)
             .size(84, 112)
             .scale(Scale.FILL)

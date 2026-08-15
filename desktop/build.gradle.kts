@@ -87,7 +87,7 @@ private fun ohosVersion(key: String): String =
     ohosCatalog.findVersion(key).get().requiredVersion
 
 val activeComposeVersion =
-    if (isHarmonyMode) ohosVersion("composeMultiplatform-ohos") else ohosVersion("composeMultiplatform")
+    if (isHarmonyMode) ohosVersion("composeMultiplatform-ohos") else ohosVersion("cmp")
 
 configurations.configureEach {
     resolutionStrategy.eachDependency {
@@ -149,7 +149,7 @@ sourceSets {
 tasks.named("compileKotlin").configure { dependsOn(generateInstallType) }
 
 dependencies {
-    // 引入 shared 模块 jvm target (传递 commonMain + jvmAndAndroidMain 全部 API)
+    // 引入 shared 模块 jvm target (传递 commonMain + jvmMain 全部 API)
     implementation(project(":shared"))
     // shared 模块 commonMain 已声明 kotlinx-serialization-json api, 但 jvm target 传递依赖可能不完整, 显式补
     implementation(libs.kotlinx.coroutines.core)
@@ -164,7 +164,7 @@ dependencies {
     // (仅 KMP multiplatform 插件下可用), 故不在此声明; 改由 shared sharedUiMain 用 api 暴露,
     // desktop 通过传递依赖访问 Res 类 / DrawableResource / painterResource 扩展函数
     // KP1.1: 桌面端 JS 引擎走 modules:quickjs 自研 JNI 桥 (KMP 化后 jvm target 暴露 commonMain API)
-    // shared/jvmAndAndroidMain 已 api(project(':modules:quickjs')), 桌面端通过 shared 传递依赖可见;
+    // shared/jvmMain 已 api(project(':modules:quickjs')), 桌面端通过 shared 传递依赖可见;
     // 显式 implementation 确保 :desktop:run 之前 :modules:quickjs:jvmJar (含 buildJvmNativeLib) 被触发
     implementation(project(":modules:quickjs"))
     // Coil3 图片栈 (封面/ReviewListScreen 直接用 rememberAsyncImagePainter/ImageRequest):
@@ -191,15 +191,18 @@ dependencies {
         OperatingSystem.current().isWindows -> libs.mediamp.mpv.runtime.windows.x64
         OperatingSystem.current().isLinux -> libs.mediamp.mpv.runtime.linux.x64
         OperatingSystem.current().isMacOsX -> libs.mediamp.mpv.runtime.macos.arm64
-        else -> libs.mediamp.mpv.runtime
+        // runtime 别名同时是组前缀 (runtime-windows-x64 等), 生成物是 accessor 组对象;
+        // asProvider() 取回聚合库 Provider, 与上面各分支同为 Provider<MinimalExternalModuleDependency>,
+        // 消除 "implicitly cast to Any" 警告 (旧写法直接把组对象当依赖传, 兜底分支实际是坏的)。
+        else -> libs.mediamp.mpv.runtime.asProvider()
     }
     runtimeOnly(mpvRuntime)
     // jna 保留: WindowsFileDialogs (jna-platform) / DesktopAppConfigAccessor / DesktopBattery /
     // DesktopWebViewEngines 直调 Win32; 视频侧 JNA 绑定已随自研渲染器删除。
-    implementation("net.java.dev.jna:jna:5.17.0")
+    implementation(libs.jna)
     // jna-platform 提供 Win32 COM 基础设施 (Ole32/Guid/HRESULT), 供 WindowsFileDialogs 直调
     // IFileDialog 取现代文件对话框 (AWT FileDialog 在 Windows 上是 comdlg32 旧版样式)。
-    implementation("net.java.dev.jna:jna-platform:5.17.0")
+    implementation(libs.jna.platform)
     // 2026-08-15 教训: 不要重新启用 bcprov! 一旦 BC 类进入运行时 classpath, hutool
     // SecureUtil.createCipher 会经 GlobalBouncyCastleProvider 用 BC 的 RSA Cipher:
     // BC 的 RSA getBlockSize()=127 (SunJCE=0), 触发 AsymmetricCrypto.encrypt 的分段加密
@@ -209,16 +212,17 @@ dependencies {
     // SymmetricCryptoAndroid 的 normalizePkcs7Padding (PKCS7→PKCS5 字节级等价, 无需 BC),
     // 不要再加回 bcprov。
     // implementation(libs.bcprov)
-    // webp 编码: ImageIO SPI 插件 (jar 内置 win/linux/mac native writer; TwelveMonkeys 只读不写)
-    implementation("com.github.gotson:webp-imageio:0.2.2")
+    // WebP: 解码走 TwelveMonkeys imageio-webp (纯 Java, 活跃维护, 已替代归档的 gotson/webp-imageio);
+    // 编码走 Skiko (Compose Desktop 自带) 的 EncodedImageFormat.WEBP, 见 DesktopImageOps.encodeWebpSkia
+    implementation(libs.imageio.webp)
     // 本地书格式: PDF 渲染 (对照 app 端 PdfRenderer 语义)
-    implementation("org.apache.pdfbox:pdfbox:3.0.8")
+    implementation(libs.pdfbox)
     // 压缩包: 7z/tar/gz/bz2/xz (xz 库是 7z LZMA2 默认压缩方法的必需依赖, 非只为 .xz)
-    implementation("org.apache.commons:commons-compress:1.28.0")
-    implementation("org.tukaani:xz:1.12")
+    implementation(libs.commons.compress)
+    implementation(libs.xz)
     // rar4/rar5 (junrar 8.x 已支持 RAR5); slf4j-nop 消 junrar 传递依赖的无绑定警告
-    implementation("com.github.junrar:junrar:8.0.0")
-    implementation("org.slf4j:slf4j-nop:2.0.17")
+    implementation(libs.junrar)
+    implementation(libs.slf4j.nop)
     // 内嵌浏览器引擎全部直调系统引擎 (Windows WebView2 / Linux webkit2gtk / macOS WKWebView),
     // 零随包 native。历史上 JavaFX WebView (OpenJFX 21 内嵌 2018 年 WebKit 606.1) 曾作为
     // 跨平台兜底, 因内核过老 (ES2017+ 缺失/无资源拦截/cookie 反射 hack) 达不到书源网页需求,
@@ -231,11 +235,15 @@ dependencies {
     testImplementation(libs.junit)
     // Compose UI 测试 (compose.desktop.uiTestJUnit4 已弃用转 error, 直接声明同版本坐标;
     // 版本跟 composeMultiplatform 走, 与插件展开值一致)
-    testImplementation("org.jetbrains.compose.ui:ui-test-junit4:${ohosVersion("composeMultiplatform")}")
+    testImplementation(
+        "org.jetbrains.compose.ui:ui-test-junit4:${
+            ohosVersion(if (isHarmonyMode) "composeMultiplatform" else "cmp")
+        }"
+    )
     // JBR 客户端 API (WindowDecorations/CustomTitleBar, Windows 原生标题栏自定义):
     // 官方制品 org.jetbrains.runtime:jbr-api (Apache 2.0, github.com/JetBrains/JetBrainsRuntimeApi),
     // 与 ab-download-manager/jewel 同款; JBR 侧实现在 JBR 21 运行时内置, 非 JBR 时 getWindowDecorations() 返回 null
-    implementation("org.jetbrains.runtime:jbr-api:1.10.1")
+    implementation(libs.jbr.api)
 }
 
 // Compose Desktop 统一配置入口 (mainClass + nativeDistributions)
@@ -264,6 +272,8 @@ tasks.matching { it.name == "createRuntimeImage" }.configureEach {
         // Kotlin internal 属性 getter 带模块名后缀 ($compose), 用前缀匹配兼容
         val getter = taskClass.methods.firstOrNull { it.name.startsWith("getCompressionLevel") }
             ?: error("getCompressionLevel not found")
+
+        @Suppress("UNCHECKED_CAST") // 反射取 internal 属性, 类型擦除后只能非受检转换
         val prop = getter.invoke(this) as Property<Any>
         val zip = Class.forName(
             "org.jetbrains.compose.desktop.application.internal.RuntimeCompressionLevel",
@@ -369,10 +379,8 @@ val buildSmtcNative by tasks.registering {
         runCatching {
             val cfg = ProcessBuilder(configureCmd)
             if (useMinGW && mingwBinDir != null) {
-                cfg.environment().put(
-                    "PATH",
+                cfg.environment()["PATH"] =
                     mingwBinDir + File.pathSeparator + (cfg.environment()["PATH"] ?: "")
-                )
             }
             cfg.redirectErrorStream(true)
             val p = cfg.start()
@@ -389,10 +397,8 @@ val buildSmtcNative by tasks.registering {
                 )
             )
             if (useMinGW && mingwBinDir != null) {
-                build.environment().put(
-                    "PATH",
+                build.environment()["PATH"] =
                     mingwBinDir + File.pathSeparator + (build.environment()["PATH"] ?: "")
-                )
             }
             build.redirectErrorStream(true)
             val b = build.start()

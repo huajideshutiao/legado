@@ -26,6 +26,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import coil3.load
 import coil3.request.CachePolicy
 import coil3.toBitmap
+import io.legado.app.App
 import io.legado.app.R
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.i18n.androidAppString
@@ -42,7 +43,6 @@ import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
-import splitties.init.appCtx
 
 /**
  * 图片验证码对话框
@@ -59,7 +59,7 @@ object VerificationCodeDialog {
         // 因 PhotoDialog 经 showDialogFragment 显示，需 AppCompatActivity 提供 supportFragmentManager
         val activity = io.legado.app.help.LifecycleHelp.currentActivity as? AppCompatActivity
         if (activity == null) {
-            appCtx.toastOnUi("无法在后台显示验证码对话框")
+            App.instance.toastOnUi("无法在后台显示验证码对话框")
             return
         }
 

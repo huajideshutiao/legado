@@ -3,6 +3,7 @@ package io.legado.app.help.book
 import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.ParcelFileDescriptor
+import io.legado.app.App
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
@@ -34,7 +35,6 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
-import splitties.init.appCtx
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileNotFoundException
@@ -43,7 +43,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 @Suppress("unused", "ConstPropertyName")
 object BookHelp {
-    private val downloadDir: File = appCtx.externalFiles
+    private val downloadDir: File = App.instance.externalFiles
     private const val cacheFolderName = "book_cache"
     private const val cacheImageFolderName = "images"
     private val downloadImages = ConcurrentHashMap<String, Mutex>()
@@ -99,7 +99,7 @@ object BookHelp {
     suspend fun clearCacheExtra() {
         withContext(IO) {
             FileUtils.delete(ArchiveUtils.TEMP_PATH)
-            val filesDir = appCtx.filesDir
+            val filesDir = App.instance.filesDir
             FileUtils.delete(File(filesDir, "shareBookSource.json").absolutePath)
             FileUtils.delete(File(filesDir, "shareRssSource.json").absolutePath)
             FileUtils.delete(File(filesDir, "books.json").absolutePath)
@@ -250,7 +250,7 @@ object BookHelp {
             }
             val size = kotlinx.coroutines.runBlocking { webdav.getWebDavFile()?.size } ?: 0L
             val storageManager =
-                appCtx.getSystemService(android.os.storage.StorageManager::class.java)
+                App.instance.getSystemService(android.os.storage.StorageManager::class.java)
             val handlerThread = android.os.HandlerThread("WebDavPfd")
             handlerThread.start()
             val handler = android.os.Handler(handlerThread.looper)
@@ -262,7 +262,7 @@ object BookHelp {
         }
         val uri = book.getLocalUri()
         return if (uri.isContentScheme()) {
-            appCtx.contentResolver.openFileDescriptor(uri, "r")
+            App.instance.contentResolver.openFileDescriptor(uri, "r")
         } else {
             ParcelFileDescriptor.open(File(uri.path!!), ParcelFileDescriptor.MODE_READ_ONLY)
         }

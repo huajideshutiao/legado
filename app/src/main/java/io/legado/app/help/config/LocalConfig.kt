@@ -3,16 +3,16 @@ package io.legado.app.help.config
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
+import io.legado.app.App
 import io.legado.app.utils.getBoolean
 import io.legado.app.utils.putBoolean
 import io.legado.app.utils.putLong
 import io.legado.app.utils.putString
 import io.legado.app.utils.remove
-import splitties.init.appCtx
 
 @Suppress("ConstPropertyName")
 object LocalConfig : SharedPreferences
-by appCtx.getSharedPreferences("local", Context.MODE_PRIVATE) {
+by App.instance.getSharedPreferences("local", Context.MODE_PRIVATE) {
 
     private const val versionCodeKey = "appVersionCode"
 

@@ -11,9 +11,9 @@ import androidx.compose.runtime.Composable
 import androidx.core.net.toUri
 import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.viewModels
+import io.legado.app.App
 import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.constant.AppLog
-import io.legado.app.help.config.AppConfig
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.permission.Permissions
@@ -28,7 +28,6 @@ import io.legado.app.utils.externalFiles
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.launch
 import io.legado.app.utils.toastOnUi
-import splitties.init.appCtx
 import java.io.File
 
 class HandleFileDialog : BaseComposeDialogFragment() {
@@ -270,7 +269,7 @@ class HandleFileDialog : BaseComposeDialogFragment() {
     }
 
     private fun isExternalStorage(path: File): Boolean {
-        if (path.canonicalPath.startsWith(appCtx.externalFiles.parent!!)) {
+        if (path.canonicalPath.startsWith(App.instance.externalFiles.parent!!)) {
             return false
         }
         try {

@@ -1,5 +1,6 @@
 package io.legado.app.model
 
+import io.legado.app.App
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
@@ -22,7 +23,6 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.sync.Semaphore
-import splitties.init.appCtx
 import kotlin.math.max
 
 
@@ -312,11 +312,11 @@ private object AndroidReadBookPlatform : ReadBookPlatform {
     override val isReadAloudPause: Boolean get() = BaseReadAloudService.pause
 
     override fun playReadAloud(play: Boolean, startPos: Int) {
-        ReadAloud.play(appCtx, play, startPos = startPos)
+        ReadAloud.play(App.instance, play, startPos = startPos)
     }
 
     override fun pauseReadAloud() {
-        ReadAloud.pause(appCtx)
+        ReadAloud.pause(App.instance)
     }
 
     override val isCacheBookServiceRun: Boolean get() = CacheBookService.isRun

@@ -57,7 +57,7 @@ actual interface JsEncodeUtils {
  * KMP 限制: actual interface 成员 modality 必须与 expect 一致 (abstract), 不能带方法体;
  * 故将默认实现下沉到独立的 Defaults interface, 由调用方多继承注入。
  *
- * digest/HMAC 委托 [NativeDigestOps]/[NativeHmacOps] (expect object): mbedTLS 主实现, 异常回落 krypto/napi。
+ * digest/HMAC 委托 [NativeDigestOps]/[NativeHmacOps] (expect object): 纯 mbedTLS 实现 (iOS/鸿蒙),
  */
 @Suppress("unused")
 interface JsEncodeUtilsDefaults : JsEncodeUtils {

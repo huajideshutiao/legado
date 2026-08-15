@@ -5,47 +5,42 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
+import androidx.compose.ui.composed
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import io.legado.app.constant.AppLog
 import io.legado.app.ui.root.AppNavigator
 
 /**
- * 桌面端无系统返回键, ESC 等价于返回按钮; 同时作为全应用快捷键的分发入口。
- * (Backspace 刻意不映射: 根节点 preview 阶段拦截会吞掉全应用输入框的删字键)
+ * 根节点按键处理器: 捕获/冒泡两阶段按键委托给 [AppKeyRouter] 统一分发
+ * (全屏 Esc → 统一返回 → F5 刷新 → 快捷键栈捕获/冒泡), 挂载期把返回/刷新动作注册进路由,
+ * 供平台窗口层 (桌面 Window / Android Activity) 的无条件收键入口共用。
  *
- * 两阶段分发: 捕获阶段只放带修饰键/功能键的组合 (不可能是文本输入),
+ * 桌面端无系统返回键, ESC 等价于返回按钮; 同时作为全应用快捷键的分发入口。
+ * (Backspace 刻意不映射: 根节点预览阶段拦截会吞掉全应用输入框的删字键)
+ *
+ * 两阶段分发语义: 捕获阶段只放带修饰键/功能键的组合 (不可能是文本输入),
  * 无修饰的方向键/翻页键/空格走冒泡阶段, 聚焦的输入框先消费后才轮到快捷键。
+ * 本 Modifier 覆盖 Compose 焦点链路径 (iOS/鸿蒙/焦点就绪场景); 平台窗口层的
+ * [AppKeyRouter.dispatchPlatform] 不依赖焦点, 命中即消费, 未命中才落到本层。
  */
 fun Modifier.handleBackKey(
     onBack: () -> Unit,
     onRefresh: () -> Boolean = { false },
-): Modifier = this
-    .onPreviewKeyEvent { event ->
-        // KeyUp 只清理快捷键按住状态 (repeat 过滤用, 见 dispatchShortcut), 无动作、不消费
-        if (event.type == KeyEventType.KeyUp) {
-            dispatchShortcut(event, preemptive = true)
-            return@onPreviewKeyEvent false
-        }
-        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-        when (event.key) {
-            Key.Escape -> {
-                onBack()
-                true
-            }
-
-            Key.F5 -> onRefresh()
-            else -> dispatchShortcut(event, preemptive = true)
+): Modifier = composed {
+    val currentOnBack by rememberUpdatedState(onBack)
+    val currentOnRefresh by rememberUpdatedState(onRefresh)
+    DisposableEffect(Unit) {
+        AppKeyRouter.registerBack { currentOnBack() }
+        AppKeyRouter.registerRefresh { currentOnRefresh() }
+        onDispose {
+            AppKeyRouter.registerBack(null)
+            AppKeyRouter.registerRefresh(null)
         }
     }
-    .onKeyEvent { event ->
-        if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
-        dispatchShortcut(event, preemptive = false)
-    }
+    this.onPreviewKeyEvent { event -> AppKeyRouter.dispatchCapture(event) }
+        .onKeyEvent { event -> AppKeyRouter.dispatchBubble(event) }
+}
 
 /**
  * 统一返回动作: 先关顶层覆盖物 (CMP Dialog/Popup/自绘菜单层), 再关顶层 Overlay,
@@ -79,6 +74,14 @@ private val backInterceptors = mutableListOf<() -> Boolean>()
  * 返回键分发时栈顶 (最后打开的覆盖物) 优先。
  */
 private val backLayers = mutableListOf<() -> Boolean>()
+
+/**
+ * 是否存在激活中的顶层覆盖物 (菜单/弹窗/底部面板等, [BackLayerHandler] 注册期非空, 含动画期)。
+ *
+ * 供媒体页快捷键让位: 弹层打开时媒体键不抢占 (弹层自身方向键导航/Enter 激活优先),
+ * 避免快捷键穿透弹层误触页面动作 (2026-08 用户实测: 点 ⋯ 后按空格先弹菜单再暂停/播放)。
+ */
+fun hasActiveBackLayer(): Boolean = backLayers.isNotEmpty()
 
 /**
  * 顶层覆盖物返回拦截注册: 弹层打开期间注册, 关闭/销毁时自动注销。

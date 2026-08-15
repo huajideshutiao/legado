@@ -4,8 +4,8 @@ import android.net.Uri
 import android.os.ParcelFileDescriptor
 import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
+import io.legado.app.App
 import io.legado.app.exception.NoStackTraceException
-import splitties.init.appCtx
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
@@ -27,11 +27,11 @@ data class FileDoc(
     val isContentScheme get() = uri.isContentScheme()
 
     fun readBytes(): ByteArray {
-        return uri.readBytes(appCtx)
+        return uri.readBytes(App.instance)
     }
 
     fun readText(): String {
-        return uri.readText(appCtx)
+        return uri.readText(App.instance)
     }
 
     fun asDocumentFile(): DocumentFile? {

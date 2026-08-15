@@ -45,9 +45,9 @@ class DesktopFileDownloader : FileDownloader {
                 if (!response.isSuccessful) {
                     throw IOException("Unexpected code ${response.code}")
                 }
-                response.body?.byteStream()?.use { input ->
+                response.body.byteStream().use { input ->
                     Files.copy(input, tempPath, StandardCopyOption.REPLACE_EXISTING)
-                } ?: throw IOException("Response body is null")
+                }
             }
 
             // 原子移动到正式文件名 (跨文件系统时退化为非原子 replace)

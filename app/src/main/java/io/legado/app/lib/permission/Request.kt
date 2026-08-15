@@ -7,9 +7,9 @@ import android.os.Environment
 import androidx.annotation.StringRes
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import io.legado.app.App
+import io.legado.app.powerManager
 import io.legado.app.utils.startActivity
-import splitties.init.appCtx
-import splitties.systemservices.powerManager
 
 @Suppress("MemberVisibilityCanBePrivate")
 internal class Request : OnRequestPermissionsResultCallback {
@@ -44,7 +44,7 @@ internal class Request : OnRequestPermissionsResultCallback {
     }
 
     fun setRationale(@StringRes resId: Int) {
-        rationale = appCtx.getString(resId)
+        rationale = App.instance.getString(resId)
     }
 
     fun setRationale(rationale: CharSequence) {
@@ -79,7 +79,7 @@ internal class Request : OnRequestPermissionsResultCallback {
                     toIgnoreBatterySetting(deniedPermissions)
                 }
             } else if (deniedPermissions.isNotEmpty()) {
-                appCtx.startActivity<PermissionActivity> {
+                App.instance.startActivity<PermissionActivity> {
                     putExtra(PermissionActivity.KEY_RATIONALE, rationale)
                     putExtra(PermissionActivity.KEY_INPUT_REQUEST_TYPE, TYPE_REQUEST_PERMISSION)
                     putExtra(PermissionActivity.KEY_INPUT_PERMISSIONS_CODE, requestCode)
@@ -99,7 +99,7 @@ internal class Request : OnRequestPermissionsResultCallback {
         for (permission in permissions) {
             when (permission) {
                 Permissions.POST_NOTIFICATIONS -> {
-                    if (!NotificationManagerCompat.from(appCtx).areNotificationsEnabled()) {
+                    if (!NotificationManagerCompat.from(App.instance).areNotificationsEnabled()) {
                         deniedPermissionList.add(permission)
                     }
                 }
@@ -113,14 +113,14 @@ internal class Request : OnRequestPermissionsResultCallback {
                 }
 
                 Permissions.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS -> {
-                    if (!powerManager.isIgnoringBatteryOptimizations(appCtx.packageName)) {
+                    if (!powerManager.isIgnoringBatteryOptimizations(App.instance.packageName)) {
                         deniedPermissionList.add(permission)
                     }
                 }
 
                 else -> {
                     if (
-                        ContextCompat.checkSelfPermission(appCtx, permission)
+                        ContextCompat.checkSelfPermission(App.instance, permission)
                         != PackageManager.PERMISSION_GRANTED
                     ) {
                         deniedPermissionList.add(permission)
@@ -154,14 +154,14 @@ internal class Request : OnRequestPermissionsResultCallback {
     }
 
     private fun toSetting() {
-        appCtx.startActivity<PermissionActivity> {
+        App.instance.startActivity<PermissionActivity> {
             putExtra(PermissionActivity.KEY_RATIONALE, rationale)
             putExtra(PermissionActivity.KEY_INPUT_REQUEST_TYPE, TYPE_REQUEST_SETTING)
         }
     }
 
     private fun toManageFileSetting(deniedPermissions: Array<String>) {
-        appCtx.startActivity<PermissionActivity> {
+        App.instance.startActivity<PermissionActivity> {
             putExtra(PermissionActivity.KEY_RATIONALE, rationale)
             putExtra(PermissionActivity.KEY_INPUT_REQUEST_TYPE, TYPE_MANAGE_ALL_FILES_ACCESS)
             putExtra(PermissionActivity.KEY_INPUT_PERMISSIONS_CODE, requestCode)
@@ -170,7 +170,7 @@ internal class Request : OnRequestPermissionsResultCallback {
     }
 
     private fun toNotificationSetting(deniedPermissions: Array<String>) {
-        appCtx.startActivity<PermissionActivity> {
+        App.instance.startActivity<PermissionActivity> {
             putExtra(PermissionActivity.KEY_RATIONALE, rationale)
             putExtra(PermissionActivity.KEY_INPUT_REQUEST_TYPE, TYPE_REQUEST_NOTIFICATIONS)
             putExtra(PermissionActivity.KEY_INPUT_PERMISSIONS_CODE, requestCode)
@@ -179,7 +179,7 @@ internal class Request : OnRequestPermissionsResultCallback {
     }
 
     private fun toIgnoreBatterySetting(deniedPermissions: Array<String>) {
-        appCtx.startActivity<PermissionActivity> {
+        App.instance.startActivity<PermissionActivity> {
             putExtra(PermissionActivity.KEY_RATIONALE, rationale)
             putExtra(
                 PermissionActivity.KEY_INPUT_REQUEST_TYPE,

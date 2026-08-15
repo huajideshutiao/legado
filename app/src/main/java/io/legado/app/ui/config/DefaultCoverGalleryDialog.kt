@@ -24,15 +24,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toDrawable
 import androidx.lifecycle.lifecycleScope
-import io.legado.app.help.i18n.androidAppString
-import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.App
 import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.model.BookCover
 import io.legado.app.model.CoverRatio
 import io.legado.app.model.DefaultCoverEntry
@@ -41,6 +40,7 @@ import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.rememberResponsiveColumns
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.compose.platform.rememberPainter
+import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
@@ -50,7 +50,6 @@ import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import splitties.init.appCtx
 import java.io.File
 
 /**
@@ -88,7 +87,7 @@ class DefaultCoverGalleryDialog() : BaseComposeDialogFragment() {
                 }
             }
             val safeBytes = bytes ?: run {
-                appCtx.toastOnUi(androidAppString("error_read_file"))
+                App.instance.toastOnUi(androidAppString("error_read_file"))
                 return@registerHandleFile
             }
             lifecycleScope.launch {
@@ -96,7 +95,7 @@ class DefaultCoverGalleryDialog() : BaseComposeDialogFragment() {
                     withContext(Dispatchers.IO) {
                         BookCover.addDefaultCover(prefKey, safeBytes, fileName)
                     }
-                }.onFailure { appCtx.toastOnUi(it.localizedMessage) }
+                }.onFailure { App.instance.toastOnUi(it.localizedMessage) }
                 dataVersion++
                 // 通知封面配置页刷新 summary (对照 app 端 CoverConfigFragment prefs 监听)
                 FlowBus.with(EventBus.DEFAULT_COVER_CHANGED).tryEmit(prefKey)

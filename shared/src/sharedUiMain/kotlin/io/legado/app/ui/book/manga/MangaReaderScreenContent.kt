@@ -1,12 +1,12 @@
 package io.legado.app.ui.book.manga
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.core.MutableTransitionState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -66,6 +66,7 @@ import io.legado.app.ui.compose.platform.PageTurnThrottle
 import io.legado.app.ui.compose.platform.VolumeKeyPageTurnHandler
 import io.legado.app.ui.compose.platform.platformNavigationBarPadding
 import io.legado.app.ui.compose.platform.platformStatusBarPadding
+import io.legado.app.ui.compose.platform.readerDirectionalKeys
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import kotlinx.coroutines.flow.first
@@ -100,15 +101,6 @@ import legado.shared.generated.resources.reload
 import legado.shared.generated.resources.review
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
-
-/** 漫画阅读页方向键 (对照小说阅读端 ReaderShortcuts.arrows; 显式 preemptive = true 捕获阶段拦截:
- * 避开 FocusTargetNode 焦点导航在冒泡阶段抢先消费方向键导致按键丢失——与小说端同因)。 */
-private val mangaPageKeys = listOf(
-    AppShortcut(Key.DirectionLeft, preemptive = true),
-    AppShortcut(Key.DirectionRight, preemptive = true),
-    AppShortcut(Key.DirectionUp, preemptive = true),
-    AppShortcut(Key.DirectionDown, preemptive = true),
-)
 
 /** 物理 Menu 键呼出菜单 (对照原版 ReadMangaActivity KEYCODE_MENU) */
 private val mangaMenuKey = listOf(AppShortcut(Key.Menu))
@@ -311,7 +303,7 @@ fun MangaReaderScreenContent(
     // - Esc 由根节点 handleBackKey → performBack 统一处理 (菜单打开时同样出栈, 与小说端一致);
     //   Backspace 不再绑定 (根节点刻意不映射 Backspace, 与小说端一致)
     AppShortcutHandler(
-        shortcuts = mangaPageKeys,
+        shortcuts = readerDirectionalKeys,
         enabled = { isTopEntry() && !menuVisible },
     ) { shortcut ->
         when {
@@ -329,8 +321,8 @@ fun MangaReaderScreenContent(
             !horizontal -> {
                 // 上下滚动模式: ←/→ = 章节切换
                 chapterTurnThrottle.tryTurn {
-                    if (shortcut.key == Key.DirectionLeft) onPrevChapter?.invoke()
-                    else onNextChapter?.invoke()
+                    if (shortcut.key == Key.DirectionLeft) onPrevChapter()
+                    else onNextChapter()
                 }
             }
 
@@ -348,8 +340,8 @@ fun MangaReaderScreenContent(
             else -> {
                 // 左右翻页模式: ↑/↓ = 章节切换
                 chapterTurnThrottle.tryTurn {
-                    if (shortcut.key == Key.DirectionUp) onPrevChapter?.invoke()
-                    else onNextChapter?.invoke()
+                    if (shortcut.key == Key.DirectionUp) onPrevChapter()
+                    else onNextChapter()
                 }
             }
         }

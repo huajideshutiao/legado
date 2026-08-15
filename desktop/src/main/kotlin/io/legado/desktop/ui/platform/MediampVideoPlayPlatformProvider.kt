@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.Button
-import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
@@ -41,11 +40,10 @@ import io.legado.app.ui.book.video.VideoGestureController
 import io.legado.app.ui.book.video.VideoGestureFeedbackText
 import io.legado.app.ui.book.video.VideoGestureOverlay
 import io.legado.app.ui.book.video.VideoLockToggle
-import io.legado.app.ui.book.video.VideoPlaybackPoller
 import io.legado.app.ui.book.video.VideoPlayPlatformProvider
 import io.legado.app.ui.book.video.VideoPlayScreenModel
+import io.legado.app.ui.book.video.VideoPlaybackPoller
 import io.legado.app.ui.book.video.VideoPlayerController
-import io.legado.app.ui.book.video.toDurationTime
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.desktop.audio.DesktopScreenBrightness
 import io.legado.desktop.audio.DesktopSystemVolume
@@ -61,8 +59,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.openani.mediamp.ExperimentalMediampApi
+import org.openani.mediamp.MediaStatus
 import org.openani.mediamp.MediampPlayer
-import org.openani.mediamp.PlaybackState
 import org.openani.mediamp.compose.MediampPlayerSurface
 import org.openani.mediamp.features.AudioLevelController
 import org.openani.mediamp.features.Buffering
@@ -70,7 +68,6 @@ import org.openani.mediamp.features.PlaybackSpeed
 import org.openani.mediamp.source.UriMediaData
 import org.openani.mediamp.togglePause
 import kotlin.concurrent.Volatile
-import kotlin.math.abs
 
 /**
  * desktop 端 [VideoPlayPlatformProvider] 实现: open-ani/mediamp (mediamp-mpv 后端)。
@@ -87,13 +84,14 @@ import kotlin.math.abs
  *   临时目录加载, 无需用户安装 mpv, 无探测/下载/进程管理代码。
  *   (启动期已由 Main.kt 后台预解包, 避免首播时同步解包 20MB+ DLL 硬卡顿)
  * - **防盗链**: [UriMediaData] 原生携带 headers (User-Agent/Referer/http-header-fields)。
- * - **状态**: playbackState (READY/PLAYING/PAUSED/PAUSED_BUFFERING/ERROR/FINISHED)
+ * - **状态**: PlayerState v2 (mediaStatus×playWhenReady×isBuffering, 替代废弃的 PlaybackState)
  *   + currentPositionMillis + mediaProperties.durationMillis 驱动控制层。
  * - **交互** (对标 app 端 VideoGestureHandler): 鼠标单击切控制层 / 双击播放暂停 /
  *   长按 2x 倍速 (松手恢复) / 横滑进度 (松手 seek) / 左半竖滑亮度 (WMI 系统亮度) /
  *   右半竖滑音量 (WASAPI 系统音量) (shared [VideoGestureController]); 键盘统一由共享
- *   VideoPlayerScreenContent 根节点的 handleMediaKeys 捕获 (Space 播放/暂停, ←/→=seek ∓10s,
- *   长按 →=2x 倍速, ↑/↓=上/下一章), 本类不再挂独立键盘处理器。
+ *   VideoPlayRoute 的 AppShortcutHandler 快捷键栈分发 (Space 播放/暂停, ←/→=seek ∓10s,
+ *   长按 →=2x 倍速, ↑/↓=上/下一章; 桌面 Window 层无条件收键, 不依赖焦点),
+ *   本类不再挂独立键盘处理器。
  *
  * # 生命周期
  *
@@ -166,7 +164,7 @@ class MediampVideoPlayPlatformProvider(
  *
  * - playPause → togglePause; seekTo/skip 直调; setSpeed → features[PlaybackSpeed]
  * - positionMs/durationMs 读 mediamp StateFlow 最新值
- * - 播完 (FINISHED) → onPlaybackEnded; 播放错误 (ERROR/异常) → onError (UI 占位)
+ * - 播完 (MediaStatus.Ended) → onPlaybackEnded; 播放错误 (MediaStatus.Error/异常) → onError (UI 占位)
  * - startPlayback: setMediaData(UriMediaData(url, headers)) 后 resume + seek 恢复进度
  */
 class MediampVideoPlayerController(
@@ -193,20 +191,20 @@ class MediampVideoPlayerController(
     @Volatile
     var onError: ((String) -> Unit)? = null
 
-    /** 缓冲中 (playbackState == PAUSED_BUFFERING) */
+    /** 缓冲中 (v2: PlayerState.isBuffering, 数据未就绪无法前进) */
     val isBuffering: Boolean
-        get() = player.playbackState.value == PlaybackState.PAUSED_BUFFERING
+        get() = player.state.value.isBuffering
 
-    /** 播放中 (playbackState == PLAYING) */
+    /** 播放中 (v2: PlayerState.isPlaying, 时钟实际在前进) */
     val isPlaying: Boolean
-        get() = player.playbackState.value == PlaybackState.PLAYING
+        get() = player.state.value.isPlaying
 
     init {
         scope.launch {
-            player.playbackState.collect { state ->
-                when (state) {
-                    PlaybackState.FINISHED -> onPlaybackEnded()
-                    PlaybackState.ERROR -> onError?.invoke("播放失败")
+            player.state.collect { state ->
+                when (state.mediaStatus) {
+                    MediaStatus.Ended -> onPlaybackEnded()
+                    is MediaStatus.Error -> onError?.invoke("播放失败")
                     else -> Unit
                 }
             }
@@ -308,12 +306,12 @@ private fun MediampRender(
     var playError by remember { mutableStateOf<String?>(null) }
     var retryKey by remember { mutableIntStateOf(0) }
 
-    // 播放状态订阅 (mediamp StateFlow, 驱动播放态/缓冲圈/错误)
-    val playbackState by controller.player.playbackState.collectAsState()
-    val isPlaying = playbackState == PlaybackState.PLAYING
-    val isBuffering = playbackState == PlaybackState.PAUSED_BUFFERING
-    // 缓冲进度 (mpv cache-buffering-state, 0-100): <100 表示播放器在等数据。mediamp 在
-    // loadfile 后乐观置 PLAYING, 起播首帧前的网络缓冲抓不到 PAUSED_BUFFERING, 靠它兜底
+    // 播放状态订阅 (mediamp v2 PlayerState, 驱动播放态/缓冲圈/错误)
+    val playerState by controller.player.state.collectAsState()
+    val isPlaying = playerState.isPlaying
+    val isBuffering = playerState.isBuffering
+    // 缓冲进度 (mpv cache-buffering-state, 0-100): <100 表示播放器在等数据。起播首帧前的
+    // 网络缓冲窗口里 isBuffering 可能尚未置位, 靠它兜底
     val bufferingFeature = controller.player.features[Buffering.Key]
     val bufferedPercent by bufferingFeature
         ?.bufferedPercentage
@@ -337,8 +335,8 @@ private fun MediampRender(
     }
 
     // 播放中进入 ERROR 状态 (非显式错误回调) → 错误占位
-    LaunchedEffect(playbackState) {
-        if (playbackState == PlaybackState.ERROR && playError == null) {
+    LaunchedEffect(playerState) {
+        if (playerState.mediaStatus is MediaStatus.Error && playError == null) {
             playError = "播放失败"
         }
     }
@@ -360,7 +358,8 @@ private fun MediampRender(
             // 回显到共享 UiState (缓冲圈/自动隐藏依赖)
             screenModel.onPlayerState(
                 isPlaying = isPlaying,
-                playWhenReady = isPlaying || isBuffering,
+                // v2 直接暴露用户意图轴 (v1 需用 PLAYING||PAUSED_BUFFERING 反推)
+                playWhenReady = playerState.playWhenReady,
                 playbackState = if (isBuffering) {
                     PlatformPlayer.STATE_BUFFERING
                 } else {
@@ -372,12 +371,14 @@ private fun MediampRender(
 
     val error = uiState.error
     val showLoading = error == null && playError == null &&
-        // 章节内容加载中 或 播放器起播前 (引擎初始化 CREATED 态, 首次加载转圈)
-        (uiState.loading || (url != null && playbackState == PlaybackState.CREATED))
+        // 章节内容加载中 或 播放器起播前 (引擎初始化 Idle / 正在打开 Opening, 首次加载转圈)
+        (uiState.loading || (url != null &&
+            (playerState.mediaStatus == MediaStatus.Idle ||
+                playerState.mediaStatus == MediaStatus.Opening)))
     // 缓冲圈: 播放器在等数据 (cache-buffering-state < 100, 覆盖"链接就绪→首帧"的起播缓冲窗口)
-    // 或 paused-for-cache (PAUSED_BUFFERING, 播放中卡顿); 用户暂停/结束/错误态不叠
+    // 或 paused-for-cache (Ready + isBuffering, 播放中卡顿); 用户暂停/结束/错误态不叠
     val showBuffering = error == null && !showLoading && playError == null &&
-        (playbackState == PlaybackState.PLAYING || playbackState == PlaybackState.PAUSED_BUFFERING) &&
+        playerState.mediaStatus == MediaStatus.Ready &&
         (bufferedPercent < 100 || isBuffering)
 
     // 手势反馈文字 (键盘长按倍速与鼠标手势共用 ScreenModel 级 flow, null 时隐藏)
@@ -419,8 +420,8 @@ private fun MediampRender(
             onGestureText = screenModel::onGestureText,
         )
     }
-    // 键盘焦点: 进屏即抢焦点 (键盘事件统一由共享 VideoPlayerScreenContent 根节点的
-    // handleMediaKeys 捕获处理, 本层不再挂独立键盘处理器)
+    // 进屏即抢焦点 (键盘事件统一由共享快捷键栈在 Window 层无条件分发, 不依赖本焦点;
+    // 保留抢焦仅维持原有焦点导航观感, 本层不挂独立键盘处理器)
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 

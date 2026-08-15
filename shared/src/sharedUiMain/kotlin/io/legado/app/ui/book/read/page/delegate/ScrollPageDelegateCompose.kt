@@ -190,7 +190,7 @@ class ScrollPageDelegateCompose(
             viewModel.updateScrollOffset(0)
             return true
         }
-        val h = cur.height.toFloat()
+        val h = cur.height
         // 页高为 0 (空章空标题页/配置异常时的占位页): 不折算, 否则 offset < -h 恒成立且
         // offset += 0 不推进, 一次手势会连翻几十页; 同时丢弃增量不累积 (页高 0 期间无内容
         // 可滚, 累积会在页高恢复后折算成跳变/连翻)
@@ -272,7 +272,7 @@ class ScrollPageDelegateCompose(
     fun scrollByAnimated(deltaPx: Float, animDurationMs: Int = 200): Boolean {
         if (deltaPx == 0f) return true
         abortAnim()
-        val h = viewModel.curTextPage.value?.height?.toFloat() ?: return false
+        val h = viewModel.curTextPage.value?.height ?: return false
         // 页内可滚量 (offset 范围 (-h, 0]): 向下滚到页底 / 向上滚到页顶
         val remaining = if (deltaPx < 0f) (-h - _currentOffset) else -_currentOffset
         val inPage = if (deltaPx < 0f) maxOf(deltaPx, remaining) else minOf(deltaPx, remaining)

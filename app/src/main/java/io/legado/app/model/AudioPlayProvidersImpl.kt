@@ -1,6 +1,7 @@
 package io.legado.app.model
 
 import android.content.Intent
+import io.legado.app.App
 import io.legado.app.constant.IntentAction
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
@@ -9,7 +10,6 @@ import io.legado.app.service.AudioPlayService
 import io.legado.app.utils.startService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import splitties.init.appCtx
 
 /**
  * AudioPlay 平台 provider 的 Android 实现。
@@ -76,7 +76,7 @@ object AudioPlayProvidersImpl : AudioPlayCommander, AudioPlayBookBridge {
         extras: Intent.() -> Unit = {}
     ) {
         if (requireRunning && !AudioPlayService.isRun) return
-        appCtx.startService<AudioPlayService> {
+        App.instance.startService<AudioPlayService> {
             this.action = action
             extras()
         }

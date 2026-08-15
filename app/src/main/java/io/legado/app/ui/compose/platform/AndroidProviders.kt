@@ -2,6 +2,7 @@ package io.legado.app.ui.compose.platform
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import io.legado.app.App
 import io.legado.app.constant.EventBus
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ThemeConfig
@@ -15,7 +16,6 @@ import io.legado.app.utils.postEvent
 import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.putPrefInt
 import io.legado.app.utils.putPrefString
-import splitties.init.appCtx
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -56,7 +56,7 @@ class AndroidThemeStoreProvider : ThemeStoreProvider {
             backgroundColor = "#${bg.toArgb().hexString}",
             bottomBackground = "#${bbg.toArgb().hexString}",
         )
-        ThemeConfig.applyConfig(appCtx, config)
+        ThemeConfig.applyConfig(App.instance, config)
     }
 }
 
@@ -89,20 +89,20 @@ class AndroidEventBusProvider : EventBusProvider {
  */
 class AndroidPreferenceStoreProvider : PreferenceStoreProvider {
     override fun getBoolean(key: String, defValue: Boolean): Boolean =
-        appCtx.getPrefBoolean(key, defValue)
+        App.instance.getPrefBoolean(key, defValue)
 
     override fun putBoolean(key: String, value: Boolean) =
-        appCtx.putPrefBoolean(key, value)
+        App.instance.putPrefBoolean(key, value)
 
     override fun getInt(key: String, defValue: Int): Int =
-        appCtx.getPrefInt(key, defValue)
+        App.instance.getPrefInt(key, defValue)
 
     override fun putInt(key: String, value: Int) =
-        appCtx.putPrefInt(key, value)
+        App.instance.putPrefInt(key, value)
 
     override fun getString(key: String, defValue: String?): String? =
-        appCtx.getPrefString(key, defValue)
+        App.instance.getPrefString(key, defValue)
 
     override fun putString(key: String, value: String?) =
-        appCtx.putPrefString(key, value)
+        App.instance.putPrefString(key, value)
 }

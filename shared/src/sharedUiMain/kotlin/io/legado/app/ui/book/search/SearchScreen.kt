@@ -4,8 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -48,8 +46,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -59,8 +55,6 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -90,11 +84,9 @@ import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.FastScrollLazyVerticalGrid
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.component.rememberResponsiveColumns
-import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberNavigationBarPaddingValues
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.ColorUtils
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -688,9 +680,9 @@ private fun SearchOptionsRow(
 }
 
 /**
- * 搜索选项 chip: 复刻书籍详情分类按钮 (KindChip) 的 fillet 胶囊样式
- * (btn_bg 填充 + arco_fill_3 按压 + 4dp inset + 12×8 内边距 + secondaryText 14sp)。
- * 标题加粗, 选中项全亮, 未选中半透明 (对齐原版 setUpExploreOptions 的 alpha 语义)。
+ * 搜索选项 chip: 收拢到共享 [AppFilletTextButton] (对应原版 setUpExploreOptions 的
+ * item_fillet_text + selector_fillet_btn_bg)。标题加粗+0.8 透明, 选中项全亮, 未选中半透明
+ * (alpha 作用于整颗 chip 含背景, 对齐原版 setUpExploreOptions 语义)。
  */
 @Composable
 private fun SearchOptionChip(
@@ -699,35 +691,12 @@ private fun SearchOptionChip(
     selected: Boolean = true,
     onClick: () -> Unit,
 ) {
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val bg = if (pressed) rememberColor("arco_fill_3") else rememberColor("btn_bg")
-    Box(
-        Modifier
-            // 对齐原版 setUpExploreOptions: alpha 作用于整颗 chip (含背景)
-            .alpha(if (bold) 0.8f else if (selected) 1f else 0.5f)
-            .padding(4.dp) // selector inset
-            .clip(DesignTokens.shapeDefault)
-            .background(bg)
-            .combinedClickable(
-                interactionSource = interaction,
-                indication = null,
-                onClick = onClick,
-            )
-            // 原 XML padding 16×12 自视图外缘计(含 4dp inset)，此处已扣除 inset
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = text,
-            color = AppTheme.colors.secondaryText,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            fontWeight = if (bold) FontWeight.Bold else null,
-            // 显式 style: 不继承 M3 bodyLarge 的 24sp lineHeight, 保持原 TextView 自然行高
-            style = TextStyle(fontSize = 14.sp),
-        )
-    }
+    AppFilletTextButton(
+        text = text,
+        alpha = if (bold) 0.8f else if (selected) 1f else 0.5f,
+        bold = bold,
+        onClick = onClick,
+    )
 }
 
 @Composable
@@ -1038,21 +1007,14 @@ private fun StartStopFab(
 ) {
     if (!visible) return
     val colors = AppTheme.colors
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val bg = if (pressed) {
-        Color(ColorUtils.darkenColor(colors.accent.toArgb()))
-    } else {
-        colors.accent
-    }
     val tint = if (ColorUtils.isColorLight(colors.accent.toArgb())) Color.Black else Color.White
     Box(
         modifier
             .padding(16.dp)
             .shadow(6.dp, CircleShape)
             .size(32.dp)
-            .background(bg, CircleShape)
-            .clickable(interactionSource = interaction, indication = null) { onClick() },
+            .background(colors.accent, CircleShape)
+            .clickable { onClick() },
         contentAlignment = Alignment.Center,
     ) {
         Icon(

@@ -4,9 +4,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.core.net.toUri
+import io.legado.app.App
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.utils.toastOnUi
-import splitties.init.appCtx
 
 @Suppress("unused")
 object IntentHelp {
@@ -19,7 +19,7 @@ object IntentHelp {
         val intent = Intent(Intent.ACTION_VIEW)
         intent.data = uri
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        if (intent.resolveActivity(appCtx.packageManager) == null) {
+        if (intent.resolveActivity(App.instance.packageManager) == null) {
             return Intent.createChooser(intent, "请选择浏览器")
         }
         return intent
@@ -31,9 +31,9 @@ object IntentHelp {
             val intent = Intent()
             intent.action = "com.android.settings.TTS_SETTINGS"
             intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            appCtx.startActivity(intent)
+            App.instance.startActivity(intent)
         }.onFailure {
-            appCtx.toastOnUi(androidAppString("tip_cannot_jump_setting_page"))
+            App.instance.toastOnUi(androidAppString("tip_cannot_jump_setting_page"))
         }
     }
 

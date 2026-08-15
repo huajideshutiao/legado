@@ -7,6 +7,7 @@ import android.os.Debug
 import android.os.Looper
 import android.webkit.WebSettings
 import androidx.core.net.toUri
+import io.legado.app.App
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.appInfo
@@ -23,7 +24,6 @@ import io.legado.app.utils.getFile
 import io.legado.app.utils.longToastOnUiLegacy
 import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.writeText
-import splitties.init.appCtx
 import java.io.PrintWriter
 import java.io.StringWriter
 import java.text.SimpleDateFormat
@@ -100,11 +100,11 @@ class CrashHandler(val context: Context) : Thread.UncaughtExceptionHandler {
                 map["SDK_INT"] = Build.VERSION.SDK_INT.toString()
                 map["RELEASE"] = Build.VERSION.RELEASE
                 map["WebViewUserAgent"] = try {
-                    WebSettings.getDefaultUserAgent(appCtx)
+                    WebSettings.getDefaultUserAgent(App.instance)
                 } catch (e: Throwable) {
                     e.toString()
                 }
-                map["packageName"] = appCtx.packageName
+                map["packageName"] = App.instance.packageName
                 map["heapSize"] = Runtime.getRuntime().maxMemory().toString()
                 //获取app版本信息
                 AppConst.appInfo.let {
@@ -155,7 +155,7 @@ class CrashHandler(val context: Context) : Thread.UncaughtExceptionHandler {
             } catch (_: Exception) {
             }
             kotlin.runCatching {
-                appCtx.externalCacheDir?.let { rootFile ->
+                App.instance.externalCacheDir?.let { rootFile ->
                     val exceedTimeMillis = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(7)
                     rootFile.getFile("crash").listFiles()?.forEach {
                         if (it.lastModified() < exceedTimeMillis) {
@@ -172,7 +172,7 @@ class CrashHandler(val context: Context) : Thread.UncaughtExceptionHandler {
          * 进行堆转储
          */
         fun doHeapDump(manually: Boolean = false) {
-            val heapDir = appCtx
+            val heapDir = App.instance
                 .externalCache
                 .getFile("heapDump")
             heapDir.createFolderReplace()

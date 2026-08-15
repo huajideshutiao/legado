@@ -2,6 +2,7 @@ package io.legado.app.ui.book.read.page.provider
 
 import android.graphics.RectF
 import androidx.core.os.postDelayed
+import io.legado.app.App
 import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -16,7 +17,6 @@ import io.legado.app.utils.buildMainHandler
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.isPad
 import kotlinx.coroutines.CoroutineScope
-import splitties.init.appCtx
 
 /**
  * 解析内容生成章节和页面
@@ -201,7 +201,7 @@ object ChapterProvider {
             }
 
             "3" -> {
-                doublePage = (viewWidth > viewHeight || appCtx.isPad)
+                doublePage = (viewWidth > viewHeight || App.instance.isPad)
                         && ReadBook.pageAnim() != 3
             }
         }

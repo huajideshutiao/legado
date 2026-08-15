@@ -9,6 +9,7 @@ import android.os.ParcelFileDescriptor
 import androidx.appcompat.app.AppCompatActivity
 import androidx.documentfile.provider.DocumentFile
 import androidx.fragment.app.Fragment
+import io.legado.app.App
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.i18n.androidAppString
@@ -18,7 +19,6 @@ import okhttp3.MediaType
 import okhttp3.RequestBody
 import okio.BufferedSink
 import okio.source
-import splitties.init.appCtx
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -298,12 +298,12 @@ fun Uri.toRequestBody(contentType: MediaType? = null): RequestBody {
         override fun contentType() = contentType
 
         override fun contentLength(): Long {
-            val length = uri.inputStream(appCtx).getOrThrow().available().toLong()
+            val length = uri.inputStream(App.instance).getOrThrow().available().toLong()
             return if (length > 0) length else -1
         }
 
         override fun writeTo(sink: BufferedSink) {
-            uri.inputStream(appCtx).getOrThrow().source().use { source ->
+            uri.inputStream(App.instance).getOrThrow().source().use { source ->
                 sink.writeAll(source)
             }
         }
@@ -311,7 +311,7 @@ fun Uri.toRequestBody(contentType: MediaType? = null): RequestBody {
 }
 
 fun Uri.canRead(): Boolean {
-    return appCtx.checkSelfUriPermission(
+    return App.instance.checkSelfUriPermission(
         this,
         Intent.FLAG_GRANT_READ_URI_PERMISSION
     ) == PackageManager.PERMISSION_GRANTED

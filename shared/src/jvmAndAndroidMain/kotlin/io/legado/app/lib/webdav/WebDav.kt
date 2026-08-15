@@ -11,6 +11,7 @@ import io.legado.app.model.analyzeRule.CustomUrl
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.findNS
 import io.legado.app.utils.findNSPrefix
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -125,7 +126,7 @@ actual open class WebDav actual constructor(
     /**
      * 获取当前url文件信息
      */
-    @Throws(WebDavException::class)
+    @Throws(WebDavException::class, CancellationException::class)
     actual suspend fun getWebDavFile(): WebDavFile? {
         return propFindResponse(depth = 0)?.let {
             parseBody(it).firstOrNull()
@@ -136,7 +137,7 @@ actual open class WebDav actual constructor(
      * 列出当前路径下的文件
      * @return 文件列表
      */
-    @Throws(WebDavException::class)
+    @Throws(WebDavException::class, CancellationException::class)
     actual suspend fun listFiles(): List<WebDavFile> {
         propFindResponse()?.let { body ->
             val normalizedPath = path.removeSuffix("/")
@@ -304,7 +305,7 @@ actual open class WebDav actual constructor(
      * @param savedPath       本地的完整路径，包括最后的文件名
      * @param replaceExisting 是否替换本地的同名文件
      */
-    @Throws(WebDavException::class)
+    @Throws(WebDavException::class, CancellationException::class)
     actual suspend fun downloadTo(savedPath: String, replaceExisting: Boolean) {
         val file = File(savedPath)
         if (file.exists() && !replaceExisting) {
@@ -320,7 +321,7 @@ actual open class WebDav actual constructor(
     /**
      * 下载文件,返回ByteArray
      */
-    @Throws(WebDavException::class)
+    @Throws(WebDavException::class, CancellationException::class)
     actual suspend fun download(): ByteArray {
         return downloadInputStream().use {
             it.readBytes()
@@ -330,7 +331,7 @@ actual open class WebDav actual constructor(
     /**
      * 上传文件
      */
-    @Throws(WebDavException::class)
+    @Throws(WebDavException::class, CancellationException::class)
     actual suspend fun upload(localPath: String, contentType: String) {
         upload(File(localPath), contentType)
     }
@@ -360,7 +361,7 @@ actual open class WebDav actual constructor(
         }
     }
 
-    @Throws(WebDavException::class)
+    @Throws(WebDavException::class, CancellationException::class)
     actual suspend fun upload(byteArray: ByteArray, contentType: String) {
         // 务必注意RequestBody不要嵌套，不然上传时内容可能会被追加多余的文件信息
         kotlin.runCatching {
@@ -381,7 +382,7 @@ actual open class WebDav actual constructor(
         }
     }
 
-    @Throws(WebDavException::class)
+    @Throws(WebDavException::class, CancellationException::class)
     actual suspend fun downloadInputStream(): InputStream {
         val url = httpUrl ?: throw WebDavException("WebDav下载出错\nurl为空")
         val byteStream = webDavClient.newCallResponse {

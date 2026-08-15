@@ -3,6 +3,7 @@ package io.legado.app.help.storage
 import android.content.Context
 import android.net.Uri
 import androidx.core.net.toUri
+import io.legado.app.App
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
@@ -22,7 +23,6 @@ import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import splitties.init.appCtx
 import java.io.File
 import java.io.FileInputStream
 import java.util.concurrent.TimeUnit
@@ -131,7 +131,7 @@ object AndroidBackupRestoreHook : BackupRestoreHook {
             if (it.contains(File.separator)) {
                 File(it)
             } else {
-                appCtx.externalFiles.getFile("bg", it)
+                App.instance.externalFiles.getFile("bg", it)
             }
         }.let {
             AppWebDav.upBgs(it.toTypedArray())

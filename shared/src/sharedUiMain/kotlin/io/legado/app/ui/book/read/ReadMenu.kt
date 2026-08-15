@@ -63,7 +63,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -668,7 +667,6 @@ private fun ReadMenuBottom(state: ReadMenuState) {
     // (对照原版 upColorConfig 的 else 分支, 2026-08-06 的图片取色增强已移除)
     val bg = if (state.immersive) Color(state.bgColor) else colors.bottomBackground
     val text = if (state.immersive) Color(state.textColor) else colors.primaryText
-    val pressedBg = Color(ColorUtils.darkenColor(bg.toArgb()))
     Column(Modifier.fillMaxWidth()) {
         // 悬浮按钮行(原 ll_floating_button，透明底，空白处点击穿透到 bg 收起菜单)
         Row(
@@ -680,7 +678,7 @@ private fun ReadMenuBottom(state: ReadMenuState) {
             ReadMenuFab(
                 iconKey = "ic_search",
                 contentDescription = stringResource(Res.string.search_content),
-                bg = bg, pressedBg = pressedBg, tint = text,
+                bg = bg, tint = text,
             ) { state.clickSearch() }
             Spacer(Modifier.weight(1f))
             ReadMenuFab(
@@ -688,19 +686,19 @@ private fun ReadMenuBottom(state: ReadMenuState) {
                 contentDescription = rememberString(
                     if (state.autoPage) "auto_next_page_stop" else "auto_next_page"
                 ),
-                bg = bg, pressedBg = pressedBg, tint = text,
+                bg = bg, tint = text,
             ) { state.clickAutoPage() }
             Spacer(Modifier.weight(1f))
             ReadMenuFab(
                 iconKey = "ic_find_replace",
                 contentDescription = stringResource(Res.string.replace_rule_title),
-                bg = bg, pressedBg = pressedBg, tint = text,
+                bg = bg, tint = text,
             ) { state.clickReplaceRule() }
             Spacer(Modifier.weight(1f))
             ReadMenuFab(
                 iconKey = if (state.isNightTheme) "ic_daytime" else "ic_brightness",
                 contentDescription = stringResource(Res.string.dark_theme),
-                bg = bg, pressedBg = pressedBg, tint = text,
+                bg = bg, tint = text,
             ) { state.clickNightTheme() }
         }
         // 底部设置栏(原 ll_bottom_bg)；4dp 阴影向上: 默认 shadow 光源在上方,
@@ -812,28 +810,25 @@ private fun ChapterNavText(
     )
 }
 
-/** 复刻 mini FloatingActionButton：40dp 圆、底栏色底、按压加深(原 Selector pressed) */
+/** 复刻 mini FloatingActionButton：40dp 圆、底栏色底，按压用 Compose 默认指示 */
 @Composable
 fun ReadMenuFab(
     iconKey: String,
     contentDescription: String?,
     bg: Color,
-    pressedBg: Color,
     tint: Color,
     modifier: Modifier = Modifier,
     iconModifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
     Box(
         modifier
             .padding(16.dp)
             .size(40.dp)
             .shadow(6.dp, CircleShape)
             .clip(CircleShape)
-            .background(if (pressed) pressedBg else bg)
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
+            .background(bg)
+            .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(

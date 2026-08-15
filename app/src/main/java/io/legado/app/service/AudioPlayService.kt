@@ -42,6 +42,7 @@ import io.legado.app.model.audio.AudioPlayControllerListener
 import io.legado.app.model.audio.AudioPlayManager
 import io.legado.app.model.audio.AudioPlayManagerListener
 import io.legado.app.model.audio.ExoPlayerAudioPlayController
+import io.legado.app.notificationManager
 import io.legado.app.receiver.MediaButtonReceiver
 import io.legado.app.ui.main.MainActivity
 import io.legado.app.utils.activityPendingIntent
@@ -51,7 +52,6 @@ import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.servicePendingIntent
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.Main
-import splitties.systemservices.notificationManager
 
 /**
  * 音频播放服务

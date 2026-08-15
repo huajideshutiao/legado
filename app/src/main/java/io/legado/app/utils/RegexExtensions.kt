@@ -1,7 +1,7 @@
 package io.legado.app.utils
 
+import io.legado.app.App
 import io.legado.app.help.CrashHandler
-import splitties.init.appCtx
 
 /**
  * 带有超时检测的正则替换 — app 端薄壳。
@@ -29,7 +29,7 @@ fun registerAndroidRegexErrorHandler() {
 
 private object AndroidRegexErrorHandler : RegexErrorHandler {
     override fun onTimeoutToast(message: String) {
-        appCtx.longToastOnUi(message)
+        App.instance.longToastOnUi(message)
     }
 
     override fun saveCrashInfo(exception: Throwable) {
@@ -37,6 +37,6 @@ private object AndroidRegexErrorHandler : RegexErrorHandler {
     }
 
     override fun restartApp() {
-        appCtx.restart()
+        App.instance.restart()
     }
 }

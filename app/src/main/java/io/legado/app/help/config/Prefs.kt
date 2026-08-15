@@ -1,5 +1,6 @@
 package io.legado.app.help.config
 
+import io.legado.app.App
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.getPrefLong
@@ -9,7 +10,6 @@ import io.legado.app.utils.putPrefInt
 import io.legado.app.utils.putPrefLong
 import io.legado.app.utils.putPrefString
 import io.legado.app.utils.removePref
-import splitties.init.appCtx
 import kotlin.properties.ReadWriteProperty
 import kotlin.reflect.KProperty
 
@@ -22,36 +22,41 @@ internal class PrefDelegate<T>(
 }
 
 internal fun boolPref(key: String, default: Boolean = false) = PrefDelegate(
-    { appCtx.getPrefBoolean(key, default) },
-    { appCtx.putPrefBoolean(key, it) },
+    { App.instance.getPrefBoolean(key, default) },
+    { App.instance.putPrefBoolean(key, it) },
 )
 
 internal fun intPref(key: String, default: Int = 0, range: IntRange? = null) = PrefDelegate(
     {
-        val v = appCtx.getPrefInt(key, default)
+        val v = App.instance.getPrefInt(key, default)
         if (range == null) v else v.coerceIn(range)
     },
-    { appCtx.putPrefInt(key, if (range == null) it else it.coerceIn(range)) },
+    { App.instance.putPrefInt(key, if (range == null) it else it.coerceIn(range)) },
 )
 
 internal fun longPref(key: String, default: Long = 0L) = PrefDelegate(
-    { appCtx.getPrefLong(key, default) },
-    { appCtx.putPrefLong(key, it) },
+    { App.instance.getPrefLong(key, default) },
+    { App.instance.putPrefLong(key, it) },
 )
 
 internal fun stringPref(key: String, default: String? = null) = PrefDelegate<String?>(
-    { appCtx.getPrefString(key, default) },
-    { appCtx.putPrefString(key, it) },
+    { App.instance.getPrefString(key, default) },
+    { App.instance.putPrefString(key, it) },
 )
 
 internal fun nonNullStringPref(key: String, default: String) = PrefDelegate(
-    { appCtx.getPrefString(key) ?: default },
-    { appCtx.putPrefString(key, it) },
+    { App.instance.getPrefString(key) ?: default },
+    { App.instance.putPrefString(key, it) },
 )
 
 internal fun stringPrefClearOnEmpty(key: String) = PrefDelegate<String?>(
-    { appCtx.getPrefString(key) },
-    { if (it.isNullOrEmpty()) appCtx.removePref(key) else appCtx.putPrefString(key, it) },
+    { App.instance.getPrefString(key) },
+    {
+        if (it.isNullOrEmpty()) App.instance.removePref(key) else App.instance.putPrefString(
+            key,
+            it
+        )
+    },
 )
 
 private val cachedReloaders = HashMap<String, () -> Unit>()
@@ -81,20 +86,20 @@ internal class CachedPref<T>(
 
 internal fun cachedBoolPref(key: String, default: Boolean = false) = CachedPref(
     key,
-    { appCtx.getPrefBoolean(key, default) },
-    { appCtx.putPrefBoolean(key, it) },
+    { App.instance.getPrefBoolean(key, default) },
+    { App.instance.putPrefBoolean(key, it) },
 )
 
 internal fun cachedIntPref(key: String, default: Int = 0) = CachedPref(
     key,
-    { appCtx.getPrefInt(key, default) },
-    { appCtx.putPrefInt(key, it) },
+    { App.instance.getPrefInt(key, default) },
+    { App.instance.putPrefInt(key, it) },
 )
 
 internal fun cachedStringPref(key: String, default: String? = null) = CachedPref(
     key,
-    { appCtx.getPrefString(key, default) },
-    { appCtx.putPrefString(key, it) },
+    { App.instance.getPrefString(key, default) },
+    { App.instance.putPrefString(key, it) },
 )
 
 internal fun <T> cachedPref(key: String, load: () -> T, store: (T) -> Unit) =

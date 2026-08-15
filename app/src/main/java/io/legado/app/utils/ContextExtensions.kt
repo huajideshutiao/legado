@@ -31,6 +31,8 @@ import androidx.annotation.DrawableRes
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.content.edit
+import io.legado.app.clipboardManager
+import io.legado.app.connectivityManager
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.authority
 import io.legado.app.data.entities.BaseBook
@@ -42,9 +44,7 @@ import io.legado.app.help.i18n.androidAppString
 import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.toReadRoute
-import splitties.systemservices.clipboardManager
-import splitties.systemservices.connectivityManager
-import splitties.systemservices.uiModeManager
+import io.legado.app.uiModeManager
 import java.io.File
 import kotlin.system.exitProcess
 

@@ -13,6 +13,7 @@ import android.graphics.drawable.NinePatchDrawable
 import androidx.annotation.Keep
 import androidx.core.graphics.drawable.toDrawable
 import androidx.core.graphics.toColorInt
+import io.legado.app.App
 import io.legado.app.R
 import io.legado.app.constant.PageAnim
 import io.legado.app.help.config.ReadBookConfig.Config
@@ -31,7 +32,6 @@ import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getCompatColor
 import io.legado.app.utils.getRepresentativeColor
 import io.legado.app.utils.printOnDebug
-import splitties.init.appCtx
 import java.io.File
 
 /**
@@ -387,10 +387,10 @@ object ReadBookConfig {
  */
 fun ReadStyleConfig.curBgDrawable(width: Int, height: Int): Drawable {
     if (width == 0 || height == 0) {
-        return appCtx.getCompatColor(R.color.background).toDrawable()
+        return App.instance.getCompatColor(R.color.background).toDrawable()
     }
     var bgDrawable: Drawable? = null
-    val resources = appCtx.resources
+    val resources = App.instance.resources
     try {
         bgDrawable = when (curBgType()) {
             0 -> curBgStr().toColorInt().toDrawable()
@@ -428,7 +428,7 @@ fun ReadStyleConfig.curBgDrawable(width: Int, height: Int): Drawable {
             else -> {
                 val path = curBgStr().let {
                     if (it.contains(File.separator)) it
-                    else FileUtils.getPath(appCtx.externalFiles, "bg", curBgStr())
+                    else FileUtils.getPath(App.instance.externalFiles, "bg", curBgStr())
                 }
                 val bitmap = BitmapUtils.decodeBitmap(path, width, height)
                 bitmap?.let {
@@ -448,5 +448,5 @@ fun ReadStyleConfig.curBgDrawable(width: Int, height: Int): Drawable {
     } catch (e: Exception) {
         e.printOnDebug()
     }
-    return bgDrawable ?: appCtx.getCompatColor(R.color.background).toDrawable()
+    return bgDrawable ?: App.instance.getCompatColor(R.color.background).toDrawable()
 }

@@ -12,14 +12,11 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -42,11 +39,9 @@ import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,9 +50,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -72,7 +64,6 @@ import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppMenuCheckbox
-import io.legado.app.ui.compose.platform.handleMediaKeys
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
@@ -82,7 +73,6 @@ import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.format
 import io.legado.app.utils.toDurationTime
-import kotlinx.coroutines.delay
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.audio_play
 import legado.shared.generated.resources.audio_play_wake_lock
@@ -118,8 +108,9 @@ enum class AudioPlaySidePanelKind { TOC, REVIEW }
  * - [titleBarTrailingSlot]: 标题栏尾部 (默认评论钮, 四端一致; 见 SharedAudioPlayScreenContent)
  * - [timerDialogSlot]/[speedDialogSlot]: 定时/倍速弹窗 (app: Popup; desktop: AlertDialog)
  *
- * 视觉参数 (图标/回显标签底色/控制排透明度/内边距/按压底) 已统一为 app 原版值,
- * 不再暴露平台参数 (原 desktop 半透明黑标签/1f 透明度/8dp 标题栏内边距等已移除)。
+ * 视觉参数 (图标/回显标签底色/控制排透明度/内边距) 已统一为 app 原版值,
+ * 不再暴露平台参数 (原 desktop 半透明黑标签/1f 透明度/8dp 标题栏内边距等已移除);
+ * 控制钮按压底用 Compose 默认指示 (不绘制 arco_fill_3 圆形底)。
  *
  * @param title 标题 (书名)
  * @param subTitle 副标题 (章节名)
@@ -207,21 +198,6 @@ fun AudioPlayScreenContent(
     onTapOutsideSidePanel: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
-    val keyScope = rememberCoroutineScope()
-    // 键盘事件焦点: onPreviewKeyEvent 需节点持有焦点才触发, 进入即取焦点
-    // (对照 desktop VideoPlayerScreen 焦点接线)。
-    // requestFocus 一次性请求在组合初期可能失败 (焦点系统未就绪/被导航抢占),
-    // 这里以 onFocusChanged 标志 + 循环重试兜底 (同 WindowTitleBar DWM 轮询先例),
-    // 避免"必须点一下界面才有键盘交互"。
-    val keyFocusRequester = remember { FocusRequester() }
-    var keyFocusHeld by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        repeat(30) {
-            if (keyFocusHeld) return@LaunchedEffect
-            runCatching { keyFocusRequester.requestFocus() }
-            delay(50)
-        }
-    }
     // 宽屏面板动画: 滑入位移 + 左侧挤压同步 (E-Ink 一律 snap 无动画, 项目惯例)
     val eInk = LocalEInk.current
     val panelSlideAnim: FiniteAnimationSpec<IntOffset> =
@@ -236,24 +212,9 @@ fun AudioPlayScreenContent(
     Box(
         modifier
             .fillMaxSize()
-            // 键盘快捷键: 消费共享 handleMediaKeys
-            // (Space=播放/暂停, ←/→=进度∓10s, ↑/↓=上/下一章, 长按→=2x 倍速松手恢复,
-            //  Esc/Backspace=返回)
-            .handleMediaKeys(
-                onTogglePlayPause = onTogglePlay,
-                onSeekDelta = { delta ->
-                    onSeek((progressMs + delta.toInt()).coerceIn(0, durationMs))
-                },
-                onPrev = { if (prevEnabled) onPrev() },
-                onNext = { if (nextEnabled) onNext() },
-                // 长按右方向键倍速 (2.0f), 松手恢复 (1.0f), 走共享倍速设置
-                onSpeedChange = onSetSpeed,
-                onBack = onBack,
-                scope = keyScope,
-            )
-            .focusRequester(keyFocusRequester)
-            .focusable()
-            .onFocusChanged { keyFocusHeld = it.isFocused },
+        // 键盘快捷键 (空格/←/→/↑/↓) 由 AudioPlayRoute 的 AppShortcutHandler 快捷键栈
+        // 统一分发 (桌面 Window / Android Activity 层无条件收键, 不依赖 Compose 焦点,
+        // 含 → 长短按: 短按 seek +10s / 长按 2x 倍速松手恢复), 本层不再挂键盘处理器
     ) {
         // 模糊封面背景 (平台 blurBgSlot 加载; null 时复用 coverSlot)
         val bgSlot = blurBgSlot ?: coverSlot
@@ -930,7 +891,7 @@ private fun PlayMenu(
     }
 }
 
-/** 46dp 圆钮: 按压态圆形底 (统一启用) + 白图标/禁用 25% 白 */
+/** 46dp 圆钮: Compose 默认按压指示 (ripple) + 白图标/禁用 25% 白 */
 @Composable
 private fun PlayMenuButton(
     iconKey: String,
@@ -939,20 +900,11 @@ private fun PlayMenuButton(
     iconPadding: Dp = 8.dp,
     onClick: () -> Unit,
 ) {
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val pressedBg = rememberColor("arco_fill_3")
     Box(
         Modifier
             .size(46.dp)
             .clip(CircleShape)
-            .then(
-                if (pressed) Modifier.background(pressedBg)
-                else Modifier,
-            )
             .clickable(
-                interactionSource = interaction,
-                indication = null,
                 enabled = enabled,
                 onClick = onClick,
             ),

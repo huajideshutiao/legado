@@ -62,8 +62,8 @@ import kotlin.math.roundToInt
  *   歌词用 [LrcViewShared] (复刻原版 LrcView), 取色用 [rememberLrcColors]
  *   (复刻原版 updateLrcColor → setColors + SeekBar tint)
  *
- * 视觉参数 (评论钮/图标/回显标签底色/透明度/内边距/按压底) 已统一为共享默认 (app 原版值),
- * 四端 provider 均为纯透传, 不再有平台覆盖。
+ * 视觉参数 (评论钮/图标/回显标签底色/透明度/内边距) 已统一为共享默认 (app 原版值),
+ * 四端 provider 均为纯透传, 不再有平台覆盖; 控制钮按压底用 Compose 默认指示。
  */
 @Composable
 fun SharedAudioPlayScreenContent(
@@ -169,13 +169,20 @@ private val CoverPlaceholderColor = Color(0xFF888888)
 private fun SharedAudioCoverSlot(coverUrl: String?, modifier: Modifier) {
     val loader = remember { BookImageLoaders.getOrNull() }
     // keep-previous: 不随 coverUrl 变化重置, 切歌瞬间旧图保留直到新图就绪
-    // (对照原版 Glide placeholder=当前旧图, 新图就绪后 Crossfade 交叉淡化替换)
+    // (对照原版 Glide placeholder=当前旧图, 新图就绪后 Crossfade 交叉淡化替换);
+    // 新图**加载失败**时不再保留旧图, 回落内置默认封面 (对齐原版 .error(newDefaultDrawable) 语义,
+    // 2026-08 修: 防"有旧图时切到无封面书"永远显示上一本书封面)。
     var bitmap by remember { mutableStateOf<ImageBitmap?>(null) }
     var showBuiltIn by remember { mutableStateOf(false) }
     // rememberUpdatedState: LaunchedEffect 内读到最新 coverUrl, 用于比对丢弃过期回调
     val currentUrl by rememberUpdatedState(coverUrl)
     LaunchedEffect(coverUrl, loader) {
-        if (loader == null) return@LaunchedEffect
+        if (loader == null) {
+            // 未注册 loader (ohos 无 Coil3): 直接内置默认封面, 不再停留灰色占位
+            bitmap = null
+            showBuiltIn = true
+            return@LaunchedEffect
+        }
         val bmp = loadAudioCover(loader, coverUrl)
         // 仅当本次请求仍是当前 URL 才落值 (防旧 URL 的异步回调覆盖新图;
         // 协程取消后一般到不了这里, 比对是双保险)
@@ -183,11 +190,11 @@ private fun SharedAudioCoverSlot(coverUrl: String?, modifier: Modifier) {
             if (bmp != null) {
                 bitmap = bmp
                 showBuiltIn = false
-            } else if (bitmap == null) {
-                // 无旧图且加载失败: 内置默认封面 (对照原版 newDefaultDrawable 的内置回落)
+            } else {
+                // 加载失败 (含默认图集为空): 回落内置默认封面 (原版 newDefaultDrawable 的内置回落)
+                bitmap = null
                 showBuiltIn = true
             }
-            // 有旧图且新图加载失败: 保留旧图 (原版 Glide placeholder 语义, 不闪占位)
         }
     }
     Box(
@@ -242,12 +249,18 @@ private suspend fun loadAudioCover(loader: BookImageLoader, coverUrl: String?): 
 @Composable
 private fun SharedAudioBlurBgSlot(coverUrl: String?, modifier: Modifier) {
     val loader = remember { BookImageLoaders.getOrNull() }
-    // keep-previous: 不随 coverUrl 变化重置, 切歌瞬间旧背景保留直到新图就绪
+    // keep-previous: 不随 coverUrl 变化重置, 切歌瞬间旧背景保留直到新图就绪;
+    // 新图加载失败时回落内置默认封面 (同前景 slot 语义, 2026-08 修)
     var bitmap by remember { mutableStateOf<ImageBitmap?>(null) }
     var showBuiltIn by remember { mutableStateOf(false) }
     val currentUrl by rememberUpdatedState(coverUrl)
     LaunchedEffect(coverUrl, loader) {
-        if (loader == null) return@LaunchedEffect
+        if (loader == null) {
+            // 未注册 loader (ohos 无 Coil3): 直接内置默认封面
+            bitmap = null
+            showBuiltIn = true
+            return@LaunchedEffect
+        }
         // 加载链对照原版 BookCover.loadBlur (与前景同 seed, 失败回落同一张默认图)
         val bmp = loadAudioCover(loader, coverUrl)
         // 仅当本次请求仍是当前 URL 才落值 (防旧 URL 回调覆盖新背景)
@@ -255,11 +268,11 @@ private fun SharedAudioBlurBgSlot(coverUrl: String?, modifier: Modifier) {
             if (bmp != null) {
                 bitmap = bmp
                 showBuiltIn = false
-            } else if (bitmap == null) {
-                // 无旧图且加载失败: 内置默认封面 (对照原版 loadBlur 的内置回落)
+            } else {
+                // 加载失败 (含默认图集为空): 回落内置默认封面 (原版 loadBlur 的内置回落)
+                bitmap = null
                 showBuiltIn = true
             }
-            // 有旧图且新图加载失败: 保留旧背景
         }
     }
     Box(modifier) {

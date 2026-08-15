@@ -122,6 +122,17 @@ fun AppTextField(
                 state.edit { replace(0, length, value) }
             }
         }
+        // 呈现变换实例稳定 (remember): BasicTextField 内部按 (state, codepointTransformation,
+        // outputTransformation) remember TransformedTextFieldState, 实例一变就重建 TextLayoutState
+        // 缓存 → 全文重变换+重布局。内联新建实例会让每次重组都全量重算 (无变换字段也中招);
+        // VisualTransformation.None (单例) 时传 null, 字段走无变换路径。
+        val outputTransformation = remember(visualTransformation) {
+            if (visualTransformation === VisualTransformation.None) {
+                null
+            } else {
+                visualTransformation.asOutputTransformation()
+            }
+        }
         BasicTextField(
             state = state,
             modifier = Modifier
@@ -146,7 +157,7 @@ fun AppTextField(
             } else {
                 TextFieldLineLimits.MultiLine(minLines, maxLines)
             },
-            outputTransformation = visualTransformation.asOutputTransformation(),
+            outputTransformation = outputTransformation,
             interactionSource = interactionSource,
             cursorBrush = SolidColor(colors.cursorColor(isError).value),
             decorator = TextFieldDecorator { innerTextField ->
@@ -231,6 +242,14 @@ fun AppTextField(
                 }
             }
         }
+        // 呈现变换实例稳定 (remember): 见 String 重载注释 (None → null 走无变换路径)
+        val outputTransformation = remember(visualTransformation) {
+            if (visualTransformation === VisualTransformation.None) {
+                null
+            } else {
+                visualTransformation.asOutputTransformation()
+            }
+        }
         BasicTextField(
             state = state,
             modifier = Modifier
@@ -255,7 +274,7 @@ fun AppTextField(
             } else {
                 TextFieldLineLimits.MultiLine(minLines, maxLines)
             },
-            outputTransformation = visualTransformation.asOutputTransformation(),
+            outputTransformation = outputTransformation,
             interactionSource = interactionSource,
             cursorBrush = SolidColor(colors.cursorColor(isError).value),
             decorator = TextFieldDecorator { innerTextField ->
@@ -442,7 +461,7 @@ internal fun KeyboardActions.toKeyboardActionHandler(imeAction: ImeAction): Keyb
         } ?: return null
     return KeyboardActionHandler { performDefaultAction ->
         val scope = object : KeyboardActionScope {
-            override fun defaultKeyboardAction(action: ImeAction) {
+            override fun defaultKeyboardAction(imeAction: ImeAction) {
                 performDefaultAction()
             }
         }

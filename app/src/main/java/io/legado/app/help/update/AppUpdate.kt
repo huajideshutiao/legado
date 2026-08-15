@@ -1,6 +1,7 @@
 package io.legado.app.help.update
 
 import androidx.appcompat.app.AppCompatActivity
+import io.legado.app.App
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.appInfo
 import io.legado.app.help.IntentData
@@ -11,7 +12,6 @@ import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.CoroutineScope
-import splitties.init.appCtx
 
 object AppUpdate {
 
@@ -45,11 +45,11 @@ object AppUpdate {
                     )
                 )
             } else if (!silent) {
-                appCtx.toastOnUi(androidAppString("is_latest_version"))
+                App.instance.toastOnUi(androidAppString("is_latest_version"))
             }
         }.onError {
             if (!silent) {
-                appCtx.toastOnUi("${androidAppString("check_update")}\n${it.localizedMessage}")
+                App.instance.toastOnUi("${androidAppString("check_update")}\n${it.localizedMessage}")
             }
         }.onFinally {
             waitDialog?.dismissSafe()

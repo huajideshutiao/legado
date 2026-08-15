@@ -8,8 +8,8 @@ import io.legado.app.utils.toHexLower
 /**
  * nativeMain: 对称加解密门面 [SymmetricCrypto] 实现 (iOS / 鸿蒙 两端共用壳)。
  *
- * 路由: AES 的 ECB/CBC/PCBC/CFB/OFB/CTR 走 [NativeAesOps] (actual 内 mbedTLS 主实现, 异常回落
- * krypto/napi 既有路径); AES/GCM 与 DES/DESede 无既有回落实现, 直走 [MbedTlsCipher]。
+ * 路由: AES 的 ECB/CBC/CFB/OFB/CTR 走 [NativeAesOps] (actual 内纯 mbedTLS 实现);
+ * PCBC 无 mbedTLS 原生实现, 两端抛异常; AES/GCM 与 DES/DESede 直走 [MbedTlsCipher]。
  *
  * - transformation 解析对齐 JCA "ALGO/MODE/PADDING": 缺省 mode=ECB, 缺省 padding=PKCS5
  *   (块大小 16/8 下与 PKCS7 字节级等价, 归一为 PKCS7)。

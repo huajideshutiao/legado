@@ -111,7 +111,7 @@ fun VideoChapterItem(
                 Row {
                     if (showWordCount) {
                         Text(
-                            text = chapter?.wordCount.orEmpty(),
+                            text = chapter.wordCount.orEmpty(),
                             color = colors.secondaryText,
                             fontSize = 12.sp,
                             maxLines = 1,
@@ -120,7 +120,7 @@ fun VideoChapterItem(
                     }
                     if (showTag) {
                         Text(
-                            text = chapter?.tag.orEmpty(),
+                            text = chapter.tag.orEmpty(),
                             color = colors.secondaryText,
                             fontSize = 12.sp,
                             maxLines = 1,

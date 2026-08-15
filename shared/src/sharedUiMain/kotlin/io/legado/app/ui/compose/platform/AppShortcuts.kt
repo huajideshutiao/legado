@@ -16,6 +16,10 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import io.legado.app.constant.AppLog
 import io.legado.app.utils.systemCurrentTimeMillis
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * 快捷键描述。[command] 是跨平台主修饰键: macOS/iOS 走 Cmd, 其余平台走 Ctrl。
@@ -88,19 +92,26 @@ private class ShortcutEntry(
     val shortcuts: () -> List<AppShortcut>,
     val enabled: () -> Boolean,
     val onTriggered: (AppShortcut) -> Unit,
+    /** KeyUp 回调 (媒体键长短按区分用), null = 该注册项不消费 KeyUp。 */
+    val onKeyUp: ((AppShortcut) -> Unit)? = null,
 )
 
 /** 快捷键注册栈, 按注册顺序存放, 分发时栈顶 (最后注册的页面) 优先, 语义对齐 AppBackHandler。 */
 private val shortcutStack = mutableListOf<ShortcutEntry>()
 
 /**
- * 系统按键 repeat 间隔上限 (ms)。Windows/macOS/Linux 的按住连发间隔约 30-60ms,
- * 人类最快手速连按约 100ms+; 同键 KeyDown 未抬起且间隔在此窗口内视为 repeat。
- * 窗口同时兼作 KeyUp 丢失 (按键期间切走窗口焦点) 的自愈: 超过窗口的再次按下重新接纳。
+ * 按住态判定窗口 (ms): 键在 [pressedSince] 中且距上次 KeyDown 未超过本窗口 = 该键仍按住,
+ * 期间 KeyDown 一律视为系统自动重复, 不再用短时间窗猜 repeat。
+ *
+ * 旧实现用 100ms 窗口区分"自动重复"与"新按键", 但 OS 自动重复的首次延迟约 400~500ms
+ * (Windows 默认 500ms / Android 约 400ms), 首个 repeat 到达时距上次按下已远超 100ms,
+ * 被误判成新按键 → 重入 onPress 重置长按定时器, 长按变短按、松手误触发 seek
+ * (2026-08 用户实测音频页)。本窗口只用于 KeyUp 丢失 (按住期间切走窗口焦点) 的自愈:
+ * 长按期间每次 KeyDown 都会刷新时间戳, 不会误过期; 超过窗口的再次按下视为新按键重新接纳。
  */
-private const val KEY_REPEAT_WINDOW_MS = 100L
+private const val KEY_HOLD_STALE_MS = 1500L
 
-/** 已命中快捷键且未抬起 (KeyDown → KeyUp) 的按键 → 按下时间戳, 用于 repeat 过滤。 */
+/** 已命中快捷键且未抬起 (KeyDown → KeyUp) 的按键 → 最近一次 KeyDown 时间戳, 用于自动重复判定。 */
 private val pressedSince = mutableMapOf<Key, Long>()
 
 /** 分发中标记: 回调里再触发按键时直接放行, 避免递归分发。 */
@@ -111,22 +122,30 @@ private var dispatching = false
  *
  * [enabled] 传 lambda 而非 Boolean: 分发时才求值, 避免为了刷新开关态把宿主页面
  * 绑进重组 (如阅读页读 menuState.isVisible 会让整页跟着菜单动画重组)。
+ *
+ * [onKeyUp] 非 null 时, KeyUp 命中本注册项的同键快捷键 (修饰键组合需一致) 会派发该回调
+ * 并消费 KeyUp (媒体键短按/长按区分用, 见 [MediaKeyLongPressState]); null 则 KeyUp 只清
+ * 按住状态不消费。注意 [onKeyUp] 必须放在 [onTriggered] 之前: 尾随 lambda 恒绑定到
+ * 最后一个参数 (onTriggered), 否则现有调用点会把回调误绑到 onKeyUp 上 (2026-08 踩坑)。
  */
 @Composable
 fun AppShortcutHandler(
     shortcuts: List<AppShortcut>,
     enabled: () -> Boolean = { true },
+    onKeyUp: ((AppShortcut) -> Unit)? = null,
     onTriggered: (AppShortcut) -> Unit,
 ) {
     val currentShortcuts by rememberUpdatedState(shortcuts)
     val currentEnabled by rememberUpdatedState(enabled)
     val currentOnTriggered by rememberUpdatedState(onTriggered)
+    val currentOnKeyUp by rememberUpdatedState(onKeyUp)
     DisposableEffect(Unit) {
         // 恒注册 (不随 enabled 增删), 保证栈内顺序始终等于页面组合顺序
         val entry = ShortcutEntry(
             shortcuts = { currentShortcuts },
             enabled = { currentEnabled() },
             onTriggered = { currentOnTriggered(it) },
+            onKeyUp = { currentOnKeyUp?.invoke(it) },
         )
         shortcutStack += entry
         onDispose { shortcutStack -= entry }
@@ -151,15 +170,16 @@ fun AppShortcutHandler(
  * [preemptive] 区分捕获/冒泡两阶段: 见 [AppShortcut.resolvedPreemptive]。
  * 逐个 catch + 遍历前取快照, 理由同 [dispatchBackKey]。
  *
- * KeyUp 只清理按住状态 (repeat 过滤用), 不触发任何动作——例外: 音量键且栈顶命中
- * TRIGGER 策略时抬起也消费, 对照原版 ReadMangaActivity onKeyUp 对音量键返回 true
- * (小说/漫画音量键均为 TRIGGER)。
+ * KeyUp 只清理按住状态 (repeat 过滤用), 不触发 KeyDown 动作——例外:
+ * 1. 音量键且栈顶命中 TRIGGER 策略时抬起也消费, 对照原版 ReadMangaActivity onKeyUp 对音量键
+ *    返回 true (小说/漫画音量键均为 TRIGGER);
+ * 2. 注册项提供 onKeyUp 回调 (媒体键长短按区分) 且 KeyUp 命中同键时派发回调并消费。
  *
  * KeyDown 命中后:
- * 同键未抬起且间隔在 [KEY_REPEAT_WINDOW_MS] 内 → 视为系统按键 repeat, 按
+ * 同键未抬起 (按住态, 见 [KEY_HOLD_STALE_MS]) → 视为系统按键 repeat, 按
  * [AppShortcut.repeatPolicy] 处理 (默认 FILTER: 消费但不重复触发, 按住只触发一次;
  * 音量键 TRIGGER: 每次 repeat 触发连翻, 连翻速率由调用方 200ms 节流);
- * 快速连按 (间隔超过窗口) 每次正常触发。
+ * 快速连按 (KeyUp 已清按住态) 每次正常触发。
  */
 fun dispatchShortcut(event: KeyEvent, preemptive: Boolean): Boolean {
     if (dispatching) return false
@@ -174,7 +194,14 @@ fun dispatchShortcut(event: KeyEvent, preemptive: Boolean): Boolean {
                     ?.shortcuts()
                     ?.any { it.key == event.key && it.repeatPolicy == KeyRepeatPolicy.TRIGGER } == true
             }
-            return false
+            // KeyUp 回调: 栈顶 enabled 且 shortcuts 命中同键 (含修饰键一致) 的注册项 →
+            // 派发 onKeyUp 并消费 (媒体键短按/长按区分; 无回调的注册项不消费 KeyUp)
+            val entry = firstEnabledEntry { it.matches(event) } ?: return false
+            val onKeyUp = entry.onKeyUp ?: return false
+            val hit = entry.shortcuts().first { it.matches(event) }
+            runCatching { onKeyUp(hit) }
+                .onFailure { AppLog.put("快捷键 KeyUp 处理异常", it) }
+            return true
         }
         if (event.type != KeyEventType.KeyDown) return false
         val entry = firstEnabledEntry {
@@ -182,15 +209,16 @@ fun dispatchShortcut(event: KeyEvent, preemptive: Boolean): Boolean {
         } ?: return false
         val hit = entry.shortcuts().first { it.resolvedPreemptive == preemptive && it.matches(event) }
         val now = systemCurrentTimeMillis()
-        val lastPress = pressedSince[event.key]
-        if (lastPress != null && now - lastPress < KEY_REPEAT_WINDOW_MS) {
-            // 系统按键 repeat: 处理策略见 AppShortcut.repeatPolicy
+        val heldSince = pressedSince[event.key]
+        if (heldSince != null && now - heldSince < KEY_HOLD_STALE_MS) {
+            // 键仍按住: 本次 KeyDown 是系统自动重复。按住态判定与 OS 首次重复延迟长短无关,
+            // 不再依赖时间窗猜测; 两种策略都刷新时间戳, 长按期间持续按键不会误过期。
+            pressedSince[event.key] = now
             when (hit.repeatPolicy) {
                 // 消费但不重复触发, 焦点导航等冒泡阶段不再执行
                 KeyRepeatPolicy.FILTER -> return true
                 // 每次 repeat 都触发 (长按连翻, 速率由调用方节流)
                 KeyRepeatPolicy.TRIGGER -> {
-                    pressedSince[event.key] = now
                     trigger(entry, hit)
                     return true
                 }
@@ -223,4 +251,85 @@ private fun firstEnabledEntry(predicate: (AppShortcut) -> Boolean): ShortcutEntr
 private fun trigger(entry: ShortcutEntry, hit: AppShortcut) {
     runCatching { entry.onTriggered(hit) }
         .onFailure { AppLog.put("快捷键处理异常", it) }
+}
+
+/**
+ * 阅读/漫画页方向键 (2026-08 用户拍板: 键盘只保留方向键, PageUp/PageDown/Space 不再绑定;
+ * 键位随翻页方向自适应, 由调用方按 horizontalPageMode 映射)。
+ *
+ * 显式 preemptive = true 捕获阶段拦截:
+ * 1) 避开 FocusTargetNode 焦点导航在冒泡阶段抢先消费方向键 (焦点在页面与根节点/其他
+ *    路由页面的 focusable 间移动时, 按键会被吞掉不触发快捷键);
+ * 2) 仅当页面是栈顶且菜单隐藏时才命中 (enabled 由调用方提供), 此时页面上无输入框,
+ *    抢占不吞输入; 非顶层 (目录/换源等子页) 时 enabled=false, 捕获阶段放行。
+ */
+val readerDirectionalKeys = listOf(
+    AppShortcut(Key.DirectionLeft, preemptive = true),
+    AppShortcut(Key.DirectionRight, preemptive = true),
+    AppShortcut(Key.DirectionUp, preemptive = true),
+    AppShortcut(Key.DirectionDown, preemptive = true),
+)
+
+/**
+ * 音频/视频播放页媒体键 (方向键/空格, 无修饰键)。
+ *
+ * 显式 preemptive = true (捕获阶段抢占): 先于 Compose 焦点主链消费, 避免与焦点系统
+ * 抢键 —— 播放页控件 (标题栏 ⋯/播放按钮等) 点击后持焦, 若媒体键走冒泡阶段, 焦点控件
+ * 与快捷键栈会对同一 Space/方向键各处理一半 (控件 KeyUp 激活菜单 + 快捷键触发播放,
+ * 2026-08 用户实测: 点 ⋯ 后按空格先弹菜单再暂停/播放)。抢占后焦点系统拿不到这些键,
+ * 单一所有者; 弹层打开时由调用方 enabled 让位 (菜单/对话框方向键导航优先)。
+ * 播放页无输入框, 抢占不吞输入; 对齐阅读/漫画页方向键既有先例。
+ *
+ * ← 用 TRIGGER: 系统按键 repeat (长按) 每次触发, 连续后退 seek (对照原 handleMediaKeys
+ * 左键不防抖语义); 其余 FILTER (按住只触发一次)。→ 的长短按判定 (短按 seek +10s /
+ * 长按 当前倍速×2, 松手恢复) 由调用方配 [MediaKeyLongPressState] + [AppShortcutHandler.onKeyUp]
+ * 实现 (原 handleMediaKeys 语义, 2026-08 收拢)。
+ */
+val mediaPlaybackKeys = listOf(
+    AppShortcut(Key.Spacebar, preemptive = true),
+    AppShortcut(Key.DirectionLeft, preemptive = true, repeatPolicy = KeyRepeatPolicy.TRIGGER),
+    AppShortcut(Key.DirectionRight, preemptive = true),
+    AppShortcut(Key.DirectionUp, preemptive = true),
+    AppShortcut(Key.DirectionDown, preemptive = true),
+)
+
+/**
+ * 媒体键长按状态 (对照原 handleMediaKeys 右方向键三段式: 死区 → seek +10s →
+ * 再一档 → 当前倍速×2, 收拢为长短按两段):
+ * - [onPress] (KeyDown): 按平台长按阈值 [longPressTimeoutMs] 计时 (Compose
+ *   ViewConfiguration.longPressTimeoutMillis, 与全应用 clickable 键盘长按手感一致),
+ *   窗口内松开 = 短按, 超过 = 长按; 系统按键 repeat 由快捷键栈 FILTER 策略消费, 不会重启计时
+ * - [onRelease] (KeyUp): 长按松开 → onLongPressRelease (恢复倍速); 短按 → onShortPress (seek)
+ *
+ * 状态随页面组合存活, 计时协程挂在调用方 scope 上 (页面销毁自动取消)。
+ */
+class MediaKeyLongPressState {
+    private var job: Job? = null
+    private var longPressActive = false
+
+    /** KeyDown: 启动长短按判定窗口 (重复 KeyDown 被快捷键栈 FILTER 消费, 不重启)。 */
+    fun onPress(scope: CoroutineScope, longPressTimeoutMs: Long, onLongPress: () -> Unit) {
+        // 防御: 定时器未决期间重复 onPress (repeat 漏过滤/双路径兜底) 不重启,
+        // 否则长按窗口被反复后移、长按永远不触发; 定时器已结束视为新一次手势。
+        // repeat 漏过滤已由 dispatchShortcut 按住态判定在源头拦截, 本判断是双保险。
+        if (job?.isActive == true) return
+        longPressActive = false
+        job = scope.launch {
+            delay(longPressTimeoutMs)
+            longPressActive = true
+            onLongPress()
+        }
+    }
+
+    /** KeyUp: 长按松开恢复 / 窗口内松开执行短按。 */
+    fun onRelease(onShortPress: () -> Unit, onLongPressRelease: () -> Unit) {
+        job?.cancel()
+        job = null
+        if (longPressActive) {
+            longPressActive = false
+            onLongPressRelease()
+        } else {
+            onShortPress()
+        }
+    }
 }

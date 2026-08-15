@@ -4,13 +4,13 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Build
 import android.webkit.WebSettings
+import io.legado.app.App
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.appInfo
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.printStackTraceOnDebug
 import io.legado.app.help.globalExecutor
-import splitties.init.appCtx
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -116,12 +116,12 @@ object LogUtils {
                     append("SDK_INT=").append(Build.VERSION.SDK_INT).append("\n")
                     append("RELEASE=").append(Build.VERSION.RELEASE).append("\n")
                     val userAgent = try {
-                        WebSettings.getDefaultUserAgent(appCtx)
+                        WebSettings.getDefaultUserAgent(App.instance)
                     } catch (e: Throwable) {
                         e.toString()
                     }
                     append("WebViewUserAgent=").append(userAgent).append("\n")
-                    append("packageName=").append(appCtx.packageName).append("\n")
+                    append("packageName=").append(App.instance.packageName).append("\n")
                     append("heapSize=").append(Runtime.getRuntime().maxMemory()).append("\n")
                     //获取app版本信息
                     AppConst.appInfo.let {

@@ -4,13 +4,13 @@ import android.app.Application
 import androidx.core.net.toUri
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
+import io.legado.app.App
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.SourceFilterRule
 import io.legado.app.utils.isUri
 import io.legado.app.utils.readText
 import kotlinx.coroutines.launch
-import splitties.init.appCtx
 
 /**
  * 导入书源过滤规则 VM (Android 端, 组合委托)。
@@ -136,7 +136,7 @@ class ImportSourceFilterRuleViewModel(app: Application) : BaseViewModel(app) {
             // Uri 分支: 在 IO 协程读取文本 (Uri.readText 是 IO 操作, 不能在主线程),
             // 读完后转发到 shared.import (shared 内部会再启动协程处理 JSON 解析)
             execute {
-                shared.import(mText.toUri().readText(appCtx))
+                shared.import(mText.toUri().readText(App.instance))
             }.onError {
                 // Uri 读取错误直接推送到 errorLiveData (与 shared 内部错误路径一致)
                 errorLiveData.postValue("ImportError:${it.localizedMessage}")

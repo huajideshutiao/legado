@@ -80,7 +80,6 @@ class FilterSelector(
             }
             is JsonPrimitive -> emptyList()
             is JsonNull -> emptyList()
-            else -> emptyList()
         }
     }
 }
@@ -100,7 +99,6 @@ object WildcardSelector : Selector {
             }
             is JsonPrimitive -> emptyList()
             is JsonNull -> emptyList()
-            else -> emptyList()
         }
     }
 }

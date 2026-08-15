@@ -2,22 +2,22 @@ package io.legado.app.help
 
 import android.content.ComponentName
 import android.content.pm.PackageManager
+import io.legado.app.App
 import io.legado.app.ui.welcome.Launcher1
 import io.legado.app.ui.welcome.Launcher4
 import io.legado.app.ui.welcome.Launcher5
 import io.legado.app.ui.welcome.WelcomeActivity
-import splitties.init.appCtx
 
 /**
  * Created by GKF on 2018/2/27.
  * 更换图标
  */
 object LauncherIconHelp {
-    private val packageManager: PackageManager = appCtx.packageManager
+    private val packageManager: PackageManager = App.instance.packageManager
     private val componentNames = arrayListOf(
-        ComponentName(appCtx, Launcher1::class.java.name),
-        ComponentName(appCtx, Launcher4::class.java.name),
-        ComponentName(appCtx, Launcher5::class.java.name)
+        ComponentName(App.instance, Launcher1::class.java.name),
+        ComponentName(App.instance, Launcher4::class.java.name),
+        ComponentName(App.instance, Launcher5::class.java.name)
     )
 
     fun changeIcon(icon: String?) {
@@ -43,13 +43,13 @@ object LauncherIconHelp {
         }
         if (hasEnabled) {
             packageManager.setComponentEnabledSetting(
-                ComponentName(appCtx, WelcomeActivity::class.java.name),
+                ComponentName(App.instance, WelcomeActivity::class.java.name),
                 PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
                 PackageManager.DONT_KILL_APP
             )
         } else {
             packageManager.setComponentEnabledSetting(
-                ComponentName(appCtx, WelcomeActivity::class.java.name),
+                ComponentName(App.instance, WelcomeActivity::class.java.name),
                 PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
                 PackageManager.DONT_KILL_APP
             )
