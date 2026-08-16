@@ -1,0 +1,9 @@
+{
+  "string": [
+    // 桌面图标名称, 繁体香港 (与安卓 values-zh-rHK 对齐, "閲")
+    {
+      "name": "EntryAbility_label",
+      "value": "閲讀"
+    }
+  ]
+}

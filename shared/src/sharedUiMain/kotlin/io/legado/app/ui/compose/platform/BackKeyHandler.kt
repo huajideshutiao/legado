@@ -73,7 +73,13 @@ private val backInterceptors = mutableListOf<() -> Boolean>()
  * Popup 同理, 系统不存在"弹层先吃返回键"机制, 故由各弹层组件在组合期注册本栈,
  * 返回键分发时栈顶 (最后打开的覆盖物) 优先。
  */
-private val backLayers = mutableListOf<() -> Boolean>()
+private class BackLayer(
+    /** 当前是否打开 (恒注册, 故开关只在求值时判定, 写法对齐 AppShortcuts 的 ShortcutEntry)。 */
+    val enabled: () -> Boolean,
+    val onBack: () -> Unit,
+)
+
+private val backLayers = mutableListOf<BackLayer>()
 
 /**
  * 是否存在激活中的顶层覆盖物 (菜单/弹窗/底部面板等, [BackLayerHandler] 注册期非空, 含动画期)。
@@ -81,7 +87,15 @@ private val backLayers = mutableListOf<() -> Boolean>()
  * 供媒体页快捷键让位: 弹层打开时媒体键不抢占 (弹层自身方向键导航/Enter 激活优先),
  * 避免快捷键穿透弹层误触页面动作 (2026-08 用户实测: 点 ⋯ 后按空格先弹菜单再暂停/播放)。
  */
-fun hasActiveBackLayer(): Boolean = backLayers.isNotEmpty()
+/**
+ * 是否存在**正打开着**的顶层覆盖物。
+ *
+ * 注意 [backLayers] 是恒注册的 (为了让栈内顺序等于组合顺序), 所以"列表非空"只代表页面上存在
+ * 覆盖物组件 —— 比如音频页那个常驻组合但关着的 ⋯ 菜单也在里面。必须按 enabled 求值,
+ * 否则媒体页快捷键会被永久禁用 (用户实测: 音频页空格变成触发焦点按钮)。
+ */
+fun hasActiveBackLayer(): Boolean =
+    backLayers.any { runCatching { it.enabled() }.getOrDefault(false) }
 
 /**
  * 顶层覆盖物返回拦截注册: 弹层打开期间注册, 关闭/销毁时自动注销。
@@ -95,13 +109,9 @@ fun BackLayerHandler(enabled: Boolean, onBack: () -> Unit) {
     val currentEnabled by rememberUpdatedState(enabled)
     val currentOnBack by rememberUpdatedState(onBack)
     DisposableEffect(Unit) {
-        // 恒注册 (不随 enabled 增删), 保证栈内顺序始终等于组合顺序
-        val layer: () -> Boolean = {
-            if (currentEnabled) {
-                currentOnBack()
-                true
-            } else false
-        }
+        // 恒注册 (不随 enabled 增删), 保证栈内顺序始终等于组合顺序;
+        // 是否打开由 enabled 求值决定 (见 [hasActiveBackLayer] / [dismissTopLayer])
+        val layer = BackLayer(enabled = { currentEnabled }, onBack = { currentOnBack() })
         backLayers += layer
         onDispose { backLayers -= layer }
     }
@@ -120,7 +130,11 @@ fun dismissTopLayer(): Boolean {
             val layer = snapshot[index]
             // 已随覆盖物关闭注销的注册项不再调用 (回调可能持有已销毁弹层的状态)
             if (layer !in backLayers) continue
-            val consumed = runCatching { layer() }
+            val consumed = runCatching {
+                if (layer.enabled()) {
+                    layer.onBack(); true
+                } else false
+            }
                 .onFailure { AppLog.put("顶层覆盖物返回拦截异常", it) }
                 .getOrDefault(false)
             if (consumed) return true

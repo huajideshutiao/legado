@@ -853,6 +853,7 @@
     <string name="clipboard_empty_or_invalid">剪贴板为空或格式不对</string>
     <string name="format_invalid_add_failed">格式不对,添加失败</string>
     <string name="copied_to_clipboard">已复制到剪贴板</string>
+    <string name="copy_to_clipboard">复制到剪贴板</string>
     <string name="copy_failed">复制失败</string>
     <string name="load_chapter_content_failed">加载章节内容失败</string>
     <string name="text_action">文字操作</string>

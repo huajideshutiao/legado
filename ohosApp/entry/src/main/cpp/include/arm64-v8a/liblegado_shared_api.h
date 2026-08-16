@@ -2843,6 +2843,9 @@ typedef struct {
 } liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_napi_OhosMarkdownViewer;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_napi_OhosBinaryBridgeResponse;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
@@ -2853,6 +2856,12 @@ typedef struct {
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_WebViewBridgeResponse;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownRenderPayload;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownEventListener;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MediaEventListener;
@@ -2886,6 +2895,21 @@ typedef struct {
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_WebViewResult_Companion;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownRenderPayload_$serializer;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownRenderPayload_Companion;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownEventPayload;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownEventPayload_$serializer;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownEventPayload_Companion;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_TextActionMenuItem;
@@ -6813,6 +6837,7 @@ typedef struct {
 
 extern void legado_battery_callback(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, liblegado_shared_KLong requestId, void* result);
 extern void* legado_bookshelf_list(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz);
+extern void* legado_build_markdown_viewer(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz);
 extern void* legado_chapter_list(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* bookUrl);
 extern void* legado_chinese_s2t(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* input);
 extern void* legado_chinese_t2s(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* input);
@@ -6830,6 +6855,7 @@ extern void legado_image_callback(liblegado_shared_kref_io_legado_app_napi_Legad
 extern liblegado_shared_KInt legado_import_booksource(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* json);
 extern void* legado_load_chapter(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* bookUrl, liblegado_shared_KInt chapterIndex);
 extern void* legado_load_manga_chapter(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* bookUrl, liblegado_shared_KInt chapterIndex);
+extern void legado_markdown_event(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* event);
 extern void* legado_md5_encode(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* input);
 extern void legado_media_event(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* event);
 extern void legado_network_callback(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, liblegado_shared_KLong requestId, void* result);
@@ -6845,6 +6871,7 @@ extern void legado_register_file_picker_fn(liblegado_shared_kref_io_legado_app_n
 extern void legado_register_http_fn(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* dispatch);
 extern void legado_register_image_fn(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* dispatch);
 extern void legado_register_keyboard_fn(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* dispatch);
+extern void legado_register_markdown_fn(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* dispatch);
 extern void legado_register_media_fn(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* dispatch);
 extern void legado_register_network_fn(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* dispatch);
 extern void legado_register_notification_fn(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* dispatch);
@@ -16144,6 +16171,7 @@ typedef struct {
                 liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports (*_instance)();
                 void (*batteryCallback)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, liblegado_shared_KLong requestId, void* result);
                 void* (*bookshelfList)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz);
+                void* (*buildMarkdownViewerHtml)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz);
                 void* (*chapterList)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* bookUrl);
                 void* (*chineseS2T)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* input);
                 void* (*chineseT2S)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* input);
@@ -16161,6 +16189,7 @@ typedef struct {
                 liblegado_shared_KInt (*importBookSource)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* json);
                 void* (*loadChapter)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* bookUrl, liblegado_shared_KInt chapterIndex);
                 void* (*loadMangaChapter)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* bookUrl, liblegado_shared_KInt chapterIndex);
+                void (*markdownEvent)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* event);
                 void* (*md5Encode)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* input);
                 void (*mediaEvent)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* event);
                 void (*networkCallback)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, liblegado_shared_KLong requestId, void* result);
@@ -16176,6 +16205,7 @@ typedef struct {
                 void (*registerHttpFn)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* dispatch);
                 void (*registerImageFn)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* dispatch);
                 void (*registerKeyboardFn)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* dispatch);
+                void (*registerMarkdownFn)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* dispatch);
                 void (*registerMediaFn)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* dispatch);
                 void (*registerNetworkFn)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* dispatch);
                 void (*registerNotificationFn)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* dispatch);
@@ -16200,6 +16230,11 @@ typedef struct {
               } LegadoNativeExports;
               struct {
                 liblegado_shared_KType* (*_type)(void);
+                liblegado_shared_kref_io_legado_app_napi_OhosMarkdownViewer (*_instance)();
+                const char* (*buildHtml)(liblegado_shared_kref_io_legado_app_napi_OhosMarkdownViewer thiz);
+              } OhosMarkdownViewer;
+              struct {
+                liblegado_shared_KType* (*_type)(void);
                 liblegado_shared_kref_io_legado_app_napi_OhosBinaryBridgeResponse (*OhosBinaryBridgeResponse)(const char* json, liblegado_shared_kref_kotlin_ByteArray bytes);
                 liblegado_shared_kref_kotlin_ByteArray (*get_bytes)(liblegado_shared_kref_io_legado_app_napi_OhosBinaryBridgeResponse thiz);
                 const char* (*get_json)(liblegado_shared_kref_io_legado_app_napi_OhosBinaryBridgeResponse thiz);
@@ -16219,6 +16254,10 @@ typedef struct {
                   liblegado_shared_KType* (*_type)(void);
                   void (*onTtsEvent)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_TtsEventListener thiz, const char* eventJson);
                 } TtsEventListener;
+                struct {
+                  liblegado_shared_KType* (*_type)(void);
+                  void (*onMarkdownEvent)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownEventListener thiz, const char* eventJson);
+                } MarkdownEventListener;
                 struct {
                   struct {
                     liblegado_shared_KType* (*_type)(void);
@@ -16327,6 +16366,58 @@ typedef struct {
                 struct {
                   struct {
                     liblegado_shared_KType* (*_type)(void);
+                    liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownRenderPayload_$serializer (*_instance)();
+                    liblegado_shared_kref_kotlinx_serialization_descriptors_SerialDescriptor (*get_descriptor)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownRenderPayload_$serializer thiz);
+                    liblegado_shared_kref_kotlin_Array (*childSerializers)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownRenderPayload_$serializer thiz);
+                    liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownRenderPayload (*deserialize)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownRenderPayload_$serializer thiz, liblegado_shared_kref_kotlinx_serialization_encoding_Decoder decoder);
+                    void (*serialize)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownRenderPayload_$serializer thiz, liblegado_shared_kref_kotlinx_serialization_encoding_Encoder encoder, liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownRenderPayload value);
+                  } $serializer;
+                  struct {
+                    liblegado_shared_KType* (*_type)(void);
+                    liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownRenderPayload_Companion (*_instance)();
+                    liblegado_shared_kref_kotlinx_serialization_KSerializer (*serializer)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownRenderPayload_Companion thiz);
+                  } Companion;
+                  liblegado_shared_KType* (*_type)(void);
+                  liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownRenderPayload (*MarkdownRenderPayload)(const char* content, liblegado_shared_KBoolean isDark, liblegado_shared_KFloat fontSize);
+                  const char* (*get_content)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownRenderPayload thiz);
+                  liblegado_shared_KFloat (*get_fontSize)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownRenderPayload thiz);
+                  liblegado_shared_KBoolean (*get_isDark)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownRenderPayload thiz);
+                  const char* (*component1)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownRenderPayload thiz);
+                  liblegado_shared_KBoolean (*component2)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownRenderPayload thiz);
+                  liblegado_shared_KFloat (*component3)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownRenderPayload thiz);
+                  liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownRenderPayload (*copy)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownRenderPayload thiz, const char* content, liblegado_shared_KBoolean isDark, liblegado_shared_KFloat fontSize);
+                  liblegado_shared_KBoolean (*equals)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownRenderPayload thiz, liblegado_shared_kref_kotlin_Any other);
+                  liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownRenderPayload thiz);
+                  const char* (*toString)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownRenderPayload thiz);
+                } MarkdownRenderPayload;
+                struct {
+                  struct {
+                    liblegado_shared_KType* (*_type)(void);
+                    liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownEventPayload_$serializer (*_instance)();
+                    liblegado_shared_kref_kotlinx_serialization_descriptors_SerialDescriptor (*get_descriptor)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownEventPayload_$serializer thiz);
+                    liblegado_shared_kref_kotlin_Array (*childSerializers)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownEventPayload_$serializer thiz);
+                    liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownEventPayload (*deserialize)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownEventPayload_$serializer thiz, liblegado_shared_kref_kotlinx_serialization_encoding_Decoder decoder);
+                    void (*serialize)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownEventPayload_$serializer thiz, liblegado_shared_kref_kotlinx_serialization_encoding_Encoder encoder, liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownEventPayload value);
+                  } $serializer;
+                  struct {
+                    liblegado_shared_KType* (*_type)(void);
+                    liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownEventPayload_Companion (*_instance)();
+                    liblegado_shared_kref_kotlinx_serialization_KSerializer (*serializer)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownEventPayload_Companion thiz);
+                  } Companion;
+                  liblegado_shared_KType* (*_type)(void);
+                  liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownEventPayload (*MarkdownEventPayload)(const char* action, const char* url);
+                  const char* (*get_action)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownEventPayload thiz);
+                  const char* (*get_url)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownEventPayload thiz);
+                  const char* (*component1)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownEventPayload thiz);
+                  const char* (*component2)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownEventPayload thiz);
+                  liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownEventPayload (*copy)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownEventPayload thiz, const char* action, const char* url);
+                  liblegado_shared_KBoolean (*equals)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownEventPayload thiz, liblegado_shared_kref_kotlin_Any other);
+                  liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownEventPayload thiz);
+                  const char* (*toString)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownEventPayload thiz);
+                } MarkdownEventPayload;
+                struct {
+                  struct {
+                    liblegado_shared_KType* (*_type)(void);
                     liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_TextActionMenuItem_$serializer (*_instance)();
                     liblegado_shared_kref_kotlinx_serialization_descriptors_SerialDescriptor (*get_descriptor)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_TextActionMenuItem_$serializer thiz);
                     liblegado_shared_kref_kotlin_Array (*childSerializers)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_TextActionMenuItem_$serializer thiz);
@@ -16395,6 +16486,7 @@ typedef struct {
                 void (*onFilePickerResult)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_KLong requestId, const char* resultJson);
                 void (*onHttpResult)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_KLong requestId, const char* resultJson, liblegado_shared_kref_kotlin_ByteArray bodyBytes);
                 void (*onImageResult)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_KLong requestId, const char* resultJson, liblegado_shared_kref_kotlin_ByteArray bodyBytes);
+                void (*onMarkdownEvent)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, const char* eventJson);
                 void (*onMediaEvent)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, const char* eventJson);
                 void (*onNetworkResult)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_KLong requestId, const char* resultJson);
                 void (*onPasteboardResult)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_KLong requestId, const char* resultJson);
@@ -16412,6 +16504,7 @@ typedef struct {
                 void (*registerHttpFn)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_kref_kotlin_Function2 tsfn);
                 void (*registerImageFn)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_kref_kotlin_Function2 tsfn);
                 void (*registerKeyboardFn)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_kref_kotlin_Function1 tsfn);
+                void (*registerMarkdownFn)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_kref_kotlin_Function1 tsfn);
                 void (*registerMediaFn)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_kref_kotlin_Function1 tsfn);
                 void (*registerNetworkFn)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_kref_kotlin_Function1 tsfn);
                 void (*registerNotificationFn)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_kref_kotlin_Function1 tsfn);
@@ -16426,11 +16519,13 @@ typedef struct {
                 void (*registerTtsFn)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_kref_kotlin_Function1 tsfn);
                 void (*registerWebViewFn)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_kref_kotlin_Function2 tsfn);
                 void (*registerWindowFn)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_kref_kotlin_Function1 tsfn);
+                void (*sendMarkdown)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownRenderPayload payload);
                 void (*sendMediaCommand)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, const char* commandJson);
                 void (*sendTtsCommand)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, const char* commandJson);
                 void (*sendTtsCommand_)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, const char* action, const char* text, const char* utteranceId, liblegado_shared_kref_kotlin_Float rate, const char* lang);
                 void (*sendWindowCommand)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, const char* commandJson);
                 void (*setKeyboardAvoidMode)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_KInt mode);
+                void (*setMarkdownEventListener)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MarkdownEventListener listener);
                 void (*setMediaEventListener)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, const char* playerId, liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MediaEventListener listener);
                 void (*setMediaEventListener_)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_MediaEventListener listener);
                 void (*setTtsEventListener)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge_TtsEventListener listener);
@@ -24503,6 +24598,7 @@ typedef struct {
                   liblegado_shared_kref_androidx_compose_runtime_ProvidableCompositionLocal (*get_LocalEInk)();
                 } theme;
                 liblegado_shared_kref_androidx_compose_ui_text_AnnotatedString (*toHtmlAnnotatedString)(const char* thiz);
+                const char* (*get_ARKUI_BUILDER_MARKDOWN_WEB)();
                 liblegado_shared_kref_androidx_compose_ui_text_AnnotatedString (*linkifyText)(const char* text, liblegado_shared_KULong linkColor);
               } compose;
               struct {

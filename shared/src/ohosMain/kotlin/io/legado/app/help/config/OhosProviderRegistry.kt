@@ -52,6 +52,7 @@ import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.napi.registerOhosNativeBridge
 import io.legado.app.ui.book.changesource.registerOhosChangeBookSourcePlatform
 import io.legado.app.utils.KS_JSON
+import io.legado.app.utils.registerOhosScreenInfoProvider
 import kotlinx.serialization.decodeFromString
 import io.legado.app.ui.book.manage.registerOhosBookshelfManagePlatform
 import io.legado.app.ui.book.read.page.provider.registerOhosTextMeasurer

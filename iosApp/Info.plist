@@ -20,9 +20,9 @@
     <key>CFBundlePackageType</key>
     <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>3.26.081614</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>17376</string>
 
     <!-- App 状态栏样式 (Compose Multiplatform 自管理, 用默认) -->
     <key>UIStatusBarStyle</key>
@@ -77,7 +77,7 @@
          但 Kotlin 侧 CACHE_BOOK_TASK_ID 是编译期常量, 两边必须逐字一致, 对不上 register 直接崩。 -->
     <key>BGTaskSchedulerPermittedIdentifiers</key>
     <array>
-        <string>io.legado.app.ios.cachebook</string>
+        <string>shutiao.reader.cachebook</string>
     </array>
 
     <!-- 文件共享: 沙盒 Documents 在"文件"App 与 Finder/iTunes 可见 (导出/另存为落地点) -->

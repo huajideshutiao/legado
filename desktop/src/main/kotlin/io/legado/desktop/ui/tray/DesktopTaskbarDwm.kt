@@ -2,26 +2,26 @@ package io.legado.desktop.ui.tray
 
 import com.sun.jna.Function
 import com.sun.jna.Memory
-import com.sun.jna.Native
-import com.sun.jna.Pointer
 import com.sun.jna.platform.win32.GDI32
 import com.sun.jna.platform.win32.User32
 import com.sun.jna.platform.win32.WinDef
 import com.sun.jna.platform.win32.WinGDI
-import com.sun.jna.platform.win32.WinUser
 import com.sun.jna.ptr.PointerByReference
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.Status
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.service.ReadAloudControllerShared.ReadAloudState
+import io.legado.desktop.ui.DesktopWindowChromeNative
+import io.legado.desktop.ui.hwndOrNull
+import io.legado.desktop.ui.tray.DesktopTaskbarDwm.COVER_MAX_RETRY
+import io.legado.desktop.ui.tray.DesktopTaskbarDwm.lastCoverUrl
+import io.legado.desktop.ui.tray.DesktopTaskbarDwm.renderExecutor
 import java.awt.Color
-import java.awt.Component
 import java.awt.Font
 import java.awt.RenderingHints
 import java.awt.Window
 import java.awt.image.BufferedImage
 import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Windows 任务栏悬停媒体卡片 (DWM Iconic Live Preview, 对照调研结论):
@@ -34,12 +34,13 @@ import java.util.concurrent.atomic.AtomicBoolean
  *   启用"自供位图"表示 (只设 10 不设 7 时非最小化悬停不触发, 常见坑)
  * - dwm.exe 跨进程 SendMessage 直达窗口 WndProc 发 WM_DWMSENDICONICTHUMBNAIL (0x0323,
  *   lParam: HIWORD=宽 LOWORD=高) / WM_DWMSENDICONICLIVEPREVIEWBITMAP (0x0326)
- *   —— WH_GETMESSAGE 钩子只截队列消息, 拦不到 SendMessage, 必须 SetWindowLongPtr
- *   GWLP_WNDPROC 子类化 AWT 窗口 + CallWindowProc 转发 (C# 参考实现同法)
+ *   —— WH_GETMESSAGE 钩子只截队列消息, 拦不到 SendMessage, 必须子类化窗口过程;
+ *   主窗口的子类化由 native 桥 (wndchrome) 独占, 这两条消息经
+ *   [DesktopWindowChromeNative.addMessageHandler] 转发上来 (S3: 三层子类化收成一层)
  * - 响应 DwmSetIconicThumbnail(hwnd, hBitmap, 0) / DwmSetIconicLivePreviewBitmap(hwnd, hBitmap, null, 0),
  *   位图必须 32bpp; DWM 持拷贝, 可立即 DeleteObject
  * - 内容变化调 DwmInvalidateIconicBitmaps(hwnd) 触发系统重发请求 (勿频繁, 悬停才有开销)
- * - 响应可异步: 子类化回调只记请求尺寸, 渲染放单线程执行器, 限时未供 DWM 用默认表示
+ * - 响应可异步: 消息回调只记请求尺寸, 渲染放单线程执行器, 限时未供 DWM 用默认表示
  *
  * 非播放/朗读状态: 关闭 iconic (恢复窗口实时缩略图)。
  */
@@ -60,6 +61,12 @@ internal object DesktopTaskbarDwm {
     private const val DWMWA_HAS_ICONIC_BITMAP = 10
 
     // 消息 (WM_DWMSENDICONICTHUMBNAIL / WM_DWMSENDICONICLIVEPREVIEWBITMAP)
+    /** 封面加载失败的最大重试次数 (每次 update 触发一次)。 */
+    private const val COVER_MAX_RETRY = 5
+
+    /** invalidate 节流间隔: 它们自己的注释也写着"勿频繁", 原实现每个进度事件都在调。 */
+    private const val INVALIDATE_MIN_INTERVAL_MS = 400L
+
     private const val WM_DWMSENDICONICTHUMBNAIL = 0x0323
     private const val WM_DWMSENDICONICLIVEPREVIEWBITMAP = 0x0326
 
@@ -68,15 +75,15 @@ internal object DesktopTaskbarDwm {
     @Volatile
     private var mainHwnd: WinDef.HWND? = null
 
-    /** 原窗口过程 (子类化转发用, Long 形式)。 */
+    /** 消息处理器是否已挂到 native 桥 (挂不上则整套卡片功能退化)。 */
     @Volatile
-    private var oldWndProc: Long = 0L
+    private var hooked = false
 
     /** iconic 是否已启用 (播放/朗读活跃时)。 */
     @Volatile
     private var iconicEnabled = false
 
-    /** 卡片内容状态 (由 update 写入, 渲染线程读取)。 */
+    /** 卡片内容状态 (由 update 写入, 渲染线程读取); 封面另由封面线程写。 */
     @Volatile
     private var coverImage: BufferedImage? = null
 
@@ -99,30 +106,44 @@ internal object DesktopTaskbarDwm {
     @Volatile
     private var requestedThumbSize: Pair<Int, Int>? = null
 
-    /** 封面异步加载去重。 */
+    /** 封面异步加载去重: 已处理的封面 url。**只在加载成功后提交** (见 onCoverLoadFailed)。 */
     @Volatile
     private var lastCoverUrl: String? = null
+
+    /** 封面加载失败的 url 与次数: 给有限重试, 避免死链在每个进度事件上重复拉取。 */
+    private var coverFailUrl: String? = null
+    private var coverFailCount = 0
+
+    /** 上次 invalidate 的时间戳 (节流)。 */
+    private var lastInvalidateAt = 0L
 
     private val renderExecutor = Executors.newSingleThreadExecutor { r ->
         Thread(r, "legado-dwm-card").apply { isDaemon = true }
     }
 
-    private val subclassed = AtomicBoolean(false)
+    /**
+     * 封面加载专用线程 —— **绝不能和 [renderExecutor] 共用**。
+     *
+     * loadCover 里是 runBlocking 的阻塞取图 (网络/磁盘), 一旦和 DWM 应答共线程, 切歌时它会先入队
+     * 并阻塞数秒, 紧随其后的 WM_DWMSENDICONICTHUMBNAIL 只能排队 ⇒ DWM 等不到就画自己的
+     * 渐变+图标默认占位, 且此后不再询问 (用户实测: 鼠标停在任务栏弹窗上点下一张必中)。
+     */
+    private val coverExecutor = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "legado-dwm-cover").apply { isDaemon = true }
+    }
 
     // ==================== 生命周期 ====================
 
-    /** 主窗口可用时注入 (Main.kt 在 Window 组装后调用): 子类化收 DWM 消息。 */
+    /** 主窗口可用时注入 (Main.kt 在 Window 组装后调用): 经 native 桥收 DWM 消息。 */
     fun attach(window: Window) {
         if (!com.sun.jna.Platform.isWindows()) return
         if (!ENABLE_ICONIC_CARD) return
-        val hwnd = hwndOf(window) ?: return
+        val hwnd = window.hwndOrNull() ?: return
         if (hwnd.pointer == mainHwnd?.pointer) return
-        // 窗口重建: 先还原旧窗口过程再子类化新窗口。否则新窗口没被子类化却仍开 FORCE_ICONIC,
-        // DWM 的缩略图请求无人应答 → 任务栏拿不到承诺的位图 (stowed exception 根因之一)
-        restoreWindowProc()
         mainHwnd = hwnd
         iconicEnabled = false
-        subclassWindow(hwnd)
+        // 处理器与窗口无关 (native 桥自己跟着窗口重挂), 幂等注册即可
+        if (!hooked) hooked = DesktopWindowChromeNative.addMessageHandler(messageHandler)
     }
 
     fun uninstall() {
@@ -131,7 +152,10 @@ internal object DesktopTaskbarDwm {
         requestedThumbSize = null
         lastCoverUrl = null
         coverImage = null
-        restoreWindowProc()
+        if (hooked) {
+            DesktopWindowChromeNative.removeMessageHandler(messageHandler)
+            hooked = false
+        }
     }
 
     /**
@@ -147,13 +171,19 @@ internal object DesktopTaskbarDwm {
         durationMs: Int,
     ) {
         if (!ENABLE_ICONIC_CARD) return
-        val audioActive = audioStatus != Status.STOP
+        // iconic 的归属是"有没有音频会话", 不是"此刻在不在播":
+        // audioStatus 会在切章节 / 进入播放页时瞬时回到 STOP (AudioPlayShared.resetData
+        // 里显式 status = Status.STOP)。用它当判据会让我们把 DWMWA_FORCE_ICONIC_REPRESENTATION
+        // 关掉, DWM 随即丢弃位图并回落自己的渐变+图标默认表示, 且只在下次悬停才重新索取
+        // ⇒ 用户实测"切章节 / 进音频播放页后缩略图掉成默认图, 移开鼠标重新悬停才恢复"。
+        // 会话存在与否是确定状态, 不需要靠计时器猜。
+        val audioActive = AudioPlayShared.book != null
         val aloudState = aloud?.controller?.state?.value
         val aloudActive =
             aloudState == ReadAloudState.PLAYING || aloudState == ReadAloudState.PAUSED
         val active = audioActive || aloudActive
         val hwnd = mainHwnd ?: return
-        if (!subclassed.get()) return
+        if (!hooked) return
 
         // 卡片状态快照 (对照原版通知标题: 状态: 书名 / 章节)
         cardPlaying = when {
@@ -188,102 +218,48 @@ internal object DesktopTaskbarDwm {
             if (coverUrl.isNullOrBlank()) {
                 coverImage = null
             } else {
-                renderExecutor.execute { loadCover(coverUrl, hwnd) }
+                coverExecutor.execute { loadCover(coverUrl, hwnd) }
             }
         }
         // 内容变化 → 请求重绘 (悬停时才真正触发 0x0323, 无悬停无开销)
         invalidateIconicBitmaps(hwnd)
     }
 
-    // ==================== 窗口子类化 (收 dwm.exe SendMessage) ====================
+    // ==================== DWM 消息 (由 native 桥转发, 收 dwm.exe 的 SendMessage) ====================
 
-    /** 子类化回调强引用 (SetWindowLongPtr 存函数指针, 回调对象被 GC 即崩)。 */
-    private val wndProc = object : WinUser.WindowProc {
-        override fun callback(
-            hwnd: WinDef.HWND,
-            msg: Int,
-            wParam: WinDef.WPARAM,
-            lParam: WinDef.LPARAM,
-        ): WinDef.LRESULT {
-            try {
-                when (msg) {
-                    // 缩略图请求: lParam HIWORD=宽 LOWORD=高 (MSDN 与常规相反)
-                    WM_DWMSENDICONICTHUMBNAIL -> {
-                        val w = (lParam.toLong() ushr 16).toInt()
-                        val h = (lParam.toLong() and 0xFFFF).toInt()
-                        if (w > 0 && h > 0) requestedThumbSize = w to h
-                        requestRender(live = false)
-                        return WinDef.LRESULT(0)
-                    }
+    /** 处理器实例 (注册/注销必须同一个对象)。 */
+    private val messageHandler: (Int, Long, Long) -> Boolean = ::handleWindowMessage
 
-                    // Peek 放大预览请求: lParam 无用, 尺寸 = 客户区
-                    WM_DWMSENDICONICLIVEPREVIEWBITMAP -> {
-                        requestRender(live = true)
-                        return WinDef.LRESULT(0)
-                    }
-                }
-            } catch (e: Throwable) {
-                AppLog.put("DWM 卡片窗口过程异常 (msg=$msg)", e)
+    /**
+     * 白名单消息处理 (跑在 native 窗口线程 AWT-Windows, 非 EDT): 只记尺寸 + 派渲染, 不阻塞。
+     * 返回 true = 已处理 (native 直接答 0 给 Windows)。
+     */
+    private fun handleWindowMessage(msg: Int, wparam: Long, lparam: Long): Boolean {
+        when (msg) {
+            // 缩略图请求: lParam HIWORD=宽 LOWORD=高 (MSDN 与常规相反)
+            WM_DWMSENDICONICTHUMBNAIL -> {
+                val w = (lparam ushr 16).toInt()
+                val h = (lparam and 0xFFFF).toInt()
+                if (w > 0 && h > 0) requestedThumbSize = w to h
+                requestRender(live = false)
+                return true
             }
-            return callOldProc(hwnd, msg, wParam, lParam)
-        }
-    }
 
-    private fun subclassWindow(hwnd: WinDef.HWND) {
-        if (!subclassed.compareAndSet(false, true)) return
-        runCatching {
-            val old = SubclassWin32.INSTANCE.GetWindowLongPtrW(hwnd, WinUser.GWL_WNDPROC) ?: return
-            oldWndProc = Pointer.nativeValue(old)
-            val fnPtr = com.sun.jna.CallbackReference.getFunctionPointer(wndProc)
-            SubclassWin32.INSTANCE.SetWindowLongPtrW(
-                hwnd,
-                WinUser.GWL_WNDPROC,
-                Pointer(Pointer.nativeValue(fnPtr)),
-            )
-        }.onFailure {
-            AppLog.put("DWM 卡片窗口子类化失败", it)
-            oldWndProc = 0L
-            subclassed.set(false)
+            // Peek 放大预览请求: lParam 无用, 尺寸 = 客户区
+            WM_DWMSENDICONICLIVEPREVIEWBITMAP -> {
+                requestRender(live = true)
+                return true
+            }
         }
-    }
-
-    private fun restoreWindowProc() {
-        val hwnd = mainHwnd ?: return
-        val old = oldWndProc
-        if (old == 0L || !subclassed.get()) return
-        runCatching {
-            SubclassWin32.INSTANCE.SetWindowLongPtrW(
-                hwnd,
-                WinUser.GWL_WNDPROC,
-                Pointer(old),
-            )
-        }.onFailure { AppLog.put("DWM 卡片窗口过程还原失败", it) }
-        oldWndProc = 0L
-        subclassed.set(false)
-    }
-
-    private fun callOldProc(
-        hwnd: WinDef.HWND,
-        msg: Int,
-        wParam: WinDef.WPARAM,
-        lParam: WinDef.LPARAM,
-    ): WinDef.LRESULT {
-        val old = oldWndProc
-        return if (old != 0L) {
-            runCatching {
-                SubclassWin32.INSTANCE.CallWindowProcW(
-                    Pointer(old),
-                    hwnd, msg, wParam, lParam,
-                )
-            }.getOrDefault(WinDef.LRESULT(0))
-        } else {
-            SubclassWin32.INSTANCE.DefWindowProcW(hwnd, msg, wParam, lParam)
-        }
+        return false
     }
 
     // ==================== 渲染 (单线程执行器, 不阻塞 EDT) ====================
 
-    /** 渲染请求: executor 已是单线程 (天然串行), 不做丢弃 —— 每个 DWM 请求都必须有应答。 */
+    /**
+     * 渲染请求: executor 已是单线程 (天然串行), 不做丢弃 —— 每个 DWM 请求都必须有应答。
+     * **这条线程上只准做 GDI 绘制**: 任何阻塞 (取封面/网络) 都会让 DWM 等超时并回落默认占位。
+     */
     private fun requestRender(live: Boolean) {
         renderExecutor.execute { runCatching { doRender(live) } }
     }
@@ -303,11 +279,19 @@ internal object DesktopTaskbarDwm {
         if (w <= 0 || h <= 0 || w > 4000 || h > 4000) return
         val hBitmap = toHBitmap(renderCard(w, h)) ?: return
         try {
-            if (live) {
+            // HRESULT 必须看: 位图超过请求上限等情形返回 E_INVALIDARG(0x80070057),
+            // 表现就是"我们以为答了、DWM 却回落默认渐变图"
+            val hr = if (live) {
                 dwmapi("DwmSetIconicLivePreviewBitmap")
                     .invokeInt(arrayOf(hwnd, hBitmap, null, 0))
             } else {
                 dwmapi("DwmSetIconicThumbnail").invokeInt(arrayOf(hwnd, hBitmap, 0))
+            }
+            if (hr != 0) {
+                AppLog.put(
+                    "DWM 位图回传返回失败 hr=0x${hr.toUInt().toString(16)} " +
+                        (if (live) "livePreview" else "thumbnail") + " ${w}x$h"
+                )
             }
         } catch (e: Throwable) {
             AppLog.put("DWM 卡片位图回传失败", e)
@@ -550,10 +534,11 @@ internal object DesktopTaskbarDwm {
 
     /** 封面 ImageBitmap → BufferedImage (ImageBitmap.readPixels 返回 ARGB, 与平台解耦)。 */
     private fun loadCover(url: String, hwnd: WinDef.HWND) {
-        val loader = io.legado.app.help.image.BookImageLoaders.getOrNull() ?: return
+        val loader = io.legado.app.help.image.BookImageLoaders.getOrNull()
+            ?: return onCoverLoadFailed(url)
         val bitmap = kotlinx.coroutines.runBlocking {
             loader.loadCoverOrNull(url, AudioPlayShared.book?.origin)
-        } ?: return
+        } ?: return onCoverLoadFailed(url)
         runCatching {
             val w = bitmap.width
             val h = bitmap.height
@@ -565,12 +550,31 @@ internal object DesktopTaskbarDwm {
                 img.setRGB(i % w, i / w, pixels[i])
             }
             coverImage = img
+            coverFailUrl = null
+            coverFailCount = 0
             // 封面就绪后必须补发缓存失效: update() 里的 invalidate 发生在新封面就绪之前,
             // 不补发则 DWM 保留旧封面直到悬停重入 (换歌缩略图不自动更新的根因)
             if (mainHwnd?.pointer == hwnd.pointer) invalidateIconicBitmaps(hwnd)
         }.onFailure {
             AppLog.put("DWM 卡片封面转换失败", it)
         }
+    }
+
+    /**
+     * 封面加载失败的收尾。
+     *
+     * 关键: **不能把 url 当作"已处理"留在 [lastCoverUrl] 里** —— update() 是在加载之前就提交 url 的,
+     * 若失败还保留, 后续同 url 的 update 会一律跳过重试, 缩略图永远停在空白占位, 章节加载好也不恢复
+     * (用户实测: 从任务栏 thumbbar 切歌时, 新曲目封面常常还没就绪)。
+     * 置空即可让下一次进度事件重试; 但给 [COVER_MAX_RETRY] 上限, 避免死链每秒重拉。
+     */
+    private fun onCoverLoadFailed(url: String) {
+        if (coverFailUrl != url) {
+            coverFailUrl = url
+            coverFailCount = 0
+        }
+        coverFailCount++
+        if (coverFailCount <= COVER_MAX_RETRY && lastCoverUrl == url) lastCoverUrl = null
     }
 
     // ==================== DWM API (dwmapi.dll 手写绑定) ====================
@@ -592,6 +596,10 @@ internal object DesktopTaskbarDwm {
     }
 
     private fun invalidateIconicBitmaps(hwnd: WinDef.HWND) {
+        // 节流: 原实现每个进度事件都调, 而 MSDN 与本文件自己的注释都说"勿频繁"
+        val now = System.currentTimeMillis()
+        if (now - lastInvalidateAt < INVALIDATE_MIN_INTERVAL_MS) return
+        lastInvalidateAt = now
         runCatching {
             dwmapi("DwmInvalidateIconicBitmaps").invokeInt(arrayOf(hwnd))
         }.onFailure { /* 悬停外调用无副作用, 忽略 */ }
@@ -599,49 +607,4 @@ internal object DesktopTaskbarDwm {
 
     // ==================== HWND 获取 ====================
 
-    /** AWT Window → 原生 HWND (反射 peer.getHWnd, 同 DesktopTaskbarMedia)。 */
-    private fun hwndOf(window: Window): WinDef.HWND? {
-        return runCatching {
-            val peerField = Component::class.java.getDeclaredField("peer")
-            peerField.isAccessible = true
-            val peer = peerField.get(window) ?: return null
-            val method = peer.javaClass.methods.firstOrNull { it.name == "getHWnd" }
-                ?: peer.javaClass.declaredMethods.firstOrNull { it.name == "getHWnd" }
-                ?: return null
-            method.isAccessible = true
-            val value = method.invoke(peer) as? Long ?: return null
-            if (value == 0L) null else WinDef.HWND(Pointer(value))
-        }.getOrNull()
-    }
-
-    // ==================== 子类化 API 最小绑定 ====================
-
-    /**
-     * 项目所用 JNA 版本的 User32.GetWindowLongPtr 返回 BaseTSD.LONG_PTR,
-     * 无法直接取得指针地址值; 这里以 Pointer 重声明这三个函数, 与 jna-platform 版本解耦。
-     * 注意: user32 导出名是 GetWindowLongPtrW/SetWindowLongPtrW (宏按 UNICODE 展开),
-     * 裸 GetWindowLongPtr 无导出符号 (UnsatisfiedLinkError)。
-     */
-    internal interface SubclassWin32 : com.sun.jna.Library {
-        fun GetWindowLongPtrW(hWnd: WinDef.HWND, nIndex: Int): Pointer
-        fun SetWindowLongPtrW(hWnd: WinDef.HWND, nIndex: Int, dwNewLong: Pointer): Pointer
-        fun CallWindowProcW(
-            lpPrevWndFunc: Pointer,
-            hWnd: WinDef.HWND,
-            msg: Int,
-            wParam: WinDef.WPARAM,
-            lParam: WinDef.LPARAM,
-        ): WinDef.LRESULT
-
-        fun DefWindowProcW(
-            hWnd: WinDef.HWND,
-            msg: Int,
-            wParam: WinDef.WPARAM,
-            lParam: WinDef.LPARAM,
-        ): WinDef.LRESULT
-
-        companion object {
-            val INSTANCE: SubclassWin32 = Native.load("user32", SubclassWin32::class.java)
-        }
-    }
 }

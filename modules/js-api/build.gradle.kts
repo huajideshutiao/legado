@@ -28,5 +28,10 @@ kotlin {
             this::class.java.getMethod("ohosArm64").invoke(this)
         } catch (e: Exception) {
         }
+        // x86_64 变体 (鸿蒙 x86_64 模拟器), 同款反射规避
+        targets.findByName("ohosX64") ?: try {
+            this::class.java.getMethod("ohosX64").invoke(this)
+        } catch (e: Exception) {
+        }
     }
 }

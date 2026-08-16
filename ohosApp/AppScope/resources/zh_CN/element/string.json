@@ -1,0 +1,9 @@
+{
+  "string": [
+    // 与安卓端 values-zh/strings.xml 的 app_name 对齐: 中文环境显示"阅读", 其他语言回退 base 的 "Legado"
+    {
+      "name": "app_name",
+      "value": "阅读"
+    }
+  ]
+}

@@ -23,7 +23,6 @@ import androidx.compose.ui.window.WindowExceptionHandler
 import androidx.compose.ui.window.WindowExceptionHandlerFactory
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
-import com.jetbrains.JBR
 import com.sun.jna.Platform
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDatabaseProviders
@@ -151,15 +150,17 @@ import io.legado.desktop.model.registerDesktopReadBookPlatform
 import io.legado.desktop.model.webBook.registerDesktopWebBookProviders
 import io.legado.desktop.tts.DesktopHttpTtsPlayer
 import io.legado.desktop.tts.DesktopSystemTtsEngine
+import io.legado.desktop.ui.ChromeStripSpacer
 import io.legado.desktop.ui.DesktopDialogHost
+import io.legado.desktop.ui.DesktopNativeChromeHost
 import io.legado.desktop.ui.DesktopPlatformCapabilities
 import io.legado.desktop.ui.DesktopPlatformServices
 import io.legado.desktop.ui.DesktopTitleBar
 import io.legado.desktop.ui.DesktopToastHost
 import io.legado.desktop.ui.DesktopToasts
 import io.legado.desktop.ui.DesktopWindowChrome
+import io.legado.desktop.ui.DesktopWindowChromeNative
 import io.legado.desktop.ui.DesktopWindowHandle
-import io.legado.desktop.ui.DesktopWindowTitleBarSync
 import io.legado.desktop.ui.browser.DesktopWebViewSlot
 import io.legado.desktop.ui.platform.DesktopMangaReaderPlatform
 import io.legado.desktop.ui.platform.DesktopReaderPlatformProvider
@@ -521,10 +522,16 @@ private fun runDesktopApp() = application {
     Window(
         onCloseRequest = ::exitApplication,
         // 按键由 shared AppKeyRouter 统一分发 (全屏 Esc 退全屏 → 统一返回链 → F5 刷新 →
-        // 快捷键栈捕获/冒泡两阶段), desktop Window 不再做任何业务判断。Window 层回调不依赖
-        // Compose 焦点节点, 刚进阅读/漫画页无焦点时快捷键照样生效 (用户多次踩坑: 漫画方向键
-        // 必须点一下界面才生效); 未命中时放行给组合内 (输入框/焦点导航/根节点 handleBackKey)。
-        onKeyEvent = { event -> AppKeyRouter.dispatchPlatform(event) },
+        // 快捷键栈捕获/冒泡两阶段), desktop Window 不再做任何业务判断。
+        //
+        // 两个钩子必须分开接, 语义见 AppKeyRouter 的 KDoc (与 BackKeyHandler 的 Modifier 一致):
+        //  - onPreviewKeyEvent = 捕获阶段: 抢占式快捷键 (媒体键/带修饰组合) **先于 Compose 焦点链**,
+        //    否则聚焦的按钮会先吃掉空格 —— 表现为"空格触发按钮而不是播放/暂停" (用户实测)。
+        //  - onKeyEvent = 冒泡阶段: 非抢占快捷键 (无修饰方向键/翻页键) 让聚焦输入框先消费,
+        //    这样搜索框里打空格不会被当成播放/暂停。
+        // 曾经两阶段都塞在 onKeyEvent 里 (dispatchPlatform), 于是捕获阶段实际发生在焦点之后, 抢占失效。
+        onPreviewKeyEvent = { event -> AppKeyRouter.dispatchCapture(event) },
+        onKeyEvent = { event -> AppKeyRouter.dispatchBubble(event) },
         title = appName,
         icon = iconPainter,
         state = windowState,
@@ -564,6 +571,9 @@ private fun runDesktopApp() = application {
             windowHandle.window = window
             SingleInstanceGuard.bindWindow(window)
             DesktopTaskbarMedia.attach(window)
+            // Windows 原生控制条 (legado_wndchrome) 的挂载在 DesktopNativeChromeHost 里做 ——
+            // 组合期窗口还没 realize (isDisplayable=false), 必须等 realize 后再挂;
+            // 这里只保留 onDispose 的显式 detach 兜底 (native 侧收 WM_NCDESTROY 也会自解挂, 幂等)。
             // 全屏 Esc 退全屏策略注册进 shared AppKeyRouter (消费返回 true, 优先于统一返回链);
             // 路由的 dispatchCapture 在全屏 Esc 分支最先询问本策略, 与旧 Window 层判断等价
             AppKeyRouter.registerFullscreenEsc {
@@ -575,37 +585,11 @@ private fun runDesktopApp() = application {
                 }
             }
             onDispose {
+                DesktopWindowChromeNative.detach()
                 windowHandle.window = null
                 SingleInstanceGuard.bindWindow(null)
                 AppKeyRouter.registerFullscreenEsc(null)
             }
-        }
-        // ==================== Windows JBR 自定义标题栏 (阶段2.5) ====================
-        // JBR API 客户端侧由 org.jetbrains.runtime:jbr-api 提供, JBR 侧实现内置在
-        // JBR 21 运行时; 非 JBR 运行时 getWindowDecorations() 返回 null → 标题栏
-        // 退化为纯系统标题栏 (深浅色/⋯菜单按钮缺失, 可接受: 本项目 run/打包固定 JBR)。
-        val jbrDecorations = remember {
-            if (Platform.isWindows()) JBR.getWindowDecorations() else null
-        }
-        val customTitleBar = remember { jbrDecorations?.createCustomTitleBar() }
-        // 全屏联动: 真全屏时系统装饰被 Win32 层移除, 必须同步解除自定义标题栏,
-        // 退出全屏恢复; JBR 坑 (ab-download-manager 实证): setCustomTitleBar 会把
-        // placement 重置为 Floating, 恢复前后保存/回写 placement 防丢最大化态
-        LaunchedEffect(customTitleBar, jbrDecorations, DesktopWindowChrome.fullscreen) {
-            val d = jbrDecorations ?: return@LaunchedEffect
-            val bar = customTitleBar ?: return@LaunchedEffect
-            val placementBefore = windowState.placement
-            if (DesktopWindowChrome.fullscreen) {
-                d.setCustomTitleBar(window, null)
-            } else {
-                d.setCustomTitleBar(window, bar)
-            }
-            if (windowState.placement != placementBefore) {
-                windowState.placement = placementBefore
-            }
-            // set 生效后同步系统按钮区宽度到全局状态 (首帧 0 → 自绘按钮与系统三键重叠;
-            // 2026-08-13 用户实测, 由本状态写触发重组修复)
-            DesktopWindowChrome.titleBarRightInset = bar.rightInset
         }
         // ==================== 阶段3: 后台异步注册非首屏 provider ====================
         // 用 LaunchedEffect 在窗口显示后立即启动协程注册, 不阻塞首屏渲染
@@ -650,9 +634,7 @@ private fun runDesktopApp() = application {
             },
         ) {
             AppTheme {
-                // 回归原版: 自绘控制栏由 DesktopTitleBar 自身管理 (手写拖拽/双击最大化
-                // + DWM 圆角); undecorated 无系统标题栏, 不再需要 DesktopWindowTitleBarSync
-                // (DWM 标题栏同步失去作用对象)。
+
                 // 对照 app 端 App.kt:132 SourceUiEventBridge.init(): desktop 无 Activity,
                 // 改用 Composable 宿主订阅 FlowBus(SOURCE_UI_REQUEST) 弹 Compose Dialog
                 // (实现见 shared/sharedUiMain 的 SourceUiEventBridgeHost)
@@ -669,27 +651,37 @@ private fun runDesktopApp() = application {
                 // legado:// deep link 导入对话框宿主: 消费 main(args)/OpenURIHandler 经
                 // LegadoDeepLinkHandler 记录的待导入请求 (对照 app 端 AssociationActivity 分发)
                 DeepLinkImportHost()
-                // 窗口标题栏: macOS 原生红绿灯 + Windows 系统标题栏 (SystemDefault, 经
-                // DesktopWindowTitleBarSync 用 DWM 染主题色/深色/阅读页染色; 原生能力
-                // 拖拽/双击最大化/贴靠/Snap Layouts 全免费); 仅 Linux 保留自绘控制栏
-                // (无原生标题栏染色)。内容区不额外让位 (系统标题栏在窗口 chrome 区)。
+                // 窗口控制栏三分支: macOS 原生红绿灯 / Windows 自研 native 控制条
+                // (legado_wndchrome, 客户区顶到窗口顶 + 鼠标穿透 layered 子窗口自绘整条,
+                //  拖拽/双击最大化/贴靠/Snap Layouts 由 WM_NCHITTEST 返回值换取) /
+                // Linux 自绘全功能控制栏 (DesktopTitleBar)。
                 // 全屏时 Esc 优先退出全屏 (用户拍板 2026-08): 由 shared AppKeyRouter 的
                 // fullscreenEsc 策略 (上方 DisposableEffect(window) 注册) 在统一返回链前处理
                 if (Platform.isMac()) {
                     // macOS: 纯系统标题栏 (原生红绿灯), 深浅色/设置走设置页 (原版观感)
-                    Box(Modifier.fillMaxSize()) {
-                        DesktopWindowTitleBarSync(windowHandle)
-                        LegadoApp(
+                    LegadoApp(
+                        navigator = navigator,
+                        screenModelStore = screenModelStore,
+                    )
+                } else {
+                    // Windows: 控制条整条由 native (legado_wndchrome) 画在鼠标穿透的 layered
+                    //   子窗口里, 命中测试全在 native WndProc —— Compose 侧只留等高空位 +
+                    //   DesktopNativeChromeHost 推主题色/标题/图标并承接按键回调。
+                    // Linux: 保持自绘全功能控制栏 (DesktopTitleBar) 不动。
+                    if (Platform.isWindows()) {
+                        DesktopNativeChromeHost(
+                            appName = appName,
+                            window = window,
+                            themeStore = themeStoreProvider,
                             navigator = navigator,
-                            screenModelStore = screenModelStore,
                         )
                     }
-                } else {
-                    // Windows/Linux: 顶部 40dp 控制栏 + 内容区
-                    // (Windows: JBR 原生三键/拖拽 + Compose 内容共存;
-                    //  Linux: 自绘全功能控制栏)
                     Column(Modifier.fillMaxSize()) {
-                            if (!DesktopWindowChrome.fullscreen) {
+                        if (!DesktopWindowChrome.fullscreen) {
+                            if (Platform.isWindows()) {
+                                // native 控制条的占位: 必须显式涂同色底, 见 ChromeStripSpacer
+                                ChromeStripSpacer()
+                            } else {
                                 DesktopTitleBar(
                                     appName = appName,
                                     icon = iconPainter,
@@ -698,18 +690,17 @@ private fun runDesktopApp() = application {
                                     themeStore = themeStoreProvider,
                                     navigator = navigator,
                                     onCloseRequest = ::exitApplication,
-                                    nativeSystemButtons = Platform.isWindows(),
-                                    customTitleBar = if (Platform.isWindows()) customTitleBar else null,
-                                )
-                            }
-                            Box(Modifier.weight(1f).fillMaxWidth()) {
-                                LegadoApp(
-                                    navigator = navigator,
-                                    screenModelStore = screenModelStore,
                                 )
                             }
                         }
+                        Box(Modifier.weight(1f).fillMaxWidth()) {
+                            LegadoApp(
+                                navigator = navigator,
+                                screenModelStore = screenModelStore,
+                            )
+                        }
                     }
+                }
                 }
             }
         }

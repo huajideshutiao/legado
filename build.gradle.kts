@@ -73,6 +73,8 @@ tasks.register<Delete>("clean") {
 
 val ohosLibsDir = layout.projectDirectory.dir("ohosApp/entry/libs/arm64-v8a")
 val ohosIncludeDir = layout.projectDirectory.dir("ohosApp/entry/src/main/cpp/include/arm64-v8a")
+val ohosLibsDirX64 = layout.projectDirectory.dir("ohosApp/entry/libs/x86_64")
+val ohosIncludeDirX64 = layout.projectDirectory.dir("ohosApp/entry/src/main/cpp/include/x86_64")
 // 对标安卓 release 打包: 默认 stage release .so (LLVM 优化 + strip + gc-sections,
 // 约 50-70MB); 需要带符号的调试库时用 -PohosBuildType=debug。
 val ohosBuildType =
@@ -80,29 +82,72 @@ val ohosBuildType =
 require(ohosBuildType == "release" || ohosBuildType == "debug") {
     "ohosBuildType must be 'release' or 'debug', but was '$ohosBuildType'."
 }
+// 指定要 stage 的 ABI (逗号分隔)。默认只打 arm64-v8a (CPF fork 生态库 ktor/room3/sqlite-framework
+// 只有 ohosArm64 变体, 2026-08-16 实测 ohosX64 链接解析失败, 故 x86_64 需显式开启):
+// -PohosAbis=x86_64 (模拟器联调, 等 CPF 发布 ohosX64 变体后可用)
+val ohosAbis = providers.gradleProperty("ohosAbis").orNull
+    ?.split(',')
+    ?.map { it.trim() }
+    ?.filter { it.isNotEmpty() }
+    ?.toSet()
+    ?: setOf("arm64-v8a")
+require(ohosAbis.isNotEmpty() && ohosAbis.all { it == "arm64-v8a" || it == "x86_64" }) {
+    "ohosAbis must be a subset of [arm64-v8a, x86_64], but was: $ohosAbis"
+}
 val ohosBuildTypeCapitalized = ohosBuildType.replaceFirstChar { it.titlecase() }
 val ohosSharedOutputDir =
     layout.projectDirectory.dir("shared/build/bin/ohosArm64/${ohosBuildType}Shared")
 val ohosSharedLibrary = ohosSharedOutputDir.file("liblegado_shared.so")
+val ohosSharedOutputDirX64 =
+    layout.projectDirectory.dir("shared/build/bin/ohosX64/${ohosBuildType}Shared")
+val ohosSharedLibraryX64 = ohosSharedOutputDirX64.file("liblegado_shared.so")
 
 val stageOhosNativeLibraries by tasks.registering(Copy::class) {
     group = "ohos"
     description = "Build and stage CPF-KMP-CMP OHOS shared library and generated API header."
-    dependsOn(":shared:link${ohosBuildTypeCapitalized}SharedOhosArm64")
-    into(layout.projectDirectory.dir("ohosApp"))
-    from(ohosSharedLibrary) {
-        into("entry/libs/arm64-v8a")
+    if ("arm64-v8a" in ohosAbis) {
+        dependsOn(":shared:link${ohosBuildTypeCapitalized}SharedOhosArm64")
     }
-    from(ohosSharedOutputDir) {
-        include("*.h")
-        into("entry/src/main/cpp/include/arm64-v8a")
+    if ("x86_64" in ohosAbis) {
+        dependsOn(":shared:link${ohosBuildTypeCapitalized}SharedOhosX64")
+    }
+    into(layout.projectDirectory.dir("ohosApp"))
+    if ("arm64-v8a" in ohosAbis) {
+        from(ohosSharedLibrary) {
+            into("entry/libs/arm64-v8a")
+        }
+        from(ohosSharedOutputDir) {
+            include("*.h")
+            into("entry/src/main/cpp/include/arm64-v8a")
+        }
+    }
+    if ("x86_64" in ohosAbis) {
+        from(ohosSharedLibraryX64) {
+            into("entry/libs/x86_64")
+        }
+        from(ohosSharedOutputDirX64) {
+            include("*.h")
+            into("entry/src/main/cpp/include/x86_64")
+        }
     }
     doFirst {
-        val generatedHeaders =
-            ohosSharedOutputDir.asFile.listFiles { file -> file.extension == "h" }.orEmpty()
         val missing = buildList {
-            if (!ohosSharedLibrary.asFile.isFile) add(ohosSharedLibrary.asFile)
-            if (generatedHeaders.isEmpty()) add(ohosSharedOutputDir.file("<generated-api-header>.h").asFile)
+            if ("arm64-v8a" in ohosAbis) {
+                if (!ohosSharedLibrary.asFile.isFile) add(ohosSharedLibrary.asFile)
+                if (ohosSharedOutputDir.asFile.listFiles { f -> f.extension == "h" }.orEmpty()
+                        .isEmpty()
+                ) {
+                    add(ohosSharedOutputDir.file("<generated-api-header>.h").asFile)
+                }
+            }
+            if ("x86_64" in ohosAbis) {
+                if (!ohosSharedLibraryX64.asFile.isFile) add(ohosSharedLibraryX64.asFile)
+                if (ohosSharedOutputDirX64.asFile.listFiles { f -> f.extension == "h" }.orEmpty()
+                        .isEmpty()
+                ) {
+                    add(ohosSharedOutputDirX64.file("<generated-api-header>.h").asFile)
+                }
+            }
         }
         if (missing.isNotEmpty()) {
             throw GradleException(
@@ -119,13 +164,73 @@ val verifyOhosNativeLibraries by tasks.registering {
     description = "Verify that the CPF OHOS fusion-renderer artifacts have been staged."
     dependsOn(stageOhosNativeLibraries)
     doLast {
-        val stagedHeaders =
-            ohosIncludeDir.asFile.listFiles { file -> file.extension == "h" }.orEmpty()
-        val missingLibrary = !ohosLibsDir.file("liblegado_shared.so").asFile.isFile
-        if (missingLibrary || stagedHeaders.isEmpty()) {
+        val missing = buildList {
+            if ("arm64-v8a" in ohosAbis) {
+                if (!ohosLibsDir.file("liblegado_shared.so").asFile.isFile) add(ohosLibsDir.asFile)
+                if (ohosIncludeDir.asFile.listFiles { f -> f.extension == "h" }.orEmpty()
+                        .isEmpty()
+                ) {
+                    add(ohosIncludeDir.asFile)
+                }
+            }
+            if ("x86_64" in ohosAbis) {
+                if (!ohosLibsDirX64.file("liblegado_shared.so").asFile.isFile) add(ohosLibsDirX64.asFile)
+                if (ohosIncludeDirX64.asFile.listFiles { f -> f.extension == "h" }.orEmpty()
+                        .isEmpty()
+                ) {
+                    add(ohosIncludeDirX64.asFile)
+                }
+            }
+        }
+        if (missing.isNotEmpty()) {
             throw GradleException(
-                "Missing HarmonyOS native artifacts in ${ohosLibsDir.asFile} or ${ohosIncludeDir.asFile}."
+                "Missing HarmonyOS native artifacts in ${missing.joinToString()}."
             )
         }
+    }
+}
+
+// iOS 版本号与安卓端对齐 (app/build.gradle.kts):
+// versionCode = 10000 + git 提交数, versionName = "3." + 构建时刻 yy.MMddHH (GMT+8)。
+// 同步目标: iosApp/project.yml 的 info.properties (xcodegen generate 会用它重写 Info.plist)
+// 与 iosApp/Info.plist 两处, 保证双写一致。
+// 已挂进 iosApp Xcode 构建的 preBuildScripts, 每次构建自动执行; 也可手动 ./gradlew syncIosVersion。
+val syncIosVersion by tasks.registering {
+    group = "ios"
+    description =
+        "Sync iOS CFBundleShortVersionString/CFBundleVersion with Android versionName/versionCode."
+    doLast {
+        val commits = providers.exec {
+            commandLine("git", "rev-list", "HEAD", "--count")
+        }.standardOutput.asText.get().trim().toInt()
+        val versionCode = 10000 + commits
+        val versionName = "3." + java.time.format.DateTimeFormatter
+            .ofPattern("yy.MMddHH")
+            .withZone(java.time.ZoneId.of("GMT+8"))
+            .format(java.time.Instant.now())
+
+        fun rewrite(path: File, transform: (String) -> String) {
+            val updated = transform(path.readText())
+            if (updated != path.readText()) path.writeText(updated)
+        }
+        rewrite(rootProject.file("iosApp/project.yml")) {
+            it.replace(
+                Regex("CFBundleShortVersionString:\\s*\"[^\"]*\""),
+                "CFBundleShortVersionString: \"$versionName\"",
+            ).replace(
+                Regex("CFBundleVersion:\\s*\"[^\"]*\""),
+                "CFBundleVersion: \"$versionCode\"",
+            )
+        }
+        rewrite(rootProject.file("iosApp/Info.plist")) {
+            it.replace(
+                Regex("(<key>CFBundleShortVersionString</key>\\s*<string>)[^<]*(</string>)"),
+                "$1$versionName$2",
+            ).replace(
+                Regex("(<key>CFBundleVersion</key>\\s*<string>)[^<]*(</string>)"),
+                "$1$versionCode$2",
+            )
+        }
+        logger.lifecycle("iOS version synced: versionName=$versionName, versionCode=$versionCode")
     }
 }

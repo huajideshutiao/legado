@@ -53,7 +53,7 @@ object IosBackgroundTasks {
      * BGProcessingTask 标识, 必须与 Info.plist `BGTaskSchedulerPermittedIdentifiers` 逐字一致,
      * 对不上系统会在 register 时直接抛 NSException。
      */
-    const val CACHE_BOOK_TASK_ID: String = "io.legado.app.ios.cachebook"
+    const val CACHE_BOOK_TASK_ID: String = "shutiao.reader.cachebook"
 
     /** 待续缓存书籍的 bookUrl 快照 key (进程被系统回收后靠它重新入队)。 */
     private const val PENDING_KEY = "iosBackgroundCacheBookPending"

@@ -851,6 +851,7 @@
     <string name="clipboard_empty_or_invalid">Clipboard is empty or invalid</string>
     <string name="format_invalid_add_failed">Invalid format, failed to add</string>
     <string name="copied_to_clipboard">Copied to clipboard</string>
+    <string name="copy_to_clipboard">Copy to clipboard</string>
     <string name="copy_failed">Copy failed</string>
     <string name="load_chapter_content_failed">Failed to load chapter content</string>
     <string name="text_action">Text actions</string>

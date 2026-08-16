@@ -24,7 +24,12 @@ actual fun shouldConsumeImeInsets(): Boolean = false
 
 
 /**
- * [rememberImeVisible] 的非 Android actual: 无软键盘概念, 恒 false。
+ * [rememberImeVisible] 的桌面 JVM actual: 恒 true。
+ *
+ * 有意偏离原版 (原版仅软键盘弹出时显示帮助栏): 桌面端无软键盘/IME 概念, 恒 true
+ * 使 [io.legado.app.ui.compose.component.code.KeyboardToolbar] 常驻显示, 保留
+ * 查找替换/撤销重做/辅助键入口。其余调用点 (navBottom 判断/bringIntoView 类滚动)
+ * 在桌面端不受影响: navigationBars inset 恒 0 结果不变, 滚动请求幂等 no-op。
  */
 @Composable
-actual fun rememberImeVisible(): Boolean = false
+actual fun rememberImeVisible(): Boolean = true

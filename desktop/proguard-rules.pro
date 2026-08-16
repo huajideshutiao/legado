@@ -182,8 +182,7 @@
 -keep class org.apache.commons.logging.** { *; }
 # pdfbox 公钥加密 PDF 的可选 bcpkix (CMS/cert 未引入, 该功能不可用但类引用存在)
 -dontwarn org.apache.pdfbox.**
-# MethodHandle.invokeExact 多态签名: ProGuard 对 JDK 库类的已知限制 (jsvg/JBR/pdfbox IOUtils)
--dontwarn com.jetbrains.**
+# MethodHandle.invokeExact 多态签名: ProGuard 对 JDK 库类的已知限制 (jsvg/pdfbox IOUtils)
 -dontwarn com.github.weisj.**
 # kotlinx.coroutines.debug AgentPremain 引用 android 注解
 -dontwarn android.annotation.**

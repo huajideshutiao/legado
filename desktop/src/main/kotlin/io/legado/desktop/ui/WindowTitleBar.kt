@@ -1,7 +1,5 @@
 package io.legado.desktop.ui
 
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -15,7 +13,6 @@ import com.sun.jna.win32.StdCallLibrary
 import com.sun.jna.win32.W32APIOptions
 import io.legado.app.constant.AppLog
 import io.legado.app.ui.compose.theme.AppTheme
-import kotlinx.coroutines.delay
 import java.awt.Window
 import javax.swing.JFrame
 
@@ -65,39 +62,6 @@ private val dwmapi: Dwmapi? by lazy {
     runCatching {
         Native.load("dwmapi", Dwmapi::class.java, W32APIOptions.DEFAULT_OPTIONS)
     }.getOrNull()
-}
-
-/**
- * 把 AWT 窗口的原生标题栏同步成应用主题 (仅 Windows, 其他系统静默 no-op)。
- *
- * @param window AWT 窗口; null / 未 realize (AWT peer 未就绪) 时静默跳过,
- *               由调用方在窗口显示后重试
- * @param dark 深色主题 (true=深色标题栏 + 浅色按钮/文字)
- * @param accentBg 主题背景色; 非 null 时 Windows 11 顺带设置标题栏底色与文字色,
- *                 拿不到 (null) 时只做深浅两档
- */
-fun applyTitleBarTheme(window: Window?, dark: Boolean, accentBg: Color?) {
-    // 仅 Windows 有 DWM 标题栏概念, 其他系统静默 no-op
-    if (!Platform.isWindows()) return
-    val win = window ?: return
-    // AWT peer 未 realize 时 getComponentID 拿不到 HWND (返回 0), 静默跳过等窗口就绪
-    if (!win.isDisplayable) return
-    val hwnd = runCatching { Native.getComponentID(win) }.getOrDefault(0L)
-    if (hwnd == 0L) return
-    val dwm = dwmapi ?: return
-    runCatching {
-        val hwndPtr = WinDef.HWND(Pointer.createConstant(hwnd))
-        // 1. 深浅两档 (深色主题 → 深色标题栏 + 浅色按钮文字)
-        setAttribute(dwm, hwndPtr, DWMWA_USE_IMMERSIVE_DARK_MODE, if (dark) 1 else 0)
-        // 2. Win11 专属: 标题栏底色跟随主题背景色 + 文字色
-        //    (Win10 不认 35/36 属性返回 E_INVALIDARG, 静默忽略只保留深浅两档)
-        if (accentBg != null) {
-            setAttribute(dwm, hwndPtr, DWMWA_CAPTION_COLOR, accentBg.toColorRef())
-            setAttribute(dwm, hwndPtr, DWMWA_TEXT_COLOR, textColorFor(accentBg).toColorRef())
-        }
-    }.onFailure {
-        AppLog.put("WindowsTitleBar: 设置标题栏主题失败", it)
-    }
 }
 
 /**
@@ -168,26 +132,15 @@ internal fun textColorFor(bg: Color): Color =
  */
 internal val readerWindowTint = mutableStateOf<Color?>(null)
 
-@Composable
-fun DesktopWindowTitleBarSync(windowHandle: DesktopWindowHandle) {
-    val colors = AppTheme.colors
-    val isDark = colors.isDark
-    val background = colors.background
-    // 阅读页激活时优先用阅读背景色着色标题栏 (深色背景 → 深色标题栏 + 浅色文字)
-    val tint = readerWindowTint.value
-    val dark = tint?.let { it.luminance() < 0.5f } ?: isDark
-    val bg = tint ?: background
-    LaunchedEffect(dark, bg) {
-        repeat(30) {
-            val window = windowHandle.window
-            if (window != null && window.isDisplayable) {
-                // 用计算后的 dark/bg (而非 isDark/background): 阅读页激活时标题栏
-                // 须染阅读背景色 (readerWindowTint 语义, 与顶部工具栏同源);
-                // 原实现误传主题色导致染色只触发重跑不生效
-                applyTitleBarTheme(window, dark, bg)
-                return@LaunchedEffect
-            }
-            delay(100)
-        }
-    }
+/**
+ * AWT 窗口 → 原生 HWND (Windows 专用; 非 Windows / 未 realize / 取不到时返回 null)。
+ *
+ * 用 JNA 官方 [Native.getComponentID] 而非反射 `peer.getHWnd`: 后者依赖 JDK 内部 API 与
+ * `--add-opens java.desktop/java.awt`, 且曾在三个文件里逐字重复三份 (全屏控制器 / 任务栏卡片 /
+ * 任务栏媒体)。此处统一收口。
+ */
+internal fun Window.hwndOrNull(): WinDef.HWND? {
+    if (!Platform.isWindows() || !isDisplayable) return null
+    val id = runCatching { Native.getComponentID(this) }.getOrDefault(0L)
+    return if (id == 0L) null else WinDef.HWND(Pointer.createConstant(id))
 }

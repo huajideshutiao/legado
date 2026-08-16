@@ -6,7 +6,6 @@ import com.sun.jna.Platform
 import com.sun.jna.Pointer
 import com.sun.jna.platform.win32.WinDef
 import io.legado.app.constant.AppLog
-import java.awt.Component
 import java.awt.Window
 
 /**
@@ -14,9 +13,7 @@ import java.awt.Window
  * 区别于 AWT GraphicsDevice.setFullScreenWindow 的非独占全屏。
  *
  * # 机制
- * - HWND 获取: 反射 AWT Window.peer.getHWnd (同 DesktopTaskbarMedia.hwndOf;
- *   desktop/build.gradle.kts 已加 --add-opens java.desktop/java.awt=ALL-UNNAMED +
- *   --add-opens java.desktop/sun.awt.windows=ALL-UNNAMED, 反射可用)
+ * - HWND 获取: 统一走 [hwndOrNull] (JNA Native.getComponentID, 无反射)
  * - enter: GetWindowLongPtr(GWL_STYLE) 保存原样式 → GetWindowRect 保存原 bounds
  *   (须在改样式前取, 样式影响窗口矩形) → 样式去 WS_CAPTION|WS_THICKFRAME 加 WS_POPUP
  *   (LONG_PTR 64 位, 样式位在低位) → SetWindowLongPtr +
@@ -86,13 +83,13 @@ object DesktopFullscreenController {
         // 幂等: 已在全屏 → 状态一致
         if (fullscreenHwnd != null) return true
 
-        val hwnd = hwndOf(window)
+        val hwnd = window.hwndOrNull()
         if (hwnd == null) {
             AppLog.put("真全屏: 无法获取窗口 HWND (peer 反射/getHWnd 失败)")
             return false
         }
 
-        // 保存原样式 (LONG_PTR 以 Pointer 收发, 同 DesktopTaskbarDwm.SubclassWin32)
+        // 保存原样式 (LONG_PTR 以 Pointer 收发)
         val style = try {
             Pointer.nativeValue(FullscreenWin32.INSTANCE.GetWindowLongPtrW(hwnd, GWL_STYLE))
         } catch (e: Throwable) {
@@ -118,6 +115,9 @@ object DesktopFullscreenController {
 
         // 去标题栏/可调边框, 加 WS_POPUP (铺满时覆盖任务栏区域, shell 自动隐藏任务栏)
         val newStyle = (style and (WS_CAPTION or WS_THICKFRAME).inv()) or WS_POPUP
+        // native 控制条依赖窗口带 caption 样式, 必须在摘样式**之前**挂起 (它会隐藏控制条子窗口
+        // 并停止改写 WM_NCCALCSIZE); 还原由 restoreWindow 统一恢复
+        DesktopWindowChromeNative.setFullscreen(true)
         try {
             FullscreenWin32.INSTANCE.SetWindowLongPtrW(hwnd, GWL_STYLE, Pointer(newStyle))
         } catch (e: Throwable) {
@@ -211,6 +211,8 @@ object DesktopFullscreenController {
                 ok = false
             }
         }
+        // 样式已还原 (窗口重新带 caption) 后再解挂起, native 控制条此时才具备前提
+        DesktopWindowChromeNative.setFullscreen(false)
         return ok
     }
 
@@ -223,26 +225,12 @@ object DesktopFullscreenController {
 
     // ==================== HWND 获取 ====================
 
-    /** AWT Window → 原生 HWND (反射 peer.getHWnd, 同 DesktopTaskbarMedia.hwndOf)。 */
-    private fun hwndOf(window: Window): WinDef.HWND? {
-        return runCatching {
-            val peerField = Component::class.java.getDeclaredField("peer")
-            peerField.isAccessible = true
-            val peer = peerField.get(window) ?: return null
-            val method = peer.javaClass.methods.firstOrNull { it.name == "getHWnd" }
-                ?: peer.javaClass.declaredMethods.firstOrNull { it.name == "getHWnd" }
-                ?: return null
-            method.isAccessible = true
-            val value = method.invoke(peer) as? Long ?: return null
-            if (value == 0L) null else WinDef.HWND(Pointer(value))
-        }.getOrNull()
-    }
 
     // ==================== user32 最小绑定 ====================
 
     /**
      * user32 最小绑定: GetWindowLongPtr/SetWindowLongPtr 以 Pointer 收发 LONG_PTR
-     * (与 jna-platform 版本解耦, 同 DesktopTaskbarDwm.SubclassWin32); 全部声明抛
+     * (与 jna-platform 版本解耦); 全部声明抛
      * LastErrorException, 调用失败直接以异常暴露 (JNA 调用前清零 last error,
      * 成功调用不抛)。
      */

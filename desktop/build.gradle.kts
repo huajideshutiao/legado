@@ -240,10 +240,6 @@ dependencies {
             ohosVersion(if (isHarmonyMode) "composeMultiplatform-ohos" else "cmp")
         }"
     )
-    // JBR 客户端 API (WindowDecorations/CustomTitleBar, Windows 原生标题栏自定义):
-    // 官方制品 org.jetbrains.runtime:jbr-api (Apache 2.0, github.com/JetBrains/JetBrainsRuntimeApi),
-    // 与 ab-download-manager/jewel 同款; JBR 侧实现在 JBR 21 运行时内置, 非 JBR 时 getWindowDecorations() 返回 null
-    implementation(libs.jbr.api)
 }
 
 // Compose Desktop 统一配置入口 (mainClass + nativeDistributions)
@@ -325,6 +321,87 @@ val smtcNativeDir = layout.buildDirectory.dir("libs/smtc/native").get().asFile
 val smtcNativeBuildDir = layout.buildDirectory.dir("intermediates/cmake-smtc").get().asFile
 val smtcCppDir = file("src/main/cpp/smtc")
 
+/**
+ * native C 桥的公用 cmake 构建 (smtc / wndchrome 共用)。
+ * 工具链: 有 nmake 走 MSVC 默认生成器, 否则退 MinGW Makefiles;
+ * 全程失败只 warn 不 fail —— native 缺失只影响对应功能, 不该阻断 Kotlin 编译。
+ */
+fun runCmakeNativeBuild(
+    tag: String,
+    cppDir: File,
+    outDir: File,
+    buildDir: File,
+    logger: org.gradle.api.logging.Logger,
+) {
+    val cmakeCmd = findCmakeExecutable()
+    if (cmakeCmd == null) {
+        logger.warn("[$tag] cmake not found, skipping native build.")
+        return
+    }
+    outDir.mkdirs()
+    buildDir.mkdirs()
+
+    var useMinGW = false
+    var mingwBinDir: String? = null
+    if (OperatingSystem.current().isWindows) {
+        val hasNmake = runCatching {
+            val p = ProcessBuilder("nmake", "/?").start()
+            p.waitFor()
+            p.exitValue() == 0
+        }.getOrDefault(false)
+        if (!hasNmake) {
+            mingwBinDir = findMingwBinDir()
+            if (mingwBinDir != null) {
+                useMinGW = true
+                logger.lifecycle("[$tag] Using MinGW Makefiles: $mingwBinDir")
+            } else {
+                logger.warn("[$tag] No nmake/MSVC or MinGW found; cmake may fail.")
+            }
+        }
+    }
+
+    // MinGW 时把工具链目录前置到 PATH (cmake 需要在 PATH 上找到 gcc/make)
+    fun ProcessBuilder.withToolchainPath(): ProcessBuilder = apply {
+        if (useMinGW && mingwBinDir != null) {
+            environment()["PATH"] =
+                mingwBinDir + File.pathSeparator + (environment()["PATH"] ?: "")
+        }
+        redirectErrorStream(true)
+    }
+
+    val configureCmd = mutableListOf(cmakeCmd)
+    if (useMinGW) {
+        configureCmd += listOf("-G", "MinGW Makefiles")
+    }
+    configureCmd += listOf(
+        "-S", cppDir.absolutePath,
+        "-B", buildDir.absolutePath,
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=" + outDir.absolutePath,
+        "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=" + outDir.absolutePath,
+    )
+    logger.lifecycle("[$tag] cmake configure: ${configureCmd.joinToString(" ")}")
+    runCatching {
+        val cfg = ProcessBuilder(configureCmd).withToolchainPath().start()
+        cfg.inputStream.bufferedReader().forEachLine { logger.lifecycle(it) }
+        cfg.waitFor()
+        if (cfg.exitValue() != 0) return@runCatching
+        val build = ProcessBuilder(
+            listOf(cmakeCmd, "--build", buildDir.absolutePath, "--config", "Release")
+        ).withToolchainPath().start()
+        build.inputStream.bufferedReader().forEachLine { logger.lifecycle(it) }
+        build.waitFor()
+        if (build.exitValue() != 0) {
+            logger.warn("[$tag] cmake build failed (exit=${build.exitValue()}).")
+            // 失败时清掉产物: 否则 task 仍被记为成功, 下次 UP-TO-DATE 会拿旧 dll 骗人
+            // (踩过: 应用运行时 dll 被锁 → 链接失败 → 下次构建跳过 → 用的还是旧库)
+            outDir.listFiles()?.forEach { it.delete() }
+        }
+    }.onFailure {
+        logger.warn("[$tag] native build failed: ${it.message}")
+    }
+}
+
 val buildSmtcNative by tasks.registering {
     group = "native"
     description = "Build legado_smtc native library (SMTC bridge) for desktop JVM"
@@ -336,80 +413,7 @@ val buildSmtcNative by tasks.registering {
         )
     )
     doFirst {
-        val cmakeCmd = findCmakeExecutable()
-        if (cmakeCmd == null) {
-            logger.warn("[legado-smtc] cmake not found, skipping native build. SMTC unavailable.")
-            return@doFirst
-        }
-        smtcNativeDir.mkdirs()
-        smtcNativeBuildDir.mkdirs()
-
-        val isWindows = OperatingSystem.current().isWindows
-        var useMinGW = false
-        var mingwBinDir: String? = null
-        if (isWindows) {
-            val hasNmake = runCatching {
-                val p = ProcessBuilder("nmake", "/?").start()
-                p.waitFor()
-                p.exitValue() == 0
-            }.getOrDefault(false)
-            if (!hasNmake) {
-                mingwBinDir = findMingwBinDir()
-                if (mingwBinDir != null) {
-                    useMinGW = true
-                    logger.lifecycle("[legado-smtc] Using MinGW Makefiles: $mingwBinDir")
-                } else {
-                    logger.warn("[legado-smtc] No nmake/MSVC or MinGW found; cmake may fail.")
-                }
-            }
-        }
-
-        val configureCmd = mutableListOf(cmakeCmd)
-        if (useMinGW) {
-            configureCmd += listOf("-G", "MinGW Makefiles")
-        }
-        configureCmd += listOf(
-            "-S", smtcCppDir.absolutePath,
-            "-B", smtcNativeBuildDir.absolutePath,
-            "-DCMAKE_BUILD_TYPE=Release",
-            "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=" + smtcNativeDir.absolutePath,
-            "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=" + smtcNativeDir.absolutePath,
-        )
-        logger.lifecycle("[legado-smtc] cmake configure: ${configureCmd.joinToString(" ")}")
-        runCatching {
-            val cfg = ProcessBuilder(configureCmd)
-            if (useMinGW && mingwBinDir != null) {
-                cfg.environment()["PATH"] =
-                    mingwBinDir + File.pathSeparator + (cfg.environment()["PATH"] ?: "")
-            }
-            cfg.redirectErrorStream(true)
-            val p = cfg.start()
-            p.inputStream.bufferedReader().forEachLine { logger.lifecycle(it) }
-            p.waitFor()
-            if (p.exitValue() != 0) return@runCatching
-            val build = ProcessBuilder(
-                listOf(
-                    cmakeCmd,
-                    "--build",
-                    smtcNativeBuildDir.absolutePath,
-                    "--config",
-                    "Release"
-                )
-            )
-            if (useMinGW && mingwBinDir != null) {
-                build.environment()["PATH"] =
-                    mingwBinDir + File.pathSeparator + (build.environment()["PATH"] ?: "")
-            }
-            build.redirectErrorStream(true)
-            val b = build.start()
-            b.inputStream.bufferedReader().forEachLine { logger.lifecycle(it) }
-            b.waitFor()
-            if (b.exitValue() != 0) {
-                logger.warn("[legado-smtc] cmake build failed (exit=${b.exitValue()}).")
-            }
-        }.onFailure {
-            logger.warn("[legado-smtc] native build failed: ${it.message}")
-        }
+        runCmakeNativeBuild("legado-smtc", smtcCppDir, smtcNativeDir, smtcNativeBuildDir, logger)
     }
 }
 
@@ -486,6 +490,41 @@ val copySmtcNativeToResources by tasks.registering(Copy::class) {
     }
     into(file("${composeResourcesDir.path}/$osName"))
     include("*.dll", "*.so", "*.dylib")
+}
+
+// ===== legado_wndchrome native 桥 (Windows 窗口控制条, 纯 C) =====
+// 去 JBR CustomTitleBar 依赖: 双层 WndProc 子类化 (JFrame + skiko Canvas) + WM_NCCALCSIZE 把客户区
+// 顶到窗口顶端 + 一个鼠标穿透的 layered 子窗口画整条控制条 (含自绘三键)。
+// 契约见 src/main/cpp/wndchrome/wndchrome.h, 调研见 build/research/win32-titlebar/SYNTHESIS.md。
+// Windows 专属 (纯 Win32 API), 其他平台整条 task 跳过。
+val wndchromeNativeDir = layout.buildDirectory.dir("libs/wndchrome/native").get().asFile
+val wndchromeNativeBuildDir =
+    layout.buildDirectory.dir("intermediates/cmake-wndchrome").get().asFile
+val wndchromeCppDir = file("src/main/cpp/wndchrome")
+
+val buildWndChromeNative by tasks.registering {
+    group = "native"
+    description = "Build legado_wndchrome native library (window chrome bridge) for Windows"
+    onlyIf { OperatingSystem.current().isWindows }
+    inputs.dir(wndchromeCppDir)
+    outputs.file(File(wndchromeNativeDir, "legado_wndchrome.dll"))
+    doFirst {
+        runCmakeNativeBuild(
+            "legado-wndchrome",
+            wndchromeCppDir,
+            wndchromeNativeDir,
+            wndchromeNativeBuildDir,
+            logger,
+        )
+    }
+}
+
+val copyWndChromeNativeToResources by tasks.registering(Copy::class) {
+    dependsOn(buildWndChromeNative)
+    onlyIf { OperatingSystem.current().isWindows }
+    from(wndchromeNativeDir)
+    into(file("${composeResourcesDir.path}/windows"))
+    include("*.dll")
 }
 
 // CI 用 sed 把 packageVersion 注入为 "3.YY.MMDDHHMM" (如 3.26.08131506)。
@@ -636,6 +675,7 @@ afterEvaluate {
     tasks.named("run").configure {
         dependsOn(project(":modules:quickjs").tasks.named("buildJvmNativeLib"))
         dependsOn(buildSmtcNative)
+        dependsOn(buildWndChromeNative)
         // 开发期 run 注入 debug 标志: 让 shared printStackTraceOnDebug 对齐 Android 的
         // BuildConfig.DEBUG 语义 (仅开发打栈); 打包产物不带该属性 = 静默
         if (this is JavaExec) {
@@ -660,6 +700,7 @@ afterEvaluate {
     }.configureEach {
         dependsOn(copyQuickjsNativeToResources)
         dependsOn(copySmtcNativeToResources)
+        dependsOn(copyWndChromeNativeToResources)
     }
 }
 

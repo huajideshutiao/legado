@@ -605,18 +605,18 @@ function __createBaseSourceObj(handle) {
     // BaseSource 实现 JsExtensionsCommon, 继承完整 java 方法面 (ajax/getHeaderMap/put/get 等)
     var obj = __createJavaObj(handle);
     obj.__h = handle;
-    obj.getKey = function() { return __nativeDispatch(handle, 1601, []); };
-    obj.getTag = function() { return __nativeDispatch(handle, 1602, []); };
-    obj.getSourceType = function() { return __nativeDispatch(handle, 1603, []); };
+    // getKey/getTag/getSourceType/getLoginJs 已由 KSP 生成表接管 (注入下方标记处);
+    // getHeaderMap 特例保持手写 (推断返回 HashMap 无法归类生成);
+    // getLoginUrl/getHeader/getConcurrentRate/getJsLib 为属性 getter 方法化 (阶段 3 E5 接管)
     obj.getHeaderMap = function() {
         var s = __nativeDispatch(handle, 1604, []);
         return (s === null || s === undefined) ? null : JSON.parse(s);
     };
     obj.getLoginUrl = function() { return __nativeDispatch(handle, 1605, []); };
     obj.getHeader = function() { return __nativeDispatch(handle, 1606, []); };
-    obj.getLoginJs = function() { return __nativeDispatch(handle, 1607, []); };
     obj.getConcurrentRate = function() { return __nativeDispatch(handle, 1608, []); };
     obj.getJsLib = function() { return __nativeDispatch(handle, 1609, []); };
+    // @@methods:__createBaseSourceObj@@
     // BaseSource 属性 (2000-2099, setter = getter + 1000)
     Object.defineProperty(obj, "concurrentRate", { get: function() { return __nativeDispatch(handle, 2001, []); }, set: function(v) { __nativeDispatch(handle, 3001, [v]); } });
     Object.defineProperty(obj, "loginUrl", { get: function() { return __nativeDispatch(handle, 2002, []); }, set: function(v) { __nativeDispatch(handle, 3002, [v]); } });

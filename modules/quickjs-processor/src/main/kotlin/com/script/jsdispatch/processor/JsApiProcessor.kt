@@ -18,6 +18,7 @@ import com.google.devtools.ksp.symbol.KSType
 import com.google.devtools.ksp.symbol.Modifier
 import com.google.devtools.ksp.symbol.Nullability
 import com.google.devtools.ksp.symbol.Variance
+import com.script.jsdispatch.processor.JsApiProcessor.Companion.NATIVE_EXCLUDED_METHODS
 
 /**
  * @JsApi 静态分派表生成器。
@@ -60,7 +61,50 @@ class JsApiProcessor(
         const val GEN_PKG = "com.script.jsdispatch.generated"
         const val REGISTRY = "com.script.jsdispatch.JsDispatchRegistry"
         const val COERCE = "com.script.jsdispatch.JsCoerce"
+
+        // native 模式 (jsapi.native=true): 无法模板化、保持手写的特殊方法名 (按名字全局匹配,
+        // 不分类 — 新接入目标类与名单同名的规整方法也会被排除, 与手写桥现状一致)。
+        // (重载/多参分派/多态/数组构造/批量区间/工厂/handle 返回/header 解析/返回参数原样回传/
+        //  推断返回类型无法归类 (getHeaderMap: HashMap)/List 返回 (loginUi)/UI 副作用 (login 族))。
+        // 名单与 NativeJsExtensionsBridge 手写分支同步维护。
+        val NATIVE_EXCLUDED_METHODS: Set<String> = """
+            ajax,ajaxAll,base64Decode,base64DecodeToByteArray,base64Encode,bytesToStr,cacheFile,
+            connect,createAsymmetricCrypto,createSign,createSymmetricCrypto,digestBase64Str,digestHex,
+            downloadFile,encodeURI,evalJS,get,get7zStringContent,getCookie,getHeaderMap,getRarStringContent,
+            getSource,getString,getStringList,getZipStringContent,head,HMacBase64,HMacHex,log,login,loginUi,
+            logType,md5Encode,md5Encode16,openUrl,post,put,queryBase64TTF,queryTTF,readTxtFile,replaceFont,
+            showLoginDialog,showSourceVariableDialog,startBrowser,startBrowserAwait,strToBytes,toURL,
+            webView,webViewGetOverrideUrl,webViewGetSource
+        """.trimIndent().split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+
+        /** REF 返回且不在 NATIVE_HANDLE_METHODS 白名单: 静默跳过 (无法模板化是已知事实, 不算漏)。 */
+        const val SKIP_SILENT_REF = "<silent-ref>"
+
+        /** native 生成表 methodId 基址: 5000 段 (远离手写全段 1-1699 与属性桥 1700-3299, 空间充足)。 */
+        const val NATIVE_METHOD_ID_BASE = 5000
+
+        // 目标类/声明类 FQN → JS 工厂函数名: 生成方法的 JS 闭包按此分区注入对应工厂函数体内
+        // (工厂函数体内有唯一标记注释 `// @@methods:<factory>@@`, 桥拼接时逐工厂替换)。
+        // 未列出的类的方法不生成 (无法确定 JS 暴露面)。
+        val NATIVE_JS_FACTORY_BY_CLASS: Map<String, String> = mapOf(
+            "io.legado.app.help.JsExtensionsCommon" to "__createJavaObj",
+            "io.legado.app.data.entities.BaseSource" to "__createBaseSourceObj",
+            "io.legado.app.help.http.StrResponse" to "__createStrResponseObj",
+            "org.jsoup.Connection.Response" to "__createRespObj",
+            // Base<T> 自限定接口的方法 (hasHeader/hasCookie/multiHeaders 等) 只经 Response 对象暴露
+            "org.jsoup.Connection.Base" to "__createRespObj",
+            "io.legado.app.model.analyzeRule.QueryTTF" to "__createQueryTTFObj",
+            "io.legado.app.utils.JsURL" to "__createJsUrlObj",
+        )
+
+        // REF 返回 → 对象 handle 的方法白名单 (ownerFqn.name → JS 包装工厂名):
+        // 生成 Handle 分支 + JS 闭包工厂包装; 其余 REF 返回一律跳过 (静默, 无法模板化)。
+        val NATIVE_HANDLE_METHODS: Map<String, String> = mapOf(
+            "org.jsoup.Connection.Response.parse" to "__createElementObj",
+        )
     }
+
+    private val nativeMode = options["jsapi.native"] == "true"
 
     private var done = false
 
@@ -70,15 +114,44 @@ class JsApiProcessor(
         resolver.getSymbolsWithAnnotation(JS_API_FQN)
             .filterIsInstance<KSClassDeclaration>()
             .forEach { targets[it.qualifiedName!!.asString()] = it }
-        options["jsapi.extraClasses"]?.split(',')?.forEach { raw ->
-            val fqn = raw.trim()
-            if (fqn.isNotEmpty()) {
-                val decl = resolver.getClassDeclarationByName(resolver.getKSNameFromString(fqn))
-                if (decl != null) targets[fqn] = decl
-                else logger.warn("jsapi.extraClasses: class not found: $fqn")
+        // native 模式不处理 extraClasses (app 端 JVM 专用: BaseSource/CacheManager 在 native 桥无分派)
+        if (!nativeMode) {
+            options["jsapi.extraClasses"]?.split(',')?.forEach { raw ->
+                val fqn = raw.trim()
+                if (fqn.isNotEmpty()) {
+                    val decl = resolver.getClassDeclarationByName(resolver.getKSNameFromString(fqn))
+                    if (decl != null) targets[fqn] = decl
+                    else logger.warn("jsapi.extraClasses: class not found: $fqn")
+                }
+            }
+        } else {
+            // native 模式目标类 = JsExtensionsCommon (java 对象方法面, AnalyzeRuleCore/AnalyzeUrlCore
+            // 继承它, cast 到接口即覆盖全部实现类) + jsapi.nativeTargets 指定的对象类型类
+            // (Connection.Response/StrResponse/BaseSource 等, 桥侧各有专属 JS 工厂函数,
+            // 生成闭包按 NATIVE_JS_FACTORY_BY_CLASS 分区注入, 不再有同名冲突)。
+            val nativeTargetFqns = buildSet {
+                add("io.legado.app.help.JsExtensionsCommon")
+                options["jsapi.nativeTargets"]?.split(',')?.forEach { raw ->
+                    val fqn = raw.trim()
+                    if (fqn.isNotEmpty()) add(fqn)
+                }
+            }
+            targets.keys.retainAll(nativeTargetFqns)
+            for (fqn in nativeTargetFqns) {
+                if (fqn !in targets) {
+                    val decl =
+                        resolver.getClassDeclarationByName(resolver.getKSNameFromString(fqn))
+                    if (decl != null) targets[fqn] = decl
+                    else logger.warn("[jsapi.native] jsapi.nativeTargets 类未找到: $fqn")
+                }
             }
         }
         if (targets.isEmpty()) {
+            done = true
+            return emptyList()
+        }
+        if (nativeMode) {
+            generateNativeDispatch(resolver, targets)
             done = true
             return emptyList()
         }
@@ -613,11 +686,355 @@ class JsApiProcessor(
         ).use { it.write(sb.toString().toByteArray()) }
     }
 
-    private fun writeFile(name: String, content: String, file: KSFile?) {
-        val deps = if (file != null) Dependencies(aggregating = false, file)
+    private fun writeFile(name: String, content: String, vararg files: KSFile?) {
+        val nonNull = files.filterNotNull()
+        val deps =
+            if (nonNull.isNotEmpty()) Dependencies(aggregating = false, *nonNull.toTypedArray())
         else Dependencies(aggregating = false)
         codeGenerator.createNewFile(deps, GEN_PKG, name)
             .use { it.write(content.toByteArray()) }
+    }
+
+    // ============ native 输出模式 (jsapi.native=true) ============
+
+    /**
+     * native 模式生成: 为 @JsApi 类的规整方法生成分派 + JS 方法表。
+     *
+     * 只处理声明于目标类自身/继承链的规整方法 (参数可静态化、无重载、非 suspend/vararg/泛型),
+     * 且方法名不在 [NATIVE_EXCLUDED_METHODS] (手写桥已注册的存量方法, 避免重复分派)。
+     * 生成物为纯 Kotlin (无 cinterop 依赖), 返回值用 [NativeDispatchResult] 密封类,
+     * JSValue 转换留在 NativeJsExtensionsBridge (与手写分支同层, 避免生成物依赖 cinterop 符号)。
+     *
+     * 防漏机制: 扫描到的非规整方法 (无法静态生成) 若不在排除名单, 发 KSP warning 提示,
+     * 避免后续新增 @JsApi 函数时忘记在 native 桥手写分派/加入排除名单。
+     *
+     * @param resolver KSP resolver
+     * @param targets @JsApi 标注类 (FQN -> decl)
+     */
+    private fun generateNativeDispatch(
+        resolver: Resolver,
+        targets: Map<String, KSClassDeclaration>,
+    ) {
+        // 收集 (类FQN, 方法) 列表: 只保留规整方法
+        data class NativeMethod(
+            val clsFqn: String,
+            val clsName: String,
+            val name: String,
+            val params: List<ParamModel>,
+            val retCat: Cat,
+            val retNullable: Boolean,
+            val isUnit: Boolean,
+            val handleFactory: String?,  // REF 返回白名单 → JS 包装工厂名 (null = 非 handle 返回)
+            val jsFactory: String,       // JS 闭包注入的目标工厂函数名 (分区键)
+        )
+
+        val methods = ArrayList<NativeMethod>()
+
+        // 先全量收集候选 (含声明类+签名), 再按 (声明类, 方法名) 判定重载
+        data class Candidate(
+            val ownerFqn: String,     // 声明方法所在的类/接口 FQN (分派 cast 目标)
+            val ownerName: String,
+            val name: String,
+            val sig: String,
+            val params: List<ParamModel>,
+            val retQn: String,
+            val ret: KSType?,
+            val skipReason: String?,  // null = 可生成; SKIP_SILENT_REF = 静默跳过; 其余 = warn
+            val handleFactory: String?,
+            val jsFactory: String?,
+        )
+
+        val all = ArrayList<Candidate>()
+        val seenOwnerSigs = HashSet<String>()
+        for ((fqn, decl) in targets.entries.sortedBy { it.key }) {
+            val functions = decl.getAllFunctions()
+                .filter { it.isPublic() && !it.isConstructor() && it.extensionReceiver == null }
+                .filter {
+                    (it.parentDeclaration as? KSClassDeclaration)
+                        ?.qualifiedName?.asString() != "kotlin.Any"
+                }
+            for (f in functions) {
+                // 声明类: 继承链方法取声明处 (接口方法在实现类 getAllFunctions 重复出现,
+                // 但只按声明类生成一次, cast 到声明类以覆盖全部实现类)
+                val owner = f.parentDeclaration as? KSClassDeclaration
+                val ownerFqn = owner?.qualifiedName?.asString() ?: fqn
+                val ownerName = owner?.simpleName?.asString() ?: decl.simpleName.asString()
+                val name = f.simpleName.asString()
+                val params = f.parameters.map { p ->
+                    val t = p.type.resolve()
+                    ParamModel(categorize(t), t.nullability == Nullability.NULLABLE)
+                }
+                val ret = f.returnType?.resolve()
+                val retQn = ret?.declaration?.qualifiedName?.asString() ?: "?"
+                val sig = name + "(" + f.parameters.joinToString(",") {
+                    it.type.resolve().declaration.qualifiedName?.asString() ?: "?"
+                } + ")"
+                // 去重键 = 声明类 + 签名: 不同类同名同签名 (如 BaseSource.evalJS vs AnalyzeUrlCore.evalJS)
+                // 语义不同, 各自保留; 同一声明类重复出现 (多实现类继承同接口方法) 只留一次
+                if (!seenOwnerSigs.add(ownerFqn + "|" + sig)) continue
+                val handleFactory = NATIVE_HANDLE_METHODS[ownerFqn + "." + name]
+                val jsFactory = NATIVE_JS_FACTORY_BY_CLASS[ownerFqn]
+                // 判定跳过原因 (排除名单内的存量方法不算漏, 不 warn)
+                val retCat =
+                    if (retQn == "kotlin.Unit" || retQn == "?") null else ret?.let { categorize(it) }
+                val skipReason = when {
+                    name in NATIVE_EXCLUDED_METHODS -> "已在 NATIVE_EXCLUDED_METHODS 名单(手写桥处理)"
+                    jsFactory == null ->
+                        "声明类不在 NATIVE_JS_FACTORY_BY_CLASS 映射 (无法确定 JS 工厂分区)"
+                    Modifier.SUSPEND in f.modifiers -> "suspend 函数无法静态分派"
+                    f.typeParameters.isNotEmpty() -> "泛型函数无法静态分派"
+                    f.parameters.any { it.isVararg } -> "vararg 参数无法静态分派"
+                    f.annotations.any { it.shortName.asString() == "JvmName" } -> "@JvmName 标注无法静态分派"
+                    params.any { c ->
+                        val cat = c.cat
+                        cat === Cat.UNSUPPORTED || cat is Cat.REF || cat is Cat.MAPC || cat is Cat.LISTC || cat === Cat.STRING_ARRAY
+                    } -> "参数含自定义对象/Map/List/数组类型 (需手写编解码)"
+
+                    retCat === Cat.UNSUPPORTED || retCat is Cat.LISTC || retCat === Cat.STRING_ARRAY ->
+                        "返回自定义对象/List/数组类型 (需手写 handle 包装)"
+
+                    // 返回 Map → GSON JSON (可生成); 返回 REF 且在 NATIVE_HANDLE_METHODS 白名单 →
+                    // Handle (可生成); 白名单外 REF 无法模板化是已知事实 → 静默跳过不算漏
+                    retCat is Cat.REF && handleFactory == null -> SKIP_SILENT_REF
+
+                    else -> null
+                }
+                all.add(
+                    Candidate(
+                        ownerFqn = ownerFqn,
+                        ownerName = ownerName,
+                        name = name,
+                        sig = sig,
+                        params = params,
+                        retQn = retQn,
+                        ret = ret,
+                        skipReason = skipReason,
+                        handleFactory = handleFactory,
+                        jsFactory = jsFactory,
+                    )
+                )
+            }
+        }
+
+        // 按 (声明类, 方法名) 分组统计**可生成**签名数 (JS 层无参数个数分派):
+        // 恰 1 个 → 生成 (其余签名因 REF/List/函数参数被 skip, JS 侧本就未暴露该形态,
+        //   如 Response.header(String) 生成而 header(String,String)→Response 跳过);
+        // >1 个 → 整名排除 + warn; 不同类同名不算重载 (BaseSource.evalJS vs AnalyzeUrlCore.evalJS)。
+        val genCountByOwnerName = HashMap<String, Int>()
+        all.forEach { c ->
+            if (c.skipReason == null) genCountByOwnerName.merge(
+                c.ownerFqn + "." + c.name,
+                1,
+                Int::plus
+            )
+        }
+        val multiGenKey = genCountByOwnerName.filterValues { it > 1 }.keys
+        val emittedWarns = HashSet<String>()
+        for (c in all) {
+            val ownerKey = c.ownerFqn + "." + c.name
+            if (ownerKey in multiGenKey) {
+                if (emittedWarns.add(ownerKey)) {
+                    logger.warn(
+                        "[jsapi.native] ${c.ownerFqn}.${c.name} 存在多个可生成签名 (${genCountByOwnerName[ownerKey]} 个), " +
+                            "无法自动生成分派: 请手写 native 桥分派或加入 NATIVE_EXCLUDED_METHODS"
+                    )
+                }
+                continue
+            }
+            if (c.skipReason != null) {
+                if (c.skipReason != SKIP_SILENT_REF && c.name !in NATIVE_EXCLUDED_METHODS && emittedWarns.add(
+                        ownerKey
+                    )
+                ) {
+                    logger.warn(
+                        "[jsapi.native] ${c.ownerFqn}.${c.name} 无法自动生成分派: ${c.skipReason}. " +
+                            "请手写 native 桥分派或加入 NATIVE_EXCLUDED_METHODS"
+                    )
+                }
+                continue
+            }
+            val retNullable = c.ret?.nullability == Nullability.NULLABLE
+            methods.add(
+                NativeMethod(
+                    clsFqn = c.ownerFqn,
+                    clsName = c.ownerName,
+                    name = c.name,
+                    params = c.params,
+                    retCat = if (c.retQn == "kotlin.Unit" || c.retQn == "?") Cat.ANY else (c.ret?.let {
+                        categorize(
+                            it
+                        )
+                    } ?: Cat.ANY),
+                    retNullable = retNullable,
+                    isUnit = c.retQn == "kotlin.Unit",
+                    handleFactory = c.handleFactory,
+                    jsFactory = c.jsFactory!!,
+                )
+            )
+        }
+        if (methods.isEmpty()) {
+            generateNativeEmpty()
+            return
+        }
+
+        // methodId: 从 [NATIVE_METHOD_ID_BASE] 起稳定分配 (远离手写全段)
+        val assigned = methods.sortedBy { it.clsFqn + "." + it.name }
+            .mapIndexed { i, m -> m to (NATIVE_METHOD_ID_BASE + i) }
+        val sb = StringBuilder()
+        sb.appendLine("@file:Suppress(\"UNCHECKED_CAST\", \"DEPRECATION\", \"UNUSED_PARAMETER\", \"UNUSED_VARIABLE\")")
+        sb.appendLine()
+        sb.appendLine("package $GEN_PKG")
+        sb.appendLine()
+        sb.appendLine("import io.legado.app.utils.GSON")
+        sb.appendLine("import io.legado.app.utils.toJson")
+        sb.appendLine()
+        sb.appendLine("/**")
+        sb.appendLine(" * native 端 (iOS/鸿蒙) @JsApi 新方法分派表 (KSP 生成, 勿手改)。")
+        sb.appendLine(" * 与 NativeJsExtensionsBridge 手写分支共存: 桥 dispatch 先查本表, 未命中落手写。")
+        sb.appendLine(" *")
+        sb.appendLine(" * dispatch 额外接收 registerHandle (桥的 registerObject 引用): REF 返回白名单方法")
+        sb.appendLine(" * (NATIVE_HANDLE_METHODS) 经它注册对象 handle, JS 层由 JS_METHOD_TABLES 中对应工厂闭包")
+        sb.appendLine(" * 包装; registerHandle == null 时 Handle(0) → JS null (降级安全)。")
+        sb.appendLine(" */")
+        sb.appendLine("internal object NativeGeneratedDispatch {")
+        sb.appendLine()
+        sb.appendLine("    fun dispatch(")
+        sb.appendLine("        obj: Any,")
+        sb.appendLine("        methodId: Int,")
+        sb.appendLine("        args: List<Any?>,")
+        sb.appendLine("        registerHandle: ((Any) -> Long)? = null,")
+        sb.appendLine("    ): NativeDispatchResult = when {")
+        for ((m, id) in assigned) {
+            val callArgs = m.params.indices.joinToString(", ") { i -> "a$i" }
+            val call = "obj.${m.name}($callArgs)"
+            // obj is X 检查在 when 条件成立后, 分支体内 obj 被 smart cast (局部参数不可变)
+            sb.appendLine("        obj is ${m.clsFqn} && methodId == $id -> {")
+            for (i in m.params.indices) {
+                val p = m.params[i]
+                sb.appendLine("            val a$i = ${nativeParamExpr("args", i, p)}")
+            }
+            sb.appendLine(
+                "            ${
+                    nativeRetExpr(
+                        call,
+                        m.isUnit,
+                        m.retCat,
+                        m.retNullable,
+                        m.handleFactory
+                    )
+                }"
+            )
+            sb.appendLine("        }")
+        }
+        sb.appendLine("        else -> NativeDispatchResult.NONE")
+        sb.appendLine("    }")
+        sb.appendLine()
+        // JS 方法表 (按 JS 工厂分区): 桥拼接时把每张表替换进对应工厂函数体内的
+        // `// @@methods:<factory>@@` 标记行 (标记行 4 空格缩进, 表行同 4 空格)。
+        // 生成物是 obj.xxx = function 裸语句, 必须注入工厂函数体内 (局部 obj/handle),
+        // 拼在全局作用域会 ReferenceError。
+        sb.appendLine("    val JS_METHOD_TABLES: Map<String, String> = mapOf(")
+        for ((factory, group) in assigned.groupByTo(LinkedHashMap()) { it.first.jsFactory }) {
+            sb.appendLine("        \"$factory\" to \"\"\"")
+            for ((m, id) in group) {
+                val params = m.params.indices.joinToString(", ") { "p$it" }
+                val argsArr = m.params.indices.joinToString(", ") { "p$it" }
+                val body = when {
+                    m.isUnit -> "__nativeDispatch(handle, $id, [$argsArr]);"
+                    // REF 白名单: 返回 handle 由 JS 工厂包装 (对齐手写 obj.parse = ...__createElementObj)
+                    m.handleFactory != null ->
+                        "return ${m.handleFactory}(__nativeDispatch(handle, $id, [$argsArr]));"
+                    // Map → JSON 字符串, JS 侧 JSON.parse (对齐手写 706/707/1604 闭包; 可空 Map null 传播)
+                    m.retCat is Cat.MAPC -> {
+                        val fallback = if (m.retNullable) "null" else "{}"
+                        "var s = __nativeDispatch(handle, $id, [$argsArr]); " +
+                            "return (s === null || s === undefined) ? $fallback : JSON.parse(s);"
+                    }
+
+                    else -> "return __nativeDispatch(handle, $id, [$argsArr]);"
+                }
+                sb.appendLine("    obj.${m.name} = function($params) { $body }")
+            }
+            // 结束定界符列 0: """ 前的缩进会进入字符串内容, 表行保持 4 空格字面缩进
+            sb.appendLine("\"\"\",")
+        }
+        sb.appendLine("    )")
+        sb.appendLine("}")
+        writeFile(
+            "NativeGeneratedDispatch",
+            sb.toString(),
+            *targets.values.mapNotNull { it.containingFile }.toTypedArray(),
+        )
+    }
+
+    /** native 参数表达式: List<Any?> 取第 [index] 个并转换。 */
+    private fun nativeParamExpr(listName: String, index: Int, p: ParamModel): String {
+        val a = "$listName.getOrNull($index)"
+        return when (val c = p.cat) {
+            Cat.STRING -> if (p.nullable) "$a as? String" else "($a as? String) ?: \"\""
+            Cat.INT -> if (p.nullable) "($a as? Number)?.toInt()" else "($a as? Number)?.toInt() ?: 0"
+            Cat.LONG -> if (p.nullable) "($a as? Number)?.toLong()" else "($a as? Number)?.toLong() ?: 0L"
+            Cat.SHORT -> if (p.nullable) "($a as? Number)?.toShort()" else "($a as? Number)?.toShort() ?: 0"
+            Cat.BYTEP -> if (p.nullable) "($a as? Number)?.toByte()" else "($a as? Number)?.toByte() ?: 0"
+            Cat.FLOAT -> if (p.nullable) "($a as? Number)?.toFloat()" else "($a as? Number)?.toFloat() ?: 0f"
+            Cat.DOUBLE -> if (p.nullable) "($a as? Number)?.toDouble()" else "($a as? Number)?.toDouble() ?: 0.0"
+            Cat.BOOLEAN -> if (p.nullable) "$a as? Boolean" else "($a as? Boolean) ?: false"
+            Cat.CHAR -> if (p.nullable) "$a as? Char" else "($a as? Char) ?: ' '"
+            Cat.ANY -> a
+            Cat.BYTE_ARRAY -> "($a as? List<*>)" +
+                "?.mapNotNull { (it as? Number)?.toInt()?.toByte() }?.toByteArray()" +
+                if (p.nullable) "" else " ?: ByteArray(0)"
+            else -> a
+        }
+    }
+
+    /** native 返回值表达式: 包装为 NativeDispatchResult。 */
+    private fun nativeRetExpr(
+        call: String,
+        isUnit: Boolean,
+        retCat: Cat,
+        retNullable: Boolean,
+        handleFactory: String? = null
+    ): String {
+        if (isUnit) return "$call; NativeDispatchResult.UNIT"
+        return when (val c = retCat) {
+            Cat.STRING -> "NativeDispatchResult.Str($call)"
+            Cat.INT -> "NativeDispatchResult.Int($call)"
+            Cat.LONG -> "NativeDispatchResult.Long($call)"
+            Cat.SHORT -> "NativeDispatchResult.Int($call)"
+            Cat.BYTEP -> "NativeDispatchResult.Int($call)"
+            Cat.FLOAT, Cat.DOUBLE -> "NativeDispatchResult.Double($call)"
+            Cat.BOOLEAN -> "NativeDispatchResult.Bool($call)"
+            Cat.CHAR -> "NativeDispatchResult.Str($call.toString())"
+            Cat.BYTE_ARRAY -> "NativeDispatchResult.Bytes($call)"
+            // Map → GSON JSON 字符串 (对齐手写 706/707/1604; 可空 Map null → Str(null) → jsNull)
+            is Cat.MAPC ->
+                if (retNullable) "NativeDispatchResult.Str($call?.let { GSON.toJson(it) })"
+                else "NativeDispatchResult.Str(GSON.toJson($call))"
+            // 仅 NATIVE_HANDLE_METHODS 白名单到达: 注册对象 handle (0 = null), JS 层工厂闭包包装
+            is Cat.REF ->
+                "val h = $call; NativeDispatchResult.Handle(" +
+                    "if (h == null) 0L else (registerHandle?.invoke(h) ?: 0L))"
+            else -> "NativeDispatchResult.AnyVal($call)"
+        }
+    }
+
+    /** native 模式无可生成方法时输出空表 (保持编译期引用一致)。 */
+    private fun generateNativeEmpty() {
+        val sb = StringBuilder()
+        sb.appendLine("package $GEN_PKG")
+        sb.appendLine()
+        sb.appendLine("/** native 端 @JsApi 新方法分派表 (KSP 生成, 勿手改) — 当前无新增方法。 */")
+        sb.appendLine("internal object NativeGeneratedDispatch {")
+        sb.appendLine("    fun dispatch(")
+        sb.appendLine("        obj: Any,")
+        sb.appendLine("        methodId: Int,")
+        sb.appendLine("        args: List<Any?>,")
+        sb.appendLine("        registerHandle: ((Any) -> Long)? = null,")
+        sb.appendLine("    ): NativeDispatchResult = NativeDispatchResult.NONE")
+        sb.appendLine("    val JS_METHOD_TABLES: Map<String, String> = emptyMap()")
+        sb.appendLine("}")
+        writeFile("NativeGeneratedDispatch", sb.toString())
     }
 
     // ============ 属性访问器 JVM 命名 ============

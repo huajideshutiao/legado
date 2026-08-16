@@ -724,6 +724,9 @@ private fun DialogOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavig
         "change_cover" -> ChangeCoverDialogContent(overlay, navigator)
         "app_log" -> AppLogOverlayDialogContent(overlay, navigator)
 
+        // java.copy 确认对话框 (完整文本在 IntentData, payload 只带 key, 见 CopyConfirmDialog.kt)
+        "copy_confirm" -> CopyConfirmOverlayDialogContent(overlay, navigator)
+
         // 段评/书评列表底部弹窗 (对照 app 端 ReviewListDialog BottomSheetDialogFragment;
         // payload = ReviewListDialogPayload JSON, 见 ReviewListDialogHost.kt)
         "review_list" -> ReviewListOverlayDialogContent(overlay, navigator)

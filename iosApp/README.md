@@ -83,7 +83,8 @@ iOS 端代码改动 (iosMain/) 在 Windows 上无法编译验证, 但 IDE (Andro
 
 ## Bundle ID
 
-- App: `io.legado.app.ios`
+- App: `shutiao.reader`（Debug 构建 `shutiao.reader.debug`，Release 构建 `shutiao.reader.release`，与安卓
+  applicationId 对齐）
 - 共享 framework: `io.legado.shared` (shared 模块 namespace)
 
 ## 签名

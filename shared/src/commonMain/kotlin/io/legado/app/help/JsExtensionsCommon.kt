@@ -25,6 +25,8 @@ import io.legado.app.model.analyzeRule.CustomUrl
 import io.legado.app.model.analyzeRule.QueryTTF
 import io.legado.app.model.script.jsContext
 import io.legado.app.model.script.jsContextOrNull
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppOverlay
 import io.legado.app.utils.Base64Lenient
 import io.legado.app.utils.EncoderUtils
 import io.legado.app.utils.EncodingDetect
@@ -522,6 +524,27 @@ interface JsExtensionsCommon {
     }
 
     /**
+     * 复制文本到系统剪贴板 (先弹确认对话框, 用户确认后才写入)。
+     *
+     * 完整文本存 [IntentData] (one-shot), payload 只带 key, 避免超长文本进
+     * Overlay 快照序列化; 对话框内容只显示文本前面一截 (超长截断), 确认后
+     * 取完整文本写入剪贴板。前台无界面 (AppNavigator 未注册) 时静默忽略。
+     */
+    fun copy(text: Any?) {
+        jsContext.ensureActive()
+        val navigator = AppNavigatorProviders.getOrNull() ?: return
+        val textStr = text?.toString() ?: ""
+        // 复用 IntentData 临时大数据容器 (one-shot, 对话框取走即删)
+        IntentData.put(COPY_CONFIRM_KEY, textStr)
+        navigator.showOverlay(
+            AppOverlay.Dialog(
+                key = COPY_CONFIRM_OVERLAY_KEY,
+                payload = COPY_CONFIRM_KEY,
+            )
+        )
+    }
+
+    /**
      * 获取 WebView 默认 UserAgent (走 [UserAgentProviders], 由宿主端注册)
      */
     fun getWebViewUA(): String {
@@ -811,7 +834,11 @@ interface JsExtensionsCommon {
     fun startBrowser(url: String, title: String) {
         jsContext.ensureActive()
         // saveResult=false/refetchAfterSuccess=false 对齐原 app 端 SourceVerificationHelp.startBrowser 默认
-        SourceVerificationHelpShared.startBrowser(getSource(), url, title, false, false)
+        SourceVerificationHelpShared.startBrowser(
+            getSource(), url, title,
+            saveResult = false,
+            refetchAfterSuccess = false
+        )
     }
 
     /**
@@ -826,8 +853,8 @@ interface JsExtensionsCommon {
             url,
             title,
             false,
-            false,
-            asBottomSheet
+            refetchAfterSuccess = false,
+            asBottomSheet = asBottomSheet
         )
     }
 
@@ -1079,6 +1106,14 @@ interface JsExtensionsCommon {
         }
         if (result.isBlank()) throw NoStackTraceException("$path 内容获取失败或者为空")
         return result
+    }
+
+    companion object {
+        /** [copy] 确认对话框的 Overlay key (与 [io.legado.app.ui.root.LegadoApp] 分发接线一致)。 */
+        const val COPY_CONFIRM_OVERLAY_KEY = "copy_confirm"
+
+        /** [copy] 完整文本在 [IntentData] 中的 one-shot key (payload 只带 key, 避免超长文本进快照)。 */
+        const val COPY_CONFIRM_KEY = "copy_confirm_text"
     }
 }
 

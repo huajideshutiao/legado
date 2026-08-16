@@ -21,11 +21,12 @@ import io.legado.app.constant.Status
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.service.ReadAloudControllerShared.ReadAloudState
 import io.legado.app.ui.compose.platform.jvmGetString
+import io.legado.desktop.ui.DesktopWindowChromeNative
+import io.legado.desktop.ui.hwndOrNull
 import io.legado.desktop.ui.tray.DesktopTaskbarMedia.attach
 import io.legado.desktop.ui.tray.DesktopTaskbarMedia.comTasks
 import io.legado.desktop.ui.tray.DesktopTaskbarMedia.runOnPump
 import java.awt.Color
-import java.awt.Component
 import java.awt.Font
 import java.awt.Graphics2D
 import java.awt.RenderingHints
@@ -68,10 +69,11 @@ import javax.swing.SwingUtilities
  *
  * # 实现要点
  * - 独立守护线程 + 隐藏消息窗口 (仿 WebView2Loop): 收 WM_HOTKEY / WM_TASKBARCREATED
- *   (explorer 重启后重挂按钮, 重放上次状态)
- * - 缩略图按钮点击是 WM_COMMAND 发给主窗口: 用窗口子类化拦截 (SetWindowLongPtrW +
- *   CallWindowProcW, 同 DesktopTaskbarDwm 模式; WH_GETMESSAGE 钩子因消息泵时序
- *   不可靠已弃用)
+ *   (explorer 重启广播, 只清挂载标志)
+ * - 缩略图按钮点击 (WM_COMMAND) 与本窗口任务栏按钮建立 (TaskbarButtonCreated) 都是发给主窗口的
+ *   消息: 主窗口子类化由 native 桥 (wndchrome) 独占, 经 [DesktopWindowChromeNative.addMessageHandler]
+ *   转发上来 (S3: 三层子类化收成一层; WH_GETMESSAGE 钩子因消息泵时序不可靠已弃用)。
+ *   TaskbarButtonCreated 的号是运行期分配的, 由 lgchrome_add_hook_message 追加进白名单
  * - ITaskbarList3 无现成 JNA 绑定, 按 vtable 序号手写 COM 调用 (同 WindowsFileDialogs.vtbl)
  * - THUMBBUTTON 结构用 Memory 手动按 x64 布局写 (WCHAR szTip[260] 需 UTF-16LE, 不依赖
  *   JNA 编码注解)
@@ -140,7 +142,7 @@ internal object DesktopTaskbarMedia {
 
     // 两个消息各有分工, 都要监听:
     // - "TaskbarCreated": explorer 重启广播 (HWND_BROADCAST, 所有顶层窗口都收) → 隐藏泵窗口收
-    // - "TaskbarButtonCreated": 本窗口的任务栏按钮已建立 → 只发给主窗口, 子类化后才收得到
+    // - "TaskbarButtonCreated": 本窗口的任务栏按钮已建立 → 只发给主窗口, 经 native 桥转发上来
     private const val WM_TASKBARCREATED_MSG = "TaskbarCreated"
     private const val WM_TASKBARBUTTONCREATED_MSG = "TaskbarButtonCreated"
     private const val WINDOW_CLASS = "LegadoTaskbarMedia"
@@ -150,6 +152,7 @@ internal object DesktopTaskbarMedia {
 
     /** 自定义消息: 唤醒泵线程执行 [comTasks] 里排队的 COM 操作。 */
     private const val WM_LG_RUN_COM = 0x0400 + 0x51   // WM_APP+0x51
+
 
     // ==================== 状态 ====================
 
@@ -192,7 +195,7 @@ internal object DesktopTaskbarMedia {
 
     // ==================== 生命周期 ====================
 
-    /** 启动消息线程 + 注册全局媒体键 + 装 WH_GETMESSAGE 钩子 (幂等; 非 Windows 跳过)。 */
+    /** 启动消息线程 (隐藏窗口 + 全局媒体键 + TaskbarCreated) (幂等; 非 Windows 跳过)。 */
     @Synchronized
     fun install() {
         if (pumpWindow != null) return
@@ -212,30 +215,29 @@ internal object DesktopTaskbarMedia {
      */
     fun attach(window: Window) {
         if (!Platform.isWindows()) return
-        val hwnd = hwndOf(window) ?: return
+        val hwnd = window.hwndOrNull() ?: return
         if (hwnd.pointer == mainHwnd?.pointer) return
-        // 窗口重建: 先摘旧窗口的子类化 (restoreWindowProc 用 mainHwnd, 必须在改写前调用),
-        // 否则 oldWndProc 非 0 会让 subclassWindow 直接跳过, 新窗口收不到 WM_COMMAND
-        restoreWindowProc()
         mainHwnd = hwnd
         buttonsAdded = false
         iconsAttached = false   // image list 是按窗口挂的, 换窗口必须重挂
-        taskbarButtonReady = false   // 新窗口的任务栏按钮要重新等就绪信号
         // SMTC 会话绑的是旧 HWND, 释放后下次推送会用新窗口重新初始化
         io.legado.desktop.audio.DesktopSmtc.release()
         DesktopTaskbarDwm.attach(window)
-        // 子类化拦截 WM_COMMAND (缩略图按钮点击) — DWM 已子类化, 链式转发
-        subclassWindow(hwnd)
+        // WM_COMMAND (缩略图按钮点击) 由 native 桥转发; 与 DWM 卡片各收自己的消息, 无顺序依赖
+        if (!hooked) hooked = DesktopWindowChromeNative.addMessageHandler(messageHandler)
+        // 桥已挂上才有意义: TaskbarButtonCreated 的号是运行期分配的, 要单独加进白名单
+        if (hooked) armTaskbarButtonCreated()
         runOnPump { refreshFromLastState() }
     }
 
     fun uninstall() {
-        // 先还原本类子类化 (old 指向 DWM 的 wndproc), 再让 DWM 还原它自己的
-        restoreWindowProc()
+        if (hooked) {
+            DesktopWindowChromeNative.removeMessageHandler(messageHandler)
+            hooked = false
+        }
         mainHwnd = null
         buttonsAdded = false
         iconsAttached = false
-        taskbarButtonReady = false
         DesktopTaskbarDwm.uninstall()
         // 释放 COM 实例 (IUnknown::Release, vtable slot 2) —— 须在创建它的 STA 线程上
         runOnPump {
@@ -511,13 +513,12 @@ internal object DesktopTaskbarMedia {
     @Volatile
     private var taskbarCreatedMsg: Int? = null
 
-    /** "TaskbarButtonCreated": 主窗口的任务栏按钮已建立, 早于它挂 thumbbar 一律无效。 */
+    /**
+     * "TaskbarButtonCreated" 的消息号 (RegisterWindowMessage 运行期分配, ≥0xC000)。
+     * 非 null 表示已加进 native 桥白名单, 主窗口收到它就会转发上来。
+     */
     @Volatile
     private var taskbarButtonCreatedMsg: Int? = null
-
-    /** 主窗口任务栏按钮是否已就绪 (收到 TaskbarButtonCreated)。 */
-    @Volatile
-    private var taskbarButtonReady = false
 
     private val mediaKeysRegistered = AtomicBoolean(false)
 
@@ -578,7 +579,6 @@ internal object DesktopTaskbarMedia {
                         // 此刻新按钮还没建立, 等主窗口的 TaskbarButtonCreated 再重挂, 这里只清状态。
                         buttonsAdded = false
                         iconsAttached = false
-                        taskbarButtonReady = false
                         return WinDef.LRESULT(0)
                     }
                 }
@@ -612,9 +612,6 @@ internal object DesktopTaskbarMedia {
             pumpWindow = hwnd
             // explorer 重启后任务栏按钮丢失, 监听 TaskbarCreated 重挂
             taskbarCreatedMsg = User32.INSTANCE.RegisterWindowMessage(WM_TASKBARCREATED_MSG)
-            // 主窗口按钮就绪信号 (由主窗口子类化过程接收, 这里只注册取号)
-            taskbarButtonCreatedMsg =
-                User32.INSTANCE.RegisterWindowMessage(WM_TASKBARBUTTONCREATED_MSG)
             registerMediaKeys(hwnd)
         }.onFailure {
             AppLog.put("任务栏媒体消息泵启动失败", it)
@@ -659,96 +656,60 @@ internal object DesktopTaskbarMedia {
     }
 
     /**
-     * 窗口子类化: 拦截发给主窗口的 WM_COMMAND (缩略图按钮点击)。
+     * 缩略图按钮点击 / 任务栏按钮建立: 拦发给主窗口的 WM_COMMAND 与 TaskbarButtonCreated。
      *
      * 不用 WH_GETMESSAGE 钩子 (依赖消息泵时序, AWT GetMessage 路径下回调触发不可靠,
      * 且全局钩子需 DLL 过程 → 1428; 线程级钩子又不触发)。
-     * WM_COMMAND 是发给窗口的消息, 子类化窗口过程直接拦截,
-     * 与 DesktopTaskbarDwm 的子类化链式转发 (DWM 先挂, 我们后挂)。
+     * 两者都是发给窗口的消息, 由 native 桥的窗口过程拦截后转发到这里。
      */
-    private val thumbWndProc = object : WinUser.WindowProc {
-        override fun callback(
-            hwnd: WinDef.HWND,
-            msg: Int,
-            wParam: WinDef.WPARAM,
-            lParam: WinDef.LPARAM,
-        ): WinDef.LRESULT {
-            try {
-                // 任务栏按钮重建 (窗口重新显示等): 重挂 image list + 按钮
-                if (taskbarButtonCreatedMsg != null && msg == taskbarButtonCreatedMsg) {
-                    taskbarButtonReady = true
-                    buttonsAdded = false
-                    iconsAttached = false
-                    runOnPump { refreshFromLastState() }
-                    return WinDef.LRESULT(0)
-                }
-                if (msg == WM_COMMAND) {
-                    val id = (wParam.toLong() and 0xFFFF).toInt()
-                    if (id in BTN_PREV..BTN_STOP) onThumbButton(id)
-                    return WinDef.LRESULT(0)
-                }
-            } catch (e: Throwable) {
-                AppLog.put("任务栏按钮窗口过程异常 (msg=$msg)", e)
-            }
-            return callOldProc(hwnd, msg, wParam, lParam)
-        }
-    }
+    private val messageHandler: (Int, Long, Long) -> Boolean = ::handleWindowMessage
 
-    /** 原窗口过程 (Long 形式; 链式转发给 DesktopTaskbarDwm 的子类化过程)。 */
+    /** 消息处理器已挂到 native 桥 (挂不上则 thumbbar 按钮点击收不到)。 */
     @Volatile
-    private var oldWndProc: Long = 0L
+    private var hooked = false
 
-    private fun subclassWindow(hwnd: WinDef.HWND) {
-        if (oldWndProc != 0L) return
-        runCatching {
-            val old = DesktopTaskbarDwm.SubclassWin32.INSTANCE.GetWindowLongPtrW(
-                hwnd,
-                WinUser.GWL_WNDPROC
-            )
-            oldWndProc = Pointer.nativeValue(old)
-            val fnPtr = com.sun.jna.CallbackReference.getFunctionPointer(thumbWndProc)
-            DesktopTaskbarDwm.SubclassWin32.INSTANCE.SetWindowLongPtrW(
-                hwnd,
-                WinUser.GWL_WNDPROC,
-                Pointer(Pointer.nativeValue(fnPtr)),
-            )
-        }.onFailure {
-            AppLog.put("任务栏按钮窗口子类化失败", it)
-            oldWndProc = 0L
+    /**
+     * 把 "TaskbarButtonCreated" 加进 native 桥的消息白名单 (幂等)。
+     *
+     * 该号由 RegisterWindowMessage 运行期分配 (≥0xC000), 不在 C 侧的编译期白名单里,
+     * 必须显式追加, 否则本窗口的任务栏按钮建立事件收不到 (thumbbar 只能等下一次 update 重挂)。
+     * 桥不可用时优雅退化: 只记一条日志, 其余功能照旧。
+     */
+    private fun armTaskbarButtonCreated() {
+        if (taskbarButtonCreatedMsg != null) return
+        val msg = runCatching {
+            User32.INSTANCE.RegisterWindowMessage(WM_TASKBARBUTTONCREATED_MSG)
+        }.getOrDefault(0)
+        if (msg == 0) {
+            AppLog.put("RegisterWindowMessage(TaskbarButtonCreated) 失败, thumbbar 只能延迟重挂")
+            return
         }
+        // 走 native 桥的绑定 (别按库名 Function.getFunction 取导出: 那依赖裸名能被
+        // LoadLibrary 命中, 而桥是按绝对路径加载的, 走已加载实例更稳)
+        val added = DesktopWindowChromeNative.addHookMessage(msg)
+        if (!added) {
+            AppLog.put("追加 TaskbarButtonCreated 白名单失败, thumbbar 只能延迟重挂")
+        }
+        if (added) taskbarButtonCreatedMsg = msg
     }
 
-    private fun restoreWindowProc() {
-        val hwnd = mainHwnd ?: return
-        val old = oldWndProc
-        if (old == 0L) return
-        runCatching {
-            DesktopTaskbarDwm.SubclassWin32.INSTANCE.SetWindowLongPtrW(
-                hwnd,
-                WinUser.GWL_WNDPROC,
-                Pointer(old),
-            )
-        }.onFailure { AppLog.put("任务栏按钮窗口过程还原失败", it) }
-        oldWndProc = 0L
-    }
-
-    private fun callOldProc(
-        hwnd: WinDef.HWND,
-        msg: Int,
-        wParam: WinDef.WPARAM,
-        lParam: WinDef.LPARAM,
-    ): WinDef.LRESULT {
-        val old = oldWndProc
-        return if (old != 0L) {
-            runCatching {
-                DesktopTaskbarDwm.SubclassWin32.INSTANCE.CallWindowProcW(
-                    Pointer(old),
-                    hwnd, msg, wParam, lParam,
-                )
-            }.getOrDefault(WinDef.LRESULT(0))
-        } else {
-            DesktopTaskbarDwm.SubclassWin32.INSTANCE.DefWindowProcW(hwnd, msg, wParam, lParam)
+    /**
+     * 白名单消息处理 (跑在 native 窗口线程 AWT-Windows, 非 EDT): 只解 id + 切线程执行, 不阻塞。
+     * 返回 true = 已处理 (native 直接答 0 给 Windows)。
+     */
+    private fun handleWindowMessage(msg: Int, wparam: Long, lparam: Long): Boolean {
+        // 任务栏按钮 (重)建立: 旧 image list 与按钮随之作废, 此刻才是 ThumbBarAddButtons 的
+        // 正确时机 (MSDN); explorer 重启后不重挂就永远没有按钮。
+        if (taskbarButtonCreatedMsg != null && msg == taskbarButtonCreatedMsg) {
+            buttonsAdded = false
+            iconsAttached = false
+            runOnPump { refreshFromLastState() }
+            return true
         }
+        if (msg != WM_COMMAND) return false
+        val id = (wparam and 0xFFFF).toInt()
+        if (id in BTN_PREV..BTN_STOP) onThumbButton(id)
+        return true
     }
 
     // ==================== ITaskbarList3 (vtable 手写调用, 同 WindowsFileDialogs.vtbl) ====================
@@ -1064,20 +1025,6 @@ internal object DesktopTaskbarMedia {
 
     // ==================== HWND 获取 ====================
 
-    /** AWT Window → 原生 HWND (反射 peer.getHWnd, 同 mpv 桥接做法; peer 字段是 package-private)。 */
-    private fun hwndOf(window: Window): WinDef.HWND? {
-        return runCatching {
-            val peerField = Component::class.java.getDeclaredField("peer")
-            peerField.isAccessible = true
-            val peer = peerField.get(window) ?: return null
-            val method = peer.javaClass.methods.firstOrNull { it.name == "getHWnd" }
-                ?: peer.javaClass.declaredMethods.firstOrNull { it.name == "getHWnd" }
-                ?: return null
-            method.isAccessible = true
-            val value = method.invoke(peer) as? Long ?: return null
-            if (value == 0L) null else WinDef.HWND(Pointer(value))
-        }.getOrNull()
-    }
 
     private fun str(key: String, fallback: String): String =
         jvmGetString(key).takeIf { it != key } ?: fallback

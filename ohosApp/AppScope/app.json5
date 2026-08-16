@@ -1,9 +1,14 @@
 {
   "app": {
-    "bundleName": "io.legado.app",
+    // 与安卓端对齐 (app/build.gradle.kts applicationId): 基包为 shutiao.reader
+    // (安卓 release/debug 构建追加 .release/.debug 后缀, 鸿蒙无构建类型后缀概念, 取基包)。
+    // 注意: 改动 bundleName 后需卸载旧包 (io.legado.app) 并重新签名安装。
+    "bundleName": "shutiao.reader",
     "vendor": "legado",
-    "versionCode": 1,
-    "versionName": "1.0.0",
+    // 与安卓端对齐 (app/build.gradle.kts): versionCode = 10000 + git 提交数,
+    // versionName = "3." + 构建时刻 yy.MMddHH。安卓端每次构建动态刷新, 鸿蒙端为静态值, 需手动同步。
+    "versionCode": 17376,
+    "versionName": "3.26.081614",
     "icon": "$media:app_icon_layered",
     "label": "$string:app_name",
     "minAPIVersion": 11,

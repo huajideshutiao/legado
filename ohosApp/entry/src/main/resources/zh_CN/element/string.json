@@ -1,0 +1,9 @@
+{
+  "string": [
+    // 桌面图标名称 (EntryAbility label), 中文环境与安卓端 "阅读" 对齐
+    {
+      "name": "EntryAbility_label",
+      "value": "阅读"
+    }
+  ]
+}

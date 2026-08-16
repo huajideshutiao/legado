@@ -1,6 +1,7 @@
 package io.legado.app.napi
 
 import io.legado.app.web.utils.WebAssetSources
+import kotlin.concurrent.Volatile
 import kotlinx.coroutines.runBlocking
 
 /**

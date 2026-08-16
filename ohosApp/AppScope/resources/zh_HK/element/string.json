@@ -1,0 +1,9 @@
+{
+  "string": [
+    // 与安卓端 values-zh-rHK 对齐 (繁体香港, 注意是"閲")
+    {
+      "name": "app_name",
+      "value": "閲讀"
+    }
+  ]
+}

@@ -25,6 +25,8 @@ import io.legado.app.utils.JsURL
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.toJson
 import org.jsoup.Connection
+import com.script.jsdispatch.generated.NativeDispatchResult
+import com.script.jsdispatch.generated.NativeGeneratedDispatch
 import io.legado.app.napi.quickjs.JSContext
 import io.legado.app.napi.quickjs.JSValue
 import io.legado.app.napi.quickjs.qjs_EvalTypeGlobal
@@ -108,18 +110,23 @@ import kotlinx.atomicfu.locks.synchronized
  * - 1200-1299: Sign 对象方法 (setPrivateKey/setPublicKey/sign/signHex/verify)
  * - 13-29: 编解码补齐/重载 (strToBytes/bytesToStr/base64 系/hexDecodeToByteArray/encodeURI/timeFormatUTC/toNumChapter/toURL)
  * - 300-399: 网络族 (ajax/ajaxAll/connect/webView 系/getCookie/getWebViewUA; 309-311 java get/head/post)
- * - 400-499: UI/杂项 (refreshUi/log/logType/toast/longToast/androidId/openUrl/startBrowser 系/getVerificationCode)
+ * - 400-499: UI/杂项 (refreshUi/log/logType/toast/longToast/androidId/openUrl/startBrowser 系/getVerificationCode/copy)
  * - 500-599: 字体族 (queryTTF/queryBase64TTF/replaceFont)
  * - 600-699: 文件/压缩族 (getFile/readFile/readTxtFile/deleteFile/解压全族/downloadFile/cacheFile/importScript)
- * - 700-799: Connection.Response 对象方法 (java.get/head/post 返回值: body/statusCode/url/header/cookie 等)
- * - 1300-1399: QueryTTF 对象方法; 1400-1499: StrResponse 对象方法; 1500-1599: JsURL 对象属性;
- *   1600-1699: BaseSource 对象方法 (getKey/getTag/getSourceType/getHeaderMap/getLoginUrl/getHeader/getLoginJs/getConcurrentRate/getJsLib)
+ * - 700-799: Connection.Response 对象方法 (java.get/head/post 返回值: body/statusCode/url/header/cookie 等;
+ *   规整方法已由 KSP 生成表接管, 手写仅剩 704 url()/712 method() 特例)
+ * - 1300-1399: QueryTTF 对象方法; 1400-1499: StrResponse 对象方法 (规整已生成表接管, 手写仅 1406 headers
+ *   toString 降级); 1500-1599: JsURL 对象属性;
+ *   1600-1699: BaseSource 对象方法 (getKey/getTag/getSourceType/getLoginJs 已生成表接管; 手写仅
+ *   1604 getHeaderMap 特例与 1605/1606/1608/1609 属性 getter 方法化, 阶段 3 E5 接管)
  * - 1700-2199: 复杂对象属性桥 (NativeJsPropertyBridge, book/source/chapter/java 属性 getter,
  *   分派表与 JS 工厂见 NativeJsPropertyBridge.native.kt; >= 1700 在 dispatch 开头短路转发)
  * - 2200+: 带参分派 (NativeJsPropertyBridge.dispatchWithArgs): 2300-2399 book 变量/方法面 |
  *   2400-2499 chapter 变量/方法面 | 2500-2599 cookie (SourceNetworkProvider) |
  *   2600-2699 cache (SourceCacheProvider) | 2700-3199 属性写 (setterId = getterId + 1000) |
  *   3200-3299 ksoup Element/Node 方法面 (src binding 逐项循环)
+ * - 5000+: KSP 生成表 (NativeGeneratedDispatch, JsApiProcessor 按 jsapi.nativeTargets 目标类生成;
+ *   dispatch 顶部查表优先, JS 闭包按工厂分区注入 `// @@methods:<factory>@@` 标记处)
  *
  * 注: AnalyzeUrlCore/AnalyzeRuleCore 不实现 JsEncodeUtilsDefaults (JVM 端由 JsExtensionsJvm
  * 多继承注入同接口), 100-199 摘要段对规则类用同源默认实现补全 (encodeDefaultsOf),
@@ -278,6 +285,18 @@ object NativeJsExtensionsBridge {
         methodId: Int,
         argsArray: CValue<JSValue>
     ): CValue<JSValue> {
+        // KSP 生成表优先: 未命中 (NONE) 落下方手写分支。生成物为纯 Kotlin (无 cinterop 依赖),
+        // 返回值经 [nativeResultToJs] 转 JSValue (与手写分支同层转换语义)。
+        // registerHandle: REF 返回白名单方法 (如 Response.parse) 注册对象 handle,
+        // JS 层由生成闭包里的工厂函数 (__createElementObj 等) 包装。
+        val generated =
+            NativeGeneratedDispatch.dispatch(
+                obj,
+                methodId,
+                jsArrayToList(ctx, argsArray),
+                ::registerObject
+            )
+        if (generated !== NativeDispatchResult.NONE) return nativeResultToJs(ctx, generated)
         // 复杂对象属性/方法段 (>= 1700, NativeJsPropertyBridge):
         // 1700-2199 属性 getter 无参数, 直接转发跳过 JS Array 解析 (hot path: 一次属性读取零堆分配);
         // 2200+ 属性写/变量方法/cookie/cache 需解析参数后转发 (setter 与调用路径, 非 hot path)
@@ -311,43 +330,6 @@ object NativeJsExtensionsBridge {
                 val bytes = jsArrayToByteArray(ctx, argsArray)
                 stringToJsValue(ctx, obj.bytesToStr(bytes))
             }
-            obj is JsExtensionsCommon && methodId == 5 -> {
-                // hexDecodeToString(hex)
-                stringToJsValue(ctx, obj.hexDecodeToString(args.getString(0)))
-            }
-            obj is JsExtensionsCommon && methodId == 6 -> {
-                // hexEncodeToString(utf8)
-                stringToJsValue(ctx, obj.hexEncodeToString(args.getString(0)))
-            }
-            obj is JsExtensionsCommon && methodId == 7 -> {
-                // encodeURI(str)
-                stringToJsValue(ctx, obj.encodeURI(args.getString(0)))
-            }
-            obj is JsExtensionsCommon && methodId == 8 -> {
-                // htmlFormat(str)
-                stringToJsValue(ctx, obj.htmlFormat(args.getString(0)))
-            }
-            obj is JsExtensionsCommon && methodId == 9 -> {
-                // timeFormat(time)
-                val time = (args.getOrNull(0) as? Number)?.toLong() ?: 0L
-                stringToJsValue(ctx, obj.timeFormat(time))
-            }
-            obj is JsExtensionsCommon && methodId == 10 -> {
-                // randomUUID()
-                stringToJsValue(ctx, obj.randomUUID())
-            }
-            obj is JsExtensionsCommon && methodId == 11 -> {
-                // t2s(text)
-                stringToJsValue(ctx, obj.t2s(args.getString(0)))
-            }
-            obj is JsExtensionsCommon && methodId == 12 -> {
-                // s2t(text)
-                stringToJsValue(ctx, obj.s2t(args.getString(0)))
-            }
-            obj is JsExtensionsCommon && methodId == 13 -> {
-                // strToBytes(str, charset)
-                byteArrayToJsArray(ctx, obj.strToBytes(args.getString(0), args.getString(1)))
-            }
             obj is JsExtensionsCommon && methodId == 14 -> {
                 // bytesToStr(bytes, charset) — bytes 为 args[0] (JS Array)
                 val bytes = args.getOrNull(0).toBytesOrNull() ?: ByteArray(0)
@@ -372,29 +354,6 @@ object NativeJsExtensionsBridge {
             obj is JsExtensionsCommon && methodId == 17 -> {
                 // base64Encode(str, flags)
                 stringToJsValue(ctx, obj.base64Encode(args.getString(0), (args.getOrNull(1) as? Number)?.toInt() ?: 2))
-            }
-            obj is JsExtensionsCommon && methodId == 18 -> {
-                // hexDecodeToByteArray(hex) → ByteArray?
-                obj.hexDecodeToByteArray(args.getString(0))?.let { byteArrayToJsArray(ctx, it) } ?: jsNull()
-            }
-            obj is JsExtensionsCommon && methodId == 19 -> {
-                // encodeURI(str, enc)
-                stringToJsValue(ctx, obj.encodeURI(args.getString(0), args.getString(1)))
-            }
-            obj is JsExtensionsCommon && methodId == 20 -> {
-                // timeFormatUTC(time, format, sh)
-                val time = (args.getOrNull(0) as? Number)?.toLong() ?: 0L
-                val sh = (args.getOrNull(2) as? Number)?.toInt() ?: 0
-                stringToJsValue(ctx, obj.timeFormatUTC(time, args.getString(1), sh))
-            }
-            obj is JsExtensionsCommon && methodId == 21 -> {
-                // toNumChapter(s) → String?
-                stringToJsValue(ctx, obj.toNumChapter(args.getOrNull(0) as? String))
-            }
-            obj is JsExtensionsCommon && methodId == 22 -> {
-                // toURL(url[, baseUrl]) → JsURL handle (JS 层包装为属性对象)
-                val jsUrl = obj.toURL(args.getString(0), args.getOrNull(1) as? String)
-                qjs_NewFloat64(ctx, registerObject(jsUrl).toDouble())
             }
             obj is JsExtensionsCommon && methodId == 23 -> {
                 // getSource() → BaseSource handle (0 = null, JS 层 __createBaseSourceObj 包装)
@@ -674,10 +633,6 @@ object NativeJsExtensionsBridge {
                 // getCookie(tag[, key])
                 stringToJsValue(ctx, obj.getCookie(args.getString(0), args.getOrNull(1) as? String))
             }
-            obj is JsExtensionsCommon && methodId == 308 -> {
-                // getWebViewUA()
-                stringToJsValue(ctx, obj.getWebViewUA())
-            }
             obj is JsExtensionsCommon && methodId == 309 -> {
                 // java.get(url, headers) — 网络 GET (单参 java.get(key) 走 25 变量读取; 双参分派对齐 JVM)
                 // headers 由 JS 层 JSON.stringify (对象/JSON 字符串都转成 JSON 文本), 此处解析回 Map
@@ -696,62 +651,14 @@ object NativeJsExtensionsBridge {
             }
 
             // ============ Connection.Response 对象方法 (700-799, java.get/head/post 返回值) ============
-            obj is Connection.Response && methodId == 701 -> stringToJsValue(ctx, obj.body())
-            obj is Connection.Response && methodId == 702 -> qjs_NewInt32(ctx, obj.statusCode())
-            obj is Connection.Response && methodId == 703 -> stringToJsValue(ctx, obj.statusMessage())
+            // 规整方法已由 KSP 生成表接管 (5000+ 段); 以下为无法模板化的特例:
+            // 704 url() URL→String; 712 method() 枚举 .name
             obj is Connection.Response && methodId == 704 -> stringToJsValue(ctx, obj.url()?.toString())
-            obj is Connection.Response && methodId == 705 -> stringToJsValue(ctx, obj.header(args.getString(0)))
-            obj is Connection.Response && methodId == 706 -> {
-                // headers() → JSON (JS 层 JSON.parse, 与 JVM Map 反射结果等价)
-                stringToJsValue(ctx, GSON.toJson(obj.headers()))
-            }
-            obj is Connection.Response && methodId == 707 -> {
-                // cookies() → JSON
-                stringToJsValue(ctx, GSON.toJson(obj.cookies()))
-            }
-            obj is Connection.Response && methodId == 708 -> stringToJsValue(ctx, obj.cookie(args.getString(0)))
-            obj is Connection.Response && methodId == 709 -> stringToJsValue(ctx, obj.charset())
-            obj is Connection.Response && methodId == 710 -> stringToJsValue(ctx, obj.contentType())
-            obj is Connection.Response && methodId == 711 -> byteArrayToJsArray(ctx, obj.bodyAsBytes())
             obj is Connection.Response && methodId == 712 -> stringToJsValue(ctx, obj.method().name)
-            obj is Connection.Response && methodId == 713 -> {
-                // parse() → ksoup Document (Document : Element : Node, 复用 __createElementObj 工厂)
-                qjs_NewFloat64(ctx, registerObject(obj.parse()).toDouble())
-            }
 
-            // ============ UI/杂项 (400-499) ============
-            obj is JsExtensionsCommon && methodId == 401 -> {
-                // refreshUi(target)
-                obj.refreshUi(args.getString(0))
-                jsUndefined()
-            }
-            obj is JsExtensionsCommon && methodId == 402 -> {
-                // log(msg) — 返回值由 JS 包装层原样回传
-                obj.log(args.getOrNull(0))
-                jsUndefined()
-            }
             obj is JsExtensionsCommon && methodId == 403 -> {
                 // logType(any)
                 obj.logType(args.getOrNull(0))
-                jsUndefined()
-            }
-            obj is JsExtensionsCommon && methodId == 404 -> {
-                // toast(msg)
-                obj.toast(args.getOrNull(0))
-                jsUndefined()
-            }
-            obj is JsExtensionsCommon && methodId == 405 -> {
-                // longToast(msg)
-                obj.longToast(args.getOrNull(0))
-                jsUndefined()
-            }
-            obj is JsExtensionsCommon && methodId == 406 -> {
-                // androidId()
-                stringToJsValue(ctx, obj.androidId())
-            }
-            obj is JsExtensionsCommon && methodId == 407 -> {
-                // openUrl(url[, mimeType])
-                obj.openUrl(args.getString(0), args.getOrNull(1) as? String)
                 jsUndefined()
             }
             obj is JsExtensionsCommon && methodId == 408 -> {
@@ -765,11 +672,6 @@ object NativeJsExtensionsBridge {
                 val resp = obj.startBrowserAwait(args.getString(0), args.getString(1), refetch)
                 qjs_NewFloat64(ctx, registerObject(resp).toDouble())
             }
-            obj is JsExtensionsCommon && methodId == 410 -> {
-                // getVerificationCode(imageUrl)
-                stringToJsValue(ctx, obj.getVerificationCode(args.getString(0)))
-            }
-
             // ============ 字体族 (500-599) ============
             obj is JsExtensionsCommon && methodId == 501 -> {
                 // queryTTF(data[, useCache]) → QueryTTF handle (null → 0, JS 层转 null)
@@ -792,54 +694,6 @@ object NativeJsExtensionsBridge {
                 stringToJsValue(ctx, obj.replaceFont(args.getString(0), err, cor, filter))
             }
 
-            // ============ 文件/压缩族 (600-699) ============
-            obj is JsExtensionsCommon && methodId == 601 -> {
-                // getFile(path) → 缓存绝对路径 String
-                stringToJsValue(ctx, obj.getFile(args.getString(0)))
-            }
-            obj is JsExtensionsCommon && methodId == 602 -> {
-                // readFile(path) → ByteArray? (null → JS null)
-                obj.readFile(args.getString(0))?.let { byteArrayToJsArray(ctx, it) } ?: jsNull()
-            }
-            obj is JsExtensionsCommon && methodId == 603 -> {
-                // readTxtFile(path[, charsetName]) — 有第二参走指定编码重载
-                val charset = args.getOrNull(1) as? String
-                val text = if (charset != null) obj.readTxtFile(args.getString(0), charset)
-                else obj.readTxtFile(args.getString(0))
-                stringToJsValue(ctx, text)
-            }
-            obj is JsExtensionsCommon && methodId == 604 -> {
-                // deleteFile(path) → Boolean
-                qjs_NewBool(ctx, if (obj.deleteFile(args.getString(0))) 1 else 0)
-            }
-            obj is JsExtensionsCommon && methodId == 605 -> {
-                // unzipFile(zipPath) → 解压目录相对路径
-                stringToJsValue(ctx, obj.unzipFile(args.getString(0)))
-            }
-            obj is JsExtensionsCommon && methodId == 606 -> {
-                // un7zFile(zipPath)
-                stringToJsValue(ctx, obj.un7zFile(args.getString(0)))
-            }
-            obj is JsExtensionsCommon && methodId == 607 -> {
-                // unrarFile(zipPath)
-                stringToJsValue(ctx, obj.unrarFile(args.getString(0)))
-            }
-            obj is JsExtensionsCommon && methodId == 608 -> {
-                // unArchiveFile(zipPath)
-                stringToJsValue(ctx, obj.unArchiveFile(args.getString(0)))
-            }
-            obj is JsExtensionsCommon && methodId == 609 -> {
-                // getTxtInFolder(path)
-                stringToJsValue(ctx, obj.getTxtInFolder(args.getString(0)))
-            }
-            obj is JsExtensionsCommon && methodId == 610 -> {
-                // getZipStringContent(url, path[, charsetName])
-                val charset = args.getOrNull(2) as? String
-                val text = if (charset != null) {
-                    obj.getZipStringContent(args.getString(0), args.getString(1), charset)
-                } else obj.getZipStringContent(args.getString(0), args.getString(1))
-                stringToJsValue(ctx, text)
-            }
             obj is JsExtensionsCommon && methodId == 611 -> {
                 // getRarStringContent(url, path[, charsetName])
                 val charset = args.getOrNull(2) as? String
@@ -856,29 +710,6 @@ object NativeJsExtensionsBridge {
                 } else obj.get7zStringContent(args.getString(0), args.getString(1))
                 stringToJsValue(ctx, text)
             }
-            obj is JsExtensionsCommon && methodId == 613 -> {
-                // getZipByteArrayContent(url, path) → ByteArray?
-                obj.getZipByteArrayContent(args.getString(0), args.getString(1))
-                    ?.let { byteArrayToJsArray(ctx, it) } ?: jsNull()
-            }
-            obj is JsExtensionsCommon && methodId == 614 -> {
-                // getRarByteArrayContent(url, path) → ByteArray?
-                obj.getRarByteArrayContent(args.getString(0), args.getString(1))
-                    ?.let { byteArrayToJsArray(ctx, it) } ?: jsNull()
-            }
-            obj is JsExtensionsCommon && methodId == 615 -> {
-                // get7zByteArrayContent(url, path) → ByteArray?
-                obj.get7zByteArrayContent(args.getString(0), args.getString(1))
-                    ?.let { byteArrayToJsArray(ctx, it) } ?: jsNull()
-            }
-            obj is JsExtensionsCommon && methodId == 616 -> {
-                // downloadFile(url) / downloadFile(content, url)(已废弃) — 按参数个数分派
-                val second = args.getOrNull(1) as? String
-                @Suppress("DEPRECATION")
-                val path = if (second != null) obj.downloadFile(args.getString(0), second)
-                else obj.downloadFile(args.getString(0))
-                stringToJsValue(ctx, path)
-            }
             obj is JsExtensionsCommon && methodId == 617 -> {
                 // cacheFile(urlStr[, saveTime])
                 val saveTime = (args.getOrNull(1) as? Number)?.toInt()
@@ -886,11 +717,6 @@ object NativeJsExtensionsBridge {
                 else obj.cacheFile(args.getString(0))
                 stringToJsValue(ctx, text)
             }
-            obj is JsExtensionsCommon && methodId == 618 -> {
-                // importScript(path)
-                stringToJsValue(ctx, obj.importScript(args.getString(0)))
-            }
-
             // ============ QueryTTF 对象方法 (1300-1399) ============
             obj is QueryTTF && methodId == 1301 -> {
                 // getGlyfById(glyfId) → String?
@@ -926,13 +752,9 @@ object NativeJsExtensionsBridge {
             }
 
             // ============ StrResponse 对象方法 (1400-1499) ============
-            obj is StrResponse && methodId == 1401 -> stringToJsValue(ctx, obj.body())
-            obj is StrResponse && methodId == 1402 -> stringToJsValue(ctx, obj.url())
-            obj is StrResponse && methodId == 1403 -> qjs_NewInt32(ctx, obj.code())
-            obj is StrResponse && methodId == 1404 -> stringToJsValue(ctx, obj.message())
-            obj is StrResponse && methodId == 1405 -> qjs_NewBool(ctx, if (obj.isSuccessful()) 1 else 0)
+            // 规整方法已由 KSP 生成表接管; 1406 特例: headers() 降级为字符串
+            // (native KmpHeaders 无完整对象桥, 与 Response.headers() 的 JSON 语义不同)
             obj is StrResponse && methodId == 1406 -> {
-                // headers() 降级为字符串 (native KmpHeaders 无完整对象桥)
                 stringToJsValue(ctx, obj.headers().toString())
             }
 
@@ -946,9 +768,9 @@ object NativeJsExtensionsBridge {
             }
 
             // ============ BaseSource 对象方法 (1600-1699, getSource() 返回对象) ============
-            obj is BaseSource && methodId == 1601 -> stringToJsValue(ctx, obj.getKey())
-            obj is BaseSource && methodId == 1602 -> stringToJsValue(ctx, obj.getTag())
-            obj is BaseSource && methodId == 1603 -> qjs_NewInt32(ctx, obj.getSourceType())
+            // getKey/getTag/getSourceType/getLoginJs 已由 KSP 生成表接管; 1604 特例: getHeaderMap
+            // 推断返回 HashMap 无法归类生成 (名单内, 手写 JSON + null 传播);
+            // 1605/1606/1608/1609 为属性 getter 方法化 (阶段 3 E5 属性遍历接管)
             obj is BaseSource && methodId == 1604 -> {
                 // getHeaderMap() → JSON 对象 (null → JS null)
                 obj.getHeaderMap()?.let { stringToJsValue(ctx, GSON.toJson(it)) } ?: jsNull()
@@ -956,7 +778,6 @@ object NativeJsExtensionsBridge {
 
             obj is BaseSource && methodId == 1605 -> stringToJsValue(ctx, obj.loginUrl)
             obj is BaseSource && methodId == 1606 -> stringToJsValue(ctx, obj.header)
-            obj is BaseSource && methodId == 1607 -> stringToJsValue(ctx, obj.getLoginJs())
             obj is BaseSource && methodId == 1608 -> stringToJsValue(ctx, obj.concurrentRate)
             obj is BaseSource && methodId == 1609 -> stringToJsValue(ctx, obj.jsLib)
 
@@ -976,6 +797,10 @@ object NativeJsExtensionsBridge {
      *
      * JS 层用闭包捕获 handle, 避免在 C 层面传递上下文。
      *
+     * KSP 生成表闭包按工厂分区注入: 每个工厂函数体内 `return obj;` 前有唯一标记注释
+     * `// @@methods:<factory>@@`, 下方 val 声明的 `.let {}` 拼装块按
+     * [NativeGeneratedDispatch.JS_METHOD_TABLES] 逐工厂替换 (见 JS_FACTORY_CODE 尾部)。
+     *
      * 注: iOS/鸿蒙两端 JS 工厂代码完全一致 (JS 层行为相同), 下沉到 nativeMain 共用。
      */
     val JS_FACTORY_CODE: String = """
@@ -988,14 +813,7 @@ function __createJavaObj(handle) {
     obj.base64Decode = function(str) { return __nativeDispatch(handle, 2, [str]); };
     obj.strToBytes = function(str) { return __nativeDispatch(handle, 3, [str]); };
     obj.bytesToStr = function(bytes) { return __nativeDispatch(handle, 4, bytes); };
-    obj.hexDecodeToString = function(hex) { return __nativeDispatch(handle, 5, [hex]); };
-    obj.hexEncodeToString = function(utf8) { return __nativeDispatch(handle, 6, [utf8]); };
     obj.encodeURI = function(str) { return __nativeDispatch(handle, 7, [str]); };
-    obj.htmlFormat = function(str) { return __nativeDispatch(handle, 8, [str]); };
-    obj.timeFormat = function(time) { return __nativeDispatch(handle, 9, [time]); };
-    obj.randomUUID = function() { return __nativeDispatch(handle, 10, []); };
-    obj.t2s = function(text) { return __nativeDispatch(handle, 11, [text]); };
-    obj.s2t = function(text) { return __nativeDispatch(handle, 12, [text]); };
     // JsEncodeUtilsDefaults 摘要/HMAC 面 (100-199)
     obj.md5Encode = function(str) { return __nativeDispatch(handle, 101, [str]); };
     obj.md5Encode16 = function(str) { return __nativeDispatch(handle, 102, [str]); };
@@ -1034,9 +852,6 @@ function __createJavaObj(handle) {
     };
     // ============ 编解码补齐 (13-29) ============
     obj.base64DecodeToByteArray = function(str, flags) { return __nativeDispatch(handle, 16, [str, flags]); };
-    obj.hexDecodeToByteArray = function(hex) { return __nativeDispatch(handle, 18, [hex]); };
-    obj.timeFormatUTC = function(time, format, sh) { return __nativeDispatch(handle, 20, [time, format, sh]); };
-    obj.toNumChapter = function(s) { return __nativeDispatch(handle, 21, [s]); };
     obj.toURL = function(url, baseUrl) { return __createJsUrlObj(__nativeDispatch(handle, 22, [url, baseUrl])); };
     // ============ 规则引擎核心补齐 (23-28, 对齐 JVM @JsApi 分派表) ============
     obj.getSource = function() { var h = __nativeDispatch(handle, 23, []); return h ? __createBaseSourceObj(h) : null; };
@@ -1059,7 +874,6 @@ function __createJavaObj(handle) {
     obj.webViewGetSource = function(html, url, js, sourceRegex, delayTime) { return __nativeDispatch(handle, 305, [html, url, js, sourceRegex, delayTime]); };
     obj.webViewGetOverrideUrl = function(html, url, js, overrideUrlRegex, delayTime) { return __nativeDispatch(handle, 306, [html, url, js, overrideUrlRegex, delayTime]); };
     obj.getCookie = function(tag, key) { return __nativeDispatch(handle, 307, [tag, key]); };
-    obj.getWebViewUA = function() { return __nativeDispatch(handle, 308, []); };
     // java.get 重载: 单参 = 变量读取 (25), 双参 = 网络 GET (309) — 对齐 JVM 分派表按参数个数分派
     obj.get = function(a, b) {
         if (arguments.length >= 2) {
@@ -1077,18 +891,13 @@ function __createJavaObj(handle) {
         return __createRespObj(__nativeDispatch(handle, 311, [urlStr, body, h]));
     };
     // ============ UI/杂项 (400-499) ============
-    obj.refreshUi = function(target) { __nativeDispatch(handle, 401, [target]); };
     obj.log = function(msg) { __nativeDispatch(handle, 402, [msg]); return msg; };
     obj.logType = function(any) { __nativeDispatch(handle, 403, [any]); };
-    obj.toast = function(msg) { __nativeDispatch(handle, 404, [msg]); };
-    obj.longToast = function(msg) { __nativeDispatch(handle, 405, [msg]); };
-    obj.androidId = function() { return __nativeDispatch(handle, 406, []); };
     obj.openUrl = function(url, mimeType) { __nativeDispatch(handle, 407, [url, mimeType]); };
     obj.startBrowser = function(url, title) { __nativeDispatch(handle, 408, [url, title]); };
     obj.startBrowserAwait = function(url, title, refetchAfterSuccess) {
         return __createStrResponseObj(__nativeDispatch(handle, 409, [url, title, refetchAfterSuccess]));
     };
-    obj.getVerificationCode = function(imageUrl) { return __nativeDispatch(handle, 410, [imageUrl]); };
     // ============ 字体族 (500-599) ============
     obj.queryTTF = function(data, useCache) { return __createQueryTTFObj(__nativeDispatch(handle, 501, [data, useCache])); };
     obj.queryBase64TTF = function(data) { return __createQueryTTFObj(__nativeDispatch(handle, 502, [data])); };
@@ -1098,24 +907,13 @@ function __createJavaObj(handle) {
         return __nativeDispatch(handle, 503, [text, e, c, filter === true]);
     };
     // ============ 文件/压缩族 (600-699) ============
-    obj.getFile = function(path) { return __nativeDispatch(handle, 601, [path]); };
-    obj.readFile = function(path) { return __nativeDispatch(handle, 602, [path]); };
     obj.readTxtFile = function(path, charsetName) { return __nativeDispatch(handle, 603, [path, charsetName]); };
-    obj.deleteFile = function(path) { return __nativeDispatch(handle, 604, [path]); };
-    obj.unzipFile = function(zipPath) { return __nativeDispatch(handle, 605, [zipPath]); };
-    obj.un7zFile = function(zipPath) { return __nativeDispatch(handle, 606, [zipPath]); };
-    obj.unrarFile = function(zipPath) { return __nativeDispatch(handle, 607, [zipPath]); };
-    obj.unArchiveFile = function(zipPath) { return __nativeDispatch(handle, 608, [zipPath]); };
-    obj.getTxtInFolder = function(path) { return __nativeDispatch(handle, 609, [path]); };
     obj.getZipStringContent = function(url, path, charsetName) { return __nativeDispatch(handle, 610, [url, path, charsetName]); };
     obj.getRarStringContent = function(url, path, charsetName) { return __nativeDispatch(handle, 611, [url, path, charsetName]); };
     obj.get7zStringContent = function(url, path, charsetName) { return __nativeDispatch(handle, 612, [url, path, charsetName]); };
-    obj.getZipByteArrayContent = function(url, path) { return __nativeDispatch(handle, 613, [url, path]); };
-    obj.getRarByteArrayContent = function(url, path) { return __nativeDispatch(handle, 614, [url, path]); };
-    obj.get7zByteArrayContent = function(url, path) { return __nativeDispatch(handle, 615, [url, path]); };
     obj.downloadFile = function(a, b) { return __nativeDispatch(handle, 616, [a, b]); };
     obj.cacheFile = function(urlStr, saveTime) { return __nativeDispatch(handle, 617, [urlStr, saveTime]); };
-    obj.importScript = function(path) { return __nativeDispatch(handle, 618, [path]); };
+    // @@methods:__createJavaObj@@
     return obj;
 }
 
@@ -1127,6 +925,7 @@ function __createCryptoObj(handle) {
     obj.setIv = function(iv) { __nativeDispatch(handle, 1004, [iv]); return obj; };
     obj.encrypt = function(data) { return __nativeDispatch(handle, 1005, [data]); };
     obj.encryptHex = function(data) { return __nativeDispatch(handle, 1006, [data]); };
+    // @@methods:__createCryptoObj@@
     return obj;
 }
 
@@ -1139,6 +938,7 @@ function __createAsymCryptoObj(handle) {
     obj.decryptStr = function(data, usePublicKey) { return __nativeDispatch(handle, 1105, [data, usePublicKey]); };
     obj.encryptHex = function(data, usePublicKey) { return __nativeDispatch(handle, 1106, [data, usePublicKey]); };
     obj.encryptBase64 = function(data, usePublicKey) { return __nativeDispatch(handle, 1107, [data, usePublicKey]); };
+    // @@methods:__createAsymCryptoObj@@
     return obj;
 }
 
@@ -1149,6 +949,7 @@ function __createSignObj(handle) {
     obj.sign = function(data) { return __nativeDispatch(handle, 1203, [data]); };
     obj.signHex = function(data) { return __nativeDispatch(handle, 1204, [data]); };
     obj.verify = function(data, sign) { return __nativeDispatch(handle, 1205, [data, sign]); };
+    // @@methods:__createSignObj@@
     return obj;
 }
 
@@ -1171,6 +972,7 @@ function __createQueryTTFObj(handle) {
             }
         });
     });
+    // @@methods:__createQueryTTFObj@@
     return obj;
 }
 
@@ -1178,12 +980,9 @@ function __createStrResponseObj(handle) {
     if (!handle || handle <= 0) return null;
     var obj = {};
     obj.__h = handle;
-    obj.body = function() { return __nativeDispatch(handle, 1401, []); };
-    obj.url = function() { return __nativeDispatch(handle, 1402, []); };
-    obj.code = function() { return __nativeDispatch(handle, 1403, []); };
-    obj.message = function() { return __nativeDispatch(handle, 1404, []); };
-    obj.isSuccessful = function() { return __nativeDispatch(handle, 1405, []); };
+    // 规整方法 (body/url/code/message/isSuccessful) 由生成表注入 (下方标记处)
     obj.headers = function() { return __nativeDispatch(handle, 1406, []); };
+    // @@methods:__createStrResponseObj@@
     return obj;
 }
 
@@ -1191,20 +990,11 @@ function __createRespObj(handle) {
     if (!handle || handle <= 0) return null;
     var obj = {};
     obj.__h = handle;
-    // Connection.Response 方法面 (700-799, java.get/head/post 返回值; 对齐 JVM 反射可见的 jsoup Response 方法)
-    obj.body = function() { return __nativeDispatch(handle, 701, []); };
-    obj.statusCode = function() { return __nativeDispatch(handle, 702, []); };
-    obj.statusMessage = function() { return __nativeDispatch(handle, 703, []); };
+    // Connection.Response 方法面: 规整方法由生成表注入 (下方标记处);
+    // 手写特例 704 url() (URL→String) / 712 method() (枚举 .name)
     obj.url = function() { return __nativeDispatch(handle, 704, []); };
-    obj.header = function(name) { return __nativeDispatch(handle, 705, [name]); };
-    obj.headers = function() { var s = __nativeDispatch(handle, 706, []); return (s === null || s === undefined) ? {} : JSON.parse(s); };
-    obj.cookies = function() { var s = __nativeDispatch(handle, 707, []); return (s === null || s === undefined) ? {} : JSON.parse(s); };
-    obj.cookie = function(name) { return __nativeDispatch(handle, 708, [name]); };
-    obj.charset = function() { return __nativeDispatch(handle, 709, []); };
-    obj.contentType = function() { return __nativeDispatch(handle, 710, []); };
-    obj.bodyAsBytes = function() { return __nativeDispatch(handle, 711, []); };
     obj.method = function() { return __nativeDispatch(handle, 712, []); };
-    obj.parse = function() { return __createElementObj(__nativeDispatch(handle, 713, [])); };
+    // @@methods:__createRespObj@@
     return obj;
 }
 
@@ -1219,11 +1009,47 @@ function __createJsUrlObj(handle) {
         var s = __nativeDispatch(handle, 1504, []);
         return (s === null || s === undefined) ? null : JSON.parse(s);
     } });
+    // @@methods:__createJsUrlObj@@
     return obj;
 }
-    """.trimIndent() + "\n" + NativeJsPropertyBridge.JS_PROPERTY_FACTORY_CODE
+    """.trimIndent()
+        .let { base ->
+            // KSP 生成表闭包按 JS 工厂分区注入: 每个工厂函数体内 `return obj;` 前有唯一标记注释
+            // `// @@methods:<factory>@@` (4 空格缩进), 对应 [NativeGeneratedDispatch.JS_METHOD_TABLES]
+            // 的同名键替换之 (空表/未生成键的标记原样保留, 是合法 JS 注释)。
+            // 生成物是 obj.xxx = function 裸语句, 必须注入工厂函数体内才有局部 obj/handle,
+            // 拼在全局作用域会 ReferenceError。先拼接属性桥串再替换: __createBaseSourceObj/
+            // __createElementObj 等工厂在 NativeJsPropertyBridge 的串里, 标记同样生效。
+            var code = base + "\n" + NativeJsPropertyBridge.JS_PROPERTY_FACTORY_CODE
+            for ((factory, table) in NativeGeneratedDispatch.JS_METHOD_TABLES) {
+                val marker = "    // @@methods:$factory@@"
+                if (marker in code) code = code.replace(marker, table.trim())
+            }
+            code
+        }
 
     // ============ 工具方法: JSValue ↔ Kotlin 转换 ============
+
+    /** KSP 生成表 (NativeGeneratedDispatch) 的返回值: 纯 Kotlin, 由 [nativeResultToJs] 转 JSValue。 */
+    private fun nativeResultToJs(
+        ctx: CPointer<JSContext>,
+        r: NativeDispatchResult
+    ): CValue<JSValue> = when (r) {
+        is NativeDispatchResult.Str -> stringToJsValue(ctx, r.v)
+        is NativeDispatchResult.Int -> qjs_NewInt32(ctx, r.v)
+        is NativeDispatchResult.Long -> qjs_NewFloat64(ctx, r.v.toDouble())
+        is NativeDispatchResult.Double -> qjs_NewFloat64(ctx, r.v)
+        is NativeDispatchResult.Bool -> qjs_NewBool(ctx, if (r.v) 1 else 0)
+        is NativeDispatchResult.Bytes -> r.v?.let { byteArrayToJsArray(ctx, it) } ?: jsNull()
+        is NativeDispatchResult.AnyVal -> anyToJs(ctx, r.v)
+        // Handle: 0 = null, 非 0 = 已注册对象 handle, JS 层按返回类型工厂包装
+        is NativeDispatchResult.Handle -> if (r.v == 0L) jsNull() else qjs_NewFloat64(
+            ctx,
+            r.v.toDouble()
+        )
+        NativeDispatchResult.UNIT -> jsUndefined()
+        NativeDispatchResult.NONE -> jsUndefined()
+    }
 
     /** JS Array → Kotlin List<Any?> (递归取元素) */
     private fun jsArrayToList(ctx: CPointer<JSContext>, arr: CValue<JSValue>): List<Any?> {

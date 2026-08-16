@@ -195,6 +195,12 @@ java.getVerificationCode(imageUrl)
 java.longToast(msg: Any?)
 java.toast(msg: Any?)
 ```
+
+* 复制文本到剪贴板(会先弹出确认对话框，用户确认后才写入；无前台界面时静默忽略)
+
+```js
+java.copy(text: Any?)
+```
 * 从网络(由java.cacheFile实现)、本地读取JavaScript文件，导入上下文请手动`eval(String(...))`
 ```js
 java.importScript(url)
