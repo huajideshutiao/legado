@@ -7,7 +7,6 @@ import com.fleeksoft.ksoup.nodes.Document
 import io.legado.app.help.http.KmpHttpClient
 import io.legado.app.utils.URL
 import org.jsoup.internal.HttpConnection
-import kotlin.concurrent.Volatile
 
 /**
  * jsoup 兼容层入口
@@ -17,8 +16,12 @@ import kotlin.concurrent.Volatile
  * - `org.jsoup.Jsoup.parse(html)` 返回 [Document] (实际由 ksoup 解析)
  *
  * 不再依赖 jsoup jar,底层 HTTP 用 OkHttp (jvm) / Kmp 抽象 (native),HTML 解析用 ksoup。
+ *
+ * expect/actual: JVM/Android 的 actual 带 `@JvmStatic` (JS 桥按静态方法反射调用,
+ * 对齐原版 Java jsoup 的静态 connect); native 无 JvmStatic, 故对象本体下沉 commonMain,
+ * 各端 actual 委托本文件内部实现函数 (jsoupConnect/jsoupParse/...), 实现单份不漂移。
  */
-object Jsoup {
+expect object Jsoup {
 
     /**
      * 底层 HTTP client 工厂,由宿主 App 注入。
@@ -28,34 +31,41 @@ object Jsoup {
      * 继承其拦截器(CookieJar 注入/回写、限流、Cronet 等),per-request 配置由平台门面
      * [org.jsoup.internal.buildPlatformClient] 用 newBuilder 覆盖。
      * native: 无人注入时由平台门面回退 [io.legado.app.help.http.OkHttpClientProviders] 的共享客户端。
+     * (expect 属性无 backing field, @Volatile 由各端 actual 加)
      */
-    @Volatile
-    var clientFactory: (() -> KmpHttpClient)? = null
+    var clientFactory: (() -> KmpHttpClient)?
 
     /** 创建一个 [Connection] */
-    // @JvmStatic: JS 桥接按静态方法反射调用 (对齐原版 Java jsoup 的静态 connect), 缺了会报
-    // Cannot find static method 'connect' (Kotlin object 方法默认是 INSTANCE 实例方法)
-    @JvmStatic
-    fun connect(url: String): Connection = HttpConnection().url(url)
+    fun connect(url: String): Connection
 
     /** 创建一个 [Connection] */
-    @JvmStatic
-    fun connect(url: URL): Connection = HttpConnection().url(url)
+    fun connect(url: URL): Connection
 
     /** 创建一个新的会话 [Connection] */
-    @JvmStatic
-    fun newSession(): Connection = HttpConnection()
+    fun newSession(): Connection
 
-    @JvmStatic
-    fun parse(html: String): Document = Ksoup.parse(html)
+    fun parse(html: String): Document
 
-    @JvmStatic
-    fun parse(html: String, baseUri: String): Document = Ksoup.parse(html, baseUri)
+    fun parse(html: String, baseUri: String): Document
 
-    @JvmStatic
-    fun parseBodyFragment(bodyHtml: String): Document = Ksoup.parseBodyFragment(bodyHtml)
+    fun parseBodyFragment(bodyHtml: String): Document
 
-    @JvmStatic
-    fun parseBodyFragment(bodyHtml: String, baseUri: String): Document =
-        Ksoup.parseBodyFragment(bodyHtml, baseUri)
+    fun parseBodyFragment(bodyHtml: String, baseUri: String): Document
 }
+
+// ---- 共享实现 (各端 actual object 委托; JVM actual 附 @JvmStatic 供 JS 静态反射) ----
+
+internal fun jsoupConnect(url: String): Connection = HttpConnection().url(url)
+
+internal fun jsoupConnect(url: URL): Connection = HttpConnection().url(url)
+
+internal fun jsoupNewSession(): Connection = HttpConnection()
+
+internal fun jsoupParse(html: String): Document = Ksoup.parse(html)
+
+internal fun jsoupParse(html: String, baseUri: String): Document = Ksoup.parse(html, baseUri)
+
+internal fun jsoupParseBodyFragment(bodyHtml: String): Document = Ksoup.parseBodyFragment(bodyHtml)
+
+internal fun jsoupParseBodyFragment(bodyHtml: String, baseUri: String): Document =
+    Ksoup.parseBodyFragment(bodyHtml, baseUri)

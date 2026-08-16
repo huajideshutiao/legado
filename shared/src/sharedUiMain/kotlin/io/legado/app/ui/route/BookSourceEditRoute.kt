@@ -8,8 +8,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.TextRange
 import io.legado.app.constant.BookSourceType
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.IntentData
@@ -177,10 +177,13 @@ fun BookSourceEditRoute(
         BookSourceEditCallbacks(
             onBack = requestExit,
             onSave = {
-                // 对照 app 端 saveSource: setResult(RESULT_OK, origin) + finish()
+                // 对照 app 端 saveSource: IntentData.source = it; setResult(RESULT_OK); finish()
+                // 对象经 IntentData.source 全局槽 + RouteResultPayload 直传, 消费方直接赋值,
+                // 不再按回传 origin 查库 (对齐 master BaseReadViewModel.onUpSource 语义)
                 val source = screenModel.getSource(editState)
-                screenModel.dispatch(BookSourceEditUiEvent.Save(source) {
-                    navigator.pop(RouteResultPayload.BookSourceEdit(source.bookSourceUrl))
+                screenModel.dispatch(BookSourceEditUiEvent.Save(source) { saved ->
+                    IntentData.source = saved
+                    navigator.pop(RouteResultPayload.BookSourceEdit(saved))
                 })
             },
             onDebug = {

@@ -12,7 +12,7 @@ import kotlinx.serialization.Serializable
  * 使用方式:
  * - 调用方: `navigator.push(route, resultKey = RouteResults.BOOK_SOURCE_EDIT)`
  * - 监听方: `navigator.resultsFor(entry.id).filter { it.key == RouteResults.BOOK_SOURCE_EDIT }.collect { result -> val payload = result.payload as RouteResultPayload.BookSourceEdit }`
- * - 返回方: `navigator.pop(payload = RouteResultPayload.BookSourceEdit(origin = url))`
+ * - 返回方: `navigator.pop(payload = RouteResultPayload.BookSourceEdit(source = savedSource))`
  */
 object RouteResults {
     // 通用结果码 (对齐 Activity RESULT_OK / RESULT_DELETED)
@@ -83,9 +83,10 @@ sealed interface RouteResultPayload {
     @Serializable
     data object Deleted : RouteResultPayload
 
-    /** 书源编辑回传 origin (对齐 BookSourceEditActivity) */
+    /** 书源编辑回传保存后的完整书源对象 (对齐 BookSourceEditActivity 保存时 `IntentData.source = it`;
+     *  携带对象, 消费方直接赋值, 不再按回传 origin 查库) */
     @Serializable
-    data class BookSourceEdit(val origin: String) : RouteResultPayload
+    data class BookSourceEdit(val source: BookSource) : RouteResultPayload
 
     /** 目录页回传章节定位 (对齐 TocActivityResult Triple<Int, Int, Boolean>) */
     @Serializable

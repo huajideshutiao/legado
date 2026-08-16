@@ -8,6 +8,7 @@ import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.VideoResolution
 import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.showSourceLogin
 import io.legado.app.ui.compose.platform.PreferenceStoreProvider
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.ScreenModel
@@ -375,11 +376,13 @@ class VideoPlayScreenModel(
         platform?.applySystemFullScreen(enabled)
     }
 
-    /** 登录 (对照 Activity showLogin: IntentData + showLoginDialog)。
-     *  走平台能力 [PlatformCapabilityProviders.showBookSourceLogin] */
+    /** 登录 (对照原版 VideoPlayActivity menu_login: 预置 IntentData.book + nowChapter 后
+     *  showLoginDialog)。统一走 [showSourceLogin], 带当前书与当前章供登录 JS 上下文绑定。 */
     fun onShowLogin() {
         val source = shared.curBookSource ?: return
-        runCatching { PlatformCapabilityProviders.getOrNull()?.showBookSourceLogin(source) }
+        val book = shared.curBook
+        val chapter = book?.let { shared.chapters.getOrNull(it.durChapterIndex) }
+        showSourceLogin(source.getKey(), source, book, chapter)
     }
 
     /** 复制播放地址 (对照 Activity copyPlayUrl: sendToClip)。

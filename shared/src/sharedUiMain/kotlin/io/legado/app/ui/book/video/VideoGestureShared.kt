@@ -11,6 +11,7 @@ import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import io.legado.app.utils.format
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.delay
 import kotlin.math.abs

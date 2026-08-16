@@ -10,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalWindowInfo
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDbProviders
@@ -223,7 +224,11 @@ fun BookInfoRoute(
             // 目录内存交接 (对照原版 BookInfoActivity.startReadActivity:
             // IntentData.chapterList = viewModel.chapterListData.value)。
             // 不交接时阅读/播放页只能读 DB, 未加书架的书目录不落库 → 落空后走回源重拉。
-            IntentData.chapterList = screenModel.loadedChapterList
+            // 在架书目录已落库 (DB 为权威), 不写避免残留过期内存目录 (与 TOC 交接的
+            // !inBookshelf 条件一致)。
+            if (!screenModel.state.value.inBookshelf) {
+                IntentData.chapterList = screenModel.loadedChapterList
+            }
             val target = when {
                 b.isAudio -> AppRoute.AudioPlay(b.toRouteRef())
                 b.isVideo -> AppRoute.VideoPlay(b.toRouteRef())
@@ -572,14 +577,20 @@ fun BookInfoRoute(
                             screenModel.dispatch(BookInfoUiEvent.BumpCoverTick)
                         }
 
-                        // 书源编辑返回: 按回传 origin 重新加载 bookSource
+                        // 书源编辑返回: 直接采用回传的已保存 source 对象 (对照 master
+                        // upSource → curBookSource = IntentData.source, 不查库); 同步赋值
+                        // 消除返回后立刻点登录/看菜单读到旧源的竞态
                         RouteResults.BOOK_SOURCE_EDIT -> {
-                            val origin =
-                                (result.payload as? RouteResultPayload.BookSourceEdit)?.origin
+                            val source =
+                                (result.payload as? RouteResultPayload.BookSourceEdit)?.source
                                     ?: return@collect
-                            scope.launch(IoDispatcher) {
-                                bookSource =
-                                    AppDbProviders.get().bookSourceDao.getBookSource(origin)
+                            bookSource = source
+                            // 顺手同步源名到内存 book (对照 refresh 内 originName 同步, 不落库),
+                            // 消除改源名后详情页来源行/后续传阅读页仍显示旧名
+                            val b = screenModel.state.value.book ?: book
+                            if (b.originName != source.bookSourceName) {
+                                b.originName = source.bookSourceName
+                                screenModel.dispatch(BookInfoUiEvent.BumpBookTick)
                             }
                         }
 
@@ -723,15 +734,32 @@ fun BookInfoRoute(
                 showChangeSourceDialog = false
                 // bookSource 由 LaunchedEffect(book.origin) 按路由书籍加载, 换源后不会自动更新
                 bookSource = source
-                scope.launch {
+                scope.launch(IoDispatcher) {
+                    runCatching {
+                        // 对照 master BookInfoActivity.changeTo → BaseReadViewModel.changeTo:
+                        // 迁移进度/分组/在架位等字段, 在架则删旧插新 + 落目录,
+                        // 否则仅内存交接 (未入架书不落库)
+                        val oldBook = screenModel.state.value.book ?: book
+                        oldBook.migrateTo(newBook, toc)
+                        if (screenModel.state.value.inBookshelf) {
+                            newBook.removeType(BookType.updateError)
+                            val db = AppDbProviders.get()
+                            db.bookDao.delete(oldBook)
+                            db.bookDao.insert(newBook)
+                            db.bookChapterDao.insert(*toc.toTypedArray())
+                        }
+                    }.onFailure {
+                        AppLog.put("换源失败\n${it.message}", it, true)
+                    }
                     screenModel.dispatch(
                         BookInfoUiEvent.ShowBook(newBook, screenModel.lastedTitleOf(newBook))
                     )
+                    // 重新拉取新书信息 + 目录 (对照原版 changeTo 后 onSourceChanged 刷新)
+                    screenModel.refresh(
+                        newBook, source, errorLoadTocLabel,
+                        isSearchBook = isSearchBook,
+                    )
                 }
-                screenModel.refresh(
-                    newBook, source, errorLoadTocLabel,
-                    isSearchBook = isSearchBook,
-                )
             },
             onEditSource = { origin ->
                 navigator.push(AppRoute.BookSourceEdit(origin), RouteResults.BOOK_SOURCE_EDIT)

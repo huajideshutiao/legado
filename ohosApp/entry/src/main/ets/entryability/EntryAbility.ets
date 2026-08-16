@@ -22,6 +22,8 @@ import { handleNetworkRequest } from '../bridge/NetworkBridgeHandler';
 import { handleTextCodecRequest } from '../bridge/TextCodecBridgeHandler';
 // 后台 WebView 桥接处理器 (隐藏 Web 组件 + runJavaScript 取源码, 书源 webView 规则)
 import { handleWebViewRequest } from '../bridge/WebViewBridgeHandler';
+// Markdown 查看器桥接处理器 (composeResources 直读内联的 Web 页面 + marked/hljs 渲染, KMP MarkdownContent)
+import { handleMarkdownRequest } from '../bridge/MarkdownBridgeHandler';
 // KP8+ System 桥接处理器 (ArkTS 侧 promptAction.showToast + context.startAbility 真实实现)
 import { initSystemBridge, handleShowToast, handleOpenUrl } from '../bridge/SystemBridgeHandler';
 import { handleShowTextActionMenu } from '../bridge/TextActionBridgeHandler';
@@ -337,6 +339,20 @@ export default class EntryAbility extends UIAbility {
       console.info('[Legado] webView tsfn callback registered via napi');
     } catch (e) {
       console.error('[Legado] registerWebViewCallback failed: ' + JSON.stringify(e));
+    }
+
+    // Markdown 查看器 tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 同 Toast 模式 fire-and-forget)
+    // KMP MarkdownContent (ArkUIView2 混排的 Web 组件) → OhosNativeBridge.sendMarkdown
+    // 发渲染请求 { content, isDark, fontSize }, dispatch 到 ArkTS 侧 MarkdownBridgeHandler,
+    // 经 Index.ets 挂载的查看器 Web 组件 runJavaScript 注入 renderMarkdown (marked + hljs) 渲染。
+    // 页面内链接点击经 legado.markdownEvent(eventJson) 回送 KMP 走系统浏览器。
+    try {
+      legado.registerMarkdownCallback((json: string): void => {
+        handleMarkdownRequest(json);
+      });
+      console.info('[Legado] markdown tsfn callback registered via napi');
+    } catch (e) {
+      console.error('[Legado] registerMarkdownCallback failed: ' + JSON.stringify(e));
     }
 
     // Battery tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 阅读页电池电量查询)

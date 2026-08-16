@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.interop.ArkUIView2
 import androidx.compose.ui.napi.js
+import androidx.compose.ui.unit.dp
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.utils.KS_JSON
 import kotlinx.coroutines.flow.MutableStateFlow

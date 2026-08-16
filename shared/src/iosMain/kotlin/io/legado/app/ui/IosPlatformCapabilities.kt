@@ -68,6 +68,7 @@ import platform.UIKit.UIAlertActionStyleDefault
 import platform.UIKit.UIAlertController
 import platform.UIKit.UIAlertControllerStyleAlert
 import platform.UIKit.UIApplication
+import platform.UIKit.setAlternateIconName
 import platform.UIKit.UIScreen
 import platform.UIKit.UITextField
 import platform.WebKit.WKWebsiteDataStore

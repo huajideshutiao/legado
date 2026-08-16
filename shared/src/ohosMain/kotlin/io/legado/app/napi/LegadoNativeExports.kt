@@ -1002,6 +1002,67 @@ object LegadoNativeExports {
         OhosNativeBridge.onWebViewResult(requestId, result.toKString(), body.toKString())
     }
 
+    // ===== Markdown 查看器 tsfn 注入 + ArkTS → Kotlin 事件回调 (同 Toast/Media 模式) =====
+
+    /**
+     * 注入 markdown dispatch 函数指针 (由 legado_napi.cpp RegisterMarkdownCallback 调用)。
+     *
+     * 同 [registerToastFn], 注入到 [OhosNativeBridge.markdownTsfn],
+     * 使 KMP [OhosNativeBridge.sendMarkdown] 能跨线程 dispatch 渲染请求到 ArkTS。
+     * ArkTS MarkdownBridgeHandler 经 Index.ets 挂载的 Web 组件 runJavaScript 注入
+     * renderMarkdown (marked.parse + hljs.highlightAll + github-markdown 亮/暗主题) 渲染。
+     *
+     * 调用链: `ArkTS registerMarkdownCallback(cb)` → C++ 创建 napi_threadsafe_function 包装 cb →
+     * C++ dlsym("legado_register_markdown_fn") → 本函数 → 把 [dispatch] 包成 (String) -> Unit lambda →
+     * [OhosNativeBridge.registerMarkdownFn]。之后 KMP MarkdownContent 组合时,
+     * `markdownTsfn?.invoke(json)` → 本 lambda → `dispatch(json.cstr)` →
+     * C++ ohos_markdown_dispatch → napi_call_threadsafe_function → MarkdownCallJs (ArkTS 主线程) → ArkTS cb(json)。
+     *
+     * @param dispatch C++ tsfn dispatch 入口 (`ohos_markdown_dispatch`), 类型 `void(*)(const char*)`
+     */
+    @CName("legado_register_markdown_fn")
+    fun registerMarkdownFn(dispatch: CPointer<CFunction<(CPointer<ByteVar>) -> Unit>>) {
+        OhosNativeBridge.registerMarkdownFn { json ->
+            memScoped {
+                dispatch(json.cstr.getPointer(this))
+            }
+        }
+    }
+
+    /**
+     * ArkTS → Kotlin markdown 查看器事件回调 (由 legado_napi.cpp MarkdownEvent 调用)。
+     *
+     * 调用链: `ArkTS markdownEvent(eventJson)` → napi (legado_napi.cpp MarkdownEvent) →
+     * dlsym("legado_markdown_event") → 本函数 → [OhosNativeBridge.onMarkdownEvent] →
+     * 转发给 [OhosNativeBridge.MarkdownEventListener] (ohosMain 启动期注册, 走系统浏览器)。
+     *
+     * # 事件类型
+     * - openLink: viewer 页面内 <a> 链接点击 (url 字段携带链接), 系统浏览器打开
+     *
+     * @param event 事件 JSON 字符串 (UTF-8 C 字符串, 如 `{"action":"openLink","url":"https://..."}`)
+     */
+    @CName("legado_markdown_event")
+    fun markdownEvent(event: CPointer<ByteVar>) {
+        OhosNativeBridge.onMarkdownEvent(event.toKString())
+    }
+
+    /**
+     * 构建 Markdown 查看器完整 HTML (ArkTS → Kotlin 同步调用, 无参返回字符串)。
+     *
+     * 鸿蒙端 composeResources 打包进 liblegado_shared.so 内嵌资源, Web 组件无法直接按路径访问;
+     * 本函数运行时从 composeResources 直读模板 + marked/highlight/github-markdown 亮暗 css,
+     * 内联拼成完整 HTML (见 [OhosMarkdownViewer]), 供 ArkTS 侧 `WebviewController.loadData` 加载。
+     * 单一数据源 (composeResources), 不产生任何平台端资源副本。
+     *
+     * # 线程
+     * 内部纯内存读取 (不涉及 tsfn 回调), ArkTS 主线程同步调用安全; 结果进程内缓存。
+     *
+     * @return UTF-8 C 字符串, 完整 viewer HTML; 读取失败时为空串 (ArkTS 侧跳过 loadData)
+     */
+    @CName("legado_build_markdown_viewer")
+    fun buildMarkdownViewerHtml(): CPointer<ByteVar> =
+        allocateCString(OhosMarkdownViewer.buildHtml())
+
     // ===== OpenUrl tsfn 注入 (KP8+, 同 Toast 模式, fire-and-forget dispatch) =====
 
     /**

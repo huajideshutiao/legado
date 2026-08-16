@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta content="width=device-width, initial-scale=1" name="viewport">
+    <!-- 本文件是模板: 运行时由 K/N OhosMarkdownViewer 从 composeResources 直读 js/css 并内联替换
+         占位符 (/*__XXX__*/), 生成完整 viewer HTML 后经 loadData 交给鸿蒙 Web 组件渲染。
+         单一数据源: shared/src/commonMain/composeResources/files/web/ 下与帮助页同源资产,
+         无任何平台端资源副本。 -->
+    <!-- 亮/暗两套 github-markdown 主题, 由 renderMarkdown() 按 isDark 切换 (style.disabled) -->
+    <style id="md-light-css">/*__CSS_LIGHT__*/</style>
+    <style disabled id="md-dark-css">/*__CSS_DARK__*/</style>
+    <!-- hljs vs2015 深色主题 (项目自带), 亮暗页面下代码块均为深底, 与帮助页观感一致 -->
+    <style id="md-hljs-css">/*__HLJS_CSS__*/</style>
+    <style>
+        /* Web 组件背景透明, 露出 Compose 侧对话框底色 (fillet) */
+        html, body {
+            background: transparent;
+            margin: 0;
+            padding: 0;
+        }
+        .markdown-body {
+            background-color: transparent !important;
+            font-size: var(--md-font-size, 14px);
+            padding: 0;
+            box-sizing: border-box;
+            word-break: break-word;
+            overflow-wrap: break-word;
+        }
+        /* 长 URL 换行, 避免撑破对话框 */
+        .markdown-body a {
+            word-break: break-all;
+        }
+        .markdown-body pre code.hljs {
+            border-radius: 6px;
+            padding: 12px;
+        }
+        .markdown-body img {
+            max-width: 100%;
+        }
+        /* 暗色下表格/引用边线略提亮 (github dark 观感) */
+        [data-md-theme="dark"] .markdown-body table tr {
+            background-color: transparent;
+        }
+        [data-md-theme="dark"] .markdown-body table tr:nth-child(2n) {
+            background-color: rgba(110, 118, 129, 0.12);
+        }
+    </style>
+</head>
+<body>
+<div class="markdown-body" id="mdviewer"></div>
+<script>/*__MARKED_JS__*/</script>
+<script>/*__HIGHLIGHT_JS__*/</script>
+<script>
+    // 渲染状态: 内容/主题/字号任一变化才重新 marked.parse + hljs.highlightAll
+    var MD_STATE = { content: '', isDark: false, fontSize: 14 };
+
+    function applyTheme(isDark) {
+        document.getElementById('md-light-css').disabled = isDark;
+        document.getElementById('md-dark-css').disabled = !isDark;
+        document.documentElement.dataset.mdTheme = isDark ? 'dark' : 'light';
+    }
+
+    function applyFontSize(px) {
+        document.documentElement.style.setProperty('--md-font-size', (px || 14) + 'px');
+    }
+
+    // ArkTS MarkdownBridgeHandler 注入入口 (runJavaScript 调用, 参数 JSON 序列化对象)
+    function renderMarkdown(opts) {
+        if (!opts) return;
+        var content = opts.content || '';
+        var isDark = !!opts.isDark;
+        var fontSize = opts.fontSize || 14;
+        var changed = content !== MD_STATE.content ||
+            isDark !== MD_STATE.isDark ||
+            fontSize !== MD_STATE.fontSize;
+        MD_STATE.content = content;
+        MD_STATE.isDark = isDark;
+        MD_STATE.fontSize = fontSize;
+        applyTheme(isDark);
+        applyFontSize(fontSize);
+        if (content === '') {
+            document.getElementById('mdviewer').innerHTML = '';
+            return;
+        }
+        if (changed) {
+            document.getElementById('mdviewer').innerHTML = marked.parse(content);
+            // marked v12 输出 <pre><code class="language-xxx">, hljs 自动高亮全部代码块
+            hljs.highlightAll();
+        }
+    }
+
+    // 链接点击: 拦截后交给 javaScriptProxy (legadoMarkdownBridge.openLink) → ArkTS → KMP 系统浏览器
+    document.addEventListener('click', function (e) {
+        var t = e.target;
+        var a = t && t.closest ? t.closest('a') : null;
+        if (a && a.href) {
+            e.preventDefault();
+            if (window.legadoMarkdownBridge && window.legadoMarkdownBridge.openLink) {
+                window.legadoMarkdownBridge.openLink(a.href);
+            }
+        }
+    }, false);
+</script>
+</body>
+</html>

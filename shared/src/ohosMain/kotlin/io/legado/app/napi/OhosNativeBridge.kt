@@ -903,6 +903,72 @@ object OhosNativeBridge {
      */
     fun isWebViewBridgeReady(): Boolean = synchronized(lock) { webViewTsfn != null }
 
+    // ===== Markdown 查看器桥 (tsfn fire-and-forget + @CName event callback) =====
+    // KMP MarkdownContent (ArkUIView2 混排的鸿蒙 Web 组件, viewer HTML 由 composeResources 直读
+    // 内联拼装, marked + hljs 渲染) 的渲染请求经 tsfn dispatch 到 ArkTS MarkdownBridgeHandler;
+    // viewer 页面链接点击经 @CName legado_markdown_event 回调推送,
+    // Kotlin 侧 [MarkdownEventListener] 接收后走系统浏览器。
+
+    /** markdown threadsafe_function 引用 (EntryAbility.ets 注册后注入)。 */
+    @Volatile
+    private var markdownTsfn: OhosTsfnCallback? = null
+
+    /**
+     * Markdown 查看器事件监听器 (ArkTS → Kotlin 推送 viewer 页面交互事件, 如链接点击)。
+     * 由 ohosMain 启动期 (OhosProviderRegistry) 注册, 事件 JSON 与 ArkTS MarkdownBridgeHandler 对齐。
+     */
+    fun interface MarkdownEventListener {
+        fun onMarkdownEvent(eventJson: String)
+    }
+
+    /** markdown 事件监听器 (单实例: Markdown 查看器全局唯一)。 */
+    @Volatile
+    private var markdownEventListener: MarkdownEventListener? = null
+
+    /** 注入 markdown tsfn (由 legado_napi.cpp registerMarkdownCallback 调用)。 */
+    fun registerMarkdownFn(tsfn: OhosTsfnCallback) {
+        synchronized(lock) {
+            markdownTsfn = tsfn
+        }
+    }
+
+    /** 设置 markdown 事件监听器 (null 表示注销)。 */
+    fun setMarkdownEventListener(listener: MarkdownEventListener?) {
+        synchronized(lock) {
+            markdownEventListener = listener
+        }
+    }
+
+    /**
+     * 发送 Markdown 渲染请求到 ArkTS (fire-and-forget, 无返回值)。
+     * 未注册 tsfn 时降级 println (内容不渲染, 正常路径下 EntryAbility 必然已注册)。
+     *
+     * @param payload 渲染参数 (markdown 原文 + 主题 + 字号)
+     */
+    fun sendMarkdown(payload: MarkdownRenderPayload) {
+        val json = KS_JSON.encodeToString(MarkdownRenderPayload.serializer(), payload)
+        val tsfn = synchronized(lock) { markdownTsfn }
+        if (tsfn != null) {
+            runCatching { tsfn(json) }.onFailure {
+                println("[ohos-markdown] tsfn call failed, fallback println")
+            }
+        } else {
+            println("[ohos-markdown] tsfn not registered")
+        }
+    }
+
+    /**
+     * markdown 事件回调 (由 ArkTS 侧调 @CName legado_markdown_event 触发)。
+     * viewer 页面链接点击 → javaScriptProxy → ArkTS MarkdownBridgeHandler → 本函数 →
+     * 转发给 [MarkdownEventListener] (ohosMain 启动期注册, 走系统浏览器打开)。
+     *
+     * @param eventJson 事件 JSON, 如 `{"action":"openLink","url":"https://..."}`
+     */
+    fun onMarkdownEvent(eventJson: String) {
+        val listener = synchronized(lock) { markdownEventListener }
+        listener?.onMarkdownEvent(eventJson)
+    }
+
     // ===== OpenUrl tsfn (KMP → ArkTS, fire-and-forget, 同 Toast 模式) =====
     // OhosOpenUrlProvider.openUrl 经 tsfn dispatch 到 ArkTS, 由 SystemBridgeHandler.handleOpenUrl
     // 调 context.startAbility(Want.uri=url) 打开 URL (KMP 无 ArkTS API 访问能力, 需 tsfn 桥接)。
@@ -1794,6 +1860,33 @@ object OhosNativeBridge {
     data class WebViewBridgeResponse(
         val resultJson: String,
         val bodyRaw: String,
+    )
+
+    /**
+     * Markdown 查看器渲染请求 payload (Kotlin → ArkTS, 与 ArkTS MarkdownBridgeHandler
+     * MarkdownRenderPayload 对齐)。viewer 页面内 marked.parse + hljs.highlightAll 渲染。
+     *
+     * @param content Markdown 原文
+     * @param isDark 是否暗色主题 (AppColors.isDark, 切换 github-markdown 亮/暗 css)
+     * @param fontSize 基准字号 (vp; 与 14sp 对齐, viewer 内作 --md-font-size)
+     */
+    @Serializable
+    data class MarkdownRenderPayload(
+        val content: String,
+        val isDark: Boolean,
+        val fontSize: Float,
+    )
+
+    /**
+     * Markdown 查看器事件 payload (ArkTS → Kotlin, 与 ArkTS MarkdownBridgeHandler 对齐)。
+     *
+     * @param action 事件类型: "openLink" = viewer 页面链接点击
+     * @param url 链接 URL (action=openLink 时有效)
+     */
+    @Serializable
+    data class MarkdownEventPayload(
+        val action: String,
+        val url: String? = null,
     )
 
     /** filePicker 桥请求 payload (Kotlin → ArkTS, 同 ImageBridgeRequest 结构, action=pickDocuments/pickDocumentContent)。 */

@@ -1,4 +1,4 @@
-﻿package io.legado.buildlogic
+package io.legado.buildlogic
 
 import org.gradle.api.Plugin
 import org.gradle.api.Project
@@ -31,7 +31,13 @@ class OhosTargetConventionPlugin : Plugin<Project> {
                     sharedLib {
                         baseName = "legado_shared"
                         if (buildType == NativeBuildType.RELEASE) {
+                            // 本机 16GB 内存 (IDE 常驻) 跑不动全量 LTO: DevirtualizationAnalysis
+                            // 对 compose/skiko 全量导出项目 OOM (e548f91a4e 因此关掉 optimized)。
+                            // 体积精简改走链接期手段: -Wl,-s strip 本地符号表/.debug (约 38MB,
+                            // 动态导出符号 .dynsym 保留, ArkTS dlopen/dlsym 不受影响) +
+                            // -Wl,--gc-sections 死代码消除 (对标 R8 未开混淆的精简)。
                             optimized = false
+                            linkerOpts("-Wl,-s", "-Wl,--gc-sections")
                         }
                         export("org.jetbrains.compose.export:export:$composeExport")
                         linkerOpts("-lz")

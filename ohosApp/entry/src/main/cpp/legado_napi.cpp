@@ -213,6 +213,12 @@ static legado_str_int_fn g_handle_launch_request = nullptr;
 // dlsym 加载的函数指针 - 图片下载管线导出 (ArkTS 保存到相册, 带书源 header, 返回 base64)
 static legado_str_str_fn g_download_image_bytes = nullptr;
 
+// dlsym 加载的函数指针 - Markdown 查看器 HTML 构建导出 (ArkTS → Kotlin 同步调用, 无参返回字符串;
+// 运行时从 composeResources 直读模板 + js/css 内联, 零拷贝零重复)
+typedef const char *(*legado_void_cstr_fn)();
+
+static legado_void_cstr_fn g_build_markdown_viewer = nullptr;
+
 // dlsym 加载的函数指针 - TextAction tsfn 注入 + ArkTS → Kotlin 菜单动作回调 (阅读页文本操作浮动菜单, KP8+ 新增)
 static legado_register_dispatch_fn g_register_text_action_fn = nullptr;
 static legado_int64_cstr_void_fn g_text_action_callback = nullptr;
@@ -223,6 +229,11 @@ static legado_int64_cstr_cstr_void_fn g_webview_callback = nullptr;
 
 // dlsym 加载的函数指针 - Window tsfn 注入 (KMP → ArkTS @ohos.window 窗口策略命令, 同 Toast 模式, fire-and-forget)
 static legado_register_dispatch_fn g_register_window_fn = nullptr;
+
+// dlsym 加载的函数指针 - Markdown 查看器 tsfn 注入 + ArkTS → Kotlin 事件回调
+// (KMP MarkdownContent → composeResources 直读内联的 Web 渲染, 同 Toast/Media 模式; 链接点击经 markdownEvent 回送)
+static legado_register_dispatch_fn g_register_markdown_fn = nullptr;
+static legado_cstr_void_fn g_markdown_event = nullptr;
 
 // Toast/Notification/Image/Media/TTS/Crypto/Http/OpenUrl/FilePicker/Pasteboard threadsafe_function 引用 (C++ 侧持有, ArkTS registerXxxCallback 时创建)
 static napi_threadsafe_function g_toast_tsfn = nullptr;
@@ -243,6 +254,7 @@ static napi_threadsafe_function g_battery_tsfn = nullptr;
 static napi_threadsafe_function g_share_tsfn = nullptr;
 static napi_threadsafe_function g_keyboard_tsfn = nullptr;
 static napi_threadsafe_function g_permission_tsfn = nullptr;
+static napi_threadsafe_function g_markdown_tsfn = nullptr;
 
 // liblegado_shared.so 句柄
 static void* g_legado_so = nullptr;
@@ -355,6 +367,9 @@ static bool load_legado_shared() {
     // 解析 @CName 导出符号 - 图片下载管线 (ArkTS 保存到相册, 带书源 header, 返回 base64)
     g_download_image_bytes = (legado_str_str_fn) dlsym(g_legado_so, "legado_download_image_bytes");
 
+    // 解析 @CName 导出符号 - Markdown 查看器 HTML 构建 (运行时从 composeResources 直读内联)
+    g_build_markdown_viewer = (legado_void_cstr_fn) dlsym(g_legado_so, "legado_build_markdown_viewer");
+
     // 解析 @CName 导出符号 - TextAction tsfn 注入 + ArkTS → Kotlin 菜单动作回调
     g_register_text_action_fn = (legado_register_dispatch_fn) dlsym(g_legado_so, "legado_register_text_action_fn");
     g_text_action_callback = (legado_int64_cstr_void_fn) dlsym(g_legado_so, "legado_text_action_callback");
@@ -362,6 +377,10 @@ static bool load_legado_shared() {
     // 解析 @CName 导出符号 - WebView tsfn 注入 + ArkTS → Kotlin 回调 (混合协议: 控制面 JSON + 数据面裸字符串)
     g_register_webview_fn = (legado_register_webview_dispatch_fn) dlsym(g_legado_so, "legado_register_webview_fn");
     g_webview_callback = (legado_int64_cstr_cstr_void_fn) dlsym(g_legado_so, "legado_webview_callback");
+
+    // 解析 @CName 导出符号 - Markdown 查看器 tsfn 注入 + ArkTS → Kotlin 事件回调 (同 Toast/Media 模式)
+    g_register_markdown_fn = (legado_register_dispatch_fn) dlsym(g_legado_so, "legado_register_markdown_fn");
+    g_markdown_event = (legado_cstr_void_fn) dlsym(g_legado_so, "legado_markdown_event");
 
     OH_LOG_INFO(LOG_APP, "liblegado_shared.so loaded, symbols resolved (KP5: + bookshelfList/searchBook/loadChapter/chapterList/importBookSource; KP5+: + loadMangaChapter/exploreList/openExplore/editExploreSource/topExploreSource/deleteExploreSource; KP7+: + registerFileDir/registerCacheDir/registerToastFn/registerNotificationFn; KP8+: + registerImageFn/registerMediaFn/imageCallback/mediaEvent/registerTtsFn/ttsEvent/registerCryptoFn/cryptoCallback/registerHttpFn/httpCallback/registerOpenUrlFn/registerFilePickerFn/filePickerCallback/registerPasteboardFn/pasteboardCallback/registerTextCodecFn/textCodecCallback)");
     return true;
@@ -888,6 +907,33 @@ static void NotificationCallJs(napi_env env, napi_value js_cb, void* /*context*/
     free(json);
 }
 
+// C++ dispatch 入口: 由 Kotlin lambda (注入到 OhosNativeBridge.markdownTsfn) 调用。
+// 同 ohos_toast_dispatch: 拷贝 JSON 后 napi_call_threadsafe_function 异步 dispatch 到 ArkTS
+// (MarkdownContent 渲染请求 { content, isDark, fontSize }, fire-and-forget)。
+extern "C" void ohos_markdown_dispatch(const char *json) {
+    if (g_markdown_tsfn == nullptr || json == nullptr) return;
+    size_t len = strlen(json) + 1;
+    char *json_dup = (char *) malloc(len);
+    if (json_dup == nullptr) return;
+    memcpy(json_dup, json, len);
+    napi_status status = napi_call_threadsafe_function(g_markdown_tsfn, json_dup, napi_tsfn_nonblocking);
+    if (status != napi_ok) {
+        free(json_dup);
+    }
+}
+
+// tsfn call-js 回调: 在 ArkTS 主线程执行, 把 JSON 包成 napi string 后调用 ArkTS 回调。
+static void MarkdownCallJs(napi_env env, napi_value js_cb, void * /*context*/, void *data) {
+    if (js_cb == nullptr || data == nullptr) return;
+    char *json = static_cast<char *>(data);
+    napi_value json_arg;
+    napi_create_string_utf8(env, json, NAPI_AUTO_LENGTH, &json_arg);
+    napi_value undef;
+    napi_get_undefined(env, &undef);
+    napi_call_function(env, undef, js_cb, 1, &json_arg, nullptr);
+    free(json);
+}
+
 // C++ dispatch 入口: 由 Kotlin lambda (注入到 OhosNativeBridge.windowTsfn) 调用。
 // 同 ohos_toast_dispatch: 拷贝 JSON 后 napi_call_threadsafe_function 异步 dispatch 到 ArkTS。
 extern "C" void ohos_window_dispatch(const char *json) {
@@ -1046,6 +1092,55 @@ static napi_value RegisterNotificationCallback(napi_env env, napi_callback_info 
         g_register_notification_fn(&ohos_notification_dispatch);
     } else {
         OH_LOG_WARN(LOG_APP, "registerNotificationCallback: legado_register_notification_fn not resolved, tsfn 仅 C++ 侧持有 (KMP showNotification 将降级 println)");
+    }
+
+    napi_value ret;
+    napi_get_undefined(env, &ret);
+    return ret;
+}
+
+// napi 包装: registerMarkdownCallback(callback: (json: string) => void): void
+// 同 RegisterToastCallback: 创建 napi_threadsafe_function 包装 ArkTS callback, 存入 g_markdown_tsfn,
+// 并通过 @CName legado_register_markdown_fn 把 ohos_markdown_dispatch 函数指针注入 Kotlin
+// (Kotlin 包成 (String) -> Unit lambda 存入 OhosNativeBridge.markdownTsfn), 使 KMP MarkdownContent
+// 能跨线程 dispatch 渲染请求到 ArkTS MarkdownBridgeHandler (composeResources 直读内联的 viewer 页面,
+// marked + hljs 渲染)。
+static napi_value RegisterMarkdownCallback(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 1) {
+        napi_throw_type_error(env, nullptr, "registerMarkdownCallback requires 1 argument (callback)");
+        napi_value ret;
+        napi_get_undefined(env, &ret);
+        return ret;
+    }
+
+    // 重复注册场景: 释放旧 tsfn
+    if (g_markdown_tsfn != nullptr) {
+        napi_release_threadsafe_function(g_markdown_tsfn, napi_tsfn_abort);
+        g_markdown_tsfn = nullptr;
+    }
+
+    napi_value work_name;
+    napi_create_string_utf8(env, "LegadoMarkdownTsfn", NAPI_AUTO_LENGTH, &work_name);
+    napi_threadsafe_function tsfn;
+    napi_status status = napi_create_threadsafe_function(
+            env, args[0], nullptr, work_name, 0, 1,
+            nullptr, nullptr, nullptr, MarkdownCallJs, &tsfn);
+    if (status != napi_ok) {
+        OH_LOG_ERROR(LOG_APP, "registerMarkdownCallback: napi_create_threadsafe_function failed: %{public}d", status);
+        napi_value ret;
+        napi_get_undefined(env, &ret);
+        return ret;
+    }
+    g_markdown_tsfn = tsfn;
+
+    // 把 ohos_markdown_dispatch 函数指针注入 Kotlin (Kotlin 包成 lambda 存入 OhosNativeBridge.markdownTsfn)
+    if (load_legado_shared() && g_register_markdown_fn != nullptr) {
+        g_register_markdown_fn(&ohos_markdown_dispatch);
+    } else {
+        OH_LOG_WARN(LOG_APP, "registerMarkdownCallback: legado_register_markdown_fn not resolved, tsfn 仅 C++ 侧持有 (KMP MarkdownContent 内容将不渲染)");
     }
 
     napi_value ret;
@@ -1380,6 +1475,29 @@ static napi_value MediaEvent(napi_env env, napi_callback_info info) {
 
     if (load_legado_shared() && g_media_event != nullptr) {
         g_media_event(buf);
+    }
+    delete[] buf;
+
+    napi_value ret;
+    napi_get_undefined(env, &ret);
+    return ret;
+}
+
+// napi 包装: markdownEvent(event: string): void
+// ArkTS → Kotlin Markdown 查看器事件回调 (viewer 页面链接点击 → javaScriptProxy → 本函数 →
+// dlsym("legado_markdown_event") → KMP OhosNativeBridge.onMarkdownEvent → 系统浏览器打开)。
+static napi_value MarkdownEvent(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+
+    size_t str_len = 0;
+    napi_get_value_string_utf8(env, args[0], nullptr, 0, &str_len);
+    char *buf = new char[str_len + 1];
+    napi_get_value_string_utf8(env, args[0], buf, str_len + 1, &str_len);
+
+    if (load_legado_shared() && g_markdown_event != nullptr) {
+        g_markdown_event(buf);
     }
     delete[] buf;
 
@@ -2729,6 +2847,20 @@ static napi_value DownloadImageBytes(napi_env env, napi_callback_info info) {
     return ret;
 }
 
+// napi 包装: buildMarkdownViewerHtml(): string
+// ArkTS → Kotlin 同步调用: 运行时从 composeResources 直读模板 + js/css 内联成完整 viewer HTML,
+// 供 WebviewController.loadData 加载 (零拷贝零重复, 无平台端资源副本)。
+static napi_value BuildMarkdownViewerHtml(napi_env env, napi_callback_info info) {
+    const char *result = "";  // 兜底空串 (so 未加载/读取失败, ArkTS 侧跳过 loadData)
+    if (load_legado_shared() && g_build_markdown_viewer != nullptr) {
+        result = g_build_markdown_viewer();
+    }
+
+    napi_value ret;
+    napi_create_string_utf8(env, result, NAPI_AUTO_LENGTH, &ret);
+    return ret;
+}
+
 // napi module 初始化: 注册所有方法
 EXTERN_C_START
 static napi_value Init(napi_env env, napi_value exports) {
@@ -2803,6 +2935,11 @@ androidx_compose_ui_arkui_init(env, exports
             // WebView tsfn 回调注册 + ArkTS → Kotlin 回调 (后台 WebView 抓取, 同 Http/Image 模式)
             {"registerWebViewCallback", nullptr, RegisterWebViewCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
             {"webViewCallback", nullptr, WebViewCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
+            // Markdown 查看器 tsfn 回调注册 + ArkTS → Kotlin 事件回调 (composeResources 直读 Web 渲染, 同 Toast/Media 模式)
+            {"registerMarkdownCallback", nullptr, RegisterMarkdownCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
+            {"markdownEvent", nullptr, MarkdownEvent, nullptr, nullptr, nullptr, napi_default, nullptr},
+            // Markdown 查看器 HTML 构建 (运行时 composeResources 直读内联, ArkTS → Kotlin 同步)
+            {"buildMarkdownViewerHtml", nullptr, BuildMarkdownViewerHtml, nullptr, nullptr, nullptr, napi_default, nullptr},
             // Battery tsfn 回调注册 + ArkTS → Kotlin 回调 (阅读页电量, 同 Crypto 模式)
             {"registerBatteryCallback", nullptr, RegisterBatteryCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
             {"batteryCallback", nullptr, BatteryCallback, nullptr, nullptr, nullptr, napi_default, nullptr},

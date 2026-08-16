@@ -4,7 +4,10 @@
     <meta charset="utf-8">
     <meta content="width=device-width, initial-scale=1" name="viewport">
     <title>Help</title>
-    <link href="css/github-markdown-light.min.css" rel="stylesheet">
+    <!-- 亮/暗主题: 按系统 prefers-color-scheme 互斥加载 (官方 github-markdown 亮/暗 css) -->
+    <link href="css/github-markdown-light.min.css" media="(prefers-color-scheme: light)"
+          rel="stylesheet">
+    <link href="css/github-markdown-dark.css" media="(prefers-color-scheme: dark)" rel="stylesheet">
     <link href="css/highlight.min.css" rel="stylesheet">
     <style>
         body {

@@ -32,7 +32,14 @@ dependencyResolutionManagement {
             // 版本从 gradle/libs.versions.toml 读取 (单数据源, 无硬编码)
             val tomlText = file("gradle/libs.versions.toml").readText()
             version("kotlin", tomlVersionOf(tomlText, "kotlin-ohos"))
-            version("composeMultiplatform", tomlVersionOf(tomlText, "composeMultiplatform-ohos"))
+            // 键名必须与 toml 当前别名一致: 38b4c7fdf5 把 composeMultiplatform 重命名为 cmp,
+            // 若仍写旧键名, 覆盖失效, plugins 块 alias 会解析回官方 1.11.1 compose 插件
+            // (无 ohosArm64/融合渲染支持, 不注入 skiko-ohosarm64-fusionrenderer,
+            // 资源生成器也会生成 1.11 才有的 ResourceContentHash 注解导致 ohos 编译失败)
+            version("cmp", tomlVersionOf(tomlText, "composeMultiplatform-ohos"))
+            // CPF fork 的 CMP 配套 fork lifecycle: 官方 2.10.0 无 ohosArm64 变体,
+            // 必须用 fork 版 (androidx-ohos, eazytec nexus 上 klib 齐全)
+            version("lifecycleMultiplatform", tomlVersionOf(tomlText, "androidx-ohos"))
         }
     }
 }

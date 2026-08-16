@@ -37,6 +37,7 @@ import io.legado.app.ui.book.searchContent.SearchResult
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.FlowBus
@@ -896,7 +897,9 @@ class ReaderScreenModel(
             AppRoute.ReplaceEdit(
                 pattern = text.lineSequence().joinToString("\n") { it.trim() },
                 scope = listOfNotNull(book?.name, book?.origin).joinToString(";"),
-            )
+            ),
+            // 带 resultKey 回传替换规则变更, 触发 replaceRuleChanged 重载当前章 (对照原版 replaceActivity)
+            resultKey = RouteResults.REPLACE_EDIT,
         )
     }
 

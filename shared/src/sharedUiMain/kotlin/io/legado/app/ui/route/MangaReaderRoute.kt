@@ -100,6 +100,15 @@ fun MangaReaderRoute(
                         )
                     }
                 }
+
+                RouteResults.BOOK_INFO -> when (result.payload) {
+                    // 书籍详情返回: 删书透传退出, 未删补载缺失章节 (对照原版
+                    // ReadMangaActivity.bookInfoActivity 回调: RESULT_OK → setResult(DELETED)+finish,
+                    // else → loadOrUpContent)
+                    is RouteResultPayload.Deleted -> navigator.pop()
+                    is RouteResultPayload.Ok -> navigator.pop(RouteResultPayload.Deleted)
+                    else -> screenModel.loadOrUpContent()
+                }
             }
         }
     }
@@ -151,8 +160,14 @@ fun MangaReaderRoute(
         // 迁移后选章经 onOpenChapter 直接处理, 不再走 RouteResults.TOC 回传)
         showTocDialog = true
     }
-    // 顶栏标题点击进书籍详情 (对照 app 端 MangaMenu toolbar click → openBookInfoActivity)
-    val onOpenBookInfo: () -> Unit = { navigator.push(AppRoute.BookInfo(book.toRouteRef())) }
+    // 顶栏标题点击进书籍详情 (对照 app 端 MangaMenu toolbar click → openBookInfoActivity;
+    // 带 resultKey 接收删书透传/返回回执)
+    val onOpenBookInfo: () -> Unit = {
+        navigator.push(
+            AppRoute.BookInfo((screenModel.currentBook ?: book).toRouteRef()),
+            resultKey = RouteResults.BOOK_INFO,
+        )
+    }
 
     // 书签编辑对话框状态 (对照 VideoPlayRoute pendingBookmark)
     var editingBookmark by remember { mutableStateOf<Bookmark?>(null) }

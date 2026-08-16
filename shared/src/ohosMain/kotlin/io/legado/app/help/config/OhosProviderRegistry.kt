@@ -8,6 +8,7 @@ import io.legado.app.data.registerNativeAppDb
 import io.legado.app.help.archive.registerNativeArchiveProvider
 import io.legado.app.help.book.registerNativeBookHelpAccessor
 import io.legado.app.help.book.registerNativeBookStorage
+import io.legado.app.help.openURL
 import io.legado.app.help.storage.registerNativeDataStorage
 import io.legado.app.help.storage.registerOhosBackupRestoreHook
 import io.legado.app.help.book.registerNativeBookImageStorage
@@ -47,10 +48,12 @@ import io.legado.app.model.registerOhosAudioPlayCommanders
 import io.legado.app.model.registerOhosReadBookPlatform
 import io.legado.app.model.script.registerOhosJsEngines
 import io.legado.app.model.webBook.registerNativeWebBookProviders
+import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.napi.registerOhosNativeBridge
 import io.legado.app.ui.book.changesource.registerOhosChangeBookSourcePlatform
+import io.legado.app.utils.KS_JSON
+import kotlinx.serialization.decodeFromString
 import io.legado.app.ui.book.manage.registerOhosBookshelfManagePlatform
-import io.legado.app.utils.registerOhosScreenInfoProvider
 import io.legado.app.ui.book.read.page.provider.registerOhosTextMeasurer
 import io.legado.app.ui.compose.platform.OhosPreferenceStoreProvider
 import io.legado.app.web.registerNativeWebServerPlatform
@@ -251,6 +254,22 @@ fun registerOhosProviders() {
     // 必须在任何 JS 执行之前 (JS eval 在本函数返回后由业务代码触发); stub 实现, 真实实现需 tsfn 桥接 ArkTS
     registerOhosOpenUrlProvider()
     registerOhosUserAgentProvider()
+    // 8.7b Markdown 查看器事件监听 (viewer 页面链接点击 → 系统浏览器打开, 决策: 一律系统浏览器)。
+    // 事件由 ArkTS MarkdownBridgeHandler 经 legado.markdownEvent 回推 (tsfn 桥在
+    // EntryAbility.onCreate 注册), 此处注册 Kotlin 侧监听; 未注册时链接点击静默忽略。
+    OhosNativeBridge.setMarkdownEventListener { eventJson ->
+        runCatching {
+            val event = KS_JSON.decodeFromString(
+                OhosNativeBridge.MarkdownEventPayload.serializer(),
+                eventJson
+            )
+            if (event.action == "openLink" && !event.url.isNullOrEmpty()) {
+                openURL(event.url)
+            }
+        }.onFailure {
+            println("[ohos-markdown] parse event failed: $eventJson")
+        }
+    }
     // 源验证 UI provider (最小实现: 不支持路径明确报错+Toast, 纯打开链接走 OpenUrlProviders;
     // 未注册时 JS 验证入口裸抛 IllegalStateException)
     registerNativeVerificationUiProvider()

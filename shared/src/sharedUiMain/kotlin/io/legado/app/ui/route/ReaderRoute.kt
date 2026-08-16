@@ -148,6 +148,7 @@ fun ReaderRoute(
             // 搜索菜单"结果"按钮 → 打开全文搜索页 (对照原版 openSearchActivity:
             // 携带当前书/索引/结果列表, 免重搜; 列表仅首条 query 匹配时携带)
             onOpenSearch = { model, book, word ->
+                // 带 resultKey 接收选中结果回写 (对齐 iOS/OHOS provider, 2026-08-06 修复漏接)
                 navigator.push(
                     AppRoute.SearchContent(
                         index = model.searchResultIndex,
@@ -156,7 +157,8 @@ fun ReaderRoute(
                             list.firstOrNull()?.query == model.searchContentQuery
                         },
                         book = book.toRouteRef(),
-                    )
+                    ),
+                    resultKey = RouteResults.SEARCH_CONTENT,
                 )
             },
         )
@@ -542,8 +544,11 @@ fun ReaderRoute(
                     // 对照原版 ReadBookActivity.sourceEditActivity: 仅 resultCode==RESULT_OK
                     // (真正保存) 才回调; BookSourceEditRoute 退出未保存时 pop 不带 payload,
                     // 此处忽略, 避免误触发书源引用刷新/菜单重绘
-                    if (result.payload !is RouteResultPayload.BookSourceEdit) return@collect
-                    screenModel.viewModel.upBookSource()
+                    val source =
+                        (result.payload as? RouteResultPayload.BookSourceEdit)?.source
+                            ?: return@collect
+                    // 直接采用回传的已保存对象 (不再按 origin 查库)
+                    screenModel.viewModel.upBookSource(source)
                     screenModel.menuState.refresh()
                 }
 
@@ -776,19 +781,28 @@ fun ReaderRoute(
                     book = currentBook,
                     items = replacesState.items,
                     onAddRule = {
-                        navigator.push(AppRoute.ReplaceEdit())
+                        navigator.push(
+                            AppRoute.ReplaceEdit(),
+                            resultKey = RouteResults.REPLACE_EDIT
+                        )
                         screenModel.clearDialogEvent()
                     },
                     onItemClick = { rule ->
                         if (rule === replacesModel.chineseConvert) {
                             showChineseConverter = true
                         } else {
-                            navigator.push(AppRoute.ReplaceEdit(rule.id))
+                            navigator.push(
+                                AppRoute.ReplaceEdit(rule.id),
+                                resultKey = RouteResults.REPLACE_EDIT
+                            )
                             screenModel.clearDialogEvent()
                         }
                     },
                     onManageAll = {
-                        navigator.push(AppRoute.ReplaceRule)
+                        navigator.push(
+                            AppRoute.ReplaceRule,
+                            resultKey = RouteResults.REPLACE_EDIT
+                        )
                         screenModel.clearDialogEvent()
                     },
                     onDismiss = { screenModel.clearDialogEvent() },

@@ -29,7 +29,9 @@ import coil3.toBitmap
 import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.constant.AppConst
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.getBookSource
 import io.legado.app.help.book.isEpub
+import io.legado.app.help.image.ImageBitmapLoader
 import io.legado.app.help.image.sourceOrigin
 import io.legado.app.model.BookCover
 import io.legado.app.model.ReadBook
@@ -41,6 +43,7 @@ import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.SvgUtils
 import io.legado.app.utils.toastOnUi
+import java.io.ByteArrayInputStream
 
 /**
  * 显示图片
@@ -173,13 +176,20 @@ class PhotoDialog() : BaseComposeDialogFragment() {
     @SuppressLint("CheckResult")
     private fun doSaveImage(uri: Uri) {
         execute {
-            val localFile = ReadBook.book?.let { book ->
-                BookHelp.getImage(book, src).takeIf { it.exists() }
-            }
-            // localFile 命中(章节缓存)直接保存; 否则按 url 下载保存。
-            // 原 Glide downloadOnly+onlyRetrieveFromCache 查磁盘缓存省下载的优化,
-            // Coil3 无等价 downloadOnly, 改为统一走 FileUtils.saveImage(src) 下载。
+            val book = ReadBook.book
+            val localFile = book?.let { BookHelp.getImage(it, src).takeIf { it.exists() } }
+            // 章节缓存命中直接保存; 未命中走加载器字节链路 (磁盘/进程缓存优先,
+            // 未命中才带书源防盗链 header/cookie 下载并回写缓存 —— 对齐原版
+            // Glide downloadOnly + onlyRetrieveFromCache 的缓存优先语义);
+            // 最后兜底按 URL/base64 裸下载 (data: URI 等加载器不支持的场景)。
             val result = localFile?.let { FileUtils.saveImage(it, uri) }
+                ?: loadImageBytes(book)?.let { bytes ->
+                    FileUtils.saveImage(
+                        ByteArrayInputStream(bytes),
+                        uri,
+                        ".${BookHelp.getImageSuffix(src)}"
+                    )
+                }
                 ?: FileUtils.saveImage(src, uri)
 
             if (!result) error("找不到数据")
@@ -189,6 +199,22 @@ class PhotoDialog() : BaseComposeDialogFragment() {
         }.onSuccess {
             context?.toastOnUi("保存成功")
         }
+    }
+
+    /**
+     * 取待保存图片的原始字节 (对齐原版 PhotoDialog 的 Glide downloadOnly 双签名:
+     * 先按封面规则 signature("covers") 再按正常规则, 均 onlyRetrieveFromCache 优先)。
+     * [ImageBitmapLoader.loadBytes] 内部 [io.legado.app.help.image.ImageBytesCache]
+     * 磁盘/进程缓存优先, 未命中才带书源 header/cookie/charset/JS 下载并按 [isCover]
+     * 执行响应字节解密后回写缓存 —— 防盗链书源的网络图无需缓存也能保存成功。
+     */
+    private suspend fun loadImageBytes(book: Book?): ByteArray? {
+        val bookSource = book?.getBookSource()
+        val loader = ImageBitmapLoader()
+        return runCatching { loader.loadBytes(src, book, bookSource, isCover = true) }
+            .getOrNull()
+            ?: runCatching { loader.loadBytes(src, book, bookSource, isCover = false) }
+                .getOrNull()
     }
 
 }

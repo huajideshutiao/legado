@@ -91,6 +91,14 @@ class VideoPlayViewModelShared(
     /** 章节列表只读视图 (供选集网格渲染, 随 [chapterSize] 变更一并刷新) */
     val chapters: List<BookChapter> get() = chapterList.orEmpty()
 
+    /**
+     * 书源编辑保存后刷新书源引用 (对照原版 VideoViewModel.onUpSource:
+     * curBookSource = book.getBookSource(); 这里直接采用回传的已保存对象, 不查库)。
+     */
+    fun upBookSource(source: BookSource) {
+        curBookSource = source
+    }
+
     // ---- 章节状态 (UI 订阅) ----
 
     private val _curChapterIndex = MutableStateFlow(0)

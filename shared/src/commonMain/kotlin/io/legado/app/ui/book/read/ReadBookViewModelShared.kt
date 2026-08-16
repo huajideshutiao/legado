@@ -1461,19 +1461,28 @@ class ReadBookViewModelShared(
      * 书源编辑保存后刷新书源引用 (对照 app 端 ReadBookViewModel.upBookSource(success)
      * + BaseReadViewModel.upSource/onUpSource: `ReadBook.bookSource = appDb.bookSourceDao.getBookSource(book.origin)`)。
      *
+     * @param source 书源编辑保存后回传的已保存对象, 优先直接采用 (不查库, 同步生效);
+     *   null 时兜底按 book.origin 查库 (历史调用方)
+     *
      * 只更新引用不重载正文: 当前章已排版内容保持不变, 新书源 (含新 jslib, 保存时已
      * SharedJsScope.remove 旧作用域) 在后续 JS 调用/翻章/手动刷新时自然生效,
-     * 与 app 端 upBookSource 行为一致。success 在书源加载完成后触发。
+     * 与 app 端 upBookSource 行为一致。success 在书源更新完成后触发。
      */
-    fun upBookSource(success: (() -> Unit)? = null) {
+    fun upBookSource(source: BookSource? = null, success: (() -> Unit)? = null) {
+        if (source != null) {
+            // 直接采用回传对象 (对齐 master onUpSource 语义, 无查库无竞态)
+            readBook.updateBookSource(source)
+            success?.invoke()
+            return
+        }
         scope.launch {
             val book = readBook.book.value
             if (book != null) {
                 // 重新从 DB 加载书源 (对照 app 端 onUpSource)
-                val source = runCatching {
+                val src = runCatching {
                     AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
                 }.getOrNull()
-                readBook.updateBookSource(source)
+                readBook.updateBookSource(src)
             }
             success?.invoke()
         }

@@ -152,7 +152,10 @@ internal fun showIosImagePreview(image: UIImage) {
 }
 
 /** 图片预览 VC（Kotlin/Native 子类）：整屏黑底，点击关闭。 */
-private class ImagePreviewViewController(image: UIImage) : UIViewController() {
+// K/N 2.3: ObjC 子类 super 必须调用指定构造器 (initWithNibName:bundle:), UIViewController() 便利构造器会报
+// "Unable to call non-designated initializer as super constructor"
+private class ImagePreviewViewController(image: UIImage) :
+    UIViewController(nibName = null, bundle = null) {
 
     private val imageView = UIImageView(image = image).apply {
         // K/N 2.3 UIKit 属性绑定为方法形式 (setContentMode/setAutoresizingMask)

@@ -237,7 +237,7 @@ dependencies {
     // 版本跟 composeMultiplatform 走, 与插件展开值一致)
     testImplementation(
         "org.jetbrains.compose.ui:ui-test-junit4:${
-            ohosVersion(if (isHarmonyMode) "composeMultiplatform" else "cmp")
+            ohosVersion(if (isHarmonyMode) "composeMultiplatform-ohos" else "cmp")
         }"
     )
     // JBR 客户端 API (WindowDecorations/CustomTitleBar, Windows 原生标题栏自定义):

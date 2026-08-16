@@ -72,9 +72,8 @@ class AvPlayerBufferingObserver(
         if (item.status == AVPlayerItemStatusUnknown) return true
         return player.timeControlStatus() == AVPlayerTimeControlStatusWaitingToPlayAtSpecifiedRate
     }
-
-    private companion object {
-        private const val PLAYER_TIME_CONTROL_KEY = "timeControlStatus"
-        private const val ITEM_STATUS_KEY = "status"
-    }
 }
+
+// K/N 限制: ObjC 子类 (NSObject) 的 companion 不允许字段, const 常量放文件顶层
+private const val PLAYER_TIME_CONTROL_KEY = "timeControlStatus"
+private const val ITEM_STATUS_KEY = "status"

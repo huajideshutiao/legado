@@ -20,6 +20,11 @@ import {
   type TextActionMenuData,
   type TextActionMenuItem
 } from '../bridge/TextActionBridgeHandler';
+import {
+  initMarkdownBridge,
+  handlePageBegin as handleMarkdownPageBegin,
+  handlePageEnd as handleMarkdownPageEnd
+} from '../bridge/MarkdownBridgeHandler';
 import { initKeyboardBridge } from '../bridge/KeyboardBridgeHandler';
 import { setVideoSurfaceId } from '../bridge/MediaBridgeHandler';
 // taskpool 任务函数须放在无 ArkUI 顶层状态的独立模块 (worker VM 会重执行宿主模块顶层)
@@ -42,6 +47,32 @@ function LegadoVideoSurfaceBuilder(param: object) {
     })
     .width('100%')
     .height('100%')
+}
+
+// ===== Markdown 查看器 Web 组件 (interop builder) =====
+// K/N MarkdownContent 的 ArkUIView2(name="legadoMarkdownWeb") 混排到 Compose 层级时由 CPF 调用本
+// builder, 在 Compose 槽位内创建一个 Web 组件。页面内容不是 rawfile: 完整 viewer HTML 由 K/N
+// 运行时从 composeResources 直读模板 + marked/hljs/css 内联拼装 (legado.buildMarkdownViewerHtml),
+// MarkdownBridgeHandler 在首个 onPageEnd 后 loadData 加载 (零拷贝零重复, 见 bridge/MarkdownBridgeHandler.ets)。
+// controller 为模块级单例, 与后台抓取 Web 实例相互独立。
+const markdownWebController: webview.WebviewController = new webview.WebviewController();
+
+@Builder
+function LegadoMarkdownWebBuilder(param: object) {
+  Web({ src: 'about:blank', controller: markdownWebController })
+    .width('100%')
+    .height('100%')
+    // 页面 body 透明 + 组件透明, 露出 Compose 侧对话框底色 (fillet), 亮暗主题由 CSS 切换
+    .backgroundColor(Color.Transparent)
+    .onPageBegin((): void => {
+      handleMarkdownPageBegin();
+    })
+    .onPageEnd((): void => {
+      handleMarkdownPageEnd();
+    })
+    .onErrorReceive((event: OnErrorReceiveEvent): void => {
+      console.error('[LegadoMarkdown] page error: ' + event.error.getErrorInfo());
+    })
 }
 
 // taskpool worker 任务: 见 ../task/ImageDownloadTask.ets
@@ -77,6 +108,15 @@ struct Index {
       });
       // 隐藏 Web 组件控制器注入 (须在首次 handleWebViewRequest 之前)
       initWebViewBridge(this.webController);
+      // Markdown 查看器桥注入 (K/N MarkdownContent 的 tsfn 渲染请求 + 链接回送事件)。
+      // 独立 try: 失败不应阻断 Compose 控制器创建 (仅 Markdown 内容不渲染)。
+      try {
+        initMarkdownBridge(markdownWebController, (eventJson: string): void => {
+          legado.markdownEvent(eventJson);
+        });
+      } catch (e) {
+        hilog.warn(DOMAIN, 'LegadoCompose', 'initMarkdownBridge failed: %{public}s', JSON.stringify(e));
+      }
       // 软键盘桥: 注入 UIContext (setKeyboardAvoidMode 需要; hide/show 走 @ohos.inputMethod 不依赖)。
       // 独立 try: 失败不应阻断 Compose 控制器创建 (仅 setAvoidMode 不可用)。
       try {
@@ -92,6 +132,14 @@ struct Index {
         registerComposeInteropBuilder('legadoVideoSurface', LegadoVideoSurfaceBuilder);
       } catch (e) {
         hilog.warn(DOMAIN, 'LegadoCompose', 'registerComposeInteropBuilder failed (video surface unavailable): %{public}s', JSON.stringify(e));
+      }
+      // Markdown 查看器 Web 组件 builder 注册 (K/N ArkUIView2(name="legadoMarkdownWeb") 混排入口;
+      // 未注册时该 interop 节点为空, Markdown 内容不渲染)。
+      // 注册 key 与 MarkdownContent.ohos.kt ARKUI_BUILDER_MARKDOWN_WEB 字面量一致。
+      try {
+        registerComposeInteropBuilder('legadoMarkdownWeb', LegadoMarkdownWebBuilder);
+      } catch (e) {
+        hilog.warn(DOMAIN, 'LegadoCompose', 'registerComposeInteropBuilder failed (markdown web unavailable): %{public}s', JSON.stringify(e));
       }
       this.controller = legado.MainArkUIViewController();
       if (!this.controller) {

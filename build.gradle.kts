@@ -73,13 +73,22 @@ tasks.register<Delete>("clean") {
 
 val ohosLibsDir = layout.projectDirectory.dir("ohosApp/entry/libs/arm64-v8a")
 val ohosIncludeDir = layout.projectDirectory.dir("ohosApp/entry/src/main/cpp/include/arm64-v8a")
-val ohosSharedOutputDir = layout.projectDirectory.dir("shared/build/bin/ohosArm64/debugShared")
+// 对标安卓 release 打包: 默认 stage release .so (LLVM 优化 + strip + gc-sections,
+// 约 50-70MB); 需要带符号的调试库时用 -PohosBuildType=debug。
+val ohosBuildType =
+    providers.gradleProperty("ohosBuildType").orNull?.lowercase() ?: "release"
+require(ohosBuildType == "release" || ohosBuildType == "debug") {
+    "ohosBuildType must be 'release' or 'debug', but was '$ohosBuildType'."
+}
+val ohosBuildTypeCapitalized = ohosBuildType.replaceFirstChar { it.titlecase() }
+val ohosSharedOutputDir =
+    layout.projectDirectory.dir("shared/build/bin/ohosArm64/${ohosBuildType}Shared")
 val ohosSharedLibrary = ohosSharedOutputDir.file("liblegado_shared.so")
 
 val stageOhosNativeLibraries by tasks.registering(Copy::class) {
     group = "ohos"
     description = "Build and stage CPF-KMP-CMP OHOS shared library and generated API header."
-    dependsOn(":shared:linkDebugSharedOhosArm64")
+    dependsOn(":shared:link${ohosBuildTypeCapitalized}SharedOhosArm64")
     into(layout.projectDirectory.dir("ohosApp"))
     from(ohosSharedLibrary) {
         into("entry/libs/arm64-v8a")
@@ -98,7 +107,8 @@ val stageOhosNativeLibraries by tasks.registering(Copy::class) {
         if (missing.isNotEmpty()) {
             throw GradleException(
                 "Missing CPF OHOS outputs: ${missing.joinToString()}. " +
-                    "Run with -PenableOhosTarget=true and rendererBackend=fusion-renderer."
+                    "Run with -PenableOhosTarget=true, rendererBackend=fusion-renderer " +
+                    "and ohosBuildType=$ohosBuildType."
             )
         }
     }

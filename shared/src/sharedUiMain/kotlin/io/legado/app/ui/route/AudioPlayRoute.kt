@@ -172,16 +172,14 @@ fun AudioPlayRoute(
         navigator.resultsFor(entry.id).collect { result ->
             when (result.key) {
                 RouteResults.BOOK_SOURCE_EDIT -> {
-                    // 书源编辑后重拉并刷新评论入口显隐
-                    AudioPlayShared.book?.let { b ->
-                        scope.launch(IoDispatcher) {
-                            AudioPlayShared.bookSource =
-                                AppDbProviders.get().bookSourceDao.getBookSource(b.origin)
-                            screenModel.dispatch(
-                                AudioPlayUiEvent.UpdateInShelf(AudioPlayShared.inBookshelf)
-                            )
-                        }
-                    }
+                    // 书源编辑后直接采用回传的已保存对象 (不再按 origin 查库) + 刷新评论入口显隐
+                    val source =
+                        (result.payload as? RouteResultPayload.BookSourceEdit)?.source
+                            ?: return@collect
+                    AudioPlayShared.bookSource = source
+                    screenModel.dispatch(
+                        AudioPlayUiEvent.UpdateInShelf(AudioPlayShared.inBookshelf)
+                    )
                 }
             }
         }

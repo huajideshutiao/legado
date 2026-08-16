@@ -571,6 +571,45 @@ export interface LegadoNativeBridge {
    */
   webViewCallback(requestId: number, result: string, bodyRaw: string): void;
 
+  // ===== Markdown 查看器 tsfn 回调注册 + ArkTS → Kotlin 事件回调 (composeResources 直读 Web 渲染) =====
+
+  /**
+   * 注册 Markdown 回调 (KMP → ArkTS 跨线程 dispatch, Markdown 渲染请求)。
+   *
+   * C++ 侧创建 napi_threadsafe_function 包装 [callback], 并通过 @CName legado_register_markdown_fn
+   * 把 dispatch 函数指针注入 Kotlin OhosNativeBridge.markdownTsfn。此后 KMP MarkdownContent
+   * (ArkUIView2 混排的 Web 组件, viewer HTML 由 buildMarkdownViewerHtml 从 composeResources 直读
+   * 内联拼装) 调 OhosNativeBridge.sendMarkdown 时, JSON 渲染请求跨线程 dispatch 到此 [callback],
+   * 由 ArkTS MarkdownBridgeHandler runJavaScript 注入 renderMarkdown (marked.parse +
+   * hljs.highlightAll + github-markdown 亮/暗主题) 渲染。
+   * fire-and-forget (同 Toast 模式), 无 ArkTS → Kotlin 结果回调。
+   *
+   * @param callback 接收 JSON 渲染请求 `{ content: '<markdown 原文>', isDark: <boolean>, fontSize: <vp 字号> }`
+   */
+  registerMarkdownCallback(callback: (json: string) => void): void;
+
+  /**
+   * Markdown 查看器事件回调 (ArkTS → Kotlin)。
+   *
+   * viewer 页面内 <a> 链接点击经 javaScriptProxy (legadoMarkdownBridge.openLink) 调回 ArkTS,
+   * 由 MarkdownBridgeHandler 通过此方法推送给 Kotlin, 走系统浏览器打开。
+   *
+   * @param event 事件 JSON, 如 `{ action: 'openLink', url: '<链接>' }`
+   */
+  markdownEvent(event: string): void;
+
+  /**
+   * 构建 Markdown 查看器完整 HTML (ArkTS → Kotlin 同步调用)。
+   *
+   * 鸿蒙端 composeResources 打包进 liblegado_shared.so 内嵌资源, Web 组件无法直接按路径访问;
+   * 本函数运行时从 composeResources 直读模板 + marked/highlight/github-markdown 亮暗 css,
+   * 内联拼成完整 HTML (单一数据源, 无平台端资源副本), 供 WebviewController.loadData 加载。
+   * 结果进程内缓存; 主线程同步调用安全 (纯内存读取)。
+   *
+   * @return 完整 viewer HTML 字符串; 读取失败时为空串 (调用方跳过 loadData)
+   */
+  buildMarkdownViewerHtml(): string;
+
   // ===== Battery tsfn 回调注册 + ArkTS → Kotlin 回调 (同 Crypto 模式) =====
 
   /**

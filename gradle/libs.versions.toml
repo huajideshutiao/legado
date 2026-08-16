@@ -12,7 +12,9 @@ cmp = "1.11.1"
 # 必须与 cmp 基线匹配: 0.41.0 起对 CMP 1.10 编译, 在 1.9.2 上运行时 NoSuchMethodError
 # 0.43.0 含 inlineCode 字号/TextUnit 崩溃修复与同步 parseMarkdown API
 # (注: 0.43.0 按 CMP 1.10 编译; 升 CMP 1.11 后若运行时 NoSuchMethodError 需同步升级 mikepenz 版本)
-multiplatformMarkdown = "0.43.0"
+# 0.43.0/0.42.0 的 iosArm64 klib 由 Kotlin 2.4.0 编译 (abi_version=2.4.0), 项目 Kotlin 2.3.20
+# 只能消费 abi<=2.3.0; 暂钉 0.41.0 (Kotlin 2.3.21 编译, abi 2.3.0 兼容), 升 Kotlin 2.4.x 后回 0.43.0。
+multiplatformMarkdown = "0.41.0"
 # 桌面视频播放引擎: open-ani/mediamp (Compose Multiplatform 播放抽象, 替代自研 libmpv 直通渲染)。
 # 0.3.0 于 2026-08-09 发布 (基于 CMP 1.11 基线), 与 CMP 1.11.1 + Kotlin 2.3.20 匹配。
 mediamp = "0.3.0"

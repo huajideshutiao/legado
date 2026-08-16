@@ -276,16 +276,36 @@ kotlin {
                     implementation(libs.ktor.client.core)
                     implementation(libs.ktor.client.cio)
                 }
+                // 非 mac: nskeyvalueobserving cinterop (需 Xcode sysroot) 无法生成,
+                // KVO 观察器 (依赖其协议类型) 排除, 由 iosWindowsCheckMain 源根的
+                // 同签名 stub 类顶替; MbedTlsOps/MbedTlsCipherOps/registerNativeJsEngines
+                // 的 stub actual 一并挂此源根 (expect 在 nativeMain, 同一编译单元可配对)。
+                // mac 上编译真实实现, 不挂此源根。
+                if (!isMacHost) {
+                    kotlin.exclude(
+                        "io/legado/app/help/media/AvPlayerBufferingObserver.ios.kt",
+                        "io/legado/app/help/media/AvPlayerItemStatusObserver.ios.kt",
+                    )
+                    kotlin.srcDir("src/iosWindowsCheckMain/kotlin")
+                }
             }
             // 显式 dependsOn 会让 KGP 回退到 pre-1.9.20 默认边 (只连 commonMain),
             // 中间源集 nativeMain/iosMain 不会自动挂到 leaf, 须手工连。
             maybeCreate("iosArm64Main").apply {
                 dependsOn(iosMain)
                 kotlin.srcDir(layout.buildDirectory.dir("generated/nativeInterop/iosLeaf"))
+                // 非 mac: quickjs/mbedtls cinterop 无法生成, staged 的 interop 桥文件
+                // (依赖 C 符号) 一并排除, klib 校验覆盖其余源码 (mac 上由 cinterop 提供符号)
+                if (!isMacHost) {
+                    kotlin.exclude(*nativeInteropSourcePatterns.toTypedArray())
+                }
             }
             maybeCreate("iosSimulatorArm64Main").apply {
                 dependsOn(iosMain)
                 kotlin.srcDir(layout.buildDirectory.dir("generated/nativeInterop/iosLeaf"))
+                if (!isMacHost) {
+                    kotlin.exclude(*nativeInteropSourcePatterns.toTypedArray())
+                }
             }
         }
         if (enableOhosTarget) {
@@ -293,7 +313,9 @@ kotlin {
                 dependsOn(nativeMain!!)
                 dependsOn(sharedUiMain)
                 dependencies {
-                    implementation(libs.androidx.sqlite.framework)
+                    // 官方 androidx.sqlite:sqlite-framework 无 ohosArm64 变体 (cinterop 解析失败),
+                    // 必须用 CPF fork 发布的版本 (带 ohosArm64 cinterop-klib), 与 iosMain 的官方版区分
+                    implementation("androidx.sqlite:sqlite-framework:2.7.0-alpha01-0.3.0")
                     implementation(libs.ktor.client.core)
                     implementation(libs.ktor.client.cio)
                     // K/N 2.x link 检查: OhosTargetConventionPlugin 的 sharedLib.export 导出

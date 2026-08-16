@@ -4,6 +4,7 @@ import androidx.appcompat.app.AppCompatActivity
 import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SourceUiRequest
+import io.legado.app.help.IntentData
 import io.legado.app.help.LifecycleHelp
 import io.legado.app.help.showSourceLogin
 import io.legado.app.ui.association.VerificationCodeDialog
@@ -35,6 +36,10 @@ object SourceUiEventBridge {
                     is SourceUiRequest.Login -> showSourceLogin(
                         event.source.getKey(),
                         event.source,
+                        // 与 shared SourceUiEventBridgeHost 统一签名: 读调用方预置的
+                        // IntentData.book/chapter 供登录 JS 上下文 (对照原版 nowBook/nowChapter)
+                        IntentData.book,
+                        IntentData.chapter,
                     )
                     is SourceUiRequest.SourceVariable -> {
                         // VariableDialog 已下沉 shared: 经 sourceVariable Overlay 弹出

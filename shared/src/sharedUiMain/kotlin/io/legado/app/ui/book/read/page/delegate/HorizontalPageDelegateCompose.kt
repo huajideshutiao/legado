@@ -163,6 +163,7 @@ abstract class HorizontalPageDelegateCompose(
             when (dir) {
                 PageDirectionShared.NEXT -> if (!viewModel.nextPage()) viewModel.moveToNextChapter()
                 PageDirectionShared.PREV -> if (!viewModel.prevPage()) viewModel.moveToPrevChapter()
+                PageDirectionShared.NONE -> {}
             }
             // 实际换页：自动翻页进度归零重开 (对照原版 onPageChange → autoPager.reset)
             autoPager?.reset()

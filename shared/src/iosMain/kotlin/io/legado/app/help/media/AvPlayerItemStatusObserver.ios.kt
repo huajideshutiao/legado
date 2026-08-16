@@ -60,7 +60,7 @@ class AvPlayerItemStatusObserver(
         }
     }
 
-    private companion object {
-        private const val STATUS_KEY = "status"
-    }
 }
+
+// K/N 限制: ObjC 子类 (NSObject) 的 companion 不允许字段, const 常量放文件顶层
+private const val STATUS_KEY = "status"

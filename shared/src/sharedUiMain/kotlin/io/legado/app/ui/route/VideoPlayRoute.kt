@@ -140,8 +140,11 @@ fun VideoPlayRoute(
                 }
 
                 RouteResults.BOOK_SOURCE_EDIT -> {
-                    // 书源编辑后重新拉取书源 + 章节 (对照 app upSource + refresh)
-                    screenModel.shared.curBook?.let { b -> screenModel.shared.initData(b) }
+                    // 书源编辑后直接采用回传的已保存对象 (不再按 origin 查库, 不再整页重初始化)
+                    val source =
+                        (result.payload as? RouteResultPayload.BookSourceEdit)?.source
+                            ?: return@collect
+                    screenModel.shared.upBookSource(source)
                 }
 
                 RouteResults.BOOK_INFO -> {
@@ -154,7 +157,7 @@ fun VideoPlayRoute(
                     }.onFailure {
                         AppLog.put("查询书架状态出错\n${it.message}", it)
                     }.getOrDefault(true)
-                    if (!inShelf) navigator.pop()
+                    if (!inShelf) navigator.pop(RouteResultPayload.Deleted)
                     else screenModel.dispatch(VideoPlayUiEvent.UpdateInShelf(true))
                 }
             }
