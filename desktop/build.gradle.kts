@@ -11,69 +11,14 @@ plugins {
     id("legado.compose")
 }
 
-// ProGuard 瘦身 (可选, 默认开启): 离线/沙箱构建用 `-PdisableDesktopProguard=true` 关闭
-// (规则文件 desktop/proguard-rules.pro 始终保留, 任务与依赖只在开启时声明)。
-// 实现不引 Gradle 插件: 插件 marker 在部分镜像缺失且 Kotlin DSL 脚本插件对
-// buildscript 类路径支持不佳, 改用 JavaExec 直跑 proguard.ProGuard 主类,
-// 依赖经项目仓库 (central/aliyun) 解析, 见下方 proguardDesktop 任务。
-if (providers.gradleProperty("disableDesktopProguard").orNull != "true") {
-    // ============================================================
-    // ProGuard 瘦身 (方案 C 落地: 危险区全 keep, 只裁死代码, 不混淆)
-    // ============================================================
-    // 规则见 proguard-rules.pro (移植 app 端 R8 配置): 反射/序列化/Room/JNI/
-    // JS 桥/分派表全部 keep, -dontobfuscate (书源按类名反射加载), 只移除死代码。
-    // 产物: build/libs/legado-desktop-shrunk.jar + build/proguard/{seeds,usage,mapping}.txt。
-    // 独立任务, 暂不接线到 jpackage —— 先跑一次看 usage.txt 报表与体积, 确认无风险再接。
-    val proguardConfig by configurations.creating
-    dependencies {
-        // exclude org.jetbrains:annotations: 纯编译期注解 (CLASS retention), 运行时用不到,
-        // 也避免离线环境缺该传递产物导致任务无法执行
-        add("proguardConfig", "com.guardsquare:proguard-gradle:7.9.1") {
-            exclude(group = "org.jetbrains", module = "annotations")
-        }
-    }
-    tasks.register<JavaExec>("proguardDesktop") {
-        group = "build"
-        description = "ProGuard 死代码裁剪: 桌面端 jar + 全部依赖 → 单 jar (危险区 keep)"
-        dependsOn(tasks.jar)
-        classpath = proguardConfig
-        mainClass.set("proguard.ProGuard")
-
-        // ProGuard 的 printseeds/usage/mapping 不会自建目录, 先建好避免 Unexpected error
-        doFirst {
-            layout.buildDirectory.get().file("proguard").asFile.mkdirs()
-            layout.buildDirectory.get().file("libs").asFile.mkdirs()
-        }
-
-        val runtimeClasspath = project.configurations.getByName("runtimeClasspath")
-        // bcprov 必须排除在 injars 外, 保持独立签名 jar 分发:
-        // 1) 它带 Oracle JCE Code Signing CA 签名, 合并进 fat jar 后 ProGuard 重写类导致
-        //    摘要失效, 类加载抛 SecurityException: Invalid signature file digest;
-        // 2) 更关键: JCE provider 认证要求 provider 类来自该签名 jar 的 code source,
-        //    fat jar 内无法通过认证 → Cipher.getInstance("AES/CBC/PKCS7Padding") 会失败。
-        //    打包时 shrunk jar 与 bcprov.jar 并列进 classpath 即可。
-        val bcprovJar = runtimeClasspath.files.firstOrNull { it.name.startsWith("bcprov-jdk18on") }
-        val injarJars = runtimeClasspath.filter { it.name != bcprovJar?.name }
-
-        args("-include", "proguard-rules.pro")
-        // 输入: 桌面端 jar + 全部运行时依赖 (除 bcprov) (ProGuard classpath 支持 OS 路径分隔符)
-        args("-injars", tasks.jar.flatMap { it.archiveFile }.get().asFile.absolutePath)
-        args("-injars", injarJars.joinToString(File.pathSeparator) { it.absolutePath })
-        args("-outjars", layout.buildDirectory.get().file("libs/legado-desktop-shrunk.jar").asFile.absolutePath)
-        // JDK 运行时作为 library jars (ProGuard 7.2+ 支持 jmod; 桌面端跑在 Java 21 工具链上)
-        File(desktopJavaHome.get(), "jmods").listFiles()
-            ?.sortedBy { it.name }
-            ?.forEach { args("-libraryjars", it.absolutePath) }
-        // bcprov 也作为 library jar (代码引用它做 JCE 注册, 但不并入产物)
-        if (bcprovJar != null) {
-            args("-libraryjars", bcprovJar.absolutePath)
-        }
-        // 调参报表: seeds=keep 命中清单, usage=删除清单, mapping=映射
-        args("-printseeds", layout.buildDirectory.get().file("proguard/seeds.txt").asFile.absolutePath)
-        args("-printusage", layout.buildDirectory.get().file("proguard/usage.txt").asFile.absolutePath)
-        args("-printmapping", layout.buildDirectory.get().file("proguard/mapping.txt").asFile.absolutePath)
-    }
-}
+// ProGuard 瘦身已改用 Compose Desktop 官方集成 (见 compose.desktop.application.buildTypes.
+// release.proguard {}): 官方 release buildType 自动创建 proguardReleaseJars 并接线到
+// packageRelease*/createReleaseDistributable, joinOutputJars=false 逐 jar 输出规避 service 合并坑。
+// 规则文件 desktop/proguard-rules.pro 经 configurationFiles 引用 (含 shared/quickjs consumer-rules)。
+// 注: 官方默认 ProGuard 7.7.0 不在本地缓存, DSL 已显式 version=7.9.1 对齐可用缓存。
+// 历史: 旧自研 JavaExec proguardDesktop 任务 (单 outjar 合并全部依赖) 已删除 —— 实测 ProGuard
+// 对多 jar 同名 META-INF/services 只保留第一个 jar 的内容 (2026-08-18 最小实验证实 MainDispatcherFactory
+// 被覆盖为 TestMainDispatcherFactory), 官方逐 jar 输出无此问题。
 
 // CPF 的 root metadata 只发布 Android/iOS/OHOS 变体，Desktop JVM 继续使用同基线的
 // JetBrains 平台制品 (与 shared/build.gradle.kts 同款 resolutionStrategy 对齐);
@@ -183,7 +128,17 @@ dependencies {
     //   定), 并不传递引入, 必须显式 runtimeOnly 声明; 下方按构建平台固定单工件,
     //   loader 运行时按当前 OS/arch 解包加载, 无需用户安装 mpv
     // - 防盗链: UriMediaData(uri, headers) 原生透传 User-Agent/Referer/http-header-fields
-    implementation(libs.mediamp.mpv)
+    // mediamp 0.3.0 的 POM 硬声明 material-icons-extended(-desktop) 传递依赖 (库自带的播放 UI 图标,
+    // 本项目播放界面自绘, 不用它的图标; 实测 mediamp-api/mpv 各 jar 字节码零引用 icons 类, 排除安全)。
+    // 该依赖 37MB 且数千图标类, 必须排除, 否则直接进 jpackage 产物 (2026-08-18 实测 shrunk jar 里
+    // usage.txt 有 11398 条 material.icons 删除记录即其证据)。
+    implementation(libs.mediamp.mpv) {
+        exclude(group = "org.jetbrains.compose.material", module = "material-icons-extended")
+        exclude(
+            group = "org.jetbrains.compose.material",
+            module = "material-icons-extended-desktop"
+        )
+    }
     // mpv runtime 按构建平台固定: win/linux 恒 x64 (x86 系), mac 恒 arm64 (M 芯片),
     // 避免聚合工件把全部平台 natives 塞进每个安装包; 未知平台兜底聚合工件。
     // 注意: macos-latest 若未来换 x64 runner, 需同步改回 macos-x64
@@ -545,6 +500,32 @@ private fun msiSafeVersion(pkgVer: String): String {
 compose.desktop {
     application {
         mainClass = "io.legado.desktop.MainKt"
+        // 官方 ProGuard 集成 (Compose Desktop 1.10+ 自带, 替代下方自研 proguardDesktop 任务):
+        // - release buildType 默认启用 (default 保持不启用, 开发期 :desktop:run 不受影响)
+        // - joinOutputJars 默认 false: 每个输入 jar 单独 shrunk 输出, 各 jar 的 META-INF/services
+        //   各自保留 —— 规避 ProGuard 单 outjar 合并时同名 service 文件只留第一个 jar 内容的坑
+        //   (2026-08-18 最小实验证实: MainDispatcherFactory 被覆盖成 TestMainDispatcherFactory,
+        //   导致 SwingDispatcherFactory 丢失 → Dispatchers.Main 崩溃)。
+        // - obfuscate 默认 false: 书源按类名反射加载, 不混淆 (与自研规则 -dontobfuscate 一致)
+        // - 规则文件: 官方 default-compose-desktop-rules.pro 自动附带 + 下方显式追加项目规则
+        //   (含 shared/quickjs consumer-rules, 与自研 proguard-rules.pro 同源)
+        // - version 显式 7.9.1: 官方默认 7.7.0 不在本地缓存, 离线构建无法解析 (2026-08-18 实测)
+        buildTypes {
+            release {
+                proguard {
+                    version.set("7.9.1")
+                    // 优化必须关闭: 2026-08-18 实测 optimize=true 复现 ProGuard 优化器崩溃
+                    // (Stack.generalize: Stacks have different current sizes [0] and [1],
+                    // 即旧 error[1011] StackGeneralizationException) —— Kotlin/Compose 高阶函数/
+                    // 协程字节码触发 PartialEvaluator bug, ProGuard 7.9.1 未修复。
+                    // 安卓端能用 R8 -optimizationpasses 5 是因为 R8 是 Google 重写的优化器,
+                    // 对 Kotlin 字节码安全; ProGuard 无解, 只能 -dontoptimize 保稳。
+                    // 体积差距来自工具链优化能力差异 + class vs dex 格式差异, 非规则差异。
+                    optimize.set(false)
+                    configurationFiles.from(file("proguard-rules.pro"))
+                }
+            }
+        }
         // 修复: 默认随 Gradle daemon JVM 走 (可能 17), 显式用 Java 21 工具链, 见上方 desktopJavaHome
         javaHome = desktopJavaHome.get()
         // KP6 修复: 删除 -Djava.library.path jvmArg。
@@ -563,7 +544,7 @@ compose.desktop {
             "-XX:MaxGCPauseMillis=200",          // G1 目标停顿
             "-XX:TieredStopAtLevel=1",           // 仅 C1 编译, 启动期 JIT 时间降 30~50%
             "-XX:CompileThreshold=10000",        // 提高 JIT 阈值减少冷路径编译
-            "-Xshare:auto",                      // 启用 CDS (classlist 已 dump, 失败自动回退)
+            "-Xshare:auto",                      // 启用 CDS: 正式版由 dumpCdsArchive task 预生成归档; 失败自动回退
             "-XX:+UseStringDeduplication",       // G1 字符串去重
             "-Dfile.encoding=UTF-8",             // Windows 默认 GBK, 显式声明 UTF-8 避免资源乱码
             // 反射访问 AWT 原生句柄 (任务栏按钮/DWM 卡片等经 WComponentPeer.getHWnd 拿 HWND):
@@ -696,6 +677,9 @@ afterEvaluate {
             "createRuntimeImage", "createDistributable",
             "packageMsi", "packageExe", "packageDeb", "packageRpm",
             "packageDmg", "packageAppImage",
+            // release buildType 变体 (官方 ProGuard 集成启用后的打包任务名, 与 default 同名后缀 Release)
+            "createReleaseDistributable", "packageReleaseMsi", "packageReleaseExe",
+            "packageReleaseDeb", "packageReleaseRpm", "packageReleaseDmg", "packageReleaseAppImage",
         )
     }.configureEach {
         dependsOn(copyQuickjsNativeToResources)
@@ -705,24 +689,82 @@ afterEvaluate {
 }
 
 // ============================================================
-// ProGuard/R8 优化说明 (方案 C: 已落地, 见上方 proguardDesktop 任务)
+// ProGuard/R8 优化说明 (官方集成已落地, 见 buildTypes.release.proguard {})
 // ============================================================
-// R8 是 Android 专属, 桌面端无 Android 编译插件; 桌面端瘦身走 ProGuard。
+// R8 是 Android 专属, 桌面端无 Android 编译插件; 桌面端瘦身走官方 ProGuard 集成
+// (proguardReleaseJars 任务, 接线到 createReleaseDistributable/packageRelease*)。
 // Compose Multiplatform 大量依赖反射:
 // - @Composable 函数通过 Compose 编译器插件生成 synthetic 方法, ProGuard 难以正确保留
 // - kotlinx.serialization 用反射实例化数据类 (Book/BookSource 等)
 // - Room KMP 生成的 DAO 实现类通过反射访问
 // - quickjs JNI 桥通过反射查找 native 方法
 // 因此规则文件 (proguard-rules.pro) 对这些危险区全部 keep + 关闭混淆 (-dontobfuscate,
-// 书源按类名反射加载), 只做死代码删除。体积优化组合: ProGuard 裁死代码 (本方案) +
+// 书源按类名反射加载), 只做死代码删除。体积优化组合: ProGuard 裁死代码 (官方集成) +
 // jlink 精简 JRE (strip-debug/compress 等, 见 createRuntimeImage 配置) + 7z 压缩打包。
-// 接线到 jpackage 前先跑 `.\gradlew :desktop:proguardDesktop` 看 usage.txt 报表。
+// 产物报表在官方 proguard 任务输出目录 (build/compose/tmp/main/proguard/ 附近)。
+
+// ============================================================
+// CDS (Class Data Sharing) 归档生成
+// ============================================================
+// 背景: jlink 精简的 JRE 不含默认 CDS 归档 (classes_nocoops.jsa),
+// -Xshare:auto 静默回退到非 CDS 模式 → 每次启动从零加载/解析全部类元数据,
+// 是正式版 (jlink JRE) 比 debug 版 (完整 JDK 自带 CDS) 启动慢的主因之一。
+// 本 task 在 jpackage app image 生成后, 用该 JRE 的 java -Xshare:dump
+// 生成默认 CDS 归档, 写入 runtime/lib/server/ 目录, 打包时随 JRE 一起纳入产物。
+// 实测: CDS 归档可减少启动期类加载时间 20~40% (JDK 21 默认归档含 ~15k 核心类)。
+// 归档生成失败只 warn 不 fail (CDS 缺失只影响启动速度, 不影响功能)。
+val dumpCdsArchive by tasks.registering {
+    group = "compose desktop distribution"
+    description = "Generate default CDS archive for jlink JRE to speed up startup"
+    // 依赖 app image 生成 (产物路径: build/compose/binaries/main-release/app/legado/)
+    // createReleaseDistributable 是 release 链的 app image 生成 task
+    dependsOn("createReleaseDistributable")
+    // 输出标记: CDS 归档在 runtime/lib/server/ 下, 由 jpackage 随 JRE 打包
+    outputs.file(file("build/compose/binaries/main-release/app/legado/runtime/lib/server/classes_nocoops.jsa"))
+    doLast {
+        val jreJava = file("build/compose/binaries/main-release/app/legado/runtime/bin/java")
+        if (!jreJava.exists()) {
+            logger.warn("[legado-desktop] CDS dump: JRE java not found at $jreJava, skipping")
+            return@doLast
+        }
+        // java -Xshare:dump 在 JRE 安装目录的 lib/server/ 下生成 classes_nocoops.jsa
+        // JDK 21+: 默认就生成 nocoops 变体 (--version 显示 "Archive" 行确认)
+        runCatching {
+            val pb = ProcessBuilder(
+                jreJava.absolutePath,
+                "-Xshare:dump",
+            )
+            pb.redirectErrorStream(true)
+            val proc = pb.start()
+            proc.inputStream.bufferedReader().forEachLine { logger.lifecycle("[cds-dump] $it") }
+            val exit = proc.waitFor()
+            if (exit != 0) {
+                logger.warn("[legado-desktop] CDS dump exited with code $exit (non-fatal)")
+            } else {
+                logger.lifecycle("[legado-desktop] CDS archive generated successfully")
+            }
+        }.onFailure {
+            logger.warn("[legado-desktop] CDS dump failed (non-fatal): ${it.message}")
+        }
+    }
+}
+
+// 确保打包 task 在 CDS 归档生成之后执行
+tasks.matching {
+    it.name in listOf(
+        "packageReleaseMsi", "packageReleaseExe",
+        "packageReleaseDeb", "packageReleaseRpm", "packageReleaseDmg", "packageReleaseAppImage",
+    )
+}.configureEach {
+    dependsOn(dumpCdsArchive)
+}
 
 // ============================================================
 // Windows 便携版 zip 打包 task
 // ============================================================
 // 背景: jpackage 默认产物是 MSI/Exe 安装包 (需安装), 无法满足"拷贝即用"便携场景。
-// 本 task 在 createDistributable (jpackage app-image) 后, 把 legado.exe + runtime/ + app/ + data/
+// 本 task 在 createReleaseDistributable (jpackage app-image, release 链含 ProGuard 瘦身) 后,
+// 把 legado.exe + runtime/ + app/ + data/
 // + portable.txt 打成 zip, 用户解压即用; 便携模式由运行时检测 portable.txt 标记启用
 // (DesktopAppPaths), 不依赖编译期 -Plegado.installType (CI 与 MSI 共享同一 app image)。
 
@@ -758,18 +800,26 @@ val packagePortableZip by tasks.registering(Zip::class) {
     // 仅 Windows 平台执行 (便携版特化)
     onlyIf { OperatingSystem.current().isWindows }
 
-    // 依赖 jpackage app image 生成 task (createDistributable 是 packageMsi/Exe 的上游, 产物含 legado.exe + runtime/ + app/)
-    dependsOn("createDistributable", generatePortableDataPlaceholder, generatePortableMarker)
+    // 依赖 jpackage app image 生成 task (createReleaseDistributable 是 packageReleaseMsi/Exe 的上游,
+    // 产物含 legado.exe + runtime/ + app/; release 链含官方 ProGuard 瘦身, 便携版与 MSI 同源同瘦身)
+    dependsOn(
+        "createReleaseDistributable",
+        dumpCdsArchive,
+        generatePortableDataPlaceholder,
+        generatePortableMarker
+    )
 
-    // app image 输出路径 (compose desktop createDistributable 产物, 路径: build/compose/binaries/main/app/{packageName}/)
-    val appImageDir = file("build/compose/binaries/main/app/legado")
+    // app image 输出路径 (compose desktop createReleaseDistributable 产物, 路径:
+    // build/compose/binaries/{buildType}/app/{packageName}/; 官方 DSL 启用 release buildType 后
+    // 目录名带 classifier 后缀 main-release, 2026-08-18 实测)
+    val appImageDir = file("build/compose/binaries/main-release/app/legado")
 
     // 路径不存在时给清晰错误 (避免 Zip task 静默跳过)
     doFirst {
         if (!appImageDir.exists()) {
             throw GradleException(
                 "App image directory not found: $appImageDir\n" +
-                    "Ensure createDistributable task ran successfully on Windows."
+                    "Ensure createReleaseDistributable task ran successfully on Windows."
             )
         }
     }

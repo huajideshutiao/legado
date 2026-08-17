@@ -39,8 +39,18 @@ subprojects {
     configurations.all {
         val isOhosConfiguration = name.contains("ohos", ignoreCase = true)
         // 彻底移除 Material Icons 依赖，满足“只允许用共享 XML”的要求
+        // 两组坐标都要排: androidx.compose.material (Android 变体) 与
+        // org.jetbrains.compose.material (CMP 元数据/桌面变体, 含 -desktop 后缀; mediamp 0.3.0
+        // 的 POM 硬声明 material-icons-extended 传递依赖即走此组, 2026-08-18 实测 37MB 进 jpackage)。
         exclude(group = "androidx.compose.material", module = "material-icons-core")
         exclude(group = "androidx.compose.material", module = "material-icons-extended")
+        exclude(group = "org.jetbrains.compose.material", module = "material-icons-core")
+        exclude(group = "org.jetbrains.compose.material", module = "material-icons-core-desktop")
+        exclude(group = "org.jetbrains.compose.material", module = "material-icons-extended")
+        exclude(
+            group = "org.jetbrains.compose.material",
+            module = "material-icons-extended-desktop"
+        )
 
         resolutionStrategy.eachDependency {
             if (isHarmonyMode && requested.group == "org.jetbrains.kotlin") {

@@ -24,6 +24,7 @@ import legado.shared.generated.resources.font_scale
 import legado.shared.generated.resources.icon_names
 import legado.shared.generated.resources.icons
 import legado.shared.generated.resources.search_layout
+import legado.shared.generated.resources.source_edit_text_max_line
 import legado.shared.generated.resources.theme_list
 import legado.shared.generated.resources.theme_list_summary
 import legado.shared.generated.resources.welcome_style
@@ -58,6 +59,10 @@ fun ThemeConfigScreen(
     onCustomizeDayTheme: () -> Unit,
     onCustomizeNightTheme: () -> Unit,
     onFontScale: () -> Unit,
+    /** 源编辑框最大行数 summary (动态: 格式化后的当前值) */
+    sourceEditMaxLineSummary: String,
+    /** 源编辑框最大行数点击回调 (弹 NumberPicker) */
+    onSourceEditMaxLine: () -> Unit,
     /** 平台是否支持更换桌面图标 (false 时隐藏"换图标"项; 默认 true 与 Android 行为一致) */
     iconChangeSupported: Boolean = true,
     /** 选中图标回调 (Android/iOS 经平台能力切换桌面图标; null 时仅写 pref 不触发切换) */
@@ -88,6 +93,7 @@ fun ThemeConfigScreen(
     val titleCustomizeDay = stringResource(Res.string.customize_day_theme)
     val titleCustomizeNight = stringResource(Res.string.customize_night_theme)
     val titleFontScale = stringResource(Res.string.font_scale)
+    val titleSourceEditMaxLine = stringResource(Res.string.source_edit_text_max_line)
 
     AppTheme {
         PreferenceScreen {
@@ -149,6 +155,11 @@ fun ThemeConfigScreen(
                 title = titleFontScale,
                 summary = fontScaleSummary,
                 onClick = onFontScale,
+            )
+            preference(
+                title = titleSourceEditMaxLine,
+                summary = sourceEditMaxLineSummary,
+                onClick = onSourceEditMaxLine,
             )
         }
     }

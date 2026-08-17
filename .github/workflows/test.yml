@@ -222,13 +222,15 @@ jobs:
         run: ./gradlew :modules:quickjs:buildJvmNativeLib --warning-mode all
         continue-on-error: true
       - name: Build MSI
-        run: ./gradlew :desktop:packageMsi --build-cache --parallel --daemon --warning-mode all
+        # release buildType: 官方 ProGuard 集成仅 release 链启用 (proguardReleaseJars), default 链不瘦身
+        run: ./gradlew :desktop:packageReleaseMsi --build-cache --parallel --daemon --warning-mode all
       - name: Collect MSI
         shell: bash
         # 用 $GITHUB_WORKSPACE (环境变量) 而非 ${{ github.workspace }} (表达式): 后者在
         # Windows runner 上展开为反斜杠字面量 (D:\a\...), 被 bash 转义吞掉导致路径损坏
         # (曾报 find: 'D:alegadolegado/...': No such file or directory)。
-        # 另外 CMP 1.10 的 jpackage 产物在 binaries/main/<type>/ 下, 全目录 find 避免路径变化再踩坑。
+        # 另外 CMP 的 jpackage 产物在 binaries/{buildType}/<type>/ 下 (官方 ProGuard 集成启用 release
+        # buildType 后目录名带 classifier, 如 main-release/msi), 全目录 find 避免路径变化再踩坑。
         run: |
           mkdir -p $GITHUB_WORKSPACE/msi/
           find $GITHUB_WORKSPACE/desktop/build/compose/binaries -name "*.msi" -exec mv {} $GITHUB_WORKSPACE/msi/ \;
@@ -238,9 +240,9 @@ jobs:
           name: desktop.msi
           path: msi/*.msi
           if-no-files-found: ignore
-      # Windows 便携版 zip: 复用 createDistributable 产物 (MSI 上游), 仅打 zip 不经安装器
+      # Windows 便携版 zip: 复用 createReleaseDistributable 产物 (packageReleaseMsi 上游), 仅打 zip 不经安装器
       - name: Build portable zip
-        # packagePortableZip 仅 Windows 执行 (onlyIf), 依赖 createDistributable, 与 MSI 共享 app image
+        # packagePortableZip 仅 Windows 执行 (onlyIf), 依赖 createReleaseDistributable (release 链含 ProGuard 瘦身)
         run: ./gradlew :desktop:packagePortableZip --build-cache --parallel --daemon --warning-mode all
       - name: Collect portable zip
         shell: bash
@@ -291,7 +293,8 @@ jobs:
         run: ./gradlew :modules:quickjs:buildJvmNativeLib --warning-mode all
         continue-on-error: true
       - name: Build DEB & RPM
-        run: ./gradlew :desktop:packageDeb :desktop:packageRpm --build-cache --parallel --daemon --warning-mode all
+        # release buildType: 官方 ProGuard 集成仅 release 链启用, default 链不瘦身
+        run: ./gradlew :desktop:packageReleaseDeb :desktop:packageReleaseRpm --build-cache --parallel --daemon --warning-mode all
       - name: Collect Linux packages
         run: |
           mkdir -p ${{ github.workspace }}/linux/
@@ -344,7 +347,7 @@ jobs:
       - name: Build macOS DMG
         run: ./gradlew :desktop:packageDmg --build-cache --parallel --daemon --warning-mode all
       - name: Collect DMG
-        # 与 MSI 同理: jpackage 产物在 binaries/main/<type>/ 下, 全目录 find
+        # 与 MSI 同理: jpackage 产物在 binaries/{buildType}/<type>/ 下, 全目录 find
         run: |
           mkdir -p $GITHUB_WORKSPACE/dmg/
           find $GITHUB_WORKSPACE/desktop/build/compose/binaries -name "*.dmg" -exec mv {} $GITHUB_WORKSPACE/dmg/ \;

@@ -167,12 +167,15 @@ jobs:
         run: ./gradlew :modules:quickjs:buildJvmNativeLib --warning-mode all
         continue-on-error: true
       - name: Build MSI
-        run: ./gradlew :desktop:packageMsi --build-cache --parallel --daemon --warning-mode all
+        # release buildType: 官方 ProGuard 集成仅 release 链启用 (proguardReleaseJars), default 链不瘦身
+        run: ./gradlew :desktop:packageReleaseMsi --build-cache --parallel --daemon --warning-mode all
       - name: Collect MSI
         shell: bash
         run: |
           mkdir -p ${{ github.workspace }}/msi/
-          find ${{ github.workspace }}/desktop/build/compose/binaries/msi -name "*.msi" -exec mv {} ${{ github.workspace }}/msi/ \;
+          # release 链产物在 binaries/main-release/msi 下 (官方 ProGuard 集成后 buildType 目录带 classifier),
+          # 全目录 find 避免路径变化再踩坑
+          find ${{ github.workspace }}/desktop/build/compose/binaries -name "*.msi" -exec mv {} ${{ github.workspace }}/msi/ \;
       - name: Upload MSI Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -192,9 +195,9 @@ jobs:
           omitBodyDuringUpdate: true
           omitNameDuringUpdate: true
           artifacts: ${{ github.workspace }}/msi/*.msi
-      # Windows 便携版 zip: 复用 createDistributable 产物 (MSI 上游), 仅打 zip 不经安装器
+      # Windows 便携版 zip: 复用 createReleaseDistributable 产物 (packageReleaseMsi 上游), 仅打 zip 不经安装器
       - name: Build portable zip
-        # packagePortableZip 仅 Windows 执行 (onlyIf), 依赖 createDistributable, 与 MSI 共享 app image
+        # packagePortableZip 仅 Windows 执行 (onlyIf), 依赖 createReleaseDistributable (release 链含 ProGuard 瘦身)
         run: ./gradlew :desktop:packagePortableZip --build-cache --parallel --daemon --warning-mode all
       - name: Collect portable zip
         shell: bash
@@ -253,7 +256,8 @@ jobs:
         run: ./gradlew :modules:quickjs:buildJvmNativeLib --warning-mode all
         continue-on-error: true
       - name: Build DEB & RPM
-        run: ./gradlew :desktop:packageDeb :desktop:packageRpm --build-cache --parallel --daemon --warning-mode all
+        # release buildType: 官方 ProGuard 集成仅 release 链启用, default 链不瘦身
+        run: ./gradlew :desktop:packageReleaseDeb :desktop:packageReleaseRpm --build-cache --parallel --daemon --warning-mode all
       - name: Collect Linux packages
         run: |
           mkdir -p ${{ github.workspace }}/linux/
@@ -316,7 +320,7 @@ jobs:
       - name: Collect DMG
         run: |
           mkdir -p ${{ github.workspace }}/dmg/
-          find ${{ github.workspace }}/desktop/build/compose/binaries/dmg -name "*.dmg" -exec mv {} ${{ github.workspace }}/dmg/ \;
+          find ${{ github.workspace }}/desktop/build/compose/binaries -name "*.dmg" -exec mv {} ${{ github.workspace }}/dmg/ \;
       - name: Upload DMG Artifact
         uses: actions/upload-artifact@v4
         with:

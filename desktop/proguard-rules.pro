@@ -14,9 +14,10 @@
 ############################
 # 书源按类名反射加载, 混淆破坏 JS 桥; 且混淆省不了多少体积 (与 app 端同结论)
 -dontobfuscate
-# 只裁死代码, 不做字节码优化: ProGuard 优化器对部分 Kotlin/Compose 字节码会抛
-# StackGeneralizationException (实测 error[1011]); 且优化有行为风险, 违背"危险区不动"。
-# 体积大头在 shrink (死代码删除), 优化收益很小。
+# 只裁死代码, 不做字节码优化: 2026-08-18 随官方 DSL 开启 optimize=true 实测复现 ProGuard 优化器
+# 崩溃 (Stack.generalize: Stacks have different current sizes [0] and [1], 即旧 error[1011]
+# StackGeneralizationException), Kotlin/Compose 高阶函数/协程字节码触发 PartialEvaluator bug,
+# ProGuard 7.9.1 未修复。安卓端 R8 是重写优化器对 Kotlin 安全才敢 -optimizationpasses 5。
 -dontoptimize
 # 优化关闭后 allowaccessmodification 无意义 (它属于优化阶段), 不再声明
 # -allowaccessmodification
@@ -143,6 +144,14 @@
 ############################
 -keep class com.sun.jna.** { *; }
 -dontwarn com.sun.jna.**
+# 桌面端 JNA Library 接口与 Callback 实现类: Native.load 通过反射创建接口代理,
+# Callback 实现类由 JNA 内部反射注册。ProGuard 静态分析看不到这些反射引用,
+# 会把 JNA Library 接口和 Callback 类当死代码删除 → native 桥加载失败
+# (窗口控制条/SMTC/任务栏缩略图/DWM/Win32 消息窗口/WebView2 COM 等全部失效)。
+# 保留 desktop 包下所有 extends com.sun.jna.Library 的接口与 extends Callback 的类。
+-keep @com.sun.jna.Library interface *
+-keep interface * extends com.sun.jna.Library { *; }
+-keep class * implements com.sun.jna.Callback { *; }
 
 ############################
 # ServiceLoader 注册的依赖 (按 META-INF/services 名字符串实例化, 不 keep 会被删)

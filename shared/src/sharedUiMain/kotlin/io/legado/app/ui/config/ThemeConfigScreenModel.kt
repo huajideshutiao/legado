@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 data class ThemeConfigUiState(
     val fontScaleSummary: String = "",
+    val sourceEditMaxLineSummary: String = "",
 )
 
 /**
@@ -28,6 +29,9 @@ sealed interface ThemeConfigUiEvent {
     /** 字体缩放 summary 变化。 */
     data class UpdateFontScaleSummary(val value: String) : ThemeConfigUiEvent
 
+    /** 源编辑框最大行数 summary 变化。 */
+    data class UpdateSourceEditMaxLineSummary(val value: String) : ThemeConfigUiEvent
+
     // 平台专属动作 (弹窗/NumberPicker), 由宿主注入 lambda 执行
     object BookshelfLayout : ThemeConfigUiEvent
     object SearchLayout : ThemeConfigUiEvent
@@ -36,6 +40,7 @@ sealed interface ThemeConfigUiEvent {
     object CustomizeDayTheme : ThemeConfigUiEvent
     object CustomizeNightTheme : ThemeConfigUiEvent
     object FontScale : ThemeConfigUiEvent
+    object SourceEditMaxLine : ThemeConfigUiEvent
 }
 
 // ===== ScreenModel =====
@@ -55,6 +60,7 @@ class ThemeConfigScreenModel(
     private val onCustomizeDayTheme: () -> Unit,
     private val onCustomizeNightTheme: () -> Unit,
     private val onFontScale: () -> Unit,
+    private val onSourceEditMaxLine: () -> Unit,
 ) : ScreenModel {
 
     private val _state = MutableStateFlow(ThemeConfigUiState())
@@ -65,6 +71,9 @@ class ThemeConfigScreenModel(
             is ThemeConfigUiEvent.UpdateFontScaleSummary ->
                 _state.value = _state.value.copy(fontScaleSummary = event.value)
 
+            is ThemeConfigUiEvent.UpdateSourceEditMaxLineSummary ->
+                _state.value = _state.value.copy(sourceEditMaxLineSummary = event.value)
+
             ThemeConfigUiEvent.BookshelfLayout -> onBookshelfLayout()
             ThemeConfigUiEvent.SearchLayout -> onSearchLayout()
             ThemeConfigUiEvent.BottomNavConfig -> onBottomNavConfig()
@@ -72,6 +81,7 @@ class ThemeConfigScreenModel(
             ThemeConfigUiEvent.CustomizeDayTheme -> onCustomizeDayTheme()
             ThemeConfigUiEvent.CustomizeNightTheme -> onCustomizeNightTheme()
             ThemeConfigUiEvent.FontScale -> onFontScale()
+            ThemeConfigUiEvent.SourceEditMaxLine -> onSourceEditMaxLine()
         }
     }
 }

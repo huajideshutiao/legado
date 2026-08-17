@@ -53,6 +53,8 @@ import legado.shared.generated.resources.font_scale_summary
 import legado.shared.generated.resources.ic_arrow_drop_down
 import legado.shared.generated.resources.ok
 import legado.shared.generated.resources.search_layout
+import legado.shared.generated.resources.source_edit_max_line_summary
+import legado.shared.generated.resources.source_edit_text_max_line
 import legado.shared.generated.resources.theme_setting
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringArrayResource
@@ -79,12 +81,14 @@ fun ThemeConfigRoute(
     val appConfig = remember { AppConfigProviders.get() }
 
     val fontScaleFormat = stringResource(Res.string.font_scale_summary)
+    val sourceEditMaxLineFormat = stringResource(Res.string.source_edit_max_line_summary)
     val defaultStr = stringResource(Res.string.btn_default_s)
     // 顶栏标题 (对照 app 端 R.string.theme_setting)
     val titleStr = stringResource(Res.string.theme_setting)
 
     var showFontScalePicker by remember { mutableStateOf(false) }
     var showSearchLayoutPicker by remember { mutableStateOf(false) }
+    var showSourceEditMaxLinePicker by remember { mutableStateOf(false) }
 
     val screenModel = screenModelStore.getOrCreateTyped(entry) {
         ThemeConfigScreenModel(
@@ -105,6 +109,7 @@ fun ThemeConfigRoute(
                 PlatformCapabilityProviders.getOrNull()?.showCustomizeNightThemeDialog()
             },
             onFontScale = { showFontScalePicker = true },
+            onSourceEditMaxLine = { showSourceEditMaxLinePicker = true },
         )
     }
     val state by screenModel.state.collectAsState()
@@ -125,6 +130,17 @@ fun ThemeConfigRoute(
                 )
             }
         }
+        if (state.sourceEditMaxLineSummary.isEmpty()) {
+            // 对照 app 端 upPreferenceSummary(sourceEditMaxLine):
+            // getString(R.string.source_edit_max_line_summary, AppConfig.sourceEditMaxLine)
+            val maxLine = appConfig.sourceEditMaxLine
+            val maxLineStr = if (maxLine == Int.MAX_VALUE) "∞" else maxLine.toString()
+            screenModel.dispatch(
+                ThemeConfigUiEvent.UpdateSourceEditMaxLineSummary(
+                    sourceEditMaxLineFormat.replace("%s", maxLineStr)
+                )
+            )
+        }
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -143,6 +159,8 @@ fun ThemeConfigRoute(
             onCustomizeDayTheme = { screenModel.dispatch(ThemeConfigUiEvent.CustomizeDayTheme) },
             onCustomizeNightTheme = { screenModel.dispatch(ThemeConfigUiEvent.CustomizeNightTheme) },
             onFontScale = { screenModel.dispatch(ThemeConfigUiEvent.FontScale) },
+            sourceEditMaxLineSummary = state.sourceEditMaxLineSummary,
+            onSourceEditMaxLine = { screenModel.dispatch(ThemeConfigUiEvent.SourceEditMaxLine) },
             // 换桌面图标: 平台能力注入 (Android setComponentEnabledSetting / iOS
             // setAlternateIconName 实现; 桌面/鸿蒙无平台机制 → 该行隐藏)
             iconChangeSupported =
@@ -152,10 +170,13 @@ fun ThemeConfigRoute(
     }
 
     // 字体缩放 NumberPicker (对照 app 端 onFontScale: 8..16, 默认 10, neutralButton=默认)
+    // value 取当前 pref 值: 0 (默认) 显示为 10, 非 0 显示实际值 (对照 master 分支
+    // showNumberPicker value=10 是硬编码默认值, 此处改为读当前值以正确回显用户设置)
     if (showFontScalePicker) {
+        val currentFontScale = pref.getInt(PreferKey.fontScale, 0).let { if (it == 0) 10 else it }
         NumberPickerDialog(
             title = stringResource(Res.string.font_scale),
-            value = 10,
+            value = currentFontScale,
             range = 8..16,
             onConfirm = {
                 pref.putInt(PreferKey.fontScale, it)
@@ -193,6 +214,30 @@ fun ThemeConfigRoute(
                 // 对照 app 端 onSharedPreferenceChanged: fontScale 变更后 recreateActivities()
                 eventBus.emitRecreate()
             },
+        )
+    }
+
+    // 源编辑框最大行数 NumberPicker (对照 app 端 onSourceEditMaxLine:
+    // min=10, max=Int.MAX_VALUE, value=AppConfig.sourceEditMaxLine)
+    // 存储值 <10 视为不限制 (返回 Int.MAX_VALUE); 读 pref 原始值回显,
+    // Int.MAX_VALUE 时 Slider 精度不足但 -/+ 按钮和输入框仍可用
+    if (showSourceEditMaxLinePicker) {
+        val currentMaxLine = pref.getInt(PreferKey.sourceEditMaxLine, Int.MAX_VALUE)
+            .let { if (it < 10) Int.MAX_VALUE else it }
+        NumberPickerDialog(
+            title = stringResource(Res.string.source_edit_text_max_line),
+            value = currentMaxLine,
+            range = 10..Int.MAX_VALUE,
+            onConfirm = {
+                pref.putInt(PreferKey.sourceEditMaxLine, it)
+                val maxLineStr = if (it == Int.MAX_VALUE) "∞" else it.toString()
+                screenModel.dispatch(
+                    ThemeConfigUiEvent.UpdateSourceEditMaxLineSummary(
+                        sourceEditMaxLineFormat.replace("%s", maxLineStr)
+                    )
+                )
+            },
+            onDismiss = { showSourceEditMaxLinePicker = false },
         )
     }
 

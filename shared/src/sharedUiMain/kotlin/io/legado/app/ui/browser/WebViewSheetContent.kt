@@ -2,6 +2,10 @@ package io.legado.app.ui.browser
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,6 +23,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
@@ -143,11 +148,33 @@ internal fun WebViewSheetContent(
         )
         WebViewLoadingBar(indeterminate = !progressStarted, progress = loadProgress)
         // 内容区: 主题底色占位 (WebView 组合/加载完成前不白屏) + 平台 WebView slot
+        //
+        // 手势拦截: Android WebView 嵌在 AndroidView 中不参与 Compose 嵌套滚动,
+        // 外层 AppBottomSheetDialog 的 pointerInput (awaitVerticalTouchSlopOrCancellation)
+        // 无法检测到 WebView 是否消费了位移, 会抢走 WebView 内部的竖直滚动手势。
+        // 在此 Box 上挂 pointerInput 消费竖直拖拽位移: 当手指在 WebView 区域竖直滑动时,
+        // 本 pointerInput 先赢得 slop 竞争并消费位移, 外层 AppBottomSheetDialog 的
+        // pointerInput 因检测到位移已被消费而让位 → 竖直手势归 WebView, 下拉关闭只在
+        // 顶栏等无可滚动区生效。水平手势不拦截, WebView 内横向滚动不受影响。
         Box(
             Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .background(AppTheme.colors.background),
+                .background(AppTheme.colors.background)
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        // 竖直拖拽竞争: 赢得 slop 后消费后续竖直位移, 阻止外层 sheet 跟手
+                        awaitVerticalTouchSlopOrCancellation(down.id) { change, _ ->
+                            change.consume()
+                        } ?: return@awaitEachGesture
+                        // 持续消费竖直位移: WebView 自己处理滚动 (AndroidView 内部 View
+                        // 收到事件后自行滚动, 这里的 consume 只阻止外层 pointerInput 跟手)
+                        drag(down.id) { change ->
+                            change.consume()
+                        }
+                    }
+                },
         ) {
             LocalWebViewSlot.current(
                 WebViewConfig(url = url),
