@@ -2,13 +2,13 @@ package io.legado.desktop.help.webview.win
 
 import com.sun.jna.Native
 import com.sun.jna.platform.win32.WinDef
-import com.sun.jna.ptr.IntByReference
 import com.sun.jna.win32.StdCallLibrary
 import com.sun.jna.win32.W32APIOptions
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.lib.theme.ThemeStorePrefKeys
+import io.legado.desktop.help.win.DwmApi
 
 /**
  * WebView2 可见窗口的原生标题栏跟随应用主题, 与主窗口原生控制栏观感统一
@@ -23,23 +23,10 @@ import io.legado.app.lib.theme.ThemeStorePrefKeys
  */
 internal object WebView2WindowTheme {
 
-    private interface Dwmapi : StdCallLibrary {
-        fun DwmSetWindowAttribute(
-            hWnd: WinDef.HWND,
-            dwAttribute: Int,
-            pvAttribute: IntByReference,
-            cbAttribute: Int,
-        ): Int
-    }
+    // dwmapi 绑定与 DWMWA_* 常量统一收口在 help/win/DwmApi (原先与本文件各写一份)
 
     private interface UxTheme : StdCallLibrary {
         fun SetWindowTheme(hWnd: WinDef.HWND, pszSubAppName: String?, pszSubIdList: String?): Int
-    }
-
-    private val dwmapi: Dwmapi? by lazy {
-        runCatching {
-            Native.load("dwmapi", Dwmapi::class.java, W32APIOptions.DEFAULT_OPTIONS)
-        }.getOrNull()
     }
 
     private val uxTheme: UxTheme? by lazy {
@@ -47,10 +34,6 @@ internal object WebView2WindowTheme {
             Native.load("uxtheme", UxTheme::class.java, W32APIOptions.UNICODE_OPTIONS)
         }.getOrNull()
     }
-
-    private const val DWMWA_USE_IMMERSIVE_DARK_MODE = 20
-    private const val DWMWA_CAPTION_COLOR = 35
-    private const val DWMWA_TEXT_COLOR = 36
 
     /** 应用当前深色主题 (themeMode == "2"; 读不到时按浅色)。 */
     fun isDarkTheme(): Boolean = runCatching {
@@ -68,41 +51,18 @@ internal object WebView2WindowTheme {
     }.getOrNull()
 
     /** 窗口背景画刷用 COLORREF (工具栏区背景; 未设置时白)。 */
-    fun themeBgColorRef(): Int = toColorRef(themeBgArgb() ?: 0xFFFFFFFF.toInt())
-
-    /** ARGB → COLORREF (0x00BBGGRR, R/B 交换, 去 alpha; 同 WindowTitleBar.toColorRef 语义)。 */
-    private fun toColorRef(argb: Int): Int {
-        val r = (argb shr 16) and 0xFF
-        val g = (argb shr 8) and 0xFF
-        val b = argb and 0xFF
-        return (b shl 16) or (g shl 8) or r
-    }
+    fun themeBgColorRef(): Int = DwmApi.argbToColorRef(themeBgArgb() ?: 0xFFFFFFFF.toInt())
 
     /** 把窗口原生标题栏同步成应用主题 (深浅两档 + Win11 标题栏染色)。 */
     fun apply(hwnd: WinDef.HWND) {
-        val dwm = dwmapi ?: return
+        if (DwmApi.dwmapi == null) return
         val dark = isDarkTheme()
         runCatching {
-            dwm.DwmSetWindowAttribute(
-                hwnd,
-                DWMWA_USE_IMMERSIVE_DARK_MODE,
-                IntByReference(if (dark) 1 else 0),
-                4,
-            )
+            DwmApi.setAttribute(hwnd, DwmApi.DWMWA_USE_IMMERSIVE_DARK_MODE, if (dark) 1 else 0)
             themeBgArgb()?.let { bg ->
-                dwm.DwmSetWindowAttribute(
-                    hwnd,
-                    DWMWA_CAPTION_COLOR,
-                    IntByReference(toColorRef(bg)),
-                    4,
-                )
+                DwmApi.setAttribute(hwnd, DwmApi.DWMWA_CAPTION_COLOR, DwmApi.argbToColorRef(bg))
                 val fg = if (dark) 0xFFF2F2F2.toInt() else 0xFF1F1F1F.toInt()
-                dwm.DwmSetWindowAttribute(
-                    hwnd,
-                    DWMWA_TEXT_COLOR,
-                    IntByReference(toColorRef(fg)),
-                    4,
-                )
+                DwmApi.setAttribute(hwnd, DwmApi.DWMWA_TEXT_COLOR, DwmApi.argbToColorRef(fg))
             }
         }.onFailure {
             AppLog.put("WebView2WindowTheme: DWM 主题同步失败", it)

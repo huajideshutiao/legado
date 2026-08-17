@@ -3,27 +3,21 @@ package io.legado.desktop.help.webview.win
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.http.CookieStoreProviders
-import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.toast.Toasters
-import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.browseUrl
-import io.legado.desktop.help.webview.CHECK_HOST_COOKIE_TEXT
-import io.legado.desktop.help.webview.DesktopWebViewEngine
+import io.legado.desktop.help.webview.DesktopWebViewEngineBase
+import io.legado.desktop.help.webview.DesktopWebViewWindowHandleBase
 import io.legado.desktop.help.webview.ToolbarAction
 import io.legado.desktop.help.webview.WebViewFetchRequest
 import io.legado.desktop.help.webview.WebViewFetchResult
 import io.legado.desktop.help.webview.WebViewWindowHandle
 import io.legado.desktop.help.webview.WebViewWindowRequest
+import io.legado.desktop.help.webview.injectWebViewCookies
 import io.legado.desktop.help.webview.unwrapScriptResult
 import io.legado.desktop.help.webview.win.WindowsWebViewEngine.fetch
-import io.legado.desktop.help.webview.win.WindowsWebViewEngine.harvestCookies
 import io.legado.desktop.help.webview.win.WindowsWebViewEngine.openWindow
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
@@ -34,29 +28,18 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * 语义对照 app 端 `BackstageWebView` / `WebViewActivity`: 无头抓取走 [fetch],
  * 登录/网页验证走 [openWindow] 的独立顶层窗口 (见 [WebView2Loop] 为何不嵌进 Compose)。
+ * 抓取主循环 / 常量 / cookie 闭环在 [DesktopWebViewEngineBase], 这里只留 WebView2 差异。
  */
-internal object WindowsWebViewEngine : DesktopWebViewEngine {
+internal object WindowsWebViewEngine : DesktopWebViewEngineBase() {
 
     override val id: String get() = "webview2"
 
-    /** JS 取不到结果时的重试上限, 与 app 端 EvalJsRunnable 的 `retry > 30` 一致。 */
-    private const val MAX_JS_RETRY = 30
-
-    private const val JS_RETRY_INTERVAL_MS = 1000L
-
-    private const val COOKIE_TIMEOUT_MS = 5_000L
-
-    /** app 端 BackstageWebView.JS 默认脚本。 */
-    const val DEFAULT_JS = "document.documentElement.outerHTML"
-
-    /** cookie 回收与窗口创建都不能占用 WebView2 消息泵线程, 统一挪到这里。 */
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    override val platformLabel = PLATFORM_LABEL
 
     override fun isAvailable(): Boolean = WebView2Runtime.detect() != null
 
     override suspend fun fetch(request: WebViewFetchRequest): WebViewFetchResult {
-        val sniffing =
-            !request.sourceRegex.isNullOrBlank() || !request.overrideUrlRegex.isNullOrBlank()
+        val sniffing = isSniffing(request)
         val instance = WebView2Instance.create(
             visible = false,
             title = "legado-backstage",
@@ -81,20 +64,20 @@ internal object WindowsWebViewEngine : DesktopWebViewEngine {
             if (isRedirected) redirected.set(true)
             false
         }
-        instance.onNavigationCompleted = { url -> harvestCookies(instance, url, request.cookieTag) }
-        start(instance, request)
-
-        delay(request.delayTime)
-        val script = request.javaScript?.takeIf { it.isNotEmpty() } ?: DEFAULT_JS
-        repeat(MAX_JS_RETRY + 1) {
-            val body = unwrapScriptResult(instance.executeScript(script, AppConst.timeLimit))
-            if (!body.isNullOrEmpty()) {
-                val url = instance.currentUrl() ?: request.url.orEmpty()
-                return WebViewFetchResult(url, body, redirected.get())
+        instance.onNavigationCompleted = { url ->
+            harvestTagCookies(url, request.cookieTag) {
+                instance.cookies(url, COOKIE_TIMEOUT_MS)
             }
-            delay(JS_RETRY_INTERVAL_MS)
         }
-        throw NoStackTraceException("js执行超时")
+        start(instance, request)
+        return awaitScriptBody(
+            request,
+            evaluate = { script ->
+                unwrapScriptResult(instance.executeScript(script, AppConst.timeLimit))
+            },
+            currentUrl = { instance.currentUrl() },
+            redirected = { redirected.get() },
+        )
     }
 
     /** 对应 app 端 SnifferWebClient: 命中 overrideUrlRegex / sourceRegex 即以该地址作为结果。 */
@@ -103,8 +86,7 @@ internal object WindowsWebViewEngine : DesktopWebViewEngine {
         request: WebViewFetchRequest,
     ): WebViewFetchResult {
         val hit = CompletableDeferred<String>()
-        val overrideRegex = request.overrideUrlRegex?.takeIf { it.isNotBlank() }?.toRegex()
-        val sourceRegex = request.sourceRegex?.takeIf { it.isNotBlank() }?.toRegex()
+        val (overrideRegex, sourceRegex) = snifferRegexes(request)
 
         instance.onNavigationStarting = { url, _ ->
             val matched = overrideRegex?.matches(url) == true
@@ -116,71 +98,28 @@ internal object WindowsWebViewEngine : DesktopWebViewEngine {
             if (sourceRegex?.matches(url) == true) hit.complete(url)
         }
         instance.onNavigationCompleted = { url ->
-            harvestCookies(instance, url, request.cookieTag)
+            harvestTagCookies(url, request.cookieTag) {
+                instance.cookies(url, COOKIE_TIMEOUT_MS)
+            }
             // app 端在 onPageStarted 延时注入 JS, 这里等页面就绪后补一次
-            request.javaScript?.takeIf { it.isNotEmpty() }
-                ?.let { instance.navigate("javascript:$it") }
+            injectJsOnPageReady(request) { instance.navigate("javascript:$it") }
         }
         start(instance, request)
         val resultUrl = hit.await()
-        return WebViewFetchResult(request.url ?: resultUrl, resultUrl, false)
+        return snifferResult(request, resultUrl)
     }
 
     /** 对应 app 端 load(): html 优先, 否则加载 url; UA 走 Settings2。 */
-    private fun start(instance: WebView2Instance, request: WebViewFetchRequest) {
+    private suspend fun start(instance: WebView2Instance, request: WebViewFetchRequest) {
         request.headerMap?.get(AppConst.UA_NAME)?.let { instance.setUserAgent(it) }
-        injectCookies(instance, request)
+        injectWebViewCookies(request.url, platformLabel) { domain, cookie ->
+            instance.setCookies(domain, cookie)
+        }
         val html = request.html
         when {
             !html.isNullOrEmpty() -> instance.navigateToString(html)
             !request.url.isNullOrEmpty() -> instance.navigate(request.url)
             else -> throw NoStackTraceException("url 与 html 不能同时为空")
-        }
-    }
-
-    /**
-     * 把 CookieStore 里已有的 cookie 注入浏览器再导航。
-     *
-     * app 端不需要这步 —— 安卓 WebView 与 OkHttp 共用进程级 CookieManager; 桌面端两者是
-     * 各自独立的存储, 不注入的话 webView 回源会丢掉此前 HTTP 侧登录拿到的会话。
-     * 注入与回收 (见 [harvestCookies]) 合起来才是完整闭环。
-     */
-    private fun injectCookies(instance: WebView2Instance, request: WebViewFetchRequest) {
-        val url = request.url?.takeIf { it.isNotBlank() } ?: return
-        runCatching {
-            val store = CookieStoreProviders.get() ?: return
-            val cookie = store.getCookie(url).takeIf { it.isNotBlank() } ?: return
-            val domain = NetworkUtils.getSubDomain(url).takeIf { it.isNotBlank() } ?: return
-            instance.setCookies(domain, cookie)
-        }.onFailure { AppLog.put("WebView2 cookie 注入失败", it) }
-    }
-
-    /**
-     * 回收 cookie 写入 CookieStore, 对应 app 端 `setCookie(url)`:
-     * 仅在有 tag 时保存, 且存到 tag (书源 key) 名下而非页面地址。
-     */
-    private fun harvestCookies(instance: WebView2Instance, url: String, tag: String?) {
-        if (tag.isNullOrBlank() || url.isBlank()) return
-        scope.launch {
-            val cookie = instance.cookies(url, COOKIE_TIMEOUT_MS) ?: return@launch
-            runCatching { CookieStoreProviders.get()?.setCookie(tag, cookie) }
-                .onFailure { AppLog.put("WebView2 cookie 回写失败", it) }
-        }
-    }
-
-    /**
-     * 可见窗口的 cookie 回收, 对应 app 端 `WebViewActivity.onPageFinished`:
-     * 按页面地址存一份, 有书源 key 时再存一份 (登录态要按 key 取)。
-     */
-    internal fun harvestWindowCookies(instance: WebView2Instance, url: String, tag: String?) {
-        if (url.isBlank()) return
-        scope.launch {
-            val cookie = instance.cookies(url, COOKIE_TIMEOUT_MS) ?: return@launch
-            runCatching {
-                val store = CookieStoreProviders.get() ?: return@runCatching
-                store.setCookie(url, cookie)
-                if (!tag.isNullOrBlank()) store.setCookie(tag, cookie)
-            }.onFailure { AppLog.put("WebView2 窗口 cookie 回写失败", it) }
         }
     }
 
@@ -195,9 +134,13 @@ internal object WindowsWebViewEngine : DesktopWebViewEngine {
 /** 可见窗口导航超时 (页面挂起时 loading 停止并提示, 防卡死感)。 */
 private const val NAV_TIMEOUT_MS = 30_000L
 
+/** 日志里的平台名 (cookie 注入/回写失败信息前缀, 引擎与窗口句柄共用)。 */
+private const val PLATFORM_LABEL = "WebView2"
+
 /**
- * 可见窗口句柄。cookie 由调用方在 [WebViewWindowRequest.onNavigated] 里回收
- * (对齐 app 端 WebViewActivity.onPageFinished), 用户关窗触发 onClosed。
+ * 可见窗口句柄。cookie 在导航完成回调里回收 (对齐 app 端 WebViewActivity.onPageFinished),
+ * 用户关窗触发 onClosed; 历史栈 / 禁用源 / 删除源 / 确定按钮等公共语义见
+ * [DesktopWebViewWindowHandleBase]。
  *
  * 窗口带 CustomTab 式工具栏 ([WebView2Toolbar]), 行为对照 shared `WebViewRoute`:
  * - 标题/进度/返回/前进/刷新/关闭/确定, 确定按钮语义见 [WebViewWindowRequest.isLogin]/[saveResult];
@@ -207,28 +150,13 @@ private const val NAV_TIMEOUT_MS = 30_000L
  *   非空且非 http 前缀才更新 (对齐 onReceivedTitle)。
  */
 private class WebView2WindowHandle(
-    private val request: WebViewWindowRequest,
-) : WebViewWindowHandle {
+    request: WebViewWindowRequest,
+) : DesktopWebViewWindowHandleBase(request) {
+
+    override val platformLabel = PLATFORM_LABEL
 
     @Volatile
     private var instance: WebView2Instance? = null
-
-    /** 缓存最近一次导航地址: 属性读取不能阻塞去问 COM 线程。 */
-    @Volatile
-    override var currentUrl: String? = null
-        private set
-
-    /** 手动历史栈: 导航完成入栈, 前进后退移动 index。 */
-    private val history = ArrayList<String>()
-    private var historyIndex = -1
-    private var historyNavPending = false
-
-    /** isLogin 确认流程: 确定 → reload, 下次导航完成关窗 (对照 menu_ok 的 checking)。 */
-    private val checking = AtomicBoolean(false)
-
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
-    private val closedOnce = AtomicBoolean(false)
 
     /** 导航超时任务: 页面挂起 (网络黑洞/连接重置) 时 NavigationCompleted 永不触发,
      * loading 指示一直转 (= 卡死感)。超时后停止 loading 并提示。 */
@@ -287,16 +215,18 @@ private class WebView2WindowHandle(
             navTimeoutJob?.cancel()
             if (url.isNotBlank()) {
                 currentUrl = url
-                WindowsWebViewEngine.harvestWindowCookies(created, url, request.cookieTag)
+                harvestWindowCookies(url, request.cookieTag) {
+                    created.cookies(url, DesktopWebViewEngineBase.COOKIE_TIMEOUT_MS)
+                }
                 runCatching { request.onNavigated(url) }
                 val toolbar = created.toolbar
                 toolbar?.setLoading(false)
-                if (checking.get()) {
+                if (isLoginChecking()) {
                     // 对照 menu_ok isLogin 分支: reload 后下次导航完成即关窗
                     close()
                 } else if (toolbar != null) {
                     onNavigationForHistory(url)
-                    toolbar.setCanNavigate(historyIndex > 0, historyIndex < history.size - 1)
+                    toolbar.setCanNavigate(canGoBackInHistory(), canGoForwardInHistory())
                     // 动态标题 (对齐 WebViewRoute.onReceivedTitle): 非空且非 http 前缀才更新
                     scope.launch {
                         val docTitle = runCatching {
@@ -323,34 +253,15 @@ private class WebView2WindowHandle(
         }
     }
 
-    /** 手动历史栈维护: 前进/后退导航只移动 index; 普通导航截断前进项后入栈。 */
-    private fun onNavigationForHistory(url: String) {
-        if (historyNavPending) {
-            historyNavPending = false
-        } else if (history.isEmpty() || history[historyIndex] != url) {
-            while (history.size - 1 > historyIndex) history.removeAt(history.size - 1)
-            history.add(url)
-            historyIndex = history.size - 1
-        }
-    }
-
     private fun onToolbarAction(created: WebView2Instance, action: ToolbarAction) {
         when (action) {
-            ToolbarAction.BACK -> if (historyIndex > 0) {
-                historyNavPending = true
-                historyIndex--
-                created.navigate(history[historyIndex])
-            } else {
+            ToolbarAction.BACK -> if (!navigateHistory(back = true)) {
                 // 无历史时返回 = 关闭窗口 (对照原版 WebViewActivity toolbar 返回箭头
                 // = finish(), 避免"返回不可用"的困惑)
                 close()
             }
 
-            ToolbarAction.FORWARD -> if (historyIndex < history.size - 1) {
-                historyNavPending = true
-                historyIndex++
-                created.navigate(history[historyIndex])
-            }
+            ToolbarAction.FORWARD -> navigateHistory(back = false)
 
             ToolbarAction.REFRESH -> {
                 created.toolbar?.setLoading(true)
@@ -389,7 +300,10 @@ private class WebView2WindowHandle(
                 // 页面还活着时抓 outerHTML (对照原版 readAloud 的 evaluateJavascript)
                 runCatching {
                     unwrapScriptResult(
-                        created.executeScript(WindowsWebViewEngine.DEFAULT_JS, AppConst.timeLimit)
+                        created.executeScript(
+                            DesktopWebViewEngineBase.DEFAULT_JS,
+                            AppConst.timeLimit
+                        )
                     )
                 }.getOrNull()
             }
@@ -398,71 +312,35 @@ private class WebView2WindowHandle(
 
             ToolbarAction.LOGIN -> request.rssActions?.onLogin()
 
-            ToolbarAction.OK -> onOkPressed(created)
+            ToolbarAction.OK -> onOkPressed(
+                reloadForCheck = {
+                    created.toolbar?.setLoading(true)
+                    created.reload()
+                },
+                evalDefaultJs = {
+                    unwrapScriptResult(
+                        created.executeScript(
+                            DesktopWebViewEngineBase.DEFAULT_JS,
+                            AppConst.timeLimit
+                        )
+                    )
+                },
+            )
 
             // 禁用源 (对照原版 menu_disable_source → viewModel.disableSource { finish() }):
             // 成功后关窗, 失败记录日志不关窗 (窗口仍可继续用)
             ToolbarAction.DISABLE_SOURCE -> onDisableSource()
 
             // 删除源 (对照原版 menu_delete_source → alert 确认后 deleteSource { finish() })
-            ToolbarAction.DELETE_SOURCE -> onDeleteSource(created)
+            ToolbarAction.DELETE_SOURCE -> onDeleteSource { created.confirmDelete(it) }
 
             ToolbarAction.CLOSE -> close()
         }
     }
 
-    /** 禁用源: 直接执行 (对照原版无确认), 成功后关窗。 */
-    private fun onDisableSource() {
-        val key = request.cookieTag ?: return
-        scope.launch {
-            runCatching { SourceHelp.enableSource(key, request.sourceType, false) }
-                .onSuccess { close() }
-                .onFailure { AppLog.put("禁用书源失败: $key", it) }
-        }
+    override fun navigateInWindow(url: String) {
+        instance?.navigate(url)
     }
-
-    /** 删除源: 先弹确认 (sure_del + 源名, 对照原版 alert), 确认后执行, 成功后关窗。 */
-    private fun onDeleteSource(created: WebView2Instance) {
-        val key = request.cookieTag ?: return
-        val name = request.sourceName.ifBlank { key }
-        if (!created.confirmDelete("是否确认删除？\n$name")) return
-        scope.launch {
-            runCatching { SourceHelp.deleteSource(key, request.sourceType) }
-                .onSuccess { close() }
-                .onFailure { AppLog.put("删除书源失败: $key", it) }
-        }
-    }
-
-    /** 确定按钮 (对照 menu_ok): isLogin → check_host_cookie; saveResult → 回传后由调用方关窗。 */
-    private fun onOkPressed(created: WebView2Instance) {
-        when {
-            request.isLogin -> {
-                if (checking.compareAndSet(false, true)) {
-                    runCatching { Toasters.get().toast(CHECK_HOST_COOKIE_TEXT) }
-                    created.toolbar?.setLoading(true)
-                    created.reload()
-                }
-            }
-
-            request.saveResult -> {
-                // 页面还活着时抓 outerHTML 回传 (对照 saveVerificationResult 的 html 分支), 再交回调用方关窗
-                scope.launch {
-                    val html = runCatching {
-                        unwrapScriptResult(
-                            created.executeScript(
-                                WindowsWebViewEngine.DEFAULT_JS,
-                                AppConst.timeLimit
-                            )
-                        )
-                    }.getOrNull()
-                    request.onSaveResult?.invoke(html)
-                }
-            }
-        }
-    }
-
-    override suspend fun currentHtml(): String? =
-        evaluateJavascript(WindowsWebViewEngine.DEFAULT_JS)
 
     override suspend fun evaluateJavascript(script: String): String? {
         val target = instance ?: return null
@@ -473,10 +351,8 @@ private class WebView2WindowHandle(
         instance?.reload()
     }
 
-    override fun close() {
-        if (!closedOnce.compareAndSet(false, true)) return
+    override fun destroySession() {
         instance?.close()
         instance = null
-        runCatching { request.onClosed() }
     }
 }

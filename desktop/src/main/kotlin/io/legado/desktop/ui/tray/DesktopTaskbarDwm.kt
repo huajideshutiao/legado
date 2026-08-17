@@ -1,7 +1,5 @@
 package io.legado.desktop.ui.tray
 
-import com.sun.jna.Function
-import com.sun.jna.Memory
 import com.sun.jna.platform.win32.GDI32
 import com.sun.jna.platform.win32.User32
 import com.sun.jna.platform.win32.WinDef
@@ -11,6 +9,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.Status
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.service.ReadAloudControllerShared.ReadAloudState
+import io.legado.desktop.help.win.DwmApi
 import io.legado.desktop.ui.DesktopWindowChromeNative
 import io.legado.desktop.ui.hwndOrNull
 import io.legado.desktop.ui.tray.DesktopTaskbarDwm.COVER_MAX_RETRY
@@ -55,10 +54,6 @@ internal object DesktopTaskbarDwm {
     private const val ENABLE_ICONIC_CARD = true
 
     // ==================== 常量 ====================
-
-    // DWMWINDOWATTRIBUTE
-    private const val DWMWA_FORCE_ICONIC_REPRESENTATION = 7
-    private const val DWMWA_HAS_ICONIC_BITMAP = 10
 
     // 消息 (WM_DWMSENDICONICTHUMBNAIL / WM_DWMSENDICONICLIVEPREVIEWBITMAP)
     /** 封面加载失败的最大重试次数 (每次 update 触发一次)。 */
@@ -281,11 +276,11 @@ internal object DesktopTaskbarDwm {
         try {
             // HRESULT 必须看: 位图超过请求上限等情形返回 E_INVALIDARG(0x80070057),
             // 表现就是"我们以为答了、DWM 却回落默认渐变图"
+            val dwm = DwmApi.dwmapi ?: error("dwmapi.dll 加载失败")
             val hr = if (live) {
-                dwmapi("DwmSetIconicLivePreviewBitmap")
-                    .invokeInt(arrayOf(hwnd, hBitmap, null, 0))
+                dwm.DwmSetIconicLivePreviewBitmap(hwnd, hBitmap, null, 0)
             } else {
-                dwmapi("DwmSetIconicThumbnail").invokeInt(arrayOf(hwnd, hBitmap, 0))
+                dwm.DwmSetIconicThumbnail(hwnd, hBitmap, 0)
             }
             if (hr != 0) {
                 AppLog.put(
@@ -577,19 +572,18 @@ internal object DesktopTaskbarDwm {
         if (coverFailCount <= COVER_MAX_RETRY && lastCoverUrl == url) lastCoverUrl = null
     }
 
-    // ==================== DWM API (dwmapi.dll 手写绑定) ====================
-
-    private fun dwmapi(name: String): Function =
-        Function.getFunction("dwmapi", name, Function.ALT_CONVENTION)
+    // ==================== DWM API (绑定统一收口在 help/win/DwmApi) ====================
 
     private fun setIconicMode(hwnd: WinDef.HWND, enable: Boolean) {
         runCatching {
-            val mem = Memory(4)
-            mem.setInt(0, if (enable) 1 else 0)
-            dwmapi("DwmSetWindowAttribute")
-                .invokeInt(arrayOf(hwnd, DWMWA_FORCE_ICONIC_REPRESENTATION, mem, 4))
-            dwmapi("DwmSetWindowAttribute")
-                .invokeInt(arrayOf(hwnd, DWMWA_HAS_ICONIC_BITMAP, mem, 4))
+            // 加载失败对齐旧 Function.getFunction 直调的抛错行为 (走 onFailure 日志)
+            requireNotNull(DwmApi.dwmapi) { "dwmapi.dll 加载失败" }
+            DwmApi.setAttribute(
+                hwnd,
+                DwmApi.DWMWA_FORCE_ICONIC_REPRESENTATION,
+                if (enable) 1 else 0
+            )
+            DwmApi.setAttribute(hwnd, DwmApi.DWMWA_HAS_ICONIC_BITMAP, if (enable) 1 else 0)
         }.onFailure {
             AppLog.put("DWM iconic 开关失败", it)
         }
@@ -601,7 +595,7 @@ internal object DesktopTaskbarDwm {
         if (now - lastInvalidateAt < INVALIDATE_MIN_INTERVAL_MS) return
         lastInvalidateAt = now
         runCatching {
-            dwmapi("DwmInvalidateIconicBitmaps").invokeInt(arrayOf(hwnd))
+            DwmApi.dwmapi?.DwmInvalidateIconicBitmaps(hwnd)
         }.onFailure { /* 悬停外调用无副作用, 忽略 */ }
     }
 

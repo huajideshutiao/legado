@@ -1,5 +1,6 @@
 import inputMethod from '@ohos.inputMethod';
 import { UIContext } from '@ohos.arkui.UIContext';
+import { BridgeCommand, parseBridgeCommand } from './BridgeDispatch';
 
 /**
  * ArkTS 侧软键盘处理器 (桥接 @ohos.inputMethod + UIContext)。
@@ -31,8 +32,7 @@ import { UIContext } from '@ohos.arkui.UIContext';
 // 由 Index.ets 注入的 UIContext (供 setKeyboardAvoidMode; 未注入不影响 hide/show)
 let uiContext: UIContext | undefined;
 
-interface KeyboardCommand {
-  action: string;
+interface KeyboardCommand extends BridgeCommand {
   mode?: number;
 }
 
@@ -51,13 +51,11 @@ export function initKeyboardBridge(ctx: UIContext): void {
  * @param json 命令 JSON 字符串, 形如 `{ action: 'hide'|'show'|'setAvoidMode', mode? }`
  */
 export function handleKeyboardCommand(json: string): void {
-  let cmd: KeyboardCommand;
-  try {
-    cmd = JSON.parse(json) as KeyboardCommand;
-  } catch (e) {
-    console.error('[KeyboardBridge] parse command failed: ' + json);
+  const parsed = parseBridgeCommand(json, 'KeyboardBridge', 'command');
+  if (parsed == null) {
     return;
   }
+  const cmd = parsed as KeyboardCommand;
 
   switch (cmd.action) {
     case 'hide':

@@ -33,14 +33,27 @@ kotlin {
                 implementation(libs.json)
             }
         }
-        jvmTest {
+        // 共享测试基类 (QuickJsEngineTestBase / RealWorldSourceScenarioTestBase) 所在源集:
+        // 测试依赖声明在此, 经源集继承传导给 jvmTest (classpath 与原先声明在 jvmTest 时等价)。
+        commonTest {
             dependencies {
                 implementation(libs.junit)
                 implementation(libs.jetbrains.kotlin.test)
             }
         }
+        // 注: src/androidDeviceTest 目录 (QuickJsEngineTest / RealWorldSourceScenarioTest 等 8 个
+        // Android 设备端测试) 目前未接线 —— AGP KMP library 插件需显式 kotlin.androidLibrary.withDeviceTest {}
+        // 才创建对应编译 (当前构建无此源集的编译任务与依赖声明)。其中两个与 jvmTest 重复的测试已改为
+        // commonTest 基类 + 本目录薄子类 (仅 runner 注解与 android.graphics.Point 差异);
+        // 将来启用 withDeviceTest 时, 需将 commonTest 接入 androidDeviceTest 源集并补测试依赖。
     }
 }
+
+// 显式接线 jvmTest → commonTest (仓级 kotlin.mpp.applyDefaultHierarchyTemplate=false,
+// 接线方式同 shared/build.gradle.kts 的 jvmAndAndroidTest): 保证 commonTest 的共享测试基类
+// (QuickJsEngineTestBase / RealWorldSourceScenarioTestBase) 编译进 jvmTest, jvmTest 留薄子类
+// 注入桌面端差异 (java.awt.Point)。
+kotlin.sourceSets.jvmTest.dependsOn(kotlin.sourceSets.commonTest)
 
 // 修正 KSP 配置：KMP Android 环境下使用标准 kspAndroid 钩子
 dependencies {

@@ -74,7 +74,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.awt.Desktop
 import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection
@@ -127,7 +126,7 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
         get() = DefaultDialogTransitionSpec
 
     override fun openExternalUrl(url: String) {
-        if (Desktop.isDesktopSupported()) Desktop.getDesktop().browse(URI(url))
+        browseUrl(url)
     }
 
     override fun openWebView(url: String, sourceKey: String, sourceName: String) {

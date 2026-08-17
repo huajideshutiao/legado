@@ -1,5 +1,6 @@
 import pasteboard from '@ohos.pasteboard';
 import { BusinessError } from '@ohos.base';
+import { BridgeRequest, BridgeResponse, dispatchBridgeRequest } from './BridgeDispatch';
 
 /**
  * ArkTS 侧剪贴板处理器。
@@ -38,16 +39,8 @@ export type PasteboardCallback = (requestId: number, resultJson: string) => void
 
 // ===== 请求/响应接口定义 (与 Kotlin 侧 JSON 协议对齐) =====
 
-interface PasteboardBridgeRequest {
-  requestId: number;
-  action: string;
-  payload: string;
-}
-
-interface PasteboardResponse {
-  ok: boolean;
+interface PasteboardResponse extends BridgeResponse {
   text?: string;
-  error?: string;
 }
 
 interface PasteboardWritePayload {
@@ -61,27 +54,14 @@ interface PasteboardWritePayload {
  * @param callback 回送结果的函数 (EntryAbility 注入 legado.pasteboardCallback)
  */
 export function handlePasteboardRequest(requestJson: string, callback: PasteboardCallback): void {
-  let req: PasteboardBridgeRequest;
-  try {
-    req = JSON.parse(requestJson) as PasteboardBridgeRequest;
-  } catch (e) {
-    console.error('[PasteboardBridge] parse request failed: ' + requestJson);
-    return;
-  }
-
-  handleAction(req).then((resp: PasteboardResponse) => {
-    callback(req.requestId, JSON.stringify(resp));
-  }).catch((err: Error) => {
-    const resp: PasteboardResponse = { ok: false, error: err.message ?? String(err) };
-    callback(req.requestId, JSON.stringify(resp));
-  });
+  dispatchBridgeRequest(requestJson, 'PasteboardBridge', handleAction, callback);
 }
 
 // 根据 action 分发到具体处理函数
-async function handleAction(req: PasteboardBridgeRequest): Promise<PasteboardResponse> {
+async function handleAction(req: BridgeRequest): Promise<PasteboardResponse> {
   switch (req.action) {
     case 'read': return await handleRead();
-    case 'write': return await handleWrite(req.payload);
+    case 'write': return await handleWrite(req.payload ?? '');
     default: return { ok: false, error: 'unknown action: ' + req.action };
   }
 }

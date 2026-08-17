@@ -1,7 +1,8 @@
 import picker from '@ohos.file.picker';
 import fs from '@ohos.file.fs';
-import buffer from '@ohos.buffer';
 import { BusinessError } from '@ohos.base';
+import { BridgeRequest, BridgeResponse, dispatchBridgeRequest } from './BridgeDispatch';
+import { arrayBufferToBase64, base64ToArrayBuffer } from './BridgeCodec';
 
 /**
  * ArkTS 侧文件选择器处理器 (KP8+)。
@@ -66,18 +67,10 @@ export type FilePickerCallback = (requestId: number, resultJson: string) => void
 
 // ===== 请求/响应接口定义 (与 Kotlin 侧 JSON 协议对齐) =====
 
-interface FilePickerBridgeRequest {
-  requestId: number;
-  action: string;
-  payload: string;
-}
-
-interface FilePickerResponse {
-  ok: boolean;
+interface FilePickerResponse extends BridgeResponse {
   uris?: string[];
   cancelled?: boolean;
   data?: string;
-  error?: string;
 }
 
 interface PickDocumentsPayload {
@@ -133,31 +126,17 @@ const UTI_TO_SUFFIX: Record<string, string> = {
  * @param callback 回送结果的函数 (EntryAbility 注入 legado.filePickerCallback)
  */
 export function handleFilePickerRequest(requestJson: string, callback: FilePickerCallback): void {
-  let req: FilePickerBridgeRequest;
-  try {
-    req = JSON.parse(requestJson) as FilePickerBridgeRequest;
-  } catch (e) {
-    console.error('[FilePickerBridge] parse request failed: ' + requestJson);
-    return;
-  }
-
-  // 异步处理, 完成后回调
-  handleAction(req).then((resp: FilePickerResponse) => {
-    callback(req.requestId, JSON.stringify(resp));
-  }).catch((err: Error) => {
-    const resp: FilePickerResponse = { ok: false, error: err.message ?? String(err) };
-    callback(req.requestId, JSON.stringify(resp));
-  });
+  dispatchBridgeRequest(requestJson, 'FilePickerBridge', handleAction, callback);
 }
 
 // 根据 action 分发到具体处理函数
-async function handleAction(req: FilePickerBridgeRequest): Promise<FilePickerResponse> {
+async function handleAction(req: BridgeRequest): Promise<FilePickerResponse> {
   switch (req.action) {
-    case 'pickDocuments': return await handlePickDocuments(req.payload);
-    case 'pickDocumentContent': return await handlePickDocumentContent(req.payload);
-    case 'pickImages': return await handlePickImages(req.payload);
-    case 'pickDirectory': return await handlePickDirectory(req.payload);
-    case 'saveDocument': return await handleSaveDocument(req.payload);
+    case 'pickDocuments': return await handlePickDocuments(req.payload ?? '');
+    case 'pickDocumentContent': return await handlePickDocumentContent(req.payload ?? '');
+    case 'pickImages': return await handlePickImages(req.payload ?? '');
+    case 'pickDirectory': return await handlePickDirectory(req.payload ?? '');
+    case 'saveDocument': return await handleSaveDocument(req.payload ?? '');
     default: return { ok: false, error: 'unknown action: ' + req.action };
   }
 }
@@ -222,7 +201,7 @@ async function handlePickDocumentContent(payload: string): Promise<FilePickerRes
     const arrayBuffer = new ArrayBuffer(size);
     fs.readSync(file.fd, arrayBuffer);
     // ArrayBuffer → base64 字符串 (与 ImageBridgeHandler.encode / CryptoBridgeHandler 一致)
-    const base64 = buffer.from(arrayBuffer).toString('base64');
+    const base64 = arrayBufferToBase64(arrayBuffer);
     return { ok: true, data: base64 };
   } catch (e) {
     const err = e as BusinessError;
@@ -322,10 +301,7 @@ async function handleSaveDocument(payload: string): Promise<FilePickerResponse> 
   //    (save 返回的 URI 已授予写权限, 文件由系统创建为空文件, TRUNC 覆盖写)
   let file: fs.File | undefined;
   try {
-    const buf = buffer.from(p.data, 'base64');
-    // Buffer 的长度属性是 length (无 byteLength); buffer.from 可能返回池化视图, 起始偏移取 byteOffset
-    const ab = new ArrayBuffer(buf.length);
-    new Uint8Array(ab).set(new Uint8Array(buf.buffer, buf.byteOffset, buf.length));
+    const ab = base64ToArrayBuffer(p.data);
     file = fs.openSync(uris[0], fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
     fs.writeSync(file.fd, ab);
     return { ok: true, uris: [uris[0]] };

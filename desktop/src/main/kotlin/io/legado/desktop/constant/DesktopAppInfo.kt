@@ -21,7 +21,8 @@ import java.util.jar.Manifest
  *   [FALLBACK_VERSION_NAME] (= `desktop/build.gradle.kts`
  *   `nativeDistributions.packageVersion` 默认值)
  * - [versionCode]: 桌面端无 `packageManager.versionCode`, 从 [versionName] 解析
- *   `major*10000+minor*100+patch` (与 app 端 versionCode 语义不同, 仅作占位), 解析失败回落 1
+ *   `major*10000+minor*100+patch` (与 app 端 versionCode 语义不同), 解析失败回落 1;
+ *   供崩溃日志版本字段与默认数据按版本推进使用
  *
  * # 与 app 端的差异
  *
@@ -52,7 +53,9 @@ object DesktopAppInfo {
      * 应用版本号 (Int), 桌面端无 PackageManager, 从 [versionName] 解析 `major*10000+minor*100+patch`。
      *
      * 例: "1.0.0" → 10000, "3.25.7" → 325007。解析失败回落 1。
-     * 注: 与 app 端 Long versionCode 语义不同, 仅作占位, 当前未在桌面端被使用。
+     * 注: 与 app 端 Long versionCode 语义不同。使用处: 崩溃日志的版本字段
+     * ([io.legado.desktop.help.DesktopCrashHandler]) 与默认数据按版本推进的本地记录
+     * ([io.legado.desktop.help.DesktopDefaultDataInit] 的 appVersionCode 比对)。
      */
     val versionCode: Int by lazy {
         val parts = versionName.split(".").mapNotNull { it.toIntOrNull() }

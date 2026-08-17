@@ -4,7 +4,6 @@ import com.sun.jna.Platform
 import com.sun.jna.platform.win32.Advapi32Util
 import com.sun.jna.platform.win32.WinReg
 import java.io.File
-import java.util.concurrent.TimeUnit
 
 /**
  * 桌面端 legado:// / yuedu:// 系统级 URL protocol 注册 (运行时, 幂等, 后台执行)。
@@ -145,14 +144,14 @@ object DesktopUrlProtocol {
     /** 运行外部命令, 只记失败日志 (xdg-utils 可能缺失/非零退出, 不阻塞启动)。 */
     private fun runQuiet(vararg cmd: String) {
         runCatching {
-            val p = ProcessBuilder(*cmd).redirectErrorStream(true).start()
-            if (!p.waitFor(10, TimeUnit.SECONDS)) {
-                p.destroyForcibly()
-                debugLog("[legado-desktop] 命令超时: ${cmd.joinToString(" ")}")
-                return
-            }
-            if (p.exitValue() != 0) {
-                debugLog("[legado-desktop] 命令退出码 ${p.exitValue()}: ${cmd.joinToString(" ")}")
+            val result = DesktopCommandRunner.run(cmd.toList(), 10_000L)
+            val cmdText = cmd.joinToString(" ")
+            when {
+                result.exitCode == null ->
+                    debugLog("[legado-desktop] 命令超时: $cmdText")
+
+                result.exitCode != 0 ->
+                    debugLog("[legado-desktop] 命令退出码 ${result.exitCode}: $cmdText")
             }
         }.onFailure {
             debugLog("[legado-desktop] 命令执行失败: ${cmd.joinToString(" ")}: ${it.message}")

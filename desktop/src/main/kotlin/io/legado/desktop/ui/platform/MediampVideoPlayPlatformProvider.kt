@@ -45,6 +45,7 @@ import io.legado.app.ui.book.video.VideoPlayScreenModel
 import io.legado.app.ui.book.video.VideoPlaybackPoller
 import io.legado.app.ui.book.video.VideoPlayerController
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.utils.browseUrl
 import io.legado.desktop.audio.DesktopScreenBrightness
 import io.legado.desktop.audio.DesktopSystemVolume
 import io.legado.desktop.ui.DesktopFullscreenController
@@ -577,9 +578,7 @@ private fun MediampFailedHint(message: String, playUrl: String?, onRetry: () -> 
             Button(onClick = onRetry) { Text(rememberString("reload")) }
             if (playUrl != null) {
                 MpvLinkButton(rememberString("mpv_open_in_browser")) {
-                    runCatching {
-                        java.awt.Desktop.getDesktop().browse(java.net.URI(playUrl))
-                    }
+                    browseUrl(playUrl)
                 }
             }
         }

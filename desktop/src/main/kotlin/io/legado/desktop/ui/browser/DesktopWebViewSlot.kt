@@ -23,6 +23,7 @@ import io.legado.app.ui.browser.WebViewCallbacks
 import io.legado.app.ui.browser.WebViewConfig
 import io.legado.app.ui.browser.WebViewHost
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.utils.browseUrl
 import io.legado.desktop.help.webview.DesktopWebViewEngine
 import io.legado.desktop.help.webview.DesktopWebViewEngines
 import io.legado.desktop.help.webview.WebViewWindowHandle
@@ -31,8 +32,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import java.awt.Desktop
-import java.net.URI
 
 /**
  * Desktop WebView slot (登录页 / RSS / WebView 路由共用)。
@@ -52,8 +51,8 @@ import java.net.URI
  * 并把导航完成事件接回 [WebViewCallbacks.onPageFinished], 于是 WebViewRoute 的
  * outerHTML 抓取与 CF 挑战自动检测 (对照 AndroidWebView 的 WebViewHostImpl + onPageFinished)
  * 在桌面端可用; 独立窗口带 CustomTab 式工具栏 (返回/前进/刷新/关闭/标题/进度,
- * 与书源验证窗口同一套实现), 但无路由内嵌后退栈, 路由侧 canGoBack 仍恒 false
- * (返回走路由出栈)。
+ * 与书源验证窗口同一套实现), 路由侧 canGoBack/goBack 经句柄转发到窗口手动历史栈
+ * (页面可后退则后退, 见 WebViewRoute.handleBack)。
  */
 @Composable
 fun DesktopWebViewSlot(
@@ -149,7 +148,7 @@ private fun SystemBrowserFallback(url: String, modifier: Modifier) {
     val hintLabel = rememberString("web_view_open_hint")
     val guide = remember { DesktopWebViewEngines.installGuide() }
     DisposableEffect(url) {
-        runCatching { Desktop.getDesktop().browse(URI(url)) }
+        browseUrl(url)
         onDispose { }
     }
     Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -167,7 +166,7 @@ private fun SystemBrowserFallback(url: String, modifier: Modifier) {
                 val downloadUrl = guide.downloadUrl
                 if (downloadUrl != null) {
                     Button(
-                        onClick = { runCatching { Desktop.getDesktop().browse(URI(downloadUrl)) } },
+                        onClick = { browseUrl(downloadUrl) },
                         modifier = Modifier.padding(top = 8.dp),
                     ) {
                         Text("下载 WebView2 运行时")
@@ -175,7 +174,7 @@ private fun SystemBrowserFallback(url: String, modifier: Modifier) {
                 }
             }
             Button(
-                onClick = { runCatching { Desktop.getDesktop().browse(URI(url)) } },
+                onClick = { browseUrl(url) },
                 modifier = Modifier.padding(top = 8.dp),
             ) {
                 Text(openLabel)
@@ -189,7 +188,11 @@ private fun SystemBrowserFallback(url: String, modifier: Modifier) {
  *
  * 语义对照 Android 端 [io.legado.app.ui.browser.AndroidWebView] 的 WebViewHostImpl:
  * - [evaluateJavascript] 经 [WebViewWindowHandle.evaluateJavascript] 执行 (引擎已归一为纯文本);
- * - 独立窗口无路由内嵌后退栈, canGoBack 恒 false (返回键走路由出栈, 与原行为一致);
+ * - canGoBack/goBack 转发窗口句柄的手动历史栈 (无历史时路由照旧出栈);
+ * - exitFullScreen 经句柄 evaluateJavascript 执行 document.exitFullscreen()
+ *   (标准 Fullscreen API, 页面未处于 JS 全屏时无操作); 引擎原生窗口不跟踪 HTML5
+ *   视频全屏 (onFullScreenChanged 从未上报, videoFullScreen 恒 false), 原生全屏由
+ *   系统窗口自身处理, 此转发覆盖的是页面脚本驱动的全屏;
  * - getUrl/reload 直通窗口句柄。
  */
 private class DesktopWebViewHost(
@@ -206,9 +209,17 @@ private class DesktopWebViewHost(
         }
     }
 
-    override fun canGoBack(): Boolean = false
+    override fun canGoBack(): Boolean = handle.canGoBack()
 
-    override fun goBack() = Unit
+    override fun goBack() = handle.goBack()
+
+    // 对照 AndroidWebView 的 customViewCallback.onCustomViewHidden: Fullscreen API
+    // 标准动作, 页面未处于 JS 全屏时无操作 (原生窗口自身的视频全屏不受影响)
+    override fun exitFullScreen() {
+        scope.launch {
+            runCatching { handle.evaluateJavascript("document.exitFullscreen()") }
+        }
+    }
 
     override fun getUrl(): String? = handle.currentUrl
 

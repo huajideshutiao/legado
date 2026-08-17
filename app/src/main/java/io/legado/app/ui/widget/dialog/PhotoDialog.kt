@@ -28,6 +28,7 @@ import coil3.size.Size
 import coil3.toBitmap
 import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.constant.AppConst
+import io.legado.app.data.entities.Book
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.getBookSource
 import io.legado.app.help.book.isEpub

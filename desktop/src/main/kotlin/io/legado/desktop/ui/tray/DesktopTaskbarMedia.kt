@@ -8,11 +8,9 @@ import com.sun.jna.Platform
 import com.sun.jna.Pointer
 import com.sun.jna.platform.win32.GDI32
 import com.sun.jna.platform.win32.Guid
-import com.sun.jna.platform.win32.Kernel32
 import com.sun.jna.platform.win32.Ole32
 import com.sun.jna.platform.win32.User32
 import com.sun.jna.platform.win32.WinDef
-import com.sun.jna.platform.win32.WinError
 import com.sun.jna.platform.win32.WinGDI
 import com.sun.jna.platform.win32.WinUser
 import com.sun.jna.ptr.PointerByReference
@@ -21,6 +19,8 @@ import io.legado.app.constant.Status
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.service.ReadAloudControllerShared.ReadAloudState
 import io.legado.app.ui.compose.platform.jvmGetString
+import io.legado.desktop.help.win.createHiddenMessageWindow
+import io.legado.desktop.help.win.registerMessageWindowClass
 import io.legado.desktop.ui.DesktopWindowChromeNative
 import io.legado.desktop.ui.hwndOrNull
 import io.legado.desktop.ui.tray.DesktopTaskbarMedia.attach
@@ -598,17 +598,14 @@ internal object DesktopTaskbarMedia {
         // 拿到跨套间代理, 裸 HIMAGELIST 无法编组 → E_FAIL
         runCatching { Ole32.INSTANCE.CoInitializeEx(Pointer.NULL, Ole32.COINIT_APARTMENTTHREADED) }
         val created = runCatching {
-            registerWindowClass()
-            val hwnd = User32.INSTANCE.CreateWindowEx(
-                0,
-                WINDOW_CLASS,
-                "legado-taskbar-media",
-                WinUser.WS_POPUP,
-                -32000, -32000, 1, 1,
-                null, null,
-                Kernel32.INSTANCE.GetModuleHandle(null),
-                null,
-            ) ?: error("CreateWindowEx 失败 (err=${Native.getLastError()})")
+            // WNDCLASSEX 注册 + 屏幕外隐藏窗口的样板统一收口在 help/win/Win32MessageWindow
+            // (与 WebView2Loop 消息泵同款, 重复注册 ERROR_CLASS_ALREADY_EXISTS 无害)
+            registerMessageWindowClass(
+                className = WINDOW_CLASS,
+                wndProc = pumpProc,
+                owner = "任务栏媒体",
+            )
+            val hwnd = createHiddenMessageWindow(WINDOW_CLASS, "legado-taskbar-media")
             pumpWindow = hwnd
             // explorer 重启后任务栏按钮丢失, 监听 TaskbarCreated 重挂
             taskbarCreatedMsg = User32.INSTANCE.RegisterWindowMessage(WM_TASKBARCREATED_MSG)
@@ -622,21 +619,6 @@ internal object DesktopTaskbarMedia {
         while (User32.INSTANCE.GetMessage(msg, null, 0, 0) > 0) {
             User32.INSTANCE.TranslateMessage(msg)
             User32.INSTANCE.DispatchMessage(msg)
-        }
-    }
-
-    private fun registerWindowClass() {
-        val wndClass = WinUser.WNDCLASSEX()
-        wndClass.cbSize = wndClass.size()
-        wndClass.lpszClassName = WINDOW_CLASS
-        wndClass.lpfnWndProc = pumpProc
-        wndClass.hInstance = Kernel32.INSTANCE.GetModuleHandle(null)
-        val atom = User32.INSTANCE.RegisterClassEx(wndClass)
-        // 重复注册 (同进程二次 install) 返回 0 + ERROR_CLASS_ALREADY_EXISTS, 无害;
-        // 其他失败会让 CreateWindowEx 找不到类 (同样表现为 err=0), 必须留痕便于诊断
-        // ATOM 是 IntegerType 子类, 不能与 Int 直接比较; 用等值构造比较 (equals 按 value 判等, 等价 intValue() == 0)
-        if (atom == WinDef.ATOM(0) && Native.getLastError() != WinError.ERROR_CLASS_ALREADY_EXISTS) {
-            AppLog.put("注册任务栏媒体窗口类失败 (err=${Native.getLastError()})")
         }
     }
 

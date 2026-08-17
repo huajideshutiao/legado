@@ -5,6 +5,7 @@ import io.legado.app.constant.AppLog
 import io.legado.desktop.audio.DesktopScreenBrightness.get
 import io.legado.desktop.audio.DesktopScreenBrightness.pendingLock
 import io.legado.desktop.audio.DesktopScreenBrightness.set
+import io.legado.desktop.help.DesktopCommandRunner
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -110,21 +111,23 @@ internal object DesktopScreenBrightness {
 
     /** 执行一条 PowerShell 命令并取 stdout; 失败/超时返回 null。 */
     private fun runPowerShell(command: String): String? = runCatching {
-        val proc = ProcessBuilder(
-            "powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", command,
-        ).redirectErrorStream(true).start()
-        proc.outputStream.close()
-        val text = proc.inputStream.bufferedReader().readText()
-        if (!proc.waitFor(TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
-            proc.destroyForcibly()
-            AppLog.putDebug("WMI 亮度命令超时: $command")
-            return null
+        val result = DesktopCommandRunner.run(
+            listOf("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", command),
+            TIMEOUT_MS,
+        )
+        when {
+            result.exitCode == null -> {
+                AppLog.putDebug("WMI 亮度命令超时: $command")
+                null
+            }
+
+            result.exitCode != 0 -> {
+                AppLog.putDebug("WMI 亮度命令失败 (exit=${result.exitCode}): $command")
+                null
+            }
+
+            else -> result.output
         }
-        if (proc.exitValue() != 0) {
-            AppLog.putDebug("WMI 亮度命令失败 (exit=${proc.exitValue()}): $command")
-            return null
-        }
-        text
     }.getOrNull()
 
     /** 解析 stdout 为 0..100 (多显示器多行取首个可解析行; 解析失败返回 null)。 */

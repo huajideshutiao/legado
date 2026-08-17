@@ -1,9 +1,10 @@
 {
   "app": {
-    // 与安卓端对齐 (app/build.gradle.kts applicationId): 基包为 shutiao.reader
-    // (安卓 release/debug 构建追加 .release/.debug 后缀, 鸿蒙无构建类型后缀概念, 取基包)。
+    // 与安卓端对齐 (app/build.gradle.kts applicationId): 基包为 shutiao.reader。
+    // hvigorfile.ts 的 appOpt 在配置阶段覆盖为 shutiao.reader.debug/.release (与安卓后缀对齐),
+    // 这里取 debug 形态仅为通过 hvigor 6.x schema 校验 (bundleName 需 >=3 段, 校验先于 appOpt 生效)。
     // 注意: 改动 bundleName 后需卸载旧包 (io.legado.app) 并重新签名安装。
-    "bundleName": "shutiao.reader",
+    "bundleName": "shutiao.reader.debug",
     "vendor": "legado",
     // 与安卓端对齐 (app/build.gradle.kts): versionCode = 10000 + git 提交数,
     // versionName = "3." + 构建时刻 yy.MMddHH。安卓端每次构建动态刷新, 鸿蒙端为静态值, 需手动同步。

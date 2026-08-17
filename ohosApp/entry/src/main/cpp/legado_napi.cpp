@@ -123,8 +123,8 @@ static legado_str_int_fn g_import_booksource = nullptr;
 // dlsym 加载的函数指针 - 漫画 + 发现页 (KP5+ 新增)
 static legado_str_int_str_fn g_load_manga_chapter = nullptr;     // (bookUrl, idx) -> JSON {"images":[...]}
 static legado_void_str_fn g_explore_list = nullptr;              // () -> JSON 数组
-static legado_cstr_cstr_void_fn g_open_explore = nullptr;        // (sourceUrl, exploreUrl) -> void (stub no-op)
-static legado_cstr_void_fn g_edit_explore_source = nullptr;      // (sourceUrl) -> void (stub no-op)
+static legado_cstr_cstr_void_fn g_open_explore = nullptr;        // (sourceUrl, exploreUrl) -> void (跳转 shared ExploreShow)
+static legado_cstr_void_fn g_edit_explore_source = nullptr;      // (sourceUrl) -> void (跳转 shared BookSourceEdit)
 static legado_cstr_void_fn g_top_explore_source = nullptr;       // (sourceUrl) -> void
 static legado_cstr_void_fn g_delete_explore_source = nullptr;    // (sourceUrl) -> void
 
@@ -650,8 +650,9 @@ static napi_value ExploreList(napi_env env, napi_callback_info info) {
     return ret;
 }
 
-// napi 包装: openExplore(sourceUrl: string, exploreUrl: string): void (stub no-op, 跳转 ExploreShow)
-// 注: 页面跳转属 ArkTS 路由范畴, Kotlin 侧无路由 API; 实际导航应由 ArkTS 端直接 router.pushUrl
+// napi 包装: openExplore(sourceUrl: string, exploreUrl: string): void (跳转发现页)
+// 注: Kotlin 侧 legado_open_explore 为真实实现: 查书源后经 AppNavigatorProviders push
+// AppRoute.ExploreShow, 由 shared Compose 路由渲染 ExploreShowScreen (无需 ArkTS router)
 static napi_value OpenExplore(napi_env env, napi_callback_info info) {
     size_t argc = 2;
     napi_value args[2] = {nullptr};
@@ -680,7 +681,9 @@ static napi_value OpenExplore(napi_env env, napi_callback_info info) {
     return ret;
 }
 
-// napi 包装: editExploreSource(sourceUrl: string): void (stub no-op, 跳转 BookSourceEdit)
+// napi 包装: editExploreSource(sourceUrl: string): void (跳转书源编辑页)
+// 注: Kotlin 侧 legado_edit_explore_source 为真实实现: 经 AppNavigatorProviders push
+// AppRoute.BookSourceEdit, 由 shared Compose 路由渲染 BookSourceEditScreen
 static napi_value EditExploreSource(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value args[1] = {nullptr};

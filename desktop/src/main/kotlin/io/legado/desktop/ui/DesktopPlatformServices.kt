@@ -20,15 +20,14 @@ import io.legado.app.ui.root.ShareService
 import io.legado.app.ui.root.SoftInputPolicy
 import io.legado.app.ui.root.SystemBarsPolicy
 import io.legado.app.ui.root.WindowController
+import io.legado.app.utils.browseUrl
 import io.legado.desktop.help.DesktopCrashLogDirs
 import io.legado.desktop.help.DesktopKeepAwake
 import io.legado.desktop.ui.component.FileDialogs
-import java.awt.Desktop
 import java.awt.Toolkit
 import java.awt.Window
 import java.awt.datatransfer.StringSelection
 import java.io.File
-import java.net.URI
 
 /**
  * AWT 窗口句柄持有者: Main.kt 在 Compose Window 组装后注入 [window],
@@ -129,13 +128,11 @@ internal fun revealInFileManager(file: File) {
     }
 }
 
-// openUrl 走 Desktop.browse; openUrlInApp 无内置 WebView, 降级走系统浏览器
+// openUrl 走 shared browseUrl (Desktop.browse, 失败记 AppLog 静默降级);
+// openUrlInApp 无内置 WebView, 降级走系统浏览器
 private class DesktopBrowserService : BrowserService {
     override fun openUrl(url: String) {
-        if (Desktop.isDesktopSupported()) {
-            runCatching { Desktop.getDesktop().browse(URI(url)) }
-                .onFailure { AppLog.put("DesktopBrowserService.openUrl 失败: ${it.localizedMessage}") }
-        }
+        browseUrl(url)
     }
 
     override fun openUrlInApp(url: String) = openUrl(url)

@@ -5,7 +5,6 @@ import com.sun.jna.Platform
 import com.sun.jna.Structure
 import io.legado.desktop.help.DesktopBattery.FALLBACK_LEVEL
 import java.io.File
-import java.util.concurrent.TimeUnit
 
 /**
  * 桌面端电量读取 (JVM 无标准电池 API)。
@@ -75,14 +74,11 @@ object DesktopBattery {
      */
     private fun readMacBattery(): Int {
         return runCatching {
-            val process = Runtime.getRuntime().exec(arrayOf("pmset", "-g", "batt"))
-            if (!process.waitFor(2, TimeUnit.SECONDS)) {
-                process.destroyForcibly()
-                return -1
-            }
-            val text = process.inputStream.bufferedReader().use { it.readText() }
+            val result = DesktopCommandRunner.run(listOf("pmset", "-g", "batt"), 2_000L)
+            if (result.exitCode == null) return -1
             val value =
-                Regex("""(\d{1,3})%""").find(text)?.groupValues?.get(1)?.toIntOrNull() ?: return -1
+                Regex("""(\d{1,3})%""").find(result.output)?.groupValues?.get(1)?.toIntOrNull()
+                    ?: return -1
             if (value in 0..100) value else -1
         }.getOrDefault(-1)
     }

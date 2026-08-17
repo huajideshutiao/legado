@@ -1,5 +1,6 @@
 import connection from '@ohos.net.connection';
 import { BusinessError } from '@ohos.base';
+import { BridgeRequest, BridgeResponse, dispatchBridgeRequest } from './BridgeDispatch';
 
 /**
  * ArkTS 侧网络状态处理器。
@@ -38,17 +39,9 @@ export type NetworkCallback = (requestId: number, resultJson: string) => void;
 
 // ===== 请求/响应接口定义 (与 Kotlin 侧 JSON 协议对齐) =====
 
-interface NetworkBridgeRequest {
-  requestId: number;
-  action: string;
-  payload: string;
-}
-
-interface NetworkResponse {
-  ok: boolean;
+interface NetworkResponse extends BridgeResponse {
   network?: boolean;
   wifi?: boolean;
-  error?: string;
 }
 
 /**
@@ -58,24 +51,11 @@ interface NetworkResponse {
  * @param callback 回送结果的函数 (EntryAbility 注入 legado.networkCallback)
  */
 export function handleNetworkRequest(requestJson: string, callback: NetworkCallback): void {
-  let req: NetworkBridgeRequest;
-  try {
-    req = JSON.parse(requestJson) as NetworkBridgeRequest;
-  } catch (e) {
-    console.error('[NetworkBridge] parse request failed: ' + requestJson);
-    return;
-  }
-
-  handleAction(req).then((resp: NetworkResponse) => {
-    callback(req.requestId, JSON.stringify(resp));
-  }).catch((err: Error) => {
-    const resp: NetworkResponse = { ok: false, error: err.message ?? String(err) };
-    callback(req.requestId, JSON.stringify(resp));
-  });
+  dispatchBridgeRequest(requestJson, 'NetworkBridge', handleAction, callback);
 }
 
 // 根据 action 分发到具体处理函数
-async function handleAction(req: NetworkBridgeRequest): Promise<NetworkResponse> {
+async function handleAction(req: BridgeRequest): Promise<NetworkResponse> {
   switch (req.action) {
     case 'query': return await handleQuery();
     default: return { ok: false, error: 'unknown action: ' + req.action };

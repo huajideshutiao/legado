@@ -65,16 +65,18 @@ class JsApiProcessor(
         // native 模式 (jsapi.native=true): 无法模板化、保持手写的特殊方法名 (按名字全局匹配,
         // 不分类 — 新接入目标类与名单同名的规整方法也会被排除, 与手写桥现状一致)。
         // (重载/多参分派/多态/数组构造/批量区间/工厂/handle 返回/header 解析/返回参数原样回传/
-        //  推断返回类型无法归类 (getHeaderMap: HashMap)/List 返回 (loginUi)/UI 副作用 (login 族))。
+        //  推断返回类型无法归类 (getHeaderMap: HashMap)/List 返回 (loginUi)/UI 副作用 (login 族)/
+        //  kotlin 内建对象方法 (toString/equals/hashCode, JS Object.prototype 已有同名, 不经分派))。
         // 名单与 NativeJsExtensionsBridge 手写分支同步维护。
         val NATIVE_EXCLUDED_METHODS: Set<String> = """
             ajax,ajaxAll,base64Decode,base64DecodeToByteArray,base64Encode,bytesToStr,cacheFile,
             connect,createAsymmetricCrypto,createSign,createSymmetricCrypto,digestBase64Str,digestHex,
-            downloadFile,encodeURI,evalJS,get,get7zStringContent,getCookie,getHeaderMap,getRarStringContent,
-            getSource,getString,getStringList,getZipStringContent,head,HMacBase64,HMacHex,log,login,loginUi,
-            logType,md5Encode,md5Encode16,openUrl,post,put,queryBase64TTF,queryTTF,readTxtFile,replaceFont,
-            showLoginDialog,showSourceVariableDialog,startBrowser,startBrowserAwait,strToBytes,toURL,
-            webView,webViewGetOverrideUrl,webViewGetSource
+            downloadFile,encodeURI,equals,evalJS,get,get7zStringContent,getCookie,getHeaderMap,
+            getRarStringContent,getSource,getString,getStringList,getZipStringContent,hashCode,head,
+            HMacBase64,HMacHex,log,login,loginUi,logType,md5Encode,md5Encode16,openUrl,post,put,
+            queryBase64TTF,queryTTF,readTxtFile,replaceFont,showLoginDialog,showSourceVariableDialog,
+            startBrowser,startBrowserAwait,strToBytes,toURL,toString,webView,webViewGetOverrideUrl,
+            webViewGetSource
         """.trimIndent().split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
 
         /** REF 返回且不在 NATIVE_HANDLE_METHODS 白名单: 静默跳过 (无法模板化是已知事实, 不算漏)。 */
@@ -718,6 +720,7 @@ class JsApiProcessor(
         // 收集 (类FQN, 方法) 列表: 只保留规整方法
         data class NativeMethod(
             val clsFqn: String,
+            val clsGuard: String,      // when 条件 is 检查用类型串 (泛型声明补 <*> 星投影)
             val clsName: String,
             val name: String,
             val params: List<ParamModel>,
@@ -733,6 +736,7 @@ class JsApiProcessor(
         // 先全量收集候选 (含声明类+签名), 再按 (声明类, 方法名) 判定重载
         data class Candidate(
             val ownerFqn: String,     // 声明方法所在的类/接口 FQN (分派 cast 目标)
+            val ownerGeneric: Boolean, // 声明类带类型参数 (如 Base<T>) → is 检查需 <*> 投影
             val ownerName: String,
             val name: String,
             val sig: String,
@@ -758,6 +762,7 @@ class JsApiProcessor(
                 // 但只按声明类生成一次, cast 到声明类以覆盖全部实现类)
                 val owner = f.parentDeclaration as? KSClassDeclaration
                 val ownerFqn = owner?.qualifiedName?.asString() ?: fqn
+                val ownerGeneric = owner?.typeParameters?.isNotEmpty() == true
                 val ownerName = owner?.simpleName?.asString() ?: decl.simpleName.asString()
                 val name = f.simpleName.asString()
                 val params = f.parameters.map { p ->
@@ -802,6 +807,7 @@ class JsApiProcessor(
                 all.add(
                     Candidate(
                         ownerFqn = ownerFqn,
+                        ownerGeneric = ownerGeneric,
                         ownerName = ownerName,
                         name = name,
                         sig = sig,
@@ -817,8 +823,8 @@ class JsApiProcessor(
         }
 
         // 按 (声明类, 方法名) 分组统计**可生成**签名数 (JS 层无参数个数分派):
-        // 恰 1 个 → 生成 (其余签名因 REF/List/函数参数被 skip, JS 侧本就未暴露该形态,
-        //   如 Response.header(String) 生成而 header(String,String)→Response 跳过);
+        // 恰 1 个 → 生成 (其余签名因返回 T/REF/List/函数参数被 skip, JS 侧本就未暴露该形态,
+        //   如 Response.header(String) 生成而 header(String,String?) 链式 setter 跳过);
         // >1 个 → 整名排除 + warn; 不同类同名不算重载 (BaseSource.evalJS vs AnalyzeUrlCore.evalJS)。
         val genCountByOwnerName = HashMap<String, Int>()
         all.forEach { c ->
@@ -857,6 +863,7 @@ class JsApiProcessor(
             methods.add(
                 NativeMethod(
                     clsFqn = c.ownerFqn,
+                    clsGuard = c.ownerFqn + if (c.ownerGeneric) "<*>" else "",
                     clsName = c.ownerName,
                     name = c.name,
                     params = c.params,
@@ -907,8 +914,9 @@ class JsApiProcessor(
         for ((m, id) in assigned) {
             val callArgs = m.params.indices.joinToString(", ") { i -> "a$i" }
             val call = "obj.${m.name}($callArgs)"
-            // obj is X 检查在 when 条件成立后, 分支体内 obj 被 smart cast (局部参数不可变)
-            sb.appendLine("        obj is ${m.clsFqn} && methodId == $id -> {")
+            // obj is X 检查在 when 条件成立后, 分支体内 obj 被 smart cast (局部参数不可变);
+            // 泛型声明类 (如 Connection.Base<T>) 用 <*> 星投影
+            sb.appendLine("        obj is ${m.clsGuard} && methodId == $id -> {")
             for (i in m.params.indices) {
                 val p = m.params[i]
                 sb.appendLine("            val a$i = ${nativeParamExpr("args", i, p)}")
@@ -1012,8 +1020,9 @@ class JsApiProcessor(
                 if (retNullable) "NativeDispatchResult.Str($call?.let { GSON.toJson(it) })"
                 else "NativeDispatchResult.Str(GSON.toJson($call))"
             // 仅 NATIVE_HANDLE_METHODS 白名单到达: 注册对象 handle (0 = null), JS 层工厂闭包包装
+            // (h 显式 Any?: 非空返回的 == null 比较不触发恒假 warning)
             is Cat.REF ->
-                "val h = $call; NativeDispatchResult.Handle(" +
+                "val h: Any? = $call; NativeDispatchResult.Handle(" +
                     "if (h == null) 0L else (registerHandle?.invoke(h) ?: 0L))"
             else -> "NativeDispatchResult.AnyVal($call)"
         }

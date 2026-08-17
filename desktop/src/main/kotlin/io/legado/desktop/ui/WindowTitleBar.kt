@@ -3,16 +3,12 @@ package io.legado.desktop.ui
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.graphics.toArgb
 import com.sun.jna.Native
 import com.sun.jna.Platform
 import com.sun.jna.Pointer
 import com.sun.jna.platform.win32.WinDef
-import com.sun.jna.ptr.IntByReference
-import com.sun.jna.win32.StdCallLibrary
-import com.sun.jna.win32.W32APIOptions
 import io.legado.app.constant.AppLog
-import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.desktop.help.win.DwmApi
 import java.awt.Window
 import javax.swing.JFrame
 
@@ -35,39 +31,13 @@ import javax.swing.JFrame
  *   静默跳过, 由调用方等窗口显示后再试。
  */
 
-// DWM 窗口属性常量 (dwmapi.h / Windows SDK; 35/36 为 Win11 22000+ 新增)
-private const val DWMWA_USE_IMMERSIVE_DARK_MODE = 20
-private const val DWMWA_CAPTION_COLOR = 35
-private const val DWMWA_TEXT_COLOR = 36
-
-// Win11 22H2+ (22621+) 新增: 无边框窗口恢复系统圆角 (DWMWCP_ROUND=2); 全屏时关闭 (DONOTROUND=1)
-private const val DWMWA_WINDOW_CORNER_PREFERENCE = 33
-private const val DWMWCP_DONOTROUND = 1
-private const val DWMWCP_ROUND = 2
-
-/**
- * dwmapi.dll 声明。DwmSetWindowAttribute 不在 jna-platform 的 User32 里,
- * 需自行声明 (对照 WindowsFileDialogs.kt 的 Shell32Ex 声明方式)。
- */
-private interface Dwmapi : StdCallLibrary {
-    fun DwmSetWindowAttribute(
-        hwnd: WinDef.HWND,
-        dwAttribute: Int,
-        pvAttribute: IntByReference,
-        cbAttribute: Int,
-    ): Int
-}
-
-private val dwmapi: Dwmapi? by lazy {
-    runCatching {
-        Native.load("dwmapi", Dwmapi::class.java, W32APIOptions.DEFAULT_OPTIONS)
-    }.getOrNull()
-}
+// DWM 窗口属性常量与 dwmapi.dll 绑定统一收口在 help/win/DwmApi
+// (原先与 WebView2WindowTheme / DesktopTaskbarDwm 各写一份)
 
 /**
  * Win11 22H2+: 设置无边框窗口的圆角偏好。
- * 自绘标题栏去系统装饰后 DWM 默认不画圆角, 显式声明 [DWMWCP_ROUND] 恢复;
- * 真全屏时铺满方角屏幕, 应关闭圆角 ([DWMWCP_DONOTROUND], 用户拍板 2026-08)。
+ * 自绘标题栏去系统装饰后 DWM 默认不画圆角, 显式声明 [DwmApi.DWMWCP_ROUND] 恢复;
+ * 真全屏时铺满方角屏幕, 应关闭圆角 ([DwmApi.DWMWCP_DONOTROUND], 用户拍板 2026-08)。
  * Win10/旧版 Win11 不认该属性返回 E_INVALIDARG, 静默忽略保持直角 (无副作用)。
  */
 fun applyWindowCornerPreference(window: Window?, round: Boolean) {
@@ -76,12 +46,11 @@ fun applyWindowCornerPreference(window: Window?, round: Boolean) {
     if (!win.isDisplayable) return
     val hwnd = runCatching { Native.getComponentID(win) }.getOrDefault(0L)
     if (hwnd == 0L) return
-    val dwm = dwmapi ?: return
+    if (DwmApi.dwmapi == null) return
     setAttribute(
-        dwm,
         WinDef.HWND(Pointer.createConstant(hwnd)),
-        DWMWA_WINDOW_CORNER_PREFERENCE,
-        if (round) DWMWCP_ROUND else DWMWCP_DONOTROUND,
+        DwmApi.DWMWA_WINDOW_CORNER_PREFERENCE,
+        if (round) DwmApi.DWMWCP_ROUND else DwmApi.DWMWCP_DONOTROUND,
     )
 }
 
@@ -95,18 +64,11 @@ fun shouldRoundWindowCorner(window: Window): Boolean =
         (window as? JFrame)?.let { (it.extendedState and JFrame.MAXIMIZED_BOTH) == 0 } ?: true
 
 /** 单条 DWM 属性写入; 非零 HRESULT (如 Win10 不认 35/36) 只记调试日志, 不中断后续属性 */
-private fun setAttribute(dwm: Dwmapi, hwnd: WinDef.HWND, attribute: Int, value: Int) {
-    // JNA 里 int 值要传 IntByReference (映射 int*), 不能传裸 Int (会被 JNA 当指针解引用)
-    val hr = dwm.DwmSetWindowAttribute(hwnd, attribute, IntByReference(value), Int.SIZE_BYTES)
+private fun setAttribute(hwnd: WinDef.HWND, attribute: Int, value: Int) {
+    val hr = DwmApi.setAttribute(hwnd, attribute, value) ?: return
     if (hr != 0) {
         AppLog.putDebug("WindowsTitleBar: DwmSetWindowAttribute(attr=$attribute) 返回 HRESULT=$hr")
     }
-}
-
-/** Compose Color (ARGB) → DWM COLORREF (0x00BBGGRR): 交换 R/B 字节并丢弃 alpha (标题栏不支持透明度) */
-private fun Color.toColorRef(): Int {
-    val rgb = toArgb() and 0xFFFFFF
-    return ((rgb and 0xFF) shl 16) or (rgb and 0xFF00) or ((rgb and 0xFF0000) ushr 16)
 }
 
 /**
@@ -118,13 +80,6 @@ private fun Color.toColorRef(): Int {
 internal fun textColorFor(bg: Color): Color =
     if (bg.luminance() >= 0.5f) Color(0xFF212121) else Color(0xFFF8F8F8)
 
-/**
- * 主题色 → 原生标题栏的同步桥 (须在 AppTheme 组合内调用, 读 [AppTheme.colors])。
- *
- * 深/浅主题或背景色变化 (共享层 eventBus.emitRecreate → AppTheme 重组, 重新读取
- * ThemeStore 派生色) 时, LaunchedEffect 的 key (isDark/background) 变化自动重跑,
- * 实时同步标题栏; 启动早期 AWT 窗口可能尚未 realize, 每 100ms 轮询重试至多约 3s。
- */
 /**
  * 阅读页激活时的窗口标题栏着色 (由 DesktopReaderPlatformProvider.onEnter/onExit 维护):
  * 把桌面窗口系统标题栏视为状态栏, 跟随小说阅读界面的背景色 (用户要求 2026-08-06);

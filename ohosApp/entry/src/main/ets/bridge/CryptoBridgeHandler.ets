@@ -1,6 +1,7 @@
 import cryptoFramework from '@ohos.security.cryptoFramework';
-import buffer from '@ohos.buffer';
 import { BusinessError } from '@ohos.base';
+import { BridgeRequest, BridgeResponse, dispatchBridgeRequest } from './BridgeDispatch';
+import { base64ToUint8, uint8ToBase64 } from './BridgeCodec';
 
 /**
  * ArkTS 侧非对称加解密 + 签名/验签处理器 (方案 B cryptoFramework napi)。
@@ -77,17 +78,9 @@ import { BusinessError } from '@ohos.base';
 
 // ===== 请求/响应接口定义 (与 Kotlin 侧 JSON 协议对齐) =====
 
-interface CryptoBridgeRequest {
-  requestId: number;
-  action: string;
-  payload: string;
-}
-
-interface CryptoResponse {
-  ok: boolean;
+interface CryptoResponse extends BridgeResponse {
   data?: string;
   result?: boolean;
-  error?: string;
 }
 
 interface AsyCryptoPayload {
@@ -140,34 +133,20 @@ export type CryptoCallback = (requestId: number, resultJson: string) => void;
  * @param callback 回送结果的函数 (EntryAbility 注入 legado.cryptoCallback)
  */
 export function handleCryptoRequest(requestJson: string, callback: CryptoCallback): void {
-  let req: CryptoBridgeRequest;
-  try {
-    req = JSON.parse(requestJson) as CryptoBridgeRequest;
-  } catch (e) {
-    console.error('[CryptoBridge] parse request failed: ' + requestJson);
-    return;
-  }
-
-  // 异步处理, 完成后回调 (与 ImageBridgeHandler.ets 同模式)
-  handleAction(req).then((resp: CryptoResponse) => {
-    callback(req.requestId, JSON.stringify(resp));
-  }).catch((err: Error) => {
-    const resp: CryptoResponse = { ok: false, error: err.message ?? String(err) };
-    callback(req.requestId, JSON.stringify(resp));
-  });
+  dispatchBridgeRequest(requestJson, 'CryptoBridge', handleAction, callback);
 }
 
 // 根据 action 分发到具体处理函数
-async function handleAction(req: CryptoBridgeRequest): Promise<CryptoResponse> {
+async function handleAction(req: BridgeRequest): Promise<CryptoResponse> {
   switch (req.action) {
-    case 'encrypt': return await handleEncryptDecrypt(req.payload, true);
-    case 'decrypt': return await handleEncryptDecrypt(req.payload, false);
-    case 'sign': return await handleSign(req.payload);
-    case 'verify': return await handleVerify(req.payload);
-    case 'digest': return await handleDigest(req.payload);
-    case 'hmac': return await handleHmac(req.payload);
-    case 'aesEncrypt': return await handleAesEncryptDecrypt(req.payload, true);
-    case 'aesDecrypt': return await handleAesEncryptDecrypt(req.payload, false);
+    case 'encrypt': return await handleEncryptDecrypt(req.payload ?? '', true);
+    case 'decrypt': return await handleEncryptDecrypt(req.payload ?? '', false);
+    case 'sign': return await handleSign(req.payload ?? '');
+    case 'verify': return await handleVerify(req.payload ?? '');
+    case 'digest': return await handleDigest(req.payload ?? '');
+    case 'hmac': return await handleHmac(req.payload ?? '');
+    case 'aesEncrypt': return await handleAesEncryptDecrypt(req.payload ?? '', true);
+    case 'aesDecrypt': return await handleAesEncryptDecrypt(req.payload ?? '', false);
     default: return { ok: false, error: 'unknown action: ' + req.action };
   }
 }
@@ -627,22 +606,5 @@ function mapSignSpec(jcaAlg: string, keySize: number, isEc: boolean): string {
   throw new Error('unsupported RSA sign/verify algorithm: ' + jcaAlg);
 }
 
-// ===== base64 / Uint8Array 互转工具 (与 ImageBridgeHandler.ets 同模式, 用 @ohos.buffer) =====
+// ===== base64 / Uint8Array 互转: 已抽公共工具 bridge/BridgeCodec.ets (与 ImageBridgeHandler.ets 同模式) =====
 
-function base64ToUint8(b64: string): Uint8Array {
-  const buf = buffer.from(b64, 'base64');
-  // 复制到独立 ArrayBuffer, 避免 buffer 视图偏移影响 cryptoFramework 读取 (Buffer 长度属性是 length)。
-  // buffer.from 可能返回池化视图, 起始偏移必须取 buf.byteOffset 而非 0
-  const ab = new ArrayBuffer(buf.length);
-  const view = new Uint8Array(ab);
-  view.set(new Uint8Array(buf.buffer, buf.byteOffset, buf.length));
-  return view;
-}
-
-function uint8ToBase64(bytes: Uint8Array): string {
-  // 复制到独立 ArrayBuffer, 避免 Uint8Array 视图偏移 (doFinal/sign 返回的可能是大 buffer 的子视图)
-  const ab = new ArrayBuffer(bytes.byteLength);
-  const view = new Uint8Array(ab);
-  view.set(bytes);
-  return buffer.from(ab).toString('base64');
-}

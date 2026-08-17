@@ -1,4 +1,5 @@
 import { textToSpeech } from '@kit.CoreSpeechKit';
+import { BridgeCommand, parseBridgeCommand } from './BridgeDispatch';
 
 /**
  * ArkTS 侧 TTS 桥接处理器。
@@ -56,8 +57,7 @@ let currentRate: number = 1.0;
 
 // ===== 命令接口定义 (与 Kotlin 侧 TtsCommand 对齐) =====
 
-interface TtsCommand {
-  action: string;
+interface TtsCommand extends BridgeCommand {
   text?: string;
   utteranceId?: string;
   rate?: number;
@@ -86,13 +86,11 @@ export function initTtsBridge(callback: TtsEventCallback): void {
  * @param commandJson 命令 JSON 字符串 (含 action/text/utteranceId/rate/lang)
  */
 export function handleTtsCommand(commandJson: string): void {
-  let cmd: TtsCommand;
-  try {
-    cmd = JSON.parse(commandJson) as TtsCommand;
-  } catch (e) {
-    console.error('[TtsBridge] parse command failed: ' + commandJson);
+  const parsed = parseBridgeCommand(commandJson, 'TtsBridge', 'command');
+  if (parsed == null) {
     return;
   }
+  const cmd = parsed as TtsCommand;
 
   switch (cmd.action) {
     case 'createEngine':

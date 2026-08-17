@@ -134,6 +134,18 @@ interface WebViewWindowHandle {
 
     fun reload()
 
+    /** 页面内是否可后退 (窗口手动历史栈), 供路由侧「页面可后退则后退」逻辑转发; 默认不支持。 */
+    fun canGoBack(): Boolean = false
+
+    /** 页面内是否可前进; 默认不支持。 */
+    fun canGoForward(): Boolean = false
+
+    /** 页面内后退; 无可后退历史时无操作 (出路由侧决定: 出栈/关窗)。 */
+    fun goBack() {}
+
+    /** 页面内前进; 无可前进历史时无操作。 */
+    fun goForward() {}
+
     /** 关闭窗口 (幂等), 触发 [WebViewWindowRequest.onClosed]。 */
     fun close()
 }

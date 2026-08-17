@@ -9,9 +9,10 @@
     "externalNativeOptions": {
       "path": "./src/main/cpp/CMakeLists.txt",
       "arguments": "",
+      // x86_64 (模拟器) 暂不可编: CPF 依赖未发布 ohosX64 变体, entry/libs/x86_64 的
+      // liblegado_shared.so 无法产出 (见根 build.gradle.kts ohosAbis 注释), 发布后再加回。
       "abiFilters": [
-        "arm64-v8a",
-        "x86_64"
+        "arm64-v8a"
       ]
     }
   },

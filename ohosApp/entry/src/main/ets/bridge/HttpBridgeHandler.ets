@@ -1,5 +1,5 @@
 import http from '@ohos.net.http';
-import buffer from '@ohos.buffer';
+import { utf8ToArrayBuffer } from './BridgeCodec';
 
 /**
  * ArkTS 侧 HTTP 客户端处理器 (桥接 @ohos.net.http)。
@@ -199,13 +199,10 @@ async function handleExecute(
     if (result instanceof ArrayBuffer) {
       respBody = result;
     } else if (typeof result === 'string') {
-      // Buffer 的长度属性是 length (无 byteLength)
-      const b = buffer.from(result, 'utf-8');
-      respBody = b.buffer.slice(b.byteOffset, b.byteOffset + b.length);
+      respBody = utf8ToArrayBuffer(result);
     } else if (result != null) {
       // 兜底: 其他类型转 string 再编码
-      const b = buffer.from(String(result), 'utf-8');
-      respBody = b.buffer.slice(b.byteOffset, b.byteOffset + b.length);
+      respBody = utf8ToArrayBuffer(String(result));
     }
     // message (HTTP reason phrase) 不再在此计算: 纯映射已下沉到 K/N 唯一一份
     // (KmpHttpTypes.ohos.kt ohosStatusText), 此处置空串, K/N executeOnce 按 code 计算

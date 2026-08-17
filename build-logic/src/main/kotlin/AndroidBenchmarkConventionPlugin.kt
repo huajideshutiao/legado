@@ -1,12 +1,9 @@
 package io.legado.buildlogic
 
 import com.android.build.api.dsl.TestExtension
-import org.gradle.api.JavaVersion
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.kotlin.dsl.configure
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import org.jetbrains.kotlin.gradle.dsl.KotlinAndroidProjectExtension
 
 /**
  * Android Baseline Profile 生成模块约定 (仅 :benchmark 使用):
@@ -21,10 +18,7 @@ class AndroidBenchmarkConventionPlugin : Plugin<Project> {
         pluginManager.apply("androidx.baselineprofile")
         pluginManager.apply("org.jetbrains.kotlin.android")
 
-        extensions.findByType(KotlinAndroidProjectExtension::class.java)?.apply {
-            jvmToolchain(21)
-            compilerOptions.jvmTarget.set(JvmTarget.JVM_21)
-        }
+        configureKotlinAndroidJvm21()
 
         extensions.configure<TestExtension> {
             compileSdk = 37
@@ -35,8 +29,7 @@ class AndroidBenchmarkConventionPlugin : Plugin<Project> {
                 testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
             }
             compileOptions {
-                sourceCompatibility = JavaVersion.VERSION_21
-                targetCompatibility = JavaVersion.VERSION_21
+                configureJavaCompat21()
             }
             // 与 :app 的 flavor 对齐 (app 唯一 flavor: mode=app), 保证变体匹配
             flavorDimensions += listOf("mode")

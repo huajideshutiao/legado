@@ -1,5 +1,6 @@
 import media from '@ohos.multimedia.media';
 import fs from '@ohos.file.fs';
+import { BridgeCommand, parseBridgeCommand } from './BridgeDispatch';
 
 /**
  * ArkTS 侧媒体播放处理器 (KP8+)。
@@ -118,9 +119,8 @@ export function removeMediaEventListener(listener: (eventJson: string) => void):
 
 // ===== 命令接口定义 (与 Kotlin 侧 JSON 协议对齐) =====
 
-interface MediaCommand {
+interface MediaCommand extends BridgeCommand {
   playerId?: string;
-  action: string;
   path?: string;
   url?: string;
   headers?: Record<string, string>;
@@ -177,13 +177,11 @@ export function setVideoSurfaceId(surfaceId: string): void {
  * @param commandJson 命令 JSON 字符串 (含 playerId/action/path/url/position)
  */
 export function handleMediaCommand(commandJson: string): void {
-  let cmd: MediaCommand;
-  try {
-    cmd = JSON.parse(commandJson) as MediaCommand;
-  } catch (e) {
-    console.error('[MediaBridge] parse command failed: ' + commandJson);
+  const parsed = parseBridgeCommand(commandJson, 'MediaBridge', 'command');
+  if (parsed == null) {
     return;
   }
+  const cmd = parsed as MediaCommand;
 
   const id: string = cmd.playerId ?? DEFAULT_PLAYER_ID;
 

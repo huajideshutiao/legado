@@ -1,6 +1,5 @@
 {
   "string": [
-    // 与安卓端 values-zh-rTW 对齐 (繁体台湾)
     {
       "name": "app_name",
       "value": "閱讀"

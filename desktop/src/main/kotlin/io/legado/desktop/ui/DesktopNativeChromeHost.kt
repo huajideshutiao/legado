@@ -64,7 +64,7 @@ import kotlin.math.roundToInt
  *
  * # 挂载时机 (踩过的坑)
  * CMP 在组合期还没 `setVisible`, 此时 `window.isDisplayable == false`, 拿不到 HWND ⇒ attach 必失败。
- * 所以这里轮询等窗口 realize (照 [DesktopWindowTitleBarSync] 既有做法, 最多约 3s), 挂上之后再把
+ * 所以这里轮询等窗口 realize (沿用既有做法, 最多约 3s), 挂上之后再把
  * 标题/主题/高度/图标**重推一遍** —— 首次组合时的推送发生在 attach 之前, 会全部落空。
  */
 @Composable

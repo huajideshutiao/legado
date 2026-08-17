@@ -1023,7 +1023,8 @@ function __createJsUrlObj(handle) {
             var code = base + "\n" + NativeJsPropertyBridge.JS_PROPERTY_FACTORY_CODE
             for ((factory, table) in NativeGeneratedDispatch.JS_METHOD_TABLES) {
                 val marker = "    // @@methods:$factory@@"
-                if (marker in code) code = code.replace(marker, table.trim())
+                // trim('\n') 只去首尾换行, 保留行内 4 空格缩进 (与标记行对齐)
+                if (marker in code) code = code.replace(marker, table.trim('\n'))
             }
             code
         }

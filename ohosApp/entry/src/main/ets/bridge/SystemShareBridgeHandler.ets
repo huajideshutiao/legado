@@ -2,6 +2,7 @@ import { systemShare } from '@kit.ShareKit';
 import uniformTypeDescriptor from '@ohos.data.uniformTypeDescriptor';
 import fileUri from '@ohos.file.fileuri';
 import common from '@ohos.app.ability.common';
+import { BridgeCommand, parseBridgeCommand } from './BridgeDispatch';
 
 /**
  * ArkTS 侧系统分享处理器 (桥接 @kit.ShareKit systemShare)。
@@ -34,8 +35,7 @@ import common from '@ohos.app.ability.common';
  * - KMP 侧桥未注册 (shareTsfn 未注入) 时降级写剪贴板 + toast (见 OhosPlatformServices)。
  */
 
-interface SharePayload {
-  action: string;
+interface SharePayload extends BridgeCommand {
   text?: string;
   filePath?: string;
   mimeType?: string;
@@ -59,13 +59,11 @@ export function initShareBridge(context: common.UIAbilityContext): void {
  * @param json 请求 JSON 字符串, 形如 `{ action: 'text'|'file', text?, filePath?, mimeType? }`
  */
 export function handleShareRequest(json: string): void {
-  let payload: SharePayload;
-  try {
-    payload = JSON.parse(json) as SharePayload;
-  } catch (e) {
-    console.error('[SystemShareBridge] parse payload failed: ' + json);
+  const parsed = parseBridgeCommand(json, 'SystemShareBridge', 'payload');
+  if (parsed == null) {
     return;
   }
+  const payload = parsed as SharePayload;
 
   if (payload.action === 'text') {
     shareText(payload.text ?? '');

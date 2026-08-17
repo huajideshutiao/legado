@@ -9,6 +9,8 @@ import io.legado.app.model.fileBook.BaseFileBook
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.utils.FileUtilsBase
 import io.legado.app.utils.ScreenInfoProviders
+import io.legado.desktop.model.fileBook.DesktopPdfFile.Companion.PAGE_SIZE
+import io.legado.desktop.model.webBook.placeholderImageChapter
 import org.apache.pdfbox.Loader
 import org.apache.pdfbox.pdmodel.PDDocument
 import org.apache.pdfbox.rendering.ImageType
@@ -162,8 +164,8 @@ class DesktopPdfFile(var book: Book) {
     private fun getImage(href: String): InputStream? {
         val index = href.toIntOrNull() ?: return null
         val storage = runCatching { BookImageStorageProviders.get() }.getOrNull()
-        // 路径仅由 book+url 派生, chapter 只参与签名, 占位即可 (同 DesktopImageControllerProvider)
-        val chapter = BookChapter(url = href, bookUrl = book.bookUrl)
+        // 占位章节仅参与缓存路径签名 (同 DesktopImageControllerProvider 的 getImg)
+        val chapter = placeholderImageChapter(href, book.bookUrl)
         val cacheKey = "pdf_${index}_$targetWidth.jpg"
         storage?.let { s ->
             runCatching { s.getImagePath(book, chapter, cacheKey) }.getOrNull()?.let { path ->

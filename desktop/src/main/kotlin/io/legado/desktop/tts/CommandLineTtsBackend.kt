@@ -1,5 +1,6 @@
 package io.legado.desktop.tts
 
+import io.legado.desktop.help.DesktopCommandRunner
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
@@ -138,24 +139,13 @@ internal abstract class CommandLineTtsBackend : DesktopTtsBackend {
 
         /** 跑一条辅助命令 (音色枚举 / 取消) 并取 stdout, 失败返回 null。 */
         fun runCapture(command: List<String>, timeoutMs: Long = 4000): String? = runCatching {
-            val proc = ProcessBuilder(command).redirectErrorStream(true).start()
-            proc.outputStream.close()
-            val text = proc.inputStream.bufferedReader().readText()
-            if (!proc.waitFor(timeoutMs, TimeUnit.MILLISECONDS)) {
-                proc.destroyForcibly()
-                return null
-            }
-            if (proc.exitValue() != 0) null else text
+            val result = DesktopCommandRunner.run(command, timeoutMs)
+            if (result.isOk) result.output else null
         }.getOrNull()
 
         /** 命令是否存在 (能跑起来即算存在, 退出码不看 —— 很多工具 --help 返回非零)。 */
         fun commandExists(name: String): Boolean = runCatching {
-            val proc = ProcessBuilder(listOf(name, "--version"))
-                .redirectErrorStream(true)
-                .start()
-            proc.outputStream.close()
-            proc.inputStream.readBytes()
-            proc.waitFor(3, TimeUnit.SECONDS)
+            DesktopCommandRunner.run(listOf(name, "--version"), 3000)
             true
         }.getOrDefault(false)
     }

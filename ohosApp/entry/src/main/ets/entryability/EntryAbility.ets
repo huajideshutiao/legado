@@ -52,6 +52,24 @@ interface WindowCommand {
 }
 
 /**
+ * 安全执行一段初始化/回调注册代码: 成功打 info 日志, 抛异常打 error 日志后继续
+ * (onCreate 中 17+ 个同构 try/catch 注册块的收敛; 各桥注册互不阻断的语义保持不变,
+ * 日志文案逐字保留, 由调用方传入)。
+ *
+ * @param register 注册动作 (可含注册前的 init 调用, 与原同块 try 内语句一致)
+ * @param successLog 成功日志全文 (原各块 console.info 的字符串)
+ * @param failLogPrefix 失败日志前缀 (拼 JSON.stringify(e), 即原 catch 的 error 文案)
+ */
+function registerSafely(register: () => void, successLog: string, failLogPrefix: string): void {
+  try {
+    register();
+    console.info(successLog);
+  } catch (e) {
+    console.error(failLogPrefix + JSON.stringify(e));
+  }
+}
+
+/**
  * 鸿蒙 UIAbility 入口 - Legado 应用启动入口。
  *
  * 对应 Android 端 `MainActivity` (app/src/main/java/io/legado/app/ui/main/MainActivity.kt)。
@@ -95,23 +113,17 @@ export default class EntryAbility extends UIAbility {
     // KP8+: 初始化 System 桥接处理器 (注入 UIAbilityContext 供 handleOpenUrl 调 startAbility)。
     // 必须在 registerToastCallback / registerOpenUrlCallback 之前调用, 使 tsfn 回调触发时
     // SystemBridgeHandler.abilityContext 已就绪 (避免 KMP 极早调用 openUrl 时 context 未注入)。
-    try {
+    registerSafely((): void => {
       initSystemBridge(this.context);
-      console.info('[Legado] system bridge initialized (UIAbilityContext injected)');
-    } catch (e) {
-      console.error('[Legado] initSystemBridge failed: ' + JSON.stringify(e));
-    }
+    }, '[Legado] system bridge initialized (UIAbilityContext injected)', '[Legado] initSystemBridge failed: ');
 
     // KP5: 注册 shared 模块所有 KMP provider。
     // 必须在任何 commonMain 业务代码调用前完成 (webBook 编排链依赖 AppConfigAccessor;
     // KMP 业务侧调 legado.bookshelfList() 等 napi 函数依赖 AppDbProviders 已注册)。
     // napi 桥接层 (legado_napi.cpp) 内部已对 dlsym 失败做 null 兜底, 此处调用始终安全。
-    try {
+    registerSafely((): void => {
       legado.registerOhosProviders();
-      console.info('[Legado] KMP providers registered via napi');
-    } catch (e) {
-      console.error('[Legado] registerOhosProviders failed: ' + JSON.stringify(e));
-    }
+    }, '[Legado] KMP providers registered via napi', '[Legado] registerOhosProviders failed: ');
 
     // KP7+: 注册 Toast/Notification tsfn 回调 (KMP → ArkTS 跨线程 dispatch)。
     // C++ 侧 (legado_napi.cpp RegisterToastCallback) 创建 napi_threadsafe_function 包装此回调,
@@ -121,7 +133,7 @@ export default class EntryAbility extends UIAbility {
     // 由 ArkTS 调 promptAction.showToast / notificationManager.publish (KMP 无 ArkTS API 访问能力)。
     // 未注册时 KMP 侧降级 println (见 OhosNativeBridge.showToast/showNotification)。
     // KP8+: toast 回调抽至 SystemBridgeHandler.handleShowToast (与 handleOpenUrl 一并管理 system 桥接)。
-    try {
+    registerSafely((): void => {
       legado.registerToastCallback(handleShowToast);
       legado.registerNotificationCallback((json: string): void => {
         try {
@@ -143,10 +155,7 @@ export default class EntryAbility extends UIAbility {
           console.error('[Legado] notification callback failed: ' + JSON.stringify(e) + ', json=' + json);
         }
       });
-      console.info('[Legado] toast/notification tsfn callbacks registered via napi');
-    } catch (e) {
-      console.error('[Legado] registerToastCallback/NotificationCallback failed: ' + JSON.stringify(e));
-    }
+    }, '[Legado] toast/notification tsfn callbacks registered via napi', '[Legado] registerToastCallback/NotificationCallback failed: ');
 
     // KP8+: 注册 OpenUrl tsfn 回调 (KMP → ArkTS 跨线程 dispatch, 同 Toast 模式 fire-and-forget)。
     // C++ 侧 (legado_napi.cpp RegisterOpenUrlCallback) 创建 napi_threadsafe_function 包装此回调,
@@ -155,12 +164,9 @@ export default class EntryAbility extends UIAbility {
     // OhosNativeBridge.openUrl 调用时, JSON payload 跨线程 dispatch 到此回调,
     // 由 ArkTS 调 context.startAbility(Want) 打开 URL (KMP 无 ArkTS API 访问能力)。
     // 未注册时 KMP 侧降级 println (见 OhosNativeBridge.openUrl)。
-    try {
+    registerSafely((): void => {
       legado.registerOpenUrlCallback(handleOpenUrl);
-      console.info('[Legado] openUrl tsfn callback registered via napi');
-    } catch (e) {
-      console.error('[Legado] registerOpenUrlCallback failed: ' + JSON.stringify(e));
-    }
+    }, '[Legado] openUrl tsfn callback registered via napi', '[Legado] registerOpenUrlCallback failed: ');
 
     // KP8+: 注册 TextAction tsfn 回调 (KMP → ArkTS 跨线程 dispatch 文本操作菜单请求)。
     // C++ 侧 (legado_napi.cpp RegisterTextActionCallback) 创建 napi_threadsafe_function 包装此回调,
@@ -168,12 +174,9 @@ export default class EntryAbility extends UIAbility {
     // 注入 Kotlin OhosNativeBridge.textActionTsfn。此后 KMP 长按选字完成 →
     // OhosNativeBridge.showTextActionMenu 调用时, JSON payload 跨线程 dispatch 到此回调,
     // 由 ArkTS TextActionBridgeHandler 更新 Index.ets 叠层浮动菜单。
-    try {
+    registerSafely((): void => {
       legado.registerTextActionCallback(handleShowTextActionMenu);
-      console.info('[Legado] textAction tsfn callback registered via napi');
-    } catch (e) {
-      console.error('[Legado] registerTextActionCallback failed: ' + JSON.stringify(e));
-    }
+    }, '[Legado] textAction tsfn callback registered via napi', '[Legado] registerTextActionCallback failed: ');
 
     // KP8+: 注册 FilePicker tsfn 回调 (KMP → ArkTS 跨线程 dispatch, 同 Image/Crypto/Http 模式)。
     // C++ 侧 (legado_napi.cpp RegisterFilePickerCallback) 创建 napi_threadsafe_function 包装此回调,
@@ -183,32 +186,26 @@ export default class EntryAbility extends UIAbility {
     // 到此回调, 由 ArkTS FilePickerBridgeHandler 调 @ohos.file.picker.DocumentViewPicker 选文件 /
     // @ohos.file.fs 读内容, 完成后调 legado.filePickerCallback(requestId, resultJson) 回送结果
     // 唤醒 KMP 侧 CompletableDeferred。未注册时 KMP 侧降级返回 null (见 OhosFilePicker.ohos.kt)。
-    try {
+    registerSafely((): void => {
       legado.registerFilePickerCallback((json: string): void => {
         handleFilePickerRequest(json, (requestId: number, resultJson: string): void => {
           legado.filePickerCallback(requestId, resultJson);
         });
       });
-      console.info('[Legado] filePicker tsfn callback registered via napi');
-    } catch (e) {
-      console.error('[Legado] registerFilePickerCallback failed: ' + JSON.stringify(e));
-    }
+    }, '[Legado] filePicker tsfn callback registered via napi', '[Legado] registerFilePickerCallback failed: ');
 
     // Pasteboard tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 同 FilePicker 模式)
     // KMP OhosPlatformOps.copyToClipboard / readFromClipboard → OhosNativeBridge.invokePasteboardSync
     // 发 read/write 请求, ArkTS 侧 PasteboardBridgeHandler 调 @ohos.pasteboard.getSystemPasteboard
     // 读写纯文本, 完成后调 legado.pasteboardCallback(requestId, resultJson) 回送结果
     // 唤醒 KMP 侧 CompletableDeferred。未注册时 KMP 侧降级 println / 返回 null。
-    try {
+    registerSafely((): void => {
       legado.registerPasteboardCallback((json: string): void => {
         handlePasteboardRequest(json, (requestId: number, resultJson: string): void => {
           legado.pasteboardCallback(requestId, resultJson);
         });
       });
-      console.info('[Legado] pasteboard tsfn callback registered via napi');
-    } catch (e) {
-      console.error('[Legado] registerPasteboardCallback failed: ' + JSON.stringify(e));
-    }
+    }, '[Legado] pasteboard tsfn callback registered via napi', '[Legado] registerPasteboardCallback failed: ');
 
     // Network tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 同 Pasteboard 模式)
     // KMP NetworkAvailability.ohos.kt → OhosNativeBridge.invokeNetworkSync 发 query 请求,
@@ -216,32 +213,26 @@ export default class EntryAbility extends UIAbility {
     // getConnectionPropertiesSync (需 ohos.permission.GET_NETWORK_INFO, normal+system_grant)
     // 查询网络可用性与是否 WiFi, 完成后调 legado.networkCallback(requestId, resultJson) 回送结果
     // 唤醒 KMP 侧 CompletableDeferred。未注册时 KMP 侧降级 true (不拦截)。
-    try {
+    registerSafely((): void => {
       legado.registerNetworkCallback((json: string): void => {
         handleNetworkRequest(json, (requestId: number, resultJson: string): void => {
           legado.networkCallback(requestId, resultJson);
         });
       });
-      console.info('[Legado] network tsfn callback registered via napi');
-    } catch (e) {
-      console.error('[Legado] registerNetworkCallback failed: ' + JSON.stringify(e));
-    }
+    }, '[Legado] network tsfn callback registered via napi', '[Legado] registerNetworkCallback failed: ');
 
     // TextCodec tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 同 Pasteboard 模式)
     // KMP OhosNativeBridge.invokeTextCodecSync 发 decode/encode 请求 (TXT 分章 GB18030/Big5 等编解码),
     // ArkTS 侧 TextCodecBridgeHandler 调 @ohos.util.TextDecoder/TextEncoder 完成真实转换,
     // 完成后调 legado.textCodecCallback(requestId, resultJson) 回送结果
     // 唤醒 KMP 侧 CompletableDeferred。未注册时 KMP 侧降级。
-    try {
+    registerSafely((): void => {
       legado.registerTextCodecCallback((json: string): void => {
         handleTextCodecRequest(json, (requestId: number, resultJson: string): void => {
           legado.textCodecCallback(requestId, resultJson);
         });
       });
-      console.info('[Legado] textCodec tsfn callback registered via napi');
-    } catch (e) {
-      console.error('[Legado] registerTextCodecCallback failed: ' + JSON.stringify(e));
-    }
+    }, '[Legado] textCodec tsfn callback registered via napi', '[Legado] registerTextCodecCallback failed: ');
 
     // KP8+: 注册 Image/Media tsfn 回调 (KMP → ArkTS 跨线程 dispatch)。
     // Image: KMP OhosNativeBridge.invokeImageSync 发图片操作请求 (decode/encode/size/crop/split/stitch),
@@ -251,19 +242,16 @@ export default class EntryAbility extends UIAbility {
     // Media: KMP OhosNativeBridge.sendMediaCommand 发播放器命令 (setSource/play/pause/stop/seekTo/release),
     //        ArkTS 侧 MediaBridgeHandler 调 @ohos.multimedia.media AVPlayer 执行真实播放,
     //        AVPlayer 事件通过 legado.mediaEvent(eventJson) 回送给 KMP 侧 MediaEventListener。
-    try {
+    registerSafely((): void => {
       // Image: 注册 tsfn 回调, 请求 JSON + 裸字节 dispatch 到 handleImageRequest
       legado.registerImageCallback((json: string, bytes: ArrayBuffer | undefined): void => {
         handleImageRequest(json, bytes, (requestId: number, resultJson: string, body: ArrayBuffer | undefined): void => {
           legado.imageCallback(requestId, resultJson, body);
         });
       });
-      console.info('[Legado] image tsfn callback registered via napi');
-    } catch (e) {
-      console.error('[Legado] registerImageCallback failed: ' + JSON.stringify(e));
-    }
+    }, '[Legado] image tsfn callback registered via napi', '[Legado] registerImageCallback failed: ');
 
-    try {
+    registerSafely((): void => {
       // Media: 先注入事件回送函数 (AVPlayer 事件 → legado.mediaEvent → KMP)
       initMediaBridge((eventJson: string): void => {
         legado.mediaEvent(eventJson);
@@ -272,57 +260,45 @@ export default class EntryAbility extends UIAbility {
       legado.registerMediaCallback((json: string): void => {
         handleMediaCommand(json);
       });
-      console.info('[Legado] media tsfn callback registered via napi');
-    } catch (e) {
-      console.error('[Legado] registerMediaCallback failed: ' + JSON.stringify(e));
-    }
+    }, '[Legado] media tsfn callback registered via napi', '[Legado] registerMediaCallback failed: ');
 
     // TTS tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch)
     // KMP OhosNativeBridge.sendTtsCommand 发 TTS 命令 (createEngine/speak/pause/resume/stop/shutdown),
     // ArkTS 侧 TtsBridgeHandler 调 @kit.CoreSpeechKit textToSpeech 执行真实朗读,
     // TTS 事件通过 legado.ttsEvent(eventJson) 回送给 KMP 侧 TtsEventListener
-    try {
+    registerSafely((): void => {
       initTtsBridge((eventJson: string): void => {
         legado.ttsEvent(eventJson);
       });
       legado.registerTtsCallback((json: string): void => {
         handleTtsCommand(json);
       });
-      console.info('[Legado] tts tsfn callback registered via napi');
-    } catch (e) {
-      console.error('[Legado] registerTtsCallback failed: ' + JSON.stringify(e));
-    }
+    }, '[Legado] tts tsfn callback registered via napi', '[Legado] registerTtsCallback failed: ');
 
     // Crypto tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 同 Image 模式)
     // KMP OhosNativeBridge.invokeCryptoSync 发 crypto 操作请求 (encrypt/decrypt/sign/verify),
     // ArkTS 侧 CryptoBridgeHandler 调 @ohos.security.cryptoFramework 执行真实运算,
     // 完成后调 legado.cryptoCallback(requestId, resultJson) 回送结果唤醒 KMP 侧 CompletableDeferred。
-    try {
+    registerSafely((): void => {
       legado.registerCryptoCallback((json: string): void => {
         handleCryptoRequest(json, (requestId: number, resultJson: string): void => {
           legado.cryptoCallback(requestId, resultJson);
         });
       });
-      console.info('[Legado] crypto tsfn callback registered via napi');
-    } catch (e) {
-      console.error('[Legado] registerCryptoCallback failed: ' + JSON.stringify(e));
-    }
+    }, '[Legado] crypto tsfn callback registered via napi', '[Legado] registerCryptoCallback failed: ');
 
     // Http tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 同 Crypto 模式, 混合协议)
     // KMP OhosNativeBridge.invokeHttpSync 发 HTTP 请求 (execute/cancel),
     // ArkTS 侧 HttpBridgeHandler 调 @ohos.net.http 执行真实请求,
     // 完成后调 legado.httpCallback(requestId, resultJson, body?) 回送结果唤醒 KMP 侧 CompletableDeferred
     // (混合协议: 控制面 JSON + 数据面响应 body 裸字节 ArrayBuffer; 请求 body 同样裸传)。
-    try {
+    registerSafely((): void => {
       legado.registerHttpCallback((json: string, body: ArrayBuffer | undefined): void => {
         handleHttpRequest(json, body, (requestId: number, resultJson: string, respBody: ArrayBuffer | undefined): void => {
           legado.httpCallback(requestId, resultJson, respBody);
         });
       });
-      console.info('[Legado] http tsfn callback registered via napi');
-    } catch (e) {
-      console.error('[Legado] registerHttpCallback failed: ' + JSON.stringify(e));
-    }
+    }, '[Legado] http tsfn callback registered via napi', '[Legado] registerHttpCallback failed: ');
 
     // 后台 WebView tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 同 Http 模式, 混合协议)
     // KMP OhosNativeBridge.invokeWebViewSync(jsonControl, htmlRaw) 发后台抓取请求
@@ -330,71 +306,56 @@ export default class EntryAbility extends UIAbility {
     // ArkTS 侧 WebViewBridgeHandler, 用隐藏 Web 组件 (Index.ets 挂载) 加载页面 + runJavaScript 取源码,
     // 完成后调 legado.webViewCallback(requestId, resultJson, bodyRaw) 回送结果
     // (resultJson 为控制面小字段, bodyRaw 为裸源码/命中 URL) 唤醒 KMP 侧 CompletableDeferred。
-    try {
+    registerSafely((): void => {
       legado.registerWebViewCallback((json: string, htmlRaw: string): void => {
         handleWebViewRequest(json, htmlRaw, (requestId: number, resultJson: string, bodyRaw: string): void => {
           legado.webViewCallback(requestId, resultJson, bodyRaw);
         });
       });
-      console.info('[Legado] webView tsfn callback registered via napi');
-    } catch (e) {
-      console.error('[Legado] registerWebViewCallback failed: ' + JSON.stringify(e));
-    }
+    }, '[Legado] webView tsfn callback registered via napi', '[Legado] registerWebViewCallback failed: ');
 
     // Markdown 查看器 tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 同 Toast 模式 fire-and-forget)
     // KMP MarkdownContent (ArkUIView2 混排的 Web 组件) → OhosNativeBridge.sendMarkdown
     // 发渲染请求 { content, isDark, fontSize }, dispatch 到 ArkTS 侧 MarkdownBridgeHandler,
     // 经 Index.ets 挂载的查看器 Web 组件 runJavaScript 注入 renderMarkdown (marked + hljs) 渲染。
     // 页面内链接点击经 legado.markdownEvent(eventJson) 回送 KMP 走系统浏览器。
-    try {
+    registerSafely((): void => {
       legado.registerMarkdownCallback((json: string): void => {
         handleMarkdownRequest(json);
       });
-      console.info('[Legado] markdown tsfn callback registered via napi');
-    } catch (e) {
-      console.error('[Legado] registerMarkdownCallback failed: ' + JSON.stringify(e));
-    }
+    }, '[Legado] markdown tsfn callback registered via napi', '[Legado] registerMarkdownCallback failed: ');
 
     // Battery tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 阅读页电池电量查询)
     // KMP OhosReaderPlatformProvider.getBatteryLevel → OhosNativeBridge.invokeBatterySync
     // 发 getLevel 请求, ArkTS 侧 BatteryBridgeHandler 调 @ohos.batteryInfo.batterySOC,
     // 完成后调 legado.batteryCallback(requestId, resultJson) 回送结果唤醒 KMP 侧 CompletableDeferred。
     // 未注册时 KMP 侧 getBatteryLevel 恒返回 -1 (阅读页不显示电量)。
-    try {
+    registerSafely((): void => {
       legado.registerBatteryCallback((json: string): void => {
         handleBatteryRequest(json, (requestId: number, resultJson: string): void => {
           legado.batteryCallback(requestId, resultJson);
         });
       });
-      console.info('[Legado] battery tsfn callback registered via napi');
-    } catch (e) {
-      console.error('[Legado] registerBatteryCallback failed: ' + JSON.stringify(e));
-    }
+    }, '[Legado] battery tsfn callback registered via napi', '[Legado] registerBatteryCallback failed: ');
 
     // Share tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 系统分享面板, 同 Toast 模式 fire-and-forget)
     // KMP OhosPlatformServices.sharing.shareText/shareFile → OhosNativeBridge.shareText/shareFile
     // 经 tsfn dispatch 到此回调, ArkTS 侧 SystemShareBridgeHandler 调 @kit.ShareKit systemShare
     // 弹系统分享面板。未注册时 KMP 侧降级写剪贴板 + toast (见 OhosPlatformServices)。
-    try {
+    registerSafely((): void => {
       // ShareController.show 需 UIAbilityContext, 注册回调前先注入
       initShareBridge(this.context);
       legado.registerShareCallback(handleShareRequest);
-      console.info('[Legado] share tsfn callback registered via napi');
-    } catch (e) {
-      console.error('[Legado] registerShareCallback failed: ' + JSON.stringify(e));
-    }
+    }, '[Legado] share tsfn callback registered via napi', '[Legado] registerShareCallback failed: ');
 
     // Keyboard tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 软键盘显隐/避让, 同 Window 模式 fire-and-forget)
     // KMP OhosPlatformServices.keyboard.hideSoftInput/showSoftInput/setSoftInputPolicy
     // → OhosNativeBridge.hideSoftInput/showSoftInput/setKeyboardAvoidMode 经 tsfn dispatch 到此回调,
     // ArkTS 侧 KeyboardBridgeHandler 调 @ohos.inputMethod / UIContext。
     // 未注册时 KMP 侧降级 println。
-    try {
+    registerSafely((): void => {
       legado.registerKeyboardCallback(handleKeyboardCommand);
-      console.info('[Legado] keyboard tsfn callback registered via napi');
-    } catch (e) {
-      console.error('[Legado] registerKeyboardCallback failed: ' + JSON.stringify(e));
-    }
+    }, '[Legado] keyboard tsfn callback registered via napi', '[Legado] registerKeyboardCallback failed: ');
 
     // Permission tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 权限查询/申请)
     // KMP OhosPlatformServices.permissions.hasPermission/requestPermission
@@ -402,17 +363,14 @@ export default class EntryAbility extends UIAbility {
     // ArkTS 侧 PermissionBridgeHandler 调 @ohos.abilityAccessCtrl.checkAccessTokenSync /
     // requestPermissionsFromUser, 完成后调 legado.permissionCallback 回送结果。
     // 未注册时 KMP 侧按"无权限"降级。
-    try {
+    registerSafely((): void => {
       initPermissionBridge(this.context);
       legado.registerPermissionCallback((json: string): void => {
         handlePermissionRequest(json, (requestId: number, resultJson: string): void => {
           legado.permissionCallback(requestId, resultJson);
         });
       });
-      console.info('[Legado] permission tsfn callback registered via napi');
-    } catch (e) {
-      console.error('[Legado] registerPermissionCallback failed: ' + JSON.stringify(e));
-    }
+    }, '[Legado] permission tsfn callback registered via napi', '[Legado] registerPermissionCallback failed: ');
 
     // 外部启动请求冷启动投递 (放 onCreate 最尾: 须在 registerOhosProviders 之后,
     // 否则 LegadoDeepLinkHandler 下游导入 VM 取 AppDbProviders 会未注册)。

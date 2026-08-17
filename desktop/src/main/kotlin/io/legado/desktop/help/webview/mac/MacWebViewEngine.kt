@@ -5,27 +5,22 @@ import com.sun.jna.Pointer
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.http.CookieStoreProviders
-import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.toast.Toasters
-import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.browseUrl
-import io.legado.desktop.help.webview.CHECK_HOST_COOKIE_TEXT
-import io.legado.desktop.help.webview.DesktopWebViewEngine
+import io.legado.desktop.help.webview.DesktopWebViewEngineBase
+import io.legado.desktop.help.webview.DesktopWebViewWindowHandleBase
 import io.legado.desktop.help.webview.ToolbarAction
 import io.legado.desktop.help.webview.WebViewFetchRequest
 import io.legado.desktop.help.webview.WebViewFetchResult
 import io.legado.desktop.help.webview.WebViewWindowHandle
 import io.legado.desktop.help.webview.WebViewWindowRequest
+import io.legado.desktop.help.webview.injectWebViewCookies
 import io.legado.desktop.help.webview.mac.ObjC.fromId
 import io.legado.desktop.help.webview.mac.ObjC.ns
 import io.legado.desktop.help.webview.mac.ObjC.property
 import io.legado.desktop.help.webview.mac.ObjC.ptr
 import io.legado.desktop.help.webview.mac.ObjC.void
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.launch
@@ -56,18 +51,15 @@ import java.util.concurrent.atomic.AtomicReference
  *   一个轮询周期, 且无法阻止资源加载), KDoc 注明差异;
  * - cookie 注入/回收走 WKHTTPCookieStore (block API, 主线程发起 + 协程挂起等待);
  * - 可见窗口带 AppKit 工具栏, 行为对照 Windows WebView2Toolbar。
+ * 抓取主循环 / 常量在 [DesktopWebViewEngineBase], 这里只留 WKWebView 差异。
  */
-internal object MacWebViewEngine : DesktopWebViewEngine {
+internal object MacWebViewEngine : DesktopWebViewEngineBase() {
 
     override val id: String get() = "wkwebview"
 
-    private const val MAX_JS_RETRY = 30
-    private const val JS_RETRY_INTERVAL_MS = 1000L
-    private const val SNIFF_INTERVAL_MS = 500L
-    private const val COOKIE_TIMEOUT_MS = 5_000L
+    override val platformLabel = PLATFORM_LABEL
 
-    /** app 端 BackstageWebView.JS 默认脚本。 */
-    const val DEFAULT_JS = "document.documentElement.outerHTML"
+    private const val SNIFF_INTERVAL_MS = 500L
 
     /** document-start 注入的嗅探 hook: 捕获 fetch/XHR 的 URL。 */
     internal const val SNIFF_HOOK_JS = """
@@ -92,8 +84,6 @@ internal object MacWebViewEngine : DesktopWebViewEngine {
         }catch(e){ return '[]'; }})()
     """
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
     @Volatile
     private var probed = false
 
@@ -112,8 +102,7 @@ internal object MacWebViewEngine : DesktopWebViewEngine {
 
     override suspend fun fetch(request: WebViewFetchRequest): WebViewFetchResult {
         if (!isAvailable()) throw NoStackTraceException("WKWebView 引擎不可用")
-        val sniffing =
-            !request.sourceRegex.isNullOrBlank() || !request.overrideUrlRegex.isNullOrBlank()
+        val sniffing = isSniffing(request)
         val session = CocoaLoop.await { MacSession.create(visible = false, sniff = sniffing) }
             ?: throw NoStackTraceException("WKWebView 会话创建失败")
         try {
@@ -130,27 +119,29 @@ internal object MacWebViewEngine : DesktopWebViewEngine {
         request: WebViewFetchRequest,
     ): WebViewFetchResult {
         val redirected = AtomicBoolean(false)
-        injectCookies(session, request)
+        injectWebViewCookies(request.url, platformLabel) { domain, cookie ->
+            session.addCookies(domain, cookie, COOKIE_TIMEOUT_MS)
+        }
         CocoaLoop.await {
             session.onNavigated = { url ->
                 if (!url.isNullOrBlank() && url != request.url) redirected.set(true)
-                if (!url.isNullOrBlank()) harvestCookies(session, url, request.cookieTag)
+                if (!url.isNullOrBlank()) {
+                    harvestTagCookies(url, request.cookieTag) { session.cookies(COOKIE_TIMEOUT_MS) }
+                }
             }
             session.start(request)
         }
 
-        delay(request.delayTime)
-        val script = request.javaScript?.takeIf { it.isNotEmpty() } ?: DEFAULT_JS
-        repeat(MAX_JS_RETRY + 1) {
-            val body = session.evaluateJavascript(script)
-            if (!body.isNullOrEmpty() && body != "null") {
-                val url = CocoaLoop.await { session.currentUrl() }.takeIf { !it.isNullOrBlank() }
-                    ?: request.url.orEmpty()
-                return WebViewFetchResult(url, body, redirected.get())
-            }
-            delay(JS_RETRY_INTERVAL_MS)
-        }
-        throw NoStackTraceException("js执行超时")
+        return awaitScriptBody(
+            request,
+            evaluate = { script ->
+                session.evaluateJavascript(script)?.takeIf { it.isNotEmpty() && it != "null" }
+            },
+            currentUrl = {
+                CocoaLoop.await { session.currentUrl() }.takeIf { !it.isNullOrBlank() }
+            },
+            redirected = { redirected.get() },
+        )
     }
 
     /** 嗅探: hook + performance 轮询; overrideRegex 走导航地址。 */
@@ -158,15 +149,16 @@ internal object MacWebViewEngine : DesktopWebViewEngine {
         session: MacSession,
         request: WebViewFetchRequest,
     ): WebViewFetchResult {
-        val overrideRegex = request.overrideUrlRegex?.takeIf { it.isNotBlank() }?.toRegex()
-        val sourceRegex = request.sourceRegex?.takeIf { it.isNotBlank() }?.toRegex()
+        val (overrideRegex, sourceRegex) = snifferRegexes(request)
         val seen = HashSet<String>()
         val sniffed = CompletableDeferred<String>()
-        injectCookies(session, request)
+        injectWebViewCookies(request.url, platformLabel) { domain, cookie ->
+            session.addCookies(domain, cookie, COOKIE_TIMEOUT_MS)
+        }
         CocoaLoop.await {
             session.onNavigated = { url ->
                 if (!url.isNullOrBlank()) {
-                    harvestCookies(session, url, request.cookieTag)
+                    harvestTagCookies(url, request.cookieTag) { session.cookies(COOKIE_TIMEOUT_MS) }
                     if (overrideRegex?.matches(url) == true) sniffed.complete(url)
                 }
             }
@@ -188,7 +180,7 @@ internal object MacWebViewEngine : DesktopWebViewEngine {
             }
             val hitUrl = withTimeoutOrNull(SNIFF_INTERVAL_MS + 100) { sniffed.await() }
             if (hitUrl != null) {
-                return WebViewFetchResult(request.url ?: hitUrl, hitUrl, false)
+                return snifferResult(request, hitUrl)
             }
             delay(SNIFF_INTERVAL_MS)
         }
@@ -200,40 +192,6 @@ internal object MacWebViewEngine : DesktopWebViewEngine {
         val handle = MacWindowHandle(request)
         CocoaLoop.post { handle.open() }
         return handle
-    }
-
-    /** 注入 CookieStore 已有 cookie (suspend: block 回调等待), 导航前调用。 */
-    private suspend fun injectCookies(session: MacSession, request: WebViewFetchRequest) {
-        val url = request.url?.takeIf { it.isNotBlank() } ?: return
-        runCatching {
-            val store = CookieStoreProviders.get() ?: return
-            val cookie = store.getCookie(url).takeIf { it.isNotBlank() } ?: return
-            val domain = NetworkUtils.getSubDomain(url).takeIf { it.isNotBlank() } ?: return
-            session.addCookies(domain, cookie, COOKIE_TIMEOUT_MS)
-        }.onFailure { AppLog.put("WKWebView cookie 注入失败", it) }
-    }
-
-    /** 回收 cookie 写入 CookieStore (仅存 tag 名下)。 */
-    private fun harvestCookies(session: MacSession, url: String, tag: String?) {
-        if (tag.isNullOrBlank() || url.isBlank()) return
-        scope.launch {
-            val cookie = session.cookies(COOKIE_TIMEOUT_MS) ?: return@launch
-            runCatching { CookieStoreProviders.get()?.setCookie(tag, cookie) }
-                .onFailure { AppLog.put("WKWebView cookie 回写失败", it) }
-        }
-    }
-
-    /** 可见窗口的 cookie 回收 (按地址 + 按 tag 各存一份)。 */
-    internal fun harvestWindowCookies(session: MacSession, url: String, tag: String?) {
-        if (url.isBlank()) return
-        scope.launch {
-            val cookie = session.cookies(COOKIE_TIMEOUT_MS) ?: return@launch
-            runCatching {
-                val store = CookieStoreProviders.get() ?: return@runCatching
-                store.setCookie(url, cookie)
-                if (!tag.isNullOrBlank()) store.setCookie(tag, cookie)
-            }.onFailure { AppLog.put("WKWebView 窗口 cookie 回写失败", it) }
-        }
     }
 }
 
@@ -576,28 +534,21 @@ internal class MacSession private constructor(
 /** NSAlert.runModal 返回值: 第一个按钮 (确定) = 1000 (NSAlertFirstButtonReturn)。 */
 private const val NS_ALERT_FIRST_BUTTON = 1000
 
-/** 可见窗口句柄。 */
+/** 日志里的平台名 (cookie 注入/回写失败信息前缀, 引擎与窗口句柄共用)。 */
+private const val PLATFORM_LABEL = "WKWebView"
+
+/**
+ * 可见窗口句柄。历史栈 / cookie 回收 / 禁用源 / 删除源 / 确定按钮等公共语义见
+ * [DesktopWebViewWindowHandleBase], 这里只留 AppKit 差异。
+ */
 private class MacWindowHandle(
-    private val request: WebViewWindowRequest,
-) : WebViewWindowHandle {
+    request: WebViewWindowRequest,
+) : DesktopWebViewWindowHandleBase(request) {
+
+    override val platformLabel = PLATFORM_LABEL
 
     @Volatile
     private var session: MacSession? = null
-
-    @Volatile
-    override var currentUrl: String? = null
-        private set
-
-    /** 手动历史栈 (同 Windows 实现)。 */
-    private val history = ArrayList<String>()
-    private var historyIndex = -1
-    private var historyNavPending = false
-
-    private val checking = AtomicBoolean(false)
-
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
-    private val closedOnce = AtomicBoolean(false)
 
     fun open() {
         val created = MacSession.create(
@@ -627,28 +578,27 @@ private class MacWindowHandle(
         request.rssActions?.onStarChanged = { starred -> created.toolbar?.setStarred(starred) }
         // cookie 注入 (suspend) 在协程里做, 不等导航完成
         scope.launch {
-            runCatching {
-                val store = CookieStoreProviders.get() ?: return@runCatching
-                val cookie = request.url.takeIf { it.isNotBlank() }
-                    ?.let { url -> store.getCookie(url) }
-                    ?.takeIf { it.isNotBlank() }
-                    ?: return@runCatching
-                val domain = NetworkUtils.getSubDomain(request.url).takeIf { it.isNotBlank() }
-                    ?: return@runCatching
-                created.addCookies(domain, cookie, 5_000L)
-            }.onFailure { AppLog.put("WKWebView 窗口 cookie 注入失败", it) }
+            injectWebViewCookies(
+                request.url,
+                platformLabel,
+                subject = "窗口 cookie"
+            ) { domain, cookie ->
+                created.addCookies(domain, cookie, DesktopWebViewEngineBase.COOKIE_TIMEOUT_MS)
+            }
         }
         created.onNavigated = { url ->
             currentUrl = url
-            MacWebViewEngine.harvestWindowCookies(created, url, request.cookieTag)
+            harvestWindowCookies(url, request.cookieTag) {
+                created.cookies(DesktopWebViewEngineBase.COOKIE_TIMEOUT_MS)
+            }
             runCatching { request.onNavigated(url) }
             val toolbar = created.toolbar
-            if (checking.get()) {
+            if (isLoginChecking()) {
                 // 对照 menu_ok isLogin 分支: reload 后下次导航完成即关窗
                 close()
             } else if (toolbar != null) {
                 onNavigationForHistory(url)
-                toolbar.setCanNavigate(historyIndex > 0, historyIndex < history.size - 1)
+                toolbar.setCanNavigate(canGoBackInHistory(), canGoForwardInHistory())
                 val docTitle = created.propertyString("title")
                 // 2026-08-06 去工具栏标题 (用户反馈多余): 仅同步 OS 窗口标题
                 if (!docTitle.isNullOrBlank() && !docTitle.startsWith("http")) {
@@ -660,30 +610,12 @@ private class MacWindowHandle(
         created.start(WebViewFetchRequest(url = request.url, html = request.html))
     }
 
-    private fun onNavigationForHistory(url: String) {
-        if (historyNavPending) {
-            historyNavPending = false
-        } else if (history.isEmpty() || history[historyIndex] != url) {
-            while (history.size - 1 > historyIndex) history.removeAt(history.size - 1)
-            history.add(url)
-            historyIndex = history.size - 1
-        }
-    }
-
     private fun onToolbarAction(action: ToolbarAction) {
         val target = session ?: return
         when (action) {
-            ToolbarAction.BACK -> if (historyIndex > 0) {
-                historyNavPending = true
-                historyIndex--
-                loadUrl(target, history[historyIndex])
-            }
+            ToolbarAction.BACK -> navigateHistory(back = true)
 
-            ToolbarAction.FORWARD -> if (historyIndex < history.size - 1) {
-                historyNavPending = true
-                historyIndex++
-                loadUrl(target, history[historyIndex])
-            }
+            ToolbarAction.FORWARD -> navigateHistory(back = false)
 
             ToolbarAction.REFRESH -> target.reload()
 
@@ -711,7 +643,7 @@ private class MacWindowHandle(
             ToolbarAction.READ_ALOUD -> request.rssActions?.onReadAloud {
                 // 页面还活着时抓 outerHTML (对照原版 readAloud 的 evaluateJavascript;
                 // 与 onOkPressed saveResult 分支抓取方式一致)
-                runCatching { target.evaluateJavascript(MacWebViewEngine.DEFAULT_JS) }.getOrNull()
+                runCatching { target.evaluateJavascript(DesktopWebViewEngineBase.DEFAULT_JS) }.getOrNull()
             }
 
             ToolbarAction.SHARE -> request.rssActions?.onShare()
@@ -723,48 +655,33 @@ private class MacWindowHandle(
                 target.toggleFullScreen()
             }
 
-            ToolbarAction.OK -> onOkPressed(target)
+            ToolbarAction.OK -> onOkPressed(
+                reloadForCheck = { target.reload() },
+                evalDefaultJs = { target.evaluateJavascript(DesktopWebViewEngineBase.DEFAULT_JS) },
+            )
 
             // 禁用源 (对照原版 menu_disable_source → viewModel.disableSource { finish() }):
             // 成功后关窗, 失败记录日志不关窗
             ToolbarAction.DISABLE_SOURCE -> onDisableSource()
 
             // 删除源 (对照原版 menu_delete_source → alert 确认后 deleteSource { finish() })
-            ToolbarAction.DELETE_SOURCE -> onDeleteSource()
+            ToolbarAction.DELETE_SOURCE -> onDeleteSource { confirmViaAlert(it) }
 
             ToolbarAction.CLOSE -> close()
         }
     }
 
-    /** 禁用源: 直接执行 (对照原版无确认), 成功后关窗。 */
-    private fun onDisableSource() {
-        val key = request.cookieTag ?: return
-        scope.launch {
-            runCatching { SourceHelp.enableSource(key, request.sourceType, false) }
-                .onSuccess { close() }
-                .onFailure { AppLog.put("禁用书源失败: $key", it) }
-        }
-    }
-
-    /** 删除源: 先弹确认 (sure_del + 源名, 对照原版 alert), 确认后执行, 成功后关窗。 */
-    private fun onDeleteSource() {
-        val key = request.cookieTag ?: return
-        val name = request.sourceName.ifBlank { key }
-        // NSAlert 模态 (EDT): 确定 = firstButton(1000), 取消 = second(1001)
+    /** NSAlert 模态 (EDT): 确定 = firstButton(1000), 取消 = second(1001)。 */
+    private fun confirmViaAlert(message: String): Boolean {
         val alert = ptr(ObjC.cls("NSAlert"), "alloc")!!
         ptr(alert, "init")!!
         void(alert, "setMessageText:", ns("删除源"))
-        void(alert, "setInformativeText:", ns("是否确认删除？\n$name"))
+        void(alert, "setInformativeText:", ns(message))
         void(alert, "addButtonWithTitle:", ns("确认"))
         void(alert, "addButtonWithTitle:", ns("取消"))
         val confirmed = ObjC.int(alert, "runModal") == NS_ALERT_FIRST_BUTTON
         void(alert, "release")
-        if (!confirmed) return
-        scope.launch {
-            runCatching { SourceHelp.deleteSource(key, request.sourceType) }
-                .onSuccess { close() }
-                .onFailure { AppLog.put("删除书源失败: $key", it) }
-        }
+        return confirmed
     }
 
     private fun loadUrl(session: MacSession, url: String) {
@@ -773,29 +690,10 @@ private class MacWindowHandle(
         void(session.webView, "loadRequest:", req)
     }
 
-    private fun onOkPressed(target: MacSession) {
-        when {
-            request.isLogin -> {
-                if (checking.compareAndSet(false, true)) {
-                    runCatching { Toasters.get().toast(CHECK_HOST_COOKIE_TEXT) }
-                    target.reload()
-                }
-            }
-
-            request.saveResult -> {
-                // 页面还活着时抓 outerHTML 回传 (对照 saveVerificationResult 的 html 分支)
-                scope.launch {
-                    val html =
-                        runCatching { target.evaluateJavascript(MacWebViewEngine.DEFAULT_JS) }
-                            .getOrNull()
-                    request.onSaveResult?.invoke(html)
-                }
-            }
-        }
+    override fun navigateInWindow(url: String) {
+        val target = session ?: return
+        CocoaLoop.post { loadUrl(target, url) }
     }
-
-    override suspend fun currentHtml(): String? =
-        evaluateJavascript(MacWebViewEngine.DEFAULT_JS)
 
     override suspend fun evaluateJavascript(script: String): String? {
         val target = session ?: return null
@@ -807,8 +705,7 @@ private class MacWindowHandle(
         CocoaLoop.post { target.reload() }
     }
 
-    override fun close() {
-        if (!closedOnce.compareAndSet(false, true)) return
+    override fun destroySession() {
         val target = session
         session = null
         if (target != null) {
@@ -816,6 +713,5 @@ private class MacWindowHandle(
             target.toolbar?.dispose()
             CocoaLoop.post { target.destroy() }
         }
-        runCatching { request.onClosed() }
     }
 }

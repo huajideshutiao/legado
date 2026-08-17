@@ -242,6 +242,42 @@ typedef struct {
 } liblegado_shared_kref_com_github_jershell_rjpath_Location_Root;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Str;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Int;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Long;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Double;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Bool;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Bytes;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_kotlin_ByteArray;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_AnyVal;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Handle;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_UNIT;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_NONE;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_org_jsoup_Connection;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
@@ -294,9 +330,6 @@ typedef struct {
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_org_jsoup_Connection_KeyVal;
-typedef struct {
-  liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_kotlin_ByteArray;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_com_fleeksoft_ksoup_nodes_Document;
@@ -2289,6 +2322,9 @@ typedef struct {
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_utils_JsURL;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon_Companion;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_help_PinnedExploreHelp;
@@ -7360,6 +7396,104 @@ typedef struct {
             } rjpath;
           } jershell;
         } github;
+        struct {
+          struct {
+            struct {
+              struct {
+                struct {
+                  liblegado_shared_KType* (*_type)(void);
+                  liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Str (*Str)(const char* v);
+                  const char* (*get_v)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Str thiz);
+                  const char* (*component1)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Str thiz);
+                  liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Str (*copy)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Str thiz, const char* v);
+                  liblegado_shared_KBoolean (*equals)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Str thiz, liblegado_shared_kref_kotlin_Any other);
+                  liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Str thiz);
+                  const char* (*toString)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Str thiz);
+                } Str;
+                struct {
+                  liblegado_shared_KType* (*_type)(void);
+                  liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Int (*Int)(liblegado_shared_KInt v);
+                  liblegado_shared_KInt (*get_v)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Int thiz);
+                  liblegado_shared_KInt (*component1)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Int thiz);
+                  liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Int (*copy)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Int thiz, liblegado_shared_KInt v);
+                  liblegado_shared_KBoolean (*equals)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Int thiz, liblegado_shared_kref_kotlin_Any other);
+                  liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Int thiz);
+                  const char* (*toString)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Int thiz);
+                } Int;
+                struct {
+                  liblegado_shared_KType* (*_type)(void);
+                  liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Long (*Long)(liblegado_shared_KLong v);
+                  liblegado_shared_KLong (*get_v)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Long thiz);
+                  liblegado_shared_KLong (*component1)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Long thiz);
+                  liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Long (*copy)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Long thiz, liblegado_shared_KLong v);
+                  liblegado_shared_KBoolean (*equals)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Long thiz, liblegado_shared_kref_kotlin_Any other);
+                  liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Long thiz);
+                  const char* (*toString)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Long thiz);
+                } Long;
+                struct {
+                  liblegado_shared_KType* (*_type)(void);
+                  liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Double (*Double)(liblegado_shared_KDouble v);
+                  liblegado_shared_KDouble (*get_v)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Double thiz);
+                  liblegado_shared_KDouble (*component1)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Double thiz);
+                  liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Double (*copy)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Double thiz, liblegado_shared_KDouble v);
+                  liblegado_shared_KBoolean (*equals)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Double thiz, liblegado_shared_kref_kotlin_Any other);
+                  liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Double thiz);
+                  const char* (*toString)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Double thiz);
+                } Double;
+                struct {
+                  liblegado_shared_KType* (*_type)(void);
+                  liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Bool (*Bool)(liblegado_shared_KBoolean v);
+                  liblegado_shared_KBoolean (*get_v)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Bool thiz);
+                  liblegado_shared_KBoolean (*component1)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Bool thiz);
+                  liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Bool (*copy)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Bool thiz, liblegado_shared_KBoolean v);
+                  liblegado_shared_KBoolean (*equals)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Bool thiz, liblegado_shared_kref_kotlin_Any other);
+                  liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Bool thiz);
+                  const char* (*toString)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Bool thiz);
+                } Bool;
+                struct {
+                  liblegado_shared_KType* (*_type)(void);
+                  liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Bytes (*Bytes)(liblegado_shared_kref_kotlin_ByteArray v);
+                  liblegado_shared_kref_kotlin_ByteArray (*get_v)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Bytes thiz);
+                  liblegado_shared_kref_kotlin_ByteArray (*component1)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Bytes thiz);
+                  liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Bytes (*copy)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Bytes thiz, liblegado_shared_kref_kotlin_ByteArray v);
+                  liblegado_shared_KBoolean (*equals)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Bytes thiz, liblegado_shared_kref_kotlin_Any other);
+                  liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Bytes thiz);
+                  const char* (*toString)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Bytes thiz);
+                } Bytes;
+                struct {
+                  liblegado_shared_KType* (*_type)(void);
+                  liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_AnyVal (*AnyVal)(liblegado_shared_kref_kotlin_Any v);
+                  liblegado_shared_kref_kotlin_Any (*get_v)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_AnyVal thiz);
+                  liblegado_shared_kref_kotlin_Any (*component1)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_AnyVal thiz);
+                  liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_AnyVal (*copy)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_AnyVal thiz, liblegado_shared_kref_kotlin_Any v);
+                  liblegado_shared_KBoolean (*equals)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_AnyVal thiz, liblegado_shared_kref_kotlin_Any other);
+                  liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_AnyVal thiz);
+                  const char* (*toString)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_AnyVal thiz);
+                } AnyVal;
+                struct {
+                  liblegado_shared_KType* (*_type)(void);
+                  liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Handle (*Handle)(liblegado_shared_KLong v);
+                  liblegado_shared_KLong (*get_v)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Handle thiz);
+                  liblegado_shared_KLong (*component1)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Handle thiz);
+                  liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Handle (*copy)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Handle thiz, liblegado_shared_KLong v);
+                  liblegado_shared_KBoolean (*equals)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Handle thiz, liblegado_shared_kref_kotlin_Any other);
+                  liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Handle thiz);
+                  const char* (*toString)(liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_Handle thiz);
+                } Handle;
+                struct {
+                  liblegado_shared_KType* (*_type)(void);
+                  liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_UNIT (*_instance)();
+                } UNIT;
+                struct {
+                  liblegado_shared_KType* (*_type)(void);
+                  liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult_NONE (*_instance)();
+                } NONE;
+                liblegado_shared_KType* (*_type)(void);
+                liblegado_shared_kref_com_script_jsdispatch_generated_NativeDispatchResult (*NativeDispatchResult)();
+              } NativeDispatchResult;
+            } generated;
+          } jsdispatch;
+        } script;
       } com;
       struct {
         struct {
@@ -14214,6 +14348,12 @@ typedef struct {
                 liblegado_shared_kref_kotlin_Any (*wrap)(liblegado_shared_kref_io_legado_app_help_JsExtFactory thiz, liblegado_shared_kref_io_legado_app_data_entities_BaseSource source);
               } JsExtFactory;
               struct {
+                struct {
+                  liblegado_shared_KType* (*_type)(void);
+                  liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon_Companion (*_instance)();
+                  const char* (*get_COPY_CONFIRM_KEY)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon_Companion thiz);
+                  const char* (*get_COPY_CONFIRM_OVERLAY_KEY)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon_Companion thiz);
+                } Companion;
                 liblegado_shared_KType* (*_type)(void);
                 const char* (*ajax)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon thiz, liblegado_shared_kref_kotlin_Any url);
                 liblegado_shared_kref_kotlin_Array (*ajaxAll)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon thiz, liblegado_shared_kref_kotlin_Array urlList);
@@ -14231,6 +14371,7 @@ typedef struct {
                 const char* (*cacheFile_)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon thiz, const char* urlStr, liblegado_shared_KInt saveTime);
                 liblegado_shared_kref_io_legado_app_help_http_StrResponse (*connect)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon thiz, const char* urlStr);
                 liblegado_shared_kref_io_legado_app_help_http_StrResponse (*connect_)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon thiz, const char* urlStr, const char* header);
+                void (*copy)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon thiz, liblegado_shared_kref_kotlin_Any text);
                 liblegado_shared_KBoolean (*deleteFile)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon thiz, const char* path);
                 const char* (*downloadFile)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon thiz, const char* url);
                 const char* (*downloadFile_)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon thiz, const char* content, const char* url);
@@ -29415,6 +29556,7 @@ typedef struct {
               liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_check_source_config)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
               liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_check_source_config_summary)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
               liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_check_source_error)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
+              liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_read_aloud_by_page_summary)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
               liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_read_aloud_config)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
               liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_read_aloud_next_paragraph)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
               liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_read_aloud_pause)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
@@ -30037,6 +30179,7 @@ typedef struct {
               liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_copy_rule_failed)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
               liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_copy_source)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
               liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_copy_text)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
+              liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_copy_to_clipboard)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
               liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_copy_toc_url)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
               liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_copy_url)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
               liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_cover)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
@@ -30769,7 +30912,6 @@ typedef struct {
               liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_read_aloud_by_media_button_summary)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
               liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_read_aloud_by_media_button_title)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
               liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_read_aloud_by_page)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
-              liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_read_aloud_by_page_summary)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
               liblegado_shared_kref_kotlin_collections_Map (*get_allDrawableResources)(liblegado_shared_kref_legado_shared_generated_resources_Res thiz);
               liblegado_shared_kref_kotlin_collections_Map (*get_allFontResources)(liblegado_shared_kref_legado_shared_generated_resources_Res thiz);
               liblegado_shared_kref_kotlin_collections_Map (*get_allPluralStringResources)(liblegado_shared_kref_legado_shared_generated_resources_Res thiz);

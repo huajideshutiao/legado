@@ -9,20 +9,23 @@ package com.script.jsdispatch.generated
  *
  * [NONE] 表示"本表未处理" (methodId 不在生成表), 桥落手写分支。
  * [UNIT] 表示方法已调用且无返回值 (对应 Kotlin Unit 返回)。
- * [Handle] 表示返回需要 JS 层对象包装的对象 (StrResponse/JsURL/QueryTTF/BaseSource 等),
- * 由 JS 工厂函数按返回类型映射包装 (生成器产出 JS_METHOD_TABLE 时确定工厂函数)。
+ * [Handle] 表示返回需要 JS 层对象包装的对象 (ksoup Document 等, NATIVE_HANDLE_METHODS 白名单),
+ * 由 JS 工厂函数按返回类型映射包装 (生成器产出 JS_METHOD_TABLES 分区闭包时确定工厂函数,
+ * 桥 dispatch 经 registerHandle 参数注入注册函数)。
  */
 sealed class NativeDispatchResult {
-    data class Str(val v: String?) : NativeDispatchResult()
-    data class Int(val v: Int) : NativeDispatchResult()
-    data class Long(val v: Long) : NativeDispatchResult()
-    data class Double(val v: Double) : NativeDispatchResult()
-    data class Bool(val v: Boolean) : NativeDispatchResult()
-    data class Bytes(val v: ByteArray?) : NativeDispatchResult()
-    data class AnyVal(val v: Any?) : NativeDispatchResult()
+    // 字段类型必须 kotlin. 限定: 嵌套类名 Int/Long/Double 会在类体作用域遮蔽同名内建类型,
+    // 不限定时 v 的类型会递归解析成嵌套类自身 (仅 native 目标编译本表时暴露)。
+    data class Str(val v: kotlin.String?) : NativeDispatchResult()
+    data class Int(val v: kotlin.Int) : NativeDispatchResult()
+    data class Long(val v: kotlin.Long) : NativeDispatchResult()
+    data class Double(val v: kotlin.Double) : NativeDispatchResult()
+    data class Bool(val v: kotlin.Boolean) : NativeDispatchResult()
+    data class Bytes(val v: kotlin.ByteArray?) : NativeDispatchResult()
+    data class AnyVal(val v: kotlin.Any?) : NativeDispatchResult()
 
     /** 对象返回: 已注册 handle (Long), 0 = null。JS 层按映射工厂包装。 */
-    data class Handle(val v: Long) : NativeDispatchResult()
+    data class Handle(val v: kotlin.Long) : NativeDispatchResult()
 
     object UNIT : NativeDispatchResult()
     object NONE : NativeDispatchResult()

@@ -1,5 +1,6 @@
 import util from '@ohos.util';
 import buffer from '@ohos.buffer';
+import { BridgeRequest, BridgeResponse, dispatchBridgeRequestSync } from './BridgeDispatch';
 
 /**
  * ArkTS 侧文本编解码处理器 - TXT 分章 GB18030/Big5 编解码处理器。
@@ -34,17 +35,9 @@ export type TextCodecCallback = (requestId: number, resultJson: string) => void;
 
 // ===== 请求/响应接口定义 (与 Kotlin 侧 JSON 协议对齐) =====
 
-interface TextCodecBridgeRequest {
-  requestId: number;
-  action: string;
-  payload: string;
-}
-
-interface TextCodecResponse {
-  ok: boolean;
+interface TextCodecResponse extends BridgeResponse {
   text?: string;
   data?: string;
-  error?: string;
 }
 
 interface DecodePayload {
@@ -76,31 +69,19 @@ function getDecoder(charset: string): util.TextDecoder {
  * @param callback 回送结果的函数 (EntryAbility 注入 legado.textCodecCallback)
  */
 export function handleTextCodecRequest(requestJson: string, callback: TextCodecCallback): void {
-  let req: TextCodecBridgeRequest;
-  try {
-    req = JSON.parse(requestJson) as TextCodecBridgeRequest;
-  } catch (e) {
-    console.error('[TextCodecBridge] parse request failed: ' + requestJson);
-    return;
-  }
+  dispatchBridgeRequestSync(requestJson, 'TextCodecBridge', handleAction, callback);
+}
 
-  let resp: TextCodecResponse;
-  try {
-    switch (req.action) {
-      case 'decode':
-        resp = handleDecode(req.payload);
-        break;
-      case 'encode':
-        resp = handleEncode(req.payload);
-        break;
-      default:
-        resp = { ok: false, error: 'unknown action: ' + req.action };
-    }
-  } catch (e) {
-    const err = e as Error;
-    resp = { ok: false, error: err.message ?? String(e) };
+// 根据 action 分发到具体处理函数 (同步; 异常由 dispatchBridgeRequestSync 统一捕获回送)
+function handleAction(req: BridgeRequest): TextCodecResponse {
+  switch (req.action) {
+    case 'decode':
+      return handleDecode(req.payload ?? '');
+    case 'encode':
+      return handleEncode(req.payload ?? '');
+    default:
+      return { ok: false, error: 'unknown action: ' + req.action };
   }
-  callback(req.requestId, JSON.stringify(resp));
 }
 
 // ===== decode: base64 → bytes → 按 charset 解码为字符串 =====

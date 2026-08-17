@@ -6,11 +6,10 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { taskpool } from '@kit.ArkTS';
 import webview from '@ohos.web.webview';
 import http from '@ohos.net.http';
-import buffer from '@ohos.buffer';
 import promptAction from '@ohos.promptAction';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
-import { abilityAccessCtrl, common } from '@kit.AbilityKit';
+import { common } from '@kit.AbilityKit';
 import legado from 'liblegado_napi.so';
 import { initWebViewBridge, handlePageEnd, handleErrorReceive, handleInterceptRequest } from '../bridge/WebViewBridgeHandler';
 import {
@@ -27,6 +26,8 @@ import {
 } from '../bridge/MarkdownBridgeHandler';
 import { initKeyboardBridge } from '../bridge/KeyboardBridgeHandler';
 import { setVideoSurfaceId } from '../bridge/MediaBridgeHandler';
+import { ensurePermissionGranted } from '../bridge/PermissionBridgeHandler';
+import { base64ToArrayBuffer } from '../bridge/BridgeCodec';
 // taskpool 任务函数须放在无 ArkUI 顶层状态的独立模块 (worker VM 会重执行宿主模块顶层)
 import { loadImageBytesTask } from '../task/ImageDownloadTask';
 
@@ -304,18 +305,9 @@ struct Index {
       }
 
       // 2. 权限检查 + 运行时申请 (user_grant 权限, module.json5 已声明)
+      //    复用 PermissionBridgeHandler 导出的能力 (与本桥 check/request 两个 action 等价)
       const context = getContext(this) as common.UIAbilityContext;
-      const atManager = abilityAccessCtrl.createAtManager();
-      let granted = await atManager.checkAccessToken(
-        context.applicationInfo.accessTokenId, 'ohos.permission.WRITE_IMAGEVIDEO'
-      ) === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED;
-      if (!granted) {
-        const result = await atManager.requestPermissionsFromUser(
-          context, ['ohos.permission.WRITE_IMAGEVIDEO']
-        );
-        granted = result.authResults.length > 0 &&
-          result.authResults[0] === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED;
-      }
+      const granted = await ensurePermissionGranted(context, 'ohos.permission.WRITE_IMAGEVIDEO');
       if (!granted) {
         promptAction.showToast({ message: '保存图片失败: 未授予相册权限', duration: 2000 });
         return;
@@ -346,11 +338,8 @@ struct Index {
     try {
       const b64 = await taskpool.execute(new taskpool.Task(loadImageBytesTask, src)) as string;
       if (b64 != null && b64.length > 0) {
-        const buf = buffer.from(b64, 'base64');
-        // @ohos.buffer.Buffer 的字节数是 length (无 byteLength), 且可能只是底层 ArrayBuffer 的一段
-        const ab = new ArrayBuffer(buf.length);
-        const view = new Uint8Array(ab);
-        view.set(new Uint8Array(buf.buffer, buf.byteOffset, buf.length));
+        // base64 → 独立 ArrayBuffer (复制语义/池化视图偏移注意点见 BridgeCodec)
+        const ab = base64ToArrayBuffer(b64);
         if (ab.byteLength > 0) {
           console.info('[LegadoCompose] image downloaded via K/N pipeline, bytes=' + ab.byteLength);
           return ab;

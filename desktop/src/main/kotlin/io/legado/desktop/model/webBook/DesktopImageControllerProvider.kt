@@ -4,6 +4,7 @@ import io.legado.app.api.controller.ImageControllerProvider
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.help.book.BookImageStorage
 import io.legado.app.help.book.BookImageStorageProviders
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.utils.File
@@ -44,14 +45,7 @@ object DesktopImageControllerProvider : ImageControllerProvider {
                 this.book = it; this.bookUrl = bookUrl
             }
             ?: return@runCatching null
-        val storage = BookImageStorageProviders.get()
-        // 路径仅由 book+url 派生, chapter 只参与签名, 占位即可
-        val chapter = BookChapter(url = src, bookUrl = bookUrl)
-        var path = storage.getImagePath(book, chapter, src)
-        if (path == null) {
-            runBlocking { storage.saveImages(book, chapter, listOf(src)) }
-            path = storage.getImagePath(book, chapter, src)
-        }
+        val path = runBlocking { BookImageStorageProviders.get().imagePathOrSave(book, src) }
         val bytes = path?.let { File(it).takeIf(File::exists)?.readBytes() }
             ?: return@runCatching null
         scaleToWidth(bytes, width)
@@ -91,4 +85,25 @@ object DesktopImageControllerProvider : ImageControllerProvider {
             null
         }
     }
+}
+
+/**
+ * 图片缓存占位章节: 路径仅由 book+url 派生, chapter 只参与签名, 占位即可。
+ * webBook 图片缓存 (上方 getImg) 与 PDF 页渲染缓存 (model/fileBook/DesktopPdfFile) 共用。
+ */
+internal fun placeholderImageChapter(url: String, bookUrl: String): BookChapter =
+    BookChapter(url = url, bookUrl = bookUrl)
+
+/**
+ * 查图片缓存路径, 未命中先落盘再查一次 (webBook getImg 模式):
+ * [BookImageStorage.saveImages] 按源 url 拉取并写入缓存, 二次查询命中即得路径。
+ */
+private suspend fun BookImageStorage.imagePathOrSave(book: Book, url: String): String? {
+    val chapter = placeholderImageChapter(url, book.bookUrl)
+    var path = getImagePath(book, chapter, url)
+    if (path == null) {
+        saveImages(book, chapter, listOf(url))
+        path = getImagePath(book, chapter, url)
+    }
+    return path
 }

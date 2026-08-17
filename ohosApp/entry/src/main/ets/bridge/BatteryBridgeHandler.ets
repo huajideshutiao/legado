@@ -1,4 +1,5 @@
 import batteryInfo from '@ohos.batteryInfo';
+import { BridgeRequest, BridgeResponse, dispatchBridgeRequestSync } from './BridgeDispatch';
 
 /**
  * ArkTS 侧电池电量处理器 (桥接 @ohos.batteryInfo)。
@@ -30,15 +31,8 @@ import batteryInfo from '@ohos.batteryInfo';
 // 由 EntryAbility 注入的结果回送函数类型 (内部调 legado.batteryCallback)
 export type BatteryCallback = (requestId: number, resultJson: string) => void;
 
-interface BatteryBridgeRequest {
-  requestId: number;
-  action: string;
-}
-
-interface BatteryResponse {
-  ok: boolean;
+interface BatteryResponse extends BridgeResponse {
   level?: number;
-  error?: string;
 }
 
 /**
@@ -48,28 +42,20 @@ interface BatteryResponse {
  * @param callback 回送结果的函数 (EntryAbility 注入 legado.batteryCallback)
  */
 export function handleBatteryRequest(requestJson: string, callback: BatteryCallback): void {
-  let req: BatteryBridgeRequest;
-  try {
-    req = JSON.parse(requestJson) as BatteryBridgeRequest;
-  } catch (e) {
-    console.error('[BatteryBridge] parse request failed: ' + requestJson);
-    return;
-  }
+  dispatchBridgeRequestSync(requestJson, 'BatteryBridge', handleAction, callback);
+}
 
+// 根据 action 分发 (仅 getLevel; 读电量失败需带专属日志, 异常在 action 内自行捕获)
+function handleAction(req: BridgeRequest): BatteryResponse {
   if (req.action !== 'getLevel') {
-    const resp: BatteryResponse = { ok: false, error: 'unknown action: ' + req.action };
-    callback(req.requestId, JSON.stringify(resp));
-    return;
+    return { ok: false, error: 'unknown action: ' + req.action };
   }
-
   try {
     // batterySOC: 当前电池电量百分比 (0-100); 不支持充电状态时可能返回 -1, 由 Kotlin 侧兜底不显示
     const level = batteryInfo.batterySOC;
-    const resp: BatteryResponse = { ok: true, level: level };
-    callback(req.requestId, JSON.stringify(resp));
+    return { ok: true, level: level };
   } catch (e) {
     console.error('[BatteryBridge] read battery level failed: ' + JSON.stringify(e));
-    const resp: BatteryResponse = { ok: false, error: (e as Error).message ?? String(e) };
-    callback(req.requestId, JSON.stringify(resp));
+    return { ok: false, error: (e as Error).message ?? String(e) };
   }
 }
