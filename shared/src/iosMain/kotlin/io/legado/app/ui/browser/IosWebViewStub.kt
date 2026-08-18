@@ -16,6 +16,7 @@ import platform.Foundation.NSNumber
 import platform.Foundation.NSURL
 import platform.WebKit.WKNavigation
 import platform.WebKit.WKNavigationDelegateProtocol
+import platform.WebKit.WKUIDelegateProtocol
 import platform.WebKit.WKWebView
 import platform.WebKit.WKWebViewConfiguration
 import platform.darwin.NSObject
@@ -45,10 +46,13 @@ fun IosWebViewSlot(
     val webView = remember {
         WKWebView(CGRectMake(0.0, 0.0, 0.0, 0.0), WKWebViewConfiguration())
     }
-    val navDelegate = remember { WebViewNavDelegate(callbacks) }
+    val navDelegate = remember { WebViewNavDelegate(callbacks) { config } }
+    // WKWebView.UIDelegate 同为 weak, 一并 remember 持强引用
+    val uiDelegate = remember { WebViewUiDelegate(callbacks) }
 
     SideEffect {
         webView.navigationDelegate = navDelegate
+        webView.UIDelegate = uiDelegate
         callbacks.host = WebViewHostImpl(webView)
     }
 
@@ -88,15 +92,21 @@ private const val HTML_LOADED_TAG = 1L
 /**
  * WKNavigationDelegate: 仅监听 didFinish, 取 WKHTTPCookieStore cookie 同步到业务层 store,
  * 并回调 [WebViewCallbacks.onPageFinished]。
+ *
+ * cookie 写入与 Android 端对齐原版 WebViewActivity: 用 setCookie 覆写 (cookie 串是页面加载后的
+ * 权威快照, replaceCookie 的合并会把服务端刚清掉的旧值并回去); [WebViewConfig.isLogin] 时再按
+ * 书源 key 写一份, 供 OkHttp 复用登录态。
  */
 private class WebViewNavDelegate(
     private val callbacks: WebViewCallbacks,
+    private val config: () -> WebViewConfig,
 ) : NSObject(), WKNavigationDelegateProtocol {
     override fun webView(
         webView: WKWebView,
         didFinishNavigation: WKNavigation?,
     ) {
         val url = webView.URL?.absoluteString ?: return
+        val cfg = config()
         val store = webView.configuration.websiteDataStore.httpCookieStore
         store.getAllCookies { cookies ->
             // 拼接 "k=v; k=v" 形式 (对照 Android CookieManager.getCookie 输出格式)
@@ -105,12 +115,27 @@ private class WebViewNavDelegate(
                 "${cookie.name}=${cookie.value}"
             }
             if (cookieString.isNotBlank()) {
-                CookieStoreProviders.get()?.replaceCookie(url, cookieString)
+                CookieStoreProviders.get()?.setCookie(url, cookieString)
+                if (cfg.isLogin) {
+                    CookieStoreProviders.get()?.setCookie(cfg.sourceKey, cookieString)
+                }
             }
         }
         callbacks.onPageFinished?.invoke(url)
         // 页面 URL 状态同步 (页面内跳转后菜单取最新链接)
         callbacks.onUrlChanged?.invoke(url)
+    }
+}
+
+/**
+ * WKUIDelegate: 网页 `window.close()` → [WebViewCallbacks.onCloseWindow]
+ * (对照 Android CommonWebChromeClient.onCloseWindow; 未接线时不做任何事, 等价 super)。
+ */
+private class WebViewUiDelegate(
+    private val callbacks: WebViewCallbacks,
+) : NSObject(), WKUIDelegateProtocol {
+    override fun webViewDidClose(webView: WKWebView) {
+        callbacks.onCloseWindow?.invoke()
     }
 }
 

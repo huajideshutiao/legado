@@ -178,6 +178,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 import org.jsoup.Jsoup
+import org.openani.mediamp.mpv.MPVHandle
 import org.openani.mediamp.mpv.MpvMediampPlayer
 import java.awt.Desktop
 import java.io.File
@@ -249,6 +250,15 @@ fun main(args: Array<String>) {
         runCatching { MpvMediampPlayer.prepareLibraries() }
             .onFailure { AppLog.put("mediamp mpv natives 预解包失败: ${it.message}", it) }
     }
+    // mpv 日志接入 AppLog: 播放失败时 mediamp 只给出 mpv_error 码 (如 -13
+    // MPV_ERROR_LOADING_FAILED), 拿不到 mpv 自己那行原因 (HTTP 状态 / Failed to recognize
+    // file format / 解码器缺失)。sink 汇总 mpv 事件、JNI 层与 mediamp Kotlin 三处日志,
+    // 只收 error 级 (mpv 的级数越小越严重), 免得把 verbose 灌进日志界面。
+    runCatching {
+        MPVHandle.setLogHandler { msg ->
+            if (msg.isError) AppLog.put("mpv: $msg")
+        }
+    }.onFailure { AppLog.put("mpv 日志接入失败: ${it.message}", it) }
     // 重启场景: 先等旧进程退出 (旧进程退出时 shutdown hook 才释放单实例锁),
     // 避免新进程把启动参数转发给正在退出的旧进程后自杀 (表现为“应用直接消失”)
     val effectiveArgs = waitForOldProcessIfRestart(args)

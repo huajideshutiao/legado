@@ -16,6 +16,7 @@ import io.legado.app.model.AudioPlayCommander
 import io.legado.app.model.AudioPlayCommanders
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.model.ReadTimeRecorder
+import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.model.audio.AudioPlayManager
 import io.legado.app.model.audio.AudioPlayManagerListener
 import io.legado.app.ui.compose.platform.jvmGetString
@@ -24,6 +25,7 @@ import io.legado.desktop.help.tts.DesktopReadAloudHost
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
@@ -85,12 +87,25 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge, AudioP
     /** 播放器错误后是否已自动重试过一次 (onReady 时重置) */
     private val hasRefreshedOnPlayError = AtomicBoolean(false)
 
+    /**
+     * 本轮起播是否已处理过错误 (triggerPlay 开新一轮时复位, onReady 时复位)。
+     *
+     * mediamp 对同一次 open 失败会同时 commit MediaStatus.Error **并** 让 setMediaData 抛出
+     * (AbstractMediampPlayer.runOpen: errorEntry(error) 与 completion.completeExceptionally(error)
+     * 用的是同一个 PlaybackException), [DesktopAudioPlayer] 两条都接, 于是一次失败来两次
+     * onError。没有本闩时第一次被 [hasRefreshedOnPlayError] 吃成静默重试, 第二次直接落到
+     * 报错分支 (toast + Status.STOP) —— 表现为"报错了但播放照旧"(静默重试其实已经成功)。
+     * app 原版 ExoPlayer 的 onPlayerError 一次失败只回调一次, 首错必然静默, 本闩用于对齐。
+     */
+    private val errorRoundHandled = AtomicBoolean(false)
+
     init {
         // 注册 player 回调, 桥接到 AudioPlayShared 状态 + EventBus
         player.listener = object : DesktopAudioPlayer.Listener {
             override fun onReady(durationMs: Long) {
                 // 就绪: 重置重试标志; duration 未知 (-1) 时守卫, 避免写坏 chapter.end
                 hasRefreshedOnPlayError.set(false)
+                errorRoundHandled.set(false)
                 if (durationMs > 0) {
                     postEvent(EventBus.AUDIO_SIZE, durationMs.toInt())
                     AudioPlayShared.saveDurChapter(durationMs)
@@ -131,6 +146,8 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge, AudioP
             }
 
             override fun onError(message: String?) {
+                // 同一次失败的重复上报 (见 errorRoundHandled) 直接丢弃, 保证一轮只处理一次
+                if (!errorRoundHandled.compareAndSet(false, true)) return
                 // 首次错误静默 refreshChapter 重试; 第二次才 STOP+日志+toast
                 if (hasRefreshedOnPlayError.compareAndSet(false, true)) {
                     manager.refreshChapter()
@@ -158,29 +175,12 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge, AudioP
 
     override fun play() {
         ensureRunning()
-        scope.launch {
-            // triggerPlay 异常时收掉 LOADING (prepare 卡死由播放器层超时兜底)
-            runCatching { triggerPlay(playNew = false) }.onFailure {
-                AppLog.put("桌面音频播放启动失败", it)
-                postEvent(EventBus.AUDIO_LOADING, false)
-                AudioPlayShared.status = Status.STOP
-                postEvent(EventBus.AUDIO_STATE, Status.STOP)
-                syncSmtc(stopped = true)
-            }
-        }
+        scope.launch { runTriggerPlay(playNew = false) }
     }
 
     override fun playNew() {
         ensureRunning()
-        scope.launch {
-            runCatching { triggerPlay(playNew = true) }.onFailure {
-                AppLog.put("桌面音频播放启动失败", it)
-                postEvent(EventBus.AUDIO_LOADING, false)
-                AudioPlayShared.status = Status.STOP
-                postEvent(EventBus.AUDIO_STATE, Status.STOP)
-                syncSmtc(stopped = true)
-            }
-        }
+        scope.launch { runTriggerPlay(playNew = true) }
     }
 
     override fun stop() {
@@ -291,7 +291,7 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge, AudioP
     // ===== AudioPlayManagerListener (shared manager 的平台副作用回调) =====
 
     override fun onTriggerPlay(playNew: Boolean) {
-        scope.launch { triggerPlay(playNew) }
+        scope.launch { runTriggerPlay(playNew) }
     }
 
     override fun onLoadCover(url: String?) {
@@ -338,10 +338,27 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge, AudioP
     }
 
     /**
+     * [triggerPlay] 的统一入口 (play / playNew / onTriggerPlay 三个调用点共用)。
+     *
+     * 异常时收掉 LOADING 并回落 STOP (对照原版 `AudioPlayService.play` 的 execute{}.onError),
+     * prepare 卡死另由播放器层超时兜底。直链解析会走书源 `<js>` 求值/网络, 必抛;
+     * scope 是 SupervisorJob, 不兜住的话异常只打到 stderr, UI 转圈收不掉。
+     */
+    private suspend fun runTriggerPlay(playNew: Boolean) {
+        runCatching { triggerPlay(playNew) }.onFailure {
+            AppLog.put("桌面音频播放启动失败", it)
+            postEvent(EventBus.AUDIO_LOADING, false)
+            AudioPlayShared.status = Status.STOP
+            postEvent(EventBus.AUDIO_STATE, Status.STOP)
+            syncSmtc(stopped = true)
+        }
+    }
+
+    /**
      * 已有 durPlayUrl 时启动播放 (shared manager 加载完成后经 [onTriggerPlay] 回调进入;
      * play/playNew 命令在 url 为空时兜底走 [AudioPlayManager.loadPlayUrl] 补齐资源)。
      */
-    private fun triggerPlay(playNew: Boolean) {
+    private suspend fun triggerPlay(playNew: Boolean) {
         val playUrl = AudioPlayShared.durPlayUrl
         if (playUrl.isEmpty()) {
             manager.loadPlayUrl()
@@ -351,6 +368,9 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge, AudioP
         player.stop()
         manager.cancelProgressJobs()
         paused = false
+        // 新一轮起播: 本轮错误处理闩复位 (跨轮的 hasRefreshedOnPlayError 只由 onReady 复位,
+        // 即"静默重试一次"的机会按播放成功计, 与 app 端一致)
+        errorRoundHandled.set(false)
         val startPos = if (playNew) 0 else AudioPlayShared.book?.durChapterPos ?: 0
         currentUrl = playUrl
         // 先置 LOADING 再准备, prepare 完成 (onReady) 后 seekTo 起始位置
@@ -359,7 +379,18 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge, AudioP
         postEvent(EventBus.AUDIO_STATE, Status.LOADING)
         syncSmtc()
         pendingStartPos = startPos
-        player.setUrl(playUrl, emptyMap())
+        // 直链解析 (对照原版 AudioPlayService.play 的 AnalyzeUrl(...).getMediaItem()):
+        // 必须经 AnalyzeUrl 才能拆掉 legado 的 `url,{options}` 后缀并拿到 UA/Referer/Cookie,
+        // 裸喂 mpv 会 MPV_ERROR_LOADING_FAILED(-13)。经工厂创建以获得 desktop 平台子类
+        // (DesktopAnalyzeUrl) 的完整 JS 扩展面, url 内 `<js>` 才能调 java.createSymmetricCrypto 等
+        val (mediaUrl, headers) = AnalyzeUrlFactories.create(
+            rawUrl = playUrl,
+            source = AudioPlayShared.bookSource,
+            ruleData = AudioPlayShared.book,
+            chapter = AudioPlayShared.durChapter,
+            coroutineContext = currentCoroutineContext(),
+        ).resolveMedia()
+        player.setUrl(mediaUrl, headers)
         player.prepare()
     }
 

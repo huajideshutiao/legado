@@ -2,6 +2,7 @@ package io.legado.app.ui.browser
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.util.AttributeSet
@@ -46,6 +47,7 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.model.Download
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.root.OrientationPolicy
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.utils.DocumentUtils
 import io.legado.app.utils.EscapeUtils
@@ -101,6 +103,8 @@ fun AndroidWebView(
     // 组合路径导致整页(含顶栏)延迟渲染。页面先渲染(顶栏立即可见), WebView 就绪后加入容器。
     var webViewInstance by remember { mutableStateOf<VisibleWebView?>(null) }
     val callbacksRef by rememberUpdatedState(callbacks)
+    // 供 WebViewClient 读最新 isLogin/sourceKey (客户端只在首帧创建一次, 不能捕获首帧 config)
+    val configRef by rememberUpdatedState(config)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     // WebView 默认纯白底, 页面/预取完成前会白屏刺眼; 对齐主题底色 (原版 activity_web_view 内容区
@@ -172,6 +176,12 @@ fun AndroidWebView(
 
     // 应用加载配置 (原 factory+update 的 loadUrl 逻辑; tag 判等避免无关重组触发重复加载)
     fun applyWebViewConfig(web: WebView, config: WebViewConfig) {
+        // 原 WebViewActivity.initWebView 与 UA 同处设置的视口项 (原 ReadRssActivity 不设,
+        // 故按 config 开关而非塞进 applyCommonSettings); 幂等, 重复设置无副作用
+        if (config.wideViewPort) {
+            web.settings.useWideViewPort = true
+            web.settings.loadWithOverviewMode = true
+        }
         config.headerMap[AppConst.UA_NAME]?.let { web.settings.userAgentString = it }
         // tag 持最终加载 url, html 模式与 loadUrl 模式互斥同源
         val loadUrl = if (config.html.isNullOrEmpty()) config.url else ""
@@ -234,7 +244,7 @@ fun AndroidWebView(
         val web = VisibleWebView(context).apply {
             setBackgroundColor(webViewBgColor)
             applyCommonSettings(settings)
-            webViewClient = AndroidWebViewClient(callbacksRef)
+            webViewClient = AndroidWebViewClient(callbacksRef) { configRef }
             webChromeClient = object : WebChromeClient() {
                 override fun onReceivedTitle(view: WebView?, title: String?) {
                     super.onReceivedTitle(view, title)
@@ -251,15 +261,36 @@ fun AndroidWebView(
                     view: View?,
                     callback: CustomViewCallback?,
                 ) {
+                    // 对照原 CommonWebChromeClient.onShowCustomView: 方向解锁为 SENSOR、
+                    // 屏幕常亮、隐藏系统栏; llView.invisible() 对应上报全屏态后由
+                    // WebViewScreen 隐藏顶栏/进度条
+                    PlatformServiceProviders.getOrNull()?.window?.let { window ->
+                        window.setOrientation(OrientationPolicy.Sensor)
+                        window.setKeepScreenOn(true)
+                        window.setFullscreen(true)
+                    }
                     customView = view
                     customViewCallback = callback
                     callbacksRef.onFullScreenChanged?.invoke(true)
                 }
 
                 override fun onHideCustomView() {
+                    // 对照原 CommonWebChromeClient.onHideCustomView: 方向复位、取消常亮、恢复系统栏
                     customView = null
                     customViewCallback = null
+                    PlatformServiceProviders.getOrNull()?.window?.let { window ->
+                        window.setOrientation(OrientationPolicy.Unspecified)
+                        window.setKeepScreenOn(false)
+                        window.setFullscreen(false)
+                    }
                     callbacksRef.onFullScreenChanged?.invoke(false)
+                }
+
+                // 原 CommonWebChromeClient.onCloseWindow: 有回调走回调 (浏览器形态: 回传验证
+                // 结果并关闭), 无回调回退 super (原 ReadRssActivity 未传回调的行为)
+                override fun onCloseWindow(window: WebView?) {
+                    val handler = callbacksRef.onCloseWindow
+                    if (handler != null) handler() else super.onCloseWindow(window)
                 }
             }
             callbacksRef.host = WebViewHostImpl(this) {
@@ -289,12 +320,13 @@ fun AndroidWebView(
         webViewInstance = web
     }
 
-    // 页面离开组合: WebView 已创建但尚未加入容器时手动释放 (孤儿 View 防泄漏);
-    // 已加入容器的由 AndroidView 随容器销毁, 此处不重复 destroy。
+    // 页面离开组合: 释放 WebView (对照原 WebViewActivity.onDestroy 的无条件 webView.destroy())。
+    // AndroidView 释放只把 View 从容器摘掉, 不会调 destroy() —— Chromium 原生资源要自己放,
+    // 故先摘除再无条件 destroy (尚未入容器的孤儿 View 同样走这条)。
     DisposableEffect(Unit) {
         onDispose {
-            val web = webViewInstance
-            if (web != null && web.parent == null) {
+            webViewInstance?.let { web ->
+                (web.parent as? ViewGroup)?.removeView(web)
                 web.destroy()
             }
         }
@@ -392,11 +424,18 @@ private fun applyCookiesToWebView(url: String) {
 }
 
 /**
- * onPageFinished 同步 cookie 到业务层 store + 通知路由 (CF 检测/验证回传);
- * shouldOverrideUrlLoading 交路由拦截 (书源跳转 JS); SSL 错误一律放行 (对照原 BaseWebViewClient)。
+ * 对照原 WebViewActivity.CustomWebViewClient:
+ * - onPageStarted: isLogin 时把 WebView cookie 按书源 key 写回业务层 (登录态可复用);
+ * - onPageFinished: 按 url 写回 cookie, isLogin 时再按书源 key 写一份, 然后通知路由
+ *   (CF 检测/验证回传/menu_ok 的 checking 收尾);
+ * - shouldOverrideUrlLoading 交路由拦截 (书源跳转 JS); SSL 错误一律放行 (原 BaseWebViewClient)。
+ *
+ * cookie 写入用 setCookie (原版语义: 页面加载后 WebView 的 cookie 串是权威值, 直接覆写;
+ * 不用 replaceCookie 合并 —— 那会把服务端刚清掉的旧 cookie 又并回去)。
  */
 private class AndroidWebViewClient(
     private val callbacks: WebViewCallbacks,
+    private val config: () -> WebViewConfig,
 ) : WebViewClient() {
 
     override fun shouldOverrideUrlLoading(
@@ -417,16 +456,32 @@ private class AndroidWebViewClient(
         handler?.proceed()
     }
 
+    // 原 CustomWebViewClient.onPageStarted: 登录页在导航开始时就把 cookie 按书源 key 存一份
+    // (登录站常在跳转链中途下发 cookie, 只等 onPageFinished 会漏)
+    override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+        super.onPageStarted(view, url, favicon)
+        val cfg = config()
+        if (cfg.isLogin) {
+            CookieManager.getInstance().getCookie(url)?.let { cookie ->
+                CookieStoreProviders.get()?.setCookie(cfg.sourceKey, cookie)
+            }
+        }
+    }
+
     override fun onPageFinished(view: WebView?, url: String?) {
         super.onPageFinished(view, url)
-        url ?: return
-        val webCookie = CookieManager.getInstance().getCookie(url)
-        if (!webCookie.isNullOrEmpty()) {
-            CookieStoreProviders.get()?.replaceCookie(url, webCookie)
+        val cfg = config()
+        url?.let {
+            val webCookie = CookieManager.getInstance().getCookie(it)
+            CookieStoreProviders.get()?.setCookie(it, webCookie)
+            if (cfg.isLogin) {
+                CookieStoreProviders.get()?.setCookie(cfg.sourceKey, webCookie)
+            }
         }
+        // 原版 onPageFinished 里 `if (checking) finish()` 不受 url 是否为空影响, 故无条件通知
         callbacks.onPageFinished?.invoke(url)
         // 页面 URL 状态同步 (页面内跳转后菜单取最新链接)
-        callbacks.onUrlChanged?.invoke(url)
+        url?.let { callbacks.onUrlChanged?.invoke(it) }
     }
 }
 

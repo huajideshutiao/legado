@@ -539,6 +539,20 @@ open class AnalyzeUrlCore(
     }
 
     /**
+     * 解析媒体直链: setCookie 后取真实 url + 请求头 (对应 app 端 `AnalyzeUrl.getMediaItem`)。
+     *
+     * 播放器只认裸 url, 故必须经本方法而非直接用 rawUrl —— 后者可能带 legado 的
+     * `url,{options}` 后缀 (已由 initUrl 拆成 [url] + [headerMap])。
+     * cookieJar 伪头只对 OkHttp 拦截器有意义, 直喂播放器会被当真请求头发出, 故剔除。
+     */
+    fun resolveMedia(): Pair<String, Map<String, String>> {
+        setCookie()
+        val headers = LinkedHashMap(headerMap)
+        headers.remove(cookieJarHeader)
+        return url to headers
+    }
+
+    /**
      * 保存cookieJar中的cookie在访问结束时就保存,不等到下次访问
      */
     private fun saveCookie() {

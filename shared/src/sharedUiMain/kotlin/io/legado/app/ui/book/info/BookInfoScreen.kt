@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -976,23 +975,21 @@ private fun IntroRichText(part: IntroTextPart, onAction: (String) -> Unit) {
             }
         }
     }
-    // 复刻 IntroButtonSpan: 文本尺寸 + 14dp×10dp 内边距的行内胶囊
+    // 行内胶囊: 有意偏离原版 IntroButtonSpan(14×10), 与分类标签 item_fillet_text(16×12) 视觉统一;
+    // 占位尺寸 = 文本 + 默认 contentPadding(16×12)×2, 背景/按压/文字统一走共享 AppFilletTextButton
     val inline = mutableMapOf<String, InlineTextContent>()
     part.chunks.forEachIndexed { i, chunk ->
         if (chunk !is ButtonChunk) return@forEachIndexed
         val layout = textMeasurer.measure(AnnotatedString(chunk.label), TextStyle(fontSize = 14.sp))
-        val w = with(density) { (layout.size.width + 28.dp.toPx()).toSp() }
-        val h = with(density) { (layout.size.height + 20.dp.toPx()).toSp() }
+        val w = with(density) { (layout.size.width + 32.dp.toPx()).toSp() }
+        val h = with(density) { (layout.size.height + 24.dp.toPx()).toSp() }
         inline["btn$i"] = InlineTextContent(
             Placeholder(w, h, PlaceholderVerticalAlign.TextCenter),
         ) {
             DisableSelection {
-                // 复刻 IntroButtonSpan: 14×10 外缘内边距 (含 4dp inset) 的行内胶囊,
-                // 背景/按压/文字统一走共享 AppFilletTextButton
                 AppFilletTextButton(
                     text = chunk.label,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                     onClick = { onAction(chunk.action) },
                 )
             }

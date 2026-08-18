@@ -410,6 +410,7 @@ internal object DesktopTaskbarDwm {
     /** 播放/暂停/加载状态图标 (自绘, 避免 Unicode 字形跨字体缺失)。
      * 操作语义 (对照 ThumbBar toggle 按钮): 播放中显示“暂停”双竖杠 (点击即暂停),
      * 暂停/停止显示“播放”三角 (点击即播放)。
+     * [y] 为图标带顶边 (高 [barSize]), 两种形态共用同一中线。
      * [barSize] 双竖条 1.2 倍字号; [triangleSize] 三角 0.7 倍字号 (有意小于双竖条, 给书名让位)。 */
     private fun drawStatusIcon(
         g: java.awt.Graphics2D,
@@ -430,10 +431,13 @@ internal object DesktopTaskbarDwm {
             }
 
             else -> {
-                // 暂停/停止: 实心三角形 (操作语义: 点击即播放)
+                // 暂停/停止: 实心三角形 (操作语义: 点击即播放)。
+                // 三角比双竖条矮 (0.7T vs 1.2T), 顶边对齐会高出书名中线 0.22T (贴左上角、
+                // 和文本不齐), 故在双竖条的纵向带内居中。
                 val s = triangleSize
+                val top = y + (barSize - s) / 2
                 val xs = intArrayOf(x, x + s, x)
-                val ys = intArrayOf(y, y + s / 2, y + s)
+                val ys = intArrayOf(top, top + s / 2, top + s)
                 g.fillPolygon(xs, ys, 3)
             }
         }

@@ -11,23 +11,26 @@ import androidx.compose.ui.text.style.TextAlign
 import io.legado.app.ui.compose.theme.AppTheme
 
 /**
- * WebView 加载配置 (对应原 app 端 WebViewModel 的 baseUrl/headerMap/html/saveResult 等状态)。
+ * WebView 加载配置 (对应原 app 端 WebViewModel 的 baseUrl/headerMap/html 等状态)。
  *
- * 由 [io.legado.app.ui.route.WebViewRoute] 按原 WebViewModel.initData 逻辑预取生成:
+ * 由 [WebViewScreen] 按原 WebViewModel.initData 逻辑预取生成:
  * - [headerMap]: 书源 header 注入 (loadUrl(url, headers)), 含 `,{...}` URL 级请求头;
  * - [html]: 非空时以 loadDataWithBaseURL 方式加载 (POST body 预拉 / data: 前缀解包 / 纯 HTML url);
- * - [saveResult] + [refetchAfterSuccess]: 源验证场景, 对应原 WebViewActivity 的
- *   sourceVerificationEnable/refetchAfterSuccess, 由 WebViewRoute 执行回传。
+ * - [isLogin] / [saveResult] / [sourceKey]: 源验证/登录场景 —— [isLogin] + [sourceKey] 驱动
+ *   cookie 按书源回写 (原 WebViewActivity 的 onPageStarted/onPageFinished 双写);
+ *   桌面端 slot 另用它们决定独立浏览器窗口的工具栏"确定"语义与 cookie 回写标签。
+ * - [wideViewPort]: 原 WebViewActivity.initWebView 的 `useWideViewPort + loadWithOverviewMode`
+ *   (认 `<meta viewport>` 并缩放适配)。原版只在浏览器/登录页设, `ReadRssActivity.initWebView`
+ *   只调 applyCommonSettings 不设, 故默认 false, 由浏览器形态显式打开。
  */
 data class WebViewConfig(
     val url: String,
     val headerMap: Map<String, String> = emptyMap(),
     val html: String? = null,
-    val title: String = "",
     val isLogin: Boolean = false,
     val saveResult: Boolean = false,
-    val refetchAfterSuccess: Boolean = true,
     val sourceKey: String = "",
+    val wideViewPort: Boolean = false,
 )
 
 /**
@@ -91,6 +94,16 @@ class WebViewCallbacks {
      * 注意: 平台实现会在 WebView 线程同步调用, 回调内不要做耗时 IO。
      */
     var shouldOverrideUrl: ((String) -> Boolean)? = null
+
+    /**
+     * 网页请求关闭窗口 (`window.close()`, 对照原 CommonWebChromeClient.onCloseWindow)。
+     *
+     * 原 WebViewActivity 给 CommonWebChromeClient 传了该回调: 验证场景先回传网页源码再关闭,
+     * 否则直接关闭 —— 验证/登录站点过关后常自己关窗收尾, 不接就永远等不到结果。
+     * 原 ReadRssActivity 未传该回调 (走 super 默认), 故只有浏览器形态接线; 为 null 时
+     * 平台实现须回退到 `super.onCloseWindow`。
+     */
+    var onCloseWindow: (() -> Unit)? = null
 }
 
 /**

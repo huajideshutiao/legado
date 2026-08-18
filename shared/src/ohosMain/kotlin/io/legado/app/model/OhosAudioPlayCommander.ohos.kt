@@ -15,12 +15,11 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.book.removeType
 import io.legado.app.help.http.KmpRequestBuilder
 import io.legado.app.help.http.OkHttpClientProviders
-import io.legado.app.help.http.cookieJarHeader
 import io.legado.app.help.media.SleepTimer
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.analyzeRule.AnalyzeRuleCore
 import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
-import io.legado.app.model.analyzeRule.AnalyzeUrlCore
+import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.model.audio.AudioPlayAnalyzeRuleFactory
 import io.legado.app.model.audio.AudioPlayController
 import io.legado.app.model.audio.AudioPlayControllerListener
@@ -248,14 +247,13 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
             if (!OhosNativeBridge.isMediaBridgeReady()) {
                 throw IllegalStateException("napi media 桥未就绪, 无法播放音频")
             }
-            val analyzeUrl = MediaAnalyzeUrl(
-                url,
-                AudioPlayShared.bookSource,
-                AudioPlayShared.book,
-                AudioPlayShared.durChapter,
-                currentCoroutineContext(),
-            )
-            val (mediaUrl, headers) = analyzeUrl.resolveMedia()
+            val (mediaUrl, headers) = AnalyzeUrlFactories.create(
+                rawUrl = url,
+                source = AudioPlayShared.bookSource,
+                ruleData = AudioPlayShared.book,
+                chapter = AudioPlayShared.durChapter,
+                coroutineContext = currentCoroutineContext(),
+            ).resolveMedia()
             resolvedUrl = mediaUrl
             resolvedHeaders = headers
             streamingFellBack = false
@@ -761,28 +759,6 @@ private class OhosAvAudioPlayController : AudioPlayController, OhosNativeBridge.
         val duration: Long? = null,
         val position: Long? = null,
     )
-}
-
-/** 解析播放直链: setCookie 后取 url + headers (对应 app 端 AnalyzeUrl.getMediaItem, 剔除 cookieJar 伪头) */
-private class MediaAnalyzeUrl(
-    rawUrl: String,
-    source: BookSource?,
-    ruleData: Book?,
-    chapter: BookChapter?,
-    coroutineContext: CoroutineContext,
-) : AnalyzeUrlCore(
-    rawUrl,
-    source = source,
-    ruleData = ruleData,
-    chapter = chapter,
-    coroutineContext = coroutineContext,
-) {
-    fun resolveMedia(): Pair<String, Map<String, String>> {
-        setCookie()
-        val headers = LinkedHashMap(headerMap)
-        headers.remove(cookieJarHeader)
-        return url to headers
-    }
 }
 
 /** [AudioPlayAnalyzeRuleFactory] 的鸿蒙实现: 经 [AnalyzeRuleFactories] 创建 (同 desktop) */

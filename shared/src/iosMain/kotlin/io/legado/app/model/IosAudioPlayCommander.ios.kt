@@ -11,13 +11,12 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.removeType
-import io.legado.app.help.http.cookieJarHeader
 import io.legado.app.help.media.AvPlayerItemStatusObserver
 import io.legado.app.help.media.SleepTimer
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.analyzeRule.AnalyzeRuleCore
 import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
-import io.legado.app.model.analyzeRule.AnalyzeUrlCore
+import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.model.audio.AudioPlayAnalyzeRuleFactory
 import io.legado.app.model.audio.AudioPlayController
 import io.legado.app.model.audio.AudioPlayControllerListener
@@ -230,14 +229,13 @@ class IosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
             // 起播/缓冲阶段转圈 (覆盖 resume 直播路径; URL 加载路径已由 manager 发 true)
             postEvent(EventBus.AUDIO_LOADING, true)
             manager.cancelProgressJobs()
-            val analyzeUrl = MediaAnalyzeUrl(
-                url,
-                AudioPlayShared.bookSource,
-                AudioPlayShared.book,
-                AudioPlayShared.durChapter,
-                currentCoroutineContext(),
-            )
-            val (mediaUrl, headers) = analyzeUrl.resolveMedia()
+            val (mediaUrl, headers) = AnalyzeUrlFactories.create(
+                rawUrl = url,
+                source = AudioPlayShared.bookSource,
+                ruleData = AudioPlayShared.book,
+                chapter = AudioPlayShared.durChapter,
+                coroutineContext = currentCoroutineContext(),
+            ).resolveMedia()
             controller.playWhenReady = true
             controller.setSource(mediaUrl, headers, position.toLong())
             controller.prepare()
@@ -579,28 +577,6 @@ private class IosAvAudioPlayController(
     private companion object {
         /** AVURLAsset options 的 HTTP headers key (非公开常量, 见 setSource 注释) */
         private const val AV_HTTP_HEADER_FIELDS_KEY = "AVURLAssetHTTPHeaderFieldsKey"
-    }
-}
-
-/** 解析播放直链: setCookie 后取 url + headers (对应 app 端 AnalyzeUrl.getMediaItem, 剔除 cookieJar 伪头) */
-private class MediaAnalyzeUrl(
-    rawUrl: String,
-    source: BookSource?,
-    ruleData: Book?,
-    chapter: BookChapter?,
-    coroutineContext: CoroutineContext,
-) : AnalyzeUrlCore(
-    rawUrl,
-    source = source,
-    ruleData = ruleData,
-    chapter = chapter,
-    coroutineContext = coroutineContext,
-) {
-    fun resolveMedia(): Pair<String, Map<String, String>> {
-        setCookie()
-        val headers = LinkedHashMap(headerMap)
-        headers.remove(cookieJarHeader)
-        return url to headers
     }
 }
 

@@ -234,6 +234,8 @@ internal fun SourceLoginOverlayContent(overlay: AppOverlay.Dialog, navigator: Ap
                             url = url,
                             isLogin = true,
                             sourceKey = state.source?.getKey() ?: "",
+                            // URL 登录在原版同样走 WebViewActivity, 故视口设置与浏览器一致
+                            wideViewPort = true,
                         ),
                         Modifier.fillMaxSize(),
                         WebViewCallbacks(),

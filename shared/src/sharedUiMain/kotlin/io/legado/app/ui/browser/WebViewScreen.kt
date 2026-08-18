@@ -30,6 +30,7 @@ import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -71,7 +72,7 @@ import kotlin.coroutines.coroutineContext
  *   主题底色占位 (弹层圆角内不能露白)。
  */
 @Composable
-fun WebViewScreen(
+internal fun WebViewScreen(
     spec: AppRoute.WebView,
     onClose: () -> Unit,
     fullScreen: Boolean,
@@ -188,8 +189,10 @@ fun WebViewScreen(
             }
         }
         callbacks.onReceivedTitle = { title ->
-            // 原版: 网页 title 非空且不等于 url 时才更新标题栏, 否则保留 intent title
-            acceptedPageTitle(title)?.let { pageTitle = it }
+            // 原版: 网页 title 非空且既不等于 url 也不等于 webView.url 时才更新标题栏,
+            // 否则回退到传入标题 (不保留上一页的标题)
+            pageTitle = acceptedPageTitle(title, callbacks.host?.getUrl() ?: pageUrl)
+                ?: spec.title
         }
         callbacks.onProgressChanged = { progress ->
             loadProgress = if (progress >= 100) null else progress
@@ -197,6 +200,11 @@ fun WebViewScreen(
         callbacks.onUrlChanged = { url -> pageUrl = url }
         callbacks.shouldOverrideUrl = { url -> interceptUrl(url) }
         callbacks.onFullScreenChanged = { full -> videoFullScreen = full }
+        // 原 WebViewActivity 传给 CommonWebChromeClient 的 onCloseWindow: 网页 window.close()
+        // 时验证场景先回传网页源码再关闭, 否则直接关闭
+        callbacks.onCloseWindow = {
+            if (spec.saveResult) saveVerificationResult() else onClose()
+        }
     }
 
     // 当前页 URL (原 menu_copy_url / menu_open_in_browser 取 webView.url ?: baseUrl):
@@ -232,8 +240,11 @@ fun WebViewScreen(
         }
     }
 
+    // 顶栏/进度条隐藏条件: 页面全屏 (原 menu_full_screen 的 supportActionBar.hide) 或
+    // HTML5 视频全屏 (原 CommonWebChromeClient.onShowCustomView 的 llView.invisible())
+    val hideChrome = fullScreen || videoFullScreen
     Column(Modifier.fillMaxSize()) {
-        if (!fullScreen) {
+        if (!hideChrome) {
             // 原 menu_ok isLogin 分支的 toast 文案 (Composable 内取值, 供 onClick 使用)
             val checkHostCookieText = stringResource(Res.string.check_host_cookie)
             WebViewTitleBar(
@@ -280,7 +291,7 @@ fun WebViewScreen(
         // 加载进度条 (原 RefreshProgressBar: 1dp, 预取中 indeterminate, 100 隐藏;
         // 预取阶段 loadState==null 时 WebView 尚未组合, 无进度回调 → indeterminate 常驻,
         // 对齐原版"加载即常驻")
-        if (!fullScreen && loadError == null) {
+        if (!hideChrome && loadError == null) {
             WebViewLoadingBar(indeterminate = loadState == null, progress = loadProgress)
         }
         Box(Modifier.fillMaxWidth().weight(1f).then(contentModifier)) {
@@ -301,11 +312,11 @@ fun WebViewScreen(
                             url = state.url,
                             headerMap = state.headerMap,
                             html = state.html,
-                            title = spec.title,
                             isLogin = spec.isLogin,
                             saveResult = spec.saveResult,
-                            refetchAfterSuccess = spec.refetchAfterSuccess,
                             sourceKey = spec.sourceKey,
+                            // 原 WebViewActivity.initWebView 设 useWideViewPort + loadWithOverviewMode
+                            wideViewPort = true,
                         ),
                         Modifier.fillMaxSize(),
                         callbacks,
@@ -373,4 +384,57 @@ private suspend fun prepareWebViewData(spec: AppRoute.WebView): WebViewLoadState
         html = analyzeUrl.getByteArrayAwait().decodeToString()
     }
     return WebViewLoadState(baseUrl, analyzeUrl.headerMap, html)
+}
+
+/**
+ * 网页 title 过滤 (原版 onReceivedTitle/onPageFinished: 非空且既不等于 [url] 也不是当前地址
+ * 才更新标题栏), 返回 null 表示本次 title 不采用, 由调用方回退到传入标题。
+ */
+private fun acceptedPageTitle(title: String?, url: String?): String? =
+    title?.takeIf { it.isNotBlank() && it != url }
+
+/**
+ * 返回链 (原 WebViewActivity 的 onBackPressed): 视频全屏先退出 → 网页可后退则后退 →
+ * 退出页面全屏 → 关闭浏览器。系统返回键与顶栏返回按钮共用。
+ */
+private fun webViewHandleBack(
+    host: WebViewHost?,
+    videoFullScreen: Boolean,
+    fullScreen: Boolean,
+    onExitFullScreen: () -> Unit,
+    onClose: () -> Unit,
+) {
+    when {
+        videoFullScreen -> host?.exitFullScreen()
+        // 原版守卫: canGoBack && history>1 (由平台 host 实现)
+        host != null && host.canGoBack() -> host.goBack()
+        fullScreen -> onExitFullScreen()
+        else -> onClose()
+    }
+}
+
+/** 禁用源 (原 menu_disable_source → viewModel.disableSource { finish() })。 */
+private fun CoroutineScope.disableWebViewSource(
+    sourceKey: String,
+    sourceType: Int,
+    onClosed: () -> Unit,
+) = launchSourceAction(onClosed) { SourceHelp.enableSource(sourceKey, sourceType, false) }
+
+/** 删除源 (原 menu_delete_source → viewModel.deleteSource { finish() })。 */
+private fun CoroutineScope.deleteWebViewSource(
+    sourceKey: String,
+    sourceType: Int,
+    onClosed: () -> Unit,
+) = launchSourceAction(onClosed) { SourceHelp.deleteSource(sourceKey, sourceType) }
+
+/** IO 线程改库, 成功后切主线程关闭浏览器 (原版两个动作都是 finish 收尾)。 */
+private fun CoroutineScope.launchSourceAction(
+    onClosed: () -> Unit,
+    action: suspend () -> Unit,
+) {
+    launch(IoDispatcher) {
+        runCatching { action() }.onSuccess {
+            withContext(Dispatchers.Main) { onClosed() }
+        }
+    }
 }
