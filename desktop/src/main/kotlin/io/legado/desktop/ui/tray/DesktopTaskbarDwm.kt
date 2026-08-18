@@ -337,18 +337,20 @@ internal object DesktopTaskbarDwm {
             // 状态图标 (▶/⏸/…)
             val iconX = textX
             val iconY = (h * 0.22f).toInt()
-            drawStatusIcon(g, iconX, iconY, (titleSize * 1.2f).toInt())
+            // 双竖条 1.2 倍字号; 三角形有意缩至 0.7 倍, 给书名让位
+            drawStatusIcon(g, iconX, iconY, (titleSize * 1.2f).toInt(), (titleSize * 0.7f).toInt())
 
             // 歌名 (状态图标右侧, 最多双行换行)
             g.font = Font("Microsoft YaHei UI", Font.BOLD, titleSize)
             g.color = Color.WHITE
-            val titleX = iconX + (titleSize * 1.6f).toInt()
+            // 与图标留 1.1 倍字号间距 (较原 1.6 倍左移约 0.5 字宽, 单行可完整容纳 6 个汉字)
+            val titleX = iconX + (titleSize * 1.1f).toInt()
             val titleLines = drawWrapped(
                 g,
                 cardTitle,
                 titleX,
                 iconY + titleSize,
-                textW - (titleSize * 1.6f).toInt(),
+                textW - (titleSize * 1.1f).toInt(),
                 (titleSize * 1.18f).toInt(),
                 2,
             )
@@ -407,13 +409,20 @@ internal object DesktopTaskbarDwm {
 
     /** 播放/暂停/加载状态图标 (自绘, 避免 Unicode 字形跨字体缺失)。
      * 操作语义 (对照 ThumbBar toggle 按钮): 播放中显示“暂停”双竖杠 (点击即暂停),
-     * 暂停/停止显示“播放”三角 (点击即播放)。 */
-    private fun drawStatusIcon(g: java.awt.Graphics2D, x: Int, y: Int, size: Int) {
-        val s = size
+     * 暂停/停止显示“播放”三角 (点击即播放)。
+     * [barSize] 双竖条 1.2 倍字号; [triangleSize] 三角 0.7 倍字号 (有意小于双竖条, 给书名让位)。 */
+    private fun drawStatusIcon(
+        g: java.awt.Graphics2D,
+        x: Int,
+        y: Int,
+        barSize: Int,
+        triangleSize: Int,
+    ) {
         g.color = Color.WHITE
         when {
             cardPlaying -> {
                 // 播放中: 双竖条 (操作语义: 点击即暂停)
+                val s = barSize
                 val barW = (s * 0.28f).toInt().coerceAtLeast(2)
                 val gap = (s * 0.12f).toInt().coerceAtLeast(2)
                 g.fillRoundRect(x, y, barW, s, barW, barW)
@@ -422,6 +431,7 @@ internal object DesktopTaskbarDwm {
 
             else -> {
                 // 暂停/停止: 实心三角形 (操作语义: 点击即播放)
+                val s = triangleSize
                 val xs = intArrayOf(x, x + s, x)
                 val ys = intArrayOf(y, y + s / 2, y + s)
                 g.fillPolygon(xs, ys, 3)

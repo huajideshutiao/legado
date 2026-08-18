@@ -62,7 +62,7 @@ import kotlin.math.min
  * 与 ContentProcessor.getContent (重 Android 依赖) 留 app 端; SourceConfig 评分 3 方法已下沉
  * (走 PreferenceProviders), 仍经 platform 注入保持聚合一致; toastOnUi Context 专属。
  *
- * 设计: 组合委托 (参考 [TocViewModelShared]); app 端 ChangeChapterSourceViewModel 继承
+ * 设计: 组合委托; app 端 ChangeChapterSourceViewModel 继承
  * ChangeBookSourceViewModel 覆盖 initData, 本类不接收 Bundle——app 端保留原签名解析后
  * 转发 (name/author/fromReadBookActivity/oldBook), 子类签名不变。
  *

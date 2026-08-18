@@ -118,32 +118,25 @@ object VerificationUiProviderImpl : VerificationUiProvider {
         asBottomSheet: Boolean,
     ) {
         val navigator = AppNavigatorProviders.getOrNull() ?: return
+        // 半屏与全屏共用同一个参数包: 两形态跑的是同一段实现 (WebViewScreen), 参数一份
+        // 才谈得上行为一致 —— 书源 headerMap 预取、跳转拦截、验证回传全部同源。
+        // (对照原 WebViewActivity 的 intent extras)
+        val spec = AppRoute.WebView(
+            url = url,
+            title = title,
+            sourceKey = source.getKey(),
+            sourceName = source.getTag(),
+            sourceType = source.getSourceType(),
+            saveResult = saveResult ?: false,
+            refetchAfterSuccess = refetchAfterSuccess ?: true,
+        )
         if (asBottomSheet) {
             // BottomSheet 半屏方式打开 (对照 JsActivity BottomSheetDialog peekHeight=60%)
-            // 携带书源信息以提供禁用源/删除源菜单项 (对照非半屏分支传 sourceKey/sourceName/sourceType)
             navigator.showOverlay(
-                AppOverlay.Sheet(
-                    key = "web_view",
-                    payload = url,
-                    sourceKey = source.getKey(),
-                    sourceName = source.getTag(),
-                    sourceType = source.getSourceType(),
-                )
+                AppOverlay.Sheet(key = "web_view", payload = url, webView = spec)
             )
         } else {
-            // 对照原 WebViewActivity 的 intent extras: 验证回传参数 (saveResult/refetchAfterSuccess)
-            // 与书源信息 (headerMap 注入用) 全量传入路由
-            navigator.push(
-                AppRoute.WebView(
-                    url = url,
-                    title = title,
-                    sourceKey = source.getKey(),
-                    sourceName = source.getTag(),
-                    sourceType = source.getSourceType(),
-                    saveResult = saveResult ?: false,
-                    refetchAfterSuccess = refetchAfterSuccess ?: true,
-                )
-            )
+            navigator.push(spec)
         }
     }
 }

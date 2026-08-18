@@ -53,11 +53,12 @@ sealed interface AppOverlay {
         override val key: String,
         val payload: String? = null,
         val dismissOnBack: Boolean = true,
-        // 书源身份 (书源 URL, 可空): 半屏 WebView (startBrowser asBottomSheet=true) 需携带
-        // 书源信息以提供禁用源/删除源菜单项; 与 Dialog.sourceOrigin 同方案, 默认值保证旧快照兼容
-        val sourceKey: String = "",
-        val sourceName: String = "",
-        val sourceType: Int = 0,
+        // "web_view" 半屏浏览器 (startBrowser asBottomSheet=true) 的参数包: 与全屏路由
+        // 共用同一个 [AppRoute.WebView] —— 半屏与全屏跑的是同一段实现
+        // (io.legado.app.ui.browser.WebViewScreen), 参数只有一份就不会各自漂移。
+        // 可空 + 默认 null 保证旧快照双向兼容 (同 Dialog.sourceOrigin 方案);
+        // 为空时由消费方退回 payload 当裸 URL 用。
+        val webView: AppRoute.WebView? = null,
     ) : AppOverlay
 }
 

@@ -11,21 +11,25 @@ import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -34,6 +38,9 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
@@ -44,6 +51,7 @@ import androidx.compose.ui.window.DialogProperties
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.ui.compose.platform.BackLayerHandler
 import io.legado.app.ui.compose.platform.PlatformDialogDim
+import io.legado.app.ui.compose.platform.platformStatusBarPadding
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.toComposeEasing
 import kotlinx.coroutines.Job
@@ -62,6 +70,57 @@ import kotlinx.coroutines.launch
  * 顶栏继续按页面语义做状态栏沉浸 padding。
  */
 val LocalDialogWindow = staticCompositionLocalOf { false }
+
+/**
+ * 底部弹层拖拽禁区: 内容区里"竖直手势归内部"的区域, 目前用于平台 WebView 这类 interop 视图。
+ *
+ * interop 视图 (Android AndroidView / iOS UIKitView) 不参与 Compose 的手势竞争:
+ * Compose 侧一旦消费了位移, `PointerInteropFilter` 就给视图补发 ACTION_CANCEL 并掐断本次
+ * 手势流 (Final pass 的 stopDispatching), 网页从此滚不动。所以弹层拖拽无法靠"抢先消费"
+ * 让位, 只能整轮不参与竞争。
+ *
+ * 实例由 [AppBottomSheetDialog] 提供, 内容侧用 [sheetDragExclusion] 登记自身边界; 按下
+ * 落点命中禁区时弹层放弃本轮手势 (全程不消费), 手势原样留给内部视图。顶栏等未登记区域
+ * 照旧可下拉关闭。
+ */
+class SheetDragExclusion internal constructor() {
+
+    /** 已登记区域 (window 坐标), 只在手势按下时读一次, 无需快照状态。 */
+    private val zones = mutableMapOf<Any, Rect>()
+
+    internal fun put(token: Any, bounds: Rect) {
+        zones[token] = bounds
+    }
+
+    internal fun remove(token: Any) {
+        zones.remove(token)
+    }
+
+    internal fun contains(windowPosition: Offset): Boolean =
+        zones.values.any { it.contains(windowPosition) }
+}
+
+/** 当前底部弹层的拖拽禁区 (见 [SheetDragExclusion]), 不在弹层内时为 null。 */
+val LocalSheetDragExclusion = staticCompositionLocalOf<SheetDragExclusion?> { null }
+
+/** 把本节点登记为底部弹层的拖拽禁区 (见 [SheetDragExclusion]), 不在弹层内时为空操作。 */
+@Composable
+fun Modifier.sheetDragExclusion(): Modifier {
+    val exclusion = LocalSheetDragExclusion.current ?: return this
+    val token = remember { Any() }
+    DisposableEffect(exclusion, token) {
+        onDispose { exclusion.remove(token) }
+    }
+    return onGloballyPositioned { exclusion.put(token, it.boundsInWindow()) }
+}
+
+/**
+ * 请求收起当前底部弹层: 播完退出动画再真正关闭 (等价于返回键/点击弹层外), 不在弹层内时为 null。
+ *
+ * 内容侧自己拦了返回键 (如半屏浏览器要先做网页后退/退出全屏) 但最终仍要关闭弹层时用它 ——
+ * 直接调外部传入的关闭回调会把退出动画砍掉。
+ */
+val LocalSheetDismissRequest = staticCompositionLocalOf<(() -> Unit)?> { null }
 
 /**
  * 对话框统一窗口, 带 app 版 Animation.Dialog 动画: 进入 decelerate 中心缩放
@@ -171,28 +230,50 @@ fun AppDialog(
  * 或向下 fling 超 800dp/s → 走现有滑出动画关闭 (从当前位移续播, 无跳变);
  * 否则弹簧动画回弹复位。E-Ink 分支无动画无手势, 保持禁用。
  *
- * 拖拽只在"无可滚动内容消费位移"的区域生效 (顶栏/空白区): 内部滚动组件
- * (LazyColumn/平台 WebView 等) 会自己消费竖直手势, 面板不跟随 —— 半屏 WebView
- * Sheet 借此让顶栏可下拉关闭、内容区归 WebView 滚动, 互不打架。
+ * 拖拽只在"无可滚动内容消费位移"的区域生效 (顶栏/空白区): 内部 Compose 滚动组件
+ * (LazyColumn 等) 会自己消费竖直手势, 面板不跟随。平台 WebView 这类 interop 视图不参与
+ * Compose 手势竞争, 需内容侧用 [sheetDragExclusion] 登记为拖拽禁区 (见 [SheetDragExclusion])。
+ *
+ * [fullScreen] 为 true 时面板撑满窗口且整体停用拖拽关闭 (全屏态没有"半屏"可回弹的语义,
+ * 顶栏误滑不该丢掉整个页面), 内容原地变高 —— 组合位置不变, 内嵌 WebView 等重量级视图
+ * 不会被重建。
  */
 @Composable
 fun AppBottomSheetDialog(
     onDismissRequest: () -> Unit,
     properties: DialogProperties = AppDialogSizes.properties(),
     maxHeight: Dp? = null,
+    fullScreen: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     // 顶层覆盖物返回拦截 (同 [AppDialog]): 底部弹层打开期间返回键优先收起弹层
     var dismissing by remember { mutableStateOf(false) }
-    BackLayerHandler(enabled = true) {
-        if (AppConfigProviders.get().isEInkMode) onDismissRequest() else dismissing = true
+    // 内容侧请求"带动画收起" (见 [LocalSheetDismissRequest]), E-Ink 无动画直接关闭。
+    // remember 住: staticCompositionLocalOf 的值一变就整棵子树重组, 不能每次重组给新 lambda
+    val currentOnDismissRequest by rememberUpdatedState(onDismissRequest)
+    val requestDismiss: () -> Unit = remember {
+        {
+            if (AppConfigProviders.get().isEInkMode) {
+                currentOnDismissRequest()
+            } else {
+                dismissing = true
+            }
+        }
     }
+    BackLayerHandler(enabled = true) { requestDismiss() }
+    // 内容区拖拽禁区 (平台 WebView 等 interop 视图自行消化竖直手势, 见 [SheetDragExclusion])
+    val dragExclusion = remember { SheetDragExclusion() }
     if (AppConfigProviders.get().isEInkMode) {
         Dialog(onDismissRequest = onDismissRequest, properties = properties) {
-            CompositionLocalProvider(LocalDialogWindow provides true) {
+            CompositionLocalProvider(
+                LocalDialogWindow provides true,
+                LocalSheetDragExclusion provides dragExclusion,
+                LocalSheetDismissRequest provides requestDismiss,
+            ) {
                 BottomSheetScaffold(
                     onDismissRequest = onDismissRequest,
-                    maxHeight = maxHeight
+                    maxHeight = maxHeight,
+                    fullScreen = fullScreen,
                 ) { content() }
             }
         }
@@ -215,6 +296,11 @@ fun AppBottomSheetDialog(
         var bounceJob by remember { mutableStateOf<Job?>(null) }
         val scope = rememberCoroutineScope()
         val density = LocalDensity.current
+        // 拖拽关闭总开关: 全屏态整体停用 (两条拖拽路径共用, 经 state 读取, 免得
+        // remember 住的 nestedScroll 连接捕获到旧值)
+        val dragEnabled = rememberUpdatedState(!fullScreen)
+        // 弹层节点坐标 (与下方 pointerInput 同层): 把按下点换算到 window 坐标做禁区命中判定
+        var sheetCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
         // 拖拽参数: 位移阻力 ×0.6 (0.5~0.7 区间, 更接近原生手感);
         // 关闭位移阈值 max(120dp, 面板高/4); 快速下拉 fling 速度阈值 800dp/s
         val minDismissDistancePx = with(density) { 120.dp.toPx() }
@@ -250,6 +336,7 @@ fun AppBottomSheetDialog(
                     source: NestedScrollSource,
                 ): Offset {
                     if (
+                        !dragEnabled.value ||
                         dismissing ||
                         source != NestedScrollSource.UserInput ||
                         available.y == 0f
@@ -298,13 +385,25 @@ fun AppBottomSheetDialog(
                 onDismissRequest()
             }
         }
+        // 进入全屏: 清掉残留拖拽位移与回弹动画 (全屏态不再有拖拽路径去归位它)
+        LaunchedEffect(fullScreen) {
+            if (fullScreen) {
+                bounceJob?.cancel()
+                bounceJob = null
+                dragOffset = 0f
+            }
+        }
         val p = progress.value
         val dragOffsetPx = dragOffset
-        val slideHeightPx = with(LocalDensity.current) { AppDialogSizes.fullHeight().toPx() }
+        // 滑入/滑出位移取"0.8 锚点高与面板实测高的较大值": 常规弹层实测高 ≤ 0.8 锚点高,
+        // 取值不变; 全屏态面板更高, 靠实测高才能整块滑出窗口而不残留顶部一截
+        val anchorSlidePx = with(LocalDensity.current) { AppDialogSizes.fullHeight().toPx() }
+        val slideHeightPx = maxOf(sheetHeightPx.toFloat(), anchorSlidePx)
         BottomSheetScaffold(
             // 外部点击与返回键一致走 dismissing 退出动画路径
             onDismissRequest = { dismissing = true },
             maxHeight = maxHeight,
+            fullScreen = fullScreen,
             modifier = Modifier
                 .onSizeChanged { sheetHeightPx = it.height }
                 .nestedScroll(nestedScrollConnection)
@@ -314,10 +413,11 @@ fun AppBottomSheetDialog(
                     translationY = slideHeightPx * (1f - p) + dragOffsetPx
                     alpha = if (dialogSpec.enterFadeIn) p else 1f
                 }
+                .onGloballyPositioned { sheetCoordinates = it }
                 // 非滚动内容面板的拖拽路径: 内部无滚动消费位移时赢得竖直 slop,
-                // 面板跟随手指; 内部滚动消费了位移则本检测自动让位 (awaitVerticalTouchSlopOrCancellation
-                // 遇已消费的位置变化返回 null), 由上方 nestedScroll 连接接手。
-                // 半屏 WebView Sheet 中 WebView 恒消费自身手势, 拖拽只在顶栏区生效
+                // 面板跟随手指; 内部 Compose 滚动消费了位移则本检测自动让位
+                // (awaitVerticalTouchSlopOrCancellation 遇已消费的位置变化返回 null),
+                // 由上方 nestedScroll 连接接手
                 .pointerInput(Unit) {
                     awaitEachGesture {
                         // 先挂起等待 down (保证无事件时挂起而非空转)
@@ -332,6 +432,16 @@ fun AppBottomSheetDialog(
                             }
                             return@awaitEachGesture
                         }
+                        // 本轮不参与手势竞争 (全程不消费位移, 手势原样留给内部):
+                        // 全屏态停用拖拽, 或按下落点命中拖拽禁区 —— 禁区内是平台 WebView 这
+                        // 类 interop 视图, 只要 Compose 侧消费了位移它就会收到 ACTION_CANCEL
+                        // 而彻底滚不动 (见 [SheetDragExclusion]), 所以不能靠"抢先消费"让位。
+                        // 此处已有按下中的指针, awaitEachGesture 末尾的 awaitAllPointersUp
+                        // 会正常挂起, 不会空转。
+                        val downInExclusion = sheetCoordinates?.let {
+                            dragExclusion.contains(it.localToWindow(down.position))
+                        } == true
+                        if (!dragEnabled.value || downInExclusion) return@awaitEachGesture
                         var overSlop = 0f
                         val dragChange =
                             awaitVerticalTouchSlopOrCancellation(down.id) { change, over ->
@@ -358,7 +468,11 @@ fun AppBottomSheetDialog(
         ) {
             // 标记内容位于对话框窗口内: 顶栏 (AppTitleBar) 据此跳过状态栏 padding
             // (窗口已自行避让系统栏 / sheet 贴底不达状态栏, 避免双重避让顶部空白)
-            CompositionLocalProvider(LocalDialogWindow provides true) { content() }
+            CompositionLocalProvider(
+                LocalDialogWindow provides true,
+                LocalSheetDragExclusion provides dragExclusion,
+                LocalSheetDismissRequest provides requestDismiss,
+            ) { content() }
         }
     }
 }
@@ -366,12 +480,22 @@ fun AppBottomSheetDialog(
 /**
  * 底部弹层骨架: 透明点击层铺满 (点击关闭) + sheet 内容贴底。
  * 需作为 Dialog 内容的根, 内容 fillMaxSize 让弹层覆盖整个容器。
+ *
+ * [fullScreen] 时 sheet 撑满窗口 (仍贴底对齐, 只是高度到顶), 不再受 [maxHeight] /
+ * 0.8 锚点高约束。
+ *
+ * 全屏时补 [platformStatusBarPadding]: 常规弹层高度只有 0.8 锚点高、顶部到不了状态栏, 所以
+ * 弹层内的 [AppTitleBar] 一律跳过状态栏 padding (见 [LocalDialogWindow]); 全屏后顶部会真的
+ * 贴到窗口顶, 这层 padding 把前提补回来。它只消费"尚未被窗口消费"的 inset ——
+ * decorFitsSystemWindows=true 的窗口已自行避让时为 0, 不会双重避让; 只有 Android 15+
+ * 强制 edge-to-edge 的全屏窗口才真正生效。
  */
 @Composable
 private fun BottomSheetScaffold(
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
     maxHeight: Dp? = null,
+    fullScreen: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     Box(Modifier.fillMaxSize()) {
@@ -388,7 +512,10 @@ private fun BottomSheetScaffold(
             modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .heightIn(max = maxHeight ?: AppDialogSizes.fullHeight()),
+                .then(
+                    if (fullScreen) Modifier.fillMaxHeight().platformStatusBarPadding()
+                    else Modifier.heightIn(max = maxHeight ?: AppDialogSizes.fullHeight())
+                ),
             contentAlignment = Alignment.BottomCenter,
         ) { content() }
     }

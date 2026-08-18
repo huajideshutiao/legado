@@ -1272,13 +1272,17 @@ private fun DirectLinkUploadConfigOverlayDialogContent(
 
 // 通用 Sheet: AppBottomSheetDialog 承载 (项目统一底部弹层: 0.8 锚点高, 顶栏等
 // 无可滚动区可下拉拖拽关闭), 关闭后移除该 Overlay。
-// 当前仅 "web_view" (startBrowser asBottomSheet=true 半屏模式): 内容与菜单见
-// WebViewSheetContent, 高度/圆角/拖拽协调由 AppBottomSheetDialog 统一承载。
+// 当前仅 "web_view" (startBrowser asBottomSheet=true 半屏模式): 浏览器本体与全屏路由
+// 共用 WebViewScreen (见 WebViewSheetContent), 高度/圆角/拖拽由 AppBottomSheetDialog 承载。
 // 新增 sheet key 时在此接入。
 @Composable
 private fun SheetOverlayContent(overlay: AppOverlay.Sheet, navigator: AppNavigator) {
+    // 半屏 ↔ 全屏 (原 menu_full_screen): 只切弹层外壳的高度/圆角, 组合位置不变,
+    // 内嵌 WebView 与页面状态原地保留 (不再关弹层 + 推 AppRoute.WebView 重建重载)
+    var fullScreen by remember(overlay.key) { mutableStateOf(false) }
     AppBottomSheetDialog(
         onDismissRequest = { navigator.dismissOverlay(overlay.key) },
+        fullScreen = fullScreen,
     ) {
         AppTheme {
             Surface(
@@ -1286,29 +1290,24 @@ private fun SheetOverlayContent(overlay: AppOverlay.Sheet, navigator: AppNavigat
                 modifier = Modifier
                     .fillMaxWidth()
                     // 顶部圆角 20dp (对照原版 JsActivity BottomSheetDialog 的 GradientDrawable
-                    // 20dp 顶部圆角); 外层同色背景矩形会填掉内层 Column 裁剪掉的顶角, 这里同样裁圆角
-                    .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)),
+                    // 20dp 顶部圆角); 外层同色背景矩形会填掉内层 Column 裁剪掉的顶角, 这里同样裁圆角。
+                    // 全屏态贴齐窗口四边, 圆角去掉 (对齐全屏路由页的观感)
+                    .then(
+                        if (fullScreen) Modifier
+                        else Modifier.clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+                    ),
             ) {
                 if (overlay.key == "web_view") {
+                    // 参数包与全屏路由同源 (AppOverlay.Sheet.webView); 旧快照只有裸 URL
+                    // payload 时退化成 AppRoute.WebView(url) —— 两者都为空才没得可开
+                    val spec = overlay.webView
+                        ?: overlay.payload?.let { AppRoute.WebView(url = it) }
+                        ?: return@Surface
                     WebViewSheetContent(
-                        url = overlay.payload ?: return@Surface,
-                        sourceKey = overlay.sourceKey,
-                        sourceName = overlay.sourceName,
-                        sourceType = overlay.sourceType,
+                        spec = spec,
                         onBack = { navigator.dismissOverlay(overlay.key) },
-                        onFullScreen = {
-                            // 半屏 → 全屏: 关闭 Sheet 后推 AppRoute.WebView 全屏路由
-                            // (对照原版 menu_full_screen: 半屏 Sheet 无 toggle 语义, 直接转全屏路由)
-                            navigator.dismissOverlay(overlay.key)
-                            navigator.push(
-                                AppRoute.WebView(
-                                    url = overlay.payload ?: "",
-                                    sourceKey = overlay.sourceKey,
-                                    sourceName = overlay.sourceName,
-                                    sourceType = overlay.sourceType,
-                                )
-                            )
-                        },
+                        fullScreen = fullScreen,
+                        onToggleFullScreen = { fullScreen = !fullScreen },
                     )
                 }
             }

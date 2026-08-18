@@ -82,6 +82,7 @@ import io.legado.app.help.IntentData
 import io.legado.app.help.IntentHelp
 import io.legado.app.help.LauncherIconHelp
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.delBookCore
 import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.getRemoteUrl
 import io.legado.app.help.book.isLocal
@@ -766,11 +767,15 @@ class AndroidPlatformCapabilities(
     private fun delBook(book: Book, deleteOriginal: Boolean, onComplete: (Boolean?) -> Unit) {
         activity.lifecycleScope.launch(IO) {
             runCatching {
-                // DB 部分 (章节+书籍删除) 走 shared 统一核心 toggleBookshelfCore;
-                // 平台专属仅剩缓存与本地文件清理
-                book.toggleBookshelfCore(true)
+                // 删章节/删书/标记 notShelf/本地源文件走 shared 统一核心 delBookCore
+                book.delBookCore(deleteOriginal)
+                // 正文缓存
                 BookHelp.clearCache(book)
-                if (book.isLocal) FileBook.deleteBook(book, deleteOriginal)
+                // 封面缓存 (对照 BaseReadViewModel.delBook; MultiDiskCache.remove 传裸 url 即双区双删)
+                runCatching {
+                    val cache = coil3.SingletonImageLoader.get(activity).diskCache
+                    book.coverUrl?.let { cache?.remove(it) }
+                }
             }.onSuccess { activity.runOnUiThread { onComplete(null) } }
                 .onFailure {
                     AppLog.put("删除书籍失败\n${it.message}", it)

@@ -8,12 +8,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.toComposeImageBitmap
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntSize
@@ -23,7 +25,6 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowDecoration
 import androidx.compose.ui.window.WindowExceptionHandler
 import androidx.compose.ui.window.WindowExceptionHandlerFactory
-import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
@@ -501,40 +502,38 @@ private fun runDesktopApp() = application {
         remember { DesktopSplashScreen(preferenceStoreProvider, themeStoreProviderSplash) }
     val splashDuration = remember { splashScreen.show() }
     val appName = rememberString("app_name")
-    // 窗口状态记忆: 从偏好存储读取上次窗口是否最大化/位置尺寸;
-    // 恢复在窗口显示后 (componentShown) 由 AWT 直连应用, 保存读 AWT 真值
+    // 窗口状态记忆: 读"上次是否最大化" + 普通状态下的位置尺寸 (恢复规则用户拍板 2026-08-18):
+    // - 上次最大化 → 完全不读 W/H/XY, 以 CMP 默认 800x600 创建再最大化, 于是"向下还原"
+    //   回到默认小窗口, 而不是回到一个看起来满屏的坐标;
+    // - 否则有记录按记录恢复, 无记录用 CMP 默认。
     val prefProvider = PreferenceProviders.get()
-    val hasWindowBounds = prefProvider.contains(PreferKey.windowWidth)
     val savedMaximized = prefProvider.getBoolean(PreferKey.windowMaximized, false)
-    val savedW = prefProvider.getInt(PreferKey.windowWidth, 1024)
-    val savedH = prefProvider.getInt(PreferKey.windowHeight, 768)
-    var savedX = prefProvider.getInt(PreferKey.windowX, 100)
-    var savedY = prefProvider.getInt(PreferKey.windowY, 100)
-    // 屏幕边界修正: 显示器分辨率/布局变化后旧坐标可能越界,
-    // 保证窗口至少有部分留在屏幕内便于拖回 (不强制完整可见, 多屏场景留有余地)
-    val screenSize = java.awt.Toolkit.getDefaultToolkit().screenSize
-    val minVisible = 80
-    savedX = savedX.coerceIn(-savedW + minVisible, screenSize.width - minVisible)
-    savedY = savedY.coerceIn(-savedH + minVisible, screenSize.height - minVisible)
-    // 窗口记忆: 保存直读 AWT 真值 (extendedState/size/location, onDispose 时落盘, 不依赖
-    // CMP placement 回写链); 恢复由 CMP 在窗口显示前应用初始 size/position/placement ——
-    // SwingWindow 的 update 块先于 isVisible=true 执行, setSizeSafely/setPositionSafely
-    // 保证首帧即以目标尺寸渲染 (显示前 pack+设尺寸), 窗口第一次出现即最终尺寸位置,
-    // 无"先默认 800x600 再跳变"的调整过程; 最大化用 placement 同样在显示前生效。
-    val windowState = when {
-        savedMaximized -> rememberWindowState(
-            placement = WindowPlacement.Maximized,
+    val restoreBounds = !savedMaximized && prefProvider.contains(PreferKey.windowWidth)
+    // 尺寸/位置恢复无跳变: CMP 的 update 块在窗口显示前就 setSizeSafely/setPositionSafely
+    // (pack + setSize/setLocation), isVisible=true 由 AwtWindow 另一个效果排到后续 EDT 任务,
+    // 所以窗口第一次出现即目标尺寸位置。AWT 坐标在 Windows 缩放下是逻辑单位, 与 dp 同尺
+    // (CMP 自己也是 width.dp 直转), 两侧都不乘 density。
+    val windowState = if (restoreBounds) {
+        val savedW = prefProvider.getInt(PreferKey.windowWidth, 800)
+        val savedH = prefProvider.getInt(PreferKey.windowHeight, 600)
+        // 屏幕边界修正: 显示器分辨率/布局变化后旧坐标可能越界, 保证窗口至少有部分留在屏幕内
+        // 便于拖回 (不强制完整可见, 多屏场景留有余地)
+        val screenSize = java.awt.Toolkit.getDefaultToolkit().screenSize
+        val minVisible = 80
+        val savedX = prefProvider.getInt(PreferKey.windowX, 0)
+            .coerceIn(-savedW + minVisible, screenSize.width - minVisible)
+        val savedY = prefProvider.getInt(PreferKey.windowY, 0)
+            .coerceIn(-savedH + minVisible, screenSize.height - minVisible)
+        rememberWindowState(
             position = WindowPosition.Absolute(savedX.dp, savedY.dp),
             size = DpSize(savedW.dp, savedH.dp),
         )
-
-        hasWindowBounds -> rememberWindowState(
-            position = WindowPosition.Absolute(savedX.dp, savedY.dp),
-            size = DpSize(savedW.dp, savedH.dp),
-        )
-
-        else -> rememberWindowState()
+    } else {
+        rememberWindowState()
     }
+    // 窗口可见性: 先以 visible=false 创建, 尺寸/最大化都在显示前应用完再置 true,
+    // 窗口第一次出现即最终状态 (见下方 DisposableEffect)
+    var windowVisible by remember { mutableStateOf(false) }
     // classpath 资源加载: 弃用的 painterResource(String) 改为手动 ImageIO 解码 + BitmapPainter
     val iconPainter = remember {
         runCatching {
@@ -558,6 +557,7 @@ private fun runDesktopApp() = application {
     ) {
     Window(
         onCloseRequest = ::exitApplication,
+        visible = windowVisible,
         // 按键由 shared AppKeyRouter 统一分发 (全屏 Esc 退全屏 → 统一返回链 → F5 刷新 →
         // 快捷键栈捕获/冒泡两阶段), desktop Window 不再做任何业务判断。
         //
@@ -596,18 +596,26 @@ private fun runDesktopApp() = application {
         // DisposableEffect 保证窗口销毁后解绑, 不让守卫持有已 dispose 的 AWT Window
         // 同步注入 AWT 窗口句柄到 DesktopWindowHandle, 供 DesktopWindowController 切换全屏;
         // 同时注入任务栏媒体 (缩略图按钮/进度条) 的 HWND (窗口重建时自动重挂)
-        val windowDensity = LocalDensity.current.density
         DisposableEffect(window) {
             // 主窗口最小尺寸 (用户拍板 2026-08-13): 极窄窗口曾致 JBR 客户区布局锁死
-            // (拉窄再拉宽后内容区不复原), 直接限制最小宽 300dp/高 600dp 从根上规避;
-            // AWT minimumSize 为物理像素, 乘 density 换算逻辑 dp
-            window.minimumSize = java.awt.Dimension(
-                (300 * windowDensity).toInt(),
-                (600 * windowDensity).toInt(),
-            )
-            // 窗口状态记忆恢复已前置到 rememberWindowState 初始值 (显示前生效), 此处不再
-            // 在 componentShown 后 setBounds/setExtendedState —— 那是窗口已显示后的调整,
-            // 造成肉眼可见的尺寸跳变。
+            // (拉窄再拉宽后内容区不复原), 直接限制最小宽 300dp/高 600dp 从根上规避。
+            // AWT 尺寸在 Windows 缩放下是逻辑单位, 与 dp 同尺 (CMP 自己也是 width.dp 直转),
+            // 不乘 density —— 乘了会把最小尺寸抬成 375x750dp
+            window.minimumSize = java.awt.Dimension(300, 600)
+            // 最大化恢复: 显示前直连 setExtendedState (native WS_MAXIMIZE 样式在窗口首次显示
+            // 时才应用, 所以窗口一出现就是最大化, 无"先小窗口再最大化"的过程)。
+            // 必须排到下一个 EDT 任务: 本效果跑在 CMP update 块的 setSizeSafely → pack() 里
+            // (窗口内容组合推迟到组件 attach), 而同一次 update 随后的 placement 分支会执行
+            // window.placement = Floating → extendedState and MAXIMIZED_BOTH.inv(), 当场设会
+            // 被它抹掉; 而 isVisible=true 要经"快照通知→重组→apply→launch"至少 3 个任务才排队,
+            // 所以本任务夹在两者之间。
+            if (savedMaximized) {
+                SwingUtilities.invokeLater {
+                    window.extendedState =
+                        window.extendedState or javax.swing.JFrame.MAXIMIZED_BOTH
+                }
+            }
+            windowVisible = true
             // 闪屏关闭时机: 主窗口可见即关, 最迟 splashDuration 关闭 (取先到者)
             if (splashDuration > 0) {
                 var splashClosed = false
@@ -652,9 +660,9 @@ private fun runDesktopApp() = application {
                 }
             }
             onDispose {
-                // 窗口状态记忆: 关闭前保存当前窗口位置/尺寸/是否最大化。
-                // 最大化状态直读 AWT 真值 (不依赖 CMP placement 回写, 后者经 wndchrome/标题栏
-                // 最大化时可能漏报); 尺寸只在非最大化且非真全屏时更新 (全屏尺寸=屏幕, 不覆盖记录)
+                // 窗口状态记忆落盘: 最大化标志直读 AWT 真值 (Frame.state 是普通字段, dispose
+                // 不会改; 不依赖 CMP placement 回写, 后者经 wndchrome 最大化时可能漏报);
+                // 尺寸/位置只在普通状态下写, 最大化/真全屏关闭时保留上次记录不覆盖
                 val p = PreferenceProviders.get()
                 val maximized = (window.extendedState and javax.swing.JFrame.MAXIMIZED_BOTH) != 0
                 p.putBoolean(PreferKey.windowMaximized, maximized)

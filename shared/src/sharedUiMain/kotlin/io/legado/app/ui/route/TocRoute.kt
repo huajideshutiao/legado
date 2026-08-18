@@ -19,6 +19,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.book.BookStorageProviders
+import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.help.toast.Toasters
@@ -233,7 +234,7 @@ fun TocContent(
                 screenModel.dispatch(TocUiEvent.ToggleVolume(volume))
             }
 
-            // 反转章节列表: 重排 index 后 dispatch, 并持久化 (对照 TocViewModelShared.reverseToc)
+            // 反转章节列表: 重排 index 后 dispatch, 并持久化 (对照原版 TocViewModel.reverseToc)
             override fun reverseChapterList() {
                 val current = screenModel.state.value.chapters
                 if (current.isEmpty()) return
@@ -243,11 +244,11 @@ fun TocContent(
                 screenModel.dispatch(TocUiEvent.ReverseChapterList(reversed))
                 val curBook = screenModel.state.value.book ?: return
                 curBook.config.reverseToc = !curBook.config.reverseToc
-                // 非书架书可能 FK 约束失败, 尽力持久化
                 scope.launch {
-                    runCatching {
-                        AppDbProviders.get().bookChapterDao.insert(*reversed.toTypedArray())
-                    }
+                    val db = AppDbProviders.get()
+                    // 未入架的书不落库 (books 行都没有), UI 已由上面 dispatch 反转
+                    if (curBook.isNotShelf) return@launch
+                    db.bookChapterDao.insert(*reversed.toTypedArray())
                 }
             }
 

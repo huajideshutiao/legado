@@ -11,6 +11,7 @@ import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.Book
 import io.legado.app.help.RuleBigDataProviders
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.script.JsEngines
 import io.legado.app.model.script.buildScriptBindings
 import io.legado.app.utils.MD5Utils
@@ -199,6 +200,20 @@ suspend fun Book.toggleBookshelfCore(inBookshelf: Boolean): Boolean? {
         else appDb.bookDao.insert(this)
         true
     }
+}
+
+/**
+ * 静默删除书籍核心 (四端共用): 删章节 + 删书 + 标记 notShelf, 本地书按需删源文件。
+ *
+ * 对照 app 端 [io.legado.app.base.BaseReadViewModel.delBook] 与 `Book.delete()`: 不弹确认框,
+ * 供未入架临时书清理 (目录页返回未选章节) 与确认后的下架共用。
+ * 平台缓存清理 (正文/封面) 由各端在此之后自行处理。
+ */
+suspend fun Book.delBookCore(deleteOriginal: Boolean = false) {
+    toggleBookshelfCore(inBookshelf = true)
+    // 对照 Book.delete(): 删库后内存对象要标记回临时书
+    addType(BookType.notShelf)
+    if (isLocal) FileBook.deleteBook(this, deleteOriginal)
 }
 
 /**

@@ -644,19 +644,11 @@ fun BookInfoRoute(
                                     }
                                     navigator.push(target, RouteResults.READER)
                                 }
-                            } else if (!screenModel.state.value.inBookshelf) {
-                                // 未选章节且不在书架: 清理临时书 (对照 app 端 viewModel.delBook)。
-                                // toggleBookshelf 参数=目标在架状态: true=下架/删除 (toggleBookshelfCore
-                                // 的 true 分支 delByBook+delete), false=上架 (insert)。此处必须传 true,
-                                // 传 false 会把未入架书直接写进书架 (用户实测: 目录页返回后书进书架)。
-                                PlatformCapabilityProviders.getOrNull()
-                                    ?.toggleBookshelf(
-                                        b, true,
-                                        onComplete = { navigator.pop(RouteResultPayload.Deleted) },
-                                        onWaitDialog = { screenModel.upWaitDialog(it) },
-                                        onAction = { screenModel.postAction(it) },
-                                    )
                             }
+                            // 原版此处还有 `if (!inBookshelf) viewModel.delBook()` 回收临时书,
+                            // 本分支不需要: 未入架的书从不落库 (详情页 saveBook/章节 insert 均有
+                            // inBookshelf 门禁, 目录页的写库对无 books 行的书被 FK 约束挡掉),
+                            // 无库可清; 删了反而会误弹确认框并退出详情页。
                         }
 
                         // 阅读器返回: 刷新阅读进度 + 书架状态 (对照 app 端 readBookResult launcher)

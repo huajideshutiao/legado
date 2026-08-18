@@ -59,36 +59,29 @@ object NativeVerificationUiProvider : VerificationUiProvider {
             throw NoStackTraceException(msg)
         }
         val navigator = AppNavigatorProviders.getOrNull() ?: return
-        if (asBottomSheet && saveResult != true) {
+        // 半屏与全屏共用同一个参数包 (与 app 端 VerificationUiProviderImpl 完全同构):
+        // 两形态跑的是同一段实现 (WebViewScreen), 书源 headerMap 预取、跳转拦截、验证回传同源。
+        val spec = AppRoute.WebView(
+            url = url,
+            title = title,
+            sourceKey = source.getKey(),
+            sourceName = source.getTag(),
+            sourceType = source.getSourceType(),
+            saveResult = saveResult == true,
+            refetchAfterSuccess = refetchAfterSuccess ?: true,
+        )
+        if (asBottomSheet) {
             // BottomSheet 半屏方式打开 (对照原版 JsActivity BottomSheetDialog, 与 app 端
             // VerificationUiProviderImpl 一致): 复用 shared "web_view" Sheet, 由
             // SheetOverlayContent 承载平台 WebView slot (iOS 为 WKWebView, MainViewController
             // 注入, didFinish 同步 cookie), 不再推整页路由。
-            // asBottomSheet=true 仅来自 JS startBrowser(url,title,asBottomSheet), 恒为
-            // saveResult=false; 万一出现 saveResult==true 组合则落整页路由保留验证回传能力。
             navigator.showOverlay(
-                AppOverlay.Sheet(
-                    key = "web_view",
-                    payload = url,
-                    sourceKey = source.getKey(),
-                    sourceName = source.getTag(),
-                    sourceType = source.getSourceType(),
-                )
+                AppOverlay.Sheet(key = "web_view", payload = url, webView = spec)
             )
         } else {
             // 对齐 app 端 VerificationUiProviderImpl: 推 AppRoute.WebView 打开内置浏览器
             // (原版 startBrowser 无论 saveResult 都启动内置 WebViewActivity)
-            navigator.push(
-                AppRoute.WebView(
-                    url = url,
-                    title = title,
-                    sourceKey = source.getKey(),
-                    sourceName = source.getTag(),
-                    sourceType = source.getSourceType(),
-                    saveResult = saveResult == true,
-                    refetchAfterSuccess = refetchAfterSuccess ?: true,
-                )
-            )
+            navigator.push(spec)
         }
     }
 }
