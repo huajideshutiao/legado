@@ -1,6 +1,5 @@
 package io.legado.app.ui.root
 
-import kotlin.jvm.JvmInline
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -54,6 +53,11 @@ sealed interface AppOverlay {
         override val key: String,
         val payload: String? = null,
         val dismissOnBack: Boolean = true,
+        // 书源身份 (书源 URL, 可空): 半屏 WebView (startBrowser asBottomSheet=true) 需携带
+        // 书源信息以提供禁用源/删除源菜单项; 与 Dialog.sourceOrigin 同方案, 默认值保证旧快照兼容
+        val sourceKey: String = "",
+        val sourceName: String = "",
+        val sourceType: Int = 0,
     ) : AppOverlay
 }
 

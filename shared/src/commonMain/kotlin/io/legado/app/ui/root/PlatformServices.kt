@@ -40,6 +40,13 @@ interface FilePickerService {
     fun pickFiles(filter: FileFilter): List<String>
     fun saveFile(suggestedName: String, defaultDir: String? = null): String?
 
+    /**
+     * 保存图片字节到用户选择的位置（图片查看器长按保存，对照 master PhotoDialog.doSaveImage）。
+     * 各端: app=SAF CreateDocument → contentResolver 写入; desktop=保存对话框 → File 写入;
+     * 未实现返回 false（调用方 toast 失败）。
+     */
+    fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean = false
+
     // 选目录 (对照 app 端 HandleFileContract.DIR_SYS / OpenDocumentTree),
     // 各端按需实现, 默认返回 null 由调用方降级
     fun pickDirectory(): String? = null

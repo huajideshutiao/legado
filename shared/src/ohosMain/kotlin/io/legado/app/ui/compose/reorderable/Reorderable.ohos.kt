@@ -27,6 +27,7 @@ import kotlin.math.roundToInt
 
 // ohos 端无 reorderable 库 (未发布 ohosArm64 变体), 用 Compose 原生手势 API 自实现拖拽排序
 // 参考DragSelect.kt 已验证的 detectDragGesturesAfterLongPress + scrollBy + layoutInfo.visibleItemsInfo 模式
+// 同时支持纵向 (LazyColumn) 和横向 (LazyRow) 拖拽排序
 
 actual interface RuleItemScope {
     actual fun Modifier.longPressDraggableHandle(
@@ -37,6 +38,9 @@ actual interface RuleItemScope {
 
 actual class ReorderableListState internal constructor(
     internal val listState: LazyListState,
+    // 列表主轴方向: true=纵向 (LazyColumn), false=横向 (LazyRow)
+    // 由调用方显式传入, 不用 viewport 宽高比猜测 (横屏/宽窗口下会误判)
+    internal val vertical: Boolean,
     internal val onMove: (fromIndex: Int, toIndex: Int) -> Unit,
     private val maxScrollPx: Float,
 ) {
@@ -47,28 +51,43 @@ actual class ReorderableListState internal constructor(
     var draggedOffsetY: Float by mutableStateOf(0f)
         internal set
 
+    // 拖拽累计横向偏移(px), 相对被拖拽 item 在列表中的原始位置 (LazyRow)
+    var draggedOffsetX: Float by mutableStateOf(0f)
+        internal set
+
     internal fun startDrag(key: Any) {
         draggedKey = key
         draggedOffsetY = 0f
+        draggedOffsetX = 0f
     }
 
-    internal fun updateDrag(deltaY: Float) {
+    internal fun updateDrag(deltaX: Float, deltaY: Float) {
+        draggedOffsetX += deltaX
         draggedOffsetY += deltaY
     }
 
     internal fun endDrag() {
         draggedKey = null
         draggedOffsetY = 0f
+        draggedOffsetX = 0f
     }
 
-    // 按 draggedOffsetY 反查命中目标, 越过中点则触发相邻交换, 补偿偏移保持视觉连续
+    // 方向由构造参数决定, 不再依赖 viewport 宽高比
+    private val isHorizontal: Boolean
+        get() = !vertical
+
+    // 当前有效偏移: 横向列表用 X, 纵向用 Y
+    private val draggedOffset: Float
+        get() = if (isHorizontal) draggedOffsetX else draggedOffsetY
+
+    // 按 draggedOffset 反查命中目标, 越过中点则触发相邻交换, 补偿偏移保持视觉连续
     // 单次只交换相邻: 跨多 item 拖拽由 onDrag 即时调用 + startDragLoop 每帧兜底共同推进
     internal fun tryMove(draggedKey: Any) {
         val layoutInfo = listState.layoutInfo
         val draggedInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.key == draggedKey } ?: return
         val draggedIndex = draggedInfo.index
-        // 被拖拽 item 视觉中心在 viewport 中的 Y
-        val draggedCenter = draggedInfo.offset + draggedInfo.size / 2 + draggedOffsetY
+        // 被拖拽 item 视觉中心在 viewport 中的主轴坐标
+        val draggedCenter = draggedInfo.offset + draggedInfo.size / 2 + draggedOffset
         val targetInfo = layoutInfo.visibleItemsInfo.firstOrNull {
             draggedCenter >= it.offset && draggedCenter < it.offset + it.size
         } ?: return
@@ -79,8 +98,13 @@ actual class ReorderableListState internal constructor(
         val oldOffset = draggedInfo.offset
         onMove(draggedIndex, neighborIndex)
         // 交换后 dragged item 移到 neighbor 位置, 新 offset ≈ neighborInfo.offset
-        // 补偿 draggedOffsetY 使视觉位置不变 (下一帧 layoutInfo 更新后修正)
-        draggedOffsetY -= (neighborInfo.offset - oldOffset)
+        // 补偿偏移使视觉位置不变 (下一帧 layoutInfo 更新后修正)
+        val delta = neighborInfo.offset - oldOffset
+        if (isHorizontal) {
+            draggedOffsetX -= delta
+        } else {
+            draggedOffsetY -= delta
+        }
     }
 
     // 拖拽期间持续运行的协程: 每帧兜底推进交换 + 边缘自动滚动
@@ -89,25 +113,36 @@ actual class ReorderableListState internal constructor(
         while (isActive && this@ReorderableListState.draggedKey == draggedKey) {
             tryMove(draggedKey)
             val layoutInfo = listState.layoutInfo
-            val viewportHeight = layoutInfo.viewportSize.height.toFloat()
+            val viewportLen = if (isHorizontal) {
+                layoutInfo.viewportSize.width.toFloat()
+            } else {
+                layoutInfo.viewportSize.height.toFloat()
+            }
             val draggedInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.key == draggedKey }
-            if (viewportHeight > 0f && draggedInfo != null) {
-                val visualCenter = draggedInfo.offset + draggedInfo.size / 2 + draggedOffsetY
-                val topZone = viewportHeight * EdgeRatio
-                val bottomZone = viewportHeight * (1 - EdgeRatio)
+            if (viewportLen > 0f && draggedInfo != null) {
+                val visualCenter = draggedInfo.offset + draggedInfo.size / 2 + draggedOffset
+                val startZone = viewportLen * EdgeRatio
+                val endZone = viewportLen * (1 - EdgeRatio)
                 val velocity = when {
-                    visualCenter < topZone ->
-                        -maxScrollPx * ((topZone - visualCenter) / topZone).coerceIn(0f, 1f)
+                    visualCenter < startZone ->
+                        -maxScrollPx * ((startZone - visualCenter) / startZone).coerceIn(0f, 1f)
 
-                    visualCenter > bottomZone ->
-                        maxScrollPx * ((visualCenter - bottomZone) / (viewportHeight - bottomZone)).coerceIn(0f, 1f)
+                    visualCenter > endZone ->
+                        maxScrollPx * ((visualCenter - endZone) / (viewportLen - endZone)).coerceIn(
+                            0f,
+                            1f
+                        )
 
                     else -> 0f
                 }
                 if (velocity != 0f) {
                     listState.scrollBy(velocity)
-                    // scrollBy(delta) 使所有可见 item offset 减少 delta, draggedOffsetY 增 delta 保持视觉位置
-                    draggedOffsetY += velocity
+                    // scrollBy(delta) 使所有可见 item offset 减少 delta, draggedOffset 增 delta 保持视觉位置
+                    if (isHorizontal) {
+                        draggedOffsetX += velocity
+                    } else {
+                        draggedOffsetY += velocity
+                    }
                 }
             }
             withFrameNanos { }
@@ -118,11 +153,12 @@ actual class ReorderableListState internal constructor(
 @Composable
 actual fun rememberReorderableListState(
     listState: LazyListState,
+    vertical: Boolean,
     onMove: (fromIndex: Int, toIndex: Int) -> Unit,
 ): ReorderableListState {
     val maxScrollPx = with(LocalDensity.current) { MaxScrollVelocity.toPx() }
-    return remember(listState, onMove, maxScrollPx) {
-        ReorderableListState(listState, onMove, maxScrollPx)
+    return remember(listState, vertical, onMove, maxScrollPx) {
+        ReorderableListState(listState, vertical, onMove, maxScrollPx)
     }
 }
 
@@ -147,7 +183,7 @@ private class RuleItemScopeImpl(
                 },
                 onDrag = { change, dragAmount ->
                     change.consume()
-                    state.updateDrag(dragAmount.y)
+                    state.updateDrag(dragAmount.x, dragAmount.y)
                     state.tryMove(key)
                 },
                 onDragEnd = {
@@ -179,7 +215,12 @@ actual fun LazyItemScope.RuleReorderableItem(
     val modifier = if (isDragging) {
         Modifier
             .zIndex(1f)
-            .offset { IntOffset(0, state.draggedOffsetY.roundToInt()) }
+            .offset {
+                IntOffset(
+                    state.draggedOffsetX.roundToInt(),
+                    state.draggedOffsetY.roundToInt(),
+                )
+            }
     } else {
         Modifier.animateItem()
     }
@@ -188,7 +229,7 @@ actual fun LazyItemScope.RuleReorderableItem(
     }
 }
 
-// 边缘热区占 viewport 高度比例, 对齐 DragSelect.kt 的 EdgeRatio (DragSelectTouchHelper hotspot 0.2)
+// 边缘热区占 viewport 主轴长度比例, 对齐 DragSelect.kt 的 EdgeRatio (DragSelectTouchHelper hotspot 0.2)
 private const val EdgeRatio = 0.2f
 
 // 边缘自动滚动最大速度, 对齐 DragSelect.kt 的 MaxScrollVelocity

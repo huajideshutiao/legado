@@ -147,3 +147,49 @@ expect fun decodeBytesSampled(bytes: ByteArray, maxDim: Int): ImageBitmap?
  *   (调用方回落失败占位)
  */
 expect fun decodeSvgFallback(bytes: ByteArray, maxDim: Int): ImageBitmap?
+
+/**
+ * 解析 `data:` URI 为图片字节（简介内联 svg 等场景）。
+ *
+ * - `data:image/svg+xml;base64,xxx` → base64 解码 payload
+ * - `data:image/svg+xml,<svg>...` → 百分号解码 payload（svg 内联可能 percent-encoded）
+ *
+ * 非 `data:` 开头或解析失败返回 null（调用方回落正常加载/失败占位）。
+ * 各端 [loadBitmap] 在走网络/文件加载前先检测 `data:` 前缀并早返回，
+ * 避免把内联数据当成 URL 下载（不支持的 scheme 会落空）。
+ */
+fun parseDataUriBytes(url: String): ByteArray? {
+    if (!url.startsWith("data:")) return null
+    return runCatching {
+        val comma = url.indexOf(',')
+        if (comma < 0) return null
+        val header = url.substring(5, comma)
+        val payload = url.substring(comma + 1)
+        if (header.endsWith(";base64", ignoreCase = true)) {
+            io.legado.app.utils.Base64Lenient.decode(payload)
+        } else {
+            decodePercentEncoded(payload)
+        }
+    }.getOrNull()
+}
+
+/** 百分号解码（`%XX` → 字节；普通字符原样，UTF-8 多字节经解码器还原）。 */
+private fun decodePercentEncoded(s: String): ByteArray {
+    val bytes = ByteArray(s.length)
+    var n = 0
+    var i = 0
+    while (i < s.length) {
+        val c = s[i]
+        if (c == '%' && i + 2 < s.length) {
+            val hex = s.substring(i + 1, i + 3).toIntOrNull(16)
+            if (hex != null) {
+                bytes[n++] = hex.toByte()
+                i += 3
+                continue
+            }
+        }
+        bytes[n++] = c.code.toByte()
+        i++
+    }
+    return bytes.copyOf(n)
+}

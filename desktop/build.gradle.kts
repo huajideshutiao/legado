@@ -88,6 +88,9 @@ object InstallType {
 sourceSets {
     main {
         kotlin.srcDir("build/generated/installType/kotlin")
+        // 直接挂载 app 端 drawable-nodpi 为桌面资源目录 (闪屏书本图标等),
+        // 与 app 端共用同一份图片文件, 避免复制相同资源
+        resources.srcDir("../app/src/main/res/drawable-nodpi")
     }
 }
 
@@ -587,8 +590,10 @@ compose.desktop {
             packageName = "legado"
             description = "Legado desktop reader (Compose Multiplatform)"
             vendor = "gedoor"
+            // 应用图标 (从 Android ic_launcher 高清图转换生成): Windows ICO, Linux PNG
             // Windows MSI 专属配置
             windows {
+                iconFile = file("src/main/resources/icons/legado.ico")
                 menu = true
                 dirChooser = true
                 // 创建桌面快捷方式 + 开始菜单分组 (Legado)
@@ -607,6 +612,7 @@ compose.desktop {
             }
             // Linux deb/rpm 专属配置
             linux {
+                iconFile = file("src/main/resources/icons/legado.png")
                 // deb 包名必须小写, 走 packageName
                 packageName = "legado"
                 menuGroup = "Office"

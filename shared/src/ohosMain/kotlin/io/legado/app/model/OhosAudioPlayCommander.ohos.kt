@@ -154,9 +154,10 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
         scope.launch {
             this@OhosAudioPlayCommander.position = position
             controller.seekTo(position.toLong())
-            // seek 后歌词位置失效, 重算 (对应 app 端 adjustProgress)
+            // seek 后歌词位置失效, 重算 (对应 app 端 adjustProgress);
+            // 传目标位置: 引擎 seek 异步, currentPosition 未同步, 用目标位置扫描歌词行
             manager.resetLrcPosition()
-            manager.upPlayProgressForLrc()
+            manager.upPlayProgressForLrc(position)
         }
     }
 

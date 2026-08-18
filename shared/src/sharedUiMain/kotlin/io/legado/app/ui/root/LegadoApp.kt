@@ -1292,7 +1292,23 @@ private fun SheetOverlayContent(overlay: AppOverlay.Sheet, navigator: AppNavigat
                 if (overlay.key == "web_view") {
                     WebViewSheetContent(
                         url = overlay.payload ?: return@Surface,
+                        sourceKey = overlay.sourceKey,
+                        sourceName = overlay.sourceName,
+                        sourceType = overlay.sourceType,
                         onBack = { navigator.dismissOverlay(overlay.key) },
+                        onFullScreen = {
+                            // 半屏 → 全屏: 关闭 Sheet 后推 AppRoute.WebView 全屏路由
+                            // (对照原版 menu_full_screen: 半屏 Sheet 无 toggle 语义, 直接转全屏路由)
+                            navigator.dismissOverlay(overlay.key)
+                            navigator.push(
+                                AppRoute.WebView(
+                                    url = overlay.payload ?: "",
+                                    sourceKey = overlay.sourceKey,
+                                    sourceName = overlay.sourceName,
+                                    sourceType = overlay.sourceType,
+                                )
+                            )
+                        },
                     )
                 }
             }

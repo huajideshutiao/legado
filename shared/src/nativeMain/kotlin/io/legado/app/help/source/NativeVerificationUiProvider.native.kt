@@ -66,7 +66,15 @@ object NativeVerificationUiProvider : VerificationUiProvider {
             // 注入, didFinish 同步 cookie), 不再推整页路由。
             // asBottomSheet=true 仅来自 JS startBrowser(url,title,asBottomSheet), 恒为
             // saveResult=false; 万一出现 saveResult==true 组合则落整页路由保留验证回传能力。
-            navigator.showOverlay(AppOverlay.Sheet(key = "web_view", payload = url))
+            navigator.showOverlay(
+                AppOverlay.Sheet(
+                    key = "web_view",
+                    payload = url,
+                    sourceKey = source.getKey(),
+                    sourceName = source.getTag(),
+                    sourceType = source.getSourceType(),
+                )
+            )
         } else {
             // 对齐 app 端 VerificationUiProviderImpl: 推 AppRoute.WebView 打开内置浏览器
             // (原版 startBrowser 无论 saveResult 都启动内置 WebViewActivity)

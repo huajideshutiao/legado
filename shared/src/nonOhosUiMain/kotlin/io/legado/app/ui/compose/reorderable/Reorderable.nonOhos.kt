@@ -5,8 +5,8 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import sh.calvin.reorderable.ReorderableCollectionItemScope
-import sh.calvin.reorderable.ReorderableLazyListState
 import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.ReorderableLazyListState
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
 // 不用 typealias: 库接口的 longPressDraggableHandle 带默认参数值, 与 expect 冲突
@@ -40,9 +40,11 @@ actual typealias ReorderableListState = ReorderableLazyListState
 @Composable
 actual fun rememberReorderableListState(
     listState: LazyListState,
+    vertical: Boolean,
     onMove: (fromIndex: Int, toIndex: Int) -> Unit,
 ): ReorderableListState = rememberReorderableLazyListState(listState) { from, to ->
     // 库 onMove 入参为 LazyListItemInfo, 此处取 .index 转换为 Int
+    // 方向参数由库自动检测, 此处忽略 (ohos 手写实现才需要显式方向)
     onMove(from.index, to.index)
 }
 

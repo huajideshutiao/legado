@@ -15,8 +15,8 @@ import androidx.compose.ui.unit.IntSize
 import io.legado.app.ui.book.read.page.LocalReaderTextMeasurer
 import io.legado.app.ui.book.read.page.PageSelectionState
 import io.legado.app.ui.book.read.page.ReadViewComposable
-import io.legado.app.ui.book.read.page.rememberReaderTextMeasurer
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
+import io.legado.app.ui.book.read.page.rememberReaderTextMeasurer
 import kotlinx.coroutines.flow.StateFlow
 
 /**

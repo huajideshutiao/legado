@@ -67,6 +67,26 @@ actual class ImageBitmapLoader actual constructor() {
         useBitmapCache: Boolean,
     ): ImageBitmap? =
         withContext(Dispatchers.IO) {
+            // data: URI 早返回: 内联 svg/图片直接解析内容, 不走网络/文件加载 (简介图等)
+            if (url.startsWith("data:")) {
+                val bytes = parseDataUriBytes(url) ?: return@withContext null
+                val maxDim = maxOf(widthPx, heightPx)
+                val key = if (useBitmapCache) {
+                    DecodedBitmapCache.cacheKey(
+                        url,
+                        bookSource?.bookSourceUrl,
+                        isCover,
+                        widthPx,
+                        heightPx
+                    )
+                } else null
+                val cached = key?.let { DecodedBitmapCache.get(it) }
+                if (cached != null) return@withContext cached
+                val bitmap = decodeBufferedImage(bytes, maxDim)?.toComposeImageBitmap()
+                    ?: decodeSvgFallback(bytes, maxDim)
+                if (bitmap != null && key != null) DecodedBitmapCache.put(key, bitmap)
+                return@withContext bitmap
+            }
             // 字节路径与 loadBytes 合一 (含 ImageBytesCache + failUrl 跳过表), 对齐四端结构;
             // 失败/不支持的 scheme 返回 null (调用方占位, 原 else 分支抛异常语义收敛为 null)。
             val bytes = loadBytes(url, book, bookSource, isCover) ?: return@withContext null

@@ -384,6 +384,13 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
     }
 
     /**
+     * 收起图片操作浮动菜单（对照文本菜单 dismiss; 幂等：菜单未显示时无操作）。
+     */
+    fun dismissImageActionMenu() {
+        imageActionMenu.dismiss()
+    }
+
+    /**
      * 图片长按菜单 (对照原版 ReadBookActivity.onImageLongPress: 查看/刷新/保存/选择目录)。
      */
     fun showImageActionMenu(src: String, x: Float, y: Float) {

@@ -118,7 +118,9 @@ object PreferKey {
     const val welcomeImage = "welcomeImagePath"
     const val welcomeImageDark = "welcomeImagePathDark"
     const val welcomeShowText = "welcomeShowText"
+    const val welcomeShowTextDark = "welcomeShowTextDark"
     const val welcomeShowIcon = "welcomeShowIcon"
+    const val welcomeShowIconDark = "welcomeShowIconDark"
     const val welcomeShowTime = "welcomeShowTime"
     const val pageTouchSlop = "pageTouchSlop"
     const val showAddToShelfAlert = "showAddToShelfAlert"
@@ -178,4 +180,11 @@ object PreferKey {
     const val bgImageNBlurring = "backgroundImageNightBlurring"
     const val showReadTitleAddition = "showReadTitleAddition"
     const val contentSelectSpeakMod = "contentReadAloudMod"
+
+    // 桌面端窗口状态记忆 (位置/尺寸/是否最大化)
+    const val windowX = "desktopWindowX"
+    const val windowY = "desktopWindowY"
+    const val windowWidth = "desktopWindowWidth"
+    const val windowHeight = "desktopWindowHeight"
+    const val windowMaximized = "desktopWindowMaximized"
 }

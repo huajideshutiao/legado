@@ -228,7 +228,7 @@ private fun TitleBarActionButtons(
                 fg = fg,
                 darkBg = darkBg,
                 fontSize = 16.sp,
-                onClick = { menuExpanded = true },
+                onClick = { menuExpanded = !menuExpanded },
             )
             AppDropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                 // 无边框 (真全屏, 与 F11 同路径)

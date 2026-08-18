@@ -107,13 +107,28 @@ fun BookInfoRoute(
             val db = AppDbProviders.get()
             val source = if (book.isLocal) null else db.bookSourceDao.getBookSource(book.origin)
             bookSource = source
-            // 检查是否在书架 (对照 upBook: 按 url 查不到再按书名+作者兜底)
+            // 检查是否在书架 (对照 upBook / master loadBookInfo 的 inBookshelf 语义:
+            // 书架的唯一定位是 bookUrl; 同名异源书不算在架, 否则加载目录会误把搜索/发现
+            // 的书 replace+insert 进书架。同名查询仅用于 isSearchBook 的同源合并, 不参与在架判定)
             val dbBook = db.bookDao.getBook(book.bookUrl)
                 ?: db.bookDao.getBook(book.name, book.author)
-            val inShelf = dbBook != null
+            val inShelf = if (isSearchBook) dbBook?.origin == book.origin
+            else db.bookDao.getBook(book.bookUrl) != null
+            println(
+                "[NOTSHELF-DEBUG] BookInfo init url=${book.bookUrl} isSearch=$isSearchBook " +
+                    "dbBook=${dbBook?.bookUrl} inShelf=$inShelf"
+            )
             screenModel.dispatch(BookInfoUiEvent.UpdateBookshelf(inShelf))
-            // 搜索来源的书已在书架时改用书架那本 (保留阅读进度/分组等)
-            val curBook = if (isSearchBook) dbBook ?: book else book
+            // 搜索来源的同名异源书: 对齐 master loadBookInfo else 分支 addType(notShelf),
+            // 标记为临时书 (目录/阅读不落库, 阅读器退出清理)
+            if (isSearchBook && dbBook != null && dbBook.origin != book.origin) {
+                book.addType(io.legado.app.constant.BookType.notShelf)
+            }
+            // 搜索来源的书已在书架且同源时改用书架那本 (保留阅读进度/分组等);
+            // 同名异源仍用搜索书 (带 notShelf 标记, 对齐 master loadBookInfo 的异源分支),
+            // 否则标记落在被丢弃对象上且 UI 会误显示书架书为"未在架"
+            val curBook =
+                if (isSearchBook && dbBook?.origin == book.origin) dbBook ?: book else book
             // rss 书 url 换位 (对照 upBook)
             if (curBook.isRss) {
                 curBook.tocUrl = curBook.bookUrl
@@ -630,10 +645,13 @@ fun BookInfoRoute(
                                     navigator.push(target, RouteResults.READER)
                                 }
                             } else if (!screenModel.state.value.inBookshelf) {
-                                // 未选章节且不在书架: 删书 (对照 app 端 viewModel.delBook)
+                                // 未选章节且不在书架: 清理临时书 (对照 app 端 viewModel.delBook)。
+                                // toggleBookshelf 参数=目标在架状态: true=下架/删除 (toggleBookshelfCore
+                                // 的 true 分支 delByBook+delete), false=上架 (insert)。此处必须传 true,
+                                // 传 false 会把未入架书直接写进书架 (用户实测: 目录页返回后书进书架)。
                                 PlatformCapabilityProviders.getOrNull()
                                     ?.toggleBookshelf(
-                                        b, false,
+                                        b, true,
                                         onComplete = { navigator.pop(RouteResultPayload.Deleted) },
                                         onWaitDialog = { screenModel.upWaitDialog(it) },
                                         onAction = { screenModel.postAction(it) },

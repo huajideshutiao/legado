@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.CircularProgressIndicator
-import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
@@ -33,6 +32,7 @@ import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.browser.WebViewCallbacks
 import io.legado.app.ui.browser.WebViewConfig
 import io.legado.app.ui.browser.WebViewLoadingBar
+import io.legado.app.ui.browser.WebViewOverflowMenuItems
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppTitleBar
@@ -51,16 +51,11 @@ import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.check_host_cookie
-import legado.shared.generated.resources.copy_url
-import legado.shared.generated.resources.delete_source
-import legado.shared.generated.resources.disable_source
 import legado.shared.generated.resources.draw
-import legado.shared.generated.resources.full_screen
 import legado.shared.generated.resources.ic_refresh_black_24dp
 import legado.shared.generated.resources.jump_to_another_app
 import legado.shared.generated.resources.loading
 import legado.shared.generated.resources.ok
-import legado.shared.generated.resources.open_in_browser
 import legado.shared.generated.resources.refresh
 import legado.shared.generated.resources.sure_del
 import org.jetbrains.compose.resources.painterResource
@@ -298,79 +293,26 @@ fun WebViewRoute(
                         }
                     }
                     OverflowMenu { dismiss ->
-                        // 浏览器打开 (原 menu_open_in_browser → openUrl)
-                        DropdownMenuItem(
-                            onClick = {
-                                dismiss()
-                                PlatformCapabilityProviders.getOrNull()
-                                    ?.openExternalUrl(currentUrl())
-                            },
-                        ) {
-                            Text(
-                                stringResource(Res.string.open_in_browser),
-                                color = AppTheme.colors.primaryText
-                            )
-                        }
-                        // 拷贝 URL (原 menu_copy_url → sendToClip)
-                        DropdownMenuItem(
-                            onClick = {
-                                dismiss()
-                                PlatformCapabilityProviders.getOrNull()
-                                    ?.copyToClipboard(currentUrl())
-                            },
-                        ) {
-                            Text(
-                                stringResource(Res.string.copy_url),
-                                color = AppTheme.colors.primaryText
-                            )
-                        }
-                        // 全屏 (原 menu_full_screen → toggleFullScreen)
-                        DropdownMenuItem(
-                            onClick = {
-                                dismiss()
-                                toggleFullScreen()
-                            },
-                        ) {
-                            Text(
-                                stringResource(Res.string.full_screen),
-                                color = AppTheme.colors.primaryText
-                            )
-                        }
-                        // 原 onPrepareOptionsMenu: sourceOrigin 非空才显示禁用/删除源
-                        if (route.sourceKey.isNotEmpty()) {
-                            // 禁用源 (原 menu_disable_source → viewModel.disableSource { finish() })
-                            DropdownMenuItem(
-                                onClick = {
-                                    dismiss()
-                                    scope.launch(IoDispatcher) {
-                                        runCatching {
-                                            SourceHelp.enableSource(
-                                                route.sourceKey, route.sourceType, false
-                                            )
-                                        }.onSuccess {
-                                            withContext(Dispatchers.Main) { navigator.pop() }
-                                        }
+                        // 溢出菜单项 (浏览器打开/拷贝 URL/全屏/禁用源/删除源) 通过
+                        // WebViewOverflowMenuItems 与半屏 Sheet 共享, 消除重复逻辑
+                        WebViewOverflowMenuItems(
+                            currentUrl = { currentUrl() },
+                            onDismiss = { dismiss() },
+                            onFullScreen = { toggleFullScreen() },
+                            sourceKey = route.sourceKey,
+                            onDisableSource = {
+                                scope.launch(IoDispatcher) {
+                                    runCatching {
+                                        SourceHelp.enableSource(
+                                            route.sourceKey, route.sourceType, false
+                                        )
+                                    }.onSuccess {
+                                        withContext(Dispatchers.Main) { navigator.pop() }
                                     }
-                                },
-                            ) {
-                                Text(
-                                    stringResource(Res.string.disable_source),
-                                    color = AppTheme.colors.primaryText
-                                )
-                            }
-                            // 删除源 (原 menu_delete_source → alert 确认后 viewModel.deleteSource { finish() })
-                            DropdownMenuItem(
-                                onClick = {
-                                    dismiss()
-                                    showDeleteConfirm = true
-                                },
-                            ) {
-                                Text(
-                                    stringResource(Res.string.delete_source),
-                                    color = AppTheme.colors.primaryText
-                                )
-                            }
-                        }
+                                }
+                            },
+                            onDeleteSource = { showDeleteConfirm = true },
+                        )
                     }
                 },
             )

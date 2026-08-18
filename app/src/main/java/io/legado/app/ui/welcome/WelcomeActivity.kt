@@ -20,18 +20,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toDrawable
 import androidx.lifecycle.lifecycleScope
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.R
 import io.legado.app.base.BaseComposeActivity
 import io.legado.app.constant.Theme
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.lib.theme.backgroundColor
+import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.main.MainActivity
 import io.legado.app.utils.BitmapUtils
@@ -51,12 +50,16 @@ open class WelcomeActivity : BaseComposeActivity() {
     @Composable
     override fun Content() {
         val accent = AppTheme.colors.accent
+        // 白天/夜间分别使用各自的开关 (还原原版行为)
+        val isDark = ThemeConfig.getTheme() == Theme.Dark
+        val showText = if (isDark) AppConfig.welcomeShowTextDark else AppConfig.welcomeShowText
+        val showIcon = if (isDark) AppConfig.welcomeShowIconDark else AppConfig.welcomeShowIcon
         Column(
             Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Box(Modifier.weight(0.4f))
-            if (AppConfig.welcomeShowText) {
+            if (showText) {
                 Row {
                     Row(Modifier.height(IntrinsicSize.Min)) {
                         Box(
@@ -82,7 +85,7 @@ open class WelcomeActivity : BaseComposeActivity() {
                 }
             }
             Box(Modifier.weight(0.6f))
-            if (AppConfig.welcomeShowIcon) {
+            if (showIcon) {
                 Icon(
                     painter = painterResource(R.drawable.icon_read_book),
                     contentDescription = rememberString("welcome"),

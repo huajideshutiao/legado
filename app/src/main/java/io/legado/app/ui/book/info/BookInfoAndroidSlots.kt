@@ -17,20 +17,19 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import coil3.load
 import coil3.request.placeholder
-import coil3.toBitmap
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.isVideo
+import io.legado.app.help.image.ImageBitmapLoader
 import io.legado.app.model.blurConfig
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
+import io.legado.app.ui.compose.platform.rememberString
 
 /*
  * BookInfoScreen 下沉到 shared 后, app 端保留的 L3 (Android 专属) Composable。
@@ -130,16 +129,18 @@ fun BookInfoIntroImage(
     onClick: () -> Unit,
 ) {
     var bitmap by remember(src) { mutableStateOf<Bitmap?>(null) }
-    val context = LocalContext.current
     LaunchedEffect(src) {
-        val loader = coil3.SingletonImageLoader.get(context)
-        val request = coil3.request.ImageRequest.Builder(context)
-            .data(src)
-            .build()
-        val result = loader.execute(request)
-        if (result is coil3.request.SuccessResult) {
-            bitmap = result.image?.toBitmap()
-        }
+        // 走 ImageBitmapLoader (内置栅格解码 + androidsvg 兜底, 与图片查看器同链路); data: URI 早返回
+        val bmp = ImageBitmapLoader().loadBitmap(
+            url = src,
+            book = null,
+            bookSource = null,
+            isCover = false,
+            widthPx = 0,
+            heightPx = 0,
+            useBitmapCache = true,
+        )
+        bitmap = bmp?.asAndroidBitmap()
     }
     bitmap?.let {
         DisableSelection {

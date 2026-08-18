@@ -80,6 +80,16 @@ private class DesktopFilePickerService : FilePickerService {
             initialDir = (defaultDir ?: userExportDir())?.let(::File)?.takeIf { it.isDirectory },
         )?.absolutePath
 
+    override fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean {
+        // 保存对话框选位置 → 写文件 (对照 master PhotoDialog 的保存语义)
+        val dest = FileDialogs.pickSaveFile(defaultName = suggestedName) ?: return false
+        return runCatching {
+            dest.parentFile?.mkdirs()
+            dest.writeBytes(bytes)
+            true
+        }.getOrDefault(false)
+    }
+
     override fun pickDirectory(): String? =
         FileDialogs.pickDirectory(
             initialDir = userExportDir()?.let(::File)?.takeIf { it.isDirectory },

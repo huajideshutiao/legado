@@ -96,7 +96,10 @@ fun DesktopNativeChromeHost(
                         EventQueue.invokeLater { themeStore.updateDark(!themeStore.isDark) }
                     },
                     onMenu = { x, y ->
-                        EventQueue.invokeLater { menuAnchor = x to y }
+                        EventQueue.invokeLater {
+                            // 若菜单已展开, 再次点击则收起; 否则设置新锚点展开
+                            menuAnchor = if (menuAnchor != null) null else x to y
+                        }
                     },
                     // 标题栏是 native 地盘, 鼠标事件不进 Compose ⇒ ⋯菜单靠点击 dismiss 的机制在
                     // 标题栏上失效 (拖标题栏时菜单不关, 用户实测)。由 native 主动通知来关。

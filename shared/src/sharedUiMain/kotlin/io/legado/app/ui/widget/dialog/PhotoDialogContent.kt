@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -30,6 +31,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.help.FileUtilsCommon
 import io.legado.app.help.book.BookImageStorageProviders
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.image.BookImageLoaders
 import io.legado.app.help.image.ImageBitmapLoader
 import io.legado.app.help.image.ReaderImageCache
@@ -37,9 +39,12 @@ import io.legado.app.help.image.decodeBytesSampled
 import io.legado.app.help.image.decodeSvgFallback
 import io.legado.app.help.image.isGifBytes
 import io.legado.app.help.image.rememberAnimatedImageBitmap
+import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.zoomable
+import io.legado.app.ui.root.PlatformServiceProviders
+import kotlinx.coroutines.launch
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.close
 import legado.shared.generated.resources.image_cover_default
@@ -332,6 +337,7 @@ fun PhotoViewOverlayDialog(
     chapter: BookChapter? = null,
     placeholder: (@Composable () -> Unit)? = null,
 ) {
+    val scope = rememberCoroutineScope()
     PlatformPhotoOverlayDialog(onDismissRequest = onDismiss) {
         if (placeholder != null) {
             placeholder()
@@ -345,7 +351,19 @@ fun PhotoViewOverlayDialog(
                 book = book,
                 bookSource = bookSource,
                 chapter = chapter,
-                onLongPress = null,
+                onLongPress = {
+                    // 长按保存 (对照 master PhotoDialog.doSaveImage): 字节链路 → 平台选位置 → 写入 → toast
+                    scope.launch(IoDispatcher) {
+                        val bytes = loadPhotoBytes(src, book, bookSource, chapter, isCover = true)
+                            ?: run {
+                                Toasters.get().toast("保存图片失败")
+                                return@launch
+                            }
+                        val ok = PlatformServiceProviders.getOrNull()?.files
+                            ?.saveImageBytes("image.jpg", bytes) ?: false
+                        Toasters.get().toast(if (ok) "保存成功" else "保存图片失败")
+                    }
+                },
                 onTap = onDismiss,
                 loadingContent = { Text(stringResource(Res.string.loading), color = Color.White) },
             )

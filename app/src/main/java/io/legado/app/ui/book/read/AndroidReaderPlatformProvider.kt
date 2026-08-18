@@ -160,7 +160,9 @@ class AndroidReaderPlatformProvider(
      * （对照原版 onCancelSelect → textActionMenu.dismiss）。幂等：菜单未显示时无操作。
      */
     override fun onTextSelectionDismissed(screenModel: ReaderScreenModel) {
+        // 对照 master ReadBookActivity.cancelSelect: 文本/图片菜单互斥, 同时 dismiss
         activity.dismissReaderTextActionMenu()
+        activity.dismissImageActionMenu()
     }
 
     /**
@@ -170,7 +172,9 @@ class AndroidReaderPlatformProvider(
      * （TextActionMenu.dismissByApp 防重入），事件链兜底重复调用安全。
      */
     override fun dismissTextActionMenu(screenModel: ReaderScreenModel) {
+        // 对照 master ReadBookActivity.cancelSelect: 文本/图片菜单互斥, 同时 dismiss
         activity.dismissReaderTextActionMenu()
+        activity.dismissImageActionMenu()
     }
 
     /**
@@ -283,9 +287,10 @@ class AndroidReaderPlatformProvider(
         if (!BuildConfig.DEBUG) {
             Backup.autoBack(activity)
         }
-        // 退出阅读页: 收起文本操作浮动菜单 (对照原版 onDestroy → textActionMenu.dismiss),
-        // 否则 ActionMode 悬在 decorView 上残留
+        // 退出阅读页: 收起文本/图片操作浮动菜单 (对照原版 onDestroy → textActionMenu.dismiss
+        // + popupAction.dismiss), 否则 ActionMode 悬在 decorView 上残留
         activity.dismissReaderTextActionMenu()
+        activity.dismissImageActionMenu()
     }
 
     override fun readAloudControls(

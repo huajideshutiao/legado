@@ -1,9 +1,9 @@
 package io.legado.app.ui.config
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,6 +14,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -24,7 +27,6 @@ import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,7 +35,6 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -57,6 +58,9 @@ import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.rememberPainter
+import io.legado.app.ui.compose.reorderable.RuleItemScope
+import io.legado.app.ui.compose.reorderable.RuleReorderableItem
+import io.legado.app.ui.compose.reorderable.rememberReorderableListState
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.FlowBus
@@ -493,72 +497,33 @@ fun BottomNavConfigDialog(onDismiss: () -> Unit) {
                         fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                     )
                     Spacer(Modifier.height(8.dp))
-                    var dragIndex by remember { mutableIntStateOf(-1) }
-                    var dragAccum by remember { mutableFloatStateOf(0f) }
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .pointerInput(navItems) {
-                                detectDragGestures(
-                                    onDragStart = { offset ->
-                                        val cellWidth =
-                                            (size.width / navItems.size).coerceAtLeast(1)
-                                        dragIndex = (offset.x / cellWidth).toInt()
-                                            .coerceIn(0, navItems.lastIndex)
-                                        dragAccum = 0f
-                                    },
-                                    onDragEnd = { dragIndex = -1; dragAccum = 0f },
-                                    onDragCancel = { dragIndex = -1; dragAccum = 0f },
-                                    onDrag = { change, amount ->
-                                        change.consume()
-                                        if (dragIndex in navItems.indices) {
-                                            dragAccum += amount.x
-                                            val cellWidth =
-                                                (size.width / navItems.size).coerceAtLeast(1)
-                                            // 越过半个格宽换一位 (对照 ItemTouchHelper 默认阈值)
-                                            while (dragAccum >= cellWidth / 2f && dragIndex < navItems.lastIndex) {
-                                                swapItems(navItems, dragIndex, dragIndex + 1)
-                                                dragIndex++
-                                                dragAccum -= cellWidth
+                    // 复用 ReorderableLazyListState + LazyRow 实现跟手拖拽排序
+                    // vertical=false: 底栏是横向列表 (LazyRow), 方向显式声明 (ohos 手写实现不猜宽高比)
+                    val navListState = rememberLazyListState()
+                    val navReorderState =
+                        rememberReorderableListState(navListState, vertical = false) { from, to ->
+                            swapItems(navItems, from, to)
+                        }
+                    BoxWithConstraints(Modifier.fillMaxWidth()) {
+                        val cellWidth = maxWidth / navItems.size
+                        LazyRow(
+                            state = navListState,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            items(navItems, key = { it.tag }) { item ->
+                                RuleReorderableItem(navReorderState, key = item.tag) {
+                                    NavConfigItem(
+                                        item = item,
+                                        iconSize = iconSize.intValue,
+                                        cellWidth = cellWidth,
+                                        onToggle = {
+                                            val idx = navItems.indexOfFirst { it.tag == item.tag }
+                                            if (idx >= 0) {
+                                                navItems[idx] = item.copy(enabled = !item.enabled)
                                             }
-                                            while (dragAccum <= -cellWidth / 2f && dragIndex > 0) {
-                                                swapItems(navItems, dragIndex, dragIndex - 1)
-                                                dragIndex--
-                                                dragAccum += cellWidth
-                                            }
-                                        }
-                                    },
-                                )
-                            },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        navItems.forEachIndexed { index, item ->
-                            Column(
-                                Modifier
-                                    .weight(1f)
-                                    .clickable(enabled = !item.locked) {
-                                        navItems[index] = item.copy(enabled = !item.enabled)
-                                    }
-                                    .padding(vertical = 4.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                            ) {
-                                val tint = if (item.enabled) colors.accent else colors.primaryText
-                                Icon(
-                                    painter = rememberPainter(
-                                        bottomNavIconKey(
-                                            item.tag,
-                                            item.enabled
-                                        )
-                                    ),
-                                    contentDescription = stringResource(item.nameRes),
-                                    tint = tint,
-                                    modifier = Modifier.size(iconSize.intValue.dp),
-                                )
-                                Text(
-                                    stringResource(item.nameRes),
-                                    color = tint,
-                                    fontSize = 12.sp,
-                                )
+                                        },
+                                    )
+                                }
                             }
                         }
                     }
@@ -703,6 +668,41 @@ private fun <T> swapItems(list: SnapshotStateList<T>, a: Int, b: Int) {
     val tmp = list[a]
     list[a] = list[b]
     list[b] = tmp
+}
+
+/**
+ * 底栏配置单项: 长按拖拽换序 + 点击切换启用 (对照 rv_nav_items item)。
+ * 用 longPressDraggableHandle 复用 ReorderableLazyListState 跟手拖拽。
+ */
+@Composable
+private fun RuleItemScope.NavConfigItem(
+    item: BottomNavConfigItem,
+    iconSize: Int,
+    cellWidth: androidx.compose.ui.unit.Dp,
+    onToggle: () -> Unit,
+) {
+    val colors = AppTheme.colors
+    val tint = if (item.enabled) colors.accent else colors.primaryText
+    Column(
+        Modifier
+            .width(cellWidth)
+            .longPressDraggableHandle(enabled = true)
+            .clickable(enabled = !item.locked, onClick = onToggle)
+            .padding(vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            painter = rememberPainter(bottomNavIconKey(item.tag, item.enabled)),
+            contentDescription = stringResource(item.nameRes),
+            tint = tint,
+            modifier = Modifier.size(iconSize.dp),
+        )
+        Text(
+            stringResource(item.nameRes),
+            color = tint,
+            fontSize = 12.sp,
+        )
+    }
 }
 
 /** 标签 + 下拉单行 (对照原版 AppCompatSpinner 行) */

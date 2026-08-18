@@ -24,7 +24,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.isVideo
-import io.legado.app.help.image.BookImageLoaders
+import io.legado.app.help.image.ImageBitmapLoader
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.compose.theme.AppTheme
 
@@ -123,12 +123,19 @@ fun SharedIntroImage(
     src: String,
     onClick: () -> Unit,
 ) {
-    val loader = remember { BookImageLoaders.getOrNull() }
     var bitmap by remember(src) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(src, loader) {
-        if (src.isBlank() || loader == null) return@LaunchedEffect
-        // 挂起 API: 随本协程取消 (离开页面即中止), 同 URL 并发经 BookImageLoadDedup 单飞去重
-        bitmap = loader.loadImageOrNull(src, null)
+    LaunchedEffect(src) {
+        if (src.isBlank()) return@LaunchedEffect
+        // 走 ImageBitmapLoader (内置栅格解码 + svg 兜底, 各端一致); data: URI 早返回解析
+        bitmap = ImageBitmapLoader().loadBitmap(
+            url = src,
+            book = null,
+            bookSource = null,
+            isCover = false,
+            widthPx = 0,
+            heightPx = 0,
+            useBitmapCache = true,
+        )
     }
     val bmp = bitmap
     if (bmp != null) {

@@ -256,7 +256,7 @@ interface AppConfigAccessor {
     /** 源编辑最大行数 (原 AppConfig.sourceEditMaxLine): 存储值 <10 视为不限制, 返回 Int.MAX_VALUE。 */
     val sourceEditMaxLine: Int
 
-    /** 欢迎页展示时长毫秒 (原 AppConfig.welcomeShowTime), 默认 600, 范围 0..3000。 */
+    /** 欢迎页展示时长毫秒 (原 AppConfig.welcomeShowTime), 默认 600, 范围 600..3000。 */
     val welcomeShowTime: Int
 
     /**
@@ -315,7 +315,7 @@ object AppConfigRanges {
     val bottomBarHeight = 36..80
     val bottomBarIconSize = 18..36
     val bottomBarLabelMode = 0..3
-    val welcomeShowTime = 0..3000
+    val welcomeShowTime = 600..3000
 }
 
 /**

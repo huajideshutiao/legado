@@ -25,11 +25,9 @@ import org.jetbrains.compose.resources.stringResource
  * 图片路径 XML key = welcomeImagePath/welcomeImagePathDark（= PreferKey.welcomeImage/welcomeImageDark）。
  * 点击型（启动时长/背景图选择）由宿主提供回调与动态 summary。
  *
- * 下沉 shared/sharedUiMain:
- * - stringResource(R.string.xxx) → stringResource(Res.string.xxx) (key-based, 跨平台)
- * - 保留原结构：rememberString 调用放在 AppTheme 内部（与 app 端原版 stringResource 位置一致）
- * - PreferenceScreen/switchPreference/preference/preferenceCategory 走 shared/sharedUiMain 的
- *   io.legado.app.ui.compose.preference 包, 与 app 端原包名/类名一致, app/desktop 端共用。
+ * 白天/夜间各有独立的"显示文字"和"显示图标"开关（还原原版配置）:
+ * - 白天: welcomeShowText / welcomeShowIcon
+ * - 夜间: welcomeShowTextDark / welcomeShowIconDark
  */
 @Composable
 fun WelcomeConfigScreen(
@@ -63,6 +61,13 @@ fun WelcomeConfigScreen(
                 summary = showTimeSummary,
                 onClick = onShowTime,
             )
+
+            preferenceCategory(labelDay)
+            preference(
+                title = titleBgImage,
+                summary = imageSummary,
+                onClick = { onPickImage(false) },
+            )
             switchPreference(
                 prefKey = PreferKey.welcomeShowText,
                 title = titleShowText,
@@ -76,18 +81,23 @@ fun WelcomeConfigScreen(
                 defaultValue = true,
             )
 
-            preferenceCategory(labelDay)
-            preference(
-                title = titleBgImage,
-                summary = imageSummary,
-                onClick = { onPickImage(false) },
-            )
-
             preferenceCategory(labelNight)
             preference(
                 title = titleBgImage,
                 summary = imageDarkSummary,
                 onClick = { onPickImage(true) },
+            )
+            switchPreference(
+                prefKey = PreferKey.welcomeShowTextDark,
+                title = titleShowText,
+                summary = summaryShowText,
+                defaultValue = true,
+            )
+            switchPreference(
+                prefKey = PreferKey.welcomeShowIconDark,
+                title = titleShowIcon,
+                summary = summaryShowIcon,
+                defaultValue = true,
             )
         }
     }

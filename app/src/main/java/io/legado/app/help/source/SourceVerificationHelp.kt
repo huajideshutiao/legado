@@ -120,7 +120,16 @@ object VerificationUiProviderImpl : VerificationUiProvider {
         val navigator = AppNavigatorProviders.getOrNull() ?: return
         if (asBottomSheet) {
             // BottomSheet 半屏方式打开 (对照 JsActivity BottomSheetDialog peekHeight=60%)
-            navigator.showOverlay(AppOverlay.Sheet(key = "web_view", payload = url))
+            // 携带书源信息以提供禁用源/删除源菜单项 (对照非半屏分支传 sourceKey/sourceName/sourceType)
+            navigator.showOverlay(
+                AppOverlay.Sheet(
+                    key = "web_view",
+                    payload = url,
+                    sourceKey = source.getKey(),
+                    sourceName = source.getTag(),
+                    sourceType = source.getSourceType(),
+                )
+            )
         } else {
             // 对照原 WebViewActivity 的 intent extras: 验证回传参数 (saveResult/refetchAfterSuccess)
             // 与书源信息 (headerMap 注入用) 全量传入路由

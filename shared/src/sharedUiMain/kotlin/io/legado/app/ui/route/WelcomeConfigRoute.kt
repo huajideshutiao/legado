@@ -2,10 +2,6 @@ package io.legado.app.ui.route
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.AlertDialog
-import androidx.compose.material.Text
-import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -14,20 +10,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.KeyboardType
 import io.legado.app.constant.PreferKey
+import io.legado.app.help.config.AppConfigRanges
 import io.legado.app.help.coroutine.IoDispatcher
-import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.component.AppTitleBar
-import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
-import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.config.WelcomeConfigScreen
 import io.legado.app.ui.config.WelcomeConfigScreenModel
 import io.legado.app.ui.config.WelcomeConfigUiEvent
 import io.legado.app.ui.config.WelcomeConfigUiState
+import io.legado.app.ui.dialog.NumberPickerDialog
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.FileFilter
 import io.legado.app.ui.root.PlatformServiceProviders
@@ -36,8 +28,6 @@ import io.legado.app.ui.root.ScreenModelStore
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
-import legado.shared.generated.resources.cancel
-import legado.shared.generated.resources.ok
 import legado.shared.generated.resources.select_image
 import legado.shared.generated.resources.welcome_show_time
 import legado.shared.generated.resources.welcome_style
@@ -108,46 +98,20 @@ fun WelcomeConfigRoute(
         )
     }
 
-    // 启动时长选择对话框 (对照 app 端 showNumberPicker)
+    // 启动时长选择对话框 (对照 app 端 showNumberPicker): 数值选择器 600..3000,
+    // 范围由 NumberPickerDialog 内部钳制, 不再手动 coerceIn
     if (showTimePicker) {
-        val colors = AppTheme.colors
-        var timeValue by remember { mutableStateOf(state.welcomeShowTime.toString()) }
-        AlertDialog(
-            onDismissRequest = { showTimePicker = false },
-            modifier = Modifier.appDialogSize(),
-            properties = AppDialogSizes.properties(),
-            title = {
-                Text(
-                    stringResource(Res.string.welcome_show_time),
-                    color = colors.primaryText
-                )
+        NumberPickerDialog(
+            title = stringResource(Res.string.welcome_show_time),
+            value = state.welcomeShowTime,
+            range = AppConfigRanges.welcomeShowTime,
+            onConfirm = { value ->
+                // 对照 app 端 AppConfig.welcomeShowTime = it
+                pref.putInt(PreferKey.welcomeShowTime, value)
+                screenModel.dispatch(WelcomeConfigUiEvent.ShowTimeChange(value))
+                showTimePicker = false
             },
-            text = {
-                AppTextField(
-                    value = timeValue,
-                    onValueChange = { timeValue = it.filter { c -> c.isDigit() } },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    timeValue.toIntOrNull()?.let {
-                        val clamped = it.coerceIn(0, 3000)
-                        // 对照 app 端 AppConfig.welcomeShowTime = it
-                        pref.putInt(PreferKey.welcomeShowTime, clamped)
-                        screenModel.dispatch(WelcomeConfigUiEvent.ShowTimeChange(clamped))
-                    }
-                    showTimePicker = false
-                }) { Text(stringResource(Res.string.ok)) }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    showTimePicker = false
-                }) { Text(stringResource(Res.string.cancel)) }
-            },
-            shape = DesignTokens.dialogShape,
-            backgroundColor = colors.fillet,
+            onDismiss = { showTimePicker = false },
         )
     }
 }

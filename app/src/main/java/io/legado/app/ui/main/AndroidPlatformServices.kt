@@ -123,6 +123,17 @@ private class AndroidFilePickerService(
         withContext(Dispatchers.Main) { createDocumentPicker.launch(suggestedName) }?.toString()
     }
 
+    override fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean = runBlocking {
+        // CreateDocument 选位置 → contentResolver 写入 (对照 master PhotoDialog 的 SAF 保存)
+        val uri = withContext(Dispatchers.Main) { createDocumentPicker.launch(suggestedName) }
+            ?: return@runBlocking false
+        runCatching {
+            App.instance.contentResolver.openOutputStream(uri)
+                ?.use { it.write(bytes) } ?: return@runBlocking false
+            true
+        }.getOrDefault(false)
+    }
+
     // 选目录: OpenDocumentTree (对照 app 端 HandleFileDialog.selectDocTree),
     // 选中后 takePersistableUriPermission 保证重启后仍可访问
     override fun pickDirectory(): String? = runBlocking {

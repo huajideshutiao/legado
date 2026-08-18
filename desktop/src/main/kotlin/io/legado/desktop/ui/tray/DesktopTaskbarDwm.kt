@@ -458,7 +458,12 @@ internal object DesktopTaskbarDwm {
             while (end <= text.length && fm.stringWidth(text.substring(start, end)) <= maxWidth) {
                 end++
             }
-            if (end > text.length) end = text.length
+            if (end > text.length) {
+                end = text.length
+            } else if (end > start + 1) {
+                // end 停在第一个超宽位置, 回退到最后放得下的字符, 否则每行末尾多取一字被画布裁掉
+                end--
+            }
             var display = text.substring(start, end)
             val truncated = line == maxLines - 1 && end < text.length
             if (truncated) {

@@ -15,16 +15,21 @@ import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.LocalWindowExceptionHandlerFactory
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowDecoration
 import androidx.compose.ui.window.WindowExceptionHandler
 import androidx.compose.ui.window.WindowExceptionHandlerFactory
+import androidx.compose.ui.window.WindowPlacement
+import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.sun.jna.Platform
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDatabaseProviders
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.BundledDatabaseDriver
@@ -177,6 +182,7 @@ import java.awt.Desktop
 import java.io.File
 import java.util.concurrent.TimeUnit
 import javax.imageio.ImageIO
+import javax.swing.SwingUtilities
 
 // Debug 日志开关: -Dlegado.desktop.debug=true 开启 stdout 调试输出
 // 生产环境静默, 减少 println 同步 flush 开销 (启动期 initDesktopRuntimeEnvironment 等)
@@ -489,15 +495,46 @@ private fun runDesktopApp() = application {
     VideoPlayPlatformProviders.register(MediampVideoPlayPlatformProvider(windowHandle))
 
     // ==================== 阶段2: 显示窗口 ====================
-    // KP2: 桌面端窗口框架——注入 4 个 DesktopXxxProvider + AppTheme 包装 LegadoApp
-    // 窗口标题改为 "阅读" (用户反馈: 应用名应该就叫阅读)
-    // icon 用 classpath 资源 icon.png (复制自 app/src/main/res/mipmap-xxxhdpi/ic_launcher.png),
-    // 不再使用 Java 默认咖啡杯图标; 资源位于 desktop/src/main/resources/icon.png
-    // 窗口标题走 rememberString("app_name"); application{} 顶层是 @Composable 上下文,
-    // 在 Window 调用前求值后传给 title (Window.title 接收 String 而非 @Composable)
+    // 启动闪屏 (AWT JWindow, 无边框, 在主窗口创建前显示)
+    val themeStoreProviderSplash = remember { DesktopThemeStoreProvider() }
+    val splashScreen =
+        remember { DesktopSplashScreen(preferenceStoreProvider, themeStoreProviderSplash) }
+    val splashDuration = remember { splashScreen.show() }
     val appName = rememberString("app_name")
-    // 窗口状态: 供 DesktopToastHost 检测最小化 (最小化时 toast 转托盘气泡)
-    val windowState = rememberWindowState()
+    // 窗口状态记忆: 从偏好存储读取上次窗口是否最大化/位置尺寸;
+    // 恢复在窗口显示后 (componentShown) 由 AWT 直连应用, 保存读 AWT 真值
+    val prefProvider = PreferenceProviders.get()
+    val hasWindowBounds = prefProvider.contains(PreferKey.windowWidth)
+    val savedMaximized = prefProvider.getBoolean(PreferKey.windowMaximized, false)
+    val savedW = prefProvider.getInt(PreferKey.windowWidth, 1024)
+    val savedH = prefProvider.getInt(PreferKey.windowHeight, 768)
+    var savedX = prefProvider.getInt(PreferKey.windowX, 100)
+    var savedY = prefProvider.getInt(PreferKey.windowY, 100)
+    // 屏幕边界修正: 显示器分辨率/布局变化后旧坐标可能越界,
+    // 保证窗口至少有部分留在屏幕内便于拖回 (不强制完整可见, 多屏场景留有余地)
+    val screenSize = java.awt.Toolkit.getDefaultToolkit().screenSize
+    val minVisible = 80
+    savedX = savedX.coerceIn(-savedW + minVisible, screenSize.width - minVisible)
+    savedY = savedY.coerceIn(-savedH + minVisible, screenSize.height - minVisible)
+    // 窗口记忆: 保存直读 AWT 真值 (extendedState/size/location, onDispose 时落盘, 不依赖
+    // CMP placement 回写链); 恢复由 CMP 在窗口显示前应用初始 size/position/placement ——
+    // SwingWindow 的 update 块先于 isVisible=true 执行, setSizeSafely/setPositionSafely
+    // 保证首帧即以目标尺寸渲染 (显示前 pack+设尺寸), 窗口第一次出现即最终尺寸位置,
+    // 无"先默认 800x600 再跳变"的调整过程; 最大化用 placement 同样在显示前生效。
+    val windowState = when {
+        savedMaximized -> rememberWindowState(
+            placement = WindowPlacement.Maximized,
+            position = WindowPosition.Absolute(savedX.dp, savedY.dp),
+            size = DpSize(savedW.dp, savedH.dp),
+        )
+
+        hasWindowBounds -> rememberWindowState(
+            position = WindowPosition.Absolute(savedX.dp, savedY.dp),
+            size = DpSize(savedW.dp, savedH.dp),
+        )
+
+        else -> rememberWindowState()
+    }
     // classpath 资源加载: 弃用的 painterResource(String) 改为手动 ImageIO 解码 + BitmapPainter
     val iconPainter = remember {
         runCatching {
@@ -568,6 +605,36 @@ private fun runDesktopApp() = application {
                 (300 * windowDensity).toInt(),
                 (600 * windowDensity).toInt(),
             )
+            // 窗口状态记忆恢复已前置到 rememberWindowState 初始值 (显示前生效), 此处不再
+            // 在 componentShown 后 setBounds/setExtendedState —— 那是窗口已显示后的调整,
+            // 造成肉眼可见的尺寸跳变。
+            // 闪屏关闭时机: 主窗口可见即关, 最迟 splashDuration 关闭 (取先到者)
+            if (splashDuration > 0) {
+                var splashClosed = false
+                fun closeSplash() {
+                    if (!splashClosed) {
+                        splashClosed = true
+                        SwingUtilities.invokeLater { splashScreen.close() }
+                    }
+                }
+                // 兜底定时器: 主窗口首帧渲染过慢/异常时不至于无限挂着
+                Coroutine.async {
+                    val remain = splashDuration - 200  // 留 200ms 让主窗口首帧渲染
+                    if (remain > 0) kotlinx.coroutines.delay(remain)
+                    closeSplash()
+                }
+                // 主窗口可见即关 (取先到者): AWT componentShown 在窗口显示时触发
+                if (window.isVisible) {
+                    closeSplash()
+                } else {
+                    window.addComponentListener(object : java.awt.event.ComponentAdapter() {
+                        override fun componentShown(e: java.awt.event.ComponentEvent) {
+                            closeSplash()
+                            window.removeComponentListener(this)
+                        }
+                    })
+                }
+            }
             windowHandle.window = window
             SingleInstanceGuard.bindWindow(window)
             DesktopTaskbarMedia.attach(window)
@@ -585,6 +652,18 @@ private fun runDesktopApp() = application {
                 }
             }
             onDispose {
+                // 窗口状态记忆: 关闭前保存当前窗口位置/尺寸/是否最大化。
+                // 最大化状态直读 AWT 真值 (不依赖 CMP placement 回写, 后者经 wndchrome/标题栏
+                // 最大化时可能漏报); 尺寸只在非最大化且非真全屏时更新 (全屏尺寸=屏幕, 不覆盖记录)
+                val p = PreferenceProviders.get()
+                val maximized = (window.extendedState and javax.swing.JFrame.MAXIMIZED_BOTH) != 0
+                p.putBoolean(PreferKey.windowMaximized, maximized)
+                if (!maximized && !DesktopWindowChrome.fullscreen) {
+                    p.putInt(PreferKey.windowWidth, window.width)
+                    p.putInt(PreferKey.windowHeight, window.height)
+                    p.putInt(PreferKey.windowX, window.x)
+                    p.putInt(PreferKey.windowY, window.y)
+                }
                 DesktopWindowChromeNative.detach()
                 windowHandle.window = null
                 SingleInstanceGuard.bindWindow(null)

@@ -77,6 +77,25 @@ actual class ImageBitmapLoader actual constructor() {
         useBitmapCache: Boolean,
     ): ImageBitmap? =
         withContext(IoDispatcher) {
+            // data: URI 早返回: 内联 svg/图片直接解析内容, 不走网络/文件加载 (简介图等)
+            if (url.startsWith("data:")) {
+                val bytes = parseDataUriBytes(url) ?: return@withContext null
+                val maxDim = maxOf(widthPx, heightPx)
+                val key = if (useBitmapCache) {
+                    DecodedBitmapCache.cacheKey(
+                        url,
+                        bookSource?.bookSourceUrl,
+                        isCover,
+                        widthPx,
+                        heightPx
+                    )
+                } else null
+                val cached = key?.let { DecodedBitmapCache.get(it) }
+                if (cached != null) return@withContext cached
+                val bitmap = decodeBytesSampled(bytes, maxDim) ?: decodeSvgFallback(bytes, maxDim)
+                if (bitmap != null && key != null) DecodedBitmapCache.put(key, bitmap)
+                return@withContext bitmap
+            }
             val bytes = loadBytes(url, book, bookSource, isCover) ?: return@withContext null
             val key = if (useBitmapCache) {
                 DecodedBitmapCache.cacheKey(url, bookSource?.bookSourceUrl, isCover, widthPx, heightPx)

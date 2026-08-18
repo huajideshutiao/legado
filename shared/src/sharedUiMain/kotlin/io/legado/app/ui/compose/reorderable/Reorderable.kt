@@ -21,6 +21,7 @@ expect class ReorderableListState
 @Composable
 expect fun rememberReorderableListState(
     listState: LazyListState,
+    vertical: Boolean = true,
     onMove: (fromIndex: Int, toIndex: Int) -> Unit,
 ): ReorderableListState
 

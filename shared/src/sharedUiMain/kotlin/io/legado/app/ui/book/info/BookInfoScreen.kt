@@ -54,7 +54,6 @@ import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -881,7 +880,7 @@ private class ButtonChunk(val label: String, val action: String) : IntroChunk
 
 private sealed interface IntroPart
 private class IntroTextPart(val chunks: List<IntroChunk>) : IntroPart
-private class IntroImagePart(val src: String) : IntroPart
+private class IntroImagePart(val src: String, val onclick: String? = null) : IntroPart
 
 @Composable
 private fun IntroSection(
@@ -907,7 +906,14 @@ private fun IntroSection(
             parts.forEach { part ->
                 when (part) {
                     is IntroTextPart -> IntroRichText(part) { actions.onDispatchIntroAction(it) }
-                    is IntroImagePart -> introImageSlot(part.src) { actions.onShowPhoto(part.src) }
+                    is IntroImagePart -> {
+                        // 源站自定义 onclick: 与 button 同通道执行 evalJS; 无则查看大图
+                        if (!part.onclick.isNullOrBlank()) {
+                            introImageSlot(part.src) { actions.onDispatchIntroAction(part.onclick) }
+                        } else {
+                            introImageSlot(part.src) { actions.onShowPhoto(part.src) }
+                        }
+                    }
                 }
             }
         }
@@ -940,7 +946,10 @@ private fun parseIntro(intro: String): List<IntroPart> {
                         val src = node.absUrl("src").ifEmpty { node.attr("src") }
                         if (src.isNotBlank()) {
                             flush()
-                            parts.add(IntroImagePart(src))
+                            // 提取源站自定义 onclick (intro 经 formatKeepRichTags 处理, 属性原样保留),
+                            // 点击时优先执行 (与 button 同通道), 否则查看大图
+                            val onclick = node.attr("onclick").takeIf { it.isNotBlank() }
+                            parts.add(IntroImagePart(src, onclick))
                         }
                     }
 

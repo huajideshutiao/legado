@@ -341,8 +341,10 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var welcomeImage by stringPref(PreferKey.welcomeImage)
     var welcomeShowText by boolPref(PreferKey.welcomeShowText, true)
     var welcomeShowIcon by boolPref(PreferKey.welcomeShowIcon, true)
-    var welcomeShowTime by intPref(PreferKey.welcomeShowTime, 600, 0..3000)
+    var welcomeShowTime by intPref(PreferKey.welcomeShowTime, 600, 600..3000)
     var welcomeImageDark by stringPref(PreferKey.welcomeImageDark)
+    var welcomeShowTextDark by boolPref(PreferKey.welcomeShowTextDark, true)
+    var welcomeShowIconDark by boolPref(PreferKey.welcomeShowIconDark, true)
     val enableWelcome by boolPref(PreferKey.enableWelcome, true)
 
     /** 恢复默认 UA:清 pref 并立即重载缓存,不等监听器 */

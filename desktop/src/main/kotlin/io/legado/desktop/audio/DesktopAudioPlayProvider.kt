@@ -265,9 +265,10 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge, AudioP
         player.seekTo(position.toLong())
         AudioPlayShared.durChapterPos = position
         postEvent(EventBus.AUDIO_PROGRESS, position)
-        // seek 后歌词位置失效, 重算 (对齐 app/iOS)
+        // seek 后歌词位置失效, 重算 (对齐 app/iOS);
+        // 传目标位置: mpv seek 异步, currentPosition 未同步, 用目标位置扫描歌词行
         manager.resetLrcPosition()
-        manager.upPlayProgressForLrc()
+        manager.upPlayProgressForLrc(position)
         syncSmtc(positionMs = position.toLong())
     }
 

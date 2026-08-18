@@ -129,9 +129,14 @@ class AudioPlayManager(
      *
      * 调用方在以下场景触发重启: STATE_READY / adjustProgress / 调整播放速度。
      *
+     * @param seekTargetMs seek 跳转目标位置 (毫秒); 非空时开头扫描与内层循环首个迭代的
+     *   剩余时长/回扫基准都用该位置兜底, 因为 mpv/AVPlayer 等引擎 seekTo 是异步的,
+     *   seek 完成前 currentPosition 仍是旧值, 若用旧值扫描或计算剩余时长会先把高亮
+     *   推回旧行 (覆盖 UI 的立即高亮), 再等旧行剩余时长才跳回。
+     *
      * 对标 app 端 `AudioPlayService.upPlayProgressForLrc`。
      */
-    fun upPlayProgressForLrc() {
+    fun upPlayProgressForLrc(seekTargetMs: Int? = null) {
         upPlayProgressForLrcJob?.cancel()
         val lrc = AudioPlayShared.durLrcData ?: return
         if (lrc.isEmpty() || lrc.last().first == -1) return
@@ -147,7 +152,8 @@ class AudioPlayManager(
             while (isActive) {
                 subCount.first { it > 0 }
                 val curLrc = AudioPlayShared.durLrcData ?: break
-                val curMs = controller.currentPosition + lrcOffsetMs
+                // seek 场景用目标位置扫描 (见函数 KDoc: 引擎 seek 异步, currentPosition 未同步)
+                val curMs = (seekTargetMs ?: controller.currentPosition.toInt()) + lrcOffsetMs
                 // 续推: 上次位置仍在范围且没被新 lrc 失效就直接接上, 否则从 0 起重新单向扫
                 var position = lastLrcPosition.takeIf {
                     it in 0 until curLrc.size && curLrc[it].first <= curMs
@@ -163,9 +169,16 @@ class AudioPlayManager(
                 // (seek/换章/换速/新 lrc 到货) 都已在对应入口显式调用 upPlayProgressForLrc。
                 if (position >= curLrc.size - 1) return@launch
 
+                // seek 场景基准位置: 引擎 seekTo 异步, seek 完成前 currentPosition 仍是旧值,
+                // 首个内层迭代的剩余时长/回扫基准先用目标位置兜底, 否则旧值算出的 remain<0
+                // 会走"过期回扫"把高亮拉回旧行 (点击歌词闪现后又跳回原行, 之后卡住等待);
+                // seek 完成后 currentPosition 已同步, 消费掉兜底后恢复实时基准。
+                var seekBaseMs = seekTargetMs?.toLong()
                 while (isActive && position < curLrc.size - 1) {
+                    val baseMs = seekBaseMs ?: controller.currentPosition
+                    seekBaseMs = null
                     val remain = ((curLrc[position + 1].first
-                        - controller.currentPosition - lrcOffsetMs) / playSpeed).toLong()
+                        - baseMs - lrcOffsetMs) / playSpeed).toLong()
                     if (remain > 0) {
                         val dropped = withTimeoutOrNull(remain) {
                             subCount.first { it == 0 }
@@ -181,7 +194,7 @@ class AudioPlayManager(
                     // 单向向前扫到真实位置; 若仍未前进, 直接退出协程, 由 upPlayProgress 的 1s 心跳
                     // 在 player 真正推进后重启, 避免无挂起点的忙等。
                     val before = position
-                    val nowMs = controller.currentPosition + lrcOffsetMs
+                    val nowMs = baseMs + lrcOffsetMs
                     while (position + 1 < curLrc.size && curLrc[position + 1].first <= nowMs) {
                         position++
                     }

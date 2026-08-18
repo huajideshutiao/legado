@@ -7,10 +7,10 @@ import android.net.Uri
 import android.provider.Settings
 import android.view.ViewConfiguration
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,6 +18,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -30,20 +34,16 @@ import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
@@ -125,6 +125,9 @@ import io.legado.app.ui.compose.dialogs.selector
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.platform.rememberStringArray
+import io.legado.app.ui.compose.reorderable.RuleItemScope
+import io.legado.app.ui.compose.reorderable.RuleReorderableItem
+import io.legado.app.ui.compose.reorderable.rememberReorderableListState
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.config.DefaultCoverGalleryDialog
 import io.legado.app.ui.config.ThemeCustomizeDialog
@@ -2214,6 +2217,38 @@ private fun bottomNavIconKey(tag: String, enabled: Boolean): String = when (tag)
     else -> if (enabled) "ic_bottom_person_s" else "ic_bottom_person_e"
 }
 
+/** 底栏配置单项: 长按拖拽换序 + 点击切换启用 (对照 rv_nav_items item) */
+@Composable
+private fun RuleItemScope.AndroidNavConfigItem(
+    item: BottomNavConfigItem,
+    iconSize: Int,
+    cellWidth: androidx.compose.ui.unit.Dp,
+    onToggle: () -> Unit,
+) {
+    val colors = AppTheme.colors
+    val tint = if (item.enabled) colors.accent else colors.primaryText
+    Column(
+        Modifier
+            .width(cellWidth)
+            .longPressDraggableHandle(enabled = true)
+            .clickable(enabled = !item.locked, onClick = onToggle)
+            .padding(vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            painter = rememberPainter(bottomNavIconKey(item.tag, item.enabled)),
+            contentDescription = item.name,
+            tint = tint,
+            modifier = Modifier.size(iconSize.dp),
+        )
+        Text(
+            item.name,
+            color = tint,
+            fontSize = 12.sp,
+        )
+    }
+}
+
 /**
  * 底栏配置正文 (对照 dialog_bottom_nav_config.xml Compose 重建)。
  * 顺序网格: 点按开关启用, 横向拖拽换序 (对照 rv_nav_items + ItemTouchHelper);
@@ -2234,64 +2269,31 @@ private fun BottomNavConfigContent(
             fontWeight = FontWeight.Bold,
         )
         Spacer(Modifier.height(8.dp))
-        var dragIndex by remember { mutableIntStateOf(-1) }
-        var dragAccum by remember { mutableFloatStateOf(0f) }
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .pointerInput(items) {
-                    detectDragGestures(
-                        onDragStart = { offset ->
-                            val cellWidth = (size.width / items.size).coerceAtLeast(1)
-                            dragIndex = (offset.x / cellWidth).toInt().coerceIn(0, items.lastIndex)
-                            dragAccum = 0f
-                        },
-                        onDragEnd = { dragIndex = -1; dragAccum = 0f },
-                        onDragCancel = { dragIndex = -1; dragAccum = 0f },
-                        onDrag = { change, amount ->
-                            change.consume()
-                            if (dragIndex in items.indices) {
-                                dragAccum += amount.x
-                                val cellWidth = (size.width / items.size).coerceAtLeast(1)
-                                // 越过半个格宽换一位 (对照 ItemTouchHelper 默认阈值)
-                                while (dragAccum >= cellWidth / 2f && dragIndex < items.lastIndex) {
-                                    Collections.swap(items, dragIndex, dragIndex + 1)
-                                    dragIndex++
-                                    dragAccum -= cellWidth
+        val navListState = rememberLazyListState()
+        val navReorderState =
+            rememberReorderableListState(navListState, vertical = false) { from, to ->
+                Collections.swap(items, from, to)
+            }
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val cellWidth = maxWidth / items.size
+            LazyRow(
+                state = navListState,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                items(items, key = { it.tag }) { item ->
+                    RuleReorderableItem(navReorderState, key = item.tag) {
+                        AndroidNavConfigItem(
+                            item = item,
+                            iconSize = iconSize.value,
+                            cellWidth = cellWidth,
+                            onToggle = {
+                                val idx = items.indexOfFirst { it.tag == item.tag }
+                                if (idx >= 0) {
+                                    items[idx] = item.copy(enabled = !item.enabled)
                                 }
-                                while (dragAccum <= -cellWidth / 2f && dragIndex > 0) {
-                                    Collections.swap(items, dragIndex, dragIndex - 1)
-                                    dragIndex--
-                                    dragAccum += cellWidth
-                                }
-                            }
-                        },
-                    )
-                },
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            items.forEachIndexed { index, item ->
-                Column(
-                    Modifier
-                        .weight(1f)
-                        .clickable(enabled = !item.locked) {
-                            items[index] = item.copy(enabled = !item.enabled)
-                        }
-                        .padding(vertical = 4.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    val tint = if (item.enabled) colors.accent else colors.primaryText
-                    Icon(
-                        painter = rememberPainter(bottomNavIconKey(item.tag, item.enabled)),
-                        contentDescription = item.name,
-                        tint = tint,
-                        modifier = Modifier.size(iconSize.value.dp),
-                    )
-                    Text(
-                        item.name,
-                        color = tint,
-                        fontSize = 12.sp,
-                    )
+                            },
+                        )
+                    }
                 }
             }
         }
