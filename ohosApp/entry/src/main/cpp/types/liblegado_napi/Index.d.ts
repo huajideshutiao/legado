@@ -86,20 +86,6 @@ export interface LegadoNativeBridge {
   chapterList(bookUrl: string): string;
 
   /**
-   * 加载漫画章节图片 URL 列表 (对应 Android 端 BookHelp.flowImages)。
-   *
-   * 内部复用 BookStorageProviders.getContent 获取正文 + MangaImageExtractor.flowImages
-   * 提取图片 URL (与 shared MangaReaderViewModelShared.getManageChapter 一致),
-   * 返回 ArkTS 侧渲染所需的图片 URL 数组。
-   *
-   * @param bookUrl 书籍 URL (与 Book.bookUrl 一致)
-   * @param chapterIndex 章节索引 (0-based)
-   * @return JSON 字符串, 形如 {"images":["url1","url2",...]}
-   *         异常或无图片时返回 "{\"images\":[]}"
-   */
-  loadMangaChapter(bookUrl: string, chapterIndex: number): string;
-
-  /**
    * 导入书源 (JSON 数组格式)。
    * @param json 书源 JSON 数组字符串, 形如 [{"bookSourceUrl":"...","bookSourceName":"...",...}, ...]
    * @return 导入数量; 异常或空数组时返回 0
@@ -701,44 +687,6 @@ export interface LegadoNativeBridge {
    */
   downloadImageBytes(url: string): string;
 
-  // ===== 发现页 (DiscoverTab) 桥接函数 =====
-  // C++ 侧已实现 (KP5+):
-  // - exploreList: 返回 enabledExplore=true 且 hasExploreUrl=1 的 BookSourcePart JSON 数组
-  // - topExploreSource/deleteExploreSource: 调 ExploreViewModelShared.topSource/deleteSource (经 getBookSourcePart 取 part)
-  // - openExplore/editExploreSource: 经 AppNavigatorProviders 触发 shared 导航 (ExploreShow/BookSourceEdit),
-  //   鸿蒙整 UI 由 shared Compose 渲染, 无需 ArkTS 页面
-
-  /**
-   * 获取发现源列表 (仅 enabledExplore=true 的 BookSource)。
-   * @return JSON 数组字符串, 形如 [{"bookSourceUrl":"...","bookSourceName":"...",...}, ...]
-   *         桥接未实现时抛异常, 由调用方 try/catch 降级为空数组
-   */
-  exploreList(): string;
-
-  /**
-   * 打开发现源详情/书籍列表 (跳转 ExploreShow)。
-   * @param sourceUrl 书源 URL
-   * @param exploreUrl 发现分类 URL (可为空)
-   */
-  openExplore(sourceUrl: string, exploreUrl: string): void;
-
-  /**
-   * 编辑书源 (跳转 BookSourceEdit)。
-   * @param sourceUrl 书源 URL
-   */
-  editExploreSource(sourceUrl: string): void;
-
-  /**
-   * 置顶书源 (调 ExploreViewModelShared.topSource)。
-   * @param sourceUrl 书源 URL
-   */
-  topExploreSource(sourceUrl: string): void;
-
-  /**
-   * 删除书源 (调 ExploreViewModelShared.deleteSource)。
-   * @param sourceUrl 书源 URL
-   */
-  deleteExploreSource(sourceUrl: string): void;
 }
 
 declare const legado: LegadoNativeBridge;

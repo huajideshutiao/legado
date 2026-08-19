@@ -63,12 +63,13 @@ fun SourceUiEventBridgeHost() {
 
     // 登录: 不限 BookSource (HttpTTS/RSS 源同样要能登录), 先于 BookSource 转换处理。
     // book/chapter 取调用方预置的上下文 (对照原版 IntentData.nowBook/nowChapter), 喂给登录 JS。
-    // 纯 Overlay 弹登录对话框 (表单/URL 两分支由 SourceLoginOverlayContent 统一分发),
-    // 由 LegadoApp 统一渲染 EditDialogHost 包裹的登录对话框,
+    // URL 登录由平台直开全屏 WebView (showSourceLogin 内短路), 仅表单登录弹 Overlay,
+    // 由 LegadoApp 统一渲染 EditDialogHost 包裹的表单对话框,
     // 避免在此根级直接渲染纯 Column 导致覆盖整个 LegadoApp (看起来像新开界面)。
     if (request is SourceUiRequest.Login) {
         LaunchedEffect(request) {
-            // 统一登录入口: URL 登录桌面端直开登录窗口 (2026-08-07); 表单登录弹 Overlay
+            // 统一登录入口: URL 登录平台直开全屏 WebView (2026-08-07 去中转 / 2026-08-19 去对话框);
+            // 表单登录弹 Overlay
             // (IntentData 一次性消费: source/book/chapter 暂存, 弹窗渲染时按 key 取回)
             showSourceLogin(
                 request.source.getKey(),

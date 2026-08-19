@@ -11,7 +11,8 @@ import org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType
 import java.io.File
 
 /**
- * 给 :shared 添加 CPF 的 ohosArm64 / ohosX64 target (arm64 真机 + x86_64 模拟器双 ABI)。
+ * 给 :shared 添加 CPF 的 ohosArm64 target (真机); x86_64 模拟器因 CPF fork 生态库
+ * 无 ohosX64 变体不再声明 (2026-08-16 实测链接失败)。
  * 只有 CPF 分支 KGP 才有这个 DSL, 所以本文件放在 src/ohos, 由开关决定是否参与编译。
  */
 class OhosTargetConventionPlugin : Plugin<Project> {
@@ -75,7 +76,6 @@ class OhosTargetConventionPlugin : Plugin<Project> {
 
         extensions.configure<KotlinMultiplatformExtension> {
             ohosArm64 { configureOhosSharedLib() }
-            ohosX64 { configureOhosSharedLib() }
         }
     }
 }

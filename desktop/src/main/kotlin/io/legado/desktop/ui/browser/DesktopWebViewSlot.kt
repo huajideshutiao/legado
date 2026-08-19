@@ -97,6 +97,9 @@ private fun EngineWindowSlot(
                 callbacksRef.onPageFinished?.invoke(url)
                 callbacksRef.onUrlChanged?.invoke(url)
             },
+            // 页面元素全屏状态 (当前仅 WebKitGTK 引擎上报, 见 GtkSession.fullscreen-changed):
+            // 桥接回路由侧 videoFullScreen —— 顶栏隐藏 + 返回键先退出全屏
+            onFullScreenChanged = { full -> callbacksRef.onFullScreenChanged?.invoke(full) },
             onClosed = { windowClosed = true },
         )
     ).also { opened ->
@@ -190,9 +193,9 @@ private fun SystemBrowserFallback(url: String, modifier: Modifier) {
  * - [evaluateJavascript] 经 [WebViewWindowHandle.evaluateJavascript] 执行 (引擎已归一为纯文本);
  * - canGoBack/goBack 转发窗口句柄的手动历史栈 (无历史时路由照旧出栈);
  * - exitFullScreen 经句柄 evaluateJavascript 执行 document.exitFullscreen()
- *   (标准 Fullscreen API, 页面未处于 JS 全屏时无操作); 引擎原生窗口不跟踪 HTML5
- *   视频全屏 (onFullScreenChanged 从未上报, videoFullScreen 恒 false), 原生全屏由
- *   系统窗口自身处理, 此转发覆盖的是页面脚本驱动的全屏;
+ *   (标准 Fullscreen API, 页面未处于 JS 全屏时无操作); 页面元素全屏状态经窗口请求回调
+ *   onFullScreenChanged 上报路由侧 videoFullScreen (当前仅 WebKitGTK fullscreen-changed
+ *   信号, WebView2/WKWebView 无等价事件不跟踪), 原生窗口自身的全屏由系统处理;
  * - getUrl/reload 直通窗口句柄。
  */
 private class DesktopWebViewHost(

@@ -15,7 +15,6 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 @Serializable
-@JvmInline
 value class RouteEntryId(val value: Long)
 
 @Serializable

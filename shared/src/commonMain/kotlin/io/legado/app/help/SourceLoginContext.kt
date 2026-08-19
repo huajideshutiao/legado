@@ -53,8 +53,10 @@ fun sourceLoginOverlayPayload(sourceUrl: String, dataKey: String? = null): Strin
  * 书源登录统一入口 (JS showLoginDialog / 各 UI 菜单登录共用)。
  *
  * URL 登录 (loginUi 为空且 loginUrl 非空) 时先问平台是否直接开登录窗口
- * ([PlatformCapabilities.openLoginWebView], 桌面端 = 带 isLogin 工具栏的独立浏览器窗口),
- * 平台已处理则不再弹 Overlay 对话框 —— 2026-08-07 用户拍板: 去掉登录中转界面。
+ * ([PlatformCapabilities.openLoginWebView], 移动端默认推全屏 WebView 路由 (isLogin=true),
+ * 桌面端 = 带 isLogin 工具栏的独立浏览器窗口),
+ * 平台已处理则不再弹 Overlay 对话框 —— 2026-08-07 用户拍板: 去掉登录中转界面;
+ * 2026-08-19 用户拍板: 登录直进全屏 WebView, 去掉对话框外壳。
  * 表单登录 (loginUi 非空) 与平台未直接处理的场景保持原行为: 弹 sourceLogin Overlay,
  * 由 [io.legado.app.ui.root.SourceLoginOverlayContent] 统一分发。
  *

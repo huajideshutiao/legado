@@ -412,6 +412,11 @@ internal object GtkLibs {
         fun invoke(widget: Pointer, event: Pointer, userData: Pointer?): Int
     }
 
+    /** WebKitWebView::fullscreen-changed (WebKitWebView*, gboolean, gpointer) — 页面元素全屏状态。 */
+    interface FullscreenChangedCallback : Callback {
+        fun invoke(view: Pointer, fullscreen: Int, userData: Pointer?)
+    }
+
     /** GtkButton::clicked (GtkButton*, gpointer) */
     interface ClickedCallback : Callback {
         fun invoke(button: Pointer, userData: Pointer?)

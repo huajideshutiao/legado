@@ -79,15 +79,12 @@ fun registerDesktopJsEngines() {
  * 指向 `{java.io.tmpdir}/legado/cache/tc_cache/` 目录,
  * 与 [io.legado.app.help.file.DesktopAppFilesDir] 的 cacheDir 同根。
  *
- * # 与 app 端 [io.legado.app.utils.TcDictCachePathProvider] (ChineseUtilsUi.kt) 区别
+ * # 与 app 端 [io.legado.app.utils.TcDictCachePathProvider] (ChineseUtilsUi.kt) 差异
  * - app 端 lambda 内置 `RemoteAssetsUtils.downloadTcIfNeeded(fileName)` 后台拉取副作用,
- *   缺失即异步下载 (依赖 Coroutine.async + RemoteAssetsUtils, 留 app 模块);
- * - 桌面端简化: 仅返回本地路径, 不实现后台拉取 (文件不存在时 ChineseUtils.loadDict
- *   会 fallback 到 quick-transfer 自带默认词典, 行为可用但不持久化)。
- *
- * # 后续扩展
- * 若桌面端需要词典缓存持久化, 可在此处补 HTTP 下载逻辑 (用 OkHttpClientProviders),
- * 当前简化实现满足"功能可用"底线, 词典加载略慢 (每次启动重新加载默认词典)。
+ *   缺失即异步下载 (依赖 Coroutine.async + RemoteAssetsUtils);
+ * - 桌面端同语义: 缓存文件缺失/为空时经 `Coroutine.async` 后台拉取 quick-transfer
+ *   默认词典, 副作用在 loadDict 实际调用时触发 (对照 app 端 ChineseUtilsUi 的下载副作用);
+ *   词典存临时目录, 行为可用但不持久化。
  */
 private val DesktopTcDictCachePathProvider = TcDictCachePathProvider { fileName ->
     // 与 DesktopAppFilesDir.cacheDir 同根: 系统临时目录 {java.io.tmpdir}/legado/cache

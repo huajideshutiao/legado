@@ -83,8 +83,6 @@ tasks.register<Delete>("clean") {
 
 val ohosLibsDir = layout.projectDirectory.dir("ohosApp/entry/libs/arm64-v8a")
 val ohosIncludeDir = layout.projectDirectory.dir("ohosApp/entry/src/main/cpp/include/arm64-v8a")
-val ohosLibsDirX64 = layout.projectDirectory.dir("ohosApp/entry/libs/x86_64")
-val ohosIncludeDirX64 = layout.projectDirectory.dir("ohosApp/entry/src/main/cpp/include/x86_64")
 // 对标安卓 release 打包: 默认 stage release .so (LLVM 优化 + strip + gc-sections,
 // 约 50-70MB); 需要带符号的调试库时用 -PohosBuildType=debug。
 val ohosBuildType =
@@ -92,34 +90,28 @@ val ohosBuildType =
 require(ohosBuildType == "release" || ohosBuildType == "debug") {
     "ohosBuildType must be 'release' or 'debug', but was '$ohosBuildType'."
 }
-// 指定要 stage 的 ABI (逗号分隔)。默认只打 arm64-v8a (CPF fork 生态库 ktor/room3/sqlite-framework
-// 只有 ohosArm64 变体, 2026-08-16 实测 ohosX64 链接解析失败, 故 x86_64 需显式开启):
-// -PohosAbis=x86_64 (模拟器联调, 等 CPF 发布 ohosX64 变体后可用)
+// 指定要 stage 的 ABI (逗号分隔)。只打 arm64-v8a: CPF fork 生态库 ktor/room3/sqlite-framework
+// 只有 ohosArm64 变体, 2026-08-16 实测 ohosX64 链接解析失败, 故不再声明 ohosX64 target,
+// x86_64 也不进 hap 产物。若未来 CPF 发布 ohosX64 变体, 需先恢复 shared 的 ohosX64 target。
 val ohosAbis = providers.gradleProperty("ohosAbis").orNull
     ?.split(',')
     ?.map { it.trim() }
     ?.filter { it.isNotEmpty() }
     ?.toSet()
     ?: setOf("arm64-v8a")
-require(ohosAbis.isNotEmpty() && ohosAbis.all { it == "arm64-v8a" || it == "x86_64" }) {
-    "ohosAbis must be a subset of [arm64-v8a, x86_64], but was: $ohosAbis"
+require(ohosAbis.isNotEmpty() && ohosAbis.all { it == "arm64-v8a" }) {
+    "ohosAbis must be 'arm64-v8a' (x86_64 target 已移除), but was: $ohosAbis"
 }
 val ohosBuildTypeCapitalized = ohosBuildType.replaceFirstChar { it.titlecase() }
 val ohosSharedOutputDir =
     layout.projectDirectory.dir("shared/build/bin/ohosArm64/${ohosBuildType}Shared")
 val ohosSharedLibrary = ohosSharedOutputDir.file("liblegado_shared.so")
-val ohosSharedOutputDirX64 =
-    layout.projectDirectory.dir("shared/build/bin/ohosX64/${ohosBuildType}Shared")
-val ohosSharedLibraryX64 = ohosSharedOutputDirX64.file("liblegado_shared.so")
 
 val stageOhosNativeLibraries by tasks.registering(Copy::class) {
     group = "ohos"
     description = "Build and stage CPF-KMP-CMP OHOS shared library and generated API header."
     if ("arm64-v8a" in ohosAbis) {
         dependsOn(":shared:link${ohosBuildTypeCapitalized}SharedOhosArm64")
-    }
-    if ("x86_64" in ohosAbis) {
-        dependsOn(":shared:link${ohosBuildTypeCapitalized}SharedOhosX64")
     }
     into(layout.projectDirectory.dir("ohosApp"))
     if ("arm64-v8a" in ohosAbis) {
@@ -131,15 +123,6 @@ val stageOhosNativeLibraries by tasks.registering(Copy::class) {
             into("entry/src/main/cpp/include/arm64-v8a")
         }
     }
-    if ("x86_64" in ohosAbis) {
-        from(ohosSharedLibraryX64) {
-            into("entry/libs/x86_64")
-        }
-        from(ohosSharedOutputDirX64) {
-            include("*.h")
-            into("entry/src/main/cpp/include/x86_64")
-        }
-    }
     doFirst {
         val missing = buildList {
             if ("arm64-v8a" in ohosAbis) {
@@ -148,14 +131,6 @@ val stageOhosNativeLibraries by tasks.registering(Copy::class) {
                         .isEmpty()
                 ) {
                     add(ohosSharedOutputDir.file("<generated-api-header>.h").asFile)
-                }
-            }
-            if ("x86_64" in ohosAbis) {
-                if (!ohosSharedLibraryX64.asFile.isFile) add(ohosSharedLibraryX64.asFile)
-                if (ohosSharedOutputDirX64.asFile.listFiles { f -> f.extension == "h" }.orEmpty()
-                        .isEmpty()
-                ) {
-                    add(ohosSharedOutputDirX64.file("<generated-api-header>.h").asFile)
                 }
             }
         }
@@ -181,14 +156,6 @@ val verifyOhosNativeLibraries by tasks.registering {
                         .isEmpty()
                 ) {
                     add(ohosIncludeDir.asFile)
-                }
-            }
-            if ("x86_64" in ohosAbis) {
-                if (!ohosLibsDirX64.file("liblegado_shared.so").asFile.isFile) add(ohosLibsDirX64.asFile)
-                if (ohosIncludeDirX64.asFile.listFiles { f -> f.extension == "h" }.orEmpty()
-                        .isEmpty()
-                ) {
-                    add(ohosIncludeDirX64.asFile)
                 }
             }
         }

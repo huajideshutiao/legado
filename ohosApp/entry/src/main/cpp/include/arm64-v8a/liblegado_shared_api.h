@@ -4856,33 +4856,6 @@ typedef struct {
 } liblegado_shared_kref_io_legado_app_ui_book_source_BookSourceListCallbacks;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiActions;
-typedef struct {
-  liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_io_legado_app_ui_book_source_LoginScreenModel;
-typedef struct {
-  liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiEvent;
-typedef struct {
-  liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiState;
-typedef struct {
-  liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiEvent_Init;
-typedef struct {
-  liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiEvent_LoginComplete;
-typedef struct {
-  liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiEvent_Refresh;
-typedef struct {
-  liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiEvent_ShowAppLog;
-typedef struct {
-  liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiEvent_DismissAppLogDialog;
-typedef struct {
-  liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_book_source_SourceLoginFormState;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
@@ -4892,7 +4865,16 @@ typedef struct {
 } liblegado_shared_kref_androidx_compose_runtime_snapshots_SnapshotStateList;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_io_legado_app_ui_book_toc_TocViewModelShared;
+} liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState_Companion;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_book_toc_rule_TxtTocRuleEditViewModelShared;
@@ -4953,18 +4935,6 @@ typedef struct {
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_book_toc_rule_TxtTocRuleUiEvent_ImportDefault;
-typedef struct {
-  liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd;
-typedef struct {
-  liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState;
-typedef struct {
-  liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState_Companion;
-typedef struct {
-  liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_book_toc_TocScreenModel;
@@ -5226,6 +5196,9 @@ typedef struct {
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_compose_component_AlertButton;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_ui_compose_component_SheetDragExclusion;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_compose_component_AppDialogSizes;
@@ -5531,6 +5504,9 @@ typedef struct {
 } liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_UpdateFontScaleSummary;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_UpdateSourceEditMaxLineSummary;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_BookshelfLayout;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
@@ -5550,6 +5526,9 @@ typedef struct {
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_FontScale;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_SourceEditMaxLine;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigScreenModel;
@@ -5861,6 +5840,9 @@ typedef struct {
 } liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Sheet;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_ui_root_AppRoute_WebView;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Sheet_$serializer;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
@@ -6147,9 +6129,6 @@ typedef struct {
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_root_AppRoute_WelcomeConfig;
-typedef struct {
-  liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_io_legado_app_ui_root_AppRoute_WebView;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_root_AppRoute_WebView_$serializer;
@@ -6878,10 +6857,7 @@ extern void* legado_chapter_list(liblegado_shared_kref_io_legado_app_napi_Legado
 extern void* legado_chinese_s2t(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* input);
 extern void* legado_chinese_t2s(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* input);
 extern void legado_crypto_callback(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, liblegado_shared_KLong requestId, void* result);
-extern void legado_delete_explore_source(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* sourceUrl);
 extern void* legado_download_image_bytes(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* url);
-extern void legado_edit_explore_source(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* sourceUrl);
-extern void* legado_explore_list(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz);
 extern void legado_file_picker_callback(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, liblegado_shared_KLong requestId, void* result);
 extern void* legado_format_percent_us(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, liblegado_shared_KDouble value);
 extern liblegado_shared_KInt legado_handle_deep_link(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* url);
@@ -6890,12 +6866,10 @@ extern void legado_http_callback(liblegado_shared_kref_io_legado_app_napi_Legado
 extern void legado_image_callback(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, liblegado_shared_KLong requestId, void* result, void* bytes, liblegado_shared_KULong bytesLen);
 extern liblegado_shared_KInt legado_import_booksource(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* json);
 extern void* legado_load_chapter(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* bookUrl, liblegado_shared_KInt chapterIndex);
-extern void* legado_load_manga_chapter(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* bookUrl, liblegado_shared_KInt chapterIndex);
 extern void legado_markdown_event(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* event);
 extern void* legado_md5_encode(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* input);
 extern void legado_media_event(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* event);
 extern void legado_network_callback(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, liblegado_shared_KLong requestId, void* result);
-extern void legado_open_explore(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* sourceUrl, void* exploreUrl);
 extern void legado_pasteboard_callback(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, liblegado_shared_KLong requestId, void* result);
 extern void legado_permission_callback(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, liblegado_shared_KLong requestId, void* result);
 extern liblegado_shared_KInt legado_providers_registered(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz);
@@ -6926,7 +6900,6 @@ extern void legado_register_window_fn(liblegado_shared_kref_io_legado_app_napi_L
 extern void* legado_search_book(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* query);
 extern void legado_text_action_callback(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, liblegado_shared_KLong requestId, void* result);
 extern void legado_text_codec_callback(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, liblegado_shared_KLong requestId, void* result);
-extern void legado_top_explore_source(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* sourceUrl);
 extern void legado_tts_event(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* event);
 extern void legado_webview_callback(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, liblegado_shared_KLong requestId, void* result, void* body);
 extern void* MainArkUIViewController(void* env);
@@ -8316,8 +8289,15 @@ typedef struct {
                 const char* (*get_welcomeImage)(liblegado_shared_kref_io_legado_app_constant_PreferKey thiz);
                 const char* (*get_welcomeImageDark)(liblegado_shared_kref_io_legado_app_constant_PreferKey thiz);
                 const char* (*get_welcomeShowIcon)(liblegado_shared_kref_io_legado_app_constant_PreferKey thiz);
+                const char* (*get_welcomeShowIconDark)(liblegado_shared_kref_io_legado_app_constant_PreferKey thiz);
                 const char* (*get_welcomeShowText)(liblegado_shared_kref_io_legado_app_constant_PreferKey thiz);
+                const char* (*get_welcomeShowTextDark)(liblegado_shared_kref_io_legado_app_constant_PreferKey thiz);
                 const char* (*get_welcomeShowTime)(liblegado_shared_kref_io_legado_app_constant_PreferKey thiz);
+                const char* (*get_windowHeight)(liblegado_shared_kref_io_legado_app_constant_PreferKey thiz);
+                const char* (*get_windowMaximized)(liblegado_shared_kref_io_legado_app_constant_PreferKey thiz);
+                const char* (*get_windowWidth)(liblegado_shared_kref_io_legado_app_constant_PreferKey thiz);
+                const char* (*get_windowX)(liblegado_shared_kref_io_legado_app_constant_PreferKey thiz);
+                const char* (*get_windowY)(liblegado_shared_kref_io_legado_app_constant_PreferKey thiz);
               } PreferKey;
               struct {
                 liblegado_shared_KType* (*_type)(void);
@@ -12997,6 +12977,7 @@ typedef struct {
                 void (*registerOhosBookImageLoader)();
                 liblegado_shared_kref_androidx_compose_ui_graphics_ImageBitmap (*decodeBytesSampled)(liblegado_shared_kref_kotlin_ByteArray bytes, liblegado_shared_KInt maxDim);
                 liblegado_shared_kref_androidx_compose_ui_graphics_ImageBitmap (*decodeSvgFallback)(liblegado_shared_kref_kotlin_ByteArray bytes, liblegado_shared_KInt maxDim);
+                liblegado_shared_kref_kotlin_ByteArray (*parseDataUriBytes)(const char* url);
                 void (*registerReaderImageResolver)();
               } image;
               struct {
@@ -14916,6 +14897,7 @@ typedef struct {
                   void (*initUrl)(liblegado_shared_kref_io_legado_app_model_analyzeRule_AnalyzeUrlCore thiz);
                   liblegado_shared_KBoolean (*isPost)(liblegado_shared_kref_io_legado_app_model_analyzeRule_AnalyzeUrlCore thiz);
                   const char* (*put)(liblegado_shared_kref_io_legado_app_model_analyzeRule_AnalyzeUrlCore thiz, const char* key, const char* value);
+                  liblegado_shared_kref_kotlin_Pair (*resolveMedia)(liblegado_shared_kref_io_legado_app_model_analyzeRule_AnalyzeUrlCore thiz);
                   void (*setCookie)(liblegado_shared_kref_io_legado_app_model_analyzeRule_AnalyzeUrlCore thiz);
                 } AnalyzeUrlCore;
                 struct {
@@ -15059,7 +15041,7 @@ typedef struct {
                   void (*refreshChapter)(liblegado_shared_kref_io_legado_app_model_audio_AudioPlayManager thiz);
                   void (*resetLrcPosition)(liblegado_shared_kref_io_legado_app_model_audio_AudioPlayManager thiz);
                   void (*upPlayProgress)(liblegado_shared_kref_io_legado_app_model_audio_AudioPlayManager thiz);
-                  void (*upPlayProgressForLrc)(liblegado_shared_kref_io_legado_app_model_audio_AudioPlayManager thiz);
+                  void (*upPlayProgressForLrc)(liblegado_shared_kref_io_legado_app_model_audio_AudioPlayManager thiz, liblegado_shared_kref_kotlin_Int seekTargetMs);
                 } AudioPlayManager;
                 struct {
                   liblegado_shared_KType* (*_type)(void);
@@ -16317,10 +16299,7 @@ typedef struct {
                 void* (*chineseS2T)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* input);
                 void* (*chineseT2S)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* input);
                 void (*cryptoCallback)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, liblegado_shared_KLong requestId, void* result);
-                void (*deleteExploreSource)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* sourceUrl);
                 void* (*downloadImageBytes)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* url);
-                void (*editExploreSource)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* sourceUrl);
-                void* (*exploreList)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz);
                 void (*filePickerCallback)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, liblegado_shared_KLong requestId, void* result);
                 void* (*formatPercentUs)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, liblegado_shared_KDouble value);
                 liblegado_shared_KInt (*handleDeepLink)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* url);
@@ -16329,12 +16308,10 @@ typedef struct {
                 void (*imageCallback)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, liblegado_shared_KLong requestId, void* result, void* bytes, liblegado_shared_KULong bytesLen);
                 liblegado_shared_KInt (*importBookSource)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* json);
                 void* (*loadChapter)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* bookUrl, liblegado_shared_KInt chapterIndex);
-                void* (*loadMangaChapter)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* bookUrl, liblegado_shared_KInt chapterIndex);
                 void (*markdownEvent)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* event);
                 void* (*md5Encode)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* input);
                 void (*mediaEvent)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* event);
                 void (*networkCallback)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, liblegado_shared_KLong requestId, void* result);
-                void (*openExplore)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* sourceUrl, void* exploreUrl);
                 void (*pasteboardCallback)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, liblegado_shared_KLong requestId, void* result);
                 void (*permissionCallback)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, liblegado_shared_KLong requestId, void* result);
                 liblegado_shared_KInt (*providersRegistered)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz);
@@ -16365,7 +16342,6 @@ typedef struct {
                 void* (*searchBook)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* query);
                 void (*textActionCallback)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, liblegado_shared_KLong requestId, void* result);
                 void (*textCodecCallback)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, liblegado_shared_KLong requestId, void* result);
-                void (*topExploreSource)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* sourceUrl);
                 void (*ttsEvent)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* event);
                 void (*webViewCallback)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, liblegado_shared_KLong requestId, void* result, void* body);
               } LegadoNativeExports;
@@ -21070,6 +21046,8 @@ typedef struct {
                       liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState (*PageSelectionState)();
                       liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_TextPage (*get_currentPage)(liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState thiz);
                       liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelPos (*get_end)(liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState thiz);
+                      liblegado_shared_KBoolean (*get_imageMenuShowing)(liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState thiz);
+                      void (*set_imageMenuShowing)(liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState thiz, liblegado_shared_KBoolean set);
                       liblegado_shared_KBoolean (*get_isActive)(liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState thiz);
                       liblegado_shared_KBoolean (*get_reverseEndCursor)(liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState thiz);
                       liblegado_shared_KBoolean (*get_reverseStartCursor)(liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState thiz);
@@ -23201,80 +23179,6 @@ typedef struct {
                   } BookSourceListCallbacks;
                   struct {
                     liblegado_shared_KType* (*_type)(void);
-                    void (*onBack)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiActions thiz);
-                    void (*onCopyUrl)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiActions thiz);
-                    void (*onDismissAppLogDialog)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiActions thiz);
-                    void (*onLogin)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiActions thiz);
-                    void (*onOpenInBrowser)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiActions thiz);
-                    void (*onRefresh)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiActions thiz);
-                    void (*onShowAppLog)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiActions thiz);
-                  } LoginUiActions;
-                  struct {
-                    liblegado_shared_KType* (*_type)(void);
-                    liblegado_shared_kref_io_legado_app_ui_book_source_LoginScreenModel (*LoginScreenModel)();
-                    liblegado_shared_kref_kotlinx_coroutines_flow_SharedFlow (*get_loginCompleteFlow)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginScreenModel thiz);
-                    liblegado_shared_kref_kotlinx_coroutines_flow_SharedFlow (*get_refreshFlow)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginScreenModel thiz);
-                    liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow (*get_state)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginScreenModel thiz);
-                    void (*dispatch)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginScreenModel thiz, liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiEvent event);
-                    void (*onCleared)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginScreenModel thiz);
-                  } LoginScreenModel;
-                  struct {
-                    liblegado_shared_KType* (*_type)(void);
-                    liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiState (*LoginUiState)(liblegado_shared_kref_io_legado_app_data_entities_BaseSource source, liblegado_shared_kref_io_legado_app_data_entities_BaseBook book, liblegado_shared_kref_io_legado_app_data_entities_BookChapter chapter, const char* loginUrl, const char* sourceName, const char* pageTitle, liblegado_shared_KBoolean loading, liblegado_shared_KBoolean showAppLog);
-                    liblegado_shared_kref_io_legado_app_data_entities_BaseBook (*get_book)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiState thiz);
-                    liblegado_shared_kref_io_legado_app_data_entities_BookChapter (*get_chapter)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiState thiz);
-                    liblegado_shared_KBoolean (*get_loading)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiState thiz);
-                    const char* (*get_loginUrl)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiState thiz);
-                    const char* (*get_pageTitle)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiState thiz);
-                    liblegado_shared_KBoolean (*get_showAppLog)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiState thiz);
-                    liblegado_shared_kref_io_legado_app_data_entities_BaseSource (*get_source)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiState thiz);
-                    const char* (*get_sourceName)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiState thiz);
-                    liblegado_shared_kref_io_legado_app_data_entities_BaseSource (*component1)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiState thiz);
-                    liblegado_shared_kref_io_legado_app_data_entities_BaseBook (*component2)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiState thiz);
-                    liblegado_shared_kref_io_legado_app_data_entities_BookChapter (*component3)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiState thiz);
-                    const char* (*component4)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiState thiz);
-                    const char* (*component5)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiState thiz);
-                    const char* (*component6)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiState thiz);
-                    liblegado_shared_KBoolean (*component7)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiState thiz);
-                    liblegado_shared_KBoolean (*component8)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiState thiz);
-                    liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiState (*copy)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiState thiz, liblegado_shared_kref_io_legado_app_data_entities_BaseSource source, liblegado_shared_kref_io_legado_app_data_entities_BaseBook book, liblegado_shared_kref_io_legado_app_data_entities_BookChapter chapter, const char* loginUrl, const char* sourceName, const char* pageTitle, liblegado_shared_KBoolean loading, liblegado_shared_KBoolean showAppLog);
-                    liblegado_shared_KBoolean (*equals)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiState thiz, liblegado_shared_kref_kotlin_Any other);
-                    liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiState thiz);
-                    const char* (*toString)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiState thiz);
-                  } LoginUiState;
-                  struct {
-                    struct {
-                      liblegado_shared_KType* (*_type)(void);
-                      liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiEvent_Init (*Init)(const char* sourceUrl, const char* dataKey);
-                      const char* (*get_dataKey)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiEvent_Init thiz);
-                      const char* (*get_sourceUrl)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiEvent_Init thiz);
-                      const char* (*component1)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiEvent_Init thiz);
-                      const char* (*component2)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiEvent_Init thiz);
-                      liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiEvent_Init (*copy)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiEvent_Init thiz, const char* sourceUrl, const char* dataKey);
-                      liblegado_shared_KBoolean (*equals)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiEvent_Init thiz, liblegado_shared_kref_kotlin_Any other);
-                      liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiEvent_Init thiz);
-                      const char* (*toString)(liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiEvent_Init thiz);
-                    } Init;
-                    struct {
-                      liblegado_shared_KType* (*_type)(void);
-                      liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiEvent_LoginComplete (*_instance)();
-                    } LoginComplete;
-                    struct {
-                      liblegado_shared_KType* (*_type)(void);
-                      liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiEvent_Refresh (*_instance)();
-                    } Refresh;
-                    struct {
-                      liblegado_shared_KType* (*_type)(void);
-                      liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiEvent_ShowAppLog (*_instance)();
-                    } ShowAppLog;
-                    struct {
-                      liblegado_shared_KType* (*_type)(void);
-                      liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiEvent_DismissAppLogDialog (*_instance)();
-                    } DismissAppLogDialog;
-                    liblegado_shared_KType* (*_type)(void);
-                  } LoginUiEvent;
-                  struct {
-                    liblegado_shared_KType* (*_type)(void);
                     liblegado_shared_kref_io_legado_app_ui_book_source_SourceLoginFormState (*SourceLoginFormState)();
                     liblegado_shared_kref_androidx_compose_runtime_snapshots_SnapshotStateMap (*get_loginData)(liblegado_shared_kref_io_legado_app_ui_book_source_SourceLoginFormState thiz);
                     liblegado_shared_kref_kotlin_collections_List (*get_loginUi)(liblegado_shared_kref_io_legado_app_ui_book_source_SourceLoginFormState thiz);
@@ -23285,13 +23189,75 @@ typedef struct {
                 struct {
                   struct {
                     liblegado_shared_KType* (*_type)(void);
-                    liblegado_shared_kref_io_legado_app_ui_book_toc_TocViewModelShared (*TocViewModelShared)(liblegado_shared_kref_kotlinx_coroutines_CoroutineScope scope, liblegado_shared_kref_kotlin_Function1 localChapterListProvider, liblegado_shared_kref_kotlin_Function1 readBookChapterListUpdater);
-                    liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow (*get_bookData)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocViewModelShared thiz);
-                    const char* (*get_bookUrl)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocViewModelShared thiz);
-                    void (*initBook)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocViewModelShared thiz);
-                    void (*reverseToc)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocViewModelShared thiz, liblegado_shared_kref_kotlin_collections_List newToc);
-                    void (*upBookTocRule)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocViewModelShared thiz, liblegado_shared_kref_io_legado_app_data_entities_Book book, liblegado_shared_kref_kotlin_Function1 complete);
-                  } TocViewModelShared;
+                    liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd (*TocScrollCmd)(liblegado_shared_KInt pos, liblegado_shared_KLong tick);
+                    liblegado_shared_KInt (*get_pos)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd thiz);
+                    liblegado_shared_KLong (*get_tick)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd thiz);
+                    liblegado_shared_KInt (*component1)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd thiz);
+                    liblegado_shared_KLong (*component2)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd thiz);
+                    liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd (*copy)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd thiz, liblegado_shared_KInt pos, liblegado_shared_KLong tick);
+                    liblegado_shared_KBoolean (*equals)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd thiz, liblegado_shared_kref_kotlin_Any other);
+                    liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd thiz);
+                    const char* (*toString)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd thiz);
+                  } TocScrollCmd;
+                  struct {
+                    struct {
+                      liblegado_shared_KType* (*_type)(void);
+                      liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState_Companion (*_instance)();
+                      liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState (*get_Empty)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState_Companion thiz);
+                    } Companion;
+                    liblegado_shared_KType* (*_type)(void);
+                    liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState (*TocUiState)(liblegado_shared_kref_io_legado_app_data_entities_Book book, liblegado_shared_KInt durChapterIndex, liblegado_shared_KBoolean searching, const char* searchKey, liblegado_shared_kref_kotlin_collections_List chapters, liblegado_shared_kref_kotlin_collections_Set collapsedVolumes, liblegado_shared_kref_kotlin_collections_Map displayTitleMap, liblegado_shared_kref_kotlin_collections_Set cacheFileNames, liblegado_shared_KBoolean useReplace, liblegado_shared_KBoolean countWords, liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd chapterScroll, liblegado_shared_kref_kotlin_collections_List bookmarks, liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd bookmarkScroll, liblegado_shared_KBoolean isLocalBook);
+                    liblegado_shared_kref_io_legado_app_data_entities_Book (*get_book)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
+                    liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd (*get_bookmarkScroll)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
+                    liblegado_shared_kref_kotlin_collections_List (*get_bookmarks)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
+                    liblegado_shared_kref_kotlin_collections_Set (*get_cacheFileNames)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
+                    liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd (*get_chapterScroll)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
+                    liblegado_shared_kref_kotlin_collections_List (*get_chapters)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
+                    liblegado_shared_kref_kotlin_collections_Set (*get_collapsedVolumes)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
+                    liblegado_shared_KBoolean (*get_countWords)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
+                    liblegado_shared_kref_kotlin_collections_Map (*get_displayTitleMap)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
+                    liblegado_shared_KInt (*get_durChapterIndex)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
+                    liblegado_shared_KBoolean (*get_isLocalBook)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
+                    const char* (*get_searchKey)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
+                    liblegado_shared_KBoolean (*get_searching)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
+                    liblegado_shared_KBoolean (*get_useReplace)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
+                    liblegado_shared_kref_io_legado_app_data_entities_Book (*component1)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
+                    liblegado_shared_KBoolean (*component10)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
+                    liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd (*component11)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
+                    liblegado_shared_kref_kotlin_collections_List (*component12)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
+                    liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd (*component13)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
+                    liblegado_shared_KBoolean (*component14)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
+                    liblegado_shared_KInt (*component2)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
+                    liblegado_shared_KBoolean (*component3)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
+                    const char* (*component4)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
+                    liblegado_shared_kref_kotlin_collections_List (*component5)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
+                    liblegado_shared_kref_kotlin_collections_Set (*component6)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
+                    liblegado_shared_kref_kotlin_collections_Map (*component7)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
+                    liblegado_shared_kref_kotlin_collections_Set (*component8)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
+                    liblegado_shared_KBoolean (*component9)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
+                    liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState (*copy)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz, liblegado_shared_kref_io_legado_app_data_entities_Book book, liblegado_shared_KInt durChapterIndex, liblegado_shared_KBoolean searching, const char* searchKey, liblegado_shared_kref_kotlin_collections_List chapters, liblegado_shared_kref_kotlin_collections_Set collapsedVolumes, liblegado_shared_kref_kotlin_collections_Map displayTitleMap, liblegado_shared_kref_kotlin_collections_Set cacheFileNames, liblegado_shared_KBoolean useReplace, liblegado_shared_KBoolean countWords, liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd chapterScroll, liblegado_shared_kref_kotlin_collections_List bookmarks, liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd bookmarkScroll, liblegado_shared_KBoolean isLocalBook);
+                    liblegado_shared_KBoolean (*equals)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz, liblegado_shared_kref_kotlin_Any other);
+                    liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
+                    const char* (*toString)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
+                  } TocUiState;
+                  struct {
+                    liblegado_shared_KType* (*_type)(void);
+                    void (*editBookmark)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions thiz, liblegado_shared_kref_io_legado_app_data_entities_Bookmark bookmark, liblegado_shared_KInt pos);
+                    void (*exportBookmark)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions thiz);
+                    void (*exportBookmarkMd)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions thiz);
+                    void (*onBack)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions thiz);
+                    void (*openBookmark)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions thiz, liblegado_shared_kref_io_legado_app_data_entities_Bookmark bookmark);
+                    void (*openChapter)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions thiz, liblegado_shared_kref_io_legado_app_data_entities_BookChapter chapter);
+                    void (*reverseChapterList)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions thiz);
+                    void (*setQuery)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions thiz, const char* query);
+                    void (*setSearchMode)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions thiz, liblegado_shared_KBoolean active);
+                    void (*showLog)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions thiz);
+                    void (*showTocRegexDialog)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions thiz);
+                    void (*toggleCountWords)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions thiz);
+                    void (*toggleSplitLongChapter)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions thiz);
+                    void (*toggleUseReplace)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions thiz);
+                    void (*toggleVolume)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions thiz, liblegado_shared_kref_io_legado_app_data_entities_BookChapter volume);
+                  } TocUiActions;
                   struct {
                     struct {
                       liblegado_shared_KType* (*_type)(void);
@@ -23472,77 +23438,6 @@ typedef struct {
                       liblegado_shared_KType* (*_type)(void);
                     } TxtTocRuleUiEvent;
                   } rule;
-                  struct {
-                    liblegado_shared_KType* (*_type)(void);
-                    liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd (*TocScrollCmd)(liblegado_shared_KInt pos, liblegado_shared_KLong tick);
-                    liblegado_shared_KInt (*get_pos)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd thiz);
-                    liblegado_shared_KLong (*get_tick)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd thiz);
-                    liblegado_shared_KInt (*component1)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd thiz);
-                    liblegado_shared_KLong (*component2)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd thiz);
-                    liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd (*copy)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd thiz, liblegado_shared_KInt pos, liblegado_shared_KLong tick);
-                    liblegado_shared_KBoolean (*equals)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd thiz, liblegado_shared_kref_kotlin_Any other);
-                    liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd thiz);
-                    const char* (*toString)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd thiz);
-                  } TocScrollCmd;
-                  struct {
-                    struct {
-                      liblegado_shared_KType* (*_type)(void);
-                      liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState_Companion (*_instance)();
-                      liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState (*get_Empty)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState_Companion thiz);
-                    } Companion;
-                    liblegado_shared_KType* (*_type)(void);
-                    liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState (*TocUiState)(liblegado_shared_kref_io_legado_app_data_entities_Book book, liblegado_shared_KInt durChapterIndex, liblegado_shared_KBoolean searching, const char* searchKey, liblegado_shared_kref_kotlin_collections_List chapters, liblegado_shared_kref_kotlin_collections_Set collapsedVolumes, liblegado_shared_kref_kotlin_collections_Map displayTitleMap, liblegado_shared_kref_kotlin_collections_Set cacheFileNames, liblegado_shared_KBoolean useReplace, liblegado_shared_KBoolean countWords, liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd chapterScroll, liblegado_shared_kref_kotlin_collections_List bookmarks, liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd bookmarkScroll, liblegado_shared_KBoolean isLocalBook);
-                    liblegado_shared_kref_io_legado_app_data_entities_Book (*get_book)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
-                    liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd (*get_bookmarkScroll)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
-                    liblegado_shared_kref_kotlin_collections_List (*get_bookmarks)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
-                    liblegado_shared_kref_kotlin_collections_Set (*get_cacheFileNames)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
-                    liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd (*get_chapterScroll)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
-                    liblegado_shared_kref_kotlin_collections_List (*get_chapters)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
-                    liblegado_shared_kref_kotlin_collections_Set (*get_collapsedVolumes)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
-                    liblegado_shared_KBoolean (*get_countWords)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
-                    liblegado_shared_kref_kotlin_collections_Map (*get_displayTitleMap)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
-                    liblegado_shared_KInt (*get_durChapterIndex)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
-                    liblegado_shared_KBoolean (*get_isLocalBook)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
-                    const char* (*get_searchKey)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
-                    liblegado_shared_KBoolean (*get_searching)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
-                    liblegado_shared_KBoolean (*get_useReplace)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
-                    liblegado_shared_kref_io_legado_app_data_entities_Book (*component1)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
-                    liblegado_shared_KBoolean (*component10)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
-                    liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd (*component11)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
-                    liblegado_shared_kref_kotlin_collections_List (*component12)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
-                    liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd (*component13)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
-                    liblegado_shared_KBoolean (*component14)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
-                    liblegado_shared_KInt (*component2)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
-                    liblegado_shared_KBoolean (*component3)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
-                    const char* (*component4)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
-                    liblegado_shared_kref_kotlin_collections_List (*component5)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
-                    liblegado_shared_kref_kotlin_collections_Set (*component6)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
-                    liblegado_shared_kref_kotlin_collections_Map (*component7)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
-                    liblegado_shared_kref_kotlin_collections_Set (*component8)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
-                    liblegado_shared_KBoolean (*component9)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
-                    liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState (*copy)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz, liblegado_shared_kref_io_legado_app_data_entities_Book book, liblegado_shared_KInt durChapterIndex, liblegado_shared_KBoolean searching, const char* searchKey, liblegado_shared_kref_kotlin_collections_List chapters, liblegado_shared_kref_kotlin_collections_Set collapsedVolumes, liblegado_shared_kref_kotlin_collections_Map displayTitleMap, liblegado_shared_kref_kotlin_collections_Set cacheFileNames, liblegado_shared_KBoolean useReplace, liblegado_shared_KBoolean countWords, liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd chapterScroll, liblegado_shared_kref_kotlin_collections_List bookmarks, liblegado_shared_kref_io_legado_app_ui_book_toc_TocScrollCmd bookmarkScroll, liblegado_shared_KBoolean isLocalBook);
-                    liblegado_shared_KBoolean (*equals)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz, liblegado_shared_kref_kotlin_Any other);
-                    liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
-                    const char* (*toString)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiState thiz);
-                  } TocUiState;
-                  struct {
-                    liblegado_shared_KType* (*_type)(void);
-                    void (*editBookmark)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions thiz, liblegado_shared_kref_io_legado_app_data_entities_Bookmark bookmark, liblegado_shared_KInt pos);
-                    void (*exportBookmark)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions thiz);
-                    void (*exportBookmarkMd)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions thiz);
-                    void (*onBack)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions thiz);
-                    void (*openBookmark)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions thiz, liblegado_shared_kref_io_legado_app_data_entities_Bookmark bookmark);
-                    void (*openChapter)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions thiz, liblegado_shared_kref_io_legado_app_data_entities_BookChapter chapter);
-                    void (*reverseChapterList)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions thiz);
-                    void (*setQuery)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions thiz, const char* query);
-                    void (*setSearchMode)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions thiz, liblegado_shared_KBoolean active);
-                    void (*showLog)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions thiz);
-                    void (*showTocRegexDialog)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions thiz);
-                    void (*toggleCountWords)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions thiz);
-                    void (*toggleSplitLongChapter)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions thiz);
-                    void (*toggleUseReplace)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions thiz);
-                    void (*toggleVolume)(liblegado_shared_kref_io_legado_app_ui_book_toc_TocUiActions thiz, liblegado_shared_kref_io_legado_app_data_entities_BookChapter volume);
-                  } TocUiActions;
                   struct {
                     liblegado_shared_KType* (*_type)(void);
                     liblegado_shared_kref_io_legado_app_ui_book_toc_TocScreenModel (*TocScreenModel)(liblegado_shared_kref_kotlin_Function1 getChapterFiles);
@@ -24244,24 +24139,22 @@ typedef struct {
                 } OhosWebViewBridge;
                 struct {
                   liblegado_shared_KType* (*_type)(void);
-                  liblegado_shared_kref_io_legado_app_ui_browser_WebViewConfig (*WebViewConfig)(const char* url, liblegado_shared_kref_kotlin_collections_Map headerMap, const char* html, const char* title, liblegado_shared_KBoolean isLogin, liblegado_shared_KBoolean saveResult, liblegado_shared_KBoolean refetchAfterSuccess, const char* sourceKey);
+                  liblegado_shared_kref_io_legado_app_ui_browser_WebViewConfig (*WebViewConfig)(const char* url, liblegado_shared_kref_kotlin_collections_Map headerMap, const char* html, liblegado_shared_KBoolean isLogin, liblegado_shared_KBoolean saveResult, const char* sourceKey, liblegado_shared_KBoolean wideViewPort);
                   liblegado_shared_kref_kotlin_collections_Map (*get_headerMap)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewConfig thiz);
                   const char* (*get_html)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewConfig thiz);
                   liblegado_shared_KBoolean (*get_isLogin)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewConfig thiz);
-                  liblegado_shared_KBoolean (*get_refetchAfterSuccess)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewConfig thiz);
                   liblegado_shared_KBoolean (*get_saveResult)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewConfig thiz);
                   const char* (*get_sourceKey)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewConfig thiz);
-                  const char* (*get_title)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewConfig thiz);
                   const char* (*get_url)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewConfig thiz);
+                  liblegado_shared_KBoolean (*get_wideViewPort)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewConfig thiz);
                   const char* (*component1)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewConfig thiz);
                   liblegado_shared_kref_kotlin_collections_Map (*component2)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewConfig thiz);
                   const char* (*component3)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewConfig thiz);
-                  const char* (*component4)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewConfig thiz);
+                  liblegado_shared_KBoolean (*component4)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewConfig thiz);
                   liblegado_shared_KBoolean (*component5)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewConfig thiz);
-                  liblegado_shared_KBoolean (*component6)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewConfig thiz);
+                  const char* (*component6)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewConfig thiz);
                   liblegado_shared_KBoolean (*component7)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewConfig thiz);
-                  const char* (*component8)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewConfig thiz);
-                  liblegado_shared_kref_io_legado_app_ui_browser_WebViewConfig (*copy)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewConfig thiz, const char* url, liblegado_shared_kref_kotlin_collections_Map headerMap, const char* html, const char* title, liblegado_shared_KBoolean isLogin, liblegado_shared_KBoolean saveResult, liblegado_shared_KBoolean refetchAfterSuccess, const char* sourceKey);
+                  liblegado_shared_kref_io_legado_app_ui_browser_WebViewConfig (*copy)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewConfig thiz, const char* url, liblegado_shared_kref_kotlin_collections_Map headerMap, const char* html, liblegado_shared_KBoolean isLogin, liblegado_shared_KBoolean saveResult, const char* sourceKey, liblegado_shared_KBoolean wideViewPort);
                   liblegado_shared_KBoolean (*equals)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewConfig thiz, liblegado_shared_kref_kotlin_Any other);
                   liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewConfig thiz);
                   const char* (*toString)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewConfig thiz);
@@ -24280,6 +24173,8 @@ typedef struct {
                   liblegado_shared_kref_io_legado_app_ui_browser_WebViewCallbacks (*WebViewCallbacks)();
                   liblegado_shared_kref_io_legado_app_ui_browser_WebViewHost (*get_host)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewCallbacks thiz);
                   void (*set_host)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewCallbacks thiz, liblegado_shared_kref_io_legado_app_ui_browser_WebViewHost set);
+                  liblegado_shared_kref_kotlin_Function0 (*get_onCloseWindow)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewCallbacks thiz);
+                  void (*set_onCloseWindow)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewCallbacks thiz, liblegado_shared_kref_kotlin_Function0 set);
                   liblegado_shared_kref_kotlin_Function1 (*get_onFullScreenChanged)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewCallbacks thiz);
                   void (*set_onFullScreenChanged)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewCallbacks thiz, liblegado_shared_kref_kotlin_Function1 set);
                   liblegado_shared_kref_kotlin_Function1 (*get_onPageFinished)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewCallbacks thiz);
@@ -24427,6 +24322,9 @@ typedef struct {
                   } AlertButton;
                   struct {
                     liblegado_shared_KType* (*_type)(void);
+                  } SheetDragExclusion;
+                  struct {
+                    liblegado_shared_KType* (*_type)(void);
                     liblegado_shared_kref_io_legado_app_ui_compose_component_AppDialogSizes (*_instance)();
                     liblegado_shared_kref_androidx_compose_ui_window_DialogProperties (*properties)(liblegado_shared_kref_io_legado_app_ui_compose_component_AppDialogSizes thiz, liblegado_shared_KBoolean dismissOnBackPress, liblegado_shared_KBoolean dismissOnClickOutside, liblegado_shared_KBoolean decorFitsSystemWindows);
                   } AppDialogSizes;
@@ -24485,6 +24383,8 @@ typedef struct {
                     const char* (*toString)(liblegado_shared_kref_io_legado_app_ui_compose_component_SelectAction thiz);
                   } SelectAction;
                   liblegado_shared_kref_androidx_compose_runtime_ProvidableCompositionLocal (*get_LocalDialogWindow)();
+                  liblegado_shared_kref_androidx_compose_runtime_ProvidableCompositionLocal (*get_LocalSheetDismissRequest)();
+                  liblegado_shared_kref_androidx_compose_runtime_ProvidableCompositionLocal (*get_LocalSheetDragExclusion)();
                   liblegado_shared_kref_androidx_compose_runtime_ProvidableCompositionLocal (*get_LocalDialogAnchorSize)();
                   liblegado_shared_kref_androidx_compose_ui_Modifier (*dragSelectable)(liblegado_shared_kref_androidx_compose_ui_Modifier thiz, liblegado_shared_kref_androidx_compose_foundation_lazy_LazyListState listState, liblegado_shared_kref_kotlinx_coroutines_CoroutineScope autoScrollScope, liblegado_shared_kref_kotlin_Function1 isSelected, liblegado_shared_kref_kotlin_Function2 onSelectedChanged, liblegado_shared_KFloat handleWidth);
                   liblegado_shared_KFloat (*estimateGridHeight)(liblegado_shared_kref_kotlin_collections_List specs, liblegado_shared_KFloat rowUnitMinHeight, liblegado_shared_KInt columnCount);
@@ -24631,6 +24531,8 @@ typedef struct {
                   liblegado_shared_kref_androidx_compose_runtime_ProvidableCompositionLocal (*get_LocalThemeStoreProvider)();
                   liblegado_shared_kref_kotlin_Function1 (*imeScrollNowFor)(liblegado_shared_kref_androidx_compose_foundation_ScrollState scrollState, liblegado_shared_kref_kotlin_Function0 containerWindowY, liblegado_shared_KInt marginPx, liblegado_shared_kref_kotlinx_coroutines_CoroutineScope scope);
                   liblegado_shared_kref_kotlin_Function1 (*imeScrollNowFor_)(liblegado_shared_kref_androidx_compose_foundation_lazy_LazyListState listState, liblegado_shared_kref_kotlin_Function0 containerWindowY, liblegado_shared_KInt marginPx, liblegado_shared_kref_kotlinx_coroutines_CoroutineScope scope);
+                  liblegado_shared_kref_androidx_compose_runtime_ProvidableCompositionLocal (*get_LocalOverlayTopInset)();
+                  liblegado_shared_KFloat (*get_OverlayInsetGap)();
                   liblegado_shared_kref_androidx_compose_runtime_ProvidableCompositionLocal (*get_LocalTransitionFrozenStatusBarHeightPx)();
                   liblegado_shared_kref_kotlin_collections_List (*get_volumePageTurnKeys)();
                 } platform;
@@ -24651,6 +24553,7 @@ typedef struct {
                   struct {
                     liblegado_shared_KType* (*_type)(void);
                     liblegado_shared_kref_kotlin_Any (*get_draggedKey)(liblegado_shared_kref_io_legado_app_ui_compose_reorderable_ReorderableListState thiz);
+                    liblegado_shared_KFloat (*get_draggedOffsetX)(liblegado_shared_kref_io_legado_app_ui_compose_reorderable_ReorderableListState thiz);
                     liblegado_shared_KFloat (*get_draggedOffsetY)(liblegado_shared_kref_io_legado_app_ui_compose_reorderable_ReorderableListState thiz);
                   } ReorderableListState;
                 } reorderable;
@@ -25177,10 +25080,12 @@ typedef struct {
                 } OtherConfigScreenModel;
                 struct {
                   liblegado_shared_KType* (*_type)(void);
-                  liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiState (*ThemeConfigUiState)(const char* fontScaleSummary);
+                  liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiState (*ThemeConfigUiState)(const char* fontScaleSummary, const char* sourceEditMaxLineSummary);
                   const char* (*get_fontScaleSummary)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiState thiz);
+                  const char* (*get_sourceEditMaxLineSummary)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiState thiz);
                   const char* (*component1)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiState thiz);
-                  liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiState (*copy)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiState thiz, const char* fontScaleSummary);
+                  const char* (*component2)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiState thiz);
+                  liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiState (*copy)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiState thiz, const char* fontScaleSummary, const char* sourceEditMaxLineSummary);
                   liblegado_shared_KBoolean (*equals)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiState thiz, liblegado_shared_kref_kotlin_Any other);
                   liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiState thiz);
                   const char* (*toString)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiState thiz);
@@ -25196,6 +25101,16 @@ typedef struct {
                     liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_UpdateFontScaleSummary thiz);
                     const char* (*toString)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_UpdateFontScaleSummary thiz);
                   } UpdateFontScaleSummary;
+                  struct {
+                    liblegado_shared_KType* (*_type)(void);
+                    liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_UpdateSourceEditMaxLineSummary (*UpdateSourceEditMaxLineSummary)(const char* value);
+                    const char* (*get_value)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_UpdateSourceEditMaxLineSummary thiz);
+                    const char* (*component1)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_UpdateSourceEditMaxLineSummary thiz);
+                    liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_UpdateSourceEditMaxLineSummary (*copy)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_UpdateSourceEditMaxLineSummary thiz, const char* value);
+                    liblegado_shared_KBoolean (*equals)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_UpdateSourceEditMaxLineSummary thiz, liblegado_shared_kref_kotlin_Any other);
+                    liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_UpdateSourceEditMaxLineSummary thiz);
+                    const char* (*toString)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_UpdateSourceEditMaxLineSummary thiz);
+                  } UpdateSourceEditMaxLineSummary;
                   struct {
                     liblegado_shared_KType* (*_type)(void);
                     liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_BookshelfLayout (*_instance)();
@@ -25224,11 +25139,15 @@ typedef struct {
                     liblegado_shared_KType* (*_type)(void);
                     liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_FontScale (*_instance)();
                   } FontScale;
+                  struct {
+                    liblegado_shared_KType* (*_type)(void);
+                    liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_SourceEditMaxLine (*_instance)();
+                  } SourceEditMaxLine;
                   liblegado_shared_KType* (*_type)(void);
                 } ThemeConfigUiEvent;
                 struct {
                   liblegado_shared_KType* (*_type)(void);
-                  liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigScreenModel (*ThemeConfigScreenModel)(liblegado_shared_kref_kotlin_Function0 onBookshelfLayout, liblegado_shared_kref_kotlin_Function0 onSearchLayout, liblegado_shared_kref_kotlin_Function0 onBottomNavConfig, liblegado_shared_kref_kotlin_Function0 onThemeList, liblegado_shared_kref_kotlin_Function0 onCustomizeDayTheme, liblegado_shared_kref_kotlin_Function0 onCustomizeNightTheme, liblegado_shared_kref_kotlin_Function0 onFontScale);
+                  liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigScreenModel (*ThemeConfigScreenModel)(liblegado_shared_kref_kotlin_Function0 onBookshelfLayout, liblegado_shared_kref_kotlin_Function0 onSearchLayout, liblegado_shared_kref_kotlin_Function0 onBottomNavConfig, liblegado_shared_kref_kotlin_Function0 onThemeList, liblegado_shared_kref_kotlin_Function0 onCustomizeDayTheme, liblegado_shared_kref_kotlin_Function0 onCustomizeNightTheme, liblegado_shared_kref_kotlin_Function0 onFontScale, liblegado_shared_kref_kotlin_Function0 onSourceEditMaxLine);
                   liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow (*get_state)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigScreenModel thiz);
                   void (*dispatch)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigScreenModel thiz, liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent event);
                 } ThemeConfigScreenModel;
@@ -26205,14 +26124,16 @@ typedef struct {
                       liblegado_shared_kref_kotlinx_serialization_KSerializer (*serializer)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Sheet_Companion thiz);
                     } Companion;
                     liblegado_shared_KType* (*_type)(void);
-                    liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Sheet (*Sheet)(const char* key, const char* payload, liblegado_shared_KBoolean dismissOnBack);
+                    liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Sheet (*Sheet)(const char* key, const char* payload, liblegado_shared_KBoolean dismissOnBack, liblegado_shared_kref_io_legado_app_ui_root_AppRoute_WebView webView);
                     liblegado_shared_KBoolean (*get_dismissOnBack)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Sheet thiz);
                     const char* (*get_key)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Sheet thiz);
                     const char* (*get_payload)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Sheet thiz);
+                    liblegado_shared_kref_io_legado_app_ui_root_AppRoute_WebView (*get_webView)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Sheet thiz);
                     const char* (*component1)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Sheet thiz);
                     const char* (*component2)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Sheet thiz);
                     liblegado_shared_KBoolean (*component3)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Sheet thiz);
-                    liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Sheet (*copy)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Sheet thiz, const char* key, const char* payload, liblegado_shared_KBoolean dismissOnBack);
+                    liblegado_shared_kref_io_legado_app_ui_root_AppRoute_WebView (*component4)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Sheet thiz);
+                    liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Sheet (*copy)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Sheet thiz, const char* key, const char* payload, liblegado_shared_KBoolean dismissOnBack, liblegado_shared_kref_io_legado_app_ui_root_AppRoute_WebView webView);
                     liblegado_shared_KBoolean (*equals)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Sheet thiz, liblegado_shared_kref_kotlin_Any other);
                     liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Sheet thiz);
                     const char* (*toString)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Sheet thiz);
@@ -27631,6 +27552,7 @@ typedef struct {
                   const char* (*pickFile)(liblegado_shared_kref_io_legado_app_ui_root_FilePickerService thiz, liblegado_shared_kref_io_legado_app_ui_root_FileFilter filter);
                   liblegado_shared_kref_kotlin_collections_List (*pickFiles)(liblegado_shared_kref_io_legado_app_ui_root_FilePickerService thiz, liblegado_shared_kref_io_legado_app_ui_root_FileFilter filter);
                   const char* (*saveFile)(liblegado_shared_kref_io_legado_app_ui_root_FilePickerService thiz, const char* suggestedName, const char* defaultDir);
+                  liblegado_shared_KBoolean (*saveImageBytes)(liblegado_shared_kref_io_legado_app_ui_root_FilePickerService thiz, const char* suggestedName, liblegado_shared_kref_kotlin_ByteArray bytes);
                 } FilePickerService;
                 struct {
                   liblegado_shared_KType* (*_type)(void);

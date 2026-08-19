@@ -1,7 +1,6 @@
 package io.legado.desktop.ui.tray
 
 import com.sun.jna.Function
-import com.sun.jna.Library
 import com.sun.jna.Memory
 import com.sun.jna.Native
 import com.sun.jna.Platform
@@ -19,6 +18,7 @@ import io.legado.app.constant.Status
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.service.ReadAloudControllerShared.ReadAloudState
 import io.legado.app.ui.compose.platform.jvmGetString
+import io.legado.desktop.help.win.ComCtl32
 import io.legado.desktop.help.win.createHiddenMessageWindow
 import io.legado.desktop.help.win.registerMessageWindowClass
 import io.legado.desktop.ui.DesktopWindowChromeNative
@@ -971,19 +971,6 @@ internal object DesktopTaskbarMedia {
                 val w = (s * 0.44f).toInt()
                 g.fillRoundRect(x, x, w, w, (s * 0.08f).toInt(), (s * 0.08f).toInt())
             }
-        }
-    }
-
-    // ==================== comctl32 (ImageList) 最小绑定 ====================
-
-    /** ImageList 函数 (老版 comctl32 仍导出; HIMAGELIST 用 Pointer 表示)。 */
-    private interface ComCtl32 : Library {
-        fun ImageList_Create(cx: Int, cy: Int, flags: Int, cInitial: Int, cGrow: Int): Pointer?
-        fun ImageList_Add(himl: Pointer, hbmImage: WinDef.HBITMAP, hbmMask: WinDef.HBITMAP?): Int
-        fun ImageList_Destroy(himl: Pointer): Boolean
-
-        companion object {
-            val INSTANCE: ComCtl32 = Native.load("comctl32", ComCtl32::class.java)
         }
     }
 

@@ -31,8 +31,9 @@ object SourceUiEventBridge {
                 // 其余分支 (登录/验证码) 需要当前 Activity, 故仍保留此守卫
                 if (LifecycleHelp.currentActivity !is AppCompatActivity) return@collect
                 when (event) {
-                    // 统一登录入口 (shared): URL 登录时 Android 端 openLoginWebView 返回 false,
-                    // 仍弹 sourceLogin Overlay 对话框 (与原行为一致)
+                    // 统一登录入口 (shared): URL 登录时平台直开全屏 WebView
+                    // (openLoginWebView 默认推 AppRoute.WebView isLogin=true 路由, 桌面端独立窗口),
+                    // 不弹 sourceLogin Overlay; 表单登录 (loginUi 非空) 仍弹 Overlay 表单
                     is SourceUiRequest.Login -> showSourceLogin(
                         event.source.getKey(),
                         event.source,

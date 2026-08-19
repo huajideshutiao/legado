@@ -12,6 +12,7 @@ import io.legado.app.help.archive.ArchiveProviders
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.ConcurrentRateLimiter
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.coroutine.runBlockingInScope
 import io.legado.app.help.http.BackstageWebViewProviders
 import io.legado.app.help.http.CookieStoreProviders
 import io.legado.app.help.http.StrResponse
@@ -45,7 +46,6 @@ import io.legado.app.utils.toStringArray
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.toList
-import kotlinx.coroutines.runBlocking
 import org.jsoup.Connection
 import org.jsoup.Jsoup
 import kotlin.coroutines.CoroutineContext
@@ -62,14 +62,14 @@ import kotlin.coroutines.EmptyCoroutineContext
  *
  * `webView` / `webViewGetSource` / `webViewGetOverrideUrl` / `ajaxAll` 经 app 端 [JsExtensions]
  * (标注 `@JsApi`) 暴露给 JS 引擎 (QuickJS), JS 调用是同步的, 不能 suspend。故这四个方法无法改为
- * suspend, 内部 `runBlocking` 保留 (把 [BackstageWebViewProviders] 的 suspend 调用 / Flow 收集包装为同步返回)。
+ * suspend, 内部经 [runBlockingInScope] (commonMain expect, 各端 actual) 委托阻塞语义:
+ * jvmAndAndroidMain 与 nativeMain (iOS/鸿蒙共用) 的 actual 都直调 kotlinx.coroutines.runBlocking,
+ * 行为与直调 runBlocking 零差异。
  * - JVM 端 (Android/desktop): runBlocking 安全, JS 引擎在 IO 线程同步调用 (与 [CacheManager] 同策略)。
  * - Native 端 (iOS/鸿蒙): JS 引擎已启用 (nativeMain QuickJS cinterop), 但
- *   [BackstageWebViewProviders] 未注册实现, 这四个方法调用会抛错而非执行 runBlocking。
- * - 同策略参考: [CacheManager] (object 级 `@JsApi`, runBlocking 保留) /
- *   AnalyzeUrlCore (经 [runBlockingInScope] expect 门面委托, 行为等价)。
- * - KMP 兼容替代: 可改为 [runBlockingInScope] (commonMain expect, 各端 actual), 行为零变化,
- *   但当前与 [CacheManager] 保持一致直调 runBlocking; 统一迁移待后续重构。
+ *   [BackstageWebViewProviders] 未注册实现, 这四个方法调用仍会抛错 —— 这是 provider 未注册问题,
+ *   与阻塞包装方式无关, 经 runBlockingInScope 迁移不改变该行为。
+ * - 同策略参考: [CacheManager] (object 级 `@JsApi`, 内部同样经 runBlockingInScope 桥接)。
  */
 @Suppress("unused")
 interface JsExtensionsCommon {
@@ -221,7 +221,7 @@ interface JsExtensionsCommon {
     //****************** P1: webView 系列 (从 app JsExtensions 下沉) ******************//
 
     /**
-     * 协程上下文, 用于 [runBlocking] 包装 webView 挂起调用。
+     * 协程上下文, 用于 [runBlockingInScope] 包装 webView 挂起调用。
      * 取自 [jsContext] (js 执行上下文注入), 缺失时退化为 [EmptyCoroutineContext]。
      */
     private val context: CoroutineContext
@@ -238,8 +238,8 @@ interface JsExtensionsCommon {
         if (JsExtensionsPlatform.isMainThread()) {
             error("webView must be called on a background thread")
         }
-        // @JsApi 同步调用约束: JS 引擎不能调 suspend, runBlocking 不可避免; 详见接口级 KDoc
-        return runBlocking(context) {
+        // @JsApi 同步调用约束: JS 引擎不能调 suspend, 经 runBlockingInScope 桥接; 详见接口级 KDoc
+        return runBlockingInScope(context) {
             BackstageWebViewProviders.get().create(
                 url = url,
                 html = html,
@@ -266,8 +266,8 @@ interface JsExtensionsCommon {
         if (JsExtensionsPlatform.isMainThread()) {
             error("webViewGetSource must be called on a background thread")
         }
-        // @JsApi 同步调用约束: JS 引擎不能调 suspend, runBlocking 不可避免; 详见接口级 KDoc
-        return runBlocking(context) {
+        // @JsApi 同步调用约束: JS 引擎不能调 suspend, 经 runBlockingInScope 桥接; 详见接口级 KDoc
+        return runBlockingInScope(context) {
             BackstageWebViewProviders.get().create(
                 url = url,
                 html = html,
@@ -296,8 +296,8 @@ interface JsExtensionsCommon {
         if (JsExtensionsPlatform.isMainThread()) {
             error("webViewGetOverrideUrl must be called on a background thread")
         }
-        // @JsApi 同步调用约束: JS 引擎不能调 suspend, runBlocking 不可避免; 详见接口级 KDoc
-        return runBlocking(context) {
+        // @JsApi 同步调用约束: JS 引擎不能调 suspend, 经 runBlockingInScope 桥接; 详见接口级 KDoc
+        return runBlockingInScope(context) {
             BackstageWebViewProviders.get().create(
                 url = url,
                 html = html,
@@ -343,13 +343,15 @@ interface JsExtensionsCommon {
      */
     fun ajaxAll(urlList: Array<String>): Array<StrResponse> {
         // AppConfig.threadCount 未下沉, 改用 AppConfigProviders.get().threadCount (等价)
-        // @JsApi 同步调用约束: JS 引擎不能调 suspend, runBlocking 不可避免; 详见接口级 KDoc
-        return runBlocking(jsContext.coroutineContext ?: EmptyCoroutineContext) {
+        // @JsApi 同步调用约束: JS 引擎不能调 suspend, 经 runBlockingInScope 桥接; 详见接口级 KDoc
+        // runBlockingInScope 的 block 无 CoroutineScope receiver, 上下文需在 lambda 外捕获
+        val scopeContext = jsContext.coroutineContext ?: EmptyCoroutineContext
+        return runBlockingInScope(scopeContext) {
             urlList.asFlow().mapAsync(AppConfigProviders.get().threadCount) { url ->
                 val analyzeUrl = AnalyzeUrlFactories.create(
                     url,
                     source = getSource(),
-                    coroutineContext = coroutineContext
+                    coroutineContext = scopeContext
                 )
                 analyzeUrl.getStrResponseAwait()
             }.flowOn(IoDispatcher).toList().toTypedArray()

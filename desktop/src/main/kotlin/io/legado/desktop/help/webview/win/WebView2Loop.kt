@@ -8,9 +8,8 @@ import com.sun.jna.platform.win32.User32
 import com.sun.jna.platform.win32.WinDef
 import com.sun.jna.platform.win32.WinUser
 import io.legado.app.constant.AppLog
-import io.legado.desktop.help.webview.win.WebView2Loop.WM_RUN_TASK
-import io.legado.desktop.help.webview.win.WebView2Loop.ensureStarted
-import io.legado.desktop.help.webview.win.WebView2Loop.tasks
+import io.legado.desktop.help.win.createHiddenMessageWindow
+import io.legado.desktop.help.win.registerMessageWindowClass
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeoutOrNull
 import java.awt.Toolkit
@@ -154,19 +153,18 @@ internal object WebView2Loop {
     }
 
     private fun registerWindowClass() {
-        val wndClass = WinUser.WNDCLASSEX()
-        wndClass.cbSize = wndClass.size()
-        wndClass.lpszClassName = WINDOW_CLASS
-        wndClass.lpfnWndProc = windowProc
-        // HMODULE 继承自 HINSTANCE, 直接给
-        wndClass.hInstance = Kernel32.INSTANCE.GetModuleHandle(null)
-        // 工具栏区背景由窗口背景画刷承担 (深色主题下默认白底会露馅);
-        // 主题背景色跟随创建时主题 (短生命周期窗口, 不追动态切换)
-        wndClass.hbrBackground = WinDef.HBRUSH(
-            webview2Gdi32Ex.CreateSolidBrush(WebView2WindowTheme.themeBgColorRef())
+        // WNDCLASSEX 注册样板统一在 help/win/Win32MessageWindow (与任务栏媒体同款);
+        // 重复注册返回 ERROR_CLASS_ALREADY_EXISTS, 无害
+        registerMessageWindowClass(
+            className = WINDOW_CLASS,
+            wndProc = windowProc,
+            owner = "WebView2",
+            // 工具栏区背景由窗口背景画刷承担 (深色主题下默认白底会露馅);
+            // 主题背景色跟随创建时主题 (短生命周期窗口, 不追动态切换)
+            hbrBackground = WinDef.HBRUSH(
+                webview2Gdi32Ex.CreateSolidBrush(WebView2WindowTheme.themeBgColorRef())
+            ),
         )
-        // 重复注册返回 0 (ERROR_CLASS_ALREADY_EXISTS), 无害
-        User32.INSTANCE.RegisterClassEx(wndClass)
     }
 
     /**
@@ -178,35 +176,34 @@ internal object WebView2Loop {
         title: String,
         bounds: WindowBounds = WindowBounds()
     ): WinDef.HWND {
-        val style = if (visible) WinUser.WS_OVERLAPPEDWINDOW else WinUser.WS_POPUP
-        // 无头窗口必须摆到屏幕外 (bounds 是给可见窗口用的)
-        val posX = if (visible) bounds.x else OFFSCREEN
-        val posY = if (visible) bounds.y else OFFSCREEN
+        if (!visible) {
+            // 隐藏泵窗口: WS_POPUP + 屏幕外, 样板同 helper (尺寸无关紧要, 仅收消息)
+            return createHiddenMessageWindow(WINDOW_CLASS, title.ifBlank { "legado" })
+        }
+        // 可见分支是弹窗语义 (WS_OVERLAPPEDWINDOW + 置前 + 主题同步), 不走隐藏窗口 helper
         val hwnd = User32.INSTANCE.CreateWindowEx(
             0,
             WINDOW_CLASS,
             title.ifBlank { "legado" },
-            style,
-            posX, posY, bounds.width, bounds.height,
+            WinUser.WS_OVERLAPPEDWINDOW,
+            bounds.x, bounds.y, bounds.width, bounds.height,
             null, null,
             Kernel32.INSTANCE.GetModuleHandle(null),
             null,
         ) ?: error("CreateWindowEx 失败 (err=${Native.getLastError()})")
-        if (visible) {
-            User32.INSTANCE.ShowWindow(hwnd, WinUser.SW_SHOW)
-            // 弹窗语义: 新窗口置前显示。曾出现 WebView2 窗口启动在主窗口后面
-            // (ShowWindow 不改变 Z 序, 主窗口保持激活)。HWND_TOP 提升到 Z 序顶部
-            // (非 TOPMOST 置顶), 再请求前台激活 (同进程前台时 SetForegroundWindow 有效)
-            User32.INSTANCE.SetWindowPos(
-                hwnd,
-                null, // HWND_TOP = NULL 指针 (置顶 Z 序, 非 TOPMOST)
-                0, 0, 0, 0,
-                WinUser.SWP_NOMOVE or WinUser.SWP_NOSIZE or WinUser.SWP_SHOWWINDOW
-            )
-            User32.INSTANCE.SetForegroundWindow(hwnd)
-            // 原生标题栏跟随应用主题 (与主窗口原生控制栏观感统一, 用户拍板 2026-08)
-            WebView2WindowTheme.apply(hwnd)
-        }
+        User32.INSTANCE.ShowWindow(hwnd, WinUser.SW_SHOW)
+        // 弹窗语义: 新窗口置前显示。曾出现 WebView2 窗口启动在主窗口后面
+        // (ShowWindow 不改变 Z 序, 主窗口保持激活)。HWND_TOP 提升到 Z 序顶部
+        // (非 TOPMOST 置顶), 再请求前台激活 (同进程前台时 SetForegroundWindow 有效)
+        User32.INSTANCE.SetWindowPos(
+            hwnd,
+            null, // HWND_TOP = NULL 指针 (置顶 Z 序, 非 TOPMOST)
+            0, 0, 0, 0,
+            WinUser.SWP_NOMOVE or WinUser.SWP_NOSIZE or WinUser.SWP_SHOWWINDOW
+        )
+        User32.INSTANCE.SetForegroundWindow(hwnd)
+        // 原生标题栏跟随应用主题 (与主窗口原生控制栏观感统一)
+        WebView2WindowTheme.apply(hwnd)
         return hwnd
     }
 
@@ -249,9 +246,6 @@ internal object WebView2Loop {
             height = height,
         )
     }
-
-    /** 屏幕外坐标 (Win32 惯用值, 保证任何显示器布局下都不可见)。 */
-    private const val OFFSCREEN = -32000
 
     private const val DEFAULT_WIDTH = 1100
     private const val DEFAULT_HEIGHT = 800

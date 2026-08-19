@@ -613,7 +613,11 @@ private class MacWindowHandle(
     private fun onToolbarAction(action: ToolbarAction) {
         val target = session ?: return
         when (action) {
-            ToolbarAction.BACK -> navigateHistory(back = true)
+            ToolbarAction.BACK -> if (!navigateHistory(back = true)) {
+                // 无历史时返回 = 关闭窗口 (对照原版 WebViewActivity toolbar 返回箭头
+                // = finish(), 与 Windows 引擎行为一致, 避免"返回不可用"的困惑)
+                close()
+            }
 
             ToolbarAction.FORWARD -> navigateHistory(back = false)
 

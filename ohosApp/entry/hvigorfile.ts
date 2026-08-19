@@ -17,12 +17,18 @@ function legadoNativeLibrariesPlugin(): HvigorPlugin {
       pluginContext.registerTask({
         name: 'stageLegadoNativeLibraries',
         run: async () => {
+          // Windows 上 node 的 execFile 不能直接执行 .bat/.cmd (EINVAL/ENOENT),
+          // 统一经 powershell.exe 的调用运算符 & 执行 gradlew.bat (cmd/powershell 均可, 选 ps1 以兼容含空格路径)。
+          const gradleArgs =
+            'stageOhosNativeLibraries -PenableOhosTarget=true -PrendererBackend=fusion-renderer';
           const { stdout, stderr } = await execFileAsync(
-            gradleWrapper,
+            'powershell.exe',
             [
-              'stageOhosNativeLibraries',
-              '-PenableOhosTarget=true',
-              '-PrendererBackend=fusion-renderer'
+              '-NoProfile',
+              '-ExecutionPolicy',
+              'Bypass',
+              '-Command',
+              `& '${gradleWrapper}' ${gradleArgs}`
             ],
             {
               cwd: projectRoot,

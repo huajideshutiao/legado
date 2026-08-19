@@ -8,6 +8,7 @@ import com.sun.jna.platform.win32.WinUser
 import io.legado.app.help.RssToolbarActions
 import io.legado.desktop.help.webview.BrowserToolbar
 import io.legado.desktop.help.webview.ToolbarAction
+import io.legado.desktop.help.win.ComCtl32
 
 /**
  * WebView2 可见窗口的工具栏 —— 标准 Button 控件 (2026-08-06 重做, 2026-08-07 图标化)。
@@ -74,7 +75,7 @@ internal class WebView2Toolbar(
         val icc = Memory(8)
         icc.setInt(0, 8)
         icc.setInt(4, ComCtl32.ICC_PROGRESS_CLASS)
-        val inited = ComCtl32.comctl.InitCommonControlsEx(icc)
+        val inited = ComCtl32.INSTANCE.InitCommonControlsEx(icc)
         io.legado.app.constant.AppLog.put("工具栏: InitCommonControlsEx(progress)=$inited")
 
         // 图标字体 (2026-08-07 图标化): 按钮文本 = MDL2 字符

@@ -15,14 +15,13 @@ import io.legado.app.constant.AppLog
  * WebView2Loop) 原先各写一份「注册窗口类 + 建屏幕外隐藏窗口」样板, 连
  * 「重复注册返回 ERROR_CLASS_ALREADY_EXISTS 无害」的注释都同款, 收敛于此。
  *
- * TODO(迁移待办): WebView2Loop.registerWindowClass / createWindow(可见分支)
- * 尚未切换到本 helper (该文件本轮不动)。迁移时注意两点差异:
- * - WebView2Loop 的注册给了 hbrBackground (工具栏区背景画刷), 用 [hbrBackground] 参数对齐;
+ * 两处使用点差异:
+ * - WebView2Loop 的注册带 hbrBackground (工具栏区背景画刷), 由 [hbrBackground] 参数对齐;
  * - WebView2Loop 的可见窗口分支 (WS_OVERLAPPEDWINDOW + 置前 + 主题同步) 是弹窗语义,
- *   不属于「隐藏消息窗口」, 需留在 WebView2Loop 或另行扩展 helper。
+ *   不属于「隐藏消息窗口」, 留在 WebView2Loop。
  */
 
-/** 屏幕外坐标: 隐藏窗口摆放位置 (与 WebView2Loop.OFFSCREEN 同值)。 */
+/** 屏幕外坐标 (Win32 惯用值, 保证任何显示器布局下都不可见)。 */
 private const val OFFSCREEN = -32000
 
 /**

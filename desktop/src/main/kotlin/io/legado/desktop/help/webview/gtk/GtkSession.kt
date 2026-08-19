@@ -77,6 +77,9 @@ internal class GtkSession private constructor(
     /** 窗口关闭回调 (用户点 X / 页面 window.close()/destroy), 触发句柄 close 语义。 */
     var onClosed: (() -> Unit)? = null
 
+    /** 页面元素全屏状态变化回调 (GTK 线程), 对应 WebKitWebView::fullscreen-changed。 */
+    var onFullscreenChanged: ((Boolean) -> Unit)? = null
+
     // JNA 回调强引用 (防 GC 后 GTK 调用即崩)
     private val loadChangedCb = object : GtkLibs.LoadChangedCallback {
         override fun invoke(view: Pointer, loadEvent: Int, userData: Pointer?) {
@@ -134,6 +137,12 @@ internal class GtkSession private constructor(
         }
     }
 
+    private val fullscreenChangedCb = object : GtkLibs.FullscreenChangedCallback {
+        override fun invoke(view: Pointer, fullscreen: Int, userData: Pointer?) {
+            runCatching { onFullscreenChanged?.invoke(fullscreen != 0) }
+        }
+    }
+
     companion object {
         const val COOKIE_TIMEOUT = 5_000L
 
@@ -174,6 +183,10 @@ internal class GtkSession private constructor(
 
             val session = GtkSession(window, view, cookieManager, toolbar)
             GtkLibs.gobject.g_signal_connect(view, "load-changed", session.loadChangedCb, null)
+            // 页面元素全屏 (HTML5 Fullscreen API) 状态变化, 如 <video> 全屏播放
+            GtkLibs.gobject.g_signal_connect(
+                view, "fullscreen-changed", session.fullscreenChangedCb, null
+            )
             GtkLibs.gobject.g_signal_connect(view, "notify::uri", session.uriNotifyCb, null)
             GtkLibs.gobject.g_signal_connect(
                 view, "notify::estimated-load-progress", session.progressNotifyCb, null

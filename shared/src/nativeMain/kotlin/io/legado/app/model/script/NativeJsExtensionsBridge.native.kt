@@ -115,10 +115,12 @@ import kotlinx.atomicfu.locks.synchronized
  * - 600-699: 文件/压缩族 (getFile/readFile/readTxtFile/deleteFile/解压全族/downloadFile/cacheFile/importScript)
  * - 700-799: Connection.Response 对象方法 (java.get/head/post 返回值: body/statusCode/url/header/cookie 等;
  *   规整方法已由 KSP 生成表接管, 手写仅剩 704 url()/712 method() 特例)
- * - 1300-1399: QueryTTF 对象方法; 1400-1499: StrResponse 对象方法 (规整已生成表接管, 手写仅 1406 headers
- *   toString 降级); 1500-1599: JsURL 对象属性;
+ * - 1300-1399: QueryTTF 对象方法 (规整函数手写闭包与生成表并存: 生成注入点在 JS 工厂
+ *   @@methods 标记处、位于手写定义之后, 同名以生成为准; 1306-1308 映射表属性为生成器
+ *   不覆盖项, 仅手写); 1400-1499: StrResponse 对象方法 (规整已生成表接管,
+ *   手写仅 1406 headers toString 降级); 1500-1599: JsURL 对象属性 (仅属性, 生成器无输出, 全手写);
  *   1600-1699: BaseSource 对象方法 (getKey/getTag/getSourceType/getLoginJs 已生成表接管; 手写仅
- *   1604 getHeaderMap 特例与 1605/1606/1608/1609 属性 getter 方法化, 阶段 3 E5 接管)
+ *   1604 getHeaderMap 特例与 1605/1606/1608/1609 属性 getter 方法化 —— 属性不在生成范围, 手写保留)
  * - 1700-2199: 复杂对象属性桥 (NativeJsPropertyBridge, book/source/chapter/java 属性 getter,
  *   分派表与 JS 工厂见 NativeJsPropertyBridge.native.kt; >= 1700 在 dispatch 开头短路转发)
  * - 2200+: 带参分派 (NativeJsPropertyBridge.dispatchWithArgs): 2300-2399 book 变量/方法面 |
@@ -718,6 +720,8 @@ object NativeJsExtensionsBridge {
                 stringToJsValue(ctx, text)
             }
             // ============ QueryTTF 对象方法 (1300-1399) ============
+            // getGlyfById 等规整函数已由 KSP 生成表接管 (5000+ 段, JS 闭包经 @@methods 注入点覆盖);
+            // 此处仅保留 1306-1308 映射表属性 (生成器只收集函数, 属性不生成)
             obj is QueryTTF && methodId == 1301 -> {
                 // getGlyfById(glyfId) → String?
                 stringToJsValue(ctx, obj.getGlyfById((args.getOrNull(0) as? Number)?.toInt() ?: 0))
@@ -957,6 +961,8 @@ function __createQueryTTFObj(handle) {
     if (!handle || handle <= 0) return null;
     var obj = {};
     obj.__h = handle; // replaceFont 回传句柄用
+    // getGlyfById 等规整函数手写闭包 (生成表注入点在下方 @@methods 标记处, 位于其后,
+    // 同名定义以生成为准); 映射表属性: 首次访问时 JSON 反序列化并缓存 (生成器只收集函数)
     obj.getGlyfById = function(glyfId) { return __nativeDispatch(handle, 1301, [glyfId]); };
     obj.getGlyfIdByUnicode = function(unicode) { return __nativeDispatch(handle, 1302, [unicode]); };
     obj.getGlyfByUnicode = function(unicode) { return __nativeDispatch(handle, 1303, [unicode]); };

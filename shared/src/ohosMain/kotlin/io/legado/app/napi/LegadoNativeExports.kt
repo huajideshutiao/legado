@@ -9,15 +9,12 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.BookStorageProviders
-import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.registerOhosProviders
 import io.legado.app.help.image.ohosDownloadImageBytes
 import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.ui.association.LegadoDeepLinkHandler
-import io.legado.app.ui.book.manga.OhosMangaReaderPlatform
-import io.legado.app.ui.explore.ExploreViewModelShared
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.utils.ChineseUtils
@@ -38,11 +35,7 @@ import kotlinx.cinterop.readBytes
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.usePinned
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.add
@@ -109,14 +102,6 @@ object LegadoNativeExports {
         // 真实部署可改在 EntryAbility.onCreate 显式调用 legado_register_providers()
         runCatching { registerOhosProviders() }
     }
-
-    // 发现页 VM 共享核心 (topSource/deleteSource 转发到此, scope=应用级 IO 协程)
-    private val exploreVmShared = ExploreViewModelShared(
-        CoroutineScope(SupervisorJob() + IoDispatcher)
-    )
-
-    // 漫画空图片列表兜底 (buildJsonArray 无空参重载, 直接用字面量)
-    private const val EMPTY_MANGA_IMAGES = """{"images":[]}"""
 
     private fun allocateCString(value: String): CPointer<ByteVar> {
         val bytes = value.encodeToByteArray()
@@ -380,193 +365,6 @@ object LegadoNativeExports {
             }
             sources.size
         }.getOrNull() ?: 0
-    }
-
-    // ===== 漫画 + 发现页函数 (KP5+ 新增) =====
-
-    /**
-     * 加载漫画章节图片 URL 列表 (返回 `{"images":["url1","url2",...]}` JSON)。
-     *
-     * 调用链 (对齐 Index.d.ts 注释 + MangaReaderViewModelShared.getManageChapter):
-     * 1. `AppDbProviders.get().bookDao.getBook(bookUrl)` 取书籍
-     * 2. `AppDbProviders.get().bookChapterDao.getChapterList(bookUrl)` 取章节列表
-     * 3. `BookStorageProviders.get().getContent(book, chapter)` 读本地缓存正文
-     * 4. `OhosMangaReaderPlatform.flowImages(chapter, content)` 提取图片 URL
-     *    (与鸿蒙漫画阅读界面同一入口, 内部走 MangaImageExtractorShared 纯字符串扫描)
-     *
-     * 同步语义: 同 [loadChapter], 内部 [runBlocking] 转 suspend, napi 层应在 worker 线程调用。
-     *
-     * 失败兜底: 任何步骤异常 / 书籍不存在 / 章节越界时返回 `{"images":[]}`。
-     *
-     * @param bookUrl 书籍 URL (UTF-8 C 字符串)
-     * @param chapterIndex 章节索引 (0-based)
-     * @return UTF-8 C 字符串, JSON 格式 `{"images":["url1","url2",...]}`
-     */
-    @CName("legado_load_manga_chapter")
-    fun loadMangaChapter(bookUrl: CPointer<ByteVar>, chapterIndex: Int): CPointer<ByteVar> {
-        val bookUrlStr = bookUrl.toKString()
-        val json = runCatching {
-            runBlocking {
-                val book = AppDbProviders.get().bookDao.getBook(bookUrlStr)
-                    ?: return@runBlocking EMPTY_MANGA_IMAGES
-                val chapterList = AppDbProviders.get().bookChapterDao.getChapterList(bookUrlStr)
-                val chapter = chapterList.getOrNull(chapterIndex)
-                    ?: return@runBlocking EMPTY_MANGA_IMAGES
-                // 读本地缓存正文 (对齐 loadChapter), 由该 content 提取图片 URL
-                val content = BookStorageProviders.get().getContent(book, chapter) ?: ""
-                val images = OhosMangaReaderPlatform.flowImages(chapter, content)
-                    .distinctUntilChanged()
-                    .toList()
-                buildJsonObject {
-                    put("images", buildJsonArray { images.forEach { add(it) } })
-                }.toString()
-            }
-        }.getOrNull() ?: EMPTY_MANGA_IMAGES
-        return allocateCString(json)
-    }
-
-    /**
-     * 获取发现源列表 (返回 JSON 数组字符串, 仅 enabledExplore=true 且 hasExploreUrl=1 的源)。
-     *
-     * 调用链: `AppDbProviders.get().bookSourceDao.flowExplore(true).first()` 取发现源列表,
-     * 手动序列化 [io.legado.app.data.entities.BookSourcePart] 全字段 (该 data class 未标 @Serializable,
-     * 与 chapterList 同模式用 [buildJsonArray] + [buildJsonObject] 拼 JSON, 避免给它加注解影响 Room)。
-     *
-     * 同步语义: 同 [bookshelfList], 内部 [runBlocking] 转 suspend, napi 层应在 worker 线程调用。
-     *
-     * 失败兜底: provider 未注册 / DAO 查询异常时返回 `"[]"` (空数组)。
-     *
-     * @return UTF-8 C 字符串, JSON 数组格式 `[{"bookSourceUrl":"...","bookSourceName":"...",...}, ...]`
-     */
-    @CName("legado_explore_list")
-    fun exploreList(): CPointer<ByteVar> {
-        val json = runCatching {
-            runBlocking {
-                val list = AppDbProviders.get().bookSourceDao.flowExplore(true).first()
-                buildJsonArray {
-                    list.forEach { src ->
-                        add(buildJsonObject {
-                            put("bookSourceUrl", src.bookSourceUrl)
-                            put("bookSourceName", src.bookSourceName)
-                            put("bookSourceGroup", src.bookSourceGroup)
-                            put("customOrder", src.customOrder)
-                            put("enabled", src.enabled)
-                            put("enabledExplore", src.enabledExplore)
-                            put("hasLoginUrl", src.hasLoginUrl)
-                            put("lastUpdateTime", src.lastUpdateTime)
-                            put("respondTime", src.respondTime)
-                            put("weight", src.weight)
-                            put("hasExploreUrl", src.hasExploreUrl)
-                        })
-                    }
-                }.toString()
-            }
-        }.getOrNull() ?: "[]"
-        return allocateCString(json)
-    }
-
-    /**
-     * 打开发现源详情/书籍列表 (跳转 shared ExploreShow)。
-     *
-     * # 实现 (替代原 stub no-op)
-     * 鸿蒙整体 UI 由 shared Compose 渲染 (LegadoApp/RouteContent), 发现页 ExploreShowRoute 已注册
-     * (AppRoute.ExploreShow → ExploreShowRoute → shared ExploreShowScreen)。本函数按 sourceUrl 查
-     * 书源后经 [AppNavigatorProviders] push 路由, 由 shared 直接导航, 无需 ArkTS 页面。
-     *
-     * # 线程
-     * 经 napi 在 JS 主线程调用, 内部 runBlocking 查本地 DB (快速), push 亦在主线程
-     * (与 OhosReaderPlatformProvider.onTextAction 直接 push 同线程语义)。
-     *
-     * # 失败兜底
-     * provider 未注册 / 书源不存在 / AppNavigator 未注册时静默 no-op。
-     *
-     * @param sourceUrl 书源 URL (UTF-8 C 字符串)
-     * @param exploreUrl 发现分类 URL (UTF-8 C 字符串, 可为空)
-     */
-    @CName("legado_open_explore")
-    fun openExplore(sourceUrl: CPointer<ByteVar>, exploreUrl: CPointer<ByteVar>) {
-        val sourceUrlStr = sourceUrl.toKString()
-        val exploreUrlStr = exploreUrl.toKString()
-        runCatching {
-            val source = runBlocking {
-                AppDbProviders.get().bookSourceDao.getBookSource(sourceUrlStr)
-            } ?: return
-            AppNavigatorProviders.getOrNull()?.push(
-                AppRoute.ExploreShow(
-                    source = source,
-                    title = source.bookSourceName,
-                    exploreUrl = exploreUrlStr.ifEmpty { null },
-                )
-            )
-        }
-    }
-
-    /**
-     * 编辑书源 (跳转 shared BookSourceEdit)。
-     *
-     * 同 [openExplore], 经 [AppNavigatorProviders] push AppRoute.BookSourceEdit,
-     * 由 shared RouteContent 渲染 BookSourceEditScreen (不再 stub no-op)。
-     *
-     * @param sourceUrl 书源 URL (UTF-8 C 字符串)
-     */
-    @CName("legado_edit_explore_source")
-    fun editExploreSource(sourceUrl: CPointer<ByteVar>) {
-        val sourceUrlStr = sourceUrl.toKString()
-        runCatching {
-            AppNavigatorProviders.getOrNull()?.push(AppRoute.BookSourceEdit(sourceUrlStr))
-        }
-    }
-
-    /**
-     * 置顶书源 (调 ExploreViewModelShared.topSource)。
-     *
-     * 调用链:
-     * 1. `AppDbProviders.get().bookSourceDao.getBookSourcePart(sourceUrl)` 取 BookSourcePart
-     * 2. `exploreVmShared.topSource(part)` → 内部 `scope.launch(IoDispatcher) { ... }`
-     *    把 customOrder 改为 minOrder - 1 后 upOrder
-     *
-     * 同步语义: 仅步骤 1 同步 (runBlocking), 步骤 2 fire-and-forget (VM 内部 launch)。
-     *
-     * 失败兜底: provider 未注册 / 书源不存在 / 异常时静默 no-op (ArkTS 侧 loadSources 重载即可看到结果)。
-     *
-     * @param sourceUrl 书源 URL (UTF-8 C 字符串)
-     */
-    @CName("legado_top_explore_source")
-    fun topExploreSource(sourceUrl: CPointer<ByteVar>) {
-        val sourceUrlStr = sourceUrl.toKString()
-        runCatching {
-            runBlocking {
-                val part = AppDbProviders.get().bookSourceDao.getBookSourcePart(sourceUrlStr)
-                    ?: return@runBlocking
-                exploreVmShared.topSource(part)
-            }
-        }
-    }
-
-    /**
-     * 删除书源 (调 ExploreViewModelShared.deleteSource)。
-     *
-     * 调用链:
-     * 1. `AppDbProviders.get().bookSourceDao.getBookSourcePart(sourceUrl)` 取 BookSourcePart
-     * 2. `exploreVmShared.deleteSource(part)` → 内部 `scope.launch(IoDispatcher) { ... }`
-     *    调 SourceHelp.deleteBookSource(part.bookSourceUrl)
-     *
-     * 同步语义: 同 [topExploreSource], 仅步骤 1 同步, 步骤 2 fire-and-forget。
-     *
-     * 失败兜底: provider 未注册 / 书源不存在 / 异常时静默 no-op。
-     *
-     * @param sourceUrl 书源 URL (UTF-8 C 字符串)
-     */
-    @CName("legado_delete_explore_source")
-    fun deleteExploreSource(sourceUrl: CPointer<ByteVar>) {
-        val sourceUrlStr = sourceUrl.toKString()
-        runCatching {
-            runBlocking {
-                val part = AppDbProviders.get().bookSourceDao.getBookSourcePart(sourceUrlStr)
-                    ?: return@runBlocking
-                exploreVmShared.deleteSource(part)
-            }
-        }
     }
 
     // ===== FileDir / CacheDir 路径注入 (ArkTS → Kotlin, KP7+) =====

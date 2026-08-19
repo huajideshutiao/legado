@@ -14,6 +14,12 @@
       "abiFilters": [
         "arm64-v8a"
       ]
+    },
+    // 依赖 HAR (如 @cpf-kmp-cmp/compose) 自带的 x86_64 so 也排除, 只留 arm64-v8a 进 hap。
+    "napiLibFilterOption": {
+      "excludes": [
+        "**/x86_64/**"
+      ]
     }
   },
   "targets": [

@@ -92,6 +92,10 @@ class WebViewFetchResult(
  *   outerHTML, 引擎关闭后不可再取, 故在关窗前调用)
  * @param onNavigated 每次导航完成回调 (参数为当前地址), cookie 回写已由引擎完成
  * @param onClosed 窗口关闭回调 (用户点 X 或代码 close 都会触发, 保证只回调一次)
+ * @param onFullScreenChanged 页面元素全屏状态变化回调 (HTML5 Fullscreen API, 对照 Android
+ *   CommonWebChromeClient.onShowCustomView/onHideCustomView): 引擎能跟踪时上报 (当前仅
+ *   WebKitGTK fullscreen-changed 信号), 供 shared 侧 WebViewScreen 隐藏顶栏并把返回键
+ *   优先路由到 WebViewHost.exitFullScreen; 引擎无等价事件时不上报, 行为与未接一致
  * @param rssActions RSS 阅读模式 (2026-08-07: RSS 阅读去页面外壳, 收藏/朗读/分享/登录
  *   移入窗口工具栏); 非空时工具栏显示 RSS 按钮组, 动作经 [io.legado.app.help.RssToolbarActions]
  *   回调回 shared, 星收藏态经 [io.legado.app.help.RssToolbarActions.onStarChanged] 反推更新
@@ -109,6 +113,7 @@ data class WebViewWindowRequest(
     val onSaveResult: ((String?) -> Unit)? = null,
     val onNavigated: (String) -> Unit = {},
     val onClosed: () -> Unit = {},
+    val onFullScreenChanged: (Boolean) -> Unit = {},
     val rssActions: RssToolbarActions? = null,
 )
 

@@ -42,7 +42,6 @@ val unpackSourceArchives = tasks.register<Sync>("unpackKsoupSourceArchives") {
 
 kotlin {
     this::class.java.getMethod("ohosArm64").invoke(this)
-    this::class.java.getMethod("ohosX64").invoke(this)
     sourceSets {
         val commonMain = getByName("commonMain")
         commonMain.kotlin.srcDir(generatedSourceRoot.map { it.dir("ksoup/commonMain") })
@@ -57,7 +56,6 @@ kotlin {
             kotlin.srcDir(generatedSourceRoot.map { it.dir("charset/nonJvmMain") })
         }
         maybeCreate("ohosArm64Main").dependsOn(ohosMain)
-        maybeCreate("ohosX64Main").dependsOn(ohosMain)
     }
 }
 

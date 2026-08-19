@@ -120,14 +120,6 @@ static legado_str_int_str_fn g_load_chapter = nullptr;
 static legado_str_str_fn g_chapter_list = nullptr;
 static legado_str_int_fn g_import_booksource = nullptr;
 
-// dlsym 加载的函数指针 - 漫画 + 发现页 (KP5+ 新增)
-static legado_str_int_str_fn g_load_manga_chapter = nullptr;     // (bookUrl, idx) -> JSON {"images":[...]}
-static legado_void_str_fn g_explore_list = nullptr;              // () -> JSON 数组
-static legado_cstr_cstr_void_fn g_open_explore = nullptr;        // (sourceUrl, exploreUrl) -> void (跳转 shared ExploreShow)
-static legado_cstr_void_fn g_edit_explore_source = nullptr;      // (sourceUrl) -> void (跳转 shared BookSourceEdit)
-static legado_cstr_void_fn g_top_explore_source = nullptr;       // (sourceUrl) -> void
-static legado_cstr_void_fn g_delete_explore_source = nullptr;    // (sourceUrl) -> void
-
 // dlsym 加载的函数指针 - FileDir/CacheDir 路径注入 (KP7+ 新增, ArkTS → Kotlin 同步推送)
 static legado_cstr_void_fn g_register_file_dir = nullptr;
 static legado_cstr_void_fn g_register_cache_dir = nullptr;
@@ -285,14 +277,6 @@ static bool load_legado_shared() {
     g_chapter_list = (legado_str_str_fn)dlsym(g_legado_so, "legado_chapter_list");
     g_import_booksource = (legado_str_int_fn)dlsym(g_legado_so, "legado_import_booksource");
 
-    // 解析 @CName 导出符号 - 漫画 + 发现页 (KP5+ 新增)
-    g_load_manga_chapter = (legado_str_int_str_fn)dlsym(g_legado_so, "legado_load_manga_chapter");
-    g_explore_list = (legado_void_str_fn)dlsym(g_legado_so, "legado_explore_list");
-    g_open_explore = (legado_cstr_cstr_void_fn)dlsym(g_legado_so, "legado_open_explore");
-    g_edit_explore_source = (legado_cstr_void_fn)dlsym(g_legado_so, "legado_edit_explore_source");
-    g_top_explore_source = (legado_cstr_void_fn)dlsym(g_legado_so, "legado_top_explore_source");
-    g_delete_explore_source = (legado_cstr_void_fn)dlsym(g_legado_so, "legado_delete_explore_source");
-
     // 解析 @CName 导出符号 - FileDir/CacheDir 路径注入 (KP7+ 新增)
     g_register_file_dir = (legado_cstr_void_fn)dlsym(g_legado_so, "legado_register_file_dir");
     g_register_cache_dir = (legado_cstr_void_fn)dlsym(g_legado_so, "legado_register_cache_dir");
@@ -382,7 +366,7 @@ static bool load_legado_shared() {
     g_register_markdown_fn = (legado_register_dispatch_fn) dlsym(g_legado_so, "legado_register_markdown_fn");
     g_markdown_event = (legado_cstr_void_fn) dlsym(g_legado_so, "legado_markdown_event");
 
-    OH_LOG_INFO(LOG_APP, "liblegado_shared.so loaded, symbols resolved (KP5: + bookshelfList/searchBook/loadChapter/chapterList/importBookSource; KP5+: + loadMangaChapter/exploreList/openExplore/editExploreSource/topExploreSource/deleteExploreSource; KP7+: + registerFileDir/registerCacheDir/registerToastFn/registerNotificationFn; KP8+: + registerImageFn/registerMediaFn/imageCallback/mediaEvent/registerTtsFn/ttsEvent/registerCryptoFn/cryptoCallback/registerHttpFn/httpCallback/registerOpenUrlFn/registerFilePickerFn/filePickerCallback/registerPasteboardFn/pasteboardCallback/registerTextCodecFn/textCodecCallback)");
+    OH_LOG_INFO(LOG_APP, "liblegado_shared.so loaded, symbols resolved (KP5: + bookshelfList/searchBook/loadChapter/chapterList/importBookSource; KP7+: + registerFileDir/registerCacheDir/registerToastFn/registerNotificationFn; KP8+: + registerImageFn/registerMediaFn/imageCallback/mediaEvent/registerTtsFn/ttsEvent/registerCryptoFn/cryptoCallback/registerHttpFn/httpCallback/registerOpenUrlFn/registerFilePickerFn/filePickerCallback/registerPasteboardFn/pasteboardCallback/registerTextCodecFn/textCodecCallback)");
     return true;
 }
 
@@ -607,145 +591,6 @@ static napi_value ImportBookSource(napi_env env, napi_callback_info info) {
     return ret;
 }
 
-// ============ 漫画 + 发现页 napi 包装 (KP5+ 新增) ============
-
-// napi 包装: loadMangaChapter(bookUrl: string, chapterIndex: number): string
-// 返回漫画章节图片 URL JSON: {"images":["url1","url2",...]}
-// 注: MangaImageExtractor ohosMain 未注入, Kotlin 侧暂返回空 images; 桥接就绪后填充
-static napi_value LoadMangaChapter(napi_env env, napi_callback_info info) {
-    size_t argc = 2;
-    napi_value args[2] = {nullptr};
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-
-    // args[0]: bookUrl (string)
-    size_t str_len = 0;
-    napi_get_value_string_utf8(env, args[0], nullptr, 0, &str_len);
-    char* buf = new char[str_len + 1];
-    napi_get_value_string_utf8(env, args[0], buf, str_len + 1, &str_len);
-
-    // args[1]: chapterIndex (number)
-    int32_t chapter_index = 0;
-    napi_get_value_int32(env, args[1], &chapter_index);
-
-    const char* result = "{\"images\":[]}";  // 兜底空 images (MangaImageExtractor 未注入或异常时)
-    if (load_legado_shared() && g_load_manga_chapter != nullptr) {
-        result = g_load_manga_chapter(buf, chapter_index);
-    }
-    delete[] buf;
-
-    napi_value ret;
-    napi_create_string_utf8(env, result, NAPI_AUTO_LENGTH, &ret);
-    return ret;
-}
-
-// napi 包装: exploreList(): string (返回发现源 JSON 数组, 仅 enabledExplore=true)
-static napi_value ExploreList(napi_env env, napi_callback_info info) {
-    const char* result = "[]";  // 兜底空数组 (liblegado_shared.so 未加载或异常时)
-    if (load_legado_shared() && g_explore_list != nullptr) {
-        result = g_explore_list();
-    }
-
-    napi_value ret;
-    napi_create_string_utf8(env, result, NAPI_AUTO_LENGTH, &ret);
-    return ret;
-}
-
-// napi 包装: openExplore(sourceUrl: string, exploreUrl: string): void (跳转发现页)
-// 注: Kotlin 侧 legado_open_explore 为真实实现: 查书源后经 AppNavigatorProviders push
-// AppRoute.ExploreShow, 由 shared Compose 路由渲染 ExploreShowScreen (无需 ArkTS router)
-static napi_value OpenExplore(napi_env env, napi_callback_info info) {
-    size_t argc = 2;
-    napi_value args[2] = {nullptr};
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-
-    // args[0]: sourceUrl (string)
-    size_t str_len1 = 0;
-    napi_get_value_string_utf8(env, args[0], nullptr, 0, &str_len1);
-    char* buf1 = new char[str_len1 + 1];
-    napi_get_value_string_utf8(env, args[0], buf1, str_len1 + 1, &str_len1);
-
-    // args[1]: exploreUrl (string)
-    size_t str_len2 = 0;
-    napi_get_value_string_utf8(env, args[1], nullptr, 0, &str_len2);
-    char* buf2 = new char[str_len2 + 1];
-    napi_get_value_string_utf8(env, args[1], buf2, str_len2 + 1, &str_len2);
-
-    if (load_legado_shared() && g_open_explore != nullptr) {
-        g_open_explore(buf1, buf2);
-    }
-    delete[] buf1;
-    delete[] buf2;
-
-    napi_value ret;
-    napi_get_undefined(env, &ret);
-    return ret;
-}
-
-// napi 包装: editExploreSource(sourceUrl: string): void (跳转书源编辑页)
-// 注: Kotlin 侧 legado_edit_explore_source 为真实实现: 经 AppNavigatorProviders push
-// AppRoute.BookSourceEdit, 由 shared Compose 路由渲染 BookSourceEditScreen
-static napi_value EditExploreSource(napi_env env, napi_callback_info info) {
-    size_t argc = 1;
-    napi_value args[1] = {nullptr};
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-
-    size_t str_len = 0;
-    napi_get_value_string_utf8(env, args[0], nullptr, 0, &str_len);
-    char* buf = new char[str_len + 1];
-    napi_get_value_string_utf8(env, args[0], buf, str_len + 1, &str_len);
-
-    if (load_legado_shared() && g_edit_explore_source != nullptr) {
-        g_edit_explore_source(buf);
-    }
-    delete[] buf;
-
-    napi_value ret;
-    napi_get_undefined(env, &ret);
-    return ret;
-}
-
-// napi 包装: topExploreSource(sourceUrl: string): void (置顶书源, 调 ExploreViewModelShared.topSource)
-static napi_value TopExploreSource(napi_env env, napi_callback_info info) {
-    size_t argc = 1;
-    napi_value args[1] = {nullptr};
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-
-    size_t str_len = 0;
-    napi_get_value_string_utf8(env, args[0], nullptr, 0, &str_len);
-    char* buf = new char[str_len + 1];
-    napi_get_value_string_utf8(env, args[0], buf, str_len + 1, &str_len);
-
-    if (load_legado_shared() && g_top_explore_source != nullptr) {
-        g_top_explore_source(buf);
-    }
-    delete[] buf;
-
-    napi_value ret;
-    napi_get_undefined(env, &ret);
-    return ret;
-}
-
-// napi 包装: deleteExploreSource(sourceUrl: string): void (删除书源, 调 ExploreViewModelShared.deleteSource)
-static napi_value DeleteExploreSource(napi_env env, napi_callback_info info) {
-    size_t argc = 1;
-    napi_value args[1] = {nullptr};
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-
-    size_t str_len = 0;
-    napi_get_value_string_utf8(env, args[0], nullptr, 0, &str_len);
-    char* buf = new char[str_len + 1];
-    napi_get_value_string_utf8(env, args[0], buf, str_len + 1, &str_len);
-
-    if (load_legado_shared() && g_delete_explore_source != nullptr) {
-        g_delete_explore_source(buf);
-    }
-    delete[] buf;
-
-    napi_value ret;
-    napi_get_undefined(env, &ret);
-    return ret;
-}
-
 // ============ FileDir/CacheDir 路径注入 napi 包装 (KP7+ 新增) ============
 
 // napi 包装: registerFileDir(path: string): void  注入鸿蒙沙盒 filesDir 路径 (ArkTS → Kotlin)
@@ -964,143 +809,73 @@ static void WindowCallJs(napi_env env, napi_value js_cb, void * /*context*/, voi
     free(json);
 }
 
+// ============ Register*Callback 通用宏 ============
+// 20 个注册函数 (Window/Toast/Notification/Markdown/Image/Media/Tts/Crypto/Http/WebView/OpenUrl/
+// FilePicker/Pasteboard/Network/TextCodec/TextAction/Battery/Share/Keyboard/Permission) 结构完全同构:
+// 校验 argc → 释放旧 tsfn → napi_create_threadsafe_function 包装 ArkTS callback (XxxCallJs) →
+// 存入 g_xxx_tsfn → 经 g_register_xxx_fn 把 dispatch 函数指针注入 Kotlin OhosNativeBridge。
+// name 派生 napi 方法名 (registerXxxCallback) 与 work_name (LegadoXxxTsfn); dispatch_fn 显式传入
+// (name 为 PascalCase, dispatch 符号为 snake_case 如 ohos_toast_dispatch, 无法自动拼接);
+// call-js 回调按传输协议选型 (纯 JSON / 二进制 ArrayBuffer / 双裸字符串), 宏体不关心其内部实现。
+#define REGISTER_TSFN_CALLBACK(name, call_js, tsfn_var, register_fn, dispatch_fn, warn_msg) \
+static napi_value Register##name##Callback(napi_env env, napi_callback_info info) {     \
+    size_t argc = 1;                                                                     \
+    napi_value args[1] = {nullptr};                                                      \
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);                          \
+    if (argc < 1) {                                                                      \
+        napi_throw_type_error(env, nullptr, "register" #name "Callback requires 1 argument (callback)"); \
+        napi_value ret;                                                                  \
+        napi_get_undefined(env, &ret);                                                   \
+        return ret;                                                                      \
+    }                                                                                    \
+    /* 重复注册场景: 释放旧 tsfn */                                                      \
+    if (tsfn_var != nullptr) {                                                           \
+        napi_release_threadsafe_function(tsfn_var, napi_tsfn_abort);                     \
+        tsfn_var = nullptr;                                                              \
+    }                                                                                    \
+    napi_value work_name;                                                                \
+    napi_create_string_utf8(env, "Legado" #name "Tsfn", NAPI_AUTO_LENGTH, &work_name);  \
+    napi_threadsafe_function tsfn;                                                       \
+    napi_status status = napi_create_threadsafe_function(                                \
+            env, args[0], nullptr, work_name, 0, 1,                                      \
+            nullptr, nullptr, nullptr, call_js, &tsfn);                                  \
+    if (status != napi_ok) {                                                             \
+        OH_LOG_ERROR(LOG_APP, "register" #name "Callback: napi_create_threadsafe_function failed: %{public}d", status); \
+        napi_value ret;                                                                  \
+        napi_get_undefined(env, &ret);                                                   \
+        return ret;                                                                      \
+    }                                                                                    \
+    tsfn_var = tsfn;                                                                     \
+    /* 把 ohos_xxx_dispatch 函数指针注入 Kotlin (Kotlin 包成 lambda 存入 OhosNativeBridge) */ \
+    if (load_legado_shared() && register_fn != nullptr) {                                \
+        register_fn(&dispatch_fn);                                            \
+    } else {                                                                             \
+        OH_LOG_WARN(LOG_APP, warn_msg);                                                  \
+    }                                                                                    \
+    napi_value ret;                                                                      \
+    napi_get_undefined(env, &ret);                                                       \
+    return ret;                                                                          \
+}
+
 // napi 包装: registerWindowCallback(callback: (json: string) => void): void
 // ArkTS 注册窗口策略回调; C++ 创建 napi_threadsafe_function 包装 ArkTS callback, 存入 g_window_tsfn,
 // 并通过 @CName legado_register_window_fn 把 ohos_window_dispatch 函数指针注入 Kotlin
 // (Kotlin 包成 (String) -> Unit lambda 存入 OhosNativeBridge.windowTsfn),
 // 使 KMP sendWindowCommand (全屏/常亮/方向/系统栏) 能跨线程 dispatch 到 ArkTS 执行 @ohos.window API。
-static napi_value RegisterWindowCallback(napi_env env, napi_callback_info info) {
-    size_t argc = 1;
-    napi_value args[1] = {nullptr};
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-    if (argc < 1) {
-        napi_throw_type_error(env, nullptr, "registerWindowCallback requires 1 argument (callback)");
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-
-    // 重复注册场景: 释放旧 tsfn
-    if (g_window_tsfn != nullptr) {
-        napi_release_threadsafe_function(g_window_tsfn, napi_tsfn_abort);
-        g_window_tsfn = nullptr;
-    }
-
-    napi_value work_name;
-    napi_create_string_utf8(env, "LegadoWindowTsfn", NAPI_AUTO_LENGTH, &work_name);
-    napi_threadsafe_function tsfn;
-    napi_status status = napi_create_threadsafe_function(
-            env, args[0], nullptr, work_name, 0, 1,
-            nullptr, nullptr, nullptr, WindowCallJs, &tsfn);
-    if (status != napi_ok) {
-        OH_LOG_ERROR(LOG_APP, "registerWindowCallback: napi_create_threadsafe_function failed: %{public}d", status);
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-    g_window_tsfn = tsfn;
-
-    // 把 ohos_window_dispatch 函数指针注入 Kotlin (Kotlin 包成 lambda 存入 OhosNativeBridge.windowTsfn)
-    if (load_legado_shared() && g_register_window_fn != nullptr) {
-        g_register_window_fn(&ohos_window_dispatch);
-    } else {
-        OH_LOG_WARN(LOG_APP, "registerWindowCallback: legado_register_window_fn not resolved, tsfn 仅 C++ 侧持有 (KMP 窗口策略将降级 println)");
-    }
-
-    napi_value ret;
-    napi_get_undefined(env, &ret);
-    return ret;
-}
+REGISTER_TSFN_CALLBACK(Window, WindowCallJs, g_window_tsfn, g_register_window_fn, ohos_window_dispatch,
+    "registerWindowCallback: legado_register_window_fn not resolved, tsfn 仅 C++ 侧持有 (KMP 窗口策略将降级 println)")
 
 // napi 包装: registerToastCallback(callback: (json: string) => void): void
 // ArkTS 注册 toast 回调; C++ 创建 napi_threadsafe_function 包装 ArkTS callback, 存入 g_toast_tsfn,
 // 并通过 @CName legado_register_toast_fn 把 ohos_toast_dispatch 函数指针注入 Kotlin
 // (Kotlin 包成 (String) -> Unit lambda 存入 OhosNativeBridge.toastTsfn), 使 KMP showToast 能跨线程 dispatch。
-static napi_value RegisterToastCallback(napi_env env, napi_callback_info info) {
-    size_t argc = 1;
-    napi_value args[1] = {nullptr};
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-    if (argc < 1) {
-        napi_throw_type_error(env, nullptr, "registerToastCallback requires 1 argument (callback)");
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-
-    // 重复注册场景: 释放旧 tsfn
-    if (g_toast_tsfn != nullptr) {
-        napi_release_threadsafe_function(g_toast_tsfn, napi_tsfn_abort);
-        g_toast_tsfn = nullptr;
-    }
-
-    napi_value work_name;
-    napi_create_string_utf8(env, "LegadoToastTsfn", NAPI_AUTO_LENGTH, &work_name);
-    napi_threadsafe_function tsfn;
-    napi_status status = napi_create_threadsafe_function(
-        env, args[0], nullptr, work_name, 0, 1,
-            nullptr, nullptr, nullptr, ToastCallJs, &tsfn);
-    if (status != napi_ok) {
-        OH_LOG_ERROR(LOG_APP, "registerToastCallback: napi_create_threadsafe_function failed: %{public}d", status);
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-    g_toast_tsfn = tsfn;
-
-    // 把 ohos_toast_dispatch 函数指针注入 Kotlin (Kotlin 包成 lambda 存入 OhosNativeBridge.toastTsfn)
-    if (load_legado_shared() && g_register_toast_fn != nullptr) {
-        g_register_toast_fn(&ohos_toast_dispatch);
-    } else {
-        OH_LOG_WARN(LOG_APP, "registerToastCallback: legado_register_toast_fn not resolved, tsfn 仅 C++ 侧持有 (KMP showToast 将降级 println)");
-    }
-
-    napi_value ret;
-    napi_get_undefined(env, &ret);
-    return ret;
-}
+REGISTER_TSFN_CALLBACK(Toast, ToastCallJs, g_toast_tsfn, g_register_toast_fn, ohos_toast_dispatch,
+    "registerToastCallback: legado_register_toast_fn not resolved, tsfn 仅 C++ 侧持有 (KMP showToast 将降级 println)")
 
 // napi 包装: registerNotificationCallback(callback: (json: string) => void): void
 // 同 RegisterToastCallback, 注入 ohos_notification_dispatch 到 Kotlin OhosNativeBridge.notificationTsfn。
-static napi_value RegisterNotificationCallback(napi_env env, napi_callback_info info) {
-    size_t argc = 1;
-    napi_value args[1] = {nullptr};
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-    if (argc < 1) {
-        napi_throw_type_error(env, nullptr, "registerNotificationCallback requires 1 argument (callback)");
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-
-    if (g_notification_tsfn != nullptr) {
-        napi_release_threadsafe_function(g_notification_tsfn, napi_tsfn_abort);
-        g_notification_tsfn = nullptr;
-    }
-
-    napi_value work_name;
-    napi_create_string_utf8(env, "LegadoNotificationTsfn", NAPI_AUTO_LENGTH, &work_name);
-    napi_threadsafe_function tsfn;
-    napi_status status = napi_create_threadsafe_function(
-        env, args[0], nullptr, work_name, 0, 1,
-            nullptr, nullptr, nullptr, NotificationCallJs, &tsfn);
-    if (status != napi_ok) {
-        OH_LOG_ERROR(LOG_APP, "registerNotificationCallback: napi_create_threadsafe_function failed: %{public}d", status);
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-    g_notification_tsfn = tsfn;
-
-    if (load_legado_shared() && g_register_notification_fn != nullptr) {
-        g_register_notification_fn(&ohos_notification_dispatch);
-    } else {
-        OH_LOG_WARN(LOG_APP, "registerNotificationCallback: legado_register_notification_fn not resolved, tsfn 仅 C++ 侧持有 (KMP showNotification 将降级 println)");
-    }
-
-    napi_value ret;
-    napi_get_undefined(env, &ret);
-    return ret;
-}
+REGISTER_TSFN_CALLBACK(Notification, NotificationCallJs, g_notification_tsfn, g_register_notification_fn, ohos_notification_dispatch,
+    "registerNotificationCallback: legado_register_notification_fn not resolved, tsfn 仅 C++ 侧持有 (KMP showNotification 将降级 println)")
 
 // napi 包装: registerMarkdownCallback(callback: (json: string) => void): void
 // 同 RegisterToastCallback: 创建 napi_threadsafe_function 包装 ArkTS callback, 存入 g_markdown_tsfn,
@@ -1108,48 +883,8 @@ static napi_value RegisterNotificationCallback(napi_env env, napi_callback_info 
 // (Kotlin 包成 (String) -> Unit lambda 存入 OhosNativeBridge.markdownTsfn), 使 KMP MarkdownContent
 // 能跨线程 dispatch 渲染请求到 ArkTS MarkdownBridgeHandler (composeResources 直读内联的 viewer 页面,
 // marked + hljs 渲染)。
-static napi_value RegisterMarkdownCallback(napi_env env, napi_callback_info info) {
-    size_t argc = 1;
-    napi_value args[1] = {nullptr};
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-    if (argc < 1) {
-        napi_throw_type_error(env, nullptr, "registerMarkdownCallback requires 1 argument (callback)");
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-
-    // 重复注册场景: 释放旧 tsfn
-    if (g_markdown_tsfn != nullptr) {
-        napi_release_threadsafe_function(g_markdown_tsfn, napi_tsfn_abort);
-        g_markdown_tsfn = nullptr;
-    }
-
-    napi_value work_name;
-    napi_create_string_utf8(env, "LegadoMarkdownTsfn", NAPI_AUTO_LENGTH, &work_name);
-    napi_threadsafe_function tsfn;
-    napi_status status = napi_create_threadsafe_function(
-            env, args[0], nullptr, work_name, 0, 1,
-            nullptr, nullptr, nullptr, MarkdownCallJs, &tsfn);
-    if (status != napi_ok) {
-        OH_LOG_ERROR(LOG_APP, "registerMarkdownCallback: napi_create_threadsafe_function failed: %{public}d", status);
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-    g_markdown_tsfn = tsfn;
-
-    // 把 ohos_markdown_dispatch 函数指针注入 Kotlin (Kotlin 包成 lambda 存入 OhosNativeBridge.markdownTsfn)
-    if (load_legado_shared() && g_register_markdown_fn != nullptr) {
-        g_register_markdown_fn(&ohos_markdown_dispatch);
-    } else {
-        OH_LOG_WARN(LOG_APP, "registerMarkdownCallback: legado_register_markdown_fn not resolved, tsfn 仅 C++ 侧持有 (KMP MarkdownContent 内容将不渲染)");
-    }
-
-    napi_value ret;
-    napi_get_undefined(env, &ret);
-    return ret;
-}
+REGISTER_TSFN_CALLBACK(Markdown, MarkdownCallJs, g_markdown_tsfn, g_register_markdown_fn, ohos_markdown_dispatch,
+    "registerMarkdownCallback: legado_register_markdown_fn not resolved, tsfn 仅 C++ 侧持有 (KMP MarkdownContent 内容将不渲染)")
 
 // ============ 二进制混合协议 tsfn 传输基建 (KP9+: Http/Image 大字节面裸传, napi ArrayBuffer) ============
 // 与 WebView 混合协议 (双裸字符串) 同思路: 控制面 JSON 走字符串, 大字节数据面 (HTTP body /
@@ -1296,132 +1031,18 @@ static void TtsCallJs(napi_env env, napi_value js_cb, void* /*context*/, void* d
 // napi 包装: registerImageCallback(callback: (json: string, bytes?: ArrayBuffer) => void): void
 // ArkTS 注册 image 回调; C++ 创建 tsfn, 通过 legado_register_image_fn 注入 ohos_image_dispatch 到 Kotlin
 // (混合协议: 第二参数 bytes 为 decode 图片字节的 external ArrayBuffer, 无字节面时 undefined)
-static napi_value RegisterImageCallback(napi_env env, napi_callback_info info) {
-    size_t argc = 1;
-    napi_value args[1] = {nullptr};
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-    if (argc < 1) {
-        napi_throw_type_error(env, nullptr, "registerImageCallback requires 1 argument (callback)");
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-
-    if (g_image_tsfn != nullptr) {
-        napi_release_threadsafe_function(g_image_tsfn, napi_tsfn_abort);
-        g_image_tsfn = nullptr;
-    }
-
-    napi_value work_name;
-    napi_create_string_utf8(env, "LegadoImageTsfn", NAPI_AUTO_LENGTH, &work_name);
-    napi_threadsafe_function tsfn;
-    napi_status status = napi_create_threadsafe_function(
-        env, args[0], nullptr, work_name, 0, 1,
-            nullptr, nullptr, nullptr, ImageCallJs, &tsfn);
-    if (status != napi_ok) {
-        OH_LOG_ERROR(LOG_APP, "registerImageCallback: napi_create_threadsafe_function failed: %{public}d", status);
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-    g_image_tsfn = tsfn;
-
-    if (load_legado_shared() && g_register_image_fn != nullptr) {
-        g_register_image_fn(&ohos_image_dispatch);
-    } else {
-        OH_LOG_WARN(LOG_APP, "registerImageCallback: legado_register_image_fn not resolved (KMP invokeImageSync 将降级)");
-    }
-
-    napi_value ret;
-    napi_get_undefined(env, &ret);
-    return ret;
-}
+REGISTER_TSFN_CALLBACK(Image, ImageCallJs, g_image_tsfn, g_register_image_fn, ohos_image_dispatch,
+    "registerImageCallback: legado_register_image_fn not resolved (KMP invokeImageSync 将降级)")
 
 // napi 包装: registerMediaCallback(callback: (json: string) => void): void
 // ArkTS 注册 media 回调; C++ 创建 tsfn, 通过 legado_register_media_fn 注入 ohos_media_dispatch 到 Kotlin
-static napi_value RegisterMediaCallback(napi_env env, napi_callback_info info) {
-    size_t argc = 1;
-    napi_value args[1] = {nullptr};
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-    if (argc < 1) {
-        napi_throw_type_error(env, nullptr, "registerMediaCallback requires 1 argument (callback)");
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-
-    if (g_media_tsfn != nullptr) {
-        napi_release_threadsafe_function(g_media_tsfn, napi_tsfn_abort);
-        g_media_tsfn = nullptr;
-    }
-
-    napi_value work_name;
-    napi_create_string_utf8(env, "LegadoMediaTsfn", NAPI_AUTO_LENGTH, &work_name);
-    napi_threadsafe_function tsfn;
-    napi_status status = napi_create_threadsafe_function(
-        env, args[0], nullptr, work_name, 0, 1,
-            nullptr, nullptr, nullptr, MediaCallJs, &tsfn);
-    if (status != napi_ok) {
-        OH_LOG_ERROR(LOG_APP, "registerMediaCallback: napi_create_threadsafe_function failed: %{public}d", status);
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-    g_media_tsfn = tsfn;
-
-    if (load_legado_shared() && g_register_media_fn != nullptr) {
-        g_register_media_fn(&ohos_media_dispatch);
-    } else {
-        OH_LOG_WARN(LOG_APP, "registerMediaCallback: legado_register_media_fn not resolved (KMP sendMediaCommand 将降级)");
-    }
-
-    napi_value ret;
-    napi_get_undefined(env, &ret);
-    return ret;
-}
+REGISTER_TSFN_CALLBACK(Media, MediaCallJs, g_media_tsfn, g_register_media_fn, ohos_media_dispatch,
+    "registerMediaCallback: legado_register_media_fn not resolved (KMP sendMediaCommand 将降级)")
 
 // napi 包装: registerTtsCallback(callback: (json: string) => void): void
 // ArkTS 注册 tts 回调; C++ 创建 tsfn, 通过 legado_register_tts_fn 注入 ohos_tts_dispatch 到 Kotlin
-static napi_value RegisterTtsCallback(napi_env env, napi_callback_info info) {
-    size_t argc = 1;
-    napi_value args[1] = {nullptr};
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-    if (argc < 1) {
-        napi_throw_type_error(env, nullptr, "registerTtsCallback requires 1 argument (callback)");
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-
-    if (g_tts_tsfn != nullptr) {
-        napi_release_threadsafe_function(g_tts_tsfn, napi_tsfn_abort);
-        g_tts_tsfn = nullptr;
-    }
-
-    napi_value work_name;
-    napi_create_string_utf8(env, "LegadoTtsTsfn", NAPI_AUTO_LENGTH, &work_name);
-    napi_threadsafe_function tsfn;
-    napi_status status = napi_create_threadsafe_function(
-        env, args[0], nullptr, work_name, 0, 1,
-            nullptr, nullptr, nullptr, TtsCallJs, &tsfn);
-    if (status != napi_ok) {
-        OH_LOG_ERROR(LOG_APP, "registerTtsCallback: napi_create_threadsafe_function failed: %{public}d", status);
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-    g_tts_tsfn = tsfn;
-
-    if (load_legado_shared() && g_register_tts_fn != nullptr) {
-        g_register_tts_fn(&ohos_tts_dispatch);
-    } else {
-        OH_LOG_WARN(LOG_APP, "registerTtsCallback: legado_register_tts_fn not resolved (KMP speakTts 将降级)");
-    }
-
-    napi_value ret;
-    napi_get_undefined(env, &ret);
-    return ret;
-}
+REGISTER_TSFN_CALLBACK(Tts, TtsCallJs, g_tts_tsfn, g_register_tts_fn, ohos_tts_dispatch,
+    "registerTtsCallback: legado_register_tts_fn not resolved (KMP speakTts 将降级)")
 
 // ============ Image/Media/TTS ArkTS → Kotlin 回调 napi 包装 (KP8+ 新增) ============
 // ArkTS 侧处理完图片操作/AVPlayer/TTS 事件后, 通过这三个 napi 方法把结果/事件回送给 Kotlin。
@@ -1565,46 +1186,8 @@ static void CryptoCallJs(napi_env env, napi_value js_cb, void* /*context*/, void
 
 // napi 包装: registerCryptoCallback(callback: (json: string) => void): void
 // ArkTS 注册 crypto 回调; C++ 创建 tsfn, 通过 legado_register_crypto_fn 注入 ohos_crypto_dispatch 到 Kotlin
-static napi_value RegisterCryptoCallback(napi_env env, napi_callback_info info) {
-    size_t argc = 1;
-    napi_value args[1] = {nullptr};
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-    if (argc < 1) {
-        napi_throw_type_error(env, nullptr, "registerCryptoCallback requires 1 argument (callback)");
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-
-    if (g_crypto_tsfn != nullptr) {
-        napi_release_threadsafe_function(g_crypto_tsfn, napi_tsfn_abort);
-        g_crypto_tsfn = nullptr;
-    }
-
-    napi_value work_name;
-    napi_create_string_utf8(env, "LegadoCryptoTsfn", NAPI_AUTO_LENGTH, &work_name);
-    napi_threadsafe_function tsfn;
-    napi_status status = napi_create_threadsafe_function(
-        env, args[0], nullptr, work_name, 0, 1,
-            nullptr, nullptr, nullptr, CryptoCallJs, &tsfn);
-    if (status != napi_ok) {
-        OH_LOG_ERROR(LOG_APP, "registerCryptoCallback: napi_create_threadsafe_function failed: %{public}d", status);
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-    g_crypto_tsfn = tsfn;
-
-    if (load_legado_shared() && g_register_crypto_fn != nullptr) {
-        g_register_crypto_fn(&ohos_crypto_dispatch);
-    } else {
-        OH_LOG_WARN(LOG_APP, "registerCryptoCallback: legado_register_crypto_fn not resolved (KMP invokeCryptoSync 将降级)");
-    }
-
-    napi_value ret;
-    napi_get_undefined(env, &ret);
-    return ret;
-}
+REGISTER_TSFN_CALLBACK(Crypto, CryptoCallJs, g_crypto_tsfn, g_register_crypto_fn, ohos_crypto_dispatch,
+    "registerCryptoCallback: legado_register_crypto_fn not resolved (KMP invokeCryptoSync 将降级)")
 
 // napi 包装: cryptoCallback(requestId: number, result: string): void
 // ArkTS → Kotlin crypto 操作结果回调 (encrypt/decrypt/sign/verify 完成后调用)
@@ -1657,46 +1240,8 @@ static void HttpCallJs(napi_env env, napi_value js_cb, void* /*context*/, void* 
 // napi 包装: registerHttpCallback(callback: (json: string, body?: ArrayBuffer) => void): void
 // ArkTS 注册 http 回调; C++ 创建 tsfn, 通过 legado_register_http_fn 注入 ohos_http_dispatch 到 Kotlin
 // (混合协议: 第二参数 body 为请求体字节的 external ArrayBuffer, 无 body 时 undefined)
-static napi_value RegisterHttpCallback(napi_env env, napi_callback_info info) {
-    size_t argc = 1;
-    napi_value args[1] = {nullptr};
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-    if (argc < 1) {
-        napi_throw_type_error(env, nullptr, "registerHttpCallback requires 1 argument (callback)");
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-
-    if (g_http_tsfn != nullptr) {
-        napi_release_threadsafe_function(g_http_tsfn, napi_tsfn_abort);
-        g_http_tsfn = nullptr;
-    }
-
-    napi_value work_name;
-    napi_create_string_utf8(env, "LegadoHttpTsfn", NAPI_AUTO_LENGTH, &work_name);
-    napi_threadsafe_function tsfn;
-    napi_status status = napi_create_threadsafe_function(
-        env, args[0], nullptr, work_name, 0, 1,
-            nullptr, nullptr, nullptr, HttpCallJs, &tsfn);
-    if (status != napi_ok) {
-        OH_LOG_ERROR(LOG_APP, "registerHttpCallback: napi_create_threadsafe_function failed: %{public}d", status);
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-    g_http_tsfn = tsfn;
-
-    if (load_legado_shared() && g_register_http_fn != nullptr) {
-        g_register_http_fn(&ohos_http_dispatch);
-    } else {
-        OH_LOG_WARN(LOG_APP, "registerHttpCallback: legado_register_http_fn not resolved (KMP invokeHttpSync 将降级)");
-    }
-
-    napi_value ret;
-    napi_get_undefined(env, &ret);
-    return ret;
-}
+REGISTER_TSFN_CALLBACK(Http, HttpCallJs, g_http_tsfn, g_register_http_fn, ohos_http_dispatch,
+    "registerHttpCallback: legado_register_http_fn not resolved (KMP invokeHttpSync 将降级)")
 
 // napi 包装: httpCallback(requestId: number, result: string, body?: ArrayBuffer): void
 // ArkTS → Kotlin HTTP 请求结果回调 (execute 完成后调用, 混合协议)
@@ -1794,46 +1339,8 @@ static void WebViewCallJs(napi_env env, napi_value js_cb, void * /*context*/, vo
 
 // napi 包装: registerWebViewCallback(callback: (json: string, html: string) => void): void
 // ArkTS 注册 webView 回调; C++ 创建 tsfn, 通过 legado_register_webview_fn 注入 ohos_webview_dispatch 到 Kotlin
-static napi_value RegisterWebViewCallback(napi_env env, napi_callback_info info) {
-    size_t argc = 1;
-    napi_value args[1] = {nullptr};
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-    if (argc < 1) {
-        napi_throw_type_error(env, nullptr, "registerWebViewCallback requires 1 argument (callback)");
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-
-    if (g_webview_tsfn != nullptr) {
-        napi_release_threadsafe_function(g_webview_tsfn, napi_tsfn_abort);
-        g_webview_tsfn = nullptr;
-    }
-
-    napi_value work_name;
-    napi_create_string_utf8(env, "LegadoWebViewTsfn", NAPI_AUTO_LENGTH, &work_name);
-    napi_threadsafe_function tsfn;
-    napi_status status = napi_create_threadsafe_function(
-            env, args[0], nullptr, work_name, 0, 1,
-            nullptr, nullptr, nullptr, WebViewCallJs, &tsfn);
-    if (status != napi_ok) {
-        OH_LOG_ERROR(LOG_APP, "registerWebViewCallback: napi_create_threadsafe_function failed: %{public}d", status);
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-    g_webview_tsfn = tsfn;
-
-    if (load_legado_shared() && g_register_webview_fn != nullptr) {
-        g_register_webview_fn(&ohos_webview_dispatch);
-    } else {
-        OH_LOG_WARN(LOG_APP, "registerWebViewCallback: legado_register_webview_fn not resolved (KMP invokeWebViewSync 将降级)");
-    }
-
-    napi_value ret;
-    napi_get_undefined(env, &ret);
-    return ret;
-}
+REGISTER_TSFN_CALLBACK(WebView, WebViewCallJs, g_webview_tsfn, g_register_webview_fn, ohos_webview_dispatch,
+    "registerWebViewCallback: legado_register_webview_fn not resolved (KMP invokeWebViewSync 将降级)")
 
 // napi 包装: webViewCallback(requestId: number, result: string, body: string): void
 // ArkTS → Kotlin webView 后台抓取结果回调 (混合协议: 控制面 JSON + 数据面裸源码/命中 URL)
@@ -1904,46 +1411,8 @@ static void OpenUrlCallJs(napi_env env, napi_value js_cb, void* /*context*/, voi
 
 // napi 包装: registerOpenUrlCallback(callback: (json: string) => void): void
 // ArkTS 注册 openUrl 回调; C++ 创建 tsfn, 通过 legado_register_open_url_fn 注入 ohos_open_url_dispatch 到 Kotlin
-static napi_value RegisterOpenUrlCallback(napi_env env, napi_callback_info info) {
-    size_t argc = 1;
-    napi_value args[1] = {nullptr};
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-    if (argc < 1) {
-        napi_throw_type_error(env, nullptr, "registerOpenUrlCallback requires 1 argument (callback)");
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-
-    if (g_open_url_tsfn != nullptr) {
-        napi_release_threadsafe_function(g_open_url_tsfn, napi_tsfn_abort);
-        g_open_url_tsfn = nullptr;
-    }
-
-    napi_value work_name;
-    napi_create_string_utf8(env, "LegadoOpenUrlTsfn", NAPI_AUTO_LENGTH, &work_name);
-    napi_threadsafe_function tsfn;
-    napi_status status = napi_create_threadsafe_function(
-        env, args[0], nullptr, work_name, 0, 1,
-            nullptr, nullptr, nullptr, OpenUrlCallJs, &tsfn);
-    if (status != napi_ok) {
-        OH_LOG_ERROR(LOG_APP, "registerOpenUrlCallback: napi_create_threadsafe_function failed: %{public}d", status);
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-    g_open_url_tsfn = tsfn;
-
-    if (load_legado_shared() && g_register_open_url_fn != nullptr) {
-        g_register_open_url_fn(&ohos_open_url_dispatch);
-    } else {
-        OH_LOG_WARN(LOG_APP, "registerOpenUrlCallback: legado_register_open_url_fn not resolved (KMP openUrl 将降级 println)");
-    }
-
-    napi_value ret;
-    napi_get_undefined(env, &ret);
-    return ret;
-}
+REGISTER_TSFN_CALLBACK(OpenUrl, OpenUrlCallJs, g_open_url_tsfn, g_register_open_url_fn, ohos_open_url_dispatch,
+    "registerOpenUrlCallback: legado_register_open_url_fn not resolved (KMP openUrl 将降级 println)")
 
 // ============ FilePicker tsfn 接线 (KP8+ 新增, 同 Image/Crypto/Http 模式: tsfn 发请求 + @CName 回调返回结果) ============
 // 设计与 Image/Crypto/Http 完全一致:
@@ -1979,46 +1448,8 @@ static void FilePickerCallJs(napi_env env, napi_value js_cb, void* /*context*/, 
 
 // napi 包装: registerFilePickerCallback(callback: (json: string) => void): void
 // ArkTS 注册 filePicker 回调; C++ 创建 tsfn, 通过 legado_register_file_picker_fn 注入 ohos_file_picker_dispatch 到 Kotlin
-static napi_value RegisterFilePickerCallback(napi_env env, napi_callback_info info) {
-    size_t argc = 1;
-    napi_value args[1] = {nullptr};
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-    if (argc < 1) {
-        napi_throw_type_error(env, nullptr, "registerFilePickerCallback requires 1 argument (callback)");
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-
-    if (g_file_picker_tsfn != nullptr) {
-        napi_release_threadsafe_function(g_file_picker_tsfn, napi_tsfn_abort);
-        g_file_picker_tsfn = nullptr;
-    }
-
-    napi_value work_name;
-    napi_create_string_utf8(env, "LegadoFilePickerTsfn", NAPI_AUTO_LENGTH, &work_name);
-    napi_threadsafe_function tsfn;
-    napi_status status = napi_create_threadsafe_function(
-        env, args[0], nullptr, work_name, 0, 1,
-            nullptr, nullptr, nullptr, FilePickerCallJs, &tsfn);
-    if (status != napi_ok) {
-        OH_LOG_ERROR(LOG_APP, "registerFilePickerCallback: napi_create_threadsafe_function failed: %{public}d", status);
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-    g_file_picker_tsfn = tsfn;
-
-    if (load_legado_shared() && g_register_file_picker_fn != nullptr) {
-        g_register_file_picker_fn(&ohos_file_picker_dispatch);
-    } else {
-        OH_LOG_WARN(LOG_APP, "registerFilePickerCallback: legado_register_file_picker_fn not resolved (KMP invokeFilePickerSync 将降级)");
-    }
-
-    napi_value ret;
-    napi_get_undefined(env, &ret);
-    return ret;
-}
+REGISTER_TSFN_CALLBACK(FilePicker, FilePickerCallJs, g_file_picker_tsfn, g_register_file_picker_fn, ohos_file_picker_dispatch,
+    "registerFilePickerCallback: legado_register_file_picker_fn not resolved (KMP invokeFilePickerSync 将降级)")
 
 // napi 包装: filePickerCallback(requestId: number, result: string): void
 // ArkTS → Kotlin filePicker 操作结果回调 (pickDocuments/pickDocumentContent 完成后调用)
@@ -2080,46 +1511,8 @@ static void PasteboardCallJs(napi_env env, napi_value js_cb, void* /*context*/, 
 
 // napi 包装: registerPasteboardCallback(callback: (json: string) => void): void
 // ArkTS 注册 pasteboard 回调; C++ 创建 tsfn, 通过 legado_register_pasteboard_fn 注入 ohos_pasteboard_dispatch 到 Kotlin
-static napi_value RegisterPasteboardCallback(napi_env env, napi_callback_info info) {
-    size_t argc = 1;
-    napi_value args[1] = {nullptr};
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-    if (argc < 1) {
-        napi_throw_type_error(env, nullptr, "registerPasteboardCallback requires 1 argument (callback)");
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-
-    if (g_pasteboard_tsfn != nullptr) {
-        napi_release_threadsafe_function(g_pasteboard_tsfn, napi_tsfn_abort);
-        g_pasteboard_tsfn = nullptr;
-    }
-
-    napi_value work_name;
-    napi_create_string_utf8(env, "LegadoPasteboardTsfn", NAPI_AUTO_LENGTH, &work_name);
-    napi_threadsafe_function tsfn;
-    napi_status status = napi_create_threadsafe_function(
-        env, args[0], nullptr, work_name, 0, 1,
-            nullptr, nullptr, nullptr, PasteboardCallJs, &tsfn);
-    if (status != napi_ok) {
-        OH_LOG_ERROR(LOG_APP, "registerPasteboardCallback: napi_create_threadsafe_function failed: %{public}d", status);
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-    g_pasteboard_tsfn = tsfn;
-
-    if (load_legado_shared() && g_register_pasteboard_fn != nullptr) {
-        g_register_pasteboard_fn(&ohos_pasteboard_dispatch);
-    } else {
-        OH_LOG_WARN(LOG_APP, "registerPasteboardCallback: legado_register_pasteboard_fn not resolved (KMP invokePasteboardSync 将降级)");
-    }
-
-    napi_value ret;
-    napi_get_undefined(env, &ret);
-    return ret;
-}
+REGISTER_TSFN_CALLBACK(Pasteboard, PasteboardCallJs, g_pasteboard_tsfn, g_register_pasteboard_fn, ohos_pasteboard_dispatch,
+    "registerPasteboardCallback: legado_register_pasteboard_fn not resolved (KMP invokePasteboardSync 将降级)")
 
 // napi 包装: pasteboardCallback(requestId: number, result: string): void
 // ArkTS → Kotlin pasteboard 操作结果回调 (read/write 完成后调用)
@@ -2185,46 +1578,8 @@ static void NetworkCallJs(napi_env env, napi_value js_cb, void* /*context*/, voi
 
 // napi 包装: registerNetworkCallback(callback: (json: string) => void): void
 // ArkTS 注册 network 回调; C++ 创建 tsfn, 通过 legado_register_network_fn 注入 ohos_network_dispatch 到 Kotlin
-static napi_value RegisterNetworkCallback(napi_env env, napi_callback_info info) {
-    size_t argc = 1;
-    napi_value args[1] = {nullptr};
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-    if (argc < 1) {
-        napi_throw_type_error(env, nullptr, "registerNetworkCallback requires 1 argument (callback)");
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-
-    if (g_network_tsfn != nullptr) {
-        napi_release_threadsafe_function(g_network_tsfn, napi_tsfn_abort);
-        g_network_tsfn = nullptr;
-    }
-
-    napi_value work_name;
-    napi_create_string_utf8(env, "LegadoNetworkTsfn", NAPI_AUTO_LENGTH, &work_name);
-    napi_threadsafe_function tsfn;
-    napi_status status = napi_create_threadsafe_function(
-        env, args[0], nullptr, work_name, 0, 1,
-            nullptr, nullptr, nullptr, NetworkCallJs, &tsfn);
-    if (status != napi_ok) {
-        OH_LOG_ERROR(LOG_APP, "registerNetworkCallback: napi_create_threadsafe_function failed: %{public}d", status);
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-    g_network_tsfn = tsfn;
-
-    if (load_legado_shared() && g_register_network_fn != nullptr) {
-        g_register_network_fn(&ohos_network_dispatch);
-    } else {
-        OH_LOG_WARN(LOG_APP, "registerNetworkCallback: legado_register_network_fn not resolved (KMP invokeNetworkSync 将降级)");
-    }
-
-    napi_value ret;
-    napi_get_undefined(env, &ret);
-    return ret;
-}
+REGISTER_TSFN_CALLBACK(Network, NetworkCallJs, g_network_tsfn, g_register_network_fn, ohos_network_dispatch,
+    "registerNetworkCallback: legado_register_network_fn not resolved (KMP invokeNetworkSync 将降级)")
 
 // napi 包装: networkCallback(requestId: number, result: string): void
 // ArkTS → Kotlin network 查询结果回调 (query 完成后调用)
@@ -2286,46 +1641,8 @@ static void TextCodecCallJs(napi_env env, napi_value js_cb, void* /*context*/, v
 
 // napi 包装: registerTextCodecCallback(callback: (json: string) => void): void
 // ArkTS 注册 textCodec 回调; C++ 创建 tsfn, 通过 legado_register_text_codec_fn 注入 ohos_text_codec_dispatch 到 Kotlin
-static napi_value RegisterTextCodecCallback(napi_env env, napi_callback_info info) {
-    size_t argc = 1;
-    napi_value args[1] = {nullptr};
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-    if (argc < 1) {
-        napi_throw_type_error(env, nullptr, "registerTextCodecCallback requires 1 argument (callback)");
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-
-    if (g_text_codec_tsfn != nullptr) {
-        napi_release_threadsafe_function(g_text_codec_tsfn, napi_tsfn_abort);
-        g_text_codec_tsfn = nullptr;
-    }
-
-    napi_value work_name;
-    napi_create_string_utf8(env, "LegadoTextCodecTsfn", NAPI_AUTO_LENGTH, &work_name);
-    napi_threadsafe_function tsfn;
-    napi_status status = napi_create_threadsafe_function(
-        env, args[0], nullptr, work_name, 0, 1,
-            nullptr, nullptr, nullptr, TextCodecCallJs, &tsfn);
-    if (status != napi_ok) {
-        OH_LOG_ERROR(LOG_APP, "registerTextCodecCallback: napi_create_threadsafe_function failed: %{public}d", status);
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-    g_text_codec_tsfn = tsfn;
-
-    if (load_legado_shared() && g_register_text_codec_fn != nullptr) {
-        g_register_text_codec_fn(&ohos_text_codec_dispatch);
-    } else {
-        OH_LOG_WARN(LOG_APP, "registerTextCodecCallback: legado_register_text_codec_fn not resolved (KMP invokeTextCodecSync 将降级)");
-    }
-
-    napi_value ret;
-    napi_get_undefined(env, &ret);
-    return ret;
-}
+REGISTER_TSFN_CALLBACK(TextCodec, TextCodecCallJs, g_text_codec_tsfn, g_register_text_codec_fn, ohos_text_codec_dispatch,
+    "registerTextCodecCallback: legado_register_text_codec_fn not resolved (KMP invokeTextCodecSync 将降级)")
 
 // napi 包装: textCodecCallback(requestId: number, result: string): void
 // ArkTS → Kotlin textCodec 操作结果回调 (decode/encode 完成后调用)
@@ -2387,46 +1704,8 @@ static void TextActionCallJs(napi_env env, napi_value js_cb, void * /*context*/,
 
 // napi 包装: registerTextActionCallback(callback: (json: string) => void): void
 // ArkTS 注册文本菜单回调; C++ 创建 tsfn, 通过 legado_register_text_action_fn 注入 ohos_text_action_dispatch 到 Kotlin
-static napi_value RegisterTextActionCallback(napi_env env, napi_callback_info info) {
-    size_t argc = 1;
-    napi_value args[1] = {nullptr};
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-    if (argc < 1) {
-        napi_throw_type_error(env, nullptr, "registerTextActionCallback requires 1 argument (callback)");
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-
-    if (g_text_action_tsfn != nullptr) {
-        napi_release_threadsafe_function(g_text_action_tsfn, napi_tsfn_abort);
-        g_text_action_tsfn = nullptr;
-    }
-
-    napi_value work_name;
-    napi_create_string_utf8(env, "LegadoTextActionTsfn", NAPI_AUTO_LENGTH, &work_name);
-    napi_threadsafe_function tsfn;
-    napi_status status = napi_create_threadsafe_function(
-            env, args[0], nullptr, work_name, 0, 1,
-            nullptr, nullptr, nullptr, TextActionCallJs, &tsfn);
-    if (status != napi_ok) {
-        OH_LOG_ERROR(LOG_APP, "registerTextActionCallback: napi_create_threadsafe_function failed: %{public}d", status);
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-    g_text_action_tsfn = tsfn;
-
-    if (load_legado_shared() && g_register_text_action_fn != nullptr) {
-        g_register_text_action_fn(&ohos_text_action_dispatch);
-    } else {
-        OH_LOG_WARN(LOG_APP, "registerTextActionCallback: legado_register_text_action_fn not resolved (KMP showTextActionMenu 将降级 println)");
-    }
-
-    napi_value ret;
-    napi_get_undefined(env, &ret);
-    return ret;
-}
+REGISTER_TSFN_CALLBACK(TextAction, TextActionCallJs, g_text_action_tsfn, g_register_text_action_fn, ohos_text_action_dispatch,
+    "registerTextActionCallback: legado_register_text_action_fn not resolved (KMP showTextActionMenu 将降级 println)")
 
 // napi 包装: textActionCallback(requestId: number, resultJson: string): void
 // ArkTS 菜单项点击/收起 → C++ 转发 @CName legado_text_action_callback → KMP OhosNativeBridge.onTextActionResult
@@ -2490,46 +1769,8 @@ static void BatteryCallJs(napi_env env, napi_value js_cb, void * /*context*/, vo
 
 // napi 包装: registerBatteryCallback(callback: (json: string) => void): void
 // ArkTS 注册电量查询回调; C++ 创建 tsfn, 通过 legado_register_battery_fn 注入 ohos_battery_dispatch 到 Kotlin
-static napi_value RegisterBatteryCallback(napi_env env, napi_callback_info info) {
-    size_t argc = 1;
-    napi_value args[1] = {nullptr};
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-    if (argc < 1) {
-        napi_throw_type_error(env, nullptr, "registerBatteryCallback requires 1 argument (callback)");
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-
-    if (g_battery_tsfn != nullptr) {
-        napi_release_threadsafe_function(g_battery_tsfn, napi_tsfn_abort);
-        g_battery_tsfn = nullptr;
-    }
-
-    napi_value work_name;
-    napi_create_string_utf8(env, "LegadoBatteryTsfn", NAPI_AUTO_LENGTH, &work_name);
-    napi_threadsafe_function tsfn;
-    napi_status status = napi_create_threadsafe_function(
-            env, args[0], nullptr, work_name, 0, 1,
-            nullptr, nullptr, nullptr, BatteryCallJs, &tsfn);
-    if (status != napi_ok) {
-        OH_LOG_ERROR(LOG_APP, "registerBatteryCallback: napi_create_threadsafe_function failed: %{public}d", status);
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-    g_battery_tsfn = tsfn;
-
-    if (load_legado_shared() && g_register_battery_fn != nullptr) {
-        g_register_battery_fn(&ohos_battery_dispatch);
-    } else {
-        OH_LOG_WARN(LOG_APP, "registerBatteryCallback: legado_register_battery_fn not resolved (KMP getBatteryLevel 将返回 -1)");
-    }
-
-    napi_value ret;
-    napi_get_undefined(env, &ret);
-    return ret;
-}
+REGISTER_TSFN_CALLBACK(Battery, BatteryCallJs, g_battery_tsfn, g_register_battery_fn, ohos_battery_dispatch,
+    "registerBatteryCallback: legado_register_battery_fn not resolved (KMP getBatteryLevel 将返回 -1)")
 
 // napi 包装: batteryCallback(requestId: number, result: string): void
 // ArkTS → Kotlin 电量查询结果回调 (getLevel 完成后调用)
@@ -2587,46 +1828,8 @@ static void ShareCallJs(napi_env env, napi_value js_cb, void * /*context*/, void
 
 // napi 包装: registerShareCallback(callback: (json: string) => void): void
 // ArkTS 注册分享回调; C++ 创建 tsfn, 通过 legado_register_share_fn 注入 ohos_share_dispatch 到 Kotlin
-static napi_value RegisterShareCallback(napi_env env, napi_callback_info info) {
-    size_t argc = 1;
-    napi_value args[1] = {nullptr};
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-    if (argc < 1) {
-        napi_throw_type_error(env, nullptr, "registerShareCallback requires 1 argument (callback)");
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-
-    if (g_share_tsfn != nullptr) {
-        napi_release_threadsafe_function(g_share_tsfn, napi_tsfn_abort);
-        g_share_tsfn = nullptr;
-    }
-
-    napi_value work_name;
-    napi_create_string_utf8(env, "LegadoShareTsfn", NAPI_AUTO_LENGTH, &work_name);
-    napi_threadsafe_function tsfn;
-    napi_status status = napi_create_threadsafe_function(
-            env, args[0], nullptr, work_name, 0, 1,
-            nullptr, nullptr, nullptr, ShareCallJs, &tsfn);
-    if (status != napi_ok) {
-        OH_LOG_ERROR(LOG_APP, "registerShareCallback: napi_create_threadsafe_function failed: %{public}d", status);
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-    g_share_tsfn = tsfn;
-
-    if (load_legado_shared() && g_register_share_fn != nullptr) {
-        g_register_share_fn(&ohos_share_dispatch);
-    } else {
-        OH_LOG_WARN(LOG_APP, "registerShareCallback: legado_register_share_fn not resolved (KMP shareText/shareFile 将降级剪贴板)");
-    }
-
-    napi_value ret;
-    napi_get_undefined(env, &ret);
-    return ret;
-}
+REGISTER_TSFN_CALLBACK(Share, ShareCallJs, g_share_tsfn, g_register_share_fn, ohos_share_dispatch,
+    "registerShareCallback: legado_register_share_fn not resolved (KMP shareText/shareFile 将降级剪贴板)")
 
 // ============ Keyboard tsfn 接线 (同 Window 模式: fire-and-forget dispatch, 无结果回调) ============
 // 软键盘显隐/避让: KMP hideSoftInput/showSoftInput/setKeyboardAvoidMode → tsfn dispatch 到 ArkTS →
@@ -2659,46 +1862,8 @@ static void KeyboardCallJs(napi_env env, napi_value js_cb, void * /*context*/, v
 
 // napi 包装: registerKeyboardCallback(callback: (json: string) => void): void
 // ArkTS 注册软键盘回调; C++ 创建 tsfn, 通过 legado_register_keyboard_fn 注入 ohos_keyboard_dispatch 到 Kotlin
-static napi_value RegisterKeyboardCallback(napi_env env, napi_callback_info info) {
-    size_t argc = 1;
-    napi_value args[1] = {nullptr};
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-    if (argc < 1) {
-        napi_throw_type_error(env, nullptr, "registerKeyboardCallback requires 1 argument (callback)");
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-
-    if (g_keyboard_tsfn != nullptr) {
-        napi_release_threadsafe_function(g_keyboard_tsfn, napi_tsfn_abort);
-        g_keyboard_tsfn = nullptr;
-    }
-
-    napi_value work_name;
-    napi_create_string_utf8(env, "LegadoKeyboardTsfn", NAPI_AUTO_LENGTH, &work_name);
-    napi_threadsafe_function tsfn;
-    napi_status status = napi_create_threadsafe_function(
-            env, args[0], nullptr, work_name, 0, 1,
-            nullptr, nullptr, nullptr, KeyboardCallJs, &tsfn);
-    if (status != napi_ok) {
-        OH_LOG_ERROR(LOG_APP, "registerKeyboardCallback: napi_create_threadsafe_function failed: %{public}d", status);
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-    g_keyboard_tsfn = tsfn;
-
-    if (load_legado_shared() && g_register_keyboard_fn != nullptr) {
-        g_register_keyboard_fn(&ohos_keyboard_dispatch);
-    } else {
-        OH_LOG_WARN(LOG_APP, "registerKeyboardCallback: legado_register_keyboard_fn not resolved (KMP 软键盘命令将降级 println)");
-    }
-
-    napi_value ret;
-    napi_get_undefined(env, &ret);
-    return ret;
-}
+REGISTER_TSFN_CALLBACK(Keyboard, KeyboardCallJs, g_keyboard_tsfn, g_register_keyboard_fn, ohos_keyboard_dispatch,
+    "registerKeyboardCallback: legado_register_keyboard_fn not resolved (KMP 软键盘命令将降级 println)")
 
 // ============ Permission tsfn 接线 (同 Pasteboard 模式: tsfn 发请求 + @CName 回调返回结果) ============
 // 权限查询/申请: KMP hasPermission/requestPermission → invokePermissionSync → tsfn dispatch 到 ArkTS →
@@ -2731,46 +1896,8 @@ static void PermissionCallJs(napi_env env, napi_value js_cb, void * /*context*/,
 
 // napi 包装: registerPermissionCallback(callback: (json: string) => void): void
 // ArkTS 注册权限回调; C++ 创建 tsfn, 通过 legado_register_permission_fn 注入 ohos_permission_dispatch 到 Kotlin
-static napi_value RegisterPermissionCallback(napi_env env, napi_callback_info info) {
-    size_t argc = 1;
-    napi_value args[1] = {nullptr};
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-    if (argc < 1) {
-        napi_throw_type_error(env, nullptr, "registerPermissionCallback requires 1 argument (callback)");
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-
-    if (g_permission_tsfn != nullptr) {
-        napi_release_threadsafe_function(g_permission_tsfn, napi_tsfn_abort);
-        g_permission_tsfn = nullptr;
-    }
-
-    napi_value work_name;
-    napi_create_string_utf8(env, "LegadoPermissionTsfn", NAPI_AUTO_LENGTH, &work_name);
-    napi_threadsafe_function tsfn;
-    napi_status status = napi_create_threadsafe_function(
-            env, args[0], nullptr, work_name, 0, 1,
-            nullptr, nullptr, nullptr, PermissionCallJs, &tsfn);
-    if (status != napi_ok) {
-        OH_LOG_ERROR(LOG_APP, "registerPermissionCallback: napi_create_threadsafe_function failed: %{public}d", status);
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-    g_permission_tsfn = tsfn;
-
-    if (load_legado_shared() && g_register_permission_fn != nullptr) {
-        g_register_permission_fn(&ohos_permission_dispatch);
-    } else {
-        OH_LOG_WARN(LOG_APP, "registerPermissionCallback: legado_register_permission_fn not resolved (KMP 权限查询/申请将按无权限降级)");
-    }
-
-    napi_value ret;
-    napi_get_undefined(env, &ret);
-    return ret;
-}
+REGISTER_TSFN_CALLBACK(Permission, PermissionCallJs, g_permission_tsfn, g_register_permission_fn, ohos_permission_dispatch,
+    "registerPermissionCallback: legado_register_permission_fn not resolved (KMP 权限查询/申请将按无权限降级)")
 
 // napi 包装: permissionCallback(requestId: number, result: string): void
 // ArkTS → Kotlin 权限查询/申请结果回调 (check/request 完成后调用)
@@ -2884,13 +2011,6 @@ androidx_compose_ui_arkui_init(env, exports
         {"loadChapter", nullptr, LoadChapter, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"chapterList", nullptr, ChapterList, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"importBookSource", nullptr, ImportBookSource, nullptr, nullptr, nullptr, napi_default, nullptr},
-        // 漫画 + 发现页 (KP5+ 新增)
-        {"loadMangaChapter", nullptr, LoadMangaChapter, nullptr, nullptr, nullptr, napi_default, nullptr},
-        {"exploreList", nullptr, ExploreList, nullptr, nullptr, nullptr, napi_default, nullptr},
-        {"openExplore", nullptr, OpenExplore, nullptr, nullptr, nullptr, napi_default, nullptr},
-        {"editExploreSource", nullptr, EditExploreSource, nullptr, nullptr, nullptr, napi_default, nullptr},
-        {"topExploreSource", nullptr, TopExploreSource, nullptr, nullptr, nullptr, napi_default, nullptr},
-        {"deleteExploreSource", nullptr, DeleteExploreSource, nullptr, nullptr, nullptr, napi_default, nullptr},
         // FileDir/CacheDir 路径注入 (KP7+ 新增, ArkTS → Kotlin 同步推送)
         {"registerFileDir", nullptr, RegisterFileDir, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"registerCacheDir", nullptr, RegisterCacheDir, nullptr, nullptr, nullptr, napi_default, nullptr},

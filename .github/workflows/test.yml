@@ -231,9 +231,11 @@ jobs:
         # (曾报 find: 'D:alegadolegado/...': No such file or directory)。
         # 另外 CMP 的 jpackage 产物在 binaries/{buildType}/<type>/ 下 (官方 ProGuard 集成启用 release
         # buildType 后目录名带 classifier, 如 main-release/msi), 全目录 find 避免路径变化再踩坑。
+        # release 产物统一命名: 平台_架构[.扩展名] (如 windows_x64.msi), 不带版本号;
+        # 包内 packageVersion 仍注入实际版本, 应用内版本不受影响。
         run: |
           mkdir -p $GITHUB_WORKSPACE/msi/
-          find $GITHUB_WORKSPACE/desktop/build/compose/binaries -name "*.msi" -exec mv {} $GITHUB_WORKSPACE/msi/ \;
+          find $GITHUB_WORKSPACE/desktop/build/compose/binaries -name "*.msi" -exec mv {} $GITHUB_WORKSPACE/msi/windows_x64.msi \;
       - name: Upload MSI Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -246,9 +248,10 @@ jobs:
         run: ./gradlew :desktop:packagePortableZip --build-cache --parallel --daemon --warning-mode all
       - name: Collect portable zip
         shell: bash
+        # 与 MSI 同命名规则: 平台_架构_特殊版本 (portable=便携版), 不带版本号
         run: |
           mkdir -p $GITHUB_WORKSPACE/portable/
-          find $GITHUB_WORKSPACE/desktop/build/outputs/portable -name "legado-portable-windows-x64-*.zip" -exec mv {} $GITHUB_WORKSPACE/portable/ \;
+          find $GITHUB_WORKSPACE/desktop/build/outputs/portable -name "legado-portable-windows-x64-*.zip" -exec mv {} $GITHUB_WORKSPACE/portable/windows_x64_portable.zip \;
       - name: Upload portable zip Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -296,10 +299,11 @@ jobs:
         # release buildType: 官方 ProGuard 集成仅 release 链启用, default 链不瘦身
         run: ./gradlew :desktop:packageReleaseDeb :desktop:packageReleaseRpm --build-cache --parallel --daemon --warning-mode all
       - name: Collect Linux packages
+        # 与 MSI 同命名规则: 平台_架构[.扩展名]; jpackage 内部架构名 (amd64/x86_64) 统一对外叫 x64
         run: |
           mkdir -p ${{ github.workspace }}/linux/
-          find ${{ github.workspace }}/desktop/build/compose/binaries -name "*.deb" -exec mv {} ${{ github.workspace }}/linux/ \;
-          find ${{ github.workspace }}/desktop/build/compose/binaries -name "*.rpm" -exec mv {} ${{ github.workspace }}/linux/ \;
+          find ${{ github.workspace }}/desktop/build/compose/binaries -name "*.deb" -exec mv {} ${{ github.workspace }}/linux/linux_x64.deb \;
+          find ${{ github.workspace }}/desktop/build/compose/binaries -name "*.rpm" -exec mv {} ${{ github.workspace }}/linux/linux_x64.rpm \;
       - name: Upload Linux Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -348,9 +352,10 @@ jobs:
         run: ./gradlew :desktop:packageDmg --build-cache --parallel --daemon --warning-mode all
       - name: Collect DMG
         # 与 MSI 同理: jpackage 产物在 binaries/{buildType}/<type>/ 下, 全目录 find
+        # 与 MSI 同命名规则: 平台_架构[.扩展名]; jpackage 内部架构名 (aarch64) 统一对外叫 arm64
         run: |
           mkdir -p $GITHUB_WORKSPACE/dmg/
-          find $GITHUB_WORKSPACE/desktop/build/compose/binaries -name "*.dmg" -exec mv {} $GITHUB_WORKSPACE/dmg/ \;
+          find $GITHUB_WORKSPACE/desktop/build/compose/binaries -name "*.dmg" -exec mv {} $GITHUB_WORKSPACE/dmg/macos_arm64.dmg \;
       - name: Upload DMG Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -358,33 +363,40 @@ jobs:
           path: dmg/*.dmg
           if-no-files-found: ignore
 
-  # ===== 鸿蒙 .so (debug) =====
-  # 已移除 (2026-08): CPF 工具链构件仅发布在 maven.eazytec-cloud.com (中国私有 Nexus),
-  # GitHub-hosted runner 无法访问, 该 job 必然失败。
-  # .so 改本地构建: ./gradlew :shared:linkDebugSharedOhosArm64 -PenableOhosTarget=true
-  # 产物 shared/build/bin/ohosArm64/debugShared/liblegado_shared.so,
-  # 供鸿蒙 DevEco Studio 本地打包 HAP 时链接。
-
-  # ===== 鸿蒙 HAP 构建说明 (CI 上无法运行, 仅本地) =====
-  # 原因: 鸿蒙 DevEco Studio / hvigor / HarmonyOS SDK (API 12+) 无官方公开 Docker 镜像,
-  #        GitHub-hosted runner 不预装, 需自托管 runner 或私有 action 注入 SDK, 故 CI 不构建 HAP.
-  #        test.yml 的 .so 编译 job 也已移除 (eazytec 私有源 GitHub runner 不可达), 见上方说明.
-  #        本地构建 .so: ./gradlew :shared:linkDebugSharedOhosArm64 -PenableOhosTarget=true
+  # ===== 鸿蒙 HAP (CI 不构建, 仅本地; 2026-08-19 查证结论) =====
+  # 决策: 维持本地构建, CI 不建鸿蒙 job。原因链如下 (均已实测查证):
+  #   1. shared .so 需 CPF 工具链: fork 构件仅发布在 maven.eazytec-cloud.com (中国私有 Nexus),
+  #      GitHub-hosted runner 实测不可达, :shared:link*SharedOhosArm64 无法在 CI 跑。
+  #   2. HAP 打包需 HarmonyOS SDK: 华为云公开镜像 (repo.huaweicloud.com/harmonyos/ohpm/) 最高
+  #      commandline-tools 5.1.0.840, 自带 SDK = HarmonyOS 5.1.0 (API 18) + hvigor 5.18.5,
+  #      无 API 24 SDK 公开下载渠道 (DevEco Studio SDK Manager 的 SDK 无公开直链)。
+  #      工程 targetSdkVersion 6.1.1(24) > API 18 (华为规则 targetSdkVersion ≤ compileSdkVersion),
+  #      故参考 DandanLLab/mr build.yml 的华为云镜像方案也无法编译本工程。
+  #   3. compatibleSdkVersion 5.0.0(12) 已是代码/依赖下限, 不可降: ArkTS 全部用 @kit.* 模块
+  #      (API 12 引入) 且 CPF-KMP-CMP (@cpf-kmp-cmp/compose) 仅支持 API 12+。
+  #      (@cpf-kmp-cmp/compose 在 ohpm.openharmony.cn 公开源, 依赖解析不受阻;
+  #       真正卡点仅 ①CPF Kotlin/Native 工具链 ②API 24 SDK 两个。)
   #
-  # 用户本地构建 HAP 步骤:
+  # 本地构建 HAP 步骤:
   #   1. 安装 DevEco Studio: https://developer.huawei.com/consumer/cn/deveco-studio/
-  #   2. 通过 DevEco Studio SDK Manager 安装 HarmonyOS SDK (API 12+, 即 compatibleSdkVersion 5.0.0(12))
-  #   3. 配置签名 (二选一):
+  #   2. DevEco Studio SDK Manager 安装 HarmonyOS SDK 6.1.1 (API 24, 与工程 targetSdkVersion 匹配)
+  #   3. 编译 shared .so 并拷入 entry/libs (root build.gradle.kts 的 stageOhosNativeLibraries
+  #      一站式完成: link release .so + 拷贝 + 生成头文件):
+  #        ./gradlew stageOhosNativeLibraries -PenableOhosTarget=true
+  #      产物 shared/build/bin/ohosArm64/releaseShared/liblegado_shared.so → ohosApp/entry/libs/arm64-v8a/
+  #   4. 配置签名 (二选一):
   #      a) 调试签名: DevEco Studio 自动生成临时调试证书, 直接 Build → Build Hap(s)/APP(s) 即可
   #      b) 发布签名: 在 ohosApp/build-profile.json5 的 signingConfigs 数组填入 material.storeFile/cert
-  #   4. 命令行打包 (在项目根 ohosApp/ 目录下):
-  #        # Windows: hvigorw.bat / Linux/macOS: ./hvigorw
-  #        node ./hvigorw assembleHap --mode module -p product=default --no-daemon
-  #   5. 产物路径:
+  #   5. 命令行打包 (仓库未提交 hvigorw 包装脚本, 用 DevEco Studio 内置 hvigorw, 在 ohosApp/ 目录下):
+  #        # Windows: "D:/soft/DevEco Studio/tools/hvigor/bin/hvigorw.bat" (路径按本机安装位置)
+  #        # Linux/macOS: $DEVECO_HOME/tools/hvigor/bin/hvigorw
+  #        hvigorw assembleHap --mode module -p product=default --no-daemon
+  #   6. 产物路径:
   #      - 未签名: ohosApp/entry/build/default/outputs/default/entry-default-unsigned.hap
   #      - 已签名: ohosApp/entry/build/default/outputs/default/entry-default-signed.hap
   #
-  # 如未来 CI 想跑 HAP, 取消下面 ohos-hap 注释, 并在自托管 runner 上预装 HOS_SDK_HOME 与签名材料.
+  # 如未来 CI 想跑 HAP: 需自托管 runner (可访问 eazytec + 预装 API 24 SDK 与签名材料),
+  # 参考下面被注释的 ohos-hap 模板 (华为云镜像下载 commandline-tools 方案对 API 24 工程不适用).
   #
   # ohos-hap:
   #   needs: prepare
@@ -395,7 +407,7 @@ jobs:
   #     - uses: actions/checkout@v4
   #     - name: Build HAP
   #       working-directory: ohosApp/
-  #       run: node ./hvigorw assembleHap --mode module -p product=default --no-daemon
+  #       run: hvigorw assembleHap --mode module -p product=default --no-daemon
   #     - name: Upload HAP Artifact
   #       uses: actions/upload-artifact@v4
   #       with:

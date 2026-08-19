@@ -17,6 +17,7 @@ import io.legado.desktop.help.webview.gtk.GtkLibs.WEBKIT_LOAD_FINISHED
 import io.legado.desktop.help.webview.gtk.GtkLibs.WEBKIT_LOAD_REDIRECTED
 import io.legado.desktop.help.webview.gtk.GtkLibs.WEBKIT_LOAD_STARTED
 import io.legado.desktop.help.webview.gtk.LinuxWebViewEngine.fetch
+import io.legado.desktop.help.webview.injectWebViewCookies
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
@@ -88,6 +89,11 @@ internal object LinuxWebViewEngine : DesktopWebViewEngineBase() {
         request: WebViewFetchRequest,
     ): WebViewFetchResult {
         val redirected = AtomicBoolean(false)
+        // cookie 注入 (对齐 Windows/Mac fetch 路径): 导航前把 CookieStore 已有 cookie 灌进
+        // WebKitGTK, 否则回源会丢掉此前 HTTP 侧登录拿到的会话 (与回收互补成闭环)
+        injectWebViewCookies(request.url, platformLabel) { domain, cookie ->
+            GtkLoop.await { session.addCookies(domain, cookie, COOKIE_TIMEOUT_MS) }
+        }
         GtkLoop.await {
             session.onLoadChanged = { _, event ->
                 // 重定向: WebKit 主框架 REDIRECTED 事件 (对照 WebView2 isRedirected)
@@ -126,6 +132,10 @@ internal object LinuxWebViewEngine : DesktopWebViewEngineBase() {
     ): WebViewFetchResult {
         val hit = CompletableDeferred<String>()
         val (overrideRegex, sourceRegex) = snifferRegexes(request)
+        // cookie 注入同 runHtml: 嗅探也是真实导航, 命中前页面已按请求携带登录态
+        injectWebViewCookies(request.url, platformLabel) { domain, cookie ->
+            GtkLoop.await { session.addCookies(domain, cookie, COOKIE_TIMEOUT_MS) }
+        }
         GtkLoop.await {
             session.onUriChanged = { uri ->
                 if (overrideRegex?.matches(uri) == true) hit.complete(uri)
@@ -232,6 +242,9 @@ private class GtkWindowHandle(
             }
         }
         created.onClosed = { close() }
+        // 页面元素全屏状态 → 窗口请求回调 (DesktopWebViewSlot 桥接回 WebViewScreen:
+        // 顶栏隐藏 + 返回键优先退出全屏)
+        created.onFullscreenChanged = { full -> request.onFullScreenChanged(full) }
         val html = request.html
         if (!html.isNullOrEmpty()) {
             created.loadHtml(html, request.url)
@@ -243,7 +256,11 @@ private class GtkWindowHandle(
     private fun onToolbarAction(action: ToolbarAction) {
         val target = session ?: return
         when (action) {
-            ToolbarAction.BACK -> navigateHistory(back = true)
+            ToolbarAction.BACK -> if (!navigateHistory(back = true)) {
+                // 无历史时返回 = 关闭窗口 (对照原版 WebViewActivity toolbar 返回箭头
+                // = finish(), 与 Windows 引擎行为一致, 避免"返回不可用"的困惑)
+                close()
+            }
 
             ToolbarAction.FORWARD -> navigateHistory(back = false)
 

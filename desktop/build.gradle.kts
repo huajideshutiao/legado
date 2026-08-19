@@ -1,6 +1,5 @@
 import org.gradle.internal.os.OperatingSystem
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
-import java.time.LocalDate
 import java.util.Properties
 
 plugins {
@@ -487,17 +486,16 @@ val copyWndChromeNativeToResources by tasks.registering(Copy::class) {
 
 // CI 用 sed 把 packageVersion 注入为 "3.YY.MMDDHHMM" (如 3.26.08131506)。
 // Windows MSI 只接受 MAJOR.MINOR.BUILD 且 BUILD ≤ 65535, 8 位时间戳直接配置期报错;
-// deb/rpm 支持 4 段版本不受影响。此处仅给 MSI 单独映射为 "3.YY.YYDDD":
-// 年内随日期递增、跨年 YY 进位, 保证 MSI 升级版本号单调不减 (YY≥66 时超 65535, 届时换算法)。
+// deb/rpm 支持 4 段版本不受影响。此处仅给 MSI 单独映射为 "3.YY.MMDDHH":
+// 取月日 + 小时共 6 位 (如 3.26.081315), 最大 123123 ≤ 65535 安全;
+// 同一天内随小时递增、跨小时/跨天递增、跨年 YY 进位, 保证 MSI 升级版本号单调不减。
 private fun msiSafeVersion(pkgVer: String): String {
-    val m = Regex("""^(\d+)\.(\d+)\.(\d{4})\d{4}$""").find(pkgVer) ?: return pkgVer
+    val m = Regex("""^(\d+)\.(\d+)\.(\d{4})(\d{4})$""").find(pkgVer) ?: return pkgVer
     val major = m.groupValues[1]
-    val yy = m.groupValues[2].toInt()
+    val yy = m.groupValues[2]
     val mmdd = m.groupValues[3]
-    val dayOfYear = LocalDate
-        .of(2000 + yy, mmdd.substring(0, 2).toInt(), mmdd.substring(2, 4).toInt())
-        .dayOfYear
-    return "$major.$yy.${yy * 1000 + dayOfYear}"
+    val hour = m.groupValues[4].substring(0, 2)
+    return "$major.$yy.$mmdd$hour"
 }
 
 compose.desktop {
@@ -605,7 +603,7 @@ compose.desktop {
                 upgradeUuid = "7F5C4E2A-3B6D-4F8A-9C1E-1A2B3C4D5E6F"
                 // MSI 版本号上限 MAJOR.MINOR.BUILD 且 BUILD ≤ 65535, 而 CI sed 注入的
                 // packageVersion 是 "3.YY.MMDDHHMM" (BUILD 段 8 位非法, 配置期直接报错);
-                // 这里单独映射为合法且单调递增的 "3.YY.YYDDD" (deb/rpm 不受影响)
+                // 这里单独映射为合法且单调递增的 "3.YY.MMDDHH" (deb/rpm 不受影响)
                 msiPackageVersion = msiSafeVersion(
                     compose.desktop.application.nativeDistributions.packageVersion ?: "1.0.0"
                 )

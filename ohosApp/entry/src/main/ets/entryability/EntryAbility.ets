@@ -142,7 +142,12 @@ export default class EntryAbility extends UIAbility {
             notificationManager.cancel(payload.id);
             return;
           }
-          // SHOW: 发基本文本通知 (进度文本已由 KMP 侧拼入 content, 见 NotificationProgress.ohos.kt)
+          // SHOW: 发基本文本通知; progress/max 齐备时附加 downloadTemplate 系统进度条。
+          // 普通通知内容 (BasicContent/LongTextContent) 无 progress 字段 (SDK notificationContent.d.ts
+          // 的 NotificationProgress 仅属 systemLiveView, 第三方应用不可直接创建), 官方进度条方案 =
+          // NotificationRequest.template (downloadTemplate, since 8, data.progressValue 为 0-100 百分比);
+          // 无进度语义 (max<=0/缺省) 时降级纯文本, KMP 侧拼入 content 的进度文本 (NotificationProgress.ohos.kt)
+          // 在无进度条场景下是唯一进度呈现, 故保留。
           const request: notificationManager.NotificationRequest = {
             id: payload.id,
             content: {
@@ -150,6 +155,18 @@ export default class EntryAbility extends UIAbility {
               normal: { title: payload.title ?? '', text: payload.content ?? '' }
             }
           };
+          const progress = payload.progress;
+          const max = payload.max;
+          if (progress != null && max != null && max > 0) {
+            request.template = {
+              name: 'downloadTemplate',
+              data: {
+                title: payload.title ?? '',
+                fileName: payload.content ?? '',
+                progressValue: Math.max(0, Math.min(100, Math.round(progress / max * 100)))
+              }
+            };
+          }
           notificationManager.publish(request);
         } catch (e) {
           console.error('[Legado] notification callback failed: ' + JSON.stringify(e) + ', json=' + json);

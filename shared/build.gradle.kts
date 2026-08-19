@@ -70,12 +70,50 @@ val nativeInteropSourcePatterns = listOf(
     "io/legado/app/model/script/*.native.kt",
 )
 val nativeInteropSourceRoot = file("src/nativeMain/kotlin")
+
+// cinterop 对不完整 typedef (如 typedef struct JSContext JSContext; 仅前向声明) 只生成
+// cnames.structs.* 包别名, 顶层类型名靠这里生成的 typealias 补齐。iOS/鸿蒙各 stage 任务共用。
+fun generateCNamesAliases(outputRoot: java.io.File) {
+    val quickJsAliases = outputRoot.resolve(
+        "io/legado/app/napi/quickjs/CNamesAliases.kt"
+    )
+    quickJsAliases.parentFile.mkdirs()
+    quickJsAliases.writeText(
+        """
+        @file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+
+        package io.legado.app.napi.quickjs
+
+        typealias JSContext = cnames.structs.JSContext
+        typealias JSRuntime = cnames.structs.JSRuntime
+        """.trimIndent() + "\n"
+    )
+    val mbedTlsAliases = outputRoot.resolve(
+        "io/legado/app/nativecrypto/mbedtls/CNamesAliases.kt"
+    )
+    mbedTlsAliases.parentFile.mkdirs()
+    mbedTlsAliases.writeText(
+        """
+        @file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+
+        package io.legado.app.nativecrypto.mbedtls
+
+        typealias mbedtls_md_info_t = cnames.structs.mbedtls_md_info_t
+        """.trimIndent() + "\n"
+    )
+}
+
 val stageNativeInteropForIos = if (enableIosTarget) {
     tasks.register<Sync>("stageNativeInteropForIos") {
         from(nativeInteropSourceRoot) {
             include(*nativeInteropSourcePatterns.toTypedArray())
         }
         into(layout.buildDirectory.dir("generated/nativeInterop/iosLeaf"))
+        doLast {
+            generateCNamesAliases(
+                layout.buildDirectory.dir("generated/nativeInterop/iosLeaf").get().asFile
+            )
+        }
     }
 } else null
 fun registerOhosInteropStage(taskName: String, outputDirName: String): TaskProvider<Sync>? =
@@ -86,47 +124,17 @@ fun registerOhosInteropStage(taskName: String, outputDirName: String): TaskProvi
             }
             into(layout.buildDirectory.dir(outputDirName))
             doLast {
-                val outputRoot = layout.buildDirectory
-                    .dir(outputDirName)
-                    .get()
-                    .asFile
-                val quickJsAliases = outputRoot.resolve(
-                    "io/legado/app/napi/quickjs/CNamesAliases.kt"
-                )
-                quickJsAliases.parentFile.mkdirs()
-                quickJsAliases.writeText(
-                    """
-                    @file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
-
-                    package io.legado.app.napi.quickjs
-
-                    typealias JSContext = cnames.structs.JSContext
-                    typealias JSRuntime = cnames.structs.JSRuntime
-                    """.trimIndent() + "\n"
-                )
-                val mbedTlsAliases = outputRoot.resolve(
-                    "io/legado/app/nativecrypto/mbedtls/CNamesAliases.kt"
-                )
-                mbedTlsAliases.parentFile.mkdirs()
-                mbedTlsAliases.writeText(
-                    """
-                    @file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
-
-                    package io.legado.app.nativecrypto.mbedtls
-
-                    typealias mbedtls_md_info_t = cnames.structs.mbedtls_md_info_t
-                    """.trimIndent() + "\n"
+                generateCNamesAliases(
+                    layout.buildDirectory.dir(outputDirName).get().asFile
                 )
             }
         }
     } else null
 
-// staged 的 nativeInterop 桥文件与别名是架构无关的 Kotlin 源, arm64/x64 各自目录各放一份
-// (ohosArm64Main / ohosX64Main 编译单元各自引用)。
+// staged 的 nativeInterop 桥文件与别名是架构无关的 Kotlin 源, 只编 ohosArm64 (真机)
+// (x86_64 模拟器: CPF fork 生态库无 ohosX64 变体, 2026-08-16 实测链接失败, 不再声明目标)。
 val stageNativeInteropForOhos =
     registerOhosInteropStage("stageNativeInteropForOhos", "generated/nativeInterop/ohosArm64Main")
-val stageNativeInteropForOhosX64 =
-    registerOhosInteropStage("stageNativeInteropForOhosX64", "generated/nativeInterop/ohosX64Main")
 
 // ohosArm64 只存在于 CPF 分支 KGP, 本脚本无法静态引用, 交给 build-logic 的约定插件声明。
 if (enableOhosTarget) {
@@ -383,19 +391,8 @@ kotlin {
                     "io/legado/app/data/AppDatabase_AutoMigration_85_86_Impl.kt",
                 )
             }
-            // x86_64 变体 (鸿蒙 x86_64 模拟器): 同款接线; 手写派生版在 src/ohosX64Main/
-            // (2026-08-16 双 ABI, 与 ohosArm64Main 完全对称)。
-            maybeCreate("ohosX64Main").apply {
-                dependsOn(maybeCreate("ohosMain"))
-                kotlin.srcDir(layout.buildDirectory.dir("generated/nativeInterop/ohosX64Main"))
-                kotlin.srcDir(layout.buildDirectory.dir("generated/ksp/ohosX64/ohosX64Main/kotlin"))
-                kotlin.exclude(
-                    "io/legado/app/data/AppDatabase_Impl.kt",
-                    "io/legado/app/data/AppDatabase_AutoMigration_83_84_Impl.kt",
-                    "io/legado/app/data/AppDatabase_AutoMigration_84_85_Impl.kt",
-                    "io/legado/app/data/AppDatabase_AutoMigration_85_86_Impl.kt",
-                )
-            }
+            // 只编 ohosArm64: x86_64 模拟器因 CPF fork 生态库无 ohosX64 变体无法链接
+            // (2026-08-16 实测), 不再声明 ohosX64Main 编译单元。
         }
 
         val jvmAndAndroidTest by creating {
@@ -443,11 +440,6 @@ if (enableOhosTarget) {
     }.configureEach {
         stageNativeInteropForOhos?.let { dependsOn(it) }
     }
-    tasks.matching {
-        it.name == "compileKotlinOhosX64" || it.name == "kspKotlinOhosX64"
-    }.configureEach {
-        stageNativeInteropForOhosX64?.let { dependsOn(it) }
-    }
 }
 
 dependencies {
@@ -475,22 +467,22 @@ dependencies {
         // 补齐 (见 OhosRoom3Compat.kt), alpha01 旧注解 (TypeConverters/TypeConverter) 由
         // Book.kt/AppDatabase.kt 双注册 + 非鸿蒙构建的 nonOhosCompatMain 声明补齐。
         add("kspOhosArm64", "androidx.room3:room3-compiler:3.0.0-alpha01")
-        add("kspOhosX64", "androidx.room3:room3-compiler:3.0.0-alpha01")
         add("kspOhosArm64", project(":modules:quickjs-processor"))
-        add("kspOhosX64", project(":modules:quickjs-processor"))
     }
 }
 
 // native 目标 KSP 全局 arg: 告知 JsApiProcessor 输出 native 形态 (仅对 quickjs-processor 生效,
 // Room 处理器忽略未知 arg; Android/JVM 目标未挂 quickjs-processor, 不受影响)
-// jsapi.nativeTargets: 生成器额外接管的对象类型类 (Connection.Response/StrResponse/BaseSource),
-// 生成闭包按 NATIVE_JS_FACTORY_BY_CLASS 分区注入桥的对应 JS 工厂函数 (阶段 2)
+// jsapi.nativeTargets: 生成器额外接管的对象类型类 (Connection.Response/StrResponse/BaseSource/
+// QueryTTF/JsURL), 生成闭包按 NATIVE_JS_FACTORY_BY_CLASS 分区注入桥的对应 JS 工厂函数
+// (阶段 2 规整方法; 属性/REF 返回等无法模板化者仍由手写桥保留特例)
 if (enableIosTarget || enableOhosTarget) {
     ksp {
         arg("jsapi.native", "true")
         arg(
             "jsapi.nativeTargets",
-            "org.jsoup.Connection.Response,io.legado.app.help.http.StrResponse,io.legado.app.data.entities.BaseSource"
+            "org.jsoup.Connection.Response,io.legado.app.help.http.StrResponse,io.legado.app.data.entities.BaseSource," +
+                "io.legado.app.model.analyzeRule.QueryTTF,io.legado.app.utils.JsURL"
         )
     }
 }

@@ -45,15 +45,27 @@ interface PlatformCapabilities {
     }
 
     /**
-     * 书源 URL 登录直开窗 (2026-08-07 用户拍板: 去掉登录中转界面)。
+     * 书源 URL 登录直开窗 (2026-08-07 用户拍板: 去掉登录中转界面;
+     * 2026-08-19 用户拍板: 登录直进全屏 WebView, 去掉对话框外壳)。
      *
-     * 仅 URL 登录 (loginUi 为空) 时调用; 返回 true = 平台已直接处理 (弹出登录窗口/系统浏览器),
-     * 调用方不再弹 sourceLogin Overlay 对话框; false = 平台未处理, 保持对话框内嵌 WebView
-     * (移动端默认 false, 登录仍走原 Overlay 对话框)。
+     * 仅 URL 登录 (loginUi 为空) 时调用; 返回 true = 平台已直接处理 (推全屏 WebView 路由 /
+     * 桌面端开独立浏览器窗口), 调用方不再弹 sourceLogin Overlay 对话框。
+     * 默认实现 (Android/iOS/鸿蒙): 推全屏 [AppRoute.WebView] 路由 (isLogin=true,
+     * 对照原版 WebViewActivity 全屏登录页), cookie 回写由 WebView slot 按 [sourceKey] 完成;
+     * 桌面端 override 为带 isLogin 工具栏的独立浏览器窗口。
      * 功能契约: 登录窗口必须带 isLogin 语义 (工具栏"确定" = 确认 cookie 后 reload 关窗) +
      * cookie 按 [sourceKey] 回写 (登录态可复用)。
      */
-    fun openLoginWebView(url: String, sourceKey: String): Boolean = false
+    fun openLoginWebView(url: String, sourceKey: String): Boolean {
+        AppNavigatorProviders.getOrNull()?.push(
+            AppRoute.WebView(
+                url = url,
+                sourceKey = sourceKey,
+                isLogin = true,
+            )
+        )
+        return true
+    }
 
     /**
      * RSS 阅读直开窗 (2026-08-07 用户拍板: RSS 阅读页去外壳, 功能移入浏览器窗口工具栏)。
