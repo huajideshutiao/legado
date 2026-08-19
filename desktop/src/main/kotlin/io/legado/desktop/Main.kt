@@ -101,6 +101,7 @@ import io.legado.app.ui.compose.platform.DesktopPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.DesktopThemeStoreProvider
 import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
+import io.legado.app.ui.compose.platform.LocalOverlayTopInset
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.jvmGetString
@@ -710,12 +711,21 @@ private fun runDesktopApp() = application {
         val readBookProvider = remember { DesktopReadBookProvider() }
         // 对话框尺寸锚点: 主窗口尺寸 (场景根处读取, 非对话框层; 随 resize 自动重组刷新)
         val dialogAnchor = LocalWindowInfo.current.containerSize
+        // 覆盖物 (菜单/划词条/补全条) 的顶部安全区 = 窗口控制条高度: Windows 的控制条在
+        // z-order 恒高于 Compose 画布的 native 子窗口里, Linux 自绘条也不该被菜单压住;
+        // macOS 原生标题栏不占客户区, 真全屏时控制条隐藏 ⇒ 均为 0
+        val overlayTopInset = if (Platform.isMac() || DesktopWindowChrome.fullscreen) {
+            0.dp
+        } else {
+            AppTheme.DesignTokens.viewHeightLarge
+        }
         CompositionLocalProvider(
             LocalDialogAnchorSize provides
                 (if (dialogAnchor.width > 0) IntSize(
                     dialogAnchor.width,
                     dialogAnchor.height
                 ) else null),
+            LocalOverlayTopInset provides overlayTopInset,
             LocalThemeStoreProvider provides themeStoreProvider,
             LocalAppConfigProvider provides appConfigProvider,
             LocalEventBusProvider provides eventBusProvider,

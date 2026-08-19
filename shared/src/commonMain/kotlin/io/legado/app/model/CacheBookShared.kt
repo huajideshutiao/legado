@@ -15,6 +15,7 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.CacheBookCallbacks.get
 import io.legado.app.model.CacheBookShared.cacheBookMap
 import io.legado.app.model.CacheBookShared.close
+import io.legado.app.model.CacheBookShared.processScope
 import io.legado.app.model.CacheBookShared.startProcessJob
 import io.legado.app.model.webBook.WebBook.getContentAwait
 import io.legado.app.utils.concurrent.newConcurrentMap
@@ -25,6 +26,9 @@ import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -35,9 +39,8 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withLock
 import kotlin.concurrent.Volatile
 import kotlin.coroutines.CoroutineContext
 
@@ -76,8 +79,22 @@ object CacheBookShared {
      */
     private val workingState = MutableStateFlow(true)
 
-    /** startProcessJob 互斥锁, 避免重复启动 (对照 app 端 CacheBook.mutex) */
-    private val mutex = Mutex()
+    /**
+     * 下载调度全局作用域 (独立于调用方生命周期)。
+     *
+     * 调度循环运行在本 scope 上: 调用方 (VM/Service/UI) 协程被取消只中断
+     * startProcessJob 的 join, 不中断循环本身 —— 宿主 (如 MainViewModel
+     * viewModelScope) 销毁时排队书籍仍会处理完并从 map 收敛, 不再残留
+     * "运行中" 状态 (原版遗留: 循环随调用方 scope 取消而中断, 管理界面
+     * 缓存按钮恒显停止图标)。
+     */
+    private val processScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /** 当前调度循环 job (全局单实例, 替代原 mutex 串行等待) */
+    private var processJob: Job? = null
+
+    /** 调度 job 启动互斥 */
+    private val processLock = SynchronizedObject()
 
     /**
      * 已成功下载的章节主键集合 (对照 app 端 CacheBook.successDownloadSet)。
@@ -154,13 +171,25 @@ object CacheBookShared {
      * 启动下载处理 job, 持续遍历 [cacheBookMap] 处理等待队列
      * (对照 app 端 CacheBook.startProcessJob)。
      *
-     * 用 [Mutex] 互斥避免重复启动 (与 app 端 mutex.withLock 一致)。
+     * 与 app 端差异 (有意修复): 调度循环不再跑在调用方协程里, 而是由
+     * [processScope] 全局单实例持有 —— 调用方取消 (Activity/VM 销毁、服务停止)
+     * 只中断本函数的 join 等待, 不中断循环, 排队书籍最终处理完并从 map 移除,
+     * 避免残留 "运行中" 状态导致 UI 恒显停止图标。单实例语义与原 mutex 等价
+     * (同一时刻至多一个循环), 差异仅是新调用方 join 活跃循环而非排队重跑。
      * flow 循环: 只要 map 非空且协程活跃就持续遍历, 对每个非 loading 的 model
      * 调用 [CacheBookModelShared.download]; 无可下载项时 delay(1000) 避免空转。
      *
-     * @param context 协程上下文 (用于 Coroutine.async 启动下载任务, 与 app 端一致)
+     * @param context 协程上下文 (兼容调用方, 供下载任务块切 dispatcher;
+     *   循环本身运行在 [processScope])
      */
-    suspend fun startProcessJob(context: CoroutineContext) = mutex.withLock {
+    suspend fun startProcessJob(context: CoroutineContext) {
+        val job = synchronized(processLock) {
+            processJob?.takeIf { it.isActive } ?: launchProcessJob().also { processJob = it }
+        }
+        job.join()
+    }
+
+    private fun launchProcessJob(): Job = processScope.launch {
         setWorkingState(true)
         flow {
             while (currentCoroutineContext().isActive && cacheBookMap.isNotEmpty()) {
@@ -182,7 +211,7 @@ object CacheBookShared {
             postEvent(EventBus.UP_DOWNLOAD_STATE, "")
         }.onEachParallel(AppConfigProviders.get().threadCount) {
             coroutineScope {
-                it.download(this, context)
+                it.download(this, coroutineContext)
             }
         }.onCompletion {
             postEvent(EventBus.UP_DOWNLOAD_STATE, "")

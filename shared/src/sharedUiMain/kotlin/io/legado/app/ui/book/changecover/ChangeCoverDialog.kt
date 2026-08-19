@@ -121,7 +121,7 @@ fun ChangeCoverDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
     ) {
-        // 全高型: 高度锁定 0.8 屏高
+        // 全高型: 高度锁定 0.7 屏高
         Surface(
             shape = DesignTokens.dialogShape,
             color = colors.fillet,

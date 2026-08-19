@@ -79,7 +79,7 @@ fun ImportListScaffold(
                     modifier = Modifier.fillMaxWidth(),
                     // 内容自适应高度: 项少随内容收缩, 超出父容器约束封顶滚动
                     // (对照 master AutoShrinkLinearLayout 的 WRAP_CONTENT + maxHeight 语义;
-                    // 默认 fillMaxSize 会把对话框恒撑到 0.8 屏高, 与条目数无关)
+                    // 默认 fillMaxSize 会把对话框恒撑到 0.7 屏高, 与条目数无关)
                     wrapContentHeight = true,
                 ) {
                     itemsIndexed((0 until itemCount).toList()) { _, index ->

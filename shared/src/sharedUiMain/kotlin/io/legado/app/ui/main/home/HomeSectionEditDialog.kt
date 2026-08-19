@@ -42,10 +42,10 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTextButton
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.component.appDialogSize
@@ -261,7 +261,7 @@ fun HomeSectionEditDialog(
         properties = AppDialogSizes.properties(),
     ) {
         // 不能套 fillMaxSize: 撑满窗口会让整窗都算"框内", 点外部永远关不掉; 居中由 RootMeasurePolicy 负责。
-        // 自适应高度, 上限 0.8 屏高
+        // 自适应高度, 上限 0.7 屏高
         Surface(
             modifier = Modifier.appDialogSize(),
             shape = DesignTokens.shapeDefault,

@@ -89,7 +89,7 @@ import org.jetbrains.compose.resources.stringResource
  * @param selectedText 页内文字选择结果 (非 null 时本对话框切换为"选中文本菜单"形态:
  *   内容区展示选中文本, 底部动作直接以选中文本为参数, 并新增"复制"按钮;
  *   对照旧 TextActionMenu 的 menu_copy; null = 旧整章拖选形态)
- * @param surfaceModifier 对话框 Surface 尺寸约束 (默认统一钳制: 宽 0.9 屏宽上限 800dp, 高不超 0.8 屏高)
+ * @param surfaceModifier 对话框 Surface 尺寸约束 (默认统一钳制: 宽 0.9 屏宽上限 800dp, 高不超 0.7 屏高)
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable

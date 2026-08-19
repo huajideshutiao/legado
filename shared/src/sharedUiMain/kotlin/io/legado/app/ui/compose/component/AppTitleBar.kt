@@ -84,7 +84,7 @@ fun AppTitleBar(
     }
     // 对话框窗口已自行避让系统栏 (decorFitsSystemWindows=true 时内容区避开状态栏;
     // Android 15+ targetSdk 35+ 强制 edge-to-edge 时窗口虽全屏, 但本应用弹层内容为
-    // 0.8~0.92 锚点高、底部贴齐或居中, 顶部均不触达状态栏区域), 顶栏不再叠加状态栏
+    // 0.7~0.92 锚点高、底部贴齐或居中, 顶部均不触达状态栏区域), 顶栏不再叠加状态栏
     // padding, 否则双重避让 → 弹窗顶部多出一层状态栏高的空白带 (目录/TXT目录规则/
     // 浏览器半屏等弹窗)。路由页 (LocalDialogWindow=false) 保持页面语义的状态栏沉浸 padding。
     val insetsModifier = when {

@@ -59,8 +59,11 @@ import kotlin.math.roundToInt
  * 只负责三件事:
  *  1. 挂载 native 桥并把主题色/标题/图标/高度推给它 (状态源与旧 DesktopTitleBar 一致, 含阅读页染色)
  *  2. 承接 native 的按键回调 (深浅色切换 / ⋯菜单)
- *  3. 用 Compose 弹 ⋯菜单 (原生 Win32 菜单不吃深色主题; AppDropdownMenu 是独立 Popup 窗口,
- *     不在主窗口 HWND 上, 与 native 控制条无冲突)
+ *  3. 用 Compose 弹 ⋯菜单 (原生 Win32 菜单不吃深色主题)
+ *
+ * 注意 CMP 的 Popup 与主窗口共用同一块 Skia 画布, **不是**独立 HWND —— native 控制条那条
+ * layered 子窗口 z-order 恒在画布之上, 覆盖物落进去就被盖住, 靠 LocalOverlayTopInset
+ * (Main.kt 注入, AppDropdownMenu 等消费) 定位时主动避让。
  *
  * # 挂载时机 (踩过的坑)
  * CMP 在组合期还没 `setVisible`, 此时 `window.isDisplayable == false`, 拿不到 HWND ⇒ attach 必失败。

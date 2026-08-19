@@ -44,11 +44,11 @@ import io.legado.app.ui.book.read.page.entities.column.BaseColumn
 import io.legado.app.ui.book.read.page.entities.column.ImageColumn
 import io.legado.app.ui.book.read.page.entities.column.ReviewColumn
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
-import io.legado.app.ui.compose.platform.rememberVisibleNavigationBarHeightPx
-import io.legado.app.ui.compose.platform.rememberVisibleStatusBarHeightPx
 import io.legado.app.ui.compose.platform.rememberMandatoryGestureBottomPx
 import io.legado.app.ui.compose.platform.rememberNavigationBarHidden
 import io.legado.app.ui.compose.platform.rememberStatusBarHidden
+import io.legado.app.ui.compose.platform.rememberVisibleNavigationBarHeightPx
+import io.legado.app.ui.compose.platform.rememberVisibleStatusBarHeightPx
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.utils.formatTimeOfDay
 import io.legado.app.utils.systemCurrentTimeMillis
@@ -223,10 +223,11 @@ fun ReadViewComposable(
     // callBack.onCancelSelect → ReadBookActivity.onCancelSelect → textActionMenu.dismiss：
     // 选区与菜单强绑定，任何清除路径——点按取消/翻页/重排/菜单动作后/外部状态变化——
     // 都必须同步关菜单）。观察 isActive 下降沿（唯一清除入口是 [PageSelectionState.cancel]，
-    // 覆盖全部调用点，避免逐处手动 post 漏路径）；平台侧收集见
+    // 覆盖全部调用点，避免逐处手动 post 漏路径）；图片长按菜单同样并入本条件
+    // （旧 isImageMenuShowing，翻页/换章等非按下路径靠它关菜单）；平台侧收集见
     // ReaderRoute → [ReaderPlatformProvider.onTextSelectionDismissed]
     LaunchedEffect(Unit) {
-        snapshotFlow { selection.isActive }
+        snapshotFlow { selection.isActive || selection.imageMenuShowing }
             .drop(1) // 初始 false，只观察 true→false 下降沿
             .filter { !it }
             .collect { ReadBookEvents.postSelectionDismissed() }
@@ -315,7 +316,7 @@ fun ReadViewComposable(
         // 长按落点回调（分发器长按定时触发）: 命中文字列 → 词级选中（对照旧
         // ReadView.onLongPress → ContentTextView.longPress + BreakIterator 词边界）;
         // 命中图片列 → onImageLongPress（对照旧 ImageColumn 分支 → 图片长按菜单）;
-        // 空白 → onLongClick(null)（原版空白长按无动作，桌面端回落整章选择对话框）。
+        // 空白 → onLongClick(null)（原版空白长按无动作，四端一致无动作）。
         // pointerInput(Unit) 不随重组重启, 用 rememberUpdatedState 取最新页/宽度/回调。
         val latestPageWidth by rememberUpdatedState(pageWidthPx)
         val latestOnLongClick by rememberUpdatedState(onLongClick)
@@ -341,6 +342,9 @@ fun ReadViewComposable(
                     latestOnLongClick(null)
                 }
             } else if (hit?.column is ImageColumn) {
+                // 标记菜单显示中（对照旧 ReadBookActivity.onImageLongPress →
+                // readView.isImageMenuShowing = true）：下次按下/翻页走取消链路关菜单
+                selection.imageMenuShowing = true
                 // 菜单定位坐标保持窗口坐标（平台浮动菜单按窗口定位）
                 latestOnImageLongPress(hit.column.src, x, y)
             } else {
@@ -561,8 +565,11 @@ fun ReadViewComposable(
                         var grabbingRightHandle = false
                         // ACTION_DOWN 分支：先判是否落在任一手柄矩形内（命中判定对照原版
                         // 手柄 ImageView bounds）——命中则本次手势抓取手柄，跳过"点按取消
-                        // 选区"；未命中维持原行为（取消选择 + 抑制点击）
-                        if (selection.isActive) {
+                        // 选区"；未命中维持原行为（取消选择 + 抑制点击）。
+                        // 图片长按菜单显示中同样进本分支（对照原版 onImageLongPress 置
+                        // isTextSelected=true 借道本链路关菜单）：无选区时手柄命中自然落空，
+                        // 走 else 取消 + 关菜单 + 抑制这一次点击（原版同样不弹阅读菜单）
+                        if (selection.isActive || selection.imageMenuShowing) {
                             // 手柄锚点窗口坐标折算同 selectionMenuAnchor（页内坐标 +
                             // 滚动折算 + 页眉 + 状态栏）
                             val handleOffsetY = relativeOffsetOf(viewModel, selection.currentPage) +

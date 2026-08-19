@@ -78,7 +78,7 @@ fun GroupSelectDialog(
                     itemKey = { it.groupId },
                     fillMaxHeight = false,
                     // 列表高度自适应内容: 分组少时对话框随内容收缩, 多时由 appDialogSize 的
-                    // heightIn(max=0.8×锚点高) 封顶且列表可滚动 (复刻原版 AutoShrinkLinearLayout 语义)
+                    // heightIn(max=0.7×锚点高) 封顶且列表可滚动 (复刻原版 AutoShrinkLinearLayout 语义)
                     wrapContentHeight = true,
                     onMove = { from, to ->
                         displayGroups = displayGroups.toMutableList().apply {

@@ -63,7 +63,7 @@ fun AppAlertDialog(
             okButton = okButton,
             cancelButton = cancelButton,
             neutralButton = neutralButton,
-            // 窗口尺寸统一收口: 宽 0.9 上限 800dp, 高自适应但不超 0.8 屏高 (对齐原版 BaseComposeDialogFragment)
+            // 窗口尺寸统一收口: 宽 0.9 上限 800dp, 高自适应但不超 0.7 屏高 (对齐原版 BaseComposeDialogFragment)
             modifier = Modifier.appDialogSize(widthFraction = widthFraction),
             content = content,
         )

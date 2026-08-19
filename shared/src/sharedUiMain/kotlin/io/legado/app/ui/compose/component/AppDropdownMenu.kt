@@ -8,6 +8,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -37,7 +38,9 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalInputModeManager
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
@@ -48,9 +51,17 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import io.legado.app.ui.compose.platform.BackLayerHandler
+import io.legado.app.ui.compose.platform.LocalOverlayTopInset
+import io.legado.app.ui.compose.platform.OverlayInsetGap
 import io.legado.app.ui.compose.theme.AppTheme
 import kotlin.math.max
 import kotlin.math.min
+
+/** 菜单与窗口上下边缘的最小间距, 复刻 material Menu.kt 的 MenuVerticalMargin。 */
+private val MenuVerticalMargin = 48.dp
+
+/** 极矮窗口下的高度兜底: 可用高度算成负值时至少留一屏可滚动区。 */
+private val MenuMinMaxHeight = 96.dp
 
 /**
  * 统一容器样式的下拉菜单：bottomBackground 填充 + 8dp 圆角，
@@ -77,9 +88,23 @@ fun AppDropdownMenu(
     if (expandedStates.currentState || expandedStates.targetState) {
         val transformOriginState = remember { mutableStateOf(TransformOrigin.Center) }
         val density = LocalDensity.current
+        // 顶部平台装饰 (桌面端 native 控制条) 占用的高度: 定位与限高都要扣掉
+        val topInset = LocalOverlayTopInset.current
+        // 窗口高度必须在 Popup 外读: Popup/对话框内的 LocalWindowInfo 给的是自身层尺寸
+        // (同一个坑见 AppDialogSizes.LocalDialogAnchorSize 的注释)
+        val windowHeightPx = LocalWindowInfo.current.containerSize.height
+        // 菜单自身限高: 不限高时 Popup 给的约束是整窗高度, 内容再长也照排,
+        // 于是 Column 的 verticalScroll 永不生效, 定位又只能把菜单顶出窗口外。
+        val maxHeight = if (windowHeightPx <= 0) {
+            null
+        } else {
+            (with(density) { windowHeightPx.toDp() } - topInset - MenuVerticalMargin * 2)
+                .coerceAtLeast(MenuMinMaxHeight)
+        }
         val popupPositionProvider = DropdownMenuPositionProvider(
             offset,
             density,
+            topInset,
         ) { parentBounds, menuBounds ->
             transformOriginState.value = calculateTransformOrigin(parentBounds, menuBounds)
         }
@@ -94,6 +119,7 @@ fun AppDropdownMenu(
             MenuContainer(
                 expandedStates = expandedStates,
                 transformOriginState = transformOriginState,
+                maxHeight = maxHeight,
                 modifier = modifier,
                 onKeyEvent = { handlePopupOnKeyEvent(it, focusManager, inputModeManager) },
                 content = content,
@@ -107,6 +133,7 @@ fun AppDropdownMenu(
 private fun MenuContainer(
     expandedStates: MutableTransitionState<Boolean>,
     transformOriginState: MutableState<TransformOrigin>,
+    maxHeight: Dp?,
     modifier: Modifier = Modifier,
     onKeyEvent: (KeyEvent) -> Boolean = { false },
     content: @Composable ColumnScope.() -> Unit,
@@ -149,6 +176,7 @@ private fun MenuContainer(
     ) {
         Column(
             modifier = Modifier
+                .then(if (maxHeight != null) Modifier.heightIn(max = maxHeight) else Modifier)
                 .padding(vertical = 8.dp)
                 .width(IntrinsicSize.Max)
                 .verticalScroll(rememberScrollState()),
@@ -163,10 +191,15 @@ private fun MenuContainer(
 /**
  * 菜单与锚点的相对定位，逐行复刻 CMP 1.9.2 material Menu.kt 的
  * DropdownMenuPositionProvider：水平先贴锚点左/右，垂直依次试锚点下方/上方/居中。
+ *
+ * 两处偏离原版, 都是为了菜单不越出可用区: 顶部下界额外避让 [topInset] (桌面端 native
+ * 控制条那条恒在 Compose 画布之上的区域), 且候选全落空时把结果钳进上下界而不是原版的
+ * bottomToAnchorTop —— 后者在菜单高于可用区时是负值, 菜单顶部直接顶出窗口外。
  */
 private data class DropdownMenuPositionProvider(
     val contentOffset: DpOffset,
     val density: Density,
+    val topInset: Dp = 0.dp,
     val onPositionCalculated: (IntRect, IntRect) -> Unit = { _, _ -> },
 ) : PopupPositionProvider {
     override fun calculatePosition(
@@ -176,7 +209,12 @@ private data class DropdownMenuPositionProvider(
         popupContentSize: IntSize,
     ): IntOffset {
         // The min margin above and below the menu, relative to the screen.
-        val verticalMargin = with(density) { 48.dp.roundToPx() }
+        val verticalMargin = with(density) { MenuVerticalMargin.roundToPx() }
+        // 顶部下界: 平台装饰高度 + 视觉留白, 不小于原版的 verticalMargin
+        val topMargin = max(
+            verticalMargin,
+            with(density) { (topInset + OverlayInsetGap).roundToPx() },
+        )
         // The content offset specified using the dropdown offset parameter.
         val contentOffsetX =
             with(density) {
@@ -213,10 +251,12 @@ private data class DropdownMenuPositionProvider(
                 ?: rightToAnchorRight
 
         // Compute vertical position.
-        val topToAnchorBottom = maxOf(anchorBounds.bottom + contentOffsetY, verticalMargin)
+        val topToAnchorBottom = maxOf(anchorBounds.bottom + contentOffsetY, topMargin)
         val bottomToAnchorTop = anchorBounds.top - popupContentSize.height + contentOffsetY
         val centerToAnchorTop = anchorBounds.top - popupContentSize.height / 2 + contentOffsetY
         val bottomToWindowBottom = windowSize.height - popupContentSize.height - verticalMargin
+        val minY = topMargin
+        val maxY = max(minY, bottomToWindowBottom)
         val y =
             sequenceOf(
                 topToAnchorBottom,
@@ -224,10 +264,8 @@ private data class DropdownMenuPositionProvider(
                 centerToAnchorTop,
                 bottomToWindowBottom,
             )
-                .firstOrNull {
-                    it >= verticalMargin &&
-                        it + popupContentSize.height <= windowSize.height - verticalMargin
-                } ?: bottomToAnchorTop
+                .firstOrNull { it >= minY && it <= maxY }
+                ?: bottomToAnchorTop.coerceIn(minY, maxY)
 
         onPositionCalculated(
             anchorBounds,

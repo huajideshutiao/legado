@@ -129,7 +129,7 @@ fun CrashLogsDialogContent(
  *
  * 替代原 [io.legado.app.ui.widget.dialog.TextDialog] (M3 AlertDialog) 调用:
  * - 尺寸对齐 [io.legado.app.base.BaseComposeDialogFragment] fullHeight 模式:
- *   宽 0.9 屏宽 (上限 800dp), 高固定 0.8 屏高 (统一对话框高度规范)
+ *   宽 0.9 屏宽 (上限 800dp), 高固定 0.7 屏高 (统一对话框高度规范)
  * - 顶部 [DialogTitleBar] (返回 + 文件名)
  * - 正文用 [SelectableText] (readOnly BasicTextField): 长按拖选/拖手柄越界自动滚动,
  *   对齐 master 分支原生 TextView 手感 (SelectionContainer 无自动滚动)
@@ -169,7 +169,7 @@ private fun CrashLogViewDialog(
                 } else {
                     content
                 }
-                // 正文区: weight 占满 0.8 屏高下的剩余空间, 超长内部滚动 (视口恒定, 按钮行恒可见)
+                // 正文区: weight 占满 0.7 屏高下的剩余空间, 超长内部滚动 (视口恒定, 按钮行恒可见)
                 SelectableText(
                     text = displayText,
                     color = colors.secondaryText,

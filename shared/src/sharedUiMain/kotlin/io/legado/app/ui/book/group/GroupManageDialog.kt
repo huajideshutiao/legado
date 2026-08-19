@@ -67,7 +67,7 @@ fun GroupManageDialog(
         properties = AppDialogSizes.properties(),
     ) {
         // 不能套 fillMaxSize: 撑满窗口会让整窗都算"框内", 点外部永远关不掉; 居中由 RootMeasurePolicy 负责。
-        // 全高型: 高度锁定 0.8 屏高
+        // 全高型: 高度锁定 0.7 屏高
         Surface(
             modifier = Modifier.appDialogSize(fullHeight = true),
             shape = DesignTokens.shapeDefault,

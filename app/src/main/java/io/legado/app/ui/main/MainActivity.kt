@@ -402,6 +402,10 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
                 SelectItem(androidAppString("select_folder"), "selectFolder")
             )
         )
+        // 非 app 主动关闭 (菜单项点完 mode.finish / 系统销毁 ActionMode) 时复位页内标志,
+        // 否则 imageMenuShowing 残留会吞掉下一次点击 (对照原版 popupAction.onDismiss →
+        // readView.cancelSelect)。app 主动 dismiss 走 dismissByApp 不触发本回调
+        imageActionMenu.onDismiss = { ReadBookEvents.postSelectionCancel() }
         imageActionMenu.onActionClick = { action ->
             when (action) {
                 "show" -> capabilities.showImagePreview(src, -1)

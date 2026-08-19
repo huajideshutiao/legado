@@ -1270,7 +1270,7 @@ private fun DirectLinkUploadConfigOverlayDialogContent(
     }
 }
 
-// 通用 Sheet: AppBottomSheetDialog 承载 (项目统一底部弹层: 0.8 锚点高, 顶栏等
+// 通用 Sheet: AppBottomSheetDialog 承载 (项目统一底部弹层: 0.7 锚点高, 顶栏等
 // 无可滚动区可下拉拖拽关闭), 关闭后移除该 Overlay。
 // 当前仅 "web_view" (startBrowser asBottomSheet=true 半屏模式): 浏览器本体与全屏路由
 // 共用 WebViewScreen (见 WebViewSheetContent), 高度/圆角/拖拽由 AppBottomSheetDialog 承载。

@@ -79,6 +79,14 @@ class PageSelectionState {
     var isActive by mutableStateOf(false)
         private set
 
+    /**
+     * 图片长按菜单是否显示中（对照旧 `ReadView.isImageMenuShowing`）。
+     *
+     * 图片长按不产生选区，但平台浮动菜单同样要"点别处即关"，故与选区共用同一条取消链路：
+     * 手势层按下时按 `isActive || imageMenuShowing` 判定，[cancel] 一并清除。
+     */
+    var imageMenuShowing by mutableStateOf(false)
+
     /** 选择起点（词级选中时为词首；拖拽后为当前区间的实际起点） */
     var start by mutableStateOf(PageSelPos.EMPTY)
         private set
@@ -365,8 +373,10 @@ class PageSelectionState {
         tick++
     }
 
-    /** 取消选择并清空当前页高亮（对照旧 cancelSelect）。翻页/点按/空白点击时调用。 */
+    /** 取消选择并清空当前页高亮（对照旧 cancelSelect）。翻页/点按/空白点击时调用。
+     *  图片长按菜单标志一并清除（对照旧 onCancelSelect → isImageMenuShowing = false）。 */
     fun cancel() {
+        imageMenuShowing = false
         if (!isActive && pageRef == null) return
         clearColumns()
         pageRef = null

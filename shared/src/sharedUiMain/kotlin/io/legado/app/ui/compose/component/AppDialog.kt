@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -52,10 +53,13 @@ import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.ui.compose.platform.BackLayerHandler
 import io.legado.app.ui.compose.platform.PlatformDialogDim
 import io.legado.app.ui.compose.platform.platformStatusBarPadding
+import io.legado.app.ui.compose.platform.rememberVisibleStatusBarHeightPx
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.toComposeEasing
+import io.legado.app.utils.ScreenInfoProviders
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 /**
  * 是否位于对话框窗口内 (由 [AppDialog] / [AppBottomSheetDialog] 在内容根部提供)。
@@ -63,7 +67,7 @@ import kotlinx.coroutines.launch
  * 对话框是独立窗口, 系统栏避让由窗口自身承担:
  * - `decorFitsSystemWindows = true` (本应用对话框默认) 时窗口内容区已避开状态栏;
  * - Android 15+ (targetSdk 35+ 强制 edge-to-edge) 时窗口虽为全屏, 但本应用弹层内容
- *   为 0.8~0.92 锚点高、底部贴齐或居中, 顶部均不触及状态栏区域。
+ *   为 0.7~0.92 锚点高、底部贴齐或居中, 顶部均不触及状态栏区域。
  *
  * 因此对话框内的顶栏组件 (如 [AppTitleBar]) 不应再叠加状态栏 padding, 否则出现
  * 双重避让 → 弹窗顶部多出一层状态栏高的空白带。路由页 (非对话框) 默认 false,
@@ -230,6 +234,13 @@ fun AppDialog(
  * 或向下 fling 超 800dp/s → 走现有滑出动画关闭 (从当前位移续播, 无跳变);
  * 否则弹簧动画回弹复位。E-Ink 分支无动画无手势, 保持禁用。
  *
+ * 除下拉关闭外, 面板还支持上推展开到视觉全屏 (对照 BottomSheetBehavior 双锚点语义):
+ * 顶栏/空白区向上拖 → 面板高度实时放大 (底部贴窗底), 上限 = 锚点全高 - 状态栏高
+ * (视觉全屏, 不压系统栏; 桌面 = 主窗口全高); 上推过半或快速上推 → 弹簧吸附全屏,
+ * 否则回弹默认高度。全屏态下拉先缩回默认高度、再下拉才关闭 (先缩回再关闭)。
+ * 展开的阻力系数与下拉相同 (×0.6)。内部列表滚动到顶/底时, 剩余位移经 nestedScroll
+ * 路径同样参与展开/缩回。
+ *
  * 拖拽只在"无可滚动内容消费位移"的区域生效 (顶栏/空白区): 内部 Compose 滚动组件
  * (LazyColumn 等) 会自己消费竖直手势, 面板不跟随。平台 WebView 这类 interop 视图不参与
  * Compose 手势竞争, 需内容侧用 [sheetDragExclusion] 登记为拖拽禁区 (见 [SheetDragExclusion])。
@@ -287,9 +298,14 @@ fun AppBottomSheetDialog(
         // 桌面/iOS/鸿蒙 CMP Dialog 自带 0.6 scrim 且 DialogProperties 无 scrimColor 参数
         // (common expect 仅 3 参数), 无法关闭, 属平台限制; Android 端不再补 FLAG_DIM_BEHIND。
         val progress = remember { Animatable(0f) }
-        // 下拉拖拽位移 (px): 手势期间跟随手指; 触发关闭时保持该位移, 退出动画
-        // 从当前位置继续下滑 (translationY 相加, 无跳变); 未达阈值时弹簧回弹复位
+        // 拖拽位移 (px): 双向 —— 负 = 上推 (面板高度放大, 见 heightPx), 正 = 下拉
+        // (面板整体下移, translationY 相加; 触发关闭时退出动画从当前位置继续下滑,
+        // 无跳变); 松手后吸附默认锚点/视觉全屏或弹簧回弹复位
         var dragOffset by remember { mutableStateOf(0f) }
+        // 默认锚点高 (px): 面板未展开时的实测高度 (内容 wrap 封顶 0.7 锚点高的自然高),
+        // 由 onSizeChanged 在 dragOffset == 0 时同步; 展开拖拽期间保持初值作"缩回目标",
+        // 回弹到默认锚点后恢复跟随 (桌面窗口 resize 时默认锚点自动更新)
+        var defaultAnchorPx by remember { mutableStateOf(0) }
         // 面板实际高度 (onSizeChanged 测量), 用于 1/4 面板高的关闭位移阈值
         var sheetHeightPx by remember { mutableStateOf(0) }
         // 回弹复位动画 job: 新拖拽开始时取消, 避免回弹与新位移互相覆盖
@@ -305,22 +321,44 @@ fun AppBottomSheetDialog(
         // 关闭位移阈值 max(120dp, 面板高/4); 快速下拉 fling 速度阈值 800dp/s
         val minDismissDistancePx = with(density) { 120.dp.toPx() }
         val flingDismissVelocityPx = with(density) { 800.dp.toPx() }
+        // 上推展开 fling 速度阈值: 与下拉关闭同速反向 (快速上推直接吸附全屏)
+        val flingExpandVelocityPx = with(density) { 800.dp.toPx() }
+        // 视觉全屏高 (px) = 锚点全高 - 状态栏高: 移动端展开后顶栏停在状态栏之下
+        // (视觉全屏, 不压系统栏); 桌面无状态栏 = 主窗口全高。手势闭包经
+        // [fullAnchorState] 读最新值 (桌面窗口 resize / 状态栏显隐时跟随)
+        val anchorHeightPx = LocalDialogAnchorSize.current?.height
+            ?: ScreenInfoProviders.get().screenHeightPx
+        val fullAnchorPx = (anchorHeightPx - rememberVisibleStatusBarHeightPx()).coerceAtLeast(0)
+        val fullAnchorState = rememberUpdatedState(fullAnchorPx)
+        // 回弹/吸附动画: 从当前位移续播到目标锚点 (新拖拽开始时由 drag 路径取消 bounceJob)
+        val animateDragTo: (Float) -> Unit = { target ->
+            bounceJob?.cancel()
+            bounceJob = scope.launch {
+                animate(
+                    initialValue = dragOffset,
+                    targetValue = target,
+                    animationSpec = spring(),
+                ) { value, _ -> dragOffset = value }
+            }
+        }
         // 松手/停止滚动后的归位判定 (pointer 拖拽路径与 nestedScroll 路径共用):
-        // 位移达阈值或向下 fling 超速 → 走现有滑出动画关闭; 否则弹簧动画回弹复位
+        // 拖拽位移现为双向 —— 负 = 上推 (面板高度放大), 正 = 下拉 (关闭方向)。
+        // 锚点吸附: 上推过半/快速上推 → 吸附视觉全屏; 下拉达阈值/快速下拉 (且已
+        // 越过默认锚点) → 走现有滑出动画关闭; 其余 → 弹簧回弹默认锚点。
+        // 全屏态下拉回弹到 0 = 缩回默认高度, 再下拉才关 (先缩回再关闭)
         val settleDrag: (Float) -> Unit = { velocityY ->
             if (!dismissing) {
                 val dismissDistancePx = maxOf(minDismissDistancePx, sheetHeightPx * 0.25f)
-                if (dragOffset >= dismissDistancePx || velocityY >= flingDismissVelocityPx) {
-                    dismissing = true
-                } else if (dragOffset > 0f) {
-                    bounceJob?.cancel()
-                    bounceJob = scope.launch {
-                        animate(
-                            initialValue = dragOffset,
-                            targetValue = 0f,
-                            animationSpec = spring(),
-                        ) { value, _ -> dragOffset = value }
-                    }
+                // 展开量 (px) = 视觉全屏高 - 默认锚点高
+                val expandDistancePx = (fullAnchorState.value - defaultAnchorPx).toFloat()
+                when {
+                    dragOffset > 0f &&
+                        (dragOffset >= dismissDistancePx || velocityY >= flingDismissVelocityPx) ->
+                        dismissing = true
+
+                    velocityY <= -flingExpandVelocityPx -> animateDragTo(-expandDistancePx)
+                    dragOffset <= -expandDistancePx / 2f -> animateDragTo(-expandDistancePx)
+                    dragOffset != 0f -> animateDragTo(0f)
                 }
             }
         }
@@ -346,7 +384,11 @@ fun AppBottomSheetDialog(
                     // 新的拖拽开始: 取消回弹动画, 从当前位移继续
                     bounceJob?.cancel()
                     bounceJob = null
-                    dragOffset = (dragOffset + available.y * DragResistance).coerceAtLeast(0f)
+                    // 双向夹紧: 上推 (available.y 负 = 列表滚到底继续上滑) 展开到视觉
+                    // 全屏为止; 下拉 (available.y 正 = 列表滚到顶继续下滑) 不设下限,
+                    // 由 settleDrag 判定关闭/回弹
+                    dragOffset = (dragOffset + available.y * DragResistance)
+                        .coerceAtLeast((defaultAnchorPx - fullAnchorState.value).toFloat())
                     return Offset.Zero
                 }
 
@@ -395,7 +437,7 @@ fun AppBottomSheetDialog(
         }
         val p = progress.value
         val dragOffsetPx = dragOffset
-        // 滑入/滑出位移取"0.8 锚点高与面板实测高的较大值": 常规弹层实测高 ≤ 0.8 锚点高,
+        // 滑入/滑出位移取"0.7 锚点高与面板实测高的较大值": 常规弹层实测高 ≤ 0.7 锚点高,
         // 取值不变; 全屏态面板更高, 靠实测高才能整块滑出窗口而不残留顶部一截
         val anchorSlidePx = with(LocalDensity.current) { AppDialogSizes.fullHeight().toPx() }
         val slideHeightPx = maxOf(sheetHeightPx.toFloat(), anchorSlidePx)
@@ -404,13 +446,24 @@ fun AppBottomSheetDialog(
             onDismissRequest = { dismissing = true },
             maxHeight = maxHeight,
             fullScreen = fullScreen,
+            // 拖拽中面板高度改由状态驱动: 上推变高 (dragOffset 负), 下拉保持默认
+            // 锚点高并整体下移 (dragOffset 正); 回到默认锚点 (dragOffset == 0) 恢复
+            // wrap 布局, 高度连续无跳变
+            heightPx = if (dragOffset != 0f) {
+                (defaultAnchorPx - dragOffset.coerceAtMost(0f)).roundToInt()
+            } else null,
             modifier = Modifier
-                .onSizeChanged { sheetHeightPx = it.height }
+                .onSizeChanged {
+                    sheetHeightPx = it.height
+                    // 未展开时同步默认锚点 (初始 = 内容自然高, 桌面窗口 resize 跟随)
+                    if (dragOffset == 0f) defaultAnchorPx = it.height
+                }
                 .nestedScroll(nestedScrollConnection)
                 .graphicsLayer {
-                    // 进入/退出动画位移与拖拽位移相加: 拖拽中触发关闭时,
-                    // 退出动画从当前拖拽位继续下滑, 无跳变
-                    translationY = slideHeightPx * (1f - p) + dragOffsetPx
+                    // 进入/退出动画位移 + 下拉拖拽位移: 上推部分由面板高度放大表达,
+                    // 不参与平移 (面板底部始终贴窗底); 拖拽中触发关闭时退出动画从
+                    // 当前拖拽位继续下滑, 无跳变
+                    translationY = slideHeightPx * (1f - p) + dragOffsetPx.coerceAtLeast(0f)
                     alpha = if (dialogSpec.enterFadeIn) p else 1f
                 }
                 .onGloballyPositioned { sheetCoordinates = it }
@@ -450,8 +503,10 @@ fun AppBottomSheetDialog(
                             } ?: return@awaitEachGesture
                         bounceJob?.cancel()
                         bounceJob = null
-                        // 首段位移含越过 slop 的 overshoot, 与后续 delta 连续
-                        dragOffset = (dragOffset + overSlop * DragResistance).coerceAtLeast(0f)
+                        // 首段位移含越过 slop 的 overshoot, 与后续 delta 连续;
+                        // 下限夹紧在视觉全屏展开量 (上推越位不越界)
+                        dragOffset = (dragOffset + overSlop * DragResistance)
+                            .coerceAtLeast((defaultAnchorPx - fullAnchorState.value).toFloat())
                         val velocityTracker = VelocityTracker()
                         velocityTracker.addPosition(down.uptimeMillis, down.position)
                         velocityTracker.addPosition(dragChange.uptimeMillis, dragChange.position)
@@ -459,8 +514,11 @@ fun AppBottomSheetDialog(
                             val deltaY = change.positionChange().y
                             change.consume()
                             velocityTracker.addPosition(change.uptimeMillis, change.position)
-                            // 手指向下为正, 乘阻力; 向上拖回弹 (夹紧 ≥ 0, 不越位)
-                            dragOffset = (dragOffset + deltaY * DragResistance).coerceAtLeast(0f)
+                            // 双向: 向下 (deltaY 正) → 位移正向累积 (下拉/关闭方向);
+                            // 向上 (deltaY 负) → 位移负向累积 → 面板高度放大,
+                            // 到视觉全屏后夹紧不越位
+                            dragOffset = (dragOffset + deltaY * DragResistance)
+                                .coerceAtLeast((defaultAnchorPx - fullAnchorState.value).toFloat())
                         }
                         settleDrag(velocityTracker.calculateVelocity().y)
                     }
@@ -482,9 +540,9 @@ fun AppBottomSheetDialog(
  * 需作为 Dialog 内容的根, 内容 fillMaxSize 让弹层覆盖整个容器。
  *
  * [fullScreen] 时 sheet 撑满窗口 (仍贴底对齐, 只是高度到顶), 不再受 [maxHeight] /
- * 0.8 锚点高约束。
+ * 0.7 锚点高约束。
  *
- * 全屏时补 [platformStatusBarPadding]: 常规弹层高度只有 0.8 锚点高、顶部到不了状态栏, 所以
+ * 全屏时补 [platformStatusBarPadding]: 常规弹层高度只有 0.7 锚点高、顶部到不了状态栏, 所以
  * 弹层内的 [AppTitleBar] 一律跳过状态栏 padding (见 [LocalDialogWindow]); 全屏后顶部会真的
  * 贴到窗口顶, 这层 padding 把前提补回来。它只消费"尚未被窗口消费"的 inset ——
  * decorFitsSystemWindows=true 的窗口已自行避让时为 0, 不会双重避让; 只有 Android 15+
@@ -496,6 +554,8 @@ private fun BottomSheetScaffold(
     modifier: Modifier = Modifier,
     maxHeight: Dp? = null,
     fullScreen: Boolean = false,
+    /** 非空 = 拖拽展开态的面板固定高度 (px), 由宿主拖拽位移状态驱动 */
+    heightPx: Int? = null,
     content: @Composable () -> Unit,
 ) {
     Box(Modifier.fillMaxSize()) {
@@ -513,8 +573,13 @@ private fun BottomSheetScaffold(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .then(
-                    if (fullScreen) Modifier.fillMaxHeight().platformStatusBarPadding()
-                    else Modifier.heightIn(max = maxHeight ?: AppDialogSizes.fullHeight())
+                    when {
+                        fullScreen -> Modifier.fillMaxHeight().platformStatusBarPadding()
+                        // 拖拽展开态: 固定高度由位移状态驱动 (wrap 内容贴底留白,
+                        // fillMaxSize 内容自然拉伸)
+                        heightPx != null -> Modifier.height(with(LocalDensity.current) { heightPx.toDp() })
+                        else -> Modifier.heightIn(max = maxHeight ?: AppDialogSizes.fullHeight())
+                    }
                 ),
             contentAlignment = Alignment.BottomCenter,
         ) { content() }
@@ -522,6 +587,7 @@ private fun BottomSheetScaffold(
 }
 
 /**
- * 下拉关闭手势: 手指位移 → 面板位移的阻力系数 (0.5~0.7 区间, 更接近原生 BottomSheet 手感)。
+ * 面板拖拽手势: 手指位移 → 面板位移/高度的阻力系数 (0.5~0.7 区间, 更接近原生
+ * BottomSheet 手感; 下拉关闭与上推展开共用)。
  */
 private const val DragResistance = 0.6f

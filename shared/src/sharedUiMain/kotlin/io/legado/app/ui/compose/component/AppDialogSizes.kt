@@ -21,14 +21,14 @@ import io.legado.app.utils.ScreenInfoProviders
  *
  * 不能用对话框内的 [androidx.compose.ui.platform.LocalWindowInfo]:
  * 独立窗口/独立视图的对话框宿主 (Android/iOS/鸿蒙) 里它返回的是**对话框自身窗口**的
- * 尺寸, 与内容尺寸互为反馈 (内容高 = f(0.8×窗高), 窗高 = 内容高), 帧间持续漂移,
+ * 尺寸, 与内容尺寸互为反馈 (内容高 = f(0.7×窗高), 窗高 = 内容高), 帧间持续漂移,
  * 表现为滚动时对话框高度不断变高。
  */
 val LocalDialogAnchorSize = compositionLocalOf<IntSize?> { null }
 
 /**
  * 对话框尺寸, 对齐 app 端 BaseComposeDialogFragment.onStart 的窗口尺寸规则:
- * 宽 = 0.9 倍且上限 800dp, 全高模式高 = 0.8 倍。
+ * 宽 = 0.9 倍且上限 800dp, 全高模式高 = 0.7 倍。
  *
  * 基准取 [LocalDialogAnchorSize] (桌面 = 主窗口, 移动端 = 屏幕)。
  * 不 remember: 两次乘法 + coerce 极轻, 每次重组重算才能跟随窗口 resize。
@@ -43,16 +43,21 @@ object AppDialogSizes {
         return with(LocalDensity.current) { (wPx * 0.9f).toDp().coerceAtMost(800.dp) }
     }
 
-    /** 全高模式高度: 锚点高 * 0.8。 */
+    /**
+     * 全高模式高度: 锚点高 * 0.7。
+     *
+     * 有意偏离原版 0.8 屏高, 全局统一收窄: 默认弹窗更矮、页面层次更分明,
+     * 底部弹窗上推展开到视觉全屏的跨度更大 (0.7 → 1.0)。
+     */
     @Composable
     fun fullHeight(): Dp {
         val anchor = LocalDialogAnchorSize.current
         val hPx = anchor?.height ?: ScreenInfoProviders.get().screenHeightPx
-        return with(LocalDensity.current) { (hPx * 0.8f).toDp() }
+        return with(LocalDensity.current) { (hPx * 0.7f).toDp() }
     }
 
     /**
-     * M2 AlertDialog 正文滚动区高度上限: 全高 0.8 锚点高 - 标题/按钮/间距 (约 180dp),
+     * M2 AlertDialog 正文滚动区高度上限: 全高 0.7 锚点高 - 标题/按钮/间距 (约 180dp),
      * 保证按钮行不被裁切; 下限 120dp 防极矮窗口下 heightIn 取负。
      */
     @Composable
@@ -84,7 +89,7 @@ object AppDialogSizes {
 }
 
 /**
- * 对话框统一尺寸: 宽 0.9 屏宽 (上限 800dp), 高按 fullHeight 固定 0.8 屏高或自适应封顶 0.8。
+ * 对话框统一尺寸: 宽 0.9 屏宽 (上限 800dp), 高按 fullHeight 固定 0.7 屏高或自适应封顶 0.7。
  * 需与 [AppDialogSizes.properties] 搭配使用, 否则被平台默认宽度覆盖。
  */
 @Composable

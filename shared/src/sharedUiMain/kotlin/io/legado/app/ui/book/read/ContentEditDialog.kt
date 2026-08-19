@@ -202,7 +202,7 @@ fun ContentEditDialog(
         onDismiss()
     }
 
-    // 原版 ContentEditDialog: BaseDialogFragment + isFullHeight=true (窗口 0.9 宽 × 0.8 屏高居中,
+    // 原版 ContentEditDialog: BaseDialogFragment + isFullHeight=true (窗口 0.9 宽 × 0.7 屏高居中,
     // filletBackground 8dp 圆角, 带 dim); dialog_content_edit.xml 根 match_parent 全高, 标题栏 + 正文 weight 撑满;
     // 无底部按钮栏, 外部取消/返回仅关闭不保存 (2026-08 变更: 顶部保存按钮负责落库)
     AppDialog(

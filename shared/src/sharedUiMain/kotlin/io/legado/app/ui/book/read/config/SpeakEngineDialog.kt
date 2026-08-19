@@ -129,7 +129,7 @@ fun SpeakEngineDialog(
         Surface(
             shape = DesignTokens.dialogShape,
             color = colors.fillet,
-            // 原版 isFullHeight = true, 高度固定 0.8 屏高
+            // 原版 isFullHeight = true, 高度固定 0.7 屏高
             modifier = Modifier.appDialogSize(fullHeight = true).padding(16.dp),
         ) {
             Column(Modifier.fillMaxSize()) {

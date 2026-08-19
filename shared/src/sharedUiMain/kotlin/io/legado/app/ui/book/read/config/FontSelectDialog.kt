@@ -131,7 +131,7 @@ fun FontSelectDialog(
 
             extraTopContent?.invoke()
 
-            // 字体列表限高 0.8 屏高 (原版 isFullHeight = true, 长列表效果等同全高)
+            // 字体列表限高 0.7 屏高 (原版 isFullHeight = true, 长列表效果等同全高)
             LazyColumn(
                 Modifier.fillMaxWidth().heightIn(max = AppDialogSizes.fullHeight()),
             ) {
