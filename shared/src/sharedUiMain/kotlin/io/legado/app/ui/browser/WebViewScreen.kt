@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.Text
-import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -38,6 +37,7 @@ import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.check_host_cookie
 import legado.shared.generated.resources.jump_to_another_app
+import legado.shared.generated.resources.login_source
 import legado.shared.generated.resources.ok
 import org.jetbrains.compose.resources.stringResource
 import kotlin.coroutines.coroutineContext
@@ -85,8 +85,16 @@ internal fun WebViewScreen(
     var loadState by remember { mutableStateOf<WebViewLoadState?>(null) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var cloudflareChallenge by remember { mutableStateOf(false) }
+    // 传入标题 (原 WebViewActivity 的 intent title); 登录页原版传
+    // getString(login_source, 源名) + sourceName 作副标题, 路由参数在 commonMain 无本地化
+    // 能力, 故标题在此按 isLogin 补齐
+    val specTitle = if (spec.isLogin && spec.title.isBlank() && spec.sourceName.isNotBlank()) {
+        stringResource(Res.string.login_source, spec.sourceName)
+    } else {
+        spec.title
+    }
     // 页面标题 (原 WebViewActivity: intent title → onPageFinished 更新为网页 title)
-    var pageTitle by remember(spec) { mutableStateOf(spec.title) }
+    var pageTitle by remember(specTitle) { mutableStateOf(specTitle) }
     // 页面当前 URL 状态 (原 menu_copy_url / menu_open_in_browser 取 webView.url ?: baseUrl;
     // 平台在每次导航完成时经 onUrlChanged 更新, 页面内跳转后菜单取最新链接)
     var pageUrl by remember(spec) { mutableStateOf<String?>(null) }
@@ -192,7 +200,7 @@ internal fun WebViewScreen(
             // 原版: 网页 title 非空且既不等于 url 也不等于 webView.url 时才更新标题栏,
             // 否则回退到传入标题 (不保留上一页的标题)
             pageTitle = acceptedPageTitle(title, callbacks.host?.getUrl() ?: pageUrl)
-                ?: spec.title
+                ?: specTitle
         }
         callbacks.onProgressChanged = { progress ->
             loadProgress = if (progress >= 100) null else progress
@@ -267,7 +275,7 @@ internal fun WebViewScreen(
                 extraActions = {
                     // 完成按钮 (对照原 menu_ok: 登录模式确认 cookie / 验证完成后手动回传并关闭)
                     if ((spec.saveResult || spec.isLogin) && loadState != null) {
-                        TextButton(onClick = {
+                        WebViewOkAction {
                             when {
                                 spec.isLogin -> {
                                     // 原 menu_ok isLogin 分支: toast + reload, 下次加载完成即 finish
@@ -281,8 +289,6 @@ internal fun WebViewScreen(
                                 spec.saveResult -> saveVerificationResult()
                                 else -> onClose()
                             }
-                        }) {
-                            Text(stringResource(Res.string.ok))
                         }
                     }
                 },

@@ -38,6 +38,7 @@ import io.legado.app.ui.root.FileFilter
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.utils.stackTraceStr
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
@@ -223,6 +224,8 @@ fun BgTextConfigContent(
                     )
                     Toasters.get().toast("导入成功")
                 }.onFailure {
+                    // 取消不当作失败上报 (对照原版 execute{}.onError{} 的 isActive 守卫)
+                    if (it is CancellationException) throw it
                     Toasters.get().toast("导入失败:${it.message}")
                 }
             }
@@ -250,6 +253,8 @@ fun BgTextConfigContent(
                 }.onSuccess {
                     Toasters.get().toast("导出成功")
                 }.onFailure {
+                    // 取消不当作失败上报 (对照原版 execute{}.onError{} 的 isActive 守卫)
+                    if (it is CancellationException) throw it
                     Toasters.get().toast("导出失败:${it.message}")
                 }
             }
@@ -278,6 +283,8 @@ fun BgTextConfigContent(
                     readBookConfig.save()
                     ReadBookEvents.postConfig(ReadConfigChange.BG)
                 }.onFailure {
+                    // 取消不当作失败上报 (对照原版 execute{}.onError{} 的 isActive 守卫)
+                    if (it is CancellationException) throw it
                     Toasters.get().toast(it.message ?: "设置背景图失败")
                 }
             }
@@ -344,6 +351,8 @@ fun BgTextConfigContent(
                         )
                         Toasters.get().toast("导入成功")
                     }.onFailure {
+                        // 取消不当作失败上报 (对照原版 execute{}.onError{} 的 isActive 守卫)
+                        if (it is CancellationException) throw it
                         Toasters.get().toast(it.stackTraceStr)
                     }
                 }

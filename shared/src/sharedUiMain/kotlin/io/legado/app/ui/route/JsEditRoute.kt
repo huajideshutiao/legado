@@ -17,6 +17,7 @@ import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -64,6 +65,8 @@ fun JsEditRoute(
                     }
                     screenModel.markSaved()
                     Toasters.get().toast("保存成功")
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Throwable) {
                     AppLog.put("保存失败\n${e.message}", e, true)
                 }

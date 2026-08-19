@@ -145,7 +145,8 @@ fun ExploreRoute(
             }
 
             override fun onLogin(source: BookSourcePart) {
-                // 统一登录入口: URL 登录桌面端直开登录窗口, 不弹对话框 (2026-08-07)
+                // 统一登录入口 (对照原 ExploreAdapter: getBookSource()?.showLoginDialog()):
+                // 源对象由 showSourceLogin 内部按 url 查库, URL 登录直开全屏 WebView
                 showSourceLogin(source.bookSourceUrl)
             }
 

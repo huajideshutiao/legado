@@ -14,8 +14,8 @@ import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.help.config.HelpVersion
 import io.legado.app.help.config.LocalConfigKeys
+import io.legado.app.help.config.LocalConfigProviders
 import io.legado.app.help.config.LocalConfigShared
-import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.showSourceLogin
 import io.legado.app.help.storage.BackupFileOps
@@ -150,14 +150,15 @@ fun BookSourceManageRoute(
 
     // 首次打开帮助引导 (对照 app 端 onActivityCreated: !LocalConfig.bookSourcesHelpVersionIsLast)
     LaunchedEffect(Unit) {
-        val prefs = PreferenceProviders.get()
+        // 版本标记存 "local" prefs (LocalConfigStore), 与原版 LocalConfig 同存储
+        val local = LocalConfigProviders.get()
         val isLastHelp = LocalConfigShared.isLastVersion(
             lastVersion = HelpVersion.bookSourcesHelp,
             versionKey = LocalConfigKeys.bookSourceHelpVersion,
             firstOpenKey = LocalConfigKeys.firstOpenBookSources,
-            getInt = prefs::getInt,
-            getBoolean = prefs::getBoolean,
-            putInt = prefs::putInt,
+            getInt = local::getInt,
+            getBoolean = local::getBoolean,
+            putInt = local::putInt,
         )
         if (!isLastHelp) showHelp = true
     }
@@ -257,7 +258,8 @@ fun BookSourceManageRoute(
             onSearchBook = { navigator.push(AppRoute.Search()) },
             onDebug = { part -> navigator.push(AppRoute.BookSourceDebug(part.bookSourceUrl)) },
             onLogin = { part ->
-                // 统一登录入口: URL 登录桌面端直开登录窗口, 不弹对话框 (2026-08-07)
+                // 统一登录入口 (对照原 BookSourceAdapter: getBookSource()?.showLoginDialog()):
+                // 源对象由 showSourceLogin 内部按 url 查库, URL 登录直开全屏 WebView
                 showSourceLogin(part.bookSourceUrl)
             },
             onDel = { delTarget = it },

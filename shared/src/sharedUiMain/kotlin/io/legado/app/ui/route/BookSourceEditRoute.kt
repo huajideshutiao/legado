@@ -15,8 +15,8 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.help.IntentData
 import io.legado.app.help.config.HelpVersion
 import io.legado.app.help.config.LocalConfigKeys
+import io.legado.app.help.config.LocalConfigProviders
 import io.legado.app.help.config.LocalConfigShared
-import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.SourceConfig
 import io.legado.app.help.http.CookieStoreProviders
 import io.legado.app.help.showSourceLogin
@@ -136,13 +136,14 @@ fun BookSourceEditRoute(
 
     // 首次打开规则帮助引导 (对照 app 端 onPostCreate: !LocalConfig.ruleHelpVersionIsLast)
     LaunchedEffect(Unit) {
-        val prefs = PreferenceProviders.get()
+        // 版本标记存 "local" prefs (LocalConfigStore), 与原版 LocalConfig 同存储
+        val local = LocalConfigProviders.get()
         val isLastHelp = LocalConfigShared.isLastVersion(
             lastVersion = HelpVersion.ruleHelp,
             versionKey = LocalConfigKeys.ruleHelpVersion,
-            getInt = prefs::getInt,
-            getBoolean = prefs::getBoolean,
-            putInt = prefs::putInt,
+            getInt = local::getInt,
+            getBoolean = local::getBoolean,
+            putInt = local::putInt,
         )
         if (!isLastHelp) helpFileName = "ruleHelp"
     }

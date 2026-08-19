@@ -44,6 +44,7 @@ import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.asBook
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.FlowBus
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -290,6 +291,8 @@ fun TocContent(
                             BackupFileOps.writeText(path, Json.encodeToString(bookmarks))
                         }
                         Toasters.get().toast("导出成功")
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Throwable) {
                         AppLog.put("导出失败\n${e.message}", e, true)
                     }
@@ -318,6 +321,8 @@ fun TocContent(
                             BackupFileOps.writeText(path, sb.toString())
                         }
                         Toasters.get().toast("导出成功")
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Throwable) {
                         AppLog.put("导出失败\n${e.message}", e, true)
                     }

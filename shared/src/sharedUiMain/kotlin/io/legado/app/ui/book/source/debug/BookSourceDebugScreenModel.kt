@@ -12,6 +12,7 @@ import io.legado.app.help.source.exploreKinds
 import io.legado.app.model.Debug
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.screenModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -152,6 +153,8 @@ class BookSourceDebugScreenModel(
             try {
                 Debug.callback = this@BookSourceDebugScreenModel
                 Debug.startDebug(this, bookSource!!, key)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 error?.invoke()
             }

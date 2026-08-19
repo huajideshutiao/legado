@@ -28,6 +28,7 @@ import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.read.config.FontItem
 import io.legado.app.ui.book.source.manage.BookSourceViewModelShared
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.config.MODE_EDIT_CONFIG
 import io.legado.app.ui.config.MODE_EDIT_PREFS
 import io.legado.app.ui.config.MODE_NEW_CONFIG
@@ -168,7 +169,12 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
      * 引擎不可用/开窗失败降级系统浏览器并提示。无论成败都返回 true —— 桌面端
      * 登录不弹对话框外壳 (表单登录仍走 shared Overlay, 不经过这里)。
      */
-    override fun openLoginWebView(url: String, sourceKey: String): Boolean {
+    override fun openLoginWebView(
+        url: String,
+        sourceKey: String,
+        sourceName: String,
+        sourceType: Int,
+    ): Boolean {
         val engine = DesktopWebViewEngines.get()
         if (engine == null) {
             browseUrl(url)
@@ -180,12 +186,17 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
         val handle = engine.openWindow(
             WebViewWindowRequest(
                 url = url,
-                title = "登录",
+                // 对照原版登录页标题 getString(login_source, 源名)
+                title = if (sourceName.isBlank()) {
+                    "登录"
+                } else {
+                    runCatching { jvmGetString("login_source", sourceName) }
+                        .getOrElse { "登录 $sourceName" }
+                },
                 isLogin = true,
                 cookieTag = sourceKey.ifBlank { null },
-                // URL 登录只有 sourceKey: sourceType 默认 book (对照 AppRoute.WebView 默认值),
-                // 删除源确认弹窗源名回退 sourceKey
-                sourceType = SourceType.book,
+                sourceType = sourceType,
+                sourceName = sourceName,
             )
         )
         if (handle == null) {

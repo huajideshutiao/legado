@@ -26,6 +26,7 @@ import legado.shared.generated.resources.delete_source
 import legado.shared.generated.resources.disable_source
 import legado.shared.generated.resources.draw
 import legado.shared.generated.resources.full_screen
+import legado.shared.generated.resources.ic_check
 import legado.shared.generated.resources.ic_refresh_black_24dp
 import legado.shared.generated.resources.loading
 import legado.shared.generated.resources.ok
@@ -117,6 +118,21 @@ internal fun WebViewTitleBar(
             }
         },
     )
+}
+
+/**
+ * 完成动作 (原 web_view.xml menu_ok: ic_check 图标 + showAsAction="always",
+ * 登录模式确认 cookie / 验证完成后回传, 与刷新同为顶栏图标按钮而非文字按钮)。
+ */
+@Composable
+internal fun WebViewOkAction(onClick: () -> Unit) {
+    IconButton(onClick = onClick) {
+        Icon(
+            painter = painterResource(Res.drawable.ic_check),
+            contentDescription = stringResource(Res.string.ok),
+            tint = AppTheme.colors.primaryText,
+        )
+    }
 }
 
 /**

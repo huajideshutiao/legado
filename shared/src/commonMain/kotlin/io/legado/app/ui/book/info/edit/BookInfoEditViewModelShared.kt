@@ -5,6 +5,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.coroutine.mainDispatcher
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -122,6 +123,8 @@ class BookInfoEditViewModelShared(
                 if (success != null) {
                     withContext(mainDispatcher) { success.invoke() }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
                 // 5. 异常日志: 按 SQLiteConstraintException 区分文案 (类名匹配, 不直接引用 android.database.sqlite)
                 if (isSQLiteConstraintException(e)) {

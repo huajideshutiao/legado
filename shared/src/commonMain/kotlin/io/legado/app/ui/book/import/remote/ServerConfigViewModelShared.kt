@@ -4,6 +4,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Server
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -82,6 +83,8 @@ class ServerConfigViewModelShared(
                 mServer = server
                 appDb.serverDao.insert(server)
                 onSuccess.invoke()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
                 // 替代 context.toastOnUi("保存出错\n${it.message}"),
                 // Toasters.get() 已下沉 commonMain, androidMain 注册的实现内部切主线程

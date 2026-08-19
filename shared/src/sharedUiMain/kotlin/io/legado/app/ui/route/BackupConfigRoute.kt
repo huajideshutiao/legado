@@ -1,11 +1,14 @@
 package io.legado.app.ui.route
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -17,11 +20,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.config.HelpVersion
+import io.legado.app.help.config.LocalConfigKeys
+import io.legado.app.help.config.LocalConfigProviders
+import io.legado.app.help.config.LocalConfigShared
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.storage.BackupConfigShared
 import io.legado.app.help.storage.BackupShared
@@ -43,14 +52,18 @@ import io.legado.app.ui.root.FileFilter
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
+import io.legado.app.ui.widget.dialog.HelpDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
-import legado.shared.generated.resources.backup
 import legado.shared.generated.resources.backup_restore
 import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.help
+import legado.shared.generated.resources.ic_help
+import legado.shared.generated.resources.loading
 import legado.shared.generated.resources.ok
 import legado.shared.generated.resources.restore
 import legado.shared.generated.resources.restore_ignore
@@ -60,6 +73,7 @@ import legado.shared.generated.resources.web_dav_account_s
 import legado.shared.generated.resources.web_dav_pw_s
 import legado.shared.generated.resources.web_dav_url_s
 import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -93,13 +107,19 @@ fun BackupConfigRoute(
     val selectBackupPathStr = stringResource(Res.string.select_backup_path)
     // 顶栏标题 (对照 app 端 R.string.backup_restore)
     val titleStr = stringResource(Res.string.backup_restore)
-    // 动作/对话框文案 (对照 app 端 R.string.backup/restore/select_restore_file/ok/cancel)
-    val backupStr = stringResource(Res.string.backup)
+    // 动作/对话框文案 (对照 app 端 R.string.restore/select_restore_file/ok/cancel)
     val restoreStr = stringResource(Res.string.restore)
     val selectRestoreFileStr = stringResource(Res.string.select_restore_file)
     val okStr = stringResource(Res.string.ok)
     val cancelStr = stringResource(Res.string.cancel)
+    // 备份成功/失败 toast (对照 app 端 R.string.backup_success / backup_fail)
+    val backupSuccessStr = stringResource(Res.string.backup_success)
+    val backupFailStr = stringResource(Res.string.backup_fail)
+    // 恢复列表加载等待文案 (对照 app 端 R.string.loading)
+    val loadingStr = stringResource(Res.string.loading)
 
+    // 帮助对话框 (对照 app 端 menu_help + 首次进入 showHelp("webDavHelp"))
+    var showHelpDialog by remember { mutableStateOf(false) }
     var showRestoreIgnore by remember { mutableStateOf(false) }
     // WaitDialog 状态 + 后台任务 Job (取消用), 对照 app 端 WaitDialog.from(activity) + onCancelListener
     var waitDialogMessage by remember { mutableStateOf<String?>(null) }
@@ -120,13 +140,29 @@ fun BackupConfigRoute(
     // 延迟回调 scope.launch 抛 ForgottenCoroutineScopeException
     val startBackup: (String, Boolean) -> Unit = { backupPath, uploadToWebDav ->
         backupRestoreJob = screenModel.scope.launch {
-            waitDialogMessage = backupStr
+            // 对照 app 端 ConfigViewModel.backup: "备份中…" → backupLocked → 成功 toast 备份成功
+            waitDialogMessage = "备份中…"
             try {
+                withContext(IoDispatcher) {
+                    // 对照 app 端 WebDav 配置变更即刷新 authorization (upWebDavConfig):
+                    // KMP 无 prefs 变更承接, 备份前显式 upConfig 刷新, 失败不阻断本地备份
+                    runCatching { AppWebDavShared.upConfig() }
+                        .onFailure {
+                            AppLog.put("BackupConfigRoute onBackup upConfig 失败\n${it.message}", it)
+                        }
+                }
                 withContext(IoDispatcher) {
                     BackupShared.backupLocked(backupPath, uploadToWebDav)
                 }
+                // 对照 app 端 onSuccess { toastOnUi(R.string.backup_success) }
+                Toasters.get().toast(backupSuccessStr)
+            } catch (e: CancellationException) {
+                // 取消不当作失败上报 (对照 app 端 Coroutine dispatchCallback 的 isActive 守卫)
+                throw e
             } catch (e: Exception) {
-                AppLog.put("BackupConfigRoute onBackup 失败\n${e.message}", e)
+                // 对照 app 端 onError { AppLog.put("备份出错\n...") + toastOnUi(R.string.backup_fail, ...) }
+                AppLog.put("备份出错\n${e.message}", e)
+                Toasters.get().toast(backupFailStr.format(e.message))
             } finally {
                 waitDialogMessage = null
             }
@@ -143,12 +179,11 @@ fun BackupConfigRoute(
                 val path = withContext(IoDispatcher) {
                     services.files.pickFile(FileFilter(extensions = listOf("zip")))
                 } ?: return@launch
-                waitDialogMessage = restoreStr
+                waitDialogMessage = "恢复中…"
                 try {
-                    // 对照 app 端 viewModel.restore(uri) → Restore.restore (本地恢复无 toast)
+                    // 对照 app 端 viewModel.restore(uri) → Restore.restore: 失败由内部 runCatching
+                    // AppLog+toast 上报 (RestoreShared 内已对齐原版"恢复备份出错"), 本层不重复上报
                     withContext(IoDispatcher) { RestoreShared.restoreFromZip(path) }
-                } catch (e: Exception) {
-                    AppLog.put("BackupConfigRoute restoreFromLocal 失败\n${e.message}", e)
                 } finally {
                     waitDialogMessage = null
                 }
@@ -182,7 +217,27 @@ fun BackupConfigRoute(
                             }
                         }
                     } else {
-                        startBackup(backupPath, uploadToWebDav)
+                        // 对照 app 端 backup(): 已设路径先 checkWrite, 不可写则重新选目录再备份
+                        screenModel.scope.launch {
+                            val canWrite = withContext(IoDispatcher) {
+                                services.files.checkWrite(backupPath)
+                            }
+                            if (canWrite) {
+                                startBackup(backupPath, uploadToWebDav)
+                            } else {
+                                // 对照 app 端 backupDir.launch(): 重新选目录, 选完写 prefs + 立即备份
+                                val path = withContext(IoDispatcher) {
+                                    services.files.pickDirectory()
+                                }
+                                if (path != null) {
+                                    pref.putString(PreferKey.backupPath, path)
+                                    screenModel.dispatch(
+                                        BackupConfigUiEvent.UpdateBackupPathSummary(path)
+                                    )
+                                    startBackup(path, uploadToWebDav)
+                                }
+                            }
+                        }
                     }
                 }
             },
@@ -192,7 +247,8 @@ fun BackupConfigRoute(
                 val services = PlatformServiceProviders.getOrNull()
                 if (services != null) {
                     backupRestoreJob = screenModel.scope.launch {
-                        waitDialogMessage = restoreStr
+                        // 对照 app 端 loadBackupNames: 列表加载显示 R.string.loading
+                        waitDialogMessage = loadingStr
                         try {
                             withContext(IoDispatcher) {
                                 runCatching { AppWebDavShared.upConfig() }
@@ -203,20 +259,37 @@ fun BackupConfigRoute(
                                         )
                                     }
                             }
-                            val names = withContext(IoDispatcher) {
-                                runCatching { AppWebDavShared.getBackupNames() }
-                                    .getOrDefault(emptyList())
+                            // 对照 app 端 loadBackupNames onSuccess/onError:
+                            // 拉取失败 toast "WebDavError\n{msg}" 后仍按空列表走"无备份"回退本地;
+                            // 坚果云列表 >700 条时 toast 清理提示
+                            var names: List<String> = emptyList()
+                            var errorMsg: String? = null
+                            var tooManyHint: String? = null
+                            withContext(IoDispatcher) {
+                                try {
+                                    names = AppWebDavShared.getBackupNames()
+                                    if (AppWebDavShared.isJianGuoYun && names.size > 700) {
+                                        tooManyHint = "由于坚果云限制列出文件数量，部分备份可能未显示，请及时清理旧备份"
+                                    }
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    AppLog.put("获取WebDav备份列表出错\n${e.message}", e)
+                                    errorMsg = "WebDavError\n${e.message}"
+                                }
                             }
                             waitDialogMessage = null
+                            errorMsg?.let { Toasters.get().toast(it) }
+                            tooManyHint?.let { Toasters.get().toast(it) }
                             if (names.isNotEmpty()) {
                                 backupNames = names
                                 showRestoreSelector = true
                             } else {
                                 showNoBackupAlert = true
                             }
-                        } catch (e: Exception) {
+                        } finally {
+                            // 正常完成/取消/异常均清 WaitDialog
                             waitDialogMessage = null
-                            AppLog.put("BackupConfigRoute onRestore 失败\n${e.message}", e)
                         }
                     }
                 }
@@ -246,6 +319,18 @@ fun BackupConfigRoute(
 
     // 对照 app 端 init: 初始化 6 个动态 summary
     LaunchedEffect(Unit) {
+        // 对照 app 端 onViewCreated: 首次进入弹 webDavHelp (LocalConfig.backupHelpVersionIsLast)
+        // 版本标记存 "local" prefs (LocalConfigStore), 与 app 端 LocalConfig 同存储, 老用户升级不重复弹
+        val local = LocalConfigProviders.get()
+        val isLastHelp = LocalConfigShared.isLastVersion(
+            lastVersion = HelpVersion.backupHelp,
+            versionKey = LocalConfigKeys.backupHelpVersion,
+            firstOpenKey = LocalConfigKeys.firstBackup,
+            getInt = local::getInt,
+            getBoolean = local::getBoolean,
+            putInt = local::putInt,
+        )
+        if (!isLastHelp) showHelpDialog = true
         if (state.webDavUrlSummary.isEmpty()) {
             screenModel.dispatch(
                 BackupConfigUiEvent.UpdateWebDavUrlSummary(
@@ -294,6 +379,16 @@ fun BackupConfigRoute(
         AppTitleBar(
             title = titleStr,
             onBack = { navigator.pop() },
+            actions = {
+                // 对照 app 端 menu_help → showHelp("webDavHelp")
+                IconButton(onClick = { showHelpDialog = true }) {
+                    Icon(
+                        painter = painterResource(Res.drawable.ic_help),
+                        contentDescription = stringResource(Res.string.help),
+                        tint = AppTheme.colors.primaryText,
+                    )
+                }
+            },
         )
         BackupConfigScreen(
             webDavUrlSummary = state.webDavUrlSummary,
@@ -334,30 +429,33 @@ fun BackupConfigRoute(
                 showRestoreIgnore = false
             },
         ) {
-            // 多选列表 (对照 app 端 multiChoiceItems: which 索引 ignoreKeys[which])
+            // 多选列表 (对照 app 端 multiChoiceItems 交互; 样式为 Compose 近似: 24/8 padding + 12 间距 + toggleable Checkbox)
             Column {
                 titles.forEachIndexed { index, title ->
                     Row(
-                        modifier = Modifier
+                        Modifier
                             .fillMaxWidth()
-                            .clickable {
-                                checkedStates[index] = !checkedStates[index]
-                                BackupConfigShared.ignoreConfig[keys[index]] = checkedStates[index]
-                            }
-                            .padding(horizontal = 24.dp, vertical = 12.dp),
+                            .toggleable(
+                                value = checkedStates[index],
+                                role = Role.Checkbox,
+                                onValueChange = {
+                                    checkedStates[index] = it
+                                    BackupConfigShared.ignoreConfig[keys[index]] = it
+                                },
+                            )
+                            .padding(horizontal = 24.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         AppCheckbox(
                             checked = checkedStates[index],
-                            onCheckedChange = {
-                                checkedStates[index] = it
-                                BackupConfigShared.ignoreConfig[keys[index]] = it
-                            },
+                            onCheckedChange = null,
                         )
                         Text(
                             text = title,
                             color = AppTheme.colors.primaryText,
-                            modifier = Modifier.padding(start = 8.dp),
+                            fontSize = 16.sp,
+                            modifier = Modifier.weight(1f),
                         )
                     }
                 }
@@ -389,12 +487,14 @@ fun BackupConfigRoute(
                 if (name != null) {
                     showRestoreSelector = false
                     backupRestoreJob = screenModel.scope.launch {
-                        waitDialogMessage = restoreStr
+                        waitDialogMessage = "恢复中…"
                         try {
                             withContext(IoDispatcher) { AppWebDavShared.restoreWebDav(name) }
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (e: Exception) {
-                            AppLog.put("BackupConfigRoute restoreWebDav 失败\n${e.message}", e)
-                            // 对照 app 端 onError toast ("WebDav恢复出错\n{localizedMessage}")
+                            // 对照 app 端 onError { AppLog.put("WebDav恢复出错\n...") + toastOnUi("WebDav恢复出错\n...") }
+                            AppLog.put("WebDav恢复出错\n${e.message}", e)
                             Toasters.get().toast("WebDav恢复出错\n${e.message}")
                         } finally {
                             waitDialogMessage = null
@@ -423,5 +523,10 @@ fun BackupConfigRoute(
                 color = AppTheme.colors.primaryText,
             )
         }
+    }
+
+    // 帮助对话框 (对照 app 端 showHelp("webDavHelp"): menu_help + 首次进入)
+    if (showHelpDialog) {
+        HelpDialog(fileName = "webDavHelp", onDismiss = { showHelpDialog = false })
     }
 }

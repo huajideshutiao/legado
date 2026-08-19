@@ -50,6 +50,13 @@ interface FilePickerService {
     // 选目录 (对照 app 端 HandleFileContract.DIR_SYS / OpenDocumentTree),
     // 各端按需实现, 默认返回 null 由调用方降级
     fun pickDirectory(): String? = null
+
+    /**
+     * 备份目录可写性预检 (对照 app 端 BackupConfigFragment.backup 的 FileDoc.checkWrite)。
+     * Android SAF content:// 目录用 DocumentFile 判断可写性, 不可写返回 false 由调用方引导重新选目录;
+     * 无 SAF 概念的平台 (桌面等普通路径) 默认视为可写。
+     */
+    fun checkWrite(path: String): Boolean = true
 }
 
 /** 分享：文本与文件。 */

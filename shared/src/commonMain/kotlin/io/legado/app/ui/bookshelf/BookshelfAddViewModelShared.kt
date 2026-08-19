@@ -21,10 +21,13 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isJsonArray
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -97,6 +100,8 @@ class BookshelfAddViewModelShared(private val scope: CoroutineScope) {
                         AppLog.put("添加 $bookUrl 失败\n${e.message}", e, true)
                     }
                 }
+                // 对照原版 onSuccess 守卫: 取消后不弹成功/失败 toast (executeInternal 末尾 ensureActive)
+                currentCoroutineContext().ensureActive()
                 Toasters.get().toast(
                     if (successCount > 0) "$successCount/${urls.size} 成功" else "添加网址失败"
                 )
@@ -131,6 +136,8 @@ class BookshelfAddViewModelShared(private val scope: CoroutineScope) {
                     _addBookProgress.tryEmit(successCount)
                 }
                 Toasters.get().toast("成功")
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
                 Toasters.get().toast(e.message ?: "ERROR")
             } finally {

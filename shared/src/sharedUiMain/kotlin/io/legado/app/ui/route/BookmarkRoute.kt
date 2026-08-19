@@ -27,6 +27,7 @@ import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.asBook
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.systemCurrentTimeMillis
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -85,6 +86,8 @@ fun BookmarkRoute(
                             BackupFileOps.writeText(path, Json.encodeToString(bookmarks))
                         }
                         Toasters.get().toast("导出成功")
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Throwable) {
                         AppLog.put("导出失败\n${e.message}", e, true)
                     }
@@ -125,6 +128,8 @@ fun BookmarkRoute(
                             BackupFileOps.writeText(path, sb.toString())
                         }
                         Toasters.get().toast("导出成功")
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Throwable) {
                         AppLog.put("导出失败\n${e.message}", e, true)
                     }

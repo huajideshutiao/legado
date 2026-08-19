@@ -1,5 +1,6 @@
 package io.legado.app.ui.root
 
+import io.legado.app.constant.SourceType
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
@@ -55,12 +56,23 @@ interface PlatformCapabilities {
      * 桌面端 override 为带 isLogin 工具栏的独立浏览器窗口。
      * 功能契约: 登录窗口必须带 isLogin 语义 (工具栏"确定" = 确认 cookie 后 reload 关窗) +
      * cookie 按 [sourceKey] 回写 (登录态可复用)。
+     *
+     * [sourceName] / [sourceType] 对照原版 intent 的 sourceName/sourceType: 前者作标题栏副标题
+     * 与登录页标题 (getString(login_source, 源名)), 后者供禁用源/删除源菜单按源类型操作
+     * (HttpTTS 登录不能按书源删)。
      */
-    fun openLoginWebView(url: String, sourceKey: String): Boolean {
+    fun openLoginWebView(
+        url: String,
+        sourceKey: String,
+        sourceName: String = "",
+        sourceType: Int = SourceType.book,
+    ): Boolean {
         AppNavigatorProviders.getOrNull()?.push(
             AppRoute.WebView(
                 url = url,
+                sourceName = sourceName,
                 sourceKey = sourceKey,
+                sourceType = sourceType,
                 isLogin = true,
             )
         )

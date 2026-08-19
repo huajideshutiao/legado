@@ -17,6 +17,7 @@ import io.legado.app.data.entities.Server
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.HelpVersion
 import io.legado.app.help.config.LocalConfigKeys
+import io.legado.app.help.config.LocalConfigProviders
 import io.legado.app.help.config.LocalConfigShared
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.model.remote.RemoteBook
@@ -87,14 +88,15 @@ fun RemoteBookRoute(
 
     // 对照 RemoteBookActivity.onActivityCreated: 首次帮助 + initData + upPath
     LaunchedEffect(Unit) {
-        val prefs = PreferenceProviders.get()
+        // 版本标记存 "local" prefs (LocalConfigStore), 与原版 LocalConfig 同存储
+        val local = LocalConfigProviders.get()
         val isLastHelp = LocalConfigShared.isLastVersion(
             lastVersion = HelpVersion.webDavBookHelp,
             versionKey = LocalConfigKeys.webDavBookHelpVersion,
             firstOpenKey = LocalConfigKeys.firstOpenWebDavBook,
-            getInt = prefs::getInt,
-            getBoolean = prefs::getBoolean,
-            putInt = prefs::putInt,
+            getInt = local::getInt,
+            getBoolean = local::getBoolean,
+            putInt = local::putInt,
         )
         if (!isLastHelp) showWebDavHelp = true
         shared.initData { shared.upPath() }

@@ -19,11 +19,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import io.legado.app.data.AppDbProviders
+import io.legado.app.constant.SourceType
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.SourceLoginContext
+import io.legado.app.help.loadSourceForLogin
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.source.SourceLoginDialog
 import io.legado.app.ui.book.source.SourceLoginFormState
@@ -34,17 +35,17 @@ import legado.shared.generated.resources.loading
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * 书源登录 Overlay 对话框 (key="sourceLogin")。
+ * 书源登录 Overlay 对话框 (key="sourceLogin"), 只承载表单登录。
  *
- * 对照原版 `BaseSource.showLoginDialog` 的分支分发:
- * - loginUi 非空 -> [SourceLoginDialog] 表单登录 (book/chapter 作为登录 JS 上下文);
- * - loginUi 空 (URL 登录) -> 问平台直开登录 WebView ([PlatformCapabilities.openLoginWebView],
- *   移动端默认推全屏 [AppRoute.WebView] isLogin=true 路由, 桌面端开独立浏览器窗口),
- *   平台处理即关对话框 —— 登录不再有对话框外壳 (2026-08-19 用户拍板)。
+ * 对照原版 `BaseSource.showLoginDialog` 的分支分发, 分支判定在 [io.legado.app.help.showSourceLogin]
+ * 里完成 (先解析源再分发): loginUi 非空才弹本 Overlay 走 [SourceLoginDialog] 表单登录
+ * (book/chapter 作为登录 JS 上下文); URL 登录直开全屏 WebView, 不经过这里 ——
+ * 登录没有对话框外壳 (2026-08-19 用户拍板)。本文件仍保留 URL 登录兜底分支, 只为 dataKey
+ * 失效后按 url 重查出 URL 登录源的情况。
  *
  * payload 格式: [io.legado.app.help.sourceLoginOverlayPayload] 编码的 {url, dataKey}
- * (dataKey 指向 [SourceLoginContext], 对照原版 IntentData; 仅 URL 的入口 (深链/列表页)
- * 只有 url, 缺失时按 url 查库)。
+ * (dataKey 指向 [SourceLoginContext], 对照原版 IntentData; 深链等仅 URL 的入口只有 url,
+ * 缺失时按 url 查库)。
  */
 @Composable
 internal fun SourceLoginOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavigator) {
@@ -127,27 +128,32 @@ internal fun SourceLoginOverlayContent(overlay: AppOverlay.Dialog, navigator: Ap
         return
     }
 
-    // URL 登录 (loginUi 为空, 对照原版 BaseSource.showLoginDialog 的 WebViewActivity 分支):
-    // 问平台直开登录 WebView —— 移动端默认实现推全屏 AppRoute.WebView (isLogin=true),
-    // 桌面端开独立浏览器窗口; 平台已处理即关对话框, 不再内嵌渲染登录页。
-    // 注意: 平台结果未定前只渲染占位, 不渲染任何登录内容。
+    // URL 登录兜底 (loginUi 为空, 对照原版 BaseSource.showLoginDialog 的 WebViewActivity 分支):
+    // 正常入口已在 showSourceLogin 里解析源后直开登录 WebView, 不会弹本 Overlay; 只有
+    // dataKey 失效 (挂起期间被 take 过 / 进程重建) 后按 url 重查才会走到这里。
+    // 平台开窗 (移动端推全屏 AppRoute.WebView isLogin=true, 桌面端独立窗口) 后直接返回,
+    // 不建对话框外壳 —— 否则登录会闪一下对话框。
     if (urlLogin) {
         LaunchedEffect(Unit) {
             if (urlLoginHandled) return@LaunchedEffect
             urlLoginHandled = true
-            PlatformCapabilityProviders.getOrNull()
-                ?.openLoginWebView(loginUrl, source?.getKey().orEmpty())
+            PlatformCapabilityProviders.getOrNull()?.openLoginWebView(
+                url = loginUrl,
+                sourceKey = source?.getKey().orEmpty(),
+                sourceName = source?.getTag().orEmpty(),
+                sourceType = source?.getSourceType() ?: SourceType.book,
+            )
             navigator.dismissOverlay(overlay.key)
         }
+        return
     }
 
     // 统一居中对话框外壳: 加载占位 / 表单登录 共用同一
     // EditDialogHost (AppDialog + appDialogSize 居中卡片), 全端"表单登录=对话框"。
     EditDialogHost(onDismiss = { navigator.dismissOverlay(overlay.key) }) {
         when {
-            // 源还没解析出来 / URL 登录等待平台开窗: 对话框内加载占位,
-            // 先不建任何登录内容 (URL 登录平台开窗后即关闭)
-            loading || urlLogin -> LoginLoadingPlaceholder()
+            // 源还没解析出来: 对话框内加载占位, 先不建任何登录内容
+            loading -> LoginLoadingPlaceholder()
 
             // 表单登录: 对照原版 BaseSource.showLoginDialog 的
             // showDialogFragment<SourceLoginDialog> 分支。
@@ -163,8 +169,7 @@ internal fun SourceLoginOverlayContent(overlay: AppOverlay.Dialog, navigator: Ap
     }
 }
 
-/** 源解析期间对话框内的加载占位 (避免整窗闪白 / 表单源闪空内容)。 */
-@Composable
+/** 源解析期间对话框内的加载占位 (避免整窗闪白 / 表单源闪空内容)。 */@Composable
 private fun LoginLoadingPlaceholder() {
     val loadingText = stringResource(Res.string.loading)
     Column(
@@ -182,18 +187,6 @@ private fun LoginLoadingPlaceholder() {
         Text(loadingText, color = AppTheme.colors.secondaryText)
     }
 }
-
-/** 按 url 查库解析登录源 (HttpTTS key 形如 "httpTts:$id", 不在 bookSourceDao)。 */
-private suspend fun loadSourceForLogin(sourceUrl: String): BaseSource? {
-    val db = AppDbProviders.get()
-    if (sourceUrl.startsWith(HTTP_TTS_KEY_PREFIX)) {
-        val id = sourceUrl.removePrefix(HTTP_TTS_KEY_PREFIX).toLongOrNull() ?: return null
-        return db.httpTTSDao.get(id)
-    }
-    return db.bookSourceDao.getBookSource(sourceUrl)
-}
-
-private const val HTTP_TTS_KEY_PREFIX = "httpTts:"
 
 private data class SourceLoginPayload(val sourceUrl: String, val dataKey: String?)
 

@@ -7,6 +7,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.help.IntentData
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.utils.systemCurrentTimeMillis
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -142,6 +143,8 @@ class BookInfoViewModelShared(
             try {
                 val names = appDb.bookGroupDao.getGroupNames(groupId).joinToString(",")
                 success.invoke(names)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
                 AppLog.put("加载分组名失败\n${e.message}", e)
             }

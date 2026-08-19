@@ -41,6 +41,7 @@ import io.legado.app.ui.root.WindowController
 import io.legado.app.utils.ActivityResultLauncherAwait
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
+import io.legado.app.utils.checkWrite
 import io.legado.app.utils.delete
 import io.legado.app.utils.find
 import io.legado.app.utils.getFile
@@ -132,6 +133,22 @@ private class AndroidFilePickerService(
                 ?.use { it.write(bytes) } ?: return@runBlocking false
             true
         }.getOrDefault(false)
+    }
+
+    /**
+     * 备份目录可写性预检 (对照 app 端 BackupConfigFragment.backup:
+     * FileDoc.fromDir(path).checkWrite())。content:// 走 SAF DocumentFile 判断,
+     * 普通路径 (桌面等无 SAF 平台) 视为可写。
+     */
+    override fun checkWrite(path: String): Boolean = runBlocking {
+        val uri = path.toUri()
+        if (uri.scheme?.lowercase() != "content") {
+            true
+        } else {
+            withContext(Dispatchers.IO) {
+                runCatching { FileDoc.fromDir(uri).checkWrite() }.getOrDefault(false)
+            }
+        }
     }
 
     // 选目录: OpenDocumentTree (对照 app 端 HandleFileDialog.selectDocTree),

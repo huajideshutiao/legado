@@ -7,6 +7,7 @@ import io.legado.app.data.entities.Review
 import io.legado.app.data.entities.rule.ReviewRule
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.webBook.WebBook
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -183,6 +184,8 @@ class ReviewViewModelShared(
                 if (!append && replyReviewId == null) {
                     _totalCount.value = result.totalCount
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 if (append) currentPage -= 1
                 platform.toastOnUi(platform.loadFailed(e.message))
@@ -309,6 +312,8 @@ class ReviewViewModelShared(
                 if (!asBoolean(result)) return@launch
                 if (reloadOnSuccess) load()
                 onSuccess?.invoke(result)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 platform.toastOnUi(platform.operationFailed(e.message))
                 onError?.invoke()

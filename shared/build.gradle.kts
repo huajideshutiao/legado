@@ -1,5 +1,6 @@
 import org.jetbrains.kotlin.gradle.plugin.KotlinDependencyHandler
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
+import org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType
 
 plugins {
     id("legado.kmp.library")
@@ -182,6 +183,12 @@ kotlin {
                 }
                 all {
                     linkerOpts("-L${nativeLibDir.absolutePath}", "-lquickjs", "-lmbedtls")
+                    // release 开 DevirtualizationAnalysis 全量 LTO 减体积 (鸿蒙实测 -8.5%),
+                    // 内存峰值高: CI (ios.yml) 会把 gradle 堆临时提到 10g (本机不跑 iOS 链接)。
+                    if (buildType == NativeBuildType.RELEASE) {
+                        optimized = true
+                        linkerOpts("-s", "--gc-sections")
+                    }
                 }
             }
             // KGP 的 klib 跨平台编译要求目标不含任何 cinterop (见 KotlinNativeTarget

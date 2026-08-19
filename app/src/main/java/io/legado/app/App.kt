@@ -41,6 +41,7 @@ import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.config.ThemeConfig.applyDayNight
 import io.legado.app.help.config.ThemeConfig.applyDayNightInit
+import io.legado.app.help.config.registerAndroidLocalConfigStore
 import io.legado.app.help.config.registerAndroidPreferenceProvider
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.registerAndroidDebugState
@@ -215,6 +216,8 @@ class App : Application() {
         CacheBook.registerCallback()
         registerAndroidPreferenceProvider()
         registerAndroidDirectLinkUploadProviders()
+        // 注册 help 引导版本标记存储 (委托 "local" prefs, 与原版 LocalConfig 同存储)
+        registerAndroidLocalConfigStore()
         // 注册备份/恢复的 Android 钩子 (SAF 复制解压 / config.xml 旧格式 / 主题与图标刷新)
         registerAndroidBackupRestoreHook()
         // 注册 ReadBookConfigProviders: app 端 ReadBookConfig 已收敛为薄壳, 全部转发到这里

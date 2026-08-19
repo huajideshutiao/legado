@@ -66,7 +66,6 @@ fun DefaultCoverEntry.bakedPath(ratio: CoverRatio): String =
     BookCoverShared.bakedPath(BookCover.coversDir.absolutePath, this, ratio)
 
 @Keep
-@Suppress("ConstPropertyName")
 object BookCover {
 
     var drawBookName = true
@@ -273,13 +272,13 @@ object BookCover {
             return newDefaultDrawable(ratio, seed).toBitmap()
         }
         val loader = coil3.SingletonImageLoader.get(context)
-        val request = ImageRequest.Builder(context as PlatformContext)
+        val request = ImageRequest.Builder(context)
             .data(path)
             .sourceOrigin(sourceOrigin)
             .build()
         val result = loader.execute(request)
         return if (result is SuccessResult) {
-            result.image?.toBitmap() ?: newDefaultDrawable(ratio, seed).toBitmap()
+            result.image.toBitmap()
         } else {
             newDefaultDrawable(ratio, seed).toBitmap()
         }
@@ -323,7 +322,7 @@ fun ImageRequest.Builder.coverConfig(
     sourceOrigin(sourceOrigin)
     // fetcher 层短路网络获取 (对齐原版 OkHttpStreamFetcher: 只拦 fetch, 缓存命中仍显示);
     // 不能用 networkCachePolicy(DISABLED), 那会连磁盘/内存缓存读取一起禁掉
-    if (loadOnlyWifi) extras.set(LoadOnlyWifiKey, true)
+    if (loadOnlyWifi) extras[LoadOnlyWifiKey] = true
     if (onLoadFinish != null) {
         listener(
             onSuccess = { _, _ -> onLoadFinish() },

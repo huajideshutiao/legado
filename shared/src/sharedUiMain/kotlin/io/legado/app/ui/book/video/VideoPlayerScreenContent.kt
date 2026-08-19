@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.AlertDialog
@@ -33,7 +34,6 @@ import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
-import androidx.compose.material.RadioButton
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -59,6 +60,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.VideoResolution
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppDropdownMenu
+import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.rememberColor
@@ -757,32 +759,36 @@ fun ResolutionButton(
             onDismissRequest = { showDialog = false },
             title = { Text(stringResource(Res.string.resolution)) },
             text = {
+                // 单选列表 (对照 app 端 VideoPlayActivity.showResolutionDialog 的 singleChoiceItems 交互;
+                // 样式为 Compose 近似: 24/12 padding + 12 间距 + selectable(role=RadioButton) + 16sp weight)
                 Column {
                     resolutions.forEachIndexed { index, resolution ->
                         Row(
                             Modifier
                                 .fillMaxWidth()
-                                .clickable {
-                                    showDialog = false
-                                    if (index != currentResolutionIndex) {
-                                        onSwitchResolution(index)
-                                    }
-                                }
-                                .padding(vertical = 8.dp, horizontal = 4.dp),
+                                .selectable(
+                                    selected = index == currentResolutionIndex,
+                                    role = Role.RadioButton,
+                                    onClick = {
+                                        showDialog = false
+                                        if (index != currentResolutionIndex) {
+                                            onSwitchResolution(index)
+                                        }
+                                    },
+                                )
+                                .padding(horizontal = 24.dp, vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
-                            RadioButton(
+                            AppRadioButton(
                                 selected = index == currentResolutionIndex,
-                                onClick = {
-                                    showDialog = false
-                                    if (index != currentResolutionIndex) {
-                                        onSwitchResolution(index)
-                                    }
-                                },
+                                onClick = null,
                             )
                             Text(
                                 text = resolution.name,
-                                modifier = Modifier.padding(start = 8.dp),
+                                color = AppTheme.colors.primaryText,
+                                fontSize = 16.sp,
+                                modifier = Modifier.weight(1f),
                             )
                         }
                     }

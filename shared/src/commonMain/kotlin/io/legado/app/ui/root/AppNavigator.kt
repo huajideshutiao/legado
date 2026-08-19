@@ -15,7 +15,9 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 @Serializable
-value class RouteEntryId(val value: Long)
+// KMP 平台差异: JVM 要求 value class 必须 @JvmInline, 而 Kotlin/Native (iOS/鸿蒙)
+// 不支持 @JvmInline (Unresolved), 改用 data class 保留值语义 (Map key/序列化/== 相等)。
+data class RouteEntryId(val value: Long)
 
 @Serializable
 data class RouteEntry(

@@ -65,7 +65,7 @@ import org.jetbrains.compose.resources.stringResource
  * - [value]: 初始值
  * - [range]: 取值范围 (min..max, 闭区间, max > min)
  * - [onValueChange]: 拖动/步进/提交时实时回调 (用于即时预览; 可忽略, 默认 no-op)
- * - [onConfirm]: 用户点确认时回调, 携带最终值
+ * - [onConfirm]: 用户点确认时回调, 携带最终值; 回调后对话框自动关闭
  * - [onDismiss]: 用户点取消/外部 dismiss 时回调
  * - [neutralButtonText]: 可选, 中性按钮文案 (如 "默认"); 传入后显示在左侧
  * - [onNeutral]: 可选, 中性按钮点击回调
@@ -88,7 +88,8 @@ import org.jetbrains.compose.resources.stringResource
  *   过滤非数字; 键盘 Done / 点确定时解析并钳制到 [range] 提交
  * - Slider 拖动 / -+ 步进: **直接改写输入框文本** (调整控件即修改文本值), 并实时
  *   回调 [onValueChange]; -+ 步进基于输入框当前文本 (输入 99 后点 + 得 100)
- * - 最终 [onConfirm] 返回的值均为 Int 整数 (无精度损失)
+ * - 确定按钮回调执行完毕后自动关闭对话框 (对齐原版 AlertDialog
+ *   确定按钮点击后默认 dismiss 的行为)
  *
  * # 大范围精度说明
  *
@@ -100,7 +101,7 @@ import org.jetbrains.compose.resources.stringResource
  * @param value 初始值 (会被钳制到 [range] 内)
  * @param range 取值范围 (min..max)
  * @param onValueChange 拖动/步进/提交实时回调 (可选, 默认 no-op)
- * @param onConfirm 确认回调, 携带最终值
+ * @param onConfirm 确认回调, 携带最终值; 回调后对话框自动关闭
  * @param onDismiss 取消/dismiss 回调
  * @param neutralButtonText 中性按钮文案 (可选, 配合 [onNeutral] 使用)
  * @param onNeutral 中性按钮回调 (可选)
@@ -268,6 +269,8 @@ fun NumberPickerDialog(
                         onClick = {
                             commitEdit()
                             onConfirm(currentValue)
+                            // 对齐原版 setPositiveButton: 点击后默认 dismiss
+                            onDismiss()
                         },
                         color = colors.accent,
                     )
