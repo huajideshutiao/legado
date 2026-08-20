@@ -19,6 +19,7 @@ import io.legado.app.model.CacheBookShared.processScope
 import io.legado.app.model.CacheBookShared.startProcessJob
 import io.legado.app.model.webBook.WebBook.getContentAwait
 import io.legado.app.utils.concurrent.newConcurrentMap
+import io.legado.app.utils.concurrent.newConcurrentSet
 import io.legado.app.utils.onEachParallel
 import io.legado.app.utils.postEvent
 import kotlinx.atomicfu.locks.SynchronizedObject
@@ -101,14 +102,14 @@ object CacheBookShared {
      *
      * 用于 downloadSummary 统计 + 避免重复下载 (onSuccess 时 add)。
      */
-    val successDownloadSet = linkedSetOf<String>()
+    val successDownloadSet = newConcurrentSet<String>()
 
     /**
      * 失败章节主键 -> 累计错误次数 (对照 app 端 CacheBook.errorDownloadMap)。
      *
      * 达到 3 次后不再重试 (对照 app 端 onPostError 中 `if ((errorDownloadMap[...] ?: 0) < 3)`)。
      */
-    val errorDownloadMap = hashMapOf<String, Int>()
+    val errorDownloadMap = newConcurrentMap<String, Int>()
 
     /**
      * 按 bookUrl 获取或创建 [CacheBookModelShared] (对照 app 端 CacheBook.getOrCreate(bookUrl))。

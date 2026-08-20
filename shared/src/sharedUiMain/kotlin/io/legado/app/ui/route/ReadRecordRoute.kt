@@ -57,13 +57,14 @@ import org.jetbrains.compose.resources.stringResource
  */
 
 /**
- * 记录条目无 [Book] 时的默认封面: 内置 image_cover_default + 竖排书名。
+ * 记录条目无 [Book] 时的默认封面: 内置 image_cover_default + 竖排书名/作者。
  *
- * 对照原版 RecordAdapter.convert 的 `ivCover.load(book?.getDisplayCover(), ...)`:
+ * 对照原版 ReadRecordActivity 的 `ivCover.load(book?.getDisplayCover(), ...)`:
  * 封面为空/书不在书架时 CoverImageView 走默认封面链 (内置图 + 书名), 条目封面从不隐藏。
+ * 与 BookshelfScreen 默认封面分支重复, 待合并。
  */
 @Composable
-private fun ReadRecordDefaultCover(name: String, modifier: Modifier = Modifier) {
+private fun ReadRecordDefaultCover(name: String, author: String?, modifier: Modifier = Modifier) {
     Box(
         modifier
             .clip(DesignTokens.shapeSm)
@@ -77,7 +78,7 @@ private fun ReadRecordDefaultCover(name: String, modifier: Modifier = Modifier) 
         )
         CoverNameAuthorOverlay(
             name = name,
-            author = null,
+            author = author,
             accent = AppTheme.colors.accent,
             modifier = Modifier.matchParentSize(),
         )
@@ -217,7 +218,8 @@ fun ReadRecordRoute(
             if (book != null) {
                 bookCoverSlot(book, modifier, false, 0)
             } else {
-                ReadRecordDefaultCover(item.bookName, modifier)
+                // ReadRecordShow 无作者字段, 默认封面不画作者
+                ReadRecordDefaultCover(item.bookName, null, modifier)
             }
         },
     )

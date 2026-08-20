@@ -180,6 +180,57 @@ interface BookDao {
         durChapterTitle: String?
     )
 
+    /**
+     * WebDAV 上传进度成功后只落 syncTime（原版整行 update 的唯一目的）
+     */
+    @Query("update books set syncTime = :syncTime where bookUrl = :bookUrl")
+    suspend fun upSyncTime(bookUrl: String, syncTime: Long)
+
+    /**
+     * 仅 PATCH 阅读配置列 (readConfig); 阅读界面菜单改的是整场持有的内存副本 book.config,
+     * 整行 update 会冲掉并发 updateToc/refreshBookInfo 写入的其他字段.
+     */
+    @Query("update books set readConfig = :readConfig where bookUrl = :bookUrl")
+    suspend fun updateReadConfig(bookUrl: String, readConfig: Book.ReadConfig?)
+
+    /**
+     * 仅 PATCH 检查记录 (lastCheckTime + totalChapterNum); 缓存/更新流程持有长生命周期
+     * 快照且期间跑网络请求, 整行 update 会冲掉期间别处写入的字段.
+     */
+    @Query("update books set lastCheckTime = :lastCheckTime, totalChapterNum = :totalChapterNum where bookUrl = :bookUrl")
+    suspend fun updateLastCheckTime(bookUrl: String, lastCheckTime: Long, totalChapterNum: Int)
+
+    /**
+     * 仅 PATCH 目录相关列; 目录刷新 (getChapterListAwait) 改的是内存快照 book,
+     * 整行 update 会冲掉阅读/播放界面并发 PATCH 写入的进度字段.
+     */
+    @Query(
+        """update books set
+            totalChapterNum = :totalChapterNum,
+            lastCheckTime = :lastCheckTime,
+            lastCheckCount = :lastCheckCount,
+            latestChapterTitle = :latestChapterTitle,
+            latestChapterTime = :latestChapterTime,
+            durChapterTitle = :durChapterTitle
+            where bookUrl = :bookUrl"""
+    )
+    suspend fun updateTocInfo(
+        bookUrl: String,
+        totalChapterNum: Int,
+        lastCheckTime: Long,
+        lastCheckCount: Int,
+        latestChapterTitle: String?,
+        latestChapterTime: Long,
+        durChapterTitle: String?
+    )
+
+    /**
+     * 仅 PATCH 排序列; 书架管理拖拽排序持有的是长生命周期内存副本,
+     * 整行 update 会把副本里的旧元数据写回去.
+     */
+    @Query("update books set `order` = :order where bookUrl = :bookUrl")
+    suspend fun upOrder(bookUrl: String, order: Int)
+
     @Query("update books set `group` = :newGroupId where `group` = :oldGroupId")
     suspend fun upGroup(oldGroupId: Long, newGroupId: Long)
 

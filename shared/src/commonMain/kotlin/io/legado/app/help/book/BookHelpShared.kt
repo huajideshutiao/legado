@@ -120,25 +120,33 @@ object BookHelpShared {
                     }
                 }
             }
-            // 失效目录已删, 重列即有效集 (与 app 版"列一次复用"结果等价)
-            evictMangaCache(rootPath, imageSubFolderName, maxSize)
+            // 失效目录已删, 重列即有效集 (与 app 版"列一次复用"结果等价);
+            // 删除失败 (EBUSY 等) 时失效目录仍可能残留, 传在架书集合让 evictMangaCache 只统计有效目录
+            evictMangaCache(rootPath, imageSubFolderName, maxSize, validFolderNames)
         }
     }
 
     /**
      * 漫画缓存超量淘汰 (对照 app 端 `BookHelp.evictMangaCache`, 不删失效书目录)。
      *
-     * 总大小按 [rootPath] 下全部目录统计, 但只有含 [imageSubFolderName] 子目录的漫画缓存
+     * 总大小按 [rootPath] 下目录统计, 但只有含 [imageSubFolderName] 子目录的漫画缓存
      * 参与淘汰, 按最后修改时间由旧到新删除直到总大小收敛到 [maxSize] 以内。
      * 统计并发 8 路 (与 app 版 onEachParallel(8) 一致)。
+     *
+     * [validFolderNames] 非空时只统计在架书目录 (与原版 `cacheFiles.filter { bookFolderNames.contains(it.name) }`
+     * 对齐): 调用方先删失效目录, 但 FileUtilsCommon.delete 失败 (EBUSY 等) 时失效目录仍在,
+     * 若不按在架书过滤会被计入 512MB 总量, 可能优先淘汰在架漫画。
+     * 默认 emptySet() 保持"统计全部目录"的旧行为 (供暂未传参的调用方)。
      */
     suspend fun evictMangaCache(
         rootPath: String,
         imageSubFolderName: String,
-        maxSize: Long
+        maxSize: Long,
+        validFolderNames: Set<String> = emptySet(),
     ) {
         withContext(IoDispatcher) {
             val bookDirs = FileUtilsCommon.listSubDirs(rootPath)
+                .filter { validFolderNames.isEmpty() || validFolderNames.contains(FileUtilsCommon.getName(it)) }
             if (bookDirs.isEmpty()) return@withContext
             val folderSizes = newConcurrentMap<String, Long>()
             val mangaFolders = newConcurrentSet<String>()
@@ -175,10 +183,34 @@ object BookHelpShared {
     }
 
     /**
-     * 写入 / 删除 `.nr` 标记文件 (对照 app 端 `BookHelp.setRemoveSameTitle` 的文件部分)。
+     * 进程级"去重标题缓存"注册表 (key: bookName+bookOrigin → 该书 ContentProcessorShared.removeSameTitleCache)。
+     *
+     * 判据 [ContentProcessorShared.getContent] 读的是实例内 removeSameTitleCache, 而实例由各端
+     * [ContentProcessorAccessor] 私有缓存 (native 强引用 map 永不失效), BookHelpShared 无公共
+     * API 直接访问; 各端 accessor 缓存实例后调用 [registerRemoveSameTitleCache] 注册,
+     * [setRemoveSameTitleMarker] 翻转标记时据此同步内存缓存。
+     */
+    private val removeSameTitleCacheRegistry = newConcurrentMap<String, MutableSet<String>>()
+
+    /**
+     * 注册书籍的去重标题缓存 (由各端 ContentProcessorAccessor 在缓存 ContentProcessorShared 实例后调用)。
+     *
+     * @param bookName 书名 (ContentProcessorShared 的 bookName)
+     * @param bookOrigin 书源 (ContentProcessorShared 的 bookOrigin)
+     * @param cache 该书 ContentProcessorShared 实例的 removeSameTitleCache 引用
+     */
+    fun registerRemoveSameTitleCache(bookName: String, bookOrigin: String, cache: MutableSet<String>) {
+        removeSameTitleCacheRegistry[bookName + bookOrigin] = cache
+    }
+
+    /**
+     * 写入 / 删除 `.nr` 标记文件 + 同步内存去重缓存 (对照 app 端 `BookHelp.setRemoveSameTitle`)。
      *
      * 去重开启 = 删除标记文件; 关闭 = 创建空标记文件。
-     * ContentProcessor 的 removeSameTitleCache 同步由各端调用方负责。
+     * 原版 BookHelp.setRemoveSameTitle 除写标记文件外还同步 ContentProcessor.removeSameTitleCache
+     * (add/remove fileName); KMP 下沉时只保留文件部分, 判据读的是内存 Set, 不同步则已缓存实例
+     * (尤其 native 强引用 map) 永不感知新状态, 翻转后桌面/iOS/鸿蒙不生效。经
+     * [registerRemoveSameTitleCache] 注册的实例缓存在这里同步; 未注册时降级为仅写文件。
      */
     fun setRemoveSameTitleMarker(book: Book, chapter: BookChapter, removeSameTitle: Boolean) {
         val storage = BookStorageProviders.get()
@@ -187,6 +219,10 @@ object BookHelpShared {
             storage.deleteCacheFile(book, fileName)
         } else {
             storage.createCacheFile(book, fileName)
+        }
+        // 同步内存去重缓存 (对照 app 端 BookHelp.setRemoveSameTitle 的 cache.remove/add)
+        removeSameTitleCacheRegistry[book.name + book.origin]?.let { cache ->
+            if (removeSameTitle) cache.remove(fileName) else cache.add(fileName)
         }
     }
 

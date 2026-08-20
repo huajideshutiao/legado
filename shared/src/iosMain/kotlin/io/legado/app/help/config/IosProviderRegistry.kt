@@ -16,6 +16,7 @@ import io.legado.app.help.file.registerNativeFileDownloader
 import io.legado.app.help.http.registerIosBackstageWebView
 import io.legado.app.help.image.IosBitmapProvider
 import io.legado.app.help.image.registerIosBookImageLoader
+import io.legado.app.help.log.registerIosAppLogHost
 import io.legado.app.help.http.registerDefaultIosCookieStoreProvider
 import io.legado.app.help.http.registerIosHttpProvider
 import io.legado.app.help.http.registerSharedCookieJarBridge
@@ -84,6 +85,10 @@ fun registerIosProviders() {
     // 1. 文件系统目录 (其他 provider 持久化依赖)
     registerIosAppFilesDir()
 
+    // 1.1 AppLog 宿主 (日志落盘到 {filesDir}/logs, 供 CrashLogProvider 收集;
+    // 须在 AppFilesDirs 之后 (日志目录从 filesDir 派生)、任何 AppLog.put 之前)
+    registerIosAppLogHost()
+
     // 2. 配置 provider (PreferenceProvider -> AppConfigAccessor)
     registerIosPreferenceProvider()
     registerNativeAppConfigAccessor()
@@ -142,7 +147,9 @@ fun registerIosProviders() {
     // BookHelpAccessor: 委托 BookStorageProviders.saveText 落盘章节正文 (供 BookContent 用)
     // ContentProcessorAccessor: 复用 commonMain 的 ContentProcessorShared 提供完整正文处理
     // (替换规则 / 简繁 / 段落重排 / 去重标题, 依赖 AppDbProviders 已就绪)
-    // SourceHelpAccessor: 空占位 (供 SourceHelp.saveSource/deleteBookSource 用, 避免 IllegalStateException)
+    // SourceHelpAccessor: nativeMain NativeSourceHelpAccessor (删源后 SourceConfig.removeSource +
+    // AppCacheManager.clearSourceVariables; ReadBook/AudioPlay 内存缓存快捷路径无对应单例故返回 null,
+    // 由调用方回退 bookSourceDao 查询)
     registerIosAppDbAccessor()
     registerNativeBookHelpAccessor()
     registerNativeContentProcessorAccessor()

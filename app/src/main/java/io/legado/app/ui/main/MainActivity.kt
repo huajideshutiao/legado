@@ -466,9 +466,8 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
             }
         }.onError {
             AppLog.put("保存图片出错\n${it.localizedMessage}", it)
-            ACache.get().remove(AppConst.imagePathKey)
             toastOnUi("保存图片出错\n${it.localizedMessage}")
-        }.onFinally {
+        }.onSuccess {
             toastOnUi("保存图片成功")
         }
     }
@@ -928,6 +927,10 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
             }
             negativeButton(androidAppString("refuse")) {
                 finish()
+                block.resume(false)
+            }
+            // 取消/返回键视为未同意, 不 finish (finish 仅发生在明确点拒绝时)
+            onDismiss {
                 block.resume(false)
             }
         }

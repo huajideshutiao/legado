@@ -224,7 +224,8 @@ class BookshelfManageScreenModel(
                 val books = _state.value.books
                 books.forEachIndexed { index, book -> book.order = index + 1 }
                 scope.launch(IoDispatcher) {
-                    appDb.bookDao.update(*books.toTypedArray())
+                    // 只 PATCH order 列; 整行 update 会把内存副本里的旧元数据写回去
+                    books.forEach { appDb.bookDao.upOrder(it.bookUrl, it.order) }
                 }
             }
 

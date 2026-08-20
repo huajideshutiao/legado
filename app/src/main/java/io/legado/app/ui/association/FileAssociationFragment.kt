@@ -22,7 +22,6 @@ import io.legado.app.lib.permission.PermissionsCompat
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
-import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
@@ -41,9 +40,13 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 
-class FileAssociationFragment() : Fragment() {
+/**
+ * 文件关联导入的一次性透明壳。isShellHost 由添加方决定：为 true 时 finishActivity 会 finish 宿主
+ * Activity（独立壳场景），默认 false 只移除自身，不 finish 宿主（挂在 MainActivity 上的默认行为）。
+ */
+class FileAssociationFragment(private val isShellHost: Boolean = false) : Fragment() {
 
-    constructor(uri: Uri) : this() {
+    constructor(uri: Uri, isShellHost: Boolean = false) : this(isShellHost) {
         arguments = Bundle().apply {
             putParcelable("uri", uri)
         }
@@ -60,7 +63,7 @@ class FileAssociationFragment() : Fragment() {
         }
     }
 
-    private val isShell get() = activity is MainActivity
+    private val isShell get() = isShellHost
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

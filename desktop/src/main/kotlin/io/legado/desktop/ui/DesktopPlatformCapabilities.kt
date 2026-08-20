@@ -519,10 +519,6 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
         )
     }
 
-    override fun showBookSourceLogin(source: BookSource) {
-        source.showLoginDialog()
-    }
-
     // 书籍变量: 对照原版 BaseBook.showBookVariableDialog, 只编辑 book.variable 的 "custom" 键
     // (getCustomVariable/putCustomVariable 保留其他键), 经 AppOverlay 弹 shared
     // BookVariableDialog, 确定后写库持久化 (逻辑见 VariableOverlayDialog.kt);
@@ -747,10 +743,6 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
 
     override fun addBookSource() {
         AppNavigatorProviders.getOrNull()?.push(AppRoute.BookSourceEdit(""))
-    }
-
-    override fun showBookSourceGroupManage() {
-        DesktopDialogs.show(DesktopDialogRequest.BookSourceGroupManage)
     }
 
     override fun selectionAddToGroups(selection: List<BookSourcePart>) {

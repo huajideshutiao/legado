@@ -15,6 +15,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -52,8 +53,19 @@ fun Modifier.zoomable(
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val decaySpec = remember(density) { splineBasedDecay<Float>(density) }
+    // 两个 pointerInput(Unit) 的手势协程启动后不再重启, 经 rememberUpdatedState 读最新值:
+    // 比例/上限/回调在组合中变化(如 PhotoDialog 静态图切 GIF 帧改宽高比)时, 手势内仍读到旧值
+    val currentMaxScale by rememberUpdatedState(maxScale)
+    val currentDoubleTapScale by rememberUpdatedState(doubleTapScale)
+    val currentAspectRatio by rememberUpdatedState(contentAspectRatio)
+    val currentOnLongPress by rememberUpdatedState(onLongPress)
+    val currentOnTap by rememberUpdatedState(onTap)
 
     var scale by remember { mutableFloatStateOf(1f) }
+    // 平移量用普通状态: 手势块是受限挂起作用域 (awaitPointerEventScope), 双击动画回调是非挂起,
+    // 两处都不能调 Animatable.snapTo; Animatable 只作 fling 衰减驱动, 每帧回写到这两个状态
+    var panX by remember { mutableFloatStateOf(0f) }
+    var panY by remember { mutableFloatStateOf(0f) }
     val offsetX = remember { Animatable(0f) }
     val offsetY = remember { Animatable(0f) }
     var size by remember { mutableStateOf(IntSize.Zero) }
@@ -63,14 +75,14 @@ fun Modifier.zoomable(
     // 边缘贴容器边缘，未超出的轴向保持居中——容器尺寸只在无宽高比信息时兜底
     fun maxOffsetX(s: Float): Float {
         val w = size.width.toFloat(); val h = size.height.toFloat()
-        val ar = contentAspectRatio
+        val ar = currentAspectRatio
         val cw = if (ar != null && ar > 0f && w > 0f && h > 0f)
             (if (ar > w / h) w else h * ar) else w
         return ((cw * s - w) / 2f).coerceAtLeast(0f)
     }
     fun maxOffsetY(s: Float): Float {
         val w = size.width.toFloat(); val h = size.height.toFloat()
-        val ar = contentAspectRatio
+        val ar = currentAspectRatio
         val ch = if (ar != null && ar > 0f && w > 0f && h > 0f)
             (if (ar > w / h) w / ar else h) else h
         return ((ch * s - h) / 2f).coerceAtLeast(0f)
@@ -93,11 +105,14 @@ fun Modifier.zoomable(
         cancelFling()
         val s = scale
         flingJob = scope.launch {
+            // 衰减前把当前平移量灌进 Animatable, 每帧经 block 回写
+            offsetX.snapTo(panX)
+            offsetY.snapTo(panY)
             maxOffsetX(s).let { offsetX.updateBounds(-it, it) }
             maxOffsetY(s).let { offsetY.updateBounds(-it, it) }
             coroutineScope {
-                launch { offsetX.animateDecay(vx, decaySpec) }
-                launch { offsetY.animateDecay(vy, decaySpec) }
+                launch { offsetX.animateDecay(vx, decaySpec) { panX = value } }
+                launch { offsetY.animateDecay(vy, decaySpec) { panY = value } }
             }
         }
     }
@@ -142,17 +157,15 @@ fun Modifier.zoomable(
                             val centroid = event.calculateCentroid()
                             val pan = event.calculatePan()
                             val s0 = scale
-                            val s1 = (s0 * zoom).coerceIn(1f, maxScale)
+                            val s1 = (s0 * zoom).coerceIn(1f, currentMaxScale)
                             val center = Offset(size.width / 2f, size.height / 2f)
                             val d = centroid - center
                             val k = s1 / s0
                             scale = s1
-                            val curOffset = Offset(offsetX.value, offsetY.value)
+                            val curOffset = Offset(panX, panY)
                             val newOffset = clamp(curOffset * k + d * (1 - k) + pan, s1)
-                            scope.launch {
-                                offsetX.snapTo(newOffset.x)
-                                offsetY.snapTo(newOffset.y)
-                            }
+                            panX = newOffset.x
+                            panY = newOffset.y
                             event.changes.fastForEach { it.consume() }
                         }
                     } else {
@@ -170,12 +183,10 @@ fun Modifier.zoomable(
                                 val delta = change.position - lastPos
                                 lastPos = change.position
                                 velocityTracker.addPointerInputChange(change)
-                                val cur = Offset(offsetX.value, offsetY.value)
+                                val cur = Offset(panX, panY)
                                 val newOffset = clamp(cur + delta, scale)
-                                scope.launch {
-                                    offsetX.snapTo(newOffset.x)
-                                    offsetY.snapTo(newOffset.y)
-                                }
+                                panX = newOffset.x
+                                panY = newOffset.y
                                 change.consume()
                             }
                             everPinched -> change.consume()
@@ -195,28 +206,29 @@ fun Modifier.zoomable(
         }
         .pointerInput(Unit) {
             detectTapGestures(
-                onLongPress = onLongPress?.let { { _: Offset -> it() } },
-                onTap = onTap?.let { { _: Offset -> it() } },
+                onLongPress = currentOnLongPress?.let { { _: Offset -> it() } },
+                onTap = currentOnTap?.let { { _: Offset -> it() } },
                 onDoubleTap = { tap ->
                     cancelFling()
                     val s0 = scale
-                    val s1 = if (s0 > 1f) 1f else doubleTapScale
+                    val s1 = if (s0 > 1f) 1f else currentDoubleTapScale
                     val center = Offset(size.width / 2f, size.height / 2f)
                     val d = tap - center
                     val k = s1 / s0
-                    val startOffset = Offset(offsetX.value, offsetY.value)
+                    val startOffset = Offset(panX, panY)
                     val targetOffset = clamp(startOffset * k + d * (1 - k), s1)
                     if (eInk) {
                         scale = s1
-                        scope.launch { offsetX.snapTo(targetOffset.x); offsetY.snapTo(targetOffset.y) }
+                        panX = targetOffset.x
+                        panY = targetOffset.y
                     } else {
                         val startScale = s0
                         scope.launch {
                             animate(0f, 1f) { t, _ ->
                                 scale = lerp(startScale, s1, t)
-                                val ox = lerp(startOffset.x, targetOffset.x, t)
-                                val oy = lerp(startOffset.y, targetOffset.y, t)
-                                scope.launch { offsetX.snapTo(ox); offsetY.snapTo(oy) }
+                                // animate 回调非挂起, 逐帧写状态而非 snapTo
+                                panX = lerp(startOffset.x, targetOffset.x, t)
+                                panY = lerp(startOffset.y, targetOffset.y, t)
                             }
                         }
                     }
@@ -226,7 +238,7 @@ fun Modifier.zoomable(
         .graphicsLayer {
             scaleX = scale
             scaleY = scale
-            translationX = offsetX.value
-            translationY = offsetY.value
+            translationX = panX
+            translationY = panY
         }
 }

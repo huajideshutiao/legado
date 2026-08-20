@@ -12,14 +12,13 @@ import kotlinx.coroutines.CoroutineDispatcher
  * # 各端 actual 实现
  * - **jvmAndAndroidMain**: `Executors.newFixedThreadPool(size).asCoroutineDispatcher()`
  *   (与 app 端 MainViewModel.upTocPool 一致, 真实线程池, 大小可控)
- * - **nativeMain** (iOS/鸿蒙): `Dispatchers.Default` (Kotlin/Native 无 java.util.concurrent,
- *   用 Default dispatcher 兜底; 调度真实可用, 但 size 入参被忽略 —— 固定池大小的
- *   限流语义在 Native 端丢失, 并发上限由 Default dispatcher 自身线程数决定)
+ * - **nativeMain** (iOS/鸿蒙): `Dispatchers.IO.limitedParallelism(size)`
+ *   (Kotlin/Native 无 java.util.concurrent, 用受限并行度视图保住限流语义)
  *
  * # 关闭
  * 返回的 [CoroutineDispatcher] 在 JVM 端是 ExecutorCoroutineDispatcher, 调用方需在
  * 销毁时调用 [closeIfCloseable] 释放线程资源 (对照 app 端 `upTocPool.close()`)。
- * Native 端 Dispatchers.Default 不可 close, [closeIfCloseable] 为 no-op, 行为安全。
+ * Native 端 limitedParallelism 视图不可 close, [closeIfCloseable] 为 no-op, 行为安全。
  *
  * @param size 线程池大小 (调用方应限制上限, 如 `min(threadCount, AppConst.MAX_THREAD)`)
  */

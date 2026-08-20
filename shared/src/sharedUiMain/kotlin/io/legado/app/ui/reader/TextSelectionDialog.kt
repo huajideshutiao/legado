@@ -255,9 +255,8 @@ fun TextSelectionDialog(
                         } else {
                             openInBrowser(
                                 urlPrefix = "https://www.bing.com/search?q=",
-                                textProvider = { selectedTextOrNull() },
+                                query = text,
                                 openUrl = openUrl,
-                                noSelectionHint = noSelectionHintText,
                             )
                         }
                         onDismiss()
@@ -282,21 +281,15 @@ fun TextSelectionDialog(
 }
 
 /**
- * 取选中文本/剪贴板 → [encodeURI] 拼接搜索引擎 URL → [openUrl] 打开系统浏览器。
+ * [encodeURI] 拼接搜索引擎 URL → [openUrl] 打开系统浏览器。
  *
- * 文本源为空时弹 toast 提示 (整章形态下选中后需点 ComposeTextToolbar
- * 的"复制"按钮才会写入剪贴板; 选中文本形态直接取参, 一般不会为空)。
+ * 文本源为空的提示已由调用方的 selectedTextOrNull 承担 (它取不到文本就 toast 并返回 null),
+ * 这里只收非空关键字, 不再二次读取剪贴板。
  */
 private fun openInBrowser(
     urlPrefix: String,
-    textProvider: () -> String?,
+    query: String,
     openUrl: (String) -> Unit,
-    noSelectionHint: String,
 ) {
-    val query = textProvider()?.takeIf { it.isNotBlank() }
-    if (query == null) {
-        Toasters.get().toast(noSelectionHint)
-        return
-    }
     openUrl(urlPrefix + query.encodeURI())
 }

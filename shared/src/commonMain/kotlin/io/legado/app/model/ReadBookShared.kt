@@ -422,7 +422,8 @@ open class ReadBookShared : CoroutineScope {
                     successAction?.invoke()
                 }
                 currentCoroutineContext().ensureActive()
-                AppDbProviders.get().bookDao.update(it)
+                // WebDAV 上传进度成功后只落 syncTime（原版整行 update 的唯一目的）
+                AppDbProviders.get().bookDao.upSyncTime(it.bookUrl, it.syncTime)
             }
         }
     }
@@ -986,7 +987,16 @@ open class ReadBookShared : CoroutineScope {
                     if (cList.size > chapterSize) {
                         val appDb = AppDbProviders.get()
                         if (oldBook.bookUrl == book.bookUrl) {
-                            appDb.bookDao.update(book)
+                            // 只 PATCH 目录相关列; 整行 update 会冲掉阅读/播放界面并发写入的进度字段
+                            appDb.bookDao.updateTocInfo(
+                                book.bookUrl,
+                                book.totalChapterNum,
+                                book.lastCheckTime,
+                                book.lastCheckCount,
+                                book.latestChapterTitle,
+                                book.latestChapterTime,
+                                book.durChapterTitle
+                            )
                         } else {
                             appDb.bookDao.replace(oldBook, book)
                             BookStorageProviders.get().updateCacheFolder(oldBook, book)

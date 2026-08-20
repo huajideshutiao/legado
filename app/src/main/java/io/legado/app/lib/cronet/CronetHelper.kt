@@ -153,9 +153,8 @@ fun buildRequest(request: Request, callback: UrlRequest.Callback): UrlRequest? {
             } else {
                 BodyUploadProvider(requestBody)
             }
-            provider.use {
-                this.setUploadDataProvider(it, okHttpClient.dispatcher.executorService)
-            }
+            // provider 生命周期由 Cronet 管理, 不能提前 close
+            setUploadDataProvider(provider, okHttpClient.dispatcher.executorService)
 
         }
 

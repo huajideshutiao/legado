@@ -70,10 +70,8 @@ import io.legado.app.utils.openUrl
 import io.legado.app.utils.share
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.toastOnUi
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Dispatchers.IO
-import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import java.time.LocalDate
@@ -227,6 +225,14 @@ class AndroidReaderPlatformProvider(
     }
 
     override fun onEnter(screenModel: ReaderScreenModel) {
+        // 幂等: 重复进入时先注销旧注册 (上一轮异常路径可能未走 onExit),
+        // 否则旧 receiver 永不注销, ACTION_TIME_TICK/ACTION_BATTERY_CHANGED 按泄漏份数重复触发
+        batteryReceiver?.let { runCatching { activity.unregisterReceiver(it) } }
+        batteryReceiver = null
+        lifecycleObserver?.let { activity.lifecycle.removeObserver(it) }
+        lifecycleObserver = null
+        // 同样幂等重建页面变化订阅: 上一轮 onExit 已取消, 复用同一菜单状态时须重起
+        activeMenuState?.takeIf { it.first === screenModel }?.second?.startPageChangedWatch()
         activity.enterReaderWindow()
         // 注册时间/电池广播: 桥接系统广播到 ReadBookEvents (对照原版 TimeBatteryReceiver),
         // 时间/电池槽位由 shared ReaderScreenModel 订阅对应事件刷新
@@ -248,7 +254,8 @@ class AndroidReaderPlatformProvider(
                 addAction(Intent.ACTION_TIME_TICK)
                 addAction(Intent.ACTION_BATTERY_CHANGED)
             },
-            ContextCompat.RECEIVER_EXPORTED,
+            // 系统受保护广播只能由系统发出, 无需导出给其他应用 (RECEIVER_EXPORTED 会放大攻击面)
+            ContextCompat.RECEIVER_NOT_EXPORTED,
         )
         batteryReceiver = receiver
         // 注册生命周期观察者: 桥接 Activity onPause/onResume 到 shared ScreenModel
@@ -277,9 +284,10 @@ class AndroidReaderPlatformProvider(
         batteryReceiver = null
         lifecycleObserver?.let { activity.lifecycle.removeObserver(it) }
         lifecycleObserver = null
-        // 退出阅读页: 停自动翻页 (对照原版返回键 → autoPageStop)
+        // 退出阅读页: 停自动翻页 (对照原版返回键 → autoPageStop) + 停页面变化订阅
         if (activeMenuState?.first === screenModel) {
             activeMenuState?.second?.stopAutoPage()
+            activeMenuState?.second?.stopPageChangedWatch()
             activeMenuState = null
         }
         // 退出阅读页: 自动备份 (对照原版 ReadBookActivity.onDestroy → Backup.autoBack;
@@ -441,18 +449,35 @@ private class AndroidReaderMenuState(
     override val topMenu = TopMenuState()
 
     // 自动翻页控制器 (对照 app 端 ReadView.autoPager 的 AutoPager; 由 shared AutoPagerCompose 承载)
-    private val autoPageScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var autoPager: AutoPagerCompose? = null
 
     // 滚动模式朗读重定位: 暂停期间页面是否变化 (对照原版 ReadBookActivity.pageChanged)
     private var aloudPageChanged = false
 
+    // 页面变化订阅句柄: 屏幕级生命周期, 由 onExit 取消、onEnter/init 重建。
+    // 只挂 activity.lifecycleScope 时同一 Activity 内反复进出阅读页会累积常驻订阅者
+    private var pageChangedJob: Job? = null
+
     init {
-        // 页面变化 → aloudPageChanged (对照原版 ReadBook.CallBack.pageChanged;
-        // 经 ReadBookEvents.seekBarChange 桥接: onPageChanged/onChapterChanged 均触发)
-        autoPageScope.launch {
+        startPageChangedWatch()
+    }
+
+    /**
+     * 起/重起页面变化订阅 → aloudPageChanged (对照原版 ReadBook.CallBack.pageChanged;
+     * 经 ReadBookEvents.seekBarChange 桥接: onPageChanged/onChapterChanged 均触发)。
+     * 幂等: 先取消旧 job; 仍挂 lifecycleScope 作 Activity 销毁兜底。
+     */
+    fun startPageChangedWatch() {
+        pageChangedJob?.cancel()
+        pageChangedJob = activity.lifecycleScope.launch {
             ReadBookEvents.seekBarChange.collect { aloudPageChanged = true }
         }
+    }
+
+    /** 停页面变化订阅 (阅读页退出) */
+    fun stopPageChangedWatch() {
+        pageChangedJob?.cancel()
+        pageChangedJob = null
     }
 
     // 底栏进度条 (快照状态, 由 upSeekBar()/refresh() 更新: 普通 getter 读 StateFlow.value/
@@ -695,7 +720,8 @@ private class AndroidReaderMenuState(
                 activity.lifecycleScope.launch(IO) {
                     runCatching {
                         ContentProcessor.get(book).upReplaceRules()
-                        appDb.bookDao.update(book)
+                        // 只 PATCH 阅读配置列; 整行 update 会冲掉后台 updateToc 写入的目录/元数据
+                        appDb.bookDao.updateReadConfig(book.bookUrl, book.config)
                     }
                     // 对照原版 ReadBook.loadContent(resetPageOffset = false): 同章重载保留进度
                     screenModel.viewModel.loadChapter(screenModel.viewModel.durChapterIndex.value)
@@ -729,7 +755,8 @@ private class AndroidReaderMenuState(
                 book.config.reSegment = !book.config.reSegment
                 upTopMenu()
                 activity.lifecycleScope.launch(IO) {
-                    appDb.bookDao.update(book)
+                    // 只 PATCH 阅读配置列; 整行 update 会冲掉后台 updateToc 写入的目录/元数据
+                    appDb.bookDao.updateReadConfig(book.bookUrl, book.config)
                     screenModel.viewModel.loadChapter(screenModel.viewModel.durChapterIndex.value)
                 }
             }
@@ -745,7 +772,8 @@ private class AndroidReaderMenuState(
                     val book = screenModel.viewModel.book.value ?: return@selector
                     book.config.imageStyle = imageStyle
                     activity.lifecycleScope.launch(IO) {
-                        appDb.bookDao.update(book)
+                        // 只 PATCH 阅读配置列; 整行 update 会冲掉后台 updateToc 写入的目录/元数据
+                        appDb.bookDao.updateReadConfig(book.bookUrl, book.config)
                         if (imageStyle == Book.imgStyleSingle) {
                             ReadBookEvents.postConfig(ReadConfigChange.PAGE_ANIM)
                         }
@@ -800,7 +828,8 @@ private class AndroidReaderMenuState(
         }
         upTopMenu()
         activity.lifecycleScope.launch(IO) {
-            appDb.bookDao.update(book)
+            // 只 PATCH 阅读配置列; 整行 update 会冲掉后台 updateToc 写入的目录/元数据
+            appDb.bookDao.updateReadConfig(book.bookUrl, book.config)
             screenModel.viewModel.refreshContentAll()
         }
     }
@@ -996,7 +1025,7 @@ private class AndroidReaderMenuState(
         autoPage = true
         autoPager = AutoPagerCompose(
             viewModel = screenModel.viewModel,
-            scope = autoPageScope,
+            scope = activity.lifecycleScope,
             // 每拍现读速度配置 (对照原版每次 postDelayed 现取 ReadBookConfig.autoReadSpeed)
             autoReadSpeed = { ReadBookConfig.autoReadSpeed.coerceAtLeast(1) },
         ).also { pager ->

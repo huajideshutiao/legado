@@ -1,5 +1,6 @@
 package io.legado.app.ui.compose.component
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,7 +17,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import legado.shared.generated.resources.Res
@@ -51,9 +54,15 @@ fun SelectActionBar(
     val colors = AppTheme.colors
     val isSelectAll = selectCount > 0 && selectCount >= allCount
     val enabled = selectCount > 0
+    // 对齐原版 init: 无壁纸时涂 bottomBackground, 有壁纸时透明
+    val themeStore = LocalThemeStoreProvider.current
+    val hasBgImage = remember(themeStore) {
+        !themeStore.bgImagePath.isNullOrBlank()
+    }
     Row(
         modifier
             .fillMaxWidth()
+            .background(if (hasBgImage) Color.Transparent else colors.bottomBackground)
             .padding(start = 16.dp, top = 8.dp, end = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -71,6 +80,8 @@ fun SelectActionBar(
         AppOutlinedButton(
             text = stringResource(Res.string.revert_selection),
             enabled = enabled,
+            // 对齐原版 xml: 按钮带 4dp margin (arco_spacing_xs)
+            modifier = Modifier.padding(start = 4.dp),
             onClick = onRevertSelection,
         )
         AppOutlinedButton(
@@ -84,7 +95,8 @@ fun SelectActionBar(
             // 菜单必须与更多按钮处于同一锚点 Box；若作为 Row 的并列节点，
             // DropdownMenu 会拿到错误的父级坐标，表现为从操作栏左侧弹出。
             Box {
-                IconButton(onClick = { showMenu = true }, enabled = enabled) {
+                // 对齐原版 xml ivMenuMore 36dp, 而非 M2 IconButton 默认 48dp
+                IconButton(onClick = { showMenu = true }, enabled = enabled, modifier = Modifier.size(36.dp)) {
                     Icon(
                         painter = painterResource(Res.drawable.ic_more_vert),
                         contentDescription = stringResource(Res.string.more_menu),

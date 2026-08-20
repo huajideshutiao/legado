@@ -91,6 +91,7 @@ object LifecycleHelp : Application.ActivityLifecycleCallbacks {
         LogUtils.d(TAG, "${activity::class.simpleName} onStart")
     }
 
+    @Synchronized
     override fun onActivityDestroyed(activity: Activity) {
         LogUtils.d(TAG, "${activity::class.simpleName} onDestroy")
         for (temp in activities) {
@@ -112,6 +113,7 @@ object LifecycleHelp : Application.ActivityLifecycleCallbacks {
         LogUtils.d(TAG, "${activity::class.simpleName} onStop")
     }
 
+    @Synchronized
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
         LogUtils.d(TAG, "${activity::class.simpleName} onCreate")
         activities.add(WeakReference(activity))

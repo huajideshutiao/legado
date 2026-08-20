@@ -130,8 +130,12 @@ object RestoreShared {
                 }
                 if (appDb.bookDao.has(book.bookUrl)) {
                     // 原版捕获 SQLiteConstraintException 后改 insert; commonMain 无该类型, 按异常回退
+                    // onFailure 首行 ensureActive: update 是挂起取消点, 别把取消当成约束冲突再去 insert
                     runCatching { appDb.bookDao.update(book) }
-                        .onFailure { appDb.bookDao.insert(book) }
+                        .onFailure {
+                            currentCoroutineContext().ensureActive()
+                            appDb.bookDao.insert(book)
+                        }
                 } else {
                     newBooks.add(book)
                 }
@@ -191,6 +195,8 @@ object RestoreShared {
                 }
             }
         }.onFailure {
+            // 块内 serverDao.insert 是挂起取消点, 首行 ensureActive 把取消放出去, 不当成"恢复出错"记日志
+            currentCoroutineContext().ensureActive()
             AppLog.put("恢复服务器配置出错\n${it.message}", it, tag = TAG)
         }
 

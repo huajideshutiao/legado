@@ -47,9 +47,11 @@ class CodeEditorSearchTarget(
             }
             val cursor = editor.value.selection.min
             index = if (forward == true) {
-                // forward=null (输入防抖触发) 按原版当作向上定位: 光标前最后一个匹配
+                // 向下定位: 光标及其后的第一个匹配
                 ranges.indexOfFirst { it.first >= cursor }.let { if (it == -1) 0 else it }
             } else {
+                // forward=false 与 forward=null (输入防抖触发) 都按原版 find 的 forward
+                // 默认值 false 走向上定位: 光标前最后一个匹配
                 ranges.indexOfLast { it.last <= cursor }
                     .let { if (it == -1) ranges.size - 1 else it }
             }

@@ -52,7 +52,8 @@ class CoverImageView @JvmOverloads constructor(
         transitionName = "img_cover"
         contentDescription = androidAppString("img_cover")
         if (isInEditMode) {
-            setImageResource(R.drawable.image_cover_default)
+            // 与 showDefaultCover 同一生成路径 (内置封面已迁到 shared composeResources)
+            setImageDrawable(BookCover.newDefaultDrawable(coverRatio, defaultCoverSeed()))
         }
         attrs?.let {
             context.withStyledAttributes(it, R.styleable.CoverImageView) {

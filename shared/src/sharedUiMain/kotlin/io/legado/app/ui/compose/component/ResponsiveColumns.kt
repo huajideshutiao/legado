@@ -29,9 +29,10 @@ private const val MIN_COLUMN_WIDTH_RATIO = 0.8f
 fun effectiveColumns(baseColumns: Int, availableWidth: Dp, referenceWidth: Dp): Int {
     val base = baseColumns.coerceAtLeast(1)
     val scaled = (base * (availableWidth / referenceWidth)).roundToInt()
+    // max 钳底: 容器过窄(如首帧 availableSize=0)时 scaled 可为 0, 钳到 base 防除零/列数归零
+    var columns = scaled.coerceAtLeast(base)
     // 参考列宽 = referenceWidth / base; 守卫下限 = 其 MIN_COLUMN_WIDTH_RATIO 倍
     val minColumnWidth = referenceWidth / base * MIN_COLUMN_WIDTH_RATIO
-    var columns = scaled
     while (columns > base && availableWidth / columns < minColumnWidth) {
         columns--
     }
@@ -53,7 +54,9 @@ class ResponsiveGridCells(
         availableSize: Int,
         spacing: Int,
     ): List<Int> {
+        // coerceAtLeast(1) 兜底: 极端情况下 effectiveColumns 内部计算异常也不允许除零
         val columns = effectiveColumns(baseColumns, availableSize.toDp(), referenceWidth)
+            .coerceAtLeast(1)
         // 与 GridCells.Fixed 同一套整数分配: 余数逐格 +1, 避免右侧留缝
         val sizeWithoutSpacing = availableSize - spacing * (columns - 1)
         val slotSize = sizeWithoutSpacing / columns

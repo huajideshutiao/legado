@@ -260,10 +260,6 @@ object IosPlatformCapabilities : PlatformCapabilities {
         }
     }
 
-    override fun showBookSourceLogin(source: BookSource) {
-        source.showLoginDialog()
-    }
-
     override fun evalIntroAction(book: Book, js: String) {
         val action = js.trim().ifEmpty { return }
         scope.launch {

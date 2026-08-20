@@ -65,7 +65,7 @@ import io.legado.app.web.utils.registerNativeWebStrings
  * 鸿蒙宿主启动早期的统一 provider 注册入口。
  *
  * 鸿蒙 app (ArkTS) 在 EntryAbility.onCreate 早期通过 napi 调用本函数,
- * 一次性完成所有 commonMain provider 的 stub 注入, 之后即可调用 shared 业务代码。
+ * 一次性完成所有 commonMain provider 注入, 之后即可调用 shared 业务代码。
  *
  * 注册顺序约束 (与 desktop `Main.kt` 一致, 详见 [registerIosProviders] 对齐说明):
  * 1. [registerOhosAppFilesDir] 必须最先 (其他 provider 持久化目录依赖 [AppFilesDirs])
@@ -85,19 +85,20 @@ import io.legado.app.web.utils.registerNativeWebStrings
  *     JsEngines.get() 未注册 provider 会抛 IllegalStateException)
  * 6.5 [BitmapProviders.register]([OhosBitmapProvider]) 在任何 CbzFile/EpubFile 封面提取调用之前
  *    (委托 OhosImageOps; 未注册时 BitmapProviders.get() 抛 IllegalStateException)
- * 7. [registerOhosSystemTtsEngine] (SystemTts 占位) 在 JsEngines 之后
+ * 7. [registerOhosSystemTtsEngine] 在 JsEngines 之后
  *    (与 desktop Main.kt 中 TtsEngineProvider.register 位置一致)
  * 8. 其余 provider ([registerNativeFileDownloader] / [registerOhosToaster] /
  *    [registerOhosNotificationProgress] / [registerOhosServiceLauncher]) 顺序无关
  * 8.5 [registerOhosNativeBridge] (napi 桥接基础设施) 必须在 [registerOhosToaster] /
  *    [registerOhosNotificationProgress] 之前 (当前为空操作占位, 真实 tsfn 由 EntryAbility 注入)
  *
- * 当前为 KP5 阶段, 各 provider 已落地真实实现 (Database / BookStorage / Preference / HTTP /
- * ImageOps / JsEngine / FileDownloader); SystemTtsEngine 为占位实现 (需 napi 桥接 @ohos.textToSpeech);
- * Toaster / NotificationProgress 为 KP7+ 已真实化 (走 [io.legado.app.napi.OhosNativeBridge] napi 桥接,
- *   未注入 tsfn 时降级 println; 真实 tsfn 由 EntryAbility.onCreate 调 legado.registerToastCallback /
+ * 各 provider 均为真实实现 (Database / BookStorage / Preference / HTTP / ImageOps / JsEngine /
+ * FileDownloader); SystemTtsEngine 走 napi 桥接 @ohos.textToSpeech (tsfn 未注入时 speak 上报 error);
+ * Toaster / NotificationProgress 走 [io.legado.app.napi.OhosNativeBridge] napi 桥接
+ *   (未注入 tsfn 时降级 println; 真实 tsfn 由 EntryAbility.onCreate 调 legado.registerToastCallback /
  *   registerNotificationCallback 注入, 详见 docs/ohos-napi-bridge.md);
- * ServiceLauncher 仍为 stub (后续接入鸿蒙原生 API 后替换)。
+ * ServiceLauncher 为 nativeMain [NativeServiceLauncher] (接 CacheBookShared / UpdateBookShared /
+ *   FileDownloaders, 与 iOS 端共用)。
  *
  * JS 引擎 provider: OhosJsEngine (基于 quickjs cinterop 编译 C 源码, 与 Android/Desktop/iOS 端
  * quickjs 引擎统一, KP6 替代原 JSVM-API dlopen/dlsym stub, 解除鸿蒙端 JS 引擎缺失阻塞)
@@ -222,7 +223,7 @@ fun registerOhosProviders() {
     // 须在 BookStorage/LocalBookLocator/BitmapProviders 之后, 任何 FileBook 调用之前
     registerNativeFileBookAccessor()
 
-    // 7. TTS 引擎 provider (OhosSystemTtsEngine 占位), 在 JsEngines 之后
+    // 7. TTS 引擎 provider (OhosSystemTtsEngine, napi 桥接 @ohos.textToSpeech), 在 JsEngines 之后
     // (与 desktop Main.kt 中 `TtsEngineProvider.register(DesktopSystemTtsEngine())` 位置一致)
     registerOhosSystemTtsEngine()
     // 7b. HttpTTS 播放器工厂 (三端朗读 HttpTTS 路径, 鸿蒙 AVPlayer napi 桥接 actual)
@@ -252,7 +253,8 @@ fun registerOhosProviders() {
     registerSharedCookieJarBridge()
 
     // 8.7 UI provider (Toast / OpenUrl / UserAgent, JsExtensionsCommon 在 JS eval 时回调)
-    // 必须在任何 JS 执行之前 (JS eval 在本函数返回后由业务代码触发); stub 实现, 真实实现需 tsfn 桥接 ArkTS
+    // 必须在任何 JS 执行之前 (JS eval 在本函数返回后由业务代码触发)。
+    // OpenUrl 走 tsfn 桥 context.startAbility (真实); UserAgent 仍为硬编码 UA 常量 (待 tsfn 取 webview 默认 UA)
     registerOhosOpenUrlProvider()
     registerOhosUserAgentProvider()
     // 8.7b Markdown 查看器事件监听 (viewer 页面链接点击 → 系统浏览器打开, 决策: 一律系统浏览器)。

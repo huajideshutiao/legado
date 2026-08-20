@@ -4,6 +4,9 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -42,93 +45,105 @@ private val MaxScrollVelocity = 20.dp
  * @param onSelectedChanged 设置某 index 选中态(host 据 items[index] 主键写 Set)
  * @param handleWidth      触发拖选的左侧手柄列宽度
  */
+@Composable
 fun Modifier.dragSelectable(
     listState: LazyListState,
     autoScrollScope: CoroutineScope,
     isSelected: (index: Int) -> Boolean,
     onSelectedChanged: (index: Int, selected: Boolean) -> Unit,
     handleWidth: Dp = DragSelectHandleWidth,
-): Modifier = this.pointerInput(listState) {
-    val handlePx = handleWidth.toPx()
-    val maxVelocity = MaxScrollVelocity.toPx()
-    val viewHeight = size.height.toFloat()
+): Modifier {
+    // 手势协程随 pointerInput key 启动后 lambda 不再重建, 经 rememberUpdatedState 读最新回调,
+    // 否则调用点在首次触摸后一直用首帧闭包(拖选翻错行/静默无效); key 保持 listState 不重启手势
+    val currentIsSelected by rememberUpdatedState(isSelected)
+    val currentOnSelectedChanged by rememberUpdatedState(onSelectedChanged)
+    return this.pointerInput(listState) {
+        val handlePx = handleWidth.toPx()
+        val maxVelocity = MaxScrollVelocity.toPx()
+        val viewHeight = size.height.toFloat()
 
-    awaitEachGesture {
-        val down = awaitFirstDown(requireUnconsumed = false)
-        // 起点不在左侧手柄列则放行：交给复选框点按/长按拖拽排序
-        if (down.position.x > handlePx) return@awaitEachGesture
-        val startIndex = listState.itemIndexAtY(down.position.y) ?: return@awaitEachGesture
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            // 起点不在左侧手柄列则放行：交给复选框点按/长按拖拽排序
+            if (down.position.x > handlePx) return@awaitEachGesture
+            val startIndex = listState.itemIndexAtY(down.position.y) ?: return@awaitEachGesture
 
-        var activated = false
-        var anchor = startIndex
-        var firstSelected = false
-        var lastStart = startIndex
-        var lastEnd = startIndex
-        var pointerY = down.position.y
-        var scrollVelocity = 0f
-        var scrollJob: Job? = null
+            var activated = false
+            var anchor = startIndex
+            var firstSelected = false
+            var lastStart = startIndex
+            var lastEnd = startIndex
+            var pointerY = down.position.y
+            var scrollVelocity = 0f
+            var scrollJob: Job? = null
 
-        // 区间增量刷新，等价 DragSelectTouchHelper.notifySelectRangeChange + ToggleAndReverse
-        fun applyRange(current: Int) {
-            val newStart = min(anchor, current)
-            val newEnd = max(anchor, current)
-            if (newStart < lastStart) {
-                for (i in newStart until lastStart) onSelectedChanged(i, !firstSelected)
-            } else if (newStart > lastStart) {
-                for (i in lastStart until newStart) onSelectedChanged(i, firstSelected)
+            // 区间增量刷新，等价 DragSelectTouchHelper.notifySelectRangeChange + ToggleAndReverse
+            fun applyRange(current: Int) {
+                val newStart = min(anchor, current)
+                val newEnd = max(anchor, current)
+                if (newStart < lastStart) {
+                    for (i in newStart until lastStart) currentOnSelectedChanged(i, !firstSelected)
+                } else if (newStart > lastStart) {
+                    for (i in lastStart until newStart) currentOnSelectedChanged(i, firstSelected)
+                }
+                if (newEnd > lastEnd) {
+                    for (i in lastEnd + 1..newEnd) currentOnSelectedChanged(i, !firstSelected)
+                } else if (newEnd < lastEnd) {
+                    for (i in newEnd + 1..lastEnd) currentOnSelectedChanged(i, firstSelected)
+                }
+                lastStart = newStart
+                lastEnd = newEnd
             }
-            if (newEnd > lastEnd) {
-                for (i in lastEnd + 1..newEnd) onSelectedChanged(i, !firstSelected)
-            } else if (newEnd < lastEnd) {
-                for (i in newEnd + 1..lastEnd) onSelectedChanged(i, firstSelected)
-            }
-            lastStart = newStart
-            lastEnd = newEnd
-        }
 
-        fun updateFromPointer() {
-            listState.itemIndexAtY(pointerY)?.let { applyRange(it) }
-        }
-
-        while (true) {
-            val event = awaitPointerEvent()
-            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-            if (!change.pressed) {
-                if (activated) change.consume()
-                break
+            fun updateFromPointer() {
+                listState.itemIndexAtY(pointerY)?.let { applyRange(it) }
             }
-            pointerY = change.position.y
-            if (!activated) {
-                if (abs(change.position.y - down.position.y) > viewConfiguration.touchSlop) {
-                    activated = true
-                    firstSelected = isSelected(anchor)
-                    onSelectedChanged(anchor, !firstSelected)
-                    change.consume()
-                    scrollJob = autoScrollScope.launch {
-                        while (isActive) {
-                            if (scrollVelocity != 0f) {
-                                listState.scrollBy(scrollVelocity)
-                                updateFromPointer()
+
+            try {
+                while (true) {
+                    val event = awaitPointerEvent()
+                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                    if (!change.pressed) {
+                        if (activated) change.consume()
+                        break
+                    }
+                    pointerY = change.position.y
+                    if (!activated) {
+                        if (abs(change.position.y - down.position.y) > viewConfiguration.touchSlop) {
+                            activated = true
+                            firstSelected = currentIsSelected(anchor)
+                            currentOnSelectedChanged(anchor, !firstSelected)
+                            change.consume()
+                            scrollJob = autoScrollScope.launch {
+                                while (isActive) {
+                                    if (scrollVelocity != 0f) {
+                                        listState.scrollBy(scrollVelocity)
+                                        updateFromPointer()
+                                    }
+                                    withFrameNanos { }
+                                }
                             }
-                            withFrameNanos { }
+                        }
+                    } else {
+                        change.consume()
+                        updateFromPointer()
+                        val topZone = viewHeight * EdgeRatio
+                        val bottomZone = viewHeight * (1 - EdgeRatio)
+                        scrollVelocity = when {
+                            pointerY < topZone ->
+                                -maxVelocity * ((topZone - pointerY) / topZone).coerceIn(0f, 1f)
+                            pointerY > bottomZone ->
+                                maxVelocity * ((pointerY - bottomZone) / (viewHeight - bottomZone)).coerceIn(0f, 1f)
+                            else -> 0f
                         }
                     }
                 }
-            } else {
-                change.consume()
-                updateFromPointer()
-                val topZone = viewHeight * EdgeRatio
-                val bottomZone = viewHeight * (1 - EdgeRatio)
-                scrollVelocity = when {
-                    pointerY < topZone ->
-                        -maxVelocity * ((topZone - pointerY) / topZone).coerceIn(0f, 1f)
-                    pointerY > bottomZone ->
-                        maxVelocity * ((pointerY - bottomZone) / (viewHeight - bottomZone)).coerceIn(0f, 1f)
-                    else -> 0f
-                }
+            } finally {
+                // 手势取消(CancellationException)时 awaitEachGesture 捕获后重启 block, while 后语句
+                // 不执行; 必须 finally 取消自动滚动, 否则旧 Job 带着最后 velocity 无限 scrollBy 到宿主销毁
+                scrollJob?.cancel()
             }
         }
-        scrollJob?.cancel()
     }
 }
 

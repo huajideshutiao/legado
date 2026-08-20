@@ -75,10 +75,16 @@ class CustomUrlUpdateChecker(
 
     private suspend fun fetchRelease(url: String): List<CustomReleaseInfo> {
         val res = OkHttpClientProviders.get().okHttpClient.newCallResponse { url(url) }
-        if (!res.isSuccessful) throw NoStackTraceException("获取新版本出错(${res.code})")
-        val body = res.body.text()
-        if (body.isBlank()) throw NoStackTraceException("获取新版本出错")
-        return KS_JSON.decodeFromString<List<CustomReleaseInfo>>(body)
+        // KmpResponse 实现 Closeable, 必须关闭 (原版 AppUpdate.kt 用 `.use {}`); commonMain 无
+        // Closeable.use 扩展, 用 try/finally close() 等价实现, 非 2xx 抛异常分支也确保关闭
+        try {
+            if (!res.isSuccessful) throw NoStackTraceException("获取新版本出错(${res.code})")
+            val body = res.body.text()
+            if (body.isBlank()) throw NoStackTraceException("获取新版本出错")
+            return KS_JSON.decodeFromString<List<CustomReleaseInfo>>(body)
+        } finally {
+            res.close()
+        }
     }
 
     companion object {

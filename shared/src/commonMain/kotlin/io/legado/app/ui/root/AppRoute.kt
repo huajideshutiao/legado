@@ -44,10 +44,6 @@ sealed interface AppRoute {
     data object BookSourceManage : AppRoute
 
     @Serializable
-    @SerialName("explore")
-    data object Explore : AppRoute
-
-    @Serializable
     @SerialName("explore_show")
     data class ExploreShow(
         val source: BookSource,
@@ -125,18 +121,6 @@ sealed interface AppRoute {
     data class BookInfoEdit(val book: BookRef) : AppRoute
 
     @Serializable
-    @SerialName("change_source")
-    data class ChangeSource(val book: BookRef) : AppRoute
-
-    @Serializable
-    @SerialName("change_chapter_source")
-    data class ChangeChapterSource(
-        val book: BookRef,
-        val chapterIndex: Int = 0,
-        val chapterTitle: String = "",
-    ) : AppRoute
-
-    @Serializable
     @SerialName("bookmark")
     data class Bookmark(val book: BookRef? = null) : AppRoute
 
@@ -207,11 +191,6 @@ sealed interface AppRoute {
     @SerialName("backup_config")
     data object BackupConfig : AppRoute
 
-    // WebDav 配置 (desktop 独有, 与 BackupConfig 平级)
-    @Serializable
-    @SerialName("web_dav_config")
-    data object WebDavConfig : AppRoute
-
     @Serializable
     @SerialName("other_config")
     data object OtherConfig : AppRoute
@@ -246,9 +225,6 @@ sealed interface AppRoute {
         val refetchAfterSuccess: Boolean = true,
     ) : AppRoute
 
-    @Serializable
-    @SerialName("js_edit")
-    data object JsEdit : AppRoute
 }
 
 @Serializable

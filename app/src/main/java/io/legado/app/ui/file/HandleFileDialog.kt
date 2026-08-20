@@ -30,7 +30,7 @@ import io.legado.app.utils.launch
 import io.legado.app.utils.toastOnUi
 import java.io.File
 
-class HandleFileDialog : BaseComposeDialogFragment() {
+class HandleFileDialog : BaseComposeDialogFragment(), FilePickerDialog.CallBack {
 
     // 正文用 AppAlertDialogContent 自带 Surface 圆角，宿主不再叠 filletBackground
     override val applyFilletBackground: Boolean = false
@@ -143,6 +143,11 @@ class HandleFileDialog : BaseComposeDialogFragment() {
         if (!isLaunchingResult) {
             onResult(null)
         }
+    }
+
+    // FilePickerDialog.CallBack: 应用内选择器结果接入现有结果链
+    override fun onResult(data: Intent) {
+        onResult(data.data)
     }
 
     private fun buildSelectList(): ArrayList<SelectItem<Int>> = when (mode) {

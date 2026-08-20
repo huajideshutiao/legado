@@ -56,29 +56,17 @@ import org.jetbrains.compose.resources.stringResource
  * Intent(ReplaceRuleActivity) / ReadBookViewModel 的依赖,
  * 改为纯 @Composable + 回调形式:
  * - 调用方传入 [book] (上下文, 用于未来扩展标题展示书名) 与 [items] (当前章节起效的替换规则列表,
- *   含 chineseConvert 项时由调用方附加, 与 EffectiveReplacesScreen 设计一致)
+ *   含 chineseConvert 项时由调用方附加)
  * - 用户点击单条规则通过 [onItemClick] 回调 (与原版 `onItemClick(it)` 对齐)
  * - 用户点击右上角"+"通过 [onAddRule] 回调 (与原版 `addRule()` 对齐)
  * - 用户点击底部"管理全部"通过 [onManageAll] 回调 (与原版 `manageActivity.launch(...)` 对齐)
  * - [onDismiss] 关闭回调 (与原版 `dismiss()` 对齐)
  *
- * # 与已下沉的 EffectiveReplacesScreen 的关系
- *
- * shared 中已存在 `EffectiveReplacesScreen` (同包, 参数 items + 4 回调, 无 book 上下文),
- * 本 [EffectiveReplacesDialog] 是其 Dialog 包装版本:
- * - 增加 [book] 参数作为上下文 (供未来扩展标题展示书名, 当前未使用)
- * - 用 Dialog + Surface 包裹, 提供 Arco Design 16dp 圆角容器 (EffectiveReplacesScreen 是裸 Column)
- * - LazyColumn 列出命中规则 (与 EffectiveReplacesScreen 一致, 与任务要求"用 LazyColumn 列出命中规则"对齐)
- *
- * 调用方选择:
- * - app 端 thin wrapper (DialogFragment) 可直接复用 EffectiveReplacesScreen (已是下沉的正文 Composable)
- * - 桌面端 / 需要 Dialog 形式的场景用 [EffectiveReplacesDialog] (本函数)
- *
  * # 原业务逻辑保留
  *
  * - DialogTitleBar + 右上角"+"按钮 (与原版 DialogTitleBar + IconButton(ic_add) 对齐)
  * - LazyColumn 列出 items, 每行点击触发 [onItemClick] (与原版 clickable + onItemClick 对齐)
- * - 空列表展示"空空如也"占位 (与原版 EffectiveReplacesScreen empty 分支对齐)
+ * - 空列表展示"空空如也"占位 (与原版 empty 分支对齐)
  * - 底部"关闭" + "管理全部"按钮 (与原版 Row + AppTextButton 对齐)
  *
  * # 样式 (Arco Design 规范)
@@ -137,7 +125,8 @@ fun EffectiveReplacesDialog(
                         .weight(1f),
                 ) {
                     LazyColumn(Modifier.fillMaxWidth()) {
-                        itemsIndexed(items) { _, item ->
+                        // key 用主键 id, 繁简转换占位项 id=0 与真实规则 (时间戳 id) 不冲突
+                        itemsIndexed(items, key = { _, item -> item.id }) { _, item ->
                             Text(
                                 text = item.name,
                                 color = colors.primaryText,
@@ -150,7 +139,7 @@ fun EffectiveReplacesDialog(
                             )
                         }
                     }
-                    // 空列表占位 (与原版 EffectiveReplacesScreen empty 分支对齐)
+                    // 空列表占位 (与原版 empty 分支对齐)
                     if (items.isEmpty()) {
                         Text(
                             text = stringResource(Res.string.empty),

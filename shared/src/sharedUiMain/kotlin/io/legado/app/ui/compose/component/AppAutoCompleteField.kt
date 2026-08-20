@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Surface
@@ -82,7 +82,9 @@ fun AppAutoCompleteField(
                     modifier = Modifier.fillMaxWidth(0.9f),
                 ) {
                     LazyColumn(Modifier.heightIn(max = 200.dp)) {
-                        items(suggestions, key = { it }) { item ->
+                        // 用下标作 key: 历史缓存里可能有重复串 (原版 ArrayAdapter 容忍重复),
+                        // 字符串作 key 会因重复抛 IllegalArgumentException
+                        itemsIndexed(suggestions) { _, item ->
                             Row(
                                 Modifier
                                     .fillMaxWidth()

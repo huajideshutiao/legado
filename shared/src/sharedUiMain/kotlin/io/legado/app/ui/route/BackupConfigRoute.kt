@@ -54,12 +54,15 @@ import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.widget.dialog.HelpDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
+import io.legado.app.utils.format
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.backup_fail
 import legado.shared.generated.resources.backup_restore
+import legado.shared.generated.resources.backup_success
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.help
 import legado.shared.generated.resources.ic_help

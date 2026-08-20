@@ -176,7 +176,6 @@ import io.legado.app.utils.openUrl
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.restart
 import io.legado.app.utils.sendToClip
-import io.legado.app.utils.setLightStatusBar
 import io.legado.app.utils.share
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.stackTraceStr
@@ -194,6 +193,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -204,6 +204,12 @@ import kotlinx.serialization.json.put
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Collections
+
+/**
+ * 等 Overlay 结果的超时上限: 取消关闭对话框不回传结果, 无超时则协程永久挂起。
+ * 10 分钟对"挑封面/选文件"这类用户操作足够宽裕, 又能保证泄漏有界。
+ */
+private const val OVERLAY_RESULT_TIMEOUT_MS = 10 * 60 * 1000L
 
 class AndroidPlatformCapabilities(
     private val activity: MainActivity,
@@ -253,7 +259,8 @@ class AndroidPlatformCapabilities(
     // 推进会导致目标页全程不可见、动画收敛后突然闪现, 故不再依赖淡入)。
     // 时长运行时动态读系统动画时长缩放 (Settings.Global ANIMATOR_DURATION_SCALE ×
     // TRANSITION_ANIMATION_SCALE 取小值: 任一关闭即关闭转场动画, 尊重用户"动画时长缩放"
-    // 设置, >1 时与系统一致放慢), 读取失败回退系统规范值 (300ms/200ms/150ms)。
+    // 设置, >1 时与系统一致放慢); 回退基准值路由 500ms (系统规范 300ms, 见 383c2791df
+    // "微调动画速率" 有意放慢), 对话框沿用系统规范 200ms/150ms。
 
     /** 系统动画时长缩放 (ANIMATOR_DURATION_SCALE × TRANSITION_ANIMATION_SCALE 取小值, 读取失败回退 1f) */
     private fun systemAnimationScale(): Float {
@@ -288,7 +295,8 @@ class AndroidPlatformCapabilities(
         get() {
             val scale = systemAnimationScale()
             return RouteTransitionSpec(
-                // 系统转场 300ms × 动画时长缩放 (关闭动画时 scale=0 → 0ms 瞬切, 对齐系统行为)
+                // 500ms × 动画时长缩放 (系统转场规范 300ms, 383c2791df 有意放慢到 500;
+                // 关闭动画时 scale=0 → 0ms 瞬切, 对齐系统行为)
                 pushDurationMillis = (500 * scale).toInt(),
                 pushEasing = TransitionEasing.FastOutSlowIn,
                 newPageSlideFraction = 1f, // 系统 slide_in_right 全宽
@@ -431,20 +439,24 @@ class AndroidPlatformCapabilities(
     override fun showChangeCoverDialog(book: Book, onCoverSelected: (String) -> Unit) {
         val navigator = AppNavigatorProviders.getOrNull()
         if (navigator != null) {
-            activity.lifecycleScope.launch(IO) {
+            // 不带 IO: showOverlay 是 UI 操作, 必须主线程 (lifecycleScope 默认 Main.immediate),
+            // 同时保证"先入栈再收结果", 不会漏掉结果
+            activity.lifecycleScope.launch {
                 navigator.showOverlay(
                     AppOverlay.Dialog(
                         "change_cover",
                         payload = "${book.name}\n${book.author}"
                     )
                 )
-                // 等 Overlay 结果返回 (RouteResultPayload.ChangeCover)
-                val result = navigator.overlayResults.first { it.key == "change_cover" }
-                (result.payload as? io.legado.app.ui.root.RouteResultPayload)?.let { payload ->
+                // 等 Overlay 结果返回 (RouteResultPayload.ChangeCover);
+                // 用户取消关闭对话框时 payload=None 不 emit (见 AppNavigator.pop), first{} 会
+                // 永久挂起并把闭包留到 Activity 销毁, 故加超时兜底, 超时按"用户取消"处理
+                val result = withTimeoutOrNull(OVERLAY_RESULT_TIMEOUT_MS) {
+                    navigator.overlayResults.first { it.key == "change_cover" }
+                }
+                (result?.payload as? io.legado.app.ui.root.RouteResultPayload)?.let { payload ->
                     if (payload is io.legado.app.ui.root.RouteResultPayload.ChangeCover) {
-                        withContext(kotlinx.coroutines.Dispatchers.Main) {
-                            onCoverSelected(payload.coverUrl)
-                        }
+                        onCoverSelected(payload.coverUrl)
                     }
                 }
             }
@@ -714,12 +726,13 @@ class AndroidPlatformCapabilities(
         } else {
             // 上架走 shared 统一核心 toggleBookshelfCore (对照原 addToBookshelf → Book.save),
             // 与 desktop/iOS/ohos 一致, 避免各端维护多份拷贝
+            // onComplete 里调用方要做 pop/dispatch 等 UI 操作, 回主线程 (对照 delBook)
             activity.lifecycleScope.launch(IO) {
                 runCatching { book.toggleBookshelfCore(false) }
-                    .onSuccess { onComplete(it) }
+                    .onSuccess { activity.runOnUiThread { onComplete(it) } }
                     .onFailure {
                         AppLog.put("书架操作失败\n${it.message}", it)
-                        onComplete(false)
+                        activity.runOnUiThread { onComplete(false) }
                     }
             }
         }
@@ -995,9 +1008,11 @@ class AndroidPlatformCapabilities(
         onAction: (String) -> Unit,
         success: ((Book) -> Unit)?,
     ) {
+        // 原版走 execute{}, 其 executeContext 默认 Dispatchers.Main, 故等待框/动作/成功
+        // 三类回调都在主线程; 这里统一 runOnUiThread 回主线程与原版对齐
         activity.lifecycleScope.launch(IO) {
             try {
-                onWaitDialog(true)
+                activity.runOnUiThread { onWaitDialog(true) }
                 val source = appDb.bookSourceDao.getBookSource(book.origin)
                 val fileName = book.getExportFileName(webFile.suffix)
                 val uri = FileBook.saveBookFile(webFile.url, fileName, source)
@@ -1007,11 +1022,14 @@ class AndroidPlatformCapabilities(
                 activity.runOnUiThread { success?.invoke(merged) }
             } catch (e: Throwable) {
                 when (e) {
-                    is InvalidBooksDirException -> onAction("selectBooksDir")
+                    is InvalidBooksDirException -> activity.runOnUiThread {
+                        onAction("selectBooksDir")
+                    }
+
                     else -> AppLog.put("ImportWebFileError\n${e.localizedMessage}", e, true)
                 }
             } finally {
-                onWaitDialog(false)
+                activity.runOnUiThread { onWaitDialog(false) }
             }
         }
     }
@@ -1026,18 +1044,21 @@ class AndroidPlatformCapabilities(
     ) {
         activity.lifecycleScope.launch(IO) {
             try {
-                onWaitDialog(true)
+                activity.runOnUiThread { onWaitDialog(true) }
                 val source = appDb.bookSourceDao.getBookSource(book.origin)
                 val fileName = book.getExportFileName(webFile.suffix)
                 val uri = FileBook.saveBookFile(webFile.url, fileName, source)
                 activity.runOnUiThread { success?.invoke(uri.toString()) }
             } catch (e: Throwable) {
                 when (e) {
-                    is InvalidBooksDirException -> onAction("selectBooksDir")
+                    is InvalidBooksDirException -> activity.runOnUiThread {
+                        onAction("selectBooksDir")
+                    }
+
                     else -> AppLog.put("DownloadWebFileError\n${e.localizedMessage}", e, true)
                 }
             } finally {
-                onWaitDialog(false)
+                activity.runOnUiThread { onWaitDialog(false) }
             }
         }
     }
@@ -1066,7 +1087,7 @@ class AndroidPlatformCapabilities(
     ) {
         activity.lifecycleScope.launch(IO) {
             try {
-                onWaitDialog(true)
+                activity.runOnUiThread { onWaitDialog(true) }
                 val suffix = archiveEntryName.substringAfterLast(".")
                 val saveFileName = book.getExportFileName(suffix)
                 val books = FileBook.importFromArchive(archiveFilePath, saveFileName) {
@@ -1079,41 +1100,26 @@ class AndroidPlatformCapabilities(
             } catch (e: Throwable) {
                 AppLog.put("importArchiveBook Error\n${e.localizedMessage}", e, true)
             } finally {
-                onWaitDialog(false)
+                activity.runOnUiThread { onWaitDialog(false) }
             }
         }
     }
 
     // 对照 BookInfoViewModel.refreshWebDavBook
-    override fun refreshWebDavBook(book: Book, success: (() -> Unit)?) {
-        activity.lifecycleScope.launch(IO) {
-            try {
-                val remoteUrl = book.getRemoteUrl()
-                if (remoteUrl != null) {
-                    val bookWebDav = AppWebDav.defaultBookWebDav
-                        ?: throw NoStackTraceException("webDav没有配置")
-                    val remoteBook = bookWebDav.getRemoteBook(remoteUrl)
-                    if (remoteBook == null) {
-                        book.origin = BookType.localTag
-                    } else if (remoteBook.lastModify > book.lastCheckTime) {
-                        val path = bookWebDav.downloadRemoteBook(remoteBook)
-                        val uri = path.toUri()
-                        book.bookUrl = if (uri.isContentScheme()) uri.toString() else uri.path!!
-                        book.lastCheckTime = remoteBook.lastModify
-                    }
-                }
-                activity.runOnUiThread { success?.invoke() }
-            } catch (e: Throwable) {
-                AppLog.put("RefreshWebDavBookError\n${e.localizedMessage}", e, true)
-            }
+    override suspend fun refreshWebDavBook(book: Book) {
+        val remoteUrl = book.getRemoteUrl() ?: return
+        val bookWebDav = AppWebDav.defaultBookWebDav
+            ?: throw NoStackTraceException("webDav没有配置")
+        val remoteBook = bookWebDav.getRemoteBook(remoteUrl)
+        if (remoteBook == null) {
+            book.origin = BookType.localTag
+            return
         }
-    }
-
-    // 对照 BookInfoViewModel.changeToLocalBook: mergeBook + loadChapterList + inBookshelf=true
-    // 调用方 (importWebFile/importBookFromArchive) 已完成 mergeBook 并同步加载章节
-    override fun changeToLocalBook(book: Book): Book {
-        runBlocking { loadChapterListAndSave(book) }
-        return book
+        if (remoteBook.lastModify > book.lastCheckTime) {
+            val uri = bookWebDav.downloadRemoteBook(remoteBook).toUri()
+            book.bookUrl = if (uri.isContentScheme()) uri.toString() else uri.path!!
+            book.lastCheckTime = remoteBook.lastModify
+        }
     }
 
     // 对照 BaseReadViewModel.loadChapterList (本地书分支): FileBook.getChapterList + 入库
@@ -1149,11 +1155,6 @@ class AndroidPlatformCapabilities(
 
     // 对照 ChapterProvider.upLayout 的 appCtx.isPad（"平板/横屏双页" auto 分支）
     override fun isTablet(): Boolean = activity.isPad
-
-    // 对照 BookInfoActivity.Content 内 setLightStatusBar(if (useDevFeat) isDarkTheme else false)
-    override fun setLightStatusBarForBookInfo(useDevFeat: Boolean, isDarkTheme: Boolean) {
-        activity.setLightStatusBar(if (useDevFeat) isDarkTheme else false)
-    }
 
     // ===== 书架管理平台能力: 对照 BookshelfManageActivity 同名方法/状态 =====
 
@@ -1570,13 +1571,6 @@ class AndroidPlatformCapabilities(
         AppNavigatorProviders.getOrNull()?.push(AppRoute.BookSourceEdit(""))
     }
 
-    // 对照 BookSourceActivity.showGroupManage
-    // 迁 Compose Overlay: 原 showDialogFragment<GroupManageDialog>() 已由
-    // shared OverlayContentHost 的 "group_manage" key 接管 (GroupManageDialogContent)
-    override fun showBookSourceGroupManage() {
-        AppNavigatorProviders.getOrNull()?.showOverlay(AppOverlay.Dialog("group_manage"))
-    }
-
     // 对照 BookSourceActivity.cancelCheckSource (CheckSource.stop + Debug.finishChecking)
     override fun cancelCheckSource() {
         CheckSource.stop(activity)
@@ -1682,11 +1676,6 @@ class AndroidPlatformCapabilities(
     }
 
     // ===== 书源编辑平台能力: 对照 BookSourceEditActivity 同名方法 =====
-
-    // 对照 BookSourceEditActivity.login / source.showLoginDialog (route 已先 save)
-    override fun showBookSourceLogin(source: BookSource) {
-        source.showLoginDialog()
-    }
 
     // 对照 BookSourceEditActivity.setSourceVariable / source.showSourceVariableDialog (route 已先 save);
     // VariableDialog 已下沉 shared: 经 sourceVariable Overlay 弹出
@@ -1932,14 +1921,14 @@ class AndroidPlatformCapabilities(
     override fun showCheckSourceConfigDialog(onDismiss: () -> Unit) {
         val navigator = AppNavigatorProviders.getOrNull()
         if (navigator != null) {
-            activity.lifecycleScope.launch(IO) {
-                // 等 Overlay 出现在栈中
-                navigator.overlays.first { it.any { o -> o.key == "check_source_config" } }
-                // 等 Overlay 从栈中移除
-                navigator.overlays.first { it.none { o -> o.key == "check_source_config" } }
-                withContext(kotlinx.coroutines.Dispatchers.Main) { onDismiss() }
-            }
+            // 先同步入栈 (showOverlay 是 UI 操作), 再等它从栈中移除即可:
+            // 原先在 IO 协程里先等"出现"再等"移除", 若对话框在协程被调度前就已关闭,
+            // 等"出现"永不满足, onDismiss 丢失且协程挂到 Activity 销毁
             navigator.showOverlay(AppOverlay.Dialog("check_source_config"))
+            activity.lifecycleScope.launch {
+                navigator.overlays.first { it.none { o -> o.key == "check_source_config" } }
+                onDismiss()
+            }
         }
     }
 
@@ -2037,26 +2026,38 @@ class AndroidPlatformCapabilities(
     }
 
     private fun startRead(fileDoc: FileDoc) {
-        if (ArchiveUtils.isArchive(fileDoc.name)) {
-            val fileNames = runCatching {
-                ArchiveUtils.getArchiveFilesName(fileDoc) { AppPattern.bookFileRegex.matches(it) }
-            }.getOrDefault(emptyList())
-            when {
-                fileNames.isEmpty() -> activity.toastOnUi(androidAppString("unsupport_archivefile_entry"))
-                fileNames.size == 1 -> openArchiveBook(fileDoc, fileNames.first())
-                else -> activity.selector(androidAppString("start_read"), fileNames) { _, name, _ ->
-                    openArchiveBook(fileDoc, name)
+        // 原版 ImportBookActivity.startRead 在主线程直查 Room (allowMainThreadQueries);
+        // 迁移后 DAO 是挂起函数, 用 runBlocking 会真把主线程卡在 Room 执行器上,
+        // 改为协程内挂起查询, 后续 toast/selector/push 仍按原顺序在主线程执行
+        activity.lifecycleScope.launch {
+            if (ArchiveUtils.isArchive(fileDoc.name)) {
+                val fileNames = withContext(IO) {
+                    runCatching {
+                        ArchiveUtils.getArchiveFilesName(fileDoc) {
+                            AppPattern.bookFileRegex.matches(it)
+                        }
+                    }.getOrDefault(emptyList())
                 }
+                when {
+                    fileNames.isEmpty() -> activity.toastOnUi(androidAppString("unsupport_archivefile_entry"))
+                    fileNames.size == 1 -> openArchiveBook(fileDoc, fileNames.first())
+                    else -> activity.selector(
+                        androidAppString("start_read"),
+                        fileNames
+                    ) { _, name, _ ->
+                        openArchiveBook(fileDoc, name)
+                    }
+                }
+                return@launch
             }
-            return
-        }
-        runBlocking { appDb.bookDao.getBookByFileName(fileDoc.name) }?.let {
+            val book = withContext(IO) { appDb.bookDao.getBookByFileName(fileDoc.name) }
+                ?: return@launch
             val filePath = fileDoc.toString()
-            if (it.bookUrl != filePath) {
-                it.bookUrl = filePath
-                runBlocking { appDb.bookDao.insert(it) }
+            if (book.bookUrl != filePath) {
+                book.bookUrl = filePath
+                withContext(IO) { appDb.bookDao.insert(book) }
             }
-            AppNavigatorProviders.getOrNull()?.push(it.toReadRoute())
+            AppNavigatorProviders.getOrNull()?.push(book.toReadRoute())
         }
     }
 
@@ -2076,22 +2077,28 @@ class AndroidPlatformCapabilities(
     }
 
     private fun openArchiveBook(fileDoc: FileDoc, fileName: String) {
-        runBlocking { appDb.bookDao.getBookByFileName(fileName) }?.let { book ->
-            AppNavigatorProviders.getOrNull()?.push(book.toReadRoute())
-            return
-        }
-        activity.alert(androidAppString("draw"), androidAppString("no_book_found_bookshelf")) {
-            okButton {
-                activity.lifecycleScope.launch(IO) {
-                    val book = runCatching {
-                        FileBook.importFromArchive(fileDoc.uri, fileName) { it.contains(fileName) }
-                    }.getOrNull()?.firstOrNull()
-                    activity.runOnUiThread {
-                        book?.let { AppNavigatorProviders.getOrNull()?.push(it.toReadRoute()) }
+        // 同 startRead: 查库走协程挂起, 不用 runBlocking 卡主线程
+        activity.lifecycleScope.launch {
+            val cached = withContext(IO) { appDb.bookDao.getBookByFileName(fileName) }
+            if (cached != null) {
+                AppNavigatorProviders.getOrNull()?.push(cached.toReadRoute())
+                return@launch
+            }
+            activity.alert(androidAppString("draw"), androidAppString("no_book_found_bookshelf")) {
+                okButton {
+                    activity.lifecycleScope.launch(IO) {
+                        val book = runCatching {
+                            FileBook.importFromArchive(fileDoc.uri, fileName) {
+                                it.contains(fileName)
+                            }
+                        }.getOrNull()?.firstOrNull()
+                        activity.runOnUiThread {
+                            book?.let { AppNavigatorProviders.getOrNull()?.push(it.toReadRoute()) }
+                        }
                     }
                 }
+                noButton()
             }
-            noButton()
         }
     }
 

@@ -1,6 +1,5 @@
 package io.legado.app.ui.file
 
-import android.content.DialogInterface
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -235,11 +234,6 @@ class FilePickerDialog : BaseComposeDialogFragment() {
         val data = Intent().setData(Uri.fromFile(File(path)))
         (parentFragment as? CallBack)?.onResult(data)
         (activity as? CallBack)?.onResult(data)
-    }
-
-    override fun onDismiss(dialog: DialogInterface) {
-        super.onDismiss(dialog)
-        activity?.finish()
     }
 
     interface CallBack {

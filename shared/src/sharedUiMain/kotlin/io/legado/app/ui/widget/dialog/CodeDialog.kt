@@ -1,9 +1,5 @@
 package io.legado.app.ui.widget.dialog
 
-// I18N KEYS (need to register in ResourceProvider.jvm.kt / Localizable.strings):
-//   "code_view" to "code view"
-//   "action_save" to "保存" (已注册)
-
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn

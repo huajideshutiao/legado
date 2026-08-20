@@ -209,6 +209,10 @@ class ReadAloudControllerShared(
         // 决定本次走 HttpTTS 还是系统 TTS (基于 ttsEngineConfigProvider)
         useHttpTts = resolveEngine()
 
+        // 切章前先置为非 PLAYING 再停旧引擎: stopInternal 停旧引擎会触发旧引擎 onDone,
+        // 若 _state 仍是 PLAYING, onParagraphDone 守卫 (非 PLAYING 才 return) 放行,
+        // 会用旧队列推进 (切章竞态); 先置位让旧引擎回调被守卫拦截
+        _state.value = ReadAloudState.STOPPED
         // 切章前先停掉当前朗读 (避免 onDone 触发推进与新章节竞态)
         stopInternal(clearState = false)
 

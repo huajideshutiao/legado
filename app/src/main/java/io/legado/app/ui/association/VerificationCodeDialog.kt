@@ -1,6 +1,7 @@
 ﻿package io.legado.app.ui.association
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.widget.ImageView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.AppCompatImageView
@@ -23,11 +24,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.lifecycleScope
 import coil3.load
 import coil3.request.CachePolicy
 import coil3.toBitmap
 import io.legado.app.App
-import io.legado.app.R
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.image.sourceOrigin
@@ -43,6 +44,9 @@ import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import legado.shared.generated.resources.Res
 
 /**
  * 图片验证码对话框
@@ -135,7 +139,7 @@ object VerificationCodeDialog {
                                 setOnClickListener {
                                     activity.showDialogFragment(PhotoDialog(imageUrl, sourceOrigin))
                                 }
-                                loadImage(this, imageUrl, sourceOrigin)
+                                loadImage(this, imageUrl, sourceOrigin, activity.lifecycleScope)
                             }
                         },
                         modifier = Modifier
@@ -160,10 +164,11 @@ object VerificationCodeDialog {
     private fun loadImage(
         imageView: ImageView,
         url: String,
-        sourceOrigin: String?
+        sourceOrigin: String?,
+        scope: CoroutineScope
     ) {
         ImageProvider.remove(url)
-        imageView.setImageResource(R.drawable.image_loading_error)
+        imageView.showLoadingError(scope)
         imageView.load(url) {
             sourceOrigin(sourceOrigin)
             memoryCachePolicy(CachePolicy.DISABLED)
@@ -176,9 +181,20 @@ object VerificationCodeDialog {
                     }
                 },
                 onError = { _, _ ->
-                    imageView.setImageResource(R.drawable.image_loading_error)
+                    imageView.showLoadingError(scope)
                 }
             )
+        }
+    }
+
+    /**
+     * 加载失败占位图: 已随 KMP 化迁到 shared composeResources (app res 不再保留),
+     * 协程读字节解码后设置。
+     */
+    private fun ImageView.showLoadingError(scope: CoroutineScope) {
+        scope.launch {
+            val bytes = Res.readBytes("drawable/image_loading_error.png")
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { setImageBitmap(it) }
         }
     }
 

@@ -38,6 +38,8 @@ import io.legado.app.utils.putPrefString
 import io.legado.app.utils.toJson
 import io.legado.app.utils.topCrop
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.runBlocking
+import legado.shared.generated.resources.Res
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.random.Random
@@ -97,6 +99,17 @@ object BookCover {
     }
 
     /**
+     * 内置兜底封面: 已随 KMP 化迁到 shared composeResources (app res 不再保留该图)。
+     * lazy 惰性读一次; Res.readBytes 为 suspend, 同步接口用 runBlocking 包装
+     * (与 NativeDefaultDataResourceProvider 同款做法)。
+     */
+    private val builtinCoverDrawable: Drawable by lazy {
+        val bytes = runBlocking { Res.readBytes("drawable/image_cover_default.jpg") }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.toDrawable(App.instance.resources)
+            ?: error("decode builtin default cover failed")
+    }
+
+    /**
      * 兼容旧用法:不带参数的随机默认封面,等价于 NOVEL 比例 + 随机种子。
      */
     fun newDefaultDrawable(): Drawable = newDefaultDrawable(CoverRatio.NOVEL, null)
@@ -109,7 +122,7 @@ object BookCover {
     @SuppressLint("UseCompatLoadingForDrawables")
     fun newDefaultDrawable(ratio: CoverRatio, seed: String?): Drawable {
         val list = currentCovers()
-        val fallback = App.instance.resources.getDrawable(R.drawable.image_cover_default, null)
+        val fallback = builtinCoverDrawable
         if (list.isEmpty()) {
             return shellOf(fallback)
         }

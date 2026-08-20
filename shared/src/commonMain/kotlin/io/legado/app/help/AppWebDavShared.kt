@@ -288,6 +288,7 @@ object AppWebDavShared {
      * @param fileName 上传到远端的文件名
      */
     suspend fun exportWebDav(localPath: String, fileName: String) {
+        if (!isNetworkAvailable()) return
         // app 端 AppWebDav 在 init 块里 upConfig, 本对象无 init, 首次导出时补一次认证
         if (authorization == null) {
             runCatching { upConfig() }

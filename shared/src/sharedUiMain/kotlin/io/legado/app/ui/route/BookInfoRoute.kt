@@ -128,7 +128,7 @@ fun BookInfoRoute(
             // 同名异源仍用搜索书 (带 notShelf 标记, 对齐 master loadBookInfo 的异源分支),
             // 否则标记落在被丢弃对象上且 UI 会误显示书架书为"未在架"
             val curBook =
-                if (isSearchBook && dbBook?.origin == book.origin) dbBook ?: book else book
+                if (isSearchBook && dbBook?.origin == book.origin) dbBook else book
             // rss 书 url 换位 (对照 upBook)
             if (curBook.isRss) {
                 curBook.tocUrl = curBook.bookUrl

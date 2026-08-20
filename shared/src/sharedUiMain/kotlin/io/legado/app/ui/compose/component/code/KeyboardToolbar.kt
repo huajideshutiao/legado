@@ -107,8 +107,11 @@ class KeyboardToolbarState {
     /** 0=无 1=查找框 2=替换框：面板输入焦点，辅助键 sendText 的 Compose 侧插入目标 */
     var panelFocus = 0
 
-    /** 组合侧回写，供 back 消费判断（对齐 View 版 mIsSoftKeyBoardShowing） */
-    var imeVisible = false
+    /**
+     * 组合侧回写，供 back 消费判断（对齐 View 版 mIsSoftKeyBoardShowing）。
+     * 用快照状态: 宿主的 back 拦截 enabled 读它, 键盘收起要能立刻让面板接管返回键。
+     */
+    var imeVisible by mutableStateOf(false)
 
     fun showFindReplace(keyword: String) {
         findText = TextFieldValue(keyword, TextRange(keyword.length))
@@ -122,6 +125,12 @@ class KeyboardToolbarState {
         matchCase = false
         matchWholeWord = false
     }
+
+    /**
+     * back 是否该由查找面板消费 (对齐 View 版 tryConsumeBack 的
+     * `!isVisible || mIsSoftKeyBoardShowing` 前置判定); 宿主 back 拦截的 enabled 条件。
+     */
+    val canConsumeBack: Boolean get() = findPanelVisible && !imeVisible
 
     /** 对齐 View 版 tryConsumeBack：键盘已收起而面板仍开时，back 收面板并清理搜索态 */
     fun tryConsumeBack(clearSearch: () -> Unit): Boolean {

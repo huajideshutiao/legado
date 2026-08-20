@@ -8,17 +8,12 @@ import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.driver.AndroidSQLiteConnection
 import androidx.sqlite.driver.AndroidSQLiteDriver
 import io.legado.app.App
-import io.legado.app.constant.AppLog
-import io.legado.app.data.AndroidAppDatabaseProvider.appDb
-import io.legado.app.data.entities.BookGroup
-import io.legado.app.help.DefaultData
-import org.intellij.lang.annotations.Language
 import java.util.Locale
 
 /**
  * Android 端 [AppDatabaseProvider] 实现。
  *
- * 委托 app 端 [appDb] lazy 单例 (依赖 appCtx + AndroidSQLiteDriver + DefaultData + Locale.CHINESE),
+ * 委托 app 端 [appDb] lazy 单例 (依赖 appCtx + AndroidSQLiteDriver + Locale.CHINESE),
  * 在 [io.legado.app.model.webBook.registerAndroidWebBookProviders] 中注册到 [AppDatabaseProviders]。
  *
  * 桌面端对应实现为 `DesktopAppDatabaseProvider` (用 Room.databaseBuilder + BundledSQLiteDriver)。
@@ -31,7 +26,7 @@ object AndroidAppDatabaseProvider : AppDatabaseProvider {
 /**
  * AppDatabase 主体 (含 @Database 注解) 在 shared/commonMain, 本文件保留 app 端专属内容:
  * - appDb 单例: 依赖 appCtx (Android Context) + AndroidSQLiteDriver
- * - dbCallback: 依赖 AndroidSQLiteConnection + Locale.CHINESE + DefaultData (app 端专属)
+ * - dbCallback: 依赖 AndroidSQLiteConnection + Locale.CHINESE, 预置数据走 shared 的 AppDatabaseDefaultData
  *
  * AppDatabase::class.java / AppDatabase.DATABASE_NAME 从 shared/commonMain 引用。
  */
@@ -57,13 +52,19 @@ val appDb by lazy {
 /**
  * Room Database callback, app 端专属。
  *
- * 依赖 AndroidSQLiteConnection (Android 平台), Locale.CHINESE (java.util), DefaultData (app 端)。
+ * 依赖 AndroidSQLiteConnection (Android 平台), Locale.CHINESE (java.util),
+ * 预置数据走 shared 的 AppDatabaseDefaultData。
  * 原 AppDatabase.dbCallback companion 属性, 下沉后改为顶层 val (companion 已在 shared/commonMain)。
  */
 // AndroidSQLiteConnection/db 是 androidx.sqlite 内部 API (@RestrictTo), 但 setLocale 无公开
 // 替代路径 (BookmarkDao collate localized 依赖它), 属刻意使用, 抑制 RestrictedApi
 @SuppressLint("RestrictedApi")
 val dbCallback = object : androidx.room3.RoomDatabase.Callback() {
+
+    // 破坏性迁移回调早于建表 (room3 顺序: dropAllTables → 回调 → createAllTables),
+    // 回调里插表必然 no such table, 只置标记, 由 onOpen (此时表已建好) 补插
+    @Volatile
+    private var needInsertDefaults = false
 
     override suspend fun onCreate(connection: SQLiteConnection) {
         // 只在 API 级别 23 (Marshmallow) 及以上版本尝试设置区域设置
@@ -88,54 +89,27 @@ val dbCallback = object : androidx.room3.RoomDatabase.Callback() {
             )
         }
 
-        // 预置分组：groupId, 名称, 排序, 可刷新(1/0), 显示(1/0)
-        data class PresetGroup(
-            val id: Long, val name: String,
-            val order: Int, val enableRefresh: Int, val show: Int
-        )
+        // 预置分组 + 键盘助手走 shared 单一数据源
+        insertDefaultData(connection)
+    }
 
-        val presetGroups = listOf(
-            PresetGroup(BookGroup.IdAll, "全部", -10, 1, 1),
-            PresetGroup(BookGroup.IdLocal, "本地", -9, 0, 1),
-            PresetGroup(BookGroup.IdUngrouped, "未分组", -7, 1, 1),
-            PresetGroup(BookGroup.IdError, "更新失败", -1, 1, 1),
-        )
-        @Language("sql")
-        val insertGroupSql =
-            "insert into book_groups(groupId, groupName, `order`, enableRefresh, show) " +
-                "select ?, ?, ?, ?, ? " +
-                "where not exists (select 1 from book_groups where groupId = ?)"
-        connection.prepare(insertGroupSql).use { stmt ->
-            presetGroups.forEach { group ->
-                stmt.bindLong(1, group.id)
-                stmt.bindText(2, group.name)
-                stmt.bindInt(3, group.order)
-                stmt.bindInt(4, group.enableRefresh)
-                stmt.bindInt(5, group.show)
-                stmt.bindLong(6, group.id)
-                stmt.step()
-                stmt.reset()
-            }
-        }
+    override suspend fun onDestructiveMigration(connection: SQLiteConnection) {
+        // room3 在此回调时表刚被 drop 尚未重建 (dropAllTables → 回调 → createAllTables),
+        // 此时插入必 no such table, 只置标记, 由 onOpen 在建表后补插
+        needInsertDefaults = true
+    }
 
-        // 预置键盘助手（insert or replace 与旧 ContentValues+CONFLICT_REPLACE 等价）
-        // 资源读取/解析失败时记日志用空列表兜底, 别让首装建库崩死
-        val keyboardAssists = runCatching { DefaultData.keyboardAssists }
-            .onFailure { AppLog.put("读取默认键盘助手失败", it) }
-            .getOrDefault(emptyList())
-        @Language("sql")
-        val insertAssistSql =
-            "insert or replace into keyboardAssists(type, `key`, value, serialNo) " +
-                "values(?, ?, ?, ?)"
-        connection.prepare(insertAssistSql).use { stmt ->
-            keyboardAssists.forEach { keyboardAssist ->
-                stmt.bindInt(1, keyboardAssist.type)
-                stmt.bindText(2, keyboardAssist.key)
-                stmt.bindText(3, keyboardAssist.value)
-                stmt.bindInt(4, keyboardAssist.serialNo)
-                stmt.step()
-                stmt.reset()
-            }
+    override suspend fun onOpen(connection: SQLiteConnection) {
+        // 破坏性重建后标记置位, 此时表已建好, 补插预置数据并复位;
+        // 必须由标记门控, 否则每次启动 insert or replace 会覆盖用户改过的键盘助手
+        if (needInsertDefaults) {
+            needInsertDefaults = false
+            insertDefaultData(connection)
         }
+    }
+
+    /** 预置数据插入 (分组幂等 + 键盘助手 insert or replace), 复用 shared 的 AppDatabaseDefaultData */
+    private fun insertDefaultData(connection: SQLiteConnection) {
+        AppDatabaseDefaultData.insert(connection)
     }
 }

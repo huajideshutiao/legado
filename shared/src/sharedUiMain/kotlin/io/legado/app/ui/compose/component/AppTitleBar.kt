@@ -45,6 +45,7 @@ import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.back
 import legado.shared.generated.resources.clear
 import legado.shared.generated.resources.ic_arrow_back
 import legado.shared.generated.resources.ic_baseline_close
@@ -107,7 +108,7 @@ fun AppTitleBar(
             IconButton(onClick = onBack) {
                 Icon(
                     painter = painterResource(Res.drawable.ic_arrow_back),
-                    contentDescription = null,
+                    contentDescription = stringResource(Res.string.back),
                     tint = colors.primaryText,
                 )
             }
@@ -256,11 +257,11 @@ fun OverflowMenu(
 ) {
     val colors = AppTheme.colors
     var expanded by remember { mutableStateOf(false) }
-    LaunchedEffect(expanded) { onExpandedChange(expanded) }
+    // 只保留手动回调, 不挂 LaunchedEffect(expanded): 否则每次开合回调两次且首帧误报 false
     Box(modifier) {
         IconButton(onClick = {
-            onExpandedChange(true)
             expanded = true
+            onExpandedChange(true)
         }) {
             Icon(
                 painter = painterResource(Res.drawable.ic_more_vert),

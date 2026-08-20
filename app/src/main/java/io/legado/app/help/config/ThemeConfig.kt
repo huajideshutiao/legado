@@ -296,6 +296,7 @@ object ThemeConfig {
     }
 
     fun delConfig(index: Int) {
+        if (index !in configList.indices) return
         configList.removeAt(index)
         save()
         applyTheme(App.instance)
@@ -341,6 +342,7 @@ object ThemeConfig {
         configList.forEachIndexed { index, config ->
             if (newConfig.themeName == config.themeName) {
                 configList[index] = newConfig
+                save()
                 return
             }
         }

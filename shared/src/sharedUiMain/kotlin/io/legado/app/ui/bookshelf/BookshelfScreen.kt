@@ -64,7 +64,9 @@ import io.legado.app.help.image.BookImageLoaders
 import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.model.BookCoverShared
 import io.legado.app.model.BookCoverShared.CoverRatio
+import io.legado.app.model.BookCoverShared.DefaultCoverEntry
 import io.legado.app.ui.compose.component.AppScrollTabRow
+import io.legado.app.ui.compose.component.NinePatchImageOrImage
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.transitionStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
@@ -664,6 +666,7 @@ fun DefaultBookCoverPlaceholder(book: Book, modifier: Modifier = Modifier) {
  * @param book 当前书籍
  * @param modifier 外部尺寸约束; 默认 [Modifier] 时 fillMaxWidth + aspectRatio + shapeSm
  * @param isVideoCover 是否视频封面 (true: 16:9, false: 3:4; 对照 CoverRatio.VIDEO/NOVEL)
+ * @param reloadTick 封面重载信号 (configTick): 变化时重启加载, 不变不额外触发
  *
  * ohos 未注册 [BookImageLoaders], 恒走内置图 + overlay (与替换前占位语义一致)。
  */
@@ -672,6 +675,7 @@ fun SharedBookCover(
     book: Book,
     modifier: Modifier = Modifier,
     isVideoCover: Boolean = false,
+    reloadTick: Int = 0,
 ) {
     val cover = book.getDisplayCover()
     val loader = remember { BookImageLoaders.getOrNull() }
@@ -685,19 +689,28 @@ fun SharedBookCover(
     // 尺寸只用于首次按显示大小降采样；后续窗口 resize 不应重新发起封面请求。
     // 否则每跨过一个量化尺寸档都会再次进入图片 Interceptor，重复执行书源 JS header 规则。
     val displaySize = remember { MutableStateFlow(IntSize.Zero) }
-    LaunchedEffect(cover, book.origin, loader, useDefaultCover, loadOnlyWifi, isVideoCover) {
+    LaunchedEffect(cover, book.origin, loader, useDefaultCover, loadOnlyWifi, isVideoCover, reloadTick) {
         if (loader == null) return@LaunchedEffect
         val decodeSize = firstValidCoverDecodeSize(displaySize)
         val ratio = if (isVideoCover) CoverRatio.VIDEO else CoverRatio.NOVEL
 
         // 默认封面链要读 prefs + 解 JSON, 挪到真用得上时才算 (有封面的书零开销)
         suspend fun loadDefault() {
-            val path = defaultCoverFilePath(
+            // 渲染需知 ninePatch 标记, 走 entry 版选图 (defaultCoverFilePath 保留给 AudioPlay 等调用)
+            val coversDir = DataStorageProviders.getOrNull()?.coversDir
+            val entry = defaultCoverEntry(
                 seed = book.name.takeIf { it.isNotBlank() } ?: cover,
                 ratio = ratio,
-            ) ?: return
-            val bmp = loader.loadImageOrNull(path, null, decodeSize.width, decodeSize.height)
-            coverState = if (bmp == null) NoCoverBitmap else CoverBitmap(bmp, true)
+            )
+            if (coversDir == null || entry == null) {
+                coverState = NoCoverBitmap
+                return
+            }
+            val bmp = loader.loadImageOrNull(
+                BookCoverShared.bakedPath(coversDir, entry, ratio), null,
+                decodeSize.width, decodeSize.height,
+            )
+            coverState = if (bmp == null) NoCoverBitmap else CoverBitmap(bmp, true, entry.ninePatch)
         }
         if (useDefaultCover || cover.isNullOrBlank()) {
             loadDefault()
@@ -736,12 +749,12 @@ fun SharedBookCover(
     }
     Box(resolvedModifier) {
         if (bmp != null) {
-            // 用户图集里的烘焙图 (已按 ratio 裁好)
-            Image(
+            // 用户图集里的烘焙图 (已按 ratio 裁好); .9 图按九宫格拉伸
+            NinePatchImageOrImage(
                 bitmap = bmp,
+                isNinePatch = coverState.isNinePatch,
                 contentDescription = book.name,
                 modifier = Modifier.matchParentSize(),
-                contentScale = ContentScale.Crop,
             )
         } else {
             // 图集为空 / 读盘失败: 内置 image_cover_default (原 .9 图, 这里当普通图拉伸)
@@ -761,9 +774,13 @@ fun SharedBookCover(
     }
 }
 
-/** 封面位图 + 是否默认封面 (决定要不要叠竖排书名/作者) */
+/** 封面位图 + 是否默认封面 (决定要不要叠竖排书名/作者) + 是否 .9 图 (决定渲染路径) */
 @Immutable
-internal class CoverBitmap(val bitmap: ImageBitmap?, val isDefault: Boolean)
+internal class CoverBitmap(
+    val bitmap: ImageBitmap?,
+    val isDefault: Boolean,
+    val isNinePatch: Boolean = false,
+)
 
 internal val NoCoverBitmap = CoverBitmap(null, false)
 
@@ -794,19 +811,30 @@ internal suspend fun firstValidCoverDecodeSize(sizes: Flow<IntSize>): IntSize =
     sizes.map(::coverDecodeSize).first { it != IntSize.Zero }
 
 /**
- * 用户自定义默认封面集选图 (对照 app 端 `BookCover.newDefaultDrawable` 的选图段)。
+ * 用户自定义默认封面集选出的 entry (对照 app 端 `BookCover.newDefaultDrawable` 的选图段)。
  *
- * 图集为空或 [DataStorageProviders] 未注册时返回 null, 调用方回落内置图。
+ * 图集为空时返回 null, 调用方回落内置图; [DefaultCoverEntry.ninePatch] 供渲染端决定
+ * 是否走九宫格拉伸。
  */
-internal fun defaultCoverFilePath(seed: String?, ratio: CoverRatio): String? {
-    val coversDir = DataStorageProviders.getOrNull()?.coversDir ?: return null
+internal fun defaultCoverEntry(seed: String?, ratio: CoverRatio): DefaultCoverEntry? {
     val covers = BookCoverShared.currentDefaultCovers(
         PreferenceProviders.get(),
         AppConfigProviders.get().isNightTheme,
     )
     val index = BookCoverShared.pickDefaultCoverIndex(covers.size, seed)
     if (index < 0) return null
-    return BookCoverShared.bakedPath(coversDir, covers[index], ratio)
+    return covers[index]
+}
+
+/**
+ * 用户自定义默认封面集选图的烘焙路径 ([defaultCoverEntry] 的路径形态, 供只需路径的调用方)。
+ *
+ * 图集为空或 [DataStorageProviders] 未注册时返回 null, 调用方回落内置图。
+ */
+internal fun defaultCoverFilePath(seed: String?, ratio: CoverRatio): String? {
+    val coversDir = DataStorageProviders.getOrNull()?.coversDir ?: return null
+    val entry = defaultCoverEntry(seed, ratio) ?: return null
+    return BookCoverShared.bakedPath(coversDir, entry, ratio)
 }
 
 /** 封面宽高比 (宽/高); 对照 BookCoverShared.CoverRatio: NOVEL=3:4 → 0.75 */
@@ -827,8 +855,8 @@ internal const val VIDEO_COVER_RATIO = 16f / 9f
  */
 val LocalBookCoverSlot =
     staticCompositionLocalOf<@Composable (Book, Modifier, Boolean, Int) -> Unit> {
-        @Composable { book, modifier, isVideoCover, _ ->
-            SharedBookCover(book, modifier, isVideoCover)
+        @Composable { book, modifier, isVideoCover, tick ->
+            SharedBookCover(book, modifier, isVideoCover, tick)
         }
 }
 

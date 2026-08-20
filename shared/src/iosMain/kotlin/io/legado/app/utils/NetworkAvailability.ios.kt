@@ -25,6 +25,10 @@ import platform.SystemConfiguration.kSCNetworkReachabilityFlagsReachable
  * 与 jvm/历史恒 true 的差异: iOS 真实查询, 非 WiFi 时封面网络加载被拦截 (缓存命中仍显示)。
  * kSCNetworkReachabilityFlagsIsWWAN 仅在蜂窝数据接口激活时置位, 无蜂窝能力的设备恒为 0
  * (视为 WiFi, 行为正确)。
+ *
+ * 查询失败一律 false, 依据 Android actual (拿不到 ConnectivityManager / activeNetwork /
+ * NetworkCapabilities 时一律 `return false`, 原版 `Context.isWifiConnect` 的
+ * `info?.isConnected == true` 同为 fail-closed); 鸿蒙端已按同一依据统一。
  */
 @OptIn(ExperimentalForeignApi::class)
 private fun reachabilityFlags(): UInt? = memScoped {

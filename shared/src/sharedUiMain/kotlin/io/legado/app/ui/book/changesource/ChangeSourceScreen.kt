@@ -493,7 +493,12 @@ fun ChapterTocPanel(
         ) {
             if (toc != null) {
                 FastScrollLazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-                    itemsIndexed(toc, key = { index, _ -> index }) { index, chapter ->
+                    // key 用 bookUrl+章节序号: index 由 BookChapterList.updateBook 顺序重排保证唯一,
+                    // 换源后 bookUrl 变化使全部 key 失效, 避免复用上一个源的行
+                    itemsIndexed(
+                        toc,
+                        key = { _, chapter -> "${chapter.bookUrl}#${chapter.index}" },
+                    ) { index, chapter ->
                         TocItemRow(chapter, chapter.index == durChapterIndex) {
                             onClickChapter(chapter, toc.getOrNull(index + 1)?.url)
                         }

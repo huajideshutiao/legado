@@ -5,7 +5,7 @@ package io.legado.app.ui.book.read
  *
  * 从 app 端 `io.legado.app.ui.book.read.ReadBookEvents` 提取到 shared/commonMain，
  * 让 shared/sharedUiMain 中的下沉 Composable (TipConfigScreen / PaddingConfigScreen /
- * EffectiveReplacesScreen 等) 能通过 `onPostConfig: (List<ReadConfigChange>) -> Unit`
+ * EffectiveReplacesDialog 等) 能通过 `onPostConfig: (List<ReadConfigChange>) -> Unit`
  * 回调通知宿主刷新渲染层，而无需直接依赖 app 端 `ReadBookEvents` object。
  *
  * 包名与 app 端原位置 (`io.legado.app.ui.book.read`) 完全一致，app 端 ReadBookEvents.kt

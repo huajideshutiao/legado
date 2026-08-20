@@ -43,7 +43,7 @@ package io.legado.app.ui.book.read
  *
  * # 复用已下沉的 shared 组件
  *
- * - TipConfigScreen / PaddingConfigScreen / EffectiveReplacesScreen
+ * - TipConfigScreen / PaddingConfigScreen / EffectiveReplacesDialog
  *   均为下沉的配置对话框 Composable，由 app 端 DialogFragment 薄壳包装。
  *   本文件的 ReadMenu 顶/底栏 clickFont/clickSetting/clickReplaceRule 等回调
  *   通过 [ReadMenuState] 桥接到 app 端 ReadBookActivity，由其 showDialogFragment

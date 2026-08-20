@@ -114,8 +114,6 @@ import kotlin.math.abs
  * @param onPrevChapter 上一章回调
  * @param onNextChapter 下一章回调
  * @param videoRenderSlot 平台渲染层槽 (接收 Modifier, 内部叠加控件/加载/错误)
- * @param controlsVisible 控制层可见状态
- * @param onToggleControls 显隐控制层
  * @param onTitleClick 标题区点击回调 (对照 Activity onTitleClick)
  * @param titleActions 标题栏右侧 actions (由 Route 注入 refresh/shelf/overflowMenu)
  * @param isFullScreen 全屏态 (隐藏标题栏与选集网格, 对照 Activity isFullScreen)
@@ -132,8 +130,6 @@ fun VideoPlayerScreenContent(
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
     videoRenderSlot: @Composable (Modifier) -> Unit,
-    controlsVisible: Boolean = false,
-    onToggleControls: () -> Unit = {},
     // 平台自定义顶栏 (null = 用 shared VideoTitleBar; 传 {} 隐藏)
     topBarSlot: (@Composable () -> Unit)? = null,
     // 标题区点击 + 标题栏右侧 actions (仅 topBarSlot=null 时生效)

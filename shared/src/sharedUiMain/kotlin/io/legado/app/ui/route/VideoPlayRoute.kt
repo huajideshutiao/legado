@@ -285,8 +285,6 @@ fun VideoPlayRoute(
                 platform.Render(controller, screenModel, modifier)
             }
         },
-        controlsVisible = state.controlsVisible,
-        onToggleControls = screenModel::onToggleControls,
         onTitleClick = onTitleClick,
         // 系统级全屏同样隐藏标题栏与选集网格 (两者视觉上都需要视频占满)
         isFullScreen = state.isFullScreen || state.isSystemFullScreen,

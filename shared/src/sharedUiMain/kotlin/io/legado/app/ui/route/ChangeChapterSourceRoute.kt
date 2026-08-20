@@ -54,38 +54,6 @@ import legado.shared.generated.resources.yes
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * 章节换源 shared 路由入口。
- * 通过 [ChangeChapterSourceContent] 复用换源屏幕, 本路由负责导航语义 (回传章节正文 / 整书换源)。
- */
-@Composable
-fun ChangeChapterSourceRoute(
-    entry: RouteEntry,
-    navigator: AppNavigator,
-    screenModelStore: ScreenModelStore,
-) {
-    val route = entry.route as AppRoute.ChangeChapterSource
-    val book = remember(route) { route.book.asBook() }
-    ChangeChapterSourceContent(
-        book = book,
-        chapterIndex = route.chapterIndex,
-        chapterTitle = route.chapterTitle,
-        onBack = { navigator.pop() },
-        onChapterChanged = { content ->
-            navigator.pop(RouteResultPayload.ChangeChapterContent(content))
-        },
-        onSourceChanged = { source, newBook, toc ->
-            navigator.pop(RouteResultPayload.ChangeSource(source, newBook, toc))
-        },
-        onEditSource = { origin ->
-            navigator.push(AppRoute.BookSourceEdit(origin), RouteResults.BOOK_SOURCE_EDIT)
-        },
-        onBookSourceManage = { navigator.push(AppRoute.BookSourceManage) },
-        bookSourceEditFlow = navigator.resultsFor(entry.id)
-            .filter { it.key == RouteResults.BOOK_SOURCE_EDIT },
-    )
-}
-
-/**
  * 章节换源弹窗形态 (对照原版 ChangeChapterSourceDialog: 全高底部弹窗)。
  * 由阅读页"换源"图标长按弹起; 选章成功后经 [onChapterChanged] 回传正文 (宿主负责落库刷新)。
  */

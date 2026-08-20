@@ -14,6 +14,7 @@ import io.legado.app.constant.Theme
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.help.IntentData
+import io.legado.app.help.LifecycleHelp
 import io.legado.app.help.book.addType
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.webBook.WebBook.getBookInfoByUrlAwait
@@ -50,11 +51,18 @@ class AssociationActivity : BaseComposeActivity(theme = Theme.Transparent, image
     /** 待处理的"需要导航"请求 (addToBookshelf / read): 壳内转圈抓书后转发主界面。 */
     private var pendingBookNav by mutableStateOf<Pair<DeepLinkImportType, String>?>(null)
 
+    /** 本壳注册的 capabilities 实例, onDestroy 身份校验用。 */
+    private var registeredCapabilities: PlatformCapabilities? = null
+
+    /** 注册前的旧值 (冷启动场景恒为 null), onDestroy 还原用。 */
+    private var previousCapabilities: PlatformCapabilities? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // 冷启动: 壳是首个 Activity, PlatformCapabilities 未注册 (AppDialog.get() 会 error);
         // 热启动 (MainActivity 已注册) 保留其实现, 避免覆盖系统动画缩放等差异
         if (PlatformCapabilityProviders.getOrNull() == null) {
-            PlatformCapabilityProviders.register(object : PlatformCapabilities {
+            previousCapabilities = PlatformCapabilityProviders.getOrNull()
+            val capabilities = object : PlatformCapabilities {
                 override fun exitApplication() = finish()
 
                 override fun openExternalUrl(url: String) {
@@ -76,9 +84,58 @@ class AssociationActivity : BaseComposeActivity(theme = Theme.Transparent, image
                         startActivity(Intent.createChooser(intent, null))
                     }
                 }
-            })
+            }
+            registeredCapabilities = capabilities
+            PlatformCapabilityProviders.register(capabilities)
         }
         super.onCreate(savedInstanceState)
+    }
+
+    override fun onDestroy() {
+        // 只清理本壳注册的实例: 期间被 MainActivity 覆盖 (热启动转发导航) 则不动, 避免还原覆盖
+        val mine = registeredCapabilities
+        if (mine != null && PlatformCapabilityProviders.getOrNull() === mine) {
+            // Providers 无 unregister API 且 register 参数非空, "还原为未注册"不可达;
+            // 注册前旧值恒为 null, 故还原为不捕获 Activity 的静态兜底,
+            // 死壳 (持有本 Activity 的匿名对象) 不再常驻 get(), Activity 泄漏消除
+            PlatformCapabilityProviders.register(previousCapabilities ?: idleCapabilities)
+        }
+        super.onDestroy()
+    }
+
+    companion object {
+        /** 壳销毁后仍未注册时的静态兜底: 不捕获任何 Activity, 按当前前台 Activity 惰性操作 */
+        private val idleCapabilities = object : PlatformCapabilities {
+            override fun exitApplication() {
+                LifecycleHelp.currentActivity?.finish()
+            }
+
+            override fun openExternalUrl(url: String) {
+                val context = LifecycleHelp.currentActivity ?: return
+                runCatching {
+                    context.startActivity(
+                        Intent(Intent.ACTION_VIEW, url.toUri()).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                    )
+                }
+            }
+
+            override fun shareText(text: String) {
+                val context = LifecycleHelp.currentActivity ?: return
+                runCatching {
+                    context.startActivity(
+                        Intent.createChooser(
+                            Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, text)
+                            },
+                            null
+                        )
+                    )
+                }
+            }
+        }
     }
 
     @Composable

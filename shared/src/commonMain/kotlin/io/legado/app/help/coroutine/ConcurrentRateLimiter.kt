@@ -5,6 +5,7 @@ package io.legado.app.help.coroutine
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.exception.ConcurrentException
 import io.legado.app.model.analyzeRule.ConcurrentRecord
+import io.legado.app.utils.concurrent.newConcurrentMap
 import io.legado.app.utils.platformSleep
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -27,7 +28,9 @@ import kotlin.time.Clock
 class ConcurrentRateLimiter(val source: BaseSource?) {
 
     companion object {
-        private val concurrentRecordMap = hashMapOf<String, ConcurrentRecord>()
+        // 并发 map: 首读在锁外 (下方 fetchStart 先无锁 get), 裸 HashMap 与锁内 put
+        // 并发会结构性损坏 (native 端真多线程更危险)
+        private val concurrentRecordMap = newConcurrentMap<String, ConcurrentRecord>()
         // 修复 Native 端 synchronized 传入非 SynchronizedObject 问题 (atomicfu 要求)
         private val mapLock = SynchronizedObject()
     }

@@ -92,27 +92,25 @@ private fun detectByFrequency(bytes: ByteArray): String? {
         }
         if (i + 1 >= sampleSize) break
         val b2 = bytes[i + 1].toInt() and 0xFF
-        pairs++
         // GB18030 4 字节扩展: 第二字节 0x30-0x39
         if (b2 in 0x30..0x39) {
             if (i + 3 < sampleSize) {
                 val b3 = bytes[i + 2].toInt() and 0xFF
                 val b4 = bytes[i + 3].toInt() and 0xFF
                 if (b3 in 0x81..0xFE && b4 in 0x30..0x39) {
+                    pairs++
                     gbValid++
                     gb4Seq++
                     i += 4
                     continue
                 }
             }
-            // 第二字节是 0x30-0x39 但非法 → 不是 GB 双字节 (GB 尾字节 0x30-0x39 不合法)
-            if (b2 in 0x40..0x7E) {
-                big5Valid++
-                lowTrail++
-            }
+            // 4 字节序列不完整/非法: b2(0x30-0x39) 不是 GB/Big5 合法尾字节, 按无效对处理 —
+            // pairs 与 valid 口径一致 (无效对分子分母均不计), 避免含 GB18030 扩展的文本被拉低 GB 命中率
             i += 2
             continue
         }
+        pairs++
         val gbOk = b2 in 0x40..0xFE && b2 != 0x7F
         val big5Ok = b2 in 0x40..0x7E || b2 in 0xA1..0xFE
         if (gbOk) {

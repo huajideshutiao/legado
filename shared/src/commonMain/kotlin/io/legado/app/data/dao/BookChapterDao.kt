@@ -47,6 +47,16 @@ interface BookChapterDao {
     @Query("update chapters set wordCount = :wordCount where bookUrl = :bookUrl and url = :url")
     suspend fun upWordCount(bookUrl: String, url: String, wordCount: String)
 
+    // 仅 PATCH 单列; 调用方持有整章内存快照 (播放期/正文解析期), 整行 update 会冲掉并发写入的其他字段
+    @Query("update chapters set end = :end where bookUrl = :bookUrl and url = :url")
+    suspend fun upEnd(bookUrl: String, url: String, end: Long?)
+
+    @Query("update chapters set resourceUrl = :resourceUrl where bookUrl = :bookUrl and url = :url")
+    suspend fun upResourceUrl(bookUrl: String, url: String, resourceUrl: String?)
+
+    @Query("update chapters set title = :title where bookUrl = :bookUrl and url = :url")
+    suspend fun upTitle(bookUrl: String, url: String, title: String)
+
     @Query("delete from chapters where bookUrl not in (select bookUrl from books where (type & ${io.legado.app.constant.BookType.notShelf}) == 0)")
     suspend fun deleteNotShelfBookChapters()
 

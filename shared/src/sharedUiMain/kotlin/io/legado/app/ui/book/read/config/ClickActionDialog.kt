@@ -1,7 +1,7 @@
 // I18N KEYS (新增, 待 ResourceProvider.jvm.kt 补全桌面端字面量):
 // - click_regional_config: "点击区域设置"
 // - select_action: "选择动作"
-// - close: "关闭" (与 EffectiveReplacesScreen 复用, 已存在 jvmMain)
+// - close: "关闭" (与 EffectiveReplacesDialog 复用, 已存在 jvmMain)
 // - menu: "菜单"
 // - next_page: "下一页"
 // - prev_page: "上一页"

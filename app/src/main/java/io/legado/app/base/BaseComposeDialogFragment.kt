@@ -75,9 +75,9 @@ abstract class BaseComposeDialogFragment : DialogFragment() {
                 LocalPreferenceStoreProvider provides preferenceStoreProvider,
             ) {
                 AppTheme {
-                    // 非全高模式复刻 AutoShrinkLinearLayout 语义：内容自适应但不超 0.8 屏高
+                    // 非全高模式复刻 AutoShrinkLinearLayout 语义：内容自适应但不超 0.7 屏高
                     val maxH = with(LocalDensity.current) {
-                        (resources.displayMetrics.heightPixels * 0.8f).toDp()
+                        (resources.displayMetrics.heightPixels * 0.7f).toDp()
                     }
                     Box(Modifier.heightIn(max = maxH)) {
                         this@BaseComposeDialogFragment.Content()
@@ -112,7 +112,7 @@ abstract class BaseComposeDialogFragment : DialogFragment() {
             it.attributes = attr
             val dm = resources.displayMetrics
             val width = (dm.widthPixels * 0.9).toInt().coerceAtMost((800 * dm.density).toInt())
-            val maxHeight = (dm.heightPixels * 0.8).toInt()
+            val maxHeight = (dm.heightPixels * 0.7).toInt()
             if (isFullHeight) {
                 it.setLayout(width, maxHeight)
             } else {

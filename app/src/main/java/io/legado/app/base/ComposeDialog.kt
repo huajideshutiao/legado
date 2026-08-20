@@ -60,7 +60,7 @@ open class ComposeDialog(
                 ) {
                     AppTheme {
                         val maxH = with(LocalDensity.current) {
-                            (context.resources.displayMetrics.heightPixels * 0.8f).toDp()
+                            (context.resources.displayMetrics.heightPixels * 0.7f).toDp()
                         }
                         Box(Modifier.heightIn(max = maxH)) { content() }
                     }

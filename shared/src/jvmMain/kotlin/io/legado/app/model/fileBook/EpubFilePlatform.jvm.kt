@@ -6,7 +6,9 @@ import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.zip.ZipFile
+import javax.imageio.IIOImage
 import javax.imageio.ImageIO
+import javax.imageio.ImageWriteParam
 
 /**
  * [LocalEpubResource] 的 JVM (desktop) actual 实现。
@@ -92,26 +94,44 @@ actual fun decodeBitmap(bytes: ByteArray): Any? {
 /**
  * [compressBitmap] 的 JVM (desktop) actual 实现。
  *
- * 用 [ImageIO.write] 写入文件。JDK ImageIO 的 JPEG/PNG 写入不支持 quality 参数
- * (需 ImageWriteParam + IIOImage 才能设 quality), 这里简化为默认质量写入。
+ * 用 ImageIO ImageWriter + ImageWriteParam 写文件, 真正落实 quality
+ * (JPEG compressionQuality = quality/100f): 不能像原来那样用 [ImageIO.write]
+ * 默认质量 —— 默认 JPEG≈0.75, 与 Android 端 quality=90 的产物不一致。
  *
  * @param bitmap [decodeBitmap] 返回的 [BufferedImage]
- * @param format "JPEG" / "PNG" (传给 [ImageIO.write] 的 formatName)
- * @param quality 0..100 (JVM 端忽略, 用默认质量)
+ * @param format "JPEG" / "PNG" / "WEBP"
+ * @param quality 0..100 (JPEG 压缩质量)
  * @param destPath 目标文件绝对路径 (内部自动创建父目录)
  * @return 成功 true
  */
 actual fun compressBitmap(bitmap: Any?, format: String, quality: Int, destPath: String): Boolean {
     if (bitmap !is BufferedImage) return false
+    // JDK ImageIO 无内置 WEBP writer, 映射到 PNG (无损), 不静默落 jpg
     val formatName = when (format.uppercase()) {
         "JPEG", "JPG" -> "jpg"
-        "PNG" -> "png"
+        "PNG", "WEBP" -> "png"
         else -> "jpg"
     }
     return runCatching {
         val dest = File(destPath)
         dest.parentFile?.mkdirs()
-        if (!dest.exists()) dest.createNewFile()
-        ImageIO.write(bitmap, formatName, dest)
-    }.isSuccess
+        val writer = ImageIO.getImageWritersByFormatName(formatName).next()
+        try {
+            val ios = ImageIO.createImageOutputStream(dest)
+            try {
+                writer.setOutput(ios)
+                val param = writer.defaultWriteParam
+                if (param.canWriteCompressed()) {
+                    param.compressionMode = ImageWriteParam.MODE_EXPLICIT
+                    param.compressionQuality = (quality / 100f).coerceIn(0f, 1f)
+                }
+                writer.write(null, IIOImage(bitmap, null, null), param)
+            } finally {
+                ios.close()
+            }
+        } finally {
+            writer.dispose()
+        }
+        true
+    }.getOrElse { false }
 }

@@ -119,11 +119,6 @@ interface PlatformCapabilities {
         onError: (String) -> Unit,
     ) = unsupported("测试直链上传")
 
-    // 保留 (无实现方, 无调用方): deep link 直通四型已统一走共享 runSchemeImport,
-    // 本方法仅因鸿蒙 napi 生成头文件 (liblegado_shared_api.h) 含此符号而保留,
-    // 待头文件随构建重新生成后可移除。默认 false 即"未接管"。
-    fun handleDeepLinkImport(type: String, src: String): Boolean = false
-
     // Web 服务: 获取当前运行地址 (对照 app 端 WebService.hostAddress)
     fun getWebServiceUrl(): String? = null
 
@@ -288,15 +283,11 @@ interface PlatformCapabilities {
         success: ((Book) -> Unit)? = null,
     ) = unsupported("从压缩包导入书籍")
 
-    /** 异步刷新 WebDav 书籍 (对照 BookInfoViewModel.refreshWebDavBook) */
-    fun refreshWebDavBook(book: Book, success: (() -> Unit)? = null) =
-        unsupported("刷新 WebDav 书籍")
-
-    /** 本地书合并并加载章节 (对照 BookInfoViewModel.changeToLocalBook) */
-    fun changeToLocalBook(book: Book): Book {
-        unsupported("本地书合并")
-        return book
-    }
+    /**
+     * 从 WebDav 拉本地书的远端更新 (对照 BookInfoViewModel.refreshWebDavBook)。
+     * suspend 而非回调, 调用方需在拉完后才读 book.bookUrl; 无 WebDav 书能力的平台默认空实现。
+     */
+    suspend fun refreshWebDavBook(book: Book) {}
 
     /** webFile 下载导入后阅读 (对照 onReadClick isWebFile 分支) */
     fun handleWebFileRead(
@@ -316,12 +307,9 @@ interface PlatformCapabilities {
     suspend fun localBookFileSize(bookUrl: String): Long = 0L
 
     // 书籍详情页三态相关平台能力 (各端按需 override, 默认值避免破坏未实现端)
-    // 对照 BookInfoActivity.Content 内 isLandscape / setLightStatusBar 计算
+    // 对照 BookInfoActivity.Content 内 isLandscape 计算
     /** 当前是否横屏 (对照 LocalConfiguration.current.orientation == ORIENTATION_LANDSCAPE) */
     fun isLandscape(): Boolean = false
-
-    /** 设置状态栏图标色 (对照 setLightStatusBar(if (useDevFeat) isDarkTheme else false)) */
-    fun setLightStatusBarForBookInfo(useDevFeat: Boolean, isDarkTheme: Boolean) {}
 
     // 设置项按平台过滤: 无系统栏/无屏幕方向的端 (桌面) 隐藏对应开关, 拨了也没效果
     /** 是否有系统状态栏/导航栏 (决定 MoreConfig 的隐藏状态栏/导航栏开关显隐) */
@@ -389,12 +377,6 @@ interface PlatformCapabilities {
     /** 持久化"删除源文件"偏好 (对照 LocalConfig.deleteBookOriginal = value) */
     fun setDeleteBookOriginal(value: Boolean) = unsupported("保存删除源文件设置")
 
-    /** 缓存进度文案 (对照 cacheInfo, null=隐藏) */
-    fun cacheInfo(book: Book): String? = null
-
-    /** 已缓存章节数 (对照 viewModel.cacheChapters[bookUrl]?.size, null=未加载) */
-    fun cacheChapterCount(book: Book): Int? = null
-
     // 导入本地书籍平台状态 (各端按需 override, 默认空状态避免破坏未实现端)
     // 对照 app 端 ImportBookActivity 同名状态字段
     /** 导入文件列表 (对照 items) */
@@ -444,9 +426,6 @@ interface PlatformCapabilities {
     /** 新建书源 (对照 addBookSource / startActivity<BookSourceEditActivity>()) */
     fun addBookSource() = unsupported("新建书源")
 
-    /** 显示书源分组管理对话框 (对照 showGroupManage / showDialogFragment<GroupManageDialog>) */
-    fun showBookSourceGroupManage() = unsupported("管理书源分组")
-
     /** 取消书源校验 (对照 cancelCheckSource / CheckSource.stop + Debug.finishChecking) */
     fun cancelCheckSource() = unsupported("取消书源校验")
 
@@ -475,9 +454,6 @@ interface PlatformCapabilities {
 
     // 书源编辑平台能力 (各端按需 override, 未实现端统一给出明确提示)
     // 对照 app 端 BookSourceEditActivity 同名方法
-    /** 书源登录 (对照 login, 先保存后弹 showLoginDialog) */
-    fun showBookSourceLogin(source: BookSource) = unsupported("书源登录")
-
     /** 书源变量编辑 (对照 setSourceVariable, 先保存后弹 showSourceVariableDialog) */
     fun showBookSourceVariableDialog(source: BookSource) = unsupported("编辑书源变量")
 

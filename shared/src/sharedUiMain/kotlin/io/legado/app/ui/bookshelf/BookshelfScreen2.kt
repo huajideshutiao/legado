@@ -27,7 +27,10 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.image.BookImageLoaders
+import io.legado.app.help.storage.DataStorageProviders
+import io.legado.app.model.BookCoverShared
 import io.legado.app.model.BookCoverShared.CoverRatio
+import io.legado.app.ui.compose.component.NinePatchImageOrImage
 import io.legado.app.ui.compose.platform.PlatformBackHandler
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -166,12 +169,15 @@ internal fun BookshelfScreen2(
  *   走默认封面链: 用户图集烘焙图 (seed=组名, 稳定选图) → 内置 `image_cover_default`;
  *   不再渲染组名首字色块 (原版分组封面 name=null, 默认封面上也不叠书名)
  * - 比例: 对照书架分组条目, 列表/网格恒 NOVEL 3:4, 视频档 16:9
+ *
+ * @param reloadTick 封面重载信号 (configTick): 变化时重启加载, 不变不额外触发
  */
 @Composable
 fun SharedGroupCover(
     group: BookGroup,
     modifier: Modifier = Modifier,
     isVideoCover: Boolean = false,
+    reloadTick: Int = 0,
 ) {
     val cover = group.cover
     val loader = remember { BookImageLoaders.getOrNull() }
@@ -184,24 +190,26 @@ fun SharedGroupCover(
     var coverState by remember(cover) { mutableStateOf(NoCoverBitmap) }
     // 仅以首次有效布局尺寸降采样；窗口 resize 不重新发起图片请求。
     val displaySize = remember { MutableStateFlow(IntSize.Zero) }
-    LaunchedEffect(cover, loader, useDefaultCover, loadOnlyWifi) {
+    LaunchedEffect(cover, loader, useDefaultCover, loadOnlyWifi, reloadTick) {
         if (loader == null) return@LaunchedEffect
         val decodeSize = firstValidCoverDecodeSize(displaySize)
         val ratio = if (isVideoCover) CoverRatio.VIDEO else CoverRatio.NOVEL
 
         // 默认封面链要读 prefs + 解 JSON, 挪到真用得上时才算 (有封面的分组零开销)
         suspend fun loadDefault() {
-            // seed = 组名 (即分组的"书名", 对照书架书 seed=书名 稳定选图), 不回落封面路径
-            val path = defaultCoverFilePath(
-                seed = group.groupName,
-                ratio = ratio,
-            )
-            val bmp = if (path == null) {
-                null
-            } else {
-                loader.loadImageOrNull(path, null, decodeSize.width, decodeSize.height)
+            // seed = 组名 (即分组的"书名", 对照书架书 seed=书名 稳定选图), 不回落封面路径;
+            // 走 entry 版选图拿 ninePatch 标记 (defaultCoverFilePath 保留给 AudioPlay 等调用)
+            val coversDir = DataStorageProviders.getOrNull()?.coversDir
+            val entry = defaultCoverEntry(seed = group.groupName, ratio = ratio)
+            if (coversDir == null || entry == null) {
+                coverState = NoCoverBitmap
+                return
             }
-            coverState = if (bmp == null) NoCoverBitmap else CoverBitmap(bmp, true)
+            val bmp = loader.loadImageOrNull(
+                BookCoverShared.bakedPath(coversDir, entry, ratio), null,
+                decodeSize.width, decodeSize.height,
+            )
+            coverState = if (bmp == null) NoCoverBitmap else CoverBitmap(bmp, true, entry.ninePatch)
         }
         if (useDefaultCover || cover.isNullOrBlank()) {
             loadDefault()
@@ -229,15 +237,15 @@ fun SharedGroupCover(
         )
         return
     }
-    // 默认封面: 用户图集烘焙图 (已按 ratio 裁好) 或内置 image_cover_default
-    // (原 .9 图, 这里当普通图拉伸, 对齐 SharedBookCover); 分组无书名, 不叠竖排文字
+    // 默认封面: 用户图集烘焙图 (已按 ratio 裁好; .9 图按九宫格拉伸) 或内置 image_cover_default
+    // (jpg, 普通图拉伸); 分组无书名, 不叠竖排文字
     Box(resolvedModifier) {
         if (bmp != null) {
-            Image(
+            NinePatchImageOrImage(
                 bitmap = bmp,
+                isNinePatch = coverState.isNinePatch,
                 contentDescription = group.groupName,
                 modifier = Modifier.matchParentSize(),
-                contentScale = ContentScale.Crop,
             )
         } else {
             Image(
@@ -258,7 +266,7 @@ fun SharedGroupCover(
  */
 val LocalGroupCoverSlot =
     staticCompositionLocalOf<@Composable (BookGroup, Modifier, Boolean, Int) -> Unit> {
-        @Composable { group, modifier, isVideoCover, _ ->
-            SharedGroupCover(group, modifier, isVideoCover)
+        @Composable { group, modifier, isVideoCover, tick ->
+            SharedGroupCover(group, modifier, isVideoCover, tick)
         }
     }

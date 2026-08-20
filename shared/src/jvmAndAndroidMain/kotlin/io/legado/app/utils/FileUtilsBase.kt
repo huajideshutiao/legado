@@ -722,11 +722,8 @@ object FileUtilsBase {
                 } else if (f1.isFile && f2.isDirectory) {
                     1
                 } else {
-                    if (f1.length() < f2.length()) {
-                        -1
-                    } else {
-                        1
-                    }
+                    // 相等返回 0, 否则违反 Comparator 契约 (TimSort 会抛异常)
+                    f1.length().compareTo(f2.length())
                 }
             }
         }
@@ -748,11 +745,8 @@ object FileUtilsBase {
                 } else if (f1.isFile && f2.isDirectory) {
                     1
                 } else {
-                    if (f1.lastModified() > f2.lastModified()) {
-                        -1
-                    } else {
-                        1
-                    }
+                    // 相等返回 0, 保持降序方向不变 (时间新在前)
+                    f2.lastModified().compareTo(f1.lastModified())
                 }
             }
         }

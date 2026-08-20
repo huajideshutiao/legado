@@ -142,7 +142,8 @@ interface JsEncodeUtilsDefaults : JsEncodeUtils {
     //******************非对称加密解密工厂************************//
 
     /**
-     * native 端工厂: 创建 [NativeAsymmetricCrypto] (iOS Security.framework 真实 / 鸿蒙 stub 抛异常, 见类注释)。
+     * native 端工厂: 创建 [NativeAsymmetricCrypto] (两端均 mbedTLS 主实现,
+     * 异常回落 iOS Security.framework / 鸿蒙 cryptoFramework napi, 见类注释)。
      * 与 [io.legado.app.help.JsEncodeUtilsDefaults.createAsymmetricCrypto] 签名对齐。
      */
     fun createAsymmetricCrypto(
@@ -154,7 +155,8 @@ interface JsEncodeUtilsDefaults : JsEncodeUtils {
     //******************签名工厂************************//
 
     /**
-     * native 端工厂: 创建 [NativeSign] (iOS Security.framework 真实 / 鸿蒙 stub 抛异常, 见类注释)。
+     * native 端工厂: 创建 [NativeSign] (两端均 mbedTLS 主实现,
+     * 异常回落 iOS Security.framework / 鸿蒙 cryptoFramework napi, 见类注释)。
      * 与 [io.legado.app.help.JsEncodeUtilsDefaults.createSign] 签名对齐。
      */
     fun createSign(

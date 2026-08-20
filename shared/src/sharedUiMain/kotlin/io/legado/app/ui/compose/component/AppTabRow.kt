@@ -25,6 +25,7 @@ import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.unit.dp
 import io.legado.app.ui.compose.theme.LocalEInk
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlin.math.roundToInt
 
@@ -58,10 +59,12 @@ fun AppScrollTabRow(
     val target = positions.getOrNull(selectedIndex) ?: TabPos()
     val animX by animateFloatAsState(target.x, label = "tabIndicatorX")
     val animW by animateFloatAsState(target.w, label = "tabIndicatorW")
-    // 选中变化时滚入可视区(对照 TabLayout 自动滚动)；等 onPlaced 回填后只滚一次
-    LaunchedEffect(selectedIndex) {
+    // 选中变化时滚入可视区(对照 TabLayout 自动滚动)；等 onPlaced 回填后只滚一次。
+    // key 补 tabCount: positions 以 tabCount 重建, 否则 effect 挂在旧实例的 flow 上永远等不到回填
+    LaunchedEffect(selectedIndex, tabCount) {
         val pos = snapshotFlow { positions.getOrNull(selectedIndex) }
-            .first { it != null && it.w > 0f } ?: return@LaunchedEffect
+            .filterNotNull()
+            .first { it.w > 0f }
         if (scrollState.viewportSize <= 0) return@LaunchedEffect
         val to = (pos.x + pos.w / 2 - scrollState.viewportSize / 2)
             .roundToInt().coerceIn(0, scrollState.maxValue)
@@ -92,7 +95,9 @@ fun AppScrollTabRow(
                         val change = event.changes.firstOrNull() ?: continue
                         val delta = change.scrollDelta.y
                         if (delta == 0f) continue
-                        val viewportW = size.width.toFloat()
+                        // pointerInput 挂在 horizontalScroll 之后被无限宽约束, size.width 是内容总宽;
+                        // 滚轮倍率按视口宽/20 (官方 WindowsWinUIConfig 一格 = 视口宽/20 × 每格行数 3)
+                        val viewportW = scrollState.viewportSize.toFloat()
                         if (viewportW > 0f) {
                             scrollChannel.trySend(delta * viewportW / 20f * 3f)
                         }

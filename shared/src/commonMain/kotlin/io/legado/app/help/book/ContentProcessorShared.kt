@@ -147,9 +147,9 @@ class ContentProcessorShared(
                 val name = book.name.escapeRegex()
                 var title = chapter.title.escapeRegex().replace(spaceRegex, "\\\\s*")
                 // Pattern.compile(...).matcher(mContent).find() → Regex(...).find(mContent);
-                // 前缀量词用占有 *+ : 标题内空格展开的 \s* 与前缀 (\s|\p{P}|name)* 重叠,
-                // 正文开头大量空白/标点时 O(n²) 回溯 (举一反三: 对齐 CodeSyntax 修法)
-                var regex = Regex("^(\\s|\\p{P}|${name})*+${title} *\\n?")
+                // 前缀用贪婪 * (对齐原版): 标题以书名/标点开头(如"斗破苍穹 第一章"、"【第1章】")
+                // 时需回溯到零次重复才匹配成功; 占有量词/原子组会改变匹配集合导致去重失效, 禁用
+                var regex = Regex("^(\\s|\\p{P}|${name})*${title} *\\n?")
                 var match = regex.find(mContent)
                 if (match != null) {
                     // matcher.end() (exclusive) → match.range.last + 1
@@ -160,7 +160,7 @@ class ContentProcessorShared(
                         titleReplaceRules,
                         chineseConvert = false
                     ).escapeRegex()
-                    regex = Regex("^(\\s|\\p{P}|${name})*+${title} *\\n?")
+                    regex = Regex("^(\\s|\\p{P}|${name})*${title} *\\n?")
                     match = regex.find(mContent)
                     if (match != null) {
                         mContent = mContent.substring(match.range.last + 1)

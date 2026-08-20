@@ -127,12 +127,13 @@ fun NumberPickerDialog(
 
     /** 解析输入框文本 → 钳制到 range → 提交为 currentValue (键盘 Done / 点确定时调用) */
     fun commitEdit() {
-        editState.text.toString().toIntOrNull()?.let { typed ->
-            val clamped = typed.coerceIn(range.first, range.last)
-            if (clamped != currentValue) {
-                currentValue = clamped
-                onValueChange(clamped)
-            }
+        val typed = editState.text.toString().toIntOrNull() ?: currentValue
+        val clamped = typed.coerceIn(range.first, range.last)
+        // 无条件把钳制结果写回输入框, 越界/非法输入不再滞留界面
+        editState.edit { replace(0, length, clamped.toString()) }
+        if (clamped != currentValue) {
+            currentValue = clamped
+            onValueChange(clamped)
         }
     }
 
@@ -140,7 +141,8 @@ fun NumberPickerDialog(
     fun stepBy(delta: Int) {
         val base = editState.text.toString().toIntOrNull() ?: currentValue
         val stepped = (base + delta).coerceIn(range.first, range.last)
-        if (stepped != currentValue) {
+        // 判断对 base 而非 currentValue: 输 51 (越界未提交) 后点减号必须能写回 50
+        if (stepped != base) {
             currentValue = stepped
             editState.edit { replace(0, length, stepped.toString()) }
             onValueChange(stepped)

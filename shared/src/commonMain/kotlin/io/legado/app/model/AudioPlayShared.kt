@@ -328,7 +328,10 @@ object AudioPlayShared {
         Coroutine.async {
             durAudioSize = audioSize.toInt()
             chapter.end = audioSize
-            if (!book!!.isNotShelf) AppDbProviders.get().bookChapterDao.update(chapter)
+            // 只 PATCH end 列; 整行 update 会冲掉正文解析等并发写入的章节字段
+            if (!book!!.isNotShelf) {
+                AppDbProviders.get().bookChapterDao.upEnd(chapter.bookUrl, chapter.url, chapter.end)
+            }
         }
     }
 

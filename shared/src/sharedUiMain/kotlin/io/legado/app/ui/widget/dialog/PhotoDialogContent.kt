@@ -15,6 +15,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -45,6 +46,7 @@ import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.zoomable
 import io.legado.app.ui.root.PlatformServiceProviders
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.close
 import legado.shared.generated.resources.image_cover_default
@@ -60,7 +62,7 @@ import kotlin.math.max
  * iOS=Coil3，鸿蒙=ArkUI 融合渲染平台图片管线；传 [bookSource] 时网络图自动带书源防盗链 header/cookie，
  * 并按原版 Glide 封面/预览链路语义 (isCover=true) 执行书源 coverDecodeJs 响应字节解密)。
  * 多级回退与缓存复用 (对齐原版 PhotoDialog.loadPhoto 的缓存优先语义):
- * ① 进程内阅读页位图缓存 [ReaderImageCache] (阅读时已解码的正文图, 零 IO 直接显示)
+ * ① 进程内阅读页位图缓存 [ReaderImageCache] (阅读时已解码的正文图, 免解码直接显示)
  * ② 磁盘章节图片缓存 [BookImageStorage] (网络书阅读时已落盘, 对齐原版 loadPhoto 的
  *    `BookHelp.getImage(book, src)` 分支——章节缓存文件存在即按 2× 屏尺寸解码显示;
  *    需 [chapter] 标识, 阅读页点图调用方随 [showImagePreview] 透传)
@@ -115,30 +117,37 @@ fun PhotoDialogContent(
     ) {
         value = loadPhotoState(src, book, bookSource, chapter, photoMaxDim)
     }
-    // GIF 动图旁路: 大图查看是唯一值得逐帧播放的场景, 故额外取一次裸字节解码。
-    // Desktop 使用 Skiko Codec；Android/iOS/鸿蒙交给平台图片管线，无法逐帧时退化静态图。
-    // 非 GIF 字节不进解码器, 静态图仅多一次带缓存的字节读取。
-    val gifBytes by produceState<ByteArray?>(null, src, chapter, book, bookSource) {
-        value = runCatching {
-            loadPhotoBytes(src, book, bookSource, chapter, isCover = true)
-        }.getOrNull()?.takeIf { isGifBytes(it) }
-    }
-    val animatedFrame = rememberAnimatedImageBitmap(gifBytes)
-    val successBitmap = (photoState as? PhotoLoadState.Success)?.bitmap
+    // GIF 动图: 字节在 loadPhotoState 单次读取时顺带判定 (见 [PhotoLoadState.Success.gifBytes]),
+    // 不再为判定重复读一遍盘。Desktop 使用 Skiko Codec；Android/iOS/鸿蒙交给平台图片管线,
+    // 无法逐帧时退化静态图。
+    val successState = photoState as? PhotoLoadState.Success
+    val animatedFrame = rememberAnimatedImageBitmap(successState?.gifBytes)
+    val successBitmap = successState?.bitmap
     val image = animatedFrame ?: successBitmap
     val defaultCover = painterResource(Res.drawable.image_cover_default)
     val defaultCoverRatio = remember(defaultCover) {
         val size = defaultCover.intrinsicSize
         if (size.width > 0f && size.height > 0f) size.width / size.height else 1f
     }
+    // 回调用 rememberUpdatedState 持住: 调用方 (PhotoViewOverlayDialog / LegadoApp) 内联传
+    // lambda, 每次重组都是新实例, 直接做 pointerInput key 会反复重启手势检测。
+    // key 只留"回调是否存在" (决定 detectTapGestures 要不要等长按超时), 引用变化不重启。
+    val currentTap by rememberUpdatedState(onTap)
+    val currentLongPress by rememberUpdatedState(onLongPress)
+    val hasTap = onTap != null
+    val hasLongPress = onLongPress != null
     Box(
         // 占位态没有图片可挂 zoomable, 单击/长按要挂到容器上, 否则加载中时全屏
         // 看图层没有任何可点区域, 点不掉也退不出 (对照原 PhotoDialog 点击即关)
         modifier = if (image == null && photoState is PhotoLoadState.Loading) {
-            modifier.pointerInput(onTap, onLongPress) {
+            modifier.pointerInput(hasTap, hasLongPress) {
                 detectTapGestures(
-                    onTap = onTap?.let { { _: Offset -> it() } },
-                    onLongPress = onLongPress?.let { { _: Offset -> it() } },
+                    onTap = if (hasTap) {
+                        { _: Offset -> currentTap?.invoke() }
+                    } else null,
+                    onLongPress = if (hasLongPress) {
+                        { _: Offset -> currentLongPress?.invoke() }
+                    } else null,
                 )
             }
         } else {
@@ -189,17 +198,22 @@ fun PhotoDialogContent(
 /** 图片加载三态 (失败占位对齐原版 glide error 默认封面)。 */
 private sealed interface PhotoLoadState {
     data object Loading : PhotoLoadState
-    data class Success(val bitmap: ImageBitmap) : PhotoLoadState
+
+    /** @param gifBytes 原始字节为 GIF 时携带, 供 [rememberAnimatedImageBitmap] 逐帧播放 */
+    data class Success(val bitmap: ImageBitmap, val gifBytes: ByteArray?) : PhotoLoadState
     data object Failed : PhotoLoadState
 }
 
 /**
  * 大图加载（缓存优先，对齐原版 PhotoDialog.loadPhoto 的章节缓存文件分支）：
- * ① [ReaderImageCache] 内存位图（阅读页当前书同 URL 已解码，零 IO 直接显示）
+ * ① [ReaderImageCache] 内存位图（阅读页当前书同 URL 已解码，直接复用免解码）
  * ② 磁盘字节缓存（[BookImageStorage] 章节缓存 → Coil3 封面/列表图磁盘缓存），
  *    命中后按 2× 屏尺寸采样解码
  * ③ 现有 [ImageBitmapLoader] 链路（ImageBytesCache 内存/磁盘缓存 + 网络下载）
  * 全部失败返回 Failed（默认封面占位，对齐原版 glide error 兜底）。
+ *
+ * 整链在 [IoDispatcher] 上跑: 磁盘读/文件 stat/解码都是阻塞的, 缓存命中时若留在
+ * produceState 的组合效应上下文 (主线程) 就是主线程 IO + 解码。
  */
 private suspend fun loadPhotoState(
     src: String,
@@ -207,18 +221,23 @@ private suspend fun loadPhotoState(
     bookSource: BookSource?,
     chapter: BookChapter?,
     maxDim: Int,
-): PhotoLoadState {
+): PhotoLoadState = withContext(IoDispatcher) {
     // ① 内存位图（阅读页 2048px 长边上限解码, 对 2× 屏显示无感知差异, 直接复用）
-    ReaderImageCache.peek(src)?.let { return PhotoLoadState.Success(it) }
+    val cached = ReaderImageCache.peek(src)
     // ②/③ 字节：磁盘缓存（章节缓存 → Coil3 封面缓存）优先，未命中走
-    // ImageBitmapLoader（ImageBytesCache/网络）
-    val bytes = loadPhotoBytes(src, book, bookSource, chapter, isCover = true)
-        ?: return PhotoLoadState.Failed
+    // ImageBitmapLoader（ImageBytesCache/网络）。一次读取同时供 GIF 判定与解码
+    val bytes = runCatching {
+        loadPhotoBytes(src, book, bookSource, chapter, isCover = true)
+    }.getOrNull()
+    val gifBytes = bytes?.takeIf { isGifBytes(it) }
+    // 内存位图命中时跳过解码, 但仍用上面读到的字节判定 GIF (阅读页缓存只存单帧)
+    if (cached != null) return@withContext PhotoLoadState.Success(cached, gifBytes)
+    if (bytes == null) return@withContext PhotoLoadState.Failed
     // 栅格解码 → SVG 兜底（对齐原版 decodeBytes ?: SvgUtils.renderInto 语义）
     val bitmap = decodeBytesSampled(bytes, maxDim)
         ?: decodeSvgFallback(bytes, maxDim)
-        ?: return PhotoLoadState.Failed
-    return PhotoLoadState.Success(bitmap)
+        ?: return@withContext PhotoLoadState.Failed
+    PhotoLoadState.Success(bitmap, gifBytes)
 }
 
 /**

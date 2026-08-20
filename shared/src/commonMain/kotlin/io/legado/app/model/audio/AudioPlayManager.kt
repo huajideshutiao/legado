@@ -300,7 +300,12 @@ class AudioPlayManager(
                     if (chapter.resourceUrl != content) {
                         chapter.resourceUrl = content
                         if (AudioPlayShared.inBookshelf) {
-                            AppDbProviders.get().bookChapterDao.update(chapter)
+                            // 只 PATCH resourceUrl 列; 整行 update 会冲掉并发写入的章节字段
+                            AppDbProviders.get().bookChapterDao.upResourceUrl(
+                                chapter.bookUrl,
+                                chapter.url,
+                                chapter.resourceUrl
+                            )
                         }
                     }
                     contentLoadFinish(chapter, content)

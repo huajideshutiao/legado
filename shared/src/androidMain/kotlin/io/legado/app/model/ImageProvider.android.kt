@@ -22,10 +22,11 @@ import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.fileBook.FileBook
-import io.legado.app.ui.platform.sharedAppContext
 import io.legado.app.utils.File
 import io.legado.app.utils.FileUtilsBase
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import legado.shared.generated.resources.Res
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import kotlin.math.max
@@ -78,7 +79,7 @@ actual class ImageProviderLruCache actual constructor() :
  *
  * 依赖替换:
  * - `appCtx` → [sharedAppContext] (shared androidMain 不依赖 splitties)
- * - `R.drawable.image_loading_error` → `resources.getIdentifier` 查找 (shared 不能引用 app 的 R)
+ * - `R.drawable.image_loading_error` → 读自身 composeResources `Res.readBytes` (shared 不能引用 app 的 R)
  * - `AppConfig.bitmapCacheSize` → [AppConfigProviders.get] + `setBitmapCacheSize`
  * - `BookHelp.getImage/isImageExist/saveImage` → [BookHelpProviders.get]
  * - `FileUtils.createFileIfNotExist` → [FileUtilsBase.createFileIfNotExist]
@@ -90,12 +91,11 @@ actual object ImageProvider {
 
     actual val errorBitmap: Bitmap by lazy {
         // shared androidMain 不能引用 app 的 R.drawable.image_loading_error,
-        // 用 getIdentifier 按名查找 (lazy 仅触发一次, 性能可接受)
-        val ctx = sharedAppContext!!
-        val resId = ctx.resources.getIdentifier(
-            "image_loading_error", "drawable", ctx.packageName
-        )
-        BitmapFactory.decodeResource(ctx.resources, resId)
+        // 改读自身 composeResources (app res 不再保留该图)。
+        // Res.readBytes 为 suspend, lazy 同步初始化用 runBlocking 包装 (仅触发一次)。
+        val bytes = runBlocking { Res.readBytes("drawable/image_loading_error.png") }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            ?: error("decode image_loading_error failed")
     }
 
     /**

@@ -497,7 +497,9 @@ interface JsExtensionsCommon {
      * 输出对象类型
      */
     fun logType(any: Any?) {
-        // 对应原 javaClass.name (FQN); native 端 qualifiedName 可能为 null, 兜底 simpleName
+        // KMP 下输出 Kotlin 类型名 (如 "kotlin.String"), 与原版 javaClass.name
+        // 的 Java 类型名 (如 "java.lang.String") 不同, 书源若按字符串解析调试输出会看到差异;
+        // native 端 qualifiedName 可能为 null, 兜底 simpleName
         if (any == null) log("null")
         else log(any::class.qualifiedName ?: any::class.simpleName ?: "Unknown")
     }
@@ -1017,20 +1019,17 @@ interface JsExtensionsCommon {
         )
         FileUtilsCommon.createFileReplace(path)
         return try {
-            // 流式优先 (对齐原版 getInputStream().copyTo, 大文件不整块缓冲);
-            // iOS/鸿蒙 byteStreamAsInput 暂不可用 (见 JvmPlatformTypes), 自动回退全量缓冲
+            // 流式写入 (对齐原版 getInputStream().copyTo, 大文件不整块缓冲): 失败直接抛,
+            // 不静默回退全量缓冲 —— 原版流式失败即失败, JS 侧要能看到异常。
             // 注: commonMain expect InputStream 未实现 Closeable, use{} 不可用, 手动 try-finally
-            val ok = runCatching {
-                val input = analyzeUrl.getInputStream()
-                try {
-                    FileUtilsCommon.copyToFile(path, input)
-                } finally {
-                    input.close()
-                }
-            }.getOrDefault(false)
-            if (!ok) {
-                FileUtilsCommon.writeBytes(path, analyzeUrl.getByteArray())
+            val input = analyzeUrl.getInputStream()
+            val ok = try {
+                FileUtilsCommon.copyToFile(path, input)
+            } finally {
+                input.close()
             }
+            // copyToFile 各端 actual 把 IO 异常收成 false, 这里还原成异常上抛
+            if (!ok) throw NoStackTraceException("下载文件失败 $url")
             path.substring(FileUtilsCommon.getCachePath().length)
         } catch (e: Throwable) {
             FileUtilsCommon.delete(path, true)

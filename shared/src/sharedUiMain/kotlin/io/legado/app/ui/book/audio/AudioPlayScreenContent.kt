@@ -935,8 +935,8 @@ private fun playModeIconKey(mode: AudioPlayShared.PlayMode): String = when (mode
  */
 private fun Modifier.tapOnUnconsumed(onTap: () -> Unit): Modifier = pointerInput(onTap) {
     awaitEachGesture {
-        val down = awaitFirstDown(requireUnconsumed = true)
-        if (down == null) return@awaitEachGesture
+        // requireUnconsumed=true 已保证子级消费的 down 不会返回, 无需再判空
+        awaitFirstDown(requireUnconsumed = true)
         val up = waitForUpOrCancellation()
         if (up != null) onTap()
     }

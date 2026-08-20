@@ -83,7 +83,12 @@ object BookContent {
             if (!title.isNullOrBlank()) {
                 bookChapter.title = title
                 bookChapter.titleMD5 = null
-                AppDbProviders.get().bookChapterDao.update(bookChapter)
+                // 只 PATCH title 列; 整行 update 会冲掉并发写入的章节字段
+                AppDbProviders.get().bookChapterDao.upTitle(
+                    bookChapter.bookUrl,
+                    bookChapter.url,
+                    bookChapter.title
+                )
             }
         }
         var contentData = analyzeContent(

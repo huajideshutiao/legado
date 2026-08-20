@@ -2059,7 +2059,8 @@ class ReadBookViewModelShared(
         scope.launch {
             runCatching {
                 ContentProcessorProviders.get().upReplaceRules()
-                AppDbProviders.get().bookDao.update(book)
+                // 只 PATCH 阅读配置列; 整行 update 会冲掉后台 updateToc 写入的目录/元数据
+                AppDbProviders.get().bookDao.updateReadConfig(book.bookUrl, book.config)
             }.onFailure { AppLog.put("切换替换规则失败\n${it.message}", it) }
             loadChapter(readBook.durChapterIndex.value)
         }
@@ -2072,8 +2073,10 @@ class ReadBookViewModelShared(
         val book = readBook.book.value ?: return
         book.config.reSegment = !book.config.reSegment
         scope.launch {
-            runCatching { AppDbProviders.get().bookDao.update(book) }
-                .onFailure { AppLog.put("切换重新分段失败\n${it.message}", it) }
+            // 只 PATCH 阅读配置列; 整行 update 会冲掉后台 updateToc 写入的目录/元数据
+            runCatching {
+                AppDbProviders.get().bookDao.updateReadConfig(book.bookUrl, book.config)
+            }.onFailure { AppLog.put("切换重新分段失败\n${it.message}", it) }
             loadChapter(readBook.durChapterIndex.value)
         }
     }
@@ -2091,8 +2094,10 @@ class ReadBookViewModelShared(
             book.config.delTag or tag
         }
         scope.launch {
-            runCatching { AppDbProviders.get().bookDao.update(book) }
-                .onFailure { AppLog.put("切换标签删除失败\n${it.message}", it) }
+            // 只 PATCH 阅读配置列; 整行 update 会冲掉后台 updateToc 写入的目录/元数据
+            runCatching {
+                AppDbProviders.get().bookDao.updateReadConfig(book.bookUrl, book.config)
+            }.onFailure { AppLog.put("切换标签删除失败\n${it.message}", it) }
             refreshContentAll()
         }
     }

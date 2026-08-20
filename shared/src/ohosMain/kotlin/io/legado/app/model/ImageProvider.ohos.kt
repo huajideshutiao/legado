@@ -10,6 +10,9 @@ import io.legado.app.utils.File
  * 鸿蒙端图片管线由 [io.legado.app.help.image.ReaderImageResolver] / [ReaderImageCache]
  * (compose ImageBitmap) 接管, 不调用本 object。留 stub 仅为满足 KMP expect/actual 约束,
  * 首次访问抛 [IllegalStateException] 防止误用。
+ *
+ * 与 nativeMain `ImageProvider.native.kt` 逐行相同但不能删: 该文件被 build.gradle.kts 从
+ * nativeMain 源集 `kotlin.exclude`, 只经 `iosImageProviderMain` 单独挂回 iOS, ohos 拿不到它的 actual。
  */
 actual class ImageProviderBitmap
 

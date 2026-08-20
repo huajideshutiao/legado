@@ -19,6 +19,7 @@ import io.legado.app.help.coroutine.newFixedThreadPoolDispatcher
 import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
 import io.legado.app.help.service.UpdateBookShared.Companion.AUTO_UPDATE_STALE_MS
+import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.CacheBookShared
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.FlowBus
@@ -61,7 +62,8 @@ import kotlin.math.min
  * - CacheBook: app 端 CacheBook 单例 / 桌面 DesktopCacheBook (都是 CacheBookShared 薄壳)
  * - bookSourceCache: app 端 androidx LruCache / 本类纯 Kotlin [LruCache] 逐条淘汰
  *   (commonMain 无 accessOrder LinkedHashMap, 命中重插队尾 + 超容量淘汰队首)
- * - ReadBook.onChapterListUpdated: app 端调单例, 统一改 postEvent(UP_BOOKSHELF)
+ * - ReadBook.onChapterListUpdated: 经 [ActiveReadBookRegistry.current] 通知当前阅读实例
+ *   (对照 app 端 MainViewModel 直接调 ReadBook 单例; 仅发 UP_BOOKSHELF 书架转圈消费, 阅读侧不刷新章节)
  *
  * 生命周期: class 非 object, 各端 VM 持有实例 (upTocJob 等任务状态每 VM 独立);
  * onCleared 释放。模式参考 [CacheBookShared]。
@@ -367,6 +369,9 @@ class UpdateBookShared(
                     if (bookUrlChanged) {
                         BookStorageProviders.get().updateCacheFolder(oldBook, book)
                     }
+                    // 通知正在阅读的书目录已更新 (原版 MainViewModel 三连中的 ReadBook.onChapterListUpdated;
+                    // 下沉时丢失: UP_BOOKSHELF 仅书架转圈消费, 阅读侧无人刷新章节, 不补则要重开书才见新章)
+                    ActiveReadBookRegistry.current?.onChapterListUpdated(book)
                     // 预下载后续章节 (对照 app 端 addDownload, 受 preDownloadNum 控制)
                     addDownload(source, book)
                 } catch (e: Throwable) {
@@ -605,6 +610,9 @@ class UpdateBookShared(
             if (bookUrlChanged) {
                 BookStorageProviders.get().updateCacheFolder(oldBook, book)
             }
+            // 通知正在阅读的书目录已更新 (原版 MainViewModel 三连中的 ReadBook.onChapterListUpdated;
+            // 下沉时丢失: UP_BOOKSHELF 仅书架转圈消费, 阅读侧无人刷新章节, 不补则要重开书才见新章)
+            ActiveReadBookRegistry.current?.onChapterListUpdated(book)
             // 预下载后续章节 (对照 app 端 addDownload, 受 preDownloadNum 控制)
             addDownload(source, book)
             postEvent(EventBus.UP_BOOKSHELF, book.bookUrl)

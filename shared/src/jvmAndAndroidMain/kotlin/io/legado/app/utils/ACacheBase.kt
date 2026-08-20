@@ -485,6 +485,7 @@ open class ACacheBase protected constructor(
             try {
                 lastUsageDates.clear()
                 cacheSize.set(0)
+                cacheCount.set(0) // 漏重置则 countLimit 实例 clear 后 put 会误删
                 val files = cacheDir.listFiles()
                 if (files != null) {
                     for (f in files) {

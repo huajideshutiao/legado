@@ -220,10 +220,9 @@ fun buildSearchRanges(
 }
 
 /**
- * 语法高亮代码输入框 (KMP 次一级实现)。
+ * 语法高亮代码输入框 (KMP 共享实现)。
  *
- * Android 仍保留 `ui/widget/code/CodeView` 作为 View 专项编辑器，提供自动补全、滚动窗口
- * 高亮、原生撤销/重做和 ActionMode 集成；本组件供共享界面及非 Android 平台使用。
+ * 原版 Android View 版 `ui/widget/code/CodeView` 已删除, Android 也走本 Compose 组件。
  *
  * MD2 纯下划线风格 (对照 MD2 TextField): 无填充底、无圆角盒、无边框, 仅底部下划线
  * indicatorLine (未聚焦 controlNormal / 聚焦 accent / 错误 error) + hint (label/placeholder)
@@ -470,8 +469,7 @@ fun CodeTextField(
         }
     }
     // 弹层锚点: 光标所在行 Y + X; X 用 TextMeasurer 实测行首到光标的文本宽度与行号列宽
-    // (替代原 0.6em/1em 近似估算, 对齐原版 showDropDown 的 layout.getPrimaryHorizontal),
-    // 测量失败/超长回退估算
+    // (替代原 0.6em/1em 近似估算, 对齐原版 showDropDown 的 layout.getPrimaryHorizontal)
     val density = LocalDensity.current
     val textMeasurer = rememberTextMeasurer(cacheSize = 8)
     // 字段在窗口中的位置: Popup 的 offset 锚点是窗口内容根 (见 ComposeTextToolbar 的
@@ -1045,20 +1043,6 @@ private fun newlineDelta(oldText: String, newText: String): Int {
     return added - removed
 }
 
-/** 全角字符 (CJK/假名/全角符号): 自动补全弹层 X 估算时按 1em 计, 其余按 0.6em */
-private fun isFullWidthChar(c: Char): Boolean {
-    val code = c.code
-    return code >= 0x1100 && (
-        code <= 0x115F ||
-            code in 0x2E80..0xA4CF ||
-            code in 0xAC00..0xD7A3 ||
-            code in 0xF900..0xFAFF ||
-            code in 0xFE30..0xFE4F ||
-            code in 0xFF00..0xFF60 ||
-            code >= 0x20000
-        )
-}
-
 /**
  * 自动补全候选弹层 (对齐原版 AutoCompleteTextView 下拉): 小字列表 + 键盘/点击选中高亮,
  * 确认插入到光标处 ([applyCompletion])。focusable=false 不抢焦点: 键盘事件由字段层
@@ -1211,7 +1195,7 @@ private fun Modifier.cursorLineBringIntoView(cursorLineRect: State<() -> Rect?>)
     this.then(CursorLineBringIntoViewElement(cursorLineRect))
 
 /**
- * TextMeasurer 实测文本单行宽度; 空串返 0, 超长/异常返 null (调用方回退 0.6em/1em 估算)。
+ * TextMeasurer 实测文本单行宽度; 空串返 0, 超长/异常返 null (调用方按"未测出"处理)。
  * [density] 必须传真实屏幕密度 (LocalDensity, 含 fontScale), 否则 sp 字号按 Density(1f)
  * 折算导致宽度整体偏小。
  */

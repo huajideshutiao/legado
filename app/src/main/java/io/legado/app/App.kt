@@ -127,10 +127,11 @@ class App : Application() {
         // content scheme 路径返回 null (PFD 获取失败, EpubFile 记录错误日志)
         registerEpubApplicationContext(this)
         registerAndroidAppFilesDir(instance)
-        // 注册 appString 平台 provider (commonMain 非 UI 层字符串通道): 先暖缓存同步
-        // 上下文常用 key (填热 Compose Resources AsyncCache), 再注册 provider (取值走
-        // androidAppString 直取, 缓存命中后零 IO; 须在 Locale.setDefault 之后 —
-        // attachBaseContext 的 AppContextWrapper.wrap 已设置)
+        // 注册 appString 平台 provider (commonMain 非 UI 层字符串通道): 先后台暖缓存
+        // 常用 key (填热 Compose Resources AsyncCache), 再注册 provider; 取值走
+        // androidAppString 直取, 缓存命中后零 IO, 未命中同步兜底读取 (预热只是加速,
+        // 非正确性前提); 须在 Locale.setDefault 之后 — attachBaseContext 的
+        // AppContextWrapper.wrap 已设置
         warmAppStringCache()
         registerAndroidAppStringProvider()
         registerAndroidAppLogHost()
@@ -165,6 +166,13 @@ class App : Application() {
         // 须在 registerAndroidWebBookProviders 之前 (OkHttpClientProviders 注册后,
         // shared okHttpClient 首次 lazy 初始化会读 CronetProviders.get())
         registerAndroidCronetProvider()
+        // 注册 CookieStoreProvider, 让 shared 端业务层能跨平台调用 app 端 CookieStore/CookieManager;
+        // 须同步注册 (放后台协程会被同批并行块中的网络请求抢先消费,
+        // 未注册时 CookieStoreProviders.get() 返回 null, 消费方 fail-silent 拿到空 cookie)
+        registerAndroidCookieStoreProvider()
+        // 注册 CookieJarBridge (commonMain SharedCookieJarBridge, 1:1 复刻 app CookieManager)
+        // 须在 CookieStoreProvider 之后 (bridge 通过 CookieStoreProviders.get() 间接访问存储)
+        registerSharedCookieJarBridge()
         registerAndroidWebBookProviders()
         // 注册 Coil3 BookImageLoader (Compose 图片加载, 替代 Glide 迁移批 1 共享面接线)
         // 依赖 OkHttpClientProviders (上一步 registerAndroidWebBookProviders 已注册),
@@ -266,11 +274,7 @@ class App : Application() {
                     LogUtils.d("App", "GMS Cronet not available: ${it.message}")
                 }
             }
-            // 注册 CookieStoreProvider, 让 shared 端业务层能跨平台调用 app 端 CookieStore/CookieManager
-            registerAndroidCookieStoreProvider()
-            // 注册 CookieJarBridge (commonMain SharedCookieJarBridge, 1:1 复刻 app CookieManager)
-            // 须在 CookieStoreProvider 之后 (bridge 通过 CookieStoreProviders.get() 间接访问存储)
-            registerSharedCookieJarBridge()
+            // 注册 CookieStoreProvider / CookieJarBridge 已上移 onCreate 同步段 (见前文)
             URL.setURLStreamHandlerFactory(ObsoleteUrlFactory(okHttpClient))
             launch { installGmsTlsProvider(instance) }
             initQuickJs()

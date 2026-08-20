@@ -7,6 +7,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
@@ -47,7 +48,7 @@ internal fun CoverNameAuthorOverlay(
     val measurer = rememberTextMeasurer()
     Box(
         modifier.drawWithCache {
-            // 一个封面要测 (书名+作者) 每字 ×2 (描边/填充) 份文本布局, 同屏几十张就是上千次 Paragraph 构建;
+            // 每字只测一份布局, 描边/填充两趟共用; drawStyle 在绘制时显式指定, 不烘进 measure
             // drawWithCache 的缓存块在每次重组都会失效重跑, 故按尺寸+文案做一层跨条目的共享缓存
             val prepared = CoverGlyphCache.getOrPut(
                 CoverGlyphKey(
@@ -82,15 +83,7 @@ internal fun CoverNameAuthorOverlay(
                 glyphs.map { g ->
                     // 作者列非粗体 (原版 authorPaint.typeface = Typeface.DEFAULT)
                     val weight = if (g.isAuthor) FontWeight.Normal else FontWeight.Bold
-                    val style = glyphStyle(g.textSize.toSp(), weight)
-                    PreparedGlyph(
-                        glyph = g,
-                        stroke = measurer.measure(
-                            g.text,
-                            style.copy(drawStyle = Stroke(width = g.strokeWidth)),
-                        ),
-                        fill = measurer.measure(g.text, style),
-                    )
+                    PreparedGlyph(g, measurer.measure(g.text, glyphStyle(g.textSize.toSp(), weight)))
                 }
             }
             onDrawWithContent {
@@ -99,11 +92,17 @@ internal fun CoverNameAuthorOverlay(
                     // 原版 textAlign=CENTER 且 y 为基线; Compose drawText 以左上角为锚,
                     // 故按 firstBaseline (而非整段高度) 回退
                     val topLeft = Offset(
-                        p.glyph.x - p.fill.size.width / 2f,
-                        p.glyph.y - p.fill.firstBaseline,
+                        p.glyph.x - p.layout.size.width / 2f,
+                        p.glyph.y - p.layout.firstBaseline,
                     )
-                    drawText(p.stroke, color = Color.White, topLeft = topLeft)
-                    drawText(p.fill, color = accent, topLeft = topLeft)
+                    // 先白描边再 accent 填充, 同原版 drawTextWithStroke (同一 layout 两趟)。
+                    // 两趟都必须显式给 drawStyle: Android 的 AndroidTextPaint.setDrawStyle(null)
+                    // 直接 return 不重置, 省略第二趟会残留上一趟的 STROKE, accent 变描边把白边盖掉
+                    drawText(
+                        p.layout, color = Color.White, topLeft = topLeft,
+                        drawStyle = Stroke(width = p.glyph.strokeWidth),
+                    )
+                    drawText(p.layout, color = accent, topLeft = topLeft, drawStyle = Fill)
                 }
             }
         }
@@ -118,8 +117,7 @@ private fun glyphStyle(fontSize: TextUnit, weight: FontWeight) = TextStyle(
 
 private class PreparedGlyph(
     val glyph: CoverGlyph,
-    val stroke: TextLayoutResult,
-    val fill: TextLayoutResult,
+    val layout: TextLayoutResult,
 )
 
 private data class CoverGlyphKey(

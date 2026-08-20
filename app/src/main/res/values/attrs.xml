@@ -3,17 +3,6 @@
 
     <attr name="arcoRadius" format="dimension" />
 
-    <declare-styleable name="RefreshProgressBar">
-        <attr name="max_progress" format="integer" />
-        <attr name="dur_progress" format="integer" />
-        <attr name="second_dur_progress" format="dimension" />
-        <attr name="second_max_progress" format="dimension" />
-        <attr name="bg_color" format="color" />
-        <attr name="second_color" format="color" />
-        <attr name="font_color" format="color" />
-        <attr name="speed" format="dimension" />
-    </declare-styleable>
-
     <declare-styleable name="AccentBgTextView">
         <attr name="arcoRadius" />
     </declare-styleable>

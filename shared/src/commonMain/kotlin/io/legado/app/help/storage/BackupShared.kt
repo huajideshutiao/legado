@@ -174,8 +174,12 @@ object BackupShared {
         currentCoroutineContext().ensureActive()
 
         // 3. 阅读界面配置 / 主题配置 / 直链上传规则 (与原版 ReadBookConfig + ThemeConfig + DirectLinkUpload 段一致)
-        runCatching {
-            val readBookConfig = ReadBookConfigProviders.get()
+        // runCatching 只兜 provider 取值 (某平台未注册时跳过该项); 写盘失败不吞,
+        // 与原版一致直接中止整个备份, 避免"备份成功但缺文件"
+        val readBookConfig = runCatching { ReadBookConfigProviders.get() }
+            .onFailure { AppLog.put("备份 readConfig 出错\n${it.message}", it) }
+            .getOrNull()
+        if (readBookConfig != null) {
             BackupFileOps.writeText(
                 backupPath + BackupFileOps.separator + ReadBookConfigShared.configFileName,
                 GSON.toJson(readBookConfig.configList)
@@ -184,26 +188,22 @@ object BackupShared {
                 backupPath + BackupFileOps.separator + ReadBookConfigShared.shareConfigFileName,
                 GSON.toJson(readBookConfig.shareConfig)
             )
-        }.onFailure {
-            AppLog.put("备份 readConfig 出错\n${it.message}", it)
         }
-        runCatching {
+        val themeConfig = runCatching { ThemeConfigProviders.get() }
+            .onFailure { AppLog.put("备份 themeConfig 出错\n${it.message}", it) }
+            .getOrNull()
+        if (themeConfig != null) {
             BackupFileOps.writeText(
                 backupPath + BackupFileOps.separator + THEME_CONFIG_FILE_NAME,
-                GSON.toJson(ThemeConfigProviders.get().getConfigList())
+                GSON.toJson(themeConfig.getConfigList())
             )
-        }.onFailure {
-            AppLog.put("备份 themeConfig 出错\n${it.message}", it)
         }
-        runCatching {
-            DirectLinkUploadStoreProviders.get()?.getConfig()?.let { rule ->
-                BackupFileOps.writeText(
-                    backupPath + BackupFileOps.separator + ruleFileName,
-                    GSON.toJson(rule)
-                )
-            }
-        }.onFailure {
-            AppLog.put("备份 directLinkUploadRule 出错\n${it.message}", it)
+        // get() 未注册即返回 null (等价原版 getConfig() 为 null 时跳过), 无需 runCatching
+        DirectLinkUploadStoreProviders.get()?.getConfig()?.let { rule ->
+            BackupFileOps.writeText(
+                backupPath + BackupFileOps.separator + ruleFileName,
+                GSON.toJson(rule)
+            )
         }
 
         currentCoroutineContext().ensureActive()

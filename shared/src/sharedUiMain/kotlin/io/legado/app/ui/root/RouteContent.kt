@@ -14,14 +14,10 @@ import io.legado.app.ui.route.BookSourceEditRoute
 import io.legado.app.ui.route.BookSourceManageRoute
 import io.legado.app.ui.route.BookmarkRoute
 import io.legado.app.ui.route.BookshelfManageRoute
-import io.legado.app.ui.route.ChangeChapterSourceRoute
-import io.legado.app.ui.route.ChangeSourceRoute
 import io.legado.app.ui.route.CoverConfigRoute
 import io.legado.app.ui.route.DictRuleRoute
-import io.legado.app.ui.route.ExploreRoute
 import io.legado.app.ui.route.ExploreShowRoute
 import io.legado.app.ui.route.ImportBookRoute
-import io.legado.app.ui.route.JsEditRoute
 import io.legado.app.ui.route.MainRoute
 import io.legado.app.ui.route.MangaReaderRoute
 import io.legado.app.ui.route.MyConfigRoute
@@ -41,7 +37,6 @@ import io.legado.app.ui.route.ThemeConfigRoute
 import io.legado.app.ui.route.TocRoute
 import io.legado.app.ui.route.TxtTocRuleRoute
 import io.legado.app.ui.route.VideoPlayRoute
-import io.legado.app.ui.route.WebDavConfigRoute
 import io.legado.app.ui.route.WebViewRoute
 import io.legado.app.ui.route.WelcomeConfigRoute
 
@@ -103,10 +98,6 @@ fun RouteContent(
             BookshelfManageRoute(entry, navigator, screenModelStore)
             true
         }
-        is AppRoute.ChangeSource -> {
-            ChangeSourceRoute(entry, navigator, screenModelStore)
-            true
-        }
 
         is AppRoute.CoverConfig -> {
             CoverConfigRoute(entry, navigator, screenModelStore)
@@ -115,11 +106,6 @@ fun RouteContent(
 
         is AppRoute.DictRule -> {
             DictRuleRoute(entry, navigator, screenModelStore)
-            true
-        }
-
-        is AppRoute.Explore -> {
-            ExploreRoute(entry, navigator, screenModelStore)
             true
         }
 
@@ -246,28 +232,13 @@ fun RouteContent(
             true
         }
 
-        is AppRoute.ChangeChapterSource -> {
-            ChangeChapterSourceRoute(entry, navigator, screenModelStore)
-            true
-        }
-
         is AppRoute.ReviewList -> {
             ReviewListRoute(entry, navigator, screenModelStore)
             true
         }
 
-        is AppRoute.WebDavConfig -> {
-            WebDavConfigRoute(entry, navigator, screenModelStore)
-            true
-        }
-
         is AppRoute.WebView -> {
             WebViewRoute(entry, navigator, screenModelStore)
-            true
-        }
-
-        is AppRoute.JsEdit -> {
-            JsEditRoute(entry, navigator, screenModelStore)
             true
         }
     }

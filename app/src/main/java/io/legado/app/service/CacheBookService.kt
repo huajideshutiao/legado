@@ -11,7 +11,6 @@ import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.NotificationId
 import io.legado.app.data.appDb
-import io.legado.app.help.book.update
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.setLiveProgress
@@ -127,7 +126,12 @@ class CacheBookService : BaseService() {
                         }.onFailure {
                             removeDownload(bookUrl)
                             book.lastCheckTime = System.currentTimeMillis()
-                            book.update()
+                            // 只 PATCH 检查记录列; 整行 update 会冲掉缓存期间并发写入的其他字段
+                            appDb.bookDao.updateLastCheckTime(
+                                book.bookUrl,
+                                book.lastCheckTime,
+                                book.totalChapterNum
+                            )
                             val msg = "《$name》目录为空且加载详情页失败\n${it.localizedMessage}"
                             AppLog.put(msg, it, false)
                             return@execute
@@ -138,7 +142,12 @@ class CacheBookService : BaseService() {
                             book.totalChapterNum = 0
                         }
                         book.lastCheckTime = System.currentTimeMillis()
-                        book.update()
+                        // 只 PATCH 检查记录列; 整行 update 会冲掉缓存期间并发写入的其他字段
+                        appDb.bookDao.updateLastCheckTime(
+                            book.bookUrl,
+                            book.lastCheckTime,
+                            book.totalChapterNum
+                        )
                         removeDownload(bookUrl)
                         val msg = "《$name》目录为空且加载目录失败\n${it.localizedMessage}"
                         AppLog.put(msg, it, false)
@@ -146,7 +155,12 @@ class CacheBookService : BaseService() {
                     }.getOrNull()?.let { toc ->
                         appDb.bookChapterDao.insert(*toc.toTypedArray())
                     }
-                    book.update()
+                    // 只 PATCH 检查记录列; 整行 update 会冲掉缓存期间并发写入的其他字段
+                    appDb.bookDao.updateLastCheckTime(
+                        book.bookUrl,
+                        book.lastCheckTime,
+                        book.totalChapterNum
+                    )
                 }
             }
             val end2 = if (end < 0) {

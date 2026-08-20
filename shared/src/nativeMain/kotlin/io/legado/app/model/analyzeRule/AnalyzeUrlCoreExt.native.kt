@@ -13,7 +13,8 @@ import io.legado.app.utils.NetworkUtils
  * - charset == "escape" → EncoderUtils.escape (不 URL 编码)
  * - 其他 → 用指定 charset URL 编码 (iOS/鸿蒙仅支持 UTF-8, 非 UTF-8 charset 退化用 UTF-8)
  * - isQuery=true 且非 escape: 整段用 urlQueryEncoder 编码 (若已 encoded 则原样返回)
- * - isQuery=false: 按 '&' 分段, 每段按 '=' 分 key/value, 分别 encodeOne
+ * - isQuery=false: 按 '&' 分段, 每段按 '=' 分 key/value, 分别用表单编码器 encodeFormValue
+ *   (对齐 jvmAndAndroidMain 的 java.net.URLEncoder, 见 AnalyzeUrlCoreExt.jvmAndAndroid.kt)
  *
  * 注: KMP 仅 UTF-8 原生支持, 非 UTF-8 charset 用 UTF-8 字节替代 (功能受限, 不崩)
  */
@@ -44,5 +45,48 @@ private fun encodeOne(value: String, checkEncoded: Boolean, isEscape: Boolean): 
     when {
         checkEncoded && NetworkUtils.encodedForm(value) -> value
         isEscape -> EncoderUtils.escape(value)
-        else -> urlQueryEncoder.encode(value) { it.encodeToByteArray() }
+        else -> encodeFormValue(value)
     }
+
+/**
+ * 表单编码器 (对齐 java.net.URLEncoder.encode(value, UTF-8) 语义):
+ * safe 仅 RFC3986 unreserved (字母数字 -_.~), 空格编成 '+', 其余按 UTF-8 字节 %XX 大写。
+ *
+ * 不能复用 urlQueryEncoder: 其 safe 含 !$%&()*+,/:;=?@ 等 query 保留字符 (AnalyzeUrlCore.kt 约 654),
+ * 用在单个表单 key/value 上会把含 '&'/'=' 的搜索词拆成多个参数; 整段 query 路径仍用 urlQueryEncoder。
+ */
+private fun encodeFormValue(value: String): String {
+    if (value.isEmpty()) return value
+    val out = StringBuilder(value.length)
+    var i = 0
+    while (i < value.length) {
+        val c = value[i]
+        val code = c.code
+        if (code < 0x80) {
+            if (isFormUnreserved(code)) {
+                out.append(c)
+            } else if (code == 0x20) {
+                out.append('+')
+            } else {
+                out.append('%').append(HEX_DIGITS[code ushr 4]).append(HEX_DIGITS[code and 0xF])
+            }
+            i++
+            continue
+        }
+        // 非 ASCII: 按码点编码 (代理对合并为一个字符的 UTF-8 字节, 避免拆开 surrogate pair)
+        val end = if (c.isHighSurrogate() && i + 1 < value.length && value[i + 1].isLowSurrogate()) i + 2 else i + 1
+        for (b in value.substring(i, end).encodeToByteArray()) {
+            val v = b.toInt() and 0xFF
+            out.append('%').append(HEX_DIGITS[v ushr 4]).append(HEX_DIGITS[v and 0xF])
+        }
+        i = end
+    }
+    return out.toString()
+}
+
+/** RFC3986 unreserved: ALPHA / DIGIT / '-' / '.' / '_' / '~' */
+private fun isFormUnreserved(code: Int): Boolean =
+    code in 0x30..0x39 || code in 0x41..0x5A || code in 0x61..0x7A ||
+        code == '-'.code || code == '.'.code || code == '_'.code || code == '~'.code
+
+private val HEX_DIGITS = "0123456789ABCDEF".toCharArray()

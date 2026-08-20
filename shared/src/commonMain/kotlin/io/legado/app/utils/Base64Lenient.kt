@@ -19,7 +19,10 @@ internal object Base64LenientCore {
 
     private const val PADDING = (-2).toByte()
 
-    /** hutool 同款解码表：-1 非法，-2 padding；'+'/'-'→62，'/'/'_'→63 */
+    /**
+     * hutool 同款解码表：-1 非法，-2 padding；'+'/'-'→62，'/'/'_'→63。
+     * 末行补齐到 0x7f（hutool 原表止于 0x7a，`{|}~`/DEL 会下标越界，与本类"非法字符忽略"的契约矛盾）。
+     */
     private val DECODE_TABLE = byteArrayOf(
         // 0   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 00-0f
@@ -29,7 +32,7 @@ internal object Base64LenientCore {
         -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, // 40-4f A-O
         15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, -1, -1, -1, -1, 63, // 50-5f P-Z _
         -1, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, // 60-6f a-o
-        41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51 // 70-7a p-z
+        41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, -1, -1, -1, -1, -1 // 70-7f p-z
     )
 
     fun decode(source: String): ByteArray = decode(source.encodeToByteArray())
@@ -63,7 +66,6 @@ internal object Base64LenientCore {
             val b = input[pos[0]]
             pos[0]++
             if (b > -1) {
-                // 与 hutool 一致不做上界检查：0x7b-0x7f 同样抛下标越界
                 val decoded = DECODE_TABLE[b.toInt()]
                 if (decoded > -1) return decoded
             }

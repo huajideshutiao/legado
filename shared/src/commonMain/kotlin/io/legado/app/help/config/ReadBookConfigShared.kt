@@ -173,6 +173,8 @@ class ReadBookConfigShared(private val prefs: PreferenceStoreProvider) {
     private fun validStyleIndex(): Int {
         val index = styleSelect
         if (index in 0 until internalConfigList.size) return index
+        // 列表为空时 lastIndex 为 -1, 钳到 0 仍会越界 (原版靠 object init 保证列表非空), 先重置
+        if (internalConfigList.isEmpty()) resetAll()
         val fixed = internalConfigList.lastIndex.coerceAtLeast(0)
         if (isComic) comicStyleSelect = fixed else readStyleSelect = fixed
         return fixed
@@ -222,7 +224,8 @@ class ReadBookConfigShared(private val prefs: PreferenceStoreProvider) {
             AppLog.put("读取排版配置文件出错", it)
         }
         internalConfigList.clear()
-        internalConfigList.addAll(configs ?: ReadConfigDefaults.readConfigs)
+        // copy 隔离: 直接复用默认实例会被用户修改写脏 ReadConfigDefaults 进程级默认值
+        internalConfigList.addAll((configs ?: ReadConfigDefaults.readConfigs).map { it.copy() })
         // 配置文件可能比 prefs 索引短（备份恢复/文件被替换后未同步），
         // 这里修正越界索引，避免后续 deleteDur / durConfig 越界崩溃。
         val lastIndex = internalConfigList.lastIndex.coerceAtLeast(0)
@@ -252,6 +255,8 @@ class ReadBookConfigShared(private val prefs: PreferenceStoreProvider) {
      * 原有非阻塞 UI 语义。
      */
     fun save() {
+        // 惰性初始化前调 save 会把空列表与全新默认写盘 (原版 object init 同步加载, 不存在这个窗口)
+        ensureInit()
         val snapshot = synchronized(lock) {
             SaveSnapshot(
                 generation = ++saveGeneration,
@@ -299,7 +304,8 @@ class ReadBookConfigShared(private val prefs: PreferenceStoreProvider) {
     private fun resetAll() {
         val defaults = ReadConfigDefaults.readConfigs
         internalConfigList.clear()
-        internalConfigList.addAll(defaults)
+        // copy 隔离: 同上, 避免写脏内置默认实例 (恢复预设后失真)
+        internalConfigList.addAll(defaults.map { it.copy() })
         // 兜底: 内置列表不足 5 条时 (解码失败回退单条) 补齐, 保证 getConfig 的
         // "size < 5 → resetAll" 判定不会每次访问都重置, 否则用户刚改的配置会在
         // 下一次读配置时被清回默认 (表现为"翻页后全部恢复默认")
@@ -933,11 +939,9 @@ data class ReadStyleConfig(
     var footerPaddingLeft: Int = 16,
     var footerPaddingRight: Int = 16,
     var footerPaddingTop: Int = 6,
-    // 页眉线默认显示: 与内置默认主题(微信读书, ReadConfigDefaults 中 showHeaderLine=true)
-    // 及原版 assets/defaultData/readConfig.json 一致。旧配置文件缺失该字段时解码走此默认,
-    // 避免对齐原版后旧数据(未显式配置)分割线默认消失; 用户显式 false 仍生效(渲染侧
-    // PageViewComposable 对照原版 vwTopDivider.gone(llHeader.isGone || !showHeaderLine))。
-    var showHeaderLine: Boolean = true,
+    // 页眉线默认不显示 (对齐原版 ReadBookConfig.Config.showHeaderLine=false);
+    // 内置主题"微信读书"在 readConfig.json 中显式配置 true, 不受此默认值影响。
+    var showHeaderLine: Boolean = false,
     var showFooterLine: Boolean = true,
     var tipHeaderLeft: Int = ReadTipConfigShared.time,
     var tipHeaderMiddle: Int = ReadTipConfigShared.none,

@@ -28,6 +28,8 @@ import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
+import legado.shared.generated.resources.Res
+import org.jetbrains.compose.resources.ExperimentalResourceApi
 import kotlin.collections.getOrNull
 import kotlin.concurrent.Volatile
 import kotlin.text.getOrNull
@@ -100,16 +102,32 @@ object BookController {
      *
      * 依赖 android.graphics.Bitmap + Glide (ImageLoader.loadBitmap), 通过
      * [ImageControllerProvider] 注入由 app 端 actual 实现, 本方法仅做参数解析与委托。
+     *
+     * 原版失败时回退默认封面并 setData 成功 (web 端封面加载失败也能显示默认图);
+     * 默认封面位图下沉 shared composeResources, 经 [Res.readBytes] 取内置兜底封面字节。
      */
-    fun getCover(parameters: Map<String, List<String>>): ReturnData {
+    @OptIn(ExperimentalResourceApi::class)
+    suspend fun getCover(parameters: Map<String, List<String>>): ReturnData {
         val returnData = ReturnData()
         val coverPath = parameters["path"]?.firstOrNull()
         val bytes = ImageControllerProviders.get().getCover(coverPath)
-        return if (bytes != null) {
+        if (bytes != null) {
             returnData.setData(bytes)
         } else {
-            returnData.setErrorMsg("getCover error")
+            // 原版 BookController.getCover 失败时回退默认封面 (对照 archive:76-95, 失败分支
+            // 试 defaultCoverBitmap/内置图后 setData 成功); 这里取内置兜底封面字节 (同 app 端 BookCover)
+            val defaultBytes = try {
+                Res.readBytes("drawable/image_cover_default.jpg")
+            } catch (e: Exception) {
+                null
+            }
+            if (defaultBytes != null) {
+                returnData.setData(defaultBytes)
+            } else {
+                returnData.setErrorMsg("getCover error")
+            }
         }
+        return returnData
     }
 
     /**

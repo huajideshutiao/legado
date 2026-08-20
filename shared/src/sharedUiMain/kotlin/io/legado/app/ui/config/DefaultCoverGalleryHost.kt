@@ -44,6 +44,7 @@ import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.component.NinePatchImageOrImage
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.component.rememberResponsiveColumns
 import io.legado.app.ui.compose.platform.rememberPainter
@@ -231,10 +232,10 @@ private fun DefaultCoverTile(entry: DefaultCoverEntry, onClick: () -> Unit) {
     ) {
         val bmp = bitmap
         if (bmp != null) {
-            Image(
+            // .9 图按九宫格拉伸预览, 普通图走 Crop 裁剪
+            NinePatchImageOrImage(
                 bitmap = bmp,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
+                isNinePatch = entry.ninePatch,
                 modifier = Modifier.fillMaxSize(),
             )
         } else {

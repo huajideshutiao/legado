@@ -8,7 +8,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -45,7 +46,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -331,15 +331,16 @@ private fun BoxScope.FastScrollbar(
     }
 
     fun updateDragPosition(y: Float) {
+        // 滑块位置与滚动目标共用 handleFraction (扣半滑块高的映射, 与原版 setViewPositions 一致),
+        // 避免拖到中途松手后滑块跳位
         val handleFraction = if (travelPx <= 0f) {
             0f
         } else {
             ((y - thumbHeightPx / 2f) / travelPx).coerceIn(0f, 1f)
         }
         dragFraction = handleFraction
-        val scrollFraction = (y / trackHeightPx).coerceIn(0f, 1f)
         scrollJob?.cancel()
-        scrollJob = scope.launch { scrollToFraction(scrollFraction) }
+        scrollJob = scope.launch { scrollToFraction(handleFraction) }
     }
 
     AnimatedVisibility(
@@ -356,16 +357,24 @@ private fun BoxScope.FastScrollbar(
                 .width(fastScrollPlatform.touchWidth)
                 .hoverable(hoverInteraction)
                 .onSizeChanged { trackHeightPx = it.height }
-                .pointerInput(metrics.itemCount, trackHeightPx, thumbHeightPx) {
-                    detectVerticalDragGestures(
-                        onDragStart = { offset: Offset -> updateDragPosition(offset.y) },
-                        onDragEnd = { dragFraction = null },
-                        onDragCancel = { dragFraction = null },
-                        onVerticalDrag = { change, _ ->
-                            change.consume()
-                            updateDragPosition(change.position.y)
-                        },
-                    )
+                // key 不含 itemCount: 分页加载/刷新时项数变化会重启手势协程打断正在进行的拖拽
+                .pointerInput(trackHeightPx, thumbHeightPx) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        // 对齐原版 onTouchEvent ACTION_DOWN: 按下即定位跳转, 不等 touch slop
+                        updateDragPosition(down.position.y)
+                        try {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) break
+                                change.consume()
+                                updateDragPosition(change.position.y)
+                            }
+                        } finally {
+                            dragFraction = null
+                        }
+                    }
                 },
         ) {
             Box(

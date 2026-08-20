@@ -76,12 +76,8 @@ private fun fits(highWater: IntArray, row: Int, start: Int, end: Int): Boolean {
  *
  * 用于发现界面展开动画提前知道目标高度，避免动画期间高度跳变。
  *
- * 算法（对照补充.txt思路）：
- * - 非 JSON 发现（style=null，默认 cols=3）：每个 item 占 12/3=4 列宽，
- *   总行数 = ceil(item数 / (12/4)) = ceil(item数 / 3)
- * - JSON 发现（有 style）：每个 item 占 12/cols 列宽，
- *   总行数 = ceil(总权重 / 12) 其中总权重 = sum(每个item的 12/cols)
- * - 纵跨项(rows>1)会抬高水位，需要跑 packGridCells 精确计算
+ * 行数直接跑 [packGridCells] 取精确值（含纵跨项抬高的水位），不做 ceil 近似；
+ * 行高一律按 [rowUnitMinHeight] 计，故子项自然高超过单位高时实际测量结果会更高。
  *
  * @param specs 各项的占格规格
  * @param rowUnitMinHeight 每行最小高度

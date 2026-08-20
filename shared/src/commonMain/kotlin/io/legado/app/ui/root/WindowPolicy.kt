@@ -51,7 +51,6 @@ object WindowPolicies {
     // Android 15+ edge-to-edge 下 insets 必派发 → imePadding + adjustPan 双重避让产生键盘上方空白, 一并对齐 Resize
     val BookSourceEdit = WindowPolicy(softInput = SoftInputPolicy.Resize)
     val ReplaceEdit = WindowPolicy(softInput = SoftInputPolicy.Resize)
-    val JsEdit = WindowPolicy(softInput = SoftInputPolicy.Resize)
     // 搜索/输入 + 滚动列表类页面 (搜索页/书源管理/换源/书架管理/规则列表/导入/记录/目录/书源调试/发现等):
     // 页面均含 AppSearchField/输入框 + LazyColumn/Grid, 同样受 adjustUnspecified→adjustPan 影响
     // (键盘弹出时列表无法收缩到键盘上方, 且已消费 IME insets 的页面会产生双重避让);
@@ -69,12 +68,10 @@ object WindowPolicies {
         is AppRoute.BookInfoEdit -> BookInfoEdit
         is AppRoute.BookSourceEdit -> BookSourceEdit
         is AppRoute.ReplaceEdit -> ReplaceEdit
-        is AppRoute.JsEdit -> JsEdit
         is AppRoute.Main -> ScrollableInput
         is AppRoute.Search -> ScrollableInput
         is AppRoute.SearchContent -> ScrollableInput
         is AppRoute.BookSourceManage -> ScrollableInput
-        is AppRoute.ChangeSource -> ScrollableInput
         is AppRoute.BookshelfManage -> ScrollableInput
         is AppRoute.ReplaceRule -> ScrollableInput
         is AppRoute.SourceFilterRule -> ScrollableInput

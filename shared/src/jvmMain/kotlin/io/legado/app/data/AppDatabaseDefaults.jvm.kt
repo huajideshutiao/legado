@@ -10,11 +10,23 @@ import androidx.sqlite.SQLiteConnection
  */
 object AppDatabaseDefaults : RoomDatabase.Callback() {
 
+    // room3 时序是 dropAllTables → onDestructiveMigration → createAllTables, 回调里插入必然
+    // "no such table", 故只置标记、由 onOpen (建表之后) 实插 (与 app/iOS/鸿蒙同一写法)
+    @Volatile
+    private var needInsertDefaults = false
+
     override suspend fun onCreate(connection: SQLiteConnection) {
         AppDatabaseDefaultData.insert(connection)
     }
 
     override suspend fun onDestructiveMigration(connection: SQLiteConnection) {
-        AppDatabaseDefaultData.insert(connection)
+        needInsertDefaults = true
+    }
+
+    override suspend fun onOpen(connection: SQLiteConnection) {
+        if (needInsertDefaults) {
+            needInsertDefaults = false
+            AppDatabaseDefaultData.insert(connection)
+        }
     }
 }

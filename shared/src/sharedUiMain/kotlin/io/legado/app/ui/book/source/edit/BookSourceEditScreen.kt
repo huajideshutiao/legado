@@ -62,6 +62,7 @@ import io.legado.app.ui.compose.component.code.CodeTextField
 import io.legado.app.ui.compose.component.code.KeyboardToolbar
 import io.legado.app.ui.compose.component.code.KeyboardToolbarState
 import io.legado.app.ui.compose.component.code.rememberFullCodeSyntax
+import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.compose.platform.imeScrollNowFor
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberImeVisible
@@ -161,6 +162,11 @@ fun BookSourceEditScreen(
     }
     // 仅本屏注册, 离屏自动注销: 别处长按选词不会多出这一项
     TextToolbarFindReplaceEffect(findReplaceAction)
+    // 对齐原版 BookSourceEditActivity 的 onBackPressedDispatcher → keyboardTool.tryConsumeBack():
+    // 键盘已收起而查找面板仍开时, 返回键先收面板并清查找态, 不退出页面
+    AppBackHandler(enabled = keyboardState.canConsumeBack) {
+        keyboardState.tryConsumeBack { searchHighlight.clear() }
+    }
     // 根节点持焦: 进入即请求焦点 (无字段持焦时键盘事件会被焦点系统直接丢弃, ESC 无响应;
     // 聚焦路径含根 handleBackKey, 持焦后 ESC/快捷键立即可用, 对照调试页进入聚焦的做法)
     val rootFocusRequester = remember { FocusRequester() }

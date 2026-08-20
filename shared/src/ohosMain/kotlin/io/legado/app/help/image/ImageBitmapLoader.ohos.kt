@@ -1,7 +1,12 @@
 package io.legado.app.help.image
 
+import androidx.compose.ui.graphics.Canvas
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.isLocal
@@ -76,6 +81,7 @@ actual class ImageBitmapLoader actual constructor() {
             // data: URI 早返回: 内联 svg/图片直接解析内容, 不走网络/文件加载 (简介图等)
             if (url.startsWith("data:")) {
                 val bytes = parseDataUriBytes(url) ?: return@withContext null
+                val maxDim = maxOf(widthPx, heightPx)
                 val key = if (useBitmapCache) {
                     DecodedBitmapCache.cacheKey(
                         url,
@@ -87,8 +93,7 @@ actual class ImageBitmapLoader actual constructor() {
                 } else null
                 val cached = key?.let { DecodedBitmapCache.get(it) }
                 if (cached != null) return@withContext cached
-                val bitmap = ohosDecodeImageBytes(bytes)
-                    ?: decodeSvgFallback(bytes, maxOf(widthPx, heightPx))
+                val bitmap = decodeBytesSampled(bytes, maxDim) ?: decodeSvgFallback(bytes, maxDim)
                 if (bitmap != null && key != null) DecodedBitmapCache.put(key, bitmap)
                 return@withContext bitmap
             }
@@ -98,7 +103,8 @@ actual class ImageBitmapLoader actual constructor() {
             } else null
             val cached = key?.let { DecodedBitmapCache.get(it) }
             if (cached != null) return@withContext cached
-            val bitmap = ohosDecodeImageBytes(bytes) ?: decodeSvgFallback(bytes, maxOf(widthPx, heightPx))
+            val maxDim = maxOf(widthPx, heightPx)
+            val bitmap = decodeBytesSampled(bytes, maxDim) ?: decodeSvgFallback(bytes, maxDim)
             if (bitmap != null && key != null) DecodedBitmapCache.put(key, bitmap)
             bitmap
         }
@@ -115,13 +121,41 @@ actual class ImageBitmapLoader actual constructor() {
 }
 
 /**
- * 带目标长边上限解码 (鸿蒙版)。
+ * 带目标长边上限解码 (鸿蒙版, 与 iOS 端 [decodeBytesSampled] 同实现)。
  *
- * 保持全尺寸解码: CPF 融合渲染管线的编码解码门面无解码前采样参数, 解码后 Compose Canvas
- * 缩放路径未经验证 (ohos ui-graphics 为 CPF 桥接变体), 暂不启用 —— 尺寸感知只影响常驻
- * 内存/绘制带宽, 鸿蒙端维持现状, 待 CPF Canvas 桥接验证后补采样。
+ * CPF 融合渲染的解码门面无解码前采样参数, 故同 iOS: 全量解码后按 Canvas 缩放
+ * (省常驻内存与绘制带宽, 解码峰值内存不变)。缩放失败 (CPF 桥未接 raster Canvas)
+ * 由 [downscaled] 内部 runCatching 退回全尺寸位图, 即改动前的行为。
  */
-actual fun decodeBytesSampled(bytes: ByteArray, maxDim: Int): ImageBitmap? = ohosDecodeImageBytes(bytes)
+actual fun decodeBytesSampled(bytes: ByteArray, maxDim: Int): ImageBitmap? {
+    val bitmap = ohosDecodeImageBytes(bytes) ?: return null
+    return if (maxDim > 0) bitmap.downscaled(maxDim) else bitmap
+}
+
+/**
+ * Skia 解码后的位图按长边缩放 (双线性, Compose Canvas 绘制到新位图), 与 iOS 端逐行同实现。
+ * 缩放路径依赖 CPF ohos ui-graphics 的 raster Canvas 桥, 失败即退回原位图不影响加载。
+ */
+private fun ImageBitmap.downscaled(maxDim: Int): ImageBitmap {
+    val max = maxOf(width, height)
+    if (max <= maxDim) return this
+    val scale = maxDim.toFloat() / max
+    val nw = (width * scale).toInt().coerceAtLeast(1)
+    val nh = (height * scale).toInt().coerceAtLeast(1)
+    return runCatching {
+        val out = ImageBitmap(nw, nh)
+        val canvas = Canvas(out)
+        canvas.drawImageRect(
+            image = this,
+            srcOffset = IntOffset.Zero,
+            srcSize = IntSize(width, height),
+            dstOffset = IntOffset.Zero,
+            dstSize = IntSize(nw, nh),
+            paint = Paint().apply { filterQuality = FilterQuality.Low },
+        )
+        out
+    }.getOrDefault(this)
+}
 
 /** 按 scheme 取图片原始字节 ([ImageBitmapLoader] 的解码前一步, 动图路径直接复用)。 */
 private suspend fun ohosLoadImageBytes(

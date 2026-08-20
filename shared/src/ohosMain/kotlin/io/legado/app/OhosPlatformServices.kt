@@ -3,7 +3,7 @@ package io.legado.app
 import io.legado.app.help.copyToClipboard
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.file.pickDocumentContent
-import io.legado.app.help.log.OhosCrashLogs
+import io.legado.app.help.log.NativeCrashLogs
 import io.legado.app.help.file.pickDocuments
 import io.legado.app.help.file.pickDirectory as pickDirectoryDocument
 import io.legado.app.help.openURL
@@ -186,14 +186,14 @@ object OhosPlatformServices : PlatformServices {
     // 对照 Android CrashViewModel.initData 从 externalCacheDir/crash 收集的接口语义)
     override val crashLogs: CrashLogProvider = object : CrashLogProvider {
         override suspend fun loadCrashLogs(): List<CrashLogProvider.CrashLogEntry> =
-            OhosCrashLogs.listLogs().map { CrashLogProvider.CrashLogEntry(it) }
+            NativeCrashLogs.listLogs().map { CrashLogProvider.CrashLogEntry(it) }
 
-        override suspend fun readCrashLog(name: String): String? = OhosCrashLogs.readLog(name)
+        override suspend fun readCrashLog(name: String): String? = NativeCrashLogs.readLog(name)
 
-        override suspend fun clearCrashLogs() = OhosCrashLogs.clearLogs()
+        override suspend fun clearCrashLogs() = NativeCrashLogs.clearLogs()
 
         override fun shareCrashLog(name: String) {
-            val path = "${AppFilesDirs.get().filesDir}/logs/$name"
+            val path = NativeCrashLogs.logPath(name)
             if (OhosNativeBridge.isShareBridgeReady()) {
                 // 系统分享面板分享日志文件 (对照 Android CrashLogsDialog.shareFile)
                 OhosNativeBridge.shareFile(path, "text/plain")

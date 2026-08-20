@@ -102,13 +102,14 @@ actual class ImageBitmapLoader actual constructor() {
         }
 
     /**
-     * 解码字节为 [java.awt.image.BufferedImage]; [maxDim]>0 时解码前采样
+     * 解码字节为 [java.awt.image.BufferedImage]; [maxDim]>0 时解码前采样,
+     * maxDim<=0 按 2048 兜底采样 (对齐 app 端 target 语义, 避免全尺寸解码 OOM)。
      * (ImageReader.setSourceSubsampling, 对齐原版 Glide Downsampler 的解码前采样语义,
-     * 内存收益在解码峰值; 采样因子取 2 的幂, 解码后长边 ≥ maxDim/2)。
+     * 内存收益在解码峰值; 采样因子取 2 的幂, 解码后长边 ≥ target/2)。
      * 无法识别 (如 WEBP 无 reader) / 解码失败返回 null, 由调用方回落 skia 解码或占位。
      */
     internal fun decodeBufferedImage(bytes: ByteArray, maxDim: Int): java.awt.image.BufferedImage? {
-        if (maxDim <= 0) return ImageIO.read(ByteArrayInputStream(bytes))
+        val target = if (maxDim > 0) maxDim else 2048
         return runCatching {
             val input = ImageIO.createImageInputStream(ByteArrayInputStream(bytes)) ?: return null
             val readers = ImageIO.getImageReaders(input)
@@ -120,7 +121,7 @@ actual class ImageBitmapLoader actual constructor() {
                 val h = reader.getHeight(0)
                 if (w <= 0 || h <= 0) return null
                 var sample = 1
-                while (max(w, h) / (sample * 2) >= maxDim) sample *= 2
+                while (max(w, h) / (sample * 2) >= target) sample *= 2
                 if (sample > 1) {
                     val param = ImageReadParam().apply {
                         setSourceSubsampling(sample, sample, 0, 0)
@@ -238,7 +239,7 @@ actual class ImageBitmapLoader actual constructor() {
     }
 }
 
-/** 带目标长边上限解码: ImageIO ImageReader 解码前采样 (maxDim<=0 全尺寸)。 */
+/** 带目标长边上限解码: ImageIO ImageReader 解码前采样 (maxDim<=0 按 2048 兜底)。 */
 actual fun decodeBytesSampled(bytes: ByteArray, maxDim: Int): ImageBitmap? =
     ImageBitmapLoader().decodeBufferedImage(bytes, maxDim)?.toComposeImageBitmap()
 

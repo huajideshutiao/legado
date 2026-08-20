@@ -1,8 +1,5 @@
 package io.legado.app.ui.widget.dialog
 
-// I18N KEYS (need to register in ResourceProvider.jvm.kt / Localizable.strings):
-//   "loading" to "加载中…" (已注册)
-
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer

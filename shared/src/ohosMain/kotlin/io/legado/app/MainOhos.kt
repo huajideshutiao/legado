@@ -7,7 +7,12 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.window.ComposeArkUIViewController
+import io.legado.app.help.config.LocalReadConfigProviders
+import io.legado.app.help.config.ReadConfigProviders
 import io.legado.app.help.config.registerOhosProviders
+import io.legado.app.model.LocalReadBookProvider
+import io.legado.app.model.ReadBookProvider
+import io.legado.app.model.ReadBookShared
 import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.browser.OhosWebViewSlot
 import io.legado.app.ui.OhosPlatformCapabilities
@@ -63,9 +68,9 @@ fun MainOhos() {
     remember { registerOhosProviders() }
     // 注册平台能力 (供 shared LegadoApp 经 PlatformCapabilityProviders.get() 取能力)
     remember { PlatformCapabilityProviders.register(OhosPlatformCapabilities) }
-    // 注册平台服务 (10 项能力 no-op stub, 供 shared LegadoApp 经 PlatformServiceProviders.get() 取用)
+    // 注册平台服务 (11 项能力经 napi 桥接 ArkTS, 供 shared LegadoApp 经 PlatformServiceProviders.get() 取用)
     remember { PlatformServiceProviders.register(OhosPlatformServices) }
-    // 注册 4 个媒体平台 Provider stub (Reader/Audio/Manga/Video, no-op 占位)
+    // 注册 4 个媒体平台 Provider (Reader/Audio/Manga/Video, 均为真实实现)
     remember { ReaderPlatformProviders.register(OhosReaderPlatformProvider) }
     remember { AudioPlayPlatformProviders.register(SharedAudioPlayPlatformProvider) }
     remember { MangaReaderScreenModel.Providers.register(OhosMangaReaderPlatform) }
@@ -81,11 +86,23 @@ fun MainOhos() {
     val eventBusProvider = remember { OhosEventBusProvider() }
     val preferenceStoreProvider = remember { OhosPreferenceStoreProvider() }
 
+    // 阅读页两个注入点: 未注入时 LocalReadConfigProviders/LocalReadBookProvider 取值即 error,
+    // 阅读页与 EffectiveReplaces 路由会崩 (二者默认值均为 error 而非兜底实现);
+    // readBookProvider 范式同 iosMain IosReadBookProvider (直接持有 commonMain ReadBookShared)
+    val readConfigProviders = remember { ReadConfigProviders(preferenceStoreProvider) }
+    val readBookProvider = remember {
+        object : ReadBookProvider {
+            override val readBook = ReadBookShared()
+        }
+    }
+
     CompositionLocalProvider(
         LocalThemeStoreProvider provides themeStoreProvider,
         LocalAppConfigProvider provides appConfigProvider,
         LocalEventBusProvider provides eventBusProvider,
         LocalPreferenceStoreProvider provides preferenceStoreProvider,
+        LocalReadConfigProviders provides readConfigProviders,
+        LocalReadBookProvider provides readBookProvider,
         LocalWebViewSlot provides { config, modifier, callbacks ->
             OhosWebViewSlot(config, modifier, callbacks)
         },

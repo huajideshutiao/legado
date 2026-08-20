@@ -6,9 +6,10 @@ import javax.crypto.spec.SecretKeySpec
 import java.util.Base64
 
 /**
- * Android actual: AES/ECB/PKCS5Padding + java.util.Base64。
+ * jvmAndAndroid actual: AES/ECB/PKCS5Padding + java.util.Base64。
  *
- * 复刻原 BaseSource.getLoginInfo/putLoginInfo inline 加解密路径, 行为零变化:
+ * 复刻原 BaseSource.getLoginInfo/putLoginInfo inline 加解密路径, 行为零变化
+ * (javax.crypto + java.util.Base64 均为 JVM/Android 标准):
  * - 解密: Base64Lenient.decode (容错) → Cipher DECRYPT → UTF-8 String
  * - 加密: UTF-8 bytes → Cipher ENCRYPT → Base64.getEncoder().encodeToString
  */

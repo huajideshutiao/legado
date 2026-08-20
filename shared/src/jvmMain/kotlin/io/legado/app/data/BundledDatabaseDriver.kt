@@ -21,8 +21,9 @@ import java.io.File
  * - **驱动**: [BundledSQLiteDriver] (androidx.sqlite:sqlite-bundled 跨平台 SQLite, 内嵌原生库)
  * - **数据库路径**: 默认 `{desktopAppRootDir}/legado.db`, 可通过构造参数覆盖 (测试场景)
  * - **查询协程上下文**: [Dispatchers.IO], suspend DAO 方法在 IO 线程执行
- * - **迁移策略**: 桌面端首启动即此版本 (86), 无历史迁移; 若 schema 与文件不匹配,
- *   `fallbackToDestructiveMigration` 兜底重建 (桌面端无 Android 端的 autoMigrations 历史数据需保)
+ * - **迁移策略**: 桌面端首启动即此版本 (86); schema 升级依赖 shared AppDatabase 的
+ *   autoMigrations/显式 Migration (与 Android 端同源), 迁移失败显式抛出,
+ *   不做静默破坏性重建 (防止丢用户数据)
  *
  * # 与 app 端 [RoomDatabaseDriver] 区别
  * - app 端用 `AndroidSQLiteDriver` + `appCtx.getDatabasePath(...)`, 依赖 Android Framework SQLite
@@ -55,10 +56,11 @@ class BundledDatabaseDriver(
         )
             .setDriver(BundledSQLiteDriver())
             .setQueryCoroutineContext(Dispatchers.IO)
-            // 桌面端首启动空库即 version 86, 无 Android 端 83→86 的 autoMigration 历史。
-            // 若后续 schema 升级与本地文件不匹配 (如 shared 模块升级后 @Database version 提升),
-            // 兜底重建 (dropAllTables=true), 让桌面端自动恢复到可用状态。
-            .fallbackToDestructiveMigration(dropAllTables = true)
+            // 桌面端首启动空库即 version 86; schema 升级走 shared AppDatabase 的
+            // autoMigrations/显式 Migration (与 Android 端同源, Room KMP 同样生效)。
+            // 迁移失败时 Room 显式抛 IllegalStateException, 不做静默破坏性重建:
+            // 不能像原来那样 fallbackToDestructiveMigration —— 那是无条件 drop 全部表,
+            // 下次 schema 变更即丢光书架/分组/阅读进度, 且静默无提示。
             // 预置分组 + 键盘助手 (对照 app 端 dbCallback)
             .addCallback(AppDatabaseDefaults)
             .build()

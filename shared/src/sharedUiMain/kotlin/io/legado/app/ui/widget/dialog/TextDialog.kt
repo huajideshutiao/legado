@@ -12,6 +12,7 @@ import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
@@ -19,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.MarkdownContentSelectable
 import io.legado.app.ui.compose.SelectableText
+import io.legado.app.ui.compose.toHtmlAnnotatedString
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.appDialogSize
@@ -86,7 +88,19 @@ fun TextDialog(
                             modifier = Modifier,
                         )
 
-                        TextDialogMode.HTML, TextDialogMode.TEXT -> {
+                        TextDialogMode.HTML -> {
+                            // 对齐原版 binding.textView.setHtml(content) / app 端 Compose 版
+                            // AnnotatedString.fromHtml: HTML 走富文本渲染, 不是纯文本
+                            // (remember: Ksoup 解析不随重组重跑)
+                            val html = remember(content) { content.toHtmlAnnotatedString() }
+                            SelectableText(
+                                text = html,
+                                color = colors.secondaryText,
+                                fontSize = 15.sp,
+                            )
+                        }
+
+                        TextDialogMode.TEXT -> {
                             val displayText = if (content.length >= MAX_TEXT_LENGTH) {
                                 content.take(MAX_TEXT_LENGTH) + "\n\n" + tooLargeText
                             } else {

@@ -15,8 +15,10 @@ import kotlin.time.ExperimentalTime
  * - [isNetworkAvailable]: getDefaultNetSync 能取到默认网络句柄 (有可用网络)
  * - [isWifiConnect]: 连接属性 bearerType == BEARER_WIFI
  *
- * 降级策略: 桥未就绪 / 查询失败 / 超时返回 true —— 与 jvm 及历史行为一致
- * ("视为 wifi 不拦截"), 保证 napi 未接入阶段行为不变; 加载失败由调用方异常兜底。
+ * 降级策略 (与 iOS 端统一, 依据 Android actual): Android 侧拿不到 ConnectivityManager /
+ * activeNetwork / NetworkCapabilities 时一律 `return false` (原版 `Context.isWifiConnect`
+ * 的 `info?.isConnected == true` 同为 fail-closed), 故桥已就绪但查询/解析失败按 false;
+ * 桥未接入时属"无查询能力", 同 desktop jvm 恒 true 放行, 保证 napi 未接入阶段行为不变。
  *
  * 短缓存: 书架网格每格封面加载都会查一次 (仅开"仅 WiFi 加载封面"时), 每格一次
  * napi 同步往返会串行排队在调用线程上; 3s TTL 让首屏只往返一次, 网络切换感知
@@ -58,6 +60,12 @@ private fun queryNetwork(): NetworkQueryResponse? {
     return resp
 }
 
-actual fun isNetworkAvailable(): Boolean = queryNetwork()?.network ?: true
+/**
+ * [queryNetwork] 返回 null 时的兜底: 桥未接入 = 无查询能力, 放行 (同 desktop jvm 恒 true);
+ * 桥已就绪却查询/解析失败则按 Android 语义 fail-closed 返回 false。
+ */
+private fun networkFallback(): Boolean = !OhosNativeBridge.isNetworkBridgeReady()
 
-actual fun isWifiConnect(): Boolean = queryNetwork()?.wifi ?: true
+actual fun isNetworkAvailable(): Boolean = queryNetwork()?.network ?: networkFallback()
+
+actual fun isWifiConnect(): Boolean = queryNetwork()?.wifi ?: networkFallback()

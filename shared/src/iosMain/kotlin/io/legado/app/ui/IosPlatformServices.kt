@@ -6,6 +6,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.file.pickDocuments
 import io.legado.app.help.file.pickDirectory as pickDirectoryDocument
+import io.legado.app.help.log.NativeCrashLogs
 import io.legado.app.help.openURL
 import io.legado.app.help.topMostViewController
 import io.legado.app.ui.root.BrowserService
@@ -75,14 +76,19 @@ object IosPlatformServices : PlatformServices {
     override val media: MediaService = IosMediaService
     override val notifications: NotificationService = IosNotificationService
     override val externalRequests: ExternalRequestService = IosExternalRequestService
+    // 崩溃日志: 从 {filesDir}/logs 收集 appLog-*.txt (IosAppLogHost 在 recordLog 开启时落盘,
+    // 落盘/读取实现与鸿蒙端共用 nativeMain 的 NativeCrashLogs)
     override val crashLogs: CrashLogProvider = object : CrashLogProvider {
-        override suspend fun loadCrashLogs(): List<CrashLogProvider.CrashLogEntry> = emptyList()
+        override suspend fun loadCrashLogs(): List<CrashLogProvider.CrashLogEntry> =
+            NativeCrashLogs.listLogs().map { CrashLogProvider.CrashLogEntry(it) }
 
-        override suspend fun readCrashLog(name: String): String? = null
+        override suspend fun readCrashLog(name: String): String? = NativeCrashLogs.readLog(name)
 
-        override suspend fun clearCrashLogs() = Unit
+        override suspend fun clearCrashLogs() = NativeCrashLogs.clearLogs()
 
-        override fun shareCrashLog(name: String) = Unit
+        // 系统分享面板分享日志文件 (对照 Android CrashLogsDialog.shareFile)
+        override fun shareCrashLog(name: String) =
+            IosShareService.shareFile(NativeCrashLogs.logPath(name), "text/plain")
     }
 }
 

@@ -15,17 +15,19 @@ import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.help.FileCacheProviders
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.component.appDialogSize
@@ -33,6 +35,7 @@ import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.splitNotBlank
+import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.ic_baseline_close
@@ -63,11 +66,17 @@ fun OnlineImportUrlDialog(
     val colors = AppTheme.colors
     var url by remember { mutableStateOf("") }
     // 历史列表 (对照 app 端 cacheUrls: 读缓存逗号拆分, defaultUrl 不在列表时插首位)
-    val cacheUrls = remember {
-        val urls = FileCacheProviders.get().getAsString(recordKey, persistent = true)
-            ?.splitNotBlank(",")?.toMutableList() ?: mutableListOf()
+    // 初值为空, 读到后回填 —— getAsString(persistent = true) 是磁盘 IO (桌面端直读文件),
+    // 放 remember 里会在组合期卡主线程, 故照 HelpDialog 的 LaunchedEffect + IoDispatcher 范式
+    val cacheUrls = remember(recordKey) { mutableStateListOf<String>() }
+    LaunchedEffect(recordKey) {
+        val urls = withContext(IoDispatcher) {
+            FileCacheProviders.get().getAsString(recordKey, persistent = true)
+                ?.splitNotBlank(",")?.toMutableList() ?: mutableListOf()
+        }
         if (defaultUrl != null && !urls.contains(defaultUrl)) urls.add(0, defaultUrl)
-        urls.toMutableStateList()
+        cacheUrls.clear()
+        cacheUrls.addAll(urls)
     }
 
     fun persist() {

@@ -1,5 +1,6 @@
 package io.legado.app.help.i18n
 
+import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.ui.compose.platform.findStringArrayResource
 import io.legado.app.ui.compose.platform.findStringResource
 import kotlinx.coroutines.runBlocking
@@ -66,8 +67,11 @@ fun androidAppStringArray(key: String): List<String> {
  * 首次取值多一次 assets 读取 (毫秒级), 不影响正确性。
  */
 fun warmAppStringCache() {
+    // 后台预热: 冷启动同步段 runBlocking 预读 ~250 条会被 assets IO 阻塞主线程;
+    // 预热只是加速 (androidAppString 首次未命中仍同步 runBlocking 兜底读取),
+    // 正确性不依赖预热的完成时机
     val keys = AppStringKey.entries.map { it.name } + warmKeys
-    runBlocking {
+    Coroutine.async {
         for (key in keys) {
             findStringResource(key)?.let { getString(it) }
         }

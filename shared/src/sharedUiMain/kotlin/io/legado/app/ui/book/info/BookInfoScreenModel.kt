@@ -16,10 +16,13 @@ import io.legado.app.help.book.removeType
 import io.legado.app.help.book.updateTo
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
+import io.legado.app.lib.webdav.ObjectNotFoundException
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.webBook.WebBook
+import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.screenModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -162,9 +165,21 @@ class BookInfoScreenModel : ScreenModel {
     ) {
         dispatch(BookInfoUiEvent.Refresh)
         scope.launch(IoDispatcher) {
-            // 对照 app 端 refreshBook 前置: 本地非漫画书拉 WebDav 远端更新, 其余同步书源名。
-            // TODO refreshWebDavBook 依赖仅 app 端有的 AppWebDav.defaultBookWebDav(RemoteBookWebDav)
-            if (!(book.isLocal && !book.isImage)) {
+            // 对照 app 端 refreshBook 前置: 本地非漫画书拉 WebDav 远端更新, 其余同步书源名
+            if (book.isLocal && !book.isImage) {
+                try {
+                    PlatformCapabilityProviders.get().refreshWebDavBook(book)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    // 对照 app 端 refreshBook.onError: 远端已删则退回本地书
+                    if (e is ObjectNotFoundException) {
+                        book.origin = BookType.localTag
+                    } else {
+                        AppLog.put("下载远程书籍<${book.name}>失败", e)
+                    }
+                }
+            } else {
                 bookSource?.let {
                     if (book.originName != it.bookSourceName) book.originName = it.bookSourceName
                 }
