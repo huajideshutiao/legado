@@ -11,8 +11,7 @@ import kotlinx.atomicfu.locks.synchronized
  * native (iOS/鸿蒙) 端日志落盘: `{filesDir}/logs/appLog-<epochMillis>.txt`。
  *
  * 只用 [io.legado.app.utils.File] + [AppFilesDirs], 无平台专属 API, 故上提 nativeMain
- * 供两端 AppLogHost 共用 (原实现在 ohosMain OhosAppLogHost); 各端 host 只保留
- * toast / debugPrint / 时区这些真正的平台差异。
+ * 供 [NativeAppLogHost] 落盘用 (原实现在 ohosMain); host 侧只保留 toast 这个真正的平台差异。
  */
 object NativeAppLogStore {
 

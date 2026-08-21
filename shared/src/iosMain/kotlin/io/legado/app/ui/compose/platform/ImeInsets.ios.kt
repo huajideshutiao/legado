@@ -12,19 +12,6 @@ import platform.UIKit.UIKeyboardDidHideNotification
 import platform.UIKit.UIKeyboardWillShowNotification
 
 /**
- * [rememberImeHiding] 的 iOS actual:
- * iOS 无软键盘 inset/IME 动画概念, 恒 false (imeDismissPadding 天然 no-op)。
- */
-@Composable
-actual fun rememberImeHiding(): Boolean = false
-
-/**
- * [rememberImeAnimating] 的 iOS actual: 无软键盘/IME 动画概念, 恒 false。
- */
-@Composable
-actual fun rememberImeAnimating(): Boolean = false
-
-/**
  * [shouldConsumeImeInsets] 的 iOS actual: 恒 true。
  *
  * CMP 1.11.1 iOS 键盘弹出时窗口不收缩, WindowInsets.ime 全量派发

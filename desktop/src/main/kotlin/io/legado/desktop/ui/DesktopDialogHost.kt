@@ -3,14 +3,11 @@ package io.legado.desktop.ui
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
@@ -18,7 +15,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -28,7 +24,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.tryParesExportFileName
@@ -66,9 +61,6 @@ sealed interface DesktopDialogRequest {
         val hint: String? = null,
         val onConfirm: (String) -> Unit,
     ) : DesktopDialogRequest
-
-    /** 书源分组管理 (增/改名/删, 对照 app 端已删除的 source/manage/GroupManageDialog)。 */
-    data object BookSourceGroupManage : DesktopDialogRequest
 
     /**
      * 双按钮确认框 (替代 app 端 `activity.alert` 的 ok/no 弹窗)。
@@ -163,10 +155,6 @@ fun DesktopDialogHost() {
                 current.onConfirm(it)
                 DesktopDialogs.dismiss()
             },
-            onDismiss = { DesktopDialogs.dismiss() },
-        )
-
-        DesktopDialogRequest.BookSourceGroupManage -> BookSourceGroupManageDialog(
             onDismiss = { DesktopDialogs.dismiss() },
         )
 
@@ -528,60 +516,6 @@ private fun OpenUrlConfirmDialog(
                 onDismiss()
             })
             AppTextButton(text = "删除书源", onClick = { confirmDelete = true })
-        }
-    }
-}
-
-/**
- * 书源分组管理: 列出全部分组, 每项可改名/删除。
- *
- * 分组在 DB 里是 `book_sources.bookSourceGroup` 的逗号分隔字符串, 增删改走
- * shared [io.legado.app.ui.book.source.manage.BookSourceViewModelShared]
- * (见 [DesktopPlatformCapabilities.bookSourceViewModel])。
- */
-@Composable
-private fun BookSourceGroupManageDialog(onDismiss: () -> Unit) {
-    // 刷新计数: 改完分组重新查一次 DB (分组是拼接字段, 无现成 Flow 可靠反映改名结果)
-    var tick by remember { mutableStateOf(0) }
-    val groups by produceState(initialValue = emptyList<String>(), tick) {
-        value = runCatching { AppDbProviders.get().bookSourceDao.allGroups() }.getOrDefault(emptyList())
-    }
-    var renaming by remember { mutableStateOf<String?>(null) }
-
-    renaming?.let { old ->
-        TextInputDialog(
-            title = "重命名分组",
-            initialValue = old,
-            onConfirm = { newName ->
-                DesktopPlatformCapabilities.bookSourceViewModel.upGroup(old, newName.trim())
-                renaming = null
-                tick++
-            },
-            onDismiss = { renaming = null },
-        )
-        return
-    }
-
-    AppAlertDialog(
-        onDismissRequest = onDismiss,
-        title = "管理书源分组",
-        message = if (groups.isEmpty()) "暂无分组" else null,
-        okButton = AlertButton(text = "关闭") { onDismiss() },
-        widthFraction = 0.8f,
-    ) {
-        Column(
-            Modifier.fillMaxWidth().heightIn(max = 360.dp).verticalScroll(rememberScrollState())
-        ) {
-            groups.forEach { group ->
-                Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                    Text(group)
-                    AppTextButton(text = "重命名", onClick = { renaming = group })
-                    AppTextButton(text = "删除", onClick = {
-                        DesktopPlatformCapabilities.bookSourceViewModel.delGroup(group)
-                        tick++
-                    })
-                }
-            }
         }
     }
 }

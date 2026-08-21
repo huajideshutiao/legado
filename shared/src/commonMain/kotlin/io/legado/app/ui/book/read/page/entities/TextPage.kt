@@ -2,7 +2,6 @@ package io.legado.app.ui.book.read.page.entities
 
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import io.legado.app.utils.formatPercentUs
-import kotlin.jvm.JvmField
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
@@ -104,13 +103,6 @@ data class TextPage(
         return textLines.getOrElse(index) {
             textLines.last()
         }
-    }
-
-    /**
-     * 清空行，仅供渲染侧 format() 重排消息页使用
-     */
-    fun clearTextLines() {
-        textLines.clear()
     }
 
     /**

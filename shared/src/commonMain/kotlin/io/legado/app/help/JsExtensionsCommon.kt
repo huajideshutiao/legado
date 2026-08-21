@@ -1023,13 +1023,11 @@ interface JsExtensionsCommon {
             // 不静默回退全量缓冲 —— 原版流式失败即失败, JS 侧要能看到异常。
             // 注: commonMain expect InputStream 未实现 Closeable, use{} 不可用, 手动 try-finally
             val input = analyzeUrl.getInputStream()
-            val ok = try {
+            try {
                 FileUtilsCommon.copyToFile(path, input)
             } finally {
                 input.close()
             }
-            // copyToFile 各端 actual 把 IO 异常收成 false, 这里还原成异常上抛
-            if (!ok) throw NoStackTraceException("下载文件失败 $url")
             path.substring(FileUtilsCommon.getCachePath().length)
         } catch (e: Throwable) {
             FileUtilsCommon.delete(path, true)

@@ -20,7 +20,7 @@ import io.legado.app.model.Debug
  * - [RuleBigDataProviders]: 复用 commonMain [RuleBigDataShared] 文件持久化实现,
  *   路径 `{filesDir}/ruleData/book` (对齐 app 端 `externalFiles/ruleData/book`)
  * - [UserAgentProviders]: 读 PreferenceProviders "userAgent", 兜底 [AppConst.UA_NAME]
- *   (未注册时请求 UA 恒为字面量兜底; WebView UA 另经 registerIos/OhosUserAgentProvider 注册进同一容器)
+ *   (未注册时请求 UA 恒为字面量兜底; WebView UA 另经 registerNativeUserAgentProvider 注册进同一容器)
  * - [SourceNetworkProviders]: 适配已注册的 [CookieStoreProviders]
  *   (BaseSource.putLoginHeader 写 cookie / JS cookie 绑定 / AnalyzeUrlCore.setCookie 都靠它)
  *

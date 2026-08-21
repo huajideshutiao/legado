@@ -4,11 +4,9 @@ package io.legado.app.ui.compose.platform
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.toComposeImageBitmap
-import io.legado.app.ui.compose.theme.LocalAppColors
 import io.legado.app.utils.File
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
@@ -42,11 +40,4 @@ actual fun rememberLauncherIconPainters(iconValues: List<String>): List<Painter?
             }.getOrNull()
         }
     }
-}
-
-@Composable
-actual fun rememberColor(key: String): Color {
-    // 共享色板单一数据源 (ColorPalette.kt): light/dark 按主题背景亮度分支,
-    // 对齐 Android values/values-night 资源限定符语义
-    return resolvePaletteColor(key, LocalAppColors.current.isDark)
 }

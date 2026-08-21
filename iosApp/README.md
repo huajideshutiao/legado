@@ -121,7 +121,7 @@ ComposeUIViewController
 | 平台能力聚合              | `IosPlatformCapabilities.kt` + `IosProviderRegistry.kt` (与 desktop Main.kt 对齐)                                |
 | Compose 平台 Provider | `IosProviders.kt` (ThemeStore / AppConfig / EventBus / PreferenceStore 4 个 Provider)                          |
 | 数据库                 | `IosDatabaseDriver.kt` (Room KMP + BundledSQLiteDriver) + `IosAppDbAccessor.kt`                               |
-| JS 引擎               | `RegisterIosJsEngines.kt` (JavaScriptCore, 替代 quickjs JNI)                                                    |
+| JS 引擎               | `RegisterNativeJsEngines.native.kt` (nativeMain, quickjs cinterop, iOS/鸿蒙共用)                                  |
 | HTTP 层              | `IosHttpProvider.kt` (Ktor CIO 包装 KmpHttpClient)                                                              |
 | TTS                 | `IosSystemTtsEngine.kt` (AVSpeechSynthesizer)                                                                 |
 | 图片加载                | `IosBitmapProvider.kt` + `BookImageLoader.ios.kt` + `ImageBitmapLoader.ios.kt`                                |
@@ -129,7 +129,7 @@ ComposeUIViewController
 | Toast               | `Toaster.ios.kt` (dispatch_async 主线程 + UIAlertController present, NSLog 兜底)                                   |
 | 进度通知                | `NotificationProgress.ios.kt` (UNUserNotificationCenter 本地通知 + 权限请求, NSLog 兜底)                                |
 | Crypto              | `NativeSignOps.ios.kt` / `NativeKryptoOps.ios.kt` / `NativeAsymmetricCryptoOps.ios.kt` / `IosCryptoNative.kt` |
-| 其他                  | `IosFilePicker.ios.kt` / `IosImagePicker.ios.kt` / `IosOpenUrlProvider.kt` / `IosUserAgentProvider.kt` 等      |
+| 其他                  | `IosFilePicker.ios.kt` / `IosImagePicker.ios.kt` / `IosOpenUrlProvider.kt` / `NativeUserAgentProvider.kt` 等   |
 
 > 注: 上述 iOS target 代码在 Windows 上无法编译验证, 真实编译验证必须在 macOS 上进行
 > (`./gradlew :shared:compileKotlinIosArm64`)。UIAlertController/UNNotificationRequest 工厂方法

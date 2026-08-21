@@ -21,6 +21,7 @@ import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -115,6 +116,9 @@ import org.jetbrains.compose.resources.stringResource
  * @param listState  外部传入的 LazyListState, 供 dragSelectable 边缘拖选复用
  * @param listModifier 施加于 LazyColumn 的 modifier (如 dragSelectable)
  */
+/** 校验终态文案判定 (对照原版 BookSourceAdapter.finalMessageRegex, 提到文件级避免逐行逐帧新建)。 */
+private val finalMessageRegex = Regex("成功|失败")
+
 @Composable
 fun BookSourceListScreen(
     state: BookSourceListState,
@@ -184,13 +188,15 @@ fun BookSourceListScreen(
         },
     ) { item ->
         BookSourceItem(
-            state = state,
+            groupSourcesByDomain = state.groupSourcesByDomain,
+            sort = state.sort,
             callbacks = callbacks,
             item = item,
             checked = state.selected.contains(item.bookSourceUrl),
             headerUrls = headerUrls,
             canDrag = canDrag,
-            checkState = checkState,
+            debugMsg = checkState.messages[item.bookSourceUrl].orEmpty(),
+            isChecking = checkState.isChecking,
         )
     }
 }
@@ -365,20 +371,32 @@ private fun MenuItem(text: String, onClick: () -> Unit) {
 
 @Composable
 private fun RuleItemScope.BookSourceItem(
-    state: BookSourceListState,
+    // 只收本行真正用到的稳定字段, 不收整个 state / checkState:
+    // BookSourceListState 持有 List/Set (Compose 视为不稳定) 会让本行永不 skip;
+    // checkState 每次 publishCheckState 换新身份, 收整个对象等于校验期每条 Debug.log
+    // 都让全部可见行重组 (原版是 300ms 节流 + 只刷选中区间)
+    groupSourcesByDomain: Boolean,
+    sort: BookSourceSort,
     callbacks: BookSourceListCallbacks,
     item: BookSourcePart,
     checked: Boolean,
     headerUrls: Set<String>,
     canDrag: Boolean,
-    checkState: Debug.CheckState,
+    debugMsg: String,
+    isChecking: Boolean,
 ) {
     val colors = AppTheme.colors
     var showMenu by remember { mutableStateOf(false) }
-    val debugMsg = checkState.messages[item.bookSourceUrl].orEmpty()
-    val showProgress = checkState.isChecking &&
-        debugMsg.isNotEmpty() &&
-        !debugMsg.contains(Regex("成功|失败"))
+    val isFinalMessage = debugMsg.contains(finalMessageRegex)
+    val showProgress = isChecking && debugMsg.isNotEmpty() && !isFinalMessage
+    // 对照原版 upCheckSourceMessage: 校验已停止而本源没有终态文案时强制补终态
+    // (被"取消校验"掐掉或没排到的源, 否则永久停在最后一条中间态文案);
+    // updateFinalMessage 内部以 debugTimeMap/debugMessageMap 有条目为前提, 未参与校验的源 no-op
+    LaunchedEffect(item.bookSourceUrl, isChecking, isFinalMessage) {
+        if (!isChecking && !isFinalMessage) {
+            Debug.updateFinalMessage(item.bookSourceUrl, "校验失败")
+        }
+    }
     // 预取单项菜单文案
     val strToTop = stringResource(Res.string.to_top)
     val strToBottom = stringResource(Res.string.to_bottom)
@@ -401,7 +419,7 @@ private fun RuleItemScope.BookSourceItem(
             .padding(horizontal = 8.dp, vertical = 4.dp),
     ) {
         // 按域名分组开启时, 每个 host 组首项上方显示 host 头 (对照 tv_host_text/AccentTextView 16sp)
-        if (state.groupSourcesByDomain && headerUrls.contains(item.bookSourceUrl)) {
+        if (groupSourcesByDomain && headerUrls.contains(item.bookSourceUrl)) {
             Text(
                 text = callbacks.getSourceHost(item.bookSourceUrl),
                 color = colors.accent,
@@ -462,7 +480,7 @@ private fun RuleItemScope.BookSourceItem(
                     )
                 }
                 BookSourceItemMenu(
-                    state = state,
+                    sort = sort,
                     item = item,
                     expanded = showMenu,
                     onDismiss = { showMenu = false },
@@ -503,7 +521,7 @@ private fun RuleItemScope.BookSourceItem(
 
 @Composable
 private fun BookSourceItemMenu(
-    state: BookSourceListState,
+    sort: BookSourceSort,
     item: BookSourcePart,
     expanded: Boolean,
     onDismiss: () -> Unit,
@@ -519,7 +537,7 @@ private fun BookSourceItemMenu(
 ) {
     val colors = AppTheme.colors
     AppDropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
-        if (state.sort == BookSourceSort.Default) {
+        if (sort == BookSourceSort.Default) {
             DropdownMenuItem(onClick = { onDismiss(); callbacks.onToTop(item) }) {
                 Text(strToTop, color = colors.primaryText)
             }

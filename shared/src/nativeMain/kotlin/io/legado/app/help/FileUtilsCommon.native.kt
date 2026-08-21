@@ -83,35 +83,31 @@ internal actual object FileUtilsCommon {
         }
     }
 
-    actual fun copyToFile(path: String, input: InputStream): Boolean {
-        // expect InputStream 无 copyTo 扩展, 分块读 + OutputStream 写 (对齐 JVM 流式语义)
-        return try {
-            val file = File(path)
-            if (!file.exists()) {
-                file.parent?.let { File(it).mkdirs() }
-                file.createNewFile()
-            }
-            // native File 无 outputStream (okio 封装), 分段读入后整块 writeBytes
-            val buffer = ByteArray(64 * 1024)
-            val chunks = ArrayList<ByteArray>()
-            while (true) {
-                val n = input.read(buffer)
-                if (n <= 0) break
-                // read 会覆写 buffer, 必须拷贝当前段
-                chunks.add(buffer.copyOfRange(0, n))
-            }
-            val total = chunks.sumOf { it.size }
-            val all = ByteArray(total)
-            var offset = 0
-            for (chunk in chunks) {
-                chunk.copyInto(all, offset)
-                offset += chunk.size
-            }
-            file.writeBytes(all)
-            true
-        } catch (_: Exception) {
-            false
+    actual fun copyToFile(path: String, input: InputStream) {
+        // expect InputStream 无 copyTo 扩展, 分块读后写文件; IO 异常直接上抛
+        val file = File(path)
+        if (!file.exists()) {
+            file.parent?.let { File(it).mkdirs() }
+            file.createNewFile()
         }
+        // native File 无 outputStream (okio 封装), 只能分段读入后整块 writeBytes ——
+        // 这一端仍有全量内存峰值, 与 expect KDoc 承诺的"不整块缓冲"不符, 待 okio sink 接线后修正
+        val buffer = ByteArray(64 * 1024)
+        val chunks = ArrayList<ByteArray>()
+        while (true) {
+            val n = input.read(buffer)
+            if (n <= 0) break
+            // read 会覆写 buffer, 必须拷贝当前段
+            chunks.add(buffer.copyOfRange(0, n))
+        }
+        val total = chunks.sumOf { it.size }
+        val all = ByteArray(total)
+        var offset = 0
+        for (chunk in chunks) {
+            chunk.copyInto(all, offset)
+            offset += chunk.size
+        }
+        file.writeBytes(all)
     }
 
     actual fun delete(path: String, deleteRootDir: Boolean): Boolean {

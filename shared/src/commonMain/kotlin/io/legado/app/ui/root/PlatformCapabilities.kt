@@ -13,6 +13,7 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.read.config.FontItem
+import io.legado.app.ui.book.source.BookSourceSort
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -446,14 +447,16 @@ interface PlatformCapabilities {
     fun exportBookSourceSelection(
         selection: List<BookSourcePart>,
         allCount: Int,
-        sortAscending: Boolean
+        sortAscending: Boolean,
+        sort: BookSourceSort
     ) = unsupported("导出书源")
 
     /** 分享选中书源 (对照 shareSelection / saveToFile + share) */
     fun shareBookSourceSelection(
         selection: List<BookSourcePart>,
         allCount: Int,
-        sortAscending: Boolean
+        sortAscending: Boolean,
+        sort: BookSourceSort
     ) = unsupported("分享书源")
 
     /** 校验选中书源 (对照 checkSource, 含 alert 输入关键词 + CheckSource.start) */

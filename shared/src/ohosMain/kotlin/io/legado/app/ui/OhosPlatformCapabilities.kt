@@ -20,6 +20,7 @@ import io.legado.app.help.source.OhosCheckSource
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.Debug
 import io.legado.app.napi.OhosNativeBridge
+import io.legado.app.ui.book.source.BookSourceSort
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
@@ -265,7 +266,8 @@ object OhosPlatformCapabilities : PlatformCapabilities {
     override fun exportBookSourceSelection(
         selection: List<BookSourcePart>,
         allCount: Int,
-        sortAscending: Boolean
+        sortAscending: Boolean,
+        sort: BookSourceSort
     ) {
         scope.launch {
             val json = selectedSourcesJson(selection) ?: return@launch
@@ -276,7 +278,8 @@ object OhosPlatformCapabilities : PlatformCapabilities {
     override fun shareBookSourceSelection(
         selection: List<BookSourcePart>,
         allCount: Int,
-        sortAscending: Boolean
+        sortAscending: Boolean,
+        sort: BookSourceSort
     ) {
         scope.launch {
             val json = selectedSourcesJson(selection) ?: return@launch

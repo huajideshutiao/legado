@@ -27,6 +27,7 @@ import io.legado.app.model.Debug
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.read.config.FontItem
+import io.legado.app.ui.book.source.BookSourceSort
 import io.legado.app.ui.book.source.manage.BookSourceViewModelShared
 import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.config.MODE_EDIT_CONFIG
@@ -770,7 +771,8 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
     override fun exportBookSourceSelection(
         selection: List<BookSourcePart>,
         allCount: Int,
-        sortAscending: Boolean
+        sortAscending: Boolean,
+        sort: BookSourceSort
     ) {
         scope.launch {
             val json = selectedSourcesJson(selection) ?: return@launch
@@ -783,7 +785,8 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
     override fun shareBookSourceSelection(
         selection: List<BookSourcePart>,
         allCount: Int,
-        sortAscending: Boolean
+        sortAscending: Boolean,
+        sort: BookSourceSort
     ) {
         scope.launch {
             val json = selectedSourcesJson(selection) ?: return@launch

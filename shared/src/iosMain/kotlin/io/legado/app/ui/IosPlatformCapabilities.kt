@@ -24,6 +24,7 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.help.topMostViewController
 import io.legado.app.model.CheckSourceShared
 import io.legado.app.model.Debug
+import io.legado.app.ui.book.source.BookSourceSort
 import io.legado.app.ui.book.source.manage.BookSourceViewModelShared
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
@@ -355,7 +356,8 @@ object IosPlatformCapabilities : PlatformCapabilities {
     override fun exportBookSourceSelection(
         selection: List<BookSourcePart>,
         allCount: Int,
-        sortAscending: Boolean
+        sortAscending: Boolean,
+        sort: BookSourceSort
     ) {
         scope.launch {
             val json = selectedSourcesJson(selection) ?: return@launch
@@ -366,7 +368,8 @@ object IosPlatformCapabilities : PlatformCapabilities {
     override fun shareBookSourceSelection(
         selection: List<BookSourcePart>,
         allCount: Int,
-        sortAscending: Boolean
+        sortAscending: Boolean,
+        sort: BookSourceSort
     ) {
         scope.launch {
             val json = selectedSourcesJson(selection) ?: return@launch

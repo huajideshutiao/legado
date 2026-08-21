@@ -182,7 +182,7 @@ object OhosPlatformServices : PlatformServices {
         override fun handleLaunchRequest(request: LaunchRequest): Boolean = false
     }
 
-    // 崩溃日志: 从 {filesDir}/logs 收集 appLog-*.txt (OhosAppLogHost 在 recordLog 开启时落盘;
+    // 崩溃日志: 从 {filesDir}/logs 收集 appLog-*.txt (NativeAppLogHost 在 recordLog 开启时落盘;
     // 对照 Android CrashViewModel.initData 从 externalCacheDir/crash 收集的接口语义)
     override val crashLogs: CrashLogProvider = object : CrashLogProvider {
         override suspend fun loadCrashLogs(): List<CrashLogProvider.CrashLogEntry> =

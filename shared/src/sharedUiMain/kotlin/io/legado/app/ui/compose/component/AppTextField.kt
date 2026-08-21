@@ -27,6 +27,7 @@ import androidx.compose.material.TextFieldDefaults.indicatorLine
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -91,6 +92,154 @@ fun AppTextField(
     textStyle: TextStyle = LocalTextStyle.current.copy(fontSize = 16.sp),
     focusRequester: FocusRequester? = null,
 ) {
+    AppTextFieldCore(
+        value = value,
+        onValueChange = onValueChange,
+        adapter = StringValueAdapter,
+        modifier = modifier,
+        enabled = enabled,
+        readOnly = readOnly,
+        label = label,
+        placeholder = placeholder,
+        leadingIcon = leadingIcon,
+        trailingIcon = trailingIcon,
+        isError = isError,
+        errorMessage = errorMessage,
+        singleLine = singleLine,
+        maxLines = maxLines,
+        minLines = minLines,
+        visualTransformation = visualTransformation,
+        keyboardOptions = keyboardOptions,
+        keyboardActions = keyboardActions,
+        textStyle = textStyle,
+        focusRequester = focusRequester,
+    )
+}
+
+/**
+ * [AppTextField] 的 TextFieldValue 重载: 用于需要保留 IME composition / 选区 (undo/redo) 的场景
+ * (如 ReplaceEditScreen FormField)。视觉与 String 重载一致。
+ */
+@OptIn(ExperimentalMaterialApi::class)
+@Composable
+fun AppTextField(
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    readOnly: Boolean = false,
+    label: String? = null,
+    placeholder: String? = null,
+    leadingIcon: @Composable (() -> Unit)? = null,
+    trailingIcon: @Composable (() -> Unit)? = null,
+    isError: Boolean = false,
+    errorMessage: String? = null,
+    singleLine: Boolean = false,
+    maxLines: Int = Int.MAX_VALUE,
+    minLines: Int = 1,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    textStyle: TextStyle = LocalTextStyle.current.copy(fontSize = 16.sp),
+    focusRequester: FocusRequester? = null,
+) {
+    AppTextFieldCore(
+        value = value,
+        onValueChange = onValueChange,
+        adapter = TextFieldValueAdapter,
+        modifier = modifier,
+        enabled = enabled,
+        readOnly = readOnly,
+        label = label,
+        placeholder = placeholder,
+        leadingIcon = leadingIcon,
+        trailingIcon = trailingIcon,
+        isError = isError,
+        errorMessage = errorMessage,
+        singleLine = singleLine,
+        maxLines = maxLines,
+        minLines = minLines,
+        visualTransformation = visualTransformation,
+        keyboardOptions = keyboardOptions,
+        keyboardActions = keyboardActions,
+        textStyle = textStyle,
+        focusRequester = focusRequester,
+    )
+}
+
+/**
+ * 两个 [AppTextField] 重载唯一的差异面: state ↔ 外部 value 的双同步口径与装饰盒显示文本。
+ * 方法均为纯函数 (非 `@Composable`), 实现为无状态单例, 故标 [Stable]。
+ */
+@Stable
+private interface AppTextFieldValueAdapter<T : Any> {
+    /** 用外部初始值构造 state */
+    fun initialState(value: T): TextFieldState
+
+    /** state → 外部值: 出向同步的取值与 snapshotFlow 去重口径 */
+    fun read(state: TextFieldState): T
+
+    /** 外部值 → state (程序化修改): 仅在不一致时写入 */
+    fun syncInto(state: TextFieldState, value: T)
+
+    /** 装饰盒 (label 浮动/占位符判定) 用的显示文本 */
+    fun displayText(value: T): String
+}
+
+/** String 重载: 只比文本 */
+private object StringValueAdapter : AppTextFieldValueAdapter<String> {
+    override fun initialState(value: String) = TextFieldState(value)
+    override fun read(state: TextFieldState) = state.text.toString()
+    override fun displayText(value: String) = value
+    override fun syncInto(state: TextFieldState, value: String) {
+        if (state.text.toString() != value) {
+            state.edit { replace(0, length, value) }
+        }
+    }
+}
+
+/** TextFieldValue 重载: 文本+选区 (IME composition / undo-redo 场景需要保留选区) */
+private object TextFieldValueAdapter : AppTextFieldValueAdapter<TextFieldValue> {
+    override fun initialState(value: TextFieldValue) = TextFieldState(value.text, value.selection)
+    override fun read(state: TextFieldState) =
+        TextFieldValue(state.text.toString(), state.selection)
+
+    override fun displayText(value: TextFieldValue) = value.text
+    override fun syncInto(state: TextFieldState, value: TextFieldValue) {
+        if (state.text.toString() != value.text || state.selection != value.selection) {
+            state.edit {
+                replace(0, length, value.text)
+                selection = value.selection
+            }
+        }
+    }
+}
+
+/** 两个 [AppTextField] 重载的公共实现体, 取值差异全部经 [adapter] 注入 */
+@OptIn(ExperimentalMaterialApi::class)
+@Composable
+private fun <T : Any> AppTextFieldCore(
+    value: T,
+    onValueChange: (T) -> Unit,
+    adapter: AppTextFieldValueAdapter<T>,
+    modifier: Modifier,
+    enabled: Boolean,
+    readOnly: Boolean,
+    label: String?,
+    placeholder: String?,
+    leadingIcon: @Composable (() -> Unit)?,
+    trailingIcon: @Composable (() -> Unit)?,
+    isError: Boolean,
+    errorMessage: String?,
+    singleLine: Boolean,
+    maxLines: Int,
+    minLines: Int,
+    visualTransformation: VisualTransformation,
+    keyboardOptions: KeyboardOptions,
+    keyboardActions: KeyboardActions,
+    textStyle: TextStyle,
+    focusRequester: FocusRequester?,
+) {
     AppTextFieldImpl(
         modifier = modifier.padding(start = 4.dp, end = 4.dp, bottom = 4.dp),
         isError = isError,
@@ -110,17 +259,15 @@ fun AppTextField(
         // 外部 value → state (程序化修改)。旧版 value/onValueChange 契约保持不变。
         // state 用初始值初始化: snapshotFlow 收集即发首帧, 若 state 初始为空会把空串
         // 推给 onValueChange 清空外部值 (书源编辑界面初始赋值后字段被清空的问题)。
-        val state = remember { TextFieldState(value) }
+        val state = remember { adapter.initialState(value) }
         val currentValue by rememberUpdatedState(value)
         val currentOnValueChange by rememberUpdatedState(onValueChange)
         LaunchedEffect(state) {
-            snapshotFlow { state.text.toString() }
+            snapshotFlow { adapter.read(state) }
                 .collect { if (it != currentValue) currentOnValueChange(it) }
         }
         LaunchedEffect(state, value) {
-            if (state.text.toString() != value) {
-                state.edit { replace(0, length, value) }
-            }
+            adapter.syncInto(state, value)
         }
         // 呈现变换实例稳定 (remember): BasicTextField 内部按 (state, codepointTransformation,
         // outputTransformation) remember TransformedTextFieldState, 实例一变就重建 TextLayoutState
@@ -162,124 +309,7 @@ fun AppTextField(
             cursorBrush = SolidColor(colors.cursorColor(isError).value),
             decorator = TextFieldDecorator { innerTextField ->
                 AppDecorationBox(
-                    text = value,
-                    innerTextField = innerTextField,
-                    enabled = enabled,
-                    singleLine = singleLine,
-                    visualTransformation = visualTransformation,
-                    interactionSource = interactionSource,
-                    isError = isError,
-                    label = label,
-                    placeholder = placeholder,
-                    leadingIcon = leadingIcon,
-                    trailingIcon = trailingIcon,
-                    colors = colors,
-                )
-            },
-        )
-    }
-}
-
-/**
- * [AppTextField] 的 TextFieldValue 重载: 用于需要保留 IME composition / 选区 (undo/redo) 的场景
- * (如 ReplaceEditScreen FormField)。视觉与 String 重载一致。
- */
-@OptIn(ExperimentalMaterialApi::class)
-@Composable
-fun AppTextField(
-    value: TextFieldValue,
-    onValueChange: (TextFieldValue) -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    readOnly: Boolean = false,
-    label: String? = null,
-    placeholder: String? = null,
-    leadingIcon: @Composable (() -> Unit)? = null,
-    trailingIcon: @Composable (() -> Unit)? = null,
-    isError: Boolean = false,
-    errorMessage: String? = null,
-    singleLine: Boolean = false,
-    maxLines: Int = Int.MAX_VALUE,
-    minLines: Int = 1,
-    visualTransformation: VisualTransformation = VisualTransformation.None,
-    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
-    keyboardActions: KeyboardActions = KeyboardActions.Default,
-    textStyle: TextStyle = LocalTextStyle.current.copy(fontSize = 16.sp),
-    focusRequester: FocusRequester? = null,
-) {
-    AppTextFieldImpl(
-        modifier = modifier.padding(start = 4.dp, end = 4.dp, bottom = 4.dp),
-        isError = isError,
-        errorMessage = errorMessage,
-    ) {
-        val colors = AppFieldColors
-        val interactionSource = remember { MutableInteractionSource() }
-        val textColor = textStyle.color.takeOrElse { colors.textColor(enabled).value }
-        // 输入字号统一 16sp: 调用点显式传 textStyle 但未指定 fontSize 时归一化 (否则渲染回落 14sp)
-        val effectiveFontSize = textStyle.fontSize.takeOrElse { 16.sp }
-        // 固定行高 fontSize*1.5 (对齐 CodeTextField): 单行/多行垂直几何统一, 行高不随字体默认漂移
-        val effectiveTextStyle = textStyle.copy(
-            fontSize = effectiveFontSize,
-            lineHeight = effectiveFontSize * 1.5f,
-        )
-        // 新版 TextFieldState API: TextFieldValue 契约 (文本+选区) 经双同步保留。
-        // state 用初始文本+选区初始化 (见 String 重载注释: 防首帧快照把空串推给外部)。
-        val state = remember { TextFieldState(value.text, value.selection) }
-        val currentValue by rememberUpdatedState(value)
-        val currentOnValueChange by rememberUpdatedState(onValueChange)
-        LaunchedEffect(state) {
-            snapshotFlow { state.text.toString() to state.selection }
-                .collect { (text, selection) ->
-                    val newValue = TextFieldValue(text, selection)
-                    if (newValue != currentValue) currentOnValueChange(newValue)
-                }
-        }
-        LaunchedEffect(state, value) {
-            if (state.text.toString() != value.text || state.selection != value.selection) {
-                state.edit {
-                    replace(0, length, value.text)
-                    selection = value.selection
-                }
-            }
-        }
-        // 呈现变换实例稳定 (remember): 见 String 重载注释 (None → null 走无变换路径)
-        val outputTransformation = remember(visualTransformation) {
-            if (visualTransformation === VisualTransformation.None) {
-                null
-            } else {
-                visualTransformation.asOutputTransformation()
-            }
-        }
-        BasicTextField(
-            state = state,
-            modifier = Modifier
-                .fillMaxWidth()
-                .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
-                .indicatorLine(enabled, isError, interactionSource, colors)
-                // 最小高度内容推导 (对齐 CodeTextField): 单行字段贴合内容, 消除 56dp 死区
-                .defaultMinSize(
-                    minWidth = TextFieldDefaults.MinWidth,
-                    minHeight = appFieldDefaultMinHeight(
-                        label != null,
-                        effectiveFontSize,
-                    ),
-                ),
-            enabled = enabled,
-            readOnly = readOnly,
-            textStyle = effectiveTextStyle.copy(color = textColor),
-            keyboardOptions = keyboardOptions,
-            onKeyboardAction = keyboardActions.toKeyboardActionHandler(keyboardOptions.imeAction),
-            lineLimits = if (singleLine) {
-                TextFieldLineLimits.SingleLine
-            } else {
-                TextFieldLineLimits.MultiLine(minLines, maxLines)
-            },
-            outputTransformation = outputTransformation,
-            interactionSource = interactionSource,
-            cursorBrush = SolidColor(colors.cursorColor(isError).value),
-            decorator = TextFieldDecorator { innerTextField ->
-                AppDecorationBox(
-                    text = value.text,
+                    text = adapter.displayText(value),
                     innerTextField = innerTextField,
                     enabled = enabled,
                     singleLine = singleLine,

@@ -67,19 +67,14 @@ internal actual object FileUtilsCommon {
         return FileUtilsBase.writeBytes(path, data)
     }
 
-    actual fun copyToFile(path: String, input: InputStream): Boolean {
-        // 对齐原 app 端 downloadFile 的 inputStream.copyTo(outputStream) 语义
-        return try {
-            val file = File(path)
-            if (!file.exists()) {
-                file.parentFile?.mkdirs()
-                file.createNewFile()
-            }
-            file.outputStream().use { out -> input.copyTo(out) }
-            true
-        } catch (_: Exception) {
-            false
+    actual fun copyToFile(path: String, input: InputStream) {
+        // 对齐原 app 端 downloadFile 的 inputStream.copyTo(outputStream) 语义; IO 异常直接上抛
+        val file = File(path)
+        if (!file.exists()) {
+            file.parentFile?.mkdirs()
+            file.createNewFile()
         }
+        file.outputStream().use { out -> input.copyTo(out) }
     }
 
     actual fun delete(path: String, deleteRootDir: Boolean): Boolean {

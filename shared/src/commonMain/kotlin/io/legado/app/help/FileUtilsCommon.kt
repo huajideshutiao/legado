@@ -56,8 +56,11 @@ internal expect object FileUtilsCommon {
      *
      * 对齐原 app 端 JsExtensions.downloadFile 的 `getInputStream().copyTo` 语义
      * (大文件避免全量字节数组内存峰值)。
+     *
+     * IO 失败**直接抛出**, 不收成返回值 —— 原版流式失败即失败, 书源 JS 侧要能看到异常;
+     * 收成 Boolean 会让调用方只能造一个丢掉原始类型与堆栈的替代异常。
      */
-    fun copyToFile(path: String, input: InputStream): Boolean
+    fun copyToFile(path: String, input: InputStream)
 
     /**
      * 删除文件或目录。

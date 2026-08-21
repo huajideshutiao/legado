@@ -298,7 +298,7 @@ class IosSystemTtsEngine : SystemTtsEngine {
  * 模式参考 desktop `Main.kt` 中 `TtsEngineProvider.register(DesktopSystemTtsEngine())`。
  *
  * 调用时机: iOS 宿主启动早期经 [io.legado.app.help.config.registerIosProviders] 调用,
- * 在 [registerIosJsEngines] 之后 (与 desktop Main.kt 顺序一致)。
+ * 在 [io.legado.app.model.script.registerNativeJsEngines] 之后 (与 desktop Main.kt 顺序一致)。
  */
 fun registerIosSystemTtsEngine() {
     TtsEngineProvider.register(IosSystemTtsEngine())

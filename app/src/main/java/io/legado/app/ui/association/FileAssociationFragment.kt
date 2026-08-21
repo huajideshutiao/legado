@@ -22,6 +22,7 @@ import io.legado.app.lib.permission.PermissionsCompat
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
+import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
@@ -32,9 +33,9 @@ import io.legado.app.utils.checkWrite
 import io.legado.app.utils.getFile
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.readUri
+import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -80,6 +81,18 @@ class FileAssociationFragment(private val isShellHost: Boolean = false) : Fragme
             finishActivity()
         }
         viewModel.openBookLiveData.observe(this) {
+            if (isShell) {
+                // 独立透明壳: 壳内无主导航器 (AppNavigatorProviders 未注册), 与
+                // AssociationActivity 的 pendingBookNav 同款经 IntentData + route extra 转发主界面;
+                // 类型分发由 Book.toReadRoute() 承担 (audio/video/manga/rss/reader)
+                IntentData.book = it
+                startActivity<MainActivity> {
+                    putExtra("route", "read_book")
+                    putExtra("bookUrl", it.bookUrl)
+                }
+                finishActivity()
+                return@observe
+            }
             // 按 book 类型分发到对应阅读路由
             val navigator = AppNavigatorProviders.get()
             val target = when {
@@ -148,20 +161,20 @@ class FileAssociationFragment(private val isShellHost: Boolean = false) : Fragme
      * 原版 finishOnDismiss(isShell) 语义保留: 宿主是 MainActivity 时等 overlay 关闭后 finish。
      */
     private fun showImportDialog(type: DeepLinkImportType, source: String) {
+        if (isShell) {
+            // 独立透明壳: 壳内无主导航器 (showOverlay 会 error), 改走 shared pending 链,
+            // 由壳的 DeepLinkImportHost 弹同一个导入对话框; handleResolved 的 src 与
+            // overlay 路径传的是同一字符串、同一 Import*ViewModelShared 入口, 行为等价
+            LegadoDeepLinkHandler.handleResolved(DeepLinkImportRequest(type, source))
+            removeSelf()
+            return
+        }
         AppNavigatorProviders.get().showOverlay(
             AppOverlay.Dialog(
                 key = "*Import:${type.name}",
                 payload = IntentData.put(source),
             )
         )
-        if (isShell) {
-            lifecycleScope.launch {
-                AppNavigatorProviders.get().overlays.first { list ->
-                    list.none { it.key.startsWith("*Import:") }
-                }
-                activity?.finish()
-            }
-        }
         removeSelf()
     }
 

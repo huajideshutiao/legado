@@ -17,7 +17,7 @@ import io.legado.app.help.http.registerIosBackstageWebView
 import io.legado.app.help.image.IosImageOps
 import io.legado.app.help.image.NativeBitmapProvider
 import io.legado.app.help.image.registerIosBookImageLoader
-import io.legado.app.help.log.registerIosAppLogHost
+import io.legado.app.help.log.registerNativeAppLogHost
 import io.legado.app.help.http.registerDefaultIosCookieStoreProvider
 import io.legado.app.help.http.registerNativeHttpProvider
 import io.legado.app.help.http.registerSharedCookieJarBridge
@@ -33,19 +33,19 @@ import io.legado.app.help.service.registerNativeUpdateBookCallback
 import io.legado.app.help.source.registerNativeSourceHelpAccessor
 import io.legado.app.help.source.registerNativeSourceProviders
 import io.legado.app.help.source.registerNativeVerificationUiProvider
-import io.legado.app.help.storage.registerIosBackupRestoreHook
+import io.legado.app.help.storage.registerNativeBackupRestoreHook
 import io.legado.app.help.toast.registerIosToaster
 import io.legado.app.help.tts.IosHttpTtsPlayer
 import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.help.tts.registerIosSystemTtsEngine
 import io.legado.app.help.ui.registerIosOpenUrlProvider
-import io.legado.app.help.ui.registerIosUserAgentProvider
+import io.legado.app.help.ui.registerNativeUserAgentProvider
 import io.legado.app.model.fileBook.BitmapProviders
 import io.legado.app.model.fileBook.registerNativeFileBookAccessor
 import io.legado.app.model.registerIosAudioPlayCommanders
 import io.legado.app.model.registerIosReadBookPlatform
 import io.legado.app.model.registerNativeCacheBookCallback
-import io.legado.app.model.script.registerIosJsEngines
+import io.legado.app.model.script.registerNativeJsEngines
 import io.legado.app.model.webBook.registerNativeWebBookProviders
 import io.legado.app.ui.book.changesource.registerNativeChangeBookSourcePlatform
 import io.legado.app.ui.book.manage.registerNativeBookshelfManagePlatform
@@ -72,7 +72,7 @@ import platform.UIKit.UIDevice
  * 5. AppDbAccessor / BookHelpAccessor / SourceHelpAccessor / SourceCacheProvider /
  *    FileCacheProvider 在数据库之后; SourceCache 未注册时 JS cache.get/put 失败被
  *    runCatching 吞掉 (书源变量缓存失效), FileCache 未注册时文件层抛 IllegalStateException
- * 6. registerIosJsEngines 在任何 JS eval / JsBindings 构造之前 (未注册会 checkNotNull 失败)
+ * 6. registerNativeJsEngines 在任何 JS eval / JsBindings 构造之前 (未注册会 checkNotNull 失败)
  * 7. registerIosSystemTtsEngine 在 JsEngines 之后; UpdateBookCallback 须在 Toaster +
  *    NotificationProgress 之后、ServiceLauncher 之前
  *
@@ -88,7 +88,7 @@ fun registerIosProviders() {
 
     // 1.1 AppLog 宿主 (日志落盘到 {filesDir}/logs, 供 CrashLogProvider 收集;
     // 须在 AppFilesDirs 之后 (日志目录从 filesDir 派生)、任何 AppLog.put 之前)
-    registerIosAppLogHost()
+    registerNativeAppLogHost()
 
     // 2. 配置 provider (PreferenceProvider -> AppConfigAccessor)
     registerIosPreferenceProvider()
@@ -177,7 +177,7 @@ fun registerIosProviders() {
 
     // 7. JS 引擎 provider (IosJsEngine + IosImageOps + SharedJsScope + JsExtFactory), 必须在任何 JS eval 之前
     // (解除 KP3 P0 阻塞: iOS 端 JS 引擎缺失导致书源规则解析全失效)
-    registerIosJsEngines()
+    registerNativeJsEngines(IosImageOps)
 
     // 7.2 webBook 编排 provider (BookInfoRefresher/IntentData/RegexReplacer), 须在 JsEngines 之后
     // (NativeRegexReplacer 的 @js: 分支依赖已注册的 JsEngines)
@@ -209,12 +209,12 @@ fun registerIosProviders() {
     // 阅读编排平台钩子 (朗读桥接 IosReadAloudHost, 缓存服务运行态取 IosBackgroundTasks)
     registerIosReadBookPlatform()
     // 备份/恢复钩子 (lastBackup 时间戳 + 恢复完成提示; zip 复制/解压走 BackupFileOps 默认实现)
-    registerIosBackupRestoreHook()
+    registerNativeBackupRestoreHook()
     registerIosToaster()
     registerIosNotificationProgress()
     // UI provider (Toast/OpenUrl/UserAgent), 供 JsExtensionsCommon 调用, 顺序无关, 须在任何 JS eval 之前
     registerIosOpenUrlProvider()
-    registerIosUserAgentProvider()
+    registerNativeUserAgentProvider()
     // 源验证 UI provider (最小实现: 不支持路径明确报错+Toast, 纯打开链接走 OpenUrlProviders;
     // 未注册时 JS 验证入口裸抛 IllegalStateException)
     registerNativeVerificationUiProvider()

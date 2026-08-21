@@ -172,6 +172,15 @@ fun BookSourceManageRoute(
         }
     }
 
+    // 校验期间保持屏幕常亮 (对照原版 checkSource okButton 首行 keepScreenOn(true) 与
+    // observeEvent(CHECK_SOURCE_DONE) 的 keepScreenOn(false))。按 Debug.checkState.isChecking
+    // 统一驱动: 四端该状态都由 CheckSourceShared 置位, 一处接线覆盖启动/完成/取消/重进恢复,
+    // 不必各端自造释放时机 (安卓原先靠 CheckSourceService.onDestroy 发事件, 其余三端无该服务)
+    val checking = Debug.checkState.collectAsState().value.isChecking
+    LaunchedEffect(checking) {
+        PlatformServiceProviders.getOrNull()?.window?.setKeepScreenOn(checking)
+    }
+
     // 校验完成 (对照 app 端 observeLiveBus: EventBus.CHECK_SOURCE_DONE)
     LaunchedEffect(Unit) {
         FlowBus.with(EventBus.CHECK_SOURCE_DONE).collect {
@@ -328,6 +337,7 @@ fun BookSourceManageRoute(
                             selection = screenModel.selection(),
                             allCount = screenModel.state.value.sources.size,
                             sortAscending = screenModel.state.value.sortAscending,
+                            sort = screenModel.state.value.sort,
                         )
                     },
                     SelectAction(strShareSelectedSource) {
@@ -335,6 +345,7 @@ fun BookSourceManageRoute(
                             selection = screenModel.selection(),
                             allCount = screenModel.state.value.sources.size,
                             sortAscending = screenModel.state.value.sortAscending,
+                            sort = screenModel.state.value.sort,
                         )
                     },
                     SelectAction(strCheckSelectSource) {

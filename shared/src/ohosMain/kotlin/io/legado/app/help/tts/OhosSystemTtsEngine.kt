@@ -224,7 +224,7 @@ class OhosSystemTtsEngine : SystemTtsEngine, OhosNativeBridge.TtsEventListener {
 /**
  * 鸿蒙宿主启动早期注册 [SystemTtsEngine] 的便捷函数。
  *
- * 在 `registerOhosJsEngines()` 之后调用 (顺序紧跟 JsEngines, 与桌面端 `Main.kt` 中
+ * 在 `registerNativeJsEngines()` 之后调用 (顺序紧跟 JsEngines, 与桌面端 `Main.kt` 中
  * `TtsEngineProvider.register(DesktopSystemTtsEngine())` 位置一致),
  * 见 [io.legado.app.help.config.OhosProviderRegistry]。
  */

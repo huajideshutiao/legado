@@ -8,6 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.net.toUri
+import androidx.fragment.app.commit
 import io.legado.app.base.BaseComposeActivity
 import io.legado.app.constant.BookType
 import io.legado.app.constant.Theme
@@ -24,6 +25,7 @@ import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.startActivity
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 /**
@@ -104,6 +106,9 @@ class AssociationActivity : BaseComposeActivity(theme = Theme.Transparent, image
     }
 
     companion object {
+
+        /** 文件关联 scheme (对照原版挂在透明壳上的两条 VIEW filter 的 data scheme)。 */
+        private val fileAssociationSchemes = setOf("content", "file", "app")
         /** 壳销毁后仍未注册时的静态兜底: 不捕获任何 Activity, 按当前前台 Activity 惰性操作 */
         private val idleCapabilities = object : PlatformCapabilities {
             override fun exitApplication() {
@@ -144,9 +149,15 @@ class AssociationActivity : BaseComposeActivity(theme = Theme.Transparent, image
         if (nav == null) {
             // 纯导入 (勾选六型/readConfig/unknown): 只挂共享导入宿主, 不渲染主界面页面
             DeepLinkImportHost()
-            // 导入完成/对话框关闭 → pending 置空 → 结束透明壳回到原应用
+            // 收壳: 先等到有导入请求, 再等它被消费 (对话框关闭) → 结束透明壳回到原应用。
+            // 不能直接 "pending 为空即 finish": 文件关联走嗅探/权限申请, 期间 pending 恒空;
+            // 深链路径 handleIntent 已在组合前置好 pending, 第一步立即通过, 语义不变。
+            // 文件关联里不产生导入请求的分支 (书籍导入/权限拒绝/不支持格式) 由
+            // FileAssociationFragment 自己 finish, 本 effect 挂着无副作用。
             LaunchedEffect(Unit) {
-                LegadoDeepLinkHandler.pending.collect { if (it == null) finish() }
+                LegadoDeepLinkHandler.pending.first { it != null }
+                LegadoDeepLinkHandler.pending.first { it == null }
+                finish()
             }
             return
         }
@@ -184,6 +195,15 @@ class AssociationActivity : BaseComposeActivity(theme = Theme.Transparent, image
     private fun handleIntent(intent: Intent?) {
         val uri = intent?.data ?: run {
             finish()
+            return
+        }
+        // 文件关联 (content/file/app): 对照原版把三条 VIEW filter 全挂透明壳, 壳内直接挂
+        // FileAssociationFragment(isShellHost = true) —— 嗅探 json/书籍由它承担, 导入对话框
+        // 走 shared pending 链 (壳内 DeepLinkImportHost 渲染), 打开书籍经 route extra 转发主界面
+        if (uri.scheme in fileAssociationSchemes) {
+            supportFragmentManager.commit {
+                add(FileAssociationFragment(uri, isShellHost = true), "FileAssociationFragment")
+            }
             return
         }
         val request = LegadoDeepLink.parse(uri.toString())

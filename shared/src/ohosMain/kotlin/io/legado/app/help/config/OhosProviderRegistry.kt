@@ -10,12 +10,12 @@ import io.legado.app.help.book.registerNativeBookHelpAccessor
 import io.legado.app.help.book.registerNativeBookStorage
 import io.legado.app.help.openURL
 import io.legado.app.help.storage.registerNativeDataStorage
-import io.legado.app.help.storage.registerOhosBackupRestoreHook
+import io.legado.app.help.storage.registerNativeBackupRestoreHook
 import io.legado.app.help.book.registerNativeBookImageStorage
 import io.legado.app.help.book.registerNativeContentProcessorAccessor
 import io.legado.app.help.book.registerNativeLocalBookLocator
 import io.legado.app.help.file.registerOhosAppFilesDir
-import io.legado.app.help.log.registerOhosAppLogHost
+import io.legado.app.help.log.registerNativeAppLogHost
 import io.legado.app.help.file.registerNativeFileDownloader
 import io.legado.app.help.image.NativeBitmapProvider
 import io.legado.app.help.image.OhosImageOps
@@ -41,13 +41,13 @@ import io.legado.app.help.tts.OhosHttpTtsPlayer
 import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.help.tts.registerOhosSystemTtsEngine
 import io.legado.app.help.ui.registerOhosOpenUrlProvider
-import io.legado.app.help.ui.registerOhosUserAgentProvider
+import io.legado.app.help.ui.registerNativeUserAgentProvider
 import io.legado.app.model.fileBook.BitmapProviders
 import io.legado.app.model.fileBook.registerNativeFileBookAccessor
 import io.legado.app.model.registerNativeCacheBookCallback
 import io.legado.app.model.registerOhosAudioPlayCommanders
 import io.legado.app.model.registerOhosReadBookPlatform
-import io.legado.app.model.script.registerOhosJsEngines
+import io.legado.app.model.script.registerNativeJsEngines
 import io.legado.app.model.webBook.registerNativeWebBookProviders
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.napi.registerOhosNativeBridge
@@ -81,7 +81,7 @@ import io.legado.app.web.utils.registerNativeWebStrings
  *    AppFilesDirs.filesDir 派生; JS eval 时 bindings["cache"] = SourceCacheProviders.impl?.asBinding(),
  *    未注册时 bindings["cache"] 为 null, JS 调用 cache.get/put 会失败被 runCatching 吞掉,
  *    表现为书源变量缓存失效)
- * 6. [registerOhosJsEngines] (JS 引擎 + OhosImageOps 真实像素操作) 在任何 JS eval / JsBindings 构造之前
+ * 6. [registerNativeJsEngines] (JS 引擎 + OhosImageOps 真实像素操作) 在任何 JS eval / JsBindings 构造之前
  *    (JsBindings 构造时访问 JsBindingInjector.image, 未注册会 checkNotNull 失败;
  *     JsEngines.get() 未注册 provider 会抛 IllegalStateException)
  * 6.5 [BitmapProviders.register]([NativeBitmapProvider]) 在任何 CbzFile/EpubFile 封面提取调用之前
@@ -127,7 +127,7 @@ fun registerOhosProviders() {
 
     // 1.1 AppLog 宿主 (崩溃日志落盘到 {filesDir}/logs, 供 CrashLogProvider 收集;
     // 须在 AppFilesDirs 之后 (日志目录从 filesDir 派生)、任何 AppLog.put 之前)
-    registerOhosAppLogHost()
+    registerNativeAppLogHost()
 
     // 2. 配置 provider (PreferenceProvider -> AppConfigAccessor)
     registerOhosPreferenceProvider()
@@ -201,7 +201,7 @@ fun registerOhosProviders() {
 
     // 6. JS 引擎 provider (OhosJsEngine + OhosImageOps + SharedJsScope + JsExtFactory), 必须在任何 JS eval 之前
     // (解除 KP4 P0 阻塞: 鸿蒙端 JS 引擎缺失导致书源规则解析全失效)
-    registerOhosJsEngines()
+    registerNativeJsEngines(OhosImageOps)
 
     // 6.2 webBook 编排 provider (BookInfoRefresher/IntentData/RegexReplacer), 须在 JsEngines 之后
     // (NativeRegexReplacer 的 @js: 分支依赖已注册的 JsEngines)
@@ -257,7 +257,7 @@ fun registerOhosProviders() {
     // 必须在任何 JS 执行之前 (JS eval 在本函数返回后由业务代码触发)。
     // OpenUrl 走 tsfn 桥 context.startAbility (真实); UserAgent 仍为硬编码 UA 常量 (待 tsfn 取 webview 默认 UA)
     registerOhosOpenUrlProvider()
-    registerOhosUserAgentProvider()
+    registerNativeUserAgentProvider()
     // 8.7b Markdown 查看器事件监听 (viewer 页面链接点击 → 系统浏览器打开, 决策: 一律系统浏览器)。
     // 事件由 ArkTS MarkdownBridgeHandler 经 legado.markdownEvent 回推 (tsfn 桥在
     // EntryAbility.onCreate 注册), 此处注册 Kotlin 侧监听; 未注册时链接点击静默忽略。
@@ -287,8 +287,8 @@ fun registerOhosProviders() {
     // 对照 iOS registerIosReadBookPlatform, 未注册时默认空实现行为一致)
     registerOhosReadBookPlatform()
     // 备份/恢复钩子 (lastBackup 时间戳 + 恢复完成提示; zip 复制/解压走 BackupFileOps 默认实现,
-    // 对照 iOS registerIosBackupRestoreHook; 未注册时默认空实现静默丢这些副作用)
-    registerOhosBackupRestoreHook()
+    // 与 iOS 端共用 nativeMain NativeBackupRestoreHook; 未注册时默认空实现静默丢这些副作用)
+    registerNativeBackupRestoreHook()
 
     // 8.8 阅读排版真实字形度量器 (Skia Font 度量, 取代 SimpleTextMeasurer 等宽近似;
     // 须在任何章节排版之前, 依赖 skiko 随 compose ui 已就绪)

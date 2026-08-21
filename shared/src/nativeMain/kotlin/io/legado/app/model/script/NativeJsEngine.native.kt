@@ -130,7 +130,7 @@ import platform.posix.memcpy
  * 通路恒失败 (桩函数返回 0/false/null), 需改用 java.* JsExtensions 绑定;
  * JavaAdapter 抛异常; 资源管理 = JS_FreeContext/JS_FreeRuntime。
  *
- * 注册: 宿主启动早期经 registerIosJsEngines/registerOhosJsEngines 注册到 [JsEngines]。
+ * 注册: 宿主启动早期经 registerNativeJsEngines 注册到 [JsEngines]。
  * 编译验证: ./gradlew :shared:compileKotlinIosArm64 / compileKotlinIosSimulatorArm64 /
  * compileKotlinLinuxArm64 -PenableOhosTarget=true。
  */

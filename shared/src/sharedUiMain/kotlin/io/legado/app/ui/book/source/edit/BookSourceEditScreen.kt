@@ -110,8 +110,8 @@ import kotlin.math.roundToInt
  *   + [editEntities] 传状态与回调, 解耦 Composable 与 Android Activity
  * - 资源访问全改 key-based: stringResource(Res.string.xxx) / rememberPainter("xxx") /
  *   rememberColor("xxx") / stringArrayResource(Res.array.xxx); 所需 key 见下方清单
- * - CodeView 专项能力 (自动补全/原生滚动/ActionMode) 留 Android View 层; 非 Android 用
- *   [CodeTextField] (等宽/高亮/行号/查找替换); KeyboardToolbar → 共享组件 (直连 DAO)
+ * - 原版 Android View 版 CodeView 已删除, 四端统一走 [CodeTextField]
+ *   (等宽/高亮/行号/查找替换); KeyboardToolbar → 共享组件 (直连 DAO)
  * - 去掉 WindowInsets.ime/navigationBars (Android 专属), 宿主经 [modifier] 传 windowInsetsPadding
  * - L3 不可下沉项: KeyboardAssistsConfig 弹窗平台专属, 经 [onShowKeyboardConfig] 回调注入
  *

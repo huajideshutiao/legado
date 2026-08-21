@@ -9,10 +9,9 @@ import io.legado.app.model.SharedJsScope
 /**
  * Native (iOS/ohos) 端 JS 引擎注册共享入口。
  *
- * 抽自 iosMain RegisterIosJsEngines / ohosMain RegisterOhosJsEngines,
- * 两端仅 imageOps 参数不同 (IosImageOps / OhosImageOps), 其余注册逻辑完全一致。
+ * 两端注册逻辑完全一致, 仅 imageOps 参数不同 (IosImageOps / OhosImageOps), 故合并本函数。
  *
- * 调用方: registerIosJsEngines(IosImageOps) / registerOhosJsEngines(OhosImageOps)
+ * 调用方: registerIosProviders / registerOhosProviders 直接调本函数并传平台 ImageOps。
  *
  * 本函数为 JsEngineRegistration.kt 中 expect 的 leaf actual (引用 [NativeJsEngine] 等
  * leaf 类, 随文件 stage 进 leaf); expect 声明在 nativeMain, ios/ohos 入口直接调用 expect。
