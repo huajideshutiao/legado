@@ -137,6 +137,149 @@ fun registerOhosInteropStage(taskName: String, outputDirName: String): TaskProvi
 val stageNativeInteropForOhos =
     registerOhosInteropStage("stageNativeInteropForOhos", "generated/nativeInterop/ohosArm64Main")
 
+// CPF fork 的 room3 runtime 停在 alpha01: RoomOpenDelegate/Migration 的回调非 suspend,
+// SQL 扩展名为 execSQL; 官方 room3-compiler 生成 suspend override + executeSQL, 两者编不过。
+// 差异恰好是两条纯文本变换, 故 build 阶段从 KSP 生成物派生, 不再入库手写副本 (易漂移)。
+abstract class DeriveOhosRoomImpl : DefaultTask() {
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.NAME_ONLY)
+    abstract val generatedSources: ConfigurableFileCollection
+
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    @TaskAction
+    fun derive() {
+        val sources = generatedSources.files.sortedBy { it.name }
+        check(sources.any { it.name == "AppDatabase_Impl.kt" }) {
+            "KSP 未产出 AppDatabase_Impl.kt; 本任务须在 kspKotlinOhosArm64 之后执行"
+        }
+        val outRoot = outputDirectory.get().asFile
+        outRoot.deleteRecursively()
+        val outDir = outRoot.resolve("io/legado/app/data")
+        outDir.mkdirs()
+        sources.forEach { source ->
+            val derived = source.readText()
+                // 只剥 override 上的 suspend, 其余 suspend 原样保留
+                .replace("override suspend fun ", "override fun ")
+                .replace("import androidx.sqlite.executeSQL", "import androidx.sqlite.execSQL")
+                .replace("connection.executeSQL(", "connection.execSQL(")
+            // 落 .ohos.kt: 源集 exclude 按相对路径匹配, 同名 .kt 会把派生件一起排掉
+            outDir.resolve(source.name.removeSuffix(".kt") + ".ohos.kt").writeText(HEADER + derived)
+        }
+    }
+
+    private companion object {
+        // 措辞刻意不含 "override suspend fun" / "executeSQL" 这两个连续子串:
+        // verifyOhosRoomDerived 用 contains 查残留, 头注释写原文会自伤误报
+        const val HEADER = "// 由 :shared:deriveOhosRoomImpl 从 KSP 生成物派生, 勿手改 " +
+            "(剥 override 上的 suspend 修饰; SQL 扩展名改 fork 的 execSQL)。\n"
+    }
+}
+
+// 过渡期保险: 派生产物与 KSP 原件的文件集/DAO 集/@Database 版本号必须一致, 且派生产物
+// 不得残留 fork 不兼容写法。漏改本会在 compileKotlinOhosArm64 才炸, 这里提前拦并打印差异。
+abstract class VerifyOhosRoomDerived : DefaultTask() {
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.NAME_ONLY)
+    abstract val generatedSources: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.NAME_ONLY)
+    abstract val derivedSources: ConfigurableFileCollection
+
+    @get:OutputFile
+    abstract val reportFile: RegularFileProperty
+
+    @TaskAction
+    fun verify() {
+        val generated = generatedSources.files.associateBy { it.name }
+        val derived = derivedSources.files
+            .associateBy { it.name.removeSuffix(".ohos.kt") + ".kt" }
+        val problems = mutableListOf<String>()
+        val report = mutableListOf<String>()
+        (generated.keys - derived.keys).sorted().takeIf { it.isNotEmpty() }?.let {
+            problems += "KSP 有而派生缺: $it (KSP 新增了不兼容生成物, 对齐收集/exclude 通配)"
+        }
+        (derived.keys - generated.keys).sorted().takeIf { it.isNotEmpty() }?.let {
+            problems += "派生有而 KSP 无: $it (残留旧派生件)"
+        }
+        report += "files=" + derived.keys.sorted()
+        val genImpl = generated["AppDatabase_Impl.kt"]?.readText()
+        val derImpl = derived["AppDatabase_Impl.kt"]?.readText()
+        if (genImpl == null || derImpl == null) {
+            problems += "AppDatabase_Impl 缺失 (KSP=${genImpl != null}, 派生=${derImpl != null})"
+        } else {
+            val genDaos = DAO_IMPL.findAll(genImpl).map { it.value }.toSortedSet()
+            val derDaos = DAO_IMPL.findAll(derImpl).map { it.value }.toSortedSet()
+            if (genDaos != derDaos) {
+                problems += "DAO 集不一致: KSP ${genDaos.size} 个 $genDaos, 派生 ${derDaos.size} 个 $derDaos"
+            }
+            // 版本号取 RoomOpenDelegate 首参 (= @Database version)。两侧都取不到视为等价,
+            // 只在两侧不同时 fail, 避免上游改生成格式时误伤。
+            val genVersion = DB_VERSION.find(genImpl)?.groupValues?.get(1)
+            val derVersion = DB_VERSION.find(derImpl)?.groupValues?.get(1)
+            if (genVersion != derVersion) {
+                problems += "@Database version 不一致: KSP $genVersion, 派生 $derVersion"
+            }
+            report += "version=${genVersion ?: "unknown"}"
+            report += "dao=${genDaos.size} $genDaos"
+        }
+        derived.forEach { (name, file) ->
+            val text = file.readText()
+            if (text.contains("override suspend fun")) problems += "$name 残留 override suspend fun"
+            if (text.contains("executeSQL")) problems += "$name 残留 executeSQL"
+        }
+        val out = reportFile.get().asFile
+        out.parentFile.mkdirs()
+        out.writeText(report.joinToString("\n", postfix = "\n"))
+        if (problems.isNotEmpty()) {
+            throw GradleException(
+                "鸿蒙 Room 派生产物校验失败:\n" + problems.joinToString("\n") { "  - $it" }
+            )
+        }
+    }
+
+    private companion object {
+        val DAO_IMPL = Regex("""\b\w+Dao_Impl\b""")
+        val DB_VERSION = Regex("""RoomOpenDelegate\(\s*(\d+)""")
+    }
+}
+
+val ohosRoomDerivedDir = layout.buildDirectory.dir("generated/ohosRoomDerived/kotlin")
+
+// KSP 里 fork 不兼容的那几个生成物。AutoMigration 用通配: DB 版本号变动新增 AutoMigration
+// 时无需改列表 (源集 exclude 用同一通配, 两处必须一致, 否则原件与派生件同时进编译)。
+fun ohosRoomKspSources(): ConfigurableFileTree {
+    val kspDir = layout.buildDirectory
+        .dir("generated/ksp/ohosArm64/ohosArm64Main/kotlin").get().asFile
+    return fileTree(kspDir).apply {
+        include(
+            "io/legado/app/data/AppDatabase_Impl.kt",
+            "io/legado/app/data/AppDatabase_AutoMigration_*_Impl.kt",
+        )
+    }
+}
+
+val deriveOhosRoomImpl = if (enableOhosTarget) {
+    tasks.register<DeriveOhosRoomImpl>("deriveOhosRoomImpl") {
+        generatedSources.from(ohosRoomKspSources())
+        outputDirectory.set(ohosRoomDerivedDir)
+        // KSP 生成目录是普通路径 (不带任务产出信息), 依赖须显式声明。用任务名而非
+        // tasks.matching: 名字对不上时立刻报 "task not found", 不会静默退化成无依赖。
+        dependsOn("kspKotlinOhosArm64")
+    }
+} else null
+
+val verifyOhosRoomDerived = if (enableOhosTarget) {
+    tasks.register<VerifyOhosRoomDerived>("verifyOhosRoomDerived") {
+        generatedSources.from(ohosRoomKspSources())
+        derivedSources.from(fileTree(ohosRoomDerivedDir.get().asFile))
+        reportFile.set(layout.buildDirectory.file("reports/ohosRoomDerived/summary.txt"))
+        dependsOn(deriveOhosRoomImpl!!)
+    }
+} else null
+
 // ohosArm64 只存在于 CPF 分支 KGP, 本脚本无法静态引用, 交给 build-logic 的约定插件声明。
 if (enableOhosTarget) {
     pluginManager.apply("legado.kmp.ohos")
@@ -316,6 +459,16 @@ kotlin {
             }
         } else null
 
+        // iOS + 鸿蒙共用 UI 层: 两端唯一的 UI 公共祖先是 sharedUiMain (鸿蒙进不了 nonOhosUiMain,
+        // 那层的 coil3/reorderable/markdown 无 ohosArm64 变体), 故在此承载两端逐份重复的 UI 实现。
+        // 名字带 ohos 是必需的: 根脚本与本脚本的 CPF fork 版本重写都按配置名是否含 "ohos" 判定,
+        // 本源集的 metadata 配置必须落进 ohos 分支, 否则解析到无 ohosArm64 变体的官方依赖。
+        val iosAndOhosUiMain = if (enableIosTarget || enableOhosTarget) {
+            maybeCreate("iosAndOhosUiMain").apply {
+                dependsOn(sharedUiMain)
+            }
+        } else null
+
         if (enableIosTarget) {
             val iosImageProviderMain = maybeCreate("iosImageProviderMain").apply {
                 dependsOn(commonMain.get())
@@ -326,6 +479,7 @@ kotlin {
                 dependsOn(nativeMain!!)
                 dependsOn(iosImageProviderMain)
                 dependsOn(nonOhosUiMain)
+                dependsOn(iosAndOhosUiMain!!)
                 dependencies {
                     implementation(libs.androidx.sqlite.framework)
                     implementation(libs.coil3.network.ktor3)
@@ -368,6 +522,7 @@ kotlin {
             maybeCreate("ohosMain").apply {
                 dependsOn(nativeMain!!)
                 dependsOn(sharedUiMain)
+                dependsOn(iosAndOhosUiMain!!)
                 dependencies {
                     // 官方 androidx.sqlite:sqlite-framework 无 ohosArm64 变体 (cinterop 解析失败),
                     // 必须用 CPF fork 发布的版本 (带 ohosArm64 cinterop-klib), 与 iosMain 的官方版区分
@@ -386,16 +541,16 @@ kotlin {
                 kotlin.srcDir(layout.buildDirectory.dir("generated/nativeInterop/ohosArm64Main"))
                 // KSP 对动态创建源集不自动接线, 显式注册生成目录 (DAO Impl/AppDatabaseConstructor 等)
                 kotlin.srcDir(layout.buildDirectory.dir("generated/ksp/ohosArm64/ohosArm64Main/kotlin"))
-                // 排除 KSP 生成的 4 个 fork 不兼容文件 (suspend override + executeSQL 旧名),
-                // 改用与生成物同源集 (ohosArm64Main) 的手写派生版 (AppDatabase_Impl.ohos.kt 等,
-                // 见 src/ohosArm64Main/.../data/*.ohos.kt; 手写版引用 DAO Impl 等生成物,
-                // 必须在 ohosArm64Main 编译单元内才可见)。exclude 只按相对路径匹配生成目录下的
-                // 同名 .kt, 手写文件为 .ohos.kt 且位于 src/ 下, 不受 exclude 影响。
+                // deriveOhosRoomImpl 的派生产物 (AppDatabase_Impl.ohos.kt 等)。刻意用普通路径而非
+                // 任务产出 Provider: 后者会让同源集的 kspKotlinOhosArm64 也隐式依赖派生任务,
+                // 与 "派生依赖 KSP" 成环; 依赖改由 compileKotlinOhosArm64 显式声明。
+                kotlin.srcDir(ohosRoomDerivedDir)
+                // 排除 KSP 生成的 fork 不兼容文件 (suspend override + executeSQL 旧名), 改用
+                // deriveOhosRoomImpl 派生的同源集副本 (引用 internal 的 DAO Impl, 必须同编译单元)。
+                // exclude 只按相对路径匹配, 派生件是 .ohos.kt 故不受影响。
                 kotlin.exclude(
                     "io/legado/app/data/AppDatabase_Impl.kt",
-                    "io/legado/app/data/AppDatabase_AutoMigration_83_84_Impl.kt",
-                    "io/legado/app/data/AppDatabase_AutoMigration_84_85_Impl.kt",
-                    "io/legado/app/data/AppDatabase_AutoMigration_85_86_Impl.kt",
+                    "io/legado/app/data/AppDatabase_AutoMigration_*_Impl.kt",
                 )
             }
             // 只编 ohosArm64: x86_64 模拟器因 CPF fork 生态库无 ohosX64 变体无法链接
@@ -447,6 +602,12 @@ if (enableOhosTarget) {
     }.configureEach {
         stageNativeInteropForOhos?.let { dependsOn(it) }
     }
+    // 派生只挂 compile: 它本身 dependsOn kspKotlinOhosArm64, 反挂到 ksp 会成环。
+    // verify 已 dependsOn 派生, 两个都列出只为让任务图意图显式。
+    tasks.matching { it.name == "compileKotlinOhosArm64" }.configureEach {
+        deriveOhosRoomImpl?.let { dependsOn(it) }
+        verifyOhosRoomDerived?.let { dependsOn(it) }
+    }
 }
 
 dependencies {
@@ -466,10 +627,10 @@ dependencies {
         // CPF 鸿蒙 room3 fork 只发布到 3.0.0-alpha01-0.3.0 (runtime/klib API 是 alpha01 时代,
         // RoomOpenDelegate/Migration/Callback 非 suspend、无 ColumnTypeConverters、无 clearAllTables 等)。
         // 官方 room3-compiler 全版本 (alpha01/alpha06/3.0.1) 均生成 suspend override + sqlite 扩展调用,
-        // 与 fork 非 suspend 基类不兼容; 只能让 KSP 照常生成 (DAO 实现可用), 另由 ohosArm64Main
-        // 手写 fork 适配层替换 4 个不兼容生成物 (AppDatabase_Impl + 3 AutoMigration, 见
-        // ohosArm64Main 的 kotlin.exclude 与 src/ohosArm64Main/.../data/*.ohos.kt; 手写版与
-        // 生成物同源集编译, 才能引用 internal 的 DAO Impl)。alpha01 编译器生成的 DAO 实现
+        // 与 fork 非 suspend 基类不兼容; 只能让 KSP 照常生成 (DAO 实现可用), 不兼容的
+        // AppDatabase_Impl + AutoMigration 由 deriveOhosRoomImpl 做两条文本变换后派生进同源集
+        // (见该任务与 ohosArm64Main 的 kotlin.exclude; 派生件与生成物同源集编译, 才能引用
+        // internal 的 DAO Impl)。alpha01 编译器生成的 DAO 实现
         // 可直接编译, 故 kspOhosArm64 用 alpha01; 源码侧的 3.0.1 新注解由 ohosCompatMain 兼容声明
         // 补齐 (见 OhosRoom3Compat.kt), alpha01 旧注解 (TypeConverters/TypeConverter) 由
         // Book.kt/AppDatabase.kt 双注册 + 非鸿蒙构建的 nonOhosCompatMain 声明补齐。

@@ -1,12 +1,7 @@
 package io.legado.app.help.image
 
-import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.Canvas
-import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.toComposeImageBitmap
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntSize
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.isLocal
@@ -217,29 +212,6 @@ actual fun decodeBytesSampled(bytes: ByteArray, maxDim: Int): ImageBitmap? {
         org.jetbrains.skia.Image.makeFromEncoded(bytes).toComposeImageBitmap()
     }.getOrNull() ?: return null
     return if (maxDim > 0) bitmap.downscaled(maxDim) else bitmap
-}
-
-/**
- * Skia 解码后的位图按长边缩放 (双线性, Compose Canvas 绘制到新位图)。
- * 仅省常驻内存与绘制带宽, 解码峰值内存不变 (iOS 无 ImageIO 式解码前采样)。
- */
-private fun ImageBitmap.downscaled(maxDim: Int): ImageBitmap {
-    val max = maxOf(width, height)
-    if (max <= maxDim) return this
-    val scale = maxDim.toFloat() / max
-    val nw = (width * scale).toInt().coerceAtLeast(1)
-    val nh = (height * scale).toInt().coerceAtLeast(1)
-    val out = ImageBitmap(nw, nh)
-    val canvas = Canvas(out)
-    canvas.drawImageRect(
-        image = this,
-        srcOffset = IntOffset.Zero,
-        srcSize = IntSize(width, height),
-        dstOffset = IntOffset.Zero,
-        dstSize = IntSize(nw, nh),
-        paint = Paint().apply { filterQuality = FilterQuality.Low },
-    )
-    return out
 }
 
 /**

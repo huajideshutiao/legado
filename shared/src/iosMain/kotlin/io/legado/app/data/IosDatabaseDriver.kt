@@ -16,8 +16,8 @@ import platform.Foundation.NSFileManager
  * 不再把另一份 SQLite 静态库链接进 framework。
  * - **数据库路径**: 默认 `{AppFilesDirs.filesDir}/legado.db` (沙盒 Documents 目录下, 持久化)
  * - **查询协程上下文**: [Dispatchers.IO] (iOS 上 Ktor CIO + Dispatchers.IO 可用)
- * - **迁移策略**: iOS 首启动即此版本 (86), 无历史迁移; 若 schema 与文件不匹配,
- *   `fallbackToDestructiveMigration` 兜底重建 (iOS 端无 Android 端的 autoMigrations 历史数据需保)
+ * - **迁移策略**: 与 app 端 AppDatabase 一致 —— 仅 v1..79 旧库破坏性重建, 83..86 走
+ *   @Database autoMigrations, 无迁移路径时让 Room 显式抛错而非静默清库
  *
  * # 与 jvmMain BundledDatabaseDriver 区别
  * - 数据库路径: jvm 用 `~/.legado/legado.db`, iOS 用 `Documents/legado.db` (沙盒内)
@@ -60,10 +60,16 @@ class IosDatabaseDriver(
         )
             .setDriver(NativeSQLiteDriver())
             .setQueryCoroutineContext(Dispatchers.IO)
-            // iOS 首启动空库即 version 86, 无 Android 端 83→86 的 autoMigration 历史。
-            // 若后续 schema 升级与本地文件不匹配 (如 shared 模块升级后 @Database version 提升),
-            // 兜底重建 (dropAllTables=true), 让 iOS 端自动恢复到可用状态。
-            .fallbackToDestructiveMigration(dropAllTables = true)
+            // 与 app 端一致: 仅旧包名 (io.legado.app) 时代的 v1..79 旧库属于不同应用、无法原地升级,
+            // 走破坏性重建; 其余版本宁可让 Room 抛错也不静默清库 (dropAllTables 会丢光书架/分组/进度)。
+            // 80..82 的手写 Migration 在 jvmAndAndroidMain, native 端暂不可见 (iOS 首版即 86, 不会命中)。
+            .fallbackToDestructiveMigrationFrom(
+                false,
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+                21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+                41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60,
+                61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79
+            )
             // 预置分组 + 键盘助手 (对照 app 端 dbCallback)
             .addCallback(AppDatabaseDefaults)
             .build()

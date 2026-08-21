@@ -40,7 +40,7 @@ val IsCoverKey = Extras.Key<Boolean>(default = true)
  * 按 [sourceOrigin] (书源 bookUrl) 解析防盗链 header (对齐原版 `AnalyzeUrl.getGlideUrl()`)。
  *
  * 与 jvmAndAndroid 版差异: 不写入 [cookieJarHeader] 内部标记头 —— 该标记在 OkHttp 端由
- * CookieJar 桥接拦截器摘除, iOS Ktor 客户端无此桥 (IosHttpProvider 未注册 CookieJarBridge),
+ * CookieJar 桥接拦截器摘除, iOS Ktor 客户端无此桥 (NativeHttpProvider 未注册 CookieJarBridge),
  * 写入会作为真实请求头发到服务器, 故一律移除。
  *
  * [SourceHelp.getSource] 为 suspend (调 DB/书源缓存), 调用方需在协程内。

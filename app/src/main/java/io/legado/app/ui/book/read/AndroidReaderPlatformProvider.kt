@@ -73,7 +73,7 @@ import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -280,7 +280,8 @@ class AndroidReaderPlatformProvider(
 
     override fun onExit(screenModel: ReaderScreenModel) {
         activity.exitReaderWindow()
-        batteryReceiver?.let { activity.unregisterReceiver(it) }
+        // 与 onEnter 的幂等注销一致包 runCatching: receiver 已被别的路径注销时 unregister 会抛异常
+        batteryReceiver?.let { runCatching { activity.unregisterReceiver(it) } }
         batteryReceiver = null
         lifecycleObserver?.let { activity.lifecycle.removeObserver(it) }
         lifecycleObserver = null
@@ -733,20 +734,23 @@ private class AndroidReaderMenuState(
                 val vm = screenModel.viewModel
                 val book = vm.book.value ?: return
                 val textChapter = vm.curTextChapter.value ?: return
-                val chapter = vm.chapterList.value.getOrNull(textChapter.chapterIndex)
-                    ?: runBlocking {
-                        appDb.bookChapterDao.getChapter(book.bookUrl, textChapter.chapterIndex)
-                    } ?: return
-                val contentProcessor = ContentProcessor.get(book)
-                if (!textChapter.sameTitleRemoved
-                    && !contentProcessor.removeSameTitleCache.contains(
-                        chapter.getFileName("nr")
-                    )
-                ) {
-                    activity.toastOnUi("未找到可移除的重复标题")
+                val removeSameTitle = !textChapter.sameTitleRemoved
+                activity.lifecycleScope.launch(IO) {
+                    // 原版取 curTextChapter.chapter, 这里 TextChapterShared 不带 BookChapter,
+                    // 内存目录取不到就查库兜底 (放 IO, 主线程 runBlocking 会卡 UI)
+                    val chapter = vm.chapterList.value.getOrNull(textChapter.chapterIndex)
+                        ?: appDb.bookChapterDao.getChapter(book.bookUrl, textChapter.chapterIndex)
+                        ?: return@launch
+                    // toast 有条件, 翻转无条件 (对照原版 toast 在 book?.let 块内, 翻转在块外)
+                    if (removeSameTitle
+                        && !ContentProcessor.get(book).removeSameTitleCache
+                            .contains(chapter.getFileName("nr"))
+                    ) {
+                        activity.toastOnUi("未找到可移除的重复标题")
+                    }
+                    BookHelp.setRemoveSameTitle(book, chapter, removeSameTitle)
+                    vm.loadChapter(textChapter.chapterIndex)
                 }
-                BookHelp.setRemoveSameTitle(book, chapter, !textChapter.sameTitleRemoved)
-                vm.loadChapter(textChapter.chapterIndex)
             }
 
             // 重新分段: 翻转 reSegment (对照原版 menu_re_segment)
@@ -947,8 +951,13 @@ private class AndroidReaderMenuState(
                 book.config.startChapter = startState.value.intOr(0)
                 book.config.readSimulating = enabledState.value
                 // 对照原版 book.save() + viewModel.initData: 落库并重装使模拟章节总数生效
-                book.save()
-                screenModel.initBook(book, book.durChapterIndex)
+                activity.lifecycleScope.launch {
+                    // 只 PATCH 阅读配置列; 整行 update 会冲掉后台 updateToc 写入的目录/元数据
+                    withContext(IO) {
+                        appDb.bookDao.updateReadConfig(book.bookUrl, book.config)
+                    }
+                    screenModel.initBook(book, book.durChapterIndex)
+                }
             }
             cancelButton()
         }
@@ -956,33 +965,16 @@ private class AndroidReaderMenuState(
 
     private fun String.intOr(default: Int): Int = toIntOrNull() ?: default
 
-    // 章节跳转确认: 首次拖动弹确认, 确认后不再弹 (对照原版 ReadMenu.confirmSkipToChapter)
-    private var confirmSkipToChapter = false
-
     override fun onSeekDragStart() = Unit
 
     override fun onSeekStop(progress: Int) {
-        when (AppConfig.progressBarBehavior) {
-            // 对照原版 onStopTrackingTouch "page" 分支: 直接按页跳转 (原版 page 分支不存快照)
-            "page" -> screenModel.viewModel.skipToPage(progress)
-
-            // 对照原版 "chapter" 分支: 首次拖动弹"章节跳转确认", 取消/关闭恢复原进度 (滑块自动回弹);
-            // 确认后走原版 skipToChapter 语义: 先存跳转前进度快照再跳章 (返回键可恢复)
-            else -> {
-                if (confirmSkipToChapter) {
-                    screenModel.saveCurrentBookProgress()
-                    screenModel.viewModel.loadChapter(progress)
-                } else {
-                    activity.alert("章节跳转确认", "确定要跳转章节吗？") {
-                        yesButton {
-                            confirmSkipToChapter = true
-                            screenModel.saveCurrentBookProgress()
-                            screenModel.viewModel.loadChapter(progress)
-                        }
-                        noButton { }
-                        onCancelled { }
-                    }
-                }
+        // 推导逻辑下沉 shared (page 跳页 / chapter 首次弹确认后跳章 + confirmSkipToChapter 标志),
+        // 平台槽只负责弹确认框, 与桌面端同源
+        screenModel.onSeekStop(progress) { onConfirm ->
+            activity.alert("章节跳转确认", "确定要跳转章节吗？") {
+                yesButton { onConfirm() }
+                noButton { }
+                onCancelled { }
             }
         }
     }

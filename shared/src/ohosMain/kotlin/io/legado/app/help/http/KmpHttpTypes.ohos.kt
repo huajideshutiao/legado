@@ -154,7 +154,7 @@ actual class KmpHttpClientBuilder actual constructor() {
     }
 
     /**
-     * 配置 HTTP 代理 (仅 http/https; @ohos.net.http 只支持 HttpProxy, 不支持 SOCKS, 见 OhosHttpProvider)。
+     * 配置 HTTP 代理 (仅 http/https; @ohos.net.http 只支持 HttpProxy, 不支持 SOCKS, 见 NativeHttpProvider)。
      *
      * 代理账号密码经 HttpRequestPayload 透传给 ArkTS @ohos.net.http HttpProxy (API 12+, 原生支持认证)。
      */

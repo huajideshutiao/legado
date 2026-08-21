@@ -17,11 +17,12 @@ import io.legado.app.help.book.registerNativeLocalBookLocator
 import io.legado.app.help.file.registerOhosAppFilesDir
 import io.legado.app.help.log.registerOhosAppLogHost
 import io.legado.app.help.file.registerNativeFileDownloader
-import io.legado.app.help.image.OhosBitmapProvider
+import io.legado.app.help.image.NativeBitmapProvider
+import io.legado.app.help.image.OhosImageOps
 import io.legado.app.help.image.registerOhosBookImageLoader
 import io.legado.app.help.http.registerDefaultOhosCookieStoreProvider
 import io.legado.app.help.http.registerOhosBackstageWebView
-import io.legado.app.help.http.registerOhosHttpProvider
+import io.legado.app.help.http.registerNativeHttpProvider
 import io.legado.app.help.http.registerSharedCookieJarBridge
 import io.legado.app.help.notification.registerOhosNotificationProgress
 import io.legado.app.help.registerNativeDefaultDataResourceProvider
@@ -50,12 +51,12 @@ import io.legado.app.model.script.registerOhosJsEngines
 import io.legado.app.model.webBook.registerNativeWebBookProviders
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.napi.registerOhosNativeBridge
-import io.legado.app.ui.book.changesource.registerOhosChangeBookSourcePlatform
+import io.legado.app.ui.book.changesource.registerNativeChangeBookSourcePlatform
 import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.registerOhosScreenInfoProvider
 import kotlinx.serialization.decodeFromString
-import io.legado.app.ui.book.manage.registerOhosBookshelfManagePlatform
-import io.legado.app.ui.book.read.page.provider.registerOhosTextMeasurer
+import io.legado.app.ui.book.manage.registerNativeBookshelfManagePlatform
+import io.legado.app.ui.book.read.page.provider.registerNativeTextMeasurer
 import io.legado.app.ui.compose.platform.OhosPreferenceStoreProvider
 import io.legado.app.web.registerNativeWebServerPlatform
 import io.legado.app.web.utils.registerNativeWebAssetSource
@@ -83,7 +84,7 @@ import io.legado.app.web.utils.registerNativeWebStrings
  * 6. [registerOhosJsEngines] (JS 引擎 + OhosImageOps 真实像素操作) 在任何 JS eval / JsBindings 构造之前
  *    (JsBindings 构造时访问 JsBindingInjector.image, 未注册会 checkNotNull 失败;
  *     JsEngines.get() 未注册 provider 会抛 IllegalStateException)
- * 6.5 [BitmapProviders.register]([OhosBitmapProvider]) 在任何 CbzFile/EpubFile 封面提取调用之前
+ * 6.5 [BitmapProviders.register]([NativeBitmapProvider]) 在任何 CbzFile/EpubFile 封面提取调用之前
  *    (委托 OhosImageOps; 未注册时 BitmapProviders.get() 抛 IllegalStateException)
  * 7. [registerOhosSystemTtsEngine] 在 JsEngines 之后
  *    (与 desktop Main.kt 中 TtsEngineProvider.register 位置一致)
@@ -106,8 +107,8 @@ import io.legado.app.web.utils.registerNativeWebStrings
  *   split/stitch/crop/size 全部可用; 桥接未就绪时降级为字节持有, 不抛异常让 JS 调用链不崩)
  *
  * HTTP 层: 鸿蒙端基于 napi 桥接 @ohos.net.http 实现 KmpHttpClient/KmpHttpClientBuilder,
- * 通过 [registerOhosHttpProvider] 注册到 OkHttpClientProviders + OkHttpProxyClientProviders,
- * 与 desktop 端 OkHttp + OkHttpClientProviders 模式一致 (与 iOS 端 IosHttpProvider 同构)。
+ * 通过 [registerNativeHttpProvider] 注册到 OkHttpClientProviders + OkHttpProxyClientProviders,
+ * 与 desktop 端 OkHttp + OkHttpClientProviders 模式一致 (与 iOS 端共用 nativeMain NativeHttpProvider)。
  *
  * 模式参考 Android 端 `App.onCreate` / iOS 端 `registerIosProviders` /
  * desktop 端 `Main.kt` 中的 provider 注册序列。
@@ -155,8 +156,8 @@ fun registerOhosProviders() {
     // 2.5 HTTP provider (napi 桥接 @ohos.net.http, 注册到 OkHttpClientProviders + OkHttpProxyClientProviders)
     // 必须在数据库/书籍缓存之前: BookImageStorage/FileDownloader 取 OkHttpClient,
     // AnalyzeUrlCore 取 OkHttpProxyClient; 未注册时这些调用抛 IllegalStateException
-    // (与 iOS 端 registerIosHttpProvider 位置对齐: 文件目录 → 配置 → HTTP provider → 数据库)
-    registerOhosHttpProvider()
+    // (与 iOS 端位置对齐: 文件目录 → 配置 → HTTP provider → 数据库)
+    registerNativeHttpProvider()
 
     // 3. 数据库 provider (DatabaseDriver + AppDatabase + AppDb, 依赖 AppFilesDirs)
     // 与 desktop Main.kt 中 `DatabaseDriverProviders.register + AppDatabaseProviders.register + AppDbProviders.register` 三步对齐
@@ -212,7 +213,7 @@ fun registerOhosProviders() {
 
     // 6.5 BitmapProvider (CbzFile/EpubFile 封面提取用, 委托 OhosImageOps 的 PixelMap 解码/编码)
     // 必须在任何封面提取调用之前 (BitmapProviders 未注册时 get() 抛 IllegalStateException)
-    BitmapProviders.register(OhosBitmapProvider)
+    BitmapProviders.register(NativeBitmapProvider(OhosImageOps))
 
     // 6.5b 封面图片加载器 (OhosBookImageLoader: 复用 ImageBitmapLoader 图像管线;
     // 须在 AppDbProviders/OkHttpClientProviders 注册之后, 任何封面加载之前;
@@ -279,9 +280,9 @@ fun registerOhosProviders() {
     // 音频播控 Commander (OhosAudioPlayCommander, 与 ServiceLauncher 同级的播放编排入口)
     registerOhosAudioPlayCommanders()
     // 换源平台 provider (commonMain ChangeBookSourceViewModelShared 调用, 须在 WebBookProviders 之后)
-    registerOhosChangeBookSourcePlatform()
+    registerNativeChangeBookSourcePlatform()
     // 书架管理平台 provider (commonMain BookshelfManageViewModelShared 调用, 须在 WebBookProviders 之后)
-    registerOhosBookshelfManagePlatform()
+    registerNativeBookshelfManagePlatform()
     // 阅读编排平台钩子 (朗读/缓存服务运行态暂缺, 本地 txt 分章缓存清理真实;
     // 对照 iOS registerIosReadBookPlatform, 未注册时默认空实现行为一致)
     registerOhosReadBookPlatform()
@@ -291,7 +292,7 @@ fun registerOhosProviders() {
 
     // 8.8 阅读排版真实字形度量器 (Skia Font 度量, 取代 SimpleTextMeasurer 等宽近似;
     // 须在任何章节排版之前, 依赖 skiko 随 compose ui 已就绪)
-    registerOhosTextMeasurer()
+    registerNativeTextMeasurer()
 
     // 9. Web 服务 provider (WebAssetSource + WebStrings + WebServerPlatform, iOS/鸿蒙共用 Ktor server 壳)
     // 仅注册平台实现, 不启动服务 (WebServerManager.start 由用户操作触发)

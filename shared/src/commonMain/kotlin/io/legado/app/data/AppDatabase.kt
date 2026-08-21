@@ -6,6 +6,7 @@ import androidx.room3.ConstructedBy
 import androidx.room3.Database
 import androidx.room3.RoomDatabase
 import androidx.room3.RoomDatabaseConstructor
+import androidx.room3.TypeConverters
 import io.legado.app.data.dao.BookChapterDao
 import io.legado.app.data.dao.BookDao
 import io.legado.app.data.dao.BookGroupDao
@@ -70,6 +71,9 @@ import io.legado.app.data.entities.TxtTocRule
 // 详见 Book.kt 顶部注释)。缺此注册会导致 iOS/ohos KSP 报 ReadConfig 类型链解析失败。
 // 鸿蒙 fork (alpha01 API) KSP 只认 TypeConverters 旧名, 与 ColumnTypeConverters 并存双注册。
 @ColumnTypeConverters(Book.Converters::class)
+// 旧名同步注册: 缺此注册时 fork KSP 看不到 DATABASE 作用域转换链, DAO 里以 ReadConfig 作
+// @Query 参数的 PATCH 方法 (如 updateReadConfig) 会报"参数类型无法转换为数据库列"
+@TypeConverters(Book.Converters::class)
 // 非 Android 平台 (iOS/desktop/鸿蒙) Room3 要求显式 @ConstructedBy 提供实例工厂
 @ConstructedBy(AppDatabaseConstructor::class)
 abstract class AppDatabase : RoomDatabase() {

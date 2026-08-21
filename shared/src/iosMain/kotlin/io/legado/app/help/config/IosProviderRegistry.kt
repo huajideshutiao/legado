@@ -14,11 +14,12 @@ import io.legado.app.help.book.registerNativeContentProcessorAccessor
 import io.legado.app.help.file.registerIosAppFilesDir
 import io.legado.app.help.file.registerNativeFileDownloader
 import io.legado.app.help.http.registerIosBackstageWebView
-import io.legado.app.help.image.IosBitmapProvider
+import io.legado.app.help.image.IosImageOps
+import io.legado.app.help.image.NativeBitmapProvider
 import io.legado.app.help.image.registerIosBookImageLoader
 import io.legado.app.help.log.registerIosAppLogHost
 import io.legado.app.help.http.registerDefaultIosCookieStoreProvider
-import io.legado.app.help.http.registerIosHttpProvider
+import io.legado.app.help.http.registerNativeHttpProvider
 import io.legado.app.help.http.registerSharedCookieJarBridge
 import io.legado.app.help.notification.registerIosNotificationProgress
 import io.legado.app.help.PinnedExploreHelp
@@ -46,9 +47,9 @@ import io.legado.app.model.registerIosReadBookPlatform
 import io.legado.app.model.registerNativeCacheBookCallback
 import io.legado.app.model.script.registerIosJsEngines
 import io.legado.app.model.webBook.registerNativeWebBookProviders
-import io.legado.app.ui.book.changesource.registerIosChangeBookSourcePlatform
-import io.legado.app.ui.book.manage.registerIosBookshelfManagePlatform
-import io.legado.app.ui.book.read.page.provider.registerIosTextMeasurer
+import io.legado.app.ui.book.changesource.registerNativeChangeBookSourcePlatform
+import io.legado.app.ui.book.manage.registerNativeBookshelfManagePlatform
+import io.legado.app.ui.book.read.page.provider.registerNativeTextMeasurer
 import io.legado.app.ui.compose.platform.IosPreferenceStoreProvider
 import io.legado.app.utils.registerIosScreenInfoProvider
 import io.legado.app.web.registerNativeWebServerPlatform
@@ -65,7 +66,7 @@ import platform.UIKit.UIDevice
  * 注册顺序约束 (与 desktop Main.kt / registerOhosProviders 对齐):
  * 1. registerIosAppFilesDir 最先 (其他 provider 持久化目录依赖 AppFilesDirs)
  * 2. registerIosPreferenceProvider 在 AppConfigAccessor 之前 (委托 PreferenceProvider)
- * 3. registerIosHttpProvider 在数据库/书籍缓存之前
+ * 3. registerNativeHttpProvider 在数据库/书籍缓存之前
  * 4. registerIosDatabaseDriver / BookStorage / BookImageStorage / LocalBookLocator 在文件目录之后
  *    (路径从 AppFilesDirs 派生)
  * 5. AppDbAccessor / BookHelpAccessor / SourceHelpAccessor / SourceCacheProvider /
@@ -119,7 +120,7 @@ fun registerIosProviders() {
     // 3. HTTP provider (Ktor CIO 包装, 注册到 OkHttpClientProviders + OkHttpProxyClientProviders)
     // 必须在数据库/书籍缓存之前: BookImageStorage/FileDownloader/IosBookCover 取 OkHttpClient,
     // AnalyzeUrlCore 取 OkHttpProxyClient; 未注册时这些调用抛 IllegalStateException
-    registerIosHttpProvider()
+    registerNativeHttpProvider()
     // 注册业务层 CookieStoreProvider (commonMain SharedCookieStore, Room cookieDao 持久化)
     // 与 desktop registerDefaultJvmCookieStoreProvider / app registerAndroidCookieStoreProvider 对齐
     registerDefaultIosCookieStoreProvider()
@@ -128,7 +129,7 @@ fun registerIosProviders() {
     registerSharedCookieJarBridge()
 
     // 3.5 Coil3 图片加载 (BookImageLoaders + SingletonImageLoader, 对齐 app 端 App.onCreate 的
-    // registerAndroidBookImageLoader + setSafe): 网络后端复用 IosHttpProvider 的 Ktor client,
+    // registerAndroidBookImageLoader + setSafe): 网络后端复用 NativeHttpProvider 的 Ktor client,
     // 磁盘缓存 {cacheDir}/image_cache; ImageLoader lazy 构建, 注册本身不触发网络栈/文件系统读取
     registerIosBookImageLoader()
 
@@ -188,7 +189,7 @@ fun registerIosProviders() {
 
     // 7.5 BitmapProvider (CbzFile/EpubFile 封面提取用, 委托 IosImageOps 的 UIImage 解码/编码)
     // 必须在任何封面提取调用之前 (BitmapProviders 未注册时 get() 抛 IllegalStateException)
-    BitmapProviders.register(IosBitmapProvider)
+    BitmapProviders.register(NativeBitmapProvider(IosImageOps))
 
     // 7.6 本地书 accessor (FileBookProviders: epub 走 nativeMain EpubFile, txt/pdf/cbz 明确抛异常)
     // 须在 BookStorage/LocalBookLocator/BitmapProviders 之后, 任何 FileBook 调用之前
@@ -226,13 +227,13 @@ fun registerIosProviders() {
     // 音频播控 Commander (IosAudioPlayCommander, 与 ServiceLauncher 同级的播放编排入口)
     registerIosAudioPlayCommanders()
     // 换源平台 provider (commonMain ChangeBookSourceViewModelShared 调用, 须在 WebBookProviders 之后)
-    registerIosChangeBookSourcePlatform()
+    registerNativeChangeBookSourcePlatform()
     // 书架管理平台 provider (commonMain BookshelfManageViewModelShared 调用, 须在 WebBookProviders 之后)
-    registerIosBookshelfManagePlatform()
+    registerNativeBookshelfManagePlatform()
 
     // 9.5 阅读排版真实字形度量器 (Skia Font 度量, 取代 SimpleTextMeasurer 等宽近似;
     // 须在任何章节排版之前, 依赖 skiko 随 compose ui 已就绪)
-    registerIosTextMeasurer()
+    registerNativeTextMeasurer()
 
     // 10. Web 服务 provider (WebAssetSource + WebStrings + WebServerPlatform, iOS/鸿蒙共用 Ktor server 壳)
     // 仅注册平台实现, 不启动服务 (WebServerManager.start 由用户操作触发)

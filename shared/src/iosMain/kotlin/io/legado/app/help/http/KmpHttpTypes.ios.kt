@@ -205,7 +205,7 @@ actual class KmpHttpClientBuilder actual constructor() {
     }
 
     /**
-     * 配置 HTTP 代理 (仅 http/https; Ktor CIO 引擎不支持 SOCKS, 见 IosHttpProvider)。
+     * 配置 HTTP 代理 (仅 http/https; Ktor CIO 引擎不支持 SOCKS, 见 NativeHttpProvider)。
      *
      * 认证: CIO 无 CONNECT 级认证 API, 由 [KmpHttpClient.proxyAuthHeader] 在请求上携带
      * Proxy-Authorization 头 (Ktor CIO startTunnel 会把该头透传到 CONNECT 隧道)。

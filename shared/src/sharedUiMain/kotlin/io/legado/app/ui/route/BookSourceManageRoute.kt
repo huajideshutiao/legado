@@ -20,6 +20,7 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.showSourceLogin
 import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.help.toast.Toasters
+import io.legado.app.model.Debug
 import io.legado.app.ui.association.ImportBookSourceItemsDialog
 import io.legado.app.ui.association.ImportBookSourceViewModelShared
 import io.legado.app.ui.book.source.BookSourceListCallbacks
@@ -185,6 +186,16 @@ fun BookSourceManageRoute(
                     }
                 }
             }
+        }
+    }
+
+    // 校验中重进本页时恢复 (对照 app 端 onActivityCreated 末尾 resumeCheckSource:
+    // if (!Debug.isChecking) return 后 keepScreenOn + CheckSource.resume)。
+    // 必须排在上面两个 collect 之后: FlowBus replay=0, 订阅要先于 resume 重发的进度事件;
+    // 进度条由该事件点亮 (对照原版 checkSourceProgressView 默认 gone, 由 CHECK_SOURCE 置 visible)
+    LaunchedEffect(Unit) {
+        if (Debug.isChecking) {
+            PlatformCapabilityProviders.getOrNull()?.resumeCheckSource()
         }
     }
 

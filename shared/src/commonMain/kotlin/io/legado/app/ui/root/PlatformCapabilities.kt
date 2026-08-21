@@ -429,6 +429,13 @@ interface PlatformCapabilities {
     /** 取消书源校验 (对照 cancelCheckSource / CheckSource.stop + Debug.finishChecking) */
     fun cancelCheckSource() = unsupported("取消书源校验")
 
+    /**
+     * 校验中重进书源管理页时恢复界面态 (对照 resumeCheckSource: keepScreenOn + CheckSource.resume)。
+     * 调用前提由路由用 [io.legado.app.model.Debug.isChecking] 判定。
+     * 桌面/iOS/鸿蒙的校验跑在进程级协程域, 无通知/跨进程边界可恢复, 默认空实现。
+     */
+    fun resumeCheckSource() {}
+
     /** 批量加入分组 (对照 selectionAddToGroups, 含 alert 输入分组名) */
     fun selectionAddToGroups(selection: List<BookSourcePart>) = unsupported("书源加入分组")
 

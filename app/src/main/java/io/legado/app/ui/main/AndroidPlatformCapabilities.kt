@@ -168,6 +168,7 @@ import io.legado.app.utils.getClipText
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.isPad
 import io.legado.app.utils.isUri
+import io.legado.app.utils.keepScreenOn
 import io.legado.app.utils.list
 import io.legado.app.utils.openFileUri
 import io.legado.app.utils.openInputStream
@@ -856,8 +857,23 @@ class AndroidPlatformCapabilities(
 
     // ===== webFile 下载导入链路 (对照 BookInfoViewModel + BookInfoActivity) =====
 
-    // 对照 BookInfoViewModel.uploadBook
+    // 对照 BookInfoActivity.uploadBook: 远端已有同名书时先确认, 否则误触会覆盖远端且无法撤销
     override fun uploadBook(book: Book, success: (() -> Unit)?) {
+        if (book.getRemoteUrl() == null) {
+            doUploadBook(book, success)
+            return
+        }
+        activity.alert(
+            title = androidAppString("draw"),
+            message = androidAppString("sure_upload"),
+        ) {
+            okButton { doUploadBook(book, success) }
+            cancelButton()
+        }
+    }
+
+    // 对照 BookInfoViewModel.uploadBook
+    private fun doUploadBook(book: Book, success: (() -> Unit)?) {
         activity.lifecycleScope.launch(IO) {
             try {
                 val bookWebDav = AppWebDav.defaultBookWebDav
@@ -1129,13 +1145,15 @@ class AndroidPlatformCapabilities(
             IntentData.chapterList = chapters
             IntentData.book = book
             book.removeType(BookType.notShelf)
-            appDb.bookChapterDao.delByBook(book.bookUrl)
-            appDb.bookChapterDao.insert(*chapters.toTypedArray())
+            // 先落书再删旧目录 (对照原版 loadChapterList: update(book) → delByBook → insert);
+            // 反序会让并发读书在删章后 update 前看到空目录
             if (appDb.bookDao.has(book.bookUrl)) {
                 appDb.bookDao.update(book)
             } else {
                 appDb.bookDao.insert(book)
             }
+            appDb.bookChapterDao.delByBook(book.bookUrl)
+            appDb.bookChapterDao.insert(*chapters.toTypedArray())
         } catch (e: Throwable) {
             AppLog.put("LoadChapterListError\n${e.localizedMessage}", e, true)
         }
@@ -1619,6 +1637,8 @@ class AndroidPlatformCapabilities(
     }
 
     // 对照 BookSourceActivity.menu_export_selection: saveToFile + EXPORT 文件选择器
+    // 排序固定 Default 是因为 PlatformCapabilities 接口只透传 sortAscending 没有 sort,
+    // 与原版 menu_export_selection 传当前 sort 不一致 (补 sort 需同时改接口与 4 端 override)
     override fun exportBookSourceSelection(
         selection: List<BookSourcePart>,
         allCount: Int,
@@ -1636,6 +1656,8 @@ class AndroidPlatformCapabilities(
     }
 
     // 对照 BookSourceActivity.menu_share_source: saveToFile + share
+    // 排序固定 Default 同 exportBookSourceSelection: 接口未透传 sort, 与原版 menu_share_source
+    // 传当前 sort 不一致
     override fun shareBookSourceSelection(
         selection: List<BookSourcePart>,
         allCount: Int,
@@ -1658,6 +1680,15 @@ class AndroidPlatformCapabilities(
         activity.alert(androidAppString("search_book_key")) {
             val getKey = editTextView(hint = "search word", text = CheckSource.keyword)
             okButton {
+                // 校验可能持续数十秒, 期间保持亮屏 (对照原版 checkSource okButton 首行 keepScreenOn(true))
+                activity.keepScreenOn(true)
+                // 对照原版 observeEvent(CHECK_SOURCE_DONE) { keepScreenOn(false) };
+                // 该事件由 CheckSourceService.onDestroy 发出, 校验完成与手动取消都会走到。
+                // 先订阅再 start, 避免校验秒失败时事件早于订阅导致常亮不解除
+                activity.lifecycleScope.launch {
+                    FlowBus.with(EventBus.CHECK_SOURCE_DONE).first()
+                    activity.keepScreenOn(false)
+                }
                 getKey().takeIf { it.isNotEmpty() }?.let { CheckSource.keyword = it }
                 CheckSource.start(activity, selection)
                 val firstItem = selection.firstOrNull()
@@ -1673,6 +1704,19 @@ class AndroidPlatformCapabilities(
             }
             cancelButton()
         }
+    }
+
+    // 对照 BookSourceActivity.resumeCheckSource: 校验中重进书源管理页时恢复常亮, 并让 Service
+    // 重发一次进度事件 (IntentAction.resume → upNotification → postEvent(CHECK_SOURCE)) 点亮进度条。
+    // "是否校验中" 由路由按 Debug.isChecking 判定 (对照原版 if (!Debug.isChecking) return)
+    override fun resumeCheckSource() {
+        activity.keepScreenOn(true)
+        // 常亮解除时机同 checkBookSource: 先订阅再 resume (FlowBus replay=0)
+        activity.lifecycleScope.launch {
+            FlowBus.with(EventBus.CHECK_SOURCE_DONE).first()
+            activity.keepScreenOn(false)
+        }
+        CheckSource.resume(activity)
     }
 
     // ===== 书源编辑平台能力: 对照 BookSourceEditActivity 同名方法 =====

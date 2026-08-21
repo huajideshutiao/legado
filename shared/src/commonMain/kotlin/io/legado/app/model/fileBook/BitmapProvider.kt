@@ -16,8 +16,8 @@ import kotlin.concurrent.Volatile
  *   在 `App.onCreate` 经 [BitmapProviders.register] 注入。
  * - **Desktop (desktop)**: `DesktopBitmapProvider` 用 `javax.imageio.ImageIO`
  *   实现, 在 `Main.kt` 注入。
- * - **iOS / 鸿蒙**: `IosBitmapProvider` (UIImage) / `OhosBitmapProvider`,
- *   在各自 ProviderRegistry 注册。
+ * - **iOS / 鸿蒙**: 共用 `NativeBitmapProvider`, 构造传入平台 `ImageOps`
+ *   (iOS UIImage / 鸿蒙 PixelMap), 在各自 ProviderRegistry 注册。
  *
  * 模式参考 [io.legado.app.help.book.BookHelpProviders] /
  * [io.legado.app.help.book.BookStorageProviders]。

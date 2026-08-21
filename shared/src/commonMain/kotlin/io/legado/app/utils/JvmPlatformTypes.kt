@@ -53,7 +53,7 @@ expect abstract class InputStream {
 // 的 outFile 参数), 不在 commonMain 构造或调用 File 方法。显式声明 (path: String) 构造器以匹配
 // java.io.File(String) (java.io.File 无无参构造器, 隐式 no-arg expect 会与 typealias 冲突)。
 // jvmAndAndroidMain actual typealias 到 java.io.File (带出全部构造器); iOS/鸿蒙 actual 仅持有
-// path 字段 (Ios/OhosBitmapProvider 经 path 转 kotlin.io.File 做真实文件写入, 此类型不需文件操作)。
+// path 字段 (NativeBitmapProvider 经 path 转 kotlin.io.File 做真实文件写入, 此类型不需文件操作)。
 expect class File(path: String)
 
 expect interface Closeable {

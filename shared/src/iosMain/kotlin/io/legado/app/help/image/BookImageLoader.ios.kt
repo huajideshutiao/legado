@@ -29,7 +29,7 @@ import okio.buffer
  * jvmMain BookImageLoader.jvm.kt, 网络后端差异: OkHttp → Ktor3)。
  *
  * - ImageLoader 用 Coil3 + Ktor3 网络后端 ([KtorNetworkFetcherFactory]),
- *   HttpClient 复用 [io.legado.app.help.http.IosHttpProvider] 经 [OkHttpClientProviders]
+ *   HttpClient 复用 [io.legado.app.help.http.NativeHttpProvider] 经 [OkHttpClientProviders]
  *   注册的 KmpHttpClient 内部 Ktor client (CIO engine, 继承 timeout 配置)。
  * - 书源防盗链 header: fetcher 层自动解析注入 (与 android/desktop 同语义, iOS 版见
  *   SourceImageHeaders.ios.kt; 缓存命中不解析, 取数据时跑 IO 线程)。
@@ -142,7 +142,7 @@ private fun buildIosBookImageLoader(): ImageLoader {
             add(
                 CoverDecodeFetcher.Factory(
                     SourceOriginHeaderFetcher.Factory(
-                        // 网络后端: 复用 IosHttpProvider 的 Ktor HttpClient (KmpHttpClient 内部
+                        // 网络后端: 复用 NativeHttpProvider 的 Ktor HttpClient (KmpHttpClient 内部
                         // client, internal 字段同模块可见; lambda 惰性求值, ImageLoader 构建时
                         // 不触发网络栈初始化)
                         KtorNetworkFetcherFactory(httpClient = {

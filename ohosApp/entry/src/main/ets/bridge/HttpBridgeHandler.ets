@@ -163,7 +163,7 @@ async function handleExecute(
     options.readTimeout = p.readTimeoutMs;
   }
   // 代理: @ohos.net.http 支持 HttpProxy (host/port/username/password, API 12+);
-  // SOCKS 代理 OS API 不支持 (与 Android Proxy.Type.SOCKS 行为差异, 见 OhosHttpProvider 注释)
+  // SOCKS 代理 OS API 不支持 (与 Android Proxy.Type.SOCKS 行为差异, 见 NativeHttpProvider 注释)
   if (p.proxyHost != null && p.proxyHost.length > 0 && p.proxyPort != null && p.proxyPort > 0) {
     const proxy: http.HttpProxy = {
       host: p.proxyHost,

@@ -81,6 +81,12 @@ class ContentProcessorShared(
      */
     val removeSameTitleCache: MutableSet<String> = mutableSetOf()
 
+    init {
+        // 注册到 BookHelpShared 的注册表, 让 setRemoveSameTitleMarker 翻转标记时能同步本实例缓存;
+        // 判据 getContent 读的是本 Set, 不注册则各端实例永不感知新状态 ("去重"菜单点了不生效)
+        BookHelpShared.registerRemoveSameTitleCache(bookName, bookOrigin, removeSameTitleCache)
+    }
+
     // @Volatile + 不可变 List 替代 CopyOnWriteArrayList (commonMain 无 COW)
     @Volatile
     private var titleReplaceRules: List<ReplaceRule> = emptyList()

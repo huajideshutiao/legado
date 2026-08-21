@@ -285,7 +285,11 @@ fun ReadViewComposable(
             // 列级命中与九宫格分区共用同一坐标系（对照原版 contentTextView 被
             // vwStatusBar/vwNavigationBar/llHeader/llFooter 挤小后的 bounds）
             val contentY = y - latestSystemBarTopPx - latestHeaderTipPx
-            if (dispatchColumnClick(viewModel, tapScope, x, contentY)) {
+            if (dispatchColumnClick(
+                    viewModel, tapScope, x, contentY,
+                    latestDelegate is ScrollPageDelegateCompose,
+                )
+            ) {
                 return@onTapAt
             }
             // 动画被打断后点击中心格忽略（对照原版 onSingleTapUp 的
@@ -328,7 +332,7 @@ fun ReadViewComposable(
             val contentY = y - latestSystemBarTopPx - latestHeaderTipPx
             // 三页相对命中（对照原版 ContentTextView.longPress → touch 遍历三页）：
             // 滚动模式视口内可能显示下一页的行，长按命中同样按三页连排坐标系折算
-            val hit = hitColumn(viewModel, x, contentY)
+            val hit = hitColumn(viewModel, x, contentY, latestDelegate is ScrollPageDelegateCompose)
             if (hit != null && hit.column is TextColumn) {
                 if (selection.longPressStart(
                         hit.page, x, contentY, hit.relativeOffset, latestPageWidth
@@ -881,8 +885,9 @@ private fun dispatchColumnClick(
     scope: kotlinx.coroutines.CoroutineScope,
     x: Float,
     y: Float,
+    isScroll: Boolean,
 ): Boolean {
-    val hit = hitColumn(viewModel, x, y) ?: return false
+    val hit = hitColumn(viewModel, x, y, isScroll) ?: return false
     val column = hit.column
     when (column) {
         is ReviewColumn -> {
@@ -951,6 +956,7 @@ private fun hitColumn(
     viewModel: ReadBookViewModelShared,
     x: Float,
     y: Float,
+    isScroll: Boolean,
 ): ColumnHit? {
     val pages = arrayOf(
         viewModel.curTextPage.value,
@@ -962,7 +968,13 @@ private fun hitColumn(
     var rel = offset
     for (i in pages.indices) {
         val page = pages[i] ?: continue
-        if (i > 0 && rel >= visibleHeight) return null
+        if (i > 0) {
+            // 非滚动模式只有当前页在屏 (对照原版 touch 的 `if (!callBack.isScroll) return`):
+            // 缺这道守卫时, 当前页没填满屏幕 (如章末页) 会让下一页的行按 rel 偏移落进空白区,
+            // 长按/单击命中到未绘制的文字, 表现为"空白处能选中看不见的文字"
+            if (!isScroll) return null
+            if (rel >= visibleHeight) return null
+        }
         for (line in page.lines) {
             if (!line.isTouch(x, y, rel)) continue
             for (column in line.columns) {
