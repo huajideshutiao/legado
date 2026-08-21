@@ -17,6 +17,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.image_cover_default
+import org.jetbrains.compose.resources.imageResource
 import kotlin.math.roundToInt
 
 /**
@@ -121,6 +124,53 @@ fun NinePatchImageOrImage(
     }
 }
 
+/**
+ * 内置默认封面 (`image_cover_default.jpg`, 已预先裁成 3:4) 按九宫格拉伸绘制。
+ *
+ * 资源入库前已裁好, 运行期不做任何裁剪; 拉伸区取自历史 `image_cover_default.9.png` 的标记框
+ * (内容区 300×400 上的 x95..146 / y55..331, 已逐字节复核过该 .9 资源正是本 jpg 同一裁剪),
+ * 按比例映射到实际像素尺寸, 故换图只要仍是同一构图即可, 不必带标记边框。
+ */
+@Composable
+fun DefaultCoverNineImage(
+    modifier: Modifier,
+    contentDescription: String? = null,
+) {
+    val bitmap = imageResource(Res.drawable.image_cover_default)
+    val semanticsModifier = if (contentDescription != null) {
+        modifier.semantics { this.contentDescription = contentDescription }
+    } else modifier
+    Canvas(semanticsModifier) {
+        val dw = size.width.roundToInt()
+        val dh = size.height.roundToInt()
+        if (dw <= 0 || dh <= 0) return@Canvas
+        val bw = bitmap.width
+        val bh = bitmap.height
+        if (bw <= 0 || bh <= 0) return@Canvas
+        val stretchX = (DEFAULT_COVER_STRETCH_X.first * bw).roundToInt()..
+            (DEFAULT_COVER_STRETCH_X.second * bw).roundToInt()
+        val stretchY = (DEFAULT_COVER_STRETCH_Y.first * bh).roundToInt()..
+            (DEFAULT_COVER_STRETCH_Y.second * bh).roundToInt()
+        drawNineSlice(
+            bitmap = bitmap,
+            srcLeft = 0,
+            srcTop = 0,
+            srcW = bw,
+            srcH = bh,
+            stretchX = stretchX,
+            stretchY = stretchY,
+            dw = dw,
+            dh = dh,
+        )
+    }
+}
+
+/** 默认封面横向可拉伸区占图宽的比例 (历史 .9 标记框 x95..146 / 内容宽 300)。 */
+private val DEFAULT_COVER_STRETCH_X = 95f / 300f to 146f / 300f
+
+/** 默认封面纵向可拉伸区占图高的比例 (历史 .9 标记框 y55..331 / 内容高 400)。 */
+private val DEFAULT_COVER_STRETCH_Y = 55f / 400f to 331f / 400f
+
 /** 是否不透明黑 (alpha=255 且 RGB=0, Android .9 标记像素判定)。 */
 private fun isBlack(c: Color): Boolean =
     c.alpha == 1f && c.red == 0f && c.green == 0f && c.blue == 0f
@@ -167,22 +217,51 @@ private fun DrawScope.drawNinePatch(
     dw: Int,
     dh: Int,
 ) {
-    val srcW = bitmap.width - 2
-    val srcH = bitmap.height - 2
+    // 剔除 1px 标记边框后即内容区, 拉伸区已是内容区坐标
+    drawNineSlice(
+        bitmap = bitmap,
+        srcLeft = 1,
+        srcTop = 1,
+        srcW = bitmap.width - 2,
+        srcH = bitmap.height - 2,
+        stretchX = np.stretchX,
+        stretchY = np.stretchY,
+        dw = dw,
+        dh = dh,
+    )
+}
+
+/**
+ * 九宫格绘制核心: 把 [bitmap] 的 ([srcLeft], [srcTop], [srcW]×[srcH]) 源区按
+ * [stretchX]/[stretchY] (源区内坐标, 含端点) 切九块画到 [dw]×[dh]。
+ *
+ * 与标记框无关, 故同时服务"带 1px 标记框的 .9 图"与"运行期裁剪 + 写死拉伸区的普通图"。
+ */
+private fun DrawScope.drawNineSlice(
+    bitmap: ImageBitmap,
+    srcLeft: Int,
+    srcTop: Int,
+    srcW: Int,
+    srcH: Int,
+    stretchX: IntRange,
+    stretchY: IntRange,
+    dw: Int,
+    dh: Int,
+) {
     if (srcW <= 0 || srcH <= 0) return
-    val xStart = np.stretchX.first
-    val xEnd = np.stretchX.last
-    val yStart = np.stretchY.first
-    val yEnd = np.stretchY.last
+    val xStart = stretchX.first
+    val xEnd = stretchX.last
+    val yStart = stretchY.first
+    val yEnd = stretchY.last
     val leftW = xStart
     val rightW = (srcW - 1) - xEnd
     val topH = yStart
     val bottomH = (srcH - 1) - yEnd
     val (dl, dc, dr) = distribute(dw, leftW, rightW)
     val (dt, dm, db) = distribute(dh, topH, bottomH)
-    // 源区三列起点 (内容区坐标 + 1px 边框偏移)
-    val sx = intArrayOf(1, 1 + xStart, 1 + xEnd + 1)
-    val sy = intArrayOf(1, 1 + yStart, 1 + yEnd + 1)
+    // 源区三列起点 (源区内坐标 + 源区左上偏移)
+    val sx = intArrayOf(srcLeft, srcLeft + xStart, srcLeft + xEnd + 1)
+    val sy = intArrayOf(srcTop, srcTop + yStart, srcTop + yEnd + 1)
     // 源区三段宽高
     val sw = intArrayOf(leftW, xEnd - xStart + 1, rightW)
     val sh = intArrayOf(topH, yEnd - yStart + 1, bottomH)

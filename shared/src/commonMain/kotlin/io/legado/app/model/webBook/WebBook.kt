@@ -147,17 +147,25 @@ object WebBook {
             ?: AppDbProviders.get().bookSourceDao.hasBookUrlPattern().find { source ->
             bookUrl.matches(source.bookUrlPattern!!.toRegex())
         }
-        try {
-            IntentDataProviders.get().setSource(source)
-            val book = Book(
-                bookUrl = bookUrl,
-                type = source!!.getBookType(),
-                origin = source.bookSourceUrl,
-                originName = source.bookSourceName
-            )
-            return getBookInfoAwait(source, book)
-        } catch (_: Exception) {
+        // 原版把"没匹配到书源"和"抓取失败"一起裹进 catch-all, 两者都报"未找到匹配书源",
+        // 且 source 为 null 时是 `source!!` 抛 NPE 被顺带吞掉。这里把两种失败分开:
+        // 真没书源仍报原文案, 抓取失败上报真实原因, 否则用户看到的提示与实际问题无关。
+        if (source == null) {
+            AppLog.put("添加网址未匹配到书源 $bookUrl (baseUrl=$baseUrl)")
             throw NoStackTraceException("未找到匹配书源")
+        }
+        IntentDataProviders.get().setSource(source)
+        val book = Book(
+            bookUrl = bookUrl,
+            type = source.getBookType(),
+            origin = source.bookSourceUrl,
+            originName = source.bookSourceName
+        )
+        try {
+            return getBookInfoAwait(source, book)
+        } catch (e: Exception) {
+            AppLog.put("添加网址抓取失败 $bookUrl 书源=${source.bookSourceName}", e)
+            throw e
         }
     }
 

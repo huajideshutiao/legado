@@ -39,6 +39,7 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.model.BookCoverShared
 import io.legado.app.model.BookCoverShared.CoverRatio
 import io.legado.app.model.BookCoverShared.DefaultCoverEntry
+import io.legado.app.ui.compose.component.DefaultCoverNineImage
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppDialog
@@ -63,12 +64,10 @@ import legado.shared.generated.resources.add
 import legado.shared.generated.resources.day
 import legado.shared.generated.resources.default_cover
 import legado.shared.generated.resources.delete
-import legado.shared.generated.resources.image_cover_default
 import legado.shared.generated.resources.night
 import legado.shared.generated.resources.no
 import legado.shared.generated.resources.sure_del
 import legado.shared.generated.resources.yes
-import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -240,12 +239,7 @@ private fun DefaultCoverTile(entry: DefaultCoverEntry, onClick: () -> Unit) {
             )
         } else {
             // 加载中/未注册 loader/读盘失败: 内置默认封面图占位 (对照原版 loadThumb 失败回落)
-            Image(
-                painter = painterResource(Res.drawable.image_cover_default),
-                contentDescription = null,
-                contentScale = ContentScale.FillBounds,
-                modifier = Modifier.fillMaxSize(),
-            )
+            DefaultCoverNineImage(modifier = Modifier.fillMaxSize())
         }
     }
 }

@@ -65,6 +65,7 @@ import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.model.BookCoverShared
 import io.legado.app.model.BookCoverShared.CoverRatio
 import io.legado.app.model.BookCoverShared.DefaultCoverEntry
+import io.legado.app.ui.compose.component.DefaultCoverNineImage
 import io.legado.app.ui.compose.component.AppScrollTabRow
 import io.legado.app.ui.compose.component.NinePatchImageOrImage
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
@@ -84,7 +85,6 @@ import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.bookshelf
 import legado.shared.generated.resources.image_cover_default
-import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -757,12 +757,10 @@ fun SharedBookCover(
                 modifier = Modifier.matchParentSize(),
             )
         } else {
-            // 图集为空 / 读盘失败: 内置 image_cover_default (原 .9 图, 这里当普通图拉伸)
-            Image(
-                painter = painterResource(Res.drawable.image_cover_default),
-                contentDescription = book.name,
+            // 图集为空 / 读盘失败: 内置默认封面, 运行期 3:4 居中裁剪 + 九宫格拉伸 (四角不变形)
+            DefaultCoverNineImage(
                 modifier = Modifier.matchParentSize(),
-                contentScale = ContentScale.FillBounds,
+                contentDescription = book.name,
             )
         }
         CoverNameAuthorOverlay(

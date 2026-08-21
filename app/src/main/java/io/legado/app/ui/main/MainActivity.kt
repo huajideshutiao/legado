@@ -929,9 +929,11 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
                 finish()
                 block.resume(false)
             }
-            // 取消/返回键视为未同意, 不 finish (finish 仅发生在明确点拒绝时)
+            // 取消/返回键视为未同意, 不 finish (finish 仅发生在明确点拒绝时)。
+            // 按钮点击后对话框同样会 dismiss, 此时 continuation 已被按钮 resume 过,
+            // 不加守卫会二次 resume 抛 IllegalStateException: Already resumed
             onDismiss {
-                block.resume(false)
+                if (block.isActive) block.resume(false)
             }
         }
     }

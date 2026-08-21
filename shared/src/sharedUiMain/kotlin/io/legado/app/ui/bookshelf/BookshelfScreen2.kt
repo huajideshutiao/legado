@@ -30,6 +30,7 @@ import io.legado.app.help.image.BookImageLoaders
 import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.model.BookCoverShared
 import io.legado.app.model.BookCoverShared.CoverRatio
+import io.legado.app.ui.compose.component.DefaultCoverNineImage
 import io.legado.app.ui.compose.component.NinePatchImageOrImage
 import io.legado.app.ui.compose.platform.PlatformBackHandler
 import io.legado.app.ui.compose.theme.AppTheme
@@ -39,7 +40,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.bookshelf
 import legado.shared.generated.resources.image_cover_default
-import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -248,11 +248,9 @@ fun SharedGroupCover(
                 modifier = Modifier.matchParentSize(),
             )
         } else {
-            Image(
-                painter = painterResource(Res.drawable.image_cover_default),
-                contentDescription = group.groupName,
+            DefaultCoverNineImage(
                 modifier = Modifier.matchParentSize(),
-                contentScale = ContentScale.FillBounds,
+                contentDescription = group.groupName,
             )
         }
     }

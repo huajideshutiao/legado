@@ -11,7 +11,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.ReadRecordShow
 import io.legado.app.help.config.PreferenceProviders
@@ -22,6 +21,7 @@ import io.legado.app.ui.about.ReadRecordUiEvent
 import io.legado.app.ui.about.SharedMonthHeatMap
 import io.legado.app.ui.bookshelf.CoverNameAuthorOverlay
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
+import io.legado.app.ui.compose.component.DefaultCoverNineImage
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.theme.AppTheme
@@ -41,7 +41,6 @@ import legado.shared.generated.resources.image_cover_default
 import legado.shared.generated.resources.ok
 import legado.shared.generated.resources.sure_del
 import legado.shared.generated.resources.sure_del_any
-import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -70,11 +69,9 @@ private fun ReadRecordDefaultCover(name: String, author: String?, modifier: Modi
             .clip(DesignTokens.shapeSm)
             .background(AppTheme.colors.background),
     ) {
-        Image(
-            painter = painterResource(Res.drawable.image_cover_default),
-            contentDescription = name,
+        DefaultCoverNineImage(
             modifier = Modifier.matchParentSize(),
-            contentScale = ContentScale.FillBounds,
+            contentDescription = name,
         )
         CoverNameAuthorOverlay(
             name = name,
