@@ -95,14 +95,25 @@ fun rememberHighlightedCode(text: String, syntax: CodeSyntaxScheme): AnnotatedSt
     remember(text, syntax) { buildHighlightedCode(text, syntax.rules) }
 
 /**
+ * span 排序: start 升序, 同 start 时 end 降序 (与 `compareBy({ it.start }, { -it.end })` 等价)。
+ * 手写比较器避免 compareBy 的 Int 装箱 —— span 数千~上万时每次比较少两次装箱。
+ */
+private val CodeSpanOrder = Comparator<CodeSpan> { a, b ->
+    val byStart = a.start.compareTo(b.start)
+    if (byStart != 0) byStart else b.end.compareTo(a.end)
+}
+
+/**
  * 全 pattern 匹配汇总, 按 (start 升序, end 降序) 排序, 再顺序保留 `end > 已覆盖最大 end` 的 span。
  *
  * 去重规则 1:1 复刻 CodeView.highlightSyntax; [CodeTextField] 的增量着色也复用本函数
  * (只对变更区间所在行调用, 再平移回全文坐标)。
  */
 internal fun matchCodeSpans(text: String, rules: List<CodeSyntaxRule>): ArrayList<CodeSpan> {
-    val spans = ArrayList<CodeSpan>()
-    if (text.isEmpty()) return spans
+    if (text.isEmpty() || rules.isEmpty()) return ArrayList()
+    // 预估容量: operation 等单字符规则的 span 数与文本长度同阶 (50KB JSON 下数千~上万),
+    // 免去 ArrayList 反复扩容拷贝
+    val spans = ArrayList<CodeSpan>(text.length / 8 + 16)
     for (rule in rules) {
         for (m in rule.regex.findAll(text)) {
             val start = m.range.first
@@ -110,7 +121,7 @@ internal fun matchCodeSpans(text: String, rules: List<CodeSyntaxRule>): ArrayLis
             if (end > start) spans.add(CodeSpan(start, end, rule.color))
         }
     }
-    spans.sortWith(compareBy({ it.start }, { -it.end }))
+    spans.sortWith(CodeSpanOrder)
     val filtered = ArrayList<CodeSpan>(spans.size)
     var lastMaxEnd = -1
     for (span in spans) {

@@ -56,8 +56,9 @@ class BundledDatabaseDriver(
         )
             .setDriver(BundledSQLiteDriver())
             .setQueryCoroutineContext(Dispatchers.IO)
-            // 桌面端首启动空库即 version 86; schema 升级走 shared AppDatabase 的
-            // autoMigrations/显式 Migration (与 Android 端同源, Room KMP 同样生效)。
+            // 桌面端首启动空库即 version 86; autoMigrations 由 @Database 声明自动生效,
+            // 但手写 Migration (80..83) 必须显式注册, 与 app 端 AppDatabase.kt:46 同一份
+            .addMigrations(*DatabaseMigrations.migrations)
             // 迁移失败时 Room 显式抛 IllegalStateException, 不做静默破坏性重建:
             // 不能像原来那样 fallbackToDestructiveMigration —— 那是无条件 drop 全部表,
             // 下次 schema 变更即丢光书架/分组/阅读进度, 且静默无提示。

@@ -73,6 +73,11 @@ object AppTheme {
         val buttonShape: RoundedCornerShape = shapeDefault
         val inputShape: RoundedCornerShape = shapeSm
 
+        // 对话框尺寸占锚点 (桌面=主窗口, 移动端=屏幕) 的比例; 消费方见 AppDialogSizes。
+        // 高度 0.7 为全局统一值 (用户 2026-08-20 拍板), 新弹窗一律取这里而非自行乘系数
+        const val dialogWidthFraction: Float = 0.9f
+        const val dialogHeightFraction: Float = 0.7f
+
         // Arco 描边: thin/medium 对齐 arco_stroke_width_*, hairline 为极细描边
         val strokeHairline: Dp = 0.5.dp
         val strokeThin: Dp = 1.dp

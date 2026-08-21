@@ -2,8 +2,6 @@ package io.legado.app.ui.compose.platform
 
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.relocation.BringIntoViewRequester
@@ -225,25 +223,20 @@ expect fun rememberImeVisible(): Boolean
 expect fun rememberImeAnimating(): Boolean
 
 /**
- * ime 避让 padding: 键盘弹出动画期间逐帧跟随 ime insets (内容区平滑收缩, 与键盘滑入
- * 动画同步, 无跳变无空白), 收起动画期间立即归零 (对齐原版 KeyboardToolPop.onGlobalLayout
- * 键盘收起时 rootView padding 立刻归 0 不等动画)。
+ * 编辑页底部避让 padding (页面唯一来源, 页内不得再补第二份): 取 ime ∪ 导航条
+ * ([bottomSheetBottomInsets]), insets 在 measure 期读取, 逐帧跟随键盘动画且不触发重组。
  *
- * Android 15+ (targetSdk 35+ 强制 edge-to-edge) 窗口 frame 不随 IME 收缩, ime insets
- * 全量派发, 逐帧跟随是唯一避让路径 (对齐原版 onApplyWindowInsets 逐帧更新
- * initialPadding + onGlobalLayout setPadding 的平滑语义); Android 14- 窗口由系统
- * adjustResize 收缩 (系统动画同样平滑), 再消费 insets 会双重避让产生键盘上方空白 →
- * [shouldConsumeImeInsets] 为 false 时 no-op。非 Android 平台 ime 恒 0, 天然 no-op。
+ * 并集是还原原版语义: 原版 rootView=imeHeight 与 recyclerView/keyboardTool=
+ * navigationBarHeight ((systemBars-ime).coerceAtLeast(0)) 三份出自同一个
+ * WindowInsetsCompat, 合起来恒为 max(ime, systemBars) —— 全程只有一个时钟。导航条高度
+ * 即天然下限, 收起动画期 padding 平滑落到导航条高即止, 无需再判"是否收起中"。
  *
- * 与事件化实现 (动画第一帧瞬间垫满最终键盘高) 的差异: 事件化在键盘滑入前内容已跳到
- * 最终位置, 视觉为整页跳变 (上抬) + 键盘上方空白; 逐帧跟随与键盘动画同步, 无跳变。
+ * [shouldConsumeImeInsets] 为 false (Android 14-: 窗口由系统 resize 收缩且 DecorView
+ * 已消费 insets, 两个 inset 均为 0) 时 no-op。
  */
 @Composable
 fun Modifier.imeDismissPadding(): Modifier {
-    // 低版本窗口由系统 resize 收缩 (平滑), 无需也不应再消费 ime insets (双重避让)
+    // 低版本窗口由系统 resize 收缩, insets 已被 DecorView 消费, 无需屏内避让
     if (!shouldConsumeImeInsets()) return this
-    val hiding = rememberImeHiding()
-    // hiding 时 ime 归零动作已在系统动画第一帧生效 (source > target), 返回原 modifier;
-    // 否则逐帧跟随 ime 动画值 (insets 值变化由该 modifier 的 measure 机制驱动重测)
-    return if (hiding) this else this.windowInsetsPadding(WindowInsets.ime)
+    return this.windowInsetsPadding(bottomSheetBottomInsets())
 }

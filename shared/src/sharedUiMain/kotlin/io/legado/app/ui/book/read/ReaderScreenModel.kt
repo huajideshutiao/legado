@@ -590,16 +590,17 @@ class ReaderScreenModel(
             // 旧页（prev/next 流）残留的高亮在此清掉（只清 searchResult 列表内列，不动手动选区）
             clearSearchResult()
             isSelectingSearchResult = true
-            val start = PageSelPos(pos.lineIndex, pos.charIndex)
+            // 搜索跳转恒作用于当前页：pagePos 全传 0（对照原版 selectStartMoveIndex(0, ...)）
+            val start = PageSelPos(0, pos.lineIndex, pos.charIndex)
             val end = when (pos.addLine) {
-                0 -> PageSelPos(pos.lineIndex, pos.charIndex + query.length - 1)
-                1 -> PageSelPos(pos.lineIndex + 1, pos.charIndex2)
-                // 跨页命中：原版 selectEndMoveIndex(1, 0, charIndex2) 终点在下一页，
-                // 单页模型无法表达，降级为当前页末行末列——与原版横向翻页模式行为一致
-                // （终点在下一页时当前页起点→页尾全部 selected）；滚动模式差异见交付报告
+                0 -> PageSelPos(0, pos.lineIndex, pos.charIndex + query.length - 1)
+                1 -> PageSelPos(0, pos.lineIndex + 1, pos.charIndex2)
+                // 跨页命中：原版 selectEndMoveIndex(1, 0, charIndex2) 终点落在下一页，
+                // 这里仍降级为当前页末行末列——与原版横向翻页模式的观感一致（终点在下一页时
+                // 当前页从起点到页尾全部 selected），同时右手柄留在本页页尾而非滚出屏外
                 else -> {
                     if (page.lines.isEmpty()) return@skipToPage // 占位页无行不设选区
-                    PageSelPos(page.lines.lastIndex, page.lines.last().columns.lastIndex)
+                    PageSelPos(0, page.lines.lastIndex, page.lines.last().columns.lastIndex)
                 }
             }
             selection.selectRange(page, start, end, markSearchResult = true)

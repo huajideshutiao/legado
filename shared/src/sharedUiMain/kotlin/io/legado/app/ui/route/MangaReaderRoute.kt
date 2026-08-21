@@ -180,8 +180,6 @@ fun MangaReaderRoute(
     var showAutoPageSpeedDialog by remember { mutableStateOf(false) }
     // 点击区域配置 (对照 app 端 showDialogFragment<ClickActionConfigDialog>)
     var showClickRegionDialog by remember { mutableStateOf(false) }
-    // 发布输入弹窗 (对照原版 ReviewPostActivity 底部输入面板): 书籍级书评 (无回复预览)
-    var showPostDialog by remember { mutableStateOf(false) }
 
     MangaReaderScreenContent(
         bookName = state.bookName,
@@ -264,9 +262,7 @@ fun MangaReaderRoute(
         onOpenReview = {
             // 对照 Activity openReview: viewModel.openCommentDialog → ReviewListDialog(book, chapter, 0)
             val chapter = screenModel.currentChapter
-            if (!PlatformCapabilityProviders.get().showReviewListDialog(book, chapter, 0)) {
-                showPostDialog = true
-            }
+            PlatformCapabilityProviders.get().showReviewListDialog(book, chapter, 0)
         },
         preloadImage = screenModel.preloadImage,
         imageSlot = { url, modifier, horizontal, colorFilterConfig, grayEnabled, onLoadState, retryTick, onProgress ->
@@ -355,16 +351,6 @@ fun MangaReaderRoute(
             clickActionConfig = state.clickActionConfig,
             onConfirm = { screenModel.updateClickActionConfig(it) },
             onDismiss = { showClickRegionDialog = false },
-        )
-    }
-
-    // 发布输入弹窗 (对照原版 ReviewPostActivity 底部输入面板)
-    if (showPostDialog) {
-        ReviewPostDialogHost(
-            replyPreview = null,
-            // 原 push ReviewPost 无 resultKey/结果处理, 内容不提交, 保持等价
-            onPosted = { },
-            onDismiss = { showPostDialog = false },
         )
     }
 

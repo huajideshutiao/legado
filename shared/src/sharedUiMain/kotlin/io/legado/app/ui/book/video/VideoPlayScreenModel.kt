@@ -413,8 +413,7 @@ class VideoPlayScreenModel(
     fun onEditSource() = Unit
 
     /** 打开书评 (对照 Activity openReview: viewModel.openCommentDialog)。
-     *  Route 端弹 [io.legado.app.ui.route.ReviewPostDialogHost] 输入面板
-     *  (原 ReviewPost 整页路由已删除), 此处占位 */
+     *  Route 端经 PlatformCapabilities.showReviewListDialog 弹段评列表, 此处占位 */
     fun onOpenReview() = Unit
 
     /** 添加书签 (对照 Activity addBookmark: 取 player 真实位置 + createBookmark + 弹 BookmarkDialog)。

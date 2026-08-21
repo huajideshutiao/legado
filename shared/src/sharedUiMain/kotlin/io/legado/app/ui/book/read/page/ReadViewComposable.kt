@@ -190,6 +190,12 @@ fun ReadViewComposable(
     // 页内文字选择状态（对照旧 ReadView.isTextSelected + ContentTextView.selectStart/selectEnd）
     // 全文搜索跳转时由外部（ReaderScreenModel）注入同一实例，程序化选区与手势选择共用
     val selection = externalSelection ?: remember { PageSelectionState() }
+    // 三页访问器注入（对照原版 ContentTextView 持有 pageFactory + pageOffset + callBack.isScroll）：
+    // 选择状态机据此按 pagePos 取页与页相对视口偏移，滚动模式才会出现 pagePos > 0。
+    // 组合期直接赋值（同下方 composeDelegate.onTapAt）：普通字段非快照状态，写入不触发重组。
+    val selectionPageSource = remember(viewModel) { ReaderSelectionPageSource(viewModel) }
+    selectionPageSource.isScroll = composeDelegate is ScrollPageDelegateCompose
+    selection.pageSource = selectionPageSource
     // 滚动模式正文平移量（仅 ScrollPageDelegateCompose 写入, 非滚动模式恒 0）:
     // 选择命中坐标折算回页内坐标用（选中高亮随内容层平移, 见 ScrollPageView 的
     // graphicsLayer translationY）。
@@ -332,12 +338,10 @@ fun ReadViewComposable(
             val contentY = y - latestSystemBarTopPx - latestHeaderTipPx
             // 三页相对命中（对照原版 ContentTextView.longPress → touch 遍历三页）：
             // 滚动模式视口内可能显示下一页的行，长按命中同样按三页连排坐标系折算
+            // （本层只判命中列类型，选区起点由 selection 内部同款三页遍历确定）
             val hit = hitColumn(viewModel, x, contentY, latestDelegate is ScrollPageDelegateCompose)
             if (hit != null && hit.column is TextColumn) {
-                if (selection.longPressStart(
-                        hit.page, x, contentY, hit.relativeOffset, latestPageWidth
-                    )
-                ) {
+                if (selection.longPressStart(x, contentY)) {
                     // 选择激活期间暂停自动翻页（对照旧手势按下 → autoPager.pause），
                     // 避免翻页打断选择；选择取消时在分发器/页切换处恢复
                     latestDelegate.autoPager?.pause()
@@ -454,11 +458,10 @@ fun ReadViewComposable(
         // 选区手柄覆盖层（对照原版 activity_book_read.xml 的 cursor_left/cursor_right
         // ImageView：24dp 半圆光标 + accentColor 着色）。绘制期读 selection.tick 建立
         // 快照订阅（同 PageContentCanvas 的 draw 阶段读法），拖拽热路径只重绘不重组；
-        // 坐标折算与 selectionMenuAnchor 同套（页内坐标 + 滚动折算 + 页眉 + 状态栏）
+        // 坐标折算与 selectionMenuAnchor 同套（手柄锚点已含各自页的滚动折算 + 页眉 + 状态栏）
         SelectionHandleOverlay(
             selection = selection,
             handleSizePx = handleSizePx,
-            scrollOffsetY = { relativeOffsetOf(viewModel, selection.currentPage) },
             headerTipPx = latestHeaderTipPx.toFloat(),
             systemBarTopPx = latestSystemBarTopPx.toFloat(),
         )
@@ -468,15 +471,14 @@ fun ReadViewComposable(
         // 触摸手势全部由本层单一分发器处理（对照原版 ReadView.onTouchEvent 状态机），
         // delegate 不再挂任何手势；鼠标手势由 readerMouseGestures 全权接管。
         val latestOnSelectionMenu by rememberUpdatedState(onSelectionMenu)
-        // 弹菜单时的选区锚点（窗口坐标 = 页内坐标 + 滚动折算 + 页眉 + 状态栏高度；
+        // 弹菜单时的选区锚点（窗口坐标 = 选区锚点（已含起点页的滚动折算） + 页眉 + 状态栏高度；
         // 滚动模式内容下移锚点同步下移，再加回 systemBarTopPx 供平台浮动菜单按窗口定位）。
-        // 直接读最新值不订阅：避免滚动每帧触发重组（同上方 scrollOffset 说明）
+        // 锚点内部直接读 StateFlow.value 不订阅：避免滚动每帧触发重组（同上方 scrollOffset 说明）
         val selectionMenuAnchor: () -> Offset? = {
             selection.selectionAnchor()?.let {
                 Offset(
                     it.x,
-                    it.y + relativeOffsetOf(viewModel, selection.currentPage) +
-                        latestHeaderTipPx + latestSystemBarTopPx
+                    it.y + latestHeaderTipPx + latestSystemBarTopPx
                 )
             }
         }
@@ -574,9 +576,9 @@ fun ReadViewComposable(
                         // isTextSelected=true 借道本链路关菜单）：无选区时手柄命中自然落空，
                         // 走 else 取消 + 关菜单 + 抑制这一次点击（原版同样不弹阅读菜单）
                         if (selection.isActive || selection.imageMenuShowing) {
-                            // 手柄锚点窗口坐标折算同 selectionMenuAnchor（页内坐标 +
-                            // 滚动折算 + 页眉 + 状态栏）
-                            val handleOffsetY = relativeOffsetOf(viewModel, selection.currentPage) +
+                            // 手柄锚点窗口坐标折算同 selectionMenuAnchor（手柄锚点已含各自页的
+                            // 滚动折算，这里只补页眉 + 状态栏）
+                            val handleOffsetY =
                                 latestHeaderTipPx.toFloat() + latestSystemBarTopPx.toFloat()
                             val startHandle = selection.startHandleOffset()?.let {
                                 // 左手柄右缘对齐起点锚点（对照原版 cursorLeft.x = x - width）
@@ -732,18 +734,17 @@ fun ReadViewComposable(
                                 // Activity 折算补手柄宽（rawX ± width / rawY - height）
                                 val handleY = change.position.y - handleSizePx -
                                     latestSystemBarTopPx.toFloat() - latestHeaderTipPx.toFloat()
-                                val scrollOffset = relativeOffsetOf(viewModel, selection.currentPage)
                                 if (grabbingLeftHandle) {
                                     // 反转后左手柄改驱动终点（对照原版 getReverseStartCursor 分流）
                                     if (selection.reverseStartCursor) {
                                         selection.moveEndTo(
                                             change.position.x - handleSizePx, handleY,
-                                            handleSizePx, scrollOffset, latestPageWidth,
+                                            handleSizePx, latestPageWidth,
                                         )
                                     } else {
                                         selection.moveStartTo(
                                             change.position.x + handleSizePx, handleY,
-                                            handleSizePx, scrollOffset, latestPageWidth,
+                                            handleSizePx, latestPageWidth,
                                         )
                                     }
                                 } else {
@@ -751,12 +752,12 @@ fun ReadViewComposable(
                                     if (selection.reverseEndCursor) {
                                         selection.moveStartTo(
                                             change.position.x + handleSizePx, handleY,
-                                            handleSizePx, scrollOffset, latestPageWidth,
+                                            handleSizePx, latestPageWidth,
                                         )
                                     } else {
                                         selection.moveEndTo(
                                             change.position.x - handleSizePx, handleY,
-                                            handleSizePx, scrollOffset, latestPageWidth,
+                                            handleSizePx, latestPageWidth,
                                         )
                                     }
                                 }
@@ -770,7 +771,6 @@ fun ReadViewComposable(
                                     selection.extendTo(
                                         change.position.x,
                                         change.position.y - latestSystemBarTopPx - latestHeaderTipPx,
-                                        relativeOffsetOf(viewModel, selection.currentPage),
                                         latestPageWidth,
                                     )
                                 } else {
@@ -852,7 +852,6 @@ fun ReadViewComposable(
                             selection.extendTo(
                                 x,
                                 y - latestSystemBarTopPx - latestHeaderTipPx,
-                                relativeOffsetOf(viewModel, selection.currentPage),
                                 latestPageWidth,
                             )
                         },
@@ -989,19 +988,38 @@ private fun hitColumn(
 }
 
 /**
- * 页相对视口偏移（复刻原版 ContentTextView.relativeOffset）：选择相关坐标折算
- * （扩选/手柄/菜单锚点）按选区所在页折算——滚动模式选区可落在下一页，
- * 相对偏移 = 滚动偏移 + 前面页高之和。
+ * 三页访问器实现（复刻原版 ContentTextView 的 `relativePage` / `relativeOffset` /
+ * `callBack.isScroll`）：页取 cur/next/nextPlus 三条页流，页相对视口偏移 = 滚动偏移 +
+ * 前面各页页高之和。选择相关坐标（命中/扩选/手柄/菜单锚点）都按位置自身的 pagePos
+ * 折算——滚动模式选区可跨页，起止手柄各自叠加所在页的偏移。
+ *
+ * 页/偏移一律读 StateFlow.value（非快照读）：绘制期调用不建立订阅，滚动热路径零重组
+ * （重绘由 selection.tick 的 draw 阶段快照读驱动）。
  */
-private fun relativeOffsetOf(viewModel: ReadBookViewModelShared, page: TextPage?): Float {
-    val offset = viewModel.scrollOffset.value.toFloat()
-    return when (page) {
-        null -> offset
-        viewModel.curTextPage.value -> offset
-        viewModel.nextTextPage.value -> offset + (viewModel.curTextPage.value?.height ?: 0f)
-        viewModel.nextPlusTextPage.value -> offset + (viewModel.curTextPage.value?.height ?: 0f) +
-            (viewModel.nextTextPage.value?.height ?: 0f)
-        else -> offset
+private class ReaderSelectionPageSource(
+    private val viewModel: ReadBookViewModelShared,
+) : SelectionPageSource {
+
+    /** 组合期按当前翻页委托写入（对照原版 callBack.isScroll = ReadBookConfig.isScroll） */
+    override var isScroll = false
+
+    override val visibleHeight: Float
+        get() = (viewModel.curTextPage.value?.visibleHeight ?: 0).toFloat()
+
+    override fun pageAt(pagePos: Int): TextPage? = when (pagePos) {
+        0 -> viewModel.curTextPage.value
+        1 -> viewModel.nextTextPage.value
+        else -> viewModel.nextPlusTextPage.value
+    }
+
+    override fun relativeOffset(pagePos: Int): Float {
+        val offset = viewModel.scrollOffset.value.toFloat()
+        return when (pagePos) {
+            0 -> offset
+            1 -> offset + (viewModel.curTextPage.value?.height ?: 0f)
+            else -> offset + (viewModel.curTextPage.value?.height ?: 0f) +
+                (viewModel.nextTextPage.value?.height ?: 0f)
+        }
     }
 }
 
@@ -1082,14 +1100,13 @@ private fun AutoPageRevealOverlay(
  * 组合期读 [PageSelectionState.isActive] 决定显隐，绘制期读 [PageSelectionState.tick]
  * 建立快照订阅（同 [PageContentCanvas] 的 draw 阶段读法）：拖拽热路径只重绘不重组。
  *
- * @param scrollOffsetY 滚动模式正文平移量提供者（绘制期调用读最新值，不触发重组；
- *        对照 selectionMenuAnchor 的滚动折算）
+ * 手柄锚点已含各自所在页的滚动折算（[PageSelectionState.startHandleOffset]），本层只补
+ * 页眉 + 状态栏，与 selectionMenuAnchor 同套。
  */
 @Composable
 private fun SelectionHandleOverlay(
     selection: PageSelectionState,
     handleSizePx: Float,
-    scrollOffsetY: () -> Float,
     headerTipPx: Float,
     systemBarTopPx: Float,
 ) {
@@ -1102,8 +1119,8 @@ private fun SelectionHandleOverlay(
         if (selection.tick < 0) return@Canvas
         val start = selection.startHandleOffset() ?: return@Canvas
         val end = selection.endHandleOffset() ?: return@Canvas
-        // 窗口坐标折算与 selectionMenuAnchor 同套（页内坐标 + 滚动折算 + 页眉 + 状态栏）
-        val offsetY = scrollOffsetY() + headerTipPx + systemBarTopPx
+        // 窗口坐标折算与 selectionMenuAnchor 同套（锚点含滚动折算 + 页眉 + 状态栏）
+        val offsetY = headerTipPx + systemBarTopPx
         val tint = ColorFilter.tint(accentColor)
         val handleSize = Size(handleSizePx, handleSizePx)
         // 左手柄右缘对齐起点锚点（对照原版 cursorLeft.x = x - cursorLeft.width）

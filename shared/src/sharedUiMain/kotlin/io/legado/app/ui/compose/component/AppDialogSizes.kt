@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import io.legado.app.ui.compose.platform.platformDialogProperties
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.ScreenInfoProviders
 
 /**
@@ -35,22 +36,24 @@ val LocalDialogAnchorSize = compositionLocalOf<IntSize?> { null }
  */
 object AppDialogSizes {
 
-    /** 宽度: 锚点宽 * 0.9, 上限 800dp。 */
+    /** 宽度: 锚点宽 * [DesignTokens.dialogWidthFraction], 上限 800dp。 */
     @Composable
     fun width(): Dp {
         val anchor = LocalDialogAnchorSize.current
         val wPx = anchor?.width ?: ScreenInfoProviders.get().screenWidthPx
-        return with(LocalDensity.current) { (wPx * 0.9f).toDp().coerceAtMost(800.dp) }
+        return with(LocalDensity.current) {
+            (wPx * DesignTokens.dialogWidthFraction).toDp().coerceAtMost(800.dp)
+        }
     }
 
     /**
-     * 全高模式高度: 锚点高 * 0.7 (全局统一 0.7 屏高, 用户 2026-08-20 拍板)。
+     * 全高模式高度: 锚点高 * [DesignTokens.dialogHeightFraction] (全局统一 0.7 屏高, 用户 2026-08-20 拍板)。
      */
     @Composable
     fun fullHeight(): Dp {
         val anchor = LocalDialogAnchorSize.current
         val hPx = anchor?.height ?: ScreenInfoProviders.get().screenHeightPx
-        return with(LocalDensity.current) { (hPx * 0.7f).toDp() }
+        return with(LocalDensity.current) { (hPx * DesignTokens.dialogHeightFraction).toDp() }
     }
 
     /**

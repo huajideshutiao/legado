@@ -57,6 +57,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.Review
+import io.legado.app.ui.book.read.review.ReviewInputCapsule
+import io.legado.app.ui.book.read.review.ReviewInputHint
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
@@ -690,21 +692,13 @@ internal fun LoadMoreFooter(footerLoading: Boolean, footerHasMore: Boolean) {
 /** 底部"输入栏"只是个触发器, 点击后弹出输入面板; 回复详情页默认回复楼主 */
 @Composable
 internal fun InputBar(inputHint: String, onPostClick: () -> Unit) {
-    Box(
-        Modifier
+    ReviewInputCapsule(
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(rememberColor("background_card"))
-            .clickable { onPostClick() }
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        contentAlignment = Alignment.CenterStart,
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        onClick = onPostClick,
     ) {
-        Text(
-            text = inputHint,
-            color = rememberColor("secondaryText"),
-            fontSize = 13.sp,
-            maxLines = 1,
-        )
+        ReviewInputHint(inputHint, maxLines = 1)
     }
 }

@@ -14,8 +14,11 @@ import kotlinx.coroutines.flow.update
  * 提交动作通过 [ReviewPostUiActions.onSubmit] 回调上抛, 由弹窗 Host
  * ([io.legado.app.ui.route.ReviewPostDialogHost]) 回传调用方。
  *
+ * 无"提交中"态: 原版 submit() 即 setResult + finish, 不等网络结果 (提交由列表页 VM
+ * 异步做, 失败走 runRule 的 toast), 故这里也不设 loading。
+ *
  * hint (placeholder) 对照 Activity onCreate:
- * - replyPreview 非空 → "回复 %s: " % replyPreview.take(15) + (省略号)
+ * - replyPreview 非空 → "回复: %s" % replyPreview.take(15) + (超长补省略号)
  * - 否则 → review_post_hint
  * 弹窗 Host 根据 replyPreview 决定, 通过 [ReviewPostUiEvent.ShowHint] 注入。
  */
@@ -30,8 +33,6 @@ class ReviewPostScreenModel : ScreenModel {
                 it.copy(content = event.content)
             }
 
-            ReviewPostUiEvent.SubmitStart -> _state.update { it.copy(submitting = true) }
-            ReviewPostUiEvent.SubmitEnd -> _state.update { it.copy(submitting = false) }
             is ReviewPostUiEvent.ShowHint -> _state.update { it.copy(hint = event.hint) }
         }
     }
@@ -39,15 +40,12 @@ class ReviewPostScreenModel : ScreenModel {
 
 data class ReviewPostUiState(
     val content: String = "",
-    val submitting: Boolean = false,
     /** 输入框 placeholder (对照 Activity hint, 默认 review_post_hint) */
     val hint: String = "",
 )
 
 sealed interface ReviewPostUiEvent {
     data class ContentChange(val content: String) : ReviewPostUiEvent
-    object SubmitStart : ReviewPostUiEvent
-    object SubmitEnd : ReviewPostUiEvent
 
     /** 设置输入框 placeholder (对照 Activity onCreate hint 构造) */
     data class ShowHint(val hint: String) : ReviewPostUiEvent

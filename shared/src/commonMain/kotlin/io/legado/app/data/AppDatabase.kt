@@ -48,7 +48,8 @@ import io.legado.app.data.entities.TxtTocRule
  *
  * - @Database 注解 + abstract DAO 属性 + companion 常量 在 commonMain (平台无关)
  * - appDb 单例 + dbCallback 留 app 端 (依赖 appCtx + AndroidSQLiteConnection + Locale.CHINESE + DefaultData)
- * - DatabaseMigrations (手写 Migration 数组) 留 app 端 (依赖 java.util.Calendar)
+ * - DatabaseMigrations (80..83 手写 Migration) 在 commonMain, 各端 actual 只提供 Migration 子类
+ *   (官方 room3 的 migrate 是 suspend, 鸿蒙 CPF fork 不是)
  */
 @Database(
     version = 86,

@@ -247,14 +247,10 @@ fun VideoPlayRoute(
             )
         }
     }
-    // 发布输入弹窗状态 (对照原版 ReviewPostActivity 底部输入面板): 书籍级书评 (无回复预览)
-    var showPostDialog by remember { mutableStateOf(false) }
     // 对照 Activity openReview: viewModel.openCommentDialog → ReviewListDialog(book, chapter, 0)
     val onOpenReview: () -> Unit = {
         val chapter = state.chapters.getOrNull(state.curChapterIndex)
-        if (!PlatformCapabilityProviders.get().showReviewListDialog(book, chapter, 0)) {
-            showPostDialog = true
-        }
+        PlatformCapabilityProviders.get().showReviewListDialog(book, chapter, 0)
     }
 
     // 平台对话框状态 (对照 TocRoute showLogDialog/editingBookmark)
@@ -334,16 +330,6 @@ fun VideoPlayRoute(
     // 日志对话框 (对照 TocRoute AppLogDialog)
     if (showLogDialog) {
         AppLogDialog(onDismiss = { showLogDialog = false })
-    }
-
-    // 发布输入弹窗 (对照原版 ReviewPostActivity 底部输入面板)
-    if (showPostDialog) {
-        ReviewPostDialogHost(
-            replyPreview = null,
-            // 原 push ReviewPost 无 resultKey/结果处理, 内容不提交, 保持等价
-            onPosted = { },
-            onDismiss = { showPostDialog = false },
-        )
     }
 
     // 书签编辑对话框 (对照 TocRoute BookmarkDialog + app addBookmark)

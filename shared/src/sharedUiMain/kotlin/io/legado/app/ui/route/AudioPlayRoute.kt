@@ -195,8 +195,6 @@ fun AudioPlayRoute(
     // 平台对话框状态 (对照 VideoPlayRoute showLogDialog / pendingBookmark)
     var showLogDialog by remember { mutableStateOf(false) }
     var pendingBookmark by remember { mutableStateOf<Bookmark?>(null) }
-    // 发布输入弹窗 (对照原版 ReviewPostActivity 底部输入面板): 书籍级书评 (无回复预览)
-    var showPostDialog by remember { mutableStateOf(false) }
     // 整书换源弹窗显示开关 (对照原版 menu_change_source → showDialogFragment(ChangeBookSourceDialog))
     var showChangeSourceDialog by remember { mutableStateOf(false) }
     // 目录弹窗显示开关 (窄屏目录入口, 对照阅读页 ReaderDialogEvent.Toc → TocDialogHost)
@@ -355,8 +353,8 @@ fun AudioPlayRoute(
             if (sidePanelWidth > 0.dp) {
                 // 宽屏: 右侧面板 (互斥: 直接覆盖目录面板)
                 panelKind = AudioPlaySidePanelKind.REVIEW
-            } else if (!PlatformCapabilityProviders.get().showReviewListDialog(book, chapter, 0)) {
-                showPostDialog = true
+            } else {
+                PlatformCapabilityProviders.get().showReviewListDialog(book, chapter, 0)
             }
         },
         overflowActions = overflowActions,
@@ -403,16 +401,6 @@ fun AudioPlayRoute(
     // 日志对话框 (对照 VideoPlayRoute AppLogDialog)
     if (showLogDialog) {
         AppLogDialog(onDismiss = { showLogDialog = false })
-    }
-
-    // 发布输入弹窗 (对照原版 ReviewPostActivity 底部输入面板)
-    if (showPostDialog) {
-        ReviewPostDialogHost(
-            replyPreview = null,
-            // 原 push ReviewPost 无 resultKey/结果处理, 内容不提交, 保持等价
-            onPosted = { },
-            onDismiss = { showPostDialog = false },
-        )
     }
 
     // 书签编辑对话框 (对照 VideoPlayRoute BookmarkDialog + app addBookmark)

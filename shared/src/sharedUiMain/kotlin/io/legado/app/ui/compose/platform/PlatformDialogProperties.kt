@@ -26,7 +26,7 @@ expect fun platformDialogProperties(
 ): DialogProperties
 
 /**
- * 底部弹层面板底部避让 insets。
+ * 底部避让 insets (底部弹层面板 / 编辑页根容器共用)。
  *
  * - Android (decor=false 弹窗): ime ∪ navigationBars (逐边 max) —— 键盘弹出时
  *   ime 与导航栏 insets 并存, max 让面板底边恰顶在键盘顶 (不多避让); 键盘收起时

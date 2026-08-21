@@ -17,7 +17,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -31,14 +30,12 @@ import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.LocalDialogAnchorSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.utils.KS_JSON
-import io.legado.app.utils.ScreenInfoProviders
 import kotlinx.serialization.Serializable
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.confirm_delete_review
@@ -56,13 +53,13 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * 段评/书评列表**底部弹窗**宿主 (KMP 共享, 对照 app 端 ReviewListDialog BottomSheetDialogFragment)。
  *
- * 原版 (app 端) 段评/书评列表是 BottomSheetDialogFragment: 底部弹窗 (92% 屏高, 顶部圆角,
- * 可下滑收起) 承载 [ReviewListDialog] 共享内容 (回复列表 + 底部发布输入栏)。此前非 Android 端
+ * 原版 (app 端) 段评/书评列表是 BottomSheetDialogFragment: 底部弹窗 (顶部圆角, 可下滑收起)
+ * 承载 [ReviewListDialog] 共享内容 (回复列表 + 底部发布输入栏)。此前非 Android 端
  * 只有整页路由 (ReviewListRoute, 无回复详情), 段评气泡点击 (ReadViewComposable →
  * showReviewListDialog) 更是静默无反应。本宿主把 BottomSheet 形态补到四端:
  *
  * - 外壳: [AppBottomSheetDialog] 贴底滑入 (对照原版 BaseBottomDialogFragment gravity=Bottom),
- *   高度 0.92 × 锚点高 (对齐 app 端 BottomSheetDialog 92% 撑高), 顶部圆角由
+ *   高度走 [AppDialogSizes.fullHeight] (全局统一 0.7 锚点高), 顶部圆角由
  *   [ReviewListDialog] 内容自带
  * - 业务: [ReviewViewModelShared] (与 app 端同款, 分页/点赞/点踩/回复/删除/规则执行全下沉)
  * - 交互: 点击单条 → [ReviewPostDialogHost] 回复输入面板 (F39 已修: 底部弹窗 + 键盘跟随);
@@ -281,12 +278,8 @@ fun ReviewListDialogHost(
     parentReview: Review? = null,
     onDismiss: () -> Unit,
 ) {
-    // 0.92 × 锚点高 (对齐 app 端 BottomSheetDialog 92% 撑高); 桌面端锚点 = 主窗口
-    val sheetHeight = with(LocalDensity.current) {
-        val anchor = LocalDialogAnchorSize.current
-        val hPx = anchor?.height ?: ScreenInfoProviders.get().screenHeightPx
-        (hPx * 0.92f).toDp()
-    }
+    // 全局统一 0.7 锚点高 (走 AppDialogSizes.fullHeight, 别再自行乘系数); 桌面端锚点 = 主窗口
+    val sheetHeight = AppDialogSizes.fullHeight()
 
     AppBottomSheetDialog(
         onDismissRequest = onDismiss,

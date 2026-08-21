@@ -70,6 +70,10 @@ import io.legado.app.web.utils.registerNativeWebStrings
  *
  * 注册顺序约束 (与 desktop `Main.kt` 一致, 详见 [registerIosProviders] 对齐说明):
  * 1. [registerOhosAppFilesDir] 必须最先 (其他 provider 持久化目录依赖 [AppFilesDirs])
+ * 1.05 [registerOhosNativeBridge] + [registerOhosToaster] 须在 [registerNativeAppLogHost] 之前
+ *    (AppLog 的 toast 出口走 [io.legado.app.help.toast.Toasters], 晚于 host 注册则初始化期
+ *    `AppLog.put(toast = true)` 的失败提示会丢; OhosToaster 只依赖 [OhosNativeBridge], 不依赖
+ *    被它跳过的任何 provider)
  * 2. [registerOhosPreferenceProvider] 在 [registerNativeAppConfigAccessor] 之前
  *    (OhosAppConfigAccessor 委托 PreferenceProvider)
  * 3. [registerNativeAppDb] (Database + AppDatabase + AppDb) 在文件目录之后
@@ -88,10 +92,11 @@ import io.legado.app.web.utils.registerNativeWebStrings
  *    (委托 OhosImageOps; 未注册时 BitmapProviders.get() 抛 IllegalStateException)
  * 7. [registerOhosSystemTtsEngine] 在 JsEngines 之后
  *    (与 desktop Main.kt 中 TtsEngineProvider.register 位置一致)
- * 8. 其余 provider ([registerNativeFileDownloader] / [registerOhosToaster] /
- *    [registerOhosNotificationProgress] / [registerOhosServiceLauncher]) 顺序无关
+ * 8. 其余 provider ([registerNativeFileDownloader] / [registerOhosNotificationProgress] /
+ *    [registerOhosServiceLauncher]) 顺序无关
  * 8.5 [registerOhosNativeBridge] (napi 桥接基础设施) 必须在 [registerOhosToaster] /
- *    [registerOhosNotificationProgress] 之前 (当前为空操作占位, 真实 tsfn 由 EntryAbility 注入)
+ *    [registerOhosNotificationProgress] 之前 (当前为空操作占位, 真实 tsfn 由 EntryAbility 注入);
+ *    因 toaster 已前置到 1.05, 本步随之一并前移
  *
  * 各 provider 均为真实实现 (Database / BookStorage / Preference / HTTP / ImageOps / JsEngine /
  * FileDownloader); SystemTtsEngine 走 napi 桥接 @ohos.textToSpeech (tsfn 未注入时 speak 上报 error);
@@ -124,6 +129,11 @@ fun registerOhosProviders() {
 
     // 1. 文件系统目录 (其他 provider 持久化依赖)
     registerOhosAppFilesDir()
+
+    // 1.05 napi 桥 + Toaster (须在 AppLog 宿主之前: AppLog.put(toast = true) 的 toast 出口走
+    // Toasters, 晚注册则初始化期的失败提示丢失; OhosToaster 仅依赖 OhosNativeBridge)
+    registerOhosNativeBridge()
+    registerOhosToaster()
 
     // 1.1 AppLog 宿主 (崩溃日志落盘到 {filesDir}/logs, 供 CrashLogProvider 收集;
     // 须在 AppFilesDirs 之后 (日志目录从 filesDir 派生)、任何 AppLog.put 之前)
@@ -232,11 +242,7 @@ fun registerOhosProviders() {
 
     // 8. 其余业务 provider (顺序无关)
     registerNativeFileDownloader()
-    // 8.5 napi 桥接基础设施 (Toast/NotificationProgress 通过它调用 ArkTS 系统能力)
-    // 必须在 registerOhosToaster / registerOhosNotificationProgress 之前 (当前为空操作占位,
-    // 真实 tsfn 由 EntryAbility.onCreate 调 legado.registerToastCallback/registerNotificationCallback 注入)
-    registerOhosNativeBridge()
-    registerOhosToaster()
+    // 8.5 通知进度 (走 1.05 已注册的 napi 桥; Toaster 与桥本身同因已前置到 1.05)
     registerOhosNotificationProgress()
     // 8.6 UpdateBook callback 须在 Toaster + NotificationProgress 之后 (本 callback 委托这两个 provider)、
     // ServiceLauncher 之前 (NativeServiceLauncher.updateBookShared lazy 构造时取 UpdateBookCallbacks.getDefault)

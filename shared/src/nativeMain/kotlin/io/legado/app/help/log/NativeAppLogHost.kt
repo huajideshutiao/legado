@@ -4,23 +4,25 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppLogHost
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.toast.Toasters
 import io.legado.app.utils.currentLocalOffsetMillis
 import io.legado.app.utils.systemCurrentTimeMillis
 
 /**
- * native (iOS/鸿蒙) 端 [AppLogHost] 实现 (两端原本逐份重复, 唯一差异是 toast 出口)。
+ * native (iOS/鸿蒙) 端 [AppLogHost] 实现 (两端共用, 无平台差异)。
  *
  * # 与桌面端 registerDesktopAppLogHost 对照
  * - [AppLogHost.write] → 开启"记录日志" (PreferKey.recordLog) 时经 [NativeAppLogStore] 追加到
  *   `{filesDir}/logs/appLog-<epochMillis>.txt`, 即 [NativeCrashLogs] 的崩溃日志来源
- * - [AppLogHost.toast] → 唯一平台差异, 见 [nativeAppLogToast]
+ * - [AppLogHost.toast] → [Toasters] (与 app/desktop 端同口径, 两端 registry 已把 toaster
+ *   提前到本 host 注册之前)
  * - [AppLogHost.debugPrint] → println (iOS: Xcode 控制台; 鸿蒙: K/N stdout 由 runtime 重定向到 hilog)
  * - [AppLogHost.recordLog] → 读 PreferKey.recordLog (与 app/desktop 端同 key, 默认 false)
  * - [AppLogHost.timeZoneOffsetMillis] → POSIX localtime_r 换算 (对齐 desktop 的
  *   TimeZone.getDefault().getOffset, 日志 UI 按本地时间显示)
  *
  * 注册时机: [registerNativeAppLogHost] 在 registerIosProviders / registerOhosProviders 早期
- * (AppFilesDirs 之后、任何 AppLog.put 之前)。
+ * (AppFilesDirs + toaster 之后、任何 AppLog.put 之前)。
  */
 object NativeAppLogHost {
 
@@ -41,7 +43,8 @@ object NativeAppLogHost {
         }
 
         override fun toast(message: String) {
-            nativeAppLogToast(message)
+            // 走统一 Toasters 出口; 注册顺序万一再变时 runCatching 兜底不崩
+            runCatching { Toasters.get().toast(message) }
         }
 
         override fun debugPrint(tag: String, message: String, throwable: Throwable?) {
@@ -56,13 +59,7 @@ object NativeAppLogHost {
     }
 }
 
-/** 宿主启动早期注册一次 (任何 AppLog.put 之前)。 */
+/** 宿主启动早期注册一次 (toaster 之后、任何 AppLog.put 之前)。 */
 fun registerNativeAppLogHost() {
     NativeAppLogHost.register()
 }
-
-/**
- * AppLog 的 toast 出口: 本 host 注册远早于各端 Toaster, 故不走 [io.legado.app.help.toast.Toasters]
- * 统一口径 —— iOS 端未就绪时静默, 鸿蒙端直接走 napi 桥 (桥未注入时内部降级 println)。
- */
-internal expect fun nativeAppLogToast(message: String)

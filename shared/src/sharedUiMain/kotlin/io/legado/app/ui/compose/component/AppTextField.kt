@@ -523,14 +523,16 @@ internal fun VisualTransformation.asOutputTransformation(): OutputTransformation
  * 变换产出的 SpanStyle 区间逐段 [TextFieldBuffer.addStyle] 到呈现缓冲区
  * (布局层合并 outputAnnotations 渲染)。语法高亮/查找高亮等"只上色不改字"场景用这个;
  * 文本本身变化的变换 (密码掩码) 用 [asOutputTransformation]。
+ *
+ * 变换本体在转换时现读 ([transformation] 通常是 rememberUpdatedState 的读取器):
+ * 着色结果变化只让字段内部的呈现文本失效重算, OutputTransformation 实例保持不变 ——
+ * 换实例会让 BasicTextField 重建 TransformedTextFieldState/TextLayoutState, 布局缓存清零。
  */
-internal fun VisualTransformation.asHighlightOutputTransformation(): OutputTransformation =
+internal fun asHighlightOutputTransformation(
+    transformation: () -> VisualTransformation,
+): OutputTransformation =
     OutputTransformation {
-        val original = asCharSequence().toString()
-        val annotated = filter(AnnotatedString(original)).text
-        if (annotated.text != original) {
-            replace(0, length, annotated.text)
-        }
+        val annotated = transformation().filter(AnnotatedString(asCharSequence().toString())).text
         annotated.spanStyles.forEach { span ->
             addStyle(span.item, span.start.coerceIn(0, length), span.end.coerceIn(0, length))
         }

@@ -62,7 +62,6 @@ class IosDatabaseDriver(
             .setQueryCoroutineContext(Dispatchers.IO)
             // 与 app 端一致: 仅旧包名 (io.legado.app) 时代的 v1..79 旧库属于不同应用、无法原地升级,
             // 走破坏性重建; 其余版本宁可让 Room 抛错也不静默清库 (dropAllTables 会丢光书架/分组/进度)。
-            // 80..82 的手写 Migration 在 jvmAndAndroidMain, native 端暂不可见 (iOS 首版即 86, 不会命中)。
             .fallbackToDestructiveMigrationFrom(
                 false,
                 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
@@ -70,6 +69,8 @@ class IosDatabaseDriver(
                 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60,
                 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79
             )
+            // 80..82 的手写 Migration (已下沉 commonMain), 与 app 端同一份 (iOS 首版即 86, 不会命中)
+            .addMigrations(*DatabaseMigrations.migrations)
             // 预置分组 + 键盘助手 (对照 app 端 dbCallback)
             .addCallback(AppDatabaseDefaults)
             .build()

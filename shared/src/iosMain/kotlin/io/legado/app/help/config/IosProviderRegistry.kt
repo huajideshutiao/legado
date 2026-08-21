@@ -65,6 +65,9 @@ import platform.UIKit.UIDevice
  *
  * 注册顺序约束 (与 desktop Main.kt / registerOhosProviders 对齐):
  * 1. registerIosAppFilesDir 最先 (其他 provider 持久化目录依赖 AppFilesDirs)
+ * 1.05 registerIosToaster 须在 registerNativeAppLogHost 之前 (AppLog 的 toast 出口走 Toasters,
+ *    晚于 host 注册则初始化期 `AppLog.put(toast = true)` 的失败提示被 runCatching 吞掉;
+ *    IosToaster 只依赖 UIKit + sharedStringTable 静态表, 不依赖被它跳过的任何 provider)
  * 2. registerIosPreferenceProvider 在 AppConfigAccessor 之前 (委托 PreferenceProvider)
  * 3. registerNativeHttpProvider 在数据库/书籍缓存之前
  * 4. registerIosDatabaseDriver / BookStorage / BookImageStorage / LocalBookLocator 在文件目录之后
@@ -85,6 +88,10 @@ import platform.UIKit.UIDevice
 fun registerIosProviders() {
     // 1. 文件系统目录 (其他 provider 持久化依赖)
     registerIosAppFilesDir()
+
+    // 1.05 Toaster (须在 AppLog 宿主之前: AppLog.put(toast = true) 的 toast 出口走 Toasters,
+    // 晚注册则初始化期的失败提示丢失; IosToaster 只依赖 UIKit, 拿不到 vc 时 NSLog 兜底)
+    registerIosToaster()
 
     // 1.1 AppLog 宿主 (日志落盘到 {filesDir}/logs, 供 CrashLogProvider 收集;
     // 须在 AppFilesDirs 之后 (日志目录从 filesDir 派生)、任何 AppLog.put 之前)
@@ -210,7 +217,6 @@ fun registerIosProviders() {
     registerIosReadBookPlatform()
     // 备份/恢复钩子 (lastBackup 时间戳 + 恢复完成提示; zip 复制/解压走 BackupFileOps 默认实现)
     registerNativeBackupRestoreHook()
-    registerIosToaster()
     registerIosNotificationProgress()
     // UI provider (Toast/OpenUrl/UserAgent), 供 JsExtensionsCommon 调用, 顺序无关, 须在任何 JS eval 之前
     registerIosOpenUrlProvider()
