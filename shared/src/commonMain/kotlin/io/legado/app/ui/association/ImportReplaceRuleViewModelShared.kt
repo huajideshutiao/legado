@@ -92,38 +92,15 @@ class ImportReplaceRuleViewModelShared(
     /** 已有替换规则 (用于 comparisonSource 比对), null=新增。 */
     val checkRules = arrayListOf<ReplaceRule?>()
 
-    /** 每个 allRules 元素是否被选中导入 (默认新增选中, 由 app 端 UI 切换)。 */
-    val selectStatus = arrayListOf<Boolean>()
-
-    /** 是否全部选中 (对照原 `isSelectAll: Boolean get() = selectStatus.all { it }`)。 */
-    val isSelectAll: Boolean
-        get() {
-            selectStatus.forEach {
-                if (!it) {
-                    return false
-                }
-            }
-            return true
-        }
-
-    /** 选中数量 (对照原 `selectCount: Int get() = selectStatus.count { it }`)。 */
-    val selectCount: Int
-        get() {
-            var count = 0
-            selectStatus.forEach {
-                if (it) {
-                    count++
-                }
-            }
-            return count
-        }
+    /** 解析时算出的默认勾选 (默认新增选中)。勾选状态本身归 UI 层, 这里只提供初值。 */
+    val defaultChecked = arrayListOf<Boolean>()
 
     /**
      * 导入选中的替换规则, 对应 app 端 `importSelect(finally)`。
      *
      * # 实现细节保持
      *
-     * - 取 [groupName] trim, 遍历 [selectStatus], 选中的项走分组覆盖/追加逻辑;
+     * - 取 [groupName] trim, 遍历 [checked], 选中的项走分组覆盖/追加逻辑;
      * - 若 [groupName] 非空:
      *   - isAddGroup=true 时追加到原分组 (linkedSetOf 去重 + splitNotBlank 拆原分组),
      *     与 [ImportBookSourceViewModelShared.importSelect] 中 bookSourceGroup 处理逻辑同构;
@@ -135,11 +112,11 @@ class ImportReplaceRuleViewModelShared(
      *
      * @param finally 导入完成回调 (无论成功/失败均触发, 与 app 端 onFinally 一致)
      */
-    fun importSelect(finally: () -> Unit) {
+    fun importSelect(checked: List<Boolean>, finally: () -> Unit) {
         Coroutine.async(scope = scope) {
             val group = groupName?.trim()
             val selectRules = arrayListOf<ReplaceRule>()
-            selectStatus.forEachIndexed { index, b ->
+            checked.forEachIndexed { index, b ->
                 if (b) {
                     val rule = allRules[index]
                     if (!group.isNullOrEmpty()) {
@@ -261,7 +238,7 @@ class ImportReplaceRuleViewModelShared(
      * # 实现细节保持
      *
      * - 遍历 [allRules], 调 `appDb.replaceRuleDao.findById(it.id)` 查本地;
-     * - selectStatus: rule 为 null (本地不存在) 时选中 (新增默认选);
+     * - defaultChecked: rule 为 null (本地不存在) 时选中 (新增默认选);
      * - `onSuccess` 推送 `_successState.tryEmit(allRules.size)` (与 app 端
      *   `onSuccess { successLiveData.postValue(allRules.size) }` 一致, 注意原版
      *   comparisonSource 是 onSuccess 才推送 successState, 与其他 VM 直接推送不同,
@@ -274,7 +251,7 @@ class ImportReplaceRuleViewModelShared(
             allRules.forEach {
                 val rule = appDb.replaceRuleDao.findById(it.id)
                 checkRules.add(rule)
-                selectStatus.add(rule == null)
+                defaultChecked.add(rule == null)
             }
         }.onSuccess {
             _successState.tryEmit(allRules.size)

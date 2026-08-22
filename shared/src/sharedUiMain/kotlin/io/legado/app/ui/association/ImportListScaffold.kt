@@ -141,23 +141,32 @@ private fun ImportListItem(
         Modifier
             .fillMaxWidth()
             .clickable { onCheckedChange(!checked) }
-            .padding(horizontal = 8.dp),
+            // 对齐 item_source_import.xml 根容器 android:padding=8dp(四周)
+            .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         AppCheckbox(checked = checked, onCheckedChange = onCheckedChange)
-        Text(
-            text = label,
-            color = colors.primaryText,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false),
-        )
-        Spacer(Modifier.weight(1f))
-        Text(text = state, color = colors.secondaryText, modifier = Modifier.padding(8.dp))
+        // 名称与状态成组左靠: 对齐原版 cb_source_name/tv_source_state 的
+        // chainStyle=packed + horizontal_bias=0, "打开"另钉父右缘
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+            // fill=false 让名称只占所需宽度, 过长时先压缩自己而不推走状态文字
+            // (对齐原版复选框的 layout_constrainedWidth=true)
+            Text(
+                text = label,
+                color = colors.primaryText,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            Text(text = state, color = colors.secondaryText, modifier = Modifier.padding(8.dp))
+        }
         Text(
             text = stringResource(Res.string.open),
             color = colors.secondaryText,
             modifier = Modifier
+                // 对齐 item_source_import.xml 的 tv_open marginEnd 12dp;
+                // 排在 clickable 之前, 故不进点击热区(原版 margin 同样在 View 之外)
+                .padding(end = 12.dp)
                 .clickable(onClick = onOpen)
                 .padding(8.dp),
         )

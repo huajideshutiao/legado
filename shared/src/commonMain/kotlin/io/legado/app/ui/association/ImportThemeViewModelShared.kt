@@ -82,38 +82,15 @@ class ImportThemeViewModelShared(
     /** 已有主题配置 (用于 comparisonSource 比对), null=新增。 */
     val checkSources = arrayListOf<ThemeConfigData?>()
 
-    /** 每个 allSources 元素是否被选中导入 (默认新增/与本地不同都选中, 由 app 端 UI 切换)。 */
-    val selectStatus = arrayListOf<Boolean>()
-
-    /** 是否全部选中 (对照原 `isSelectAll: Boolean get() = selectStatus.all { it }`)。 */
-    val isSelectAll: Boolean
-        get() {
-            selectStatus.forEach {
-                if (!it) {
-                    return false
-                }
-            }
-            return true
-        }
-
-    /** 选中数量 (对照原 `selectCount: Int get() = selectStatus.count { it }`)。 */
-    val selectCount: Int
-        get() {
-            var count = 0
-            selectStatus.forEach {
-                if (it) {
-                    count++
-                }
-            }
-            return count
-        }
+    /** 解析时算出的默认勾选 (默认新增/与本地不同都选中)。勾选状态本身归 UI 层, 这里只提供初值。 */
+    val defaultChecked = arrayListOf<Boolean>()
 
     /**
      * 导入选中的主题配置, 对应 app 端 `importSelect(finally)`。
      *
      * # 实现细节保持
      *
-     * - 遍历 [selectStatus], 选中的项调 `ThemeConfigProviders.get().addConfig(allSources[index])`
+     * - 遍历 [checked], 选中的项调 `ThemeConfigProviders.get().addConfig(allSources[index])`
      *   (替代 app 端 `ThemeConfig.addConfig(allSources[index])`, app 端 ThemeConfigProviderImpl
      *   内部把 [ThemeConfigData] 转回 `ThemeConfig.Config` 后调原 `ThemeConfig.addConfig(newConfig)`,
      *   保留按 themeName 去重 + save 持久化行为);
@@ -123,9 +100,9 @@ class ImportThemeViewModelShared(
      *
      * @param finally 导入完成回调 (无论成功/失败均触发, 与 app 端 onFinally 一致)
      */
-    fun importSelect(finally: () -> Unit) {
+    fun importSelect(checked: List<Boolean>, finally: () -> Unit) {
         Coroutine.async(scope = scope) {
-            selectStatus.forEachIndexed { index, b ->
+            checked.forEachIndexed { index, b ->
                 if (b) {
                     ThemeConfigProviders.get().addConfig(allSources[index])
                 }
@@ -236,7 +213,7 @@ class ImportThemeViewModelShared(
      * - 遍历 [allSources], 调 `ThemeConfigProviders.get().getConfigList().find {
      *     it.themeName == config.themeName }` 查本地 (替代 app 端
      *   `ThemeConfig.configList.find { it.themeName == config.themeName }`, 行为等价);
-     * - selectStatus: source 为 null (新增) 或 `source != config` (与本地不同) 时选中
+     * - defaultChecked: source 为 null (新增) 或 `source != config` (与本地不同) 时选中
      *   (与 app 端原 `selectStatus.add(source == null || source != config)` 完全一致,
      *   这里 `source != config` 走 [ThemeConfigData.equals] 重写, 6 个字段逐一比较,
      *   与 app 端 ThemeConfig.Config.equals 行为一致);
@@ -252,7 +229,7 @@ class ImportThemeViewModelShared(
                     it.themeName == config.themeName
                 }
                 checkSources.add(source)
-                selectStatus.add(source == null || source != config)
+                defaultChecked.add(source == null || source != config)
             }
             _successState.tryEmit(allSources.size)
         }

@@ -15,10 +15,10 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -29,7 +29,6 @@ import io.legado.app.data.entities.HttpTTS
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.data.entities.SourceFilterRule
 import io.legado.app.help.config.AppConfigProviders
-import io.legado.app.help.config.ThemeConfigData
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppAutoCompleteField
@@ -37,17 +36,21 @@ import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppDropdownMenu
+import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.widget.dialog.CodeDialog
+import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.toJson
 import legado.shared.generated.resources.Res
-import legado.shared.generated.resources.add_to_group
+import legado.shared.generated.resources.add_group
 import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.custom_group_summary
 import legado.shared.generated.resources.diy_edit_source_group
+import legado.shared.generated.resources.diy_edit_source_group_title
 import legado.shared.generated.resources.diy_source_group
 import legado.shared.generated.resources.group_name
 import legado.shared.generated.resources.ic_more_vert
@@ -73,15 +76,11 @@ enum class ImportItemState { NEW, UPDATE, EXISTING }
  * (allSources/allRules、checkSources/checkRules), 供 [ImportItemsDialog] 统一渲染。
  */
 interface ImportItemsVm {
-    val itemCount: Int
-    val selectCount: Int
-    val isSelectAll: Boolean
+    /** 解析时算出的默认勾选, 只作 UI 勾选状态的初值 (勾选是纯 UI 瞬态状态, VM 不持有)。 */
+    val defaultChecked: List<Boolean>
     fun itemLabel(index: Int): String
     fun itemState(index: Int): ImportItemState
-    fun itemChecked(index: Int): Boolean
-    fun setItemChecked(index: Int, checked: Boolean)
-    fun toggleAll()
-    fun importSelect(finally: () -> Unit)
+    fun importSelect(checked: List<Boolean>, finally: () -> Unit)
     fun itemJson(index: Int): String
 
     /** CodeDialog 保存回写, 默认不支持 (对照 app 端 ImportTxtTocRuleDialog 无 Callback)。 */
@@ -105,13 +104,14 @@ fun ImportItemsDialog(
     errorText: String? = null,
     // 容器 Surface 尺寸约束 (默认统一窗口尺寸, 调用方可覆盖)
     surfaceModifier: Modifier = Modifier.appDialogSize(),
-    titleActions: @Composable RowScope.(invalidate: () -> Unit) -> Unit = {},
+    titleActions: @Composable RowScope.(checked: MutableList<Boolean>) -> Unit = {},
 ) {
-    // selectStatus 是普通 ArrayList, 修改不触发重组, 用 version 自增驱动 (与 app 端一致)
-    var version by remember { mutableIntStateOf(0) }
+    // 勾选是纯 UI 瞬态状态, 用 snapshot list 承载, 初值取 VM 解析时算出的默认勾选。
+    // key 带默认勾选长度: deep link/桌面在对话框内解析, 条目是后到的
+    val checked = remember(vm, vm.defaultChecked.size) { vm.defaultChecked.toMutableStateList() }
     var openIndex by remember { mutableStateOf<Int?>(null) }
-    @Suppress("UNUSED_EXPRESSION")
-    version
+    // 入库进行中 (对照 app 端 tvOk 点击先 WaitDialog.show, importSelect 回调里 dismissSafe)
+    var importing by remember { mutableStateOf(false) }
     val stateNew = stringResource(Res.string.import_state_new)
     val stateUpdate = stringResource(Res.string.import_state_update)
     val stateExisting = stringResource(Res.string.import_state_existing)
@@ -126,9 +126,9 @@ fun ImportItemsDialog(
                 title = title,
                 loading = loading,
                 errorText = errorText,
-                itemCount = vm.itemCount,
-                selectCount = vm.selectCount,
-                isSelectAll = vm.isSelectAll,
+                itemCount = checked.size,
+                selectCount = checked.count { it },
+                isSelectAll = checked.all { it },
                 itemLabel = { vm.itemLabel(it) },
                 itemState = {
                     when (vm.itemState(it)) {
@@ -137,28 +137,31 @@ fun ImportItemsDialog(
                         ImportItemState.EXISTING -> stateExisting
                     }
                 },
-                itemChecked = { vm.itemChecked(it) },
-                onItemChecked = { index, checked ->
-                    vm.setItemChecked(index, checked)
-                    version++
-                },
+                itemChecked = { checked[it] },
+                onItemChecked = { index, isChecked -> checked[index] = isChecked },
                 onOpen = { openIndex = it },
                 onToggleAll = {
-                    vm.toggleAll()
-                    version++
+                    val selectAll = checked.all { it }
+                    checked.indices.forEach { checked[it] = !selectAll }
                 },
                 onCancel = onDismiss,
                 onOk = {
-                    val count = vm.selectCount
-                    vm.importSelect {
+                    val count = checked.count { it }
+                    importing = true
+                    vm.importSelect(checked.toList()) {
+                        importing = false
                         onImported(count)
                         onDismiss()
                     }
                 },
-                titleActions = { titleActions { version++ } },
+                titleActions = { titleActions(checked) },
             )
         }
     }
+
+    // 入库转圈 (对照 app 端 WaitDialog.show + onFinally dismissSafe); 返回键只收起提示,
+    // 不取消入库协程, 与原版 WaitDialog 未设 onCancelListener 一致
+    WaitDialog(visible = importing, onDismissRequest = { importing = false })
 
     openIndex?.let { index ->
         CodeDialog(
@@ -166,7 +169,7 @@ fun ImportItemsDialog(
             disableEdit = false,
             onDismiss = { openIndex = null },
             onSave = { code ->
-                if (vm.updateItemFromJson(index, code)) version++
+                vm.updateItemFromJson(index, code)
                 openIndex = null
             },
         )
@@ -187,6 +190,9 @@ fun ImportBookSourceItemsDialog(
     val adapter = remember(vm) { ImportBookSourceItemsVm(vm) }
     val config = AppConfigProviders.get()
     var showGroupDialog by remember { mutableStateOf(false) }
+    // vm.groupName/isAddGroup 是普通 var, 读它们不会触发重组, 故镜像一份 Compose 状态驱动标题回显
+    var groupName by remember(vm) { mutableStateOf(vm.groupName) }
+    var isAddGroup by remember(vm) { mutableStateOf(vm.isAddGroup) }
     var keepName by remember { mutableStateOf(config.importKeepName) }
     var keepGroup by remember { mutableStateOf(config.importKeepGroup) }
     var keepEnable by remember { mutableStateOf(config.importKeepEnable) }
@@ -197,8 +203,24 @@ fun ImportBookSourceItemsDialog(
         onImported = onImported,
         loading = loading,
         errorText = errorText,
-        titleActions = { invalidate ->
+        titleActions = { checked ->
             var showMenu by remember { mutableStateOf(false) }
+            // 自定义源分组: 常显文本按钮 + 分组回显 (对照原版 import_source.xml showAsAction="always")
+            val group = groupName?.takeIf { it.isNotBlank() }
+            val groupTitle = if (group == null) {
+                stringResource(Res.string.diy_source_group)
+            } else {
+                val name = stringResource(Res.string.diy_edit_source_group_title, group)
+                if (isAddGroup) "+$name" else name
+            }
+            Text(
+                text = groupTitle,
+                color = AppTheme.colors.primaryText,
+                modifier = Modifier
+                    .align(Alignment.CenterVertically)
+                    .clickable { showGroupDialog = true }
+                    .padding(horizontal = 8.dp),
+            )
             Box {
                 IconButton(onClick = { showMenu = true }) {
                     Icon(
@@ -210,27 +232,11 @@ fun ImportBookSourceItemsDialog(
                 AppDropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                     DropdownMenuItem(onClick = {
                         showMenu = false
-                        showGroupDialog = true
-                    }) {
-                        val group = vm.groupName?.takeIf { it.isNotBlank() }
-                        val title = if (group == null) {
-                            stringResource(Res.string.diy_source_group)
-                        } else if (vm.isAddGroup) {
-                            "+${stringResource(Res.string.diy_edit_source_group)}: $group"
-                        } else {
-                            "${stringResource(Res.string.diy_edit_source_group)}: $group"
-                        }
-                        Text(title)
-                    }
-                    DropdownMenuItem(onClick = {
-                        showMenu = false
-                        adapter.selectNew()
-                        invalidate()
+                        adapter.selectNew(checked)
                     }) { Text(stringResource(Res.string.select_new_source)) }
                     DropdownMenuItem(onClick = {
                         showMenu = false
-                        adapter.selectUpdate()
-                        invalidate()
+                        adapter.selectUpdate(checked)
                     }) { Text(stringResource(Res.string.select_update_source)) }
                     ImportOptionMenuItem(
                         text = stringResource(Res.string.keep_original_name),
@@ -259,11 +265,13 @@ fun ImportBookSourceItemsDialog(
     )
     if (showGroupDialog) {
         ImportSourceGroupDialog(
-            initialGroup = vm.groupName.orEmpty(),
-            initialAddGroup = vm.isAddGroup,
+            initialGroup = groupName.orEmpty(),
+            initialAddGroup = isAddGroup,
             groupsProvider = { AppDbProviders.get().bookSourceDao.allGroups() },
-            onConfirm = { groupName, addGroup ->
-                vm.groupName = groupName.ifBlank { null }
+            onConfirm = { group, addGroup ->
+                groupName = group.ifBlank { null }
+                isAddGroup = addGroup
+                vm.groupName = groupName
                 vm.isAddGroup = addGroup
                 showGroupDialog = false
             },
@@ -303,6 +311,9 @@ fun ImportReplaceRuleItemsDialog(
 ) {
     val adapter = remember(vm) { ImportReplaceRuleItemsVm(vm) }
     var showGroupDialog by remember { mutableStateOf(false) }
+    // 同书源侧: vm 的普通 var 不触发重组, 镜像 Compose 状态驱动标题回显
+    var groupName by remember(vm) { mutableStateOf(vm.groupName) }
+    var isAddGroup by remember(vm) { mutableStateOf(vm.isAddGroup) }
     ImportItemsDialog(
         title = stringResource(Res.string.import_replace_rule),
         vm = adapter,
@@ -311,16 +322,15 @@ fun ImportReplaceRuleItemsDialog(
         loading = loading,
         errorText = errorText,
         titleActions = {
-            val group = vm.groupName?.takeIf { it.isNotBlank() }
-            val title = if (group == null) {
+            val group = groupName?.takeIf { it.isNotBlank() }
+            val groupTitle = if (group == null) {
                 stringResource(Res.string.diy_source_group)
-            } else if (vm.isAddGroup) {
-                "+${stringResource(Res.string.diy_edit_source_group)}: $group"
             } else {
-                "${stringResource(Res.string.diy_edit_source_group)}: $group"
+                val name = stringResource(Res.string.diy_edit_source_group_title, group)
+                if (isAddGroup) "+$name" else name
             }
             Text(
-                text = title,
+                text = groupTitle,
                 color = AppTheme.colors.primaryText,
                 modifier = Modifier
                     .align(Alignment.CenterVertically)
@@ -331,11 +341,13 @@ fun ImportReplaceRuleItemsDialog(
     )
     if (showGroupDialog) {
         ImportSourceGroupDialog(
-            initialGroup = vm.groupName.orEmpty(),
-            initialAddGroup = vm.isAddGroup,
+            initialGroup = groupName.orEmpty(),
+            initialAddGroup = isAddGroup,
             groupsProvider = { AppDbProviders.get().replaceRuleDao.allGroups() },
-            onConfirm = { groupName, addGroup ->
-                vm.groupName = groupName.ifBlank { null }
+            onConfirm = { group, addGroup ->
+                groupName = group.ifBlank { null }
+                isAddGroup = addGroup
+                vm.groupName = groupName
                 vm.isAddGroup = addGroup
                 showGroupDialog = false
             },
@@ -362,7 +374,7 @@ internal fun ImportSourceGroupDialog(
     }
     AppAlertDialog(
         onDismissRequest = onDismiss,
-        title = stringResource(Res.string.diy_source_group),
+        title = stringResource(Res.string.diy_edit_source_group),
         okButton = AlertButton(stringResource(Res.string.ok)) {
             onConfirm(groupName.trim(), addGroup)
         },
@@ -372,6 +384,32 @@ internal fun ImportSourceGroupDialog(
         ),
         content = {
             Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
+                // 开关块在输入框之上, 标题/副标题竖排占左 + 开关靠右
+                // (对照原版 dialog_import_custom_group.xml 的 ConstraintLayout)
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { addGroup = !addGroup }
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(Res.string.add_group),
+                            color = AppTheme.colors.primaryText,
+                        )
+                        // 开关含义说明 (对照原版 tv_add_group_s)
+                        Text(
+                            text = stringResource(Res.string.custom_group_summary),
+                            color = AppTheme.colors.secondaryText,
+                        )
+                    }
+                    AppSwitch(
+                        checked = addGroup,
+                        onCheckedChange = null,
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
+                }
                 // 自动补全输入框: 聚焦/输入时弹已有分组候选下拉 (对照 master editView.setFilterValues)
                 AppAutoCompleteField(
                     value = groupName,
@@ -380,20 +418,6 @@ internal fun ImportSourceGroupDialog(
                     values = groups,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clickable { addGroup = !addGroup }
-                        .padding(vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    AppCheckbox(checked = addGroup, onCheckedChange = null)
-                    Text(
-                        text = stringResource(Res.string.add_to_group),
-                        color = AppTheme.colors.primaryText,
-                        modifier = Modifier.padding(start = 8.dp),
-                    )
-                }
             }
         },
     )
@@ -403,9 +427,7 @@ internal fun ImportSourceGroupDialog(
 class ImportBookSourceItemsVm(
     private val vm: ImportBookSourceViewModelShared,
 ) : ImportItemsVm {
-    override val itemCount: Int get() = vm.allSources.size
-    override val selectCount: Int get() = vm.selectCount
-    override val isSelectAll: Boolean get() = vm.isSelectAll
+    override val defaultChecked: List<Boolean> get() = vm.defaultChecked
 
     override fun itemLabel(index: Int): String = vm.allSources[index].bookSourceName
 
@@ -418,36 +440,26 @@ class ImportBookSourceItemsVm(
         }
     }
 
-    override fun itemChecked(index: Int): Boolean = vm.selectStatus[index]
-
-    override fun setItemChecked(index: Int, checked: Boolean) {
-        vm.selectStatus[index] = checked
-    }
-
-    override fun toggleAll() {
-        val selectAll = vm.isSelectAll
-        vm.selectStatus.forEachIndexed { index, b ->
-            if (b != !selectAll) vm.selectStatus[index] = !selectAll
-        }
-    }
-
     /** 对照 app 端 selectNew: 全选/取消全选新增项。 */
-    fun selectNew() {
-        val selectAllNew = vm.isSelectAllNew
-        vm.newSourceStatus.forEachIndexed { index, b ->
-            if (b) vm.selectStatus[index] = !selectAllNew
+    fun selectNew(checked: MutableList<Boolean>) {
+        val status = vm.newSourceStatus
+        val selectAllNew = status.indices.all { !status[it] || checked[it] }
+        status.forEachIndexed { index, b ->
+            if (b) checked[index] = !selectAllNew
         }
     }
 
     /** 对照 app 端 selectUpdate: 全选/取消全选更新项。 */
-    fun selectUpdate() {
-        val selectAllUpdate = vm.isSelectAllUpdate
-        vm.updateSourceStatus.forEachIndexed { index, b ->
-            if (b) vm.selectStatus[index] = !selectAllUpdate
+    fun selectUpdate(checked: MutableList<Boolean>) {
+        val status = vm.updateSourceStatus
+        val selectAllUpdate = status.indices.all { !status[it] || checked[it] }
+        status.forEachIndexed { index, b ->
+            if (b) checked[index] = !selectAllUpdate
         }
     }
 
-    override fun importSelect(finally: () -> Unit) = vm.importSelect(finally)
+    override fun importSelect(checked: List<Boolean>, finally: () -> Unit) =
+        vm.importSelect(checked, finally)
 
     override fun itemJson(index: Int): String = GSON.toJson(vm.allSources[index])
 
@@ -462,9 +474,7 @@ class ImportBookSourceItemsVm(
 class ImportReplaceRuleItemsVm(
     private val vm: ImportReplaceRuleViewModelShared,
 ) : ImportItemsVm {
-    override val itemCount: Int get() = vm.allRules.size
-    override val selectCount: Int get() = vm.selectCount
-    override val isSelectAll: Boolean get() = vm.isSelectAll
+    override val defaultChecked: List<Boolean> get() = vm.defaultChecked
 
     override fun itemLabel(index: Int): String {
         val item = vm.allRules[index]
@@ -485,20 +495,8 @@ class ImportReplaceRuleItemsVm(
         }
     }
 
-    override fun itemChecked(index: Int): Boolean = vm.selectStatus[index]
-
-    override fun setItemChecked(index: Int, checked: Boolean) {
-        vm.selectStatus[index] = checked
-    }
-
-    override fun toggleAll() {
-        val selectAll = vm.isSelectAll
-        vm.selectStatus.forEachIndexed { index, b ->
-            if (b != !selectAll) vm.selectStatus[index] = !selectAll
-        }
-    }
-
-    override fun importSelect(finally: () -> Unit) = vm.importSelect(finally)
+    override fun importSelect(checked: List<Boolean>, finally: () -> Unit) =
+        vm.importSelect(checked, finally)
 
     override fun itemJson(index: Int): String = GSON.toJson(vm.allRules[index])
 
@@ -513,9 +511,7 @@ class ImportReplaceRuleItemsVm(
 class ImportTxtTocRuleItemsVm(
     private val vm: ImportTxtTocRuleViewModelShared,
 ) : ImportItemsVm {
-    override val itemCount: Int get() = vm.allSources.size
-    override val selectCount: Int get() = vm.selectCount
-    override val isSelectAll: Boolean get() = vm.isSelectAll
+    override val defaultChecked: List<Boolean> get() = vm.defaultChecked
 
     override fun itemLabel(index: Int): String = vm.allSources[index].name
 
@@ -528,20 +524,8 @@ class ImportTxtTocRuleItemsVm(
         }
     }
 
-    override fun itemChecked(index: Int): Boolean = vm.selectStatus[index]
-
-    override fun setItemChecked(index: Int, checked: Boolean) {
-        vm.selectStatus[index] = checked
-    }
-
-    override fun toggleAll() {
-        val selectAll = vm.isSelectAll
-        vm.selectStatus.forEachIndexed { index, b ->
-            if (b != !selectAll) vm.selectStatus[index] = !selectAll
-        }
-    }
-
-    override fun importSelect(finally: () -> Unit) = vm.importSelect(finally)
+    override fun importSelect(checked: List<Boolean>, finally: () -> Unit) =
+        vm.importSelect(checked, finally)
 
     override fun itemJson(index: Int): String = GSON.toJson(vm.allSources[index])
 }
@@ -550,29 +534,15 @@ class ImportTxtTocRuleItemsVm(
 class ImportDictRuleItemsVm(
     private val vm: ImportDictRuleViewModelShared,
 ) : ImportItemsVm {
-    override val itemCount: Int get() = vm.allSources.size
-    override val selectCount: Int get() = vm.selectCount
-    override val isSelectAll: Boolean get() = vm.isSelectAll
+    override val defaultChecked: List<Boolean> get() = vm.defaultChecked
 
     override fun itemLabel(index: Int): String = vm.allSources[index].name
 
     override fun itemState(index: Int): ImportItemState =
         if (vm.checkSources[index] == null) ImportItemState.NEW else ImportItemState.EXISTING
 
-    override fun itemChecked(index: Int): Boolean = vm.selectStatus[index]
-
-    override fun setItemChecked(index: Int, checked: Boolean) {
-        vm.selectStatus[index] = checked
-    }
-
-    override fun toggleAll() {
-        val selectAll = vm.isSelectAll
-        vm.selectStatus.forEachIndexed { index, b ->
-            if (b != !selectAll) vm.selectStatus[index] = !selectAll
-        }
-    }
-
-    override fun importSelect(finally: () -> Unit) = vm.importSelect(finally)
+    override fun importSelect(checked: List<Boolean>, finally: () -> Unit) =
+        vm.importSelect(checked, finally)
 
     override fun itemJson(index: Int): String = GSON.toJson(vm.allSources[index])
 
@@ -587,9 +557,7 @@ class ImportDictRuleItemsVm(
 class ImportHttpTtsItemsVm(
     private val vm: ImportHttpTtsViewModelShared,
 ) : ImportItemsVm {
-    override val itemCount: Int get() = vm.allSources.size
-    override val selectCount: Int get() = vm.selectCount
-    override val isSelectAll: Boolean get() = vm.isSelectAll
+    override val defaultChecked: List<Boolean> get() = vm.defaultChecked
 
     override fun itemLabel(index: Int): String = vm.allSources[index].name
 
@@ -602,20 +570,8 @@ class ImportHttpTtsItemsVm(
         }
     }
 
-    override fun itemChecked(index: Int): Boolean = vm.selectStatus[index]
-
-    override fun setItemChecked(index: Int, checked: Boolean) {
-        vm.selectStatus[index] = checked
-    }
-
-    override fun toggleAll() {
-        val selectAll = vm.isSelectAll
-        vm.selectStatus.forEachIndexed { index, b ->
-            if (b != !selectAll) vm.selectStatus[index] = !selectAll
-        }
-    }
-
-    override fun importSelect(finally: () -> Unit) = vm.importSelect(finally)
+    override fun importSelect(checked: List<Boolean>, finally: () -> Unit) =
+        vm.importSelect(checked, finally)
 
     override fun itemJson(index: Int): String = GSON.toJson(vm.allSources[index])
 
@@ -626,13 +582,11 @@ class ImportHttpTtsItemsVm(
         } ?: false
 }
 
-/** 主题配置适配器 (对照 app 端 ImportThemeDialog: 整体 != 比对, CodeDialog 可编辑回写)。 */
+/** 主题配置适配器 (对照 app 端 ImportThemeDialog: 整体 != 比对, 无 CodeDialog.Callback 不回写)。 */
 class ImportThemeItemsVm(
     private val vm: ImportThemeViewModelShared,
 ) : ImportItemsVm {
-    override val itemCount: Int get() = vm.allSources.size
-    override val selectCount: Int get() = vm.selectCount
-    override val isSelectAll: Boolean get() = vm.isSelectAll
+    override val defaultChecked: List<Boolean> get() = vm.defaultChecked
 
     override fun itemLabel(index: Int): String = vm.allSources[index].themeName
 
@@ -645,37 +599,17 @@ class ImportThemeItemsVm(
         }
     }
 
-    override fun itemChecked(index: Int): Boolean = vm.selectStatus[index]
-
-    override fun setItemChecked(index: Int, checked: Boolean) {
-        vm.selectStatus[index] = checked
-    }
-
-    override fun toggleAll() {
-        val selectAll = vm.isSelectAll
-        vm.selectStatus.forEachIndexed { index, b ->
-            if (b != !selectAll) vm.selectStatus[index] = !selectAll
-        }
-    }
-
-    override fun importSelect(finally: () -> Unit) = vm.importSelect(finally)
+    override fun importSelect(checked: List<Boolean>, finally: () -> Unit) =
+        vm.importSelect(checked, finally)
 
     override fun itemJson(index: Int): String = GSON.toJson(vm.allSources[index])
-
-    override fun updateItemFromJson(index: Int, json: String): Boolean =
-        GSON.fromJsonObject<ThemeConfigData>(json).getOrNull()?.let {
-            vm.allSources[index] = it
-            true
-        } ?: false
 }
 
 /** 屏蔽规则适配器 (对照 app 端 ImportSourceFilterRuleDialog: pattern/fields/scope 比对)。 */
 class ImportSourceFilterRuleItemsVm(
     private val vm: ImportSourceFilterRuleViewModelShared,
 ) : ImportItemsVm {
-    override val itemCount: Int get() = vm.allRules.size
-    override val selectCount: Int get() = vm.selectCount
-    override val isSelectAll: Boolean get() = vm.isSelectAll
+    override val defaultChecked: List<Boolean> get() = vm.defaultChecked
 
     override fun itemLabel(index: Int): String {
         val item = vm.allRules[index]
@@ -695,20 +629,8 @@ class ImportSourceFilterRuleItemsVm(
         }
     }
 
-    override fun itemChecked(index: Int): Boolean = vm.selectStatus[index]
-
-    override fun setItemChecked(index: Int, checked: Boolean) {
-        vm.selectStatus[index] = checked
-    }
-
-    override fun toggleAll() {
-        val selectAll = vm.isSelectAll
-        vm.selectStatus.forEachIndexed { index, b ->
-            if (b != !selectAll) vm.selectStatus[index] = !selectAll
-        }
-    }
-
-    override fun importSelect(finally: () -> Unit) = vm.importSelect(finally)
+    override fun importSelect(checked: List<Boolean>, finally: () -> Unit) =
+        vm.importSelect(checked, finally)
 
     override fun itemJson(index: Int): String = GSON.toJson(vm.allRules[index])
 

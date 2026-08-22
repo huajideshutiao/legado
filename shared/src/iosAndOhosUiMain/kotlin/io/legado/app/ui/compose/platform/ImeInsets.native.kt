@@ -3,14 +3,14 @@ package io.legado.app.ui.compose.platform
 import androidx.compose.runtime.Composable
 
 /**
- * iOS / 鸿蒙共用的 [rememberImeHiding] 与 [rememberImeAnimating] actual
- * (两端原实现逐字相同, 合并去重): 两端均无软键盘 inset/IME 动画概念, 恒 false
- * (imeDismissPadding 天然 no-op)。
+ * iOS / 鸿蒙共用的 [rememberImeHiding] 与 [rememberImeAnimating] actual: 恒 false。
  *
- * 同文件另两个 expect 两端行为不同, 仍留在各自 leaf:
- * - [shouldConsumeImeInsets]: iOS true (CMP 键盘不收缩窗口, ime insets 全量派发) /
- *   鸿蒙 false (CPF foundation-layout 无键盘代码)
- * - [rememberImeVisible]: iOS 监听 UIKit 键盘通知 / 鸿蒙恒 true
+ * 两端都有 ime inset, 但 imeAnimationSource/imeAnimationTarget 仅 Android 有 (已核 klib
+ * ABI), 无从判定动画方向与进行中; 逐帧比对要自建帧循环, 代价大于收益 (只用于抑制动画期
+ * 的重建/滚动), 暂不做。
+ *
+ * 同文件另一个 expect 两端行为不同, 仍留在各自 leaf:
+ * - [rememberImeVisible]: iOS 监听 UIKit 键盘通知 / 鸿蒙读 CPF 的 ime inset
  */
 @Composable
 actual fun rememberImeHiding(): Boolean = false

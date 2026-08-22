@@ -2,15 +2,8 @@ package io.legado.app.ui.book.rss
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.union
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
@@ -71,14 +64,7 @@ fun ReadRssScreen(
     platformWebViewSlot: @Composable (WebViewConfig) -> Unit,
 ) {
     Box(Modifier.fillMaxSize()) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .windowInsetsPadding(
-                    WindowInsets.systemBars.union(WindowInsets.ime)
-                        .only(WindowInsetsSides.Bottom)
-                )
-        ) {
+        Column(Modifier.fillMaxSize()) {
             if (!state.videoFullScreen) {
                 AppTitleBar(
                     title = state.pageTitle ?: "",

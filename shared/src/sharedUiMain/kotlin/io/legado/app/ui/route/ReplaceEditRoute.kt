@@ -8,10 +8,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
-import io.legado.app.ui.compose.platform.imeDismissPadding
 import io.legado.app.ui.replace.ReplaceEditScreen
 import io.legado.app.ui.replace.edit.ReplaceEditViewModelShared
 import io.legado.app.ui.root.AppNavigator
@@ -83,10 +81,6 @@ fun ReplaceEditRoute(
         },
         onHelp = { showHelp = true },
         requestFocusSignal = refocusSignal,
-        // ime 避让留在根 (对齐 BookSourceEditRoute; desktop/iOS 上 inset 为 0, 为 no-op);
-        // navbar 由 ReplaceEditScreen 滚动区 contentPadding 承担; imeDismissPadding 在
-        // 键盘收起动画期间提前归零 padding, 消除动画期底部空隙
-        modifier = Modifier.imeDismissPadding(),
     )
 
     if (showHelp) {

@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,7 +16,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.items
@@ -415,12 +413,7 @@ fun BookshelfTopBar(content: @Composable RowScope.() -> Unit) {
         hasBgImage -> Color.Transparent
         else -> colors.background
     }
-    val insetsModifier = if (eInk) {
-        Modifier.windowInsetsPadding(WindowInsets(0))
-    } else {
-        Modifier.transitionStatusBarPadding()
-    }
-    Box(Modifier.fillMaxWidth().background(bg).then(insetsModifier)) {
+    Box(Modifier.fillMaxWidth().background(bg).then(if (eInk) Modifier else Modifier.transitionStatusBarPadding())) {
         Row(
             // 56dp 对照原 TitleBar/Toolbar minHeight=actionBarSize
             Modifier.fillMaxWidth().heightIn(min = 56.dp),

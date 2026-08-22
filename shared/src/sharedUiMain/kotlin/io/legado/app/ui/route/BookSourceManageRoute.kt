@@ -69,6 +69,7 @@ import legado.shared.generated.resources.selection_to_bottom
 import legado.shared.generated.resources.selection_to_top
 import legado.shared.generated.resources.share_selected_source
 import legado.shared.generated.resources.sure_del
+import legado.shared.generated.resources.wrong_format
 import legado.shared.generated.resources.yes
 import org.jetbrains.compose.resources.stringResource
 
@@ -143,6 +144,9 @@ fun BookSourceManageRoute(
     var showUrlInput by remember { mutableStateOf(false) }
     var importVm by remember { mutableStateOf<ImportBookSourceViewModelShared?>(null) }
     var showImportDialog by remember { mutableStateOf(false) }
+    // 导入失败 / 解析出 0 条的提示文案, 显示在对话框内 (对照原版 ImportBookSourceDialog 的 tv_msg)
+    var importError by remember { mutableStateOf<String?>(null) }
+    val strWrongFormat = stringResource(Res.string.wrong_format)
     // 删除确认对话框 (对照 app 端 del / delSelection 内 alert)
     var delTarget by remember { mutableStateOf<BookSourcePart?>(null) }
     var showDelSelection by remember { mutableStateOf(false) }
@@ -208,12 +212,21 @@ fun BookSourceManageRoute(
         }
     }
 
-    // 监听导入 VM 的成功信号 (对照 ReplaceRuleRoute 模式)
+    // 监听导入 VM 的成功/错误状态 (对照 ImportTargetDialog: 两条都要收, 错误也要弹对话框)
     LaunchedEffect(importVm) {
         val vm = importVm ?: return@LaunchedEffect
         kotlinx.coroutines.coroutineScope {
             launch {
-                vm.successState.collect { showImportDialog = true }
+                vm.successState.collect { count ->
+                    importError = if (count == 0) strWrongFormat else null
+                    showImportDialog = true
+                }
+            }
+            launch {
+                vm.errorState.collect { err ->
+                    importError = err
+                    showImportDialog = true
+                }
             }
         }
     }
@@ -407,11 +420,14 @@ fun BookSourceManageRoute(
                 onDismiss = {
                     showImportDialog = false
                     importVm = null
+                    importError = null
                 },
                 onImported = {
                     showImportDialog = false
                     importVm = null
+                    importError = null
                 },
+                errorText = importError,
             )
         }
     }

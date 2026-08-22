@@ -109,7 +109,7 @@ class DeepLinkImportTarget private constructor(
  * ImportSourceOverlayContent 共用; 原三处各自 collect success/error 的重复实现收敛于此)。
  *
  * - 解析进行中 (success/error 均未到达) → 对话框内 loading;
- * - 解析失败 → 对话框内显示错误文本 (剥离 `ImportError:` 前缀, 对照 Overlay 旧实现);
+ * - 解析失败 → 对话框内显示 VM 投递的原串 (含 `ImportError:` 前缀, 对照原版 tv_msg 直接赋值);
  * - 解析成功但条目数 0 → "格式不对";
  * - 书源/替换规则类型分别走 [ImportBookSourceItemsDialog] / [ImportReplaceRuleItemsDialog]
  *   (带"选中新增/更新源" / 自定义分组菜单), 其余走通用 [ImportItemsDialog]。
@@ -125,7 +125,7 @@ internal fun ImportTargetDialog(
     val success by target.successState.collectAsState(initial = null)
     val loading = errorRaw == null && success == null
     val errorText = when {
-        errorRaw != null -> errorRaw!!.substringAfter("ImportError:")
+        errorRaw != null -> errorRaw!!
         success == 0 -> stringResource(Res.string.wrong_format)
         else -> null
     }

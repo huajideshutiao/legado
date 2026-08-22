@@ -7,7 +7,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.TextRange
 import io.legado.app.constant.BookSourceType
@@ -32,7 +31,6 @@ import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.code.CodeEditorState
 import io.legado.app.ui.compose.platform.AppBackHandler
-import io.legado.app.ui.compose.platform.imeDismissPadding
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -300,11 +298,6 @@ fun BookSourceEditRoute(
         fieldEditors = fieldEditors,
         onFieldFocus = { fieldId, entity -> activeField.value = fieldId to entity },
         requestFocusSignal = refocusSignal,
-        // ime 避让在根 (对齐原版 adjustResize); navbar 由 EditFields 列表 contentPadding
-        // 承担, 对齐原版 clipToPadding=false (desktop/iOS 上 inset 为 0, 为 no-op);
-        // imeDismissPadding 在键盘收起动画期间提前归零 padding (对齐原版 onGlobalLayout
-        // 立刻 setPadding(0)), 消除动画期键盘视觉先滑走而 insets 未归零的底部空隙
-        modifier = Modifier.imeDismissPadding(),
     )
 
     // 帮助对话框 (对照 app 端 showHelp(fileName))

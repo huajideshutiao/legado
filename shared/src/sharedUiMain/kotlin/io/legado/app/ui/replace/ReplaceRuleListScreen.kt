@@ -38,7 +38,6 @@ import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.component.SelectActionBar
 import io.legado.app.ui.compose.component.dragSelectable
-import io.legado.app.ui.compose.platform.rememberNavigationBarPaddingValues
 import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
 import legado.shared.generated.resources.Res
@@ -122,7 +121,6 @@ fun ReplaceRuleListScreen(
             viewModel.moveItem(from, to)
         },
         listState = listState,
-        bottomPadding = rememberNavigationBarPaddingValues(),
         titleBar = {
             AppTitleBar(
                 title = stringResource(Res.string.replace_purify),

@@ -84,38 +84,15 @@ class ImportTxtTocRuleViewModelShared(
     /** 已有 TxtTocRule (用于 comparisonSource 比对), null=新增。 */
     val checkSources = arrayListOf<TxtTocRule?>()
 
-    /** 每个 allSources 元素是否被选中导入 (默认新增/与本地不同都选中, 由 app 端 UI 切换)。 */
-    val selectStatus = arrayListOf<Boolean>()
-
-    /** 是否全部选中 (对照原 `isSelectAll: Boolean get() = selectStatus.all { it }`)。 */
-    val isSelectAll: Boolean
-        get() {
-            selectStatus.forEach {
-                if (!it) {
-                    return false
-                }
-            }
-            return true
-        }
-
-    /** 选中数量 (对照原 `selectCount: Int get() = selectStatus.count { it }`)。 */
-    val selectCount: Int
-        get() {
-            var count = 0
-            selectStatus.forEach {
-                if (it) {
-                    count++
-                }
-            }
-            return count
-        }
+    /** 解析时算出的默认勾选 (默认新增/与本地不同都选中)。勾选状态本身归 UI 层, 这里只提供初值。 */
+    val defaultChecked = arrayListOf<Boolean>()
 
     /**
      * 导入选中的 TxtTocRule, 对应 app 端 `importSelect(finally)`。
      *
      * # 实现细节保持
      *
-     * - 遍历 [selectStatus], 选中的项加入 selectSource 列表;
+     * - 遍历 [checked], 选中的项加入 selectSource 列表;
      * - `appDb.txtTocRuleDao.insert(*selectSource.toTypedArray())` 批量写入;
      * - `onFinally` 回调 [finally] (与 app 端 `onFinally { finally.invoke() }` 等价)。
      *
@@ -123,10 +100,10 @@ class ImportTxtTocRuleViewModelShared(
      *
      * @param finally 导入完成回调 (无论成功/失败均触发, 与 app 端 onFinally 一致)
      */
-    fun importSelect(finally: () -> Unit) {
+    fun importSelect(checked: List<Boolean>, finally: () -> Unit) {
         Coroutine.async(scope = scope) {
             val selectSource = arrayListOf<TxtTocRule>()
-            selectStatus.forEachIndexed { index, b ->
+            checked.forEachIndexed { index, b ->
                 if (b) {
                     selectSource.add(allSources[index])
                 }
@@ -233,7 +210,7 @@ class ImportTxtTocRuleViewModelShared(
      * # 实现细节保持
      *
      * - 遍历 [allSources], 调 `appDb.txtTocRuleDao.get(it.id)` 查本地;
-     * - selectStatus: source 为 null (新增) 或 `it != source` (与本地不同) 时选中
+     * - defaultChecked: source 为 null (新增) 或 `it != source` (与本地不同) 时选中
      *   (与 app 端原 `selectStatus.add(source == null || it != source)` 完全一致);
      * - 推送 `_successState.tryEmit(allSources.size)` (替代 `successLiveData.postValue(allSources.size)`)。
      *
@@ -244,7 +221,7 @@ class ImportTxtTocRuleViewModelShared(
             allSources.forEach {
                 val source = appDb.txtTocRuleDao.get(it.id)
                 checkSources.add(source)
-                selectStatus.add(source == null || it != source)
+                defaultChecked.add(source == null || it != source)
             }
             _successState.tryEmit(allSources.size)
         }

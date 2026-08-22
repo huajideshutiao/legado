@@ -1,21 +1,29 @@
 package io.legado.app.ui.compose.platform
 
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.platform.LocalDensity
 
 /**
- * [shouldConsumeImeInsets] 的鸿蒙 actual: 无软键盘/窗口收缩概念, 恒 false
- * (imeDismissPadding 天然 no-op)。
- */
-actual fun shouldConsumeImeInsets(): Boolean = false
-
-
-/**
- * [rememberImeVisible] 的鸿蒙 actual: 恒 true, 与桌面 JVM 一致常驻显示帮助栏。
+ * [rememberImeVisible] 的鸿蒙 actual: 读 CPF 的 ime inset 底边是否 > 0。
  *
- * 有意偏离原版 (原版仅软键盘弹出时显示): CPF 1.9.2-0.5.0 移植版无 WindowInsets.ime
- * 实现 (foundation-layout-ohos 无键盘代码, platform.arkui 无窗口避让区/输入法绑定),
- * 真实检测需 tln 直链系统 .so, 暂不可行 —— 先与桌面端一致恒 true 常驻, 待 CPF
- * 支持 ime 或引入原生绑定后再改回真实检测。其余调用点影响同桌面端 (幂等 no-op)。
+ * 逐帧数值读取关在 snapshotFlow 的独立观察域内, 只有布尔翻转才写回 state ——
+ * 调用方不会在键盘动画期间每帧重组, 与 Android/iOS actual 的事件语义一致。
  */
 @Composable
-actual fun rememberImeVisible(): Boolean = true
+actual fun rememberImeVisible(): Boolean {
+    val density = LocalDensity.current
+    val ime = WindowInsets.ime
+    var imeVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(ime, density) {
+        snapshotFlow { ime.getBottom(density) > 0 }.collect { imeVisible = it }
+    }
+    return imeVisible
+}

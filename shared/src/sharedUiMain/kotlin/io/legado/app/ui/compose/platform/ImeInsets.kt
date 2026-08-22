@@ -2,7 +2,6 @@ package io.legado.app.ui.compose.platform
 
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
@@ -24,16 +23,6 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /**
- * 窗口是否需要应用侧自行消费 ime insets。
- *
- * Android actual: 设备 Android 15+ 时窗口被强制 edge-to-edge (targetSdk 35+),
- * adjustResize 不再收缩窗口, ime insets 全量派发 → true; 低版本窗口由系统 resize
- * 收缩 → false。非 Android 平台无软键盘/窗口收缩概念, 恒 false (ime insets 恒 0,
- * 消费与否均为 no-op)。
- */
-expect fun shouldConsumeImeInsets(): Boolean
-
-/**
  * 软键盘弹出时把聚焦字段重新滚进视口。
  *
  * 背景 (2026-08 核查定案, 依据 AOSP android15-release 源码):
@@ -47,9 +36,9 @@ expect fun shouldConsumeImeInsets(): Boolean
  *   TextFieldCoreModifier 明确"容器尺寸变化时不 bringIntoView", IME 弹出本身不触发任何
  *   bringIntoView —— 聚焦字段需在键盘弹出后自行请求。
  *
- * 滚动时机: 键盘弹出动画期间视口逐帧收缩 (宿主 [imeDismissPadding] 逐帧跟随 ime),
- * 此阶段**不发起动画滚动** —— 逐帧动画滚动会取消重开互相打断 (旧 while 循环实现在
- * 键盘弹出时表现为明显卡顿); 动画期间的光标保持可见由容器注册的瞬移滚动器
+ * 滚动时机: 键盘弹出动画期间视口逐帧收缩, 此阶段**不发起动画滚动** —— 逐帧动画滚动
+ * 会取消重开互相打断 (旧 while 循环实现在键盘弹出时表现为明显卡顿); 动画期间的光标
+ * 保持可见由容器注册的瞬移滚动器
  * ([imeScrollNowFor] + CodeTextField.imeScrollNow / [imeFollowVisibleOnIme]) 承担,
  * 无动画滚动不打断。本 modifier 只做动画结束 (imeAnimating 翻转, 视口已稳定) 后的
  * 一次 bringIntoView 收尾 (幂等: 瞬移路径下已可见则不滚)。键盘收起后不请求。
@@ -221,22 +210,3 @@ expect fun rememberImeVisible(): Boolean
  */
 @Composable
 expect fun rememberImeAnimating(): Boolean
-
-/**
- * 编辑页底部避让 padding (页面唯一来源, 页内不得再补第二份): 取 ime ∪ 导航条
- * ([bottomSheetBottomInsets]), insets 在 measure 期读取, 逐帧跟随键盘动画且不触发重组。
- *
- * 并集是还原原版语义: 原版 rootView=imeHeight 与 recyclerView/keyboardTool=
- * navigationBarHeight ((systemBars-ime).coerceAtLeast(0)) 三份出自同一个
- * WindowInsetsCompat, 合起来恒为 max(ime, systemBars) —— 全程只有一个时钟。导航条高度
- * 即天然下限, 收起动画期 padding 平滑落到导航条高即止, 无需再判"是否收起中"。
- *
- * [shouldConsumeImeInsets] 为 false (Android 14-: 窗口由系统 resize 收缩且 DecorView
- * 已消费 insets, 两个 inset 均为 0) 时 no-op。
- */
-@Composable
-fun Modifier.imeDismissPadding(): Modifier {
-    // 低版本窗口由系统 resize 收缩, insets 已被 DecorView 消费, 无需屏内避让
-    if (!shouldConsumeImeInsets()) return this
-    return this.windowInsetsPadding(bottomSheetBottomInsets())
-}

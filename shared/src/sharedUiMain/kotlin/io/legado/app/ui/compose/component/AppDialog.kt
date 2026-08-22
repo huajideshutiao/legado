@@ -51,6 +51,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.ui.compose.platform.BackLayerHandler
+import io.legado.app.ui.compose.platform.LocalTransitionFrozenStatusBarHeightPx
 import io.legado.app.ui.compose.platform.PlatformDialogDim
 import io.legado.app.ui.compose.platform.platformStatusBarPadding
 import io.legado.app.ui.compose.platform.rememberVisibleStatusBarHeightPx
@@ -60,20 +61,6 @@ import io.legado.app.utils.ScreenInfoProviders
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
-
-/**
- * 是否位于对话框窗口内 (由 [AppDialog] / [AppBottomSheetDialog] 在内容根部提供)。
- *
- * 对话框是独立窗口, 系统栏避让由窗口自身承担:
- * - `decorFitsSystemWindows = true` (本应用对话框默认) 时窗口内容区已避开状态栏;
- * - Android 15+ (targetSdk 35+ 强制 edge-to-edge) 时窗口虽为全屏, 但本应用弹层内容
- *   为 0.7~0.92 锚点高、底部贴齐或居中, 顶部均不触及状态栏区域。
- *
- * 因此对话框内的顶栏组件 (如 [AppTitleBar]) 不应再叠加状态栏 padding, 否则出现
- * 双重避让 → 弹窗顶部多出一层状态栏高的空白带。路由页 (非对话框) 默认 false,
- * 顶栏继续按页面语义做状态栏沉浸 padding。
- */
-val LocalDialogWindow = staticCompositionLocalOf { false }
 
 /**
  * 底部弹层拖拽禁区: 内容区里"竖直手势归内部"的区域, 目前用于平台 WebView 这类 interop 视图。
@@ -154,55 +141,51 @@ fun AppDialog(
         Dialog(
             onDismissRequest = onDismissRequest,
             properties = properties,
-            content = {
-                CompositionLocalProvider(LocalDialogWindow provides true) { content() }
-            },
+            content = { content() },
         )
         return
     }
     // 对话框动画平台 spec (时长/插值器按平台对话框转场语义, Android 动态读系统动画时长缩放)
     val dialogSpec = remember { PlatformCapabilityProviders.get().dialogTransitionSpec }
     Dialog(onDismissRequest = { dismissing = true }, properties = properties) {
-        CompositionLocalProvider(LocalDialogWindow provides true) {
-            // Android 补平台 dim 0.6 (对齐桌面/iOS 0.6 scrim); E-Ink 分支在上方已跳过 (对齐原版 E-Ink 清 dim)
-            if (dim) PlatformDialogDim()
-            val progress = remember { Animatable(0f) }
-            // 进入: 缩放 enterScaleFrom→1 + 淡入 (对齐系统 dialog_enter.xml, 参数读平台 spec)
-            LaunchedEffect(Unit) {
+        // Android 补平台 dim 0.6 (对齐桌面/iOS 0.6 scrim); E-Ink 分支在上方已跳过 (对齐原版 E-Ink 清 dim)
+        if (dim) PlatformDialogDim()
+        val progress = remember { Animatable(0f) }
+        // 进入: 缩放 enterScaleFrom→1 + 淡入 (对齐系统 dialog_enter.xml, 参数读平台 spec)
+        LaunchedEffect(Unit) {
+            progress.animateTo(
+                1f,
+                tween(
+                    durationMillis = dialogSpec.enterDurationMillis,
+                    easing = dialogSpec.enterEasing.toComposeEasing(),
+                )
+            )
+        }
+        // 退出: 淡出播完再关闭 (对齐系统 dialog_exit.xml, 参数读平台 spec)
+        LaunchedEffect(dismissing) {
+            if (dismissing) {
                 progress.animateTo(
-                    1f,
+                    0f,
                     tween(
-                        durationMillis = dialogSpec.enterDurationMillis,
-                        easing = dialogSpec.enterEasing.toComposeEasing(),
+                        durationMillis = dialogSpec.exitDurationMillis,
+                        easing = dialogSpec.exitEasing.toComposeEasing(),
                     )
                 )
+                onDismissRequest()
             }
-            // 退出: 淡出播完再关闭 (对齐系统 dialog_exit.xml, 参数读平台 spec)
-            LaunchedEffect(dismissing) {
-                if (dismissing) {
-                    progress.animateTo(
-                        0f,
-                        tween(
-                            durationMillis = dialogSpec.exitDurationMillis,
-                            easing = dialogSpec.exitEasing.toComposeEasing(),
-                        )
-                    )
-                    onDismissRequest()
-                }
-            }
-            val p = progress.value
-            // 不套 fillMaxSize: 对话框窗口是 wrap_content, 撑满会占掉整个可用空间;
-            // Box 尺寸跟随内容, 缩放/淡入只作用于内容框本身
-            Box(
-                Modifier.graphicsLayer {
-                    val scale = dialogSpec.enterScaleFrom + (1f - dialogSpec.enterScaleFrom) * p
-                    scaleX = scale
-                    scaleY = scale
-                    alpha = if (dialogSpec.enterFadeIn) p else 1f
-                },
-            ) {
-                content()
-            }
+        }
+        val p = progress.value
+        // 不套 fillMaxSize: 对话框窗口是 wrap_content, 撑满会占掉整个可用空间;
+        // Box 尺寸跟随内容, 缩放/淡入只作用于内容框本身
+        Box(
+            Modifier.graphicsLayer {
+                val scale = dialogSpec.enterScaleFrom + (1f - dialogSpec.enterScaleFrom) * p
+                scaleX = scale
+                scaleY = scale
+                alpha = if (dialogSpec.enterFadeIn) p else 1f
+            },
+        ) {
+            content()
         }
     }
 }
@@ -277,7 +260,6 @@ fun AppBottomSheetDialog(
     if (AppConfigProviders.get().isEInkMode) {
         Dialog(onDismissRequest = onDismissRequest, properties = properties) {
             CompositionLocalProvider(
-                LocalDialogWindow provides true,
                 LocalSheetDragExclusion provides dragExclusion,
                 LocalSheetDismissRequest provides requestDismiss,
             ) {
@@ -524,10 +506,7 @@ fun AppBottomSheetDialog(
                     }
                 },
         ) {
-            // 标记内容位于对话框窗口内: 顶栏 (AppTitleBar) 据此跳过状态栏 padding
-            // (窗口已自行避让系统栏 / sheet 贴底不达状态栏, 避免双重避让顶部空白)
             CompositionLocalProvider(
-                LocalDialogWindow provides true,
                 LocalSheetDragExclusion provides dragExclusion,
                 LocalSheetDismissRequest provides requestDismiss,
             ) { content() }
@@ -542,11 +521,14 @@ fun AppBottomSheetDialog(
  * [fullScreen] 时 sheet 撑满窗口 (仍贴底对齐, 只是高度到顶), 不再受 [maxHeight] /
  * 0.7 锚点高约束。
  *
- * 全屏时补 [platformStatusBarPadding]: 常规弹层高度只有 0.7 锚点高、顶部到不了状态栏, 所以
- * 弹层内的 [AppTitleBar] 一律跳过状态栏 padding (见 [LocalDialogWindow]); 全屏后顶部会真的
- * 贴到窗口顶, 这层 padding 把前提补回来。它只消费"尚未被窗口消费"的 inset ——
+ * 全屏时补 [platformStatusBarPadding]: 常规弹层高度只有 0.7 锚点高、顶部到不了状态栏;
+ * 全屏后顶部会真的贴到窗口顶, 这层 padding 把前提补回来。它只消费"尚未被窗口消费"的 inset ——
  * decorFitsSystemWindows=true 的窗口已自行避让时为 0, 不会双重避让; 只有 Android 15+
  * 强制 edge-to-edge 的全屏窗口才真正生效。
+ *
+ * 顶部 inset 归本骨架所有: 弹层内 [LocalTransitionFrozenStatusBarHeightPx] 提供 0
+ * ("此处没有状态栏"), content 里的顶栏 (如 [AppTitleBar]) 不再自行叠加 —— 弹层贴底、
+ * 顶部够不到状态栏, 自行避让只会凭空多出一层状态栏高的空白带。
  */
 @Composable
 private fun BottomSheetScaffold(
@@ -582,7 +564,11 @@ private fun BottomSheetScaffold(
                     }
                 ),
             contentAlignment = Alignment.BottomCenter,
-        ) { content() }
+        ) {
+            CompositionLocalProvider(LocalTransitionFrozenStatusBarHeightPx provides 0) {
+                content()
+            }
+        }
     }
 }
 

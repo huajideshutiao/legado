@@ -30,8 +30,7 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.help.toast.Toasters
-import io.legado.app.ui.association.ImportItemsDialog
-import io.legado.app.ui.association.ImportReplaceRuleItemsVm
+import io.legado.app.ui.association.ImportReplaceRuleItemsDialog
 import io.legado.app.ui.association.ImportReplaceRuleViewModelShared
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
@@ -63,8 +62,8 @@ import legado.shared.generated.resources.edit
 import legado.shared.generated.resources.group_manage
 import legado.shared.generated.resources.group_name
 import legado.shared.generated.resources.ic_add
-import legado.shared.generated.resources.import_replace_rule
 import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.wrong_format
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -103,23 +102,24 @@ fun ReplaceRuleRoute(
     var importVm by remember { mutableStateOf<ImportReplaceRuleViewModelShared?>(null) }
     var showImportDialog by remember { mutableStateOf(false) }
     var importError by remember { mutableStateOf<String?>(null) }
+    val strWrongFormat = stringResource(Res.string.wrong_format)
 
-    // 监听导入 VM 的成功/错误状态
+    // 监听导入 VM 的成功/错误状态 (错误文案显示在对话框内, 对照原版 ImportReplaceRuleDialog 的 tv_msg)
     LaunchedEffect(importVm) {
         val vm = importVm ?: return@LaunchedEffect
         kotlinx.coroutines.coroutineScope {
             launch {
-                vm.successState.collect { showImportDialog = true }
+                vm.successState.collect { count ->
+                    importError = if (count == 0) strWrongFormat else null
+                    showImportDialog = true
+                }
             }
             launch {
-                vm.errorState.collect { err -> importError = err }
+                vm.errorState.collect { err ->
+                    importError = err
+                    showImportDialog = true
+                }
             }
-        }
-    }
-    LaunchedEffect(importError) {
-        importError?.let {
-            Toasters.get().toast(it)
-            importError = null
         }
     }
 
@@ -187,20 +187,22 @@ fun ReplaceRuleRoute(
         )
     }
 
-    // 导入勾选对话框
+    // 导入勾选对话框 (专用版, 带自定义分组菜单; 对照 app 端 ImportReplaceRuleDialog 的 menu_new_group)
     importVm?.let { vm ->
         if (showImportDialog) {
-            ImportItemsDialog(
-                title = stringResource(Res.string.import_replace_rule),
-                vm = remember(vm) { ImportReplaceRuleItemsVm(vm) },
+            ImportReplaceRuleItemsDialog(
+                vm = vm,
                 onDismiss = {
                     showImportDialog = false
                     importVm = null
+                    importError = null
                 },
                 onImported = {
                     showImportDialog = false
                     importVm = null
+                    importError = null
                 },
+                errorText = importError,
             )
         }
     }

@@ -4,13 +4,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -41,10 +38,8 @@ import io.legado.app.ui.compose.component.AppOutlinedButton
 import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.bringIntoViewOnIme
-import io.legado.app.ui.compose.platform.imeDismissPadding
 import io.legado.app.ui.compose.platform.imeFollowVisibleOnIme
 import io.legado.app.ui.compose.platform.imeScrollNowFor
-import io.legado.app.ui.compose.platform.rememberImeVisible
 import io.legado.app.ui.compose.theme.AppTheme
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.action_save
@@ -152,18 +147,8 @@ fun BookInfoEditScreen(
     actions: BookInfoEditUiActions,
     coverSlot: @Composable (Book?, Modifier) -> Unit,
 ) {
-    // 导航条避让走滚动区末尾 Spacer (对齐原版 scrollView clipToPadding=false), ime 留在根
-    // 减去 ime (对齐原版 navigationBarHeight 的 coerceAtLeast(0))。事件化: imeVisible 为
-    // 事件性布尔 (翻转时重组一次), 键盘弹出期间不再逐帧读 ime 数值
-    val imeVisible = rememberImeVisible()
-    val navBottom = if (imeVisible) 0.dp else WindowInsets.navigationBars
-        .asPaddingValues()
-        .calculateBottomPadding()
-    Column(
-        Modifier
-            .fillMaxSize()
-            .imeDismissPadding(),
-    ) {
+    // 底部避让唯一来源 (对齐 BookSourceEditScreen): max(ime, 导航条)
+    Column(Modifier.fillMaxSize().imePadding().navigationBarsPadding()) {
         AppTitleBar(
             title = stringResource(Res.string.book_info_edit),
             onBack = { actions.onBack() },
@@ -267,7 +252,6 @@ fun BookInfoEditScreen(
                     .imeFollowVisibleOnIme(bookUrlFocused, imeScrollNow)
                     .bringIntoViewOnIme(bookUrlFocused),
             )
-            Spacer(Modifier.height(navBottom))
         }
     }
 }

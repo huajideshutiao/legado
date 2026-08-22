@@ -14,7 +14,6 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,7 +22,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -1561,12 +1559,7 @@ private fun MyTabTitleBar(onHelp: () -> Unit) {
         hasBgImage -> Color.Transparent
         else -> colors.background
     }
-    val insetsModifier = if (eInk) {
-        Modifier.windowInsetsPadding(WindowInsets(0))
-    } else {
-        Modifier.transitionStatusBarPadding()
-    }
-    Box(Modifier.fillMaxWidth().background(bg).then(insetsModifier)) {
+    Box(Modifier.fillMaxWidth().background(bg).then(if (eInk) Modifier else Modifier.transitionStatusBarPadding())) {
         Row(
             Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = 16.dp),
             verticalAlignment = Alignment.CenterVertically,

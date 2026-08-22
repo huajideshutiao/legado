@@ -2,6 +2,7 @@ package io.legado.app.ui.book.read.page.entities
 
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import io.legado.app.utils.formatPercentUs
+import kotlin.jvm.JvmField
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min

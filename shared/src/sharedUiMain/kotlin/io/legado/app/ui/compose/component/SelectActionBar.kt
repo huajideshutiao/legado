@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.DropdownMenuItem
@@ -63,6 +64,8 @@ fun SelectActionBar(
         modifier
             .fillMaxWidth()
             .background(if (hasBgImage) Color.Transparent else colors.bottomBackground)
+            // 背景先铺满 (含手势条区) 再避让: 顺序颠倒背景就到不了手势条下
+            .navigationBarsPadding()
             .padding(start = 16.dp, top = 8.dp, end = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

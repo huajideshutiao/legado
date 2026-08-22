@@ -19,14 +19,12 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -641,12 +639,7 @@ private fun ExploreTitleBar(
         hasBgImage -> Color.Transparent
         else -> colors.background
     }
-    val insetsModifier = if (eInk) {
-        Modifier.windowInsetsPadding(WindowInsets(0))
-    } else {
-        Modifier.transitionStatusBarPadding()
-    }
-    Box(Modifier.fillMaxWidth().background(bg).then(insetsModifier)) {
+    Box(Modifier.fillMaxWidth().background(bg).then(if (eInk) Modifier else Modifier.transitionStatusBarPadding())) {
         Row(
             // 有返回箭头时 IconButton 自带 48dp 宽度, 去掉 12dp 起始留白
             Modifier.fillMaxWidth().heightIn(min = 56.dp)

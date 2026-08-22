@@ -102,8 +102,8 @@ class ImportBookSourceViewModelShared(
     /** 已有书源的部分字段 (用于 keepName/keepGroup/keepEnable/customOrder 还原), null=新增。 */
     val checkSources = arrayListOf<BookSourcePart?>()
 
-    /** 每个 allSources 元素是否被选中导入 (默认新增/更新都选中, 由 app 端 UI 切换)。 */
-    val selectStatus = arrayListOf<Boolean>()
+    /** 解析时算出的默认勾选 (默认新增/更新都选中)。勾选状态本身归 UI 层, 这里只提供初值。 */
+    val defaultChecked = arrayListOf<Boolean>()
 
     /** 标记对应位置书源是否为新增 (comparisonSource 设置, app 端 selectNew 用)。 */
     val newSourceStatus = arrayListOf<Boolean>()
@@ -111,27 +111,13 @@ class ImportBookSourceViewModelShared(
     /** 标记对应位置书源是否为更新 (comparisonSource 设置, app 端 selectUpdate 用)。 */
     val updateSourceStatus = arrayListOf<Boolean>()
 
-    /** 是否全部选中 (对照原 `isSelectAll: Boolean get() = selectStatus.all { it }`)。 */
-    val isSelectAll: Boolean get() = selectStatus.all { it }
-
-    /** 新增项是否全部选中 (对照原 `isSelectAllNew` 逻辑)。 */
-    val isSelectAllNew: Boolean
-        get() = newSourceStatus.indices.all { !newSourceStatus[it] || selectStatus[it] }
-
-    /** 更新项是否全部选中 (对照原 `isSelectAllUpdate` 逻辑)。 */
-    val isSelectAllUpdate: Boolean
-        get() = updateSourceStatus.indices.all { !updateSourceStatus[it] || selectStatus[it] }
-
-    /** 选中数量 (对照原 `selectCount: Int get() = selectStatus.count { it }`)。 */
-    val selectCount: Int get() = selectStatus.count { it }
-
     /**
      * 导入选中的书源, 对应 app 端 `importSelect(finally)`。
      *
      * # 实现细节保持
      *
      * - 取 [groupName] trim, 读 AppConfigProviders 的 importKeepName/Group/Enable 三个开关;
-     * - 遍历 [selectStatus], 选中的项走 keepName/Group/Enable/customOrder 还原逻辑
+     * - 遍历 [checked], 选中的项走 keepName/Group/Enable/customOrder 还原逻辑
      *   (与 app 端原 `checkSources[index]?.let { ... }` 完全一致);
      * - 若 [groupName] 非空: isAddGroup=true 时追加到原分组 (linkedSetOf 去重),
      *   isAddGroup=false 时覆盖 (与 app 端原逻辑完全一致, 不"偷懒"分离分支);
@@ -146,14 +132,14 @@ class ImportBookSourceViewModelShared(
      *
      * @param finally 导入完成回调 (无论成功/失败均触发, 与 app 端 onFinally 一致)
      */
-    fun importSelect(finally: () -> Unit) {
+    fun importSelect(checked: List<Boolean>, finally: () -> Unit) {
         Coroutine.async(scope = scope) {
             val group = groupName?.trim()
             val keepName = AppConfigProviders.get().importKeepName
             val keepGroup = AppConfigProviders.get().importKeepGroup
             val keepEnable = AppConfigProviders.get().importKeepEnable
             val selectSource = arrayListOf<BookSource>()
-            selectStatus.forEachIndexed { index, b ->
+            checked.forEachIndexed { index, b ->
                 if (b) {
                     val source = allSources[index]
                     checkSources[index]?.let {
@@ -321,7 +307,7 @@ class ImportBookSourceViewModelShared(
      * # 实现细节保持
      *
      * - 遍历 [allSources], 调 `appDb.bookSourceDao.getBookSourcePart(it.bookSourceUrl)` 查本地;
-     * - selectStatus: source 为 null 或本地 lastUpdateTime < 新源 lastUpdateTime 时选中 (新增/更新默认选);
+     * - defaultChecked: source 为 null 或本地 lastUpdateTime < 新源 lastUpdateTime 时选中 (新增/更新默认选);
      * - newSourceStatus: source == null (新增);
      * - updateSourceStatus: source != null 且本地 lastUpdateTime < 新源 lastUpdateTime (更新);
      * - 推送 `_successState.tryEmit(allSources.size)` (替代 `successLiveData.postValue(allSources.size)`)。
@@ -333,7 +319,7 @@ class ImportBookSourceViewModelShared(
             allSources.forEach {
                 val source = appDb.bookSourceDao.getBookSourcePart(it.bookSourceUrl)
                 checkSources.add(source)
-                selectStatus.add(source == null || source.lastUpdateTime < it.lastUpdateTime)
+                defaultChecked.add(source == null || source.lastUpdateTime < it.lastUpdateTime)
                 newSourceStatus.add(source == null)
                 updateSourceStatus.add(source != null && source.lastUpdateTime < it.lastUpdateTime)
             }

@@ -47,6 +47,7 @@ import legado.shared.generated.resources.export_success
 import legado.shared.generated.resources.import_dict_rule
 import legado.shared.generated.resources.import_source_filter_rule
 import legado.shared.generated.resources.import_txt_toc_rule
+import legado.shared.generated.resources.wrong_format
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -235,7 +236,7 @@ internal fun RuleImportOnlineDialogContent(
 
 /**
  * 规则导入通用链路: [source] 为 null 时先走文件选择器取文本, 否则直接用 URL;
- * 交对应 Import*ViewModelShared 解析比对, 成功后弹 [ImportItemsDialog] 勾选入库。
+ * 交对应 Import*ViewModelShared 解析比对, 解析出结果或失败都弹 [ImportItemsDialog] (失败时窗内显示错误)。
  */
 @Composable
 private fun RuleImportDialogContent(
@@ -247,17 +248,21 @@ private fun RuleImportDialogContent(
     val scope = rememberCoroutineScope()
     val target = remember(overlay.key, source) { RuleImportTarget.of(kind, scope) }
     var showDialog by remember(overlay.key, source) { mutableStateOf(false) }
+    // 导入失败 / 解析出 0 条的提示文案, 显示在对话框内且不关窗 (对照原版 Import*Dialog 的 tv_msg)
+    var importError by remember(overlay.key, source) { mutableStateOf<String?>(null) }
+    val strWrongFormat = stringResource(Res.string.wrong_format)
 
     LaunchedEffect(target) {
         launch {
             target.successState.collect { count ->
-                if (count > 0) showDialog = true else navigator.dismissOverlay(overlay.key)
+                importError = if (count == 0) strWrongFormat else null
+                showDialog = true
             }
         }
         launch {
             target.errorState.collect { err ->
-                Toasters.get().toast(err.substringAfter("ImportError:"))
-                navigator.dismissOverlay(overlay.key)
+                importError = err
+                showDialog = true
             }
         }
         // 文件分支: 平台文件选择器取路径后读文本 (对照 app 端 uri.readText); 取消选择即关闭
@@ -283,6 +288,7 @@ private fun RuleImportDialogContent(
         vm = target.items,
         onDismiss = { navigator.dismissOverlay(overlay.key) },
         onImported = { navigator.dismissOverlay(overlay.key) },
+        errorText = importError,
     )
 }
 

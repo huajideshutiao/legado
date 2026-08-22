@@ -394,9 +394,10 @@ private fun BottomInfoBar(
     Row(
         Modifier
             .fillMaxWidth()
+            // 背景先铺满(含导航栏区), 再把可点内容推到导航栏之上
+            .background(colors.bottomBackground)
             .navigationBarsPadding() // 对齐 applyNavigationBarMargin
             .height(36.dp)
-            .background(colors.bottomBackground)
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

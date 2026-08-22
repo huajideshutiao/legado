@@ -40,8 +40,8 @@ import org.jetbrains.compose.resources.stringResource
  *   sheet 贴底 + root 点击 finish); properties 显式 decorFitsSystemWindows=false
  *   (Android: 窗口 edge-to-edge, ime insets 全量派发, 键盘跟随/收起检测才可靠)
  * - 面板 match_parent 宽 + 顶角 20dp (对照 bg_review_dialog), 底部
- *   `windowInsetsPadding(bottomSheetBottomInsets())` = Android 上 ime ∪ 导航栏,
- *   面板底边顶在软键盘上方 (对照 translationY=-ime.bottom); 无软键盘平台 inset 为 0
+ *   `windowInsetsPadding(bottomSheetBottomInsets())` = ime ∪ 导航栏 (iOS 的导航栏
+ *   inset 即底部安全区), 面板底边顶在软键盘上方 (对照 translationY=-ime.bottom)
  * - 键盘收起即关闭 (对照 onApplyWindowInsets 的 imeWasVisible 跟踪 + finish)
  * - 正文 [ReviewPostScreen] (输入框 + 发布按钮同行), 进入即聚焦 + 弹键盘
  * - 关闭全部收敛到 [ReviewPostSheetDismiss] (下沉原版 finish(): dismissed 幂等守卫 +

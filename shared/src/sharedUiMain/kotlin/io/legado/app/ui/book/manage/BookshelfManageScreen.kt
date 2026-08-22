@@ -41,7 +41,6 @@ import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.component.SelectActionBar
-import io.legado.app.ui.compose.platform.rememberNavigationBarPaddingValues
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.reorderable.RuleItemScope
@@ -122,7 +121,6 @@ fun BookshelfManageScreen(
         listState = listState,
         listModifier = listModifier,
         emptyText = stringResource(Res.string.empty),
-        bottomPadding = rememberNavigationBarPaddingValues(),
         titleBar = {
             AppTitleBar(
                 title = stringResource(Res.string.bookshelf_management),

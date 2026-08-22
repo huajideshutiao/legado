@@ -52,8 +52,9 @@ fun <T> RuleManageScaffold(
     listModifier: Modifier = Modifier,
     fillMaxHeight: Boolean = true,
     wrapContentHeight: Boolean = false,
-    /** 底部内容回避 padding: 全屏独立页/全高对话框传 rememberNavigationBarPaddingValues() (Android 15+ 强制
-     * edge-to-edge 时列表末尾不被导航栏遮挡); Dialog 型/有底栏兑底的使用方保持默认 0 不受影响 */
+    /** 底部内容回避 padding: 无底栏的全屏独立页传 rememberNavigationBarPaddingValues() (Android 15+ 强制
+     * edge-to-edge 时列表末尾不被导航栏遮挡); Dialog 型与有 SelectActionBar 的使用方保持默认 0
+     * (底栏自身已避让手势条, 再叠一层就是双重避让) */
     bottomPadding: PaddingValues = PaddingValues(0.dp),
     itemContent: @Composable RuleItemScope.(item: T) -> Unit,
 ) {

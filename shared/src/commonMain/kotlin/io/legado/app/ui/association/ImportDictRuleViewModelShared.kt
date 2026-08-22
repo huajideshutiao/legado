@@ -84,38 +84,15 @@ class ImportDictRuleViewModelShared(
     /** 已有 DictRule (用于 comparisonSource 比对), null=新增。 */
     val checkSources = arrayListOf<DictRule?>()
 
-    /** 每个 allSources 元素是否被选中导入 (默认新增选中, 由 app 端 UI 切换)。 */
-    val selectStatus = arrayListOf<Boolean>()
-
-    /** 是否全部选中 (对照原 `isSelectAll: Boolean get() = selectStatus.all { it }`)。 */
-    val isSelectAll: Boolean
-        get() {
-            selectStatus.forEach {
-                if (!it) {
-                    return false
-                }
-            }
-            return true
-        }
-
-    /** 选中数量 (对照原 `selectCount: Int get() = selectStatus.count { it }`)。 */
-    val selectCount: Int
-        get() {
-            var count = 0
-            selectStatus.forEach {
-                if (it) {
-                    count++
-                }
-            }
-            return count
-        }
+    /** 解析时算出的默认勾选 (默认新增选中)。勾选状态本身归 UI 层, 这里只提供初值。 */
+    val defaultChecked = arrayListOf<Boolean>()
 
     /**
      * 导入选中的 DictRule, 对应 app 端 `importSelect(finally)`。
      *
      * # 实现细节保持
      *
-     * - 遍历 [selectStatus], 选中的项加入 selectSource 列表;
+     * - 遍历 [checked], 选中的项加入 selectSource 列表;
      * - `appDb.dictRuleDao.insert(*selectSource.toTypedArray())` 批量写入;
      * - `onFinally` 回调 [finally] (与 app 端 `onFinally { finally.invoke() }` 等价)。
      *
@@ -123,10 +100,10 @@ class ImportDictRuleViewModelShared(
      *
      * @param finally 导入完成回调 (无论成功/失败均触发, 与 app 端 onFinally 一致)
      */
-    fun importSelect(finally: () -> Unit) {
+    fun importSelect(checked: List<Boolean>, finally: () -> Unit) {
         Coroutine.async(scope = scope) {
             val selectSource = arrayListOf<DictRule>()
-            selectStatus.forEachIndexed { index, b ->
+            checked.forEachIndexed { index, b ->
                 if (b) {
                     selectSource.add(allSources[index])
                 }
@@ -233,7 +210,7 @@ class ImportDictRuleViewModelShared(
      *
      * - 遍历 [allSources], 调 `appDb.dictRuleDao.getByName(it.name)` 查本地 (注意是按 name
      *   查询, 与其他 VM 按 id 查询不同, 因为 DictRule 用 name 作唯一标识);
-     * - selectStatus: source 为 null (本地不存在) 时选中 (新增默认选);
+     * - defaultChecked: source 为 null (本地不存在) 时选中 (新增默认选);
      * - 推送 `_successState.tryEmit(allSources.size)` (替代 `successLiveData.postValue(allSources.size)`)。
      *
      * 业务在 IO 跑 (DAO 查询必须 IO), 与 BaseViewModel.execute 默认值一致。
@@ -243,7 +220,7 @@ class ImportDictRuleViewModelShared(
             allSources.forEach {
                 val source = appDb.dictRuleDao.getByName(it.name)
                 checkSources.add(source)
-                selectStatus.add(source == null)
+                defaultChecked.add(source == null)
             }
             _successState.tryEmit(allSources.size)
         }

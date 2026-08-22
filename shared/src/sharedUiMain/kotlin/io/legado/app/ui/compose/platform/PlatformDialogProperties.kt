@@ -28,10 +28,10 @@ expect fun platformDialogProperties(
 /**
  * 底部避让 insets (底部弹层面板 / 编辑页根容器共用)。
  *
- * - Android (decor=false 弹窗): ime ∪ navigationBars (逐边 max) —— 键盘弹出时
- *   ime 与导航栏 insets 并存, max 让面板底边恰顶在键盘顶 (不多避让); 键盘收起时
- *   ime=0 剩导航栏, 面板底边落在导航栏上方, 不贴物理屏底被黑条压住
- * - desktop/iOS/鸿蒙: 仅 ime (无导航栏避让语义, 等价现版 imePadding)
+ * - Android (decor=false 弹窗) / iOS / 鸿蒙: ime ∪ navigationBars (逐边 max) —— 键盘
+ *   弹出时 ime 与导航栏 insets 并存, max 让面板底边恰顶在键盘顶 (不多避让); 键盘收起
+ *   时 ime=0 剩导航栏 (iOS 为底部安全区), 面板不贴物理屏底被黑条/home 指示条压住
+ * - desktop: 仅 ime (无系统栏概念, navigationBars 恒 0, 取并集等价)
  */
 @Composable
 expect fun bottomSheetBottomInsets(): WindowInsets

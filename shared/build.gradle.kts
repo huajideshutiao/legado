@@ -55,7 +55,7 @@ if (enableOhosTarget) {
                 useVersion(forkComposeVersion.substringBefore("-"))
                 because("CPF does not publish Desktop JVM variants; non-ohos targets use the official base version")
             }
-            if (requested.group == "org.jetbrains.androidx" &&
+            if (requested.group.startsWith("org.jetbrains.androidx") &&
                 requested.version == forkLifecycleVersion
             ) {
                 useVersion(forkLifecycleVersion.substringBefore("-"))

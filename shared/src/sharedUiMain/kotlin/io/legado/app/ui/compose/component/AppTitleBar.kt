@@ -7,28 +7,22 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.TextFieldLineLimits
-import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -83,21 +77,12 @@ fun AppTitleBar(
         hasBgImage -> Color.Transparent
         else -> colors.background
     }
-    // 对话框窗口已自行避让系统栏 (decorFitsSystemWindows=true 时内容区避开状态栏;
-    // Android 15+ targetSdk 35+ 强制 edge-to-edge 时窗口虽全屏, 但本应用弹层内容为
-    // 0.7~0.92 锚点高、底部贴齐或居中, 顶部均不触达状态栏区域), 顶栏不再叠加状态栏
-    // padding, 否则双重避让 → 弹窗顶部多出一层状态栏高的空白带 (目录/TXT目录规则/
-    // 浏览器半屏等弹窗)。路由页 (LocalDialogWindow=false) 保持页面语义的状态栏沉浸 padding。
-    val insetsModifier = when {
-        eInk -> Modifier.windowInsetsPadding(WindowInsets(0))
-        LocalDialogWindow.current -> Modifier
-        else -> Modifier.transitionStatusBarPadding()
-    }
     Box(
+        // 背景先铺满 (含状态栏区), 再把内容推到状态栏之下; eInk 不避让
         modifier
             .fillMaxWidth()
             .background(bg)
-            .then(insetsModifier),
+            .then(if (eInk) Modifier else Modifier.transitionStatusBarPadding()),
     ) {
         Row(
             Modifier
@@ -196,22 +181,9 @@ fun AppSearchField(
             if (value.isEmpty()) {
                 Text(hint, color = colors.secondaryText, fontSize = 14.sp, maxLines = 1)
             }
-            // 新版 TextFieldState API: 受控双同步 (用户编辑 → onValueChange; 外部 value →
-            // state, 覆盖清除按钮等程序化修改)。保留 BasicTextField: 外层 Row 已自绘
-            // 圆角描边/背景/搜索图标/清除按钮, AppTextField 自带下划线/浮动 label 语义不符。
-            // state 用初始值初始化 (防 snapshotFlow 首帧把空串推给 onValueChange 清空外部值)
-            val state = remember { TextFieldState(value) }
-            val currentValue by rememberUpdatedState(value)
-            val currentOnValueChange by rememberUpdatedState(onValueChange)
-            LaunchedEffect(state) {
-                snapshotFlow { state.text.toString() }
-                    .collect { if (it != currentValue) currentOnValueChange(it) }
-            }
-            LaunchedEffect(state, value) {
-                if (state.text.toString() != value) {
-                    state.edit { replace(0, length, value) }
-                }
-            }
+            // 保留 BasicTextField: 外层 Row 已自绘圆角描边/背景/搜索图标/清除按钮,
+            // AppTextField 自带下划线/浮动 label 语义不符
+            val state = rememberSyncedTextFieldState(value, onValueChange)
             BasicTextField(
                 state = state,
                 lineLimits = TextFieldLineLimits.SingleLine,

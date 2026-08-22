@@ -44,6 +44,9 @@ object WindowPolicies {
         keepScreenOn = true
     )
 
+    // 原版 BookInfoActivity 同样 fullScreen=true: 封面/模糊背景铺到状态栏之后, 页内自行回避
+    val BookInfo = WindowPolicy(fullscreen = true)
+
     // 编辑页文本域在页面底部, 固定 adjustResize: 避免 adjustUnspecified 对 Compose 层级
     // 判不可滚动而落 adjustPan, 弹键盘时整页(含标题栏)被顶起 (对照原 BookInfoEditActivity 可滚动布局→resize)
     val BookInfoEdit = WindowPolicy(softInput = SoftInputPolicy.Resize)
@@ -65,6 +68,7 @@ object WindowPolicies {
         is AppRoute.MangaReader -> Manga
         is AppRoute.VideoPlay -> VideoPlayer
         is AppRoute.AudioPlay -> AudioPlay
+        is AppRoute.BookInfo -> BookInfo
         is AppRoute.BookInfoEdit -> BookInfoEdit
         is AppRoute.BookSourceEdit -> BookSourceEdit
         is AppRoute.ReplaceEdit -> ReplaceEdit

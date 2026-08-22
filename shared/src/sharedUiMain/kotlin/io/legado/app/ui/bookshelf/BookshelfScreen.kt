@@ -7,13 +7,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.Text
@@ -536,18 +534,12 @@ internal fun BookshelfTopBarContainer(
 ) {
     val colors = AppTheme.colors
     val eInk = LocalEInk.current
-    // 状态栏回避与 AppTitleBar 同源: EInk 不回避, 其余走状态栏 padding
-    // (Android 15+ 强制 edge-to-edge, 不回避会被系统栏遮挡)
-    val insetsModifier = if (eInk) {
-        Modifier.windowInsetsPadding(WindowInsets(0))
-    } else {
-        Modifier.transitionStatusBarPadding()
-    }
     Box(
+        // 背景先铺满 (含状态栏区), 再把内容推到状态栏之下; eInk 不避让
         Modifier
             .fillMaxWidth()
             .background(colors.background)
-            .then(insetsModifier)
+            .then(if (eInk) Modifier else Modifier.transitionStatusBarPadding())
     ) {
         Row(
             Modifier

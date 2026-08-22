@@ -51,8 +51,11 @@ import io.legado.app.ui.compose.component.rememberResponsiveColumns
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.explore_cols
 import legado.shared.generated.resources.ic_bookmark
 import legado.shared.generated.resources.ic_refresh_black_24dp
+import legado.shared.generated.resources.ic_star
+import legado.shared.generated.resources.ic_star_border
 import legado.shared.generated.resources.in_favorites
 import legado.shared.generated.resources.intro_show_null
 import legado.shared.generated.resources.login
@@ -248,40 +251,30 @@ private fun ExploreActions(state: ExploreShowUiState, actions: ExploreShowUiActi
             tint = colors.primaryText,
         )
     }
-    // 长按弹列数选择 (对齐原 iconItemOnLongClick)
-    Box(
-        Modifier
-            .size(48.dp)
-            .clip(CircleShape)
-            .combinedClickable(
-                onClick = actions::onSwitchLayout,
-                onLongClick = actions::onShowColumnPicker,
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
+    // 收藏: 常显星标按钮 (对齐原版 menu_star: ic_star/ic_star_border, 文案随状态切 in/out_favorites)
+    IconButton(onClick = actions::onToggleFavorite) {
         Icon(
-            painter = rememberPainter(
-                if (BookSource.exploreStyleIsVideo(state.exploreStyle)) {
-                    "ic_layout_list"
-                } else {
-                    "ic_layout_video"
-                }
+            painter = painterResource(
+                if (state.isFavorite) Res.drawable.ic_star else Res.drawable.ic_star_border
             ),
-            contentDescription = stringResource(Res.string.switchLayout),
+            contentDescription = stringResource(
+                if (state.isFavorite) Res.string.in_favorites else Res.string.out_favorites
+            ),
             tint = colors.primaryText,
         )
     }
-    // 收藏移入菜单 (对照原 menu_star: 标题随状态切 in_favorites/out_favorites)
     OverflowMenu { dismiss ->
+        // 布局切换移入溢出菜单 (原常显图标按钮, 单击切换布局)
         DropdownMenuItem(
-            onClick = { dismiss(); actions.onToggleFavorite() },
+            onClick = { dismiss(); actions.onSwitchLayout() },
         ) {
-            Text(
-                stringResource(
-                    if (state.isFavorite) Res.string.in_favorites else Res.string.out_favorites
-                ),
-                color = colors.primaryText,
-            )
+            Text(stringResource(Res.string.switchLayout), color = colors.primaryText)
+        }
+        // 列数选择: 原布局切换长按入口 (对齐原 iconItemOnLongClick), 独立成项保留功能
+        DropdownMenuItem(
+            onClick = { dismiss(); actions.onShowColumnPicker() },
+        ) {
+            Text(stringResource(Res.string.explore_cols), color = colors.primaryText)
         }
         // 书源登录: 常隐, 仅书源带登录入口 (loginUrl/loginUi 非空, 对照原 hasLoginUrl) 时显示
         if (state.canLogin) {

@@ -1,6 +1,5 @@
 package io.legado.app.ui.compose.platform
 
-import android.os.Build
 import android.view.ViewTreeObserver
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
@@ -72,11 +71,3 @@ actual fun rememberImeAnimating(): Boolean {
     return WindowInsets.imeAnimationSource.getBottom(density) !=
         WindowInsets.imeAnimationTarget.getBottom(density)
 }
-
-/**
- * [shouldConsumeImeInsets] 的 Android actual: 设备 Android 15+ 时窗口被强制
- * edge-to-edge, frame 不随 IME 收缩, ime insets 全量派发 → 需应用侧消费;
- * Android 14- 由系统 adjustResize 收缩窗口 → 无需消费 (消费反而双重避让)。
- */
-actual fun shouldConsumeImeInsets(): Boolean =
-    Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM

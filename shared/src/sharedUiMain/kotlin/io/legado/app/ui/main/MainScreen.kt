@@ -43,14 +43,9 @@ package io.legado.app.ui.main
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
@@ -175,15 +170,7 @@ fun MainScreen(
                 iconSize = bottomBarIconSize,
                 labelMode = bottomBarLabelMode,
             )
-            // 底栏移走后内容延伸到窗口底部, 需自行避让系统导航条 (左侧那份由侧栏消费)
-            pager(
-                Modifier
-                    .fillMaxHeight()
-                    .weight(1f)
-                    .windowInsetsPadding(
-                        WindowInsets.navigationBars.only(WindowInsetsSides.Bottom)
-                    )
-            )
+            pager(Modifier.fillMaxHeight().weight(1f))
         }
     } else {
         Column(Modifier.fillMaxSize()) {

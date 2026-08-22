@@ -12,17 +12,6 @@ import platform.UIKit.UIKeyboardDidHideNotification
 import platform.UIKit.UIKeyboardWillShowNotification
 
 /**
- * [shouldConsumeImeInsets] 的 iOS actual: 恒 true。
- *
- * CMP 1.11.1 iOS 键盘弹出时窗口不收缩, WindowInsets.ime 全量派发
- * (KeyboardInsets 监听 UIKeyboardWillChangeFrame + 动画曲线/时长过渡),
- * 应用侧需自行消费 —— imeDismissPadding 生效后帮助栏/编辑区贴键盘上方且
- * 跟随键盘动画, 对齐 Android 15+ edge-to-edge 语义。
- */
-actual fun shouldConsumeImeInsets(): Boolean = true
-
-
-/**
  * [rememberImeVisible] 的 iOS actual: 监听 UIKit 键盘通知的事件性布尔。
  *
  * 对齐 Android actual 语义: UIKeyboardWillShow 置 true (弹出即视为可见),

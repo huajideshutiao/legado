@@ -6,15 +6,13 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -65,7 +63,6 @@ import io.legado.app.ui.compose.component.code.rememberFullCodeSyntax
 import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.compose.platform.imeScrollNowFor
 import io.legado.app.ui.compose.platform.rememberColor
-import io.legado.app.ui.compose.platform.rememberImeVisible
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -112,7 +109,7 @@ import kotlin.math.roundToInt
  *   rememberColor("xxx") / stringArrayResource(Res.array.xxx); 所需 key 见下方清单
  * - 原版 Android View 版 CodeView 已删除, 四端统一走 [CodeTextField]
  *   (等宽/高亮/行号/查找替换); KeyboardToolbar → 共享组件 (直连 DAO)
- * - 去掉 WindowInsets.ime/navigationBars (Android 专属), 宿主经 [modifier] 传 windowInsetsPadding
+ * - 底部避让收敛为根 Column 一处 (ime ∪ 导航条), 页内不再散落第二份
  * - L3 不可下沉项: KeyboardAssistsConfig 弹窗平台专属, 经 [onShowKeyboardConfig] 回调注入
  *
  * @param state           顶部表单状态 (书源类型/各启用开关/tab/版本号)
@@ -126,8 +123,7 @@ import kotlin.math.roundToInt
  * @param onShowKeyboardConfig 辅助键配置入口 (app 端 `showDialogFragment<KeyboardAssistsConfig>()`)
  * @param requestFocusSignal 请求根节点持焦的信号 (宿主在页面回到栈顶时投递; 页面全程留在
  *                           Composition, 进入时的持焦只在首次组合执行, 返回后需重新请求)
- * @param modifier        外部 modifier (app 端可附加 `windowInsetsPadding(ime)`; navbar 避让走
- *                       EditFields 的 contentPadding)
+ * @param modifier        外部 modifier
  */
 @Composable
 fun BookSourceEditScreen(
@@ -191,6 +187,9 @@ fun BookSourceEditScreen(
     Column(
         modifier
             .fillMaxSize()
+            // 底部避让唯一来源: 两者同链取 max(ime, 导航条), 不叠加 (对齐原版语义)
+            .imePadding()
+            .navigationBarsPadding()
             .focusRequester(rootFocusRequester)
             // 桌面端 Ctrl+Z/Y 撤销/重做由新版 BasicTextField 原生处理 (KeyCommand.UNDO/REDO →
             // 同一个 undoState), 无需手写按键路由
@@ -537,17 +536,6 @@ private fun EditFields(
     }
     val tab = state.currentTab
     val version = state.sourceVersion
-    // 底部导航条避让走列表 contentPadding (对齐原版 clipToPadding=false): padding 在滚动区
-    // 内参与滚动, 最后一条能滚到屏幕底边; 键盘弹起时 ime 由根容器 padding 承担, 键盘覆盖
-    // 导航条 → 本 padding 归 0 (对齐原版 navigationBarHeight 的 coerceAtLeast(0) 稳态语义)。
-    // 组合期不读 ime 数值 (键盘动画每帧更新 inset → 逐帧重组), 只订阅"可见/不可见"翻转
-    // (事件性): 可见 → 0, 不可见 → 导航条高度。导航条 inset 本身不随键盘动画变化, 常读无妨。
-    val imeVisible = rememberImeVisible()
-    val navBottom = if (imeVisible) {
-        0.dp
-    } else {
-        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    }
     // 原版 BookSourceEditAdapter 对每个字段三连 addLegado/addJs/addJsonPattern, 不分组
     val syntax = rememberFullCodeSyntax()
     // 回调/取数 lambda 引用稳定化 (State 捕获模式): 宿主重组传新 lambda 时,
@@ -569,7 +557,6 @@ private fun EditFields(
         modifier = modifier
             .fillMaxWidth()
             .onGloballyPositioned { listWindowY = it.positionInWindow().y.roundToInt() },
-        contentPadding = PaddingValues(bottom = navBottom),
     ) {
         // item key = 字段 key: 对齐原 key(version, tab) 整体重建语义 —— 版本号变化时
         // 列表内容整体替换, 编辑器状态由 fieldEditors 容器按版本重建承载 (见 Route);
