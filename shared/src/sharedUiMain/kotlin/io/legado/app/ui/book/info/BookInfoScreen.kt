@@ -46,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
@@ -159,8 +160,9 @@ import org.jetbrains.compose.resources.stringResource
  * 字段语义对照原 `BookInfoActivity` 同名字段:
  * - [book] / [bookTick] / [coverTick] / [inBookshelf] / [groupName] /
  *   [tocText] / [lastedTitle] / [wordCountText]: 与 Activity 同名字段一一对应
- * - [isLandscape] / [useDevFeat] / [isDarkTheme]: 由 Activity 计算后传入
- *   (useDevFeat = bookInfoHorizontalLayout && !isVideo && !isLandscape)
+ * - [isLandscape] / [useDevFeat] / [isDarkTheme] / [isEInkMode]: 由路由层计算后传入
+ *   (useDevFeat = bookInfoHorizontalLayout && !isVideo && !isLandscape;
+ *   isEInkMode 时模糊封面背景与取色均跳过, 回退固定色)
  * - [menuState]: 溢出菜单显隐控制状态 (对照原 onMenuOpened 内联求值)
  */
 data class BookInfoUiState(
@@ -175,6 +177,7 @@ data class BookInfoUiState(
     val isLandscape: Boolean,
     val useDevFeat: Boolean,
     val isDarkTheme: Boolean,
+    val isEInkMode: Boolean = false,
     val menuState: BookInfoMenuState,
 )
 
@@ -278,8 +281,29 @@ fun BookInfoScreen(
     introImageSlot: @Composable (String, () -> Unit) -> Unit,
 ) {
     state.bookTick // 读 tick: book 原地可变对象, post 时递增驱动重组
-    val titleColor = if (state.useDevFeat) AppTheme.colors.primaryText else Color.White
-    CompositionLocalProvider(LocalBookInfoActions provides actions) {
+    // 模糊封面背景显示时 (竖屏非 devFeat / 横屏左列), 顶栏与头部文字按封面取色;
+    // 取色由 blur 背景的加载回调驱动 (LocalCoverLoaded 送来原图, 见 BookCoverPalette),
+    // 未回调 (加载中/失败/E-Ink) 前 palette 为 null, 回退原有固定色
+    val cover = state.book?.getDisplayCover()
+    var coverRegions by remember(cover) { mutableStateOf<CoverRegions?>(null) }
+    val onCoverLoaded: (ImageBitmap) -> Unit = remember(cover, state.isLandscape) {
+        { bmp -> coverRegions = sampleCoverRegions(bmp, state.isLandscape) }
+    }
+    val palette = if (state.isLandscape || !state.useDevFeat) {
+        deriveBookCoverPalette(coverRegions, AppTheme.colors.background, state.isLandscape)
+    } else {
+        null
+    }
+    val titleColor = when {
+        state.useDevFeat -> AppTheme.colors.primaryText
+        palette != null -> palette.topBarFg
+        else -> Color.White
+    }
+    CompositionLocalProvider(
+        LocalBookInfoActions provides actions,
+        LocalBookCoverPalette provides palette,
+        LocalCoverLoaded provides onCoverLoaded,
+    ) {
         if (state.isLandscape) {
             LandscapeLayout(
                 state, actions, titleColor,
@@ -630,7 +654,8 @@ private fun NameText(state: BookInfoUiState, align: TextAlign, maxLines: Int) {
     val actions = LocalBookInfoActions.current
     Text(
         text = state.book?.name ?: stringResource(Res.string.book_name),
-        color = AppTheme.colors.primaryText,
+        // 封面取色生效时按共享亮暗判定映射 primaryText 昼夜对, 否则随主题
+        color = LocalBookCoverPalette.current?.nameFg ?: AppTheme.colors.primaryText,
         fontSize = 20.sp,
         textAlign = align,
         maxLines = maxLines,
@@ -645,7 +670,7 @@ private fun WordCountText(state: BookInfoUiState, align: TextAlign) {
     val text = state.wordCountText ?: return
     Text(
         text = text,
-        color = AppTheme.colors.secondaryText,
+        color = LocalBookCoverPalette.current?.wordCountFg ?: AppTheme.colors.secondaryText,
         fontSize = 14.sp,
         textAlign = align,
         modifier = Modifier.fillMaxWidth(),
@@ -655,18 +680,21 @@ private fun WordCountText(state: BookInfoUiState, align: TextAlign) {
 @Composable
 private fun LastedRow(state: BookInfoUiState, modifier: Modifier) {
     val iconSize = with(LocalDensity.current) { 18.sp.toDp() }
+    // summaryText 刻意不随昼夜, 取色两态同值; 未取到色时对齐原版固定淡灰
+    val summaryColor = LocalBookCoverPalette.current?.lastedFg
+        ?: rememberColor("tv_text_summary")
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         Icon(
             painterResource(Res.drawable.ic_book_last),
             stringResource(Res.string.read_dur_progress),
-            tint = rememberColor("tv_text_summary"),
+            tint = summaryColor,
             modifier = Modifier
                 .size(iconSize)
                 .padding(end = 2.dp),
         )
         Text(
             text = state.lastedTitle,
-            color = rememberColor("tv_text_summary"),
+            color = summaryColor,
             fontSize = 14.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

@@ -3,8 +3,6 @@ package io.legado.app.ui.route
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
@@ -289,11 +287,11 @@ fun ReviewListDialogHost(
         AppTheme {
             Surface(
                 color = AppTheme.colors.background,
+                // fillMaxSize 跟随外层: 默认被 maxHeight 钳在 0.7 锚点高, 上拉拖拽展开时
+                // 跟着变高到视觉全屏 (AppBottomSheetDialog 自带的双向拖拽语义);
+                // 之前写死 .height(sheetHeight) 会把展开高度钉死, 上拉只放大外层空壳
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(sheetHeight)
-                    // 外层同色背景矩形会填掉内层 Column 裁剪掉的顶角, 这里同样裁圆角 (graphicsLayer 级,
-                    // 子孙同裁; 与内层 ReviewListDialog Column 的 clip 叠加无冲突)
+                    .fillMaxSize()
                     .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)),
             ) {
                 ReviewListContent(

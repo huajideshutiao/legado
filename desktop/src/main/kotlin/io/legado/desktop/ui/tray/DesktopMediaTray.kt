@@ -5,6 +5,7 @@ import io.legado.app.constant.EventBus
 import io.legado.app.constant.Status
 import io.legado.app.help.toast.DesktopTrayNotifier
 import io.legado.app.model.ActiveReadBookRegistry
+import io.legado.app.model.AudioPlayCommanders
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.service.ReadAloudControllerShared
 import io.legado.app.service.ReadAloudControllerShared.ReadAloudState
@@ -181,18 +182,22 @@ object DesktopMediaTray {
         this.windowProvider = windowProvider
         this.exitAction = exitAction
         monitorScope = CoroutineScope(SupervisorJob() + Dispatchers.Default).also { s ->
-            // 音频状态: 事件仅作变化触发, 判定直接读 AudioPlayShared.status (与事件同源同步更新)
+            // 音频状态: 事件仅作变化触发, 判定直接拉读会话标志 (isServiceRunning,
+            // provider 保证先于广播落地, 见 DesktopAudioPlayProvider.endSession)
             s.launch {
                 FlowBus.withSticky(EventBus.AUDIO_STATE).collect { syncVisibility() }
             }
             // 章节标题变化只刷 tooltip
             s.launch { FlowBus.withSticky(EventBus.AUDIO_SUB_TITLE).collect { refresh() } }
-            // 定时分钟 (通知标题倒计时显示, 对照原版 playing_timer 1..60 分钟)
+            // 定时分钟 (通知标题倒计时显示, 对照原版 playing_timer 1..60 分钟)。
+            // 兼作会话建立的呈现触发: ensureRunning 必发一次 AUDIO_DS (SleepTimer.set 亦经
+            // postMinute 广播), 对照原版服务 onCreate 即挂通知 —— 否则首章需先拉播放地址时,
+            // 托盘/任务栏要等整个拉流结束后的首个 AUDIO_STATE 才上屏
             s.launch {
                 FlowBus.withSticky(EventBus.AUDIO_DS).collect { value ->
                     if (value is Int) {
                         audioTimerMinute = value
-                        refresh()
+                        syncVisibility()
                     }
                 }
             }
@@ -248,16 +253,16 @@ object DesktopMediaTray {
     /**
      * 后台任务判定: 与 app 端 Android 前台服务语义对齐 (同一状态, 不同呈现)。
      *
-     * - 音频: AudioPlayService 在 `status != Status.STOP` (PLAY/PAUSE/LOADING) 时
-     *   startForeground 常驻通知, STOP 时 stopSelf
+     * - 音频: 会话寿命 = provider running (镜像 AudioPlayService 服务存活: stop → stopSelf
+     *   终结, stopPlay 切章节不停服务)。不用 status != STOP —— 切章节拉流窗口里它会眨眼,
+     *   而原版通知 (服务存活期) 全程保持
      * - 朗读: BaseReadAloudService 在 state ∈ {PLAYING, PAUSED} 时 startForeground,
      *   停止/完成/出错时 stopSelf
      *
-     * 桌面端把"前台服务 + 通知"呈现为托盘图标, 判定状态源与 app 端完全一致
-     * (AudioPlayShared.status / ReadAloudControllerShared.state)。
+     * 桌面端把"前台服务 + 通知"呈现为托盘图标, 判定状态源与 app 端完全一致。
      */
     private fun anyBackgroundActive(): Boolean {
-        val audioActive = AudioPlayShared.status != Status.STOP
+        val audioActive = AudioPlayCommanders.get().isServiceRunning
         val aloud = readAloudBinding.value
         val aloudState = aloud?.controller?.state?.value
         val aloudActive =
@@ -330,7 +335,7 @@ object DesktopMediaTray {
     private fun refresh() {
         val icon = trayIcon ?: return
         val audioStatus = AudioPlayShared.status
-        val audioActive = audioStatus != Status.STOP
+        val audioActive = AudioPlayCommanders.get().isServiceRunning
         val aloud = readAloudBinding.value
         val aloudState = aloud?.controller?.state?.value
         val aloudActive = aloudState == ReadAloudState.PLAYING || aloudState == ReadAloudState.PAUSED
@@ -419,7 +424,7 @@ object DesktopMediaTray {
      */
     private fun jumpToActive() {
         val navigator = AppNavigatorProviders.getOrNull() ?: return
-        val audioActive = AudioPlayShared.status != Status.STOP
+        val audioActive = AudioPlayCommanders.get().isServiceRunning
         val aloud = readAloudBinding.value
         val aloudActive = aloud?.controller?.state?.value?.let {
             it == ReadAloudState.PLAYING || it == ReadAloudState.PAUSED
@@ -543,7 +548,7 @@ object DesktopMediaTray {
     private fun buildMenuModel(): List<MenuEntry> {
         val entries = ArrayList<MenuEntry>()
         val audioStatus = AudioPlayShared.status
-        val audioActive = audioStatus != Status.STOP
+        val audioActive = AudioPlayCommanders.get().isServiceRunning
         val aloud = readAloudBinding.value
         val aloudState = aloud?.controller?.state?.value
         val aloudActive = aloudState == ReadAloudState.PLAYING || aloudState == ReadAloudState.PAUSED

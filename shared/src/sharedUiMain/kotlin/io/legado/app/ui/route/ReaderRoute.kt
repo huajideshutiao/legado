@@ -77,9 +77,11 @@ import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.compose.platform.AppShortcutHandler
+import io.legado.app.ui.compose.platform.KeyRepeatPolicy
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.PageTurnThrottle
 import io.legado.app.ui.compose.platform.VolumeKeyPageTurnHandler
+import io.legado.app.ui.compose.platform.parseCustomPageKeys
 import io.legado.app.ui.compose.platform.performBack
 import io.legado.app.ui.compose.platform.readerDirectionalKeys
 import io.legado.app.ui.root.AppNavigator
@@ -430,6 +432,27 @@ fun ReaderRoute(
         screenModel.viewModel.turnPage(
             if (volumeUp) PageDirectionShared.PREV else PageDirectionShared.NEXT
         )
+    }
+    // 自定义翻页键 (对照原版 ReadBookKeyHandler.onKeyDown 的 isPrevKey/isNextKey 最先判定,
+    // 2026-08 键盘迁移时消费端被砍, 现恢复)。注册在方向键/音量键之后 → 快捷键栈顶优先,
+    // 复刻原版"自定义键先于内置键判定"的覆盖语义 (如把 ← 绑成翻页可覆盖方向键默认行为)。
+    // FILTER = 原版 event.repeatCount > 0 忽略; 菜单可见时不响应 (原版 menuLayoutIsVisible 守卫)。
+    // 每次重组现读偏好 (对照原版每次按键现读 SharedPreferences), PageKeyDialog 确认后立即生效。
+    val pageKeyPref = LocalPreferenceStoreProvider.current
+    val customPageKeys = parseCustomPageKeys(
+        pageKeyPref.getString(PreferKey.prevKeys),
+        pageKeyPref.getString(PreferKey.nextKeys),
+    )
+    if (!customPageKeys.isEmpty()) {
+        AppShortcutHandler(
+            shortcuts = customPageKeys.shortcuts(KeyRepeatPolicy.FILTER),
+            enabled = { isTopEntry && !screenModel.menuState.isVisible },
+        ) { shortcut ->
+            screenModel.viewModel.turnPage(
+                if (customPageKeys.isPrev(shortcut.key)) PageDirectionShared.PREV
+                else PageDirectionShared.NEXT
+            )
+        }
     }
     // endregion
 

@@ -51,7 +51,6 @@ import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.asBook
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.widget.dialog.WaitDialog
-import io.legado.app.utils.ConvertUtils
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.coroutineScope
@@ -150,27 +149,10 @@ fun BookInfoRoute(
             }
             screenModel.dispatch(BookInfoUiEvent.UpdateGroup(groupName.takeIf { it.isNotEmpty() }
                 ?: noGroupLabel))
-            // 字数信息 (对照 Activity upWordCount: 字数 + 本地书文件大小, 逗号拼接)
-            val wordCounts = arrayListOf<String>()
-            curBook.wordCount?.takeIf { it.isNotBlank() }?.let { wordCounts.add(it) }
-            if (curBook.isLocal) {
-                val size = try {
-                    if (curBook.bookUrl.startsWith("http", true) ||
-                        curBook.bookUrl.startsWith("dav", true)
-                    ) 0L
-                    else PlatformCapabilityProviders.getOrNull()
-                        ?.localBookFileSize(curBook.bookUrl) ?: 0L
-                } catch (_: Exception) {
-                    0L
-                }
-                if (size > 0) wordCounts.add(ConvertUtils.formatFileSize(size))
-            }
-            val wordCountText = when {
-                wordCounts.isNotEmpty() -> wordCounts.joinToString(",")
-                curBook.isLocal -> ""
-                else -> null
-            }
-            screenModel.dispatch(BookInfoUiEvent.UpdateWordCount(wordCountText))
+            // 字数信息 (对照 Activity upKinds: 字数 + 本地书文件大小, 逗号拼接; 后续刷新由 upShowBook 重算)
+            screenModel.dispatch(
+                BookInfoUiEvent.UpdateWordCount(screenModel.wordCountTextOf(curBook))
+            )
             // 自动加载书籍信息/目录 (对照 upBook 的 tocUrl 分支)
             when {
                 curBook.tocUrl.isEmpty() -> screenModel.refresh(
@@ -678,7 +660,7 @@ fun BookInfoRoute(
         }
     }
 
-    // 三态注入 (对照 BookInfoActivity.Content: isLandscape/useDevFeat/isDarkTheme)
+    // 四态注入 (对照 BookInfoActivity.Content: isLandscape/useDevFeat/isDarkTheme/isEInkMode)
     val currentBook = state.book ?: book
     // isLandscape: 窗口宽度 > 高度 (跨平台, 对照 Android LocalConfiguration.orientation)
     val containerSize = LocalWindowInfo.current.containerSize
@@ -707,11 +689,12 @@ fun BookInfoRoute(
         isLandscape = isLandscape,
         useDevFeat = useDevFeat,
         isDarkTheme = isDarkTheme,
+        isEInkMode = AppConfigProviders.get().isEInkMode,
     )
 
     // L3: 模糊封面背景 / 简介图依赖平台 Glide/AndroidView, 由平台通过 CompositionLocal 注入;
     // 封面统一走 BookInfoCover (内部委托 LocalBookCoverSlot 默认 SharedBookCover)
-    val isEInkMode = AppConfigProviders.get().isEInkMode
+    val isEInkMode = screenState.isEInkMode
     val blurCoverBgSlot = LocalBlurCoverBgSlot.current
     val introImageSlot = LocalIntroImageSlot.current
     BookInfoScreen(

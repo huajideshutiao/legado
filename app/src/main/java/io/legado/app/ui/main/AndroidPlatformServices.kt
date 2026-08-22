@@ -124,10 +124,11 @@ private class AndroidFilePickerService(
         withContext(Dispatchers.Main) { createDocumentPicker.launch(suggestedName) }?.toString()
     }
 
-    override fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean = runBlocking {
+    override fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean? = runBlocking {
         // CreateDocument 选位置 → contentResolver 写入 (对照 master PhotoDialog 的 SAF 保存)
+        // 用户取消选择位置返回 null, 调用方静默; 仅写入失败返回 false
         val uri = withContext(Dispatchers.Main) { createDocumentPicker.launch(suggestedName) }
-            ?: return@runBlocking false
+            ?: return@runBlocking null
         runCatching {
             App.instance.contentResolver.openOutputStream(uri)
                 ?.use { it.write(bytes) } ?: return@runBlocking false

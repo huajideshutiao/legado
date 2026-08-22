@@ -20,6 +20,8 @@ import io.legado.app.data.entities.SourceFilterRule
 import io.legado.app.data.entities.TxtTocRule
 import io.legado.app.data.entities.toBookSource
 import io.legado.app.help.DirectLinkUploadStoreProviders
+import io.legado.app.help.HomeTabHelpShared
+import io.legado.app.help.PinnedExploreHelp
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.upType
 import io.legado.app.help.config.PreferenceProviders
@@ -277,6 +279,13 @@ object RestoreShared {
                                 }
                         }
 
+                        // 真身在 filesDir JSON 文件: 恢复直接写回文件 (writeText 自带失败兜底)
+                        HomeTabHelpShared.PREF_KEY ->
+                            FilesJsonStore.writeText(HomeTabHelpShared.FILE_NAME, value.toString())
+
+                        PinnedExploreHelp.PREF_KEY ->
+                            FilesJsonStore.writeText(PinnedExploreHelp.FILE_NAME, value.toString())
+
                         else -> runCatching { putPrefByType(prefs, key, value) }
                             .onFailure {
                                 // 单 key 失败只跳过该 key, 不中断整批: 桌面端 java.util.prefs
@@ -291,6 +300,9 @@ object RestoreShared {
                     }
                 }
             }
+            // 这两个 key 恢复写的是文件不是 prefs, 清内存缓存让下次读取重新 load
+            HomeTabHelpShared.invalidate()
+            PinnedExploreHelp.invalidate()
         }.onFailure {
             AppLog.put("恢复配置出错\n${it.message}", it, tag = TAG)
         }

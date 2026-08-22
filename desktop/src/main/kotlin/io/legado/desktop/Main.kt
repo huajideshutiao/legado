@@ -38,8 +38,6 @@ import io.legado.app.data.DatabaseDriverProviders
 import io.legado.app.data.DesktopAppDatabaseProvider
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.DefaultDataResourceProviders
-import io.legado.app.help.HomeTabHelpShared
-import io.legado.app.help.PinnedExploreHelp
 import io.legado.app.help.book.BookHelpProviders
 import io.legado.app.help.book.BookHelpShared
 import io.legado.app.help.book.BookImageStorageProviders
@@ -390,12 +388,6 @@ private fun runDesktopApp() = application {
     val preferenceStoreProvider = remember { DesktopPreferenceStoreProvider() }
     // 接住返回值: LocalReadConfigProviders 必须与全局 ReadBookConfigProviders 同实例, 否则配置写读分家
     val desktopReadBookConfig = remember { registerDesktopConfig(preferenceStoreProvider) }
-    // 注入 HomeTabHelpShared 的 prefs provider (commonMain 下沉的主页分组持久化)
-    // 复用已创建的 DesktopPreferenceStoreProvider, 对齐 app 端 App.kt 的 HomeTabHelpShared.prefs 注入
-    HomeTabHelpShared.prefs = preferenceStoreProvider
-    // 注入 PinnedExploreHelp 的 prefs provider (commonMain 下沉的发现页收藏分类持久化)
-    // 与 HomeTabHelpShared 同源, 对齐 app 端 App.kt 的 PinnedExploreHelp.prefs 注入
-    PinnedExploreHelp.prefs = preferenceStoreProvider
     // 注册桌面端更新能力 (AppUpdateEnvironment + UpdateExecutor, 薄壳转发 shared AppUpdateManager):
     // 依赖 PreferenceProviders (上方 registerDesktopConfig) + DesktopAppInfo, 与平台服务解耦
     // (执行器运行时才取 PlatformServiceProviders.browser), 故可提前到阶段1同步注册,

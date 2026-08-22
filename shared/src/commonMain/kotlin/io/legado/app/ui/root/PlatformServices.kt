@@ -42,10 +42,11 @@ interface FilePickerService {
 
     /**
      * 保存图片字节到用户选择的位置（图片查看器长按保存，对照 master PhotoDialog.doSaveImage）。
-     * 各端: app=SAF CreateDocument → contentResolver 写入; desktop=保存对话框 → File 写入;
-     * 未实现返回 false（调用方 toast 失败）。
+     * 各端: app=SAF CreateDocument → contentResolver 写入; desktop=保存对话框 → File 写入。
+     * 返回: true=写入成功; false=写入失败; null=用户取消选择位置（调用方应静默）。
+     * 未实现端返回 false（调用方 toast 失败）。
      */
-    fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean = false
+    fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean? = false
 
     // 选目录 (对照 app 端 HandleFileContract.DIR_SYS / OpenDocumentTree),
     // 各端按需实现, 默认返回 null 由调用方降级

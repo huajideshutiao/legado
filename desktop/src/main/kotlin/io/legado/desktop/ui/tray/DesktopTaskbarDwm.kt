@@ -7,6 +7,7 @@ import com.sun.jna.platform.win32.WinGDI
 import com.sun.jna.ptr.PointerByReference
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.Status
+import io.legado.app.model.AudioPlayCommanders
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.service.ReadAloudControllerShared.ReadAloudState
 import io.legado.desktop.help.win.DwmApi
@@ -25,7 +26,7 @@ import java.util.concurrent.Executors
 /**
  * Windows 任务栏悬停媒体卡片 (DWM Iconic Live Preview, 对照调研结论):
  *
- * 播放/朗读时 hover 任务栏图标, 不再是窗口内容缩略图, 而是自绘卡片:
+ * 音频会话/朗读活跃时 hover 任务栏图标, 不再是窗口内容缩略图, 而是自绘卡片:
  * 封面 + 歌名 + 章节 + 播放状态 + 进度条, 下方叠加 ThumbBar 控制按钮 (DesktopTaskbarMedia)。
  *
  * # 机制 (MSDN: WM_DWMSENDICONICTHUMBNAIL / DwmSetIconicThumbnail)
@@ -41,7 +42,8 @@ import java.util.concurrent.Executors
  * - 内容变化调 DwmInvalidateIconicBitmaps(hwnd) 触发系统重发请求 (勿频繁, 悬停才有开销)
  * - 响应可异步: 消息回调只记请求尺寸, 渲染放单线程执行器, 限时未供 DWM 用默认表示
  *
- * 非播放/朗读状态: 关闭 iconic (恢复窗口实时缩略图)。
+ * 会话终结 (音频 stop/致命错误, 朗读停止): 关闭 iconic (恢复窗口实时缩略图)。
+ * 卡片寿命挂会话寿命而非播放状态, 见 update() 注释。
  */
 internal object DesktopTaskbarDwm {
 
@@ -145,19 +147,29 @@ internal object DesktopTaskbarDwm {
         mainHwnd = null
         iconicEnabled = false
         requestedThumbSize = null
-        lastCoverUrl = null
-        coverImage = null
+        clearCardContent()
         if (hooked) {
             DesktopWindowChromeNative.removeMessageHandler(messageHandler)
             hooked = false
         }
     }
 
+    /** 会话终结时清空卡片内容 (封面/文案/进度与加载去重状态), 下次会话从干净状态开始。 */
+    private fun clearCardContent() {
+        coverImage = null
+        lastCoverUrl = null
+        coverFailUrl = null
+        coverFailCount = 0
+        cardTitle = ""
+        cardSubtitle = ""
+        cardPlaying = false
+        cardProgressMs = 0
+        cardDurationMs = 0
+    }
+
     /**
      * 状态变化时刷新卡片 (由 DesktopMediaTray.updateTaskbar 驱动, 与任务栏按钮同源)。
-     * 活跃 → 启用 iconic + 刷状态 + Invalidate; 空闲 → 关闭 iconic (恢复实时缩略图)。
-     *
-     * iconic 自绘卡片暂时关闭 (ENABLE_ICONIC_CARD=false): 悬停崩溃排查期间只保留系统默认缩略图。
+     * 会话活跃 → 启用 iconic + 刷状态 + Invalidate; 会话终结 → 关闭 iconic (恢复实时缩略图)。
      */
     fun update(
         audioStatus: Int,
@@ -166,48 +178,51 @@ internal object DesktopTaskbarDwm {
         durationMs: Int,
     ) {
         if (!ENABLE_ICONIC_CARD) return
-        // iconic 的归属是"有没有音频会话", 不是"此刻在不在播":
-        // audioStatus 会在切章节 / 进入播放页时瞬时回到 STOP (AudioPlayShared.resetData
-        // 里显式 status = Status.STOP)。用它当判据会让我们把 DWMWA_FORCE_ICONIC_REPRESENTATION
-        // 关掉, DWM 随即丢弃位图并回落自己的渐变+图标默认表示, 且只在下次悬停才重新索取
-        // ⇒ 用户实测"切章节 / 进音频播放页后缩略图掉成默认图, 移开鼠标重新悬停才恢复"。
-        // 会话存在与否是确定状态, 不需要靠计时器猜。
-        val audioActive = AudioPlayShared.book != null
+        // 卡片寿命 = 媒体会话寿命 (对照原版 Android 前台服务, 桌面镜像即 provider running /
+        // AudioPlayCommanders.isServiceRunning): 首次 play 建立, 只有 stop / 致命错误终结;
+        // AudioPlayService 里 stop → stopSelf, 而 stopPlay (切章节) 只停播放器不停服务。
+        //
+        // 不能用 status != STOP: 切章节 stopPlay → STOP → 拉流 → LOADING 的 STOP 窗口里它会
+        // 眨眼, 而 iconic 拆除是破坏性的 (DWM 丢弃位图回落默认渐变表示, 要重新悬停才再索取)。
+        // 粘性呈现必须挂单调的会话寿命 —— stopPlay 不动 running, 拉流再慢也不会误拆。
+        // 也不能用 book != null: 它根本不是寿命 (resetData 赋值后永不清空), 停止播放后卡片
+        // 永远滞留旧内容 (2026-08 回归: 停止后悬停仍是旧媒体卡, 不回落窗口缩略图)。
+        val audioSession = AudioPlayCommanders.get().isServiceRunning
         val aloudState = aloud?.controller?.state?.value
         val aloudActive =
             aloudState == ReadAloudState.PLAYING || aloudState == ReadAloudState.PAUSED
-        val active = audioActive || aloudActive
+        val active = audioSession || aloudActive
         val hwnd = mainHwnd ?: return
         if (!hooked) return
 
-        // 卡片状态快照 (对照原版通知标题: 状态: 书名 / 章节)
+        // iconic 开关 (幂等; 会话终结时关闭恢复实时窗口缩略图, 并清空卡片内容 ——
+        // 旧封面/文案不清的话, 下次会话的边缘窗口会画出上一本的残影)
+        if (active != iconicEnabled) {
+            setIconicMode(hwnd, active)
+            iconicEnabled = active
+            if (!active) clearCardContent()
+        }
+        if (!active) return
+
+        // 卡片状态快照 (对照原版通知标题: 状态: 书名 / 章节)。
+        // 会话终结路径已在上面清空并返回, 此处音频/朗读必有其一, 无空态分支
         cardPlaying = when {
-            audioActive -> audioStatus == Status.PLAY
-            aloudActive -> aloudState == ReadAloudState.PLAYING
-            else -> false
+            audioSession -> audioStatus == Status.PLAY
+            else -> aloudState == ReadAloudState.PLAYING
         }
         cardTitle = when {
-            audioActive -> AudioPlayShared.book?.name ?: ""
-            aloudActive -> aloud?.bookName() ?: ""
-            else -> ""
+            audioSession -> AudioPlayShared.book?.name ?: ""
+            else -> aloud?.bookName() ?: ""
         }
         cardSubtitle = when {
-            audioActive -> AudioPlayShared.durChapter?.title ?: ""
-            aloudActive -> aloud?.chapterTitle() ?: ""
-            else -> ""
+            audioSession -> AudioPlayShared.durChapter?.title ?: ""
+            else -> aloud?.chapterTitle() ?: ""
         }
         cardProgressMs = progressMs
         cardDurationMs = durationMs
 
-        // iconic 开关 (幂等; 空闲时关闭恢复实时缩略图)
-        if (active != iconicEnabled) {
-            setIconicMode(hwnd, active)
-            iconicEnabled = active
-        }
-        if (!active) return
-
         // 封面异步加载 (音频: durCoverUrl; 朗读: 无封面)
-        val coverUrl = if (audioActive) AudioPlayShared.durCoverUrl else null
+        val coverUrl = if (audioSession) AudioPlayShared.durCoverUrl else null
         if (coverUrl != lastCoverUrl) {
             lastCoverUrl = coverUrl
             if (coverUrl.isNullOrBlank()) {

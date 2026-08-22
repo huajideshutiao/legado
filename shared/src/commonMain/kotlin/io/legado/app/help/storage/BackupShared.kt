@@ -7,6 +7,8 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.dao.sortedByLocalizedOrder
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.DirectLinkUploadStoreProviders
+import io.legado.app.help.HomeTabHelpShared
+import io.legado.app.help.PinnedExploreHelp
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadBookConfigProviders
@@ -223,6 +225,16 @@ object BackupShared {
                     // 否则 toJsonElement 走 toString() 分支写成字符串, 与原版 Gson 的数组不兼容
                     else -> value?.let { configMap[key] = if (it is Set<*>) it.toList() else it }
                 }
+            }
+        }
+        // homeTabs/exploreFavorites 真身在 filesDir JSON 文件, 内容塞回 config.json
+        // 保持原有备份通道 (文件不存在说明从未使用, 跳过)
+        listOf(
+            HomeTabHelpShared.FILE_NAME to HomeTabHelpShared.PREF_KEY,
+            PinnedExploreHelp.FILE_NAME to PinnedExploreHelp.PREF_KEY,
+        ).forEach { (fileName, prefKey) ->
+            if (BackupConfigShared.keyIsNotIgnore(prefKey)) {
+                FilesJsonStore.readText(fileName)?.let { configMap[prefKey] = it }
             }
         }
         BackupFileOps.writeText(

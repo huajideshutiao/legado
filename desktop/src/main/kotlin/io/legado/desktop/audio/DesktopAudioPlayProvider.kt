@@ -158,10 +158,13 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge, AudioP
                 Toasters.get().toast(msg)
                 manager.cancelProgressJobs()
                 paused = true
+                // 对照原版 onPlayerError: 只置 STOP + 提示, 不 stopSelf —— 会话存活, 通知/
+                // 媒体卡保留 (用户可再按播放重试), SMTC 也不摘 (原版 MediaSession 仅
+                // onDestroy 释放)。起播链路异常才终结会话: runTriggerPlay ↔ play().onError
                 AudioPlayShared.status = Status.STOP
                 postEvent(EventBus.AUDIO_STATE, Status.STOP)
                 postEvent(EventBus.AUDIO_LOADING, false)
-                syncSmtc(stopped = true)
+                syncSmtc()
             }
         }
     }
@@ -194,6 +197,9 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge, AudioP
         paused = true
         AudioPlayShared.durChapterPos = pos
         ReadTimeRecorder.endImmediately(ReadTimeRecorder.Source.AUDIO)
+        // 会话终结标志先于事件广播落下: 托盘/任务栏在 AUDIO_STATE 收到后即读 isServiceRunning,
+        // 迟置会有竞态窗口把"已终结"读成"还活着" (对照 app 端 stopSelf 先于 postEvent 生效)
+        endSession()
         AudioPlayShared.status = Status.STOP
         postEvent(EventBus.AUDIO_STATE, Status.STOP)
         // 停止即收掉加载转圈
@@ -201,10 +207,6 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge, AudioP
         // saveRead 落库
         AudioPlayShared.book?.let { saveRead(it) }
         syncSmtc(stopped = true)
-        // 停止即销毁运行态 (清定时器), 下次 play 重建
-        sleepTimer?.cancel()
-        sleepTimer = null
-        running = false
     }
 
     override fun stopPlay() {
@@ -310,6 +312,20 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge, AudioP
     // ===== 编排逻辑 =====
 
     /**
+     * 会话终结的公共收尾 (对照 app 端 `stopSelf`): 清定时器 + 落 [running]。
+     * 调用点: stop (IntentAction.stop) / runTriggerPlay onFailure (play().onError) ——
+     * 即原版全部 stopSelf 会话终结路径; 播放器错误 onPlayerError 原版不停服务, 不在此列。
+     * 必须先于 AUDIO_STATE 广播调用 —— 会话寿命的消费方 (托盘显隐 / thumbbar 按钮 /
+     * DWM 悬停卡片) 都在事件里拉读 isServiceRunning, 迟置会读到"还活着"
+     * (对照原版 onDestroy: isRun=false 先于 postEvent)。
+     */
+    private fun endSession() {
+        sleepTimer?.cancel()
+        sleepTimer = null
+        running = false
+    }
+
+    /**
      * 首次调用时初始化 SleepTimer + ReadTimeRecorder。
      * 后续命令复用已建立的作用域与定时器。
      */
@@ -347,6 +363,9 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge, AudioP
     private suspend fun runTriggerPlay(playNew: Boolean) {
         runCatching { triggerPlay(playNew) }.onFailure {
             AppLog.put("桌面音频播放启动失败", it)
+            // 对照 app 端 play().onError → stopSelf: 起播失败即终结会话 (SMTC 已摘卡,
+            // running 留真会让 DWM 悬停卡片滞留), 下次 play 经 ensureRunning 重建
+            endSession()
             postEvent(EventBus.AUDIO_LOADING, false)
             AudioPlayShared.status = Status.STOP
             postEvent(EventBus.AUDIO_STATE, Status.STOP)

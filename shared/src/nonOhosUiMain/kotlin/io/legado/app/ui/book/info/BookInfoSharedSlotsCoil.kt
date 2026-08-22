@@ -54,7 +54,11 @@ fun SharedBlurCoverBgCoil(
 ) {
     val cover = book?.getDisplayCover()
     val loader = remember { BookImageLoaders.getOrNull() }
-    var bitmap by remember(cover, coverTick) { mutableStateOf<ImageBitmap?>(null) }
+    // bitmap 只随封面 url 重置; coverTick 触发的重载期间保留旧图, 失败也不清空 ——
+    // 否则重载被失败跳过表拦截时 (url 曾 403) 会闪回深色占位, 观感为"背景变黑"
+    var bitmap by remember(cover) { mutableStateOf<ImageBitmap?>(null) }
+    // 封面取色回调 (详情页宿主提供, 见 BookCoverPalette); 失败不回调, 取色保留旧值/回退
+    val onCoverLoaded = LocalCoverLoaded.current
     // I3: 模糊背景按 1/8 显示尺寸采样解码再放大绘制 (blur 后高频细节不可见, 视觉等价),
     // 内存/绘制带宽降 ~64 倍; 容器尺寸测量后触发加载 (窗口 resize 后按新尺寸重解)
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
@@ -63,7 +67,10 @@ fun SharedBlurCoverBgCoil(
         if (containerSize == IntSize.Zero) return@LaunchedEffect
         val w = (containerSize.width / 8).coerceAtLeast(1)
         val h = (containerSize.height / 8).coerceAtLeast(1)
-        bitmap = loader.loadImageOrNull(cover, book.origin, w, h)
+        val loaded = loader.loadImageOrNull(cover, book.origin, w, h) ?: return@LaunchedEffect
+        bitmap = loaded
+        // 原图 (未经 blur/渐变绘制处理) 就绪, 上报给封面取色
+        onCoverLoaded?.invoke(loaded)
     }
     Box(modifier.onSizeChanged { containerSize = it }) {
         // 模糊封面铺满 + 渐变蒙版 + 压暗 (对照原版 BookInfoBgTransformation)

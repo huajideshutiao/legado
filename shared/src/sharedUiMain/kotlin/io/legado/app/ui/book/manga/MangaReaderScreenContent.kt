@@ -346,17 +346,41 @@ fun MangaReaderScreenContent(
             }
         }
     }
-    // 音量键翻页 (对照原版 ReadMangaActivity onKeyDown: 无开关检查、repeat 连翻、onKeyUp 消费;
-    // 与小说端一致——共享 VolumeKeyPageTurnHandler: TRIGGER 策略 + 200ms 节流连翻
-    // (2026-08 用户拍板, 小说/漫画行为一致; 快捷键列表见 volumePageTurnKeys))
-    // 菜单可见时不响应音量键翻页 (有意 UI 考虑, 勿改)
+    // 音量键翻页 (对照原版 ReadMangaActivity onKeyDown: 无开关检查、无菜单守卫、repeat 连翻、
+    // onKeyUp 恒消费; 共享 VolumeKeyPageTurnHandler: TRIGGER 策略 + 200ms 节流连翻)。
+    // 菜单可见时仍响应 (2026-08 用户拍板对齐原版: 原版漫画音量键无 menuVisible 守卫;
+    // 小说端保持菜单守卫不变, 对照原版 menuLayoutIsVisible)
     VolumeKeyPageTurnHandler(
-        enabled = { isTopEntry() && !menuVisible },
+        enabled = isTopEntry,
     ) { volumeUp ->
         if (volumeUp) {
             if (onPrevPage != null) onPrevPage() else scrollPageTo(-1)
         } else {
             if (onNextPage != null) onNextPage() else scrollPageTo(1)
+        }
+    }
+    // 自定义翻页键 (对照原版 ReadMangaActivity onKeyDown 的 isPrevKey/isNextKey, 2026-08
+    // 键盘迁移时消费端被砍, 现恢复)。原版漫画无菜单守卫、repeatCount 连翻经
+    // throttle(200L, trailing=false) 节流——对应 TRIGGER 策略 + 复用 pageTurnThrottle。
+    // 注册在方向键/音量键之后 → 快捷键栈顶优先, 复刻原版"自定义键先于内置键判定"的覆盖语义。
+    // 每次重组现读偏好 (对照原版每次按键现读 SharedPreferences), PageKeyDialog 确认后立即生效。
+    val pageKeyPref = LocalPreferenceStoreProvider.current
+    val customPageKeys = parseCustomPageKeys(
+        pageKeyPref.getString(PreferKey.prevKeys),
+        pageKeyPref.getString(PreferKey.nextKeys),
+    )
+    if (!customPageKeys.isEmpty()) {
+        AppShortcutHandler(
+            shortcuts = customPageKeys.shortcuts(KeyRepeatPolicy.TRIGGER),
+            enabled = isTopEntry,
+        ) { shortcut ->
+            pageTurnThrottle.tryTurn {
+                if (customPageKeys.isPrev(shortcut.key)) {
+                    if (onPrevPage != null) onPrevPage() else scrollPageTo(-1)
+                } else {
+                    if (onNextPage != null) onNextPage() else scrollPageTo(1)
+                }
+            }
         }
     }
     // 物理 Menu 键呼出菜单 (对照原版 ReadMangaActivity KEYCODE_MENU → runMenuIn)

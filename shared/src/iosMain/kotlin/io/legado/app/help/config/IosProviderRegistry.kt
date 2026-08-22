@@ -22,7 +22,6 @@ import io.legado.app.help.http.registerDefaultIosCookieStoreProvider
 import io.legado.app.help.http.registerNativeHttpProvider
 import io.legado.app.help.http.registerSharedCookieJarBridge
 import io.legado.app.help.notification.registerIosNotificationProgress
-import io.legado.app.help.PinnedExploreHelp
 import io.legado.app.help.registerNativeDefaultDataResourceProvider
 import io.legado.app.help.registerNativeDirectLinkUploadProviders
 import io.legado.app.help.registerNativeExploreKindsCacheProvider
@@ -106,10 +105,6 @@ fun registerIosProviders() {
 
     // 2.4 备份密码 provider (读 PreferenceProviders "password", 与 app 端 LocalConfig.password 同 key)
     registerNativePasswordProvider()
-
-    // 2.45 发现页收藏 prefs 注入 (NSUserDefaults.standardUserDefaults, 对齐 app 端 App.kt
-    // 的 PinnedExploreHelp.prefs 注入; 未注入时 getPinnedExplores 抛 lateinit 异常)
-    PinnedExploreHelp.prefs = IosPreferenceStoreProvider()
 
     // 2.5 主题配置 provider (文件持久化 themeConfig.json, 与 app 端 ThemeConfig 同格式; 替换原内存版)
     ThemeConfigProviders.register(FileThemeConfigProvider())

@@ -17,6 +17,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.image_cover_default
 import org.jetbrains.compose.resources.imageResource
@@ -181,6 +182,9 @@ fun DefaultCoverNineImage(
             (DEFAULT_COVER_STRETCH_X.second * bw).roundToInt()
         val stretchY = (DEFAULT_COVER_STRETCH_Y.first * bh).roundToInt()..
             (DEFAULT_COVER_STRETCH_Y.second * bh).roundToInt()
+        // 四角不按源图像素而是按 120dp 自然宽度折算 (当前 600px 位图 ↔ 120dp, 高:宽同比),
+        // 换任意分辨率的图 dp 几何不变, 避免四角被异常放大
+        val cornerScale = DEFAULT_COVER_NATURAL_WIDTH.toPx() / bw
         drawNineSlice(
             bitmap = bitmap,
             srcLeft = 0,
@@ -191,6 +195,7 @@ fun DefaultCoverNineImage(
             stretchY = stretchY,
             dw = dw,
             dh = dh,
+            cornerScale = cornerScale,
         )
     }
 }
@@ -200,6 +205,9 @@ private val DEFAULT_COVER_STRETCH_X = 95f / 300f to 146f / 300f
 
 /** 默认封面纵向可拉伸区占图高的比例 (历史 .9 标记框 y55..331 / 内容高 400)。 */
 private val DEFAULT_COVER_STRETCH_Y = 55f / 400f to 331f / 400f
+
+/** 默认封面位图的自然宽度: 位图实际像素宽折算到该 dp, 四角按此比例换算目标尺寸。 */
+private val DEFAULT_COVER_NATURAL_WIDTH = 120.dp
 
 /** 是否不透明黑 (alpha=255 且 RGB=0, Android .9 标记像素判定)。 */
 private fun isBlack(c: Color): Boolean =
@@ -265,6 +273,9 @@ private fun DrawScope.drawNinePatch(
  * 九宫格绘制核心: 把 [bitmap] 的 ([srcLeft], [srcTop], [srcW]×[srcH]) 源区按
  * [stretchX]/[stretchY] (源区内坐标, 含端点) 切九块画到 [dw]×[dh]。
  *
+ * [cornerScale] 仅折算四角 (固定端) 的目标尺寸 (源角像素 × scale), 源矩形与拉伸区
+ * 恒为源坐标; 默认 1 = 角按源像素原尺寸绘制 (带标记框的 .9 图路径)。
+ *
  * 与标记框无关, 故同时服务"带 1px 标记框的 .9 图"与"运行期裁剪 + 写死拉伸区的普通图"。
  */
 private fun DrawScope.drawNineSlice(
@@ -277,6 +288,7 @@ private fun DrawScope.drawNineSlice(
     stretchY: IntRange,
     dw: Int,
     dh: Int,
+    cornerScale: Float = 1f,
 ) {
     if (srcW <= 0 || srcH <= 0) return
     val xStart = stretchX.first
@@ -287,8 +299,16 @@ private fun DrawScope.drawNineSlice(
     val rightW = (srcW - 1) - xEnd
     val topH = yStart
     val bottomH = (srcH - 1) - yEnd
-    val (dl, dc, dr) = distribute(dw, leftW, rightW)
-    val (dt, dm, db) = distribute(dh, topH, bottomH)
+    val (dl, dc, dr) = distribute(
+        dw,
+        (leftW * cornerScale).roundToInt(),
+        (rightW * cornerScale).roundToInt(),
+    )
+    val (dt, dm, db) = distribute(
+        dh,
+        (topH * cornerScale).roundToInt(),
+        (bottomH * cornerScale).roundToInt(),
+    )
     // 源区三列起点 (源区内坐标 + 源区左上偏移)
     val sx = intArrayOf(srcLeft, srcLeft + xStart, srcLeft + xEnd + 1)
     val sy = intArrayOf(srcTop, srcTop + yStart, srcTop + yEnd + 1)

@@ -2,41 +2,29 @@ package io.legado.app.help
 
 import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.PinnedExplore
-import io.legado.app.ui.compose.platform.PreferenceStoreProvider
+import io.legado.app.help.PinnedExploreHelp.FILE_NAME
+import io.legado.app.help.storage.FilesJsonStore
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toJson
-import kotlin.concurrent.Volatile
 
 /**
  * 发现页置顶条目管理。
  *
- * 原 app 端实现用 `appCtx.getPrefString` / `appCtx.putPrefString` (依赖
- * `defaultSharedPreferences`), 下沉后改走 [PreferenceStoreProvider] 间接,
- * 行为完全一致 (Android 端 [AndroidPreferenceStoreProvider] 包装同一
- * defaultSharedPreferences, 保证 backup/restore 与原数据兼容)。
- *
- * 注: Android 端 [io.legado.app.help.config.PreferenceProviders] 现也委托
- * defaultSharedPreferences (旧 legado_config 已并入), 两条通路存储后端相同;
- * 本类沿用 [PreferenceStoreProvider] 即可, 无迁移必要。
+ * 真身存 filesDir JSON 文件 [FILE_NAME] (桌面端 java.util.prefs value ≤ 8192
+ * 超限抛异常), 备份/恢复经 config.json 走文件内容 (见 BackupShared/RestoreShared)。
  */
 object PinnedExploreHelp {
-    private const val PREF_KEY = "exploreFavorites"
-    private var pinnedExplores: List<PinnedExplore>? = null
+    const val PREF_KEY = "exploreFavorites"
+    const val FILE_NAME = "exploreFavorites.json"
 
-    /**
-     * 平台存储 provider, 由宿主启动早期注入 (app 端 App.onCreate)。
-     * 必须用 defaultSharedPreferences 系 (app 端 AndroidPreferenceStoreProvider),
-     * 与原 appCtx.getPrefString/putPrefString 行为一致。
-     */
-    @Volatile
-    lateinit var prefs: PreferenceStoreProvider
+    private var pinnedExplores: List<PinnedExplore>? = null
 
     fun getPinnedExplores(): List<PinnedExplore> {
         if (pinnedExplores == null) {
-            val json = prefs.getString(PREF_KEY)
-            pinnedExplores = GSON.fromJsonArray<PinnedExplore>(json).getOrNull() ?: emptyList()
+            pinnedExplores = GSON.fromJsonArray<PinnedExplore>(FilesJsonStore.readText(FILE_NAME))
+                .getOrNull() ?: emptyList()
         }
         return pinnedExplores!!
     }
@@ -45,7 +33,7 @@ object PinnedExploreHelp {
         val favorites = getPinnedExplores().toMutableList()
         favorites.add(pinned)
         pinnedExplores = favorites
-        prefs.putString(PREF_KEY, GSON.toJson(favorites))
+        FilesJsonStore.writeText(FILE_NAME, GSON.toJson(favorites))
         postEvent(EventBus.UP_EXPLORE_PINNED, "add")
     }
 
@@ -55,8 +43,13 @@ object PinnedExploreHelp {
         if (index != -1) {
             favorites.removeAt(index)
             pinnedExplores = favorites
-            prefs.putString(PREF_KEY, GSON.toJson(favorites))
+            FilesJsonStore.writeText(FILE_NAME, GSON.toJson(favorites))
             postEvent(EventBus.UP_EXPLORE_PINNED, "remove:$index")
         }
+    }
+
+    /** 恢复备份写回文件后清内存缓存 (见 RestoreShared) */
+    fun invalidate() {
+        pinnedExplores = null
     }
 }

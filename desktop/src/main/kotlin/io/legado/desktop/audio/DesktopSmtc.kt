@@ -8,6 +8,7 @@ import com.sun.jna.Pointer
 import com.sun.jna.WString
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.Status
+import io.legado.app.model.AudioPlayCommanders
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.service.ReadAloudControllerShared.ReadAloudState
 import io.legado.desktop.audio.DesktopSmtc.init
@@ -226,7 +227,9 @@ internal object DesktopSmtc {
     // ==================== 命令分发 (对照托盘 DesktopTaskbarMedia 的优先级: 音频优先, 否则朗读) ====================
 
     private fun dispatchButton(button: Int, arg: Long) {
-        val audioActive = AudioPlayShared.status != Status.STOP
+        // 会话寿命判据 (对照原版 MediaButtonReceiver 读 AudioPlayService.isRun):
+        // 切章节 stopPlay → STOP 拉流窗口里 status 会眨眼, 误路由到朗读分支
+        val audioActive = AudioPlayCommanders.get().isServiceRunning
         val aloud = DesktopMediaTray.readAloud
         val aloudActive = aloud?.controller?.state?.value?.let {
             it == ReadAloudState.PLAYING || it == ReadAloudState.PAUSED

@@ -14,6 +14,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -24,9 +25,11 @@ import androidx.compose.ui.viewinterop.AndroidView
 import coil3.load
 import coil3.request.placeholder
 import io.legado.app.data.entities.Book
+import io.legado.app.help.image.BookImageLoaders
 import io.legado.app.help.image.ImageBitmapLoader
 import io.legado.app.model.blurConfig
 import io.legado.app.ui.compose.platform.rememberString
+import kotlinx.coroutines.launch
 
 /*
  * BookInfoScreen 下沉到 shared 后, app 端保留的 L3 (Android 专属) Composable。
@@ -65,6 +68,9 @@ fun BookInfoBlurCoverBg(
 ) {
     val tick = coverTick
     val bgDesc = rememberString("bg_image")
+    // 封面取色回调 (详情页宿主提供, 见 shared BookCoverPalette); 加载失败不回调
+    val onCoverLoaded = LocalCoverLoaded.current
+    val scope = rememberCoroutineScope()
     AndroidView(
         factory = {
             AppCompatImageView(it).apply {
@@ -83,6 +89,17 @@ fun BookInfoBlurCoverBg(
                         extraTransformations = listOf(BookInfoBgTransformation(land)),
                     )
                     placeholder(iv.drawable)
+                    listener(onSuccess = { _, _ ->
+                        val cb = onCoverLoaded ?: return@listener
+                        // blur 成功 = 原始字节已由 fetcher 落盘, 此小图请求只走缓存命中,
+                        // 不会再发网络 (本请求产物是 blur+渐变变换后的图, 不能直接采样,
+                        // 故经 loader 另取 24×32 原图小样; 尺寸对齐 shared 取色采样粒度)
+                        scope.launch {
+                            BookImageLoaders.getOrNull()
+                                ?.loadImageOrNull(book.getDisplayCover(), book.origin, 24, 32)
+                                ?.let(cb)
+                        }
+                    })
                 }
             }
         },

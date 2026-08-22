@@ -22,6 +22,7 @@ import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.screenModelScope
+import io.legado.app.utils.ConvertUtils
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
@@ -216,6 +217,33 @@ class BookInfoScreenModel : ScreenModel {
     suspend fun lastedTitleOf(book: Book): String =
         getString(Res.string.lasted_show, book.latestChapterTitle ?: "")
 
+    /**
+     * 字数文案 (对照 Activity upKinds 字数段): book.wordCount + 本地书文件大小, 逗号拼接。
+     * 详情刷新会原地改写 book.wordCount, 未在架书不落库无 DB 观察者,
+     * 需在每次 showBook 后重算 (对照 archive: bookData 观察 → showBook → upKinds)。
+     */
+    suspend fun wordCountTextOf(book: Book): String? {
+        val wordCounts = arrayListOf<String>()
+        book.wordCount?.takeIf { it.isNotBlank() }?.let { wordCounts.add(it) }
+        if (book.isLocal) {
+            val size = try {
+                if (book.bookUrl.startsWith("http", true) ||
+                    book.bookUrl.startsWith("dav", true)
+                ) 0L
+                else PlatformCapabilityProviders.getOrNull()
+                    ?.localBookFileSize(book.bookUrl) ?: 0L
+            } catch (_: Exception) {
+                0L
+            }
+            if (size > 0) wordCounts.add(ConvertUtils.formatFileSize(size))
+        }
+        return when {
+            wordCounts.isNotEmpty() -> wordCounts.joinToString(",")
+            book.isLocal -> ""
+            else -> null
+        }
+    }
+
     /** 加载完成后回填书籍与目录文案 (对照 Activity showBook + upLoading(false, chapterList))。 */
     private suspend fun upShowBook(book: Book, toc: List<BookChapter>, errorLoadToc: String) {
         if (toc.isNotEmpty()) loadedChapterList = toc
@@ -227,6 +255,7 @@ class BookInfoScreenModel : ScreenModel {
                 lastedTitle = if (toc.isEmpty()) null else lasted,
             )
         )
+        dispatch(BookInfoUiEvent.UpdateWordCount(wordCountTextOf(book)))
     }
 
     /** 对照 app 端 BaseReadViewModel.loadBookInfo。 */

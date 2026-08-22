@@ -139,6 +139,10 @@ object BackupConfigShared {
     fun keyIsNotIgnore(key: String): Boolean {
         return when {
             ignorePrefKeys.contains(key) -> false
+            // 动态 key 的历史遗留 (书源评分 origin/origin_name_author, 已迁 caches 表):
+            // 备份/恢复都不再经过 preference —— 桌面端 java.util.prefs key ≤ 80 会抛
+            // IllegalArgumentException, 且 SourceConfig 已不再读取 preference
+            key.startsWith("http://") || key.startsWith("https://") || key.startsWith("data:") -> false
             ignoreReadConfig && readPrefKeys.contains(key) -> false
             ignoreThemeConfig && themePrefKeys.contains(key) -> false
             ignoreCoverConfig && coverPrefKeys.contains(key) -> false

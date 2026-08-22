@@ -2,27 +2,21 @@ package io.legado.app.help
 
 import io.legado.app.data.entities.HomeSection
 import io.legado.app.data.entities.HomeTab
-import io.legado.app.ui.compose.platform.PreferenceStoreProvider
+import io.legado.app.help.HomeTabHelpShared.FILE_NAME
+import io.legado.app.help.storage.FilesJsonStore
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.toJson
-import kotlin.concurrent.Volatile
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import kotlin.concurrent.Volatile
 
 /**
  * 主页分组（HomeTab）持久化 - 跨平台共享逻辑。
  *
- * 下沉自 app 端原 HomeTabHelp.kt。原 Android 实现使用 SharedPreferences
- * (appCtx.getPrefString/putPrefString/removePref) 持久化整树 JSON;
- * 下沉后改为通过 [PreferenceStoreProvider] 抽象, 各平台注入实际存储实现:
- * - app 端: App.onCreate 注入 AndroidPreferenceStoreProvider
- *   (包装 defaultSharedPreferences), typealias HomeTabHelp = HomeTabHelpShared
- * - desktop/iOS/鸿蒙: 各自注入本地 Preferences 实现
- *
- * 注: 原 appCtx.removePref(LEGACY_SECTIONS_KEY) 用 putString(key, null) 替代,
- * Android SharedPreferences.Editor putString(key, null) 会触发 remove(key),
- * 行为完全等价; 其他平台 actual 实现亦应保证 null 即移除语义。
+ * 真身存 filesDir JSON 文件 [FILE_NAME] (桌面端 java.util.prefs value ≤ 8192,
+ * 整树 JSON 超限抛异常), 备份/恢复经 config.json 走文件内容 (见 BackupShared/
+ * RestoreShared)。
  *
  * 首次进入若无数据则自动建默认分组"主页"。title 即 id, 重命名 = 改 title。
  *
@@ -30,16 +24,10 @@ import kotlinx.atomicfu.locks.synchronized
  * 改用 SynchronizedObject + synchronized 块保证全平台一致 (与 UpdateBookShared 同模式)。
  */
 object HomeTabHelpShared {
-    private const val PREF_KEY = "homeTabs"
-    private const val LEGACY_SECTIONS_KEY = "homeSections"
-    private const val DEFAULT_TAB_TITLE = "主页"
+    const val PREF_KEY = "homeTabs"
+    const val FILE_NAME = "homeTabs.json"
 
-    /**
-     * 平台存储 provider, 由宿主启动早期注入 (app 端 App.onCreate)。
-     * 未注入时调用将抛 lateinit 未初始化异常, 提示初始化顺序错误。
-     */
-    @Volatile
-    lateinit var prefs: PreferenceStoreProvider
+    private const val DEFAULT_TAB_TITLE = "主页"
 
     @Volatile
     private var tabs: MutableList<HomeTab>? = null
@@ -49,16 +37,14 @@ object HomeTabHelpShared {
 
     private fun load(): MutableList<HomeTab> = synchronized(lock) {
         tabs?.let { return it }
-        val json = prefs.getString(PREF_KEY)
-        val list = GSON.fromJsonArray<HomeTab>(json).getOrNull()?.toMutableList()
-            ?: mutableListOf()
+        val list = GSON.fromJsonArray<HomeTab>(FilesJsonStore.readText(FILE_NAME))
+            .getOrNull()?.toMutableList() ?: mutableListOf()
         if (list.isEmpty()) {
             list.add(HomeTab(title = DEFAULT_TAB_TITLE, sortOrder = 0))
             persist(list)
-            // 清理老版本 homeSections key (原 appCtx.removePref, put null 等价 remove)
-            prefs.putString(LEGACY_SECTIONS_KEY, null)
+        } else {
+            tabs = list
         }
-        tabs = list
         return list
     }
 
@@ -153,6 +139,11 @@ object HomeTabHelpShared {
 
     private fun persist(list: List<HomeTab>) = synchronized(lock) {
         tabs = list.toMutableList()
-        prefs.putString(PREF_KEY, GSON.toJson(list))
+        FilesJsonStore.writeText(FILE_NAME, GSON.toJson(list))
+    }
+
+    /** 恢复备份写回文件后清内存缓存 (见 RestoreShared) */
+    fun invalidate() = synchronized(lock) {
+        tabs = null
     }
 }

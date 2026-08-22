@@ -378,9 +378,18 @@ fun PhotoViewOverlayDialog(
                                 Toasters.get().toast("保存图片失败")
                                 return@launch
                             }
-                        val ok = PlatformServiceProviders.getOrNull()?.files
-                            ?.saveImageBytes("image.jpg", bytes) ?: false
-                        Toasters.get().toast(if (ok) "保存成功" else "保存图片失败")
+                        // PlatformServices 未注册是异常场景, 仍提示失败;
+                        // 用户取消选位置 (null) 静默返回, 不弹失败提示
+                        val files = PlatformServiceProviders.getOrNull()?.files
+                        if (files == null) {
+                            Toasters.get().toast("保存图片失败")
+                            return@launch
+                        }
+                        when (files.saveImageBytes("image.jpg", bytes)) {
+                            true -> Toasters.get().toast("保存成功")
+                            false -> Toasters.get().toast("保存图片失败")
+                            null -> Unit
+                        }
                     }
                 },
                 onTap = onDismiss,

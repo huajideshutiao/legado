@@ -21,9 +21,7 @@ import io.legado.app.help.AppWebDav
 import io.legado.app.help.CrashHandler
 import io.legado.app.help.DefaultData
 import io.legado.app.help.DispatchersMonitor
-import io.legado.app.help.HomeTabHelpShared
 import io.legado.app.help.LifecycleHelp
-import io.legado.app.help.PinnedExploreHelp
 import io.legado.app.help.archive.AndroidArchiveProvider
 import io.legado.app.help.archive.ArchiveProviders
 import io.legado.app.help.book.AndroidBookImageStorage
@@ -240,12 +238,6 @@ class App : Application() {
         registerActivityLifecycleCallbacks(LifecycleHelp)
         SourceUiEventBridge.init()
         defaultSharedPreferences.registerOnSharedPreferenceChangeListener(AppConfig)
-        // 注入 HomeTabHelpShared 的 SP provider (commonMain 下沉的主页分组持久化,
-        // 包装 defaultSharedPreferences, 行为与原 appCtx.getPrefString/putPrefString 等价)
-        HomeTabHelpShared.prefs = AndroidPreferenceStoreProvider()
-        // 注入 PinnedExploreHelp 的 SP provider (commonMain 下沉的发现页收藏分类持久化,
-        // 必须与 HomeTabHelpShared 同源 defaultSharedPreferences, 保证老数据兼容 + Backup.kt 备份)
-        PinnedExploreHelp.prefs = AndroidPreferenceStoreProvider()
         // jsoup-compat 复用宿主共享 OkHttpClient,继承 CookieJar/限流/Cronet 拦截器
         org.jsoup.Jsoup.clientFactory = { okHttpClient }
         Coroutine.async {

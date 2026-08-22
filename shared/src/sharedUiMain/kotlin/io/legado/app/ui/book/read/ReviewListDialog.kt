@@ -65,9 +65,11 @@ import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.root.PlatformCapabilityProviders
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.bottom_line
 import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.copy
 import legado.shared.generated.resources.delete
 import legado.shared.generated.resources.ic_arrow_drop_down
 import legado.shared.generated.resources.ic_more_vert
@@ -529,6 +531,20 @@ internal fun ReviewItem(
                             expanded = menuOpen,
                             onDismissRequest = { menuOpen = false },
                         ) {
+                            // 显式复制入口: 桌面鼠标长按几乎不可触发 (mouse slop≈0.125px,
+                            // 按住期间 1px 微颤即被滚动/拖拽消费而取消长按), 菜单兜底
+                            DropdownMenuItem(
+                                onClick = {
+                                    menuOpen = false
+                                    PlatformCapabilityProviders.getOrNull()
+                                        ?.copyToClipboard(item.content)
+                                },
+                            ) {
+                                Text(
+                                    stringResource(Res.string.copy),
+                                    color = AppTheme.colors.primaryText,
+                                )
+                            }
                             DropdownMenuItem(
                                 onClick = { menuOpen = false; onDeleteClick(item) },
                             ) {
