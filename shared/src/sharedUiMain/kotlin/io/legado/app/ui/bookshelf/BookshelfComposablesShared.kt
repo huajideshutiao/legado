@@ -70,7 +70,8 @@ import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * 书架共享组件 (KMP 版, 替代 app 端 `BookshelfComposables.kt` 中除 ShelfCover 外的所有组件)。
+ * 书架共享组件 (KMP 版, 下沉自原 app 端 `BookshelfComposables.kt`, 该文件已随 View 版
+ * 封面组件一并移除)。
  *
  * # 下沉改动
  *
@@ -86,22 +87,19 @@ import org.jetbrains.compose.resources.stringResource
  *   - `ThemeConfig.curBgImagePath` → `LocalThemeStoreProvider.current.bgImagePath`
  *   - `ColorUtils.isColorLight` → 用 `Color.luminance()` (WCAG 相对亮度, 与原版
  *     androidx ColorUtils.calculateLuminance 同公式, AppTheme 同款写法)
- *   - `AndroidView + CoverImageView` (ShelfCover) → 用 `coverSlot: @Composable (Book, Modifier, isVideoCover: Boolean, coverReloadTick: Int) -> Unit`
- *     参数注入; app 端用 ShelfCover 包装, 桌面端用 DesktopBookCover 等自定义实现;
+ *   - `AndroidView + CoverImageView` (原 ShelfCover) → 用 `coverSlot: @Composable (Book, Modifier, isVideoCover: Boolean, coverReloadTick: Int) -> Unit`
+ *     参数注入, 各端统一默认 [SharedBookCover] (View 版封面组件已移除);
  *     isVideoCover 由条目按 tier 决定 (对照原 adapter coverRatio 赋值), coverReloadTick
- *     为配置变更重载信号 (宿主端封面组件按 tick 判重/重载)
+ *     为配置变更重载信号 (封面组件按 tick 判重/重载)
  * - **状态提升**: `BookshelfActions` 改为接受 [BookshelfActionsCallbacks] 而非 BaseBookshelfState;
  *   `ShelfBooksContent` 去掉 `Lifecycle` 参数 (shared 不依赖 androidx.lifecycle,
  *   30s 心跳改用 LaunchedEffect + while(true) + delay, 后台时 Compose 不重组故无副作用)
  * - **保留逻辑**: 视觉/布局/动画/手势/状态管理完全与 app 端原版一致 (宽高/边距/颜色/层级)
  *
- * # 未下沉组件 (app 端 BookshelfComposables.kt 保留)
+ * # 其他
  *
- * - `ShelfCover` (AndroidView + CoverImageView + Glide, Android 专属, 其他模块在用)
- *   → app 端调用 shared 版 [ShelfListItem] 等时通过 coverSlot 参数包装 ShelfCover 注入
  * - `rememberShelfLayoutSpec` (依赖 LocalConfiguration.current.screenWidthDp)
- *   → app 端保留原版, 调用 shared 版 [rememberShelfLayoutSpec] 时手动传 screenWidthDp
- *   (或调用方直接用 shared 版, 在调用前先取 LocalConfiguration.current.screenWidthDp 传入)
+ *   → shared 版接受 `screenWidthDp` 参数, 调用方在调用前先取本地屏宽传入
  */
 
 /** 16:9 视频封面按 3/4 高度收窄, 与 ItemBookshelfListBindingExt 的同名常量语义一致 */
@@ -548,8 +546,8 @@ fun ShelfRowIcon(painterKey: String) {
 /**
  * 列表条目, 对照 item_bookshelf_list: 书名行(徽标/转圈)+作者行(更新时间)+分类+进度+最新+简介
  *
- * shared 版本: 封面改为 [coverSlot] 注入 (app 端用 ShelfCover AndroidView, 桌面端自定义);
- * 封面尺寸由 [coverSlot] 接收的 Modifier 决定 (列表档传 fillMaxHeight 触发 CoverImageView
+ * shared 版本: 封面改为 [coverSlot] 注入 (默认 SharedBookCover);
+ * 封面尺寸由 [coverSlot] 接收的 Modifier 决定 (列表档传 fillMaxHeight 触发封面组件
  * 按高度+比例反算宽度, 对照原 XML iv_cover height=120dp + wrap_content width)
  *
  * 封面比例: 对照原 [ItemBookshelfListBinding.bindExploreCard] 的 `ivCover.coverRatio =
@@ -713,7 +711,7 @@ fun ShelfGridItem(
     Box(modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)) {
         Column(Modifier.fillMaxWidth()) {
             // 封面 Box: 宽度填满 (减 12dp 左右内边距), 对照原 XML iv_cover match_parent + 12dp margin
-            // 无 cover URL 时仍渲染封面 Box (走占位), 对齐 app 端 CoverImageView 无 path 也显示默认封面
+            // 无 cover URL 时仍渲染封面 Box (走占位), 对齐原 View 版无 path 也显示默认封面
             Box(
                 Modifier.fillMaxWidth().padding(start = 12.dp, top = 12.dp, end = 12.dp),
                 contentAlignment = Alignment.TopCenter,
@@ -771,7 +769,7 @@ fun ShelfVideoItem(
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(8.dp),
     ) {
-        // 无 cover URL 时仍渲染封面 Box (走占位), 对齐 app 端 CoverImageView 无 path 也显示默认封面
+        // 无 cover URL 时仍渲染封面 Box (走占位), 对齐原 View 版无 path 也显示默认封面
         Box(Modifier.fillMaxWidth()) {
             // 对照原 bindVideoCard: ivCover.coverRatio = VIDEO (恒)
             coverSlot(book, Modifier.fillMaxWidth(), true, coverReloadTick)

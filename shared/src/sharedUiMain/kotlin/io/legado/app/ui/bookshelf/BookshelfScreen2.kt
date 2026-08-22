@@ -39,7 +39,6 @@ import io.legado.app.ui.compose.theme.LocalEInk
 import kotlinx.coroutines.flow.MutableStateFlow
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.bookshelf
-import legado.shared.generated.resources.image_cover_default
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -164,7 +163,8 @@ internal fun BookshelfScreen2(
  *
  * 走 [BookImageLoaders] 加载 [BookGroup.cover], 行为与书架书籍封面 [SharedBookCover] 对齐
  * (即"以书架封面行为为准"):
- * - 真封面经 [BookImageLoaders.loadCoverOrNull] 落持久区, 与书架书一致
+ * - 真封面经 [BookImageLoaders.loadCoverOrNull] 落持久区, 与书架书一致;
+ *   网络加载期间先铺图集默认封面作占位 (与 SharedBookCover 同款)
  * - 无 cover / 加载失败 / [AppConfigAccessor.useDefaultCover] / 未注册 loader 时,
  *   走默认封面链: 用户图集烘焙图 (seed=组名, 稳定选图) → 内置 `image_cover_default`;
  *   不再渲染组名首字色块 (原版分组封面 name=null, 默认封面上也不叠书名)
@@ -181,7 +181,7 @@ fun SharedGroupCover(
 ) {
     val cover = group.cover
     val loader = remember { BookImageLoaders.getOrNull() }
-    // useDefaultCover 时跳过加载, 直接走默认封面链 (对照 app 端 CoverImageView.load 行为);
+    // useDefaultCover 时跳过加载, 直接走默认封面链 (对照原 View 版封面组件 load 行为);
     // 每次组合读 prefs (不 remember): 配置变更后条目重组时读到最新值
     val useDefaultCover = AppConfigProviders.get().useDefaultCover
     // 仅 WiFi 加载封面: 非 WiFi 时 fetcher 层拦网络获取 (缓存命中仍显示, 对齐 SharedBookCover)
@@ -195,7 +195,7 @@ fun SharedGroupCover(
         val decodeSize = firstValidCoverDecodeSize(displaySize)
         val ratio = if (isVideoCover) CoverRatio.VIDEO else CoverRatio.NOVEL
 
-        // 默认封面链要读 prefs + 解 JSON, 挪到真用得上时才算 (有封面的分组零开销)
+        // 默认封面链要读 prefs + 解 JSON (已按 raw 串记忆化), 挪到协程内真用得上时再算
         suspend fun loadDefault() {
             // seed = 组名 (即分组的"书名", 对照书架书 seed=书名 稳定选图), 不回落封面路径;
             // 走 entry 版选图拿 ninePatch 标记 (defaultCoverFilePath 保留给 AudioPlay 等调用)
@@ -215,13 +215,16 @@ fun SharedGroupCover(
             loadDefault()
             return@LaunchedEffect
         }
+        // 网络加载期间先铺组名选中的图集默认封面作占位 (与 SharedBookCover 同款,
+        // 对照原 View 版的 Coil placeholder); 成功后覆盖为真实封面, 失败保持默认封面
+        loadDefault()
         // 与书架书同款: 真封面落持久磁盘分区, 清缓存不会把书架/分组清成默认封面
         val bmp = loader.loadCoverOrNull(
             cover, null, decodeSize.width, decodeSize.height, loadOnlyWifi,
         )
         if (bmp != null) {
             coverState = CoverBitmap(bmp, false)
-        } else loadDefault()
+        }
     }
     val aspectRatio = if (isVideoCover) VIDEO_COVER_RATIO else NOVEL_COVER_RATIO
     val resolvedModifier = modifier.fillMaxWidth().aspectRatio(aspectRatio)
@@ -260,7 +263,7 @@ fun SharedGroupCover(
  * 分组封面渲染 slot 的 CompositionLocal: 默认兜底 [SharedGroupCover]。
  *
  * 与 [LocalBookCoverSlot] 对称, 宿主端可用 `CompositionLocalProvider` 覆盖注入平台实现
- * (如 app 端 ShelfCover 走 CoverImageView)。
+ * (默认 [SharedGroupCover], 各端统一)。
  */
 val LocalGroupCoverSlot =
     staticCompositionLocalOf<@Composable (BookGroup, Modifier, Boolean, Int) -> Unit> {

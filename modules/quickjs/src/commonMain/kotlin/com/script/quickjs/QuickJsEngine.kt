@@ -480,7 +480,7 @@ object QuickJsEngine {
      * bootstrap 全局变量名列表 (用于缓存初值)。
      */
     private val BOOTSTRAP_GLOBAL_NAMES = arrayOf(
-        "Packages", "java", "javax", "android", "org", "com", "io", "cn",
+        "Packages", "java", "javax", "android", "org", "com",
         "JavaImporter", "JavaAdapter", "importClass", "importPackage"
     )
 

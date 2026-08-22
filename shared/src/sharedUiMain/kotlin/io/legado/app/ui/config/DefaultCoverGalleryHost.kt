@@ -1,6 +1,5 @@
 package io.legado.app.ui.config
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -26,7 +25,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
@@ -39,11 +37,12 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.model.BookCoverShared
 import io.legado.app.model.BookCoverShared.CoverRatio
 import io.legado.app.model.BookCoverShared.DefaultCoverEntry
-import io.legado.app.ui.compose.component.DefaultCoverNineImage
+import io.legado.app.model.bakeDefaultCoverBytes
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.DefaultCoverNineImage
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.NinePatchImageOrImage
 import io.legado.app.ui.compose.component.appDialogSize
@@ -77,18 +76,19 @@ import org.jetbrains.compose.resources.stringResource
  * 点击封面二次确认删除; 选中的图集用于书籍无封面/useDefaultCover 时的封面回退
  * (shared 链: [io.legado.app.ui.bookshelf.defaultCoverFilePath] → 用户图集 → 内置图)。
  *
- * 本对话框把该管理 UI 下沉 shared 供四端复用 (app 端仍走原 Fragment, 其余端经
- * [io.legado.app.ui.root.PlatformCapabilities.showDefaultCoverGallery] Overlay 弹出):
+ * 本对话框把该管理 UI 下沉 shared 供四端复用 (四端均经
+ * [io.legado.app.ui.root.PlatformCapabilities.showDefaultCoverGallery] Overlay 弹出;
+ * 原 app 端 DefaultCoverGalleryDialog Fragment 已随封面统一删除):
  *
  * - 列表: [BookCoverShared.listDefaultCovers] 读 prefs (PreferKey.defaultCover / defaultCoverDark)
  * - 瓦片: 按 [BookCoverShared.bakedPath] 经 [BookImageLoaders] 加载烘焙图
  *   (未注册 loader 的端如鸿蒙显示内置占位, 与书架封面链一致)
  * - 添加: 平台文件选择器 ([PlatformServiceProviders].files.pickFile, 阻塞式须切 IO) →
- *   读字节 → MD5 作 id → 按 [DefaultCoverEntry] 写 coversDir (最小等价: 原图直落
- *   `{id}_novel.webp` / `{id}_video.webp` 两路径, 不重新烘焙裁剪; 各端图片加载器按
- *   内容魔数解码, 与扩展名无关, 展示时由封面槽 ContentScale.Crop 裁剪, 与原版
- *   BookCover.addDefaultCover 的烘焙裁剪在渲染上等价; .9.png 特殊路径同原版按原名识别)
- *   → [BookCoverShared.addDefaultCoverEntry] 写 prefs → 广播 [EventBus.DEFAULT_COVER_CHANGED]
+ *   读字节 → MD5 作 id → [bakeDefaultCoverBytes] 烘焙 (NOVEL 300×400 居中裁 / VIDEO
+ *   720×405 顶裁, webp q85, 对照原 app 端 BookCover.bakeAndWrite; 失败 toast 中止,
+ *   不留 prefs 残留 entry) → 写 coversDir 两 ratio 路径 (.9.png 按原名单路径直落,
+ *   保留九宫格标记框) → [BookCoverShared.addDefaultCoverEntry] 写 prefs →
+ *   广播 [EventBus.DEFAULT_COVER_CHANGED]
  * - 删除: 二次确认 → 移除 prefs entry + 删烘焙文件 (对照 app 端 removeDefaultCover)
  * - 增删后广播 DEFAULT_COVER_CHANGED (封面配置页 summary 刷新) + BOOKSHELF_REFRESH
  *   (书架/详情页默认封面链重组重读 prefs)
@@ -245,13 +245,12 @@ private fun DefaultCoverTile(entry: DefaultCoverEntry, onClick: () -> Unit) {
 }
 
 /**
- * 平台图片选择器 → 加入默认封面图集 (对照 app 端 DefaultCoverGalleryDialog.onAddClick →
+ * 平台图片选择器 → 加入默认封面图集 (对照原 app 端 DefaultCoverGalleryDialog.onAddClick →
  * HandleFileContract.IMAGE + BookCover.addDefaultCover)。
  *
- * 最小等价说明: 原版把选中图按 NOVEL/VIDEO 各烘焙裁剪成 webp 后落盘; 本实现把原图字节
- * 直接写到两个 ratio 路径 (不重新编码)。各端图片加载器 (Coil3 JVM/iOS/Android) 均按内容
- * 魔数解码, 不依赖扩展名; 展示时封面槽以 ContentScale.Crop 裁剪, 与烘焙裁剪渲染等价。
- * 差异仅在烘焙尺寸优化 (原图未缩放, 磁盘占用略大)。.9.png 按原版语义识别并单路径落盘。
+ * 顺序: 判重 (烘焙前, 重复添加零开销) → [bakeDefaultCoverBytes] 烘焙 + 写盘 → 写 prefs →
+ * 广播。烘焙失败 (输入字节解码不了, 对各端渲染同样不可解码) 直接 toast 中止,
+ * 不回落原图直落、不留 prefs 残留 entry。.9.png 按原版语义识别并单路径直落保标记框。
  *
  * 成功后广播 DEFAULT_COVER_CHANGED (本对话框经 LaunchedEffect 刷新列表) +
  * BOOKSHELF_REFRESH (书架默认封面链重组)。
@@ -269,8 +268,8 @@ private suspend fun addDefaultCoverFromPicker(prefKey: String) {
     val prefs = PreferenceProviders.get()
     val ninePatch = path.endsWith(".9.png", ignoreCase = true)
     val entry = DefaultCoverEntry(id = MD5Utils.md5Encode(bytes), ninePatch = ninePatch)
-    // 相同图片再次添加直接忽略, 避免重复写盘 (对照 app 端 addDefaultCover 的 existing 判断)
-    if (!BookCoverShared.addDefaultCoverEntry(prefs, prefKey, entry)) return
+    // 相同图片已存在直接忽略, 避免重复烘焙写盘
+    if (BookCoverShared.listDefaultCovers(prefs, prefKey).any { it.id == entry.id }) return
     val coversDir = DataStorageProviders.getOrNull()?.coversDir ?: return
     withContext(IoDispatcher) {
         runCatching {
@@ -281,24 +280,22 @@ private suspend fun addDefaultCoverFromPicker(prefKey: String) {
                     bytes
                 )
             } else {
-                // 原图直落两个 ratio 路径 (见函数 KDoc 最小等价说明)
-                FileUtilsCommon.writeBytes(
-                    FileUtilsCommon.getPath(
-                        coversDir,
-                        "${entry.id}_${CoverRatio.NOVEL.fileTag}.webp"
-                    ),
-                    bytes,
-                )
-                FileUtilsCommon.writeBytes(
-                    FileUtilsCommon.getPath(
-                        coversDir,
-                        "${entry.id}_${CoverRatio.VIDEO.fileTag}.webp"
-                    ),
-                    bytes,
-                )
+                // 先烘焙后入库: 失败 (解码不了/编码异常) 中止添加, 不留 prefs 残留 entry
+                CoverRatio.entries.forEach { ratio ->
+                    val baked = bakeDefaultCoverBytes(bytes, ratio)
+                        ?: error("bake cover failed: ${ratio.name}")
+                    FileUtilsCommon.writeBytes(
+                        FileUtilsCommon.getPath(coversDir, "${entry.id}_${ratio.fileTag}.webp"),
+                        baked,
+                    )
+                }
             }
         }
-    }.onFailure { Toasters.get().toast("添加封面失败\n${it.message}") }
+    }.onFailure {
+        Toasters.get().toast("添加封面失败\n${it.message}")
+        return
+    }
+    BookCoverShared.addDefaultCoverEntry(prefs, prefKey, entry)
     FlowBus.with(EventBus.DEFAULT_COVER_CHANGED).tryEmit(prefKey)
     FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
 }

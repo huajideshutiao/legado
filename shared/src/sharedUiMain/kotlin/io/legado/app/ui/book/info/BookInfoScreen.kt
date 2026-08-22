@@ -68,6 +68,8 @@ import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppFilletTextButton
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.PullToRefreshDefaults
+import io.legado.app.ui.compose.component.filletChipPaddingH
+import io.legado.app.ui.compose.component.filletChipPaddingV
 import io.legado.app.ui.compose.component.pullToRefresh
 import io.legado.app.ui.compose.component.rememberPullToRefreshState
 import io.legado.app.ui.compose.platform.rememberColor
@@ -142,8 +144,8 @@ import org.jetbrains.compose.resources.stringResource
  * L3 不可下沉项 (保留 app 端, 通过 slot 注入):
  *   - BlurCoverBg: Glide + BookInfoBgTransformation + AndroidView(AppCompatImageView)
  *     → blurCoverBgSlot: @Composable (Modifier) -> Unit
- *   - InfoCover 中的 ShelfCover: AndroidView + CoverImageView + Glide
- *     → coverSlot: @Composable (Book?, Modifier) -> Unit
+ *   - InfoCover 中的封面渲染 (原 app 端 ShelfCover)
+ *     → coverSlot: @Composable (Book?, Modifier) -> Unit (现默认 SharedBookCover)
  *   - IntroImage: Glide + asBitmap + CustomTarget<Bitmap>
  *     → introImageSlot: @Composable (src: String, onClick: () -> Unit) -> Unit
  */
@@ -261,7 +263,7 @@ val LocalBookInfoActions = compositionLocalOf<BookInfoUiActions> {
  * @param blurCoverBgSlot 模糊封面背景 (Glide + BookInfoBgTransformation + AndroidView, L3)
  *   - 调用方传入 modifier 已经包含尺寸约束 (fillMaxSize / fillMaxWidth+height(300.dp))
  *   - slot 内部自行从 state 读 coverTick/book/isEInkMode 等判断是否加载
- * @param coverSlot 书籍封面 (AndroidView + CoverImageView + Glide, L3)
+ * @param coverSlot 书籍封面 (默认 SharedBookCover)
  *   - 调用方传入的 modifier 已包含 height(144.dp)/clip/background/clickable
  *   - slot 内部自行从 state 读 coverTick/inBookshelf 等
  * @param introImageSlot 简介内整宽图 (Glide + CustomTarget<Bitmap>, L3)
@@ -681,7 +683,7 @@ private fun InfoCover(
 ) {
     val actions = LocalBookInfoActions.current
     val book = state.book
-    // 对照 CoverImageView.onMeasure: 高固定 144dp, 宽按比例反推 (视频 16:9, 小说 3:4)
+    // 对照原 View 版 onMeasure: 高固定 144dp, 宽按比例反推 (视频 16:9, 小说 3:4)
     val coverRatio = if (book?.isVideo == true) 16f / 9f else 3f / 4f
     coverSlot(
         book,
@@ -975,14 +977,14 @@ private fun IntroRichText(part: IntroTextPart, onAction: (String) -> Unit) {
             }
         }
     }
-    // 行内胶囊: 有意偏离原版 IntroButtonSpan(14×10), 与分类标签 item_fillet_text(16×12) 视觉统一;
-    // 占位尺寸 = 文本 + 默认 contentPadding(16×12)×2, 背景/按压/文字统一走共享 AppFilletTextButton
+    // 行内胶囊: 有意偏离原版 IntroButtonSpan(14×10), 与分类标签 item_fillet_text 视觉统一;
+    // 占位尺寸 = 文本 + 胶囊内边距×2 (取组件里的基础值), 背景/按压/文字统一走 AppFilletTextButton
     val inline = mutableMapOf<String, InlineTextContent>()
     part.chunks.forEachIndexed { i, chunk ->
         if (chunk !is ButtonChunk) return@forEachIndexed
         val layout = textMeasurer.measure(AnnotatedString(chunk.label), TextStyle(fontSize = 14.sp))
-        val w = with(density) { (layout.size.width + 32.dp.toPx()).toSp() }
-        val h = with(density) { (layout.size.height + 24.dp.toPx()).toSp() }
+        val w = with(density) { (layout.size.width + (filletChipPaddingH * 2).toPx()).toSp() }
+        val h = with(density) { (layout.size.height + (filletChipPaddingV * 2).toPx()).toSp() }
         inline["btn$i"] = InlineTextContent(
             Placeholder(w, h, PlaceholderVerticalAlign.TextCenter),
         ) {

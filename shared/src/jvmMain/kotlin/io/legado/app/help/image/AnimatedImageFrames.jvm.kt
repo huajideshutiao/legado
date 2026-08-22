@@ -11,9 +11,8 @@ import org.jetbrains.skia.ImageInfo
 import org.jetbrains.skia.impl.use
 
 /**
- * [decodeAnimatedFrames] 的 Desktop Skiko 实现。
- *
- * OHOS 已使用 ArkUI 融合渲染，不再继承本源集；Android/iOS/OHOS 分别使用平台图片管线。
+ * [decodeAnimatedFrames] 的 Desktop (jvm) Skiko 实现, 仅桌面解码动图;
+ * Android/iOS/OHOS 各走平台图片管线 (静态首帧退化, 见 expect 处的平台实现清单)。
  *
  * 解码策略 (对照 Skia `SkCodec` 多帧语义):
  * - 单个复用 [Bitmap] 逐帧 `readPixels(bitmap, i, priorFrame)` 递进解码: GIF 帧多为增量 (仅重绘

@@ -19,27 +19,18 @@ import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.Book
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppOutlinedButton
-import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.AppTitleBar
-import io.legado.app.ui.compose.platform.bringIntoViewOnIme
-import io.legado.app.ui.compose.platform.imeFollowVisibleOnIme
-import io.legado.app.ui.compose.platform.imeScrollNowFor
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.theme.AppTheme
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.action_save
@@ -58,7 +49,6 @@ import legado.shared.generated.resources.select_local_image
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringArrayResource
 import org.jetbrains.compose.resources.stringResource
-import kotlin.math.roundToInt
 
 // ===== state / actions =====
 
@@ -72,7 +62,7 @@ import kotlin.math.roundToInt
  * - [book]: 当前编辑的书籍 (供封面 slot 读取原书名/作者/封面路径)
  * - [name] / [author] / [typeIndex] / [coverUrl] / [intro] / [bookUrl]:
  *   与 Activity 同名编辑态字段一一对应
- * - [coverTick]: 封面重载 key (对照 Activity.coverTick, 切换封面后递增驱动 ShelfCover 重载)
+ * - [coverTick]: 封面重载 key (对照 Activity.coverTick, 切换封面后递增驱动封面重载)
  */
 data class BookInfoEditUiState(
     val book: Book?,
@@ -132,12 +122,12 @@ interface BookInfoEditUiActions {
  * - 图标资源 `painterResource(R.drawable.xxx)` → `rememberPainter("xxx")` (key-based, 跨平台)
  * - 平台依赖 (HandleFileContract / ChangeCoverDialog / FileUtils / MD5Utils 等)
  *   通过 [BookInfoEditUiActions] 回调桥接, 选图与换源弹窗仍由 app 端 Activity 持有
- * - 封面 ShelfCover (AndroidView + CoverImageView + Glide) 通过 [coverSlot] slot 注入,
+ * - 封面通过 [coverSlot] slot 注入 (默认 SharedBookCover),
  *   调用方传入 modifier 已包含 width(110.dp), slot 内部从 state.book + coverTick 读取
  *
  * 注: 视觉/布局/边距/颜色/字号与 app 端原版完全一致, 仅做结构重构。
  *
- * @param coverSlot 封面渲染 slot (AndroidView + CoverImageView + Glide, L3)
+ * @param coverSlot 封面渲染 slot (默认 SharedBookCover)
  *   - 调用方传入的 modifier 已包含 width(110.dp)
  *   - slot 内部从 state 读 book / coverTick (Activity 闭包捕获)
  */
@@ -186,35 +176,19 @@ fun BookInfoEditScreen(
                 TypeSelector(state, actions)
             }
         }
-        // 键盘弹出动画期间的瞬移滚动器 (见 ImeInsets): 视口逐帧收缩时把聚焦字段无动画滚到
-        // 可见 —— 字段始终可见且不打断; 滚动区顶部窗口 Y 由 onGloballyPositioned 记录
+        // 键盘弹出时聚焦字段自己滚回可见: 由 verticalScroll 内建的 ContentInViewNode
+        // 按视口收缩处理 (见 ImeInsets.kt), 页面不额外接线
         val scrollState = rememberScrollState()
-        val scope = rememberCoroutineScope()
-        val density = LocalDensity.current
-        val imeMarginPx = with(density) { 12.dp.toPx() }.roundToInt()
-        var editWindowY by remember { mutableIntStateOf(0) }
-        val imeScrollNow = remember(scrollState, scope) {
-            imeScrollNowFor(scrollState, { editWindowY }, imeMarginPx, scope)
-        }
         Column(
             Modifier
                 .verticalScroll(scrollState)
-                .onGloballyPositioned { editWindowY = it.positionInWindow().y.roundToInt() }
                 .padding(horizontal = 4.dp),
         ) {
-            var coverUrlFocused by remember { mutableStateOf(false) }
             AppUnderlineTextField(
                 value = state.coverUrl,
                 onValueChange = { actions.onCoverUrlChange(it) },
                 label = stringResource(Res.string.cover_path),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .onFocusChanged { coverUrlFocused = it.isFocused }
-                    // 键盘弹出动画期间瞬移跟随视口收缩 (光标始终可见, 无动画不打断);
-                    // 动画结束兜底由 bringIntoViewOnIme 承担 (幂等, 已可见则不滚)
-                    .imeFollowVisibleOnIme(coverUrlFocused, imeScrollNow)
-                    // 键盘弹出/窗口收缩后聚焦字段可能再次滚出视口, 重新滚到可见 (见 ImeInsets KDoc)
-                    .bringIntoViewOnIme(coverUrlFocused),
+                modifier = Modifier.fillMaxWidth(),
             )
             Row(Modifier.padding(horizontal = 4.dp)) {
                 AppOutlinedButton(stringResource(Res.string.select_local_image)) {
@@ -230,27 +204,17 @@ fun BookInfoEditScreen(
                     actions.onRefreshCover()
                 }
             }
-            var introFocused by remember { mutableStateOf(false) }
             AppUnderlineTextField(
                 value = state.intro,
                 onValueChange = { actions.onIntroChange(it) },
                 label = stringResource(Res.string.book_intro),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .onFocusChanged { introFocused = it.isFocused }
-                    .imeFollowVisibleOnIme(introFocused, imeScrollNow)
-                    .bringIntoViewOnIme(introFocused),
+                modifier = Modifier.fillMaxWidth(),
             )
-            var bookUrlFocused by remember { mutableStateOf(false) }
             AppUnderlineTextField(
                 value = state.bookUrl,
                 onValueChange = { actions.onBookUrlChange(it) },
                 label = stringResource(Res.string.book_url),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .onFocusChanged { bookUrlFocused = it.isFocused }
-                    .imeFollowVisibleOnIme(bookUrlFocused, imeScrollNow)
-                    .bringIntoViewOnIme(bookUrlFocused),
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }

@@ -154,7 +154,7 @@ interface PlatformCapabilities {
     // 默认封面画廊弹窗 (对照 app 端 DefaultCoverGalleryDialog)
     fun showDefaultCoverGallery(isNight: Boolean) = unsupported("选择默认封面")
 
-    // 刷新默认封面缓存 (对照 app 端 BookCover.upDefaultCover)
+    // 刷新默认封面缓存 (app 端清 BookCover Drawable 解码缓存; 列表缓存已按 raw 串自动失效)
     fun refreshDefaultCover() = unsupported("刷新默认封面")
 
     // 跳转系统 TTS 设置页 (app 端 IntentHelp.openTTSSetting)

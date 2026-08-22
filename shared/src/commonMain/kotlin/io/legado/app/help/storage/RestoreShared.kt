@@ -277,7 +277,17 @@ object RestoreShared {
                                 }
                         }
 
-                        else -> putPrefByType(prefs, key, value)
+                        else -> runCatching { putPrefByType(prefs, key, value) }
+                            .onFailure {
+                                // 单 key 失败只跳过该 key, 不中断整批: 桌面端 java.util.prefs
+                                // key ≤ 80 / value ≤ 8192, 历史备份中的动态超长 key
+                                // (如 video_progress_<超长url>) 会在此抛 IllegalArgumentException
+                                AppLog.put(
+                                    "恢复配置项失败, 已跳过: $key\n${it.message}",
+                                    it,
+                                    tag = TAG
+                                )
+                            }
                     }
                 }
             }

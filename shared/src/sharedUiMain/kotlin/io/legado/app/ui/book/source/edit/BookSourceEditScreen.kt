@@ -40,10 +40,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -61,7 +57,6 @@ import io.legado.app.ui.compose.component.code.KeyboardToolbar
 import io.legado.app.ui.compose.component.code.KeyboardToolbarState
 import io.legado.app.ui.compose.component.code.rememberFullCodeSyntax
 import io.legado.app.ui.compose.platform.AppBackHandler
-import io.legado.app.ui.compose.platform.imeScrollNowFor
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
@@ -97,7 +92,6 @@ import legado.shared.generated.resources.str_share
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringArrayResource
 import org.jetbrains.compose.resources.stringResource
-import kotlin.math.roundToInt
 
 /**
  * 书源编辑 Screen (KMP 版, 替代 app 端 BookSourceEditScreen)。
@@ -525,15 +519,6 @@ private fun EditFields(
     // 虚拟化滚动: 只组合可见字段, 长字段 (数百行规则文本) 滚动到时才布局/测量,
     // 对齐原版 RecyclerView 定高内滚的惰性行为 (原版每字段 item 高度即内容高度)
     val listState = rememberLazyListState()
-    // 键盘弹出动画期间的瞬移滚动器 (见 ImeInsets): 视口逐帧收缩时把聚焦字段的光标行
-    // 无动画滚到可见 —— 光标始终可见且不打断; 列表顶部窗口 Y 由 onGloballyPositioned 记录
-    val scope = rememberCoroutineScope()
-    val density = LocalDensity.current
-    val imeMarginPx = with(density) { 12.dp.toPx() }.roundToInt()
-    var listWindowY by remember { mutableIntStateOf(0) }
-    val imeScrollNow = remember(listState, scope) {
-        imeScrollNowFor(listState, { listWindowY }, imeMarginPx, scope)
-    }
     val tab = state.currentTab
     val version = state.sourceVersion
     // 原版 BookSourceEditAdapter 对每个字段三连 addLegado/addJs/addJsonPattern, 不分组
@@ -554,9 +539,7 @@ private fun EditFields(
     LaunchedEffect(tab, version) { listState.scrollToItem(0) }
     LazyColumn(
         state = listState,
-        modifier = modifier
-            .fillMaxWidth()
-            .onGloballyPositioned { listWindowY = it.positionInWindow().y.roundToInt() },
+        modifier = modifier.fillMaxWidth(),
     ) {
         // item key = 字段 key: 对齐原 key(version, tab) 整体重建语义 —— 版本号变化时
         // 列表内容整体替换, 编辑器状态由 fieldEditors 容器按版本重建承载 (见 Route);
@@ -578,7 +561,6 @@ private fun EditFields(
                         searchHighlight = searchHighlight,
                         onFieldFocus = stableOnFieldFocus,
                         onEditorActive = stableOnEditorActive,
-                        imeScrollNow = imeScrollNow,
                     )
                 }
             }
@@ -597,7 +579,6 @@ private fun CodeField(
     searchHighlight: CodeSearchHighlightState,
     onFieldFocus: (String, EditEntity) -> Unit,
     onEditorActive: (CodeEditorState) -> Unit,
-    imeScrollNow: ((Rect) -> Unit)? = null,
 ) {
     // 聚焦判定下沉: activeState 引用在调用点不读取, 派生值 (=== 引用比较) 变化才重组
     // 本字段 —— 聚焦切换只重组新旧两字段, 其余可见字段整体跳过
@@ -613,8 +594,6 @@ private fun CodeField(
     // 回调 lambda 经 rememberUpdatedState 稳定: 父级重组传新 lambda 引用时本字段不重组
     val latestOnEditorActive by rememberUpdatedState(onEditorActive)
     val latestOnFieldFocus by rememberUpdatedState(onFieldFocus)
-    // 键盘弹出时滚到光标行由 CodeTextField 内部统一处理 (精确光标行 rect + ime insets,
-    // 对齐原版 adjustResize + bringPointIntoView), 此处只登记辅助键目标/自动缩进目标
     // 统一同步点 (对齐原版 CodeView 的 TextWatcher): 输入/undo/redo/辅助键插入/查找替换/
     // 格式化等一切修改路径都经 editor.onChanged 回调, 此处单向同步 entity.value 与查找高亮
     // 刷新, 不存在绕过路径 (旧实现只在 BasicTextField 输入回调里写 entity.value,
@@ -639,7 +618,6 @@ private fun CodeField(
         fontSize = 16.sp,
         // 查找高亮只叠加在聚焦字段上 (原版查找作用于 lastActiveCodeView)
         searchHighlight = if (isActive) searchHighlight else null,
-        imeScrollNow = imeScrollNow,
         modifier = Modifier
             .fillMaxWidth()
             // 外围间距由 CodeTextField 组件统一 (左右下各 4dp), 顶部不再额外留白

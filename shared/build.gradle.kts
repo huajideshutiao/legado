@@ -74,7 +74,7 @@ val nativeInteropSourceRoot = file("src/nativeMain/kotlin")
 
 // cinterop 对不完整 typedef (如 typedef struct JSContext JSContext; 仅前向声明) 只生成
 // cnames.structs.* 包别名, 顶层类型名靠这里生成的 typealias 补齐。iOS/鸿蒙各 stage 任务共用。
-fun generateCNamesAliases(outputRoot: java.io.File) {
+fun generateCNamesAliases(outputRoot: File) {
     val quickJsAliases = outputRoot.resolve(
         "io/legado/app/napi/quickjs/CNamesAliases.kt"
     )
@@ -361,6 +361,25 @@ kotlin {
     }
 
     sourceSets {
+        // ┌─ 层级总览 (条件源集仅在对应目标开启时创建; 详见各源集处注释) ────────────────
+        // commonMain ─┬─ androidMain ─────────────┐ (两者各自显式挂同一源码根
+        //             ├─ jvmMain ─────────────────┘  src/jvmAndAndroidMain, 原 jvmAndAndroidMain 源集)
+        //             ├─ sharedUiMain (Compose 基线, 四端共享)
+        //             │   ├─ nonOhosUiMain (coil3/reorderable/markdown, fork 生态无 ohos 变体)
+        //             │   │   ├─ androidMain / jvmMain / iosMain
+        //             │   ├─ skikoUiMain (零依赖 Skiko 层: jvm + iOS + 鸿蒙; Android 无 skiko)
+        //             │   │   ├─ jvmMain
+        //             │   │   └─ iosAndOhosUiMain
+        //             │   └─ iosAndOhosUiMain (iOS+鸿蒙共享 UI; 名含 ohos 供 fork 版本判定)
+        //             │       ├─ iosMain ── iosArm64Main / iosSimulatorArm64Main
+        //             │       └─ ohosMain ─ ohosArm64Main
+        //             └─ nativeMain (iOS+鸿蒙 非 UI 公共层)
+        //                 ├─ iosMain
+        //                 └─ ohosMain
+        // 测试: commonTest ─ jvmAndAndroidTest ─ jvmTest / androidHostTest
+        // 另: commonMain 按构建条件挂 ohosCompatMain / nonOhosCompatMain (room3 注解兼容);
+        //     非 mac 构建时 iosMain 挂 iosWindowsCheckMain (cinterop 不可生成的 stub)。
+        // └───────────────────────────────────────────────────────────────────────────
         commonMain {
             if (enableOhosTarget) {
                 kotlin.srcDir("src/ohosCompatMain/kotlin")
@@ -408,6 +427,10 @@ kotlin {
                 implementation(libs.multiplatformMarkdown.coil3)
             }
         }
+        // 三端 skiko 共享层 (jvm + iOS + 鸿蒙): 零依赖 (skiko 经 sharedUiMain 的 compose-ui
+        // 传递解析, fork 版本按目标编译期解析, 本源集无自身依赖故不落 fork 重写范围),
+        // 承载只依赖 Skia 的跨端实现 (如 DefaultCoverBaker)。
+        // Android 无 skiko (Android Compose 走 android.graphics), 不参与本层。
         val skikoUiMain by creating {
             dependsOn(sharedUiMain)
         }
@@ -448,7 +471,6 @@ kotlin {
             maybeCreate("nativeMain").apply {
                 dependsOn(commonMain.get())
                 kotlin.exclude(
-                    "io/legado/app/model/ImageProvider.native.kt",
                     *nativeInteropSourcePatterns.toTypedArray(),
                 )
                 dependencies {
@@ -460,24 +482,29 @@ kotlin {
         } else null
 
         // iOS + 鸿蒙共用 UI 层: 两端唯一的 UI 公共祖先是 sharedUiMain (鸿蒙进不了 nonOhosUiMain,
-        // 那层的 coil3/reorderable/markdown 无 ohosArm64 变体), 故在此承载两端逐份重复的 UI 实现。
+        // 那层的 coil3/reorderable/markdown 无 ohosArm64 变体), 故在此承载两端共享的 UI 实现;
+        // 挂 skikoUiMain 让只依赖 Skia 的实现三端 (jvm+iOS+鸿蒙) 单份维护。
         // 名字带 ohos 是必需的: 根脚本与本脚本的 CPF fork 版本重写都按配置名是否含 "ohos" 判定,
         // 本源集的 metadata 配置必须落进 ohos 分支, 否则解析到无 ohosArm64 变体的官方依赖。
+        //
+        // # iOS/OHOS 同名 actual 对的合并边界 (2026-08 全量 diff 结论, 勿再当重复清理)
+        // - 17 对是真平台分歧 (Apple framework 直调 vs napi 桥), 不可合;
+        // - Room 三件套 (DatabaseMigrations/AppDatabaseDefaults/Migration84To85) 仅差
+        //   CPF fork 非 suspend 回调签名, fork 对齐官方 Room3 前卡死;
+        // - LocalIPv4Addresses 被 platform.darwin / platform.linux 的 cinterop 包名分裂;
+        // - NativeKryptoOps / ImageBitmapLoader 是真实架构差异 (napi 回退 / bg 缓存 / http 栈);
+        // - 常量对 (AppConst/AppShortcuts/字体表/UA) 与 buildNativeProxyClient (proxy 成员
+        //   只在各端 actual builder 上, nativeMain 不可见) 各留 leaf actual 是正常形态。
         val iosAndOhosUiMain = if (enableIosTarget || enableOhosTarget) {
             maybeCreate("iosAndOhosUiMain").apply {
                 dependsOn(sharedUiMain)
+                dependsOn(skikoUiMain)
             }
         } else null
 
         if (enableIosTarget) {
-            val iosImageProviderMain = maybeCreate("iosImageProviderMain").apply {
-                dependsOn(commonMain.get())
-                kotlin.srcDir("src/nativeMain/kotlin/io/legado/app/model")
-                kotlin.include("ImageProvider.native.kt")
-            }
             val iosMain = maybeCreate("iosMain").apply {
                 dependsOn(nativeMain!!)
-                dependsOn(iosImageProviderMain)
                 dependsOn(nonOhosUiMain)
                 dependsOn(iosAndOhosUiMain!!)
                 dependencies {

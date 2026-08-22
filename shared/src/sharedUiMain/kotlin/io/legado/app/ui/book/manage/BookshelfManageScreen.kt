@@ -78,7 +78,7 @@ import org.jetbrains.compose.resources.stringResource
  * - 字符串资源 `stringResource(R.string.xxx)` → `stringResource(Res.string.xxx)` (key-based, 跨平台)
  * - 图标资源 `painterResource(R.drawable.xxx)` → `rememberPainter("xxx")` (key-based, 跨平台)
  * - 原 `AndroidView + CoverImageView` 改为 `coverSlot: @Composable (Book) -> Unit` 注入,
- *   app 端用 CoverImageView 承载, desktop 端用各自的封面渲染方案
+ *   各端统一默认 SharedBookCover
  * - RuleManageScaffold / SelectActionBar / AppTitleBar / AppSearchField /
  *   AppDropdownMenu / OverflowMenu 等组件已在 shared, 直接复用
  *
@@ -86,7 +86,7 @@ import org.jetbrains.compose.resources.stringResource
  * @param callbacks  事件回调 (查询/选中/拖拽/单项操作/批量操作/导航)
  * @param listState  外部传入的 LazyListState, 供 dragSelectable 边缘拖选复用
  * @param listModifier 施加于 LazyColumn 的 modifier (如 dragSelectable)
- * @param coverSlot  封面渲染槽: 由调用方注入 (app 端经 LocalBookCoverSlot 绑定 ShelfCover, desktop 端自定义);
+ * @param coverSlot  封面渲染槽: 默认经 LocalBookCoverSlot 落到 SharedBookCover, 也可由调用方注入;
  *   接收 Book 与 Modifier, 内部应将 Modifier 应用到封面根节点以承袭父级尺寸约束
  * @param downloadRunning 下载服务运行中 (独立状态: 仅顶栏下载图标区域重组)
  * @param selectedCount 勾选计数 (独立状态: 仅批量栏计数区域重组)
@@ -394,8 +394,8 @@ private fun RuleItemScope.BookItem(
             onCheckedChange = { callbacks.onToggle(book, it) },
             modifier = Modifier.align(Alignment.CenterVertically),
         )
-        // 封面槽: 由 host 端注入 (app 端经 LocalBookCoverSlot 绑定 ShelfCover, desktop 端自定义)
-        // 把 Box 的尺寸约束通过 fillMaxSize 透传给 coverSlot, 让 ShelfCover 按封面框 60x80dp 渲染
+        // 封面槽: 默认经 LocalBookCoverSlot 落到 SharedBookCover (可由 host 端注入覆盖)
+        // 把 Box 的尺寸约束通过 fillMaxSize 透传给 coverSlot, 让封面按封面框 60x80dp 渲染
         Box(
             modifier = Modifier
                 .align(Alignment.CenterVertically)

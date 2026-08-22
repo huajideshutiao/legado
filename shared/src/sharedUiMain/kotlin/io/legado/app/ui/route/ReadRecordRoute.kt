@@ -1,6 +1,5 @@
 package io.legado.app.ui.route
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
@@ -21,9 +20,9 @@ import io.legado.app.ui.about.ReadRecordUiEvent
 import io.legado.app.ui.about.SharedMonthHeatMap
 import io.legado.app.ui.bookshelf.CoverNameAuthorOverlay
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
-import io.legado.app.ui.compose.component.DefaultCoverNineImage
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.DefaultCoverNineImage
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.AppNavigator
@@ -37,7 +36,6 @@ import kotlinx.coroutines.launch
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.delete
-import legado.shared.generated.resources.image_cover_default
 import legado.shared.generated.resources.ok
 import legado.shared.generated.resources.sure_del
 import legado.shared.generated.resources.sure_del_any
@@ -52,14 +50,14 @@ import org.jetbrains.compose.resources.stringResource
  * 清空/单条删除/热力图按日删除确认弹窗用 [AppAlertDialog] 声明式实现。
  *
  * 热力图 slot 由 shared 纯 Compose [SharedMonthHeatMap] 渲染 (替代 app 端 AndroidView);
- * 封面 slot 取 [LocalBookCoverSlot] (app 端注入 ShelfCover, 其他端兜底 SharedBookCover)。
+ * 封面 slot 取 [LocalBookCoverSlot] (各端统一默认 SharedBookCover)。
  */
 
 /**
  * 记录条目无 [Book] 时的默认封面: 内置 image_cover_default + 竖排书名/作者。
  *
  * 对照原版 ReadRecordActivity 的 `ivCover.load(book?.getDisplayCover(), ...)`:
- * 封面为空/书不在书架时 CoverImageView 走默认封面链 (内置图 + 书名), 条目封面从不隐藏。
+ * 封面为空/书不在书架时封面组件走默认封面链 (内置图 + 书名), 条目封面从不隐藏。
  * 与 BookshelfScreen 默认封面分支重复, 待合并。
  */
 @Composable
@@ -179,7 +177,7 @@ fun ReadRecordRoute(
         }
     }
 
-    // 封面 slot: 取 LocalBookCoverSlot (app 端注入 ShelfCover, 其他端兜底 SharedBookCover)
+    // 封面 slot: 取 LocalBookCoverSlot (各端统一默认 SharedBookCover)
     val bookCoverSlot = LocalBookCoverSlot.current
 
     ReadRecordScreen(
@@ -210,7 +208,7 @@ fun ReadRecordRoute(
         },
         // 封面: book 非空调 bookCoverSlot (平台注入); book 为空 (书已不在书架/从未入库)
         // 显示默认封面 + 书名, 不隐藏 (对照原版 RecordAdapter: ivCover.load(null 封面)
-        // 走 ShelfCover 默认封面链, 空封面/加载失败同样落默认封面)
+        // 走默认封面链, 空封面/加载失败同样落默认封面)
         coverSlot = { item, book, modifier ->
             if (book != null) {
                 bookCoverSlot(book, modifier, false, 0)

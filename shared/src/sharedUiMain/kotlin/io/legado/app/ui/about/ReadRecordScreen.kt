@@ -196,7 +196,7 @@ interface ReadRecordUiActions {
  * - 图标资源 `painterResource(R.drawable.xxx)` → `rememberPainter("xxx")` (key-based, 跨平台)
  * - `AndroidView` (MonthHeatMapView) → [heatmapSlot] 注入, app 端在 slot 内持有 AndroidView + 平台回调
  *   (factory 内 onDayClick/onDayLongClick 直接读 Activity 成员变量, 保持原动态读取行为)
- * - `ShelfCover` → [coverSlot] 注入 (item + book + modifier), app 端在 slot 内调 ShelfCover
+ * - `ShelfCover` → [coverSlot] 注入 (item + book + modifier), 各端统一默认 SharedBookCover
  * - 平台依赖 (`alert` / `appDb` / `SearchActivity` / `startActivityForBook` / `AppConfig`)
  *   通过 [ReadRecordUiActions] 回调桥接回 app 端
  * - `SimpleDateFormat` → [ThreadSafeDateFormat] (commonMain expect, 各平台 actual)
@@ -212,7 +212,7 @@ interface ReadRecordUiActions {
  * @param actions     交互回调
  * @param modifier    外部 modifier
  * @param heatmapSlot 热力图 AndroidView slot, 接收 modifier; app 端实现内部包 MonthHeatMapView
- * @param coverSlot   封面 slot, 接收 (item, book, modifier); app 端实现内部调 ShelfCover
+ * @param coverSlot   封面 slot, 接收 (item, book, modifier); 各端统一默认 SharedBookCover
  */
 @Composable
 fun ReadRecordScreen(
@@ -594,7 +594,7 @@ private fun DaySection(text: String) {
  * perDayMode 下 item.readTime 就是当行那天的时长, 「总」需要查 totalTimeByBook;
  * 其它模式 item.readTime 已是全部累计, 「当日」查 todayTimeByBook。
  *
- * 封面通过 [coverSlot] 注入, 由 app 端调 ShelfCover 实现。
+ * 封面通过 [coverSlot] 注入, 各端统一默认 SharedBookCover。
  */
 @Composable
 private fun RecordRow(

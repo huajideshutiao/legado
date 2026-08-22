@@ -6,13 +6,17 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.CacheManager
 import io.legado.app.help.IntentData
 import io.legado.app.help.JsExtensionsPlatform
+import io.legado.app.help.source.SourceVerificationHelpShared.loginWaitTime
+import io.legado.app.help.source.SourceVerificationHelpShared.notifyLoginFinished
 import io.legado.app.help.source.SourceVerificationHelpShared.notifyResultArrived
+import io.legado.app.help.source.SourceVerificationHelpShared.prepareLoginWait
 import io.legado.app.help.source.SourceVerificationHelpShared.setResult
 import io.legado.app.help.source.SourceVerificationHelpShared.verificationLock
 import io.legado.app.help.source.SourceVerificationHelpShared.waitTime
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * 源验证核心流程 (shared commonMain 下沉版)。
@@ -38,6 +42,16 @@ object SourceVerificationHelpShared {
 
     /** 等待用户输入验证结果的轮询间隔 (1 分钟, 对应原 waitTime)。 */
     private val waitTime = 1.minutes.inWholeNanoseconds
+
+    /** 等待登录界面关闭的轮询间隔 (native 端无 unpark, 靠轮询醒, 故比 waitTime 短)。 */
+    private val loginPollTime = 1.seconds.inWholeNanoseconds
+
+    /**
+     * 等待登录界面关闭的上限, 超时放行避免 JS 线程永挂。
+     * 取 30 分钟而非几分钟: 人工登录 (找密码/等短信验证码) 慢于验证码输入,
+     * 超时提前放行会把登录流程截断, 比多等更糟。
+     */
+    private val loginWaitTime = 30.minutes.inWholeNanoseconds
 
     /** 对应原 app 端 `getVerificationResult` 的 `@Synchronized`: 同一时刻只允许一个验证流程。 */
     private val verificationLock = SynchronizedObject()
@@ -128,6 +142,46 @@ object SourceVerificationHelpShared {
         unparkThread(marker)
     }
 
+    /* ---- 登录界面等待 (JS source.showLoginDialog 阻塞语义) ---- */
+
+    /**
+     * 登录结束标记的 key。与验证结果分开: 登录 JS 内部常再调 startBrowser/getVerificationCode,
+     * 共用一个槽位会互相顶掉结果。
+     */
+    fun getLoginFinishedKey(sourceKey: String): String = "${sourceKey}_loginFinished"
+
+    /**
+     * 登记等待线程并清残留, 必须在发出登录 UI 请求**之前**调用:
+     * 否则 UI 侧先 [notifyLoginFinished] 再被此处 clear 掉, 等待方要空转到超时。
+     */
+    fun prepareLoginWait(sourceKey: String) {
+        val key = getLoginFinishedKey(sourceKey)
+        CacheManager.delete(key)
+        IntentData.put(key, currentThreadMarker())
+    }
+
+    /**
+     * 阻塞当前线程直到登录界面关闭 (表单 Overlay dispose / 登录 WebView dispose),
+     * 超时 [loginWaitTime] 后放行。
+     *
+     * 只应在后台线程 (JS 线程) 调用; 前台无 UI 承接 (事件被丢/无 Activity) 时靠超时兜底,
+     * 不会永久占住线程。
+     */
+    fun awaitLoginFinished(sourceKey: String) {
+        val key = getLoginFinishedKey(sourceKey)
+        if (awaitCacheResult(key, loginPollTime, loginWaitTime, "等待登录界面关闭...") == null) {
+            AppLog.put("等待登录界面关闭超时, 放行 JS 线程")
+        }
+        CacheManager.delete(key)
+    }
+
+    /** 登录界面关闭时唤醒等待的 JS 线程 (无等待方时只写标记, 由下次 [prepareLoginWait] 清掉)。 */
+    fun notifyLoginFinished(sourceKey: String) {
+        val key = getLoginFinishedKey(sourceKey)
+        CacheManager.putMemory(key, "1")
+        unparkThread(IntentData.get<Any?>(key))
+    }
+
     /**
      * 内存轮询等待验证结果 (对应原 getVerificationResult 中 while 循环 + `LockSupport.parkNanos`)。
      *
@@ -138,21 +192,41 @@ object SourceVerificationHelpShared {
      * @throws NoStackTraceException 若结果为空字符串
      */
     fun waitVerificationResult(sourceKey: String): String {
-        var waitUserInput = false
-        while (getResult(sourceKey) == null) {
-            if (!waitUserInput) {
-                AppLog.putDebug("等待返回验证结果...")
-                waitUserInput = true
-            }
-            parkThread(waitTime)
-        }
-
-        val result = getResult(sourceKey)!!
+        // timeout=0 不限时, 必然拿到非 null (对应原版无超时的 while 循环)
+        val result = awaitCacheResult(
+            getVerificationResultKey(sourceKey), waitTime, 0L, "等待返回验证结果..."
+        )!!
         clearResult(sourceKey)
         result.ifBlank {
             throw NoStackTraceException("验证结果为空")
         }
         return result
+    }
+
+    /**
+     * 内存轮询等待 [cacheKey] 出现结果, 每 [pollNanos] park 一次 (JVM 端可被 [unparkThread]
+     * 提前唤醒, native 端靠轮询超时自然唤醒)。验证结果与登录结束共用此循环。
+     *
+     * @param timeoutNanos 0 = 不限时 (原验证流程行为), >0 时超时返回 null
+     */
+    private fun awaitCacheResult(
+        cacheKey: String,
+        pollNanos: Long,
+        timeoutNanos: Long,
+        waitingLog: String,
+    ): String? {
+        var logged = false
+        var waited = 0L
+        while (CacheManager.getFromMemory(cacheKey) == null) {
+            if (timeoutNanos > 0L && waited >= timeoutNanos) return null
+            if (!logged) {
+                AppLog.putDebug(waitingLog)
+                logged = true
+            }
+            parkThread(pollNanos)
+            waited += pollNanos
+        }
+        return CacheManager.getFromMemory(cacheKey) as? String
     }
 }
 

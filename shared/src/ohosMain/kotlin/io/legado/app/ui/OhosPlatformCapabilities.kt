@@ -336,8 +336,8 @@ object OhosPlatformCapabilities : PlatformCapabilities {
         )
     }
 
-    // 刷新默认封面缓存: shared 默认封面链每次组合重读 prefs, 无内存缓存,
-    // 广播书架刷新让封面槽重组重读即可 (对照 app 端 BookCover.upDefaultCover)
+    // 刷新默认封面缓存: shared 图集解析已按 raw 串记忆化自动失效,
+    // 广播书架刷新让封面槽重组重读即可 (app 端清 Drawable 解码缓存)
     override fun refreshDefaultCover() {
         FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
     }

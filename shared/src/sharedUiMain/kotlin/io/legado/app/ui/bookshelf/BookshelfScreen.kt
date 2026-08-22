@@ -34,14 +34,11 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -63,8 +60,8 @@ import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.model.BookCoverShared
 import io.legado.app.model.BookCoverShared.CoverRatio
 import io.legado.app.model.BookCoverShared.DefaultCoverEntry
-import io.legado.app.ui.compose.component.DefaultCoverNineImage
 import io.legado.app.ui.compose.component.AppScrollTabRow
+import io.legado.app.ui.compose.component.DefaultCoverNineImage
 import io.legado.app.ui.compose.component.NinePatchImageOrImage
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.transitionStatusBarPadding
@@ -82,7 +79,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.bookshelf
-import legado.shared.generated.resources.image_cover_default
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -105,7 +101,7 @@ import org.jetbrains.compose.resources.stringResource
  * - refreshingUrls 由 [BookshelfViewModel] 订阅 UP_BOOKSHELF 事件维护,
  *   coverReloadTick 跟随 configTick (设置变更时可见条目重组重载封面)
  * - 封面由 [coverSlot] 注入: 默认取 [LocalBookCoverSlot] (兜底 [SharedBookCover]);
- *   宿主端用 [CompositionLocalProvider] 覆盖注入平台实现 (app: ShelfCover / desktop: DesktopBookCover)
+ *   各端统一默认实现, 宿主端可用 [CompositionLocalProvider] 覆盖注入定制实现
  *
  * # 路由跳转
  *
@@ -124,8 +120,8 @@ import org.jetbrains.compose.resources.stringResource
  * @param modifier 外部 Modifier
  * @param tier 布局档位; null = 按 [AppConfigAccessor.bookshelfLayout] 决定 (0=LIST, 其他=GRID)
  * @param coverSlot 封面渲染 slot, 默认取 [LocalBookCoverSlot] (兜底 [SharedBookCover]);
- *   宿主端可通过 [CompositionLocalProvider] 覆盖 [LocalBookCoverSlot] 注入平台实现
- *   (app: ShelfCover / desktop: DesktopBookCover), 也可直接由此参数显式传入;
+ *   宿主端可通过 [CompositionLocalProvider] 覆盖 [LocalBookCoverSlot] 注入定制实现,
+ *   也可直接由此参数显式传入;
  *   第 4 参为封面重载 tick (configTick), 配置变更时可见条目重载封面
  * @param bookshelfActionsCallbacks 顶栏溢出菜单回调集合 (书架管理/添加本地/远程书籍/分组管理/日志等), 默认空实现; 宿主端注入后菜单项生效
  * @param actions 顶栏右侧溢出菜单槽, 默认 [DefaultBookshelfActions] (搜索图标 + 完整溢出菜单)
@@ -611,48 +607,16 @@ internal fun DefaultBookshelfActions(
 }
 
 /**
- * 默认封面占位: 渲染书名首字符 (兜底场景, 桌面端应通过 [BookshelfScreen] 的
- * `coverSlot` 参数注入实际封面加载逻辑)。
- *
- * 视觉: 圆角 shapeSm 矩形 + accent 底 + 白字 (深底黑字), 比例 3:4 (小说封面标准)。
- *
- * 高度按宽度 3:4 自动计算 (对齐 CoverImageView.onMeasure 按 coverRatio 自适应),
- * 不再硬编码 160dp。
- *
- * @param modifier 外部尺寸约束; 与 [SharedBookCover] 同法, 高度有界时按比例反推宽度
- */
-@Composable
-fun DefaultBookCoverPlaceholder(book: Book, modifier: Modifier = Modifier) {
-    val colors = AppTheme.colors
-    val accent = colors.accent
-    val textColor = if (accent.luminance() >= 0.5f) Color(0xDE000000) else Color(0xFFFFFFFF)
-    val firstChar = book.name.firstOrNull() ?: '?'
-    Box(
-        modifier
-            .aspectRatio(NOVEL_COVER_RATIO, matchHeightConstraintsFirst = true)
-            .clip(DesignTokens.shapeSm)
-            .background(accent),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = firstChar.toString(),
-            color = textColor,
-            fontSize = 32.sp,
-            fontWeight = FontWeight.Bold,
-        )
-    }
-}
-
-/**
  * 共享封面加载: 走 [BookImageLoaders] (各端注入 coil3 实现) 加载实际封面,
  * 加载中/失败/无 cover URL/未注册 loader/[AppConfigAccessor.useDefaultCover] 时走默认封面。
  *
  * 默认封面链对齐 app 端 `BookCover.newDefaultDrawable`: 用户图集非空时按 seed (书名, 无则封面
  * 路径) 稳定选一张烘焙图, 从 [DataStorageProviders] 的 coversDir 读本地文件; 图集为空回落内置
  * `image_cover_default` (.9 图当普通图拉伸)。竖排书名/作者 overlay 只画在默认封面上,
- * 对照原版 `defaultCover=true` 才 drawNameAuthor。
+ * 对照原版 `defaultCover=true` 才 drawNameAuthor。网络封面加载期间也先铺该默认封面作占位
+ * (对照原 View 版的 Coil placeholder), 成功后覆盖为真实封面。
  *
- * 高度按 [isVideoCover] 选 16:9 / 3:4 由宽度自动算出 (对齐 CoverImageView.onMeasure 按 coverRatio
+ * 高度按 [isVideoCover] 选 16:9 / 3:4 由宽度自动算出 (对齐原 View 版 onMeasure 按 coverRatio
  * 自适应, 不再硬编码 160dp)。
  *
  * @param book 当前书籍
@@ -671,7 +635,7 @@ fun SharedBookCover(
 ) {
     val cover = book.getDisplayCover()
     val loader = remember { BookImageLoaders.getOrNull() }
-    // useDefaultCover 时跳过网络加载, 直接走默认封面链 (对照 app 端 CoverImageView 行为);
+    // useDefaultCover 时跳过网络加载, 直接走默认封面链 (对照原 View 版封面组件行为);
     // 每次组合读 prefs (不 remember): 宿主重组触发 LaunchedEffect 重启时读到的是最新配置
     val useDefaultCover = AppConfigProviders.get().useDefaultCover
     // 仅 WiFi 加载封面: 非 WiFi 时 fetcher 层拦网络获取 (缓存命中仍显示, 对齐原版 loadOnlyWifi)
@@ -686,7 +650,7 @@ fun SharedBookCover(
         val decodeSize = firstValidCoverDecodeSize(displaySize)
         val ratio = if (isVideoCover) CoverRatio.VIDEO else CoverRatio.NOVEL
 
-        // 默认封面链要读 prefs + 解 JSON, 挪到真用得上时才算 (有封面的书零开销)
+        // 默认封面链要读 prefs + 解 JSON (解析已按 raw 串记忆化), 挪到协程内真用得上时再算
         suspend fun loadDefault() {
             // 渲染需知 ninePatch 标记, 走 entry 版选图 (defaultCoverFilePath 保留给 AudioPlay 等调用)
             val coversDir = DataStorageProviders.getOrNull()?.coversDir
@@ -708,6 +672,9 @@ fun SharedBookCover(
             loadDefault()
             return@LaunchedEffect
         }
+        // 网络加载期间先铺按 seed 选中的图集默认封面作占位 (对照 View 版的 Coil
+        // placeholder), 成功后覆盖为真实封面; 失败时保持默认封面不变
+        loadDefault()
         val bmp = if (book.isNotShelf) {
             // 非书架书 (搜索/发现/主页结果) 的封面只落临时缓存区, 不占书架持久区
             loader.loadImageOrNull(
@@ -720,9 +687,9 @@ fun SharedBookCover(
         }
         if (bmp != null) {
             coverState = CoverBitmap(bmp, false)
-        } else loadDefault()
+        }
     }
-    // 对齐 CoverImageView.onMeasure: 高度有界时按比例反推宽度, 否则按宽度推高度。
+    // 对齐原 View 版 onMeasure: 高度有界时按比例反推宽度, 否则按宽度推高度。
     // 不能硬加 fillMaxWidth() —— 列表条目/发现结果页传的是定高 modifier, 撑满宽度会让封面失控放大。
     val aspectRatio = if (isVideoCover) VIDEO_COVER_RATIO else NOVEL_COVER_RATIO
     val resolvedModifier = modifier
@@ -836,9 +803,8 @@ internal const val VIDEO_COVER_RATIO = 16f / 9f
 /**
  * 封面渲染 slot 的 CompositionLocal: 默认兜底 [SharedBookCover]。
  *
- * 宿主端 (app `ShelfCover` / desktop `DesktopBookCover`) 可用 [CompositionLocalProvider]
- * 覆盖注入, 替换 shared 路由 ([BookshelfScreen] / `BookInfoRoute`) 的封面实现,
- * 避免 shared 路由硬编码 fallback 误用平台原生封面组件。
+ * 宿主端可用 [CompositionLocalProvider] 覆盖注入, 替换 shared 路由
+ * ([BookshelfScreen] / `BookInfoRoute`) 的封面实现; 各端默认统一走 [SharedBookCover]。
  *
  * 签名 `(Book, Modifier, Boolean) -> Unit` 对齐 [ShelfBooksContent] 的 `bookCoverSlot`
  * (book / modifier / isVideoCover), modifier 与 isVideoCover 不被丢弃。

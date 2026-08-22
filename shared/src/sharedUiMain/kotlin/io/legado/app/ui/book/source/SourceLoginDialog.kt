@@ -7,7 +7,6 @@
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -47,8 +46,8 @@ import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppFilletTextButton
-import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.AppSwitch
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.GridPackLayout
 import io.legado.app.ui.compose.component.toGridPackSpec
@@ -398,11 +397,10 @@ private fun LoginRow(
             )
         }
 
-        // 原 button 行: item_fillet_text + setPadding(space.lg)=16dp 四向
+        // 原 button 行: item_fillet_text, 内边距走组件基础样式
         else -> AppFilletTextButton(
             text = rowUi.name,
             modifier = modifier,
-            contentPadding = PaddingValues(16.dp),
             onClick = { onButtonClick(rowUi) },
         )
     }

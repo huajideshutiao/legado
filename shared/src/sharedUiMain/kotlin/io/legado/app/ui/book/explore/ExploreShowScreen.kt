@@ -34,7 +34,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -90,15 +89,16 @@ import org.jetbrains.compose.resources.stringResource
  *   - intro_show_null    简介为空时回退文案 (替 trimIntro 的 context.getString)
  *
  * L3 不可下沉项 (保留 app 端, 通过 slot 注入):
- *   - ShelfCover (Glide + CoverImageView, 走 AppConfig.loadCoverOnlyWifi)
+ *   - 封面渲染 (原 app 端 ShelfCover, 走 AppConfig.loadCoverOnlyWifi)
  *     → coverSlot: @Composable (book, inBookshelf, isVideoStyle, modifier) -> Unit
+ *     (现各端统一默认 SharedBookCover, loadOnlyWifi 由其内部读取)
  *   - AndroidView { LinearLayout + setUpExploreOptions(viewModel.exploreOptions) }
  *     → optionsRowSlot: @Composable () -> Unit (内部读 state.optionsVersion + 调 actions.onExploreOptionChanged)
  *   - AndroidView { ItemExploreVideoBinding } (视频卡 ViewBinding)
  *     → videoItemSlot: @Composable (book, inBookshelf, onClick, onLongClick) -> Unit
  *
  *   注: AppConfig.bookshelfCoverHeight 已在 shared AppConfigAccessor 暴露, 直接读;
- *       AppConfig.loadCoverOnlyWifi 仅 ShelfCover 用 → 由 coverSlot 内部桥接。
+ *       AppConfig.loadCoverOnlyWifi 由封面实现内部读取 (SharedBookCover)。
  *
  * Color 复用:
  *   - md_green_600 (#43A047, 书架内绿点) → 内联 Color(0xFF43A047), 复刻 R.color.md_green_600
@@ -201,7 +201,7 @@ interface ExploreShowUiActions {
  *   - 内部自行读 state.optionsVersion + 调 actions.onExploreOptionChanged
  * @param videoItemSlot 视频卡 (L3: ItemExploreVideoBinding ViewBinding)
  *   - 调用方传入 (book, inBookshelf, onClick, onLongClick)
- * @param coverSlot 封面 (L3: ShelfCover + Glide + CoverImageView)
+ * @param coverSlot 封面 (默认 SharedBookCover, 内部处理 loadOnlyWifi)
  *   - 调用方传入 (book, inBookshelf, isVideoStyle, modifier) 已含尺寸约束
  */
 @Composable

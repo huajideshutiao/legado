@@ -73,21 +73,22 @@ import org.jetbrains.compose.resources.stringResource
  *   - home_tab_empty    tab 空态文案
  *   - bottom_line       无更多数据文案
  *
- * L3 不可下沉项 (保留 app 端, 通过 slot 注入):
- *   - SectionBlock (HomeSectionComposables.kt): 内含 ShelfCover (Glide 封面) +
+ * 平台专属 slot (原 app 端 L3, 现 shared 端纯 Compose 实现兜底):
+ *   - SectionBlock (原 HomeSectionComposables.kt): 内含封面 +
  *     ItemExploreVideoBinding (视频卡), 全 L3; 参数 chip 行已下沉为
  *     [io.legado.app.ui.compose.component.ExploreOptionsRow] (纯 Compose)
  *     → sectionBlockSlot: @Composable (tabTitle: String, section: HomeSection) -> Unit
- *   - InfiniteHeader (HomeSectionComposables.kt): 同 SectionBlock 标题行+参数 chip 行
+ *   - InfiniteHeader (原 HomeSectionComposables.kt): 同 SectionBlock 标题行+参数 chip 行
  *     → infiniteHeaderSlot: @Composable (tabTitle: String, section: HomeSection) -> Unit
- *   - InfiniteGridCard (HomeSectionComposables.kt): ShelfCover/视频卡单元, L3
+ *   - InfiniteGridCard (原 HomeSectionComposables.kt): 封面/视频卡单元
  *     → infiniteGridCardSlot: @Composable (tabTitle: String, section: HomeSection,
  *       book: SearchBook) -> Unit
  *
- * 不下沉的相关文件 (全 L3, 留 app 端):
+ * 原不下沉的相关文件 (全 L3; app 端 HomeSectionComposables.kt 已随 View 版封面组件移除,
+ * 现 shared 端纯 Compose 实现):
  *   - HomeSectionComposables.kt: SectionBlock/InfiniteHeader/InfiniteGridCard + 私有
  *     CoverRow/RankColumn/FourRow/NovelCoverCard/RankItem/VideoCardView/SectionOptions
- *     全部依赖 AndroidView/ShelfCover/ItemExploreVideoBinding/colorResource/stringResource
+ *     全部依赖 AndroidView/封面组件/ItemExploreVideoBinding/colorResource/stringResource
  *   - HomeSectionEditDialog.kt / HomeSectionManageDialog.kt / HomeTabManageDialog.kt /
  *     HomeTabEditDialog.kt: 已下沉本包 (纯 Compose + HomeTabHelpShared + FlowBus),
  *     弹窗态由 HomeScreenModel 持有, MainRoute 渲染
@@ -166,16 +167,15 @@ interface HomeUiActions {
  * 页共享 slots。
  *
  * 下沉自 app 端原 `HomeScreen(state: HomeTabState)`, 将 HomeTabState 直接依赖拆为
- * [state] (展示状态) + [actions] (交互回调) + 三个 slot (Android 专属 AndroidView/
- * ShelfCover 注入), 去除 Android Context 依赖。
+ * [state] (展示状态) + [actions] (交互回调) + 三个 slot 注入, 去除 Android Context 依赖。
  *
  * 视觉/布局/动画/手势/状态管理完全与 app 端原版一致 (宽高/边距/颜色/层级)。
  *
- * @param sectionBlockSlot 非无限流展示项区块 (含 ShelfCover, L3)
+ * @param sectionBlockSlot 非无限流展示项区块 (含封面 + 视频卡)
  *   - 调用方传入 tabTitle + section, slot 内部自行从 state 取书籍/参数/状态/回调
  * @param infiniteHeaderSlot 无限流头部 (标题行 + 参数 chip 行)
  *   - 调用方传入 tabTitle + section, slot 内部自行从 state 取参数/回调
- * @param infiniteGridCardSlot 无限流网格单元 (含 ShelfCover/视频卡, L3)
+ * @param infiniteGridCardSlot 无限流网格单元 (含封面/视频卡)
  *   - 调用方传入 tabTitle + section + book, slot 内部自行处理渲染
  *
  * @param active 本 tab 是否为主界面当前页 (对照原版 BEHAVIOR_RESUME_ONLY_CURRENT_FRAGMENT:

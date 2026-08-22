@@ -3,7 +3,6 @@ package io.legado.app.ui.book.source.debug
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -316,17 +315,13 @@ private fun HelpLabel(text: String) {
 }
 
 /**
- * 复刻原布局 fillet 按钮 (selector_fillet_btn_bg)：收拢到共享 [AppFilletTextButton]，
- * 差异参数化：primaryText 14sp (区别于 item_fillet_text 的 secondaryText)、
- * 16×8 外缘内边距、桌面端不抢输入法焦点 (搜索框失焦 -> helpVisible=false ->
- * HelpPanel 按下即消失, 长按无法触发)。
+ * 帮助面板示例 chip: 样式全走共享 [AppFilletTextButton] (与书籍详情分类标签一致)。
+ * 桌面端不抢输入法焦点, 否则搜索框失焦 -> helpVisible=false -> 面板按下即消失, 长按无从触发。
  */
 @Composable
 private fun FilletChip(text: String, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
     AppFilletTextButton(
         text = text,
-        textColor = AppTheme.colors.primaryText,
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         focusable = false,
         onLongClick = onLongClick,
         onClick = onClick,

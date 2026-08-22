@@ -354,8 +354,8 @@ fun BookshelfManageRoute(
         )
     }
 
-    // 封面 slot: 复用 LocalBookCoverSlot (宿主端注入 ShelfCover, 兜底 SharedBookCover)
-    // Modifier 透传: 让 ShelfCover 按封面框 60x80dp 尺寸渲染 (不可空实现)
+    // 封面 slot: 复用 LocalBookCoverSlot (默认 SharedBookCover, 各端统一)
+    // Modifier 透传: 让封面按封面框 60x80dp 尺寸渲染 (不可空实现)
     val bookCoverSlot = LocalBookCoverSlot.current
     BookshelfManageScreen(
         state = state,

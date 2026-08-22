@@ -32,7 +32,7 @@ import kotlinx.coroutines.withContext
  * 通过 [ScreenModelStore] 复用 [BookInfoEditScreenModel], 渲染 [BookInfoEditScreen]。
  *
  * 选图走 [PlatformServiceProviders] 文件选择器; 换封面源弹窗走 [PlatformCapabilityProviders];
- * 封面渲染用跨平台占位 (app 端通过自身 Activity 注入 ShelfCover)。
+ * 封面渲染走 [LocalBookCoverSlot] (默认 SharedBookCover, 各端统一)。
  */
 @Composable
 fun BookInfoEditRoute(
@@ -134,7 +134,7 @@ fun BookInfoEditRoute(
         state = state,
         actions = actions,
         coverSlot = { book, modifier ->
-            // coverTick 递增 (选图/刷新) 时驱动封面组件重载 (ShelfCover reloadKey / SharedBookCover tick)
+            // coverTick 递增 (选图/刷新) 时驱动封面组件重载 (SharedBookCover tick)
             book?.let { bookCoverSlot(it, modifier, false, state.coverTick) }
         },
     )

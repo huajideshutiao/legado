@@ -34,7 +34,7 @@ import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.main.MainActivity
 import io.legado.app.utils.BitmapUtils
-import io.legado.app.utils.fullScreen
+import io.legado.app.utils.edgeToEdge
 import io.legado.app.utils.setStatusBarColorAuto
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.windowSize
@@ -117,7 +117,7 @@ open class WelcomeActivity : BaseComposeActivity() {
     }
 
     override fun setupSystemBar() {
-        fullScreen()
+        edgeToEdge()
         setStatusBarColorAuto(backgroundColor, fullScreen)
         upNavigationBarColor()
     }

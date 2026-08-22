@@ -62,22 +62,23 @@ val LocalBlurCoverBgSlot =
     }
 
 /**
- * 书籍详情封面 slot。
+ * 书籍详情封面: 委托书架通用封面 slot ([LocalBookCoverSlot], 默认 SharedBookCover)。
  *
- * 保留详情页的 [coverTick] 强制刷新语义, 渲染直接委托书架通用封面 slot
- * ([LocalBookCoverSlot], CoverImageView 的迁移组件), 不再平行实现一套。
+ * 保留详情页的 [coverTick] 强制刷新语义 (coverTick 变化经 key 强制重建触发重载),
+ * 不再平行实现一套; 原平台注入端点已随封面统一删除, 各端共用本实现。
  */
-val LocalBookInfoCoverSlot =
-    staticCompositionLocalOf<@Composable (Book?, Int, Boolean, Modifier) -> Unit> {
-        @Composable { book, coverTick, _, modifier ->
-            if (book != null) {
-                val coverSlot = LocalBookCoverSlot.current
-                key(book.bookUrl, coverTick) {
-                    coverSlot(book, modifier, book.isVideo, 0)
-                }
-            }
-        }
+@Composable
+fun BookInfoCover(
+    book: Book?,
+    coverTick: Int,
+    modifier: Modifier,
+) {
+    if (book == null) return
+    val coverSlot = LocalBookCoverSlot.current
+    key(book.bookUrl, coverTick) {
+        coverSlot(book, modifier, book.isVideo, 0)
     }
+}
 
 /**
  * 简介内整宽图 slot。

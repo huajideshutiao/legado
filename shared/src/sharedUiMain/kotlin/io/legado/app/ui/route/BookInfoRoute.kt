@@ -29,13 +29,13 @@ import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.showSourceLogin
 import io.legado.app.help.toast.Toasters
+import io.legado.app.ui.book.info.BookInfoCover
 import io.legado.app.ui.book.info.BookInfoMenuState
 import io.legado.app.ui.book.info.BookInfoScreen
 import io.legado.app.ui.book.info.BookInfoScreenModel
 import io.legado.app.ui.book.info.BookInfoUiActions
 import io.legado.app.ui.book.info.BookInfoUiEvent
 import io.legado.app.ui.book.info.LocalBlurCoverBgSlot
-import io.legado.app.ui.book.info.LocalBookInfoCoverSlot
 import io.legado.app.ui.book.info.LocalIntroImageSlot
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.compose.theme.AppTheme
@@ -709,9 +709,9 @@ fun BookInfoRoute(
         isDarkTheme = isDarkTheme,
     )
 
-    // L3: 模糊封面背景 / 封面 / 简介图依赖平台 Glide/AndroidView, 由平台通过 CompositionLocal 注入
+    // L3: 模糊封面背景 / 简介图依赖平台 Glide/AndroidView, 由平台通过 CompositionLocal 注入;
+    // 封面统一走 BookInfoCover (内部委托 LocalBookCoverSlot 默认 SharedBookCover)
     val isEInkMode = AppConfigProviders.get().isEInkMode
-    val bookInfoCoverSlot = LocalBookInfoCoverSlot.current
     val blurCoverBgSlot = LocalBlurCoverBgSlot.current
     val introImageSlot = LocalIntroImageSlot.current
     BookInfoScreen(
@@ -729,7 +729,7 @@ fun BookInfoRoute(
             )
         },
         coverSlot = { book, modifier ->
-            bookInfoCoverSlot(book, state.coverTick, state.inBookshelf, modifier)
+            BookInfoCover(book, state.coverTick, modifier)
         },
         introImageSlot = { src, onClick ->
             introImageSlot(src, onClick)

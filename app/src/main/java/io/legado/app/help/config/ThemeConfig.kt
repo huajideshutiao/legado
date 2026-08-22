@@ -21,7 +21,6 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Theme
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.lib.theme.ThemeStore
-import io.legado.app.model.BookCover
 import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.centerCrop
@@ -70,7 +69,7 @@ object ThemeConfig {
     fun applyDayNight(context: Context) {
         initNightMode()
         applyTheme(context)
-        BookCover.upDefaultCover()
+        // 图集昼夜切换: 列表由 BookCoverShared 记忆化缓存按 isNightTheme 惰性取, 无需手动刷
         postEvent(EventBus.RECREATE, "")
     }
 

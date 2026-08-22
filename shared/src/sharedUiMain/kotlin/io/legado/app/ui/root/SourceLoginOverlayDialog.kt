@@ -25,6 +25,7 @@ import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.SourceLoginContext
 import io.legado.app.help.loadSourceForLogin
+import io.legado.app.help.source.SourceVerificationHelpShared
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.source.SourceLoginDialog
 import io.legado.app.ui.book.source.SourceLoginFormState
@@ -65,12 +66,17 @@ internal fun SourceLoginOverlayContent(overlay: AppOverlay.Dialog, navigator: Ap
             }
         }
     }
-    // Overlay 关闭 (dismiss / popTo / resetRoot 清栈) 时清理挂起标记
-    DisposableEffect(Unit) {
-        onDispose { navigator.setOverlaySuspended(overlay.key, false) }
-    }
-
     val params = remember(overlay.payload) { parseSourceLoginPayload(overlay.payload) }
+    // Overlay 关闭 (dismiss / popTo / resetRoot 清栈) 时清理挂起标记, 并唤醒阻塞在
+    // source.showLoginDialog() 上的 JS 线程 (sourceUrl 即源 key)
+    DisposableEffect(Unit) {
+        onDispose {
+            navigator.setOverlaySuspended(overlay.key, false)
+            if (params.sourceUrl.isNotBlank()) {
+                SourceVerificationHelpShared.notifyLoginFinished(params.sourceUrl)
+            }
+        }
+    }
     // 无 url 且无 dataKey (payload 完全无法解析) 时直接关闭, 不落入空对话框
     if (params.sourceUrl.isBlank() && params.dataKey == null) {
         LaunchedEffect(Unit) { navigator.dismissOverlay(overlay.key) }

@@ -107,7 +107,6 @@ import io.legado.app.ui.compose.component.asHighlightOutputTransformation
 import io.legado.app.ui.compose.component.rememberSyncedTextFieldState
 import io.legado.app.ui.compose.component.toKeyboardActionHandler
 import io.legado.app.ui.compose.platform.rememberImeAnimating
-import io.legado.app.ui.compose.platform.rememberImeVisible
 import io.legado.app.ui.compose.theme.AppTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -277,14 +276,6 @@ fun CodeTextField(
     autoComplete: Boolean = true,
     /** 输入修正 (自动缩进等), 由调用方编辑器 (CodeEditorState) 提供; null = 不做修正 */
     inputTransformation: InputTransformation? = null,
-    /**
-     * 键盘弹出动画期间的瞬移滚动器 (可选): 收到光标行**窗口坐标** rect, 滚动容器应以
-     * 无动画滚动 (scrollToItem/scrollBy 瞬时) 把该行保持在视口底部上方 —— 视口逐帧收缩
-     * 时光标始终可见且无动画滚动互相打断。未提供时动画期间不滚动, 动画结束后一次
-     * bringIntoView 收尾。长字段容器接线见各编辑页 (LazyColumn/verticalScroll 的
-     * imeScrollNowFor)。
-     */
-    imeScrollNow: ((Rect) -> Unit)? = null,
 ) {
     // 着色挂载窗口 (字符偏移区间, 对照原版 activeSyntaxSpans 的渲染窗口 ±20 行):
     // 全文 span 基线照旧维护, 但只有落在本窗口内的 span 会进 AnnotatedString ——
@@ -602,48 +593,20 @@ fun CodeTextField(
         }
     }
     val cursorLineRectState = rememberUpdatedState(cursorLineRect)
-    // 光标行窗口 rect (瞬移滚动器输入): 字段局部光标行 + 字段窗口位置 (动画期间字段窗口位置
-    // 恒定, 视口收缩只改容器高度); 布局过期帧返回 null, 由调用方跳过本帧
-    val cursorLineWindowRect: () -> Rect? = {
-        cursorLineRectState.value.invoke()?.let { local ->
-            val off = fieldWindowOffset
-            Rect(
-                off.x + local.left,
-                off.y + local.top,
-                off.x + local.right,
-                off.y + local.bottom,
-            )
-        }
-    }
-    // IME 弹出/查找定位时把光标行滚进视口, **只补 foundation 不管的两种情况**: 聚焦字段的
-    // 输入/选区变化由 TextFieldCoreModifier 自己发 bringIntoView (经拦截节点上传宿主容器),
-    // 这里再发一次只是两路请求互相打断; 它不发的是"仅视口收缩"(键盘弹出, 选区未变, 官方
-    // 明确跳过) 与字段失焦时的查找定位 (showCursor=false 早退, 原版会 bringPointIntoView)。
-    val imeRequester = remember { BringIntoViewRequester() }
-    // 只按键盘可见/动画边界的翻转触发, 不跟 inset 数值 (逐帧变化会让请求互相打断, 表现为卡顿)
-    val imeVisible = rememberImeVisible()
+    // 查找定位: 字段失焦 (查找面板持焦) 时命中跳转要自己把光标行滚进视口 ——
+    // TextFieldCoreModifier 只在字段持焦时发 bringIntoView, 失焦即早退, 对齐原版
+    // CodeView.find 的 bringPointIntoView。
+    // 键盘弹出不在此处理: 视口收缩由滚动容器内建的 ContentInViewNode 自己把焦点 rect
+    // 弹回可见 (新版 BasicTextField 报的焦点 rect 就是光标 rect), 详见 ImeInsets.kt。
+    val searchRequester = remember { BringIntoViewRequester() }
     val searchActive = searchHighlight != null && searchHighlight.keyword.isNotEmpty()
-    // 聚焦时不跟选区 (那份归 foundation), 失焦查找定位时才按选区重新请求
     val searchSelection = if (isFocused) null else value.selection
-    LaunchedEffect(isFocused, imeVisible, imeAnimating, searchActive, searchSelection) {
-        if (!imeVisible) return@LaunchedEffect
-        // 查找定位场景: 字段失焦 (面板持焦) 时仅查找激活才滚
-        if (!isFocused && !searchActive) return@LaunchedEffect
-        // 键盘弹出动画期间: 视口逐帧收缩, 容器注册了瞬移滚动器时逐帧跟随 —— 光标行始终
-        // 可见且无动画滚动打断 (scrollToItem/scrollBy 瞬时, 见 imeScrollNowFor); 未注册时
-        // 动画期间不请求 (视口未稳定, 动画滚动互相打断, 见 bringIntoViewOnIme KDoc)
-        val scrollNow = imeScrollNow
-        if (scrollNow != null && imeAnimating) {
-            while (imeAnimating) {
-                cursorLineWindowRect()?.let(scrollNow)
-                delay(16)
-            }
-        }
-        // 动画结束 (或未注册瞬移滚动器): 一次 bringIntoView 收尾 (幂等, 已可见则不滚)。
+    LaunchedEffect(isFocused, searchActive, searchSelection) {
+        if (isFocused || !searchActive) return@LaunchedEffect
         // 布局滞后一帧时 (刚替换过文本) 等一帧重取, 仍不同步则放弃本次
         val rect = cursorLineRectState.value.invoke()
             ?: run { withFrameNanos { }; cursorLineRectState.value.invoke() }
-        if (rect != null) imeRequester.bringIntoView(rect)
+        if (rect != null) searchRequester.bringIntoView(rect)
     }
     // 行号列宽 (px, 未显示行号时 null): 5dp 左距 + 号宽 + 11dp 右距 (对齐原版
     // mLineNumberPadding = measureText + 16f*density), 分隔线与补全弹层共用同一实测值。
@@ -788,7 +751,7 @@ fun CodeTextField(
                 .fillMaxWidth()
                 .onPreviewKeyEvent(previewKeyHandler)
                 .then(positionTrackingModifier)
-                .bringIntoViewRequester(imeRequester)
+                .bringIntoViewRequester(searchRequester)
                 .cursorLineBringIntoView(cursorLineRectState)
         ) {
             BasicTextField(

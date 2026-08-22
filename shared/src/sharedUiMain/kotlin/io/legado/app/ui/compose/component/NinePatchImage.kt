@@ -70,6 +70,34 @@ fun parseNinePatch(bitmap: ImageBitmap): NinePatchInfo? {
 }
 
 /**
+ * .9 解析结果跨条目/跨滚动共享的小 LRU。
+ *
+ * Coil 每次加载返回新的 [ImageBitmap] 包装实例 (未覆写 equals, 相等性即恒等),
+ * 条目内的 `remember(bitmap)` 在条目间与滚动重建后必失配, 每次都重跑
+ * [parseNinePatch] 的整图 [toPixelMap]; ImageBitmap 恒等 hashCode 恰好可当缓存键。
+ * 图集 .9 文件通常个位数, 8 条足够; 仅主线程 (remember 块) 访问。
+ */
+private object NinePatchInfoCache {
+    private const val MAX_ENTRIES = 8
+    private val entries = LinkedHashMap<ImageBitmap, NinePatchInfo?>()
+
+    fun getOrPut(bitmap: ImageBitmap, parse: () -> NinePatchInfo?): NinePatchInfo? {
+        if (entries.containsKey(bitmap)) {
+            // LRU: 命中移到队尾
+            val cached = entries.remove(bitmap)!!
+            entries[bitmap] = cached
+            return cached
+        }
+        val info = parse()
+        if (entries.size >= MAX_ENTRIES) {
+            entries.keys.firstOrNull()?.let(entries::remove)
+        }
+        entries[bitmap] = info
+        return info
+    }
+}
+
+/**
  * 按九宫格拉伸渲染 .9 图 (剔除 1px 标记边框): 四角原尺寸、上下边横向拉伸、
  * 左右边纵向拉伸、中心双向拉伸, 用 [DrawScope.drawImage] 的 src/dst 参数逐块绘制。
  *
@@ -82,7 +110,9 @@ fun NinePatchImage(
     modifier: Modifier,
     contentDescription: String? = null,
 ) {
-    val info = remember(bitmap) { parseNinePatch(bitmap) }
+    val info = remember(bitmap) {
+        NinePatchInfoCache.getOrPut(bitmap) { parseNinePatch(bitmap) }
+    }
     val semanticsModifier = if (contentDescription != null) {
         modifier.semantics { this.contentDescription = contentDescription }
     } else modifier

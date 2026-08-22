@@ -101,7 +101,8 @@ object BookCoverShared {
      * 列出某偏好下已选图集 entries 在指定 [ratio] 下的路径列表。
      *
      * 仅做路径计算, 不做 Bitmap 解码, 不校验文件存在性 ——
-     * 文件存在性校验由 app 端 [BookCover.loadCovers] 在解析后用 `File(...).exists()` 完成。
+     * 缺文件的 entry 由渲染端回落内置图 (app 端 newDefaultDrawable 的 runCatching /
+     * shared 端 loader 加载失败兜底)。
      *
      * @param coversDir 烘焙文件所在目录的绝对路径 (平台端提供)
      * @param entries 已解析的 entry 列表 (调用方负责 JSON 解析, 跨序列化框架差异由调用方承接)
@@ -114,10 +115,18 @@ object BookCoverShared {
     ): List<String> = entries.map { bakedPath(coversDir, it, ratio) }
 
     /**
+     * 图集解析缓存 (日/夜 prefKey 各一条, raw 串即版本号):
+     * 同一 raw 只解析一次, 增删封面后 prefs 写入新串自动失效重解析。
+     * 封面加载协程在主线程调用, 引用赋值原子; 极端竞争最坏重复解析一次, 无害。
+     */
+    private var parsedDefaultCover: Pair<String, List<DefaultCoverEntry>>? = null
+    private var parsedDefaultCoverDark: Pair<String, List<DefaultCoverEntry>>? = null
+
+    /**
      * 列出某偏好下当前已选的图集 entries (不校验文件存在性)。
      *
-     * 纯逻辑: 读 prefs + JSON 解析。等价 app 端 `BookCover.currentEntries` / `listDefaultCovers`,
-     * 供各平台端复用, 避免重复实现。
+     * 纯逻辑: 读 prefs + JSON 解析 (结果按 raw 串记忆化)。app 端
+     * `BookCover.listDefaultCovers` 等也委托本函数, 各端共用同一份缓存与选图。
      *
      * @param prefs 平台偏好提供者 (app 端注入 appCtx 偏好, desktop 端注入 PreferenceProviders.get())
      * @param prefKey 偏好 key (PreferKey.defaultCover / PreferKey.defaultCoverDark)
@@ -125,7 +134,13 @@ object BookCoverShared {
     fun listDefaultCovers(prefs: PreferenceProvider, prefKey: String): List<DefaultCoverEntry> {
         val raw = prefs.getString(prefKey).orEmpty()
         if (raw.isBlank()) return emptyList()
-        return GSON.fromJsonArray<DefaultCoverEntry>(raw).getOrNull().orEmpty()
+        val isDark = prefKey == PreferKey.defaultCoverDark
+        val cached = if (isDark) parsedDefaultCoverDark else parsedDefaultCover
+        if (cached?.first == raw) return cached.second
+        val entries = GSON.fromJsonArray<DefaultCoverEntry>(raw).getOrNull().orEmpty()
+        val parsed = raw to entries
+        if (isDark) parsedDefaultCoverDark = parsed else parsedDefaultCover = parsed
+        return entries
     }
 
     /**

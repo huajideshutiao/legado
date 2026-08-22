@@ -154,18 +154,15 @@ function __makePkgProxy(prefix) {
     });
 }
 
-// 顶级别名直接构造, 跳过 __loadJavaClass('java') 等无效调用 ——
-// java/javax/android/org/com/io/cn 都不可能是 Java 类名 (无包路径), 走 Packages.java
-// 也只是 __loadJavaClass 返回 0 后 fallback 到 __makePkgProxy('java'), 直接构造省 7 次 JNI 往返。
-// 语义等价: 访问 java.SomeClass 仍走 Packages.java 的 Proxy get trap 调用 __loadJavaClass('java.SomeClass')。
+// 顶级别名直接构造, 跳过 __loadJavaClass('java') 等无效调用 (都不是 Java 类名), 省 7 次 JNI 往返。
+// 名单对齐 rhino ScriptRuntime.getTopPackageNames(), 刻意不含 io/cn: 多余的全局会遮蔽书源同名变量
+// (如 let io 出块后静默拿到包对象), 需要时仍可写 Packages.io.xxx。
 var Packages = __makePkgProxy('');
 var java = __makePkgProxy('java');
 var javax = __makePkgProxy('javax');
 var android = __makePkgProxy('android');
 var org = __makePkgProxy('org');
 var com = __makePkgProxy('com');
-var io = __makePkgProxy('io');
-var cn = __makePkgProxy('cn');
 
 // ============ JavaImporter ============
 

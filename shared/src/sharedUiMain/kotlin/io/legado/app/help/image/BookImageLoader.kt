@@ -1,14 +1,14 @@
 package io.legado.app.help.image
 
 import androidx.compose.ui.graphics.ImageBitmap
-import kotlin.concurrent.Volatile
-import kotlin.coroutines.coroutineContext
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.ensureActive
+import kotlin.concurrent.Volatile
+import kotlin.coroutines.coroutineContext
 
 /**
  * Compose 图片加载跨平台抽象 (Coil3 迁移批 1 共享面)。
@@ -26,8 +26,7 @@ import kotlinx.coroutines.ensureActive
  *   AndroidBookImageLoader (基于 Coil3 ImageLoader + AsyncImage)。
  * - 桌面 JVM: desktop Main.kt 注入 JvmBookImageLoader。
  * - iOS: registerIosProviders 注入 IosBookImageLoader (Coil3 + Ktor3 网络后端)。
- * - 鸿蒙: 未注册 (coil3 无 ohosArm64 变体), 消费点经 [BookImageLoaders.getOrNull] 拿到 null,
- *   恒走内置占位图。
+ * - 鸿蒙: registerOhosProviders 注入 OhosBookImageLoader (native 网络后端)。
  *
  * 模式参考 [io.legado.app.help.book.BookImageStorageProviders]。
  */

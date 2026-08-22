@@ -182,6 +182,8 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
             runCatching {
                 Toasters.get().toastLong("内置浏览器不可用, 已用系统浏览器打开登录页")
             }
+            // 系统浏览器无关窗回调, 直接放行等在 showLoginDialog() 上的 JS 线程
+            SourceVerificationHelpShared.notifyLoginFinished(sourceKey)
             return true
         }
         val handle = engine.openWindow(
@@ -198,6 +200,8 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
                 cookieTag = sourceKey.ifBlank { null },
                 sourceType = sourceType,
                 sourceName = sourceName,
+                // 关窗唤醒阻塞在 source.showLoginDialog() 上的 JS 线程
+                onClosed = { SourceVerificationHelpShared.notifyLoginFinished(sourceKey) },
             )
         )
         if (handle == null) {
@@ -205,6 +209,7 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
             runCatching {
                 Toasters.get().toastLong("内置浏览器窗口打开失败, 已用系统浏览器打开登录页")
             }
+            SourceVerificationHelpShared.notifyLoginFinished(sourceKey)
         }
         return true
     }
@@ -845,8 +850,8 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
         )
     }
 
-    // 刷新默认封面缓存: shared 默认封面链每次组合重读 prefs, 无内存缓存,
-    // 广播书架刷新让封面槽重组重读即可 (对照 app 端 BookCover.upDefaultCover)
+    // 刷新默认封面缓存: shared 图集解析已按 raw 串记忆化自动失效,
+    // 广播书架刷新让封面槽重组重读即可 (app 端清 Drawable 解码缓存)
     override fun refreshDefaultCover() {
         FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
     }

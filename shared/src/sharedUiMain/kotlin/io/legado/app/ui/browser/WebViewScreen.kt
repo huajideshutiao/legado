@@ -244,6 +244,11 @@ internal fun WebViewScreen(
                 SourceVerificationHelpShared.getResult(spec.sourceKey)
                     ?: SourceVerificationHelpShared.setResult(spec.sourceKey, "")
                 SourceVerificationHelpShared.notifyResultArrived(spec.sourceKey)
+                // URL 登录 (loginUi 为空) 直接开本页, 关闭即唤醒阻塞在
+                // source.showLoginDialog() 上的 JS 线程
+                if (spec.isLogin) {
+                    SourceVerificationHelpShared.notifyLoginFinished(spec.sourceKey)
+                }
             }
         }
     }

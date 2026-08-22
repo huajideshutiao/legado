@@ -750,7 +750,7 @@ private fun HomeCoverRow(
         } else {
             val colors = AppTheme.colors
             // 对照 item_home_cover_card.xml + CoverCardVH.bind: 封面 120×160dp (高 160dp 由
-            // CoverImageView 按 NOVEL 3:4 反推宽 120dp), item 总宽 128 = 120 + 两侧 4dp padding
+            // 封面组件按 NOVEL 3:4 反推宽 120dp), item 总宽 128 = 120 + 两侧 4dp padding
             books.forEach { book ->
                 Column(
                     Modifier

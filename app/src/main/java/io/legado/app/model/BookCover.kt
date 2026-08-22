@@ -9,7 +9,6 @@ import androidx.annotation.Keep
 import androidx.collection.LruCache
 import androidx.core.graphics.drawable.toBitmap
 import androidx.core.graphics.drawable.toDrawable
-import coil3.PlatformContext
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.transformations
@@ -17,31 +16,20 @@ import coil3.toBitmap
 import coil3.transform.Transformation
 import io.legado.app.App
 import io.legado.app.R
-import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.glide.BlurTransformation
-import io.legado.app.help.image.LoadOnlyWifiKey
-import io.legado.app.help.image.PersistentCoverKey
-import io.legado.app.help.image.coverDiskCacheKey
 import io.legado.app.help.image.sourceOrigin
+import io.legado.app.model.BookCover.currentCovers
 import io.legado.app.model.BookCover.loadCoverBitmap
-import io.legado.app.model.BookCover.upDefaultCover
+import io.legado.app.model.BookCover.newDefaultDrawable
 import io.legado.app.utils.FileUtils
-import io.legado.app.utils.GSON
-import io.legado.app.utils.MD5Utils
-import io.legado.app.utils.centerCrop
 import io.legado.app.utils.externalFiles
-import io.legado.app.utils.fromJsonArray
-import io.legado.app.utils.getPrefString
-import io.legado.app.utils.putPrefString
-import io.legado.app.utils.toJson
-import io.legado.app.utils.topCrop
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.runBlocking
 import legado.shared.generated.resources.Res
 import java.io.File
-import java.io.FileOutputStream
 import kotlin.random.Random
 
 /**
@@ -70,21 +58,13 @@ fun DefaultCoverEntry.bakedPath(ratio: CoverRatio): String =
 @Keep
 object BookCover {
 
-    var drawBookName = true
-        private set
-    var drawBookAuthor = true
-        private set
-
     /**
-     * 当前生效的图集 (按比例) -- entry 是已烘焙的本地文件路径,或 .9.png 原路径。
-     * 由 [upDefaultCover] 在主题/偏好变更时刷新。
-     */
-    private var dayCovers: List<DefaultCoverEntry> = emptyList()
-    private var nightCovers: List<DefaultCoverEntry> = emptyList()
-
-    /**
-     * 解码缓存:同一张烘焙图被多个 ImageView 复用时只解一次。
+     * 解码缓存:同一张烘焙图被多个消费点复用时只解一次。
      * 取出的 Drawable 必须 .constantState.newDrawable() 后再用,避免 bounds 串扰。
+     * cacheKey 含路径 (md5 id), 增删封面只会产生新 key, 无昼夜/内容串扰。
+     *
+     * 图集列表缓存已下沉 [BookCoverShared.listDefaultCovers] (按 prefs 原始串记忆化),
+     * 昼夜切换读 [currentCovers] 惰性取、增删封面写入新串自动失效, 本对象不再持有列表状态。
      */
     private val drawableCache = LruCache<String, Drawable>(16)
 
@@ -92,10 +72,6 @@ object BookCover {
     // internal: 供顶层扩展函数 DefaultCoverEntry.bakedPath 注入此目录, 委托 shared 路径计算
     internal val coversDir: File by lazy {
         FileUtils.createFolderIfNotExist(App.instance.externalFiles, "covers", "default")
-    }
-
-    init {
-        upDefaultCover()
     }
 
     /**
@@ -152,115 +128,26 @@ object BookCover {
         return drawable.constantState?.newDrawable(App.instance.resources) ?: drawable
     }
 
+    /**
+     * 当前生效的图集: 直接读 shared 记忆化解析 (与 Compose 封面链同源同选图,
+     * 不做文件存在性预过滤 -- 缺文件经 [newDefaultDrawable] 的 runCatching 回落内置图)。
+     */
     private fun currentCovers(): List<DefaultCoverEntry> {
-        return if (AppConfig.isNightTheme) nightCovers else dayCovers
+        return BookCoverShared.currentDefaultCovers(
+            PreferenceProviders.get(), AppConfig.isNightTheme,
+        )
     }
 
-    /**
-     * 给 BookController/MediaSession 等只要"任意一张"封面 Bitmap 的场景用。
-     * 没有图集时回落到内置资源。
-     */
-    val defaultDrawable: Drawable
-        get() = newDefaultDrawable()
-
-    fun upDefaultCover() {
-        val isNightTheme = AppConfig.isNightTheme
-        drawBookName = if (isNightTheme) AppConfig.coverShowNameN else AppConfig.coverShowName
-        drawBookAuthor = if (isNightTheme) AppConfig.coverShowAuthorN else AppConfig.coverShowAuthor
-        dayCovers = loadCovers(PreferKey.defaultCover)
-        nightCovers = loadCovers(PreferKey.defaultCoverDark)
+    /** 清默认封面 Drawable 解码缓存 (图集增删后调用; 列表缓存自动失效, 无需手动刷)。 */
+    fun evictDrawableCache() {
         drawableCache.evictAll()
     }
 
-    private fun loadCovers(prefKey: String): List<DefaultCoverEntry> {
-        val raw = App.instance.getPrefString(prefKey).orEmpty()
-        if (raw.isBlank()) return emptyList()
-        // 旧版本存的是单个路径或路径列表 -- 解析失败的旧值忽略,用户重新选图即可。
-        val entries = GSON.fromJsonArray<DefaultCoverEntry>(raw).getOrNull() ?: return emptyList()
-        return entries.filter { entry ->
-            // novel 烘焙文件(或 .9.png)存在即视为有效。
-            File(entry.bakedPath(CoverRatio.NOVEL)).exists()
-        }
-    }
-
     /**
-     * 把用户选中的图烘焙后落盘,并写入 prefs。原图不保留。
-     * - 普通图:解码后按 NOVEL/VIDEO 各裁一份 webp。
-     * - .9.png:不烘焙,只拷贝原文件,运行时由 NinePatchDrawable 自适应尺寸。
+     * 列出某偏好下当前已选的图集 (委托 shared 记忆化解析)。UI 直接用 entry.bakedPath(NOVEL) 显示。
      */
-    fun addDefaultCover(prefKey: String, sourceBytes: ByteArray, originalName: String) {
-        val isNinePatch = originalName.endsWith(".9.png", ignoreCase = true)
-        val md5 = MD5Utils.md5Encode(sourceBytes.inputStream())
-        val entry = DefaultCoverEntry(md5, isNinePatch)
-        val existing = currentEntries(prefKey).toMutableList()
-        // 相同图片再次添加同一 prefs 直接忽略,避免重复烘焙写盘
-        if (existing.any { it.id == entry.id }) return
-        if (isNinePatch) {
-            val out = File(coversDir, "$md5.9.png")
-            if (!out.exists()) FileOutputStream(out).use { it.write(sourceBytes) }
-        } else {
-            val src = BitmapFactory.decodeByteArray(sourceBytes, 0, sourceBytes.size)
-                ?: error("decode image failed")
-            try {
-                bakeAndWrite(src, md5, CoverRatio.NOVEL)
-                bakeAndWrite(src, md5, CoverRatio.VIDEO)
-            } finally {
-                src.recycle()
-            }
-        }
-        existing.add(entry)
-        App.instance.putPrefString(prefKey, GSON.toJson(existing))
-        upDefaultCover()
-    }
-
-    fun removeDefaultCover(prefKey: String, id: String) {
-        val existing = currentEntries(prefKey).toMutableList()
-        val target = existing.firstOrNull { it.id == id } ?: return
-        existing.remove(target)
-        App.instance.putPrefString(prefKey, GSON.toJson(existing))
-        runCatching {
-            if (target.ninePatch) {
-                File(coversDir, "${target.id}.9.png").delete()
-            } else {
-                CoverRatio.entries.forEach { r ->
-                    File(coversDir, "${target.id}_${r.fileTag}.webp").delete()
-                }
-            }
-        }
-        upDefaultCover()
-    }
-
-    fun clearDefaultCovers(prefKey: String) {
-        currentEntries(prefKey).toList().forEach { removeDefaultCover(prefKey, it.id) }
-        App.instance.putPrefString(prefKey, "")
-        upDefaultCover()
-    }
-
-    /**
-     * 列出某偏好下当前已选的图集。UI 直接用 entry.bakedPath(NOVEL) 显示。
-     */
-    fun listDefaultCovers(prefKey: String): List<DefaultCoverEntry> = currentEntries(prefKey)
-
-    private fun currentEntries(prefKey: String): List<DefaultCoverEntry> {
-        val raw = App.instance.getPrefString(prefKey).orEmpty()
-        if (raw.isBlank()) return emptyList()
-        return GSON.fromJsonArray<DefaultCoverEntry>(raw).getOrNull().orEmpty()
-    }
-
-    private fun bakeAndWrite(src: Bitmap, md5: String, ratio: CoverRatio) {
-        val out = File(coversDir, "${md5}_${ratio.fileTag}.webp")
-        // 先按目标比例裁剪 (centerCrop 内部会按需缩放到目标 bakeW/bakeH)
-        val cropped = if (ratio == CoverRatio.VIDEO) {
-            src.topCrop(ratio.bakeW, ratio.bakeH)
-        } else {
-            src.centerCrop(ratio.bakeW, ratio.bakeH)
-        }
-        FileOutputStream(out).use { os ->
-            @Suppress("DEPRECATION")
-            cropped.compress(Bitmap.CompressFormat.WEBP, 85, os)
-        }
-        if (cropped !== src) cropped.recycle()
-    }
+    fun listDefaultCovers(prefKey: String): List<DefaultCoverEntry> =
+        BookCoverShared.listDefaultCovers(PreferenceProviders.get(), prefKey)
 
     /**
      * 媒体通知/MediaSession 通用的默认封面 Bitmap。
@@ -316,45 +203,6 @@ object BookCover {
         }
     }
 
-}
-
-/**
- * 封面加载配置: 调用方 `imageView.load(path) { coverConfig(...) }`。
- * useDefaultCover 由调用方自行判断后 load 默认 Drawable(走默认封面 9-patch 路径)。
- * 封面缓存按 path 默认隔离(Coil3 默认 key 策略), 调用方无需手动设置 cache key。
- * loadOnlyWifi: 非 wifi 时禁网络仅走缓存, 对齐原 Glide OkHttpStreamFetcher"只在wifi加载图片"
- * (Glide 同样只拦 fetch, 磁盘缓存命中仍显示)。
- */
-fun ImageRequest.Builder.coverConfig(
-    seed: String? = null,
-    ratio: CoverRatio = CoverRatio.NOVEL,
-    sourceOrigin: String? = null,
-    loadOnlyWifi: Boolean = false,
-    onLoadFinish: (() -> Unit)? = null,
-): ImageRequest.Builder = apply {
-    sourceOrigin(sourceOrigin)
-    // fetcher 层短路网络获取 (对齐原版 OkHttpStreamFetcher: 只拦 fetch, 缓存命中仍显示);
-    // 不能用 networkCachePolicy(DISABLED), 那会连磁盘/内存缓存读取一起禁掉
-    if (loadOnlyWifi) extras[LoadOnlyWifiKey] = true
-    if (onLoadFinish != null) {
-        listener(
-            onSuccess = { _, _ -> onLoadFinish() },
-            onError = { _, _ -> onLoadFinish() },
-        )
-    }
-}
-
-/**
- * 书架封面走**持久**磁盘缓存分区 (应用数据目录, 系统/用户清缓存都清不掉)。
- * 对照原版 `ImageLoader.load(.., inBookshelf = true)` 的 `.signature(ObjectKey("covers"))`
- * + `MultiDiskCacheFactory` 分流。
- */
-fun ImageRequest.Builder.bookshelfCoverCache(path: String?): ImageRequest.Builder = apply {
-    if (!path.isNullOrBlank()) {
-        diskCacheKey(coverDiskCacheKey(path))
-        // 让 CoverDecodeFetcher 的 decodeJs 解密字节也落持久区 (与 Coil 解码条目同区回读命中)
-        extras.set(PersistentCoverKey, true)
-    }
 }
 
 /**

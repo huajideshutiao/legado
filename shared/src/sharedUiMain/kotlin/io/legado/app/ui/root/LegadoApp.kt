@@ -211,8 +211,10 @@ fun LegadoApp(
         var appliedPolicy by remember { mutableStateOf<WindowPolicy?>(null) }
         SideEffect {
             if (appliedPolicy != windowPolicy) {
-                appliedPolicy = windowPolicy
+                // 只有真下发成功才记账: 失败时 (平台依赖未就绪/setter 抛错) 若提前记账,
+                // 后续结构相等的策略会被守卫跳过, 该策略整个会话再也不会生效
                 runCatching { applyWindowPolicy(windowPolicy) }
+                    .onSuccess { appliedPolicy = windowPolicy }
                     .onFailure { AppLog.put("应用窗口策略失败", it) }
             }
         }
@@ -555,12 +557,13 @@ val LocalPlatformServices = staticCompositionLocalOf<PlatformServices?> { null }
 private fun applyWindowPolicy(policy: WindowPolicy) {
     val services = PlatformServiceProviders.getOrNull() ?: return
     val wc = services.window
+    // 软输入策略先下发: 它决定窗口会不会被平移, 后面任一 setter 抛错都不该把它饿死
+    // (Android 侧的兜底是 manifest 的 windowSoftInputMode=adjustResize)
+    services.keyboard.setSoftInputPolicy(policy.softInput)
     if (wc.appliesPolicyFullscreen) wc.setFullscreen(policy.fullscreen)
     wc.setKeepScreenOn(policy.keepScreenOn)
     wc.setOrientation(policy.orientation)
     wc.setSystemBars(policy.systemBars)
-    // 软输入策略委托 KeyboardController (对照 app 端 window.setSoftInputMode)
-    services.keyboard.setSoftInputPolicy(policy.softInput)
 }
 
 // 启动请求路由分发

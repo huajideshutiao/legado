@@ -173,7 +173,7 @@ object NoOpSearchNavCallbacks : SearchNavCallbacks {
  * - `painterResource(R.drawable.xxx)` → [rememberPainter]("xxx")
  * - `colorResource(R.color.xxx)` → [AppTheme.colors] 语义色
  * - `WindowInsets.navigationBars.asPaddingValues()` → `rememberNavigationBarPaddingValues()` (跨平台导航栏 padding)
- * - `ShelfCover` (app 专属) → [coverSlot] / [shelfCoverSlot] 注入, 未传时取 [LocalBookCoverSlot]
+ * - `ShelfCover` (原 app 专属) → [coverSlot] / [shelfCoverSlot] 注入, 未传时取 [LocalBookCoverSlot]
  * - `KindLabels` / `UnreadBadge` (app 专属) → 复用书架 shared 版同名组件
  * - `binding.llFilter.setUpExploreOptions` (单源搜索选项 chip) → [SearchOptionsRow]
  *   (含多选 chip 的搜索过滤对话框, 对照 ExploreOptionView.showMultiSelectDialog)
@@ -183,7 +183,7 @@ object NoOpSearchNavCallbacks : SearchNavCallbacks {
  * @param viewModel KMP 版 [SearchViewModel]
  * @param navCallbacks 路由回调, 默认 [NoOpSearchNavCallbacks]
  * @param coverSlot 搜索结果封面注入 (list/grid 两档条目共用)。null 时取
- *   [LocalBookCoverSlot] (宿主端注入 ShelfCover, 兜底 SharedBookCover), 与书架/发现同源。
+ *   [LocalBookCoverSlot] (默认 SharedBookCover, 各端统一), 与书架/发现同源。
  *   isVideoCover 供各端选封面比例 (对照 CoverRatio: false=NOVEL, true=VIDEO)
  * @param shelfCoverSlot 输入帮助区书架命中项封面注入, 契约同 [coverSlot] (条目类型为 Book)
  */

@@ -130,7 +130,6 @@ import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.reorderable.RuleReorderableItem
 import io.legado.app.ui.compose.reorderable.rememberReorderableListState
 import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.config.DefaultCoverGalleryDialog
 import io.legado.app.ui.config.ThemeCustomizeDialog
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
@@ -486,14 +485,23 @@ class AndroidPlatformCapabilities(
         activity.showDialogFragment(PhotoDialog(url))
     }
 
-    // 对照 DefaultCoverGalleryDialog
+    // 迁 Compose Overlay: 原 app 端 DefaultCoverGalleryDialog Fragment 已随封面统一删除,
+    // 与其他端一致走 shared DefaultCoverGalleryDialogHost (payload "1"=夜间, 其余=日间)
     override fun showDefaultCoverGallery(isNight: Boolean) {
-        activity.showDialogFragment(DefaultCoverGalleryDialog(isNight))
+        val navigator = AppNavigatorProviders.getOrNull() ?: return
+        activity.lifecycleScope.launch {
+            navigator.showOverlay(
+                AppOverlay.Dialog(
+                    key = "default_cover_gallery",
+                    payload = if (isNight) "1" else "0",
+                )
+            )
+        }
     }
 
-    // 对照 BookCover.upDefaultCover
+    // 图集列表缓存已下沉 BookCoverShared (raw 串记忆化自动失效), 仅需清 Drawable 解码缓存
     override fun refreshDefaultCover() {
-        BookCover.upDefaultCover()
+        BookCover.evictDrawableCache()
     }
 
     // 对照 IntentHelp.openTTSSetting

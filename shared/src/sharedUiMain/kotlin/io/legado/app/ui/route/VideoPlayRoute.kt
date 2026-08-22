@@ -27,7 +27,6 @@ import io.legado.app.ui.book.video.VideoPlayerScreenContent
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.compose.platform.AppShortcutHandler
-import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.MediaKeyLongPressState
 import io.legado.app.ui.compose.platform.hasActiveBackLayer
 import io.legado.app.ui.compose.platform.mediaPlaybackKeys
@@ -92,8 +91,7 @@ fun VideoPlayRoute(
     // LaunchedEffect(book) 会反复重启 → 重拉章节/重跑 JS header 规则 (调窗即报 js 错)
     val book = remember(route) { route.book.asBook() }
 
-    val prefStore = LocalPreferenceStoreProvider.current
-    val screenModel = screenModelStore.getOrCreateTyped(entry) { VideoPlayScreenModel(prefStore) }
+    val screenModel = screenModelStore.getOrCreateTyped(entry) { VideoPlayScreenModel() }
     val state by screenModel.state.collectAsState()
     val scope = rememberCoroutineScope()
 

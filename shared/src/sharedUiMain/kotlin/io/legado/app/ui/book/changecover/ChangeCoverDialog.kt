@@ -59,10 +59,8 @@ import org.jetbrains.compose.resources.stringResource
  *   (可能为 `"use_default_cover"` 标记默认封面, 调用方按需处理: app 端 BookHelp.clearCover /
  *   桌面端清 customCoverUrl);
  * - [onDismiss] 回调: 用户关闭对话框时触发 (点击返回键 / 点击 item 后);
- * - [coverSlot] 槽: 由调用方注入封面渲染 Composable, 接收 `SearchBook` 与 `Modifier`:
- *   - **app 端**: 注入 `CoverImageView` 桥接 (AndroidView + Glide);
- *   - **桌面端**: 注入 `DesktopBookCover.InfoCover(searchBook.toBook(), modifier)`
- *     (JDK ImageIO + OkHttp, 不引入 Glide)。
+ * - [coverSlot] 槽: 由调用方注入封面渲染 Composable, 接收 `SearchBook` 与 `Modifier`
+ *   (不传时经 [LocalBookCoverSlot] 落到 shared 统一封面实现)。
  *
  * # 与 app 端原实现的差异 (KMP 限制)
  *
@@ -90,9 +88,7 @@ import org.jetbrains.compose.resources.stringResource
  * @param viewModel 换封面 ViewModel 共享核心 (调用方持有, 已 initData)
  * @param onCoverSelected 用户点击搜索结果回调 (参数为 item.coverUrl, 可能为 "use_default_cover")
  * @param onDismiss 关闭回调
- * @param coverSlot 封面渲染槽 (调用方注入平台专属 Composable):
- *   - app 端: `CoverImageView` 桥接 (AndroidView + Glide)
- *   - 桌面端: `DesktopBookCover.InfoCover(searchBook.toBook(), modifier)`
+ * @param coverSlot 封面渲染槽 (不传时经 [LocalBookCoverSlot] 落到 shared 统一封面实现)
  */
 @Composable
 fun ChangeCoverDialog(
@@ -184,7 +180,7 @@ fun ChangeCoverDialog(
  * (arco_spacing_default=8dp 上边距, 12sp, 居中, 最多 2 行省略)。
  *
  * 与原版差异: 原版用 `AndroidView { CoverImageView }` 渲染封面, 下沉版改为 [coverSlot] 注入,
- * 解耦平台专属封面渲染 (app 端 CoverImageView / 桌面端 DesktopBookCover)。
+ * 各端统一走 shared 封面实现 (默认 SharedBookCover)。
  *
  * @param item 搜索结果 (含 coverUrl / name / author / originName)
  * @param coverSlot 封面渲染槽 (由上层 ChangeCoverDialog 透传)

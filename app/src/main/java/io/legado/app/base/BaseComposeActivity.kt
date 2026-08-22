@@ -36,7 +36,7 @@ import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.disableAutoFill
-import io.legado.app.utils.fullScreen
+import io.legado.app.utils.edgeToEdge
 import io.legado.app.utils.hideSoftInput
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.setLightStatusBar
@@ -182,7 +182,7 @@ abstract class BaseComposeActivity(
 
     open fun setupSystemBar() {
         if (fullScreen && !isInMultiWindow) {
-            fullScreen()
+            edgeToEdge()
         }
         val bg = ThemeConfig.curBgImagePath
         val statusBarColor =

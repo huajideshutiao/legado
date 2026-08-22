@@ -10,9 +10,6 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.calculateEndPadding
-import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSizeIn
@@ -44,7 +41,6 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -85,13 +81,19 @@ fun AppOutlinedButton(
     }
 }
 
+// 胶囊基础几何: 内边距语义同原 XML (自视图外缘计, 含 inset), 内层要减掉 inset 否则比原生大一圈。
+// 内边距 internal: 简介行内胶囊要按它算 InlineTextContent 占位尺寸, 避免调用点再写一份。
+private val filletInset = 4.dp
+internal val filletChipPaddingH = 16.dp // arco lg
+internal val filletChipPaddingV = 12.dp // arco md
+
 /**
  * 复刻 selector_fillet_btn_bg + item_fillet_text：半透明 btn_bg 填充 + 8dp 圆角 + 4dp inset，
- * 按压切 arco_fill_3；字色 [textColor] 14sp 自然行高。contentPadding 语义同原 XML(自视图外缘计，
- * 含 4dp inset)，内层实际内边距要减掉 inset，否则 chip 会比原生大一圈。
+ * 按压切 arco_fill_3；secondaryText 14sp 自然行高。
  *
  * master 端各屏共用的 fillet 胶囊 (item_fillet_text / IntroButtonSpan / setUpExploreOptions /
- * activity_source_debug) 在 Compose 下统一收拢到本组件，差异走参数：
+ * activity_source_debug) 在 Compose 下统一收拢到本组件：基础样式 (字色/内边距/背景/圆角/字号)
+ * 一律组件内定，调用点不传；只有语义差异走参数：
  * - [alpha]/[bold]：对齐 setUpExploreOptions 标题 chip 与搜索选项的 0.8/1.0/0.5 语义
  *   (KindChip 组名 label、SearchOptionChip 选中/未选中、ExploreOptionsRow 标题)
  * - [onLongClick]：收藏/历史词长按删除等
@@ -102,8 +104,6 @@ fun AppOutlinedButton(
 fun AppFilletTextButton(
     text: String,
     modifier: Modifier = Modifier,
-    textColor: Color = AppTheme.colors.secondaryText,
-    contentPadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 12.dp), // arco lg × md
     alpha: Float = 1f,
     bold: Boolean = false,
     focusable: Boolean = true,
@@ -117,19 +117,10 @@ fun AppFilletTextButton(
     val pressedBg = if (isDark) Color(0xFF2A2A2A) else Color(0xFFE6E6E6)
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    val layoutDirection = LocalLayoutDirection.current
-    val innerPadding = remember(contentPadding, layoutDirection) {
-        PaddingValues(
-            start = (contentPadding.calculateStartPadding(layoutDirection) - 4.dp).coerceAtLeast(0.dp),
-            top = (contentPadding.calculateTopPadding() - 4.dp).coerceAtLeast(0.dp),
-            end = (contentPadding.calculateEndPadding(layoutDirection) - 4.dp).coerceAtLeast(0.dp),
-            bottom = (contentPadding.calculateBottomPadding() - 4.dp).coerceAtLeast(0.dp),
-        )
-    }
     Box(
         modifier
             .alpha(alpha)
-            .padding(4.dp) // inset 4dp
+            .padding(filletInset)
             .clip(DesignTokens.shapeDefault)
             .background(if (pressed) pressedBg else normalBg)
             .then(
@@ -141,12 +132,15 @@ fun AppFilletTextButton(
                 ) else Modifier
             )
             .then(if (focusable) Modifier else Modifier.focusProperties { canFocus = false })
-            .padding(innerPadding),
+            .padding(
+                horizontal = filletChipPaddingH - filletInset,
+                vertical = filletChipPaddingV - filletInset,
+            ),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text,
-            color = textColor,
+            color = AppTheme.colors.secondaryText,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             fontWeight = if (bold) FontWeight.Bold else null,
@@ -155,6 +149,7 @@ fun AppFilletTextButton(
         )
     }
 }
+
 @Composable
 fun AppTextButton(
     text: String,

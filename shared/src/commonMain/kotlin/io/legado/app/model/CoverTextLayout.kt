@@ -1,7 +1,7 @@
 package io.legado.app.model
 
 /**
- * 默认封面上竖排书名/作者的布局计算 (1:1 下沉 app 端 CoverImageView.recordNameAuthor)。
+ * 默认封面上竖排书名/作者的布局计算 (1:1 下沉自原 Android View 版封面组件的 recordNameAuthor)。
  *
  * 只做纯计算, 不碰绘制 API: 平台提供字体高度度量 (textHeightOf), 拿到 [CoverGlyph] 列表后
  * 各自用 Canvas.drawText / DrawScope.drawText 消费。算法因此四端共用一份。

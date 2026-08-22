@@ -173,12 +173,19 @@
                 <data android:pathPattern=".*\\.7Z" />
             </intent-filter>
         </activity>
+        <!-- windowSoftInputMode 必须在 manifest 声明 (对照原版逐 Activity 的 adjustResize):
+             adjustResize 下 contentInsets 与 visibleInsets 都含 ime, ViewRootImpl 的窗口
+             平移闸门 (visibleInsets > contentInsets) 才是关的; 未声明时窗口停在
+             ADJUST_UNSPECIFIED, 实测 HyperOS 归一成 adjustPan, 弹键盘时整窗被上移
+             (键盘上方留白 + 标题栏被顶出屏外)。窗口 edge-to-edge 不会被 resize,
+             键盘避让由各页 imePadding 负责 (见 ImeInsets.kt)。 -->
         <activity
             android:name=".ui.main.MainActivity"
             android:alwaysRetainTaskState="true"
             android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
             android:exported="true"
-            android:launchMode="singleTask">
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize">
             <!-- S Pen 远程操作: 注册到主界面使其全局可用, trigger_key 经系统转 KeyEvent 派发 -->
             <intent-filter>
                 <action android:name="com.samsung.android.support.REMOTE_ACTION" />

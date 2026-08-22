@@ -57,7 +57,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.openani.mediamp.ExperimentalMediampApi
 import org.openani.mediamp.MediaStatus
@@ -69,6 +68,7 @@ import org.openani.mediamp.features.PlaybackSpeed
 import org.openani.mediamp.source.UriMediaData
 import org.openani.mediamp.togglePlayWhenReady
 import kotlin.concurrent.Volatile
+import kotlin.coroutines.EmptyCoroutineContext
 
 /**
  * desktop 端 [VideoPlayPlatformProvider] 实现: open-ani/mediamp (mediamp-mpv 后端)。
@@ -177,8 +177,16 @@ class MediampVideoPlayerController(
     /** 独立于 [scope] 的关闭协程 (release 后 scope 已取消, close 需要自己的调度器) */
     private val closeScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-    /** mediamp player (SPI 工厂经 classpath 上的 mediamp-mpv 创建; 构造抛异常由调用方兜底) */
-    val player: MediampPlayer = MediampPlayer(Unit, scope.coroutineContext)
+    /**
+     * mediamp player (SPI 工厂经 classpath 上的 mediamp-mpv 创建; 构造抛异常由调用方兜底)。
+     *
+     * parentCoroutineContext 必须无 Job: AbstractMediampPlayer 在父 Job 完成时自动
+     * close() (mainScope Job invokeOnCompletion), 若挂到 [scope] 下, release() 的
+     * scope.cancel() 会瞬间关闭 MPVHandle, 而渲染面的 onDispose
+     * (setRenderUpdateListener(null) → handle.ptr) 尚未执行 → IllegalStateException
+     * 崩溃。close 完全由本类按渲染槽生命周期门控 (见 [release]/[onSurfaceExited])。
+     */
+    val player: MediampPlayer = MediampPlayer(Unit, EmptyCoroutineContext)
 
     /** 已起播的 url: 渲染槽重建时 LaunchedEffect(url) 会重跑, 守卫避免重复 setMediaData */
     @Volatile
@@ -187,6 +195,10 @@ class MediampVideoPlayerController(
     /** release 已执行标记 (close 只调度一次) */
     @Volatile
     private var released = false
+
+    /** 渲染面是否在组合中: close 必须等它离开组合 (其 onDispose 仍要访问 MPVHandle.ptr) */
+    @Volatile
+    private var surfaceInComposition = false
 
     /** 播放/初始化失败回传 UI (由 Render 注入), 让失败可见而不是只落日志 */
     @Volatile
@@ -257,12 +269,29 @@ class MediampVideoPlayerController(
         released = true
         // player 寿命跟 ScreenModel (路由栈) 走, 不随渲染槽组合: 渲染槽会随布局分支反复进出
         // 组合, 若在组合 onDispose 里 close, 再次进组合就是 "MPVHandle has already been closed"
-        // (见 MediampRender DisposableEffect)。close 移到这里 (onCleared 释放 ScreenModel),
-        // 但 surface 的 onDispose (setRenderUpdateListener/releaseSurface) 仍要访问 MPVHandle.ptr,
-        // 必须先 detach 再 close: 出栈页在 pop 动画期间还在组合中, release 立即 close 会撞上
-        // surface, 故用「延迟关闭」代替「dispose 即关闭」—— 等 dispose 传递完再关。
+        // (见 MediampRender DisposableEffect)。close 由渲染槽生命周期门控: surface 仍在组合
+        // (出栈页 pop 动画后、组合销毁前 retain 已触发 release) 就挂起, 等它的 onDispose
+        // 上报后再关; 已不在组合 (从未渲染/组合已销毁) 立即关
+        closePlayer()
+    }
+
+    /** 渲染槽进入组合 (MediampRender 的 DisposableEffect 调用) */
+    fun onSurfaceEntered() {
+        surfaceInComposition = true
+    }
+
+    /** 渲染槽离开组合: 若已 release, 此时 (且仅此时) 才真正关闭播放器 */
+    fun onSurfaceExited() {
+        surfaceInComposition = false
+        if (released) closePlayer()
+    }
+
+    private fun closePlayer() {
+        if (surfaceInComposition) return
+        // 经非 immediate 的 Dispatchers.Main 排队执行: 即使从 onDispose 里同步调用,
+        // 真正的 close 也排在本轮 applyChanges (含 MediampPlayerSurface onDispose 的
+        // setRenderUpdateListener(null)) 之后, 不依赖 remember 观察者的派发顺序
         closeScope.launch {
-            delay(300)
             runCatching { player.close() }
                 .onFailure { AppLog.put("mediamp 播放器关闭失败", it) }
         }
@@ -319,12 +348,15 @@ private fun MediampRender(
         ?.collectAsState(initial = 100) ?: remember { mutableIntStateOf(100) }
 
     // 播放/初始化失败回传 → 错误占位 (回调在任意线程, 经 scope 切回 composition 调度器)。
-    // 播放器不在这里 close: player 寿命跟 ScreenModel 走 (渲染槽会反复进出组合),
-    // 由 ScreenModel.onCleared → [MediampVideoPlayerController.release] 延迟关闭
+    // 同时上报渲染槽生命周期: 播放器不在这里 close, 寿命跟 ScreenModel 走 (渲染槽会反复
+    // 进出组合), close 由 controller 门控到「已 release 且渲染面已离开组合」之后
+    // (surface onDispose 仍要访问 MPVHandle.ptr, 先关必崩), 见 [MediampVideoPlayerController.release]
     DisposableEffect(controller) {
         controller.onError = { msg -> scope.launch { playError = msg } }
+        controller.onSurfaceEntered()
         onDispose {
             controller.onError = null
+            controller.onSurfaceExited()
         }
     }
 

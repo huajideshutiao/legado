@@ -7,11 +7,4 @@
         <attr name="arcoRadius" />
     </declare-styleable>
 
-    <declare-styleable name="CoverImageView">
-        <attr name="coverRatio" format="enum">
-            <enum name="novel" value="1" />
-            <enum name="video" value="2" />
-        </attr>
-    </declare-styleable>
-
 </resources>

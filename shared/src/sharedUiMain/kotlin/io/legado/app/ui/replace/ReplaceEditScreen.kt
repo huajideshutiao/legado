@@ -23,17 +23,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -41,9 +38,6 @@ import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
@@ -55,9 +49,6 @@ import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.component.code.KeyboardToolbar
 import io.legado.app.ui.compose.component.code.KeyboardToolbarState
 import io.legado.app.ui.compose.component.code.insertAtCursor
-import io.legado.app.ui.compose.platform.bringIntoViewOnIme
-import io.legado.app.ui.compose.platform.imeFollowVisibleOnIme
-import io.legado.app.ui.compose.platform.imeScrollNowFor
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.replace.edit.ReplaceEditViewModelShared
 import kotlinx.coroutines.flow.Flow
@@ -82,7 +73,6 @@ import legado.shared.generated.resources.timeout_millisecond
 import legado.shared.generated.resources.use_regex
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
-import kotlin.math.roundToInt
 
 /**
  * 替换规则编辑 Screen (KMP 版, commonMain 共享)。
@@ -259,62 +249,29 @@ fun ReplaceEditScreen(
                 }
             },
         )
-        // 键盘弹出动画期间的瞬移滚动器 (见 ImeInsets): 视口逐帧收缩时把聚焦字段无动画滚到
-        // 可见 —— 字段始终可见且不打断; 滚动区顶部窗口 Y 由 onGloballyPositioned 记录
+        // 键盘弹出时聚焦字段自己滚回可见: 由 verticalScroll 内建的 ContentInViewNode
+        // 按视口收缩处理 (见 ImeInsets.kt), 页面不额外接线
         val scrollState = rememberScrollState()
-        val scope = rememberCoroutineScope()
-        val density = LocalDensity.current
-        val imeMarginPx = with(density) { 12.dp.toPx() }.roundToInt()
-        var editWindowY by remember { mutableIntStateOf(0) }
-        val imeScrollNow = remember(scrollState, scope) {
-            imeScrollNowFor(scrollState, { editWindowY }, imeMarginPx, scope)
-        }
         Column(
             Modifier
                 .weight(1f)
                 .fillMaxWidth()
                 .verticalScroll(scrollState)
-                .onGloballyPositioned { editWindowY = it.positionInWindow().y.roundToInt() }
                 .padding(horizontal = 8.dp),
         ) {
-            FormField(
-                name,
-                stringResource(Res.string.replace_rule_summary),
-                imeScrollNow = imeScrollNow
-            ) { focusedField = it }
-            FormField(
-                group,
-                stringResource(Res.string.group),
-                imeScrollNow = imeScrollNow
-            ) { focusedField = it }
-            FormField(
-                pattern,
-                stringResource(Res.string.replace_rule),
-                imeScrollNow = imeScrollNow
-            ) { focusedField = it }
+            FormField(name, stringResource(Res.string.replace_rule_summary)) { focusedField = it }
+            FormField(group, stringResource(Res.string.group)) { focusedField = it }
+            FormField(pattern, stringResource(Res.string.replace_rule)) { focusedField = it }
             UseRegexRow(useRegex, onToggle = { useRegex = !useRegex }, onHelp = onHelp)
-            FormField(
-                replacement,
-                stringResource(Res.string.replace_to),
-                imeScrollNow = imeScrollNow
-            ) { focusedField = it }
+            FormField(replacement, stringResource(Res.string.replace_to)) { focusedField = it }
             ScopeCheckRow(scopeTitle, scopeContent, { scopeTitle = it }, { scopeContent = it })
-            FormField(
-                scopeField,
-                stringResource(Res.string.replace_scope),
-                imeScrollNow = imeScrollNow
-            ) { focusedField = it }
-            FormField(
-                excludeScope,
-                stringResource(Res.string.replace_exclude_scope),
-                imeScrollNow = imeScrollNow,
-            ) { focusedField = it }
-            FormField(
-                timeout,
-                stringResource(Res.string.timeout_millisecond),
-                number = true,
-                imeScrollNow = imeScrollNow,
-            ) { focusedField = it }
+            FormField(scopeField, stringResource(Res.string.replace_scope)) { focusedField = it }
+            FormField(excludeScope, stringResource(Res.string.replace_exclude_scope)) {
+                focusedField = it
+            }
+            FormField(timeout, stringResource(Res.string.timeout_millisecond), number = true) {
+                focusedField = it
+            }
         }
         // 键盘辅助条 (对照原版 keyboardTool.setInterface: 辅助键 + 撤销/重做 + 查找替换面板 +
         // KeyboardAssistsConfig 入口; 查找替换面板为空操作, 对照原版 getActiveCodeView() = null)
@@ -386,10 +343,8 @@ private fun FormField(
     field: FieldState,
     label: String,
     number: Boolean = false,
-    imeScrollNow: ((Rect) -> Unit)? = null,
     onFocusChanged: (FieldState?) -> Unit,
 ) {
-    var focused by remember { mutableStateOf(false) }
     AppTextField(
         value = field.value,
         onValueChange = { new ->
@@ -405,15 +360,7 @@ private fun FormField(
         },
         modifier = Modifier
             .fillMaxWidth()
-            .onFocusChanged {
-                focused = it.isFocused
-                if (it.isFocused) onFocusChanged(field)
-            }
-            // 键盘弹出动画期间瞬移跟随视口收缩 (光标始终可见, 无动画不打断);
-            // 动画结束兜底由 bringIntoViewOnIme 承担 (幂等, 已可见则不滚)
-            .imeFollowVisibleOnIme(focused, imeScrollNow)
-            // 键盘弹出/窗口收缩后聚焦字段可能再次滚出视口, 重新滚到可见 (见 ImeInsets KDoc)
-            .bringIntoViewOnIme(focused),
+            .onFocusChanged { if (it.isFocused) onFocusChanged(field) },
     )
 }
 

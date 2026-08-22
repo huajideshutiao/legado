@@ -17,7 +17,6 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.model.webBook.WebBook
-import io.legado.app.ui.compose.platform.PreferenceStoreProvider
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.systemCurrentTimeMillis
@@ -37,10 +36,10 @@ import kotlinx.coroutines.withContext
  * 对照 desktop 端 `io.legado.desktop.ui.book.video.VideoPlayerViewModel` (自实现 VM)
  * 与 app 端 `io.legado.app.ui.book.video.VideoViewModel` (继承 BaseReadViewModel):
  * - 两端业务流程一致 (initData → loadChapter → parseVideoContent → saveRead,
- *   moveToNextChapter / moveToPrevChapter / refreshChapter / saveVideoProgress),
+ *   moveToNextChapter / moveToPrevChapter / refreshChapter),
  *   仅在协程 scope 来源 / 状态暴露 (StateFlow vs LiveData) / 字符串 i18n 上有平台差异。
  * - desktop VM 当前自实现整套逻辑, 与 app 端大量重复; 本类把业务流程下沉到 commonMain,
- *   供 desktop / iOS / 鸿蒙 复用, desktop VM 改为薄壳注入 scope + PreferenceStoreProvider。
+ *   供 desktop / iOS / 鸿蒙 复用。
  * - app 端 VideoViewModel 因继承 BaseReadViewModel (重 Android 依赖), 暂不强制迁移,
  *   后续可由 app 端自行薄壳化。
  *
@@ -72,7 +71,6 @@ import kotlinx.coroutines.withContext
  */
 class VideoPlayViewModelShared(
     private val scope: CoroutineScope,
-    private val prefStore: PreferenceStoreProvider,
 ) {
     /** 进度同步专用作用域: 不随 UI scope 取消 (对照 ReadBookViewModelShared.progressSyncScope) */
     private val progressSyncScope = screenModelScope("视频进度同步", IoDispatcher)
@@ -456,8 +454,9 @@ class VideoPlayViewModelShared(
      * 切换到下一章 (对照 desktop `VideoPlayerViewModel.moveToNextChapter` /
      * app `VideoPlayActivity.playNextChapter`)。
      *
-     * 切换前重置视频播放位置为 0 (对照 app `VideoViewModel.changeChapter`:
-     * `position = 0L; saveRead(0L)`), 避免下次进入新章节误 seek 到旧位置。
+     * 切章重置视频播放位置为 0: [loadChapter] 默认 persistProgress=true → saveRead(index, 0)
+     * (对照 app `VideoViewModel.changeChapter`: `position = 0L; saveRead(0L)`),
+     * 避免下次进入新章节误 seek 到旧位置。
      *
      * @return true 切换成功, false 已到末章
      */
@@ -465,7 +464,6 @@ class VideoPlayViewModelShared(
         val cur = _curChapterIndex.value
         val size = _chapterSize.value
         if (cur >= size - 1) return false
-        curBook?.bookUrl?.let { saveVideoProgress(it, 0L) }
         loadChapter(cur + 1)
         return true
     }
@@ -474,14 +472,13 @@ class VideoPlayViewModelShared(
      * 切换到上一章 (对照 desktop `VideoPlayerViewModel.moveToPrevChapter` /
      * app `VideoPlayActivity.playPrevChapter`)。
      *
-     * 切换前重置视频播放位置为 0 (与 [moveToNextChapter] 一致)。
+     * 切章重置视频播放位置为 0: 同 [moveToNextChapter], 由 [loadChapter] 持久化。
      *
      * @return true 切换成功, false 已到首章
      */
     fun moveToPrevChapter(): Boolean {
         val cur = _curChapterIndex.value
         if (cur <= 0) return false
-        curBook?.bookUrl?.let { saveVideoProgress(it, 0L) }
         loadChapter(cur - 1)
         return true
     }
@@ -520,57 +517,12 @@ class VideoPlayViewModelShared(
         }
     }
 
-    // ---- 视频播放位置持久化 (对照 desktop VM saveVideoProgress / getSavedVideoProgress) ----
-
-    /**
-     * 保存视频播放位置到 [PreferenceStoreProvider] (对照 desktop VM `saveVideoProgress`,
-     * key = `video_progress_{bookUrl}`)。
-     *
-     * app 端 `VideoViewModel.saveRead` 写 `book.durChapterPos` (Int), desktop 端用
-     * Preference 单独存储 (毫秒); shared 沿用 desktop 端 Preference 方案, 与 desktop
-     * Preference 底座一致, 不依赖 app 端 Int 字段精度。
-     *
-     * @param bookUrl 书籍唯一标识 (curBook.bookUrl)
-     * @param positionMs 当前播放位置 (毫秒), 0 = 从头播
-     */
-    fun saveVideoProgress(bookUrl: String, positionMs: Long) {
-        runCatching {
-            prefStore.putString("video_progress_$bookUrl", positionMs.coerceAtLeast(0L).toString())
-        }.onFailure {
-            AppLog.put("保存播放位置出错\n${it.message}", it)
-        }
-    }
-
-    /**
-     * 退出时保存视频进度 (片尾归零)。
-     *
-     * 接近片尾 (positionMs > durationMs - 1s) 存 0 下次从头播, 否则存当前位置。
-     * 供 app 端 onPause / desktop 端 onDispose 复用, 消除两端重复实现。
-     *
-     * @param positionMs 当前播放位置 (毫秒)
-     * @param durationMs 媒体总时长 (毫秒, 0 = 未知时长按原位置存)
-     */
-    fun saveVideoProgressOnExit(positionMs: Long, durationMs: Long) {
-        val book = curBook ?: return
-        val toSave = if (durationMs > 0 && positionMs > durationMs - 1000L) 0L else positionMs
-        saveVideoProgress(book.bookUrl, toSave)
-    }
-
-    /**
-     * 读取上次保存的视频播放位置 (对照 desktop VM `getSavedVideoProgress`)。
-     *
-     * @param bookUrl 书籍唯一标识
-     * @return 上次播放位置 (毫秒), 0 = 无记录或从头播
-     */
-    fun getSavedVideoProgress(bookUrl: String): Long =
-        prefStore.getString("video_progress_$bookUrl", "0")?.toLongOrNull() ?: 0L
-
     /**
      * 应用书签/目录回传的章节定位 (对照 app `VideoViewModel.initData` override 分支:
      * curBook.durChapterIndex = overrideIndex; curBook.durChapterPos = overridePos;
      * saveRead(overridePos.toLong()))。
      *
-     * 写回 [curBook] 内存字段 + PATCH books 表 + 更新 Preference 视频位置,
+     * 写回 [curBook] 内存字段 + PATCH books 表,
      * 供 [VideoPlayScreenModel] ShowBook / TOC 回填调用。
      *
      * @param book 当前书籍 (与 [curBook] 同一引用)
@@ -580,7 +532,6 @@ class VideoPlayViewModelShared(
     suspend fun applyChapterOverride(book: Book, chapterIndex: Int, chapterPos: Int) {
         curBook = book
         saveRead(chapterIndex, chapterPos.toLong())
-        saveVideoProgress(book.bookUrl, chapterPos.toLong())
     }
 
     /**
@@ -606,22 +557,20 @@ class VideoPlayViewModelShared(
 
     /**
      * 退出时保存真实进度 (对照 app `VideoPlayActivity.onPause`:
-     * saveVideoProgressOnExit + saveRead + uploadProgress)。
+     * saveRead + uploadProgress)。
      *
-     * 三步编排:
-     * 1. [saveVideoProgressOnExit] Preference 存视频位置 (片尾归零)
-     * 2. [saveRead] books 表存 durChapterPos (片尾 -1 编码"停在章末", 对照 app)
-     * 3. [uploadProgress] WebDav 上传 (书架内且开启同步时)
+     * 两步编排:
+     * 1. [saveRead] books 表存 durChapterPos (片尾 -1 编码"停在章末", 对照 app)
+     * 2. [uploadProgress] WebDav 上传 (书架内且开启同步时)
      *
      * @param positionMs 当前播放位置 (毫秒)
      * @param durationMs 媒体总时长 (毫秒, 0 = 未知时长按原位置存)
      */
     fun onExit(positionMs: Long, durationMs: Long) {
-        // 片尾归零: 接近片尾存 0 下次从头播, 否则存当前位置 (对照 app onPause 片尾判断)
+        // 片尾编码: 接近片尾存 -1 (停在章末, 下次从头播), 否则存当前毫秒
+        // (对照 app onPause: saveRead(if (position > duration - 1s) -1 else position))
         val atEnd = durationMs > 0 && positionMs > durationMs - 1000L
         val bookPos = if (atEnd) -1L else positionMs
-        // Preference 视频位置 (精确毫秒)
-        saveVideoProgressOnExit(positionMs, durationMs)
         // books 表 durChapterPos (Int, 片尾 -1 编码章末); 走 progressSyncScope 不随 UI scope 取消
         val index = _curChapterIndex.value
         progressSyncScope.launch { saveRead(index, bookPos) }

@@ -343,7 +343,7 @@ fun ExploreShowRoute(
                 },
             )
         },
-        // 封面: 复用 LocalBookCoverSlot (宿主端注入 ShelfCover, 兜底 SharedBookCover)
+        // 封面: 复用 LocalBookCoverSlot (默认 SharedBookCover, 各端统一)
         coverSlot = { book, inBookshelf, isVideoStyle, modifier ->
             // toCoverBook 结果缓存一次, 避免每次重组新建 Book (对照 SearchScreen coverSlot 写法)
             LocalBookCoverSlot.current(

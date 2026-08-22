@@ -73,12 +73,17 @@ val WindowManager.windowSize: DisplayMetrics
         return displayMetrics
     }
 
-fun Activity.fullScreen() {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-        window.setDecorFitsSystemWindows(true)
-    }
-    window.decorView.systemUiVisibility =
-        View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+/**
+ * 内容铺到系统栏之后 (edge-to-edge): insets 全量派发给应用, 由各界面自行避让
+ * (Compose 侧 statusBarsPadding / navigationBarsPadding / imePadding)。
+ *
+ * 只留官方一条开关 —— 旧实现 `setDecorFitsSystemWindows(true)` 与手写
+ * `LAYOUT_FULLSCREEN|LAYOUT_STABLE` 语义相反 (前者要 decor 代为避让, 后者要铺满)。
+ * 不用 androidx `enableEdgeToEdge()`: 它会改两栏颜色与 navigationBarContrastEnforced,
+ * 而这两项归 ThemeStore (setStatusBarColorAuto / setNavigationBarColorAuto)。
+ */
+fun Activity.edgeToEdge() {
+    WindowCompat.setDecorFitsSystemWindows(window, false)
     window.clearFlags(
         WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS
                 or WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION

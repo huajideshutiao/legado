@@ -360,12 +360,19 @@ private class AndroidKeyboardController(
         imm?.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
     }
 
+    /**
+     * `Window.setSoftInputMode` 是**整字段覆盖**, 且 mode == SOFT_INPUT_STATE_UNSPECIFIED(0)
+     * 时 AOSP 直接丢弃不写 —— 所以除 Default 外每个分支都要显式带 adjust 位, 否则窗口的
+     * adjust 停在上一页的值或厂商归一化结果 (实测 HyperOS 把 unspecified 归一成 adjustPan,
+     * 会让 ViewRootImpl 平移窗口, 见 ImeInsets.kt)。
+     */
     override fun setSoftInputPolicy(policy: SoftInputPolicy) {
         val mode = when (policy) {
             SoftInputPolicy.Default -> WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED
             SoftInputPolicy.Resize -> WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
             SoftInputPolicy.Pan -> WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN
-            SoftInputPolicy.Hidden -> WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN
+            SoftInputPolicy.Hidden -> WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN or
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
         }
         activity.window.setSoftInputMode(mode)
     }

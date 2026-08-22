@@ -33,7 +33,7 @@ class AnimatedFrames(
  * 解码动图字节为帧表; 非动图 (单帧) / 解码失败 / 超出内存预算时返回 null (调用方退化为静态图)。
  *
  * 平台实现:
- * - skikoUiMain (desktop): [org.jetbrains.skia.Codec] 逐帧解码
+ * - jvmMain (desktop): [org.jetbrains.skia.Codec] 逐帧解码
  * - androidMain: 返回 null (Android 走 coil3-gif, 消费点自带动图能力, 不经本路径)
  * - iosMain: 返回 null (iOS 走 Coil3/UIImage 系统解码)
  * - ohosMain: 返回 null (融合渲染不直接调用 Skia Codec，暂静态首帧退化)

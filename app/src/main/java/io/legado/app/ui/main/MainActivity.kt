@@ -45,7 +45,6 @@ import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
-import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.LocalReadConfigProviders
@@ -61,7 +60,6 @@ import io.legado.app.help.storage.Backup
 import io.legado.app.help.update.AppUpdate
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.model.AndroidReadBookProvider
-import io.legado.app.model.CoverRatio
 import io.legado.app.model.LocalReadBookProvider
 import io.legado.app.model.ReadBook
 import io.legado.app.model.fileBook.FileBook
@@ -76,10 +74,8 @@ import io.legado.app.ui.book.audio.SharedAudioPlayPlatformProvider
 import io.legado.app.ui.book.changecover.AndroidCoverStorageService
 import io.legado.app.ui.book.changecover.CoverStorageServiceProviders
 import io.legado.app.ui.book.info.BookInfoBlurCoverBg
-import io.legado.app.ui.book.info.BookInfoCover
 import io.legado.app.ui.book.info.BookInfoIntroImage
 import io.legado.app.ui.book.info.LocalBlurCoverBgSlot
-import io.legado.app.ui.book.info.LocalBookInfoCoverSlot
 import io.legado.app.ui.book.info.LocalIntroImageSlot
 import io.legado.app.ui.book.manga.AndroidMangaReaderPlatform
 import io.legado.app.ui.book.manga.MangaReaderScreenModel
@@ -91,14 +87,12 @@ import io.legado.app.ui.book.read.page.provider.AndroidTextMeasurer
 import io.legado.app.ui.book.read.page.provider.TextMeasurerProviders
 import io.legado.app.ui.book.video.AndroidVideoPlayPlatformProvider
 import io.legado.app.ui.book.video.VideoPlayPlatformProviders
-import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.browser.AndroidWebView
 import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.dict.DictDialogHost
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
-import io.legado.app.ui.main.bookshelf.ShelfCover
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
@@ -581,26 +575,10 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
         val readBookProvider = remember { AndroidReadBookProvider() }
 
         Box(Modifier.fillMaxSize()) {
-            // 注入 app 端 ShelfCover 到 shared 通用封面槽
+            // 封面渲染不再注入 app 端 View 实现, 各端统一走 shared 默认 SharedBookCover
             CompositionLocalProvider(
                 LocalReadConfigProviders provides readConfigProviders,
                 LocalReadBookProvider provides readBookProvider,
-                LocalBookCoverSlot provides { book, modifier, isVideoCover, coverReloadTick ->
-                    ShelfCover(
-                        path = book.getDisplayCover(),
-                        name = book.name,
-                        author = book.author,
-                        origin = book.origin,
-                        ratio = if (isVideoCover) CoverRatio.VIDEO else CoverRatio.NOVEL,
-                        reloadKey = coverReloadTick,
-                        // 书架态决定封面落持久区还是临时区 (对照原 ExploreShowAdapter 的
-                        // inBookshelf = callBack.isInBookshelf(item)); 搜索/发现结果带 notShelf 标记
-                        inBookshelf = !book.isNotShelf,
-                        // 仅 WiFi 加载封面 (原版设置项): 非 WiFi 时 fetcher 层拦网络获取
-                        loadOnlyWifi = AppConfig.loadCoverOnlyWifi,
-                        modifier = modifier,
-                    )
-                },
                 // 注入 app 端 AndroidWebView 到 shared 路由 (Login/ReadRss/WebView), 覆盖 LocalWebViewSlot 兜底
                 LocalWebViewSlot provides { config, modifier, callbacks ->
                     AndroidWebView(config, modifier, callbacks)
@@ -608,9 +586,6 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
                 // 注入 app 端 BookInfoBlurCoverBg 到 shared 路由 (详情页模糊背景), 覆盖 LocalBlurCoverBgSlot 兜底
                 LocalBlurCoverBgSlot provides { book, coverTick, inBookshelf, isEInkMode, modifier, land ->
                     BookInfoBlurCoverBg(book, coverTick, inBookshelf, isEInkMode, modifier, land)
-                },
-                LocalBookInfoCoverSlot provides { book, coverTick, inBookshelf, modifier ->
-                    BookInfoCover(book, coverTick, inBookshelf, modifier)
                 },
                 // 注入 app 端 BookInfoIntroImage 到 shared 路由 (详情页简介图), 覆盖 LocalIntroImageSlot 兜底
                 LocalIntroImageSlot provides { src, onClick ->

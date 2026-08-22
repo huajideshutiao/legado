@@ -22,7 +22,7 @@ import io.legado.app.model.CoverGlyph
 import io.legado.app.model.computeCoverTextLayout
 
 /**
- * 默认封面上的竖排书名/作者 (1:1 复刻 app 端 CoverImageView.drawNameAuthor)。
+ * 默认封面上的竖排书名/作者 (1:1 复刻原 Android View 版封面组件的 drawNameAuthor)。
  *
  * 布局算法在 commonMain 的 [computeCoverTextLayout], 与 Android 端共用同一份;
  * 这里只用 Compose drawText 消费 glyph —— 先白色描边再 accent 填充, 同原版 drawTextWithStroke。
@@ -133,7 +133,8 @@ private data class CoverGlyphKey(
 
 /**
  * 已测好的默认封面文字布局, 跨条目共享 (列表回滚复用, 不重测)。
- * 只在绘制线程访问; 超出容量按插入序淘汰最旧的一份。
+ * 只在绘制线程访问; 超出容量按 LRU 淘汰 (命中移到队尾), 快速滚动挤掉
+ * 正在显示的一批后, 回滚仍可复用而无需重测。
  */
 private object CoverGlyphCache {
 
@@ -141,7 +142,12 @@ private object CoverGlyphCache {
     private val entries = LinkedHashMap<CoverGlyphKey, List<PreparedGlyph>>()
 
     fun getOrPut(key: CoverGlyphKey, build: () -> List<PreparedGlyph>): List<PreparedGlyph> {
-        entries[key]?.let { return it }
+        entries[key]?.let {
+            // LRU: 命中移到队尾
+            entries.remove(key)
+            entries[key] = it
+            return it
+        }
         val value = build()
         if (entries.size >= MAX_ENTRIES) {
             entries.keys.firstOrNull()?.let(entries::remove)

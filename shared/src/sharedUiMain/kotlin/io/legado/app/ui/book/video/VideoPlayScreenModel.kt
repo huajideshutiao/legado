@@ -9,7 +9,6 @@ import io.legado.app.data.entities.VideoResolution
 import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.showSourceLogin
-import io.legado.app.ui.compose.platform.PreferenceStoreProvider
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.screenModelScope
@@ -45,9 +44,6 @@ import kotlin.concurrent.Volatile
  * - shared VM 能做的 (refreshChapter/switchResolution/loadChapter) 直接调用
  * - 平台能力 (剪贴板/书源变量/书架) 走 [PlatformCapabilityProviders]
  * - 平台专属 (Dialog/Activity 结果) 待 host 注入, 暂空实现
- *
- * [prefStore] 由 Route 经 LocalPreferenceStoreProvider 注入真实 PreferenceStoreProvider,
- * 用于视频进度持久化 (key = `video_progress_{bookUrl}`)。
  */
 interface VideoPlayerController {
     val positionMs: Long
@@ -104,13 +100,11 @@ object VideoPlayPlatformProviders {
     fun getOrNull(): VideoPlayPlatformProvider? = impl
 }
 
-class VideoPlayScreenModel(
-    private val prefStore: PreferenceStoreProvider,
-) : ScreenModel {
+class VideoPlayScreenModel : ScreenModel {
 
     private val scope = screenModelScope("视频播放")
 
-    val shared = VideoPlayViewModelShared(scope = scope, prefStore = prefStore)
+    val shared = VideoPlayViewModelShared(scope = scope)
     val platform = VideoPlayPlatformProviders.getOrNull()
     val controller: VideoPlayerController? = platform?.createController(
         screenModel = this,

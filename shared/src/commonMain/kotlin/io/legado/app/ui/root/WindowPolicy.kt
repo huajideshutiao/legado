@@ -13,7 +13,15 @@ data class WindowPolicy(
     val keepScreenOn: Boolean = false,
     val orientation: OrientationPolicy = OrientationPolicy.Unspecified,
     val systemBars: SystemBarsPolicy = SystemBarsPolicy.Default,
-    val softInput: SoftInputPolicy = SoftInputPolicy.Default,
+    /**
+     * 默认 [SoftInputPolicy.Resize]: 全 app 自己用 imePadding 做键盘避让, 窗口必须派发
+     * ime insets (API<30 只有 adjustResize 下才有 ime inset), 且 adjustResize 下
+     * contentInsets == visibleInsets, ViewRootImpl 的窗口平移闸门是关的 (见 ImeInsets.kt)。
+     * 不用 [SoftInputPolicy.Default]: 它对应的 SOFT_INPUT_STATE_UNSPECIFIED 按 AOSP
+     * Window.setSoftInputMode 契约会被整个丢弃, adjust 位停在上一页或厂商归一化结果
+     * (实测 HyperOS 把 unspecified 归一成 adjustPan)。
+     */
+    val softInput: SoftInputPolicy = SoftInputPolicy.Resize,
     val pictureInPicture: Boolean = false,
 )
 
@@ -47,21 +55,6 @@ object WindowPolicies {
     // 原版 BookInfoActivity 同样 fullScreen=true: 封面/模糊背景铺到状态栏之后, 页内自行回避
     val BookInfo = WindowPolicy(fullscreen = true)
 
-    // 编辑页文本域在页面底部, 固定 adjustResize: 避免 adjustUnspecified 对 Compose 层级
-    // 判不可滚动而落 adjustPan, 弹键盘时整页(含标题栏)被顶起 (对照原 BookInfoEditActivity 可滚动布局→resize)
-    val BookInfoEdit = WindowPolicy(softInput = SoftInputPolicy.Resize)
-    // 同类可滚动多输入界面 (书源编辑/替换规则编辑/JS 编辑): 同走 adjustUnspecified→adjustPan,
-    // Android 15+ edge-to-edge 下 insets 必派发 → imePadding + adjustPan 双重避让产生键盘上方空白, 一并对齐 Resize
-    val BookSourceEdit = WindowPolicy(softInput = SoftInputPolicy.Resize)
-    val ReplaceEdit = WindowPolicy(softInput = SoftInputPolicy.Resize)
-    // 搜索/输入 + 滚动列表类页面 (搜索页/书源管理/换源/书架管理/规则列表/导入/记录/目录/书源调试/发现等):
-    // 页面均含 AppSearchField/输入框 + LazyColumn/Grid, 同样受 adjustUnspecified→adjustPan 影响
-    // (键盘弹出时列表无法收缩到键盘上方, 且已消费 IME insets 的页面会产生双重避让);
-    // 统一 Resize 让 IME insets 正确派发, 未消费 insets 的页面无副作用
-    val ScrollableInput = WindowPolicy(softInput = SoftInputPolicy.Resize)
-    val WebView = WindowPolicy()
-    val Normal = WindowPolicy()
-
     /** 根据 AppRoute 返回对应 WindowPolicy */
     fun forRoute(route: AppRoute): WindowPolicy = when (route) {
         is AppRoute.Reader -> Reader
@@ -69,24 +62,9 @@ object WindowPolicies {
         is AppRoute.VideoPlay -> VideoPlayer
         is AppRoute.AudioPlay -> AudioPlay
         is AppRoute.BookInfo -> BookInfo
-        is AppRoute.BookInfoEdit -> BookInfoEdit
-        is AppRoute.BookSourceEdit -> BookSourceEdit
-        is AppRoute.ReplaceEdit -> ReplaceEdit
-        is AppRoute.Main -> ScrollableInput
-        is AppRoute.Search -> ScrollableInput
-        is AppRoute.SearchContent -> ScrollableInput
-        is AppRoute.BookSourceManage -> ScrollableInput
-        is AppRoute.BookshelfManage -> ScrollableInput
-        is AppRoute.ReplaceRule -> ScrollableInput
-        is AppRoute.SourceFilterRule -> ScrollableInput
-        is AppRoute.ImportBook -> ScrollableInput
-        is AppRoute.RemoteBook -> ScrollableInput
-        is AppRoute.ReadRecord -> ScrollableInput
-        is AppRoute.Toc -> ScrollableInput
-        is AppRoute.BookSourceDebug -> ScrollableInput
-        is AppRoute.ReadRss -> ScrollableInput
-        is AppRoute.WebView -> WebView
-        else -> Normal
+        // 其余页面无窗口特化: 编辑页/搜索/列表/WebView 曾各自声明 adjustResize, 现已是
+        // 全局默认 (见 WindowPolicy.softInput), 逐页声明只剩重复
+        else -> Default
     }
 }
 
