@@ -32,21 +32,7 @@ data class BookGroup(
         const val IdError = -11L
     }
 
-    override fun hashCode(): Int {
-        return groupId.hashCode()
-    }
-
-    override fun equals(other: Any?): Boolean {
-        if (other is BookGroup) {
-            return other.groupId == groupId
-                    && other.groupName == groupName
-                    && other.cover == cover
-                    && other.bookSort == bookSort
-                    && other.enableRefresh == enableRefresh
-                    && other.show == show
-                    && other.order == order
-        }
-        return false
-    }
+    // 不覆写 equals/hashCode: 原手写 equals 比的正好是全部 7 个构造参数, 与 data class 生成版等价;
+    // 字段是 var 且 GroupEditDialog 原地改, 结构 hashCode 会漂移, 故实例禁止作 HashSet 元素 / HashMap key
 
 }

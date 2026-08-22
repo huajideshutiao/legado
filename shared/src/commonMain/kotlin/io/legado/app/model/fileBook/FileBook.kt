@@ -64,7 +64,8 @@ object FileBook : BaseFileBook {
         if (chapters.isEmpty()) {
             throw TocEmptyException(appString(AppStringKey.chapter_list_empty))
         }
-        val list = ArrayList(LinkedHashSet(chapters))
+        // 去重按 url 判身份 (BookChapter 已改结构相等, LinkedHashSet 会漏折叠同 url 的重复章节)
+        val list = ArrayList(chapters.distinctBy { it.url })
         val replaceRules = ContentProcessorProviders.get().getTitleReplaceRules(book)
         val useReplaceRule = book.getUseReplaceRule()
         list.forEachIndexed { index, bookChapter ->

@@ -262,7 +262,7 @@ object DesktopMediaTray {
      * 桌面端把"前台服务 + 通知"呈现为托盘图标, 判定状态源与 app 端完全一致。
      */
     private fun anyBackgroundActive(): Boolean {
-        val audioActive = AudioPlayCommanders.get().isServiceRunning
+        val audioActive = AudioPlayCommanders.getOrNull()?.isServiceRunning == true
         val aloud = readAloudBinding.value
         val aloudState = aloud?.controller?.state?.value
         val aloudActive =
@@ -335,7 +335,7 @@ object DesktopMediaTray {
     private fun refresh() {
         val icon = trayIcon ?: return
         val audioStatus = AudioPlayShared.status
-        val audioActive = AudioPlayCommanders.get().isServiceRunning
+        val audioActive = AudioPlayCommanders.getOrNull()?.isServiceRunning == true
         val aloud = readAloudBinding.value
         val aloudState = aloud?.controller?.state?.value
         val aloudActive = aloudState == ReadAloudState.PLAYING || aloudState == ReadAloudState.PAUSED
@@ -424,7 +424,7 @@ object DesktopMediaTray {
      */
     private fun jumpToActive() {
         val navigator = AppNavigatorProviders.getOrNull() ?: return
-        val audioActive = AudioPlayCommanders.get().isServiceRunning
+        val audioActive = AudioPlayCommanders.getOrNull()?.isServiceRunning == true
         val aloud = readAloudBinding.value
         val aloudActive = aloud?.controller?.state?.value?.let {
             it == ReadAloudState.PLAYING || it == ReadAloudState.PAUSED
@@ -548,7 +548,7 @@ object DesktopMediaTray {
     private fun buildMenuModel(): List<MenuEntry> {
         val entries = ArrayList<MenuEntry>()
         val audioStatus = AudioPlayShared.status
-        val audioActive = AudioPlayCommanders.get().isServiceRunning
+        val audioActive = AudioPlayCommanders.getOrNull()?.isServiceRunning == true
         val aloud = readAloudBinding.value
         val aloudState = aloud?.controller?.state?.value
         val aloudActive = aloudState == ReadAloudState.PLAYING || aloudState == ReadAloudState.PAUSED

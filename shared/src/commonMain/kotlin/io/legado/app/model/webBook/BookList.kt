@@ -132,9 +132,11 @@ object BookList {
                     break
                 }
             }
-            val lh = LinkedHashSet(bookList)
+            // 去重按 bookUrl 判身份: SearchBook 已改结构相等, 而 time 是构造参数 (取当前毫秒),
+            // 用 LinkedHashSet 会导致去重几乎恒不命中, 下游 LazyColumn 的 bookUrl key 会重复
+            val deduped = bookList.distinctBy { it.bookUrl }
             bookList.clear()
-            bookList.addAll(lh)
+            bookList.addAll(deduped)
             if (reverse) {
                 bookList.reverse()
             }

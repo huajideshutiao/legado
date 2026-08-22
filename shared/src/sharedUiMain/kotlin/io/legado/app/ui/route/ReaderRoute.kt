@@ -81,9 +81,9 @@ import io.legado.app.ui.compose.platform.KeyRepeatPolicy
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.PageTurnThrottle
 import io.legado.app.ui.compose.platform.VolumeKeyPageTurnHandler
-import io.legado.app.ui.compose.platform.parseCustomPageKeys
 import io.legado.app.ui.compose.platform.performBack
 import io.legado.app.ui.compose.platform.readerDirectionalKeys
+import io.legado.app.ui.compose.platform.rememberCustomPageKeys
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -355,10 +355,12 @@ fun ReaderRoute(
     // 键位随翻页方向自适应——左右翻页模式 ←/→=翻页、↑/↓=章节切换;
     // 上下滚动模式 ↑/↓=翻页、←/→=章节切换 (原版 ReadBookKeyHandler 的 prevKeys/nextKeys
     // 含 ↑↓ 翻页, 用户拍板改为章节切换)。
-    // 翻页去抖已由 AppShortcuts 分发的按住过滤承担 (系统 repeat 只触发一次、快速连按每次生效,
-    // 见 dispatchShortcut 的按住态判定); 动画中按键由 delegate abortAnim 打断重翻
-    // (对照原版 keyTurnPage → nextPageByAnim → abortAnim 语义)。章节切换保留独立去抖,
-    // 防快速连按误触连切章。
+    // 翻页去抖 (对照原版 ReadBookKeyHandler.keyPageDebounce: wait/maxWait=200ms、leading):
+    // 方向键/自定义键/音量键共用同一个 pageTurnThrottle 窗口 (对照原版各键共用
+    // nextPageDebounce/prevPageDebounce 实例), 按住连发另由 AppShortcuts 的按住过滤兜底;
+    // 动画中按键由 delegate abortAnim 打断重翻 (对照原版 keyTurnPage → nextPageByAnim →
+    // abortAnim 语义)。章节切换保留独立去抖, 防快速连按误触连切章。
+    val pageTurnThrottle = remember { PageTurnThrottle() }
     val chapterTurnThrottle = remember { PageTurnThrottle() }
     AppShortcutHandler(
         shortcuts = readerDirectionalKeys,
@@ -385,9 +387,11 @@ fun ReaderRoute(
                     }
                 } else {
                     // turnPage 内部优先走 pageDelegate.keyTurnPage(带动画), 无委托时直接位移页码
-                    screenModel.viewModel.turnPage(
-                        if (prev) PageDirectionShared.PREV else PageDirectionShared.NEXT
-                    )
+                    pageTurnThrottle.tryTurn {
+                        screenModel.viewModel.turnPage(
+                            if (prev) PageDirectionShared.PREV else PageDirectionShared.NEXT
+                        )
+                    }
                 }
             }
 
@@ -396,15 +400,17 @@ fun ReaderRoute(
                 if (isScroll) {
                     // 滚动模式: ↑/↓ = 小步滚动 (用户拍板: 一次整页难受),
                     // 1/3 视口 + 动画 (scrollByAnimated: 页内动画, 越界同步折算跨页)
-                    val pageH =
-                        (screenModel.viewModel.curTextPage.value?.visibleHeight ?: 0).toFloat()
-                    if (pageH > 0f) {
-                        (screenModel.viewModel.pageDelegate as? ScrollPageDelegateCompose)
-                            ?.scrollByAnimated(if (up) pageH / 3f else -pageH / 3f)
-                    } else {
-                        screenModel.viewModel.turnPage(
-                            if (up) PageDirectionShared.PREV else PageDirectionShared.NEXT
-                        )
+                    pageTurnThrottle.tryTurn {
+                        val pageH =
+                            (screenModel.viewModel.curTextPage.value?.visibleHeight ?: 0).toFloat()
+                        if (pageH > 0f) {
+                            (screenModel.viewModel.pageDelegate as? ScrollPageDelegateCompose)
+                                ?.scrollByAnimated(if (up) pageH / 3f else -pageH / 3f)
+                        } else {
+                            screenModel.viewModel.turnPage(
+                                if (up) PageDirectionShared.PREV else PageDirectionShared.NEXT
+                            )
+                        }
                     }
                 } else {
                     // 左右翻页模式: ↑/↓ = 章节切换 (用户拍板)
@@ -428,6 +434,7 @@ fun ReaderRoute(
     // 接线收敛在共享 VolumeKeyPageTurnHandler (单击翻页 / 长按连翻节流 / 抬起消费)
     VolumeKeyPageTurnHandler(
         enabled = { isTopEntry && !screenModel.menuState.isVisible },
+        throttle = pageTurnThrottle,
     ) { volumeUp ->
         screenModel.viewModel.turnPage(
             if (volumeUp) PageDirectionShared.PREV else PageDirectionShared.NEXT
@@ -436,22 +443,21 @@ fun ReaderRoute(
     // 自定义翻页键 (对照原版 ReadBookKeyHandler.onKeyDown 的 isPrevKey/isNextKey 最先判定,
     // 2026-08 键盘迁移时消费端被砍, 现恢复)。注册在方向键/音量键之后 → 快捷键栈顶优先,
     // 复刻原版"自定义键先于内置键判定"的覆盖语义 (如把 ← 绑成翻页可覆盖方向键默认行为)。
-    // FILTER = 原版 event.repeatCount > 0 忽略; 菜单可见时不响应 (原版 menuLayoutIsVisible 守卫)。
+    // FILTER = 原版 event.repeatCount > 0 忽略; 菜单可见时不响应 (原版 menuLayoutIsVisible 守卫);
+    // 翻页走与方向键/音量键共用的 pageTurnThrottle (对照原版 handleKeyPage → keyPageDebounce)。
     // 每次重组现读偏好 (对照原版每次按键现读 SharedPreferences), PageKeyDialog 确认后立即生效。
-    val pageKeyPref = LocalPreferenceStoreProvider.current
-    val customPageKeys = parseCustomPageKeys(
-        pageKeyPref.getString(PreferKey.prevKeys),
-        pageKeyPref.getString(PreferKey.nextKeys),
-    )
+    val customPageKeys = rememberCustomPageKeys(KeyRepeatPolicy.FILTER)
     if (!customPageKeys.isEmpty()) {
         AppShortcutHandler(
-            shortcuts = customPageKeys.shortcuts(KeyRepeatPolicy.FILTER),
+            shortcuts = customPageKeys.shortcuts,
             enabled = { isTopEntry && !screenModel.menuState.isVisible },
         ) { shortcut ->
-            screenModel.viewModel.turnPage(
-                if (customPageKeys.isPrev(shortcut.key)) PageDirectionShared.PREV
-                else PageDirectionShared.NEXT
-            )
+            pageTurnThrottle.tryTurn {
+                screenModel.viewModel.turnPage(
+                    if (customPageKeys.isPrev(shortcut.key)) PageDirectionShared.PREV
+                    else PageDirectionShared.NEXT
+                )
+            }
         }
     }
     // endregion

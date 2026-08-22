@@ -288,7 +288,7 @@ internal object DesktopTaskbarMedia {
         val audioStatus = lastAudioStatus
         // 按钮可见性挂会话寿命 (provider running, 镜像原版服务存活/通知常驻): 切章节的
         // STOP 拉流窗口里原版通知不消失, status 判据会让按钮眨眼消失再重现
-        val audioActive = AudioPlayCommanders.get().isServiceRunning
+        val audioActive = AudioPlayCommanders.getOrNull()?.isServiceRunning == true
         val aloudState = lastAloudState
         val aloudActive =
             aloudState == ReadAloudState.PLAYING || aloudState == ReadAloudState.PAUSED
@@ -425,7 +425,7 @@ internal object DesktopTaskbarMedia {
 
     /** 缩略图按钮点击 (WM_COMMAND): 对照原版通知 action 的行为。 */
     private fun onThumbButton(id: Int) {
-        val audioActive = AudioPlayCommanders.get().isServiceRunning
+        val audioActive = AudioPlayCommanders.getOrNull()?.isServiceRunning == true
         val aloud = DesktopMediaTray.readAloud
         val aloudActive = aloud?.controller?.state?.value?.let {
             it == ReadAloudState.PLAYING || it == ReadAloudState.PAUSED
@@ -461,7 +461,7 @@ internal object DesktopTaskbarMedia {
      * 优先级: prev/next/stop 音频优先; 播放/暂停键朗读优先且与音频成对切换 (原版 readAloud() 链)。
      */
     private fun onMediaKey(vk: Int) {
-        val audioActive = AudioPlayCommanders.get().isServiceRunning
+        val audioActive = AudioPlayCommanders.getOrNull()?.isServiceRunning == true
         val aloud = DesktopMediaTray.readAloud
         val aloudActive = aloud?.controller?.state?.value?.let {
             it == ReadAloudState.PLAYING || it == ReadAloudState.PAUSED

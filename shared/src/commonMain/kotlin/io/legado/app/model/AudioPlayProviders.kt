@@ -2,6 +2,8 @@ package io.legado.app.model
 
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
+import io.legado.app.model.AudioPlayBookBridges.get
+import io.legado.app.model.AudioPlayCommanders.get
 import kotlin.concurrent.Volatile
 
 /**
@@ -93,6 +95,14 @@ object AudioPlayCommanders {
     /** 获取已注册实现, 未注册抛出 IllegalStateException。 */
     fun get(): AudioPlayCommander =
         impl ?: error("AudioPlayCommanders not registered; call registerAndroidAudioPlayCommander() first")
+
+    /**
+     * 获取已注册实现, 未注册返回 null。
+     *
+     * 供启动期就绪的 UI (桌面托盘/任务栏) 只读查询 [AudioPlayCommander.isServiceRunning]:
+     * 注册在后台 provider 链末尾, 未注册即"无音频会话"。命令派发仍用 [get] 保持严格语义。
+     */
+    fun getOrNull(): AudioPlayCommander? = impl
 
     /** 仅测试场景: 清空注册 (生产代码勿调用)。 */
     fun reset() {

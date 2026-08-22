@@ -4,8 +4,8 @@ package io.legado.app.data.entities
 
 import androidx.room3.Entity
 import androidx.room3.PrimaryKey
-import kotlin.time.Clock
 import kotlinx.serialization.Serializable
+import kotlin.time.Clock
 
 
 @Serializable
@@ -20,15 +20,7 @@ data class TxtTocRule(
     var enable: Boolean = true
 ) {
 
-    override fun hashCode(): Int {
-        return id.hashCode()
-    }
-
-    override fun equals(other: Any?): Boolean {
-        if (other is TxtTocRule) {
-            return id == other.id
-        }
-        return false
-    }
+    // 不覆写 equals/hashCode: 理由同 ReplaceRule (只比 id 会吞掉内容变更,
+    // 且导入时的整体比对 it != local 会恒为 false); 实例禁止作 HashSet/HashMap key
 
 }

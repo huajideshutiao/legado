@@ -187,7 +187,7 @@ internal object DesktopTaskbarDwm {
         // 粘性呈现必须挂单调的会话寿命 —— stopPlay 不动 running, 拉流再慢也不会误拆。
         // 也不能用 book != null: 它根本不是寿命 (resetData 赋值后永不清空), 停止播放后卡片
         // 永远滞留旧内容 (2026-08 回归: 停止后悬停仍是旧媒体卡, 不回落窗口缩略图)。
-        val audioSession = AudioPlayCommanders.get().isServiceRunning
+        val audioSession = AudioPlayCommanders.getOrNull()?.isServiceRunning == true
         val aloudState = aloud?.controller?.state?.value
         val aloudActive =
             aloudState == ReadAloudState.PLAYING || aloudState == ReadAloudState.PAUSED

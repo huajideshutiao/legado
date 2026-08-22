@@ -143,8 +143,10 @@ class ExploreShowViewModelShared(
     var hasNextPage: Boolean = true
         private set
 
-    /** 已加载的发现结果 (LinkedHashSet 去重, toList 后暴露给 [booksFlow])。 */
-    private var books = linkedSetOf<SearchBook>()
+    /** 已加载的发现结果 (按 bookUrl 去重, values 暴露给 [booksFlow])。
+     * 用 Map 而非 LinkedHashSet: SearchBook 已改结构相等, 而 time 是构造参数 (当前毫秒),
+     * Set 去重恒不命中会让下游 items(key = bookUrl) 撞重复 key 崩溃, 且触底兜底失效。 */
+    private val books = LinkedHashMap<String, SearchBook>()
     // endregion
 
     init {
@@ -341,10 +343,10 @@ class ExploreShowViewModelShared(
                 // commonMain 无 R.string, 用硬编码中文 (与 SearchViewModel "已过滤 $n 本" 一致)
                 runCatching { Toasters.get().toast("已过滤 $filteredCount 本") }
             }
-            books.addAll(items)
+            items.forEach { b -> books.getOrPut(b.bookUrl) { b } }
             // 兜底: 翻到第二页起, 去重后整体未增长则视为到底; 防止 hasMoreRule 缺失或配错时无限触底
             hasNextPage = pageResult.hasNextPage && (page == 1 || books.size > prevSize)
-            _booksFlow.tryEmit(books.toList())
+            _booksFlow.tryEmit(books.values.toList())
             page++
         }.onError {
             it.printStackTraceOnDebug()

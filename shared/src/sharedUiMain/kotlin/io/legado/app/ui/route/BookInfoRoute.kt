@@ -113,10 +113,6 @@ fun BookInfoRoute(
                 ?: db.bookDao.getBook(book.name, book.author)
             val inShelf = if (isSearchBook) dbBook?.origin == book.origin
             else db.bookDao.getBook(book.bookUrl) != null
-            println(
-                "[NOTSHELF-DEBUG] BookInfo init url=${book.bookUrl} isSearch=$isSearchBook " +
-                    "dbBook=${dbBook?.bookUrl} inShelf=$inShelf"
-            )
             screenModel.dispatch(BookInfoUiEvent.UpdateBookshelf(inShelf))
             // 搜索来源的同名异源书: 对齐 master loadBookInfo else 分支 addType(notShelf),
             // 标记为临时书 (目录/阅读不落库, 阅读器退出清理)

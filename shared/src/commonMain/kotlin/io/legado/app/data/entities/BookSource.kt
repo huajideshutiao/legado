@@ -176,13 +176,8 @@ data class BookSource(
         }
     }
 
-    override fun hashCode(): Int {
-        return bookSourceUrl.hashCode()
-    }
-
-    override fun equals(other: Any?): Boolean {
-        return if (other is BookSource) other.bookSourceUrl == bookSourceUrl else false
-    }
+    // 不覆写 equals/hashCode: 只比 bookSourceUrl 会让 StateFlow/mutableStateOf 把"同一书源改了
+    // 规则"判为相同而吞掉更新; 需按身份比较的地方显式写 a.bookSourceUrl == b.bookSourceUrl
 
     @get:Ignore
     var searchRule: SearchRule

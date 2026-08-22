@@ -37,13 +37,8 @@ data class BookSourcePart(
     var hasExploreUrl: Boolean = false
 ) {
 
-    override fun hashCode(): Int {
-        return bookSourceUrl.hashCode()
-    }
-
-    override fun equals(other: Any?): Boolean {
-        return if (other is BookSourcePart) other.bookSourceUrl == bookSourceUrl else false
-    }
+    // 不覆写 equals/hashCode: 理由同 BookSource —— 只比 url 会让列表状态整表判等,
+    // 启用开关/改分组/校验回填都发射不出去; 按身份比较请显式写 bookSourceUrl
 
     fun getDisPlayNameGroup(): String {
         return if (bookSourceGroup.isNullOrBlank()) {

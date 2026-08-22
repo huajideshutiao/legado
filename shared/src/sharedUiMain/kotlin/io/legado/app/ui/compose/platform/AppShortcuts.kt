@@ -171,8 +171,8 @@ fun AppShortcutHandler(
  * 逐个 catch + 遍历前取快照, 理由同 [dispatchBackKey]。
  *
  * KeyUp 只清理按住状态 (repeat 过滤用), 不触发 KeyDown 动作——例外:
- * 1. 音量键且栈顶命中 TRIGGER 策略时抬起也消费, 对照原版 ReadMangaActivity onKeyUp 对音量键
- *    返回 true (小说/漫画音量键均为 TRIGGER);
+ * 1. 音量键且有任一激活注册项对该键用 TRIGGER 策略时抬起也消费, 对照原版 ReadMangaActivity
+ *    onKeyUp 对音量键返回 true (小说/漫画音量键均为 TRIGGER);
  * 2. 注册项提供 onKeyUp 回调 (媒体键长短按区分) 且 KeyUp 命中同键时派发回调并消费。
  *
  * KeyDown 命中后:
@@ -187,12 +187,14 @@ fun dispatchShortcut(event: KeyEvent, preemptive: Boolean): Boolean {
     try {
         if (event.type == KeyEventType.KeyUp) {
             pressedSince.remove(event.key)
-            // 音量键抬起: 栈顶激活的 TRIGGER 策略快捷键 (小说/漫画) 消费 (对照原版
-            // ReadMangaActivity.onKeyUp), 其余策略放行
+            // 音量键抬起: 有激活的 TRIGGER 策略注册项 (小说/漫画翻页) 就消费, 不让系统弹音量条
+            // (对照原版 ReadMangaActivity.onKeyUp / ReadBookKeyHandler.onKeyUp 恒消费音量键);
+            // 只按栈顶那一项判定会被同页更靠上的 FILTER 注册项 (如把音量键设成自定义翻页键)
+            // 挡掉, 故按"任一激活项"判定
             if (event.key == Key.VolumeUp || event.key == Key.VolumeDown) {
-                return firstEnabledEntry { it.key == event.key }
-                    ?.shortcuts()
-                    ?.any { it.key == event.key && it.repeatPolicy == KeyRepeatPolicy.TRIGGER } == true
+                return firstEnabledEntry {
+                    it.key == event.key && it.repeatPolicy == KeyRepeatPolicy.TRIGGER
+                } != null
             }
             // KeyUp 回调: 栈顶 enabled 且 shortcuts 命中同键 (含修饰键一致) 的注册项 →
             // 派发 onKeyUp 并消费 (媒体键短按/长按区分; 无回调的注册项不消费 KeyUp)

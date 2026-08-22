@@ -78,14 +78,8 @@ data class BookChapter(
         return RuleBigDataProviders.impl?.getChapterVariable(bookUrl, url, key)
     }
 
-    override fun hashCode() = url.hashCode()
-
-    override fun equals(other: Any?): Boolean {
-        if (other is BookChapter) {
-            return other.url == url
-        }
-        return false
-    }
+    // 不覆写 equals/hashCode: 只比 url 会让 List<BookChapter> 整表判等, 目录刷新后
+    // 标题/VIP 变而 url 不变时 StateFlow 吞掉更新; 去重/定位处已显式改为按 url 比较
 
     fun primaryStr(): String {
         return bookUrl + url

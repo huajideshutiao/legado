@@ -3,7 +3,6 @@ package io.legado.app.data.entities
 import io.legado.app.constant.BookType
 import io.legado.app.utils.decodeStringMapOrNull
 import io.legado.app.utils.systemCurrentTimeMillis
-import kotlin.jvm.Transient
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -35,9 +34,8 @@ data class SearchBook(
 
     override var tocHtml: String? = null
 
-    override fun equals(other: Any?) = other is SearchBook && other.bookUrl == bookUrl
-
-    override fun hashCode() = bookUrl.hashCode()
+    // 不覆写 equals/hashCode: 只比 bookUrl 会让搜索/换源/发现列表整表判等, 字数与最新章
+    // 回填后发射被吞; 去重/定位处已显式改为按 bookUrl 比较 (注意 time 是构造参数)
 
     override fun compareTo(other: SearchBook): Int {
         return other.originOrder - this.originOrder

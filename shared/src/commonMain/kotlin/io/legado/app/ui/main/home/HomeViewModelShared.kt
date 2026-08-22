@@ -57,7 +57,10 @@ class HomeViewModelShared(
         var infinitePage: Int = 1
         var infiniteHasMore: Boolean = true
         var infiniteLoading: Boolean = false
-        val infiniteBookSet = linkedSetOf<SearchBook>()
+
+        // 按 bookUrl 去重 (理由同 ExploreShowViewModelShared.books): SearchBook 已改结构相等,
+        // Set 去重恒不命中会让 HomeScreen 的 g_<bookUrl> key 撞重复 key 崩溃
+        val infiniteBookMap = LinkedHashMap<String, SearchBook>()
     }
 
     // region 状态流: 外部只读 Flow, 适配 Compose 重组 / Android asLiveData 桥接
@@ -199,7 +202,7 @@ class HomeViewModelShared(
         if (!resetPage && !state.infiniteHasMore) return
         if (resetPage) {
             state.infinitePage = 1
-            state.infiniteBookSet.clear()
+            state.infiniteBookMap.clear()
             state.infiniteHasMore = true
         }
         state.infiniteLoading = true
@@ -216,9 +219,9 @@ class HomeViewModelShared(
                 source, section.exploreUrl, state.infinitePage, isSearch = false,
                 selectedOptions = selectedOptions
             )
-            state.infiniteBookSet.addAll(result.books)
+            result.books.forEach { b -> state.infiniteBookMap.getOrPut(b.bookUrl) { b } }
             state.infiniteHasMore = result.hasNextPage && result.books.isNotEmpty()
-            state.sectionBooksMap[section.id] = state.infiniteBookSet.toList()
+            state.sectionBooksMap[section.id] = state.infiniteBookMap.values.toList()
             state.infinitePage++
             _sectionUpdatedFlow.tryEmit(tabTitle to section.id)
         }.onError {
@@ -251,13 +254,13 @@ class HomeViewModelShared(
             section.style == HomeSection.STYLE_INFINITE_GRID -> state.infiniteSection = section
             old?.style == HomeSection.STYLE_INFINITE_GRID -> {
                 state.infiniteSection = null
-                state.infiniteBookSet.clear()
+                state.infiniteBookMap.clear()
             }
         }
         _sectionsFlow.tryEmit(tabTitle)
         if (sourceChanged) {
             if (section.style == HomeSection.STYLE_INFINITE_GRID) {
-                state.infiniteBookSet.clear()
+                state.infiniteBookMap.clear()
                 state.infinitePage = 1
                 state.infiniteHasMore = true
             } else {
@@ -275,7 +278,7 @@ class HomeViewModelShared(
         state.sectionOptionsMap.remove(section.id)
         if (section.style == HomeSection.STYLE_INFINITE_GRID) {
             state.infiniteSection = null
-            state.infiniteBookSet.clear()
+            state.infiniteBookMap.clear()
         }
         _sectionsFlow.tryEmit(tabTitle)
     }

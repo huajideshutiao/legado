@@ -920,7 +920,10 @@ private fun GroupSelectDialogContent(overlay: AppOverlay.Dialog, navigator: AppN
         groups = groups,
         initialGroupId = initialGroupId,
         onConfirm = { groupId ->
-            navigator.pop(RouteResultPayload.GroupSelect(groupId))
+            navigator.dismissOverlay(
+                overlay.key,
+                RouteResultPayload.GroupSelect(groupId),
+            )
         },
         onDismiss = { navigator.dismissOverlay(overlay.key) },
         onPersistOrder = { ordered ->

@@ -759,7 +759,7 @@ class ChangeBookSourceViewModelShared(
                 source.enabled = false
                 appDb.bookSourceDao.update(source)
             }
-            searchBooks.remove(searchBook)
+            removeSearchBook(searchBook)
             searchCallback?.upAdapter()
         }
     }
@@ -799,16 +799,31 @@ class ChangeBookSourceViewModelShared(
     }
 
     /**
-     * 用新实例替换 searchBooks 中的条目 (原地改 originOrder 不会改变 equals, Compose 判定未变不重组)。
+     * 用新实例替换 searchBooks 中的条目 (原地改 originOrder 会让新旧 state 共享实例, 判不出变化)。
      * copy 丢失非构造属性, 故手动带上 infoHtml/tocHtml 缓存。
      */
     private fun replaceSearchBook(searchBook: SearchBook, originOrder: Int) {
-        val index = searchBooks.indexOf(searchBook)
+        val index = indexOfSearchBook(searchBook)
         if (index < 0) return
         searchBooks[index] = searchBook.copy(originOrder = originOrder).also {
             it.infoHtml = searchBook.infoHtml
             it.tocHtml = searchBook.tocHtml
         }
+    }
+
+    /**
+     * 按 bookUrl 在 searchBooks 中定位条目 (身份语义)。
+     *
+     * SearchBook 已改 data class 结构相等, indexOf/remove(obj) 会因 originOrder 等字段被改写
+     * 而匹配不上 (置顶后再置底、刷新回填字数), 故一律走这里显式比 bookUrl。
+     */
+    private fun indexOfSearchBook(searchBook: SearchBook): Int =
+        searchBooks.indexOfFirst { it.bookUrl == searchBook.bookUrl }
+
+    /** 按 bookUrl 移除条目, 语义对齐原 `searchBooks.remove(searchBook)` (只移除首个匹配)。 */
+    private fun removeSearchBook(searchBook: SearchBook) {
+        val index = indexOfSearchBook(searchBook)
+        if (index >= 0) searchBooks.removeAt(index)
     }
 
     /**
@@ -820,7 +835,7 @@ class ChangeBookSourceViewModelShared(
         Coroutine.async(scope) {
             SourceHelp.deleteBookSource(searchBook.origin)
         }
-        searchBooks.remove(searchBook)
+        removeSearchBook(searchBook)
         searchCallback?.upAdapter()
     }
 

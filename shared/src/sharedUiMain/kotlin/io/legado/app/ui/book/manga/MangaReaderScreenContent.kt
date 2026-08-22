@@ -62,11 +62,13 @@ import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.platform.AppShortcut
 import io.legado.app.ui.compose.platform.AppShortcutHandler
+import io.legado.app.ui.compose.platform.KeyRepeatPolicy
 import io.legado.app.ui.compose.platform.PageTurnThrottle
 import io.legado.app.ui.compose.platform.VolumeKeyPageTurnHandler
 import io.legado.app.ui.compose.platform.platformNavigationBarPadding
 import io.legado.app.ui.compose.platform.platformStatusBarPadding
 import io.legado.app.ui.compose.platform.readerDirectionalKeys
+import io.legado.app.ui.compose.platform.rememberCustomPageKeys
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import kotlinx.coroutines.flow.first
@@ -299,12 +301,13 @@ fun MangaReaderScreenContent(
     // 与小说端差异对齐:
     // - 走全局快捷键栈 + 根节点分发, 不依赖本页持焦 (点击菜单/弹窗后翻页键不失效)
     // - 非栈顶路由不响应 (isTopEntry)
-    // - 菜单打开时不响应方向键/音量键 (与小说端一致, 同时避免与菜单下拉/滑杆的键盘操作互相干扰)
+    // - 菜单打开时照样响应所有键 (2026-08 用户拍板, 对齐原版 ReadMangaActivity onKeyDown 无
+    //   menuVisible 守卫; 小说端保留菜单守卫, 对照原版 menuLayoutIsVisible)
     // - Esc 由根节点 handleBackKey → performBack 统一处理 (菜单打开时同样出栈, 与小说端一致);
     //   Backspace 不再绑定 (根节点刻意不映射 Backspace, 与小说端一致)
     AppShortcutHandler(
         shortcuts = readerDirectionalKeys,
-        enabled = { isTopEntry() && !menuVisible },
+        enabled = isTopEntry,
     ) { shortcut ->
         when {
             !horizontal && (shortcut.key == Key.DirectionUp || shortcut.key == Key.DirectionDown) -> {
@@ -347,11 +350,11 @@ fun MangaReaderScreenContent(
         }
     }
     // 音量键翻页 (对照原版 ReadMangaActivity onKeyDown: 无开关检查、无菜单守卫、repeat 连翻、
-    // onKeyUp 恒消费; 共享 VolumeKeyPageTurnHandler: TRIGGER 策略 + 200ms 节流连翻)。
-    // 菜单可见时仍响应 (2026-08 用户拍板对齐原版: 原版漫画音量键无 menuVisible 守卫;
-    // 小说端保持菜单守卫不变, 对照原版 menuLayoutIsVisible)
+    // onKeyUp 恒消费; 共享 VolumeKeyPageTurnHandler: TRIGGER 策略 + 节流连翻)。
+    // 节流窗口与方向键/自定义键共用 pageTurnThrottle (对照原版各键共用 nextPageThrottle 实例)
     VolumeKeyPageTurnHandler(
         enabled = isTopEntry,
+        throttle = pageTurnThrottle,
     ) { volumeUp ->
         if (volumeUp) {
             if (onPrevPage != null) onPrevPage() else scrollPageTo(-1)
@@ -360,18 +363,14 @@ fun MangaReaderScreenContent(
         }
     }
     // 自定义翻页键 (对照原版 ReadMangaActivity onKeyDown 的 isPrevKey/isNextKey, 2026-08
-    // 键盘迁移时消费端被砍, 现恢复)。原版漫画无菜单守卫、repeatCount 连翻经
-    // throttle(200L, trailing=false) 节流——对应 TRIGGER 策略 + 复用 pageTurnThrottle。
+    // 键盘迁移时消费端被砍, 现恢复)。原版无 repeat 检查、连翻经 throttle(200L, trailing=false)
+    // 节流——对应 TRIGGER 策略 + 复用 pageTurnThrottle。
     // 注册在方向键/音量键之后 → 快捷键栈顶优先, 复刻原版"自定义键先于内置键判定"的覆盖语义。
     // 每次重组现读偏好 (对照原版每次按键现读 SharedPreferences), PageKeyDialog 确认后立即生效。
-    val pageKeyPref = LocalPreferenceStoreProvider.current
-    val customPageKeys = parseCustomPageKeys(
-        pageKeyPref.getString(PreferKey.prevKeys),
-        pageKeyPref.getString(PreferKey.nextKeys),
-    )
+    val customPageKeys = rememberCustomPageKeys(KeyRepeatPolicy.TRIGGER)
     if (!customPageKeys.isEmpty()) {
         AppShortcutHandler(
-            shortcuts = customPageKeys.shortcuts(KeyRepeatPolicy.TRIGGER),
+            shortcuts = customPageKeys.shortcuts,
             enabled = isTopEntry,
         ) { shortcut ->
             pageTurnThrottle.tryTurn {

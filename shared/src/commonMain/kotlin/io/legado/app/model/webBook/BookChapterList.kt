@@ -127,9 +127,9 @@ object BookChapterList {
 
     suspend fun updateBook(book: Book, chapterList: List<BookChapter>): List<BookChapter> {
         currentCoroutineContext().ensureActive()
-        //去重
-        val lh = LinkedHashSet(chapterList)
-        val list = ArrayList(lh)
+        //去重 (按 url 判身份: BookChapter 已改结构相等, LinkedHashSet 会漏折叠同 url 不同标题的章节,
+        // 重复 url 入库时被 @Insert(REPLACE) 静默吞行, 导致 DB 行数 < totalChapterNum 出现 index 空洞)
+        val list = ArrayList(chapterList.distinctBy { it.url })
         if (!book.config.reverseToc) {
             list.reverse()
         }

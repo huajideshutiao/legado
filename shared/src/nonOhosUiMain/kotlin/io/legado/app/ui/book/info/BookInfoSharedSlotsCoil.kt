@@ -1,7 +1,6 @@
 package io.legado.app.ui.book.info
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -16,14 +15,15 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.Book
 import io.legado.app.help.image.BookImageLoaders
-import io.legado.app.ui.compose.theme.AppTheme
 
 /**
  * 模糊封面背景 Coil3 实现 (desktop/iOS 共享)。
@@ -31,16 +31,16 @@ import io.legado.app.ui.compose.theme.AppTheme
  * 走 [BookImageLoaders] (各端注入 Coil3 实现) 加载封面 Bitmap, 再用 [Modifier.blur] 做高斯模糊。
  * I3: 按容器尺寸 1/8 采样解码 (size(w/8,h/8) + FILL + INEXACT), blur 后放大绘制视觉等价,
  * 内存/绘制带宽降 ~64 倍。
- * 加载中/失败/E-Ink 模式回退到 accent 半透明纯色占位 (与 [SharedBlurCoverBgPlaceholder] 一致)。
+ * 加载中/失败/E-Ink 模式不绘制 (对照原版 bgBook 空 drawable), 不铺色块以免换图时闪一下。
  *
  * 渐变蒙版对照 app 端 [io.legado.app.ui.book.info.BookInfoBgTransformation]:
- * 顶部 30% 清晰 → 30%-65% 柔和过渡 → 底部透明 (DST_IN alpha 蒙版), 再叠压暗蒙层
- * (原版 argb(50,0,0,0) SRC_ATOP ≈ 压暗 20%)。用 Compose 绘制层实现, 免 Android 位图 API。
+ * 先叠压暗 (原版 argb(50,0,0,0) SRC_ATOP ≈ 压暗 20%), 再按 DstIn alpha 蒙版收尾
+ * (顶部 30% 清晰 → 30%-65% 柔和过渡 → 底部透明)。用 Compose 绘制层实现, 免 Android 位图 API。
  *
  * @param book 当前书籍 (可能为 null)
  * @param coverTick 封面重载 key (变更时重新加载)
  * @param inBookshelf 是否在书架 (本简化实现未使用, 保留签名对齐 slot 契约)
- * @param isEInkMode E-Ink 模式跳过图片加载 (直接走纯色占位)
+ * @param isEInkMode E-Ink 模式跳过图片加载 (不绘制)
  * @param modifier 调用方传入的尺寸约束
  */
 @Composable
@@ -55,7 +55,7 @@ fun SharedBlurCoverBgCoil(
     val cover = book?.getDisplayCover()
     val loader = remember { BookImageLoaders.getOrNull() }
     // bitmap 只随封面 url 重置; coverTick 触发的重载期间保留旧图, 失败也不清空 ——
-    // 否则重载被失败跳过表拦截时 (url 曾 403) 会闪回深色占位, 观感为"背景变黑"
+    // 否则重载被失败跳过表拦截时 (url 曾 403) 会闪回空白
     var bitmap by remember(cover) { mutableStateOf<ImageBitmap?>(null) }
     // 封面取色回调 (详情页宿主提供, 见 BookCoverPalette); 失败不回调, 取色保留旧值/回退
     val onCoverLoaded = LocalCoverLoaded.current
@@ -80,39 +80,40 @@ fun SharedBlurCoverBgCoil(
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 // 链序关键: drawWithContent 在 blur 外层, 否则渐变蒙版/压暗也会被高斯模糊
-                modifier = Modifier.fillMaxSize().drawWithContent {
-                    drawContent()
-                    // 渐变蒙版 (顶部 30% 清晰 → 底部透明, 曲线同原版) 仅竖屏顶部条使用;
-                    // 横屏左半列整列铺满时任何方向的"一边黑"渐变都不合适 (用户反馈),
-                    // 横屏只保留均匀压暗, 整列均匀模糊
-                    if (!land) {
-                        drawRect(
-                            brush = Brush.verticalGradient(
-                                colorStops = arrayOf(
-                                    0.00f to Color.Black,
-                                    0.30f to Color.Black,
-                                    0.48f to Color(0xD2000000),
-                                    0.63f to Color(0xA5000000),
-                                    0.77f to Color(0x6E000000),
-                                    0.90f to Color(0x1E000000),
-                                    1.00f to Color.Transparent,
+                modifier = Modifier
+                    .fillMaxSize()
+                    // DstIn 蒙版必须有自己的离屏缓冲, 否则作用对象是父画布 (含身后页面底色),
+                    // 底部会被抹成透明, 露出窗口黑底
+                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                    .drawWithContent {
+                        drawContent()
+                        // 压暗蒙层 (对照原版 argb(50,0,0,0) SRC_ATOP: 只压图自身不改 alpha),
+                        // 故须在蒙版之前叠, 否则会把蒙成透明的底部又涂回一层 20% 黑
+                        drawRect(color = Color(0x32000000))
+                        // 渐变蒙版 (顶部 30% 清晰 → 底部透明, 曲线同原版) 仅竖屏顶部条使用;
+                        // 横屏左半列整列铺满时任何方向的"一边黑"渐变都不合适 (用户反馈),
+                        // 横屏只保留均匀压暗, 整列均匀模糊
+                        if (!land) {
+                            drawRect(
+                                brush = Brush.verticalGradient(
+                                    colorStops = arrayOf(
+                                        0.00f to Color.Black,
+                                        0.30f to Color.Black,
+                                        0.48f to Color(0xD2000000),
+                                        0.63f to Color(0xA5000000),
+                                        0.77f to Color(0x6E000000),
+                                        0.90f to Color(0x1E000000),
+                                        1.00f to Color.Transparent,
+                                    ),
                                 ),
-                            ),
-                            blendMode = BlendMode.DstIn,
-                        )
+                                blendMode = BlendMode.DstIn,
+                            )
+                        }
                     }
-                    // 压暗蒙层 (对照原版 argb(50,0,0,0) SRC_ATOP)
-                    drawRect(color = Color(0x32000000))
-                }.blur(24.dp),
+                    .blur(24.dp),
             )
         }
-        // 加载中/失败/E-Ink 占位: 原纯色占位视觉 (对照 SharedBlurCoverBgPlaceholder)
-        if (bitmap == null) {
-            Box(Modifier.fillMaxSize().background(AppTheme.colors.accent.copy(alpha = 0.15f)))
-            Box(
-                Modifier.fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.2f))
-            )
-        }
+        // 加载中/失败/E-Ink 一律不画东西 (对照原版 bgBook: drawable 为空即空白, 不铺色块),
+        // 铺深色占位再换成模糊图会闪一下
     }
 }

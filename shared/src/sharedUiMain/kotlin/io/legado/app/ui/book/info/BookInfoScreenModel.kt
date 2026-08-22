@@ -10,7 +10,6 @@ import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
-import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.updateTo
@@ -334,10 +333,6 @@ class BookInfoScreenModel : ScreenModel {
         val oldBook = book.copy()
         return try {
             val tmp = WebBook.getChapterListAwait(source, book, runPreUpdateJs).getOrThrow()
-            println(
-                "[NOTSHELF-DEBUG] loadChapterList inBookshelf=${_state.value.inBookshelf} " +
-                    "url=${book.bookUrl} notShelf=${book.isNotShelf}"
-            )
             if (_state.value.inBookshelf) {
                 appDb.bookDao.replace(oldBook, book)
                 // runPreUpdateJs 有可能会修改 book 的 bookUrl

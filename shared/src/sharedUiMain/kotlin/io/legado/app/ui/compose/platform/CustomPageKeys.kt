@@ -1,31 +1,50 @@
 package io.legado.app.ui.compose.platform
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.input.key.Key
+import io.legado.app.constant.PreferKey
 
 /**
  * 自定义翻页按键 (对照原版 BaseReadActivity.isPrevKey/isNextKey + ReadBookActivity/
  * ReadMangaActivity 的 onKeyDown 消费, 2026-08 键盘迁移砍掉后恢复)。
  *
- * 偏好存储沿用原版格式: [io.legado.app.constant.PreferKey.prevKeys]/[nextKeys] =
- * Android keyCode 十进制逗号串 (原版由 Dialog setOnKeyListener 按物理键自动录入,
- * PageKeyDialog 已恢复该捕获)。
+ * 偏好存储沿用原版格式: [PreferKey.prevKeys]/[PreferKey.nextKeys] = Android keyCode 十进制
+ * 逗号串 (原版由 Dialog setOnKeyListener 按物理键自动录入, PageKeyDialog 已恢复该捕获)。
  *
- * 键值映射: Android 端 Compose Key 与 android.view.KeyEvent keyCode 恒等
- * (ui-android KeyEvent.android.kt: `Key(nativeKeyEvent.keyCode)`), 表外键码直接
- * Key(code) 兜底命中——蓝牙翻页器的厂商键码因此可用; 桌面/iOS/鸿蒙端 Compose Key
+ * 键值映射: Android 端 Compose Key 由 android keyCode 一对一构造
+ * (ui-android KeyEvent.android.kt: `Key(nativeKeyEvent.keyCode)`), 表外键码经
+ * [identityKey] 兜底命中——蓝牙翻页器的厂商键码因此可用; 桌面/iOS/鸿蒙端 Compose Key
  * 取各自平台键值 (桌面为 AWT VK 码), 表内具名常量在两端各自取本平台正确值, 表外
  * 键码无平台对应键, 跳过。
  */
-data class CustomPageKeys(val prev: List<Key>, val next: List<Key>) {
+data class CustomPageKeys(
+    val prev: List<Key>,
+    val next: List<Key>,
+    /** 注册用快捷键表; preemptive 抢占同方向键 (页面无输入框), repeatPolicy 由调用方指定 */
+    val shortcuts: List<AppShortcut>,
+) {
 
     fun isEmpty(): Boolean = prev.isEmpty() && next.isEmpty()
 
-    /** 全部键位转为快捷键注册表; repeatPolicy 由调用方按原版语义选择 (小说 FILTER/漫画 TRIGGER) */
-    fun shortcuts(repeatPolicy: KeyRepeatPolicy): List<AppShortcut> =
-        prev.map { AppShortcut(it, preemptive = true, repeatPolicy = repeatPolicy) } +
-            next.map { AppShortcut(it, preemptive = true, repeatPolicy = repeatPolicy) }
-
     fun isPrev(key: Key): Boolean = key in prev
+}
+
+/**
+ * 现读 prevKeys/nextKeys 偏好并解析 (对照原版每次按键现读 SharedPreferences),
+ * 偏好串变化才重建快捷键表, PageKeyDialog 确认后重组即生效。
+ *
+ * [repeatPolicy] 按原版语义选择: 小说 [KeyRepeatPolicy.FILTER] (原版 repeatCount > 0 忽略),
+ * 漫画 [KeyRepeatPolicy.TRIGGER] (原版无 repeat 检查, 连翻由调用方 200ms 节流)。
+ */
+@Composable
+fun rememberCustomPageKeys(repeatPolicy: KeyRepeatPolicy): CustomPageKeys {
+    val pref = LocalPreferenceStoreProvider.current
+    val prevKeys = pref.getString(PreferKey.prevKeys)
+    val nextKeys = pref.getString(PreferKey.nextKeys)
+    return remember(prevKeys, nextKeys, repeatPolicy) {
+        parseCustomPageKeys(prevKeys, nextKeys, repeatPolicy)
+    }
 }
 
 /**
@@ -33,13 +52,25 @@ data class CustomPageKeys(val prev: List<Key>, val next: List<Key>) {
  * 对照原版 isPrevKey/isNextKey 的宽松语义: 逗号拆分 + 非数字段忽略;
  * keyCode <= 0 不参与匹配 (对照原版 KEYCODE_UNKNOWN 排除)。
  */
-fun parseCustomPageKeys(prevKeys: String?, nextKeys: String?): CustomPageKeys {
+fun parseCustomPageKeys(
+    prevKeys: String?,
+    nextKeys: String?,
+    repeatPolicy: KeyRepeatPolicy,
+): CustomPageKeys {
     fun parse(raw: String?): List<Key> = raw.orEmpty()
         .split(",")
         .mapNotNull { it.trim().toIntOrNull() }
         .filter { it > 0 }
         .mapNotNull(::pageKeyCodeToKey)
-    return CustomPageKeys(prev = parse(prevKeys), next = parse(nextKeys))
+    val prev = parse(prevKeys)
+    val next = parse(nextKeys)
+    return CustomPageKeys(
+        prev = prev,
+        next = next,
+        shortcuts = (prev + next).map {
+            AppShortcut(it, preemptive = true, repeatPolicy = repeatPolicy)
+        },
+    )
 }
 
 /** Android keyCode → Compose Key: 表内具名键双端命中; 表外 Android 恒等兜底, 其余平台无对应 */
@@ -107,5 +138,5 @@ private val keyToAndroidCodeTable: Map<Key, Int> =
 /** Android 端恒等兜底 (表外厂商键码); 其余平台无恒等关系返回 null。 */
 internal expect fun identityKey(code: Int): Key?
 
-/** [identityKey] 的反向: Android 端 Key.keyCode 即 android keyCode; 其余平台返回 null。 */
+/** [identityKey] 的反向: Android 端取 Key.nativeKeyCode; 其余平台返回 null。 */
 internal expect fun identityCode(key: Key): Int?

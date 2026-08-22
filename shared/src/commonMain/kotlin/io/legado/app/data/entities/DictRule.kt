@@ -25,15 +25,7 @@ data class DictRule(
     var sortNumber: Int = 0
 ) {
 
-    override fun hashCode(): Int {
-        return name.hashCode()
-    }
-
-    override fun equals(other: Any?): Boolean {
-        if (other is DictRule) {
-            return name == other.name
-        }
-        return false
-    }
+    // 不覆写 equals/hashCode: 只比 name 会让改 urlRule/showRule/enabled 发射不出去;
+    // 实例禁止作 HashSet 元素 / HashMap key
 
 }

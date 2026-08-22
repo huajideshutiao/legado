@@ -108,21 +108,25 @@ data class SearchScope(private var scope: String) {
      * 搜索范围书源
      */
     suspend fun getBookSources(): List<BookSource> {
-        val list = hashSetOf<BookSource>()
+        // 按 bookSourceUrl 去重 (身份语义): 多分组范围下同一书源会被多个 group 查询重复返回。
+        // 不用 HashSet —— BookSource 字段是 var 且结构 hashCode 会随 respondTime 等回写漂移
+        val list = LinkedHashMap<String, BookSource>()
+        fun addAll(sources: Iterable<BookSource>) =
+            sources.forEach { s -> list.getOrPut(s.bookSourceUrl) { s } }
         if (scope.isEmpty()) {
-            list.addAll(AppDbProviders.get().bookSourceDao.allEnabled())
+            addAll(AppDbProviders.get().bookSourceDao.allEnabled())
         } else {
             if (scope.contains("::")) {
                 scope.substringAfter("::").let {
                     AppDbProviders.get().bookSourceDao.getBookSource(it)?.let { source ->
-                        list.add(source)
+                        list.getOrPut(source.bookSourceUrl) { source }
                     }
                 }
             } else {
                 val oldScope = scope.splitNotBlank(",")
                 val newScope = oldScope.filter {
                     val bookSources = AppDbProviders.get().bookSourceDao.getEnabledByGroup(it)
-                    list.addAll(bookSources)
+                    addAll(bookSources)
                     bookSources.isNotEmpty()
                 }
                 if (oldScope.size != newScope.size) {
@@ -135,12 +139,12 @@ data class SearchScope(private var scope: String) {
                 AppDbProviders.get().bookSourceDao.allEnabled().let {
                     if (it.isNotEmpty()) {
                         stateLiveData.value = scope
-                        list.addAll(it)
+                        addAll(it)
                     }
                 }
             }
         }
-        return list.sortedBy { it.customOrder }
+        return list.values.sortedBy { it.customOrder }
     }
 
     fun isAll(): Boolean {

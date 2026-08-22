@@ -506,7 +506,6 @@ private class AndroidReaderMenuState(
     private fun showNormalMenu() {
         animate = !AppConfig.isEInkMode
         upColorConfig()
-        upSourceAction()
         refresh()
         isNightTheme = AppConfig.isNightTheme
         visibleState.targetState = true
@@ -1141,6 +1140,9 @@ private class AndroidReaderMenuState(
     override fun refresh() {
         upTopMenu()
         upMenuView()
+        // 源名/可见性也要跟着刷: 书源编辑保存后 menuState.refresh() 是唯一刷新入口,
+        // 不在此重算则菜单仍展开时顶部源按钮停留在旧源名
+        upSourceAction()
     }
 
     // 进度条刷新 (对照原版 seekBarChange → readMenu.upSeekBar)

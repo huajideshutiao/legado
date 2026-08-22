@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -51,6 +52,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.ui.compose.platform.BackLayerHandler
+import io.legado.app.ui.compose.platform.LocalOverlayTopInset
 import io.legado.app.ui.compose.platform.LocalTransitionFrozenStatusBarHeightPx
 import io.legado.app.ui.compose.platform.PlatformDialogDim
 import io.legado.app.ui.compose.platform.platformStatusBarPadding
@@ -305,12 +307,15 @@ fun AppBottomSheetDialog(
         val flingDismissVelocityPx = with(density) { 800.dp.toPx() }
         // 上推展开 fling 速度阈值: 与下拉关闭同速反向 (快速上推直接吸附全屏)
         val flingExpandVelocityPx = with(density) { 800.dp.toPx() }
-        // 视觉全屏高 (px) = 锚点全高 - 状态栏高: 移动端展开后顶栏停在状态栏之下
-        // (视觉全屏, 不压系统栏); 桌面无状态栏 = 主窗口全高。手势闭包经
+        // 视觉全屏高 (px) = 锚点全高 - 状态栏高 - 顶部平台装饰高: 移动端展开后顶栏停在
+        // 状态栏之下 (视觉全屏, 不压系统栏); 桌面无状态栏, 扣的是窗口控制条
+        // ([LocalOverlayTopInset], 见 BottomSheetScaffold 注释)。手势闭包经
         // [fullAnchorState] 读最新值 (桌面窗口 resize / 状态栏显隐时跟随)
         val anchorHeightPx = LocalDialogAnchorSize.current?.height
             ?: ScreenInfoProviders.get().screenHeightPx
-        val fullAnchorPx = (anchorHeightPx - rememberVisibleStatusBarHeightPx()).coerceAtLeast(0)
+        val overlayTopInsetPx = with(density) { LocalOverlayTopInset.current.roundToPx() }
+        val fullAnchorPx = (anchorHeightPx - rememberVisibleStatusBarHeightPx() - overlayTopInsetPx)
+            .coerceAtLeast(0)
         val fullAnchorState = rememberUpdatedState(fullAnchorPx)
         // 回弹/吸附动画: 从当前位移续播到目标锚点 (新拖拽开始时由 drag 路径取消 bounceJob)
         val animateDragTo: (Float) -> Unit = { target ->
@@ -526,6 +531,10 @@ fun AppBottomSheetDialog(
  * decorFitsSystemWindows=true 的窗口已自行避让时为 0, 不会双重避让; 只有 Android 15+
  * 强制 edge-to-edge 的全屏窗口才真正生效。
  *
+ * 同理补 [LocalOverlayTopInset]: 桌面端窗口控制条不在 Compose 画布内 (Windows 是 z-order
+ * 恒在画布之上的 native 子窗口, Linux 是 Column 里的自绘条), 而弹层是铺满整窗的 Popup 层 ——
+ * 全屏后顶栏会被控制条盖住, 只能主动避让。移动端恒 0。
+ *
  * 顶部 inset 归本骨架所有: 弹层内 [LocalTransitionFrozenStatusBarHeightPx] 提供 0
  * ("此处没有状态栏"), content 里的顶栏 (如 [AppTitleBar]) 不再自行叠加 —— 弹层贴底、
  * 顶部够不到状态栏, 自行避让只会凭空多出一层状态栏高的空白带。
@@ -556,7 +565,10 @@ private fun BottomSheetScaffold(
                 .fillMaxWidth()
                 .then(
                     when {
-                        fullScreen -> Modifier.fillMaxHeight().platformStatusBarPadding()
+                        fullScreen -> Modifier
+                            .fillMaxHeight()
+                            .platformStatusBarPadding()
+                            .padding(top = LocalOverlayTopInset.current)
                         // 拖拽展开态: 固定高度由位移状态驱动 (wrap 内容贴底留白,
                         // fillMaxSize 内容自然拉伸)
                         heightPx != null -> Modifier.height(with(LocalDensity.current) { heightPx.toDp() })

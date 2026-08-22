@@ -229,7 +229,7 @@ internal object DesktopSmtc {
     private fun dispatchButton(button: Int, arg: Long) {
         // 会话寿命判据 (对照原版 MediaButtonReceiver 读 AudioPlayService.isRun):
         // 切章节 stopPlay → STOP 拉流窗口里 status 会眨眼, 误路由到朗读分支
-        val audioActive = AudioPlayCommanders.get().isServiceRunning
+        val audioActive = AudioPlayCommanders.getOrNull()?.isServiceRunning == true
         val aloud = DesktopMediaTray.readAloud
         val aloudActive = aloud?.controller?.state?.value?.let {
             it == ReadAloudState.PLAYING || it == ReadAloudState.PAUSED

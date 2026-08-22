@@ -29,12 +29,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
+import io.legado.app.ui.compose.platform.keyToPageKeyCode
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.shared.generated.resources.Res
@@ -59,13 +66,13 @@ import org.jetbrains.compose.resources.stringResource
  *
  * - 两个输入框: 上一页按键 / 下一页按键 (与原版 prev / next 输入框对齐)
  * - 输入框内是 keyCode 数字逗号分隔串 (与原版 `appendKeyCode` 拼接逻辑对齐)
+ * - 聚焦的输入框按物理键自动录入 keyCode (与原版 `dialog.setOnKeyListener` + `hasFocus` 对齐,
+ *   见 [appendCapturedKey])
  * - 重置按钮: 清空两个输入框 (与原版 `prev = ""; next = ""` 对齐)
  * - 确定按钮: 回传更新后的配置 (与原版 `AppConfig.prevKeys = prev; AppConfig.nextKeys = next` 对齐)
  *
  * # 与原版的差异 (KMP 限制)
  *
- * - 原版 `dialog.setOnKeyListener` 监听物理键按下自动追加 keyCode, 依赖 Android Dialog KeyEvent
- *   (桌面端无对应 API, 改为用户手动输入 keyCode 数字)
  * - 原版 `onDismiss` 调用 `hideSoftInput`, 依赖 Android InputMethodManager
  *   (Compose Multiplatform 由平台焦点机制自动处理, 不需要手动隐藏)
  *
@@ -128,14 +135,28 @@ fun PageKeyDialog(
                         onValueChange = { prev = it },
                         label = stringResource(Res.string.prev_page_key),
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onPreviewKeyEvent { event ->
+                                val captured = appendCapturedKey(prev, event)
+                                    ?: return@onPreviewKeyEvent false
+                                prev = captured
+                                true
+                            },
                     )
                     AppUnderlineTextField(
                         value = next,
                         onValueChange = { next = it },
                         label = stringResource(Res.string.next_page_key),
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onPreviewKeyEvent { event ->
+                                val captured = appendCapturedKey(next, event)
+                                    ?: return@onPreviewKeyEvent false
+                                next = captured
+                                true
+                            },
                     )
                 }
 
@@ -164,6 +185,21 @@ fun PageKeyDialog(
             }
         }
     }
+}
+
+/**
+ * 物理键捕获追加 (对照原版 `dialog.setOnKeyListener`): 只认 KeyDown, 返回键/退格放行
+ * (原版排除 KEYCODE_BACK/KEYCODE_DEL, 留给关闭对话框与删除字符); 空串或尾逗号直接追加,
+ * 否则先补逗号。返回 null = 不录入 (放行给正常输入)。
+ *
+ * 存的恒是 Android keyCode (偏好格式与原版一致): Android 端取 Key.nativeKeyCode,
+ * 桌面/iOS/鸿蒙经映射表反解, 表外键无对应 keyCode 故放行, 可手工输入数字。
+ */
+private fun appendCapturedKey(current: String, event: KeyEvent): String? {
+    if (event.type != KeyEventType.KeyDown) return null
+    if (event.key == Key.Back || event.key == Key.Escape || event.key == Key.Backspace) return null
+    val code = keyToPageKeyCode(event.key) ?: return null
+    return if (current.isEmpty() || current.endsWith(",")) "$current$code" else "$current,$code"
 }
 
 /**

@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import com.sun.jna.Platform
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
@@ -65,6 +66,7 @@ import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.widget.dialog.encodePhotoOverlayPayload
 import io.legado.app.utils.FileUtilsBase
+import io.legado.app.utils.FlowBus
 import io.legado.desktop.help.DesktopBattery
 import io.legado.desktop.help.tts.DesktopReadAloudHost
 import io.legado.desktop.ui.DesktopDialogRequest
@@ -77,6 +79,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -164,9 +168,14 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
                 readerWindowTint.value = Color(color).copy(alpha = 1f)
             }
             updateTint()
-            ReadBookEvents.configChange.collect { changes ->
-                if (changes.any { it in titleBarTintChanges }) updateTint()
-            }
+            // RECREATE 也要刷: 切日/夜换的是 curBgColor 的日/夜分支, 不发 ReadConfigChange,
+            // app 端靠 Activity 重启重取, 桌面端只重组 ⇒ 漏订阅时控制条残留上一套底色
+            merge(
+                ReadBookEvents.configChange.filter { changes ->
+                    changes.any { it in titleBarTintChanges }
+                },
+                FlowBus.with(EventBus.RECREATE),
+            ).collect { updateTint() }
         }
     }
 
@@ -689,7 +698,6 @@ private class DesktopReadMenuState(
 
     fun show() {
         animate = !AppConfigProviders.get().isEInkMode
-        upSourceAction()
         refresh()
         isNightTheme = AppConfigProviders.get().isNightTheme
         visibleState.targetState = true
@@ -1104,6 +1112,9 @@ private class DesktopReadMenuState(
     override fun refresh() {
         upTopMenu()
         upMenuView()
+        // 源名/可见性也要跟着刷: 书源编辑保存后 menuState.refresh() 是唯一刷新入口,
+        // 不在此重算则菜单仍展开时顶部源按钮停留在旧源名
+        upSourceAction()
     }
 
     // 进度条刷新 (对照原版 seekBarChange → readMenu.upSeekBar; page 模式按页跳转/页码,

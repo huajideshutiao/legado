@@ -75,8 +75,8 @@ data class RouteResult(val key: String, val payload: RouteResultPayload = RouteR
 /**
  * Overlay 结果: 携带 overlay key 与回传 payload。
  *
- * Overlay 关闭时 (dismissOverlay(key, payload) 或 pop(payload) 关闭顶层 overlay) 通过
- * [AppNavigator.overlayResults] 推送, 调用方按 key 过滤消费。
+ * Overlay 关闭时由 dismissOverlay(key, payload) 通过 [AppNavigator.overlayResults] 推送,
+ * 调用方按 key 过滤消费。带 payload 的 [AppNavigator.pop] 一律是路由结果, 不走这里。
  */
 data class OverlayResult(val key: String, val payload: RouteResultPayload = RouteResultPayload.None)
 
@@ -210,13 +210,15 @@ class AppNavigator(
     }
 
     fun pop(payload: RouteResultPayload = RouteResultPayload.None): Boolean {
-        // 关闭顶层 Overlay 时, 若 payload 非空则通过 overlayResults 推送 (供调用方按 key 消费)
-        // 栈顶 Overlay 挂起 (窗口已隐藏) 时跳过关闭, 继续 pop 路由: 返回键应作用于可见的路由层
-        val topOverlay = overlayBackStack.peek()
-        if (topOverlay != null && !isTopOverlaySuspended() && dismissTopOverlay()) {
-            if (payload !is RouteResultPayload.None) {
-                _overlayResults.tryEmit(OverlayResult(topOverlay.key, payload))
-            }
+        // 无 payload = 返回键语义: 顶层 Overlay 优先关闭 (挂起中的除外, 窗口已隐藏时返回键
+        // 应作用于可见的路由层)。带 payload = 路由结果语义, 必须 pop 路由并投递给 push 它的
+        // entry; Overlay 回传结果走 dismissOverlay(key, payload), 不在此分流, 否则栈上留着
+        // 未关的 Sheet 时结果会被误当成 OverlayResult 发出, 路由不 pop 且调用方永远收不到。
+        if (payload is RouteResultPayload.None &&
+            overlayBackStack.peek() != null &&
+            !isTopOverlaySuspended() &&
+            dismissTopOverlay()
+        ) {
             return true
         }
         val removed = routeBackStack.peek()

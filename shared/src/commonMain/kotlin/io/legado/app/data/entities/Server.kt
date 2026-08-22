@@ -28,16 +28,8 @@ data class Server(
         WEBDAV
     }
 
-    override fun hashCode(): Int {
-        return id.hashCode()
-    }
-
-    override fun equals(other: Any?): Boolean {
-        if (other is Server) {
-            return id == other.id
-        }
-        return false
-    }
+    // 不覆写 equals/hashCode: 只比 id 会让 collectAsState 吞掉改名/改地址;
+    // 实例禁止作 HashSet 元素 / HashMap key (config 是 var)
 
     fun getWebDavConfig(): WebDavConfig? {
         // GSON.fromJsonObject<WebDavConfig>(config).getOrNull() → KS_JSON.decodeOrNull<WebDavConfig>(config)

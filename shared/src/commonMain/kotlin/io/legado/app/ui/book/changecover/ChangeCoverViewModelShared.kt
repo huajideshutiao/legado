@@ -140,7 +140,7 @@ class ChangeCoverViewModelShared(
     val dataFlow: Flow<List<SearchBook>> = callbackFlow {
 
         searchSuccess = { searchBook ->
-            if (!searchBooks.contains(searchBook)) {
+            if (searchBooks.none { it.bookUrl == searchBook.bookUrl }) {
                 searchBooks.add(searchBook)
                 trySend(defaultCover + searchBooks.sortedBy { it.originOrder })
             }
