@@ -185,9 +185,24 @@ class MangaReaderViewModelShared(
     // endregion
 
     // region 内部状态 (对应 app 端 ReadMangaViewModel 字段)
-    var chapterSize = 0
-        private set
-    private var simulatedChapterSize = 0
+    /**
+     * 章节总数上界 = 内存目录长度 ([_chapterList], 唯一真源)。
+     *
+     * 派生而非 var 快照: 旧代码只在 initMangaData 赋值一次, 之后 fetchChapterList / upToc /
+     * onSourceChanged / [resolveChapter] 把目录补全都不会回写, 上界与真实目录长期脱节 ——
+     * openChapter 的 `index < chapterSize`、上一章/下一章的 simulatedChapterSize 判据全都按
+     * 旧值静默拒绝 (目录里看得见的章节点不开)。
+     *
+     * 内存目录若偏短/未就绪, 由 [resolveChapter] 的库兜底顺带整表重载来自愈, 不在这里掺
+     * 第二个真源 (原版靠 `?: getChapterCount(bookUrl)` 兜底, 是因为 LiveData 的 postValue
+     * 让 `.value` 在此刻恒为 null; StateFlow 赋值同步, 主路径本就该是内存)。
+     */
+    val chapterSize: Int get() = _chapterList.value.size
+
+    /** 模拟追读解锁上界; 未开启模拟阅读时等于 [chapterSize] (同样改为派生, 不再快照)。 */
+    private val simulatedChapterSize: Int
+        get() = _book.value?.takeIf { it.readSimulating() }?.simulatedTotalChapterNum()
+            ?: chapterSize
     var chapterChanged = false
         private set
     private var prevMangaChapter: MangaChapter? = null
@@ -273,18 +288,19 @@ class MangaReaderViewModelShared(
         }.getOrNull()
         _bookSource.value = source
         onBookSourceChanged()
-        // 加载章节列表 (对照 app 端 BaseReadViewModel.upBook 的三态分支):
-        // 内存交接 (IntentData, 带 bookUrl 校验) → DB → 回源拉取。
-        // 缺失不拉会让 chapterSize=0 → loadContent 早退 (index < simulatedChapterSize 为
-        // false 连 upToc 都不触发) → _loading 永久 true, 整页"加载中"永不消失
+        // 加载章节列表 (对照 app 端 BaseReadViewModel.upBook 的三态分支): 内存交接 → 库 → 回源。
+        // 缺失不拉会让上界为 0 → loadContent 早退 (index < simulatedChapterSize 为 false
+        // 连 upToc 都不触发) → _loading 永久 true, 整页"加载中"永不消失
         // (桌面端导入/深链添加的目录未入库的书必现)。
-        val handoff = IntentData.chapterList
-            ?.takeIf { it.firstOrNull()?.bookUrl == book.bookUrl }
-        val dbList = handoff ?: runCatching {
+        // 内存交接优先, 库兜底 (未落库的深链/导入/未入架书只有内存有目录, 优先内存可少查一次库)
+        val handoff = IntentData.chapterList?.takeIf { it.firstOrNull()?.bookUrl == book.bookUrl }
+        val list = handoff ?: runCatching {
             AppDbProviders.get().bookChapterDao.getChapterList(book.bookUrl)
-        }.getOrDefault(emptyList())
-        if (dbList.isNotEmpty()) {
-            _chapterList.value = dbList
+        }.onFailure {
+            AppLog.put("读取目录失败\n${it.message}", it)
+        }.getOrNull()?.takeIf { it.isNotEmpty() }
+        if (list != null) {
+            _chapterList.value = list
         } else {
             fetchChapterList(book, source)
         }
@@ -336,35 +352,29 @@ class MangaReaderViewModelShared(
     /**
      * 初始化漫画阅读数据 (对应 app 端 ReadMangaViewModel.initMangaData)。
      *
-     * 同步 chapterSize/simulatedChapterSize/durChapterIndex/durChapterPos,
+     * 同步 DB 章节计数/durChapterIndex/durChapterPos (章节数上界已改为派生属性),
      * 清空 manga 章节缓存 + loading/download 状态。
      *
      * @param book 当前书籍
      * @param isDiffBook 是否不同书 (true 时清缓存 + 重置 ReadTimeRecorder)
-     * @param prefetchedList 调用方预先读取的章节列表 (规避 StateFlow 异步未生效问题,
-     *   对应 app 端 initManga 中 withContext(Main) { chapterListData.value } 预取)
      */
     private suspend fun initMangaData(
         book: Book,
         isDiffBook: Boolean = _book.value?.bookUrl != book.bookUrl,
-        prefetchedList: List<BookChapter>? = null,
     ) {
         _book.value = book
         if (isDiffBook) {
             ReadTimeRecorder.setBook(ReadTimeRecorder.Source.MANGA, book.name)
         }
-        val chapterList = prefetchedList ?: _chapterList.value
-        // _chapterList.value 非空 (StateFlow<List<BookChapter>>), chapterList 恒非空,
-        // 原 `?: withContext(getChapterCount)` 兜底为不可达死代码, 一并移除
-        chapterSize = chapterList.size
-        simulatedChapterSize = if (book.readSimulating()) book.simulatedTotalChapterNum()
-        else chapterSize
+        // chapterSize/simulatedChapterSize 是派生属性, 随 _chapterList 自动跟进, 无需在此同步
         if (isDiffBook || _durChapterIndex.value != book.durChapterIndex) {
             _durChapterIndex.value = book.durChapterIndex
             _durChapterPos.value = book.durChapterPos * (if (book.durChapterPos < 0) -1 else 1)
             clearMangaChapter()
         }
-        if (_durChapterIndex.value !in 0 until simulatedChapterSize) {
+        // `> 0` 守卫: 目录还没装载时上界为 0, 无守卫会把进度直接抹成第一章并落库
+        // (口径同 onChapterListUpdated 里的 simulatedChapterSize > 0)
+        if (simulatedChapterSize > 0 && _durChapterIndex.value !in 0 until simulatedChapterSize) {
             book.durChapterIndex = 0
             _durChapterIndex.value = 0
             _durChapterPos.value = 0
@@ -383,9 +393,7 @@ class MangaReaderViewModelShared(
      * 最后处理章节跳转 / 进度同步 / 自动换源 (后者留 app 端薄壳)。
      */
     private suspend fun initManga(book: Book, isSameBook: Boolean) {
-        // _chapterList.value 是 upBook 中刚赋值的, IO 线程立即可读 (StateFlow 同步赋值, 无 postValue 异步问题)
-        val chapterList = _chapterList.value
-        initMangaData(book, isDiffBook = !isSameBook, prefetchedList = chapterList)
+        initMangaData(book, isDiffBook = !isSameBook)
         // 开始加载内容
         if (!isSameBook) loadContent()
         else loadOrUpContent()
@@ -447,6 +455,17 @@ class MangaReaderViewModelShared(
     }
 
     /**
+     * 解析第 [index] 章: **内存目录优先, 库兜底** (对照原版 `chapterListData.value ?: appDb...`)。
+     *
+     * 收敛 loadContent / downloadIndex / saveRead / refreshContentDur 四处解析:
+     * saveRead 每翻一页都会调, 原来无条件查库。
+     */
+    private suspend fun resolveChapter(book: Book, index: Int): BookChapter? =
+        _chapterList.value.getOrNull(index) ?: runCatching {
+            AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, index)
+        }.getOrNull()
+
+    /**
      * 加载指定章节正文 (对应 app 端 ReadMangaViewModel.loadContent(index))。
      *
      * 优先读本地缓存 (BookStorageProviders.getContent), 未命中则联网下载 (download)。
@@ -455,8 +474,7 @@ class MangaReaderViewModelShared(
         scope.launch {
             runCatching {
                 val book = _book.value ?: return@launch
-                val chapter = _chapterList.value.getOrNull(index)
-                    ?: AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, index)
+                val chapter = resolveChapter(book, index)
                     ?: run {
                         if (index < simulatedChapterSize) {
                             upToc(true)
@@ -660,7 +678,8 @@ class MangaReaderViewModelShared(
             book.durChapterPos = _durChapterPos.value * (
                 if (curMangaChapter?.imageCount == _durChapterPos.value + 1) -1 else 1
                 )
-            AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, _durChapterIndex.value)?.let {
+            // 每翻一页/切一章都会走这里: 章名从内存目录取, 内存没有才兜底查库
+            resolveChapter(book, _durChapterIndex.value)?.let {
                 book.durChapterTitle = it.getDisplayTitle(
                     ContentProcessorProviders.get().getTitleReplaceRules(book),
                     book.getUseReplaceRule()
@@ -913,8 +932,7 @@ class MangaReaderViewModelShared(
             return
         }
         val book = _book.value ?: return
-        val chapter = _chapterList.value.getOrNull(index)
-            ?: AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, index)
+        val chapter = resolveChapter(book, index)
             ?: run {
                 upToc(true)
                 return
@@ -978,19 +996,19 @@ class MangaReaderViewModelShared(
     /**
      * 章节列表更新后的处理 (对应 app 端 ReadMangaViewModel.onChapterListUpdated)。
      *
-     * 同名同作者时刷新 curBook + simulatedChapterSize + chapterSize, 可选触发 loadContent。
+     * 同名同作者时刷新 curBook, 收敛越界的 durChapterIndex, 可选触发 loadContent。
      */
     fun onChapterListUpdated(newBook: Book, loadContent: Boolean = true) {
         if (newBook.isSameNameAuthor(_book.value)) {
             _book.value = newBook
-            simulatedChapterSize = newBook.simulatedTotalChapterNum()
+            // chapterSize/simulatedChapterSize 是派生属性, upToc 刚写完 _chapterList 就已生效,
+            // 不再需要 (也不能) 在此写快照 —— 旧代码把赋值门在 `chapterSize == 0 || loadContent`
+            // 里, upToc 追加新章时 loadContent=false, 上界就停在旧值 (目录里看得见、点了没反应)
             if (simulatedChapterSize > 0 && _durChapterIndex.value > simulatedChapterSize - 1) {
                 _durChapterIndex.value = simulatedChapterSize - 1
             }
-            if (chapterSize == 0 || loadContent) {
-                chapterSize = newBook.totalChapterNum
-                loadContent()
-            }
+            // curMangaChapter 为空 = 当前什么都没显示 (对应旧代码 chapterSize == 0 的强制加载分支)
+            if (loadContent || curMangaChapter == null) loadContent()
         }
     }
 
@@ -1038,7 +1056,7 @@ class MangaReaderViewModelShared(
     fun refreshContentDur(book: Book) {
         scope.launch {
             runCatching {
-                AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, _durChapterIndex.value)
+                resolveChapter(book, _durChapterIndex.value)
                     ?.let { chapter ->
                         BookStorageProviders.get().delContent(book, chapter)
                         openChapter(_durChapterIndex.value, _durChapterPos.value)
@@ -1056,7 +1074,7 @@ class MangaReaderViewModelShared(
     suspend fun onSourceChanged(book: Book, toc: List<BookChapter>, source: BookSource? = null) {
         if (source != null) _bookSource.value = source
         _chapterList.value = toc
-        initMangaData(book, prefetchedList = toc)
+        initMangaData(book)
         loadContent()
     }
 

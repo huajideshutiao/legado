@@ -20,11 +20,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEach
@@ -52,6 +54,7 @@ fun Modifier.zoomable(
     val eInk = LocalEInk.current
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
+    val haptic = LocalHapticFeedback.current
     val decaySpec = remember(density) { splineBasedDecay<Float>(density) }
     // 两个 pointerInput(Unit) 的手势协程启动后不再重启, 经 rememberUpdatedState 读最新值:
     // 比例/上限/回调在组合中变化(如 PhotoDialog 静态图切 GIF 帧改宽高比)时, 手势内仍读到旧值
@@ -206,7 +209,13 @@ fun Modifier.zoomable(
         }
         .pointerInput(Unit) {
             detectTapGestures(
-                onLongPress = currentOnLongPress?.let { { _: Offset -> it() } },
+                // Compose 手势不像 View.performLongClick 自带长按触感, 手动补上
+                onLongPress = currentOnLongPress?.let {
+                    { _: Offset ->
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        it()
+                    }
+                },
                 onTap = currentOnTap?.let { { _: Offset -> it() } },
                 onDoubleTap = { tap ->
                     cancelFling()

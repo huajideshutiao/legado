@@ -147,6 +147,9 @@ actual class ImageBitmapLoader actual constructor() {
         withContext(Dispatchers.IO) {
             runCatching {
                 when {
+                    // data: URI 内联图 (与 loadBitmap 的 data: 分支对齐, 原 app PhotoDialog
+                    // 的 base64 SVG 分支同源)
+                    url.startsWith("data:") -> parseDataUriBytes(url)
                     url.startsWith("bg://") -> {
                         val fileName = url.removePrefix("bg://")
                         // 优先 composeResources 打包原图, 其次本地缓存/CDN 兜底

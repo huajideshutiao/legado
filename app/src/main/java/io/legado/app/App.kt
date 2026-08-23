@@ -60,7 +60,6 @@ import io.legado.app.help.registerAndroidFileCacheProvider
 import io.legado.app.help.service.UpdateBookCallbacks
 import io.legado.app.help.service.registerAndroidServiceLauncher
 import io.legado.app.help.source.SourceHelp
-import io.legado.app.help.source.SourceUiEventBridge
 import io.legado.app.help.storage.Backup
 import io.legado.app.help.storage.registerAndroidBackupRestoreHook
 import io.legado.app.help.storage.registerAndroidPasswordProvider
@@ -180,10 +179,11 @@ class App : Application() {
         // app 端委托 ArchiveUtils/LibArchiveUtils (libarchive 全格式)
         ArchiveProviders.register(AndroidArchiveProvider)
         // Coil3 批 2: 设置 SingletonImageLoader.Factory, 让 app 端 AsyncImage / imageView.load 默认走
-        // fetcher 层注册防盗链 header 注入 + 共享 OkHttpClient 的 ImageLoader
+        // fetcher 层注册防盗链 header 注入 + 共享 OkHttpClient 的 ImageLoader;
+        // 走 androidBookImageLoader 单例, 与 BookImageLoaders 同一实例 (磁盘缓存同目录不可多实例)
         // MangaModelFetcher 已随漫画图片链路下沉到 buildBookImageLoader 内部注册
         coil3.SingletonImageLoader.setSafe {
-            io.legado.app.help.image.buildBookImageLoader(it)
+            io.legado.app.help.image.androidBookImageLoader(it)
         }
         // 注册 FileBook 平台 provider (commonMain FileBook object 经
         // FileBookProviders 调到 app 端 FileBookAccessorImpl, 含 importFromArchive /
@@ -236,7 +236,6 @@ class App : Application() {
         oldConfig = Configuration(resources.configuration)
         applyDayNightInit(this)
         registerActivityLifecycleCallbacks(LifecycleHelp)
-        SourceUiEventBridge.init()
         defaultSharedPreferences.registerOnSharedPreferenceChangeListener(AppConfig)
         // jsoup-compat 复用宿主共享 OkHttpClient,继承 CookieJar/限流/Cronet 拦截器
         org.jsoup.Jsoup.clientFactory = { okHttpClient }

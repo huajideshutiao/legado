@@ -151,10 +151,10 @@ fun MangaReaderRoute(
     // 目录弹窗显示开关 (窄屏目录入口, 对照阅读页 ReaderDialogEvent.Toc → TocDialogHost)
     var showTocDialog by remember { mutableStateOf(false) }
     val onOpenToc: () -> Unit = {
-        // 对照原版 MangaMenuAction.CATALOG: 迁移时漏传 IntentData (book + chapterList),
-        // Toc 界面章节来源 = IntentData.chapterList → 活动阅读注册表 → DB 兜底,
-        // 漫画章节未落库时只传 BookRef 会导致目录页空白
-        IntentData.book = screenModel.currentBook
+        // 目录的内存章节来源 = IntentData.chapterList → TocScreenModel 自身缓存 → DB 兜底
+        // (漫画不进 ActiveReadBookRegistry, 未落库的书只有这一条内存通路)。
+        // IntentData.book 不传: 目录直接收 screenModel.currentBook, 而 IntentData 是"取一次即
+        // 失效"的全局槽, 写了没人取会残留, 被后续深链/详情页的 IntentData.book 消费点捡走
         IntentData.chapterList = screenModel.chapterList
         // 目录弹窗 (对照阅读页 ReaderDialogEvent.Toc → TocDialogHost; 原 push Toc 全屏路由,
         // 迁移后选章经 onOpenChapter 直接处理, 不再走 RouteResults.TOC 回传)
@@ -222,7 +222,7 @@ fun MangaReaderRoute(
         },
         onPrevChapter = { screenModel.dispatch(MangaReaderUiEvent.PrevChapter) },
         onNextChapter = { screenModel.dispatch(MangaReaderUiEvent.NextChapter) },
-        onCenterItemChanged = { screenModel.onCenterItemChanged(it) },
+        onCenterItemChanged = { item, reanchored -> screenModel.onCenterItemChanged(item, reanchored) },
         onSeekToPage = { screenModel.seekToPage(it) },
         onRetry = { screenModel.dispatch(MangaReaderUiEvent.Retry) },
         onRefresh = { screenModel.dispatch(MangaReaderUiEvent.Refresh) },
@@ -358,7 +358,9 @@ fun MangaReaderRoute(
     // 选章跳转对齐原 RouteResults.TOC 回传消费 → OpenChapter 事件, 关闭由宿主回调处理)
     if (showTocDialog) {
         TocDialogHost(
-            book = book,
+            // 必须用阅读器现行书籍, 不能用路由快照 book: 换源后 currentBook 换了 bookUrl,
+            // 旧 url 的行已被删, 目录按旧 url 查库只会空白; 进度类字段也停在进入时的值
+            book = screenModel.currentBook ?: book,
             navigator = navigator,
             onOpenChapter = { index, pos ->
                 showTocDialog = false

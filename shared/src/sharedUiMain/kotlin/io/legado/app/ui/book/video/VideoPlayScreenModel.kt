@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
 import kotlin.concurrent.Volatile
 
@@ -139,34 +140,44 @@ class VideoPlayScreenModel : ScreenModel {
             shared.curChapterIndex, shared.chapterSize, shared.curChapterTitle,
             shared.loading, shared.error,
         ) { index, size, title, loading, error ->
-            _state.value.copy(
-                curChapterIndex = index,
-                chapterSize = size,
-                chapterTitle = title,
-                loading = loading,
-                error = error,
-                chapters = shared.chapters,
-            )
-        }.onEach {
-            _state.value = it
+            // 返回增量合并函数交给 update{} 原子完成: scope 是线程池, 本收集器与下面的
+            // 分辨率收集器、UI 线程直写并发操作同一个 _state, 非原子读改写会整字段丢更新
+            val chapters = shared.chapters
+            val merge: (VideoPlayUiState) -> VideoPlayUiState = { cur ->
+                cur.copy(
+                    curChapterIndex = index,
+                    chapterSize = size,
+                    chapterTitle = title,
+                    loading = loading,
+                    error = error,
+                    chapters = chapters,
+                )
+            }
+            merge
+        }.onEach { merge ->
+            val applied = _state.updateAndGet(merge)
             // 章节列表换了才重算标题 (对照 Activity chapterListData.observe → upDisplayTitles)
-            if (it.chapters !== lastTitledChapters) {
-                lastTitledChapters = it.chapters
-                upDisplayTitles(it.chapters)
+            if (applied.chapters !== lastTitledChapters) {
+                lastTitledChapters = applied.chapters
+                upDisplayTitles(applied.chapters)
             }
         }.launchIn(scope)
 
         // 分辨率列表 + 当前索引 → resolutionText/hasMultiResolution (对照 Activity resolutions.observe + updateResolutionText)
         combine(shared.resolutions, shared.videoSource) { resolutions, _ ->
-            _state.value.copy(
-                resolutions = resolutions,
-                currentResolutionIndex = shared.currentResolutionIndex,
-                hasMultiResolution = resolutions.size > 1,
-                resolutionText = if (resolutions.size > 1) {
-                    resolutions.getOrNull(shared.currentResolutionIndex)?.name
-                } else null,
-            )
-        }.onEach { _state.value = it }.launchIn(scope)
+            val currentIndex = shared.currentResolutionIndex
+            val merge: (VideoPlayUiState) -> VideoPlayUiState = { cur ->
+                cur.copy(
+                    resolutions = resolutions,
+                    currentResolutionIndex = currentIndex,
+                    hasMultiResolution = resolutions.size > 1,
+                    resolutionText = if (resolutions.size > 1) {
+                        resolutions.getOrNull(currentIndex)?.name
+                    } else null,
+                )
+            }
+            merge
+        }.onEach { merge -> _state.update(merge) }.launchIn(scope)
     }
 
     /** 标题净化规则后台计算 (对照 app VideoChapterGrid 内 upDisplayTitles) */

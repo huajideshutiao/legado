@@ -152,12 +152,15 @@ class AudioPlayManager(
             while (isActive) {
                 subCount.first { it > 0 }
                 val curLrc = AudioPlayShared.durLrcData ?: break
+                if (curLrc.isEmpty()) break
                 // seek 场景用目标位置扫描 (见函数 KDoc: 引擎 seek 异步, currentPosition 未同步)
                 val curMs = (seekTargetMs ?: controller.currentPosition.toInt()) + lrcOffsetMs
-                // 续推: 上次位置仍在范围且没被新 lrc 失效就直接接上, 否则从 0 起重新单向扫
+                // 续推: 上次位置仍在范围且没被新 lrc 失效就直接接上, 否则从头重新单向扫。
+                // 首行时间戳还没到时是 -1 (无高亮行), 不能兜到 0 —— 那会让首行一上来就常亮
+                // (原版此处 position 为 Int?, 扫不到发 null, 被 UI 的 is Int 判定丢弃)
                 var position = lastLrcPosition.takeIf {
                     it in 0 until curLrc.size && curLrc[it].first <= curMs
-                } ?: 0
+                } ?: if (curLrc[0].first <= curMs) 0 else -1
                 while (position + 1 < curLrc.size && curLrc[position + 1].first <= curMs) {
                     position++
                 }
@@ -374,7 +377,8 @@ class AudioPlayManager(
             AudioPlayShared.durLrcData = it
             lastLrcPosition = -1
             postEvent(EventBus.AUDIO_LRC, it)
-            postEvent(EventBus.AUDIO_LRCPROGRESS, 0)
+            // 新歌词到货先清高亮 (-1 = 无当前行); 首行时间戳到了再由 upPlayProgressForLrc 发 0
+            postEvent(EventBus.AUDIO_LRCPROGRESS, -1)
             // 歌词到货后显式启动推进协程 (STATE_READY 可能早于歌词加载完成)
             upPlayProgressForLrc()
         }.onError {

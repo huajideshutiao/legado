@@ -69,7 +69,12 @@ class MangaRenderState {
     // ---- 由调用方注入的回调 ----
     var onAction: (Int) -> Unit = {}
     var onLongTap: () -> Boolean = { false }
-    var onCenterItemChanged: (Int) -> Unit = {}
+    /**
+     * 居中页变化。第二参 = 本次上报是否来自 items 重建后的"按 key 重锚"而非真实滚动
+     * (见 [MangaRenderLayer] 内的基线判定): 重锚不代表用户滚动, 不得据此跨章,
+     * 但它携带的页码是有效的, 调用方应照常同步章内页码。
+     */
+    var onCenterItemChanged: (Int, Boolean) -> Unit = { _, _ -> }
     var onScrollIdle: () -> Unit = {}
     var onAutoPageTick: () -> Unit = {}
     var onGifTurnPage: () -> Boolean = { false }
@@ -312,6 +317,16 @@ class MangaRenderState {
     )
 
     var pendingScroll by mutableStateOf<PendingScroll?>(null)
+
+    /**
+     * 等待跳转定位中 (初次打开/菜单切章/目录选章/重载)。
+     *
+     * 只表达"这轮内容就绪后需要定位到 contentPos", 由内容层置位、[scrollToPosition] 的请求
+     * 生效后由渲染层清除。**不要**用它门控居中页上报: 它在 LaunchedEffect 里置位, 而桌面端
+     * 同一帧 layout 先于 effect 执行, 上报会早于置位 —— 上报的抑制改由 [MangaRenderLayer]
+     * 内的 "items 引用变化那次只刷基线" 完成。
+     */
+    var awaitingJump by mutableStateOf(true)
 
     /**
      * 定位到条目(原 scrollToPositionWithOffset)；onApplied 在定位生效后回调。

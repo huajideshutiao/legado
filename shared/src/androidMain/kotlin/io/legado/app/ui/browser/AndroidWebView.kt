@@ -3,7 +3,6 @@ package io.legado.app.ui.browser
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
-import android.net.Uri
 import android.os.Build
 import android.util.AttributeSet
 import android.view.View
@@ -35,12 +34,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.documentfile.provider.DocumentFile
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import io.legado.app.constant.AppConst
 import io.legado.app.help.config.AppConfigProviders
-import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.http.CookieStoreProviders
 import io.legado.app.help.toast.Toasters
@@ -49,7 +46,7 @@ import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.OrientationPolicy
 import io.legado.app.ui.root.PlatformServiceProviders
-import io.legado.app.utils.DocumentUtils
+import io.legado.app.ui.root.imageSaveFileName
 import io.legado.app.utils.EscapeUtils
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.splitNotBlank
@@ -64,9 +61,6 @@ import legado.shared.generated.resources.save_success
 import legado.shared.generated.resources.select_folder
 import org.jetbrains.compose.resources.stringResource
 import java.net.URLDecoder
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /**
  * Android 端 WebView 平台实现 (供 [LocalWebViewSlot] 注入)。
@@ -114,63 +108,33 @@ fun AndroidWebView(
     var imageToSave by remember { mutableStateOf<String?>(null) }
     // 下载确认 (url to fileName), 非空时弹下载对话框
     var downloadRequest by remember { mutableStateOf<Pair<String, String>?>(null) }
-    // 上次保存目录 (对照原 ACache imagePathKey: 保存到上次目录, 失败时清除)
-    var lastImageDir by remember {
-        mutableStateOf(PreferenceProviders.get().getString(AppConst.imagePathKey))
-    }
     val saveSuccessText = stringResource(Res.string.save_success)
 
-    // 下载图片字节并写入目录 (对照原 FileUtils.saveImage(url, dirUri) + WebViewModel.saveImage)
-    // 注意: 局部函数不可前向引用, doSaveImage 被 pickDirAndSave/saveImage 依赖, 故排在最前
-    fun doSaveImage(pic: String, dirUri: String) {
+    // 下载图片字节 → 落盘 (对照原 FileUtils.saveImage(url, dirUri) + WebViewModel.saveImage;
+    // 目录记忆与失败清除都在 FilePickerService.saveImageRememberingDir 里,
+    // forcePickDir = 长按菜单的"选择文件夹")
+    fun saveImage(pic: String, forcePickDir: Boolean = false) {
         scope.launch(IoDispatcher) {
             runCatching {
                 // data: 前缀自动解包 (原 urlOrBase64ToBytes 的 base64 分支)
                 val bytes = AnalyzeUrlCore(
                     pic, coroutineContext = coroutineContext
                 ).getByteArrayAwait()
-                val dirDoc = DocumentFile.fromTreeUri(context, Uri.parse(dirUri))
-                    ?: error("目录不可用")
-                val ext = pic.substringAfterLast('.', "").let {
-                    if (it.length <= 5 && it.matches(Regex("[a-zA-Z0-9]+"))) ".$it" else ".jpg"
+                PlatformServiceProviders.get().files
+                    .saveImageRememberingDir(imageSaveFileName(pic), bytes, forcePickDir)
+            }.onSuccess { saved ->
+                val text = when (saved) {
+                    true -> saveSuccessText
+                    false -> "保存图片失败"
+                    null -> null // 用户取消选目录: 静默
                 }
-                val name = SimpleDateFormat("yy-MM-dd-HH-mm-ss", Locale.getDefault())
-                    .format(Date()) + ext
-                val file = DocumentUtils.createFileIfNotExist(dirDoc, name, mimeType = "image/*")
-                    ?: error("创建文件失败")
-                // 2026-08-04: documentfile 无 openOutputStream(官方指引 ContentResolver), 此处为标准用法。
-                val os = context.contentResolver.openOutputStream(file.uri, "w")
-                    ?: error("打开文件失败")
-                os.use { it.write(bytes) }
-            }.onSuccess {
-                withContext(Dispatchers.Main) { Toasters.get().toast(saveSuccessText) }
+                text?.let { withContext(Dispatchers.Main) { Toasters.get().toast(it) } }
             }.onFailure { e ->
-                // 对照原 WebViewModel.saveImage.onError: 清目录缓存并提示
-                PreferenceProviders.get().remove(AppConst.imagePathKey)
+                // 对照原 WebViewModel.saveImage.onError
                 withContext(Dispatchers.Main) {
                     Toasters.get().toast("保存图片失败:${e.message}")
                 }
             }
-        }
-    }
-
-    // 选目录后保存 (对照原 setupImageLongClick 的 selectFolder 分支)
-    fun pickDirAndSave(pic: String) {
-        scope.launch(IoDispatcher) {
-            // pickDirectory 内部 runBlocking 等主线程回调, 必须在 IO 线程调用
-            val dir = PlatformServiceProviders.get().files.pickDirectory() ?: return@launch
-            lastImageDir = dir
-            PreferenceProviders.get().putString(AppConst.imagePathKey, dir)
-            doSaveImage(pic, dir)
-        }
-    }
-
-    // 保存: 有上次目录直接存, 否则先选目录 (对照原 WebViewActivity.saveImage)
-    fun saveImage(pic: String) {
-        if (lastImageDir.isNullOrEmpty()) {
-            pickDirAndSave(pic)
-        } else {
-            doSaveImage(pic, lastImageDir)
         }
     }
 
@@ -346,7 +310,7 @@ fun AndroidWebView(
             dismissButton = {
                 TextButton(onClick = {
                     imageToSave = null
-                    pickDirAndSave(pic)
+                    saveImage(pic, forcePickDir = true)
                 }) { Text(stringResource(Res.string.select_folder)) }
             },
         )

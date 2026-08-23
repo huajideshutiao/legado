@@ -355,19 +355,13 @@ class AudioPlayScreenModel : ScreenModel {
      * 计数: upData 分支(重进同书)不会重算 simulatedChapterSize, 首次进入目录未就绪时
      * 其值为 0, 重进仍为 0 → 列表循环/切章边界失效。
      *
-     * [allowCached] 为 true 时 (目录面板入口) 若 [AudioPlayShared] 已有同书目录直接复用,
-     * 避免与 Init 的异步加载并发重复回源; Init 走 false, 保持原版"每次进入都重新确保目录
-     * (handoff 可能带换源后的新目录)"的语义。
+     * 不读 [AudioPlayShared.chapterList] 当缓存: 它是进程级单例, 可能是上一次播同一本书
+     * 留下的旧目录。原版每次进播放页都无条件 `upBook` 重装再覆盖 `AudioPlay.chapterList`,
+     * 单例只是写入目标 + 会话内按章查找的快捷方式, 从不用来跳过装载。之前这里有个
+     * allowCached 快路径 (只校 bookUrl 就复用), 于是详情页刷新过目录后, 交接表和库都是新的
+     * 却永远轮不到 —— 表现为"详情页/目录页看到新目录, 进播放页还是旧的"。
      */
-    suspend fun ensureChapterList(
-        book: Book,
-        allowCached: Boolean = true,
-    ): List<BookChapter> {
-        if (allowCached) {
-            AudioPlayShared.chapterList
-                ?.takeIf { it.firstOrNull()?.bookUrl == book.bookUrl }
-                ?.let { return it }
-        }
+    suspend fun ensureChapterList(book: Book): List<BookChapter> {
         val handoff = IntentData.chapterList
             ?.takeIf { it.firstOrNull()?.bookUrl == book.bookUrl }
         val dbList = handoff ?: runCatching {

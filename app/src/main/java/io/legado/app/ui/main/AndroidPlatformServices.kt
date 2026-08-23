@@ -154,6 +154,16 @@ private class AndroidFilePickerService(
 
     // 选目录: OpenDocumentTree (对照 app 端 HandleFileDialog.selectDocTree),
     // 选中后 takePersistableUriPermission 保证重启后仍可访问
+    override val supportsDirWrite: Boolean = true
+
+    // 写进已选目录 (对照 app 端 FileUtils.saveImage(dirUri): FileDoc 兼容 content:// 与 file://)
+    override fun writeImageToDir(dir: String, fileName: String, bytes: ByteArray): Boolean =
+        runCatching {
+            val picFile = FileDoc.fromDir(dir.toUri()).createFileIfNotExist(fileName)
+            picFile.openOutputStream().getOrThrow().use { it.write(bytes) }
+            true
+        }.getOrDefault(false)
+
     override fun pickDirectory(): String? = runBlocking {
         withContext(Dispatchers.Main) { openDocumentTreePicker.launch(null) }?.let { uri ->
             val modeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or

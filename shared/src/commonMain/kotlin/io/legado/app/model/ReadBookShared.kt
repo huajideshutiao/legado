@@ -1035,12 +1035,15 @@ open class ReadBookShared : CoroutineScope {
                 book.durChapterIndex = durChapterIndexValue
                 book.durChapterPos = durChapterPosValue *
                     (if (curChapter?.isLastIndex(durPageIndexValue) == true) -1 else 1)
-                runBlockingInScope(EmptyCoroutineContext) {
-                    AppDbProviders.get().bookChapterDao.getChapter(
-                        book.bookUrl,
-                        durChapterIndexValue
-                    )
-                }?.let {
+                // 每翻一页都会走这里: 章名先取内存目录, 内存没有才兜底查库
+                // (原来无条件 runBlockingInScope 查库 = 热路径上的阻塞 IO)
+                (chapterListValue?.getOrNull(durChapterIndexValue)
+                    ?: runBlockingInScope(EmptyCoroutineContext) {
+                        AppDbProviders.get().bookChapterDao.getChapter(
+                            book.bookUrl,
+                            durChapterIndexValue
+                        )
+                    })?.let {
                     book.durChapterTitle = it.getDisplayTitle(
                         ContentProcessorProviders.get().getTitleReplaceRules(book),
                         book.getUseReplaceRule()

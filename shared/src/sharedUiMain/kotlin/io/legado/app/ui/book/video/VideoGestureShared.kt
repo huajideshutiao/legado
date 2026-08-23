@@ -7,8 +7,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.legado.app.utils.format
@@ -183,6 +185,7 @@ fun VideoGestureOverlay(
     modifier: Modifier,
     deadZone: Dp = 15.dp,
 ) {
+    val haptic = LocalHapticFeedback.current
     Box(
         modifier
             .pointerInput(handler, locked) {
@@ -190,7 +193,10 @@ fun VideoGestureOverlay(
                 detectTapGestures(
                     onTap = { handler.onSingleTap() },
                     onDoubleTap = { handler.onDoubleTap() },
-                    onLongPress = { handler.onLongPress() },
+                    onLongPress = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        handler.onLongPress()
+                    },
                 )
             }
             .pointerInput(handler, locked, deadZone) {

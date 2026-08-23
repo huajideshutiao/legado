@@ -734,9 +734,8 @@ private fun runDesktopApp() = application {
         ) {
             AppTheme {
 
-                // 对照 app 端 App.kt:132 SourceUiEventBridge.init(): desktop 无 Activity,
-                // 改用 Composable 宿主订阅 FlowBus(SOURCE_UI_REQUEST) 弹 Compose Dialog
-                // (实现见 shared/sharedUiMain 的 SourceUiEventBridgeHost)
+                // 书源 JS 弹窗事件桥宿主: 订阅 FlowBus(SOURCE_UI_REQUEST) 弹 Compose Dialog
+                // (四端同一份, 实现见 shared/sharedUiMain 的 SourceUiEventBridgeHost)
                 SourceUiEventBridgeHost()
                 // 桌面端命令式对话框宿主: PlatformCapabilities 的同步方法经 DesktopDialogs 推请求
                 DesktopDialogHost()

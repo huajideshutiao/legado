@@ -134,6 +134,9 @@ private suspend fun ohosLoadImageBytes(
     bookSource: BookSource?,
     isCover: Boolean,
 ): ByteArray? = when {
+    // data: URI 内联图 (与 loadBitmap 的 data: 分支对齐)
+    url.startsWith("data:") -> parseDataUriBytes(url)
+
     // bg:// 内置背景图: 原版远程下载语义 (全图不随包, 本地缓存一级兜底)
     url.startsWith("bg://") -> ohosLoadBgBytes(url.removePrefix("bg://"))
 

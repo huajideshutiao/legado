@@ -156,7 +156,12 @@ object AudioPlayShared {
             resetData(book)
             return
         }
-        // 重进同书不走 resetData: 目录已就位时重算章节计数, 否则 simulatedChapterSize 停留在
+        // 重进同书不走 resetData (它会 stop() 打断播放), 但书籍快照要换成新的。
+        // 原版 upData 也不写 this.book —— 这里刻意加, 因为目录弹窗现在收
+        // AudioPlayShared.book 作"现行书籍"(换源后 route 快照的 bookUrl 已失效),
+        // 而目录的显示上界读 book.totalChapterNum: 单例里的书一陈旧, 新增章节就被截掉
+        this.book = book
+        // 目录已就位时重算章节计数, 否则 simulatedChapterSize 停留在
         // 旧值(首次进入目录未就绪时为 0), 播放完 next() 静默 return → 不切下一首 (对照 origin resetData)
         if (!chapterList.isNullOrEmpty()) {
             chapterSize = chapterList!!.size

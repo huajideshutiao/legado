@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -88,29 +89,36 @@ class TocScreenModel(
     }
 
     // ===== 书籍初始化 =====
+    //
+    // 注: 本类所有 _state 写入必须走 update {} (CAS)。scope 跑在 Dispatchers.Default,
+    // 章节表/缓存文件名/净化标题/书签四条协程分别在 Default/IO 线程上并发读改写同一个 state,
+    // 用 `_state.value = _state.value.copy(...)` 会整字段丢更新 —— 丢掉 chapters 就是"目录空白"。
 
     private fun setBook(book: Book) {
-        val cur = _state.value
-        if (cur.book?.bookUrl == book.bookUrl) {
+        if (_state.value.book?.bookUrl == book.bookUrl) {
             // 同书: 仅同步展示信息 (底部当前章信息/高亮), 不重置列表/滚动/卷折叠——
             // 弹窗形态下 book 实例随阅读页书籍状态变化 (如目录选章节后 dur 更新) 会产生
             // 新实例, 若走全量刷新会重置列表并滚动定位, 正是"选章节后列表跳位+闪烁"来源;
             // 对照原版: 目录 Activity 打开期间书籍数据变化不重置目录列表
-            _state.value = cur.copy(
-                book = book,
-                durChapterIndex = book.durChapterIndex,
-                isLocalBook = book.isLocal,
-            )
+            _state.update {
+                it.copy(
+                    book = book,
+                    durChapterIndex = book.durChapterIndex,
+                    isLocalBook = book.isLocal,
+                )
+            }
             return
         }
         memoryChapterList = null
-        _state.value = cur.copy(
-            book = book,
-            durChapterIndex = book.durChapterIndex,
-            isLocalBook = book.isLocal,
-            useReplace = AppConfigProviders.get().tocUiUseReplace,
-            countWords = AppConfigProviders.get().tocCountWords,
-        )
+        _state.update {
+            it.copy(
+                book = book,
+                durChapterIndex = book.durChapterIndex,
+                isLocalBook = book.isLocal,
+                useReplace = AppConfigProviders.get().tocUiUseReplace,
+                countWords = AppConfigProviders.get().tocCountWords,
+            )
+        }
         upChapterList(null)
         initCacheFileNames(book)
         upBookmarks()
@@ -119,12 +127,12 @@ class TocScreenModel(
     // ===== 搜索 =====
 
     private fun setSearchMode(active: Boolean) {
-        _state.value = _state.value.copy(searching = active)
+        _state.update { it.copy(searching = active) }
         if (!active && _state.value.searchKey.isNotEmpty()) setQuery("")
     }
 
     private fun setQuery(query: String) {
-        _state.value = _state.value.copy(searchKey = query)
+        _state.update { it.copy(searchKey = query) }
         upChapterList(query)
         upBookmarks()
     }
@@ -171,21 +179,24 @@ class TocScreenModel(
             if (chapter.index >= dur) break
             scrollPos = position
         }
-        val cur = _state.value
-        _state.value = cur.copy(
-            chapters = list,
-            collapsedVolumes = emptySet(),
-            chapterScroll = TocScrollCmd(scrollPos, cur.chapterScroll.tick + 1),
-        )
+        _state.update {
+            it.copy(
+                chapters = list,
+                collapsedVolumes = emptySet(),
+                chapterScroll = TocScrollCmd(scrollPos, it.chapterScroll.tick + 1),
+            )
+        }
         displayTitles.clear()
         upDisplayTitles(scrollPos)
     }
 
     private fun toggleVolume(volume: BookChapter) {
-        val cur = _state.value.collapsedVolumes
-        _state.value = _state.value.copy(
-            collapsedVolumes = if (volume.index in cur) cur - volume.index else cur + volume.index
-        )
+        _state.update {
+            val cur = it.collapsedVolumes
+            it.copy(
+                collapsedVolumes = if (volume.index in cur) cur - volume.index else cur + volume.index
+            )
+        }
     }
 
     /** 净化标题异步计算，从定位处向两侧填充(对照原 upDisplayTitles) */
@@ -202,7 +213,8 @@ class TocScreenModel(
                 val batch = HashMap(pending)
                 pending.clear()
                 displayTitles.putAll(batch)
-                _state.value = _state.value.copy(displayTitleMap = displayTitles.toMap())
+                val snapshot = displayTitles.toMap()
+                _state.update { it.copy(displayTitleMap = snapshot) }
             }
 
             val order = (startIndex until items.size) + (startIndex - 1 downTo 0)
@@ -228,16 +240,12 @@ class TocScreenModel(
     private fun initCacheFileNames(book: Book) {
         scope.launch(IoDispatcher) {
             val names = getChapterFiles(book)
-            _state.value = _state.value.copy(
-                cacheFileNames = _state.value.cacheFileNames + names
-            )
+            _state.update { it.copy(cacheFileNames = it.cacheFileNames + names) }
         }
     }
 
     private fun addCacheFile(name: String) {
-        _state.value = _state.value.copy(
-            cacheFileNames = _state.value.cacheFileNames + name
-        )
+        _state.update { it.copy(cacheFileNames = it.cacheFileNames + name) }
     }
 
     // ===== 菜单开关 =====
@@ -246,10 +254,10 @@ class TocScreenModel(
         // 对照 Activity: 先写 AppConfig, 再同步 state, 再重载章节
         val newValue = !AppConfigProviders.get().tocUiUseReplace
         AppConfigProviders.get().setTocUiUseReplace(newValue)
-        _state.value = _state.value.copy(useReplace = newValue)
+        _state.update { it.copy(useReplace = newValue) }
         displayTitleJob?.cancel()
         displayTitles.clear()
-        _state.value = _state.value.copy(displayTitleMap = emptyMap())
+        _state.update { it.copy(displayTitleMap = emptyMap()) }
         upChapterList(_state.value.searchKey)
     }
 
@@ -257,7 +265,7 @@ class TocScreenModel(
         // 对照 Activity: 先写 AppConfig, 再同步 state
         val newValue = !AppConfigProviders.get().tocCountWords
         AppConfigProviders.get().setTocCountWords(newValue)
-        _state.value = _state.value.copy(countWords = newValue)
+        _state.update { it.copy(countWords = newValue) }
     }
 
     /**
@@ -286,10 +294,12 @@ class TocScreenModel(
                 }
                 memoryChapterList = chapters
                 postEvent(EventBus.UP_BOOKSHELF, book.bookUrl)
-                _state.value = _state.value.copy(
-                    book = book,
-                    durChapterIndex = book.durChapterIndex,
-                )
+                _state.update {
+                    it.copy(
+                        book = book,
+                        durChapterIndex = book.durChapterIndex,
+                    )
+                }
                 upChapterList(null)
                 initCacheFileNames(book)
                 upBookmarks()
@@ -303,17 +313,11 @@ class TocScreenModel(
     }
 
     private fun scrollToChapter(pos: Int) {
-        val cur = _state.value
-        _state.value = cur.copy(
-            chapterScroll = TocScrollCmd(pos, cur.chapterScroll.tick + 1)
-        )
+        _state.update { it.copy(chapterScroll = TocScrollCmd(pos, it.chapterScroll.tick + 1)) }
     }
 
     private fun scrollToBookmark(pos: Int) {
-        val cur = _state.value
-        _state.value = cur.copy(
-            bookmarkScroll = TocScrollCmd(pos, cur.bookmarkScroll.tick + 1)
-        )
+        _state.update { it.copy(bookmarkScroll = TocScrollCmd(pos, it.bookmarkScroll.tick + 1)) }
     }
 
     // ===== 书签 =====
@@ -329,17 +333,17 @@ class TocScreenModel(
             }.catch {
                 AppLog.put("目录界面获取书签数据失败\n${it.message}", it)
             }.flowOn(IoDispatcher).collect { list ->
-                val dur = _state.value.durChapterIndex
-                var scrollPos = 0
-                for ((position, bookmark) in list.withIndex()) {
-                    if (bookmark.chapterIndex >= dur) break
-                    scrollPos = position
+                _state.update { cur ->
+                    var scrollPos = 0
+                    for ((position, bookmark) in list.withIndex()) {
+                        if (bookmark.chapterIndex >= cur.durChapterIndex) break
+                        scrollPos = position
+                    }
+                    cur.copy(
+                        bookmarks = list,
+                        bookmarkScroll = TocScrollCmd(scrollPos, cur.bookmarkScroll.tick + 1),
+                    )
                 }
-                val cur = _state.value
-                _state.value = cur.copy(
-                    bookmarks = list,
-                    bookmarkScroll = TocScrollCmd(scrollPos, cur.bookmarkScroll.tick + 1),
-                )
             }
         }
     }

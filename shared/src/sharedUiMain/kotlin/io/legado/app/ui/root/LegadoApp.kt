@@ -136,9 +136,10 @@ fun LegadoApp(
         // 返回导航时缓存即将消失的页面 (pop 单个 / popTo 多个), 用于滑出动画;
         // 动画结束后由 effect 清空复位
         var outgoingEntries by remember { mutableStateOf<List<RouteEntry>>(emptyList()) }
-        // 返回动画期间收到前进导航 (目录链路 pop+push 同帧): 记待播方向, 返回段播完
-        // (出栈页滑出) 后连播前进段 (对齐原版三段转场: 目录滑出→详情可见→Reader 滑入)
-        var pendingForward by remember { mutableStateOf(false) }
+        // 目录链路 (pop 紧接 push, 如详情页→目录→选章节→阅读页): 本段按"单段前进"播 ——
+        // 滑出的是出栈页 (目录) 而非栈内倒数第二页, 中间页 (详情) 全程不露脸。
+        // 用户拍板 2026-08: 不要原版那种"目录滑出→详情闪一下→阅读页滑入"的三段转场
+        var forwardOverOutgoing by remember { mutableStateOf(false) }
         // 上次已消化(动画播完)的栈, 由下方动画 effect 更新, 组合阶段据此检测新导航
         val lastSettled = remember { mutableStateOf(entries) }
         // 转场动画平台 spec: 随导航事件读取 (Android 端每次动态读系统动画时长缩放, 即时生效)
@@ -155,19 +156,23 @@ fun LegadoApp(
             val forward = entries.size > lastSettled.value.size
             val sameSizeDiff = entries.size == lastSettled.value.size && entries != lastSettled.value
             when {
-                // 返回动画期间收到前进导航 (目录链路 pop+push): 不打断返回动画, 播完后连播前进段
+                // 返回动画刚起步就收到前进导航 (目录链路: pop 后 await 落库再 push, 间隔仅数毫秒):
+                // 直接切成单段前进, 出栈页 (目录) 继续作为滑出的旧页, 详情页不露脸。
+                // outgoingEntries 沿用返回段已算好的出栈页
                 animating && !navigatingForward && (forward || sameSizeDiff) -> {
-                    pendingForward = true
+                    navigatingForward = true
+                    forwardOverOutgoing = true
                 }
-                // 动画间隙同帧 pop+push: 按"先返回后前进"两段连播
+                // 动画间隙同帧 pop+push: 同样按单段前进播
                 !animating && sameSizeDiff -> {
-                    navigatingForward = false
+                    navigatingForward = true
+                    forwardOverOutgoing = true
                     outgoingEntries = lastSettled.value.filterNot { e -> entries.any { it.id == e.id } }
-                    pendingForward = true
                     animating = true
                 }
                 else -> {
                     navigatingForward = forward
+                    forwardOverOutgoing = false
                     // 返回导航时缓存即将消失的页面 (popTo 多个页面一并滑出, 消除中间页瞬消)
                     if (!forward) {
                         outgoingEntries = lastSettled.value.filterNot { e -> entries.any { it.id == e.id } }
@@ -176,8 +181,8 @@ fun LegadoApp(
                 }
             }
         }
-        // 返回导航时出栈页保留在栈尾滑出, 动画结束后由 effect 清空复位
-        val displayEntries = if (!navigatingForward) {
+        // 返回导航 (以及单段前进的目录链路) 时出栈页保留在栈尾滑出, 动画结束后由 effect 清空复位
+        val displayEntries = if (!navigatingForward || forwardOverOutgoing) {
             entries + outgoingEntries
         } else {
             entries
@@ -315,72 +320,39 @@ fun LegadoApp(
                 // 播完后的 retain → onCleared, 退出阅读回书架立即可见最新进度
                 screenModelStore.notifyPreRemoved(entries)
                 if (entries.size != lastSettled.value.size || entries != lastSettled.value) {
-                    if (pendingForward) {
-                        // 连播第一段 (返回): 出栈页滑出。动画进行中则从当前值续播 (不
-                        // snapTo(0) 跳回起点), 未开始则完整播; 时长按剩余比例折算保持总时长一致
-                        if (transition.value == 1f) transition.snapTo(0f)
-                        val remaining = (1f - transition.value).coerceIn(0f, 1f)
-                        transition.animateTo(
-                            1f,
-                            tween(
-                                durationMillis = (transitionSampler.popDurationMillis * remaining)
-                                    .toInt().coerceAtLeast(1),
-                                easing = if (useSystemTransition) LinearEasing
-                                else transitionSpec.popEasing.toComposeEasing(),
-                            )
+                    // 单段前进 (forwardOverOutgoing) 也走这里: 出栈页当作滑出的旧页,
+                    // 由 slidingIds 指向 outgoingEntries 完成 (见下方渲染块)。
+                    // 目录链路里 pop→push 只隔一次落库 (数毫秒), 此时返回动画进度≈0,
+                    // snapTo(0) 不产生可见跳变
+                    transition.snapTo(0f)
+                    transition.animateTo(
+                        1f,
+                        tween(
+                            durationMillis = if (navigatingForward) {
+                                transitionSampler.pushDurationMillis
+                            } else {
+                                transitionSampler.popDurationMillis
+                            },
+                            easing = if (navigatingForward) {
+                                if (useSystemTransition) LinearEasing
+                                else transitionSpec.pushEasing.toComposeEasing()
+                            } else {
+                                if (useSystemTransition) LinearEasing
+                                else transitionSpec.popEasing.toComposeEasing()
+                            },
                         )
-                        // 消化返回段: 移除出栈页后与 entries 的交集 (连按 pop 时可能不足一项)
-                        val settledAfterPop = entries.take(
-                            minOf(entries.size, lastSettled.value.size - 1)
-                        )
-                        lastSettled.value = settledAfterPop
-                        pendingForward = false
-                        outgoingEntries = emptyList()
-                        if (entries != settledAfterPop) {
-                            // 连播第二段 (前进): 新页滑入 (目录链路三段: 目录滑出→详情可见→Reader 滑入)
-                            navigatingForward = true
-                            transition.snapTo(0f)
-                            transition.animateTo(
-                                1f,
-                                tween(
-                                    durationMillis = transitionSampler.pushDurationMillis,
-                                    easing = if (useSystemTransition) LinearEasing
-                                    else transitionSpec.pushEasing.toComposeEasing(),
-                                )
-                            )
-                            lastSettled.value = entries
-                        }
-                        animating = false
-                    } else {
-                        transition.snapTo(0f)
-                        transition.animateTo(
-                            1f,
-                            tween(
-                                durationMillis = if (navigatingForward) {
-                                    transitionSampler.pushDurationMillis
-                                } else {
-                                    transitionSampler.popDurationMillis
-                                },
-                                easing = if (navigatingForward) {
-                                    if (useSystemTransition) LinearEasing
-                                    else transitionSpec.pushEasing.toComposeEasing()
-                                } else {
-                                    if (useSystemTransition) LinearEasing
-                                    else transitionSpec.popEasing.toComposeEasing()
-                                },
-                            )
-                        )
-                        lastSettled.value = entries
-                        outgoingEntries = emptyList()
-                        animating = false
-                    }
+                    )
+                    lastSettled.value = entries
+                    outgoingEntries = emptyList()
+                    forwardOverOutgoing = false
+                    animating = false
                 } else if (transition.value != 1f) {
                     // 动画中途导航被打断且栈规模不变 (如快速 push+pop): 复位动画,
                     // 否则页面会停在动画中间位; 同时清理滑出页/待播方向 (状态污染修复:
                     // 不清会残留已销毁页面, 后续返回时滑出幽灵页)
                     transition.snapTo(1f)
                     animating = false
-                    pendingForward = false
+                    forwardOverOutgoing = false
                     outgoingEntries = emptyList()
                 }
                 // ScreenModel 生命周期与栈绑定 (清理已出栈的 ScreenModel)
@@ -392,30 +364,25 @@ fun LegadoApp(
                 retainedEntryIds = currentIds
             }
             // 动画角色: top=动画后留存的栈顶页, slide=前进时的旧页或返回时的出栈页们;
-            // 返回段 (pendingForward 连播第一段) 期间栈顶是新页 (待入), 目标页是栈倒数第二
             val topEntry = entries.lastOrNull()
-            val slidingIds = remember(entries, outgoingEntries, navigatingForward) {
-                if (navigatingForward) {
+            // 滑出的旧页: 普通前进 = 栈内倒数第二; 返回 / 单段前进的目录链路 = 出栈页
+            val slidingIds = remember(entries, outgoingEntries, navigatingForward, forwardOverOutgoing) {
+                if (navigatingForward && !forwardOverOutgoing) {
                     entries.getOrNull(entries.lastIndex - 1)?.let { setOf(it.id) } ?: emptySet()
                 } else {
                     outgoingEntries.mapTo(mutableSetOf()) { it.id }
                 }
             }
-            // 每个 entry 用 key(entry.id) 固定组合身份: 前进/返回/连播 (pendingForward) 时
+            // 每个 entry 用 key(entry.id) 固定组合身份: 前进/返回/目录链路单段前进时
             // displayEntries 顺序会变化 (pop+push 同帧时出栈页被追加到新栈尾), 无 key 时
             // Compose 按组合位置匹配, 页面 remember 状态 (LazyGridState/remember(route)/
             // pagerState 等) 全部丢失 → 重建+重新查询+滚动回开头+闪烁; key 后状态随 entry
             // 存活, 对齐原版单例 Activity 复用语义 (返回页面不重建)
             displayEntries.forEach { entry ->
                 key(entry.id) {
-                val isTop = entry.id == topEntry?.id
-                // 返回段期间: 新页已入栈但停在屏幕外右侧待入, 不参与返回动画
-                val isPendingNew = pendingForward && !navigatingForward && isTop
-                val isTarget = if (isPendingNew) {
-                    entry.id == entries.getOrNull(entries.lastIndex - 1)?.id
-                } else {
-                    isTop
-                }
+                // 栈顶即本段的目标页 (前进=滑入的新页, 返回=露出的目标页);
+                // 目录链路单段前进时栈顶就是阅读页, 详情页不参与本段 (落进下方隐藏分支)
+                val isTarget = entry.id == topEntry?.id
                 val isSliding = entry.id in slidingIds
                 Box(
                     Modifier
@@ -432,12 +399,6 @@ fun LegadoApp(
                             // graphicsLayer 逐字一致), 系统动画采样器消费线性时钟 (曲线由系统
                             // 动画内部处理, 含 startOffset/fillBefore/fillAfter 语义)
                             val transform = when {
-                                isPendingNew -> transitionSampler.sample(
-                                    // 连播返回段中待入的新页: 固定起始位采样 (spec=屏外右侧待入;
-                                    // 系统动画=原位透明缩放待入, 即系统新窗口动画开始前的状态)
-                                    TransitionRole.PendingNew, 0f, size.width, size.height
-                                )
-
                                 isTarget -> transitionSampler.sample(
                                     if (navigatingForward) {
                                         TransitionRole.NewPage

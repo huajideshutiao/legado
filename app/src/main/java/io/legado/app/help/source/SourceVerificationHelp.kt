@@ -1,11 +1,13 @@
 package io.legado.app.help.source
 
+import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.BaseSource
+import io.legado.app.data.entities.SourceUiRequest
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.ui.association.VerificationCodeDialog
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
+import io.legado.app.utils.FlowBus
 import io.legado.app.utils.isMainThread
 
 /**
@@ -15,7 +17,7 @@ import io.legado.app.utils.isMainThread
  * 注册并唤醒等待线程) 下沉到 [SourceVerificationHelpShared] (shared commonMain),
  * 供 desktop/iOS/鸿蒙 复用。
  *
- * UI 部分 (VerificationCodeDialog.display / 推送 AppRoute.WebView) 经
+ * UI 部分 (验证码事件 / 推送 AppRoute.WebView) 经
  * [VerificationUiProvider] 注入, 本文件 [VerificationUiProviderImpl] 为 app 端实现,
  * 在 App.onCreate 经 [registerAndroidVerificationUiProvider] 注册。
  *
@@ -94,19 +96,18 @@ object SourceVerificationHelp {
 /**
  * [VerificationUiProvider] 的 app 端实现。
  *
- * 委托 [VerificationCodeDialog.display] / [AppNavigatorProviders] 推送 [AppRoute.WebView],
+ * 验证码发 [SourceUiRequest.VerificationCode] 事件 (共享对话框宿主消费),
+ * 网页验证经 [AppNavigatorProviders] 推送 [AppRoute.WebView],
  * 在 App.onCreate 经 [registerAndroidVerificationUiProvider] 注册
  * 到 [VerificationUiProviders]。
  */
 object VerificationUiProviderImpl : VerificationUiProvider {
 
     override fun showVerificationCodeDialog(url: String, source: BaseSource) {
-        VerificationCodeDialog.display(
-            url,
-            source.getKey(),
-            source.getTag(),
-            source.getSourceType()
-        )
+        // 与 desktop/iOS/鸿蒙同链: 发事件, 由 shared SourceUiEventBridgeHost 弹共享
+        // VerificationCodeDialog 采集并回填 (原 app 端平行实现的对话框已删)
+        FlowBus.with(EventBus.SOURCE_UI_REQUEST)
+            .tryEmit(SourceUiRequest.VerificationCode(source, url))
     }
 
     override fun startBrowser(

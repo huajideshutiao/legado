@@ -23,7 +23,6 @@ import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.help.toast.Toasters
-import io.legado.app.model.AudioPlayShared
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.book.toc.TocScreen
@@ -87,25 +86,6 @@ fun TocRoute(
             }
         },
         // 目录规则应用由 TocContent 内部完成 (对照原版 TocActivity.upBookAndToc), 路由无额外动作
-    )
-}
-
-/**
- * 进入目录前把音频播放器的实时章节状态同步到书籍快照。
- *
- * 原版 AudioPlay 单例与 Book 为同实例引用, 切章 (skipTo/prev/next) 后
- * book.durChapterIndex/durChapterTitle 即时最新, 目录页 initBook 读到即正确;
- * KMP 化后 Book 是不可变值对象, 导航参数里的 book 是切章前拷贝,
- * 直接使用会导致"当前章"高亮与顶栏章节信息落后 (对照原版同一引用语义)。
- * 以 AudioPlayShared.book (skipTo 同步写 index, saveRead 异步写净化标题) 为准。
- */
-private fun Book.syncDurChapterFromAudioPlay(): Book {
-    val audio = AudioPlayShared.book ?: return this
-    if (audio.bookUrl != this.bookUrl) return this
-    if (audio.durChapterIndex == durChapterIndex) return this
-    return copy(
-        durChapterIndex = audio.durChapterIndex,
-        durChapterTitle = audio.durChapterTitle ?: durChapterTitle,
     )
 }
 
@@ -185,10 +165,11 @@ fun TocContent(
 
     // 初始化书籍数据: 只按 bookUrl 重启——弹窗形态下 book 参数随阅读页书籍状态变化产生新
     // 实例 (如目录选章节后 dur 更新), 若按实例重启会反复触发 setBook 全量刷新 → 列表重置/
-    // 滚动/闪烁; 对照原版目录 Activity 打开期间书籍数据变化不重置目录列表。进入目录前先把
-    // 音频播放器的实时章节状态同步到快照, 见 syncDurChapterFromAudioPlay
+    // 滚动/闪烁; 对照原版目录 Activity 打开期间书籍数据变化不重置目录列表。
+    // 各宿主必须传阅读器/播放器的现行书籍 (不是路由快照), 否则当前章高亮、滚动定位与
+    // totalChapterNum 截断都停在进页时的旧值
     LaunchedEffect(book.bookUrl) {
-        screenModel.dispatch(TocUiEvent.SetBook(book.syncDurChapterFromAudioPlay()))
+        screenModel.dispatch(TocUiEvent.SetBook(book))
     }
 
     // 对照 Activity.observeLiveBus: SAVE_CONTENT 事件触发 cacheFileNames 增量更新
@@ -239,9 +220,11 @@ fun TocContent(
             override fun reverseChapterList() {
                 val current = screenModel.state.value.chapters
                 if (current.isEmpty()) return
-                val reversed = current.reversed().apply {
-                    forEachIndexed { i, c -> c.index = i }
-                }
+                // 产出副本, 不就地改 index: 这些 BookChapter 实例是经 IntentData 从
+                // 阅读器/播放器内存目录交接过来的同一批对象, 就地改 .index 会让它们的
+                // "列表下标 ↔ chapter.index" 映射整体翻转 (列表顺序没动而 index 全反),
+                // 之后阅读器按下标取章全部错位 (原版 ChapterListFragment 同样就地改, 是上游缺陷)
+                val reversed = current.reversed().mapIndexed { i, c -> c.copy(index = i) }
                 screenModel.dispatch(TocUiEvent.ReverseChapterList(reversed))
                 val curBook = screenModel.state.value.book ?: return
                 curBook.config.reverseToc = !curBook.config.reverseToc

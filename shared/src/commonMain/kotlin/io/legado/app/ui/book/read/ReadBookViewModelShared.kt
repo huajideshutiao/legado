@@ -491,9 +491,11 @@ class ReadBookViewModelShared(
         val index = readBook.durChapterIndex.value
         processedContentCache.remove(index)
         launchChapterLoad(index) {
-            val chapter = runCatching {
-                AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, index)
-            }.getOrNull()
+            // 内存目录优先, 库兜底 (口径同本类其它章节解析处)
+            val chapter = readBook.chapterList.value.getOrNull(index)
+                ?: runCatching {
+                    AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, index)
+                }.getOrNull()
             if (chapter != null) {
                 runCatching { BookStorageProviders.get().delContent(book, chapter) }
             }
@@ -1078,9 +1080,11 @@ class ReadBookViewModelShared(
             val durChapterPos = readBook.durChapterPos.value *
                 (if (textChapter != null && textChapter.isLastIndex(readBook.durPageIndexValue)) -1 else 1)
             // durChapterTitle 过 titleReplaceRules（原版 ReadBook.saveRead:905-910）
-            val chapter = runCatching {
-                AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, durChapterIndex)
-            }.getOrNull()
+            // 内存目录优先, 库兜底 (存进度是热路径, 不该每次无条件查库)
+            val chapter = readBook.chapterList.value.getOrNull(durChapterIndex)
+                ?: runCatching {
+                    AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, durChapterIndex)
+                }.getOrNull()
             val durChapterTitle = chapter?.let { c ->
                 runCatching {
                     c.getDisplayTitle(

@@ -52,7 +52,7 @@ import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * 跨平台图片验证码对话框 (对照 app 端 `io.legado.app.ui.association.VerificationCodeDialog`)。
+ * 跨平台图片验证码对话框 (四端唯一实现; 原 app 端 association.VerificationCodeDialog 平行实现已删)。
  *
  * desktop/iOS/鸿蒙的 [io.legado.app.help.source.VerificationUiProvider] 经
  * SourceUiRequest.VerificationCode 事件驱动本对话框, 采集验证码后由调用方回填
@@ -66,8 +66,8 @@ import org.jetbrains.compose.resources.stringResource
  * [SourceHelp.enableSource](false), 删除先确认再走 [SourceHelp.deleteSource],
  * 操作完成后关对话框 (调用方 onDismiss 按 checkResult 语义回填空串)。
  *
- * 点图放大: 对照 app 端 setOnClickListener → PhotoDialog(imageUrl, sourceOrigin),
- * 走 sharedUiMain [PhotoViewDialog] (重新拉取, 与 app 端 PhotoDialog 重新请求行为一致)。
+ * 点图放大: 对照原版 setOnClickListener → PhotoDialog(imageUrl, sourceOrigin),
+ * 走 sharedUiMain [PhotoViewDialog] (重新拉取, 与原版 PhotoDialog 重新请求行为一致)。
  *
  * @param url 验证码图片 URL
  * @param source 书源/订阅源 (取 tag 展示; BookSource 时图片请求带源 header)
@@ -84,7 +84,7 @@ fun VerificationCodeDialog(
     val colors = AppTheme.colors
     val scope = rememberCoroutineScope()
     var code by remember { mutableStateOf("") }
-    // 点图放大对话框状态 (null=隐藏; 对照 app 端点图 → PhotoDialog(imageUrl, sourceOrigin))
+    // 点图放大对话框状态 (null=隐藏; 对照原版点图 → PhotoDialog(imageUrl, sourceOrigin))
     var photoSrc by remember { mutableStateOf<String?>(null) }
     // 删除源确认对话框状态 (对照 app 端溢出菜单 → alert(sure_del) { yesButton { deleteSource } })
     var showDeleteConfirm by remember { mutableStateOf(false) }
@@ -163,7 +163,7 @@ fun VerificationCodeDialog(
                             .fillMaxWidth()
                             .heightIn(min = 100.dp, max = 200.dp)
                             .padding(vertical = 8.dp)
-                            // 点图放大 (对照 app 端 setOnClickListener → PhotoDialog)
+                            // 点图放大 (对照原版 setOnClickListener → PhotoDialog)
                             .clickable { photoSrc = url },
                     )
                 } else {
@@ -205,7 +205,7 @@ fun VerificationCodeDialog(
         )
     }
 
-    // 点图放大对话框 (验证码同 URL 每次返回不同图, 大图重新拉取与 app 端 PhotoDialog 行为一致)
+    // 点图放大对话框 (验证码同 URL 每次返回不同图, 大图重新拉取与原版 PhotoDialog 行为一致)
     photoSrc?.let { src ->
         PhotoViewDialog(
             src = src,

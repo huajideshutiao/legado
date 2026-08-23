@@ -146,7 +146,8 @@ private val mangaMenuKey = listOf(AppShortcut(Key.Menu))
  * @param onNextChapter 下一章
  * @param onPrevPage 上一页（提供后键盘上翻键优先调用，否则整屏回滚）
  * @param onNextPage 下一页（提供后键盘下翻键/空格优先调用，否则整屏前滚）
- * @param onCenterItemChanged 居中页变化（对照 app 端 onCenterItemChanged: 驱动跨章/进度）
+ * @param onCenterItemChanged 居中页变化（对照 app 端 onCenterItemChanged: 驱动跨章/进度）。
+ *   第二参 reanchored=true 表示本次上报来自 items 重建后的按 key 重锚而非滚动, 不得据此跨章
  * @param onSeekToPage SeekBar 拖动定位到章内页 (对照 app 端 skipToPage)
  * @param onRetry 错误重试
  * @param onOpenToc 打开目录回调
@@ -197,7 +198,7 @@ fun MangaReaderScreenContent(
     onNextChapter: () -> Unit,
     onPrevPage: (() -> Unit)? = null,
     onNextPage: (() -> Unit)? = null,
-    onCenterItemChanged: (BaseMangaPage) -> Unit = {},
+    onCenterItemChanged: (BaseMangaPage, Boolean) -> Unit = { _, _ -> },
     onSeekToPage: (Int) -> Unit = {},
     onRetry: () -> Unit,
     onRefresh: () -> Unit = {},
@@ -391,8 +392,8 @@ fun MangaReaderScreenContent(
     }
 
     // 居中页变化驱动跨章/进度/信息条 (对照 app 端 onCenterItemChanged)
-    renderState.onCenterItemChanged = { position ->
-        items.getOrNull(position)?.let(onCenterItemChanged)
+    renderState.onCenterItemChanged = { position, reanchored ->
+        items.getOrNull(position)?.let { onCenterItemChanged(it, reanchored) }
     }
     // 仅在滚动彻底停止后装填居中页 GIF, 避免滑动途中提前播完停在末帧
     renderState.onScrollIdle = { renderState.syncGifAutoNextForCurrentPage() }
@@ -433,12 +434,12 @@ fun MangaReaderScreenContent(
     }
 
     // 初始/切章定位 (对照 app 端 upContent: loadingViewVisible && curFinish 时 scrollToPosition)。
-    // shared VM 在 upContent 内已把 loading 置回 false, 故用本地标记记住"这轮加载需要定位"
-    var needJumpToContent by remember { mutableStateOf(true) }
-    LaunchedEffect(loading) { if (loading) needJumpToContent = true }
+    // shared VM 在 upContent 内已把 loading 置回 false, 故用 renderState.awaitingJump 记住
+    // "这轮加载需要定位" (居中页上报的抑制由渲染层的 items 基线负责, 不靠这个标记)
+    LaunchedEffect(loading) { if (loading) renderState.awaitingJump = true }
     // 菜单/目录切章同 loading 一样置位: 预载下一章时 loading 的 true→false 在 VM 同步
     // 调用内合并, UI 观察不到脉冲, 必须靠显式 jumpTick (见 ScreenModel.dispatch 注释)
-    LaunchedEffect(jumpTick) { if (jumpTick > 0) needJumpToContent = true }
+    LaunchedEffect(jumpTick) { if (jumpTick > 0) renderState.awaitingJump = true }
     // 重构 (对齐原版 upContent): 仅"跳转"场景 (初始打开/菜单切章/重载) 定位到内容位置;
     // 其余 items 变化 (滚动跨章/预载头部插入等结构性重建) 保持 LazyList 滚动位置,
     // 滚动连续性由列表自身位置保持 + 中心页上报 (onCenterItemChanged) 驱动。
@@ -446,8 +447,9 @@ fun MangaReaderScreenContent(
     // 判定互相干扰 (曾导致切章不更新/弹回旧章/闪烁)。
     LaunchedEffect(items, curFinish) {
         if (!curFinish || items.isEmpty()) return@LaunchedEffect
-        if (needJumpToContent) {
-            needJumpToContent = false
+        if (renderState.awaitingJump) {
+            // 标记不在这里清: 由渲染层在定位真正生效时清 (提前清会放开居中页上报,
+            // 旧滚动位置那一帧的相邻章条目就会触发跨章 —— 目录选章跳到隔壁章的来源)
             renderState.scrollToPosition(contentPos) {
                 // 初始定位不触发停稳回调, 手动装填首个当前页的 GIF
                 renderState.syncGifAutoNextForCurrentPage()
@@ -611,10 +613,9 @@ private fun MangaInfoBarOverlay(
             append(progressPercent)
         }
     }
-    val colors = AppTheme.colors
-    // 对照 ReaderInfoBarView: colorOnSurface/colorSurface 各取 alpha 200, 描边保证压在图片上可读
-    val fill = colors.primaryText.copy(alpha = 0.78f)
-    val outline = colors.background.copy(alpha = 0.78f)
+    // 固定白字黑描边: 页脚压在漫画图片上, 不随主题切换
+    val fill = Color.White.copy(alpha = 0.78f)
+    val outline = Color.Black.copy(alpha = 0.78f)
     Box(
         modifier
             .fillMaxWidth()

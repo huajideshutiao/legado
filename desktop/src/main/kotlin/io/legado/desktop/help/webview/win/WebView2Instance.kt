@@ -38,9 +38,6 @@ internal object WebView2Environment {
 
     private var pending: CompletableDeferred<Pointer?>? = null
 
-    // 强引用: handler 的 vtable 蹦床被 GC 后 native 回调即崩
-    private val retained = ArrayList<ComHandler>()
-
     /** 取(或懒创建)环境; runtime 不可用或创建失败返回 null。任意线程可调。 */
     suspend fun get(): Pointer? {
         environment?.let { return it }
@@ -83,7 +80,6 @@ internal object WebView2Environment {
                     return S_OK
                 }
             })
-            retained += handler
             val userDataDir = File(AppFilesDirs.get().cacheDir, "webview2")
                 .apply { mkdirs() }.absolutePath
             val hr = runtime.createEnvironment.invokeInt(
@@ -95,6 +91,7 @@ internal object WebView2Environment {
                     handler.pointer,
                 )
             )
+            handler.disown()
             if (hr != S_OK) {
                 AppLog.put("WebView2 环境创建调用失败 (HRESULT=${hex(hr)})")
                 deferred.complete(null)
@@ -115,9 +112,6 @@ internal class WebView2Instance private constructor(
     private val controller: Pointer,
     private val webview: Pointer,
 ) {
-
-    // 强引用: 事件 handler 生命周期必须覆盖整个实例
-    private val retained = ArrayList<ComHandler>()
 
     @Volatile
     private var closed = false
@@ -146,11 +140,10 @@ internal class WebView2Instance private constructor(
     @Volatile
     var toolbar: WebView2Toolbar? = null
 
-    suspend fun currentUrl(): String? = WebView2Loop.runOnLoop {
-        if (closed) null else readSource()
-    }
+    suspend fun currentUrl(): String? = WebView2Loop.runOnLoop { readSource() }
 
-    private fun readSource(): String? = PointerByReference()
+    /** 事件回调里也会调, 故 closed 守卫放在此处: close() 之后 webview 已 Release。 */
+    private fun readSource(): String? = if (closed) null else PointerByReference()
         .takeIf { vtbl(webview, Wv2.WV_GET_SOURCE, it) == S_OK }
         ?.let { takeWideString(it) }
 
@@ -190,17 +183,13 @@ internal class WebView2Instance private constructor(
                 return S_OK
             }
         })
-        synchronized(retained) { retained += handler }
         WebView2Loop.post {
-            if (closed || vtbl(webview, Wv2.WV_EXECUTE_SCRIPT, wide(script), handler.pointer) != S_OK) {
-                deferred.complete(null)
-            }
+            val handed = !closed &&
+                vtbl(webview, Wv2.WV_EXECUTE_SCRIPT, wide(script), handler.pointer) == S_OK
+            handler.disown()
+            if (!handed) deferred.complete(null)
         }
-        return try {
-            withTimeoutOrNull(timeoutMs) { deferred.await() }
-        } finally {
-            synchronized(retained) { retained -= handler }
-        }
+        return withTimeoutOrNull(timeoutMs) { deferred.await() }
     }
 
     /** 读 [url] 的全部 cookie (含 httpOnly), 拼成 "k=v; k=v"; 无 cookie 返回 null。 */
@@ -215,22 +204,19 @@ internal class WebView2Instance private constructor(
                 return S_OK
             }
         })
-        synchronized(retained) { retained += handler }
         // GetCookies 是异步的, manager 必须活到回调返回, 故 Release 推迟到 await 之后
         val managerBox = arrayOfNulls<Pointer>(1)
         WebView2Loop.post {
             val manager = cookieManager()
             managerBox[0] = manager
-            if (manager == null ||
-                vtbl(manager, Wv2.COOKIE_MGR_GET_COOKIES, wide(url), handler.pointer) != S_OK
-            ) {
-                deferred.complete(null)
-            }
+            val handed = manager != null &&
+                vtbl(manager, Wv2.COOKIE_MGR_GET_COOKIES, wide(url), handler.pointer) == S_OK
+            handler.disown()
+            if (!handed) deferred.complete(null)
         }
         return try {
             withTimeoutOrNull(timeoutMs) { deferred.await() }
         } finally {
-            synchronized(retained) { retained -= handler }
             managerBox[0]?.let { WebView2Loop.post { comRelease(it) } }
         }
     }
@@ -322,10 +308,12 @@ internal class WebView2Instance private constructor(
             // 与 DestroyWindow 同一任务: dispose 后队列残留任务见句柄为 null 直接跳过
             tb?.dispose()
             runCatching { vtbl(controller, Wv2.CTRL_CLOSE) }
+            // get_CoreWebView2 出参是 AddRef 过的; 少这次 Release 会让 CoreWebView2
+            // 连同它持有的事件 handler 永不回收
+            comRelease(webview)
             comRelease(controller)
             WebView2Loop.unhookWindow(hwnd)
             User32.INSTANCE.DestroyWindow(hwnd)
-            synchronized(retained) { retained.clear() }
         }
     }
 
@@ -347,8 +335,8 @@ internal class WebView2Instance private constructor(
                 return S_OK
             }
         })
-        retained += navCompleted
         vtbl(webview, Wv2.WV_ADD_NAVIGATION_COMPLETED, navCompleted.pointer, token)
+        navCompleted.disown()
 
         val navStarting = ComHandler(object : ComInvokeEventCb {
             override fun callback(self: Pointer, sender: Pointer?, args: Pointer?): Int {
@@ -365,8 +353,8 @@ internal class WebView2Instance private constructor(
                 return S_OK
             }
         })
-        retained += navStarting
         vtbl(webview, Wv2.WV_ADD_NAVIGATION_STARTING, navStarting.pointer, token)
+        navStarting.disown()
 
         // 资源嗅探才装: 全量拦截每个子请求开销不小, 非 sourceRegex 场景不需要
         if (!sniffResources) return
@@ -389,8 +377,8 @@ internal class WebView2Instance private constructor(
                 return S_OK
             }
         })
-        retained += resource
         vtbl(webview, Wv2.WV_ADD_WEB_RESOURCE_REQUESTED, resource.pointer, token)
+        resource.disown()
     }
 
     /** 必须在 loop 线程调用。 */
@@ -443,9 +431,6 @@ internal class WebView2Instance private constructor(
 
     companion object {
 
-        /** 创建期 handler 的强引用池 (创建完成即移除)。 */
-        private val creating = java.util.Collections.synchronizedList(ArrayList<ComHandler>())
-
         /**
          * 建实例。[visible] = false 为无头: 宿主窗口全程不显示 (屏幕外 + 无 WS_VISIBLE),
          * 但 controller 仍置可见, 保证 JS 与定时器照常跑。
@@ -460,7 +445,6 @@ internal class WebView2Instance private constructor(
         ): WebView2Instance? {
             val environment = WebView2Environment.get() ?: return null
             val deferred = CompletableDeferred<Pair<WinDef.HWND, Pointer>?>()
-            val handlerBox = arrayOfNulls<ComHandler>(1)
             WebView2Loop.post {
                 val hwnd = runCatching {
                     WebView2Loop.createWindow(
@@ -489,12 +473,10 @@ internal class WebView2Instance private constructor(
                         return S_OK
                     }
                 })
-                handlerBox[0] = handler
-                creating += handler
                 vtbl(environment, Wv2.ENV_CREATE_CONTROLLER, hwnd.pointer, handler.pointer)
+                handler.disown()
             }
             val created = withTimeoutOrNull(CREATE_TIMEOUT_MS) { deferred.await() }
-            handlerBox[0]?.let { creating.remove(it) }
             val (hwnd, controller) = created ?: run {
                 AppLog.put("WebView2 窗口/controller 创建超时或失败 (${CREATE_TIMEOUT_MS}ms)")
                 return null

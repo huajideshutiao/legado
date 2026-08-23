@@ -10,9 +10,9 @@ import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.utils.ImageUtils
-import io.legado.app.utils.InputStream
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.isFilePath
+import io.legado.app.utils.readAllAndClose
 import kotlin.coroutines.CoroutineContext
 
 /**
@@ -65,21 +65,4 @@ object MangaImageBytesLoader {
     }
 
     class ImageLoadException(message: String) : IllegalStateException(message)
-}
-
-/** 读全流并关闭 (commonMain 的 [InputStream] 门面没有 kotlin.io 的 readBytes 扩展)。 */
-private fun InputStream.readAllAndClose(): ByteArray {
-    try {
-        var buffer = ByteArray(64 * 1024)
-        var size = 0
-        while (true) {
-            if (size == buffer.size) buffer = buffer.copyOf(buffer.size * 2)
-            val read = read(buffer, size, buffer.size - size)
-            if (read <= 0) break
-            size += read
-        }
-        return buffer.copyOf(size)
-    } finally {
-        runCatching { close() }
-    }
 }

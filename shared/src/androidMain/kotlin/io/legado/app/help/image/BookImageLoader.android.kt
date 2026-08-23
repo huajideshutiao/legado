@@ -43,7 +43,7 @@ class AndroidBookImageLoader(
 
     private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-    private val imageLoader: ImageLoader by lazy { buildBookImageLoader(context) }
+    private val imageLoader: ImageLoader by lazy { androidBookImageLoader(context) }
 
     override fun loadImage(
         url: String,
@@ -141,6 +141,25 @@ class AndroidBookImageLoader(
 }
 
 /**
+ * Android 端共享 Coil3 ImageLoader 单例入口 (对照 iOS `iosCoilImageLoader` /
+ * 桌面 `jvmBookImageLoader`): [AndroidBookImageLoader] 与 app 端 SingletonImageLoader.Factory
+ * 必须共用同一实例 —— 同目录两个 DiskCache 各写一份 journal, 会互相驱逐对方的条目。
+ *
+ * 惰性构建 (首次取用才装配, 不把 OkHttp 初始化提前到 App.onCreate); 一律用 applicationContext,
+ * 避免首次 `SingletonImageLoader.get(activity)` 把 Activity 引用留在进程级 loader 里。
+ */
+@Volatile
+private var sharedImageLoader: ImageLoader? = null
+private val sharedImageLoaderLock = Any()
+
+fun androidBookImageLoader(context: Context): ImageLoader =
+    sharedImageLoader ?: synchronized(sharedImageLoaderLock) {
+        sharedImageLoader ?: buildBookImageLoader(context.applicationContext).also {
+            sharedImageLoader = it
+        }
+    }
+
+/**
  * 安卓宿主启动早期注册 [BookImageLoader] 的 actual 实现。
  *
  * 调用时机: App.onCreate, 在任何 Composable 图片加载之前。
@@ -158,13 +177,15 @@ fun registerAndroidBookImageLoader(context: Context) {
  * app 端 AsyncImage 默认走 SingletonImageLoader, 需在 App.onCreate 设置 Factory 返回此 loader,
  * 让不显式传 imageLoader 的 AsyncImage 也有防盗链 header 注入。
  *
+ * 不要直接调用: 唯一入口是 [androidBookImageLoader] (同目录 DiskCache 只能有一个实例)。
+ *
  * [additionalComponents] 必须在这里追加到同一个注册表；对返回的 loader 调
  * `newBuilder().components { ... }` 会替换已有注册表，导致封面解密等基础组件失效。
  *
  * diskCache 走双区 [buildImageDiskCache]: 书架封面落 `filesDir/covers` (与原版 Glide
  * `MultiDiskCacheFactory` 同址), 其余图片落 `cacheDir/image_cache`。
  */
-fun buildBookImageLoader(
+internal fun buildBookImageLoader(
     context: Context,
     additionalComponents: ComponentRegistry.Builder.() -> Unit = {},
 ): ImageLoader {

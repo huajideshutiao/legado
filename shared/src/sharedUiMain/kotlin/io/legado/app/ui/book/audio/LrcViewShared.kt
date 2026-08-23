@@ -16,7 +16,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -28,6 +27,7 @@ import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalViewConfiguration
@@ -37,6 +37,7 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.help.image.BookImageLoaders
@@ -72,9 +73,9 @@ import kotlin.math.roundToInt
  * | 缩放: current 1+0.05p, last 1.05-0.05p, 锚点(内容中心X,行中心Y) | 同 |
  * | 透明度: 上下 0.35h 边界线性 255→40, 与颜色 alpha 相乘 | 同 (calculateAlpha) |
  * | 点击: touchY=scrollYOffset+y-h/2, 二分 offset 区间, 回调 time | 同 (touchSlop 判定 tap/drag) |
- * | 拖动: scrollYOffset+dY (GestureDetector dY=下滑为负, 内容跟手) | scrollY-dy (dy=手指位移下滑为正, 取负) |
+ * | 拖动: scrollYOffset+dY (GestureDetector dY=下滑为负, 内容跟手) | scrollY-dy (dy=手指位移下滑为正, 取负; 首帧含 slop 段) |
  * | 滚轮: AXIS_VSCROLL*lineMargin*3, 上滚看前(减) | 同 (Scroll 事件跨平台, 方向语义等价) |
- * | fling: OverScroller 物理衰减 | ScrollableDefaults.flingBehavior() (spline 衰减, 与 Android OverScroller 同源物理) |
+ * | fling: OverScroller 物理衰减 + min/maxFlingVelocity 门限 | ScrollableDefaults.flingBehavior() (Android 端同一套 AOSP spline) + 同门限 |
  * | 手动滚动 5s 后 autoScroll=true + 回中当前行 | 同 (manualTick 重置计时, 切行取消) |
  * | setLrcData: 重置 + 滚到第一行中心 | 数据变化时同 |
  * | onSizeChanged: 重排 + autoScroll 时回中当前行 | 同 (宽度变化保留 currentIndex) |
@@ -94,7 +95,8 @@ fun LrcViewShared(
 ) {
     val textMeasurer = rememberTextMeasurer()
     val scope = rememberCoroutineScope()
-    val touchSlopPx = LocalViewConfiguration.current.touchSlop
+    val viewConfiguration = LocalViewConfiguration.current
+    val touchSlopPx = viewConfiguration.touchSlop
 
     // 行模型 (复刻原版 LrcLine: time/text/layout/height/offset)
     class LrcLine(
@@ -118,6 +120,9 @@ fun LrcViewShared(
     var autoScroll by remember { mutableStateOf(true) }
     // 手动滚动计时 (每次手动滚动 +1, 重启 5s 自动回中; 复刻 removeCallbacks+postDelayed)
     var manualTick by remember { mutableIntStateOf(0) }
+    // 拖动中标记: 原版只在 ACTION_UP postDelayed(autoResetRunnable), onScroll 仅 removeCallbacks,
+    // 故长拖 (>5s) 期间不会中途自动回中
+    var dragging by remember { mutableStateOf(false) }
 
     var scrollJob by remember { mutableStateOf<Job?>(null) }
     var colorJob by remember { mutableStateOf<Job?>(null) }
@@ -199,7 +204,7 @@ fun LrcViewShared(
 
     // 手动滚动 5 秒后自动回中 (复刻 autoResetRunnable)
     LaunchedEffect(manualTick, lines) {
-        if (autoScroll || manualTick == 0) return@LaunchedEffect
+        if (autoScroll || manualTick == 0 || dragging) return@LaunchedEffect
         delay(5000)
         autoScroll = true
         val idx = currentIndex
@@ -214,14 +219,10 @@ fun LrcViewShared(
         }
     }
 
-    // pointerInput 在组合外执行, 状态经 rememberUpdatedState 取最新值
-    val currentLines by rememberUpdatedState(lines)
-    val currentScrollY by rememberUpdatedState(scrollY)
-    val currentViewportW by rememberUpdatedState(viewportW)
-    val currentViewportH by rememberUpdatedState(viewportH)
-
+    // pointerInput 在组合外执行, 直接读状态变量 (捕获的是 MutableState 对象, 取值恒最新)。
+    // 不用 rememberUpdatedState 包一层: 那会让组合作用域订阅 scrollY, 滚动每帧都重组整个控件
     fun maxScrollY(): Float =
-        currentLines.lastOrNull()?.let { it.offset + it.height / 2f } ?: 0f
+        lines.lastOrNull()?.let { it.offset + it.height / 2f } ?: 0f
 
     fun beginManualScroll() {
         autoScroll = false
@@ -258,87 +259,101 @@ fun LrcViewShared(
                     // 不中断会残留滑动)
                     scrollJob?.cancel()
                     val velocityTracker = VelocityTracker()
-                    velocityTracker.addPosition(down.uptimeMillis, down.position)
+                    // 速度采样必须走 addPointerInputChange (DOWN + 全部 MOVE): 它会把
+                    // MotionEvent 批处理的 historical 采样点一并计入, 手写 addPosition
+                    // 每帧只有 1 点, Lsq2 凑不满 3 点就返回 0 (松手不惯性)
+                    velocityTracker.addPointerInputChange(down)
                     var dragged = false
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                        // 跨平台判断位置变化 (positionChanged 是 Android 专属扩展)
-                        if (change.position != change.previousPosition) {
-                            val totalDy = change.position.y - down.position.y
-                            if (!dragged && abs(totalDy) > touchSlopPx) {
-                                // 越过 touch slop 进入拖动 (原版 onScroll)
-                                dragged = true
-                                beginManualScroll()
+                    try {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            // 跨平台判断位置变化 (positionChanged 是 Android 专属扩展)
+                            if (change.position != change.previousPosition) {
+                                val totalDy = change.position.y - down.position.y
+                                if (!dragged && abs(totalDy) > touchSlopPx) {
+                                    // 越过 touch slop 进入拖动 (原版 onScroll)
+                                    dragged = true
+                                    dragging = true
+                                    beginManualScroll()
+                                    // 原版首个 onScroll 的 distanceY 从 DOWN 点算起且不扣 slop
+                                    // (GestureDetector.java:742 mLastFocus* 仍停在 DOWN),
+                                    // 只吃增量会留一个 slop 宽的起手死区
+                                    scrollY = (scrollY - totalDy).coerceIn(0f, maxScrollY())
+                                    velocityTracker.addPointerInputChange(change)
+                                    change.consume()
+                                } else if (dragged) {
+                                    // 原版 GestureDetector.distanceY = mLastFocusY - focusY (下滑为负,
+                                    // 内容跟手); 此处 dy 为手指位移 (下滑为正), 取负对齐
+                                    val dy = change.position.y - change.previousPosition.y
+                                    scrollY = (scrollY - dy).coerceIn(0f, maxScrollY())
+                                    velocityTracker.addPointerInputChange(change)
+                                    change.consume()
+                                }
                             }
-                            if (dragged) {
-                                // 原版 GestureDetector.distanceY = mLastFocusY - focusY (下滑为负,
-                                // 内容跟手); 此处 dy 为手指位移 (下滑为正), 取负对齐
-                                val dy = change.position.y - change.previousPosition.y
-                                scrollY = (scrollY - dy).coerceIn(0f, maxScrollY())
-                                // 复刻原版 onScroll 的 removeCallbacks(autoResetRunnable):
-                                // 每次拖动事件重启 5s 自动回中计时, 长拖 (>5s) 不会中途触发
-                                manualTick++
-                                velocityTracker.addPosition(change.uptimeMillis, change.position)
-                                change.consume()
-                            }
-                        }
-                        when (event.type) {
-                            PointerEventType.Release -> {
-                                // 复刻原版 onTouchEvent ACTION_UP: 重置 5s 自动回中计时
-                                // (postDelayed(autoResetRunnable, 5000); autoScroll 时无操作)
-                                manualTick++
-                                if (dragged) {
-                                    // 松手 fling: ScrollableDefaults.flingBehavior() 平台默认
-                                    // spline 衰减 (与 Android OverScroller 同源物理), 替代原
-                                    // "按速度估终点 + 固定 400ms tween + 200f 阈值" 手写近似;
-                                    // 不设手写阈值: 默认实现内部对 |v|<=1 直接返回, 低速度下
-                                    // spline 位移本身可忽略 (对应原版 GestureDetector 最小
-                                    // fling 速度以下即停的手感)。速度反号: 拖动中 scrollY 与
-                                    // 手指位移反号 (下滑 scrollY 减小), 喂 scrollY 方向速度
-                                    val velocity = velocityTracker.calculateVelocity().y
-                                    scrollJob?.cancel()
-                                    scrollJob = scope.launch {
-                                        flingScrollState.scroll {
-                                            // with() 显式 dispatch receiver (同 MangaRenderState.flingAfterMouseDrag
-                                            // 已验证模式: 成员扩展 performFling 需要外层 ScrollScope + FlingBehavior receiver)
-                                            with(flingBehavior) { performFling(-velocity) }
+                            when (event.type) {
+                                PointerEventType.Release -> {
+                                    if (dragged) {
+                                        // 松手 fling: 平台默认 spline 衰减 (Android 端即
+                                        // OverScroller 同一套物理)。速度取负: 拖动中 scrollY 与
+                                        // 手指位移反号
+                                        velocityTracker.addPointerInputChange(change)
+                                        // 上下限同原版 GestureDetector (computeCurrentVelocity 按
+                                        // maximumFlingVelocity 截顶, 低于 minimum 不 fling);
+                                        // 非 Android 端两值默认 MAX/0 即不设门限
+                                        val maxV = viewConfiguration.maximumFlingVelocity
+                                        val velocity =
+                                            velocityTracker.calculateVelocity(Velocity(maxV, maxV)).y
+                                        if (abs(velocity) > viewConfiguration.minimumFlingVelocity) {
+                                            scrollJob?.cancel()
+                                            scrollJob = scope.launch {
+                                                flingScrollState.scroll {
+                                                    // with() 显式 dispatch receiver (同 MangaRenderState.flingAfterMouseDrag
+                                                    // 已验证模式: 成员扩展 performFling 需要外层 ScrollScope + FlingBehavior receiver)
+                                                    with(flingBehavior) { performFling(-velocity) }
+                                                }
+                                            }
                                         }
-                                    }
-                                } else {
-                                    // 点击行跳转 (复刻 onSingleTapUp 二分定位)
-                                    if (currentLines.isNotEmpty()) {
-                                        val touchY = currentScrollY + change.position.y -
-                                            currentViewportH / 2f
-                                        val idx = currentLines.binarySearch { line ->
-                                            if (touchY < line.offset) 1
-                                            else if (touchY >= line.offset + line.height) -1
-                                            else 0
-                                        }
-                                        if (idx >= 0) {
-                                            val line = currentLines[idx]
-                                            val layout = line.layout
-                                            // 点击宽度只限文本实际宽度 (用户拍板 2026-08):
-                                            // 水平 = 文本宽, 文本两侧空白不触发跳转;
-                                            // 垂直保持整行命中 (行高收窄会难受, 用户拍板)
-                                            if (layout != null) {
-                                                val centerX = currentViewportW / 2f
-                                                val dx = change.position.x - centerX
-                                                if (dx in -layout.size.width / 2f..layout.size.width / 2f) {
-                                                    onLineClick(line.time)
+                                    } else {
+                                        // 点击行跳转 (复刻 onSingleTapUp 二分定位)
+                                        if (lines.isNotEmpty()) {
+                                            val touchY =
+                                                scrollY + change.position.y - viewportH / 2f
+                                            val idx = lines.binarySearch { line ->
+                                                if (touchY < line.offset) 1
+                                                else if (touchY >= line.offset + line.height) -1
+                                                else 0
+                                            }
+                                            if (idx >= 0) {
+                                                val line = lines[idx]
+                                                val layout = line.layout
+                                                // 点击宽度只限文本实际宽度 (用户拍板 2026-08):
+                                                // 水平 = 文本宽, 文本两侧空白不触发跳转;
+                                                // 垂直保持整行命中 (行高收窄会难受, 用户拍板)
+                                                if (layout != null) {
+                                                    val centerX = viewportW / 2f
+                                                    val dx = change.position.x - centerX
+                                                    if (dx in -layout.size.width / 2f..layout.size.width / 2f) {
+                                                        onLineClick(line.time)
+                                                    }
                                                 }
                                             }
                                         }
                                     }
+                                    break
                                 }
-                                break
-                            }
 
-                            // CMP PointerEventType 无 Cancel 成员 (javap 证实 1.10.1 仅
-                            // Press/Release/Move/Enter/Exit/Scroll/Key/DragStart/DragStop);
-                            // 手势取消由 awaitEachGesture 协程取消自然结束循环
-                            else -> Unit
+                                // CMP PointerEventType 无 Cancel 成员 (javap 证实 1.10.1 仅
+                                // Press/Release/Move/Enter/Exit/Scroll/Key/DragStart/DragStop);
+                                // 手势取消由 awaitEachGesture 协程取消自然结束循环
+                                else -> Unit
+                            }
                         }
+                    } finally {
+                        // 复刻原版 ACTION_UP/ACTION_CANCEL: 手势收尾重启 5s 自动回中计时。
+                        // 放 finally 里, 手势被取消也不会把 dragging 卡在 true
+                        dragging = false
+                        manualTick++
                     }
                 }
             }
@@ -350,7 +365,7 @@ fun LrcViewShared(
                         val event = awaitPointerEvent()
                         if (event.type != PointerEventType.Scroll) continue
                         val delta = event.changes.firstOrNull()?.scrollDelta?.y ?: 0f
-                        if (delta != 0f && currentLines.isNotEmpty()) {
+                        if (delta != 0f && lines.isNotEmpty()) {
                             beginManualScroll()
                             scrollY = (scrollY + delta * lineMarginPx * 3)
                                 .coerceIn(0f, maxScrollY())
@@ -457,13 +472,11 @@ fun representativeColorOf(reader: PixelReader): Color {
     var gSum = 0L
     var bSum = 0L
     var count = 0
-    var middle = Color.Transparent
     var y = 0
     while (y < reader.height) {
         var x = 0
         while (x < reader.width) {
             val c = reader.pixel(x, y)
-            if (x == reader.width / 2 && y == reader.height / 2) middle = c
             if (c.alpha > 0.5f) { // 原版 (pixel shr 24) and 0xFF >= 128
                 val (_, s, l) = rgbToHsl(c.red, c.green, c.blue)
                 if (s >= 0.1f && l >= 0.1f && l <= 0.9f) {
@@ -478,7 +491,8 @@ fun representativeColorOf(reader: PixelReader): Color {
         y += step
     }
     return if (count == 0) {
-        middle
+        if (reader.width == 0 || reader.height == 0) Color.Transparent
+        else reader.pixel(reader.width / 2, reader.height / 2)
     } else {
         Color(
             red = (rSum / count) / 255f,
@@ -535,6 +549,8 @@ private fun rgbToHsl(r: Float, g: Float, b: Float): Triple<Float, Float, Float> 
     val maxC = max(r, max(g, b))
     val minC = minOf(r, g, b)
     val delta = maxC - minC
+    val l = (maxC + minC) / 2f
+    if (delta == 0f) return Triple(0f, 0f, l)
     var h = 0f
     when (maxC) {
         r -> h = ((g - b) / delta).mod(6f)
@@ -543,8 +559,7 @@ private fun rgbToHsl(r: Float, g: Float, b: Float): Triple<Float, Float, Float> 
     }
     h *= 60f
     if (h < 0) h += 360f
-    val l = (maxC + minC) / 2f
-    val s = if (delta == 0f) 0f else delta / (1f - abs(2f * l - 1f))
+    val s = delta / (1f - abs(2f * l - 1f))
     return Triple(h, s, l)
 }
 

@@ -23,12 +23,14 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import io.legado.app.constant.PreferKey
@@ -169,6 +171,8 @@ fun ReadViewComposable(
     // 按 ReadBookConfig.pageAnim 取翻页委托，配置变更时重建（对照原版 ReadView.upPageAnim）
     val composeDelegate = rememberPageDelegate(viewModel)
     val tapScope = rememberCoroutineScope()
+    // 长按/游标触感: Compose 手势不像 View.performLongClick 自带触感, 原版阅读页亦无, 此处补齐
+    val haptic = LocalHapticFeedback.current
 
     // 正文 layout 预热 + 滑出窗口页的缓存回收。窗口口径与原版 ReadBook.recycleRecorders
     // 一致（保留 [cur-1 .. cur+2]）；测量器取 ReaderScreen 提供的共享实例
@@ -342,6 +346,7 @@ fun ReadViewComposable(
             val hit = hitColumn(viewModel, x, contentY, latestDelegate is ScrollPageDelegateCompose)
             if (hit != null && hit.column is TextColumn) {
                 if (selection.longPressStart(x, contentY)) {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     // 选择激活期间暂停自动翻页（对照旧手势按下 → autoPager.pause），
                     // 避免翻页打断选择；选择取消时在分发器/页切换处恢复
                     latestDelegate.autoPager?.pause()
@@ -350,6 +355,7 @@ fun ReadViewComposable(
                     latestOnLongClick(null)
                 }
             } else if (hit?.column is ImageColumn) {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 // 标记菜单显示中（对照旧 ReadBookActivity.onImageLongPress →
                 // readView.isImageMenuShowing = true）：下次按下/翻页走取消链路关菜单
                 selection.imageMenuShowing = true
@@ -730,6 +736,8 @@ fun ReadViewComposable(
                                 longPressJob.cancel()
                                 longPressed = false
                                 change.consume()
+                                // 游标拖动触感: tick 只在选区起止真的变化时自增, 不会每帧震
+                                val tickBefore = selection.tick
                                 // 坐标折算同 extendTo（全窗 y 减状态栏 + 页眉），再按原版
                                 // Activity 折算补手柄宽（rawX ± width / rawY - height）
                                 val handleY = change.position.y - handleSizePx -
@@ -761,18 +769,31 @@ fun ReadViewComposable(
                                         )
                                     }
                                 }
+                                if (selection.tick != tickBefore) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                }
                             } else if (isMove) {
                                 // 第二道已过：消费并进入翻页/滚动（对照原版 isMove 后
                                 // pageDelegate.onTouch；长按定时已在第一道过时取消，
                                 // 这里不重复）
                                 change.consume()
                                 if (selection.isActive) {
-                                    // 长按选中后拖动扩选（对照原版 selectText）
+                                    // 长按选中后拖动扩选（对照原版 selectText）。触感同游标,
+                                    // 但 extendTo 每个 MOVE 都自增 tick, 只能比起止位置本身
+                                    val prevStart = selection.start
+                                    val prevEnd = selection.end
                                     selection.extendTo(
                                         change.position.x,
                                         change.position.y - latestSystemBarTopPx - latestHeaderTipPx,
                                         latestPageWidth,
                                     )
+                                    if (selection.start != prevStart ||
+                                        selection.end != prevEnd
+                                    ) {
+                                        haptic.performHapticFeedback(
+                                            HapticFeedbackType.TextHandleMove
+                                        )
+                                    }
                                 } else {
                                     latestDelegate.onScroll(change.position.x, change.position.y)
                                 }

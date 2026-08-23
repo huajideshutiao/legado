@@ -148,6 +148,10 @@ internal object GtkLoop {
         }
     }
 
+    /** 尚未触发的 GAsync 回调强引用 (回调触发时自摘, 超时的留到真正触发为止)。 */
+    private val pendingAsync: MutableSet<AsyncReadyCallback> =
+        java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap())
+
     /**
      * 驱动一个 GAsync 调用直到回调完成, 返回回调产物。
      * [start] 在 GTK 线程发起异步调用并注册 [produce] (回调里调用), [produce] 返回的结果
@@ -169,8 +173,12 @@ internal object GtkLoop {
                     error.set(t)
                 }
                 done.set(true)
+                pendingAsync.remove(this)
             }
         }
+        // 超时返回后 GAsync 调用仍可能触发: 局部变量松手后 JNA 蹦床被 GC free, GTK 打进
+        // 已释放内存即随机崩溃 (堆坏)。故存活期交给回调自己结束, 不由本函数作用域决定
+        pendingAsync.add(cb)
         start(cb)
         driveLoopUntil(timeoutMs) { done.get() }
         error.get()?.let { throw it }

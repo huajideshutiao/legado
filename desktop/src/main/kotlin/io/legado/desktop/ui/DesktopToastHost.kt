@@ -1,6 +1,8 @@
 package io.legado.desktop.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -11,11 +13,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -66,6 +66,9 @@ object DesktopToasts {
     }
 }
 
+/** 退场淡出时长, 与宿主等待移除 Popup 的时间一致, 否则动画会被中途掐断。 */
+private const val TOAST_EXIT_MILLIS = 200
+
 /**
  * Toast 宿主, 由 desktop Main.kt 挂在 Compose 根 (与 DesktopDialogHost 平级)。
  *
@@ -76,20 +79,18 @@ object DesktopToasts {
 @Composable
 fun DesktopToastHost() {
     val msg by DesktopToasts.current.collectAsState()
-    var visible by mutableStateOf(false)
     // 委托属性无法 smart cast, 局部捕获
     val current = msg
 
     if (current != null) {
         val bottomPadding = with(LocalDensity.current) { 48.dp.toPx() }.toInt()
+        // 首帧 false→true 即触发 enter 动画, 不必靠延迟补帧
+        val visibleState = remember(current) { MutableTransitionState(false) }
+        visibleState.targetState = true
         LaunchedEffect(current) {
-            visible = false
-            // 下一帧再显示, 保证 AnimatedVisibility 的 enter 动画触发
-            delay(16)
-            visible = true
             delay(if (current.long) 3500L else 2500L)
-            visible = false
-            delay(200)
+            visibleState.targetState = false
+            delay(TOAST_EXIT_MILLIS.toLong())
             DesktopToasts.dismiss()
         }
         Popup(
@@ -102,28 +103,31 @@ fun DesktopToastHost() {
             ),
         ) {
             AnimatedVisibility(
-                visible = visible,
+                visibleState = visibleState,
                 enter = fadeIn(),
-                exit = fadeOut(),
+                exit = fadeOut(tween(TOAST_EXIT_MILLIS)),
             ) {
+                val corner = 8.dp
+                val shadowOffset = 2.dp
                 Text(
                     text = current.text,
                     color = AppTheme.colors.primaryText,
                     fontSize = 14.sp,
                     modifier = Modifier
-                        // 阴影改自绘: Modifier.shadow 在桌面端走合成器图层阴影,
-                        // 与 AnimatedVisibility 的 fadeIn 内容层 alpha 不同步, 表现为
-                        // 文字先淡入、阴影慢半拍; 自绘后与文本同层同步淡入淡出
+                        // 阴影只能画在节点 bounds 内: fade 期间 alpha<1 把内容提升到离屏缓冲,
+                        // 缓冲按 bounds 裁剪, 界外像素要等 alpha 回到 1 才出现(即阴影慢半拍)。
+                        // 故底部先 padding 留出阴影带, 阴影画进这条留白。
                         .drawBehind {
+                            val dy = shadowOffset.toPx()
                             drawRoundRect(
                                 color = Color.Black.copy(alpha = 0.18f),
-                                topLeft = Offset(0.dp.toPx(), 2.dp.toPx()),
-                                size = size,
-                                cornerRadius = CornerRadius(8.dp.toPx()),
+                                topLeft = Offset(0f, dy),
+                                size = size.copy(height = size.height - dy),
+                                cornerRadius = CornerRadius(corner.toPx()),
                             )
                         }
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(AppTheme.colors.bottomBackground)
+                        .padding(bottom = shadowOffset)
+                        .background(AppTheme.colors.bottomBackground, RoundedCornerShape(corner))
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                 )
             }

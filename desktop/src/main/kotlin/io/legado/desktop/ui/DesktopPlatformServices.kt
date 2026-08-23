@@ -91,6 +91,16 @@ private class DesktopFilePickerService : FilePickerService {
         }.getOrDefault(false)
     }
 
+    override val supportsDirWrite: Boolean = true
+
+    // 写进已选目录 (对照 app 端 FileUtils.saveImage(dirUri))
+    override fun writeImageToDir(dir: String, fileName: String, bytes: ByteArray): Boolean =
+        runCatching {
+            val destDir = File(dir).apply { mkdirs() }
+            File(destDir, fileName).writeBytes(bytes)
+            true
+        }.getOrDefault(false)
+
     override fun pickDirectory(): String? =
         FileDialogs.pickDirectory(
             initialDir = userExportDir()?.let(::File)?.takeIf { it.isDirectory },

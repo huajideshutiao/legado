@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import io.legado.app.ui.book.manga.entities.BaseMangaPage
 import io.legado.app.ui.book.manga.entities.MangaPage
 import io.legado.app.ui.book.manga.entities.ReaderLoading
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -69,23 +70,44 @@ fun MangaRenderLayer(
     LaunchedEffect(state) {
         // 居中页变化(原 onScrolled + findCenterViewPosition)
         launch {
+            // 上次上报时的 items 引用 + 下标。
+            // 原版 onScrolled 只在"真的滚动"时回调; snapshotFlow 观察的是 layoutInfo,
+            // items 重建后的重新布局同样会触发 —— 而 LazyList 会按 key 把视口锚回同一张图,
+            // 切章后那张图属于旧章, 上报出去就是 moveToPrev/NextChapter(章节被弹回),
+            // 弹回又触发重建→重锚→再上报, 一次点击能循环好几轮。
+            // 故 items 引用变化的那一次带 reanchored=true 上报: 调用方据此只同步页码、不跨章,
+            //  让"跨章"信号恢复"仅代表滚动"的原版语义。
+            // (不能靠"定位未生效"标记门控 —— 那标记在 LaunchedEffect 里置位,
+            //  桌面端同一帧 layout 先于 effect 执行, 上报比置位更早)
+            var reportedItems: List<BaseMangaPage>? = null
+            var reportedCenter = -1
             snapshotFlow {
                 // 布局与 items 可能分帧更新: 中心条目的 key 必须与当前 items 在相同 index 上
                 // 一致, 否则是 items 重建窗口内的过期布局 —— 返回 -1 抑制, 防错位条目误触发
                 // 跨章/进度回退 (重建完成后下一帧布局与 items 对齐, 自然恢复上报)
                 val li = state.listState.layoutInfo
+                val items = state.items
                 val center = (li.viewportStartOffset + li.viewportEndOffset) / 2
                 val info = li.visibleItemsInfo.firstOrNull {
                     center >= it.offset && center < it.offset + it.size
                 }
-                if (info != null && state.items.getOrNull(info.index)?.listKey() == info.key) {
-                    info.index
+                if (info != null && items.getOrNull(info.index)?.listKey() == info.key) {
+                    items to info.index
                 } else {
-                    -1
+                    items to -1
                 }
             }
                 .distinctUntilChanged()
-                .collect { if (it != -1) state.onCenterItemChanged(it) }
+                .collect { (items, index) ->
+                    if (index == -1) return@collect
+                    // items 刚换过 ⇒ 本次是 key 重锚: 仍要上报 (页码信息有效, 跨章后页脚
+                    // 靠它归零), 但带 reanchored=true 让调用方不据此跨章
+                    val reanchored = reportedItems !== items
+                    if (!reanchored && index == reportedCenter) return@collect
+                    reportedItems = items
+                    reportedCenter = index
+                    state.onCenterItemChanged(index, reanchored)
+                }
         }
         // 滚动停稳(原 SCROLL_STATE_IDLE)：装填当前页 GIF
         launch {
@@ -112,6 +134,8 @@ fun MangaRenderLayer(
                 pendingScroll.index.coerceIn(0, max),
                 pendingScroll.scrollOffset,
             )
+            // 视口已落到目标位置, 本轮定位需求完成
+            state.awaitingJump = false
             state.pendingScroll = null
             pendingScroll.onApplied?.invoke()
         }

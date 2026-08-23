@@ -52,7 +52,7 @@ class SystemRouteTransitionSampler private constructor(
         height: Float,
     ): PageTransform {
         val anim = when (role) {
-            TransitionRole.NewPage, TransitionRole.PendingNew -> openEnter
+            TransitionRole.NewPage -> openEnter
             TransitionRole.OldPage -> openExit
             TransitionRole.TargetPage -> closeEnter
             TransitionRole.OutgoingPage -> closeExit

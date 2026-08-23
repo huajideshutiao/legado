@@ -85,6 +85,7 @@ import io.legado.app.ui.book.read.ReaderPlatformProviders
 import io.legado.app.ui.book.read.TextActionMenu
 import io.legado.app.ui.book.read.page.provider.AndroidTextMeasurer
 import io.legado.app.ui.book.read.page.provider.TextMeasurerProviders
+import io.legado.app.ui.book.source.SourceUiEventBridgeHost
 import io.legado.app.ui.book.video.AndroidVideoPlayPlatformProvider
 import io.legado.app.ui.book.video.VideoPlayPlatformProviders
 import io.legado.app.ui.browser.AndroidWebView
@@ -599,6 +600,9 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
                     platformServices = services,
                 )
             }
+            // 书源 JS 弹窗事件桥宿主 (对照 desktop Main.kt / iOS MainViewController):
+            // 订阅 FlowBus(SOURCE_UI_REQUEST) 弹共享登录/源变量/验证码对话框
+            SourceUiEventBridgeHost()
             // legado:// deep link 导入对话框宿主 (对照 iOS/鸿蒙 MainViewController 末尾挂载)。
             // 仅前台 (RESUMED) 挂载: 透明壳 AssociationActivity 在前台时挂它自己的一份,
             // MainActivity 若同时消费共享 pending 会双弹窗 (后台 Activity 的 Compose Dialog

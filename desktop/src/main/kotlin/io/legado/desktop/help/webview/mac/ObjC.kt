@@ -9,6 +9,8 @@ import com.sun.jna.NativeLibrary
 import com.sun.jna.Pointer
 import com.sun.jna.Structure
 import io.legado.app.constant.AppLog
+import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * JNA + Objective-C runtime 直绑 (macOS 系统框架, 零体积增量)。
@@ -209,9 +211,14 @@ internal object ObjC {
     /**
      * 构造一个无捕获变量的 stack block。
      * [invoke] 的 JNA Callback 签名必须与 block 调用约定一致 (第一参数为 block 指针自身)。
+     *
+     * 生命周期: block 内存与 JNA 回调蹦床在对象不可达后即被 Cleaner free 掉, 而 native
+     * 调用 (delegate 方法 / completionHandler) 全发生在构造处的作用域之外, 故 [live] 兜住
+     * 强引用, 一次性 completion block 在回调末尾自己调 [dispose] 摘除。
      */
     class ObjCBlock(
-        invoke: Callback,
+        // 必须存成属性: 只做构造参数的话 CallbackReference 是弱引用, 蹦床下次 GC 即释放
+        private val invoke: Callback,
     ) {
         private val mem = Memory(32 + 32)
 
@@ -225,9 +232,20 @@ internal object ObjC {
             // descriptor: reserved(8) size(8) = 16 (无 copy/dispose/signature)
             mem.setLong(32, 0)
             mem.setLong(40, 32)
+            live.add(this)
         }
 
         fun pointer(): Pointer = mem
+
+        /** 回调已触发 (或确定不会再触发): 允许 GC 回收 block 内存与蹦床。 */
+        fun dispose() {
+            live.remove(this)
+        }
+
+        private companion object {
+            val live: MutableSet<ObjCBlock> =
+                Collections.newSetFromMap(ConcurrentHashMap<ObjCBlock, Boolean>())
+        }
     }
 
     // ==================== 动态子类 ====================
@@ -244,7 +262,6 @@ internal object ObjC {
     ): Pointer {
         val lib = objc()
         val cls = lib.objc_allocateClassPair(cls("NSObject"), className, 0)
-        val keepAlive = ArrayList<ObjCBlock>()
         for ((name, types) in methods) {
             val invoke = object : Callback {
                 fun invoke(
@@ -260,8 +277,8 @@ internal object ObjC {
                     return null
                 }
             }
+            // 动态类与其 IMP 全程存活, 故此处的 block 不 dispose (由 ObjCBlock.live 常驻)
             val block = ObjCBlock(invoke)
-            keepAlive.add(block)
             val imp = lib.imp_implementationWithBlock(block.pointer())
             lib.class_addMethod(cls, sel(name), imp, types)
         }

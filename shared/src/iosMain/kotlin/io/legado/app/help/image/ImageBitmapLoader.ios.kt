@@ -117,6 +117,9 @@ actual class ImageBitmapLoader actual constructor() {
         withContext(IoDispatcher) {
             runCatching {
                 when {
+                    // data: URI 内联图 (与 loadBitmap 的 data: 分支对齐, 原 app PhotoDialog
+                    // 的 base64 SVG 分支同源)
+                    url.startsWith("data:") -> parseDataUriBytes(url)
                     url.startsWith("bg://") -> {
                         // bg:// 内置背景图: 原版远程下载语义, 转 CDN URL 直下 (字节进 ImageBytesCache)
                         downloadBytesSimple(bgCdnUrl(url.removePrefix("bg://")))

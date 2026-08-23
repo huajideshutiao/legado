@@ -14,6 +14,7 @@ import android.graphics.PorterDuffXfermode
 import android.graphics.Shader
 import androidx.core.graphics.createBitmap
 import coil3.size.Size
+import coil3.size.pxOrElse
 import coil3.transform.Transformation
 
 /**
@@ -52,11 +53,15 @@ class BookInfoBgTransformation(private val land: Boolean = false) : Transformati
         private val threadMatrix = ThreadLocal.withInitial { Matrix() }
     }
 
-    override val cacheKey: String = ID
+    override val cacheKey: String = "$ID-$land"
 
     override suspend fun transform(input: Bitmap, size: Size): Bitmap {
-        val width = input.width
-        val height = input.height
+        // 竖屏先按视图比例居中裁剪 (只裁不缩, 对齐原版 blur 与渐变之间的 CenterCrop):
+        // 渐变须画在与视图同比例的位图上, 否则首尾会被 ImageView 的 CENTER_CROP 裁掉,
+        // 底部收不到全透明
+        val src = if (land) input else input.cropToAspect(size)
+        val width = src.width
+        val height = src.height
 
         // Coil3 无 BitmapPool，直接 createBitmap（配合 SRC 模式覆盖旧数据）
         val result = createBitmap(width, height)
@@ -64,7 +69,7 @@ class BookInfoBgTransformation(private val land: Boolean = false) : Transformati
         val canvas = Canvas(result)
         val paint = threadPaint.get()!!
         val matrix = threadMatrix.get()!!
-        val bitmapShader = BitmapShader(input, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+        val bitmapShader = BitmapShader(src, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
         // 竖屏顶部条: 顶部清晰 → 底部淡出渐变蒙版 (原版语义); 横屏整列均匀模糊不加渐变
         val gradient = if (!land) {
             LinearGradient(
@@ -104,4 +109,20 @@ class BookInfoBgTransformation(private val land: Boolean = false) : Transformati
 
         return result
     }
+}
+
+/** 按目标宽高比居中裁剪 (只裁不缩; 目标尺寸未定或比例已一致时原样返回)。 */
+private fun Bitmap.cropToAspect(size: Size): Bitmap {
+    val targetWidth = size.width.pxOrElse { 0 }
+    val targetHeight = size.height.pxOrElse { 0 }
+    if (targetWidth <= 0 || targetHeight <= 0) return this
+    var cropWidth = width
+    var cropHeight = height
+    if (width.toLong() * targetHeight > height.toLong() * targetWidth) {
+        cropWidth = (height.toLong() * targetWidth / targetHeight).toInt().coerceIn(1, width)
+    } else {
+        cropHeight = (width.toLong() * targetHeight / targetWidth).toInt().coerceIn(1, height)
+    }
+    if (cropWidth == width && cropHeight == height) return this
+    return Bitmap.createBitmap(this, (width - cropWidth) / 2, (height - cropHeight) / 2, cropWidth, cropHeight)
 }

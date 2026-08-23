@@ -1,5 +1,9 @@
 package io.legado.app.ui.root
 
+import io.legado.app.constant.AppConst
+import io.legado.app.constant.fileNameFormat
+import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.utils.systemCurrentTimeMillis
 import kotlin.concurrent.Volatile
 
 /**
@@ -48,6 +52,53 @@ interface FilePickerService {
      */
     fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean? = false
 
+    /**
+     * 是否支持"把字节写进指定目录" (决定图片保存能不能记住上次目录):
+     * true 时 [saveImageRememberingDir] 走"选一次目录后直接落盘",
+     * false 时回落 [saveImageBytes] 的每次选位置。
+     */
+    val supportsDirWrite: Boolean get() = false
+
+    /**
+     * 把图片字节写进指定目录 (对照 app 端 FileUtils.saveImage(dirUri))。
+     *
+     * @param dir 目录标识 (Android SAF tree uri / 桌面绝对路径)
+     * @param fileName 文件名 (含扩展名)
+     * @return 写入是否成功 (目录被删/权限丢失返回 false, 调用方清掉目录记忆重选)
+     */
+    fun writeImageToDir(dir: String, fileName: String, bytes: ByteArray): Boolean = false
+
+    /**
+     * 保存图片字节, 目录记忆语义对照 app 端 (ACache `imagePathKey`): 上次保存目录还记着就直接
+     * 写进去, 没有就先让用户选一次并记住; 写入失败清掉记忆下次重选。不支持目录写入的平台
+     * ([supportsDirWrite]=false) 回落 [saveImageBytes] 的"每次选位置"。
+     *
+     * 阻塞 IO + 可能弹平台选择器 (实现内部 runBlocking 等主线程回调), 必须在 IO 线程调用。
+     *
+     * @param forcePickDir true = 忽略记忆目录强制重选 (WebView 长按菜单的"选择文件夹")
+     * @return true=写入成功, false=写入失败, null=用户取消选目录 (调用方静默)
+     */
+    fun saveImageRememberingDir(
+        fileName: String,
+        bytes: ByteArray,
+        forcePickDir: Boolean = false,
+    ): Boolean? {
+        if (!supportsDirWrite) return saveImageBytes(fileName, bytes)
+        val prefs = PreferenceProviders.get()
+        val remembered = if (forcePickDir) {
+            null
+        } else {
+            prefs.getString(AppConst.imagePathKey)?.takeIf { it.isNotEmpty() }
+        }
+        val dir = remembered
+            ?: pickDirectory()?.also { prefs.putString(AppConst.imagePathKey, it) }
+            ?: return null
+        if (writeImageToDir(dir, fileName, bytes)) return true
+        // 目录被删/权限丢失: 忘掉记忆目录, 下次重新选 (对照 app 端 onError → ACache.remove)
+        prefs.remove(AppConst.imagePathKey)
+        return false
+    }
+
     // 选目录 (对照 app 端 HandleFileContract.DIR_SYS / OpenDocumentTree),
     // 各端按需实现, 默认返回 null 由调用方降级
     fun pickDirectory(): String? = null
@@ -58,6 +109,18 @@ interface FilePickerService {
      * 无 SAF 概念的平台 (桌面等普通路径) 默认视为可写。
      */
     fun checkWrite(path: String): Boolean = true
+}
+
+/**
+ * 保存用的文件名: 时间戳 + 源地址扩展名 (对照 app 端 FileUtils.saveImage 的默认命名;
+ * 扩展名不像扩展名时统一 .jpg)。
+ */
+fun imageSaveFileName(src: String): String {
+    val ext = src.substringAfterLast('.', "")
+        .takeIf { it.isNotEmpty() && it.length <= 5 && it.all { c -> c.isLetterOrDigit() } }
+        ?.let { ".$it" }
+        ?: ".jpg"
+    return "${AppConst.fileNameFormat.format(systemCurrentTimeMillis())}$ext"
 }
 
 /** 分享：文本与文件。 */

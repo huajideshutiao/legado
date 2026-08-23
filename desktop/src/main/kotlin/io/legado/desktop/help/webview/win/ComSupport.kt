@@ -11,6 +11,8 @@ import com.sun.jna.platform.win32.Guid
 import com.sun.jna.platform.win32.Ole32
 import com.sun.jna.ptr.PointerByReference
 import com.sun.jna.win32.StdCallLibrary.StdCallCallback
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * WebView2 所需的最小 COM 支撑层 (JNA 手写)。
@@ -98,24 +100,31 @@ internal interface ComInvokeEventCb : StdCallCallback {
  * Java 侧实现的 COM 回调对象。WebView2 的 handler 一律是 IUnknown + 单个 Invoke,
  * 故 vtable 固定 4 项。
  *
- * 引用计数返回常量 1 并由本对象的 Java 强引用兜底生命周期 (调用方需持有到 native 用完为止),
- * QueryInterface 直接回自身 —— WebView2 只会用该 handler 自己的 IID 查询。
+ * 生命周期走真正的 COM 引用计数: JNA 的 [Memory] 与回调蹦床在对象不可达后即被 Cleaner
+ * free 掉, 而 WebView2 的 handler 全是异步的 (完成回调 / 事件订阅), native 侧还持有时
+ * 松手就是 use-after-free —— 表现为随机的 STATUS_HEAP_CORRUPTION 闪退且无 hs_err 日志。
+ * 故 [live] 在计数归零前一直是唯一的 Java 强引用来源, 创建方用完自己那一份调 [disown]。
  */
 internal class ComHandler(invoke: Callback) {
 
+    /** 创建方持有的那一份引用 (见 [disown]); native 的 AddRef/Release 在此之上增减。 */
+    private val refCount = AtomicInteger(1)
+
     private val queryInterface = object : ComQueryInterfaceCb {
         override fun callback(self: Pointer, riid: Pointer?, ppv: Pointer?): Int {
+            // WebView2 只会用该 handler 自己的 IID 查询, 直接回自身 (返回的指针须 AddRef)
             ppv?.setPointer(0, self)
+            refCount.incrementAndGet()
             return S_OK
         }
     }
 
     private val addRef = object : ComRefCb {
-        override fun callback(self: Pointer): Int = 1
+        override fun callback(self: Pointer): Int = refCount.incrementAndGet()
     }
 
     private val release = object : ComRefCb {
-        override fun callback(self: Pointer): Int = 1
+        override fun callback(self: Pointer): Int = decRef()
     }
 
     // 强引用: 回调蹦床被 GC 后 native 侧调用即崩
@@ -128,7 +137,28 @@ internal class ComHandler(invoke: Callback) {
             vtable.setPointer(index * POINTER_SIZE, CallbackReference.getFunctionPointer(callback))
         }
         instance.setPointer(0, vtable)
+        live[Pointer.nativeValue(instance)] = this
     }
 
     val pointer: Pointer get() = instance
+
+    /**
+     * 交出创建方那一份引用: 把 [pointer] 递给 WebView2 之后即可调 —— WebView2 一定已经
+     * AddRef (官方 WRL `Callback<>` 的临时 ComPtr 在语句结束就 Release, 全部 sample 都
+     * 靠这条契约)。递交失败时同样要调, 计数归零即可回收。
+     */
+    fun disown() {
+        decRef()
+    }
+
+    private fun decRef(): Int {
+        val count = refCount.decrementAndGet()
+        // 归零 = native 用完了, 摘掉强引用允许 GC 释放蹦床与 vtable 内存
+        if (count <= 0) live.remove(Pointer.nativeValue(instance))
+        return count.coerceAtLeast(0)
+    }
+
+    private companion object {
+        val live = ConcurrentHashMap<Long, ComHandler>()
+    }
 }

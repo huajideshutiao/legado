@@ -22,8 +22,10 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.Book
@@ -31,6 +33,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.FileUtilsCommon
 import io.legado.app.help.book.BookImageStorageProviders
+import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.image.BookImageLoaders
@@ -40,11 +43,19 @@ import io.legado.app.help.image.decodeBytesSampled
 import io.legado.app.help.image.decodeSvgFallback
 import io.legado.app.help.image.isGifBytes
 import io.legado.app.help.image.rememberAnimatedImageBitmap
+import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.help.toast.Toasters
+import io.legado.app.model.BookCoverShared
+import io.legado.app.model.BookCoverShared.CoverRatio
+import io.legado.app.model.fileBook.FileBook
+import io.legado.app.ui.bookshelf.defaultCoverEntry
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.NinePatchImageOrImage
 import io.legado.app.ui.compose.component.zoomable
 import io.legado.app.ui.root.PlatformServiceProviders
+import io.legado.app.ui.root.imageSaveFileName
+import io.legado.app.utils.readAllAndClose
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
@@ -56,7 +67,8 @@ import org.jetbrains.compose.resources.stringResource
 import kotlin.math.max
 
 /**
- * 跨平台大图查看内容件 (对照 app 端 [io.legado.app.ui.widget.dialog.PhotoDialog] 的 Content)。
+ * 跨平台大图查看内容件 (四端唯一实现; 原 app 端 PhotoDialog DialogFragment 已删,
+ * Android 的图片预览与其他端一样走 key="photo" overlay → [PhotoViewOverlayDialog])。
  *
  * 图片加载走 [ImageBitmapLoader] (commonMain 面, 各端 actual: jvm=OkHttp+ImageIO,
  * iOS=Coil3，鸿蒙=ArkUI 融合渲染平台图片管线；传 [bookSource] 时网络图自动带书源防盗链 header/cookie，
@@ -72,18 +84,18 @@ import kotlin.math.max
  *    对齐原版 loadByGlide 的 onlyRetrieveFromCache 优先 + Glide DiskCacheStrategy.DATA;
  *    失败进进程级 failUrl 黑名单, 死链不再反复请求) → ⑤ 失败显示默认封面占位
  * (对齐原版 glide error(BookCover.newDefaultDrawable()) 兜底)。同一 URL 二次打开零重复下载/解密。
- * 注: 原版 loadPhoto 的 EPUB ZIP 本地分支 (FileBook) 仍由各端 ImageBitmapLoader
- * 的 cbz:// 链路承担, app 端 PhotoDialog 保留原版完整链路。
+ * 注: 原版 loadPhoto 的 EPUB 本地分支 (FileBook) 已下沉进本件字节链 (章节缓存之后、
+ * Coil3 磁盘缓存之前)。
  * 手势复用共享 [zoomable] (双指缩放/单指平移/双击循环/fling 惯性, E-Ink 自动降级)。
  *
  * GIF 动图: desktop 经 [rememberAnimatedImageBitmap] 使用 Skiko Codec 逐帧播放；
  * 其余格式与其他端仍走静态 [ImageBitmapLoader] 路径。
  *
  * 加载中显示 [loadingContent] 占位；加载失败显示默认封面占位图
- * (对齐 app 端 PhotoDialog glide error(BookCover.newDefaultDrawable()) 兜底)。
+ * (对齐原版 PhotoDialog glide error(BookCover.newDefaultDrawable()) 兜底)。
  *
- * app 端 PhotoDialog 不消费本件: 其加载链含章节缓存文件/EPUB ZIP/SVG/data URI/Coil
- * 磁盘缓存 (Android 专属, KMP 端由各端加载器/磁盘缓存承担)。
+ * 原 Android 专属的四条分支 (章节缓存文件/EPUB/SVG/data URI/Coil 磁盘缓存) 都已在本件
+ * 字节链内, 故 app 端不再需要自己那份加载/手势实现。
  *
  * @param src 图片路径 (http(s):// / file:// / 绝对路径, 各端 actual 支持范围见 ImageBitmapLoader)
  * @param modifier 外层容器 Modifier (默认 wrap; 全屏场景传 fillMaxSize)
@@ -93,6 +105,7 @@ import kotlin.math.max
  * @param chapter 当前章节 (网络书阅读页点图时透传: 磁盘章节图片缓存 [BookImageStorage]
  *   优先链路需要; 非阅读页调用可空, 跳过②直接走 ③ 链路)
  * @param onLongPress 长按回调 (app 端长按保存等场景), 默认无
+ * @param onTap 单击回调 (全屏看图单击关闭): 加载中占位与图片区都挂, 图没出来也点得掉
  * @param loadingContent 加载中占位 (默认 i18n "loading" 文案, 对照原 DesktopPhotoDialog)
  */
 @Composable
@@ -134,6 +147,7 @@ fun PhotoDialogContent(
     // key 只留"回调是否存在" (决定 detectTapGestures 要不要等长按超时), 引用变化不重启。
     val currentTap by rememberUpdatedState(onTap)
     val currentLongPress by rememberUpdatedState(onLongPress)
+    val haptic = LocalHapticFeedback.current
     val hasTap = onTap != null
     val hasLongPress = onLongPress != null
     Box(
@@ -146,7 +160,10 @@ fun PhotoDialogContent(
                         { _: Offset -> currentTap?.invoke() }
                     } else null,
                     onLongPress = if (hasLongPress) {
-                        { _: Offset -> currentLongPress?.invoke() }
+                        { _: Offset ->
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            currentLongPress?.invoke()
+                        }
                     } else null,
                 )
             }
@@ -173,21 +190,39 @@ fun PhotoDialogContent(
                 )
             }
 
-            PhotoLoadState.Failed -> {
+            is PhotoLoadState.Failed -> {
                 // 对齐原版 PhotoDialog glide error(BookCover.newDefaultDrawable()):
-                // 失败显示默认封面占位, 保持可缩放/可点关闭
-                Image(
-                    painter = defaultCover,
-                    contentDescription = null,
-                    contentScale = ContentScale.Fit,
-                    modifier = imageModifier
-                        .clipToBounds()
-                        .zoomable(
-                            contentAspectRatio = defaultCoverRatio,
-                            onLongPress = onLongPress,
-                            onTap = onTap,
-                        ),
-                )
+                // 用户自定义默认封面集优先 (含 .9 图九宫格拉伸), 空集回落内置占位图;
+                // 两者都保持可缩放/可点关闭
+                val cover = state.cover
+                // .9 图拉伸铺满容器, 钳制按容器算 (传 null); 普通图按位图宽高比
+                val placeholderRatio = when {
+                    cover == null -> defaultCoverRatio
+                    state.coverNinePatch -> null
+                    else -> cover.width.toFloat() / cover.height
+                }
+                val placeholderModifier = imageModifier
+                    .clipToBounds()
+                    .zoomable(
+                        contentAspectRatio = placeholderRatio,
+                        onLongPress = onLongPress,
+                        onTap = onTap,
+                    )
+                if (cover != null) {
+                    NinePatchImageOrImage(
+                        bitmap = cover,
+                        isNinePatch = state.coverNinePatch,
+                        modifier = placeholderModifier,
+                        contentScale = ContentScale.Fit,
+                    )
+                } else {
+                    Image(
+                        painter = defaultCover,
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = placeholderModifier,
+                    )
+                }
             }
 
             PhotoLoadState.Loading -> loadingContent()
@@ -201,7 +236,11 @@ private sealed interface PhotoLoadState {
 
     /** @param gifBytes 原始字节为 GIF 时携带, 供 [rememberAnimatedImageBitmap] 逐帧播放 */
     data class Success(val bitmap: ImageBitmap, val gifBytes: ByteArray?) : PhotoLoadState
-    data object Failed : PhotoLoadState
+    /** @param cover 用户自定义默认封面集选出的位图 (null = 图集为空/缺文件, 用内置占位图) */
+    data class Failed(
+        val cover: ImageBitmap?,
+        val coverNinePatch: Boolean = false,
+    ) : PhotoLoadState
 }
 
 /**
@@ -210,7 +249,8 @@ private sealed interface PhotoLoadState {
  * ② 磁盘字节缓存（[BookImageStorage] 章节缓存 → Coil3 封面/列表图磁盘缓存），
  *    命中后按 2× 屏尺寸采样解码
  * ③ 现有 [ImageBitmapLoader] 链路（ImageBytesCache 内存/磁盘缓存 + 网络下载）
- * 全部失败返回 Failed（默认封面占位，对齐原版 glide error 兜底）。
+ * 全部失败走 [defaultCoverState]（用户自定义默认封面集优先，空集回落内置占位图，
+ * 对齐原版 glide error(newDefaultDrawable()) 兜底）。
  *
  * 整链在 [IoDispatcher] 上跑: 磁盘读/文件 stat/解码都是阻塞的, 缓存命中时若留在
  * produceState 的组合效应上下文 (主线程) 就是主线程 IO + 解码。
@@ -232,12 +272,29 @@ private suspend fun loadPhotoState(
     val gifBytes = bytes?.takeIf { isGifBytes(it) }
     // 内存位图命中时跳过解码, 但仍用上面读到的字节判定 GIF (阅读页缓存只存单帧)
     if (cached != null) return@withContext PhotoLoadState.Success(cached, gifBytes)
-    if (bytes == null) return@withContext PhotoLoadState.Failed
+    if (bytes == null) return@withContext defaultCoverState(maxDim)
     // 栅格解码 → SVG 兜底（对齐原版 decodeBytes ?: SvgUtils.renderInto 语义）
     val bitmap = decodeBytesSampled(bytes, maxDim)
         ?: decodeSvgFallback(bytes, maxDim)
-        ?: return@withContext PhotoLoadState.Failed
+        ?: return@withContext defaultCoverState(maxDim)
     PhotoLoadState.Success(bitmap, gifBytes)
+}
+
+/**
+ * 加载彻底失败的占位 (对齐原版 glide error(BookCover.newDefaultDrawable())): 用户自定义
+ * 默认封面集按 NOVEL 比例选一张 (seed=null → 随机, 同原版 newDefaultDrawable());
+ * 图集为空、文件缺失或解码失败回落内置 image_cover_default (cover=null)。
+ */
+private fun defaultCoverState(maxDim: Int): PhotoLoadState.Failed {
+    // 选图与路径推导同书架封面链 (BookshelfScreen.loadDefault): entry 版才带 ninePatch 标记
+    val picked = runCatching {
+        val coversDir = DataStorageProviders.getOrNull()?.coversDir ?: return@runCatching null
+        val entry = defaultCoverEntry(null, CoverRatio.NOVEL) ?: return@runCatching null
+        entry to BookCoverShared.bakedPath(coversDir, entry, CoverRatio.NOVEL)
+    }.getOrNull() ?: return PhotoLoadState.Failed(null)
+    val bitmap = FileUtilsCommon.readBytes(picked.second)?.let { decodeBytesSampled(it, maxDim) }
+        ?: return PhotoLoadState.Failed(null)
+    return PhotoLoadState.Failed(bitmap, picked.first.ninePatch)
 }
 
 /**
@@ -245,9 +302,10 @@ private suspend fun loadPhotoState(
  * ① 网络书已读过的图：磁盘章节图片缓存 [BookImageStorage]（阅读页 [ReaderImageResolver]
  *    下载时按 book+url 落盘，md5(url) 文件名；chapter 参与接口签名，各端实现路径均只由
  *    book+url 派生，与阅读页取图同源同路径）
- * ② Coil3 封面/列表图磁盘缓存（书架封面/列表图刚显示过时复用，双链路架构下 Coil3 缓存
+ * ② 本地 EPUB 内嵌图：[FileBook.getImage]（包内裸 href 无 scheme，须先于 ImageBitmapLoader）
+ * ③ Coil3 封面/列表图磁盘缓存（书架封面/列表图刚显示过时复用，双链路架构下 Coil3 缓存
  *    与自下载链路不共享——避免重新下载；仅读缓存不触发网络，见 [BookImageLoader.loadDiskCachedBytes]）
- * ③ 未命中 → [ImageBitmapLoader]（ImageBytesCache 内存/磁盘缓存 + 网络下载+解密）
+ * ④ 未命中 → [ImageBitmapLoader]（ImageBytesCache 内存/磁盘缓存 + 网络下载+解密）
  */
 private suspend fun loadPhotoBytes(
     src: String,
@@ -264,6 +322,12 @@ private suspend fun loadPhotoBytes(
         if (path != null) {
             FileUtilsCommon.readBytes(path)?.let { return it }
         }
+    }
+    // 本地 EPUB 内嵌图 (下沉原 app 端 PhotoDialog 的 FileBook 分支): href 是包内裸路径,
+    // 无 scheme, ImageBitmapLoader 认不出, 必须先于其兜底
+    if (book != null && book.isEpub) {
+        runCatching { FileBook.getImage(book, src)?.readAllAndClose() }
+            .getOrNull()?.let { if (it.isNotEmpty()) return it }
     }
     // Coil3 封面/列表图磁盘缓存（仅读不网络；磁盘 IO 异常回退网络链路）
     BookImageLoaders.getOrNull()?.let { loader ->
@@ -290,7 +354,7 @@ fun decodePhotoOverlayPayload(payload: String): Pair<String, Int> {
 /**
  * 大图查看对话框 (AppAlertDialog 形态, 视觉对照原 desktop DesktopPhotoDialog:
  * 内容区 + "关闭"按钮, 图片区占对话框高 0.8)。desktop/iOS/鸿蒙三端共用;
- * app 端走全屏 DialogFragment 版 [io.legado.app.ui.widget.dialog.PhotoDialog], 不经本件。
+ * 全屏看图 (含 Android) 走 [PhotoViewOverlayDialog], 不经本件。
  *
  * @param src 图片路径
  * @param onDismiss 关闭回调
@@ -371,21 +435,21 @@ fun PhotoViewOverlayDialog(
                 bookSource = bookSource,
                 chapter = chapter,
                 onLongPress = {
-                    // 长按保存 (对照 master PhotoDialog.doSaveImage): 字节链路 → 平台选位置 → 写入 → toast
+                    // 长按保存 (对照 master PhotoDialog.doSaveImage): 字节链路 → 落盘 → toast
                     scope.launch(IoDispatcher) {
                         val bytes = loadPhotoBytes(src, book, bookSource, chapter, isCover = true)
                             ?: run {
                                 Toasters.get().toast("保存图片失败")
                                 return@launch
                             }
-                        // PlatformServices 未注册是异常场景, 仍提示失败;
-                        // 用户取消选位置 (null) 静默返回, 不弹失败提示
                         val files = PlatformServiceProviders.getOrNull()?.files
                         if (files == null) {
                             Toasters.get().toast("保存图片失败")
                             return@launch
                         }
-                        when (files.saveImageBytes("image.jpg", bytes)) {
+                        // 目录记忆见 FilePickerService.saveImageRememberingDir (上次目录还在
+                        // 就直接写); 用户取消选目录 (null) 静默返回, 不弹失败提示
+                        when (files.saveImageRememberingDir(imageSaveFileName(src), bytes)) {
                             true -> Toasters.get().toast("保存成功")
                             false -> Toasters.get().toast("保存图片失败")
                             null -> Unit

@@ -100,10 +100,10 @@ data class PageTransform(
 )
 
 /**
- * 转场角色: 前进新页/前进旧页/返回目标页/返回出栈页/连播返回段中待入的新页 (保持起始位)。
+ * 转场角色: 前进新页/前进旧页/返回目标页/返回出栈页。
  */
 enum class TransitionRole {
-    NewPage, OldPage, TargetPage, OutgoingPage, PendingNew
+    NewPage, OldPage, TargetPage, OutgoingPage
 }
 
 /**
@@ -164,13 +164,6 @@ class RouteTransitionSpecSampler(private val spec: RouteTransitionSpec) : RouteT
             TransitionRole.OutgoingPage -> PageTransform(
                 alpha = if (spec.outgoingFadeOut) 1f - progress else 1f,
                 translationX = width * spec.outgoingSlideFraction * progress,
-            )
-
-            TransitionRole.PendingNew -> PageTransform(
-                alpha = if (spec.newPageFadeIn) 0f else 1f,
-                scaleX = spec.newPageScaleFrom,
-                scaleY = spec.newPageScaleFrom,
-                translationX = width * spec.newPageSlideFraction,
             )
         }
     }

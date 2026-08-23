@@ -145,7 +145,7 @@ import io.legado.app.ui.root.encodeSourceVariableOverlayPayload
 import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.route.encodeReviewListDialogPayload
-import io.legado.app.ui.widget.dialog.PhotoDialog
+import io.legado.app.ui.widget.dialog.encodePhotoOverlayPayload
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.ACache
 import io.legado.app.utils.ArchiveUtils
@@ -479,10 +479,12 @@ class AndroidPlatformCapabilities(
         return true
     }
 
-    // 图片预览 (对照原版 ContentTextView.click 的 PhotoDialog 分支;
-    // chapterIndex 不消费: app 端 PhotoDialog 已保留原版章节缓存优先链路)
+    // 图片预览: 与 desktop/iOS 同走共享全屏 overlay (key="photo" → PhotoViewOverlayDialog),
+    // chapterIndex 透传给章节磁盘缓存优先链路; book/书源由 overlay 宿主从当前阅读态取
     override fun showImagePreview(url: String, chapterIndex: Int) {
-        activity.showDialogFragment(PhotoDialog(url))
+        AppNavigatorProviders.getOrNull()?.showOverlay(
+            AppOverlay.Dialog("photo", payload = encodePhotoOverlayPayload(url, chapterIndex))
+        )
     }
 
     // 迁 Compose Overlay: 原 app 端 DefaultCoverGalleryDialog Fragment 已随封面统一删除,

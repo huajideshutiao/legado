@@ -426,6 +426,8 @@ internal class MacSession private constructor(
      */
     suspend fun evaluateJavascript(script: String): String? {
         val future = CompletableFuture<String?>()
+        // holder: completionHandler 可能在本函数超时返回之后才触发, 生命周期只能由回调自己结束
+        val holder = arrayOfNulls<ObjC.ObjCBlock>(1)
         val block = ObjC.ObjCBlock(object : Callback {
             fun invoke(block: Pointer, result: Pointer, error: Pointer): Pointer? {
                 val value = if (error != null && error != Pointer.NULL) {
@@ -436,9 +438,11 @@ internal class MacSession private constructor(
                     fromId(result)
                 }
                 future.complete(value)
+                holder[0]?.dispose()
                 return null
             }
         })
+        holder[0] = block
         CocoaLoop.post {
             void(webView, "evaluateJavaScript:completionHandler:", ns(script), block.pointer())
         }
@@ -471,12 +475,15 @@ internal class MacSession private constructor(
                 done.countDown()
                 continue
             }
+            val holder = arrayOfNulls<ObjC.ObjCBlock>(1)
             val block = ObjC.ObjCBlock(object : Callback {
                 fun invoke(block: Pointer): Pointer? {
                     done.countDown()
+                    holder[0]?.dispose()
                     return null
                 }
             })
+            holder[0] = block
             CocoaLoop.post {
                 void(store, "setCookie:completionHandler:", gCookie, block.pointer())
             }
@@ -508,6 +515,7 @@ internal class MacSession private constructor(
     suspend fun cookies(timeoutMs: Long): String? {
         val store = cookieStore ?: return null
         val future = CompletableFuture<String?>()
+        val holder = arrayOfNulls<ObjC.ObjCBlock>(1)
         val block = ObjC.ObjCBlock(object : Callback {
             fun invoke(block: Pointer, cookies: Pointer): Pointer? {
                 val parts = ArrayList<String>()
@@ -521,9 +529,11 @@ internal class MacSession private constructor(
                     }
                 }
                 future.complete(parts.joinToString("; ").takeIf { it.isNotBlank() })
+                holder[0]?.dispose()
                 return null
             }
         })
+        holder[0] = block
         CocoaLoop.post {
             void(store, "getAllCookiesWithCompletionHandler:", block.pointer())
         }

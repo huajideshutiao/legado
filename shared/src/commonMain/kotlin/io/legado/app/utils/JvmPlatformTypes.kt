@@ -49,6 +49,23 @@ expect abstract class InputStream {
     open fun close()
 }
 
+/** 读全流并关闭 (commonMain 的 [InputStream] 门面没有 kotlin.io 的 readBytes 扩展)。 */
+internal fun InputStream.readAllAndClose(): ByteArray {
+    try {
+        var buffer = ByteArray(64 * 1024)
+        var size = 0
+        while (true) {
+            if (size == buffer.size) buffer = buffer.copyOf(buffer.size * 2)
+            val read = read(buffer, size, buffer.size - size)
+            if (read <= 0) break
+            size += read
+        }
+        return buffer.copyOf(size)
+    } finally {
+        runCatching { close() }
+    }
+}
+
 // java.io.File 桥接: commonMain 仅作类型签名占位 (如 BitmapProvider.decodeStreamAndCompressToJpeg
 // 的 outFile 参数), 不在 commonMain 构造或调用 File 方法。显式声明 (path: String) 构造器以匹配
 // java.io.File(String) (java.io.File 无无参构造器, 隐式 no-arg expect 会与 typealias 冲突)。
