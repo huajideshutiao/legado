@@ -536,12 +536,6 @@ interface PlatformCapabilities {
     /** 路由转场动画参数 (push/pop 几何 + 时长 + 插值器), 平台可运行时动态提供 */
     val routeTransitionSpec: RouteTransitionSpec get() = DefaultRouteTransitionSpec
 
-    /**
-     * 路由转场采样器 (复用系统动画的端 override, 如 Android 直接复用系统窗口转场动画;
-     * null=动画层用 [routeTransitionSpec] 参数推导)。
-     */
-    val routeTransitionSampler: RouteTransitionSampler? get() = null
-
     /** 对话框/底部弹层动画参数 (进入/退出时长 + 插值器) */
     val dialogTransitionSpec: DialogTransitionSpec get() = DefaultDialogTransitionSpec
 }

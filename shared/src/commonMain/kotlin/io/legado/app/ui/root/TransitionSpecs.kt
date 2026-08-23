@@ -5,8 +5,8 @@ package io.legado.app.ui.root
  * sharedUiMain 动画层经 [toComposeEasing] 集中映射为 compose Easing)。
  *
  * 预设覆盖系统插值器; 任意系统曲线可用 [CubicBezier] 控制点表达 (如
- * iOS kCAMediaTimingFunctionEaseInEaseOut、Windows Fluent standard), 接入新系统
- * 插值器只需新增预设或控制点, 动画框架无需改动。
+ * iOS kCAMediaTimingFunctionEaseInEaseOut、Windows Fluent standard), 物理曲线用
+ * [Spring] 表达 (如澎湃 OS 转场), 接入新系统插值器只需新增预设或参数, 动画框架无需改动。
  */
 sealed interface TransitionEasing {
     /** 匀速 (系统 linear) */
@@ -32,6 +32,15 @@ sealed interface TransitionEasing {
         val x2: Float,
         val y2: Float,
     ) : TransitionEasing
+
+    /**
+     * 弹簧 (阻尼谐振) 曲线, 按响应时间 + 阻尼比参数化。
+     * 澎湃 OS 转场插值器 (activity 转场 = response 0.8 / damping 0.95)。
+     */
+    data class Spring(
+        val response: Float,
+        val damping: Float,
+    ) : TransitionEasing
 }
 
 /**
@@ -39,8 +48,8 @@ sealed interface TransitionEasing {
  *
  * 动画仍由 shared LegadoApp 唯一注入点驱动, 本 spec 只承载
  * "平台动画形态参数", 由各端 [PlatformCapabilities] 按系统转场语义提供:
- * - Android: 系统 Activity 转场语义 (新页 slide_in_right 全宽滑入+fade_in, 旧页 fade_out
- *   不位移, 300ms + fast_out_slow_in), 时长运行时动态读系统动画时长缩放 (Settings.Global);
+ * - Android: 澎湃 OS activity 转场语义 (新页全宽滑入, 旧页左移 25% + 压暗 0.5,
+ *   500ms + 弹簧 response 0.8/damping 0.95), 时长运行时动态读系统动画时长缩放 (Settings.Global);
  * - iOS: UINavigationController push/pop 转场语义 (350ms, easeInEaseOut 曲线);
  * - desktop: 平台惯例 (Windows Fluent motion: 200ms + standard 曲线, 淡入+轻微位移);
  * - ohos 及其它未 override 端: 本文件默认值 (iOS 式 300ms)。
@@ -50,44 +59,50 @@ sealed interface TransitionEasing {
  */
 data class RouteTransitionSpec(
     // ===== 前进 (push) =====
-    /** 新页自右侧滑入宽度比例 (1f=全宽, Android 系统 slide_in_right 语义) */
+    /** 新页自右侧滑入宽度比例 (1f=全宽) */
     val newPageSlideFraction: Float,
-    /** 旧页向左位移比例 (0f=不位移, Android 系统 fade_out 仅淡出) */
+    /** 旧页向左位移比例 (0f=不位移) */
     val oldPageShiftFraction: Float,
-    /** 新页淡入 (alpha 0→1, Android 系统 fade_in) */
+    /** 新页淡入 (alpha 0→1) */
     val newPageFadeIn: Boolean,
-    /** 旧页淡出 (alpha 1→0, Android 系统 fade_out) */
+    /** 旧页淡出 (alpha 1→0) */
     val oldPageFadeOut: Boolean,
     /** 新页缩放起点 (1f=无缩放; 缩放形态扩展预留) */
     val newPageScaleFrom: Float,
     val pushDurationMillis: Int,
     val pushEasing: TransitionEasing,
     // ===== 返回 (pop) =====
-    /** 目标页自左侧滑回比例 (0f=不位移, Android 系统返回转场 fade 语义) */
+    /** 目标页自左侧滑回比例 (0f=不位移) */
     val targetPageSlideFraction: Float,
-    /** 出栈页向右滑出比例 (1f=全宽, Android 系统 slide_out_right 语义) */
+    /** 出栈页向右滑出比例 (1f=全宽) */
     val outgoingSlideFraction: Float,
-    /**
-     * 目标页淡入 (Android 系统返回转场 fade_in)。
-     * 注: 动画层 (LegadoApp) 对 pop 目标页强制 alpha=1 覆盖本字段——目标页在出栈页之下
-     * 本就完整渲染, 淡入只产生半透明空白窗口且部分 ROM 的 closeEnter 淡入不推进,
-     * 故返回转场目标页实际不做淡入 (保留字段仅为采样器/规格兼容)。
-     */
+    /** 目标页淡入 (alpha 0→1) */
     val targetPageFadeIn: Boolean,
-    /** 出栈页淡出 (Android 系统返回转场 fade_out) */
+    /** 出栈页淡出 (alpha 1→0) */
     val outgoingFadeOut: Boolean,
     /** 目标页缩放起点 (1f=无缩放) */
     val targetPageScaleFrom: Float,
     val popDurationMillis: Int,
     val popEasing: TransitionEasing,
+    /**
+     * 下层页压暗蒙版不透明度 (0f=不压暗): 前进时旧页 0→该值, 返回时目标页该值→0。
+     * 澎湃 OS 语义 (旧页压暗到 0.5, 而非淡出); 压暗走黑色蒙版而非图层 alpha,
+     * 图层 alpha 会让下层页透出背景色变灰而不是变暗。
+     */
+    val underPageDimAlpha: Float = 0f,
+    /**
+     * 转场期间页面圆角半径 (px, 0f=直角): 滑动中的页面带圆角, 从圆角处露出下面的页面。
+     * 澎湃 OS 语义 (给转场窗口套屏幕圆角); 只在动画期间生效, 静止态回直角。
+     */
+    val pageCornerRadiusPx: Float = 0f,
 )
 
 /**
- * 页面转场单帧变换 (alpha/缩放/位移)。
+ * 页面转场单帧变换 (alpha/缩放/位移/压暗)。
  *
  * [scalePivotFractionX/Y] 为缩放轴心 (0=左上角, 0.5=中心): 参数化 spec 以左上角为轴,
- * 系统 Activity 转场动画 scale 段以中心为轴 (pivot 50%), 由采样器自带轴心描述,
  * 动画层据此设置 graphicsLayer transformOrigin。
+ * [dim] 为叠在页面之上的黑色蒙版不透明度, 由动画层绘制在图层内 (随页面一起位移)。
  */
 data class PageTransform(
     val alpha: Float = 1f,
@@ -97,6 +112,7 @@ data class PageTransform(
     val translationY: Float = 0f,
     val scalePivotFractionX: Float = 0f,
     val scalePivotFractionY: Float = 0f,
+    val dim: Float = 0f,
 )
 
 /**
@@ -107,40 +123,15 @@ enum class TransitionRole {
 }
 
 /**
- * 路由转场采样器: 动画层按角色+进度+页宽采样单帧变换。
- *
- * - 默认实现 [RouteTransitionSpecSampler] 由 [RouteTransitionSpec] 参数推导;
- * - 平台可提供系统动画采样实现 (如 Android 直接复用系统窗口转场 Animation,
- *   定制 ROM 的系统动画资源/插值器自动生效, 零参数复刻), 经 [io.legado.app.ui.root.PlatformCapabilities.routeTransitionSampler] 注入。
- *
- * progress 语义随实现: spec 采样器消费动画层曲线进度 (与 tween(spec.easing) 匹配),
- * 系统动画采样器消费线性时钟 (曲线由系统动画内部处理)。两者都是单调递增。
+ * 路由转场采样器: 动画层按角色 + 进度 + 页宽采样单帧变换, 变换全由
+ * [RouteTransitionSpec] 参数推导。progress 为动画层推进值 (已含 spec 曲线)。
  */
-interface RouteTransitionSampler {
-    val pushDurationMillis: Int
-    val popDurationMillis: Int
+class RouteTransitionSampler(private val spec: RouteTransitionSpec) {
+    val pushDurationMillis: Int get() = spec.pushDurationMillis
+    val popDurationMillis: Int get() = spec.popDurationMillis
 
-    /**
-     * @param width 页面宽度 (系统动画 RELATIVE_TO_SELF 百分比轴心/尺寸解析用)
-     * @param height 页面高度
-     */
-    fun sample(role: TransitionRole, progress: Float, width: Float, height: Float): PageTransform
-}
-
-/**
- * 由 [RouteTransitionSpec] 参数推导变换的采样器 (原 LegadoApp graphicsLayer 公式逐字搬移,
- * spec 路径视觉零变化)。progress 为动画层推进值 (已含 spec 曲线)。
- */
-class RouteTransitionSpecSampler(private val spec: RouteTransitionSpec) : RouteTransitionSampler {
-    override val pushDurationMillis: Int get() = spec.pushDurationMillis
-    override val popDurationMillis: Int get() = spec.popDurationMillis
-
-    override fun sample(
-        role: TransitionRole,
-        progress: Float,
-        width: Float,
-        height: Float,
-    ): PageTransform {
+    /** @param width 页面宽度 (位移比例按页宽解析) */
+    fun sample(role: TransitionRole, progress: Float, width: Float): PageTransform {
         return when (role) {
             TransitionRole.NewPage -> PageTransform(
                 alpha = if (spec.newPageFadeIn) progress else 1f,
@@ -152,6 +143,7 @@ class RouteTransitionSpecSampler(private val spec: RouteTransitionSpec) : RouteT
             TransitionRole.OldPage -> PageTransform(
                 alpha = if (spec.oldPageFadeOut) 1f - progress else 1f,
                 translationX = -width * spec.oldPageShiftFraction * progress,
+                dim = spec.underPageDimAlpha * progress,
             )
 
             TransitionRole.TargetPage -> PageTransform(
@@ -159,6 +151,7 @@ class RouteTransitionSpecSampler(private val spec: RouteTransitionSpec) : RouteT
                 scaleX = spec.targetPageScaleFrom + (1f - spec.targetPageScaleFrom) * progress,
                 scaleY = spec.targetPageScaleFrom + (1f - spec.targetPageScaleFrom) * progress,
                 translationX = -width * spec.targetPageSlideFraction * (1f - progress),
+                dim = spec.underPageDimAlpha * (1f - progress),
             )
 
             TransitionRole.OutgoingPage -> PageTransform(

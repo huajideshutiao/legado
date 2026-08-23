@@ -19,7 +19,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -210,21 +209,20 @@ fun AppTheme(content: @Composable () -> Unit) {
     }
     recreateTick
     val colors = readAppColors(themeStore)
-    val textToolbar = remember { ComposeTextToolbar() }
     CompositionLocalProvider(
         LocalAppColors provides colors,
         LocalEInk provides appConfig.isEInkMode,
-        LocalTextToolbar provides textToolbar,
     ) {
-        MaterialTheme(
-            colors = colors.toColors(),
-            shapes = AppTheme.DesignTokens.shapes,
-        ) {
-            // 直接 provides 整体替换(ProvideTextStyle 是 merge, 压不掉默认 body 样式的行高/字距)
-            CompositionLocalProvider(LocalTextStyle provides AppTheme.DesignTokens.defaultTextStyle) {
-                content()
-                // 自绘文本选择菜单宿主：全局接管系统 ActionMode，逐界面零改动
-                textToolbar.Host()
+        // 文本选择菜单: 自绘澎湃样式弹层, 顶掉 Android 的平台 ActionMode (见 AppTextToolbar)
+        ProvideAppTextToolbar {
+            MaterialTheme(
+                colors = colors.toColors(),
+                shapes = AppTheme.DesignTokens.shapes,
+            ) {
+                // 直接 provides 整体替换(ProvideTextStyle 是 merge, 压不掉默认 body 样式的行高/字距)
+                CompositionLocalProvider(LocalTextStyle provides AppTheme.DesignTokens.defaultTextStyle) {
+                    content()
+                }
             }
         }
     }

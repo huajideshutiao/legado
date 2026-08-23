@@ -467,7 +467,7 @@ fun CodeTextField(
     // (替代原 0.6em/1em 近似估算, 对齐原版 showDropDown 的 layout.getPrimaryHorizontal)
     val density = LocalDensity.current
     val textMeasurer = rememberTextMeasurer(cacheSize = 8)
-    // 字段在窗口中的位置: Popup 的 offset 锚点是窗口内容根 (见 ComposeTextToolbar 的
+    // 字段在窗口中的位置: Popup 的 offset 锚点是窗口内容根 (见 PopupPositionProvider 的
     // anchorBounds 注释), 自动补全弹层要锚定光标, 组件内相对偏移必须换算成窗口坐标。
     // 常挂跟踪: 挂载即回调一次取最新值 (首次弹层可见时不再用 Zero 错位一帧),
     // 滚动/键盘时位置变化跟随更新; 写入同值不触发重组, 弹层不可见时 (popupOffset
@@ -499,7 +499,7 @@ fun CodeTextField(
     // internalScroll.value` 驱动, 两种滚动场景一个公式, 不按 maxLines 分分支
     var externalVisibleTopPx by remember { mutableFloatStateOf(0f) }
     var externalVisibleHeightPx by remember { mutableFloatStateOf(0f) }
-    // 字段在窗口中的位置: Popup 的 offset 锚点是窗口内容根 (见 ComposeTextToolbar 的
+    // 字段在窗口中的位置: Popup 的 offset 锚点是窗口内容根 (见 PopupPositionProvider 的
     // anchorBounds 注释), 自动补全弹层要锚定光标, 组件内相对偏移必须换算成窗口坐标。
     // 常挂跟踪: 挂载即回调一次取最新值 (首次弹层可见时不再用 Zero 错位一帧),
     // 滚动/键盘时位置变化跟随更新; 写入同值不触发重组

@@ -1,7 +1,6 @@
 package io.legado.app.ui.root
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
@@ -35,6 +34,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -144,14 +144,8 @@ fun LegadoApp(
         val lastSettled = remember { mutableStateOf(entries) }
         // 转场动画平台 spec: 随导航事件读取 (Android 端每次动态读系统动画时长缩放, 即时生效)
         val transitionSpec = remember(entries, capabilities) { capabilities.routeTransitionSpec }
-        // 转场采样器: 平台提供系统动画采样 (Android 复用系统窗口转场动画, 定制 ROM 的动画
-        // 资源/插值器自动生效) 时用系统实现, 否则用 spec 参数推导; 推进曲线跟随采样器类型:
-        // spec 采样器由动画层 tween(spec.easing) 提供曲线 (progress 为曲线值), 系统采样器
-        // 用线性时钟 (曲线由系统动画内部处理)
-        val transitionSampler = remember(entries, capabilities) {
-            capabilities.routeTransitionSampler ?: RouteTransitionSpecSampler(transitionSpec)
-        }
-        val useSystemTransition = capabilities.routeTransitionSampler != null
+        // 转场采样器: 变换全由 spec 参数推导, 消费动画层曲线进度 (与 tween(spec.easing) 匹配)
+        val transitionSampler = remember(transitionSpec) { RouteTransitionSampler(transitionSpec) }
         // 本次导航分类: 只从"两份栈快照的差"纯推导, 不把自身上一次的结论 (animating /
         // navigatingForward) 当输入。lastSettled 直到动画播完才更新, 整段动画期间每次重组
         // 都会重跑本段; 结论若自反, pop+push 配对 (目录链路/replace) 会在"单段前进"与
@@ -322,11 +316,9 @@ fun LegadoApp(
                                 transitionSampler.popDurationMillis
                             },
                             easing = if (navigatingForward) {
-                                if (useSystemTransition) LinearEasing
-                                else transitionSpec.pushEasing.toComposeEasing()
+                                transitionSpec.pushEasing.toComposeEasing()
                             } else {
-                                if (useSystemTransition) LinearEasing
-                                else transitionSpec.popEasing.toComposeEasing()
+                                transitionSpec.popEasing.toComposeEasing()
                             },
                         )
                     )
@@ -372,51 +364,49 @@ fun LegadoApp(
                 // 目录链路单段前进时栈顶就是阅读页, 详情页不参与本段 (落进下方隐藏分支)
                 val isTarget = entry.id == topEntry?.id
                 val isSliding = entry.id in slidingIds
+                // 单帧变换采样 (图层变换与压暗蒙版共用); null = 本段不参与的隐藏页。
+                // 只在 graphicsLayer 块内调用: 对 transition 的读取是图层阶段读, 逐帧只更新
+                // 图层属性, 不触发页面内容重绘
+                val sampleTransform: (Float) -> PageTransform? = { width ->
+                    val progress = transition.value
+                    // 动画尚未启动的首帧 (组合先于 effect 的 snapTo): 按起始位渲染,
+                    // 与 snapTo(0) 后的动画首帧位置一致, 避免先闪终态再动画
+                    val idleFrame = animating && !transition.isRunning && progress == 1f
+                    val effectiveProgress = if (idleFrame) 0f else progress
+                    when {
+                        isTarget -> transitionSampler.sample(
+                            if (navigatingForward) {
+                                TransitionRole.NewPage
+                            } else {
+                                TransitionRole.TargetPage
+                            },
+                            effectiveProgress, width
+                        )
+
+                        // 动画结束后 (animating=false) 的滑出页归入隐藏分支: 原公式
+                        // 该态为半透明离屏 (alpha=1-progress, translationX=-width), 与
+                        // effect 末尾同步移除仅差同帧, 直接隐藏行为更干净且不可见差异
+                        isSliding && animating -> transitionSampler.sample(
+                            if (navigatingForward) {
+                                TransitionRole.OldPage
+                            } else {
+                                TransitionRole.OutgoingPage
+                            },
+                            effectiveProgress, width
+                        )
+
+                        else -> null
+                    }
+                }
+                // 转场期间的页面圆角形状 (hoist 避免逐帧新建 Shape)
+                val transitionShape = remember(transitionSpec.pageCornerRadiusPx) {
+                    RoundedCornerShape(transitionSpec.pageCornerRadiusPx)
+                }
                 Box(
                     Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            val progress = transition.value
-                            val running = transition.isRunning
-                            // 动画尚未启动的首帧 (组合先于 effect 的 snapTo): 按起始位渲染,
-                            // 与 snapTo(0) 后的动画首帧位置一致, 避免先闪终态再动画;
-                            // 起始位 = progress=0 采样 (spec 公式与系统动画 from 值一致)
-                            val idleFrame = animating && !running && progress == 1f
-                            val effectiveProgress = if (idleFrame) 0f else progress
-                            // 变换统一由采样器提供: spec 采样器消费动画层曲线进度 (公式与原
-                            // graphicsLayer 逐字一致), 系统动画采样器消费线性时钟 (曲线由系统
-                            // 动画内部处理, 含 startOffset/fillBefore/fillAfter 语义)
-                            val transform = when {
-                                isTarget -> transitionSampler.sample(
-                                    if (navigatingForward) {
-                                        TransitionRole.NewPage
-                                    } else {
-                                        TransitionRole.TargetPage
-                                    },
-                                    effectiveProgress, size.width, size.height
-                                ).let { transform ->
-                                    // 返回转场目标页不做淡入: 目标页在出栈页之下本就完整渲染,
-                                    // 淡入只会在中间帧产生"两层都半透明"的空白窗口, 且部分 ROM 的
-                                    // closeEnter 淡入不随进度推进 (目标页全程 alpha≈0 不可见,
-                                    // 动画收敛后才突然闪现, 无透明度渐变)。固定 alpha=1, 由出栈页
-                                    // 滑开直接露出完整目标页; 位移/缩放仍随采样器保留。
-                                    if (navigatingForward) transform else transform.copy(alpha = 1f)
-                                }
-
-                                // 动画结束后 (animating=false) 的滑出页归入隐藏分支: 原公式
-                                // 该态为半透明离屏 (alpha=1-progress, translationX=-width), 与
-                                // effect 末尾同步移除仅差同帧, 直接隐藏行为更干净且不可见差异
-                                isSliding && animating -> transitionSampler.sample(
-                                    if (navigatingForward) {
-                                        TransitionRole.OldPage
-                                    } else {
-                                        TransitionRole.OutgoingPage
-                                    },
-                                    effectiveProgress, size.width, size.height
-                                )
-
-                                else -> null
-                            }
+                            val transform = sampleTransform(size.width)
                             if (transform != null) {
                                 alpha = transform.alpha
                                 scaleX = transform.scaleX
@@ -439,11 +429,30 @@ fun LegadoApp(
                                 transformOrigin = TransformOrigin(0f, 0f)
                             }
                             clip = true
+                            // 转场期间给页面套屏幕圆角: 滑动页从圆角处露出下面压暗的页面。
+                            // 静止/隐藏态回直角 —— 分屏/小窗时页面边界不是屏幕边界,
+                            // 常驻圆角会在窗口内切出可见缺角
+                            shape = if (animating && transitionSpec.pageCornerRadiusPx > 0f) {
+                                transitionShape
+                            } else {
+                                RectangleShape
+                            }
                         }
                         .background(AppTheme.colors.background),
                 ) {
                     saveableStateHolder.SaveableStateProvider(entry.id.value) {
                         RouteContent(entry, navigator, screenModelStore)
+                    }
+                    // 压暗蒙版 (前进时旧页压暗, 返回时目标页随进度恢复): 独立图层只改 alpha,
+                    // 不让页面内容随动画逐帧重绘; 无 pointerInput 不参与命中测试。
+                    // 用黑色蒙版而非图层 alpha —— 图层 alpha 会让下层页透出背景色变灰不变暗
+                    if (transitionSpec.underPageDimAlpha > 0f) {
+                        Box(
+                            Modifier
+                                .matchParentSize()
+                                .graphicsLayer { alpha = sampleTransform(size.width)?.dim ?: 0f }
+                                .background(Color.Black)
+                        )
                     }
                 }
                 } // key(entry.id)

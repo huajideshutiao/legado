@@ -4,7 +4,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings
+import android.view.RoundedCorner
 import android.view.ViewConfiguration
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -137,7 +139,6 @@ import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.DialogTransitionSpec
 import io.legado.app.ui.root.PlatformCapabilities
-import io.legado.app.ui.root.RouteTransitionSampler
 import io.legado.app.ui.root.RouteTransitionSpec
 import io.legado.app.ui.root.TransitionEasing
 import io.legado.app.ui.root.encodeBookVariableOverlayPayload
@@ -210,6 +211,14 @@ import java.util.Collections
  */
 private const val OVERLAY_RESULT_TIMEOUT_MS = 10 * 60 * 1000L
 
+/**
+ * 澎湃 OS activity 转场插值器参数 (miui-services.jar
+ * `AppTransitionInjector$ActivityTranstionInterpolator`, 由 createActivityOpenCloseTransition
+ * 以 response=0.8 / damping=0.95 构造)。
+ */
+private val MiuiActivityTransitionEasing =
+    TransitionEasing.Spring(response = 0.8f, damping = 0.95f)
+
 class AndroidPlatformCapabilities(
     private val activity: MainActivity,
 ) : PlatformCapabilities {
@@ -250,16 +259,19 @@ class AndroidPlatformCapabilities(
     private val importEmptyMsgState = MutableStateFlow(false)
 
     // ===== 全局转场动画平台 spec (方案 A: 动画单一注入点参数化) =====
-    // Android: 系统 Activity 转场语义 (API 28+ 默认转场: 新页 slide_in_right 全宽滑入 +
-    // fade_in, 旧页 fade_out 不位移, 300ms, @android:interpolator/fast_out_slow_in);
-    // 返回: 出栈页 slide_out_right 全宽滑出+淡出, 目标页不位移且不做淡入——目标页在
-    // 出栈页之下本就完整渲染, 由出栈页滑开直接露出 (动画层 LegadoApp 对 pop 目标页强制
-    // alpha=1, 见 TransitionRole.TargetPage 消费点; 部分 ROM 的 closeEnter 淡入不随进度
-    // 推进会导致目标页全程不可见、动画收敛后突然闪现, 故不再依赖淡入)。
+    // Android: 澎湃 OS activity 转场语义, 逐字复刻 miui-services.jar 的
+    // com.android.server.wm.AppTransitionInjector.createActivityOpenCloseTransition:
+    // 前进 = 新页全宽滑入 (不淡入) + 旧页左移 25% 并压暗到 0.5;
+    // 返回 = 目标页自左 25% 滑回并从 0.5 恢复 + 出栈页全宽滑出 (不淡出);
+    // 整个 AnimationSet 共用弹簧插值器 (response 0.8 / damping 0.95), 时长 500ms。
+    //
+    // 不读主题 windowAnimationStyle 的转场动画资源: 澎湃的转场在 system_server 里用代码
+    // 构造, framework-res 的 Animation.Activity 及全部 RRO overlay 仍是 AOSP 原版
+    // (96dp 位移 / 450ms), 读资源只能得到 AOSP 观感而非本机系统观感。
+    //
     // 时长运行时动态读系统动画时长缩放 (Settings.Global ANIMATOR_DURATION_SCALE ×
     // TRANSITION_ANIMATION_SCALE 取小值: 任一关闭即关闭转场动画, 尊重用户"动画时长缩放"
-    // 设置, >1 时与系统一致放慢); 回退基准值路由 500ms (系统规范 300ms, 见 383c2791df
-    // "微调动画速率" 有意放慢), 对话框沿用系统规范 200ms/150ms。
+    // 设置, >1 时与系统一致放慢); 对话框沿用系统 dialog 动画资源规范 200ms/150ms。
 
     /** 系统动画时长缩放 (ANIMATOR_DURATION_SCALE × TRANSITION_ANIMATION_SCALE 取小值, 读取失败回退 1f) */
     private fun systemAnimationScale(): Float {
@@ -276,40 +288,45 @@ class AndroidPlatformCapabilities(
     }
 
     /**
-     * 复用系统窗口转场动画的采样器 (读运行设备主题, ROM 定制自动生效); lazy 缓存动画实例,
-     * 时长缩放每次动态读; 系统资源缺失时返回 null 回退参数化 spec。
+     * 屏幕圆角半径 px, 逐字复刻 AppTransitionInjector.initDisplayRoundCorner:
+     * 取四角中非零者的最小值 (minRadius 忽略 0 的角), 取不到或全 0 时回退 60px。
+     * 不缓存: 折叠屏切换屏幕后半径会变, 每次读 spec 时重取 (取值来自 DisplayInfo, 很廉价)。
      */
-    private val systemRouteTransitionSampler: RouteTransitionSampler? by lazy {
-        SystemRouteTransitionSampler.create(activity) { systemAnimationScale() }
+    private fun displayCornerRadiusPx(): Float {
+        val fallback = 60f
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return fallback
+        val display = activity.display ?: return fallback
+        val radii = intArrayOf(
+            RoundedCorner.POSITION_TOP_LEFT,
+            RoundedCorner.POSITION_TOP_RIGHT,
+            RoundedCorner.POSITION_BOTTOM_RIGHT,
+            RoundedCorner.POSITION_BOTTOM_LEFT,
+        ).map { display.getRoundedCorner(it)?.radius?.toFloat() ?: 0f }
+        val min = radii.filter { it > 0f }.minOrNull() ?: return fallback
+        return min
     }
 
-    override val routeTransitionSampler: RouteTransitionSampler?
-        get() = systemRouteTransitionSampler
-
-    /**
-     * 参数化 spec: 仅在系统转场动画资源缺失 (routeTransitionSampler 为 null) 时作回退;
-     * 正常路径由 [systemRouteTransitionSampler] 复用运行设备的系统动画 (含 ROM 定制)。
-     */
     override val routeTransitionSpec: RouteTransitionSpec
         get() {
             val scale = systemAnimationScale()
+            val duration = (500 * scale).toInt()
             return RouteTransitionSpec(
-                // 500ms × 动画时长缩放 (系统转场规范 300ms, 383c2791df 有意放慢到 500;
-                // 关闭动画时 scale=0 → 0ms 瞬切, 对齐系统行为)
-                pushDurationMillis = (500 * scale).toInt(),
-                pushEasing = TransitionEasing.FastOutSlowIn,
-                newPageSlideFraction = 1f, // 系统 slide_in_right 全宽
-                oldPageShiftFraction = 0f, // 系统 fade_out 旧页不位移
-                newPageFadeIn = true, // 系统 fade_in
-                oldPageFadeOut = true, // 系统 fade_out
+                pushDurationMillis = duration,
+                pushEasing = MiuiActivityTransitionEasing,
+                newPageSlideFraction = 1f, // 新页全宽滑入
+                oldPageShiftFraction = 0.25f, // 旧页左移 25%
+                newPageFadeIn = false, // 新页不淡入 (AlphaAnimation(1,1))
+                oldPageFadeOut = false, // 旧页走压暗蒙版而非淡出
                 newPageScaleFrom = 1f,
-                popDurationMillis = (500 * scale).toInt(),
-                popEasing = TransitionEasing.FastOutSlowIn,
-                targetPageSlideFraction = 0f, // 系统返回转场 fade 语义, 目标页不位移
-                outgoingSlideFraction = 1f, // 系统 slide_out_right 全宽
-                targetPageFadeIn = true,
-                outgoingFadeOut = true,
+                popDurationMillis = duration,
+                popEasing = MiuiActivityTransitionEasing,
+                targetPageSlideFraction = 0.25f, // 目标页自左 25% 滑回
+                outgoingSlideFraction = 1f, // 出栈页全宽滑出
+                targetPageFadeIn = false,
+                outgoingFadeOut = false, // 出栈页不淡出 (AlphaAnimation(1,1))
                 targetPageScaleFrom = 1f,
+                underPageDimAlpha = 0.5f, // 旧页/目标页压暗到 0.5
+                pageCornerRadiusPx = displayCornerRadiusPx(), // setHasRoundedCorners 语义
             )
         }
 

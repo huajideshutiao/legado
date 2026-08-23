@@ -118,7 +118,9 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
             popEasing = TransitionEasing.CubicBezier(0.1f, 0.9f, 0.2f, 1f),
             targetPageSlideFraction = 0.08f,
             outgoingSlideFraction = 0f,
-            targetPageFadeIn = true,
+            // 目标页不淡入: 它在出栈页之下本就完整渲染, 淡入只会在中间帧露出半透明空白,
+            // 由出栈页淡出直接露出即可 (原先动画层对 pop 目标页强制 alpha=1, 等价于此)
+            targetPageFadeIn = false,
             outgoingFadeOut = true,
             targetPageScaleFrom = 1f,
         )

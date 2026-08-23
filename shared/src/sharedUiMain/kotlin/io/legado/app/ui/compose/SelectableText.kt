@@ -23,7 +23,7 @@ import androidx.compose.ui.unit.TextUnit
  * - 工具栏由 derivedStateOf 单值观察器驱动, 无 legacy 的 show→hide→show 抖动
  *   (移动端点按别处消失不再闪烁)
  * - 长按选词后拖选越界 / 拖手柄越出可视区自动滚动 (TextFieldSelectionState layout 阶段滚动)
- * - 触摸拖拽直接滚动内容; 选择后弹 ComposeTextToolbar (AppTheme 注入的 LocalTextToolbar)
+ * - 触摸拖拽直接滚动内容; 选择后弹文本选择菜单 (见 [io.legado.app.ui.compose.theme.ProvideAppTextToolbar])
  * - readOnly 字段点按不弹键盘; 桌面/鼠标输入按框架设计不弹浮动工具栏 (复制走 Ctrl+C)
  * - 测量语义与 `verticalScroll` 一致 (字段高 = min(内容高, 约束高)):
  *   内容短时收缩贴合内容, 内容超长时封顶并在内部滚动, 可直接替换现有自适应对话框布局

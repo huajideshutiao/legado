@@ -49,14 +49,14 @@ import org.jetbrains.compose.resources.stringResource
  *
  * 阅读页正文为自绘 Canvas (PageContentCanvas), 不能套 [SelectionContainer]
  * (对 Canvas 自绘文字无效), 故改为弹窗形式: 用 [SelectableText] (readOnly BasicTextField)
- * 渲染整章正文, 用户拖选文字后由 sharedUiMain 已下沉的 ComposeTextToolbar (AppTheme 注入
- * LocalTextToolbar) 自动弹出"复制/全选"菜单, 复刻 app 端 ActionMode 文字选择 + TextActionMenu。
+ * 渲染整章正文, 用户拖选文字后由文本选择菜单 (AppTheme 经 ProvideAppTextToolbar 注入的自绘
+ * 弹层) 自动弹出"复制/全选"菜单, 复刻 app 端 ActionMode 文字选择 + TextActionMenu。
  * (拖选/拖手柄越界自动滚动由 BasicTextField 原生提供, 对齐 master 分支原生 TextView)
  *
  * # 操作菜单 (对照原版 TextActionMenu 的 content_select_action.xml 菜单项,
  * 全部按钮集中底部一排, 顺序同原版: 替换/复制/书签/朗读/查词/全文搜索/浏览器/分享 + 关闭)
  *
- * - 复制 / 全选: 由 ComposeTextToolbar 自动提供 (用户拖选文字后弹出)
+ * - 复制 / 全选: 由文本选择菜单自动提供 (用户拖选文字后弹出)
  * - 复制全部 / 复制章节标题: 标题栏 OverflowMenu (经 [clipTextSink] 写系统剪贴板)
  * - 替换 / 复制 / 书签 / 朗读 / 查词 / 全文搜索 / 浏览器 / 分享: 底部一排按钮,
  *   分别经 [onReplace] / [onBookmark] / [onReadAloud] / [onDict] / [onSearchContent] /
@@ -67,7 +67,7 @@ import org.jetbrains.compose.resources.stringResource
  * - 关闭: 同上排在末尾
  *
  * 浏览器搜索按钮读取剪贴板的设计原因: 文本选择组件的选区信息不对外暴露,
- * 外部不易拿到; 简化为"用户选中 → 点 ComposeTextToolbar 的'复制' → 剪贴板有内容 →
+ * 外部不易拿到; 简化为"用户选中 → 点文本选择菜单的"复制" → 剪贴板有内容 →
  * 点底部按钮执行后续操作"。
  *
  * @param chapterName 章节名 (标题 + 复制章节标题用)
@@ -177,7 +177,7 @@ fun TextSelectionDialog(
                     },
                 )
                 // 内容区: SelectableText (readOnly BasicTextField) 渲染整章/选中文本,
-                // 长按拖选后自动弹 ComposeTextToolbar; 拖选/拖手柄越界自动滚动 (对齐原生 TextView)
+                // 长按拖选后自动弹文本选择菜单; 拖选/拖手柄越界自动滚动 (对齐原生 TextView)
                 Box(
                     Modifier
                         .fillMaxWidth()
