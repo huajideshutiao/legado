@@ -1,5 +1,13 @@
 package io.legado.app.ui.compose.theme
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.Easing
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -49,6 +57,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import kotlin.math.max
 import kotlin.math.roundToInt
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.copy
@@ -58,32 +67,47 @@ import legado.shared.generated.resources.select_all
 import org.jetbrains.compose.resources.stringResource
 
 // ===== 澎湃 OS 浮动文本菜单规格 =====
-// 取值来源: /product/app/MiuixEditor/MiuixEditor.apk 资源表 —— 澎湃这套菜单的本体
-// (miui-framework 的 DecorViewStubImpl 反射 com.miuix.editor 的 miuix.toolbar.FloatingActionMode)。
-// 两处按用户指定偏离 miuix: 背景走动态主题底栏色 (miuix 是固定 白/#2C2C2E),
-// 阴影 8dp (miuix card_elevation 是 9dp)。
-private val ToolbarShape = RoundedCornerShape(13.dp) // dialog_corner_radius 13.09dp
+// 取值来源: /product/app/MiuixEditor/MiuixEditor.apk 的资源表与 res/layout/floating_popup_*.xml
+// —— 澎湃这套菜单的本体 (miui-framework 的 DecorViewStubImpl 反射 com.miuix.editor 的
+// miuix.toolbar.FloatingActionMode)。Compose 起 ActionMode 时 originatingView 是
+// AndroidComposeView 而非 TextView, 拿不到那套, 故自绘对齐其规格。
+// 唯一按用户指定偏离 miuix: 阴影 8dp (miuix card_elevation 9dp), 背景走动态主题底栏色。
+private val ToolbarShape = RoundedCornerShape(13.09.dp) // dialog_corner_radius 13.089996dp
 private val ToolbarHeight = 50.dp // floating_toolbar_height
 private val ToolbarTextSize = 16.sp // floating_toolbar_text_size
 private val ToolbarElevation = 8.dp // 用户指定 (miuix card_elevation 9dp)
 private val ToolbarSelectionGap = 18.dp // floating_toolbar_vertical_margin
 private val ToolbarScreenMargin = 12.dp // floating_toolbar_min_horizontal_margin
-private val OverflowIconSize = 22.dp // floating_toolbar_overflow_icon_width/height
-private val OverflowButtonSidePadding = 11.dp // overflow_button_side_padding 10.9dp
-private val OverflowPanelMinWidth = 100.dp // floating_toolbar_overflow_panel_min_width
-private val OverflowPanelMaxHeight = 192.dp // 对齐 AOSP floating_toolbar_maximum_overflow_height
 
-// 菜单项左右内边距: miuix 那份 dump 里没有 floating_toolbar 前缀的对应档 (只有通用的
-// menu_button_side_padding 8dp, 8dp 实测挤), AOSP 同组件是 11dp。取 14dp 是按 miuix 这套
-// 更大的尺寸族 (50dp 高 / 16sp / 13dp 圆角) 放大后的目视值, 不是 dump 出来的。
-private val ToolbarItemSidePadding = 14.dp
-private val ToolbarItemMinWidth = 48.dp // AOSP floating_toolbar_menu_button_minimum_width
+/** 容器左右内边距 (floating_popup_container 的 CardView 内层): content_padding_start/end。 */
+private val ToolbarContentPadding = 8.dp
 
 /**
- * 弹层四周留白, 供 [ToolbarElevation] 的阴影落在**节点内部**。
+ * 菜单项左右内边距: menu_button_side_padding 8dp + menu_button_only_text_extra_padding 2dp。
+ * 本菜单不画图标 (纯文字项), 故恒含那 2dp。叠上 [ToolbarContentPadding] 后首尾项文字距容器边
+ * 18dp、项间 20dp, 与 miuix 一致。
+ */
+private val ToolbarItemSidePadding = 10.dp
+private val ToolbarItemMinWidth = 50.dp // floating_toolbar_menu_button_minimum_width
+
+private val OverflowIconSize = 22.dp // floating_toolbar_overflow_icon_width/height
+private val OverflowButtonSidePadding = 10.9.dp // floating_toolbar_overflow_button_side_padding
+private val OverflowPanelMinWidth = 100.dp // floating_toolbar_overflow_panel_min_width
+private val OverflowPanelItemSidePadding = 16.dp // floating_toolbar_overflow_side_padding
+private val OverflowPanelMaxHeight = 192.dp // 对齐 AOSP floating_toolbar_maximum_overflow_height
+
+// 进出场动画: miuix res/anim/fast_fade_in.xml (alpha 0→1, 80ms, @interpolator/decelerate_quad)
+// 与 fast_fade_out.xml (alpha 1→0, 140ms, @interpolator/accelerate_quad)。纯 alpha, 无缩放。
+// 两个插值器 xml 是无 factor 的 decelerate/accelerateInterpolator, 即 factor=1 的二次曲线。
+private const val ToolbarFadeInMillis = 80
+private const val ToolbarFadeOutMillis = 140
+private val DecelerateQuad = Easing { 1f - (1f - it) * (1f - it) }
+private val AccelerateQuad = Easing { it * it }
+
+/**
+ * 弹层四周留白, 让 [ToolbarElevation] 的阴影落在**动画节点内部**。
  * 淡入淡出时 alpha<1 会把绘制提升到离屏缓冲并裁到节点 bounds, 画到界外的阴影会被切掉、
- * 等 alpha 回到 1 才突然出现; 留白后阴影始终在界内。定位由
- * [TextToolbarPositionProvider] 扣掉这圈留白, 视觉位置不变。
+ * 等 alpha 回到 1 才突然出现。定位由 [TextToolbarPositionProvider] 扣掉这圈留白, 视觉位置不变。
  */
 private val ToolbarShadowPadding = ToolbarElevation
 
@@ -95,6 +119,13 @@ internal const val FIND_REPLACE_LABEL = "查找替换"
 
 /** 一个菜单项 (标签 + 动作), 溢出折叠按这个列表切分。 */
 internal class AppTextMenuEntry(val label: String, val onClick: () -> Unit)
+
+/**
+ * 一次菜单请求的内容快照。
+ *
+ * @param anchor 选区矩形, 坐标空间须与弹层父节点一致 (旧通道给内容树根坐标, 新通道给宿主 Box 局部坐标)
+ */
+internal class AppTextMenuContent(val anchor: Rect, val entries: List<AppTextMenuEntry>)
 
 /**
  * 自绘文本菜单的共享状态。目前只挂「查找替换」扩展项, 由两条平台通道
@@ -195,15 +226,17 @@ private class LegacyAppTextToolbar : TextToolbar {
 
     @Composable
     fun Host(state: AppTextMenuState) {
-        val p = params ?: return
+        // 不提前 return: 退场动画期间 params 已为 null, 宿主仍要参与组合
+        val p = params
         // 顺序对齐 framework Editor: 剪切/复制/粘贴/全选 → 查找替换
         val cutText = stringResource(Res.string.cut)
         val copyText = stringResource(Res.string.copy)
         val pasteText = stringResource(Res.string.paste)
         val selectAllText = stringResource(Res.string.select_all)
         val findReplace = state.findReplaceAction
-        val entries = remember(p, findReplace, cutText, copyText, pasteText, selectAllText) {
-            buildList {
+        val content = remember(p, findReplace, cutText, copyText, pasteText, selectAllText) {
+            if (p == null) return@remember null
+            val entries = buildList {
                 p.onCut?.let { add(AppTextMenuEntry(cutText, it)) }
                 p.onCopy?.let { add(AppTextMenuEntry(copyText, it)) }
                 p.onPaste?.let { add(AppTextMenuEntry(pasteText, it)) }
@@ -212,31 +245,42 @@ private class LegacyAppTextToolbar : TextToolbar {
                     add(AppTextMenuEntry(FIND_REPLACE_LABEL) { hide(); action() })
                 }
             }
+            entries.takeIf { it.isNotEmpty() }?.let { AppTextMenuContent(p.rect, it) }
         }
-        if (entries.isEmpty()) return
-        AppTextMenuPopup(anchor = p.rect, entries = entries)
+        AppTextMenuHost(content)
     }
 }
 
 /**
- * 自绘文本选择菜单弹层, 四端共用, 视觉参考澎湃 OS 的浮动文本菜单 (见顶部规格常量)。
- * 支持溢出折叠: 一行放不下时尾部收成 ⋮, 点开换成竖排面板。
+ * 自绘文本选择菜单宿主, 四端共用, 视觉参考澎湃 OS 的浮动文本菜单 (见顶部规格常量)。
+ * 一行放不下时尾部收成 ⋮, 点开换成竖排面板。
  *
- * @param anchor 选区矩形, 坐标空间须与本弹层父节点一致 (旧通道给的是内容树根坐标,
- *   新通道给的是宿主 Box 局部坐标, 两者的父节点分别就是那两个节点)
+ * @param content null = 隐藏。退场动画期间原请求已失效 (新通道的 dataProvider 已解绑),
+ *   故用最后一帧内容把弹层留住, 动画播完再卸载弹层窗口。
  */
 @Composable
-internal fun AppTextMenuPopup(anchor: Rect, entries: List<AppTextMenuEntry>) {
+internal fun AppTextMenuHost(content: AppTextMenuContent?) {
+    var lastContent by remember { mutableStateOf<AppTextMenuContent?>(null) }
+    val visibleState = remember { MutableTransitionState(false) }
+    if (content != null) lastContent = content
+    visibleState.targetState = content != null
+    if (visibleState.isIdle && !visibleState.currentState) {
+        if (lastContent != null) lastContent = null
+        return
+    }
+    val data = lastContent ?: return
+
     val eInk = LocalEInk.current
     val density = LocalDensity.current
     val gapPx = with(density) { ToolbarSelectionGap.roundToPx() }
     val marginPx = with(density) { ToolbarScreenMargin.roundToPx() }
-    val positionProvider = remember(anchor, gapPx, marginPx) {
-        TextToolbarPositionProvider(anchor, gapPx, marginPx)
+    val shadowPx = with(density) { ToolbarShadowPadding.roundToPx() }
+    val positionProvider = remember(data.anchor, gapPx, marginPx, shadowPx) {
+        TextToolbarPositionProvider(data.anchor, gapPx, marginPx, shadowPx)
     }
     // 菜单项每帧重建 (标签来自快照感知的 data()), 用标签串当稳定 key, 避免重组重置折叠态
-    val labelsKey = entries.joinToString("\u0000") { it.label }
-    val visibleCount = rememberVisibleCount(entries, labelsKey, marginPx)
+    val labelsKey = data.entries.joinToString("\u0000") { it.label }
+    val visibleCount = rememberVisibleCount(data.entries, labelsKey, marginPx)
     var overflowOpen by remember(labelsKey) { mutableStateOf(false) }
 
     // focusable=false: 不抢文本框焦点/选区, 显隐交由框架回调驱动
@@ -247,14 +291,30 @@ internal fun AppTextMenuPopup(anchor: Rect, entries: List<AppTextMenuEntry>) {
         onDismissRequest = {},
         properties = PopupProperties(focusable = false, clippingEnabled = false),
     ) {
-        ToolbarSurface(eInk) {
-            if (overflowOpen) {
-                OverflowPanel(entries.drop(visibleCount))
-            } else {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    entries.take(visibleCount).forEach { ToolbarItem(it.label, it.onClick) }
-                    if (visibleCount < entries.size) {
-                        OverflowButton { overflowOpen = true }
+        AnimatedVisibility(
+            visibleState = visibleState,
+            // E-Ink 屏不做渐变动画 (残影且无灰阶过渡意义)
+            enter = if (eInk) EnterTransition.None else {
+                fadeIn(tween(ToolbarFadeInMillis, easing = DecelerateQuad))
+            },
+            exit = if (eInk) ExitTransition.None else {
+                fadeOut(tween(ToolbarFadeOutMillis, easing = AccelerateQuad))
+            },
+        ) {
+            Box(Modifier.padding(ToolbarShadowPadding)) {
+                ToolbarSurface(eInk) {
+                    if (overflowOpen) {
+                        OverflowPanel(data.entries.drop(visibleCount))
+                    } else {
+                        Row(
+                            Modifier.padding(horizontal = ToolbarContentPadding),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            data.entries.take(visibleCount).forEach { ToolbarItem(it.label, it.onClick) }
+                            if (visibleCount < data.entries.size) {
+                                OverflowButton { overflowOpen = true }
+                            }
+                        }
                     }
                 }
             }
@@ -278,11 +338,14 @@ private fun rememberVisibleCount(
     return remember(labelsKey, windowWidth, marginPx, density) {
         if (windowWidth <= 0) return@remember entries.size
         val sidePaddingPx = with(density) { (ToolbarItemSidePadding * 2).roundToPx() }
+        val minWidthPx = with(density) { ToolbarItemMinWidth.roundToPx() }
+        val contentPaddingPx = with(density) { (ToolbarContentPadding * 2).roundToPx() }
         val overflowPx = with(density) { (OverflowIconSize + OverflowButtonSidePadding * 2).roundToPx() }
         val widths = entries.map {
-            measurer.measure(AnnotatedString(it.label), ToolbarTextStyle).size.width + sidePaddingPx
+            val text = measurer.measure(AnnotatedString(it.label), ToolbarTextStyle).size.width
+            max(text + sidePaddingPx, minWidthPx)
         }
-        val available = windowWidth - marginPx * 2
+        val available = windowWidth - marginPx * 2 - contentPaddingPx
         if (widths.sum() <= available) return@remember entries.size
         var used = overflowPx
         var n = 0
@@ -294,7 +357,7 @@ private fun rememberVisibleCount(
     }
 }
 
-/** 卡片外壳: 动态底栏色 + 13dp 圆角 + 8dp 阴影; E-Ink 去阴影改描边。 */
+/** 卡片外壳: 动态底栏色 + 13.09dp 圆角 + 8dp 阴影; E-Ink 去阴影改描边。 */
 @Composable
 private fun ToolbarSurface(eInk: Boolean, content: @Composable () -> Unit) {
     Box(
@@ -313,12 +376,13 @@ private fun ToolbarSurface(eInk: Boolean, content: @Composable () -> Unit) {
     )
 }
 
-/** 菜单项: 50dp 高 / 左右 8dp / 16sp medium (对齐 miuix 的 sans-serif-medium), 无最小宽。 */
+/** 菜单项: 50dp 高 / 最小宽 50dp / 左右 10dp / 16sp medium (对齐 miuix sans-serif-medium)。 */
 @Composable
 private fun ToolbarItem(text: String, onClick: () -> Unit) {
     Box(
         Modifier
             .height(ToolbarHeight)
+            .widthIn(min = ToolbarItemMinWidth)
             .clickable(onClick = onClick)
             .padding(horizontal = ToolbarItemSidePadding),
         contentAlignment = Alignment.Center,
@@ -333,7 +397,7 @@ private fun ToolbarItem(text: String, onClick: () -> Unit) {
     }
 }
 
-/** ⋮ 溢出按钮: 22dp 图标区自绘三点, 左右 11dp (对齐 miuix overflow 档)。 */
+/** ⋮ 溢出按钮: 22dp 图标区自绘三点, 左右 10.9dp (对齐 miuix overflow 档)。 */
 @Composable
 private fun OverflowButton(onClick: () -> Unit) {
     val color = AppTheme.colors.primaryText
@@ -354,7 +418,7 @@ private fun OverflowButton(onClick: () -> Unit) {
     }
 }
 
-/** 溢出面板: 竖排剩余项, 最小宽 100dp / 最高 192dp 可滚 (对齐 miuix + AOSP 档)。 */
+/** 溢出面板: 竖排剩余项, 最小宽 100dp / 项左右 16dp / 最高 192dp 可滚。 */
 @Composable
 private fun OverflowPanel(entries: List<AppTextMenuEntry>) {
     Column(
@@ -368,7 +432,7 @@ private fun OverflowPanel(entries: List<AppTextMenuEntry>) {
                 Modifier
                     .height(ToolbarHeight)
                     .clickable(onClick = entry.onClick)
-                    .padding(horizontal = ToolbarItemSidePadding * 2),
+                    .padding(horizontal = OverflowPanelItemSidePadding),
                 contentAlignment = Alignment.CenterStart,
             ) {
                 Text(
@@ -386,11 +450,15 @@ private fun OverflowPanel(entries: List<AppTextMenuEntry>) {
 /**
  * 锚定: 选区 rect 上方居中优先, 放不下翻下方, 左右按屏边距 clamp。
  * anchorBounds.topLeft 为弹层父节点在窗口中的偏移, 与 rect 坐标原点一致, 相加得窗口坐标。
+ *
+ * [shadowPx] 是弹层内容四周为阴影留的白 (见 ToolbarShadowPadding): popupContentSize 含这圈留白,
+ * 故按视觉尺寸算完位置再整体回退 shadowPx。
  */
 private class TextToolbarPositionProvider(
     private val rect: Rect,
     private val gapPx: Int,
     private val marginPx: Int,
+    private val shadowPx: Int,
 ) : PopupPositionProvider {
     override fun calculatePosition(
         anchorBounds: IntRect,
@@ -398,17 +466,19 @@ private class TextToolbarPositionProvider(
         layoutDirection: LayoutDirection,
         popupContentSize: IntSize,
     ): IntOffset {
+        val width = popupContentSize.width - shadowPx * 2
+        val height = popupContentSize.height - shadowPx * 2
         val originX = anchorBounds.left
         val originY = anchorBounds.top
         val centerX = originX + ((rect.left + rect.right) / 2f).roundToInt()
-        val x = (centerX - popupContentSize.width / 2)
-            .coerceIn(marginPx, (windowSize.width - popupContentSize.width - marginPx).coerceAtLeast(marginPx))
-        var y = originY + rect.top.roundToInt() - popupContentSize.height - gapPx
+        val x = (centerX - width / 2)
+            .coerceIn(marginPx, (windowSize.width - width - marginPx).coerceAtLeast(marginPx))
+        var y = originY + rect.top.roundToInt() - height - gapPx
         if (y < marginPx) {
             y = originY + rect.bottom.roundToInt() + gapPx
         }
-        y = y.coerceAtMost((windowSize.height - popupContentSize.height - marginPx).coerceAtLeast(marginPx))
-        return IntOffset(x, y)
+        y = y.coerceAtMost((windowSize.height - height - marginPx).coerceAtLeast(marginPx))
+        return IntOffset(x - shadowPx, y - shadowPx)
     }
 }
 

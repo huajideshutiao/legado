@@ -221,8 +221,8 @@ internal fun WebViewScreen(
     fun currentUrl(): String =
         callbacks.host?.getUrl() ?: pageUrl ?: loadState?.url ?: spec.url
 
-    // 返回: 视频全屏先退出 → 网页可后退则后退 → 退出全屏 → 关闭浏览器。
-    // 系统返回键与顶栏返回按钮走同一条链 (对照原版 WebViewActivity 的 onBackPressed/navigationIcon)
+    // 系统返回键: 视频全屏先退出 → 网页可后退则后退 → 退出全屏 → 关闭浏览器
+    // (原 WebViewActivity 的 onBackPressedDispatcher 回调)。顶栏返回箭头不走这条链, 见下方调用点。
     fun handleBack() {
         webViewHandleBack(
             host = callbacks.host,
@@ -264,7 +264,10 @@ internal fun WebViewScreen(
                 title = pageTitle,
                 // 原 titleBar.subtitle = sourceName
                 subtitle = spec.sourceName.takeIf { it.isNotBlank() },
-                onBack = { handleBack() },
+                // 顶栏返回箭头直接关页面, 不退网页历史 (原版 android.R.id.home →
+                // supportFinishAfterTransition, 只有系统返回键才走 goBack 链)。
+                // 全屏态顶栏已隐藏, 无需在此兼顾退出全屏
+                onBack = onClose,
                 // 原 menu_refresh: progressBar 可见 + webView.reload()
                 onRefresh = {
                     loadProgress = 0
@@ -405,8 +408,8 @@ private fun acceptedPageTitle(title: String?, url: String?): String? =
     title?.takeIf { it.isNotBlank() && it != url }
 
 /**
- * 返回链 (原 WebViewActivity 的 onBackPressed): 视频全屏先退出 → 网页可后退则后退 →
- * 退出页面全屏 → 关闭浏览器。系统返回键与顶栏返回按钮共用。
+ * 系统返回键的返回链 (原 WebViewActivity 的 onBackPressed): 视频全屏先退出 →
+ * 网页可后退则后退 → 退出页面全屏 → 关闭浏览器。顶栏返回箭头不走这里, 直接关闭。
  */
 private fun webViewHandleBack(
     host: WebViewHost?,

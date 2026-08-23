@@ -32,7 +32,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.BuildConfig
-import io.legado.app.R
 import io.legado.app.base.BaseComposeActivity
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
@@ -82,7 +81,6 @@ import io.legado.app.ui.book.manga.MangaReaderScreenModel
 import io.legado.app.ui.book.read.AndroidReaderPlatformProvider
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReaderPlatformProviders
-import io.legado.app.ui.book.read.TextActionMenu
 import io.legado.app.ui.book.read.page.provider.AndroidTextMeasurer
 import io.legado.app.ui.book.read.page.provider.TextMeasurerProviders
 import io.legado.app.ui.book.source.SourceUiEventBridgeHost
@@ -129,7 +127,7 @@ import kotlin.coroutines.resume
  * 主界面：零薄壳入口。Content 调用 shared [LegadoApp]，由 shared RouteContent 统一渲染。
  * 保留启动期逻辑（版本更新/本地密码/崩溃通知/备份同步）和平台专属回调（换封面/导入选目录）。
  */
-class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
+class MainActivity : BaseComposeActivity() {
 
     val viewModel by viewModels<MainViewModel>()
 
@@ -148,19 +146,6 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
     /** SAF 选书籍目录回调暂存: 由 [AndroidPlatformCapabilities.pickBookTreeUri] 写入,
      *  [bookTreeUriSelect] 回调时消费。 */
     var pendingBookTreeUriCallback: ((String?) -> Unit)? = null
-
-    /** 文本操作浮动菜单 (对照原版 TextActionMenu: ActionMode.TYPE_FLOATING 跟随选区)。 */
-    private val textActionMenu by lazy { TextActionMenu(this, this) }
-
-    /** 当前浮动菜单选中的文本 (TextActionMenu.CallBack.selectedText, 由 showReaderTextActionMenu 写入) */
-    private var textActionMenuText: String = ""
-
-    /** 浮动菜单动作回调 (由阅读页长按触发, AndroidReaderPlatformProvider 注入) */
-    private var textActionMenuOnReplace: ((String) -> Unit)? = null
-    private var textActionMenuOnBookmark: ((String) -> Unit)? = null
-    private var textActionMenuOnReadAloud: ((String) -> Unit)? = null
-    private var textActionMenuOnSearchContent: ((String) -> Unit)? = null
-    private var textActionMenuOnShare: ((String) -> Unit)? = null
 
     /** 图片长按菜单 (对照原版 ReadBookActivity.onImageLongPress 的 popupAction) */
     private val imageActionMenu by lazy { PopupAction() }
@@ -192,6 +177,9 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
 
     // 平台能力与服务: onActivityCreated 同步创建并注册, 修复 LaunchedEffect 异步注册时序问题
     private lateinit var capabilities: AndroidPlatformCapabilities
+
+    /** 阅读页平台桥: Content 需挂它的自绘文本操作菜单宿主 (见 TextSelectionHost)。 */
+    private lateinit var readerPlatform: AndroidReaderPlatformProvider
     private lateinit var services: AndroidPlatformServices
 
     /** 导入书籍: SAF 选根目录 (对照 ImportBookActivity.selectFolder: 写 pref 后 initRootDoc(true))。 */
@@ -340,42 +328,11 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
     }
 
     /**
-     * 显示文本操作浮动菜单 (对照原版 ReadBookActivity.showTextActionMenu → textActionMenu.show)。
-     *
-     * @param anchorX/anchorY 选区起点锚点 (阅读页内坐标, 由 ReadViewComposable 传入),
-     *        浮动菜单 contentRect 取锚点周围 40px 方块 (原版为选区起止矩形)
+     * 查词 (对照原版 TextActionMenu 的 menu_dict → DictDialog): 阅读页文本菜单调用,
+     * 由 Content 里的 [DictDialogHost] 渲染。
      */
-    fun showReaderTextActionMenu(
-        text: String,
-        anchorX: Float,
-        anchorY: Float,
-        onReplace: (String) -> Unit = {},
-        onBookmark: (String) -> Unit = {},
-        onReadAloud: (String) -> Unit = {},
-        onSearchContent: (String) -> Unit = {},
-        onShare: (String) -> Unit = {},
-    ) {
-        textActionMenuText = text
-        textActionMenuOnReplace = onReplace
-        textActionMenuOnBookmark = onBookmark
-        textActionMenuOnReadAloud = onReadAloud
-        textActionMenuOnSearchContent = onSearchContent
-        textActionMenuOnShare = onShare
-        val x = anchorX.toInt()
-        val y = anchorY.toInt()
-        textActionMenu.show(
-            window.decorView,
-            x - 20, y - 20,
-            x + 20, y + 20,
-        )
-    }
-
-    /**
-     * 收起文本操作浮动菜单（选区消失时由 provider 桥接调用，对照原版
-     * ReadBookActivity.onCancelSelect → textActionMenu.dismiss）。幂等：菜单未显示时无操作。
-     */
-    fun dismissReaderTextActionMenu() {
-        textActionMenu.dismiss()
+    fun showDictWord(word: String) {
+        dictWord = word
     }
 
     /**
@@ -627,6 +584,8 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
             if (hostVisible) {
                 DeepLinkImportHost()
             }
+            // 阅读页长按文本的自绘浮动操作菜单 (对照桌面 DesktopReaderPlatformProvider.TextSelectionHost)
+            readerPlatform.TextSelectionHost()
             // 查词对话框 (选中词 → 词典查询, 本地/在线词典规则; 对照原版 menu_dict → DictDialog)
             dictWord?.let { word ->
                 DictDialogHost(
@@ -635,56 +594,6 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
                 )
             }
         }
-    }
-
-    // ===== TextActionMenu.CallBack (对照原版 ReadBookActivity 的同名实现) =====
-
-    /** 当前选中文本 (浮动菜单动作取参; 对照原版 readView.getSelectText()) */
-    override val selectedText: String get() = textActionMenuText
-
-    /**
-     * 菜单项处理 (对照原版 ReadBookActivity.onMenuItemSelected):
-     * aloud/bookmark/replace/search_content/dict 返回 true 本层处理;
-     * copy/share/browser 返回 false 走 TextActionMenu.onMenuItemClick。
-     */
-    override fun onMenuItemSelected(itemId: Int): Boolean {
-        when (itemId) {
-            R.id.menu_aloud -> {
-                textActionMenuOnReadAloud?.invoke(selectedText)
-                return true
-            }
-
-            R.id.menu_bookmark -> {
-                textActionMenuOnBookmark?.invoke(selectedText)
-                return true
-            }
-
-            R.id.menu_replace -> {
-                textActionMenuOnReplace?.invoke(selectedText)
-                return true
-            }
-
-            R.id.menu_search_content -> {
-                textActionMenuOnSearchContent?.invoke(selectedText)
-                return true
-            }
-
-            R.id.menu_dict -> {
-                dictWord = selectedText
-                return true
-            }
-        }
-        return false
-    }
-
-    /**
-     * 菜单操作完成 (对照原版 onMenuActionFinally → textActionMenu.dismiss +
-     * readView.cancelSelect()): 关闭浮动菜单并取消页内文字选择。
-     */
-    override fun onMenuActionFinally() {
-        textActionMenu.dismiss()
-        textActionMenuText = ""
-        ReadBookEvents.postSelectionCancel()
     }
 
     private fun initializePlatform() {
@@ -698,7 +607,8 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
         PlatformServiceProviders.register(services)
         // 封面选图持久化 (对齐原版 externalFiles/covers/<md5>.<ext>)
         CoverStorageServiceProviders.register(AndroidCoverStorageService())
-        ReaderPlatformProviders.register(AndroidReaderPlatformProvider(this))
+        readerPlatform = AndroidReaderPlatformProvider(this)
+        ReaderPlatformProviders.register(readerPlatform)
         AudioPlayPlatformProviders.register(SharedAudioPlayPlatformProvider)
         MangaReaderScreenModel.Providers.register(AndroidMangaReaderPlatform)
         VideoPlayPlatformProviders.register(AndroidVideoPlayPlatformProvider(this))

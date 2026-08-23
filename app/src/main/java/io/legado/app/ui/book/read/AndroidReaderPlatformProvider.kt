@@ -1,6 +1,7 @@
 package io.legado.app.ui.book.read
 
 import android.app.DatePickerDialog
+import android.app.SearchManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -13,15 +14,18 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
@@ -59,6 +63,9 @@ import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.compose.dialogs.selector
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.main.MainActivity
+import io.legado.app.ui.reader.ReaderTextActionMenu
+import io.legado.app.ui.reader.ReaderTextActions
+import io.legado.app.ui.reader.ReaderTextSelectionRequest
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
@@ -66,7 +73,10 @@ import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.route.encodeReviewListDialogPayload
+import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.openUrl
+import io.legado.app.utils.printOnDebug
+import io.legado.app.utils.sendToClip
 import io.legado.app.utils.share
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.toastOnUi
@@ -84,6 +94,12 @@ class AndroidReaderPlatformProvider(
     // 当前阅读页菜单状态 (路由内唯一), 供 onPause/onExit 停止自动翻页;
     // 记 screenModel 用于校验归属, 避免旧路由 onExit 误停新路由的自动翻页
     private var activeMenuState: Pair<ReaderScreenModel, AndroidReaderMenuState>? = null
+
+    /** 页内文字选择请求 (null = 不显示自绘浮动菜单), 由 [TextSelectionHost] 渲染。 */
+    private var textSelection by mutableStateOf<ReaderTextSelectionRequest?>(null)
+
+    /** 当次选择的动作集: 动作要 screenModel, 故在 onTextSelected 装配好存下。 */
+    private var textActions by mutableStateOf<ReaderTextActions?>(null)
 
     // Activity 生命周期观察者：桥接到 ReaderScreenModel.onPause/onResume (对照 app 端 ReadBookActivity.onPause/onResume)
     // onEnter 注册、onExit 解注册；ON_PAUSE 落库+取消预下载+停自动翻页，ON_RESUME 留扩展点
@@ -129,10 +145,16 @@ class AndroidReaderPlatformProvider(
     override fun onLongPress(screenModel: ReaderScreenModel) = Unit
 
     /**
-     * 页内文字选择完成（长按选中文字后抬起）：弹浮动文本操作菜单并跟随选区
-     * （对照旧 ReadView.CallBack.showTextActionMenu → TextActionMenu 浮动菜单，
-     * ActionMode.TYPE_FLOATING；菜单项/动作/清选择语义见 TextActionMenu 与
-     * MainActivity.onMenuItemSelected/onMenuActionFinally）。
+     * 页内文字选择完成（长按选中文字后抬起）：弹自绘浮动文本操作菜单
+     * （见共享 [ReaderTextActionMenu]，宿主 [TextSelectionHost] 挂在 MainActivity 根组合）。
+     *
+     * 原本桥接 MainActivity 的 TextActionMenu（ActionMode.TYPE_FLOATING，系统样式），
+     * 已换成与详情页/输入框同一套自绘弹层，app 端那份连同 CallBack 桥接一并删除。
+     *
+     * 锚点：ReadViewComposable 上报的是窗口坐标（页内坐标已折算滚动 + 页眉 + 状态栏，
+     * 与同树内的 SelectionHandleOverlay 同源）；阅读页铺满窗口、宿主也在同一 Compose 根，
+     * 故 Popup 的 anchorBounds 即窗口原点，直接用不会重复叠加系统栏。
+     * 取锚点周围 40px 方块当选区矩形（对照原版 showReaderTextActionMenu 的 ±20px）。
      */
     override fun onTextSelected(
         screenModel: ReaderScreenModel,
@@ -141,16 +163,53 @@ class AndroidReaderPlatformProvider(
         anchorY: Float,
     ) {
         if (text.isBlank()) return
-        activity.showReaderTextActionMenu(
-            text = text,
-            anchorX = anchorX,
-            anchorY = anchorY,
+        textActions = ReaderTextActions(
             onReplace = onReplace(screenModel),
+            onCopy = { activity.sendToClip(it) },
             onBookmark = onBookmark(screenModel),
             onReadAloud = onReadAloud(screenModel),
+            onDict = { activity.showDictWord(it) },
             onSearchContent = onSearchContent(screenModel),
+            onBrowser = ::openInBrowser,
             onShare = onShare(screenModel),
         )
+        textSelection = ReaderTextSelectionRequest(
+            text = text,
+            anchor = Rect(anchorX - 20f, anchorY - 20f, anchorX + 20f, anchorY + 20f),
+        )
+    }
+
+    /**
+     * 阅读页文本操作菜单宿主：挂在 MainActivity 根组合（对照桌面
+     * DesktopReaderPlatformProvider.TextSelectionHost）。
+     */
+    @Composable
+    fun TextSelectionHost() {
+        val actions = textActions ?: return
+        ReaderTextActionMenu(
+            request = textSelection,
+            actions = actions,
+            // 对照原版 onMenuActionFinally：关菜单 + 取消页内选择
+            onFinally = {
+                textSelection = null
+                ReadBookEvents.postSelectionCancel()
+            },
+        )
+    }
+
+    /** 浏览器 (对照原版 TextActionMenu.menu_browser)：URL 直接打开，非 URL 走系统搜索 */
+    private fun openInBrowser(text: String) {
+        runCatching {
+            val intent = if (text.isAbsUrl()) {
+                Intent(Intent.ACTION_VIEW).apply { data = text.toUri() }
+            } else {
+                Intent(Intent.ACTION_WEB_SEARCH).apply { putExtra(SearchManager.QUERY, text) }
+            }
+            activity.startActivity(intent)
+        }.onFailure {
+            it.printOnDebug()
+            activity.toastOnUi(it.localizedMessage ?: "ERROR")
+        }
     }
 
     /**
@@ -159,19 +218,17 @@ class AndroidReaderPlatformProvider(
      */
     override fun onTextSelectionDismissed(screenModel: ReaderScreenModel) {
         // 对照 master ReadBookActivity.cancelSelect: 文本/图片菜单互斥, 同时 dismiss
-        activity.dismissReaderTextActionMenu()
+        textSelection = null
         activity.dismissImageActionMenu()
     }
 
     /**
-     * 同步立即关闭浮动文本操作菜单（点按取消选择等手势分支在选区清除的同帧同步直调，
-     * 对照原版 ACTION_DOWN → textActionMenu.dismiss() 同步语义，避免事件链异步延迟
-     * 造成的 FloatingActionMode"完整闪一下再消失"）。dismiss 幂等
-     * （TextActionMenu.dismissByApp 防重入），事件链兜底重复调用安全。
+     * 同步立即关闭浮动文本操作菜单（点按取消选择等手势分支在选区清除的同帧同步直调）。
+     * 幂等，事件链兜底重复调用安全。
      */
     override fun dismissTextActionMenu(screenModel: ReaderScreenModel) {
         // 对照 master ReadBookActivity.cancelSelect: 文本/图片菜单互斥, 同时 dismiss
-        activity.dismissReaderTextActionMenu()
+        textSelection = null
         activity.dismissImageActionMenu()
     }
 
@@ -297,8 +354,9 @@ class AndroidReaderPlatformProvider(
             Backup.autoBack(activity)
         }
         // 退出阅读页: 收起文本/图片操作浮动菜单 (对照原版 onDestroy → textActionMenu.dismiss
-        // + popupAction.dismiss), 否则 ActionMode 悬在 decorView 上残留
-        activity.dismissReaderTextActionMenu()
+        // + popupAction.dismiss)。动作集一并清空: 它的闭包持有 screenModel
+        textSelection = null
+        textActions = null
         activity.dismissImageActionMenu()
     }
 

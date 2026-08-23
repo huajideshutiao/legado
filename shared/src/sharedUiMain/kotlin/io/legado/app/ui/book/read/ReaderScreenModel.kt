@@ -34,9 +34,9 @@ import io.legado.app.ui.book.read.page.PageSelPos
 import io.legado.app.ui.book.read.page.PageSelectionState
 import io.legado.app.ui.book.read.page.detectClickArea
 import io.legado.app.ui.book.searchContent.SearchResult
-import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.screenModelScope
@@ -100,9 +100,10 @@ interface ReaderPlatformProvider {
     fun onLongPress(screenModel: ReaderScreenModel) {}
 
     /**
-     * 页内文字选择完成（长按选中文字后抬起）：携带选中文本与选区起点锚点（阅读页内坐标，
-     * 含滚动折算），平台弹浮动文本操作菜单并跟随选区（对照旧 ReadView.CallBack.showTextActionMenu
-     * → TextActionMenu 浮动菜单；app 端桥接 MainActivity 浮动菜单，桌面端回落对话框）。
+     * 页内文字选择完成（长按选中文字后抬起）：携带选中文本与选区起点锚点（窗口坐标，
+     * 已折算滚动 + 页眉 + 状态栏），平台弹浮动文本操作菜单并跟随选区（对照旧
+     * ReadView.CallBack.showTextActionMenu → TextActionMenu 浮动菜单；app 端走共享自绘弹层
+     * [io.legado.app.ui.reader.ReaderTextActionMenu]，iOS 走 UIMenuController，桌面回落对话框）。
      * 默认空实现。
      */
     fun onTextSelected(
