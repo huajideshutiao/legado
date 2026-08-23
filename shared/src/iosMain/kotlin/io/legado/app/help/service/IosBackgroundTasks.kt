@@ -2,6 +2,7 @@
 
 package io.legado.app.help.service
 
+import io.legado.app.constant.AppLog
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.registerIosProviders
 import io.legado.app.model.CacheBookShared
@@ -165,7 +166,10 @@ object IosBackgroundTasks {
             val error = alloc<ObjCObjectVar<NSError?>>()
             val ok = BGTaskScheduler.sharedScheduler.submitTaskRequest(request, error.ptr)
             if (!ok) {
-                println("[IosBackgroundTasks] submit failed: ${error.value?.localizedDescription}")
+                AppLog.put(
+                    "提交后台任务失败: ${error.value?.localizedDescription}",
+                    tag = "IosBackgroundTasks",
+                )
             }
         }
     }

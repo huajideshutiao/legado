@@ -4,6 +4,7 @@ package io.legado.app.help.tts
 
 import kotlin.concurrent.Volatile
 
+import io.legado.app.constant.AppLog
 import io.legado.app.help.book.NativeBookStorage
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.http.KmpRequestBuilder
@@ -51,7 +52,7 @@ import io.legado.app.utils.File
  *
  * # 降级策略 (桥接未就绪时, 与占位行为一致)
  * [OhosNativeBridge.isMediaBridgeReady] 返回 false (tsfn 未注入) 时, 降级为
- * "网络下载已就绪, 播放占位" 模式 (play/pause/stop 仅维护标志 + println, 不出声),
+ * "网络下载已就绪, 播放占位" 模式 (play/pause/stop 仅维护标志, 不出声),
  * 让 [ReadAloudController] 状态机能正常推进 (onReady/onEndOfMedia 触发段落推进)。
  *
  * # 缓存: `{NativeBookStorage.defaultRootPath}/httpTTS/{md5(url)}.mp3`
@@ -138,7 +139,10 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
             listenerRegistered = true
         }
 
-        println("[ohos-httts] setUrl: url=$url headers.size=${headers.size} bridge=${OhosNativeBridge.isMediaBridgeReady()}")
+        AppLog.putDebug(
+            "setUrl: url=$url headers.size=${headers.size} bridge=${OhosNativeBridge.isMediaBridgeReady()}",
+            tag = TAG,
+        )
     }
 
     /**
@@ -149,7 +153,7 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
      */
     override fun prepare() {
         val currentUrl = url ?: run {
-            println("[ohos-httts] prepare: url not set, skip")
+            AppLog.putDebug("prepare: url 未设置, 跳过", tag = TAG)
             return
         }
 
@@ -159,7 +163,7 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
             try {
                 val file = obtainCacheFile(currentUrl, headers)
                 cachedFile = file
-                println("[ohos-httts] prepare: ready, cached=${file.path} size=${file.length()}")
+                AppLog.putDebug("prepare: 就绪, cached=${file.path} size=${file.length()}", tag = TAG)
 
                 if (OhosNativeBridge.isMediaBridgeReady()) {
                     // 桥接就绪: 发 "setSource" 命令, ArkTS 创建 AVPlayer + prepare
@@ -172,7 +176,7 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                println("[ohos-httts] prepare: download failed: ${e.message}")
+                AppLog.put("prepare: 下载失败", e, tag = TAG)
                 listener?.onError(e.message ?: "download failed")
             }
         }
@@ -188,9 +192,9 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
             playing = true
             val file = cachedFile
             if (file != null) {
-                println("[ohos-httts] play (placeholder): cached=${file.path} size=${file.length()}")
+                AppLog.putDebug("play (占位): cached=${file.path} size=${file.length()}", tag = TAG)
             } else {
-                println("[ohos-httts] play (placeholder): cached not ready yet, url=$url")
+                AppLog.putDebug("play (占位): 缓存未就绪, url=$url", tag = TAG)
             }
         }
     }
@@ -200,7 +204,7 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
             sendMedia("pause")
         } else {
             playing = false
-            println("[ohos-httts] pause (placeholder)")
+            AppLog.putDebug("pause (占位)", tag = TAG)
         }
     }
 
@@ -209,7 +213,7 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
             sendMedia("stop")
         } else {
             playing = false
-            println("[ohos-httts] stop (placeholder)")
+            AppLog.putDebug("stop (占位)", tag = TAG)
         }
         cancelDownload()
     }
@@ -233,14 +237,13 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
         releaseArkTsPlayer()
         url = null
         headers = emptyMap()
-        println("[ohos-httts] release")
     }
 
     override fun seekTo(position: Long) {
         if (OhosNativeBridge.isMediaBridgeReady()) {
             sendMedia("seekTo", position = position)
         } else {
-            println("[ohos-httts] seekTo (placeholder): position=$position")
+            AppLog.putDebug("seekTo (占位): position=$position", tag = TAG)
         }
     }
 
@@ -310,7 +313,7 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                println("[ohos-httts] download error: ${e.message}")
+                AppLog.put("下载出错", e, tag = TAG)
                 if (downloadErrorBreaker.record()) {
                     throw IllegalStateException("TTS 下载连续失败超过 5 次: ${e.message}", e)
                 }
@@ -409,6 +412,8 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
     )
 
     companion object {
+        private const val TAG = "ohos-httts"
+
         /** TTS 缓存子目录名 (位于 [NativeBookStorage.defaultRootPath] 下, 与原版 httpTTS 目录名对齐)。 */
         private const val TTS_CACHE_DIR = "httpTTS"
     }

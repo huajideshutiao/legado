@@ -1,5 +1,6 @@
 package io.legado.app.utils
 
+import io.legado.app.constant.AppLog
 import java.io.File
 
 /**
@@ -38,7 +39,7 @@ private fun getFileBytes(file: File): ByteArray {
             }
         }
     } catch (e: Exception) {
-        System.err.println("Error: $e")
+        AppLog.put("读取文件字节失败, 按已读部分判定编码: ${file.absolutePath}", e)
     }
     return byteArray.copyOf(pos)
 }

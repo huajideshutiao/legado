@@ -1,5 +1,6 @@
 package io.legado.desktop.help
 
+import io.legado.app.constant.AppLog
 import io.legado.app.help.file.desktopAppRootDir
 import io.legado.app.ui.association.LegadoDeepLink
 import io.legado.app.ui.association.LegadoDeepLinkHandler
@@ -70,7 +71,7 @@ object SingleInstanceGuard {
     private const val MAX_LINE_CHARS = 64 * 1024
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
-    private val debug = System.getProperty("legado.desktop.debug")?.toBoolean() == true
+    private const val TAG = "single-instance"
 
     @Volatile
     private var serverSocket: ServerSocket? = null
@@ -95,7 +96,7 @@ object SingleInstanceGuard {
     fun ensureSingleInstance(args: Array<String>) {
         val lockFile = lockFile() ?: return
         if (forwardToRunningInstance(lockFile, args)) {
-            debugLog("已有实例接收本次启动参数, 当前进程退出")
+            AppLog.put("已有实例接收本次启动参数, 当前进程退出", tag = TAG)
             exitProcess(0)
         }
         becomePrimary(lockFile)
@@ -128,7 +129,7 @@ object SingleInstanceGuard {
             }
         }.getOrElse {
             // connect 被拒 (残留 lock) / 读应答超时 (端口撞车到闷声不响的进程) → 当作无实例
-            debugLog("转发到已有实例失败, 接管为首实例: ${it.javaClass.simpleName}: ${it.message}")
+            AppLog.put("转发到已有实例失败, 接管为首实例", it, tag = TAG)
             false
         }
     }
@@ -139,7 +140,7 @@ object SingleInstanceGuard {
         val token = newToken()
         val server = runCatching { ServerSocket(0, 16, loopback()) }.getOrElse {
             // 环回监听都开不了 (极端安全策略), 放弃单实例能力, 不阻断启动
-            debugLog("单实例监听启动失败, 降级为多实例: ${it.message}")
+            AppLog.put("单实例监听启动失败, 降级为多实例", it, tag = TAG)
             return
         }
         serverSocket = server
@@ -155,14 +156,13 @@ object SingleInstanceGuard {
             isDaemon = true
             start()
         }
-        debugLog("首实例监听 127.0.0.1:${server.localPort}, lock=${lockFile.absolutePath}")
     }
 
     private fun acceptLoop(server: ServerSocket, token: String) {
         while (!server.isClosed) {
             val socket = runCatching { server.accept() }.getOrElse { return }
             runCatching { handleConnection(socket, token) }
-                .onFailure { debugLog("处理转发连接异常: ${it.message}") }
+                .onFailure { AppLog.put("处理转发连接异常", it, tag = TAG) }
             runCatching { socket.close() }
         }
     }
@@ -177,7 +177,7 @@ object SingleInstanceGuard {
         writer.write("\n")
         writer.flush()
         if (!accepted) {
-            debugLog("拒绝转发连接 (token 不匹配或报文非法)")
+            AppLog.put("拒绝转发连接 (token 不匹配或报文非法)", tag = TAG)
             return
         }
         onForwardedArgs(message.args)
@@ -187,7 +187,7 @@ object SingleInstanceGuard {
     private fun onForwardedArgs(args: List<String>) {
         args.firstOrNull { LegadoDeepLink.isDeepLink(it) }?.let { url ->
             if (!LegadoDeepLinkHandler.handle(url)) {
-                debugLog("转发的 deep link 解析失败 (缺 src 参数): $url")
+                AppLog.put("转发的 deep link 解析失败 (缺 src 参数): $url", tag = TAG)
             }
         }
         activateWindow()
@@ -224,7 +224,7 @@ object SingleInstanceGuard {
 
     private fun lockFile(): File? = runCatching { File(desktopAppRootDir(), LOCK_FILE_NAME) }
         .getOrElse {
-            debugLog("数据目录不可用, 跳过单实例: ${it.message}")
+            AppLog.put("数据目录不可用, 跳过单实例", it, tag = TAG)
             null
         }
 
@@ -234,11 +234,11 @@ object SingleInstanceGuard {
         val text = runCatching { lockFile.readText(StandardCharsets.UTF_8) }.getOrNull()
             ?.trim()?.takeIf { it.isNotEmpty() } ?: return null
         val lock = runCatching { json.decodeFromString<InstanceLock>(text) }.getOrElse {
-            debugLog("lock 文件损坏, 按无实例处理: ${lockFile.absolutePath}")
+            AppLog.put("lock 文件损坏, 按无实例处理: ${lockFile.absolutePath}", tag = TAG)
             return null
         }
         if (lock.port !in 1..65535 || lock.token.isEmpty()) {
-            debugLog("lock 内容非法 (port=${lock.port}), 按无实例处理")
+            AppLog.put("lock 内容非法 (port=${lock.port}), 按无实例处理", tag = TAG)
             return null
         }
         return lock
@@ -260,7 +260,7 @@ object SingleInstanceGuard {
         }
         true
     }.getOrElse {
-        debugLog("写 lock 失败, 降级为多实例: ${it.message}")
+        AppLog.put("写 lock 失败, 降级为多实例", it, tag = TAG)
         false
     }
 
@@ -296,9 +296,5 @@ object SingleInstanceGuard {
             sb.append(c.toChar())
             if (sb.length > MAX_LINE_CHARS) return null
         }
-    }
-
-    private fun debugLog(msg: String) {
-        if (debug) println("[legado-desktop][single-instance] $msg")
     }
 }

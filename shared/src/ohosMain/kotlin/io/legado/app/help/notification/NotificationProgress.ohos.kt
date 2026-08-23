@@ -25,7 +25,7 @@ import io.legado.app.napi.OhosNativeBridge
  * [cancel] 取消上次 [showProgress] 记录的 id (interface 无 title 参数, 需缓存 lastId)。
  *
  * # 降级策略
- * [OhosNativeBridge] 未注册 tsfn 时内部降级为 println (兼容当前未接入 napi 阶段)。
+ * [OhosNativeBridge] 未注册 tsfn 时内部丢弃命令 (兼容当前未接入 napi 阶段)。
  *
  * # 权限与配置
  * - module.json5 需声明 `ohos.permission.NOTIFICATION` 权限
@@ -37,7 +37,7 @@ import io.legado.app.napi.OhosNativeBridge
  * 后续可升级 ProgressBarTemplate 显示真实进度条 (复杂度更高, 待 KP8+)。
  *
  * 降级策略对齐 desktop 端 [io.legado.app.help.notification.DesktopNotificationProgress]
- * 无 SystemTray 时退化为 println; iOS 端用 NSLog 降级 (鸿蒙无 NSLog 等价物, 用 println 兜底)。
+ * 无 SystemTray 时退化为记日志; iOS 端用 NSLog 降级。
  * 模式参考 `registerAndroidMediaNotificationProvider`。
  */
 class OhosNotificationProgress : NotificationProgress {
@@ -74,7 +74,7 @@ class OhosNotificationProgress : NotificationProgress {
  *
  * 调用时机: 鸿蒙 app 启动早期, 在任何 commonMain 代码调用 `NotificationProgresses.get()` 之前。
  * 真实 tsfn 注入由 EntryAbility.onCreate 调 `legado.registerNotificationCallback` 完成,
- * 此处仅注册 [OhosNotificationProgress] (内部走 [OhosNativeBridge], 未注入 tsfn 时降级 println)。
+ * 此处仅注册 [OhosNotificationProgress] (内部走 [OhosNativeBridge], 未注入 tsfn 时丢弃命令)。
  *
  * 模式参考 `registerAndroidMediaNotificationProvider`。
  */

@@ -1122,7 +1122,6 @@ abstract class QuickJsEngineTestBase {
         """.trimIndent()
         val result = QuickJsEngine.eval(js)
         // 关键: 若爆栈,eval 会抛 StackOverflowError,到不了下面的 assert
-        println("testOwnKeysTrapReturnToKotlin result: $result (${result?.javaClass})")
         assertTrue("Expected Map from Proxy, got ${result?.javaClass}", result is Map<*, *>)
         val map = result as Map<*, *>
         assertEquals(1, (map["a"] as Number).toInt())
@@ -1154,7 +1153,6 @@ abstract class QuickJsEngineTestBase {
             outer;
         """.trimIndent()
         val result = QuickJsEngine.eval(js)
-        println("testNestedProxyReturnToKotlin result: $result (${result?.javaClass})")
         assertTrue("Expected Map, got ${result?.javaClass}", result is Map<*, *>)
         val outer = result as Map<*, *>
         assertEquals("test", outer["b"].toString())
@@ -1197,7 +1195,6 @@ abstract class QuickJsEngineTestBase {
             JSON.stringify(results);
         """.trimIndent()
         val result = QuickJsEngine.eval(js)
-        println("testProxyForInAndGetCoexist result: $result")
         assertEquals("""{"1":5,"2":10}""", result.toString())
     }
 
@@ -1234,7 +1231,6 @@ abstract class QuickJsEngineTestBase {
             JSON.stringify(results);
         """.trimIndent()
         val result = QuickJsEngine.eval(js)
-        println("testJavaMapForInAndGetCoexist result: $result")
         assertEquals("""{"1":5,"2":10}""", result.toString())
     }
 
@@ -1261,7 +1257,6 @@ abstract class QuickJsEngineTestBase {
             sum;
         """.trimIndent()
         val result = QuickJsEngine.eval(js)
-        println("testObjectEntriesOnJavaMap result: $result")
         assertEquals(6, (result as Number).toInt())
     }
 
@@ -1280,7 +1275,6 @@ abstract class QuickJsEngineTestBase {
             keys.join(',');
         """.trimIndent()
         val result = QuickJsEngine.eval(js)
-        println("testObjectKeysOnJavaMap result: $result")
         assertEquals("x,y,z", result.toString())
     }
 
@@ -1313,7 +1307,6 @@ abstract class QuickJsEngineTestBase {
             viaGet + '|' + viaBracket + '|' + size;
         """.trimIndent()
         val result = QuickJsEngine.eval(js)
-        println("testJavaMapInteropModificationPersists result: $result")
         assertEquals("newVal|modified|2", result.toString())
     }
 
@@ -1334,7 +1327,6 @@ abstract class QuickJsEngineTestBase {
             Object.keys(body).join(',') + '|' + body.size();
         """.trimIndent()
         val result = QuickJsEngine.eval(js)
-        println("testJavaMapInteropKeysReflectModification result: $result")
         assertEquals("a,b,c|3", result.toString())
     }
 
@@ -1356,7 +1348,6 @@ abstract class QuickJsEngineTestBase {
             keys.join(',') + '|' + body.size();
         """.trimIndent()
         val result = QuickJsEngine.eval(js)
-        println("testJavaMapInteropForInReflectsModification result: $result")
         assertEquals("orig,added|2", result.toString())
     }
 
@@ -1380,7 +1371,6 @@ abstract class QuickJsEngineTestBase {
             parts.join(',') + '|' + body.size();
         """.trimIndent()
         val result = QuickJsEngine.eval(js)
-        println("testJavaMapInteropEntriesReflectModification result: $result")
         assertEquals("a=1,b=2|2", result.toString())
     }
 

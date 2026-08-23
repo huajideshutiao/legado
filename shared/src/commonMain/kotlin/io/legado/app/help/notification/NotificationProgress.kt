@@ -8,7 +8,7 @@ import kotlin.concurrent.Volatile
  * # 背景
  * 安卓端用 `NotificationCompat.Builder` + `setProgress` / `setLiveProgress` 显示
  * 下载/缓存进度通知, 依赖 `androidx.core.app.NotificationManagerCompat` + `appCtx`。
- * 桌面 JVM 端用 `SystemTray` 显示或 println 到 stdout; iOS 端用 UNUserNotificationCenter
+ * 桌面 JVM 端用 `SystemTray` 显示或退化为 AppLog 记账; iOS 端用 UNUserNotificationCenter
  * 本地通知, 鸿蒙端经 napi 桥接 `notificationManager`。
  *
  * # 设计

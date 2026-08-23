@@ -1,5 +1,6 @@
 package io.legado.app.help
 
+import io.legado.app.constant.AppLog
 import io.legado.app.help.ui.OpenUrlProviders
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.utils.KS_JSON
@@ -10,7 +11,7 @@ import kotlinx.serialization.encodeToString
 //
 // 剪贴板走 @ohos.pasteboard.getSystemPasteboard(), 仅有 ArkTS API,
 // 经 [OhosNativeBridge.invokePasteboardSync] napi 桥同步调用 (与 OhosFilePicker 同模式);
-// 桥未就绪时降级 println / 返回 null。
+// 桥未就绪时记一条降级日志 / 返回 null。
 
 /** 用系统浏览器打开外部链接 (对照 iOS openURL / desktop browseUrl)。 */
 fun openURL(url: String) {
@@ -20,7 +21,7 @@ fun openURL(url: String) {
 /** 复制文本到系统剪贴板 (对照 iOS copyToClipboard / desktop Toolkit.systemClipboard)。 */
 fun copyToClipboard(text: String) {
     if (!OhosNativeBridge.isPasteboardBridgeReady()) {
-        println("[Clipboard] copy: ${text.take(64)}")
+        AppLog.putDebug("剪贴板桥未就绪, 丢弃复制: ${text.take(64)}", tag = "ohos-clipboard")
         return
     }
     val payload = KS_JSON.encodeToString(PasteboardWritePayload(text = text))

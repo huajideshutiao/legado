@@ -22,7 +22,7 @@ import platform.darwin.dispatch_get_main_queue
  * # 设计要点
  * - 调用线程不限: 用 [dispatch_async] 切到主线程 (UIKit present 必须主线程)
  * - 降级到 NSLog: 当拿不到 root vc / 已有 modal 在 present / present 失败时,
- *   退化为 [NSLog] 输出系统日志 (保留原 NSLog 降级能力, 与 desktop 无 SystemTray 时退化为 println 一致)
+ *   退化为 [NSLog] 输出系统日志 (保留原 NSLog 降级能力, 与 desktop 无 SystemTray 时退化为记日志一致)
  * - 防重入: 若当前已有 presentedViewController, 不再叠加 alert (避免 UI 阻塞), 走 NSLog 兜底
  * - 短/长: UIAlertController 无"短/长"概念, toastLong 仅在 NSLog 兜底时加 `[LONG]` 区分
  *   (与 desktop 端 TrayIcon 无短长概念一致)
@@ -38,7 +38,7 @@ import platform.darwin.dispatch_get_main_queue
  * 当前 KP4 先用 UIAlertController (满足"真实 UI"要求), NSLog 兜底保证不崩。
  *
  * 模式参考 `registerAndroidMediaNotificationProvider` (app 端 help/media/);
- * 降级策略对齐 desktop 端 [io.legado.app.help.toast.DesktopToaster] 无 SystemTray 时退化为 println。
+ * 降级策略对齐 desktop 端 [io.legado.app.help.toast.DesktopToaster] 无 SystemTray 时退化为 AppLog 记账。
  *
  * # macOS 编译验证 (Windows 无法编译 iOS target)
  * ```

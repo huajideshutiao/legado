@@ -952,8 +952,6 @@
     <string name="check_update_failed">Failed to check for updates\n%1$s</string>
     <string name="check_update_failed_no_msg">Failed to check for updates</string>
     <string name="already_latest_version">Already the latest version</string>
-    <string name="desktop_smoke_test_js_hint">Hint: if the error is UnsatisfiedLinkError, run the following first:</string>
-    <string name="desktop_smoke_test_db_count">bookSourceDao.allCount() = %1$s (empty table expects 0)</string>
     <string name="desktop_install_mode_not_portable">[legado-desktop] install mode = %1$s (portable.root not set, falls back to portable.txt marker/system data directory)</string>
     <string name="image_decode_failed_bytes">image.decode: failed to decode image bytes (%1$s bytes)</string>
     <string name="image_encode_unsupported_format">image.encode: unsupported format %1$s, only png/jpg/webp</string>

@@ -217,14 +217,14 @@ private class DesktopMediaService : MediaService {
 }
 
 // 通知: 经 DesktopTrayNotifier 委托宿主托盘图标显示气泡 (与 toast 同通道),
-// 托盘未注册 (无头 / 无托盘) 时落 stdout; 气泡由系统自动超时消失, cancel 为 no-op
+// 托盘未注册 (无头 / 无托盘) 时落 AppLog; 气泡由系统自动超时消失, cancel 为 no-op
 private class DesktopNotificationService : NotificationService {
     override fun notify(id: Int, title: String, content: String) {
         val message = "$title | $content"
         val sent = runCatching {
             DesktopTrayNotifier.sender?.invoke(message) == true
         }.getOrDefault(false)
-        if (!sent) println("[notification] $message")
+        if (!sent) AppLog.put(message, tag = "notification")
     }
 
     override fun cancelNotification(id: Int) = Unit

@@ -1,6 +1,7 @@
 package io.legado.app.help.config
 
 import io.legado.app.api.controller.registerNativeBookControllerProviders
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.registerNativeAndroidId
 import io.legado.app.data.DatabaseDriverProviders
 import io.legado.app.data.OhosDatabaseDriver
@@ -101,7 +102,7 @@ import io.legado.app.web.utils.registerNativeWebStrings
  * 各 provider 均为真实实现 (Database / BookStorage / Preference / HTTP / ImageOps / JsEngine /
  * FileDownloader); SystemTtsEngine 走 napi 桥接 @ohos.textToSpeech (tsfn 未注入时 speak 上报 error);
  * Toaster / NotificationProgress 走 [io.legado.app.napi.OhosNativeBridge] napi 桥接
- *   (未注入 tsfn 时降级 println; 真实 tsfn 由 EntryAbility.onCreate 调 legado.registerToastCallback /
+ *   (未注入 tsfn 时丢弃命令; 真实 tsfn 由 EntryAbility.onCreate 调 legado.registerToastCallback /
  *   registerNotificationCallback 注入, 详见 docs/ohos-napi-bridge.md);
  * ServiceLauncher 为 nativeMain [NativeServiceLauncher] (接 CacheBookShared / UpdateBookShared /
  *   FileDownloaders, 与 iOS 端共用)。
@@ -277,7 +278,7 @@ fun registerOhosProviders() {
                 openURL(event.url)
             }
         }.onFailure {
-            println("[ohos-markdown] parse event failed: $eventJson")
+            AppLog.put("markdown 事件解析失败: $eventJson", it, tag = "ohos-markdown")
         }
     }
     // 源验证 UI provider (最小实现: 不支持路径明确报错+Toast, 纯打开链接走 OpenUrlProviders;

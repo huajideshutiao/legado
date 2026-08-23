@@ -2,6 +2,7 @@
 
 package io.legado.app.napi
 
+import io.legado.app.constant.AppLog
 import io.legado.app.utils.KS_JSON
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -70,7 +71,8 @@ data class OhosBinaryBridgeResponse(
  * 注入口注入到此 object。
  *
  * # 降级策略
- * 未注册 tsfn 时降级为 println (兼容当前未接入 napi 阶段, stdout 由鸿蒙 runtime 重定向到 hilog)。
+ * 未注册 tsfn 时命令丢弃, 只经 [dispatchTsfn] 留一条 recordLog 门控的降级痕迹
+ * (兼容当前未接入 napi 阶段)。
  *
  * # 跨语言传递格式
  * JSON 字符串 (与 LegadoNativeExports.kt 一致), 见 [ToastPayload] / [NotificationPayload]。
@@ -82,9 +84,32 @@ data class OhosBinaryBridgeResponse(
  */
 object OhosNativeBridge {
 
-    /** tsfn 注入回调类型: 接收 JSON 字符串, 内部 dispatch 到 ArkTS 主线程。 */
     /** tsfn 引用保护锁 (与 NativeLocalBookLocator.pathCache 同模式)。 */
     private val lock = SynchronizedObject()
+
+    /**
+     * fire-and-forget tsfn 统一派发口 (全部 Kotlin -> ArkTS 命令共用)。
+     *
+     * 调用失败按错误记账 ([AppLog.put], 必然可见); 未注入 tsfn 只是 napi 未接入阶段的降级痕迹,
+     * 且 window/keyboard/media 命令高频触发, 走 [AppLog.putDebug] 的 recordLog 门控,
+     * 免得把环形日志刷满顶掉真错误。
+     *
+     * @param detail 日志定位信息 (payload / url / 选中文本)
+     */
+    private fun dispatchTsfn(
+        tsfn: OhosTsfnCallback?,
+        json: String,
+        tag: String,
+        detail: String,
+    ) {
+        if (tsfn == null) {
+            AppLog.putDebug("tsfn 未注册, 丢弃: $detail", tag = tag)
+            return
+        }
+        runCatching { tsfn(json) }.onFailure {
+            AppLog.put("tsfn 调用失败: $detail", it, tag = tag)
+        }
+    }
 
     /** toast threadsafe_function 引用 (EntryAbility.ets 注册后注入)。 */
     @Volatile
@@ -109,27 +134,18 @@ object OhosNativeBridge {
     }
 
     /**
-     * 显示 toast。未注册 tsfn 时降级 println。
+     * 显示 toast。未注册 tsfn 时丢弃 (见 [dispatchTsfn])。
      *
      * @param message toast 文本
      * @param durationMs 显示时长 (对齐 Android Toast: 2000ms 短 / 3500ms 长)
      */
     fun showToast(message: String, durationMs: Int) {
         val json = KS_JSON.encodeToString(ToastPayload(message = message, durationMs = durationMs))
-        val tsfn = synchronized(lock) { toastTsfn }
-        if (tsfn != null) {
-            runCatching { tsfn(json) }.onFailure {
-                // tsfn 调用失败 (module 卸载 / 线程异常) 时降级 println
-                println("[ohos-toast] tsfn call failed, fallback: $message")
-            }
-        } else {
-            // 降级: 未注册 tsfn
-            println("[ohos-toast] $message")
-        }
+        dispatchTsfn(synchronized(lock) { toastTsfn }, json, "ohos-toast", message)
     }
 
     /**
-     * 显示/更新进度通知。未注册 tsfn 时降级 println。
+     * 显示/更新进度通知。未注册 tsfn 时丢弃 (见 [dispatchTsfn])。
      *
      * @param id 通知 id (由调用方稳定生成, 如 title.hashCode())
      * @param title 通知标题
@@ -148,20 +164,17 @@ object OhosNativeBridge {
                 max = max,
             )
         )
-        val tsfn = synchronized(lock) { notificationTsfn }
-        if (tsfn != null) {
-            runCatching { tsfn(json) }.onFailure {
-                println("[ohos-notification] tsfn call failed, fallback: $title | $content")
-            }
-        } else {
-            // 降级: 未注册 tsfn
-            val progressText = if (max > 0) "$content ($progress/$max)" else content
-            println("[ohos-notification] $title | $progressText")
-        }
+        val progressText = if (max > 0) "$content ($progress/$max)" else content
+        dispatchTsfn(
+            synchronized(lock) { notificationTsfn },
+            json,
+            "ohos-notification",
+            "$title | $progressText",
+        )
     }
 
     /**
-     * 取消通知。未注册 tsfn 时降级 println。
+     * 取消通知。未注册 tsfn 时丢弃 (见 [dispatchTsfn])。
      *
      * @param id 通知 id (与 showNotification 传入的 id 一致)
      */
@@ -169,15 +182,12 @@ object OhosNativeBridge {
         val json = KS_JSON.encodeToString(
             NotificationPayload(action = NotificationAction.CANCEL, id = id)
         )
-        val tsfn = synchronized(lock) { notificationTsfn }
-        if (tsfn != null) {
-            runCatching { tsfn(json) }.onFailure {
-                println("[ohos-notification] tsfn call failed, fallback: cancel id=$id")
-            }
-        } else {
-            // 降级: 未注册 tsfn
-            println("[ohos-notification] cancel id=$id")
-        }
+        dispatchTsfn(
+            synchronized(lock) { notificationTsfn },
+            json,
+            "ohos-notification",
+            "cancel id=$id",
+        )
     }
 
     // ===== FileDir / CacheDir 路径注入 (ArkTS → Kotlin 同步推送) =====
@@ -193,7 +203,7 @@ object OhosNativeBridge {
      *
      * # 降级策略
      * 未注入 (null) 时, AppFilesDir 回退 POSIX `user.dir` 派生路径 (兼容 .so 未加载 / napi 未接入阶段,
-     * 与历史行为一致; 对齐 toast 未注册 tsfn 时降级 println 的思路: 保证未接入阶段可运行)。
+     * 与历史行为一致; 对齐 toast 未注册 tsfn 时丢弃命令的思路: 保证未接入阶段可运行)。
      *
      * # 线程安全
      * 与 tsfn 同用 [lock] + synchronized (AppFilesDir 可能在 worker 线程访问)。
@@ -451,15 +461,7 @@ object OhosNativeBridge {
      * @param commandJson 命令 JSON (含 playerId + action + data, 由调用方序列化)
      */
     fun sendMediaCommand(commandJson: String) {
-        val tsfn = synchronized(lock) { mediaTsfn }
-        if (tsfn != null) {
-            runCatching { tsfn(commandJson) }.onFailure {
-                println("[ohos-media] tsfn call failed: $commandJson")
-            }
-        } else {
-            // 降级: tsfn 未注册
-            println("[ohos-media] tsfn not registered: $commandJson")
-        }
+        dispatchTsfn(synchronized(lock) { mediaTsfn }, commandJson, "ohos-media", commandJson)
     }
 
     /**
@@ -535,22 +537,22 @@ object OhosNativeBridge {
         }
     }
 
-    /** 当前监听器仍是 [listener] 时才清除并发送 shutdown，避免旧引擎释放新引擎。 */
+    /**
+     * 当前监听器仍是 [listener] 时才清除并发送 shutdown，避免旧引擎释放新引擎。
+     *
+     * "查监听器 + 清空" 在锁内原子完成; 派发放到锁外 —— [dispatchTsfn] 会走 AppLog,
+     * 而 AppLog 的 toast 出口在鸿蒙端反过来要 [lock] (Toasters → showToast),
+     * 锁内派发即构成 AppLog.lock / [lock] 的反序死锁。
+     */
     fun shutdownTtsIfListener(listener: TtsEventListener): Boolean {
         val commandJson = KS_JSON.encodeToString(TtsCommand(action = "shutdown"))
-        return synchronized(lock) {
-            if (ttsEventListener !== listener) return@synchronized false
+        val tsfn = synchronized(lock) {
+            if (ttsEventListener !== listener) return false
             ttsEventListener = null
-            val tsfn = ttsTsfn
-            if (tsfn != null) {
-                runCatching { tsfn(commandJson) }.onFailure {
-                    println("[ohos-tts] tsfn call failed: $commandJson")
-                }
-            } else {
-                println("[ohos-tts] tsfn not registered: $commandJson")
-            }
-            true
+            ttsTsfn
         }
+        dispatchTsfn(tsfn, commandJson, "ohos-tts", commandJson)
+        return true
     }
 
     /**
@@ -560,15 +562,7 @@ object OhosNativeBridge {
      * @param commandJson 命令 JSON (含 action + text/utteranceId/rate/lang, 由调用方序列化)
      */
     fun sendTtsCommand(commandJson: String) {
-        val tsfn = synchronized(lock) { ttsTsfn }
-        if (tsfn != null) {
-            runCatching { tsfn(commandJson) }.onFailure {
-                println("[ohos-tts] tsfn call failed: $commandJson")
-            }
-        } else {
-            // 降级: tsfn 未注册
-            println("[ohos-tts] tsfn not registered: $commandJson")
-        }
+        dispatchTsfn(synchronized(lock) { ttsTsfn }, commandJson, "ohos-tts", commandJson)
     }
 
     /**
@@ -941,20 +935,18 @@ object OhosNativeBridge {
 
     /**
      * 发送 Markdown 渲染请求到 ArkTS (fire-and-forget, 无返回值)。
-     * 未注册 tsfn 时降级 println (内容不渲染, 正常路径下 EntryAbility 必然已注册)。
+     * 未注册 tsfn 时丢弃 (内容不渲染, 正常路径下 EntryAbility 必然已注册)。
      *
      * @param payload 渲染参数 (markdown 原文 + 主题 + 字号)
      */
     fun sendMarkdown(payload: MarkdownRenderPayload) {
         val json = KS_JSON.encodeToString(MarkdownRenderPayload.serializer(), payload)
-        val tsfn = synchronized(lock) { markdownTsfn }
-        if (tsfn != null) {
-            runCatching { tsfn(json) }.onFailure {
-                println("[ohos-markdown] tsfn call failed, fallback println")
-            }
-        } else {
-            println("[ohos-markdown] tsfn not registered")
-        }
+        dispatchTsfn(
+            synchronized(lock) { markdownTsfn },
+            json,
+            "ohos-markdown",
+            "render isDark=${payload.isDark} len=${payload.content.length}",
+        )
     }
 
     /**
@@ -985,7 +977,7 @@ object OhosNativeBridge {
     }
 
     /**
-     * 打开 URL (跨线程 dispatch 到 ArkTS context.startAbility)。未注册 tsfn 时降级 println。
+     * 打开 URL (跨线程 dispatch 到 ArkTS context.startAbility)。未注册 tsfn 时丢弃。
      *
      * @param url 要打开的 URL (http/https/file/intent 等, 由 ArkTS 侧 system 选择合适应用打开)
      * @param mimeType MIME 类型 (可为空, 作为 Want.type 传给 startAbility)
@@ -1003,21 +995,12 @@ object OhosNativeBridge {
                 sourceType = sourceType,
             )
         )
-        val tsfn = synchronized(lock) { openUrlTsfn }
-        if (tsfn != null) {
-            runCatching { tsfn(json) }.onFailure {
-                // tsfn 调用失败 (module 卸载 / 线程异常) 时降级 println
-                println("[ohos-open-url] tsfn call failed, fallback: $url")
-            }
-        } else {
-            // 降级: 未注册 tsfn
-            println("[ohos-open-url] $url")
-        }
+        dispatchTsfn(synchronized(lock) { openUrlTsfn }, json, "ohos-open-url", url)
     }
 
     /**
      * 检查 openUrl 桥是否已就绪 (tsfn 已注入)。
-     * OhosOpenUrlProviderImpl 据此判断走真实 startAbility 还是降级 println (兼容 napi 未接入阶段)。
+     * OhosOpenUrlProviderImpl 据此判断走真实 startAbility 还是降级记日志 (兼容 napi 未接入阶段)。
      */
     fun isOpenUrlBridgeReady(): Boolean = synchronized(lock) { openUrlTsfn != null }
 
@@ -1043,7 +1026,7 @@ object OhosNativeBridge {
     }
 
     /**
-     * 显示文本操作浮动菜单 (跨线程 dispatch 到 ArkTS)。未注册 tsfn 时降级 println。
+     * 显示文本操作浮动菜单 (跨线程 dispatch 到 ArkTS)。未注册 tsfn 时丢弃。
      *
      * @param text 选中文本 (菜单动作参数)
      * @param x/y 选区起点锚点 (阅读页内坐标)
@@ -1052,20 +1035,12 @@ object OhosNativeBridge {
         val json = KS_JSON.encodeToString(
             TextActionMenuPayload(text = text, x = x, y = y, menuItems = TEXT_ACTION_MENU_ITEMS)
         )
-        val tsfn = synchronized(lock) { textActionTsfn }
-        if (tsfn != null) {
-            runCatching { tsfn(json) }.onFailure {
-                println("[ohos-text-action] tsfn call failed, fallback: $text")
-            }
-        } else {
-            // 降级: 未注册 tsfn
-            println("[ohos-text-action] $text")
-        }
+        dispatchTsfn(synchronized(lock) { textActionTsfn }, json, "ohos-text-action", text)
     }
 
     /**
      * 显示图片操作浮动菜单 (跨线程 dispatch 到 ArkTS, 同 [showTextActionMenu] 共用一个 tsfn)。
-     * 未注册 tsfn 时降级 println。
+     * 未注册 tsfn 时丢弃。
      *
      * payload 带 `type="image"` + `src`, ArkTS TextActionBridgeHandler 据此切换菜单项
      * (查看/刷新/保存到相册, 对照原版 ReadBookActivity.onImageLongPress 图片菜单)。
@@ -1084,34 +1059,18 @@ object OhosNativeBridge {
                 menuItems = IMAGE_ACTION_MENU_ITEMS,
             )
         )
-        val tsfn = synchronized(lock) { textActionTsfn }
-        if (tsfn != null) {
-            runCatching { tsfn(json) }.onFailure {
-                println("[ohos-text-action] image menu tsfn call failed, fallback: $src")
-            }
-        } else {
-            // 降级: 未注册 tsfn
-            println("[ohos-text-action] image menu $src")
-        }
+        dispatchTsfn(
+            synchronized(lock) { textActionTsfn },
+            json,
+            "ohos-text-action",
+            "image menu $src",
+        )
     }
 
     /** 隐藏文本操作浮动菜单 (菜单项点击/点外部收起后由 ArkTS 自行隐藏, 此方法供取消选择联动)。 */
     fun hideTextActionMenu() {
-        val tsfn = synchronized(lock) { textActionTsfn }
-        if (tsfn != null) {
-            runCatching {
-                tsfn(
-                    KS_JSON.encodeToString(
-                        TextActionMenuPayload(
-                            text = "",
-                            x = -1f,
-                            y = -1f
-                        )
-                    )
-                )
-            }
-                .onFailure { println("[ohos-text-action] hide tsfn call failed") }
-        }
+        val json = KS_JSON.encodeToString(TextActionMenuPayload(text = "", x = -1f, y = -1f))
+        dispatchTsfn(synchronized(lock) { textActionTsfn }, json, "ohos-text-action", "hide")
     }
 
     /**
@@ -1127,7 +1086,7 @@ object OhosNativeBridge {
     // ===== Window tsfn (KMP → ArkTS, fire-and-forget, 同 OpenUrl 模式) =====
     // 窗口策略 (全屏/常亮/方向/系统栏) 走 ArkTS @ohos.window API (setWindowLayoutFullScreen /
     // setWindowKeepScreenOn / setPreferredOrientation / setWindowSystemBarEnable), 无 NDK C 接口,
-    // 经 tsfn dispatch 到 ArkTS 主线程执行。命令 fire-and-forget (无返回值), 未注册时降级 println。
+    // 经 tsfn dispatch 到 ArkTS 主线程执行。命令 fire-and-forget (无返回值), 未注册时丢弃。
 
     /** window threadsafe_function 引用 (EntryAbility.ets 注册后注入)。 */
     @Volatile
@@ -1140,17 +1099,9 @@ object OhosNativeBridge {
         }
     }
 
-    /** 发送 window 命令到 ArkTS (fire-and-forget)。未注册 tsfn 时降级 println。 */
+    /** 发送 window 命令到 ArkTS (fire-and-forget)。未注册 tsfn 时丢弃。 */
     fun sendWindowCommand(commandJson: String) {
-        val tsfn = synchronized(lock) { windowTsfn }
-        if (tsfn != null) {
-            runCatching { tsfn(commandJson) }.onFailure {
-                println("[ohos-window] tsfn call failed: $commandJson")
-            }
-        } else {
-            // 降级: tsfn 未注册
-            println("[ohos-window] tsfn not registered: $commandJson")
-        }
+        dispatchTsfn(synchronized(lock) { windowTsfn }, commandJson, "ohos-window", commandJson)
     }
 
     /** 切换窗口全屏布局 (对照 @ohos.window setWindowLayoutFullScreen)。 */
@@ -1192,7 +1143,7 @@ object OhosNativeBridge {
      * 鸿蒙无 Activity.finish 等价物, 退出需 ArkTS `context.terminateSelf()` (仅 UIAbility 自身
      * 可调, 由宿主 window callback 处理 action="exitApplication" 分支)。复用 window tsfn 通道
      * (同全屏/常亮/方向/系统栏 fire-and-forget 模式), 避免为单条命令新增独立桥。
-     * 未注册 window tsfn (EntryAbility 未 registerWindowCallback) 时降级 println。
+     * 未注册 window tsfn (EntryAbility 未 registerWindowCallback) 时丢弃。
      */
     fun exitApplication() {
         sendWindowCommand(
@@ -1366,7 +1317,7 @@ object OhosNativeBridge {
 
     /**
      * 检查 pasteboard 桥是否已就绪 (tsfn 已注入)。
-     * OhosPlatformOps 据此判断走真实 SystemPasteboard 还是降级 println/null。
+     * OhosPlatformOps 据此判断走真实 SystemPasteboard 还是降级记日志/返回 null。
      */
     fun isPasteboardBridgeReady(): Boolean = synchronized(lock) { pasteboardTsfn != null }
 
@@ -1623,12 +1574,7 @@ object OhosNativeBridge {
     }
 
     private fun sendShareCommand(json: String) {
-        val tsfn = synchronized(lock) { shareTsfn }
-        if (tsfn != null) {
-            runCatching { tsfn(json) }.onFailure { println("[ohos-share] tsfn call failed: $json") }
-        } else {
-            println("[ohos-share] tsfn not registered: $json")
-        }
+        dispatchTsfn(synchronized(lock) { shareTsfn }, json, "ohos-share", json)
     }
 
     /** 检查 share 桥是否已就绪; 未就绪时调用方降级到剪贴板 (对照 desktop shareText)。 */
@@ -1650,12 +1596,7 @@ object OhosNativeBridge {
     }
 
     private fun sendKeyboardCommand(json: String) {
-        val tsfn = synchronized(lock) { keyboardTsfn }
-        if (tsfn != null) {
-            runCatching { tsfn(json) }.onFailure { println("[ohos-keyboard] tsfn call failed: $json") }
-        } else {
-            println("[ohos-keyboard] tsfn not registered: $json")
-        }
+        dispatchTsfn(synchronized(lock) { keyboardTsfn }, json, "ohos-keyboard", json)
     }
 
     /** 收起软键盘 (对照 inputMethod.getController().stopInputSession)。 */

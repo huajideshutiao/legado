@@ -4,6 +4,7 @@ import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlin.concurrent.Volatile
 
+import io.legado.app.constant.AppLog
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.utils.KS_JSON
 import kotlinx.serialization.Serializable
@@ -59,9 +60,9 @@ class OhosSystemTtsEngine : SystemTtsEngine, OhosNativeBridge.TtsEventListener {
         // 不缓存就绪状态, 后续方法每次运行时检查
         if (OhosNativeBridge.isTtsBridgeReady()) {
             OhosNativeBridge.sendTtsCommand(action = "createEngine", lang = "zh-CN", rate = rateMultiplier)
-            println("[ohos-stts] init: bridge ready, createEngine sent")
+            AppLog.putDebug("init: 桥已就绪, createEngine 已发送", tag = TAG)
         } else {
-            println("[ohos-stts] init: bridge not ready, speak will report error")
+            AppLog.putDebug("init: 桥未就绪, speak 将上报错误", tag = TAG)
         }
     }
 
@@ -113,7 +114,7 @@ class OhosSystemTtsEngine : SystemTtsEngine, OhosNativeBridge.TtsEventListener {
             // 降级: napi 桥未就绪无法出声, 走错误上报通道让用户可感知
             speaking = false
             paused = false
-            println("[ohos-stts] speak: tts bridge not ready, report error. utteranceId=$utteranceId")
+            AppLog.put("speak: tts 桥未就绪, 上报错误。utteranceId=$utteranceId", tag = TAG)
             listenerField?.onError(utteranceId, ERROR_BRIDGE_NOT_READY)
         }
     }
@@ -137,7 +138,7 @@ class OhosSystemTtsEngine : SystemTtsEngine, OhosNativeBridge.TtsEventListener {
         if (OhosNativeBridge.isTtsBridgeReady()) {
             OhosNativeBridge.sendTtsCommand(action = "pause")
         } else {
-            println("[ohos-stts] pause (placeholder)")
+            AppLog.putDebug("pause (占位)", tag = TAG)
         }
     }
 
@@ -148,7 +149,7 @@ class OhosSystemTtsEngine : SystemTtsEngine, OhosNativeBridge.TtsEventListener {
         if (OhosNativeBridge.isTtsBridgeReady()) {
             OhosNativeBridge.sendTtsCommand(action = "resume")
         } else {
-            println("[ohos-stts] resume (placeholder)")
+            AppLog.putDebug("resume (占位)", tag = TAG)
         }
     }
 
@@ -158,7 +159,7 @@ class OhosSystemTtsEngine : SystemTtsEngine, OhosNativeBridge.TtsEventListener {
         if (OhosNativeBridge.isTtsBridgeReady()) {
             OhosNativeBridge.sendTtsCommand(action = "stop")
         } else {
-            println("[ohos-stts] stop (placeholder)")
+            AppLog.putDebug("stop (占位)", tag = TAG)
         }
         speaking = false
         paused = false
@@ -216,6 +217,8 @@ class OhosSystemTtsEngine : SystemTtsEngine, OhosNativeBridge.TtsEventListener {
     )
 
     companion object {
+        private const val TAG = "ohos-stts"
+
         /** 降级模式错误码: napi 桥未就绪 (对齐 Android TextToSpeech.ERROR = -1 语义)。 */
         private const val ERROR_BRIDGE_NOT_READY = -1
     }

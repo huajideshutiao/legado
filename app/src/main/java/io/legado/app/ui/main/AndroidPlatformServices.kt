@@ -42,10 +42,12 @@ import io.legado.app.utils.ActivityResultLauncherAwait
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.checkWrite
+import io.legado.app.utils.createFileIfNotExist
 import io.legado.app.utils.delete
 import io.legado.app.utils.find
 import io.legado.app.utils.getFile
 import io.legado.app.utils.list
+import io.legado.app.utils.openOutputStream
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.share
 import kotlinx.coroutines.Dispatchers

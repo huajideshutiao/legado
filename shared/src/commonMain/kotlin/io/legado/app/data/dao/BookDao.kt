@@ -160,6 +160,13 @@ interface BookDao {
     suspend fun upProgress(bookUrl: String, pos: Int)
 
     /**
+     * 仅 PATCH 当前章节定位 (目录选章节跳阅读). 整行 update 会冲掉并发写入的其他列,
+     * 也会与阅读退出时的 [updateProgress] 互相覆盖.
+     */
+    @Query("update books set durChapterIndex = :index, durChapterPos = :pos where bookUrl = :bookUrl")
+    suspend fun upDurChapter(bookUrl: String, index: Int, pos: Int)
+
+    /**
      * 仅 PATCH 进度字段, 避免阅读/播放界面退出时的整行 update 冲掉后台
      * updateToc/refreshBookInfo 写入的最新元数据.
      */

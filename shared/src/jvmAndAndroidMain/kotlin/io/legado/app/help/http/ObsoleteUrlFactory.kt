@@ -20,11 +20,9 @@ import okio.BufferedSink
 import okio.Pipe
 import okio.Timeout
 import okio.buffer
-import java.io.BufferedReader
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.InputStream
-import java.io.InputStreamReader
 import java.io.InterruptedIOException
 import java.io.OutputStream
 import java.net.HttpURLConnection
@@ -1175,22 +1173,5 @@ class ObsoleteUrlFactory(private var client: OkHttpClient) : URLStreamHandlerFac
 
         @Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN", "NOTHING_TO_INLINE")
         private inline fun Any.notifyAll() = (this as Object).notifyAll()
-
-        @Throws(Exception::class)
-        @JvmStatic
-        fun main(args: Array<String>) {
-            val okHttpClient = OkHttpClient()
-            URL.setURLStreamHandlerFactory(ObsoleteUrlFactory(okHttpClient))
-            val url = URL("https://publicobject.com/helloworld.txt")
-            val urlConnection = url.openConnection() as HttpURLConnection
-            BufferedReader(
-                InputStreamReader(urlConnection.inputStream)
-            ).use { reader ->
-                var line: String?
-                while ((reader.readLine().also { line = it }) != null) {
-                    println(line)
-                }
-            }
-        }
     }
 }

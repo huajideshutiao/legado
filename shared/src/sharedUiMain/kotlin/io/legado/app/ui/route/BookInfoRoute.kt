@@ -593,11 +593,9 @@ fun BookInfoRoute(
                             val b = screenModel.state.value.book ?: book
                             if (payload != null) {
                                 // 对照原版 tocActivityResult: 先把 book.durChapterIndex/durChapterPos
-                                // 改为选中章节, await 落库完成后再打开阅读 (只带 chapterChanged, 不带
+                                // 改为选中章节, 再打开阅读 (只带 chapterChanged, 不带
                                 // chapterIndex/chapterPos 定位 extra) —— 阅读页属正常打开而非跳转,
-                                // 不触发 lastBookProgress 快照机制 (返回不弹"恢复进度"对话框);
-                                // await 落库避免异步整行 update 与阅读退出时 updateProgress(PATCH)
-                                // 竞态: 晚到的整行写会用旧 dur 覆盖最新进度 → 书架显示旧进度
+                                // 不触发 lastBookProgress 快照机制 (返回不弹"恢复进度"对话框)
                                 b.durChapterIndex = payload.chapterIndex
                                 b.durChapterPos = payload.chapterPos
                                 val target = when {
@@ -616,11 +614,19 @@ fun BookInfoRoute(
                                 if (!screenModel.state.value.inBookshelf) {
                                     IntentData.chapterList = screenModel.loadedChapterList
                                 }
-                                scope.launch {
-                                    withContext(IoDispatcher) {
-                                        AppDbProviders.get().bookDao.update(b)
-                                    }
-                                    navigator.push(target, RouteResults.READER)
+                                // 同步 push: 目录页的 pop 与本次 push 落在同一批 dispatch,
+                                // 组合只看到最终栈 → 一次单段前进转场。中间夹 await 落库
+                                // (Room 整行写几十毫秒) 会让返回动画先播一截再改判前进, 出栈页
+                                // 换动画角色必然跳一帧
+                                navigator.push(target, RouteResults.READER)
+                                // 落库不再挡 push: 阅读页读的是同一个内存 book 实例
+                                // (BookRef.Stored 零拷贝, ReadBook.initData 取 incomingBook),
+                                // 不依赖落库完成; 只 PATCH 这两列, 与阅读退出时的
+                                // updateProgress 不再互相整行覆盖
+                                scope.launch(IoDispatcher) {
+                                    AppDbProviders.get().bookDao.upDurChapter(
+                                        b.bookUrl, b.durChapterIndex, b.durChapterPos
+                                    )
                                 }
                             }
                             // 原版此处还有 `if (!inBookshelf) viewModel.delBook()` 回收临时书,

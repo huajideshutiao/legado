@@ -175,7 +175,6 @@ import io.legado.desktop.ui.tray.DesktopTaskbarMedia
 import io.legado.desktop.ui.tray.ReadAloudTrayBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.Request
 import org.jsoup.Jsoup
 import org.openani.mediamp.mpv.MPVHandle
 import org.openani.mediamp.mpv.MpvMediampPlayer
@@ -185,13 +184,7 @@ import java.util.concurrent.TimeUnit
 import javax.imageio.ImageIO
 import javax.swing.SwingUtilities
 
-// Debug 日志开关: -Dlegado.desktop.debug=true 开启 stdout 调试输出
-// 生产环境静默, 减少 println 同步 flush 开销 (启动期 initDesktopRuntimeEnvironment 等)
-private val desktopDebug = System.getProperty("legado.desktop.debug")?.toBoolean() == true
-
-private fun debugLog(msg: String) {
-    if (desktopDebug) println(msg)
-}
+private const val TAG = "legado-desktop"
 
 /**
  * 桌面端入口 (desktop/jvm 走 CMP 桌面官方 JVM)。
@@ -211,8 +204,6 @@ private fun debugLog(msg: String) {
  * 阶段1: 首屏必需 provider 同步注册 (窗口显示前) — 只注册 BookshelfScreen 渲染依赖的 provider
  * 阶段2: 显示窗口 — 让用户尽快看到界面
  * 阶段3: 后台异步注册非首屏 provider (LaunchedEffect + Dispatchers.Default) — 不阻塞首屏渲染
- * 冒烟测试 (testDesktopHttp/testDesktopDatabase/testDesktopJsEngine) 改为 debug 模式才执行
- * (通过 -Dlegado.desktop.smokeTest=true 开启), 生产环境不执行, 避免启动期阻塞
  */
 /**
  * 进程启动参数 (main() 入口保存, 剔除重启等待标记后), 供桌面端重启
@@ -329,7 +320,7 @@ private const val RESTART_WAIT_TIMEOUT_MS = 30_000L
 private fun handleDeepLinkArgs(args: Array<String>) {
     val url = args.firstOrNull { LegadoDeepLink.isDeepLink(it) } ?: return
     if (!LegadoDeepLinkHandler.handle(url)) {
-        debugLog("[legado-desktop] deep link 解析失败 (缺 src 参数): $url")
+        AppLog.put("deep link 解析失败 (缺 src 参数): $url", tag = TAG)
     }
 }
 
@@ -813,12 +804,6 @@ private fun runDesktopApp() = application {
  * 在后台线程顺序注册, 保持原依赖关系:
  * - registerDesktopAudioPlayProviders 依赖 SourceHelpAccessors + WebBookProviders + JsEngines + OkHttpClientProviders
  *   (必须在它们之后注册)
- *
- * # 冒烟测试
- * testDesktopHttp / testDesktopDatabase / testDesktopJsEngine 改为仅 debug 模式执行
- * (通过 -Dlegado.desktop.smokeTest=true 系统属性开启), 生产环境不执行,
- * 避免启动期同步网络请求 (baidu.com) / native 库加载 (legado_quickjs.dll) 阻塞 UI。
- * 原同步执行时这三项是双击打开卡顿的主要原因。
  */
 private suspend fun registerSecondaryProviders() {
     withContext(Dispatchers.Default) {
@@ -925,128 +910,6 @@ private suspend fun registerSecondaryProviders() {
                 AppWebDavShared.downloadAllBookProgress()
             }
         }
-
-        // 冒烟测试: 仅在 debug 模式执行 (生产环境不执行, 避免启动期阻塞)
-        // 开启方式: java -Dlegado.desktop.smokeTest=true -jar ... 或在 build.gradle.kts jvmArgs 添加
-        if (System.getProperty("legado.desktop.smokeTest")?.toBoolean() == true) {
-            testDesktopHttp()
-            testDesktopDatabase()
-            testDesktopJsEngine()
-        }
-    }
-}
-
-/**
- * 桌面端 JS 引擎冒烟测试。
- *
- * 通过 [JsEngines.get] 取当前 JS 引擎 (应为 QuickJsJsEngine), 执行三组测试:
- * 1. 纯算术: `1 + 2 * 3` 期望 7
- * 2. 字符串拼接: `"Hello, " + platform` 期望 "Hello, desktop" (AppConst.JS_PLATFORM 经 expect/actual 按平台取值, jvmMain actual="desktop")
- * 3. JSON 解析: `JSON.stringify({a:1,b:2})` 期望 `{"a":1,"b":2}`
- *
- * 任何一步抛异常 (含 native 库缺失 UnsatisfiedLinkError) 都打印 stack trace 但不中断主流程,
- * 让后续 UI 仍能起来, 便于观察错误。
- *
- * native 库依赖: 首次 eval 触发 `loadLegadoQuickJsNative()` 加载 .dll/.so/.dylib,
- * 详见 `modules/quickjs/src/jvmMain/kotlin/com/script/quickjs/Platform.kt` 注释。
- * 若未构建 native 库, 此处会打印 UnsatisfiedLinkError, 需先执行
- * `./gradlew :modules:quickjs:buildJvmNativeLib`。
- *
- * 注意: 本函数仅在 debug 模式 (-Dlegado.desktop.smokeTest=true) 由 [registerSecondaryProviders] 调用,
- * 生产环境不执行, 避免启动期 native 库加载阻塞 UI。
- */
-private fun testDesktopJsEngine() {
-    try {
-        val engine = JsEngines.get()
-        debugLog("=== KP1.1 Desktop JS Engine Test ===")
-        debugLog("engine=${engine::class.simpleName} type=${engine.type}")
-
-        // 1. 纯算术 (JS 整数运算返回 Integer/Double, 走 toString 即可)
-        val arithmetic = engine.eval("1 + 2 * 3")
-        debugLog("1+2*3 = $arithmetic (expect 7)")
-
-        // 2. 字符串拼接 + 读取 bindings 中的 platform 变量
-        //    JsBindings init 注入 platform="desktop" (AppConst.JS_PLATFORM 按平台 expect/actual 取值) / image=DesktopImageOps,
-        //    JS 顶层 eval 可直接访问 platform
-        val greeting = engine.eval("'Hello, ' + platform")
-        debugLog("Hello, platform = $greeting")
-
-        // 3. JSON.stringify 返回 JS string, Kotlin 侧拿到的就是 String
-        val json = engine.eval("JSON.stringify({a:1,b:2})")
-        debugLog("JSON.stringify({a:1,b:2}) = $json")
-
-        debugLog("=====================================")
-    } catch (e: Throwable) {
-        debugLog("=== KP1.1 Desktop JS Engine Test FAILED ===")
-        e.printStackTrace()
-        debugLog("================================================")
-        debugLog(jvmGetString("desktop_smoke_test_js_hint"))
-        debugLog("  ./gradlew :modules:quickjs:buildJvmNativeLib")
-        debugLog("================================================")
-    }
-}
-
-/**
- * 桌面端 HTTP 层冒烟测试。
- *
- * 通过 [OkHttpClientProviders] 取桌面端 OkHttpClient, 同步 GET https://www.baidu.com,
- * 打印响应 code 与 body 前 200 字符到 stdout, 验证 SSL/拦截器链/解压全链路工作。
- *
- * 注意: 本函数仅在 debug 模式 (-Dlegado.desktop.smokeTest=true) 由 [registerSecondaryProviders] 调用,
- * 生产环境不执行, 避免启动期同步网络请求阻塞 UI。
- */
-private fun testDesktopHttp() {
-    try {
-        val client = OkHttpClientProviders.get().okHttpClient
-        val request = Request.Builder().url("https://www.baidu.com").build()
-        client.newCall(request).execute().use { response ->
-            val body = response.body.string()
-            val preview = if (body.length > 200) body.take(200) else body
-            debugLog("=== KP1.3 Desktop HTTP Test ===")
-            debugLog("code=${response.code}")
-            // 换行替换为空格, 避免控制台预览串行难读
-            debugLog("body(200)=${preview.replace('\n', ' ')}")
-            debugLog("===============================")
-        }
-    } catch (e: Exception) {
-        debugLog("=== KP1.3 Desktop HTTP Test FAILED ===")
-        e.printStackTrace()
-        debugLog("=======================================")
-    }
-}
-
-/**
- * 桌面端 Room KMP 数据库冒烟测试 (真实 BundledSQLiteDriver)。
- *
- * # 实现状态
- * 17 个 DAO 完成 suspend 迁移 + 启用 kspJvm 后, [BundledDatabaseDriver.appDatabase] 是真 Room,
- * 通过 [BundledSQLiteDriver] + `~/.legado/legado.db` 构造。本测试:
- * 1. 触发 lazy 构造 (访问 appDb.isOpen)
- * 2. 跑 suspend DAO 冒烟: bookSourceDao.allCount() (空表返回 0)
- *
- * 验证 Room KMP + BundledSQLiteDriver 全链路在桌面 JVM 工作。
- *
- * 注意: 本函数仅在 debug 模式 (-Dlegado.desktop.smokeTest=true) 由 [registerSecondaryProviders] 调用,
- * 生产环境不执行 (数据库 lazy 由首屏 BookshelfScreen 在协程中触发, 不阻塞主线程)。
- */
-private fun testDesktopDatabase() {
-    try {
-        val appDb = AppDbProviders.get()
-        debugLog("=== KP1.2 Desktop Database Test (Room KMP + BundledSQLiteDriver) ===")
-        debugLog("databaseName=${DatabaseDriverProviders.get().databaseName}")
-        debugLog("databaseVersion=${DatabaseDriverProviders.get().databaseVersion}")
-        // Room KMP RoomDatabase 不暴露 isOpen (Android 端 RoomDatabase.isOpen 是 JVM 实现),
-        // 桌面端通过 BundledSQLiteDriver 内部连接管理, 直接跳过 isOpen 检测
-        // 跑 suspend DAO 冒烟 (runBlocking 触发 lazy + 执行查询)
-        kotlinx.coroutines.runBlocking {
-            val count = appDb.bookSourceDao.allCount()
-            debugLog(jvmGetString("desktop_smoke_test_db_count", count))
-        }
-        debugLog("=====================================================================")
-    } catch (e: Exception) {
-        debugLog("=== KP1.2 Desktop Database Test FAILED ===")
-        e.printStackTrace()
-        debugLog("=============================================")
     }
 }
 
@@ -1090,10 +953,6 @@ private fun initDesktopRuntimeEnvironment() {
     val resDirFile = File(resourcesDir)
     if (!resDirFile.isDirectory) return
 
-    // 调试输出: 打印 resourcesDir 实际值, 便于验证 Compose Desktop 行为
-    debugLog("[legado-desktop] compose.application.resources.dir = $resourcesDir")
-    debugLog("[legado-desktop] resDirFile.parentFile = ${resDirFile.parentFile?.absolutePath}")
-
     // 1. 便携模式定位 (KP6+: 由编译期 InstallType 控制, 不再嗅探 runtime/ 目录):
     //    resDirFile 指向 app/<packageName>/ (jar + 资源所在目录),
     //    其 parentFile = jpackage package root (exe 所在目录的同级)。
@@ -1106,9 +965,9 @@ private fun initDesktopRuntimeEnvironment() {
         val dataDir = File(exeDir, "data")
         dataDir.mkdirs()
         System.setProperty("legado.portable.root", dataDir.absolutePath)
-        debugLog("[legado-desktop] portable mode ON (InstallType=portable), dataDir = ${dataDir.absolutePath}")
+        AppLog.put("portable 模式, dataDir = ${dataDir.absolutePath}", tag = TAG)
     } else {
-        debugLog(jvmGetString("desktop_install_mode_not_portable", InstallType.TYPE))
+        AppLog.put(jvmGetString("desktop_install_mode_not_portable", InstallType.TYPE), tag = TAG)
     }
 
     // 2. native 库加载: 从 resourcesDir 找平台对应 native 库
@@ -1122,8 +981,8 @@ private fun initDesktopRuntimeEnvironment() {
     val libFile = File(resDirFile, libName)
     if (libFile.exists()) {
         System.setProperty("legado.quickjs.lib", libFile.absolutePath)
-        debugLog("[legado-desktop] quickjs native lib loaded: ${libFile.absolutePath}")
+        AppLog.put("quickjs native 库已定位: ${libFile.absolutePath}", tag = TAG)
     } else {
-        debugLog("[legado-desktop] quickjs native lib NOT found at ${libFile.absolutePath}")
+        AppLog.put("quickjs native 库缺失: ${libFile.absolutePath}", tag = TAG)
     }
 }

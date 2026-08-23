@@ -1,5 +1,6 @@
 package io.legado.app.help.notification
 
+import io.legado.app.constant.AppLog
 import io.legado.app.help.toast.DesktopTrayNotifier
 import java.awt.GraphicsEnvironment
 import java.awt.Taskbar
@@ -9,7 +10,7 @@ import java.awt.Window
  * [NotificationProgress] 的桌面 JVM actual 实现。
  *
  * 进度文本经 [DesktopTrayNotifier] 委托给宿主唯一托盘图标显示气泡 (进程内只该有一个托盘图标),
- * 未注册托盘时退化为 println 到 stdout。
+ * 未注册托盘时退化为 [AppLog.putDebug] 记账。
  *
  * # 设计要点
  * - 桌面端通知无"持久显示 + 进度条"概念, showProgress 显示 "title | content (progress/max)"
@@ -32,8 +33,8 @@ class DesktopNotificationProgress : NotificationProgress {
             DesktopTrayNotifier.sender?.invoke("$title | $progressText") == true
         }.getOrDefault(false)
         if (sent) return
-        // stdout 兜底 (无头模式 / 托盘未安装)
-        println("[progress] $title | $progressText")
+        // 日志兜底 (无头模式 / 托盘未安装)。进度每帧都刷, 走 recordLog 门控免得顶掉真错误
+        AppLog.putDebug("$title | $progressText", tag = "progress")
     }
 
     override fun cancel() {

@@ -1,5 +1,6 @@
 package io.legado.app.help.service
 
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDbProviders
 import io.legado.app.help.file.FileDownloaders
@@ -109,7 +110,7 @@ class DesktopServiceLauncher(
             val destPath = Paths.get(desktopAppRootDir(), "downloads").toString()
             val ok = FileDownloaders.get().download(url, destPath, fileName)
             if (!ok) {
-                System.err.println("[DesktopServiceLauncher] download failed: url=$url fileName=$fileName")
+                AppLog.put("下载失败: url=$url fileName=$fileName", tag = "DesktopServiceLauncher")
             }
         }
     }

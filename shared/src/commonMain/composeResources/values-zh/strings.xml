@@ -957,8 +957,6 @@
 %1$s</string>
     <string name="check_update_failed_no_msg">检查更新失败</string>
     <string name="already_latest_version">已是最新版本</string>
-    <string name="desktop_smoke_test_js_hint">提示: 若错误为 UnsatisfiedLinkError, 请先执行:</string>
-    <string name="desktop_smoke_test_db_count">bookSourceDao.allCount() = %1$s (空表期望 0)</string>
     <string name="desktop_install_mode_not_portable">[legado-desktop] install mode = %1$s (portable.root not set, 下游走 portable.txt 标记/系统数据目录)</string>
     <string name="image_decode_failed_bytes">image.decode: 无法解码图片字节(%1$s bytes)</string>
     <string name="image_encode_unsupported_format">image.encode: 不支持的格式 %1$s，仅 png/jpg/webp</string>

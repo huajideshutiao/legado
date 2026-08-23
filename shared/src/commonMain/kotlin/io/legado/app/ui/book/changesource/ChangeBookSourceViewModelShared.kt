@@ -931,7 +931,7 @@ class ChangeBookSourceViewModelShared(
  * - **Android**: `AndroidChangeBookSourcePlatform` 包装 `AppConfig` / `ContentProcessor` /
  *   `BookHelp` / `SourceConfig` / `context.toastOnUi`;
  * - **桌面**: `DesktopChangeBookSourcePlatform` 简化实现 (评分返回 0 / getDurChapter 取末章 /
- *   processContent 直接返回 content / toastOnUi 用 println 替代 / 4 个开关 + threadCount +
+ *   processContent 直接返回 content / toastOnUi 走 Toasters / 4 个开关 + threadCount +
  *   searchGroup 从 PreferenceProviders 读)。
  *
  * # 为何不扩展既有 Provider 接口
@@ -1042,7 +1042,7 @@ interface ChangeBookSourcePlatform {
      * 显示 Toast (对照 `context.toastOnUi(msg)`)。
      *
      * app 端走 Android Toast;
-     * 桌面端用 println 替代 (或后续接桌面通知系统)。
+     * 桌面端走 Toasters (托盘气泡, 无托盘时退化为 AppLog 记账)。
      */
     fun toastOnUi(msg: String)
 }

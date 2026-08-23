@@ -136,7 +136,7 @@ fun LegadoApp(
         // 返回导航时缓存即将消失的页面 (pop 单个 / popTo 多个), 用于滑出动画;
         // 动画结束后由 effect 清空复位
         var outgoingEntries by remember { mutableStateOf<List<RouteEntry>>(emptyList()) }
-        // 目录链路 (pop 紧接 push, 如详情页→目录→选章节→阅读页): 本段按"单段前进"播 ——
+        // 单段前进 (pop 紧接 push, 如详情页→目录→选章节→阅读页; replace 换页同理):
         // 滑出的是出栈页 (目录) 而非栈内倒数第二页, 中间页 (详情) 全程不露脸。
         // 用户拍板 2026-08: 不要原版那种"目录滑出→详情闪一下→阅读页滑入"的三段转场
         var forwardOverOutgoing by remember { mutableStateOf(false) }
@@ -152,40 +152,30 @@ fun LegadoApp(
             capabilities.routeTransitionSampler ?: RouteTransitionSpecSampler(transitionSpec)
         }
         val useSystemTransition = capabilities.routeTransitionSampler != null
-        if (entries.size != lastSettled.value.size || entries != lastSettled.value) {
+        // 本次导航分类: 只从"两份栈快照的差"纯推导, 不把自身上一次的结论 (animating /
+        // navigatingForward) 当输入。lastSettled 直到动画播完才更新, 整段动画期间每次重组
+        // 都会重跑本段; 结论若自反, pop+push 配对 (目录链路/replace) 会在"单段前进"与
+        // "返回"之间每帧翻转, 出栈页在 openExit(原地淡出) 与 closeExit(向右滑出) 两套系统
+        // 动画间逐帧跳变 —— 肉眼即"目录页闪来闪去"。判据: 有出栈页残留且栈顶是新页 = 单段前进
+        if (entries != lastSettled.value) {
             val forward = entries.size > lastSettled.value.size
-            val sameSizeDiff = entries.size == lastSettled.value.size && entries != lastSettled.value
-            when {
-                // 返回动画刚起步就收到前进导航 (目录链路: pop 后 await 落库再 push, 间隔仅数毫秒):
-                // 直接切成单段前进, 出栈页 (目录) 继续作为滑出的旧页, 详情页不露脸。
-                // outgoingEntries 沿用返回段已算好的出栈页
-                animating && !navigatingForward && (forward || sameSizeDiff) -> {
-                    navigatingForward = true
-                    forwardOverOutgoing = true
-                }
-                // 动画间隙同帧 pop+push: 同样按单段前进播
-                !animating && sameSizeDiff -> {
-                    navigatingForward = true
-                    forwardOverOutgoing = true
-                    outgoingEntries = lastSettled.value.filterNot { e -> entries.any { it.id == e.id } }
-                    animating = true
-                }
-                else -> {
-                    navigatingForward = forward
-                    forwardOverOutgoing = false
-                    // 返回导航时缓存即将消失的页面 (popTo 多个页面一并滑出, 消除中间页瞬消)
-                    if (!forward) {
-                        outgoingEntries = lastSettled.value.filterNot { e -> entries.any { it.id == e.id } }
-                    }
-                    animating = true
-                }
-            }
+            val sameSize = entries.size == lastSettled.value.size
+            // 已离栈的页面 (pop 单个 / popTo 多个 / replace 被换掉的那页)
+            val dropped = lastSettled.value.filterNot { e -> entries.any { it.id == e.id } }
+            val singleSegmentForward = dropped.isNotEmpty() && (forward || sameSize)
+            navigatingForward = forward || sameSize
+            forwardOverOutgoing = singleSegmentForward
+            // 纯前进无出栈页; 返回与单段前进都保留出栈页滑出 (popTo 多页一并滑出, 消除中间页瞬消)
+            outgoingEntries = if (forward && !singleSegmentForward) emptyList() else dropped
+            animating = true
         }
-        // 返回导航 (以及单段前进的目录链路) 时出栈页保留在栈尾滑出, 动画结束后由 effect 清空复位
-        val displayEntries = if (!navigatingForward || forwardOverOutgoing) {
-            entries + outgoingEntries
-        } else {
-            entries
+        // 出栈页保留在栈内滑出, 动画结束后由 effect 清空复位。
+        // 单段前进时出栈页要插在栈顶之下: 新页在上才是前进转场的 z 序, 排到栈尾会让不透明
+        // 的旧页盖住新页滑入 (中段两层 alpha 之和 <1 还透出根背景, 观感是"发白的交叉淡入")
+        val displayEntries = when {
+            forwardOverOutgoing -> entries.dropLast(1) + outgoingEntries + entries.takeLast(1)
+            !navigatingForward -> entries + outgoingEntries
+            else -> entries
         }
         val currentEntry = entries.lastOrNull()
         val currentRoute = currentEntry?.route
@@ -319,11 +309,9 @@ fun LegadoApp(
                 // 返回键按下即 onPause → saveRead 落库的即时性: 落库不再等 300ms pop 动画
                 // 播完后的 retain → onCleared, 退出阅读回书架立即可见最新进度
                 screenModelStore.notifyPreRemoved(entries)
-                if (entries.size != lastSettled.value.size || entries != lastSettled.value) {
+                if (entries != lastSettled.value) {
                     // 单段前进 (forwardOverOutgoing) 也走这里: 出栈页当作滑出的旧页,
-                    // 由 slidingIds 指向 outgoingEntries 完成 (见下方渲染块)。
-                    // 目录链路里 pop→push 只隔一次落库 (数毫秒), 此时返回动画进度≈0,
-                    // snapTo(0) 不产生可见跳变
+                    // 由 slidingIds 指向 outgoingEntries 完成 (见下方渲染块)
                     transition.snapTo(0f)
                     transition.animateTo(
                         1f,
@@ -365,7 +353,7 @@ fun LegadoApp(
             }
             // 动画角色: top=动画后留存的栈顶页, slide=前进时的旧页或返回时的出栈页们;
             val topEntry = entries.lastOrNull()
-            // 滑出的旧页: 普通前进 = 栈内倒数第二; 返回 / 单段前进的目录链路 = 出栈页
+            // 滑出的旧页: 纯前进 = 栈内倒数第二; 返回 / 单段前进 = 出栈页
             val slidingIds = remember(entries, outgoingEntries, navigatingForward, forwardOverOutgoing) {
                 if (navigatingForward && !forwardOverOutgoing) {
                     entries.getOrNull(entries.lastIndex - 1)?.let { setOf(it.id) } ?: emptySet()
@@ -373,8 +361,8 @@ fun LegadoApp(
                     outgoingEntries.mapTo(mutableSetOf()) { it.id }
                 }
             }
-            // 每个 entry 用 key(entry.id) 固定组合身份: 前进/返回/目录链路单段前进时
-            // displayEntries 顺序会变化 (pop+push 同帧时出栈页被追加到新栈尾), 无 key 时
+            // 每个 entry 用 key(entry.id) 固定组合身份: 前进/返回/单段前进时 displayEntries
+            // 顺序会变化 (出栈页被插进新栈), 无 key 时
             // Compose 按组合位置匹配, 页面 remember 状态 (LazyGridState/remember(route)/
             // pagerState 等) 全部丢失 → 重建+重新查询+滚动回开头+闪烁; key 后状态随 entry
             // 存活, 对齐原版单例 Activity 复用语义 (返回页面不重建)

@@ -38,7 +38,7 @@ import kotlinx.serialization.encodeToString
  * 鸿蒙端 [PlatformServices] 实现: 各能力经 [OhosNativeBridge] napi 桥接到 ArkTS。
  * 经 PlatformServiceProviders.register 注册后供 shared LegadoApp 使用。
  *
- * 桥未注入 tsfn 时统一降级 (println / 剪贴板 / 返回 false), 与 Toast/Window 同策略,
+ * 桥未注入 tsfn 时统一降级 (记日志 / 剪贴板 / 返回 false), 与 Toast/Window 同策略,
  * 保证 napi 未接入阶段调用链不崩。
  */
 object OhosPlatformServices : PlatformServices {
@@ -93,7 +93,7 @@ object OhosPlatformServices : PlatformServices {
     }
 
     // 窗口策略经 OhosNativeBridge tsfn 桥 dispatch 到 ArkTS @ohos.window (无 NDK C 接口);
-    // 桥未就绪时降级 println (兼容 napi 未接入阶段)
+    // 桥未就绪时记一条降级日志 (兼容 napi 未接入阶段)
     override val window: WindowController = object : WindowController {
         override fun setFullscreen(enabled: Boolean) {
             // window.setWindowLayoutFullScreen: 布局延伸到状态栏区域 (对照 Android immersive)
@@ -122,7 +122,7 @@ object OhosPlatformServices : PlatformServices {
             // window.setWindowSystemBarEnable 仅支持整体显隐 (鸿蒙 API 无分栏参数),
             // 故单栏策略 (HiddenStatusBar / HiddenNavigationBar) 降级为整体隐藏 ——
             // 与原版"隐藏指定栏"意图一致但会连带另一栏, 属平台 API 限制;
-            // 桥未注册 (EntryAbility 未 registerWindowCallback) 时降级 println。
+            // 桥未注册 (EntryAbility 未 registerWindowCallback) 时丢弃命令。
             val visible = policy == SystemBarsPolicy.Default || policy == SystemBarsPolicy.Visible
             OhosNativeBridge.setWindowSystemBarEnable(visible)
         }

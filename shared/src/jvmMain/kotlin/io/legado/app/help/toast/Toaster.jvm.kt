@@ -1,5 +1,6 @@
 package io.legado.app.help.toast
 
+import io.legado.app.constant.AppLog
 import io.legado.app.help.toast.DesktopTrayNotifier.sender
 
 
@@ -27,12 +28,12 @@ object DesktopTrayNotifier {
 /**
  * [Toaster] 的桌面 JVM actual 实现。
  *
- * 经 [DesktopTrayNotifier] 委托给宿主托盘图标显示气泡通知, 未注册时退化为 println 到 stdout。
+ * 经 [DesktopTrayNotifier] 委托给宿主托盘图标显示气泡通知, 未注册时退化为 [AppLog] 记账。
  *
  * # 设计要点
  * - 调用线程不限: `TrayIcon.displayMessage` 内部线程安全, 可在任意线程调用
  * - 消息类型映射: 桌面端无"短/长"概念, 都走 `TrayIcon.MessageType.INFO`;
- *   toastLong 仅在 stdout 模式下加 `[LONG]` 前缀区分
+ *   toastLong 仅在日志兜底模式下加 `[LONG]` 前缀区分
  *
  * 模式参考 `registerAndroidMediaNotificationProvider` (app 端 help/media/)。
  */
@@ -46,19 +47,15 @@ class DesktopToaster : Toaster {
         showMessage(message, isLong = true)
     }
 
-    /** 显示消息: 优先主窗口 UI toast, 其次宿主托盘图标, 退化到 stdout。 */
+    /** 显示消息: 优先主窗口 UI toast, 其次宿主托盘图标, 退化到 [AppLog]。 */
     private fun showMessage(message: String, isLong: Boolean) {
         val sent = runCatching {
             DesktopTrayNotifier.uiSender?.invoke(message) == true ||
                 DesktopTrayNotifier.sender?.invoke(message) == true
         }.getOrDefault(false)
         if (sent) return
-        // stdout 兜底 (无头模式 / 托盘未安装)
-        if (isLong) {
-            println("[toast-long] $message")
-        } else {
-            println("[toast] $message")
-        }
+        // 日志兜底 (无头模式 / 托盘未安装): toast 文本是给用户看的, 不能悄悄丢
+        AppLog.put(if (isLong) "[LONG] $message" else message, tag = "toast")
     }
 }
 

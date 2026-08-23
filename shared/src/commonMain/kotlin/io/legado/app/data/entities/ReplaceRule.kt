@@ -11,6 +11,7 @@ import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.serialization.Serializable
+import kotlin.jvm.Transient
 
 @Serializable
 @Entity(

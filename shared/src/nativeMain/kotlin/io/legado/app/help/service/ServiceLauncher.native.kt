@@ -1,5 +1,6 @@
 package io.legado.app.help.service
 
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDbProviders
 import io.legado.app.help.file.AppFilesDirs
@@ -18,7 +19,7 @@ import kotlinx.coroutines.launch
  *
  * 原 iosMain/ohosMain 两份 actual 几乎逐字节相同 (仅日志 API 不同), 下沉 nativeMain 共用,
  * 平台端经 [registerIosServiceLauncher] / [registerOhosServiceLauncher] 注册。
- * 日志统一用 println (iOS 端 println 进 NSLog 是 Kotlin/Native 默认行为, 与原实现等价)。
+ * 日志统一走 [io.legado.app.constant.AppLog] (native host 内部 println, iOS 端进 NSLog)。
  *
  * 设计要点 (对照 jvmMain DesktopServiceLauncher): 持有 [CoroutineScope]
  * (SupervisorJob + Default dispatcher, 子任务异常不互相影响);
@@ -105,7 +106,7 @@ class NativeServiceLauncher(
             val destPath = AppFilesDirs.get().filesDir + "/downloads"
             val ok = FileDownloaders.get().download(url, destPath, fileName)
             if (!ok) {
-                println("[NativeServiceLauncher] download failed: url=$url fileName=$fileName")
+                AppLog.put("下载失败: url=$url fileName=$fileName", tag = "NativeServiceLauncher")
             }
         }
     }

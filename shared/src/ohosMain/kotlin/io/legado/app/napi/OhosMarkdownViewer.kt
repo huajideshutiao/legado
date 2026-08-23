@@ -1,5 +1,6 @@
 package io.legado.app.napi
 
+import io.legado.app.constant.AppLog
 import io.legado.app.web.utils.WebAssetSources
 import kotlin.concurrent.Volatile
 import kotlinx.coroutines.runBlocking
@@ -56,7 +57,7 @@ object OhosMarkdownViewer {
                     .replace(CSS_HLJS_PLACEHOLDER, read("web/help/css/highlight.min.css"))
             }
         }.getOrElse {
-            println("[ohos-markdown-viewer] build failed: ${it.message}")
+            AppLog.put("viewer html 构建失败", it, tag = "ohos-markdown-viewer")
             ""
         }
         cachedHtml = html

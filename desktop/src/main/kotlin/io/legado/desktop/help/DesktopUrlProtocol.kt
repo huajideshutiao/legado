@@ -3,6 +3,7 @@ package io.legado.desktop.help
 import com.sun.jna.Platform
 import com.sun.jna.platform.win32.Advapi32Util
 import com.sun.jna.platform.win32.WinReg
+import io.legado.app.constant.AppLog
 import java.io.File
 
 /**
@@ -35,14 +36,9 @@ import java.io.File
  */
 object DesktopUrlProtocol {
 
+    private const val TAG = "url-protocol"
     private const val LINUX_DESKTOP_FILE = "legado.desktop"
     private val winSchemes = listOf("legado", "yuedu")
-
-    private val debug = System.getProperty("legado.desktop.debug")?.toBoolean() == true
-
-    private fun debugLog(msg: String) {
-        if (debug) println(msg)
-    }
 
     /** 后台线程注册, 不阻塞首窗口; 幂等, 失败仅记日志。 */
     fun ensureRegisteredAsync() {
@@ -55,9 +51,8 @@ object DesktopUrlProtocol {
                     Platform.isLinux() -> registerLinux(launcher)
                     // macOS: Info.plist 已在打包期注入, 无运行时注册
                 }
-                debugLog("[legado-desktop] URL protocol 注册完成: $launcher")
             } catch (t: Throwable) {
-                debugLog("[legado-desktop] URL protocol 注册失败: ${t.message}")
+                AppLog.put("URL protocol 注册失败", t, tag = TAG)
             }
         }, "legado-url-protocol").apply {
             isDaemon = true
@@ -92,7 +87,6 @@ object DesktopUrlProtocol {
                 Advapi32Util.registryGetStringValue(WinReg.HKEY_CURRENT_USER, commandKey, "")
             }.getOrNull()
             if (current == cmd) {
-                debugLog("[legado-desktop] URL protocol 已注册 ($scheme), 跳过")
                 return@forEach
             }
             Advapi32Util.registryCreateKey(WinReg.HKEY_CURRENT_USER, base)
@@ -107,7 +101,6 @@ object DesktopUrlProtocol {
             Advapi32Util.registrySetStringValue(
                 WinReg.HKEY_CURRENT_USER, commandKey, "", cmd
             )
-            debugLog("[legado-desktop] URL protocol 注册 ($scheme): $cmd")
         }
     }
 
@@ -131,7 +124,6 @@ object DesktopUrlProtocol {
         val old = runCatching { desktopFile.readText() }.getOrNull()
         if (old != content) {
             desktopFile.writeText(content)
-            debugLog("[legado-desktop] 写入 $desktopFile")
         }
         runQuiet(
             "xdg-mime", "default", LINUX_DESKTOP_FILE,
@@ -148,13 +140,13 @@ object DesktopUrlProtocol {
             val cmdText = cmd.joinToString(" ")
             when {
                 result.exitCode == null ->
-                    debugLog("[legado-desktop] 命令超时: $cmdText")
+                    AppLog.put("命令超时: $cmdText", tag = TAG)
 
                 result.exitCode != 0 ->
-                    debugLog("[legado-desktop] 命令退出码 ${result.exitCode}: $cmdText")
+                    AppLog.put("命令退出码 ${result.exitCode}: $cmdText", tag = TAG)
             }
         }.onFailure {
-            debugLog("[legado-desktop] 命令执行失败: ${cmd.joinToString(" ")}: ${it.message}")
+            AppLog.put("命令执行失败: ${cmd.joinToString(" ")}", it, tag = TAG)
         }
     }
 }

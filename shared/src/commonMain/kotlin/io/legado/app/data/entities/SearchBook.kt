@@ -4,6 +4,7 @@ import io.legado.app.constant.BookType
 import io.legado.app.utils.decodeStringMapOrNull
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.serialization.Serializable
+import kotlin.jvm.Transient
 
 @Serializable
 data class SearchBook(

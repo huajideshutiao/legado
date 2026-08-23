@@ -105,9 +105,7 @@ object ContentHelp {
         for (i in 0 until l) {
             string.append('\n')
             string.append(p[i])
-            //System.out.print(" "+b[i]);
         }
-        //System.out.println(" " + str);
         return string
     }
 
@@ -328,11 +326,9 @@ object ContentHelp {
                 if (start > 0) {
                     val word = str.substring(start + 1, i)
                     if (dict.contains(word)) {
-                        //System.out.println("使用字典验证 跳过\tins_n=" + i + "  word=" + word);
                         //引号内如果是字典词条，后方不插入换行符（前方不需要优化）
                         continue
                     } else {
-                        //System.out.println("使用字典验证 插入\tins_n=" + i + "  word=" + word);
                         if (match("的地得", str[start])) {
                             //xx的“xx”，后方不插入换行符（前方不需要优化）
                             continue

@@ -1074,7 +1074,7 @@ object LegadoNativeExports {
     /**
      * 注入 window dispatch 函数指针 (由 legado_napi.cpp RegisterWindowCallback 调用)。
      *
-     * 未注入时 [OhosNativeBridge.sendWindowCommand] 恒降级 println, 全屏/常亮/方向/系统栏全部失效。
+     * 未注入时 [OhosNativeBridge.sendWindowCommand] 恒丢弃命令, 全屏/常亮/方向/系统栏全部失效。
      *
      * @param dispatch C++ tsfn dispatch 入口 (`ohos_window_dispatch`), 类型 `void(*)(const char*)`
      */

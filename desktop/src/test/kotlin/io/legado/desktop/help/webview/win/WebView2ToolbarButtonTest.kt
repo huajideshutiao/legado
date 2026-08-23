@@ -77,9 +77,8 @@ class WebView2ToolbarButtonTest {
                     }
                     "ok"
                 } catch (t: Throwable) {
-                    System.err.println("[btn-test] block 异常: $t")
-                    t.printStackTrace()
-                    null
+                    // 消息泵线程上抛的异常带回断言消息, 否则只剩 "expected ok but was null"
+                    "block 异常: ${t.stackTraceToString()}"
                 }
             }
             assertEquals("创建校验通过", "ok", created)
