@@ -61,11 +61,11 @@ jobs:
       product: app
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: 21
@@ -84,12 +84,12 @@ jobs:
           sed '$a\RELEASE_KEY_PASSWORD=gedoor_legado'       $GITHUB_WORKSPACE/gradle.properties -i
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
 
       - name: Gradle build-cache 共享
         # 4 个构建 job 跑在独立 runner 上, 按 (OS, 分支) 共享 build-cache 目录,
         # 减少各 job 重复编译 shared 等公共模块
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.gradle/caches/build-cache-1
           key: gradle-buildcache-${{ runner.os }}-${{ github.ref_name }}
@@ -125,7 +125,7 @@ jobs:
       # 发布逻辑已移入 publish-release job (等所有构建完成统一发布), 这里只把更新日志传上去
       - name: Upload Release Notes
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-notes
           path: RELEASE_NOTES.md
@@ -157,7 +157,7 @@ jobs:
 
       # 两个变体构建完后一次上传 (原包名 + 共存), 不再分两次
       - name: Upload Artifacts (原包名 + 共存)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ env.product }}.apk
           path: ${{ github.workspace }}/apk/*.apk
@@ -194,18 +194,18 @@ jobs:
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: 21
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
       - name: Gradle build-cache 共享
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.gradle/caches/build-cache-1
           key: gradle-buildcache-${{ runner.os }}-${{ github.ref_name }}
@@ -214,13 +214,18 @@ jobs:
       - name: Unify Desktop packageVersion
         shell: bash
         run: |
-          # MSI 要求 x.y.z[.w] 格式; VERSION 形如 3.25.07221530 (4 段) 满足
+          # VERSION 的 BUILD 段超 MSI 上限 (≤65535), 由 desktop/build.gradle.kts 的
+          # msiSafeVersion 映射; deb/rpm/dmg 直接用原值
           sed "s|packageVersion = \".*\"|packageVersion = \"${{ env.VERSION }}\"|" $GITHUB_WORKSPACE/desktop/build.gradle.kts -i
       - name: Build Quickjs Native Lib (Windows .dll)
         # desktop 打包前需要 quickjs native 库 (liblegado_quickjs.dll) 落到 jvm/native 目录
         # Windows runner 自带 cmake + MSVC, 一般可成功; 失败时 continue-on-error, 让上层打包报错更明确
         run: ./gradlew :modules:quickjs:buildJvmNativeLib --warning-mode all
         continue-on-error: true
+      - name: Verify Quickjs Native Lib
+        shell: bash
+        # 上一步 continue-on-error, 静默失败会打出不含 legado_quickjs.dll 的包 (JS 引擎运行时才炸)
+        run: test -f "$GITHUB_WORKSPACE/modules/quickjs/build/libs/jvm/native/legado_quickjs.dll"
       - name: Build MSI
         # release buildType: 官方 ProGuard 集成仅 release 链启用 (proguardReleaseJars), default 链不瘦身
         run: ./gradlew :desktop:packageReleaseMsi --build-cache --parallel --daemon --warning-mode all
@@ -237,7 +242,7 @@ jobs:
           mkdir -p $GITHUB_WORKSPACE/msi/
           find $GITHUB_WORKSPACE/desktop/build/compose/binaries -name "*.msi" -exec mv {} $GITHUB_WORKSPACE/msi/windows_x64.msi \;
       - name: Upload MSI Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: desktop.msi
           path: msi/*.msi
@@ -253,7 +258,7 @@ jobs:
           mkdir -p $GITHUB_WORKSPACE/portable/
           find $GITHUB_WORKSPACE/desktop/build/outputs/portable -name "legado-portable-windows-x64-*.zip" -exec mv {} $GITHUB_WORKSPACE/portable/windows_x64_portable.zip \;
       - name: Upload portable zip Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: legado-portable-windows-x64
           path: portable/*.zip
@@ -267,18 +272,18 @@ jobs:
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: 21
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
       - name: Gradle build-cache 共享
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.gradle/caches/build-cache-1
           key: gradle-buildcache-${{ runner.os }}-${{ github.ref_name }}
@@ -295,6 +300,9 @@ jobs:
       - name: Build Quickjs Native Lib (Linux .so)
         run: ./gradlew :modules:quickjs:buildJvmNativeLib --warning-mode all
         continue-on-error: true
+      - name: Verify Quickjs Native Lib
+        # 上一步 continue-on-error, 静默失败会打出不含 liblegado_quickjs.so 的包
+        run: test -f "$GITHUB_WORKSPACE/modules/quickjs/build/libs/jvm/native/liblegado_quickjs.so"
       - name: Build DEB & RPM
         # release buildType: 官方 ProGuard 集成仅 release 链启用, default 链不瘦身
         run: ./gradlew :desktop:packageReleaseDeb :desktop:packageReleaseRpm --build-cache --parallel --daemon --warning-mode all
@@ -305,7 +313,7 @@ jobs:
           find ${{ github.workspace }}/desktop/build/compose/binaries -name "*.deb" -exec mv {} ${{ github.workspace }}/linux/linux_x64.deb \;
           find ${{ github.workspace }}/desktop/build/compose/binaries -name "*.rpm" -exec mv {} ${{ github.workspace }}/linux/linux_x64.rpm \;
       - name: Upload Linux Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: desktop.linux
           path: |
@@ -322,18 +330,18 @@ jobs:
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: 21
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
       - name: Gradle build-cache 共享
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.gradle/caches/build-cache-1
           key: gradle-buildcache-${{ runner.os }}-${{ github.ref_name }}
@@ -348,6 +356,9 @@ jobs:
         # macos-latest 自带 cmake + clang, 一般可成功; 失败时 continue-on-error, 让上层打包报错更明确
         run: ./gradlew :modules:quickjs:buildJvmNativeLib --warning-mode all
         continue-on-error: true
+      - name: Verify Quickjs Native Lib
+        # 上一步 continue-on-error, 静默失败会打出不含 legado_quickjs.dylib 的包
+        run: test -f "$GITHUB_WORKSPACE/modules/quickjs/build/libs/jvm/native/legado_quickjs.dylib"
       - name: Build macOS DMG
         run: ./gradlew :desktop:packageDmg --build-cache --parallel --daemon --warning-mode all
       - name: Collect DMG
@@ -357,7 +368,7 @@ jobs:
           mkdir -p $GITHUB_WORKSPACE/dmg/
           find $GITHUB_WORKSPACE/desktop/build/compose/binaries -name "*.dmg" -exec mv {} $GITHUB_WORKSPACE/dmg/macos_arm64.dmg \;
       - name: Upload DMG Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: desktop.dmg
           path: dmg/*.dmg
@@ -404,12 +415,12 @@ jobs:
   #   env:
   #     HOS_SDK_HOME: ${{ secrets.HOS_SDK_HOME }}
   #   steps:
-  #     - uses: actions/checkout@v4
+  #     - uses: actions/checkout@v5
   #     - name: Build HAP
   #       working-directory: ohosApp/
   #       run: hvigorw assembleHap --mode module -p product=default --no-daemon
   #     - name: Upload HAP Artifact
-  #       uses: actions/upload-artifact@v4
+  #       uses: actions/upload-artifact@v6
   #       with:
   #         name: ohos.hap
   #         path: ohosApp/entry/build/default/outputs/default/*.hap
@@ -426,7 +437,7 @@ jobs:
       contents: write
     steps:
       - name: Download All Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: artifacts
           merge-multiple: true

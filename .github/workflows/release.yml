@@ -40,12 +40,12 @@ jobs:
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: 21
@@ -71,7 +71,7 @@ jobs:
           sed "/^val version = /c val version = \"${{ env.VERSION }}\"" $GITHUB_WORKSPACE/app/build.gradle.kts  -i
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
 
       - name: Build Release (原包名)
         run: |
@@ -114,7 +114,7 @@ jobs:
           cat ${{ github.workspace }}/RELEASE_NOTES.md
 
       - name: Upload App To Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: app
           path: ${{ github.workspace }}/apk/*.apk
@@ -146,26 +146,31 @@ jobs:
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: 21
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
       - name: Unify Desktop packageVersion
         shell: bash
         run: |
-          # MSI 要求 x.y.z[.w] 格式; release VERSION 形如 3.25.0722 (4 段) 满足
+          # VERSION 的 BUILD 段超 MSI 上限 (≤65535), 由 desktop/build.gradle.kts 的
+          # msiSafeVersion 映射; deb/rpm/dmg 直接用原值
           sed "s|packageVersion = \".*\"|packageVersion = \"${{ env.VERSION }}\"|" $GITHUB_WORKSPACE/desktop/build.gradle.kts -i
       - name: Build Quickjs Native Lib (Windows .dll)
         # desktop 打包前需要 quickjs native 库 (liblegado_quickjs.dll) 落到 jvm/native 目录
         # Windows runner 自带 cmake + MSVC, 一般可成功; 失败时 continue-on-error, 让上层打包报错更明确
         run: ./gradlew :modules:quickjs:buildJvmNativeLib --warning-mode all
         continue-on-error: true
+      - name: Verify Quickjs Native Lib
+        shell: bash
+        # 上一步 continue-on-error, 静默失败会打出不含 legado_quickjs.dll 的包 (JS 引擎运行时才炸)
+        run: test -f "$GITHUB_WORKSPACE/modules/quickjs/build/libs/jvm/native/legado_quickjs.dll"
       - name: Build MSI
         # release buildType: 官方 ProGuard 集成仅 release 链启用 (proguardReleaseJars), default 链不瘦身
         run: ./gradlew :desktop:packageReleaseMsi --build-cache --parallel --daemon --warning-mode all
@@ -177,7 +182,7 @@ jobs:
           # 全目录 find 避免路径变化再踩坑
           find ${{ github.workspace }}/desktop/build/compose/binaries -name "*.msi" -exec mv {} ${{ github.workspace }}/msi/ \;
       - name: Upload MSI Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: desktop.msi
           path: ${{ github.workspace }}/msi/*.msi
@@ -205,7 +210,7 @@ jobs:
           mkdir -p ${{ github.workspace }}/portable/
           find ${{ github.workspace }}/desktop/build/outputs/portable -name "legado-portable-windows-x64-*.zip" -exec mv {} ${{ github.workspace }}/portable/ \;
       - name: Upload portable zip Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: legado-portable-windows-x64
           path: ${{ github.workspace }}/portable/*.zip
@@ -234,16 +239,16 @@ jobs:
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: 21
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
       - name: Install Linux packaging deps
         # jpackage 打 deb 需要 dpkg-deb, 打 rpm 需要 rpmbuild; ubuntu-latest 默认无 rpmbuild
         run: |
@@ -255,6 +260,9 @@ jobs:
       - name: Build Quickjs Native Lib (Linux .so)
         run: ./gradlew :modules:quickjs:buildJvmNativeLib --warning-mode all
         continue-on-error: true
+      - name: Verify Quickjs Native Lib
+        # 上一步 continue-on-error, 静默失败会打出不含 liblegado_quickjs.so 的包
+        run: test -f "$GITHUB_WORKSPACE/modules/quickjs/build/libs/jvm/native/liblegado_quickjs.so"
       - name: Build DEB & RPM
         # release buildType: 官方 ProGuard 集成仅 release 链启用, default 链不瘦身
         run: ./gradlew :desktop:packageReleaseDeb :desktop:packageReleaseRpm --build-cache --parallel --daemon --warning-mode all
@@ -264,7 +272,7 @@ jobs:
           find ${{ github.workspace }}/desktop/build/compose/binaries -name "*.deb" -exec mv {} ${{ github.workspace }}/linux/ \;
           find ${{ github.workspace }}/desktop/build/compose/binaries -name "*.rpm" -exec mv {} ${{ github.workspace }}/linux/ \;
       - name: Upload Linux Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: desktop.linux
           path: |
@@ -296,16 +304,16 @@ jobs:
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: 21
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
       - name: Unify Desktop packageVersion
         # macOS 自带 BSD sed, -i 需要空字符串备份后缀 (与 GNU sed 语法不同)
         run: |
@@ -315,6 +323,9 @@ jobs:
         # macos-latest 自带 cmake + clang, 一般可成功; 失败时 continue-on-error, 让上层打包报错更明确
         run: ./gradlew :modules:quickjs:buildJvmNativeLib --warning-mode all
         continue-on-error: true
+      - name: Verify Quickjs Native Lib
+        # 上一步 continue-on-error, 静默失败会打出不含 legado_quickjs.dylib 的包
+        run: test -f "$GITHUB_WORKSPACE/modules/quickjs/build/libs/jvm/native/legado_quickjs.dylib"
       - name: Build macOS DMG
         run: ./gradlew :desktop:packageDmg --build-cache --parallel --daemon --warning-mode all
       - name: Collect DMG
@@ -322,7 +333,7 @@ jobs:
           mkdir -p ${{ github.workspace }}/dmg/
           find ${{ github.workspace }}/desktop/build/compose/binaries -name "*.dmg" -exec mv {} ${{ github.workspace }}/dmg/ \;
       - name: Upload DMG Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: desktop.dmg
           path: ${{ github.workspace }}/dmg/*.dmg
@@ -353,18 +364,18 @@ jobs:
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: 21
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
       - name: Cache Kotlin/Native toolchain
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.konan
           key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
@@ -372,7 +383,7 @@ jobs:
       - name: Cache iOS native static libs
         # 只依赖 C 源与构建脚本; key 与 ios.yml 不同 (那边编真机+模拟器两套, 这里只要真机)
         id: cache-native
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: shared/build/iosNativeLibs
           key: ios-native-device-${{ runner.os }}-${{ hashFiles('shared/src/cinterop/quickjs-ng/**', 'shared/src/cinterop/mbedtls/**', 'scripts/build-ios-native.sh') }}
@@ -428,7 +439,7 @@ jobs:
           ls -lh *.ipa
           echo "found=yes" >> $GITHUB_OUTPUT
       - name: Upload IPA Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ios.ipa.unsigned
           path: ${{ github.workspace }}/ipa/*.ipa
@@ -479,7 +490,7 @@ jobs:
       VERSION: ${{ needs.prepare.outputs.version }}
       HOS_SDK_HOME: ${{ secrets.HOS_SDK_HOME }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Build HAP
@@ -490,7 +501,7 @@ jobs:
           mkdir -p ${{ github.workspace }}/hap/
           find ${{ github.workspace }}/ohosApp/entry/build/default/outputs/default -name "*.hap" -exec mv {} ${{ github.workspace }}/hap/ \;
       - name: Upload HAP Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ohos.hap
           path: ${{ github.workspace }}/hap/*.hap

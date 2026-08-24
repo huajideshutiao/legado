@@ -37,7 +37,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # 只拉需要的文件, 不 clone 整个上游仓库 (上游带着 test262/fuzz/examples, 几十 MB)。
       # LICENSE 在清单里: vendored 第三方源码应随带上游许可证原件。

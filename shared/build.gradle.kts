@@ -323,14 +323,17 @@ kotlin {
                 framework {
                     baseName = "shared"
                     isStatic = false
+                    // 不给则 Info.plist 的 CFBundleIdentifier 回落成 bundle name "shared" 并告警
+                    binaryOption("bundleId", "shutiao.reader.shared")
                 }
                 all {
                     linkerOpts("-L${nativeLibDir.absolutePath}", "-lquickjs", "-lmbedtls")
-                    // release 开 DevirtualizationAnalysis 全量 LTO 减体积 (鸿蒙实测 -8.5%),
+                    // release 开 DevirtualizationAnalysis 全量 LTO 减体积,
                     // 内存峰值高: CI (ios.yml) 会把 gradle 堆临时提到 10g (本机不跑 iOS 链接)。
+                    // 死代码剥离不自己传: Apple ld 不认 GNU 的 --gc-sections (硬失败), 且
+                    // K/N 链 framework 时已自带 -dead_strip (konan Linker.kt)。
                     if (buildType == NativeBuildType.RELEASE) {
                         optimized = true
-                        linkerOpts("-s", "--gc-sections")
                     }
                 }
             }

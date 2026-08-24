@@ -484,18 +484,18 @@ val copyWndChromeNativeToResources by tasks.registering(Copy::class) {
     include("*.dll")
 }
 
-// CI 用 sed 把 packageVersion 注入为 "3.YY.MMDDHHMM" (如 3.26.08131506)。
-// Windows MSI 只接受 MAJOR.MINOR.BUILD 且 BUILD ≤ 65535, 8 位时间戳直接配置期报错;
-// deb/rpm 支持 4 段版本不受影响。此处仅给 MSI 单独映射为 "3.YY.MMDDHH":
-// 取月日 + 小时共 6 位 (如 3.26.081315), 最大 123123 ≤ 65535 安全;
-// 同一天内随小时递增、跨小时/跨天递增、跨年 YY 进位, 保证 MSI 升级版本号单调不减。
+// CI 用 sed 注入 packageVersion, 两条工作流格式不同: test.yml 是 "3.YY.MMDDHHMM",
+// release.yml 是 "3.YY.MMDDHH"。MSI 只接受三段 MAJOR.MINOR.BUILD 且 BUILD ≤ 65535,
+// 两者的 BUILD 段都超限; 该校验在配置期跑且遍历全部 targetFormats, 非法值会让整仓库任何
+// gradle 命令连带 deb/rpm/dmg 一起挂掉。故给 MSI 映射为 "3.YY.<年内第几小时>"
+// (3.26.5651 = 26 年第 236 天 11 时): 上限 8783, 跨小时递增, 跨年归零靠 YY 进位
+// 保住 MSI 升级要求的单调递增。
 private fun msiSafeVersion(pkgVer: String): String {
-    val m = Regex("""^(\d+)\.(\d+)\.(\d{4})(\d{4})$""").find(pkgVer) ?: return pkgVer
-    val major = m.groupValues[1]
-    val yy = m.groupValues[2]
-    val mmdd = m.groupValues[3]
-    val hour = m.groupValues[4].substring(0, 2)
-    return "$major.$yy.$mmdd$hour"
+    // 第三段 MMDD[HH[MM]]: 4/6/8 位都收, 缺小时按 0 点算
+    val m = Regex("""^(\d+)\.(\d{2})\.(\d{2})(\d{2})(\d{2})?(?:\d{2})?$""").find(pkgVer) ?: return pkgVer
+    val (major, yy, mm, dd, hh) = m.destructured
+    val dayOfYear = java.time.LocalDate.of(2000 + yy.toInt(), mm.toInt(), dd.toInt()).dayOfYear
+    return "$major.$yy.${(dayOfYear - 1) * 24 + (hh.toIntOrNull() ?: 0)}"
 }
 
 compose.desktop {
@@ -601,9 +601,8 @@ compose.desktop {
                 // (当前 Compose 版本无显式 perMachine setter, 默认行为即为 per-user)
                 // 升级时由 MSI 自身 UUID 识别, packageVersion 必须递增
                 upgradeUuid = "7F5C4E2A-3B6D-4F8A-9C1E-1A2B3C4D5E6F"
-                // MSI 版本号上限 MAJOR.MINOR.BUILD 且 BUILD ≤ 65535, 而 CI sed 注入的
-                // packageVersion 是 "3.YY.MMDDHHMM" (BUILD 段 8 位非法, 配置期直接报错);
-                // 这里单独映射为合法且单调递增的 "3.YY.MMDDHH" (deb/rpm 不受影响)
+                // CI 注入的 packageVersion 带时间戳, BUILD 段对 MSI 非法, 经 msiSafeVersion
+                // 映射为 "3.YY.<年内第几小时>" (deb/rpm/dmg 仍用原值)
                 msiPackageVersion = msiSafeVersion(
                     compose.desktop.application.nativeDistributions.packageVersion ?: "1.0.0"
                 )
@@ -651,6 +650,13 @@ compose.desktop {
             }
         }
     }
+}
+
+// About 页与检查更新读 jar manifest 的 Implementation-Version (DesktopAppInfo.versionName),
+// 不写则恒回落 "1.0.0"; desktop.jar 在 jpackage 产物 classpath 首位, 取到的就是这份。
+tasks.jar {
+    manifest.attributes["Implementation-Version"] =
+        compose.desktop.application.nativeDistributions.packageVersion ?: "1.0.0"
 }
 
 // KP1.1: :desktop:run 之前确保 :modules:quickjs 的 native 库已构建 (.dll/.so/.dylib)

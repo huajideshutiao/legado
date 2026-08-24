@@ -29,20 +29,20 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set version
         id: ver
         run: echo "version=$(TZ=Asia/Shanghai date +3.%y.%m%d%H%M)" >> $GITHUB_OUTPUT
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: 21
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
 
       # ===== 环境诊断: 一次跑完就能定位环境类问题, 避免为查 SDK 路径再开一轮 =====
       - name: Environment diagnostics
@@ -69,7 +69,7 @@ jobs:
 
       # Kotlin/Native 工具链 (~1GB) 缓存, 省掉每轮重新下载
       - name: Cache Kotlin/Native toolchain
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.konan
           key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
@@ -79,7 +79,7 @@ jobs:
       - name: Cache iOS native static libs
         id: cache-native
         if: inputs.stage != 'klib'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: shared/build/iosNativeLibs
           key: ios-native-${{ runner.os }}-${{ hashFiles('shared/src/cinterop/quickjs-ng/**', 'shared/src/cinterop/mbedtls/**', 'scripts/build-ios-native.sh') }}
@@ -200,7 +200,7 @@ jobs:
 
       - name: Upload IPA artifact
         if: inputs.stage == 'ipa'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ios-ipa-unsigned
           path: ${{ github.workspace }}/iosApp/build/ipa/*.ipa
@@ -231,7 +231,7 @@ jobs:
 
       - name: Upload logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ios-build-logs
           path: |
