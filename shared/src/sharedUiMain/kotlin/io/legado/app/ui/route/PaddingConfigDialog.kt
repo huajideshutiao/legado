@@ -30,7 +30,7 @@ fun PaddingConfigDialogHost(
     ) {
         AppTheme {
             // 原版 BaseDialogFragment: 0.9 宽居中 (appDialogSize) + filletBackground 8dp 圆角;
-            // 16dp 内容间距由 PaddingConfigScreen 内部 padding(16.dp) 提供 (XML root padding=lg)
+            // 内容间距由 PaddingConfigScreen 内部 padding 提供 (顶 16dp, 左右/底 arco_spacing_default)
             Surface(
                 shape = DesignTokens.shapeDefault,
                 color = AppTheme.colors.background,

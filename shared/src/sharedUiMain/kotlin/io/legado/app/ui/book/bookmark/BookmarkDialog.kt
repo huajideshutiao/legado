@@ -25,8 +25,8 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.AppTextButton
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
@@ -91,7 +91,7 @@ fun BookmarkDialog(
                     text = bookmark.chapterName,
                     color = colors.primaryText,
                     fontSize = 16.sp,
-                    modifier = Modifier.padding(horizontal = 16.dp),
+                    modifier = Modifier.padding(horizontal = DesignTokens.spacingDefault),
                 )
 
                 // 可滚动编辑区: 原文 + 备注
@@ -100,7 +100,7 @@ fun BookmarkDialog(
                         .fillMaxWidth()
                         .heightIn(max = 400.dp)
                         .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp),
+                        .padding(horizontal = DesignTokens.spacingDefault),
                 ) {
                     AppUnderlineTextField(
                         value = bookText,
@@ -120,7 +120,7 @@ fun BookmarkDialog(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp),
+                        .padding(horizontal = DesignTokens.spacingDefault),
                 ) {
                     if (showDelete && onDelete != null) {
                         AppTextButton(text = deleteText, color = DesignTokens.arcoBlue6) { onDelete() }

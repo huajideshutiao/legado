@@ -31,7 +31,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -44,6 +43,7 @@ import io.legado.app.ui.compose.component.PullToRefreshDefaults
 import io.legado.app.ui.compose.component.pullToRefresh
 import io.legado.app.ui.compose.component.rememberPullToRefreshState
 import io.legado.app.ui.compose.component.rememberResponsiveColumns
+import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.transitionStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
@@ -212,7 +212,7 @@ fun HomeScreen(
     val stableInfiniteGridCardSlot: @Composable (String, HomeSection, SearchBook) -> Unit = remember {
         { tabTitle, section, book -> currentInfiniteGridCardSlot.value(tabTitle, section, book) }
     }
-    Column(Modifier.fillMaxSize().background(colors.background)) {
+    Column(Modifier.fillMaxSize()) {
         val pagerState = rememberPagerState(
             initialPage = state.currentPage.coerceAtLeast(0),
             pageCount = { tabs.size },
@@ -269,8 +269,7 @@ private fun HomeTopBar(
     onSelectTab: (Int) -> Unit,
 ) {
     val colors = AppTheme.colors
-    val bg = if (eInk) Color.White else colors.background
-    Box(Modifier.fillMaxWidth().background(bg).then(if (eInk) Modifier else Modifier.transitionStatusBarPadding())) {
+    Box(Modifier.fillMaxWidth().then(if (eInk) Modifier else Modifier.transitionStatusBarPadding())) {
         Row(
             Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(start = 16.dp),
             verticalAlignment = Alignment.CenterVertically,

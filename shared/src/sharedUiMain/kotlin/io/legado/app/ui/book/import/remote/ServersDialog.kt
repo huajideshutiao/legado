@@ -158,7 +158,7 @@ fun ServersDialog(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp),
+                        .padding(horizontal = DesignTokens.spacingDefault),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     AppTextButton(

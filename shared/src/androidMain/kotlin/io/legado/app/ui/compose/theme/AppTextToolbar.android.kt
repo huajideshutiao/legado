@@ -2,6 +2,7 @@ package io.legado.app.ui.compose.theme
 
 import androidx.compose.foundation.MutatorMutex
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.text.contextmenu.data.TextContextMenuKeys
 import androidx.compose.foundation.text.contextmenu.data.TextContextMenuItem
 import androidx.compose.foundation.text.contextmenu.data.TextContextMenuSession
 import androidx.compose.foundation.text.contextmenu.provider.LocalTextContextMenuToolbarProvider
@@ -95,7 +96,8 @@ private class AndroidTextMenuProvider : TextContextMenuProvider {
                 }
             }
         }
-        AppTextMenuHost(content)
+        // 退场动画期间 request 可能已清空, 此时点击空白无需再关, 安全调用即正确语义
+        AppTextMenuHost(content) { current?.session?.close() }
     }
 
     private inner class Request(
@@ -106,29 +108,39 @@ private class AndroidTextMenuProvider : TextContextMenuProvider {
             dataProvider.data().components.forEach { component ->
                 // 分隔符按自绘样式不画; TextClassifier 智能项是 internal 类型, 取不到标签只能跳过
                 if (component is TextContextMenuItem) {
-                    add(AppTextMenuEntry(component.label) { activate { component.onClick(it) } })
+                    add(AppTextMenuEntry(component.label) {
+                        // 关闭语义透传给框架 onClick: 内置项按 closePredicate 自管 (剪切/复制/粘贴
+                        // 执行后自关; 全选在菜单显示中刻意不关, 选区扩大由 data()/contentBounds()
+                        // 快照驱动本弹层原地刷新), 本地兜底 close 会误关全选并破坏 closePredicate
+                        // 读到的 textToolbarShown。仅 PROCESS_TEXT 第三方项例外: startActivity 后
+                        // 本窗口可能失帧, 框架在动作后的 close 渲染不出来, 先同步关让弹层本帧移除。
+                        if (component.key !in FrameworkItemKeys) {
+                            session.close()
+                        }
+                        component.onClick(session)
+                    })
                 }
             }
             findReplace?.let { action ->
-                add(AppTextMenuEntry(FIND_REPLACE_LABEL) { activate { action() } })
+                add(AppTextMenuEntry(FIND_REPLACE_LABEL) {
+                    // 与 PROCESS_TEXT 同序: 先关再执行。查找替换要开对话框, 本窗口同样可能失帧,
+                    // 动作之后再关渲染不出来 (表现为"点了菜单不关")
+                    session.close()
+                    action()
+                })
             }
         }
+    }
 
-        /**
-         * 先关菜单再执行动作。
-         *
-         * 顺序是刻意的: PROCESS_TEXT 第三方项 (流转/翻译等) 会 startActivity, 本窗口随即失去
-         * 帧时钟, 之后再关要等回到前台才渲染得出来 —— 表现为"点了第三方项菜单不关"。
-         * 剪切/复制/全选看不出问题是因为它们额外清了选区, 框架会再走一遍 hide()。
-         * 关闭幂等 (框架项自己的 onClick 末尾也会 close 一次), 动作抛异常也不会漏关。
-         */
-        private fun activate(action: (MenuSession) -> Unit) {
-            try {
-                action(session)
-            } finally {
-                session.close()
-            }
-        }
+    /** 框架内置菜单项 key: 关闭语义在 onClick 内部 (closePredicate), 本地不干预。 */
+    private companion object {
+        val FrameworkItemKeys = setOf(
+            TextContextMenuKeys.CutKey,
+            TextContextMenuKeys.CopyKey,
+            TextContextMenuKeys.PasteKey,
+            TextContextMenuKeys.SelectAllKey,
+            TextContextMenuKeys.AutofillKey,
+        )
     }
 
     /**

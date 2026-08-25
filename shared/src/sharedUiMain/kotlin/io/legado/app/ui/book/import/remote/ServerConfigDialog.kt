@@ -132,7 +132,7 @@ fun ServerConfigDialog(
                     Modifier
                         .fillMaxWidth()
                         .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp),
+                        .padding(horizontal = DesignTokens.spacingDefault),
                 ) {
                     AppUnderlineTextField(
                         value = name,

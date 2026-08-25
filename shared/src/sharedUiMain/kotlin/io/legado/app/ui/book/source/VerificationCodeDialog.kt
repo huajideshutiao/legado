@@ -33,6 +33,7 @@ import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.widget.dialog.PhotoViewDialog
 import kotlinx.coroutines.launch
 import legado.shared.generated.resources.Res
@@ -100,7 +101,7 @@ fun VerificationCodeDialog(
         onDismissRequest = onDismiss,
         title = null,
         content = {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = DesignTokens.spacingDefault)) {
                 // 工具栏: 标题 + 源名 + 溢出菜单 (禁用源/删除源, 对照 app 端 VerificationCodeDialog;
                 // 确认仍走底部 okButton)
                 Row(

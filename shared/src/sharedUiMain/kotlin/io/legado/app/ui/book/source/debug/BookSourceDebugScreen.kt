@@ -274,7 +274,8 @@ private fun HelpPanel(state: BookSourceDebugUiState, actions: BookSourceDebugUiA
     Column(
         Modifier
             .fillMaxWidth()
-            .background(colors.background)
+            // 半透明底: 面板覆盖在调试日志上方, 透出下层内容
+            .background(colors.background.copy(alpha = 0.7f))
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
     ) {

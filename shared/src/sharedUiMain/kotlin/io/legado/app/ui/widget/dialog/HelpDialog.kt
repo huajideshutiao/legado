@@ -70,20 +70,16 @@ fun HelpDialog(fileName: String, onDismiss: () -> Unit) {
             shape = DesignTokens.shapeDefault,
             color = colors.fillet,
         ) {
-            Column(Modifier.padding(vertical = 16.dp)) {
+            Column(Modifier.padding(16.dp)) {
                 Text(
                     text = stringResource(Res.string.help),
                     color = colors.primaryText,
                     fontSize = 18.sp,
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
+                    modifier = Modifier.padding(DesignTokens.spacingDefault),
                 )
                 // 正文区: weight 占对话框剩余空间 (视口恒定), 超长滚动, 按钮恒可见
                 // 滚动由 MarkdownContent 内部分支承担 (短文档 Column 自带 / 长文档 LazyColumn 虚拟化)
-                Box(
-                    Modifier
-                        .weight(1f, fill = false)
-                        .padding(horizontal = 24.dp, vertical = 8.dp),
-                ) {
+                Box(Modifier.weight(1f, fill = false)) {
                     Column(
                         Modifier
                             .fillMaxWidth()
@@ -93,9 +89,7 @@ fun HelpDialog(fileName: String, onDismiss: () -> Unit) {
                     }
                 }
                 Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp),
+                    Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End,
                 ) {
                     TextButton(onClick = onDismiss) {

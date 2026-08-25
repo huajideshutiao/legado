@@ -91,6 +91,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
@@ -315,8 +316,8 @@ fun ReadMenuOverlay(state: ReadMenuState) {
 private fun ReadMenuTopBar(state: ReadMenuState) {
     val colors = AppTheme.colors
     val eInk = LocalEInk.current
-    // hasBgImage 走 app 端 ThemeConfig.curBgImagePath 判断（通过 ReadMenuState 桥接）。
-    // 窗口背景图语义 (原版顶栏透明, 仅 Android 有) 优先于阅读背景取色, 保护原版行为
+    // hasBgImage 四端经 ReadMenuState 桥接同源判定 (shared hasBgImageByPath)。
+    // 窗口背景图语义 (原版顶栏透明) 优先于阅读背景取色, 保护原版行为
     val topBg = when {
         eInk -> Color.White
         state.hasBgImage -> Color.Transparent
@@ -333,10 +334,11 @@ private fun ReadMenuTopBar(state: ReadMenuState) {
     } else {
         topText
     }
+    // 下缘阴影只用栏内渐变暗带一处; 不再叠加 Modifier.shadow(低 elevation 只有
+    // 四周均匀晕, 与渐变带上下贴出双影)
     Column(
         Modifier
             .fillMaxWidth()
-            .shadow(4.dp)
             .background(topBg)
             // 浮层顶栏逐帧跟随状态栏 insets (对齐原版 TitleBar insets listener 语义):
             // 菜单滑入与系统栏显隐动画并行时 padding 平滑增长, 无离散跳变;
@@ -469,6 +471,18 @@ private fun ReadMenuTopBar(state: ReadMenuState) {
                     .fillMaxWidth()
                     .height(1.dp)
                     .background(rememberColor("divider"))
+            )
+        } else {
+            // 下缘投影条: 用渐变暗带补出 app bar 式下缘阴影 (四端渲染一致)
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.Black.copy(alpha = 0.20f), Color.Transparent)
+                        )
+                    )
             )
         }
     }

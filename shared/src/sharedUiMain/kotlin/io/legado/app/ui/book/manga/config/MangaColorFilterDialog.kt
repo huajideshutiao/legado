@@ -80,7 +80,7 @@ fun MangaColorFilterDialog(
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .padding(16.dp)
+                        .padding(DesignTokens.spacingLg)
                 ) {
                     // 对比度: app 端 value=ct+50, max=100, 显示 it-50
                     AppDetailSeekBar(

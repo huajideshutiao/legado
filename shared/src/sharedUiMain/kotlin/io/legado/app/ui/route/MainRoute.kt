@@ -95,7 +95,6 @@ import io.legado.app.ui.compose.component.ExploreOptionsRow
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
-import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.transitionStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
@@ -1552,14 +1551,7 @@ private fun MyTabContent(navigator: AppNavigator) {
 private fun MyTabTitleBar(onHelp: () -> Unit) {
     val colors = AppTheme.colors
     val eInk = LocalEInk.current
-    val themeStore = LocalThemeStoreProvider.current
-    val hasBgImage = remember(themeStore.bgImagePath) { !themeStore.bgImagePath.isNullOrBlank() }
-    val bg = when {
-        eInk -> Color.White
-        hasBgImage -> Color.Transparent
-        else -> colors.background
-    }
-    Box(Modifier.fillMaxWidth().background(bg).then(if (eInk) Modifier else Modifier.transitionStatusBarPadding())) {
+    Box(Modifier.fillMaxWidth().then(if (eInk) Modifier else Modifier.transitionStatusBarPadding())) {
         Row(
             Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = 16.dp),
             verticalAlignment = Alignment.CenterVertically,

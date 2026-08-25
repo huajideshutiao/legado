@@ -21,6 +21,7 @@ import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -49,6 +50,7 @@ import legado.shared.generated.resources.plus
 import legado.shared.generated.resources.reduce
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import kotlin.math.roundToInt
 
 /**
  * 数字选择对话框 (Compose Multiplatform / sharedUiMain)。
@@ -121,6 +123,11 @@ fun NumberPickerDialog(
     val colors = AppTheme.colors
     val initial = value.coerceIn(range.first, range.last)
     var currentValue by remember { mutableIntStateOf(initial) }
+    // Slider 原始位置 (Float): M2 Slider 是受控渲染 (thumb 位置只由 value 驱动),
+    // 若在 onValueChange 里取整去重后再回写, 截断死区内的更新会被丢弃, thumb 冻结;
+    // 且 toInt() 向下截断造成方向不对称 (往大调须跨满整格才被接受)。故此状态
+    // 无条件跟随手势保证跟手, 整数化只派生业务值; 松手/步进/提交时吸附回整数。
+    var sliderValue by remember { mutableFloatStateOf(initial.toFloat()) }
     // 数字恒为输入框 (不再"点按数字才进入编辑态"): 输入框文本是唯一数据源,
     // Slider 拖动 / -+ 步进都直接改写文本 (调整控件即修改文本值)。
     val editState = remember { TextFieldState(initial.toString()) }
@@ -131,6 +138,7 @@ fun NumberPickerDialog(
         val clamped = typed.coerceIn(range.first, range.last)
         // 无条件把钳制结果写回输入框, 越界/非法输入不再滞留界面
         editState.edit { replace(0, length, clamped.toString()) }
+        sliderValue = clamped.toFloat()
         if (clamped != currentValue) {
             currentValue = clamped
             onValueChange(clamped)
@@ -144,6 +152,7 @@ fun NumberPickerDialog(
         // 判断对 base 而非 currentValue: 输 51 (越界未提交) 后点减号必须能写回 50
         if (stepped != base) {
             currentValue = stepped
+            sliderValue = stepped.toFloat()
             editState.edit { replace(0, length, stepped.toString()) }
             onValueChange(stepped)
         }
@@ -161,7 +170,7 @@ fun NumberPickerDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 24.dp, end = 24.dp, top = 16.dp),
+                    .padding(DesignTokens.spacingLg),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -227,15 +236,21 @@ fun NumberPickerDialog(
                 }
                 // Slider 拖动调整 (连续值, 适合大范围); 拖动直接改写输入框文本
                 Slider(
-                    value = currentValue.toFloat(),
+                    value = sliderValue,
                     onValueChange = {
-                        val newValue = it.toInt().coerceIn(range.first, range.last)
+                        // 无条件接受原始位置, thumb 全程跟手; 整数化只用于业务值
+                        sliderValue = it
+                        val newValue = it.roundToInt().coerceIn(range.first, range.last)
                         if (newValue != currentValue) {
                             currentValue = newValue
                             // 同步输入框文本: 调整滑条即修改文本值
                             editState.edit { replace(0, length, newValue.toString()) }
                             onValueChange(newValue)
                         }
+                    },
+                    onValueChangeFinished = {
+                        // 松手后吸附到当前整数, 与输入框显示保持一致
+                        sliderValue = currentValue.toFloat()
                     },
                     valueRange = range.first.toFloat()..range.last.toFloat(),
                     colors = SliderDefaults.colors(
@@ -248,8 +263,7 @@ fun NumberPickerDialog(
                 // 底部按钮条: 紧贴滑条下方 (spacedBy 8dp), 不再隔 28dp
                 Row(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp),
+                        .fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (neutralButtonText != null && onNeutral != null) {

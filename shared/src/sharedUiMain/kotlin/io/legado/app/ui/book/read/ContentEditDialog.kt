@@ -264,13 +264,18 @@ fun ContentEditDialog(
                 )
                 // 正文区: weight(1f) 撑满剩余空间 (原版 FrameLayout weight=1, 空内容时整区可点击聚焦),
                 // verticalScroll 承载超高内容 (2026-08 变更: 输入框随内容增高, 超高时正文区滚动);
-                // 内边距 arco_spacing_md=12dp (对齐 XML content_view padding)
+                // 内边距: 顶 12dp (XML content_view padding), 左右/底 arco_spacing_default
                 Box(
                     Modifier
                         .fillMaxWidth()
                         .weight(1f)
                         .verticalScroll(rememberScrollState())
-                        .padding(12.dp),
+                        .padding(
+                            start = DesignTokens.spacingDefault,
+                            top = 12.dp,
+                            end = DesignTokens.spacingDefault,
+                            bottom = DesignTokens.spacingDefault,
+                        ),
                 ) {
                     // 输入框不限制行数与最大高度 (对齐原版 EditText 无 maxLines): wrap content
                     // 随内容自然增高, 不再固定高度内部滚动 (2026-08 变更: 正文区滚动替代输入框内部滚动)
@@ -302,7 +307,7 @@ fun ContentEditDialog(
             Surface(
                 shape = DesignTokens.dialogShape,
                 color = colors.fillet,
-                modifier = Modifier.fillMaxWidth().padding(8.dp),
+                modifier = Modifier.fillMaxWidth().padding(DesignTokens.spacingDefault),
             ) {
                 Column(Modifier.fillMaxWidth()) {
                     DialogTitleBar(title = editText, onBack = { showTitleEdit = false })
@@ -314,7 +319,7 @@ fun ContentEditDialog(
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 8.dp),
+                            .padding(horizontal = DesignTokens.spacingDefault),
                         horizontalArrangement = Arrangement.End,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {

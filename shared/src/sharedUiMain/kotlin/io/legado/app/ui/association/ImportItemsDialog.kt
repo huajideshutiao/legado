@@ -383,7 +383,7 @@ internal fun ImportSourceGroupDialog(
             onClick = onDismiss,
         ),
         content = {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = DesignTokens.spacingDefault)) {
                 // 开关块在输入框之上, 标题/副标题竖排占左 + 开关靠右
                 // (对照原版 dialog_import_custom_group.xml 的 ConstraintLayout)
                 Row(

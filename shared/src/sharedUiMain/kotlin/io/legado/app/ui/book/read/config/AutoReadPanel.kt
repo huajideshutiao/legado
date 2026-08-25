@@ -52,7 +52,7 @@ fun AutoReadPanelDialogHost(
         properties = AppDialogSizes.properties(),
     ) {
         // 原版 AutoReadDialog: BaseBottomDialogFragment 全宽贴底 + filletBackground 8dp 圆角;
-        // 内容 16/8dp 间距由 AutoReadPanel 内部 padding 提供 (对齐 XML root paddingH=lg V=default)
+        // 内容 8dp 间距由 AutoReadPanel 内部 padding 提供
         Surface(
             shape = DesignTokens.shapeDefault,
             color = AppTheme.colors.fillet,
@@ -129,7 +129,9 @@ fun AutoReadPanel(
     var speed by remember {
         mutableIntStateOf(controller.autoReadSpeed.coerceAtLeast(1))
     }
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = DesignTokens.spacingDefault, vertical = 8.dp)
+    ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 stringResource(Res.string.auto_page_speed),

@@ -177,7 +177,7 @@ private fun CrashLogViewDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .padding(horizontal = DesignTokens.spacingDefault, vertical = 8.dp),
                 )
                 // 底部按钮栏 (对齐 BookmarkDialog: 左侧 contextual + 右侧 cancel/ok)
                 Row(Modifier.fillMaxWidth()) {

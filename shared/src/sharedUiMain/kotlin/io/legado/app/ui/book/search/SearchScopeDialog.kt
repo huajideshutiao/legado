@@ -146,7 +146,7 @@ fun SearchScopeDialog(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp),
+                        .padding(horizontal = DesignTokens.spacingDefault),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     RadioChip(
@@ -225,7 +225,7 @@ fun SearchScopeDialog(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp),
+                        .padding(horizontal = DesignTokens.spacingDefault),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     AppTextButton(text = stringResource(Res.string.all_source)) {

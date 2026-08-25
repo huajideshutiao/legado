@@ -87,8 +87,13 @@ internal fun UpdateDialogOverlayContent(overlay: AppOverlay.Dialog, navigator: A
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f, fill = false)
-                        // 对照 app 端 space.md 的 16dp 内边距
-                        .padding(16.dp)
+                        // 对照 app 端 space.md 的 16dp 内边距 (左右/底改 arco_spacing_default)
+                        .padding(
+                            start = DesignTokens.spacingDefault,
+                            top = 16.dp,
+                            end = DesignTokens.spacingDefault,
+                            bottom = DesignTokens.spacingDefault,
+                        )
                 )
             }
         }

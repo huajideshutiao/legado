@@ -31,6 +31,7 @@ import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.LocalReadConfigProviders
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ReadBookConfigShared
 import io.legado.app.help.coroutine.IoDispatcher
@@ -78,7 +79,6 @@ import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.compose.platform.AppShortcutHandler
 import io.legado.app.ui.compose.platform.KeyRepeatPolicy
-import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.PageTurnThrottle
 import io.legado.app.ui.compose.platform.VolumeKeyPageTurnHandler
 import io.legado.app.ui.compose.platform.performBack
@@ -1392,18 +1392,18 @@ private fun SpeakEngineDialogHost(
 /**
  * 翻页键配置对话框 Host (对照 app 端 PageKeyDialog Fragment 壳)。
  *
- * 包装 shared [PageKeyDialog] Composable, 从 [LocalPreferenceStoreProvider] 读写
+ * 包装 shared [PageKeyDialog] Composable, 从 [PreferenceProviders] 读写
  * prevKeys / nextKeys 偏好, 与 OtherConfigRoute 内嵌 PageKeyDialog 行为一致。
  */
 @Composable
 private fun PageKeyDialogHost(
     onDismiss: () -> Unit,
 ) {
-    val pref = LocalPreferenceStoreProvider.current
+    val pref = PreferenceProviders.get()
     // 从偏好读取 prev/next 字符串, 反序列化为 Map<Int, String>
     val keyMappings = remember {
-        val prev = pref.getString(PreferKey.prevKeys) ?: ""
-        val next = pref.getString(PreferKey.nextKeys) ?: ""
+        val prev = pref.getStringOrNull(PreferKey.prevKeys) ?: ""
+        val next = pref.getStringOrNull(PreferKey.nextKeys) ?: ""
         parsePageKeyMappings(prev, next)
     }
     PageKeyDialog(

@@ -712,7 +712,7 @@ internal fun InputBar(inputHint: String, onPostClick: () -> Unit) {
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = DesignTokens.spacingDefault, vertical = 8.dp),
         onClick = onPostClick,
     ) {
         ReviewInputHint(inputHint, maxLines = 1)

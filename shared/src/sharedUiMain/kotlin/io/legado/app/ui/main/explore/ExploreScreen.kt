@@ -62,7 +62,6 @@ import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.GridPackLayout
 import io.legado.app.ui.compose.component.estimateGridHeight
 import io.legado.app.ui.compose.component.toGridPackSpec
-import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.rememberNavigationBarPaddingValues
 import io.legado.app.ui.compose.platform.transitionStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
@@ -242,7 +241,7 @@ fun ExploreScreen(
     } else {
         0.dp
     }
-    Column(Modifier.fillMaxSize().background(colors.background)) {
+    Column(Modifier.fillMaxSize()) {
         ExploreTitleBar(
             searchKey = state.searchKey,
             onSearch = actions::onSearch,
@@ -632,14 +631,7 @@ private fun ExploreTitleBar(
 ) {
     val colors = AppTheme.colors
     val eInk = LocalEInk.current
-    // 替代 ThemeConfig.curBgImagePath: 跨平台 LocalThemeStoreProvider
-    val hasBgImage = !LocalThemeStoreProvider.current.bgImagePath.isNullOrBlank()
-    val bg = when {
-        eInk -> Color.White
-        hasBgImage -> Color.Transparent
-        else -> colors.background
-    }
-    Box(Modifier.fillMaxWidth().background(bg).then(if (eInk) Modifier else Modifier.transitionStatusBarPadding())) {
+    Box(Modifier.fillMaxWidth().then(if (eInk) Modifier else Modifier.transitionStatusBarPadding())) {
         Row(
             // 有返回箭头时 IconButton 自带 48dp 宽度, 去掉 12dp 起始留白
             Modifier.fillMaxWidth().heightIn(min = 56.dp)

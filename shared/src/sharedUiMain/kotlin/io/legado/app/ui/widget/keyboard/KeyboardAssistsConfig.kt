@@ -174,7 +174,7 @@ internal fun KeyboardAssistsConfigOverlayContent(overlay: AppOverlay.Dialog, nav
             },
             cancelButton = AlertButton(stringResource(Res.string.cancel)) { showEdit = false },
         ) {
-            Column(Modifier.padding(horizontal = 24.dp)) {
+            Column(Modifier.padding(horizontal = DesignTokens.spacingDefault)) {
                 AppUnderlineTextField(
                     value = key.value,
                     onValueChange = { key.value = it },

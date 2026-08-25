@@ -14,8 +14,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -31,22 +31,22 @@ import io.legado.app.help.config.HelpVersion
 import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.LocalConfigProviders
 import io.legado.app.help.config.LocalConfigShared
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.storage.BackupConfigShared
 import io.legado.app.help.storage.BackupShared
 import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.help.storage.RestoreShared
 import io.legado.app.help.toast.Toasters
-import io.legado.app.ui.config.BackupConfigScreen
-import io.legado.app.ui.config.BackupConfigScreenModel
-import io.legado.app.ui.config.BackupConfigUiEvent
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.component.AppTitleBar
-import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.config.BackupConfigScreen
+import io.legado.app.ui.config.BackupConfigScreenModel
+import io.legado.app.ui.config.BackupConfigUiEvent
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.FileFilter
 import io.legado.app.ui.root.PlatformServiceProviders
@@ -75,7 +75,6 @@ import legado.shared.generated.resources.select_restore_file
 import legado.shared.generated.resources.web_dav_account_s
 import legado.shared.generated.resources.web_dav_pw_s
 import legado.shared.generated.resources.web_dav_url_s
-import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -100,7 +99,7 @@ fun BackupConfigRoute(
     navigator: AppNavigator,
     screenModelStore: ScreenModelStore,
 ) {
-    val pref = LocalPreferenceStoreProvider.current
+    val pref = PreferenceProviders.get()
     val appConfig = remember { AppConfigProviders.get() }
 
     // Summary 占位符 (对照 app 端 getString(R.string.xxx))
@@ -202,7 +201,7 @@ fun BackupConfigRoute(
             onBackup = { uploadToWebDav ->
                 val services = PlatformServiceProviders.getOrNull()
                 if (services != null) {
-                    val backupPath = pref.getString(PreferKey.backupPath)
+                    val backupPath = pref.getStringOrNull(PreferKey.backupPath)
                     val defaultDir = DataStorageProviders.getOrNull()?.defaultBackupDir
                     if (backupPath.isNullOrBlank() && defaultDir != null) {
                         // 桌面/iOS: 有平台惯例目录, 不打扰用户 (不写 prefs, 设置项仍显示"未设置")
@@ -370,7 +369,7 @@ fun BackupConfigRoute(
             // 未设置时显示平台默认落地目录 (桌面=文档目录), 让用户知道备份实际存在哪
             screenModel.dispatch(
                 BackupConfigUiEvent.UpdateBackupPathSummary(
-                    pref.getString(PreferKey.backupPath)?.takeIf { it.isNotBlank() }
+                    pref.getStringOrNull(PreferKey.backupPath)?.takeIf { it.isNotBlank() }
                         ?: DataStorageProviders.getOrNull()?.defaultBackupDir
                         ?: selectBackupPathStr
                 )

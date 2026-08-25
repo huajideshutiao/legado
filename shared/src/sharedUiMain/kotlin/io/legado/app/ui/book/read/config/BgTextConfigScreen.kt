@@ -36,9 +36,9 @@ import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppDetailSeekBar
-import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.component.AppSwitch
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.StrokeTextChip
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.preference.ColorPickerDialog
@@ -254,7 +254,7 @@ fun BgTextConfigScreen(
         Modifier
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
-            .padding(8.dp)
+            .padding(DesignTokens.spacingDefault)
     ) {
         // 样式名行：名称 + 编辑 + 恢复预设
         Row(

@@ -171,7 +171,12 @@ fun HttpTtsEditDialog(
         Surface(
             shape = DesignTokens.dialogShape,
             color = colors.fillet,
-            modifier = Modifier.appDialogSize(fullHeight = true).padding(16.dp),
+            modifier = Modifier.appDialogSize(fullHeight = true).padding(
+                start = DesignTokens.spacingDefault,
+                top = 16.dp,
+                end = DesignTokens.spacingDefault,
+                bottom = DesignTokens.spacingDefault,
+            ),
         ) {
             HttpTtsEditDialogContent(
                 editEntities = editEntities,

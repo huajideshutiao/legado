@@ -30,6 +30,7 @@ import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.ok
@@ -116,8 +117,8 @@ private fun VariableEditDialogContent(
         Column(
             Modifier
                 .fillMaxWidth()
-                // 对齐 dialog_variable.xml: root LinearLayout 仅水平 padding 16dp (arco_spacing_lg), 无垂直 padding
-                .padding(horizontal = 16.dp),
+                // 对齐 dialog_variable.xml: root LinearLayout 仅水平 padding (arco_spacing_default), 无垂直 padding
+                .padding(horizontal = DesignTokens.spacingDefault),
         ) {
             // 变量原文编辑框 (对照 TextInputLayout + tv_variable: hint "variable" 浮动 label,
             // 初始单行贴合高度, 多行输入随内容增高 —— 对齐 wrap_content 语义)

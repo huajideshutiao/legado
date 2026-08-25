@@ -22,11 +22,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.PreferKey
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppSelectorDialog
-import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.close
@@ -93,7 +93,7 @@ fun FontSelectDialog(
     // 系统内置字体样式选择器开关 (对照 app 端 menu_default → alert(system_typefaces))
     var showTypefaceDialog by remember { mutableStateOf(false) }
     // 组合期捕获，供事件回调内写 systemTypefaces（CompositionLocal 只能在组合期读取）
-    val prefs = LocalPreferenceStoreProvider.current
+    val prefs = PreferenceProviders.get()
 
     AppAlertDialog(
         onDismissRequest = onDismiss,

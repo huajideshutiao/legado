@@ -174,7 +174,6 @@ fun SearchContentScreen(state: SearchContentUiState, actions: SearchContentUiAct
     Column(
         Modifier
             .fillMaxSize()
-            .background(colors.background)
     ) {
         AppTitleBar(
             title = "",

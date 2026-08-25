@@ -130,7 +130,12 @@ fun SpeakEngineDialog(
             shape = DesignTokens.dialogShape,
             color = colors.fillet,
             // 原版 isFullHeight = true, 高度固定 0.7 屏高
-            modifier = Modifier.appDialogSize(fullHeight = true).padding(16.dp),
+            modifier = Modifier.appDialogSize(fullHeight = true).padding(
+                start = DesignTokens.spacingDefault,
+                top = 16.dp,
+                end = DesignTokens.spacingDefault,
+                bottom = DesignTokens.spacingDefault,
+            ),
         ) {
             Column(Modifier.fillMaxSize()) {
                 DialogTitleBar(
@@ -187,7 +192,7 @@ fun SpeakEngineDialog(
                     Modifier
                         .fillMaxWidth()
                         .height(DesignTokens.viewHeightMax)
-                        .padding(horizontal = 8.dp),
+                        .padding(horizontal = DesignTokens.spacingDefault),
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {

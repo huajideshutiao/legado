@@ -1,28 +1,38 @@
 package io.legado.app.ui.compose.theme
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.Canvas
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.Icon
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -36,8 +46,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -57,14 +67,18 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import kotlin.math.max
-import kotlin.math.roundToInt
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.copy
 import legado.shared.generated.resources.cut
+import legado.shared.generated.resources.ic_arrow_back
+import legado.shared.generated.resources.ic_more_vert
 import legado.shared.generated.resources.paste
 import legado.shared.generated.resources.select_all
+import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 // ===== 澎湃 OS 浮动文本菜单规格 =====
 // 取值来源: /product/app/MiuixEditor/MiuixEditor.apk 的资源表与 res/layout/floating_popup_*.xml
@@ -103,6 +117,16 @@ private const val ToolbarFadeInMillis = 80
 private const val ToolbarFadeOutMillis = 140
 private val DecelerateQuad = Easing { 1f - (1f - it) * (1f - it) }
 private val AccelerateQuad = Easing { it * it }
+
+// 溢出面板开合变形: miuix FloatingToolbar openOverflow/closeOverflow 的 AnimationSet
+// (dex 实证: 主体 setDuration(300) + QUARTIC_EASE_IN_OUT_INTERPOLATOR, 旧内容 100ms 淡出,
+// 新内容 300ms 同插值器淡入)。变形期间容器右缘/底缘锚定 (⋮ 侧与选区侧不动),
+// 见 TextToolbarPositionProvider 的右缘锚定与 AnimatedContent 的 BottomEnd 对齐。
+private const val OverflowMorphMillis = 300
+private const val OverflowFadeOutMillis = 100
+private val QuarticEaseInOut = Easing { t ->
+    if (t < 0.5f) 8f * t * t * t * t else 1f - 8f * (1f - t) * (1f - t) * (1f - t) * (1f - t)
+}
 
 /**
  * 弹层四周留白, 让 [ToolbarElevation] 的阴影落在**动画节点内部**。
@@ -247,19 +271,24 @@ private class LegacyAppTextToolbar : TextToolbar {
             }
             entries.takeIf { it.isNotEmpty() }?.let { AppTextMenuContent(p.rect, it) }
         }
-        AppTextMenuHost(content)
+        AppTextMenuHost(content) { hide() }
     }
 }
 
 /**
  * 自绘文本选择菜单宿主, 四端共用, 视觉参考澎湃 OS 的浮动文本菜单 (见顶部规格常量)。
- * 一行放不下时尾部收成 ⋮, 点开换成竖排面板。
+ * 一行放不下时尾部收成 ⋮, 点开变形为竖排溢出面板, ← 收回横排 (落在 ⋮ 原位:
+ * 向上展开时在面板底部, 向下展开时在面板顶部)。
  *
  * @param content null = 隐藏。退场动画期间原请求已失效 (新通道的 dataProvider 已解绑),
  *   故用最后一帧内容把弹层留住, 动画播完再卸载弹层窗口。
+ * @param onDismiss 点击弹层内空白区 (卡片外) 时回调, 由调用方关闭自己的菜单请求源。
  */
 @Composable
-internal fun AppTextMenuHost(content: AppTextMenuContent?) {
+internal fun AppTextMenuHost(
+    content: AppTextMenuContent?,
+    onDismiss: () -> Unit,
+) {
     var lastContent by remember { mutableStateOf<AppTextMenuContent?>(null) }
     val visibleState = remember { MutableTransitionState(false) }
     if (content != null) lastContent = content
@@ -275,13 +304,44 @@ internal fun AppTextMenuHost(content: AppTextMenuContent?) {
     val gapPx = with(density) { ToolbarSelectionGap.roundToPx() }
     val marginPx = with(density) { ToolbarScreenMargin.roundToPx() }
     val shadowPx = with(density) { ToolbarShadowPadding.roundToPx() }
-    val positionProvider = remember(data.anchor, gapPx, marginPx, shadowPx) {
-        TextToolbarPositionProvider(data.anchor, gapPx, marginPx, shadowPx)
-    }
     // 菜单项每帧重建 (标签来自快照感知的 data()), 用标签串当稳定 key, 避免重组重置折叠态
     val labelsKey = data.entries.joinToString("\u0000") { it.label }
-    val visibleCount = rememberVisibleCount(data.entries, labelsKey, marginPx)
+    // 折叠位置与横排/面板尺寸出自同一遍度量 (见 rememberMenuMetrics)
+    val metrics = rememberMenuMetrics(data.entries, labelsKey, marginPx)
+    val visibleCount = metrics.visibleCount
     var overflowOpen by remember(labelsKey) { mutableStateOf(false) }
+    val overflowTransition = updateTransition(overflowOpen, label = "overflow")
+    // 横排与面板的最终尺寸在开合前就已知：弹层全程按两者的最大包围盒定尺, 开合只改内部
+    // 卡片, 动画开始/逐帧/结束都不触发 WindowManager 重排 (与系统浮动菜单同策略,
+    // 见 AOSP LocalFloatingToolbarPopup.updatePopupSize)。窗口比卡片大的那圈透明区由
+    // 下方的空白捕获层兜住, 点空白即关菜单, 不碰任何窗口级可触区 API。
+    val contentSize = metrics.maxSize
+    val windowHeight = LocalWindowInfo.current.containerSize.height
+    // 弹出方向按最大包围盒判定, 开合过程中不翻转
+    val opensUpwards =
+        remember(data.anchor, metrics.maxSize.height, windowHeight, marginPx, gapPx) {
+            windowHeight <= 0 || data.anchor.top - metrics.maxSize.height - gapPx >= marginPx
+    }
+    val positionProvider = remember(
+        data.anchor,
+        gapPx,
+        marginPx,
+        shadowPx,
+        contentSize,
+        metrics.rowSize.width,
+        opensUpwards,
+    ) {
+        TextToolbarPositionProvider(
+            rect = data.anchor,
+            gapPx = gapPx,
+            marginPx = marginPx,
+            shadowPx = shadowPx,
+            rowWidthPx = metrics.rowSize.width,
+            contentWidthPx = contentSize.width,
+            contentHeightPx = contentSize.height,
+            opensUpwards = opensUpwards,
+        )
+    }
 
     // focusable=false: 不抢文本框焦点/选区, 显隐交由框架回调驱动
     // onDismissRequest 空实现: 鼠标微动会触发系统 dismiss 回调清空选区菜单,
@@ -301,18 +361,57 @@ internal fun AppTextMenuHost(content: AppTextMenuContent?) {
                 fadeOut(tween(ToolbarFadeOutMillis, easing = AccelerateQuad))
             },
         ) {
-            Box(Modifier.padding(ToolbarShadowPadding)) {
-                ToolbarSurface(eInk) {
-                    if (overflowOpen) {
-                        OverflowPanel(data.entries.drop(visibleCount))
-                    } else {
-                        Row(
-                            Modifier.padding(horizontal = ToolbarContentPadding),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            data.entries.take(visibleCount).forEach { ToolbarItem(it.label, it.onClick) }
-                            if (visibleCount < data.entries.size) {
-                                OverflowButton { overflowOpen = true }
+            // 空白捕获层挂最外层 (含阴影留白圈): Android 的 Popup 是独立窗口, 落在卡片外
+            // 透明区的点击既出不去、下层也收不到, 与其白吞不如直接关菜单。手势检测都在主传递
+            // (叶→根) 等按下, 卡片上的点击先被子项消费, 本层拿到的是已消费事件不会误触发。
+            Box(
+                Modifier
+                    .pointerInput(Unit) { detectTapGestures { onDismiss() } }
+                    .padding(ToolbarShadowPadding),
+            ) {
+                // 卡片贴稳定包围盒的右侧；垂直方向按 Popup 的固定定位方向贴顶部或底部。
+                Box(
+                    modifier = Modifier.requiredSize(
+                        with(density) { contentSize.width.toDp() },
+                        with(density) { contentSize.height.toDp() },
+                    ),
+                    contentAlignment = if (opensUpwards) Alignment.BottomEnd else Alignment.TopEnd,
+                ) {
+                    ToolbarSurface(eInk) {
+                        overflowTransition.AnimatedContent(
+                            // 开合变形: 容器尺寸 300ms 四次缓入缓出, 旧内容 100ms 淡出、新内容 300ms
+                            // 淡入 (miuix openOverflow/closeOverflow 同参); E-Ink 直接切换。
+                            // 按弹出方向贴住容器右上/右下角，变形期间锚边保持静止
+                            transitionSpec = {
+                                if (eInk) {
+                                    (EnterTransition.None togetherWith ExitTransition.None) using
+                                        SizeTransform { _, _ -> snap() }
+                                } else {
+                                    fadeIn(tween(OverflowMorphMillis, easing = QuarticEaseInOut)) togetherWith
+                                        fadeOut(tween(OverflowFadeOutMillis, easing = QuarticEaseInOut)) using
+                                        SizeTransform { _, _ ->
+                                            tween(OverflowMorphMillis, easing = QuarticEaseInOut)
+                                        }
+                                }
+                            },
+                            contentAlignment = if (opensUpwards) Alignment.BottomEnd else Alignment.TopEnd,
+                        ) { open ->
+                            if (open) {
+                                OverflowPanel(
+                                    data.entries.drop(visibleCount),
+                                    collapseAtTop = !opensUpwards,
+                                    onCollapse = { overflowOpen = false },
+                                )
+                            } else {
+                                Row(
+                                    Modifier.padding(horizontal = ToolbarContentPadding),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    data.entries.take(visibleCount).forEach { ToolbarItem(it.label, it.onClick) }
+                                    if (visibleCount < data.entries.size) {
+                                        OverflowButton { overflowOpen = true }
+                                    }
+                                }
                             }
                         }
                     }
@@ -323,45 +422,92 @@ internal fun AppTextMenuHost(content: AppTextMenuContent?) {
 }
 
 /**
- * 一行能放下几项: 组合期用 [rememberTextMeasurer] 量文本宽, 与窗口可用宽比较。
- * 放不下时给 ⋮ 留位。窗口尺寸未知 (首帧 containerSize 为 0) 时不折叠。
+ * 菜单排布度量: 标签宽度只量一遍, 折叠位置 (一行放不下时尾部收 ⋮) 与横排/溢出面板的
+ * 最终尺寸都从这一遍推出 —— 两者用同一批 padding/最小宽常量, 分开算过就会漂移。
+ * 窗口尺寸未知 (首帧 containerSize 为 0) 时不折叠。
  */
 @Composable
-private fun rememberVisibleCount(
+private fun rememberMenuMetrics(
     entries: List<AppTextMenuEntry>,
     labelsKey: String,
     marginPx: Int,
-): Int {
+): MenuMetrics {
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
     val windowWidth = LocalWindowInfo.current.containerSize.width
     return remember(labelsKey, windowWidth, marginPx, density) {
-        if (windowWidth <= 0) return@remember entries.size
-        val sidePaddingPx = with(density) { (ToolbarItemSidePadding * 2).roundToPx() }
-        val minWidthPx = with(density) { ToolbarItemMinWidth.roundToPx() }
-        val contentPaddingPx = with(density) { (ToolbarContentPadding * 2).roundToPx() }
-        val overflowPx = with(density) { (OverflowIconSize + OverflowButtonSidePadding * 2).roundToPx() }
-        val widths = entries.map {
-            val text = measurer.measure(AnnotatedString(it.label), ToolbarTextStyle).size.width
-            max(text + sidePaddingPx, minWidthPx)
+        with(density) {
+            val itemSidePaddingPx = (ToolbarItemSidePadding * 2).roundToPx()
+            val itemMinWidthPx = ToolbarItemMinWidth.roundToPx()
+            val contentPaddingPx = (ToolbarContentPadding * 2).roundToPx()
+            val overflowButtonWidthPx =
+                (OverflowIconSize + OverflowButtonSidePadding * 2).roundToPx()
+            val toolbarHeightPx = ToolbarHeight.roundToPx()
+            val panelSidePaddingPx = (OverflowPanelItemSidePadding * 2).roundToPx()
+            val panelMinWidthPx = OverflowPanelMinWidth.roundToPx()
+            val panelMaxHeightPx = OverflowPanelMaxHeight.roundToPx()
+
+            val textWidths = entries.map {
+                measurer.measure(AnnotatedString(it.label), ToolbarTextStyle).size.width
+            }
+            val itemWidths = textWidths.map { max(it + itemSidePaddingPx, itemMinWidthPx) }
+            val available = windowWidth - marginPx * 2 - contentPaddingPx
+            val visibleCount = if (windowWidth <= 0 || itemWidths.sum() <= available) {
+                entries.size
+            } else {
+                // 放不下时给 ⋮ 留位, 至少留一项
+                var used = overflowButtonWidthPx
+                var n = 0
+                while (n < itemWidths.size && used + itemWidths[n] <= available) {
+                    used += itemWidths[n]
+                    n++
+                }
+                n.coerceAtLeast(1)
+            }
+            val hasOverflow = visibleCount < entries.size
+            val rowSize = IntSize(
+                contentPaddingPx + itemWidths.take(visibleCount).sum() +
+                    if (hasOverflow) overflowButtonWidthPx else 0,
+                toolbarHeightPx,
+            )
+            if (!hasOverflow) {
+                return@with MenuMetrics(visibleCount, rowSize, rowSize)
+            }
+            val panelWidth = max(
+                panelMinWidthPx,
+                textWidths.drop(visibleCount).max() + panelSidePaddingPx,
+            )
+            // 面板 = 可滚项区 (受最高档约束) + 底部固定返回行
+            val panelHeight = min(
+                (entries.size - visibleCount) * toolbarHeightPx,
+                panelMaxHeightPx,
+            ) + toolbarHeightPx
+            MenuMetrics(visibleCount, rowSize, IntSize(panelWidth, panelHeight))
         }
-        val available = windowWidth - marginPx * 2 - contentPaddingPx
-        if (widths.sum() <= available) return@remember entries.size
-        var used = overflowPx
-        var n = 0
-        while (n < widths.size && used + widths[n] <= available) {
-            used += widths[n]
-            n++
-        }
-        n.coerceAtLeast(1)
     }
+}
+
+private data class MenuMetrics(
+    val visibleCount: Int,
+    val rowSize: IntSize,
+    val panelSize: IntSize,
+) {
+    /** 横排与面板的稳定包围盒: Popup 全程按它定尺, 开合只在内部变形。 */
+    val maxSize = IntSize(
+        width = max(rowSize.width, panelSize.width),
+        height = max(rowSize.height, panelSize.height),
+    )
 }
 
 /** 卡片外壳: 动态底栏色 + 13.09dp 圆角 + 8dp 阴影; E-Ink 去阴影改描边。 */
 @Composable
-private fun ToolbarSurface(eInk: Boolean, content: @Composable () -> Unit) {
+private fun ToolbarSurface(
+    eInk: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
     Box(
-        Modifier
+        modifier
             .then(if (eInk) Modifier else Modifier.shadow(ToolbarElevation, ToolbarShape))
             .clip(ToolbarShape)
             .background(AppTheme.colors.bottomBackground)
@@ -397,10 +543,9 @@ private fun ToolbarItem(text: String, onClick: () -> Unit) {
     }
 }
 
-/** ⋮ 溢出按钮: 22dp 图标区自绘三点, 左右 10.9dp (对齐 miuix overflow 档)。 */
+/** ⋮ 溢出按钮: 22dp 图标区 (项目资源 ic_more_vert), 左右 10.9dp (对齐 miuix overflow 档)。 */
 @Composable
 private fun OverflowButton(onClick: () -> Unit) {
-    val color = AppTheme.colors.primaryText
     Box(
         Modifier
             .height(ToolbarHeight)
@@ -408,42 +553,82 @@ private fun OverflowButton(onClick: () -> Unit) {
             .padding(horizontal = OverflowButtonSidePadding),
         contentAlignment = Alignment.Center,
     ) {
-        Canvas(Modifier.size(OverflowIconSize)) {
-            val r = size.minDimension / 14f
-            val cx = size.width / 2f
-            listOf(0.25f, 0.5f, 0.75f).forEach { f ->
-                drawCircle(color = color, radius = r, center = Offset(cx, size.height * f))
-            }
-        }
+        Icon(
+            painter = painterResource(Res.drawable.ic_more_vert),
+            contentDescription = null,
+            tint = AppTheme.colors.primaryText,
+            modifier = Modifier.size(OverflowIconSize),
+        )
     }
 }
 
-/** 溢出面板: 竖排剩余项, 最小宽 100dp / 项左右 16dp / 最高 192dp 可滚。 */
+/**
+ * 溢出面板: 竖排剩余项, 最小宽 100dp / 项左右 16dp / 最高 192dp 可滚; 一端固定返回按钮。
+ *
+ * @param collapseAtTop 面板向下展开时返回按钮放列表上方, 向上展开时放下方。两种摆法都让
+ *   ← 落在展开前 ⋮ 的位置上, 变形期间该行不动 (同 AOSP LocalFloatingToolbarPopup
+ *   按 mOpenOverflowUpwards 给溢出按钮定的顶/底锚)。
+ */
 @Composable
-private fun OverflowPanel(entries: List<AppTextMenuEntry>) {
+private fun OverflowPanel(
+    entries: List<AppTextMenuEntry>,
+    collapseAtTop: Boolean,
+    onCollapse: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Column(
-        Modifier
+        // 固有宽定容 (最宽项决定面板宽, 受 min 100dp 约束), 窄项才能通栏填满
+        modifier
             .widthIn(min = OverflowPanelMinWidth)
-            .heightIn(max = OverflowPanelMaxHeight)
-            .verticalScroll(rememberScrollState()),
+            .width(IntrinsicSize.Min),
     ) {
-        entries.forEach { entry ->
-            Box(
-                Modifier
-                    .height(ToolbarHeight)
-                    .clickable(onClick = entry.onClick)
-                    .padding(horizontal = OverflowPanelItemSidePadding),
-                contentAlignment = Alignment.CenterStart,
-            ) {
-                Text(
-                    text = entry.label,
-                    color = AppTheme.colors.primaryText,
-                    fontSize = ToolbarTextSize,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                )
+        if (collapseAtTop) CollapseButton(onClick = onCollapse)
+        Column(
+            Modifier
+                .heightIn(max = OverflowPanelMaxHeight)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            entries.forEach { entry ->
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(ToolbarHeight)
+                        .clickable(onClick = entry.onClick)
+                        .padding(horizontal = OverflowPanelItemSidePadding),
+                    // 通栏行文字左对齐: 高亮 (ripple) 充满整行宽
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    Text(
+                        text = entry.label,
+                        color = AppTheme.colors.primaryText,
+                        fontSize = ToolbarTextSize,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                    )
+                }
             }
         }
+        if (!collapseAtTop) CollapseButton(onClick = onCollapse)
+    }
+}
+
+/** 面板返回按钮: ← 箭头 (项目资源 ic_arrow_back, 同实机), 行高同菜单项, 点击收回横排。 */
+@Composable
+private fun CollapseButton(onClick: () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(ToolbarHeight)
+            .clickable(onClick = onClick)
+            .padding(horizontal = OverflowPanelItemSidePadding),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Icon(
+            painter = painterResource(Res.drawable.ic_arrow_back),
+            contentDescription = null,
+            tint = AppTheme.colors.primaryText,
+            modifier = Modifier.size(OverflowIconSize),
+        )
     }
 }
 
@@ -459,6 +644,10 @@ private class TextToolbarPositionProvider(
     private val gapPx: Int,
     private val marginPx: Int,
     private val shadowPx: Int,
+    private val rowWidthPx: Int,
+    private val contentWidthPx: Int,
+    private val contentHeightPx: Int,
+    private val opensUpwards: Boolean,
 ) : PopupPositionProvider {
     override fun calculatePosition(
         anchorBounds: IntRect,
@@ -466,19 +655,26 @@ private class TextToolbarPositionProvider(
         layoutDirection: LayoutDirection,
         popupContentSize: IntSize,
     ): IntOffset {
-        val width = popupContentSize.width - shadowPx * 2
-        val height = popupContentSize.height - shadowPx * 2
+        val width = contentWidthPx
+        val height = contentHeightPx
         val originX = anchorBounds.left
         val originY = anchorBounds.top
         val centerX = originX + ((rect.left + rect.right) / 2f).roundToInt()
-        val x = (centerX - width / 2)
+        // 横排与展开面板共用同一右缘，开合动画只在稳定包围盒内部变形。
+        val rowX = (centerX - rowWidthPx / 2)
+            .coerceIn(marginPx, (windowSize.width - rowWidthPx - marginPx).coerceAtLeast(marginPx))
+        val x = (rowX + rowWidthPx - width)
             .coerceIn(marginPx, (windowSize.width - width - marginPx).coerceAtLeast(marginPx))
-        var y = originY + rect.top.roundToInt() - height - gapPx
-        if (y < marginPx) {
-            y = originY + rect.bottom.roundToInt() + gapPx
+        val y = if (opensUpwards) {
+            originY + rect.top.roundToInt() - height - gapPx
+        } else {
+            originY + rect.bottom.roundToInt() + gapPx
         }
-        y = y.coerceAtMost((windowSize.height - height - marginPx).coerceAtLeast(marginPx))
-        return IntOffset(x - shadowPx, y - shadowPx)
+        val boundedY = y.coerceIn(
+            marginPx,
+            (windowSize.height - height - marginPx).coerceAtLeast(marginPx),
+        )
+        return IntOffset(x - shadowPx, boundedY - shadowPx)
     }
 }
 

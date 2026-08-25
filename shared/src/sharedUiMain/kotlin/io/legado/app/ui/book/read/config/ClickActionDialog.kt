@@ -47,6 +47,7 @@ import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.bookmark_add
 import legado.shared.generated.resources.chapter_list
@@ -234,7 +235,12 @@ fun ClickActionDialog(
                 Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .padding(16.dp)
+                    .padding(
+                        start = DesignTokens.spacingDefault,
+                        top = 16.dp,
+                        end = DesignTokens.spacingDefault,
+                        bottom = DesignTokens.spacingDefault,
+                    )
                     .background(
                         color = translucent,
                         shape = cardShape,

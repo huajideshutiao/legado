@@ -18,12 +18,11 @@ import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
-import io.legado.app.ui.compose.theme.LocalEInk
 
 /**
  * 主界面导航配色 (底栏 [MainBottomBar] 与侧栏 [MainNavRail] 共用)。
  *
- * @param bar 栏背景 (E-Ink 白 / 有壁纸透明 / 否则 bottomBackground)
+ * @param bar 栏背景 (无壁纸 bottomBackground / 有壁纸透明; eInk 白底由取色层统一保证)
  * @param item 未选中项的图标与文字色
  * @param accent 选中时的图标与文字色
  */
@@ -32,13 +31,8 @@ internal data class MainNavColors(val bar: Color, val item: Color, val accent: C
 @Composable
 internal fun rememberMainNavColors(): MainNavColors {
     val themeStore = LocalThemeStoreProvider.current
-    val eInk = LocalEInk.current
     val bg = themeStore.bgImagePath
-    val barColor = when {
-        eInk -> Color.White
-        bg.isNullOrBlank() -> themeStore.bottomBackground
-        else -> Color.Transparent
-    }
+    val barColor = if (bg.isNullOrBlank()) themeStore.bottomBackground else Color.Transparent
     // 原代码: 无壁纸用 bottomBackground 判亮度, 有壁纸用 backgroundColor
     val bgForTextCalc =
         if (bg.isNullOrBlank()) themeStore.bottomBackground else themeStore.backgroundColor

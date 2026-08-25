@@ -20,12 +20,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.MarkdownContentSelectable
 import io.legado.app.ui.compose.SelectableText
-import io.legado.app.ui.compose.toHtmlAnnotatedString
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.compose.toHtmlAnnotatedString
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.copy
@@ -68,7 +68,7 @@ fun TextDialog(
             shape = DesignTokens.shapeDefault,
             color = colors.fillet,
         ) {
-            Column(Modifier.padding(vertical = 16.dp)) {
+            Column(Modifier.padding(vertical = DesignTokens.spacingDefault)) {
                 Text(
                     text = title,
                     color = colors.primaryText,
@@ -120,7 +120,7 @@ fun TextDialog(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp),
+                        .padding(horizontal = DesignTokens.spacingDefault),
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                 ) {

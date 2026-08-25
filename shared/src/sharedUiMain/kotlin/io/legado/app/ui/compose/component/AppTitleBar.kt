@@ -33,7 +33,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.transitionStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -68,20 +67,11 @@ fun AppTitleBar(
 ) {
     val colors = AppTheme.colors
     val eInk = LocalEInk.current
-    val themeStore = LocalThemeStoreProvider.current
-    val hasBgImage = remember(themeStore) {
-        !themeStore.bgImagePath.isNullOrBlank()
-    }
-    val bg = when {
-        eInk -> Color.White
-        hasBgImage -> Color.Transparent
-        else -> colors.background
-    }
     Box(
-        // 背景先铺满 (含状态栏区), 再把内容推到状态栏之下; eInk 不避让
+        // 不涂背景, 颜色由页面容器/壁纸层统一管; 背景先铺满 (含状态栏区) 的职责同层移交,
+        // 内容推到状态栏之下; eInk 不避让
         modifier
             .fillMaxWidth()
-            .background(bg)
             .then(if (eInk) Modifier else Modifier.transitionStatusBarPadding()),
     ) {
         Row(

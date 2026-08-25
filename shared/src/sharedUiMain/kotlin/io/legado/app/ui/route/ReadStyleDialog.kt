@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ReadStyleConfig
 import io.legado.app.help.coroutine.IoDispatcher
@@ -48,7 +49,6 @@ import io.legado.app.ui.book.read.config.ReadStyleController
 import io.legado.app.ui.book.read.config.ReadStyleScreen
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -88,8 +88,8 @@ fun ReadStyleDialogHost(
             AppTheme {
                 // 原版 BaseBottomDialogFragment: 窗口 MATCH_PARENT 全宽贴底 + Gravity.BOTTOM + WRAP_CONTENT,
                 // 背景 filletBackground (bottomBackground 色 + radius.default 8dp 圆角);
-                // 内容横向 16dp 间距由 ReadStyleScreen 内部 padding(horizontal=16.dp) 提供
-                // (对齐 XML root paddingHorizontal=arco_spacing_lg)。
+                // 内容横向 8dp 间距由 ReadStyleScreen 内部 padding(horizontal=spacingDefault) 提供
+                // (arco_spacing_default; 原 XML root 为 lg)。
                 Surface(
                     shape = DesignTokens.shapeDefault,
                     color = AppTheme.colors.bottomBackground,
@@ -144,7 +144,7 @@ private fun ReadStyleContent(
     val colors = AppTheme.colors
     val scope = rememberCoroutineScope()
     // 组合期捕获，供事件回调内写 fontFolder（CompositionLocal 只能在组合期读取）
-    val prefs = LocalPreferenceStoreProvider.current
+    val prefs = PreferenceProviders.get()
 
     // 字体列表: 平台扫描注入 (对照 app 端 FontSelectDialog.loadFontFiles; 未实现端空列表)
     var fontItems by remember { mutableStateOf(emptyList<FontItem>()) }

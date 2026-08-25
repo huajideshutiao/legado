@@ -73,9 +73,9 @@ object AppTheme {
         val inputShape: RoundedCornerShape = shapeSm
 
         // 对话框尺寸占锚点 (桌面=主窗口, 移动端=屏幕) 的比例; 消费方见 AppDialogSizes。
-        // 高度 0.7 为全局统一值 (用户 2026-08-20 拍板), 新弹窗一律取这里而非自行乘系数
+        // 高度 0.8 为全局统一值, 新弹窗一律取这里而非自行乘系数
         const val dialogWidthFraction: Float = 0.9f
-        const val dialogHeightFraction: Float = 0.7f
+        const val dialogHeightFraction: Float = 0.8f
 
         // Arco 描边: thin/medium 对齐 arco_stroke_width_*, hairline 为极细描边
         val strokeHairline: Dp = 0.5.dp
@@ -89,6 +89,14 @@ object AppTheme {
         val viewHeightLarge: Dp = 40.dp
         val viewHeightXl: Dp = 48.dp
         val viewHeightMax: Dp = 56.dp
+
+        // Arco 间距五档 (对齐 dimens.xml arco_spacing_xs/default/md/lg/max);
+        // 对话框左右/底部留白、按钮边距等一律引用此处, 禁止写死字面量
+        val spacingXs: Dp = 4.dp
+        val spacingDefault: Dp = 8.dp
+        val spacingMd: Dp = 12.dp
+        val spacingLg: Dp = 16.dp
+        val spacingMax: Dp = 20.dp
 
         // 响应式布局断点 (对齐 Android 官方 Window size class / Material 3 断点:
         // Compact <600dp / Medium 600-839dp / Expanded ≥840dp / Large ≥1200dp)。
@@ -144,7 +152,27 @@ object AppTheme {
  * 用 [Color.luminance] 替代 Android 专属 [io.legado.app.utils.ColorUtils.isColorLight]
  * (后者依赖 androidx.core.graphics.ColorUtils)，commonMain 直接消费 Compose Color。
  */
-private fun readAppColors(themeStore: ThemeStoreProvider): AppColors {
+private fun readAppColors(themeStore: ThemeStoreProvider, isEInk: Boolean): AppColors {
+    // eInk 对齐原版 applyTheme 的 saveTheme(WHITE, BLACK, WHITE, WHITE): 取色层统一强制
+    // 白底黑 accent, 顶栏/底栏等 chrome 组件不再各自散布 eInk 白底特判; 读取层映射,
+    // 不学原版写库 (避免覆盖用户自定义主题色)
+    if (isEInk) {
+        return AppColors(
+            accent = Color.Black,
+            background = Color.White,
+            bottomBackground = Color.White,
+            primaryText = Color(0xFF212121),
+            secondaryText = Color(0xFF595959),
+            menuText = Color(0xFF212121),
+            summaryText = Color(0xFF909090),
+            controlNormal = Color(0x8A000000),
+            textDisabled = Color(0x61000000),
+            statusBar = Color.White,
+            navigationBar = Color.White,
+            fillet = Color.White,
+            isDark = false,
+        )
+    }
     val bg = themeStore.backgroundColor
     val bgIsLight = bg.luminance() >= 0.5f
     val bottomBg = themeStore.bottomBackground
@@ -208,7 +236,7 @@ fun AppTheme(content: @Composable () -> Unit) {
         }
     }
     recreateTick
-    val colors = readAppColors(themeStore)
+    val colors = readAppColors(themeStore, appConfig.isEInkMode)
     CompositionLocalProvider(
         LocalAppColors provides colors,
         LocalEInk provides appConfig.isEInkMode,

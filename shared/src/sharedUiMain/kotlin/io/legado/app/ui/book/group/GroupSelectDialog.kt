@@ -104,7 +104,7 @@ fun GroupSelectDialog(
                         Row(
                             Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 8.dp),
+                                .padding(horizontal = DesignTokens.spacingDefault),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Spacer(Modifier.weight(1f))

@@ -96,5 +96,5 @@ fun ReaderTextActionMenu(
             },
         )
     }
-    AppTextMenuHost(content)
+    AppTextMenuHost(content, onDismiss = onFinally)
 }

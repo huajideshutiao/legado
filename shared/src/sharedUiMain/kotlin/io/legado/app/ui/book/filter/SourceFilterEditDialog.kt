@@ -31,9 +31,9 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.book.search.SearchScopeDialog
 import io.legado.app.ui.compose.component.AppCheckbox
-import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.AppTextButton
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -153,7 +153,7 @@ fun SourceFilterEditDialog(
     Surface(
         shape = DesignTokens.dialogShape,
         color = colors.fillet,
-        modifier = Modifier.fillMaxWidth().padding(8.dp),
+        modifier = Modifier.fillMaxWidth().padding(DesignTokens.spacingDefault),
     ) {
         Column(Modifier.fillMaxWidth()) {
             DialogTitleBar(
@@ -165,7 +165,7 @@ fun SourceFilterEditDialog(
                     .fillMaxWidth()
                     .weight(1f, fill = false)
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp),
+                    .padding(horizontal = DesignTokens.spacingDefault),
             ) {
                 AppUnderlineTextField(
                     value = name,
@@ -217,7 +217,7 @@ fun SourceFilterEditDialog(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp),
+                    .padding(horizontal = DesignTokens.spacingDefault),
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {

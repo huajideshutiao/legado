@@ -15,13 +15,13 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.ui.book.read.config.ReadAloudConfigScreen
 import io.legado.app.ui.book.read.config.SpeakEngineDialog
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.appDialogSize
-import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import kotlinx.coroutines.flow.catch
@@ -75,7 +75,7 @@ private fun ReadAloudConfigContent(
     onSysTtsConfig: () -> Unit,
 ) {
     // 对照 app 端 pausePhoneCallsEnabled = AppConfig.ignoreAudioFocus
-    val pref = LocalPreferenceStoreProvider.current
+    val pref = PreferenceProviders.get()
     val pausePhoneCallsEnabled = remember { pref.getBoolean(PreferKey.ignoreAudioFocus) }
 
     val appConfig = remember { AppConfigProviders.get() }

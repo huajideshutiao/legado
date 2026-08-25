@@ -154,7 +154,7 @@ fun ReadAloudDialog(
     var draggingSpeed by remember { mutableFloatStateOf(-1f) }
 
     // 底部弹层 (对照原版 BaseBottomDialogFragment: 窗口 MATCH_PARENT 全宽贴底 +
-    // filletBackground 8dp 圆角; 内容 16/8dp 间距由下方 Column padding 提供, 对齐 XML root)
+    // filletBackground 8dp 圆角; 内容 8dp 间距由下方 Column padding 提供)
     AppBottomSheetDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
@@ -167,7 +167,7 @@ fun ReadAloudDialog(
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(horizontal = DesignTokens.spacingDefault, vertical = 8.dp),
             ) {
                 // 章节/段落播放控制行 (与原版 Row + Text(上一章) + AloudIcon x4 + Text(下一章) 对齐)
                 Row(

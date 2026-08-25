@@ -128,7 +128,7 @@ fun SourceFilterRuleListDialog(
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 8.dp),
+                            .padding(horizontal = DesignTokens.spacingDefault),
                         horizontalArrangement = Arrangement.End,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {

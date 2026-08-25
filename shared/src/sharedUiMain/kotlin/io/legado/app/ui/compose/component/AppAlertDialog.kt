@@ -94,14 +94,14 @@ fun AppAlertDialogContent(
         shape = DesignTokens.shapeDefault,
         color = colors.fillet,
     ) {
-        Column(Modifier.padding(vertical = 16.dp)) {
+        Column(Modifier.padding(DesignTokens.spacingDefault)) {
             title?.let {
                 Text(
                     text = it,
                     color = colors.primaryText,
                     // 对齐原版 Material AlertDialog 标题 (TextAppearance.MaterialComponents.Headline6 = 20sp)
                     fontSize = 20.sp,
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)
+                    modifier = Modifier.padding(DesignTokens.spacingDefault)
                 )
             }
             // weight+scroll: 长消息(如错误堆栈)收进可滚区, 按钮行恒可见——对齐 AlertDialog 消息区 ScrollView+按钮钉底
@@ -113,7 +113,6 @@ fun AppAlertDialogContent(
                     modifier = Modifier
                         .weight(1f, fill = false)
                         .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 24.dp, vertical = 8.dp)
                 )
             }
             content?.let {
@@ -127,8 +126,7 @@ fun AppAlertDialogContent(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .background(colors.fillet)
-                        .padding(horizontal = 12.dp),
+                        .background(colors.fillet),
                     horizontalArrangement = Arrangement.End
                 ) {
                     // 布局对齐 AlertDialog：neutral 靠左，cancel/ok 靠右

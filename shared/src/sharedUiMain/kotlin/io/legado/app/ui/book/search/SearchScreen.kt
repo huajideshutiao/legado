@@ -87,6 +87,7 @@ import io.legado.app.ui.compose.component.rememberResponsiveColumns
 import io.legado.app.ui.compose.platform.rememberNavigationBarPaddingValues
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.ColorUtils
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -265,7 +266,6 @@ fun SearchScreen(
     Column(
         modifier
             .fillMaxSize()
-            .background(colors.background)
     ) {
         AppTitleBar(
             title = "",
@@ -735,7 +735,11 @@ private fun MultiSelectOptionDialog(
             value = query,
             onValueChange = { query = it },
             hint = stringResource(Res.string.search),
-            modifier = Modifier.padding(start = 24.dp, top = 8.dp, bottom = 4.dp),
+            modifier = Modifier.padding(
+                start = DesignTokens.spacingDefault,
+                top = 8.dp,
+                bottom = 4.dp
+            ),
         )
         LazyColumn(
             Modifier

@@ -18,14 +18,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.constant.PreferKey
-import io.legado.app.model.CheckSourceShared as CheckSource
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppNumberField
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.cannot_empty
@@ -42,6 +42,7 @@ import legado.shared.generated.resources.seconds
 import legado.shared.generated.resources.source_tab_info
 import legado.shared.generated.resources.timeout
 import org.jetbrains.compose.resources.stringResource
+import io.legado.app.model.CheckSourceShared as CheckSource
 
 /**
  * 校验设置对话框 (KMP 共享, 对照 app 端 CheckSourceConfig Fragment)。
@@ -82,19 +83,19 @@ fun CheckSourceConfigDialog(
             maxLength = 9,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp)
+                .padding(horizontal = DesignTokens.spacingDefault)
                 .padding(top = 8.dp),
         )
         Text(
             text = stringResource(Res.string.check_source_item),
             color = AppTheme.colors.accent,
             fontSize = 14.sp,
-            modifier = Modifier.padding(start = 12.dp, top = 8.dp),
+            modifier = Modifier.padding(start = DesignTokens.spacingDefault, top = 8.dp),
         )
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp),
+                .padding(horizontal = DesignTokens.spacingDefault),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             CheckItem(
@@ -145,7 +146,7 @@ fun CheckSourceConfigDialog(
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp),
+                .padding(horizontal = DesignTokens.spacingDefault),
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically,
         ) {

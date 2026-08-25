@@ -38,8 +38,8 @@ import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppDropdownMenu
-import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.AppTextButton
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.rememberString
@@ -171,7 +171,7 @@ fun GroupEditDialog(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
+                        .padding(horizontal = DesignTokens.spacingDefault, vertical = 16.dp),
                 ) {
                     // 封面区恒显示 (对照原版 ivCover: 新分组为占位, 编辑态显示 cover)
                     Box(
@@ -235,7 +235,12 @@ fun GroupEditDialog(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                        .padding(
+                            start = DesignTokens.spacingDefault,
+                            top = 4.dp,
+                            end = DesignTokens.spacingDefault,
+                            bottom = DesignTokens.spacingDefault,
+                        ),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     val showDelete = !isNew &&

@@ -26,7 +26,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.legado.app.constant.SourceType
@@ -119,12 +118,12 @@ internal fun OpenUrlConfirmOverlayContent(overlay: AppOverlay.Dialog, navigator:
                 Text(
                     text = "${payload.sourceTag} 正在请求跳转链接/应用，是否跳转？",
                     color = AppTheme.colors.primaryText,
-                    modifier = Modifier.padding(24.dp),
+                    modifier = Modifier.padding(DesignTokens.spacingLg),
                 )
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp),
+                        .padding(horizontal = DesignTokens.spacingDefault),
                     horizontalArrangement = Arrangement.End,
                 ) {
                     AppTextButton(

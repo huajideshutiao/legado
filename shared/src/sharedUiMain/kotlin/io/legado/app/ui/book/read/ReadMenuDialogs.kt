@@ -27,6 +27,7 @@ import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 /**
  * 阅读菜单选择器对话框集 (iOS/鸿蒙/desktop 共用, 对照 app 端 ReadMenu 的
@@ -79,7 +80,7 @@ fun SimulatedReadingDialog(
         ),
         cancelButton = io.legado.app.ui.compose.component.AlertButton(text = "取消"),
     ) {
-        Column(Modifier.padding(horizontal = 24.dp)) {
+        Column(Modifier.padding(horizontal = DesignTokens.spacingDefault)) {
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -186,7 +187,7 @@ fun DownloadDialog(
         ),
         cancelButton = io.legado.app.ui.compose.component.AlertButton(text = "取消"),
     ) {
-        Column(Modifier.padding(horizontal = 24.dp)) {
+        Column(Modifier.padding(horizontal = DesignTokens.spacingDefault)) {
             Row(
                 Modifier
                     .fillMaxWidth()

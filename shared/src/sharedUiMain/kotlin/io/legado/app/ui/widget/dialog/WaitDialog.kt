@@ -32,7 +32,7 @@ import org.jetbrains.compose.resources.stringResource
  * - desktop / iOS 端直接用本 [WaitDialogContent] 或包装版 [WaitDialog] @Composable。
  *
  * UI 逐项对齐 app 端 (严禁改变样式):
- * - 容器: Row padding=16dp, 垂直居中, 水平居中
+ * - 容器: Row padding 顶 16dp / 左右底 8dp, 垂直居中, 水平居中
  * - 指示器: CircularProgressIndicator size=30dp, color=accent, strokeWidth=2dp
  * - 间距: Spacer width=8dp
  * - 文本: message, color=primaryText
@@ -47,7 +47,7 @@ fun WaitDialogContent(
 ) {
     val colors = AppTheme.colors
     Row(
-        modifier = modifier.padding(16.dp),
+        modifier = modifier.padding(DesignTokens.spacingLg),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {

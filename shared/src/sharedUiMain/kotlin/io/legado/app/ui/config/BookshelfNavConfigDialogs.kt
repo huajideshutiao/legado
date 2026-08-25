@@ -176,7 +176,7 @@ fun BookshelfLayoutConfigDialog(onDismiss: () -> Unit) {
                         .fillMaxWidth()
                         .weight(1f)
                         .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 24.dp, vertical = 8.dp),
+                        .padding(horizontal = DesignTokens.spacingDefault, vertical = 8.dp),
                 ) {
                     ConfigDropdownRow(
                         label = stringResource(Res.string.group_style),
@@ -362,7 +362,7 @@ fun BookshelfLayoutConfigDialog(onDismiss: () -> Unit) {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(horizontal = DesignTokens.spacingDefault, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Spacer(Modifier.weight(1f))
@@ -489,7 +489,7 @@ fun BottomNavConfigDialog(onDismiss: () -> Unit) {
                         .fillMaxWidth()
                         .weight(1f)
                         .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 24.dp, vertical = 8.dp),
+                        .padding(horizontal = DesignTokens.spacingDefault, vertical = 8.dp),
                 ) {
                     Text(
                         stringResource(Res.string.bottom_bar_items_order),
@@ -598,7 +598,7 @@ fun BottomNavConfigDialog(onDismiss: () -> Unit) {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(horizontal = DesignTokens.spacingDefault, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Spacer(Modifier.weight(1f))

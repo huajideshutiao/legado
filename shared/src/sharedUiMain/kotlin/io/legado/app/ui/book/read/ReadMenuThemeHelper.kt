@@ -70,9 +70,8 @@ fun createReadMenuColors(config: ReadStyleConfig, fallbackBgColor: Int): ReadMen
  * 统一「窗口背景图」判定（[ReadMenuState.hasBgImage] 的共享推导源）：
  * 背景图路径非空即视为设置了窗口背景图（背景图时顶栏透明，让背景图透出）。
  *
- * - app(Android): 传 `ThemeConfig.curBgImagePath`——与 `LocalThemeStoreProvider.
- *   current.bgImagePath`（Android actual 包装 ThemeConfig）同一数据源；
- * - 桌面/iOS/鸿蒙：无窗口背景图概念，[ReadMenuState.hasBgImage] 直接传 `false`，
- *   不走本推导。
+ * 四端统一走本推导, 数据源与 LegadoApp 壁纸层同一份 bgImagePath:
+ * - app(Android): `ThemeConfig.curBgImagePath`（Android actual 包装的同一持久层）;
+ * - 桌面/iOS/鸿蒙: 各端 ThemeStoreProvider actual 的 bgImagePath。
  */
 fun hasBgImageByPath(bgImagePath: String?): Boolean = !bgImagePath.isNullOrBlank()

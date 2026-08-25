@@ -280,7 +280,7 @@ fun HomeSectionEditDialog(
                         .fillMaxWidth()
                         .weight(1f, fill = false)
                         .verticalScroll(rememberScrollState())
-                        .padding(start = 16.dp, top = 8.dp, end = 16.dp),
+                        .padding(DesignTokens.spacingDefault),
                 ) {
                     AppUnderlineTextField(
                         value = title,
@@ -354,7 +354,7 @@ fun HomeSectionEditDialog(
                 }
                 // 底栏: 删除(编辑模式) 靠左, 取消/确定 靠右
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = DesignTokens.spacingDefault),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (editing != null) {
@@ -489,18 +489,24 @@ private fun <T> HomeSearchPickDialog(
             shape = DesignTokens.shapeDefault,
             color = colors.fillet,
         ) {
-            Column(Modifier.fillMaxWidth().padding(vertical = 16.dp)) {
+            Column(
+                Modifier.fillMaxWidth().padding(top = 16.dp, bottom = DesignTokens.spacingDefault)
+            ) {
                 Text(
                     text = title,
                     color = colors.primaryText,
                     fontSize = 18.sp,
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
+                    modifier = Modifier.padding(
+                        horizontal = DesignTokens.spacingDefault,
+                        vertical = 4.dp
+                    ),
                 )
                 AppSearchField(
                     value = query,
                     onValueChange = { query = it },
                     hint = stringResource(Res.string.search),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                        .padding(horizontal = DesignTokens.spacingDefault),
                 )
                 FastScrollLazyColumn(
                     state = rememberLazyListState(),
@@ -525,7 +531,7 @@ private fun <T> HomeSearchPickDialog(
                     }
                 }
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = DesignTokens.spacingDefault),
                     horizontalArrangement = Arrangement.End,
                 ) {
                     AppTextButton(text = stringResource(Res.string.cancel), onClick = onDismiss)

@@ -90,14 +90,19 @@ fun SourcePickerDialog(
         Surface(
             shape = DesignTokens.dialogShape,
             color = colors.fillet,
-            modifier = Modifier.appDialogSize(fullHeight = true).padding(16.dp),
+            modifier = Modifier.appDialogSize(fullHeight = true).padding(
+                start = DesignTokens.spacingDefault,
+                top = 16.dp,
+                end = DesignTokens.spacingDefault,
+                bottom = DesignTokens.spacingDefault,
+            ),
         ) {
             Column(Modifier.fillMaxSize()) {
                 // 顶部标题栏: 返回箭头 + 标题 (与原版 Row + IconButton(ic_arrow_back) + Text(选择书源) 对齐)
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 12.dp),
+                        .padding(horizontal = DesignTokens.spacingDefault, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     IconButton(onClick = onDismiss) {
@@ -129,7 +134,8 @@ fun SourcePickerDialog(
                     value = searchKey,
                     onValueChange = { searchKey = it },
                     hint = stringResource(Res.string.search_book_source),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                        .padding(horizontal = DesignTokens.spacingDefault),
                 )
 
                 // 书源列表 (与原版 LazyColumn + items 对齐; 全高对话框下列表撑满剩余高度)

@@ -117,7 +117,12 @@ fun PageKeyDialog(
         Surface(
             shape = DesignTokens.shapeDefault,
             color = colors.fillet,
-            modifier = Modifier.appDialogSize().padding(16.dp),
+            modifier = Modifier.appDialogSize().padding(
+                start = DesignTokens.spacingDefault,
+                top = 16.dp,
+                end = DesignTokens.spacingDefault,
+                bottom = DesignTokens.spacingDefault,
+            ),
         ) {
             Column(Modifier.fillMaxWidth()) {
                 DialogTitleBar(
@@ -127,7 +132,7 @@ fun PageKeyDialog(
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .padding(horizontal = DesignTokens.spacingDefault, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     AppUnderlineTextField(
@@ -166,7 +171,7 @@ fun PageKeyDialog(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp),
+                        .padding(horizontal = DesignTokens.spacingDefault),
                 ) {
                     FilletButton(
                         text = stringResource(Res.string.reset),

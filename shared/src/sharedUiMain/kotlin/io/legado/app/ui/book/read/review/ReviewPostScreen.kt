@@ -43,7 +43,7 @@ import org.jetbrains.compose.resources.stringResource
  * [ReviewPostUiActions.onSubmit] 上抛, 外壳见 [io.legado.app.ui.route.ReviewPostDialogHost]。
  *
  * 尺寸/取色逐条对齐原版 xml (arco_spacing_lg=16dp / md=12dp / default=8dp):
- * sheet paddingHorizontal 16dp + paddingTop 8dp, 输入行 paddingBottom 8dp、垂直居中。
+ * sheet paddingHorizontal 8dp + paddingTop 8dp, 输入行 paddingBottom 8dp、垂直居中。
  */
 @Composable
 fun ReviewPostScreen(
@@ -61,14 +61,14 @@ fun ReviewPostScreen(
     Column(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = DesignTokens.spacingDefault)
             .padding(top = 8.dp),
     ) {
         // 输入框 weight=1 在左, 发布按钮 wrap_content 在右 (原版内层水平 LinearLayout)
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(bottom = 8.dp),
+                .padding(bottom = DesignTokens.spacingDefault),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             ReviewPostInputField(

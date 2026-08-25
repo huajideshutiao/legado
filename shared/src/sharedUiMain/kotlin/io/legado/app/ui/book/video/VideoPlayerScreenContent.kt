@@ -140,8 +140,9 @@ fun VideoPlayerScreenContent(
     displayTitles: List<String> = emptyList(),
     countWords: Boolean = false,
     onOpenChapter: (Int) -> Unit = {},
-    // 容器背景 (对照 app: 页面走主题背景色, 黑底只在视频渲染区内)
-    containerColor: Color = AppTheme.colors.background,
+    // 容器背景: 恒透明, 由路由页面容器统一供给背景 (主题纯色或页面级壁纸层);
+    // 黑底只在视频渲染区内 (mpv/播放器表面自绘)
+    containerColor: Color = Color.Transparent,
 ) {
     Box(
         Modifier

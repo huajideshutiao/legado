@@ -21,6 +21,7 @@ import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppDetailSeekBar
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.footer
 import legado.shared.generated.resources.header
@@ -88,7 +89,12 @@ fun PaddingConfigScreen(
         Modifier
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp)
+            .padding(
+                start = DesignTokens.spacingDefault,
+                top = 16.dp,
+                end = DesignTokens.spacingDefault,
+                bottom = DesignTokens.spacingDefault,
+            )
     ) {
         SectionTitle(stringResource(Res.string.header)) {
             LineCheckbox(showHeaderLine) {

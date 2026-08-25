@@ -43,7 +43,7 @@ import org.jetbrains.compose.resources.stringResource
  * - `stringResource(R.string.xxx)` → `stringResource(Res.string.xxx)` (key-based, 跨平台)
  * - `stringArrayResource(R.array.xxx)` → `stringArrayResource(Res.array.xxx)` (key-based, 跨平台)
  * - PreferenceScreen/listPreference/switchPreference/preference 走 shared/sharedUiMain 的
- *   io.legado.app.ui.compose.preference 包, 内部通过 LocalPreferenceStoreProvider 读写 prefs
+ *   io.legado.app.ui.compose.preference 包, 内部通过 PreferenceProviders 单例读写 prefs
  */
 @Composable
 fun MoreConfigScreen(

@@ -147,7 +147,7 @@ fun DictRuleEditDialog(
     Surface(
         shape = DesignTokens.dialogShape,
         color = colors.fillet,
-        modifier = Modifier.fillMaxWidth().padding(8.dp),
+        modifier = Modifier.fillMaxWidth().padding(DesignTokens.spacingDefault),
     ) {
         Column(Modifier.fillMaxWidth()) {
             DialogTitleBar(
@@ -195,7 +195,12 @@ fun DictRuleEditDialog(
                 Modifier
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
-                    .padding(16.dp),
+                    .padding(
+                        start = DesignTokens.spacingDefault,
+                        top = 16.dp,
+                        end = DesignTokens.spacingDefault,
+                        bottom = DesignTokens.spacingDefault,
+                    ),
             ) {
                 AppUnderlineTextField(
                     value = name,

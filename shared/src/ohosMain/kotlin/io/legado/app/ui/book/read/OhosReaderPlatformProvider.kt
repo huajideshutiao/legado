@@ -252,7 +252,6 @@ private class OhosReadMenuState(
     // (T6: 原传 0 的历史差异已对齐, 见 ReadMenuThemeHelper.createReadMenuColors KDoc;
     // 经 OhosThemeStoreProvider 读持久层, 与 AppTheme.colors.bottomBackground 同源,
     // 无需 @Composable 上下文)。
-    // hasBgImage 语义为「窗口背景图」(app 端 ThemeConfig.curBgImagePath), 鸿蒙无此概念恒 false。
     private val menuTheme: ReadMenuColors
         get() = createReadMenuColors(
             ReadBookConfigProviders.get().config,
@@ -262,7 +261,10 @@ private class OhosReadMenuState(
     override val bgColor: Int get() = menuTheme.bgColor
     override val textColor: Int get() = menuTheme.textColor
 
-    override val hasBgImage: Boolean = false
+    // 窗口背景图时顶栏透明让背景图透出; 与 LegadoApp 壁纸层同一数据源
+    // (判定收敛 shared hasBgImageByPath, 对照 Android upColorConfig)
+    override val hasBgImage: Boolean
+        get() = hasBgImageByPath(OhosThemeStoreProvider().bgImagePath)
 
     // 顶栏 (快照状态, 由 refresh()/reset() 更新: 普通 getter 读 StateFlow.value 在组合期
     // 不追踪, 切章后书名/章节名会冻结; 对照原版 upBookView/upMenuView 显式刷新)

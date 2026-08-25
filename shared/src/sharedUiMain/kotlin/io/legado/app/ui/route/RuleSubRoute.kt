@@ -33,6 +33,7 @@ import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
@@ -215,7 +216,7 @@ private fun RuleSubEditDialog(
         },
         cancelButton = AlertButton(stringResource(Res.string.cancel)) {},
     ) {
-        Column(Modifier.padding(horizontal = 24.dp)) {
+        Column(Modifier.padding(horizontal = DesignTokens.spacingDefault)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     stringResource(Res.string.book_type),

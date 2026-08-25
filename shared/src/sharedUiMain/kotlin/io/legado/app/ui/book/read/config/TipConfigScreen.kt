@@ -27,6 +27,7 @@ import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.preference.ColorPickerDialog
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.hexString
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.footer
@@ -218,9 +219,9 @@ fun TipConfigScreen(
         Modifier
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = DesignTokens.spacingDefault)
             .padding(top = 16.dp)
-            .padding(bottom = 16.dp)
+            .padding(bottom = DesignTokens.spacingDefault)
     ) {
         // 标题模式：左/居中/隐藏
         Row(

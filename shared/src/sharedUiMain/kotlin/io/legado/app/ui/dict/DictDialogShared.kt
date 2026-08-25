@@ -25,6 +25,7 @@ import io.legado.app.data.entities.DictRule
 import io.legado.app.ui.compose.SelectableText
 import io.legado.app.ui.compose.component.AppScrollTabRow
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.toHtmlAnnotatedString
 
 /**
@@ -149,7 +150,12 @@ fun DictDialogContent(
                 color = colors.secondaryText,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(
+                        start = DesignTokens.spacingDefault,
+                        top = 16.dp,
+                        end = DesignTokens.spacingDefault,
+                        bottom = DesignTokens.spacingDefault,
+                    ),
             )
             if (loading) {
                 CircularProgressIndicator(

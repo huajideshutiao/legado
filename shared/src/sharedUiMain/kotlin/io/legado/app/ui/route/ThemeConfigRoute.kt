@@ -25,14 +25,15 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
-import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.config.ThemeConfigScreen
 import io.legado.app.ui.config.ThemeConfigScreenModel
 import io.legado.app.ui.config.ThemeConfigUiEvent
@@ -56,6 +57,7 @@ import legado.shared.generated.resources.search_layout
 import legado.shared.generated.resources.source_edit_max_line_summary
 import legado.shared.generated.resources.source_edit_text_max_line
 import legado.shared.generated.resources.theme_setting
+import legado.shared.generated.resources.unlimited
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringArrayResource
 import org.jetbrains.compose.resources.stringResource
@@ -76,7 +78,7 @@ fun ThemeConfigRoute(
     navigator: AppNavigator,
     screenModelStore: ScreenModelStore,
 ) {
-    val pref = LocalPreferenceStoreProvider.current
+    val pref = PreferenceProviders.get()
     val eventBus = LocalEventBusProvider.current
     val appConfig = remember { AppConfigProviders.get() }
 
@@ -219,15 +221,26 @@ fun ThemeConfigRoute(
 
     // 源编辑框最大行数 NumberPicker (对照 app 端 onSourceEditMaxLine:
     // min=10, max=Int.MAX_VALUE, value=AppConfig.sourceEditMaxLine)
-    // 存储值 <10 视为不限制 (返回 Int.MAX_VALUE); 读 pref 原始值回显,
-    // Int.MAX_VALUE 时 Slider 精度不足但 -/+ 按钮和输入框仍可用
+    // 有意偏离原版: 原版 10..Int.MAX_VALUE 的 Slider 无实用价值, 收窄为 5..30 实用区间,
+    // "不限制"由中性按钮直达 (存 0, summary 显 ∞); 存储值不在 5..30 一律视为不限制
+    // (兼容旧版写入的 Int.MAX_VALUE 与残留脏值), 各端 accessor 同步收口。
     if (showSourceEditMaxLinePicker) {
         val currentMaxLine = pref.getInt(PreferKey.sourceEditMaxLine, Int.MAX_VALUE)
-            .let { if (it < 10) Int.MAX_VALUE else it }
+            .let { if (it in 5..30) it else Int.MAX_VALUE }
         NumberPickerDialog(
             title = stringResource(Res.string.source_edit_text_max_line),
             value = currentMaxLine,
-            range = 10..Int.MAX_VALUE,
+            range = 5..30,
+            neutralButtonText = stringResource(Res.string.unlimited),
+            onNeutral = {
+                pref.putInt(PreferKey.sourceEditMaxLine, 0)
+                screenModel.dispatch(
+                    ThemeConfigUiEvent.UpdateSourceEditMaxLineSummary(
+                        sourceEditMaxLineFormat.replace("%s", "∞")
+                    )
+                )
+                showSourceEditMaxLinePicker = false
+            },
             onConfirm = {
                 pref.putInt(PreferKey.sourceEditMaxLine, it)
                 val maxLineStr = if (it == Int.MAX_VALUE) "∞" else it.toString()
@@ -290,7 +303,7 @@ private fun SearchLayoutConfigDialog(
         },
         cancelButton = AlertButton(text = stringResource(Res.string.cancel)),
     ) {
-        Column(Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
+        Column(Modifier.padding(horizontal = DesignTokens.spacingDefault, vertical = 8.dp)) {
             // 第一行: explore_style 标签 + 普通/视频 下拉 (对照原 Spinner sp_item_style)
             Row(
                 Modifier.fillMaxWidth(),

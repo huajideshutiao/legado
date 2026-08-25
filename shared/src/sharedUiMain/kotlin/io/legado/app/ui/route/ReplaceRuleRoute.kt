@@ -34,8 +34,8 @@ import io.legado.app.ui.association.ImportReplaceRuleItemsDialog
 import io.legado.app.ui.association.ImportReplaceRuleViewModelShared
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.AppTextButton
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
@@ -247,7 +247,14 @@ private fun ReplaceGroupManageDialog(
                     },
                 )
                 if (editing != null) {
-                    Column(Modifier.padding(16.dp)) {
+                    Column(
+                        Modifier.padding(
+                            start = DesignTokens.spacingDefault,
+                            top = 16.dp,
+                            end = DesignTokens.spacingDefault,
+                            bottom = DesignTokens.spacingDefault,
+                        )
+                    ) {
                         AppUnderlineTextField(
                             value = editing!!.second,
                             onValueChange = { editing = editing!!.first to it },

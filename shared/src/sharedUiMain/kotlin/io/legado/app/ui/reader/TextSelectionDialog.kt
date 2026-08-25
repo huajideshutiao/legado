@@ -182,7 +182,7 @@ fun TextSelectionDialog(
                     Modifier
                         .fillMaxWidth()
                         .heightIn(max = 480.dp)
-                        .padding(16.dp),
+                        .padding(horizontal = DesignTokens.spacingDefault, vertical = 16.dp),
                 ) {
                     SelectableText(
                         text = selectedText ?: content,
@@ -198,7 +198,12 @@ fun TextSelectionDialog(
                 FlowRow(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                        .padding(
+                            start = DesignTokens.spacingDefault,
+                            top = 4.dp,
+                            end = DesignTokens.spacingDefault,
+                            bottom = DesignTokens.spacingDefault,
+                        ),
                     horizontalArrangement = Arrangement.Start,
                 ) {
                     // 替换 (原版 menu_replace)

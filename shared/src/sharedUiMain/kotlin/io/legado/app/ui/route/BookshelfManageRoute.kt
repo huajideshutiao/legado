@@ -58,6 +58,7 @@ import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.component.dragSelectable
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -796,7 +797,7 @@ private fun DeleteConfirmDialog(
                             value = deleteFile.value,
                             onValueChange = { deleteFile.value = it },
                         )
-                        .padding(horizontal = 24.dp, vertical = 8.dp),
+                        .padding(horizontal = DesignTokens.spacingDefault, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {

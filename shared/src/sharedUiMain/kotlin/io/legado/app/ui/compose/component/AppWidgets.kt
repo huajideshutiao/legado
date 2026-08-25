@@ -73,6 +73,9 @@ fun AppOutlinedButton(
         shape = DesignTokens.buttonShape,
         border = BorderStroke(DesignTokens.strokeThin, if (enabled) colors.accent else colors.secondaryText.copy(alpha = 0.3f)),
         colors = ButtonDefaults.outlinedButtonColors(
+            // M2 outlinedButtonColors 默认 backgroundColor=surface (不透明), 会盖住页面壁纸;
+            // outlined 语义应为镂空 (仅描边), 与壁纸页/透明容器配套。M2 参数名是 backgroundColor
+            backgroundColor = Color.Transparent,
             contentColor = colors.accent,
             disabledContentColor = colors.secondaryText.copy(alpha = 0.5f),
         ),
@@ -113,8 +116,9 @@ fun AppFilletTextButton(
     val isDark = AppTheme.colors.isDark
     // btn_bg: light @color/btn_bg #100e0e0e / night #14e0e0e0
     val normalBg = if (isDark) Color(0x14e0e0e0) else Color(0x100e0e0e)
-    // 按压: arco_fill_3 light #FFE6E6E6 / night #FF2A2A2A
-    val pressedBg = if (isDark) Color(0xFF2A2A2A) else Color(0xFFE6E6E6)
+    // 按压: 恢复 Arco 化之前的 btn_bg_press_2 (light #20000000 / night #20ffffff,
+    // 半透明加深/提亮一档, 壁纸页保持镂空; Arco 化换成的 arco_fill_3 不透明实色在壁纸场景跳变)
+    val pressedBg = if (isDark) Color(0x20ffffff) else Color(0x20000000)
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     Box(

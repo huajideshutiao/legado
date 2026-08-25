@@ -12,6 +12,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.legado.app.constant.PreferKey
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ReadBookConfigShared
 import io.legado.app.ui.book.read.ReadBookEvents
@@ -22,8 +23,6 @@ import io.legado.app.ui.book.read.config.MoreConfigScreen
 import io.legado.app.ui.book.read.page.detectClickArea
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
-import io.legado.app.ui.compose.platform.PreferenceStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.dialog.NumberPickerDialog
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -42,7 +41,6 @@ import org.jetbrains.compose.resources.stringResource
 fun MoreConfigDialogHost(
     onDismiss: () -> Unit,
 ) {
-    val pref = LocalPreferenceStoreProvider.current
     val readBookConfig = ReadBookConfigProviders.get()
     AppBottomSheetDialog(
         onDismissRequest = onDismiss,
@@ -58,7 +56,6 @@ fun MoreConfigDialogHost(
                 modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp),
             ) {
                 MoreConfigBody(
-                    pref = pref,
                     readBookConfig = readBookConfig,
                 )
             }
@@ -69,9 +66,9 @@ fun MoreConfigDialogHost(
 /** 更多设置正文 (Screen + 内嵌对话框), 路由/弹窗两形态共用 */
 @Composable
 private fun MoreConfigBody(
-    pref: PreferenceStoreProvider,
     readBookConfig: ReadBookConfigShared,
 ) {
+    val pref = PreferenceProviders.get()
     // 触摸灵敏度摘要: 系统scaledTouchSlop格式化 (对照 app 端 page_touch_slop_summary)
     val slopSquare = PlatformCapabilityProviders.getOrNull()?.getScaledTouchSlop() ?: 0
     val pageTouchSlopSummary =

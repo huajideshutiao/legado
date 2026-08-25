@@ -154,7 +154,7 @@ private fun ThemeListDialogContent(
                 Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .padding(horizontal = 16.dp),
+                    .padding(horizontal = DesignTokens.spacingDefault),
             ) {
                 itemsIndexed(items) { position, item ->
                     ThemeListItem(

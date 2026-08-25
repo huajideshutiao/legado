@@ -297,7 +297,7 @@ fun ReadStyleScreen(
         Modifier
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = DesignTokens.spacingDefault)
     ) {
         // 顶部功能小按钮行
         Row(
@@ -444,7 +444,7 @@ fun ReadStyleScreen(
         }
         // 样式列表 LazyRow
         LazyRow(
-            Modifier.fillMaxWidth().padding(bottom = 16.dp),
+            Modifier.fillMaxWidth().padding(bottom = DesignTokens.spacingDefault),
             contentPadding = PaddingValues(horizontal = 4.dp),
         ) {
             items(controller.configList.size) { index ->

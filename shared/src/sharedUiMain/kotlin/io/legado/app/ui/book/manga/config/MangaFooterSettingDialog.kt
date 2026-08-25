@@ -113,7 +113,7 @@ fun MangaFooterSettingDialog(
                     Modifier
                         .fillMaxWidth()
                         .verticalScroll(rememberScrollState())
-                        .padding(16.dp)
+                        .padding(DesignTokens.spacingLg)
                 ) {
                     Row(
                         Modifier.fillMaxWidth(),

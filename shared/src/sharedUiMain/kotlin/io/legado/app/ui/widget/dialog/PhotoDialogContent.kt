@@ -27,7 +27,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalWindowInfo
-import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
@@ -43,16 +42,16 @@ import io.legado.app.help.image.decodeBytesSampled
 import io.legado.app.help.image.decodeSvgFallback
 import io.legado.app.help.image.isGifBytes
 import io.legado.app.help.image.rememberAnimatedImageBitmap
-import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.help.toast.Toasters
-import io.legado.app.model.BookCoverShared
 import io.legado.app.model.BookCoverShared.CoverRatio
+import io.legado.app.model.defaultCoverDisplayPath
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.bookshelf.defaultCoverEntry
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.NinePatchImageOrImage
 import io.legado.app.ui.compose.component.zoomable
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.imageSaveFileName
 import io.legado.app.utils.readAllAndClose
@@ -288,9 +287,8 @@ private suspend fun loadPhotoState(
 private fun defaultCoverState(maxDim: Int): PhotoLoadState.Failed {
     // 选图与路径推导同书架封面链 (BookshelfScreen.loadDefault): entry 版才带 ninePatch 标记
     val picked = runCatching {
-        val coversDir = DataStorageProviders.getOrNull()?.coversDir ?: return@runCatching null
         val entry = defaultCoverEntry(null, CoverRatio.NOVEL) ?: return@runCatching null
-        entry to BookCoverShared.bakedPath(coversDir, entry, CoverRatio.NOVEL)
+        entry to defaultCoverDisplayPath(entry, CoverRatio.NOVEL)
     }.getOrNull() ?: return PhotoLoadState.Failed(null)
     val bitmap = FileUtilsCommon.readBytes(picked.second)?.let { decodeBytesSampled(it, maxDim) }
         ?: return PhotoLoadState.Failed(null)
@@ -374,7 +372,7 @@ fun PhotoViewDialog(
         onDismissRequest = onDismiss,
         okButton = AlertButton(stringResource(Res.string.close)),
     ) {
-        Column(Modifier.padding(horizontal = 24.dp)) {
+        Column(Modifier.padding(horizontal = DesignTokens.spacingDefault)) {
             PhotoDialogContent(
                 src = src,
                 imageModifier = Modifier.fillMaxWidth().fillMaxHeight(0.8f),

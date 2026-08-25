@@ -196,7 +196,6 @@ fun TocScreen(
     Column(
         modifier
             .fillMaxSize()
-            .background(colors.background)
     ) {
         AppTitleBar(
             title = "",

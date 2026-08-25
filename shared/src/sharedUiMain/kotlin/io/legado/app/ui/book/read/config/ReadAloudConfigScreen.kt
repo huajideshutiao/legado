@@ -36,7 +36,7 @@ import org.jetbrains.compose.resources.stringResource
  * 下沉 shared/sharedUiMain 后:
  * - `stringResource(R.string.xxx)` → `stringResource(Res.string.xxx)` (key-based, 跨平台)
  * - PreferenceScreen/preference/preferenceCategory/switchPreference 走 shared/sharedUiMain 的
- *   io.legado.app.ui.compose.preference 包, 内部通过 LocalPreferenceStoreProvider 读写 prefs
+ *   io.legado.app.ui.compose.preference 包, 内部通过 PreferenceProviders 单例读写 prefs
  * - 注意: 原 "systemMediaControlCompatibilityChange"/"mediaButtonPerNext" 为硬编码 key
  *   (不在 PreferKey 中), 保留原字面量字符串
  */
