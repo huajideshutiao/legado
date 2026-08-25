@@ -15,13 +15,16 @@ import coil3.request.SuccessResult
 import coil3.size.Precision
 import coil3.size.Scale
 import coil3.toBitmap
+import io.legado.app.help.FileUtilsCommon
+import io.legado.app.help.config.resolveImagePath
 import io.legado.app.help.http.OkHttpClientProviders
+import io.legado.app.model.coverBakedCacheDir
+import io.legado.app.model.coverOriginalDir
 import io.legado.app.model.manga.MangaModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import okhttp3.OkHttpClient
 import okio.FileSystem
 import okio.buffer
 import java.io.File
@@ -90,15 +93,32 @@ class AndroidBookImageLoader(
             val diskCache = imageLoader.diskCache ?: return@singleFlight null
             for (key in listOf("coverDecode:$url", url)) {
                 val snapshot = diskCache.openSnapshot(key) ?: continue
-                try {
+                snapshot.use { snapshot ->
                     val bytes = FileSystem.SYSTEM.source(snapshot.data).buffer().readByteArray()
                     if (bytes.isNotEmpty()) return@singleFlight bytes
-                } finally {
-                    snapshot.close()
                 }
             }
             null
         }
+
+    /**
+     * 手动封面图集引用 → 展示路径: 本地图集文件 (covers/... 相对引用或 customImg/covers
+     * 绝对路径) 优先读缓存烘焙产物, 按目标尺寸比例推断 novel/video (先精确 ratio, 再试另一个);
+     * 产物缺失/非图集文件 (网络 URL/其他本地路径) 原样返回。
+     */
+    private fun resolveCoverBakedForDisplay(url: String, widthPx: Int, heightPx: Int): String {
+        val abs = resolveImagePath(url) ?: return url
+        if (!abs.startsWith(coverOriginalDir())) return url
+        val sep = if (abs.contains('\\')) '\\' else '/'
+        val stem = abs.substringAfterLast(sep).substringBeforeLast('.', "")
+        val tag =
+            if (widthPx > 0 && heightPx > 0 && widthPx * 9 > heightPx * 16) "video" else "novel"
+        for (t in if (tag == "video") listOf("video", "novel") else listOf("novel", "video")) {
+            val baked = FileUtilsCommon.getPath(coverBakedCacheDir(), "${stem}_$t.webp")
+            if (FileUtilsCommon.exist(baked)) return baked
+        }
+        return abs
+    }
 
     /** [persistent] 为 true 时改写 diskCacheKey, 由 [MultiDiskCache] 分流到封面持久区。
      * 同 URL 并发请求经 [BookImageLoadDedup] 单飞去重 (I6)。 */
@@ -113,17 +133,19 @@ class AndroidBookImageLoader(
         BookImageLoadDedup.singleFlight(
             "${url}\u0000${sourceOrigin ?: ""}\u0000${widthPx}x$heightPx\u0000$persistent\u0000$loadOnlyWifi"
         ) {
+            // 手动封面 (图集引用) 优先读缓存烘焙产物, 减轻大图原图解码
+            val displayUrl = resolveCoverBakedForDisplay(url, widthPx, heightPx)
             val request = ImageRequest.Builder(context as PlatformContext)
-                .data(url)
+                .data(displayUrl)
                 .sourceOrigin(sourceOrigin)
                 .apply {
                     if (persistent) {
                         diskCacheKey(coverDiskCacheKey(url))
-                        extras.set(PersistentCoverKey, true)
+                        extras[PersistentCoverKey] = true
                     }
                     // 非 wifi 且 loadOnlyWifi 时 fetcher 层拦网络获取 (对齐原版 loadOnlyWifiOption)
                     if (loadOnlyWifi) {
-                        extras.set(LoadOnlyWifiKey, true)
+                        extras[LoadOnlyWifiKey] = true
                     }
                     // 按显示尺寸降采样; FILL 对齐消费端 ContentScale.Crop, INEXACT 允许复用更大的内存缓存项
                     if (widthPx > 0 && heightPx > 0) {
@@ -189,7 +211,7 @@ internal fun buildBookImageLoader(
     context: Context,
     additionalComponents: ComponentRegistry.Builder.() -> Unit = {},
 ): ImageLoader {
-    val sharedClient = OkHttpClientProviders.get().okHttpClient as OkHttpClient
+    val sharedClient = OkHttpClientProviders.get().okHttpClient
     return ImageLoader.Builder(context as PlatformContext)
         .components {
             // 封面解密 + 失败 url 跳过 + 防盗链 header: 全部下沉 fetcher 层 (对齐原 Glide

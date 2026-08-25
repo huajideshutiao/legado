@@ -7,7 +7,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
-import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.ui.compose.preference.PreferenceScreen
 import io.legado.app.ui.compose.preference.preference
 import io.legado.app.ui.compose.preference.preferenceCategory
@@ -36,8 +36,8 @@ import org.jetbrains.compose.resources.stringResource
  *
  * 下沉 shared/sharedUiMain:
  * - stringResource(R.string.xxx) → stringResource(Res.string.xxx) (key-based, 跨平台)
- * - AppConfig.coverShowName/coverShowNameN → LocalPreferenceStoreProvider.current.getBoolean
- *   (替代 app 端 AppConfig 直读, 跨平台通过 PreferenceStoreProvider 注入)
+ * - AppConfig.coverShowName/coverShowNameN → PreferenceProviders.get().getBoolean
+ *   (替代 app 端 AppConfig 直读, 跨平台走 PreferenceProviders 单例)
  * - BookCover.upDefaultCover() → onRefreshCover() 回调注入
  *   (BookCover 重 Android 依赖 Glide/Bitmap, 留 app 端; 刷新副作用由宿主承接)
  * - 工具函数 coverCountSummary/coverHeightSummary 保留 app 端 CoverConfigHost
@@ -57,8 +57,8 @@ fun CoverConfigScreen(
     onRefreshCover: () -> Unit,
 ) {
     // coverShowName -> coverShowAuthor 依赖联动（复刻 isEnabled = getPrefBoolean(coverShowName)）
-    // LocalPreferenceStoreProvider.current.getBoolean 替代原 AppConfig.coverShowName (跨平台 provider 注入)
-    val pref = LocalPreferenceStoreProvider.current
+    // PreferenceProviders.get().getBoolean 替代原 AppConfig.coverShowName (跨平台 provider 注入)
+    val pref = PreferenceProviders.get()
     var showNameDay by remember { mutableStateOf(pref.getBoolean(PreferKey.coverShowName, true)) }
     var showNameNight by remember { mutableStateOf(pref.getBoolean(PreferKey.coverShowNameN, true)) }
 

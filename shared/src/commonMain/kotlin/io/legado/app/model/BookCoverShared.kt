@@ -2,7 +2,6 @@ package io.legado.app.model
 
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.PreferenceProvider
-import io.legado.app.model.BookCoverShared.bakedPath
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.toJson
@@ -13,12 +12,12 @@ import kotlin.random.Random
  * BookCover 中可跨平台共享的纯逻辑部分。
  *
  * 仅包含与 Android 无关的枚举数据 ([CoverRatio])、纯数据类 ([DefaultCoverEntry])
- * 以及路径计算 ([bakedPath])。Glide/Bitmap/NinePatch 等 Android 专属实现保留在
- * app 端 [BookCover],不在此下沉。
+ * 以及图集 entries 记忆化解析/选图 (展示路径计算见
+ * [io.legado.app.model.defaultCoverDisplayPath], 缓存产物/图集原图自动分流)。
+ * Glide/Bitmap/NinePatch 等 Android 专属实现保留在 app 端 [BookCover],不在此下沉。
  *
  * app 端 [BookCover] 通过顶层 typealias 引用本对象中的 [CoverRatio] 与 [DefaultCoverEntry],
- * 并以扩展函数形式将 [bakedPath] 包装回原 `entry.bakedPath(ratio)` 签名,
- * 内部委托本对象的 [bakedPath] 工具函数,注入 app 端专属的 coversDir。
+ * 并以扩展函数形式将展示路径包装回原 `entry.bakedPath(ratio)` 签名。
  *
  * desktop 端可直接使用本对象,无需重新实现枚举与数据类。
  */
@@ -44,12 +43,10 @@ object BookCoverShared {
 
     /**
      * 默认封面图集中的一项。
-     * - 普通图:bakedPath(ratio) 指向 `covers/default/{id}_{tag}.webp` 的烘焙结果,原图不保留。
-     * - .9.png:不烘焙,所有 ratio 都指向 `covers/default/{id}.9.png` (NinePatchDrawable 会按容器自适应)。
+     * - 普通图: 展示路径为缓存烘焙产物 `customImg/covers/<id>_<ratio>.webp`, 原图保留在图集;
+     * - .9.png: 不烘焙, 展示路径为图集原图 `customImg/covers/<id>.9.png` (NinePatchDrawable 会按容器自适应)。
      *
-     * 仅含纯数据字段 (id, ninePatch), 不含 [bakedPath] 成员方法 ——
-     * 路径计算依赖平台专属的 coversDir, 故拆出为 [BookCoverShared.bakedPath] 工具函数,
-     * 由各平台端用扩展函数包装注入 coversDir, 保持调用签名 `entry.bakedPath(ratio)` 不变。
+     * 展示路径计算见 [defaultCoverDisplayPath] (本文件不持目录状态, 目录由缓充/图集公共函数给出)。
      *
      * @Serializable 供 kotlinx.serialization (desktop 等端 GSON 别名 = KS_JSON) 解析;
      * app 端 Gson 反射不依赖此注解, 两端 JSON 格式 (字段名/默认值) 完全兼容。
@@ -61,58 +58,16 @@ object BookCoverShared {
     )
 
     /**
-     * 计算默认封面烘焙后的本地路径 (.9.png 或 webp)。
-     *
-     * - ninePatch=true: 返回 `{coversDir}/{id}.9.png`
-     * - ninePatch=false: 返回 `{coversDir}/{id}_{ratio.fileTag}.webp`
-     *
-     * 此函数仅做路径计算 (String + [resolveChildAbsolutePath]), 不依赖 Android Bitmap/Glide, 可跨平台共享。
-     * coversDir 接收绝对路径字符串 (app/desktop 端传入 `File.absolutePath`),
-     * 路径拼接委托 [resolveChildAbsolutePath] (各平台 actual 实现, commonMain 不引用 java.io.File)。
-     * 与原 app 端 [DefaultCoverEntry.bakedPath] 实现一致, 仅迁移位置并显式接收 coversDir。
-     */
-    fun bakedPath(
-        coversDir: String,
-        id: String,
-        ninePatch: Boolean,
-        ratio: CoverRatio,
-    ): String {
-        // 子文件名: id 为 md5/uuid (无分隔符), ratio.fileTag 为 "novel"/"video"
-        val child = if (ninePatch) {
-            "$id.9.png"
-        } else {
-            "${id}_${ratio.fileTag}.webp"
-        }
-        return resolveChildAbsolutePath(coversDir, child)
-    }
-
-    /**
-     * 计算某 [entry] 在指定 [ratio] 下的烘焙文件路径 (扩展函数形式, 内部委托 [bakedPath])。
-     *
-     * 供平台端扩展函数包装使用, 避免重复展开 id/ninePatch 字段。
-     */
-    fun bakedPath(
-        coversDir: String,
-        entry: DefaultCoverEntry,
-        ratio: CoverRatio,
-    ): String = bakedPath(coversDir, entry.id, entry.ninePatch, ratio)
-
-    /**
-     * 列出某偏好下已选图集 entries 在指定 [ratio] 下的路径列表。
+     * 列出某偏好下已选图集 entries 在指定 [ratio] 下的展示路径列表。
      *
      * 仅做路径计算, 不做 Bitmap 解码, 不校验文件存在性 ——
      * 缺文件的 entry 由渲染端回落内置图 (app 端 newDefaultDrawable 的 runCatching /
      * shared 端 loader 加载失败兜底)。
-     *
-     * @param coversDir 烘焙文件所在目录的绝对路径 (平台端提供)
-     * @param entries 已解析的 entry 列表 (调用方负责 JSON 解析, 跨序列化框架差异由调用方承接)
-     * @param ratio 目标比例
      */
     fun listDefaultCoverPaths(
-        coversDir: String,
         entries: List<DefaultCoverEntry>,
         ratio: CoverRatio,
-    ): List<String> = entries.map { bakedPath(coversDir, it, ratio) }
+    ): List<String> = entries.map { defaultCoverDisplayPath(it, ratio) }
 
     /**
      * 图集解析缓存 (日/夜 prefKey 各一条, raw 串即版本号):
@@ -210,15 +165,3 @@ object BookCoverShared {
     )
 }
 
-/**
- * 跨平台路径拼接: 返回 `parent/child` 的绝对路径字符串。
- *
- * 替代 commonMain 不可用的 `java.io.File(parent, child).absolutePath`。
- *
- * - jvmAndAndroidMain actual: `File(parent, child).absolutePath` (与原 app 端实现完全一致)
- * - nativeMain actual: 字符串拼接 (parent 已为绝对路径, child 为纯文件名;
- *   不使用 kotlin.io.File.absolutePath, 见 NativeBookImageStorage.saveImage 注释)
- *
- * 调用方需保证 parent 为绝对路径 (app/desktop 传入 coversDir.absolutePath)。
- */
-expect fun resolveChildAbsolutePath(parent: String, child: String): String

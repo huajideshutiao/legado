@@ -16,7 +16,6 @@ import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.model.BookCoverShared
 import io.legado.app.ui.compose.component.AppTitleBar
-import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.config.CoverConfigScreen
 import io.legado.app.ui.config.CoverConfigScreenModel
 import io.legado.app.ui.config.CoverConfigUiEvent
@@ -51,7 +50,7 @@ fun CoverConfigRoute(
     val screenModel = screenModelStore.getOrCreateTyped(entry) { CoverConfigScreenModel() }
     val state by screenModel.state.collectAsState()
 
-    val pref = LocalPreferenceStoreProvider.current
+    val pref = PreferenceProviders.get()
     val appConfig = remember { AppConfigProviders.get() }
     var showHeightPicker by remember { mutableStateOf(false) }
     // 预解析 summary 模板 (对照 app 端 R.string.bookshelf_cover_height_summary = "Current: %s")

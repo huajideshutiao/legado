@@ -30,17 +30,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.toColorInt
+import androidx.lifecycle.lifecycleScope
 import io.legado.app.App
 import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.base.ComposeDialog
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
-import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.i18n.androidAppString
+import io.legado.app.model.commitBackgroundImage
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.component.AppTextButton
@@ -53,22 +57,22 @@ import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
+import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.utils.ColorUtils
-import io.legado.app.utils.FileUtils
-import io.legado.app.utils.MD5Utils
-import io.legado.app.utils.externalFiles
 import io.legado.app.utils.hexString
-import io.legado.app.utils.inputStream
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.readUri
 import io.legado.app.utils.toastOnUi
-import java.io.FileOutputStream
+import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
  * 主题定制（迁 dialog_theme_customize.xml → Compose；取色正文原本已是 Compose）。
  * 三模式（改 prefs/改 Config/新建 Config）、日夜切换、色块/背景图/模糊、保存校验逐项等价。
  */
-class ThemeCustomizeDialog() : BaseComposeDialogFragment() {
+class ThemeCustomizeDialog : BaseComposeDialogFragment() {
 
     companion object {
         const val RESULT_CONFIG_CHANGED = "themeConfigChanged"
@@ -134,6 +138,9 @@ class ThemeCustomizeDialog() : BaseComposeDialogFragment() {
                 if (result.requestCode == requestCodeBg) {
                     setBgFromUri(uri) { path ->
                         bgImagePath = path
+                        // 选图当场就以内容特征值落图集并烘焙, 设置必须同步提交 ——
+                        // 否则取消对话框会留下"文件已换、pref 未换"的错位态
+                        commitBgImage(path)
                     }
                 }
             }
@@ -296,6 +303,7 @@ class ThemeCustomizeDialog() : BaseComposeDialogFragment() {
                             color = colors.secondaryText,
                             fontSize = 13.sp,
                             maxLines = 1,
+                            overflow = TextOverflow.StartEllipsis,
                             modifier = Modifier.widthIn(max = 180.dp),
                         )
                         if (hasImage) {
@@ -454,21 +462,42 @@ class ThemeCustomizeDialog() : BaseComposeDialogFragment() {
     }
 
     private fun setBgFromUri(uri: Uri, success: (String) -> Unit) {
-        val bgImageKey = if (isNight) PreferKey.bgImageN else PreferKey.bgImage
+        // 图集化统一链路: uri 物化为临时文件后走 importBackgroundImage
+        // (customImg 内容特征值命名, 返回相对引用), 不再 MD5 命名/写 bgImage 键名目录
         readUri(uri) { fileDoc, inputStream ->
             kotlin.runCatching {
-                var file = requireContext().externalFiles
-                val suffix = fileDoc.name.substringAfterLast(".")
-                val fileName = uri.inputStream(requireContext()).getOrThrow().use {
-                    MD5Utils.md5Encode(it) + ".$suffix"
+                val temp = File(
+                    requireContext().cacheDir,
+                    "bg_import_${System.currentTimeMillis()}.${fileDoc.name.substringAfterLast(".")}",
+                )
+                temp.outputStream().use { inputStream.copyTo(it) }
+                val imported = PlatformServiceProviders.get()
+                    .files.importBackgroundImage(temp.absolutePath, isNight)
+                temp.delete()
+                if (imported == null) {
+                    throw IllegalStateException("背景图导入失败")
                 }
-                file = FileUtils.createFileIfNotExist(file, bgImageKey, fileName)
-                FileOutputStream(file).use {
-                    inputStream.copyTo(it)
-                }
-                success(file.absolutePath)
+                success(imported)
             }.onFailure {
                 App.instance.toastOnUi(it.localizedMessage)
+            }
+        }
+    }
+
+    /**
+     * 提交背景图设置 (选图即生效, 与保存共用): 写 bgImage(N)/模糊键 + 重烘焙模糊产物,
+     * 编辑的是当前生效模式时顺带刷新界面。IO 与烘焙走后台, 不卡主线程。
+     */
+    private fun commitBgImage(ref: String?) {
+        lifecycleScope.launch {
+            withContext(IO) {
+                runCatching {
+                    commitBackgroundImage(PreferenceProviders.get(), isNight, ref, blur)
+                }.onFailure { AppLog.put("提交主题背景图失败\n${it.message}", it) }
+            }
+            if (AppConfig.isNightTheme == isNight) {
+                ThemeConfig.applyTheme(requireContext())
+                postEvent(EventBus.RECREATE, "")
             }
         }
     }
@@ -484,6 +513,12 @@ class ThemeCustomizeDialog() : BaseComposeDialogFragment() {
     }
 
     private fun saveToPrefs() {
+        // 背景图/模糊单一提交点: 写键 + 按新半径重烘焙模糊产物 (选图时已提交过一次, 这里覆盖
+        // 用户随后调的模糊度; 空路径清除)。必须排在 saveCustomTheme 之前 —— 后者也写这两个键,
+        // 先写完会让提交点误判"目标态已达成"而跳过重烘焙
+        runCatching {
+            commitBackgroundImage(PreferenceProviders.get(), isNight, bgImagePath, blur)
+        }.onFailure { AppLog.put("提交主题背景图失败\n${it.message}", it) }
         ThemeConfig.saveCustomTheme(
             requireContext(), isNight,
             ThemeConfig.CustomTheme(accent, bg, bbg, bgImagePath, blur)

@@ -63,7 +63,9 @@ class BookInfoEditScreenModel(
                 book.isAudio -> 1
                 else -> 0
             },
-            coverUrl = book.getDisplayCover().orEmpty(),
+            // 编辑框回显/回写的是**存储原值** (图集封面存相对引用), 不能用解析后的绝对路径,
+            // 否则保存会把解析结果写回 customCoverUrl, 相对引用退化成绝对路径
+            coverUrl = book.getDisplayCoverRef().orEmpty(),
             intro = book.getDisplayIntro().orEmpty(),
             bookUrl = book.bookUrl,
             coverTick = _state.value.coverTick + 1,

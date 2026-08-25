@@ -77,7 +77,7 @@ fun BookInfoEditRoute(
 
         // 本地选图: 平台文件选择器 (对照 app 端 HandleFileContract)
         // 选择器实现是阻塞式的 (Android 端 runBlocking 等 SAF 回调), 必须切到 IO 再调
-        // 选中后先经 CoverStorageService 持久化到 covers 目录 (对齐原版 md5 命名),
+        // 选中后先经 CoverStorageService 持久化到图集 covers 目录 (内容字节数特征值命名),
         // 持久化失败回退 pickFile 物化临时路径
         override fun onSelectCover() {
             scope.launch {

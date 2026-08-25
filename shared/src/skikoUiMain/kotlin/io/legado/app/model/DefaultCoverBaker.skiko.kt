@@ -3,6 +3,7 @@ package io.legado.app.model
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.Rect
+import org.jetbrains.skia.SamplingMode
 import org.jetbrains.skia.Surface
 
 /**
@@ -27,10 +28,14 @@ internal actual fun bakeDefaultCoverBytes(
     val sx = (src.width - cropW) / 2f
     val sy = (src.height - cropH) * alignY
     val surface = Surface.makeRasterN32Premul(tw, th)
+    // 缩放显式给 MITCHELL: 省略 samplingMode 的重载用 SamplingMode.DEFAULT = 最近邻抽点
     surface.canvas.drawImageRect(
         src,
         Rect(sx, sy, sx + cropW, sy + cropH),
         Rect(0f, 0f, tw.toFloat(), th.toFloat()),
+        SamplingMode.MITCHELL,
+        null,
+        true,
     )
     surface.makeImageSnapshot().encodeToData(EncodedImageFormat.WEBP, 85)?.bytes
 }.getOrNull()

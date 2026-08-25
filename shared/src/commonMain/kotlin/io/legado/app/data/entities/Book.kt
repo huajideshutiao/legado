@@ -20,6 +20,7 @@ import io.legado.app.help.book.isImage
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.config.resolveImagePath
 import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.utils.decodeStringMapOrNull
 import io.legado.app.utils.systemCurrentTimeMillis
@@ -165,7 +166,18 @@ data class Book(
     @get:Ignore
     val lastChapterIndex get() = totalChapterNum - 1
 
-    fun getDisplayCover() = customCoverUrl.takeUnless { it.isNullOrEmpty() } ?: coverUrl
+    /**
+     * 展示用封面: 自定义封面优先, 否则书源封面。
+     *
+     * 手动选图的封面存**图集内部相对引用** (`covers/<字节数>.<ext>`, 见
+     * [io.legado.app.ui.book.changecover.CoverStorageService]), 这里统一解析为绝对路径供加载端使用;
+     * 网络地址与旧数据绝对路径由 [resolveImagePath] 原样透传。
+     * 需要存储原值 (编辑框回显/导出) 的地方用 [getDisplayCoverRef]。
+     */
+    fun getDisplayCover() = resolveImagePath(getDisplayCoverRef())
+
+    /** 展示用封面的**存储原值** (可能是图集相对引用), 编辑回显/导出用, 不做路径解析。 */
+    fun getDisplayCoverRef() = customCoverUrl.takeUnless { it.isNullOrEmpty() } ?: coverUrl
 
     fun getDisplayIntro() = customIntro.takeUnless { it.isNullOrEmpty() } ?: intro
 

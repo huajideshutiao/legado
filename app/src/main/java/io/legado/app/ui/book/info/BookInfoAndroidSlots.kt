@@ -2,7 +2,6 @@
 package io.legado.app.ui.book.info
 
 import android.graphics.Bitmap
-import android.view.View
 import android.widget.ImageView
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.compose.foundation.Image
@@ -25,17 +24,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import coil3.load
 import coil3.request.placeholder
-import coil3.size.Precision
-import coil3.size.Size
-import coil3.size.SizeResolver
-import coil3.size.ViewSizeResolver
-import coil3.size.pxOrElse
 import io.legado.app.data.entities.Book
 import io.legado.app.help.image.BookImageLoaders
 import io.legado.app.help.image.ImageBitmapLoader
 import io.legado.app.model.blurConfig
 import io.legado.app.ui.compose.platform.rememberString
-import kotlin.math.min
 import kotlinx.coroutines.launch
 
 /*
@@ -55,22 +48,6 @@ import kotlinx.coroutines.launch
  * getDisplayCover / getRealAuthor 扩展直接复用 shared commonMain 的同名扩展,
  * 无需在 app 端重新定义 (shared 已下沉)。
  */
-
-/**
- * stackBlur 的内部工作短边 (`maxShortSide`): 解码压到这个量级, 模糊照旧在 400 短边上完成,
- * 结果与原版逐像素一致, 但"降采样 → 模糊 → 放大回原尺寸"这趟往返只在小图上走。
- */
-private const val BLUR_DECODE_SHORT_SIDE = 400
-
-/** 模糊背景的解码尺寸: 视图实测尺寸等比压到短边 [BLUR_DECODE_SHORT_SIDE] (只缩不放)。 */
-private fun blurBgSizeResolver(view: View) = SizeResolver {
-    val viewSize = ViewSizeResolver(view).size()
-    val width = viewSize.width.pxOrElse { 0 }
-    val height = viewSize.height.pxOrElse { 0 }
-    if (width <= 0 || height <= 0) return@SizeResolver viewSize
-    val scale = (BLUR_DECODE_SHORT_SIDE.toFloat() / min(width, height)).coerceAtMost(1f)
-    Size((width * scale).toInt().coerceAtLeast(1), (height * scale).toInt().coerceAtLeast(1))
-}
 
 /**
  * 模糊封面背景: Glide + BookInfoBgTransformation 经 AndroidView 桥接 (视觉等价保留)。
@@ -112,14 +89,6 @@ fun BookInfoBlurCoverBg(
                         sourceOrigin = book.origin,
                         extraTransformations = listOf(BookInfoBgTransformation(land)),
                     )
-                    // 模糊背景不必按视图实测尺寸解码 (原 ≈1080×1440, ARGB 约 6MB 常驻内存缓存):
-                    // 压到 stackBlur 的工作短边后模糊像素与原版一致, 裁剪/渐变也落在小图上,
-                    // 放大交给绘制期的 CENTER_CROP
-                    size(blurBgSizeResolver(iv))
-                    // 显式给 size 后 Coil 的精度自动推导会落到 EXACT (AndroidRequestService
-                    // .resolvePrecision 只对 ViewSizeResolver 给 INEXACT), 会把小封面放大再模糊;
-                    // 补回 INEXACT 保持原版"不放大"语义 (Scale 仍由 CENTER_CROP 自动推成 FILL)
-                    precision(Precision.INEXACT)
                     placeholder(iv.drawable)
                     listener(onSuccess = { _, _ ->
                         val cb = onCoverLoaded ?: return@listener

@@ -32,12 +32,14 @@ import io.legado.app.help.FileUtilsCommon
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.image.BookImageLoaders
-import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.BookCoverShared
 import io.legado.app.model.BookCoverShared.CoverRatio
 import io.legado.app.model.BookCoverShared.DefaultCoverEntry
-import io.legado.app.model.bakeDefaultCoverBytes
+import io.legado.app.model.bakeCoverVariantsToCache
+import io.legado.app.model.coverBakedCacheDir
+import io.legado.app.model.coverOriginalDir
+import io.legado.app.model.defaultCoverDisplayPath
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppDialog
@@ -54,8 +56,8 @@ import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.FileFilter
 import io.legado.app.ui.root.PlatformServiceProviders
+import io.legado.app.ui.root.normalizeImageSuffix
 import io.legado.app.utils.FlowBus
-import io.legado.app.utils.MD5Utils
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
@@ -81,15 +83,14 @@ import org.jetbrains.compose.resources.stringResource
  * 原 app 端 DefaultCoverGalleryDialog Fragment 已随封面统一删除):
  *
  * - 列表: [BookCoverShared.listDefaultCovers] 读 prefs (PreferKey.defaultCover / defaultCoverDark)
- * - 瓦片: 按 [BookCoverShared.bakedPath] 经 [BookImageLoaders] 加载烘焙图
+ * - 瓦片: 按 [io.legado.app.model.defaultCoverDisplayPath] 经 [BookImageLoaders] 加载烘焙图
  *   (未注册 loader 的端如鸿蒙显示内置占位, 与书架封面链一致)
  * - 添加: 平台文件选择器 ([PlatformServiceProviders].files.pickFile, 阻塞式须切 IO) →
- *   读字节 → MD5 作 id → [bakeDefaultCoverBytes] 烘焙 (NOVEL 300×400 居中裁 / VIDEO
- *   720×405 顶裁, webp q85, 对照原 app 端 BookCover.bakeAndWrite; 失败 toast 中止,
- *   不留 prefs 残留 entry) → 写 coversDir 两 ratio 路径 (.9.png 按原名单路径直落,
- *   保留九宫格标记框) → [BookCoverShared.addDefaultCoverEntry] 写 prefs →
- *   广播 [EventBus.DEFAULT_COVER_CHANGED]
- * - 删除: 二次确认 → 移除 prefs entry + 删烘焙文件 (对照 app 端 removeDefaultCover)
+ *   读字节 → 字节数作 id → **原图落图集** `customImg/covers/<id>.<ext>` (.9.png 按原名单路径
+ *   直落, 保留九宫格标记框) + [bakeCoverVariantsToCache] 烘焙两 ratio 产物写**缓存**
+ *   (失败 toast 中止, 不留 prefs 残留 entry) → [BookCoverShared.addDefaultCoverEntry] 写
+ *   prefs → 广播 [EventBus.DEFAULT_COVER_CHANGED]
+ * - 删除: 二次确认 → 移除 prefs entry + 删图集原图与缓存产物 (另一昼夜图集仍引用同 id 时保留)
  * - 增删后广播 DEFAULT_COVER_CHANGED (封面配置页 summary 刷新) + BOOKSHELF_REFRESH
  *   (书架/详情页默认封面链重组重读 prefs)
  *
@@ -206,16 +207,15 @@ internal fun DefaultCoverGalleryOverlayDialogContent(
     )
 }
 
-/** 单个封面瓦片: 烘焙图按 3:4 展示, 点击删除 (对照原版 CoverTile + onCoverClick)。 */
+/** 单个封面瓦片: 展示路径按图集原图/缓存产物计算 (见 [defaultCoverDisplayPath]), 点击删除。 */
 @Composable
 private fun DefaultCoverTile(entry: DefaultCoverEntry, onClick: () -> Unit) {
-    val coversDir = DataStorageProviders.getOrNull()?.coversDir
     val loader = remember { BookImageLoaders.getOrNull() }
     var bitmap by remember(entry.id) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(entry.id, loader, coversDir) {
-        if (loader == null || coversDir == null) return@LaunchedEffect
+    LaunchedEffect(entry.id, loader) {
+        if (loader == null) return@LaunchedEffect
         bitmap = loader.loadImageOrNull(
-            url = BookCoverShared.bakedPath(coversDir, entry, CoverRatio.NOVEL),
+            url = defaultCoverDisplayPath(entry, CoverRatio.NOVEL),
             sourceOrigin = null,
         )
     }
@@ -267,28 +267,25 @@ private suspend fun addDefaultCoverFromPicker(prefKey: String) {
     }
     val prefs = PreferenceProviders.get()
     val ninePatch = path.endsWith(".9.png", ignoreCase = true)
-    val entry = DefaultCoverEntry(id = MD5Utils.md5Encode(bytes), ninePatch = ninePatch)
+    // 内容字节数特征值作 id (与背景/启动图同规则, 同内容复用)
+    val entry = DefaultCoverEntry(id = bytes.size.toString(), ninePatch = ninePatch)
     // 相同图片已存在直接忽略, 避免重复烘焙写盘
     if (BookCoverShared.listDefaultCovers(prefs, prefKey).any { it.id == entry.id }) return
-    val coversDir = DataStorageProviders.getOrNull()?.coversDir ?: return
     withContext(IoDispatcher) {
         runCatching {
-            FileUtilsCommon.createFolderIfNotExist(coversDir)
+            // 先烘焙 (失败中止, 不留孤儿原图/entry), 成功后再落图集原图
             if (entry.ninePatch) {
-                FileUtilsCommon.writeBytes(
-                    FileUtilsCommon.getPath(coversDir, "${entry.id}.9.png"),
-                    bytes
-                )
+                val nineDest = FileUtilsCommon.getPath(coverOriginalDir(), "${entry.id}.9.png")
+                if (!FileUtilsCommon.exist(nineDest)) FileUtilsCommon.writeBytes(nineDest, bytes)
             } else {
-                // 先烘焙后入库: 失败 (解码不了/编码异常) 中止添加, 不留 prefs 残留 entry
-                CoverRatio.entries.forEach { ratio ->
-                    val baked = bakeDefaultCoverBytes(bytes, ratio)
-                        ?: error("bake cover failed: ${ratio.name}")
-                    FileUtilsCommon.writeBytes(
-                        FileUtilsCommon.getPath(coversDir, "${entry.id}_${ratio.fileTag}.webp"),
-                        baked,
-                    )
+                if (!bakeCoverVariantsToCache(bytes, entry.id)) {
+                    error("bake cover failed")
                 }
+                val dest = FileUtilsCommon.getPath(
+                    coverOriginalDir(),
+                    "${entry.id}.${normalizeImageSuffix(path.substringAfterLast('.'))}"
+                )
+                if (!FileUtilsCommon.exist(dest)) FileUtilsCommon.writeBytes(dest, bytes)
             }
         }
     }.onFailure {
@@ -300,32 +297,38 @@ private suspend fun addDefaultCoverFromPicker(prefKey: String) {
     FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
 }
 
-/** 移除 prefs entry + 删除烘焙文件 (对照 app 端 BookCover.removeDefaultCover), 成功后广播刷新。 */
+/** 移除 prefs entry + 删除图集原图与缓存产物 (另一昼夜图集仍引用同 id 时保留), 成功后广播刷新。 */
 private suspend fun removeDefaultCover(prefKey: String, entry: DefaultCoverEntry) {
     val prefs = PreferenceProviders.get()
     val removed = BookCoverShared.removeDefaultCoverEntry(prefs, prefKey, entry.id)
     if (removed == null) return
-    val coversDir = DataStorageProviders.getOrNull()?.coversDir
-    withContext(IoDispatcher) {
-        if (coversDir != null) {
-            if (removed.ninePatch) {
-                runCatching {
+    // 另一昼夜图集可能复用同一文件 (同字节数=同内容), 仍引用则保留
+    val otherKey =
+        if (prefKey == PreferKey.defaultCover) PreferKey.defaultCoverDark else PreferKey.defaultCover
+    val stillUsed = BookCoverShared.listDefaultCovers(prefs, otherKey).any { it.id == removed.id }
+    if (!stillUsed) {
+        withContext(IoDispatcher) {
+            runCatching {
+                if (removed.ninePatch) {
                     FileUtilsCommon.delete(
-                        FileUtilsCommon.getPath(
-                            coversDir,
-                            "${removed.id}.9.png"
-                        )
+                        FileUtilsCommon.getPath(coverOriginalDir(), "${removed.id}.9.png")
                     )
-                }
-            } else {
-                CoverRatio.entries.forEach { ratio ->
-                    runCatching {
+                } else {
+                    CoverRatio.entries.forEach { ratio ->
                         FileUtilsCommon.delete(
                             FileUtilsCommon.getPath(
-                                coversDir,
+                                coverBakedCacheDir(),
                                 "${removed.id}_${ratio.fileTag}.webp"
                             )
                         )
+                    }
+                    // 图集原图 (扩展名未入 entry, 按 id 前缀扫删)
+                    FileUtilsCommon.listFiles(coverOriginalDir())?.forEach { path ->
+                        if (path.substringAfterLast('/').substringAfterLast('\\')
+                                .substringBeforeLast('.') == removed.id
+                        ) {
+                            FileUtilsCommon.delete(path)
+                        }
                     }
                 }
             }

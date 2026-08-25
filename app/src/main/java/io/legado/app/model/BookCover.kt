@@ -24,12 +24,9 @@ import io.legado.app.help.image.sourceOrigin
 import io.legado.app.model.BookCover.currentCovers
 import io.legado.app.model.BookCover.loadCoverBitmap
 import io.legado.app.model.BookCover.newDefaultDrawable
-import io.legado.app.utils.FileUtils
-import io.legado.app.utils.externalFiles
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.runBlocking
 import legado.shared.generated.resources.Res
-import java.io.File
 import kotlin.random.Random
 
 /**
@@ -49,11 +46,10 @@ typealias DefaultCoverEntry = BookCoverShared.DefaultCoverEntry
  * 计算默认封面烘焙后的本地路径 (.9.png 或 webp)。
  *
  * 顶层扩展函数, 保持原 `entry.bakedPath(ratio)` 签名不变,
- * 内部委托 shared [BookCoverShared.bakedPath], 注入 app 端专属的 [BookCover.coversDir]。
- * desktop 端如需使用, 可自行包装注入 desktop 的 coversDir。
+ * 内部委托 [io.legado.app.model.defaultCoverDisplayPath] (缓存产物/图集原图自动分流)。
  */
 fun DefaultCoverEntry.bakedPath(ratio: CoverRatio): String =
-    BookCoverShared.bakedPath(BookCover.coversDir.absolutePath, this, ratio)
+    io.legado.app.model.defaultCoverDisplayPath(this, ratio)
 
 @Keep
 object BookCover {
@@ -67,12 +63,6 @@ object BookCover {
      * 昼夜切换读 [currentCovers] 惰性取、增删封面写入新串自动失效, 本对象不再持有列表状态。
      */
     private val drawableCache = LruCache<String, Drawable>(16)
-
-    // 列表滑动时 bakedPath 会被频繁调用,提前 mkdirs 一次就够了
-    // internal: 供顶层扩展函数 DefaultCoverEntry.bakedPath 注入此目录, 委托 shared 路径计算
-    internal val coversDir: File by lazy {
-        FileUtils.createFolderIfNotExist(App.instance.externalFiles, "covers", "default")
-    }
 
     /**
      * 内置兜底封面: 已随 KMP 化迁到 shared composeResources (app res 不再保留该图)。

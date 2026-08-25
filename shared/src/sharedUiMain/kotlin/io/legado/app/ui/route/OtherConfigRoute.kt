@@ -13,6 +13,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.image.DecodedBitmapCache
 import io.legado.app.help.toast.Toasters
 import io.legado.app.help.update.AppUpdateManager
@@ -21,7 +22,6 @@ import io.legado.app.ui.book.read.config.PageKeyDialog
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppTitleBar
-import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.config.ConfigActionsShared
 import io.legado.app.ui.config.OtherConfigScreen
 import io.legado.app.ui.config.OtherConfigScreenModel
@@ -77,7 +77,7 @@ fun OtherConfigRoute(
     navigator: AppNavigator,
     screenModelStore: ScreenModelStore,
 ) {
-    val pref = LocalPreferenceStoreProvider.current
+    val pref = PreferenceProviders.get()
     val appConfig = remember { AppConfigProviders.get() }
     val scope = rememberCoroutineScope()
     val platform = remember { PlatformCapabilityProviders.get() }
@@ -160,13 +160,15 @@ fun OtherConfigRoute(
     LaunchedEffect(Unit) {
         if (state.userAgentSummary.isEmpty()) {
             screenModel.dispatch(
-                OtherConfigUiEvent.UpdateUserAgentSummary(pref.getString(PreferKey.userAgent) ?: "")
+                OtherConfigUiEvent.UpdateUserAgentSummary(
+                    pref.getStringOrNull(PreferKey.userAgent) ?: ""
+                )
             )
         }
         if (state.bookTreeUriSummary.isEmpty()) {
             screenModel.dispatch(
                 OtherConfigUiEvent.UpdateBookTreeUriSummary(
-                    pref.getString(PreferKey.defaultBookTreeUri) ?: bookTreeUriSStr
+                    pref.getStringOrNull(PreferKey.defaultBookTreeUri) ?: bookTreeUriSStr
                 )
             )
         }
@@ -204,7 +206,7 @@ fun OtherConfigRoute(
         if (state.updateUrlSummary.isEmpty()) {
             screenModel.dispatch(
                 OtherConfigUiEvent.UpdateUpdateUrlSummary(
-                    pref.getString(PreferKey.updateUrl) ?: ""
+                    pref.getStringOrNull(PreferKey.updateUrl) ?: ""
                 )
             )
         }
@@ -245,7 +247,7 @@ fun OtherConfigRoute(
     if (showUserAgentDialog) {
         TextInputDialog(
             title = stringResource(Res.string.user_agent),
-            initialValue = pref.getString(PreferKey.userAgent) ?: "",
+            initialValue = pref.getStringOrNull(PreferKey.userAgent) ?: "",
             hint = stringResource(Res.string.user_agent),
             onConfirm = { userAgent ->
                 if (userAgent.isBlank()) {
@@ -265,7 +267,7 @@ fun OtherConfigRoute(
     if (showUpdateUrlDialog) {
         TextInputDialog(
             title = stringResource(Res.string.update_url_title),
-            initialValue = pref.getString(PreferKey.updateUrl) ?: "",
+            initialValue = pref.getStringOrNull(PreferKey.updateUrl) ?: "",
             hint = stringResource(Res.string.update_url_hint),
             onConfirm = { raw ->
                 val value = raw.trim()
@@ -357,8 +359,8 @@ fun OtherConfigRoute(
     // 自定义翻页按键对话框 (对照 app 端 onCustomPageKey: PageKeyDialog().show)
     if (showCustomPageKey) {
         val keyMappings = remember {
-            val prev = pref.getString(PreferKey.prevKeys) ?: ""
-            val next = pref.getString(PreferKey.nextKeys) ?: ""
+            val prev = pref.getStringOrNull(PreferKey.prevKeys) ?: ""
+            val next = pref.getStringOrNull(PreferKey.nextKeys) ?: ""
             parsePageKeyMappings(prev, next)
         }
         PageKeyDialog(
