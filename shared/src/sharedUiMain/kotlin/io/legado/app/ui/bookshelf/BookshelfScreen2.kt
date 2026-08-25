@@ -1,7 +1,6 @@
 package io.legado.app.ui.bookshelf
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.RowScope
@@ -27,13 +26,11 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.image.BookImageLoaders
-import io.legado.app.help.storage.DataStorageProviders
-import io.legado.app.model.BookCoverShared
 import io.legado.app.model.BookCoverShared.CoverRatio
+import io.legado.app.model.defaultCoverDisplayPath
 import io.legado.app.ui.compose.component.DefaultCoverNineImage
 import io.legado.app.ui.compose.component.NinePatchImageOrImage
 import io.legado.app.ui.compose.platform.PlatformBackHandler
-import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -72,7 +69,6 @@ internal fun BookshelfScreen2(
     // 主界面压栈 (阅读器/详情/WebView 等打开) 时为 false, 分组返回拦截随之失效
     isRootTop: Boolean = true,
 ) {
-    val colors = AppTheme.colors
     val eInk = LocalEInk.current
     val appConfig = remember { AppConfigProviders.get() }
     val bookCoverSlot = coverSlot ?: LocalBookCoverSlot.current
@@ -88,6 +84,7 @@ internal fun BookshelfScreen2(
     val showGroupCount = remember(configTick) { appConfig.bookshelfShowGroupCount }
     val groups by viewModel.bookGroups.collectAsState()
     val refreshingUrls by viewModel.refreshingUrls.collectAsState()
+    val engineUpTocUrls by viewModel.engineUpTocUrls.collectAsState()
     // 单一数据源: 根级=IdRoot 未分组书, 分组内=该组书 (读 VM 缓存切片, 无独立 Room 流)
     val booksCache by viewModel.booksCache.collectAsState()
 
@@ -132,7 +129,7 @@ internal fun BookshelfScreen2(
         scrollState.gotoTop(layoutSpec.tier, eInk)
     }
 
-    Column(modifier.fillMaxSize().background(colors.background)) {
+    Column(modifier.fillMaxSize()) {
         BookshelfTopBarContainer(actions) {
             BookshelfTitleText(title)
         }
@@ -145,6 +142,7 @@ internal fun BookshelfScreen2(
             onRefresh = stableOnRefresh,
             coverReloadTick = configTick,
             refreshingUrls = refreshingUrls,
+            engineUpdatingUrls = engineUpTocUrls,
             onBookClick = onBookClick,
             onBookLongClick = onBookLongClick,
             showLastUpdateTime = true,
@@ -199,14 +197,13 @@ fun SharedGroupCover(
         suspend fun loadDefault() {
             // seed = 组名 (即分组的"书名", 对照书架书 seed=书名 稳定选图), 不回落封面路径;
             // 走 entry 版选图拿 ninePatch 标记 (defaultCoverFilePath 保留给 AudioPlay 等调用)
-            val coversDir = DataStorageProviders.getOrNull()?.coversDir
             val entry = defaultCoverEntry(seed = group.groupName, ratio = ratio)
-            if (coversDir == null || entry == null) {
+            if (entry == null) {
                 coverState = NoCoverBitmap
                 return
             }
             val bmp = loader.loadImageOrNull(
-                BookCoverShared.bakedPath(coversDir, entry, ratio), null,
+                defaultCoverDisplayPath(entry, ratio), null,
                 decodeSize.width, decodeSize.height,
             )
             coverState = if (bmp == null) NoCoverBitmap else CoverBitmap(bmp, true, entry.ninePatch)

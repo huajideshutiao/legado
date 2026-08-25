@@ -1,7 +1,6 @@
 package io.legado.app.ui.bookshelf
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,14 +55,13 @@ import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.image.BookImageLoaders
-import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.model.BookCoverShared
 import io.legado.app.model.BookCoverShared.CoverRatio
 import io.legado.app.model.BookCoverShared.DefaultCoverEntry
+import io.legado.app.model.defaultCoverDisplayPath
 import io.legado.app.ui.compose.component.AppScrollTabRow
 import io.legado.app.ui.compose.component.DefaultCoverNineImage
 import io.legado.app.ui.compose.component.NinePatchImageOrImage
-import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.transitionStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -243,7 +241,7 @@ fun BookshelfScreen(
     // pager 滑动结束 (settledPage) → 同步 currentGroupId。
     // 不用 currentPage，避免手势过程中频繁改写全局选择状态。
     // 同时持久化 tab 位置 (对照 BookshelfFragment1.onTabSelected: AppConfig.saveTabPosition = position)
-    val prefs = LocalPreferenceStoreProvider.current
+    val prefs = PreferenceProviders.get()
     LaunchedEffect(pagerState, groups) {
         if (groups.isEmpty()) return@LaunchedEffect
         snapshotFlow { pagerState.settledPage }.collect { page ->
@@ -283,7 +281,7 @@ fun BookshelfScreen(
         target.gotoTop(layoutSpec.tier, eInk)
     }
 
-    Column(modifier.fillMaxSize().background(colors.background)) {
+    Column(modifier.fillMaxSize()) {
         BookshelfTopBar(
             groups = groups,
             currentGroupId = displayGroupId,
@@ -450,6 +448,7 @@ private fun GroupBooksPage(
         onDispose { scrollStates.remove(group.groupId) }
     }
     val refreshingUrls by viewModel.refreshingUrls.collectAsState()
+    val engineUpTocUrls by viewModel.engineUpTocUrls.collectAsState()
     // 复用 ShelfBooksContent: 享受 contentType / animateItem / timeTick / 滚顶等性能优化
     ShelfBooksContent(
         items = books.orEmpty(),
@@ -460,6 +459,7 @@ private fun GroupBooksPage(
         onRefresh = onRefresh,
         coverReloadTick = configTick,
         refreshingUrls = refreshingUrls,
+        engineUpdatingUrls = engineUpTocUrls,
         onBookClick = onBookClick,
         onBookLongClick = onBookLongClick,
         showLastUpdateTime = true,
@@ -528,13 +528,11 @@ internal fun BookshelfTopBarContainer(
     actions: @Composable RowScope.() -> Unit,
     content: @Composable RowScope.() -> Unit,
 ) {
-    val colors = AppTheme.colors
     val eInk = LocalEInk.current
     Box(
-        // 背景先铺满 (含状态栏区), 再把内容推到状态栏之下; eInk 不避让
+        // 不涂背景, 颜色由页面容器/壁纸层统一管; 内容推到状态栏之下, eInk 不避让
         Modifier
             .fillMaxWidth()
-            .background(colors.background)
             .then(if (eInk) Modifier else Modifier.transitionStatusBarPadding())
     ) {
         Row(
@@ -611,7 +609,7 @@ internal fun DefaultBookshelfActions(
  * 加载中/失败/无 cover URL/未注册 loader/[AppConfigAccessor.useDefaultCover] 时走默认封面。
  *
  * 默认封面链对齐 app 端 `BookCover.newDefaultDrawable`: 用户图集非空时按 seed (书名, 无则封面
- * 路径) 稳定选一张烘焙图, 从 [DataStorageProviders] 的 coversDir 读本地文件; 图集为空回落内置
+ * 路径) 稳定选一张烘焙图, 读缓存产物/图集原图 (见 [io.legado.app.model.defaultCoverDisplayPath]); 图集为空回落内置
  * `image_cover_default` (.9 图当普通图拉伸)。竖排书名/作者 overlay 只画在默认封面上,
  * 对照原版 `defaultCover=true` 才 drawNameAuthor。网络封面加载期间也先铺该默认封面作占位
  * (对照原 View 版的 Coil placeholder), 成功后覆盖为真实封面。
@@ -653,17 +651,16 @@ fun SharedBookCover(
         // 默认封面链要读 prefs + 解 JSON (解析已按 raw 串记忆化), 挪到协程内真用得上时再算
         suspend fun loadDefault() {
             // 渲染需知 ninePatch 标记, 走 entry 版选图 (defaultCoverFilePath 保留给 AudioPlay 等调用)
-            val coversDir = DataStorageProviders.getOrNull()?.coversDir
             val entry = defaultCoverEntry(
                 seed = book.name.takeIf { it.isNotBlank() } ?: cover,
                 ratio = ratio,
             )
-            if (coversDir == null || entry == null) {
+            if (entry == null) {
                 coverState = NoCoverBitmap
                 return
             }
             val bmp = loader.loadImageOrNull(
-                BookCoverShared.bakedPath(coversDir, entry, ratio), null,
+                defaultCoverDisplayPath(entry, ratio), null,
                 decodeSize.width, decodeSize.height,
             )
             coverState = if (bmp == null) NoCoverBitmap else CoverBitmap(bmp, true, entry.ninePatch)
@@ -786,12 +783,11 @@ internal fun defaultCoverEntry(seed: String?, ratio: CoverRatio): DefaultCoverEn
 /**
  * 用户自定义默认封面集选图的烘焙路径 ([defaultCoverEntry] 的路径形态, 供只需路径的调用方)。
  *
- * 图集为空或 [DataStorageProviders] 未注册时返回 null, 调用方回落内置图。
+ * 图集为空时返回 null, 调用方回落内置图。
  */
 internal fun defaultCoverFilePath(seed: String?, ratio: CoverRatio): String? {
-    val coversDir = DataStorageProviders.getOrNull()?.coversDir ?: return null
     val entry = defaultCoverEntry(seed, ratio) ?: return null
-    return BookCoverShared.bakedPath(coversDir, entry, ratio)
+    return defaultCoverDisplayPath(entry, ratio)
 }
 
 /** 封面宽高比 (宽/高); 对照 BookCoverShared.CoverRatio: NOVEL=3:4 → 0.75 */

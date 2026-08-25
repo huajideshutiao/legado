@@ -289,8 +289,10 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     var sourceEditMaxLine: Int
         get() {
+            // 设置界面 range 5..30, 存储值不在该区间一律视为不限制 (兼容旧版写入的
+            // Int.MAX_VALUE 与残留脏值), 返回 Int.MAX_VALUE 供 maxLines 直接消费
             val maxLine = App.instance.getPrefInt(PreferKey.sourceEditMaxLine, Int.MAX_VALUE)
-            return if (maxLine < 10) Int.MAX_VALUE else maxLine
+            return if (maxLine in 5..30) maxLine else Int.MAX_VALUE
         }
         set(value) {
             App.instance.putPrefInt(PreferKey.sourceEditMaxLine, value)

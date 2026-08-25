@@ -1,7 +1,6 @@
 package io.legado.app.ui.bookshelf
 
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
@@ -87,15 +86,28 @@ class BookshelfViewModel {
         UpdateBookShared(scope, callback)
     }
 
+    // 引擎缺席 (未注册 UpdateBookCallbacks) 时的空闲兜底流: 每次 get 新建实例会让
+    // collectAsState 因 flow 引用变化反复重启收集, 故按类型各持一份常量
+    private val idleRefreshing = MutableStateFlow(false).asStateFlow()
+    private val idleProgressText = MutableStateFlow<String?>(null).asStateFlow()
+    private val idleUpTocUrls = MutableStateFlow<Set<String>>(emptySet()).asStateFlow()
+
     /** 是否正在刷新 (upToc / forceRefresh), UI 用于下拉刷新指示器 */
     val isRefreshing: StateFlow<Boolean>
-        get() = updateBookShared?.isRefreshing
-            ?: MutableStateFlow(false).asStateFlow()
+        get() = updateBookShared?.isRefreshing ?: idleRefreshing
 
     /** 刷新进度文案 (如 "强制刷新 3/10"), null 表示无任务 */
     val progressText: StateFlow<String?>
-        get() = updateBookShared?.progressText
-            ?: MutableStateFlow<String?>(null).asStateFlow()
+        get() = updateBookShared?.progressText ?: idleProgressText
+
+    /**
+     * 引擎正在执行目录更新的 bookUrl 集合 (对照 app 端 MainViewModel.onUpTocBooks)。
+     *
+     * 启动自动更新链路 (autoUpdateGroup → scheduleAutoUpdate) 不登记 [_refreshingUrls]，
+     * 条目转圈判据需合并本集合才能覆盖 (与 app 端 isUpdate(bookUrl) = onUpTocBooks.contains 同语义)。
+     */
+    val engineUpTocUrls: StateFlow<Set<String>>
+        get() = updateBookShared?.onUpTocUrls ?: idleUpTocUrls
 
     private val _bookGroups = MutableStateFlow<List<BookGroup>>(emptyList())
     val bookGroups: StateFlow<List<BookGroup>> = _bookGroups.asStateFlow()

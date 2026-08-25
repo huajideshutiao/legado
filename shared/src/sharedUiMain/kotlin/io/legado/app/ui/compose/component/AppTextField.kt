@@ -438,6 +438,13 @@ internal fun AppDecorationBox(
     )
 }
 
+/** 长按选择的着色: accent 手柄 + 半透明 accent 底 (查找高亮复用同一底色) */
+@Composable
+internal fun appTextSelectionColors(): TextSelectionColors = TextSelectionColors(
+    handleColor = AppTheme.colors.accent,
+    backgroundColor = AppTheme.colors.accent.copy(alpha = 0.4f),
+)
+
 /** 两个重载共享的容器: 下划线输入框 + 线下错误文案 */
 @Composable
 internal fun AppTextFieldImpl(
@@ -447,10 +454,7 @@ internal fun AppTextFieldImpl(
     content: @Composable () -> Unit,
 ) {
     CompositionLocalProvider(
-        LocalTextSelectionColors provides TextSelectionColors(
-            handleColor = AppTheme.colors.accent,
-            backgroundColor = AppTheme.colors.accent.copy(alpha = 0.4f),
-        ),
+        LocalTextSelectionColors provides appTextSelectionColors(),
     ) {
         Column(modifier) {
             content()

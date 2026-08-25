@@ -63,6 +63,9 @@ import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -91,6 +94,7 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
@@ -103,6 +107,7 @@ import io.legado.app.ui.compose.component.TextFieldBottomInset
 import io.legado.app.ui.compose.component.TextFieldHorizontalPadding
 import io.legado.app.ui.compose.component.TextFieldLabelToText
 import io.legado.app.ui.compose.component.appFieldDefaultMinHeight
+import io.legado.app.ui.compose.component.appTextSelectionColors
 import io.legado.app.ui.compose.component.asHighlightOutputTransformation
 import io.legado.app.ui.compose.component.rememberSyncedTextFieldState
 import io.legado.app.ui.compose.component.toKeyboardActionHandler
@@ -136,8 +141,8 @@ private const val SearchRefreshMaxLength = 20000
 
 /**
  * 查找高亮状态 (屏幕级共享): 匹配区间由宿主屏幕的查找目标计算写入,
- * [CodeTextField] 的 VisualTransformation 消费并叠加渲染 (对齐原版 CodeView
- * 的 searchHighlightColor 全量黄底 + currentMatchColor 当前命中强调色)。
+ * [CodeTextField] 的 VisualTransformation 消费并叠加渲染 (对齐原版 CodeView 的
+ * searchHighlightColor 全量黄底): 当前命中改用长按选择的半透明 accent 底强调。
  * 属性全 State 委托, 标 @Stable: 宿主重组时含本对象的调用点可跳过。
  */
 @Stable
@@ -494,6 +499,32 @@ fun CodeTextField(
     // 字段自己的滚动状态 (传给 BasicTextField 的 scrollState): maxLines 有限时 foundation 限高
     // 并在字段内滚动, 装饰层的行号列按本值平移跟随; 不限制时滚动量恒 0, 一切滚动归宿主容器
     val internalScroll = remember { ScrollState(0) }
+    // 嵌套滚动拦截: maxLines 有限时字段内部滚动到顶/底, 剩余的拖动位移与惯性速度就地
+    // 全部消费, 不再沿嵌套滚动链外溢给宿主滚动容器 (书源编辑表单 LazyColumn), 即
+    // "随手一滚到底就停", 不带着父列表滚; 仅在内容确已超出限高 (maxValue > 0, 字段
+    // 真有内部滚动) 时生效, 内容不足限高时字段无内部滚动, 手势照常归父列表。
+    // onPostScroll/onPostFling 只收来自后代滚动节点的溢出量, 宿主自身滚动不经此处。
+    val boundaryNestedScroll = remember {
+        object : NestedScrollConnection {
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource,
+            ): Offset =
+                if (available.y != 0f && internalScroll.maxValue > 0) {
+                    available.copy(x = 0f)
+                } else {
+                    Offset.Zero
+                }
+
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity =
+                if (available.y != 0f && internalScroll.maxValue > 0) {
+                    Velocity(x = 0f, y = available.y)
+                } else {
+                    Velocity.Zero
+                }
+        }
+    }
     // 文本可见区域 (相对文本顶, px): 外部滚动贡献 (字段窗口位置, onGloballyPositioned 更新)
     // 与内部滚动贡献 (internalScroll) 叠加 —— 行号窗口统一由 `externalVisibleTopPx +
     // internalScroll.value` 驱动, 两种滚动场景一个公式, 不按 maxLines 分分支
@@ -749,6 +780,7 @@ fun CodeTextField(
         Box(
             Modifier
                 .fillMaxWidth()
+                .nestedScroll(boundaryNestedScroll)
                 .onPreviewKeyEvent(previewKeyHandler)
                 .then(positionTrackingModifier)
                 .bringIntoViewRequester(searchRequester)
@@ -1268,7 +1300,7 @@ fun CodeTextField(
  * "先旧后新" (对齐原版 postDelayed(highlightRunnable, 150) 的延迟高亮):
  * 文本变化后先返回按变更偏移近似平移的旧 span, 后台 (Dispatchers.Default) 增量重算
  * 变更区间所在行, 完成后 bump version 触发重组拿到精确着色。
- * 查找高亮 (全量黄底 + 当前命中强调色) 由 [searchHighlight] 在着色结果上叠加。
+ * 查找高亮 (半透明黄底 + 当前命中 accent 强调) 由 [searchHighlight] 在着色结果上叠加。
  */
 @Composable
 private fun rememberCodeHighlightTransformation(
@@ -1281,8 +1313,10 @@ private fun rememberCodeHighlightTransformation(
     val cache = remember(syntax) { CodeHighlightCache(syntax.rules) }
     val version = cache.version
     val searchVersion = search?.version
-    val accent = AppTheme.colors.accent
-    return remember(cache, version, search, searchVersion, accent, renderRange) {
+    // 当前命中的强调底色对齐长按选择 (同一半透明 accent): 底色压在语法着色上,
+    // 不透明底会把文字盖掉; 其余命中保持原版半透明黄
+    val currentMatchBackground = appTextSelectionColors().backgroundColor
+    return remember(cache, version, search, searchVersion, currentMatchBackground, renderRange) {
         // 搜索叠加结果缓存: 防抖窗口内 (同一 pendingText) 文本与搜索版本均未变时,
         // 每次重组复用同一 AnnotatedString 实例, 不再重复 append(全文) + 遍历匹配区间
         var overlayText: String? = null
@@ -1307,7 +1341,7 @@ private fun rememberCodeHighlightTransformation(
                             addStyle(
                                 SpanStyle(
                                     background = if (i == searchOverlay.currentIndex) {
-                                        accent
+                                        currentMatchBackground
                                     } else {
                                         SearchMatchBackground
                                     }

@@ -1,5 +1,6 @@
 import org.gradle.internal.os.OperatingSystem
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import java.time.LocalDate
 import java.util.Properties
 
 plugins {
@@ -494,7 +495,7 @@ private fun msiSafeVersion(pkgVer: String): String {
     // 第三段 MMDD[HH[MM]]: 4/6/8 位都收, 缺小时按 0 点算
     val m = Regex("""^(\d+)\.(\d{2})\.(\d{2})(\d{2})(\d{2})?(?:\d{2})?$""").find(pkgVer) ?: return pkgVer
     val (major, yy, mm, dd, hh) = m.destructured
-    val dayOfYear = java.time.LocalDate.of(2000 + yy.toInt(), mm.toInt(), dd.toInt()).dayOfYear
+    val dayOfYear = LocalDate.of(2000 + yy.toInt(), mm.toInt(), dd.toInt()).dayOfYear
     return "$major.$yy.${(dayOfYear - 1) * 24 + (hh.toIntOrNull() ?: 0)}"
 }
 

@@ -53,7 +53,6 @@ import io.legado.app.ui.compose.component.PullToRefreshDefaults
 import io.legado.app.ui.compose.component.pullToRefresh
 import io.legado.app.ui.compose.component.rememberPullToRefreshState
 import io.legado.app.ui.compose.component.rememberResponsiveColumns
-import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.platform.transitionStatusBarPadding
@@ -225,6 +224,9 @@ fun ShelfBooksContent(
     onRefresh: () -> Unit,
     coverReloadTick: Int,
     refreshingUrls: Set<String>,
+    // 引擎正在执行目录更新的 bookUrl 集合 (对照 app 端 MainViewModel.onUpTocBooks)：启动自动
+    // 更新链路不登记 refreshingUrls，条目转圈判据需合并本集合；下拉指示器仍只用 refreshingUrls
+    engineUpdatingUrls: Set<String> = emptySet(),
     onBookClick: (Book) -> Unit,
     onBookLongClick: (Book) -> Unit,
     showLastUpdateTime: Boolean,
@@ -247,8 +249,11 @@ fun ShelfBooksContent(
             item is Book && item.bookUrl in refreshingUrls
         }
     }
-    // 锁定 refreshingUrls 引用, 避免子项无谓重组
-    val refreshingUrlsSet = remember(refreshingUrls) { refreshingUrls }
+    // 锁定合并后集合引用, 避免子项无谓重组; 转圈判据 = 手动登记 ∪ 引擎执行集 (对照 app 端
+    // isUpdate(bookUrl) = onUpTocBooks.contains)
+    val refreshingUrlsSet = remember(refreshingUrls, engineUpdatingUrls) {
+        if (engineUpdatingUrls.isEmpty()) refreshingUrls else refreshingUrls + engineUpdatingUrls
+    }
     val appConfig = remember { AppConfigProviders.get() }
     // 30s 心跳只在列表模式且开了"显示更新时间"时跑, 不依赖任何 tick
     // (原 repeatOnLifecycle(RESUMED) 改为 LaunchedEffect, shared 不依赖 androidx.lifecycle)
@@ -402,16 +407,7 @@ fun ShelfBooksContent(
 fun BookshelfTopBar(content: @Composable RowScope.() -> Unit) {
     val colors = AppTheme.colors
     val eInk = LocalEInk.current
-    val themeStore = LocalThemeStoreProvider.current
-    val hasBgImage = remember(themeStore.bgImagePath) {
-        !themeStore.bgImagePath.isNullOrBlank()
-    }
-    val bg = when {
-        eInk -> Color.White
-        hasBgImage -> Color.Transparent
-        else -> colors.background
-    }
-    Box(Modifier.fillMaxWidth().background(bg).then(if (eInk) Modifier else Modifier.transitionStatusBarPadding())) {
+    Box(Modifier.fillMaxWidth().then(if (eInk) Modifier else Modifier.transitionStatusBarPadding())) {
         Row(
             // 56dp 对照原 TitleBar/Toolbar minHeight=actionBarSize
             Modifier.fillMaxWidth().heightIn(min = 56.dp),

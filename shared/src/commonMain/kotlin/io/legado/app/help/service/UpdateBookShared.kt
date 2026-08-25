@@ -91,11 +91,15 @@ class UpdateBookShared(
     private var poolSize = min(threadCount, AppConst.MAX_THREAD)
     private var upTocPool = newFixedThreadPoolDispatcher(poolSize)
 
-    /** 目录等待/执行集合共用一把锁，集合变化时同步发布 [_tocBusy]，避免跨锁快照竞态。 */
+    /** 目录等待/执行集合共用一把锁，集合变化时同步发布 [_tocBusy]/[_onUpTocUrls]，避免跨锁快照竞态。 */
     private val tocStateLock = SynchronizedObject()
     private val waitUpTocBooks = LinkedHashSet<String>()
     private val onUpTocBooks = LinkedHashSet<String>()
     private val _tocBusy = MutableStateFlow(false)
+
+    /** 正在执行目录更新的 bookUrl 集合快照 (对照 app 端 MainViewModel.onUpTocBooks)，书架 UI 合并进条目转圈判据 */
+    private val _onUpTocUrls = MutableStateFlow<Set<String>>(emptySet())
+    val onUpTocUrls: StateFlow<Set<String>> = _onUpTocUrls.asStateFlow()
 
     private var upTocJob: Job? = null
     private var refreshJob: Job? = null
@@ -122,6 +126,7 @@ class UpdateBookShared(
     /** 调用方必须持有 [tocStateLock]。 */
     private fun publishTocBusyLocked() {
         _tocBusy.value = waitUpTocBooks.isNotEmpty() || onUpTocBooks.isNotEmpty()
+        _onUpTocUrls.value = onUpTocBooks.toSet()
     }
 
     private val bookSourceCacheLock = SynchronizedObject()
