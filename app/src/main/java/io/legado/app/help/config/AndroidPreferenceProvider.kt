@@ -27,6 +27,9 @@ class AndroidPreferenceProvider : PreferenceProvider {
     override fun getString(key: String, default: String): String =
         prefs.getString(key, default) ?: default
 
+    override fun getStringOrNull(key: String): String? =
+        prefs.getString(key, null)
+
     override fun getInt(key: String, default: Int): Int =
         prefs.getInt(key, default)
 

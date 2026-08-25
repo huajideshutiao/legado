@@ -112,6 +112,8 @@ object BackupConfigShared {
         PreferKey.clickActionBR
     )
 
+    // 主题色键; 主题背景图/模糊键 (bgImage/bgImageN/×Blurring) 随备份: 设置点存相对引用
+    // (customImg 内容特征值命名), 图片文件随 zip 打包 (见 BackupShared 图集目录), 恢复即有效
     private val themePrefKeys = arrayOf(
         PreferKey.cPrimary,
         PreferKey.cAccent,

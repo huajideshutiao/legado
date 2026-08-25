@@ -1,6 +1,8 @@
 package io.legado.app.utils
 
 import io.legado.app.App
+import io.legado.app.model.AndroidRealScreenInfoProvider
+import io.legado.app.utils.ScreenInfoProviders
 
 /**
  * 安卓端屏幕尺寸等系统信息工具。
@@ -36,10 +38,7 @@ object SystemUtils {
  * 模式参考 registerAndroidPasswordProvider (BackupAES.kt)。
  */
 fun registerAndroidScreenInfoProvider() {
-    ScreenInfoProviders.register(object : ScreenInfoProvider {
-        override val screenWidthPx: Int
-            get() = App.instance.resources.displayMetrics.widthPixels
-        override val screenHeightPx: Int
-            get() = App.instance.resources.displayMetrics.heightPixels
-    })
+    // 真实全屏 (含状态栏/cutout) 而非内容区: 壁纸/启动图烘焙基准与 iOS nativeBounds/
+    // 鸿蒙显示物理像素/桌面 Toolkit.screenSize 对齐 (ScreenInfoProvider 容器只注册一次)
+    ScreenInfoProviders.register(AndroidRealScreenInfoProvider)
 }

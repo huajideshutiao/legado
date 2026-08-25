@@ -30,7 +30,7 @@ import platform.Foundation.NSUserDefaultsDidChangeNotification
  * 但桌面端 java.util.prefs 需要显式 flush; 这里为对齐行为, 写入后显式 synchronize 确保立即落盘
  * (与 Android commit() 同步落盘行为对齐)。
  *
- * 模式参考 [io.legado.app.help.config.OhosPreferenceProvider] / `DesktopPreferenceStoreProvider`。
+ * 模式参考 [io.legado.app.help.config.OhosPreferenceProvider] / `DesktopPreferenceProvider`。
  */
 class IosPreferenceProvider(
     private val defaults: NSUserDefaults = NSUserDefaults.standardUserDefaults
@@ -39,6 +39,10 @@ class IosPreferenceProvider(
     override fun getString(key: String, default: String): String {
         return defaults.stringForKey(key) ?: default
     }
+
+    override fun getStringOrNull(key: String): String? =
+        // stringForKey 对不存在的 key 返回 null, 直接透传
+        defaults.stringForKey(key)
 
     override fun getInt(key: String, default: Int): Int {
         // integerForKey 返回 NSInteger (Long), 截断为 Int; 不存在的 key 返回 0, 与 default 比较回退
@@ -129,7 +133,7 @@ class IosPreferenceProvider(
 
     /**
      * 监听 NSUserDefaults 变更通知: 覆盖本实例写入之外的直写路径
-     * (IosPreferenceStoreProvider / IosThemeStoreProvider 直接写 standardUserDefaults)。
+     * (IosPreferenceProvider / IosThemeStoreProvider 直接写 standardUserDefaults)。
      *
      * 通知不含变更 key, 回调空串由监听方按"任意 key 变更"处理。
      */

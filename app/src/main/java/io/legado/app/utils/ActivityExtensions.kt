@@ -74,6 +74,23 @@ val WindowManager.windowSize: DisplayMetrics
     }
 
 /**
+ * 真实屏幕尺寸 (含状态栏/导航栏/cutout 的完整物理区): R+ `maximumWindowMetrics`,
+ * 低版本 `getRealMetrics` (对照原版 setCoverFromUri 同款)。
+ * 与 [windowSize] (扣系统栏的应用可用区) 相对 —— 启动图 edge-to-edge 铺满全屏, 裁剪/解码
+ * 必须用本扩展, 否则竖屏构图少算状态栏一条导致比例错位。
+ */
+fun WindowManager.realScreenSize(): android.graphics.Point {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        val bounds = maximumWindowMetrics.bounds
+        android.graphics.Point(bounds.width(), bounds.height())
+    } else {
+        val metrics = DisplayMetrics()
+        defaultDisplay.getRealMetrics(metrics)
+        android.graphics.Point(metrics.widthPixels, metrics.heightPixels)
+    }
+}
+
+/**
  * 内容铺到系统栏之后 (edge-to-edge): insets 全量派发给应用, 由各界面自行避让
  * (Compose 侧 statusBarsPadding / navigationBarsPadding / imePadding)。
  *
@@ -139,8 +156,13 @@ fun Activity.setLightStatusBar(isLightBar: Boolean) {
  */
 @SuppressLint("InlinedApi") // SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR 是内联常量, API<26 被忽略, 安全
 fun Activity.setNavigationBarColorAuto(@ColorInt color: Int) {
-    val isLightBor = ColorUtils.isColorLight(color)
     window.navigationBarColor = color
+    setLightNavigationBar(ColorUtils.isColorLight(color))
+}
+
+/** 导航栏图标明暗 (与底色解耦: 壁纸页底色透明, 明暗按壁纸贴边像素判) */
+@SuppressLint("InlinedApi") // SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR 是内联常量, API<26 被忽略, 安全
+fun Activity.setLightNavigationBar(isLightBor: Boolean) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
         window.insetsController?.let {
             if (isLightBor) {

@@ -30,11 +30,9 @@ import io.legado.app.ui.book.video.VideoPlayPlatformProviders
 import io.legado.app.ui.association.DeepLinkImportHost
 import io.legado.app.ui.compose.platform.IosAppConfigProvider
 import io.legado.app.ui.compose.platform.IosEventBusProvider
-import io.legado.app.ui.compose.platform.IosPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.IosThemeStoreProvider
 import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
-import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.AppNavigator
@@ -63,15 +61,14 @@ fun MainViewController(): UIViewController = ComposeUIViewController {
     MangaReaderScreenModel.Providers.register(IosMangaReaderPlatform)
     VideoPlayPlatformProviders.register(IosVideoPlayPlatformProvider)
 
-    // 2. 注入 4 个 iOS Compose UI Provider (对照 desktop Main.kt line 377-385)
+    // 2. 注入 3 个 iOS Compose UI Provider (对照 desktop Main.kt 阶段2)
     val themeStoreProvider = remember { IosThemeStoreProvider() }
     val appConfigProvider = remember { IosAppConfigProvider() }
     val eventBusProvider = remember { IosEventBusProvider() }
-    val preferenceStoreProvider = remember { IosPreferenceStoreProvider() }
 
     // 阅读页两个注入点: 未注入时 LocalReadConfigProviders/LocalReadBookProvider 取值即 error,
     // 阅读页与 EffectiveReplaces 路由会崩 (二者默认值均为 error 而非兜底实现)
-    val readConfigProviders = remember { ReadConfigProviders(preferenceStoreProvider) }
+    val readConfigProviders = remember { ReadConfigProviders() }
     val readBookProvider = remember { IosReadBookProvider() }
 
     // 零薄壳: AppNavigator + ScreenModelStore 是唯一状态源 (对照 desktop Main.kt line 346-347)
@@ -82,7 +79,6 @@ fun MainViewController(): UIViewController = ComposeUIViewController {
         LocalThemeStoreProvider provides themeStoreProvider,
         LocalAppConfigProvider provides appConfigProvider,
         LocalEventBusProvider provides eventBusProvider,
-        LocalPreferenceStoreProvider provides preferenceStoreProvider,
         LocalReadConfigProviders provides readConfigProviders,
         LocalReadBookProvider provides readBookProvider,
         LocalWebViewSlot provides { config, modifier, callbacks ->

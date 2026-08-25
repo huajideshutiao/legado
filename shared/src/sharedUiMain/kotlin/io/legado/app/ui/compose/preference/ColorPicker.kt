@@ -42,13 +42,13 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialogContent
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.appDialogSize
-import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.ColorUtils
@@ -75,8 +75,8 @@ fun LazyListScope.colorPreference(
     presets: List<Int> = MaterialPresets,
     onColorChange: ((Int) -> Boolean)? = null,
 ) = item {
-    // 替代 LocalContext.current + context.getPrefInt: commonMain 通过 PreferenceStoreProvider 注入
-    val pref = LocalPreferenceStoreProvider.current
+    // 替代 LocalContext.current + context.getPrefInt: commonMain 走 PreferenceProviders 单例
+    val pref = PreferenceProviders.get()
     var color by remember { mutableStateOf(pref.getInt(prefKey, defaultValue)) }
     var showDialog by remember { mutableStateOf(false) }
     PreferenceRow(
@@ -108,7 +108,7 @@ fun LazyListScope.colorPreference(
                 // onColorChange 返回 true 表示外部已处理（对齐 onSaveColor）
                 if (onColorChange?.invoke(v) != true) {
                     color = v
-                    // 替代 context.putPrefInt: 走 PreferenceStoreProvider
+                    // 替代 context.putPrefInt: 走 PreferenceProviders 单例
                     pref.putInt(prefKey, v)
                 }
             },
@@ -189,7 +189,12 @@ fun ColorPickerDialogContent(
         // 自适应布局（方案 C）：BoxWithConstraints 感知正文可用宽高——
         // 竖屏/窄窗(可用宽 ≤ 可用高): Column 单列(现状), 色板高度封顶防矮窗溢出;
         // 横屏/桌面(可用宽 > 可用高): Row 双列, 左列色板填满正文高, 右列控件区可滚动换行。
-        BoxWithConstraints(Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
+        BoxWithConstraints(
+            Modifier.padding(
+                horizontal = DesignTokens.spacingDefault,
+                vertical = 8.dp
+            )
+        ) {
             val landscape = maxWidth > maxHeight
             // 色板恒保 aspectRatio 1.3 (宽高互相推导)：
             // 竖屏  高 = min(宽/1.3, 可用高×0.45)（封顶时按高推导宽并居中，防极端矮窗溢出）

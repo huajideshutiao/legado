@@ -19,6 +19,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -75,12 +76,15 @@ import io.legado.app.ui.bookshelf.toCoverBook
 import io.legado.app.ui.browser.WebViewSheetContent
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppSelectorDialog
+import io.legado.app.ui.compose.platform.LocalEventBusProvider
+import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.LocalTransitionFrozenStatusBarHeightPx
 import io.legado.app.ui.compose.platform.PlatformBackHandler
 import io.legado.app.ui.compose.platform.handleBackKey
 import io.legado.app.ui.compose.platform.performBack
 import io.legado.app.ui.compose.platform.rememberVisibleStatusBarHeightPx
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.ui.config.BookshelfLayoutConfigDialog
 import io.legado.app.ui.config.BottomNavConfigDialog
 import io.legado.app.ui.config.CheckSourceConfigDialog
@@ -253,6 +257,25 @@ fun LegadoApp(
         val overlays by navigator.overlays.collectAsState()
         // 挂起中的 Overlay key 集合 (窗口隐藏但状态保留, 见 AppNavigator.setOverlaySuspended)
         val suspendedKeys by navigator.suspendedOverlayKeys.collectAsState()
+        // 主题背景图: 壁纸层挂在每个路由页面底部 (与原版页面=Activity、背景随页面的语义对齐),
+        // 页面内容透明透出本页壁纸; 窗口根部恒主题纯色兜底 (转场缝隙不露黑边)。
+        // bgImagePath/bgImageBlur 是直读持久层的普通 getter (非 State), 用 recreateEvent
+        // 计数触发重读 —— 提交背景图设置 (commitBackgroundImage) 后必然 emitRecreate。
+        val themeStore = LocalThemeStoreProvider.current
+        val themeEventBus = LocalEventBusProvider.current
+        var themeTick by remember(themeEventBus) { mutableIntStateOf(0) }
+        LaunchedEffect(themeEventBus) {
+            themeEventBus.recreateEvent.collect { themeTick++ }
+        }
+        val eInk = LocalEInk.current
+        // eInk 对齐原版行为: 恒不渲染已设的背景图, 整端纯白
+        val bgImagePath = remember(themeStore, themeTick, eInk) {
+            themeStore.bgImagePath?.takeIf { it.isNotBlank() && !eInk }
+        }
+        val bgImageBlur = remember(themeStore, themeTick) { themeStore.bgImageBlur }
+        val hasBgImage = bgImagePath != null
+        // 全应用共用一份壁纸位图 (见 rememberWallpaperBitmap 的按栈深度重复解码说明)
+        val wallpaper = bgImagePath?.let { rememberWallpaperBitmap(it, bgImageBlur, themeTick) }
 
         // ESC/BackSpace 返回键由 shared 统一处理 (替代三端入口 onPreviewKeyEvent 重复实现)。
         // Compose 按键经焦点系统派发 (FocusOwnerImpl.dispatchKeyEvent 只沿"焦点节点的
@@ -438,8 +461,13 @@ fun LegadoApp(
                                 RectangleShape
                             }
                         }
-                        .background(AppTheme.colors.background),
+                        .background(if (hasBgImage) Color.Transparent else AppTheme.colors.background),
                 ) {
+                    // 壁纸层挂在本页底部 (随转场移动, 对齐原版页面背景随页面走的语义): 页面内容
+                    // 透明区域透出本层; 无壁纸时恒主题纯色。文件不存在/解码失败仅空白无崩溃
+                    if (wallpaper != null) {
+                        WallpaperLayer(wallpaper)
+                    }
                     saveableStateHolder.SaveableStateProvider(entry.id.value) {
                         RouteContent(entry, navigator, screenModelStore)
                     }

@@ -5,6 +5,7 @@ import androidx.compose.ui.graphics.toArgb
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.config.resolveImagePath
 import io.legado.app.lib.theme.ThemeStorePrefKeys
 import io.legado.app.utils.FlowBus
 import kotlinx.coroutines.flow.Flow
@@ -46,7 +47,15 @@ class OhosThemeStoreProvider : ThemeStoreProvider {
     override val navigationBarColor: Color
         get() = Color(prefs.getInt(ThemeStorePrefKeys.KEY_NAVIGATION_BAR_COLOR, prefs.getInt(ThemeStorePrefKeys.KEY_BOTTOM_BACKGROUND, DEFAULT_BOTTOM_BG)))
     override val bgImagePath: String?
-        get() = prefs.getString(currentBgImageKey)
+        get() = resolveImagePath(prefs.getString(currentBgImageKey))
+
+    /** 按日/夜读背景图模糊键 (对照原版 bgImageBlurring, 同 currentBgImageKey 判定) */
+    override val bgImageBlur: Int
+        get() = prefs.getInt(
+            if (currentBgImageKey == PreferKey.bgImageN) PreferKey.bgImageNBlurring
+            else PreferKey.bgImageBlurring,
+            0,
+        )
 
     /** 写入主题色到 [PreferenceProviders] (对齐 getter 读取的键, isNight 同步更新 themeMode) */
     override fun applyColors(accent: Color, bg: Color, bbg: Color, isNight: Boolean) {
@@ -98,33 +107,3 @@ class OhosEventBusProvider : EventBusProvider {
     }
 }
 
-/**
- * 鸿蒙 [PreferenceStoreProvider]: 委托 [PreferenceProviders] (底层 [OhosPreferenceProvider]
- * 文件持久化 legado_config.json), 让 Compose UI 与 commonMain 业务逻辑共享同一存储。
- *
- * 类型映射: Boolean/Int/String 直接委托 PreferenceProvider 同名方法。
- */
-class OhosPreferenceStoreProvider : PreferenceStoreProvider {
-    private val prefs get() = PreferenceProviders.get()
-
-    override fun getBoolean(key: String, defValue: Boolean): Boolean =
-        prefs.getBoolean(key, defValue)
-
-    override fun putBoolean(key: String, value: Boolean) {
-        prefs.putBoolean(key, value)
-    }
-
-    override fun getInt(key: String, defValue: Int): Int =
-        prefs.getInt(key, defValue)
-
-    override fun putInt(key: String, value: Int) {
-        prefs.putInt(key, value)
-    }
-
-    override fun getString(key: String, defValue: String?): String? =
-        prefs.getString(key, defValue ?: "")
-
-    override fun putString(key: String, value: String?) {
-        prefs.putString(key, value)
-    }
-}

@@ -38,6 +38,12 @@ class WelcomeConfigScreenModel : ScreenModel {
             } else {
                 _state.value.copy(welcomeImage = event.path)
             }
+
+            is WelcomeConfigUiEvent.ImageCleared -> _state.value = if (event.isNight) {
+                _state.value.copy(welcomeImageDark = null)
+            } else {
+                _state.value.copy(welcomeImage = null)
+            }
         }
     }
 }
@@ -46,4 +52,5 @@ sealed interface WelcomeConfigUiEvent {
     data class Update(val state: WelcomeConfigUiState) : WelcomeConfigUiEvent
     data class ShowTimeChange(val time: Int) : WelcomeConfigUiEvent
     data class ImagePicked(val isNight: Boolean, val path: String) : WelcomeConfigUiEvent
+    data class ImageCleared(val isNight: Boolean) : WelcomeConfigUiEvent
 }

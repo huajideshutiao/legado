@@ -71,6 +71,7 @@ import io.legado.app.model.CacheBook
 import io.legado.app.model.fileBook.registerAndroidFileBookProviders
 import io.legado.app.model.fileBook.registerEpubApplicationContext
 import io.legado.app.model.registerAndroidAudioPlayProviders
+import io.legado.app.model.registerAndroidRealScreen
 import io.legado.app.model.script.JsEngines
 import io.legado.app.model.script.registerAndroidJsEngines
 import io.legado.app.model.webBook.registerAndroidBookInfoRefresher
@@ -78,7 +79,6 @@ import io.legado.app.model.webBook.registerAndroidWebBookProviders
 import io.legado.app.service.WebService
 import io.legado.app.ui.book.changesource.registerAndroidChangeBookSourcePlatform
 import io.legado.app.ui.book.manage.registerAndroidBookshelfManagePlatform
-import io.legado.app.ui.compose.platform.AndroidPreferenceStoreProvider
 import io.legado.app.ui.main.AndroidUpdateBookCallback
 import io.legado.app.ui.platform.registerSharedAppContext
 import io.legado.app.utils.LogUtils
@@ -124,6 +124,9 @@ class App : Application() {
         // content scheme 路径返回 null (PFD 获取失败, EpubFile 记录错误日志)
         registerEpubApplicationContext(this)
         registerAndroidAppFilesDir(instance)
+        // 注册真实屏幕尺寸 context (含状态栏的全屏, 供壁纸/启动图烘焙取全屏比例; 与内容区
+        // ScreenInfoProvider 语义不同, 见 AndroidRealScreen 注释)
+        registerAndroidRealScreen(instance)
         // 注册 appString 平台 provider (commonMain 非 UI 层字符串通道): 先后台暖缓存
         // 常用 key (填热 Compose Resources AsyncCache), 再注册 provider; 取值走
         // androidAppString 直取, 缓存命中后零 IO, 未命中同步兜底读取 (预热只是加速,
@@ -230,7 +233,7 @@ class App : Application() {
         // 注册的 ReadBookConfigShared 实例 (shared UI / BackupShared 也共用同一实例)。
         // 须在 registerAndroidAppFilesDir + registerAndroidWebBookProviders(AppConfigProviders) 之后。
         ReadBookConfigProviders.register(
-            AndroidReadConfigProviders(AndroidPreferenceStoreProvider()).readBookConfig
+            AndroidReadConfigProviders().readBookConfig
         )
         CrashHandler(this)
         oldConfig = Configuration(resources.configuration)

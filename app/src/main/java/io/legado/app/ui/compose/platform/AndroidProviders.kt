@@ -4,18 +4,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import io.legado.app.App
 import io.legado.app.constant.EventBus
+import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.utils.FlowBus
-import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefInt
-import io.legado.app.utils.getPrefString
 import io.legado.app.utils.hexString
 import io.legado.app.utils.postEvent
-import io.legado.app.utils.putPrefBoolean
-import io.legado.app.utils.putPrefInt
-import io.legado.app.utils.putPrefString
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -45,6 +41,13 @@ class AndroidThemeStoreProvider : ThemeStoreProvider {
         get() = Color(ThemeStore.navigationBarColor)
     override val bgImagePath: String?
         get() = ThemeConfig.curBgImagePath
+
+    /** 按日/夜读背景图模糊键 (对照原版 bgImageBlurring, 页面级壁纸层共用) */
+    override val bgImageBlur: Int
+        get() = App.instance.getPrefInt(
+            if (AppConfig.isNightTheme) PreferKey.bgImageNBlurring else PreferKey.bgImageBlurring,
+            0,
+        )
 
     /** 包装 ThemeConfig.applyConfig + postEvent(RECREATE) (Color→Config 转换在此完成) */
     override fun applyColors(accent: Color, bg: Color, bbg: Color, isNight: Boolean) {
@@ -79,30 +82,3 @@ class AndroidEventBusProvider : EventBusProvider {
     }
 }
 
-/**
- * Android 端 PreferenceStoreProvider：包装 app 模块的 Context.getPrefX/putPrefX
- * (底层 defaultSharedPreferences)。用 splitties 的 [appCtx] 取 Application Context，
- * 无参构造，与 [AndroidThemeStoreProvider] 一致模式。
- *
- * 供已下沉 commonMain 的 Preferences/ColorPicker 等 B 类 Composable 调用
- * (替代原 LocalContext.current + context.getPrefX)。
- */
-class AndroidPreferenceStoreProvider : PreferenceStoreProvider {
-    override fun getBoolean(key: String, defValue: Boolean): Boolean =
-        App.instance.getPrefBoolean(key, defValue)
-
-    override fun putBoolean(key: String, value: Boolean) =
-        App.instance.putPrefBoolean(key, value)
-
-    override fun getInt(key: String, defValue: Int): Int =
-        App.instance.getPrefInt(key, defValue)
-
-    override fun putInt(key: String, value: Int) =
-        App.instance.putPrefInt(key, value)
-
-    override fun getString(key: String, defValue: String?): String? =
-        App.instance.getPrefString(key, defValue)
-
-    override fun putString(key: String, value: String?) =
-        App.instance.putPrefString(key, value)
-}

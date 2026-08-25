@@ -253,7 +253,7 @@ interface AppConfigAccessor {
     /** 持久化 bitmapCacheSize (原 AppConfig.bitmapCacheSize = value), 供 ImageProvider 下沉后修正非法值。 */
     fun setBitmapCacheSize(value: Int) {}
 
-    /** 源编辑最大行数 (原 AppConfig.sourceEditMaxLine): 存储值 <10 视为不限制, 返回 Int.MAX_VALUE。 */
+    /** 源编辑最大行数 (原 AppConfig.sourceEditMaxLine): 存储值不在 5..30 一律视为不限制, 返回 Int.MAX_VALUE。 */
     val sourceEditMaxLine: Int
 
     /** 欢迎页展示时长毫秒 (原 AppConfig.welcomeShowTime), 默认 600, 范围 600..3000。 */

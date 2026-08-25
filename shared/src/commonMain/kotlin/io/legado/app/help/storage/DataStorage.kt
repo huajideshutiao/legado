@@ -18,9 +18,6 @@ interface DataStorage {
     /** 章节正文缓存根目录 (Android `externalFiles/book_cache`, 桌面 `~/.legado/book_cache`)。 */
     val chapterCacheDir: String
 
-    /** 默认封面图集烘焙目录 (Android `externalFiles/covers/default`)。 */
-    val coversDir: String
-
     /**
      * 书籍封面的**持久**磁盘缓存目录, 默认 `filesDir/covers` (Android 与原版 Glide
      * `MultiDiskCacheFactory` 同址)。

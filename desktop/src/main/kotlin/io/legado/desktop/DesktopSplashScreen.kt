@@ -1,8 +1,11 @@
 package io.legado.desktop
 
 import io.legado.app.constant.PreferKey
+import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.config.resolveImagePath
+import io.legado.app.model.bakedImagePath
+import io.legado.app.model.ensureBakedImage
 import io.legado.app.ui.compose.platform.DesktopThemeStoreProvider
-import io.legado.app.ui.compose.platform.PreferenceStoreProvider
 import java.awt.Color
 import java.awt.Dimension
 import java.awt.Font
@@ -33,20 +36,29 @@ import javax.swing.JWindow
  *
  * 闪屏在主窗口 [application] 的 Window 创建前显示, 主窗口可见后由 [close] 关闭。
  *
- * @param prefs PreferenceProviders 已注册的偏好存储
- * @param themeStore 主题色提供者 (已完成初始化)
+ * @param themeStore 主题色提供者 (已完成初始化); 偏好读取走 [PreferenceProviders] 单例
+ *   (须已注册 DesktopPreferenceProvider)
  */
 class DesktopSplashScreen(
-    private val prefs: PreferenceStoreProvider,
     private val themeStore: DesktopThemeStoreProvider,
 ) {
+    private val prefs get() = PreferenceProviders.get()
     private var splashWindow: JWindow? = null
     private var showDurationMs: Long = 0L
 
     /** 基准画布 (内容布局/字号/图标尺寸的参照系), 实际窗口按屏幕比例缩放。 */
-    private companion object {
+    companion object {
         const val BASE_WIDTH = 800
         const val BASE_HEIGHT = 480
+
+        /** 闪屏窗口尺寸: 屏幕宽高一半 (≥400x300, 低分辨率屏如 1024x768 也能完整显示)。 */
+        fun splashSize(): java.awt.Dimension {
+            val screen = java.awt.Toolkit.getDefaultToolkit().screenSize
+            return java.awt.Dimension(
+                (screen.width / 2).coerceAtLeast(400),
+                (screen.height / 2).coerceAtLeast(300),
+            )
+        }
     }
 
     /**
@@ -70,9 +82,11 @@ class DesktopSplashScreen(
         val showIcon = prefs.getBoolean(
             if (isDark) PreferKey.welcomeShowIconDark else PreferKey.welcomeShowIcon, true
         )
-        val bgImagePath = prefs.getString(
-            if (isDark) PreferKey.welcomeImageDark else PreferKey.welcomeImage
-        ).takeUnless { it.isNullOrBlank() }
+        val bgImagePath = resolveImagePath(
+            prefs.getString(
+                if (isDark) PreferKey.welcomeImageDark else PreferKey.welcomeImage
+            )
+        )?.takeUnless { it.isBlank() }
 
         val accentRgb = Color(
             (accent.red * 255).toInt(),
@@ -85,10 +99,9 @@ class DesktopSplashScreen(
             (bgColor.blue * 255).toInt(),
         )
 
-        // 尺寸 = 屏幕宽高的一半, 低分辨率屏幕 (如 1024x768) 也能完整显示
-        val screen = java.awt.Toolkit.getDefaultToolkit().screenSize
-        val width = (screen.width / 2).coerceAtLeast(400)
-        val height = (screen.height / 2).coerceAtLeast(300)
+        // 尺寸规则见 [splashSize] (选图裁剪共用)
+        val width = splashSize().width
+        val height = splashSize().height
         val scale = minOf(
             width.toFloat() / BASE_WIDTH,
             height.toFloat() / BASE_HEIGHT,
@@ -103,13 +116,22 @@ class DesktopSplashScreen(
         window.background = bgRgb
         window.contentPane.background = bgRgb
 
-        // 背景图
+        // 背景图: 产物优先 (选图时已烘焙); 缺失直解原图保显示 (EDT 不做烘焙),
+        // 同时后台补烘焙落盘供下次秒读 —— 与壁纸产物/启动图渲染端冷路径同构
         var bgImage: BufferedImage? = null
         if (bgImagePath != null) {
+            val baked = bakedImagePath(bgImagePath)
+            val displayPath = if (java.io.File(baked).exists()) baked else {
+                val screen = java.awt.Toolkit.getDefaultToolkit().screenSize
+                Thread {
+                    // 补烘焙复用全端冷路径 ensureBakedImage (屏幕尺寸, WEBP q80, 不放大)
+                    runCatching { ensureBakedImage(bgImagePath, screen.width, screen.height) }
+                }.apply { isDaemon = true }.start()
+                bgImagePath
+            }
             bgImage = runCatching {
-                java.io.File(bgImagePath).takeIf { it.exists() }?.let {
-                    ImageIO.read(it)
-                }
+                // 产物是 WEBP 字节 (ImageIO 直读, TwelveMonkeys imageio-webp SPI)
+                java.io.File(displayPath).takeIf { it.exists() }?.let { ImageIO.read(it) }
             }.getOrNull()
         }
 
@@ -128,6 +150,7 @@ class DesktopSplashScreen(
         content.bounds = java.awt.Rectangle(0, 0, width, height)
 
         // 居中
+        val screen = java.awt.Toolkit.getDefaultToolkit().screenSize
         window.setLocation(
             (screen.width - width) / 2,
             (screen.height - height) / 2,
@@ -178,7 +201,20 @@ class DesktopSplashScreen(
                 )
                 // 背景图或纯色
                 if (bgImage != null) {
-                    g2d.drawImage(bgImage, 0, 0, width, height, null)
+                    // 有意偏离原版：原版拉伸铺满会变形，改为中心裁切保持宽高比
+                    val imgW = bgImage.width.coerceAtLeast(1)
+                    val imgH = bgImage.height.coerceAtLeast(1)
+                    val coverScale = maxOf(
+                        width.toDouble() / imgW,
+                        height.toDouble() / imgH,
+                    )
+                    // 目标尺寸向上取整保证完全覆盖窗口（不留发丝缝），
+                    // 左上角居中偏移可为负，出界部分由绘制裁剪自动丢弃
+                    val drawW = Math.ceil(imgW * coverScale).toInt()
+                    val drawH = Math.ceil(imgH * coverScale).toInt()
+                    val drawX = (width - drawW) / 2
+                    val drawY = (height - drawH) / 2
+                    g2d.drawImage(bgImage, drawX, drawY, drawW, drawH, null)
                 } else {
                     g2d.color = backgroundColor
                     g2d.fillRect(0, 0, width, height)

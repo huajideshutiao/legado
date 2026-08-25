@@ -17,7 +17,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.core.graphics.drawable.toDrawable
 import io.legado.app.R
-import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.Theme
 import io.legado.app.help.config.AppConfig
@@ -26,12 +25,10 @@ import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.ui.compose.platform.AndroidAppConfigProvider
 import io.legado.app.ui.compose.platform.AndroidEventBusProvider
-import io.legado.app.ui.compose.platform.AndroidPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.AndroidThemeStoreProvider
 import io.legado.app.ui.compose.platform.AppKeyRouter
 import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
-import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.ColorUtils
@@ -39,10 +36,10 @@ import io.legado.app.utils.disableAutoFill
 import io.legado.app.utils.edgeToEdge
 import io.legado.app.utils.hideSoftInput
 import io.legado.app.utils.observeEvent
+import io.legado.app.utils.setLightNavigationBar
 import io.legado.app.utils.setLightStatusBar
 import io.legado.app.utils.setNavigationBarColorAuto
 import io.legado.app.utils.setStatusBarColorAuto
-import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.windowSize
 
 /**
@@ -84,7 +81,6 @@ abstract class BaseComposeActivity(
             val themeStoreProvider = remember { AndroidThemeStoreProvider() }
             val appConfigProvider = remember { AndroidAppConfigProvider() }
             val eventBusProvider = remember { AndroidEventBusProvider() }
-            val preferenceStoreProvider = remember { AndroidPreferenceStoreProvider() }
             CompositionLocalProvider(
                 // Android 12+ 默认 stretch overscroll: 越界下拉整体下移, 露出窗口背景
                 // (主题黑/白); 统一禁用 overscroll 视觉效果 (对齐原版 View 体系无边行为),
@@ -93,7 +89,6 @@ abstract class BaseComposeActivity(
                 LocalThemeStoreProvider provides themeStoreProvider,
                 LocalAppConfigProvider provides appConfigProvider,
                 LocalEventBusProvider provides eventBusProvider,
-                LocalPreferenceStoreProvider provides preferenceStoreProvider,
             ) {
                 AppTheme { Content() }
             }
@@ -133,7 +128,9 @@ abstract class BaseComposeActivity(
     open fun initTheme() {
         // 在 super.onCreate 之前注入 Window 背景，防止过渡瞬间的黑屏/白屏闪烁
         if (theme != Theme.Transparent) {
-            val bg = ThemeConfig.curBgImagePath
+            // imageBg=false (MainActivity): 壁纸由 shared 页面级层绘制 (每个路由页面底部),
+            // 窗口恒用主题纯色兜底 —— 不再按 curBgImagePath 置空, 转场缝隙/系统栏区域不露黑边
+            val bg = if (imageBg) ThemeConfig.curBgImagePath else null
             if (bg.isNullOrBlank()) {
                 window.setBackgroundDrawable(backgroundColor.toDrawable())
             } else {
@@ -167,17 +164,8 @@ abstract class BaseComposeActivity(
     }
 
     open fun upBackgroundImage() {
-        if (imageBg) {
-            try {
-                ThemeConfig.getBgDrawable(this, windowManager.windowSize)?.let {
-                    window.decorView.background = it
-                }
-            } catch (_: OutOfMemoryError) {
-                toastOnUi("背景图片太大,内存溢出")
-            } catch (e: Exception) {
-                AppLog.put("加载背景出错\n${e.localizedMessage}", e)
-            }
-        }
+        // 壁纸绘制已全部走 shared 页面级 WallpaperLayer / 欢迎页 Compose 层,
+        // 钩子保留仅供子类覆盖 (调用时序在 setupSystemBar 后、setContent 前)
     }
 
     open fun setupSystemBar() {
@@ -185,9 +173,17 @@ abstract class BaseComposeActivity(
             edgeToEdge()
         }
         val bg = ThemeConfig.curBgImagePath
-        val statusBarColor =
-            if (bg.isNullOrBlank()) ThemeStore.statusBarColor else Color.TRANSPARENT
-        setStatusBarColorAuto(statusBarColor, fullScreen)
+        if (bg.isNullOrBlank()) {
+            setStatusBarColorAuto(ThemeStore.statusBarColor, fullScreen)
+        } else {
+            // 壁纸页状态栏底色透明, 图标明暗改按壁纸顶边像素亮度判 —— 透明色的 RGB 是纯黑,
+            // 交给 isColorLight 会恒判深色底, 浅色壁纸上白图标看不见; 采样失败回落主题色
+            window.statusBarColor = Color.TRANSPARENT
+            setLightStatusBar(
+                ThemeConfig.curBgEdgeIsLight(windowManager.windowSize, top = true)
+                    ?: ColorUtils.isColorLight(ThemeStore.statusBarColor)
+            )
+        }
         if (toolBarTheme == Theme.Dark) {
             setLightStatusBar(false)
         } else if (toolBarTheme == Theme.Light) {
@@ -198,9 +194,16 @@ abstract class BaseComposeActivity(
 
     open fun upNavigationBarColor() {
         val bg = ThemeConfig.curBgImagePath
-        val navColor =
-            if (bg.isNullOrBlank()) ThemeStore.navigationBarColor else Color.TRANSPARENT
-        setNavigationBarColorAuto(navColor)
+        if (bg.isNullOrBlank()) {
+            setNavigationBarColorAuto(ThemeStore.navigationBarColor)
+        } else {
+            // 同状态栏: 底色透明, 明暗按壁纸底边像素亮度判
+            window.navigationBarColor = Color.TRANSPARENT
+            setLightNavigationBar(
+                ThemeConfig.curBgEdgeIsLight(windowManager.windowSize, top = false)
+                    ?: ColorUtils.isColorLight(ThemeStore.navigationBarColor)
+            )
+        }
     }
 
     open fun observeLiveBus() {

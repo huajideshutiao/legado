@@ -23,7 +23,6 @@ import io.legado.app.help.config.ReadBookConfig.upBg
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
-import io.legado.app.ui.compose.platform.AndroidPreferenceStoreProvider
 import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.RemoteAssetsUtils
@@ -59,7 +58,7 @@ object ReadBookConfig {
         get() = ReadBookConfigProviders.getOrNull() ?: fallbackShared
 
     private val fallbackShared: ReadBookConfigShared by lazy {
-        ReadBookConfigShared(AndroidPreferenceStoreProvider())
+        ReadBookConfigShared(PreferenceProviders.get())
             .also { ReadBookConfigProviders.register(it) }
     }
 

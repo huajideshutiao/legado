@@ -250,6 +250,14 @@ object BackupShared {
             val p = backupPath + BackupFileOps.separator + name
             if (BackupFileOps.exists(p)) p else null
         }
+        // 图集目录随备份打包 (zip 内条目保留相对文件根结构): customImg/ (封面图集+
+        // 主题背景图+启动图+阅读背景 novelBg 子目录) 与旧版兼容目录 bg/; 恢复时解回文件根
+        val filesBase = AppFilesDirs.get().externalFilesDir ?: AppFilesDirs.get().filesDir
+        val imageDirs = listOf("customImg", "bg").mapNotNull { dirName ->
+            val dir = filesBase + BackupFileOps.separator + dirName
+            if (BackupFileOps.exists(dir)) dir else null
+        }
+        val pathsWithImages = paths + imageDirs
         BackupFileOps.delete(zipFilePath)
         BackupFileOps.delete(zipFilePath.replace("tmp_", ""))
         // WebDav 始终使用带日期的文件名; onlyLatestBackup 仅控制本地副本名称
@@ -267,7 +275,7 @@ object BackupShared {
         val localZipPath = localDirectory.trimEnd('/', '\\') +
             BackupFileOps.separator + localFileName
 
-        if (BackupFileOps.zipFiles(paths, zipFilePath)) {
+        if (BackupFileOps.zipFiles(pathsWithImages, zipFilePath)) {
             if (!hooks.copyBackupTo(zipFilePath, localDirectory, localFileName)) {
                 BackupFileOps.copyFile(zipFilePath, localZipPath)
             }

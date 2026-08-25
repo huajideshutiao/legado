@@ -368,6 +368,7 @@
     <string name="theme_config">Theme config</string>
     <string name="welcome_config">Welcome screen settings</string>
     <string name="background_image">Background image</string>
+    <string name="bg_image_import_failed">Failed to import background image</string>
     <string name="change_icon">Change icon</string>
     <string name="change_icon_summary">Switch the software icon displayed on the desktop</string>
     <string name="cover_config">cover config</string>
@@ -444,6 +445,7 @@
     <string name="day">Day</string>
     <string name="night">Night</string>
     <string name="source_edit_text_max_line">Maximum number of rows in the source edit box</string>
+    <string name="unlimited">Unlimited</string>
     <string name="auto_indent">Auto indent</string>
     <string name="ps_auto_refresh">Update books automatically when opening the software</string>
     <string name="pt_auto_refresh">Auto-refresh</string>

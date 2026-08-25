@@ -515,6 +515,7 @@
     <string name="pre_download_s">預先下載%s章正文</string>
     <string name="is_enabled">係咪啟用</string>
     <string name="background_image">背景圖片</string>
+    <string name="bg_image_import_failed">背景圖片導入失敗</string>
     <string name="background_image_blurring">背景圖片虛化</string>
     <string name="export_folder">導出資料夾</string>
     <string name="export_charset">導出編碼</string>
@@ -695,6 +696,7 @@
     <string name="cover_decode_js">封面解密（coverDecodeJs）</string>
     <string name="progress_bar_behavior">進度列行為</string>
     <string name="source_edit_text_max_line">源編輯框最大行數</string>
+    <string name="unlimited">不限制</string>
     <string name="source_edit_max_line_summary">%s，設定行數小於螢幕可顯示的最大行數可以更方便的滑動到其他的欄位進行編輯</string>
     <string name="restore_last_book_process">是否復原到跳轉前的閱讀進度？</string>
     <string name="search_scope">搜尋範圍</string>

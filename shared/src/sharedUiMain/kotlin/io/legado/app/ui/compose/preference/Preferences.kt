@@ -43,11 +43,11 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
-import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.AppSwitch
-import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
+import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.platform.rememberNavigationBarPaddingValues
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -60,11 +60,11 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * Compose 设置 DSL（对齐 androidx.preference + lib/prefs 视觉/行为）。
  * 视觉对齐 view_preference：行透明、按压 btn_bg、图标 accent、标题 16sp、摘要 14sp。
- * 读写走 PreferenceStoreProvider.get/put Boolean/Int/String，key 不变；
+ * 读写走 PreferenceProviders 单例 (PreferenceProvider) 的 get/put Boolean/Int/String，key 不变；
  * isBottomBackground 复刻 parseIsBottomBackground。
  *
  * 下沉 commonMain 后, 原 LocalContext.current + Context.getPrefX/putPrefX 由
- * [LocalPreferenceStoreProvider] 注入, 替代 SharedPreferences 直接访问。
+ * [PreferenceProviders] 注入, 替代 SharedPreferences 直接访问。
  */
 
 /** LazyColumn 容器，透明背景（露出 Activity 主题背景/壁纸），底部避让导航栏 */
@@ -137,14 +137,14 @@ fun LazyListScope.switchPreference(
     onCheckedChange: ((Boolean) -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
 ) = item {
-    // 替代 LocalContext.current + context.getPrefBoolean: commonMain 通过 PreferenceStoreProvider 注入
-    val pref = LocalPreferenceStoreProvider.current
+    // 替代 LocalContext.current + context.getPrefBoolean: commonMain 走 PreferenceProviders 单例
+    val pref = PreferenceProviders.get()
     var internalChecked by remember { mutableStateOf(pref.getBoolean(prefKey, defaultValue)) }
     val isChecked = checked ?: internalChecked
     val toggle = {
         val v = !isChecked
         internalChecked = v
-        // 替代 context.putPrefBoolean: 走 PreferenceStoreProvider
+        // 替代 context.putPrefBoolean: 走 PreferenceProviders 单例
         pref.putBoolean(prefKey, v)
         onCheckedChange?.invoke(v)
     }
@@ -176,8 +176,8 @@ fun LazyListScope.editTextPreference(
     widthFraction: Float = 1f,
     onValueChange: ((String) -> Unit)? = null,
 ) = item {
-    // 替代 LocalContext.current: commonMain 通过 PreferenceStoreProvider 注入
-    val pref = LocalPreferenceStoreProvider.current
+    // 替代 LocalContext.current: commonMain 走 PreferenceProviders 单例
+    val pref = PreferenceProviders.get()
     var showDialog by remember { mutableStateOf(false) }
     PreferenceRow(
         title = title,
@@ -188,7 +188,7 @@ fun LazyListScope.editTextPreference(
         onClick = { showDialog = true },
     )
     if (showDialog) {
-        var text by remember { mutableStateOf(pref.getString(prefKey) ?: defaultValue) }
+        var text by remember { mutableStateOf(pref.getStringOrNull(prefKey) ?: defaultValue) }
         AppAlertDialog(
             onDismissRequest = { showDialog = false },
             title = title,
@@ -197,7 +197,7 @@ fun LazyListScope.editTextPreference(
                 // 替代 stringResource(R.string.ok): commonMain 走 stringResource(Res.string.ok)
                 text = stringResource(Res.string.ok),
                 onClick = {
-                    // 替代 context.putPrefString: 走 PreferenceStoreProvider
+                    // 替代 context.putPrefString: 走 PreferenceProviders 单例
                     pref.putString(prefKey, text)
                     onValueChange?.invoke(text)
                 },
@@ -233,9 +233,9 @@ fun LazyListScope.listPreference(
     isBottomBackground: Boolean = false,
     onValueChange: ((String) -> Unit)? = null,
 ) = item {
-    // 替代 LocalContext.current: commonMain 通过 PreferenceStoreProvider 注入
-    val pref = LocalPreferenceStoreProvider.current
-    var value by remember { mutableStateOf(pref.getString(prefKey) ?: defaultValue) }
+    // 替代 LocalContext.current: commonMain 走 PreferenceProviders 单例
+    val pref = PreferenceProviders.get()
+    var value by remember { mutableStateOf(pref.getStringOrNull(prefKey) ?: defaultValue) }
     var showDialog by remember { mutableStateOf(false) }
     val entry = entries.getOrNull(values.indexOf(value)) ?: ""
     PreferenceRow(
@@ -256,7 +256,7 @@ fun LazyListScope.listPreference(
             onSelected = { i ->
                 val v = values[i]
                 value = v
-                // 替代 context.putPrefString: 走 PreferenceStoreProvider
+                // 替代 context.putPrefString: 走 PreferenceProviders 单例
                 pref.putString(prefKey, v)
                 onValueChange?.invoke(v)
             },
@@ -277,9 +277,9 @@ fun LazyListScope.iconListPreference(
     isBottomBackground: Boolean = false,
     onValueChange: ((String) -> Unit)? = null,
 ) = item {
-    // 替代 LocalContext.current: commonMain 通过 PreferenceStoreProvider 注入
-    val pref = LocalPreferenceStoreProvider.current
-    var value by remember { mutableStateOf(pref.getString(prefKey) ?: defaultValue) }
+    // 替代 LocalContext.current: commonMain 走 PreferenceProviders 单例
+    val pref = PreferenceProviders.get()
+    var value by remember { mutableStateOf(pref.getStringOrNull(prefKey) ?: defaultValue) }
     var showDialog by remember { mutableStateOf(false) }
     val index = values.indexOf(value)
     PreferenceRow(
@@ -308,7 +308,7 @@ fun LazyListScope.iconListPreference(
             onSelected = { i ->
                 val v = values[i]
                 value = v
-                // 替代 context.putPrefString: 走 PreferenceStoreProvider
+                // 替代 context.putPrefString: 走 PreferenceProviders 单例
                 pref.putString(prefKey, v)
                 onValueChange?.invoke(v)
             },

@@ -23,10 +23,18 @@ interface ThemeStoreProvider {
     val bgImagePath: String?
 
     /**
+     * 当前背景图模糊半径 (px, 0=不模糊), 与 [bgImagePath] 同日夜。
+     * 页面级壁纸层 ([io.legado.app.ui.root.WallpaperLayer]) 四端统一使用;
+     * 原版 Android 的 stackBlur 改为 Compose Gaussian 模糊 (视觉近似)。
+     */
+    val bgImageBlur: Int
+        get() = 0
+
+    /**
      * 应用自定义主题色 (供 ThemeCustomizeDialog/ThemeListDialog 下沉后跨平台调用)。
      *
      * - Android actual: 包装 ThemeConfig.applyConfig + postEvent(RECREATE)
-     * - 桌面/iOS/鸿蒙 actual: 写入本地持久化 (NSUserDefaults/Preferences/PreferenceStoreProvider)
+     * - 桌面/iOS/鸿蒙 actual: 写入本地持久化 (NSUserDefaults/java.util.prefs/PreferenceProvider)
      *
      * 注: 背景图功能不下沉 (与 desktop 一致), 本方法仅处理三色 + 日夜模式。
      */

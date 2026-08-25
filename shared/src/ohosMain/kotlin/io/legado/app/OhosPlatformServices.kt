@@ -290,6 +290,16 @@ private object OhosFilePickerService : FilePickerService {
 
     override fun pickDirectory(): String? = pickDirectoryDocument()?.toSandboxPath()
 
+    // 物化副本清理 (对照 Android discardPickedFile): 只删 cacheDir/filePicker 下自建临时文件,
+    // 用户原文件不碰; 不清理则反复换壁纸在缓存里累积原图副本
+    override fun discardPickedFile(path: String) {
+        val tempDir = AppFilesDirs.get().cacheDir + "/filePicker"
+        val file = File(path)
+        if (file.parentFile?.absolutePath == File(tempDir).absolutePath) {
+            runCatching { file.delete() }
+        }
+    }
+
     /** URI → 沙盒缓存文件路径; 读取失败返回 null (与取消同样降级)。 */
     private fun materialize(uri: String): String? = runCatching {
         val bytes = pickDocumentContent(uri) ?: return null

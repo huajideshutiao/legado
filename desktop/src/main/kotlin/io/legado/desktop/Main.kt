@@ -75,7 +75,6 @@ import io.legado.app.model.DesktopReadBookProvider
 import io.legado.app.model.LocalReadBookProvider
 import io.legado.app.model.fileBook.BitmapProviders
 import io.legado.app.model.fileBook.ZipFileWrapperFactoryProviders
-import io.legado.app.model.script.JsEngines
 import io.legado.app.ui.association.DeepLinkImportHost
 import io.legado.app.ui.association.LegadoDeepLink
 import io.legado.app.ui.association.LegadoDeepLinkHandler
@@ -95,12 +94,10 @@ import io.legado.app.ui.compose.component.LocalDialogAnchorSize
 import io.legado.app.ui.compose.platform.AppKeyRouter
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
 import io.legado.app.ui.compose.platform.DesktopEventBusProvider
-import io.legado.app.ui.compose.platform.DesktopPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.DesktopThemeStoreProvider
 import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalOverlayTopInset
-import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
@@ -374,11 +371,8 @@ private fun runDesktopApp() = application {
     // 备份格式兼容性: 注册桌面端 config provider
     // - PreferenceProvider + AppConfigAccessor
     // - ReadBookConfigProviders + ThemeConfigProviders (备份格式兼容性补齐, 供 BackupShared 用)
-    // 用 remember 构造 DesktopPreferenceStoreProvider 实例, 同一实例在 Window 内复用,
-    // 保证 UI 样式配置与备份逻辑状态同步
-    val preferenceStoreProvider = remember { DesktopPreferenceStoreProvider() }
     // 接住返回值: LocalReadConfigProviders 必须与全局 ReadBookConfigProviders 同实例, 否则配置写读分家
-    val desktopReadBookConfig = remember { registerDesktopConfig(preferenceStoreProvider) }
+    val desktopReadBookConfig = remember { registerDesktopConfig() }
     // 注册桌面端更新能力 (AppUpdateEnvironment + UpdateExecutor, 薄壳转发 shared AppUpdateManager):
     // 依赖 PreferenceProviders (上方 registerDesktopConfig) + DesktopAppInfo, 与平台服务解耦
     // (执行器运行时才取 PlatformServiceProviders.browser), 故可提前到阶段1同步注册,
@@ -493,7 +487,7 @@ private fun runDesktopApp() = application {
     // 启动闪屏 (AWT JWindow, 无边框, 在主窗口创建前显示)
     val themeStoreProviderSplash = remember { DesktopThemeStoreProvider() }
     val splashScreen =
-        remember { DesktopSplashScreen(preferenceStoreProvider, themeStoreProviderSplash) }
+        remember { DesktopSplashScreen(themeStoreProviderSplash) }
     val splashDuration = remember { splashScreen.show() }
     val appName = rememberString("app_name")
     // 窗口状态记忆: 读"上次是否最大化" + 普通状态下的位置尺寸 (恢复规则用户拍板 2026-08-18):
@@ -682,7 +676,6 @@ private fun runDesktopApp() = application {
         val themeStoreProvider = remember { DesktopThemeStoreProvider() }
         val appConfigProvider = remember { DesktopAppConfigProvider() }
         val eventBusProvider = remember { DesktopEventBusProvider() }
-        // preferenceStoreProvider 复用顶层 remember 实例 (与 ReadBookConfigProviders 共享同一实例)
         // 阅读器注入: ReaderRoute/ReaderDrawStyle/PageViewComposable 消费, 缺省值是 error()
         // —— 未注入时打开阅读器即抛异常, 被 DesktopCoroutineExceptionHandler 吞掉后表现为输入冻结
         val readConfigProviders = remember {
@@ -712,7 +705,6 @@ private fun runDesktopApp() = application {
             LocalThemeStoreProvider provides themeStoreProvider,
             LocalAppConfigProvider provides appConfigProvider,
             LocalEventBusProvider provides eventBusProvider,
-            LocalPreferenceStoreProvider provides preferenceStoreProvider,
             LocalReadConfigProviders provides readConfigProviders,
             LocalReadBookProvider provides readBookProvider,
             LocalWebViewSlot provides { config, modifier, callbacks ->

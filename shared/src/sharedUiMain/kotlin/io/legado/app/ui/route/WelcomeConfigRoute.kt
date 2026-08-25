@@ -12,9 +12,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfigRanges
+import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.config.resolveImagePath
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.model.deleteImageIfUnreferenced
 import io.legado.app.ui.compose.component.AppTitleBar
-import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.config.WelcomeConfigScreen
 import io.legado.app.ui.config.WelcomeConfigScreenModel
 import io.legado.app.ui.config.WelcomeConfigUiEvent
@@ -43,7 +45,7 @@ fun WelcomeConfigRoute(
     navigator: AppNavigator,
     screenModelStore: ScreenModelStore,
 ) {
-    val pref = LocalPreferenceStoreProvider.current
+    val pref = PreferenceProviders.get()
     val scope = rememberCoroutineScope()
     val selectImageStr = stringResource(Res.string.select_image)
     // 顶栏标题 (对照 app 端 R.string.welcome_style)
@@ -56,8 +58,8 @@ fun WelcomeConfigRoute(
                 WelcomeConfigUiEvent.Update(
                     WelcomeConfigUiState(
                         welcomeShowTime = pref.getInt(PreferKey.welcomeShowTime, 600),
-                        welcomeImage = pref.getString(PreferKey.welcomeImage),
-                        welcomeImageDark = pref.getString(PreferKey.welcomeImageDark),
+                        welcomeImage = pref.getStringOrNull(PreferKey.welcomeImage),
+                        welcomeImageDark = pref.getStringOrNull(PreferKey.welcomeImageDark),
                     )
                 )
             )
@@ -82,11 +84,56 @@ fun WelcomeConfigRoute(
                         PlatformServiceProviders.getOrNull()?.files?.pickFile(FileFilter.Images)
                     }
                     if (path != null) {
+                        // 选图导入原图进图集 (备份链路) + 按本端启动界面尺寸烘焙产物写缓存
+                        // (使用链路, 平台层实现, 见 FilePickerService.processWelcomeImage)；
+                        // 返回**原图相对引用**作 pref 值; 导入失败回落原路径
+                        val processed = withContext(IoDispatcher) {
+                            val files = PlatformServiceProviders.getOrNull()?.files
+                            val ref = files?.processWelcomeImage(
+                                path,
+                                pref.getStringOrNull(
+                                    if (isNight) PreferKey.welcomeImageDark
+                                    else PreferKey.welcomeImage
+                                ),
+                                isNight,
+                            )
+                            // 已复制进图集目录, 选图物化的临时副本不留在缓存里
+                            if (ref != null) files?.discardPickedFile(path)
+                            ref
+                        }
                         // 对照 app 端 putImagePref(key, path)
                         val key =
                             if (isNight) PreferKey.welcomeImageDark else PreferKey.welcomeImage
-                        pref.putString(key, path)
-                        screenModel.dispatch(WelcomeConfigUiEvent.ImagePicked(isNight, path))
+                        val finalPath = processed ?: path
+                        pref.putString(key, finalPath)
+                        screenModel.dispatch(WelcomeConfigUiEvent.ImagePicked(isNight, finalPath))
+                    }
+                }
+            },
+            // 长按背景图条目直接清除（原版点击已有图弹 selector 选删除/选图，此处交互简化）:
+            // 对照原版删除分支 removePref(key) + file.delete(): 先清 pref 刷 UI, 再异步删落盘图;
+            // 无图时长按不动作 (与原版 selector 仅在有图时出现一致); delete 结果与原版一样不检查
+            onClearImage = { isNight ->
+                val key =
+                    if (isNight) PreferKey.welcomeImageDark else PreferKey.welcomeImage
+                val current =
+                    (if (isNight) state.welcomeImageDark else state.welcomeImage)
+                        ?.takeIf { it.isNotBlank() }
+                if (current != null) {
+                    pref.putString(key, null)
+                    screenModel.dispatch(WelcomeConfigUiEvent.ImageCleared(isNight))
+                    scope.launch {
+                        withContext(IoDispatcher) {
+                            resolveImagePath(current)?.let { absPath ->
+                                // 四键引用保护: 同图可能同时是启动封面/界面背景的日/夜引用,
+                                // 其余键仍引用时不删 (本键已清 null, 排除仅为语义自洽)
+                                deleteImageIfUnreferenced(
+                                    absPath,
+                                    withFile = true,
+                                    excludeKey = key
+                                )
+                            }
+                        }
                     }
                 }
             },

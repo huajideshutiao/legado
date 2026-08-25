@@ -29,11 +29,9 @@ import io.legado.app.ui.book.video.VideoPlayPlatformProviders
 import io.legado.app.ui.association.DeepLinkImportHost
 import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
-import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.OhosAppConfigProvider
 import io.legado.app.ui.compose.platform.OhosEventBusProvider
-import io.legado.app.ui.compose.platform.OhosPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.OhosThemeStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.AppNavigator
@@ -80,16 +78,15 @@ fun MainOhos() {
     val navigator = remember { AppNavigator(AppRoute.Main()) }
     val screenModelStore = remember { ScreenModelStore() }
 
-    // 注入 4 个鸿蒙 Compose UI Provider
+    // 注入 3 个鸿蒙 Compose UI Provider
     val themeStoreProvider = remember { OhosThemeStoreProvider() }
     val appConfigProvider = remember { OhosAppConfigProvider() }
     val eventBusProvider = remember { OhosEventBusProvider() }
-    val preferenceStoreProvider = remember { OhosPreferenceStoreProvider() }
 
     // 阅读页两个注入点: 未注入时 LocalReadConfigProviders/LocalReadBookProvider 取值即 error,
     // 阅读页与 EffectiveReplaces 路由会崩 (二者默认值均为 error 而非兜底实现);
     // readBookProvider 范式同 iosMain IosReadBookProvider (直接持有 commonMain ReadBookShared)
-    val readConfigProviders = remember { ReadConfigProviders(preferenceStoreProvider) }
+    val readConfigProviders = remember { ReadConfigProviders() }
     val readBookProvider = remember {
         object : ReadBookProvider {
             override val readBook = ReadBookShared()
@@ -100,7 +97,6 @@ fun MainOhos() {
         LocalThemeStoreProvider provides themeStoreProvider,
         LocalAppConfigProvider provides appConfigProvider,
         LocalEventBusProvider provides eventBusProvider,
-        LocalPreferenceStoreProvider provides preferenceStoreProvider,
         LocalReadConfigProviders provides readConfigProviders,
         LocalReadBookProvider provides readBookProvider,
         LocalWebViewSlot provides { config, modifier, callbacks ->

@@ -368,6 +368,7 @@
     <string name="theme_config">主题配置</string>
     <string name="welcome_config">欢迎页设置</string>
     <string name="background_image">背景图片</string>
+    <string name="bg_image_import_failed">背景图片导入失败</string>
     <string name="change_icon">切换图标</string>
     <string name="change_icon_summary">切换软件显示在桌面的图标</string>
     <string name="cover_config">封面设置</string>
@@ -444,6 +445,7 @@
     <string name="day">白天</string>
     <string name="night">夜间</string>
     <string name="source_edit_text_max_line">源编辑框最大行数</string>
+    <string name="unlimited">不限制</string>
     <string name="auto_indent">自动缩进</string>
     <string name="ps_auto_refresh">打开软件时自动更新书籍</string>
     <string name="pt_auto_refresh">自动刷新</string>

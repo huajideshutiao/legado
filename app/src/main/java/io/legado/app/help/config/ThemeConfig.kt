@@ -2,16 +2,12 @@ package io.legado.app.help.config
 
 import android.content.Context
 import android.content.res.Configuration
+import android.graphics.Bitmap
 import android.graphics.Color
-import android.graphics.NinePatch
-import android.graphics.Rect
-import android.graphics.drawable.Drawable
-import android.graphics.drawable.NinePatchDrawable
 import android.util.DisplayMetrics
 import androidx.annotation.ColorRes
 import androidx.annotation.Keep
 import androidx.appcompat.app.AppCompatDelegate
-import androidx.core.graphics.drawable.toDrawable
 import androidx.core.graphics.toColorInt
 import io.legado.app.App
 import io.legado.app.R
@@ -21,9 +17,10 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Theme
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.lib.theme.ThemeStore
+import io.legado.app.model.deleteImageIfUnreferenced
 import io.legado.app.utils.BitmapUtils
+import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.GSON
-import io.legado.app.utils.centerCrop
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getCompatColor
@@ -35,9 +32,9 @@ import io.legado.app.utils.postEvent
 import io.legado.app.utils.putPrefInt
 import io.legado.app.utils.putPrefString
 import io.legado.app.utils.removePref
-import io.legado.app.utils.stackBlur
 import io.legado.app.utils.toJson
 import kotlinx.serialization.Serializable
+import java.io.File
 
 @Keep
 object ThemeConfig {
@@ -46,8 +43,9 @@ object ThemeConfig {
     /** 与 shared 同一路径实现, 保证四端 themeConfig.json 互读 */
     val configFilePath: String get() = ThemeConfigStore.configFilePath
 
-    private var bgDrawableCache: Drawable? = null
-    private var bgCacheKey: String? = null
+    /** 贴边亮度采样: 解码宽度上限与采样带高度 (系统栏量级) */
+    private const val EDGE_SAMPLE_WIDTH = 64
+    private const val EDGE_SAMPLE_DP = 48f
 
     // 存档库：仅存储用户自定义/导入的主题
     val configList: ArrayList<Config> by lazy {
@@ -60,10 +58,12 @@ object ThemeConfig {
         else -> Theme.Light
     }
 
-    /** 当前日/夜模式的背景图路径,未设置为 null */
+    /** 当前日/夜模式的背景图路径,未设置为 null (pref 存相对引用, 读取时解析为绝对, 见 resolveImagePath) */
     val curBgImagePath: String?
-        get() = App.instance.getPrefString(
-            if (AppConfig.isNightTheme) PreferKey.bgImageN else PreferKey.bgImage
+        get() = resolveImagePath(
+            App.instance.getPrefString(
+                if (AppConfig.isNightTheme) PreferKey.bgImageN else PreferKey.bgImage
+            )
         )
 
     fun applyDayNight(context: Context) {
@@ -233,61 +233,61 @@ object ThemeConfig {
         return createConfigurationContext(configuration).getCompatColor(id)
     }
 
-    fun getBgDrawable(context: Context, metrics: DisplayMetrics): Drawable? {
-        val theme = getTheme()
-        val bgCfg = when (theme) {
-            Theme.Light -> Pair(
-                context.getPrefString(PreferKey.bgImage),
-                context.getPrefInt(PreferKey.bgImageBlurring, 0)
-            )
+    /** 壁纸贴边亮度缓存: key = 路径-mtime-窗口宽-窗口高-是否顶边 (特征值同名同内容, 换图靠 mtime 失效) */
+    private val bgEdgeLightCache = HashMap<String, Boolean>()
 
-            Theme.Dark -> Pair(
-                context.getPrefString(PreferKey.bgImageN),
-                context.getPrefInt(PreferKey.bgImageNBlurring, 0)
-            )
-
-            else -> null
-        } ?: return null
-        if (bgCfg.first.isNullOrBlank()) {
-            bgDrawableCache = null
-            bgCacheKey = null
-            return null
-        }
-        val path = bgCfg.first!!
-        val blurRadius = bgCfg.second
-        val width = metrics.widthPixels
-        val height = metrics.heightPixels
-
-        val cacheKey = "$path-$blurRadius-$width-$height-$theme"
-        if (cacheKey == bgCacheKey) {
-            bgDrawableCache?.let {
-                return it.constantState?.newDrawable(context.resources) ?: it
+    /**
+     * 壁纸贴边那一条带 (状态栏/导航栏覆盖区) 是否浅色底, 供系统栏图标明暗判定。
+     *
+     * 壁纸页的系统栏底色是透明的, 直接拿透明色去 `isColorLight` 会恒判深色底
+     * (透明的 RGB 是纯黑) → 图标恒为白, 浅色壁纸上看不见。这里按**显示出来的像素**采样:
+     * 显示端是 ContentScale.Crop, 先按窗口比例反推可见区, 再取贴边 48dp 折算的行带算平均亮度。
+     *
+     * @param metrics 窗口尺寸 (widthPixels/heightPixels, 见 windowSize)
+     * @param top true 取顶边 (状态栏), false 取底边 (导航栏)
+     * @return 无背景图/解码失败返回 null, 调用方回落主题色判定
+     */
+    fun curBgEdgeIsLight(metrics: DisplayMetrics, top: Boolean): Boolean? {
+        val path = curBgImagePath?.takeIf { it.isNotBlank() } ?: return null
+        val key = "$path-${File(path).lastModified()}-" +
+            "${metrics.widthPixels}-${metrics.heightPixels}-$top"
+        bgEdgeLightCache[key]?.let { return it }
+        return runCatching {
+            // 只判一条带的平均亮度, 降采样到 64px 宽够用 (2 的幂采样保持比例, 裁切换算照旧成立)
+            val bitmap = BitmapUtils.decodeBitmap(path, EDGE_SAMPLE_WIDTH) ?: return@runCatching null
+            try {
+                bitmap.edgeIsLight(metrics, top).also { bgEdgeLightCache[key] = it }
+            } finally {
+                bitmap.recycle()
             }
+        }.onFailure {
+            AppLog.put("采样背景图亮度出错\n${it.localizedMessage}", it)
+        }.getOrNull()
+    }
+
+    private fun Bitmap.edgeIsLight(metrics: DisplayMetrics, top: Boolean): Boolean {
+        val winW = metrics.widthPixels.coerceAtLeast(1)
+        val winH = metrics.heightPixels.coerceAtLeast(1)
+        // Crop: 按 max 比例铺满后居中裁切, 只有裁切后仍可见的那部分才会出现在系统栏后面
+        val scale = maxOf(winW.toFloat() / width, winH.toFloat() / height)
+        val visibleH = (winH / scale).coerceAtMost(height.toFloat())
+        val startY = ((height - visibleH) / 2f).coerceAtLeast(0f)
+        // 采样带 = 系统栏高度量级 (48dp) 折算回图片像素, 至少 1 行
+        val density = App.instance.resources.displayMetrics.density
+        val bandPx = (EDGE_SAMPLE_DP * density / scale).coerceAtLeast(1f)
+        val y0 = if (top) {
+            startY.toInt()
+        } else {
+            (startY + visibleH - bandPx).toInt()
+        }.coerceIn(0, height - 1)
+        val rows = bandPx.toInt().coerceIn(1, height - y0)
+        val pixels = IntArray(width * rows)
+        getPixels(pixels, 0, width, 0, y0, width, rows)
+        var sum = 0.0
+        for (pixel in pixels) {
+            sum += ColorUtils.calculateLuminance(pixel)
         }
-
-        var bitmap = BitmapUtils.decodeBitmap(path, width, height) ?: return null
-
-        val chunk = bitmap.ninePatchChunk
-        if (chunk != null && NinePatch.isNinePatchChunk(chunk)) {
-            if (blurRadius > 0) {
-                bitmap = bitmap.stackBlur(blurRadius)
-            }
-            val drawable = NinePatchDrawable(context.resources, bitmap, chunk, Rect(), null)
-            bgDrawableCache = drawable
-            bgCacheKey = cacheKey
-            return drawable.constantState?.newDrawable(context.resources) ?: drawable
-        }
-
-        if (blurRadius > 0) {
-            bitmap = bitmap.stackBlur(blurRadius)
-        }
-
-        val resultBitmap = bitmap.centerCrop(width, height)
-        if (resultBitmap != bitmap) bitmap.recycle()
-        val drawable = resultBitmap.toDrawable(context.resources)
-        bgDrawableCache = drawable
-        bgCacheKey = cacheKey
-        return drawable.constantState?.newDrawable(context.resources) ?: drawable
+        return sum / pixels.size >= 0.5
     }
 
     fun save() {
@@ -307,18 +307,14 @@ object ThemeConfig {
     }
 
     fun clearBg() {
-        bgDrawableCache = null
-        bgCacheKey = null
-        val bgImagePath = App.instance.getPrefString(PreferKey.bgImage)
-        App.instance.externalFiles.getFile(PreferKey.bgImage).listFiles()?.forEach {
-            if (it.absolutePath != bgImagePath) {
-                it.delete()
-            }
-        }
-        val bgImageNPath = App.instance.getPrefString(PreferKey.bgImageN)
-        App.instance.externalFiles.getFile(PreferKey.bgImageN).listFiles()?.forEach {
-            if (it.absolutePath != bgImageNPath) {
-                it.delete()
+        bgEdgeLightCache.clear()
+        // 图集化后背景图落 customImg 内容特征值命名 (pref 存裸文件名, 经 resolveImagePath 解析);
+        // 只处理纯数字主干文件, 删除前经 deleteImageIfUnreferenced 四键检查 (启动封面/界面背景
+        // 日/夜), 任一键仍引用则保留 —— 同图复用场景不误删, 封面/启动图等其他图集文件不动
+        App.instance.externalFiles.getFile("customImg").listFiles()?.forEach {
+            val stem = it.name.substringBeforeLast('.', it.name)
+            if (stem.isNotEmpty() && stem.all(Char::isDigit)) {
+                deleteImageIfUnreferenced(it.absolutePath, withFile = true)
             }
         }
     }
@@ -412,7 +408,7 @@ object ThemeConfig {
         var bottomBackground: String
     ) {
 
-        @kotlin.jvm.Transient
+        @Transient
         @kotlinx.serialization.Transient
         var isBuiltin: Boolean = false
 

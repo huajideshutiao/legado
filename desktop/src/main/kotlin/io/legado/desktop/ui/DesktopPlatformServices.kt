@@ -1,8 +1,13 @@
 package io.legado.desktop.ui
 
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.PreferKey
+import io.legado.app.help.config.resolveImagePath
 import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.help.toast.DesktopTrayNotifier
+import io.legado.app.model.bakeCoverImageFile
+import io.legado.app.model.bakedImagePath
+import io.legado.app.model.deleteImageIfUnreferenced
 import io.legado.app.ui.root.BrowserService
 import io.legado.app.ui.root.CrashLogProvider
 import io.legado.app.ui.root.ExternalRequestService
@@ -20,6 +25,7 @@ import io.legado.app.ui.root.ShareService
 import io.legado.app.ui.root.SoftInputPolicy
 import io.legado.app.ui.root.SystemBarsPolicy
 import io.legado.app.ui.root.WindowController
+import io.legado.app.ui.root.importImageSetFile
 import io.legado.app.utils.browseUrl
 import io.legado.desktop.help.DesktopCrashLogDirs
 import io.legado.desktop.help.DesktopKeepAwake
@@ -105,6 +111,41 @@ private class DesktopFilePickerService : FilePickerService {
         FileDialogs.pickDirectory(
             initialDir = userExportDir()?.let(::File)?.takeIf { it.isDirectory },
         )?.absolutePath
+
+    // 选图导入: 原图复制进图集目录 (备份链路) + 按屏幕尺寸居中裁剪缩放烘焙产物写缓存
+    // (使用链路, 烘焙核心与全端共用 bakeCoverImageFile, WEBP q80 不放大);
+    // 返回**裸文件名相对引用**供调用方写 pref,
+    // 产物是按屏幕尺寸裁剪的派生物, 原图在图集随备份打包, 丢了/换机可重烘焙。
+    override fun processWelcomeImage(
+        srcPath: String,
+        oldPath: String?,
+        isNight: Boolean,
+    ): String? = runCatching {
+        val ref = importAndBakeCoverImage(srcPath) ?: return@runCatching null
+        // 旧原图+旧产物一并清 (旧 pref 可能指向旧机制处理图/绝对路径);
+        // 四键引用保护 (同图可能被启动封面另一模式/界面背景日/夜复用), 无引用才删
+        val resolvedOld = resolveImagePath(oldPath)
+        if (resolvedOld != null && resolvedOld != resolveImagePath(ref)) {
+            deleteImageIfUnreferenced(
+                resolvedOld,
+                withFile = true,
+                excludeKey = if (isNight) PreferKey.welcomeImageDark else PreferKey.welcomeImage,
+            )
+        }
+        ref
+    }.onFailure { AppLog.put("欢迎图导入失败", it) }.getOrNull()
+
+    // 图集导入 + 按屏幕尺寸烘焙清晰产物 (与 app 端 importAndBakeCoverImage 同构, 平台各自实现)。
+    // 返回裸文件名相对引用; 导入失败 null; 烘焙失败只记日志 (渲染端冷路径现场重烘焙)。阻塞 IO。
+    private fun importAndBakeCoverImage(srcPath: String): String? {
+        val ref = importImageSetFile(srcPath) ?: return null
+        val absSrc = resolveImagePath(ref)!!
+        val screen = java.awt.Toolkit.getDefaultToolkit().screenSize
+        if (!bakeCoverImageFile(absSrc, bakedImagePath(absSrc), screen.width, screen.height)) {
+            AppLog.put("图集图烘焙失败: $absSrc")
+        }
+        return ref
+    }
 }
 
 /** 用户可见产物目录 (不存在则创建), 取不到返回 null 让对话框用系统默认起始目录。 */

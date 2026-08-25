@@ -18,8 +18,13 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import io.legado.app.App
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.PreferKey
 import io.legado.app.help.IntentData
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.resolveImagePath
+import io.legado.app.model.bakeCoverImageFile
+import io.legado.app.model.bakedImagePath
+import io.legado.app.model.deleteImageIfUnreferenced
 import io.legado.app.notificationManager
 import io.legado.app.ui.root.BrowserService
 import io.legado.app.ui.root.CrashLogProvider
@@ -38,6 +43,7 @@ import io.legado.app.ui.root.ShareService
 import io.legado.app.ui.root.SoftInputPolicy
 import io.legado.app.ui.root.SystemBarsPolicy
 import io.legado.app.ui.root.WindowController
+import io.legado.app.ui.root.importImageSetFile
 import io.legado.app.utils.ActivityResultLauncherAwait
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
@@ -49,7 +55,9 @@ import io.legado.app.utils.getFile
 import io.legado.app.utils.list
 import io.legado.app.utils.openOutputStream
 import io.legado.app.utils.openUrl
+import io.legado.app.utils.realScreenSize
 import io.legado.app.utils.share
+import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -76,7 +84,7 @@ class AndroidPlatformServices(
         get() = capabilitiesImpl
 
     override val files: FilePickerService = AndroidFilePickerService(
-        openDocumentPicker, openDocumentsPicker, createDocumentPicker, openDocumentTreePicker,
+        activity, openDocumentPicker, openDocumentsPicker, createDocumentPicker, openDocumentTreePicker,
     )
 
     override val sharing: ShareService = AndroidShareService(activity)
@@ -101,6 +109,8 @@ class AndroidPlatformServices(
 // SAF 文件选择/保存桥接: launcher 由 MainActivity 在 STARTED 前注册传入,
 // 调用方均在 IoDispatcher 协程内, runBlocking 阻塞 IO 线程等待主线程 Activity Result 回调
 private class AndroidFilePickerService(
+    // 选图裁剪 (processWelcomeImage) 需读窗口尺寸与 toast, 与其余能力共用 MainActivity 引用
+    private val activity: MainActivity,
     private val openDocumentPicker: ActivityResultLauncherAwait<Array<String>, Uri?>,
     private val openDocumentsPicker: ActivityResultLauncherAwait<Array<String>, List<Uri>>,
     private val createDocumentPicker: ActivityResultLauncherAwait<String, Uri?>,
@@ -124,6 +134,67 @@ private class AndroidFilePickerService(
     override fun saveFile(suggestedName: String, defaultDir: String?): String? = runBlocking {
         // CreateDocument 由系统决定保存位置, defaultDir 不支持指定
         withContext(Dispatchers.Main) { createDocumentPicker.launch(suggestedName) }?.toString()
+    }
+
+    // 图集导入 + 按真实屏幕尺寸烘焙清晰产物 (启动图与主题背景图共用)。
+    // 返回裸文件名相对引用; 导入失败 null (调用方回落原路径); 烘焙失败只记日志——
+    // 原图已入图集, 渲染端冷路径 (ensureBaked*) 会现场重烘焙。阻塞 IO。
+    private fun importAndBakeCoverImage(srcPath: String): String? {
+        val ref = importImageSetFile(srcPath) ?: return null
+        val absSrc = resolveImagePath(ref)!!
+        val screen = activity.windowManager.realScreenSize()
+        if (!bakeCoverImageFile(absSrc, bakedImagePath(absSrc), screen.x, screen.y)) {
+            AppLog.put("图集图烘焙失败: $absSrc")
+        }
+        return ref
+    }
+
+    // 选图导入: 原图复制进图集目录 (备份链路) + 按真实屏幕尺寸居中裁剪+缩小烘焙产物写缓存
+    // (使用链路, 烘焙核心在 shared WallpaperBaker), 启动时不再解码整张大图；
+    // 原图导入失败 toast + 记日志, 返回 null 由调用方回落原路径。
+    // 裁剪比例取真实屏幕尺寸 (含状态栏, 对照原版 setCoverFromUri 的 getRealMetrics;
+    // 旧实现用 windowManager.windowSize 是扣系统栏的内容区, 竖屏构图少算状态栏一条, 已废)
+    override fun processWelcomeImage(
+        srcPath: String,
+        oldPath: String?,
+        isNight: Boolean,
+    ): String? = runCatching {
+        val ref = importAndBakeCoverImage(srcPath) ?: return@runCatching null
+        // 旧图清理 (对照原版 setCoverFromUri 开头的删除逻辑):
+        // 旧 pref 值可能是相对引用/旧绝对路径/旧机制的处理图, 统一经 resolveImagePath 解析后比较;
+        // 四键引用保护 (同图可能被启动封面另一模式/界面背景日/夜复用), 无引用才删
+        val resolvedOld = resolveImagePath(oldPath)
+        if (resolvedOld != null && resolvedOld != resolveImagePath(ref)) {
+            deleteImageIfUnreferenced(
+                resolvedOld,
+                withFile = true,
+                excludeKey = if (isNight) PreferKey.welcomeImageDark else PreferKey.welcomeImage,
+            )
+        }
+        ref
+    }.onFailure {
+        AppLog.put("欢迎图导入失败", it)
+        activity.toastOnUi(it.localizedMessage ?: it.toString())
+    }.getOrNull()
+
+    /**
+     * 主题背景图导入: 与启动图同链路 ([importAndBakeCoverImage], 真实屏幕尺寸烘焙);
+     * 失败 toast + 记日志, 渲染端读不到产物时冷路径现场重烘焙。
+     */
+    override fun importBackgroundImage(srcPath: String, isNight: Boolean): String? = runCatching {
+        importAndBakeCoverImage(srcPath)
+    }.onFailure {
+        AppLog.put("主题背景图导入失败", it)
+        activity.toastOnUi(it.localizedMessage ?: it.toString())
+    }.getOrNull()
+
+    // SAF 物化副本清理: 只删 cacheDir/file_picker 下的自建临时文件, 用户原文件不碰
+    override fun discardPickedFile(path: String) {
+        val tempDir = File(App.instance.cacheDir, "file_picker")
+        val file = File(path)
+        if (file.parentFile?.absolutePath == tempDir.absolutePath) {
+            runCatching { file.delete() }
+        }
     }
 
     override fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean? = runBlocking {

@@ -13,8 +13,6 @@ class NativeDataStorage : DataStorage {
 
     override val chapterCacheDir: String get() = "$base/book_cache"
 
-    override val coversDir: String get() = "$base/covers/default"
-
     override val backgroundsDir: String get() = "$base/bg"
 
     override val fontsDir: String get() = "$base/font"

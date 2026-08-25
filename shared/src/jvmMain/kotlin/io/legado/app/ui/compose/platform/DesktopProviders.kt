@@ -9,6 +9,7 @@ import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.PreferenceProvider
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.config.resolveImagePath
 import io.legado.app.lib.theme.ThemeStorePrefKeys
 import io.legado.app.utils.FlowBus
 import kotlinx.coroutines.flow.Flow
@@ -41,14 +42,23 @@ class DesktopThemeStoreProvider : ThemeStoreProvider {
     val isDark: Boolean
         get() = prefsOrNull()?.getString(PreferKey.themeMode, "0") == "2"
 
-    /** 对照 ThemeConfig.curBgImagePath：按日/夜模式读持久层背景图路径，空白视为无壁纸 */
+    /** 对照 ThemeConfig.curBgImagePath：按日/夜模式读持久层背景图相对引用并解析为绝对路径，空白视为无壁纸 */
     override val bgImagePath: String?
-        get() = prefsOrNull()
-            ?.let { p ->
-                val key = if (isDark) PreferKey.bgImageN else PreferKey.bgImage
-                if (p.contains(key)) p.getString(key) else null
-            }
-            ?.takeUnless { it.isBlank() }
+        get() = resolveImagePath(
+            prefsOrNull()
+                ?.let { p ->
+                    val key = if (isDark) PreferKey.bgImageN else PreferKey.bgImage
+                    if (p.contains(key)) p.getString(key) else null
+                }
+                ?.takeUnless { it.isBlank() }
+        )
+
+    /** 按日/夜读背景图模糊键 (对照原版 bgImageBlurring) */
+    override val bgImageBlur: Int
+        get() = prefsOrNull()?.getInt(
+            if (isDark) PreferKey.bgImageNBlurring else PreferKey.bgImageBlurring,
+            0,
+        ) ?: 0
 
     /** 切换深/浅色主题；写默认深/浅色 + themeMode 并触发全局重组 */
     fun toggleDark() = updateDark(!isDark)
@@ -133,34 +143,4 @@ class DesktopEventBusProvider : EventBusProvider {
     }
 
     override val recreateEvent: Flow<Unit> = FlowBus.with(EventBus.RECREATE).map { }
-}
-
-/**
- * 桌面端 Preferences provider：委托 [PreferenceProviders] 注册的持久后端
- * (DesktopPreferenceProvider, java.util.prefs)。自身无状态，各处 new 的实例
- * 共享同一后端，UI 写入与 BackupShared 等业务读取同源。
- */
-class DesktopPreferenceStoreProvider : PreferenceStoreProvider {
-    private val prefs: PreferenceProvider get() = PreferenceProviders.get()
-
-    override fun getBoolean(key: String, defValue: Boolean): Boolean =
-        prefs.getBoolean(key, defValue)
-
-    override fun putBoolean(key: String, value: Boolean) {
-        prefs.putBoolean(key, value)
-    }
-
-    override fun getInt(key: String, defValue: Int): Int =
-        prefs.getInt(key, defValue)
-
-    override fun putInt(key: String, value: Int) {
-        prefs.putInt(key, value)
-    }
-
-    override fun getString(key: String, defValue: String?): String? =
-        if (prefs.contains(key)) prefs.getString(key) else defValue
-
-    override fun putString(key: String, value: String?) {
-        prefs.putString(key, value)
-    }
 }

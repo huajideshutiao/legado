@@ -127,7 +127,7 @@ import kotlin.coroutines.resume
  * 主界面：零薄壳入口。Content 调用 shared [LegadoApp]，由 shared RouteContent 统一渲染。
  * 保留启动期逻辑（版本更新/本地密码/崩溃通知/备份同步）和平台专属回调（换封面/导入选目录）。
  */
-class MainActivity : BaseComposeActivity() {
+class MainActivity : BaseComposeActivity(imageBg = false) {
 
     val viewModel by viewModels<MainViewModel>()
 

@@ -18,7 +18,7 @@ package io.legado.app.model
  * }
  * ```
  *
- * 模式参考 app 端 `AndroidPreferenceStoreProvider` / `AndroidThemeStoreProvider`。
+ * 模式参考 app 端 `AndroidThemeStoreProvider`。
  */
 class AndroidReadBookProvider : ReadBookProvider {
     override val readBook: ReadBookShared get() = ReadBook.shared

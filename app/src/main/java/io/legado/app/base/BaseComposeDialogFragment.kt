@@ -27,11 +27,9 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.lib.theme.filletBackground
 import io.legado.app.ui.compose.platform.AndroidAppConfigProvider
 import io.legado.app.ui.compose.platform.AndroidEventBusProvider
-import io.legado.app.ui.compose.platform.AndroidPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.AndroidThemeStoreProvider
 import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
-import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
 import kotlinx.coroutines.CoroutineScope
@@ -67,12 +65,10 @@ abstract class BaseComposeDialogFragment : DialogFragment() {
             val themeStoreProvider = remember { AndroidThemeStoreProvider() }
             val appConfigProvider = remember { AndroidAppConfigProvider() }
             val eventBusProvider = remember { AndroidEventBusProvider() }
-            val preferenceStoreProvider = remember { AndroidPreferenceStoreProvider() }
             CompositionLocalProvider(
                 LocalThemeStoreProvider provides themeStoreProvider,
                 LocalAppConfigProvider provides appConfigProvider,
                 LocalEventBusProvider provides eventBusProvider,
-                LocalPreferenceStoreProvider provides preferenceStoreProvider,
             ) {
                 AppTheme {
                     // 非全高模式复刻 AutoShrinkLinearLayout 语义：内容自适应但不超 0.7 屏高

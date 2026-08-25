@@ -24,6 +24,8 @@ import org.jetbrains.compose.resources.stringResource
  * 启动界面设置页（迁 pref_config_welcome.xml）。逐条对齐原条目。
  * 图片路径 XML key = welcomeImagePath/welcomeImagePathDark（= PreferKey.welcomeImage/welcomeImageDark）。
  * 点击型（启动时长/背景图选择）由宿主提供回调与动态 summary。
+ * 背景图长按清除：原版点击已有图时弹 selector 选删除/换图，本版点击直接选图、
+ * 长按直接清除，有意偏离原版的交互简化。
  *
  * 白天/夜间各有独立的"显示文字"和"显示图标"开关（还原原版配置）:
  * - 白天: welcomeShowText / welcomeShowIcon
@@ -33,6 +35,7 @@ import org.jetbrains.compose.resources.stringResource
 fun WelcomeConfigScreen(
     onShowTime: () -> Unit,
     onPickImage: (isNight: Boolean) -> Unit,
+    onClearImage: (isNight: Boolean) -> Unit,
     showTimeSummary: String,
     imageSummary: String,
     imageDarkSummary: String,
@@ -67,6 +70,7 @@ fun WelcomeConfigScreen(
                 title = titleBgImage,
                 summary = imageSummary,
                 onClick = { onPickImage(false) },
+                onLongClick = { onClearImage(false) },
             )
             switchPreference(
                 prefKey = PreferKey.welcomeShowText,
@@ -86,6 +90,7 @@ fun WelcomeConfigScreen(
                 title = titleBgImage,
                 summary = imageDarkSummary,
                 onClick = { onPickImage(true) },
+                onLongClick = { onClearImage(true) },
             )
             switchPreference(
                 prefKey = PreferKey.welcomeShowTextDark,

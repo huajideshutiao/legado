@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.input.key.Key
 import io.legado.app.constant.PreferKey
+import io.legado.app.help.config.PreferenceProviders
 
 /**
  * 自定义翻页按键 (对照原版 BaseReadActivity.isPrevKey/isNextKey + ReadBookActivity/
@@ -39,9 +40,9 @@ data class CustomPageKeys(
  */
 @Composable
 fun rememberCustomPageKeys(repeatPolicy: KeyRepeatPolicy): CustomPageKeys {
-    val pref = LocalPreferenceStoreProvider.current
-    val prevKeys = pref.getString(PreferKey.prevKeys)
-    val nextKeys = pref.getString(PreferKey.nextKeys)
+    val pref = PreferenceProviders.get()
+    val prevKeys = pref.getStringOrNull(PreferKey.prevKeys)
+    val nextKeys = pref.getStringOrNull(PreferKey.nextKeys)
     return remember(prevKeys, nextKeys, repeatPolicy) {
         parseCustomPageKeys(prevKeys, nextKeys, repeatPolicy)
     }

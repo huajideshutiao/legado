@@ -374,11 +374,12 @@ class NativeAppConfigAccessor(
     override val bitmapCacheSize: Int
         get() = prefs.getInt(PreferKey.bitmapCacheSize, 50)
 
-    // 与 app 端 AppConfig.sourceEditMaxLine 语义一致: <10 视为不限制
+    // 与 app 端 AppConfig.sourceEditMaxLine 语义一致: 设置界面 range 5..30,
+    // 存储值不在该区间一律视为不限制 (兼容旧版写入的 Int.MAX_VALUE 与残留脏值)
     override val sourceEditMaxLine: Int
         get() {
             val maxLine = prefs.getInt(PreferKey.sourceEditMaxLine, Int.MAX_VALUE)
-            return if (maxLine < 10) Int.MAX_VALUE else maxLine
+            return if (maxLine in 5..30) maxLine else Int.MAX_VALUE
         }
 
     override val welcomeShowTime: Int

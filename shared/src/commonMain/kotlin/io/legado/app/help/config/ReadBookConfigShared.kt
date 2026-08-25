@@ -7,7 +7,6 @@ import io.legado.app.help.FileUtilsCommon
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.storage.BackupFileOps
-import io.legado.app.ui.compose.platform.PreferenceStoreProvider
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.KS_JSON
@@ -28,7 +27,7 @@ import kotlinx.serialization.builtins.ListSerializer
  *
  * app 端 `io.legado.app.help.config.ReadBookConfig` 已收敛为薄壳，全部转发到本类；
  * 与原 app 实现的差异：
- * 1. 用 `class` + [PreferenceStoreProvider] 注入取代 Android `object` + `appCtx` SharedPreferences 直读；
+ * 1. 用 `class` + [PreferenceProvider] 注入取代 Android `object` + `appCtx` SharedPreferences 直读；
  *    调用方通过 [ReadBookConfigProviders] / [ReadConfigProviders] /
  *    [io.legado.app.ui.compose.platform.LocalReadConfigProviders] 取得已注入实例。
  * 2. **全局简单值** (autoReadSpeed / readStyleSelect / comicStyleSelect / shareLayout /
@@ -46,7 +45,7 @@ import kotlinx.serialization.builtins.ListSerializer
  *    clearBgAndCache / [import] / [exportConfigZip] 已下沉 (基于 [AppFilesDirs] + [BackupFileOps])。
  */
 @Suppress("MemberVisibilityCanBePrivate")
-class ReadBookConfigShared(private val prefs: PreferenceStoreProvider) {
+class ReadBookConfigShared(private val prefs: PreferenceProvider) {
 
     // -------------------- 全局简单值 (走 prefs，与 app 端 PreferKey 一致) --------------------
 
@@ -381,7 +380,7 @@ class ReadBookConfigShared(private val prefs: PreferenceStoreProvider) {
 
     /**
      * 导入 readConfig.zip（与 app 端 `import(ByteArray)` 一致）：
-     * 解压到缓存目录 → 解析 readConfig.json → 字体/三套背景图落地到 `{files}/font`、`{files}/bg`。
+     * 解压到缓存目录 → 解析 readConfig.json → 字体/三套背景图落地到 `{files}/font`、`{files}/customImg/novelBg`。
      */
     fun import(byteArray: ByteArray): ReadStyleConfig {
         val sep = BackupFileOps.separator
@@ -504,10 +503,10 @@ class ReadBookConfigShared(private val prefs: PreferenceStoreProvider) {
      *
      * # 行为
      * 1. 读取图片字节, 计算 MD5 → fileName = `md5.suffix`
-     * 2. 复制到 `{externalFilesDir ?: filesDir}/bg/{fileName}` (已存在则跳过)
+     * 2. 复制到 `{externalFilesDir ?: filesDir}/customImg/novelBg/{fileName}` (已存在则跳过)
      * 3. 调用方负责 `durConfig.setCurBg(2, fileName)` + postConfig(BG)
      *
-     * @return 背景图文件名 (md5.suffix), 调用方用于 setCurBg
+     * @return 背景图文件名 (md5.suffix, 相对引用由 [getBgPath] 拼接), 调用方用于 setCurBg
      */
     fun setBgFromPath(path: String): String {
         val bytes = FileUtilsCommon.readBytes(path)
@@ -519,7 +518,7 @@ class ReadBookConfigShared(private val prefs: PreferenceStoreProvider) {
 
         val filesBase = AppFilesDirs.get().externalFilesDir ?: AppFilesDirs.get().filesDir
         val sep = BackupFileOps.separator
-        val bgDir = filesBase + sep + "bg"
+        val bgDir = filesBase + sep + "customImg" + sep + "novelBg"
         val bgPath = bgDir + sep + fileName
         if (!BackupFileOps.exists(bgPath)) {
             BackupFileOps.createFolderIfNotExist(bgDir)
@@ -528,7 +527,7 @@ class ReadBookConfigShared(private val prefs: PreferenceStoreProvider) {
         return fileName
     }
 
-    /** 导入单套背景：图片类型 (bgType==2) 落地到 `{files}/bg` 并返回新路径，颜色类型仅校验 hex。 */
+    /** 导入单套背景：图片类型 (bgType==2) 落地到 `{files}/customImg/novelBg` 并返回新路径，颜色类型仅校验 hex。 */
     private fun importBg(
         bgType: Int,
         bgStr: String,
@@ -542,7 +541,7 @@ class ReadBookConfigShared(private val prefs: PreferenceStoreProvider) {
         }
         if (bgType != 2) return bgStr
         val bgName = bgStr.substringAfterLast(sep).substringAfterLast('/')
-        val bgPath = filesBase + sep + "bg" + sep + bgName
+        val bgPath = filesBase + sep + "customImg" + sep + "novelBg" + sep + bgName
         if (!BackupFileOps.exists(bgPath)) {
             val bgFile = configDir + sep + bgName
             if (BackupFileOps.exists(bgFile)) {
@@ -568,23 +567,23 @@ class ReadBookConfigShared(private val prefs: PreferenceStoreProvider) {
      *
      * # 行为
      * 1. 收集 [configList] 中所有 bgType==2 的背景路径 (bgStr/bgStrNight/bgStrEInk),
-     *    含分隔符视为绝对路径, 否则拼接为 `{externalFilesDir ?: filesDir}/bg/{bgStr}`
+     *    含分隔符视为绝对路径, 否则拼接为 `{externalFilesDir ?: filesDir}/customImg/novelBg/{bgStr}`
      *    (与 app 端 `Config.getBgPath` 逻辑一致)
-     * 2. 删除 `{externalFilesDir ?: filesDir}/bg/` 目录下不在白名单中的文件
+     * 2. 删除 `{externalFilesDir ?: filesDir}/customImg/novelBg` 目录下不在白名单中的文件
      * 3. 删除 `{externalCacheDir ?: cacheDir}/readConfig` 目录 (导入配置临时解压目录)
      * 4. 删除 `{externalCacheDir ?: cacheDir}/readConfig.zip` (导入配置 zip 临时文件)
      *
      * # 平台差异
      * - app 端: `externalFilesDir` / `externalCacheDir` 由 Android Context 提供
      * - 桌面端: 均为 null, 回退到 `filesDir` (~/.legado/files) / `cacheDir` (~/.legado/cache)
-     * - 桌面端 BgTextConfigDialog 用户选图直接存绝对路径, bg/ 目录通常不存在, 清理为 no-op
+     * - 旧数据为绝对路径的阅读背景图不进目录, 清理为 no-op (仅清 novelBg 目录内文件)
      */
     fun clearBgAndCache() {
         val filesBase = AppFilesDirs.get().externalFilesDir ?: AppFilesDirs.get().filesDir
         val cacheBase = AppFilesDirs.get().externalCacheDir ?: AppFilesDirs.get().cacheDir
         val sep = BackupFileOps.separator
 
-        // 1. 收集白名单 (bgType==2 的背景路径, 含绝对路径和 bg/ 目录下文件名)
+        // 1. 收集白名单 (bgType==2 的背景路径, 含绝对路径和 novelBg 目录下文件名)
         val bgs = hashSetOf<String>()
         configList.forEach { config ->
             repeat(3) {
@@ -594,8 +593,8 @@ class ReadBookConfigShared(private val prefs: PreferenceStoreProvider) {
             }
         }
 
-        // 2. 删除 bg 目录中不在白名单的文件 (目录不存在 listFiles 返回 null, 跳过)
-        val bgDir = filesBase + sep + "bg"
+        // 2. 删除 novelBg 目录中不在白名单的文件 (目录不存在 listFiles 返回 null, 跳过)
+        val bgDir = filesBase + sep + "customImg" + sep + "novelBg"
         BackupFileOps.listFiles(bgDir)?.forEach { filePath ->
             if (filePath !in bgs) {
                 BackupFileOps.delete(filePath)
@@ -1149,7 +1148,7 @@ data class ReadStyleConfig(
      * 取指定索引的背景图片路径 (对照 app 端 `ReadBookConfig.Config.getBgPath`)。
      *
      * @param bgIndex 0:白天 1:夜间 2:E-Ink
-     * @return bgType==2 时返回路径 (含分隔符视为绝对路径, 否则拼 `{files}/bg/{bgStr}`); 否则 null
+     * @return bgType==2 时返回路径 (含分隔符视为绝对路径, 否则拼 `{files}/customImg/novelBg/{bgStr}`); 否则 null
      */
     fun getBgPath(bgIndex: Int): String? {
         val bgType = when (bgIndex) {
@@ -1173,7 +1172,7 @@ data class ReadStyleConfig(
         return if (bgStr.contains(sep) || bgStr.contains('/') || bgStr.contains('\\')) {
             bgStr
         } else {
-            filesBase + sep + "bg" + sep + bgStr
+            filesBase + sep + "customImg" + sep + "novelBg" + sep + bgStr
         }
     }
 }

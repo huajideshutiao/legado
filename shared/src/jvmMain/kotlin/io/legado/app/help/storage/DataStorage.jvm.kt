@@ -21,8 +21,6 @@ class JvmDataStorage : DataStorage {
 
     override val chapterCacheDir: String = Paths.get(rootDir, "book_cache").toString()
 
-    override val coversDir: String = Paths.get(rootDir, "covers", "default").toString()
-
     // 与导入侧写入位置对齐: ReadBookConfigShared/ThemeConfigProvider 落 {filesDir}/bg 与 /font,
     // 直接挂 rootDir 会差一层 files/, 导致导入后读不到 (AppFilesDirs 惰性取值, 同 backupDir)
     override val backgroundsDir: String

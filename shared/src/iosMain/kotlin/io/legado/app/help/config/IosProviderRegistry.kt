@@ -49,7 +49,6 @@ import io.legado.app.model.webBook.registerNativeWebBookProviders
 import io.legado.app.ui.book.changesource.registerNativeChangeBookSourcePlatform
 import io.legado.app.ui.book.manage.registerNativeBookshelfManagePlatform
 import io.legado.app.ui.book.read.page.provider.registerNativeTextMeasurer
-import io.legado.app.ui.compose.platform.IosPreferenceStoreProvider
 import io.legado.app.utils.registerIosScreenInfoProvider
 import io.legado.app.web.registerNativeWebServerPlatform
 import io.legado.app.web.utils.registerNativeWebAssetSource
@@ -110,7 +109,7 @@ fun registerIosProviders() {
     ThemeConfigProviders.register(FileThemeConfigProvider())
 
     // 2.5.1 阅读配置 provider (readConfig.json / shareReadConfig.json, 供 BackupShared 备份/恢复)
-    ReadBookConfigProviders.register(ReadBookConfigShared(IosPreferenceStoreProvider()))
+    ReadBookConfigProviders.register(ReadBookConfigShared(PreferenceProviders.get()))
 
     // 2.6 默认数据 provider (composeResources files/defaultData, 供 DefaultDataShared 装载默认规则)
     registerNativeDefaultDataResourceProvider()

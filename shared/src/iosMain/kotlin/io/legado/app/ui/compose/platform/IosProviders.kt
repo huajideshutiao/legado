@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
+import io.legado.app.help.config.resolveImagePath
 import io.legado.app.lib.theme.ThemeStorePrefKeys
 import io.legado.app.utils.FlowBus
 import kotlinx.coroutines.flow.Flow
@@ -44,7 +45,14 @@ class IosThemeStoreProvider(
     override val navigationBarColor: Color
         get() = readColor(ThemeStorePrefKeys.KEY_NAVIGATION_BAR_COLOR, bottomBackground)
     override val bgImagePath: String?
-        get() = defaults.stringForKey(currentBgImageKey)
+        get() = resolveImagePath(defaults.stringForKey(currentBgImageKey))
+
+    /** 按日/夜读背景图模糊键 (对照原版 bgImageBlurring, 同 currentBgImageKey 判定) */
+    override val bgImageBlur: Int
+        get() = defaults.integerForKey(
+            if (currentBgImageKey == PreferKey.bgImageN) PreferKey.bgImageNBlurring
+            else PreferKey.bgImageBlurring
+        ).toInt()
 
     /** 写入主题色到 NSUserDefaults (对齐 getter 读取的键, isNight 同步更新 themeMode) */
     override fun applyColors(accent: Color, bg: Color, bbg: Color, isNight: Boolean) {
@@ -107,56 +115,3 @@ class IosEventBusProvider : EventBusProvider {
     }
 }
 
-/**
- * iOS Preferences: 基于 NSUserDefaults 持久化 (等价 Android SharedPreferences)。
- *
- * 类型映射 (对齐 IosPreferenceProvider):
- * - Boolean: setBool/boolForKey
- * - Int: setObject(NSNumber)/integerForKey (NSInteger 64 位截断为 Int)
- * - String: setObject(NSString)/stringForKey
- *
- * putString(null) 等价于 SharedPreferences.Editor.remove (removeObjectForKey),
- * 与 Android SP 行为一致; 写后 synchronize 确保立即落盘 (对齐 Android commit())。
- */
-class IosPreferenceStoreProvider(
-    private val defaults: NSUserDefaults = NSUserDefaults.standardUserDefaults,
-) : PreferenceStoreProvider {
-
-    override fun getBoolean(key: String, defValue: Boolean): Boolean {
-        // boolForKey 对不存在的 key 返回 false, 需用 objectForKey 判断后回退 default
-        if (!defaults.objectHasKey(key)) return defValue
-        return defaults.boolForKey(key)
-    }
-
-    override fun putBoolean(key: String, value: Boolean) {
-        defaults.setBool(value, forKey = key)
-        defaults.synchronize()
-    }
-
-    override fun getInt(key: String, defValue: Int): Int {
-        // integerForKey 对不存在的 key 返回 0, 需用 objectForKey 判断后回退 default
-        if (!defaults.objectHasKey(key)) return defValue
-        return defaults.integerForKey(key).toInt()
-    }
-
-    override fun putInt(key: String, value: Int) {
-        // KN 中 NSUserDefaults 无 setIntegerForKey, 用 setObject (NSInteger 自动装箱为 NSNumber)
-        defaults.setObject(value, forKey = key)
-        defaults.synchronize()
-    }
-
-    override fun getString(key: String, defValue: String?): String? {
-        // stringForKey 对不存在的 key 返回 null, 直接回退 default
-        return defaults.stringForKey(key) ?: defValue
-    }
-
-    override fun putString(key: String, value: String?) {
-        if (value == null) {
-            // null 等价于移除 (与 SharedPreferences.Editor.remove 行为一致)
-            defaults.removeObjectForKey(key)
-        } else {
-            defaults.setObject(value, forKey = key)
-        }
-        defaults.synchronize()
-    }
-}

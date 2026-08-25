@@ -58,7 +58,6 @@ import io.legado.app.utils.registerOhosScreenInfoProvider
 import kotlinx.serialization.decodeFromString
 import io.legado.app.ui.book.manage.registerNativeBookshelfManagePlatform
 import io.legado.app.ui.book.read.page.provider.registerNativeTextMeasurer
-import io.legado.app.ui.compose.platform.OhosPreferenceStoreProvider
 import io.legado.app.web.registerNativeWebServerPlatform
 import io.legado.app.web.utils.registerNativeWebAssetSource
 import io.legado.app.web.utils.registerNativeWebStrings
@@ -155,7 +154,7 @@ fun registerOhosProviders() {
     ThemeConfigProviders.register(FileThemeConfigProvider())
 
     // 2.3.1 阅读配置 provider (readConfig.json / shareReadConfig.json, 供 BackupShared 备份/恢复)
-    ReadBookConfigProviders.register(ReadBookConfigShared(OhosPreferenceStoreProvider()))
+    ReadBookConfigProviders.register(ReadBookConfigShared(PreferenceProviders.get()))
 
     // 2.4 默认数据 provider (composeResources files/defaultData, 供 DefaultDataShared 装载默认规则)
     registerNativeDefaultDataResourceProvider()

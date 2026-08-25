@@ -177,7 +177,9 @@ object ZipUtils {
     ): Boolean {
         var rootPath1 = rootPath
         if (!srcFile.exists()) return true
-        rootPath1 = rootPath1 + (if (isSpace(rootPath1)) "" else File.separator) + srcFile.name
+        // 子项统一用 '/' 拼接 zip 条目名 (ZIP 规范命名; File.separator 在 Windows 是 \\,
+        // 生成的条目跨端解压 (NativeZipCodec) 会把 \\ 当字面字符导致目录结构错位)
+        rootPath1 = rootPath1 + (if (isSpace(rootPath1)) "" else "/") + srcFile.name
         if (srcFile.isDirectory) {
             val fileList = srcFile.listFiles()
             if (fileList == null || fileList.isEmpty()) {

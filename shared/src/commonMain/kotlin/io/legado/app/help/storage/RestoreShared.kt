@@ -27,6 +27,7 @@ import io.legado.app.help.book.upType
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ReadBookConfigShared
+import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.ruleFileName
 import io.legado.app.help.storage.RestoreShared.restoreLocked
 import io.legado.app.help.storage.RestoreShared.restoreOldRecord
@@ -323,8 +324,46 @@ object RestoreShared {
         }
 
         currentCoroutineContext().ensureActive()
+        // 5.5 图集落位: 备份 zip 内的 customImg/、bg/ 目录 (条目保留文件根相对结构) 复制到当前
+        // 文件根, 覆盖同名文件; 设置点存相对引用 (裸文件名 → customImg 图集目录等) 无需路径重写, 跨机恢复即有效
+        runCatching {
+            val filesBase = AppFilesDirs.get().externalFilesDir ?: AppFilesDirs.get().filesDir
+            listOf("customImg", "bg").forEach { dirName ->
+                val srcDir = path + sep + dirName
+                if (BackupFileOps.exists(srcDir)) {
+                    copyImageDirToRoot(srcDir, filesBase + sep + dirName)
+                }
+            }
+        }.onFailure {
+            AppLog.put("恢复图集出错\n${it.message}", it, tag = TAG)
+        }
+
         // 6. 宿主 UI 钩子 (app 端: toast 成功 + 图标切换 + 日夜间应用)
         hooks.onRestoreFinished()
+    }
+
+    /**
+     * 备份 zip 内图集目录 (customImg/、bg/) 复制到文件根: 条目保留 "目录名/文件名" 结构,
+     * 与备份时的相对路径一致, 逐条复制覆盖即可; 旧备份无图集目录时 exists 为 false 直接跳过。
+     * 目录判断用 [BackupFileOps.listFiles] 非 null (File.listFiles 语义: 非目录才返回 null)。
+     *
+     * 设置点与手动封面都存相对引用 (主题背景/启动图为裸文件名 → customImg 图集目录、
+     * 手动封面 `covers/<字节数>.jpg`),
+     * 落位后无需重写任何路径; 旧备份里的绝对路径**不做迁移**, 读取端按绝对路径原样处理。
+     */
+    private fun copyImageDirToRoot(srcDir: String, dstDir: String) {
+        BackupFileOps.listFiles(srcDir)?.forEach { entry ->
+            runCatching {
+                if (BackupFileOps.listFiles(entry) != null) {
+                    copyImageDirToRoot(entry, dstDir + BackupFileOps.separator + entry.substringAfterLast(BackupFileOps.separator))
+                } else {
+                    BackupFileOps.createFolderIfNotExist(dstDir)
+                    val destFile =
+                        dstDir + BackupFileOps.separator + entry.substringAfterLast(BackupFileOps.separator)
+                    BackupFileOps.copyFile(entry, destFile)
+                }
+            }
+        }
     }
 
     /**

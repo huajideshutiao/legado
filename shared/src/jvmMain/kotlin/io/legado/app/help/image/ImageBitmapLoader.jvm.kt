@@ -16,11 +16,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withContext
 import okhttp3.Request
+import java.awt.RenderingHints
 import java.io.ByteArrayInputStream
 import java.io.File
 import javax.imageio.ImageIO
 import javax.imageio.ImageReadParam
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 /**
  * [ImageBitmapLoader] 的 JVM (desktop) 实现。
@@ -105,7 +107,9 @@ actual class ImageBitmapLoader actual constructor() {
      * 解码字节为 [java.awt.image.BufferedImage]; [maxDim]>0 时解码前采样,
      * maxDim<=0 按 2048 兜底采样 (对齐 app 端 target 语义, 避免全尺寸解码 OOM)。
      * (ImageReader.setSourceSubsampling, 对齐原版 Glide Downsampler 的解码前采样语义,
-     * 内存收益在解码峰值; 采样因子取 2 的幂, 解码后长边 ≥ target/2)。
+     * 内存收益在解码峰值; 采样因子取 2 的幂, 解码后长边 ≥ target, 原图更小时保持原尺寸)。
+     * 采样后再经 [resampledToLongSide] 双线性重采样到精确长边 —— subsampling 是抽点,
+     * 单靠它出来的图带采样锯齿 (原版 Glide 同样是"粗降 + 精确缩放"两段式)。
      * 无法识别 (如 WEBP 无 reader) / 解码失败返回 null, 由调用方回落 skia 解码或占位。
      */
     internal fun decodeBufferedImage(bytes: ByteArray, maxDim: Int): java.awt.image.BufferedImage? {
@@ -122,7 +126,7 @@ actual class ImageBitmapLoader actual constructor() {
                 if (w <= 0 || h <= 0) return null
                 var sample = 1
                 while (max(w, h) / (sample * 2) >= target) sample *= 2
-                if (sample > 1) {
+                val decoded = if (sample > 1) {
                     val param = ImageReadParam().apply {
                         setSourceSubsampling(sample, sample, 0, 0)
                     }
@@ -130,6 +134,7 @@ actual class ImageBitmapLoader actual constructor() {
                 } else {
                     reader.read(0)
                 }
+                decoded?.resampledToLongSide(target)
             } finally {
                 reader.dispose()
                 input.close()
@@ -240,6 +245,45 @@ actual class ImageBitmapLoader actual constructor() {
             }
         }.getOrNull()
     }
+}
+
+/**
+ * 长边重采样到 [target] (只缩不放, 双线性)。
+ *
+ * `ImageReadParam.setSourceSubsampling` 是纯抽点 (每 N 像素取 1, 无低通滤波) 且步长只能取
+ * 2 的幂, 解码结果长边落在 [target, 2·target) —— 直接显示就是一张带采样锯齿的图, 且锯齿
+ * 强弱随目标尺寸跨过 2 的幂阈值突变。粗降后比例落在 (0.5, 1], 一次双线性即可抹平。
+ */
+private fun java.awt.image.BufferedImage.resampledToLongSide(
+    target: Int,
+): java.awt.image.BufferedImage {
+    val longSide = max(width, height)
+    // 只差几个百分点时重采样纯属白耗一次全图拷贝, 交给绘制端缩放
+    if (target <= 0 || longSide <= target * 1.05f) return this
+    val scale = target.toFloat() / longSide
+    val nw = (width * scale).roundToInt().coerceAtLeast(1)
+    val nh = (height * scale).roundToInt().coerceAtLeast(1)
+    val out = java.awt.image.BufferedImage(
+        nw,
+        nh,
+        if (colorModel.hasAlpha()) {
+            java.awt.image.BufferedImage.TYPE_INT_ARGB
+        } else {
+            java.awt.image.BufferedImage.TYPE_INT_RGB
+        },
+    )
+    val g = out.createGraphics()
+    try {
+        g.setRenderingHint(
+            RenderingHints.KEY_INTERPOLATION,
+            RenderingHints.VALUE_INTERPOLATION_BILINEAR,
+        )
+        g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
+        g.drawImage(this, 0, 0, nw, nh, null)
+    } finally {
+        g.dispose()
+    }
+    return out
 }
 
 /** 带目标长边上限解码: ImageIO ImageReader 解码前采样 (maxDim<=0 按 2048 兜底)。 */

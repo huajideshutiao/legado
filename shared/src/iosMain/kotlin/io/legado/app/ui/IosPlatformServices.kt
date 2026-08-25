@@ -129,6 +129,7 @@ private fun FileFilter.toUtis(): List<String> = when {
             "zip" -> "public.zip-archive"
             "epub" -> "org.idpf.epub-container"
             "png", "jpg", "jpeg", "gif", "webp" -> "public.image"
+            "bmp" -> "public.bmp"
             else -> null
         }
     }.distinct().ifEmpty { listOf("public.item") }

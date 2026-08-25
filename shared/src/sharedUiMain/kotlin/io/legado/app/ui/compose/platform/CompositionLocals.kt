@@ -21,7 +21,3 @@ val LocalAppConfigProvider = staticCompositionLocalOf<AppConfigProvider> {
 val LocalEventBusProvider = staticCompositionLocalOf<EventBusProvider> {
     error("EventBusProvider not provided, wrap content in AppTheme with CompositionLocalProvider")
 }
-
-val LocalPreferenceStoreProvider = staticCompositionLocalOf<PreferenceStoreProvider> {
-    error("PreferenceStoreProvider not provided, wrap content in AppTheme with CompositionLocalProvider")
-}

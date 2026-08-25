@@ -1,8 +1,8 @@
 package io.legado.app.help.config
 
-import io.legado.app.constant.PreferKey
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.storage.BackupFileOps
+import io.legado.app.model.deleteImageIfUnreferenced
 import io.legado.app.utils.GSON
 import io.legado.app.utils.toJson
 import kotlinx.serialization.Serializable
@@ -234,14 +234,14 @@ interface ThemeConfigProvider {
     /**
      * 清理主题背景图片缓存 (对照 app 端 `ThemeConfig.clearBg`)。
      *
-     * # default 实现行为
-     * 1. 读取 [PreferKey.bgImage] / [PreferKey.bgImageN] 当前选中的背景路径 (白名单)
-     * 2. 删除 `{externalFilesDir ?: filesDir}/backgroundImage/` 目录下不在白名单中的文件
-     * 3. 删除 `{externalFilesDir ?: filesDir}/backgroundImageNight/` 目录下不在白名单中的文件
+     * # 目录约定 (2026 图集化): 主题背景图统一落 `{文件根}/customImg` 图集目录,
+     * 内容特征值命名 `<字节数>.<ext>` (见 FilePickerService.importBackgroundImage,
+     * 启动图同规则), 故清理只删 customImg 下主干为纯数字的背景图/启动图文件, 封面图集 (covers 子目录)/启动图/阅读背景等其他图集文件不受影响
+     * (模糊派生物同在缓存根 customImg 目录, 不在此列)。
      *
      * # 平台差异
      * - app 端: `ThemeConfigProviderImpl` 应 override 本方法, 调原 `ThemeConfig.clearBg()`
-     *   (含 `bgDrawableCache = null` / `bgCacheKey = null` Drawable 缓存清空);
+     *   (含贴边亮度缓存清空);
      *   app 端 `App.kt` 仍调原 `ThemeConfig.clearBg()` (object 方法), 不经此 default 实现
      * - 桌面端: 用 default 实现, 走 [AppFilesDirs] + [BackupFileOps] 跨平台抽象;
      *   桌面端 externalFilesDir 为 null, 回退到 filesDir (~/.legado/files);
@@ -250,23 +250,15 @@ interface ThemeConfigProvider {
     fun clearBg() {
         val filesBase = AppFilesDirs.get().externalFilesDir ?: AppFilesDirs.get().filesDir
         val sep = BackupFileOps.separator
-        val prefs = PreferenceProviders.get()
 
-        // 白天背景: 读取当前路径, 删除 backgroundImage 目录中不在白名单的文件
-        val bgImagePath = prefs.getString(PreferKey.bgImage)
-        val bgImageDir = filesBase + sep + PreferKey.bgImage
-        BackupFileOps.listFiles(bgImageDir)?.forEach { filePath ->
-            if (filePath != bgImagePath) {
-                BackupFileOps.delete(filePath)
-            }
-        }
-
-        // 夜间背景: 读取当前路径, 删除 backgroundImageNight 目录中不在白名单的文件
-        val bgImageNPath = prefs.getString(PreferKey.bgImageN)
-        val bgImageNDir = filesBase + sep + PreferKey.bgImageN
-        BackupFileOps.listFiles(bgImageNDir)?.forEach { filePath ->
-            if (filePath != bgImageNPath) {
-                BackupFileOps.delete(filePath)
+        // 只处理内容特征值命名的背景图文件 (纯数字主干); 删除前经 deleteImageIfUnreferenced
+        // 四键检查 (启动封面/界面背景 日/夜), 任一键仍引用则保留 —— 同图复用场景不误删
+        val coversDir = filesBase + sep + "customImg"
+        BackupFileOps.listFiles(coversDir)?.forEach { filePath ->
+            val name = filePath.substringAfterLast(sep)
+            val stem = name.substringBeforeLast('.', name)
+            if (stem.isNotEmpty() && stem.all(Char::isDigit)) {
+                deleteImageIfUnreferenced(filePath, withFile = true)
             }
         }
     }

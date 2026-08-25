@@ -18,6 +18,12 @@ import kotlin.concurrent.Volatile
  */
 interface PreferenceProvider {
     fun getString(key: String, default: String = ""): String
+
+    /**
+     * 可空读取：key 不存在返回 null (对齐 Android getPrefString(key) 语义)。
+     * UI 层"未设置"判断统一走本方法；[getString] 的非空默认值语义供帮助层使用。
+     */
+    fun getStringOrNull(key: String): String?
     fun getInt(key: String, default: Int = 0): Int
     fun getBoolean(key: String, default: Boolean = false): Boolean
     fun getLong(key: String, default: Long = 0L): Long

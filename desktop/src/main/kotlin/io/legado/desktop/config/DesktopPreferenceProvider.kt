@@ -25,6 +25,9 @@ class DesktopPreferenceProvider : PreferenceProvider {
     override fun getString(key: String, default: String): String =
         prefs.get(key, default)
 
+    override fun getStringOrNull(key: String): String? =
+        prefs.get(key, null)
+
     override fun getInt(key: String, default: Int): Int =
         prefs.getInt(key, default)
 

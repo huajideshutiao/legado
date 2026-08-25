@@ -16,7 +16,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
  *
  * KP5: 从 commonMain 的 ReadConfigProviders.kt 拆分到 sharedUiMain, 让 ohos/linuxArm64
  * 不依赖 Compose 也能编译 (staticCompositionLocalOf 属于 androidx.compose.runtime)。
- * interface ReadConfigProviders 和工厂函数保留在 commonMain (工厂依赖的 PreferenceStoreProvider
+ * interface ReadConfigProviders 和工厂函数保留在 commonMain (工厂依赖 PreferenceProviders 单例,
  * 是纯接口, 也在 commonMain), 本文件仅承载 Compose 注入点。
  */
 val LocalReadConfigProviders = staticCompositionLocalOf<ReadConfigProviders> {

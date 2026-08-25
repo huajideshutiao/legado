@@ -26,6 +26,9 @@ import io.legado.app.model.CheckSourceShared
 import io.legado.app.model.Debug
 import io.legado.app.ui.book.source.BookSourceSort
 import io.legado.app.ui.book.source.manage.BookSourceViewModelShared
+import io.legado.app.ui.config.MODE_EDIT_CONFIG
+import io.legado.app.ui.config.MODE_EDIT_PREFS
+import io.legado.app.ui.config.MODE_NEW_CONFIG
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
@@ -427,6 +430,31 @@ object IosPlatformCapabilities : PlatformCapabilities {
             )
         )
         return true
+    }
+
+    // 主题列表/主题定制: shared Compose 对话框 Overlay (与 desktop 同模式, 见
+    // DesktopPlatformCapabilities); 主题定制 payload "mode,configIndex,isNight"
+    override fun showThemeListDialog() {
+        AppNavigatorProviders.getOrNull()?.showOverlay(AppOverlay.Dialog("theme_list"))
+    }
+
+    override fun showThemeCustomizeDialog(configIndex: Int?, isNight: Boolean) {
+        val mode = if (configIndex == null) MODE_NEW_CONFIG else MODE_EDIT_CONFIG
+        AppNavigatorProviders.getOrNull()?.showOverlay(
+            AppOverlay.Dialog("theme_customize", payload = "$mode,${configIndex ?: -1},$isNight")
+        )
+    }
+
+    override fun showCustomizeDayThemeDialog() {
+        AppNavigatorProviders.getOrNull()?.showOverlay(
+            AppOverlay.Dialog("theme_customize", payload = "$MODE_EDIT_PREFS,-1,false")
+        )
+    }
+
+    override fun showCustomizeNightThemeDialog() {
+        AppNavigatorProviders.getOrNull()?.showOverlay(
+            AppOverlay.Dialog("theme_customize", payload = "$MODE_EDIT_PREFS,-1,true")
+        )
     }
 
     // 默认封面图集: shared 管理对话框 Overlay (对照 app 端 DefaultCoverGalleryDialog;

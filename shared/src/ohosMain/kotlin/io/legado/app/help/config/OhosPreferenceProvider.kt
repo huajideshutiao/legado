@@ -18,7 +18,7 @@ import io.legado.app.utils.File
  * - 读: 文件存在则解析为 JsonObject, 否则空 Map
  * - 写: 全量序列化为 JSON 文本回写 (配置项数量少, 全量写可接受)
  *
- * 模式参考桌面端 `DesktopPreferenceStoreProvider` (内存 Map 进程退出即丢失):
+ * 模式参考桌面端 `DesktopPreferenceProvider` (java.util.prefs 持久化):
  * 鸿蒙端额外做文件持久化, 适合最小可运行骨架; 后续接入鸿蒙原生
  * `@ohos.data.preferences` 时, 通过 napi 桥接替换本 stub。
  *
@@ -72,6 +72,9 @@ class OhosPreferenceProvider(
 
     override fun getString(key: String, default: String): String =
         getPrim(key)?.content ?: default
+
+    override fun getStringOrNull(key: String): String? =
+        getPrim(key)?.content
 
     override fun getInt(key: String, default: Int): Int =
         getPrim(key)?.content?.toIntOrNull() ?: default
@@ -146,7 +149,7 @@ class OhosPreferenceProvider(
     override fun getAll(): Map<String, *> = cache
 
     // ---- 变更监听 (供 CachedPref 等内存缓存刷新) ----
-    // 鸿蒙端所有写入都经本实例 (设置界面走 OhosPreferenceStoreProvider 委托本实例),
+    // 鸿蒙端所有写入都经本实例 (设置界面等 UI 层统一取 PreferenceProviders 单例即本实例),
     // 自通知即可覆盖; 监听注册在启动早期, 之后不再增删。
     private val changeListeners = mutableListOf<(String) -> Unit>()
 
