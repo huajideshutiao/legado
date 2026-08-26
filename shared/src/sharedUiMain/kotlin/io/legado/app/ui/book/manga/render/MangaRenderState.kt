@@ -50,7 +50,8 @@ import kotlin.math.ceil
  * 平台注入点（app/desktop 各自提供）：
  * - [clickActionAt]：点击九宫格动作判定（app 用 ClickArea+AppConfig，desktop 默认无点击动作）。
  * - [onContainerSizeExtra]：容器尺寸变化时的额外回调（app 用来重设 ClickArea 矩形）。
- * - [preloadExecutor]：图片预加载执行体（app 用 Coil3，desktop 不预加载）。
+ * - [preloadExecutor]：图片预加载执行体（Android/desktop 用 Coil3 WRITE_ONLY 预载到内存缓存,
+ *   未实现的平台按需加载）。
  * - [MangaPageRenderer]：GIF 单元格渲染器接口（app 用 MangaPageImageView，desktop 无 GIF）。
  */
 class MangaRenderState {
@@ -416,7 +417,7 @@ class MangaRenderState {
     }
 
     // ---- 预加载(原 RecyclerViewPreloader + FixedPreloadSizeProvider) ----
-    // 平台无关的区间簿记 + 调用 [preloadExecutor] 执行实际图片预加载(app 用 Coil3)
+    // 平台无关的区间簿记 + 调用 [preloadExecutor] 执行实际图片预加载(Android/desktop 用 Coil3)
 
     var preloadCount = 0
     private var lastVisibleFirst = -1

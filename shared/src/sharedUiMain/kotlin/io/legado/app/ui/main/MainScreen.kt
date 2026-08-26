@@ -62,6 +62,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.BottomNavTag
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.launch
 
 /**
  * 主界面(附录 H): HorizontalPager 四 tab(等价 ViewPager offscreenPageLimit=3 全驻留 + 横滑)
@@ -109,9 +110,17 @@ fun MainScreen(
     // (避免 LaunchedEffect(Unit) 捕获首帧旧 visibleTags, 越界守卫失效)
     val currentVisibleTags by rememberUpdatedState(visibleTags)
     LaunchedEffect(Unit) {
+        // collect 只做转发, 滚动在独立的一次性协程里执行: animateScrollToPage/scrollToPage
+        // 走 PagerState 的 MutatorMutex, 被新 mutator (用户手势/下一次滚动) 抢占时按框架契约
+        // 取消当前滚动任务 —— 内联在 collect 里会把该取消异常传播杀掉本协程 (pageSelections
+        // replay=0, 消费者永久死亡, 底栏/返回键的后续请求全部静默丢弃, 即"偶尔不可用");
+        // launch 后每次被打断只结束那一次滚动, 后到的请求按 mutator 抢占语义取代前一个。
         pageSelections.collect { (index, smooth) ->
             if (index !in currentVisibleTags.indices) return@collect
-            if (smooth) pagerState.animateScrollToPage(index) else pagerState.scrollToPage(index)
+            launch {
+                if (smooth) pagerState.animateScrollToPage(index)
+                else pagerState.scrollToPage(index)
+            }
         }
     }
     LaunchedEffect(pagerState) {

@@ -57,6 +57,9 @@ import io.legado.app.ui.compose.platform.LocalTransitionFrozenStatusBarHeightPx
 import io.legado.app.ui.compose.platform.PlatformDialogDim
 import io.legado.app.ui.compose.platform.platformStatusBarPadding
 import io.legado.app.ui.compose.platform.rememberVisibleStatusBarHeightPx
+import io.legado.app.ui.compose.theme.AppTextMenuState
+import io.legado.app.ui.compose.theme.LocalAppTextMenuState
+import io.legado.app.ui.compose.theme.ProvidePlatformTextMenu
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.toComposeEasing
 import io.legado.app.utils.ScreenInfoProviders
@@ -116,6 +119,24 @@ fun Modifier.sheetDragExclusion(): Modifier {
 val LocalSheetDismissRequest = staticCompositionLocalOf<(() -> Unit)?> { null }
 
 /**
+ * 在"当前独立窗口"内安装 per-window 文本菜单通道 (Android 新通道)。
+ *
+ * Compose CompositionLocal 跨 Dialog 窗口继承: Dialog 内长按文本时 framework 会用**本窗口**
+ * 的选区节点坐标调 `contentBounds(主窗口 host 坐标)`, 两坐标不在同一 hierarchy, 抛
+ * `IllegalArgumentException: layouts are not part of the same hierarchy` 闪退。故每个独立窗口
+ * 的根再包一层 [ProvidePlatformTextMenu] (Box 坐标 + 弹层宿主都挂本窗口), 长按走本窗口自己的
+ * provider —— 与 framework 默认实现 (每窗口 Box + coordinatesProvider, 见
+ * AndroidTextContextMenuToolbarProvider) 的设计一致; 主窗口通道仍由 AppTheme 根部提供。
+ */
+@Composable
+internal fun WithWindowTextMenu(content: @Composable () -> Unit) {
+    ProvidePlatformTextMenu(
+        state = LocalAppTextMenuState.current ?: remember { AppTextMenuState() },
+        content = content,
+    )
+}
+
+/**
  * 对话框统一窗口, 带 app 版 Animation.Dialog 动画: 进入 decelerate 中心缩放
  * (系统 dialog_enter.xml: 200ms scale 0.96→1 + 淡入), 退出 accelerate 淡出
  * (系统 dialog_exit.xml: 150ms); 时长/插值器读平台动画 spec (Android 端动态读系统动画缩放),
@@ -143,51 +164,53 @@ fun AppDialog(
         Dialog(
             onDismissRequest = onDismissRequest,
             properties = properties,
-            content = { content() },
+            content = { WithWindowTextMenu { content() } },
         )
         return
     }
     // 对话框动画平台 spec (时长/插值器按平台对话框转场语义, Android 动态读系统动画时长缩放)
     val dialogSpec = remember { PlatformCapabilityProviders.get().dialogTransitionSpec }
     Dialog(onDismissRequest = { dismissing = true }, properties = properties) {
-        // Android 补平台 dim 0.6 (对齐桌面/iOS 0.6 scrim); E-Ink 分支在上方已跳过 (对齐原版 E-Ink 清 dim)
-        if (dim) PlatformDialogDim()
-        val progress = remember { Animatable(0f) }
-        // 进入: 缩放 enterScaleFrom→1 + 淡入 (对齐系统 dialog_enter.xml, 参数读平台 spec)
-        LaunchedEffect(Unit) {
-            progress.animateTo(
-                1f,
-                tween(
-                    durationMillis = dialogSpec.enterDurationMillis,
-                    easing = dialogSpec.enterEasing.toComposeEasing(),
-                )
-            )
-        }
-        // 退出: 淡出播完再关闭 (对齐系统 dialog_exit.xml, 参数读平台 spec)
-        LaunchedEffect(dismissing) {
-            if (dismissing) {
+        WithWindowTextMenu {
+            // Android 补平台 dim 0.6 (对齐桌面/iOS 0.6 scrim); E-Ink 分支在上方已跳过 (对齐原版 E-Ink 清 dim)
+            if (dim) PlatformDialogDim()
+            val progress = remember { Animatable(0f) }
+            // 进入: 缩放 enterScaleFrom→1 + 淡入 (对齐系统 dialog_enter.xml, 参数读平台 spec)
+            LaunchedEffect(Unit) {
                 progress.animateTo(
-                    0f,
+                    1f,
                     tween(
-                        durationMillis = dialogSpec.exitDurationMillis,
-                        easing = dialogSpec.exitEasing.toComposeEasing(),
+                        durationMillis = dialogSpec.enterDurationMillis,
+                        easing = dialogSpec.enterEasing.toComposeEasing(),
                     )
                 )
-                onDismissRequest()
             }
-        }
-        val p = progress.value
-        // 不套 fillMaxSize: 对话框窗口是 wrap_content, 撑满会占掉整个可用空间;
-        // Box 尺寸跟随内容, 缩放/淡入只作用于内容框本身
-        Box(
-            Modifier.graphicsLayer {
-                val scale = dialogSpec.enterScaleFrom + (1f - dialogSpec.enterScaleFrom) * p
-                scaleX = scale
-                scaleY = scale
-                alpha = if (dialogSpec.enterFadeIn) p else 1f
-            },
-        ) {
-            content()
+            // 退出: 淡出播完再关闭 (对齐系统 dialog_exit.xml, 参数读平台 spec)
+            LaunchedEffect(dismissing) {
+                if (dismissing) {
+                    progress.animateTo(
+                        0f,
+                        tween(
+                            durationMillis = dialogSpec.exitDurationMillis,
+                            easing = dialogSpec.exitEasing.toComposeEasing(),
+                        )
+                    )
+                    onDismissRequest()
+                }
+            }
+            val p = progress.value
+            // 不套 fillMaxSize: 对话框窗口是 wrap_content, 撑满会占掉整个可用空间;
+            // Box 尺寸跟随内容, 缩放/淡入只作用于内容框本身
+            Box(
+                Modifier.graphicsLayer {
+                    val scale = dialogSpec.enterScaleFrom + (1f - dialogSpec.enterScaleFrom) * p
+                    scaleX = scale
+                    scaleY = scale
+                    alpha = if (dialogSpec.enterFadeIn) p else 1f
+                },
+            ) {
+                content()
+            }
         }
     }
 }
@@ -261,15 +284,17 @@ fun AppBottomSheetDialog(
     val dragExclusion = remember { SheetDragExclusion() }
     if (AppConfigProviders.get().isEInkMode) {
         Dialog(onDismissRequest = onDismissRequest, properties = properties) {
-            CompositionLocalProvider(
-                LocalSheetDragExclusion provides dragExclusion,
-                LocalSheetDismissRequest provides requestDismiss,
-            ) {
-                BottomSheetScaffold(
-                    onDismissRequest = onDismissRequest,
-                    maxHeight = maxHeight,
-                    fullScreen = fullScreen,
-                ) { content() }
+            WithWindowTextMenu {
+                CompositionLocalProvider(
+                    LocalSheetDragExclusion provides dragExclusion,
+                    LocalSheetDismissRequest provides requestDismiss,
+                ) {
+                    BottomSheetScaffold(
+                        onDismissRequest = onDismissRequest,
+                        maxHeight = maxHeight,
+                        fullScreen = fullScreen,
+                    ) { content() }
+                }
             }
         }
         return
@@ -277,244 +302,246 @@ fun AppBottomSheetDialog(
     // 底部弹层动画平台 spec (与 AppDialog 同 spec: 时长/插值器按平台对话框转场语义)
     val dialogSpec = remember { PlatformCapabilityProviders.get().dialogTransitionSpec }
     Dialog(onDismissRequest = { dismissing = true }, properties = properties) {
-        // 底部弹层不压暗底层 (对照原版 BaseBottomDialogFragment/setupAsBottomDialog
-        // 的 clearFlags(FLAG_DIM_BEHIND) + dimAmount=0, 同 LegadoApp ModalBottomSheet 先例)。
-        // 桌面/iOS/鸿蒙 CMP Dialog 自带 0.6 scrim 且 DialogProperties 无 scrimColor 参数
-        // (common expect 仅 3 参数), 无法关闭, 属平台限制; Android 端不再补 FLAG_DIM_BEHIND。
-        val progress = remember { Animatable(0f) }
-        // 拖拽位移 (px): 双向 —— 负 = 上推 (面板高度放大, 见 heightPx), 正 = 下拉
-        // (面板整体下移, translationY 相加; 触发关闭时退出动画从当前位置继续下滑,
-        // 无跳变); 松手后吸附默认锚点/视觉全屏或弹簧回弹复位
-        var dragOffset by remember { mutableStateOf(0f) }
-        // 默认锚点高 (px): 面板未展开时的实测高度 (内容 wrap 封顶 0.7 锚点高的自然高),
-        // 由 onSizeChanged 在 dragOffset == 0 时同步; 展开拖拽期间保持初值作"缩回目标",
-        // 回弹到默认锚点后恢复跟随 (桌面窗口 resize 时默认锚点自动更新)
-        var defaultAnchorPx by remember { mutableStateOf(0) }
-        // 面板实际高度 (onSizeChanged 测量), 用于 1/4 面板高的关闭位移阈值
-        var sheetHeightPx by remember { mutableStateOf(0) }
-        // 回弹复位动画 job: 新拖拽开始时取消, 避免回弹与新位移互相覆盖
-        var bounceJob by remember { mutableStateOf<Job?>(null) }
-        val scope = rememberCoroutineScope()
-        val density = LocalDensity.current
-        // 拖拽关闭总开关: 全屏态整体停用 (两条拖拽路径共用, 经 state 读取, 免得
-        // remember 住的 nestedScroll 连接捕获到旧值)
-        val dragEnabled = rememberUpdatedState(!fullScreen)
-        // 弹层节点坐标 (与下方 pointerInput 同层): 把按下点换算到 window 坐标做禁区命中判定
-        var sheetCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
-        // 拖拽参数: 位移阻力 ×0.6 (0.5~0.7 区间, 更接近原生手感);
-        // 关闭位移阈值 max(120dp, 面板高/4); 快速下拉 fling 速度阈值 800dp/s
-        val minDismissDistancePx = with(density) { 120.dp.toPx() }
-        val flingDismissVelocityPx = with(density) { 800.dp.toPx() }
-        // 上推展开 fling 速度阈值: 与下拉关闭同速反向 (快速上推直接吸附全屏)
-        val flingExpandVelocityPx = with(density) { 800.dp.toPx() }
-        // 视觉全屏高 (px) = 锚点全高 - 状态栏高 - 顶部平台装饰高: 移动端展开后顶栏停在
-        // 状态栏之下 (视觉全屏, 不压系统栏); 桌面无状态栏, 扣的是窗口控制条
-        // ([LocalOverlayTopInset], 见 BottomSheetScaffold 注释)。手势闭包经
-        // [fullAnchorState] 读最新值 (桌面窗口 resize / 状态栏显隐时跟随)
-        val anchorHeightPx = LocalDialogAnchorSize.current?.height
-            ?: ScreenInfoProviders.get().screenHeightPx
-        val overlayTopInsetPx = with(density) { LocalOverlayTopInset.current.roundToPx() }
-        val fullAnchorPx = (anchorHeightPx - rememberVisibleStatusBarHeightPx() - overlayTopInsetPx)
-            .coerceAtLeast(0)
-        val fullAnchorState = rememberUpdatedState(fullAnchorPx)
-        // 回弹/吸附动画: 从当前位移续播到目标锚点 (新拖拽开始时由 drag 路径取消 bounceJob)
-        val animateDragTo: (Float) -> Unit = { target ->
-            bounceJob?.cancel()
-            bounceJob = scope.launch {
-                animate(
-                    initialValue = dragOffset,
-                    targetValue = target,
-                    animationSpec = spring(),
-                ) { value, _ -> dragOffset = value }
-            }
-        }
-        // 松手/停止滚动后的归位判定 (pointer 拖拽路径与 nestedScroll 路径共用):
-        // 拖拽位移现为双向 —— 负 = 上推 (面板高度放大), 正 = 下拉 (关闭方向)。
-        // 锚点吸附: 上推过半/快速上推 → 吸附视觉全屏; 下拉达阈值/快速下拉 (且已
-        // 越过默认锚点) → 走现有滑出动画关闭; 其余 → 弹簧回弹默认锚点。
-        // 全屏态下拉回弹到 0 = 缩回默认高度, 再下拉才关 (先缩回再关闭)
-        val settleDrag: (Float) -> Unit = { velocityY ->
-            if (!dismissing) {
-                val dismissDistancePx = maxOf(minDismissDistancePx, sheetHeightPx * 0.25f)
-                // 展开量 (px) = 视觉全屏高 - 默认锚点高
-                val expandDistancePx = (fullAnchorState.value - defaultAnchorPx).toFloat()
-                when {
-                    dragOffset > 0f &&
-                        (dragOffset >= dismissDistancePx || velocityY >= flingDismissVelocityPx) ->
-                        dismissing = true
-
-                    velocityY <= -flingExpandVelocityPx -> animateDragTo(-expandDistancePx)
-                    dragOffset <= -expandDistancePx / 2f -> animateDragTo(-expandDistancePx)
-                    dragOffset != 0f -> animateDragTo(0f)
-                }
-            }
-        }
-        // 滚动内容协调: 内部列表到顶后无法消费的位移经 onPostScroll 派发到本连接,
-        // 面板跟随; 未到顶时列表自己消费, 余量为 0, 面板不动 (同 M3 ModalBottomSheet
-        // ConsumeSwipeWithinBottomSheetBoundsNestedScrollConnection 机制, 仅收 UserInput,
-        // 排除列表自身 fling/惯性位移; 鼠标滚轮到顶同样派发, 属原生 sheet 行为)
-        val nestedScrollConnection = remember {
-            object : NestedScrollConnection {
-                override fun onPostScroll(
-                    consumed: Offset,
-                    available: Offset,
-                    source: NestedScrollSource,
-                ): Offset {
-                    if (
-                        !dragEnabled.value ||
-                        dismissing ||
-                        source != NestedScrollSource.UserInput ||
-                        available.y == 0f
-                    ) {
-                        return Offset.Zero
-                    }
-                    // 新的拖拽开始: 取消回弹动画, 从当前位移继续
-                    bounceJob?.cancel()
-                    bounceJob = null
-                    // 双向夹紧: 上推 (available.y 负 = 列表滚到底继续上滑) 展开到视觉
-                    // 全屏为止; 下拉 (available.y 正 = 列表滚到顶继续下滑) 不设下限,
-                    // 由 settleDrag 判定关闭/回弹
-                    dragOffset = (dragOffset + available.y * DragResistance)
-                        .coerceAtLeast((defaultAnchorPx - fullAnchorState.value).toFloat())
-                    return Offset.Zero
-                }
-
-                override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-                    // 本回调只在"内部列表赢得手势并 fling"时触发 (两条拖拽路径互斥:
-                    // 面板跟手的 pointerInput 路径赢得手势时列表无 fling, 不会走到这里;
-                    // 列表赢得手势时 pointerInput 已让位, 关闭判定由 pointerInput 路径负责)。
-                    // 因此这里的 fling 必然是列表自身滚动 (滚到顶/底的剩余惯性), 速度
-                    // 不得触发"快速下拉关闭"——只按位移判定 (滚到顶后继续下拉、位移达
-                    // 阈值仍可关闭) 或回弹复位面板残留位移 (滚动尾段把面板带起的一点位移)。
-                    settleDrag(0f)
-                    return available
-                }
-            }
-        }
-        // 进入: 从底部滑入 + 淡入 (对齐原版底部弹层动画, 参数读平台 spec)
-        LaunchedEffect(Unit) {
-            progress.animateTo(
-                1f,
-                tween(
-                    durationMillis = dialogSpec.enterDurationMillis,
-                    easing = dialogSpec.enterEasing.toComposeEasing(),
-                )
-            )
-        }
-        // 退出: 下滑淡出播完再关闭
-        LaunchedEffect(dismissing) {
-            if (dismissing) {
-                progress.animateTo(
-                    0f,
-                    tween(
-                        durationMillis = dialogSpec.exitDurationMillis,
-                        easing = dialogSpec.exitEasing.toComposeEasing(),
-                    )
-                )
-                onDismissRequest()
-            }
-        }
-        // 进入全屏: 清掉残留拖拽位移与回弹动画 (全屏态不再有拖拽路径去归位它)
-        LaunchedEffect(fullScreen) {
-            if (fullScreen) {
+        WithWindowTextMenu {
+            // 底部弹层不压暗底层 (对照原版 BaseBottomDialogFragment/setupAsBottomDialog
+            // 的 clearFlags(FLAG_DIM_BEHIND) + dimAmount=0, 同 LegadoApp ModalBottomSheet 先例)。
+            // 桌面/iOS/鸿蒙 CMP Dialog 自带 0.6 scrim 且 DialogProperties 无 scrimColor 参数
+            // (common expect 仅 3 参数), 无法关闭, 属平台限制; Android 端不再补 FLAG_DIM_BEHIND。
+            val progress = remember { Animatable(0f) }
+            // 拖拽位移 (px): 双向 —— 负 = 上推 (面板高度放大, 见 heightPx), 正 = 下拉
+            // (面板整体下移, translationY 相加; 触发关闭时退出动画从当前位置继续下滑,
+            // 无跳变); 松手后吸附默认锚点/视觉全屏或弹簧回弹复位
+            var dragOffset by remember { mutableStateOf(0f) }
+            // 默认锚点高 (px): 面板未展开时的实测高度 (内容 wrap 封顶 0.7 锚点高的自然高),
+            // 由 onSizeChanged 在 dragOffset == 0 时同步; 展开拖拽期间保持初值作"缩回目标",
+            // 回弹到默认锚点后恢复跟随 (桌面窗口 resize 时默认锚点自动更新)
+            var defaultAnchorPx by remember { mutableStateOf(0) }
+            // 面板实际高度 (onSizeChanged 测量), 用于 1/4 面板高的关闭位移阈值
+            var sheetHeightPx by remember { mutableStateOf(0) }
+            // 回弹复位动画 job: 新拖拽开始时取消, 避免回弹与新位移互相覆盖
+            var bounceJob by remember { mutableStateOf<Job?>(null) }
+            val scope = rememberCoroutineScope()
+            val density = LocalDensity.current
+            // 拖拽关闭总开关: 全屏态整体停用 (两条拖拽路径共用, 经 state 读取, 免得
+            // remember 住的 nestedScroll 连接捕获到旧值)
+            val dragEnabled = rememberUpdatedState(!fullScreen)
+            // 弹层节点坐标 (与下方 pointerInput 同层): 把按下点换算到 window 坐标做禁区命中判定
+            var sheetCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+            // 拖拽参数: 位移阻力 ×0.6 (0.5~0.7 区间, 更接近原生手感);
+            // 关闭位移阈值 max(120dp, 面板高/4); 快速下拉 fling 速度阈值 800dp/s
+            val minDismissDistancePx = with(density) { 120.dp.toPx() }
+            val flingDismissVelocityPx = with(density) { 800.dp.toPx() }
+            // 上推展开 fling 速度阈值: 与下拉关闭同速反向 (快速上推直接吸附全屏)
+            val flingExpandVelocityPx = with(density) { 800.dp.toPx() }
+            // 视觉全屏高 (px) = 锚点全高 - 状态栏高 - 顶部平台装饰高: 移动端展开后顶栏停在
+            // 状态栏之下 (视觉全屏, 不压系统栏); 桌面无状态栏, 扣的是窗口控制条
+            // ([LocalOverlayTopInset], 见 BottomSheetScaffold 注释)。手势闭包经
+            // [fullAnchorState] 读最新值 (桌面窗口 resize / 状态栏显隐时跟随)
+            val anchorHeightPx = LocalDialogAnchorSize.current?.height
+                ?: ScreenInfoProviders.get().screenHeightPx
+            val overlayTopInsetPx = with(density) { LocalOverlayTopInset.current.roundToPx() }
+            val fullAnchorPx = (anchorHeightPx - rememberVisibleStatusBarHeightPx() - overlayTopInsetPx)
+                .coerceAtLeast(0)
+            val fullAnchorState = rememberUpdatedState(fullAnchorPx)
+            // 回弹/吸附动画: 从当前位移续播到目标锚点 (新拖拽开始时由 drag 路径取消 bounceJob)
+            val animateDragTo: (Float) -> Unit = { target ->
                 bounceJob?.cancel()
-                bounceJob = null
-                dragOffset = 0f
+                bounceJob = scope.launch {
+                    animate(
+                        initialValue = dragOffset,
+                        targetValue = target,
+                        animationSpec = spring(),
+                    ) { value, _ -> dragOffset = value }
+                }
             }
-        }
-        val p = progress.value
-        val dragOffsetPx = dragOffset
-        // 滑入/滑出位移取"0.7 锚点高与面板实测高的较大值": 常规弹层实测高 ≤ 0.7 锚点高,
-        // 取值不变; 全屏态面板更高, 靠实测高才能整块滑出窗口而不残留顶部一截
-        val anchorSlidePx = with(LocalDensity.current) { AppDialogSizes.fullHeight().toPx() }
-        val slideHeightPx = maxOf(sheetHeightPx.toFloat(), anchorSlidePx)
-        BottomSheetScaffold(
-            // 外部点击与返回键一致走 dismissing 退出动画路径
-            onDismissRequest = { dismissing = true },
-            maxHeight = maxHeight,
-            fullScreen = fullScreen,
-            // 拖拽中面板高度改由状态驱动: 上推变高 (dragOffset 负), 下拉保持默认
-            // 锚点高并整体下移 (dragOffset 正); 回到默认锚点 (dragOffset == 0) 恢复
-            // wrap 布局, 高度连续无跳变
-            heightPx = if (dragOffset != 0f) {
-                (defaultAnchorPx - dragOffset.coerceAtMost(0f)).roundToInt()
-            } else null,
-            modifier = Modifier
-                .onSizeChanged {
-                    sheetHeightPx = it.height
-                    // 未展开时同步默认锚点 (初始 = 内容自然高, 桌面窗口 resize 跟随)
-                    if (dragOffset == 0f) defaultAnchorPx = it.height
+            // 松手/停止滚动后的归位判定 (pointer 拖拽路径与 nestedScroll 路径共用):
+            // 拖拽位移现为双向 —— 负 = 上推 (面板高度放大), 正 = 下拉 (关闭方向)。
+            // 锚点吸附: 上推过半/快速上推 → 吸附视觉全屏; 下拉达阈值/快速下拉 (且已
+            // 越过默认锚点) → 走现有滑出动画关闭; 其余 → 弹簧回弹默认锚点。
+            // 全屏态下拉回弹到 0 = 缩回默认高度, 再下拉才关 (先缩回再关闭)
+            val settleDrag: (Float) -> Unit = { velocityY ->
+                if (!dismissing) {
+                    val dismissDistancePx = maxOf(minDismissDistancePx, sheetHeightPx * 0.25f)
+                    // 展开量 (px) = 视觉全屏高 - 默认锚点高
+                    val expandDistancePx = (fullAnchorState.value - defaultAnchorPx).toFloat()
+                    when {
+                        dragOffset > 0f &&
+                            (dragOffset >= dismissDistancePx || velocityY >= flingDismissVelocityPx) ->
+                            dismissing = true
+
+                        velocityY <= -flingExpandVelocityPx -> animateDragTo(-expandDistancePx)
+                        dragOffset <= -expandDistancePx / 2f -> animateDragTo(-expandDistancePx)
+                        dragOffset != 0f -> animateDragTo(0f)
+                    }
                 }
-                .nestedScroll(nestedScrollConnection)
-                .graphicsLayer {
-                    // 进入/退出动画位移 + 下拉拖拽位移: 上推部分由面板高度放大表达,
-                    // 不参与平移 (面板底部始终贴窗底); 拖拽中触发关闭时退出动画从
-                    // 当前拖拽位继续下滑, 无跳变
-                    translationY = slideHeightPx * (1f - p) + dragOffsetPx.coerceAtLeast(0f)
-                    alpha = if (dialogSpec.enterFadeIn) p else 1f
-                }
-                .onGloballyPositioned { sheetCoordinates = it }
-                // 非滚动内容面板的拖拽路径: 内部无滚动消费位移时赢得竖直 slop,
-                // 面板跟随手指; 内部 Compose 滚动消费了位移则本检测自动让位
-                // (awaitVerticalTouchSlopOrCancellation 遇已消费的位置变化返回 null),
-                // 由上方 nestedScroll 连接接手
-                .pointerInput(Unit) {
-                    awaitEachGesture {
-                        // 先挂起等待 down (保证无事件时挂起而非空转)
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        // 已进入退出流程: 忽略后续手势, 等待本次 pointer up 后结束本轮
-                        // (若在 awaitFirstDown 之前 return, 无 pressed 时 awaitEachGesture 的
-                        // awaitAllPointersUp 不挂起, 会形成 busy loop 占死 EDT → 桌面端卡死)
-                        if (dismissing) {
-                            var upEvent = awaitPointerEvent(PointerEventPass.Final)
-                            while (upEvent.changes.any { it.pressed }) {
-                                upEvent = awaitPointerEvent(PointerEventPass.Final)
-                            }
-                            return@awaitEachGesture
+            }
+            // 滚动内容协调: 内部列表到顶后无法消费的位移经 onPostScroll 派发到本连接,
+            // 面板跟随; 未到顶时列表自己消费, 余量为 0, 面板不动 (同 M3 ModalBottomSheet
+            // ConsumeSwipeWithinBottomSheetBoundsNestedScrollConnection 机制, 仅收 UserInput,
+            // 排除列表自身 fling/惯性位移; 鼠标滚轮到顶同样派发, 属原生 sheet 行为)
+            val nestedScrollConnection = remember {
+                object : NestedScrollConnection {
+                    override fun onPostScroll(
+                        consumed: Offset,
+                        available: Offset,
+                        source: NestedScrollSource,
+                    ): Offset {
+                        if (
+                            !dragEnabled.value ||
+                            dismissing ||
+                            source != NestedScrollSource.UserInput ||
+                            available.y == 0f
+                        ) {
+                            return Offset.Zero
                         }
-                        // 本轮不参与手势竞争 (全程不消费位移, 手势原样留给内部):
-                        // 全屏态停用拖拽, 或按下落点命中拖拽禁区 —— 禁区内是平台 WebView 这
-                        // 类 interop 视图, 只要 Compose 侧消费了位移它就会收到 ACTION_CANCEL
-                        // 而彻底滚不动 (见 [SheetDragExclusion]), 所以不能靠"抢先消费"让位。
-                        // 此处已有按下中的指针, awaitEachGesture 末尾的 awaitAllPointersUp
-                        // 会正常挂起, 不会空转。
-                        val downInExclusion = sheetCoordinates?.let {
-                            dragExclusion.contains(it.localToWindow(down.position))
-                        } == true
-                        if (!dragEnabled.value || downInExclusion) return@awaitEachGesture
-                        var overSlop = 0f
-                        val dragChange =
-                            awaitVerticalTouchSlopOrCancellation(down.id) { change, over ->
-                                change.consume()
-                                overSlop = over
-                            } ?: return@awaitEachGesture
+                        // 新的拖拽开始: 取消回弹动画, 从当前位移继续
                         bounceJob?.cancel()
                         bounceJob = null
-                        // 首段位移含越过 slop 的 overshoot, 与后续 delta 连续;
-                        // 下限夹紧在视觉全屏展开量 (上推越位不越界)
-                        dragOffset = (dragOffset + overSlop * DragResistance)
+                        // 双向夹紧: 上推 (available.y 负 = 列表滚到底继续上滑) 展开到视觉
+                        // 全屏为止; 下拉 (available.y 正 = 列表滚到顶继续下滑) 不设下限,
+                        // 由 settleDrag 判定关闭/回弹
+                        dragOffset = (dragOffset + available.y * DragResistance)
                             .coerceAtLeast((defaultAnchorPx - fullAnchorState.value).toFloat())
-                        val velocityTracker = VelocityTracker()
-                        velocityTracker.addPosition(down.uptimeMillis, down.position)
-                        velocityTracker.addPosition(dragChange.uptimeMillis, dragChange.position)
-                        drag(dragChange.id) { change ->
-                            val deltaY = change.positionChange().y
-                            change.consume()
-                            velocityTracker.addPosition(change.uptimeMillis, change.position)
-                            // 双向: 向下 (deltaY 正) → 位移正向累积 (下拉/关闭方向);
-                            // 向上 (deltaY 负) → 位移负向累积 → 面板高度放大,
-                            // 到视觉全屏后夹紧不越位
-                            dragOffset = (dragOffset + deltaY * DragResistance)
-                                .coerceAtLeast((defaultAnchorPx - fullAnchorState.value).toFloat())
-                        }
-                        settleDrag(velocityTracker.calculateVelocity().y)
+                        return Offset.Zero
                     }
-                },
-        ) {
-            CompositionLocalProvider(
-                LocalSheetDragExclusion provides dragExclusion,
-                LocalSheetDismissRequest provides requestDismiss,
-            ) { content() }
+
+                    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                        // 本回调只在"内部列表赢得手势并 fling"时触发 (两条拖拽路径互斥:
+                        // 面板跟手的 pointerInput 路径赢得手势时列表无 fling, 不会走到这里;
+                        // 列表赢得手势时 pointerInput 已让位, 关闭判定由 pointerInput 路径负责)。
+                        // 因此这里的 fling 必然是列表自身滚动 (滚到顶/底的剩余惯性), 速度
+                        // 不得触发"快速下拉关闭"——只按位移判定 (滚到顶后继续下拉、位移达
+                        // 阈值仍可关闭) 或回弹复位面板残留位移 (滚动尾段把面板带起的一点位移)。
+                        settleDrag(0f)
+                        return available
+                    }
+                }
+            }
+            // 进入: 从底部滑入 + 淡入 (对齐原版底部弹层动画, 参数读平台 spec)
+            LaunchedEffect(Unit) {
+                progress.animateTo(
+                    1f,
+                    tween(
+                        durationMillis = dialogSpec.enterDurationMillis,
+                        easing = dialogSpec.enterEasing.toComposeEasing(),
+                    )
+                )
+            }
+            // 退出: 下滑淡出播完再关闭
+            LaunchedEffect(dismissing) {
+                if (dismissing) {
+                    progress.animateTo(
+                        0f,
+                        tween(
+                            durationMillis = dialogSpec.exitDurationMillis,
+                            easing = dialogSpec.exitEasing.toComposeEasing(),
+                        )
+                    )
+                    onDismissRequest()
+                }
+            }
+            // 进入全屏: 清掉残留拖拽位移与回弹动画 (全屏态不再有拖拽路径去归位它)
+            LaunchedEffect(fullScreen) {
+                if (fullScreen) {
+                    bounceJob?.cancel()
+                    bounceJob = null
+                    dragOffset = 0f
+                }
+            }
+            val p = progress.value
+            val dragOffsetPx = dragOffset
+            // 滑入/滑出位移取"0.7 锚点高与面板实测高的较大值": 常规弹层实测高 ≤ 0.7 锚点高,
+            // 取值不变; 全屏态面板更高, 靠实测高才能整块滑出窗口而不残留顶部一截
+            val anchorSlidePx = with(LocalDensity.current) { AppDialogSizes.fullHeight().toPx() }
+            val slideHeightPx = maxOf(sheetHeightPx.toFloat(), anchorSlidePx)
+            BottomSheetScaffold(
+                // 外部点击与返回键一致走 dismissing 退出动画路径
+                onDismissRequest = { dismissing = true },
+                maxHeight = maxHeight,
+                fullScreen = fullScreen,
+                // 拖拽中面板高度改由状态驱动: 上推变高 (dragOffset 负), 下拉保持默认
+                // 锚点高并整体下移 (dragOffset 正); 回到默认锚点 (dragOffset == 0) 恢复
+                // wrap 布局, 高度连续无跳变
+                heightPx = if (dragOffset != 0f) {
+                    (defaultAnchorPx - dragOffset.coerceAtMost(0f)).roundToInt()
+                } else null,
+                modifier = Modifier
+                    .onSizeChanged {
+                        sheetHeightPx = it.height
+                        // 未展开时同步默认锚点 (初始 = 内容自然高, 桌面窗口 resize 跟随)
+                        if (dragOffset == 0f) defaultAnchorPx = it.height
+                    }
+                    .nestedScroll(nestedScrollConnection)
+                    .graphicsLayer {
+                        // 进入/退出动画位移 + 下拉拖拽位移: 上推部分由面板高度放大表达,
+                        // 不参与平移 (面板底部始终贴窗底); 拖拽中触发关闭时退出动画从
+                        // 当前拖拽位继续下滑, 无跳变
+                        translationY = slideHeightPx * (1f - p) + dragOffsetPx.coerceAtLeast(0f)
+                        alpha = if (dialogSpec.enterFadeIn) p else 1f
+                    }
+                    .onGloballyPositioned { sheetCoordinates = it }
+                    // 非滚动内容面板的拖拽路径: 内部无滚动消费位移时赢得竖直 slop,
+                    // 面板跟随手指; 内部 Compose 滚动消费了位移则本检测自动让位
+                    // (awaitVerticalTouchSlopOrCancellation 遇已消费的位置变化返回 null),
+                    // 由上方 nestedScroll 连接接手
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            // 先挂起等待 down (保证无事件时挂起而非空转)
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            // 已进入退出流程: 忽略后续手势, 等待本次 pointer up 后结束本轮
+                            // (若在 awaitFirstDown 之前 return, 无 pressed 时 awaitEachGesture 的
+                            // awaitAllPointersUp 不挂起, 会形成 busy loop 占死 EDT → 桌面端卡死)
+                            if (dismissing) {
+                                var upEvent = awaitPointerEvent(PointerEventPass.Final)
+                                while (upEvent.changes.any { it.pressed }) {
+                                    upEvent = awaitPointerEvent(PointerEventPass.Final)
+                                }
+                                return@awaitEachGesture
+                            }
+                            // 本轮不参与手势竞争 (全程不消费位移, 手势原样留给内部):
+                            // 全屏态停用拖拽, 或按下落点命中拖拽禁区 —— 禁区内是平台 WebView 这
+                            // 类 interop 视图, 只要 Compose 侧消费了位移它就会收到 ACTION_CANCEL
+                            // 而彻底滚不动 (见 [SheetDragExclusion]), 所以不能靠"抢先消费"让位。
+                            // 此处已有按下中的指针, awaitEachGesture 末尾的 awaitAllPointersUp
+                            // 会正常挂起, 不会空转。
+                            val downInExclusion = sheetCoordinates?.let {
+                                dragExclusion.contains(it.localToWindow(down.position))
+                            } == true
+                            if (!dragEnabled.value || downInExclusion) return@awaitEachGesture
+                            var overSlop = 0f
+                            val dragChange =
+                                awaitVerticalTouchSlopOrCancellation(down.id) { change, over ->
+                                    change.consume()
+                                    overSlop = over
+                                } ?: return@awaitEachGesture
+                            bounceJob?.cancel()
+                            bounceJob = null
+                            // 首段位移含越过 slop 的 overshoot, 与后续 delta 连续;
+                            // 下限夹紧在视觉全屏展开量 (上推越位不越界)
+                            dragOffset = (dragOffset + overSlop * DragResistance)
+                                .coerceAtLeast((defaultAnchorPx - fullAnchorState.value).toFloat())
+                            val velocityTracker = VelocityTracker()
+                            velocityTracker.addPosition(down.uptimeMillis, down.position)
+                            velocityTracker.addPosition(dragChange.uptimeMillis, dragChange.position)
+                            drag(dragChange.id) { change ->
+                                val deltaY = change.positionChange().y
+                                change.consume()
+                                velocityTracker.addPosition(change.uptimeMillis, change.position)
+                                // 双向: 向下 (deltaY 正) → 位移正向累积 (下拉/关闭方向);
+                                // 向上 (deltaY 负) → 位移负向累积 → 面板高度放大,
+                                // 到视觉全屏后夹紧不越位
+                                dragOffset = (dragOffset + deltaY * DragResistance)
+                                    .coerceAtLeast((defaultAnchorPx - fullAnchorState.value).toFloat())
+                            }
+                            settleDrag(velocityTracker.calculateVelocity().y)
+                        }
+                    },
+            ) {
+                CompositionLocalProvider(
+                    LocalSheetDragExclusion provides dragExclusion,
+                    LocalSheetDismissRequest provides requestDismiss,
+                ) { content() }
+            }
         }
     }
 }

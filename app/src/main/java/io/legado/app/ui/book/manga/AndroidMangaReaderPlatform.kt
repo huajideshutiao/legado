@@ -14,6 +14,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.node.Ref
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.net.toUri
+import coil3.SingletonImageLoader
+import coil3.request.CachePolicy
+import coil3.request.ImageRequest
+import coil3.size.Size
 import io.legado.app.App
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -21,6 +25,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
+import io.legado.app.model.manga.MangaModel
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.config.MangaFooterConfig
 import io.legado.app.ui.book.manga.config.isNoOp
@@ -110,6 +115,23 @@ object AndroidMangaReaderPlatform : MangaReaderScreenModel.Platform {
 
     override fun setAutoPageSpeed(speed: Int) {
         AppConfig.mangaAutoPageSpeed = speed
+    }
+
+    // 预载到内存缓存: WRITE_ONLY 只写不返回图 (对照原版 RecyclerViewPreloader 预载语义;
+    // 显示请求 memoryCachePolicy(ENABLED) 命中同 loader 同 Keyer 的 url 键, 翻到预载区间即秒显)。
+    // Size.ORIGINAL 全尺寸解码 (isSampled=false), 对任意显示请求尺寸均有效
+    // (Coil3 MemoryCacheService.isCacheValueValidForSize); 磁盘缓存禁用由 fetcher 层的
+    // BookHelp 缓存承担, 与显示请求参数一致 (desktop 同参同链路)。
+    override suspend fun preloadImage(url: String, book: Book, source: BookSource?) {
+        runCatching {
+            val request = ImageRequest.Builder(App.instance)
+                .data(MangaModel(url, book, source))
+                .memoryCachePolicy(CachePolicy.WRITE_ONLY)
+                .diskCachePolicy(CachePolicy.DISABLED)
+                .size(Size.ORIGINAL)
+                .build()
+            SingletonImageLoader.get(App.instance).execute(request)
+        }
     }
 
     override fun flowImages(

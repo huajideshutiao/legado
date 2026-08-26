@@ -9,11 +9,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.AlertDialog
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
-import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -28,11 +26,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.help.FileCacheProviders
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppTextField
-import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.splitNotBlank
 import kotlinx.coroutines.withContext
@@ -83,88 +81,69 @@ fun OnlineImportUrlDialog(
         FileCacheProviders.get().put(recordKey, cacheUrls.joinToString(","), persistent = true)
     }
 
-    AlertDialog(
+    AppAlertDialog(
         onDismissRequest = onDismiss,
-        modifier = Modifier.appDialogSize(),
         properties = AppDialogSizes.properties(),
-        title = {
-            Text(
-                text = stringResource(Res.string.import_on_line),
-                color = colors.primaryText,
-                fontSize = 18.sp,
-            )
+        title = stringResource(Res.string.import_on_line),
+        okButton = AlertButton(text = stringResource(Res.string.ok)) {
+            val text = url.trim()
+            // 与 app 端一致: 合法 URL 且不在历史中才记录 (插首位)
+            if (text.isAbsUrl() && !cacheUrls.contains(text)) {
+                cacheUrls.add(0, text)
+                persist()
+            }
+            if (text.isNotEmpty()) onConfirm(text)
         },
-        text = {
-            Column(Modifier.fillMaxWidth()) {
-                AppTextField(
-                    value = url,
-                    onValueChange = { url = it },
-                    label = "url",
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                // 历史记录列表 (点击回填输入框, 删除按钮移除并持久化)
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 240.dp)
-                        .verticalScroll(rememberScrollState()),
-                ) {
-                    cacheUrls.forEach { item ->
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .clickable { url = item }
-                                .padding(vertical = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+        cancelButton = AlertButton(text = stringResource(Res.string.cancel)),
+    ) {
+        Column(Modifier.fillMaxWidth()) {
+            AppTextField(
+                value = url,
+                onValueChange = { url = it },
+                label = "url",
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            // 历史记录列表 (点击回填输入框, 删除按钮移除并持久化)
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 240.dp)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                cacheUrls.forEach { item ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { url = item }
+                            .padding(vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = item,
+                            color = colors.secondaryText,
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        IconButton(
+                            onClick = {
+                                cacheUrls.remove(item)
+                                persist()
+                            },
+                            modifier = Modifier.size(28.dp),
                         ) {
-                            Text(
-                                text = item,
-                                color = colors.secondaryText,
-                                fontSize = 13.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f),
+                            Icon(
+                                painter = painterResource(Res.drawable.ic_baseline_close),
+                                contentDescription = null,
+                                tint = colors.secondaryText,
+                                modifier = Modifier.size(16.dp),
                             )
-                            IconButton(
-                                onClick = {
-                                    cacheUrls.remove(item)
-                                    persist()
-                                },
-                                modifier = Modifier.size(28.dp),
-                            ) {
-                                Icon(
-                                    painter = painterResource(Res.drawable.ic_baseline_close),
-                                    contentDescription = null,
-                                    tint = colors.secondaryText,
-                                    modifier = Modifier.size(16.dp),
-                                )
-                            }
                         }
                     }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                val text = url.trim()
-                // 与 app 端一致: 合法 URL 且不在历史中才记录 (插首位)
-                if (text.isAbsUrl() && !cacheUrls.contains(text)) {
-                    cacheUrls.add(0, text)
-                    persist()
-                }
-                onDismiss()
-                if (text.isNotEmpty()) onConfirm(text)
-            }) {
-                Text(text = stringResource(Res.string.ok), color = DesignTokens.arcoBlue6)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(text = stringResource(Res.string.cancel), color = colors.secondaryText)
-            }
-        },
-        shape = DesignTokens.dialogShape,
-        backgroundColor = colors.fillet,
-    )
+        }
+    }
 }
