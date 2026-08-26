@@ -324,8 +324,8 @@ jobs:
         run: ./gradlew :modules:quickjs:buildJvmNativeLib --warning-mode all
         continue-on-error: true
       - name: Verify Quickjs Native Lib
-        # 上一步 continue-on-error, 静默失败会打出不含 legado_quickjs.dylib 的包
-        run: test -f "$GITHUB_WORKSPACE/modules/quickjs/build/libs/jvm/native/legado_quickjs.dylib"
+        # 上一步 continue-on-error, 静默失败会打出不含 liblegado_quickjs.dylib 的包
+        run: test -f "$GITHUB_WORKSPACE/modules/quickjs/build/libs/jvm/native/liblegado_quickjs.dylib"
       - name: Build macOS DMG
         run: ./gradlew :desktop:packageDmg --build-cache --parallel --daemon --warning-mode all
       - name: Collect DMG

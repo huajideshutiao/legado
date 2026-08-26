@@ -363,13 +363,11 @@ fun runCmakeNativeBuild(
 val buildSmtcNative by tasks.registering {
     group = "native"
     description = "Build legado_smtc native library (SMTC bridge) for desktop JVM"
+    // SMTC 桥是纯 Win32 代码 (smtc_bridge.c 直引 windows.h), 非 Windows 平台无法编译,
+    // onlyIf 跳过避免 macOS/Linux 打包时白跑一次必失败的构建
+    onlyIf { OperatingSystem.current().isWindows }
     inputs.dir(smtcCppDir)
-    outputs.file(
-        File(
-            smtcNativeDir,
-            if (OperatingSystem.current().isWindows) "legado_smtc.dll" else "liblegado_smtc.so"
-        )
-    )
+    outputs.file(File(smtcNativeDir, "legado_smtc.dll"))
     doFirst {
         runCmakeNativeBuild("legado-smtc", smtcCppDir, smtcNativeDir, smtcNativeBuildDir, logger)
     }
@@ -440,14 +438,10 @@ fun findMingwBinDir(): String? {
 
 val copySmtcNativeToResources by tasks.registering(Copy::class) {
     dependsOn(buildSmtcNative)
+    onlyIf { OperatingSystem.current().isWindows }
     from(smtcNativeDir)
-    val osName = when {
-        OperatingSystem.current().isWindows -> "windows"
-        OperatingSystem.current().isMacOsX -> "macos"
-        else -> "linux"
-    }
-    into(file("${composeResourcesDir.path}/$osName"))
-    include("*.dll", "*.so", "*.dylib")
+    into(file("${composeResourcesDir.path}/windows"))
+    include("*.dll")
 }
 
 // ===== legado_wndchrome native 桥 (Windows 窗口控制条, 纯 C) =====

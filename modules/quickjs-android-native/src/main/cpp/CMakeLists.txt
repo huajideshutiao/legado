@@ -6,13 +6,15 @@ get_filename_component(LEGADO_PROJECT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../..
 set(QUICKJS_NG_DIR "${LEGADO_PROJECT_ROOT}/shared/src/cinterop/quickjs-ng")
 
 # ============ 通用瘦身开关 ============
-# ThinLTO 跨 TU 内联+死码; gc-sections/icf 回收 section 与折叠相同函数。
+# ThinLTO 跨 TU 内联+死码; gc-sections 回收无用 section。
+# --icf=all (折叠相同函数) 仅 gold/lld 支持: Android NDK ld.lld 保留, 桌面 GNU BFD ld 不用 (见下方分支)。
 # -fno-unwind-tables + -fno-asynchronous-unwind-tables: 已 -fno-exceptions, 不需要
 #   .eh_frame / .eh_frame_hdr, 单 ABI 省 ~100 KB。也让 libunwind 静态段不再被拉入。
 #
 # KP1.1 跨平台注:
 # - -flto=thin 是 Clang 特性, MSVC 不支持, 桌面 Windows MSVC 构建走 /O2 /GL
-# - GNU ld 选项 (-Wl,--gc-sections / --icf=all) 仅 Linux 走, macOS/Windows 不用
+# - GNU ld 选项 (-Wl,--gc-sections / --exclude-libs=ALL) 仅 Linux 走, macOS/Windows 不用;
+#   --icf=all 是 gold/lld 专属选项, 桌面 BFD ld 不支持
 # - Android 端保持原行为 (NDK Clang + ThinLTO + GNU ld)
 # - MSVC 不识别 GCC/Clang 选项 (-fvisibility=hidden / -ffunction-sections 等),
 #   单独走 MSVC 选项 (/O2 /GL /Gy /Gw /EHsc /OPT:REF /OPT:ICF /LTCG)
@@ -219,20 +221,20 @@ else ()
                 ${LEGADO_QUICKJS_LTO_FLAG}
         )
     elseif (WIN32)
-        # MinGW + lld (LLVM-MinGW): --gc-sections + --icf=all 支持,
+        # MinGW: --gc-sections + -static。--icf=all 仅 gold/lld 支持 (C:\mingw64 的 BFD
+        # ld 报 unrecognized option), 与 Linux 桌面分支一致去掉。
         # --exclude-libs=ALL 不支持 (lld 默认不重导出静态库符号, 无需此选项)
         # -static: 静态链接 UCRT + winpthread + libc++, 避免 DLL 依赖加载失败
         target_link_options(legado_quickjs PRIVATE
                 "-Wl,--gc-sections"
-                "-Wl,--icf=all"
                 "-static"
                 ${LEGADO_QUICKJS_LTO_FLAG}
         )
     else ()
-        # Linux GNU ld: --gc-sections + --icf=all + --exclude-libs=ALL
+        # Linux GNU ld: --gc-sections + --exclude-libs=ALL
+        # (--icf=all 仅 gold/lld 支持, BFD ld 报 unrecognized option; ubuntu CI 的 /usr/bin/ld 即 BFD)
         target_link_options(legado_quickjs PRIVATE
                 "-Wl,--gc-sections"
-                "-Wl,--icf=all"
                 "-Wl,--exclude-libs=ALL"
                 ${LEGADO_QUICKJS_LTO_FLAG}
         )

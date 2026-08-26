@@ -70,7 +70,7 @@ static String nativeLibName() {
     if (osName.contains("windows")) {
         return "legado_quickjs.dll"
     } else if (osName.contains("mac") || osName.contains("darwin")) {
-        return "legado_quickjs.dylib"
+        return "liblegado_quickjs.dylib"
     } else {
         return "liblegado_quickjs.so"
     }

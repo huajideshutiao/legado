@@ -9,7 +9,7 @@ import java.io.File
  * native 库搜索顺序:
  * 1. 系统属性 `legado.quickjs.lib` 指定的绝对路径 (生产部署 / 测试场景手动指定)
  * 2. 环境变量 `LEGADO_QUICKJS_LIB` 指定的绝对路径
- * 3. 当前模块构建产物 `build/libs/jvm/native/{legado_quickjs.dll|liblegado_quickjs.so|legado_quickjs.dylib}`
+ * 3. 当前模块构建产物 `build/libs/jvm/native/{legado_quickjs.dll|liblegado_quickjs.so|liblegado_quickjs.dylib}`
  * 4. 项目根目录 `legado_quickjs.dll` (兼容本地脚本调试)
  *
  * 任一路径存在则加载, 全部不存在时抛 [UnsatisfiedLinkError] 让调用方感知。
