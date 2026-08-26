@@ -13,6 +13,7 @@ set(QUICKJS_NG_DIR "${LEGADO_PROJECT_ROOT}/shared/src/cinterop/quickjs-ng")
 #
 # KP1.1 跨平台注:
 # - -flto=thin 是 Clang 特性, MSVC 不支持, 桌面 Windows MSVC 构建走 /O2 /GL
+# - MinGW GCC 的 LTO 在 CI windows runner (C:\mingw64) 无法链接 (ld 无 lto plugin), 该分支不用 LTO
 # - GNU ld 选项 (-Wl,--gc-sections / --exclude-libs=ALL) 仅 Linux 走, macOS/Windows 不用;
 #   --icf=all 是 gold/lld 专属选项, 桌面 BFD ld 不支持
 # - Android 端保持原行为 (NDK Clang + ThinLTO + GNU ld)
@@ -207,8 +208,12 @@ else ()
         target_compile_options(quickjs_ng PRIVATE -flto=thin)
         target_compile_options(legado_quickjs PRIVATE -flto=thin)
         set(LEGADO_QUICKJS_LTO_FLAG "-flto=thin")
+    elseif (WIN32)
+        # MinGW GCC: C:\mingw64 的 ar/ld 未装配 lto plugin (ar 报 "plugin needed to handle lto
+        # object", 链接期大量 undefined reference to JS_*), 与 Linux binutils 不同; 关闭 LTO
+        set(LEGADO_QUICKJS_LTO_FLAG "")
     else ()
-        # GCC/MinGW: 用 -flto 而非 =thin
+        # Linux GCC: -flto (binutils 带 lto plugin, ubuntu CI 验证可链接)
         target_compile_options(quickjs_ng PRIVATE -flto)
         target_compile_options(legado_quickjs PRIVATE -flto)
         set(LEGADO_QUICKJS_LTO_FLAG "-flto")
