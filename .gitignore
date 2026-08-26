@@ -24,8 +24,10 @@ package-lock.json
 # 文档目录仅本地保留，不入库（调研/计划类文档，非源码）
 docs/
 
-# OHOS 原生共享库（根 build.gradle.kts 拷入的 liblegado_shared.so 等）
+# OHOS 原生共享库与 K/N 生成头文件（根 build.gradle.kts stageOhosNativeLibraries 拷入,
+# hvigor 构建时经 CMake 前置的 gradle 任务自动重新生成, 不进版本库）
 ohosApp/entry/libs/
+ohosApp/entry/src/main/cpp/include/arm64-v8a/
 
 # OHOS/DevEco 构建缓存与本地依赖
 .hvigor/

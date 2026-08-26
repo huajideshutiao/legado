@@ -326,7 +326,10 @@ kotlin {
                     binaryOption("bundleId", "shutiao.reader.shared")
                 }
                 all {
-                    linkerOpts("-L${nativeLibDir.absolutePath}", "-lquickjs", "-lmbedtls")
+                    // -lsqlite3: room3/sqlite-framework 的 cinterop wrapper 直呼 sqlite3_* 符号,
+                    // 系统 libsqlite3 必须显式链接; 全量 LTO 时代死代码消除掩盖了缺失,
+                    // 关优化后 ld 真实解析才暴露 (2026-08-26 ios.yml 实测)。
+                    linkerOpts("-L${nativeLibDir.absolutePath}", "-lquickjs", "-lmbedtls", "-lsqlite3")
                     // 显式关优化: release 全量 LTO 的 DevirtualizationAnalysis 峰值堆需求超 10g,
                     // CI runner 仅 8G 物理内存必 OOM (2026-08-26 ios.yml 实测), 代价是 framework
                     // 体积增大, 换取 CI 稳定出包。死代码剥离不自己传: Apple ld 不认 GNU 的
