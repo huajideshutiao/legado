@@ -1,6 +1,5 @@
 import org.jetbrains.kotlin.gradle.plugin.KotlinDependencyHandler
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
-import org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType
 
 plugins {
     id("legado.kmp.library")
@@ -328,13 +327,11 @@ kotlin {
                 }
                 all {
                     linkerOpts("-L${nativeLibDir.absolutePath}", "-lquickjs", "-lmbedtls")
-                    // release 开 DevirtualizationAnalysis 全量 LTO 减体积,
-                    // 内存峰值高: CI (ios.yml) 会把 gradle 堆临时提到 10g (本机不跑 iOS 链接)。
-                    // 死代码剥离不自己传: Apple ld 不认 GNU 的 --gc-sections (硬失败), 且
-                    // K/N 链 framework 时已自带 -dead_strip (konan Linker.kt)。
-                    if (buildType == NativeBuildType.RELEASE) {
-                        optimized = true
-                    }
+                    // 显式关优化: release 全量 LTO 的 DevirtualizationAnalysis 峰值堆需求超 10g,
+                    // CI runner 仅 8G 物理内存必 OOM (2026-08-26 ios.yml 实测), 代价是 framework
+                    // 体积增大, 换取 CI 稳定出包。死代码剥离不自己传: Apple ld 不认 GNU 的
+                    // --gc-sections (硬失败), 且 K/N 链 framework 时已自带 -dead_strip (konan Linker.kt)。
+                    optimized = false
                 }
             }
             // KGP 的 klib 跨平台编译要求目标不含任何 cinterop (见 KotlinNativeTarget
