@@ -99,6 +99,15 @@ object OhosMangaReaderPlatform : MangaReaderScreenModel.Platform {
             Box(modifier = modifier.background(Color.Black))
         }
     }
+    // 无 Coil3 内存缓存: 预载 = 提前经共享 MangaImageBytesLoader 取字节回填磁盘缓存
+    // (BookImageStorage, 与显示端同链路), 翻到预载区间时命中缓存跳过网络下载;
+    // 解码留给显示端 (位图无跨页共享缓存层)
+    override suspend fun preloadImage(url: String, book: Book, source: BookSource?) {
+        if (!url.startsWith("http://") && !url.startsWith("https://")) return
+        runCatching {
+            MangaImageBytesLoader.load(url, book, source, currentCoroutineContext())
+        }
+    }
 }
 
 /**

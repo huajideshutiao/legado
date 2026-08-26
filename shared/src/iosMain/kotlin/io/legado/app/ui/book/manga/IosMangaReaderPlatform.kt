@@ -28,6 +28,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.PlatformContext
+import coil3.SingletonImageLoader
 import coil3.compose.AsyncImagePainter
 import coil3.compose.rememberAsyncImagePainter
 import coil3.request.CachePolicy
@@ -128,6 +129,21 @@ object IosMangaReaderPlatform : MangaReaderScreenModel.Platform {
                     modifier = Modifier.size(48.dp),
                 )
             }
+        }
+    }
+
+    // 预载到内存缓存: WRITE_ONLY 只写不返回图 (与 desktop 同参; 显示端 rememberAsyncImagePainter
+    // 与预载经 SingletonImageLoader 共用同一实例, memoryCacheKey(url) 同 key, 翻到预载区间即秒显)
+    override suspend fun preloadImage(url: String, book: Book, source: BookSource?) {
+        runCatching {
+            val request = ImageRequest.Builder(PlatformContext.INSTANCE)
+                .data(MangaModel(url, book, source))
+                .memoryCacheKey(url)
+                .memoryCachePolicy(CachePolicy.WRITE_ONLY)
+                .diskCachePolicy(CachePolicy.DISABLED)
+                .size(Size.ORIGINAL)
+                .build()
+            SingletonImageLoader.get(PlatformContext.INSTANCE).execute(request)
         }
     }
 }
