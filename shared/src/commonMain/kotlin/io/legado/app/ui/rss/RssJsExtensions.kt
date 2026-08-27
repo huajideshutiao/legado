@@ -70,8 +70,8 @@ class RssJsActions(private val scope: CoroutineScope) : RssJsApi {
  * native 半区靠 `NativeJsExtensionsBridge` 按 methodId 桥接 [BaseSource] 自身。
  * 故本工厂由各端 actual 提供, 与 [io.legado.app.help.JsExtProviders] 同一套路。
  *
- * native 半区的 JS 桥按 methodId 表分派, 表里没有 searchBook/addBook, 故 native actual 直接
- * 返回 [source] (拦截 JS 照常执行, 只是这两个方法取不到)。iOS/鸿蒙的 WebView slot 目前也还是占位,
- * 拦截根本不会触发。
+ * native 半区的 JS 桥按 methodId 表分派, 表里没有 searchBook/addBook, native actual 用
+ * [RssJsApi] 包装类补两个方法 (methodId 1610/1611, iOS/鸿蒙经同一 nativeMain 实现生效),
+ * 拦截 JS 与 Android 端等价可用。
  */
 expect fun createRssJsBinding(source: BaseSource, actions: RssJsApi): Any

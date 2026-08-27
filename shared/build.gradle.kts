@@ -537,14 +537,24 @@ kotlin {
                 // 非 mac: quickjs/mbedtls cinterop 无法生成, staged 的 interop 桥文件
                 // (依赖 C 符号) 一并排除, klib 校验覆盖其余源码 (mac 上由 cinterop 提供符号)
                 if (!isMacHost) {
-                    kotlin.exclude(*nativeInteropSourcePatterns.toTypedArray())
+                    kotlin.exclude(
+                        *nativeInteropSourcePatterns.toTypedArray(),
+                        // stage 任务生成的顶层类型别名引用 cnames 包 (仅 mac cinterop 产物),
+                        // 非 mac 同样排除 (2026-08: Windows 跑 compileKotlinIosArm64 首曝此错)
+                        "io/legado/app/napi/quickjs/CNamesAliases.kt",
+                        "io/legado/app/nativecrypto/mbedtls/CNamesAliases.kt",
+                    )
                 }
             }
             maybeCreate("iosSimulatorArm64Main").apply {
                 dependsOn(iosMain)
                 kotlin.srcDir(layout.buildDirectory.dir("generated/nativeInterop/iosLeaf"))
                 if (!isMacHost) {
-                    kotlin.exclude(*nativeInteropSourcePatterns.toTypedArray())
+                    kotlin.exclude(
+                        *nativeInteropSourcePatterns.toTypedArray(),
+                        "io/legado/app/napi/quickjs/CNamesAliases.kt",
+                        "io/legado/app/nativecrypto/mbedtls/CNamesAliases.kt",
+                    )
                 }
             }
         }

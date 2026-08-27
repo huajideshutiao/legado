@@ -15,6 +15,8 @@ import io.ktor.client.network.sockets.ConnectTimeoutException
 import io.ktor.client.network.sockets.InterruptedIOException
 import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.BodyProgress
+import io.ktor.client.plugins.onDownload
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.header
 import io.ktor.client.request.request
@@ -231,6 +233,9 @@ actual class KmpHttpClientBuilder actual constructor() {
         val effectiveCallTimeout =
             if (callTimeoutMillis > 0) callTimeoutMillis else DEFAULT_TIMEOUT_MS
         val client = HttpClient(CIO) {
+            // 下载进度: BodyProgress 插件在响应通道上逐字节上报 (NativeKmpCall 经 onDownload 注册,
+            // 漫画页下载进度/转圈环心消费, 对照 desktop okhttp ProgressResponseBody 拦截器)
+            install(BodyProgress)
             // 超时走 HttpTimeout 插件 (CIO 引擎经 HttpTimeoutCapability 读取
             // connectTimeoutMillis/socketTimeoutMillis 并应用到连接/读写):
             // - requestTimeoutMillis 对应 OkHttp callTimeout (整个请求周期上限: 发请求到收响应)
@@ -398,11 +403,18 @@ actual class KmpResponse : Closeable {
         private set
     internal var requestVal: KmpRequest = KmpRequest()
         private set
+    internal var priorResponseVal: KmpResponse? = null
+        private set
 
     constructor()
 
     // 给 Ktor 实际请求构造: body 立即读到内存 (gzip/deflate 透明解压, 对齐 Android DecompressInterceptor)
-    internal constructor(ktorResponse: HttpResponse, request: KmpRequest) {
+    // finalUrl 为 Ktor 自动跟随重定向后的最终请求 URL (与原始请求不同 = 发生过重定向)
+    internal constructor(
+        ktorResponse: HttpResponse,
+        request: KmpRequest,
+        finalUrl: String? = null,
+    ) {
         codeVal = ktorResponse.status.value
         messageVal = ktorResponse.status.description
         headersVal = ktorResponse.headers.entries().associate { it.key to it.value }
@@ -414,7 +426,28 @@ actual class KmpResponse : Closeable {
                 ktorResponse.headers[HttpHeaders.ContentEncoding]
             )
         }
-        requestVal = request
+        // OkHttp 语义: response.request = 实际发送的请求 (重定向后的最终请求)。Ktor 自动跟随
+        // 重定向时最终请求 URL 经 finalUrl 传入, 否则 StrResponse.url() 会拿到重定向前的地址。
+        // priorResponse 合成一个 302 占位 (Ktor 不暴露重定向链中间跳, 只标记发生过重定向,
+        // 供 WebBook.checkRedirect 的调试日志判定)
+        val finalRequest = if (finalUrl != null && finalUrl != request.url.toString()) {
+            KmpRequest(finalUrl, request.method, request.headers, request.body)
+        } else {
+            request
+        }
+        requestVal = finalRequest
+        priorResponseVal = if (finalUrl != null && finalUrl != request.url.toString()) {
+            KmpResponse(
+                code = 302,
+                message = "redirect",
+                headers = emptyMap(),
+                body = null,
+                contentType = null,
+                request = request,
+            )
+        } else {
+            null
+        }
     }
 
     // 给 StrResponse 等手动构造场景 (用 KmpResponseBuilder)
@@ -441,7 +474,7 @@ actual class KmpResponse : Closeable {
     actual val isSuccessful: Boolean get() = codeVal in 200..299
     actual val request: KmpRequest get() = requestVal
     actual val networkResponse: KmpResponse? get() = null
-    actual val priorResponse: KmpResponse? get() = null
+    actual val priorResponse: KmpResponse? get() = priorResponseVal
     actual val isRedirect: Boolean get() = codeVal in 300..399
 
     actual fun headers(): KmpHeaders = KmpHeaders(headersVal)
@@ -614,8 +647,15 @@ internal class NativeKmpCall(
         val prepared = request.prepareForSend()
         val ktorRequest = prepared.toKtorHttpRequestBuilder()
         client.proxyAuthHeader?.let { ktorRequest.header(HttpHeaders.ProxyAuthorization, it) }
+        // 字节级下载进度: Ktor onDownload (BodyProgress 插件) 按 url 广播到注册表
+        // (漫画页 Image 的 DisposableEffect 监听转圈环心; 无监听者时仅遍历空表)
+        ktorRequest.onDownload { bytesSentTotal, contentLength ->
+            DownloadProgressRegistry.notify(prepared.url.toString(), bytesSentTotal, contentLength)
+        }
         val httpResponse = ktorClientRequest(ktorClient, ktorRequest)
-        val response = KmpResponse(httpResponse, prepared)
+        // Ktor 自动跟随重定向: 响应关联的最终请求 URL (与 prepared.url 不同即发生过重定向)
+        val finalUrl = httpResponse.call.request.url.toString()
+        val response = KmpResponse(httpResponse, prepared, finalUrl)
         if (enableCookieJar) {
             CookieJarBridgeHolder.get()?.saveResponse(response)
         }

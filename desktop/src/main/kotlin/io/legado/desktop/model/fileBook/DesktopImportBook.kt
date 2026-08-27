@@ -66,12 +66,15 @@ object DesktopImportBook {
     /** 当前所在目录 (未选根目录时为 null)。 */
     private fun currentDir(): File? = subDirs.lastOrNull() ?: rootDir
 
-    /** 对照 ImportBookActivity.initRootDoc: 按 pref 恢复上次目录。 */
+    /** 对照 ImportBookActivity.initRootDoc: 按 pref 恢复上次目录与排序设置。 */
     fun init() {
         if (rootDir != null) {
             reload()
             return
         }
+        // 排序设置恢复 (对照 app 端 ImportBookViewModel 初值: UI 勾选时间排序但列表按
+        // 名称是 desktop 旧 bug, 与 native 版对齐)
+        sort = prefs.getInt(PreferKey.localBookImportSort, 0)
         val last = prefs.getString(KEY_IMPORT_BOOK_PATH, "")
         if (last.isNotEmpty() && File(last).isDirectory) {
             setRoot(File(last))
@@ -120,8 +123,17 @@ object DesktopImportBook {
         loadJob = scope.launch {
             _loading.value = true
             val found = mutableListOf<File>()
-            runCatching { dir.walkTopDown().maxDepth(8).forEach { if (it.isFile && FileBook.isBookFile(it.name)) found += it } }
-                .onFailure { AppLog.put("扫描本地书目录失败\n${it.message}", it) }
+            runCatching {
+                // 与 ImportBookViewModel.scanDoc 一致: 书籍文件 + 压缩包都算扫描结果
+                // (zip/rar 与 native 版对齐; maxDepth 防误选系统根目录后无限遍历)
+                dir.walkTopDown().maxDepth(8).forEach {
+                    if (it.isFile &&
+                        (FileBook.isBookFile(it.name) || AppPattern.archiveFileRegex.matches(it.name))
+                    ) {
+                        found += it
+                    }
+                }
+            }.onFailure { AppLog.put("扫描本地书目录失败\n${it.message}", it) }
             publish(found, withUpDir = false)
             _loading.value = false
         }

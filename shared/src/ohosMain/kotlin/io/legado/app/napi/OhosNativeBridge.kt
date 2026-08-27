@@ -961,6 +961,29 @@ object OhosNativeBridge {
         listener?.onMarkdownEvent(eventJson)
     }
 
+    // ===== 统一平台事件桥 (ArkTS → Kotlin 单向推送, 单通道复用) =====
+    // 与 mediaEvent/ttsEvent 同方向: ArkTS 侧经 legado.platformEvent(eventJson)
+    // (napi → @CName legado_platform_event) 推送统一 JSON 事件, 本入口解析 type 后
+    // 分发到 OhosDownloadProgressEvents (HTTP 下载进度) / OhosAppLifecycle (应用生命周期)。
+    // 两个功能共用一个通道与一个 @CName 符号, 避免每个功能各建一套桥。
+
+    /**
+     * 平台事件回调 (由 ArkTS 侧调 legado.platformEvent 触发, 经 @CName legado_platform_event 转发)。
+     *
+     * 事件协议与解析见 [OhosPlatformEventChannel] (io.legado.app.napi.OhosPlatformEvents.kt):
+     * - HTTP 下载进度: `{type:"httpProgress", url, bytesReceived, totalBytes, isComplete}`
+     * - 应用生命周期: `{type:"lifecycle", event:"onForeground"|"onBackground"}`
+     *
+     * 监听 API:
+     * - HTTP 进度: [OhosDownloadProgressEvents.addListener]/[removeListener] (同 ProgressManager 形)
+     * - 生命周期: [OhosAppLifecycle.addListener]/[removeListener] (阅读页 onEnter/onExit 挂卸)
+     *
+     * 执行线程: ArkTS 主线程直推 (无跨线程 dispatch); 解析/分发失败静默丢弃 (事件通道尽力而为)。
+     */
+    fun onPlatformEvent(eventJson: String) {
+        OhosPlatformEventChannel.onEvent(eventJson)
+    }
+
     // ===== OpenUrl tsfn (KMP → ArkTS, fire-and-forget, 同 Toast 模式) =====
     // OhosOpenUrlProvider.openUrl 经 tsfn dispatch 到 ArkTS, 由 SystemBridgeHandler.handleOpenUrl
     // 调 context.startAbility(Want.uri=url) 打开 URL (KMP 无 ArkTS API 访问能力, 需 tsfn 桥接)。

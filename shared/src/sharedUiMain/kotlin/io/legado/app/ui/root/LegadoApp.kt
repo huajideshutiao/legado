@@ -771,6 +771,9 @@ private fun DialogOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavig
         // 按文件名导入 js 编辑框 (对照 app 端 alertImportFileName, 鸿蒙命令式文本输入宿主缺失时经此弹窗)
         "import_file_name" -> ImportFileNameOverlayDialogContent(overlay, navigator)
 
+        // 翻页动画配置选择器 (对照原版 showPageAnimConfig 6 项 selector; desktop/iOS/鸿蒙无命令式宿主走此处)
+        "page_anim_config" -> PageAnimConfigSelectorOverlayContent(overlay, navigator)
+
         // 字典规则
         "dictRuleEdit" -> DictRuleEditDialogContent(overlay, navigator)
         "dictRuleImportLocal" ->

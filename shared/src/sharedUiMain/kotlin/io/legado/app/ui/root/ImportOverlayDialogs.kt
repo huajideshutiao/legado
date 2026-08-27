@@ -10,10 +10,20 @@ import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.ui.association.DeepLinkImportTarget
 import io.legado.app.ui.association.DeepLinkImportType
 import io.legado.app.ui.association.ImportTargetDialog
+import io.legado.app.ui.book.read.ReadBookEvents
+import io.legado.app.ui.book.read.ReadConfigChange
+import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.dialog.TextInputDialog
 import io.legado.app.ui.widget.dialog.CodeDialog
 import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.btn_default_s
 import legado.shared.generated.resources.import_file_name
+import legado.shared.generated.resources.page_anim
+import legado.shared.generated.resources.page_anim_cover
+import legado.shared.generated.resources.page_anim_none
+import legado.shared.generated.resources.page_anim_scroll
+import legado.shared.generated.resources.page_anim_simulation
+import legado.shared.generated.resources.page_anim_slide
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -70,6 +80,32 @@ internal fun ImportFileNameOverlayDialogContent(overlay: AppOverlay.Dialog, navi
             navigator.dismissOverlay(overlay.key)
         },
         onDismiss = { navigator.dismissOverlay(overlay.key) },
+    )
+}
+
+// 翻页动画配置选择器 (key="page_anim_config", 对照原版 showPageAnimConfig 的 6 项 selector):
+// 选择器回调忽略索引 (原版怪癖), 只触发 upPageAnim + 重载; 实际动画值在界面设置弹窗配置。
+// desktop/iOS/鸿蒙无命令式对话框宿主, 与 import_file_name 同走共享 Overlay; Android 仍用
+// activity.selector (app 端, 不重复实现)
+@Composable
+internal fun PageAnimConfigSelectorOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavigator) {
+    val items = listOf(
+        stringResource(Res.string.btn_default_s),
+        stringResource(Res.string.page_anim_cover),
+        stringResource(Res.string.page_anim_slide),
+        stringResource(Res.string.page_anim_simulation),
+        stringResource(Res.string.page_anim_scroll),
+        stringResource(Res.string.page_anim_none),
+    )
+    AppSelectorDialog(
+        onDismissRequest = { navigator.dismissOverlay(overlay.key) },
+        title = stringResource(Res.string.page_anim),
+        items = items,
+        onItemSelected = {
+            // 对照原版 selector { _, _ -> success() }: 忽略索引, 仅触发重载
+            ReadBookEvents.postConfig(ReadConfigChange.PAGE_ANIM, ReadConfigChange.LOAD_CONTENT)
+            navigator.dismissOverlay(overlay.key)
+        },
     )
 }
 

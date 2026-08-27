@@ -13,11 +13,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,12 +37,13 @@ import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.size.Size
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.PreferKey
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.config.PreferenceProviders
-import io.legado.app.help.config.PreferKey
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.http.DownloadProgressRegistry
 import io.legado.app.help.image.MangaImageBytesLoader
 import io.legado.app.model.manga.MangaModel
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
@@ -53,6 +56,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 // iOS 漫画阅读平台能力: 图片流复用 shared 提取器, 渲染走 Coil3 (对照 DesktopMangaReaderPlatform)
 object IosMangaReaderPlatform : MangaReaderScreenModel.Platform {
@@ -116,6 +120,28 @@ object IosMangaReaderPlatform : MangaReaderScreenModel.Platform {
         }
         val painter = rememberAsyncImagePainter(request)
         val state by painter.state.collectAsState()
+        // 字节级下载进度: 监听 [DownloadProgressRegistry] (Ktor onDownload 上报), 转发给 shared
+        // 单元格转圈环心, 与 desktop/app 端 ProgressManager 同链路 (百分比/KB 格式一致)
+        val currentOnProgress by rememberUpdatedState(onProgress)
+        DisposableEffect(url) {
+            val remove = DownloadProgressRegistry.addListener(url) { bytes, total ->
+                currentOnProgress(
+                    if (total != null && total > 0) {
+                        "${bytes * 100 / total}%"
+                    } else {
+                        val kb = bytes / 1024.0
+                        if (kb >= 1024) {
+                            // native 无 String.format (JVM-only), 手动保留 1 位小数
+                            val mb = (kb / 1024.0 * 10).roundToInt() / 10.0
+                            "${mb}MB"
+                        } else {
+                            "${kb.toInt()}KB"
+                        }
+                    }
+                )
+            }
+            onDispose { remove() }
+        }
         // 合并颜色滤镜: colorFilterConfig 矩阵 + 灰度矩阵 (与 desktop/app 端同矩阵同顺序)
         val colorFilter = remember(colorFilterConfig, grayEnabled) {
             mangaColorFilter(colorFilterConfig, grayEnabled)
@@ -191,7 +217,7 @@ object IosMangaReaderPlatform : MangaReaderScreenModel.Platform {
             File(destPath).writeBytes(bytes)
             true
         }.getOrElse {
-            AppLog.put("保存图片出错\n${it.localizedMessage}", it)
+            AppLog.put("保存图片出错\n${it.message}", it)
             false
         }
     }

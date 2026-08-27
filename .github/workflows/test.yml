@@ -454,4 +454,5 @@ jobs:
           bodyFile: artifacts/RELEASE_NOTES.md
           prerelease: true
           allowUpdates: true
+          removeArtifacts: true
           artifacts: "artifacts/*.apk,artifacts/*.msi,artifacts/*.zip,artifacts/*.deb,artifacts/*.rpm,artifacts/*.dmg"

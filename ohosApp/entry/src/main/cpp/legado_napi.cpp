@@ -45,6 +45,9 @@
  * - registerTtsCallback(cb): void           → 同 Toast, 注入 ohos_tts_dispatch 到 ttsTsfn
  * - ttsEvent(event): void                   → ArkTS → Kotlin TTS 事件 (dlsym legado_tts_event)
  *
+ * 统一平台事件 (ArkTS → Kotlin 单向推送, HTTP 下载进度 + 应用生命周期, 同 mediaEvent 模式):
+ * - platformEvent(event: string): void      → ArkTS → Kotlin 统一事件 (dlsym legado_platform_event)
+ *
  * Crypto tsfn 回调注册 + ArkTS → Kotlin 回调 (KP8+ 新增, 同 Image 模式: encrypt/decrypt/sign/verify):
  * - registerCryptoCallback(cb): void        → 同 Image, 注入 ohos_crypto_dispatch 到 cryptoTsfn
  * - cryptoCallback(requestId, result): void → ArkTS → Kotlin crypto 结果 (dlsym legado_crypto_callback)
@@ -227,6 +230,11 @@ static legado_register_dispatch_fn g_register_window_fn = nullptr;
 static legado_register_dispatch_fn g_register_markdown_fn = nullptr;
 static legado_cstr_void_fn g_markdown_event = nullptr;
 
+// dlsym 加载的函数指针 - 统一平台事件 ArkTS → Kotlin 回调 (HTTP 下载进度 + 应用生命周期, 同 mediaEvent 模式)
+// ArkTS 侧经 legado.platformEvent(eventJson) 推送统一 JSON 事件 (type=httpProgress|lifecycle),
+// 本符号转发到 Kotlin OhosNativeBridge.onPlatformEvent → OhosPlatformEventChannel 分发。
+static legado_cstr_void_fn g_platform_event = nullptr;
+
 // Toast/Notification/Image/Media/TTS/Crypto/Http/OpenUrl/FilePicker/Pasteboard threadsafe_function 引用 (C++ 侧持有, ArkTS registerXxxCallback 时创建)
 static napi_threadsafe_function g_toast_tsfn = nullptr;
 static napi_threadsafe_function g_notification_tsfn = nullptr;
@@ -365,6 +373,9 @@ static bool load_legado_shared() {
     // 解析 @CName 导出符号 - Markdown 查看器 tsfn 注入 + ArkTS → Kotlin 事件回调 (同 Toast/Media 模式)
     g_register_markdown_fn = (legado_register_dispatch_fn) dlsym(g_legado_so, "legado_register_markdown_fn");
     g_markdown_event = (legado_cstr_void_fn) dlsym(g_legado_so, "legado_markdown_event");
+
+    // 解析 @CName 导出符号 - 统一平台事件 (HTTP 下载进度 + 应用生命周期, ArkTS → Kotlin)
+    g_platform_event = (legado_cstr_void_fn) dlsym(g_legado_so, "legado_platform_event");
 
     OH_LOG_INFO(LOG_APP, "liblegado_shared.so loaded, symbols resolved (KP5: + bookshelfList/searchBook/loadChapter/chapterList/importBookSource; KP7+: + registerFileDir/registerCacheDir/registerToastFn/registerNotificationFn; KP8+: + registerImageFn/registerMediaFn/imageCallback/mediaEvent/registerTtsFn/ttsEvent/registerCryptoFn/cryptoCallback/registerHttpFn/httpCallback/registerOpenUrlFn/registerFilePickerFn/filePickerCallback/registerPasteboardFn/pasteboardCallback/registerTextCodecFn/textCodecCallback)");
     return true;
@@ -1144,6 +1155,37 @@ static napi_value TtsEvent(napi_env env, napi_callback_info info) {
 
     if (load_legado_shared() && g_tts_event != nullptr) {
         g_tts_event(buf);
+    }
+    delete[] buf;
+
+    napi_value ret;
+    napi_get_undefined(env, &ret);
+    return ret;
+}
+
+// napi 包装: platformEvent(event: string): void
+// ArkTS → Kotlin 统一平台事件回调: HTTP 下载进度 (HttpBridgeHandler requestInStream
+// dataReceive) 与 UIAbility 生命周期 (onForeground/onBackground) 共用一个通道。
+// 与 mediaEvent/ttsEvent 同模式 (单 JSON 字符串, dlsym @CName, 无 tsfn):
+// 事件方向恒为 ArkTS → Kotlin, 无需 KMP → ArkTS 反向 dispatch。
+static napi_value PlatformEvent(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 1) {
+        napi_throw_type_error(env, nullptr, "platformEvent requires 1 argument (eventJson)");
+        napi_value ret;
+        napi_get_undefined(env, &ret);
+        return ret;
+    }
+
+    size_t str_len = 0;
+    napi_get_value_string_utf8(env, args[0], nullptr, 0, &str_len);
+    char* buf = new char[str_len + 1];
+    napi_get_value_string_utf8(env, args[0], buf, str_len + 1, &str_len);
+
+    if (load_legado_shared() && g_platform_event != nullptr) {
+        g_platform_event(buf);
     }
     delete[] buf;
 
@@ -2033,6 +2075,8 @@ androidx_compose_ui_arkui_init(env, exports
         {"mediaEvent", nullptr, MediaEvent, nullptr, nullptr, nullptr, napi_default, nullptr},
         // TTS ArkTS → Kotlin 回调 (KP8+ 新增, 同 Image/Media 模式)
         {"ttsEvent", nullptr, TtsEvent, nullptr, nullptr, nullptr, napi_default, nullptr},
+            // 统一平台事件 (HTTP 下载进度 + 应用生命周期, ArkTS → Kotlin 单向推送, 同 mediaEvent 模式)
+            {"platformEvent", nullptr, PlatformEvent, nullptr, nullptr, nullptr, napi_default, nullptr},
         // Crypto tsfn 回调注册 + ArkTS → Kotlin 回调 (KP8+ 新增, 同 Image 模式)
         {"registerCryptoCallback", nullptr, RegisterCryptoCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"cryptoCallback", nullptr, CryptoCallback, nullptr, nullptr, nullptr, napi_default, nullptr},

@@ -23,6 +23,7 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.help.tts.OhosReadAloudHost
 import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.model.ActiveReadBookRegistry
+import io.legado.app.napi.OhosAppLifecycle
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
@@ -54,6 +55,28 @@ object OhosReaderPlatformProvider : ReaderPlatformProvider {
 
     /** 当前浮动菜单的选中文本 (ArkTS 菜单项点击时经回调取参)。 */
     private var textActionText: String = ""
+
+    /** 阅读页激活期间挂生命周期监听的模型 (onEnter 设置, onExit 清除)。 */
+    private var lifecycleScreenModel: ReaderScreenModel? = null
+
+    /** 应用前后台监听: 对照 app 端 Activity LifecycleObserver 桥 (进后台 onPause
+     *  计时结束+进度落库上传+取消预下载, 回前台 onResume 开始计时+web 进度恢复)。 */
+    private val appLifecycleListener = object : OhosAppLifecycle.Listener {
+        override fun onForeground() {
+            lifecycleScreenModel?.onResume()
+        }
+
+        override fun onBackground() {
+            lifecycleScreenModel?.onPause()
+        }
+    }
+
+    /** 阅读页进入: 挂应用生命周期监听 (ArkTS EntryAbility onForeground/onBackground
+     *  → platformEvent 通道 → [OhosAppLifecycle], 见 OhosPlatformEvents.kt)。 */
+    override fun onEnter(screenModel: ReaderScreenModel) {
+        lifecycleScreenModel = screenModel
+        OhosAppLifecycle.addListener(appLifecycleListener)
+    }
 
     init {
         // 菜单动作回调注册 (ArkTS 菜单项点击 → legado_text_action_callback → 本分发)
@@ -97,8 +120,11 @@ object OhosReaderPlatformProvider : ReaderPlatformProvider {
         OhosNativeBridge.hideTextActionMenu()
     }
 
-    /** 阅读页退出: 收起浮动菜单, 避免残留 (对照原版 onDestroy → textActionMenu.dismiss)。 */
+    /** 阅读页退出: 收起浮动菜单与生命周期监听, 避免残留 (对照原版 onDestroy →
+     *  textActionMenu.dismiss; LifecycleObserver 注销)。 */
     override fun onExit(screenModel: ReaderScreenModel) {
+        OhosAppLifecycle.removeListener(appLifecycleListener)
+        lifecycleScreenModel = null
         OhosNativeBridge.hideTextActionMenu()
     }
 
@@ -212,7 +238,7 @@ object OhosReaderPlatformProvider : ReaderPlatformProvider {
     // 设置按钮 → 翻页动画配置 (对照 app 端 showPageAnimConfigSelector: 选择器回调忽略索引,
     // 实际动画值在界面设置弹窗配置, 只触发 upPageAnim + 重载; 与菜单 PAGE_ANIM 分支同语义)
     override fun showPageAnimConfig(screenModel: ReaderScreenModel) {
-        ReadBookEvents.postConfig(ReadConfigChange.PAGE_ANIM, ReadConfigChange.LOAD_CONTENT)
+        AppNavigatorProviders.getOrNull()?.showOverlay(AppOverlay.Dialog("page_anim_config"))
     }
 
     // 自动翻页滑条抬手 → 重新应用当前 TTS 语速 (对照 app 端 upTtsSpeechRate: 重读配置 +
@@ -236,6 +262,12 @@ object OhosReaderPlatformProvider : ReaderPlatformProvider {
         }.getOrNull()
         return resp?.level ?: 100
     }
+
+    /** 朗读控制桥: 长按面板动作落到 [OhosReadAloudHost] + 偏好项 (对照 iOS [IosReadAloudControls])。 */
+    override fun readAloudControls(
+        navigator: AppNavigator,
+        screenModel: ReaderScreenModel,
+    ): ReadAloudControls = OhosReadAloudControls(navigator, screenModel)
 }
 
 @Serializable
@@ -644,5 +676,75 @@ private class OhosReadMenuState(
     override fun reset() {
         upTopMenu()
         upMenuView()
+    }
+}
+
+/**
+ * 鸿蒙端朗读控制桥: 面板动作落到 [OhosReadAloudHost] + 偏好项。
+ *
+ * 语速/跟随系统/定时默认值直接读写 PreferKey (与原版 AppConfig 同 key),
+ * 对照 desktop `DesktopReadAloudControls` / iOS `IosReadAloudControls`。
+ */
+private class OhosReadAloudControls(
+    private val navigator: AppNavigator,
+    private val screenModel: ReaderScreenModel,
+) : ReadAloudControls {
+
+    private val prefs get() = PreferenceProviders.get()
+
+    override val isPlaying: Boolean get() = !OhosReadAloudHost.isPause
+
+    override val timerMinute: Int
+        get() = OhosReadAloudHost.timeMinute
+            .takeIf { it > 0 }
+            ?: prefs.getInt(PreferKey.ttsTimer, 0)
+
+    override val speechRate: Int get() = prefs.getInt(PreferKey.ttsSpeechRate, 5)
+
+    override val followSys: Boolean get() = prefs.getBoolean(PreferKey.ttsFollowSys, true)
+
+    override fun playPause() = OhosReadAloudHost.toggle()
+
+    override fun stop() = OhosReadAloudHost.stop()
+
+    override fun prevChapter() {
+        screenModel.viewModel.moveToPrevChapter()
+    }
+
+    override fun nextChapter() {
+        screenModel.viewModel.moveToNextChapter()
+    }
+
+    override fun prevParagraph() = OhosReadAloudHost.prevParagraph()
+
+    override fun nextParagraph() = OhosReadAloudHost.nextParagraph()
+
+    override fun setTimer(minute: Int) {
+        OhosReadAloudHost.setTimer(minute)
+    }
+
+    override fun setSpeechRate(rate: Int) {
+        prefs.putInt(PreferKey.ttsSpeechRate, rate.coerceIn(0, 45))
+        OhosReadAloudHost.setSpeechRate(rate)
+    }
+
+    override fun setFollowSys(follow: Boolean) {
+        prefs.putBoolean(PreferKey.ttsFollowSys, follow)
+        // 跟随系统时回落默认语速 (对照原版 AppConfig.speechRatePlay)
+        OhosReadAloudHost.setSpeechRate(if (follow) 5 else speechRate)
+    }
+
+    override fun openChapterList() {
+        // 对照原版 朗读面板目录按钮 → TocDialog 底部弹窗
+        screenModel.postDialogEvent(ReaderDialogEvent.Toc)
+    }
+
+    override fun openSettings() {
+        // 对照原版 ReadAloudDialog 设置按钮 → ReadAloudConfigDialog
+        screenModel.postDialogEvent(ReaderDialogEvent.ReadAloudConfig)
+    }
+
+    override fun toBackstage() {
+        navigator.pop()
     }
 }

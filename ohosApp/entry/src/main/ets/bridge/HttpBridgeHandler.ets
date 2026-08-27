@@ -1,11 +1,11 @@
 import http from '@ohos.net.http';
-import { utf8ToArrayBuffer } from './BridgeCodec';
+import { emitHttpProgress } from './PlatformEventBridge';
 
 /**
  * ArkTS 侧 HTTP 客户端处理器 (桥接 @ohos.net.http)。
  *
  * 接收 Kotlin OhosNativeBridge.invokeHttpSync 通过 tsfn dispatch 过来的 HTTP 请求,
- * 调用 @ohos.net.http (createHttp + request) 执行真实请求,
+ * 调用 @ohos.net.http (createHttp + requestInStream, 流式接收) 执行真实请求,
  * 完成后通过 legado.httpCallback(requestId, resultJson, body?) 回送结果给 Kotlin。
  *
  * # 混合协议 (与 KmpHttpTypes.ohos.kt 对齐, 同 WebView 桥思路: 大字节面走 napi 裸参数)
@@ -52,6 +52,22 @@ import { utf8ToArrayBuffer } from './BridgeCodec';
  * - GET/HEAD 不携带 extraData (RFC 7231 语义: 这些方法不应有 body)。
  * - Set-Cookie 响应头多值保持独立条目 (RFC 6265: 多个 cookie 不能用逗号合并)。
  * - @ohos.net.http 默认 usingDefaultHostRedirects=true 自动跟随重定向。
+ *
+ * # 流式接收 (requestInStream) 与下载进度
+ * 本端用 requestInStream + on('dataReceive') 分段接收响应体 (一次性 request() 无进度回调),
+ * 同时保证 invokeHttpSync 的“请求-响应”接口不变: 分段字节在 ArkTS 侧拼装成完整 body 后
+ * 经 legado.httpCallback 原样回送 Kotlin (与 request() 一次性返回语义一致); 进度事件另走
+ * [emitHttpProgress] (统一平台事件通道 legado.platformEvent → Kotlin
+ * OhosDownloadProgressEvents, 按 url 关联 bytesReceived/totalBytes)。
+ *
+ * # 重定向限制 (@ohos.net.http 不暴露重定向链)
+ * 系统自动跟随重定向 (usingDefaultHostRedirects=true) 后返回最终目标资源 (body/code/header),
+ * 但 IncomingMessage 只有 responseCode/header/result/resultType, 无最终请求 URL, 响应头也不
+ * 携带重定向后地址 —— 本端无法向 Kotlin 回传“最终 URL”。故 KmpResponse.request 保持原始请求
+ * (StrResponse.url() 在重定向场景返回原始地址), 与 iOS Ktor finalUrl 修复存在平台差异
+ * (详见 KmpHttpTypes.ohos.kt KmpResponse 注释)。未采用手动跟随 (usingDefaultHostRedirects=false
+ * + Location 循环重发) 的原因: 会改变全部 HTTP 请求的核心重定向语义 (301/302/303 转 GET、
+ * 307/308 保 POST、跨域剥离 Authorization、重定向 Cookie 回写等), 本机无 DevEco 无法验证。
  */
 
 // ===== 请求/响应接口定义 (与 Kotlin 侧 JSON 协议对齐) =====
@@ -95,6 +111,9 @@ export type HttpCallback = (requestId: number, resultJson: string, body: ArrayBu
 // 活跃的 httpRequest 对象 Map<requestId, http.HttpRequest>, 供 cancel action 使用
 const activeRequests = new Map<number, http.HttpRequest>();
 
+// 流式请求 url Map<requestId, string>, 供 cancel action 补发完成进度事件 (消费端停止转圈)
+const streamingUrls = new Map<number, string>();
+
 /**
  * 处理来自 Kotlin 的 HTTP 请求 (由 EntryAbility 注册的 tsfn 回调调用, 混合协议)。
  *
@@ -132,7 +151,7 @@ async function handleAction(req: HttpBridgeRequest, body: ArrayBuffer | undefine
   }
 }
 
-// ===== execute: http.createHttp + request(url, options, callback) =====
+// ===== execute: http.createHttp + requestInStream (流式接收, 分段回传下载进度) =====
 async function handleExecute(
   requestId: number, payloadJson: string, body: ArrayBuffer | undefined, callback: HttpCallback
 ): Promise<void> {
@@ -147,6 +166,7 @@ async function handleExecute(
 
   const httpRequest = http.createHttp();
   activeRequests.set(requestId, httpRequest);
+  streamingUrls.set(requestId, p.url);
 
   // 构造 HttpRequestOptions
   const options: http.HttpRequestOptions = {
@@ -185,56 +205,146 @@ async function handleExecute(
     options.extraData = body;
   }
 
-  httpRequest.request(p.url, options, (err, data) => {
-    cleanupRequest(requestId);
+  // ===== 流式接收状态 =====
+  // requestInStream 回调只给响应头 (responseCode/header), 响应体经 dataReceive 事件分段到达;
+  // 分段字节在这里拼装成完整 body 回送 Kotlin (与 request() 一次性返回语义一致)。
+  const chunks: ArrayBuffer[] = [];
+  let receivedBytes = 0;
+  let totalBytes = 0;
+  let lastResponseCode = 0;
+  let lastHeaders: HttpHeader[] = [];
+  let finished = false;
+
+  // 单次完成防护: dataEnd 与回调 err 可能先后到达 (cancel destroy 也可能中断事件流),
+  // 只允许第一个终态生效, 避免重复 callback 唤醒 Kotlin 侧 CompletableDeferred 两次。
+  const finish = (resp: HttpResponse, respBody: ArrayBuffer | undefined): void => {
+    if (finished) return;
+    finished = true;
+    cleanupStreaming(requestId, httpRequest);
+    callback(requestId, JSON.stringify(resp), respBody);
+  };
+
+  // 向 Kotlin 推送进度 (统一平台事件通道; 终态 isComplete=true 后 Kotlin 自动注销监听)
+  const emitProgress = (isComplete: boolean): void => {
+    emitHttpProgress(p.url, receivedBytes, totalBytes, isComplete);
+  };
+
+  // 分段接收: 追加字节 + 累计进度回传 (每个数据段一次事件; Kotlin 侧递增去重)
+  httpRequest.on('dataReceive', (data: ArrayBuffer) => {
+    if (finished || data == null || data.byteLength <= 0) return;
+    chunks.push(data);
+    receivedBytes += data.byteLength;
+    emitProgress(false);
+  });
+
+  // 接收进度: 优先用系统给的 totalSize (Content-Length 缺失/分块时也能给出总数)
+  httpRequest.on('dataReceiveProgress', (info: http.DataReceiveProgress) => {
+    if (info != null && info.totalSize > 0) {
+      totalBytes = info.totalSize;
+    }
+  });
+
+  // 流式结束: 拼装完整 body 回送 (进度终态先行, 消费端停止转圈)
+  httpRequest.on('dataEnd', () => {
+    if (finished) return;
+    emitProgress(true);
+    finish(
+      {
+        ok: true,
+        code: lastResponseCode,
+        // message (HTTP reason phrase) 不再在此计算: 纯映射已下沉到 K/N 唯一一份
+        // (KmpHttpTypes.ohos.kt ohosStatusText), 此处置空串, K/N executeOnce 按 code 计算
+        // (对齐 OkHttp Response.message 语义, 消除双份维护)。
+        message: '',
+        headers: lastHeaders,
+      },
+      concatChunks(chunks)
+    );
+  });
+
+  // requestInStream: 回调先于 dataReceive/dataEnd 到达 (响应头就绪即回调, 事件随后流式推送)
+  httpRequest.requestInStream(p.url, options, (err, data) => {
+    if (finished) return;
     if (err) {
-      const resp: HttpResponse = { ok: false, error: err.message ?? String(err) };
-      callback(requestId, JSON.stringify(resp), undefined);
+      emitProgress(true);
+      finish({ ok: false, error: err.message ?? String(err) }, undefined);
       return;
     }
-    // 响应 body: HttpDataType.ARRAY_BUFFER 接收, ArrayBuffer 原样裸传 (零拷贝, 二进制保真);
-    // 非 ArrayBuffer 结果 (string/其他) 兜底转 ArrayBuffer
-    const result = data.result;
-    let respBody: ArrayBuffer | undefined;
-    if (result instanceof ArrayBuffer) {
-      respBody = result;
-    } else if (typeof result === 'string') {
-      respBody = utf8ToArrayBuffer(result);
-    } else if (result != null) {
-      // 兜底: 其他类型转 string 再编码
-      respBody = utf8ToArrayBuffer(String(result));
+    lastResponseCode = data.responseCode;
+    lastHeaders = headerMapToList(data.header);
+    // Content-Length 兜底 totalBytes (dataReceiveProgress 可能未触发; 分块传输缺省时恒 0 =
+    // 不确定进度, 消费端按 0% 展示)
+    if (totalBytes <= 0) {
+      totalBytes = parseContentLength(data.header);
     }
-    // message (HTTP reason phrase) 不再在此计算: 纯映射已下沉到 K/N 唯一一份
-    // (KmpHttpTypes.ohos.kt ohosStatusText), 此处置空串, K/N executeOnce 按 code 计算
-    // (对齐 OkHttp Response.message 语义, 消除双份维护)。
-    const resp: HttpResponse = {
-      ok: true,
-      code: data.responseCode,
-      message: '',
-      headers: headerMapToList(data.header),
-    };
-    callback(requestId, JSON.stringify(resp), respBody);
   });
 }
 
-// ===== cancel: 销毁对应 httpRequest, 回送 ok=true (与 OkHttp Call.cancel 语义对齐) =====
+// ===== cancel: 销毁对应 httpRequest, 补发完成进度, 回送 ok=true (与 OkHttp Call.cancel 语义对齐) =====
 async function handleCancel(requestId: number, callback: HttpCallback): Promise<void> {
   const req = activeRequests.get(requestId);
   if (req != null) {
+    // 取消时 requestInStream 的 dataEnd 不保证触发, 主动补发完成进度 (消费端停止转圈)
+    const url = streamingUrls.get(requestId);
+    if (url != null) {
+      emitHttpProgress(url, 0, 0, true);
+    }
     try {
       req.destroy();
     } catch (e) {
       // 忽略 destroy 异常
     }
-    activeRequests.delete(requestId);
   }
+  cleanupStreaming(requestId, req);
   const resp: HttpResponse = { ok: true };
   callback(requestId, JSON.stringify(resp), undefined);
 }
 
-// 清理活跃请求 Map (请求完成/失败时调用)
-function cleanupRequest(requestId: number): void {
+// 清理流式监听 + 活跃请求映射 (请求完成/失败/取消时调用)
+function cleanupStreaming(requestId: number, httpRequest: http.HttpRequest | null): void {
+  if (httpRequest != null) {
+    try { httpRequest.off('dataReceive'); } catch (e) { /* 忽略 off 异常 */ }
+    try { httpRequest.off('dataEnd'); } catch (e) { /* 忽略 off 异常 */ }
+    try { httpRequest.off('dataReceiveProgress'); } catch (e) { /* 忽略 off 异常 */ }
+    try { httpRequest.destroy(); } catch (e) { /* 忽略 destroy 异常 */ }
+  }
   activeRequests.delete(requestId);
+  streamingUrls.delete(requestId);
+}
+
+// 拼装分段的 ArrayBuffer 为完整 body (零段返回 undefined, 单段直接复用, 多段拷贝合并)
+function concatChunks(chunks: ArrayBuffer[]): ArrayBuffer | undefined {
+  if (chunks.length === 0) return undefined;
+  if (chunks.length === 1) return chunks[0];
+  let total = 0;
+  for (const chunk of chunks) {
+    total += chunk.byteLength;
+  }
+  const merged = new ArrayBuffer(total);
+  const mergedView = new Uint8Array(merged);
+  let offset = 0;
+  for (const chunk of chunks) {
+    mergedView.set(new Uint8Array(chunk), offset);
+    offset += chunk.byteLength;
+  }
+  return merged;
+}
+
+// 从响应头取 Content-Length (大小写不敏感; 缺失/非法返回 0 = 总大小未知)
+function parseContentLength(header: object | undefined): number {
+  if (header == null) return 0;
+  const obj = header as Record<string, string | string[]>;
+  for (const key of Object.keys(obj)) {
+    if (key.toLowerCase() === 'content-length') {
+      const value = obj[key];
+      const text = Array.isArray(value) ? value[0] : value;
+      const parsed = Number.parseInt(String(text), 10);
+      if (!Number.isNaN(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+  }
+  return 0;
 }
 
 // method 字符串 → http.RequestMethod 枚举

@@ -5,6 +5,7 @@ import io.legado.app.constant.Status
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.media.SleepTimer
 import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.service.ReadAloudChapterNavigator
 import io.legado.app.service.ReadAloudControllerShared
@@ -118,6 +119,7 @@ object OhosReadAloudHost {
     /** 停止朗读并清理 (对照 `ReadAloud.stop`)。 */
     fun stop() {
         restartOnResume = false
+        sleepTimer.cancel()
         controllerRef?.stop()
     }
 
@@ -146,7 +148,34 @@ object OhosReadAloudHost {
         }
     }
 
+    /** 上一句 / 下一句 (对照 `ReadAloud.prevParagraph/nextParagraph`)。 */
+    fun prevParagraph() {
+        controllerRef?.prevParagraph()
+    }
+
+    fun nextParagraph() {
+        controllerRef?.nextParagraph()
+    }
+
+    /** 定时关闭剩余分钟 (对照 `BaseReadAloudService.timeMinute`)。 */
+    val timeMinute: Int get() = sleepTimer.minutes
+
+    /** 设定定时关闭 (对照 `ReadAloud.setTimer` → `BaseReadAloudService` 的 SleepTimer)。 */
+    fun setTimer(minute: Int) {
+        sleepTimer.set(minute)
+    }
+
     // region 内部实现
+
+    /** 定时关闭: 到点暂停朗读, 与原版 BaseReadAloudService 的 SleepTimer 同语义。 */
+    private val sleepTimer by lazy {
+        SleepTimer(
+            scope = scope,
+            postMinute = { ReadBookEvents.postReadAloudDs(it) },
+            isPaused = { isPause },
+            onTimeout = { pause() },
+        )
+    }
 
     private fun createController(): ReadAloudControllerShared {
         val instance = ReadAloudControllerShared(

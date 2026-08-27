@@ -28,6 +28,7 @@ import { handleMarkdownRequest } from '../bridge/MarkdownBridgeHandler';
 import { initSystemBridge, handleShowToast, handleOpenUrl } from '../bridge/SystemBridgeHandler';
 import { handleShowTextActionMenu } from '../bridge/TextActionBridgeHandler';
 import { handleBatteryRequest } from '../bridge/BatteryBridgeHandler';
+import { initPlatformEvent, emitAppLifecycle } from '../bridge/PlatformEventBridge';
 import { initShareBridge, handleShareRequest } from '../bridge/SystemShareBridgeHandler';
 import { handleKeyboardCommand } from '../bridge/KeyboardBridgeHandler';
 import { initPermissionBridge, handlePermissionRequest } from '../bridge/PermissionBridgeHandler';
@@ -124,6 +125,17 @@ export default class EntryAbility extends UIAbility {
     registerSafely((): void => {
       legado.registerOhosProviders();
     }, '[Legado] KMP providers registered via napi', '[Legado] registerOhosProviders failed: ');
+
+    // 统一平台事件回送通道 (HTTP 下载进度 + 应用生命周期: ArkTS → Kotlin 单向推送, 单通道复用)。
+    // Kotlin 侧 OhosPlatformEventChannel (OhosNativeBridge.onPlatformEvent) 按 type 分发到
+    // OhosDownloadProgressEvents / OhosAppLifecycle; 事件方向恒为 ArkTS → Kotlin (同 mediaEvent
+    // 模式, 无 tsfn)。须在 registerHttpCallback 之前注入: HttpBridgeHandler 的 requestInStream
+    // 进度回调与 EntryAbility 生命周期回调都走此通道, 迟到只影响早期事件丢失 (warn 降级)。
+    registerSafely((): void => {
+      initPlatformEvent((json: string): void => {
+        legado.platformEvent(json);
+      });
+    }, '[Legado] platform event callback registered via napi', '[Legado] initPlatformEvent failed: ');
 
     // KP7+: 注册 Toast/Notification tsfn 回调 (KMP → ArkTS 跨线程 dispatch)。
     // C++ 侧 (legado_napi.cpp RegisterToastCallback) 创建 napi_threadsafe_function 包装此回调,
@@ -531,9 +543,16 @@ export default class EntryAbility extends UIAbility {
 
   onForeground(): void {
     console.info('[Legado] EntryAbility.onForeground');
+    // 应用回到前台 → Kotlin OhosAppLifecycle (阅读页 onEnter 挂的监听器调 ReaderScreenModel.onResume:
+    // 开始阅读计时 + web 进度恢复, 对齐 iOS UIApplicationWillEnterForegroundNotification)。
+    // 事件仅在前台切换时触发一次, 无重复; 阅读页未挂监听时 Kotlin 侧无操作。
+    emitAppLifecycle('onForeground');
   }
 
   onBackground(): void {
     console.info('[Legado] EntryAbility.onBackground');
+    // 应用退到后台 → Kotlin OhosAppLifecycle (阅读页监听器调 ReaderScreenModel.onPause:
+    // 计时结束 + 落库上传 + 取消预下载, 对齐 iOS UIApplicationDidEnterBackgroundNotification)。
+    emitAppLifecycle('onBackground');
   }
 }

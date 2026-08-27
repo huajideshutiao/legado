@@ -324,7 +324,20 @@ actual class KmpResponse : Closeable {
         get() = OhosKmpResponseBody(bodyBytes ?: ByteArray(0), contentTypeStr)
     actual val isSuccessful: Boolean get() = codeVal in 200..299
     actual val request: KmpRequest get() = requestVal
-    // @ohos.net.http 自动处理重定向, 不暴露这些信息, 占位返回 null/false
+    // ===== OkHttp 重定向语义: @ohos.net.http 不暴露重定向链, 无法对齐 iOS finalUrl 修复 =====
+    // @ohos.net.http 默认 usingDefaultHostRedirects=true 由系统自动跟随重定向, 且不向调用方暴露
+    // 重定向链/最终请求 URL: IncomingMessage 仅有 responseCode/header/result/resultType, 无
+    // final-url 字段; 响应 header 也不携带重定向后地址。故本端无法像 iOS Ktor (KmpResponse
+    // 构造 finalUrl 参数, StrResponse.url() 拿到重定向后地址) 那样修正 request 语义:
+    //   - requestVal 保持**原始请求** (网络层无从得知实际最终地址, 如实保留, 不做臆测改写;
+    //     StrResponse.url() 在重定向场景返回原始地址, 这是平台能力边界, 详见 HttpBridgeHandler.ets
+    //     “重定向” 注释);
+    //   - priorResponse/networkResponse 恒 null (无中间跳信息可合成, 与 iOS 的 302 占位不同;
+    //     WebBook.checkRedirect 的“检测到重定向”调试日志在 ohos 端不会触发);
+    //   - 代码 300..399 通常不会出现在最终响应 (系统已自动跟随到 2xx 目标), isRedirect 仅作为
+    //     未跟随时的兜底占位保留。
+    // 后续若手动跟随 (usingDefaultHostRedirects=false + Location 循环) 才可对齐 iOS 语义,
+    // 但会改变全量 HTTP 请求的核心重定向行为且本机无 DevEco 验证, 暂不采用。
     actual val networkResponse: KmpResponse? get() = null
     actual val priorResponse: KmpResponse? get() = null
     actual val isRedirect: Boolean get() = codeVal in 300..399

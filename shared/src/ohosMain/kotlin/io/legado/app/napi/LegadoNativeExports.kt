@@ -844,6 +844,27 @@ object LegadoNativeExports {
         OhosNativeBridge.onMarkdownEvent(event.toKString())
     }
 
+    // ===== 统一平台事件 ArkTS → Kotlin 回调 (HTTP 下载进度 + 应用生命周期, 同 mediaEvent 模式) =====
+
+    /**
+     * ArkTS → Kotlin 统一平台事件回调 (由 legado_napi.cpp PlatformEvent 调用)。
+     *
+     * 调用链: `ArkTS platformEvent(eventJson)` → napi (legado_napi.cpp PlatformEvent) →
+     * dlsym("legado_platform_event") → 本函数 → [OhosNativeBridge.onPlatformEvent] →
+     * OhosPlatformEventChannel 按 type 分发到 [OhosDownloadProgressEvents] / [OhosAppLifecycle]。
+     *
+     * 两个事件源 (HTTP 下载进度 / 应用生命周期) 共用一个通道与一个 @CName 符号,
+     * 避免每个功能各建一套 C++ tsfn / napi 入口。
+     *
+     * @param event 事件 JSON (UTF-8 C 字符串):
+     *   - HTTP 下载进度: `{"type":"httpProgress","url":"...","bytesReceived":123,"totalBytes":456,"isComplete":false}`
+     *   - 应用生命周期: `{"type":"lifecycle","event":"onForeground"|"onBackground"}`
+     */
+    @CName("legado_platform_event")
+    fun platformEvent(event: CPointer<ByteVar>) {
+        OhosNativeBridge.onPlatformEvent(event.toKString())
+    }
+
     /**
      * 构建 Markdown 查看器完整 HTML (ArkTS → Kotlin 同步调用, 无参返回字符串)。
      *

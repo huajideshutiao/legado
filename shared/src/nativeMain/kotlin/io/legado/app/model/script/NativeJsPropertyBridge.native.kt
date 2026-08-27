@@ -655,6 +655,16 @@ function __createBaseSourceObj(handle) {
     return obj;
 }
 
+function __createRssJsObj(handle) {
+    if (!handle || handle <= 0) return null;
+    // RSS 拦截 JS 专属 (contentRule.shouldOverrideUrlLoading): BaseSource 全方法面 +
+    // searchBook/addBook (1610/1611); 非 RSS 来源不会注册本工厂, 不影响普通来源 java 绑定
+    var obj = __createBaseSourceObj(handle);
+    obj.searchBook = function(key) { return __nativeDispatch(handle, 1610, [key]); };
+    obj.addBook = function(bookUrl) { return __nativeDispatch(handle, 1611, [bookUrl]); };
+    return obj;
+}
+
 function __createBookObj(handle) {
     if (!handle || handle <= 0) return null;
     var obj = {};
