@@ -15,11 +15,13 @@ import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.copyToClipboard as copyTextToClipboard
+import io.legado.app.help.readFromClipboard
 import io.legado.app.help.openURL
 import io.legado.app.help.source.OhosCheckSource
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.Debug
 import io.legado.app.napi.OhosNativeBridge
+import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.source.BookSourceSort
 import io.legado.app.ui.config.MODE_EDIT_CONFIG
 import io.legado.app.ui.config.MODE_EDIT_PREFS
@@ -48,8 +50,9 @@ import kotlinx.coroutines.withContext
 
 /**
  * 鸿蒙端 [PlatformCapabilities]: 内核已下沉的能力直接复用 shared 实现 (对照 desktop),
- * 依赖弹窗宿主 (分组管理/文本输入/主题列表/导入书籍浏览) 的能力保持 unsupported —
- * 鸿蒙端尚无命令式对话框宿主, 需先补 Compose 对话框层。
+ * 依赖弹窗宿主 (分组管理/文本输入/主题列表) 的能力保持 unsupported —
+ * 鸿蒙端尚无命令式对话框宿主, 需先补 Compose 对话框层 (本地书导入浏览已由
+ * [NativeImportBook] 支持, 仅"按文件名导入 js"文本输入待 shared 补 TextInput Overlay)。
  * 转场动画 spec 不 override, 随 shared 默认 (iOS 式 300ms): 鸿蒙系统默认页面转场
  * 使用弹簧曲线 (spring curve), 时长与物理参数相关且不同设备默认动画不同
  * (查证 OpenHarmony 官方文档 arkts-navigation-animation.md: "默认转场动画使用弹簧曲线,
@@ -85,6 +88,9 @@ object OhosPlatformCapabilities : PlatformCapabilities {
     override fun copyToClipboard(text: String) {
         copyTextToClipboard(text)
     }
+
+    // 读系统剪贴板 (对照原版 ContextExtensions getClipText: 主题导入/规则粘贴等 7 场景)
+    override fun getClipboardText(): String? = readFromClipboard()
 
     // 按 bookUrl 查 DB 解析 BookRef, 供 deep link / 文件关联的路由导航
     override suspend fun resolveBookRef(bookUrl: String): BookRef? =
@@ -370,6 +376,10 @@ object OhosPlatformCapabilities : PlatformCapabilities {
         FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
     }
 
+    // 鸿蒙无系统 touchSlop API, 取 Android 系统默认值 10px 等价档位;
+    // 仅用于 MoreConfigDialog 触控灵敏度摘要展示 (对照 app 端 ViewConfiguration.get(ctx).scaledTouchSlop)
+    override fun getScaledTouchSlop(): Int = 10
+
     override fun pickBookTreeUri(onSelected: (String?) -> Unit) {
         scope.launch { onSelected(services?.files?.pickDirectory()) }
     }
@@ -379,6 +389,53 @@ object OhosPlatformCapabilities : PlatformCapabilities {
     // 完整分发链 (压缩包/JSON 一键导入/书籍文件) 见 NativeFileAssociationDispatch, 与 iOS 共用
     override fun openImportFile(filePath: String) {
         scope.launch { NativeFileAssociationDispatch.dispatch(filePath) }
+    }
+
+    // ===== 导入本地书 (状态与扫描见 NativeImportBook, 与 iOS 共用) =====
+
+    override fun initImportBookData() = NativeImportBook.init(restoreLast = true)
+
+    override fun importBookItems(): StateFlow<List<ImportFileItem>> = NativeImportBook.items
+    override fun importBookPath(): StateFlow<String?> = NativeImportBook.path
+    override fun importBookLoading(): StateFlow<Boolean> = NativeImportBook.loading
+    override fun importBookEmptyMsgVisible(): StateFlow<Boolean> =
+        NativeImportBook.emptyMsgVisible
+
+    // 对照 Android onPickFolder / selectFolder.launch;
+    // 复用 OhosPlatformServices.pickDirectory (DocumentViewPicker → 折回 POSIX 路径),
+    // 桥接未就绪或用户取消返回 null 时保持原目录不动
+    override fun pickImportFolder() {
+        scope.launch {
+            val path = services?.files?.pickDirectory() ?: return@launch
+            NativeImportBook.setRoot(path)
+        }
+    }
+
+    override fun scanImportFolder() = NativeImportBook.scan()
+
+    // 按文件名导入 js 编辑框: 鸿蒙无命令式文本输入宿主, 经共享 Overlay 弹 TextInputDialog
+    // (key="import_file_name", LegadoApp 分支内写 PreferKey.bookImportFileName; 对照 app 端
+    // alertImportFileName 的 editTextView + okButton 语义)
+    override fun alertImportFileName() {
+        AppNavigatorProviders.getOrNull()?.showOverlay(AppOverlay.Dialog("import_file_name"))
+    }
+
+
+    override fun addImportSelectionToBookshelf(
+        items: List<ImportFileItem>,
+        onComplete: () -> Unit,
+    ) = NativeImportBook.addToBookshelf(items, onComplete)
+
+    override fun updateImportBookFilter(key: String) = NativeImportBook.updateFilter(key)
+
+    override fun updateImportBookSort(sort: Int) = NativeImportBook.updateSort(sort)
+
+    override fun openImportedBookReader(item: ImportFileItem) = NativeImportBook.openReader(item)
+
+    override fun navigateImportDir(item: ImportFileItem) = NativeImportBook.enterDir(item)
+
+    override fun goBackImportDir() {
+        NativeImportBook.goBack()
     }
 
     // ===== 私有辅助 =====

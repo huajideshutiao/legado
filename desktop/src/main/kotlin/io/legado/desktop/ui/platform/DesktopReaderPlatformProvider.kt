@@ -76,6 +76,10 @@ import io.legado.desktop.ui.DesktopPlatformCapabilities
 import io.legado.desktop.ui.DesktopWindowChrome
 import io.legado.desktop.ui.component.FileDialogs
 import io.legado.desktop.ui.readerWindowTint
+import java.awt.AWTEvent
+import java.awt.Toolkit
+import java.awt.event.AWTEventListener
+import java.awt.event.WindowEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -120,6 +124,22 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
     /** 标题栏着色协程作用域 (Main)。 */
     private val titleBarScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
+    /** 阅读页激活期间挂窗口激活监听的目标模型 (onEnter 设置, onExit 清除)。 */
+    private var lifecycleScreenModel: ReaderScreenModel? = null
+
+    /** 窗口激活监听: 主窗口失活=其他应用在前台 (对应原版 Activity.onPause 语义), 重新激活=前台。
+     *  进程内对话框/菜单同属一个 ComposeWindow, 不触发失活事件。
+     *  阅读页激活期间注册, 退出阅读页注销 (对照 app 端 LifecycleObserver 桥)。 */
+    private val lifecycleListener = object : AWTEventListener {
+        override fun eventDispatched(event: AWTEvent) {
+            val model = lifecycleScreenModel ?: return
+            when (event.id) {
+                WindowEvent.WINDOW_DEACTIVATED -> model.onPause()
+                WindowEvent.WINDOW_ACTIVATED -> model.onResume()
+            }
+        }
+    }
+
     /** 图片保存协程作用域 (Main: toast 需主线程; 下载/写盘在 IO 块内切换)。 */
     private val imageActionScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -151,6 +171,24 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
         (screenModel.menuController.state as? DesktopReadMenuState)?.stopAutoPage()
     }
 
+    // 设置按钮 → 翻页动画配置 (对照 app 端 showPageAnimConfigSelector: 选择器回调忽略索引,
+    // 实际动画值在界面设置弹窗配置, 只触发 upPageAnim + 重载; 与菜单 PAGE_ANIM 分支同语义)
+    override fun showPageAnimConfig(screenModel: ReaderScreenModel) {
+        ReadBookEvents.postConfig(ReadConfigChange.PAGE_ANIM, ReadConfigChange.LOAD_CONTENT)
+    }
+
+    // 自动翻页滑条抬手 → 重新应用当前 TTS 语速 (对照 app 端 upTtsSpeechRate: 重读配置 +
+    // pause/resume 让新语速立刻作用到当前段; 本方法不写配置, 只按现配置重放)
+    override fun upTtsSpeechRate(screenModel: ReaderScreenModel) {
+        val prefs = runCatching { PreferenceProviders.get() }.getOrNull() ?: return
+        val rate = if (prefs.getBoolean(PreferKey.ttsFollowSys, true)) {
+            5
+        } else {
+            prefs.getInt(PreferKey.ttsSpeechRate, 5)
+        }
+        DesktopReadAloudHost.setSpeechRate(rate)
+    }
+
     override fun getBatteryLevel(): Int = DesktopBattery.getBatteryLevel()
 
     /**
@@ -159,6 +197,13 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
      * 订阅配置变更实时刷新; 阅读页退出 ([onExit]) 时清除回落 AppTheme 主题色。
      */
     override fun onEnter(screenModel: ReaderScreenModel) {
+        // 窗口激活监听 → shared ScreenModel (对照 app 端 LifecycleObserver 桥:
+        // 失活时 onPause 计时结束+进度落库上传+取消预下载, 激活时 onResume 开始计时+web 进度恢复)
+        lifecycleScreenModel = screenModel
+        Toolkit.getDefaultToolkit().addAWTEventListener(
+            lifecycleListener,
+            AWTEvent.WINDOW_EVENT_MASK,
+        )
         titleBarTintJob?.cancel()
         titleBarTintJob = titleBarScope.launch {
             fun updateTint() {
@@ -182,6 +227,8 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
 
     /** 阅读页退出: 清除标题栏着色, 回落 AppTheme 主题色; 收起图片长按菜单避免残留。 */
     override fun onExit(screenModel: ReaderScreenModel) {
+        Toolkit.getDefaultToolkit().removeAWTEventListener(lifecycleListener)
+        lifecycleScreenModel = null
         titleBarTintJob?.cancel()
         titleBarTintJob = null
         readerWindowTint.value = null

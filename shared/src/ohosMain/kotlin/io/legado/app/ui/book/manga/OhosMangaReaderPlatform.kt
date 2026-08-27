@@ -16,15 +16,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
+import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.config.PreferKey
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.image.ImageBitmapLoader
 import io.legado.app.help.image.MangaImageBytesLoader
 import io.legado.app.help.image.ohosDecodeImageBytes
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
+import io.legado.app.ui.book.manga.config.MangaFooterConfig
 import io.legado.app.ui.book.manga.entities.MangaCellState
+import io.legado.app.utils.File
+import io.legado.app.utils.GSON
+import io.legado.app.utils.fromJsonObject
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.asFlow
@@ -33,6 +40,32 @@ import kotlinx.coroutines.withContext
 // 鸿蒙漫画阅读平台能力: 图片流复用 shared 提取器, 渲染用 Compose Image
 // (鸿蒙无 coil3 变体, 取字节直接调 MangaImageBytesLoader, 再经 CPF 门面解码)
 object OhosMangaReaderPlatform : MangaReaderScreenModel.Platform {
+
+    private val prefs get() = PreferenceProviders.get()
+
+    // 启动即读持久化配置 (对照原版 ReadMangaActivity 直读 AppConfig; 与 desktop/iOS 同 key 同默认值)
+    override val config: MangaReaderConfig
+        get() = MangaReaderConfig(
+            hideMangaTitle = prefs.getBoolean(PreferKey.hideMangaTitle, false),
+            preDownloadNum = prefs.getInt(PreferKey.mangaPreDownloadNum, 10),
+            syncBookProgressPlus = prefs.getBoolean(PreferKey.syncBookProgressPlus, false),
+            horizontal = prefs.getBoolean(PreferKey.enableMangaHorizontalScroll, false),
+            // 默认 3: 对齐 app 端 AppConfig.mangaAutoPageSpeed (0 会让定时翻页退化成空转)
+            autoPageSpeed = prefs.getInt(PreferKey.mangaAutoPageSpeed, 3),
+            grayEnabled = prefs.getBoolean(PreferKey.enableMangaGray, false),
+            colorFilterConfig = runCatching {
+                GSON.fromJsonObject<MangaColorFilterConfig>(
+                    prefs.getString(PreferKey.mangaColorFilter, "")
+                ).getOrNull()
+            }.getOrNull() ?: MangaColorFilterConfig(),
+            gifAutoNext = prefs.getBoolean(PreferKey.enableMangaGifAutoNext, false),
+            disablePageAnim = prefs.getBoolean(PreferKey.disableMangaPageAnim, false),
+            footerConfig = runCatching {
+                GSON.fromJsonObject<MangaFooterConfig>(
+                    prefs.getString(PreferKey.mangaFooterConfig, "")
+                ).getOrNull()
+            }.getOrNull() ?: MangaFooterConfig(),
+        )
 
     // 图片 URL 提取: 复用 commonMain 的 MangaImageExtractorShared (与 iOS/desktop 同源)
     override fun flowImages(bookChapter: BookChapter, content: String): Flow<String> =
@@ -72,6 +105,10 @@ object OhosMangaReaderPlatform : MangaReaderScreenModel.Platform {
         }
 
         val bmp = bitmap
+        // 合并颜色滤镜: colorFilterConfig 矩阵 + 灰度矩阵 (与 iOS/desktop/app 端同矩阵同顺序)
+        val colorFilter = remember(colorFilterConfig, grayEnabled) {
+            mangaColorFilter(colorFilterConfig, grayEnabled)
+        }
         if (bmp != null) {
             // 等比渲染: 按位图固有宽高比显式定高 (与 desktop/iOS 同一修复,
             // 纵向永不变形; 横向仍整页铺满视口等比留白, 行为不变)
@@ -85,6 +122,7 @@ object OhosMangaReaderPlatform : MangaReaderScreenModel.Platform {
                 contentDescription = null,
                 modifier = if (horizontal) modifier else modifier.then(aspect),
                 contentScale = ContentScale.Fit,
+                colorFilter = colorFilter,
             )
         } else if (failed) {
             // 加载失败占位 (同 iOS UIImageView image 为 nil 时的空白)
@@ -99,6 +137,27 @@ object OhosMangaReaderPlatform : MangaReaderScreenModel.Platform {
             Box(modifier = modifier.background(Color.Black))
         }
     }
+    // 保存图片到沙盒导出路径 (destPath 由 shared 路由经 PlatformServiceProviders.files.saveFile
+    // 取得, 鸿蒙的 saveFile 返回 filesDir/export 可写路径): 取字节复用 [MangaImageBytesLoader]
+    // (图片缓存 → 本地书 FileBook → 按书源下载+解密), 与 desktop/iOS/app 端同一条链路
+    override suspend fun saveImage(
+        url: String,
+        book: Book?,
+        source: BookSource?,
+        destPath: String
+    ): Boolean = withContext(IoDispatcher) {
+        book ?: return@withContext false
+        runCatching {
+            val bytes = MangaImageBytesLoader.load(url, book, source, currentCoroutineContext())
+                ?: return@runCatching false
+            File(destPath).writeBytes(bytes)
+            true
+        }.getOrElse {
+            AppLog.put("保存图片出错\n${it.localizedMessage}", it)
+            false
+        }
+    }
+
     // 无 Coil3 内存缓存: 预载 = 提前经共享 MangaImageBytesLoader 取字节回填磁盘缓存
     // (BookImageStorage, 与显示端同链路), 翻到预载区间时命中缓存跳过网络下载;
     // 解码留给显示端 (位图无跨页共享缓存层)

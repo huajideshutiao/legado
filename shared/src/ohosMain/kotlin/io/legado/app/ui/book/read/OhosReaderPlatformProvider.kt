@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.toArgb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.Bookmark
+import io.legado.app.constant.PreferKey
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.showSourceLogin
 import io.legado.app.help.book.isEpub
@@ -14,6 +15,7 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalTxt
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.help.image.ReaderImageCache
@@ -205,6 +207,24 @@ object OhosReaderPlatformProvider : ReaderPlatformProvider {
     // 自动翻页面板停止按钮: 本端 autoPage 仅开关状态 (无 AutoPager), 复位开关即可
     override fun autoPageStop(screenModel: ReaderScreenModel) {
         (screenModel.menuController.state as? OhosReadMenuState)?.autoPage = false
+    }
+
+    // 设置按钮 → 翻页动画配置 (对照 app 端 showPageAnimConfigSelector: 选择器回调忽略索引,
+    // 实际动画值在界面设置弹窗配置, 只触发 upPageAnim + 重载; 与菜单 PAGE_ANIM 分支同语义)
+    override fun showPageAnimConfig(screenModel: ReaderScreenModel) {
+        ReadBookEvents.postConfig(ReadConfigChange.PAGE_ANIM, ReadConfigChange.LOAD_CONTENT)
+    }
+
+    // 自动翻页滑条抬手 → 重新应用当前 TTS 语速 (对照 app 端 upTtsSpeechRate: 重读配置 +
+    // pause/resume 让新语速立刻作用到当前段; 本方法不写配置, 只按现配置重放)
+    override fun upTtsSpeechRate(screenModel: ReaderScreenModel) {
+        val prefs = runCatching { PreferenceProviders.get() }.getOrNull() ?: return
+        val rate = if (prefs.getBoolean(PreferKey.ttsFollowSys, true)) {
+            5
+        } else {
+            prefs.getInt(PreferKey.ttsSpeechRate, 5)
+        }
+        OhosReadAloudHost.setSpeechRate(rate)
     }
 
     // 经 napi Battery 桥查询 @ohos.batteryInfo.batterySOC; 桥未就绪/超时回落 100 (用户拍板 2026-08: 电量恒显示)

@@ -18,12 +18,15 @@ import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.file.exportFile
+import io.legado.app.help.file.pickDirectory as pickDirectoryDocument
 import io.legado.app.help.openURL
 import io.legado.app.help.copyToClipboard as copyTextToClipboard
+import io.legado.app.help.readFromClipboard
 import io.legado.app.help.toast.Toasters
 import io.legado.app.help.topMostViewController
 import io.legado.app.model.CheckSourceShared
 import io.legado.app.model.Debug
+import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.source.BookSourceSort
 import io.legado.app.ui.book.source.manage.BookSourceViewModelShared
 import io.legado.app.ui.config.MODE_EDIT_CONFIG
@@ -65,6 +68,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import platform.Foundation.NSBundle
 import platform.Foundation.NSDate
+import platform.Foundation.NSURL
 import platform.Foundation.dateWithTimeIntervalSince1970
 import platform.UIKit.UIAlertAction
 import platform.UIKit.UIAlertActionStyleCancel
@@ -82,7 +86,8 @@ import platform.darwin.dispatch_get_main_queue
 /**
  * iOS 端 [PlatformCapabilities]: 内核已下沉的能力直接复用 shared 实现 (对照 desktop / 鸿蒙),
  * 需系统面板的能力走 UIKit (导出 UIDocumentPicker / 文本输入 UIAlertController)。
- * 依赖命令式对话框宿主 (主题列表/分组管理/书籍变量/导入书籍浏览) 的能力保持 unsupported。
+ * 依赖命令式对话框宿主 (主题列表/分组管理/书籍变量) 的能力保持 unsupported
+ * (本地书导入浏览由 [NativeImportBook] 支持, 见下方"导入本地书"段)。
  */
 object IosPlatformCapabilities : PlatformCapabilities {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -93,6 +98,12 @@ object IosPlatformCapabilities : PlatformCapabilities {
 
     /** 书源分组增删改 (shared 下沉件)。 */
     private val bookSourceViewModel by lazy { BookSourceViewModelShared(scope) }
+
+    /**
+     * 导入根目录的 security-scoped URL (UIDocumentPicker Open 模式选出的目录)。
+     * 持有 NSURL 引用 + 保持 startAccessing 才能访问目录内容; 换目录时释放旧 scope。
+     */
+    private var importRootUrl: NSURL? = null
 
     // iOS 由系统统一管理应用生命周期, 无 Activity.finish 等价物
     override fun exitApplication() = Unit
@@ -141,9 +152,72 @@ object IosPlatformCapabilities : PlatformCapabilities {
         copyTextToClipboard(text)
     }
 
+    // 读系统剪贴板 (对照原版 ContextExtensions getClipText: 主题导入/规则粘贴等 7 场景)
+    override fun getClipboardText(): String? = readFromClipboard()
+
     // 完整分发链 (压缩包/JSON 一键导入/书籍文件) 见 NativeFileAssociationDispatch, 与鸿蒙共用
     override fun openImportFile(filePath: String) {
         scope.launch { NativeFileAssociationDispatch.dispatch(filePath) }
+    }
+
+    // ===== 导入本地书 (状态与扫描见 NativeImportBook, 与鸿蒙共用) =====
+
+    override fun initImportBookData() = NativeImportBook.init(restoreLast = false)
+
+    override fun importBookItems(): StateFlow<List<ImportFileItem>> = NativeImportBook.items
+    override fun importBookPath(): StateFlow<String?> = NativeImportBook.path
+    override fun importBookLoading(): StateFlow<Boolean> = NativeImportBook.loading
+    override fun importBookEmptyMsgVisible(): StateFlow<Boolean> =
+        NativeImportBook.emptyMsgVisible
+
+    // 对照 Android onPickFolder / selectFolder.launch。
+    // 不用 IosFilePickerService.pickDirectory (只返回 path, 会丢 security-scoped URL):
+    // 这里直接拿 NSURL 并 startAccessingSecurityScopedResource, 否则读取授权目录内容会失败
+    // (iOS Open 模式选出的目录必须持有 scope 才能访问, 权限随应用会话有效)。
+    override fun pickImportFolder() {
+        scope.launch {
+            val url = pickDirectoryDocument() ?: return@launch
+            val path = url.path ?: return@launch
+            // 换目录时释放上一目录的 scope, 保持有界
+            importRootUrl?.stopAccessingSecurityScopedResource()
+            importRootUrl = url
+            // 返回 false = 无需 scope (如应用沙盒内目录), 忽略即可
+            url.startAccessingSecurityScopedResource()
+            NativeImportBook.setRoot(path)
+        }
+    }
+
+    override fun scanImportFolder() = NativeImportBook.scan()
+
+    // 对照 Android alertImportFileName: 复用现有 UIAlertController 文本输入弹窗
+    // (presentTextInput), 允许清空 = 恢复默认文件名解析。预设值存 PreferKey.bookImportFileName。
+    override fun alertImportFileName() {
+        presentTextInput(
+            title = "按文件名导入",
+            message = "使用js处理文件名变量src，将书名作者分别赋值到变量name author",
+            hint = "js",
+            initial = prefs.getString(PreferKey.bookImportFileName, ""),
+            allowEmpty = true,
+        ) {
+            prefs.putString(PreferKey.bookImportFileName, it)
+        }
+    }
+
+    override fun addImportSelectionToBookshelf(
+        items: List<ImportFileItem>,
+        onComplete: () -> Unit,
+    ) = NativeImportBook.addToBookshelf(items, onComplete)
+
+    override fun updateImportBookFilter(key: String) = NativeImportBook.updateFilter(key)
+
+    override fun updateImportBookSort(sort: Int) = NativeImportBook.updateSort(sort)
+
+    override fun openImportedBookReader(item: ImportFileItem) = NativeImportBook.openReader(item)
+
+    override fun navigateImportDir(item: ImportFileItem) = NativeImportBook.enterDir(item)
+
+    override fun goBackImportDir() {
+        NativeImportBook.goBack()
     }
 
     // 按 bookUrl 查 DB 解析 BookRef, 供 deep link / 文件关联的路由导航
@@ -512,18 +586,24 @@ object IosPlatformCapabilities : PlatformCapabilities {
         if (saved) Toasters.get().toast("已导出 $defaultName")
     }
 
-    /** 单行文本输入弹窗 (对照 desktop DesktopDialogRequest.TextInput), 空输入不回调。 */
+    /**
+     * 单行文本输入弹窗 (对照 desktop DesktopDialogRequest.TextInput), 默认空输入不回调。
+     *
+     * @param allowEmpty true 时空串也回调 (文件名导入 js 场景需要支持清空=恢复默认)。
+     */
     private fun presentTextInput(
         title: String,
         hint: String,
         initial: String = "",
+        message: String? = null,
+        allowEmpty: Boolean = false,
         onConfirm: (String) -> Unit,
     ) {
         dispatch_async(dispatch_get_main_queue()) {
             val vc = topMostViewController() ?: return@dispatch_async
             val alert = UIAlertController.alertControllerWithTitle(
                 title = title,
-                message = null,
+                message = message,
                 preferredStyle = UIAlertControllerStyleAlert,
             )
             alert.addTextFieldWithConfigurationHandler { field ->
@@ -543,7 +623,7 @@ object IosPlatformCapabilities : PlatformCapabilities {
                     style = UIAlertActionStyleDefault,
                     handler = { _ ->
                         val text = (alert.textFields?.firstOrNull() as? UITextField)?.text.orEmpty()
-                        if (text.isNotBlank()) onConfirm(text.trim())
+                        if (allowEmpty || text.isNotBlank()) onConfirm(text.trim())
                     },
                 )
             )

@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.CircularProgressIndicator
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -22,11 +24,17 @@ import androidx.compose.ui.interop.UIKitView
 import androidx.compose.ui.unit.dp
 import io.legado.app.help.media.AvPlayerBufferingObserver
 import io.legado.app.help.media.AvPlayerItemStatusObserver
+import io.legado.app.ui.IosStatusBarHiddenKey
+import io.legado.app.ui.IosStatusBarHiddenNotification
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.ic_fullscreen_enter
+import legado.shared.generated.resources.ic_fullscreen_exit
+import org.jetbrains.compose.resources.painterResource
 import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerItem
 import platform.AVFoundation.AVPlayerItemDidPlayToEndTimeNotification
@@ -145,11 +153,42 @@ object IosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
                         onSeek = screenModel::onSeekTo,
                         onSpeedChange = screenModel::onSpeedChange,
                         onSwitchResolution = screenModel::onSwitchResolution,
+                        // 全屏钮 (对照 app 端 toggleOrientationFullscreen): iOS 不支持编程强制方向,
+                        // 联动仅停留在状态栏显隐 (见 [applyFullscreen]); 图标随全屏态切换
+                        trailingBottomContent = {
+                            IconButton(onClick = { screenModel.onToggleOrientationFullscreen() }) {
+                                Icon(
+                                    painter = painterResource(
+                                        if (uiState.isFullScreen) {
+                                            Res.drawable.ic_fullscreen_exit
+                                        } else {
+                                            Res.drawable.ic_fullscreen_enter
+                                        }
+                                    ),
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                )
+                            }
+                        },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
             }
         }
+    }
+    override fun applyFullscreen(enabled: Boolean) {
+        // 对照原版 setFullScreen 的系统栏部分 (iOS 无窗口内全屏布局概念, 全屏观感=状态栏显隐):
+        // 经 SwiftUI 根视图 .statusBarHidden 桥, 与 WindowPolicy.setSystemBars 同通道
+        NSNotificationCenter.defaultCenter.postNotificationName(
+            aName = IosStatusBarHiddenNotification,
+            `object` = null,
+            userInfo = mapOf(IosStatusBarHiddenKey to enabled),
+        )
+    }
+
+    override fun toggleOrientation() {
+        // iOS 不支持编程强制方向 (UIDevice.setValue 已弃用且受 Info.plist 限制,
+        // 见 IosWindowController.setOrientation), 横竖屏联动仅由 applyFullscreen 承担状态栏部分
     }
 }
 

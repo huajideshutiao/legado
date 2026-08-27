@@ -42,6 +42,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import platform.Foundation.NSNotificationCenter
+import platform.Foundation.NSObjectProtocol
+import platform.Foundation.NSOperationQueue
+import platform.UIKit.UIApplicationDidEnterBackgroundNotification
+import platform.UIKit.UIApplicationWillEnterForegroundNotification
 import platform.UIKit.UIDevice
 import platform.UIKit.UIImage
 import platform.UIKit.UIImageWriteToSavedPhotosAlbum
@@ -64,8 +69,27 @@ object IosReaderPlatformProvider : ReaderPlatformProvider {
     /** 查词请求 (选中词 → 暂存, 由 MainViewController 宿主渲染 DictDialogHost; 对照原版 menu_dict → DictDialog)。 */
     internal var dictWord by mutableStateOf<String?>(null)
 
+    /** 前后台通知 observer tokens (阅读页激活期间注册, 对照 app 端 Activity LifecycleObserver)。 */
+    private val lifecycleObserverTokens = mutableListOf<NSObjectProtocol>()
+
     /** 图片长按动作协程 scope (Main: UIKit 操作/toast 需主线程, 网络下载在 loadBytes 内部切 IO)。 */
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    /** 阅读页进入: 注册前后台通知 → shared ScreenModel (对照 app 端 LifecycleObserver 桥:
+     *  进后台 onPause 计时结束+进度落库上传+取消预下载, 回前台 onResume 开始计时+web 进度恢复)。 */
+    override fun onEnter(screenModel: ReaderScreenModel) {
+        val center = NSNotificationCenter.defaultCenter
+        lifecycleObserverTokens += center.addObserverForName(
+            UIApplicationDidEnterBackgroundNotification,
+            `object` = null,
+            queue = NSOperationQueue.mainQueue,
+        ) { screenModel.onPause() }
+        lifecycleObserverTokens += center.addObserverForName(
+            UIApplicationWillEnterForegroundNotification,
+            `object` = null,
+            queue = NSOperationQueue.mainQueue,
+        ) { screenModel.onResume() }
+    }
 
     override fun createMenuController(
         navigator: AppNavigator,
@@ -75,6 +99,24 @@ object IosReaderPlatformProvider : ReaderPlatformProvider {
     // 自动翻页面板停止按钮: 本端 autoPage 仅开关状态 (无 AutoPager), 复位开关即可
     override fun autoPageStop(screenModel: ReaderScreenModel) {
         (screenModel.menuController.state as? IosReadMenuState)?.autoPage = false
+    }
+
+    // 设置按钮 → 翻页动画配置 (对照 app 端 showPageAnimConfigSelector: 选择器回调忽略索引,
+    // 实际动画值在界面设置弹窗配置, 只触发 upPageAnim + 重载; 与菜单 PAGE_ANIM 分支同语义)
+    override fun showPageAnimConfig(screenModel: ReaderScreenModel) {
+        ReadBookEvents.postConfig(ReadConfigChange.PAGE_ANIM, ReadConfigChange.LOAD_CONTENT)
+    }
+
+    // 自动翻页滑条抬手 → 重新应用当前 TTS 语速 (对照 app 端 upTtsSpeechRate: 重读配置 +
+    // pause/resume 让新语速立刻作用到当前段; 本方法不写配置, 只按现配置重放)
+    override fun upTtsSpeechRate(screenModel: ReaderScreenModel) {
+        val prefs = runCatching { PreferenceProviders.get() }.getOrNull() ?: return
+        val rate = if (prefs.getBoolean(PreferKey.ttsFollowSys, true)) {
+            5
+        } else {
+            prefs.getInt(PreferKey.ttsSpeechRate, 5)
+        }
+        IosReadAloudHost.setSpeechRate(rate)
     }
 
     /** 空白长按回落: 原版 ContentTextView.longPress 未命中任何列时无动作，此处 no-op。 */
@@ -135,6 +177,8 @@ object IosReaderPlatformProvider : ReaderPlatformProvider {
     override fun onExit(screenModel: ReaderScreenModel) {
         IosTextActionMenu.dismiss()
         IosReadAloudHost.stop()
+        lifecycleObserverTokens.forEach { NSNotificationCenter.defaultCenter.removeObserver(it) }
+        lifecycleObserverTokens.clear()
     }
 
     /**

@@ -27,6 +27,8 @@ import androidx.compose.material.IconButton
 import androidx.compose.material.LocalTextStyle
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -465,13 +468,15 @@ fun MangaReaderScreenContent(
         MangaRenderLayer(
             renderState,
             // pageCell 在签名里位于 footer 之前, 不能用尾随 lambda (会绑到 footer)
-            pageCell = { item, _ ->
+            pageCell = { item, index ->
                 MangaPageCell(
                     url = item.mImageUrl,
                     horizontal = horizontal,
                     imageSlot = imageSlot,
                     colorFilterConfig = colorFilterConfig,
                     grayEnabled = grayEnabled,
+                    index = index,
+                    renderState = renderState,
                 )
             },
         )
@@ -1039,6 +1044,26 @@ private fun ChapterNavText(text: String, color: Color, onClick: () -> Unit) {
 
 // ---- 渲染区图片单元格 (列表/手势/转场页均在 shared MangaRenderLayer) ----
 
+/**
+ * GIF 播完翻页的平台注入槽 (对照原版 ReadMangaActivity gifAutoNext 接线): 单元格在组合期
+ * Provide, 平台图片槽 (Android MangaPageImageView) 读取后把渲染器实例上报给
+ * [MangaRenderState] 的 GIF 注册表, 并设置装填/翻页三项回调。
+ *
+ * 无 GIF 能力的平台 (desktop 无动图解码, iOS/鸿蒙无 GIF 分支) 不读取, 保持 no-op。
+ */
+class MangaGifSlot(
+    /** 是否启用播完翻页 (横向模式且设置开启) */
+    val enabled: () -> Boolean,
+    /** 此页是否为停稳的居中页 (播完翻页只装填当前页) */
+    val isArmTarget: () -> Boolean,
+    /** 播完翻页动作, 返回是否真的翻动 (受阻时渲染器自首帧重播下轮再试) */
+    val onTurnPage: () -> Boolean,
+    /** 渲染器实例就绪回调 (上报给注册表) */
+    val onRenderer: (() -> MangaRenderState.MangaPageRenderer?) -> Unit,
+)
+
+val LocalMangaGifSlot = staticCompositionLocalOf<MangaGifSlot?> { null }
+
 @Composable
 private fun LazyItemScope.MangaPageCell(
     url: String,
@@ -1049,7 +1074,22 @@ private fun LazyItemScope.MangaPageCell(
     ) -> Unit,
     colorFilterConfig: MangaColorFilterConfig,
     grayEnabled: Boolean,
+    index: Int,
+    renderState: MangaRenderState?,
 ) {
+    // GIF 播完翻页接线 (对照原版 ReadMangaActivity 滚动停稳回调 → MangaVH 装填):
+    // 本单元格按 index 注册进 renderState 的 GIF 注册表, 平台图片槽经 [LocalMangaGifSlot]
+    // 注入停稳/翻页回调并上报渲染器实例; 出组合即注销 (LazyColumn 虚拟化移出的页不再参与)。
+    val gifRenderer = remember { mutableStateOf<() -> MangaRenderState.MangaPageRenderer?>({ null }) }
+    DisposableEffect(index, renderState) {
+        if (renderState != null) {
+            val getter = { gifRenderer.value() }
+            renderState.registerGifCell(index, getter)
+            onDispose { renderState.unregisterGifCell(index, getter) }
+        } else {
+            onDispose { }
+        }
+    }
     // 图片加载状态驱动转圈/占位/重试 (对照 app 端 MangaRenderScreen.MangaPageCell);
     // 状态完全由平台图片槽经 onLoadState 上报 (Android onStateChange / Coil LaunchedEffect),
     // 不设 onSizeChanged 兜底 —— 兜底会在 LOADING 时把占位高度误判为出图, 与平台上报互相
@@ -1076,6 +1116,14 @@ private fun LazyItemScope.MangaPageCell(
             if (horizontal) Modifier.fillMaxSize() else Modifier.fillMaxWidth(),
             contentAlignment = Alignment.Center,
         ) {
+            CompositionLocalProvider(
+                LocalMangaGifSlot provides if (renderState == null) null else MangaGifSlot(
+                    enabled = { renderState.gifAutoNext },
+                    isArmTarget = { renderState.isIdleCenterPage(index) },
+                    onTurnPage = { renderState.onGifTurnPage() },
+                    onRenderer = { gifRenderer.value = it },
+                )
+            ) {
             imageSlot(
                 url,
                 if (horizontal) Modifier.fillMaxSize() else Modifier.fillMaxWidth(),
@@ -1086,6 +1134,7 @@ private fun LazyItemScope.MangaPageCell(
                 retryTick,
                 { progress = it },
             )
+            }
         }
         if (load != MangaCellState.SUCCESS) {
             Box(

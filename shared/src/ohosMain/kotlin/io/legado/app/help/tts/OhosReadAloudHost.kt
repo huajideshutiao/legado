@@ -130,6 +130,22 @@ object OhosReadAloudHost {
         }
     }
 
+    /**
+     * 设定语速并实时生效 (对照 `AppConfig.ttsSpeechRate = v` + `ReadAloud.upTtsSpeechRate`)。
+     *
+     * @param rate 原版 ttsSpeechRate 口径 (0..45), 折算倍率 (rate + 5) / 10f
+     */
+    fun setSpeechRate(rate: Int) {
+        controller.setSpeechRate((rate.coerceIn(0, 45) + 5) / 10f)
+        // 原版 upTtsSpeechRate 后会 pause+resume 让新语速立刻作用到当前段;
+        // 鸿蒙 textToSpeech 无 pause/resume API (ArkTS 侧仅日志, 见 TtsBridgeHandler),
+        // 当前段无法重播, 新语速从下一段生效 (引擎 speechRate 已即时同步)
+        if (!isPause) {
+            controller.pause()
+            controller.resume()
+        }
+    }
+
     // region 内部实现
 
     private fun createController(): ReadAloudControllerShared {

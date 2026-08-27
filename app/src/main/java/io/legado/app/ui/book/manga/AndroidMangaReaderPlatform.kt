@@ -26,6 +26,7 @@ import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.manga.MangaModel
+import io.legado.app.ui.book.manga.LocalMangaGifSlot
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.config.MangaFooterConfig
 import io.legado.app.ui.book.manga.config.isNoOp
@@ -154,6 +155,8 @@ object AndroidMangaReaderPlatform : MangaReaderScreenModel.Platform {
         onProgress: (String) -> Unit,
     ) {
         val viewRef = remember { Ref<MangaPageImageView>() }
+        // GIF 播完翻页上下文 (单元格 Provide): 渲染器实例上报注册表 + 装填/翻页回调
+        val gifSlot = LocalMangaGifSlot.current
         // 重试: shared 单元格"重新加载"点击 → retryTick 自增 → 直接调 MangaPageImageView.retry() (对照 app 端 MangaRenderScreen)
         LaunchedEffect(retryTick) {
             if (retryTick > 0) viewRef.value?.retry()
@@ -164,12 +167,24 @@ object AndroidMangaReaderPlatform : MangaReaderScreenModel.Platform {
             return
         }
         AndroidView(
-            factory = { MangaPageImageView(it) },
+            factory = {
+                MangaPageImageView(it).also { view ->
+                    // 渲染器实例就绪: 上报 GIF 注册表 (单元格已按 index 注册, 供停稳后装填)
+                    gifSlot?.onRenderer { view }
+                }
+            },
             modifier = modifier,
             onReset = { it.recycle() },
             onRelease = { it.recycle() },
             update = { view ->
                 viewRef.value = view
+                // 三项回调随组合刷新 (LazyColumn 复用单元格时 index/停稳判定须用最新闭包;
+                // 对照原版 MangaVH 的 gifAutoNextEnabled/isArmTargetPage/onTurnPage setter)
+                gifSlot?.let { slot ->
+                    view.gifAutoNextEnabled = slot.enabled
+                    view.isArmTarget = slot.isArmTarget
+                    view.onTurnPage = slot.onTurnPage
+                }
                 view.scaleType =
                     if (horizontal) ImageView.ScaleType.FIT_CENTER else ImageView.ScaleType.FIT_XY
                 // 颜色滤镜: 复用 shared toColorMatrix, 全 0 时清除 (对照 app 端 MangaRenderScreen.toColorFilter)

@@ -864,6 +864,10 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
         prefs.putString(LocalConfigKeys.password, password)
     }
 
+    // 桌面无系统 touchSlop API (AWT/Java 无等价物), 取 Android 系统默认值 10px 等价档位;
+    // 仅用于 MoreConfigDialog 触控灵敏度摘要展示 (对照 app 端 ViewConfiguration.get(ctx).scaledTouchSlop)
+    override fun getScaledTouchSlop(): Int = 10
+
     override fun pickBookTreeUri(onSelected: (String?) -> Unit) {
         scope.launch { onSelected(FileDialogs.pickDirectory("选择书籍目录")?.absolutePath) }
     }
