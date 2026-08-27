@@ -54,6 +54,8 @@ targets:
         UIStatusBarStyle: UIStatusBarStyleDefault
         UIStatusBarHidden: false
         UIViewControllerBasedStatusBarAppearance: true
+        # Compose Multiplatform 1.11+ 启动时强制校验；缺失或为 false 会直接抛异常终止进程。
+        CADisableMinimumFrameDurationOnPhone: true
         # 屏幕方向: 阅读类 App, 竖屏 + 横屏
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

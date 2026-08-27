@@ -31,6 +31,9 @@
     <false/>
     <key>UIViewControllerBasedStatusBarAppearance</key>
     <true/>
+    <!-- Compose Multiplatform 1.11+ 启动必需；同时解除 ProMotion 设备的 60Hz 帧率限制。 -->
+    <key>CADisableMinimumFrameDurationOnPhone</key>
+    <true/>
 
     <!-- 屏幕方向: legado 是阅读类 App, 支持竖屏 + 横屏 + 翻转 -->
     <key>UISupportedInterfaceOrientations</key>
