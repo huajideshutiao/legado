@@ -47,36 +47,6 @@ import kotlin.math.roundToInt
 // (鸿蒙无 coil3 变体, 取字节直接调 MangaImageBytesLoader, 再经 CPF 门面解码)
 object OhosMangaReaderPlatform : MangaReaderScreenModel.Platform {
 
-    private val prefs get() = PreferenceProviders.get()
-
-    // 启动即读持久化配置 (对照原版 ReadMangaActivity 直读 AppConfig; 与 desktop/iOS 同 key 同默认值)
-    override val config: MangaReaderConfig
-        get() = MangaReaderConfig(
-            hideMangaTitle = prefs.getBoolean(PreferKey.hideMangaTitle, false),
-            preDownloadNum = prefs.getInt(PreferKey.mangaPreDownloadNum, 10),
-            syncBookProgressPlus = prefs.getBoolean(PreferKey.syncBookProgressPlus, false),
-            horizontal = prefs.getBoolean(PreferKey.enableMangaHorizontalScroll, false),
-            // 默认 3: 对齐 app 端 AppConfig.mangaAutoPageSpeed (0 会让定时翻页退化成空转)
-            autoPageSpeed = prefs.getInt(PreferKey.mangaAutoPageSpeed, 3),
-            grayEnabled = prefs.getBoolean(PreferKey.enableMangaGray, false),
-            colorFilterConfig = runCatching {
-                GSON.fromJsonObject<MangaColorFilterConfig>(
-                    prefs.getString(PreferKey.mangaColorFilter, "")
-                ).getOrNull()
-            }.getOrNull() ?: MangaColorFilterConfig(),
-            gifAutoNext = prefs.getBoolean(PreferKey.enableMangaGifAutoNext, false),
-            disablePageAnim = prefs.getBoolean(PreferKey.disableMangaPageAnim, false),
-            footerConfig = runCatching {
-                GSON.fromJsonObject<MangaFooterConfig>(
-                    prefs.getString(PreferKey.mangaFooterConfig, "")
-                ).getOrNull()
-            }.getOrNull() ?: MangaFooterConfig(),
-        )
-
-    // 图片 URL 提取: 复用 commonMain 的 MangaImageExtractorShared (与 iOS/desktop 同源)
-    override fun flowImages(bookChapter: BookChapter, content: String): Flow<String> =
-        MangaImageExtractorShared.extractImageUrls(content).asFlow()
-
     // 异步取字节 + CPF 门面解码 + Compose Image 渲染
     @Composable
     override fun Image(

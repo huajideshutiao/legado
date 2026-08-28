@@ -37,8 +37,6 @@ import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.KS_JSON
-import io.legado.app.utils.encodeURI
-import io.legado.app.utils.isAbsUrl
 import kotlinx.serialization.Serializable
 
 /**
@@ -153,35 +151,11 @@ object OhosReaderPlatformProvider : ReaderPlatformProvider {
      */
     private fun onTextAction(action: String, text: String, src: String) {
         val text = text.ifBlank { textActionText }
+        val screenModel = ReaderScreenModelRegistry.currentScreenModel
         when (action) {
-            "replace" -> {
-                val book = ActiveReadBookRegistry.current?.bookValue
-                AppNavigatorProviders.getOrNull()?.push(
-                    AppRoute.ReplaceEdit(
-                        pattern = text.lineSequence().joinToString("\n") { it.trim() },
-                        scope = listOfNotNull(book?.name, book?.origin).joinToString(";"),
-                    )
-                )
-            }
-
+            "replace" -> screenModel?.replaceTextCallback()?.invoke(text)
             "copy" -> PlatformCapabilityProviders.get().copyToClipboard(text)
-            "bookmark" -> {
-                val readBook = ActiveReadBookRegistry.current ?: return
-                val book = readBook.bookValue ?: return
-                val bookmark = Bookmark(bookName = book.name, bookAuthor = book.author).apply {
-                    chapterIndex = readBook.durChapterIndexValue
-                    chapterPos = readBook.durChapterPosValue
-                    // 当前章节标题: ReadBookShared.curChapter 无 title 属性 (TextChapterContract 只含
-                    // 排版视图), 用 Book.durChapterTitle (桌面端同字段语义)
-                    chapterName = book.durChapterTitle ?: ""
-                    bookText = text.trim()
-                }
-                // currentViewModel 在 ActiveReadBookRegistry 上 (ReadBookShared 无此属性);
-                // 对话框事件投递走当前阅读屏 ScreenModel (napi 回调无 screenModel 参数)
-                ReaderScreenModelRegistry.currentScreenModel
-                    ?.postDialogEvent(ReaderDialogEvent.AddBookmark(bookmark))
-            }
-
+            "bookmark" -> screenModel?.bookmarkTextCallback()?.invoke(text)
             "aloud" -> {
                 // 朗读选中文本: 用已注册的系统 TTS 引擎 (经 TtsBridgeHandler → @ohos.textToSpeech,
                 // 对照原版 menu_aloud → ReadAloudControllerShared)
@@ -192,26 +166,9 @@ object OhosReaderPlatformProvider : ReaderPlatformProvider {
                     Toasters.get().toast("朗读暂未支持")
                 }
             }
-
             "dict" -> dictWord = text
-            "search_content" -> {
-                // menuState/searchContentQuery 在 ReaderScreenModel 上 (ReadBookViewModelShared 无);
-                // napi 回调经 ReaderScreenModelRegistry 取当前阅读屏 (ReaderRoute 生命周期注册),
-                // 对齐 iOS onTextAction 的 search_content 处理
-                val screenModel = ReaderScreenModelRegistry.currentScreenModel ?: return
-                screenModel.searchContentQuery = text
-                screenModel.menuState.clickSearch()
-            }
-
-            "browser" -> {
-                val url = if (text.isAbsUrl()) {
-                    text
-                } else {
-                    "https://www.bing.com/search?q=" + text.encodeURI()
-                }
-                PlatformCapabilityProviders.get().openExternalUrl(url)
-            }
-
+            "search_content" -> screenModel?.searchContentTextCallback()?.invoke(text)
+            "browser" -> openTextInBrowser(text)
             "share" -> PlatformCapabilityProviders.get().shareText(text)
 
             // 图片菜单"刷新": 清 shared ReaderImageCache (鸿蒙阅读页图片走 shared
@@ -287,23 +244,11 @@ private class OhosReadMenuController(
  * 菜单显隐时刷新动态项 (书源按钮/顶栏勾选/夜间态), 对齐 iOS [IosReadMenuState].show()。
  */
 private class OhosReadMenuState(
-    private val navigator: AppNavigator,
-    private val screenModel: ReaderScreenModel,
-) : ReadMenuState {
+    navigator: AppNavigator,
+    screenModel: ReaderScreenModel,
+) : BaseReadMenuState(navigator, screenModel) {
 
-    override val visibleState = MutableTransitionState(false)
-    override var animate: Boolean = true
-        private set
-    override val isVisible: Boolean get() = visibleState.currentState || visibleState.targetState
-    override val canShowMenu: Boolean get() = true
-
-    // 菜单栏配色 (对照原版 ReadMenu.upColorConfig, 逻辑见 shared createReadMenuColors):
-    // 纯色阅读背景时 immersive=true, 顶/底栏用阅读背景色(含 bgAlpha 透明度)+阅读文字色,
-    // 文字对比度由阅读配色自身保证; 图片阅读背景时沉浸式为 false, ReadMenuOverlay 走
-    // AppTheme 默认色 (与原版非沉浸式行为一致)。fallbackBgColor 统一传主题底栏背景色
-    // (T6: 原传 0 的历史差异已对齐, 见 ReadMenuThemeHelper.createReadMenuColors KDoc;
-    // 经 OhosThemeStoreProvider 读持久层, 与 AppTheme.colors.bottomBackground 同源,
-    // 无需 @Composable 上下文)。
+    // 菜单栏配色 (对照原版 ReadMenu.upColorConfig, 逻辑见 shared createReadMenuColors)
     private val menuTheme: ReadMenuColors
         get() = createReadMenuColors(
             ReadBookConfigProviders.get().config,
@@ -314,368 +259,12 @@ private class OhosReadMenuState(
     override val textColor: Int get() = menuTheme.textColor
 
     // 窗口背景图时顶栏透明让背景图透出; 与 LegadoApp 壁纸层同一数据源
-    // (判定收敛 shared hasBgImageByPath, 对照 Android upColorConfig)
     override val hasBgImage: Boolean
         get() = hasBgImageByPath(OhosThemeStoreProvider().bgImagePath)
 
-    // 顶栏 (快照状态, 由 refresh()/reset() 更新: 普通 getter 读 StateFlow.value 在组合期
-    // 不追踪, 切章后书名/章节名会冻结; 对照原版 upBookView/upMenuView 显式刷新)
-    override var title: String? by mutableStateOf(null)
-        private set
-    override var chapterName: String? by mutableStateOf(null)
-        private set
-    override var chapterUrl: String? by mutableStateOf(null)
-        private set
-    override var chapterNameVisible by mutableStateOf(false)
-        private set
-    override var chapterUrlVisible by mutableStateOf(false)
-        private set
-    override var sourceActionText by mutableStateOf("")
-        private set
-    override var sourceActionVisible by mutableStateOf(false)
-        private set
-    override var titleBarAdditionVisible by mutableStateOf(false)
-        private set
-    override val topMenu = TopMenuState()
-
-    // 底栏进度条 (快照状态, 由 upSeekBar()/refresh() 更新: 普通 getter 读 StateFlow.value
-    // 在组合期不追踪, 翻页/切章后进度条与上下章可用状态会冻结;
-    // 对照原版 ReadMenu.upSeekBar/upMenuView 实时刷新)
-    override var seekMax: Int by mutableStateOf(0)
-        private set
-    override var seekValue: Int by mutableStateOf(0)
-        private set
-    override var prevEnabled by mutableStateOf(false)
-        private set
-    override var nextEnabled by mutableStateOf(false)
-        private set
-    override var autoPage by mutableStateOf(false)
-    override var isNightTheme by mutableStateOf(AppConfigProviders.get().isNightTheme)
-        private set
-
-    fun show() {
-        animate = !AppConfigProviders.get().isEInkMode
-        refresh()
-        isNightTheme = AppConfigProviders.get().isNightTheme
-        visibleState.targetState = true
-    }
-
-    fun hide() {
-        visibleState.targetState = false
-    }
-
-    private fun upSourceAction() {
-        val book = screenModel.viewModel.book.value
-        val source = screenModel.viewModel.bookSource.value
-        sourceActionText = source?.bookSourceName ?: "书源"
-        sourceActionVisible = book?.let { !it.isLocal } ?: false
-    }
-
-    private fun upTopMenu() {
-        val book = screenModel.viewModel.book.value ?: return
-        topMenu.onLine = !book.isLocal
-        topMenu.isLocalTxt = book.isLocalTxt
-        topMenu.isEpub = book.isEpub
-        topMenu.enableReplaceChecked = book.getUseReplaceRule()
-        topMenu.reSegmentChecked = book.config.reSegment
-        topMenu.delRubyChecked = book.config.delTag and Book.rubyTag == Book.rubyTag
-        topMenu.delHChecked = book.config.delTag and Book.hTag == Book.hTag
-        // 去重勾选态 (对照原版 onMenuOpened → menu_same_title_removed.isChecked)
-        topMenu.sameTitleRemovedChecked =
-            screenModel.viewModel.curTextChapter.value?.sameTitleRemoved == true
-        // 云进度同步可见性 (对照原版 onMenuOpened: ReadBook.inBookshelf && AppWebDav.isOk)
-        topMenu.syncProgressVisible = !book.isNotShelf && AppWebDavShared.isOk
-    }
-
-    override fun onTransitionIdle(shown: Boolean) = Unit
-    override fun onBgClick() = hide()
-
-    override fun onChapterViewClick() {
-        val book = screenModel.viewModel.book.value ?: return
-        if (book.isLocal) return
-        val url = chapterUrl.orEmpty()
-        // 传原始 chapterUrl (可能含 `,{...}` 请求头) + 书源信息, 由 WebViewRoute 解析
-        navigator.push(
-            AppRoute.WebView(
-                url = url,
-                sourceKey = book.origin,
-                sourceName = book.originName,
-            )
-        )
-    }
-
-    override fun onChapterViewLongClick() = Unit
-
-    override fun onOverflowOpened() {
-        screenModel.updateSourceMenu()
-    }
-
-    override fun sourceLoginVisible(): Boolean = screenModel.sourceLoginVisible()
-
-    // 购买按钮显示条件已下沉 ReaderScreenModel.sourcePayVisible (对照原版 ReadMenu)
-    override fun sourcePayVisible(): Boolean = screenModel.sourcePayVisible()
-
-    override fun onSourceAction(action: SourceAction) {
-        when (action) {
-            SourceAction.LOGIN -> {
-                val source = screenModel.viewModel.bookSource.value ?: return
-                // 统一登录入口: URL 登录桌面端直开登录窗口 (2026-08-07); 表单登录弹 Overlay,
-                // 带上当前书与当前章 (对照原版 showLogin 预置 IntentData)
-                showSourceLogin(
-                    source.getKey(),
-                    source,
-                    screenModel.currentBook,
-                    screenModel.currentChapter,
-                )
-            }
-
-            SourceAction.EDIT_SOURCE -> {
-                val origin = screenModel.viewModel.book.value?.origin ?: return
-                navigator.push(AppRoute.BookSourceEdit(origin), RouteResults.BOOK_SOURCE_EDIT)
-            }
-
-            SourceAction.DISABLE_SOURCE -> screenModel.viewModel.disableSource()
-
-            // 购买当前章: 确认弹窗由 ReaderRoute ChapterPay 渲染, 确认后执行书源 payAction JS
-            // (对照原版 ReadMenu menu_chapter_pay -> payAction)
-            SourceAction.CHAPTER_PAY ->
-                screenModel.postDialogEvent(ReaderDialogEvent.ChapterPay)
-
-            // 源/书变量编辑 (对照原版 ReadMenu showSourceVariableDialog/showBookVariableDialog)
-            SourceAction.SET_SOURCE_VARIABLE -> screenModel.showSourceVariableDialog()
-            SourceAction.SET_BOOK_VARIABLE -> screenModel.showBookVariableDialog()
-            else -> Unit
-        }
-    }
-
-    override fun openBookInfoActivity() {
-        screenModel.currentBook?.let {
-            navigator.push(AppRoute.BookInfo(it.toRouteRef()), RouteResults.BOOK_INFO)
-        }
-    }
-
-    override fun supportFinishAfterTransition() {
-        navigator.pop()
-    }
-
-    override fun onTopMenuAction(action: ReadMenuAction) {
-        when (action) {
-            ReadMenuAction.CHANGE_SOURCE,
-            ReadMenuAction.BOOK_CHANGE_SOURCE -> {
-                // 对照原版 换源 → ChangeBookSourceDialog 底部弹窗
-                screenModel.postDialogEvent(ReaderDialogEvent.ChangeSource)
-            }
-
-            ReadMenuAction.CHAPTER_CHANGE_SOURCE -> {
-                // 对照原版 章节换源 → ChangeChapterSourceDialog 底部弹窗
-                screenModel.postDialogEvent(ReaderDialogEvent.ChangeChapterSource)
-            }
-
-            ReadMenuAction.REFRESH_DUR -> screenModel.viewModel.refreshCurrentChapter()
-
-            ReadMenuAction.ADD_BOOKMARK -> {
-                val book = screenModel.viewModel.book.value ?: return
-                val page = screenModel.viewModel.curTextPage.value
-                val bookmark = Bookmark(bookName = book.name, bookAuthor = book.author).apply {
-                    chapterIndex = screenModel.viewModel.durChapterIndex.value
-                    chapterPos = screenModel.viewModel.durChapterPos.value
-                    chapterName = page?.title ?: screenModel.currentChapter?.title ?: ""
-                    bookText = page?.text?.trim() ?: ""
-                }
-                screenModel.postDialogEvent(ReaderDialogEvent.AddBookmark(bookmark))
-            }
-
-            ReadMenuAction.EDIT_CONTENT -> screenModel.postDialogEvent(ReaderDialogEvent.EditContent)
-            ReadMenuAction.LOG -> screenModel.postDialogEvent(ReaderDialogEvent.Log)
-
-            // ===== 溢出菜单动作 (对照 app 端 AndroidReaderMenuState.onTopMenuAction 各分支,
-            // 全部接到 shared 能力: viewModel / 事件广播 / 导航 / 弹窗事件) =====
-
-            // 刷新后续章节 (对照原版 menu_refresh_after → viewModel.refreshContentAfter)
-            ReadMenuAction.REFRESH_AFTER -> {
-                val book = screenModel.viewModel.book.value ?: return
-                screenModel.viewModel.refreshContentAfter(book)
-            }
-
-            // 刷新全部 (对照原版 menu_refresh_all → viewModel.refreshContentAll)
-            ReadMenuAction.REFRESH_ALL -> screenModel.viewModel.refreshContentAll()
-
-            // 离线缓存 (对照原版 menu_download → DownloadDialog 弹窗 → CacheBookShared.start)
-            ReadMenuAction.DOWNLOAD ->
-                screenModel.postDialogEvent(ReaderDialogEvent.Download)
-
-            // 本地 TXT 目录正则 (对照原版 menu_toc_regex → TxtTocRule 路由)
-            ReadMenuAction.TOC_REGEX -> navigator.push(AppRoute.TxtTocRule)
-
-            // 设置编码 (对照原版 menu_set_charset → CharsetDialog 弹窗 → viewModel.setCharset)
-            ReadMenuAction.SET_CHARSET ->
-                screenModel.postDialogEvent(ReaderDialogEvent.SetCharset)
-
-            // 翻页动画: 选择器回调忽略索引, 实际动画值在界面设置弹窗配置,
-            // 此处直接发配置事件触发重载 (与 app 端 showPageAnimConfigSelector 等价)
-            ReadMenuAction.PAGE_ANIM ->
-                ReadBookEvents.postConfig(ReadConfigChange.PAGE_ANIM, ReadConfigChange.LOAD_CONTENT)
-
-            // 模拟追读 (对照原版 menu_simulated_reading → SimulatedReadingDialog)
-            ReadMenuAction.SIMULATED_READING ->
-                screenModel.postDialogEvent(ReaderDialogEvent.SimulatedReading)
-
-            // 启用替换: 翻转 useReplaceRule + 刷新替换规则缓存 + 同章重载
-            ReadMenuAction.ENABLE_REPLACE -> screenModel.viewModel.toggleUseReplaceRule()
-
-            // 去重: 翻转当前章去重标记并重载 (shared viewModel 已含未找到重复标题的提示语义)
-            ReadMenuAction.SAME_TITLE_REMOVED -> screenModel.viewModel.reverseRemoveSameTitle()
-
-            // 重新分段: 翻转 reSegment + 落库 + 同章重载
-            ReadMenuAction.RE_SEGMENT -> screenModel.viewModel.toggleReSegment()
-
-            // 图片样式 (对照原版 menu_image_style → ImageStyleDialog)
-            ReadMenuAction.IMAGE_STYLE ->
-                screenModel.postDialogEvent(ReaderDialogEvent.ImageStyle)
-
-            // 更新目录: 清解析缓存后回源重拉目录
-            ReadMenuAction.UPDATE_TOC -> screenModel.viewModel.updateToc()
-
-            // 云进度手动同步 (上传/同步成功 toast; 项仅在 syncProgressVisible 时渲染)
-            ReadMenuAction.SYNC_PROGRESS -> screenModel.viewModel.syncProgressManual(
-                uploadSuccessAction = { Toasters.get().toast("上传成功") },
-                syncSuccessAction = { Toasters.get().toast("同步成功") },
-            )
-
-            // 段评: 弹 shared 底部弹窗 (对照原版 menu_review → ReviewListDialog(book, chapter, 0);
-            // 能力已四端接通, 见 ReviewListDialogHost.kt)
-            ReadMenuAction.REVIEW -> screenModel.currentBook?.let { book ->
-                val chapter = screenModel.currentChapter
-                if (!PlatformCapabilityProviders.get().showReviewListDialog(book, chapter, 0)) {
-                    Toasters.get().toast("暂不支持段评")
-                }
-            }
-
-            // 帮助: 原版 showHelp 打开本地 web 帮助页 (依赖 Android 资源), iOS/鸿蒙未移植
-            ReadMenuAction.HELP -> Unit
-
-            // epub 去除 ruby/h 标签: 翻转 delTag + 落库 + 全章清缓存重载
-            ReadMenuAction.DEL_RUBY_TAG -> screenModel.viewModel.toggleDelTag(Book.rubyTag)
-            ReadMenuAction.DEL_H_TAG -> screenModel.viewModel.toggleDelTag(Book.hTag)
-            else -> Unit
-        }
-    }
-
-    override fun onSeekDragStart() = Unit
-    override fun onSeekStop(progress: Int) {
-        // 对照原版 skipToChapter: 进度条跳章前存跳转前进度快照 (返回键可恢复)
-        screenModel.saveCurrentBookProgress()
-        screenModel.viewModel.loadChapter(progress)
-    }
-
-    override fun clickSearch() {
-        // 缓存的结果只有 query 与当前一致才回填 (对照 ReadBookActivity.openSearchActivity)
-        val initialResults = screenModel.searchResultList
-            ?.takeIf { results -> results.firstOrNull()?.query == screenModel.searchContentQuery }
-        navigator.push(
-            AppRoute.SearchContent(
-                index = screenModel.searchResultIndex,
-                word = screenModel.searchContentQuery.takeIf { it.isNotEmpty() },
-                initialResults = initialResults,
-                book = screenModel.viewModel.book.value?.toRouteRef(),
-            ),
-            resultKey = RouteResults.SEARCH_CONTENT,
-        )
-    }
-
-    // 自动翻页: 切换状态 (对照 iOS IosReadMenuState.clickAutoPage, 无 ReadAloud.stop)
-    override fun clickAutoPage() {
-        autoPage = !autoPage
-    }
-
-    override fun clickReplaceRule() {
-        // 对照原版 openReplaceRule → EffectiveReplacesDialog (runMenuOut 先收菜单)
-        hide()
-        screenModel.postDialogEvent(ReaderDialogEvent.EffectiveReplaces)
-    }
-
-    // 夜间主题切换 (对照 app 端 clickNightTheme, 经 ThemeConfigProviders 应用主题色 + 触发重组)
-    override fun clickNightTheme() {
-        val newNight = !isNightTheme
-        ThemeConfigProviders.get().applyDayNight(newNight)
-        isNightTheme = newNight
-    }
-
-    override fun clickPre() {
-        screenModel.viewModel.moveToPrevChapter()
-    }
-
-    override fun clickNext() {
-        screenModel.viewModel.moveToNextChapter()
-    }
-
-    override fun clickCatalog() {
-        // 对照原版 目录按钮 → TocDialog 底部弹窗 (runMenuOut 先收菜单)
-        hide()
-        screenModel.postDialogEvent(ReaderDialogEvent.Toc)
-    }
-
-    // 朗读按钮短按: 停自动翻页 → 切换朗读 (未运行→开始, 暂停→继续, 运行→暂停;
-    // 对照 app 端 AndroidReaderPlatformProvider.clickReadAloud + desktop DesktopReadMenuState.
-    // clickReadAloud; 底层 OhosReadAloudHost 驱动 ReadAloudControllerShared + 系统 TTS)
     override fun clickReadAloud() {
-        autoPage = false
+        if (autoPage) autoPage = false
         OhosReadAloudHost.toggle()
-    }
-
-    override fun longClickReadAloud() {
-        // 对照原版 朗读按钮长按 → ReadAloudDialog
-        screenModel.postDialogEvent(ReaderDialogEvent.ReadAloud)
-    }
-
-    override fun clickFont() {
-        // 对照原版 showReadStyle → ReadStyleDialog (底部弹窗, runMenuOut 先收菜单)
-        hide()
-        screenModel.postDialogEvent(ReaderDialogEvent.ReadStyle)
-    }
-
-    override fun clickSetting() {
-        // 对照原版 showMoreSetting → MoreConfigDialog (底部弹窗, runMenuOut 先收菜单)
-        hide()
-        screenModel.postDialogEvent(ReaderDialogEvent.MoreConfig)
-    }
-
-    override fun onRefresh() {
-        screenModel.viewModel.refreshCurrentChapter()
-    }
-
-    /** 顶栏/底栏展示数据 (对照原版 upBookView: 书名/章节名/章节链接/上下章可用性) */
-    private fun upMenuView() {
-        val book = screenModel.viewModel.book.value
-        title = book?.name
-        val curChapter = screenModel.currentChapter
-        chapterName = curChapter?.title
-        chapterUrl = curChapter?.url
-        chapterNameVisible = !chapterName.isNullOrEmpty()
-        chapterUrlVisible = !chapterUrl.isNullOrEmpty() && book?.isLocal == false
-        prevEnabled = screenModel.viewModel.canMoveToPrevChapter()
-        nextEnabled = screenModel.viewModel.canMoveToNextChapter()
-    }
-
-    // 菜单数据刷新事件 → 重算顶栏/底栏展示状态 (对照原版 menuRefresh → upMenuView())
-    override fun refresh() {
-        upTopMenu()
-        upMenuView()
-        // 源名/可见性也要跟着刷: 书源编辑保存后 menuState.refresh() 是唯一刷新入口,
-        // 不在此重算则菜单仍展开时顶部源按钮停留在旧源名
-        upSourceAction()
-    }
-
-    // 进度条刷新 (对照原版 seekBarChange → readMenu.upSeekBar)
-    override fun upSeekBar() {
-        seekMax = (screenModel.viewModel.simulatedChapterSize - 1).coerceAtLeast(0)
-        seekValue = screenModel.viewModel.durChapterIndex.value
-    }
-
-    // 菜单/顶栏重建 (对照原版 actionBarChange → readMenu.reset)
-    override fun reset() {
-        upTopMenu()
-        upMenuView()
     }
 }
 

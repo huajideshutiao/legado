@@ -6,14 +6,13 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.IntentData
+import io.legado.app.help.book.BookChapterLoader
 import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.book.isLocal
-import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.ActiveReadBookRegistry
-import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.postEvent
@@ -284,14 +283,7 @@ class TocScreenModel(
         _waitDialog.value = true
         scope.launch(IoDispatcher) {
             try {
-                // 未入架的书不落库 (books 行都没有), 只刷新内存目录与 UI
-                if (!book.isNotShelf) appDb.bookDao.update(book)
-                val chapters = FileBook.getChapterList(book)
-                if (!book.isNotShelf) {
-                    appDb.bookChapterDao.delByBook(book.bookUrl)
-                    appDb.bookChapterDao.insert(*chapters.toTypedArray())
-                    appDb.bookDao.update(book)
-                }
+                val chapters = BookChapterLoader.fetchFromSource(book, null)
                 memoryChapterList = chapters
                 postEvent(EventBus.UP_BOOKSHELF, book.bookUrl)
                 _state.update {

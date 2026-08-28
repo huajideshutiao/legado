@@ -405,6 +405,45 @@ object AppWebDavShared {
     }
 
     /**
+     * 三路云端进度比对同步 (对应 archive 端 BaseReadViewModel.syncProgress)。
+     *
+     * @param book 本地书籍实体
+     * @param manual 是否手动触发 (手动时绕过 syncBookProgress 开关并在上传时弹 toast)
+     * @param onNewProgress 云端进度较新时的回调 (通常用于弹窗让用户确认)
+     * @param onUploadSuccess 本地较新时上传成功的回调
+     * @param onSyncEqual 云端与本地进度一致时的回调
+     */
+    suspend fun syncProgress(
+        book: Book,
+        manual: Boolean = false,
+        onNewProgress: ((progress: BookProgress) -> Unit)? = null,
+        onUploadSuccess: (() -> Unit)? = null,
+        onSyncEqual: (() -> Unit)? = null,
+    ) {
+        if (!manual && !AppConfigProviders.get().syncBookProgress) return
+        val progress = getBookProgress(book)
+        if (progress == null || progress.durChapterIndex < book.durChapterIndex ||
+            (progress.durChapterIndex == book.durChapterIndex && progress.durChapterPos < book.durChapterPos)
+        ) {
+            val fresh = AppDbProviders.get().bookDao.getBook(book.bookUrl) ?: book
+            val syncTimeBefore = fresh.syncTime
+            uploadBookProgress(fresh, toast = manual, onSuccess = onUploadSuccess)
+            if (fresh.syncTime != syncTimeBefore) {
+                book.syncTime = fresh.syncTime
+                runCatching {
+                    AppDbProviders.get().bookDao.update(fresh)
+                }
+            }
+        } else if (progress.durChapterIndex > book.durChapterIndex ||
+            progress.durChapterPos > book.durChapterPos
+        ) {
+            onNewProgress?.invoke(progress)
+        } else {
+            onSyncEqual?.invoke()
+        }
+    }
+
+    /**
      * 拉取所有书籍进度并写回本地数据库 (仅当云端进度比本地新时更新)。
      *
      * 与 app 端 [io.legado.app.help.AppWebDav.downloadAllBookProgress] 同语义。

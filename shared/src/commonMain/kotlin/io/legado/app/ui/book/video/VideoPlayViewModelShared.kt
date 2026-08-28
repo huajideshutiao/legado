@@ -10,10 +10,11 @@ import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.VideoResolution
 import io.legado.app.data.entities.VideoSource
 import io.legado.app.help.AppWebDavShared
-import io.legado.app.help.IntentData
+import io.legado.app.help.book.BookChapterLoader
+import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
-import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.model.webBook.WebBook
@@ -165,55 +166,40 @@ class VideoPlayViewModelShared(
         initialChapterIndex: Int = book.durChapterIndex,
         persistProgress: Boolean = true,
     ) {
-        curBook = book
-        // 查书源 (对照原版 upBook 的 curBookSource 赋值, 整个 upBook 跑在 execute{} 里,
-        // 查库异常不外泄; 同文件后续网络调用亦全部 runCatching, 此处对齐)
-        curBookSource = runCatching {
-            withContext(IoDispatcher) {
-                AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
-            }
+        val result = runCatching {
+            BookChapterLoader.upBook(book)
         }.onFailure {
-            AppLog.put("读取书源出错\n${it.message}", it)
+            AppLog.put("加载书籍失败\n${it.message}", it)
+            _error.value = "加载书籍失败: ${it.message}"
         }.getOrNull()
-        // 拉章节列表
-        val source = curBookSource
-        if (source == null) {
-            _error.value = "书源不存在"
+
+        if (result == null) return
+
+        curBook = result.book
+        curBookSource = result.source
+        chapterList = result.chapterList
+        _chapterSize.value = result.chapterList.size
+
+        if (result.chapterList.isEmpty()) {
+            _error.value = "章节列表为空"
             return
         }
-        // 书籍信息未加载 (tocUrl 空) 时先自动加载, 对照原版
-        // BaseReadViewModel.upBook → loadBookInfo: 搜索/发现直达播放或 DB 信息不全时,
-        // 先 getBookInfoAwait 补齐书籍信息 (tocUrl/章节数/简介等) 再拉目录。
-        if (book.tocUrl.isEmpty() || book.totalChapterNum == 0) {
-            runCatching {
-                WebBook.getBookInfoAwait(source, book)
-            }.onFailure {
-                AppLog.put("加载书籍信息出错\n${it.message}", it)
-                _error.value = "加载书籍信息失败: ${it.message}"
-                return
-            }
-            // 书架书信息更新落库 (对照原版 loadBookInfo 尾部: inBookshelf → book.save())
-            if (!book.isNotShelf) {
-                runCatching {
-                    AppDbProviders.get().bookDao.update(book)
-                }.onFailure {
-                    AppLog.put("保存书籍信息出错\n${it.message}", it)
-                }
+        // 启动阅读计时 (对照原版 VideoViewModel.initData)
+        ReadTimeRecorder.setBook(ReadTimeRecorder.Source.VIDEO, result.book.name)
+        ReadTimeRecorder.start(ReadTimeRecorder.Source.VIDEO, result.book.name)
+        // 加载初始章节
+        val targetIndex =
+            initialChapterIndex.coerceIn(0, (result.chapterList.size - 1).coerceAtLeast(0))
+        loadChapter(targetIndex, persistProgress)
+        // 书架书自动同步阅读进度
+        if (!result.book.isNotShelf) {
+            progressSyncScope.launch {
+                AppWebDavShared.syncProgress(
+                    book = result.book,
+                    manual = false,
+                )
             }
         }
-        chapterList = runCatching {
-            // 目录来源对照原版 BaseReadViewModel.upBook: 内存交接 (IntentData, 带 bookUrl 校验)
-            // 优先, 未交接才回源; 不然未加书架的书目录不落库, 每次进页面都要重拉
-            IntentData.chapterList?.takeIf { it.firstOrNull()?.bookUrl == book.bookUrl }
-                ?: WebBook.getChapterListAwait(source, book).getOrThrow()
-        }.onFailure {
-            AppLog.put("加载章节列表出错\n${it.message}", it)
-            _error.value = "加载章节列表失败: ${it.message}"
-        }.getOrNull()
-        _chapterSize.value = chapterList?.size ?: 0
-        // 加载初始章节
-        val targetIndex = initialChapterIndex.coerceIn(0, (_chapterSize.value - 1).coerceAtLeast(0))
-        loadChapter(targetIndex, persistProgress)
     }
 
     /**
@@ -259,12 +245,16 @@ class VideoPlayViewModelShared(
      */
     fun loadChapter(index: Int, persistProgress: Boolean = true) {
         val book = curBook ?: return
-        val source = curBookSource ?: run {
+        val source = curBookSource ?: if (book.isLocal) null else run {
             _error.value = "书源不存在"
             return
         }
         val chapters = chapterList ?: run {
             _error.value = "章节列表未加载"
+            return
+        }
+        if (chapters.isEmpty()) {
+            _error.value = "章节列表为空"
             return
         }
         val clampedIndex = index.coerceIn(0, chapters.lastIndex.coerceAtLeast(0))
@@ -292,13 +282,19 @@ class VideoPlayViewModelShared(
                     // 拉章节内容 (needSave=false: 视频内容是 URL 字符串非文件, 不写本地缓存)
                     val nextChapterUrl = chapters.getOrNull(clampedIndex + 1)?.url
                     val content = runCatching {
-                        WebBook.getContentAwait(
-                            source,
-                            book,
-                            chapter,
-                            nextChapterUrl,
-                            needSave = false
-                        )
+                        if (book.isLocal) {
+                            chapter.url
+                        } else if (source != null) {
+                            WebBook.getContentAwait(
+                                source,
+                                book,
+                                chapter,
+                                nextChapterUrl,
+                                needSave = false
+                            )
+                        } else {
+                            null
+                        }
                     }.onFailure {
                         if (it is CancellationException) throw it
                         AppLog.put("加载章节内容出错\n${it.message}", it)
@@ -413,11 +409,19 @@ class VideoPlayViewModelShared(
      * app `VideoViewModel.refreshChapter`)。
      *
      * 清空当前视频源并重新加载 (用于播放出错时重试)。
+     * 若章节列表尚未加载或为空，重新触发 [initData] 完整流程。
      *
      * @param persistProgress 是否持久化章节进度, 透传给 [loadChapter]; app 端传 false
      *   避免覆盖已保存的播放位置。
      */
     fun refreshChapter(persistProgress: Boolean = true) {
+        val book = curBook
+        if (book != null && chapterList.isNullOrEmpty()) {
+            scope.launch {
+                initData(book, _curChapterIndex.value, persistProgress)
+            }
+            return
+        }
         loadChapter(_curChapterIndex.value, persistProgress)
     }
 
@@ -515,6 +519,7 @@ class VideoPlayViewModelShared(
         }.onFailure {
             AppLog.put("保存阅读进度出错\n${it.message}", it)
         }
+        ReadTimeRecorder.flushAll()
     }
 
     /**
@@ -531,6 +536,8 @@ class VideoPlayViewModelShared(
      */
     suspend fun applyChapterOverride(book: Book, chapterIndex: Int, chapterPos: Int) {
         curBook = book
+        book.durChapterIndex = chapterIndex
+        book.durChapterPos = chapterPos
         saveRead(chapterIndex, chapterPos.toLong())
     }
 
@@ -544,14 +551,11 @@ class VideoPlayViewModelShared(
     fun uploadProgress() {
         val book = curBook ?: return
         if (book.isNotShelf) return
-        if (!runCatching { AppConfigProviders.get().syncBookProgress }.getOrDefault(false)) return
         progressSyncScope.launch {
-            runCatching {
-                val fresh = AppDbProviders.get().bookDao.getBook(book.bookUrl) ?: return@launch
-                AppWebDavShared.uploadBookProgress(fresh)
-            }.onFailure {
-                AppLog.put("上传视频进度失败\n${it.message}", it)
-            }
+            AppWebDavShared.syncProgress(
+                book = book,
+                manual = false,
+            )
         }
     }
 
@@ -567,6 +571,9 @@ class VideoPlayViewModelShared(
      * @param durationMs 媒体总时长 (毫秒, 0 = 未知时长按原位置存)
      */
     fun onExit(positionMs: Long, durationMs: Long) {
+        // 结束视频计时 (对照 app onPause: ReadTimeRecorder.end)
+        ReadTimeRecorder.end(ReadTimeRecorder.Source.VIDEO)
+        ReadTimeRecorder.flushAll()
         // 片尾编码: 接近片尾存 -1 (停在章末, 下次从头播), 否则存当前毫秒
         // (对照 app onPause: saveRead(if (position > duration - 1s) -1 else position))
         val atEnd = durationMs > 0 && positionMs > durationMs - 1000L

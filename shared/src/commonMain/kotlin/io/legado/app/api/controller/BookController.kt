@@ -9,6 +9,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.CacheManager
+import io.legado.app.help.book.BookChapterLoader
 import io.legado.app.help.book.BookHelpProviders
 import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.book.addType
@@ -173,26 +174,15 @@ object BookController {
             }
             val book = AppDbProviders.get().bookDao.getBook(bookUrl)
                 ?: return returnData.setErrorMsg("未在数据库找到对应书籍，请先添加")
-            if (book.isLocal) {
-                val toc = FileBook.getChapterList(book)
-                val appDb = AppDbProviders.get()
-                appDb.bookChapterDao.delByBook(book.bookUrl)
-                appDb.bookChapterDao.insert(*toc.toTypedArray())
-                appDb.bookDao.update(book)
-                return returnData.setData(toc)
-            } else {
-                val bookSource = AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
+            val bookSource = if (book.isLocal) null else {
+                AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
                     ?: return returnData.setErrorMsg("未找到对应书源,请换源")
-                if (book.tocUrl.isBlank()) {
-                    WebBook.getBookInfoAwait(bookSource, book)
-                }
-                val toc = WebBook.getChapterListAwait(bookSource, book).getOrThrow()
-                val appDb = AppDbProviders.get()
-                appDb.bookChapterDao.delByBook(book.bookUrl)
-                appDb.bookChapterDao.insert(*toc.toTypedArray())
-                appDb.bookDao.update(book)
-                return returnData.setData(toc)
             }
+            if (bookSource != null && book.tocUrl.isBlank()) {
+                WebBook.getBookInfoAwait(bookSource, book)
+            }
+            val toc = BookChapterLoader.fetchFromSource(book, bookSource)
+            return returnData.setData(toc)
         } catch (e: Exception) {
             return returnData.setErrorMsg(e.message ?: "refresh toc error")
         }

@@ -6,19 +6,16 @@ import androidx.compose.ui.unit.dp
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.Status
-import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.AppWebDavShared
-import io.legado.app.help.IntentData
+import io.legado.app.help.book.BookChapterLoader
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.simulatedTotalChapterNum
-import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.AudioPlayBookBridges
 import io.legado.app.model.AudioPlayShared
-import io.legado.app.ui.book.read.fetchChapterListFromSource
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.FlowBus
@@ -264,25 +261,19 @@ class AudioPlayScreenModel : ScreenModel {
                     AudioPlayShared.durLrcData?.takeIf { it.isNotEmpty() }?.let { lrc ->
                         _state.update { it.copy(lrcData = lrc) }
                     }
-                    // 拉取云端进度, 较新且未越界才自动应用; 相等忽略; 失败记日志
-                    if (AudioPlayShared.inBookshelf && AppConfigProviders.get().syncBookProgress) {
+                    // 同步云端进度
+                    if (AudioPlayShared.inBookshelf) {
                         scope.launch {
-                            runCatching {
-                                val progress = AppWebDavShared.getBookProgress(book)
-                                    ?: return@launch
-                                val newer = progress.durChapterIndex > book.durChapterIndex ||
-                                    (progress.durChapterIndex == book.durChapterIndex &&
-                                        progress.durChapterPos > book.durChapterPos)
-                                // 云端较新且未越界才自动应用
-                                if (newer &&
-                                    progress.durChapterIndex < book.simulatedTotalChapterNum()
-                                ) {
-                                    AudioPlayShared.setProgress(progress)
-                                    Toasters.get().toast("已同步最新音频播放进度")
+                            AppWebDavShared.syncProgress(
+                                book = book,
+                                manual = false,
+                                onNewProgress = { progress ->
+                                    if (progress.durChapterIndex < book.simulatedTotalChapterNum()) {
+                                        AudioPlayShared.setProgress(progress)
+                                        Toasters.get().toast("已同步最新音频播放进度")
+                                    }
                                 }
-                            }.onFailure {
-                                AppLog.put("拉取阅读进度失败《${book.name}》\n${it.message}", it)
-                            }
+                            )
                         }
                     }
                     // 书签跳转 (对照原版 AudioPlayActivity.applyBookmarkPosition, 在 initData
@@ -362,20 +353,14 @@ class AudioPlayScreenModel : ScreenModel {
      * 却永远轮不到 —— 表现为"详情页/目录页看到新目录, 进播放页还是旧的"。
      */
     suspend fun ensureChapterList(book: Book): List<BookChapter> {
-        val handoff = IntentData.chapterList
-            ?.takeIf { it.firstOrNull()?.bookUrl == book.bookUrl }
-        val dbList = handoff ?: runCatching {
-            AppDbProviders.get().bookChapterDao.getChapterList(book.bookUrl)
-        }.getOrDefault(emptyList())
-        val list = dbList.ifEmpty {
-            // 超时保护: 原版无此限制, 但挂起无上限会让页面一直停在初始化前
-            withTimeoutOrNull(DIRECTORY_FETCH_TIMEOUT_MS) {
-                fetchChapterListFromSource(
+        val list = withTimeoutOrNull(DIRECTORY_FETCH_TIMEOUT_MS) {
+            runCatching {
+                BookChapterLoader.loadChapterList(
                     book,
                     AudioPlayBookBridges.get().getBookSource(book),
                 )
-            }.orEmpty()
-        }
+            }.getOrDefault(emptyList())
+        }.orEmpty()
         AudioPlayShared.chapterList = list.ifEmpty { null }
         if (list.isNotEmpty()) AudioPlayShared.updateChapterList(list)
         return list
@@ -401,9 +386,7 @@ class AudioPlayScreenModel : ScreenModel {
             AudioPlayShared.book?.let { book ->
                 Coroutine.async {
                     AudioPlayShared.saveRead()
-                    if (AppConfigProviders.get().syncBookProgress) {
-                        AppWebDavShared.uploadBookProgress(book)
-                    }
+                    AppWebDavShared.syncProgress(book = book, manual = false)
                 }.onError {
                     AppLog.put("上传音频进度失败\n${it.message}", it)
                 }

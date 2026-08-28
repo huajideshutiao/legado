@@ -21,7 +21,7 @@ import org.jetbrains.compose.resources.stringResource
  * 词典查询对话框宿主 (KMP 共享, 对照 app 端 [io.legado.app.ui.dict.DictDialog] 对话框形态)。
  *
  * 原版"长按选字 → 查词"打开词典查询对话框 (本地/在线词典规则), 本宿主把 [DictDialogContent]
- * (规则 Tab + 查询结果 HTML, 已下沉 shared) 包上统一对话框外壳, 供各端 TextSelectionDialog 的
+ * (规则 Tab + 查询结果 HTML, 已下沉 shared) 包上统一对话框外壳, 供各端文本操作菜单的
  * 查词按钮 (onDict) 直接调用:
  * - 外壳: [AppDialog] 居中对话框 + [appDialogSize] (宽 0.9 屏宽上限 800dp, 高自适应封顶 0.7 屏高)
  * - 标题栏: 查词 (对照原版查词入口语义), 返回即关闭

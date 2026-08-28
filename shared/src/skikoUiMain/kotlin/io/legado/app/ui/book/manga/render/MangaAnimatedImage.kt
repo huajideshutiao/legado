@@ -13,7 +13,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
@@ -165,8 +164,6 @@ fun MangaSkiaImage(
     val imageState by produceState<MangaSkiaImageState>(
         MangaSkiaImageState.Loading,
         url,
-        book,
-        source,
         retryTick,
     ) {
         value = MangaSkiaImageState.Loading
@@ -202,18 +199,22 @@ fun MangaSkiaImage(
         }
     }
 
-    LaunchedEffect(imageState) {
-        when (val state = imageState) {
-            MangaSkiaImageState.Loading -> {
-                renderer.resetPlayback()
-                onLoadState(MangaCellState.LOADING)
-            }
-            is MangaSkiaImageState.Static -> onLoadState(MangaCellState.SUCCESS)
-            is MangaSkiaImageState.Animated -> {
-                onLoadState(MangaCellState.SUCCESS)
-                renderer.onFramesReady()
-            }
+    // 同步上报最新加载状态给单元格 (SideEffect 保证每次重组均与当前 imageState 同步, 避免 LaunchedEffect 滞后 1 帧引发转圈闪现)
+    SideEffect {
+        when (imageState) {
+            MangaSkiaImageState.Loading -> onLoadState(MangaCellState.LOADING)
+            is MangaSkiaImageState.Static,
+            is MangaSkiaImageState.Animated -> onLoadState(MangaCellState.SUCCESS)
             MangaSkiaImageState.Error -> onLoadState(MangaCellState.ERROR)
+        }
+    }
+
+    LaunchedEffect(imageState) {
+        when (imageState) {
+            MangaSkiaImageState.Loading -> renderer.resetPlayback()
+            is MangaSkiaImageState.Static -> {}
+            is MangaSkiaImageState.Animated -> renderer.onFramesReady()
+            MangaSkiaImageState.Error -> {}
         }
     }
 

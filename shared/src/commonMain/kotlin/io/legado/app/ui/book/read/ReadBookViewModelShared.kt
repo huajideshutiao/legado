@@ -11,6 +11,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.IntentData
+import io.legado.app.help.book.BookChapterLoader
 import io.legado.app.help.book.BookHelpShared
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.ContentProcessorProviders
@@ -27,7 +28,6 @@ import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.CacheBookShared
 import io.legado.app.model.ReadBookPlatforms
 import io.legado.app.model.ReadBookShared
-import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.fileBook.FileBookProviders
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.book.read.ReadBookViewModelShared.LayoutConfig.Companion.DEFAULT
@@ -1146,19 +1146,13 @@ class ReadBookViewModelShared(
      * AppWebDav.getBookProgress 委托实现同语义），走上传分支由上传自身的失败捕获兜底。
      */
     private fun pullCloudProgress(book: Book) {
-        if (!runCatching { AppConfigProviders.get().syncBookProgress }.getOrDefault(false)) return
+        if (!config.syncBookProgressPlus) return
         progressSyncScope.launch {
-            val progress = AppWebDavShared.getBookProgress(book)
-            if (progress == null || progress.durChapterIndex < book.durChapterIndex ||
-                (progress.durChapterIndex == book.durChapterIndex
-                    && progress.durChapterPos < book.durChapterPos)
-            ) {
-                uploadProgressAwait(book.bookUrl)
-            } else if (progress.durChapterIndex > book.durChapterIndex ||
-                progress.durChapterPos > book.durChapterPos
-            ) {
-                ReadBookEvents.postConfirmNewProgress(progress)
-            }
+            AppWebDavShared.syncProgress(
+                book = book,
+                manual = false,
+                onNewProgress = { ReadBookEvents.postConfirmNewProgress(it) },
+            )
         }
     }
 
@@ -1562,8 +1556,9 @@ class ReadBookViewModelShared(
      */
     fun addToBookshelf(success: (() -> Unit)? = null) {
         val book = readBook.book.value ?: return
+        val chapters = readBook.chapterList.value
         scope.launch {
-            runCatching { book.toggleBookshelfCore(inBookshelf = false) }
+            runCatching { book.toggleBookshelfCore(inBookshelf = false, chapters = chapters) }
                 .onSuccess { success?.invoke() }
         }
     }
@@ -2123,33 +2118,14 @@ class ReadBookViewModelShared(
     fun syncProgressManual(uploadSuccessAction: () -> Unit, syncSuccessAction: () -> Unit) {
         val book = readBook.book.value ?: return
         progressSyncScope.launch {
-            val progress = AppWebDavShared.getBookProgress(book)
-            if (progress == null || progress.durChapterIndex < book.durChapterIndex ||
-                (progress.durChapterIndex == book.durChapterIndex
-                    && progress.durChapterPos < book.durChapterPos)
-            ) {
-                saveProgressAwait()
-                runCatching {
-                    val fresh =
-                        AppDbProviders.get().bookDao.getBook(book.bookUrl) ?: return@runCatching
-                    val syncTimeBefore = fresh.syncTime
-                    // 内部已守卫 syncBookProgress/authorization，成功时写 fresh.syncTime
-                    AppWebDavShared.uploadBookProgress(fresh) { uploadSuccessAction() }
-                    currentCoroutineContext().ensureActive()
-                    if (fresh.syncTime != syncTimeBefore) {
-                        AppDbProviders.get().bookDao.update(fresh)
-                    }
-                }.onFailure {
-                    currentCoroutineContext().ensureActive()
-                    AppLog.put("上传阅读进度失败\n${it.message}", it)
-                }
-            } else if (progress.durChapterIndex > book.durChapterIndex ||
-                progress.durChapterPos > book.durChapterPos
-            ) {
-                ReadBookEvents.postConfirmNewProgress(progress)
-            } else {
-                syncSuccessAction()
-            }
+            saveProgressAwait()
+            AppWebDavShared.syncProgress(
+                book = book,
+                manual = true,
+                onNewProgress = { ReadBookEvents.postConfirmNewProgress(it) },
+                onUploadSuccess = uploadSuccessAction,
+                onSyncEqual = syncSuccessAction,
+            )
         }
     }
 
@@ -2454,33 +2430,11 @@ internal suspend fun fetchChapterListFromSource(
     source: BookSource?,
     runPerJs: Boolean = true,
 ): List<BookChapter> {
-    val oldBook = book.copy()
-    val list: List<BookChapter> = try {
-        if (book.isLocal) {
-            withContext(IoDispatcher) { FileBook.getChapterList(book) }
-        } else {
-            source ?: return emptyList()
-            WebBook.getChapterListAwait(source, book, runPerJs).getOrThrow()
-        }
+    return try {
+        BookChapterLoader.fetchFromSource(book, source, runPerJs)
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
-        AppLog.put("获取目录失败\n${e.message}", e)
-        return emptyList()
+        emptyList()
     }
-    if (!book.isNotShelf) {
-        runCatching {
-            val appDb = AppDbProviders.get()
-            // runPreUpdateJs 有可能改掉 bookUrl，此时按新 url 迁移书与缓存目录
-            if (oldBook.bookUrl == book.bookUrl) {
-                appDb.bookDao.update(book)
-            } else {
-                appDb.bookDao.replace(oldBook, book)
-                BookStorageProviders.get().updateCacheFolder(oldBook, book)
-            }
-            appDb.bookChapterDao.delByBook(oldBook.bookUrl)
-            appDb.bookChapterDao.insert(*list.toTypedArray())
-        }.onFailure { AppLog.put("目录落库失败\n${it.message}", it) }
-    }
-    return list
 }

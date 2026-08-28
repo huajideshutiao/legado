@@ -1,8 +1,6 @@
 package io.legado.app.ui.book.read
 
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.BookType
-import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Status
 import io.legado.app.data.AppDbProviders
@@ -15,9 +13,8 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.BookHelpShared
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.ContentProcessorProviders
+import io.legado.app.help.book.changeSourceTo
 import io.legado.app.help.book.isLocal
-import io.legado.app.help.book.isNotShelf
-import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
@@ -40,7 +37,7 @@ import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.screenModelScope
-import io.legado.app.utils.FlowBus
+import io.legado.app.utils.encodeURI
 import io.legado.app.utils.formatTimeOfDay
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isTrue
@@ -737,16 +734,7 @@ class ReaderScreenModel(
     fun changeTo(source: BookSource, newBook: Book, toc: List<BookChapter>) {
         scope.launch {
             runCatching {
-                val oldBook = currentBook
-                oldBook?.migrateTo(newBook, toc)
-                // 未入书架的书原版同样不落库 (BaseReadViewModel.changeTo 的 inBookshelf 守卫,
-                // 此处沿用 ReadBookViewModelShared.loadChapterListFromSource 的 isNotShelf 口径)
-                if (oldBook != null && !oldBook.isNotShelf) {
-                    newBook.removeType(BookType.updateError)
-                    AppDbProviders.get().bookDao.delete(oldBook)
-                    AppDbProviders.get().bookDao.insert(newBook)
-                    AppDbProviders.get().bookChapterDao.insert(*toc.toTypedArray())
-                }
+                currentBook?.changeSourceTo(newBook, toc)
                 readBook.loadBook(newBook)
                 readBook.bookSourceValue = source
                 // 对照原版 chapterListData.postValue(toc): 目录先进内存,
@@ -757,7 +745,6 @@ class ReaderScreenModel(
             }.onFailure {
                 AppLog.put("换源失败\n$it", it, true)
             }
-            FlowBus.with(EventBus.SOURCE_CHANGED).tryEmit(newBook.bookUrl)
         }
     }
 
@@ -923,7 +910,7 @@ class ReaderScreenModel(
 
     /**
      * 全文搜索回调（对照原版 menu_search_content）：设置搜索词后走既有搜索路由。
-     * 由 app/desktop 的浮动/对话框菜单 `onSearchContent` 槽引用。
+     * 由各端浮动菜单 `onSearchContent` 槽引用。
      */
     fun searchContentTextCallback(): (String) -> Unit = { text ->
         searchContentQuery = text
@@ -1048,4 +1035,14 @@ sealed interface ReaderDialogEvent {
 
     /** 文本编码选择器 (对照原版 menu_set_charset → showCharsetConfig) */
     data object SetCharset : ReaderDialogEvent
+}
+
+/** 选中文本在浏览器中打开 (URL 直接打开, 非 URL 走系统搜索引擎, 对照原版 menu_browser) */
+fun openTextInBrowser(text: String) {
+    val url = if (text.isAbsUrl()) {
+        text
+    } else {
+        "https://www.bing.com/search?q=" + text.encodeURI()
+    }
+    PlatformCapabilityProviders.get().openExternalUrl(url)
 }

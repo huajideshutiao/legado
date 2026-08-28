@@ -56,37 +56,6 @@ import kotlin.math.roundToInt
 // iOS 漫画阅读平台能力: 图片流复用 shared 提取器, 渲染走 Coil3 (对照 DesktopMangaReaderPlatform)
 object IosMangaReaderPlatform : MangaReaderScreenModel.Platform {
 
-    private val prefs get() = PreferenceProviders.get()
-
-    // 启动即读持久化配置 (对照原版 ReadMangaActivity 直读 AppConfig; 与 desktop 同 key 同默认值,
-    // 菜单写入经 toggle/update* 走 PreferenceProviders 持久化)
-    override val config: MangaReaderConfig
-        get() = MangaReaderConfig(
-            hideMangaTitle = prefs.getBoolean(PreferKey.hideMangaTitle, false),
-            preDownloadNum = prefs.getInt(PreferKey.mangaPreDownloadNum, 10),
-            syncBookProgressPlus = prefs.getBoolean(PreferKey.syncBookProgressPlus, false),
-            horizontal = prefs.getBoolean(PreferKey.enableMangaHorizontalScroll, false),
-            // 默认 3: 对齐 app 端 AppConfig.mangaAutoPageSpeed (0 会让定时翻页退化成空转)
-            autoPageSpeed = prefs.getInt(PreferKey.mangaAutoPageSpeed, 3),
-            grayEnabled = prefs.getBoolean(PreferKey.enableMangaGray, false),
-            colorFilterConfig = runCatching {
-                GSON.fromJsonObject<MangaColorFilterConfig>(
-                    prefs.getString(PreferKey.mangaColorFilter, "")
-                ).getOrNull()
-            }.getOrNull() ?: MangaColorFilterConfig(),
-            gifAutoNext = prefs.getBoolean(PreferKey.enableMangaGifAutoNext, false),
-            disablePageAnim = prefs.getBoolean(PreferKey.disableMangaPageAnim, false),
-            footerConfig = runCatching {
-                GSON.fromJsonObject<MangaFooterConfig>(
-                    prefs.getString(PreferKey.mangaFooterConfig, "")
-                ).getOrNull()
-            }.getOrNull() ?: MangaFooterConfig(),
-        )
-
-    // 图片 URL 提取: 复用 commonMain 的 MangaImageExtractorShared (与 desktop 同源)
-    override fun flowImages(bookChapter: BookChapter, content: String): Flow<String> =
-        MangaImageExtractorShared.extractImageUrls(content).asFlow()
-
     @Composable
     override fun Image(
         url: String,
@@ -151,18 +120,11 @@ object IosMangaReaderPlatform : MangaReaderScreenModel.Platform {
         }
     }
 
-    // 预载到内存缓存: WRITE_ONLY 只写不返回图 (与 desktop 同参; 显示端 rememberAsyncImagePainter
-    // 与预载经 SingletonImageLoader 共用同一实例, memoryCacheKey(url) 同 key, 翻到预载区间即秒显)
+    // 预载到磁盘缓存 (经 MangaImageBytesLoader 下载解密并写入 BookImageStorage, 与显示端同链路)
     override suspend fun preloadImage(url: String, book: Book, source: BookSource?) {
+        if (!url.startsWith("http://") && !url.startsWith("https://")) return
         runCatching {
-            val request = ImageRequest.Builder(PlatformContext.INSTANCE)
-                .data(MangaModel(url, book, source))
-                .memoryCacheKey(url)
-                .memoryCachePolicy(CachePolicy.WRITE_ONLY)
-                .diskCachePolicy(CachePolicy.DISABLED)
-                .size(Size.ORIGINAL)
-                .build()
-            SingletonImageLoader.get(PlatformContext.INSTANCE).execute(request)
+            MangaImageBytesLoader.load(url, book, source, currentCoroutineContext())
         }
     }
 }

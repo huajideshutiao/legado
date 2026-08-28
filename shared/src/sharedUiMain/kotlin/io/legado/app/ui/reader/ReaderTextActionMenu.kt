@@ -49,8 +49,8 @@ class ReaderTextActions(
  * (澎湃样式 + 溢出折叠 + 淡入淡出, 见 [AppTextMenuHost])。
  *
  * 各端原本是四份平行实现 (app 端 ActionMode.TYPE_FLOATING / iOS UIMenuController /
- * 桌面对话框), 这里下沉成一份。目前只有 Android 接了 (见 AndroidReaderPlatformProvider),
- * 其余端仍走各自实现。
+ * 鸿蒙 NAPI 浮动菜单 / 桌面对话框), Android 与桌面端已统一接入自绘浮动菜单 (见
+ * [AndroidReaderPlatformProvider] / [DesktopReaderPlatformProvider]), iOS 与鸿蒙沿用各自系统级浮动菜单。
  *
  * 内容不走 remember: 8~10 个项每次重组重建成本可忽略, 而 remember 会把 [onFinally] /
  * [actions] 的旧闭包一起钉住。菜单只在显示期间参与组合。

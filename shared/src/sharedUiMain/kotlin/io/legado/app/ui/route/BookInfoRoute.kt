@@ -17,6 +17,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.addType
+import io.legado.app.help.book.changeSourceTo
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
@@ -731,18 +732,8 @@ fun BookInfoRoute(
                 bookSource = source
                 scope.launch(IoDispatcher) {
                     runCatching {
-                        // 对照 master BookInfoActivity.changeTo → BaseReadViewModel.changeTo:
-                        // 迁移进度/分组/在架位等字段, 在架则删旧插新 + 落目录,
-                        // 否则仅内存交接 (未入架书不落库)
                         val oldBook = screenModel.state.value.book ?: book
-                        oldBook.migrateTo(newBook, toc)
-                        if (screenModel.state.value.inBookshelf) {
-                            newBook.removeType(BookType.updateError)
-                            val db = AppDbProviders.get()
-                            db.bookDao.delete(oldBook)
-                            db.bookDao.insert(newBook)
-                            db.bookChapterDao.insert(*toc.toTypedArray())
-                        }
+                        oldBook.changeSourceTo(newBook, toc, screenModel.state.value.inBookshelf)
                     }.onFailure {
                         AppLog.put("换源失败\n${it.message}", it, true)
                     }

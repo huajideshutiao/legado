@@ -27,6 +27,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.addType
+import io.legado.app.help.book.changeSourceTo
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.removeType
@@ -492,15 +493,11 @@ fun AudioPlayRoute(
                     // 非音频书: 停播 + 迁移落库 + 跳对应阅读路由 + 退出音频页
                     scope.launch {
                         runCatching {
-                            AudioPlayShared.book?.let { oldBook ->
-                                oldBook.migrateTo(newBook, toc)
-                                if (AudioPlayShared.inBookshelf) {
-                                    newBook.removeType(BookType.updateError)
-                                    AppDbProviders.get().bookDao.delete(oldBook)
-                                    AppDbProviders.get().bookDao.insert(newBook)
-                                    AppDbProviders.get().bookChapterDao.insert(*toc.toTypedArray())
-                                }
-                            }
+                            AudioPlayShared.book?.changeSourceTo(
+                                newBook,
+                                toc,
+                                AudioPlayShared.inBookshelf
+                            )
                         }.onFailure {
                             AppLog.put("换源失败\n$it", it, true)
                         }
@@ -512,15 +509,11 @@ fun AudioPlayRoute(
                 // 1) migrateTo 迁移进度/分组 2) 书架书落库 3) 切源数据落地
                 scope.launch {
                     runCatching {
-                        AudioPlayShared.book?.let { oldBook ->
-                            oldBook.migrateTo(newBook, toc)
-                            if (AudioPlayShared.inBookshelf) {
-                                newBook.removeType(BookType.updateError)
-                                AppDbProviders.get().bookDao.delete(oldBook)
-                                AppDbProviders.get().bookDao.insert(newBook)
-                                AppDbProviders.get().bookChapterDao.insert(*toc.toTypedArray())
-                            }
-                        }
+                        AudioPlayShared.book?.changeSourceTo(
+                            newBook,
+                            toc,
+                            AudioPlayShared.inBookshelf
+                        )
                     }.onFailure {
                         AppLog.put("换源失败\n$it", it, true)
                     }

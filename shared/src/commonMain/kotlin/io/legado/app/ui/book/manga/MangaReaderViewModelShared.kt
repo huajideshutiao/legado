@@ -9,6 +9,7 @@ import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.IntentData
+import io.legado.app.help.book.BookChapterLoader
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.book.isLocal
@@ -16,11 +17,9 @@ import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.isSameNameAuthor
 import io.legado.app.help.book.readSimulating
 import io.legado.app.help.book.simulatedTotalChapterNum
-import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.ReadTimeRecorder
-import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.config.MangaFooterConfig
@@ -56,7 +55,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.withContext
 import kotlin.math.min
 
 /**
@@ -281,67 +279,21 @@ class MangaReaderViewModelShared(
      * 本方法仅保留 manga VM 用到的核心逻辑: 设置 _book, 读 bookSource, 读 chapterList。
      */
     private suspend fun upBook(book: Book) {
-        _book.value = book
-        // 加载书源 (对应 app 端 curBookSource = appDb.bookSourceDao.getBookSource(book.origin))
-        val source = runCatching {
-            AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
-        }.getOrNull()
-        _bookSource.value = source
-        onBookSourceChanged()
-        // 加载章节列表 (对照 app 端 BaseReadViewModel.upBook 的三态分支): 内存交接 → 库 → 回源。
-        // 缺失不拉会让上界为 0 → loadContent 早退 (index < simulatedChapterSize 为 false
-        // 连 upToc 都不触发) → _loading 永久 true, 整页"加载中"永不消失
-        // (桌面端导入/深链添加的目录未入库的书必现)。
-        // 内存交接优先, 库兜底 (未落库的深链/导入/未入架书只有内存有目录, 优先内存可少查一次库)
-        val handoff = IntentData.chapterList?.takeIf { it.firstOrNull()?.bookUrl == book.bookUrl }
-        val list = handoff ?: runCatching {
-            AppDbProviders.get().bookChapterDao.getChapterList(book.bookUrl)
+        val result = runCatching {
+            BookChapterLoader.upBook(book)
         }.onFailure {
-            AppLog.put("读取目录失败\n${it.message}", it)
-        }.getOrNull()?.takeIf { it.isNotEmpty() }
-        if (list != null) {
-            _chapterList.value = list
-        } else {
-            fetchChapterList(book, source)
-        }
-    }
+            AppLog.put("读取书籍失败\n${it.message}", it)
+            _error.tryEmit("获取目录失败: ${it.message}" to true)
+        }.getOrNull()
 
-    /**
-     * 拉取目录并入库 (对应 app 端 BaseReadViewModel.loadChapterList)。
-     *
-     * - 本地书: FileBook.getChapterList (同步 IO, 切 IoDispatcher 执行)
-     * - 网络书: WebBook.getChapterListAwait (书源目录规则解析)
-     * - 书架书入库 (对照原版 inBookshelf 分支); 失败发错误, UI 显示重试层而非永久转圈
-     *   (原版失败时 Toast 提示, shared 用 ErrorOverlay 表达同一意图)
-     */
-    private suspend fun fetchChapterList(book: Book, source: BookSource?) {
-        val fetched = if (book.isLocal) {
-            withContext(IoDispatcher) {
-                runCatching { FileBook.getChapterList(book) }.getOrNull()
-            }
+        if (result != null) {
+            _book.value = result.book
+            _bookSource.value = result.source
+            onBookSourceChanged()
+            _chapterList.value = result.chapterList
         } else {
-            val bs = source
-            if (bs == null) {
-                _error.tryEmit("获取目录失败: 未找到书源" to true)
-                return
-            }
-            WebBook.getChapterListAwait(bs, book).getOrNull()
-        }
-        if (fetched == null) {
             _error.tryEmit("获取目录失败" to true)
-            return
         }
-        if (!book.isNotShelf) {
-            // 对照原版 loadChapterList 的 inBookshelf 分支: 更新 book 字段 + 重插目录;
-            // 非书架不入库, 目录随阅读进度重新拉取
-            runCatching {
-                val db = AppDbProviders.get()
-                db.bookDao.update(book)
-                db.bookChapterDao.delByBook(book.bookUrl)
-                db.bookChapterDao.insert(*fetched.toTypedArray())
-            }
-        }
-        _chapterList.value = fetched
     }
 
     /** 书源变更回调 (对应 app 端 BaseReadViewModel.onBookSourceChanged), 子类可扩展。 */
@@ -741,14 +693,10 @@ class MangaReaderViewModelShared(
      * 云端无进度或本地较新 → 上传; 云端较新/相等 → 不上传。
      */
     private suspend fun syncProgressOnLeave(book: Book) {
-        if (!runCatching { AppConfigProviders.get().syncBookProgress }.getOrDefault(false)) return
-        val progress = AppWebDavShared.getBookProgress(book)
-        if (progress == null || progress.durChapterIndex < book.durChapterIndex ||
-            (progress.durChapterIndex == book.durChapterIndex
-                && progress.durChapterPos < book.durChapterPos)
-        ) {
-            uploadProgressAwait(book.bookUrl)
-        }
+        AppWebDavShared.syncProgress(
+            book = book,
+            manual = false,
+        )
     }
 
     /**
@@ -757,25 +705,15 @@ class MangaReaderViewModelShared(
      * - 云端较新 → 发 [ReadBookEvents.newProgressConfirm] 确认事件 (replay=1),
      *   UI 弹窗后由 [confirmSyncProgress] / [dismissSyncProgress] 收尾
      * - 相等 → 无操作
-     *
-     * 网络/解析失败 [AppWebDavShared.getBookProgress] 内部已捕获返回 null, 走上传分支由
-     * 上传自身的失败捕获兜底 (与文本阅读器 ReadBookViewModelShared.pullCloudProgress 同口径)。
      */
     private fun pullCloudProgress(book: Book) {
         if (!config.syncBookProgressPlus) return
-        if (!runCatching { AppConfigProviders.get().syncBookProgress }.getOrDefault(false)) return
         progressSyncScope.launch {
-            val progress = AppWebDavShared.getBookProgress(book)
-            if (progress == null || progress.durChapterIndex < book.durChapterIndex ||
-                (progress.durChapterIndex == book.durChapterIndex
-                    && progress.durChapterPos < book.durChapterPos)
-            ) {
-                uploadProgressAwait(book.bookUrl)
-            } else if (progress.durChapterIndex > book.durChapterIndex ||
-                progress.durChapterPos > book.durChapterPos
-            ) {
-                ReadBookEvents.postConfirmNewProgress(progress)
-            }
+            AppWebDavShared.syncProgress(
+                book = book,
+                manual = false,
+                onNewProgress = { ReadBookEvents.postConfirmNewProgress(it) },
+            )
         }
     }
 

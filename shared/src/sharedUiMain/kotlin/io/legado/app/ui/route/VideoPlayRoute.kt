@@ -17,6 +17,8 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalViewConfiguration
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
+import io.legado.app.help.book.changeSourceTo
+import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.ui.about.AppLogDialog
@@ -130,11 +132,16 @@ fun VideoPlayRoute(
                 }
 
                 RouteResults.CHANGE_SOURCE -> {
-                    // 换源回传新 source + book + toc: 用外部章节初始化
+                    // 换源回传新 source + book + toc: 迁移落库并用外部章节初始化
                     (result.payload as? RouteResultPayload.ChangeSource)?.let { cs ->
-                        screenModel.shared.initWithExternalChapters(
-                            cs.book, cs.source, cs.toc, cs.book.durChapterIndex
-                        )
+                        scope.launch {
+                            screenModel.shared.curBook?.changeSourceTo(
+                                cs.book, cs.toc, !cs.book.isNotShelf
+                            )
+                            screenModel.shared.initWithExternalChapters(
+                                cs.book, cs.source, cs.toc, cs.book.durChapterIndex
+                            )
+                        }
                     }
                 }
 

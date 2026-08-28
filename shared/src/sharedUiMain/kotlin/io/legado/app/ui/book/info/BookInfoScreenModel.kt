@@ -6,7 +6,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
-import io.legado.app.help.book.BookStorageProviders
+import io.legado.app.help.book.BookChapterLoader
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
@@ -313,35 +313,14 @@ class BookInfoScreenModel : ScreenModel {
         bookSource: BookSource?,
         runPreUpdateJs: Boolean,
     ): List<BookChapter> {
-        if (book.isLocal) {
-            return try {
-                FileBook.getChapterList(book).also {
-                    appDb.bookDao.update(book)
-                    appDb.bookChapterDao.delByBook(book.bookUrl)
-                    if (_state.value.inBookshelf) appDb.bookChapterDao.insert(*it.toTypedArray())
-                }
-            } catch (e: Throwable) {
-                AppLog.put("LoadTocError:${e.message}", e)
-                Toasters.get().toast("LoadTocError:${e.message}")
-                emptyList()
-            }
-        }
-        val source = bookSource ?: let {
+        if (!book.isLocal && bookSource == null) {
             Toasters.get().toast(getString(Res.string.error_no_source))
             return emptyList()
         }
-        val oldBook = book.copy()
         return try {
-            val tmp = WebBook.getChapterListAwait(source, book, runPreUpdateJs).getOrThrow()
-            if (_state.value.inBookshelf) {
-                appDb.bookDao.replace(oldBook, book)
-                // runPreUpdateJs 有可能会修改 book 的 bookUrl
-                if (oldBook.bookUrl != book.bookUrl) {
-                    BookStorageProviders.get().updateCacheFolder(oldBook, book)
-                }
-                appDb.bookChapterDao.insert(*tmp.toTypedArray())
-            }
-            tmp
+            BookChapterLoader.fetchFromSource(book, bookSource, runPreUpdateJs)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             AppLog.put("获取目录失败\n${e.message}", e)
             Toasters.get().toast(getString(Res.string.error_get_chapter_list))

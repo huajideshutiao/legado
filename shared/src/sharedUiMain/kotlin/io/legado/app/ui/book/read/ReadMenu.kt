@@ -99,6 +99,17 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.Bookmark
+import io.legado.app.help.AppWebDavShared
+import io.legado.app.help.book.isEpub
+import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isLocalTxt
+import io.legado.app.help.book.isNotShelf
+import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.config.ThemeConfigProviders
+import io.legado.app.help.showSourceLogin
+import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppSlider
@@ -111,6 +122,11 @@ import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
+import io.legado.app.ui.root.AppNavigator
+import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.PlatformCapabilityProviders
+import io.legado.app.ui.root.RouteResults
+import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.ColorUtils
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.dark_theme
@@ -261,6 +277,319 @@ interface ReadMenuState {
         // 待实现：平台 actual 刷新顶栏/底栏展示数据
     }
     // endregion
+}
+
+/**
+ * 阅读菜单状态基类：包含各端通用的状态快照（标题/章节/进度条/顶栏勾选/夜间态）与动作分发
+ * （onTopMenuAction 的 20+ 项菜单动作、onSourceAction 的 6 项书源动作、基础跳转导航）。
+ *
+ * 各平台子类仅需覆盖平台特异性逻辑（如沉浸色计算 menuTheme、自绘背景图判定 hasBgImage、
+ * 朗读重定位监听与自动翻页控制器）。
+ */
+open class BaseReadMenuState(
+    val navigator: AppNavigator,
+    val screenModel: ReaderScreenModel,
+) : ReadMenuState {
+
+    override val visibleState = MutableTransitionState(false)
+    override var animate: Boolean = true
+        protected set
+    override val isVisible: Boolean get() = visibleState.currentState || visibleState.targetState
+    override val canShowMenu: Boolean get() = true
+
+    override val immersive: Boolean get() = false
+    override val bgColor: Int get() = 0
+    override val textColor: Int get() = 0
+    override val hasBgImage: Boolean get() = false
+
+    override var title: String? by mutableStateOf(null)
+        protected set
+    override var chapterName: String? by mutableStateOf(null)
+        protected set
+    override var chapterUrl: String? by mutableStateOf(null)
+        protected set
+    override var chapterNameVisible: Boolean by mutableStateOf(false)
+        protected set
+    override var chapterUrlVisible: Boolean by mutableStateOf(false)
+        protected set
+    override var sourceActionText: String by mutableStateOf("")
+        protected set
+    override var sourceActionVisible: Boolean by mutableStateOf(false)
+        protected set
+    override var titleBarAdditionVisible: Boolean by mutableStateOf(true)
+        protected set
+    override val topMenu: TopMenuState = TopMenuState()
+
+    override var seekMax: Int by mutableStateOf(0)
+        protected set
+    override var seekValue: Int by mutableStateOf(0)
+        protected set
+    override var prevEnabled: Boolean by mutableStateOf(false)
+        protected set
+    override var nextEnabled: Boolean by mutableStateOf(false)
+        protected set
+    override var autoPage: Boolean by mutableStateOf(false)
+    override var isNightTheme: Boolean by mutableStateOf(
+        runCatching { AppConfigProviders.get().isNightTheme }.getOrDefault(false)
+    )
+        protected set
+
+    open fun show() {
+        animate = runCatching { !AppConfigProviders.get().isEInkMode }.getOrDefault(true)
+        refresh()
+        isNightTheme = runCatching { AppConfigProviders.get().isNightTheme }.getOrDefault(false)
+        visibleState.targetState = true
+    }
+
+    open fun hide() {
+        visibleState.targetState = false
+    }
+
+    override fun onTransitionIdle(shown: Boolean) = Unit
+    override fun onBgClick() = hide()
+
+    override fun onChapterViewClick() {
+        val book = screenModel.viewModel.book.value ?: return
+        if (book.isLocal) return
+        val url = chapterUrl.orEmpty()
+        navigator.push(
+            AppRoute.WebView(
+                url = url,
+                sourceKey = book.origin,
+                sourceName = book.originName,
+            )
+        )
+    }
+
+    override fun onChapterViewLongClick() = Unit
+
+    override fun onOverflowOpened() {
+        screenModel.updateSourceMenu()
+    }
+
+    override fun sourceLoginVisible(): Boolean = screenModel.sourceLoginVisible()
+    override fun sourcePayVisible(): Boolean = screenModel.sourcePayVisible()
+
+    override fun onSourceAction(action: SourceAction) {
+        when (action) {
+            SourceAction.LOGIN -> {
+                val source = screenModel.viewModel.bookSource.value ?: return
+                showSourceLogin(
+                    source.getKey(),
+                    source,
+                    screenModel.currentBook,
+                    screenModel.currentChapter,
+                )
+            }
+
+            SourceAction.EDIT_SOURCE -> {
+                val origin = screenModel.viewModel.book.value?.origin ?: return
+                navigator.push(AppRoute.BookSourceEdit(origin), RouteResults.BOOK_SOURCE_EDIT)
+            }
+
+            SourceAction.DISABLE_SOURCE -> screenModel.viewModel.disableSource()
+            SourceAction.CHAPTER_PAY -> screenModel.postDialogEvent(ReaderDialogEvent.ChapterPay)
+            SourceAction.SET_SOURCE_VARIABLE -> screenModel.showSourceVariableDialog()
+            SourceAction.SET_BOOK_VARIABLE -> screenModel.showBookVariableDialog()
+        }
+    }
+
+    override fun openBookInfoActivity() {
+        screenModel.currentBook?.let {
+            navigator.push(AppRoute.BookInfo(it.toRouteRef()), RouteResults.BOOK_INFO)
+        }
+    }
+
+    override fun supportFinishAfterTransition() {
+        navigator.pop()
+    }
+
+    override fun onTopMenuAction(action: ReadMenuAction) {
+        when (action) {
+            ReadMenuAction.CHANGE_SOURCE,
+            ReadMenuAction.BOOK_CHANGE_SOURCE -> {
+                screenModel.postDialogEvent(ReaderDialogEvent.ChangeSource)
+            }
+
+            ReadMenuAction.CHAPTER_CHANGE_SOURCE -> {
+                screenModel.postDialogEvent(ReaderDialogEvent.ChangeChapterSource)
+            }
+
+            ReadMenuAction.REFRESH_DUR -> screenModel.viewModel.refreshCurrentChapter()
+            ReadMenuAction.ADD_BOOKMARK -> {
+                val book = screenModel.viewModel.book.value ?: return
+                val page = screenModel.viewModel.curTextPage.value
+                val bookmark = Bookmark(bookName = book.name, bookAuthor = book.author).apply {
+                    chapterIndex = screenModel.viewModel.durChapterIndex.value
+                    chapterPos = screenModel.viewModel.durChapterPos.value
+                    chapterName = page?.title ?: screenModel.currentChapter?.title ?: ""
+                    bookText = page?.text?.trim() ?: ""
+                }
+                screenModel.postDialogEvent(ReaderDialogEvent.AddBookmark(bookmark))
+            }
+
+            ReadMenuAction.EDIT_CONTENT -> screenModel.postDialogEvent(ReaderDialogEvent.EditContent)
+            ReadMenuAction.LOG -> screenModel.postDialogEvent(ReaderDialogEvent.Log)
+            ReadMenuAction.REFRESH_AFTER -> {
+                val book = screenModel.viewModel.book.value ?: return
+                screenModel.viewModel.refreshContentAfter(book)
+            }
+
+            ReadMenuAction.REFRESH_ALL -> screenModel.viewModel.refreshContentAll()
+            ReadMenuAction.DOWNLOAD -> screenModel.postDialogEvent(ReaderDialogEvent.Download)
+            ReadMenuAction.TOC_REGEX -> navigator.push(AppRoute.TxtTocRule)
+            ReadMenuAction.SET_CHARSET -> screenModel.postDialogEvent(ReaderDialogEvent.SetCharset)
+            ReadMenuAction.PAGE_ANIM -> {
+                ReadBookEvents.postConfig(ReadConfigChange.PAGE_ANIM, ReadConfigChange.LOAD_CONTENT)
+            }
+
+            ReadMenuAction.SIMULATED_READING -> {
+                screenModel.postDialogEvent(ReaderDialogEvent.SimulatedReading)
+            }
+
+            ReadMenuAction.ENABLE_REPLACE -> screenModel.viewModel.toggleUseReplaceRule()
+            ReadMenuAction.SAME_TITLE_REMOVED -> screenModel.viewModel.reverseRemoveSameTitle()
+            ReadMenuAction.RE_SEGMENT -> screenModel.viewModel.toggleReSegment()
+            ReadMenuAction.IMAGE_STYLE -> screenModel.postDialogEvent(ReaderDialogEvent.ImageStyle)
+            ReadMenuAction.UPDATE_TOC -> screenModel.viewModel.updateToc()
+            ReadMenuAction.SYNC_PROGRESS -> screenModel.viewModel.syncProgressManual(
+                uploadSuccessAction = { Toasters.get().toast("上传成功") },
+                syncSuccessAction = { Toasters.get().toast("同步成功") },
+            )
+
+            ReadMenuAction.REVIEW -> screenModel.currentBook?.let { book ->
+                val chapter = screenModel.currentChapter
+                if (!PlatformCapabilityProviders.get().showReviewListDialog(book, chapter, 0)) {
+                    Toasters.get().toast("暂不支持段评")
+                }
+            }
+
+            ReadMenuAction.HELP -> Unit
+            ReadMenuAction.DEL_RUBY_TAG -> screenModel.viewModel.toggleDelTag(Book.rubyTag)
+            ReadMenuAction.DEL_H_TAG -> screenModel.viewModel.toggleDelTag(Book.hTag)
+            else -> Unit
+        }
+    }
+
+    override fun onSeekDragStart() = Unit
+
+    override fun onSeekStop(progress: Int) {
+        screenModel.saveCurrentBookProgress()
+        screenModel.viewModel.loadChapter(progress)
+    }
+
+    override fun clickSearch() {
+        val initialResults = screenModel.searchResultList
+            ?.takeIf { results -> results.firstOrNull()?.query == screenModel.searchContentQuery }
+        navigator.push(
+            AppRoute.SearchContent(
+                index = screenModel.searchResultIndex,
+                word = screenModel.searchContentQuery.takeIf { it.isNotEmpty() },
+                initialResults = initialResults,
+                book = screenModel.viewModel.book.value?.toRouteRef(),
+            ),
+            resultKey = RouteResults.SEARCH_CONTENT,
+        )
+    }
+
+    override fun clickAutoPage() {
+        autoPage = !autoPage
+    }
+
+    override fun clickReplaceRule() {
+        hide()
+        screenModel.postDialogEvent(ReaderDialogEvent.EffectiveReplaces)
+    }
+
+    override fun clickNightTheme() {
+        val newNight = !isNightTheme
+        ThemeConfigProviders.get().applyDayNight(newNight)
+        isNightTheme = newNight
+    }
+
+    override fun clickPre() {
+        screenModel.viewModel.moveToPrevChapter()
+    }
+
+    override fun clickNext() {
+        screenModel.viewModel.moveToNextChapter()
+    }
+
+    override fun clickCatalog() {
+        hide()
+        screenModel.postDialogEvent(ReaderDialogEvent.Toc)
+    }
+
+    override fun clickReadAloud() {
+        autoPage = false
+    }
+
+    override fun longClickReadAloud() {
+        screenModel.postDialogEvent(ReaderDialogEvent.ReadAloud)
+    }
+
+    override fun clickFont() {
+        hide()
+        screenModel.postDialogEvent(ReaderDialogEvent.ReadStyle)
+    }
+
+    override fun clickSetting() {
+        hide()
+        screenModel.postDialogEvent(ReaderDialogEvent.MoreConfig)
+    }
+
+    override fun onRefresh() {
+        screenModel.viewModel.refreshCurrentChapter()
+    }
+
+    protected open fun upSourceAction() {
+        val book = screenModel.viewModel.book.value
+        val source = screenModel.viewModel.bookSource.value
+        sourceActionText = source?.bookSourceName ?: "书源"
+        sourceActionVisible = book?.let { !it.isLocal } ?: false
+    }
+
+    protected open fun upTopMenu() {
+        val book = screenModel.viewModel.book.value ?: return
+        topMenu.onLine = !book.isLocal
+        topMenu.isLocalTxt = book.isLocalTxt
+        topMenu.isEpub = book.isEpub
+        topMenu.enableReplaceChecked = book.getUseReplaceRule()
+        topMenu.reSegmentChecked = book.config.reSegment
+        topMenu.delRubyChecked = book.config.delTag and Book.rubyTag == Book.rubyTag
+        topMenu.delHChecked = book.config.delTag and Book.hTag == Book.hTag
+        topMenu.sameTitleRemovedChecked =
+            screenModel.viewModel.curTextChapter.value?.sameTitleRemoved == true
+        topMenu.syncProgressVisible = !book.isNotShelf && AppWebDavShared.isOk
+    }
+
+    protected open fun upMenuView() {
+        val book = screenModel.viewModel.book.value
+        title = book?.name
+        val curChapter = screenModel.currentChapter
+        chapterName = curChapter?.title
+        chapterUrl = curChapter?.url
+        chapterNameVisible = !chapterName.isNullOrEmpty()
+        chapterUrlVisible = !chapterUrl.isNullOrEmpty() && book?.isLocal == false
+        prevEnabled = screenModel.viewModel.canMoveToPrevChapter()
+        nextEnabled = screenModel.viewModel.canMoveToNextChapter()
+    }
+
+    override fun refresh() {
+        upTopMenu()
+        upMenuView()
+        upSourceAction()
+    }
+
+    override fun upSeekBar() {
+        seekMax = (screenModel.viewModel.simulatedChapterSize - 1).coerceAtLeast(0)
+        seekValue = screenModel.viewModel.durChapterIndex.value
+    }
+
+    override fun reset() {
+        upTopMenu()
+        upMenuView()
+    }
 }
 
 /**

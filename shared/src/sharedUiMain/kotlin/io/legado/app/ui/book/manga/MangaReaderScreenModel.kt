@@ -3,18 +3,14 @@ package io.legado.app.ui.book.manga
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.BookType
-import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
-import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.IntentData
-import io.legado.app.help.book.isNotShelf
-import io.legado.app.help.book.removeType
+import io.legado.app.help.book.changeSourceTo
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.config.MangaFooterConfig
@@ -24,7 +20,6 @@ import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.config.ClickActionConfig
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.screenModelScope
-import io.legado.app.utils.FlowBus
 import io.legado.app.utils.GSON
 import io.legado.app.utils.format
 import io.legado.app.utils.formatTimeOfDay
@@ -61,9 +56,33 @@ class MangaReaderScreenModel : ScreenModel {
     private val scope = screenModelScope("漫画阅读")
 
     interface Platform {
-        fun flowImages(bookChapter: BookChapter, content: String): Flow<String>
+        fun flowImages(bookChapter: BookChapter, content: String): Flow<String> =
+            MangaImageExtractorShared.extractImageUrls(content).asFlow()
+
         val config: MangaReaderConfig
-            get() = MangaReaderConfig.DEFAULT
+            get() {
+                val prefs = PreferenceProviders.get()
+                return MangaReaderConfig(
+                    hideMangaTitle = prefs.getBoolean(PreferKey.hideMangaTitle, false),
+                    preDownloadNum = prefs.getInt(PreferKey.mangaPreDownloadNum, 10),
+                    syncBookProgressPlus = prefs.getBoolean(PreferKey.syncBookProgressPlus, false),
+                    horizontal = prefs.getBoolean(PreferKey.enableMangaHorizontalScroll, false),
+                    autoPageSpeed = prefs.getInt(PreferKey.mangaAutoPageSpeed, 3),
+                    grayEnabled = prefs.getBoolean(PreferKey.enableMangaGray, false),
+                    colorFilterConfig = runCatching {
+                        GSON.fromJsonObject<MangaColorFilterConfig>(
+                            prefs.getString(PreferKey.mangaColorFilter, "")
+                        ).getOrNull()
+                    }.getOrNull() ?: MangaColorFilterConfig(),
+                    gifAutoNext = prefs.getBoolean(PreferKey.enableMangaGifAutoNext, false),
+                    disablePageAnim = prefs.getBoolean(PreferKey.disableMangaPageAnim, false),
+                    footerConfig = runCatching {
+                        GSON.fromJsonObject<MangaFooterConfig>(
+                            prefs.getString(PreferKey.mangaFooterConfig, "")
+                        ).getOrNull()
+                    }.getOrNull() ?: MangaFooterConfig(),
+                )
+            }
 
         /**
          * 当前电池电量 0-100。
@@ -83,31 +102,61 @@ class MangaReaderScreenModel : ScreenModel {
         ): Boolean = false
 
         /** 切换横/纵向翻页 (对照 app 端 MangaMenuAction.HORIZONTAL_SCROLL = !enable), 返回切换后的值 */
-        fun toggleHorizontal(): Boolean = false
+        fun toggleHorizontal(): Boolean {
+            val prefs = PreferenceProviders.get()
+            val enable = !prefs.getBoolean(PreferKey.enableMangaHorizontalScroll, false)
+            prefs.putBoolean(PreferKey.enableMangaHorizontalScroll, enable)
+            return enable
+        }
 
         /** 持久化颜色滤镜配置 (对照 app 端 MangaColorFilterDialog.onDismiss 写 AppConfig.mangaColorFilter) */
-        fun updateColorFilter(config: MangaColorFilterConfig) {}
+        fun updateColorFilter(config: MangaColorFilterConfig) {
+            PreferenceProviders.get().putString(PreferKey.mangaColorFilter, config.toJson())
+        }
 
         /** 持久化灰度开关 (对照 app 端 MangaColorFilterDialog.upGray 写 AppConfig.enableMangaGray) */
-        fun updateGray(enable: Boolean) {}
+        fun updateGray(enable: Boolean) {
+            PreferenceProviders.get().putBoolean(PreferKey.enableMangaGray, enable)
+        }
 
         /** 持久化页脚配置 (对照 app 端 MangaFooterSettingDialog.onDismiss 写 AppConfig.mangaFooterConfig) */
-        fun updateFooterConfig(config: MangaFooterConfig) {}
+        fun updateFooterConfig(config: MangaFooterConfig) {
+            PreferenceProviders.get().putString(PreferKey.mangaFooterConfig, GSON.toJson(config))
+        }
 
         /** 切换隐藏漫画标题 (对照 app 端 MangaMenuAction.HIDE_TITLE = !enable), 返回切换后的值 */
-        fun toggleHideTitle(): Boolean = false
+        fun toggleHideTitle(): Boolean {
+            val prefs = PreferenceProviders.get()
+            val enable = !prefs.getBoolean(PreferKey.hideMangaTitle, false)
+            prefs.putBoolean(PreferKey.hideMangaTitle, enable)
+            return enable
+        }
 
         /** 切换禁用翻页动画 (对照 app 端 MangaMenuAction.DISABLE_PAGE_ANIM = !enable), 返回切换后的值 */
-        fun toggleDisablePageAnim(): Boolean = false
+        fun toggleDisablePageAnim(): Boolean {
+            val prefs = PreferenceProviders.get()
+            val enable = !prefs.getBoolean(PreferKey.disableMangaPageAnim, false)
+            prefs.putBoolean(PreferKey.disableMangaPageAnim, enable)
+            return enable
+        }
 
         /** 切换 GIF 播完翻页 (对照 app 端 MangaMenuAction.GIF_AUTO_NEXT = !enable), 返回切换后的值 */
-        fun toggleGifAutoNext(): Boolean = false
+        fun toggleGifAutoNext(): Boolean {
+            val prefs = PreferenceProviders.get()
+            val enable = !prefs.getBoolean(PreferKey.enableMangaGifAutoNext, false)
+            prefs.putBoolean(PreferKey.enableMangaGifAutoNext, enable)
+            return enable
+        }
 
         /** 持久化预下载章节数 (对照 app 端 MangaMenuAction.PRE_DOWNLOAD_NUM 写 AppConfig.mangaPreDownloadNum) */
-        fun setPreDownloadNum(num: Int) {}
+        fun setPreDownloadNum(num: Int) {
+            PreferenceProviders.get().putInt(PreferKey.mangaPreDownloadNum, num)
+        }
 
         /** 持久化自动翻页速度 (对照 app 端 MangaMenuAction.AUTO_PAGE_SPEED 写 AppConfig.mangaAutoPageSpeed) */
-        fun setAutoPageSpeed(speed: Int) {}
+        fun setAutoPageSpeed(speed: Int) {
+            PreferenceProviders.get().putInt(PreferKey.mangaAutoPageSpeed, speed)
+        }
 
         /**
          * 预加载图片到内存缓存 (对照 app 端 Coil3 memoryCachePolicy(WRITE_ONLY) 预载)。
@@ -335,21 +384,13 @@ class MangaReaderScreenModel : ScreenModel {
     fun changeTo(source: BookSource, newBook: Book, toc: List<BookChapter>) {
         scope.launch {
             runCatching {
-                val oldBook = currentBook
-                oldBook?.migrateTo(newBook, toc)
-                if (oldBook != null && !oldBook.isNotShelf) {
-                    newBook.removeType(BookType.updateError)
-                    AppDbProviders.get().bookDao.delete(oldBook)
-                    AppDbProviders.get().bookDao.insert(newBook)
-                    AppDbProviders.get().bookChapterDao.insert(*toc.toTypedArray())
-                }
+                currentBook?.changeSourceTo(newBook, toc)
                 IntentData.book = newBook
                 // 目录先进内存: 未入书架的书没落库, 少了这步会再回源拉一次目录
                 shared.onSourceChanged(newBook, toc, source)
             }.onFailure {
                 AppLog.put("换源失败\n$it", it, true)
             }
-            FlowBus.with(EventBus.SOURCE_CHANGED).tryEmit(newBook.bookUrl)
         }
     }
 

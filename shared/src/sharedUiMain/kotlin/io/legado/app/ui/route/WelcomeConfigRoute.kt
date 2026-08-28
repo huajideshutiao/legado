@@ -98,7 +98,7 @@ fun WelcomeConfigRoute(
                                 isNight,
                             )
                             // 已复制进图集目录, 选图物化的临时副本不留在缓存里
-                            if (ref != null) files?.discardPickedFile(path)
+                            if (ref != null) files.discardPickedFile(path)
                             ref
                         }
                         // 对照 app 端 putImagePref(key, path)

@@ -6,17 +6,22 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.BookSourceType
 import io.legado.app.constant.BookType
+import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.RuleBigDataProviders
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.script.JsEngines
 import io.legado.app.model.script.buildScriptBindings
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.encodeStringMap
 import io.legado.app.utils.normalizeFileName
+import io.legado.app.utils.postEvent
+import kotlinx.coroutines.withContext
 import kotlin.math.min
 
 /*
@@ -182,7 +187,10 @@ fun BaseBook.primaryStr(): String {
  *
  * @return null = 下架成功 (书已从书架删除); true = 上架成功; false = 操作失败
  */
-suspend fun Book.toggleBookshelfCore(inBookshelf: Boolean): Boolean? {
+suspend fun Book.toggleBookshelfCore(
+    inBookshelf: Boolean,
+    chapters: List<BookChapter>? = null,
+): Boolean? {
     val appDb = AppDbProviders.get()
     return if (inBookshelf) {
         appDb.bookChapterDao.delByBook(bookUrl)
@@ -198,6 +206,10 @@ suspend fun Book.toggleBookshelfCore(inBookshelf: Boolean): Boolean? {
         removeType(BookType.notShelf)
         if (appDb.bookDao.has(bookUrl)) appDb.bookDao.update(this)
         else appDb.bookDao.insert(this)
+        chapters?.takeIf { it.isNotEmpty() }?.let {
+            appDb.bookChapterDao.delByBook(bookUrl)
+            appDb.bookChapterDao.insert(*it.toTypedArray())
+        }
         true
     }
 }
@@ -214,6 +226,37 @@ suspend fun Book.delBookCore(deleteOriginal: Boolean = false) {
     // 对照 Book.delete(): 删库后内存对象要标记回临时书
     addType(BookType.notShelf)
     if (isLocal) FileBook.deleteBook(this, deleteOriginal)
+}
+
+/**
+ * 跨平台书籍换源核心落库与事件分发 (对应 archive 端 BaseReadViewModel.changeTo)。
+ *
+ * 1. 迁移旧书进度/分组等字段到新书 (this.migrateTo(newBook, toc))
+ * 2. 若在书架中，清除 updateError 标记，从 DB 删除旧书，插入新书与新目录
+ * 3. 广播 EventBus.SOURCE_CHANGED 事件
+ *
+ * @param newBook 新书实体
+ * @param toc 新章节列表
+ * @param inBookshelf 是否在书架中 (默认通过 `!isNotShelf` 判断)
+ * @return 迁移并落库后的新书实体
+ */
+suspend fun Book.changeSourceTo(
+    newBook: Book,
+    toc: List<BookChapter>,
+    inBookshelf: Boolean = !isNotShelf,
+): Book {
+    migrateTo(newBook, toc)
+    if (inBookshelf) {
+        newBook.removeType(BookType.updateError)
+        withContext(IoDispatcher) {
+            val appDb = AppDbProviders.get()
+            appDb.bookDao.delete(this@changeSourceTo)
+            appDb.bookDao.insert(newBook)
+            appDb.bookChapterDao.insert(*toc.toTypedArray())
+        }
+    }
+    postEvent(EventBus.SOURCE_CHANGED, newBook.bookUrl)
+    return newBook
 }
 
 /**
