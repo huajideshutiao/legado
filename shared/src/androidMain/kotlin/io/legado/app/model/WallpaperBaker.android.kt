@@ -58,7 +58,14 @@ private fun decodeRegionTo(srcPath: String, crop: IntRect, targetW: Int, targetH
     while (cropW / (inSampleSize * 2) >= targetW && cropH / (inSampleSize * 2) >= targetH) {
         inSampleSize *= 2
     }
-    val decoder = BitmapRegionDecoder.newInstance(srcPath, false) ?: return null
+    val decoder = runCatching {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            BitmapRegionDecoder.newInstance(srcPath)
+        } else {
+            @Suppress("DEPRECATION")
+            BitmapRegionDecoder.newInstance(srcPath, false)
+        }
+    }.getOrNull() ?: return null
     val cropped = try {
         decoder.decodeRegion(
             Rect(crop.left, crop.top, crop.right, crop.bottom),

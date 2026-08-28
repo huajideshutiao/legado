@@ -22,8 +22,8 @@ import coil3.size.ScaleDrawable
 import coil3.size.Size
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
-import io.legado.app.model.manga.MangaModel
 import io.legado.app.help.glide.progress.ProgressManager
+import io.legado.app.model.manga.MangaModel
 import io.legado.app.ui.book.manga.entities.GrayscaleTransformation
 
 /** 页面单元格加载状态，Compose 覆盖层(loading/进度/重试)依据 */
@@ -144,8 +144,8 @@ class MangaPageImageView(context: Context) : AppCompatImageView(context),
                 onSuccess = { _, result ->
                     if (tag == imageUrl) {
                         onStateChange?.invoke(MangaCellState.SUCCESS)
-                        val drawable = result.image?.asDrawable(resources)
-                        if (drawable != null && isAnimatedDrawable(drawable) && gifAutoNextEnabled()) {
+                        val drawable = result.image.asDrawable(resources)
+                        if (isAnimatedDrawable(drawable) && gifAutoNextEnabled()) {
                             //加载完成时：若此页正是当前停稳的居中页（例如直接打开到此页，
                             //或图片在停稳后才加载完），立即从第一帧单次播放并准备翻页；
                             //否则保持无限循环，等真正停稳居中时再装填

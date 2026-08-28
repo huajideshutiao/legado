@@ -560,7 +560,7 @@ object DesktopMediaTray {
         }
         if (aloudActive) {
             if (grouped) entries += MenuEntry(str("read_aloud", "朗读"), enabled = false)
-            addReadAloudEntries(entries, aloud!!, aloudState == ReadAloudState.PAUSED)
+            addReadAloudEntries(entries, aloud, aloudState == ReadAloudState.PAUSED)
         }
         if (audioActive || aloudActive) entries += MenuEntry() // 分隔线
         // 无"显示"项: 恢复窗口 + 跳转对应页面 (原版通知点击行为) 由托盘左键单击承载
@@ -573,8 +573,8 @@ object DesktopMediaTray {
         buildMenuModel().forEach { e ->
             when {
                 e.label == null -> menu.addSeparator()
-                e.action == null -> menu.add(header(e.label!!))
-                else -> menu.add(item(e.label!!, e.action))
+                e.action == null -> menu.add(header(e.label))
+                else -> menu.add(item(e.label, e.action))
             }
         }
         // 选中菜单项 / ESC 关闭时把宿主窗口一并收掉, 免得 1x1 置顶窗赖在前台

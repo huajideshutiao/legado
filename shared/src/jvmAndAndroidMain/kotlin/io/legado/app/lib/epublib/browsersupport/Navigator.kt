@@ -168,7 +168,7 @@ class Navigator @JvmOverloads constructor(book: EpubBook? = null) : Serializable
         this.currentFragmentId = null
         this.currentSectionPos = 0
         this.currentResource = null
-        this.currentSpinePos = book.spine?.getResourceIndex(currentResource) ?: -1
+        this.currentSpinePos = book.spine.getResourceIndex(currentResource)
         handleEventListeners(navigationEvent)
     }
 

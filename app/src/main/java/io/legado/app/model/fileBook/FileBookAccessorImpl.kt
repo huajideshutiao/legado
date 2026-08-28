@@ -425,10 +425,7 @@ object FileBookAccessorImpl : FileBookAccessor {
                     try {
                         val entry = remoteZip.entries().asSequence()
                             .first { !it.isDirectory && isBookFile(it.name) }
-                        val uriStr = saveBookFile(
-                            remoteZip.getInputStream(entry)
-                                ?: throw NoStackTraceException("获取流失败"), entry.name
-                        )
+                        val uriStr = saveBookFile(remoteZip.getInputStream(entry), entry.name)
                         importLocalFile(uriStr).apply {
                             this.origin = origin
                             addType(BookType.archive)

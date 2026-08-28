@@ -39,6 +39,7 @@ internal actual fun PlatformPhotoOverlayDialog(
                 window = (v as? DialogWindowProvider)?.window
                 v = v.parent as? View
             }
+            @Suppress("DEPRECATION")
             window?.let {
                 it.statusBarColor = Color.TRANSPARENT
                 it.navigationBarColor = Color.TRANSPARENT

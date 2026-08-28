@@ -3,6 +3,7 @@ package io.legado.app.ui.book.read
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
+import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -21,6 +22,7 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.toggleBookshelfCore
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
@@ -466,7 +468,13 @@ class ReadBookViewModelShared(
             processedContentCache.clear()
             processedContentBookUrl = bookUrl
         }
-        for (i in intArrayOf(index, index + 1, index - 1)) {
+        // 重排窗口三章; preDownloadNum=0 时只重排当前章 (前后章不补载, 同 loadChapter 的预载口径)
+        val relayoutWindow = if (AppConfigProviders.get().preDownloadNum > 0) {
+            intArrayOf(index, index + 1, index - 1)
+        } else {
+            intArrayOf(index)
+        }
+        for (i in relayoutWindow) {
             val cached = processedContentCache[i]
             if (cached != null) {
                 // 复用已处理内容，只重排版
@@ -559,10 +567,14 @@ class ReadBookViewModelShared(
                 clearExpiredChapterLoadingJobs()
             }
 
-            // 4. 当前章优先装载，前后章异步预载（对照 app 端 loadContent 三章同载）
+            // 4. 当前章优先装载，前后章异步预载（对照 app 端 loadContent 三章同载）;
+            //    前后章属预下载范畴: preDownloadNum=0 时不预载, 翻章走 moveToNext/PrevChapter
+            //    按需装载 (2026-08-29 用户拍板, 偏离原版三章同载)
             loadContent(index)
-            launchChapterLoad(index + 1) { loadContent(index + 1) }
-            launchChapterLoad(index - 1) { loadContent(index - 1) }
+            if (AppConfigProviders.get().preDownloadNum > 0) {
+                launchChapterLoad(index + 1) { loadContent(index + 1) }
+                launchChapterLoad(index - 1) { loadContent(index - 1) }
+            }
         }
     }
 
@@ -780,8 +792,11 @@ class ReadBookViewModelShared(
                 reviewCountDeferred[chapter.index] = CompletableDeferred(map)
             }
             launchChapterLoad(chapter.index) { loadContent(chapter.index) }
-            launchChapterLoad(chapter.index + 1) { loadContent(chapter.index + 1) }
-            launchChapterLoad(chapter.index - 1) { loadContent(chapter.index - 1) }
+            // 前后章属预下载范畴: preDownloadNum=0 时不重载 (同 loadChapter 的预载口径)
+            if (AppConfigProviders.get().preDownloadNum > 0) {
+                launchChapterLoad(chapter.index + 1) { loadContent(chapter.index + 1) }
+                launchChapterLoad(chapter.index - 1) { loadContent(chapter.index - 1) }
+            }
         }
     }
 
@@ -980,7 +995,10 @@ class ReadBookViewModelShared(
                 syncPageFlows()
                 launchChapterLoad(curIndex + 1) { loadContent(curIndex + 1) }
             }
-            launchChapterLoad(curIndex + 2) { loadContent(curIndex + 2) }
+            // 后二章预载属预下载范畴: preDownloadNum=0 时不预载 (按需装载只保留上面的新当前章)
+            if (AppConfigProviders.get().preDownloadNum > 0) {
+                launchChapterLoad(curIndex + 2) { loadContent(curIndex + 2) }
+            }
             // 对齐原版 ReadBook.moveToNextChapter 末尾的 saveRead(): 翻章即回写内存
             // book 实体 (详情页 IntentData 传递依赖内存实时性) + 落库 (书架靠失效推送刷新)
             readBook.saveRead()
@@ -1048,7 +1066,10 @@ class ReadBookViewModelShared(
                 syncPageFlows()
                 launchChapterLoad(curIndex - 1) { loadContent(curIndex - 1) }
             }
-            launchChapterLoad(curIndex - 2) { loadContent(curIndex - 2) }
+            // 前二章预载属预下载范畴: preDownloadNum=0 时不预载 (同 moveToNextChapter)
+            if (AppConfigProviders.get().preDownloadNum > 0) {
+                launchChapterLoad(curIndex - 2) { loadContent(curIndex - 2) }
+            }
             // 对齐原版 ReadBook.moveToPrevChapter 末尾的 saveRead()
             readBook.saveRead()
             return true
@@ -1146,7 +1167,10 @@ class ReadBookViewModelShared(
      * AppWebDav.getBookProgress 委托实现同语义），走上传分支由上传自身的失败捕获兜底。
      */
     private fun pullCloudProgress(book: Book) {
-        if (!config.syncBookProgressPlus) return
+        val syncBookProgressPlus = runCatching {
+            PreferenceProviders.get().getBoolean(PreferKey.syncBookProgressPlus, false)
+        }.getOrDefault(false)
+        if (!syncBookProgressPlus) return
         progressSyncScope.launch {
             AppWebDavShared.syncProgress(
                 book = book,
@@ -1430,8 +1454,11 @@ class ReadBookViewModelShared(
                 readBook.upMsg(null)
                 val index = readBook.durChapterIndex.value
                 launchChapterLoad(index) { loadContent(index) }
-                launchChapterLoad(index + 1) { loadContent(index + 1) }
-                launchChapterLoad(index - 1) { loadContent(index - 1) }
+                // 前后章属预下载范畴: preDownloadNum=0 时不重载 (同 loadChapter 的预载口径)
+                if (AppConfigProviders.get().preDownloadNum > 0) {
+                    launchChapterLoad(index + 1) { loadContent(index + 1) }
+                    launchChapterLoad(index - 1) { loadContent(index - 1) }
+                }
             }
         }
     }
@@ -1497,11 +1524,14 @@ class ReadBookViewModelShared(
         if (readBook.curTextChapter.value == null) {
             launchChapterLoad(durIndex) { loadContent(durIndex) }
         }
-        if (readBook.nextTextChapter.value == null && durIndex + 1 < readBook.chapterSize) {
-            launchChapterLoad(durIndex + 1) { loadContent(durIndex + 1) }
-        }
-        if (readBook.prevTextChapter.value == null && durIndex - 1 >= 0) {
-            launchChapterLoad(durIndex - 1) { loadContent(durIndex - 1) }
+        // 前后章属预下载范畴: preDownloadNum=0 时不补载 (同 ReadBookShared.loadOrUpContent 口径)
+        if (AppConfigProviders.get().preDownloadNum > 0) {
+            if (readBook.nextTextChapter.value == null && durIndex + 1 < readBook.chapterSize) {
+                launchChapterLoad(durIndex + 1) { loadContent(durIndex + 1) }
+            }
+            if (readBook.prevTextChapter.value == null && durIndex - 1 >= 0) {
+                launchChapterLoad(durIndex - 1) { loadContent(durIndex - 1) }
+            }
         }
     }
     // endregion

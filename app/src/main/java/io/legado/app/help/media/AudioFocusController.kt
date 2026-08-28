@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION") // androidx.media 的 AudioFocus*Compat 整体弃用, 同 MediaHelp
+
 package io.legado.app.help.media
 
 import android.media.AudioManager

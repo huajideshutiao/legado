@@ -20,8 +20,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -33,6 +31,7 @@ import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.root.PlatformCapabilityProviders
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.clear
@@ -149,7 +148,6 @@ private fun CrashLogViewDialog(
     val cancelText = stringResource(Res.string.cancel)
     val copyText = stringResource(Res.string.copy)
     val tooLargeText = stringResource(Res.string.text_too_large)
-    val clipboard = LocalClipboardManager.current
 
     AppDialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
         // 圆角/底色对齐 BaseComposeDialogFragment.filletBackground + alert DSL AppAlertDialogContent
@@ -182,7 +180,7 @@ private fun CrashLogViewDialog(
                 // 底部按钮栏 (对齐 BookmarkDialog: 左侧 contextual + 右侧 cancel/ok)
                 Row(Modifier.fillMaxWidth()) {
                     AppTextButton(text = copyText) {
-                        clipboard.setText(AnnotatedString(content))
+                        PlatformCapabilityProviders.getOrNull()?.copyToClipboard(content)
                     }
                     Spacer(Modifier.weight(1f))
                     AppTextButton(text = cancelText) { onDismiss() }

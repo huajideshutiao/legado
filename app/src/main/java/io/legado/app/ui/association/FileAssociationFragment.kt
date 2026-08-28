@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.net.Uri
 import android.os.Bundle
 import androidx.core.net.toUri
+import androidx.core.os.BundleCompat
 import androidx.documentfile.provider.DocumentFile
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
@@ -56,7 +57,7 @@ class FileAssociationFragment(private val isShellHost: Boolean = false) : Fragme
     private val viewModel by viewModels<FileAssociationViewModel>()
     private val localBookTreeSelect by lazy {
         registerHandleFile { result ->
-            val uri = arguments?.getParcelable<Uri>("uri") ?: return@registerHandleFile
+            val uri = argUri ?: return@registerHandleFile
             result.uri?.let { treeUri ->
                 AppConfig.defaultBookTreeUri = treeUri.toString()
                 importBook(treeUri, uri)
@@ -66,9 +67,12 @@ class FileAssociationFragment(private val isShellHost: Boolean = false) : Fragme
 
     private val isShell get() = isShellHost
 
+    private val argUri: Uri?
+        get() = arguments?.let { BundleCompat.getParcelable(it, "uri", Uri::class.java) }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val uri = arguments?.getParcelable<Uri>("uri") ?: return removeSelf()
+        val uri = argUri ?: return removeSelf()
 
         viewModel.importBookLiveData.observe(this) {
             importBook(it)

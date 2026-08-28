@@ -6,6 +6,7 @@ import com.github.junrar.rarfile.FileHeader
 import io.legado.app.constant.AppPattern
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.utils.EncodingDetect
+import io.legado.desktop.help.archive.DesktopArchiveCodec.sniffFormat
 import org.apache.commons.compress.archivers.sevenz.SevenZFile
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry
@@ -190,9 +191,23 @@ internal object DesktopArchiveCodec {
         val magic = buffered.readNBytes(6)
         buffered.reset()
         return when {
-            startsWith(magic, 0x1f, 0x8b) -> GzipCompressorInputStream(buffered, true)
+            startsWith(magic, 0x1f, 0x8b) -> GzipCompressorInputStream.builder()
+                .setInputStream(buffered)
+                .setDecompressConcatenated(true)
+                .get()
             startsWith(magic, 0x42, 0x5a, 0x68) -> BZip2CompressorInputStream(buffered, true)
-            startsWith(magic, 0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00) -> XZCompressorInputStream(buffered, true)
+            startsWith(
+                magic,
+                0xfd,
+                0x37,
+                0x7a,
+                0x58,
+                0x5a,
+                0x00
+            ) -> XZCompressorInputStream.builder()
+                .setInputStream(buffered)
+                .setDecompressConcatenated(true)
+                .get()
             else -> LZMACompressorInputStream(buffered)
         }
     }

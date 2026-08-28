@@ -557,7 +557,9 @@ class ExportBookEpubShared(
                 AppLog.putDebug("导出图片检查: ${chapter.title}\n  URL: $src\n  缓存路径: $vPath\n  是否存在: ${vPath != null}")
 
                 if (vPath != null) {
-                    val fp = FileResourceProvider(File(vPath).parentFile)
+                    val file = File(vPath)
+                    val parent = file.parentFile ?: file
+                    val fp = FileResourceProvider(parent)
                     val img = LazyResource(fp, href, originalHref)
                     resources.add(img)
                     text1 = text1.replace(src, "../${href}")

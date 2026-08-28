@@ -183,8 +183,8 @@ internal class GtkToolbar(
     }
 
     /** 加载状态: 进度条显示/隐藏 (对齐 RefreshProgressBar 100 隐藏)。 */
-    override fun setLoading(loading: Boolean) {
-        GtkLibs.gtk.gtk_widget_set_visible(progress, if (loading) 1 else 0)
+    override fun setLoading(value: Boolean) {
+        GtkLibs.gtk.gtk_widget_set_visible(progress, if (value) 1 else 0)
     }
 
     /** RSS 收藏态: 星图标实心/空心切换 (2026-08-07, 同 Windows)。 */

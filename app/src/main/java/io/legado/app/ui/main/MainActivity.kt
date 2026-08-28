@@ -27,10 +27,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.BuildConfig
 import io.legado.app.base.BaseComposeActivity
@@ -54,9 +54,6 @@ import io.legado.app.help.config.ReadConfigProviders
 import io.legado.app.help.config.ReadTipConfigShared
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.i18n.androidAppString
-import io.legado.app.ui.reader.ImageActionMenuEntry
-import io.legado.app.ui.reader.ImageActionMenuRequest
-import io.legado.app.ui.reader.ReaderImageActionMenu
 import io.legado.app.help.image.ReaderImageCache
 import io.legado.app.help.image.registerReaderImageResolver
 import io.legado.app.help.storage.Backup
@@ -96,6 +93,9 @@ import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.dict.DictDialogHost
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
+import io.legado.app.ui.reader.ImageActionMenuEntry
+import io.legado.app.ui.reader.ImageActionMenuRequest
+import io.legado.app.ui.reader.ReaderImageActionMenu
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay

@@ -20,6 +20,7 @@ import io.legado.app.utils.decodeStringMapOrNull
 import io.legado.app.utils.encodeStringMap
 import io.legado.app.utils.isDataUrl
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
@@ -102,6 +103,7 @@ data class BookChapter(
         return "${index.toString().padStart(5, '0')}-$titleMD5.ttf"
     }
 
+    @OptIn(DelicateCoroutinesApi::class)
     fun getDisplayTitle(
         replaceRules: List<ReplaceRule>? = null,
         useReplace: Boolean = true,

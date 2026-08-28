@@ -23,6 +23,7 @@ import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.GSON
 import io.legado.app.utils.format
 import io.legado.app.utils.formatTimeOfDay
+import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.systemCurrentTimeMillis
 import io.legado.app.utils.toJson
 import kotlinx.coroutines.cancel

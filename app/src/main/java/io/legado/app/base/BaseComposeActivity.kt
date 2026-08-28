@@ -168,6 +168,7 @@ abstract class BaseComposeActivity(
         // 钩子保留仅供子类覆盖 (调用时序在 setupSystemBar 后、setContent 前)
     }
 
+    @Suppress("DEPRECATION") // window.statusBarColor 在 API 35 弃用, 与 ActivityExtensions 同一兼容路径
     open fun setupSystemBar() {
         if (fullScreen && !isInMultiWindow) {
             edgeToEdge()
@@ -192,6 +193,7 @@ abstract class BaseComposeActivity(
         upNavigationBarColor()
     }
 
+    @Suppress("DEPRECATION") // 同 setupSystemBar: window.navigationBarColor 已弃用
     open fun upNavigationBarColor() {
         val bg = ThemeConfig.curBgImagePath
         if (bg.isNullOrBlank()) {

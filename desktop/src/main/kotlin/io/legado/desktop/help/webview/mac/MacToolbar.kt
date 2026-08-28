@@ -263,8 +263,8 @@ internal class MacToolbar(
     }
 
     /** 加载状态: 进度条显示/隐藏。 */
-    override fun setLoading(loading: Boolean) {
-        void(progress, "setHidden", if (loading) 0L else 1L)
+    override fun setLoading(value: Boolean) {
+        void(progress, "setHidden", if (value) 0L else 1L)
     }
 
     /** RSS 收藏态: 星图标 ★/☆ 切换 (任意线程可调, 经 [CocoaLoop] 归队到 EDT)。 */

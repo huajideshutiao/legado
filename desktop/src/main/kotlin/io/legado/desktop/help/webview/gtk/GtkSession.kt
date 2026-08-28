@@ -277,7 +277,7 @@ internal class GtkSession private constructor(
             produce = { res ->
                 val err = GErrorRef()
                 val jsResult = GtkLibs.webkit.webkit_web_view_run_javascript_finish(view, res, err)
-                if (jsResult == null || jsResult == Pointer.NULL) {
+                if (jsResult == null) {
                     GtkLoop.errorMessage(err)?.let { AppLog.put("WebKitGTK JS 执行失败: $it") }
                     null
                 } else {
@@ -345,15 +345,15 @@ internal class GtkSession private constructor(
                 val err = GErrorRef()
                 val list =
                     GtkLibs.webkit.webkit_cookie_manager_get_cookies_finish(manager, res, err)
-                if (list == null || list == Pointer.NULL) {
+                if (list == null) {
                     GtkLoop.errorMessage(err)?.let { AppLog.put("WebKitGTK cookie 读取失败: $it") }
                     null
                 } else {
                     val parts = ArrayList<String>()
                     var node = list
-                    while (node != null && node != Pointer.NULL) {
+                    while (node != null) {
                         val cookie = node.getPointer(0)
-                        if (cookie != null && cookie != Pointer.NULL) {
+                        if (cookie != null) {
                             val name = runCatching { GtkLibs.webkit.webkit_cookie_get_name(cookie) }
                                 .getOrNull()
                             val value =

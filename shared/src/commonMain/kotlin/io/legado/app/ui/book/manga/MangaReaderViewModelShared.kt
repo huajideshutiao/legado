@@ -17,6 +17,7 @@ import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.isSameNameAuthor
 import io.legado.app.help.book.readSimulating
 import io.legado.app.help.book.simulatedTotalChapterNum
+import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.ReadTimeRecorder
@@ -82,7 +83,9 @@ interface MangaImageExtractor {
  * actual 平台 (Android / 桌面) 从各自 AppConfig 读取后注入。
  *
  * @param hideMangaTitle 是否隐藏漫画标题 (对应 AppConfig.hideMangaTitle), 默认 false
- * @param preDownloadNum 预下载数量 (对应 AppConfig.preDownloadNum), 默认 10
+ * @param preDownloadNum 页级图片预载页数 (对应 AppConfig.mangaPreDownloadNum, 原版
+ *   setRecyclerViewPreloader 的预载窗口; 章节批量预下载原版走小说的 AppConfig.preDownloadNum,
+ *   不在本配置内, 见 [MangaReaderViewModelShared.preDownload]), 默认 10
  * @param syncBookProgressPlus 是否启用增强版进度同步 (对应 AppConfig.syncBookProgressPlus), 默认 false
  * @param horizontal 横向翻页模式 (对应 AppConfig.enableMangaHorizontalScroll), 默认 false
  * @param autoPageSpeed 自动翻页速度 (对应 AppConfig.mangaAutoPageSpeed), 默认 3
@@ -815,11 +818,17 @@ class MangaReaderViewModelShared(
      * 预下载前后章节 (对应 app 端 ReadMangaViewModel.preDownload)。
      *
      * 本地书不预下载; preDownloadNum < 2 时仅 upToc; 否则并发预下载前后各 preDownloadNum 章。
+     * 章节批量预下载读小说的 AppConfig.preDownloadNum (原版同款, 2026-08-29 对齐):
+     * 漫画自己的 mangaPreDownloadNum 只管页级图片预载页数 (setRecyclerViewPreloader /
+     * renderState.preloadCount), 不控制本方法 (2026-08-29 前误读 mangaPreDownloadNum)。
      */
     fun preDownload() {
         if (_book.value?.isLocal == true) return
         scope.launch {
-            if (config.preDownloadNum < 2) {
+            val preDownloadNum = runCatching {
+                AppConfigProviders.get().preDownloadNum
+            }.getOrDefault(10)
+            if (preDownloadNum < 2) {
                 upToc()
                 return@launch
             }
@@ -827,7 +836,7 @@ class MangaReaderViewModelShared(
             preDownloadTask = downloadScope.launch {
                 // 预下载
                 launch {
-                    val maxChapterIndex = min(_durChapterIndex.value + config.preDownloadNum, chapterSize)
+                    val maxChapterIndex = min(_durChapterIndex.value + preDownloadNum, chapterSize)
                     for (i in _durChapterIndex.value.plus(2)..maxChapterIndex) {
                         if (downloadedChapters.contains(i)) continue
                         if ((downloadFailChapters[i] ?: 0) >= 3) continue
@@ -835,7 +844,7 @@ class MangaReaderViewModelShared(
                     }
                 }
                 launch {
-                    val minChapterIndex = _durChapterIndex.value - min(5, config.preDownloadNum)
+                    val minChapterIndex = _durChapterIndex.value - min(5, preDownloadNum)
                     for (i in _durChapterIndex.value.minus(2) downTo minChapterIndex) {
                         if (downloadedChapters.contains(i)) continue
                         if ((downloadFailChapters[i] ?: 0) >= 3) continue

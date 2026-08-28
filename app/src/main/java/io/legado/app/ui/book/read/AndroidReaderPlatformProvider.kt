@@ -497,7 +497,7 @@ private class AndroidReaderMenuState(
         pageChangedJob = null
     }
 
-    fun show() {
+    override fun show() {
         // 自动翻页运行时点屏幕的菜单重定向已上移 shared (ReaderScreenModel.showMenu:
         // autoPage → ReaderDialogEvent.AutoRead → ReaderRoute 渲染 AutoReadPanelDialogHost)
         showNormalMenu()
@@ -514,7 +514,7 @@ private class AndroidReaderMenuState(
         activity.upReaderSystemBars(menuVisible = true)
     }
 
-    fun hide() {
+    override fun hide() {
         visibleState.targetState = false
         // 菜单收起后按 hideStatusBar/hideNavigationBar 配置恢复
         activity.upReaderSystemBars(menuVisible = false)
@@ -536,7 +536,7 @@ private class AndroidReaderMenuState(
     }
 
     // 书源操作按钮 (对照 app 端 ReadMenu.runMenuIn sourceAction 赋值)
-    private fun upSourceAction() {
+    override fun upSourceAction() {
         val book = screenModel.viewModel.book.value
         val source = screenModel.viewModel.bookSource.value
         sourceActionText = source?.bookSourceName ?: androidAppString("book_source")
@@ -544,7 +544,7 @@ private class AndroidReaderMenuState(
     }
 
     // 顶栏菜单可见/勾选状态 (对照 app 端 ReadMenu.upTopMenu)
-    private fun upTopMenu() {
+    override fun upTopMenu() {
         val book = screenModel.viewModel.book.value ?: return
         topMenu.onLine = !book.isLocal
         topMenu.isLocalTxt = book.isLocalTxt
@@ -632,7 +632,6 @@ private class AndroidReaderMenuState(
             // 源/书变量编辑 (对照原版 ReadMenu showSourceVariableDialog/showBookVariableDialog)
             SourceAction.SET_SOURCE_VARIABLE -> screenModel.showSourceVariableDialog()
             SourceAction.SET_BOOK_VARIABLE -> screenModel.showBookVariableDialog()
-            else -> Unit
         }
     }
 

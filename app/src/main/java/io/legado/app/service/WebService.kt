@@ -76,7 +76,7 @@ class WebService : BaseService() {
     }
     private val wifiLock by lazy {
         @Suppress("DEPRECATION")
-        wifiManager?.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "legado:WebService")
+        wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "legado:WebService")
             ?.apply {
                 setReferenceCounted(false)
             }

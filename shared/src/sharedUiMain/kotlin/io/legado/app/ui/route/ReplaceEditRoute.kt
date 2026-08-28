@@ -8,12 +8,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
 import io.legado.app.ui.replace.ReplaceEditScreen
 import io.legado.app.ui.replace.edit.ReplaceEditViewModelShared
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.ScreenModelStore
@@ -27,7 +26,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
  *
  * [ReplaceEditViewModelShared] 非 [io.legado.app.ui.root.ScreenModel] (组合委托模式,
  * scope/clipTextProvider 由宿主注入), 故用 [remember] 而非 [ScreenModelStore.getOrCreateTyped]。
- * 剪贴板通过 Compose [LocalClipboardManager] 访问, 帮助页通过 [HelpDialog] 渲染。
+ * 剪贴板通过 [PlatformCapabilityProviders] 访问, 帮助页通过 [HelpDialog] 渲染。
  * 键盘辅助条由 Screen 内部共享 [io.legado.app.ui.compose.component.code.KeyboardToolbar]
  * 直接渲染, 与 [io.legado.app.ui.route.BookSourceEditRoute] 一致 (Android 15+ edge-to-edge
  * ime 避让在根, navbar 由 Screen 内滚动容器 contentPadding 承担)。
@@ -40,9 +39,10 @@ fun ReplaceEditRoute(
 ) {
     val route = entry.route as AppRoute.ReplaceEdit
     val scope = rememberCoroutineScope()
-    // Compose 剪贴板管理器 (KMP 可用, 替代 app 端 getClipText/sendToClip)
-    val clipboardManager = LocalClipboardManager.current
-    val clipTextProvider: () -> String? = { clipboardManager.getText()?.text }
+    // 剪贴板走平台能力注入 (替代 app 端 getClipText/sendToClip)
+    val clipTextProvider: () -> String? = {
+        PlatformCapabilityProviders.getOrNull()?.getClipboardText()
+    }
     val viewModel = remember(route.ruleId, scope) {
         ReplaceEditViewModelShared(scope = scope, clipTextProvider = clipTextProvider)
     }
@@ -74,7 +74,7 @@ fun ReplaceEditRoute(
         onBack = { navigator.pop() },
         onSaved = { navigator.pop(RouteResultPayload.Ok) },
         onCopyRule = { rule ->
-            clipboardManager.setText(AnnotatedString(GSON.toJson(rule)))
+            PlatformCapabilityProviders.getOrNull()?.copyToClipboard(GSON.toJson(rule))
         },
         onPasteRule = { success ->
             viewModel.pasteRule(success)

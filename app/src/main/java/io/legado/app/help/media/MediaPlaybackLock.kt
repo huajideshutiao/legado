@@ -23,7 +23,7 @@ class MediaPlaybackLock(
 
     private val wifiLock by lazy {
         @Suppress("DEPRECATION")
-        wifiManager?.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, tag)
+        wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, tag)
             ?.apply { setReferenceCounted(false) }
     }
 

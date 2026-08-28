@@ -7,7 +7,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.TextRange
 import io.legado.app.constant.BookSourceType
 import io.legado.app.data.entities.BookSource
@@ -88,14 +87,12 @@ fun BookSourceEditRoute(
     val strYes = stringResource(Res.string.yes)
     val strNo = stringResource(Res.string.no)
 
-    // Compose 剪贴板管理器 (KMP 可用, 替代 app 端 getClipText; 对照 ReplaceEditRoute)
-    val clipboardManager = LocalClipboardManager.current
     val screenModel = screenModelStore.getOrCreateTyped(entry) {
         BookSourceEditScreenModel { scope ->
             BookSourceEditViewModelShared(
                 scope = scope,
-                // 剪贴板: Compose LocalClipboardManager (替代 app 端 getClipText)
-                clipTextProvider = { clipboardManager.getText()?.text },
+                // 剪贴板: 平台能力注入 (替代 app 端 getClipText)
+                clipTextProvider = { PlatformCapabilityProviders.getOrNull()?.getClipboardText() },
                 // SourceConfig 已下沉 commonMain, 直接调用 (替代 app 端 SourceConfig.removeSource)
                 sourceConfigRemover = { url -> SourceConfig.removeSource(url) },
                 // CookieStoreProviders 已下沉 commonMain (替代 app 端 CookieStore.removeCookie)

@@ -33,6 +33,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import org.jetbrains.skia.impl.use
 import org.jetbrains.skia.Image as SkiaImage
 
 private sealed interface MangaSkiaImageState {

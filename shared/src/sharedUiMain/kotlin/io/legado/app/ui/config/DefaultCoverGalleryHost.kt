@@ -323,7 +323,7 @@ private suspend fun removeDefaultCover(prefKey: String, entry: DefaultCoverEntry
                         )
                     }
                     // 图集原图 (扩展名未入 entry, 按 id 前缀扫删)
-                    FileUtilsCommon.listFiles(coverOriginalDir())?.forEach { path ->
+                    FileUtilsCommon.listFiles(coverOriginalDir()).forEach { path ->
                         if (path.substringAfterLast('/').substringAfterLast('\\')
                                 .substringBeforeLast('.') == removed.id
                         ) {

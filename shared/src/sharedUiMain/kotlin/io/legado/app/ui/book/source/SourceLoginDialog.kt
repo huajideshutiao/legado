@@ -26,8 +26,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import io.legado.app.constant.AppLog
@@ -52,6 +50,7 @@ import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.GridPackLayout
 import io.legado.app.ui.compose.component.toGridPackSpec
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.GSON
@@ -106,7 +105,7 @@ class SourceLoginFormState {
  *
  * 平台特有行为通过回调注入:
  * - [onOpenUrl]: app 端 openUrl(Intent) / 桌面端 browseUrl(Desktop.browse)
- * - 剪贴板复制: 内部用 LocalClipboardManager (与 shared AppLogDialog 一致)
+ * - 剪贴板复制: 内部用 [PlatformCapabilityProviders] (与 shared AppLogDialog 一致)
  * - toast: 内部用 [Toasters.get].toast (shared 抽象)
  * - AppLogDialog: 内部用 shared 版本按需弹出
  * - REFRESH_LOGIN_UI 事件: 内部用 [FlowBus.with] 订阅
@@ -137,7 +136,6 @@ fun SourceLoginDialog(
     // rememberCoroutineScope 随组合销毁即取消, 会中断正在执行的登录 JS (如 startBrowserAwait
     // 等待验证结果), 故用独立 SupervisorJob scope, 由协程自身生命周期驱动。
     val scope = remember { screenModelScope("书源登录", IoDispatcher) }
-    val clipboard = LocalClipboardManager.current
 
     val titleText = stringResource(Res.string.login_source, source.getTag())
     val okText = stringResource(Res.string.ok)
@@ -311,7 +309,7 @@ fun SourceLoginDialog(
             message = loginHeader,
             okButton = io.legado.app.ui.compose.component.AlertButton(
                 text = copyText,
-                onClick = { clipboard.setText(AnnotatedString(loginHeader)) }
+                onClick = { PlatformCapabilityProviders.getOrNull()?.copyToClipboard(loginHeader) }
             ),
         )
     }

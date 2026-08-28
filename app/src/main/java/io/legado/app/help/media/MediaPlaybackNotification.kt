@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION") // MediaSessionCompat / MediaStyle 整体弃用, 同 MediaHelp
+
 package io.legado.app.help.media
 
 import android.app.PendingIntent
@@ -17,7 +19,7 @@ import io.legado.app.R
 object MediaPlaybackNotification {
 
     data class Action(
-        @DrawableRes val icon: Int,
+        @param:DrawableRes val icon: Int,
         val title: String,
         val intent: PendingIntent?
     )

@@ -429,8 +429,8 @@ internal class MacSession private constructor(
         // holder: completionHandler 可能在本函数超时返回之后才触发, 生命周期只能由回调自己结束
         val holder = arrayOfNulls<ObjC.ObjCBlock>(1)
         val block = ObjC.ObjCBlock(object : Callback {
-            fun invoke(block: Pointer, result: Pointer, error: Pointer): Pointer? {
-                val value = if (error != null && error != Pointer.NULL) {
+            fun invoke(block: Pointer, result: Pointer?, error: Pointer?): Pointer? {
+                val value = if (error != null) {
                     val msg = fromId(ptr(error, "localizedDescription"))
                     AppLog.put("WKWebView JS 执行失败: $msg")
                     null
@@ -504,7 +504,7 @@ internal class MacSession private constructor(
             objects, keys, 4L,
         )!!
         val cookie = ObjC.clsPtr(cookieCls, "cookieWithProperties:", merged)
-        if (cookie == null || cookie == Pointer.NULL) {
+        if (cookie == null) {
             AppLog.put("WKWebView cookie 构造失败: $name")
             return null
         }
@@ -517,9 +517,9 @@ internal class MacSession private constructor(
         val future = CompletableFuture<String?>()
         val holder = arrayOfNulls<ObjC.ObjCBlock>(1)
         val block = ObjC.ObjCBlock(object : Callback {
-            fun invoke(block: Pointer, cookies: Pointer): Pointer? {
+            fun invoke(block: Pointer, cookies: Pointer?): Pointer? {
                 val parts = ArrayList<String>()
-                if (cookies != null && cookies != Pointer.NULL) {
+                if (cookies != null) {
                     val count = ObjC.arrayCount(cookies)
                     for (i in 0 until count) {
                         val cookie = ObjC.arrayObject(cookies, i) ?: continue

@@ -237,8 +237,20 @@ async function handleExecute(
     emitProgress(false);
   });
 
+  // 响应头: requestInStream 回调只回 ResponseCode (number), header 经 headersReceive 事件到达
+  // (SDK typings: "should use on_headersReceive and on_dataReceive to get http response")
+  httpRequest.on('headersReceive', (header: object) => {
+    if (finished || header == null) return;
+    lastHeaders = headerMapToList(header);
+    // Content-Length 兜底 totalBytes (dataReceiveProgress 可能未触发; 分块传输缺省时恒 0 =
+    // 不确定进度, 消费端按 0% 展示)
+    if (totalBytes <= 0) {
+      totalBytes = parseContentLength(header);
+    }
+  });
+
   // 接收进度: 优先用系统给的 totalSize (Content-Length 缺失/分块时也能给出总数)
-  httpRequest.on('dataReceiveProgress', (info: http.DataReceiveProgress) => {
+  httpRequest.on('dataReceiveProgress', (info: http.DataReceiveProgressInfo) => {
     if (info != null && info.totalSize > 0) {
       totalBytes = info.totalSize;
     }
@@ -262,7 +274,8 @@ async function handleExecute(
     );
   });
 
-  // requestInStream: 回调先于 dataReceive/dataEnd 到达 (响应头就绪即回调, 事件随后流式推送)
+  // requestInStream: 回调先于 dataReceive/dataEnd 到达 (响应头就绪即回调, 事件随后流式推送);
+  // data 即 ResponseCode (number), 响应头已在 headersReceive 事件里捕获
   httpRequest.requestInStream(p.url, options, (err, data) => {
     if (finished) return;
     if (err) {
@@ -270,13 +283,7 @@ async function handleExecute(
       finish({ ok: false, error: err.message ?? String(err) }, undefined);
       return;
     }
-    lastResponseCode = data.responseCode;
-    lastHeaders = headerMapToList(data.header);
-    // Content-Length 兜底 totalBytes (dataReceiveProgress 可能未触发; 分块传输缺省时恒 0 =
-    // 不确定进度, 消费端按 0% 展示)
-    if (totalBytes <= 0) {
-      totalBytes = parseContentLength(data.header);
-    }
+    lastResponseCode = data;
   });
 }
 
@@ -295,7 +302,7 @@ async function handleCancel(requestId: number, callback: HttpCallback): Promise<
       // 忽略 destroy 异常
     }
   }
-  cleanupStreaming(requestId, req);
+  cleanupStreaming(requestId, req ?? null);
   const resp: HttpResponse = { ok: true };
   callback(requestId, JSON.stringify(resp), undefined);
 }

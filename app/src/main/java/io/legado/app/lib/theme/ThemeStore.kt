@@ -127,13 +127,13 @@ object ThemeStore {
 
     /** 一次加载的完整主题值集合，供缓存使用 */
     private data class ThemeValues(
-        @ColorInt val primaryColor: Int,
-        @ColorInt val accentColor: Int,
-        @ColorInt val backgroundColor: Int,
-        @ColorInt val bottomBackground: Int,
-        @ColorInt val statusBarColor: Int,
-        @ColorInt val navigationBarColor: Int,
-        @ColorInt val textColorPrimary: Int,
-        @ColorInt val textColorSecondary: Int
+        @param:ColorInt val primaryColor: Int,
+        @param:ColorInt val accentColor: Int,
+        @param:ColorInt val backgroundColor: Int,
+        @param:ColorInt val bottomBackground: Int,
+        @param:ColorInt val statusBarColor: Int,
+        @param:ColorInt val navigationBarColor: Int,
+        @param:ColorInt val textColorPrimary: Int,
+        @param:ColorInt val textColorSecondary: Int
     )
 }

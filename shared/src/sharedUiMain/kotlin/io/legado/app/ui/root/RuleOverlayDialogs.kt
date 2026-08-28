@@ -9,8 +9,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.DictRule
 import io.legado.app.data.entities.SourceFilterRule
@@ -81,7 +79,6 @@ internal fun EditDialogHost(onDismiss: () -> Unit, content: @Composable () -> Un
 // 字典规则编辑 (key="dictRuleEdit", payload=规则 name, null=新增)
 @Composable
 internal fun DictRuleEditDialogContent(overlay: AppOverlay.Dialog, navigator: AppNavigator) {
-    val clipboard = LocalClipboardManager.current
     var rule by remember(overlay.payload) { mutableStateOf<DictRule?>(null) }
     var loaded by remember(overlay.payload) { mutableStateOf(overlay.payload == null) }
     // 对照 app 端 DictRuleEditDialog.initData: 按 name 到达端重查最新 DB 行
@@ -97,8 +94,8 @@ internal fun DictRuleEditDialogContent(overlay: AppOverlay.Dialog, navigator: Ap
             rule = rule,
             onConfirm = {},
             onDismiss = { navigator.dismissOverlay(overlay.key) },
-            clipTextProvider = { clipboard.getText()?.text },
-            clipTextSink = { clipboard.setText(AnnotatedString(it)) },
+            clipTextProvider = { PlatformCapabilityProviders.getOrNull()?.getClipboardText() },
+            clipTextSink = { PlatformCapabilityProviders.getOrNull()?.copyToClipboard(it) },
         )
     }
 }
@@ -106,7 +103,6 @@ internal fun DictRuleEditDialogContent(overlay: AppOverlay.Dialog, navigator: Ap
 // TXT 目录规则编辑 (key="txtTocRuleEdit", payload=规则 id, null=新增)
 @Composable
 internal fun TxtTocRuleEditDialogContent(overlay: AppOverlay.Dialog, navigator: AppNavigator) {
-    val clipboard = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
     var rule by remember(overlay.payload) { mutableStateOf<TxtTocRule?>(null) }
     var loaded by remember(overlay.payload) { mutableStateOf(overlay.payload == null) }
@@ -125,8 +121,8 @@ internal fun TxtTocRuleEditDialogContent(overlay: AppOverlay.Dialog, navigator: 
                 scope.launch(IoDispatcher) { AppDbProviders.get().txtTocRuleDao.insert(saved) }
             },
             onDismiss = { navigator.dismissOverlay(overlay.key) },
-            clipTextProvider = { clipboard.getText()?.text },
-            clipTextSink = { clipboard.setText(AnnotatedString(it)) },
+            clipTextProvider = { PlatformCapabilityProviders.getOrNull()?.getClipboardText() },
+            clipTextSink = { PlatformCapabilityProviders.getOrNull()?.copyToClipboard(it) },
         )
     }
 }

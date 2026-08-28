@@ -385,6 +385,17 @@ export interface LegadoNativeBridge {
    */
   httpCallback(requestId: number, result: string, body?: ArrayBuffer): void;
 
+  /**
+   * 统一平台事件推送 (ArkTS → Kotlin 单向, 单通道复用)。
+   *
+   * C++ 侧经 dlsym("legado_platform_event") 转发到 Kotlin OhosNativeBridge.onPlatformEvent,
+   * 由 OhosPlatformEventChannel 按 type 分发 (httpProgress → OhosDownloadProgressEvents,
+   * lifecycle → OhosAppLifecycle)。事件方向恒为 ArkTS → Kotlin, 无 tsfn。
+   *
+   * @param event 事件 JSON `{ type: 'httpProgress' | 'lifecycle', ... }`
+   */
+  platformEvent(event: string): void;
+
   // ===== OpenUrl tsfn 回调注册 (KP8+ 新增, 同 Toast 模式, fire-and-forget dispatch) =====
 
   /**

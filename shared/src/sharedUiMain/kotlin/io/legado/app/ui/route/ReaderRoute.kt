@@ -321,6 +321,17 @@ fun ReaderRoute(
     val readAloudPauseText = stringResource(Res.string.read_aloud_pause)
     val currentBook by screenModel.viewModel.book.collectAsState()
     AppBackHandler(enabled = isTopEntry) {
+        // ⓪ 选区/图片菜单显示中: 返回键先取消选择 + 同步关平台浮动菜单, 不退出阅读页
+        // (对照原版 textActionMenu 显示时 BACK 先 dismiss 菜单)。此前缺这一段, BACK 直接
+        // navigator.pop() 整页出栈, 鸿蒙 ArkTS 叠层菜单要等退场动画结束 onDispose→onExit
+        // 才被隐藏, 表现为"返回后动画播完菜单才关"。同步直调平台关菜单的理由同
+        // onDismissTextActionMenu (isActive 下降沿 → selectionDismissed 事件链兜底仍在);
+        // 判定口径与 ReadViewComposable 手势层一致 (isActive || imageMenuShowing)。
+        if (screenModel.selection.isActive || screenModel.selection.imageMenuShowing) {
+            provider.dismissTextActionMenu(screenModel)
+            screenModel.selection.cancel()
+            return@AppBackHandler
+        }
         // ③ 全文搜索段 (原版五段链第一段: 搜索态 → 退出搜索态 + 恢复进入搜索前的进度)
         if (screenModel.isShowingSearchResult) {
             screenModel.exitSearchMenu()

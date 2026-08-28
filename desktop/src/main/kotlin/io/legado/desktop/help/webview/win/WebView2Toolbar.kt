@@ -348,7 +348,7 @@ internal interface ToolbarGdi32 : com.sun.jna.win32.StdCallLibrary {
         dwItalic: Int, dwUnderline: Int, dwStrikeOut: Int, dwCharSet: Int,
         dwOutPrecision: Int, dwClipPrecision: Int, dwQuality: Int,
         dwPitchAndFamily: Int, pszFaceName: String,
-    ): Pointer
+    ): Pointer?
 
     fun DeleteObject(hObject: Pointer): Boolean
 }
@@ -376,7 +376,7 @@ internal val toolbarUser32Ex: ToolbarUser32Enable by lazy {
 
 /** user32 菜单 API (jna-platform User32 未覆盖): CreatePopupMenu/AppendMenuW/TrackPopupMenu/DestroyMenu/SetForegroundWindow。 */
 internal interface ToolbarMenuUser32 : com.sun.jna.win32.StdCallLibrary {
-    fun CreatePopupMenu(): com.sun.jna.platform.win32.WinNT.HANDLE
+    fun CreatePopupMenu(): com.sun.jna.platform.win32.WinNT.HANDLE?
     fun AppendMenuW(
         hMenu: com.sun.jna.platform.win32.WinNT.HANDLE,
         uFlags: Int,

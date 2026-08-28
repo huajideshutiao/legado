@@ -601,15 +601,15 @@ class TextChapterLayout(
             if (isFirstLine) paragraphIndent.length else 0,
             measurer
         )
-        else StaticLayout(
-            text,
-            textPaint,
-            visibleWidth,
-            Layout.Alignment.ALIGN_NORMAL,
-            0f,
-            0f,
-            true
-        )
+        // 老构造器已弃用; Builder 必须显式带回它的分行策略 (SIMPLE + 不连字),
+        // 否则 Builder 自己的默认值会改变分行结果
+        else StaticLayout.Builder.obtain(text, 0, text.length, textPaint, visibleWidth)
+            .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+            .setLineSpacing(0f, 0f)
+            .setIncludePad(true)
+            .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
+            .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)
+            .build()
 
         engine.durY = calculateInitialYPosition(layout, textHeight, emptyContent, isTitle, imageStyle)
         val shouldCenterTitle =

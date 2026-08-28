@@ -289,10 +289,13 @@ open class AnalyzeRuleCore(
         return getString(ruleList, unescape = unescape)
     }
 
-    fun getString(ruleList: List<SourceRule>): String = getString(ruleList, null, false, true)
+    fun getString(ruleList: List<SourceRule>): String = getString(
+        ruleList, null, isUrl = false,
+        unescape = true
+    )
 
     fun getString(ruleList: List<SourceRule>, mContent: Any?): String =
-        getString(ruleList, mContent, false, true)
+        getString(ruleList, mContent, isUrl = false, unescape = true)
 
     fun getString(ruleList: List<SourceRule>, mContent: Any?, isUrl: Boolean): String =
         getString(ruleList, mContent, isUrl, true)
@@ -375,7 +378,7 @@ open class AnalyzeRuleCore(
      * 获取Element
      */
     fun getElement(ruleStr: String): Any? {
-        if (ruleStr.isNullOrEmpty()) return null
+        if (ruleStr.isEmpty()) return null
         var result: Any? = null
         val content = this.content
         val ruleList = splitSourceRule(ruleStr, true)
@@ -492,11 +495,7 @@ open class AnalyzeRuleCore(
             if (regex != null) kotlin.runCatching {
                 // regex.toPattern().matcher → regex.find: match.value 对应 matcher.group(0) (整个匹配)
                 val match = regex.find(result)
-                return if (match != null) {
-                    match.value.replaceFirst(regex, replacement)
-                } else {
-                    ""
-                }
+                return match?.value?.replaceFirst(regex, replacement) ?: ""
             }
             return replacement
         } else {
@@ -732,11 +731,10 @@ open class AnalyzeRuleCore(
                                     infoVal.insert(0, it)
                                 }
                             } else {
-                                val jsEval: Any? = evalJS(ruleParam[index], result)
-                                when {
-                                    jsEval == null -> Unit
-                                    jsEval is String -> infoVal.insert(0, jsEval)
-                                    jsEval is Double && jsEval % 1.0 == 0.0 -> infoVal.insert(
+                                when (val jsEval: Any? = evalJS(ruleParam[index], result)) {
+                                    null -> Unit
+                                    is String -> infoVal.insert(0, jsEval)
+                                    is Double if jsEval % 1.0 == 0.0 -> infoVal.insert(
                                         0,
                                         formatDoubleNoDecimal(jsEval)
                                     )
@@ -871,19 +869,7 @@ open class AnalyzeRuleCore(
                 )
             }
         } catch (e: Exception) {
-            // 2026-08 用户拍板: JS 异常补书源上下文。原版 (origin/quickjs) SearchModel/BookInfo
-            // 的 catch 日志只有 "书源搜索出错/获取分类出错" 无书源名, 多书源场景无法定位;
-            // 此处一处包装, 全部上层日志 (搜索/详情/目录/正文) 自动带书源名。
-            // 保留原异常为 cause, 不吞异常 (铁律: 真正的问题必须能被看到)。
-            // BaseSource 无名称/URL 属性 (BookSource 才有), 非书源场景 (本地书/测试) 显示裸前缀。
-            val bookSource = source as? io.legado.app.data.entities.BookSource
-            val sourceName = bookSource?.bookSourceName?.takeIf { it.isNotBlank() }
-                ?: bookSource?.bookSourceUrl
-            throw RuntimeException(
-                if (sourceName.isNullOrBlank()) "JS执行出错\n${e.message}"
-                else "书源【$sourceName】JS执行出错\n${e.message}",
-                e
-            )
+            throw RuntimeException("JS执行出错\n${e.message}", e)
         }
     }
 

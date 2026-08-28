@@ -347,7 +347,7 @@ class VideoPlayViewModelShared(
      * @param content 章节正文 (JSON / `name::url\n` 多行 / URL / m3u8 内容)
      * @param source 书源 (AnalyzeUrlCore 构造用)
      */
-    private suspend fun parseVideoContent(content: String, source: BookSource) {
+    private fun parseVideoContent(content: String, source: BookSource?) {
         val videoSource = parseVideoSource(content)
 
         if (videoSource != null && videoSource.resolutions.isNotEmpty()) {

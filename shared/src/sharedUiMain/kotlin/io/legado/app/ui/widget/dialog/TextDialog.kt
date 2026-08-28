@@ -14,8 +14,6 @@ import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.MarkdownContentSelectable
@@ -26,6 +24,7 @@ import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.toHtmlAnnotatedString
+import io.legado.app.ui.root.PlatformCapabilityProviders
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.copy
@@ -60,7 +59,6 @@ fun TextDialog(
     val cancelText = stringResource(Res.string.cancel)
     val copyText = stringResource(Res.string.copy)
     val tooLargeText = stringResource(Res.string.text_too_large)
-    val clipboard = LocalClipboardManager.current
 
     AppDialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
         Surface(
@@ -130,7 +128,9 @@ fun TextDialog(
                         }
                         Spacer(Modifier.width(4.dp))
                     }
-                    TextButton(onClick = { clipboard.setText(AnnotatedString(content)) }) {
+                    TextButton(onClick = {
+                        PlatformCapabilityProviders.getOrNull()?.copyToClipboard(content)
+                    }) {
                         Text(text = copyText, color = DesignTokens.arcoBlue6)
                     }
                     Spacer(Modifier.width(4.dp))

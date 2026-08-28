@@ -146,8 +146,8 @@ import io.legado.app.ui.root.encodeSourceVariableOverlayPayload
 import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.route.encodeReviewListDialogPayload
-import io.legado.app.ui.widget.dialog.encodePhotoOverlayPayload
 import io.legado.app.ui.widget.dialog.TextDialog
+import io.legado.app.ui.widget.dialog.encodePhotoOverlayPayload
 import io.legado.app.utils.ACache
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
@@ -470,10 +470,9 @@ class AndroidPlatformCapabilities(
                 val result = withTimeoutOrNull(OVERLAY_RESULT_TIMEOUT_MS) {
                     navigator.overlayResults.first { it.key == "change_cover" }
                 }
-                (result?.payload as? io.legado.app.ui.root.RouteResultPayload)?.let { payload ->
-                    if (payload is io.legado.app.ui.root.RouteResultPayload.ChangeCover) {
-                        onCoverSelected(payload.coverUrl)
-                    }
+                val payload = result?.payload
+                if (payload is io.legado.app.ui.root.RouteResultPayload.ChangeCover) {
+                    onCoverSelected(payload.coverUrl)
                 }
             }
         }

@@ -23,9 +23,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
-import io.legado.app.help.image.ImageBitmapLoader
 import io.legado.app.help.image.MangaImageBytesLoader
-import io.legado.app.help.image.ohosDecodeImageBytes
 import io.legado.app.napi.OhosDownloadProgressEvents
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.config.MangaFooterConfig
@@ -121,24 +119,4 @@ object OhosMangaReaderPlatform : MangaReaderScreenModel.Platform {
             MangaImageBytesLoader.load(url, book, source, currentCoroutineContext())
         }
     }
-}
-
-/**
- * 漫画页取图: 网络图走共享 [MangaImageBytesLoader] 完整链路 (图片缓存 → 本地书 FileBook →
- * AnalyzeUrl 防盗链 header 下载 → ImageUtils.decode 解密 → 回写缓存), 与 app/desktop/iOS 同源;
- * cbz:// 与本地路径仍走 [ImageBitmapLoader] (其 cbz 分支经 ArchiveProviders 抽条目字节)。
- */
-private suspend fun loadMangaBitmap(
-    url: String,
-    book: Book?,
-    source: BookSource?,
-): ImageBitmap? {
-    if (book != null && (url.startsWith("http://") || url.startsWith("https://"))) {
-        return withContext(IoDispatcher) {
-            runCatching {
-                MangaImageBytesLoader.load(url, book, source, currentCoroutineContext())
-            }.getOrNull()?.let { ohosDecodeImageBytes(it) }
-        }
-    }
-    return ImageBitmapLoader().loadBitmap(url, book, source)
 }

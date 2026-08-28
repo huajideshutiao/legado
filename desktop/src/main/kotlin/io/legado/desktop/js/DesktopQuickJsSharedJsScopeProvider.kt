@@ -44,8 +44,8 @@ object DesktopQuickJsSharedJsScopeProvider : QuickJsSharedJsScopeBase() {
         jsLibContentCache[name] = content
     }
 
-    override fun downloadJsLibContent(value: String): String? = runBlocking {
-        OkHttpClientProviders.get().okHttpClient.newCallStrResponse { url(value) }.body
+    override fun downloadJsLibContent(url: String): String? = runBlocking {
+        OkHttpClientProviders.get().okHttpClient.newCallStrResponse { url(url) }.body
     }
 
     override fun jsLibDownloadFailedException(url: String): Exception =

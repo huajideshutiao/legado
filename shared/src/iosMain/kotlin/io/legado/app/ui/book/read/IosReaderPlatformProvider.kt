@@ -205,7 +205,7 @@ object IosReaderPlatformProvider : ReaderPlatformProvider {
             "dict" -> dictWord = text
             "search_content" -> screenModel.searchContentTextCallback().invoke(text)
 
-            "browser" -> screenModel.openTextInBrowser(text)
+            "browser" -> openTextInBrowser(text)
             "share" -> PlatformCapabilityProviders.get().shareText(text)
         }
     }

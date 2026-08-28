@@ -9,6 +9,8 @@ import com.sun.jna.NativeLibrary
 import com.sun.jna.Pointer
 import com.sun.jna.Structure
 import io.legado.app.constant.AppLog
+import io.legado.desktop.help.webview.mac.ObjC.ObjCBlock.Companion.live
+import io.legado.desktop.help.webview.mac.ObjC.newDelegateClass
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
 
@@ -115,7 +117,7 @@ internal object ObjC {
 
     /** NSString* / NSNumber* / NSNull* → Java String? (null 映射 null)。 */
     fun fromId(obj: Pointer?): String? {
-        if (obj == null || obj == Pointer.NULL) return null
+        if (obj == null) return null
         val cls = objc().objc_msgSend(obj, sel("class"))
         return when {
             cls == nsStringCls || objc().objc_msgSendInt(
@@ -124,7 +126,7 @@ internal object ObjC {
                 nsStringCls
             ) != 0 -> {
                 val cstr = objc().objc_msgSend(obj, sel("UTF8String"))
-                if (cstr == null || cstr == Pointer.NULL) null else cstr.getString(0)
+                if (cstr == null) null else cstr.getString(0)
             }
 
             objc().objc_msgSendInt(obj, sel("isKindOfClass:"), nsNumberCls) != 0 -> fromId(
@@ -267,11 +269,11 @@ internal object ObjC {
                 fun invoke(
                     block: Pointer,
                     self: Pointer,
-                    a: Pointer,
-                    b: Pointer,
-                    c: Pointer
+                    a: Pointer?,
+                    b: Pointer?,
+                    c: Pointer?
                 ): Pointer? {
-                    val args = listOf(a, b, c).filter { it != null && it != Pointer.NULL }
+                    val args = listOfNotNull(a, b, c)
                     runCatching { impl(name, self, args) }
                         .onFailure { AppLog.put("ObjC delegate 回调异常 ($name)", it) }
                     return null

@@ -644,8 +644,12 @@ open class ReadBookShared : CoroutineScope {
         loadContent(durChapterIndexValue, resetPageOffset = resetPageOffset) {
             success?.invoke()
         }
-        loadContent(durChapterIndexValue + 1, resetPageOffset = resetPageOffset)
-        loadContent(durChapterIndexValue - 1, resetPageOffset = resetPageOffset)
+        // 前后章属预下载范畴: preDownloadNum=0 (用户关闭预下载) 时一并关闭,
+        // 翻章走 moveToNext/PrevChapter 的按需装载 (2026-08-29 用户拍板, 偏离原版三章同载)
+        if (AppConfigProviders.get().preDownloadNum > 0) {
+            loadContent(durChapterIndexValue + 1, resetPageOffset = resetPageOffset)
+            loadContent(durChapterIndexValue - 1, resetPageOffset = resetPageOffset)
+        }
     }
 
     fun loadOrUpContent() {
@@ -654,11 +658,14 @@ open class ReadBookShared : CoroutineScope {
         } else {
             callback?.upContent()
         }
-        if (nextChapter == null) {
-            loadContent(durChapterIndexValue + 1)
-        }
-        if (prevChapter == null) {
-            loadContent(durChapterIndexValue - 1)
+        // 同 loadContent(resetPageOffset,...): preDownloadNum=0 时前后章不预载
+        if (AppConfigProviders.get().preDownloadNum > 0) {
+            if (nextChapter == null) {
+                loadContent(durChapterIndexValue + 1)
+            }
+            if (prevChapter == null) {
+                loadContent(durChapterIndexValue - 1)
+            }
         }
     }
 

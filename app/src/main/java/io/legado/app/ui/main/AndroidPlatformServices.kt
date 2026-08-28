@@ -439,6 +439,7 @@ private class AndroidKeyboardController(
         imm?.hideSoftInputFromWindow(view.windowToken, 0)
     }
 
+    @Suppress("DEPRECATION") // SHOW_IMPLICIT 无等价替代 (WindowInsetsController.show 语义不同)
     override fun showSoftInput() {
         val view = activity.currentFocus ?: activity.window.decorView
         imm?.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
@@ -450,6 +451,7 @@ private class AndroidKeyboardController(
      * adjust 停在上一页的值或厂商归一化结果 (实测 HyperOS 把 unspecified 归一成 adjustPan,
      * 会让 ViewRootImpl 平移窗口, 见 ImeInsets.kt)。
      */
+    @Suppress("DEPRECATION") // SOFT_INPUT_ADJUST_RESIZE 已弃用, 仍是显式写 adjust 位的唯一通道
     override fun setSoftInputPolicy(policy: SoftInputPolicy) {
         val mode = when (policy) {
             SoftInputPolicy.Default -> WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED

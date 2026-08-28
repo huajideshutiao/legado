@@ -6,7 +6,6 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import coil3.ComponentRegistry
 import coil3.ImageLoader
-import coil3.PlatformContext
 import coil3.gif.AnimatedImageDecoder
 import coil3.gif.GifDecoder
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
@@ -135,7 +134,7 @@ class AndroidBookImageLoader(
         ) {
             // 手动封面 (图集引用) 优先读缓存烘焙产物, 减轻大图原图解码
             val displayUrl = resolveCoverBakedForDisplay(url, widthPx, heightPx)
-            val request = ImageRequest.Builder(context as PlatformContext)
+            val request = ImageRequest.Builder(context)
                 .data(displayUrl)
                 .sourceOrigin(sourceOrigin)
                 .apply {
@@ -212,7 +211,7 @@ internal fun buildBookImageLoader(
     additionalComponents: ComponentRegistry.Builder.() -> Unit = {},
 ): ImageLoader {
     val sharedClient = OkHttpClientProviders.get().okHttpClient
-    return ImageLoader.Builder(context as PlatformContext)
+    return ImageLoader.Builder(context)
         .components {
             // 封面解密 + 失败 url 跳过 + 防盗链 header: 全部下沉 fetcher 层 (对齐原 Glide
             // OkHttpStreamFetcher: 缓存命中不解析不解密, 取数据时跑 IO 线程)。

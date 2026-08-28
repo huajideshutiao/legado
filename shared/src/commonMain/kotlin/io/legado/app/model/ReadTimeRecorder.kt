@@ -5,9 +5,14 @@ import io.legado.app.data.entities.ReadRecord
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.mainDispatcher
+import io.legado.app.model.ReadTimeRecorder.end
+import io.legado.app.model.ReadTimeRecorder.flushAll
+import io.legado.app.model.ReadTimeRecorder.setBook
+import io.legado.app.model.ReadTimeRecorder.start
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -74,7 +79,7 @@ object ReadTimeRecorder {
         synchronized(lock) {
             val book = sourceBook[source] ?: return
             endJobs.remove(source)?.cancel()
-            @Suppress("OptInUsageInspection")
+            @OptIn(DelicateCoroutinesApi::class)
             endJobs[source] = GlobalScope.launch(mainDispatcher) {
                 delay(SESSION_END_DELAY_MS)
                 synchronized(lock) {

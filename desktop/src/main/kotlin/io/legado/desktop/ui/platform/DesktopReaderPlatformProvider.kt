@@ -669,21 +669,12 @@ private class DesktopReadMenuState(
     // 滚动模式朗读重定位: 暂停期间页面是否变化 (对照 app 端 AndroidReaderMenuState.aloudPageChanged)
     private var aloudPageChanged = false
 
-    private var autoPager: AutoPagerCompose? = null
-
     init {
         // 页面变化 → aloudPageChanged (对照 app 端 AndroidReaderMenuState.init:
         // 经 ReadBookEvents.seekBarChange 桥接: onPageChanged/onChapterChanged 均触发)
         autoPageScope.launch {
             ReadBookEvents.seekBarChange.collect { aloudPageChanged = true }
         }
-    }
-
-    override fun upMenuView() {
-        super.upMenuView()
-        titleBarAdditionVisible = runCatching {
-            PreferenceProviders.get().getBoolean(PreferKey.showReadTitleAddition, true)
-        }.getOrDefault(true)
     }
 
     override fun onChapterViewClick() {

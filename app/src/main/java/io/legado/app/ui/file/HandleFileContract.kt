@@ -1,6 +1,7 @@
 package io.legado.app.ui.file
 
 import android.net.Uri
+import androidx.core.os.BundleCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentManager
@@ -63,7 +64,7 @@ class HandleFileLauncher(
         }
         fragmentManager.setFragmentResultListener("handleFile", lifecycleOwner) { _, bundle ->
             val result = HandleFileContract.Result(
-                bundle.getParcelable("result"),
+                BundleCompat.getParcelable(bundle, "result", Uri::class.java),
                 bundle.getInt("requestCode"),
                 bundle.getString("value")
             )
