@@ -33,10 +33,8 @@ class AnimatedFrames(
  * 解码动图字节为帧表; 非动图 (单帧) / 解码失败 / 超出内存预算时返回 null (调用方退化为静态图)。
  *
  * 平台实现:
- * - jvmMain (desktop): [org.jetbrains.skia.Codec] 逐帧解码
+ * - skikoUiMain (desktop/iOS/鸿蒙): [org.jetbrains.skia.Codec] 逐帧解码 GIF 和 WebP
  * - androidMain: 返回 null (Android 走 coil3-gif, 消费点自带动图能力, 不经本路径)
- * - iosMain: 返回 null (iOS 走 Coil3/UIImage 系统解码)
- * - ohosMain: 返回 null (融合渲染不直接调用 Skia Codec，暂静态首帧退化)
  */
 internal expect fun decodeAnimatedFrames(bytes: ByteArray): AnimatedFrames?
 
@@ -59,34 +57,47 @@ internal fun isGifBytes(bytes: ByteArray?): Boolean {
         bytes[3] == '8'.code.toByte()
 }
 
+/** GIF/WebP 编码头候选，静态图进入 Codec 后会自然退化为普通位图。 */
+internal fun isAnimatedImageBytes(bytes: ByteArray?): Boolean {
+    if (bytes == null) return false
+    val gif = bytes.size >= 4 && bytes[0] == 'G'.code.toByte() &&
+        bytes[1] == 'I'.code.toByte() && bytes[2] == 'F'.code.toByte() &&
+        bytes[3] == '8'.code.toByte()
+    val webp = bytes.size >= 12 && bytes[0] == 'R'.code.toByte() &&
+        bytes[1] == 'I'.code.toByte() && bytes[2] == 'F'.code.toByte() &&
+        bytes[3] == 'F'.code.toByte() && bytes[8] == 'W'.code.toByte() &&
+        bytes[9] == 'E'.code.toByte() && bytes[10] == 'B'.code.toByte() &&
+        bytes[11] == 'P'.code.toByte()
+    return gif || webp
+}
 /**
- * 动图字节 → 随时间自动推进的当前帧 [ImageBitmap]; 非动图 / 非 GIF / 解码失败返回 null。
+ * 动图字节 → 随时间自动推进的当前帧 [ImageBitmap]; 非动图 / 解码失败返回 null。
  *
  * 解码在 [Dispatchers.Default] 完成 (CPU 密集, 不占主线程), 推进循环按各帧自身 duration 挂起,
- * 离开组合时随 LaunchedEffect/produceState 一并取消。返回值随帧推进触发重组, 调用方直接当普通位图画。
+ * 离开组合时随 [LaunchedEffect] 一并取消。返回值随帧推进触发重组, 调用方直接当普通位图画。
  *
- * @param bytes 原始图片字节 (null 或非 GIF 直接返回 null)
+ * @param bytes 原始图片字节 (null 或非 GIF/WebP 直接返回 null)
  */
 @Composable
 fun rememberAnimatedImageBitmap(bytes: ByteArray?): ImageBitmap? {
-    // 魔数前置过滤: 非 GIF 不进 Codec, 静态图零额外开销
-    val gifBytes = if (isGifBytes(bytes)) bytes else null
-    val frames by produceState<AnimatedFrames?>(null, gifBytes) {
-        value = gifBytes?.let { withContext(Dispatchers.Default) { decodeAnimatedFrames(it) } }
+    val imageBytes = if (isAnimatedImageBytes(bytes)) bytes else null
+    val frames by produceState<AnimatedFrames?>(null, imageBytes) {
+        value = imageBytes?.let { withContext(Dispatchers.Default) { decodeAnimatedFrames(it) } }
     }
     val animated = frames ?: return null
     if (animated.frameCount <= 1) return animated.frames.firstOrNull()
 
     var index by remember(animated) { mutableIntStateOf(0) }
-    LaunchedEffect(animated) {        var i = 0
+    LaunchedEffect(animated) {
+        var i = 0
         var loop = 0
         while (true) {
-            delay(animated.durationsMs[i].toLong())
+            delay(animated.durationsMs[i].toLong().coerceAtLeast(1L))
             i++
             if (i >= animated.frameCount) {
                 i = 0
                 loop++
-                // repetitionCount: -1 无限; n>=0 表示"首轮之外再播 n 轮", 播完停在末帧
+                // repetitionCount: -1 无限; n>=0 表示首轮之外再播 n 轮, 播完停在末帧
                 if (animated.repetitionCount >= 0 && loop > animated.repetitionCount) {
                     index = animated.frameCount - 1
                     break

@@ -16,8 +16,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.layout.ContentScale
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.entities.Book
@@ -32,9 +30,13 @@ import io.legado.app.napi.OhosDownloadProgressEvents
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.config.MangaFooterConfig
 import io.legado.app.ui.book.manga.entities.MangaCellState
+import io.legado.app.ui.book.manga.render.MangaSkiaImage
+import io.legado.app.ui.root.PlatformServiceProviders
+import io.legado.app.ui.root.imageExtension
 import io.legado.app.utils.File
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.asFlow
@@ -89,93 +91,48 @@ object OhosMangaReaderPlatform : MangaReaderScreenModel.Platform {
         retryTick: Int,
         onProgress: (String) -> Unit,
     ) {
-        var bitmap by remember(url) { mutableStateOf<ImageBitmap?>(null) }
-        var failed by remember(url) { mutableStateOf(false) }
-
-        // retryTick 变化即重新取字节 (shared 单元格"重新加载"点击驱动)
-        LaunchedEffect(url, retryTick) {
-            bitmap = loadMangaBitmap(url, book, source)
-            if (bitmap == null) failed = true
+        val colorFilter = remember(colorFilterConfig, grayEnabled) {
+            mangaColorFilter(colorFilterConfig, grayEnabled)
         }
-        // 上报加载状态给 shared 单元格 (对齐 app 端 onStateChange, 失败时单元格显示"重新加载")
-        LaunchedEffect(bitmap, failed) {
-            onLoadState(
-                when {
-                    bitmap != null -> MangaCellState.SUCCESS
-                    failed -> MangaCellState.ERROR
-                    else -> MangaCellState.LOADING
-                }
-            )
-        }
-
-        val bmp = bitmap
-        // 字节级下载进度: 监听 [OhosDownloadProgressEvents] (ArkTS @ohos.net.http
-        // requestInStream dataReceive 事件经 platformEvent 通道回传), 转发给 shared 单元格
-        // 转圈环心, 与 desktop/app 端 ProgressManager 同链路 (百分比/KB 格式一致)
         val currentOnProgress by rememberUpdatedState(onProgress)
         DisposableEffect(url) {
             OhosDownloadProgressEvents.addListener(url) { _, percentage, bytesRead, totalBytes ->
                 currentOnProgress(
-                    if (percentage > 0) {
-                        "$percentage%"
-                    } else {
+                    if (percentage > 0) "$percentage%" else {
                         val kb = bytesRead / 1024.0
                         if (kb >= 1024) {
-                            // native 无 String.format (JVM-only), 手动保留 1 位小数
                             val mb = (kb / 1024.0 * 10).roundToInt() / 10.0
                             "${mb}MB"
-                        } else {
-                            "${kb.toInt()}KB"
-                        }
+                        } else "${kb.toInt()}KB"
                     }
                 )
             }
             onDispose { OhosDownloadProgressEvents.removeListener(url) }
         }
-        // 合并颜色滤镜: colorFilterConfig 矩阵 + 灰度矩阵 (与 iOS/desktop/app 端同矩阵同顺序)
-        val colorFilter = remember(colorFilterConfig, grayEnabled) {
-            mangaColorFilter(colorFilterConfig, grayEnabled)
-        }
-        if (bmp != null) {
-            // 等比渲染: 按位图固有宽高比显式定高 (与 desktop/iOS 同一修复,
-            // 纵向永不变形; 横向仍整页铺满视口等比留白, 行为不变)
-            val aspect = if (bmp.width > 0 && bmp.height > 0) {
-                Modifier.aspectRatio(bmp.width.toFloat() / bmp.height)
-            } else {
-                Modifier
-            }
-            Image(
-                bitmap = bmp,
-                contentDescription = null,
-                modifier = if (horizontal) modifier else modifier.then(aspect),
-                contentScale = ContentScale.Fit,
-                colorFilter = colorFilter,
-            )
-        } else if (failed) {
-            // 加载失败占位 (同 iOS UIImageView image 为 nil 时的空白)
-            Box(
-                modifier = modifier.background(Color.DarkGray),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("图片加载失败", color = Color.White)
-            }
-        } else {
-            // 加载中占位
-            Box(modifier = modifier.background(Color.Black))
-        }
+        MangaSkiaImage(
+            url = url,
+            modifier = modifier,
+            horizontal = horizontal,
+            book = book,
+            source = source,
+            colorFilter = colorFilter,
+            onLoadState = onLoadState,
+            retryTick = retryTick,
+        )
     }
-    // 保存图片到沙盒导出路径 (destPath 由 shared 路由经 PlatformServiceProviders.files.saveFile
-    // 取得, 鸿蒙的 saveFile 返回 filesDir/export 可写路径): 取字节复用 [MangaImageBytesLoader]
-    // (图片缓存 → 本地书 FileBook → 按书源下载+解密), 与 desktop/iOS/app 端同一条链路
+
+    /** 保存图片：先取得原始字节，再按魔数生成正确扩展名后写入导出目录。 */
     override suspend fun saveImage(
         url: String,
         book: Book?,
         source: BookSource?,
-        destPath: String
     ): Boolean = withContext(IoDispatcher) {
         book ?: return@withContext false
         runCatching {
             val bytes = MangaImageBytesLoader.load(url, book, source, currentCoroutineContext())
+                ?: return@runCatching false
+            val name = "manga-${systemCurrentTimeMillis()}${imageExtension(bytes, url)}"
+            val destPath = PlatformServiceProviders.get().files.saveFile(name)
                 ?: return@runCatching false
             File(destPath).writeBytes(bytes)
             true

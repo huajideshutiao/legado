@@ -23,7 +23,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.BookHelp
-import io.legado.app.help.book.isLocal
+import io.legado.app.help.image.MangaImageBytesLoader
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.manga.MangaModel
 import io.legado.app.ui.book.manga.LocalMangaGifSlot
@@ -33,11 +33,13 @@ import io.legado.app.ui.book.manga.config.isNoOp
 import io.legado.app.ui.book.manga.config.toColorMatrix
 import io.legado.app.ui.book.manga.entities.MangaCellState
 import io.legado.app.ui.book.manga.render.MangaPageImageView
+import io.legado.app.ui.root.PlatformServiceProviders
+import io.legado.app.ui.root.imageExtension
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.toJson
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.FileInputStream
 
 object AndroidMangaReaderPlatform : MangaReaderScreenModel.Platform {
     override val config: MangaReaderConfig
@@ -213,34 +215,25 @@ object AndroidMangaReaderPlatform : MangaReaderScreenModel.Platform {
         )
     }
 
-    // 保存图片: destPath 为 CreateDocument 返回的文件 Uri; 优先本地缓存, 本地书走 FileBook
-    @SuppressLint("Recycle") // openOutputStream 均以 .use 关闭, lint 追踪不到嵌套 use 内的流
+    // 保存图片: 先取得原始字节, 以实际格式生成 SAF 文件名 (对齐原版 FileUtils.saveImage(File, Uri) 的魔数命名)
     override suspend fun saveImage(
         url: String,
         book: Book?,
         source: BookSource?,
-        destPath: String
-    ): Boolean =
-        withContext(Dispatchers.IO) {
-            book ?: return@withContext false
-            runCatching {
-                val uri = destPath.toUri()
-                val image = BookHelp.getImage(book, url)
-                if (image.exists()) {
-                    App.instance.contentResolver.openOutputStream(uri)?.use { out ->
-                        FileInputStream(image).use { it.copyTo(out) }
-                    }
-                    true
-                } else if (book.isLocal) {
-                    io.legado.app.model.fileBook.FileBook.getImage(book, url)?.use { input ->
-                        App.instance.contentResolver.openOutputStream(uri)
-                            ?.use { out -> input.copyTo(out) }
-                        true
-                    } ?: false
-                } else false
-            }.getOrElse {
-                io.legado.app.constant.AppLog.put("保存图片出错\n${it.localizedMessage}", it)
-                false
-            }
+    ): Boolean = withContext(Dispatchers.IO) {
+        book ?: return@withContext false
+        runCatching {
+            val bytes = MangaImageBytesLoader.load(url, book, source, currentCoroutineContext())
+                ?: return@runCatching false
+            val name = "manga-${System.currentTimeMillis()}${imageExtension(bytes, url)}"
+            val uri = PlatformServiceProviders.get().files.saveFile(name)?.toUri()
+                ?: return@runCatching false
+            App.instance.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                ?: return@runCatching false
+            true
+        }.getOrElse {
+            io.legado.app.constant.AppLog.put("保存图片出错\n${it.localizedMessage}", it)
+            false
         }
+    }
 }

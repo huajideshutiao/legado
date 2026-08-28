@@ -25,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.core.net.toUri
@@ -53,6 +54,9 @@ import io.legado.app.help.config.ReadConfigProviders
 import io.legado.app.help.config.ReadTipConfigShared
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.i18n.androidAppString
+import io.legado.app.ui.reader.ImageActionMenuEntry
+import io.legado.app.ui.reader.ImageActionMenuRequest
+import io.legado.app.ui.reader.ReaderImageActionMenu
 import io.legado.app.help.image.ReaderImageCache
 import io.legado.app.help.image.registerReaderImageResolver
 import io.legado.app.help.storage.Backup
@@ -104,7 +108,6 @@ import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.root.toRouteRef
-import io.legado.app.ui.widget.PopupAction
 import io.legado.app.utils.ACache
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.isContentScheme
@@ -146,9 +149,6 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
     /** SAF 选书籍目录回调暂存: 由 [AndroidPlatformCapabilities.pickBookTreeUri] 写入,
      *  [bookTreeUriSelect] 回调时消费。 */
     var pendingBookTreeUriCallback: ((String?) -> Unit)? = null
-
-    /** 图片长按菜单 (对照原版 ReadBookActivity.onImageLongPress 的 popupAction) */
-    private val imageActionMenu by lazy { PopupAction() }
 
     /** 查词请求 (选中词 → dictWord 暂存, 由 Content 渲染词典对话框; 对照原版 menu_dict → DictDialog)。 */
     private var dictWord by mutableStateOf<String?>(null)
@@ -339,49 +339,55 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
      * 收起图片操作浮动菜单（对照文本菜单 dismiss; 幂等：菜单未显示时无操作）。
      */
     fun dismissImageActionMenu() {
-        imageActionMenu.dismiss()
+        ReaderImageActionMenu.dismiss()
     }
 
     /**
-     * 图片长按菜单 (对照原版 ReadBookActivity.onImageLongPress: 查看/刷新/保存/选择目录)。
+     * 图片长按菜单 (对照原版 ReadBookActivity.onImageLongPress: 查看/刷新/保存/选择目录),
+     * 自绘浮动菜单与文本长按菜单同款样式 (澎湃浮动菜单, 见 ReaderImageActionMenu)。
      */
     fun showImageActionMenu(src: String, x: Float, y: Float) {
-        imageActionMenu.setItems(
-            listOf(
-                SelectItem(androidAppString("show"), "show"),
-                SelectItem(androidAppString("refresh"), "refresh"),
-                SelectItem(androidAppString("action_save"), "save"),
-                SelectItem(androidAppString("select_folder"), "selectFolder")
-            )
-        )
-        // 非 app 主动关闭 (菜单项点完 mode.finish / 系统销毁 ActionMode) 时复位页内标志,
-        // 否则 imageMenuShowing 残留会吞掉下一次点击 (对照原版 popupAction.onDismiss →
-        // readView.cancelSelect)。app 主动 dismiss 走 dismissByApp 不触发本回调
-        imageActionMenu.onDismiss = { ReadBookEvents.postSelectionCancel() }
-        imageActionMenu.onActionClick = { action ->
-            when (action) {
-                "show" -> capabilities.showImagePreview(src, -1)
-                "refresh" -> refreshImage(src)
-                "save" -> {
-                    val path = ACache.get().getAsString(AppConst.imagePathKey)
-                    if (path.isNullOrEmpty()) {
-                        pendingSaveImageSrc = src
+        // 各动作收尾对照原版 popupAction 菜单项点击 → mode.finish → onDismiss →
+        // postSelectionCancel (取消页内图片菜单标志, 防残留吞掉下一次点击)
+        fun finish() {
+            ReaderImageActionMenu.dismiss()
+            ReadBookEvents.postSelectionCancel()
+        }
+
+        fun entry(label: String, action: () -> Unit) =
+            ImageActionMenuEntry(label) {
+                action()
+                finish()
+            }
+        // 锚点矩形按长按点取 40px 方区 (对照旧 PopupAction contentRect 20px 留边),
+        // 窗口坐标与自绘弹层宿主父节点坐标空间一致
+        val anchor = Rect(x - 20f, y - 20f, x + 20f, y + 20f)
+        ReaderImageActionMenu.show(
+            ImageActionMenuRequest(
+                anchor = anchor,
+                entries = listOf(
+                    entry(androidAppString("show")) { capabilities.showImagePreview(src, -1) },
+                    entry(androidAppString("refresh")) { refreshImage(src) },
+                    entry(androidAppString("action_save")) {
+                        val path = ACache.get().getAsString(AppConst.imagePathKey)
+                        if (path.isNullOrEmpty()) {
+                            pendingSaveImageSrc = src
+                            selectImageDir.launch {
+                                mode = HandleFileContract.DIR_SYS
+                            }
+                        } else {
+                            saveImage(src, path.toUri())
+                        }
+                    },
+                    entry(androidAppString("select_folder")) {
                         selectImageDir.launch {
                             mode = HandleFileContract.DIR_SYS
                         }
-                    } else {
-                        saveImage(src, path.toUri())
-                    }
-                }
-
-                "selectFolder" -> {
-                    selectImageDir.launch {
-                        mode = HandleFileContract.DIR_SYS
-                    }
-                }
-            }
-        }
-        imageActionMenu.show(window.decorView, x.toInt(), y.toInt())
+                    },
+                ),
+                onDismiss = { finish() },
+            )
+        )
     }
 
     /**
@@ -586,6 +592,8 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
             }
             // 阅读页长按文本的自绘浮动操作菜单 (对照桌面 DesktopReaderPlatformProvider.TextSelectionHost)
             readerPlatform.TextSelectionHost()
+            // 阅读页长按图片的自绘浮动操作菜单 (与文本菜单同款样式, 见 ReaderImageActionMenu)
+            ReaderImageActionMenu.Host()
             // 查词对话框 (选中词 → 词典查询, 本地/在线词典规则; 对照原版 menu_dict → DictDialog)
             dictWord?.let { word ->
                 DictDialogHost(

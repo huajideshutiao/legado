@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.image_cover_default
 import org.jetbrains.compose.resources.imageResource
+import kotlin.math.ceil
 import kotlin.math.roundToInt
 
 /**
@@ -118,8 +119,10 @@ fun NinePatchImage(
         modifier.semantics { this.contentDescription = contentDescription }
     } else modifier
     Canvas(semanticsModifier) {
-        val dw = size.width.roundToInt()
-        val dh = size.height.roundToInt()
+        // 目标尺寸向上取整覆盖整个 Canvas: 网格列宽等容器尺寸常为非整像素,
+        // roundToInt 会在边缘留 <1px 缺口透出下层背景, 转场非整像素平移时放大为细线
+        val dw = ceil(size.width).toInt()
+        val dh = ceil(size.height).toInt()
         if (dw <= 0 || dh <= 0) return@Canvas
         val np = info
         if (np == null) {
@@ -172,8 +175,9 @@ fun DefaultCoverNineImage(
         modifier.semantics { this.contentDescription = contentDescription }
     } else modifier
     Canvas(semanticsModifier) {
-        val dw = size.width.roundToInt()
-        val dh = size.height.roundToInt()
+        // 同 NinePatchImage: 向上取整避免亚像素缺口 (见其注释)
+        val dw = ceil(size.width).toInt()
+        val dh = ceil(size.height).toInt()
         if (dw <= 0 || dh <= 0) return@Canvas
         val bw = bitmap.width
         val bh = bitmap.height
@@ -255,15 +259,22 @@ private fun DrawScope.drawNinePatch(
     dw: Int,
     dh: Int,
 ) {
-    // 剔除 1px 标记边框后即内容区, 拉伸区已是内容区坐标
+    // 源区去掉 1px 标记边框后即内容区; parseNinePatch 返回的拉伸区是全图坐标
+    // (含最外 1px 标记框), 内容区截断后须同步减 1: 不换算会让左角宽多 1px、
+    // 中心与右角整体右偏 1 个源像素, 拼接处出现 1px 跳变细线 (用户图集 .9 封面
+    // 1:1 显示时最明显)。黑段常含角点 (x=0 / x=w-1), 先 clamp 到内容区再减 1
+    val xStart = np.stretchX.first.coerceAtLeast(1) - 1
+    val xEnd = np.stretchX.last.coerceAtMost(bitmap.width - 2) - 1
+    val yStart = np.stretchY.first.coerceAtLeast(1) - 1
+    val yEnd = np.stretchY.last.coerceAtMost(bitmap.height - 2) - 1
     drawNineSlice(
         bitmap = bitmap,
         srcLeft = 1,
         srcTop = 1,
         srcW = bitmap.width - 2,
         srcH = bitmap.height - 2,
-        stretchX = np.stretchX,
-        stretchY = np.stretchY,
+        stretchX = xStart..xEnd,
+        stretchY = yStart..yEnd,
         dw = dw,
         dh = dh,
     )
@@ -271,7 +282,7 @@ private fun DrawScope.drawNinePatch(
 
 /**
  * 九宫格绘制核心: 把 [bitmap] 的 ([srcLeft], [srcTop], [srcW]×[srcH]) 源区按
- * [stretchX]/[stretchY] (源区内坐标, 含端点) 切九块画到 [dw]×[dh]。
+ * [stretchX]/[stretchY] (内容区坐标, 含端点) 切九块画到 [dw]×[dh]。
  *
  * [cornerScale] 仅折算四角 (固定端) 的目标尺寸 (源角像素 × scale), 源矩形与拉伸区
  * 恒为源坐标; 默认 1 = 角按源像素原尺寸绘制 (带标记框的 .9 图路径)。
@@ -315,7 +326,9 @@ private fun DrawScope.drawNineSlice(
     // 源区三段宽高
     val sw = intArrayOf(leftW, xEnd - xStart + 1, rightW)
     val sh = intArrayOf(topH, yEnd - yStart + 1, bottomH)
-    // 目标区三列起点与宽高
+    // 目标区三列起点与宽高; 每块尾部向相邻块重叠 1px (不越 dw/dh): 非整数平移下
+    // 相邻块的亚像素边缘各自抗锯齿, 边界像素由两块各半混色, 渐变封面上呈现为细线;
+    // 重叠后边界被后绘制块的边缘像素完全占据 (块源像素相邻, 颜色连续), 接缝消除
     val dx = intArrayOf(0, dl, dl + dc)
     val dy = intArrayOf(0, dt, dt + dm)
     val dww = intArrayOf(dl, dc, dr)
@@ -329,7 +342,10 @@ private fun DrawScope.drawNineSlice(
                 srcOffset = IntOffset(sx[i], sy[j]),
                 srcSize = IntSize(sw[i], sh[j]),
                 dstOffset = IntOffset(dx[i], dy[j]),
-                dstSize = IntSize(dww[i], dhh[j]),
+                dstSize = IntSize(
+                    (dww[i] + 1).coerceAtMost(dw - dx[i]),
+                    (dhh[j] + 1).coerceAtMost(dh - dy[j]),
+                ),
                 filterQuality = FilterQuality.Low,
             )
         }

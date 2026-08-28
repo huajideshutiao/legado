@@ -18,6 +18,7 @@ import coil3.load
 import coil3.request.CachePolicy
 import coil3.request.transformations
 import coil3.size.Dimension
+import coil3.size.ScaleDrawable
 import coil3.size.Size
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
@@ -165,12 +166,15 @@ class MangaPageImageView(context: Context) : AppCompatImageView(context),
         return null
     }
 
-    /** 是否为可控制循环的动图（Coil3 MovieDrawable 或平台 AnimatedImageDrawable） */
-    private fun isAnimatedDrawable(d: Drawable?): Boolean = when {
-        d is MovieDrawable -> true
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && d is AnimatedImageDrawable -> true
-        else -> false
+    /** Coil 的动画 WebP 会被 ScaleDrawable 包裹，必须取内层后再控制循环和注册回调。 */
+    private fun animatedDrawable(drawable: Drawable?): Drawable? = when {
+        drawable is MovieDrawable -> drawable
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && drawable is AnimatedImageDrawable -> drawable
+        drawable is ScaleDrawable -> animatedDrawable(drawable.child)
+        else -> null
     }
+
+    private fun isAnimatedDrawable(drawable: Drawable?): Boolean = animatedDrawable(drawable) != null
 
     /**
      * 为动图实例注册一次“播完一轮”结束回调（同一实例只注册一次）。
@@ -184,14 +188,14 @@ class MangaPageImageView(context: Context) : AppCompatImageView(context),
         mGifCallbackTarget = drawable
         mPendingSelfEnds = 0
         val imageUrl = tag as? String
-        when {
-            drawable is MovieDrawable ->
-                drawable.registerAnimationCallback(object : Animatable2Compat.AnimationCallback() {
+        when (val animated = animatedDrawable(drawable)) {
+            is MovieDrawable ->
+                animated.registerAnimationCallback(object : Animatable2Compat.AnimationCallback() {
                     override fun onAnimationEnd(d: Drawable) = onAnimEnded(imageUrl)
                 })
 
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && drawable is AnimatedImageDrawable ->
-                drawable.registerAnimationCallback(object : Animatable2.AnimationCallback() {
+            is AnimatedImageDrawable ->
+                animated.registerAnimationCallback(object : Animatable2.AnimationCallback() {
                     override fun onAnimationEnd(d: Drawable) = onAnimEnded(imageUrl)
                 })
         }
@@ -199,19 +203,17 @@ class MangaPageImageView(context: Context) : AppCompatImageView(context),
 
     /** 单轮播放（播完一轮触发结束回调） */
     private fun setPlayOnce(drawable: Drawable) {
-        when {
-            drawable is MovieDrawable -> drawable.setRepeatCount(0)
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && drawable is AnimatedImageDrawable ->
-                drawable.repeatCount = 0
+        when (val animated = animatedDrawable(drawable)) {
+            is MovieDrawable -> animated.setRepeatCount(0)
+            is AnimatedImageDrawable -> animated.repeatCount = 0
         }
     }
 
     /** 无限循环（结束回调永不触发） */
     private fun setLoopForever(drawable: Drawable) {
-        when {
-            drawable is MovieDrawable -> drawable.setRepeatCount(MovieDrawable.REPEAT_INFINITE)
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && drawable is AnimatedImageDrawable ->
-                drawable.repeatCount = AnimatedImageDrawable.REPEAT_INFINITE
+        when (val animated = animatedDrawable(drawable)) {
+            is MovieDrawable -> animated.setRepeatCount(MovieDrawable.REPEAT_INFINITE)
+            is AnimatedImageDrawable -> animated.repeatCount = AnimatedImageDrawable.REPEAT_INFINITE
         }
     }
 
@@ -257,18 +259,18 @@ class MangaPageImageView(context: Context) : AppCompatImageView(context),
      * 平台 AnimatedImageDrawable.stop() 会主动投递一次 onAnimationEnd，故先计数抵消。
      */
     private fun restartAnim(drawable: Drawable) {
-        when {
-            drawable is MovieDrawable -> {
-                if (drawable.isRunning) drawable.stop()
-                drawable.start()
+        when (val animated = animatedDrawable(drawable)) {
+            is MovieDrawable -> {
+                if (animated.isRunning) animated.stop()
+                animated.start()
             }
 
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && drawable is AnimatedImageDrawable -> {
-                if (drawable.isRunning) {
+            is AnimatedImageDrawable -> {
+                if (animated.isRunning) {
                     mPendingSelfEnds++
-                    drawable.stop()
+                    animated.stop()
                 }
-                drawable.start()
+                animated.start()
             }
         }
     }
@@ -287,7 +289,7 @@ class MangaPageImageView(context: Context) : AppCompatImageView(context),
     /** 取消“播完翻页”：恢复无限循环并继续播放（不清回调，避免与已投递的结束回调竞态） */
     private fun disarmGifAutoNext(drawable: Drawable) {
         setLoopForever(drawable)
-        (drawable as? Animatable)?.let { if (!it.isRunning) it.start() }
+        (animatedDrawable(drawable) as? Animatable)?.let { if (!it.isRunning) it.start() }
     }
 
     /** 此页停稳为当前居中页时调用：从第一帧单次播放并准备翻页 */

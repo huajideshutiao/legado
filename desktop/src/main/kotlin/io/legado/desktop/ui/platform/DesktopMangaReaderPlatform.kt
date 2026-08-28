@@ -44,10 +44,13 @@ import io.legado.app.ui.book.manga.config.MangaFooterConfig
 import io.legado.app.ui.book.manga.config.isNoOp
 import io.legado.app.ui.book.manga.config.toColorMatrix
 import io.legado.app.ui.book.manga.entities.MangaCellState
-import io.legado.app.ui.book.manga.render.MangaReaderBackground
+import io.legado.app.ui.book.manga.render.MangaSkiaImage
+import io.legado.app.ui.root.PlatformServiceProviders
+import io.legado.app.ui.root.imageExtension
 import io.legado.app.utils.FileUtilsBase
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.systemCurrentTimeMillis
 import io.legado.app.utils.toJson
 import io.legado.desktop.help.DesktopBattery
 import kotlinx.coroutines.Dispatchers
@@ -125,30 +128,9 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
         retryTick: Int,
         onProgress: (String) -> Unit,
     ) {
-        // MangaModel 必须带书籍上下文; 空 book 时 Coil 会接受 null data 并保持 Empty/Loading。
-        if (book == null) {
-            Box(modifier.background(MangaReaderBackground), contentAlignment = Alignment.Center) {
-                Text("漫画图片缺少书籍上下文", color = Color.White)
-            }
-            return
+        val colorFilter = remember(colorFilterConfig, grayEnabled) {
+            mangaColorFilter(colorFilterConfig, grayEnabled)
         }
-        // 仅消费 shared 单元格传入的 retryTick ("重新加载"点击 → 自增 → 重建 ImageRequest);
-        // 原内部 internalRetryTick 与兜底"重新加载"文本已移除 (shared MangaPageCell 覆盖层统一负责)
-        val request = remember(url, book, source, retryTick) {
-            ImageRequest.Builder(PlatformContext.INSTANCE)
-                // MangaModel 走 MangaModelFetcher: 图片缓存 + AnalyzeUrl(防盗链 header) + 解密,
-                // 与 app 端同一条链路; 裸 url 直连对需要处理的源必然全失败
-                .data(book?.let { MangaModel(url, it, source) })
-                // 磁盘缓存由 MangaImageBytesLoader 自管, 内存缓存保留 (对照 app 端 MangaPageImageView)
-                .memoryCacheKey(url)
-                .diskCachePolicy(CachePolicy.DISABLED)
-                .size(Size.ORIGINAL)
-                .build()
-        }
-        val painter = rememberAsyncImagePainter(request)
-        val state by painter.state.collectAsState()
-        // 字节级下载进度: 注册 ProgressManager 监听 (与 app 端 MangaPageImageView 同链路,
-        // HttpHelper OkHttp 拦截器 ProgressResponseBody 逐字节回调), 转发给 shared 单元格转圈环心
         DisposableEffect(url) {
             ProgressManager.addListener(url) { _, percentage, bytesRead, totalBytes ->
                 onProgress(
@@ -156,60 +138,23 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
                         "$percentage%"
                     } else {
                         val kb = bytesRead / 1024.0
-                        if (kb >= 1024) {
-                            String.format("%.1fMB", kb / 1024)
-                        } else {
-                            "${kb.toInt()}KB"
-                        }
+                        if (kb >= 1024) String.format("%.1fMB", kb / 1024)
+                        else "${kb.toInt()}KB"
                     }
                 )
             }
             onDispose { ProgressManager.removeListener(url) }
         }
-        // 上报加载状态给 shared 单元格 (对齐 app 端 onStateChange, 失败时单元格显示"重新加载")
-        LaunchedEffect(state) {
-            onLoadState(
-                when (state) {
-                    is AsyncImagePainter.State.Success -> MangaCellState.SUCCESS
-                    is AsyncImagePainter.State.Error -> MangaCellState.ERROR
-                    else -> MangaCellState.LOADING
-                }
-            )
-        }
-        // 合并颜色滤镜: colorFilterConfig 矩阵 + 灰度矩阵 (对照 app 端 view.colorFilter + loadPageImage gray)
-        val colorFilter = remember(colorFilterConfig, grayEnabled) {
-            mangaColorFilter(colorFilterConfig, grayEnabled)
-        }
-        // 容器底色统一 shared MangaReaderBackground (0xFF141414); 加载中/失败占位由
-        // shared 单元格覆盖层统一展示 (转圈/进度/重新加载), 平台槽不再自带
-        Box(modifier.background(MangaReaderBackground), contentAlignment = Alignment.Center) {
-            when (state) {
-                is AsyncImagePainter.State.Success -> {
-                    // 等比渲染: 按图片固有宽高比显式定高 (CMP Image 不再按 intrinsicSize 自适配,
-                    // wrap 盒内 fillMaxSize 会塌成 0 高 / 整屏盒内会被 FillBounds 拉满变形),
-                    // 纵向永不拉伸; 横向仍整页铺满视口等比留白 (行为不变)
-                    val intrinsic = painter.intrinsicSize
-                    val aspect = if (intrinsic.width > 0f && intrinsic.height > 0f) {
-                        Modifier.aspectRatio(intrinsic.width / intrinsic.height)
-                    } else {
-                        Modifier
-                    }
-                    Image(
-                        painter = painter,
-                        contentDescription = null,
-                        modifier = if (horizontal) {
-                            Modifier.fillMaxSize()
-                        } else {
-                            Modifier.fillMaxWidth().then(aspect)
-                        },
-                        contentScale = ContentScale.Fit,
-                        colorFilter = colorFilter,
-                    )
-                }
-                // 加载中/失败: 留空, shared 单元格覆盖层展示转圈/进度/重新加载 (retryTick 驱动重建)
-                else -> Unit
-            }
-        }
+        MangaSkiaImage(
+            url = url,
+            modifier = modifier,
+            horizontal = horizontal,
+            book = book,
+            source = source,
+            colorFilter = colorFilter,
+            onLoadState = onLoadState,
+            retryTick = retryTick,
+        )
     }
 
     /**
@@ -222,17 +167,18 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
         url: String,
         book: Book?,
         source: BookSource?,
-        destPath: String
     ): Boolean = withContext(Dispatchers.IO) {
         book ?: return@withContext false
         runCatching {
             val bytes = MangaImageBytesLoader.load(url, book, source, currentCoroutineContext())
                 ?: return@runCatching false
-            val dest = File(destPath)
-            dest.parentFile?.mkdirs()
-            dest.writeBytes(bytes)
-            // 路由建议名恒为 `.jpg`, 与实际格式不符时按魔数改名 (shared 统一 helper, 与阅读页一致)
-            FileUtilsBase.fixImageExtension(dest)
+            val name = "manga-${systemCurrentTimeMillis()}${imageExtension(bytes, url)}"
+            val destPath = PlatformServiceProviders.get().files.saveFile(name)
+                ?: return@runCatching false
+            File(destPath).apply {
+                parentFile?.mkdirs()
+                writeBytes(bytes)
+            }
             true
         }.getOrElse {
             AppLog.put("保存图片出错\n${it.localizedMessage}", it)

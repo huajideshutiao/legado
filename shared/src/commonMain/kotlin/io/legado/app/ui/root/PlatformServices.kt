@@ -229,16 +229,45 @@ fun importImageSetFile(srcPath: String): String? = runCatching {
 }.getOrNull()
 
 /**
- * 保存用的文件名: 时间戳 + 源地址扩展名 (对照 app 端 FileUtils.saveImage 的默认命名;
- * 扩展名不像扩展名时统一 .jpg)。
+ * 用户导出图片的真实扩展名: 优先识别字节头, URL 后缀只作无法识别时的回退。
+ * 内部图片缓存仍保持 URL 后缀命名, 这个函数只服务用户可见的保存文件。
  */
-fun imageSaveFileName(src: String): String {
-    val ext = src.substringAfterLast('.', "")
-        .takeIf { it.isNotEmpty() && it.length <= 5 && it.all { c -> c.isLetterOrDigit() } }
-        ?.let { ".$it" }
-        ?: ".jpg"
-    return "${AppConst.fileNameFormat.format(systemCurrentTimeMillis())}$ext"
+fun imageExtension(bytes: ByteArray?, src: String? = null): String {
+    if (bytes != null) {
+        when {
+            bytes.size >= 3 && bytes[0] == 0x47.toByte() &&
+                bytes[1] == 0x49.toByte() && bytes[2] == 0x46.toByte() -> return ".gif"
+
+            bytes.size >= 8 && bytes[0] == 0x89.toByte() &&
+                bytes[1] == 0x50.toByte() && bytes[2] == 0x4E.toByte() &&
+                bytes[3] == 0x47.toByte() -> return ".png"
+
+            bytes.size >= 3 && bytes[0] == 0xFF.toByte() &&
+                bytes[1] == 0xD8.toByte() && bytes[2] == 0xFF.toByte() -> return ".jpg"
+
+            bytes.size >= 12 && bytes[0] == 0x52.toByte() &&
+                bytes[1] == 0x49.toByte() && bytes[2] == 0x46.toByte() &&
+                bytes[3] == 0x46.toByte() && bytes[8] == 0x57.toByte() &&
+                bytes[9] == 0x45.toByte() && bytes[10] == 0x42.toByte() &&
+                bytes[11] == 0x50.toByte() -> return ".webp"
+
+            bytes.size >= 2 && bytes[0] == 0x42.toByte() &&
+                bytes[1] == 0x4D.toByte() -> return ".bmp"
+        }
+    }
+    val urlExtension = src?.let { source ->
+        val path = source.substringBefore('#').substringBefore('?')
+        path.substringAfterLast('.', "")
+            .takeIf { it.isNotEmpty() && it.length <= 5 && it.all(Char::isLetterOrDigit) }
+            ?.lowercase()
+    }
+    return urlExtension?.let { ".$it" } ?: ".jpg"
 }
+
+/** 保存用文件名: 时间戳 + 实际图片格式扩展名, 无法识别时回退源地址后缀。 */
+fun imageSaveFileName(src: String, bytes: ByteArray? = null): String =
+    "${AppConst.fileNameFormat.format(systemCurrentTimeMillis())}${imageExtension(bytes, src)}"
+
 
 /** 分享：文本与文件。 */
 interface ShareService {

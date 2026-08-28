@@ -38,9 +38,7 @@ import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.SystemBarsPolicy
 import io.legado.app.ui.root.asBook
 import io.legado.app.ui.root.toRouteRef
-import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cloud_progress_exceeds_current
 import legado.shared.generated.resources.no
@@ -234,14 +232,8 @@ fun MangaReaderRoute(
         onSaveImage = { url ->
             scope.launch {
                 runCatching {
-                    // scope 是 rememberCoroutineScope (主线程调度), 阻塞式选择器必须切 IO
-                    val destPath = withContext(IoDispatcher) {
-                        PlatformServiceProviders.get().files.saveFile(
-                            "manga-${systemCurrentTimeMillis()}.jpg"
-                        )
-                    } ?: return@launch
                     val ok = screenModel.platformRenderer?.saveImage(
-                        url, screenModel.currentBook, screenModel.currentSource, destPath
+                        url, screenModel.currentBook, screenModel.currentSource
                     ) ?: false
                     Toasters.get().toast(if (ok) "保存成功" else "保存失败")
                 }.onFailure {

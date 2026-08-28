@@ -74,13 +74,12 @@ class MangaReaderScreenModel : ScreenModel {
 
         /**
          * 保存图片到本地 (对照 app 端 BaseReadViewModel.saveImage)。
-         * actual 平台下载源图并写入 [destPath], 返回是否成功。
+         * 平台先取得原始字节，再按实际格式生成文件名，最后调用平台文件选择器。
          */
         suspend fun saveImage(
             url: String,
             book: Book?,
             source: BookSource?,
-            destPath: String
         ): Boolean = false
 
         /** 切换横/纵向翻页 (对照 app 端 MangaMenuAction.HORIZONTAL_SCROLL = !enable), 返回切换后的值 */

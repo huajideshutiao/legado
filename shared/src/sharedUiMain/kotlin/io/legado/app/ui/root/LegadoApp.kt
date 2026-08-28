@@ -146,6 +146,9 @@ fun LegadoApp(
         var forwardOverOutgoing by remember { mutableStateOf(false) }
         // 上次已消化(动画播完)的栈, 由下方动画 effect 更新, 组合阶段据此检测新导航
         val lastSettled = remember { mutableStateOf(entries) }
+        // 上一帧的栈: push 动画中 pop 回 push 前栈时 entries == lastSettled, 仅凭栈差
+        // 无法发现刚离栈的页面, 需与上一帧对比才能把被打断的新页挂为出栈页续播
+        val previousEntries = remember { mutableStateOf(entries) }
         // 转场动画平台 spec: 随导航事件读取 (Android 端每次动态读系统动画时长缩放, 即时生效)
         val transitionSpec = remember(entries, capabilities) { capabilities.routeTransitionSpec }
         // 转场采样器: 变换全由 spec 参数推导, 消费动画层曲线进度 (与 tween(spec.easing) 匹配)
@@ -166,7 +169,21 @@ fun LegadoApp(
             // 纯前进无出栈页; 返回与单段前进都保留出栈页滑出 (popTo 多页一并滑出, 消除中间页瞬消)
             outgoingEntries = if (forward && !singleSegmentForward) emptyList() else dropped
             animating = true
+        } else if (transition.value > 0f && transition.value < 1f &&
+            previousEntries.value != entries
+        ) {
+            // 打开动画途中关闭页面 (push 动画中 pop 回 push 前的栈): entries 与 lastSettled
+            // 相等, 但上一帧 push 进来的页刚被 pop 离栈 —— 把它挂为出栈页、切 pop 方向,
+            // 让动画从当前进度续播 (新页继续滑出/旧页继续滑回) 而非 snapTo(1) 硬切闪烁
+            val flickedBack = previousEntries.value.filterNot { e -> entries.any { it.id == e.id } }
+            if (flickedBack.isNotEmpty()) {
+                outgoingEntries = flickedBack
+                navigatingForward = false
+                forwardOverOutgoing = false
+                animating = true
+            }
         }
+        previousEntries.value = entries
         // 出栈页保留在栈内滑出, 动画结束后由 effect 清空复位。
         // 单段前进时出栈页要插在栈顶之下: 新页在上才是前进转场的 z 序, 排到栈尾会让不透明
         // 的旧页盖住新页滑入 (中段两层 alpha 之和 <1 还透出根背景, 观感是"发白的交叉淡入")
@@ -327,33 +344,75 @@ fun LegadoApp(
                 // 播完后的 retain → onCleared, 退出阅读回书架立即可见最新进度
                 screenModelStore.notifyPreRemoved(entries)
                 if (entries != lastSettled.value) {
-                    // 单段前进 (forwardOverOutgoing) 也走这里: 出栈页当作滑出的旧页,
-                    // 由 slidingIds 指向 outgoingEntries 完成 (见下方渲染块)
-                    transition.snapTo(0f)
-                    transition.animateTo(
-                        1f,
-                        tween(
-                            durationMillis = if (navigatingForward) {
-                                transitionSampler.pushDurationMillis
-                            } else {
-                                transitionSampler.popDurationMillis
-                            },
-                            easing = if (navigatingForward) {
-                                transitionSpec.pushEasing.toComposeEasing()
-                            } else {
-                                transitionSpec.popEasing.toComposeEasing()
-                            },
+                    // 动画中途回退/关闭 (存在出栈页, 含单段前进) 时翻转 progress 续播:
+                    // 角色从 NewPage→OutgoingPage 切换, 两套公式在同一 progress 下位移
+                    // 不连续 (NewPage.tx(p) = w*(1-p), OutgoingPage.tx(p) = w*p); 需将
+                    // progress 翻转为 1-p 使位移连续:
+                    // OutgoingPage.tx(1-p) = w*(1-p) ≡ NewPage.tx(p)
+                    // 同理 OldPage→TargetPage 也满足对称连续性。
+                    // duration 按剩余比例缩短, 保持动画速度感一致。
+                    val resuming = !navigatingForward || forwardOverOutgoing
+                    val midFlight = transition.value > 0f && transition.value < 1f
+                    if (resuming && midFlight) {
+                        // 打断 push 动画: 角色从 NewPage→OutgoingPage, 两套公式在同一
+                        // progress 下位移不连续 (NewPage.tx(p) = w*(1-p), OutgoingPage.tx(p)
+                        // = w*p); 将 progress 映射为 1-p 使位移连续:
+                        // OutgoingPage.tx(1-p) = w*(1-p) ≡ NewPage.tx(p)
+                        val flipped = 1f - transition.value
+                        transition.snapTo(flipped)
+                        transition.animateTo(
+                            1f,
+                            tween(
+                                // duration 按剩余比例缩短 (flipped→1 占比), 保持速度感一致
+                                durationMillis = (transitionSampler.popDurationMillis * (1f - flipped)).toInt()
+                                    .coerceAtLeast(1),
+                                easing = transitionSpec.popEasing.toComposeEasing(),
+                            )
                         )
-                    )
+                    } else {
+                        // 单段前进 (forwardOverOutgoing) 也走这里: 出栈页当作滑出的旧页,
+                        // 由 slidingIds 指向 outgoingEntries 完成 (见下方渲染块)
+                        transition.snapTo(0f)
+                        transition.animateTo(
+                            1f,
+                            tween(
+                                durationMillis = if (navigatingForward) {
+                                    transitionSampler.pushDurationMillis
+                                } else {
+                                    transitionSampler.popDurationMillis
+                                },
+                                easing = if (navigatingForward) {
+                                    transitionSpec.pushEasing.toComposeEasing()
+                                } else {
+                                    transitionSpec.popEasing.toComposeEasing()
+                                },
+                            )
+                        )
+                    }
                     lastSettled.value = entries
                     outgoingEntries = emptyList()
                     forwardOverOutgoing = false
                     animating = false
                 } else if (transition.value != 1f) {
-                    // 动画中途导航被打断且栈规模不变 (如快速 push+pop): 复位动画,
-                    // 否则页面会停在动画中间位; 同时清理滑出页/待播方向 (状态污染修复:
-                    // 不清会残留已销毁页面, 后续返回时滑出幽灵页)
-                    transition.snapTo(1f)
+                    if (animating && outgoingEntries.isNotEmpty()) {
+                        // 打开动画途中关闭页面: 组合阶段已把刚离栈的新页挂进 outgoingEntries,
+                        // 角色切换 (NewPage→OutgoingPage) 需翻转 progress 保证位移连续
+                        val flipped = 1f - transition.value
+                        transition.snapTo(flipped)
+                        transition.animateTo(
+                            1f,
+                            tween(
+                                durationMillis = (transitionSampler.popDurationMillis * (1f - flipped)).toInt()
+                                    .coerceAtLeast(1),
+                                easing = transitionSpec.popEasing.toComposeEasing(),
+                            )
+                        )
+                    } else {
+                        // 动画中途导航被打断且栈规模不变 (如快速 push+pop): 复位动画,
+                        // 否则页面会停在动画中间位; 同时清理滑出页/待播方向 (状态污染修复:
+                        // 不清会残留已销毁页面, 后续返回时滑出幽灵页)
+                        transition.snapTo(1f)
+                    }
                     animating = false
                     forwardOverOutgoing = false
                     outgoingEntries = emptyList()

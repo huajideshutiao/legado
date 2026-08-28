@@ -234,7 +234,7 @@ class AndroidReaderPlatformProvider(
 
     /**
      * 图片长按（命中图片列）：弹图片操作菜单（对照原版 ReadBookActivity.onImageLongPress：
-     * 查看/刷新/保存/选择目录，PopupAction 承载）。
+     * 查看/刷新/保存/选择目录，现走 ReaderImageActionMenu 自绘浮动菜单与文本菜单同款）。
      */
     override fun onImageLongPress(
         screenModel: ReaderScreenModel,

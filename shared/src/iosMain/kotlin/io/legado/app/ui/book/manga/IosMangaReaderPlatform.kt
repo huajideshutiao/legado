@@ -2,29 +2,20 @@ package io.legado.app.ui.book.manga
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
@@ -49,9 +40,13 @@ import io.legado.app.model.manga.MangaModel
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.config.MangaFooterConfig
 import io.legado.app.ui.book.manga.entities.MangaCellState
+import io.legado.app.ui.book.manga.render.MangaSkiaImage
+import io.legado.app.ui.root.PlatformServiceProviders
+import io.legado.app.ui.root.imageExtension
 import io.legado.app.utils.File
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.asFlow
@@ -105,114 +100,48 @@ object IosMangaReaderPlatform : MangaReaderScreenModel.Platform {
         retryTick: Int,
         onProgress: (String) -> Unit,
     ) {
-        // 内部重试计数保留原有"重新加载"按钮; shared 单元格的 retryTick 变化同样重建 ImageRequest
-        var internalRetryTick by remember(url) { mutableStateOf(0) }
-        val request = remember(url, book, source, internalRetryTick, retryTick) {
-            ImageRequest.Builder(PlatformContext.INSTANCE)
-                // MangaModel 走 MangaModelFetcher: 图片缓存 + AnalyzeUrl(防盗链 header) + 解密,
-                // 裸 url 直连对需要处理的源必然全失败
-                .data(book?.let { MangaModel(url, it, source) })
-                // 磁盘缓存由 MangaImageBytesLoader 自管, 内存缓存保留
-                .memoryCacheKey(url)
-                .diskCachePolicy(CachePolicy.DISABLED)
-                .size(Size.ORIGINAL)
-                .build()
+        val colorFilter = remember(colorFilterConfig, grayEnabled) {
+            mangaColorFilter(colorFilterConfig, grayEnabled)
         }
-        val painter = rememberAsyncImagePainter(request)
-        val state by painter.state.collectAsState()
-        // 字节级下载进度: 监听 [DownloadProgressRegistry] (Ktor onDownload 上报), 转发给 shared
-        // 单元格转圈环心, 与 desktop/app 端 ProgressManager 同链路 (百分比/KB 格式一致)
         val currentOnProgress by rememberUpdatedState(onProgress)
         DisposableEffect(url) {
             val remove = DownloadProgressRegistry.addListener(url) { bytes, total ->
                 currentOnProgress(
-                    if (total != null && total > 0) {
-                        "${bytes * 100 / total}%"
-                    } else {
+                    if (total != null && total > 0) "${bytes * 100 / total}%" else {
                         val kb = bytes / 1024.0
                         if (kb >= 1024) {
-                            // native 无 String.format (JVM-only), 手动保留 1 位小数
                             val mb = (kb / 1024.0 * 10).roundToInt() / 10.0
                             "${mb}MB"
-                        } else {
-                            "${kb.toInt()}KB"
-                        }
+                        } else "${kb.toInt()}KB"
                     }
                 )
             }
             onDispose { remove() }
         }
-        // 合并颜色滤镜: colorFilterConfig 矩阵 + 灰度矩阵 (与 desktop/app 端同矩阵同顺序)
-        val colorFilter = remember(colorFilterConfig, grayEnabled) {
-            mangaColorFilter(colorFilterConfig, grayEnabled)
-        }
-        // 上报加载状态给 shared 单元格 (对齐 app 端 onStateChange, 失败时单元格显示"重新加载")
-        LaunchedEffect(state) {
-            onLoadState(
-                when (state) {
-                    is AsyncImagePainter.State.Success -> MangaCellState.SUCCESS
-                    is AsyncImagePainter.State.Error -> MangaCellState.ERROR
-                    else -> MangaCellState.LOADING
-                }
-            )
-        }
-        Box(modifier.background(Color.Black), contentAlignment = Alignment.Center) {
-            when (state) {
-                is AsyncImagePainter.State.Success -> {
-                    // 等比渲染: 按图片固有宽高比显式定高 (与 desktop 端同一修复,
-                    // 纵向永不变形; 横向仍整页铺满视口等比留白, 行为不变)
-                    val intrinsic = painter.intrinsicSize
-                    val aspect =
-                        if (intrinsic.isSpecified && intrinsic.width > 0f && intrinsic.height > 0f) {
-                            Modifier.aspectRatio(intrinsic.width / intrinsic.height)
-                        } else {
-                            Modifier
-                        }
-                    Image(
-                        painter = painter,
-                        contentDescription = null,
-                        modifier = if (horizontal) {
-                            Modifier.fillMaxSize()
-                        } else {
-                            Modifier.fillMaxWidth().then(aspect)
-                        },
-                        contentScale = ContentScale.Fit,
-                        colorFilter = colorFilter,
-                    )
-                }
-
-                // 失败/加载中占位由 shared 单元格覆盖层统一展示, 此处保留兜底
-                is AsyncImagePainter.State.Error -> Text(
-                    text = "重新加载",
-                    color = Color.White,
-                    fontSize = 18.sp,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .clickable { internalRetryTick++ }
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                )
-
-                else -> CircularProgressIndicator(
-                    color = Color.White,
-                    strokeWidth = 4.dp,
-                    modifier = Modifier.size(48.dp),
-                )
-            }
-        }
+        MangaSkiaImage(
+            url = url,
+            modifier = modifier,
+            horizontal = horizontal,
+            book = book,
+            source = source,
+            colorFilter = colorFilter,
+            onLoadState = onLoadState,
+            retryTick = retryTick,
+        )
     }
 
-    // 保存图片到沙盒导出路径 (destPath 由 shared 路由经 PlatformServiceProviders.files.saveFile
-    // 取得, iOS 的 saveFile 返回 Documents/export 可写路径): 取字节复用 [MangaImageBytesLoader]
-    // (图片缓存 → 本地书 FileBook → 按书源下载+解密), 与 desktop/app 端同一条链路
+    // 保存图片：先取得原始字节，再按魔数生成正确扩展名后写入导出目录。
     override suspend fun saveImage(
         url: String,
         book: Book?,
         source: BookSource?,
-        destPath: String
     ): Boolean = withContext(IoDispatcher) {
         book ?: return@withContext false
         runCatching {
             val bytes = MangaImageBytesLoader.load(url, book, source, currentCoroutineContext())
+                ?: return@runCatching false
+            val name = "manga-${systemCurrentTimeMillis()}${imageExtension(bytes, url)}"
+            val destPath = PlatformServiceProviders.get().files.saveFile(name)
                 ?: return@runCatching false
             File(destPath).writeBytes(bytes)
             true

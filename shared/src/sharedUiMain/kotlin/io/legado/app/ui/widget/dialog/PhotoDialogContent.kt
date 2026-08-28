@@ -40,7 +40,7 @@ import io.legado.app.help.image.ImageBitmapLoader
 import io.legado.app.help.image.ReaderImageCache
 import io.legado.app.help.image.decodeBytesSampled
 import io.legado.app.help.image.decodeSvgFallback
-import io.legado.app.help.image.isGifBytes
+import io.legado.app.help.image.isAnimatedImageBytes
 import io.legado.app.help.image.rememberAnimatedImageBitmap
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.BookCoverShared.CoverRatio
@@ -87,8 +87,8 @@ import kotlin.math.max
  * Coil3 磁盘缓存之前)。
  * 手势复用共享 [zoomable] (双指缩放/单指平移/双击循环/fling 惯性, E-Ink 自动降级)。
  *
- * GIF 动图: desktop 经 [rememberAnimatedImageBitmap] 使用 Skiko Codec 逐帧播放；
- * 其余格式与其他端仍走静态 [ImageBitmapLoader] 路径。
+ * GIF/WebP 动图: desktop/iOS/鸿蒙经 [rememberAnimatedImageBitmap] 使用 Skia Codec 逐帧播放；
+ * Android 经 Coil3 `AnimatedImageDecoder`/`GifDecoder` 播放。
  *
  * 加载中显示 [loadingContent] 占位；加载失败显示默认封面占位图
  * (对齐原版 PhotoDialog glide error(BookCover.newDefaultDrawable()) 兜底)。
@@ -129,9 +129,8 @@ fun PhotoDialogContent(
     ) {
         value = loadPhotoState(src, book, bookSource, chapter, photoMaxDim)
     }
-    // GIF 动图: 字节在 loadPhotoState 单次读取时顺带判定 (见 [PhotoLoadState.Success.gifBytes]),
-    // 不再为判定重复读一遍盘。Desktop 使用 Skiko Codec；Android/iOS/鸿蒙交给平台图片管线,
-    // 无法逐帧时退化静态图。
+    // GIF/WebP 动图: 字节在 loadPhotoState 单次读取时顺带判定
+    // (见 [PhotoLoadState.Success.gifBytes])，各端使用对应动图解码管线。
     val successState = photoState as? PhotoLoadState.Success
     val animatedFrame = rememberAnimatedImageBitmap(successState?.gifBytes)
     val successBitmap = successState?.bitmap
@@ -233,7 +232,7 @@ fun PhotoDialogContent(
 private sealed interface PhotoLoadState {
     data object Loading : PhotoLoadState
 
-    /** @param gifBytes 原始字节为 GIF 时携带, 供 [rememberAnimatedImageBitmap] 逐帧播放 */
+    /** @param gifBytes 原始 GIF/WebP 字节，供 [rememberAnimatedImageBitmap] 逐帧播放 */
     data class Success(val bitmap: ImageBitmap, val gifBytes: ByteArray?) : PhotoLoadState
     /** @param cover 用户自定义默认封面集选出的位图 (null = 图集为空/缺文件, 用内置占位图) */
     data class Failed(
@@ -268,8 +267,8 @@ private suspend fun loadPhotoState(
     val bytes = runCatching {
         loadPhotoBytes(src, book, bookSource, chapter, isCover = true)
     }.getOrNull()
-    val gifBytes = bytes?.takeIf { isGifBytes(it) }
-    // 内存位图命中时跳过解码, 但仍用上面读到的字节判定 GIF (阅读页缓存只存单帧)
+    val gifBytes = bytes?.takeIf { isAnimatedImageBytes(it) }
+    // 内存位图命中时跳过解码, 但仍用上面读到的字节判定 GIF/WebP (阅读页缓存只存单帧)
     if (cached != null) return@withContext PhotoLoadState.Success(cached, gifBytes)
     if (bytes == null) return@withContext defaultCoverState(maxDim)
     // 栅格解码 → SVG 兜底（对齐原版 decodeBytes ?: SvgUtils.renderInto 语义）
@@ -349,6 +348,36 @@ fun decodePhotoOverlayPayload(payload: String): Pair<String, Int> {
     return payload.substring(0, sep) to (payload.substring(sep + 1).toIntOrNull() ?: -1)
 }
 
+@Composable
+private fun rememberPhotoSaveAction(
+    src: String,
+    book: Book?,
+    bookSource: BookSource?,
+    chapter: BookChapter?,
+): () -> Unit {
+    val scope = rememberCoroutineScope()
+    return {
+        scope.launch(IoDispatcher) {
+            val bytes = loadPhotoBytes(src, book, bookSource, chapter, isCover = true)
+                ?: run {
+                    Toasters.get().toast("保存图片失败")
+                    return@launch
+                }
+            val files = PlatformServiceProviders.getOrNull()?.files
+            if (files == null) {
+                Toasters.get().toast("保存图片失败")
+                return@launch
+            }
+            // 实际字节决定扩展名；用户取消选目录 (null) 静默返回。
+            when (files.saveImageRememberingDir(imageSaveFileName(src, bytes), bytes)) {
+                true -> Toasters.get().toast("保存成功")
+                false -> Toasters.get().toast("保存图片失败")
+                null -> Unit
+            }
+        }
+    }
+}
+
 /**
  * 大图查看对话框 (AppAlertDialog 形态, 视觉对照原 desktop DesktopPhotoDialog:
  * 内容区 + "关闭"按钮, 图片区占对话框高 0.8)。desktop/iOS/鸿蒙三端共用;
@@ -368,6 +397,7 @@ fun PhotoViewDialog(
     bookSource: BookSource? = null,
     chapter: BookChapter? = null,
 ) {
+    val saveImage = rememberPhotoSaveAction(src, book, bookSource, chapter)
     AppAlertDialog(
         onDismissRequest = onDismiss,
         okButton = AlertButton(stringResource(Res.string.close)),
@@ -379,6 +409,7 @@ fun PhotoViewDialog(
                 book = book,
                 bookSource = bookSource,
                 chapter = chapter,
+                onLongPress = saveImage,
             )
         }
     }
@@ -418,7 +449,7 @@ fun PhotoViewOverlayDialog(
     chapter: BookChapter? = null,
     placeholder: (@Composable () -> Unit)? = null,
 ) {
-    val scope = rememberCoroutineScope()
+    val saveImage = rememberPhotoSaveAction(src, book, bookSource, chapter)
     PlatformPhotoOverlayDialog(onDismissRequest = onDismiss) {
         if (placeholder != null) {
             placeholder()
@@ -432,28 +463,7 @@ fun PhotoViewOverlayDialog(
                 book = book,
                 bookSource = bookSource,
                 chapter = chapter,
-                onLongPress = {
-                    // 长按保存 (对照 master PhotoDialog.doSaveImage): 字节链路 → 落盘 → toast
-                    scope.launch(IoDispatcher) {
-                        val bytes = loadPhotoBytes(src, book, bookSource, chapter, isCover = true)
-                            ?: run {
-                                Toasters.get().toast("保存图片失败")
-                                return@launch
-                            }
-                        val files = PlatformServiceProviders.getOrNull()?.files
-                        if (files == null) {
-                            Toasters.get().toast("保存图片失败")
-                            return@launch
-                        }
-                        // 目录记忆见 FilePickerService.saveImageRememberingDir (上次目录还在
-                        // 就直接写); 用户取消选目录 (null) 静默返回, 不弹失败提示
-                        when (files.saveImageRememberingDir(imageSaveFileName(src), bytes)) {
-                            true -> Toasters.get().toast("保存成功")
-                            false -> Toasters.get().toast("保存图片失败")
-                            null -> Unit
-                        }
-                    }
-                },
+                onLongPress = saveImage,
                 onTap = onDismiss,
                 loadingContent = { Text(stringResource(Res.string.loading), color = Color.White) },
             )

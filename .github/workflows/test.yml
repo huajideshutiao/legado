@@ -443,7 +443,7 @@ jobs:
           merge-multiple: true
       - name: Delete Old Beta Release
         continue-on-error: true
-        run: gh release delete beta -y --cleanup-tag
+        run: gh release delete beta -y --cleanup-tag --repo ${{ github.repository }}
         env:
           GH_TOKEN: ${{ github.token }}
       - name: Publish Pre-Release (全产物)
