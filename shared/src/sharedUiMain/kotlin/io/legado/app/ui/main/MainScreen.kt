@@ -29,7 +29,7 @@ package io.legado.app.ui.main
  *
  * - `pageSelections: SharedFlow<Pair<Int, Boolean>>` 直接传入 (kotlinx.coroutines 跨平台)
  * - `currentPageSink: (Int) -> Unit` 回调替代 `activity.currentPage = it` 写回
- * - `onSelectPage(index, smooth)` / `onReselect(tag)` 回调替代 `activity.selectPage` / `activity.onTabReselect`
+ * - `onSelectPage(index)` / `onReselect(tag)` 回调替代 `activity.selectPage` / `activity.onTabReselect`
  * - `bookshelfTab` lambda 捕获 `bookshelfStyle` state 时, state 变化触发 Content 重组,
  *   新 lambda 传入触发 HorizontalPager content 重组, BookshelfTab 内部 `key(style)` 重建,
  *   语义与原版 `BookshelfTab(style = activity.bookshelfStyle)` 等价
@@ -58,7 +58,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
-import io.legado.app.constant.AppLog
 import io.legado.app.constant.BottomNavTag
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import kotlinx.coroutines.flow.SharedFlow
@@ -77,7 +76,7 @@ import kotlinx.coroutines.launch
  * @param pageSelections 页面跳转指令流: index to smooth
  * @param currentPageSink pager 当前页回写回调(供返回键/重选判定)
  * @param settledPageSink pager 停稳页回写回调(供宿主按"真正翻到该页"门控 tab 内网络加载)
- * @param onSelectPage 跳转页回调(index, smooth)
+ * @param onSelectPage 跳转页回调(index)
  * @param onReselect 重选当前 tab 回调(传 tag)
  * @param homeTab 主页 tab composable (app 端注入)
  * @param bookshelfTab 书架 tab composable (app 端注入, 内部读 bookshelfStyle + 回传 controller)
@@ -94,7 +93,7 @@ fun MainScreen(
     pageSelections: SharedFlow<Pair<Int, Boolean>>,
     currentPageSink: (Int) -> Unit,
     settledPageSink: (Int) -> Unit,
-    onSelectPage: (Int, Boolean) -> Unit,
+    onSelectPage: (Int) -> Unit,
     onReselect: (String) -> Unit,
     homeTab: @Composable () -> Unit,
     bookshelfTab: @Composable () -> Unit,
@@ -174,7 +173,7 @@ fun MainScreen(
             MainNavRail(
                 tags = visibleTags,
                 selectedIndex = pagerState.currentPage,
-                onSelect = { onSelectPage(it, true) },
+                onSelect = onSelectPage,
                 onReselect = onReselect,
                 iconSize = bottomBarIconSize,
                 labelMode = bottomBarLabelMode,
@@ -187,7 +186,7 @@ fun MainScreen(
             MainBottomBar(
                 tags = visibleTags,
                 selectedIndex = pagerState.currentPage,
-                onSelect = { onSelectPage(it, true) },
+                onSelect = onSelectPage,
                 onReselect = onReselect,
                 iconSize = bottomBarIconSize,
                 barHeight = bottomBarHeight,

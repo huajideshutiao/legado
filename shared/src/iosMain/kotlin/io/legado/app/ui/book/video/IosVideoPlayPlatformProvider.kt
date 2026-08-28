@@ -2,39 +2,22 @@
 
 package io.legado.app.ui.book.video
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.size
-import androidx.compose.material.CircularProgressIndicator
-import androidx.compose.material.Icon
-import androidx.compose.material.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.interop.UIKitView
-import androidx.compose.ui.unit.dp
 import io.legado.app.help.media.AvPlayerBufferingObserver
 import io.legado.app.help.media.AvPlayerItemStatusObserver
 import io.legado.app.ui.IosStatusBarHiddenKey
 import io.legado.app.ui.IosStatusBarHiddenNotification
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import legado.shared.generated.resources.Res
-import legado.shared.generated.resources.ic_fullscreen_enter
-import legado.shared.generated.resources.ic_fullscreen_exit
-import org.jetbrains.compose.resources.painterResource
 import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerItem
 import platform.AVFoundation.AVPlayerItemDidPlayToEndTimeNotification
@@ -47,12 +30,15 @@ import platform.AVFoundation.rate
 import platform.AVFoundation.replaceCurrentItemWithPlayerItem
 import platform.AVFoundation.seekToTime
 import platform.AVFoundation.setRate
+import platform.AVFoundation.setVolume
+import platform.AVFoundation.volume
 import platform.AVKit.AVPlayerViewController
 import platform.CoreMedia.CMTimeGetSeconds
 import platform.CoreMedia.CMTimeMake
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSURL
+import platform.UIKit.UIScreen
 
 // iOS 视频播放平台能力: AVPlayer 播控, AVPlayerViewController 仅渲染 (纯视频流)
 object IosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
@@ -63,119 +49,69 @@ object IosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
     ): VideoPlayerController = IosVideoPlayerController(onPlaybackEnded)
 
     @Composable
-    override fun Render(
+    override fun RenderSurface(
         controller: VideoPlayerController,
         screenModel: VideoPlayScreenModel,
         modifier: Modifier,
     ) {
         val iosController = controller as? IosVideoPlayerController ?: return
-        // 必须以 State 订阅: 直读 StateFlow.value 不会随链接就绪重组, 会一直停在等待态 (对照 desktop 64711ebf22)
         val videoUrl by screenModel.shared.videoUrl.collectAsState()
-        val uiState by screenModel.state.collectAsState()
         val url = videoUrl?.url
         // AVPlayerViewController: 只出画面 (showsPlaybackControls=false), 系统控制条不显示
         val avpvc = remember { AVPlayerViewController() }
-        // 控制层回显: AVPlayer 属性非 State, 轮询写入驱动重组 (对照 desktop 控制层进度轮询)
-        var controlsPositionMs by remember { mutableLongStateOf(0L) }
-        var controlsDurationMs by remember { mutableLongStateOf(0L) }
-        var isPlaying by remember { mutableStateOf(false) }
 
         LaunchedEffect(url) {
             if (url != null) iosController.loadUrl(url)
         }
 
-        LaunchedEffect(uiState.controlsVisible) {
-            while (uiState.controlsVisible) {
-                controlsPositionMs = iosController.positionMs
-                controlsDurationMs = iosController.durationMs
-                isPlaying = iosController.player?.rate()?.let { it > 0f } == true
-                delay(500)
-            }
-        }
+        UIKitView(
+            factory = {
+                avpvc.apply {
+                    showsPlaybackControls = false
+                }.view
+            },
+            update = {
+                avpvc.player = iosController.player
+            },
+            modifier = modifier.fillMaxSize(),
+        )
+    }
 
-        // 缓冲状态 (事件驱动: KVO 观察 item.status / player.timeControlStatus, 无轮询)
-        val isBuffering by iosController.isBufferingFlow.collectAsState()
-        // 加载/错误: 章节内容加载中整层转圈; 失败显示错误占位 (对齐 desktop/app)
-        val error = uiState.error
-        val showLoading = error == null && uiState.loading
-
-        Box(modifier) {
-            UIKitView(
-                factory = {
-                    avpvc.apply {
-                        // 纯播放: 隐藏系统控制条, 控制交给 Compose 统一处理
-                        showsPlaybackControls = false
-                    }.view
-                },
-                update = {
-                    avpvc.player = iosController.player
-                },
-                modifier = Modifier.fillMaxSize(),
+    @Composable
+    override fun rememberGestureController(
+        controller: VideoPlayerController,
+        screenModel: VideoPlayScreenModel,
+    ): VideoGestureController? {
+        val iosController = controller as? IosVideoPlayerController ?: return null
+        return remember(iosController) {
+            VideoGestureController(
+                isPlaying = { iosController.player?.rate()?.let { it > 0f } == true },
+                positionMs = { iosController.positionMs },
+                durationMs = { iosController.durationMs },
+                speed = { iosController.player?.rate() ?: 1f },
+                setSpeed = { iosController.setSpeed(it) },
+                onPlayPause = { iosController.playPause() },
+                seekTo = { iosController.seekTo(it) },
+                readBrightness = { UIScreen.mainScreen.brightness.toFloat() },
+                writeBrightness = { UIScreen.mainScreen.brightness = it.toDouble() },
+                readVolume = { iosController.player?.volume ?: 1f },
+                writeVolume = { iosController.player?.setVolume(it) },
+                onToggleControls = screenModel::onToggleControls,
+                onGestureText = screenModel::onGestureText,
             )
-            // 加载/错误占位 + 缓冲圈 (加载中整层转圈, 缓冲中央小圈; 对齐 desktop/app)
-            when {
-                error != null -> ErrorOverlay(error = error, onRetry = screenModel::onRefreshChapter)
-                showLoading -> LoadingOverlay()
-                isBuffering -> Box(
-                    Modifier.matchParentSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(
-                        color = Color.White,
-                        modifier = Modifier.size(48.dp),
-                    )
-                }
-            }
-            // 透明触摸层: UIKit 视图不参与 Compose 触摸测试, 盖一层透明 clickable
-            // 让"点击视频区切换控制层"落到 Compose (控制层可见时它在其下, 不抢按钮事件)
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .clickable { screenModel.onToggleControls() }
-            )
-            // 控制层: iOS 无 airspace, Compose 可直接叠在 UIKit 视图之上 (对照桌面窗口级 Popup)
-            if (uiState.controlsVisible && error == null && !showLoading) {
-                Box(
-                    Modifier
-                        .matchParentSize()
-                        .clickable { screenModel.onToggleControls() }
-                ) {
-                    VideoControlsOverlay(
-                        visible = true,
-                        isPlaying = isPlaying,
-                        positionMs = controlsPositionMs,
-                        durationMs = controlsDurationMs,
-                        playbackSpeed = uiState.playbackSpeed,
-                        hasMultiResolution = uiState.hasMultiResolution,
-                        resolutions = uiState.resolutions,
-                        currentResolutionIndex = uiState.currentResolutionIndex,
-                        onPlayPause = screenModel::onPlayPause,
-                        onSeek = screenModel::onSeekTo,
-                        onSpeedChange = screenModel::onSpeedChange,
-                        onSwitchResolution = screenModel::onSwitchResolution,
-                        // 全屏钮 (对照 app 端 toggleOrientationFullscreen): iOS 不支持编程强制方向,
-                        // 联动仅停留在状态栏显隐 (见 [applyFullscreen]); 图标随全屏态切换
-                        trailingBottomContent = {
-                            IconButton(onClick = { screenModel.onToggleOrientationFullscreen() }) {
-                                Icon(
-                                    painter = painterResource(
-                                        if (uiState.isFullScreen) {
-                                            Res.drawable.ic_fullscreen_exit
-                                        } else {
-                                            Res.drawable.ic_fullscreen_enter
-                                        }
-                                    ),
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                )
-                            }
-                        },
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-            }
         }
     }
+
+    @Composable
+    override fun isBuffering(
+        controller: VideoPlayerController,
+        screenModel: VideoPlayScreenModel,
+    ): Boolean? {
+        val iosController = controller as? IosVideoPlayerController ?: return null
+        val isBuffering by iosController.isBufferingFlow.collectAsState()
+        return isBuffering
+    }
+
     override fun applyFullscreen(enabled: Boolean) {
         // 对照原版 setFullScreen 的系统栏部分 (iOS 无窗口内全屏布局概念, 全屏观感=状态栏显隐):
         // 经 SwiftUI 根视图 .statusBarHidden 桥, 与 WindowPolicy.setSystemBars 同通道

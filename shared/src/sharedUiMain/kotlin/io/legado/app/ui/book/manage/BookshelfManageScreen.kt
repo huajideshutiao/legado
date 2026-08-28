@@ -41,7 +41,6 @@ import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.component.SelectActionBar
-import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
@@ -60,6 +59,8 @@ import legado.shared.generated.resources.group
 import legado.shared.generated.resources.group_manage
 import legado.shared.generated.resources.ic_clear_all
 import legado.shared.generated.resources.ic_groups
+import legado.shared.generated.resources.ic_play_24dp
+import legado.shared.generated.resources.ic_stop_black_24dp
 import legado.shared.generated.resources.log
 import legado.shared.generated.resources.menu_download_after
 import legado.shared.generated.resources.menu_download_all
@@ -240,8 +241,8 @@ private fun BookshelfManageActions(
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                painter = rememberPainter(
-                    if (downloadRunning) "ic_stop_black_24dp" else "ic_play_24dp"
+                painter = painterResource(
+                    if (downloadRunning) Res.drawable.ic_stop_black_24dp else Res.drawable.ic_play_24dp
                 ),
                 contentDescription = stringResource(Res.string.action_download),
                 tint = colors.primaryText,
@@ -376,7 +377,6 @@ private fun RuleItemScope.BookItem(
         else groupNameMap.filterKeys { it and book.group > 0 }.values.joinToString(",")
     }
     // 长按=拖拽排序(仅手动排序);点按 root=切换选中;点封面=打开详情(避让长按拖拽,不再 combinedClickable)
-    // 复刻原 ConstraintLayout: 文本随封面顶端对齐(tv_name top_toTopOf iv_cover)而非整列垂直居中
     Row(
         Modifier
             .fillMaxWidth()
@@ -386,7 +386,7 @@ private fun RuleItemScope.BookItem(
             )
             .clickable { callbacks.onToggle(book, !checked) }
             .padding(8.dp),
-        verticalAlignment = Alignment.Top,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         // 原 checkbox 上下约束到 parent → 垂直居中
         AppCheckbox(
@@ -411,6 +411,7 @@ private fun RuleItemScope.BookItem(
                 .weight(1f)
                 .padding(start = 8.dp),
         ) {
+            // 上半部分单独一块：书名 + 作者，占满宽度不受右侧操作按钮挤压
             Text(
                 text = book.name,
                 color = colors.primaryText,
@@ -428,73 +429,83 @@ private fun RuleItemScope.BookItem(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = originText,
-                    // 对照原版 tv_origin 用 tv_text_summary(arco_text_3)
-                    color = colors.summaryText,
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (groupName.isNotEmpty()) {
-                    Text(
-                        text = groupName,
-                        color = colors.secondaryText,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        // 分组名与书源间保留 8dp 间距(有意偏离原版紧贴, 便于视觉区分)
-                        modifier = Modifier.padding(start = 8.dp),
-                    )
-                }
-            }
-            cacheInfoText?.let { info ->
-                Text(
-                    text = info,
-                    color = colors.secondaryText,
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-        // 右侧动作簇: 下载/分组/删除同心垂直居中(对照原版 iv_download top/bottom 对齐 tv_group,
-        // tv_group/iv_delete 约束于「作者底~item底」区间居中), 本地书隐藏下载图标(对照 upDownloadIv)
-        Row(
-            modifier = Modifier.align(Alignment.Bottom),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (!book.isLocal) {
-                IconButton(
-                    onClick = { callbacks.onToggleDownload(book) },
-                ) {
-                    Icon(
-                        painter = rememberPainter(
-                            if (downloading) "ic_stop_black_24dp" else "ic_play_24dp"
-                        ),
-                        contentDescription = stringResource(Res.string.start),
-                        // 对照原版 iv_download 容器 28dp 内 24dp 图标
-                        tint = colors.primaryText,
-                        modifier = Modifier.size(24.dp),
-                    )
-                }
-            }
-            Text(
-                text = stringResource(Res.string.group),
-                color = colors.secondaryText,
-                modifier = Modifier
-                    .clickable { callbacks.onEditGroup(book) }
-                    .padding(8.dp),
-            )
-            IconButton(
-                onClick = { callbacks.onDeleteBook(book) },
+            // 下半部分：左侧为书源/分组/下载数，右侧为下载按钮、分组、删除按钮
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(
-                    painter = painterResource(Res.drawable.ic_clear_all),
-                    contentDescription = stringResource(Res.string.delete),
-                    tint = colors.primaryText,
-                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = originText,
+                            // 对照原版 tv_origin 用 tv_text_summary(arco_text_3)
+                            color = colors.summaryText,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (groupName.isNotEmpty()) {
+                            Text(
+                                text = groupName,
+                                color = colors.secondaryText,
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                // 分组名与书源间保留 8dp 间距(便于视觉区分)
+                                modifier = Modifier.padding(start = 8.dp),
+                            )
+                        }
+                    }
+                    cacheInfoText?.let { info ->
+                        Text(
+                            text = info,
+                            color = colors.secondaryText,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                // 右侧操作动作簇：下载/分组/删除
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (!book.isLocal) {
+                        IconButton(
+                            onClick = { callbacks.onToggleDownload(book) },
+                            modifier = Modifier.size(32.dp),
+                        ) {
+                            Icon(
+                                painter = painterResource(
+                                    if (downloading) Res.drawable.ic_stop_black_24dp else Res.drawable.ic_play_24dp
+                                ),
+                                contentDescription = stringResource(Res.string.start),
+                                tint = colors.primaryText,
+                                modifier = Modifier.size(24.dp),
+                            )
+                        }
+                    }
+                    Text(
+                        text = stringResource(Res.string.group),
+                        color = colors.secondaryText,
+                        modifier = Modifier
+                            .clickable { callbacks.onEditGroup(book) }
+                            .padding(8.dp),
+                    )
+                    IconButton(
+                        onClick = { callbacks.onDeleteBook(book) },
+                        modifier = Modifier.size(32.dp),
+                    ) {
+                        Icon(
+                            painter = painterResource(Res.drawable.ic_clear_all),
+                            contentDescription = stringResource(Res.string.delete),
+                            tint = colors.primaryText,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+                }
             }
         }
     }

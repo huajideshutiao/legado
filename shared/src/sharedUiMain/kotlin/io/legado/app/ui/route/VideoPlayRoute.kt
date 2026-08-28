@@ -23,6 +23,7 @@ import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.book.video.VideoPlayScreenModel
 import io.legado.app.ui.book.video.VideoPlayUiEvent
+import io.legado.app.ui.book.video.VideoPlayerHostContainer
 import io.legado.app.ui.book.video.VideoPlayerScreenContent
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.platform.AppBackHandler
@@ -276,7 +277,7 @@ fun VideoPlayRoute(
             val controller = screenModel.controller
             val platform = screenModel.platform
             if (controller != null && platform != null) {
-                platform.Render(controller, screenModel, modifier)
+                VideoPlayerHostContainer(platform, controller, screenModel, modifier)
             }
         },
         onTitleClick = onTitleClick,

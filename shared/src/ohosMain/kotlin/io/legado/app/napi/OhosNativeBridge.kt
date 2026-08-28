@@ -1160,6 +1160,18 @@ object OhosNativeBridge {
         )
     }
 
+    /** 设置窗口亮度 (对照 @ohos.window setWindowBrightness, brightness 范围 0.0f..1.0f, -1.0f 为跟随系统)。 */
+    fun setWindowBrightness(brightness: Float) {
+        sendWindowCommand(
+            KS_JSON.encodeToString(
+                WindowCommand(
+                    action = "setBrightness",
+                    brightness = brightness,
+                )
+            )
+        )
+    }
+
     /**
      * 退出应用 (经 window tsfn dispatch 到 ArkTS UIAbilityContext.terminateSelf)。
      *
@@ -1976,6 +1988,7 @@ object OhosNativeBridge {
         val action: String,
         val enabled: Boolean? = null,
         val orientation: Int? = null,
+        val brightness: Float? = null,
     )
 
     /** TTS 命令 payload (Kotlin → ArkTS, createEngine/speak/pause/resume/stop/shutdown)。 */

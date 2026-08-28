@@ -26,7 +26,7 @@ class DebugWsHandler(
     private val cannotEmptyMsg: String,
 ) : WsHandler, Debug.Callback, CoroutineScope by MainScope() {
 
-    private val notPrintState = arrayOf(10, 20, 30, 40)
+    private val notPrintState = arrayOf(10, 20, 30, 40, 50)
 
     override fun onMessage(text: String) {
         launch(IoDispatcher) {

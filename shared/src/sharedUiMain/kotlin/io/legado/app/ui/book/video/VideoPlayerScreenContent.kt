@@ -37,7 +37,9 @@ import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -77,7 +79,6 @@ import legado.shared.generated.resources.ic_fullscreen_enter
 import legado.shared.generated.resources.ic_fullscreen_exit
 import legado.shared.generated.resources.ic_skip_next
 import legado.shared.generated.resources.ic_skip_previous
-import legado.shared.generated.resources.loading
 import legado.shared.generated.resources.next_chapter
 import legado.shared.generated.resources.pause
 import legado.shared.generated.resources.play
@@ -831,18 +832,7 @@ fun Long.toDurationTime(): String {
 @Composable
 fun LoadingOverlay() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            CircularProgressIndicator(
-                color = Color.White,
-                strokeWidth = 4.dp,
-                modifier = Modifier.size(48.dp),
-            )
-            Text(
-                text = stringResource(Res.string.loading),
-                color = Color.White,
-                modifier = Modifier.padding(top = 12.dp),
-            )
-        }
+        VideoBufferingIndicator()
     }
 }
 
@@ -925,4 +915,178 @@ fun VideoLockToggle(
         )
     }
 }
+
+/**
+ * 视频播放器宿主容器 (全平台统一覆盖层)。
+ *
+ * 平台仅需通过 [VideoPlayPlatformProvider.RenderSurface] 提供纯视频画面 Surface。
+ * 全部 UI 覆盖层在此统一编排:
+ * 1. 平台原生 Surface (底面)
+ * 2. 手势交互层 (单击切控制栏/双击播放暂停/长按倍速/横竖滑动)
+ * 3. 错误占位 / 加载中转圈 (样式统一为主题强调色缓冲圈)
+ * 4. 播放控制栏 (中央播放快进快退选集 + 底部进度条/倍速/分辨率/全屏)
+ * 5. 锁定/解锁钮 (锁定后隐藏手势与控制栏)
+ * 6. 缓冲中转圈 (与加载中样式统一)
+ * 7. 手势调节反馈 HUD (倍速/音量/亮度/进度)
+ */
+@Composable
+fun VideoPlayerHostContainer(
+    platform: VideoPlayPlatformProvider,
+    controller: VideoPlayerController,
+    screenModel: VideoPlayScreenModel,
+    modifier: Modifier = Modifier,
+) {
+    val uiState by screenModel.state.collectAsState()
+    val gestureText by screenModel.gestureText.collectAsState()
+    var locked by remember { mutableStateOf(false) }
+    var positionMs by remember { mutableLongStateOf(0L) }
+    var bufferedMs by remember { mutableLongStateOf(0L) }
+    var durationMs by remember { mutableLongStateOf(0L) }
+    var seeking by remember { mutableStateOf(false) }
+
+    val platformBuffering = platform.isBuffering(controller, screenModel)
+    val isBuffering = platformBuffering ?: (uiState.isBuffering ||
+        (uiState.playWhenReady && uiState.playbackState == 2 /* Player.STATE_BUFFERING */))
+    val playingOrBuffering = uiState.isPlaying || isBuffering
+
+    VideoPlaybackPoller(
+        controlsVisible = uiState.controlsVisible,
+        autoHideActive = playingOrBuffering,
+        seeking = seeking,
+        locked = locked,
+        onAutoHide = screenModel::onToggleControls,
+        poll = {
+            positionMs = controller.positionMs
+            bufferedMs = controller.bufferedMs
+            durationMs = controller.durationMs
+        },
+    )
+
+    val customGestureController = platform.rememberGestureController(controller, screenModel)
+    val defaultGestureController = remember(controller, screenModel) {
+        VideoGestureController(
+            isPlaying = { uiState.isPlaying },
+            positionMs = { controller.positionMs },
+            durationMs = { controller.durationMs },
+            speed = { uiState.playbackSpeed },
+            setSpeed = screenModel::onSpeedChange,
+            onPlayPause = screenModel::onPlayPause,
+            seekTo = screenModel::onSeekTo,
+            readBrightness = { 0.5f },
+            writeBrightness = {},
+            readVolume = { 0.5f },
+            writeVolume = {},
+            onToggleControls = screenModel::onToggleControls,
+            onGestureText = screenModel::onGestureText,
+        )
+    }
+    val gestureController = customGestureController ?: defaultGestureController
+
+    val error = uiState.error
+    val showLoading = error == null && uiState.loading
+    val showBuffering = error == null && !showLoading && isBuffering
+
+    Box(
+        modifier
+            .fillMaxSize()
+            .background(Color.Black)
+    ) {
+        // 1. 平台纯 Surface
+        platform.RenderSurface(controller, screenModel, Modifier.fillMaxSize())
+
+        // 2. 共享手势层
+        VideoGestureOverlay(
+            handler = gestureController,
+            locked = locked,
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        // 3. 错误占位 / 加载中占位
+        if (error != null) {
+            ErrorOverlay(error = error, onRetry = screenModel::onRefreshChapter)
+        } else if (showLoading) {
+            LoadingOverlay()
+        }
+
+        // 4. 控制层 (加载/错误态不叠; 锁定态隐藏)
+        if (!locked) {
+            VideoControlsOverlay(
+                visible = uiState.controlsVisible && error == null && !showLoading,
+                isPlaying = uiState.isPlaying,
+                positionMs = positionMs,
+                durationMs = durationMs,
+                bufferedMs = bufferedMs,
+                playbackSpeed = uiState.playbackSpeed,
+                hasMultiResolution = uiState.hasMultiResolution,
+                resolutions = uiState.resolutions,
+                currentResolutionIndex = uiState.currentResolutionIndex,
+                onPlayPause = screenModel::onPlayPause,
+                onSeek = screenModel::onSeekTo,
+                onSpeedChange = screenModel::onSpeedChange,
+                onSwitchResolution = screenModel::onSwitchResolution,
+                onSeekDragStateChange = { seeking = it },
+                centerControls = {
+                    VideoCenterControls(
+                        isPlaying = uiState.isPlaying,
+                        onPrev = screenModel::onPrevChapter,
+                        onSeekBack = screenModel::onSeekBack,
+                        onPlayPause = screenModel::onPlayPause,
+                        onSeekForward = screenModel::onSeekForward,
+                        onNext = screenModel::onNextChapter,
+                        rewindDesc = stringResource(Res.string.previous_chapter),
+                        forwardDesc = stringResource(Res.string.next_chapter),
+                        enabledPrev = uiState.curChapterIndex > 0,
+                        enabledNext = uiState.curChapterIndex < uiState.chapterSize - 1,
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+                },
+                leadingContent = {
+                    VideoLockToggle(
+                        locked = false,
+                        onClick = {
+                            locked = true
+                            screenModel.onToggleControls()
+                        },
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .padding(start = 16.dp),
+                    )
+                },
+                isSystemFullScreen = uiState.isSystemFullScreen,
+                onToggleSystemFullScreen = screenModel::onToggleSystemFullScreen,
+                showSystemFullScreenButton = true,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        // 5. 锁定态: 仅留半透明小锁钮
+        if (locked) {
+            VideoLockToggle(
+                locked = true,
+                onClick = { locked = false },
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(start = 16.dp),
+            )
+        }
+
+        // 6. 缓冲圈
+        if (showBuffering) {
+            VideoBufferingIndicator(
+                modifier = Modifier.align(Alignment.Center),
+            )
+        }
+
+        // 7. 手势反馈文字
+        gestureText?.let {
+            VideoGestureFeedbackText(
+                text = it,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 16.dp),
+            )
+        }
+    }
+}
+
 

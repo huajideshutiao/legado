@@ -2,23 +2,16 @@ package io.legado.app.ui.book.video
 
 import kotlin.concurrent.Volatile
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.size
-import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.interop.ArkUIView2
 import androidx.compose.ui.napi.js
-import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.remember
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.utils.KS_JSON
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -51,48 +44,60 @@ object OhosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
      * interactive=false: 触摸留给 Compose 控件层 (进度条/手势), ArkUI 侧不参与触摸测试。
      */
     @Composable
-    override fun Render(
+    override fun RenderSurface(
         controller: VideoPlayerController,
         screenModel: VideoPlayScreenModel,
         modifier: Modifier,
     ) {
-        // 必须以 State 订阅: 直读 StateFlow.value 不会随链接就绪重组, 会一直停在等待态 (对照 desktop 64711ebf22)
         val videoUrl by screenModel.shared.videoUrl.collectAsState()
-        val uiState by screenModel.state.collectAsState()
         val url = videoUrl?.url
-        // 缓冲状态 (事件驱动: ArkTS 事件回推 StateFlow, 无轮询)
-        val isBuffering by (controller as? OhosVideoPlayerController)
-            ?.isBufferingFlow
-            ?.collectAsState() ?: remember { mutableStateOf(false) }
+
         LaunchedEffect(url) {
             if (url != null) (controller as? OhosVideoPlayerController)?.loadUrl(url)
         }
-        // 加载/错误: 章节内容加载中整层转圈; 失败显示错误占位 (对齐 desktop/app)
-        val error = uiState.error
-        val showLoading = error == null && uiState.loading
-        Box(modifier.fillMaxSize()) {
-            ArkUIView2(
-                name = ARKUI_BUILDER_VIDEO_SURFACE,
-                modifier = Modifier.fillMaxSize(),
-                parameter = js { "playerId"(OhosNativeBridge.PLAYER_ID_VIDEO_BOOK) },
-                background = Color.Black,
-                interactive = false,
+
+        ArkUIView2(
+            name = ARKUI_BUILDER_VIDEO_SURFACE,
+            modifier = modifier.fillMaxSize(),
+            parameter = js { "playerId"(OhosNativeBridge.PLAYER_ID_VIDEO_BOOK) },
+            background = Color.Black,
+            interactive = false,
+        )
+    }
+
+    @Composable
+    override fun rememberGestureController(
+        controller: VideoPlayerController,
+        screenModel: VideoPlayScreenModel,
+    ): VideoGestureController? {
+        val ohosController = controller as? OhosVideoPlayerController ?: return null
+        return remember(ohosController) {
+            VideoGestureController(
+                isPlaying = { ohosController.isPlaying },
+                positionMs = { ohosController.positionMs },
+                durationMs = { ohosController.durationMs },
+                speed = { ohosController.speed },
+                setSpeed = { ohosController.setSpeed(it) },
+                onPlayPause = { ohosController.playPause() },
+                seekTo = { ohosController.seekTo(it) },
+                readBrightness = { if (ohosController.brightness >= 0f) ohosController.brightness else 0.5f },
+                writeBrightness = { ohosController.setBrightness(it) },
+                readVolume = { ohosController.volume },
+                writeVolume = { ohosController.setVolume(it) },
+                onToggleControls = screenModel::onToggleControls,
+                onGestureText = screenModel::onGestureText,
             )
-            // 加载/错误占位 + 缓冲圈 (加载中整层转圈, 缓冲中央小圈; 对齐 desktop/app)
-            when {
-                error != null -> ErrorOverlay(error = error, onRetry = screenModel::onRefreshChapter)
-                showLoading -> LoadingOverlay()
-                isBuffering -> Box(
-                    Modifier.matchParentSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(
-                        color = Color.White,
-                        modifier = Modifier.size(48.dp),
-                    )
-                }
-            }
         }
+    }
+
+    @Composable
+    override fun isBuffering(
+        controller: VideoPlayerController,
+        screenModel: VideoPlayScreenModel,
+    ): Boolean? {
+        val ohosController = controller as? OhosVideoPlayerController ?: return null
+        val isBuffering by ohosController.isBufferingFlow.collectAsState()
+        return isBuffering
     }
 
     /** ArkTS 侧 `registerComposeInteropBuilder` 的注册 key (需与 ets 端字面量一致)。 */
@@ -119,12 +124,22 @@ class OhosVideoPlayerController(
 
     @Volatile
     private var playing = false
+
+    @Volatile
+    var speed = 1f
+        private set
+
+    @Volatile
+    var volume = 1f
+        private set
+
+    @Volatile
+    var brightness = -1f
+        private set
     @Volatile
     private var cachedDuration = 0L
     @Volatile
     private var cachedPosition = 0L
-    @Volatile
-    private var speed = 1f
     @Volatile
     private var loadedUrl: String? = null
     @Volatile
@@ -139,6 +154,9 @@ class OhosVideoPlayerController(
     /** 缓冲中: 链接就绪后 AVPlayer 未 prepare 完成 (onReady 前), 或缓冲百分比 < 100 (起播/卡顿/seek)。 */
     val isBuffering: Boolean
         get() = !ready || bufferingPercent < 100
+
+    val isPlaying: Boolean
+        get() = playing
 
     private val _isBuffering = MutableStateFlow(false)
     /** 缓冲状态 (事件驱动: ArkTS 事件回推 StateFlow, 无轮询)。 */
@@ -191,10 +209,24 @@ class OhosVideoPlayerController(
         sendCommand(MediaCommand(action = "setSpeed", speed = speed))
     }
 
+    fun setVolume(vol: Float) {
+        volume = vol.coerceIn(0f, 1f)
+        sendCommand(MediaCommand(action = "setVolume", volume = volume.toDouble()))
+    }
+
+    fun setBrightness(b: Float) {
+        brightness = b.coerceIn(0f, 1f)
+        OhosNativeBridge.setWindowBrightness(brightness)
+    }
+
     override fun seekBack() = seekBy(-10000)
     override fun seekForward() = seekBy(10000)
 
     override fun release() {
+        if (brightness >= 0f) {
+            OhosNativeBridge.setWindowBrightness(-1f)
+            brightness = -1f
+        }
         sendCommand(MediaCommand(action = "release"))
         if (listenerRegistered) {
             OhosNativeBridge.setMediaEventListener(OhosNativeBridge.PLAYER_ID_VIDEO_BOOK, null)
@@ -265,6 +297,7 @@ class OhosVideoPlayerController(
         val url: String? = null,
         val position: Long? = null,
         val speed: Float? = null,
+        val volume: Double? = null,
     )
 
     @Serializable

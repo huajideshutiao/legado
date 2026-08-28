@@ -544,11 +544,8 @@ class UpdateBookShared(
                 onUpTocJobCompleted()
                 updateProgress()
                 // 所有目录更新完成 (非 cancel/异常) 且无预下载任务在跑时, 启动预下载
-                // (对照 app 端 startUpTocJob.onCompletion 内
-                //  `if (it == null && cacheBookJob == null && !CacheBookService.isRun) cacheBook()`)
-                // 平台差异: 用 CacheBookShared.isRun 替代 CacheBookService.isRun / DesktopCacheBook.isRun
-                // (各端 CacheBook 单例都是 CacheBookShared 的薄壳, isRun 直接查 cacheBookMap 内任务状态)
-                if (it == null && cacheBookJob == null && !CacheBookShared.isRun) {
+                // (对照 app 端 startUpTocJob.onCompletion 内 `if (it == null && cacheBookJob == null && !CacheBookService.isRun) cacheBook()`)
+                if (it == null && cacheBookJob?.isActive != true) {
                     cacheBook()
                 }
             }.catch {

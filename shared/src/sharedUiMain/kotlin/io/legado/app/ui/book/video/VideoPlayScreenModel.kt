@@ -66,15 +66,33 @@ interface VideoPlayPlatformProvider {
     ): VideoPlayerController
 
     /**
-     * 渲染视频区。加载/错误/"播放器未安装"等占位一律由本方法自己出
-     * (可复用 [LoadingOverlay]/[ErrorOverlay]), 共享层不叠通用遮罩。
+     * 渲染平台原生视频画面 (纯 Surface, 如 Android PlayerView / 桌面 mpv Canvas / iOS UIKitView / 鸿蒙 ArkUIView2)。
+     * 全部 UI 覆盖层 (手势、加载转圈、缓冲圈、错误重试、播放控制条、锁定钮、手势提示) 统一由共享层 [VideoPlayerHostContainer] 编排。
      */
     @Composable
-    fun Render(
+    fun RenderSurface(
         controller: VideoPlayerController,
         screenModel: VideoPlayScreenModel,
         modifier: Modifier,
     )
+
+    /**
+     * 平台手势控制器 (可选)。未重写时使用共享层默认手势控制器。
+     */
+    @Composable
+    fun rememberGestureController(
+        controller: VideoPlayerController,
+        screenModel: VideoPlayScreenModel,
+    ): VideoGestureController? = null
+
+    /**
+     * 是否处于缓冲态 (可选)。平台可通过控制器或特定状态源自定义判定, 未提供时依据 UiState 判定。
+     */
+    @Composable
+    fun isBuffering(
+        controller: VideoPlayerController,
+        screenModel: VideoPlayScreenModel,
+    ): Boolean? = null
 
     fun applyFullscreen(enabled: Boolean) {}
     fun toggleOrientation() {}
@@ -458,6 +476,7 @@ class VideoPlayScreenModel : ScreenModel {
         playWhenReady: Boolean? = null,
         playbackState: Int? = null,
         playbackSpeed: Float? = null,
+        isBuffering: Boolean? = null,
     ) {
         _state.update { current ->
             current.copy(
@@ -465,6 +484,7 @@ class VideoPlayScreenModel : ScreenModel {
                 playWhenReady = playWhenReady ?: current.playWhenReady,
                 playbackState = playbackState ?: current.playbackState,
                 playbackSpeed = playbackSpeed ?: current.playbackSpeed,
+                isBuffering = isBuffering ?: current.isBuffering,
             )
         }
     }
@@ -512,6 +532,7 @@ data class VideoPlayUiState(
     val loading: Boolean = false,
     val error: String? = null,
     val isPlaying: Boolean = false,
+    val isBuffering: Boolean = false,
     val playbackSpeed: Float = 1f,
     val controlsVisible: Boolean = false,
     /** 是否在书架中 (对照 Activity inShelf) */

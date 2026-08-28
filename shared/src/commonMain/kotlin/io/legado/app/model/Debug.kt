@@ -8,6 +8,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.coroutine.CompositeCoroutine
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.model.Debug.formatDuration
 import io.legado.app.model.analyzeRule.AnalyzeRuleCore
 import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
 import io.legado.app.model.webBook.WebBook
@@ -276,7 +277,12 @@ object Debug {
                 if (searchBooks.isNotEmpty()) {
                     log(debugSource, "︽搜索页解析完成")
                     log(debugSource, showTime = false)
-                    infoDebug(scope, bookSource, searchBooks[0].toBook())
+                    val book = searchBooks[0]
+                    if (book.bookUrl.contains("::")) {
+                        exploreDebug(scope, bookSource, book.bookUrl.substringAfter("::"))
+                    } else {
+                        infoDebug(scope, bookSource, book.toBook())
+                    }
                 } else {
                     log(debugSource, "︽未获取到书籍", state = -1)
                 }

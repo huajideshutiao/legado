@@ -306,8 +306,7 @@ fun MainRoute(
     // (Overlay 由 LegadoApp 根部 BackHandler 先关, 对齐原版"对话框先吃返回键")
     AppBackHandler(enabled = backStack.lastOrNull()?.id == entry.id && overlays.isEmpty()) {
         if (bookshelfIndex >= 0 && currentPage != bookshelfIndex) {
-            // 对照原版 binding.viewPagerMain.currentItem = bookshelfPos (无动画直切)
-            pageSelections.tryEmit(bookshelfIndex to false)
+            pageSelections.tryEmit(bookshelfIndex to true)
             return@AppBackHandler
         }
         // 对照原版 exitTime/EXIT_INTERVAL: 第一次提示, 2000ms 内第二次退出
@@ -326,7 +325,7 @@ fun MainRoute(
         pageSelections = pageSelections,
         currentPageSink = { currentPage = it },
         settledPageSink = { settledPage = it },
-        onSelectPage = { index, smooth -> pageSelections.tryEmit(index to smooth) },
+        onSelectPage = { index -> pageSelections.tryEmit(index to true) },
         onReselect = { tag ->
             // 对照 MainActivity.onTabReselect: 300ms 内双击触发
             when (tag) {
