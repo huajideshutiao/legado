@@ -31,7 +31,6 @@ import com.script.jsdispatch.generated.NativeGeneratedDispatch
 import io.legado.app.napi.quickjs.JSContext
 import io.legado.app.napi.quickjs.JSValue
 import io.legado.app.napi.quickjs.qjs_EvalTypeGlobal
-import io.legado.app.napi.quickjs.JS_Eval
 import io.legado.app.napi.quickjs.JS_TAG_NULL
 import io.legado.app.napi.quickjs.JS_TAG_UNDEFINED
 import io.legado.app.napi.quickjs.qjs_FreeCString
@@ -222,10 +221,8 @@ object NativeJsExtensionsBridge {
             else -> "__createJavaObj"
         }
         val js = "$factoryFn($handle)"
-        // JS_Eval 执行工厂函数, 返回 JS 对象
-        val result = JS_Eval(
-            ctx, js, js.length.toULong(), "<bridge>", qjs_EvalTypeGlobal()
-        )
+        // JS_Eval 执行工厂函数, 返回 JS 对象 (qjsEvalUtf8: input_len 按 UTF-8 字节数传)
+        val result = qjsEvalUtf8(ctx, js, "<bridge>", qjs_EvalTypeGlobal())
         // result 是 JS 对象, 调用方负责 JS_FreeValue
         // 但我们在 toJsValue 中返回它, 由 JS_SetPropertyStr 转移所有权
         // 如果 eval 异常, result 是 exception, 调用方会得到异常 JSValue

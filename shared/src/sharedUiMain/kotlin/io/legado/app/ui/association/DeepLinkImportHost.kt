@@ -10,6 +10,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import io.legado.app.constant.AppLog
 import io.legado.app.help.toast.Toasters
+import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.ui.widget.dialog.WaitDialog
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.deep_link_type_not_supported
@@ -65,7 +66,8 @@ private suspend fun runSchemeImport(req: DeepLinkImportRequest) {
                         )
                 }
             }
-            .onFailure { Toasters.get().toast(it.message ?: "格式不对") }
+            // 与 ImportTargetDialog 的 Res.string.wrong_format 同一资源, 避免同语义双文案
+            .onFailure { Toasters.get().toast(it.message ?: syncGetString("wrong_format")) }
 
         else -> Unit
     }

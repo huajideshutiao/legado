@@ -3,7 +3,6 @@ package io.legado.app.help.config
 import io.legado.app.api.controller.registerNativeBookControllerProviders
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.registerNativeAndroidId
-import io.legado.app.data.DatabaseDriverProviders
 import io.legado.app.data.OhosDatabaseDriver
 import io.legado.app.data.registerNativeAppDb
 import io.legado.app.help.archive.registerNativeArchiveProvider
@@ -18,6 +17,7 @@ import io.legado.app.help.book.registerNativeLocalBookLocator
 import io.legado.app.help.file.registerOhosAppFilesDir
 import io.legado.app.help.log.registerNativeAppLogHost
 import io.legado.app.help.file.registerNativeFileDownloader
+import io.legado.app.help.registerNativeAppStringProvider
 import io.legado.app.help.image.NativeBitmapProvider
 import io.legado.app.help.image.OhosImageOps
 import io.legado.app.help.image.registerOhosBookImageLoader
@@ -25,6 +25,7 @@ import io.legado.app.help.http.registerDefaultOhosCookieStoreProvider
 import io.legado.app.help.http.registerOhosBackstageWebView
 import io.legado.app.help.http.registerNativeHttpProvider
 import io.legado.app.help.http.registerSharedCookieJarBridge
+import io.legado.app.help.image.registerReaderImageResolver
 import io.legado.app.help.notification.registerOhosNotificationProgress
 import io.legado.app.help.registerNativeDefaultDataResourceProvider
 import io.legado.app.help.registerNativeDirectLinkUploadProviders
@@ -135,6 +136,11 @@ fun registerOhosProviders() {
     registerOhosNativeBridge()
     registerOhosToaster()
 
+    // 1.05.5 AppString provider (help/i18n appString 通道: model/help 层异常与翻页边界提示等
+    // 同步文案; 未注册时 fallback 返回 key 名, 运行期可见为 "no_prev_page" 之类原始 key。
+    // 零平台依赖顺序无关, 只须在任何 appString 调用之前)
+    registerNativeAppStringProvider()
+
     // 1.1 AppLog 宿主 (崩溃日志落盘到 {filesDir}/logs, 供 CrashLogProvider 收集;
     // 须在 AppFilesDirs 之后 (日志目录从 filesDir 派生)、任何 AppLog.put 之前)
     registerNativeAppLogHost()
@@ -169,12 +175,10 @@ fun registerOhosProviders() {
     // (与 iOS 端位置对齐: 文件目录 → 配置 → HTTP provider → 数据库)
     registerNativeHttpProvider()
 
-    // 3. 数据库 provider (DatabaseDriver + AppDatabase + AppDb, 依赖 AppFilesDirs)
-    // 与 desktop Main.kt 中 `DatabaseDriverProviders.register + AppDatabaseProviders.register + AppDbProviders.register` 三步对齐
+    // 3. 数据库 provider (AppDatabase + AppDb, 依赖 AppFilesDirs)
+    // 与 desktop Main.kt 中 `AppDatabaseProviders.register + AppDbProviders.register` 两步对齐
     // registerNativeAppDb 一次性注册 NativeAppDatabaseProvider + NativeAppDbAccessor (两端共用, 替代原 ohosMain 专属实现)
-    val dbDriver = OhosDatabaseDriver()
-    DatabaseDriverProviders.register(dbDriver)
-    registerNativeAppDb(dbDriver)
+    registerNativeAppDb(OhosDatabaseDriver())
 
     // 4. 书籍缓存 provider (BookStorage + BookHelp, 依赖 AppFilesDirs)
     // 与 desktop Main.kt 中 `BookStorageProviders.register + BookHelpProviders.register` 顺序对齐
@@ -299,6 +303,11 @@ fun registerOhosProviders() {
     // 8.8 阅读排版真实字形度量器 (Skia Font 度量, 取代 SimpleTextMeasurer 等宽近似;
     // 须在任何章节排版之前, 依赖 skiko 随 compose ui 已就绪)
     registerNativeTextMeasurer()
+
+    // 8.9 阅读页内嵌图片解析器 (EPUB 插图/PDF 单图页: 排版取尺寸 + 绘制取位图,
+    // 对照 Android MainActivity / desktop Main.kt; 未注册时 ImageResolverProviders.createOrNull
+    // 返回 null, 排版静默跳过图片 —— 此前两端漏注册, 图片全部不显示)
+    registerReaderImageResolver()
 
     // 9. Web 服务 provider (WebAssetSource + WebStrings + WebServerPlatform, iOS/鸿蒙共用 Ktor server 壳)
     // 仅注册平台实现, 不启动服务 (WebServerManager.start 由用户操作触发)

@@ -119,6 +119,7 @@ import io.legado.app.ui.compose.platform.platformStatusBarPadding
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
@@ -545,7 +546,7 @@ open class BaseReadMenuState(
     protected open fun upSourceAction() {
         val book = screenModel.viewModel.book.value
         val source = screenModel.viewModel.bookSource.value
-        sourceActionText = source?.bookSourceName ?: "书源"
+        sourceActionText = source?.bookSourceName ?: syncGetString("book_source")
         sourceActionVisible = book?.let { !it.isLocal } ?: false
     }
 

@@ -954,15 +954,13 @@ abstract class QuickJsEngineTestBase {
     @Test
     fun testWrapJsForEvalPreservesReturnValue() {
         // 修复点: wrapJsForEval 用 IIFE + eval 包裹,最后一条表达式作为返回值
-        // 注意: QuickJS 的 eval 内不支持 return (与 rhino 的顶层 return 扩展不同),
-        //       但 IIFE 的 return eval(...) 可以捕获 eval 的最后表达式值
+        // 注意: 完成值(末尾表达式值)是 eval/script 目标特有语义, 函数调用只认显式 return,
+        //       所以包装离不开 eval —— 源码逐字嵌入函数体会丢末尾表达式值 (jvmTest 实证)
         val scope = QuickJsEngine.getRuntimeScope(ScriptBindings())
-        try {
+        scope.use { scope ->
             val wrapped = QuickJsEngine.wrapJsForEval("var x = 1; x + 41;")
             val result = QuickJsEngine.eval(wrapped, scope, null)
             assertEquals(42, (result as Number).toInt())
-        } finally {
-            scope.close()
         }
     }
 

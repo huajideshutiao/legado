@@ -822,8 +822,10 @@ open class AnalyzeRuleCore(
      * 这里用 IIFE + eval 包裹用户 JS, bindings 直接注入 topScope 的 globalThis:
      * - let/const 留在 eval 词法环境(或 IIFE 函数作用域), 不污染 topScope
      *   (避免重复执行报 "redeclaration of 'xxx'")
-     * - return 在 IIFE 函数内生效(对齐 rhino 顶层 return 扩展)
-     * - eval 返回末尾表达式值(对齐 rhino script.exec 返回最后一个表达式)
+     * - eval 返回末尾表达式值(对齐 rhino script.exec 返回最后一个表达式;
+     *   完成值是 eval/script 目标特有语义, 函数调用只认显式 return, 包装离不开 eval)
+     * - 已知限制: 顶层 return 落在 eval 里报 "Illegal return statement",
+     *   rhino 的顶层 return 扩展无法对齐
      * - bindings 通过 [io.legado.app.model.script.JsEngine.injectBindings] 写入 globalThis, jsLib 里
      *   定义在 topScope 上的自由函数 (如 `lk`) 内部访问 `cache` 等 binding 也能命中,
      *   执行后由 [io.legado.app.model.script.JsEngine.evalInSubScope] 调 cleanupBindings 删除, 避免残留。

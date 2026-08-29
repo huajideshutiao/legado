@@ -5,7 +5,7 @@ package io.legado.app.ui.platform
  *
  * iOS/鸿蒙两端均无 Int resId 调用方 (唯一调用点 EditEntity secondary constructor
  * 在两端都走 String hint primary 重载; commonMain/sharedUiMain 无 EditEntity 调用),
- * 真实字符串走 sharedStringTable + rememberString (key-based, 与 jvm/iOS 一致),
+ * 真实字符串走 syncGetString + rememberString (key-based, 与 jvm/iOS 一致),
  * 故保留空串 stub, 无需接入 LocalizedStringKey / ohos ResourceTable。
  *
  * 详见 commonMain/ui/platform/StringRes.kt expect 注释。

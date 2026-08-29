@@ -963,6 +963,7 @@
     <string name="image_decode_failed_bytes">image.decode: 无法解码图片字节(%1$s bytes)</string>
     <string name="image_encode_unsupported_format">image.encode: 不支持的格式 %1$s，仅 png/jpg/webp</string>
     <string name="image_encode_write_failed">image.encode: ImageIO.write 失败 format=%1$s</string>
+    <string name="image_encode_webp_failed">image.encode: WebP 编码失败 (Skia)</string>
     <string name="image_split_rows_cols_positive">image.split: rows/cols 必须为正数(%1$s,%2$s)</string>
     <string name="image_split_exceeds_size">image.split: 切块数超过像素尺寸(%1$sx%2$s / %3$s行%4$s列)</string>
     <string name="image_stitch_imgs_empty">image.stitch: imgs 为空</string>
@@ -985,6 +986,7 @@
 %1$s</string>
     <string name="desktop_cookie_set_error">桌面端设置 cookie 出错 domain=%1$s cookie=%2$s</string>
     <string name="download_jslib_failed">下载jsLib-%1$s失败</string>
+    <string name="native_book_format_not_supported">iOS/鸿蒙端暂不支持解析 %1$s 格式本地书 (pdf/cbz 解析器未下沉)</string>
     <string name="rhino_deprecated_unreachable">rhino 已弃用,JsEngines.type 固定 QUICKJS,不应到达 type=%1$s</string>
     <string name="upload_url_not_configured">上传url未配置</string>
     <string name="download_url_rule_not_configured">下载地址规则未配置</string>

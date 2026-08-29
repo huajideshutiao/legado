@@ -90,6 +90,13 @@ struct iOSApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                // Compose 表面 edge-to-edge: shared UI 按 Android edge-to-edge 模型设计,
+                // 安全区回避由 Compose 内部 WindowInsets padding 单次承担 (各页顶栏
+                // statusBarsPadding / 底栏 navigationBarsPadding)。SwiftUI 默认把
+                // representable 排在安全区内, 与 Compose 内部回避叠加成双倍留白
+                // (顶栏双倍状态栏高 / 底栏双倍 home indicator), 沉浸式背景 (详情页模糊
+                // 封面 / 阅读页背景) 也无法延伸到系统栏底下。
+                .ignoresSafeArea()
                 .statusBarHidden(statusBarHidden)
                 .onReceive(
                     NotificationCenter.default.publisher(

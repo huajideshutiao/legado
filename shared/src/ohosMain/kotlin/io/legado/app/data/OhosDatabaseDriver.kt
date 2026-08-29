@@ -10,17 +10,16 @@ import kotlinx.coroutines.IO
 import io.legado.app.utils.File
 
 /**
- * 鸿蒙 (OHOS) 端 [DatabaseDriverProvider] 实现: **Room KMP + NativeSQLiteDriver 真实数据库**。
+ * 鸿蒙 (OHOS) 端 [AppDatabase] 单例持有者: **Room KMP + NativeSQLiteDriver 真实数据库**。
  *
- * KP5: 鸿蒙端 DatabaseDriver 落地, 与 [IosDatabaseDriver] / jvmMain [BundledDatabaseDriver] 行为对齐。
  * 鸿蒙 KMP 使用 CPF 的 ohosArm64 目标，并通过 sqlite-framework 的 OHOS 变体接入系统 SQLite。
  *
  * # 实现要点 (与 jvmMain BundledDatabaseDriver / iosMain IosDatabaseDriver 行为对齐)
  * - **驱动**: [NativeSQLiteDriver] (CPF `androidx.sqlite:sqlite-framework` 的 OHOS 变体)
  * - **数据库路径**: 默认 `{AppFilesDirs.filesDir}/legado.db` (鸿蒙应用沙盒 filesDir 下, 持久化)
  * - **查询协程上下文**: [Dispatchers.IO] (鸿蒙端 Ktor CIO + Dispatchers.IO 可用, 与 iOS 端一致)
- * - **迁移策略**: 与 app 端 AppDatabase 一致 —— 仅 v1..79 旧库破坏性重建, 83..86 走
- *   @Database autoMigrations, 无迁移路径时让 Room 显式抛错而非静默清库
+ * - **迁移策略**: 与 Android 端同源 —— 仅 v1..79 旧库破坏性重建, 80..83 手写 Migration +
+ *   83..87 走 @Database autoMigrations, 无迁移路径时让 Room 显式抛错而非静默清库
  *
  * # 与 iosMain IosDatabaseDriver 区别
  * - **目录创建**: iOS 用 NSFileManager, 鸿蒙用 [kotlin.io.File] (Kotlin/Native linuxArm64 标准库
@@ -44,8 +43,8 @@ import io.legado.app.utils.File
  * sqlite-bundled 库误认为可以直接加载到 OHOS 进程。最终仍需 HAP/真机运行时验证数据库打开、迁移和关闭。
  *
  * # 共享实例
- * [appDatabase] lazy 单例, 同一实例供 [AppDatabaseProviders] + [DatabaseDriverProviders] 共享
- * (避免重复构造, 见 [DesktopAppDatabaseProvider] 模式)。
+ * [appDatabase] lazy 单例, 经 [NativeAppDatabaseProvider] 委托注册到 [AppDatabaseProviders],
+ * 避免重复构造。
  *
  * @param dbPath 数据库文件绝对路径, 默认 `{AppFilesDirs.filesDir}/legado.db`
  */
@@ -87,34 +86,15 @@ class OhosDatabaseDriver(
                 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60,
                 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79
             )
-            // 80..82 的手写 Migration (已下沉 commonMain), 与 app 端同一份 (鸿蒙首版即 86, 不会命中)
+            // 80..83 的手写 Migration (已下沉 commonMain), 与 app 端同一份
+            // (鸿蒙首版即当前 @Database 版本, 不会命中)
             .addMigrations(*DatabaseMigrations.migrations)
             // 预置分组 + 键盘助手 (对照 app 端 dbCallback)
             .addCallback(AppDatabaseDefaults)
             .build()
     }
 
-    override val databaseName: String
-        get() = DATABASE_NAME
-
-    override val databaseVersion: Int
-        // 与 @Database(version = 86) 同步; 鸿蒙首启动空库即此版本, 无迁移历史
-        get() = 86
-
-    override val isInitialized: Boolean
-        // Room KMP 的 RoomDatabase 无 isOpen 属性 (Android 专属),
-        // 用 try-catch 触发 lazy 构造判断: 构造成功即视为已初始化
-        get() = try {
-            appDatabase
-            true
-        } catch (e: Exception) {
-            false
-        }
-
-    override val rawDatabase: Any
-        get() = appDatabase as RoomDatabase
-
-    override fun close() {
+    fun close() {
         // 幂等: RoomDatabase.close() 内部已处理重复调用;
         // Room KMP 无 isOpen 可判断, 直接 try-close, 失败静默
         try {
@@ -130,9 +110,7 @@ class OhosDatabaseDriver(
          *
          * - 鸿蒙应用沙盒 filesDir (持久化, 应用卸载时随之清除)
          * - 与 iOS 端 `Documents/legado.db` / 桌面端 `~/.legado/legado.db` 行为等价 (持久化)
-         * - 路径分隔符恒为 "/" (POSIX 文件系统)
-         * - 数据库文件名恒为 [DATABASE_NAME] (跨平台同名, 便于库文件互通,
-         *   符合 [DatabaseDriverProvider.databaseName] 接口契约)
+         * - 路径分隔符恒为 "/" (POSIX 文件系统), 数据库文件名跨平台同名, 便于库文件互通
          *
          * 退化策略: 当 [AppFilesDirs.filesDir] 为空串 ([OhosAppFilesDir] stub 默认状态) 时,
          * 退化为当前工作目录下的 `legado_data/legado.db`；真实宿主应在启动时注册有效的

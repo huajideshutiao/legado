@@ -3,7 +3,7 @@
 package io.legado.app.help.toast
 
 import io.legado.app.help.topMostViewController
-import io.legado.app.ui.compose.platform.sharedStringTable
+import io.legado.app.ui.compose.platform.syncGetString
 import platform.Foundation.NSLog
 import platform.UIKit.UIAlertAction
 import platform.UIKit.UIAlertActionStyleDefault
@@ -80,7 +80,7 @@ class IosToaster : Toaster {
             )
             alert.addAction(
                 UIAlertAction.actionWithTitle(
-                    title = sharedStringTable["ok"],
+                    title = syncGetString("ok"),
                     style = UIAlertActionStyleDefault,
                     handler = { _ -> },
                 )

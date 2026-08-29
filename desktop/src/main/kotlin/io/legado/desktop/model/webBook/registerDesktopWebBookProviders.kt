@@ -1,6 +1,7 @@
 package io.legado.desktop.model.webBook
 
 import io.legado.app.api.controller.ImageControllerProviders
+import io.legado.app.api.controller.ReadBookStateProviders
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -13,6 +14,7 @@ import io.legado.app.help.book.ContentProcessorAccessor
 import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.book.ContentProcessorShared
 import io.legado.app.help.book.DefaultContentProcessorDeps
+import io.legado.app.model.ActiveReadBookStateProvider
 import io.legado.app.model.analyzeRule.registerDesktopAnalyzeRuleFactory
 import io.legado.app.model.webBook.BookInfoRefresher
 import io.legado.app.model.webBook.BookInfoRefreshers
@@ -50,6 +52,10 @@ fun registerDesktopWebBookProviders() {
     RegexReplacers.register(RegexReplacerImpl)
     // 注册 Web 服务封面/插图 provider: 未注册时 BookController.getCover/getImg 抛 IllegalStateException
     ImageControllerProviders.register(DesktopImageControllerProvider)
+    // 注册 Web 服务阅读状态桥 (commonMain ActiveReadBookStateProvider 读 ActiveReadBookRegistry,
+    // shared 阅读页全平台挂接): /deleteBook /saveBookProgress 同步"正在阅读的实例";
+    // 此前未注册时静默跳过
+    ReadBookStateProviders.register(ActiveReadBookStateProvider)
 }
 
 /**

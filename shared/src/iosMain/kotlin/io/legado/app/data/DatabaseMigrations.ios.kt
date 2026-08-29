@@ -7,7 +7,7 @@ import androidx.sqlite.SQLiteConnection
  * iOS 端三条手写迁移: 官方 Room3 的 `Migration.migrate` 是 suspend。
  * 迁移体见 [DatabaseMigrationsData]。
  *
- * iOS 从未发布, 无存量库 (首版即 86, 1..79 走破坏性重建), 这三条永不触发; 挂上只为
+ * iOS 从未发布, 无存量库 (首版即 @Database 当前版本, 1..79 走破坏性重建), 这三条永不触发; 挂上只为
  * 与 Android / 桌面端同一条迁移路径, 避免日后版本号回落时静默清库。
  */
 

@@ -1,6 +1,8 @@
 package io.legado.app.model
 
+import io.legado.app.api.controller.ReadBookStateProvider
 import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookProgress
 import io.legado.app.ui.book.read.ReadBookViewModelShared
 import kotlin.concurrent.Volatile
 
@@ -64,5 +66,30 @@ object ActiveReadBookRegistry {
             // 对照 app 端 `ReadBook.book = it` (元数据刷新, 不走 initData 的切书重置)
             current.bookValue = book
         }
+    }
+}
+
+/**
+ * [ReadBookStateProvider] 的跨平台桥接: 直接读 [ActiveReadBookRegistry.current]
+ * (shared 阅读页 ReaderScreenModel 进入/退出时 attach/detach, 全平台生效), 供 Web 服务
+ * /deleteBook //saveBookProgress 同步"正在阅读的实例"。
+ *
+ * 注册: iOS/鸿蒙经 registerNativeBookControllerProviders, desktop 经
+ * registerDesktopWebBookProviders; Android 桥接 app.ReadBook 单例, 不经本实现。
+ */
+object ActiveReadBookStateProvider : ReadBookStateProvider {
+    private val readBook: ReadBookShared? get() = ActiveReadBookRegistry.current
+
+    override val currentBookUrl: String? get() = readBook?.book?.value?.bookUrl
+    override val currentBookName: String? get() = readBook?.book?.value?.name
+    override val currentBookAuthor: String? get() = readBook?.book?.value?.author
+
+    override fun clearCurrentBook() {
+        // ReadBookShared 无置空 book 的公开 API, 解除挂接达成"无正在阅读的书"语义
+        ActiveReadBookRegistry.current?.let { ActiveReadBookRegistry.detach(it) }
+    }
+
+    override fun setWebBookProgress(progress: BookProgress) {
+        readBook?.updateWebBookProgress(progress)
     }
 }

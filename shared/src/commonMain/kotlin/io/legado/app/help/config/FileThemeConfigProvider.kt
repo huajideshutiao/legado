@@ -4,7 +4,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.lib.theme.ThemeStorePrefKeys
-import io.legado.app.ui.compose.platform.sharedStringTable
+import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.FlowBus
 
@@ -131,7 +131,7 @@ class FileThemeConfigProvider : ThemeConfigProvider {
      */
     override fun getBuiltinConfigs(): List<ThemeConfigData> = listOf(
         ThemeConfigData(
-            themeName = sharedStringTable["default_day_theme"] ?: "默认·白天",
+            themeName = syncGetString("default_day_theme"),
             isNightTheme = false,
             primaryColor = DAY_BG_HEX,
             accentColor = DAY_ACCENT_HEX,
@@ -139,7 +139,7 @@ class FileThemeConfigProvider : ThemeConfigProvider {
             bottomBackground = DAY_BBG_HEX,
         ).also { it.isBuiltin = true },
         ThemeConfigData(
-            themeName = sharedStringTable["default_night_theme"] ?: "默认·夜间",
+            themeName = syncGetString("default_night_theme"),
             isNightTheme = true,
             primaryColor = NIGHT_BG_HEX,
             accentColor = NIGHT_ACCENT_HEX,

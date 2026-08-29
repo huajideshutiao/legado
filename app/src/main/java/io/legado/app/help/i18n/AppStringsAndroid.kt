@@ -13,8 +13,8 @@ import org.jetbrains.compose.resources.getStringArray
  * # 通道演进
  * 原实现 key→R.string 后转发 appCtx.getString, 依赖 app 端 strings.xml 多语言资产;
  * strings.xml 删除后 R.string 不复存在, 改从 shared Compose Resources 映射表取值
- * ([findStringResource] → [getString]), 与 desktop 端 [io.legado.desktop.help.i18n.registerDesktopAppStringProvider]
- * 的 jvmGetString 同构 (runBlocking 桥接 suspend 取值)。
+ * ([findStringResource] → [getString]), 与 desktop 端 Main.kt 内联注册的 jvmGetString
+ * 同构 (runBlocking 桥接 suspend 取值)。
  *
  * # 取值性能
  * Compose Resources 的字符串记录读取带 AsyncCache (按资源路径+偏移缓存), 首次读取后

@@ -30,6 +30,7 @@ import kotlinx.serialization.Transient
 @Entity(
     tableName = "chapters",
     primaryKeys = ["bookUrl", "url"],
+    withoutRowId = true,
     foreignKeys = [(ForeignKey(
         entity = Book::class,
         parentColumns = ["bookUrl"],

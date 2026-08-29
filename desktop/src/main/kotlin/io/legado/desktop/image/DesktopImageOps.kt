@@ -122,15 +122,14 @@ object DesktopImageOps : ImageOps {
                     w * 4
                 )
             ) {
-                jvmGetString("image_encode_write_failed", "webp")
+                jvmGetString("image_encode_webp_failed")
             }
             Image.makeFromBitmap(bmp).use { skImage ->
                 skImage.encodeToData(EncodedImageFormat.WEBP, quality.coerceIn(0, 100))?.bytes
                     ?: throw IllegalStateException(
-                        jvmGetString(
-                            "image_encode_write_failed",
-                            "webp"
-                        )
+                        // 非 ImageIO 路径 (Skia encodeToData), 不复用 ImageIO 措辞的
+                        // image_encode_write_failed
+                        jvmGetString("image_encode_webp_failed")
                     )
             }
         }

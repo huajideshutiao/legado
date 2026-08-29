@@ -958,6 +958,7 @@
     <string name="image_decode_failed_bytes">image.decode: failed to decode image bytes (%1$s bytes)</string>
     <string name="image_encode_unsupported_format">image.encode: unsupported format %1$s, only png/jpg/webp</string>
     <string name="image_encode_write_failed">image.encode: ImageIO.write failed format=%1$s</string>
+    <string name="image_encode_webp_failed">image.encode: failed to encode WebP via Skia</string>
     <string name="image_split_rows_cols_positive">image.split: rows/cols must be positive (%1$s,%2$s)</string>
     <string name="image_split_exceeds_size">image.split: tile count exceeds pixel size (%1$sx%2$s / %3$s rows %4$s columns)</string>
     <string name="image_stitch_imgs_empty">image.stitch: imgs is empty</string>
@@ -973,6 +974,7 @@
     <string name="desktop_audio_get_book_source_failed">Failed to get book source on desktop\n%1$s</string>
     <string name="desktop_cookie_set_error">Failed to set cookie on desktop domain=%1$s cookie=%2$s</string>
     <string name="download_jslib_failed">Failed to download jsLib-%1$s</string>
+    <string name="native_book_format_not_supported">Parsing local %1$s books is not supported on this platform yet (pdf/cbz parsers not ported)</string>
     <string name="rhino_deprecated_unreachable">Rhino is deprecated, JsEngines.type is fixed to QUICKJS, type=%1$s should never be reached</string>
     <string name="upload_url_not_configured">Upload URL not configured</string>
     <string name="download_url_rule_not_configured">Download URL rule not configured</string>

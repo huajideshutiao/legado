@@ -14,9 +14,11 @@ import io.legado.app.help.book.registerNativeContentProcessorAccessor
 import io.legado.app.help.file.registerIosAppFilesDir
 import io.legado.app.help.file.registerNativeFileDownloader
 import io.legado.app.help.http.registerIosBackstageWebView
+import io.legado.app.help.registerNativeAppStringProvider
 import io.legado.app.help.image.IosImageOps
 import io.legado.app.help.image.NativeBitmapProvider
 import io.legado.app.help.image.registerIosBookImageLoader
+import io.legado.app.help.image.registerReaderImageResolver
 import io.legado.app.help.log.registerNativeAppLogHost
 import io.legado.app.help.http.registerDefaultIosCookieStoreProvider
 import io.legado.app.help.http.registerNativeHttpProvider
@@ -65,7 +67,7 @@ import platform.UIKit.UIDevice
  * 1. registerIosAppFilesDir 最先 (其他 provider 持久化目录依赖 AppFilesDirs)
  * 1.05 registerIosToaster 须在 registerNativeAppLogHost 之前 (AppLog 的 toast 出口走 Toasters,
  *    晚于 host 注册则初始化期 `AppLog.put(toast = true)` 的失败提示被 runCatching 吞掉;
- *    IosToaster 只依赖 UIKit + sharedStringTable 静态表, 不依赖被它跳过的任何 provider)
+ *    IosToaster 只依赖 UIKit (按钮文案经 syncGetString 查 composeResources), 不依赖被它跳过的任何 provider)
  * 2. registerIosPreferenceProvider 在 AppConfigAccessor 之前 (委托 PreferenceProvider)
  * 3. registerNativeHttpProvider 在数据库/书籍缓存之前
  * 4. registerIosDatabaseDriver / BookStorage / BookImageStorage / LocalBookLocator 在文件目录之后
@@ -90,6 +92,11 @@ fun registerIosProviders() {
     // 1.05 Toaster (须在 AppLog 宿主之前: AppLog.put(toast = true) 的 toast 出口走 Toasters,
     // 晚注册则初始化期的失败提示丢失; IosToaster 只依赖 UIKit, 拿不到 vc 时 NSLog 兜底)
     registerIosToaster()
+
+    // 1.05.5 AppString provider (help/i18n appString 通道: model/help 层异常与翻页边界提示等
+    // 同步文案; 未注册时 fallback 返回 key 名, 运行期可见为 "no_prev_page" 之类原始 key。
+    // 零平台依赖顺序无关, 只须在任何 appString 调用之前)
+    registerNativeAppStringProvider()
 
     // 1.1 AppLog 宿主 (日志落盘到 {filesDir}/logs, 供 CrashLogProvider 收集;
     // 须在 AppFilesDirs 之后 (日志目录从 filesDir 派生)、任何 AppLog.put 之前)
@@ -134,7 +141,7 @@ fun registerIosProviders() {
     // 磁盘缓存 {cacheDir}/image_cache; ImageLoader lazy 构建, 注册本身不触发网络栈/文件系统读取
     registerIosBookImageLoader()
 
-    // 4. 数据库 provider (DatabaseDriverProviders + AppDatabaseProviders, 依赖 AppFilesDirs)
+    // 4. 数据库 provider (AppDatabaseProviders, 依赖 AppFilesDirs)
     registerIosDatabaseDriver()
 
     // 5. 书籍缓存 provider (BookStorage / BookImageStorage / LocalBookLocator, 依赖 AppFilesDirs)
@@ -234,6 +241,11 @@ fun registerIosProviders() {
     // 9.5 阅读排版真实字形度量器 (Skia Font 度量, 取代 SimpleTextMeasurer 等宽近似;
     // 须在任何章节排版之前, 依赖 skiko 随 compose ui 已就绪)
     registerNativeTextMeasurer()
+
+    // 9.6 阅读页内嵌图片解析器 (EPUB 插图/PDF 单图页: 排版取尺寸 + 绘制取位图,
+    // 对照 Android MainActivity / desktop Main.kt; 未注册时 ImageResolverProviders.createOrNull
+    // 返回 null, 排版静默跳过图片 —— 此前两端漏注册, 图片全部不显示)
+    registerReaderImageResolver()
 
     // 10. Web 服务 provider (WebAssetSource + WebStrings + WebServerPlatform, iOS/鸿蒙共用 Ktor server 壳)
     // 仅注册平台实现, 不启动服务 (WebServerManager.start 由用户操作触发)

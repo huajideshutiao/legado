@@ -13,7 +13,11 @@ import kotlinx.serialization.Serializable
  * RestoreShared.restoreReadRecord 反序列化)。缺少本注解时 Gson 兼容层 toJsonElement
  * 会降级为 toString() 字符串数组, 恢复时抛 JsonDecodingException 导致阅读记录丢失。
  */
-@Entity(tableName = "readRecord", primaryKeys = ["bookName", "day", "startSec"])
+@Entity(
+    tableName = "readRecord",
+    primaryKeys = ["bookName", "day", "startSec"],
+    withoutRowId = true
+)
 @Serializable
 data class ReadRecord(
     var bookName: String = "",

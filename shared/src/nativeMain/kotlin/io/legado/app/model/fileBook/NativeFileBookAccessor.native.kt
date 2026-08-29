@@ -21,10 +21,9 @@ import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.analyzeRule.CustomUrl
-import io.legado.app.ui.compose.platform.sharedStringTable
+import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.MD5Utils
-import io.legado.app.utils.formatNative
 import io.legado.app.utils.toInputStream
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
@@ -408,8 +407,6 @@ class NativeFileBookAccessor : FileBookAccessor {
 
 /**
  * PDF/CBZ 等未下沉格式的占位解析器: 抛明确"此端暂不支持"异常, 不静默空返回。
- *
- * 文案走 sharedStringTable key (未收录时用内置简中兜底, 与 iOS/鸿蒙端 i18n 现状一致)。
  */
 private object UnsupportedFileBook : BaseFileBook {
     override fun upBookInfo(book: Book) = throw unsupportedFormatException(book.originName)
@@ -425,9 +422,7 @@ private object UnsupportedFileBook : BaseFileBook {
 
 private fun unsupportedFormatException(fileName: String): NoStackTraceException {
     val suffix = fileName.substringAfterLast('.', "").ifEmpty { fileName }
-    val template = sharedStringTable["native_book_format_not_supported"]
-        ?: "iOS/鸿蒙端暂不支持解析 %s 格式本地书 (pdf/cbz 解析器未下沉)"
-    return NoStackTraceException(template.formatNative(suffix))
+    return NoStackTraceException(syncGetString("native_book_format_not_supported", suffix))
 }
 
 /**

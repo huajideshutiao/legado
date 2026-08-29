@@ -1,5 +1,8 @@
 package io.legado.app.help
 
+import io.legado.app.help.i18n.AppStringProvider
+import io.legado.app.help.i18n.registerAppStringProvider
+import io.legado.app.ui.compose.platform.syncGetString
 import kotlinx.coroutines.runBlocking
 import legado.shared.generated.resources.Res
 import org.jetbrains.compose.resources.ExperimentalResourceApi
@@ -23,4 +26,20 @@ class NativeDefaultDataResourceProvider : DefaultDataResourceProvider {
 /** iOS/鸿蒙宿主启动早期注册一次 (任何 DefaultDataShared 属性访问之前)。 */
 fun registerNativeDefaultDataResourceProvider() {
     DefaultDataResourceProviders.register(NativeDefaultDataResourceProvider())
+}
+
+/**
+ * appString 的 iOS/鸿蒙实现 (nativeMain 中间源集共用, 两端注册同一份), 同文件承载
+ * composeResources 同步读取的宿主注册。key 名 → [syncGetString] 查 strings.xml,
+ * 与 app 端 `AppStringsAndroid` / desktop 端 Main.kt 内联注册 (jvmGetString 查表) 同构。
+ * 修复背景: 此前两端从未注册 AppStringProvider, `appString` fallback 返回 key 名,
+ * 运行期可见为 "no_prev_page" 之类的原始 key (翻页边界提示弹成模态弹窗)。
+ */
+private val nativeAppStringProvider = AppStringProvider { key, args ->
+    syncGetString(key.name, *args)
+}
+
+/** iOS/鸿蒙宿主启动早期注册一次 (任何 commonMain 调用 appString(...) 之前)。 */
+fun registerNativeAppStringProvider() {
+    registerAppStringProvider(nativeAppStringProvider)
 }

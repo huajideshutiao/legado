@@ -116,6 +116,26 @@ import kotlin.coroutines.coroutineContext
 import platform.posix.memcpy
 
 /**
+ * JS_Eval 的 UTF-8 安全封装 (compile / evalInternal / bridge 工厂 eval 共用)。
+ *
+ * input_len 必须是 UTF-8 字节数: cinterop 把 Kotlin String 按 UTF-8 编码传给
+ * const char *input, 若传 String.length (UTF-16 单元数), 含中文的书源 JS 字节数更大,
+ * QuickJS 只解析前 length 字节, 尾部 ");}})()" 被截断, 报
+ * "SyntaxError: unexpected end of string" (Android/Desktop 走 JNI 用 strlen 传字节数,
+ * 无此问题)。先 encodeToByteArray 再按字节数传, 保证完整解析。
+ */
+internal fun qjsEvalUtf8(
+    ctx: CPointer<JSContext>,
+    js: String,
+    filename: String,
+    evalFlags: Int
+): CValue<JSValue> {
+    // JS_Eval 按 [0, input_len) 读入不要求 NUL 结尾; refTo 把 ByteArray 挂起供调用期间访问
+    val bytes = js.encodeToByteArray()
+    return JS_Eval(ctx, bytes.refTo(0), bytes.size.toULong(), filename, evalFlags)
+}
+
+/**
  * native 端 (iOS/鸿蒙) JS 引擎: 基于 quickjs-ng C 源码 (cinterop 编译), 与 Android/Desktop
  * [QuickJsJsEngine] 共用同一 quickjs 引擎 (全平台统一)。原 iosMain [IosJsEngine] /
  * ohosMain [OhosJsEngine] 逻辑一致, 下沉到 nativeMain, 平台端 typealias 指向本类。
@@ -280,8 +300,8 @@ object NativeJsEngine : JsEngine {
         val bytecode = memScoped {
             // 跨线程使用共享 compilerCtx 时, 栈检查需基于当前线程栈指针
             JS_UpdateStackTop(JS_GetRuntime(ctx))
-            val funVal = JS_Eval(
-                ctx, script, script.length.toULong(), filename,
+            val funVal = qjsEvalUtf8(
+                ctx, script, filename,
                 qjs_EvalTypeGlobal() or qjs_EvalFlagCompileOnly()
             )
             try {
@@ -322,7 +342,9 @@ object NativeJsEngine : JsEngine {
      * - with(__currentBindings()): bindings 走 [evalInSubScope] 压栈成栈顶对象, user JS 里
      *   `java`/`cache`/`source` 走 with 命中; 空栈时穿透到 globalThis。
      * - IIFE 隔离 let/const/var, 不污染 topScope。
-     * - eval + return: 返回末尾表达式值, 顶层 return 生效 (对齐 rhino script.exec)。
+     * - eval + return: 返回末尾表达式值 (对齐 rhino script.exec)。完成值是 eval/script 目标
+     *   特有语义, 函数调用只认显式 return, 故源码无法逐字嵌入函数体 (对齐 JVM 实证结论)。
+     * - 已知限制: user JS 顶层 return 落在 eval 里, 报 "Illegal return statement"。
      */
     override fun wrapJsForEval(jsStr: String): String {
         val jsLiteral = escapeJsString(jsStr)
@@ -572,7 +594,7 @@ object NativeJsEngine : JsEngine {
         checkException: Boolean
     ): Any? {
         memScoped {
-            val result = JS_Eval(ctx, js, js.length.toULong(), filename, qjs_EvalTypeGlobal())
+            val result = qjsEvalUtf8(ctx, js, filename, qjs_EvalTypeGlobal())
             try {
                 if (qjs_IsException(result) != 0) {
                     if (checkException) {

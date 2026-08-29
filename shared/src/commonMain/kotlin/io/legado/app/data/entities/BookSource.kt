@@ -3,7 +3,6 @@ package io.legado.app.data.entities
 import androidx.room3.ColumnInfo
 import androidx.room3.Entity
 import androidx.room3.Ignore
-import androidx.room3.Index
 import androidx.room3.PrimaryKey
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.BookSourceType
@@ -38,10 +37,7 @@ import kotlinx.serialization.Transient
  */
 @Suppress("unused")
 @Serializable
-@Entity(
-    tableName = "book_sources",
-    indices = [(Index(value = ["bookSourceUrl"], unique = false))]
-)
+@Entity(tableName = "book_sources")
 data class BookSource(
     // 地址，包括 http/https
     @PrimaryKey

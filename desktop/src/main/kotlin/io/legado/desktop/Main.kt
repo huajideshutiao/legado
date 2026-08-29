@@ -34,7 +34,6 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDatabaseProviders
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.BundledDatabaseDriver
-import io.legado.app.data.DatabaseDriverProviders
 import io.legado.app.data.DesktopAppDatabaseProvider
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.DefaultDataResourceProviders
@@ -57,7 +56,9 @@ import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.registerJvmDebugState
 import io.legado.app.help.file.registerDesktopAppFilesDir
+import io.legado.app.help.file.registerDesktopFileDownloader
 import io.legado.app.help.http.OkHttpClientProviders
+import io.legado.app.help.i18n.registerAppStringProvider
 import io.legado.app.help.image.registerJvmBookImageLoader
 import io.legado.app.help.image.registerReaderImageResolver
 import io.legado.app.help.notification.registerDesktopNotificationProgress
@@ -127,7 +128,6 @@ import io.legado.desktop.help.changecover.DesktopCoverStorageService
 import io.legado.desktop.help.changesource.registerDesktopChangeBookSourcePlatform
 import io.legado.desktop.help.config.registerDesktopPasswordProvider
 import io.legado.desktop.help.http.registerDesktopBackstageWebView
-import io.legado.desktop.help.i18n.registerDesktopAppStringProvider
 import io.legado.desktop.help.initDesktopDefaultData
 import io.legado.desktop.help.log.registerDesktopAppLogHost
 import io.legado.desktop.help.registerDesktopAndroidId
@@ -332,12 +332,13 @@ private fun runDesktopApp() = application {
     // 下方所有 provider 注册依然有效。
     // 注册桌面端 Host 类 provider (启动期最早, 让 shared commonMain 调用 AppLog/appString 时有输出)
     // - AppLogHost: 桥接到 println, 未注册时 AppLog 副作用 (write/toast/debugPrint) 静默 no-op
-    // - AppStringProvider: 返回 key.name 兜底, 未注册时 appString 同样 fallback 到 key.name
+    // - AppStringProvider: key → strings.xml 同步查表 (jvmGetString, runBlocking 桥接),
+    //   未注册时 appString fallback 返回 key 名; 须先于任何 appString 调用 (快捷方式显示名等)
     registerDesktopAppLogHost()
-    registerDesktopAppStringProvider()
+    registerAppStringProvider { key, args -> jvmGetString(key.name, *args) }
     // Windows: 设置进程级 AppUserModelID + 保证开始菜单快捷方式身份注册 (SMTC 媒体卡
     // 应用名来源; :desktop:run/java -jar 无安装注册时按官方文档自建快捷方式)。
-    // 须在 registerDesktopAppStringProvider 之后 (快捷方式文件名取 app_name 显示名),
+    // 须在 AppString provider 注册之后 (快捷方式文件名取 app_name 显示名),
     // 且必须在首窗口创建前 (MSDN: SetCurrentProcessExplicitAppUserModelID 须先于 UI)。
     DesktopAppUserModelId.ensureProcessAppId()
     // 注册桌面端 ScreenInfoProvider (Toolkit.getDefaultToolkit().screenSize),
@@ -410,9 +411,8 @@ private fun runDesktopApp() = application {
     DefaultDataResourceProviders.register(DesktopDefaultDataResourceProvider())
     // 注册桌面端 AppDatabase provider (首屏 BookshelfScreen 通过 AppDbProviders 访问 bookDao)
     // BundledDatabaseDriver 用 Room.databaseBuilder + BundledSQLiteDriver 构造 AppDatabase
-    // (~/.legado/legado.db), 同一实例供 AppDatabaseProviders + DatabaseDriverProviders 共享
+    // (~/.legado/legado.db), 同一实例经 AppDatabaseProviders 共享
     val dbDriver = BundledDatabaseDriver()
-    DatabaseDriverProviders.register(dbDriver)
     AppDatabaseProviders.register(DesktopAppDatabaseProvider(dbDriver))
     // 注册桌面端 BookStorage provider (首屏书架/阅读用, ~/.legado/book_cache)
     // ReadBookViewModelShared.loadChapter 通过 BookStorageProviders.get().getContent 读章节缓存正文
@@ -803,6 +803,9 @@ private suspend fun registerSecondaryProviders() {
         // 未注册时 CacheManager 文件层抛 IllegalStateException (不再静默 no-op),
         // 且须在 JS 引擎 (第12步) 之前注册, 否则首次 JS 文件缓存调用即崩
         registerDesktopFileCacheProvider()
+        // 0.5 文件下载器 (shared Download 编排: 更新弹窗"下载"等入口; 此前从未注册,
+        // FileDownloaders.get() 抛 IllegalStateException 且在协程内被吞, 表现为点了下载无反应)
+        registerDesktopFileDownloader()
         // 1. 备份/直链相关 (依赖 PreferenceProviders, 已同步注册)
         // - PasswordProvider: 供 BackupAES 无参构造经 PasswordProviders 反向获取 password
         // - DirectLinkUploadProviders: 供 BackupShared/RestoreShared 备份恢复 directLinkUploadRule.json

@@ -8,12 +8,10 @@ import io.ktor.http.isSuccess
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
-import io.legado.app.data.entities.BookProgress
 import io.legado.app.help.book.BookImageStorageProviders
-import io.legado.app.model.ReadBookShared
+import io.legado.app.model.ActiveReadBookStateProvider
 import kotlinx.coroutines.runBlocking
 import io.legado.app.utils.File
-import kotlin.concurrent.Volatile
 
 /**
  * nativeMain: [ImageControllerProvider] 的 iOS/鸿蒙最小真实实现。
@@ -68,46 +66,14 @@ object NativeImageControllerProvider : ImageControllerProvider {
 }
 
 /**
- * nativeMain: [ReadBookStateProvider] 的 iOS/鸿蒙桥接。
- *
- * [ReadBookShared] 是阅读页 Compose 内的实例 (无全局单例), 阅读页进入/退出时经
- * [attach]/[detach] 挂接; 未挂接时各字段为 null, BookController 跳过 ReadBook 同步
- * (与未注册行为一致, 但保留统一接入点)。
- */
-object NativeReadBookStateProvider : ReadBookStateProvider {
-
-    @Volatile
-    private var readBook: ReadBookShared? = null
-
-    /** 阅读页进入时挂接当前 [ReadBookShared] 实例。 */
-    fun attach(readBook: ReadBookShared) {
-        this.readBook = readBook
-    }
-
-    /** 阅读页退出时解除挂接。 */
-    fun detach() {
-        readBook = null
-    }
-
-    override val currentBookUrl: String? get() = readBook?.book?.value?.bookUrl
-    override val currentBookName: String? get() = readBook?.book?.value?.name
-    override val currentBookAuthor: String? get() = readBook?.book?.value?.author
-
-    override fun clearCurrentBook() {
-        // ReadBookShared 无置空 book 的公开 API, 解除挂接达成"无正在阅读的书"语义
-        readBook = null
-    }
-
-    override fun setWebBookProgress(progress: BookProgress) {
-        readBook?.updateWebBookProgress(progress)
-    }
-}
-
-/**
  * 注册 [ImageControllerProviders] + [ReadBookStateProviders] (iOS/鸿蒙共用, Web 服务
  * /cover /image /deleteBook /saveBookProgress 依赖)。未注册时前两者抛 IllegalStateException。
+ *
+ * ReadBookState 桥接用 commonMain [ActiveReadBookStateProvider] (读 ActiveReadBookRegistry,
+ * shared 阅读页全平台挂接); 替代原 NativeReadBookStateProvider —— 其 attach/detach 无任何
+ * 调用点, 恒返回 null, Web 服务同步静默失效。
  */
 fun registerNativeBookControllerProviders() {
     ImageControllerProviders.register(NativeImageControllerProvider)
-    ReadBookStateProviders.register(NativeReadBookStateProvider)
+    ReadBookStateProviders.register(ActiveReadBookStateProvider)
 }

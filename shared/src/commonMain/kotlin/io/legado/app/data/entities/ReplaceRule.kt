@@ -3,7 +3,6 @@ package io.legado.app.data.entities
 import androidx.room3.ColumnInfo
 import androidx.room3.Entity
 import androidx.room3.Ignore
-import androidx.room3.Index
 import androidx.room3.PrimaryKey
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
@@ -11,13 +10,10 @@ import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.serialization.Serializable
-import kotlin.jvm.Transient
+import kotlinx.serialization.Transient
 
 @Serializable
-@Entity(
-    tableName = "replace_rules",
-    indices = [(Index(value = ["id"]))]
-)
+@Entity(tableName = "replace_rules")
 data class ReplaceRule(
     @PrimaryKey(autoGenerate = true)
     var id: Long = systemCurrentTimeMillis(),
@@ -59,7 +55,7 @@ data class ReplaceRule(
     // 不覆写 equals/hashCode: 只比 id 会让规则列表/编辑表单把"同一条改了内容"判为相同而吞掉更新;
     // 字段是 var 且多处原地改, 结构 hashCode 会漂移, 故本类实例禁止作 HashSet 元素 / HashMap key
 
-    @delegate:Transient
+    @Transient
     @delegate:Ignore
     val regex: Regex by lazy {
         pattern.toRegex()
