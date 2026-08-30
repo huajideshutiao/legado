@@ -57,6 +57,8 @@ import io.legado.app.web.registerNativeWebServerPlatform
 import io.legado.app.web.utils.registerNativeWebAssetSource
 import io.legado.app.web.utils.registerNativeWebStrings
 import platform.UIKit.UIDevice
+import platform.UIKit.UITraitCollection
+import platform.UIKit.UIUserInterfaceStyle
 
 /**
  * iOS 宿主启动早期的统一 provider 注册入口。
@@ -259,3 +261,13 @@ fun registerIosProviders() {
     registerNativeBookControllerProviders()
     registerNativeWebServerPlatform()
 }
+
+/**
+ * iOS actual: 读 UIKit 的当前 trait。
+ *
+ * UITraitCollection 只保证主线程可读, 故只在启动早期与 Compose 侧 trait 变化回写时调用,
+ * 业务侧一律读 [NativeSystemTheme.isNight] 内存缓存 (见 MainViewController 的 LocalSystemTheme 回写)。
+ */
+internal actual fun probeSystemNightMode(): Boolean =
+    UITraitCollection.currentTraitCollection.userInterfaceStyle ==
+        UIUserInterfaceStyle.UIUserInterfaceStyleDark

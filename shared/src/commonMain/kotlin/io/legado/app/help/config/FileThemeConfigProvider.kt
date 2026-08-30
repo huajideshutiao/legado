@@ -125,6 +125,15 @@ class FileThemeConfigProvider : ThemeConfigProvider {
     }
 
     /**
+     * 按当前 themeMode 重新应用主题色 + 触发全局重组 (对照原版无参 applyDayNight)。
+     * 不写 themeMode, 故「跟随系统」/E-Ink 两档不会被改掉。
+     */
+    override fun applyThemeMode() {
+        applyTheme()
+        FlowBus.with(EventBus.RECREATE).tryEmit("")
+    }
+
+    /**
      * 对照原版 getBuiltinConfigs: 前置到主题列表最前的两个虚拟条目, 不写盘、不进 configList。
      * 色值搬自原版 arco_default_accent/bg/bbg (values / values-night), 小写十六进制与
      * 原版 `"#${Int.hexString}"` 输出一致。
@@ -190,7 +199,7 @@ class FileThemeConfigProvider : ThemeConfigProvider {
 
     /**
      * 等价原版 ThemeStore.saveTheme(bg, accent, bg, bbg)。
-     * status/nav 两键为非 Android 端专属: 桌面/iOS/鸿蒙 applyColors 会写它们,
+     * status/nav 两键为非 Android 端专属 (桌面/iOS/鸿蒙的 ThemeStoreProvider 会读它们),
      * 不同步刷新会残留旧值 (Android 端从不写这两键, 故原版无此步)。
      */
     private fun saveThemeStore(accent: Int, bg: Int, bbg: Int) {
@@ -203,7 +212,8 @@ class FileThemeConfigProvider : ThemeConfigProvider {
         prefs.putInt(ThemeStorePrefKeys.KEY_NAVIGATION_BAR_COLOR, bbg)
     }
 
-    private companion object {
+    // internal: ThemeStoreProvider 的"从未应用过主题"兜底也读这一套, 避免各端再编一套硬编码色
+    internal companion object {
         // 原版 readDefaultColors 的 XML 实时值: values(日) / values-night(夜)
         // arco_default_accent=arco_primary, arco_default_bg=arco_bg_page/arco_fill_1, arco_default_bbg=arco_fill_2
         val DAY_ACCENT = 0xFF165DFF.toInt()

@@ -1,6 +1,9 @@
 package io.legado.app.help.config
 
+import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
+import io.legado.app.utils.FlowBus
+import kotlin.concurrent.Volatile
 
 /**
  * nativeMain: [AppConfigAccessor] 的 iOS / 鸿蒙 两端共用实现。
@@ -108,9 +111,11 @@ class NativeAppConfigAccessor(
     private val showAddToShelfAlertCache =
         CachedPrefValue(prefs) { it.getBoolean(PreferKey.showAddToShelfAlert, true) }
 
-    // 变更监听: 刷新全部缓存字段 (变更只发生在用户改设置, 全量重读开销可忽略)
+    // 变更监听: 刷新全部缓存字段 (变更只发生在用户改设置, 全量重读开销可忽略)。
+    // 系统深色变更同样要刷: coverShowName/coverShowAuthor 等缓存按 isNightTheme 选键。
     init {
         prefs.addPreferenceChangeListener { refreshCached() }
+        NativeSystemTheme.addChangeListener { refreshCached() }
     }
 
     private fun refreshCached() {
@@ -306,8 +311,15 @@ class NativeAppConfigAccessor(
     override val themeMode: String
         get() = themeModeCache.get()
 
+    // 四档语义与 AppConfig.isNightTheme / DesktopAppConfigAccessor 对齐:
+    // "1"=日间 "2"=夜间 "3"=E-Ink(按日间) else("0")=跟随系统
     override val isNightTheme: Boolean
-        get() = themeModeCache.get() == "2"
+        get() = when (themeModeCache.get()) {
+            "1" -> false
+            "2" -> true
+            "3" -> false
+            else -> NativeSystemTheme.isNight
+        }
 
     override val isEInkMode: Boolean
         get() = themeModeCache.get() == "3"
@@ -404,5 +416,47 @@ class NativeAppConfigAccessor(
  * 前置依赖: [PreferenceProviders] 已注册 (AppConfigAccessor 委托 PreferenceProvider)。
  */
 fun registerNativeAppConfigAccessor() {
+    NativeSystemTheme.init()
     AppConfigProviders.register(NativeAppConfigAccessor())
 }
+
+/**
+ * 系统深色模式状态 (themeMode="0" 跟随系统时由 [NativeAppConfigAccessor.isNightTheme] 消费)。
+ *
+ * iOS/鸿蒙的系统主题来源不同, 但都不是"随时可同步读"的:
+ * - iOS: UIKit 的 UITraitCollection 只保证主线程可读, 而 isNightTheme 会在任意线程被读
+ *   (封面加载/排版等), 故由主线程侧写入本缓存, 读侧只读内存;
+ * - 鸿蒙: Kotlin/Native 侧没有 configuration API, 由 ArkTS 宿主经 platformEvent 通道推送。
+ *
+ * 变更时刷新派生缓存并 emit RECREATE, 让 AppTheme 与直读日/夜色的界面重组
+ * (对照桌面端 DesktopAppConfigAccessor.systemNightMode 的注册表探测)。
+ */
+object NativeSystemTheme {
+
+    @Volatile
+    var isNight: Boolean = false
+        private set
+
+    // 监听注册在启动早期, 之后不再增删 (同 PreferenceProvider 的自通知列表)
+    private val listeners = mutableListOf<() -> Unit>()
+
+    /** 启动早期取一次初值 (iOS 可同步探测; 鸿蒙返回 null, 等宿主推送)。 */
+    fun init() {
+        probeSystemNightMode()?.let { isNight = it }
+    }
+
+    fun addChangeListener(listener: () -> Unit) {
+        listeners.add(listener)
+    }
+
+    /** 系统深色变更入口: iOS 由 Compose 侧 LocalSystemTheme 回写, 鸿蒙由 ArkTS 推送。 */
+    fun update(value: Boolean) {
+        if (isNight == value) return
+        isNight = value
+        listeners.toList().forEach { it() }
+        FlowBus.with(EventBus.RECREATE).tryEmit("")
+    }
+}
+
+/** 同步探测系统深色; 平台无法同步读时返回 null (鸿蒙)。 */
+internal expect fun probeSystemNightMode(): Boolean?

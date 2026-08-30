@@ -171,9 +171,7 @@ interface ThemeConfigProvider {
      * app 端实现内部: 清 6 个 pref → `AppConfig.isNightTheme = isNight` → `applyDayNight(context)`
      * (含 applyTheme + postEvent(RECREATE))。
      *
-     * 桌面/iOS/鸿蒙 actual: 仅清自定义色 pref / no-op (Dialog 下沉后由 [applyConfig] +
-     * [io.legado.app.ui.compose.platform.ThemeStoreProvider.applyColors] +
-     * [io.legado.app.ui.compose.platform.EventBusProvider.emitRecreate] 组合实现)。
+     * 桌面/iOS/鸿蒙 ([FileThemeConfigProvider]): 清自定义色 pref 后同样写 ThemeStore + RECREATE。
      *
      * @param isNight 是否夜间主题
      */
@@ -185,9 +183,7 @@ interface ThemeConfigProvider {
      * app 端实现内部: `applyConfigToPrefs` + `AppConfig.isNightTheme = config.isNightTheme` +
      * `applyDayNight(context)` (含 applyTheme + postEvent(RECREATE))。
      *
-     * 桌面/iOS/鸿蒙 actual: 仅持久化 config (Dialog 下沉后由
-     * [io.legado.app.ui.compose.platform.ThemeStoreProvider.applyColors] +
-     * [io.legado.app.ui.compose.platform.EventBusProvider.emitRecreate] 组合实现应用+重建)。
+     * 桌面/iOS/鸿蒙 ([FileThemeConfigProvider]): 持久化 config 后写 ThemeStore + RECREATE。
      *
      * @param config 待应用的主题配置 (KMP 版数据类)
      */
@@ -205,6 +201,16 @@ interface ThemeConfigProvider {
      * @param isNight 目标是否夜间模式
      */
     fun applyDayNight(isNight: Boolean) {}
+
+    /**
+     * 按当前 themeMode 重新应用主题色并触发全局重组 (对照 app 端无参的
+     * `ThemeConfig.applyDayNight(context)`: applyTheme + postEvent(RECREATE), **不写 themeMode**)。
+     *
+     * 供「主题模式」设置项这类自己已写好 themeMode 的场景使用 —— 它有四档
+     * (0 跟随系统 / 1 日间 / 2 夜间 / 3 E-Ink), [applyDayNight] 的布尔入参表达不了,
+     * 且会把 "0"/"3" 覆盖成 "1"/"2"。
+     */
+    fun applyThemeMode() {}
 
     /**
      * 返回内置主题配置列表 (对照 `ThemeConfig.getBuiltinConfigs(context: Context): List<Config>`)。

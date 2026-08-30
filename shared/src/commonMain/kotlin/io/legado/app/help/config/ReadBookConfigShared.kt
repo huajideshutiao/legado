@@ -969,11 +969,11 @@ data class ReadStyleConfig(
 
     /** 是否 E-Ink 模式（AppConfigProviders 未注册时按 false 处理，不影响样式读写）。 */
     private val isEInk: Boolean
-        get() = runCatching { AppConfigProviders.get().isEInkMode }.getOrDefault(false)
+        get() = currentEInkMode()
 
     /** 是否夜间主题（AppConfigProviders 未注册时按 false 处理）。 */
     private val isNight: Boolean
-        get() = runCatching { AppConfigProviders.get().isNightTheme }.getOrDefault(false)
+        get() = currentNightTheme()
 
     private fun initColorInt() {
         textColorIntEInk = parseColorOr(textColorStrEInk, 0xFF000000.toInt())

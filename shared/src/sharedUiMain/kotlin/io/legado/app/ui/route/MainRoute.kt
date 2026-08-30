@@ -12,6 +12,7 @@ import androidx.compose.foundation.gestures.ScrollScope
 import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -93,6 +94,7 @@ import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.ExploreOptionsRow
 import io.legado.app.ui.compose.component.appDialogSize
+import io.legado.app.ui.compose.component.horizontalMouseWheel
 import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.transitionStatusBarPadding
@@ -610,18 +612,18 @@ private fun HomeSectionBlock(
             }
 
             else -> when (section.style) {
-                // 对照 HomeSectionAdapter.RANK_LIMIT: 排行榜只展示前 5 名
+                // 对照 HomeSectionAdapter.RANK_LIMIT: 排行榜单列前 5 名, 宽屏自适应两列前 10 名
                 HomeSection.STYLE_RANK_LIST ->
-                    HomeRankList(books.take(HOME_RANK_LIMIT), stableOnBookClick, stableOnBookLongClick)
+                    HomeRankList(books, stableOnBookClick, stableOnBookLongClick)
 
-                // 对照 FourColumnAdapter: 每列 4 本, 横向翻列
+                // 对照 FourColumnAdapter: 每列 4 本, 横向翻列 (宽屏不限数量)
                 HomeSection.STYLE_FOUR_ROW -> HomeFourRow(books, stableOnBookClick, stableOnBookLongClick)
 
                 // 对照 HomeSectionAdapter: COVER_ROW 走封面行, 未知样式回落排行榜
                 HomeSection.STYLE_COVER_ROW ->
                     HomeCoverRow(books, stableOnBookClick, stableOnBookLongClick, section.coverVideo)
 
-                else -> HomeRankList(books.take(HOME_RANK_LIMIT), stableOnBookClick, stableOnBookLongClick)
+                else -> HomeRankList(books, stableOnBookClick, stableOnBookLongClick)
             }
         }
     }
@@ -724,10 +726,12 @@ private fun HomeCoverRow(
     onBookLongClick: (SearchBook) -> Unit,
     isVideoStyle: Boolean,
 ) {
+    val scrollState = rememberScrollState()
     Row(
         Modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
+            .horizontalScroll(scrollState)
+            .horizontalMouseWheel(scrollState)
             .padding(horizontal = 8.dp),
     ) {
         if (isVideoStyle) {
@@ -793,17 +797,38 @@ private fun HomeCoverRow(
     }
 }
 
-/** 排行榜列 (对照 RankBookAdapter showRank=true): 序号 + 封面 + 书名/作者, 垂直列表 */
+/** 排行榜列 (对照 RankBookAdapter showRank=true): 序号 + 封面 + 书名/作者, 窄屏单列5项 / 宽屏(>=600dp)双列10项 */
 @Composable
 private fun HomeRankList(
     books: List<SearchBook>,
     onBookClick: (SearchBook) -> Unit,
     onBookLongClick: (SearchBook) -> Unit,
 ) {
-    // 对照原版排行榜 rv: setPadding(default, 0, default, 0), 条目自带 4dp 纵向 padding
-    Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-        books.forEachIndexed { index, book ->
-            HomeRankItem(index + 1, book, true, onBookClick, onBookLongClick)
+    BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+        val isWide = maxWidth >= AppTheme.DesignTokens.wideScreenMinWidth
+        if (isWide) {
+            val displayBooks = books.take(10)
+            val leftBooks = displayBooks.take(5)
+            val rightBooks = displayBooks.drop(5)
+            Row(Modifier.fillMaxWidth()) {
+                Column(Modifier.weight(1f)) {
+                    leftBooks.forEachIndexed { index, book ->
+                        HomeRankItem(index + 1, book, true, onBookClick, onBookLongClick)
+                    }
+                }
+                Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                    rightBooks.forEachIndexed { index, book ->
+                        HomeRankItem(index + 6, book, true, onBookClick, onBookLongClick)
+                    }
+                }
+            }
+        } else {
+            val displayBooks = books.take(HOME_RANK_LIMIT)
+            Column(Modifier.fillMaxWidth()) {
+                displayBooks.forEachIndexed { index, book ->
+                    HomeRankItem(index + 1, book, true, onBookClick, onBookLongClick)
+                }
+            }
         }
     }
 }
@@ -812,10 +837,10 @@ private fun HomeRankList(
  * 四行样式 (对照 FourColumnAdapter): 书籍按 4 本一列切块, 横向翻列,
  * 每列内部走无序号的 [HomeRankItem] (原版 FourColumnVH 内嵌 RankBookAdapter(showRank=false))。
  * 列宽 220dp 对齐原版 FourColumnAdapter.onCreateViewHolder;
- * 滚动用 scrollable + 自定义 [StartSnapFlingBehavior] + [ColumnSnapEffect] 对照原版
+ * 滚动用 horizontalScroll + 自定义 [StartSnapFlingBehavior] + [ColumnSnapEffect] 对照原版
  * Horizontal rv + StartSnapHelper(): fling 最多翻 ±1 列 + 90ms/inch 黏滞减速 +
  * 停止时半列规则吸附 (见 StartSnapHelper.findTargetSnapPosition / createScroller / findSnapView)。
- * Compose LazyRow 的 fling 由内部 Scrollable 接管无法限位, 故不用 LazyRow。
+ * 鼠标悬停支持滚轮横向平移。
  */
 @Composable
 private fun HomeFourRow(
@@ -834,12 +859,9 @@ private fun HomeFourRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp)
-            .scrollable(
-                state = scrollState,
-                orientation = Orientation.Horizontal,
-                flingBehavior = flingBehavior,
-            ),
+            .horizontalScroll(scrollState, flingBehavior = flingBehavior)
+            .horizontalMouseWheel(scrollState)
+            .padding(horizontal = 8.dp),
     ) {
         columns.forEach { column ->
             Column(Modifier.width(220.dp)) {

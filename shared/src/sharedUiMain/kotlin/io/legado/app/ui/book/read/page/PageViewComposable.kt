@@ -43,12 +43,15 @@ import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.book.read.page.delegate.ScrollPageDelegateCompose
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
+import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.navigationBarFixedPadding
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.statusBarFixedPadding
 import io.legado.app.utils.formatTimeOfDay
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.merge
 import legado.shared.generated.resources.Res
 import org.jetbrains.compose.resources.decodeToImageBitmap
 
@@ -118,10 +121,14 @@ fun PageViewComposable(
     // （对照原版 STYLE → readView.upStyle() 直接重设 tip 视图，无需重新分页）；
     // 版本号同时传给 HeaderTip/FooterTip 作 remember 键，tip 内容只在事件到达时重读 prefs。
     var tipRefreshTick by remember { mutableIntStateOf(0) }
-    LaunchedEffect(Unit) {
-        ReadBookEvents.configChange.collect { changes ->
-            if (changes.any { it in tipRefreshChanges }) tipRefreshTick++
-        }
+    val eventBus = LocalEventBusProvider.current
+    LaunchedEffect(eventBus) {
+        merge(
+            ReadBookEvents.configChange.filter { changes ->
+                changes.any { it in tipRefreshChanges }
+            },
+            eventBus.recreateEvent,
+        ).collect { tipRefreshTick++ }
     }
     // 页眉/页脚显隐判定（对照原版 PageView.upTipStyle 的 isGone）：显隐只决定布局
     // 子节点是否组合——隐藏时不组合、占位高度自然为 0，正文区随之扩展，无任何独立
@@ -688,10 +695,14 @@ fun ScrollPageView(
     val style = rememberReaderDrawStyle()
     // tip 层刷新版本号（同 PageViewComposable 的 tipRefreshTick）
     var tipRefreshTick by remember { mutableIntStateOf(0) }
-    LaunchedEffect(Unit) {
-        ReadBookEvents.configChange.collect { changes ->
-            if (changes.any { it in tipRefreshChanges }) tipRefreshTick++
-        }
+    val eventBus = LocalEventBusProvider.current
+    LaunchedEffect(eventBus) {
+        merge(
+            ReadBookEvents.configChange.filter { changes ->
+                changes.any { it in tipRefreshChanges }
+            },
+            eventBus.recreateEvent,
+        ).collect { tipRefreshTick++ }
     }
     val density = LocalDensity.current
     val headerVisible = headerTipVisible(readTipConfig.headerMode, readBookConfig.hideStatusBar)

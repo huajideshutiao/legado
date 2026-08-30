@@ -3,9 +3,13 @@ package io.legado.app
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.ui.LocalSystemTheme
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.SystemTheme
 import androidx.compose.ui.window.ComposeUIViewController
+import io.legado.app.help.config.NativeSystemTheme
 import io.legado.app.help.config.registerIosProviders
 import io.legado.app.help.config.LocalReadConfigProviders
 import io.legado.app.help.config.ReadConfigProviders
@@ -28,12 +32,12 @@ import io.legado.app.ui.book.source.SourceUiEventBridgeHost
 import io.legado.app.ui.book.video.IosVideoPlayPlatformProvider
 import io.legado.app.ui.book.video.VideoPlayPlatformProviders
 import io.legado.app.ui.association.DeepLinkImportHost
-import io.legado.app.ui.compose.platform.IosAppConfigProvider
-import io.legado.app.ui.compose.platform.IosEventBusProvider
-import io.legado.app.ui.compose.platform.IosThemeStoreProvider
 import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
+import io.legado.app.ui.compose.platform.SharedAppConfigProvider
+import io.legado.app.ui.compose.platform.SharedEventBusProvider
+import io.legado.app.ui.compose.platform.SharedThemeStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
@@ -62,9 +66,9 @@ fun MainViewController(): UIViewController = ComposeUIViewController {
     VideoPlayPlatformProviders.register(IosVideoPlayPlatformProvider)
 
     // 2. 注入 3 个 iOS Compose UI Provider (对照 desktop Main.kt 阶段2)
-    val themeStoreProvider = remember { IosThemeStoreProvider() }
-    val appConfigProvider = remember { IosAppConfigProvider() }
-    val eventBusProvider = remember { IosEventBusProvider() }
+    val themeStoreProvider = remember { SharedThemeStoreProvider() }
+    val appConfigProvider = remember { SharedAppConfigProvider() }
+    val eventBusProvider = remember { SharedEventBusProvider() }
 
     // 阅读页两个注入点: 未注入时 LocalReadConfigProviders/LocalReadBookProvider 取值即 error,
     // 阅读页与 EffectiveReplaces 路由会崩 (二者默认值均为 error 而非兜底实现)
@@ -74,6 +78,19 @@ fun MainViewController(): UIViewController = ComposeUIViewController {
     // 零薄壳: AppNavigator + ScreenModelStore 是唯一状态源 (对照 desktop Main.kt line 346-347)
     val navigator = remember { AppNavigator(AppRoute.Main()) }
     val screenModelStore = remember { ScreenModelStore() }
+
+    // 系统深色跟随 (themeMode="0"): CMP 的 ComposeHostingViewController 在
+    // traitCollectionDidChange 时更新 LocalSystemTheme, 回写业务层内存缓存 ——
+    // UITraitCollection 只保证主线程可读, 而 isNightTheme 会在任意线程被读。
+    val systemTheme = LocalSystemTheme.current
+    LaunchedEffect(systemTheme) {
+        when (systemTheme) {
+            SystemTheme.Dark -> NativeSystemTheme.update(true)
+            SystemTheme.Light -> NativeSystemTheme.update(false)
+            // 拿不到系统主题时保留启动时探测到的值, 不要按日间覆盖
+            SystemTheme.Unknown -> Unit
+        }
+    }
 
     CompositionLocalProvider(
         LocalThemeStoreProvider provides themeStoreProvider,

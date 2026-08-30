@@ -93,11 +93,31 @@ const store = useSourceStore()
 const source = computed(() => store.currentSource as Record<string, unknown>)
 const activeTab = ref('base')
 
+function getNsObject(nsValue: unknown): Record<string, unknown> {
+  if (nsValue && typeof nsValue === 'object') {
+    return nsValue as Record<string, unknown>
+  }
+  if (typeof nsValue === 'string') {
+    const trimmed = nsValue.trim()
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(trimmed)
+        if (parsed && typeof parsed === 'object') {
+          return parsed as Record<string, unknown>
+        }
+      } catch {
+        return {}
+      }
+    }
+  }
+  return {}
+}
+
 /** 取字段值: 普通字段直接取; namespace 字段取命名空间对象内的子字段 */
 function fieldValue(field: SourceField): unknown {
   if (field.namespace) {
-    const ns = source.value[field.namespace]
-    return ns && typeof ns === 'object' ? (ns as Record<string, unknown>)[field.id] : undefined
+    const nsObj = getNsObject(source.value[field.namespace])
+    return nsObj[field.id]
   }
   return source.value[field.id]
 }
@@ -122,7 +142,7 @@ function updateField(field: SourceField, e: Event) {
 
 function updateNsField(field: SourceField, e: Event) {
   const target = e.target as HTMLInputElement
-  const nsObj = (source.value[field.namespace!] ?? {}) as Record<string, unknown>
+  const nsObj = getNsObject(source.value[field.namespace!])
   store.currentSource = {
     ...store.currentSource,
     [field.namespace!]: {

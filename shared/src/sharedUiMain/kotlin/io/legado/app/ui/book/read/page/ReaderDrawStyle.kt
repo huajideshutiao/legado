@@ -20,9 +20,12 @@ import io.legado.app.help.config.ReadBookConfigShared
 import io.legado.app.help.config.ReadTipConfigShared
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
+import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.ui.root.PlatformCapabilityProviders
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.merge
 
 /**
  * 阅读画布的样式快照，对应 app 端 `TextStyleProvider.upStyle` 产出的
@@ -54,8 +57,8 @@ data class ReaderDrawStyle(
 )
 
 /**
- * 读取 [ReadBookConfigShared] 构建 [ReaderDrawStyle]，并订阅 [ReadBookEvents.configChange]
- * 在样式类事件到达时重建（对应 app 端 ReadBookActivity 收到 UP_CONFIG 后调 upStyle + invalidate）。
+ * 读取 [ReadBookConfigShared] 构建 [ReaderDrawStyle]，样式类事件与主题模式切换（RECREATE）
+ * 到达时自增版本号重建；主题色/E-Ink 这类组合期输入直接作 remember 键，不经事件。
  */
 @Composable
 fun rememberReaderDrawStyle(): ReaderDrawStyle {
@@ -64,12 +67,19 @@ fun rememberReaderDrawStyle(): ReaderDrawStyle {
     val readTipConfig = providers.readTipConfig
     val accentColor = AppTheme.colors.accent
     val isEInk = LocalEInk.current
+    val eventBus = LocalEventBusProvider.current
 
+    // 切日/夜换的是 ReadBookConfig 的日/夜分支（curTextColor/curBgColor 直读 prefs、无快照），
+    // 只发 RECREATE 不发 ReadConfigChange，故两个事件源合流（同 DesktopReaderPlatformProvider
+    // 的标题栏着色）。
     var styleVersion by remember { mutableIntStateOf(0) }
-    LaunchedEffect(Unit) {
-        ReadBookEvents.configChange.collect { changes ->
-            if (changes.any { it in redrawChanges }) styleVersion++
-        }
+    LaunchedEffect(eventBus) {
+        merge(
+            ReadBookEvents.configChange.filter { changes ->
+                changes.any { it in redrawChanges }
+            },
+            eventBus.recreateEvent,
+        ).collect { styleVersion++ }
     }
 
     // 字体文件读盘只在路径变化时做一次，样式版本变动不重复加载

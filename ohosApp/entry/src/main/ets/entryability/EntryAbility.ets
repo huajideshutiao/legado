@@ -2,6 +2,7 @@ import UIAbility from '@ohos.app.ability.UIAbility';
 import type AbilityConstant from '@ohos.app.ability.AbilityConstant';
 import type Want from '@ohos.app.ability.Want';
 import type { Configuration } from '@ohos.app.ability.Configuration';
+import ConfigurationConstant from '@ohos.app.ability.ConfigurationConstant';
 import type window from '@ohos.window';
 import display from '@ohos.display';
 import notificationManager from '@ohos.notificationManager';
@@ -28,7 +29,7 @@ import { handleMarkdownRequest } from '../bridge/MarkdownBridgeHandler';
 import { initSystemBridge, handleShowToast, handleOpenUrl } from '../bridge/SystemBridgeHandler';
 import { handleShowTextActionMenu } from '../bridge/TextActionBridgeHandler';
 import { handleBatteryRequest } from '../bridge/BatteryBridgeHandler';
-import { initPlatformEvent, emitAppLifecycle } from '../bridge/PlatformEventBridge';
+import { initPlatformEvent, emitAppLifecycle, emitColorMode } from '../bridge/PlatformEventBridge';
 import { initShareBridge, handleShareRequest } from '../bridge/SystemShareBridgeHandler';
 import { handleKeyboardCommand } from '../bridge/KeyboardBridgeHandler';
 import { initPermissionBridge, handlePermissionRequest } from '../bridge/PermissionBridgeHandler';
@@ -136,6 +137,15 @@ export default class EntryAbility extends UIAbility {
         legado.platformEvent(json);
       });
     }, '[Legado] platform event callback registered via napi', '[Legado] initPlatformEvent failed: ');
+
+    // 系统深浅色初值: Kotlin/Native 侧没有 configuration API, 「主题模式=跟随系统」这一档
+    // 只能由 ArkTS 供给 (Kotlin 侧落到 NativeSystemTheme, 见 OhosPlatformEventChannel)。
+    // 须在 initPlatformEvent 之后: 通道未注入时事件被 warn 降级丢弃。
+    registerSafely((): void => {
+      const isDark: boolean =
+        this.context.config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
+      emitColorMode(isDark);
+    }, '[Legado] system colorMode injected', '[Legado] emitColorMode failed: ');
 
     // KP7+: 注册 Toast/Notification tsfn 回调 (KMP → ArkTS 跨线程 dispatch)。
     // C++ 侧 (legado_napi.cpp RegisterToastCallback) 创建 napi_threadsafe_function 包装此回调,
@@ -451,6 +461,15 @@ export default class EntryAbility extends UIAbility {
 
   onConfigurationUpdate(newConfig: Configuration): void {
     console.info('[Legado] EntryAbility.onConfigurationUpdate');
+    // 系统深浅色变更 → Kotlin NativeSystemTheme: 刷按日/夜取键的派生缓存并 emit RECREATE,
+    // AppTheme 与直读日/夜色的界面随之重组 (「主题模式=跟随系统」时生效)。
+    try {
+      const isDark: boolean =
+        newConfig.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
+      emitColorMode(isDark);
+    } catch (e) {
+      console.error('[Legado] colorMode update failed: ' + JSON.stringify(e));
+    }
   }
 
   onWindowStageCreate(windowStage: window.WindowStage): void {

@@ -79,6 +79,7 @@ import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.compose.platform.AppShortcutHandler
 import io.legado.app.ui.compose.platform.KeyRepeatPolicy
+import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.PageTurnThrottle
 import io.legado.app.ui.compose.platform.VolumeKeyPageTurnHandler
 import io.legado.app.ui.compose.platform.performBack
@@ -522,7 +523,11 @@ fun ReaderRoute(
     )
 
     // region ReadBookEvents 订阅 (对照 app 端 ReadBookActivity.observeLiveBus 的 ReadBookEvents 收集)
-    LaunchedEffect(screenModel) {
+    val eventBus = LocalEventBusProvider.current
+    LaunchedEffect(screenModel, eventBus) {
+        // 主题模式切换/重建 (对照 app 端 EventBus.RECREATE): 菜单只有日/夜图标与主题相关,
+        // 其余状态由 AppTheme 换色时的整树重组自然重读
+        launch { eventBus.recreateEvent.collect { screenModel.menuState.upNightTheme() } }
         // 菜单/顶栏重建 (对照 app 端 actionBarChange → readMenu.reset())
         launch { ReadBookEvents.actionBarChange.collect { screenModel.menuState.reset() } }
         // 进度条刷新 (对照 app 端 seekBarChange → readMenu.upSeekBar())

@@ -55,7 +55,6 @@ import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
-import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.preference.ColorPickerDialog
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -113,7 +112,6 @@ fun ThemeCustomizeDialog(
 ) {
     val prefs = remember { PreferenceProviders.get() }
     val appConfig = remember { AppConfigProviders.get() }
-    val themeStore = LocalThemeStoreProvider.current
     val eventBus = LocalEventBusProvider.current
     val colors = AppTheme.colors
 
@@ -267,10 +265,12 @@ fun ThemeCustomizeDialog(
         // 用户随后调的模糊度; 空路径清除)
         runCatching { commitBackgroundImage(prefs, isNight, bgImagePath, bgBlur) }
             .onFailure { AppLog.put("提交主题背景图失败\n${it.message}", it) }
-        // 对照原版: 仅当编辑的是当前生效模式才应用 + 重建
+        // 对照原版: 仅当编辑的是当前生效模式才应用 + 重建。
+        // 上面已写好 cAccent/cBackground/... 自定义色 pref, 这里按当前 themeMode 重算
+        // ThemeStore 色并 emit RECREATE (原先走 ThemeStoreProvider.applyColors: 四端各一份
+        // 实现、重复写同一批 pref, 还会把 themeMode 从「跟随系统」改成显式档)
         if (appConfig.isNightTheme == isNight) {
-            themeStore.applyColors(Color(accent), Color(bg), Color(bbg), isNight)
-            eventBus.emitRecreate()
+            ThemeConfigProviders.get().applyThemeMode()
         }
         onDismiss()
     }

@@ -106,7 +106,8 @@ import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalTxt
 import io.legado.app.help.book.isNotShelf
-import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.config.currentEInkMode
+import io.legado.app.help.config.currentNightTheme
 import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.help.showSourceLogin
 import io.legado.app.help.toast.Toasters
@@ -277,6 +278,14 @@ interface ReadMenuState {
     fun refresh() {
         // 待实现：平台 actual 刷新顶栏/底栏展示数据
     }
+
+    /**
+     * 同步日/夜模式 (对照 app 端 RECREATE → Activity 重启后重读 `AppConfig.isNightTheme`)。
+     * 菜单其余状态与主题无关，故 RECREATE 只需本方法，不必整套 [reset]。
+     */
+    fun upNightTheme() {
+        // 待实现：平台 actual 重读日/夜模式
+    }
     // endregion
 }
 
@@ -330,15 +339,12 @@ open class BaseReadMenuState(
     override var nextEnabled: Boolean by mutableStateOf(false)
         protected set
     override var autoPage: Boolean by mutableStateOf(false)
-    override var isNightTheme: Boolean by mutableStateOf(
-        runCatching { AppConfigProviders.get().isNightTheme }.getOrDefault(false)
-    )
+    override var isNightTheme: Boolean by mutableStateOf(currentNightTheme())
         protected set
 
     open fun show() {
-        animate = runCatching { !AppConfigProviders.get().isEInkMode }.getOrDefault(true)
+        animate = !currentEInkMode()
         refresh()
-        isNightTheme = runCatching { AppConfigProviders.get().isNightTheme }.getOrDefault(false)
         visibleState.targetState = true
     }
 
@@ -505,6 +511,8 @@ open class BaseReadMenuState(
     override fun clickNightTheme() {
         val newNight = !isNightTheme
         ThemeConfigProviders.get().applyDayNight(newNight)
+        // 以参数为准立即置位（applyDayNight 内部发的 RECREATE 会驱动画布/页眉页脚重建，
+        // 不额外发 ReadConfigChange —— 切日/夜只换颜色分支，排版参数没变）
         isNightTheme = newNight
     }
 
@@ -577,6 +585,7 @@ open class BaseReadMenuState(
     }
 
     override fun refresh() {
+        upNightTheme()
         upTopMenu()
         upMenuView()
         upSourceAction()
@@ -588,8 +597,13 @@ open class BaseReadMenuState(
     }
 
     override fun reset() {
+        upNightTheme()
         upTopMenu()
         upMenuView()
+    }
+
+    override fun upNightTheme() {
+        isNightTheme = currentNightTheme()
     }
 }
 

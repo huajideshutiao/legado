@@ -60,40 +60,136 @@ type BookSoure = BaseSource & {
   respondTime: number
   // 智能排序的权重
   weight: number
+  // 启用段评
+  enabledReview?: boolean
+  // 高危api
+  enableDangerousApi?: boolean
+  // 发现样式
+  exploreStyle?: number
   // 发现url
   exploreUrl?: string
   // 发现筛选规则
   exploreScreen?: string
   // 发现规则
-  ruleExplore?: ExploreRule
+  ruleExplore?: ExploreRule | string
   // 搜索url
   searchUrl?: string
   // 搜索规则
-  ruleSearch?: SearchRule
+  ruleSearch?: SearchRule | string
   // 书籍信息页规则
-  ruleBookInfo?: BookInfoRule
+  ruleBookInfo?: BookInfoRule | string
   // 目录页规则
-  ruleToc?: TocRule
+  ruleToc?: TocRule | string
   // 正文页规则
-  ruleContent?: ContentRule
+  ruleContent?: ContentRule | string
   // 段评规则
-  ruleReview?: ReviewRule
+  ruleReview?: ReviewRule | string
 }
-/* type ExploreRule = {
-    [prop:string]: string
+
+type SearchRule = {
+  checkKeyWord?: string
+  hasMoreRule?: string
+  bookList?: string
+  name?: string
+  author?: string
+  intro?: string
+  kind?: string
+  lastChapter?: string
+  updateTime?: string
+  bookUrl?: string
+  coverUrl?: string
+  wordCount?: string
 }
+
+type ExploreRule = {
+  hasMoreRule?: string
+  bookList?: string
+  name?: string
+  author?: string
+  intro?: string
+  kind?: string
+  lastChapter?: string
+  updateTime?: string
+  bookUrl?: string
+  coverUrl?: string
+  wordCount?: string
+}
+
 type BookInfoRule = {
-    [prop:string]: string
+  init?: string
+  name?: string
+  author?: string
+  intro?: string
+  kind?: string
+  lastChapter?: string
+  updateTime?: string
+  coverUrl?: string
+  tocUrl?: string
+  wordCount?: string
+  canReName?: string
+  downloadUrls?: string
 }
+
 type TocRule = {
-    [prop:string]: string
+  preUpdateJs?: string
+  chapterList?: string
+  chapterName?: string
+  chapterUrl?: string
+  isVolume?: string
+  isVip?: string
+  isPay?: string
+  updateTime?: string
+  nextTocUrl?: string
 }
+
 type ContentRule = {
-    [prop:string]: string
+  content?: string
+  title?: string
+  nextContentUrl?: string
+  webJs?: string
+  sourceRegex?: string
+  replaceRegex?: string
+  imageStyle?: string
+  imageDecode?: string
+  payAction?: string
+  subContent?: string
+  musicCover?: string
+  shouldOverrideUrlLoading?: string
 }
+
 type ReviewRule = {
-    [prop:string]: string
-} */
+  reviewUrl?: string
+  reviewList?: string
+  reviewCountRule?: string
+  reviewIdRule?: string
+  avatarRule?: string
+  nameRule?: string
+  contentRule?: string
+  postTimeRule?: string
+  extraRule?: string
+  imagesRule?: string
+  voteUpCountRule?: string
+  voteUpSelectedRule?: string
+  voteDownSelectedRule?: string
+  replyCountRule?: string
+  totalCountRule?: string
+  replyListUrl?: string
+  hasMoreRule?: string
+  voteUpRule?: string
+  voteDownRule?: string
+  replyRule?: string
+  deleteRule?: string
+}
+
 type Source = BookSoure
 
-export { Source, BookSoure }
+export {
+  Source,
+  BookSoure,
+  SearchRule,
+  ExploreRule,
+  BookInfoRule,
+  TocRule,
+  ContentRule,
+  ReviewRule,
+}

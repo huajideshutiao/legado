@@ -34,6 +34,41 @@ export const convertSourcesToMap = (sources: Source[]): Map<string, Source> => {
   return map
 }
 
+export const RULE_NAMESPACES = [
+  'ruleSearch',
+  'ruleExplore',
+  'ruleBookInfo',
+  'ruleToc',
+  'ruleContent',
+  'ruleReview',
+] as const
+
+export const ensureSourceRules = (source: Source): Source => {
+  if (!source || typeof source !== 'object') return source
+  const s = { ...source } as Record<string, unknown>
+  for (const ns of RULE_NAMESPACES) {
+    const val = s[ns]
+    if (typeof val === 'string') {
+      const trimmed = val.trim()
+      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        try {
+          s[ns] = JSON.parse(trimmed)
+        } catch {
+          s[ns] = {}
+        }
+      } else if (trimmed === '') {
+        s[ns] = {}
+      } else {
+        // 如果是纯字符串格式
+        s[ns] = val
+      }
+    } else if (!val || typeof val !== 'object') {
+      s[ns] = {}
+    }
+  }
+  return s as Source
+}
+
 export const normalizeSource = (source: Record<string, unknown>) => {
   for (const key in source) {
     const value = source[key]
@@ -55,4 +90,6 @@ export const emptyBookSource = {
   ruleToc: {},
   ruleContent: {},
   ruleExplore: {},
+  ruleReview: {},
 } as BookSoure
+

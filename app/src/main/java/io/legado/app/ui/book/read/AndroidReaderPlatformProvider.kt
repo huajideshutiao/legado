@@ -503,7 +503,6 @@ private class AndroidReaderMenuState(
         animate = !AppConfig.isEInkMode
         upColorConfig()
         refresh()
-        isNightTheme = AppConfig.isNightTheme
         visibleState.targetState = true
         // 菜单显示时状态栏/导航栏恢复显示 (对照原版 runMenuIn → upSystemUiVisibility)
         activity.upReaderSystemBars(menuVisible = true)

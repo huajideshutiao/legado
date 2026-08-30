@@ -4,8 +4,8 @@ package io.legado.app.help.config
  * 内存版 [ThemeConfigProvider] 抽象基类: 用内存 MutableList 简化实现,
  * 供无 Android ThemeConfig 单例的平台 (桌面/iOS/鸿蒙) 复用。
  *
- * 主题应用由各平台 ThemeStoreProvider.applyColors + EventBusProvider.emitRecreate
- * 组合实现, 故 applyBuiltin/applyConfig/save 为 no-op。
+ * 本基类只管列表存取, applyBuiltin/applyConfig/save 为 no-op —— 真正应用主题的实现见
+ * [FileThemeConfigProvider] (写 ThemeStore pref + emit RECREATE)。
  * clearBg 走接口 default 实现 (基于 AppFilesDirs + BackupFileOps 跨平台抽象)。
  */
 open class InMemoryThemeConfigProvider : ThemeConfigProvider {

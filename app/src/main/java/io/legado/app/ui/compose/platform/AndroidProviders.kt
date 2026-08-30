@@ -1,7 +1,6 @@
 package io.legado.app.ui.compose.platform
 
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import io.legado.app.App
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
@@ -10,7 +9,6 @@ import io.legado.app.help.config.ThemeConfig
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.getPrefInt
-import io.legado.app.utils.hexString
 import io.legado.app.utils.postEvent
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -48,19 +46,6 @@ class AndroidThemeStoreProvider : ThemeStoreProvider {
             if (AppConfig.isNightTheme) PreferKey.bgImageNBlurring else PreferKey.bgImageBlurring,
             0,
         )
-
-    /** 包装 ThemeConfig.applyConfig + postEvent(RECREATE) (Color→Config 转换在此完成) */
-    override fun applyColors(accent: Color, bg: Color, bbg: Color, isNight: Boolean) {
-        val config = ThemeConfig.Config(
-            themeName = "",
-            isNightTheme = isNight,
-            primaryColor = "#${bg.toArgb().hexString}",
-            accentColor = "#${accent.toArgb().hexString}",
-            backgroundColor = "#${bg.toArgb().hexString}",
-            bottomBackground = "#${bbg.toArgb().hexString}",
-        )
-        ThemeConfig.applyConfig(App.instance, config)
-    }
 }
 
 /** 包装 [AppConfig.isEInkMode] */

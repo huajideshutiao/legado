@@ -2,6 +2,7 @@
 
 package io.legado.app.napi
 
+import io.legado.app.help.config.NativeSystemTheme
 import io.legado.app.help.glide.progress.OnProgressListener
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.ui.root.AppForegroundState
@@ -23,6 +24,8 @@ import kotlinx.serialization.Serializable
  *   "totalBytes":456, "isComplete":false }` → [OhosDownloadProgressEvents]
  * - 应用生命周期: `{ "type":"lifecycle", "event":"onForeground"|"onBackground" }`
  *   → [OhosAppLifecycle]
+ * - 系统深浅色: `{ "type":"colorMode", "isDark":true|false }`
+ *   → [NativeSystemTheme] (「主题模式=跟随系统」档的唯一来源)
  *
  * # 线程
  * 事件由 ArkTS 主线程经 napi → @CName 直推 (同 mediaEvent/ttsEvent 模式), 无跨线程
@@ -185,6 +188,8 @@ internal object OhosPlatformEventChannel {
                 "onForeground" -> OhosAppLifecycle.dispatch(OhosLifecycleEvent.ON_FOREGROUND)
                 "onBackground" -> OhosAppLifecycle.dispatch(OhosLifecycleEvent.ON_BACKGROUND)
             }
+
+            "colorMode" -> NativeSystemTheme.update(payload.isDark)
         }
     }
 }
@@ -192,12 +197,13 @@ internal object OhosPlatformEventChannel {
 /**
  * 统一平台事件载荷 (Kotlin 侧唯一一份定义, 与 ArkTS PlatformEventBridge.ets 对齐)。
  *
- * @param type 事件类型: "httpProgress" | "lifecycle"
+ * @param type 事件类型: "httpProgress" | "lifecycle" | "colorMode"
  * @param url httpProgress: 请求 url (与 addListener 的 url 对应)
  * @param bytesReceived httpProgress: 已接收字节数
  * @param totalBytes httpProgress: 总字节数 (<=0 表示未知, 如分块传输无 Content-Length)
  * @param isComplete httpProgress: 终态 (请求成功/失败/取消, 之后无该 url 的后续事件)
  * @param event lifecycle: "onForeground" | "onBackground"
+ * @param isDark colorMode: 系统是否深色
  */
 @Serializable
 internal data class OhosPlatformEventPayload(
@@ -207,4 +213,5 @@ internal data class OhosPlatformEventPayload(
     val totalBytes: Long = 0L,
     val isComplete: Boolean = false,
     val event: String? = null,
+    val isDark: Boolean = false,
 )

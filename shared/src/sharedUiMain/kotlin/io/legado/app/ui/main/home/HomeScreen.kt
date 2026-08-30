@@ -39,6 +39,7 @@ import io.legado.app.data.entities.HomeTab
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.ui.compose.component.AppScrollTabRow
+import io.legado.app.ui.compose.component.FastScrollLazyVerticalGrid
 import io.legado.app.ui.compose.component.PullToRefreshDefaults
 import io.legado.app.ui.compose.component.pullToRefresh
 import io.legado.app.ui.compose.component.rememberPullToRefreshState
@@ -396,7 +397,7 @@ private fun HomeTabPage(
                 onRefresh = { actions.refreshTab(tabTitle) },
             ),
     ) {
-        LazyVerticalGrid(
+        FastScrollLazyVerticalGrid(
             columns = rememberResponsiveColumns(2),
             state = gridState,
             modifier = Modifier.fillMaxSize(),

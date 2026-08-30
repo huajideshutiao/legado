@@ -4,7 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.config.currentEInkMode
 import io.legado.app.ui.book.read.ReadBookViewModelShared
 import io.legado.app.ui.book.read.page.delegate.PageDelegateCompose
 import io.legado.app.ui.book.read.page.delegate.ScrollPageDelegateCompose
@@ -24,7 +24,7 @@ import kotlinx.coroutines.launch
  *
  * # 三种模式（对照原版 AutoPager）
  *
- * - **E-Ink**（[AppConfigProviders.isEInkMode]）：定时整页翻页，每 `autoReadSpeed` 秒一拍，
+ * - **E-Ink**（[currentEInkMode]）：定时整页翻页，每 `autoReadSpeed` 秒一拍，
  *   无动画（原版 `run()` + postDelayed 分支）
  * - **非 E-Ink 翻页模式**（Cover/Slide/Simulation/NoAnim）：clip 揭示动画 +
  *   accent 色 1px 进度线。本控制器只推进 [progress]（0..1，每页耗时 autoReadSpeed 秒），
@@ -94,7 +94,7 @@ class AutoPagerCompose(
 
     fun start() {
         stop()
-        isEInkMode = runCatching { AppConfigProviders.get().isEInkMode }.getOrDefault(false)
+        isEInkMode = currentEInkMode()
         scrollMode = viewModel.isScrollPageAnim
         isRunning = true
         isPausing = false

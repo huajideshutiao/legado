@@ -52,6 +52,11 @@ object IosICloudProgressSync {
 
     private var changeObserver: Any? = null
 
+    /** iCloud 已启用且用户开了进度同步 (三个入口共用的前置判断)。 */
+    private val syncEnabled: Boolean
+        get() = IosICloud.enabled &&
+            runCatching { AppConfigProviders.get().syncBookProgress }.getOrDefault(false)
+
     /** 上传单本进度 (对照 [io.legado.app.help.AppWebDavShared.uploadBookProgress])。 */
     fun uploadBookProgress(book: Book) {
         uploadBookProgress(BookProgress(book))
@@ -59,8 +64,7 @@ object IosICloudProgressSync {
 
     /** 上传预制 [BookProgress] 实体。 */
     fun uploadBookProgress(progress: BookProgress) {
-        if (!IosICloud.enabled) return
-        if (!runCatching { AppConfigProviders.get().syncBookProgress }.getOrDefault(false)) return
+        if (!syncEnabled) return
         runCatching {
             val json = GSON.toJson(progress)
             if (json.encodeToByteArray().size > MAX_VALUE_BYTES) {
@@ -85,8 +89,7 @@ object IosICloudProgressSync {
      * 拉取全部云端进度写回本地库 (对照 [io.legado.app.help.AppWebDavShared.downloadAllBookProgress])。
      */
     suspend fun downloadAllBookProgress() {
-        if (!IosICloud.enabled) return
-        if (!runCatching { AppConfigProviders.get().syncBookProgress }.getOrDefault(false)) return
+        if (!syncEnabled) return
         store.synchronize()
         AppDbProviders.get().bookDao.all().forEach { book ->
             applyRemoteProgress(book.bookUrl, getBookProgress(book))
@@ -123,8 +126,7 @@ object IosICloudProgressSync {
 
     /** KV key 无法反解出书名, 遍历本地书籍算 key 反查命中项。 */
     private suspend fun onExternalChange(changedKeys: Set<String>) {
-        if (!IosICloud.enabled) return
-        if (!runCatching { AppConfigProviders.get().syncBookProgress }.getOrDefault(false)) return
+        if (!syncEnabled) return
         runCatching {
             AppDbProviders.get().bookDao.all().forEach { book ->
                 if (progressKey(book.name, book.author) !in changedKeys) return@forEach

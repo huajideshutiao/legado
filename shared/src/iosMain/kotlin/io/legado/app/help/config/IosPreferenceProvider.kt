@@ -74,6 +74,7 @@ class IosPreferenceProvider(
             defaults.setObject(value, forKey = key)
         }
         defaults.synchronize()
+        notifyChanged(key)
     }
 
     override fun putInt(key: String, value: Int) {
@@ -81,26 +82,31 @@ class IosPreferenceProvider(
         // 但标准 API 有 `setInteger(value, forKey)`; 这里用 setObject 兼容 (NSInteger 自动装箱)
         defaults.setObject(value, forKey = key)
         defaults.synchronize()
+        notifyChanged(key)
     }
 
     override fun putBoolean(key: String, value: Boolean) {
         defaults.setBool(value, forKey = key)
         defaults.synchronize()
+        notifyChanged(key)
     }
 
     override fun putLong(key: String, value: Long) {
         defaults.setObject(value, forKey = key)
         defaults.synchronize()
+        notifyChanged(key)
     }
 
     override fun putFloat(key: String, value: Float) {
         defaults.setFloat(value, forKey = key)
         defaults.synchronize()
+        notifyChanged(key)
     }
 
     override fun remove(key: String) {
         defaults.removeObjectForKey(key)
         defaults.synchronize()
+        notifyChanged(key)
     }
 
     override fun contains(key: String): Boolean {
@@ -132,12 +138,13 @@ class IosPreferenceProvider(
     }
 
     /**
-     * 监听 NSUserDefaults 变更通知: 覆盖本实例写入之外的直写路径
-     * (IosPreferenceProvider / IosThemeStoreProvider 直接写 standardUserDefaults)。
-     *
-     * 通知不含变更 key, 回调空串由监听方按"任意 key 变更"处理。
+     * 注册变更监听。两条通道 (见 [PreferenceChangeNotifier]):
+     * - 本实例写入路径同步自通知;
+     * - NSUserDefaults 通知: 覆盖不经本实例的直写路径。通知不含变更 key, 回调空串
+     *   由监听方按"任意 key 变更"处理。
      */
     override fun addPreferenceChangeListener(listener: (key: String) -> Unit): () -> Unit {
+        notifier.add(listener)
         val observer = NSNotificationCenter.defaultCenter.addObserverForName(
             NSUserDefaultsDidChangeNotification,
             `object` = null,
@@ -145,8 +152,15 @@ class IosPreferenceProvider(
         ) {
             listener("")
         }
-        return { NSNotificationCenter.defaultCenter.removeObserver(observer) }
+        return {
+            notifier.remove(listener)
+            NSNotificationCenter.defaultCenter.removeObserver(observer)
+        }
     }
+
+    private val notifier = PreferenceChangeNotifier()
+
+    private fun notifyChanged(key: String) = notifier.notifyChanged(key)
 }
 
 /**

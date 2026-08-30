@@ -463,6 +463,11 @@ object WebBookProvidersImpl :
         ThemeConfig.applyDayNight(App.instance)
     }
 
+    /** 包装无参 ThemeConfig.applyDayNight (initNightMode + applyTheme + postEvent, 不写 themeMode) */
+    override fun applyThemeMode() {
+        ThemeConfig.applyDayNight(App.instance)
+    }
+
     /** 包装 ThemeConfig.getBuiltinConfigs (默认日间 + 默认夜间, isBuiltin=true) */
     override fun getBuiltinConfigs(): List<ThemeConfigData> =
         ThemeConfig.getBuiltinConfigs(App.instance).map { it.toThemeConfigData() }

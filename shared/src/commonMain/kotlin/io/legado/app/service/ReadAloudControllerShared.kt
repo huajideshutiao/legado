@@ -11,6 +11,7 @@ import io.legado.app.help.tts.ReadAloudQueue
 import io.legado.app.help.tts.SystemTtsEngine
 import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.help.tts.TtsProgressListener
+import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -41,15 +42,15 @@ import kotlin.concurrent.Volatile
  * @param navigator 章节导航器, 由调用方桥接到 ViewModel
  * @param engineProvider TTS 引擎提供者, 默认查 [TtsEngineProvider]; 测试时可注入 mock
  * @param httpTtsPlayerFactory HttpTTS 播放器工厂, 默认查 [TtsEngineProvider.getHttpTtsPlayer]
- * @param ttsEngineConfigProvider TTS 引擎配置 (Book.ttsEngine 优先, 否则 AppConfig.ttsEngine),
- *                                 返回数字串表示 HttpTTS id, 空/非数字走系统 TTS
+ * @param ttsEngineConfigProvider TTS 引擎配置, 默认 [defaultTtsEngineConfig]
+ *                                 (返回数字串表示 HttpTTS id, 空/非数字走系统 TTS)
  * @param httpTtsConfigLoader HttpTTS 源配置加载器, 用 id 从 DAO 查 [HttpTTS]
  */
 class ReadAloudControllerShared(
     private val navigator: ReadAloudChapterNavigator,
     private val engineProvider: () -> SystemTtsEngine? = { TtsEngineProvider.get() },
     private val httpTtsPlayerFactory: (HttpTTS) -> HttpTtsPlayer? = { TtsEngineProvider.getHttpTtsPlayer(it) },
-    private val ttsEngineConfigProvider: () -> String? = { null },
+    private val ttsEngineConfigProvider: () -> String? = { defaultTtsEngineConfig() },
     private val httpTtsConfigLoader: suspend (Long) -> HttpTTS? = { AppDbProviders.get().httpTTSDao.get(it) },
 ) {
 
@@ -681,3 +682,11 @@ interface ReadAloudChapterNavigator {
     /** 切到上一章 (调用 viewModel.moveToPrevChapter)。 */
     fun moveToPrevChapter()
 }
+
+/**
+ * 当前生效的 TTS 引擎配置: Book.ttsEngine 优先, 否则 AppConfig.ttsEngine
+ * (对照原版 `ReadAloud.ttsEngine`)。桌面 / iOS / 鸿蒙三端曾各传一份逐字相同的 lambda。
+ */
+fun defaultTtsEngineConfig(): String? =
+    ActiveReadBookRegistry.current?.bookValue?.config?.ttsEngine?.takeIf { it.isNotBlank() }
+        ?: runCatching { AppConfigProviders.get().ttsEngine }.getOrNull()?.takeIf { it.isNotBlank() }

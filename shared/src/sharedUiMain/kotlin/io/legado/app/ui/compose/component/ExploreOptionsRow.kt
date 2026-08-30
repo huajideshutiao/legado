@@ -73,10 +73,12 @@ fun ExploreOptionsRow(
     Column(Modifier.fillMaxWidth()) {
         rows.forEach { (option, selectedValues, selectedValue) ->
             key(option.name) {
+                val rowScrollState = rememberScrollState()
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
+                        .horizontalScroll(rowScrollState)
+                        .horizontalMouseWheel(rowScrollState)
                         // 多选整行可点 (对照 bindMultiSelect 的 row.setOnClickListener, 扩大点击区)
                         .then(
                             if (option.multiSelect) {

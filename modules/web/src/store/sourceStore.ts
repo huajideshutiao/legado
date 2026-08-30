@@ -3,6 +3,7 @@ import {
   emptyBookSource,
   getSourceUniqueKey,
   convertSourcesToMap,
+  ensureSourceRules,
 } from '@utils/souce'
 import type { BookSoure, Source } from '@/source'
 
@@ -13,7 +14,7 @@ export const useSourceStore = defineStore('source', {
     return {
       bookSources: shallowRef([] as BookSoure[]),
       savedSources: [] as Source[],
-      currentSource: JSON.parse(JSON.stringify(emptySource)) as Source,
+      currentSource: ensureSourceRules(JSON.parse(JSON.stringify(emptySource))) as Source,
       currentTab: localStorage.getItem('tabName') || 'editTab',
       editTabSource: {} as Source,
       isDebuging: false,
@@ -40,8 +41,10 @@ export const useSourceStore = defineStore('source', {
       this.isDebuging = false
     },
 
-    saveSources(data: Source[]) {
-      this.bookSources = markRaw(data) as BookSoure[]
+    saveSources(data: Source[] | Source) {
+      const arr = Array.isArray(data) ? data : data ? [data] : []
+      const normalized = arr.map(s => ensureSourceRules(s))
+      this.bookSources = markRaw(normalized) as BookSoure[]
     },
     setPushReturnSources(returnSoures: Source[]) {
       this.savedSources = returnSoures
@@ -59,14 +62,14 @@ export const useSourceStore = defineStore('source', {
       this.saveSources(Array.from(map.values()))
     },
     changeCurrentSource(source: Source) {
-      this.currentSource = JSON.parse(JSON.stringify(source))
+      this.currentSource = ensureSourceRules(JSON.parse(JSON.stringify(source)))
     },
     changeTabName(tabName: string) {
       this.currentTab = tabName
       localStorage.setItem('tabName', tabName)
     },
     changeEditTabSource(source: Source) {
-      this.editTabSource = JSON.parse(JSON.stringify(source))
+      this.editTabSource = ensureSourceRules(JSON.parse(JSON.stringify(source)))
     },
     editHistory(history: Source) {
       let historyObj

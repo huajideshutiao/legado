@@ -162,11 +162,11 @@ fun BookshelfLayoutConfigDialog(onDismiss: () -> Unit) {
     ) {
         // 圆角/底色对齐 alert DSL AppAlertDialogContent (AppDialog 窗口无背景)
         Surface(
-            modifier = Modifier.appDialogSize(fullHeight = true),
+            modifier = Modifier.appDialogSize(),
             shape = DesignTokens.shapeDefault,
             color = colors.fillet,
         ) {
-            Column(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxWidth()) {
                 DialogTitleBar(
                     title = stringResource(Res.string.bookshelf_layout),
                     onBack = onDismiss,
@@ -174,7 +174,7 @@ fun BookshelfLayoutConfigDialog(onDismiss: () -> Unit) {
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .weight(1f)
+                        .weight(1f, fill = false)
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = DesignTokens.spacingDefault, vertical = 8.dp),
                 ) {
@@ -475,11 +475,11 @@ fun BottomNavConfigDialog(onDismiss: () -> Unit) {
     ) {
         // 圆角/底色对齐 alert DSL AppAlertDialogContent (AppDialog 窗口无背景)
         Surface(
-            modifier = Modifier.appDialogSize(fullHeight = true),
+            modifier = Modifier.appDialogSize(),
             shape = DesignTokens.shapeDefault,
             color = colors.fillet,
         ) {
-            Column(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxWidth()) {
                 DialogTitleBar(
                     title = stringResource(Res.string.bottom_nav_config),
                     onBack = onDismiss,
@@ -487,7 +487,7 @@ fun BottomNavConfigDialog(onDismiss: () -> Unit) {
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .weight(1f)
+                        .weight(1f, fill = false)
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = DesignTokens.spacingDefault, vertical = 8.dp),
                 ) {

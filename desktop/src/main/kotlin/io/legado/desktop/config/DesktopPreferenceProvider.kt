@@ -1,5 +1,6 @@
 package io.legado.desktop.config
 
+import io.legado.app.help.config.PreferenceChangeNotifier
 import io.legado.app.help.config.PreferenceProvider
 import java.util.prefs.PreferenceChangeListener
 import java.util.prefs.Preferences
@@ -46,32 +47,32 @@ class DesktopPreferenceProvider : PreferenceProvider {
         } else {
             prefs.put(key, value)
         }
-        flushAfterWrite()
+        afterWrite(key)
     }
 
     override fun putInt(key: String, value: Int) {
         prefs.putInt(key, value)
-        flushAfterWrite()
+        afterWrite(key)
     }
 
     override fun putBoolean(key: String, value: Boolean) {
         prefs.putBoolean(key, value)
-        flushAfterWrite()
+        afterWrite(key)
     }
 
     override fun putLong(key: String, value: Long) {
         prefs.putLong(key, value)
-        flushAfterWrite()
+        afterWrite(key)
     }
 
     override fun putFloat(key: String, value: Float) {
         prefs.putFloat(key, value)
-        flushAfterWrite()
+        afterWrite(key)
     }
 
     override fun remove(key: String) {
         prefs.remove(key)
-        flushAfterWrite()
+        afterWrite(key)
     }
 
     /**
@@ -81,12 +82,13 @@ class DesktopPreferenceProvider : PreferenceProvider {
      * 故每次写入后显式 flush (Windows 幂等零成本, Linux/macOS 立即落盘)。
      * flush 失败 (BackingStoreException) 如实记录, 不吞。
      */
-    private fun flushAfterWrite() {
+    private fun afterWrite(key: String) {
         try {
             prefs.flush()
         } catch (e: Exception) {
             io.legado.app.constant.AppLog.put("配置持久化失败 (prefs.flush)", e)
         }
+        notifyChanged(key)
     }
 
     override fun contains(key: String): Boolean =
@@ -95,9 +97,22 @@ class DesktopPreferenceProvider : PreferenceProvider {
     override fun getAll(): Map<String, *> =
         prefs.keys().associateWith { prefs.get(it, "") }
 
+    /**
+     * 注册变更监听。两条通道 (见 [PreferenceChangeNotifier]):
+     * - 本实例写入路径同步自通知;
+     * - java.util.prefs 事件: 覆盖不经本实例的改动 (外部进程改注册表等)。
+     */
     override fun addPreferenceChangeListener(listener: (key: String) -> Unit): () -> Unit {
+        notifier.add(listener)
         val prefsListener = PreferenceChangeListener { event -> listener(event.key) }
         prefs.addPreferenceChangeListener(prefsListener)
-        return { prefs.removePreferenceChangeListener(prefsListener) }
+        return {
+            notifier.remove(listener)
+            prefs.removePreferenceChangeListener(prefsListener)
+        }
     }
+
+    private val notifier = PreferenceChangeNotifier()
+
+    private fun notifyChanged(key: String) = notifier.notifyChanged(key)
 }

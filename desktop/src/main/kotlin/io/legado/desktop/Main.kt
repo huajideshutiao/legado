@@ -94,12 +94,12 @@ import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.compose.component.LocalDialogAnchorSize
 import io.legado.app.ui.compose.platform.AppKeyRouter
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
-import io.legado.app.ui.compose.platform.DesktopEventBusProvider
 import io.legado.app.ui.compose.platform.DesktopThemeStoreProvider
 import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalOverlayTopInset
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
+import io.legado.app.ui.compose.platform.SharedEventBusProvider
 import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
@@ -688,7 +688,7 @@ private fun runDesktopApp() = application {
         // 注入 4 个 DesktopXxxProvider, 供 commonMain AppTheme 通过 LocalXxx 取依赖
         val themeStoreProvider = remember { DesktopThemeStoreProvider() }
         val appConfigProvider = remember { DesktopAppConfigProvider() }
-        val eventBusProvider = remember { DesktopEventBusProvider() }
+        val eventBusProvider = remember { SharedEventBusProvider() }
         // 阅读器注入: ReaderRoute/ReaderDrawStyle/PageViewComposable 消费, 缺省值是 error()
         // —— 未注入时打开阅读器即抛异常, 被 DesktopCoroutineExceptionHandler 吞掉后表现为输入冻结
         val readConfigProviders = remember {

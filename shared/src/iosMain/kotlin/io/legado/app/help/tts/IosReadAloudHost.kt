@@ -4,7 +4,6 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Status
 import io.legado.app.help.book.BookStorageProviders
-import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.media.ReadAloudRemoteHost
 import io.legado.app.help.media.SleepTimer
@@ -209,13 +208,6 @@ object IosReadAloudHost : ReadAloudRemoteHost {
     private fun createController(): ReadAloudControllerShared {
         val instance = ReadAloudControllerShared(
             navigator = Navigator,
-            // Book.ttsEngine 优先, 否则 AppConfig.ttsEngine (与原版 ReadAloud.ttsEngine 一致)
-            ttsEngineConfigProvider = {
-                ActiveReadBookRegistry.current?.bookValue?.config?.ttsEngine
-                    ?.takeIf { it.isNotBlank() }
-                    ?: runCatching { AppConfigProviders.get().ttsEngine }
-                        .getOrNull()?.takeIf { it.isNotBlank() }
-            },
         )
         controllerRef = instance
         scope.launch {

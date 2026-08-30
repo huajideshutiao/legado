@@ -43,10 +43,36 @@ interface PreferenceProvider {
      * 注册值变更监听: 任一 key 被 put/remove 时回调该 key (供 [CachedPrefValue] 等内存缓存刷新)。
      *
      * 返回注销函数。默认空实现 (Android 端 AppConfig 自带缓存监听, 不依赖本接口);
-     * desktop (java.util.prefs 节点监听) / iOS (NSUserDefaults 变更通知, 通知不含 key,
-     * 回调空串) / ohos (写入自通知) 各自实现。
+     * desktop / iOS / ohos 三端实现见 [PreferenceChangeNotifier]。
      */
     fun addPreferenceChangeListener(listener: (key: String) -> Unit): () -> Unit = {}
+}
+
+/**
+ * 写入路径的同步自通知 (desktop / iOS / ohos 三端 [PreferenceProvider] 共用)。
+ *
+ * 平台自带的变更通知都是异步的 —— java.util.prefs 的事件由 JDK 后台线程分发,
+ * iOS 的 NSUserDefaultsDidChangeNotification 经 mainQueue 投递 —— 只靠它会让"写完立刻读"
+ * 读到旧缓存 (如设置项写 themeMode 后 applyThemeMode 读 isNightTheme)。各实现在每个
+ * put/remove 末尾调 [notifyChanged] 同步通知, 平台异步通知仍保留以覆盖不经本实例的直写路径;
+ * 两条通道都到时监听方重读两次, [CachedPrefValue.refresh] 幂等。
+ *
+ * 监听注册在启动早期, 之后不再增删。
+ */
+class PreferenceChangeNotifier {
+    private val listeners = mutableListOf<(String) -> Unit>()
+
+    fun add(listener: (key: String) -> Unit) {
+        listeners.add(listener)
+    }
+
+    fun remove(listener: (key: String) -> Unit) {
+        listeners.remove(listener)
+    }
+
+    fun notifyChanged(key: String) {
+        listeners.toList().forEach { it(key) }
+    }
 }
 
 /**

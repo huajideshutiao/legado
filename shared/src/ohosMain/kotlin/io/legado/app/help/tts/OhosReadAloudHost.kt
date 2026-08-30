@@ -191,14 +191,8 @@ object OhosReadAloudHost : ReadAloudRemoteHost {
     private fun createController(): ReadAloudControllerShared {
         val instance = ReadAloudControllerShared(
             navigator = Navigator,
-            // Book.ttsEngine 优先, 否则 AppConfig.ttsEngine (数字串表示 HttpTTS id);
+            // ttsEngineConfigProvider 用默认值 defaultTtsEngineConfig (Book.ttsEngine 优先);
             // 鸿蒙 HttpTTS 播放器已注册 (OhosHttpTtsPlayer), 配置到 HttpTTS 时走该路径
-            ttsEngineConfigProvider = {
-                ActiveReadBookRegistry.current?.bookValue?.config?.ttsEngine
-                    ?.takeIf { it.isNotBlank() }
-                    ?: runCatching { PreferenceProviders.get().getString(PreferKey.ttsEngine, "") }
-                        .getOrNull()?.takeIf { it.isNotBlank() }
-            },
         )
         controllerRef = instance
         scope.launch {

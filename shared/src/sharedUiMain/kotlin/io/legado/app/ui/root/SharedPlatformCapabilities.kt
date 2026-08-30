@@ -11,6 +11,7 @@ import io.legado.app.data.entities.Review
 import io.legado.app.help.book.toggleBookshelfCore
 import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.route.encodeReviewListDialogPayload
@@ -188,8 +189,13 @@ interface SharedPlatformCapabilities : PlatformCapabilities {
         FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
     }
 
-    /** 三端无 Android 那套 Activity 重建式换肤, Compose 主题随状态重组即可。 */
-    override fun applyDayNight() = Unit
+    /**
+     * 三端无 Android 那套 Activity 重建式换肤, 但 ThemeStore 存的是「已应用」的色值,
+     * 光重组读不到新日/夜分支 —— 必须按新 themeMode 重算色 + emit RECREATE 让 AppTheme 重组。
+     */
+    override fun applyDayNight() {
+        ThemeConfigProviders.get().applyThemeMode()
+    }
 
     /** 三端无 ViewConfiguration, 取与 Android 默认接近的固定值。 */
     override fun getScaledTouchSlop(): Int = 10

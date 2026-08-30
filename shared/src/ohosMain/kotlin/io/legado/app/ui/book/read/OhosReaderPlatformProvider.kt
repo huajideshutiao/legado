@@ -27,7 +27,7 @@ import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.book.read.ReaderDialogEvent
-import io.legado.app.ui.compose.platform.OhosThemeStoreProvider
+import io.legado.app.ui.compose.platform.SharedThemeStoreProvider
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
@@ -226,7 +226,7 @@ private class OhosReadMenuState(
     private val menuTheme: ReadMenuColors
         get() = createReadMenuColors(
             ReadBookConfigProviders.get().config,
-            OhosThemeStoreProvider().bottomBackground.toArgb(),
+            SharedThemeStoreProvider().bottomBackground.toArgb(),
         )
     override val immersive: Boolean get() = menuTheme.immersive
     override val bgColor: Int get() = menuTheme.bgColor
@@ -234,7 +234,7 @@ private class OhosReadMenuState(
 
     // 窗口背景图时顶栏透明让背景图透出; 与 LegadoApp 壁纸层同一数据源
     override val hasBgImage: Boolean
-        get() = hasBgImageByPath(OhosThemeStoreProvider().bgImagePath)
+        get() = hasBgImageByPath(SharedThemeStoreProvider().bgImagePath)
 
     override fun clickReadAloud() {
         if (autoPage) autoPage = false

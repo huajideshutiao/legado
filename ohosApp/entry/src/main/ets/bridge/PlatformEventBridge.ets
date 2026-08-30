@@ -10,6 +10,7 @@
  * # 事件协议 (与 Kotlin OhosPlatformEventPayload 对齐)
  * - HTTP 下载进度: { type: 'httpProgress', url, bytesReceived, totalBytes, isComplete }
  * - 应用生命周期: { type: 'lifecycle', event: 'onForeground' | 'onBackground' }
+ * - 系统深浅色: { type: 'colorMode', isDark }
  *
  * # 线程
  * 回调在调用线程同步执行 (ArkTS 主线程 / @ohos.net.http 事件线程), 与 mediaEvent 同语义;
@@ -87,5 +88,32 @@ export function emitAppLifecycle(event: 'onForeground' | 'onBackground'): void {
     eventCallback(JSON.stringify(payload));
   } catch (e) {
     console.error('[PlatformEvent] lifecycle emit failed: ' + JSON.stringify(e) + ', event=' + event);
+  }
+}
+
+/** 系统深浅色事件载荷 (与 Kotlin OhosPlatformEventPayload 对齐, type=colorMode)。 */
+export interface ColorModeEvent {
+  type: string;    // 'colorMode'
+  isDark: boolean;
+}
+
+/**
+ * 推送系统深浅色 (EntryAbility.onCreate 取初值 / onConfigurationUpdate 变更时调用)。
+ *
+ * Kotlin/Native 侧没有 configuration API, 「主题模式=跟随系统」这一档只能由此通道供给
+ * (Kotlin 侧落到 NativeSystemTheme.update, 变更时刷派生缓存 + emit RECREATE)。
+ *
+ * @param isDark 系统是否深色 (config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK)
+ */
+export function emitColorMode(isDark: boolean): void {
+  if (eventCallback == null) {
+    console.warn('[PlatformEvent] callback not set, colorMode event dropped: ' + isDark);
+    return;
+  }
+  const payload: ColorModeEvent = { type: 'colorMode', isDark };
+  try {
+    eventCallback(JSON.stringify(payload));
+  } catch (e) {
+    console.error('[PlatformEvent] colorMode emit failed: ' + JSON.stringify(e));
   }
 }

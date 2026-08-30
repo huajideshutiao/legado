@@ -30,9 +30,9 @@ import io.legado.app.ui.association.DeepLinkImportHost
 import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
-import io.legado.app.ui.compose.platform.OhosAppConfigProvider
-import io.legado.app.ui.compose.platform.OhosEventBusProvider
-import io.legado.app.ui.compose.platform.OhosThemeStoreProvider
+import io.legado.app.ui.compose.platform.SharedAppConfigProvider
+import io.legado.app.ui.compose.platform.SharedEventBusProvider
+import io.legado.app.ui.compose.platform.SharedThemeStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
@@ -79,9 +79,9 @@ fun MainOhos() {
     val screenModelStore = remember { ScreenModelStore() }
 
     // 注入 3 个鸿蒙 Compose UI Provider
-    val themeStoreProvider = remember { OhosThemeStoreProvider() }
-    val appConfigProvider = remember { OhosAppConfigProvider() }
-    val eventBusProvider = remember { OhosEventBusProvider() }
+    val themeStoreProvider = remember { SharedThemeStoreProvider() }
+    val appConfigProvider = remember { SharedAppConfigProvider() }
+    val eventBusProvider = remember { SharedEventBusProvider() }
 
     // 阅读页两个注入点: 未注入时 LocalReadConfigProviders/LocalReadBookProvider 取值即 error,
     // 阅读页与 EffectiveReplaces 路由会崩 (二者默认值均为 error 而非兜底实现);

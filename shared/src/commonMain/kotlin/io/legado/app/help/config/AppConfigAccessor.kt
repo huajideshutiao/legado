@@ -336,3 +336,16 @@ object AppConfigProviders {
     /** 获取已注册实现, 未注册抛出 IllegalStateException。 */
     fun get(): AppConfigAccessor = impl ?: error("AppConfigProviders not registered")
 }
+
+/**
+ * 当前是否夜间主题; [AppConfigProviders] 未注册时按日间 (@Preview / 启动早期)。
+ *
+ * 四端共 9 处曾各写一份同样的 runCatching, 归到此处一份 —— 判定语义 (含「跟随系统」档)
+ * 只有 [AppConfigAccessor.isNightTheme] 一个来源。
+ */
+fun currentNightTheme(): Boolean =
+    runCatching { AppConfigProviders.get().isNightTheme }.getOrDefault(false)
+
+/** 当前是否 E-Ink 模式 (themeMode == "3"); 未注册时 false。同 [currentNightTheme]。 */
+fun currentEInkMode(): Boolean =
+    runCatching { AppConfigProviders.get().isEInkMode }.getOrDefault(false)

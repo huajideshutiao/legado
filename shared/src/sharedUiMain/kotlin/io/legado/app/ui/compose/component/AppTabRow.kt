@@ -1,6 +1,7 @@
 package io.legado.app.ui.compose.component
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
@@ -32,6 +33,42 @@ import kotlin.math.roundToInt
 private data class TabPos(val x: Float = 0f, val w: Float = 0f)
 
 /**
+ * 为横向滚动组件附加鼠标滚轮支持 (复用 AppScrollTabRow / 书架 tab 统一逻辑)。
+ *
+ * 鼠标滚轮向下 (delta.y > 0) = 向右滚动 (scrollBy 正值);
+ * 滚轮向右 (delta.x > 0) = 向右滚动;
+ * 倍率按视口宽 / 20 * 3 (对齐 WindowsWinUIConfig 每格 3 行惯例);
+ * 优先消费滚轮事件, 阻止事件冒泡到外层垂直网格/外层 Pager。
+ */
+@Composable
+fun Modifier.horizontalMouseWheel(scrollState: ScrollState): Modifier {
+    val scrollChannel = remember(scrollState) { Channel<Float>(Channel.UNLIMITED) }
+    LaunchedEffect(scrollChannel, scrollState) {
+        for (delta in scrollChannel) {
+            scrollState.scrollBy(delta)
+        }
+    }
+    return this.pointerInput(scrollState) {
+        awaitPointerEventScope {
+            while (true) {
+                val event = awaitPointerEvent()
+                if (event.type != PointerEventType.Scroll) continue
+                val change = event.changes.firstOrNull() ?: continue
+                val delta = if (change.scrollDelta.y != 0f) change.scrollDelta.y else change.scrollDelta.x
+                if (delta == 0f) continue
+                val viewportW = scrollState.viewportSize.toFloat()
+                if (viewportW > 0f) {
+                    scrollChannel.trySend(delta * viewportW / 20f * 3f)
+                } else {
+                    scrollChannel.trySend(delta * 120f)
+                }
+                change.consume()
+            }
+        }
+    }
+}
+
+/**
  * 复刻 TabLayout MODE_SCROLLABLE(view_tab_layout_min)：tab 宽度随内容
  * (material 的 ScrollableTabRow — M2/M3 同样 — 硬编码 90dp 最小 tab 宽，会拉大 tab 间距，不可用)。
  * 2dp 指示条画在行底随选中平移，选中项滚至可视区居中；E-Ink 均不动画。
@@ -46,14 +83,6 @@ fun AppScrollTabRow(
 ) {
     val eInk = LocalEInk.current
     val scrollState = rememberScrollState()
-    // 滚轮 → 横向滚动的事件通道 (CMP 1.10+ 的 pointerInput block 无 CoroutineScope,
-    // 官方 ScrollableNode 同款模式: 事件层 trySend(非 suspend), 消费协程在普通 scope):
-    val scrollChannel = remember { Channel<Float>(Channel.UNLIMITED) }
-    LaunchedEffect(scrollChannel) {
-        for (delta in scrollChannel) {
-            scrollState.scrollBy(delta)
-        }
-    }
     // 每 tab 的 x/宽(px)，onPlaced 回填
     val positions = remember(tabCount) { mutableStateListOf(*Array(tabCount) { TabPos() }) }
     val target = positions.getOrNull(selectedIndex) ?: TabPos()
@@ -73,37 +102,13 @@ fun AppScrollTabRow(
     Row(
         modifier
             .horizontalScroll(scrollState)
+            .horizontalMouseWheel(scrollState)
             .drawBehind {
                 val x = if (eInk) target.x else animX
                 val w = if (eInk) target.w else animW
                 if (w <= 0f) return@drawBehind
                 val h = 2.dp.toPx() // TabLayout 默认 tabIndicatorHeight
                 drawRect(indicatorColor, Offset(x, size.height - h), Size(w, h))
-            }
-            // 鼠标滚轮 → 横向滚动标签 (对照阅读器滚轮处理惯例, 见 ReaderRoute):
-            // CMP 的 scrollDelta 是格数 (preciseWheelRotation 透传, Windows 一格 = 1.0, 非像素),
-            // 高精度滚轮 (小数 delta) 自然细分;
-            // 方向按垂直语义旋转 90°: 滚轮向下 (delta > 0) = 查看右侧标签 (内容左移 = scrollBy 正);
-            // 倍率对照官方 WindowsWinUIConfig: 一格 = 视口宽/20 × 系统每格行数 (默认 3);
-            // 置于 horizontalScroll 之后 (命中链更内层) 先消费, 官方 mouseWheel 见已消费即跳过,
-            // 且不会误触外层 HorizontalPager (滚轮不再切分组)。
-            .pointerInput(scrollState) {
-                awaitPointerEventScope {
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        if (event.type != PointerEventType.Scroll) continue
-                        val change = event.changes.firstOrNull() ?: continue
-                        val delta = change.scrollDelta.y
-                        if (delta == 0f) continue
-                        // pointerInput 挂在 horizontalScroll 之后被无限宽约束, size.width 是内容总宽;
-                        // 滚轮倍率按视口宽/20 (官方 WindowsWinUIConfig 一格 = 视口宽/20 × 每格行数 3)
-                        val viewportW = scrollState.viewportSize.toFloat()
-                        if (viewportW > 0f) {
-                            scrollChannel.trySend(delta * viewportW / 20f * 3f)
-                        }
-                        change.consume()
-                    }
-                }
             },
         verticalAlignment = Alignment.CenterVertically,
     ) {

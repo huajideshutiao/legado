@@ -148,19 +148,16 @@ class OhosPreferenceProvider(
 
     override fun getAll(): Map<String, *> = cache
 
-    // ---- 变更监听 (供 CachedPref 等内存缓存刷新) ----
-    // 鸿蒙端所有写入都经本实例 (设置界面等 UI 层统一取 PreferenceProviders 单例即本实例),
-    // 自通知即可覆盖; 监听注册在启动早期, 之后不再增删。
-    private val changeListeners = mutableListOf<(String) -> Unit>()
+    // 变更监听: 鸿蒙端所有写入都经本实例 (设置界面等 UI 层统一取 PreferenceProviders 单例即本实例),
+    // 写入自通知即可覆盖, 无平台异步通道 (见 [PreferenceChangeNotifier])。
+    private val notifier = PreferenceChangeNotifier()
 
     override fun addPreferenceChangeListener(listener: (key: String) -> Unit): () -> Unit {
-        changeListeners.add(listener)
-        return { changeListeners.remove(listener) }
+        notifier.add(listener)
+        return { notifier.remove(listener) }
     }
 
-    private fun notifyChanged(key: String) {
-        changeListeners.toList().forEach { it(key) }
-    }
+    private fun notifyChanged(key: String) = notifier.notifyChanged(key)
 }
 
 /**
