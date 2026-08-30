@@ -323,6 +323,10 @@ class DesktopAppConfigAccessor : AppConfigAccessor {
     override val isEInkMode: Boolean
         get() = themeModeCache.get() == "3"
 
+    // 注册表探测结果 (themeMode="0" 时 isNightTheme 的来源), 带 TTL 缓存
+    override val systemNightTheme: Boolean
+        get() = systemNightMode()
+
     override val useDefaultCover: Boolean
         get() = useDefaultCoverCache.get()
     override val loadCoverOnlyWifi: Boolean

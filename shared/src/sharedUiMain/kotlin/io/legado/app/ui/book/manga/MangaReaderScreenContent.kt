@@ -114,7 +114,7 @@ private val mangaMenuKey = listOf(AppShortcut(Key.Menu))
  * 漫画阅读 Screen 主体内容（各端共享，由 desktop/app 调用）。
  *
  * 布局对齐 app 端 ReadMangaActivity: 全屏渲染区(book_ant_10 #141414) + 底部信息条(ReaderInfoBarView) +
- * 菜单 Overlay(TitleBar + view_manga_menu 底栏), 菜单配色走 ThemeStore(background/bottomBackground/primaryText)。
+ * 菜单 Overlay(TitleBar + view_manga_menu 底栏), 菜单配色统一走 ThemeStore(bottomBackground/primaryText)。
  *
  * 渲染区直接复用 app 端下沉的 [MangaRenderLayer] + [MangaRenderState]：章节转场页、居中页驱动
  * 进度/跨章、预加载、GIF 播完翻页、pendingScroll 定位全部走同一份实现，
@@ -804,7 +804,7 @@ private fun MangaMenuTopBar(
     onOpenClickRegionConfig: () -> Unit,
     onOpenReview: () -> Unit,
 ) {
-    // 对照 TitleBar: 背景走 ThemeStore backgroundColor, 文字 primaryText
+    // 顶栏背景统一走 ThemeStore bottomBackground, 文字 primaryText
     val colors = AppTheme.colors
     // 对照原版 TitleBar fitStatusBar=true: 系统栏恢复时顶栏避开状态栏,
     // 沉浸式全屏时 inset=0 无多余空白。逐帧跟随 insets (对齐原版 TitleBar 的
@@ -815,7 +815,7 @@ private fun MangaMenuTopBar(
     Column(
         Modifier
             .fillMaxWidth()
-            .background(colors.background)
+            .background(colors.bottomBackground)
             .platformStatusBarPadding()
             .padding(horizontal = 8.dp),
     ) {

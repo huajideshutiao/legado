@@ -47,7 +47,9 @@ import io.legado.app.model.fileBook.ZipFileWrapperFactoryImpl
 import io.legado.app.model.fileBook.ZipFileWrapperFactoryProviders
 import io.legado.app.utils.RegexReplacer
 import io.legado.app.utils.RegexReplacers
+import io.legado.app.utils.isNightMode
 import io.legado.app.utils.replace
+import io.legado.app.utils.sysConfiguration
 
 /**
  * webBook 编排层下沉配套 provider 安卓实现。
@@ -217,6 +219,8 @@ object WebBookProvidersImpl :
     override val themeMode: String get() = AppConfig.themeMode ?: "0"
     override val isNightTheme: Boolean get() = AppConfig.isNightTheme
     override val isEInkMode: Boolean get() = AppConfig.isEInkMode
+    // 对照 AppConfig.isNightTheme 的 else 分支 (themeMode="0" 跟随系统)
+    override val systemNightTheme: Boolean get() = sysConfiguration.isNightMode
     override val useDefaultCover: Boolean get() = AppConfig.useDefaultCover
     override val loadCoverOnlyWifi: Boolean get() = AppConfig.loadCoverOnlyWifi
     override val coverDrawBookName: Boolean

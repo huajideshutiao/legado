@@ -21,7 +21,9 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.concurrent.Volatile
 import kotlin.math.max
 
 /**
@@ -46,6 +48,11 @@ class BookshelfManageScreenModel(
     // 自管 scope (app 端无 ScreenModelStore 时由宿主 DisposableEffect 调 onCleared)
     private val scope = screenModelScope("书架管理")
 
+    /**
+     * 分组流 / 书籍流 / UI 事件三路并发写同一个 state, 一律走 MutableStateFlow.update 原子改:
+     * `_state.value = _state.value.copy(..)` 的读-改-写会丢更新 (分组名回填晚于书籍列表
+     * 到达时把 books 打回空列表, 表现为"进管理页有分组名但列表空")。
+     */
     private val _state = MutableStateFlow(BookshelfManageUiState())
     val state: StateFlow<BookshelfManageUiState> = _state.asStateFlow()
 
@@ -58,6 +65,9 @@ class BookshelfManageScreenModel(
     val selected: StateFlow<Set<String>> = _selected.asStateFlow()
 
     private val incrementalFilter = BookFilter.IncrementalFilter<Book>()
+
+    // 书籍流协程写, 搜索/筛选事件在 UI 线程读, 需要可见性保证
+    @Volatile
     private var allBooks: List<Book>? = null
     private var booksFlowJob: Job? = null
     private var groupsFlowJob: Job? = null
@@ -74,8 +84,8 @@ class BookshelfManageScreenModel(
             appDb.bookGroupDao.flowAll()
                 .catch {
                     AppLog.put("书架管理界面获取分组数据失败\n${it.message}", it)
-                }.flowOn(IoDispatcher).conflate().collect {
-                    _state.value = _state.value.copy(groups = it)
+                }.flowOn(IoDispatcher).conflate().collect { groups ->
+                    _state.update { it.copy(groups = groups) }
                 }
         }
     }
@@ -95,20 +105,21 @@ class BookshelfManageScreenModel(
     // ===== 书籍 =====
 
     private fun initGroup(groupId: Long) {
-        _state.value = _state.value.copy(groupId = groupId)
+        _state.update { it.copy(groupId = groupId) }
         scope.launch(IoDispatcher) {
             val name = appDb.bookGroupDao.getByID(groupId)?.groupName ?: noGroupLabel
-            _state.value = _state.value.copy(
-                groupName = name,
-                searchHint = "$screenLabel • $name",
-            )
+            _state.update {
+                it.copy(
+                    groupName = name,
+                    searchHint = "$screenLabel • $name",
+                )
+            }
         }
-        upBookDataByGroupId()
+        upBookDataByGroupId(groupId)
     }
 
-    private fun upBookDataByGroupId() {
+    private fun upBookDataByGroupId(groupId: Long) {
         booksFlowJob?.cancel()
-        val groupId = _state.value.groupId
         booksFlowJob = scope.launch {
             val bookSort = resolveBookSort(groupId)
             appDb.bookDao.flowByGroup(groupId).map { list ->
@@ -130,40 +141,48 @@ class BookshelfManageScreenModel(
                     upBookData()
                     loadCacheFiles(list)
                 }
-                _state.value = _state.value.copy(canDrag = bookSort == 3)
+                _state.update { it.copy(canDrag = bookSort == 3) }
             }
         }
     }
 
     private fun upBookData() {
         val all = allBooks ?: return
-        val typeFiltered = when (_state.value.bookshelfTypeFilter) {
+        // 过滤器有内部缓存, 结果先算出来再入 state (update 的 lambda 会因竞争重跑)
+        val snapshot = _state.value
+        val typeFiltered = when (snapshot.bookshelfTypeFilter) {
             1 -> all.filter { !it.isImage && !it.isAudio && !it.isVideo }
             2 -> all.filter { it.isImage }
             3 -> all.filter { it.isAudio }
             4 -> all.filter { it.isVideo }
             else -> all
         }
-        val books = incrementalFilter.filter(typeFiltered, _state.value.searchKey)
-        _state.value = _state.value.copy(books = books)
+        val books = incrementalFilter.filter(typeFiltered, snapshot.searchKey)
+        _state.update { it.copy(books = books) }
         // 勾选集合独立维护 (任务3): 搜索/筛选后仅剔除已不可见的书,
         // StateFlow 值相等自动去重, 不产生无谓发射
-        _selected.value = _selected.value.intersect(books.map { it.bookUrl }.toSet())
+        val visible = books.mapTo(mutableSetOf()) { it.bookUrl }
+        _selected.update { it.intersect(visible) }
     }
 
     private fun selectGroupFromMenu(group: BookGroup) {
-        _state.value = _state.value.copy(
-            groupName = group.groupName,
-            searchHint = "$screenLabel • ${group.groupName}",
-        )
-        scope.launch(IoDispatcher) {
-            val groupId = appDb.bookGroupDao.getByName(group.groupName)?.groupId ?: 0
-            _state.value = _state.value.copy(groupId = groupId)
-            upBookDataByGroupId()
+        // 菜单项就是 bookGroupDao.flowAll() 的行, 主键现成: 原按 groupName 反查 DB 多一趟 IO,
+        // 且查不到时兜底的 groupId=0 会让 `group & 0 > 0` 恒无结果, 列表直接空掉
+        _state.update {
+            it.copy(
+                groupId = group.groupId,
+                groupName = group.groupName,
+                searchHint = "$screenLabel • ${group.groupName}",
+            )
         }
+        upBookDataByGroupId(group.groupId)
     }
 
     // ===== 多选 =====
+
+    /** 当前可见列表的 bookUrl 集合 (全选/反选/过滤后收敛勾选共用) */
+    private fun visibleBookUrls(): Set<String> =
+        _state.value.books.mapTo(mutableSetOf()) { it.bookUrl }
 
     fun selection(): List<Book> =
         _state.value.books.filter { _selected.value.contains(it.bookUrl) }
@@ -175,49 +194,48 @@ class BookshelfManageScreenModel(
             is BookshelfManageUiEvent.InitGroup -> initGroup(event.groupId)
 
             is BookshelfManageUiEvent.SetQuery -> {
-                _state.value = _state.value.copy(searchKey = event.query)
+                _state.update { it.copy(searchKey = event.query) }
                 upBookData()
             }
 
             is BookshelfManageUiEvent.SetBookTypeFilter -> {
                 if (_state.value.bookshelfTypeFilter == event.filter) return
-                _state.value = _state.value.copy(bookshelfTypeFilter = event.filter)
+                _state.update { it.copy(bookshelfTypeFilter = event.filter) }
                 upBookData()
             }
 
             is BookshelfManageUiEvent.Toggle -> {
                 // 勾选集合原地更新 (任务3): 不再 copy 整个主 state, 单次勾选不触发整页重组
-                val cur = _selected.value
-                _selected.value = if (event.checked) cur + event.book.bookUrl
-                else cur - event.book.bookUrl
+                _selected.update {
+                    if (event.checked) it + event.book.bookUrl else it - event.book.bookUrl
+                }
             }
 
             is BookshelfManageUiEvent.SelectAll -> {
-                _selected.value = if (event.all) {
-                    _state.value.books.map { it.bookUrl }.toSet()
-                } else emptySet()
+                _selected.value = if (event.all) visibleBookUrls() else emptySet()
             }
 
             BookshelfManageUiEvent.RevertSelection -> {
-                val all = _state.value.books.map { it.bookUrl }.toSet()
-                _selected.value = all - _selected.value
+                val all = visibleBookUrls()
+                _selected.update { all - it }
             }
 
             BookshelfManageUiEvent.CheckSelectedInterval -> {
                 val books = _state.value.books
-                val positions = books.mapIndexedNotNull { index, book ->
-                    index.takeIf { _selected.value.contains(book.bookUrl) }
-                }
-                if (positions.isNotEmpty()) {
-                    val range = positions.min()..positions.max()
-                    _selected.value = _selected.value + range.map { books[it].bookUrl }
+                _selected.update { selected ->
+                    val positions = books.indices.filter { selected.contains(books[it].bookUrl) }
+                    if (positions.isEmpty()) selected
+                    else selected + (positions.min()..positions.max()).map { books[it].bookUrl }
                 }
             }
 
             is BookshelfManageUiEvent.Move -> {
-                val list = _state.value.books.toMutableList()
-                    .apply { add(event.to, removeAt(event.from)) }
-                _state.value = _state.value.copy(books = list)
+                _state.update { state ->
+                    state.copy(
+                        books = state.books.toMutableList()
+                            .apply { add(event.to, removeAt(event.from)) }
+                    )
+                }
             }
 
             BookshelfManageUiEvent.PersistOrder -> {

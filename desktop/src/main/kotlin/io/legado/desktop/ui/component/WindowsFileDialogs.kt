@@ -67,10 +67,10 @@ internal object WindowsFileDialogs {
     private const val VT_SET_DEFAULT_EXTENSION = 22
     private const val VT_RELEASE = 2
 
-    // IFileOpenDialog::GetResults (IFileDialog 方法到 27=GetFilter 为止, 共 28 项 vtable
-    // 0..27; GetResults 是 IFileOpenDialog 第一个新增方法 = 28)
-    // 2026-08 修正: 此前 27 实际是 GetFilter, 多选结果会读到过滤器数据
-    private const val VT_GET_RESULTS = 28
+    // IFileOpenDialog::GetResults。IFileDialog 共 23 个方法, 末项是 SetFilter=26 (没有 GetFilter),
+    // 故新增的 GetResults=27; 写成 28 会调到 GetSelectedItems —— 那只在对话框存活期有效,
+    // Show 返回后必失败, 多选永远拿不到结果
+    private const val VT_GET_RESULTS = 27
 
     // IShellItem::GetDisplayName
     private const val VT_ITEM_GET_DISPLAY_NAME = 5

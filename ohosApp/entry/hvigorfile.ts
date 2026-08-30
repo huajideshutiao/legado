@@ -6,6 +6,7 @@ import type { HvigorNode, HvigorPlugin } from '@ohos/hvigor';
 const childProcess: typeof import('child_process') = require('child_process');
 const util: typeof import('util') = require('util');
 const path: typeof import('path') = require('path');
+const fs = require('fs');
 const execFileAsync = util.promisify(childProcess.execFile);
 const projectRoot = path.resolve(__dirname, '..', '..');
 const gradleWrapper = path.resolve(projectRoot, 'gradlew.bat');
@@ -17,6 +18,12 @@ function legadoNativeLibrariesPlugin(): HvigorPlugin {
       pluginContext.registerTask({
         name: 'stageLegadoNativeLibraries',
         run: async () => {
+          const soPath = path.resolve(__dirname, 'libs', 'arm64-v8a', 'liblegado_shared.so');
+          const headerPath = path.resolve(__dirname, 'src', 'main', 'cpp', 'include', 'arm64-v8a', 'liblegado_shared_api.h');
+          if (fs.existsSync(soPath) && fs.existsSync(headerPath)) {
+            console.log('CPF OHOS native library and header already staged: ' + soPath);
+            return;
+          }
           // Windows 上 node 的 execFile 不能直接执行 .bat/.cmd (EINVAL/ENOENT),
           // 统一经 powershell.exe 的调用运算符 & 执行 gradlew.bat (cmd/powershell 均可, 选 ps1 以兼容含空格路径)。
           const gradleArgs =

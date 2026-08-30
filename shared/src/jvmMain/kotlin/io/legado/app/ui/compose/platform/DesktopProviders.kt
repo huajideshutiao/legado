@@ -3,7 +3,10 @@ package io.legado.app.ui.compose.platform
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import io.legado.app.constant.PreferKey
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ThemeConfigProviders
+import io.legado.app.help.config.themeModeFor
 
 /**
  * 桌面 JVM 端主题数据: 读取全部复用 [SharedThemeStoreProvider] (三端同一份),
@@ -25,13 +28,16 @@ class DesktopThemeStoreProvider : SharedThemeStoreProvider() {
     /**
      * 显式设置深/浅色主题。
      *
-     * 委托 [io.legado.app.help.config.FileThemeConfigProvider.applyDayNight]: 它按目标模式读
-     * 已配置的自定义色 (cAccent/cNAccent 等, 未配置回落内置默认) 写全部 6 个 ThemeStore 键 +
-     * emit RECREATE。本类曾自带一套硬编码色 (且漏写 accent), 与该实现两套夜间色打架。
+     * themeMode 走 [themeModeFor]: 目标与系统一致时落回「跟随系统」, 否则写显式档 ——
+     * 「我的」里的「主题模式」因此始终显示一个与当前显示一致的明确档位, 且来回切不会把
+     * 用户的「跟随系统」永久写死。随后 [io.legado.app.help.config.ThemeConfigProvider.applyThemeMode]
+     * 按新 themeMode 读已配置的自定义色 (cAccent/cNAccent 等, 未配置回落内置默认) 写
+     * ThemeStore 并 emit RECREATE。
      */
     fun updateDark(dark: Boolean) {
         if (isDark == dark) return
-        ThemeConfigProviders.get().applyDayNight(dark)
+        PreferenceProviders.get().putString(PreferKey.themeMode, themeModeFor(dark))
+        ThemeConfigProviders.get().applyThemeMode()
     }
 }
 

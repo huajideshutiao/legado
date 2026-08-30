@@ -16,9 +16,6 @@ interface BookGroupDao {
     @Query("select * from book_groups where groupId = :id")
     suspend fun getByID(id: Long): BookGroup?
 
-    @Query("select * from book_groups where groupName = :groupName")
-    suspend fun getByName(groupName: String): BookGroup?
-
     @Query("SELECT * FROM book_groups ORDER BY `order`")
     fun flowAll(): Flow<List<BookGroup>>
 

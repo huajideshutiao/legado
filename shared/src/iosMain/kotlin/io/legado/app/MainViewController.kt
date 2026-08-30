@@ -1,13 +1,12 @@
 package io.legado.app
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.compose.ui.LocalSystemTheme
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.SystemTheme
 import androidx.compose.ui.window.ComposeUIViewController
 import io.legado.app.help.config.NativeSystemTheme
 import io.legado.app.help.config.registerIosProviders
@@ -79,17 +78,11 @@ fun MainViewController(): UIViewController = ComposeUIViewController {
     val navigator = remember { AppNavigator(AppRoute.Main()) }
     val screenModelStore = remember { ScreenModelStore() }
 
-    // 系统深色跟随 (themeMode="0"): CMP 的 ComposeHostingViewController 在
-    // traitCollectionDidChange 时更新 LocalSystemTheme, 回写业务层内存缓存 ——
-    // UITraitCollection 只保证主线程可读, 而 isNightTheme 会在任意线程被读。
-    val systemTheme = LocalSystemTheme.current
-    LaunchedEffect(systemTheme) {
-        when (systemTheme) {
-            SystemTheme.Dark -> NativeSystemTheme.update(true)
-            SystemTheme.Light -> NativeSystemTheme.update(false)
-            // 拿不到系统主题时保留启动时探测到的值, 不要按日间覆盖
-            SystemTheme.Unknown -> Unit
-        }
+    // 系统深色跟随 (themeMode="0"): 使用 Compose 标准 isSystemInDarkTheme() API,
+    // 在系统深浅色切换时触发 LaunchedEffect 回写业务层 NativeSystemTheme 缓存
+    val isSystemDark = isSystemInDarkTheme()
+    LaunchedEffect(isSystemDark) {
+        NativeSystemTheme.update(isSystemDark)
     }
 
     CompositionLocalProvider(

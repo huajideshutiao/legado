@@ -24,6 +24,19 @@ class AndroidPreferenceProvider : PreferenceProvider {
         migrateLegacyConfigOnce(it)
     }
 
+    /**
+     * 包装 [SharedPreferences.OnSharedPreferenceChangeListener]: 设置界面的 Compose 组件
+     * 据此在别的入口改同一个 key 时刷新显示 (见 sharedUiMain 的 rememberPrefState)。
+     * SP 自带监听同步回调, 无需三端那套写入自通知。
+     */
+    override fun addPreferenceChangeListener(listener: (key: String) -> Unit): () -> Unit {
+        val spListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            listener(key.orEmpty())
+        }
+        prefs.registerOnSharedPreferenceChangeListener(spListener)
+        return { prefs.unregisterOnSharedPreferenceChangeListener(spListener) }
+    }
+
     override fun getString(key: String, default: String): String =
         prefs.getString(key, default) ?: default
 

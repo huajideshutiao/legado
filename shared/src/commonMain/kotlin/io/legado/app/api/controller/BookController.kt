@@ -78,24 +78,23 @@ object BookController {
 
     /**
      * 通过group id获取书籍
+     *
+     * 空分组返回空数组而非 setErrorMsg: 「这个分组一本书都没有」不是错误, 报错会让 web 端
+     * 弹红色 toast 并停在上一个分组的列表上 (原 app 端返回 "未找到", 前端只好去 includes 匹配文案)。
      */
     suspend fun getBooks(parameters: Map<String, List<String>>): ReturnData {
         val groupId = parameters["groupId"]?.firstOrNull()?.toLong()
         val books = if (groupId == null) AppDbProviders.get().bookDao.all() else AppDbProviders.get().bookDao.flowByGroup(groupId).first()
-        return if (books.isEmpty()) {
-            ReturnData().setErrorMsg("未找到")
-        } else {
-            val data = when (AppConfigProviders.get().bookshelfSort) {
-                1 -> books.sortedByDescending { it.latestChapterTime }
-                2 -> books.sortedWith { o1, o2 ->
-                    o1.name.cnCompare(o2.name)
-                }
-
-                3 -> books.sortedBy { it.order }
-                else -> books.sortedByDescending { it.durChapterTime }
+        val data = when (AppConfigProviders.get().bookshelfSort) {
+            1 -> books.sortedByDescending { it.latestChapterTime }
+            2 -> books.sortedWith { o1, o2 ->
+                o1.name.cnCompare(o2.name)
             }
-            ReturnData().setData(data)
+
+            3 -> books.sortedBy { it.order }
+            else -> books.sortedByDescending { it.durChapterTime }
         }
+        return ReturnData().setData(data)
     }
 
     /**

@@ -57,6 +57,7 @@ import io.legado.app.web.registerNativeWebServerPlatform
 import io.legado.app.web.utils.registerNativeWebAssetSource
 import io.legado.app.web.utils.registerNativeWebStrings
 import platform.UIKit.UIDevice
+import platform.UIKit.UIScreen
 import platform.UIKit.UITraitCollection
 import platform.UIKit.UIUserInterfaceStyle
 
@@ -268,6 +269,8 @@ fun registerIosProviders() {
  * UITraitCollection 只保证主线程可读, 故只在启动早期与 Compose 侧 trait 变化回写时调用,
  * 业务侧一律读 [NativeSystemTheme.isNight] 内存缓存 (见 MainViewController 的 LocalSystemTheme 回写)。
  */
-internal actual fun probeSystemNightMode(): Boolean =
-    UITraitCollection.currentTraitCollection.userInterfaceStyle ==
-        UIUserInterfaceStyle.UIUserInterfaceStyleDark
+internal actual fun probeSystemNightMode(): Boolean? =
+    runCatching {
+        UIScreen.mainScreen.traitCollection.userInterfaceStyle ==
+            UIUserInterfaceStyle.UIUserInterfaceStyleDark
+    }.getOrNull()

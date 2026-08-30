@@ -25,6 +25,8 @@ import androidx.compose.material.RadioButton
 import androidx.compose.material.RadioButtonDefaults
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,6 +45,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.help.config.PreferenceProvider
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
@@ -121,6 +124,27 @@ fun LazyListScope.preference(
 }
 
 /**
+ * 跟随 pref 外部变更的本地状态。
+ *
+ * 组件自身写入即时生效；同一个 key 被别的入口改掉时（如桌面标题栏日夜按钮直接写
+ * themeMode）也同步刷新显示 —— 无 key 的 `remember` 是一次性快照, 会让设置项停在旧值
+ * (用户实测: 标题栏切完主题, 「我的」里「主题模式」仍显示切换前的档位)。
+ */
+@Composable
+private fun <T> rememberPrefState(prefKey: String, read: (PreferenceProvider) -> T): MutableState<T> {
+    val pref = PreferenceProviders.get()
+    val state = remember(prefKey) { mutableStateOf(read(pref)) }
+    DisposableEffect(pref, prefKey) {
+        // iOS 的 NSUserDefaults 通知不含变更 key, 回调空串按"任意 key 变更"处理
+        val dispose = pref.addPreferenceChangeListener { key ->
+            if (key.isEmpty() || key == prefKey) state.value = read(pref)
+        }
+        onDispose { dispose() }
+    }
+    return state
+}
+
+/**
  * 开关项：key 支撑读写（默认值 defaultValue），复刻 SwitchPreference。
  * onCheckedChange 在持久化后回调（承接原 OnSharedPreferenceChangeListener 副作用）。
  * checked 非空时开关态由外部驱动（如 webService 由 WEB_SERVICE 事件回填），否则内部随 prefs。
@@ -139,7 +163,7 @@ fun LazyListScope.switchPreference(
 ) = item {
     // 替代 LocalContext.current + context.getPrefBoolean: commonMain 走 PreferenceProviders 单例
     val pref = PreferenceProviders.get()
-    var internalChecked by remember { mutableStateOf(pref.getBoolean(prefKey, defaultValue)) }
+    var internalChecked by rememberPrefState(prefKey) { it.getBoolean(prefKey, defaultValue) }
     val isChecked = checked ?: internalChecked
     val toggle = {
         val v = !isChecked
@@ -235,7 +259,7 @@ fun LazyListScope.listPreference(
 ) = item {
     // 替代 LocalContext.current: commonMain 走 PreferenceProviders 单例
     val pref = PreferenceProviders.get()
-    var value by remember { mutableStateOf(pref.getStringOrNull(prefKey) ?: defaultValue) }
+    var value by rememberPrefState(prefKey) { it.getStringOrNull(prefKey) ?: defaultValue }
     var showDialog by remember { mutableStateOf(false) }
     val entry = entries.getOrNull(values.indexOf(value)) ?: ""
     PreferenceRow(
@@ -279,7 +303,7 @@ fun LazyListScope.iconListPreference(
 ) = item {
     // 替代 LocalContext.current: commonMain 走 PreferenceProviders 单例
     val pref = PreferenceProviders.get()
-    var value by remember { mutableStateOf(pref.getStringOrNull(prefKey) ?: defaultValue) }
+    var value by rememberPrefState(prefKey) { it.getStringOrNull(prefKey) ?: defaultValue }
     var showDialog by remember { mutableStateOf(false) }
     val index = values.indexOf(value)
     PreferenceRow(

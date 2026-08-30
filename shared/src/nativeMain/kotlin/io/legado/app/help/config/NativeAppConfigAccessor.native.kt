@@ -324,6 +324,10 @@ class NativeAppConfigAccessor(
     override val isEInkMode: Boolean
         get() = themeModeCache.get() == "3"
 
+    // iOS 由 Compose 侧 LocalSystemTheme 回写, 鸿蒙由 ArkTS 推送 (见 NativeSystemTheme)
+    override val systemNightTheme: Boolean
+        get() = NativeSystemTheme.isNight
+
     override val useDefaultCover: Boolean
         get() = useDefaultCoverCache.get()
     override val loadCoverOnlyWifi: Boolean

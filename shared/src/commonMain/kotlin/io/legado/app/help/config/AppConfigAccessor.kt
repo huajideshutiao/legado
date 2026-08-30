@@ -189,6 +189,15 @@ interface AppConfigAccessor {
     /** 是否 E-Ink 模式 (原 AppConfig.isEInkMode), themeMode == "3"。 */
     val isEInkMode: Boolean
 
+    /**
+     * 系统当前是否深色 (themeMode="0" 跟随系统时 [isNightTheme] 的来源)。
+     *
+     * 供「切到某个模式时能否落回跟随系统」判断使用 —— 目标与系统一致就写 "0",
+     * 不把用户的「跟随系统」写死成显式档。平台探测不到时回退 [isNightTheme]
+     * (判断退化为恒不成立, 行为等同一直写显式档)。
+     */
+    val systemNightTheme: Boolean get() = isNightTheme
+
     /** 是否使用默认封面 (原 AppConfig.useDefaultCover), 默认 false。 */
     val useDefaultCover: Boolean
 
@@ -349,3 +358,20 @@ fun currentNightTheme(): Boolean =
 /** 当前是否 E-Ink 模式 (themeMode == "3"); 未注册时 false。同 [currentNightTheme]。 */
 fun currentEInkMode(): Boolean =
     runCatching { AppConfigProviders.get().isEInkMode }.getOrDefault(false)
+
+/**
+ * 切到 [targetNight] 时应写入的 themeMode: 与系统一致取 "0" (跟随系统), 否则取显式档。
+ *
+ * 用户实测的诉求: 系统深色 + 跟随系统, 点日夜按钮切亮色 → themeMode 应变成明确的「日间」;
+ * 再点一下回到深色时 → 应还原成「跟随系统」而不是写死「夜间」。
+ */
+fun themeModeFor(targetNight: Boolean): String {
+    val followSystem = runCatching {
+        AppConfigProviders.get().systemNightTheme == targetNight
+    }.getOrDefault(false)
+    return when {
+        followSystem -> "0"
+        targetNight -> "2"
+        else -> "1"
+    }
+}
