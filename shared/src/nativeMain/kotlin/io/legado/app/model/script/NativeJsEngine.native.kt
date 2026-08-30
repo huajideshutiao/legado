@@ -122,7 +122,8 @@ import platform.posix.memcpy
  * const char *input, 若传 String.length (UTF-16 单元数), 含中文的书源 JS 字节数更大,
  * QuickJS 只解析前 length 字节, 尾部 ");}})()" 被截断, 报
  * "SyntaxError: unexpected end of string" (Android/Desktop 走 JNI 用 strlen 传字节数,
- * 无此问题)。先 encodeToByteArray 再按字节数传, 保证完整解析。
+ * 无此问题)。input 指针由 cinterop 自动按 UTF-8 编码, 长度另用 encodeToByteArray
+ * 按字节计, 保证完整解析。
  */
 internal fun qjsEvalUtf8(
     ctx: CPointer<JSContext>,
@@ -130,9 +131,9 @@ internal fun qjsEvalUtf8(
     filename: String,
     evalFlags: Int
 ): CValue<JSValue> {
-    // JS_Eval 按 [0, input_len) 读入不要求 NUL 结尾; refTo 把 ByteArray 挂起供调用期间访问
-    val bytes = js.encodeToByteArray()
-    return JS_Eval(ctx, bytes.refTo(0), bytes.size.toULong(), filename, evalFlags)
+    // JS_Eval 按 [0, input_len) 读入不要求 NUL 结尾; input 形参 (const char *) 被
+    // cinterop 绑定为 String?, 只能直接传 String, 不能传 ByteArray 的 refTo(0) 字节指针
+    return JS_Eval(ctx, js, js.encodeToByteArray().size.toULong(), filename, evalFlags)
 }
 
 /**

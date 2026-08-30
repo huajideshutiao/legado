@@ -12,7 +12,7 @@ on:
       ref:
         description: "上游 ref (tag / 分支 / commit sha)。默认 = 当前 pin 的 commit"
         required: true
-        default: "5f2fb55994413afcaeec2942021cc93bfafd0f81"
+        default: "1ab8676f4b6d6d669baeb5f21790fb9734636a20"
       mode:
         description: "sync = 覆盖源码并开 PR; verify = 只比对不修改"
         required: true

@@ -17,21 +17,19 @@
 | 项 | 值 |
 | --- | --- |
 | 上游仓库 | https://github.com/quickjs-ng/quickjs |
-| **当前 pin** | commit `5f2fb55994413afcaeec2942021cc93bfafd0f81`（2026-06-27，*Port Bellard's register-based regexp engine*） |
-| 所处区间 | 在 `v0.15.1` 之后、`v0.16.0` 之前的 master 快照（距 `v0.16.0` 还差 62 个提交） |
-| 核对方式 | 22 个文件的 blob hash 与该 commit 逐字节一致（LF 归一后） |
+| **当前 pin** | commit `1ab8676f4b6d6d669baeb5f21790fb9734636a20`（tag `v0.16.2`，2026-08-20 发布） |
+| 所处区间 | 即 release tag `v0.16.2`（2026-08-29 同步；此前 pin 为 `5f2fb55`，v0.15.1 后的 master 快照） |
+| 核对方式 | 23 个文件与该 commit 逐字节一致（LF 归一后，raw.githubusercontent 下载覆盖） |
 
-> ⚠️ **别信 `quickjs.h` 里的版本宏。** 它写着 `QJS_VERSION_MAJOR/MINOR/PATCH = 0/15/1`，
-> 但本目录**不是 v0.15.1**。上游只在打 tag 时才 bump 版本宏，所以 v0.15.1 发布之后的
-> 每一个 master 提交都仍然自称 0.15.1。
->
-> 实测差异很大：本目录的 `libregexp.c` 已经是 Bellard 的寄存器式正则引擎
-> （`REGISTER_COUNT_MAX` / `REString`），而 v0.15.1 还是老的栈式引擎
-> （`STACK_SIZE_MAX`），两者相差约 29 KB。**按 `v0.15.1` 去"还原"本目录等于降级。**
+> ⚠️ **别单独信 `quickjs.h` 里的版本宏判定快照版本。** 上游只在打 tag 时才 bump
+> `QJS_VERSION_MAJOR/MINOR/PATCH`，master 快照会一直自称上一个 release 的版本号
+> （实测差异很大：`5f2fb55` 时期的 `libregexp.c` 已是 Bellard 寄存器式正则引擎，却仍自称
+> 0.15.1，与真 v0.15.1 相差约 29 KB）。当前 pin 恰为 release tag，宏值 `0/16/2` 与之一致；
+> 将来若 pin 到 master 快照，以上表 commit sha 为准，**按宏值去"还原"等于降级**。
 
 升级时**必须同时更新**本表格与 `.github/workflows/sync-quickjs-ng.yml` 里 `ref` input 的默认值。
 
-下一个自然升级目标是 tag `v0.16.0`。
+升级坐标记录方式：同步 tag 时也记 tag 指向的 commit sha（唯一能精确复现的坐标）。
 
 ## 为何是 vendored 副本而不是 git submodule
 
@@ -88,7 +86,7 @@ GitHub → Actions → **Sync quickjs-ng** → Run workflow：
 本地等价操作（用于离线核对单个文件）：
 
 ```bash
-REF=5f2fb55994413afcaeec2942021cc93bfafd0f81
+REF=1ab8676f4b6d6d669baeb5f21790fb9734636a20
 curl -sL --ssl-no-revoke \
   "https://raw.githubusercontent.com/quickjs-ng/quickjs/$REF/quickjs.h" \
   -o /tmp/quickjs.h
@@ -184,6 +182,7 @@ CRLF 只是 checkout 时 git 自己加的。手动转成 LF 属于无效改动�
 api-test.c  ctest.c  fuzz.c  lre-test.c  qjs.c  qjsc.c
 qjs-wasi-reactor.c  quickjs-libc.c  quickjs-libc.h
 run-test262.c  unicode_gen.c
+amalgam.js  repl.js  standalone.js
 ```
 
 已核对 4 个 `.c` 的 `#include` 闭包（`quickjs.c` / `libregexp.c` / `libunicode.c` / `dtoa.c`），
