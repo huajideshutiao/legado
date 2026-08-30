@@ -114,7 +114,7 @@ internal object GtkLibs {
         fun g_main_context_wakeup(context: Pointer?)
         fun g_idle_add(function: GSourceFunc, data: Pointer?): Int
         fun g_source_remove(source: Int): Int
-        fun g_list_next(list: Pointer): Pointer
+        fun g_list_next(list: Pointer): Pointer?
         fun g_list_free(list: Pointer)
         fun g_list_length(list: Pointer): Int
     }
@@ -291,7 +291,7 @@ internal object GtkLibs {
             view: Pointer,
             res: Pointer,
             error: GErrorRef?,
-        ): Pointer
+        ): Pointer?
 
         fun webkit_web_view_reload(view: Pointer)
         fun webkit_web_view_stop_loading(view: Pointer)
@@ -330,7 +330,7 @@ internal object GtkLibs {
             manager: Pointer,
             res: Pointer,
             error: GErrorRef?,
-        ): Pointer
+        ): Pointer?
 
         fun webkit_cookie_manager_add_cookie(
             manager: Pointer,

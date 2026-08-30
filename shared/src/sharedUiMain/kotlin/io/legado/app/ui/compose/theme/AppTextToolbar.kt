@@ -110,6 +110,9 @@ private val OverflowPanelMinWidth = 100.dp // floating_toolbar_overflow_panel_mi
 private val OverflowPanelItemSidePadding = 16.dp // floating_toolbar_overflow_side_padding
 private val OverflowPanelMaxHeight = 192.dp // 对齐 AOSP floating_toolbar_maximum_overflow_height
 
+/** 一级横排菜单最多展示项数 (对齐 AOSP/miuix 浮动工具栏规格: 超过时收成 ⋮ 放入二级溢出菜单)。 */
+private const val ToolbarMaxPrimaryItems = 4
+
 // 进出场动画: miuix res/anim/fast_fade_in.xml (alpha 0→1, 80ms, @interpolator/decelerate_quad)
 // 与 fast_fade_out.xml (alpha 1→0, 140ms, @interpolator/accelerate_quad)。纯 alpha, 无缩放。
 // 两个插值器 xml 是无 factor 的 decelerate/accelerateInterpolator, 即 factor=1 的二次曲线。
@@ -450,20 +453,26 @@ private fun rememberMenuMetrics(
             val textWidths = entries.map {
                 measurer.measure(AnnotatedString(it.label), ToolbarTextStyle).size.width
             }
-            val itemWidths = textWidths.map { max(it + itemSidePaddingPx, itemMinWidthPx) }
+            // 测宽增加 2px 防抖留白, 避免桌面/Skia 字体栅格化微小差异导致的边缘裁切
+            val itemWidths = textWidths.map { max(it + itemSidePaddingPx + 2, itemMinWidthPx) }
             val available = windowWidth - marginPx * 2 - contentPaddingPx
-            val visibleCount = if (windowWidth <= 0 || itemWidths.sum() <= available) {
-                entries.size
-            } else {
-                // 放不下时给 ⋮ 留位, 至少留一项
-                var used = overflowButtonWidthPx
-                var n = 0
-                while (n < itemWidths.size && used + itemWidths[n] <= available) {
-                    used += itemWidths[n]
-                    n++
+            val maxPrimary = if (entries.size <= 5) entries.size else ToolbarMaxPrimaryItems
+            val visibleCount =
+                if (windowWidth > 0 && entries.size <= 5 && itemWidths.sum() <= available) {
+                    entries.size
+                } else {
+                    // 放不下或超过规格时给 ⋮ 留位, 尾部项收进二级面板
+                    var used = overflowButtonWidthPx
+                    var n = 0
+                    while (
+                        n < itemWidths.size && n < maxPrimary &&
+                        (windowWidth <= 0 || used + itemWidths[n] <= available)
+                    ) {
+                        used += itemWidths[n]
+                        n++
+                    }
+                    n.coerceAtLeast(1)
                 }
-                n.coerceAtLeast(1)
-            }
             val hasOverflow = visibleCount < entries.size
             val rowSize = IntSize(
                 contentPaddingPx + itemWidths.take(visibleCount).sum() +
@@ -475,7 +484,7 @@ private fun rememberMenuMetrics(
             }
             val panelWidth = max(
                 panelMinWidthPx,
-                textWidths.drop(visibleCount).max() + panelSidePaddingPx,
+                (textWidths.drop(visibleCount).maxOrNull() ?: 0) + panelSidePaddingPx + 4,
             )
             // 面板 = 可滚项区 (受最高档约束) + 底部固定返回行
             val panelHeight = min(

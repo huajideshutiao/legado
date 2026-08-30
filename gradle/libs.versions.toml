@@ -90,8 +90,6 @@ commonsCompress = "1.28.0"
 junrar = "8.1.0"
 xz = "1.12"
 pdfbox = "3.0.8"
-# TwelveMonkeys ImageIO 插件集 (imageio-webp 提供 WebP 解码; 编码走 Skiko, 见 DesktopImageOps)
-twelvemonkeys = "3.14.0"
 
 # ===== JS 引擎 / 加密 / 简繁转换 =====
 rhino = "1.9.1"
@@ -217,8 +215,6 @@ junrar = { module = "com.github.junrar:junrar", version.ref = "junrar" }
 ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "cmp" }
 xz = { module = "org.tukaani:xz", version.ref = "xz" }
 pdfbox = { module = "org.apache.pdfbox:pdfbox", version.ref = "pdfbox" }
-# WebP 解码 (ImageIO SPI, 纯 Java); 已替代归档的 com.github.gotson:webp-imageio
-imageio-webp = { module = "com.twelvemonkeys.imageio:imageio-webp", version.ref = "twelvemonkeys" }
 
 # ===== JS 引擎 / 加密 / 简繁转换 =====
 mozilla-rhino = { module = "org.mozilla:rhino", version.ref = "rhino" }

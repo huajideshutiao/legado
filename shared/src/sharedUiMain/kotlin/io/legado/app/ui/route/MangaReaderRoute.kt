@@ -14,7 +14,6 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.IntentData
-import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.book.manga.MangaReaderScreenContent
@@ -232,10 +231,13 @@ fun MangaReaderRoute(
         onSaveImage = { url ->
             scope.launch {
                 runCatching {
-                    val ok = screenModel.platformRenderer?.saveImage(
+                    when (screenModel.platformRenderer?.saveImage(
                         url, screenModel.currentBook, screenModel.currentSource
-                    ) ?: false
-                    Toasters.get().toast(if (ok) "保存成功" else "保存失败")
+                    )) {
+                        true -> Toasters.get().toast("保存成功")
+                        false -> Toasters.get().toast("保存失败")
+                        null -> Unit
+                    }
                 }.onFailure {
                     AppLog.put("保存图片出错\n${it.message}", it)
                     Toasters.get().toast("保存失败")

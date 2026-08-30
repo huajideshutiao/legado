@@ -45,44 +45,21 @@ internal expect fun decodeAnimatedFrames(bytes: ByteArray): AnimatedFrames?
 internal const val MAX_ANIMATED_PIXELS = 16_000_000L
 
 /**
- * 判定字节流是否为 GIF (魔数 `GIF87a` / `GIF89a` 的公共前缀 "GIF8")。
- *
- * 只认 GIF: 其余格式即便 Skia 能多帧解码 (如动画 WebP) 也不在本批范围, 避免静态图白跑一趟 Codec。
- */
-internal fun isGifBytes(bytes: ByteArray?): Boolean {
-    if (bytes == null || bytes.size < 4) return false
-    return bytes[0] == 'G'.code.toByte() &&
-        bytes[1] == 'I'.code.toByte() &&
-        bytes[2] == 'F'.code.toByte() &&
-        bytes[3] == '8'.code.toByte()
-}
-
-/** GIF/WebP 编码头候选，静态图进入 Codec 后会自然退化为普通位图。 */
-internal fun isAnimatedImageBytes(bytes: ByteArray?): Boolean {
-    if (bytes == null) return false
-    val gif = bytes.size >= 4 && bytes[0] == 'G'.code.toByte() &&
-        bytes[1] == 'I'.code.toByte() && bytes[2] == 'F'.code.toByte() &&
-        bytes[3] == '8'.code.toByte()
-    val webp = bytes.size >= 12 && bytes[0] == 'R'.code.toByte() &&
-        bytes[1] == 'I'.code.toByte() && bytes[2] == 'F'.code.toByte() &&
-        bytes[3] == 'F'.code.toByte() && bytes[8] == 'W'.code.toByte() &&
-        bytes[9] == 'E'.code.toByte() && bytes[10] == 'B'.code.toByte() &&
-        bytes[11] == 'P'.code.toByte()
-    return gif || webp
-}
-/**
  * 动图字节 → 随时间自动推进的当前帧 [ImageBitmap]; 非动图 / 解码失败返回 null。
  *
  * 解码在 [Dispatchers.Default] 完成 (CPU 密集, 不占主线程), 推进循环按各帧自身 duration 挂起,
  * 离开组合时随 [LaunchedEffect] 一并取消。返回值随帧推进触发重组, 调用方直接当普通位图画。
  *
- * @param bytes 原始图片字节 (null 或非 GIF/WebP 直接返回 null)
+ * @param bytes 原始图片字节 (null 或非动图直接返回 null)
  */
 @Composable
 fun rememberAnimatedImageBitmap(bytes: ByteArray?): ImageBitmap? {
-    val imageBytes = if (isAnimatedImageBytes(bytes)) bytes else null
-    val frames by produceState<AnimatedFrames?>(null, imageBytes) {
-        value = imageBytes?.let { withContext(Dispatchers.Default) { decodeAnimatedFrames(it) } }
+    val frames by produceState<AnimatedFrames?>(null, bytes) {
+        value = if (bytes != null && bytes.isNotEmpty()) {
+            withContext(Dispatchers.Default) { decodeAnimatedFrames(bytes) }
+        } else {
+            null
+        }
     }
     val animated = frames ?: return null
     if (animated.frameCount <= 1) return animated.frames.firstOrNull()
@@ -108,3 +85,4 @@ fun rememberAnimatedImageBitmap(bytes: ByteArray?): ImageBitmap? {
     }
     return animated.frames.getOrNull(index) ?: animated.frames.firstOrNull()
 }
+

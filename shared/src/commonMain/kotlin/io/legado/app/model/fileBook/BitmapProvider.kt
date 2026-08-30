@@ -13,8 +13,7 @@ import kotlin.concurrent.Volatile
  * # 实现注册
  * - **Android (app)**: [io.legado.app.model.fileBook.BitmapProviderImpl] 用
  *   `android.graphics.BitmapFactory.decodeStream` + `Bitmap.compress` 实现,
- *   在 `App.onCreate` 经 [BitmapProviders.register] 注入。
- * - **Desktop (desktop)**: `DesktopBitmapProvider` 用 `javax.imageio.ImageIO`
+ * - **Desktop (desktop)**: `DesktopBitmapProvider` 基于 Skia (Skiko) 原生编解码
  *   实现, 在 `Main.kt` 注入。
  * - **iOS / 鸿蒙**: 共用 `NativeBitmapProvider`, 构造传入平台 `ImageOps`
  *   (iOS UIImage / 鸿蒙 PixelMap), 在各自 ProviderRegistry 注册。

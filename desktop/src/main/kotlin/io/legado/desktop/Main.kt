@@ -15,7 +15,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.painter.BitmapPainter
-import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntSize
@@ -59,6 +58,7 @@ import io.legado.app.help.file.registerDesktopAppFilesDir
 import io.legado.app.help.file.registerDesktopFileDownloader
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.i18n.registerAppStringProvider
+import io.legado.app.help.image.decodeBytesSampled
 import io.legado.app.help.image.registerJvmBookImageLoader
 import io.legado.app.help.image.registerReaderImageResolver
 import io.legado.app.help.notification.registerDesktopNotificationProgress
@@ -178,7 +178,6 @@ import org.openani.mediamp.mpv.MpvMediampPlayer
 import java.awt.Desktop
 import java.io.File
 import java.util.concurrent.TimeUnit
-import javax.imageio.ImageIO
 import javax.swing.SwingUtilities
 
 private const val TAG = "legado-desktop"
@@ -522,12 +521,12 @@ private fun runDesktopApp() = application {
     // 窗口可见性: 先以 visible=false 创建, 尺寸/最大化都在显示前应用完再置 true,
     // 窗口第一次出现即最终状态 (见下方 DisposableEffect)
     var windowVisible by remember { mutableStateOf(false) }
-    // classpath 资源加载: 弃用的 painterResource(String) 改为手动 ImageIO 解码 + BitmapPainter
+    // classpath 资源加载: 手动 Skia 解码 + BitmapPainter
     val iconPainter = remember {
         runCatching {
             Thread.currentThread().contextClassLoader
-                ?.getResourceAsStream("icon.png")?.use { ImageIO.read(it) }
-                ?.toComposeImageBitmap()?.let { BitmapPainter(it) }
+                ?.getResourceAsStream("icon.png")?.use { decodeBytesSampled(it.readBytes(), 0) }
+                ?.let { BitmapPainter(it) }
         }.getOrNull()
     }
     // AppNavigator: 零薄壳导航唯一状态源 (替代旧 DesktopApp 的 20+ 并行状态字段)

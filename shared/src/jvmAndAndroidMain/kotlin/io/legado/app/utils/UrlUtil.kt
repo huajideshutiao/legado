@@ -25,6 +25,7 @@ object UrlUtil {
     /**
      * 根据网络url获取文件信息 文件名
      */
+    @Suppress("DEPRECATION")
     fun getFileName(fileUrl: String, headerMap: Map<String, String>? = null): String? {
         return kotlin.runCatching {
             val url = URL(fileUrl)
@@ -36,6 +37,7 @@ object UrlUtil {
         }.getOrNull()
     }
 
+    @Suppress("DEPRECATION")
     private fun getFileNameFromResponseHeader(
         url: URL,
         headerMap: Map<String, String>? = null
@@ -85,7 +87,7 @@ object UrlUtil {
            }
            names.firstOrNull()
         } else if (redirectUrl != null) {
-            val newUrl= URL(URLDecoder.decode(redirectUrl, "UTF-8"))
+            val newUrl = URL(URLDecoder.decode(redirectUrl, "UTF-8"))
             getFileNameFromPath(newUrl)
         } else {
             AppLog.put("Cannot obtain URL file name, enable recordLog for response header")

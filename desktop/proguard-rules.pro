@@ -158,8 +158,6 @@
 ############################
 # mediamp-mpv 播放器引擎 (ServiceLoader 发现)
 -keep class org.openani.mediamp.** { *; }
-# webp-imageio (javax.imageio.spi 注册)
--keep class com.github.gotson.webp.** { *; }
 # slf4j-nop 的 NOPServiceProvider 经 ServiceLoader (META-INF/services) 按名实例化,
 # 不 keep 会被删 → 启动期 SLF4J 警告 (功能仍回退 NOP, 但消除噪音)
 -keep class org.slf4j.nop.** { *; }

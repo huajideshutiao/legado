@@ -1,6 +1,7 @@
 package io.legado.app.help.image
 
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asComposeImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.Codec
@@ -10,48 +11,90 @@ import org.jetbrains.skia.Image
 import org.jetbrains.skia.ImageInfo
 import org.jetbrains.skia.impl.use
 
+private const val DEFAULT_FRAME_DURATION_MS = 100
+
+/**
+ * 图像统一解码结果模型 (动静图合流)。
+ */
+sealed interface DecodedImageResult {
+    data class Static(val bitmap: ImageBitmap) : DecodedImageResult
+    data class Animated(val frames: AnimatedFrames) : DecodedImageResult
+}
+
+/**
+ * 统一图像解码器 (单通道无二次解析, 由 Skia Codec 自身 frameCount API 权威判定动静图)。
+ *
+ * - 动图 (frameCount > 1 且未超像素预算): 逐帧解码输出 [DecodedImageResult.Animated]
+ * - 静态图 / 超预算动图: 复用当前 Codec 直接读第 0 帧输出 [DecodedImageResult.Static]
+ * - 非栅格/SVG 兜底: 尝试 [decodeSvgFallback] 输出 [DecodedImageResult.Static]
+ *
+ * [Codec] / [Bitmap] / [Image] 都是原生对象, 一个 use 作用域内从头用到尾:
+ * 已 close 的 Codec 再取 imageInfo/readPixels 会拿 nullptr 进原生代码, 直接 JVM 级崩溃。
+ *
+ * @param animatedOnly 只要动图: 静态图立即返回 null, 既不解像素也不走 SVG 兜底
+ *   (供 [decodeAnimatedFrames], 避免静态图白解一遍全图)
+ */
+internal fun decodeImageAuto(
+    bytes: ByteArray,
+    animatedOnly: Boolean = false,
+): DecodedImageResult? {
+    if (bytes.isEmpty()) return null
+    val result = runCatching {
+        Data.makeFromBytes(bytes).use { data ->
+            Codec.makeFromData(data).use { codec ->
+                val info = codec.imageInfo
+                if (info.width <= 0 || info.height <= 0) return@runCatching null
+                val frameCount = codec.frameCount
+                val decodeInfo = ImageInfo.makeN32(info.width, info.height, ColorAlphaType.PREMUL)
+                val animated = frameCount > 1 &&
+                    info.width.toLong() * info.height * frameCount <= MAX_ANIMATED_PIXELS
+                when {
+                    animated -> {
+                        val frames = ArrayList<ImageBitmap>(frameCount)
+                        val durations = IntArray(frameCount)
+                        // 帧间混合要求目标位图已含上一帧, 故逐帧解到同一张暂存位图再取快照
+                        Bitmap().use { scratch ->
+                            if (!scratch.allocPixels(decodeInfo)) return@runCatching null
+                            for (i in 0 until frameCount) {
+                                codec.readPixels(scratch, i, i - 1)
+                                Image.makeFromBitmap(scratch).use { frame ->
+                                    frames += frame.toComposeImageBitmap()
+                                }
+                                durations[i] = codec.getFrameInfo(i).duration
+                                    .takeIf { it > 0 }
+                                    ?: DEFAULT_FRAME_DURATION_MS
+                            }
+                        }
+                        DecodedImageResult.Animated(
+                            AnimatedFrames(frames, durations, codec.repetitionCount)
+                        )
+                    }
+
+                    animatedOnly -> null
+
+                    else -> {
+                        // 静态图: 直接解进位图, 转不可变后把所有权交给 ImageBitmap —
+                        // 零中间拷贝, 且不可变位图每次绘制能复用同一张纹理 (可变位图会全图重拷)
+                        val bitmap = Bitmap()
+                        if (!bitmap.allocPixels(decodeInfo)) return@runCatching null
+                        codec.readPixels(bitmap, 0, -1)
+                        bitmap.setImmutable()
+                        DecodedImageResult.Static(bitmap.asComposeImageBitmap())
+                    }
+                }
+            }
+        }
+    }.getOrNull()
+
+    if (result != null || animatedOnly) return result
+    // 栅格 Codec 无法解析时尝试 SVG 兜底 (例如矢量图)
+    return decodeSvgFallback(bytes, maxDim = 0)?.let { DecodedImageResult.Static(it) }
+}
+
 /**
  * Skiko 三端的 Skia Codec 动图实现 (desktop/iOS/鸿蒙)。
  *
- * 单个复用 Bitmap 逐帧解码，传入上一帧索引让 Skia 处理 GIF/WebP 的增量帧合成；每帧
- * 立刻转成独立 Image 快照，避免复用 Bitmap 后污染已产出的帧。
+ * 复用 [decodeImageAuto] 统一解码结果, 仅提取动图帧表; 静态图或非动图返回 null。
  */
-internal actual fun decodeAnimatedFrames(bytes: ByteArray): AnimatedFrames? = runCatching {
-    if (bytes.isEmpty()) return null
-    val data = Data.makeFromBytes(bytes)
-    val codec = try {
-        Codec.makeFromData(data)
-    } finally {
-        data.close()
-    }
-    codec.use { c ->
-        val frameCount = c.frameCount
-        if (frameCount <= 1) return null
-        val info = c.imageInfo
-        if (info.width <= 0 || info.height <= 0) return null
-        if (info.width.toLong() * info.height * frameCount > MAX_ANIMATED_PIXELS) return null
-
-        // 强制 N32 PREMUL，保证透明增量帧在 GIF/WebP 合成时与前一帧使用同一像素格式。
-        val decodeInfo = ImageInfo.makeN32(info.width, info.height, ColorAlphaType.PREMUL)
-        val frames = ArrayList<ImageBitmap>(frameCount)
-        val durations = IntArray(frameCount)
-        val bitmap = Bitmap()
-        try {
-            if (!bitmap.allocPixels(decodeInfo)) return null
-            for (i in 0 until frameCount) {
-                c.readPixels(bitmap, i, i - 1)
-                Image.makeFromBitmap(bitmap).use { image ->
-                    frames += image.toComposeImageBitmap()
-                }
-                durations[i] = c.getFrameInfo(i).duration
-                    .takeIf { it > 0 }
-                    ?: DEFAULT_FRAME_DURATION_MS
-            }
-        } finally {
-            bitmap.close()
-        }
-        AnimatedFrames(frames, durations, c.repetitionCount)
-    }
-}.getOrNull()
-
-private const val DEFAULT_FRAME_DURATION_MS = 100
+internal actual fun decodeAnimatedFrames(bytes: ByteArray): AnimatedFrames? =
+    (decodeImageAuto(bytes, animatedOnly = true) as? DecodedImageResult.Animated)?.frames

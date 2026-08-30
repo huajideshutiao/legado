@@ -1,8 +1,10 @@
 package io.legado.desktop
 
+import androidx.compose.ui.graphics.toAwtImage
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.resolveImagePath
+import io.legado.app.help.image.decodeBytesSampled
 import io.legado.app.model.bakedImagePath
 import io.legado.app.model.ensureBakedImage
 import io.legado.app.ui.compose.platform.DesktopThemeStoreProvider
@@ -13,8 +15,8 @@ import java.awt.Graphics
 import java.awt.Graphics2D
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
-import javax.imageio.ImageIO
 import javax.swing.JWindow
+import kotlin.math.ceil
 
 /**
  * 桌面端启动闪屏 (AWT JWindow, 无边框, 居中显示)。
@@ -52,9 +54,9 @@ class DesktopSplashScreen(
         const val BASE_HEIGHT = 480
 
         /** 闪屏窗口尺寸: 屏幕宽高一半 (≥400x300, 低分辨率屏如 1024x768 也能完整显示)。 */
-        fun splashSize(): java.awt.Dimension {
+        fun splashSize(): Dimension {
             val screen = java.awt.Toolkit.getDefaultToolkit().screenSize
-            return java.awt.Dimension(
+            return Dimension(
                 (screen.width / 2).coerceAtLeast(400),
                 (screen.height / 2).coerceAtLeast(300),
             )
@@ -130,8 +132,9 @@ class DesktopSplashScreen(
                 bgImagePath
             }
             bgImage = runCatching {
-                // 产物是 WEBP 字节 (ImageIO 直读, TwelveMonkeys imageio-webp SPI)
-                java.io.File(displayPath).takeIf { it.exists() }?.let { ImageIO.read(it) }
+                val file =
+                    java.io.File(displayPath).takeIf { it.exists() } ?: return@runCatching null
+                decodeBytesSampled(file.readBytes(), 0)?.toAwtImage()
             }.getOrNull()
         }
 
@@ -210,8 +213,8 @@ class DesktopSplashScreen(
                     )
                     // 目标尺寸向上取整保证完全覆盖窗口（不留发丝缝），
                     // 左上角居中偏移可为负，出界部分由绘制裁剪自动丢弃
-                    val drawW = Math.ceil(imgW * coverScale).toInt()
-                    val drawH = Math.ceil(imgH * coverScale).toInt()
+                    val drawW = ceil(imgW * coverScale).toInt()
+                    val drawH = ceil(imgH * coverScale).toInt()
                     val drawX = (width - drawW) / 2
                     val drawY = (height - drawH) / 2
                     g2d.drawImage(bgImage, drawX, drawY, drawW, drawH, null)
@@ -263,7 +266,8 @@ class DesktopSplashScreen(
                     val icon = runCatching {
                         // 与 app 端共用同一份 icon_read_book.png (desktop sourceSets 挂载 drawable-nodpi)
                         Thread.currentThread().contextClassLoader
-                            ?.getResourceAsStream("icon_read_book.png")?.use { ImageIO.read(it) }
+                            ?.getResourceAsStream("icon_read_book.png")
+                            ?.use { decodeBytesSampled(it.readBytes(), 0) }?.toAwtImage()
                     }.getOrNull()
                     if (icon != null) {
                         val iconX = halfWidth + (halfWidth - iconSize) / 2

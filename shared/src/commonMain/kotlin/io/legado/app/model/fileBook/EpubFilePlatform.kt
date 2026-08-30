@@ -18,7 +18,7 @@ import io.legado.app.data.entities.Book
  *   android actual 内持 `ParcelFileDescriptor` + `AndroidZipFile`, jvm actual 内持 `java.util.zip.ZipFile`。
  *   `close()` 由 EpubFile.finalize 调用, 各平台 actual 自行释放资源。
  * - [decodeBitmap] / [compressBitmap] 拆分原 `BitmapFactory.decodeStream` + `Bitmap.compress`,
- *   android actual 用 BitmapFactory, jvm actual 用 javax.imageio.ImageIO。
+ *   android actual 用 BitmapFactory, jvm actual 用 Skia (Skiko) 原生编解码。
  *
  * # 类型说明
  * [epubBook] 返回 `Any?` (而非 `EpubBook?`), 因 EpubBook 在 jvmAndAndroidMain (epublib 未全平台化),

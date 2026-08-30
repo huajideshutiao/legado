@@ -2,17 +2,22 @@ package io.legado.app.utils
 
 import com.github.weisj.jsvg.parser.LoaderContext
 import com.github.weisj.jsvg.parser.SVGLoader
+import org.jetbrains.skia.Bitmap
+import org.jetbrains.skia.ColorAlphaType
+import org.jetbrains.skia.ColorType
+import org.jetbrains.skia.EncodedImageFormat
+import org.jetbrains.skia.Image
+import org.jetbrains.skia.ImageInfo
+import org.jetbrains.skia.impl.use
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
-import javax.imageio.ImageIO
 
 /**
  * JVM 端 SVG 栅格化, 对照 Android 端 `io.legado.app.utils.SvgUtils` (androidsvg)。
  *
  * 用 jsvg (纯 Java Java2D 渲染器, 无 native, 比 Batik 轻) 把 SVG 字节渲染成 PNG,
- * 供只认栅格图的 ImageIO / Coil3 消费。
+ * 并通过 Skia 高性能编码输出 PNG 字节, 彻底脱离 ImageIO。
  */
 object SvgRasterizer {
 
@@ -27,7 +32,7 @@ object SvgRasterizer {
     /**
      * SVG 字节 → PNG 字节; 非 SVG 或渲染失败返回 null。
      *
-     * 目标尺寸取文档自身尺寸, 长边超 [MAX_EDGE] 时等比缩小
+     * 目标尺寸取文档自身尺寸, 长边超 [maxEdge] 时等比缩小
      * (对照 SvgUtils.createBitmap 只缩不放的语义)。
      */
     fun toPng(bytes: ByteArray, maxEdge: Int = MAX_EDGE): ByteArray? = runCatching {
@@ -49,9 +54,32 @@ object SvgRasterizer {
         } finally {
             g.dispose()
         }
-        ByteArrayOutputStream().use { out ->
-            if (!ImageIO.write(image, "png", out)) return null
-            out.toByteArray()
+        val argb = image.getRGB(0, 0, w, h, null, 0, w)
+        val pixels = ByteArray(w * h * 4)
+        var i = 0
+        for (p in argb) {
+            val a = (p ushr 24) and 0xFF
+            val r = (p ushr 16) and 0xFF
+            val g = (p ushr 8) and 0xFF
+            val b = p and 0xFF
+            pixels[i++] = ((r * a + 127) / 255).toByte()
+            pixels[i++] = ((g * a + 127) / 255).toByte()
+            pixels[i++] = ((b * a + 127) / 255).toByte()
+            pixels[i++] = a.toByte()
+        }
+        val bitmap = Bitmap()
+        bitmap.use { bmp ->
+            check(
+                bmp.installPixels(
+                    ImageInfo(w, h, ColorType.RGBA_8888, ColorAlphaType.PREMUL),
+                    pixels,
+                    w * 4
+                )
+            )
+            Image.makeFromBitmap(bmp).use { skImage ->
+                skImage.encodeToData(EncodedImageFormat.PNG, 100)?.bytes
+            }
         }
     }.getOrNull()
 }
+

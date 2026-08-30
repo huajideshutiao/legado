@@ -1,8 +1,10 @@
 package io.legado.desktop.ui.tray
 
+import androidx.compose.ui.graphics.toAwtImage
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.Status
+import io.legado.app.help.image.decodeBytesSampled
 import io.legado.app.help.toast.DesktopTrayNotifier
 import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.AudioPlayCommanders
@@ -40,7 +42,6 @@ import java.awt.event.MouseEvent
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
 import java.awt.image.BufferedImage
-import javax.imageio.ImageIO
 import javax.swing.Icon
 import javax.swing.JDialog
 import javax.swing.JMenuItem
@@ -691,7 +692,8 @@ object DesktopMediaTray {
         val height = trayPixels(transform?.scaleY)
         val raw = runCatching {
             Thread.currentThread().contextClassLoader
-                ?.getResourceAsStream("icon.png")?.use { ImageIO.read(it) }
+                ?.getResourceAsStream("icon.png")?.use { decodeBytesSampled(it.readBytes(), 0) }
+                ?.toAwtImage()
         }.getOrNull() ?: return BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
         return scaleHighQuality(raw, width, height)
     }

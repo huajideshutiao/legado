@@ -1,5 +1,7 @@
 package io.legado.app.lib.webdav
 
+import com.fleeksoft.ksoup.Ksoup
+import com.fleeksoft.ksoup.parser.Parser
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.coroutine.printStackTraceOnDebug
@@ -11,7 +13,6 @@ import io.legado.app.model.analyzeRule.CustomUrl
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.findNS
 import io.legado.app.utils.findNSPrefix
-import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -24,8 +25,6 @@ import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import org.intellij.lang.annotations.Language
-import com.fleeksoft.ksoup.Ksoup
-import com.fleeksoft.ksoup.parser.Parser
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -35,6 +34,7 @@ import java.net.URL
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * WebDav 客户端 jvmAndAndroidMain actual 实现。
@@ -87,6 +87,7 @@ actual open class WebDav actual constructor(
     }
 
 
+    @Suppress("DEPRECATION")
     private val url: URL = URL(CustomUrl(path).getUrl())
     actual val httpUrl: String? by lazy {
         val raw = url.toString()

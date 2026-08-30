@@ -1,6 +1,7 @@
 package io.legado.app.help.image
 
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asComposeImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
@@ -16,11 +17,17 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withContext
 import okhttp3.Request
-import java.awt.RenderingHints
-import java.io.ByteArrayInputStream
+import org.jetbrains.skia.Bitmap
+import org.jetbrains.skia.Canvas
+import org.jetbrains.skia.Codec
+import org.jetbrains.skia.ColorAlphaType
+import org.jetbrains.skia.Data
+import org.jetbrains.skia.Image
+import org.jetbrains.skia.ImageInfo
+import org.jetbrains.skia.Rect
+import org.jetbrains.skia.SamplingMode
+import org.jetbrains.skia.impl.use
 import java.io.File
-import javax.imageio.ImageIO
-import javax.imageio.ImageReadParam
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -34,18 +41,11 @@ import kotlin.math.roundToInt
  * - 网络路径 (`http(s)://`):
  *   - 本地书 / 无书源: [OkHttpClientProviders] 直接 GET (无书源 header 配置)
  *   - 网络书: [AnalyzeUrlCore] 发请求, 自动带书源 header / cookie / charset / JS
- *     (对照 app 端 `AnalyzeUrl(imageUrl, source=bookSource).getByteArrayAwait()`),
- *     下载后按 [isCover] 跑共享 [ImageUtils.decode] 响应字节解密 (规则为空原样返回)
  * - `cbz://`: [CbzFile.getImage] 读取 zip 内嵌条目图片流
- * - GIF: [ImageIO] 不支持动图, [loadBitmap] 仅取静态首帧; 需要动图的消费点改用 [loadBytes]
- *   取裸字节走 [rememberAnimatedImageBitmap] (skiko Codec 逐帧解码)
+ * - GIF: 静态读取时取首帧; 需要动图的消费点改用 [loadBytes] 取裸字节走 [rememberAnimatedImageBitmap]
  *
- * # 结构 (2026 图片加载深度优化 I1/I7)
- *
- * [loadBitmap] 与 [loadBytes] 共用同一条字节链路 (含 [ImageBytesCache] 内存/磁盘缓存 +
- * failUrl 跳过表), 对齐 android/ios/ohos; 解码经 [decodeBytesSampled] (ImageIO
- * setSourceSubsampling 解码前采样, 内存收益在解码峰值) + [DecodedBitmapCache] 进程级 LRU,
- * 同 URL 二次打开零重复解码。
+ * 全面基于 Skia [Codec.makeFromData] 采样解码 + [DecodedBitmapCache] 进程级 LRU,
+ * 零 SPI 反射查找卡顿, 原生支持 WebP / GIF / PNG / JPEG / BMP。
  */
 actual class ImageBitmapLoader actual constructor() {
 
@@ -84,8 +84,7 @@ actual class ImageBitmapLoader actual constructor() {
                 } else null
                 val cached = key?.let { DecodedBitmapCache.get(it) }
                 if (cached != null) return@withContext cached
-                val bitmap = decodeBufferedImage(bytes, maxDim)?.toComposeImageBitmap()
-                    ?: decodeSvgFallback(bytes, maxDim)
+                val bitmap = decodeBytesSampled(bytes, maxDim) ?: decodeSvgFallback(bytes, maxDim)
                 if (bitmap != null && key != null) DecodedBitmapCache.put(key, bitmap)
                 return@withContext bitmap
             }
@@ -102,45 +101,6 @@ actual class ImageBitmapLoader actual constructor() {
             if (bitmap != null && key != null) DecodedBitmapCache.put(key, bitmap)
             bitmap
         }
-
-    /**
-     * 解码字节为 [java.awt.image.BufferedImage]; [maxDim]>0 时解码前采样,
-     * maxDim<=0 按 2048 兜底采样 (对齐 app 端 target 语义, 避免全尺寸解码 OOM)。
-     * (ImageReader.setSourceSubsampling, 对齐原版 Glide Downsampler 的解码前采样语义,
-     * 内存收益在解码峰值; 采样因子取 2 的幂, 解码后长边 ≥ target, 原图更小时保持原尺寸)。
-     * 采样后再经 [resampledToLongSide] 双线性重采样到精确长边 —— subsampling 是抽点,
-     * 单靠它出来的图带采样锯齿 (原版 Glide 同样是"粗降 + 精确缩放"两段式)。
-     * 无法识别 (如 WEBP 无 reader) / 解码失败返回 null, 由调用方回落 skia 解码或占位。
-     */
-    internal fun decodeBufferedImage(bytes: ByteArray, maxDim: Int): java.awt.image.BufferedImage? {
-        val target = if (maxDim > 0) maxDim else 2048
-        return runCatching {
-            val input = ImageIO.createImageInputStream(ByteArrayInputStream(bytes)) ?: return null
-            val readers = ImageIO.getImageReaders(input)
-            if (!readers.hasNext()) return null
-            val reader = readers.next()
-            try {
-                reader.setInput(input, true, true)
-                val w = reader.getWidth(0)
-                val h = reader.getHeight(0)
-                if (w <= 0 || h <= 0) return null
-                var sample = 1
-                while (max(w, h) / (sample * 2) >= target) sample *= 2
-                val decoded = if (sample > 1) {
-                    val param = ImageReadParam().apply {
-                        setSourceSubsampling(sample, sample, 0, 0)
-                    }
-                    reader.read(0, param)
-                } else {
-                    reader.read(0)
-                }
-                decoded?.resampledToLongSide(target)
-            } finally {
-                reader.dispose()
-                input.close()
-            }
-        }.getOrNull()
-    }
 
 
     actual suspend fun loadBytes(
@@ -248,55 +208,65 @@ actual class ImageBitmapLoader actual constructor() {
 }
 
 /**
- * 长边重采样到 [target] (只缩不放, 双线性)。
+ * 带目标长边上限解码 (maxDim<=0 按 2048 兜底)。
  *
- * `ImageReadParam.setSourceSubsampling` 是纯抽点 (每 N 像素取 1, 无低通滤波) 且步长只能取
- * 2 的幂, 解码结果长边落在 [target, 2·target) —— 直接显示就是一张带采样锯齿的图, 且锯齿
- * 强弱随目标尺寸跨过 2 的幂阈值突变。粗降后比例落在 (0.5, 1], 一次双线性即可抹平。
+ * Skia [Codec] 只接受它自己声明的采样档 (JPEG 只有 N/8, PNG 一档都没有), 传任意目标尺寸会抛
+ * "Invalid scale" 让整张图解不出来, 故一律按原尺寸解, 超上限时再重采样一次到目标长边。
+ * 解码结果转不可变后所有权交给 [ImageBitmap]: 零中间拷贝, 且绘制时能复用同一张纹理。
  */
-private fun java.awt.image.BufferedImage.resampledToLongSide(
-    target: Int,
-): java.awt.image.BufferedImage {
-    val longSide = max(width, height)
-    // 只差几个百分点时重采样纯属白耗一次全图拷贝, 交给绘制端缩放
-    if (target <= 0 || longSide <= target * 1.05f) return this
-    val scale = target.toFloat() / longSide
-    val nw = (width * scale).roundToInt().coerceAtLeast(1)
-    val nh = (height * scale).roundToInt().coerceAtLeast(1)
-    val out = java.awt.image.BufferedImage(
-        nw,
-        nh,
-        if (colorModel.hasAlpha()) {
-            java.awt.image.BufferedImage.TYPE_INT_ARGB
-        } else {
-            java.awt.image.BufferedImage.TYPE_INT_RGB
-        },
-    )
-    val g = out.createGraphics()
-    try {
-        g.setRenderingHint(
-            RenderingHints.KEY_INTERPOLATION,
-            RenderingHints.VALUE_INTERPOLATION_BILINEAR,
-        )
-        g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
-        g.drawImage(this, 0, 0, nw, nh, null)
-    } finally {
-        g.dispose()
-    }
-    return out
+actual fun decodeBytesSampled(bytes: ByteArray, maxDim: Int): ImageBitmap? {
+    if (bytes.isEmpty()) return null
+    val target = if (maxDim > 0) maxDim else 2048
+    return runCatching {
+        Data.makeFromBytes(bytes).use { data ->
+            Codec.makeFromData(data).use { codec ->
+                val info = codec.imageInfo
+                if (info.width <= 0 || info.height <= 0) return@runCatching null
+                val decodeInfo = ImageInfo.makeN32(info.width, info.height, ColorAlphaType.PREMUL)
+                val bitmap = Bitmap()
+                if (!bitmap.allocPixels(decodeInfo)) return@runCatching null
+                codec.readPixels(bitmap, 0, -1)
+                bitmap.setImmutable()
+                if (max(info.width, info.height) <= target) {
+                    bitmap.asComposeImageBitmap()
+                } else {
+                    bitmap.use { src -> resampledToLongSide(src, target) }
+                }
+            }
+        }
+    }.getOrNull()
 }
 
-/** 带目标长边上限解码: ImageIO ImageReader 解码前采样 (maxDim<=0 按 2048 兜底)。 */
-actual fun decodeBytesSampled(bytes: ByteArray, maxDim: Int): ImageBitmap? =
-    ImageBitmapLoader().decodeBufferedImage(bytes, maxDim)?.toComposeImageBitmap()
+/** 长边重采样到 [target] (只缩不放, Mitchell 滤波); 结果位图所有权交给返回的 [ImageBitmap]。 */
+private fun resampledToLongSide(src: Bitmap, target: Int): ImageBitmap? {
+    val scale = target.toFloat() / max(src.width, src.height)
+    val width = (src.width * scale).roundToInt().coerceAtLeast(1)
+    val height = (src.height * scale).roundToInt().coerceAtLeast(1)
+    val dst = Bitmap()
+    if (!dst.allocPixels(ImageInfo.makeN32(width, height, ColorAlphaType.PREMUL))) return null
+    // src 已不可变, makeFromBitmap 直接共享像素不再拷贝
+    Image.makeFromBitmap(src).use { image ->
+        Canvas(dst).use { canvas ->
+            canvas.drawImageRect(
+                image,
+                Rect.makeWH(src.width.toFloat(), src.height.toFloat()),
+                Rect.makeWH(width.toFloat(), height.toFloat()),
+                SamplingMode.MITCHELL,
+                null,
+                true,
+            )
+        }
+    }
+    dst.setImmutable()
+    return dst.asComposeImageBitmap()
+}
 
 /**
- * SVG 兜底解码 (jsvg, 复用 jvmMain 已有 SvgRasterizer 栅格化)。
- *
- * 栅格解码失败后按 SVG 渲染: [SvgRasterizer.toPng] 按长边 [maxDim] (只缩不放, 内部
- * MAX_EDGE=2048 默认) 渲染 PNG 字节, 再 ImageIO 解码回位图。
+ * SVG 兜底解码 (jsvg, 复用 jvmMain 已有 SvgRasterizer 栅格化后由 Skia 直接生成 ImageBitmap)。
  */
 actual fun decodeSvgFallback(bytes: ByteArray, maxDim: Int): ImageBitmap? {
     val png = SvgRasterizer.toPng(bytes, if (maxDim > 0) maxDim else 2048) ?: return null
-    return ImageIO.read(ByteArrayInputStream(png))?.toComposeImageBitmap()
+    return runCatching {
+        Image.makeFromEncoded(png).use { it.toComposeImageBitmap() }
+    }.getOrNull()
 }

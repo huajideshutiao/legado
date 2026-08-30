@@ -1,24 +1,17 @@
 package io.legado.desktop.help.book
 
 import io.legado.app.model.fileBook.BitmapProvider
+import org.jetbrains.skia.EncodedImageFormat
+import org.jetbrains.skia.Image
+import org.jetbrains.skia.impl.use
 import java.io.File
 import java.io.InputStream
-import java.io.OutputStream
-import javax.imageio.IIOImage
-import javax.imageio.ImageIO
-import javax.imageio.ImageWriteParam
 
 /**
- * [BitmapProvider] 桌面 JVM 实现。
+ * [BitmapProvider] 桌面 JVM 实现 (基于 Skia 原生高性能编解码)。
  *
- * 用 `javax.imageio.ImageIO.read` 解码图片, `ImageIO.write` 写入 JPEG,
- * 替代 app 端 `android.graphics.BitmapFactory` + `Bitmap.compress`。
- *
- * # 与 app 端差异
- * - **quality 参数**: 用 ImageWriter + JPEG ImageWriteParam 映射到压缩比 (quality/100),
- *   与 app 端 `Bitmap.compress(JPEG, quality)` 语义一致 (默认 90 时接近默认质量)。
- * - **GIF**: ImageIO 仅取静态首帧 (AWT/ImageIO 解码限制: 无 GIF 动画帧 API,
- *   与 [MangaReaderScreen] loadMangaImage 一致), 封面场景静态首帧即可接受。
+ * 用 Skia [Image.makeFromEncoded] 解码图片并使用 [Image.encodeToData] 写入 JPEG,
+ * 替代陈旧的 `ImageIO`。全格式原生支持 (WebP/GIF/PNG/JPG/BMP), 零 SPI 查找开销。
  *
  * 注册: desktop `Main.kt` 中 `BitmapProviders.register(DesktopBitmapProvider)`。
  */
@@ -30,33 +23,19 @@ object DesktopBitmapProvider : BitmapProvider {
         quality: Int
     ): Boolean {
         return runCatching {
-            val image = ImageIO.read(input) ?: return false
-            outFile.parentFile?.mkdirs()
-            writeJpegWithQuality(image, quality, outFile.outputStream())
-            image.flush()
-            true
+            val bytes = input.use { it.readBytes() }
+            if (bytes.isEmpty()) return false
+            val image = Image.makeFromEncoded(bytes)
+            image.use { img ->
+                val jpegData = img.encodeToData(
+                    EncodedImageFormat.JPEG,
+                    quality.coerceIn(0, 100)
+                ) ?: return false
+                outFile.parentFile?.mkdirs()
+                outFile.writeBytes(jpegData.bytes)
+                true
+            }
         }.getOrDefault(false)
     }
-
-    /** ImageIO.write 不支持质量参数, 改用 JPEG ImageWriter + ImageWriteParam (quality/100)。 */
-    private fun writeJpegWithQuality(
-        image: java.awt.image.BufferedImage,
-        quality: Int,
-        out: OutputStream
-    ) {
-        val writers = ImageIO.getImageWritersByFormatName("jpg")
-        check(writers.hasNext()) { "no jpeg writer" }
-        val writer = writers.next()
-        try {
-            val param = writer.defaultWriteParam
-            if (param.canWriteCompressed()) {
-                param.compressionMode = ImageWriteParam.MODE_EXPLICIT
-                param.compressionQuality = quality.coerceIn(0, 100) / 100f
-            }
-            writer.output = ImageIO.createImageOutputStream(out)
-            writer.write(null, IIOImage(image, null, null), param)
-        } finally {
-            writer.dispose()
-        }
-    }
 }
+

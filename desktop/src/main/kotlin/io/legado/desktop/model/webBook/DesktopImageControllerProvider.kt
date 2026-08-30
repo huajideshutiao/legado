@@ -9,14 +9,18 @@ import io.legado.app.help.book.BookImageStorageProviders
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.utils.File
 import kotlinx.coroutines.runBlocking
-import java.awt.RenderingHints
-import java.awt.image.BufferedImage
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
-import javax.imageio.ImageIO
+import org.jetbrains.skia.Bitmap
+import org.jetbrains.skia.Canvas
+import org.jetbrains.skia.ColorAlphaType
+import org.jetbrains.skia.EncodedImageFormat
+import org.jetbrains.skia.Image
+import org.jetbrains.skia.ImageInfo
+import org.jetbrains.skia.Rect
+import org.jetbrains.skia.SamplingMode
+import org.jetbrains.skia.impl.use
 
 /**
- * desktop 端 [ImageControllerProvider] 最小真实实现 (与 nativeMain 共用同一套逻辑)。
+ * desktop 端 [ImageControllerProvider] 最小真实实现 (基于 Skia 原生渲染, 与 nativeMain 共用同一套逻辑)。
  *
  * 直接返回本地缓存原始字节, 失败返回 null → 调用方回 "getCover/getImg error", 不抛异常。
  */
@@ -54,24 +58,34 @@ object DesktopImageControllerProvider : ImageControllerProvider {
     /** 等比缩图到 [width] (保持纵横比), 输出 PNG; 图片不超宽或解码失败时原样返回。 */
     private fun scaleToWidth(bytes: ByteArray, width: Int): ByteArray {
         if (width <= 0) return bytes
-        val image = runCatching { ImageIO.read(ByteArrayInputStream(bytes)) }.getOrNull()
-            ?: return bytes
-        if (image.width <= width) return bytes
-        val height = (image.height.toLong() * width / image.width).toInt().coerceAtLeast(1)
-        val scaled = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
-        val g = scaled.createGraphics()
-        try {
-            g.setRenderingHint(
-                RenderingHints.KEY_INTERPOLATION,
-                RenderingHints.VALUE_INTERPOLATION_BILINEAR,
-            )
-            g.drawImage(image, 0, 0, width, height, null)
-        } finally {
-            g.dispose()
-        }
-        val out = ByteArrayOutputStream()
-        ImageIO.write(scaled, "png", out)
-        return out.toByteArray()
+        return runCatching {
+            val image = Image.makeFromEncoded(bytes)
+            if (image.width <= width) {
+                image.close()
+                return bytes
+            }
+            val height = (image.height.toLong() * width / image.width).toInt().coerceAtLeast(1)
+            val result = Bitmap()
+            result.allocPixels(ImageInfo.makeN32(width, height, ColorAlphaType.PREMUL))
+            result.use { dst ->
+                Canvas(dst).use { canvas ->
+                    image.use { img ->
+                        // 缩图必须给采样模式: 默认是最近邻, 缩下来全是锯齿
+                        canvas.drawImageRect(
+                            img,
+                            Rect.makeWH(img.width.toFloat(), img.height.toFloat()),
+                            Rect.makeWH(width.toFloat(), height.toFloat()),
+                            SamplingMode.MITCHELL,
+                            null,
+                            true,
+                        )
+                    }
+                }
+                Image.makeFromBitmap(dst).use { scaled ->
+                    scaled.encodeToData(EncodedImageFormat.PNG, 100)?.bytes ?: bytes
+                }
+            }
+        }.getOrDefault(bytes)
     }
 
     private suspend fun downloadBytes(url: String): ByteArray? {

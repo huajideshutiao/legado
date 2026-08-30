@@ -11,7 +11,7 @@ import java.io.OutputStream
 import java.io.OutputStreamWriter
 import java.io.UnsupportedEncodingException
 import java.io.Writer
-import java.net.URL
+import java.net.URI
 import javax.xml.parsers.DocumentBuilder
 import javax.xml.parsers.DocumentBuilderFactory
 import javax.xml.parsers.ParserConfigurationException
@@ -29,8 +29,8 @@ class EpubProcessorSupport {
         override fun resolveEntity(publicId: String?, systemId: String): InputSource {
             val resourcePath: String?
             if (systemId.startsWith("http:")) {
-                val url = URL(systemId)
-                resourcePath = "dtd/" + url.getHost() + url.getPath()
+                val url = URI(systemId).toURL()
+                resourcePath = "dtd/" + url.host + url.path
                 previousLocation = resourcePath
                     .substring(0, resourcePath.lastIndexOf('/'))
             } else {

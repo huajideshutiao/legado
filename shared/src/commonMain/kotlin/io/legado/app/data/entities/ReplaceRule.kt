@@ -10,7 +10,6 @@ import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.Transient
 
 @Serializable
 @Entity(tableName = "replace_rules")
@@ -55,7 +54,6 @@ data class ReplaceRule(
     // 不覆写 equals/hashCode: 只比 id 会让规则列表/编辑表单把"同一条改了内容"判为相同而吞掉更新;
     // 字段是 var 且多处原地改, 结构 hashCode 会漂移, 故本类实例禁止作 HashSet 元素 / HashMap key
 
-    @Transient
     @delegate:Ignore
     val regex: Regex by lazy {
         pattern.toRegex()

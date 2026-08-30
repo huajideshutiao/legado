@@ -15,14 +15,17 @@ import org.apache.pdfbox.Loader
 import org.apache.pdfbox.pdmodel.PDDocument
 import org.apache.pdfbox.rendering.ImageType
 import org.apache.pdfbox.rendering.PDFRenderer
+import org.jetbrains.skia.Bitmap
+import org.jetbrains.skia.ColorAlphaType
+import org.jetbrains.skia.ColorType
+import org.jetbrains.skia.EncodedImageFormat
+import org.jetbrains.skia.Image
+import org.jetbrains.skia.ImageInfo
+import org.jetbrains.skia.impl.use
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
-import javax.imageio.IIOImage
-import javax.imageio.ImageIO
-import javax.imageio.ImageWriteParam
 import kotlin.math.ceil
 
 /**
@@ -140,20 +143,35 @@ class DesktopPdfFile(var book: Book) {
         return renderer.renderImage(index, targetWidth / pageWidth, ImageType.RGB)
     }
 
-    /** BufferedImage → JPEG 字节 (质量 90, 对齐 app 端 `Bitmap.compress(JPEG, 90)`)。 */
+    /** BufferedImage → JPEG 字节 (质量 90, 基于 Skia 高性能编码, 对齐 app 端 `Bitmap.compress(JPEG, 90)`)。 */
     private fun toJpegBytes(image: BufferedImage): ByteArray? = runCatching {
-        val writer = ImageIO.getImageWritersByFormatName("jpg").next()
-        val param = writer.defaultWriteParam.apply {
-            compressionMode = ImageWriteParam.MODE_EXPLICIT
-            compressionQuality = 0.9f
+        val w = image.width
+        val h = image.height
+        val rgb = image.getRGB(0, 0, w, h, null, 0, w)
+        val pixels = ByteArray(w * h * 4)
+        var i = 0
+        for (p in rgb) {
+            val r = (p ushr 16) and 0xFF
+            val g = (p ushr 8) and 0xFF
+            val b = p and 0xFF
+            pixels[i++] = r.toByte()
+            pixels[i++] = g.toByte()
+            pixels[i++] = b.toByte()
+            pixels[i++] = 0xFF.toByte()
         }
-        val out = ByteArrayOutputStream()
-        ImageIO.createImageOutputStream(out).use { ios ->
-            writer.output = ios
-            writer.write(null, IIOImage(image, null, null), param)
+        val bitmap = Bitmap()
+        bitmap.use { bmp ->
+            check(
+                bmp.installPixels(
+                    ImageInfo(w, h, ColorType.RGBA_8888, ColorAlphaType.OPAQUE),
+                    pixels,
+                    w * 4
+                )
+            )
+            Image.makeFromBitmap(bmp).use { skImage ->
+                skImage.encodeToData(EncodedImageFormat.JPEG, 90)?.bytes
+            }
         }
-        writer.dispose()
-        out.toByteArray()
     }.getOrNull()
 
     /**

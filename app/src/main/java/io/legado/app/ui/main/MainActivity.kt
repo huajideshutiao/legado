@@ -155,7 +155,11 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
 
     /** 图片保存目录选择 (对照原版 selectImageDir.launch: SAF 选目录 → 写 ACache imagePathKey)。 */
     private val selectImageDir = registerHandleFile { result ->
-        val uri = result.uri ?: return@registerHandleFile
+        val uri = result.uri
+        if (uri == null) {
+            pendingSaveImageSrc = null
+            return@registerHandleFile
+        }
         ACache.get().put(AppConst.imagePathKey, uri.toString())
         // 有待保存图片 (menu_save 先选目录后保存) 则继续保存
         pendingSaveImageSrc?.let { src ->

@@ -10,8 +10,6 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.glide.progress.ProgressManager
 import io.legado.app.help.image.MangaImageBytesLoader
-import io.legado.app.model.manga.MangaModel
-import io.legado.app.ui.book.manga.MangaImageExtractorShared
 import io.legado.app.ui.book.manga.MangaReaderScreenModel
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.entities.MangaCellState
@@ -99,14 +97,14 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
         url: String,
         book: Book?,
         source: BookSource?,
-    ): Boolean = withContext(Dispatchers.IO) {
+    ): Boolean? = withContext(Dispatchers.IO) {
         book ?: return@withContext false
         runCatching {
             val bytes = MangaImageBytesLoader.load(url, book, source, currentCoroutineContext())
                 ?: return@runCatching false
             val name = "manga-${systemCurrentTimeMillis()}${imageExtension(bytes, url)}"
             val destPath = PlatformServiceProviders.get().files.saveFile(name)
-                ?: return@runCatching false
+                ?: return@runCatching null
             File(destPath).apply {
                 parentFile?.mkdirs()
                 writeBytes(bytes)

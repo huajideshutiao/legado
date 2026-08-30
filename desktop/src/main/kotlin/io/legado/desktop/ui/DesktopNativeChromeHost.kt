@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import io.legado.app.constant.AppLog
+import io.legado.app.help.image.decodeBytesSampled
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.platform.DesktopThemeStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
@@ -48,7 +49,6 @@ import legado.shared.generated.resources.ic_daytime
 import org.jetbrains.compose.resources.painterResource
 import java.awt.EventQueue
 import java.awt.image.BufferedImage
-import javax.imageio.ImageIO
 import kotlin.math.roundToInt
 
 /**
@@ -137,7 +137,8 @@ fun DesktopNativeChromeHost(
     val appIcon = remember {
         runCatching {
             Thread.currentThread().contextClassLoader
-                ?.getResourceAsStream("icon.png")?.use { ImageIO.read(it) }
+                ?.getResourceAsStream("icon.png")?.use { decodeBytesSampled(it.readBytes(), 0) }
+                ?.toAwtImage()
         }.getOrNull()
     }
     LaunchedEffect(attached, appIcon) {

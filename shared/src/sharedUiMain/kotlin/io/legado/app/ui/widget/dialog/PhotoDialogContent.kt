@@ -40,7 +40,6 @@ import io.legado.app.help.image.ImageBitmapLoader
 import io.legado.app.help.image.ReaderImageCache
 import io.legado.app.help.image.decodeBytesSampled
 import io.legado.app.help.image.decodeSvgFallback
-import io.legado.app.help.image.isAnimatedImageBytes
 import io.legado.app.help.image.rememberAnimatedImageBitmap
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.BookCoverShared.CoverRatio
@@ -129,10 +128,9 @@ fun PhotoDialogContent(
     ) {
         value = loadPhotoState(src, book, bookSource, chapter, photoMaxDim)
     }
-    // GIF/WebP 动图: 字节在 loadPhotoState 单次读取时顺带判定
-    // (见 [PhotoLoadState.Success.gifBytes])，各端使用对应动图解码管线。
+    // 动图: 原始字节在 loadPhotoState 单次读取时顺带获取 (见 [PhotoLoadState.Success.rawBytes])
     val successState = photoState as? PhotoLoadState.Success
-    val animatedFrame = rememberAnimatedImageBitmap(successState?.gifBytes)
+    val animatedFrame = rememberAnimatedImageBitmap(successState?.rawBytes)
     val successBitmap = successState?.bitmap
     val image = animatedFrame ?: successBitmap
     val defaultCover = painterResource(Res.drawable.image_cover_default)
@@ -232,8 +230,8 @@ fun PhotoDialogContent(
 private sealed interface PhotoLoadState {
     data object Loading : PhotoLoadState
 
-    /** @param gifBytes 原始 GIF/WebP 字节，供 [rememberAnimatedImageBitmap] 逐帧播放 */
-    data class Success(val bitmap: ImageBitmap, val gifBytes: ByteArray?) : PhotoLoadState
+    /** @param rawBytes 原始图片字节，供 [rememberAnimatedImageBitmap] 判定并逐帧播放动图 */
+    data class Success(val bitmap: ImageBitmap, val rawBytes: ByteArray?) : PhotoLoadState
     /** @param cover 用户自定义默认封面集选出的位图 (null = 图集为空/缺文件, 用内置占位图) */
     data class Failed(
         val cover: ImageBitmap?,
@@ -263,19 +261,18 @@ private suspend fun loadPhotoState(
     // ① 内存位图（阅读页 2048px 长边上限解码, 对 2× 屏显示无感知差异, 直接复用）
     val cached = ReaderImageCache.peek(src)
     // ②/③ 字节：磁盘缓存（章节缓存 → Coil3 封面缓存）优先，未命中走
-    // ImageBitmapLoader（ImageBytesCache/网络）。一次读取同时供 GIF 判定与解码
+    // ImageBitmapLoader（ImageBytesCache/网络）。
     val bytes = runCatching {
         loadPhotoBytes(src, book, bookSource, chapter, isCover = true)
     }.getOrNull()
-    val gifBytes = bytes?.takeIf { isAnimatedImageBytes(it) }
-    // 内存位图命中时跳过解码, 但仍用上面读到的字节判定 GIF/WebP (阅读页缓存只存单帧)
-    if (cached != null) return@withContext PhotoLoadState.Success(cached, gifBytes)
+    // 内存位图命中时跳过解码, 但仍用上面读到的字节供动图播放 (阅读页缓存只存单帧)
+    if (cached != null) return@withContext PhotoLoadState.Success(cached, bytes)
     if (bytes == null) return@withContext defaultCoverState(maxDim)
     // 栅格解码 → SVG 兜底（对齐原版 decodeBytes ?: SvgUtils.renderInto 语义）
     val bitmap = decodeBytesSampled(bytes, maxDim)
         ?: decodeSvgFallback(bytes, maxDim)
         ?: return@withContext defaultCoverState(maxDim)
-    PhotoLoadState.Success(bitmap, gifBytes)
+    PhotoLoadState.Success(bitmap, bytes)
 }
 
 /**

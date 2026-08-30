@@ -11,11 +11,12 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import okhttp3.Request
-import java.io.ByteArrayInputStream
+import org.jetbrains.skia.Codec
+import org.jetbrains.skia.Data
+import org.jetbrains.skia.impl.use
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
-import javax.imageio.ImageIO
 
 /**
  * [BookImageStorage] 桌面 JVM 实现。
@@ -25,13 +26,10 @@ import javax.imageio.ImageIO
  *   (cacheImageFolderName = "images")
  * - 文件名 = `MD5(url, 16位) + url 后缀` (默认 jpg), 与 Android 端 [BookHelp.getImageSuffix] 对齐
  *
- * 图片有效性校验: 用 [ImageIO.read] 判断字节流是否为有效图 (返回 null 视为损坏),
- * 不保留 BufferedImage (与 Android 端 BitmapFactory.Options.inJustDecodeBounds 行为对齐,
- * 仅做有效性判断后立即丢弃解码结果)。
+ * 图片有效性校验: 用 Skia [Codec.makeFromData] 判断字节流是否为有效图 (返回 null 视为损坏),
+ * 仅做有效性判断后立即丢弃解码结果 (微秒级, 零 SPI 反射查找, 完美支持 WebP/GIF/PNG/JPG/BMP)。
  *
- * SVG: 对照 Android 端 SvgUtils 兜底, ImageIO 失败时改由 [SvgRasterizer] 解析。
- * 与 Android 端存原始 SVG 字节不同, 桌面读取侧 (ImageIO / Coil3) 无 SVG 解码器,
- * 故落盘的是栅格化后的 PNG 字节 (文件名仍按 url 后缀派生, 消费方按魔数识别)。
+ * SVG: 对照 Android 端 SvgUtils 兜底, 栅格校验失败时改由 [SvgRasterizer] 解析为 PNG 字节。
  *
  * 下载: 通过 [OkHttpClientProviders] 取 OkHttpClient 同步 GET, 在 [Dispatchers.IO] 并发下载。
  *
@@ -84,7 +82,6 @@ class JvmBookImageStorage(
     override suspend fun saveImages(book: Book, chapter: BookChapter, urls: List<String>): Boolean = coroutineScope {
         if (urls.isEmpty()) return@coroutineScope true
         // 并发下载, 限制 8 并发 (与 Android BookHelp.saveImages concurrency=AppConfig.threadCount 默认对齐)
-        // 注意: 桌面端 AppConfigProviders.threadCount 可能未注入, 这里固定 8 避免依赖
         val client = OkHttpClientProviders.get().okHttpClient
         val results = urls.map { url ->
             async(Dispatchers.IO) {
@@ -98,8 +95,7 @@ class JvmBookImageStorage(
                         saveImage(book, chapter, url, bytes) != null
                     }
                 } catch (e: Exception) {
-                    // 网络 / IO 异常视为失败, 不中断其他下载 (与 Android BookHelp.saveImage
-                    // 的 try-catch + ensureActive 行为对齐)
+                    // 网络 / IO 异常视为失败, 不中断其他下载
                     false
                 }
             }
@@ -122,21 +118,24 @@ class JvmBookImageStorage(
     }
 
     /**
-     * 校验字节流是否为有效栅格图。
+     * 校验字节流是否为有效栅格图 (Skia 原生校验)。
      *
-     * 用 [ImageIO.read] 尝试解码, 返回 null 视为损坏 (与 Android 端
-     * BitmapFactory.decodeByteArray + `outWidth < 1 && outHeight < 1` 判断对齐)。
-     * 不保留 BufferedImage, 仅做有效性判断后立即丢弃。
-     *
-     * SVG 不被 ImageIO 识别, 由 [saveImage] 回落到 [SvgRasterizer] (对照 Android 端
-     * BitmapFactory 失败后试 SvgUtils.getSize 的兜底顺序)。
+     * 避免 Java ImageIO 的 SPI 反射查找卡顿与 WebP 无法识别缺陷。
+     * 仅做有效性判断后立即释放资源。
      */
     private fun isValidImage(bytes: ByteArray): Boolean {
-        return try {
-            ImageIO.read(ByteArrayInputStream(bytes)) != null
-        } catch (e: Exception) {
-            false
-        }
+        if (bytes.isEmpty()) return false
+        return runCatching {
+            val data = Data.makeFromBytes(bytes)
+            try {
+                val codec = Codec.makeFromData(data)
+                codec.use { c ->
+                    c.imageInfo.width > 0 && c.imageInfo.height > 0
+                }
+            } finally {
+                data.close()
+            }
+        }.getOrDefault(false)
     }
 
     companion object {

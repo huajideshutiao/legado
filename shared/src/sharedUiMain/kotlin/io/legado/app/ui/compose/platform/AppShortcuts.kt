@@ -264,12 +264,14 @@ private fun trigger(entry: ShortcutEntry, hit: AppShortcut) {
  *    路由页面的 focusable 间移动时, 按键会被吞掉不触发快捷键);
  * 2) 仅当页面是栈顶且菜单隐藏时才命中 (enabled 由调用方提供), 此时页面上无输入框,
  *    抢占不吞输入; 非顶层 (目录/换源等子页) 时 enabled=false, 捕获阶段放行。
+ *
+ * repeatPolicy = TRIGGER: 长按连翻, 由调用方 PageTurnThrottle (200ms) 安全节流。
  */
 val readerDirectionalKeys = listOf(
-    AppShortcut(Key.DirectionLeft, preemptive = true),
-    AppShortcut(Key.DirectionRight, preemptive = true),
-    AppShortcut(Key.DirectionUp, preemptive = true),
-    AppShortcut(Key.DirectionDown, preemptive = true),
+    AppShortcut(Key.DirectionLeft, preemptive = true, repeatPolicy = KeyRepeatPolicy.TRIGGER),
+    AppShortcut(Key.DirectionRight, preemptive = true, repeatPolicy = KeyRepeatPolicy.TRIGGER),
+    AppShortcut(Key.DirectionUp, preemptive = true, repeatPolicy = KeyRepeatPolicy.TRIGGER),
+    AppShortcut(Key.DirectionDown, preemptive = true, repeatPolicy = KeyRepeatPolicy.TRIGGER),
 )
 
 /**

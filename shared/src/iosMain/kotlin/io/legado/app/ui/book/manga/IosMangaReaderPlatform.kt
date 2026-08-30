@@ -104,14 +104,14 @@ object IosMangaReaderPlatform : MangaReaderScreenModel.Platform {
         url: String,
         book: Book?,
         source: BookSource?,
-    ): Boolean = withContext(IoDispatcher) {
+    ): Boolean? = withContext(IoDispatcher) {
         book ?: return@withContext false
         runCatching {
             val bytes = MangaImageBytesLoader.load(url, book, source, currentCoroutineContext())
                 ?: return@runCatching false
             val name = "manga-${systemCurrentTimeMillis()}${imageExtension(bytes, url)}"
             val destPath = PlatformServiceProviders.get().files.saveFile(name)
-                ?: return@runCatching false
+                ?: return@runCatching null
             File(destPath).writeBytes(bytes)
             true
         }.getOrElse {

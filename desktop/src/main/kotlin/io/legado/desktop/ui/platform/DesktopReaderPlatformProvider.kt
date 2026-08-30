@@ -326,7 +326,6 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
         val book = screenModel.currentBook
         val bookSource = screenModel.viewModel.bookSource.value
         imageActionScope.launch {
-            Toasters.get().toast("正在保存")
             // 阻塞式选择器必须切 IO (对照漫画阅读页 onSaveImage 的 withContext(IoDispatcher))
             val destPath = withContext(Dispatchers.IO) {
                 FileDialogs.pickSaveFile(
@@ -335,6 +334,7 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
                     initialDir = defaultImageSaveDir(),
                 )?.absolutePath
             } ?: return@launch
+            Toasters.get().toast("正在保存")
             val savedPath = withContext(Dispatchers.IO) {
                 writeImageBytes(src, book, bookSource, File(destPath))
             }
@@ -352,10 +352,10 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
         val book = screenModel.currentBook
         val bookSource = screenModel.viewModel.bookSource.value
         imageActionScope.launch {
-            Toasters.get().toast("正在保存")
             val dir = withContext(Dispatchers.IO) {
                 FileDialogs.pickDirectory(title = "选择保存目录")
             } ?: return@launch
+            Toasters.get().toast("正在保存")
             val savedPath = withContext(Dispatchers.IO) {
                 writeImageBytes(
                     src, book, bookSource,

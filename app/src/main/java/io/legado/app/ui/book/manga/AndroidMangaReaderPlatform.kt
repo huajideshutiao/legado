@@ -1,6 +1,5 @@
 package io.legado.app.ui.book.manga
 
-import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.ColorMatrix
@@ -23,10 +22,9 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.BookHelp
-import io.legado.app.help.image.MangaImageBytesLoader
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.image.MangaImageBytesLoader
 import io.legado.app.model.manga.MangaModel
-import io.legado.app.ui.book.manga.LocalMangaGifSlot
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.config.MangaFooterConfig
 import io.legado.app.ui.book.manga.config.isNoOp
@@ -37,8 +35,8 @@ import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.imageExtension
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.toJson
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withContext
 
 object AndroidMangaReaderPlatform : MangaReaderScreenModel.Platform {
@@ -220,14 +218,15 @@ object AndroidMangaReaderPlatform : MangaReaderScreenModel.Platform {
         url: String,
         book: Book?,
         source: BookSource?,
-    ): Boolean = withContext(Dispatchers.IO) {
+    ): Boolean? = withContext(Dispatchers.IO) {
         book ?: return@withContext false
         runCatching {
             val bytes = MangaImageBytesLoader.load(url, book, source, currentCoroutineContext())
                 ?: return@runCatching false
             val name = "manga-${System.currentTimeMillis()}${imageExtension(bytes, url)}"
-            val uri = PlatformServiceProviders.get().files.saveFile(name)?.toUri()
-                ?: return@runCatching false
+            val destPath = PlatformServiceProviders.get().files.saveFile(name)
+                ?: return@runCatching null
+            val uri = destPath.toUri()
             App.instance.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
                 ?: return@runCatching false
             true

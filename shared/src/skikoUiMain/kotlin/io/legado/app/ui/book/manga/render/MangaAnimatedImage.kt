@@ -16,16 +16,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.image.AnimatedFrames
+import io.legado.app.help.image.DecodedBitmapCache
+import io.legado.app.help.image.DecodedImageResult
 import io.legado.app.help.image.ImageBitmapLoader
 import io.legado.app.help.image.MangaImageBytesLoader
-import io.legado.app.help.image.decodeAnimatedFrames
-import io.legado.app.help.image.isAnimatedImageBytes
+import io.legado.app.help.image.decodeImageAuto
 import io.legado.app.ui.book.manga.LocalMangaGifSlot
 import io.legado.app.ui.book.manga.entities.MangaCellState
 import kotlinx.coroutines.Dispatchers
@@ -33,8 +33,6 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
-import org.jetbrains.skia.impl.use
-import org.jetbrains.skia.Image as SkiaImage
 
 private sealed interface MangaSkiaImageState {
     data object Loading : MangaSkiaImageState
@@ -162,11 +160,21 @@ fun MangaSkiaImage(
         }
     }
 
+    val cacheKey = remember(url, source?.bookSourceUrl) {
+        DecodedBitmapCache.cacheKey(url, source?.bookSourceUrl, isCover = false)
+    }
+
     val imageState by produceState<MangaSkiaImageState>(
-        MangaSkiaImageState.Loading,
+        initialValue = DecodedBitmapCache.get(cacheKey)?.let { MangaSkiaImageState.Static(it) }
+            ?: MangaSkiaImageState.Loading,
         url,
         retryTick,
     ) {
+        val cached = DecodedBitmapCache.get(cacheKey)
+        if (cached != null) {
+            value = MangaSkiaImageState.Static(cached)
+            return@produceState
+        }
         value = MangaSkiaImageState.Loading
         if (book == null) {
             value = MangaSkiaImageState.Error
@@ -187,15 +195,14 @@ fun MangaSkiaImage(
         }
 
         value = withContext(Dispatchers.Default) {
-            val animated = if (isAnimatedImageBytes(bytes)) decodeAnimatedFrames(bytes) else null
-            if (animated != null) {
-                MangaSkiaImageState.Animated(animated)
-            } else {
-                val bitmap = runCatching {
-                    SkiaImage.makeFromEncoded(bytes).use { it.toComposeImageBitmap() }
-                }.getOrNull()
-                if (bitmap != null) MangaSkiaImageState.Static(bitmap)
-                else MangaSkiaImageState.Error
+            when (val result = decodeImageAuto(bytes)) {
+                is DecodedImageResult.Animated -> MangaSkiaImageState.Animated(result.frames)
+                is DecodedImageResult.Static -> {
+                    DecodedBitmapCache.put(cacheKey, result.bitmap)
+                    MangaSkiaImageState.Static(result.bitmap)
+                }
+
+                null -> MangaSkiaImageState.Error
             }
         }
     }

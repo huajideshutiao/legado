@@ -343,14 +343,13 @@ internal class GtkSession private constructor(
             },
             produce = { res ->
                 val err = GErrorRef()
-                val list =
-                    GtkLibs.webkit.webkit_cookie_manager_get_cookies_finish(manager, res, err)
+                val list = GtkLibs.webkit.webkit_cookie_manager_get_cookies_finish(manager, res, err)
                 if (list == null) {
                     GtkLoop.errorMessage(err)?.let { AppLog.put("WebKitGTK cookie 读取失败: $it") }
                     null
-                } else {
+                } else try {
                     val parts = ArrayList<String>()
-                    var node = list
+                    var node: Pointer? = list
                     while (node != null) {
                         val cookie = node.getPointer(0)
                         if (cookie != null) {
@@ -363,8 +362,9 @@ internal class GtkSession private constructor(
                         }
                         node = GtkLibs.glib.g_list_next(node)
                     }
-                    GtkLibs.glib.g_list_free(list)
                     parts.joinToString("; ").takeIf { it.isNotBlank() }
+                } finally {
+                    GtkLibs.glib.g_list_free(list)
                 }
             },
         )

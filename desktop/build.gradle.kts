@@ -170,9 +170,6 @@ dependencies {
     // SymmetricCryptoAndroid 的 normalizePkcs7Padding (PKCS7→PKCS5 字节级等价, 无需 BC),
     // 不要再加回 bcprov。
     // implementation(libs.bcprov)
-    // WebP: 解码走 TwelveMonkeys imageio-webp (纯 Java, 活跃维护, 已替代归档的 gotson/webp-imageio);
-    // 编码走 Skiko (Compose Desktop 自带) 的 EncodedImageFormat.WEBP, 见 DesktopImageOps.encodeWebpSkia
-    implementation(libs.imageio.webp)
     // 本地书格式: PDF 渲染 (对照 app 端 PdfRenderer 语义)
     implementation(libs.pdfbox)
     // 压缩包: 7z/tar/gz/bz2/xz (xz 库是 7z LZMA2 默认压缩方法的必需依赖, 非只为 .xz)

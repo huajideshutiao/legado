@@ -288,6 +288,14 @@ private object OhosFilePickerService : FilePickerService {
         }.getOrNull()
     }
 
+    override fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean? {
+        val path = saveFile(suggestedName) ?: return null
+        return runCatching {
+            File(path).writeBytes(bytes)
+            true
+        }.getOrDefault(false)
+    }
+
     override fun pickDirectory(): String? = pickDirectoryDocument()?.toSandboxPath()
 
     // 物化副本清理 (对照 Android discardPickedFile): 只删 cacheDir/filePicker 下自建临时文件,

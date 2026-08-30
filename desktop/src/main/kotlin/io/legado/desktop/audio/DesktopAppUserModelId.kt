@@ -16,12 +16,18 @@ import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.desktop.audio.DesktopAppUserModelId.PKEY_APP_USER_MODEL_ID_PID
 import io.legado.desktop.audio.DesktopAppUserModelId.applyToWindow
 import io.legado.desktop.audio.DesktopAppUserModelId.ensureProcessAppId
-import java.awt.Graphics2D
-import java.awt.image.BufferedImage
+import org.jetbrains.skia.Bitmap
+import org.jetbrains.skia.Canvas
+import org.jetbrains.skia.ColorAlphaType
+import org.jetbrains.skia.EncodedImageFormat
+import org.jetbrains.skia.Image
+import org.jetbrains.skia.ImageInfo
+import org.jetbrains.skia.Rect
+import org.jetbrains.skia.SamplingMode
+import org.jetbrains.skia.impl.use
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
-import javax.imageio.ImageIO
 
 /**
  * Windows AppUserModelID 设置 (SMTC 媒体卡应用名 / 任务栏分组身份)。
@@ -227,24 +233,38 @@ internal object DesktopAppUserModelId {
     private fun ensureIconFile(): String? {
         val ico = File(desktopAppRootDir(), "icon.ico")
         if (ico.exists()) return ico.absolutePath
-        val png = Thread.currentThread().contextClassLoader?.getResourceAsStream("icon.png")
+        val rawBytes = Thread.currentThread().contextClassLoader?.getResourceAsStream("icon.png")
+            ?.use { it.readBytes() }
             ?: return null
-        val img = png.use { ImageIO.read(it) } ?: return null
         val size = 256
-        val square = if (img.width == size && img.height == size) img else {
-            val out = BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB)
-            val g = out.createGraphics() as Graphics2D
-            try {
-                g.drawImage(img, 0, 0, size, size, null)
-            } finally {
-                g.dispose()
+        val pngBytes = runCatching {
+            val image = Image.makeFromEncoded(rawBytes)
+            if (image.width == size && image.height == size) {
+                image.close()
+                rawBytes
+            } else {
+                val bitmap = Bitmap()
+                bitmap.allocPixels(ImageInfo.makeN32(size, size, ColorAlphaType.PREMUL))
+                bitmap.use { dst ->
+                    Canvas(dst).use { canvas ->
+                        image.use { img ->
+                            // 缩图必须给采样模式: 默认是最近邻, 缩下来全是锯齿
+                            canvas.drawImageRect(
+                                img,
+                                Rect.makeWH(img.width.toFloat(), img.height.toFloat()),
+                                Rect.makeWH(size.toFloat(), size.toFloat()),
+                                SamplingMode.MITCHELL,
+                                null,
+                                true,
+                            )
+                        }
+                    }
+                    Image.makeFromBitmap(dst).use { scaled ->
+                        scaled.encodeToData(EncodedImageFormat.PNG, 100)?.bytes
+                    }
+                }
             }
-            out
-        }
-        val pngBytes = ByteArrayOutputStream().use { baos ->
-            ImageIO.write(square, "png", baos)
-            baos.toByteArray()
-        }
+        }.getOrNull() ?: return null
         // ICO 容器 (Vista+ 支持内嵌 PNG): ICONDIR(6) + ICONDIRENTRY(16) + PNG 数据
         val out = ByteArrayOutputStream()
         fun u16(v: Int) {

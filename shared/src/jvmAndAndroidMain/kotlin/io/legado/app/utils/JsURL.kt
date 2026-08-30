@@ -9,6 +9,7 @@ import java.net.URLDecoder
  * 详见 commonMain/utils/JsURL.kt expect 注释。
  * 实现逻辑与原 jvmAndAndroidMain 直接 new URL(...) 一致, 行为不变。
  */
+@Suppress("DEPRECATION")
 actual class JsURL actual constructor(url: String, baseUrl: String?) {
 
     actual val searchParams: Map<String, String>?

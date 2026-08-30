@@ -36,7 +36,6 @@ import java.net.URL
 import java.net.URLConnection
 import java.net.URLStreamHandler
 import java.net.URLStreamHandlerFactory
-import java.security.AccessControlException
 import java.security.Permission
 import java.security.Principal
 import java.security.cert.Certificate
@@ -1142,7 +1141,7 @@ class ObsoleteUrlFactory(private var client: OkHttpClient) : URLStreamHandlerFac
             val value: String?
             try {
                 value = System.getProperty(key)
-            } catch (ex: AccessControlException) {
+            } catch (ex: SecurityException) {
                 return defaultValue
             }
             return value ?: defaultValue

@@ -116,6 +116,14 @@ private object IosFilePickerService : FilePickerService {
         }.getOrNull()
     }
 
+    override fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean? {
+        val path = saveFile(suggestedName) ?: return null
+        return runCatching {
+            File(path).writeBytes(bytes)
+            true
+        }.getOrDefault(false)
+    }
+
     override fun pickDirectory(): String? = runBlocking { pickDirectoryDocument() }?.path
 }
 

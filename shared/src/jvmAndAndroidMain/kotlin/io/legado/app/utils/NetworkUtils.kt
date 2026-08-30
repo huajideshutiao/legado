@@ -2,6 +2,8 @@ package io.legado.app.utils
 
 import io.legado.app.constant.AppLog
 import io.legado.app.help.coroutine.printStackTraceOnDebug
+import io.legado.app.utils.NetworkUtils.getAbsoluteURL
+import io.legado.app.utils.NetworkUtils.getLocalIPAddress
 import okhttp3.internal.publicsuffix.PublicSuffixDatabase
 import java.net.InetAddress
 import java.net.NetworkInterface
@@ -130,7 +132,10 @@ actual object NetworkUtils {
      *
      * baseURL 为 data url 时不做相对拼接 (JDK URL 不支持 data 协议, 且逗号截断会切掉 payload),
      * 直接返回 relativePath.trim()。
+     *
+     * 沿用已弃用的 URL 构造: 书源里大量未转义的中文/空格路径会让 URI 直接抛异常拼不出地址。
      */
+    @Suppress("DEPRECATION")
     actual fun getAbsoluteURL(baseURL: String?, relativePath: String): String {
         if (baseURL.isNullOrEmpty() || baseURL.isDataUrl()) return relativePath.trim()
         var absoluteUrl: URL? = null
@@ -148,6 +153,7 @@ actual object NetworkUtils {
      * 附加成员: 参数为 java.net.URL (原版 NetworkUtils.getAbsoluteURL(URL?, String) 重载,
      * 不经 String 门面, 避免 substringBefore(",") 截断含逗号的 URL)。
      */
+    @Suppress("DEPRECATION")
     actual fun getAbsoluteURL(baseURL: URL?, relativePath: String): String {
         val relativePathTrim = relativePath.trim()
         if (baseURL == null) return relativePathTrim
@@ -185,6 +191,7 @@ actual object NetworkUtils {
      * http://www.biquge.com.cn => biquge.com.cn
      * http://www.content.example.com => example.com
      */
+    @Suppress("DEPRECATION")
     actual fun getSubDomain(url: String): String {
         val baseUrl = getBaseUrl(url) ?: return url
         return kotlin.runCatching {
@@ -198,6 +205,7 @@ actual object NetworkUtils {
         }.getOrDefault(baseUrl)
     }
 
+    @Suppress("DEPRECATION")
     actual fun getSubDomainOrNull(url: String): String? {
         val baseUrl = getBaseUrl(url) ?: return null
         return kotlin.runCatching {
@@ -211,6 +219,7 @@ actual object NetworkUtils {
         }.getOrDefault(null)
     }
 
+    @Suppress("DEPRECATION")
     actual fun getDomain(url: String): String {
         val baseUrl = getBaseUrl(url) ?: return url
         return kotlin.runCatching {
