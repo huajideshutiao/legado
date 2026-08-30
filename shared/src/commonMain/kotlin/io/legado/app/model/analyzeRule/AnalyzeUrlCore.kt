@@ -11,6 +11,7 @@ import io.legado.app.data.entities.BookLike
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.JsExtensionsCommon
 import io.legado.app.help.UserAgentProviders
+import io.legado.app.help.getUserAgent
 import io.legado.app.help.coroutine.ConcurrentRateLimiter
 import io.legado.app.help.coroutine.runBlockingInScope
 import io.legado.app.help.http.BackstageWebViewProviders
@@ -564,7 +565,7 @@ open class AnalyzeUrlCore(
         }
     }
 
-    fun getUserAgent(): String = headerMap.get(UA_NAME, true) ?: UserAgentProviders.get()
+    fun getUserAgent(): String = headerMap.getUserAgent()
 
     fun isPost(): Boolean = option?.method.equals("POST", true)
 

@@ -3,6 +3,7 @@ package io.legado.desktop.help.webview.gtk
 import com.sun.jna.Pointer
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.getUserAgent
 import io.legado.desktop.help.webview.WebViewFetchRequest
 import io.legado.desktop.help.webview.gtk.GtkLibs.GErrorRef
 import io.legado.desktop.help.webview.gtk.GtkLibs.GTK_ORIENTATION_VERTICAL
@@ -236,8 +237,9 @@ internal class GtkSession private constructor(
         GtkLibs.webkit.webkit_settings_set_user_agent(settings, userAgent)
     }
 
-    /** 对应 app 端 load(): html 优先, 否则加载 url。 */
+    /** 对应 app 端 load(): 先对齐 UA (按 UA 绑定的 cookie 换到 HTTP 侧才有效), html 优先, 否则加载 url。 */
     fun start(request: WebViewFetchRequest) {
+        setUserAgent(request.headerMap.getUserAgent())
         val html = request.html
         when {
             !html.isNullOrEmpty() -> loadHtml(html, request.url)

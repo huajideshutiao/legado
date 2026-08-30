@@ -2,6 +2,7 @@ package io.legado.desktop.help.webview
 
 import io.legado.app.constant.SourceType
 import io.legado.app.help.RssToolbarActions
+import io.legado.app.help.UserAgentProviders
 import io.legado.app.utils.EscapeUtils
 
 /**
@@ -115,7 +116,14 @@ data class WebViewWindowRequest(
     val onClosed: () -> Unit = {},
     val onFullScreenChanged: (Boolean) -> Unit = {},
     val rssActions: RssToolbarActions? = null,
-)
+) {
+    /**
+     * 浏览器 UA: 未指定时回落 HTTP UA。引擎自带 UA (WebView2 的 Edge / WKWebView 的 Safari)
+     * 与 HTTP 侧不一致时, 按 UA 绑定的 cookie (cf_clearance) 换到 OkHttp 上即失效。
+     */
+    val effectiveUserAgent: String
+        get() = userAgent?.takeIf { it.isNotBlank() } ?: UserAgentProviders.get()
+}
 
 /** 工具栏"确定"按钮 isLogin 分支的提示文案 (对照 strings.xml check_host_cookie)。 */
 internal const val CHECK_HOST_COOKIE_TEXT = "正在打开首页，成功后自动返回"

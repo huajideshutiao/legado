@@ -162,6 +162,19 @@ fun LegadoApp(
         // 都会重跑本段; 结论若自反, pop+push 配对 (目录链路/replace) 会在"单段前进"与
         // "返回"之间每帧翻转, 出栈页在 openExit(原地淡出) 与 closeExit(向右滑出) 两套系统
         // 动画间逐帧跳变 —— 肉眼即"目录页闪来闪去"。判据: 有出栈页残留且栈顶是新页 = 单段前进
+        // 返回动画未播完时又来一次纯返回: 先把在飞那段当作已完成 (它的出栈页已滑出大半),
+        // 否则 lastSettled 还停在两段之前, dropped 会把上一段的出栈页一并算进来 —— 它排在
+        // displayEntries 最上层, 随后 snapTo(0f) 让它盖回满屏重播一遍滑出 (发现页第二次
+        // 返回时先变成详情页的来源)。限定"本次导航自身是纯 pop": 单段前进 (pop 紧接 push)
+        // 必须保留旧段出栈页, 清掉会让中间页露脸。
+        if (entries != previousEntries.value && animating && !navigatingForward &&
+            !reversingPush && outgoingEntries.isNotEmpty() &&
+            entries.size < previousEntries.value.size &&
+            entries.all { e -> previousEntries.value.any { it.id == e.id } }
+        ) {
+            lastSettled.value = previousEntries.value
+            outgoingEntries = emptyList()
+        }
         if (entries != lastSettled.value) {
             val forward = entries.size > lastSettled.value.size
             val sameSize = entries.size == lastSettled.value.size

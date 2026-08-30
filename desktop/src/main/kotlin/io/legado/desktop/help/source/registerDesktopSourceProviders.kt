@@ -1,5 +1,6 @@
 package io.legado.desktop.help.source
 
+import io.legado.app.constant.AppConst
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.CacheManager
 import io.legado.app.help.ExploreKindsCacheProvider
@@ -144,10 +145,10 @@ private object DesktopSourceNetworkProvider : SourceNetworkProvider {
  * 桌面端 [UserAgentProvider] 实现: 对齐 app 端 `AppConfig.userAgent`。
  *
  * app 端 `getPrefUserAgent()` 读 PreferKey.userAgent, 空白时回落到桌面 Chrome UA;
- * 桌面端同构, 兜底值复用 [DesktopHttpProvider.DEFAULT_UA] 与 OkHttp 头注入保持一致。
+ * 桌面端同构, 兜底值复用 [AppConst.DEFAULT_USER_AGENT] 与 OkHttp 头注入保持一致。
  */
 private val desktopUserAgentProvider = UserAgentProvider {
     PreferenceProviders.get().getString(PreferKey.userAgent, "")
         .takeIf { it.isNotBlank() }
-        ?: DesktopHttpProvider.DEFAULT_UA
+        ?: AppConst.DEFAULT_USER_AGENT
 }

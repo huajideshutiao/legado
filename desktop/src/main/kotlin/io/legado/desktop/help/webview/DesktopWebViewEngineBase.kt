@@ -13,6 +13,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * 三平台系统引擎 (WebView2 / WebKitGTK / WKWebView, 见 win/gtk/mac 包) 的公共基类。
@@ -52,24 +54,35 @@ internal abstract class DesktopWebViewEngineBase : DesktopWebViewEngine {
      * runHtml 主循环 (对应 app 端 HtmlWebViewClient): 等 [WebViewFetchRequest.delayTime] →
      * 反复执行 JS 直到拿到非空结果 (空则每秒重试), 重试上限后抛"js执行超时"。
      *
-     * @param evaluate 平台执行 JS 取结果, 须先归一 (空串/"null" 视为还没结果, 返回 null)
+     * @param navigation 导航状态, 由引擎在自己的导航回调里更新 (见 [NavigationState]):
+     *   每次导航都重新等 delayTime, 对齐 app 端 onPageStarted 的
+     *   `removeCallbacks + postDelayed(delayTime)` —— 否则 Cloudflare 挑战页这类中转页
+     *   会在跳转前被当成结果取回
+     * @param evaluate 平台执行 JS 取结果 (空串/"null" 由本函数归一为"还没结果")
      * @param currentUrl 平台读当前地址 (结果 url 的首选)
-     * @param redirected 是否发生过重定向 (三平台探测方式不同: 导航标志 / LOAD_REDIRECTED / 地址对比)
      */
     protected suspend fun awaitScriptBody(
         request: WebViewFetchRequest,
+        navigation: NavigationState,
         evaluate: suspend (script: String) -> String?,
         currentUrl: suspend () -> String?,
-        redirected: () -> Boolean,
     ): WebViewFetchResult {
-        delay(request.delayTime)
         val script = request.javaScript?.takeIf { it.isNotEmpty() } ?: DEFAULT_JS
-        repeat(MAX_JS_RETRY + 1) {
-            val body = evaluate(script)
-            if (!body.isNullOrEmpty()) {
-                val url = currentUrl() ?: request.url.orEmpty()
-                return WebViewFetchResult(url, body, redirected())
+        var armed = -1
+        var retry = 0
+        while (retry <= MAX_JS_RETRY) {
+            val generation = navigation.generation()
+            if (generation != armed) {
+                armed = generation
+                delay(request.delayTime)
+                continue
             }
+            val body = evaluate(script)?.takeIf { it.isNotEmpty() && it != "null" }
+            if (body != null) {
+                val url = currentUrl() ?: request.url.orEmpty()
+                return WebViewFetchResult(url, body, navigation.redirected())
+            }
+            retry++
             delay(JS_RETRY_INTERVAL_MS)
         }
         throw NoStackTraceException("js执行超时")
@@ -90,25 +103,71 @@ internal abstract class DesktopWebViewEngineBase : DesktopWebViewEngine {
     }
 
     /**
-     * 回收 cookie 写入 CookieStore, 对应 app 端 `setCookie(url)`:
+     * 回收 cookie 写入 CookieStore, 对应 app 端 `BackstageWebView.setCookie`:
      * 仅在有 tag 时保存, 且存到 tag (书源 key) 名下而非页面地址。
      */
     protected fun harvestTagCookies(url: String, tag: String?, readCookies: suspend () -> String?) {
-        if (tag.isNullOrBlank() || url.isBlank()) return
-        scope.launch {
-            val cookie = readCookies() ?: return@launch
-            runCatching { CookieStoreProviders.get()?.setCookie(tag, cookie) }
-                .onFailure { AppLog.put("$platformLabel cookie 回写失败", it) }
-        }
+        scope.harvestWebViewCookies(url, listOf(tag), platformLabel, readCookies = readCookies)
     }
 }
 
 /**
- * 把 CookieStore 里已有的 cookie 注入浏览器再导航 (fetch 路径与 Mac 可见窗口共用)。
+ * runHtml 主循环用的导航状态: 引擎在自己的导航回调里调 [onNavigation]
+ * (Windows NavigationStarting / GTK LOAD_STARTED / mac didFinishNavigation),
+ * [awaitScriptBody] 据此重新计时并判断是否发生过重定向。
+ */
+internal class NavigationState {
+
+    private val navigations = AtomicInteger(0)
+
+    private val redirected = AtomicBoolean(false)
+
+    /** @param redirected 本次导航是否为重定向 (三平台探测方式不同: 导航标志 / LOAD_REDIRECTED / 地址对比) */
+    fun onNavigation(redirected: Boolean = false) {
+        if (redirected) this.redirected.set(true)
+        navigations.incrementAndGet()
+    }
+
+    /** 已发生的导航次数, 变化即代表页面重新导航过。 */
+    fun generation(): Int = navigations.get()
+
+    fun redirected(): Boolean = redirected.get()
+}
+
+/**
+ * 回收浏览器 cookie 写入 CookieStore, 对应 app 端 onPageFinished 的 setCookie
+ * (无头抓取与可见窗口共用, 与注入 [injectWebViewCookies] 合起来成闭环)。
  *
- * app 端不需要这步 —— 安卓 WebView 与 OkHttp 共用进程级 CookieManager; 桌面端两者是
- * 各自独立的存储, 不注入的话 webView 回源会丢掉此前 HTTP 侧登录拿到的会话。
- * 注入与回收 (见 [DesktopWebViewEngineBase.harvestTagCookies]) 合起来才是完整闭环。
+ * @param url 当前页面地址 (读浏览器 cookie 的范围), 空则不回收
+ * @param storeKeys 存入 CookieStore 的键, 按序各存一份, 空白项跳过: 无头抓取只存书源 key
+ *   (对照 `BackstageWebView.setCookie`), 可见窗口再按页面地址存一份 (对照 `WebViewActivity`)
+ * @param subject 失败日志里的主体 ("cookie" / 可见窗口用 "窗口 cookie")
+ */
+internal fun CoroutineScope.harvestWebViewCookies(
+    url: String,
+    storeKeys: List<String?>,
+    platformLabel: String,
+    subject: String = "cookie",
+    readCookies: suspend () -> String?,
+) {
+    if (url.isBlank()) return
+    val keys = storeKeys.filterNotNull().filter { it.isNotBlank() }
+    if (keys.isEmpty()) return
+    launch {
+        val cookie = readCookies() ?: return@launch
+        runCatching {
+            val store = CookieStoreProviders.get() ?: return@runCatching
+            keys.forEach { store.setCookie(it, cookie) }
+        }.onFailure { AppLog.put("$platformLabel $subject 回写失败", it) }
+    }
+}
+
+/**
+ * 把 CookieStore 里已有的 cookie 注入浏览器再导航 (fetch 路径与可见窗口共用)。
+ *
+ * 安卓上 WebView 与 OkHttp 同样是两套独立 cookie 存储, 原版靠 `CookieStore` 的
+ * `onSyncCookieToWebView` 与 `WebViewActivity` 的 `AppCookieManager.applyToWebView` 手工注入;
+ * 本函数是桌面端的等价实现, 与回收 ([harvestWebViewCookies]) 合起来成闭环。
  *
  * @param subject 失败日志里的主体 ("cookie" / 可见窗口用 "窗口 cookie")
  */

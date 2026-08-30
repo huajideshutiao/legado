@@ -19,7 +19,7 @@ import io.legado.app.model.Debug
  * - [SourceDebugLoggers]: 桥接 commonMain [Debug] 单例 (未注册时书源调试日志缺失)
  * - [RuleBigDataProviders]: 复用 commonMain [RuleBigDataShared] 文件持久化实现,
  *   路径 `{filesDir}/ruleData/book` (对齐 app 端 `externalFiles/ruleData/book`)
- * - [UserAgentProviders]: 读 PreferenceProviders "userAgent", 兜底 [AppConst.UA_NAME]
+ * - [UserAgentProviders]: 读 PreferenceProviders "userAgent", 兜底 [AppConst.DEFAULT_USER_AGENT]
  *   (未注册时请求 UA 恒为字面量兜底; WebView UA 另经 registerNativeUserAgentProvider 注册进同一容器)
  * - [SourceNetworkProviders]: 适配已注册的 [CookieStoreProviders]
  *   (BaseSource.putLoginHeader 写 cookie / JS cookie 绑定 / AnalyzeUrlCore.setCookie 都靠它)
@@ -31,7 +31,9 @@ fun registerNativeSourceProviders() {
     RuleBigDataProviders.impl =
         RuleBigDataShared(AppFilesDirs.get().filesDir + "/ruleData/book")
     UserAgentProviders.impl = UserAgentProvider {
-        PreferenceProviders.get().getString("userAgent", AppConst.UA_NAME)
+        PreferenceProviders.get().getString("userAgent", "")
+            .takeIf { it.isNotBlank() }
+            ?: AppConst.DEFAULT_USER_AGENT
     }
     SourceNetworkProviders.impl = NativeSourceNetworkProvider
 }

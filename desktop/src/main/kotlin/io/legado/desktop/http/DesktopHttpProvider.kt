@@ -38,7 +38,6 @@ class DesktopHttpProvider : OkHttpClientProvider, OkHttpProxyClientProvider {
     companion object {
         // 与 Android 端 getPrefUserAgent 默认值对齐 (Chrome 桌面 UA)
         // 桌面端 registerDesktopSourceProviders 中 desktopUserAgentProvider 用作空 UA 兜底
-        const val DEFAULT_UA =
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        const val DEFAULT_UA = io.legado.app.constant.AppConst.DEFAULT_USER_AGENT
     }
 }

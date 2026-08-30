@@ -4,6 +4,7 @@ import com.sun.jna.platform.win32.GDI32
 import com.sun.jna.platform.win32.User32
 import com.sun.jna.platform.win32.WinDef
 import com.sun.jna.platform.win32.WinGDI
+import com.sun.jna.platform.win32.WinUser
 import com.sun.jna.ptr.PointerByReference
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.Status
@@ -13,105 +14,143 @@ import io.legado.app.service.ReadAloudControllerShared.ReadAloudState
 import io.legado.desktop.help.win.DwmApi
 import io.legado.desktop.ui.DesktopWindowChromeNative
 import io.legado.desktop.ui.hwndOrNull
-import io.legado.desktop.ui.tray.DesktopTaskbarDwm.COVER_MAX_RETRY
-import io.legado.desktop.ui.tray.DesktopTaskbarDwm.lastCoverUrl
-import io.legado.desktop.ui.tray.DesktopTaskbarDwm.renderExecutor
-import java.awt.Color
-import java.awt.Font
-import java.awt.RenderingHints
+import androidx.compose.ui.graphics.asSkiaBitmap
+import org.jetbrains.skia.Bitmap
+import org.jetbrains.skia.Canvas
+import org.jetbrains.skia.Font
+import org.jetbrains.skia.FontMgr
+import org.jetbrains.skia.FontStyle
+import org.jetbrains.skia.Image
+import org.jetbrains.skia.ImageInfo
+import org.jetbrains.skia.Paint
+import org.jetbrains.skia.PaintMode
+import org.jetbrains.skia.Path
+import org.jetbrains.skia.RRect
+import org.jetbrains.skia.Rect
+import org.jetbrains.skia.SamplingMode
+import org.jetbrains.skia.Typeface
+import org.jetbrains.skia.impl.use
 import java.awt.Window
-import java.awt.image.BufferedImage
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Windows 任务栏悬停媒体卡片 (DWM Iconic Live Preview, 对照调研结论):
+ * Windows 任务栏悬停媒体卡片 (DWM Iconic Live Preview, 基于 Skia/Skiko 现代高性能图形管线):
  *
  * 音频会话/朗读活跃时 hover 任务栏图标, 不再是窗口内容缩略图, 而是自绘卡片:
  * 封面 + 歌名 + 章节 + 播放状态 + 进度条, 下方叠加 ThumbBar 控制按钮 (DesktopTaskbarMedia)。
  *
+ * # 现代 Skia 渲染管线升级
+ * - 淘汰 AWT Graphics2D / BufferedImage，使用 Skia 离屏 Raster Surface (BGRA_8888 Premul)。
+ * - 字体度量与渲染采用 DirectWrite / Skia 现代引擎，抗锯齿与排版性能大幅跃升。
+ * - 像素通过 DMA 单次批量映射进 Win32 DIB Section，彻底消除逐像素 JVM 转换循环。
+ *
  * # 机制 (MSDN: WM_DWMSENDICONICTHUMBNAIL / DwmSetIconicThumbnail)
  * - DwmSetWindowAttribute(DWMWA_FORCE_ICONIC_REPRESENTATION=7 + DWMWA_HAS_ICONIC_BITMAP=10)
- *   启用"自供位图"表示 (只设 10 不设 7 时非最小化悬停不触发, 常见坑)
- * - dwm.exe 跨进程 SendMessage 直达窗口 WndProc 发 WM_DWMSENDICONICTHUMBNAIL (0x0323,
- *   lParam: HIWORD=宽 LOWORD=高) / WM_DWMSENDICONICLIVEPREVIEWBITMAP (0x0326)
- *   —— WH_GETMESSAGE 钩子只截队列消息, 拦不到 SendMessage, 必须子类化窗口过程;
- *   主窗口的子类化由 native 桥 (wndchrome) 独占, 这两条消息经
- *   [DesktopWindowChromeNative.addMessageHandler] 转发上来 (S3: 三层子类化收成一层)
- * - 响应 DwmSetIconicThumbnail(hwnd, hBitmap, 0) / DwmSetIconicLivePreviewBitmap(hwnd, hBitmap, null, 0),
- *   位图必须 32bpp; DWM 持拷贝, 可立即 DeleteObject
- * - 内容变化调 DwmInvalidateIconicBitmaps(hwnd) 触发系统重发请求 (勿频繁, 悬停才有开销)
- * - 响应可异步: 消息回调只记请求尺寸, 渲染放单线程执行器, 限时未供 DWM 用默认表示
- *
- * 会话终结 (音频 stop/致命错误, 朗读停止): 关闭 iconic (恢复窗口实时缩略图)。
- * 卡片寿命挂会话寿命而非播放状态, 见 update() 注释。
+ *   启用"自供位图"表示
+ * - 主动预推机制: 缩略图生成时即在后台线程生成大图位图并主动向 dwm.exe 注册，根除 Aero Peek 白闪。
  */
 internal object DesktopTaskbarDwm {
 
-    /**
-     * 自绘 iconic 卡片总开关 (原版行为: 悬停显示封面+书名+章节+进度卡片)。
-     * 关闭时任务栏走系统默认窗口缩略图。
-     * 开启 = 向 DWM 承诺"缩略图由本进程提供", 故每个 WM_DWMSENDICONIC* 请求都必须应答
-     * (renderCard 恒返位图 + 尺寸兜底 + 不丢请求), 否则索取方在 await 处抛异常。
-     */
+    /** 自绘 iconic 卡片总开关。 */
     private const val ENABLE_ICONIC_CARD = true
 
     // ==================== 常量 ====================
 
-    // 消息 (WM_DWMSENDICONICTHUMBNAIL / WM_DWMSENDICONICLIVEPREVIEWBITMAP)
-    /** 封面加载失败的最大重试次数 (每次 update 触发一次)。 */
     private const val COVER_MAX_RETRY = 5
-
-    /** invalidate 节流间隔: 它们自己的注释也写着"勿频繁", 原实现每个进度事件都在调。 */
     private const val INVALIDATE_MIN_INTERVAL_MS = 400L
 
     private const val WM_DWMSENDICONICTHUMBNAIL = 0x0323
     private const val WM_DWMSENDICONICLIVEPREVIEWBITMAP = 0x0326
 
+    // ==================== 字体缓存 ====================
+
+    private val normalTypeface: Typeface? by lazy {
+        runCatching {
+            FontMgr.default.matchFamiliesStyle(
+                arrayOf<String?>("Microsoft YaHei UI", "Segoe UI", "Arial"),
+                FontStyle.NORMAL
+            )
+        }.getOrNull()
+    }
+
+    private val boldTypeface: Typeface? by lazy {
+        runCatching {
+            FontMgr.default.matchFamiliesStyle(
+                arrayOf<String?>("Microsoft YaHei UI", "Segoe UI", "Arial"),
+                FontStyle.BOLD
+            )
+        }.getOrNull()
+    }
+
+    // ==================== 不可变快照定义 ====================
+
+    data class ThemeColors(
+        val bg: Int = 0xFF242424.toInt(),
+        val border: Int = 0x2EFFFFFF,
+        val coverBorder: Int = 0x3DFFFFFF,
+        val textPrimary: Int = 0xFFFFFFFF.toInt(),
+        val textSecondary: Int = 0xBFFFFFFF.toInt(),
+        val progressTrack: Int = 0x33FFFFFF,
+        val progressFill: Int = 0xFF165DFF.toInt(),
+        val isDark: Boolean = true,
+    )
+
+    private data class CardSnapshot(
+        val title: String = "",
+        val subtitle: String = "",
+        val playing: Boolean = false,
+        val progressMs: Int = 0,
+        val durationMs: Int = 0,
+        val cover: Image? = null,
+    )
+
+    private data class LivePreviewCache(
+        val key: String,
+        val bitmap: Bitmap,
+    )
+
     // ==================== 状态 ====================
+
+    private val windowStateLock = Any()
 
     @Volatile
     private var mainHwnd: WinDef.HWND? = null
 
-    /** 消息处理器是否已挂到 native 桥 (挂不上则整套卡片功能退化)。 */
+    @Volatile
+    private var windowGeneration = 0L
+
     @Volatile
     private var hooked = false
 
-    /** iconic 是否已启用 (播放/朗读活跃时)。 */
     @Volatile
     private var iconicEnabled = false
 
-    /** 卡片内容状态 (由 update 写入, 渲染线程读取); 封面另由封面线程写。 */
-    @Volatile
-    private var coverImage: BufferedImage? = null
+    /** 动态主题配色 (原子更新，跟随全局应用主题色) */
+    private val currentTheme = AtomicReference(ThemeColors())
 
-    @Volatile
-    private var cardTitle: String = ""
+    /** 核心卡片状态不可变快照 (原子更新，读者无锁一致性读取) */
+    private val currentSnapshot = AtomicReference(CardSnapshot())
 
-    @Volatile
-    private var cardSubtitle: String = ""
+    /** 实时预览大图缓存 (原子引用) */
+    private val liveCache = AtomicReference<LivePreviewCache?>(null)
 
-    @Volatile
-    private var cardPlaying = false
+    /** 封面 URL、快照中的 Image 及失败计数的复合更新锁。 */
+    private val coverStateLock = Any()
 
-    @Volatile
-    private var cardProgressMs: Int = 0
-
-    @Volatile
-    private var cardDurationMs: Int = 0
-
-    /** 上次请求的缩略图尺寸 (0x0323 lParam: HIWORD=宽 LOWORD=高)。 */
-    @Volatile
-    private var requestedThumbSize: Pair<Int, Int>? = null
-
-    /** 封面异步加载去重: 已处理的封面 url。**只在加载成功后提交** (见 onCoverLoadFailed)。 */
+    /** 封面异步加载去重: 当前请求的封面 URL。 */
     @Volatile
     private var lastCoverUrl: String? = null
 
     /** 封面加载失败的 url 与次数: 给有限重试, 避免死链在每个进度事件上重复拉取。 */
+    @Volatile
     private var coverFailUrl: String? = null
+
+    @Volatile
     private var coverFailCount = 0
 
     /** 上次 invalidate 的时间戳 (节流)。 */
+    @Volatile
     private var lastInvalidateAt = 0L
 
     private val renderExecutor = Executors.newSingleThreadExecutor { r ->
@@ -136,18 +175,29 @@ internal object DesktopTaskbarDwm {
         if (!com.sun.jna.Platform.isWindows()) return
         if (!ENABLE_ICONIC_CARD) return
         val hwnd = window.hwndOrNull() ?: return
-        if (hwnd.pointer == mainHwnd?.pointer) return
-        mainHwnd = hwnd
-        iconicEnabled = false
+        synchronized(windowStateLock) {
+            if (hwnd.pointer == mainHwnd?.pointer) return
+            mainHwnd = hwnd
+            windowGeneration++
+            iconicEnabled = false
+        }
         // 处理器与窗口无关 (native 桥自己跟着窗口重挂), 幂等注册即可
         if (!hooked) hooked = DesktopWindowChromeNative.addMessageHandler(messageHandler)
     }
 
     fun uninstall() {
-        mainHwnd = null
-        iconicEnabled = false
-        requestedThumbSize = null
+        val hwnd = synchronized(windowStateLock) {
+            val current = mainHwnd
+            mainHwnd = null
+            windowGeneration++
+            iconicEnabled = false
+            current
+        }
         clearCardContent()
+        if (hwnd != null) {
+            setIconicMode(hwnd, false)
+            invalidateIconicBitmaps(hwnd)
+        }
         if (hooked) {
             DesktopWindowChromeNative.removeMessageHandler(messageHandler)
             hooked = false
@@ -156,15 +206,17 @@ internal object DesktopTaskbarDwm {
 
     /** 会话终结时清空卡片内容 (封面/文案/进度与加载去重状态), 下次会话从干净状态开始。 */
     private fun clearCardContent() {
-        coverImage = null
-        lastCoverUrl = null
-        coverFailUrl = null
-        coverFailCount = 0
-        cardTitle = ""
-        cardSubtitle = ""
-        cardPlaying = false
-        cardProgressMs = 0
-        cardDurationMs = 0
+        val previousSnapshot = synchronized(coverStateLock) {
+            lastCoverUrl = null
+            coverFailUrl = null
+            coverFailCount = 0
+            currentSnapshot.getAndSet(CardSnapshot())
+        }
+        // 缓存可能正被已有渲染任务改写，必须到执行器中再取出并释放。
+        renderExecutor.execute {
+            liveCache.getAndSet(null)?.bitmap?.close()
+            previousSnapshot.cover?.close()
+        }
     }
 
     /**
@@ -181,12 +233,6 @@ internal object DesktopTaskbarDwm {
         // 卡片寿命 = 媒体会话寿命 (对照原版 Android 前台服务, 桌面镜像即 provider running /
         // AudioPlayCommanders.isServiceRunning): 首次 play 建立, 只有 stop / 致命错误终结;
         // AudioPlayService 里 stop → stopSelf, 而 stopPlay (切章节) 只停播放器不停服务。
-        //
-        // 不能用 status != STOP: 切章节 stopPlay → STOP → 拉流 → LOADING 的 STOP 窗口里它会
-        // 眨眼, 而 iconic 拆除是破坏性的 (DWM 丢弃位图回落默认渐变表示, 要重新悬停才再索取)。
-        // 粘性呈现必须挂单调的会话寿命 —— stopPlay 不动 running, 拉流再慢也不会误拆。
-        // 也不能用 book != null: 它根本不是寿命 (resetData 赋值后永不清空), 停止播放后卡片
-        // 永远滞留旧内容 (2026-08 回归: 停止后悬停仍是旧媒体卡, 不回落窗口缩略图)。
         val audioSession = AudioPlayCommanders.getOrNull()?.isServiceRunning == true
         val aloudState = aloud?.controller?.state?.value
         val aloudActive =
@@ -195,113 +241,203 @@ internal object DesktopTaskbarDwm {
         val hwnd = mainHwnd ?: return
         if (!hooked) return
 
-        // iconic 开关 (幂等; 会话终结时关闭恢复实时窗口缩略图, 并清空卡片内容 ——
-        // 旧封面/文案不清的话, 下次会话的边缘窗口会画出上一本的残影)
+        // iconic 开关 (幂等; 会话终结时关闭恢复实时窗口缩略图, 并清空卡片内容)
         if (active != iconicEnabled) {
-            setIconicMode(hwnd, active)
-            iconicEnabled = active
-            if (!active) clearCardContent()
+            synchronized(windowStateLock) {
+                if (mainHwnd?.pointer != hwnd.pointer) return
+                setIconicMode(hwnd, active)
+                iconicEnabled = active
+            }
+            if (!active) {
+                clearCardContent()
+                invalidateIconicBitmaps(hwnd)
+                return
+            }
         }
         if (!active) return
 
-        // 卡片状态快照 (对照原版通知标题: 状态: 书名 / 章节)。
-        // 会话终结路径已在上面清空并返回, 此处音频/朗读必有其一, 无空态分支
-        cardPlaying = when {
-            audioSession -> audioStatus == Status.PLAY
-            else -> aloudState == ReadAloudState.PLAYING
+        // 卡片状态快照 (不可变对象原子更新，避免跨线程 Torn Read)
+        val playing = if (audioSession) audioStatus == Status.PLAY else aloudState == ReadAloudState.PLAYING
+        val title = if (audioSession) AudioPlayShared.book?.name.orEmpty() else aloud?.bookName().orEmpty()
+        val subtitle = if (audioSession) AudioPlayShared.durChapter?.title.orEmpty() else aloud?.chapterTitle().orEmpty()
+
+        currentSnapshot.updateAndGet { snapshot ->
+            snapshot.copy(
+                title = title,
+                subtitle = subtitle,
+                playing = playing,
+                progressMs = progressMs,
+                durationMs = durationMs,
+            )
         }
-        cardTitle = when {
-            audioSession -> AudioPlayShared.book?.name ?: ""
-            else -> aloud?.bookName() ?: ""
-        }
-        cardSubtitle = when {
-            audioSession -> AudioPlayShared.durChapter?.title ?: ""
-            else -> aloud?.chapterTitle() ?: ""
-        }
-        cardProgressMs = progressMs
-        cardDurationMs = durationMs
 
         // 封面异步加载 (音频: durCoverUrl; 朗读: 无封面)
         val coverUrl = if (audioSession) AudioPlayShared.durCoverUrl else null
-        if (coverUrl != lastCoverUrl) {
-            lastCoverUrl = coverUrl
-            if (coverUrl.isNullOrBlank()) {
-                coverImage = null
-            } else {
-                coverExecutor.execute { loadCover(coverUrl, hwnd) }
+        var previousCover: Image? = null
+        var pendingCoverUrl: String? = null
+        synchronized(coverStateLock) {
+            if (coverUrl != lastCoverUrl) {
+                lastCoverUrl = coverUrl
+                if (coverUrl.isNullOrBlank()) {
+                    previousCover = currentSnapshot.getAndUpdate { it.copy(cover = null) }.cover
+                } else {
+                    pendingCoverUrl = coverUrl
+                }
             }
         }
+        previousCover?.let { cover ->
+            // 已开始的渲染任务可能仍持有旧快照，不能在调用线程立即释放。
+            renderExecutor.execute { cover.close() }
+        }
+        pendingCoverUrl?.let { url -> coverExecutor.execute { loadCover(url, hwnd) } }
         // 内容变化 → 请求重绘 (悬停时才真正触发 0x0323, 无悬停无开销)
         invalidateIconicBitmaps(hwnd)
     }
 
-    // ==================== DWM 消息 (由 native 桥转发, 收 dwm.exe 的 SendMessage) ====================
+    // ==================== 主题同步 ====================
 
-    /** 处理器实例 (注册/注销必须同一个对象)。 */
+    fun setTheme(
+        bg: Int,
+        textPrimary: Int,
+        textSecondary: Int,
+        accent: Int,
+        isDark: Boolean,
+    ) {
+        val theme = ThemeColors(
+            bg = bg,
+            border = if (isDark) 0x2EFFFFFF else 0x1A000000,
+            coverBorder = if (isDark) 0x3DFFFFFF else 0x22000000,
+            textPrimary = textPrimary,
+            textSecondary = textSecondary,
+            progressTrack = if (isDark) 0x33FFFFFF else 0x1F000000,
+            progressFill = accent,
+            isDark = isDark,
+        )
+
+        if (currentTheme.getAndSet(theme) != theme) {
+            val hwnd = mainHwnd
+            renderExecutor.execute {
+                // 执行时再取缓存，才能覆盖主题变更前已经在队列中的渲染结果。
+                liveCache.getAndSet(null)?.bitmap?.close()
+                if (hwnd != null && mainHwnd?.pointer == hwnd.pointer && iconicEnabled) {
+                    runCatching { doRender(live = true) }
+                        .onFailure { AppLog.put("DWM 实时预览渲染失败", it) }
+                }
+            }
+            if (hwnd != null && iconicEnabled) invalidateIconicBitmaps(hwnd)
+        }
+    }
+
+    // ==================== DWM 消息 ====================
+
     private val messageHandler: (Int, Long, Long) -> Boolean = ::handleWindowMessage
 
-    /**
-     * 白名单消息处理 (跑在 native 窗口线程 AWT-Windows, 非 EDT): 只记尺寸 + 派渲染, 不阻塞。
-     * 返回 true = 已处理 (native 直接答 0 给 Windows)。
-     */
     private fun handleWindowMessage(msg: Int, wparam: Long, lparam: Long): Boolean {
         when (msg) {
-            // 缩略图请求: lParam HIWORD=宽 LOWORD=高 (MSDN 与常规相反)
             WM_DWMSENDICONICTHUMBNAIL -> {
-                val w = (lparam ushr 16).toInt()
+                if (!iconicEnabled) return false
+                val w = ((lparam ushr 16) and 0xFFFF).toInt()
                 val h = (lparam and 0xFFFF).toInt()
-                if (w > 0 && h > 0) requestedThumbSize = w to h
-                requestRender(live = false)
+                if (w <= 0 || h <= 0) return false
+                enqueueRender(live = false, thumbnailSize = w to h)
                 return true
             }
 
-            // Peek 放大预览请求: lParam 无用, 尺寸 = 客户区
             WM_DWMSENDICONICLIVEPREVIEWBITMAP -> {
-                requestRender(live = true)
+                if (mainHwnd == null || !iconicEnabled) return false
+                enqueueRender(live = true)
                 return true
             }
         }
         return false
     }
 
-    // ==================== 渲染 (单线程执行器, 不阻塞 EDT) ====================
-
-    /**
-     * 渲染请求: executor 已是单线程 (天然串行), 不做丢弃 —— 每个 DWM 请求都必须有应答。
-     * **这条线程上只准做 GDI 绘制**: 任何阻塞 (取封面/网络) 都会让 DWM 等超时并回落默认占位。
-     */
-    private fun requestRender(live: Boolean) {
-        renderExecutor.execute { runCatching { doRender(live) } }
+    private fun enqueueRender(live: Boolean, thumbnailSize: Pair<Int, Int>? = null) {
+        renderExecutor.execute {
+            runCatching { doRender(live, thumbnailSize) }.onFailure {
+                AppLog.put(
+                    if (live) "DWM 实时预览渲染失败" else "DWM 缩略图渲染失败",
+                    it,
+                )
+            }
+        }
     }
 
-    private fun doRender(live: Boolean) {
-        val hwnd = mainHwnd ?: return
-        if (!iconicEnabled) return
-        val size = if (live) {
-            val rect = WinDef.RECT()
-            if (!User32.INSTANCE.GetClientRect(hwnd, rect)) return
-            rect.right.coerceAtLeast(1) to rect.bottom.coerceAtLeast(1)
-        } else {
-            // 尺寸缺失也要应答 (DWM 已被告知本窗口自供位图), 用任务栏缩略图常规尺寸兜底
-            requestedThumbSize ?: (200 to 120)
+    // ==================== 渲染 (Skia 引擎) ====================
+
+    private fun getWindowPreviewSize(hwnd: WinDef.HWND): Pair<Int, Int> {
+        // Live Preview 位图不得超过客户区；正常窗口优先使用当前客户区的真实尺寸。
+        val rect = WinDef.RECT()
+        if (User32.INSTANCE.GetClientRect(hwnd, rect)) {
+            val w = rect.right - rect.left
+            val h = rect.bottom - rect.top
+            if (w > 0 && h > 0) return w.coerceAtMost(8192) to h.coerceAtMost(8192)
         }
-        val (w, h) = size
-        if (w <= 0 || h <= 0 || w > 4000 || h > 4000) return
-        val hBitmap = toHBitmap(renderCard(w, h)) ?: return
-        try {
-            // HRESULT 必须看: 位图超过请求上限等情形返回 E_INVALIDARG(0x80070057),
-            // 表现就是"我们以为答了、DWM 却回落默认渐变图"
-            val dwm = DwmApi.dwmapi ?: error("dwmapi.dll 加载失败")
-            val hr = if (live) {
-                dwm.DwmSetIconicLivePreviewBitmap(hwnd, hBitmap, null, 0)
-            } else {
-                dwm.DwmSetIconicThumbnail(hwnd, hBitmap, 0)
+
+        // 最小化时 GetClientRect 可能没有有效尺寸，JNA User32 未声明 IsIconic，
+        // 因此直接读取还原位置；GetWindowPlacement 的实际返回类型是 WinDef.BOOL。
+        val placement = WinUser.WINDOWPLACEMENT()
+        placement.length = placement.size()
+        if (User32.INSTANCE.GetWindowPlacement(hwnd, placement).booleanValue()) {
+            val r = placement.rcNormalPosition
+            return (r.right - r.left).coerceIn(400, 8192) to
+                (r.bottom - r.top).coerceIn(300, 8192)
+        }
+        return 1280 to 720
+    }
+
+    private fun doRender(live: Boolean, thumbnailSize: Pair<Int, Int>? = null) {
+        val (hwnd, generation) = synchronized(windowStateLock) {
+            val current = mainHwnd ?: return
+            if (!iconicEnabled) return
+            current to windowGeneration
+        }
+
+        if (live) {
+            renderAndSubmitLivePreview(hwnd, generation)
+        } else {
+            val (w, h) = thumbnailSize ?: (200 to 120)
+            val snapshot = currentSnapshot.get()
+            val theme = currentTheme.get()
+            val thumb = renderThumbnailCard(w, h, snapshot, theme)
+            thumb.use { thumb ->
+                sendBitmapToDwm(hwnd, generation, thumb, live = false, w, h)
             }
-            if (hr != 0) {
-                AppLog.put(
-                    "DWM 位图回传返回失败 hr=0x${hr.toUInt().toString(16)} " +
-                        (if (live) "livePreview" else "thumbnail") + " ${w}x$h"
-                )
+            renderAndSubmitLivePreview(hwnd, generation)
+        }
+    }
+
+    private fun sendBitmapToDwm(
+        hwnd: WinDef.HWND,
+        generation: Long,
+        bitmap: Bitmap,
+        live: Boolean,
+        w: Int,
+        h: Int,
+    ) {
+        val hBitmap = toHBitmap(bitmap) ?: run {
+            AppLog.put("DWM 位图转换失败 (toHBitmap 返回 null)")
+            return
+        }
+        try {
+            synchronized(windowStateLock) {
+                if (
+                    generation != windowGeneration ||
+                    mainHwnd?.pointer != hwnd.pointer ||
+                    !iconicEnabled
+                ) return
+                val dwm = DwmApi.dwmapi ?: error("dwmapi.dll 加载失败")
+                val hr = if (live) {
+                    dwm.DwmSetIconicLivePreviewBitmap(hwnd, hBitmap, null, 0)
+                } else {
+                    dwm.DwmSetIconicThumbnail(hwnd, hBitmap, 0)
+                }
+                if (hr != 0) {
+                    AppLog.put(
+                        "DWM 位图回传返回失败 hr=0x${hr.toUInt().toString(16)} " +
+                            (if (live) "livePreview" else "thumbnail") + " ${w}x$h"
+                    )
+                }
             }
         } catch (e: Throwable) {
             AppLog.put("DWM 卡片位图回传失败", e)
@@ -310,208 +446,377 @@ internal object DesktopTaskbarDwm {
         }
     }
 
+    private fun liveCacheKey(w: Int, h: Int, s: CardSnapshot, theme: ThemeColors): String {
+        return "$w|$h|${s.title}|${s.subtitle}|${s.playing}|${s.progressMs}|${s.durationMs}|${s.cover?.hashCode()}|${theme.hashCode()}"
+    }
+
+    private fun renderAndSubmitLivePreview(hwnd: WinDef.HWND, generation: Long) {
+        val (w, h) = getWindowPreviewSize(hwnd)
+        val snapshot = currentSnapshot.get()
+        val theme = currentTheme.get()
+        val key = liveCacheKey(w, h, snapshot, theme)
+        val cached = liveCache.get()
+        val bmp = if (cached != null && cached.key == key && !cached.bitmap.isClosed) {
+            cached.bitmap
+        } else {
+            val newBmp = renderLivePreview(w, h, snapshot, theme)
+            val old = liveCache.getAndSet(LivePreviewCache(key, newBmp))
+            if (old?.bitmap !== newBmp) old?.bitmap?.close()
+            newBmp
+        }
+        sendBitmapToDwm(hwnd, generation, bmp, live = true, w, h)
+    }
+
     /**
-     * 绘制卡片: 深色底 + 封面(左) + 歌名/章节(右) + 状态图标 + 底部进度条。
-     * 字号随卡片高度缩放 (缩略图 ~120px 用小字, Peek 大预览用大字)。
-     * 无文案时也返回位图 (只有底色+状态图标): DWM 请求必须有应答。
+     * 小缩略图卡片绘制 (WM_DWMSENDICONICTHUMBNAIL, 基于 Skia 高性能管线):
+     * - 书名与章节名均允许最多两行
+     * - 文字与图标轻微上移
+     * - 进度条上移且不低于封面图片的下边缘
+     * - 颜色严格跟随应用全局主题
      */
-    private fun renderCard(w: Int, h: Int): BufferedImage {
-        val img = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
-        val g = img.createGraphics()
+    private fun renderThumbnailCard(w: Int, h: Int, s: CardSnapshot, theme: ThemeColors): Bitmap {
+        val bitmap = allocateBitmap(w, h, "缩略图")
+        val canvas = Canvas(bitmap)
+
+        val fillPaint = Paint().apply { isAntiAlias = true }
+        val strokePaint = Paint().apply {
+            isAntiAlias = true
+            mode = PaintMode.STROKE
+            strokeWidth = 1f
+        }
+        val fonts = ArrayList<Font>(3)
+
         try {
-            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-            g.setRenderingHint(
-                RenderingHints.KEY_TEXT_ANTIALIASING,
-                RenderingHints.VALUE_TEXT_ANTIALIAS_ON
-            )
-            // 背景 (深色, 对照原版媒体卡观感)
-            g.color = Color(0x24, 0x24, 0x24)
-            g.fillRect(0, 0, w, h)
-            g.color = Color(0x3A, 0x3A, 0x3A)
-            g.drawRect(0, 0, w - 1, h - 1)
+            fillPaint.color = theme.bg
+            canvas.drawRect(Rect(0f, 0f, w.toFloat(), h.toFloat()), fillPaint)
+
+            strokePaint.color = theme.border
+            canvas.drawRect(Rect(0.5f, 0.5f, w - 0.5f, h - 0.5f), strokePaint)
 
             val margin = (w * 0.05f).toInt().coerceAtLeast(6)
             val titleSize = (h * 0.14f).toInt().coerceIn(11, 26)
             val subSize = (h * 0.10f).toInt().coerceIn(9, 18)
 
-            // 封面 (左侧, 仅音频; 有封面才画)
-            coverImage?.let { cover ->
-                val coverSize = (h * 0.72f).toInt().coerceIn(40, 180)
-                val coverX = margin
-                val coverY = (h - coverSize) / 2
-                g.drawImage(cover, coverX, coverY, coverSize, coverSize, null)
-                // 圆角描边
-                g.color = Color(0x55FFFFFF)
-                g.drawRoundRect(coverX, coverY, coverSize - 1, coverSize - 1, 6, 6)
+            val coverSize = (h * 0.72f).toInt().coerceIn(40, 180)
+            val coverY = (h - coverSize) / 2
+            val coverBottom = coverY + coverSize
+
+            s.cover?.let { coverImg ->
+                val src = Rect(0f, 0f, coverImg.width.toFloat(), coverImg.height.toFloat())
+                val dst = Rect(margin.toFloat(), coverY.toFloat(), (margin + coverSize).toFloat(), coverBottom.toFloat())
+                canvas.drawImageRect(coverImg, src, dst, SamplingMode.MITCHELL, null, true)
+                strokePaint.color = theme.coverBorder
+                canvas.drawRRect(RRect.makeXYWH(margin.toFloat(), coverY.toFloat(), coverSize.toFloat(), coverSize.toFloat(), 6f, 6f), strokePaint)
             }
 
-            val textX = if (coverImage != null) margin * 2 + (h * 0.72f).toInt().coerceIn(40, 180)
-            else margin
-            val textW = (w - textX - margin).coerceAtLeast(40)
+            val textX = (if (s.cover != null) margin * 2 + coverSize else margin).toFloat()
+            val textW = (w - textX - margin).coerceAtLeast(20f)
 
-            // 状态图标 (▶/⏸/…)
-            val iconX = textX
-            val iconY = (h * 0.22f).toInt()
-            // 双竖条 1.2 倍字号; 三角形有意缩至 0.7 倍, 给书名让位
-            drawStatusIcon(g, iconX, iconY, (titleSize * 1.2f).toInt(), (titleSize * 0.7f).toInt())
+            val iconY = (h * 0.16f)
+            val titleFont = createFont(boldTypeface, titleSize.toFloat(), fonts)
+            val subFont = createFont(normalTypeface, subSize.toFloat(), fonts)
 
-            // 歌名 (状态图标右侧, 最多双行换行)
-            g.font = Font("Microsoft YaHei UI", Font.BOLD, titleSize)
-            g.color = Color.WHITE
-            // 与图标留 1.1 倍字号间距 (较原 1.6 倍左移约 0.5 字宽, 单行可完整容纳 6 个汉字)
-            val titleX = iconX + (titleSize * 1.1f).toInt()
+            fillPaint.color = theme.textPrimary
+            drawStatusIcon(canvas, textX, iconY, titleSize * 1.2f, s.playing, fillPaint)
+
+            val titleX = textX + titleSize * 1.1f
+            val titleFirstBaselineY = iconY + titleSize
             val titleLines = drawWrapped(
-                g,
-                cardTitle,
+                canvas,
+                s.title,
                 titleX,
-                iconY + titleSize,
-                textW - (titleSize * 1.1f).toInt(),
-                (titleSize * 1.18f).toInt(),
-                2,
+                titleFirstBaselineY,
+                (textW - titleSize * 1.1f).coerceAtLeast(10f),
+                titleSize * 1.18f,
+                titleFont,
+                fillPaint,
+                maxLines = 2,
             )
 
-            // 章节 (副标题, 标题区之后; 单行截断)
-            g.font = Font("Microsoft YaHei UI", Font.PLAIN, subSize)
-            g.color = Color(0xBFFFFFFF.toInt())
-            drawTruncated(
-                g,
-                cardSubtitle,
+            val subStartY = iconY + titleSize + (titleLines.coerceAtLeast(1) - 1) * (titleSize * 1.18f) +
+                subSize + (h * 0.04f)
+            fillPaint.color = theme.textSecondary
+            drawWrapped(
+                canvas,
+                s.subtitle,
                 textX,
-                iconY + titleSize + (titleLines - 1) * (titleSize * 1.18f).toInt() +
-                    subSize + (h * 0.06f).toInt(),
+                subStartY,
                 textW,
+                subSize * 1.18f,
+                subFont,
+                fillPaint,
+                maxLines = 2,
             )
 
-            // 进度条 + 时间文本 (底部; 朗读无进度概念, 音频且时长>0 才画)
-            // 布局: 当前时间最左 / 进度条居中 / 总时长最右, 三者与条中线垂直对齐
-            if (cardDurationMs > 0) {
+            if (s.durationMs > 0) {
                 val timeSize = (h * 0.09f).toInt().coerceIn(8, 14)
-                g.font = Font("Microsoft YaHei UI", Font.PLAIN, timeSize)
-                val curText = formatTime(cardProgressMs)
-                val durText = formatTime(cardDurationMs)
-                val curW = g.fontMetrics.stringWidth(curText)
-                val durW = g.fontMetrics.stringWidth(durText)
-                val gap = (timeSize * 0.6f).toInt().coerceAtLeast(6)
-                val barY = h - (h * 0.12f).toInt().coerceAtLeast(12)
-                val barH = 3
+                val timeFont = createFont(normalTypeface, timeSize.toFloat(), fonts)
+                val curText = formatTime(s.progressMs)
+                val durText = formatTime(s.durationMs)
+                val curW = measureTextWidth(timeFont, curText)
+                val durW = measureTextWidth(timeFont, durText)
+                val gap = (timeSize * 0.6f).coerceAtLeast(6f)
+                val barH = 3f
+
+                val barY = if (s.cover != null) {
+                    (coverBottom - barH)
+                } else {
+                    (h - (h * 0.12f).toInt().coerceAtLeast(12)).toFloat()
+                }
+
                 val barX = textX + curW + gap
-                val barW =
-                    (w - textX - margin - curW - durW - gap * 2).coerceAtLeast(20)
-                // 文本基线: 条中线 + 半个字高 (文本垂直居中于条)
-                val textBaseY = barY + barH / 2 + g.fontMetrics.ascent / 2 - 1
-                g.color = Color(0xBFFFFFFF.toInt())
-                g.drawString(curText, textX, textBaseY)
-                g.drawString(durText, barX + barW + gap, textBaseY)
-                // 条 (文本之间)
-                g.color = Color(0x66FFFFFF)
-                g.fillRoundRect(barX, barY, barW, barH, 2, 2)
-                val frac = (cardProgressMs.toFloat() / cardDurationMs).coerceIn(0f, 1f)
-                g.color = Color(0xFF4D94FF.toInt())
-                g.fillRoundRect(
-                    barX,
-                    barY,
-                    (barW * frac).toInt().coerceAtLeast(if (frac > 0) 2 else 0),
-                    barH,
-                    2,
-                    2,
+                val barW = (w - textX - margin - curW - durW - gap * 2).coerceAtLeast(10f)
+                val textBaseY = barY + barH / 2 - timeFont.metrics.ascent / 2 - 1f
+
+                fillPaint.color = theme.textSecondary
+                canvas.drawString(curText, textX, textBaseY, timeFont, fillPaint)
+                canvas.drawString(durText, barX + barW + gap, textBaseY, timeFont, fillPaint)
+
+                fillPaint.color = theme.progressTrack
+                canvas.drawRRect(RRect.makeXYWH(barX, barY, barW, barH, 2f, 2f), fillPaint)
+                val frac = (s.progressMs.toFloat() / s.durationMs).coerceIn(0f, 1f)
+                fillPaint.color = theme.progressFill
+                canvas.drawRRect(
+                    RRect.makeXYWH(
+                        barX,
+                        barY,
+                        (barW * frac).coerceAtLeast(if (frac > 0f) 2f else 0f),
+                        barH,
+                        2f,
+                        2f,
+                    ),
+                    fillPaint,
                 )
             }
+        } catch (t: Throwable) {
+            canvas.close()
+            bitmap.close()
+            throw t
         } finally {
-            g.dispose()
+            fonts.asReversed().forEach { it.close() }
+            fillPaint.close()
+            strokePaint.close()
+            if (!canvas.isClosed) canvas.close()
         }
-        return img
+
+        return bitmap
     }
 
-    /** 播放/暂停/加载状态图标 (自绘, 避免 Unicode 字形跨字体缺失)。
-     * 操作语义 (对照 ThumbBar toggle 按钮): 播放中显示“暂停”双竖杠 (点击即暂停),
-     * 暂停/停止显示“播放”三角 (点击即播放)。
-     * [y] 为图标带顶边 (高 [barSize]), 两种形态共用同一中线。
-     * [barSize] 双竖条 1.2 倍字号; [triangleSize] 三角 0.7 倍字号 (有意小于双竖条, 给书名让位)。 */
+    /**
+     * 大窗口 Aero Peek 实时全屏预览绘制 (WM_DWMSENDICONICLIVEPREVIEWBITMAP, 方案 A 居中左右大卡片, 基于 Skia 高性能管线):
+     * 屏幕中央黄金居中容器 + 大专辑封面 (45%~50% 屏幕高) + 右侧贴顶信息组 + 贴底粗条进度条 + 动态主题背景色。
+     */
+    private fun renderLivePreview(w: Int, h: Int, s: CardSnapshot, theme: ThemeColors): Bitmap {
+        val bitmap = allocateBitmap(w, h, "实时预览")
+        val canvas = Canvas(bitmap)
+
+        val fillPaint = Paint().apply { isAntiAlias = true }
+        val strokePaint = Paint().apply {
+            isAntiAlias = true
+            mode = PaintMode.STROKE
+            strokeWidth = 1f
+        }
+        val fonts = ArrayList<Font>(3)
+
+        try {
+            fillPaint.color = theme.bg
+            canvas.drawRect(Rect(0f, 0f, w.toFloat(), h.toFloat()), fillPaint)
+
+            strokePaint.color = theme.border
+            canvas.drawRect(Rect(0.5f, 0.5f, w - 0.5f, h - 0.5f), strokePaint)
+
+            val maxCoverSize = minOf(600, w / 2, (h - 32).coerceAtLeast(1)).coerceAtLeast(1)
+            val coverSize = (h * 0.46f).toInt().coerceIn(minOf(120, maxCoverSize), maxCoverSize)
+            val coverRadius = 16f
+            val gap = (w * 0.04f).toInt().coerceIn(16, 64)
+            val infoW = (w * 0.38f).toInt().coerceIn(200, 720)
+
+            val totalContentW = if (s.cover != null) coverSize + gap + infoW else infoW
+            val startX = ((w - totalContentW) / 2).coerceAtLeast(16)
+            val startY = ((h - coverSize) / 2).coerceAtLeast(16)
+
+            if (s.cover != null) {
+                val src = Rect(0f, 0f, s.cover.width.toFloat(), s.cover.height.toFloat())
+                val dst = Rect(startX.toFloat(), startY.toFloat(), (startX + coverSize).toFloat(), (startY + coverSize).toFloat())
+                canvas.drawImageRect(s.cover, src, dst, SamplingMode.MITCHELL, null, true)
+                strokePaint.color = theme.coverBorder
+                canvas.drawRRect(RRect.makeXYWH(startX.toFloat(), startY.toFloat(), coverSize.toFloat(), coverSize.toFloat(), coverRadius, coverRadius), strokePaint)
+            }
+
+            val textX = (if (s.cover != null) startX + coverSize + gap else startX).toFloat()
+            val textStartY = (if (s.cover != null) startY + 4 else (h * 0.28f).toInt()).toFloat()
+
+            val titleSize = (h * 0.042f).toInt().coerceIn(20, 48)
+            val titleLineH = (titleSize * 1.25f)
+            val subSize = (titleSize * 0.58f).toInt().coerceIn(14, 26)
+            val subLineH = (subSize * 1.25f)
+            val timeSize = (titleSize * 0.40f).toInt().coerceIn(12, 20)
+            val barH = (h * 0.007f).coerceIn(4f, 8f)
+
+            val titleFont = createFont(boldTypeface, titleSize.toFloat(), fonts)
+            val subFont = createFont(normalTypeface, subSize.toFloat(), fonts)
+
+            val iconBarSize = titleSize * 1.15f
+            fillPaint.color = theme.textPrimary
+            drawStatusIcon(canvas, textX, textStartY, iconBarSize, s.playing, fillPaint)
+
+            val titleX = textX + titleSize * 1.2f
+            val titleFirstBaselineY = textStartY + titleSize
+            val titleLines = drawWrapped(
+                canvas,
+                s.title,
+                titleX,
+                titleFirstBaselineY,
+                (infoW - titleSize * 1.2f).coerceAtLeast(20f),
+                titleLineH,
+                titleFont,
+                fillPaint,
+                maxLines = 2,
+            )
+
+            val subGap = (titleSize * 0.45f).coerceAtLeast(8f)
+            val subY = textStartY + titleSize + (titleLines.coerceAtLeast(1) - 1) * titleLineH + subGap + subSize
+            fillPaint.color = theme.textSecondary
+            val subLines = drawWrapped(
+                canvas,
+                s.subtitle,
+                textX,
+                subY,
+                infoW.toFloat(),
+                subLineH,
+                subFont,
+                fillPaint,
+                maxLines = 2,
+            )
+
+            if (s.durationMs > 0) {
+                val barY = if (s.cover != null) {
+                    (startY + coverSize - barH - 4)
+                } else {
+                    subY + (subLines.coerceAtLeast(1) - 1) * subLineH + (titleSize * 0.8f)
+                }
+                val timeFont = createFont(normalTypeface, timeSize.toFloat(), fonts)
+                val curText = formatTime(s.progressMs)
+                val durText = formatTime(s.durationMs)
+                val curW = measureTextWidth(timeFont, curText)
+                val durW = measureTextWidth(timeFont, durText)
+                val timeGap = (timeSize * 0.8f).coerceAtLeast(8f)
+                val barW = (infoW - curW - durW - timeGap * 2).coerceAtLeast(20f)
+                val barX = textX + curW + timeGap
+                val textBaseY = barY + barH / 2 - timeFont.metrics.ascent / 2 - 1f
+
+                fillPaint.color = theme.textSecondary
+                canvas.drawString(curText, textX, textBaseY, timeFont, fillPaint)
+                canvas.drawString(durText, barX + barW + timeGap, textBaseY, timeFont, fillPaint)
+
+                fillPaint.color = theme.progressTrack
+                canvas.drawRRect(RRect.makeXYWH(barX, barY, barW, barH, barH / 2, barH / 2), fillPaint)
+                val frac = (s.progressMs.toFloat() / s.durationMs).coerceIn(0f, 1f)
+                fillPaint.color = theme.progressFill
+                canvas.drawRRect(
+                    RRect.makeXYWH(
+                        barX,
+                        barY,
+                        (barW * frac).coerceAtLeast(if (frac > 0f) barH else 0f),
+                        barH,
+                        barH / 2,
+                        barH / 2,
+                    ),
+                    fillPaint,
+                )
+            }
+        } catch (t: Throwable) {
+            canvas.close()
+            bitmap.close()
+            throw t
+        } finally {
+            fonts.asReversed().forEach { it.close() }
+            fillPaint.close()
+            strokePaint.close()
+            if (!canvas.isClosed) canvas.close()
+        }
+
+        return bitmap
+    }
+
+    private fun createFont(typeface: Typeface?, size: Float, ownedFonts: MutableList<Font>): Font {
+        return Font(typeface, size).apply {
+            isSubpixel = true
+            ownedFonts.add(this)
+        }
+    }
+
     private fun drawStatusIcon(
-        g: java.awt.Graphics2D,
-        x: Int,
-        y: Int,
-        barSize: Int,
-        triangleSize: Int,
+        canvas: Canvas,
+        x: Float,
+        y: Float,
+        barSize: Float,
+        playing: Boolean,
+        paint: Paint,
     ) {
-        g.color = Color.WHITE
-        when {
-            cardPlaying -> {
-                // 播放中: 双竖条 (操作语义: 点击即暂停)
-                val s = barSize
-                val barW = (s * 0.28f).toInt().coerceAtLeast(2)
-                val gap = (s * 0.12f).toInt().coerceAtLeast(2)
-                g.fillRoundRect(x, y, barW, s, barW, barW)
-                g.fillRoundRect(x + barW + gap, y, barW, s, barW, barW)
-            }
-
-            else -> {
-                // 暂停/停止: 实心三角形 (操作语义: 点击即播放)。
-                // 三角比双竖条矮 (0.7T vs 1.2T), 顶边对齐会高出书名中线 0.22T (贴左上角、
-                // 和文本不齐), 故在双竖条的纵向带内居中。
-                val s = triangleSize
-                val top = y + (barSize - s) / 2
-                val xs = intArrayOf(x, x + s, x)
-                val ys = intArrayOf(top, top + s / 2, top + s)
-                g.fillPolygon(xs, ys, 3)
-            }
+        if (playing) {
+            val barW = (barSize * 0.28f).coerceAtLeast(2f)
+            val gap = (barSize * 0.12f).coerceAtLeast(2f)
+            canvas.drawRRect(RRect.makeXYWH(x, y, barW, barSize, barW / 2, barW / 2), paint)
+            canvas.drawRRect(RRect.makeXYWH(x + barW + gap, y, barW, barSize, barW / 2, barW / 2), paint)
+        } else {
+            val s = barSize * 0.8f
+            val top = y + (barSize - s) / 2
+            val path = Path.makeFromSVGString("M $x $top L ${x + s} ${top + s / 2f} L $x ${top + s} Z")
+            path.use { p -> canvas.drawPath(p, paint) }
         }
     }
 
-    private fun drawTruncated(g: java.awt.Graphics2D, text: String, x: Int, y: Int, maxW: Int) {
-        if (text.isEmpty() || maxW <= 0) return
-        var t = text
-        while (g.fontMetrics.stringWidth(t) > maxW && t.length > 1) {
-            t = t.dropLast(1)
-        }
-        if (t != text) t = t.dropLast(1) + "…"
-        g.drawString(t, x, y)
+    private fun measureTextWidth(font: Font, text: String): Float {
+        return if (text.isEmpty()) 0f else font.measureTextWidth(text)
     }
 
-    /** 最多 maxLines 行换行绘制 (超长末行省略号), 返回实际行数。 */
     private fun drawWrapped(
-        g: java.awt.Graphics2D,
+        canvas: Canvas,
         text: String,
-        x: Int,
-        baselineY: Int,
-        maxWidth: Int,
-        lineHeight: Int,
-        maxLines: Int,
+        x: Float,
+        firstBaselineY: Float,
+        maxWidth: Float,
+        lineHeight: Float,
+        font: Font,
+        paint: Paint,
+        maxLines: Int = 2,
     ): Int {
-        if (text.isEmpty() || maxWidth <= 0 || maxLines <= 0) return 0
-        val fm = g.fontMetrics
+        if (text.isEmpty() || maxWidth <= 0f) return 0
         var line = 0
         var start = 0
         while (start < text.length && line < maxLines) {
             var end = start + 1
-            while (end <= text.length && fm.stringWidth(text.substring(start, end)) <= maxWidth) {
+            while (end <= text.length && measureTextWidth(font, text.substring(start, end)) <= maxWidth) {
                 end++
             }
             if (end > text.length) {
+                // 剩余文字全部放得下时，探测游标会越过末尾一位，须收回到合法边界。
                 end = text.length
-            } else if (end > start + 1) {
-                // end 停在第一个超宽位置, 回退到最后放得下的字符, 否则每行末尾多取一字被画布裁掉
+            } else {
                 end--
+                if (end == start) end = start + 1
             }
-            var display = text.substring(start, end)
-            val truncated = line == maxLines - 1 && end < text.length
-            if (truncated) {
-                while (display.length > 1 &&
-                    fm.stringWidth(display + "…") > maxWidth
-                ) {
-                    display = display.dropLast(1)
+            val isLast = line == maxLines - 1
+            val hasMore = end < text.length
+            val lineStr = if (isLast && hasMore) {
+                var s = text.substring(start, end)
+                while (s.isNotEmpty() && measureTextWidth(font, "$s…") > maxWidth) {
+                    s = s.dropLast(1)
                 }
-                display += "…"
+                "$s…"
+            } else {
+                text.substring(start, end)
             }
-            g.drawString(display, x, baselineY + line * lineHeight)
+            val y = firstBaselineY + line * lineHeight
+            canvas.drawString(lineStr, x, y, font, paint)
             line++
             start = end
-            if (truncated) break
+            if (isLast) break
         }
         return line
     }
 
-    /** ms → mm:ss (超过 1 小时显示 h:mm:ss)。 */
     private fun formatTime(ms: Int): String {
         val totalSec = (ms / 1000).coerceAtLeast(0)
         val h = totalSec / 3600
@@ -524,93 +829,126 @@ internal object DesktopTaskbarDwm {
         }
     }
 
-    // ==================== 位图 (CreateDIBSection 32bpp → HBITMAP) ====================
+    // ==================== 位图转换 (Skia Bitmap → Win32 32bpp DIB Section) ====================
 
-    /** BufferedImage → HBITMAP (32bpp DIB; DWM 卡片与任务栏按钮图标共用)。 */
-    internal fun toHBitmap(img: BufferedImage): WinDef.HBITMAP? {
-        val w = img.width
-        val h = img.height
-        // BITMAPINFOHEADER: biSize 40 + biWidth + biHeight(负=自顶向下) + planes + bitcount + compression
-        val header = WinGDI.BITMAPINFOHEADER()
-        header.biSize = 40
-        header.biWidth = w
-        header.biHeight = -h // 自顶向下, 首行在内存开头
-        header.biPlanes = 1
-        header.biBitCount = 32
-        header.biCompression = WinGDI.BI_RGB
-        val bmi = WinGDI.BITMAPINFO()
-        bmi.bmiHeader = header
-        val bits = PointerByReference()
-        val hbm = GDI32.INSTANCE.CreateDIBSection(
-            null, bmi, WinGDI.DIB_RGB_COLORS, bits, null, 0
-        )
-        if (hbm == null || bits.value == null) return null
-        // ARGB int → BGRA 字节序 (DIB 32bpp 内存序 B,G,R,A)
-        val pixels = img.getRGB(0, 0, w, h, null, 0, w)
-        val dst = bits.value
-        for (i in pixels.indices) {
-            val argb = pixels[i]
-            val a = (argb ushr 24) and 0xFF
-            val r = (argb ushr 16) and 0xFF
-            val g = (argb ushr 8) and 0xFF
-            val b = argb and 0xFF
-            dst.setInt(i * 4L, (a shl 24) or (r shl 16) or (g shl 8) or b)
+    private fun allocateBitmap(w: Int, h: Int, kind: String): Bitmap {
+        val bitmap = Bitmap()
+        if (!bitmap.allocPixels(ImageInfo.makeN32Premul(w, h))) {
+            bitmap.close()
+            error("无法分配 DWM $kind 位图 ${w}x$h")
         }
-        return hbm
+        return bitmap
+    }
+
+    private fun toHBitmap(bitmap: Bitmap): WinDef.HBITMAP? {
+        val w = bitmap.width
+        val h = bitmap.height
+        if (w <= 0 || h <= 0) return null
+
+        val bmi = WinGDI.BITMAPINFO().apply {
+            bmiHeader.biSize = 40
+            bmiHeader.biWidth = w
+            bmiHeader.biHeight = -h // 自顶向下
+            bmiHeader.biPlanes = 1
+            bmiHeader.biBitCount = 32
+            bmiHeader.biCompression = WinGDI.BI_RGB
+        }
+        val ppvBits = PointerByReference()
+        val hbm = GDI32.INSTANCE.CreateDIBSection(
+            null,
+            bmi,
+            WinGDI.DIB_RGB_COLORS,
+            ppvBits,
+            null,
+            0,
+        ) ?: return null
+
+        val ptr = ppvBits.value ?: run {
+            GDI32.INSTANCE.DeleteObject(hbm)
+            return null
+        }
+
+        return try {
+            bitmap.peekPixels()?.use { pixmap ->
+                val expectedBytes = w * h * 4
+                check(pixmap.rowBytes == w * 4 && pixmap.computeByteSize() == expectedBytes) {
+                    "Skia 位图布局不连续: rowBytes=${pixmap.rowBytes}, " +
+                        "bytes=${pixmap.computeByteSize()}, expected=$expectedBytes"
+                }
+                pixmap.buffer.use { data ->
+                    val bytes = data.bytes
+                    check(bytes.size == expectedBytes) {
+                        "Skia 位图字节数错误: ${bytes.size}, expected=$expectedBytes"
+                    }
+                    ptr.write(0L, bytes, 0, bytes.size)
+                }
+            } ?: run {
+                GDI32.INSTANCE.DeleteObject(hbm)
+                return null
+            }
+            hbm
+        } catch (t: Throwable) {
+            GDI32.INSTANCE.DeleteObject(hbm)
+            AppLog.put("CreateDIBSection 像素写入失败", t)
+            null
+        }
     }
 
     // ==================== 封面加载 ====================
 
-    /** 封面 ImageBitmap → BufferedImage (ImageBitmap.readPixels 返回 ARGB, 与平台解耦)。 */
     private fun loadCover(url: String, hwnd: WinDef.HWND) {
         val loader = io.legado.app.help.image.BookImageLoaders.getOrNull()
             ?: return onCoverLoadFailed(url)
-        val bitmap = kotlinx.coroutines.runBlocking {
+        val imageBitmap = kotlinx.coroutines.runBlocking {
             loader.loadCoverOrNull(url, AudioPlayShared.book?.origin)
         } ?: return onCoverLoadFailed(url)
+
         runCatching {
-            val w = bitmap.width
-            val h = bitmap.height
-            if (w <= 0 || h <= 0) return@runCatching
-            val pixels = IntArray(w * h)
-            bitmap.readPixels(pixels, 0, 0, w, h, 0, w)
-            val img = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
-            for (i in pixels.indices) {
-                img.setRGB(i % w, i / w, pixels[i])
+            val skiaImage = Image.makeFromBitmap(imageBitmap.asSkiaBitmap())
+            var previousCover: Image? = null
+            val accepted = synchronized(coverStateLock) {
+                // 网络加载可能晚于切歌或会话结束完成，旧请求不得覆盖当前卡片。
+                if (lastCoverUrl != url || mainHwnd?.pointer != hwnd.pointer || !iconicEnabled) {
+                    false
+                } else {
+                    previousCover = currentSnapshot.getAndUpdate { it.copy(cover = skiaImage) }.cover
+                    coverFailUrl = null
+                    coverFailCount = 0
+                    true
+                }
             }
-            coverImage = img
-            coverFailUrl = null
-            coverFailCount = 0
-            // 封面就绪后必须补发缓存失效: update() 里的 invalidate 发生在新封面就绪之前,
-            // 不补发则 DWM 保留旧封面直到悬停重入 (换歌缩略图不自动更新的根因)
-            if (mainHwnd?.pointer == hwnd.pointer) invalidateIconicBitmaps(hwnd)
+            if (!accepted) {
+                skiaImage.close()
+                return@runCatching
+            }
+            renderExecutor.execute {
+                previousCover?.close()
+                if (lastCoverUrl == url && mainHwnd?.pointer == hwnd.pointer && iconicEnabled) {
+                    runCatching { doRender(live = true) }
+                        .onFailure { AppLog.put("DWM 实时预览渲染失败", it) }
+                }
+            }
+            invalidateIconicBitmaps(hwnd)
         }.onFailure {
             AppLog.put("DWM 卡片封面转换失败", it)
         }
     }
 
-    /**
-     * 封面加载失败的收尾。
-     *
-     * 关键: **不能把 url 当作"已处理"留在 [lastCoverUrl] 里** —— update() 是在加载之前就提交 url 的,
-     * 若失败还保留, 后续同 url 的 update 会一律跳过重试, 缩略图永远停在空白占位, 章节加载好也不恢复
-     * (用户实测: 从任务栏 thumbbar 切歌时, 新曲目封面常常还没就绪)。
-     * 置空即可让下一次进度事件重试; 但给 [COVER_MAX_RETRY] 上限, 避免死链每秒重拉。
-     */
     private fun onCoverLoadFailed(url: String) {
-        if (coverFailUrl != url) {
-            coverFailUrl = url
-            coverFailCount = 0
+        synchronized(coverStateLock) {
+            if (coverFailUrl != url) {
+                coverFailUrl = url
+                coverFailCount = 0
+            }
+            coverFailCount++
+            if (coverFailCount <= COVER_MAX_RETRY && lastCoverUrl == url) lastCoverUrl = null
         }
-        coverFailCount++
-        if (coverFailCount <= COVER_MAX_RETRY && lastCoverUrl == url) lastCoverUrl = null
     }
 
-    // ==================== DWM API (绑定统一收口在 help/win/DwmApi) ====================
+    // ==================== DWM API ====================
 
     private fun setIconicMode(hwnd: WinDef.HWND, enable: Boolean) {
         runCatching {
-            // 加载失败对齐旧 Function.getFunction 直调的抛错行为 (走 onFailure 日志)
             requireNotNull(DwmApi.dwmapi) { "dwmapi.dll 加载失败" }
             DwmApi.setAttribute(
                 hwnd,
@@ -624,15 +962,14 @@ internal object DesktopTaskbarDwm {
     }
 
     private fun invalidateIconicBitmaps(hwnd: WinDef.HWND) {
-        // 节流: 原实现每个进度事件都调, 而 MSDN 与本文件自己的注释都说"勿频繁"
         val now = System.currentTimeMillis()
         if (now - lastInvalidateAt < INVALIDATE_MIN_INTERVAL_MS) return
         lastInvalidateAt = now
         runCatching {
-            DwmApi.dwmapi?.DwmInvalidateIconicBitmaps(hwnd)
-        }.onFailure { /* 悬停外调用无副作用, 忽略 */ }
+            val hr = DwmApi.dwmapi?.DwmInvalidateIconicBitmaps(hwnd) ?: return@runCatching
+            if (hr != 0) {
+                AppLog.put("DWM 缓存失效返回失败 hr=0x${hr.toUInt().toString(16)}")
+            }
+        }.onFailure { AppLog.put("DWM 缓存失效失败", it) }
     }
-
-    // ==================== HWND 获取 ====================
-
 }

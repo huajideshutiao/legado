@@ -7,6 +7,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
+import io.legado.app.help.getUserAgent
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.removeType
@@ -169,9 +170,9 @@ object RssHelp {
         }
     }
 
-    /** 书源 header 里的 UA (对照 `runScriptWithContext { source.getHeaderMap()[UA_NAME] }`)。 */
+    /** 书源 header 里的 UA (对照 `runScriptWithContext { source.getHeaderMap().getUserAgent() }`)。 */
     private suspend fun readUserAgent(source: BookSource): String? =
-        runCatching { runScriptWithContext { source.getHeaderMap()[AppConst.UA_NAME] } }.getOrNull()
+        runCatching { runScriptWithContext { source.getHeaderMap().getUserAgent() } }.getOrNull()
 
     /**
      * 正文 HTML 包装 (逐行对照 app 端 ReadRssViewModel.clHtml)。

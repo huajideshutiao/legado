@@ -37,6 +37,7 @@ import io.legado.app.help.image.decodeBytesSampled
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.platform.DesktopThemeStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.desktop.ui.tray.DesktopTaskbarDwm
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.MainTab
@@ -120,6 +121,17 @@ fun DesktopNativeChromeHost(
     // AWT 默认白底, 深色主题下启动首帧会闪白; 背景同步主题色 (延续旧实现)
     SideEffect {
         window.background = java.awt.Color(bg.red, bg.green, bg.blue)
+    }
+
+    // 动态主题色同步给 DWM 卡片自绘 (严格跟随应用全局主题配色，不受阅读器阅读背景染色干扰)
+    LaunchedEffect(colors) {
+        DesktopTaskbarDwm.setTheme(
+            bg = colors.background.toArgb(),
+            textPrimary = colors.primaryText.toArgb(),
+            textSecondary = colors.secondaryText.toArgb(),
+            accent = colors.accent.toArgb(),
+            isDark = colors.isDark,
+        )
     }
 
     // 以下推送一律把 attached 作为 key: attach 晚于首次组合, 挂上后必须重推

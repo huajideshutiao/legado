@@ -7,6 +7,7 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.utils.browseUrl
 import io.legado.desktop.help.webview.DesktopWebViewEngineBase
 import io.legado.desktop.help.webview.DesktopWebViewWindowHandleBase
+import io.legado.desktop.help.webview.NavigationState
 import io.legado.desktop.help.webview.ToolbarAction
 import io.legado.desktop.help.webview.WebViewFetchRequest
 import io.legado.desktop.help.webview.WebViewFetchResult
@@ -19,9 +20,9 @@ import io.legado.desktop.help.webview.gtk.GtkLibs.WEBKIT_LOAD_STARTED
 import io.legado.desktop.help.webview.gtk.LinuxWebViewEngine.fetch
 import io.legado.desktop.help.webview.injectWebViewCookies
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Linux 系统引擎: JNA 直绑系统自带的 webkit2gtk-4.1 (主流发行版预装, 零体积增量)。
@@ -88,7 +89,7 @@ internal object LinuxWebViewEngine : DesktopWebViewEngineBase() {
         session: GtkSession,
         request: WebViewFetchRequest,
     ): WebViewFetchResult {
-        val redirected = AtomicBoolean(false)
+        val navigation = NavigationState()
         // cookie 注入 (对齐 Windows/Mac fetch 路径): 导航前把 CookieStore 已有 cookie 灌进
         // WebKitGTK, 否则回源会丢掉此前 HTTP 侧登录拿到的会话 (与回收互补成闭环)
         injectWebViewCookies(request.url, platformLabel) { domain, cookie ->
@@ -96,8 +97,11 @@ internal object LinuxWebViewEngine : DesktopWebViewEngineBase() {
         }
         GtkLoop.await {
             session.onLoadChanged = { _, event ->
-                // 重定向: WebKit 主框架 REDIRECTED 事件 (对照 WebView2 isRedirected)
-                if (event == WEBKIT_LOAD_REDIRECTED) redirected.set(true)
+                // 导航开始即重新计时 (对照 app 端 onPageStarted); 重定向看 WebKit 主框架
+                // REDIRECTED 事件 (对照 WebView2 isRedirected)
+                if (event == WEBKIT_LOAD_STARTED || event == WEBKIT_LOAD_REDIRECTED) {
+                    navigation.onNavigation(redirected = event == WEBKIT_LOAD_REDIRECTED)
+                }
                 // cookie 回收时机对齐 onPageFinished (COMMITTED 起 URL 已定, FINISHED 兜底)
                 if (event == WEBKIT_LOAD_COMMITTED || event == WEBKIT_LOAD_FINISHED) {
                     val uri = session.currentUri()
@@ -113,12 +117,9 @@ internal object LinuxWebViewEngine : DesktopWebViewEngineBase() {
 
         return awaitScriptBody(
             request,
-            evaluate = { script ->
-                GtkLoop.await { session.executeScript(script) }
-                    ?.takeIf { it.isNotEmpty() && it != "null" }
-            },
+            navigation,
+            evaluate = { script -> GtkLoop.await { session.executeScript(script) } },
             currentUrl = { GtkLoop.await { session.currentUri() }.takeIf { !it.isNullOrBlank() } },
-            redirected = { redirected.get() },
         )
     }
 
@@ -205,7 +206,15 @@ private class GtkWindowHandle(
         }
         session = created
         currentUrl = request.url
-        request.userAgent?.let { created.setUserAgent(it) }
+        GtkLoop.post { created.setUserAgent(request.effectiveUserAgent) }
+        // 对照原版 AppCookieManager.applyToWebView(url) (同 Windows/Mac 可见窗口)
+        scope.launch {
+            injectWebViewCookies(request.url, platformLabel, "窗口 cookie") { domain, cookie ->
+                GtkLoop.await {
+                    created.addCookies(domain, cookie, DesktopWebViewEngineBase.COOKIE_TIMEOUT_MS)
+                }
+            }
+        }
         // RSS 收藏态反推: shared 侧书架操作完成后经 onStarChanged 更新窗口星图标 (同 Windows)
         request.rssActions?.onStarChanged = { starred -> created.toolbar?.setStarred(starred) }
         created.onLoadChanged = { _, event ->

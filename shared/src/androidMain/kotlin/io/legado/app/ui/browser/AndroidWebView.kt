@@ -37,6 +37,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import io.legado.app.constant.AppConst
+import io.legado.app.help.getUserAgent
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.http.CookieStoreProviders
@@ -146,7 +147,7 @@ fun AndroidWebView(
             web.settings.useWideViewPort = true
             web.settings.loadWithOverviewMode = true
         }
-        config.headerMap[AppConst.UA_NAME]?.let { web.settings.userAgentString = it }
+        web.settings.userAgentString = config.headerMap.getUserAgent()
         // tag 持最终加载 url, html 模式与 loadUrl 模式互斥同源
         val loadUrl = if (config.html.isNullOrEmpty()) config.url else ""
         if (web.tag != loadUrl) {

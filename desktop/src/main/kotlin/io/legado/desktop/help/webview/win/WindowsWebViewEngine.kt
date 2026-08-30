@@ -3,10 +3,12 @@ package io.legado.desktop.help.webview.win
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.getUserAgent
 import io.legado.app.help.toast.Toasters
 import io.legado.app.utils.browseUrl
 import io.legado.desktop.help.webview.DesktopWebViewEngineBase
 import io.legado.desktop.help.webview.DesktopWebViewWindowHandleBase
+import io.legado.desktop.help.webview.NavigationState
 import io.legado.desktop.help.webview.ToolbarAction
 import io.legado.desktop.help.webview.WebViewFetchRequest
 import io.legado.desktop.help.webview.WebViewFetchResult
@@ -21,7 +23,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Windows 系统引擎: 直调系统自带的 WebView2 Runtime (JNA + COM), 不随包发任何 native 文件。
@@ -59,9 +60,9 @@ internal object WindowsWebViewEngine : DesktopWebViewEngineBase() {
         instance: WebView2Instance,
         request: WebViewFetchRequest,
     ): WebViewFetchResult {
-        val redirected = AtomicBoolean(false)
+        val navigation = NavigationState()
         instance.onNavigationStarting = { _, isRedirected ->
-            if (isRedirected) redirected.set(true)
+            navigation.onNavigation(isRedirected)
             false
         }
         instance.onNavigationCompleted = { url ->
@@ -72,11 +73,11 @@ internal object WindowsWebViewEngine : DesktopWebViewEngineBase() {
         start(instance, request)
         return awaitScriptBody(
             request,
+            navigation,
             evaluate = { script ->
                 unwrapScriptResult(instance.executeScript(script, AppConst.timeLimit))
             },
             currentUrl = { instance.currentUrl() },
-            redirected = { redirected.get() },
         )
     }
 
@@ -111,7 +112,7 @@ internal object WindowsWebViewEngine : DesktopWebViewEngineBase() {
 
     /** 对应 app 端 load(): html 优先, 否则加载 url; UA 走 Settings2。 */
     private suspend fun start(instance: WebView2Instance, request: WebViewFetchRequest) {
-        request.headerMap?.get(AppConst.UA_NAME)?.let { instance.setUserAgent(it) }
+        instance.setUserAgent(request.headerMap.getUserAgent())
         injectWebViewCookies(request.url, platformLabel) { domain, cookie ->
             instance.setCookies(domain, cookie)
         }
@@ -196,7 +197,14 @@ private class WebView2WindowHandle(
         }
         instance = created
         currentUrl = request.url
-        request.userAgent?.let { created.setUserAgent(it) }
+        created.setUserAgent(request.effectiveUserAgent)
+        // 对照原版 WebViewActivity 的 AppCookieManager.applyToWebView(url): 打开前把
+        // CookieStore 已有 cookie 灌进浏览器, 否则窗口里是未登录态 (与回收互补成闭环)
+        scope.launch {
+            injectWebViewCookies(request.url, platformLabel, "窗口 cookie") { domain, cookie ->
+                created.setCookies(domain, cookie)
+            }
+        }
         created.toolbar?.onAction = { action -> onToolbarAction(created, action) }
         // RSS 收藏态反推: shared 侧书架操作完成后经 onStarChanged 更新窗口星图标
         request.rssActions?.onStarChanged = { starred -> created.toolbar?.setStarred(starred) }

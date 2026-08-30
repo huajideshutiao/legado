@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.legado.app.constant.AppLog
+import io.legado.app.help.getUserAgent
 import io.legado.app.ui.browser.WebViewCallbacks
 import io.legado.app.ui.browser.WebViewConfig
 import io.legado.app.ui.browser.WebViewHost
@@ -91,6 +92,9 @@ private fun EngineWindowSlot(
             isLogin = config.isLogin,
             saveResult = config.saveResult,
             cookieTag = config.sourceKey.ifBlank { null },
+            // 对照 AndroidWebView 的 settings.userAgentString: 书源指定 UA 时同步给浏览器,
+            // 未指定则回落 HTTP UA —— 引擎自带 UA 与 HTTP 侧不一致时 cf_clearance 换过去即失效
+            userAgent = config.headerMap.getUserAgent(),
             // 对照 AndroidWebViewClient.onPageFinished: 导航完成 → 路由侧 CF 检测/验证回传
             // 与页面 URL 状态同步 (页面内跳转后菜单取最新链接)
             onNavigated = { url ->

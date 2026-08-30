@@ -15,6 +15,9 @@ object AppConst {
 
     const val UA_NAME = "User-Agent"
 
+    const val DEFAULT_USER_AGENT =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
     /** 注入所有 JS eval 作用域的 platform 变量值，KMP 各端按 expect/actual 取真实平台标识 (android/desktop/ios/ohos)。 */
     val JS_PLATFORM: String get() = jsPlatform()
 

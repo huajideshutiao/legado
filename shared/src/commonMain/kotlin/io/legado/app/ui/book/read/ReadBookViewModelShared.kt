@@ -518,11 +518,13 @@ class ReadBookViewModelShared(
      * 读章节列表 / 解析书源，跳章时清三章滑窗并重置进度，随后装载当前章并异步预载前后章。
      * 正文经 ContentProcessor 完整处理链后排版，详见 [contentLoadFinish]。
      *
+     * @param chapterPos 章内字符位置; null=跳章归零、同章不动。带位置的入口 (书签/云进度/朗读定位)
+     *   必须由本参数传入: 装载是异步的, 调用方在前后自行写 durChapterPos 都会被跳章分支清零
      * @param keepScrollOffset true=装载完成后保留滚动偏移 (对照原版 loadContent(resetPageOffset=false),
      *   用于编辑保存/重置后刷新阅读器: 置位滚动跨章标记, applyCurChapterPages 以 resetOffset=false
      *   归位, 滚动模式不回到章首; 其余显式装载路径默认 false 归零)
      */
-    fun loadChapter(index: Int, keepScrollOffset: Boolean = false) {
+    fun loadChapter(index: Int, chapterPos: Int? = null, keepScrollOffset: Boolean = false) {
         // 显式装载（打开书/菜单跳章）清零滚动跨章标记，防止残留标记导致后续装载误保留偏移;
         // keepScrollOffset=true 时反向置位, 使本次装载排版完成保留滚动偏移
         if (keepScrollOffset) {
@@ -559,12 +561,17 @@ class ReadBookViewModelShared(
                 return@launchChapterLoad
             }
 
-            // 3. 跳章（对照 app 端 openChapter）：清滑窗 + 进度归零；同章重载保留 durChapterPos 恢复进度
+            // 3. 跳章（对照 app 端 openChapter）：清滑窗 + 落位 + 回写内存 book 实体；同章重载保留 durChapterPos
             if (index != readBook.durChapterIndex.value) {
                 readBook.clearTextChapter()
                 readBook.updateDurChapterIndex(index)
-                readBook.updateDurChapterPos(0)
+                readBook.updateDurChapterPos(chapterPos ?: 0)
                 clearExpiredChapterLoadingJobs()
+                // 对齐原版 ReadBook.openChapter 末尾的 saveRead(): 目录/详情等消费方读的是内存
+                // book 实体的 durChapterIndex/Pos/Title, 不回写就停在跳转前那一章
+                readBook.saveRead()
+            } else if (chapterPos != null) {
+                readBook.updateDurChapterPos(chapterPos)
             }
 
             // 4. 当前章优先装载，前后章异步预载（对照 app 端 loadContent 三章同载）;
@@ -1542,7 +1549,7 @@ class ReadBookViewModelShared(
     /**
      * 翻到指定章节 (对照 app 端 ReadBookViewModel.openChapter -> ReadBook.openChapter)。
      *
-     * 清三章滑窗 + 跳章 + 进度归零 + 重载当前章及前后章。
+     * 清三章滑窗 + 跳章 + 落位 + 重载当前章及前后章, 编排全在 [loadChapter] 内完成。
      *
      * @param index 章节序号
      * @param durChapterPos 章内字符位置 (默认 0 = 章首)
@@ -1551,11 +1558,7 @@ class ReadBookViewModelShared(
      */
     fun openChapter(index: Int, durChapterPos: Int = 0, success: (() -> Unit)? = null) {
         if (index !in 0 until readBook.chapterSize) return
-        // 对照 app 端 ReadBook.openChapter: clearTextChapter + 跳章 + 进度归零 + loadContent(resetPageOffset=true)
-        readBook.clearTextChapter()
-        readBook.updateDurChapterPos(durChapterPos)
-        // loadChapter 内部会 updateDurChapterIndex + clearExpiredChapterLoadingJobs + loadContent + 预载
-        loadChapter(index)
+        loadChapter(index, chapterPos = durChapterPos)
         success?.invoke()
     }
 

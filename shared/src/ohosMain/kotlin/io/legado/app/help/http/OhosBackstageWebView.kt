@@ -3,6 +3,7 @@ package io.legado.app.help.http
 import io.legado.app.constant.AppConst
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.UserAgentProviders
+import io.legado.app.help.getUserAgent
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.napi.OhosNativeBridge.WebViewHeader
@@ -106,12 +107,16 @@ private class OhosBackstageWebViewHandle(
         }
         // cookie 读取走 DB (SharedCookieStore 内部 runBlocking), 切到 IO 线程做
         val pendingCookie = readStoredCookie()
+        val effectiveHeaders = (headerMap ?: emptyMap()).toMutableMap()
+        if (effectiveHeaders.keys.none { it.equals(AppConst.UA_NAME, ignoreCase = true) }) {
+            effectiveHeaders[AppConst.UA_NAME] = headerMap.getUserAgent()
+        }
         // 控制面: 小字段走 JSON; html (可能数百 KB~数 MB) 走裸字符串第二参数
         val payload = WebViewRequestPayload(
             url = url,
             encode = encode,
             tag = tag,
-            headers = headerMap?.map { (name, value) -> WebViewHeader(name, value) },
+            headers = effectiveHeaders.map { (name, value) -> WebViewHeader(name, value) },
             sourceRegex = sourceRegex,
             overrideUrlRegex = overrideUrlRegex,
             js = javaScript,

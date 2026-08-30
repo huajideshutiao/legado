@@ -6,6 +6,7 @@ import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.UserAgentProviders
+import io.legado.app.help.getUserAgent
 import io.legado.app.help.coroutine.IoDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -157,7 +158,7 @@ private class IosBackstageWebViewHandle(
         // 不入视图层级的 WKWebView 照常发起网络请求并执行 JS (仅渲染/rAF 会被 WebKit 节流),
         // 故无需 attach; frame 给 iPhone 逻辑尺寸让响应式页面按移动端布局
         val view = WKWebView(CGRectMake(0.0, 0.0, 375.0, 667.0), configuration)
-        view.customUserAgent = headerMap?.get(AppConst.UA_NAME) ?: UserAgentProviders.get()
+        view.customUserAgent = headerMap.getUserAgent()
         val navDelegate = BackstageNavDelegate(
             overrideRegex = overrideUrlRegex?.takeIf { it.isNotBlank() }?.toRegex(),
             onFinish = { finished = true; harvestCookies(it) },

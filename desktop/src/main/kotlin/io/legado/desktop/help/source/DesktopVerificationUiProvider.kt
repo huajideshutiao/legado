@@ -8,6 +8,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.SourceUiRequest
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.getUserAgent
 import io.legado.app.help.source.SourceVerificationHelpShared
 import io.legado.app.help.source.VerificationUiProvider
 import io.legado.app.help.source.VerificationUiProviders
@@ -161,7 +162,7 @@ object DesktopVerificationUiProvider : VerificationUiProvider {
                 title = if (verification) "$title - 完成验证后关闭本窗口" else title,
                 // 对照 WebViewActivity.initWebView: 书源指定 UA 时同步给浏览器,
                 // 否则验证站点拿到的 UA 与后续 HTTP 重拉不一致, cookie 可能失效
-                userAgent = headerMap?.get(AppConst.UA_NAME),
+                userAgent = headerMap.getUserAgent(),
                 cookieTag = sourceKey,
                 // 书源菜单 (2026-08-08): 真实源类型/源名, 禁用/删除源动作与确认弹窗用
                 sourceType = source.getSourceType(),

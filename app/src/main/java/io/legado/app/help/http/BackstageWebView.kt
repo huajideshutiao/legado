@@ -16,6 +16,7 @@ import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppConst.timeLimit
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.getUserAgent
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.utils.EscapeUtils
 import io.legado.app.utils.runOnUI
@@ -116,7 +117,7 @@ class BackstageWebView(
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
         settings.blockNetworkImage = true
-        settings.userAgentString = headerMap?.get(AppConst.UA_NAME) ?: AppConfig.userAgent
+        settings.userAgentString = headerMap.getUserAgent { AppConfig.userAgent }
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         if (sourceRegex.isNullOrBlank() && overrideUrlRegex.isNullOrBlank()) {
             webView.webViewClient = HtmlWebViewClient()

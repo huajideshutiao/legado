@@ -1,7 +1,6 @@
 package io.legado.desktop.help.webview
 
 import io.legado.app.constant.AppLog
-import io.legado.app.help.http.CookieStoreProviders
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.toast.Toasters
 import kotlinx.coroutines.CoroutineScope
@@ -110,15 +109,13 @@ internal abstract class DesktopWebViewWindowHandleBase(
         tag: String?,
         readCookies: suspend () -> String?
     ) {
-        if (url.isBlank()) return
-        scope.launch {
-            val cookie = readCookies() ?: return@launch
-            runCatching {
-                val store = CookieStoreProviders.get() ?: return@runCatching
-                store.setCookie(url, cookie)
-                if (!tag.isNullOrBlank()) store.setCookie(tag, cookie)
-            }.onFailure { AppLog.put("$platformLabel 窗口 cookie 回写失败", it) }
-        }
+        scope.harvestWebViewCookies(
+            url,
+            listOf(url, tag),
+            platformLabel,
+            "窗口 cookie",
+            readCookies
+        )
     }
 
     /** isLogin 确认流程进行中 (导航完成时据此关窗)。 */

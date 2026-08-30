@@ -5,10 +5,12 @@ import com.sun.jna.Pointer
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.getUserAgent
 import io.legado.app.help.toast.Toasters
 import io.legado.app.utils.browseUrl
 import io.legado.desktop.help.webview.DesktopWebViewEngineBase
 import io.legado.desktop.help.webview.DesktopWebViewWindowHandleBase
+import io.legado.desktop.help.webview.NavigationState
 import io.legado.desktop.help.webview.ToolbarAction
 import io.legado.desktop.help.webview.WebViewFetchRequest
 import io.legado.desktop.help.webview.WebViewFetchResult
@@ -118,13 +120,14 @@ internal object MacWebViewEngine : DesktopWebViewEngineBase() {
         session: MacSession,
         request: WebViewFetchRequest,
     ): WebViewFetchResult {
-        val redirected = AtomicBoolean(false)
+        // WKWebView 只暴露 didFinishNavigation, 故按"每次导航完成"重新计时 (见 awaitScriptBody)
+        val navigation = NavigationState()
         injectWebViewCookies(request.url, platformLabel) { domain, cookie ->
             session.addCookies(domain, cookie, COOKIE_TIMEOUT_MS)
         }
         CocoaLoop.await {
             session.onNavigated = { url ->
-                if (!url.isNullOrBlank() && url != request.url) redirected.set(true)
+                navigation.onNavigation(redirected = !url.isNullOrBlank() && url != request.url)
                 if (!url.isNullOrBlank()) {
                     harvestTagCookies(url, request.cookieTag) { session.cookies(COOKIE_TIMEOUT_MS) }
                 }
@@ -134,13 +137,11 @@ internal object MacWebViewEngine : DesktopWebViewEngineBase() {
 
         return awaitScriptBody(
             request,
-            evaluate = { script ->
-                session.evaluateJavascript(script)?.takeIf { it.isNotEmpty() && it != "null" }
-            },
+            navigation,
+            evaluate = { script -> session.evaluateJavascript(script) },
             currentUrl = {
                 CocoaLoop.await { session.currentUrl() }.takeIf { !it.isNullOrBlank() }
             },
-            redirected = { redirected.get() },
         )
     }
 
@@ -382,7 +383,7 @@ internal class MacSession private constructor(
 
     /** 对应 app 端 load(): html 优先, 否则加载 url (带 headerMap)。主线程。 */
     fun start(request: WebViewFetchRequest) {
-        request.headerMap?.get(AppConst.UA_NAME)?.let { setUserAgent(it) }
+        setUserAgent(request.headerMap.getUserAgent())
         val html = request.html
         when {
             !html.isNullOrEmpty() -> {
@@ -584,6 +585,7 @@ private class MacWindowHandle(
         }
         session = created
         currentUrl = request.url
+        created.setUserAgent(request.effectiveUserAgent)
         // RSS 收藏态反推: shared 侧书架操作完成后经 onStarChanged 更新窗口星图标 (对照 Windows 引擎)
         request.rssActions?.onStarChanged = { starred -> created.toolbar?.setStarred(starred) }
         // cookie 注入 (suspend) 在协程里做, 不等导航完成
