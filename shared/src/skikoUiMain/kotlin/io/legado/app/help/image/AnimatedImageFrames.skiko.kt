@@ -14,14 +14,6 @@ import org.jetbrains.skia.impl.use
 private const val DEFAULT_FRAME_DURATION_MS = 100
 
 /**
- * 图像统一解码结果模型 (动静图合流)。
- */
-sealed interface DecodedImageResult {
-    data class Static(val bitmap: ImageBitmap) : DecodedImageResult
-    data class Animated(val frames: AnimatedFrames) : DecodedImageResult
-}
-
-/**
  * 统一图像解码器 (单通道无二次解析, 由 Skia Codec 自身 frameCount API 权威判定动静图)。
  *
  * - 动图 (frameCount > 1 且未超像素预算): 逐帧解码输出 [DecodedImageResult.Animated]
@@ -34,9 +26,9 @@ sealed interface DecodedImageResult {
  * @param animatedOnly 只要动图: 静态图立即返回 null, 既不解像素也不走 SVG 兜底
  *   (供 [decodeAnimatedFrames], 避免静态图白解一遍全图)
  */
-internal fun decodeImageAuto(
+private fun decodeSkiaImage(
     bytes: ByteArray,
-    animatedOnly: Boolean = false,
+    animatedOnly: Boolean,
 ): DecodedImageResult? {
     if (bytes.isEmpty()) return null
     val result = runCatching {
@@ -97,4 +89,8 @@ internal fun decodeImageAuto(
  * 复用 [decodeImageAuto] 统一解码结果, 仅提取动图帧表; 静态图或非动图返回 null。
  */
 internal actual fun decodeAnimatedFrames(bytes: ByteArray): AnimatedFrames? =
-    (decodeImageAuto(bytes, animatedOnly = true) as? DecodedImageResult.Animated)?.frames
+    (decodeSkiaImage(bytes, animatedOnly = true) as? DecodedImageResult.Animated)?.frames
+
+/** 动静图合流解码 (原生尺寸); 见 sharedUiMain 的 expect 注释。 */
+internal actual fun decodeImageAuto(bytes: ByteArray): DecodedImageResult? =
+    decodeSkiaImage(bytes, animatedOnly = false)

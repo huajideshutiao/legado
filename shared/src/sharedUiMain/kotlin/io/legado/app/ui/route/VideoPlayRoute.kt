@@ -5,7 +5,6 @@ import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -38,6 +37,7 @@ import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
+import io.legado.app.ui.root.RouteActiveEffect
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.RouteResults
@@ -104,10 +104,15 @@ fun VideoPlayRoute(
         screenModel.dispatch(VideoPlayUiEvent.ShowBook(book, route.chapterIndex, route.chapterPos))
     }
 
-    // 退出时保存真实进度 + 释放播放器 (对照 app onPause/onDestroy; onCleared 兜底)
-    DisposableEffect(screenModel) {
-        onDispose { screenModel.onExit() }
-    }
+    // 计时 + 落库上传 (对照 app onResume/onPause; onCleared 兜底释放播放器)。
+    // 走 RouteActiveEffect: 压栈 (目录/详情/换源) 与退到后台都要按 onPause 收尾,
+    // 否则阅读计时在别的页面继续累计
+    RouteActiveEffect(
+        entry = entry,
+        navigator = navigator,
+        onActive = { screenModel.onResume() },
+        onInactive = { screenModel.onPause() },
+    )
 
     // 订阅子页结果回填 (对照 Activity bookInfoResult/sourceEditResult)
     LaunchedEffect(Unit) {

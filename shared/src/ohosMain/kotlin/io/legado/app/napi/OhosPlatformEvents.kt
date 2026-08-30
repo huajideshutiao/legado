@@ -4,6 +4,7 @@ package io.legado.app.napi
 
 import io.legado.app.help.glide.progress.OnProgressListener
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
+import io.legado.app.ui.root.AppForegroundState
 import io.legado.app.utils.KS_JSON
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -31,72 +32,22 @@ import kotlinx.serialization.Serializable
 /**
  * 应用生命周期事件类型 (ArkTS EntryAbility.onForeground/onBackground → Kotlin)。
  *
- * 对照 iOS [io.legado.app.ui.book.read.IosReaderPlatformProvider] 的
- * UIApplicationWillEnterForegroundNotification / UIApplicationDidEnterBackgroundNotification:
- * - [ON_FOREGROUND]: app 回到前台, 阅读页消费方调 ReaderScreenModel.onResume()
- * - [ON_BACKGROUND]: app 退到后台, 阅读页消费方调 ReaderScreenModel.onPause()
+ * 对照 iOS IosBackgroundTasks 的 UIApplicationWillEnterForeground /
+ * DidEnterBackground 通知: [ON_FOREGROUND] 回到前台, [ON_BACKGROUND] 退到后台。
  */
 enum class OhosLifecycleEvent { ON_FOREGROUND, ON_BACKGROUND }
 
 /**
- * 应用生命周期事件注册表 (阅读页/provider 挂卸监听)。
+ * 应用生命周期事件入口: 只把前后台状态灌进 [AppForegroundState] (全局唯一真源)。
  *
- * # 用法 (对照 iOS onEnter/onExit 注册前后台通知观察者)
- * 进入阅读页 onEnter 时 [addListener], 退出 onExit/Dispose 时 [removeListener], 避免
- * 残留监听重复触发 (同一 listener 重复 add 幂等, remove 按引用删除)。
- *
- * # 多监听
- * 支持多个监听器 (可能同时存在漫画阅读页与文本阅读页实例, 各自注册/注销互不覆盖);
- * dispatch 取快照遍历, 锁外回调 (与 OhosNativeBridge.shutdownTtsIfListener 同思路,
- * 避免锁内回调经 AppLog/toast 反锁 [OhosNativeBridge.lock] 造成死锁)。
+ * 消费方订阅 [AppForegroundState.isForeground] (阅读/漫画/视频页经 RouteActiveEffect),
+ * 不再各自挂监听。
  */
 object OhosAppLifecycle {
 
-    /**
-     * 生命周期事件监听器。
-     *
-     * 命名与 ArkTS 事件对齐 (onForeground/onBackground); 阅读页消费时与
-     * [ReaderScreenModel.onResume]/[onPause] 的对应关系见 [OhosLifecycleEvent]。
-     */
-    interface Listener {
-        /** 应用回到前台。 */
-        fun onForeground()
-
-        /** 应用退到后台。 */
-        fun onBackground()
-    }
-
-    private val lock = SynchronizedObject()
-
-    /** 监听器表 (add 去重, remove 按引用删除)。 */
-    private val listeners = mutableListOf<Listener>()
-
-    /** 添加生命周期监听器 (同一实例重复添加为 no-op)。 */
-    fun addListener(listener: Listener) {
-        synchronized(lock) {
-            if (listener !in listeners) listeners.add(listener)
-        }
-    }
-
-    /** 移除生命周期监听器 (未注册时为 no-op)。 */
-    fun removeListener(listener: Listener) {
-        synchronized(lock) {
-            listeners.remove(listener)
-        }
-    }
-
-    /** 当前监听器快照 (AppLog 等调试用)。 */
-    fun listenerCount(): Int = synchronized(lock) { listeners.size }
-
-    /** 事件分发 (由 [OhosPlatformEventChannel] 调用; 锁外遍历快照)。 */
+    /** 事件分发 (由 [OhosPlatformEventChannel] 调用)。 */
     internal fun dispatch(event: OhosLifecycleEvent) {
-        val snapshot = synchronized(lock) { listeners.toList() }
-        for (listener in snapshot) {
-            when (event) {
-                OhosLifecycleEvent.ON_FOREGROUND -> listener.onForeground()
-                OhosLifecycleEvent.ON_BACKGROUND -> listener.onBackground()
-            }
-        }
+        AppForegroundState.set(event == OhosLifecycleEvent.ON_FOREGROUND)
     }
 }
 

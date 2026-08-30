@@ -559,8 +559,13 @@ class VideoPlayViewModelShared(
         }
     }
 
+    /** 进入活跃期 (对照原版 VideoPlayActivity.onResume): 开始阅读计时。 */
+    fun onResume() {
+        ReadTimeRecorder.start(ReadTimeRecorder.Source.VIDEO, curBook?.name ?: "")
+    }
+
     /**
-     * 退出时保存真实进度 (对照 app `VideoPlayActivity.onPause`:
+     * 离开活跃期 / 退出时保存真实进度 (对照 app `VideoPlayActivity.onPause`:
      * saveRead + uploadProgress)。
      *
      * 两步编排:

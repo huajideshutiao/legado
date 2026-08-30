@@ -87,6 +87,7 @@ import io.legado.app.ui.compose.platform.rememberCustomPageKeys
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
+import io.legado.app.ui.root.RouteActiveEffect
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.RouteResults
@@ -175,6 +176,15 @@ fun ReaderRoute(
             provider.onExit(screenModel)
         }
     }
+
+    // 原版 Activity onResume/onPause: 计时 + 落库上传 + 取消预下载。压栈 (目录/换源/详情)
+    // 与退到后台都算离开活跃期 —— 栈内页面全部留在组合中, 各端不再自挂平台生命周期监听
+    RouteActiveEffect(
+        entry = entry,
+        navigator = navigator,
+        onActive = { screenModel.onResume() },
+        onInactive = { screenModel.onPause() },
+    )
 
     // region 排版参数注入（对照原版 ContentTextView.onSizeChanged → ChapterProvider.upViewSize
     // + TextStyleProvider.upStyle）

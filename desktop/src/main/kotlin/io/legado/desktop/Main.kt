@@ -103,6 +103,7 @@ import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.root.AppForegroundState
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.LegadoApp
@@ -114,6 +115,7 @@ import io.legado.app.web.utils.registerDesktopWebAssetSource
 import io.legado.app.web.utils.registerDesktopWebStrings
 import io.legado.desktop.audio.DesktopAppUserModelId
 import io.legado.desktop.audio.registerDesktopAudioPlayProviders
+import io.legado.desktop.audio.registerDesktopSystemMediaControl
 import io.legado.desktop.config.registerDesktopConfig
 import io.legado.desktop.data.DesktopAppDbAccessor
 import io.legado.desktop.help.DesktopCrashHandler
@@ -633,6 +635,17 @@ private fun runDesktopApp() = application {
             windowHandle.window = window
             SingleInstanceGuard.bindWindow(window)
             DesktopTaskbarMedia.attach(window)
+            // app 前后台唯一置位点: 主窗口失活=其他应用在前台 (对应原版 Activity.onPause 语义;
+            // 进程内对话框/菜单同属本 ComposeWindow, 不触发失活)。阅读/漫画/视频页经
+            // RouteActiveEffect 消费, 各页不再自挂 AWTEventListener
+            val foregroundListener = object : java.awt.event.WindowAdapter() {
+                override fun windowActivated(e: java.awt.event.WindowEvent) =
+                    AppForegroundState.set(true)
+
+                override fun windowDeactivated(e: java.awt.event.WindowEvent) =
+                    AppForegroundState.set(false)
+            }
+            window.addWindowListener(foregroundListener)
             // Windows 原生控制条 (legado_wndchrome) 的挂载在 DesktopNativeChromeHost 里做 ——
             // 组合期窗口还没 realize (isDisplayable=false), 必须等 realize 后再挂;
             // 这里只保留 onDispose 的显式 detach 兜底 (native 侧收 WM_NCDESTROY 也会自解挂, 幂等)。
@@ -660,6 +673,7 @@ private fun runDesktopApp() = application {
                     p.putInt(PreferKey.windowY, window.y)
                 }
                 DesktopWindowChromeNative.detach()
+                window.removeWindowListener(foregroundListener)
                 windowHandle.window = null
                 SingleInstanceGuard.bindWindow(null)
                 AppKeyRouter.registerFullscreenEsc(null)
@@ -861,6 +875,8 @@ private suspend fun registerSecondaryProviders() {
         // 13. AudioPlay (依赖 AppDbProviders + BookHelpProviders + SourceHelpAccessors + WebBookProviders
         //     + JsEngines + OkHttpClientProviders, 必须最后注册)
         registerDesktopAudioPlayProviders()
+        // 13a. 系统媒体控制 (SMTC 卡片写入端 + 朗读宿主, 判定见 shared SystemMediaControl)
+        registerDesktopSystemMediaControl()
         // 13b. ChangeBookSource / BookshelfManage 平台 provider (对照 app 端 App.kt:183/187
         //      registerAndroidChangeBookSourcePlatform / registerAndroidBookshelfManagePlatform,
         //      须在 registerDesktopWebBookProviders 之后, 因换源/书架管理依赖 AppDbProviders /

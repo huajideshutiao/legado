@@ -23,6 +23,7 @@ import io.legado.app.help.log.registerNativeAppLogHost
 import io.legado.app.help.http.registerDefaultIosCookieStoreProvider
 import io.legado.app.help.http.registerNativeHttpProvider
 import io.legado.app.help.http.registerSharedCookieJarBridge
+import io.legado.app.help.media.registerIosMediaNotificationController
 import io.legado.app.help.notification.registerIosNotificationProgress
 import io.legado.app.help.registerNativeDefaultDataResourceProvider
 import io.legado.app.help.registerNativeDirectLinkUploadProviders
@@ -233,6 +234,8 @@ fun registerIosProviders() {
     registerIosServiceLauncher()
     // 音频播控 Commander (IosAudioPlayCommander, 与 ServiceLauncher 同级的播放编排入口)
     registerIosAudioPlayCommanders()
+    // 系统媒体控制 (NowPlaying / RemoteCommandCenter / 锁屏控制卡片)
+    registerIosMediaNotificationController()
     // 换源平台 provider (commonMain ChangeBookSourceViewModelShared 调用, 须在 WebBookProviders 之后)
     registerNativeChangeBookSourcePlatform()
     // 书架管理平台 provider (commonMain BookshelfManageViewModelShared 调用, 须在 WebBookProviders 之后)

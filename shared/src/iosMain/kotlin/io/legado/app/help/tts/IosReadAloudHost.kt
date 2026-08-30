@@ -6,7 +6,9 @@ import io.legado.app.constant.Status
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.media.ReadAloudRemoteHost
 import io.legado.app.help.media.SleepTimer
+import io.legado.app.help.media.SystemMediaControl
 import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.service.ReadAloudChapterNavigator
 import io.legado.app.service.ReadAloudControllerShared
@@ -42,7 +44,7 @@ import kotlinx.coroutines.launch
  *
  * 差异: 无 Windows SMTC 媒体卡同步 (iOS 无等价物), 无进程退出钩子。
  */
-object IosReadAloudHost {
+object IosReadAloudHost : ReadAloudRemoteHost {
 
     /** 原版 AppConfig.defaultSpeechRate。 */
     private const val DEFAULT_SPEECH_RATE = 5
@@ -82,12 +84,12 @@ object IosReadAloudHost {
     val controller: ReadAloudControllerShared by lazy { createController() }
 
     /** 对应 app 端 `BaseReadAloudService.isRun`。 */
-    val isRun: Boolean
+    override val isRun: Boolean
         get() = controllerRef?.state?.value
             .let { it == ReadAloudState.PLAYING || it == ReadAloudState.PAUSED }
 
     /** 对应 app 端 `BaseReadAloudService.pause`。 */
-    val isPause: Boolean get() = controllerRef?.state?.value != ReadAloudState.PLAYING
+    override val isPause: Boolean get() = controllerRef?.state?.value != ReadAloudState.PLAYING
 
     /**
      * 开始 / 准备朗读 (对照 `ReadAloud.play(context, play, pageIndex, startPos)`)。
@@ -117,12 +119,12 @@ object IosReadAloudHost {
     }
 
     /** 暂停朗读 (对照 `ReadAloud.pause`)。 */
-    fun pause() {
+    override fun pause() {
         controllerRef?.pause()
     }
 
     /** 继续朗读; 暂停期间翻过页时按新位置重开 (对照 `ReadAloud.resume`)。 */
-    fun resume() {
+    override fun resume() {
         val readBook = ActiveReadBookRegistry.current
         if (restartOnResume && readBook != null) {
             startAt(readBook.durChapterIndexValue, readBook.durChapterPosValue)
@@ -132,7 +134,7 @@ object IosReadAloudHost {
     }
 
     /** 停止朗读并清理 (对照 `ReadAloud.stop`)。 */
-    fun stop() {
+    override fun stop() {
         positionWatchJob?.cancel()
         positionWatchJob = null
         restartOnResume = false
@@ -153,12 +155,21 @@ object IosReadAloudHost {
     }
 
     /** 上一句 / 下一句 (对照 `ReadAloud.prevParagraph/nextParagraph`)。 */
-    fun prevParagraph() {
+    override fun prevParagraph() {
         controllerRef?.prevParagraph()
     }
 
-    fun nextParagraph() {
+    override fun nextParagraph() {
         controllerRef?.nextParagraph()
+    }
+
+    /** 上一章 / 下一章 (对照 `ReadAloud.prevChapter/nextChapter`, 媒体键开了"按章切换"时走这里)。 */
+    override fun prevChapter() {
+        controllerRef?.prevChapter()
+    }
+
+    override fun nextChapter() {
+        controllerRef?.nextChapter()
     }
 
     /** 定时关闭剩余分钟 (对照 `BaseReadAloudService.timeMinute`)。 */
@@ -300,16 +311,19 @@ object IosReadAloudHost {
         when (state) {
             ReadAloudState.PLAYING -> {
                 ReadBookEvents.postAloudState(Status.PLAY)
+                SystemMediaControl.syncReadAloud(isPlaying = true)
             }
 
             ReadAloudState.PAUSED -> {
                 ReadBookEvents.postAloudState(Status.PAUSE)
                 removeAloudSpan()
+                SystemMediaControl.syncReadAloud(isPlaying = false)
             }
 
             ReadAloudState.STOPPED, ReadAloudState.COMPLETED, ReadAloudState.ERROR -> {
                 ReadBookEvents.postAloudState(Status.STOP)
                 removeAloudSpan()
+                SystemMediaControl.releaseReadAloud()
             }
 
             ReadAloudState.IDLE -> Unit

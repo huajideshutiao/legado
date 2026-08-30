@@ -26,6 +26,7 @@ import io.legado.app.help.http.registerOhosBackstageWebView
 import io.legado.app.help.http.registerNativeHttpProvider
 import io.legado.app.help.http.registerSharedCookieJarBridge
 import io.legado.app.help.image.registerReaderImageResolver
+import io.legado.app.help.media.registerOhosMediaNotificationController
 import io.legado.app.help.notification.registerOhosNotificationProgress
 import io.legado.app.help.registerNativeDefaultDataResourceProvider
 import io.legado.app.help.registerNativeDirectLinkUploadProviders
@@ -289,6 +290,8 @@ fun registerOhosProviders() {
     registerNativeVerificationUiProvider()
     // 音频播控 Commander (OhosAudioPlayCommander, 与 ServiceLauncher 同级的播放编排入口)
     registerOhosAudioPlayCommanders()
+    // 系统媒体控制 (AVSession / 播控中心 / 锁屏控制卡片)
+    registerOhosMediaNotificationController()
     // 换源平台 provider (commonMain ChangeBookSourceViewModelShared 调用, 须在 WebBookProviders 之后)
     registerNativeChangeBookSourcePlatform()
     // 书架管理平台 provider (commonMain BookshelfManageViewModelShared 调用, 须在 WebBookProviders 之后)

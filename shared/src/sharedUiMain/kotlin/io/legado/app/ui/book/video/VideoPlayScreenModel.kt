@@ -9,6 +9,7 @@ import io.legado.app.data.entities.VideoResolution
 import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.showSourceLogin
+import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.screenModelScope
@@ -142,7 +143,7 @@ class VideoPlayScreenModel : ScreenModel {
     private val _gestureText = MutableStateFlow<String?>(null)
     val gestureText: StateFlow<String?> = _gestureText.asStateFlow()
 
-    /** onExit 已执行标记: 防 DisposableEffect.onDispose 与 onCleared 重复保存 (释放后位置归零) */
+    /** onExit 已执行标记: 一次活跃期只保存一次 (释放后位置归零), [onResume] 重开 */
     private var exited = false
 
     /** 标题净化计算任务 (章节列表变更时重算, 旧任务取消) */
@@ -489,12 +490,20 @@ class VideoPlayScreenModel : ScreenModel {
         }
     }
 
+    /** 进入活跃期 (对照原版 onResume): 开始计时; 重开 [exited] 让本次活跃期结束时能再保存。 */
+    fun onResume() {
+        exited = false
+        shared.onResume()
+    }
+
+    /** 离开活跃期 (对照原版 onPause: 结束计时 + 落库 + 上传), 走 [onExit] 保证一次活跃期只保存一次。 */
+    fun onPause() = onExit()
+
     /**
-     * 退出时保存真实进度 + 释放播放器 (对照 app `VideoPlayActivity.onPause` + `onDestroy`)。
+     * 保存真实进度 (对照 app `VideoPlayActivity.onPause` + `onDestroy`)。
      *
-     * 由宿主 [io.legado.app.ui.route.VideoPlayRoute] DisposableEffect.onDispose 调用,
-     * [onCleared] 兜底调用 (防 DisposableEffect 未触发)。先取播放器真实位置保存,
-     * 再释放 controller (位置读取后才有意义)。
+     * 由宿主 [io.legado.app.ui.route.VideoPlayRoute] 的活跃期回调调用, [onCleared] 兜底
+     * (防回调未触发)。先取播放器真实位置保存, 再释放 controller (位置读取后才有意义)。
      */
     fun onExit() {
         if (exited) return
@@ -513,6 +522,8 @@ class VideoPlayScreenModel : ScreenModel {
     }
 
     override fun onCleared() {
+        // 对照原版 VideoPlayActivity.onDestroy: 立即结束阅读计时 (不等 end 的延迟结算)
+        ReadTimeRecorder.endImmediately(ReadTimeRecorder.Source.VIDEO)
         // 先保存进度 (controller 释放前取真实位置; onExit 已执行则跳过)
         runCatching { onExit() }
         // 再释放播放器 (对照 app onDestroy: player.release)

@@ -40,11 +40,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import platform.Foundation.NSNotificationCenter
-import platform.darwin.NSObjectProtocol
-import platform.Foundation.NSOperationQueue
-import platform.UIKit.UIApplicationDidEnterBackgroundNotification
-import platform.UIKit.UIApplicationWillEnterForegroundNotification
 import platform.UIKit.UIDevice
 import platform.UIKit.UIImage
 import platform.UIKit.UIImageWriteToSavedPhotosAlbum
@@ -67,27 +62,8 @@ object IosReaderPlatformProvider : ReaderPlatformProvider {
     /** 查词请求 (选中词 → 暂存, 由 MainViewController 宿主渲染 DictDialogHost; 对照原版 menu_dict → DictDialog)。 */
     internal var dictWord by mutableStateOf<String?>(null)
 
-    /** 前后台通知 observer tokens (阅读页激活期间注册, 对照 app 端 Activity LifecycleObserver)。 */
-    private val lifecycleObserverTokens = mutableListOf<NSObjectProtocol>()
-
     /** 图片长按动作协程 scope (Main: UIKit 操作/toast 需主线程, 网络下载在 loadBytes 内部切 IO)。 */
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-
-    /** 阅读页进入: 注册前后台通知 → shared ScreenModel (对照 app 端 LifecycleObserver 桥:
-     *  进后台 onPause 计时结束+进度落库上传+取消预下载, 回前台 onResume 开始计时+web 进度恢复)。 */
-    override fun onEnter(screenModel: ReaderScreenModel) {
-        val center = NSNotificationCenter.defaultCenter
-        lifecycleObserverTokens += center.addObserverForName(
-            UIApplicationDidEnterBackgroundNotification,
-            `object` = null,
-            queue = NSOperationQueue.mainQueue,
-        ) { screenModel.onPause() }
-        lifecycleObserverTokens += center.addObserverForName(
-            UIApplicationWillEnterForegroundNotification,
-            `object` = null,
-            queue = NSOperationQueue.mainQueue,
-        ) { screenModel.onResume() }
-    }
 
     override fun createMenuController(
         navigator: AppNavigator,
@@ -175,8 +151,6 @@ object IosReaderPlatformProvider : ReaderPlatformProvider {
     override fun onExit(screenModel: ReaderScreenModel) {
         IosTextActionMenu.dismiss()
         IosReadAloudHost.stop()
-        lifecycleObserverTokens.forEach { NSNotificationCenter.defaultCenter.removeObserver(it) }
-        lifecycleObserverTokens.clear()
     }
 
     /**

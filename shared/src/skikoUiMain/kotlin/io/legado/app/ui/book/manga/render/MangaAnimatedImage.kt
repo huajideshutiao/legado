@@ -24,21 +24,64 @@ import io.legado.app.help.image.AnimatedFrames
 import io.legado.app.help.image.DecodedBitmapCache
 import io.legado.app.help.image.DecodedImageResult
 import io.legado.app.help.image.ImageBitmapLoader
-import io.legado.app.help.image.MangaImageBytesLoader
 import io.legado.app.help.image.decodeImageAuto
 import io.legado.app.ui.book.manga.LocalMangaGifSlot
+import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.entities.MangaCellState
+import io.legado.app.ui.book.manga.mangaColorFilter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 private sealed interface MangaSkiaImageState {
     data object Loading : MangaSkiaImageState
     data class Static(val bitmap: ImageBitmap) : MangaSkiaImageState
     data class Animated(val frames: AnimatedFrames) : MangaSkiaImageState
     data object Error : MangaSkiaImageState
+}
+
+/** 漫画页缓存 key (仅本地书内嵌图用; 网络页的 key 由平台图片加载器维护)。 */
+internal fun mangaCacheKey(url: String, source: BookSource?): String =
+    DecodedBitmapCache.cacheKey(url, source?.bookSourceUrl, isCover = false)
+
+private fun DecodedImageResult.toState(): MangaSkiaImageState = when (this) {
+    is DecodedImageResult.Static -> MangaSkiaImageState.Static(bitmap)
+    is DecodedImageResult.Animated -> MangaSkiaImageState.Animated(frames)
+}
+
+/**
+ * 本地书内嵌图 (cbz:// / file:// / 绝对路径): 网络加载器的 fetcher 只认网络页, 故直接
+ * 取字节解码, 结果进 [DecodedBitmapCache]。
+ */
+private suspend fun loadLocalMangaPage(
+    url: String,
+    book: Book,
+    source: BookSource?,
+): DecodedImageResult? {
+    val key = mangaCacheKey(url, source)
+    DecodedBitmapCache.get(key)?.let { return DecodedImageResult.Static(it) }
+    val bytes = withContext(IoDispatcher) {
+        runCatching { ImageBitmapLoader().loadBytes(url, book, source) }.getOrNull()
+    }
+    if (bytes == null || bytes.isEmpty()) return null
+    val decoded = withContext(Dispatchers.Default) { decodeImageAuto(bytes) } ?: return null
+    if (decoded is DecodedImageResult.Static) DecodedBitmapCache.put(key, decoded.bitmap)
+    return decoded
+}
+
+/**
+ * 下载进度文本 (Skia 三端共用; 对照原版 MangaPageImageView.onProgress → 转圈环心百分比)。
+ *
+ * 有总长按百分比, 没有 (chunked / 服务端不给 Content-Length) 就按已下载量。
+ */
+fun mangaProgressText(bytesRead: Long, totalBytes: Long): String {
+    if (totalBytes > 0) return "${(bytesRead * 100 / totalBytes).coerceIn(0, 100)}%"
+    val kb = bytesRead / 1024.0
+    if (kb < 1024) return "${kb.toInt()}KB"
+    return "${(kb / 1024.0 * 10).roundToInt() / 10.0}MB"
 }
 
 /** Skia 三端共用的漫画动图控制器，行为对齐原版 GIF 自动翻页。 */
@@ -132,6 +175,9 @@ private fun MangaAnimatedImage(
 /**
  * desktop/iOS/鸿蒙漫画图片槽：用各端都带有的 Skia Codec 支持 GIF 与动画 WebP，
  * 并接入“播完一轮翻页”。静态图也走同一份字节解码，避免 ImageIO/Coil 变体差异。
+ *
+ * 三端 `Platform.Image` 的差异只剩"订阅哪个下载进度注册表"，调色/渲染全在此处，
+ * 不要再在各端复制一份 [mangaColorFilter] + 本函数的调用。
  */
 @Composable
 fun MangaSkiaImage(
@@ -140,10 +186,14 @@ fun MangaSkiaImage(
     horizontal: Boolean,
     book: Book?,
     source: BookSource?,
-    colorFilter: ColorFilter?,
+    colorFilterConfig: MangaColorFilterConfig,
+    grayEnabled: Boolean,
     onLoadState: (MangaCellState) -> Unit,
     retryTick: Int,
 ) {
+    val colorFilter = remember(colorFilterConfig, grayEnabled) {
+        mangaColorFilter(colorFilterConfig, grayEnabled)
+    }
     val gifSlot = LocalMangaGifSlot.current
     val renderer = remember(url) { MangaAnimatedImageRenderer() }
     val rendererGetter: () -> MangaRenderState.MangaPageRenderer? = remember(renderer) {
@@ -160,51 +210,32 @@ fun MangaSkiaImage(
         }
     }
 
-    val cacheKey = remember(url, source?.bookSourceUrl) {
-        DecodedBitmapCache.cacheKey(url, source?.bookSourceUrl, isCover = false)
-    }
-
     val imageState by produceState<MangaSkiaImageState>(
-        initialValue = DecodedBitmapCache.get(cacheKey)?.let { MangaSkiaImageState.Static(it) }
-            ?: MangaSkiaImageState.Loading,
+        // 同步窥视缓存: 预载过的页在组合首帧就出图, 不闪一帧转圈
+        initialValue = peekMangaPage(url, source)?.toState() ?: MangaSkiaImageState.Loading,
         url,
         retryTick,
     ) {
-        val cached = DecodedBitmapCache.get(cacheKey)
-        if (cached != null) {
-            value = MangaSkiaImageState.Static(cached)
-            return@produceState
+        val skipCache = retryTick > 0
+        if (!skipCache) {
+            peekMangaPage(url, source)?.let {
+                value = it.toState()
+                return@produceState
+            }
         }
         value = MangaSkiaImageState.Loading
         if (book == null) {
             value = MangaSkiaImageState.Error
             return@produceState
         }
-        val bytes = withContext(IoDispatcher) {
-            runCatching {
-                if (url.startsWith("http://") || url.startsWith("https://")) {
-                    MangaImageBytesLoader.load(url, book, source, currentCoroutineContext())
-                } else {
-                    ImageBitmapLoader().loadBytes(url, book, source)
-                }
-            }.getOrNull()
+        val decoded = if (url.startsWith("http://") || url.startsWith("https://")) {
+            // 网络页: 内存/磁盘缓存、请求去重、预载命中全交给平台图片加载器
+            loadMangaPage(url, book, source, skipMemoryCache = skipCache)
+        } else {
+            // 本地书内嵌图 (cbz:// / file:// / 绝对路径): 不经网络加载器, 直接取字节解码
+            loadLocalMangaPage(url, book, source)
         }
-        if (bytes == null || bytes.isEmpty()) {
-            value = MangaSkiaImageState.Error
-            return@produceState
-        }
-
-        value = withContext(Dispatchers.Default) {
-            when (val result = decodeImageAuto(bytes)) {
-                is DecodedImageResult.Animated -> MangaSkiaImageState.Animated(result.frames)
-                is DecodedImageResult.Static -> {
-                    DecodedBitmapCache.put(cacheKey, result.bitmap)
-                    MangaSkiaImageState.Static(result.bitmap)
-                }
-
-                null -> MangaSkiaImageState.Error
-            }
-        }
+        value = decoded?.toState() ?: MangaSkiaImageState.Error
     }
 
     // 同步上报最新加载状态给单元格 (SideEffect 保证每次重组均与当前 imageState 同步, 避免 LaunchedEffect 滞后 1 帧引发转圈闪现)

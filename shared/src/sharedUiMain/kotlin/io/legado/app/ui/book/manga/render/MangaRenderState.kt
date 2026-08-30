@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.util.lerp
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.entities.BaseMangaPage
 import io.legado.app.ui.book.manga.entities.MangaPage
@@ -442,7 +443,11 @@ class MangaRenderState {
         for (pos in range) {
             if (pos in preloadedRange) continue
             val item = snapshot.getOrNull(pos) as? MangaPage ?: continue
-            val job = scope?.launch { exec(item.mImageUrl, book, bookSource) } ?: return
+            // 必须切 IO: [scope] 来自 rememberCoroutineScope, 上下文是 UI 调度器, 而预载执行体
+            // 里是阻塞的整体读盘/socket 读取/解密 JS/写盘 (desktop/iOS/鸿蒙都直连字节链路),
+            // 留在 UI 线程上跑 = 预载几张图就卡几张图的时间
+            val job = scope?.launch(IoDispatcher) { exec(item.mImageUrl, book, bookSource) }
+                ?: return
             preloadTargets.addLast(job)
             // 队列长度对齐 maxPreload: 滑出窗口的旧预载请求取消
             while (preloadTargets.size > preloadCount) {

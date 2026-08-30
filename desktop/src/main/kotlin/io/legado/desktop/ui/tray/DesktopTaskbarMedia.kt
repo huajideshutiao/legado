@@ -15,8 +15,9 @@ import com.sun.jna.platform.win32.WinUser
 import com.sun.jna.ptr.PointerByReference
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.Status
+import io.legado.app.help.media.RemoteMediaCommand
+import io.legado.app.help.media.SystemMediaControl
 import io.legado.app.model.AudioPlayCommanders
-import io.legado.app.model.AudioPlayShared
 import io.legado.app.service.ReadAloudControllerShared.ReadAloudState
 import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.desktop.help.win.ComCtl32
@@ -423,82 +424,33 @@ internal object DesktopTaskbarMedia {
 
     // ==================== 按钮点击 / 媒体键 (动作对照原版) ====================
 
-    /** 缩略图按钮点击 (WM_COMMAND): 对照原版通知 action 的行为。 */
+    /** 缩略图按钮点击 (WM_COMMAND) → 共享播控指令。 */
     private fun onThumbButton(id: Int) {
-        val audioActive = AudioPlayCommanders.getOrNull()?.isServiceRunning == true
-        val aloud = DesktopMediaTray.readAloud
-        val aloudActive = aloud?.controller?.state?.value?.let {
-            it == ReadAloudState.PLAYING || it == ReadAloudState.PAUSED
-        } ?: false
-        runCommand {
-            when (id) {
-                BTN_PREV -> if (audioActive) AudioPlayShared.prev()
-                else if (aloudActive) aloud.controller.prevParagraph()
-
-                BTN_TOGGLE -> if (audioActive) {
-                    // 对照原版通知 action: PLAY→pause / PAUSE→resume / 其他→loadOrUpPlayUrl
-                    when (AudioPlayShared.status) {
-                        Status.PLAY -> AudioPlayShared.pause()
-                        Status.PAUSE -> AudioPlayShared.resume()
-                        else -> AudioPlayShared.loadOrUpPlayUrl()
-                    }
-                } else if (aloudActive) {
-                    val c = aloud.controller
-                    if (c.state.value == ReadAloudState.PAUSED) c.resume() else c.pause()
-                }
-
-                BTN_NEXT -> if (audioActive) AudioPlayShared.next()
-                else if (aloudActive) aloud.controller.nextParagraph()
-
-                BTN_STOP -> if (audioActive) AudioPlayShared.stop()
-                else if (aloudActive) aloud.controller.stop()
-            }
+        val command = when (id) {
+            BTN_PREV -> RemoteMediaCommand.Previous
+            BTN_TOGGLE -> RemoteMediaCommand.TogglePlayPause
+            BTN_NEXT -> RemoteMediaCommand.Next
+            BTN_STOP -> RemoteMediaCommand.Stop
+            else -> return
         }
+        runCommand { SystemMediaControl.onRemoteCommand(command) }
     }
 
     /**
-     * 全局媒体键 (WM_HOTKEY): 对照原版 MediaButtonReceiver.handleIntent 的分发链。
-     * 优先级: prev/next/stop 音频优先; 播放/暂停键朗读优先且与音频成对切换 (原版 readAloud() 链)。
+     * 全局媒体键 (WM_HOTKEY) → 共享播控指令。
+     *
+     * 归属判定与优先级见 [SystemMediaControl.onRemoteCommand] (对照原版
+     * `MediaButtonReceiver.handleIntent`: 播放/暂停朗读优先并连带切换有声书, 切换/停止按卡片归属)。
      */
     private fun onMediaKey(vk: Int) {
-        val audioActive = AudioPlayCommanders.getOrNull()?.isServiceRunning == true
-        val aloud = DesktopMediaTray.readAloud
-        val aloudActive = aloud?.controller?.state?.value?.let {
-            it == ReadAloudState.PLAYING || it == ReadAloudState.PAUSED
-        } ?: false
-        runCommand {
-            when (vk) {
-                VK_MEDIA_PLAY_PAUSE -> {
-                    // 原版: 朗读在跑 → 成对切换 (ReadAloud.pause + AudioPlay.pause / 两者 resume);
-                    // 否则音频在跑 → 切音频; 再否则不处理 (原版还走前台 Activity/兜底朗读, 桌面端无)
-                    if (aloudActive) {
-                        val c = aloud.controller
-                        if (c.state.value == ReadAloudState.PAUSED) {
-                            c.resume()
-                            if (audioActive) AudioPlayShared.resume()
-                        } else {
-                            c.pause()
-                            if (audioActive) AudioPlayShared.pause()
-                        }
-                    } else if (audioActive) {
-                        when (AudioPlayShared.status) {
-                            Status.PLAY -> AudioPlayShared.pause()
-                            Status.PAUSE -> AudioPlayShared.resume()
-                            else -> AudioPlayShared.loadOrUpPlayUrl()
-                        }
-                    }
-                }
-
-                VK_MEDIA_NEXT_TRACK -> if (audioActive) AudioPlayShared.next()
-                else if (aloudActive) aloud.controller.nextParagraph()
-
-                VK_MEDIA_PREV_TRACK -> if (audioActive) AudioPlayShared.prev()
-                else if (aloudActive) aloud.controller.prevParagraph()
-
-                VK_MEDIA_STOP -> if (audioActive) AudioPlayShared.stop()
-                else if (aloudActive) aloud.controller.stop()
-            }
+        val command = when (vk) {
+            VK_MEDIA_PLAY_PAUSE -> RemoteMediaCommand.TogglePlayPause
+            VK_MEDIA_NEXT_TRACK -> RemoteMediaCommand.Next
+            VK_MEDIA_PREV_TRACK -> RemoteMediaCommand.Previous
+            VK_MEDIA_STOP -> RemoteMediaCommand.Stop
+            else -> return
         }
+        runCommand { SystemMediaControl.onRemoteCommand(command) }
     }
 
     /** 命令切出消息线程执行 (播放命令内部会落库/起协程, 不该压在窗口过程/消息循环上)。 */

@@ -2,6 +2,8 @@ package io.legado.app.help.image
 
 import androidx.compose.ui.graphics.ImageBitmap
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.image.DecodedBitmapCache.clear
+import io.legado.app.help.image.DecodedBitmapCache.put
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 

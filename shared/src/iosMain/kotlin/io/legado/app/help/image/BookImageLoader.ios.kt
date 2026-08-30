@@ -139,6 +139,8 @@ private fun buildIosBookImageLoader(): ImageLoader {
             // header 下载 → ImageUtils.decode 解密), 与 android/desktop 同源
             add(MangaModelKeyer(), MangaModel::class)
             add(MangaModelFetcher.Factory())
+            // 漫画页解码: 与 desktop 同源 (MangaPageCoil.kt), 预载与翻页共用同一条内存缓存
+            add(MangaPageDecoder.Factory())
             add(
                 CoverDecodeFetcher.Factory(
                     SourceOriginHeaderFetcher.Factory(

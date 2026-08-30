@@ -2,7 +2,6 @@ package io.legado.app.ui.book.manage
 
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.BookHelp
-import io.legado.app.help.i18n.androidAppString
 import io.legado.app.model.fileBook.FileBook
 
 /**
@@ -13,24 +12,13 @@ import io.legado.app.model.fileBook.FileBook
  * 委托 [BookHelp] / [FileBook] / [appCtx] 这些重 Android 依赖 (留 app 端)。
  *
  * - [migrateBook]: 用接口默认实现 (下沉后的 `Book.migrateTo`), 不再自写。
- * - [clearCache]: 委托 [BookHelp.clearCache]。
  * - [getChapterFiles]: 委托 [BookHelp.getChapterFiles]。
  * - [getCacheSize]: 用接口默认实现 (返回 0), 与原行为一致 (原 app 端未统计缓存大小)。
  * - [deleteLocalBook]: 委托 [FileBook.deleteBook]。
- * - [clearCacheSuccessMessage]: `androidAppString("clear_cache_success")`。
- *
- * 注: 原 inner class 通过 `context` (BaseViewModel 提供) 调
- * `androidAppString("clear_cache_success")`; 顶级类无外类 context, 改用
- * [androidAppString] (与 AppStringsAndroid 同步通道, 启动期已暖缓存), 与原行为等价。
  */
 class AndroidBookshelfManagePlatform : BookshelfManagePlatform {
 
     // migrateBook / getCacheSize 用接口默认实现, 不再 override
-
-    /** 委托 [BookHelp.clearCache], 清除书籍章节缓存文件。 */
-    override fun clearCache(book: Book) {
-        BookHelp.clearCache(book)
-    }
 
     /** 委托 [BookHelp.getChapterFiles], 列出已缓存章节文件名集合。 */
     override fun getChapterFiles(book: Book): HashSet<String> {
@@ -41,10 +29,6 @@ class AndroidBookshelfManagePlatform : BookshelfManagePlatform {
     override fun deleteLocalBook(book: Book, deleteOriginal: Boolean) {
         FileBook.deleteBook(book, deleteOriginal)
     }
-
-    /** 清缓存成功提示文案 (对照原 `androidAppString("clear_cache_success")`)。 */
-    override val clearCacheSuccessMessage: String
-        get() = androidAppString("clear_cache_success")
 }
 
 /**

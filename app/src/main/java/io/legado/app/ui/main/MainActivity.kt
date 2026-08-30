@@ -96,6 +96,7 @@ import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.reader.ImageActionMenuEntry
 import io.legado.app.ui.reader.ImageActionMenuRequest
 import io.legado.app.ui.reader.ReaderImageActionMenu
+import io.legado.app.ui.root.AppForegroundState
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
@@ -773,6 +774,18 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
         super.onStart()
         viewModel.isActivityVisible = true
         viewModel.updateUpdateNotification()
+    }
+
+    // app 前后台唯一置位点 (单 Activity 宿主): 阅读/漫画/视频页经 RouteActiveEffect 消费,
+    // 各页不再自挂生命周期监听 (对照原版各 Activity 的 onResume/onPause)
+    override fun onResume() {
+        super.onResume()
+        AppForegroundState.set(true)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        AppForegroundState.set(false)
     }
 
     override fun onStop() {

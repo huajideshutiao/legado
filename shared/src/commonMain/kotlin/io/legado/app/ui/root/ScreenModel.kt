@@ -6,6 +6,9 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlin.coroutines.CoroutineContext
 
 /** 共享页面状态持有者；不允许持有 Activity、View 或平台控制器。 */
@@ -113,4 +116,25 @@ class ScreenModelStore {
     }
 
     val size: Int get() = models.size
+}
+
+/**
+ * 应用前后台状态 (各端宿主在自己的生命周期入口置位, 全局唯一真源)。
+ *
+ * 阅读/漫画/视频页据此暂停计时、落库、取消预下载 (对照原版 Activity onPause/onResume);
+ * 消费方不要自己再挂平台生命周期监听, 用 sharedUiMain 的 RouteActiveEffect。
+ *
+ * 置位点: Android MainActivity 生命周期、iOS UIApplication 前后台通知、
+ * 鸿蒙 OhosAppLifecycle.dispatch、桌面主窗口 WINDOW_ACTIVATED/DEACTIVATED。
+ */
+object AppForegroundState {
+
+    private val _isForeground = MutableStateFlow(true)
+
+    /** true = app 在前台可见。 */
+    val isForeground: StateFlow<Boolean> = _isForeground.asStateFlow()
+
+    fun set(foreground: Boolean) {
+        _isForeground.value = foreground
+    }
 }

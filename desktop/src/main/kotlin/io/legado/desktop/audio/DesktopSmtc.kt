@@ -7,12 +7,12 @@ import com.sun.jna.Platform
 import com.sun.jna.Pointer
 import com.sun.jna.WString
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.Status
-import io.legado.app.model.AudioPlayCommanders
-import io.legado.app.model.AudioPlayShared
-import io.legado.app.service.ReadAloudControllerShared.ReadAloudState
+import io.legado.app.help.media.NowPlayingInfo
+import io.legado.app.help.media.NowPlayingSink
+import io.legado.app.help.media.RemoteMediaCommand
+import io.legado.app.help.media.SystemMediaControl
 import io.legado.desktop.audio.DesktopSmtc.init
-import io.legado.desktop.ui.tray.DesktopMediaTray
+import io.legado.desktop.help.tts.DesktopReadAloudHost
 import io.legado.desktop.ui.tray.DesktopTaskbarMedia
 import java.io.File
 import java.util.concurrent.Executors
@@ -28,10 +28,12 @@ import kotlin.concurrent.Volatile
  * 会话必须绑主窗口 HWND: 绑到无任务栏按钮的隐藏窗口时, 悬停任务栏会让消费方
  * (Taskbar.View.dll) 抛 stowed exception 拖崩 explorer (A/B 实证)。
  *
- * 本文件只保留: 状态映射 (SmtcState → C 参数) + JNA Library 接口 + 回调命令分发。
+ * 本文件只保留: 状态映射 ([NowPlayingInfo] → C 参数) + JNA Library 接口 + 回调命令分发。
  * 线程模型: 单线程 executor (COM 线程亲和), 回调经 C 侧函数指针回到 JVM 后投递 executor。
+ *
+ * 卡片取值与"谁是媒体主"的判定都在 [SystemMediaControl], 本对象只是它的平台写入端。
  */
-internal object DesktopSmtc {
+internal object DesktopSmtc : NowPlayingSink {
 
     /** SMTC 总开关。 */
     private const val ENABLE_SMTC = true
@@ -134,7 +136,7 @@ internal object DesktopSmtc {
     }
 
     /** 推送播放状态/元数据/进度/封面到系统媒体卡 (自动补一次 [init]; 失败熔断)。 */
-    fun update(state: SmtcState) {
+    override fun sync(info: NowPlayingInfo) {
         if (!Platform.isWindows()) return
         if (!ENABLE_SMTC) return
         executor.execute {
@@ -159,17 +161,18 @@ internal object DesktopSmtc {
                 initialized = true
             }
             runCatching {
+                // 朗读无时长/倍速概念: C 桥按 dur<=0 不推 timeline、rate<=0 不写 PlaybackRate
                 lib.lgsmtc_update(
-                    WString(state.title),
-                    WString(state.artist),
-                    WString(state.albumArtist),
-                    WString(state.coverUrl ?: ""),
-                    if (state.isPlaying) 1 else 0,
-                    if (state.isPaused) 1 else 0,
-                    if (state.prevNextEnabled) 1 else 0,
-                    state.positionMs,
-                    state.durationMs,
-                    state.playbackRate.toDouble(),
+                    WString(info.title),
+                    WString(info.bookName),
+                    WString(info.author),
+                    WString(info.coverUrl ?: ""),
+                    if (info.isPlaying) 1 else 0,
+                    if (info.isPaused) 1 else 0,
+                    1,
+                    if (info.isAudioBook) info.positionMs else -1L,
+                    if (info.isAudioBook) info.durationMs else -1L,
+                    if (info.isAudioBook) info.playbackRate.toDouble() else 0.0,
                 )
             }.onFailure {
                 AppLog.put("SMTC 状态更新失败", it)
@@ -177,7 +180,15 @@ internal object DesktopSmtc {
         }
     }
 
-    /** 摘除事件回调 + 释放 (幂等; 下次 init/update 会重新初始化)。 */
+    /**
+     * 音频焦点: Windows 由系统混音, 应用侧不申请也不归还 (app 端 `AudioFocusController`
+     * 在桌面端无等价物)。
+     */
+    override fun setAudioFocus(active: Boolean, exclusive: Boolean) = Unit
+
+    override fun clear() = release()
+
+    /** 摘除事件回调 + 释放 (幂等; 下次 init/sync 会重新初始化)。 */
     fun release() {
         if (!Platform.isWindows()) return
         if (!ENABLE_SMTC) return
@@ -224,78 +235,25 @@ internal object DesktopSmtc {
         return null
     }
 
-    // ==================== 命令分发 (对照托盘 DesktopTaskbarMedia 的优先级: 音频优先, 否则朗读) ====================
+    // ==================== 命令分发 ====================
 
+    /** C 桥按钮 → 共享播控指令 (归属判定与优先级见 [SystemMediaControl.onRemoteCommand])。 */
     private fun dispatchButton(button: Int, arg: Long) {
-        // 会话寿命判据 (对照原版 MediaButtonReceiver 读 AudioPlayService.isRun):
-        // 切章节 stopPlay → STOP 拉流窗口里 status 会眨眼, 误路由到朗读分支
-        val audioActive = AudioPlayCommanders.getOrNull()?.isServiceRunning == true
-        val aloud = DesktopMediaTray.readAloud
-        val aloudActive = aloud?.controller?.state?.value?.let {
-            it == ReadAloudState.PLAYING || it == ReadAloudState.PAUSED
-        } ?: false
-        when (button) {
-            BUTTON_PLAY -> when {
-                audioActive -> when (AudioPlayShared.status) {
-                    Status.PAUSE -> AudioPlayShared.resume()
-                    Status.PLAY, Status.LOADING -> Unit
-                    else -> AudioPlayShared.loadOrUpPlayUrl()
-                }
-
-                aloudActive -> if (aloud.controller.state.value == ReadAloudState.PAUSED) {
-                    aloud.controller.resume()
-                }
-            }
-
-            BUTTON_PAUSE -> when {
-                audioActive -> if (AudioPlayShared.status == Status.PLAY) AudioPlayShared.pause()
-                aloudActive -> if (aloud.controller.state.value == ReadAloudState.PLAYING) {
-                    aloud.controller.pause()
-                }
-            }
-
-            BUTTON_NEXT -> if (audioActive) AudioPlayShared.next()
-            else if (aloudActive) aloud.controller.nextParagraph()
-
-            BUTTON_PREVIOUS -> if (audioActive) AudioPlayShared.prev()
-            else if (aloudActive) aloud.controller.prevParagraph()
-
-            BUTTON_STOP -> if (audioActive) AudioPlayShared.stop()
-            else if (aloudActive) aloud.controller.stop()
-
-            LG_CMD_SEEK -> {
-                // C 桥已把 100ns 换算为 ms; 仅音频可 seek
-                if (audioActive && AudioPlayShared.status != Status.STOP) {
-                    AudioPlayShared.adjustProgress(arg.toInt())
-                }
-            }
+        val command = when (button) {
+            BUTTON_PLAY -> RemoteMediaCommand.Play
+            BUTTON_PAUSE -> RemoteMediaCommand.Pause
+            BUTTON_STOP -> RemoteMediaCommand.Stop
+            BUTTON_NEXT -> RemoteMediaCommand.Next
+            BUTTON_PREVIOUS -> RemoteMediaCommand.Previous
+            LG_CMD_SEEK -> RemoteMediaCommand.Seek
+            else -> return
         }
+        SystemMediaControl.onRemoteCommand(command, arg)
     }
 }
 
-/**
- * SMTC 媒体卡状态快照 (由音频 / 朗读调用方各自填充简单值, 与托盘同源)。
- *
- * @param title 章节名 (Title)
- * @param artist 书名 (Artist)
- * @param albumArtist 作者 (AlbumArtist, 对照原版 MediaMetadata 的 ALBUM=作者)
- * @param isPlaying 播放中 (PlaybackStatus=Playing, 启用暂停按钮)
- * @param isPaused 暂停中 (PlaybackStatus=Paused)
- * @param prevNextEnabled 是否启用上一首/下一首按钮
- * @param positionMs 当前进度 (毫秒; <0 表示不推进度, 朗读无进度概念)
- * @param durationMs 总时长 (毫秒; <=0 表示不推进度)
- * @param playbackRate 倍速 (>0 时写 ISMTC2.PlaybackRate; 0 表示不写)
- * @param coverUrl 封面 URL (仅音频; 朗读无封面)
- */
-data class SmtcState(
-    val title: String = "",
-    val artist: String = "",
-    val albumArtist: String = "",
-    val isPlaying: Boolean = false,
-    val isPaused: Boolean = false,
-    val prevNextEnabled: Boolean = true,
-    val positionMs: Long = -1L,
-    val durationMs: Long = -1L,
-    val playbackRate: Float = 1f,
-    val coverUrl: String? = null,
-)
+/** 注册桌面端系统媒体控制 (SMTC 卡片写入端 + 朗读宿主)。 */
+fun registerDesktopSystemMediaControl() {
+    SystemMediaControl.registerSink(DesktopSmtc)
+    SystemMediaControl.registerReadAloudHost(DesktopReadAloudHost)
+}

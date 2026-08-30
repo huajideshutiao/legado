@@ -10,7 +10,6 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.help.toast.Toasters
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.book.manage.BookshelfManagePlatformProviders.get
 import kotlinx.coroutines.CoroutineScope
@@ -28,14 +27,14 @@ import kotlinx.coroutines.flow.asStateFlow
  * 书架管理 ViewModel 共享核心 (commonMain)。
  *
  * 对照 app 端 `BookshelfManageViewModel(app) : BaseViewModel(app)`: 核心批量管理方法
- * (upCanUpdate/updateBook/deleteBook/changeSource/clearCache/loadCacheFiles) 仅依赖
+ * (upCanUpdate/updateBook/deleteBook/changeSource/loadCacheFiles) 仅依赖
  * DAO + 协程 + WebBook + BookHelp + Book.migrateTo + FileBook.deleteBook, 可下沉多端复用。
  * DAO/AppConfig 走 [AppDbProviders.get]/[AppConfigProviders.get]; `execute{...}` 链式回调
  * 下沉为直接调 [Coroutine.async], 行为等价。
  *
- * 平台专属逻辑经 [BookshelfManagePlatform] 注入: BookHelp.clearCache/getChapterFiles、
+ * 平台专属逻辑经 [BookshelfManagePlatform] 注入: BookHelp.getChapterFiles、
  * FileBook.deleteBook (DocumentFile/ContentResolver) 留 app 端, 本地书删除经
- * deleteLocalBook 委托; toast 文案 (R.string.clear_cache_success) 在 app 端解析成字符串。
+ * deleteLocalBook 委托。
  *
  * 状态桥接: batchChangeSourceState/Process → StateFlow, upAdapter → SharedFlow (事件语义);
  * app 端 VM 用 viewModelScope.launch { collect { liveData.postValue(it) } } 桥接。
@@ -44,8 +43,8 @@ import kotlinx.coroutines.flow.asStateFlow
  * exportBookshelf 留 app 端 (依赖 context.filesDir + 文件流)。
  *
  * @param scope 协程作用域 (Android = viewModelScope / 桌面 = 应用主作用域)
- * @param platform 平台专属依赖聚合 (Book.migrateTo + BookHelp.clearCache/getChapterFiles +
- *   FileBook.deleteBook + clearCacheSuccessMessage 字符串)
+ * @param platform 平台专属依赖聚合 (Book.migrateTo + BookHelp.getChapterFiles +
+ *   FileBook.deleteBook)
  */
 @Suppress("MemberVisibilityCanBePrivate")
 class BookshelfManageViewModelShared(
@@ -259,31 +258,6 @@ class BookshelfManageViewModelShared(
     }
 
     /**
-     * 清除书籍缓存, 对应 app 端 `clearCache(books)`。
-     *
-     * # 实现细节保持
-     *
-     * - 串行调 [BookshelfManagePlatform.clearCache] (替代原 `BookHelp.clearCache(it)`,
-     *   行为等价);
-     * - 成功后 [Toasters.get].toast([BookshelfManagePlatform.clearCacheSuccessMessage])
-     *   (替代原 `context.toastOnUi(R.string.clear_cache_success)`, 字符串由 app 端
-     *   platform 解析 R.string.clear_cache_success 注入)。
-     *
-     * 业务在 IO 跑 (文件 I/O), onSuccess 回调切到 mainDispatcher (与 BaseViewModel.execute 一致)。
-     *
-     * @param books 待清缓存的书籍列表
-     */
-    fun clearCache(books: List<Book>) {
-        Coroutine.async(scope = scope) {
-            books.forEach {
-                platform.clearCache(it)
-            }
-        }.onSuccess {
-            Toasters.get().toast(platform.clearCacheSuccessMessage)
-        }
-    }
-
-    /**
      * 加载书籍缓存文件列表, 对应 app 端 `loadCacheFiles(books)`。
      *
      * # 实现细节保持
@@ -355,18 +329,16 @@ class BookshelfManageViewModelShared(
  * 列出 5+ 个 lambda 参数 (违反"避免超多继承与参数传递"原则)。
  *
  * 各端实现:
- * - **Android**: `AndroidBookshelfManagePlatform` 包装 `Book.migrateTo` / `BookHelp.clearCache`
- *   / `BookHelp.getChapterFiles` / `FileBook.deleteBook` / `context.getString(R.string.clear_cache_success)`;
+ * - **Android**: `AndroidBookshelfManagePlatform` 包装 `Book.migrateTo` /
+ *   `BookHelp.getChapterFiles` / `FileBook.deleteBook`;
  * - **桌面**: 简化实现 (用 BookStorageProviders / LocalBookLocators 替代 BookHelp/FileBook,
- *   migrateBook 取 default 章节, clearCacheSuccessMessage 用硬编码字符串);
+ *   migrateBook 取 default 章节);
  * - **iOS / 鸿蒙**: 暂未实现 (stub), 后续补。
  *
  * # 为何不扩展既有 Provider 接口
  *
- * - [io.legado.app.help.book.BookHelpAccessor] 仅暴露 saveContent, 不包含 clearCache /
- *   getChapterFiles (BookHelp 重 Android 依赖留 app 端);
- * - [io.legado.app.help.book.BookStorage] 虽有 clearCache(book)/getChapterFiles(book), 但
- *   App 端尚未注册 BookStorageProviders (BookHelp 仍是 app 端直接调用);
+ * - [io.legado.app.help.book.BookHelpAccessor] 仅暴露 saveContent, 不含 getChapterFiles
+ *   (BookHelp 重 Android 依赖留 app 端);
  * - [io.legado.app.help.book.LocalBookLocator] 有 deleteBook(book) 但无 deleteOriginal 参数;
  * - 用聚合接口注入只改 BookshelfManageViewModel 一处, 不扩散既有 accessor, 符合
  *   "避免超多 Provider 接口" 原则。
@@ -388,15 +360,6 @@ interface BookshelfManagePlatform {
      */
     fun migrateBook(oldBook: Book, newBook: Book, toc: List<BookChapter>): Book =
         oldBook.migrateTo(newBook, toc)
-
-    /**
-     * 清除书籍章节缓存 (对照 `BookHelp.clearCache(book)`)。
-     *
-     * app 端委托 `BookHelp.clearCache(book)` (内部走 BookHelp.deleteBookFiles 等)。
-     *
-     * @param book 待清缓存的书籍
-     */
-    fun clearCache(book: Book)
 
     /**
      * 列出书籍已缓存的章节文件名集合 (对照 `BookHelp.getChapterFiles(book): HashSet<String>`)。
@@ -429,15 +392,6 @@ interface BookshelfManagePlatform {
      * @param deleteOriginal 是否同时删除源文件 (本地 txt/epub 等场景)
      */
     fun deleteLocalBook(book: Book, deleteOriginal: Boolean)
-
-    /**
-     * 清缓存成功提示文案 (对照 `context.toastOnUi(R.string.clear_cache_success)`)。
-     *
-     * app 端用 `context.getString(R.string.clear_cache_success)` 解析资源 ID 为字符串,
-     * 供 [BookshelfManageViewModelShared.clearCache] 调 [Toasters.get].toast 显示。
-     * 桌面端可用硬编码字符串 "清缓存成功" 或 i18n 资源系统。
-     */
-    val clearCacheSuccessMessage: String
 }
 
 /**

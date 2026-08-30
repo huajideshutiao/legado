@@ -1,42 +1,58 @@
 import media from '@ohos.multimedia.media';
 import fs from '@ohos.file.fs';
+import avSession from '@ohos.multimedia.avsession';
+import backgroundTaskManager from '@ohos.resourceschedule.backgroundTaskManager';
+import wantAgent, { WantAgent } from '@ohos.app.ability.wantAgent';
+import common from '@ohos.app.ability.common';
 import { BridgeCommand, parseBridgeCommand } from './BridgeDispatch';
 
 /**
- * ArkTS 侧媒体播放处理器 (KP8+)。
+ * ArkTS 侧媒体播放与播控中心处理器 (KP8+)。
  *
- * 接收 Kotlin OhosNativeBridge.sendMediaCommand 通过 tsfn dispatch 过来的播放器命令,
- * 调用 @ohos.multimedia.media AVPlayer 执行真实音频播放,
- * AVPlayer 事件通过 legado.mediaEvent(eventJson) 回送给 Kotlin。
+ * 1. 接收 Kotlin OhosNativeBridge.sendMediaCommand 通过 tsfn dispatch 过来的播放器命令,
+ *    调用 @ohos.multimedia.media AVPlayer 执行真实音频播放;
+ * 2. 接入 @ohos.multimedia.avsession 媒体会话, 实现系统播控中心、锁屏媒体卡片元数据/进度同步与远程控制响应;
+ * 3. 接入 @ohos.resourceschedule.backgroundTaskManager (AUDIO_PLAYBACK) 长时任务, 保障后台播放不被冻结;
+ * 4. AVPlayer 事件与系统播控指令通过 legado.mediaEvent(eventJson) 回送给 Kotlin。
  *
  * # 多实例 (playerId)
  * 音频书 (audioBook) 与 HttpTTS 朗读 (httpTts) 需同时各持一个 AVPlayer, 故按 playerId
  * 维护 Map<playerId, PlayerSlot>。命令与事件均带 playerId; 缺省时按 DEFAULT_PLAYER_ID
  * 处理 (向后兼容旧协议 / ArkTS UI 页面直驱)。
  *
- * # JSON 协议 (与 HttpTtsPlayer.ohos.kt / OhosAudioPlayCommander.ohos.kt / OhosNativeBridge.kt 对齐)
+ * # JSON 协议 (与 HttpTtsPlayer.ohos.kt / OhosAudioPlayCommander.ohos.kt / OhosNativeBridge.kt /
+ *   OhosMediaNotificationController.kt 对齐)
  *
  * ## 命令 (Kotlin → ArkTS, fire-and-forget)
  * {
- *   "playerId": "<string?>",   // 缺省 = "default"
- *   "action": "setSource" | "setSourceUrl" | "play" | "pause" | "stop" |
- *             "seekTo" | "setSpeed" | "release",
+ *   "playerId": "<string?>",   // 缺省 = "default"; syncNowPlaying/clearNowPlaying 不带
+ *   "action": "setSource" | "setSourceUrl" | "play" | "pause" | "stop" | "seekTo" |
+ *             "setSpeed" | "release" | "syncNowPlaying" | "clearNowPlaying",
  *   "path": "<string?>",       // setSource 时为本地文件路径
  *   "url": "<string?>",        // setSourceUrl 时为网络流地址
  *   "headers": <Record?>,      // setSourceUrl 时为请求头
- *   "position": <number?>,     // seekTo 时为跳转位置 (毫秒)
- *   "speed": <number?>         // setSpeed 时为浮点倍速
+ *   "position": <number?>,     // seekTo / syncNowPlaying 的位置 (毫秒)
+ *   "speed": <number?>,        // setSpeed / syncNowPlaying 的浮点倍速
+ *   // 以下仅 syncNowPlaying: 播控卡片元数据与状态
+ *   "title": "<string?>",      // 章节名
+ *   "artist": "<string?>",     // 书名
+ *   "album": "<string?>",      // 作者
+ *   "duration": <number?>,     // 总时长 (毫秒)
+ *   "isPlaying": <boolean?>,
+ *   "isPaused": <boolean?>,
+ *   "coverUrl": "<string?>"    // 封面 URL / 本地路径, 无封面时不带
  * }
  *
  * ## 事件 (ArkTS → Kotlin, via legado.mediaEvent)
  * {
- *   "playerId": "<string>",    // 必带, 与命令的 playerId 对应
+ *   "playerId": "<string>",    // 必带, 与命令的 playerId 对应; 播控指令固定 "session"
  *   "event": "onReady" | "onEndOfMedia" | "onError" | "onBufferingUpdate" |
- *            "onDuration" | "onPosition" | "onPlaying" | "onPaused",
+ *            "onDuration" | "onPosition" | "onPlaying" | "onPaused" | "onCommand",
  *   "message": "<string?>",    // onError 时含错误信息
  *   "percent": <number?>,      // onBufferingUpdate 时为缓冲百分比 (0-100)
  *   "duration": <number?>,     // onDuration 时为总时长 (毫秒)
- *   "position": <number?>      // onPosition 时为当前播放位置 (毫秒)
+ *   "position": <number?>,     // onPosition / seek 指令的位置 (毫秒)
+ *   "command": "<string?>"     // onCommand: play|pause|stop|next|previous|seek
  * }
  *
  * # AVPlayer 状态机
@@ -68,6 +84,9 @@ export const PLAYER_ID_HTTP_TTS: string = 'httpTts';
 /** 视频播放实例 (Kotlin OhosVideoPlayerController 专用)。 */
 export const PLAYER_ID_VIDEO: string = 'videoBook';
 
+/** 系统播控会话交互 id (AVSession 远程播控指令派发)。 */
+export const PLAYER_ID_SESSION: string = 'session';
+
 /** 单个播放实例的状态 (AVPlayer + 其打开的本地文件 fd)。 */
 class PlayerSlot {
   player: media.AVPlayer | null = null;
@@ -79,6 +98,20 @@ let players: Map<string, PlayerSlot> = new Map<string, PlayerSlot>();
 
 // Media 事件回调 (由 EntryAbility 注入)
 let eventCallback: MediaEventCallback | null = null;
+
+// UIAbilityContext (由 EntryAbility 注入, 供 AVSession 与 BackgroundTaskManager 使用)
+let abilityContext: common.UIAbilityContext | undefined;
+
+// AVSession 单例 + 创建中的 Promise (命令是 fire-and-forget, 连发两条会并发创建, 同应用只允许一个会话)
+let currentAvSession: avSession.AVSession | undefined;
+let avSessionPending: Promise<avSession.AVSession | undefined> | undefined;
+
+// 长时后台任务状态 + 启停中的 Promise (同上, 避免并发重复启停)
+let isContinuousTaskRunning: boolean = false;
+let continuousTaskPending: Promise<void> | undefined;
+
+// 已下发的卡片元数据指纹 (相同就跳过 setAVMetadata, 对照 app 端 loadCover 的 lastCoverUrl 短路)
+let lastMetadataKey: string = '';
 
 // 视频画面 surfaceId (由 Index.ets 经 registerComposeInteropBuilder 的 XComponent.onLoad 注入;
 // 先于 AVPlayer 创建时暂存, 创建 videoBook 播放器时再绑定)
@@ -126,6 +159,14 @@ interface MediaCommand extends BridgeCommand {
   headers?: Record<string, string>;
   position?: number;
   speed?: number;
+  // AVSession 元数据与播放状态同步字段
+  title?: string;
+  artist?: string;
+  album?: string;
+  duration?: number;
+  isPlaying?: boolean;
+  isPaused?: boolean;
+  coverUrl?: string;
 }
 
 interface MediaEventPayload {
@@ -135,15 +176,18 @@ interface MediaEventPayload {
   percent?: number;
   duration?: number;
   position?: number;
+  command?: string; // 播控指令: play / pause / stop / next / previous / seek
 }
 
 /**
- * 初始化 Media 桥接 (由 EntryAbility.onCreate 调用, 注入事件回送函数)。
+ * 初始化 Media 桥接 (由 EntryAbility.onCreate 调用, 注入事件回送函数与 Ability 上下文)。
  *
  * @param callback 事件回送函数 (EntryAbility 注入 legado.mediaEvent)
+ * @param context UIAbilityContext
  */
-export function initMediaBridge(callback: MediaEventCallback): void {
+export function initMediaBridge(callback: MediaEventCallback, context: common.UIAbilityContext): void {
   eventCallback = callback;
+  abilityContext = context;
 }
 
 /**
@@ -210,6 +254,16 @@ export function handleMediaCommand(commandJson: string): void {
       break;
     case 'setSpeed':
       handleSetSpeed(id, cmd.speed ?? 1);
+      break;
+    case 'syncNowPlaying':
+      handleSyncNowPlaying(cmd).catch((err: Error) => {
+        console.error('[MediaBridge] syncNowPlaying failed: ' + (err.message ?? String(err)));
+      });
+      break;
+    case 'clearNowPlaying':
+      handleClearNowPlaying().catch((err: Error) => {
+        console.error('[MediaBridge] clearNowPlaying failed: ' + (err.message ?? String(err)));
+      });
       break;
     case 'release':
       handleRelease(id);
@@ -472,5 +526,219 @@ function emitEvent(id: string, event: MediaEventPayload): void {
     } catch (e) {
       console.error('[MediaBridge] local listener error: ' + (e as Error).message);
     }
+  }
+}
+
+// ===== AVSession (系统播控中心与锁屏卡片) & 后台长时任务 =====
+
+/**
+ * 获取或创建 AVSession。
+ *
+ * 同一应用只允许一个会话, 而命令是 fire-and-forget 的 (状态变化 + 变速可以连着来两条),
+ * 故把创建中的 Promise 存下来复用, 避免并发建出第二个会话。
+ */
+async function ensureAvSession(): Promise<avSession.AVSession | undefined> {
+  if (currentAvSession != undefined) {
+    return currentAvSession;
+  }
+  if (avSessionPending != undefined) {
+    return avSessionPending;
+  }
+  if (abilityContext == undefined) {
+    console.warn('[MediaBridge] ensureAvSession: abilityContext is undefined');
+    return undefined;
+  }
+  avSessionPending = createAvSession();
+  try {
+    return await avSessionPending;
+  } finally {
+    avSessionPending = undefined;
+  }
+}
+
+async function createAvSession(): Promise<avSession.AVSession | undefined> {
+  const context = abilityContext;
+  if (context == undefined) {
+    return undefined;
+  }
+  try {
+    const session = await avSession.createAVSession(context, 'LegadoAudioSession', 'audio');
+    registerAvSessionCallbacks(session);
+    // 点击播控卡片拉起应用 (对照 app 端通知的 contentIntent)
+    try {
+      await session.setLaunchAbility(await buildLaunchWantAgent(context));
+    } catch (e) {
+      console.error('[MediaBridge] setLaunchAbility failed: ' + (e as Error).message);
+    }
+    await session.activate();
+    currentAvSession = session;
+    console.info('[MediaBridge] AVSession created and activated');
+    return session;
+  } catch (e) {
+    console.error('[MediaBridge] createAVSession failed: ' + (e as Error).message);
+    return undefined;
+  }
+}
+
+/** 拉起本 Ability 的 WantAgent (播控卡片点击 + 长时任务共用)。 */
+async function buildLaunchWantAgent(context: common.UIAbilityContext): Promise<WantAgent> {
+  const wantAgentInfo: wantAgent.WantAgentInfo = {
+    wants: [{
+      bundleName: context.abilityInfo.bundleName,
+      abilityName: context.abilityInfo.name
+    }],
+    operationType: wantAgent.OperationType.START_ABILITY,
+    requestCode: 0,
+    wantAgentFlags: [wantAgent.WantAgentFlags.UPDATE_PRESENT_FLAG]
+  };
+  return await wantAgent.getWantAgent(wantAgentInfo);
+}
+
+/** 注册 AVSession 的远程播控回调 (指令统一回传 Kotlin 侧 SystemMediaControl 判定归属)。 */
+function registerAvSessionCallbacks(session: avSession.AVSession): void {
+  session.on('play', () => {
+    emitEvent(PLAYER_ID_SESSION, { event: 'onCommand', command: 'play' });
+  });
+
+  session.on('pause', () => {
+    emitEvent(PLAYER_ID_SESSION, { event: 'onCommand', command: 'pause' });
+  });
+
+  session.on('stop', () => {
+    emitEvent(PLAYER_ID_SESSION, { event: 'onCommand', command: 'stop' });
+  });
+
+  session.on('playNext', () => {
+    emitEvent(PLAYER_ID_SESSION, { event: 'onCommand', command: 'next' });
+  });
+
+  session.on('playPrevious', () => {
+    emitEvent(PLAYER_ID_SESSION, { event: 'onCommand', command: 'previous' });
+  });
+
+  session.on('seek', (positionMs: number) => {
+    emitEvent(PLAYER_ID_SESSION, { event: 'onCommand', command: 'seek', position: positionMs });
+  });
+}
+
+/** 开启/关闭后台长时音频播放保活任务 (AUDIO_PLAYBACK 要求会话已注册, 故先 ensureAvSession)。 */
+async function setBackgroundTask(running: boolean): Promise<void> {
+  const context = abilityContext;
+  if (context == undefined || running === isContinuousTaskRunning) {
+    return;
+  }
+  if (continuousTaskPending != undefined) {
+    await continuousTaskPending;
+    if (running === isContinuousTaskRunning) {
+      return;
+    }
+  }
+  continuousTaskPending = switchBackgroundTask(context, running);
+  try {
+    await continuousTaskPending;
+  } finally {
+    continuousTaskPending = undefined;
+  }
+}
+
+async function switchBackgroundTask(
+  context: common.UIAbilityContext,
+  running: boolean
+): Promise<void> {
+  try {
+    if (running) {
+      await backgroundTaskManager.startBackgroundRunning(
+        context,
+        backgroundTaskManager.BackgroundMode.AUDIO_PLAYBACK,
+        await buildLaunchWantAgent(context)
+      );
+    } else {
+      await backgroundTaskManager.stopBackgroundRunning(context);
+    }
+    isContinuousTaskRunning = running;
+    console.info('[MediaBridge] continuous task running=' + running);
+  } catch (e) {
+    console.error('[MediaBridge] switch continuous task failed: ' + (e as Error).message);
+  }
+}
+
+/** 同步元数据与状态至系统播控卡片。 */
+async function handleSyncNowPlaying(cmd: MediaCommand): Promise<void> {
+  const session = await ensureAvSession();
+  if (session == undefined) {
+    return;
+  }
+
+  // 只管开: 暂停/切章都要保住长时任务, 收任务由 clearNowPlaying (真退场) 负责
+  if (cmd.isPlaying === true) {
+    await setBackgroundTask(true);
+  }
+
+  try {
+    const title: string = cmd.title ?? '';
+    const artist: string = cmd.artist ?? '';
+    const author: string = cmd.album ?? '';
+    const cover: string = cmd.coverUrl ?? '';
+    const duration: number = cmd.duration ?? 0;
+    const metadataKey: string = title + '#' + artist + '#' + author +
+      '#' + cover + '#' + duration.toString();
+    if (metadataKey !== lastMetadataKey) {
+      lastMetadataKey = metadataKey;
+      const metadata: avSession.AVMetadata = {
+        assetId: 'legado_media',
+        title: title,
+        artist: artist,
+        author: author,
+        duration: duration
+      };
+      // 空字符串会被当成非法图片路径, 无封面时不带该字段
+      if (cover.length > 0) {
+        metadata.mediaImage = cover;
+      }
+      await session.setAVMetadata(metadata);
+    }
+
+    let stateCode = avSession.PlaybackState.PLAYBACK_STATE_STOP;
+    if (cmd.isPlaying === true) {
+      stateCode = avSession.PlaybackState.PLAYBACK_STATE_PLAY;
+    } else if (cmd.isPaused === true) {
+      stateCode = avSession.PlaybackState.PLAYBACK_STATE_PAUSE;
+    }
+
+    const playbackState: avSession.AVPlaybackState = {
+      state: stateCode,
+      position: {
+        elapsedTime: cmd.position ?? 0,
+        updateTime: new Date().getTime()
+      },
+      speed: cmd.speed ?? 1.0,
+      duration: duration
+    };
+    await session.setAVPlaybackState(playbackState);
+  } catch (e) {
+    console.error('[MediaBridge] syncNowPlaying error: ' + (e as Error).message);
+  }
+}
+
+/**
+ * 撤掉播控卡片。
+ *
+ * 只把 state 置 STOP 卡片仍会留在播控中心, 对照 app 端 `mediaSessionCompat.release()`
+ * 要 deactivate + destroy; 下次播放由 [ensureAvSession] 重建。
+ */
+async function handleClearNowPlaying(): Promise<void> {
+  await setBackgroundTask(false);
+  lastMetadataKey = '';
+  const session = currentAvSession;
+  if (session == undefined) {
+    return;
+  }
+  currentAvSession = undefined;
+  try {
+    await session.deactivate();
+    await session.destroy();
+    console.info('[MediaBridge] AVSession destroyed');
+  } catch (e) {
+    console.error('[MediaBridge] clearNowPlaying error: ' + (e as Error).message);
   }
 }

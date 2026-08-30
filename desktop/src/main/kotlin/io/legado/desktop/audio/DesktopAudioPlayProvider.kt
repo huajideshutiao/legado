@@ -9,6 +9,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.removeType
 import io.legado.app.help.media.SleepTimer
+import io.legado.app.help.media.SystemMediaControl
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.AudioPlayBookBridge
 import io.legado.app.model.AudioPlayBookBridges
@@ -21,7 +22,6 @@ import io.legado.app.model.audio.AudioPlayManager
 import io.legado.app.model.audio.AudioPlayManagerListener
 import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.utils.postEvent
-import io.legado.desktop.help.tts.DesktopReadAloudHost
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -123,7 +123,7 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge, AudioP
                 if (paused) {
                     AudioPlayShared.status = Status.PAUSE
                     postEvent(EventBus.AUDIO_STATE, Status.PAUSE)
-                    syncSmtc()
+                    syncNowPlaying()
                     return
                 }
                 player.play()
@@ -134,7 +134,7 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge, AudioP
                 manager.upPlayProgress()
                 manager.upPlayProgressForLrc()
                 // SMTC: 开始播放即上卡 (位置用本次 seek 目标, 避免等首个进度 tick)
-                syncSmtc(positionMs = if (startPos > 0) startPos.toLong() else AudioPlayShared.durChapterPos.toLong())
+                syncNowPlaying(positionMs = if (startPos > 0) startPos.toLong() else AudioPlayShared.durChapterPos.toLong())
             }
 
             override fun onEndOfMedia() {
@@ -142,7 +142,7 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge, AudioP
                 AudioPlayShared.playPositionChanged(player.duration.toInt())
                 AudioPlayShared.next()
                 // 末章停止等后续状态变化会再同步, 这里先刷一次 (幂等)
-                syncSmtc()
+                syncNowPlaying()
             }
 
             override fun onError(message: String?) {
@@ -164,7 +164,7 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge, AudioP
                 AudioPlayShared.status = Status.STOP
                 postEvent(EventBus.AUDIO_STATE, Status.STOP)
                 postEvent(EventBus.AUDIO_LOADING, false)
-                syncSmtc()
+                syncNowPlaying()
             }
         }
     }
@@ -206,7 +206,7 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge, AudioP
         postEvent(EventBus.AUDIO_LOADING, false)
         // saveRead 落库
         AudioPlayShared.book?.let { saveRead(it) }
-        syncSmtc(stopped = true)
+        SystemMediaControl.releaseAudio()
     }
 
     override fun stopPlay() {
@@ -220,7 +220,7 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge, AudioP
         postEvent(EventBus.AUDIO_LOADING, false)
         // 停止分支同样落库进度
         AudioPlayShared.book?.let { saveRead(it) }
-        syncSmtc()
+        syncNowPlaying()
     }
 
     override fun pause() {
@@ -231,7 +231,7 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge, AudioP
         manager.cancelProgressJobs()
         AudioPlayShared.status = Status.PAUSE
         postEvent(EventBus.AUDIO_STATE, Status.PAUSE)
-        syncSmtc()
+        syncNowPlaying()
     }
 
     override fun resume() {
@@ -248,7 +248,7 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge, AudioP
         postEvent(EventBus.AUDIO_STATE, Status.PLAY)
         manager.upPlayProgress()
         manager.upPlayProgressForLrc()
-        syncSmtc()
+        syncNowPlaying()
     }
 
     override fun adjustSpeed(adjust: Float) {
@@ -259,7 +259,7 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge, AudioP
         postEvent(EventBus.AUDIO_SPEED, playSpeed)
         // 变速后 lrc 推进 delay 需按新速率重算 (对齐 app/iOS)
         manager.upPlayProgressForLrc()
-        syncSmtc()
+        syncNowPlaying()
     }
 
     override fun adjustProgress(position: Int) {
@@ -271,7 +271,7 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge, AudioP
         // 传目标位置: mpv seek 异步, currentPosition 未同步, 用目标位置扫描歌词行
         manager.resetLrcPosition()
         manager.upPlayProgressForLrc(position)
-        syncSmtc(positionMs = position.toLong())
+        syncNowPlaying(positionMs = position.toLong())
     }
 
     override fun setTimer(minute: Int) {
@@ -297,12 +297,12 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge, AudioP
     }
 
     override fun onLoadCover(url: String?) {
-        // 封面已由 manager postEvent(AUDIO_COVER) 推送 UI; SMTC 卡封面读 durCoverUrl, 刷新一次
-        syncSmtc()
+        // 书源 musicCover 规则算出的当前章节封面, 刷进播控卡片
+        syncNowPlaying(coverUrl = url)
     }
 
     override fun onResetCoverCache() {
-        // desktop 无通知/MediaSession 封面缓存, 无需处理
+        // 卡片封面由平台按 URL 处理, 切章换 URL 自然重载, 无需额外处理
     }
 
     override fun onToast(message: String) {
@@ -369,7 +369,7 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge, AudioP
             postEvent(EventBus.AUDIO_LOADING, false)
             AudioPlayShared.status = Status.STOP
             postEvent(EventBus.AUDIO_STATE, Status.STOP)
-            syncSmtc(stopped = true)
+            SystemMediaControl.releaseAudio()
         }
     }
 
@@ -396,7 +396,7 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge, AudioP
         postEvent(EventBus.AUDIO_LOADING, true)
         AudioPlayShared.status = Status.LOADING
         postEvent(EventBus.AUDIO_STATE, Status.LOADING)
-        syncSmtc()
+        syncNowPlaying()
         pendingStartPos = startPos
         // 直链解析 (对照原版 AudioPlayService.play 的 AnalyzeUrl(...).getMediaItem()):
         // 必须经 AnalyzeUrl 才能拆掉 legado 的 `url,{options}` 后缀并拿到 UA/Referer/Cookie,
@@ -413,31 +413,9 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge, AudioP
         player.prepare()
     }
 
-    /**
-     * 同步 SMTC 媒体卡 (Win11 音量浮层/锁屏卡; 非 Windows 直接跳过)。
-     * 状态源与托盘/任务栏一致 (AudioPlayShared.status); 停止且朗读未在跑时摘卡。
-     */
-    private fun syncSmtc(positionMs: Long? = null, stopped: Boolean = false) {
-        if (!com.sun.jna.Platform.isWindows()) return
-        val status = AudioPlayShared.status
-        DesktopSmtc.update(
-            SmtcState(
-                title = AudioPlayShared.durChapter?.title ?: "",
-                artist = AudioPlayShared.book?.name ?: "",
-                albumArtist = AudioPlayShared.book?.author ?: "",
-                isPlaying = status == Status.PLAY,
-                isPaused = status == Status.PAUSE || status == Status.LOADING,
-                prevNextEnabled = true,
-                positionMs = positionMs ?: AudioPlayShared.durChapterPos.toLong(),
-                durationMs = AudioPlayShared.durAudioSize.toLong(),
-                playbackRate = playSpeed,
-                coverUrl = AudioPlayShared.durCoverUrl,
-            )
-        )
-        if (stopped && !DesktopReadAloudHost.isRun) {
-            DesktopSmtc.release()
-        }
-    }
+    /** 同步系统播控卡片 (补上本实例的播放倍速)。 */
+    private fun syncNowPlaying(positionMs: Long? = null, coverUrl: String? = null) =
+        SystemMediaControl.syncAudio(positionMs, playSpeed, coverUrl)
 
     // ===== AudioPlayBookBridge =====
     // saveRead/save/getBookSource (desktop 无 BookExtensions, 直接调 DAO)

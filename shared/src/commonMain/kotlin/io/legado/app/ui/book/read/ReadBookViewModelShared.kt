@@ -1247,13 +1247,14 @@ class ReadBookViewModelShared(
     }
 
     /**
-     * 退出阅读界面时调用（平台侧 DisposableEffect.onDispose / VM onCleared）：
-     * 落库 + 上传进度（原版 ReadBookActivity.onPause 的 saveRead + uploadProgress）。
-     * 走 [progressSyncScope]，UI scope 取消不影响本次落库/上传。
+     * 退出阅读界面时调用（唯一调用方 [io.legado.app.ui.book.read.ReaderScreenModel.onCleared]）：
+     * 摘注册 + 取消在途任务 + 清理未入架书。
+     *
+     * 落库上传不在这里做：[uploadProgress] 每次调用都是一次真实 WebDav PUT（无去重/节流，
+     * 见 AppWebDavShared.uploadBookProgress），由宿主按"活跃期结束"调一次即可。
      */
     fun onCleared() {
         ActiveReadBookRegistry.detachViewModel(this)
-        uploadProgress()
         clearExpiredChapterLoadingJobs(clearAll = true)
         directoryLoadingJob?.cancel()
         reviewCountBookUrl = null

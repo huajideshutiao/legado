@@ -6,6 +6,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.registerIosProviders
 import io.legado.app.model.CacheBookShared
+import io.legado.app.ui.root.AppForegroundState
 import kotlin.concurrent.Volatile
 import kotlinx.cinterop.ObjCObjectVar
 import kotlinx.cinterop.alloc
@@ -111,6 +112,7 @@ object IosBackgroundTasks {
     // region 通道 1: 退后台收尾
 
     private fun onEnterBackground() {
+        AppForegroundState.set(false)
         if (!CacheBookShared.isRun) return
         savePending()
         beginFinishWindow()
@@ -144,6 +146,7 @@ object IosBackgroundTasks {
     }
 
     private fun onEnterForeground() {
+        AppForegroundState.set(true)
         finishWatchJob?.cancel()
         finishWatchJob = null
         endFinishWindow()

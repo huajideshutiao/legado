@@ -11,6 +11,7 @@ import io.legado.app.help.RuleBigDataProviders
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.coroutine.runBlockingInScope
+import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.StringUtils
@@ -54,6 +55,21 @@ object BookHelpShared {
 
     /** 漫画图片缓存总大小上限 512MB (对照 app 端 `BookHelp.clearInvalidCache`)。 */
     const val MANGA_CACHE_MAX_SIZE: Long = 512L * 1024 * 1024
+
+    /**
+     * 清除指定书籍的章节/图片缓存 (对照原版 `BookInfoViewModel.clearCache`)。
+     *
+     * 删缓存目录后, 若其中有书正在阅读则丢弃它的内存章节 —— 只删盘不清内存的话,
+     * 阅读页仍拿旧正文渲染 (原版 `if (ReadBook.book?.bookUrl == book.bookUrl)
+     * ReadBook.clearTextChapter()`)。调用方负责 toast 与 IO 调度。
+     */
+    fun clearBookCache(books: List<Book>) {
+        val storage = BookStorageProviders.get()
+        books.forEach { storage.clearCache(it) }
+        val reading = ActiveReadBookRegistry.current ?: return
+        val readingUrl = reading.book.value?.bookUrl ?: return
+        if (books.any { it.bookUrl == readingUrl }) reading.clearTextChapter()
+    }
 
     /**
      * 清除无效缓存编排 (对照 app 端 `BookHelp.clearInvalidCache`)。

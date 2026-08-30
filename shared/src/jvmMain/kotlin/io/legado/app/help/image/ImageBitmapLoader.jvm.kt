@@ -21,13 +21,19 @@ import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.Canvas
 import org.jetbrains.skia.Codec
 import org.jetbrains.skia.ColorAlphaType
+import org.jetbrains.skia.ColorType
 import org.jetbrains.skia.Data
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.ImageInfo
 import org.jetbrains.skia.Rect
 import org.jetbrains.skia.SamplingMode
 import org.jetbrains.skia.impl.use
+import java.awt.image.BufferedImage
+import java.awt.image.DataBufferInt
+import java.awt.image.SinglePixelPackedSampleModel
 import java.io.File
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -269,4 +275,43 @@ actual fun decodeSvgFallback(bytes: ByteArray, maxDim: Int): ImageBitmap? {
     return runCatching {
         Image.makeFromEncoded(png).use { it.toComposeImageBitmap() }
     }.getOrNull()
+}
+
+/**
+ * AWT [BufferedImage] → Skia [Image], 给只会画 Java2D 的渲染器 (jsvg / PDFBox) 当出口。
+ *
+ * `TYPE_INT_RGB/ARGB` 的 raster 本身就是每像素一个 `0xAARRGGBB` int, 按小端拆字节即
+ * B,G,R,A —— 正好是 Skia 的 [ColorType.BGRA_8888], 故整块搬一次即可, 不必逐像素 getRGB
+ * 再拆装通道 (compose 自带的 `BufferedImage.toComposeImageBitmap` 就是逐像素 getRGB)。
+ *
+ * alpha 一律按未预乘交出: 预乘留给 Skia 编码器, 免掉手写预乘再被编码器还原的两次取整误差。
+ * [Image.makeRaster] 内部复制像素, 返回的 Image 不再引用本地字节数组。
+ */
+fun BufferedImage.toSkiaImage(): Image {
+    val count = width * height
+    val pixels = ByteArray(count * 4)
+    // 小端序视图上的整型批量 put 走 copyMemory (单次 memcpy), 不是逐元素循环
+    ByteBuffer.wrap(pixels).order(ByteOrder.LITTLE_ENDIAN).asIntBuffer()
+        .put(packedPixels(), 0, count)
+    val info = ImageInfo(
+        width,
+        height,
+        ColorType.BGRA_8888,
+        if (colorModel.hasAlpha()) ColorAlphaType.UNPREMUL else ColorAlphaType.OPAQUE,
+    )
+    return Image.makeRaster(info, pixels, width * 4)
+}
+
+/** 每像素 `0xAARRGGBB` 的整型像素: 布局吻合时直接用 raster 自身数组 (零拷贝), 否则批量 getRGB。 */
+private fun BufferedImage.packedPixels(): IntArray {
+    val buffer = raster.dataBuffer
+    val model = sampleModel
+    if ((type == BufferedImage.TYPE_INT_RGB || type == BufferedImage.TYPE_INT_ARGB) &&
+        buffer is DataBufferInt && buffer.numBanks == 1 && buffer.offset == 0 &&
+        buffer.size == width * height &&
+        model is SinglePixelPackedSampleModel && model.scanlineStride == width
+    ) {
+        return buffer.data
+    }
+    return getRGB(0, 0, width, height, null, 0, width)
 }

@@ -5,7 +5,9 @@ import io.legado.app.constant.Status
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.media.ReadAloudRemoteHost
 import io.legado.app.help.media.SleepTimer
+import io.legado.app.help.media.SystemMediaControl
 import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.service.ReadAloudChapterNavigator
 import io.legado.app.service.ReadAloudControllerShared
@@ -34,7 +36,7 @@ import kotlin.concurrent.Volatile
  * 首读创建 [ReadAloudControllerShared] (Navigator 动态查询当前阅读 ViewModel, 换书/退出阅读
  * 后旧 controller 保留但所有调用经 currentViewModel 空判短路, 行为安全)。
  */
-object OhosReadAloudHost {
+object OhosReadAloudHost : ReadAloudRemoteHost {
 
     private val scope = CoroutineScope(SupervisorJob() + IoDispatcher)
 
@@ -58,12 +60,12 @@ object OhosReadAloudHost {
     private var restartOnResume: Boolean = false
 
     /** 对应 app 端 `BaseReadAloudService.isRun`。 */
-    val isRun: Boolean
+    override val isRun: Boolean
         get() = controllerRef?.state?.value
             .let { it == ReadAloudState.PLAYING || it == ReadAloudState.PAUSED }
 
     /** 对应 app 端 `BaseReadAloudService.pause`。 */
-    val isPause: Boolean get() = controllerRef?.state?.value != ReadAloudState.PLAYING
+    override val isPause: Boolean get() = controllerRef?.state?.value != ReadAloudState.PLAYING
 
     /** 当前朗读章节段落表 (供位置回写计算段落起始偏移)。 */
     private var paragraphs: List<String> = emptyList()
@@ -98,12 +100,12 @@ object OhosReadAloudHost {
     }
 
     /** 暂停朗读 (对照 `ReadAloud.pause`)。 */
-    fun pause() {
+    override fun pause() {
         controllerRef?.pause()
     }
 
     /** 继续朗读; 暂停期间翻过页时按新位置重开 (对照 `ReadAloud.resume`)。 */
-    fun resume() {
+    override fun resume() {
         val readBook = ActiveReadBookRegistry.current
         if (restartOnResume && readBook != null) {
             pendingStartPos = readBook.durChapterPosValue
@@ -117,7 +119,7 @@ object OhosReadAloudHost {
     }
 
     /** 停止朗读并清理 (对照 `ReadAloud.stop`)。 */
-    fun stop() {
+    override fun stop() {
         restartOnResume = false
         sleepTimer.cancel()
         controllerRef?.stop()
@@ -149,12 +151,21 @@ object OhosReadAloudHost {
     }
 
     /** 上一句 / 下一句 (对照 `ReadAloud.prevParagraph/nextParagraph`)。 */
-    fun prevParagraph() {
+    override fun prevParagraph() {
         controllerRef?.prevParagraph()
     }
 
-    fun nextParagraph() {
+    override fun nextParagraph() {
         controllerRef?.nextParagraph()
+    }
+
+    /** 上一章 / 下一章 (对照 `ReadAloud.prevChapter/nextChapter`, 媒体键开了"按章切换"时走这里)。 */
+    override fun prevChapter() {
+        controllerRef?.prevChapter()
+    }
+
+    override fun nextChapter() {
+        controllerRef?.nextChapter()
     }
 
     /** 定时关闭剩余分钟 (对照 `BaseReadAloudService.timeMinute`)。 */
@@ -230,10 +241,20 @@ object OhosReadAloudHost {
 
     private fun onStateChanged(state: ReadAloudState) {
         when (state) {
-            ReadAloudState.PLAYING -> ReadBookEvents.postAloudState(Status.PLAY)
-            ReadAloudState.PAUSED -> ReadBookEvents.postAloudState(Status.PAUSE)
-            ReadAloudState.STOPPED, ReadAloudState.COMPLETED, ReadAloudState.ERROR ->
+            ReadAloudState.PLAYING -> {
+                ReadBookEvents.postAloudState(Status.PLAY)
+                SystemMediaControl.syncReadAloud(isPlaying = true)
+            }
+
+            ReadAloudState.PAUSED -> {
+                ReadBookEvents.postAloudState(Status.PAUSE)
+                SystemMediaControl.syncReadAloud(isPlaying = false)
+            }
+
+            ReadAloudState.STOPPED, ReadAloudState.COMPLETED, ReadAloudState.ERROR -> {
                 ReadBookEvents.postAloudState(Status.STOP)
+                SystemMediaControl.releaseReadAloud()
+            }
 
             ReadAloudState.IDLE -> Unit
         }

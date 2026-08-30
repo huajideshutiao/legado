@@ -6,16 +6,15 @@ import io.legado.app.constant.Status
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.media.ReadAloudRemoteHost
 import io.legado.app.help.media.SleepTimer
+import io.legado.app.help.media.SystemMediaControl
 import io.legado.app.help.tts.ReadAloudQueue
 import io.legado.app.model.ActiveReadBookRegistry
-import io.legado.app.model.AudioPlayShared
 import io.legado.app.service.ReadAloudChapterNavigator
 import io.legado.app.service.ReadAloudControllerShared
 import io.legado.app.service.ReadAloudControllerShared.ReadAloudState
 import io.legado.app.ui.book.read.ReadBookEvents
-import io.legado.desktop.audio.DesktopSmtc
-import io.legado.desktop.audio.SmtcState
 import io.legado.desktop.help.tts.DesktopReadAloudHost.controller
 import io.legado.desktop.help.tts.DesktopReadAloudHost.pause
 import io.legado.desktop.help.tts.DesktopReadAloudHost.pendingStartPos
@@ -50,7 +49,7 @@ import kotlinx.coroutines.launch
  * (章节未排版时退回本地缓存正文, 位置可能与排版结果有偏差)。段起始位置的累加方式
  * (段长 + 1 个换行) 与 [ReadAloudQueue.readAloudNumber] 一致。
  */
-object DesktopReadAloudHost {
+object DesktopReadAloudHost : ReadAloudRemoteHost {
 
     /** 原版 AppConfig.defaultSpeechRate。 */
     private const val DEFAULT_SPEECH_RATE = 5
@@ -90,12 +89,12 @@ object DesktopReadAloudHost {
     val controller: ReadAloudControllerShared by lazy { createController() }
 
     /** 对应 app 端 `BaseReadAloudService.isRun`。 */
-    val isRun: Boolean
+    override val isRun: Boolean
         get() = controllerRef?.state?.value
             .let { it == ReadAloudState.PLAYING || it == ReadAloudState.PAUSED }
 
     /** 对应 app 端 `BaseReadAloudService.pause`。 */
-    val isPause: Boolean get() = controllerRef?.state?.value != ReadAloudState.PLAYING
+    override val isPause: Boolean get() = controllerRef?.state?.value != ReadAloudState.PLAYING
 
     /** 书名 / 章节名 (托盘 tooltip 用)。 */
     val bookName: String? get() = ActiveReadBookRegistry.current?.bookValue?.name
@@ -122,12 +121,12 @@ object DesktopReadAloudHost {
     }
 
     /** 暂停朗读 (对照 `ReadAloud.pause`)。 */
-    fun pause() {
+    override fun pause() {
         controllerRef?.pause()
     }
 
     /** 继续朗读; 暂停期间翻过页时按新位置重开 (对照 `ReadAloud.resume`)。 */
-    fun resume() {
+    override fun resume() {
         val readBook = ActiveReadBookRegistry.current
         if (restartOnResume && readBook != null) {
             startAt(readBook.durChapterIndexValue, readBook.durChapterPosValue)
@@ -137,7 +136,7 @@ object DesktopReadAloudHost {
     }
 
     /** 停止朗读并清理 (对照 `ReadAloud.stop`)。 */
-    fun stop() {
+    override fun stop() {
         positionWatchJob?.cancel()
         positionWatchJob = null
         restartOnResume = false
@@ -158,12 +157,21 @@ object DesktopReadAloudHost {
     }
 
     /** 上一句 / 下一句 (对照 `ReadAloud.prevParagraph/nextParagraph`)。 */
-    fun prevParagraph() {
+    override fun prevParagraph() {
         controllerRef?.prevParagraph()
     }
 
-    fun nextParagraph() {
+    override fun nextParagraph() {
         controllerRef?.nextParagraph()
+    }
+
+    /** 上一章 / 下一章 (对照 `ReadAloud.prevChapter/nextChapter`, 媒体键开了"按章切换"时走这里)。 */
+    override fun prevChapter() {
+        controllerRef?.prevChapter()
+    }
+
+    override fun nextChapter() {
+        controllerRef?.nextChapter()
     }
 
     /** 定时关闭剩余分钟 (对照 `BaseReadAloudService.timeMinute`)。 */
@@ -304,50 +312,22 @@ object DesktopReadAloudHost {
         when (state) {
             ReadAloudState.PLAYING -> {
                 ReadBookEvents.postAloudState(Status.PLAY)
-                syncSmtc(playing = true)
+                SystemMediaControl.syncReadAloud(isPlaying = true)
             }
 
             ReadAloudState.PAUSED -> {
                 ReadBookEvents.postAloudState(Status.PAUSE)
                 removeAloudSpan()
-                syncSmtc(paused = true)
+                SystemMediaControl.syncReadAloud(isPlaying = false)
             }
 
             ReadAloudState.STOPPED, ReadAloudState.COMPLETED, ReadAloudState.ERROR -> {
                 ReadBookEvents.postAloudState(Status.STOP)
                 removeAloudSpan()
-                syncSmtc(stopped = true)
+                SystemMediaControl.releaseReadAloud()
             }
 
             ReadAloudState.IDLE -> Unit
-        }
-    }
-
-    /**
-     * 同步 SMTC 媒体卡 (Title=章节 / Artist=书名 / AlbumArtist=作者)。
-     * 音频活跃时 SMTC 卡归音频 (与托盘/任务栏优先级一致), 朗读侧不覆盖。
-     */
-    private fun syncSmtc(
-        playing: Boolean = false,
-        paused: Boolean = false,
-        stopped: Boolean = false
-    ) {
-        if (AudioPlayShared.status != Status.STOP) return
-        if (!com.sun.jna.Platform.isWindows()) return
-        val readBook = ActiveReadBookRegistry.current
-        DesktopSmtc.update(
-            SmtcState(
-                title = chapterTitle ?: "",
-                artist = bookName ?: "",
-                albumArtist = readBook?.bookValue?.author ?: "",
-                isPlaying = playing,
-                isPaused = paused,
-                prevNextEnabled = true,
-                playbackRate = 0f, // 朗读无倍速概念, 不写 PlaybackRate
-            )
-        )
-        if (stopped) {
-            DesktopSmtc.release()
         }
     }
 

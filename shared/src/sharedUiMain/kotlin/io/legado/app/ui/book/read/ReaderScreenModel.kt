@@ -831,30 +831,37 @@ class ReaderScreenModel(
         ActiveReadBookRegistry.detach(readBook)
         // 对照原版 ReadBookActivity.onDestroy: 立即结束阅读计时 (不等待 end 的延迟结算)
         ReadTimeRecorder.endImmediately(ReadTimeRecorder.Source.READ_BOOK)
+        // 活跃期已上传过就不再上传: 每次 uploadProgress 都是一次真实 WebDav PUT。
+        // 宿主整体销毁等没走 [onPause] 的路径在此补一次, 不丢进度
+        if (!progressUploaded) viewModel.uploadProgress()
         viewModel.onCleared()
         scope.cancel()
     }
 
     /**
-     * 平台 onPause 入口（对照 app 端 ReadBookActivity.onPause）。
-     *
-     * 平台 actual 在 Activity Lifecycle ON_PAUSE 时调 [ReaderPlatformProvider.onPause]，
-     * 由其桥接到本方法。完成：
+     * 离开活跃期（对照 app 端 ReadBookActivity.onPause）：被压栈 / 退到后台 / 出栈时,
+     * 由 ReaderRoute 的 [io.legado.app.ui.root.RouteActiveEffect] 调用。完成：
      * - 落库并上传当前阅读进度（对照原版 onPause 的 `ReadBook.saveRead()` + `uploadProgress()`，
      *   [ReadBookViewModelShared.uploadProgress] 内部先落库再按配置上传，走独立 progressSyncScope）
      * - 取消预下载任务（对照原版 `ReadBook.cancelPreDownloadTask()`）
-     *
-     * 退出阅读（DisposableEffect.onDispose → [ReadBookViewModelShared.onCleared]）时同样落库上传。
      */
     fun onPause() {
         // 对照原版 ReadBookActivity.onPause: 结束阅读计时
         ReadTimeRecorder.end(ReadTimeRecorder.Source.READ_BOOK)
         viewModel.uploadProgress()
+        progressUploaded = true
         viewModel.cancelPreDownloadTask()
     }
 
     /**
-     * 平台 onResume 入口（对照 app 端 ReadBookActivity.onResume）。
+     * 本次活跃期是否已上传进度: [onPause] 上传后置位, [onResume] 重开。
+     * [onCleared] 据此跳过重复上传 (进度落库幂等, WebDav PUT 不幂等)。
+     */
+    private var progressUploaded = false
+
+    /**
+     * 进入活跃期（对照 app 端 ReadBookActivity.onResume）：本页在栈顶且 app 在前台时,
+     * 由 ReaderRoute 的 [io.legado.app.ui.root.RouteActiveEffect] 调用。
      *
      * - 开始阅读计时 (原版 onResume 首行 ReadTimeRecorder.start(READ_BOOK))
      * - web 端阅读时, app 处于阅读界面, 本地记录会覆盖 web 保存的进度, 在此处恢复
@@ -863,6 +870,7 @@ class ReaderScreenModel(
      * 网络监听/广播注册/时间刷新等由平台 actual 接入。
      */
     fun onResume() {
+        progressUploaded = false
         ReadTimeRecorder.start(
             ReadTimeRecorder.Source.READ_BOOK,
             readBook.book.value?.name ?: ""

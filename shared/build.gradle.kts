@@ -10,7 +10,16 @@ plugins {
 }
 
 room3 {
-    schemaDirectory("$projectDir/schemas")
+    // 鸿蒙走派生目录: CPF fork 的 room3 编译器是 alpha01, 它的 schema 反序列化器撞见 3.0.1
+    // 导出的新键 (withoutRowId) 会直接抛 JsonDecodingException, 而 @Database 带 autoMigrations
+    // 必须读历史 schema。见 deriveOhosRoomSchemas。
+    schemaDirectory(
+        if (providers.gradleProperty("enableOhosTarget").orNull?.toBoolean() == true) {
+            layout.buildDirectory.dir("ohosRoomSchemas").get().asFile.absolutePath
+        } else {
+            "$projectDir/schemas"
+        }
+    )
 }
 
 compose.resources {
@@ -30,6 +39,17 @@ val isMacHost = System.getProperty("os.name").startsWith("Mac", ignoreCase = tru
 // klib 编译 (语法/类型/签名校验) 不需要 Xcode; 只有 link 成 framework 才必须 mac。
 val enableIosTarget = providers.gradleProperty("enableIosTarget").orNull?.toBoolean() ?: isMacHost
 val enableOhosTarget = providers.gradleProperty("enableOhosTarget").orNull?.toBoolean() ?: false
+
+/**
+ * 带 `@Entity(withoutRowId = ...)` 的实体源码单独放一个 srcDir。
+ *
+ * CPF 鸿蒙 room3 fork (3.0.0-alpha01-0.3.0) 的 `@Entity` 还没有 `withoutRowId` 成员
+ * (官方 3.0.1 才有), 具名实参既过不了 Kotlin 前端、也会让 KSP 的注解实参错位。
+ * 故常规构建挂本目录, 鸿蒙构建改挂 [DeriveOhosRoomEntities] 剥掉该实参后的派生副本
+ * —— `kotlin.exclude` 对 KSP 任务不生效 (实测), 只能靠"换 srcDir"做到确定性替换。
+ */
+val ROOM_ENTITIES_SRC_DIR = "src/roomEntitiesMain/kotlin"
+val ENTITY_PACKAGE_PATH = "io/legado/app/data/entities"
 val composeVersion = libs.versions.cmp.get()
 
 // CPF fork 只发布 Android/iOS/OHOS 变体, 不发布 Desktop JVM 变体 (与 desktop/build.gradle.kts
@@ -135,6 +155,101 @@ fun registerOhosInteropStage(taskName: String, outputDirName: String): TaskProvi
 // (x86_64 模拟器: CPF fork 生态库无 ohosX64 变体, 2026-08-16 实测链接失败, 不再声明目标)。
 val stageNativeInteropForOhos =
     registerOhosInteropStage("stageNativeInteropForOhos", "generated/nativeInterop/ohosArm64Main")
+
+/**
+ * 鸿蒙 Room schema 派生: 把 `schemas/` 里 3.0.1 导出的 JSON 复制一份, 剥掉 alpha01 编译器
+ * 不认识的键 (见 [UNKNOWN_KEYS])。
+ *
+ * fork 的 room3-common (3.0.0-alpha01-0.3.0) 比官方 3.0.1 少若干 `@Entity` 成员, 其
+ * schema bundle 的反序列化是严格模式, 撞见未知键即 `JsonDecodingException`; 而
+ * `@Database(autoMigrations = [...])` 必须读得懂历史 schema 才能生成自动迁移, 不能简单关掉导出。
+ */
+abstract class DeriveOhosRoomSchemas : DefaultTask() {
+    @get:InputDirectory
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val sourceDirectory: DirectoryProperty
+
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    @TaskAction
+    fun derive() {
+        val src = sourceDirectory.get().asFile
+        val out = outputDirectory.get().asFile
+        out.deleteRecursively()
+        src.walkTopDown().filter { it.isFile && it.extension == "json" }.forEach { file ->
+            val target = out.resolve(file.relativeTo(src).invariantSeparatorsPath)
+            target.parentFile.mkdirs()
+            target.writeText(strip(file.readText()))
+        }
+    }
+
+    /** 连键前的逗号一起删: 未知键多在对象末位, 只删键会留下尾逗号变成非法 JSON。 */
+    private fun strip(json: String): String = UNKNOWN_KEYS.fold(json) { text, key ->
+        text.replace(Regex(""",\s*"$key"\s*:\s*$JSON_SCALAR"""), "")
+            .replace(Regex(""""$key"\s*:\s*$JSON_SCALAR\s*,\s*"""), "")
+    }
+
+    private companion object {
+        /** alpha01 的 schema bundle 里没有的键。 */
+        val UNKNOWN_KEYS = listOf("withoutRowId")
+
+        /** JSON 标量 (布尔/null/数字/字符串), 不含数组与对象: 未知键目前都是标量。 */
+        const val JSON_SCALAR = """(?:true|false|null|-?\d+(?:\.\d+)?|"(?:[^"\\]|\\.)*")"""
+    }
+}
+
+/**
+ * 鸿蒙实体源码派生: 剥掉 `@Entity(withoutRowId = ...)` 实参。
+ *
+ * fork 的 room3-common (3.0.0-alpha01-0.3.0) 的 `@Entity` 还没有 `withoutRowId` 成员
+ * (官方 3.0.1 才有), 鸿蒙构建下这个具名实参既过不了 Kotlin 前端, 也会让 KSP 的注解实参
+ * 错位 (EntityProcessor 读 foreignKeys 时拿到 Boolean → ClassCastException)。
+ *
+ * 代价: 鸿蒙侧这几张表退化成普通 rowid 表 (其余三端不变)。fork 补齐该成员后本任务连同
+ * commonMain 的 exclude 一并删除即可。
+ */
+abstract class DeriveOhosRoomEntities : DefaultTask() {
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val sources: ConfigurableFileCollection
+
+    /** 守卫: commonMain 里的实体不得再用 withoutRowId (否则鸿蒙又会踩同一个坑)。 */
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val guardedSources: ConfigurableFileCollection
+
+    @get:Input
+    abstract val packagePath: Property<String>
+
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    @TaskAction
+    fun derive() {
+        val stray = guardedSources.files.filter { it.readText().contains("withoutRowId") }
+        check(stray.isEmpty()) {
+            "以下实体用了 withoutRowId 但不在 roomEntitiesMain 源集, 鸿蒙构建会编不过: " +
+                stray.joinToString { it.name }
+        }
+        val outRoot = outputDirectory.get().asFile
+        outRoot.deleteRecursively()
+        val outDir = outRoot.resolve(packagePath.get())
+        outDir.mkdirs()
+        sources.files.forEach { file ->
+            // 连键前的逗号一起删: 该实参多在末位, 只删自身会留下尾逗号
+            val derived = file.readText()
+                .replace(Regex(""",\s*withoutRowId\s*=\s*(?:true|false)"""), "")
+                .replace(Regex("""withoutRowId\s*=\s*(?:true|false)\s*,\s*"""), "")
+            outDir.resolve(file.name).writeText(HEADER + derived)
+        }
+    }
+
+    private companion object {
+        const val HEADER = "// 由 :shared:deriveOhosRoomEntities 从 commonMain 派生, 勿手改 " +
+            "(剥 @Entity 的 withoutRowId 实参; CPF fork 的 room3 无此成员)。\n"
+    }
+}
 
 // CPF fork 的 room3 runtime 停在 alpha01: RoomOpenDelegate/Migration 的回调非 suspend,
 // SQL 扩展名为 execSQL; 官方 room3-compiler 生成 suspend override + executeSQL, 两者编不过。
@@ -260,6 +375,26 @@ fun ohosRoomKspSources(): ConfigurableFileTree {
     }
 }
 
+val deriveOhosRoomEntities = if (enableOhosTarget) {
+    tasks.register<DeriveOhosRoomEntities>("deriveOhosRoomEntities") {
+        sources.setFrom(
+            layout.projectDirectory.dir("$ROOM_ENTITIES_SRC_DIR/$ENTITY_PACKAGE_PATH").asFileTree
+        )
+        guardedSources.setFrom(
+            layout.projectDirectory.dir("src/commonMain/kotlin/$ENTITY_PACKAGE_PATH").asFileTree
+        )
+        packagePath.set(ENTITY_PACKAGE_PATH)
+        outputDirectory.set(layout.buildDirectory.dir("ohosRoomEntities"))
+    }
+} else null
+
+val deriveOhosRoomSchemas = if (enableOhosTarget) {
+    tasks.register<DeriveOhosRoomSchemas>("deriveOhosRoomSchemas") {
+        sourceDirectory.set(layout.projectDirectory.dir("schemas"))
+        outputDirectory.set(layout.buildDirectory.dir("ohosRoomSchemas"))
+    }
+} else null
+
 val deriveOhosRoomImpl = if (enableOhosTarget) {
     tasks.register<DeriveOhosRoomImpl>("deriveOhosRoomImpl") {
         generatedSources.from(ohosRoomKspSources())
@@ -380,16 +515,20 @@ kotlin {
         //                 ├─ iosMain
         //                 └─ ohosMain
         // 测试: commonTest ─ jvmAndAndroidTest ─ jvmTest / androidHostTest
-        // 另: commonMain 按构建条件挂 ohosCompatMain / nonOhosCompatMain (room3 注解兼容);
+        // 另: commonMain 按构建条件挂 ohosCompatMain / nonOhosCompatMain (room3 注解兼容),
+        //     以及 roomEntitiesMain (带 withoutRowId 的实体; 鸿蒙换派生副本, 见 ROOM_ENTITIES_SRC_DIR);
         //     非 mac 构建时 iosMain 挂 iosWindowsCheckMain (cinterop 不可生成的 stub)。
         // └───────────────────────────────────────────────────────────────────────────
         commonMain {
             if (enableOhosTarget) {
                 kotlin.srcDir("src/ohosCompatMain/kotlin")
+                // 实体源码换派生副本 (剥掉 fork 不支持的 withoutRowId), 见 ROOM_ENTITIES_SRC_DIR
+                kotlin.srcDir(layout.buildDirectory.dir("ohosRoomEntities"))
             } else {
                 // 非鸿蒙构建的 room3 旧名注解兼容 (TypeConverters/TypeConverter), 见
                 // src/nonOhosCompatMain/kotlin/androidx/room3/TypeConvertersCompat.kt 注释。
                 kotlin.srcDir("src/nonOhosCompatMain/kotlin")
+                kotlin.srcDir(ROOM_ENTITIES_SRC_DIR)
             }
             dependencies {
                 implementation(libs.kotlin.stdlib)
@@ -641,6 +780,14 @@ if (enableOhosTarget) {
         it.name == "compileKotlinOhosArm64" || it.name == "kspKotlinOhosArm64"
     }.configureEach {
         stageNativeInteropForOhos?.let { dependsOn(it) }
+    }
+    // schema 派生必须先于 KSP: alpha01 编译器读 schemaDirectory 生成自动迁移
+    tasks.matching {
+        it.name == "kspKotlinOhosArm64" || it.name == "compileKotlinOhosArm64"
+    }.configureEach {
+        // schema 与实体派生都必须先于 KSP: 前者供自动迁移读历史 schema, 后者是编译输入
+        deriveOhosRoomSchemas?.let { dependsOn(it) }
+        deriveOhosRoomEntities?.let { dependsOn(it) }
     }
     // 派生只挂 compile: 它本身 dependsOn kspKotlinOhosArm64, 反挂到 ksp 会成环。
     // verify 已 dependsOn 派生, 两个都列出只为让任务图意图显式。

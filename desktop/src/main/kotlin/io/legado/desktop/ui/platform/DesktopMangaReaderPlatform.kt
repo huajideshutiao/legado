@@ -2,7 +2,8 @@ package io.legado.desktop.ui.platform
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
@@ -13,8 +14,9 @@ import io.legado.app.help.image.MangaImageBytesLoader
 import io.legado.app.ui.book.manga.MangaReaderScreenModel
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.entities.MangaCellState
-import io.legado.app.ui.book.manga.mangaColorFilter
 import io.legado.app.ui.book.manga.render.MangaSkiaImage
+import io.legado.app.ui.book.manga.render.mangaProgressText
+import io.legado.app.ui.book.manga.render.preloadMangaImage
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.imageExtension
 import io.legado.app.utils.systemCurrentTimeMillis
@@ -25,16 +27,15 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * desktop 端 [MangaReaderScreenModel.Platform] 实现 (Coil3 图片渲染)。
+ * desktop 端 [MangaReaderScreenModel.Platform] 实现。
  *
  * 对照 app 端 [io.legado.app.ui.book.manga.AndroidMangaReaderPlatform]:
  * - config: 直读 [PreferenceProviders] 同 key PreferKey (与 app 端 AppConfig 同源),
  *   未纳入 [io.legado.app.help.config.AppConfigAccessor] 接口
  * - flowImages: 复用 shared [MangaImageExtractorShared] (与 app 端 BookHelp.flowImages 同一提取逻辑)
- * - Image: Coil3 [MangaModel] 请求 (走 shared MangaModelFetcher: 图片缓存 + AnalyzeUrl 防盗链
- *   header + 解密, 与 app 端 MangaPageImageView 同一条链路),
- *   colorFilter 用 Compose [ColorFilter.colorMatrix] (与 app 端 ColorMatrixColorFilter 同矩阵),
- *   grayEnabled 用灰度 ColorMatrix (对照 app 端 Coil3 灰度变换)
+ * - Image: 走 Skia 三端共用的 [MangaSkiaImage] (Skia Codec 解码 + GIF/动画 WebP + 调色),
+ *   本端只负责把 [ProgressManager] 的下载进度接到转圈环心;
+ *   **不是 Coil3 链路** —— coil-gif 无 jvm/ios 变体, 动图只能自己解, 见 [MangaSkiaImage] 注释
  * - toggle/update*: 写回 [PreferenceProviders] 同 key (与 app 端 AppConfig = value 等价)
  * - getBatteryLevel: Windows 经 kernel32 (JNA) / macOS 经 `pmset -g batt` /
  *   Linux 经 sysfs BAT/capacity 读真实电量, 无电池/失败回落 100 (信息条恒显示电量)
@@ -58,20 +59,10 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
         retryTick: Int,
         onProgress: (String) -> Unit,
     ) {
-        val colorFilter = remember(colorFilterConfig, grayEnabled) {
-            mangaColorFilter(colorFilterConfig, grayEnabled)
-        }
+        val currentOnProgress by rememberUpdatedState(onProgress)
         DisposableEffect(url) {
-            ProgressManager.addListener(url) { _, percentage, bytesRead, totalBytes ->
-                onProgress(
-                    if (totalBytes > 0) {
-                        "$percentage%"
-                    } else {
-                        val kb = bytesRead / 1024.0
-                        if (kb >= 1024) String.format("%.1fMB", kb / 1024)
-                        else "${kb.toInt()}KB"
-                    }
-                )
+            ProgressManager.addListener(url) { _, _, bytesRead, totalBytes ->
+                currentOnProgress(mangaProgressText(bytesRead, totalBytes))
             }
             onDispose { ProgressManager.removeListener(url) }
         }
@@ -81,7 +72,8 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
             horizontal = horizontal,
             book = book,
             source = source,
-            colorFilter = colorFilter,
+            colorFilterConfig = colorFilterConfig,
+            grayEnabled = grayEnabled,
             onLoadState = onLoadState,
             retryTick = retryTick,
         )
@@ -116,12 +108,9 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
         }
     }
 
-    /** 预载到磁盘缓存 (经 MangaImageBytesLoader 下载解密并写入 BookImageStorage, 与显示端同链路) */
+    /** 预载: 下载解密写入磁盘缓存 + 顺带解码进 DecodedBitmapCache (与显示端同链路同 key) */
     override suspend fun preloadImage(url: String, book: Book, source: BookSource?) {
-        if (!url.startsWith("http://") && !url.startsWith("https://")) return
-        runCatching {
-            MangaImageBytesLoader.load(url, book, source, currentCoroutineContext())
-        }
+        preloadMangaImage(url, book, source)
     }
 
 }

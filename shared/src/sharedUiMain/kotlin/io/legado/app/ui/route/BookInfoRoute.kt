@@ -16,6 +16,7 @@ import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.IntentData
+import io.legado.app.help.book.BookHelpShared
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.changeSourceTo
 import io.legado.app.help.book.isAudio
@@ -61,6 +62,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.clear_cache_success
 import legado.shared.generated.resources.error_load_toc
 import legado.shared.generated.resources.need_more_time_load_content
 import legado.shared.generated.resources.no_group
@@ -99,6 +101,7 @@ fun BookInfoRoute(
     val noGroupLabel = stringResource(Res.string.no_group)
     val errorLoadTocLabel = stringResource(Res.string.error_load_toc)
     val needMoreTimeLabel = stringResource(Res.string.need_more_time_load_content)
+    val clearCacheSuccessLabel = stringResource(Res.string.clear_cache_success)
     LaunchedEffect(book.bookUrl) {
         screenModel.dispatch(
             BookInfoUiEvent.ShowBook(book, screenModel.lastedTitleOf(book))
@@ -358,9 +361,14 @@ fun BookInfoRoute(
             if (!newValue) Toasters.get().toastLong(needMoreTimeLabel)
         }
 
-        // 清缓存: 委托平台 (依赖 BookHelp/ReadBook)
+        // 清缓存 (对照原版 BookInfoViewModel.clearCache), toast 成败
         override fun onClearCache() {
-            PlatformCapabilityProviders.getOrNull()?.clearBookCache(state.book ?: book)
+            val b = state.book ?: book
+            scope.launch(IoDispatcher) {
+                runCatching { BookHelpShared.clearBookCache(listOf(b)) }
+                    .onSuccess { Toasters.get().toast(clearCacheSuccessLabel) }
+                    .onFailure { Toasters.get().toast("清理缓存出错\n${it.message}") }
+            }
         }
 
         // 日志: 弹窗

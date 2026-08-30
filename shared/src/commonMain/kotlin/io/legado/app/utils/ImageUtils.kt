@@ -4,6 +4,8 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
+import io.legado.app.help.image.ImageOps
+import io.legado.app.model.script.JsBindingInjector
 
 // 下沉自 app 模块 io.legado.app.utils.ImageUtils (经 jvmAndAndroidMain 二次下沉 commonMain)。
 // 字节数组进出 + evalJS (JsEngines 共享面) 均为 commonMain 能力, 四端 (Android/desktop/iOS/鸿蒙)
@@ -30,34 +32,47 @@ object ImageUtils {
         // Packages.readBytes 分支; native 侧 (iOS/鸿蒙) 注入为 Uint8Array (同 length 语义),
         // 四端脚本行为一致。
         return kotlin.runCatching {
-            val result = source?.evalJS(ruleJs) {
-                put("book", book)
-                put("result", bytes)
-                put("src", src)
-            }
-            when (result) {
-                // JVM/quickjs (Android/desktop): JS 侧 result 是 byte[] 的 JavaObject 包装,
-                // 脚本索引写回直接修改底层数组, eval 返回值解包回原 byte[]
-                is ByteArray -> result
-                // native 引擎 (iOS/鸿蒙): 注入 Uint8Array, 脚本写回后整体返回,
-                // [NativeJsEngine.tryGetUint8ArrayBytes] 已拷回 ByteArray;
-                // 书源直接返回 JS Array 的兼容分支 (逐元素 Number→Byte)
-                is List<*> -> {
-                    val out = ByteArray(result.size)
-                    result.forEachIndexed { i, item ->
-                        out[i] = (item as? Number)?.toByte()
-                            ?: throw ClassCastException("解密结果元素非数字: $item")
-                    }
-                    out
+            imageScoped {
+                val result = source?.evalJS(ruleJs) {
+                    put("book", book)
+                    put("result", bytes)
+                    put("src", src)
                 }
+                when (result) {
+                    // JVM/quickjs (Android/desktop): JS 侧 result 是 byte[] 的 JavaObject 包装,
+                    // 脚本索引写回直接修改底层数组, eval 返回值解包回原 byte[]
+                    is ByteArray -> result
+                    // native 引擎 (iOS/鸿蒙): 注入 Uint8Array, 脚本写回后整体返回,
+                    // [NativeJsEngine.tryGetUint8ArrayBytes] 已拷回 ByteArray;
+                    // 书源直接返回 JS Array 的兼容分支 (逐元素 Number→Byte)
+                    is List<*> -> {
+                        val out = ByteArray(result.size)
+                        result.forEachIndexed { i, item ->
+                            out[i] = (item as? Number)?.toByte()
+                                ?: throw ClassCastException("解密结果元素非数字: $item")
+                        }
+                        out
+                    }
 
-                else -> throw ClassCastException(
-                    "解密结果类型异常: ${result?.let { it::class.simpleName } ?: "null"}"
-                )
+                    else -> throw ClassCastException(
+                        "解密结果类型异常: ${result?.let { it::class.simpleName } ?: "null"}"
+                    )
+                }
             }
         }.onFailure {
             AppLog.putDebug("${src}解密错误", it)
         }.getOrNull()
+    }
+
+    /**
+     * 在图片脚本作用域内执行: 脚本用 `image.*` 建出的原生图在返回后立即释放, 不等 GC
+     * (见 [ImageOps.withScope]; 未注册 ImageOps 或平台无需回收时等价于直接执行)。
+     *
+     * 进出都是 ByteArray, ImageRef 句柄不会逃出本作用域, 故可安全释放。
+     */
+    private fun <T> imageScoped(block: () -> T): T {
+        val ops = JsBindingInjector.imageOpsOrNull ?: return block()
+        return ops.withScope(block)
     }
 
     internal fun getRuleJs(

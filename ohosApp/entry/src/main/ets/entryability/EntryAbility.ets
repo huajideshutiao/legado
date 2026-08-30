@@ -281,10 +281,10 @@ export default class EntryAbility extends UIAbility {
     }, '[Legado] image tsfn callback registered via napi', '[Legado] registerImageCallback failed: ');
 
     registerSafely((): void => {
-      // Media: 先注入事件回送函数 (AVPlayer 事件 → legado.mediaEvent → KMP)
+      // Media: 先注入事件回送函数 (AVPlayer 事件 → legado.mediaEvent → KMP) 与 UIAbilityContext (AVSession/长时任务)
       initMediaBridge((eventJson: string): void => {
         legado.mediaEvent(eventJson);
-      });
+      }, this.context);
       // 再注册 tsfn 回调, 命令 JSON dispatch 到 handleMediaCommand
       legado.registerMediaCallback((json: string): void => {
         handleMediaCommand(json);

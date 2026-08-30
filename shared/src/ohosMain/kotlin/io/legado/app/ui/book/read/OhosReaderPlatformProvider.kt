@@ -23,7 +23,6 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.help.tts.OhosReadAloudHost
 import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.model.ActiveReadBookRegistry
-import io.legado.app.napi.OhosAppLifecycle
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
@@ -53,28 +52,6 @@ object OhosReaderPlatformProvider : ReaderPlatformProvider {
 
     /** 当前浮动菜单的选中文本 (ArkTS 菜单项点击时经回调取参)。 */
     private var textActionText: String = ""
-
-    /** 阅读页激活期间挂生命周期监听的模型 (onEnter 设置, onExit 清除)。 */
-    private var lifecycleScreenModel: ReaderScreenModel? = null
-
-    /** 应用前后台监听: 对照 app 端 Activity LifecycleObserver 桥 (进后台 onPause
-     *  计时结束+进度落库上传+取消预下载, 回前台 onResume 开始计时+web 进度恢复)。 */
-    private val appLifecycleListener = object : OhosAppLifecycle.Listener {
-        override fun onForeground() {
-            lifecycleScreenModel?.onResume()
-        }
-
-        override fun onBackground() {
-            lifecycleScreenModel?.onPause()
-        }
-    }
-
-    /** 阅读页进入: 挂应用生命周期监听 (ArkTS EntryAbility onForeground/onBackground
-     *  → platformEvent 通道 → [OhosAppLifecycle], 见 OhosPlatformEvents.kt)。 */
-    override fun onEnter(screenModel: ReaderScreenModel) {
-        lifecycleScreenModel = screenModel
-        OhosAppLifecycle.addListener(appLifecycleListener)
-    }
 
     init {
         // 菜单动作回调注册 (ArkTS 菜单项点击 → legado_text_action_callback → 本分发)
@@ -118,11 +95,8 @@ object OhosReaderPlatformProvider : ReaderPlatformProvider {
         OhosNativeBridge.hideTextActionMenu()
     }
 
-    /** 阅读页退出: 收起浮动菜单与生命周期监听, 避免残留 (对照原版 onDestroy →
-     *  textActionMenu.dismiss; LifecycleObserver 注销)。 */
+    /** 阅读页退出: 收起浮动菜单避免残留 (对照原版 onDestroy → textActionMenu.dismiss)。 */
     override fun onExit(screenModel: ReaderScreenModel) {
-        OhosAppLifecycle.removeListener(appLifecycleListener)
-        lifecycleScreenModel = null
         OhosNativeBridge.hideTextActionMenu()
     }
 

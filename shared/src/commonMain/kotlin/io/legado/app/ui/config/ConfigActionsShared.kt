@@ -7,6 +7,7 @@ import io.legado.app.help.FileUtilsCommon
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.file.AppFilesDirs
+import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.ui.config.ConfigActionsShared.clearCache
 import io.legado.app.ui.config.ConfigActionsShared.shrinkDatabase
 import kotlinx.coroutines.withContext
@@ -30,6 +31,8 @@ object ConfigActionsShared {
      *
      * 1. 删除书籍章节缓存目录 (book_cache): 委托 [BookStorageProviders.get].clearCache()
      * 2. 删除应用内部缓存目录 (cacheDir): 委托 [FileUtilsCommon].delete
+     * 3. 丢弃正在阅读那本书的内存章节 (同 [io.legado.app.help.book.BookHelpShared.clearBookCache]:
+     *    只删盘不清内存, 阅读页仍拿旧正文渲染)
      *
      * 成功后调用方应 toast `clear_cache_success`。
      */
@@ -37,6 +40,7 @@ object ConfigActionsShared {
         withContext(IoDispatcher) {
             BookStorageProviders.get().clearCache()
             FileUtilsCommon.delete(AppFilesDirs.get().cacheDir)
+            ActiveReadBookRegistry.current?.clearTextChapter()
         }
     }
 

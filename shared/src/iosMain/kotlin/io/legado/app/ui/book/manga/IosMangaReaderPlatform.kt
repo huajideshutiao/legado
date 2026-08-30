@@ -1,59 +1,30 @@
 package io.legado.app.ui.book.manga
 
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import coil3.PlatformContext
-import coil3.SingletonImageLoader
-import coil3.compose.AsyncImagePainter
-import coil3.compose.rememberAsyncImagePainter
-import coil3.request.CachePolicy
-import coil3.request.ImageRequest
-import coil3.size.Size
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.PreferKey
 import io.legado.app.data.entities.Book
-import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
-import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.http.DownloadProgressRegistry
 import io.legado.app.help.image.MangaImageBytesLoader
-import io.legado.app.model.manga.MangaModel
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
-import io.legado.app.ui.book.manga.config.MangaFooterConfig
 import io.legado.app.ui.book.manga.entities.MangaCellState
 import io.legado.app.ui.book.manga.render.MangaSkiaImage
+import io.legado.app.ui.book.manga.render.mangaProgressText
+import io.legado.app.ui.book.manga.render.preloadMangaImage
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.imageExtension
 import io.legado.app.utils.File
-import io.legado.app.utils.GSON
-import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.withContext
-import kotlin.math.roundToInt
 
-// iOS 漫画阅读平台能力: 图片流复用 shared 提取器, 渲染走 Coil3 (对照 DesktopMangaReaderPlatform)
+// iOS 漫画阅读平台能力: 图片流复用 shared 提取器, 渲染走 Skia 三端共用的 MangaSkiaImage
+// (本端只负责把 DownloadProgressRegistry 的下载进度接到转圈环心)
 object IosMangaReaderPlatform : MangaReaderScreenModel.Platform {
 
     @Composable
@@ -69,21 +40,10 @@ object IosMangaReaderPlatform : MangaReaderScreenModel.Platform {
         retryTick: Int,
         onProgress: (String) -> Unit,
     ) {
-        val colorFilter = remember(colorFilterConfig, grayEnabled) {
-            mangaColorFilter(colorFilterConfig, grayEnabled)
-        }
         val currentOnProgress by rememberUpdatedState(onProgress)
         DisposableEffect(url) {
             val remove = DownloadProgressRegistry.addListener(url) { bytes, total ->
-                currentOnProgress(
-                    if (total != null && total > 0) "${bytes * 100 / total}%" else {
-                        val kb = bytes / 1024.0
-                        if (kb >= 1024) {
-                            val mb = (kb / 1024.0 * 10).roundToInt() / 10.0
-                            "${mb}MB"
-                        } else "${kb.toInt()}KB"
-                    }
-                )
+                currentOnProgress(mangaProgressText(bytes, total ?: 0L))
             }
             onDispose { remove() }
         }
@@ -93,7 +53,8 @@ object IosMangaReaderPlatform : MangaReaderScreenModel.Platform {
             horizontal = horizontal,
             book = book,
             source = source,
-            colorFilter = colorFilter,
+            colorFilterConfig = colorFilterConfig,
+            grayEnabled = grayEnabled,
             onLoadState = onLoadState,
             retryTick = retryTick,
         )
@@ -120,11 +81,8 @@ object IosMangaReaderPlatform : MangaReaderScreenModel.Platform {
         }
     }
 
-    // 预载到磁盘缓存 (经 MangaImageBytesLoader 下载解密并写入 BookImageStorage, 与显示端同链路)
+    // 预载: 下载解密写入磁盘缓存 + 顺带解码进 DecodedBitmapCache (与显示端同链路同 key)
     override suspend fun preloadImage(url: String, book: Book, source: BookSource?) {
-        if (!url.startsWith("http://") && !url.startsWith("https://")) return
-        runCatching {
-            MangaImageBytesLoader.load(url, book, source, currentCoroutineContext())
-        }
+        preloadMangaImage(url, book, source)
     }
 }

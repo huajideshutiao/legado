@@ -1,6 +1,7 @@
 package io.legado.app.ui.root
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import io.legado.app.ui.association.LegadoDeepLinkHandler
@@ -241,5 +242,28 @@ fun RouteContent(
             WebViewRoute(entry, navigator, screenModelStore)
             true
         }
+    }
+}
+
+/**
+ * 路由"活跃期"副作用: 本路由在栈顶且 app 在前台时进入活跃期, 被压栈 / 退到后台 / 出栈时离开。
+ *
+ * 对照原版 Activity onResume/onPause —— 栈内页面全部留在同一 Composition (见 [LegadoApp]),
+ * 单靠 DisposableEffect 只在出栈那一刻触发, 压栈与退后台都收不到, 阅读计时/预下载会继续跑。
+ * Overlay 对话框走 [OverlayBackStack] 不进 backStack, 与原版"对话框不 pause"一致。
+ */
+@Composable
+fun RouteActiveEffect(
+    entry: RouteEntry,
+    navigator: AppNavigator,
+    onActive: () -> Unit,
+    onInactive: () -> Unit,
+) {
+    val backStack by navigator.backStack.collectAsState()
+    val foreground by AppForegroundState.isForeground.collectAsState()
+    val active = foreground && backStack.lastOrNull()?.id == entry.id
+    DisposableEffect(active) {
+        if (active) onActive()
+        onDispose { if (active) onInactive() }
     }
 }

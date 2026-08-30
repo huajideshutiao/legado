@@ -34,7 +34,7 @@ import java.io.File
  * 进程内单实例: DiskCache 同目录不可多实例 (okio 文件锁冲突),
  * [SingletonImageLoader] 与 [JvmBookImageLoader] 共用本 lazy。
  */
-private val jvmBookImageLoader: ImageLoader by lazy {
+internal val jvmBookImageLoader: ImageLoader by lazy {
     ImageLoader.Builder(PlatformContext.INSTANCE)
         .components {
             // 封面解密 + 失败 url 跳过 + 防盗链 header: 全部下沉 fetcher 层 (对齐原 Glide
@@ -45,6 +45,9 @@ private val jvmBookImageLoader: ImageLoader by lazy {
             // 漫画页: 经图片缓存 + AnalyzeUrl 下载 + 解密取字节 (与 app 端同一条链路)
             add(MangaModelKeyer(), MangaModel::class)
             add(MangaModelFetcher.Factory())
+            // 漫画页解码: 走共享解码面 (动图 Skia Codec / 静图采样解码), 结果包成
+            // MangaPageImage 进 Coil 内存缓存, 预载与翻页共用同一条缓存 (见 MangaPageCoil.kt)
+            add(MangaPageDecoder.Factory())
             add(
                 CoverDecodeFetcher.Factory(
                     SourceOriginHeaderFetcher.Factory(

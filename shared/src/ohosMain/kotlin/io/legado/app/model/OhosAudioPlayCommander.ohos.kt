@@ -16,6 +16,7 @@ import io.legado.app.help.book.removeType
 import io.legado.app.help.http.KmpRequestBuilder
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.media.SleepTimer
+import io.legado.app.help.media.SystemMediaControl
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.analyzeRule.AnalyzeRuleCore
 import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
@@ -130,6 +131,8 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
             postEvent(EventBus.AUDIO_STATE, Status.STOP)
             // 停止即收掉加载转圈
             postEvent(EventBus.AUDIO_LOADING, false)
+            // 服务还活着 (切章也走这里), 对照原版只更新播控状态不撤会话
+            syncNowPlaying()
         }
     }
 
@@ -157,6 +160,7 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
             // 传目标位置: 引擎 seek 异步, currentPosition 未同步, 用目标位置扫描歌词行
             manager.resetLrcPosition()
             manager.upPlayProgressForLrc(position)
+            syncNowPlaying(positionMs = position.toLong())
         }
     }
 
@@ -216,6 +220,7 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
         AudioPlayShared.status = Status.STOP
         postEvent(EventBus.AUDIO_STATE, Status.STOP)
         postEvent(EventBus.AUDIO_LOADING, false)
+        SystemMediaControl.releaseAudio()
     }
 
     /** 对应 AudioPlayService.triggerPlay */
@@ -327,6 +332,7 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
             if (controller.isPlaying) controller.pause()
             AudioPlayShared.status = Status.PAUSE
             postEvent(EventBus.AUDIO_STATE, Status.PAUSE)
+            syncNowPlaying()
         }
     }
 
@@ -345,6 +351,7 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
             manager.upPlayProgressForLrc()
             AudioPlayShared.status = Status.PLAY
             postEvent(EventBus.AUDIO_STATE, Status.PLAY)
+            syncNowPlaying()
         }.onFailure {
             destroySelf()
         }
@@ -359,6 +366,7 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
             postEvent(EventBus.AUDIO_SPEED, adjust)
             // 变速后 lrc 推进 delay 需按新速率重算
             manager.upPlayProgressForLrc()
+            syncNowPlaying()
         }
     }
 
@@ -387,12 +395,14 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
                 }
                 manager.upPlayProgress()
                 manager.upPlayProgressForLrc()
+                syncNowPlaying()
             }
 
             AudioPlayController.STATE_ENDED -> {
                 manager.cancelProgressJobs()
                 AudioPlayShared.playPositionChanged(controller.duration.toInt())
                 AudioPlayShared.next()
+                syncNowPlaying()
             }
         }
     }
@@ -412,6 +422,7 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
         AudioPlayShared.status = Status.STOP
         postEvent(EventBus.AUDIO_STATE, Status.STOP)
         postEvent(EventBus.AUDIO_LOADING, false)
+        syncNowPlaying()
         val errorMsg = "音频播放出错\n${error.message}"
         AppLog.put(errorMsg, error)
         toast(errorMsg)
@@ -424,11 +435,12 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
     }
 
     override fun onLoadCover(url: String?) {
-        // 鸿蒙无通知栏封面, AUDIO_COVER 事件已由 manager 推送 UI
+        // 书源 musicCover 规则算出的当前章节封面, 刷进播控卡片
+        syncNowPlaying(coverUrl = url)
     }
 
     override fun onResetCoverCache() {
-        // 同上, 无平台封面缓存
+        // 卡片封面按 URL 去重, 切章换 URL 自然重载, 无需额外处理
     }
 
     override fun onToast(message: String) = toast(message)
@@ -436,6 +448,10 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
     private fun toast(message: String) {
         runCatching { Toasters.get().toast(message) }
     }
+
+    /** 同步系统播控卡片 (补上本实例的播放倍速)。 */
+    private fun syncNowPlaying(positionMs: Long? = null, coverUrl: String? = null) =
+        SystemMediaControl.syncAudio(positionMs, playSpeed, coverUrl)
 
     // ===== 下载缓存 (桥仅支持本地 fd 源, 参考 OhosHttpTtsPlayer.downloadToTempFile) =====
 

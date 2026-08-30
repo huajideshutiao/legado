@@ -729,13 +729,6 @@ class AndroidPlatformCapabilities(
 
     // ===== 书籍详情页平台能力: 对照 BookInfoActivity 同名方法 =====
 
-    // 对照 BookInfoActivity.onClearCache / viewModel.clearCache (直接调 BookHelp)
-    override fun clearBookCache(book: Book) {
-        activity.lifecycleScope.launch(IO) {
-            BookHelp.clearCache(book)
-        }
-    }
-
     // 对照 BookInfoActivity.onShelfClick / deleteBook: 上架/下架, webFile 走下载导入
     override fun toggleBookshelf(
         book: Book,

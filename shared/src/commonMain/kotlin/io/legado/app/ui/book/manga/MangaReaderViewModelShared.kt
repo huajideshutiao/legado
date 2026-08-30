@@ -657,13 +657,13 @@ class MangaReaderViewModelShared(
         }
     }
 
-    /** 进入漫画阅读时调用 (对照 app 端 ReadMangaActivity.onResume): 开始阅读计时。 */
+    /** 进入活跃期 (对照 app 端 ReadMangaActivity.onResume): 开始阅读计时。 */
     fun onEnter() {
         ReadTimeRecorder.start(ReadTimeRecorder.Source.MANGA, _book.value?.name ?: "")
     }
 
     /**
-     * 退出漫画阅读时调用 (对照 app 端 ReadMangaActivity.onPause + onDestroy)：
+     * 离开活跃期 (对照 app 端 ReadMangaActivity.onPause)：被压栈 / 退到后台 / 出栈时,
      * 结束阅读计时 → 在架的书落库并上传进度 → 取消预下载。
      *
      * 走进程级 [progressSyncScope]，UI 侧 scope 取消不打断本次落库/上传
@@ -858,13 +858,12 @@ class MangaReaderViewModelShared(
     /**
      * 取消预下载任务 (对应 app 端 ReadMangaViewModel.cancelPreDownloadTask)。
      *
-     * 当前章 + 下一章均已加载完成时取消预下载, 避免无谓网络请求。
+     * 唯一调用方是 [onLeave], 故不带原版的 "当前章+下一章均就绪" 守卫: 该守卫会让
+     * "停在最后一章" 或 "下一章加载失败" 时离开阅读页也不取消, 预下载继续跑到跑完。
      */
     fun cancelPreDownloadTask() {
-        if (curMangaChapter != null && nextMangaChapter != null) {
-            preDownloadTask?.cancel()
-            downloadScope.coroutineContext.cancelChildren()
-        }
+        preDownloadTask?.cancel()
+        downloadScope.coroutineContext.cancelChildren()
     }
 
     /**
@@ -1034,13 +1033,14 @@ class MangaReaderViewModelShared(
     }
 
     /**
-     * VM 销毁时清理资源 (对应 app 端 ReadMangaViewModel.onCleared)。
+     * VM 销毁时清理资源 (对应 app 端 ReadMangaViewModel.onCleared + Activity.onDestroy)。
      *
      * actual 平台在 ViewModel.onCleared / DisposableEffect.onDispose 中调用。
      */
     fun onCleared() {
-        preDownloadTask?.cancel()
-        downloadScope.coroutineContext.cancelChildren()
+        // 对照原版 ReadMangaActivity.onDestroy: 立即结束阅读计时 (不等 end 的延迟结算)
+        ReadTimeRecorder.endImmediately(ReadTimeRecorder.Source.MANGA)
+        cancelPreDownloadTask()
     }
 
     /**

@@ -2,12 +2,8 @@ package io.legado.app.utils
 
 import com.github.weisj.jsvg.parser.LoaderContext
 import com.github.weisj.jsvg.parser.SVGLoader
-import org.jetbrains.skia.Bitmap
-import org.jetbrains.skia.ColorAlphaType
-import org.jetbrains.skia.ColorType
+import io.legado.app.help.image.toSkiaImage
 import org.jetbrains.skia.EncodedImageFormat
-import org.jetbrains.skia.Image
-import org.jetbrains.skia.ImageInfo
 import org.jetbrains.skia.impl.use
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
@@ -17,7 +13,7 @@ import java.io.ByteArrayInputStream
  * JVM 端 SVG 栅格化, 对照 Android 端 `io.legado.app.utils.SvgUtils` (androidsvg)。
  *
  * 用 jsvg (纯 Java Java2D 渲染器, 无 native, 比 Batik 轻) 把 SVG 字节渲染成 PNG,
- * 并通过 Skia 高性能编码输出 PNG 字节, 彻底脱离 ImageIO。
+ * 再经 Skia 编码输出 PNG 字节, 彻底脱离 ImageIO。
  */
 object SvgRasterizer {
 
@@ -54,32 +50,7 @@ object SvgRasterizer {
         } finally {
             g.dispose()
         }
-        val argb = image.getRGB(0, 0, w, h, null, 0, w)
-        val pixels = ByteArray(w * h * 4)
-        var i = 0
-        for (p in argb) {
-            val a = (p ushr 24) and 0xFF
-            val r = (p ushr 16) and 0xFF
-            val g = (p ushr 8) and 0xFF
-            val b = p and 0xFF
-            pixels[i++] = ((r * a + 127) / 255).toByte()
-            pixels[i++] = ((g * a + 127) / 255).toByte()
-            pixels[i++] = ((b * a + 127) / 255).toByte()
-            pixels[i++] = a.toByte()
-        }
-        val bitmap = Bitmap()
-        bitmap.use { bmp ->
-            check(
-                bmp.installPixels(
-                    ImageInfo(w, h, ColorType.RGBA_8888, ColorAlphaType.PREMUL),
-                    pixels,
-                    w * 4
-                )
-            )
-            Image.makeFromBitmap(bmp).use { skImage ->
-                skImage.encodeToData(EncodedImageFormat.PNG, 100)?.bytes
-            }
-        }
+        image.toSkiaImage().use { it.encodeToData(EncodedImageFormat.PNG, 100)?.bytes }
     }.getOrNull()
 }
 

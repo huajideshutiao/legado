@@ -39,10 +39,30 @@ class AnimatedFrames(
 internal expect fun decodeAnimatedFrames(bytes: ByteArray): AnimatedFrames?
 
 /**
+ * 字节 → 统一解码结果 (动静图合流, **原生尺寸不降采样** —— 漫画页不能被压到 2048)。
+ *
+ * 平台实现:
+ * - skikoUiMain (desktop/iOS/鸿蒙): 一个 [org.jetbrains.skia.Codec] 判定动静图并解码
+ * - androidMain: 无 skiko, 回落 [decodeBytesSampled] (Android 漫画走 coil3-gif, 不经本路径)
+ */
+internal expect fun decodeImageAuto(bytes: ByteArray): DecodedImageResult?
+
+/**
  * 动图帧解码的像素预算 (帧数 x 宽 x 高)。超预算退化静态首帧, 防超大 GIF 预解码打爆内存。
  * 16M 像素 ≈ 64MB (N32 每像素 4 字节), 足够覆盖表情/插图级 GIF。
  */
 internal const val MAX_ANIMATED_PIXELS = 16_000_000L
+
+/**
+ * 图像统一解码结果模型 (动静图合流)。
+ *
+ * 放 sharedUiMain 而非 skiko 层: 成员只有 [ImageBitmap] / [AnimatedFrames], 无平台类型,
+ * 非 skiko 端 (Coil3 缓存信封 `MangaPageImage`) 也要用。
+ */
+sealed interface DecodedImageResult {
+    data class Static(val bitmap: ImageBitmap) : DecodedImageResult
+    data class Animated(val frames: AnimatedFrames) : DecodedImageResult
+}
 
 /**
  * 动图字节 → 随时间自动推进的当前帧 [ImageBitmap]; 非动图 / 解码失败返回 null。

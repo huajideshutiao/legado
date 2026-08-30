@@ -1,21 +1,16 @@
 package io.legado.desktop.ui
 
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.SourceType
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
-import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
-import io.legado.app.data.entities.Review
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.DirectLinkUploadRule
 import io.legado.app.help.RssToolbarActions
-import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.isImage
-import io.legado.app.help.book.toggleBookshelfCore
 import io.legado.app.help.book.tryParesExportFileName
 import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.PreferenceProviders
@@ -39,18 +34,14 @@ import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.DefaultDialogTransitionSpec
 import io.legado.app.ui.root.DialogTransitionSpec
-import io.legado.app.ui.root.PlatformCapabilities
+import io.legado.app.ui.root.SharedPlatformCapabilities
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.RouteTransitionSpec
 import io.legado.app.ui.root.TransitionEasing
-import io.legado.app.ui.root.encodeBookVariableOverlayPayload
-import io.legado.app.ui.root.encodeSourceVariableOverlayPayload
 import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.root.toRouteRef
-import io.legado.app.ui.route.encodeReviewListDialogPayload
 import io.legado.app.ui.widget.dialog.encodePhotoOverlayPayload
-import io.legado.app.utils.FlowBus
 import io.legado.app.utils.GSON
 import io.legado.app.utils.RemoteAssetsUtils
 import io.legado.app.utils.browseUrl
@@ -71,7 +62,6 @@ import io.legado.desktop.ui.component.FileDialogs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -85,8 +75,10 @@ import java.net.URI
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.management.ObjectName
 
-object DesktopPlatformCapabilities : PlatformCapabilities {
+object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    override val capabilityScope: CoroutineScope get() = scope
 
     private val appDb get() = AppDbProviders.get()
     private val prefs get() = PreferenceProviders.get()
@@ -314,13 +306,6 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
     override suspend fun resolveBookRef(bookUrl: String): BookRef? =
         appDb.bookDao.getBook(bookUrl)?.toRouteRef()
 
-    // 桌面端 AppTheme 直接订阅 ThemeStore/AppConfig, 日夜切换即重组, 无 Activity.recreate 需求
-    override fun applyDayNight() = Unit
-
-    override fun showThemeListDialog() {
-        AppNavigatorProviders.getOrNull()?.showOverlay(AppOverlay.Dialog("theme_list"))
-    }
-
     // 书架布局 / 底栏配置: shared Compose 对话框 (BookshelfNavConfigDialogs.kt)
     override fun showBookshelfLayoutDialog() {
         AppNavigatorProviders.getOrNull()?.showOverlay(AppOverlay.Dialog("bookshelf_layout"))
@@ -357,26 +342,6 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
     // ===== Web 服务 (WebServerManager 已下沉) =====
 
     override fun getWebServiceUrl(): String? = WebServerManager.hostAddress.takeIf { it.isNotEmpty() }
-
-    override fun isWebServiceRunning(): Boolean = WebServerManager.isRun
-
-    override fun setWebService(enabled: Boolean) {
-        scope.launch {
-            runCatching { if (enabled) WebServerManager.start() else WebServerManager.stop() }
-                .onFailure { AppLog.put("Web 服务启停失败\n${it.message}", it) }
-        }
-    }
-
-    // 对照 app 端 FlowBus.withSticky(EventBus.WEB_SERVICE) 桥接到 StateFlow
-    private val webServiceRunningState: MutableStateFlow<Boolean> by lazy {
-        MutableStateFlow(WebServerManager.isRun).also { state ->
-            scope.launch {
-                FlowBus.with(EventBus.WEB_SERVICE).collect { state.value = WebServerManager.isRun }
-            }
-        }
-    }
-
-    override val webServiceState: StateFlow<Boolean>? get() = webServiceRunningState
 
     // 图片预览: 与 app 端 PhotoDialog 同一份 shared 实现, 经 "photo" overlay 弹出
     // (阅读页点击正文图片; payload = 图片 src + 章节索引, 供对话框优先查章节图片缓存)
@@ -496,85 +461,6 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
 
     // ===== 书籍详情页 =====
 
-    override fun clearBookCache(book: Book) {
-        scope.launch {
-            runCatching { BookStorageProviders.get().clearCache(book) }
-                .onSuccess { Toasters.get().toast("清理缓存成功") }
-                .onFailure { Toasters.get().toast("清理缓存出错\n${it.message}") }
-        }
-    }
-
-    // 书源变量: 对照原版 BaseSource.showSourceVariableDialog, 经 AppOverlay 弹 shared
-    // SourceVariableDialog (编辑 source.getVariable() 的原始 JSON 文本, 确定后 setVariable
-    // 原样写回, 不解析不校验); 渲染/保存逻辑见 VariableOverlayDialog.kt
-    override fun showSourceVariableDialog(book: Book) {
-        scope.launch {
-            val source = appDb.bookSourceDao.getBookSource(book.origin)
-            if (source == null) {
-                Toasters.get().toast("未找到书源")
-                return@launch
-            }
-            showBookSourceVariableDialog(source)
-        }
-    }
-
-    override fun showBookSourceVariableDialog(source: BookSource) {
-        AppNavigatorProviders.getOrNull()?.showOverlay(
-            AppOverlay.Dialog(
-                key = "sourceVariable",
-                payload = encodeSourceVariableOverlayPayload(source),
-            )
-        )
-    }
-
-    // 书籍变量: 对照原版 BaseBook.showBookVariableDialog, 只编辑 book.variable 的 "custom" 键
-    // (getCustomVariable/putCustomVariable 保留其他键), 经 AppOverlay 弹 shared
-    // BookVariableDialog, 确定后写库持久化 (逻辑见 VariableOverlayDialog.kt);
-    // 推 Overlay 前先查源: 原版拿不到 BookSource 直接 return (不弹窗)
-    override fun showBookVariableDialog(book: Book) {
-        scope.launch {
-            val source = appDb.bookSourceDao.getBookSource(book.origin) ?: return@launch
-            AppNavigatorProviders.getOrNull()?.showOverlay(
-                AppOverlay.Dialog(
-                    key = "bookVariable",
-                    payload = encodeBookVariableOverlayPayload(book, source),
-                )
-            )
-        }
-    }
-
-    override fun evalIntroAction(book: Book, js: String) {
-        val action = js.trim().ifEmpty { return }
-        scope.launch {
-            val source = appDb.bookSourceDao.getBookSource(book.origin)
-            if (source == null) {
-                Toasters.get().toast("未找到书源")
-                return@launch
-            }
-            runCatching { source.evalJS(action) { this["book"] = book } }
-                .onFailure { Toasters.get().toast(it.message ?: it::class.simpleName.orEmpty()) }
-        }
-    }
-
-    // 上架/下架 (DB 逻辑统一走 shared toggleBookshelfCore, 与 iOS/鸿蒙/Android 一致;
-    // 桌面端无删除确认弹窗, 无平台专属前后处理)
-    override fun toggleBookshelf(
-        book: Book,
-        inBookshelf: Boolean,
-        onComplete: (Boolean?) -> Unit,
-        onWaitDialog: (Boolean) -> Unit,
-        onAction: (String) -> Unit,
-    ) {
-        scope.launch {
-            runCatching { book.toggleBookshelfCore(inBookshelf) }
-                .onSuccess { onComplete(it) }
-                .onFailure {
-                    AppLog.put("书架操作失败\n${it.message}", it)
-                    onComplete(false)
-                }
-        }
-    }
-
     // 本地书文件字节数 (对照 app 端 FileDoc.fromFile(bookUrl).size; bookUrl 形如 file:///path)
     override suspend fun localBookFileSize(bookUrl: String): Long = withContext(Dispatchers.IO) {
         runCatching { resolveLocalFile(bookUrl).length() }.getOrDefault(0L)
@@ -582,27 +468,8 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
 
     // ===== 书架管理: 导出 =====
 
-    override fun exportUseReplace(): Boolean = prefs.getBoolean(PreferKey.exportUseReplace, true)
     override fun enableCustomExport(): Boolean = prefs.getBoolean(PreferKey.enableCustomExport, false)
-    override fun exportToWebDav(): Boolean = prefs.getBoolean(PreferKey.exportToWebDav, false)
-
-    override fun toggleExportUseReplace() {
-        prefs.putBoolean(PreferKey.exportUseReplace, !exportUseReplace())
-    }
-
-    override fun toggleCustomExport() {
-        prefs.putBoolean(PreferKey.enableCustomExport, !enableCustomExport())
-    }
-
-    override fun toggleExportWebDav() {
-        prefs.putBoolean(PreferKey.exportToWebDav, !exportToWebDav())
-    }
-
     override fun getDeleteBookOriginal(): Boolean = prefs.getBoolean(LocalConfigKeys.deleteBookOriginal, false)
-
-    override fun setDeleteBookOriginal(value: Boolean) {
-        prefs.putBoolean(LocalConfigKeys.deleteBookOriginal, value)
-    }
 
     // 导出书籍所用书源 JSON (对照 exportAllUseBookSource)
     override fun exportAllUseBookSource() {
@@ -749,10 +616,6 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
 
     // ===== 书源管理 =====
 
-    override fun addBookSource() {
-        AppNavigatorProviders.getOrNull()?.push(AppRoute.BookSourceEdit(""))
-    }
-
     override fun selectionAddToGroups(selection: List<BookSourcePart>) {
         if (selection.isEmpty()) return
         DesktopDialogs.show(
@@ -819,54 +682,7 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
         Debug.finishChecking()
     }
 
-    // 段评/书评列表: shared 底部弹窗 Overlay (对照 app 端 ReviewListDialog BottomSheetDialogFragment;
-    // 回复详情再开一层由宿主内部处理, 见 ReviewListDialogHost.kt)
-    override fun showReviewListDialog(
-        book: Book,
-        chapter: BookChapter?,
-        paragraphIndex: Int,
-        parentReview: Review?,
-    ): Boolean {
-        AppNavigatorProviders.getOrNull()?.showOverlay(
-            AppOverlay.Dialog(
-                key = "review_list",
-                payload = encodeReviewListDialogPayload(
-                    book,
-                    chapter,
-                    paragraphIndex,
-                    parentReview
-                ),
-            )
-        )
-        return true
-    }
-
-    // 默认封面图集: shared 管理对话框 Overlay (对照 app 端 DefaultCoverGalleryDialog;
-    // 选图加入/删除走 shared 逻辑, 见 DefaultCoverGalleryHost.kt)
-    override fun showDefaultCoverGallery(isNight: Boolean) {
-        AppNavigatorProviders.getOrNull()?.showOverlay(
-            AppOverlay.Dialog(
-                key = "default_cover_gallery",
-                payload = if (isNight) "1" else "0",
-            )
-        )
-    }
-
-    // 刷新默认封面缓存: shared 图集解析已按 raw 串记忆化自动失效,
-    // 广播书架刷新让封面槽重组重读即可 (app 端清 Drawable 解码缓存)
-    override fun refreshDefaultCover() {
-        FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
-    }
-
     // ===== 其它设置 =====
-
-    override fun setLocalPassword(password: String?) {
-        prefs.putString(LocalConfigKeys.password, password)
-    }
-
-    // 桌面无系统 touchSlop API (AWT/Java 无等价物), 取 Android 系统默认值 10px 等价档位;
-    // 仅用于 MoreConfigDialog 触控灵敏度摘要展示 (对照 app 端 ViewConfiguration.get(ctx).scaledTouchSlop)
-    override fun getScaledTouchSlop(): Int = 10
 
     override fun pickBookTreeUri(onSelected: (String?) -> Unit) {
         scope.launch { onSelected(FileDialogs.pickDirectory("选择书籍目录")?.absolutePath) }

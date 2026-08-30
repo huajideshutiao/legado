@@ -410,6 +410,9 @@ object OhosNativeBridge {
     /** 视频书播放实例 id (OhosVideoPlayerController 使用, 独占 AVPlayer 实例)。 */
     const val PLAYER_ID_VIDEO_BOOK: String = "videoBook"
 
+    /** 系统播控会话交互 id (AVSession 远程播控指令派发)。 */
+    const val PLAYER_ID_SESSION: String = "session"
+
     /** media threadsafe_function 引用 (Kotlin → ArkTS 发送播放器命令)。 */
     @Volatile
     private var mediaTsfn: OhosTsfnCallback? = null
@@ -976,7 +979,7 @@ object OhosNativeBridge {
      *
      * 监听 API:
      * - HTTP 进度: [OhosDownloadProgressEvents.addListener]/[removeListener] (同 ProgressManager 形)
-     * - 生命周期: [OhosAppLifecycle.addListener]/[removeListener] (阅读页 onEnter/onExit 挂卸)
+     * - 生命周期: [io.legado.app.ui.root.AppForegroundState.isForeground] (全局前后台状态流)
      *
      * 执行线程: ArkTS 主线程直推 (无跨线程 dispatch); 解析/分发失败静默丢弃 (事件通道尽力而为)。
      */

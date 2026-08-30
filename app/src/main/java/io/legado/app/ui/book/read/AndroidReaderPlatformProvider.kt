@@ -300,20 +300,15 @@ class AndroidReaderPlatformProvider(
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
         batteryReceiver = receiver
-        // 注册生命周期观察者: 桥接 Activity onPause/onResume 到 shared ScreenModel
+        // 注册生命周期观察者: 退后台停自动翻页 + 自动备份 (对照原版 onPause 的
+        // autoPageStop / Backup.autoBack)。计时/落库/取消预下载改由 shared
+        // RouteActiveEffect 统一驱动 (AppForegroundState + 栈顶判定), 此处不再转发
         val observer = object : DefaultLifecycleObserver {
             override fun onPause(owner: LifecycleOwner) {
-                // 对照原版 onPause → autoPageStop: 退后台停自动翻页
                 activeMenuState?.second?.stopAutoPage()
-                screenModel.onPause()
-                // 对照原版 ReadBookActivity.onPause → Backup.autoBack: 退后台触发自动备份
                 if (!BuildConfig.DEBUG) {
                     Backup.autoBack(activity)
                 }
-            }
-
-            override fun onResume(owner: LifecycleOwner) {
-                screenModel.onResume()
             }
         }
         activity.lifecycle.addObserver(observer)

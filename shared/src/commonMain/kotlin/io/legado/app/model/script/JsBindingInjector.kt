@@ -33,4 +33,8 @@ object JsBindingInjector {
     /** `image` 别名的图片解密 API 实现单例。 */
     val image: Any
         get() = checkNotNull(imageOps) { "ImageOps 未注册(宿主启动早期 registerImageOps)" }
+
+    /** 同 [image] 但带类型且允许未注册, 供 Kotlin 侧调用 (如 [ImageOps.withScope] 作用域回收)。 */
+    val imageOpsOrNull: ImageOps?
+        get() = imageOps
 }

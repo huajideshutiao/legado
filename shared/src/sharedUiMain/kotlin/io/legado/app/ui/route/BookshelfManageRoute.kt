@@ -28,6 +28,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
+import io.legado.app.help.book.BookHelpShared
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.help.book.isLocal
@@ -663,7 +664,7 @@ private fun clearCache(
     val selection = screenModel.selection()
     if (selection.isEmpty()) return
     scope.launch(IoDispatcher) {
-        selection.forEach { BookStorageProviders.get().clearCache(it) }
+        BookHelpShared.clearBookCache(selection)
         Toasters.get().toast(successLabel)
     }
 }

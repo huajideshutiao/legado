@@ -238,9 +238,6 @@ interface PlatformCapabilities {
     /** 书籍变量弹窗 (对照 onSetBookVariable) */
     fun showBookVariableDialog(book: Book) = unsupported("编辑书籍变量")
 
-    /** 清缓存 (对照 onClearCache) */
-    fun clearBookCache(book: Book) = unsupported("清除书籍缓存")
-
     /** 书架操作: 上架/下架 (对照 onShelfClick, onComplete: null=删除, true=已上架, false=取消) */
     fun toggleBookshelf(
         book: Book,
