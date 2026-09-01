@@ -19,7 +19,6 @@ import androidx.core.view.WindowInsetsControllerCompat
 import io.legado.app.App
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
-import io.legado.app.help.IntentData
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.resolveImagePath
 import io.legado.app.model.bakeCoverImageFile
@@ -550,8 +549,8 @@ private class AndroidExternalRequestService : ExternalRequestService {
  * - content/file/app → [LaunchRequest.ImportFile] (走导入书籍流程)
  * - legado/yuedu/其他 → [LaunchRequest.DeepLink] (legado 系由 [LegadoDeepLinkHandler] 进一步接管导入对话框)
  *
- * 内部 startActivityForBook 兜底入口: bookUrl extra → [LaunchRequest.OpenReader],
- * 由 MainActivity 透传到 shared ReaderRoute 分发 (替代原 ReadBookActivity 直启)。
+ * 只解析"手里只有字符串标识"的入口 (通知 route extra / alias / 文件 URI / 选中文本);
+ * 带内存对象的书籍类直达由投递方直接投 [LaunchRequest.OpenRoute], 不经 Intent。
  */
 
 /** 搜索界面入口别名: manifest activity-alias 指向 MainActivity (对照 master SearchActivity.receiptIntent)。 */
@@ -592,16 +591,6 @@ fun Intent.toLaunchRequest(): LaunchRequest? {
             )
         }
     }
-    // startActivityForBook 兜底: bookUrl extra → OpenReader (chapterIndex/chapterPos 可选)
-    getStringExtra("bookUrl")?.takeIf { it.isNotEmpty() }?.let { url ->
-        // 同步消费 IntentData.book, 避免残留数据污染后续无关 Intent 解析
-        IntentData.book
-        return LaunchRequest.OpenReader(
-            bookUrl = url,
-            chapterIndex = getIntExtra("chapterIndex", -1).takeIf { it >= 0 },
-            chapterPos = getIntExtra("chapterPos", -1).takeIf { it >= 0 },
-        )
-    }
     when (action) {
         Intent.ACTION_VIEW -> dataString?.let { url ->
             return when (data?.scheme) {
@@ -621,8 +610,9 @@ fun Intent.toLaunchRequest(): LaunchRequest? {
             getStringExtra(Intent.EXTRA_TEXT)?.let { return LaunchRequest.ProcessText(it) }
         }
     }
-    // 过渡期: 未带 bookUrl extra 的旧调用方仍走 IntentData.book → 转 bookUrl 走 OpenReader
-    return IntentData.book?.let { book -> LaunchRequest.OpenReader(bookUrl = book.bookUrl) }
+    // 无法识别: 返回 null。不回落 IntentData.book —— 它取一次即失效, 而每个 MainActivity
+    // intent (含普通启动 intent) 都过一遍本函数, 回落等于让无关 intent 取走别处刚寄存的书。
+    return null
 }
 
 /**

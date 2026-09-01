@@ -108,9 +108,9 @@ object OhosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
         OhosNativeBridge.setWindowSystemBarEnable(!enabled)
     }
 
-    override fun toggleOrientation() {
-        // 0 = 竖屏, 1 = 横屏 (对照 @ohos.window Orientation enum)
-        OhosNativeBridge.setWindowPreferredOrientation(1)
+    // 横屏全屏: 2=LANDSCAPE / 0=UNSPECIFIED (枚举映射见 OhosPlatformServices.setOrientation)
+    override fun applySystemFullScreen(enabled: Boolean) {
+        OhosNativeBridge.setWindowPreferredOrientation(if (enabled) 2 else 0)
     }
 }
 

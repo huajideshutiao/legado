@@ -51,7 +51,7 @@ object ColorUtils {
         val alpha = alpha(color)
         val hsv = FloatArray(3)
         colorToHSV(color, hsv)
-        hsv[2] *= by // value component
+        hsv[2] = (hsv[2] * by).coerceIn(0f, 1f) // value component
         return (alpha shl 24) + (0x00ffffff and HSVToColor(hsv))
     }
 
@@ -101,9 +101,11 @@ object ColorUtils {
     }
 
     fun argb(alpha: Int, r: Int, g: Int, b: Int): Int {
-        val colorByteArr =
-            byteArrayOf(alpha.toByte(), r.toByte(), g.toByte(), b.toByte())
-        return byteArrToInt(colorByteArr)
+        val a = alpha.coerceIn(0, 255)
+        val red = r.coerceIn(0, 255)
+        val green = g.coerceIn(0, 255)
+        val blue = b.coerceIn(0, 255)
+        return (a shl 24) or (red shl 16) or (green shl 8) or blue
     }
 
     fun rgb(argb: Int): IntArray {
@@ -177,8 +179,8 @@ object ColorUtils {
      */
     fun HSVToColor(hsv: FloatArray): Int {
         val h = hsv[0]
-        val s = hsv[1]
-        val v = hsv[2]
+        val s = hsv[1].coerceIn(0f, 1f)
+        val v = hsv[2].coerceIn(0f, 1f)
         val c = v * s
         val hp = h / 60f
         val x = c * (1 - abs(hp % 2f - 1f))
@@ -191,9 +193,9 @@ object ColorUtils {
             hp < 5f -> Triple(x, 0f, c)
             else -> Triple(c, 0f, x)
         }
-        val r = ((r1 + m) * 255).roundToInt()
-        val g = ((g1 + m) * 255).roundToInt()
-        val b = ((b1 + m) * 255).roundToInt()
+        val r = ((r1 + m) * 255).roundToInt().coerceIn(0, 255)
+        val g = ((g1 + m) * 255).roundToInt().coerceIn(0, 255)
+        val b = ((b1 + m) * 255).roundToInt().coerceIn(0, 255)
         return argb(255, r, g, b)
     }
 

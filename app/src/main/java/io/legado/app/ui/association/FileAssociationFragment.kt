@@ -12,10 +12,6 @@ import androidx.lifecycle.lifecycleScope
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.InvalidBooksDirException
 import io.legado.app.help.IntentData
-import io.legado.app.help.book.isAudio
-import io.legado.app.help.book.isImage
-import io.legado.app.help.book.isRss
-import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.lib.permission.Permissions
@@ -26,8 +22,9 @@ import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
-import io.legado.app.ui.root.AppRoute
-import io.legado.app.ui.root.toRouteRef
+import io.legado.app.ui.root.LaunchRequest
+import io.legado.app.ui.root.LaunchRequestBus
+import io.legado.app.ui.root.toReadRoute
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.canRead
 import io.legado.app.utils.checkWrite
@@ -85,28 +82,11 @@ class FileAssociationFragment(private val isShellHost: Boolean = false) : Fragme
             finishActivity()
         }
         viewModel.openBookLiveData.observe(this) {
-            if (isShell) {
-                // 独立透明壳: 壳内无主导航器 (AppNavigatorProviders 未注册), 与
-                // AssociationActivity 的 pendingBookNav 同款经 IntentData + route extra 转发主界面;
-                // 类型分发由 Book.toReadRoute() 承担 (audio/video/manga/rss/reader)
-                IntentData.book = it
-                startActivity<MainActivity> {
-                    putExtra("route", "read_book")
-                    putExtra("bookUrl", it.bookUrl)
-                }
-                finishActivity()
-                return@observe
-            }
-            // 按 book 类型分发到对应阅读路由
-            val navigator = AppNavigatorProviders.get()
-            val target = when {
-                it.isAudio -> AppRoute.AudioPlay(it.toRouteRef())
-                it.isVideo -> AppRoute.VideoPlay(it.toRouteRef())
-                it.isImage -> AppRoute.MangaReader(it.toRouteRef())
-                it.isRss -> AppRoute.ReadRss(it.toRouteRef())
-                else -> AppRoute.Reader(it.toRouteRef())
-            }
-            navigator.push(target)
+            // 同进程直投路由引用: 类型分发由 Book.toReadRoute() 承担 (audio/video/manga/rss/reader),
+            // 壳内 asRoot (书架不进栈, 对照 master 直开), 宿主内是普通 push
+            LaunchRequestBus.dispatch(LaunchRequest.OpenRoute(it.toReadRoute(), asRoot = isShell))
+            // 壳内: Intent 只负责把主界面唤到前台 (不带载荷); 宿主内本就在前台
+            if (isShell) startActivity<MainActivity>()
             finishActivity()
         }
         viewModel.notSupportedLiveData.observe(this) { data ->

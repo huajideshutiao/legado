@@ -2,7 +2,6 @@ package io.legado.desktop.http
 
 import io.legado.app.help.http.OkHttpClientProvider
 import io.legado.app.help.http.OkHttpProxyClientProvider
-import io.legado.desktop.http.DesktopHttpProvider.Companion.DEFAULT_UA
 import okhttp3.OkHttpClient
 
 /**
@@ -15,7 +14,7 @@ import okhttp3.OkHttpClient
  *   内 `CronetProviders.get()` 返回 null, 自动跳过 Cronet eventListener/loader/interceptor
  *   (与原桌面裁剪版行为一致)。
  * - UA: shared HttpHelper 内 `UserAgentProviders.get()` 由桌面
- *   `registerDesktopSourceProviders` 注册 (PreferKey.userAgent 空 → [DEFAULT_UA])。
+ *   `registerDesktopSourceProviders` 注册 (PreferKey.userAgent 空 → AppConst.DEFAULT_USER_AGENT)。
  * - ProgressResponseBody 包装: 桌面端 MangaReaderPlatform.Image 已注册
  *   `ProgressManager.addListener(url)` (转圈环心显示下载百分比), 有监听器时
  *   `ProgressManager.getProgressListener(url)` 非空, 包装分支触发并逐字节回调;
@@ -34,10 +33,4 @@ class DesktopHttpProvider : OkHttpClientProvider, OkHttpProxyClientProvider {
 
     override fun getProxyClient(proxy: String?): OkHttpClient =
         io.legado.app.help.http.getProxyClient(proxy)
-
-    companion object {
-        // 与 Android 端 getPrefUserAgent 默认值对齐 (Chrome 桌面 UA)
-        // 桌面端 registerDesktopSourceProviders 中 desktopUserAgentProvider 用作空 UA 兜底
-        const val DEFAULT_UA = io.legado.app.constant.AppConst.DEFAULT_USER_AGENT
-    }
 }

@@ -655,11 +655,12 @@ class ReaderScreenModel(
         ) {
             readBook.saveCurrentBookProgress()
         }
-        viewModel.loadChapter(chapterIndex ?: book.durChapterIndex)
-        // 对照 app 端 applyBookmarkPosition: chapterIndex 有效时跳转到指定 chapterPos
-        if (chapterIndex != null && chapterPos != null) {
-            readBook.updateDurChapterPos(chapterPos)
-        }
+        // 对照 app 端 applyBookmarkPosition: chapterIndex 有效时跳转到指定 chapterPos。
+        // 位置必须随 loadChapter 传入, 装载是异步的, 在外面写 durChapterPos 会被跳章分支清零
+        viewModel.loadChapter(
+            chapterIndex ?: book.durChapterIndex,
+            chapterPos = chapterPos?.takeIf { chapterIndex != null },
+        )
         // 对照原版 initBook: 打开书即同步云进度 (原版每次 initBook 都 syncProgress,
         // 仅同书 + 朗读运行中跳过; 书签跳转等入口同样触发, 与原版 chapterChanged 之外的行为一致)
         viewModel.syncProgressOnBookOpen(book, isSameBook)
@@ -813,10 +814,8 @@ class ReaderScreenModel(
      * 供 Toc/书签结果回传后调用。
      */
     fun openChapter(index: Int, pos: Int? = null) {
-        viewModel.loadChapter(index)
-        if (pos != null) {
-            readBook.updateDurChapterPos(pos)
-        }
+        // 位置必须随 loadChapter 传入, 装载是异步的, 在外面写 durChapterPos 会被跳章分支清零
+        viewModel.loadChapter(index, chapterPos = pos)
     }
 
     override fun onPreRemoved() {

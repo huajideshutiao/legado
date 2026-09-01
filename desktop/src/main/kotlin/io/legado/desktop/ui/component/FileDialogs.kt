@@ -1,6 +1,7 @@
 package io.legado.desktop.ui.component
 
 import com.sun.jna.Platform
+import java.awt.Dialog
 import java.awt.EventQueue
 import java.awt.FileDialog
 import java.awt.Frame
@@ -170,10 +171,14 @@ object FileDialogs {
         initialDir: File? = null,
         multiSelect: Boolean = false,
     ): List<File> {
-        // 属主优先用当前应用窗口; 取不到才造临时 Frame, 用完必须 dispose 否则每次调用泄漏一个原生窗口
-        val parent = ownerWindow() as? Frame
-        val temp = if (parent == null) Frame() else null
-        val dialog = FileDialog(parent ?: temp!!, title ?: "", mode)
+        // 属主优先用当前应用窗口 (支持 Frame / Dialog); 取不到才造临时 Frame, 用完必须 dispose 否则每次调用泄漏一个原生窗口
+        val owner = ownerWindow()
+        val temp = if (owner !is Frame && owner !is Dialog) Frame() else null
+        val dialog = when (owner) {
+            is Frame -> FileDialog(owner, title ?: "", mode)
+            is Dialog -> FileDialog(owner, title ?: "", mode)
+            else -> FileDialog(temp!!, title ?: "", mode)
+        }
         try {
             initialDir?.takeIf { it.isDirectory }?.let { dialog.directory = it.absolutePath }
             if (extensions.isNotEmpty()) {

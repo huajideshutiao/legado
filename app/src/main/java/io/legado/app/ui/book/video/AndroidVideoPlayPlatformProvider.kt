@@ -149,21 +149,16 @@ class AndroidVideoPlayPlatformProvider(
         activity.toggleSystemBar(!enabled)
     }
 
-    override fun toggleOrientation() {
-        activity.requestedOrientation =
-            if (activity.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
-                ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            } else {
-                ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            }
-    }
-
+    // 横屏全屏 (对照原版全屏钮 requestedOrientation 切换): 退出写 UNSPECIFIED 而非 PORTRAIT,
+    // 单 Activity 下方向锁挂在 MainActivity 上, 留锁会随视频页出栈带到全 app
     override fun applySystemFullScreen(enabled: Boolean) {
-        toggleOrientation()
+        activity.requestedOrientation = if (enabled) {
+            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
     }
 }
-
-/** 锁定/解锁钮已收拢为 shared [VideoLockToggle] (见 VideoPlayerScreenContent.kt)。 */
 
 @SuppressLint("UnsafeOptInUsageError")
 private class AndroidVideoPlayerController(

@@ -121,28 +121,34 @@ fun JsonType.toDeepLinkImportType(): DeepLinkImportType = when (this) {
  */
 object AddToBookshelfShared {
 
-    suspend fun add(bookUrl: String) {
+    /** 抓取书籍详情并构建未上架状态的详情页路由 (供多端导航与路由解析复用)。 */
+    suspend fun resolveRoute(bookUrl: String): AppRoute {
         if (bookUrl.isBlank()) error("url不能为空")
         val book = getBookInfoByUrlAwait(bookUrl)
         book.addType(BookType.notShelf)
-        AppNavigatorProviders.getOrNull()?.push(AppRoute.BookInfo(book.toRouteRef()))
+        return AppRoute.BookInfo(book.toRouteRef())
+    }
+
+    suspend fun add(bookUrl: String) {
+        AppNavigatorProviders.getOrNull()?.push(resolveRoute(bookUrl))
     }
 }
 
 /**
  * "书架直读" (legado://import/read?src=... 落地实现, 对照 app 端原 `ReadBookHelper.open`):
  * - src 已在书架 (DB 存在) → 直接进阅读界面 ([AppRoute.Reader] 等阅读类路由);
- * - 不在书架 → 等同 [AddToBookshelfShared.add]: 抓详情后跳详情界面, 供用户决定是否收藏。
+ * - 不在书架 → 等同 [AddToBookshelfShared]: 抓详情后跳详情界面, 供用户决定是否收藏。
  */
 object ReadBookShared {
 
-    suspend fun read(bookUrl: String) {
+    /** 根据在架状态解析目标路由: 在架跳阅读页, 未在架走 addToBookshelf 进详情页。 */
+    suspend fun resolveRoute(bookUrl: String): AppRoute {
         if (bookUrl.isBlank()) error("url不能为空")
         val book = AppDbProviders.get().bookDao.getBook(bookUrl)
-        if (book != null) {
-            AppNavigatorProviders.getOrNull()?.push(book.toReadRoute())
-        } else {
-            AddToBookshelfShared.add(bookUrl)
-        }
+        return book?.toReadRoute() ?: AddToBookshelfShared.resolveRoute(bookUrl)
+    }
+
+    suspend fun read(bookUrl: String) {
+        AppNavigatorProviders.getOrNull()?.push(resolveRoute(bookUrl))
     }
 }

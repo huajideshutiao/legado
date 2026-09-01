@@ -96,7 +96,6 @@ interface VideoPlayPlatformProvider {
     ): Boolean? = null
 
     fun applyFullscreen(enabled: Boolean) {}
-    fun toggleOrientation() {}
 
     // 系统级全屏 (隐藏系统底栏/窗口装饰, 对照 app applyFullscreen 在桌面端的增强版);
     // 与 applyFullscreen (右上角菜单的窗口内全屏) 区分
@@ -380,12 +379,6 @@ class VideoPlayScreenModel : ScreenModel {
     fun setFullScreen(enabled: Boolean) {
         _state.update { it.copy(isFullScreen = enabled) }
         platform?.applyFullscreen(enabled)
-    }
-
-    /** 横竖屏互切 (对照 Activity toggleOrientationFullscreen: requestedOrientation 切换)。
-     *  平台专属, 待 host 注入 */
-    fun onToggleOrientationFullscreen() {
-        platform?.toggleOrientation()
     }
 
     // 系统级全屏切换 (桌面端隐藏系统底栏/窗口装饰; 与窗口内全屏互斥)

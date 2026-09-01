@@ -43,7 +43,6 @@ import androidx.compose.ui.unit.dp
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
-import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.Bookmark
@@ -702,6 +701,9 @@ private suspend fun handleLaunchRequest(
         )
 
         is LaunchRequest.ImportFile -> navigator.push(AppRoute.ImportBook(request.filePath))
+        // 进程内直投的完整路由 (透明壳深链 / 文件关联 / 直达入口): 载荷即引用, 不查库不反序列化。
+        // asRoot 只在首次组合期 seed 初始路由时有意义 (见 MainActivity.Content), 到这里一律 push
+        is LaunchRequest.OpenRoute -> navigator.push(request.route)
         is LaunchRequest.SourceUi -> when (request.type) {
             // 统一登录入口: URL 登录桌面端直开登录窗口 (2026-08-07); 深链无源对象,
             // 由 SourceLoginOverlayContent 源加载完成后兜底短路
@@ -747,27 +749,8 @@ private suspend fun handleLaunchRequest(
                 }
             }
 
-            // 透明壳 (AssociationActivity) addToBookshelf/read 转发: IntentData 直传内存书
-            // (壳里 getBookInfoByUrlAwait/bookDao.getBook 返回的都是 Book, 必为 Book);
-            // 对照 master BookInfoActivity/ReadBookActivity 读 IntentData.book; 兜底主界面
-            "book_info" -> {
-                val book = IntentData.book as? Book
-                if (book != null) {
-                    navigator.push(AppRoute.BookInfo(book.toRouteRef()))
-                } else {
-                    navigator.push(AppRoute.Main(MainTab.BOOKSHELF))
-                }
-            }
-
-            "read_book" -> {
-                val book = IntentData.book as? Book
-                if (book != null) {
-                    navigator.push(book.toReadRoute())
-                } else {
-                    navigator.push(AppRoute.Main(MainTab.BOOKSHELF))
-                }
-            }
-
+            // 书籍类直达 (透明壳深链 / 文件关联) 不走 routeName + 侧信道, 见 LaunchRequest.OpenRoute:
+            // 载荷跟着请求走, 这里只保留"手里只有字符串标识"的跨进程入口 (通知/快捷方式)
             else -> Unit
         }
     }

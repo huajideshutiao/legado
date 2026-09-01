@@ -114,17 +114,13 @@ object IosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
 
     override fun applyFullscreen(enabled: Boolean) {
         // 对照原版 setFullScreen 的系统栏部分 (iOS 无窗口内全屏布局概念, 全屏观感=状态栏显隐):
-        // 经 SwiftUI 根视图 .statusBarHidden 桥, 与 WindowPolicy.setSystemBars 同通道
+        // 经 SwiftUI 根视图 .statusBarHidden 桥, 与 WindowPolicy.setSystemBars 同通道。
+        // iOS 不支持编程强制方向 (见 IosWindowController.setOrientation), 故无 applySystemFullScreen
         NSNotificationCenter.defaultCenter.postNotificationName(
             aName = IosStatusBarHiddenNotification,
             `object` = null,
             userInfo = mapOf(IosStatusBarHiddenKey to enabled),
         )
-    }
-
-    override fun toggleOrientation() {
-        // iOS 不支持编程强制方向 (UIDevice.setValue 已弃用且受 Info.plist 限制,
-        // 见 IosWindowController.setOrientation), 横竖屏联动仅由 applyFullscreen 承担状态栏部分
     }
 }
 

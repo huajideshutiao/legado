@@ -200,10 +200,8 @@ private class WebView2WindowHandle(
         created.setUserAgent(request.effectiveUserAgent)
         // 对照原版 WebViewActivity 的 AppCookieManager.applyToWebView(url): 打开前把
         // CookieStore 已有 cookie 灌进浏览器, 否则窗口里是未登录态 (与回收互补成闭环)
-        scope.launch {
-            injectWebViewCookies(request.url, platformLabel, "窗口 cookie") { domain, cookie ->
-                created.setCookies(domain, cookie)
-            }
+        injectWebViewCookies(request.url, platformLabel, "窗口 cookie") { domain, cookie ->
+            created.setCookies(domain, cookie)
         }
         created.toolbar?.onAction = { action -> onToolbarAction(created, action) }
         // RSS 收藏态反推: shared 侧书架操作完成后经 onStarChanged 更新窗口星图标

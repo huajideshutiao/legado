@@ -588,15 +588,13 @@ private class MacWindowHandle(
         created.setUserAgent(request.effectiveUserAgent)
         // RSS 收藏态反推: shared 侧书架操作完成后经 onStarChanged 更新窗口星图标 (对照 Windows 引擎)
         request.rssActions?.onStarChanged = { starred -> created.toolbar?.setStarred(starred) }
-        // cookie 注入 (suspend) 在协程里做, 不等导航完成
-        scope.launch {
-            injectWebViewCookies(
-                request.url,
-                platformLabel,
-                subject = "窗口 cookie"
-            ) { domain, cookie ->
-                created.addCookies(domain, cookie, DesktopWebViewEngineBase.COOKIE_TIMEOUT_MS)
-            }
+        // cookie 注入 (suspend): 确保在启动导航前完成注入
+        injectWebViewCookies(
+            request.url,
+            platformLabel,
+            subject = "窗口 cookie"
+        ) { domain, cookie ->
+            created.addCookies(domain, cookie, DesktopWebViewEngineBase.COOKIE_TIMEOUT_MS)
         }
         created.onNavigated = { url ->
             currentUrl = url

@@ -11,7 +11,6 @@ import androidx.core.content.edit
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
-import io.legado.app.data.entities.Book
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 
@@ -78,16 +77,6 @@ inline fun <reified T : Activity> Fragment.startActivity(
     configIntent: Intent.() -> Unit = {}
 ) {
     startActivity(Intent(requireContext(), T::class.java).apply(configIntent))
-}
-
-// 工具函数: 转调 Context 版本, 由其优先走 shared 路由或兜底 MainActivity + LaunchRequest
-fun Fragment.startActivityForBook(
-    book: Book,
-    chapterIndex: Int? = null,
-    chapterPos: Int? = null,
-    configIntent: Intent.() -> Unit = {},
-) {
-    requireContext().startActivityForBook(book, chapterIndex, chapterPos, configIntent)
 }
 
 fun Fragment.showHelp(fileName: String) {

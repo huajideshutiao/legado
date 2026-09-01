@@ -1197,8 +1197,9 @@ class ReadBookViewModelShared(
         if (readBook.durChapterIndex.value == progress.durChapterIndex &&
             readBook.durChapterPos.value == progress.durChapterPos
         ) return
-        // 原版 setProgress：赋 index/pos + clearTextChapter + loadContent(resetPageOffset=true)。
-        // 先置 index 再 loadChapter，避免 loadChapter 的跳章分支把 durChapterPos 清零
+        // 原版 setProgress：赋 index/pos + clearTextChapter + loadContent(resetPageOffset=true)，
+        // 无 saveRead。故不借 loadChapter 的 chapterPos 落位 (跳章分支会 saveRead、同章分支不清
+        // 滑窗)：这里自行成对写 index/pos，让 loadChapter 只当同章重载
         readBook.clearTextChapter()
         readBook.updateDurChapterIndex(progress.durChapterIndex)
         readBook.updateDurChapterPos(progress.durChapterPos)

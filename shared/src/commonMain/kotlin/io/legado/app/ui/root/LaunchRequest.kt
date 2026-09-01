@@ -69,6 +69,20 @@ sealed interface LaunchRequest {
         val bookUrl: String? = null,
     ) : LaunchRequest
 
+    /**
+     * 进程内直投的完整路由: 载荷就在 [route] 里 (BookRef.Stored 是引用, 不拷贝不序列化),
+     * 无需查库、无需全局侧信道, 也不存在"名字到了载荷被别人取走"的第二取件人。
+     *
+     * @param asRoot 冷启动直达语义: 该路由直接作为导航栈初始路由, 书架不进栈
+     * (对照 master 各页独立 Activity 直开, back 即退回调用方)。只在 UI 首次组合期
+     * 取件时有意义 (见 Android MainActivity.Content), 之后消费一律 push。
+     */
+    @Serializable
+    data class OpenRoute(
+        val route: AppRoute,
+        val asRoot: Boolean = false,
+    ) : LaunchRequest
+
     /** SourceUiRequest 三种子类型的可序列化映射 */
     @Serializable
     enum class SourceUiType { LOGIN, SOURCE_VARIABLE, VERIFICATION_CODE }
@@ -85,4 +99,11 @@ object LaunchRequestBus {
     fun dispatch(request: LaunchRequest) {
         check(channel.trySend(request).isSuccess) { "LaunchRequest queue is closed" }
     }
+
+    /**
+     * 组合期同步取件 (队列为空返回 null)。与 [requests] 是同一个 Channel, 元素只交付一次 ——
+     * "谁来取"因此只是实现细节, 不可能出现两个消费点各自取到一半。
+     * UI 首帧需要把 [LaunchRequest.OpenRoute] 当初始路由时用它, 避免"先渲染书架再滑入"的闪帧。
+     */
+    fun tryReceive(): LaunchRequest? = channel.tryReceive().getOrNull()
 }

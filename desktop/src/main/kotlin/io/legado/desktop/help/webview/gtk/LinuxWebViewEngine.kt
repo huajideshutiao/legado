@@ -208,11 +208,9 @@ private class GtkWindowHandle(
         currentUrl = request.url
         GtkLoop.post { created.setUserAgent(request.effectiveUserAgent) }
         // 对照原版 AppCookieManager.applyToWebView(url) (同 Windows/Mac 可见窗口)
-        scope.launch {
-            injectWebViewCookies(request.url, platformLabel, "窗口 cookie") { domain, cookie ->
-                GtkLoop.await {
-                    created.addCookies(domain, cookie, DesktopWebViewEngineBase.COOKIE_TIMEOUT_MS)
-                }
+        injectWebViewCookies(request.url, platformLabel, "窗口 cookie") { domain, cookie ->
+            GtkLoop.await {
+                created.addCookies(domain, cookie, DesktopWebViewEngineBase.COOKIE_TIMEOUT_MS)
             }
         }
         // RSS 收藏态反推: shared 侧书架操作完成后经 onStarChanged 更新窗口星图标 (同 Windows)

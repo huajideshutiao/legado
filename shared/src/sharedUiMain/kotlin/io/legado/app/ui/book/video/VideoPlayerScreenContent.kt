@@ -358,7 +358,7 @@ fun VideoControlsOverlay(
     onSeekDragStateChange: (Boolean) -> Unit = {},
     centerControls: @Composable (BoxScope.() -> Unit)? = null,
     leadingContent: @Composable (BoxScope.() -> Unit) = {},
-    // 系统级全屏 (对照 app toggleOrientationFullscreen: 隐藏系统底栏/窗口装饰);
+    // 系统级全屏 (安卓=横屏全屏, 桌面=隐藏系统底栏/窗口装饰);
     // 与右上角菜单的窗口内全屏 (onToggleFullScreen) 区分
     isSystemFullScreen: Boolean = false,
     onToggleSystemFullScreen: () -> Unit = {},

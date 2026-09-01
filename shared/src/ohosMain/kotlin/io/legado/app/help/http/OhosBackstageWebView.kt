@@ -107,10 +107,10 @@ private class OhosBackstageWebViewHandle(
         }
         // cookie 读取走 DB (SharedCookieStore 内部 runBlocking), 切到 IO 线程做
         val pendingCookie = readStoredCookie()
-        val effectiveHeaders = (headerMap ?: emptyMap()).toMutableMap()
-        if (effectiveHeaders.keys.none { it.equals(AppConst.UA_NAME, ignoreCase = true) }) {
-            effectiveHeaders[AppConst.UA_NAME] = headerMap.getUserAgent()
-        }
+        val effectiveHeaders = (headerMap ?: emptyMap())
+            .filterKeys { !it.equals(AppConst.UA_NAME, ignoreCase = true) }
+            .toMutableMap()
+            .apply { put(AppConst.UA_NAME, headerMap.getUserAgent()) }
         // 控制面: 小字段走 JSON; html (可能数百 KB~数 MB) 走裸字符串第二参数
         val payload = WebViewRequestPayload(
             url = url,

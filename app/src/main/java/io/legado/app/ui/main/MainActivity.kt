@@ -41,7 +41,6 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.constant.appInfo
 import io.legado.app.data.entities.Book
 import io.legado.app.help.AppWebDav
-import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
@@ -107,8 +106,6 @@ import io.legado.app.ui.root.LegadoApp
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.ScreenModelStore
-import io.legado.app.ui.root.toReadRoute
-import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.ACache
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.isContentScheme
@@ -138,10 +135,6 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
     private var exitTime: Long = 0
     private val EXIT_INTERVAL = 2000L
     private val exportBookPathKey = "exportBookPath"
-
-    /** 外部入口直达请求暂存 (冷启动, 导航器未就绪): Content 组合后决定消费为初始路由
-     *  或补发, 避免静默丢失 (book_info/read_book 壳转发 + search/explore-show 等 alias 入口)。 */
-    private var pendingDirectRequest: LaunchRequest? = null
 
     /** 换封面源回调暂存: 由 [AndroidPlatformCapabilities.showChangeCoverDialog] 写入,
      *  ChangeCoverDialog 触发 [coverChangeTo] 时消费。 */
@@ -513,21 +506,22 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
         // rememberSaveable + AppNavigatorSaver: recreate()/进程重建后恢复导航栈
         // (对照原版 FragmentManager 经 savedInstanceState 恢复 Fragment 栈,
         // RECREATE 事件重建 Activity 后用户仍停在原页, 不会弹回主界面)
-        // 冷启动直达 (透明壳 book_info/read_book 转发): 初始路由直接是详情/阅读页,
-        // 书架不进导航栈 (对照 master BookInfoActivity 直开); 恢复栈时 initialRoute 被忽略。
-        // directRoute 只算一次 (remember), 作为"直达是否消费成功"的唯一事实
-        val directRoute = remember { directRouteFromIntent(intent) }
+        //
+        // 外部请求的**唯一**取件点: 与 LegadoApp 里的 collect 同一个 Channel, 元素只交付一次。
+        // asRoot 的 OpenRoute 直接当初始路由 —— 书架不进导航栈 (对照 master 各页独立 Activity
+        // 直开, back 即退回调用方), 且没有"先渲染书架再滑入目标页"的闪帧。
+        val seeded = remember { LaunchRequestBus.tryReceive() }
+        val seedRoute = (seeded as? LaunchRequest.OpenRoute)?.takeIf { it.asRoot }?.route
         val navigator = rememberSaveable(saver = AppNavigatorSaver) {
-            AppNavigator(initialRoute = directRoute ?: AppRoute.Main())
+            AppNavigator(initialRoute = seedRoute ?: AppRoute.Main())
         }
-        // 直达请求收尾: 初始路由真消费成功 (栈顶 == 目标路由) → 不补发;
-        // 消费失败 (IntentData.book 缺失 / 恢复栈覆盖) → 补发到 LaunchRequestBus, 不静默丢失
+        // 取件后没被初始路由消费掉 (asRoot=false / 恢复栈忽略了 initialRoute) → 回队列,
+        // 交给唯一消费者按常规 push, 不静默丢失 (载荷在请求对象里, 回队列不会失真)
         LaunchedEffect(Unit) {
-            pendingDirectRequest?.let { req ->
-                val consumed = directRoute != null &&
-                    navigator.backStack.value.singleOrNull()?.route == directRoute
+            seeded?.let { req ->
+                val consumed = seedRoute != null &&
+                    navigator.backStack.value.singleOrNull()?.route == seedRoute
                 if (!consumed) LaunchRequestBus.dispatch(req)
-                pendingDirectRequest = null
             }
         }
         val screenModelStore = remember { ScreenModelStore() }
@@ -664,7 +658,7 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         // warm launch: singleTask 复用已运行实例, 新 VIEW intent 经 onNewIntent 派发
-        handleExternalIntent(intent)
+        handleExternalIntent(intent, isNewIntent = true)
     }
 
     /**
@@ -672,59 +666,46 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
      * - legado:// / yuedu:// → [LegadoDeepLinkHandler] → DeepLinkImportHost 弹导入对话框
      * - file:// / content:// / app:// → [LaunchRequest.ImportFile] → 导入书籍
      * - PROCESS_TEXT / SEND → [LaunchRequest.ProcessText] → 搜索
-     * - book_info/read_book 壳转发 + search/explore-show alias → 直达初始路由
-     *   (对照 master 各独立 Activity 冷启动直开, 书架不进导航栈)
+     * - search/explore-show alias → [LaunchRequest.OpenRoute] 直达 (书架不进导航栈)
+     *
+     * 一律投 [LaunchRequestBus] (无限队列, UI 未就绪自然排队), 不再有第二条通路。
+     *
+     * @param isNewIntent 来自 [onNewIntent] (UI 已在, 常规 push) 还是创建路径 (可当初始路由)
      */
-    private fun handleExternalIntent(intent: Intent?) {
+    private fun handleExternalIntent(intent: Intent?, isNewIntent: Boolean = false) {
         if (intent?.getStringExtra("action") == "readAloud") {
             MediaButtonReceiver.readAloud(this, false)
             return
         }
         val request = intent?.toLaunchRequest() ?: return
-        // 直达入口 (book_info/read_book/search/explore-show/文件/PROCESS_TEXT):
-        // 导航器已就绪 (热启动/恢复栈) 正常分发 push 到现有栈顶 (push 去重防双份);
-        // 未就绪 (冷启动, Content 尚未组合) 暂存, 由 Content 决定消费为初始路由
-        // 或补发 (判定统一收敛到"初始路由是否真消费成功", 不再依赖冷启动猜测, 不静默丢失)。
-        // DeepLink 例外: 不走暂存, 保持直接进导入宿主 (legado 系) / LaunchRequestBus (非 legado 系)
-        if (request !is LaunchRequest.DeepLink && AppNavigatorProviders.getOrNull() == null) {
-            pendingDirectRequest = request
+        if (request is LaunchRequest.DeepLink) {
+            // legado 系: 走 shared 导入宿主; 缺 src 等非法格式静默丢弃 (对齐 app 端 finish)
+            if (LegadoDeepLink.isDeepLink(request.url)) {
+                LegadoDeepLinkHandler.handle(request.url)
+            } else {
+                // 非 legado 系: 回落 LaunchRequestBus (经 handleLaunchRequest → WebView 兜底)
+                LaunchRequestBus.dispatch(request)
+            }
             return
         }
-        when (request) {
-            is LaunchRequest.DeepLink -> {
-                // legado 系: 走 shared 导入宿主; 缺 src 等非法格式静默丢弃 (对齐 app 端 finish)
-                if (LegadoDeepLink.isDeepLink(request.url)) {
-                    LegadoDeepLinkHandler.handle(request.url)
-                } else {
-                    // 非 legado 系: 回落 LaunchRequestBus (经 handleLaunchRequest → WebView 兜底)
-                    LaunchRequestBus.dispatch(request)
-                }
-            }
-
-            else -> LaunchRequestBus.dispatch(request)
-        }
+        // 创建路径 (组合恒晚于本函数) 且能直接定出路由: 投 asRoot, 由 Content 的取件点
+        // 当初始路由消费 —— 对照 master 各独立 Activity 冷启动直开本页, back 即退
+        val direct = if (isNewIntent) null else directRouteFromIntent(intent)
+        LaunchRequestBus.dispatch(
+            if (direct != null) LaunchRequest.OpenRoute(direct, asRoot = true) else request
+        )
     }
 
     /**
-     * 冷启动直达路由: 初始路由直接是目标页, 书架不进导航栈
-     * (对照 master 每屏独立 Activity 冷启动直开本页, back 即退)。
-     * 覆盖:
-     * - 透明壳转发 book_info/read_book (IntentData.book 直传, 不落库)
+     * Intent → 可直达的目标路由 (仅创建路径用, 见 [handleExternalIntent]):
      * - SearchActivity alias (key/searchScope/submit extra)
      * - ExploreShowActivity alias (exploreName/exploreUrl/sourceUrl extra, 查源下沉路由内)
      * - 文件关联 / PROCESS_TEXT / SEND
-     * 恢复栈时被 rememberSaveable 忽略; 直达参数缺失 (进程被杀) 回落默认书架。
+     *
+     * 书籍类直达 (透明壳深链 / 文件关联打开书籍) 不在此: 它们的载荷是内存对象,
+     * 由投递方直接构造 [LaunchRequest.OpenRoute] 带引用进队列, 不经 Intent 与全局槽。
      */
     private fun directRouteFromIntent(intent: Intent?): AppRoute? {
-        // 透明壳 (AssociationActivity) book_info/read_book 转发: route extra 定位
-        intent?.getStringExtra("route")?.let { routeName ->
-            val book = IntentData.book as? Book ?: return null
-            return when (routeName) {
-                "book_info" -> AppRoute.BookInfo(book.toRouteRef())
-                "read_book" -> book.toReadRoute()
-                else -> null
-            }
-        }
         // 搜索 alias: 对照 master SearchActivity.receiptIntent (key 空聚焦输入框)
         if (intent?.component?.className == SEARCH_ALIAS) {
             return AppRoute.Search(

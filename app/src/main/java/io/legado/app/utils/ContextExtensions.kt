@@ -33,15 +33,8 @@ import androidx.core.content.edit
 import io.legado.app.clipboardManager
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.authority
-import io.legado.app.data.entities.BaseBook
-import io.legado.app.data.entities.Book
-import io.legado.app.data.entities.SearchBook
-import io.legado.app.help.IntentData
 import io.legado.app.help.IntentHelp
 import io.legado.app.help.i18n.androidAppString
-import io.legado.app.ui.main.MainActivity
-import io.legado.app.ui.root.AppNavigatorProviders
-import io.legado.app.ui.root.toReadRoute
 import io.legado.app.uiModeManager
 import java.io.File
 import kotlin.system.exitProcess
@@ -52,32 +45,6 @@ inline fun <reified A : Activity> Context.startActivity(configIntent: Intent.() 
     intent.apply(configIntent)
     startActivity(intent)
 }
-
-// 工具函数:优先走 shared 路由, navigator 未注册时兜底启动 MainActivity + LaunchRequest
-fun Context.startActivityForBook(
-    book: BaseBook,
-    chapterIndex: Int? = null,
-    chapterPos: Int? = null,
-    configIntent: Intent.() -> Unit = {},
-) {
-    IntentData.book = book
-    val book = if (book is SearchBook)book.toBook() else book as Book
-    val navigator = AppNavigatorProviders.getOrNull()
-    if (navigator != null) {
-        navigator.push(book.toReadRoute())
-        return
-    }
-    // navigator 未注册: 启动 MainActivity 携带 bookUrl extra, 由 toLaunchRequest → OpenReader 分发到 shared ReaderRoute
-    val intent = Intent(this, MainActivity::class.java).apply {
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        putExtra("bookUrl", book.bookUrl)
-        chapterIndex?.let { putExtra("chapterIndex", it) }
-        chapterPos?.let { putExtra("chapterPos", it) }
-        configIntent()
-    }
-    startActivity(intent)
-}
-
 
 inline fun <reified T : Service> Context.startService(configIntent: Intent.() -> Unit = {}) {
     startService(Intent(this, T::class.java).apply(configIntent))
