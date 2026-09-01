@@ -191,7 +191,7 @@ internal object MacWebViewEngine : DesktopWebViewEngineBase() {
     override fun openWindow(request: WebViewWindowRequest): WebViewWindowHandle? {
         if (!isAvailable()) return null
         val handle = MacWindowHandle(request)
-        CocoaLoop.post { handle.open() }
+        scope.launch { handle.open() }
         return handle
     }
 }
@@ -561,31 +561,33 @@ private class MacWindowHandle(
     @Volatile
     private var session: MacSession? = null
 
-    fun open() {
-        val created = MacSession.create(
-            visible = true,
-            title = request.title,
-            toolbar = MacToolbar(
-                onAction = { action -> onToolbarAction(action) },
-                rssActions = request.rssActions,
-                // 确定按钮仅登录/验证模式显示 (三端对齐 Windows)
-                showOk = request.isLogin || request.saveResult,
-                // 书源 key 非空时菜单显示 禁用源/删除源 (2026-08-08)
-                sourceKey = request.cookieTag,
-            ),
-        )
+    suspend fun open() {
+        val created = CocoaLoop.await {
+            MacSession.create(
+                visible = true,
+                title = request.title,
+                toolbar = MacToolbar(
+                    onAction = { action -> onToolbarAction(action) },
+                    rssActions = request.rssActions,
+                    // 确定按钮仅登录/验证模式显示 (三端对齐 Windows)
+                    showOk = request.isLogin || request.saveResult,
+                    // 书源 key 非空时菜单显示 禁用源/删除源 (2026-08-08)
+                    sourceKey = request.cookieTag,
+                ),
+            )
+        }
         if (created == null) {
             AppLog.put("WKWebView 窗口创建失败: ${request.title}")
             close()
             return
         }
         if (closedOnce.get()) {
-            created.destroy()
+            CocoaLoop.post { created.destroy() }
             return
         }
         session = created
         currentUrl = request.url
-        created.setUserAgent(request.effectiveUserAgent)
+        CocoaLoop.post { created.setUserAgent(request.effectiveUserAgent) }
         // RSS 收藏态反推: shared 侧书架操作完成后经 onStarChanged 更新窗口星图标 (对照 Windows 引擎)
         request.rssActions?.onStarChanged = { starred -> created.toolbar?.setStarred(starred) }
         // cookie 注入 (suspend): 确保在启动导航前完成注入
@@ -596,28 +598,34 @@ private class MacWindowHandle(
         ) { domain, cookie ->
             created.addCookies(domain, cookie, DesktopWebViewEngineBase.COOKIE_TIMEOUT_MS)
         }
-        created.onNavigated = { url ->
-            currentUrl = url
-            harvestWindowCookies(url, request.cookieTag) {
-                created.cookies(DesktopWebViewEngineBase.COOKIE_TIMEOUT_MS)
-            }
-            runCatching { request.onNavigated(url) }
-            val toolbar = created.toolbar
-            if (isLoginChecking()) {
-                // 对照 menu_ok isLogin 分支: reload 后下次导航完成即关窗
-                close()
-            } else if (toolbar != null) {
-                onNavigationForHistory(url)
-                toolbar.setCanNavigate(canGoBackInHistory(), canGoForwardInHistory())
-                val docTitle = created.propertyString("title")
-                // 2026-08-06 去工具栏标题 (用户反馈多余): 仅同步 OS 窗口标题
-                if (!docTitle.isNullOrBlank() && !docTitle.startsWith("http")) {
-                    created.setWindowTitle(docTitle)
+        if (closedOnce.get()) {
+            CocoaLoop.post { created.destroy() }
+            return
+        }
+        CocoaLoop.post {
+            created.onNavigated = { url ->
+                currentUrl = url
+                harvestWindowCookies(url, request.cookieTag) {
+                    created.cookies(DesktopWebViewEngineBase.COOKIE_TIMEOUT_MS)
+                }
+                runCatching { request.onNavigated(url) }
+                val toolbar = created.toolbar
+                if (isLoginChecking()) {
+                    // 对照 menu_ok isLogin 分支: reload 后下次导航完成即关窗
+                    close()
+                } else if (toolbar != null) {
+                    onNavigationForHistory(url)
+                    toolbar.setCanNavigate(canGoBackInHistory(), canGoForwardInHistory())
+                    val docTitle = created.propertyString("title")
+                    // 2026-08-06 去工具栏标题 (用户反馈多余): 仅同步 OS 窗口标题
+                    if (!docTitle.isNullOrBlank() && !docTitle.startsWith("http")) {
+                        created.setWindowTitle(docTitle)
+                    }
                 }
             }
+            created.onClosed = { close() }
+            created.start(WebViewFetchRequest(url = request.url, html = request.html))
         }
-        created.onClosed = { close() }
-        created.start(WebViewFetchRequest(url = request.url, html = request.html))
     }
 
     private fun onToolbarAction(action: ToolbarAction) {

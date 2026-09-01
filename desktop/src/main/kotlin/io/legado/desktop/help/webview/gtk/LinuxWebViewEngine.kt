@@ -160,7 +160,7 @@ internal object LinuxWebViewEngine : DesktopWebViewEngineBase() {
     override fun openWindow(request: WebViewWindowRequest): WebViewWindowHandle? {
         if (!isAvailable()) return null
         val handle = GtkWindowHandle(request)
-        GtkLoop.post { handle.open() }
+        scope.launch { handle.open() }
         return handle
     }
 }
@@ -182,26 +182,28 @@ private class GtkWindowHandle(
     @Volatile
     private var session: GtkSession? = null
 
-    fun open() {
-        val created = GtkSession.create(
-            visible = true,
-            title = request.title,
-            toolbar = GtkToolbar(
-                onAction = { action -> onToolbarAction(action) },
-                rssActions = request.rssActions,
-                // 确定按钮仅登录/验证模式显示 (三端对齐 Windows)
-                showOk = request.isLogin || request.saveResult,
-                // 书源 key 非空时菜单显示 禁用源/删除源 (2026-08-08)
-                sourceKey = request.cookieTag,
-            ),
-        )
+    suspend fun open() {
+        val created = GtkLoop.await {
+            GtkSession.create(
+                visible = true,
+                title = request.title,
+                toolbar = GtkToolbar(
+                    onAction = { action -> onToolbarAction(action) },
+                    rssActions = request.rssActions,
+                    // 确定按钮仅登录/验证模式显示 (三端对齐 Windows)
+                    showOk = request.isLogin || request.saveResult,
+                    // 书源 key 非空时菜单显示 禁用源/删除源 (2026-08-08)
+                    sourceKey = request.cookieTag,
+                ),
+            )
+        }
         if (created == null) {
             AppLog.put("WebKitGTK 窗口创建失败: ${request.title}")
             close()
             return
         }
         if (closedOnce.get()) {
-            created.destroy()
+            GtkLoop.post { created.destroy() }
             return
         }
         session = created
@@ -213,50 +215,56 @@ private class GtkWindowHandle(
                 created.addCookies(domain, cookie, DesktopWebViewEngineBase.COOKIE_TIMEOUT_MS)
             }
         }
+        if (closedOnce.get()) {
+            GtkLoop.post { created.destroy() }
+            return
+        }
         // RSS 收藏态反推: shared 侧书架操作完成后经 onStarChanged 更新窗口星图标 (同 Windows)
         request.rssActions?.onStarChanged = { starred -> created.toolbar?.setStarred(starred) }
-        created.onLoadChanged = { _, event ->
-            when (event) {
-                WEBKIT_LOAD_STARTED -> created.toolbar?.setLoading(true)
-                WEBKIT_LOAD_COMMITTED, WEBKIT_LOAD_FINISHED -> {
-                    val url = created.currentUri()
-                    if (!url.isNullOrBlank()) {
-                        currentUrl = url
-                        harvestWindowCookies(url, request.cookieTag) {
-                            GtkLoop.await {
-                                created.cookies(url, DesktopWebViewEngineBase.COOKIE_TIMEOUT_MS)
+        GtkLoop.post {
+            created.onLoadChanged = { _, event ->
+                when (event) {
+                    WEBKIT_LOAD_STARTED -> created.toolbar?.setLoading(true)
+                    WEBKIT_LOAD_COMMITTED, WEBKIT_LOAD_FINISHED -> {
+                        val url = created.currentUri()
+                        if (!url.isNullOrBlank()) {
+                            currentUrl = url
+                            harvestWindowCookies(url, request.cookieTag) {
+                                GtkLoop.await {
+                                    created.cookies(url, DesktopWebViewEngineBase.COOKIE_TIMEOUT_MS)
+                                }
                             }
-                        }
-                        runCatching { request.onNavigated(url) }
-                        val toolbar = created.toolbar
-                        toolbar?.setLoading(false)
-                        if (isLoginChecking()) {
-                            // 对照 menu_ok isLogin 分支: reload 后下次导航完成即关窗
-                            close()
-                        } else if (toolbar != null && event == WEBKIT_LOAD_FINISHED) {
-                            onNavigationForHistory(url)
-                            toolbar.setCanNavigate(canGoBackInHistory(), canGoForwardInHistory())
-                            // 动态标题 (对齐 onReceivedTitle): 非空且非 http 前缀才更新
-                            val docTitle = runCatching {
-                                created.executeScript("document.title")
-                            }.getOrNull()
-                            if (!docTitle.isNullOrBlank() && !docTitle.startsWith("http")) {
-                                created.setWindowTitle(docTitle)
+                            runCatching { request.onNavigated(url) }
+                            val toolbar = created.toolbar
+                            toolbar?.setLoading(false)
+                            if (isLoginChecking()) {
+                                // 对照 menu_ok isLogin 分支: reload 后下次导航完成即关窗
+                                close()
+                            } else if (toolbar != null && event == WEBKIT_LOAD_FINISHED) {
+                                onNavigationForHistory(url)
+                                toolbar.setCanNavigate(canGoBackInHistory(), canGoForwardInHistory())
+                                // 动态标题 (对齐 onReceivedTitle): 非空且非 http 前缀才更新
+                                val docTitle = runCatching {
+                                    created.executeScript("document.title")
+                                }.getOrNull()
+                                if (!docTitle.isNullOrBlank() && !docTitle.startsWith("http")) {
+                                    created.setWindowTitle(docTitle)
+                                }
                             }
                         }
                     }
                 }
             }
-        }
-        created.onClosed = { close() }
-        // 页面元素全屏状态 → 窗口请求回调 (DesktopWebViewSlot 桥接回 WebViewScreen:
-        // 顶栏隐藏 + 返回键优先退出全屏)
-        created.onFullscreenChanged = { full -> request.onFullScreenChanged(full) }
-        val html = request.html
-        if (!html.isNullOrEmpty()) {
-            created.loadHtml(html, request.url)
-        } else {
-            created.loadUri(request.url)
+            created.onClosed = { close() }
+            // 页面元素全屏状态 → 窗口请求回调 (DesktopWebViewSlot 桥接回 WebViewScreen:
+            // 顶栏隐藏 + 返回键优先退出全屏)
+            created.onFullscreenChanged = { full -> request.onFullScreenChanged(full) }
+            val html = request.html
+            if (!html.isNullOrEmpty()) {
+                created.loadHtml(html, request.url)
+            } else {
+                created.loadUri(request.url)
+            }
         }
     }
 
