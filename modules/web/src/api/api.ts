@@ -4,7 +4,7 @@
 import type { webReadConfig } from '@/web'
 import ajax from './axios'
 import type { BaseBook, Book, BookChapter, BookGroup, BookProgress, SeachBook } from '@/book'
-import type { Source } from '@/source'
+import type { RawSource, Source } from '@/source'
 
 export type LeagdoApiResponse<T> = {
   isSuccess: boolean
@@ -104,13 +104,13 @@ const search = (
 const saveBook = (book: BaseBook) => ajax.post<LeagdoApiResponse<unknown>>('saveBook', book)
 const deleteBook = (book: BaseBook) => ajax.post<LeagdoApiResponse<unknown>>('deleteBook', book)
 
-const getSources = () => ajax.get<LeagdoApiResponse<Source[]>>('getBookSources')
+const getSources = () => ajax.get<LeagdoApiResponse<(RawSource | Source)[]>>('getBookSources')
 
-const saveSource = (data: Source) => ajax.post<LeagdoApiResponse<unknown>>('saveBookSource', data)
+const saveSource = (data: Source | RawSource) => ajax.post<LeagdoApiResponse<unknown>>('saveBookSource', data)
 
-const saveSources = (data: Source[]) => ajax.post<LeagdoApiResponse<unknown>>('saveBookSources', data)
+const saveSources = (data: (Source | RawSource)[]) => ajax.post<LeagdoApiResponse<unknown>>('saveBookSources', data)
 
-const deleteSource = (data: Source[]) => ajax.post<LeagdoApiResponse<unknown>>('deleteBookSources', data)
+const deleteSource = (data: (Source | RawSource)[]) => ajax.post<LeagdoApiResponse<unknown>>('deleteBookSources', data)
 
 const debug = (
   sourceUrl: string,

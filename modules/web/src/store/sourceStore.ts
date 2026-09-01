@@ -5,16 +5,16 @@ import {
   convertSourcesToMap,
   ensureSourceRules,
 } from '@utils/souce'
-import type { BookSoure, Source } from '@/source'
+import type { BookSource, RawSource, Source } from '@/source'
 
 const emptySource = emptyBookSource
 
 export const useSourceStore = defineStore('source', {
   state: () => {
     return {
-      bookSources: shallowRef([] as BookSoure[]),
+      bookSources: shallowRef([] as Source[]),
       savedSources: [] as Source[],
-      currentSource: ensureSourceRules(JSON.parse(JSON.stringify(emptySource))) as Source,
+      currentSource: ensureSourceRules(JSON.parse(JSON.stringify(emptySource))),
       currentTab: localStorage.getItem('tabName') || 'editTab',
       editTabSource: {} as Source,
       isDebuging: false,
@@ -28,9 +28,9 @@ export const useSourceStore = defineStore('source', {
     savedSourcesMap: (state): Map<string, Source> =>
       convertSourcesToMap(state.savedSources),
     currentSourceUrl: state =>
-      (state.currentSource as BookSoure).bookSourceUrl,
+      state.currentSource.bookSourceUrl,
     searchKey: (state): string =>
-      (state.currentSource as BookSoure)?.ruleSearch?.checkKeyWord || '我的',
+      state.currentSource?.ruleSearch?.checkKeyWord || '我的',
   },
   actions: {
     startDebug() {
@@ -41,17 +41,18 @@ export const useSourceStore = defineStore('source', {
       this.isDebuging = false
     },
 
-    saveSources(data: Source[] | Source) {
+    saveSources(data: (RawSource | Source)[] | RawSource | Source) {
       const arr = Array.isArray(data) ? data : data ? [data] : []
       const normalized = arr.map(s => ensureSourceRules(s))
-      this.bookSources = markRaw(normalized) as BookSoure[]
+      this.bookSources = markRaw(normalized)
     },
-    setPushReturnSources(returnSoures: Source[]) {
-      this.savedSources = returnSoures
+    setPushReturnSources(returnSoures: (RawSource | Source)[]) {
+      this.savedSources = returnSoures.map(s => ensureSourceRules(s))
     },
-    deleteSources(data: Source[]) {
+    deleteSources(data: (RawSource | Source)[]) {
       data.forEach(source => {
-        const index = this.bookSources.indexOf(source)
+        const uniqueKey = getSourceUniqueKey(source)
+        const index = this.bookSources.findIndex(s => getSourceUniqueKey(s) === uniqueKey)
         if (index > -1) this.bookSources.splice(index, 1)
       })
     },
@@ -61,21 +62,22 @@ export const useSourceStore = defineStore('source', {
       map.set(getSourceUniqueKey(source), JSON.parse(JSON.stringify(source)))
       this.saveSources(Array.from(map.values()))
     },
-    changeCurrentSource(source: Source) {
+    changeCurrentSource(source: RawSource | Source) {
       this.currentSource = ensureSourceRules(JSON.parse(JSON.stringify(source)))
     },
     changeTabName(tabName: string) {
       this.currentTab = tabName
       localStorage.setItem('tabName', tabName)
     },
-    changeEditTabSource(source: Source) {
+    changeEditTabSource(source: RawSource | Source) {
       this.editTabSource = ensureSourceRules(JSON.parse(JSON.stringify(source)))
     },
-    editHistory(history: Source) {
+    editHistory(history: RawSource | Source) {
       let historyObj
+      const normalizedHistory = ensureSourceRules(history)
       if (localStorage.getItem('history')) {
         historyObj = JSON.parse(localStorage.getItem('history')!)
-        historyObj.new.push(history)
+        historyObj.new.push(normalizedHistory)
         if (historyObj.new.length > 50) {
           historyObj.new.shift()
         }
@@ -84,7 +86,7 @@ export const useSourceStore = defineStore('source', {
         }
         localStorage.setItem('history', JSON.stringify(historyObj))
       } else {
-        const arr = { new: [history], old: [] }
+        const arr = { new: [normalizedHistory], old: [] }
         localStorage.setItem('history', JSON.stringify(arr))
       }
     },

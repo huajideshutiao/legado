@@ -1,27 +1,27 @@
-import type { BookSoure, Source } from '../source'
+import type { BookSource, RawSource, Source } from '../source'
 import { isNullOrBlank } from './utils'
 
-export const isInvaildSource: (source: Source) => boolean = source => {
+export const isInvaildSource: (source: Source | RawSource) => boolean = source => {
   return (
-    !isNullOrBlank((source as BookSoure).bookSourceName) &&
-    !isNullOrBlank((source as BookSoure).bookSourceUrl) &&
-    !isNullOrBlank((source as BookSoure).bookSourceType)
+    !isNullOrBlank((source as BookSource).bookSourceName) &&
+    !isNullOrBlank((source as BookSource).bookSourceUrl) &&
+    !isNullOrBlank((source as BookSource).bookSourceType)
   )
 }
 
-export const getSourceUniqueKey = (source: Source) =>
-  (source as BookSoure).bookSourceUrl
-export const getSourceName = (source: Source) =>
-  (source as BookSoure).bookSourceName
+export const getSourceUniqueKey = (source: Source | RawSource) =>
+  (source as BookSource).bookSourceUrl
+export const getSourceName = (source: Source | RawSource) =>
+  (source as BookSource).bookSourceName
 
-export const isSourceMatches: (source: Source, searchKey: string) => boolean = (
+export const isSourceMatches: (source: Source | RawSource, searchKey: string) => boolean = (
   source,
   searchKey,
 ) => {
-  const s = source as BookSoure
+  const s = source as BookSource
   return (
-    (s.bookSourceName.includes(searchKey) ||
-      s.bookSourceUrl.includes(searchKey) ||
+    (s.bookSourceName?.includes(searchKey) ||
+      s.bookSourceUrl?.includes(searchKey) ||
       s.bookSourceGroup?.includes(searchKey) ||
       s.bookSourceComment?.includes(searchKey)) ??
     false
@@ -29,7 +29,7 @@ export const isSourceMatches: (source: Source, searchKey: string) => boolean = (
 }
 
 export const convertSourcesToMap = (sources: Source[]): Map<string, Source> => {
-  const map = new Map()
+  const map = new Map<string, Source>()
   sources.forEach(source => map.set(getSourceUniqueKey(source), source))
   return map
 }
@@ -43,8 +43,10 @@ export const RULE_NAMESPACES = [
   'ruleReview',
 ] as const
 
-export const ensureSourceRules = (source: Source): Source => {
-  if (!source || typeof source !== 'object') return source
+export const ensureSourceRules = (
+  source: RawSource | Source | Record<string, unknown>,
+): Source => {
+  if (!source || typeof source !== 'object') return source as Source
   const s = { ...source } as Record<string, unknown>
   for (const ns of RULE_NAMESPACES) {
     const val = s[ns]
@@ -52,15 +54,13 @@ export const ensureSourceRules = (source: Source): Source => {
       const trimmed = val.trim()
       if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
         try {
-          s[ns] = JSON.parse(trimmed)
+          const parsed = JSON.parse(trimmed)
+          s[ns] = parsed && typeof parsed === 'object' ? parsed : {}
         } catch {
           s[ns] = {}
         }
-      } else if (trimmed === '') {
-        s[ns] = {}
       } else {
-        // 如果是纯字符串格式
-        s[ns] = val
+        s[ns] = {}
       }
     } else if (!val || typeof val !== 'object') {
       s[ns] = {}
@@ -84,12 +84,21 @@ export const normalizeSource = (source: Record<string, unknown>) => {
   }
 }
 
-export const emptyBookSource = {
+export const emptyBookSource: BookSource = {
+  bookSourceName: '',
+  bookSourceUrl: '',
+  bookSourceType: 0,
+  customOrder: 0,
+  enabled: true,
+  enabledExplore: true,
+  lastUpdateTime: 0,
+  respondTime: 180000,
+  weight: 0,
   ruleSearch: {},
   ruleBookInfo: {},
   ruleToc: {},
   ruleContent: {},
   ruleExplore: {},
   ruleReview: {},
-} as BookSoure
+}
 
