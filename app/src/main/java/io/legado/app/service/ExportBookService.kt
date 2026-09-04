@@ -27,7 +27,7 @@ import io.legado.app.help.book.isLocalModified
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.setLiveOngoing
-import io.legado.app.model.ReadBook
+import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.notificationManager
 import io.legado.app.ui.main.MainActivity
@@ -216,7 +216,8 @@ class ExportBookService : BaseService() {
                 appDb.bookChapterDao.delByBook(book.bookUrl)
                 appDb.bookChapterDao.insert(*it.toTypedArray())
                 appDb.bookDao.update(book)
-                ReadBook.onChapterListUpdated(book)
+                // 通知活动阅读页目录已更新; 阅读页未打开时不动作
+                ActiveReadBookRegistry.current?.onChapterListUpdated(book)
             }
         }
         var list = appDb.bookChapterDao.getChapterList(book.bookUrl)

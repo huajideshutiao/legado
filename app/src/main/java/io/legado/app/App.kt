@@ -71,6 +71,7 @@ import io.legado.app.model.CacheBook
 import io.legado.app.model.fileBook.registerAndroidFileBookProviders
 import io.legado.app.model.fileBook.registerEpubApplicationContext
 import io.legado.app.model.registerAndroidAudioPlayProviders
+import io.legado.app.model.registerAndroidReadBookPlatform
 import io.legado.app.model.registerAndroidRealScreen
 import io.legado.app.model.script.JsEngines
 import io.legado.app.model.script.registerAndroidJsEngines
@@ -79,6 +80,7 @@ import io.legado.app.model.webBook.registerAndroidWebBookProviders
 import io.legado.app.service.WebService
 import io.legado.app.ui.book.changesource.registerAndroidChangeBookSourcePlatform
 import io.legado.app.ui.book.manage.registerAndroidBookshelfManagePlatform
+import io.legado.app.ui.browser.configureWebViewStartUpMode
 import io.legado.app.ui.main.AndroidUpdateBookCallback
 import io.legado.app.ui.platform.registerSharedAppContext
 import io.legado.app.utils.LogUtils
@@ -113,6 +115,9 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        // WebView 内核的 UI 线程初始化改成 ASYNC 分片 (见 configureWebViewStartUpMode)。
+        // 必须排在任何 WebView API 之前 (全进程一次生效, 须在 warmUpWebViewKernel / 任何 WebView 访问前)
+        configureWebViewStartUpMode(this)
         // Android-KMP library 不生成 BuildConfig，由宿主注入 ApplicationInfo 可调试状态。
         registerAndroidDebugState(this)
         // 注册 shared 模块的 ApplicationContext, 供 commonMain 的 stringRes(resId) 使用
@@ -219,9 +224,11 @@ class App : Application() {
         // BookshelfManagePlatformProviders.get() 取 AndroidBookshelfManagePlatform,
         // 须在 registerAndroidWebBookProviders 之后, 因换源依赖 AppDbProviders / WebBookProviders)
         registerAndroidBookshelfManagePlatform()
-        // 注册 CacheBookCallback 桥接 ReadBook 单例 (CacheBookShared 调度核心下沉到 commonMain 后,
-        // app 端通过 callback 把下载完成事件回放到 ReadBook.contentLoadFinish / downloadedChapters /
-        // downloadFailChapters, 行为与下沉前一致)
+        // 注册 ReadBookShared 的 Android 平台出口 (朗读/缓存服务运行态 + 图片/本地 txt 缓存清理);
+        // 阅读页可由 deep link 直达, 注册必须早于任何 Activity
+        registerAndroidReadBookPlatform()
+        // 注册 CacheBookCallback 桥接活动阅读页 (CacheBookShared 调度核心下沉到 commonMain 后,
+        // app 端通过 callback 把下载完成事件回放到活动阅读实例)
         CacheBook.registerCallback()
         registerAndroidPreferenceProvider()
         registerAndroidDirectLinkUploadProviders()

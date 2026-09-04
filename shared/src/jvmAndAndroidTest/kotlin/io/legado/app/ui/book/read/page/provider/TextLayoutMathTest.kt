@@ -109,7 +109,8 @@ class TextLayoutMathTest {
             "BOM" to '﻿',
         )
         for ((name, ch) in boundaries) {
-            val text = "甲$ch乙"
+            // 乙 是合法标识符字符, 不加花括号会被当成模板变量名 ch乙
+            val text = "甲${ch}乙"
             val r = measureTextSplit(text, floatArrayOf(10f, 0f, 10f))
             assertEquals(name, listOf("甲", ch.toString(), "乙"), r.words)
             assertEquals(name, listOf(10f, 0f, 10f), r.widths)

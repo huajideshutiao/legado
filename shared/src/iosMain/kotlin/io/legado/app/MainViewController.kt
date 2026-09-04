@@ -12,8 +12,6 @@ import io.legado.app.help.config.NativeSystemTheme
 import io.legado.app.help.config.registerIosProviders
 import io.legado.app.help.config.LocalReadConfigProviders
 import io.legado.app.help.config.ReadConfigProviders
-import io.legado.app.model.IosReadBookProvider
-import io.legado.app.model.LocalReadBookProvider
 import io.legado.app.ui.book.info.LocalBlurCoverBgSlot
 import io.legado.app.ui.book.info.SharedBlurCoverBgCoil
 import io.legado.app.ui.browser.IosWebViewSlot
@@ -69,10 +67,9 @@ fun MainViewController(): UIViewController = ComposeUIViewController {
     val appConfigProvider = remember { SharedAppConfigProvider() }
     val eventBusProvider = remember { SharedEventBusProvider() }
 
-    // 阅读页两个注入点: 未注入时 LocalReadConfigProviders/LocalReadBookProvider 取值即 error,
-    // 阅读页与 EffectiveReplaces 路由会崩 (二者默认值均为 error 而非兜底实现)
+    // 阅读页注入点: 未注入时 LocalReadConfigProviders 取值即 error,
+    // 阅读页与 EffectiveReplaces 路由会崩 (默认值为 error 而非兜底实现)
     val readConfigProviders = remember { ReadConfigProviders() }
-    val readBookProvider = remember { IosReadBookProvider() }
 
     // 零薄壳: AppNavigator + ScreenModelStore 是唯一状态源 (对照 desktop Main.kt line 346-347)
     val navigator = remember { AppNavigator(AppRoute.Main()) }
@@ -90,7 +87,6 @@ fun MainViewController(): UIViewController = ComposeUIViewController {
         LocalAppConfigProvider provides appConfigProvider,
         LocalEventBusProvider provides eventBusProvider,
         LocalReadConfigProviders provides readConfigProviders,
-        LocalReadBookProvider provides readBookProvider,
         LocalWebViewSlot provides { config, modifier, callbacks ->
             IosWebViewSlot(config, modifier, callbacks)
         },

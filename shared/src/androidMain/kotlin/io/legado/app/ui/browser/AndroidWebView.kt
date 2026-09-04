@@ -34,9 +34,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.webkit.ProcessGlobalConfig
 import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import androidx.webkit.WebViewOutcomeReceiver
+import androidx.webkit.WebViewStartUpConfig
+import androidx.webkit.WebViewStartUpResult
+import androidx.webkit.WebViewStartupException
 import io.legado.app.constant.AppConst
+import io.legado.app.constant.AppLog
 import io.legado.app.help.getUserAgent
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
@@ -52,6 +59,7 @@ import io.legado.app.utils.EscapeUtils
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.splitNotBlank
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asExecutor
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
@@ -490,4 +498,67 @@ class VisibleWebView(
     override fun onWindowVisibilityChanged(visibility: Int) {
         super.onWindowVisibilityChanged(VISIBLE)
     }
+}
+
+/**
+ * WebView 内核的 UI 线程初始化改为 ASYNC (拆成很短的块): 默认是一整块数百 ms 占住主线程,
+ * 会把首次打开半屏浏览器时的弹层入场动画冻在中间帧 (表现为"先很矮再蹦到正常高度")。
+ *
+ * 进程级配置, 必须在任何 WebView API 之前 (含 `WebSettings.getDefaultUserAgent`) 调用、
+ * 全进程只生效一次; 内核不支持或已加载时静默跳过。
+ */
+@SuppressLint("UnsafeOptInUsageError")
+@Suppress("DEPRECATION")
+@androidx.annotation.OptIn(markerClass = [WebViewCompat.ExperimentalAsyncStartUp::class])
+fun configureWebViewStartUpMode(context: Context) {
+    val config = ProcessGlobalConfig()
+    when {
+        WebViewFeature.isStartupFeatureSupported(
+            context,
+            WebViewFeature.STARTUP_FEATURE_SET_UI_THREAD_STARTUP_MODE_V2,
+        ) -> config.setUiThreadStartupModeV2(
+            context,
+            ProcessGlobalConfig.UI_THREAD_STARTUP_MODE_ASYNC,
+        )
+
+        WebViewFeature.isStartupFeatureSupported(
+            context,
+            WebViewFeature.STARTUP_FEATURE_SET_UI_THREAD_STARTUP_MODE,
+        ) -> config.setUiThreadStartupMode(
+            context,
+            ProcessGlobalConfig.UI_THREAD_STARTUP_MODE_ASYNC,
+        )
+
+        else -> return
+    }
+    // apply 全进程一次, WebView 已加载或重复调用抛 IllegalStateException
+    runCatching { ProcessGlobalConfig.apply(config) }
+}
+
+/**
+ * 预热 WebView 内核: 能后台跑的启动任务走 IO 线程, UI 线程那部分按
+ * [configureWebViewStartUpMode] 设的 ASYNC 模式碎片化执行, 首次 new WebView 不再长阻塞。
+ * 可重复调用, 已启动完成时回调立即触发; 耗时诊断在旧内核上恒为 null (框架不提供)。
+ */
+fun warmUpWebViewKernel(context: Context) {
+    val config = WebViewStartUpConfig.Builder(IoDispatcher.asExecutor())
+        // 连 UI 线程任务一起预热: 留到首次 new WebView 才做就正好撞上转场动画
+        .setShouldRunUiThreadStartUpTasks(true)
+        .build()
+    WebViewCompat.startUpWebView(
+        context.applicationContext,
+        config,
+        object : WebViewOutcomeReceiver<WebViewStartUpResult, WebViewStartupException> {
+            override fun onResult(result: WebViewStartUpResult) {
+                AppLog.putDebug(
+                    "WebView 内核预热完成: UI 线程共 ${result.totalTimeInUiThreadMillis}ms, " +
+                        "单任务最长 ${result.maxTimePerTaskInUiThreadMillis}ms"
+                )
+            }
+
+            override fun onError(error: WebViewStartupException) {
+                AppLog.put("WebView 内核预热失败", error)
+            }
+        },
+    )
 }

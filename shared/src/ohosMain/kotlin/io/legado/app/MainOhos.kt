@@ -10,9 +10,6 @@ import androidx.compose.ui.window.ComposeArkUIViewController
 import io.legado.app.help.config.LocalReadConfigProviders
 import io.legado.app.help.config.ReadConfigProviders
 import io.legado.app.help.config.registerOhosProviders
-import io.legado.app.model.LocalReadBookProvider
-import io.legado.app.model.ReadBookProvider
-import io.legado.app.model.ReadBookShared
 import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.browser.OhosWebViewSlot
 import io.legado.app.ui.OhosPlatformCapabilities
@@ -83,22 +80,15 @@ fun MainOhos() {
     val appConfigProvider = remember { SharedAppConfigProvider() }
     val eventBusProvider = remember { SharedEventBusProvider() }
 
-    // 阅读页两个注入点: 未注入时 LocalReadConfigProviders/LocalReadBookProvider 取值即 error,
-    // 阅读页与 EffectiveReplaces 路由会崩 (二者默认值均为 error 而非兜底实现);
-    // readBookProvider 范式同 iosMain IosReadBookProvider (直接持有 commonMain ReadBookShared)
+    // 阅读页注入点: 未注入时 LocalReadConfigProviders 取值即 error,
+    // 阅读页与 EffectiveReplaces 路由会崩 (默认值为 error 而非兜底实现)
     val readConfigProviders = remember { ReadConfigProviders() }
-    val readBookProvider = remember {
-        object : ReadBookProvider {
-            override val readBook = ReadBookShared()
-        }
-    }
 
     CompositionLocalProvider(
         LocalThemeStoreProvider provides themeStoreProvider,
         LocalAppConfigProvider provides appConfigProvider,
         LocalEventBusProvider provides eventBusProvider,
         LocalReadConfigProviders provides readConfigProviders,
-        LocalReadBookProvider provides readBookProvider,
         LocalWebViewSlot provides { config, modifier, callbacks ->
             OhosWebViewSlot(config, modifier, callbacks)
         },

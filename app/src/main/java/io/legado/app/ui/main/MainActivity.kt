@@ -59,10 +59,7 @@ import io.legado.app.help.storage.Backup
 import io.legado.app.help.update.AppUpdate
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.model.ActiveReadBookRegistry
-import io.legado.app.model.AndroidReadBookProvider
-import io.legado.app.model.LocalReadBookProvider
 import io.legado.app.model.fileBook.FileBook
-import io.legado.app.model.registerAndroidReadBookPlatform
 import io.legado.app.receiver.MediaButtonReceiver
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.service.ExportBookService
@@ -537,13 +534,11 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
                 override val readTipConfig = ReadTipConfigShared(readBookConfig)
             }
         }
-        val readBookProvider = remember { AndroidReadBookProvider() }
 
         Box(Modifier.fillMaxSize()) {
             // 封面渲染不再注入 app 端 View 实现, 各端统一走 shared 默认 SharedBookCover
             CompositionLocalProvider(
                 LocalReadConfigProviders provides readConfigProviders,
-                LocalReadBookProvider provides readBookProvider,
                 // 注入 app 端 AndroidWebView 到 shared 路由 (Login/ReadRss/WebView), 覆盖 LocalWebViewSlot 兜底
                 LocalWebViewSlot provides { config, modifier, callbacks ->
                     AndroidWebView(config, modifier, callbacks)
@@ -621,8 +616,6 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
         AudioPlayPlatformProviders.register(SharedAudioPlayPlatformProvider)
         MangaReaderScreenModel.Providers.register(AndroidMangaReaderPlatform)
         VideoPlayPlatformProviders.register(AndroidVideoPlayPlatformProvider(this))
-        // ReadBookShared 的 Android 出口 (朗读/缓存服务运行态 + 图片/本地 txt 缓存清理)
-        registerAndroidReadBookPlatform()
         // 排版度量走真实字形（对照 TextStyleProvider.getPaints 的 contentPaint）
         TextMeasurerProviders.register { textSizePx, letterSpacingPx, fontPath ->
             AndroidTextMeasurer(TextPaint().apply {

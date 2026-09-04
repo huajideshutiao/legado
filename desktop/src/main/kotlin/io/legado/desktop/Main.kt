@@ -72,8 +72,6 @@ import io.legado.app.help.storage.registerJvmDataStorage
 import io.legado.app.help.toast.DesktopTrayNotifier
 import io.legado.app.help.toast.registerDesktopToaster
 import io.legado.app.help.tts.TtsEngineProvider
-import io.legado.app.model.DesktopReadBookProvider
-import io.legado.app.model.LocalReadBookProvider
 import io.legado.app.model.fileBook.BitmapProviders
 import io.legado.app.model.fileBook.ZipFileWrapperFactoryProviders
 import io.legado.app.ui.association.DeepLinkImportHost
@@ -697,7 +695,6 @@ private fun runDesktopApp() = application {
                 override val readTipConfig = ReadTipConfigShared(desktopReadBookConfig)
             }
         }
-        val readBookProvider = remember { DesktopReadBookProvider() }
         // 对话框尺寸锚点: 主窗口尺寸 (场景根处读取, 非对话框层; 随 resize 自动重组刷新)
         val dialogAnchor = LocalWindowInfo.current.containerSize
         // 覆盖物 (菜单/划词条/补全条) 的顶部安全区 = 窗口控制条高度: Windows 的控制条在
@@ -719,7 +716,6 @@ private fun runDesktopApp() = application {
             LocalAppConfigProvider provides appConfigProvider,
             LocalEventBusProvider provides eventBusProvider,
             LocalReadConfigProviders provides readConfigProviders,
-            LocalReadBookProvider provides readBookProvider,
             LocalWebViewSlot provides { config, modifier, callbacks ->
                 DesktopWebViewSlot(config, modifier, callbacks)
             },

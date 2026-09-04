@@ -261,6 +261,9 @@ class ReadAloudControllerShared(
             queue.paragraphStartPos = 0
         }
         _chapterIndex.value = chapterIndex
+        // 先置 -1: 新队列的 nowSpeak 也是 0 时, StateFlow 去重会吞掉 playCurrent 的那次
+        // 段推进通知, 朗读高亮与阅读位置会停在上一段
+        _paragraphIndex.value = -1
         _state.value = ReadAloudState.PLAYING
         playCurrent()
     }

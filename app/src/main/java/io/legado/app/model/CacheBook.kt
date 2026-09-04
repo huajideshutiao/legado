@@ -38,7 +38,7 @@ import kotlinx.coroutines.runBlocking
  * # 类型兼容
  *
  * 原 `CacheBook.CacheBookModel` 内部类已下沉为 [CacheBookModelShared], 本文件提供
- * [CacheBookModel] typealias 保持源码兼容 ([CacheBookService] / [ReadBook] /
+ * [CacheBookModel] typealias 保持源码兼容 ([CacheBookService] /
  * [MainViewModel] 等对 `CacheBookModel` 的引用不变)。
  */
 object CacheBook {
@@ -170,6 +170,6 @@ object CacheBook {
  *
  * 原 app 端 `CacheBook.CacheBookModel` 类已下沉到 [CacheBookShared.CacheBookModelShared],
  * 本 typealias 保持源码兼容 (内部 `getOrCreate(...): CacheBookModel` 返回类型 +
- * [CacheBookService] / [ReadBook] / [MainViewModel] 等对 `CacheBookModel` 的推断类型不变)。
+ * [CacheBookService] / [MainViewModel] 等对 `CacheBookModel` 的推断类型不变)。
  */
 typealias CacheBookModel = CacheBookModelShared

@@ -5,8 +5,8 @@ import android.content.Context
 import android.os.Build
 import android.os.Debug
 import android.os.Looper
-import android.webkit.WebSettings
 import androidx.core.net.toUri
+import androidx.webkit.WebViewCompat
 import io.legado.app.App
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
@@ -99,8 +99,10 @@ class CrashHandler(val context: Context) : Thread.UncaughtExceptionHandler {
                 map["MODEL"] = Build.MODEL
                 map["SDK_INT"] = Build.VERSION.SDK_INT.toString()
                 map["RELEASE"] = Build.VERSION.RELEASE
-                map["WebViewUserAgent"] = try {
-                    WebSettings.getDefaultUserAgent(App.instance)
+                map["WebViewPackage"] = try {
+                    WebViewCompat.getCurrentWebViewPackage(App.instance)?.let {
+                        "${it.packageName} ${it.versionName}"
+                    } ?: "null"
                 } catch (e: Throwable) {
                     e.toString()
                 }
