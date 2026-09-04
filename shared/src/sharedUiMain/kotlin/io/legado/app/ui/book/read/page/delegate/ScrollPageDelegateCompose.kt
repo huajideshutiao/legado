@@ -251,17 +251,15 @@ class ScrollPageDelegateCompose(
      * 滚过页底自动切入下一页, 与拖拽滚动同一套折算 (互不干扰)。
      *
      * 用户主动滚动: 先打断惯性/行对齐动画 (abortAnim, 对照手势 onDown), 从当前偏移接管;
-     * abortAnim 暂停了自动翻页 (pause), 滚轮是离散事件, 处理完立即配对恢复 (resume 重置时间基准,
-     * 自动翻页在滚轮期间不推进、滚轮停止后恢复)。
+     * abortAnim 内部已恢复自动翻页 (对照原版 abortAnim -> onScrollAnimStop -> resume),
+     * 滚轮是离散事件, 无需额外配对。
      *
      * @return false = 命中硬边界 (书首/书末), 调用方按需处理
      */
     fun scrollBy(deltaPx: Float): Boolean {
         if (deltaPx == 0f) return true
         abortAnim()
-        val ok = applyScrollDelta(deltaPx)
-        autoPager?.resume()
-        return ok
+        return applyScrollDelta(deltaPx)
     }
 
     /**
@@ -285,12 +283,10 @@ class ScrollPageDelegateCompose(
                 onAnimStop()
             }
         }
-        // 越界部分同步折算 (跨页), 与 scrollBy 一致恢复自动翻页
+        // 越界部分同步折算 (跨页), 与 scrollBy 一致 (abortAnim 已恢复自动翻页)
         val rest = deltaPx - inPage
         if (rest != 0f) {
-            val ok = applyScrollDelta(rest)
-            autoPager?.resume()
-            return ok
+            return applyScrollDelta(rest)
         }
         return true
     }
@@ -427,6 +423,9 @@ class ScrollPageDelegateCompose(
             onAnimStop()
             return
         }
+        // 惯性滚动开始：暂停自动翻页推进（对照原版 ScrollPageDelegate.onAnimStart 首行
+        // readView.onScrollAnimStart → autoPager.pause；末尾 onAnimStop 里 resume 成对）
+        autoPager?.pause()
         isStarted = true
         isRunning = true
         animJob?.cancel()
@@ -484,8 +483,9 @@ class ScrollPageDelegateCompose(
 
     override fun abortAnim() {
         // 取消正在执行的动画协程 (对照旧 abortAnim: 只取消 scroller, 不动滚动偏移)
-        // 手动翻页手势开始：暂停自动翻页推进 (对照原版 onScrollAnimStart → autoPager.pause)
-        autoPager?.pause()
+        // 滚动模式下原版 abortAnim 首行是 readView.onScrollAnimStop() → autoPager.resume(),
+        // 即打断惯性后立即恢复自动翻页 (按下本身不暂停，pause 只由 onFling 起惯性时发出)
+        autoPager?.resume()
         val running = animJob?.isActive == true
         animJob?.cancel()
         animJob = null
@@ -520,11 +520,9 @@ class ScrollPageDelegateCompose(
     }
 
     override fun nextPageByAnim(animDurationMs: Int) {
-        // 吞一次 (对照旧 isAbortAnim): 动画中点击只打断不翻页; 吞后恢复自动翻页
-        // (abortAnim 的 pause 配对)
+        // 吞一次 (对照旧 isAbortAnim): 动画中点击只打断不翻页
         if (isAbortAnim) {
             isAbortAnim = false
-            autoPager?.resume()
             return
         }
         if (!hasNext()) return
@@ -545,7 +543,6 @@ class ScrollPageDelegateCompose(
         // 吞一次 (对照旧 isAbortAnim, 同 nextPageByAnim)
         if (isAbortAnim) {
             isAbortAnim = false
-            autoPager?.resume()
             return
         }
         if (!hasPrev()) return

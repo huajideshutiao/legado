@@ -43,9 +43,7 @@ class NoAnimPageDelegateCompose(
      */
     override fun onAnimStart(animationSpeed: Int) {
         if (!isMoved || mDirection == PageDirectionShared.NONE) {
-            // 未移动或方向未定，不翻页（与基类 onAnimStart 守卫一致）。
-            // 手势未成形同样恢复自动翻页，避免 abortAnim 的 pause 悬挂
-            autoPager?.resume()
+            // 未移动或方向未定，不翻页（与基类 onAnimStart 守卫一致）
             return
         }
         // 立即翻页（不启动动画协程），与 app 端 stopScroll + fillPage 等价

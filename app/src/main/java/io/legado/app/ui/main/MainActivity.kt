@@ -170,6 +170,14 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
     private var readerWindowActive = false
     private var readerScreenTimeOut = 0L
 
+    /**
+     * 自动翻页期间的强制常亮标记 (对照原版 autoPage() 里直写 screenTimeOut = -1L,
+     * autoPageStop() 里用 upScreenTimeOut() 恢复 keepLight 配置值)。
+     * 单独标记而不直接写 [readerScreenTimeOut]：常亮计时会被 keepLight 变更/
+     * 窗口策略重应用重算多次, 靠标记才能在重算后仍保住自动翻页的强制常亮。
+     */
+    private var readerAutoPageKeepScreenOn = false
+
     // 平台能力与服务: onActivityCreated 同步创建并注册, 修复 LaunchedEffect 异步注册时序问题
     private lateinit var capabilities: AndroidPlatformCapabilities
 
@@ -432,6 +440,8 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
 
     fun exitReaderWindow() {
         readerWindowActive = false
+        // 退出阅读页一律清自动翻页常亮标记, 避免下次进阅读页残留强制常亮
+        readerAutoPageKeepScreenOn = false
         keepScreenOnHandler.removeCallbacks(screenOffRunnable)
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         services.window.setSystemBars(io.legado.app.ui.root.SystemBarsPolicy.Default)
@@ -443,8 +453,19 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
      */
     fun upScreenTimeOut() {
         val keepLightPrefer = runCatching { (AppConfig.keepLight ?: "0").toInt() }.getOrDefault(0)
-        readerScreenTimeOut = keepLightPrefer * 1000L
+        // 自动翻页期间永不熄屏 (对照原版 screenTimeOut = -1L), 否则按 keepLight 配置
+        readerScreenTimeOut = if (readerAutoPageKeepScreenOn) -1L else keepLightPrefer * 1000L
         screenOffTimerStart()
+    }
+
+    /**
+     * 自动翻页开启/停止时切换强制常亮 (对照原版 autoPage() 的
+     * screenTimeOut = -1L + screenOffTimerStart, autoPageStop() 的 upScreenTimeOut)。
+     */
+    fun setReaderAutoPageKeepScreenOn(enabled: Boolean) {
+        if (readerAutoPageKeepScreenOn == enabled) return
+        readerAutoPageKeepScreenOn = enabled
+        upScreenTimeOut()
     }
 
     /**

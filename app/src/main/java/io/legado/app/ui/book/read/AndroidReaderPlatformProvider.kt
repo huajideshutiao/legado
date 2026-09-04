@@ -913,13 +913,20 @@ private class AndroidReaderMenuState(
             pager.onEnd = { stopAutoPage() }
             pager.start()
         }
+        // 自动翻页期间强制常亮 (对照原版 autoPage(): screenTimeOut = -1L + screenOffTimerStart)
+        activity.setReaderAutoPageKeepScreenOn(true)
+        // 收菜单 + 弹控制面板 (基类实现; 顶层 autoPage 已置 true, 不会被路由层 clear 吃掉)
+        showAutoPagePanel()
     }
 
     /** 停止自动翻页: 复位控制器 + 收起控制面板 */
     fun stopAutoPage() {
+        val wasRunning = autoPager != null
         autoPager?.stop()
         autoPager = null
         autoPage = false
+        // 恢复 keepLight 配置的常亮计时 (对照原版 autoPageStop(): upScreenTimeOut)
+        if (wasRunning) activity.setReaderAutoPageKeepScreenOn(false)
     }
 
     override fun clickPre() {

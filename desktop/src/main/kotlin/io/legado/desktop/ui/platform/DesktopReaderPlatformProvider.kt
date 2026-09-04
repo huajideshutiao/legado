@@ -49,6 +49,8 @@ import io.legado.app.ui.reader.readerMenuAnchor
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
+import io.legado.app.ui.root.PlatformServiceProviders
+import io.legado.app.ui.root.readerKeepScreenOnPolicy
 import io.legado.app.ui.widget.dialog.encodePhotoOverlayPayload
 import io.legado.app.utils.FileUtilsBase
 import io.legado.app.utils.FlowBus
@@ -574,6 +576,9 @@ private class DesktopReadMenuState(
             stopAutoPage()
         } else {
             startAutoPage()
+            // 收菜单 + 弹控制面板 (基类实现; startAutoPage 已置 autoPage=true,
+            // 不会被 ReaderRoute 的 autoPageActive 守卫 clear 掉)
+            showAutoPagePanel()
         }
     }
 
@@ -599,13 +604,22 @@ private class DesktopReadMenuState(
             pager.onEnd = { stopAutoPage() }
             pager.start()
         }
+        // 自动翻页期间阻止系统休眠/息屏 (对照原版 autoPage(): screenTimeOut = -1L +
+        // screenOffTimerStart; 桌面端无计时器, 直接抬升为常亮, 停止时按 keepLight 回落)
+        PlatformServiceProviders.get().window.setKeepScreenOn(true)
     }
 
     /** 停止自动翻页: 复位控制器 + 复位开关 (对照 app 端 stopAutoPage)。 */
     fun stopAutoPage() {
+        val wasRunning = autoPager != null
         autoPager?.stop()
         autoPager = null
         autoPage = false
+        // 常亮回落 keepLight 配置 (对照原版 autoPageStop(): upScreenTimeOut)
+        if (wasRunning) {
+            PlatformServiceProviders.get().window
+                .setKeepScreenOn(readerKeepScreenOnPolicy())
+        }
     }
 
     override fun clickPre() {

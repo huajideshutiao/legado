@@ -497,6 +497,24 @@ open class BaseReadMenuState(
 
     override fun clickAutoPage() {
         autoPage = !autoPage
+        if (autoPage) showAutoPagePanel()
+    }
+
+    /**
+     * 开启自动翻页后收菜单并弹控制面板。
+     *
+     * 原版 `fabAutoPage` 走 `runMenuOut { callBack.autoPage() }`（只收菜单不弹面板，
+     * 面板要再点一下屏幕才从 `showActionMenu` 出来），而本处连菜单都没收，
+     * 菜单背景层吃掉点击后需两次点屏才能看到面板。此处一次做完：
+     * 收菜单 + 立即弹面板。
+     *
+     * 顺序要求：调用前 [autoPage] 必须已置 true——ReaderRoute 的
+     * `LaunchedEffect(autoPageActive)` 在 autoPage=false 时会立即 clearDialogEvent，
+     * 先 post 后置位会把刚发的事件清掉。
+     */
+    protected fun showAutoPagePanel() {
+        hide()
+        screenModel.postDialogEvent(ReaderDialogEvent.AutoRead)
     }
 
     override fun clickReplaceRule() {
