@@ -64,7 +64,7 @@
     <string name="web_service_desc">Web edit source and read book</string>
     <string name="offline_cache">Offline cache</string>
     <string name="change_origin">Change Origin</string>
-    <string name="about_description">\u3000\u3000 This is an open source reading software newly developed by Kotlin, welcome to join us.</string>
+    <string name="about_description">This is an open source reading software newly developed by Kotlin, welcome to join us.</string>
     <string name="app_share_description">Legado (YueDu 3.0) download link：https://github.com/gedoor/legado/releases</string>
     <string name="pt_auto_refresh">Auto-refresh</string>
     <string name="ps_auto_refresh">Update books automatically when opening the software</string>

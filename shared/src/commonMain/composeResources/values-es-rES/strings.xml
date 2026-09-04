@@ -64,7 +64,7 @@
     <string name="web_service_desc">Fuente de edición web y lectura de libros</string>
     <string name="offline_cache">Caché sin conexión</string>
     <string name="change_origin">Cambiar origen</string>
-    <string name="about_description">\u3000\u3000 Este es una aplicación de lectura bajo software libre, desarrollado en Kotlin, en que podrás participar. </string>
+    <string name="about_description">Este es una aplicación de lectura bajo software libre, desarrollado en Kotlin, en que podrás participar.</string>
     <string name="app_share_description">Legado (YueDu 3.0) disponible para descargar en：https://github.com/gedoor/legado/releases</string>
     <string name="pt_auto_refresh">Actualización automática</string>
     <string name="ps_auto_refresh">Actualiza los libros automáticamente al abrir la App</string>

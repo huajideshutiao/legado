@@ -331,9 +331,6 @@
     <string name="shrink_database">Shrink database</string>
     <string name="shrink_database_summary">Reduce the size of the database file</string>
     <string name="auto_check_update">Auto check for updates</string>
-    <string name="update_url_title">Custom update URL</string>
-    <string name="update_url_summary">Leave empty to check updates on GitHub</string>
-    <string name="update_url_hint">Update source URL, JSON array or a single URL</string>
     <string name="check_update">Check for Updates</string>
     <string name="update_to_variant_title">Check update for variant versions</string>
     <string name="update_to_variant_summary">Check for other signature versions when updating</string>
@@ -846,8 +843,6 @@
     <string name="save_log_failed">Failed to save log</string>
     <string name="heap_dump_saved">Heap dump saved</string>
     <string name="save_heap_dump_failed">Failed to save heap dump</string>
-    <string name="found_new_version">New version found</string>
-    <string name="download_now">Go to download</string>
     <string name="net_import_theme">Import themes from network</string>
     <string name="input_theme_url">Enter the theme subscription URL</string>
     <string name="import_theme_success">Import completed, %1$d themes in total</string>
@@ -953,8 +948,6 @@
     <string name="rule_sub_load_failed">Failed to load data in the rule subscription screen\n%1$s</string>
     <string name="input_valid_url">Enter a valid URL</string>
     <string name="check_update_failed">Failed to check for updates\n%1$s</string>
-    <string name="check_update_failed_no_msg">Failed to check for updates</string>
-    <string name="already_latest_version">Already the latest version</string>
     <string name="desktop_install_mode_not_portable">[legado-desktop] install mode = %1$s (portable.root not set, falls back to portable.txt marker/system data directory)</string>
     <string name="image_decode_failed_bytes">image.decode: failed to decode image bytes (%1$s bytes)</string>
     <string name="image_encode_unsupported_format">image.encode: unsupported format %1$s, only png/jpg/webp</string>
@@ -1316,7 +1309,7 @@
     <string name="delete_book_file">Delete source file</string>
     <string name="cloud_progress_exceeds_current">The cloud progress exceeds the current progress. Do you want to synchronize?</string>
     <string name="reply_review_to">Reply: %1$s</string>
-    <string name="about_description">\u3000\u3000 This is an open source reading software newly developed by Kotlin, welcome to join us.</string>
+    <string name="about_description">This is an open source reading software newly developed by Kotlin, welcome to join us.</string>
     <string name="add_group">Add to Groups</string>
     <string name="add_to_group">Add to Group</string>
     <string name="all_bookmark">All bookmarks</string>
@@ -1601,7 +1594,6 @@
     <string name="dynamic_click_retry">Retry</string>
     <string name="dynamic_loading">Loading</string>
     <string name="last_read">Last reading</string>
-    <string name="open_release_page">Open release page</string>
     <string name="layout_list">List</string>
     <string name="local">Local</string>
     <string name="origin_format">Origin: %1$s</string>
