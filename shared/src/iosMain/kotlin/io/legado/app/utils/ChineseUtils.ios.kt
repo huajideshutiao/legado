@@ -27,7 +27,7 @@ actual object ChineseUtils {
                 "kCFStringTransformSimplifiedToTraditional",
                 reverse = false
             )
-        return transformed as String? ?: content
+        return transformed ?: content
     }
 
     actual fun t2s(content: String): String {
@@ -37,7 +37,7 @@ actual object ChineseUtils {
                 "kCFStringTransformTraditionalToSimplified",
                 reverse = false
             )
-        return transformed as String? ?: content
+        return transformed ?: content
     }
 
     actual fun unLoad(vararg transType: TransType) {

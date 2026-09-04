@@ -109,6 +109,7 @@ object IosMediaNotificationController : NowPlayingSink {
      * 只在真正开播时激活: 启动即激活会掐掉用户正在放的音乐。[exclusive] 为 false 时叠加
      * MixWithOthers, 即用户开了 `ignoreAudioFocus`, 与其他 App 混音不抢。
      */
+    @OptIn(kotlinx.cinterop.BetaInteropApi::class)
     private fun applyAudioSession(active: Boolean, exclusive: Boolean) {
         if (active == focusActive && exclusive == focusExclusive) return
         val session = AVAudioSession.sharedInstance()
@@ -217,6 +218,7 @@ object IosMediaNotificationController : NowPlayingSink {
     }
 
     /** ByteArray → NSData (`NSData.create` 只收 CPointer, 需先 pin)。 */
+    @OptIn(kotlinx.cinterop.BetaInteropApi::class)
     private fun ByteArray.toNSData(): NSData = usePinned { pinned ->
         NSData.create(bytes = pinned.addressOf(0), length = size.toULong())
     }

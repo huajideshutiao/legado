@@ -87,7 +87,7 @@ fun TextChapterShared.getNeedReadAloud(
             stringBuilder.append("\n")
         }
     }
-    return stringBuilder.substring(startPos).toString()
+    return stringBuilder.substring(startPos)
 }
 
 fun TextChapterShared.getParagraphNum(

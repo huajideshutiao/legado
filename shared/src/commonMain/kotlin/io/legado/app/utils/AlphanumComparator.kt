@@ -7,17 +7,17 @@ package io.legado.app.utils
 object AlphanumComparator : Comparator<String> {
 
 
-    override fun compare(s1: String, s2: String): Int {
+    override fun compare(a: String, b: String): Int {
         var thisMarker = 0
         var thatMarker = 0
-        val s1Length = s1.length
-        val s2Length = s2.length
+        val s1Length = a.length
+        val s2Length = b.length
 
         while (thisMarker < s1Length && thatMarker < s2Length) {
-            val thisChunk = getChunk(s1, s1Length, thisMarker)
+            val thisChunk = getChunk(a, s1Length, thisMarker)
             thisMarker += thisChunk.length
 
-            val thatChunk = getChunk(s2, s2Length, thatMarker)
+            val thatChunk = getChunk(b, s2Length, thatMarker)
             thatMarker += thatChunk.length
 
             // If both chunks contain numeric characters, sort them numerically.

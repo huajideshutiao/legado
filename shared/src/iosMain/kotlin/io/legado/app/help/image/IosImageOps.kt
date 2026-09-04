@@ -36,7 +36,7 @@ import kotlin.math.sin
  * [JsBindings] 构造时访问 [JsBindingInjector.image], 未注册会 checkNotNull 失败,
  * iOS 端 JS 引擎解阻塞必须先注册一个 [ImageOps] 实现。
  *
- * 内部句柄 [IosImageRef] 持有 [UIImage]: decode 走 UIImage(data:) (JPEG/PNG/WebP/HEIC,
+ * 内部句柄 [IosImageRef] 持有 [UIImage]: decode 走 UIImage.imageWithData (JPEG/PNG/WebP/HEIC,
  * 失败抛 IllegalArgumentException); encode 用 PNG/JPEGRepresentation (webp 不支持编码,
  * 与 desktop ImageIO 一致); split 按行优先 + 余数并入末行/列; stitch 用大尺寸 UIGraphics
  * 上下文 drawInRect 平铺; crop 用 renderSubImage 裁剪; rotate/flip 用 UIGraphics 上下文 +
@@ -62,10 +62,13 @@ object IosImageOps : ImageOps {
     private class IosImageRef(val image: UIImage) : ImageRef
 
     override fun decode(bytes: ByteArray): ImageRef {
-        // UIImage(data:) 解码 JPEG/PNG/WebP/HEIC 等 (iOS 系统解码能力, 与 IosBookCover 验证图片有效性一致)
-        // 失败返回 nil -> 抛异常 (与 ImageOps.decode 契约一致: "失败抛异常")
+        // UIImage.imageWithData 解码 JPEG/PNG/WebP/HEIC 等 (iOS 系统解码能力)
+        // 失败返回 nil -> 抛异常 (与 ImageOps.decode 契约一致: "失败抛异常")。
+        // 必须用 imageWithData 而不是 UIImage(data:) 构造器: 后者静态类型非空
+        // (UIKit 只在方法上标 nullability, K/N 的 ObjCConstructor 没有可空返回),
+        // 对它的返回值判空是死代码, nil 只能等 K/N 运行时抛空指针。
         val nsData = bytes.toNSData()
-        val image = UIImage(data = nsData)
+        val image = UIImage.imageWithData(nsData)
             ?: throw IllegalArgumentException("image.decode: 无法解码图片字节(${bytes.size} bytes)")
         return IosImageRef(image)
     }
@@ -275,6 +278,7 @@ object IosImageOps : ImageOps {
     }
 
     /** ByteArray → NSData (`NSData.create(bytes:length:)` 只收 CPointer, 需先 pin)。 */
+    @OptIn(kotlinx.cinterop.BetaInteropApi::class)
     private fun ByteArray.toNSData(): NSData {
         if (isEmpty()) return NSData()
         return usePinned { pinned ->

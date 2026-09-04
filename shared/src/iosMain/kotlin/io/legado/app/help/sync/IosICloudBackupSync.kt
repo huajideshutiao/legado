@@ -78,6 +78,7 @@ object IosICloudBackupSync {
      * 用 `setUbiquitous` 而非直接写容器目录: 该 API 自带文件协调 (等价 NSFileCoordinator),
      * 但语义是**移动**, 故先复制一份到临时目录再移进去, 不动调用方的原文件。
      */
+    @OptIn(kotlinx.cinterop.BetaInteropApi::class)
     suspend fun uploadBackup(localZipPath: String, fileName: String): Boolean {
         if (!IosICloud.enabled) return false
         val docs = containerDocumentsUrl() ?: return false
@@ -116,6 +117,7 @@ object IosICloudBackupSync {
      *
      * 未下载的占位文件也会列出, 名字已还原为真实文件名。
      */
+    @OptIn(kotlinx.cinterop.BetaInteropApi::class)
     suspend fun getBackupNames(): List<String> {
         if (!IosICloud.enabled) return emptyList()
         val docs = containerDocumentsUrl() ?: return emptyList()
@@ -200,6 +202,7 @@ object IosICloudBackupSync {
      *
      * 已是最新直接返回 true; 取不到下载状态说明不是 ubiquitous 项, 退化为文件存在性判断。
      */
+    @OptIn(kotlinx.cinterop.BetaInteropApi::class)
     private suspend fun ensureDownloaded(url: NSURL): Boolean {
         if (isDownloaded(url)) return true
         val started = memScoped {
@@ -218,6 +221,7 @@ object IosICloudBackupSync {
         return false
     }
 
+    @OptIn(kotlinx.cinterop.BetaInteropApi::class)
     private fun isDownloaded(url: NSURL): Boolean = memScoped {
         val value = alloc<ObjCObjectVar<Any?>>()
         val err = alloc<ObjCObjectVar<NSError?>>()

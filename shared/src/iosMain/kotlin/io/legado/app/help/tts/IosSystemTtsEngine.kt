@@ -216,8 +216,8 @@ class IosSystemTtsEngine : SystemTtsEngine {
             // 语速映射: speechRate ∈ [0.5, 2.0] → avRate ∈ [0.25, 1.0]
             // 公式: avRate = speechRate * 0.5 (1.0x → 0.5 defaultRate, 2.0x → 1.0 maxRate)
             rate = (rateMultiplier * 0.5f).coerceIn(
-                AVSpeechUtteranceMinimumSpeechRate.toFloat(),
-                AVSpeechUtteranceMaximumSpeechRate.toFloat()
+                AVSpeechUtteranceMinimumSpeechRate,
+                AVSpeechUtteranceMaximumSpeechRate
             )
         }
         synthesizer.speakUtterance(utterance)

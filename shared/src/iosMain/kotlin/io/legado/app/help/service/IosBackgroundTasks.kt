@@ -164,6 +164,7 @@ object IosBackgroundTasks {
 
     // region 通道 2: BGProcessingTask
 
+    @OptIn(kotlinx.cinterop.BetaInteropApi::class)
     private fun submitProcessingRequest() {
         val request = BGProcessingTaskRequest(CACHE_BOOK_TASK_ID)
         request.requiresNetworkConnectivity = true

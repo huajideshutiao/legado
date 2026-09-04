@@ -26,6 +26,7 @@ import platform.Foundation.dataUsingEncoding
  * (GB18030 单字符最长 4 字节), 裁尾 1..3 字节后补 U+FFFD 对齐 JVM 行为;
  * 仍失败视为文件损坏, 抛明确异常 (而非返回 null 误导为"平台不支持")。
  */
+@OptIn(kotlinx.cinterop.BetaInteropApi::class)
 internal actual fun platformDecodeCjk(
     bytes: ByteArray, offset: Int, length: Int, charset: PlatformCjkCharset
 ): String? {
@@ -36,6 +37,9 @@ internal actual fun platformDecodeCjk(
         for (trim in 0..3) {
             val len = length - trim
             if (len <= 0) break
+            // 这个 as 编译器报 USELESS_CAST 是假警告: NSString.create 的声明类型是 NSString?,
+            // 删掉转换就无法当 String? 返回 (K/N 的 NSString↔String 映射只骗过了警告检查)
+            @Suppress("USELESS_CAST")
             val decoded = NSString.create(
                 bytes = pinned.addressOf(offset),
                 length = len.toULong(),

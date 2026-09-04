@@ -49,6 +49,5 @@ actual fun localDateOf(year: Int, month: Int, dayOfMonth: Int): LocalDate =
     LocalDateImpl(year, month, dayOfMonth)
 
 actual fun LocalDate.toYearMonthDay(): Triple<Int, Int, Int> {
-    val impl = this as LocalDateImpl
-    return Triple(impl.year, impl.month, impl.day)
+    return Triple(year, month, day)
 }

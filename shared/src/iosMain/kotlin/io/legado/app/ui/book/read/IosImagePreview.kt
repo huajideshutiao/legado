@@ -60,6 +60,7 @@ private class ImagePreviewViewController(image: UIImage) :
         )
     }
 
+    @OptIn(kotlinx.cinterop.BetaInteropApi::class)
     @ObjCAction
     fun handleTap(sender: NSObject?) {
         dismissViewControllerAnimated(true, completion = null)
@@ -67,13 +68,14 @@ private class ImagePreviewViewController(image: UIImage) :
 }
 
 /**
- * ByteArray → [UIImage]（与 IosImageOps 内部解码路径一致：NSData.create + UIImage(data:)）。
- * 空数组 / 非图片字节返回 null（UIImage(data:) 解码失败返回 nil）。
+ * ByteArray → [UIImage]（与 IosImageOps 内部解码路径一致：NSData.create + UIImage.imageWithData）。
+ * 空数组 / 非图片字节返回 null（+imageWithData: 解码失败返回 nil，K/N 映射为 UIImage?）。
  */
+@OptIn(kotlinx.cinterop.BetaInteropApi::class)
 internal fun ByteArray.toUIImage(): UIImage? {
     if (isEmpty()) return null
     val nsData = usePinned { pinned ->
         NSData.create(bytes = pinned.addressOf(0), length = size.toULong())
     }
-    return UIImage(data = nsData)
+    return UIImage.imageWithData(nsData)
 }
