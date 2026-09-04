@@ -325,6 +325,15 @@ class ReadBookViewModelShared(
     /** 是否滚动翻页模式 (对照 app 端 `ReadBook.isScroll`), 朗读起点定位等滚动分支使用 */
     val isScrollPageAnim: Boolean get() = readBook.isScroll
 
+    /**
+     * 当前生效翻页动画 (委托 [ReadBookShared.pageAnim], 对照 app 端 `ReadBook.pageAnim()`)。
+     *
+     * 带单页图片样式降级: imageStyle=SINGLE 且配置为滚动时降为覆盖。翻页委托与排版
+     * 双页判定均须读本属性而非 `ReadBookConfig.pageAnim` 原始值——后者不含降级,
+     * 单图模式下会造出滚动委托 (与 app 端 `ReadView.upPageAnim` 取值口径不一致)。
+     */
+    val pageAnim: Int get() = readBook.pageAnim()
+
     // region 滚动模式行级偏移 (对照 app 端 ContentTextView.pageOffset)
     /**
      * 滚动翻页模式的行级滚动偏移 (px, 恒 ≤ 0)。

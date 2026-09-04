@@ -37,7 +37,6 @@ import io.legado.app.ui.book.read.page.PageSelectionState
 import io.legado.app.ui.book.read.page.detectClickArea
 import io.legado.app.ui.book.searchContent.SearchResult
 import io.legado.app.ui.root.AppNavigatorProviders
-import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteResults
@@ -159,14 +158,6 @@ interface ReaderPlatformProvider {
      * 默认 no-op: 未实现的端面板仍可调速度, 但停止/设置/语速动作降级为空。
      */
     fun autoPageStop(screenModel: ReaderScreenModel) {}
-
-    /**
-     * 翻页动画配置 (对照原版 AutoReadDialog 设置按钮 → showPageAnimConfig)。
-     * 默认走共享 "page_anim_config" 对话框; app 端覆写为菜单内的选择器。
-     */
-    fun showPageAnimConfig(screenModel: ReaderScreenModel) {
-        AppNavigatorProviders.get().showOverlay(AppOverlay.Dialog("page_anim_config"))
-    }
 
     /** 自动翻页滑条抬手后同步 TTS 语速 (对照原版 AutoReadDialog upTtsSpeechRate) */
     fun upTtsSpeechRate(screenModel: ReaderScreenModel) {}

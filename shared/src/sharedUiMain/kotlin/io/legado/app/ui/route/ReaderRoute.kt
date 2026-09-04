@@ -211,7 +211,9 @@ fun ReaderRoute(
     ) {
         val textArea = textAreaSize ?: return@LaunchedEffect
         screenModel.viewModel.updateLayoutConfig(
-            buildLayoutConfig(textArea, density, readBookConfig)
+            buildLayoutConfig(
+                textArea, density, readBookConfig, screenModel.viewModel.pageAnim
+            )
         )
     }
     // endregion
@@ -966,9 +968,11 @@ fun ReaderRoute(
                         provider.autoPageStop(screenModel)
                     }
 
-                    // 设置按钮 → 翻页动画配置 (对照原版 showPageAnimConfig)
-                    override fun showPageAnimConfig() {
-                        provider.showPageAnimConfig(screenModel)
+                    // 设置按钮 → 界面设置 (原版这里开 showPageAnimConfig 选择器, 但该选择器
+                    // 回调忽略索引、不写动画值，选完无效; 翻页动画的实际入口就是界面设置)
+                    override fun showReadStyle() {
+                        screenModel.clearDialogEvent()
+                        screenModel.postDialogEvent(ReaderDialogEvent.ReadStyle)
                     }
 
                     // 滑条抬手 → 同步 TTS 语速 (对照原版 upTtsSpeechRate)
@@ -1110,7 +1114,7 @@ fun ReaderRoute(
             }
         }
 
-        // 图片样式选择器 (对照原版 menu_image_style: 单选后落库 + 单页样式发配置事件 + 重载当前章)
+        // 图片样式选择器 (对照原版 menu_image_style: 单选后落库 + 发配置事件 + 重载当前章)
         is ReaderDialogEvent.ImageStyle -> {
             val book = screenModel.currentBook
             if (book != null) {
@@ -1121,9 +1125,10 @@ fun ReaderRoute(
                         book.config.imageStyle = imageStyle
                         scope.launch {
                             runCatching { AppDbProviders.get().bookDao.update(book) }
-                            if (imageStyle == io.legado.app.data.entities.Book.imgStyleSingle) {
-                                ReadBookEvents.postConfig(ReadConfigChange.PAGE_ANIM)
-                            }
+                            // 图片样式影响 `ReadBook.pageAnim()` 的滚动→覆盖降级：切入 SINGLE 会降级，
+                            // 从 SINGLE 切出会恢复滚动，两个方向都得重建翻页委托。原版只在
+                            // `imageStyle == SINGLE` 时调 upPageAnim，切出时委托会停在覆盖不回滚动，此处不对齐。
+                            ReadBookEvents.postConfig(ReadConfigChange.PAGE_ANIM)
                             screenModel.viewModel.loadChapter(screenModel.viewModel.durChapterIndex.value)
                         }
                     },
@@ -1200,6 +1205,9 @@ private const val MAX_TEXT_SIZE = 50
  * 系统栏 inset 与页眉高度变化，必须同步重算（原版由 [0,2] 双事件中的 STYLE 分支
  * upStyle 驱动占位 View 显隐后布局变化触发；本地事件已拆分为 SYSTEM_UI 单独语义，
  * 故在此补上，避免沉浸切换后排版视口仍按旧页眉高度预留）。
+ * PAGE_ANIM：双页判定依赖生效翻页动画（滚动模式永单页），对照原版 `ReadView.upPageAnim`
+ * 内部直接调 `ChapterProvider.upLayout()`；且图片样式切换会改变 `ReadBook.pageAnim()`
+ * 的降级结果，同样需重算双页。
  */
 private val relayoutChanges = setOf(
     ReadConfigChange.SYSTEM_UI,
@@ -1207,6 +1215,7 @@ private val relayoutChanges = setOf(
     ReadConfigChange.CHAPTER_STYLE,
     ReadConfigChange.CHAPTER_LAYOUT,
     ReadConfigChange.LOAD_CONTENT,
+    ReadConfigChange.PAGE_ANIM,
 )
 
 /**
@@ -1217,21 +1226,26 @@ private val relayoutChanges = setOf(
  * 该子节点已被系统栏 inset + 页眉/页脚约束（对照原版 contentTextView 被 vwStatusBar +
  * llHeader + llFooter + vwNavigationBar 挤小后的实际尺寸）——与渲染同一布局系统同帧测量，
  * 不再拼差值。padding 只含正文自身内边距。
+ *
+ * @param pageAnim 生效翻页动画（`ReadBook.pageAnim()`，已含单页图片样式的滚动→覆盖降级）。
+ *        双页判定必须用降级后的值，与原版 `ChapterProvider.upLayout` 读 `ReadBook.pageAnim()`
+ *        同口径；读 `config.pageAnim` 原始值会在单图模式下错误禁掉双页。
  */
 private fun buildLayoutConfig(
     textArea: IntSize,
     density: Density,
     config: ReadBookConfigShared,
+    @PageAnim.Anim pageAnim: Int,
 ): ReadBookViewModelShared.LayoutConfig = with(density) {
     val textSizePx = config.textSize.sp.toPx()
     // 平板/横屏双页（对照原版 ChapterProvider.upLayout 的 doublePageHorizontal 分支）：
     // "0"=全域单页 "1"=全域双页 "2"=横向双页(宽>高, 滚动动画除外) "3"=平板/横屏双页(宽>高或平板)
     val doublePage = when (AppConfigProviders.get().doublePageHorizontal) {
         "1" -> true
-        "2" -> textArea.width > textArea.height && config.pageAnim != PageAnim.scrollPageAnim
+        "2" -> textArea.width > textArea.height && pageAnim != PageAnim.scrollPageAnim
         "3" -> (textArea.width > textArea.height ||
             PlatformCapabilityProviders.get().isTablet()) &&
-            config.pageAnim != PageAnim.scrollPageAnim
+            pageAnim != PageAnim.scrollPageAnim
         else -> false
     }
     ReadBookViewModelShared.LayoutConfig(

@@ -154,7 +154,7 @@ enum class ReadMenuAction {
     CHANGE_SOURCE, CHAPTER_CHANGE_SOURCE, BOOK_CHANGE_SOURCE,
     REFRESH, REFRESH_DUR, REFRESH_AFTER, REFRESH_ALL,
     DOWNLOAD, TOC_REGEX, SET_CHARSET,
-    ADD_BOOKMARK, EDIT_CONTENT, PAGE_ANIM, SYNC_PROGRESS, SIMULATED_READING,
+    ADD_BOOKMARK, EDIT_CONTENT, SYNC_PROGRESS, SIMULATED_READING,
     ENABLE_REPLACE, SAME_TITLE_REMOVED, RE_SEGMENT, REVIEW,
     DEL_RUBY_TAG, DEL_H_TAG, IMAGE_STYLE, UPDATE_TOC, LOG, HELP,
 }
@@ -446,10 +446,6 @@ open class BaseReadMenuState(
             ReadMenuAction.DOWNLOAD -> screenModel.postDialogEvent(ReaderDialogEvent.Download)
             ReadMenuAction.TOC_REGEX -> navigator.push(AppRoute.TxtTocRule)
             ReadMenuAction.SET_CHARSET -> screenModel.postDialogEvent(ReaderDialogEvent.SetCharset)
-            ReadMenuAction.PAGE_ANIM -> {
-                ReadBookEvents.postConfig(ReadConfigChange.PAGE_ANIM, ReadConfigChange.LOAD_CONTENT)
-            }
-
             ReadMenuAction.SIMULATED_READING -> {
                 screenModel.postDialogEvent(ReaderDialogEvent.SimulatedReading)
             }
@@ -909,7 +905,6 @@ private fun TopOverflowMenu(state: ReadMenuState, tint: Color) {
             }
             OverflowItem("bookmark_add") { click(ReadMenuAction.ADD_BOOKMARK) }
             OverflowItem("edit_content") { click(ReadMenuAction.EDIT_CONTENT) }
-            OverflowItem("book_page_anim") { click(ReadMenuAction.PAGE_ANIM) }
             if (menu.syncProgressVisible) {
                 OverflowItem("sync_book_progress_t") { click(ReadMenuAction.SYNC_PROGRESS) }
             }

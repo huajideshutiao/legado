@@ -88,11 +88,12 @@ interface AutoReadActions {
     fun autoPageStop()
 
     /**
-     * 显示翻页动画配置（对应 app 端 `BaseReadBookActivity.showPageAnimConfig`）。
-     * app 端原回调内调 `upPageAnim()` + `ReadBook.loadContent(false)`，
-     * 由宿主桥接到各自实现。
+     * 打开界面设置（翻页动画的实际配置入口）。
+     * 原版此按钮走 `showPageAnimConfig` 选择器，但那个选择器回调忽略索引
+     * （`selector { _, _ -> success() }`）、不写任何动画值，选完等于无效；
+     * 此处改为直接开界面设置弹窗，让“设置”按钮真正能改翻页动画。
      */
-    fun showPageAnimConfig()
+    fun showReadStyle()
 
     /**
      * 更新 TTS 语速（对应 app 端 `upTtsSpeechRate`）。
@@ -187,7 +188,7 @@ fun AutoReadPanel(
                 stringResource(Res.string.setting),
                 colors.primaryText
             ) {
-                actions.showPageAnimConfig()
+                actions.showReadStyle()
             }
         }
     }

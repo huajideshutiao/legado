@@ -9,28 +9,30 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import io.legado.app.constant.PageAnim
-import io.legado.app.help.config.LocalReadConfigProviders
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadBookViewModelShared
 import io.legado.app.ui.book.read.ReadConfigChange
 import kotlinx.coroutines.CoroutineScope
 
 /**
- * 按 `ReadBookConfig.pageAnim` 选取翻页动画委托，对照 app 端 `ReadView.upPageAnim()`。
+ * 按 `ReadBook.pageAnim()` 选取翻页动画委托，对照 app 端 `ReadView.upPageAnim()`。
  *
  * 委托实例挂在 composition 上：翻页动画配置变更（[ReadConfigChange.PAGE_ANIM]）时重建，
  * 离开阅读页时 `onDestroy()` 释放动画协程。同时写回 [ReadBookViewModelShared.pageDelegate]，
  * 供快捷键翻页（[io.legado.app.ui.book.read.page.turnPage]）等非 Compose 入口复用。
+ *
+ * 取值走 [ReadBookViewModelShared.pageAnim]（= `ReadBook.pageAnim()`）而非
+ * `ReadBookConfig.pageAnim`：后者不含单页图片样式的滚动→覆盖降级，单图模式下会
+ * 造出滚动委托，与 app 端 `ReadView.upPageAnim` 口径不一致。
  */
 @Composable
 fun rememberPageDelegate(viewModel: ReadBookViewModelShared): PageDelegateCompose {
-    val readBookConfig = LocalReadConfigProviders.current.readBookConfig
     val scope = rememberCoroutineScope()
 
-    var pageAnim by remember(readBookConfig) { mutableIntStateOf(readBookConfig.pageAnim) }
-    LaunchedEffect(readBookConfig) {
+    var pageAnim by remember(viewModel) { mutableIntStateOf(viewModel.pageAnim) }
+    LaunchedEffect(viewModel) {
         ReadBookEvents.configChange.collect { changes ->
-            if (ReadConfigChange.PAGE_ANIM in changes) pageAnim = readBookConfig.pageAnim
+            if (ReadConfigChange.PAGE_ANIM in changes) pageAnim = viewModel.pageAnim
         }
     }
 

@@ -112,10 +112,6 @@ class AndroidReaderPlatformProvider(
         activeMenuState?.takeIf { it.first === screenModel }?.second?.stopAutoPage()
     }
 
-    override fun showPageAnimConfig(screenModel: ReaderScreenModel) {
-        activeMenuState?.takeIf { it.first === screenModel }?.second?.showPageAnimConfigSelector()
-    }
-
     override fun upTtsSpeechRate(screenModel: ReaderScreenModel) {
         activeMenuState?.takeIf { it.first === screenModel }?.second?.upTtsSpeechRate()
     }
@@ -618,10 +614,6 @@ private class AndroidReaderMenuState(
 
             // ===== 溢出菜单动作 (对照原版 ReadBookActivity.menuHandler.onMenuAction) =====
 
-            // 翻页动画: 6 项选择器, 选中后刷新 (对照原版 showPageAnimConfig:
-            // 选择器回调忽略索引, 实际动画值在界面设置弹窗配置, 此处只触发 upPageAnim + 重载)
-            ReadMenuAction.PAGE_ANIM -> showPageAnimConfigSelector()
-
             // 模拟阅读: 开关 + 起始日期 + 起始章节/每日章数 (对照原版 showSimulatedReading)
             ReadMenuAction.SIMULATED_READING -> showSimulatedReading()
 
@@ -678,7 +670,7 @@ private class AndroidReaderMenuState(
             }
 
             // 图片样式: 4 项选择器, 单选样式后重载 (对照原版 menu_image_style;
-            // SINGLE 样式需要重建翻页委托)
+            // 样式变化影响 `ReadBook.pageAnim()` 降级结果, 需重建翻页委托)
             ReadMenuAction.IMAGE_STYLE -> {
                 val imgStyles = arrayListOf(
                     Book.imgStyleDefault, Book.imgStyleFull, Book.imgStyleText, Book.imgStyleSingle
@@ -690,9 +682,9 @@ private class AndroidReaderMenuState(
                     activity.lifecycleScope.launch(IO) {
                         // 只 PATCH 阅读配置列; 整行 update 会冲掉后台 updateToc 写入的目录/元数据
                         appDb.bookDao.updateReadConfig(book.bookUrl, book.config)
-                        if (imageStyle == Book.imgStyleSingle) {
-                            ReadBookEvents.postConfig(ReadConfigChange.PAGE_ANIM)
-                        }
+                        // 切入 SINGLE 会把滚动降为覆盖, 从 SINGLE 切出会恢复滚动——两个方向都得
+                        // 重建委托。原版只在 SINGLE 分支调 upPageAnim, 切出时委托停在覆盖不回滚动。
+                        ReadBookEvents.postConfig(ReadConfigChange.PAGE_ANIM)
                         screenModel.viewModel.loadChapter(screenModel.viewModel.durChapterIndex.value)
                     }
                 }
@@ -1000,26 +992,13 @@ private class AndroidReaderMenuState(
         }
     }
 
-    // 翻页动画选择器 (原 PAGE_ANIM 分支提取, AutoReadPanel 设置按钮复用)
-    fun showPageAnimConfigSelector() {
-        val items = arrayListOf(
-            androidAppString("btn_default_s"),
-            androidAppString("page_anim_cover"),
-            androidAppString("page_anim_slide"),
-            androidAppString("page_anim_simulation"),
-            androidAppString("page_anim_scroll"),
-            androidAppString("page_anim_none"),
-        )
-        activity.selector(androidAppString("page_anim"), items) { _, _ ->
-            ReadBookEvents.postConfig(
-                ReadConfigChange.PAGE_ANIM, ReadConfigChange.LOAD_CONTENT
-            )
-        }
-    }
+    // 翻页动画选择器已删除: 原版该选择器回调忽略索引 (selector { _, _ -> success() }),
+    // 选完不写任何动画值, 仅发 PAGE_ANIM + LOAD_CONTENT —— 属于无效的死 UI。
+    // 翻页动画统一在界面设置弹窗 (ReadStyleScreen 的 5 个单选项) 配置。
 
     // 自动翻页控制面板 (对照原版 AutoReadDialog: 速度滑条 + 目录/主菜单/停止/设置)
     // 已上移 shared: 面板由 ReaderRoute 渲染 AutoReadPanelDialogHost,
-    // 本端只需提供 autoPageStop / showPageAnimConfig / upTtsSpeechRate 平台动作 (见 Provider 覆写)
+    // 本端只需提供 autoPageStop / upTtsSpeechRate 平台动作 (见 Provider 覆写)
 
     // 对照原版 ReadAloudDialog.upTtsSpeechRate: 新语速要 pause+resume 才作用到当前段
     fun upTtsSpeechRate() {

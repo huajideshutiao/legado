@@ -280,6 +280,10 @@ fun ReadStyleScreen(
                 listOf(
                     ReadConfigChange.BG,
                     ReadConfigChange.STYLE,
+                    // pageAnim 属于样式自身配置 (shareLayout=false 时 config=configList[styleSelect]),
+                    // 换样式即换生效动画值, 必须重建翻页委托。原版只发 [1,2,5] 漏了这条,
+                    // 导致单选框已回显新值、手势仍走旧委托 (显示与行为撕裂), 此处有意补齐。
+                    ReadConfigChange.PAGE_ANIM,
                     ReadConfigChange.LOAD_CONTENT,
                 )
             )
@@ -435,6 +439,9 @@ fun ReadStyleScreen(
                         listOf(
                             ReadConfigChange.BG,
                             ReadConfigChange.STYLE,
+                            // 共用布局开关切换 config 来源 (shareConfig ↔ durConfig),
+                            // 生效 pageAnim 可能随之变化, 同样需重建翻页委托
+                            ReadConfigChange.PAGE_ANIM,
                             ReadConfigChange.LOAD_CONTENT,
                         )
                     )
