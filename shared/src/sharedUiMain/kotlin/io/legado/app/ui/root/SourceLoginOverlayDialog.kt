@@ -58,6 +58,9 @@ internal fun SourceLoginOverlayContent(overlay: AppOverlay.Dialog, navigator: Ap
     val initialStackSize = remember { navigator.backStack.value.size }
     var suspended by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
+        // push 一改栈就立即隐藏, 不等转场动画。曾试过"等新页铺满再隐藏"以消除
+        // "对话框先消失、新页才出现"的窗口期, 但 Overlay 恒渲染在路由之上, 结果是对话框
+        // 整段转场悬在滑入的新页之上挡视线、末尾还硬切消失, 观感更差 (2026-09 实测回退)。
         navigator.backStack.collect { entries ->
             val newSuspended = entries.size > initialStackSize
             if (newSuspended != suspended) {

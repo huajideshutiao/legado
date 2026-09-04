@@ -194,9 +194,6 @@ fun ReviewListContent(
                                     AppOverlay.Dialog(
                                         key = "photo",
                                         payload = it,
-                                        // 可叠放 (方案 C 例外): 图片查看器叠在段评列表上,
-                                        // 关闭查看器后列表仍在 (对照原版 Fragment 叠放语义)
-                                        stacked = true,
                                     )
                                 )
                             }
@@ -206,7 +203,6 @@ fun ReviewListContent(
                                 AppOverlay.Dialog(
                                     key = "photo",
                                     payload = url,
-                                    stacked = true,
                                 )
                             )
                         },

@@ -36,16 +36,13 @@ sealed interface AppOverlay {
         override val key: String,
         val payload: String? = null,
         val dismissOnBack: Boolean = true,
-        // 允许与其他对话框叠放: 弹新 Overlay 时不被自动关闭, 也不关闭已有对话框
-        // (对照原版 Fragment 对话框叠放场景, 如段评列表上再弹图片查看器, 关闭查看器后列表仍在)
-        val stacked: Boolean = false,
-        // push 路由/弹新 Overlay 时不自动关闭, 由对话框内容自管挂起/恢复
+        // push 路由时不自动关闭, 由对话框内容自管挂起/恢复
         // (对照原版 DialogFragment 被新 Activity 全屏盖住仍存活; 书源登录对话框:
         // 登录 JS startBrowser → push WebView 时挂起, pop 回原栈时恢复)
         val keepOnPush: Boolean = false,
         // 书源身份 (书源 URL, 可空): 供 photo 等需要防盗链 header/封面解密规则的 overlay
         // 按书源加载网络资源 (与全局当前阅读书解耦); 本地书/无书源场景不传, 保持裸 GET。
-        // 默认值 + routeJson(ignoreUnknownKeys) 保证旧快照双向兼容 (与 stacked 字段同方案)。
+        // 默认值 + routeJson(ignoreUnknownKeys) 保证旧快照双向兼容 (同 keepOnPush 方案)。
         val sourceOrigin: String? = null,
     ) : AppOverlay
 
@@ -146,11 +143,15 @@ class AppNavigator(
     fun push(route: AppRoute, resultKey: String? = null): RouteEntryId {
         val current = currentEntry
         if (current.route == route && current.resultKey == resultKey) return current.id
-        // 方案 C: 任何新导航动作 (push 路由) 先自动关闭对话框类 overlay。对照原版:
-        // 新 Activity/Fragment 全屏盖住后, 旧对话框随导航消失 (如登录对话框内
-        // java.startBrowser → WebViewActivity, 对话框不再与 WebView 叠放); 单页导航下
-        // 路由渲染在 Overlay 之下, 不关闭会被对话框遮住。Sheet 属半屏界面, 保留不关。
+        // 任何新导航动作 (push 路由) 先自动关闭对话框类 overlay。对照原版:
+        // 新 Activity 全屏盖住后旧对话框不再与新页面叠放 (如原版屏蔽规则列表对话框跳
+        // SourceFilterRuleActivity 前先 dismiss 自己); 单页导航下路由渲染在 Overlay 之下,
+        // 不关闭会被对话框遮住。Sheet 属半屏界面, 保留不关。
         // 例外: keepOnPush 对话框 (书源登录) 保留, 由内容自管挂起/恢复 (原版被盖住仍存活)。
+        // 时机就是立即: 曾试过延后到转场播完再关以消除"对话框先消失、新页才出现"的
+        // 窗口期, 但 Overlay 恒渲染在路由之上, 对话框会整段转场悬在滑入的新页之上
+        // 挡视线, 观感更差 (2026-09 实测回退)。
+        // 注: 弹新 Overlay 不走本逻辑 —— 对话框之间默认叠放, 见 [showOverlay]。
         dismissDialogOverlays()
         val entryId = routeBackStack.push(
             route = route,
@@ -189,7 +190,7 @@ class AppNavigator(
     }
 
     fun replace(route: AppRoute): RouteEntryId {
-        // 方案 C: replace 同样是新导航动作 (当前无调用点, 预留防止未来遗漏), 先关对话框类 overlay
+        // replace 同样是新导航动作 (当前无调用点, 预留防止未来遗漏), 先关对话框类 overlay
         dismissDialogOverlays()
         val replacedEntryId = currentEntry.id
         val entryId = routeBackStack.replace(route)
@@ -254,28 +255,29 @@ class AppNavigator(
         return popped
     }
 
+    /**
+     * 弹出 Overlay。对话框之间默认叠放: 新对话框叠在已有对话框之上, 关闭后回到下面那个
+     * (对照原版 DialogFragment: 父对话框弹子对话框时不 dismiss 自己, dismiss 只出现在
+     * 取消/确定/结果回传路径)。
+     *
+     * 需要"新对话框顶掉旧对话框"时由调用方自行 dismissOverlay, 本方法不隐式关闭 ——
+     * 否则"从对话框内部再弹对话框"的链路 (如段评列表点头像看大图) 会把发起方一起关掉。
+     * 路由 push/replace 仍会关对话框, 见 [push]。
+     */
     fun showOverlay(overlay: AppOverlay) {
-        // 方案 C: 弹新 Overlay 时先自动关闭已有的对话框类 overlay (同上); 新 overlay 为
-        // 可叠放 Dialog (stacked=true) 时保留已有对话框, 关闭后回到原对话框 (原版语义)。
-        dismissDialogOverlays(
-            keepStacked = overlay is AppOverlay.Dialog && overlay.stacked
-        )
         overlayBackStack.show(overlay)
     }
 
     /**
      * 关闭所有对话框类 (Dialog) overlay, Sheet (半屏界面) 保留不关。
      *
-     * @param keepStacked 为 true 时保留已有对话框 (仅当新 overlay 为可叠放 Dialog 时传,
-     * 如段评列表上弹图片查看器, 查看器关闭后列表仍在); dismiss 按 key 过滤, 对不存在
-     * 的 key 返回 false, 幂等无副作用, 与 pop() 的 dismissTopOverlay 复用同一底层机制。
+     * 仅路由导航 (push/replace) 调用: 单页导航下路由渲染在 Overlay 之下, 不关会被遮住。
+     * keepOnPush 对话框 (书源登录) 例外保留, 由内容自管挂起/恢复。
+     * dismiss 按 key 过滤, 幂等无副作用, 与 pop() 的 dismissTopOverlay 复用同一底层机制。
      */
-    private fun dismissDialogOverlays(keepStacked: Boolean = false) {
+    private fun dismissDialogOverlays() {
         overlayBackStack.overlays.value.forEach { overlay ->
-            if (overlay is AppOverlay.Dialog
-                && !(keepStacked && overlay.stacked)
-                && !overlay.keepOnPush
-            ) {
+            if (overlay is AppOverlay.Dialog && !overlay.keepOnPush) {
                 overlayBackStack.dismiss(overlay.key)
             }
         }
