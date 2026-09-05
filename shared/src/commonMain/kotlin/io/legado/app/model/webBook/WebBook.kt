@@ -20,6 +20,7 @@ import io.legado.app.model.analyzeRule.RuleData
 import io.legado.app.model.analyzeRule.UrlOptionSerializer
 import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.NetworkUtils
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
@@ -163,7 +164,11 @@ object WebBook {
         )
         try {
             return getBookInfoAwait(source, book)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
+            // 取消可能被 JS/网络链路换壳, 类型判断拦不住, 补查协程状态后再记错
+            currentCoroutineContext().ensureActive()
             AppLog.put("添加网址抓取失败 $bookUrl 书源=${source.bookSourceName}", e)
             throw e
         }

@@ -178,7 +178,9 @@ class Coroutine<T>(
                 ensureActive()
                 success?.let { dispatchCallback(this, value, it) }
             } catch (e: Throwable) {
-                e.printStackTraceOnDebug()
+                // 取消不算错误: 退页/切页时的正常作废不打栈 (dispatchCallback 自带 isActive
+                // 守卫不走 onError, 但本行在守卫之前, 不排除就会把每次取消都打成堆栈)
+                if (e !is CancellationException) e.printStackTraceOnDebug()
                 val consume: Boolean = errorReturn?.value?.let { value ->
                     success?.let { dispatchCallback(this, value, it) }
                     true

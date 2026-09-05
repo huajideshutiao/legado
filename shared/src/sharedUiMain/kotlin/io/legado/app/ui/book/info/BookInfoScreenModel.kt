@@ -25,6 +25,8 @@ import io.legado.app.utils.ConvertUtils
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -187,7 +189,12 @@ class BookInfoScreenModel : ScreenModel {
             }
             val toc = try {
                 loadBookInfo(book, bookSource, canReName, runPreUpdateJs, isSearchBook)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
+                // 内层 loadBookInfo 的 catch 体本身含挂起调用 (getString/toast), scope 已取消时
+                // 会二次抛取消并落到这里, 补查协程状态避免把同一次取消记成第二条错误日志
+                currentCoroutineContext().ensureActive()
                 AppLog.put("获取书籍信息失败\n${e.message}", e)
                 Toasters.get().toast(getString(Res.string.error_get_book_info))
                 emptyList()
@@ -304,7 +311,12 @@ class BookInfoScreenModel : ScreenModel {
             } else {
                 loadChapterList(book, source, runPreUpdateJs)
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
+            // 退出详情页 (onCleared → scope.cancel) 时 WebBook/JS 链路可能把取消换壳成普通异常,
+            // 类型判断拦不住, 补查协程状态: 已取消按取消路径抛出, 不记"获取书籍信息失败"假错误
+            currentCoroutineContext().ensureActive()
             AppLog.put("获取书籍信息失败\n${e.message}", e)
             Toasters.get().toast(getString(Res.string.error_get_book_info))
             emptyList()

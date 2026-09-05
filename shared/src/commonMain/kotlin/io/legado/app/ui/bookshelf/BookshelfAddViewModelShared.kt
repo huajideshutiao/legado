@@ -96,7 +96,12 @@ class BookshelfAddViewModelShared(private val scope: CoroutineScope) {
                         appDb.bookChapterDao.insert(*toc.toTypedArray())
                         successCount++
                         _addBookProgress.tryEmit(successCount)
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Throwable) {
+                        // 取消可能被 JS/网络链路换壳成普通异常, 类型判断拦不住, 补查协程状态,
+                        // 否则取消后剩下的每个 URL 都会记一条"添加失败"并弹 toast
+                        currentCoroutineContext().ensureActive()
                         AppLog.put("添加 $bookUrl 失败\n${e.message}", e, true)
                     }
                 }

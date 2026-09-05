@@ -5,6 +5,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.DictRule
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -60,6 +61,8 @@ class DictRuleViewModelShared(
         scope.launch(IoDispatcher) {
             try {
                 appDb.dictRuleDao.update(*dictRule)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
                 val msg = "更新字典规则出错\n${e.message}"
                 AppLog.put(msg, e)
@@ -73,6 +76,8 @@ class DictRuleViewModelShared(
         scope.launch(IoDispatcher) {
             try {
                 appDb.dictRuleDao.delete(*dictRule)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
                 val msg = "删除字典规则出错\n${e.message}"
                 AppLog.put(msg, e)
