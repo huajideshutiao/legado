@@ -63,12 +63,8 @@
     <string name="offline_cache">離線緩存</string>
     <string name="download_to_local">下載到本地</string>
     <string name="change_origin">換源</string>
-    <string name="about_description">
-        \u3000\u3000這是一款使用 Kotlin 全新開發的開源的閲讀應用程式，歡迎你的加入。
-    </string>
-    <string name="app_share_description">
-        閲讀3.0下載地址：\nhttps://github.com/huajideshutiao/legado/releases
-    </string>
+    <string name="about_description">\u3000\u3000這是一款使用 Kotlin 全新開發的開源的閲讀應用程式，歡迎你的加入。</string>
+    <string name="app_share_description">閲讀3.0下載地址：https://github.com/huajideshutiao/legado/releases</string>
     <string name="pt_auto_refresh">自動刷新</string>
     <string name="ps_auto_refresh">打開程式時自動更新書輯</string>
     <string name="backup_restore">備份與還原</string>

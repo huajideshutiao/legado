@@ -1317,15 +1317,11 @@
     <string name="delete_book_file">Delete source file</string>
     <string name="cloud_progress_exceeds_current">The cloud progress exceeds the current progress. Do you want to synchronize?</string>
     <string name="reply_review_to">Reply: %1$s</string>
-    <string name="about_description">
-        \u3000\u3000 This is an open source reading software newly developed by Kotlin, welcome to join us.
-    </string>
+    <string name="about_description">\u3000\u3000 This is an open source reading software newly developed by Kotlin, welcome to join us.</string>
     <string name="add_group">Add to Groups</string>
     <string name="add_to_group">Add to Group</string>
     <string name="all_bookmark">All bookmarks</string>
-    <string name="app_share_description">
-        Legado (YueDu 3.0) download link：\n https://github.com/huajideshutiao/legado/releases
-    </string>
+    <string name="app_share_description">Legado (YueDu 3.0) download link：https://github.com/huajideshutiao/legado/releases</string>
     <string name="auto_page_speed">Auto scroll speed</string>
     <string name="bg_alpha">Background alpha</string>
     <string name="bg_color">Background color</string>
@@ -1733,6 +1729,10 @@
     <string name="qq_group_url" translatable="false"></string>
     <string name="http_ip" translatable="false">http://%1$s:%2$d</string>
     <string name="diy_edit_source_group_title" translatable="false">【%1$s】</string>
+    <string name="nothing_here">Nothing here</string>
+    <string name="about_dev_hint">Only %1$d more to go</string>
+    <string name="donate_qrcode">Donate QR code</string>
+    <string name="donate_thanks">Thanks for your kindness</string>
     <string-array name="book_sort">
         <item>Default</item>
         <item>By recent list</item>

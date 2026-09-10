@@ -65,12 +65,8 @@
     <string name="offline_cache">離線快取</string>
     <string name="download_to_local">下載到本機</string>
     <string name="change_origin">換源</string>
-    <string name="about_description">
-        \u3000\u3000這是一款使用Kotlin全新開發的開源的閱讀軟體，歡迎您的加入。
-    </string>
-    <string name="app_share_description">
-        閱讀3.0下載網址：\nhttps://github.com/huajideshutiao/legado/releases
-    </string>
+    <string name="about_description">\u3000\u3000這是一款使用Kotlin全新開發的開源的閱讀軟體，歡迎您的加入。</string>
+    <string name="app_share_description">閱讀3.0下載網址：https://github.com/huajideshutiao/legado/releases</string>
     <string name="pt_auto_refresh">自動重新整理</string>
     <string name="ps_auto_refresh">打開軟體時自動更新書籍</string>
     <string name="backup_restore">備份與復原</string>

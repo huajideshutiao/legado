@@ -1,6 +1,7 @@
 package io.legado.app.ui.about
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -20,14 +21,22 @@ import legado.shared.generated.resources.app_name
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * 顶部卡片: app 名 + 简介 (迁 activity_about ll_about, filletBackground)。
+ * 顶部卡片: app 名 + 简介。对照原版 archive 分支 activity_about.xml 的 ll_about:
+ * margin/padding = @dimen/arco_spacing_lg (16dp)、app_name 20sp 居中加粗、简介为正文默认字号。
+ * 卡片背景对应 AboutActivity 运行时覆盖上去的 Context.filletBackground (圆角 + bottomBackground),
+ * 不是 XML 自带的 shape_card_view —— 那个会被 Activity 替掉。
  *
- * 从 app 端 AboutActivity.AboutHeaderCard 原样移植:
- * - stringResource(R.string.xxx) → stringResource(Res.string.xxx) (跨平台 key-based)
- * - 布局/间距/圆角/颜色/字号全部保持原值
+ * 字符串从 R.string 改为 key-based Res.string 以便跨平台。
+ *
+ * [onHeaderClick]: 整卡可点, 供关于页彩蛋连点计数使用 (计数在 [AboutScreenModel]),
+ * 原版 ll_about 不可点, 此处为新增交互。
+ *
+ * 简介字符串在 composeResources 里必须写成单行: CMP 资源编译器不像 Android aapt
+ * 那样折叠 XML 缩进空白, 换行与前导空格会原样进字符串并由 Compose Text 渲染成
+ * 空行 + 额外缩进; 首行缩进靠字符串自带的两个全角空格 (U+3000)。
  */
 @Composable
-fun AboutHeaderCard() {
+fun AboutHeaderCard(onHeaderClick: () -> Unit) {
     val colors = AppTheme.colors
     Column(
         Modifier
@@ -35,6 +44,7 @@ fun AboutHeaderCard() {
             .padding(16.dp)
             .clip(DesignTokens.shapeDefault)
             .background(colors.bottomBackground)
+            .clickable(onClick = onHeaderClick)
             .padding(16.dp),
     ) {
         Text(

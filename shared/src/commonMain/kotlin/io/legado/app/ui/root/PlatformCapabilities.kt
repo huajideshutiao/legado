@@ -211,7 +211,7 @@ interface PlatformCapabilities {
     fun goBackImportDir() = unsupported("返回上级导入目录")
 
     // 关于页平台能力 (各端按需 override, 未实现端统一给出明确提示)
-    // 对照 app 端 AboutActivity 同名方法
+    // 对照原版 archive 分支 AboutFragment.onPreferenceTreeClick 各分支
     /**
      * 是否提供检查更新能力 (关于页"检查更新"入口 gate)。
      * 实现 [checkUpdate] 的端必须返回 true, 否则关于页隐藏入口。

@@ -63,7 +63,8 @@ object UpdateStrategies {
 /**
  * 当前端的运行时信息 (平台/版本号/渠道/架构/自建更新源), 由各端启动时注册。
  *
- * Android 端不走这里 (AboutActivity 直接用 [AppUpdateShared.check]);
+ * Android 端不走这里 (关于页"检查更新"由 app 端 AndroidPlatformCapabilities 调 app 侧 AppUpdate.check,
+ * 后者只把纯逻辑检测委托给 [AppUpdateShared.check]);
  * desktop/iOS/鸿蒙在入口注册后, shared 的关于页即可自行完成"检查更新"全流程。
  */
 interface AppUpdateEnvironment {

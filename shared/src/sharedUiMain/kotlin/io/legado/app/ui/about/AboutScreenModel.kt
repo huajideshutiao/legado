@@ -6,6 +6,7 @@ import io.legado.app.help.update.UpdateAction
 import io.legado.app.help.update.UpdateCheckInfo
 import io.legado.app.help.update.UpdateCheckResult
 import io.legado.app.help.update.UpdateStrategies
+import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.ui.root.ScreenModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -47,6 +48,7 @@ data class AboutUiState(
  * - [onSaveLog]: 保存日志 (Android: copy logs/crash/logcat 到 backupPath; 桌面: JFileChooser 导出)
  * - [onCreateHeapDump]: 创建堆转储 (Android: CrashHandler.doHeapDump; 桌面: HotSpotDiagnosticMXBean)
  * - [onShowMdFile]: 显示 MD 文件 (title + fileName, 宿主读 assets/classpath 后弹 MD 对话框)
+ * - [onShowDonateQr]: 点击"捐赠二维码"条目 (内置图落盘后交给大图查看器 + 感谢 toast)
  */
 interface AboutUiActions {
     fun onShare()
@@ -56,6 +58,7 @@ interface AboutUiActions {
     fun onSaveLog()
     fun onCreateHeapDump()
     fun onShowMdFile(title: String, fileName: String)
+    fun onShowDonateQr()
 }
 
 // ===== ScreenModel =====
@@ -79,6 +82,39 @@ class AboutScreenModel : ScreenModel {
 
     fun updateState(state: AboutUiState) {
         _state.value = state
+    }
+
+    // ===== 顶部卡片连点彩蛋 =====
+
+    /** 连点计数; 触发后清零, 离开页面时随 ScreenModel 销毁一起重置。 */
+    private var headerClickCount = 0
+
+    /**
+     * 顶部卡片点击: 连点 [HEADER_EASTER_EGG_CLICKS] 次触发彩蛋。
+     *
+     * 提示节奏照搬 AOSP `BuildNumberPreferenceController` (连点版本号开开发者选项):
+     * 剩余次数满足 `remaining < 总次数 - 2` 才 toast「还差 N 次」——5 次即第 3、4 次有提示、
+     * 前两次静默、第 5 次触发。不做超时重新计数 (AOSP 也只在 onStart 重置倒计时),
+     * 离开页面时 ScreenModel 随路由销毁, 计数自然归零。
+     * 文案走 [syncGetString]: 点击处不在组合里, 同步取才能保证连点时 toast 顺序不乱。
+     * 彩蛋当前为占位 toast, 真功能落地只需改触发分支。
+     */
+    fun onHeaderClick() {
+        if (++headerClickCount >= HEADER_EASTER_EGG_CLICKS) {
+            headerClickCount = 0
+            Toasters.get().toast(syncGetString("nothing_here"))
+            return
+        }
+        val remaining = HEADER_EASTER_EGG_CLICKS - headerClickCount
+        if (remaining < HEADER_EASTER_EGG_CLICKS - 2) {
+            Toasters.get().toast(syncGetString("about_dev_hint", remaining))
+        }
+    }
+
+    private companion object {
+
+        /** 触发彩蛋所需的连点次数。 */
+        const val HEADER_EASTER_EGG_CLICKS = 5
     }
 
     /**

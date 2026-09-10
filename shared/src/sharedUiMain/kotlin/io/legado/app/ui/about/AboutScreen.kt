@@ -12,6 +12,7 @@ import legado.shared.generated.resources.contributors_summary
 import legado.shared.generated.resources.crash_log
 import legado.shared.generated.resources.create_heap_dump
 import legado.shared.generated.resources.disclaimer
+import legado.shared.generated.resources.donate_qrcode
 import legado.shared.generated.resources.join_telegram_group
 import legado.shared.generated.resources.license
 import legado.shared.generated.resources.other
@@ -54,6 +55,7 @@ fun AboutScreen(
     val titlePrivacyPolicy = stringResource(Res.string.privacy_policy)
     val titleLicense = stringResource(Res.string.license)
     val titleDisclaimer = stringResource(Res.string.disclaimer)
+    val titleDonate = stringResource(Res.string.donate_qrcode)
 
     PreferenceScreen(modifier = modifier) {
         preference(
@@ -91,6 +93,10 @@ fun AboutScreen(
             onClick = { actions.onCreateHeapDump() },
         )
         preference(
+            title = titleDonate,
+            onClick = { actions.onShowDonateQr() },
+        )
+        preference(
             title = titlePrivacyPolicy,
             onClick = { actions.onShowMdFile(titlePrivacyPolicy, "privacyPolicy.md") },
         )
@@ -103,14 +109,4 @@ fun AboutScreen(
             onClick = { actions.onShowMdFile(titleDisclaimer, "disclaimer.md") },
         )
     }
-}
-
-private object NoopAboutActions : AboutUiActions {
-    override fun onShare() {}
-    override fun onOpenUrl(url: String) {}
-    override fun onCheckUpdate() {}
-    override fun onShowCrashLogs() {}
-    override fun onSaveLog() {}
-    override fun onCreateHeapDump() {}
-    override fun onShowMdFile(title: String, fileName: String) {}
 }

@@ -1385,15 +1385,11 @@ Windows: winget install shinchiro.mpv 或 scoop install mpv,
     <string name="delete_book_file">删除源文件</string>
     <string name="cloud_progress_exceeds_current">云端进度超过当前进度，是否同步？</string>
     <string name="reply_review_to">回复: %1$s</string>
-    <string name="about_description">
-        \u3000\u3000这是一款使用 Kotlin 全新开发的开源的阅读软件，欢迎您的加入。
-    </string>
+    <string name="about_description">\u3000\u3000这是一款使用 Kotlin 全新开发的开源的阅读软件，欢迎您的加入。</string>
     <string name="add_group">添加分组</string>
     <string name="add_to_group">加入分组</string>
     <string name="all_bookmark">所有书签</string>
-    <string name="app_share_description">
-        阅读 3.0 下载地址：\nhttps://github.com/huajideshutiao/legado/releases
-    </string>
+    <string name="app_share_description">阅读 3.0 下载地址：https://github.com/huajideshutiao/legado/releases</string>
     <string name="auto_page_speed">自动翻页速度</string>
     <string name="bg_alpha">背景透明度</string>
     <string name="bg_color">背景颜色</string>
@@ -1801,6 +1797,10 @@ Windows: winget install shinchiro.mpv 或 scoop install mpv,
     <string name="qq_group_url"></string>
     <string name="http_ip">http://%1$s:%2$d</string>
     <string name="diy_edit_source_group_title">【%1$s】</string>
+    <string name="nothing_here">这里什么都没有</string>
+    <string name="about_dev_hint">还差 %1$d 次</string>
+    <string name="donate_qrcode">捐赠二维码</string>
+    <string name="donate_thanks">谢谢好心人喵</string>
     <string-array name="book_sort">
         <item>默认</item>
         <item>按阅读时间</item>

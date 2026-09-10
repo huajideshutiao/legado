@@ -687,14 +687,14 @@ class AndroidPlatformCapabilities(
         goBackDir()
     }
 
-    // 对照 AboutActivity.onCheckUpdate / AppUpdate.check
+    // 对照原版 AboutFragment "check_update" 分支 / AppUpdate.check
     override val checkUpdateSupported: Boolean get() = true
 
     override fun checkUpdate() {
         AppUpdate.check(activity.lifecycleScope, activity)
     }
 
-    // 对照 AboutActivity.onShowCrashLogs / showDialogFragment<CrashLogsDialog>
+    // 对照原版 AboutFragment "crashLog" 分支 / showDialogFragment<CrashLogsDialog>
     // 迁 Compose Overlay: 原 showDialogFragment<CrashLogsDialog>() 已由
     // shared OverlayContentHost 的 "crash_logs" key 接管 (CrashLogsOverlayDialogContent
     // 通过 CrashLogProvider 提供数据/读文件/清空/分享)
@@ -702,17 +702,17 @@ class AndroidPlatformCapabilities(
         AppNavigatorProviders.get().showOverlay(AppOverlay.Dialog("crash_logs"))
     }
 
-    // 对照 AboutActivity.onSaveLog / saveLog
+    // 对照原版 AboutFragment.saveLog
     override fun saveLog() {
         saveLogInternal()
     }
 
-    // 对照 AboutActivity.onCreateHeapDump / createHeapDump
+    // 对照原版 AboutFragment.createHeapDump
     override fun createHeapDump() {
         createHeapDumpInternal()
     }
 
-    // 对照 AboutActivity.onShowMdFile / showMdFile
+    // 对照原版 AboutFragment.showMdFile
     override fun showMdFile(title: String, fileName: String) {
         showMdFileInternal(title, fileName)
     }
@@ -2142,7 +2142,7 @@ class AndroidPlatformCapabilities(
         }
     }
 
-    // ===== 关于页私有辅助: 复刻 AboutActivity 同名 private 方法 =====
+    // ===== 关于页私有辅助: 复刻原版 AboutFragment 同名 private 方法 =====
 
     private fun showMdFileInternal(title: String, fileName: String) {
         val mdText = runCatching {
