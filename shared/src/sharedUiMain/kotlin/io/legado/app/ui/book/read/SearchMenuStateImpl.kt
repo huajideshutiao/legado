@@ -35,6 +35,11 @@ class SearchMenuStateImpl(
     override var bgVisible by mutableStateOf(false)
     override var searchInfo by mutableStateOf("")
 
+    // 配色委托阅读菜单状态：搜索菜单与阅读菜单同层叠加，取色必须同源（零新增逻辑）
+    override val immersive: Boolean get() = model.menuState.immersive
+    override val bgColor: Int get() = model.menuState.bgColor
+    override val textColor: Int get() = model.menuState.textColor
+
     /** 底部条滑出动画结束（[onTransitionIdle] false）后执行，对照 runMenuOut 的 onMenuOutEnd */
     private var onMenuOutEnd: (() -> Unit)? = null
 
@@ -70,18 +75,19 @@ class SearchMenuStateImpl(
      * 时序补全：原版 startAnimation 在 View 已 invisible 时仍会走 onAnimationEnd 回调；
      * 而 MutableTransitionState 在 targetState 已为 false 时重复置值不触发 onTransitionIdle，
      * 故已收起状态下直接执行收尾（否则收起态点"退出/主菜单"回调永远不执行）。
-     * 动画进行中：滑入中允许反向滑出；滑出中忽略本次调用保留首次回调（原版
-     * isMenuOutAnimating 守卫语义）。
+     * 动画进行中：滑入中允许反向滑出；滑出中忽略本次调用直接早退，保留首次回调（对照原版
+     * isMenuOutAnimating 守卫语义，防止重复调用覆盖先前有效回调）。
      */
     fun runMenuOut(onMenuOutEnd: (() -> Unit)? = null) {
+        if (!bottomVisibleState.isIdle && !bottomVisibleState.targetState) {
+            // 滑出动画进行中：对照 archive 原版 isMenuOutAnimating 早退，不覆盖先前的 onMenuOutEnd
+            return
+        }
         this.onMenuOutEnd = onMenuOutEnd
         when {
             !bottomVisibleState.isIdle -> {
-                if (bottomVisibleState.targetState) {
-                    // 滑入中：反向滑出（原版滑入中允许 startAnimation(menuBottomOut)）
-                    bottomVisibleState.targetState = false
-                }
-                // 滑出中：忽略本次调用，首次回调在 onTransitionIdle(false) 执行
+                // 滑入中被打断：反向滑出（原版滑入中允许 startAnimation(menuBottomOut)）
+                bottomVisibleState.targetState = false
             }
 
             bottomVisibleState.targetState -> {
@@ -91,8 +97,8 @@ class SearchMenuStateImpl(
 
             else -> {
                 // 已收起：立即执行收尾（对照原版 startAnimation 仍触发 onAnimationEnd）
-                onMenuOutEnd?.invoke()
                 this.onMenuOutEnd = null
+                onMenuOutEnd?.invoke()
             }
         }
     }
@@ -121,8 +127,9 @@ class SearchMenuStateImpl(
             // 对照 menuBottomOut.onAnimationEnd：llBottomMenu.invisible（AnimatedVisibility 出组合）
             // + vwMenuBg.invisible + onMenuOutEnd?.invoke()
             bgVisible = false
-            onMenuOutEnd?.invoke()
+            val cb = onMenuOutEnd
             onMenuOutEnd = null
+            cb?.invoke()
         }
         // shown=true 对照 menuBottomIn.onAnimationEnd 的 vwMenuBg 点击监听：Compose 端由
         // SearchMenuOverlay 的 clickable 处理（bgVisible 即监听生效），无需额外动作

@@ -27,7 +27,7 @@ package io.legado.app.ui.book.read
  * - change_origin, chapter_change_source, book_change_source
  * - refresh, menu_refresh_dur, menu_refresh_after, menu_refresh_all
  * - offline_cache, set_charset, bookmark_add, edit_content
- * - book_page_anim, sync_book_progress_t, simulated_reading
+ * - sync_book_progress_t, simulated_reading
  * - replace_rule_title, same_title_removed, re_segment, review
  * - del_ruby_tag, del_h_tag, image_style, update_toc
  * - open_fun, use_browser_open, search_content
@@ -106,9 +106,9 @@ import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalTxt
 import io.legado.app.help.book.isNotShelf
+import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.help.config.currentEInkMode
 import io.legado.app.help.config.currentNightTheme
-import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.help.showSourceLogin
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.component.AppDropdownMenu
@@ -287,6 +287,53 @@ interface ReadMenuState {
         // 待实现：平台 actual 重读日/夜模式
     }
     // endregion
+}
+
+/**
+ * 阅读/搜索菜单色彩配置。
+ * 在 E-Ink 模式下成对设置 surface（白底）与 onSurface（深色高对比前景），避免浅色背景与浅色文字组合（白底浅色字）。
+ */
+data class ReadMenuPalette(
+    val surface: Color,
+    val onSurface: Color,
+    val topSurface: Color = surface,
+    val secondaryText: Color = onSurface,
+)
+
+@Composable
+fun rememberReadMenuPalette(
+    immersive: Boolean,
+    bgColor: Int,
+    textColor: Int,
+    hasBgImage: Boolean = false,
+): ReadMenuPalette {
+    val eInk = LocalEInk.current
+    val colors = AppTheme.colors
+    return remember(eInk, immersive, bgColor, textColor, hasBgImage, colors) {
+        if (eInk) {
+            ReadMenuPalette(
+                surface = Color.White,
+                onSurface = Color(0xDE000000),
+                topSurface = Color.White,
+                secondaryText = Color(0x99000000),
+            )
+        } else {
+            val surface = if (immersive) Color(bgColor) else colors.bottomBackground
+            val onSurface = if (immersive) Color(textColor) else colors.primaryText
+            val topSurface = if (hasBgImage) Color.Transparent else surface
+            val secondaryText = if (immersive) {
+                Color(ColorUtils.withAlpha(ColorUtils.lightenColor(textColor), 0.75f))
+            } else {
+                onSurface
+            }
+            ReadMenuPalette(
+                surface = surface,
+                onSurface = onSurface,
+                topSurface = topSurface,
+                secondaryText = secondaryText,
+            )
+        }
+    }
 }
 
 /**
@@ -482,6 +529,10 @@ open class BaseReadMenuState(
     }
 
     override fun clickSearch() {
+        // 对照原版 fabSearch 的 `runMenuOut { callBack.openSearchActivity(null) }`：先收菜单
+        // 再开搜索页。漏收时 menuState.isVisible 恒为 true，搜索页回传后搜索菜单与仍展开的
+        // 阅读菜单同屏叠加，且方向键/音量键翻页被 isVisible 判定禁掉
+        hide()
         val initialResults = screenModel.searchResultList
             ?.takeIf { results -> results.firstOrNull()?.query == screenModel.searchContentQuery }
         navigator.push(
@@ -672,26 +723,19 @@ fun ReadMenuOverlay(state: ReadMenuState) {
 
 @Composable
 private fun ReadMenuTopBar(state: ReadMenuState) {
-    val colors = AppTheme.colors
     val eInk = LocalEInk.current
     // hasBgImage 四端经 ReadMenuState 桥接同源判定 (shared hasBgImageByPath)。
-    // 窗口背景图语义 (原版顶栏透明) 优先于阅读背景取色, 保护原版行为
-    val topBg = when {
-        eInk -> Color.White
-        state.hasBgImage -> Color.Transparent
-        state.immersive -> Color(state.bgColor)
-        else -> colors.bottomBackground
-    }
-    val topText = when {
-        state.immersive -> Color(state.textColor)
-        eInk -> Color(0xDE000000)
-        else -> colors.primaryText
-    }
-    val chapterText = if (state.immersive) {
-        Color(ColorUtils.withAlpha(ColorUtils.lightenColor(state.textColor), 0.75f))
-    } else {
-        topText
-    }
+    // 窗口背景图语义 (原版顶栏透明) 优先于阅读背景取色, 保护原版行为;
+    // 配色经 [rememberReadMenuPalette] 成对解析, E-Ink 下成对固定白底与深色前景, 避免白底浅色字。
+    val palette = rememberReadMenuPalette(
+        immersive = state.immersive,
+        bgColor = state.bgColor,
+        textColor = state.textColor,
+        hasBgImage = state.hasBgImage,
+    )
+    val topBg = palette.topSurface
+    val topText = palette.onSurface
+    val chapterText = palette.secondaryText
     // 下缘阴影只用栏内渐变暗带一处; 不再叠加 Modifier.shadow(低 elevation 只有
     // 四周均匀晕, 与渐变带上下贴出双影)
     Column(
@@ -1033,11 +1077,15 @@ private fun SourceActionButton(state: ReadMenuState) {
 @Composable
 private fun ReadMenuBottom(state: ReadMenuState) {
     val eInk = LocalEInk.current
-    val colors = AppTheme.colors
-    // 底栏背景/文字: 沉浸式(纯色阅读背景)用阅读背景色/阅读文字色; 图片背景回落主题色
-    // (对照原版 upColorConfig 的 else 分支, 2026-08-06 的图片取色增强已移除)
-    val bg = if (state.immersive) Color(state.bgColor) else colors.bottomBackground
-    val text = if (state.immersive) Color(state.textColor) else colors.primaryText
+    // 底栏背景/文字: 沉浸式(纯色阅读背景)用阅读背景色/阅读文字色; 图片背景回落主题色;
+    // E-Ink 模式统一由 [rememberReadMenuPalette] 成对固定为白底黑字, 消除白底浅色字。
+    val palette = rememberReadMenuPalette(
+        immersive = state.immersive,
+        bgColor = state.bgColor,
+        textColor = state.textColor,
+    )
+    val bg = palette.surface
+    val text = palette.onSurface
     Column(Modifier.fillMaxWidth()) {
         // 悬浮按钮行(原 ll_floating_button，透明底，空白处点击穿透到 bg 收起菜单)
         Row(

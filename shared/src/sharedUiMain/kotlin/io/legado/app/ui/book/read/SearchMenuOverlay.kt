@@ -2,14 +2,23 @@ package io.legado.app.ui.book.read
 
 /*
  * 下沉自 app 端 `SearchMenu.kt` 的 `SearchMenuOverlay` Composable + 私有辅助。
- * app 端 `SearchMenu` 状态持有类保留（依赖 Activity / ReadBook / R.string 等
- * Android 专属 API，属 L3 不可下沉），实现 shared 端 [SearchMenuState] 接口作为薄壳。
+ * 原版 `SearchMenu` 状态持有类（View 子类，依赖 Activity / ReadBook / R.string）已不存在，
+ * 状态与动作由 shared 端 [SearchMenuStateImpl] 实现本接口提供（四端共用）。
  *
  * # 资源访问替换
  * - `painterResource(R.drawable.xxx)` → `rememberPainter("xxx")` (key-based, 跨平台)
  * - `stringResource(R.string.xxx)` → `stringResource(Res.string.xxx)` (key-based, 跨平台)
- * - `LocalContext.current.getPrimaryTextColor(isLight)` → `ColorUtils.isColorLight` 判断
- *   0xDE000000 / White（等价 md_light/dark_primary_text，与 shared SearchContentScreen 一致）
+ * - `LocalContext.current.getPrimaryTextColor(isLight)` → 非沉浸式统一取动态主题文字色
+ *   `AppTheme.colors.primaryText`（与阅读菜单顶/底栏同源，不再按底栏亮度反推黑白）
+ *
+ * # 配色同源
+ *
+ * 原版 ReadMenu 在纯色阅读背景（`curBgType() == 0`）下就用阅读背景色/阅读文字色
+ * （archive ReadMenu.kt:57-62 + upColorConfig），而原版 SearchMenu 恒取
+ * `context.bottomBackground`（archive SearchMenu.kt:38-39）—— 色差是原版自带的，
+ * 米黄/羊皮纸这类阅读主题下一个跟阅读背景、一个跟应用主题。本处让搜索菜单与
+ * 阅读菜单同源取色，统一通过 [rememberReadMenuPalette] 成对解析 surface 与 onSurface；
+ * E-Ink 模式下成对固定白底与深色前景，避免白底浅色字。
  *
  * # 复用已下沉的 shared 组件
  * - [ReadMenuFab] / [BottomMenuItem] / [AccelerateDecelerateEasing] 均来自 shared ReadMenu.kt
@@ -17,13 +26,16 @@ package io.legado.app.ui.book.read
  * # 资源 key 需求清单（均已存在于 ResourceProvider.jvm/ios）
  * ## Painter
  * - ic_arrow_right (FAB 上下处导航, 已存在)
- * - ic_arrow_drop_up / ic_arrow_drop_down (回顶/到底, 已存在)
  * - ic_toc (结果, 已存在) / ic_auto_page_stop (退出, 已存在)
  * - ic_menu (主菜单, 已存在)
  * ## String
- * - go_to_top / go_to_bottom (箭头描述, 已存在)
  * ## 硬编码中文文案（原布局硬编码，保留以不改变实现逻辑）
  * - "结果" / "退出" / searchInfo 中的 "当前章节"
+ *
+ * ## 有意偏离原版
+ * - 原 `iv_search_content_up` / `iv_search_content_down`（信息行左侧两个箭头）已删除：
+ *   原版它们与 fabLeft/fabRight 走同一对 `updateSearchResultIndex(±1)` + `navigateToSearch`，
+ *   功能完全重复，且图标与 `contentDescription`（go_to_top/go_to_bottom）跟实际行为不符。
  */
 
 import androidx.compose.animation.AnimatedVisibility
@@ -40,7 +52,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -56,17 +67,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.platform.platformNavigationBarPadding
 import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
-import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
-import io.legado.app.utils.ColorUtils
 
 /**
  * SearchMenu 状态接口：暴露 shared Composable 所需的状态属性 + 动作回调。
@@ -77,10 +84,10 @@ import io.legado.app.utils.ColorUtils
  *
  * # 设计说明
  *
- * - 所有 `val` 属性均为只读视图（app 端用 `mutableStateOf` + `private set` 实现）
- * - `fun` 为动作回调，由 app 端 [SearchMenu] 内部桥接到 [SearchMenu.CallBack]
- *   （如 [clickResults] → `runMenuOut { callBack.openSearchActivity(...) }`）
- * - [bottomVisibleState] 为 `MutableTransitionState`，app 端写入 `targetState`
+ * - 所有 `val` 属性均为只读视图（[SearchMenuStateImpl] 用 `mutableStateOf` + `override var` 实现）
+ * - `fun` 为动作回调，由 [SearchMenuStateImpl] 桥接到 [ReaderScreenModel]
+ *   （对照原版 `runMenuOut { callBack.openSearchActivity(...) }`，如 [clickResults]）
+ * - [bottomVisibleState] 为 `MutableTransitionState`，[SearchMenuStateImpl] 写入 `targetState`
  *   驱动出入场，shared Composable 读取 `isIdle/currentState` 做过渡簿记
  */
 interface SearchMenuState {
@@ -98,6 +105,17 @@ interface SearchMenuState {
 
     /** 搜索信息文本(原 ll_search_base_info) */
     val searchInfo: String
+
+    // ---- 沉浸式菜单色彩（与阅读菜单同源，经 [rememberReadMenuPalette] 成对解析）----
+
+    /** 菜单栏是否跟随阅读背景（纯色阅读背景时 true，图片背景回落主题色） */
+    val immersive: Boolean
+
+    /** 沉浸式下的背景色（阅读背景色，含 bgAlpha 透明度；E-Ink 模式由 palette 成对覆盖为白底） */
+    val bgColor: Int
+
+    /** 沉浸式下的文字/图标色（阅读文字色；E-Ink 模式由 palette 成对覆盖为黑色高对比前景，避免白底浅色字） */
+    val textColor: Int
 
     /** 原 menuBottomIn/Out.onAnimationEnd 收尾 */
     fun onTransitionIdle(shown: Boolean)
@@ -136,9 +154,15 @@ fun SearchMenuOverlay(state: SearchMenuState) {
         return
     }
     val eInk = LocalEInk.current
-    val bg = AppTheme.colors.bottomBackground
-    // 等价 app 端 getPrimaryTextColor(isColorLight(bg))：md_light/dark_primary_text
-    val textColor = if (ColorUtils.isColorLight(bg.toArgb())) Color(0xDE000000) else Color.White
+    // 取色与 ReadMenu.kt 完全同源: 统一使用 [rememberReadMenuPalette] 成对解析 surface 与 onSurface。
+    // E-Ink 模式下成对固定白底与深色前景, 彻底消除白底浅色字。
+    val palette = rememberReadMenuPalette(
+        immersive = state.immersive,
+        bgColor = state.bgColor,
+        textColor = state.textColor,
+    )
+    val bg = palette.surface
+    val textColor = palette.onSurface
     fun spec(duration: Int): FiniteAnimationSpec<IntOffset> =
         if (eInk) snap() else tween(duration, easing = AccelerateDecelerateEasing)
     Box(Modifier.fillMaxSize()) {
@@ -177,6 +201,7 @@ fun SearchMenuOverlay(state: SearchMenuState) {
             Column(
                 Modifier
                     .fillMaxWidth()
+                    // E-Ink 下由 palette 强制白底, 且与 textColor (深色前景) 成对保证对比度
                     .background(bg)
                     // 浮层底栏逐帧跟随导航栏 insets (与 ReadMenu 底栏同理)
                     .platformNavigationBarPadding(),
@@ -189,25 +214,13 @@ fun SearchMenuOverlay(state: SearchMenuState) {
                         .padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    SearchInfoArrow(
-                        iconKey = "ic_arrow_drop_up",
-                        descKey = "go_to_top",
-                        tint = textColor,
-                    ) { state.navigate(-1) }
-                    SearchInfoArrow(
-                        iconKey = "ic_arrow_drop_down",
-                        descKey = "go_to_bottom",
-                        tint = textColor,
-                    ) { state.navigate(1) }
                     Text(
                         text = state.searchInfo,
                         color = textColor,
                         fontSize = 12.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(horizontal = 16.dp),
+                        modifier = Modifier.weight(1f),
                     )
                 }
                 // 结果/主菜单/退出(原 ll_bottom_bg)
@@ -228,28 +241,6 @@ fun SearchMenuOverlay(state: SearchMenuState) {
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun SearchInfoArrow(
-    iconKey: String,
-    descKey: String,
-    tint: Color,
-    onClick: () -> Unit,
-) {
-    Box(
-        Modifier
-            .width(36.dp)
-            .fillMaxHeight()
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            painter = rememberPainter(iconKey),
-            contentDescription = rememberString(descKey),
-            tint = tint,
-        )
     }
 }
 

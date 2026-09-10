@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -396,10 +395,18 @@ private class AndroidReaderMenuState(
     private val activity: MainActivity,
 ) : BaseReadMenuState(navigator, screenModel) {
 
-    // 沉浸式菜单色彩 (对照 app 端 ReadMenu.upColorConfig)
-    override var immersive by mutableStateOf(false)
-    override var bgColor by mutableIntStateOf(0)
-    override var textColor by mutableIntStateOf(0)
+    // 沉浸式菜单色彩: 实时计算, 与桌面/iOS/鸿蒙同一机制 (DesktopReaderPlatformProvider.kt:503-510
+    // / IosReaderPlatformProvider.kt:257-264 / OhosReaderPlatformProvider.kt:255-262)。
+    // 原先是 show() 时写一次的快照, Android 是四端唯一异类: 从未展开过阅读菜单就走点击行为 11
+    // /文字浮动菜单进搜索态时 immersive 仍为初始 false、改阅读背景后未再展开菜单则取到旧色。
+    private val menuTheme: ReadMenuColors
+        get() = createReadMenuColors(
+            ReadBookConfigProviders.get().config,
+            activity.bottomBackground,
+        )
+    override val immersive: Boolean get() = menuTheme.immersive
+    override val bgColor: Int get() = menuTheme.bgColor
+    override val textColor: Int get() = menuTheme.textColor
     override var hasBgImage by mutableStateOf(false)
 
     override var titleBarAdditionVisible by mutableStateOf(AppConfig.showReadTitleBarAddition)
@@ -458,16 +465,9 @@ private class AndroidReaderMenuState(
         activity.upReaderSystemBars(menuVisible = false)
     }
 
-    // 沉浸式色彩配置 (对照 app 端 ReadMenu.upColorConfig, 逻辑下沉 shared createReadMenuColors;
-    // 用 shareLayout 感知的 config, 与阅读页正文 ReaderDrawStyle 同源)
+    // 窗口背景图判定 (色彩已改 [menuTheme] 实时 getter, 不再需要 show 时快照;
+    // 方法名保留 upColorConfig 以对应原版 ReadMenu.upColorConfig 的调用位置)
     private fun upColorConfig() {
-        val theme = createReadMenuColors(
-            config = ReadBookConfigProviders.get().config,
-            fallbackBgColor = activity.bottomBackground,
-        )
-        immersive = theme.immersive
-        bgColor = theme.bgColor
-        textColor = theme.textColor
         // 窗口背景图 (原 ThemeConfig.curBgImagePath 非空) 时顶栏透明, 让窗口背景图透出
         // (T6: 判定收敛 shared hasBgImageByPath, 与 LocalThemeStoreProvider.current.bgImagePath 同一数据源)
         hasBgImage = hasBgImageByPath(ThemeConfig.curBgImagePath)
