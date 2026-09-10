@@ -89,6 +89,8 @@ import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
+import io.legado.app.ui.root.ContainerTransformCard
+import io.legado.app.ui.root.ContainerTransformIdentity
 import io.legado.app.utils.ColorUtils
 import kotlinx.coroutines.flow.distinctUntilChanged
 import legado.shared.generated.resources.Res
@@ -324,8 +326,6 @@ fun SearchScreen(
                         viewModel = viewModel,
                         navCallbacks = navCallbacks,
                         books = resultBooks,
-                        isSearching = isSearching,
-                        hasMore = hasMore,
                         spanCount = spanCount,
                         styleIsVideo = styleIsVideo,
                         styleCols = styleCols,
@@ -501,48 +501,67 @@ private fun ColumnScope.InputHelp(
             items(bookshelfBooks, key = { it.bookUrl }) { book ->
                 when {
                     // 视频网格卡 (cols>=1 且视频, 对照 ExploreShow 视频卡分支)
-                    styleIsVideo && styleCols >= 1 -> ShelfVideoItem(
-                        book = book,
-                        coverReloadTick = bookshelfVersion,
-                        onClick = { navCallbacks.onBookClick(book) },
-                        onLongClick = { navCallbacks.onBookClick(book, true) },
-                        coverSlot = tickedShelfCoverSlot,
-                    )
+                    //
+                    // 条目外包一层 Box: 容器变换锚点要 BoxScope 才能 matchParentSize 铺满条目
+                    // 已测尺寸 (只登记 bounds 不绘制, 对父布局零影响); 包一层也让锚点的 sharedBounds
+                    // 与条目自身的 modifier 链分开, 避开两者同链在 Lazy 网格下的未验证行为.
+                    // 锚点必须后声明: matchParentSize 取的是前面兄弟节点决定出来的尺寸.
+                    // 本区条目是书架实体 Book, 传入 origin 构造复合锚点键, 与导航路由的 `${origin}|${bookUrl}` 对应
+                    styleIsVideo && styleCols >= 1 -> ContainerTransformCard(
+                        ContainerTransformIdentity(book.bookUrl, book.origin)
+                    ) {
+                        ShelfVideoItem(
+                            book = book,
+                            coverReloadTick = bookshelfVersion,
+                            onClick = { navCallbacks.onBookClick(book) },
+                            onLongClick = { navCallbacks.onBookClick(book, true) },
+                            coverSlot = tickedShelfCoverSlot,
+                        )
+                    }
 
                     // 单列行 (cols 0/1; 宽屏经 rememberResponsiveColumns(1) 自动加列, 行内布局不变)
-                    spanCount == 1 -> ShelfListItem(
-                        book = book,
-                        isVideoStyle = styleCols == 0 && styleIsVideo,
-                        coverReloadTick = bookshelfVersion,
-                        refreshingUrls = emptySet(),
-                        showLastUpdateTime = true,
-                        showKindIntro = true,
-                        onClick = { navCallbacks.onBookClick(book) },
-                        onLongClick = { navCallbacks.onBookClick(book, true) },
-                        // 对照原版 BookAdapter: kind/intro/更新时间恒显(不受书架配置门控),
-                        // flHasNew.gone() 故不画未读徽标
-                        forceShowKind = true,
-                        forceShowIntro = true,
-                        forceShowUpdateTime = true,
-                        hideUnread = true,
-                        coverSlot = tickedShelfCoverSlot,
-                        lastUpdateTextSlot = {
-                            ShelfLastUpdateText(
-                                book.durChapterTime,
-                                remember { mutableIntStateOf(0) },
-                            )
-                        },
-                    )
+                    // 外包 Box 同上
+                    spanCount == 1 -> ContainerTransformCard(
+                        ContainerTransformIdentity(book.bookUrl, book.origin)
+                    ) {
+                        ShelfListItem(
+                            book = book,
+                            isVideoStyle = styleCols == 0 && styleIsVideo,
+                            coverReloadTick = bookshelfVersion,
+                            refreshingUrls = emptySet(),
+                            showLastUpdateTime = true,
+                            showKindIntro = true,
+                            onClick = { navCallbacks.onBookClick(book) },
+                            onLongClick = { navCallbacks.onBookClick(book, true) },
+                            // 对照原版 BookAdapter: kind/intro/更新时间恒显(不受书架配置门控),
+                            // flHasNew.gone() 故不画未读徽标
+                            forceShowKind = true,
+                            forceShowIntro = true,
+                            forceShowUpdateTime = true,
+                            hideUnread = true,
+                            coverSlot = tickedShelfCoverSlot,
+                            lastUpdateTextSlot = {
+                                ShelfLastUpdateText(
+                                    book.durChapterTime,
+                                    remember { mutableIntStateOf(0) },
+                                )
+                            },
+                        )
+                    }
 
-                    // 多列网格卡 (cols>=2 非视频)
-                    else -> ShelfGridItem(
-                        book = book,
-                        coverReloadTick = bookshelfVersion,
-                        refreshingUrls = emptySet(),
-                        onClick = { navCallbacks.onBookClick(book) },
-                        onLongClick = { navCallbacks.onBookClick(book, true) },
-                        coverSlot = tickedShelfCoverSlot,
-                    )
+                    // 多列网格卡 (cols>=2 非视频), 外包 Box 同上
+                    else -> ContainerTransformCard(
+                        ContainerTransformIdentity(book.bookUrl, book.origin)
+                    ) {
+                        ShelfGridItem(
+                            book = book,
+                            coverReloadTick = bookshelfVersion,
+                            refreshingUrls = emptySet(),
+                            onClick = { navCallbacks.onBookClick(book) },
+                            onLongClick = { navCallbacks.onBookClick(book, true) },
+                            coverSlot = tickedShelfCoverSlot,
+                        )
+                    }
                 }
             }
         }
@@ -780,8 +799,6 @@ private fun ColumnScope.ResultArea(
     viewModel: SearchViewModel,
     navCallbacks: SearchNavCallbacks,
     books: List<SearchBook>,
-    isSearching: Boolean,
-    hasMore: Boolean,
     spanCount: Int,
     styleIsVideo: Boolean,
     styleCols: Int,
@@ -819,7 +836,11 @@ private fun ColumnScope.ResultArea(
             contentType = { "searchBook" }) { book ->
             when {
                 // 视频网格卡 (cols>=1 且视频, 对照 ExploreShow 视频卡分支)
-                styleIsVideo && styleCols >= 1 -> {
+                // 外包 Box + 后声明锚点同 InputHelp 书架区; 本区数据项是 SearchBook,
+                // 它的 origin 与 bookUrl 经 toRouteRef() 带入目标路由, 复合锚点键同值且防止同页多源同 URL 互相覆盖
+                styleIsVideo && styleCols >= 1 -> ContainerTransformCard(
+                    ContainerTransformIdentity(book.bookUrl, book.origin)
+                ) {
                     val displayBook = remember(book) { book.toBook() }
                     val cover: @Composable (Book, Modifier, Boolean, Int) -> Unit =
                         { _, modifier, isVideoCover, _ ->
@@ -835,7 +856,10 @@ private fun ColumnScope.ResultArea(
                 }
 
                 // 单列行 (cols 0/1; 宽屏经 rememberResponsiveColumns(1) 自动加列, 行内布局不变)
-                spanCount == 1 -> {
+                // 外包 Box 同上 (SearchListItem 自带根 Row 修饰符, 无需改它的签名)
+                spanCount == 1 -> ContainerTransformCard(
+                    ContainerTransformIdentity(book.bookUrl, book.origin)
+                ) {
                     val isVideoStyle = styleCols == 0 && styleIsVideo
                     SearchListItem(
                         book = book,
@@ -850,8 +874,10 @@ private fun ColumnScope.ResultArea(
                     )
                 }
 
-                // 多列网格卡 (cols>=2 非视频)
-                else -> {
+                // 多列网格卡 (cols>=2 非视频), 外包 Box 同上
+                else -> ContainerTransformCard(
+                    ContainerTransformIdentity(book.bookUrl, book.origin)
+                ) {
                     val displayBook = remember(book) { book.toBook() }
                     val cover: @Composable (Book, Modifier, Boolean, Int) -> Unit =
                         { _, modifier, isVideoCover, _ ->

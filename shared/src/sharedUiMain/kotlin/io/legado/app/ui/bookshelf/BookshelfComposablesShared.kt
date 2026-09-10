@@ -59,6 +59,8 @@ import io.legado.app.ui.compose.platform.transitionStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
+import io.legado.app.ui.root.ContainerTransformCard
+import io.legado.app.ui.root.ContainerTransformIdentity
 import io.legado.app.utils.toTimeAgo
 import kotlinx.coroutines.delay
 import legado.shared.generated.resources.Res
@@ -300,17 +302,25 @@ fun ShelfBooksContent(
                 items(items, key = ::shelfItemKey, contentType = ::shelfItemType) { item ->
                     val itemModifier = if (eInk) Modifier else Modifier.animateItem()
                     when (item) {
-                        is Book -> ShelfListItem(
-                            // 逐项窄化: 非刷新项恒拿 emptySet 单例, 集合变化时可跳过重组
-                            item, spec.isVideoList, coverReloadTick,
-                            if (item.bookUrl in refreshingUrlsSet) refreshingUrlsSet else emptySet(),
-                            showLastUpdateTime, showKindIntro,
-                            onClick = { onBookClick(item) },
-                            onLongClick = { onBookLongClick(item) },
+                        // 书籍条目外包一层 Box: itemModifier(animateItem) 留在 Box 上, 容器变换锚点的
+                        // sharedBounds 走另一条 modifier 链, 避开两者同链在 LazyGrid 下的未验证行为;
+                        // 锚点本身要 BoxScope 才能 matchParentSize 铺满条目已测尺寸. 分组不是书,
+                        // 没有对应二级页, 故不挂锚点
+                        is Book -> ContainerTransformCard(
+                            identity = ContainerTransformIdentity(item.bookUrl, item.origin),
                             modifier = itemModifier,
-                            coverSlot = bookCoverSlot,
-                            lastUpdateTextSlot = { ShelfLastUpdateText(item.latestChapterTime, timeTickState) },
-                        )
+                        ) {
+                            ShelfListItem(
+                                // 逐项窄化: 非刷新项恒拿 emptySet 单例, 集合变化时可跳过重组
+                                item, spec.isVideoList, coverReloadTick,
+                                if (item.bookUrl in refreshingUrlsSet) refreshingUrlsSet else emptySet(),
+                                showLastUpdateTime, showKindIntro,
+                                onClick = { onBookClick(item) },
+                                onLongClick = { onBookLongClick(item) },
+                                coverSlot = bookCoverSlot,
+                                lastUpdateTextSlot = { ShelfLastUpdateText(item.latestChapterTime, timeTickState) },
+                            )
+                        }
 
                         is BookGroup -> GroupListItem(
                             item, spec.isVideoList, coverReloadTick,
@@ -333,15 +343,20 @@ fun ShelfBooksContent(
                 items(items, key = ::shelfItemKey, contentType = ::shelfItemType) { item ->
                     val itemModifier = if (eInk) Modifier else Modifier.animateItem()
                     when (item) {
-                        is Book -> ShelfGridItem(
-                            // 逐项窄化: 同 LIST 分支, 避免刷新集合每次变化重组全部可见项
-                            item, coverReloadTick,
-                            if (item.bookUrl in refreshingUrlsSet) refreshingUrlsSet else emptySet(),
-                            onClick = { onBookClick(item) },
-                            onLongClick = { onBookLongClick(item) },
+                        // 外层 Box 同 LIST 分支: 隔开 animateItem 与锚点的 modifier 链
+                        is Book -> ContainerTransformCard(
+                            identity = ContainerTransformIdentity(item.bookUrl, item.origin),
                             modifier = itemModifier,
-                            coverSlot = bookCoverSlot,
-                        )
+                        ) {
+                            ShelfGridItem(
+                                // 逐项窄化: 同 LIST 分支, 避免刷新集合每次变化重组全部可见项
+                                item, coverReloadTick,
+                                if (item.bookUrl in refreshingUrlsSet) refreshingUrlsSet else emptySet(),
+                                onClick = { onBookClick(item) },
+                                onLongClick = { onBookLongClick(item) },
+                                coverSlot = bookCoverSlot,
+                            )
+                        }
 
                         is BookGroup -> GroupGridItem(
                             item, coverReloadTick,
@@ -364,13 +379,18 @@ fun ShelfBooksContent(
                 items(items, key = ::shelfItemKey, contentType = ::shelfItemType) { item ->
                     val itemModifier = if (eInk) Modifier else Modifier.animateItem()
                     when (item) {
-                        is Book -> ShelfVideoItem(
-                            item, coverReloadTick,
-                            onClick = { onBookClick(item) },
-                            onLongClick = { onBookLongClick(item) },
+                        // 外层 Box 同 LIST 分支: 隔开 animateItem 与锚点的 modifier 链
+                        is Book -> ContainerTransformCard(
+                            identity = ContainerTransformIdentity(item.bookUrl, item.origin),
                             modifier = itemModifier,
-                            coverSlot = bookCoverSlot,
-                        )
+                        ) {
+                            ShelfVideoItem(
+                                item, coverReloadTick,
+                                onClick = { onBookClick(item) },
+                                onLongClick = { onBookLongClick(item) },
+                                coverSlot = bookCoverSlot,
+                            )
+                        }
 
                         is BookGroup -> GroupVideoItem(
                             item, coverReloadTick,

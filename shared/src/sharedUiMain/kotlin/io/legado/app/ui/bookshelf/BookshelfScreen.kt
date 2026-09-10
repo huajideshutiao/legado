@@ -15,6 +15,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -66,6 +67,7 @@ import io.legado.app.ui.compose.platform.transitionStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
+import io.legado.app.ui.root.LocalBookListActive
 import io.legado.app.utils.FlowBus
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
@@ -332,21 +334,29 @@ fun BookshelfScreen(
                 key = { index -> groups.getOrNull(index)?.groupId ?: index.toLong() },
             ) { page ->
                 val group = groups.getOrNull(page) ?: return@HorizontalPager
-                GroupBooksPage(
-                    group = group,
-                    spec = layoutSpec,
-                    externalScrollState = scrollState,
-                    initialGroupId = initialGroupId,
-                    scrollStates = pageScrollStates,
-                    viewModel = viewModel,
-                    configTick = configTick,
-                    books = booksCache[group.groupId],
-                    onBookClick = stableOnBookClick,
-                    onBookLongClick = stableOnBookLongClick,
-                    bookCoverSlot = bookCoverSlot,
-                    groupCoverSlot = groupCoverSlot,
-                    onRefresh = stableOnRefresh,
-                )
+                // 容器变换来源唯一性: 本 pager 预组合了相邻分组页, 且位掩码分组让同一本书同时
+                // 出现在"全部"页与用户分组页 —— 离屏页卡片 bounds 是屏外值, 只有停稳页允许登记
+                // 共享元素锚点 (见 LocalBookListActive)。按 settledPage 与上方 currentGroupId
+                // 同步口径一致
+                CompositionLocalProvider(
+                    LocalBookListActive provides (page == pagerState.settledPage)
+                ) {
+                    GroupBooksPage(
+                        group = group,
+                        spec = layoutSpec,
+                        externalScrollState = scrollState,
+                        initialGroupId = initialGroupId,
+                        scrollStates = pageScrollStates,
+                        viewModel = viewModel,
+                        configTick = configTick,
+                        books = booksCache[group.groupId],
+                        onBookClick = stableOnBookClick,
+                        onBookLongClick = stableOnBookLongClick,
+                        bookCoverSlot = bookCoverSlot,
+                        groupCoverSlot = groupCoverSlot,
+                        onRefresh = stableOnRefresh,
+                    )
+                }
             }
         }
     }

@@ -49,6 +49,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -60,6 +61,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import io.legado.app.constant.BottomNavTag
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.root.LocalBookListActive
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.launch
 
@@ -158,12 +160,20 @@ fun MainScreen(
             key = { i -> visibleTags[i] },
             modifier = modifier,
         ) { page ->
-            when (visibleTags[page]) {
-                BottomNavTag.HOME -> homeTab()
-                // style 切换由 BookshelfTab 内部 key(style) 重建（旧 adapter POSITION_NONE 语义）
-                BottomNavTag.BOOKSHELF -> bookshelfTab()
-                BottomNavTag.DISCOVERY -> exploreTab()
-                else -> myTab()
+            // 容器变换来源唯一性: 本 pager 预组合了全部 tab (beyondViewportPageCount=3),
+            // 离屏页的卡片 bounds 是屏外值, 只有停稳页允许登记共享元素锚点 (见 LocalBookListActive)。
+            // 按 settledPage 而非 currentPage: 拖拽回弹/滑动中不改判定, 与下方 settledPageSink
+            // 门控 tab 内网络加载同一口径
+            CompositionLocalProvider(
+                LocalBookListActive provides (page == pagerState.settledPage)
+            ) {
+                when (visibleTags[page]) {
+                    BottomNavTag.HOME -> homeTab()
+                    // style 切换由 BookshelfTab 内部 key(style) 重建（旧 adapter POSITION_NONE 语义）
+                    BottomNavTag.BOOKSHELF -> bookshelfTab()
+                    BottomNavTag.DISCOVERY -> exploreTab()
+                    else -> myTab()
+                }
             }
         }
     }

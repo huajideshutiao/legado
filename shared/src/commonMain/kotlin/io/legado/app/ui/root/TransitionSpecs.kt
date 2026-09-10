@@ -95,6 +95,20 @@ data class RouteTransitionSpec(
      * 澎湃 OS 语义 (给转场窗口套屏幕圆角); 只在动画期间生效, 静止态回直角。
      */
     val pageCornerRadiusPx: Float = 0f,
+    /**
+     * 容器变换 (列表卡片 ↔ 书籍页) 段的时长 (null = 沿用 push/pop 时长)。
+     *
+     * 卡片长到全屏是大幅形变, 与平台"轻转场"不是一个量级: 桌面 Fluent 的 200ms (淡入 + 8% 位移)
+     * 下形变过程一闪而过。故允许各端单独给容器变换定时长, 未指定的端沿用自身转场时长。
+     */
+    val containerTransformDurationMillis: Int? = null,
+    /**
+     * 容器变换段的插值器 (null = 沿用 push/pop 曲线)。
+     *
+     * 平台轻转场曲线往往极度前重 (桌面 Fluent 的 0.1,0.9,0.2,1 在 20% 时间就走完 90% 进度):
+     * 用在位移很小的轻转场上很干脆, 但拿来驱动卡片→全屏的形变就是"头几帧瀑开, 剩下的时间碾最后一点儿"。
+     */
+    val containerTransformEasing: TransitionEasing? = null,
 )
 
 /**

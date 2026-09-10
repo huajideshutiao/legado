@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
@@ -62,6 +63,7 @@ import io.legado.app.ui.book.group.GroupSelectDialog
 import io.legado.app.ui.book.group.GroupViewModelShared
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
+import io.legado.app.ui.book.read.readerAutoPageActive
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.bookshelf.toCoverBook
 import io.legado.app.ui.browser.WebViewSheetContent
@@ -119,6 +121,11 @@ fun LegadoApp(
         SideEffect { AppNavigatorProviders.register(navigator) }
 
         val entries by navigator.backStack.collectAsState()
+        // 卡片矩形登记表: 整个应用一份 —— 列表卡片在布局阶段写, 本层在导航事件那次组合读
+        // (见 ContainerTransformScope.kt), 下方经 LocalBookCardRects 下发给列表
+        val cardRects = remember { BookCardRectRegistry() }
+        // eInk 上提到状态机之前: 下方容器变换段判定要用它 (背景图读取处仍是同一份值)
+        val eInk = LocalEInk.current
         val transition = remember { Animatable(1f) }
         // 方向/出栈页/动画标志在组合阶段维护: LaunchedEffect 滞后一帧, 动画参数若等
         // effect 定, 首帧会先按"无动画终态"渲染 (前进: 旧页瞬间消失露底; 返回: 目标页
@@ -141,10 +148,6 @@ fun LegadoApp(
         // 上一帧的栈: push 动画中 pop 回 push 前栈时 entries == lastSettled, 仅凭栈差
         // 无法发现刚离栈的页面, 需与上一帧对比才能把被打断的新页挂为出栈页续播
         val previousEntries = remember { mutableStateOf(entries) }
-        // 转场动画平台 spec: 随导航事件读取 (Android 端每次动态读系统动画时长缩放, 即时生效)
-        val transitionSpec = remember(entries, capabilities) { capabilities.routeTransitionSpec }
-        // 转场采样器: 变换全由 spec 参数推导, 消费动画层曲线进度 (与 tween(spec.easing) 匹配)
-        val transitionSampler = remember(transitionSpec) { RouteTransitionSampler(transitionSpec) }
         // 本次导航分类: 只从"两份栈快照的差"纯推导, 不把自身上一次的结论 (animating /
         // navigatingForward) 当输入。lastSettled 直到动画播完才更新, 整段动画期间每次重组
         // 都会重跑本段; 结论若自反, pop+push 配对 (目录链路/replace) 会在"单段前进"与
@@ -212,6 +215,83 @@ fun LegadoApp(
         }
         val currentEntry = entries.lastOrNull()
         val currentRoute = currentEntry?.route
+        // 容器变换只允许一个来源 entry: popTo 多页时取视觉最上那页
+        val containerSource = if (navigatingForward && !forwardOverOutgoing) {
+            entries.getOrNull(entries.lastIndex - 1)
+        } else {
+            outgoingEntries.lastOrNull()
+        }
+        // 转场动画平台 spec: 随导航事件读取 (Android 端每次动态读系统动画时长缩放, 即时生效)
+        val transitionSpec = remember(entries, capabilities) { capabilities.routeTransitionSpec }
+        // 容器变换段: 列表页 ↔ 书籍页 构成页对 (见 ContainerTransform.kt) 且列表页里该书卡片
+        // 矩形已登记时启用。eInk 与系统动画关闭 (时长归零) 时整段跳过。
+        val containerBookUrl = if (
+            eInk || transitionSpec.pushDurationMillis <= 0 || transitionSpec.popDurationMillis <= 0
+        ) {
+            null
+        } else {
+            containerTransformBookUrl(containerSource?.route, currentEntry?.route)
+        }
+        // 两端分派: 书籍页那侧画容器裁剪, 列表页那侧提供起手矩形 (方向无关)。
+        // 必须钉到具体 entry 而非只比 bookUrl: popTo 回书架时 [详情页, 阅读页] 两页 bookUrl 相同,
+        // 按 bookUrl 匹配会让两页同时画裁剪
+        val sourceIsBookPage = containerSource?.route?.containerBookUrl() != null
+        val containerPageId = if (sourceIsBookPage) containerSource.id else currentEntry?.id
+        val containerListPageId = if (sourceIsBookPage) currentEntry?.id else containerSource?.id
+        val containerBookRoute =
+            if (sourceIsBookPage) containerSource.route else currentEntry?.route
+        val containerBookOrigin = containerBookRoute?.containerBookOrigin()
+        // 起手矩形 (列表页自身坐标系, 与书籍页页坐标系同原点同尺寸):
+        // 取不到 (书被滚出视口而条目已回收 / 从无该书的列表进入) 就整段不做容器变换, 回落普通
+        // 页转场 —— 否则页级位移被归零, 观感是"什么动画都没有"。
+        // 按导航事件 remember: 段内只读一次 —— 段内卡片可能被 LazyGrid 回收, 逐帧读会拿到
+        // 已消失的值。登记表是普通 map (非快照), 读它不注册依赖, 滚列表不会重组本层
+        val containerStartBounds = remember(
+            entries,
+            outgoingEntries,
+            containerBookUrl,
+            containerBookOrigin,
+        ) {
+            containerBookUrl?.let {
+                cardRects.boundsOf(containerListPageId, containerBookOrigin, it)
+            }
+        }
+        val containerSegment = containerStartBounds != null
+        // 容器变换段归零页级位移/缩放/压暗/页圆角: 页面本体保持全屏不动, 形变全由裁剪窗口表达
+        // (页跟着滑会让裁剪窗口与内容反向错动)。
+        // 两侧的页级淡入淡出全关: 书籍页侧的内容淡入改由下方按**容器开合度**驱动 (见
+        // ContainerContentFadeOpenness) —— 转场曲线前重, 按段进度淡会让页面在形变才走一小段时
+        // 就已不透明 (返回时则早早透明), 两个方向都只看得见一小截形变;
+        // 列表页侧本来就不能淡 —— 它是容器生长时的底层参系, 淡了就成了"两页互淡"。
+        // 时长与曲线字段只在平台给了容器专用值时才换 (两个方向同值, 打断倒放的剩余时长换算同口径)
+        val effectiveSpec = if (containerSegment && animating) {
+            val containerDuration = transitionSpec.containerTransformDurationMillis
+            val containerEasing = transitionSpec.containerTransformEasing
+            transitionSpec.copy(
+                newPageSlideFraction = 0f,
+                oldPageShiftFraction = 0f,
+                targetPageSlideFraction = 0f,
+                outgoingSlideFraction = 0f,
+                newPageScaleFrom = 1f,
+                targetPageScaleFrom = 1f,
+                underPageDimAlpha = 0f,
+                pageCornerRadiusPx = 0f,
+                newPageFadeIn = false,
+                oldPageFadeOut = false,
+                targetPageFadeIn = false,
+                outgoingFadeOut = false,
+                pushDurationMillis = containerDuration ?: transitionSpec.pushDurationMillis,
+                popDurationMillis = containerDuration ?: transitionSpec.popDurationMillis,
+                pushEasing = containerEasing ?: transitionSpec.pushEasing,
+                popEasing = containerEasing ?: transitionSpec.popEasing,
+            )
+        } else {
+            transitionSpec
+        }
+        // 转场采样器: 变换全由 spec 参数推导, 消费动画层曲线进度 (与 tween(spec.easing) 匹配)。
+        // 按结构相等重建, 只在"普通段 ↔ 容器段"切换时换一次; 采样器无状态 (动画状态在 transition),
+        // 重建无副作用
+        val transitionSampler = remember(effectiveSpec) { RouteTransitionSampler(effectiveSpec) }
 
         // 应用当前路由对应的窗口策略。只在策略真变了才下发: 桌面端 setFullscreen 会调
         // AWT GraphicsDevice.setFullScreenWindow, 每次重组都下发等于持续折腾窗口本体
@@ -225,7 +305,7 @@ fun LegadoApp(
                     orientation = readerOrientationPolicy(),
                     // Android 阅读页不直接作用（MainActivity.applyWindowKeepScreenOn 改走
                     // keepLight 计时管理），桌面/移动端按 keepLight 直接驱动平台常亮
-                    keepScreenOn = readerKeepScreenOnPolicy(),
+                    keepScreenOn = readerKeepScreenOnPolicy() || readerAutoPageActive,
                 )
             } else {
                 WindowPolicies.forRoute(route)
@@ -262,12 +342,13 @@ fun LegadoApp(
                 WindowPolicies.Reader.copy(
                     systemBars = readerSystemBarsPolicy(menuVisible = false),
                     orientation = readerOrientationPolicy(),
-                    keepScreenOn = readerKeepScreenOnPolicy(),
+                    keepScreenOn = readerKeepScreenOnPolicy() || readerAutoPageActive,
                 )
             } else {
                 route?.let { WindowPolicies.forRoute(it) } ?: WindowPolicies.Default
             }
             runCatching { applyWindowPolicy(policy) }
+                .onSuccess { appliedPolicy = policy }
                 .onFailure { AppLog.put("应用窗口策略失败", it) }
         }
         LaunchedEffect(Unit) {
@@ -302,7 +383,6 @@ fun LegadoApp(
         LaunchedEffect(themeEventBus) {
             themeEventBus.recreateEvent.collect { themeTick++ }
         }
-        val eInk = LocalEInk.current
         // eInk 对齐原版行为: 恒不渲染已设的背景图, 整端纯白
         val bgImagePath = remember(themeStore, themeTick, eInk) {
             themeStore.bgImagePath?.takeIf { it.isNotBlank() && !eInk }
@@ -324,7 +404,8 @@ fun LegadoApp(
         var rootFocusOwner by remember { mutableStateOf("none") } // none|root|descendant
         LaunchedEffect(Unit) { runCatching { rootFocusRequester.requestFocus() } }
         CompositionLocalProvider(
-            LocalTransitionFrozenStatusBarHeightPx provides frozenStatusBarHeightPx
+            LocalTransitionFrozenStatusBarHeightPx provides frozenStatusBarHeightPx,
+            LocalBookCardRects provides cardRects,
         ) {
         Box(
             Modifier
@@ -371,7 +452,7 @@ fun LegadoApp(
                         0f,
                         tween(
                             durationMillis = remainingDuration,
-                            easing = transitionSpec.popEasing.toComposeEasing(),
+                            easing = effectiveSpec.popEasing.toComposeEasing(),
                         )
                     )
                     // 倒放完毕: 出栈新页已完全退回屏幕右侧, 释放出栈页并将 transition 归位至 1f
@@ -392,9 +473,9 @@ fun LegadoApp(
                                 transitionSampler.popDurationMillis
                             },
                             easing = if (navigatingForward) {
-                                transitionSpec.pushEasing.toComposeEasing()
+                                effectiveSpec.pushEasing.toComposeEasing()
                             } else {
-                                transitionSpec.popEasing.toComposeEasing()
+                                effectiveSpec.popEasing.toComposeEasing()
                             },
                         )
                     )
@@ -447,6 +528,29 @@ fun LegadoApp(
                 // 目录链路单段前进时栈顶就是阅读页, 详情页不参与本段 (落进下方隐藏分支)
                 val isTarget = entry.id == topEntry?.id
                 val isSliding = entry.id in slidingIds
+                    val isContainerCandidate = entry.route.containerBookUrl() != null
+                    // 本页容器变换的起手矩形: 只有本段的书籍候选页且正在动画时给值, null = 不做容器变换。
+                // 静止态必须归零 —— 否则屏幕上永久留着一张快照
+                    val containerRect = if (isContainerCandidate) {
+                        containerStartBounds?.takeIf {
+                            animating && entry.id == containerPageId
+                        }
+                    } else {
+                        null
+                }
+                // 容器开合度 0..1 (0=卡片位置与尺寸, 1=全屏)。只在 draw 阶段调用:
+                // 对 transition 的读取落在绘制阶段, 逐帧只重绘不重组
+                val containerOpenness: () -> Float = {
+                    val p = transition.value
+                    // 首帧 (组合先于 effect 的 snapTo) 按起始位: 与下方 idleFrame 同口径
+                    val raw = if (!transition.isRunning && p == 1f) 0f else p
+                    // 前进与打断倒放: 页随 progress 长大 (倒放时 progress 回降即收小);
+                    // 返回: progress 0→1 是收小过程, 取补
+                    if (navigatingForward || reversingPush) raw else 1f - raw
+                }
+                // 页参系: 页内卡片锚点按它登记矩形 (见 ContainerTransformScope.kt)。
+                // 按 entry 身份 remember: 组合身份已由外层 key(entry.id) 固定, 与页面同寿
+                val pageAnchor = remember { RoutePageAnchorScope(entry.id) }
                 // 单帧变换采样 (图层变换与压暗蒙版共用); null = 本段不参与的隐藏页。
                 // 只在 graphicsLayer 块内调用: 对 transition 的读取是图层阶段读, 逐帧只更新
                 // 图层属性, 不触发页面内容重绘
@@ -500,15 +604,31 @@ fun LegadoApp(
                     }
                 }
                 // 转场期间的页面圆角形状 (hoist 避免逐帧新建 Shape)
-                val transitionShape = remember(transitionSpec.pageCornerRadiusPx) {
-                    RoundedCornerShape(transitionSpec.pageCornerRadiusPx)
+                val transitionShape = remember(effectiveSpec.pageCornerRadiusPx) {
+                    RoundedCornerShape(effectiveSpec.pageCornerRadiusPx)
                 }
+                    // 容器变换: 仅书籍候选页面挂载录制层; 普通路由避免常驻 rememberGraphicsLayer / ContainerSnapshot 开销
+                    val containerDrawModifier = if (isContainerCandidate) {
+                        Modifier.containerTransformDraw(
+                            startBounds = containerRect,
+                            openness = { containerOpenness() },
+                            contentAlpha = {
+                                (containerOpenness() / ContainerContentFadeOpenness)
+                                    .coerceAtMost(1f)
+                            },
+                        )
+                    } else {
+                        Modifier
+                    }
                 Box(
                     Modifier
                         .fillMaxSize()
                         .graphicsLayer {
                             val transform = sampleTransform(size.width)
                             if (transform != null) {
+                                // 容器段页图层回恒等: 缩放/平移/淡入全部改由下方快照绘制表达
+                                // (见 containerTransformDraw)。effectiveSpec 已把本段参数全归零,
+                                // 此处取到的就是恒等变换, 无需特例
                                 alpha = transform.alpha
                                 scaleX = transform.scaleX
                                 scaleY = transform.scaleY
@@ -533,26 +653,39 @@ fun LegadoApp(
                             // 转场期间给页面套屏幕圆角: 滑动页从圆角处露出下面压暗的页面。
                             // 静止/隐藏态回直角 —— 分屏/小窗时页面边界不是屏幕边界,
                             // 常驻圆角会在窗口内切出可见缺角
-                            shape = if (animating && transitionSpec.pageCornerRadiusPx > 0f) {
+                            shape = if (animating && effectiveSpec.pageCornerRadiusPx > 0f) {
                                 transitionShape
                             } else {
                                 RectangleShape
                             }
                         }
+                        // 容器变换: 段内用快照代替实时内容, 从卡片矩形逐帧长到全屏 (仅书籍候选页面挂载)。
+                        // 必须接在 background 之前: 否则 drawContent() 录不到页底色
+                        .then(containerDrawModifier)
                         .background(if (hasBgImage) Color.Transparent else AppTheme.colors.background),
                 ) {
+                    // 页参系上报: 挂在页图层之内 (本 Box 的子节点), 卡片矩形才与上方裁剪窗口同坐标系
+                    // —— 页转场靠 graphicsLayer 平移页面, 若按 compose root 记矩形, 非栈顶页被平移到
+                    // -width 后卡片矩形全是屏外值, 而返回那一段恰好要用它
+                    Box(
+                        Modifier
+                            .matchParentSize()
+                            .onGloballyPositioned { pageAnchor.coords = it }
+                    )
                     // 壁纸层挂在本页底部 (随转场移动, 对齐原版页面背景随页面走的语义): 页面内容
                     // 透明区域透出本层; 无壁纸时恒主题纯色。文件不存在/解码失败仅空白无崩溃
                     if (wallpaper != null) {
                         WallpaperLayer(wallpaper)
                     }
                     saveableStateHolder.SaveableStateProvider(entry.id.value) {
-                        RouteContent(entry, navigator, screenModelStore)
+                        CompositionLocalProvider(LocalRoutePageAnchor provides pageAnchor) {
+                            RouteContent(entry, navigator, screenModelStore)
+                        }
                     }
                     // 压暗蒙版 (前进时旧页压暗, 返回时目标页随进度恢复): 独立图层只改 alpha,
                     // 不让页面内容随动画逐帧重绘; 无 pointerInput 不参与命中测试。
                     // 用黑色蒙版而非图层 alpha —— 图层 alpha 会让下层页透出背景色变灰不变暗
-                    if (transitionSpec.underPageDimAlpha > 0f) {
+                    if (effectiveSpec.underPageDimAlpha > 0f) {
                         Box(
                             Modifier
                                 .matchParentSize()

@@ -114,6 +114,11 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
             targetPageFadeIn = false,
             outgoingFadeOut = true,
             targetPageScaleFrom = 1f,
+            // 容器变换单独给时长与曲线: Fluent 的 200ms + (0.1,0.9,0.2,1) 是为"淡入 + 8% 位移"这种
+            // 轻转场定的 —— 那根曲线 20% 时间就走完 90% 进度, 拿来驱动卡片→全屏的大幅形变只能
+            // 看见头几帧。改 350ms + 标准缓动缓停 (Material 容器变换中等尺寸的量级)
+            containerTransformDurationMillis = 350,
+            containerTransformEasing = TransitionEasing.CubicBezier(0.4f, 0f, 0.2f, 1f),
         )
 
     // 桌面无系统对话框动画规范, 沿用 shared 默认 (Android 系统 dialog 动画资源语义 200/150ms)

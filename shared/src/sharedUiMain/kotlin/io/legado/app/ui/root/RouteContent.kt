@@ -193,7 +193,7 @@ fun RouteContent(
         }
 
         is AppRoute.Toc -> {
-            TocRoute(entry, navigator, screenModelStore)
+            TocRoute(entry, navigator)
             true
         }
 
