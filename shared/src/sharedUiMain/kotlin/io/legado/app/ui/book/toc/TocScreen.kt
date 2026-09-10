@@ -26,7 +26,7 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -38,18 +38,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -71,7 +67,6 @@ import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.ColorUtils
-import io.legado.app.utils.StringUtils
 import kotlinx.coroutines.launch
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.bookmark
@@ -85,7 +80,6 @@ import legado.shared.generated.resources.ic_arrow_drop_up
 import legado.shared.generated.resources.ic_check
 import legado.shared.generated.resources.ic_lock_outline
 import legado.shared.generated.resources.ic_outline_cloud_24
-import legado.shared.generated.resources.ic_sort
 import legado.shared.generated.resources.load_word_count
 import legado.shared.generated.resources.log
 import legado.shared.generated.resources.reverse_toc
@@ -104,8 +98,8 @@ data class TocScrollCmd(val pos: Int = 0, val tick: Long = 0)
 /**
  * TocScreen 完整版渲染所需的全部展示状态。
  *
- * app 端 [TocActivity] 在 `Content()` 内将自己的 `var` 状态字段打包为本数据类传入；
- * 桌面端不使用完整版 [TocScreen]，直接调用 [TocDrawerContent]。
+ * app 端 [TocActivity] 在 `Content()` 内将自己的 `var` 状态字段打包为本数据类传入。
+ * 四端目录页与目录弹窗共用同一份 [TocScreen] (弹窗形态见 TocRoute#TocDialogHost → TocContent)。
  */
 data class TocUiState(
     val book: Book?,
@@ -144,10 +138,9 @@ data class TocUiState(
 }
 
 /**
- * TocScreen 完整版的用户交互回调。
+ * TocScreen 的用户交互回调。
  *
- * app 端 [TocActivity] 实现本接口（已有同名方法直接 `override`）；
- * 桌面端不使用完整版 [TocScreen]。
+ * 四端目录页 (TocRoute) 与弹窗 (TocDialogHost) 均通过本接口对接用户交互。
  */
 interface TocUiActions {
     fun onBack()
@@ -164,18 +157,15 @@ interface TocUiActions {
     fun exportBookmarkMd()
     fun showLog()
     fun openBookmark(bookmark: Bookmark)
-    fun editBookmark(bookmark: Bookmark, pos: Int)
+    fun editBookmark(bookmark: Bookmark)
 }
 
-// ===== TocScreen 完整版（app 端 TocActivity 用）=====
+// ===== TocScreen =====
 
 /**
  * 目录页内容：标题栏(双 tab / 搜索态互斥) + HorizontalPager(目录/书签)。
  *
- * 下沉自 app 端原 `TocScreen(activity: TocActivity)`，将 `TocActivity` 直接依赖
- * 拆为 [state] (展示状态) + [actions] (交互回调)，去除 Android `Context` /
- * `longToastOnUi` 依赖。`BackHandler` 由调用方 (app TocActivity.Content) 自行
- * 注册 (shared/sharedUiMain 未引入 activity-compose 依赖)。
+ * 对照原版目录页设计，将 UI 状态与交互解耦为 [state] (展示状态) + [actions] (交互回调)。
  *
  * 4 个增强能力（搜索/反转/卷折叠/字数显示）均通过 [state] + [actions] 接通：
  * - 搜索：[TocUiState.searching] / [TocUiState.searchKey] + [TocUiActions.setSearchMode] / [TocUiActions.setQuery]
@@ -388,8 +378,8 @@ private fun ChapterItem(
     Row(
         Modifier
             .fillMaxWidth()
-            // 基准 48dp, 双行(标题+字数/标签)或大字下内容超高时自动增高不裁剪
-            .heightIn(min = DesignTokens.viewHeightXl)
+            // 基准 56dp, 双行(标题+字数/标签)或大字下内容超高时自动增高不裁剪
+            .heightIn(min = DesignTokens.viewHeightMax)
             .then(
                 // 卷名突出显示，普通章节保持 ripple
                 if (item.isVolume) Modifier.background(rememberColor("btn_bg")) else Modifier
@@ -588,8 +578,8 @@ private fun BookmarkPage(state: TocUiState, actions: TocUiActions) {
             bottom = navPad.calculateBottomPadding(),
         ),
     ) {
-        itemsIndexed(bookmarks, key = { _, item -> item.time }) { index, item ->
-            BookmarkItem(actions, item, index)
+        items(bookmarks, key = { it.time }) { item ->
+            BookmarkItem(actions, item)
         }
     }
 }
@@ -599,15 +589,16 @@ private fun BookmarkPage(state: TocUiState, actions: TocUiActions) {
 private fun BookmarkItem(
     actions: TocUiActions,
     item: Bookmark,
-    pos: Int,
 ) {
     val colors = AppTheme.colors
     Column(
         Modifier
             .fillMaxWidth()
+            // 基准 56dp; 书签正文两行以上时内容撑高
+            .heightIn(min = DesignTokens.viewHeightMax)
             .combinedClickable(
                 onClick = { actions.openBookmark(item) },
-                onLongClick = { actions.editBookmark(item, pos) },
+                onLongClick = { actions.editBookmark(item) },
             )
             .padding(vertical = 8.dp),
     ) {
@@ -669,196 +660,5 @@ private fun CheckItem(text: String, checked: Boolean, onClick: () -> Unit) {
         Text(text, color = colors.primaryText)
         Spacer(Modifier.width(12.dp))
         AppMenuCheckbox(checked = checked)
-    }
-}
-
-// ===== TocDrawerContent (public, 桌面端用) =====
-
-/**
- * 桌面端阅读页章节目录侧栏内容（KMP 版，替代原 ChapterListDrawer）。
- *
- * 内部维护 D 过渡实现的 4 个增强能力：
- * - **搜索框**：顶部 [AppSearchField]，`chapterList.filter { it.title.contains(query, ignoreCase = true) }`
- * - **反转按钮**：标题栏右侧 IconButton，`displayList.reversed()`
- * - **卷折叠**：[mutableStateMapOf] 记录卷展开状态，卷名行点击切换
- * - **字数显示**：章节项右侧 `StringUtils.wordCountFormat(chapter.wordCount)`
- *
- * # 对照
- *
- * 对照 app 端 `TocScreen#ChapterListPage`:
- * - app 端用 [TocActivity] 持有状态, 桌面端用本 Composable 内部 `remember` 维护
- * - 当前章节高亮: app 端 `colors.accent`, 这里用 [AppTheme.colors.accent] (与 app 端一致)
- * - 卷名突出: app 端 `rememberColor("btn_bg")`, 这里同样
- * - 点击回调: app 端 `actions.openChapter(item)` → 这里收敛为 [onChapterClick] (index) 回调
- *
- * # 职责
- *
- * 仅渲染 drawer 内容 (drawerContent + 顶部搜索/反转栏 + 响应式章节网格 + 章节项),
- * 由调用方 ([io.legado.desktop.ui.reader.ReaderScreen]) 用 `ModalDrawer`
- * 包裹并传入 `drawerContent = { TocDrawerContent(...) }`。
- *
- * @param chapterList 章节列表 (来自 [io.legado.app.ui.book.read.ReadBookViewModelShared.chapterList])
- * @param currentIndex 当前章节索引, 用于高亮 + 首次打开自动滚动定位
- * @param onChapterClick 章节点击回调, 参数为章节 index; 调用方负责调
- *   [io.legado.app.ui.book.read.ReadBookViewModelShared.loadChapter] 跳转 + 关闭 drawer
- * @param modifier Modifier, 默认 [Modifier.fillMaxSize]
- */
-@Composable
-fun TocDrawerContent(
-    chapterList: List<BookChapter>,
-    currentIndex: Int,
-    onChapterClick: (Int) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val colors = AppTheme.colors
-    val listState = rememberLazyGridState()
-    // D 过渡实现的 4 个增强状态（桌面端内部维护, app 端完整版由 TocActivity 管理）
-    var searchQuery by remember { mutableStateOf("") }
-    var reversed by remember { mutableStateOf(false) }
-    val collapsedVolumes = remember { mutableStateMapOf<Int, Boolean>() }
-
-    // 1. 搜索过滤
-    val filtered = remember(chapterList, searchQuery) {
-        if (searchQuery.isBlank()) chapterList
-        else chapterList.filter { it.title.contains(searchQuery, ignoreCase = true) }
-    }
-    // 2. 反转
-    val ordered = remember(filtered, reversed) { if (reversed) filtered.reversed() else filtered }
-    // 3. 卷折叠
-    val collapsedKeys = collapsedVolumes.entries.filter { it.value }.map { it.key }.toSet()
-    val displayList = remember(ordered, collapsedKeys) { buildDisplayList(ordered, collapsedKeys) }
-
-    // 首次打开 drawer 时自动滚动到当前章节 (对照 app 端 TocScreen `LaunchedEffect(scroll)`)
-    LaunchedEffect(chapterList, currentIndex) {
-        if (displayList.isNotEmpty()) {
-            val target = displayList.indexOfFirst { it.index == currentIndex }.coerceAtLeast(0)
-            listState.scrollToItem(target)
-        }
-    }
-
-    Column(modifier = modifier) {
-        // 顶部搜索栏 + 反转按钮 (对照 D 过渡实现)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(DesignTokens.viewHeightXl)
-                .background(colors.background)
-                .padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            AppSearchField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                hint = stringResource(Res.string.search),
-                modifier = Modifier.weight(1f),
-            )
-            // 反转按钮
-            IconButton(onClick = { reversed = !reversed }) {
-                Icon(
-                    painter = painterResource(Res.drawable.ic_sort),
-                    contentDescription = stringResource(Res.string.reverse_toc),
-                    tint = if (reversed) colors.accent else colors.primaryText,
-                )
-            }
-        }
-
-        // 章节列表: 与发现页同款按容器宽度自动分列 (rememberResponsiveColumns(1)),
-        // 卷名行跨满整行, 窄屏单列时与原来完全一致
-        FastScrollLazyVerticalGrid(
-            columns = rememberResponsiveColumns(1),
-            state = listState,
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            items(
-                displayList,
-                key = { it.index },
-                span = { if (it.isVolume) GridItemSpan(maxLineSpan) else GridItemSpan(1) },
-            ) { chapter ->
-                TocDrawerItem(
-                    chapter = chapter,
-                    isCurrent = chapter.index == currentIndex,
-                    isCollapsed = collapsedVolumes[chapter.index] == true,
-                    onClick = {
-                        if (chapter.isVolume) {
-                            // 卷名行点击切换折叠
-                            collapsedVolumes[chapter.index] = !(collapsedVolumes[chapter.index] ?: false)
-                        } else {
-                            onChapterClick(chapter.index)
-                        }
-                    },
-                )
-            }
-        }
-    }
-}
-
-/**
- * 桌面端章节列表项 (对照 app 端 TocScreen#ChapterItem 简化版, 增加字数显示)。
- *
- * @param chapter 章节实体
- * @param isCurrent 是否当前章节 (高亮 accent + 右侧勾选图标)
- * @param isCollapsed 卷折叠状态 (仅卷名行有效, 决定展开/折叠箭头)
- * @param onClick 点击回调 (卷名行切换折叠, 普通章节跳转)
- */
-@Composable
-private fun TocDrawerItem(
-    chapter: BookChapter,
-    isCurrent: Boolean,
-    isCollapsed: Boolean,
-    onClick: () -> Unit,
-) {
-    val colors = AppTheme.colors
-    // 卷名加背景色突出显示 (对照 app 端 TocScreen 用 rememberColor("btn_bg"))
-    val rowModifier = if (chapter.isVolume) {
-        Modifier
-            .fillMaxWidth()
-            .background(rememberColor("btn_bg"))
-    } else {
-        Modifier.fillMaxWidth()
-    }
-
-    Row(
-        modifier = rowModifier
-            .clickable(onClick = onClick)
-            .height(DesignTokens.viewHeightXl)
-            .padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // 章节标题 + 卷名加粗
-        Text(
-            text = chapter.title,
-            color = if (isCurrent) colors.accent else colors.primaryText,
-            fontSize = 14.sp,
-            fontWeight = if (chapter.isVolume) FontWeight.Bold else FontWeight.Normal,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        // D 过渡实现: 章节项右侧显示字数 (StringUtils.wordCountFormat 格式化)
-        if (!chapter.isVolume && !chapter.wordCount.isNullOrEmpty()) {
-            Text(
-                text = StringUtils.wordCountFormat(chapter.wordCount),
-                color = colors.secondaryText,
-                fontSize = 12.sp,
-                maxLines = 1,
-                modifier = Modifier.padding(end = 8.dp),
-            )
-        }
-        // 右侧图标: 卷折叠箭头 / 当前章勾选
-        Box(modifier = Modifier.size(24.dp), contentAlignment = Alignment.Center) {
-            when {
-                chapter.isVolume -> Icon(
-                    painter = rememberPainter(if (isCollapsed) "ic_expand_more" else "ic_expand_less"),
-                    contentDescription = null,
-                    tint = colors.secondaryText,
-                )
-
-                isCurrent -> Icon(
-                    painter = painterResource(Res.drawable.ic_check),
-                    contentDescription = null,
-                    tint = colors.secondaryText,
-                )
-            }
-        }
     }
 }

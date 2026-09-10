@@ -75,15 +75,8 @@ class TocScreenModel(
             is TocUiEvent.ReverseChapterList -> reverseChapterListInternal(event.list)
             TocUiEvent.ToggleUseReplace -> toggleUseReplace()
             TocUiEvent.ToggleCountWords -> toggleCountWords()
-            is TocUiEvent.InitCacheFileNames -> initCacheFileNames(event.book)
             is TocUiEvent.AddCacheFile -> addCacheFile(event.name)
-            is TocUiEvent.LoadChapters -> upChapterList(event.searchKey)
-            TocUiEvent.LoadBookmarks -> upBookmarks()
             is TocUiEvent.UpBookTocRule -> upBookTocRule(event.book)
-            is TocUiEvent.ScrollToChapter -> scrollToChapter(event.pos)
-            is TocUiEvent.ScrollToBookmark -> scrollToBookmark(event.pos)
-            TocUiEvent.ShowWaitDialog -> _waitDialog.value = true
-            TocUiEvent.HideWaitDialog -> _waitDialog.value = false
         }
     }
 
@@ -304,14 +297,6 @@ class TocScreenModel(
         }
     }
 
-    private fun scrollToChapter(pos: Int) {
-        _state.update { it.copy(chapterScroll = TocScrollCmd(pos, it.chapterScroll.tick + 1)) }
-    }
-
-    private fun scrollToBookmark(pos: Int) {
-        _state.update { it.copy(bookmarkScroll = TocScrollCmd(pos, it.bookmarkScroll.tick + 1)) }
-    }
-
     // ===== 书签 =====
 
     private fun upBookmarks() {
@@ -368,30 +353,9 @@ sealed interface TocUiEvent {
     /** 切换字数显示开关 (AppConfig 写回由宿主负责)。 */
     object ToggleCountWords : TocUiEvent
 
-    /** 初始化书籍缓存文件名集合。 */
-    data class InitCacheFileNames(val book: Book) : TocUiEvent
-
     /** 增量添加缓存文件名 (来自 SAVE_CONTENT 事件)。 */
     data class AddCacheFile(val name: String) : TocUiEvent
 
-    /** 重新加载章节列表 (searchKey 为空表示全部)。 */
-    data class LoadChapters(val searchKey: String?) : TocUiEvent
-
-    /** 重新加载书签列表。 */
-    object LoadBookmarks : TocUiEvent
-
     /** 更新书籍 TOC 规则并刷新章节 (对照 Activity.upBookAndToc)。 */
     data class UpBookTocRule(val book: Book) : TocUiEvent
-
-    /** 章节列表滚动定位。 */
-    data class ScrollToChapter(val pos: Int) : TocUiEvent
-
-    /** 书签列表滚动定位。 */
-    data class ScrollToBookmark(val pos: Int) : TocUiEvent
-
-    /** 显示等待对话框 (宿主实例化 WaitDialog)。 */
-    object ShowWaitDialog : TocUiEvent
-
-    /** 隐藏等待对话框。 */
-    object HideWaitDialog : TocUiEvent
 }

@@ -66,11 +66,10 @@ object AppTheme {
         val shapeDefault: RoundedCornerShape = RoundedCornerShape(radiusDefault)
         val shapeLg: RoundedCornerShape = RoundedCornerShape(radiusLg)
 
-        // 语义别名: 整屏对话框 16dp / 卡片弹层 8dp / 按钮 8dp / 输入框 4dp
+        // 语义别名: 整屏对话框 16dp / 卡片弹层 8dp / 按钮 8dp
         val dialogShape: RoundedCornerShape = shapeLg
         val cardShape: RoundedCornerShape = shapeDefault
         val buttonShape: RoundedCornerShape = shapeDefault
-        val inputShape: RoundedCornerShape = shapeSm
 
         // 对话框尺寸占锚点 (桌面=主窗口, 移动端=屏幕) 的比例; 消费方见 AppDialogSizes。
         // 高度 0.8 为全局统一值, 新弹窗一律取这里而非自行乘系数
