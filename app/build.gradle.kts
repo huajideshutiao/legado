@@ -59,7 +59,13 @@ abstract class CopyRenamedApks : DefaultTask() {
 }
 
 val name = "legado"
-val version = "3.${releaseTime()}"
+
+// CI 传 -PappVersion 注入统一版本号 (release.yml/test.yml), 本地构建按当前时间生成
+val version = providers.gradleProperty("appVersion").orNull ?: "3.${releaseTime()}"
+
+// 共存构建 (CI 传 -PcoexistBuild=true): 包名后缀与 APK 文件名后缀同源,
+// 与原包名版本可同时安装, 且 releaseA 字样是应用内更新识别渠道变体的依据 (AppReleaseInfo)
+val coexistBuild = providers.gradleProperty("coexistBuild").orNull == "true"
 val gitCommits = providers.exec {
     commandLine("git", "rev-list", "HEAD", "--count")
 }.standardOutput.asText.get().trim().toInt()
@@ -118,7 +124,7 @@ android {
             vcsInfo {
                 include = false
             }
-            applicationIdSuffix = ".release"
+            applicationIdSuffix = if (coexistBuild) ".releaseA" else ".release"
             manifestPlaceholders["app_name"] = "@string/app_name"
 
             isMinifyEnabled = true
@@ -243,11 +249,9 @@ tasks.matching {
 androidComponents {
     onVariants { variant ->
         val taskName = "copyRenamedApksFor${variant.name.replaceFirstChar(Char::uppercaseChar)}"
-        // 共存构建 (CI 传 -PcoexistBuild=true) 时产物名带 _releaseA 后缀 (原版 outputFileName 语义),
-        // 且按 suffix 分目录输出, 避免两次构建 (原包名/共存) 产物互相覆盖。
-        // 用 gradle property 判定而非 variant.buildType (新 API 不暴露), 由 CI 显式声明。
-        val suffix =
-            if (providers.gradleProperty("coexistBuild").orNull == "true") "_releaseA" else ""
+        // 共存构建时产物名带 _releaseA 后缀 (原版 outputFileName 语义), 且按 suffix 分目录输出,
+        // 避免两次构建 (原包名/共存) 产物互相覆盖。
+        val suffix = if (coexistBuild) "_releaseA" else ""
         val copyTask = tasks.register<CopyRenamedApks>(taskName) {
             outputDirectory.set(layout.buildDirectory.dir("outputs/renamed-apks/${variant.name}${suffix}"))
             builtArtifactsLoader.set(variant.artifacts.getBuiltArtifactsLoader())

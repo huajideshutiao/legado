@@ -4,20 +4,28 @@ on:
   schedule:
     - cron: '0 0 1,15 * *'
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'release=完整正式发布；ios-beta=仅构建 iOS 并追加到 beta'
+        required: true
+        default: 'release'
+        type: choice
+        options:
+          - release
+          - ios-beta
 
 # 定时/手动触发时, 同一分支只跑一个实例, 取消旧实例避免重复 Release
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# 默认最小权限; 各 job 按需单独提 contents: write
+# 默认最小权限; 需要写 Release/tag 的只有 publish job
 permissions:
   contents: read
 
 jobs:
   prepare:
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     outputs:
       version: ${{ steps.set-ver.outputs.version }}
       sign: ${{ steps.check.outputs.sign }}
@@ -26,29 +34,41 @@ jobs:
         run: |
           echo "version=$(date -d "8 hour" -u +3.%y.%m%d%H)" >> $GITHUB_OUTPUT
       - id: check
+        # 没配正式签名 secret 就整条链路不跑, 避免发出 debug 签名的「正式版」。
+        # secret 走 env 而非表达式内插: 值里的引号/换行拼不坏这段脚本
+        env:
+          RELEASE_KEY_STORE: ${{ secrets.RELEASE_KEY_STORE }}
         run: |
-          if [ ! -z "${{ secrets.RELEASE_KEY_STORE }}" ]; then
-            echo "sign=yes" >> $GITHUB_OUTPUT
-          fi
+          [ -z "$RELEASE_KEY_STORE" ] || echo "sign=yes" >> $GITHUB_OUTPUT
 
   build:
     needs: prepare
-    if: ${{ needs.prepare.outputs.sign }}
+    if: ${{ needs.prepare.outputs.sign && (github.event_name != 'workflow_dispatch' || inputs.mode == 'release') }}
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    # 发布收口到 publish job, 本 job 只需只读权限 (默认)
     env:
+      product: app
       VERSION: ${{ needs.prepare.outputs.version }}
+      GRADLE_ARGS: --build-cache --parallel --daemon --warning-mode all
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-
       - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: 21
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+      - name: Gradle build-cache 共享
+        # 按 (OS, 分支) 共享 build-cache, 减少各 job 重复编译 shared 等公共模块
+        uses: actions/cache@v5
+        with:
+          path: ~/.gradle/caches/build-cache-1
+          key: gradle-buildcache-${{ runner.os }}-${{ github.ref_name }}
+          restore-keys: |
+            gradle-buildcache-${{ runner.os }}-
 
       - name: Release Apk Sign
         env:
@@ -64,457 +84,104 @@ jobs:
           echo RELEASE_STORE_FILE='./key.jks' >> gradle.properties
           echo "$RS_FILE" | python3 -c "import sys,base64; sys.stdout.buffer.write(base64.b64decode(sys.stdin.read().strip()))" > $GITHUB_WORKSPACE/app/key.jks
 
-      - name: Unify Version Name
-        run: |
-          echo "统一版本号"
-          # app/build.gradle 已迁移为 build.gradle.kts, 锚定 kts 声明行 val version = "3.${releaseTime()}"
-          sed "/^val version = /c val version = \"${{ env.VERSION }}\"" $GITHUB_WORKSPACE/app/build.gradle.kts  -i
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v5
-
       - name: Build Release (原包名)
         run: |
-          echo "开始app原包名构建"
+          echo "开始${{ env.product }}原包名构建"
           chmod +x gradlew
-          ./gradlew assembleapprelease --build-cache --parallel --daemon --warning-mode all
-          mkdir -p ${{ github.workspace }}/apk/
-          find ${{ github.workspace }}/app/build/outputs/apk -name "*.apk" -exec mv {} ${{ github.workspace }}/apk/ \;
+          ./gradlew assemble${{ env.product }}release -PappVersion=$VERSION $GRADLE_ARGS
+          echo "收集APK"
+          mkdir -p apk/
+          find app/build/outputs/renamed-apks -name "*.apk" -exec mv {} apk/ \;
 
       - name: Build ReleaseA (共存)
-        continue-on-error: true
+        # -PcoexistBuild=true 一并决定 applicationIdSuffix (.releaseA) 与 APK 名后缀 (_releaseA);
+        # 后者是应用内更新识别渠道变体的依据 (AppReleaseInfo), 也让两个变体产物不互相覆盖
         run: |
-          echo "修改applicationIdSuffix为共存版"
-          # kts 双引号赋值; 精确锚整句, 避免误伤 if (applicationIdSuffix == ".releaseA") 判断行与 ".debug" 赋值
-          sed 's|applicationIdSuffix = ".release"|applicationIdSuffix = ".releaseA"|' $GITHUB_WORKSPACE/app/build.gradle.kts -i
-          echo "开始app共存构建"
-          ./gradlew assembleapprelease --build-cache --parallel --daemon --warning-mode all
-          find ${{ github.workspace }}/app/build/outputs/apk -name "*.apk" -exec mv {} ${{ github.workspace }}/apk/ \;
+          echo "开始${{ env.product }}共存构建"
+          ./gradlew assemble${{ env.product }}release -PappVersion=$VERSION -PcoexistBuild=true $GRADLE_ARGS
+          echo "收集共存版APK"
+          find app/build/outputs/renamed-apks -name "*.apk" -exec mv {} apk/ \;
 
       - name: Generate Release Notes
+        # 取样窗口对齐 cron (每月 1/15 号): 列最近 15 天提交, 超 25 条只报条数并给 compare 链接
         run: |
-          echo "## 更新日志" > ${{ github.workspace }}/RELEASE_NOTES.md
-          echo "" >> ${{ github.workspace }}/RELEASE_NOTES.md
+          echo "## 更新日志" > RELEASE_NOTES.md
+          echo "" >> RELEASE_NOTES.md
           COMMITS=$(git log --since="15 days ago" --pretty=format:"- %<(72,trunc)%s (%h)")
           OLDEST=$(git log --since="15 days ago" --format="%H" | tail -1)
           BASE=$(git rev-parse "${OLDEST}^" 2>/dev/null || echo "$OLDEST")
           COMPARE_URL="https://github.com/${{ github.repository }}/compare/${BASE}...HEAD"
 
           if [ -n "$COMMITS" ]; then
-            echo "$COMMITS" | head -25 >> ${{ github.workspace }}/RELEASE_NOTES.md
+            echo "$COMMITS" | head -25 >> RELEASE_NOTES.md
             TOTAL=$(echo "$COMMITS" | wc -l)
             if [ "$TOTAL" -gt 25 ]; then
-              echo "- *……还有 $((TOTAL - 25)) 条提交未显示*" >> ${{ github.workspace }}/RELEASE_NOTES.md
+              echo "- *……还有 $((TOTAL - 25)) 条提交未显示*" >> RELEASE_NOTES.md
             fi
-            echo "" >> ${{ github.workspace }}/RELEASE_NOTES.md
-            echo "[查看完整提交记录 →](${COMPARE_URL})" >> ${{ github.workspace }}/RELEASE_NOTES.md
+            echo "" >> RELEASE_NOTES.md
+            echo "[查看完整提交记录 →](${COMPARE_URL})" >> RELEASE_NOTES.md
           else
-            echo "- 定期维护编译，无代码变更。" >> ${{ github.workspace }}/RELEASE_NOTES.md
+            echo "- 定期维护编译，无代码变更。" >> RELEASE_NOTES.md
           fi
-          cat ${{ github.workspace }}/RELEASE_NOTES.md
+          cat RELEASE_NOTES.md
 
-      - name: Upload App To Artifact
+      # 发布在 publish job (_publish.yml), 这里只把产物与更新日志传上去
+      - name: Upload Release Notes
         uses: actions/upload-artifact@v6
         with:
-          name: app
-          path: ${{ github.workspace }}/apk/*.apk
-
-      - name: Delete Old Release
-        continue-on-error: true
-        run: gh release delete "${{ env.VERSION }}" -y --cleanup-tag || true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Release
-        uses: ncipollo/release-action@v1
-        with:
-          name: ${{ env.VERSION }}
-          tag: ${{ env.VERSION }}
-          bodyFile: ${{ github.workspace }}/RELEASE_NOTES.md
-          artifacts: ${{ github.workspace }}/apk/*.apk
-          allowUpdates: true
-          draft: false
-          prerelease: false
-
-  # ===== 多端桌面产物 (与 Android build 串行: 等 build 创建 Release 后再上传) =====
-  # Windows MSI: Windows runner 上 jpackage 调 WiX 打包
-  desktop-build:
-    needs: [ prepare, build ]
-    runs-on: windows-latest
-    permissions:
-      contents: write
-    env:
-      VERSION: ${{ needs.prepare.outputs.version }}
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-      - name: Set up JDK 21
-        uses: actions/setup-java@v5
-        with:
-          distribution: 'temurin'
-          java-version: 21
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v5
-      - name: Unify Desktop packageVersion
-        shell: bash
-        run: |
-          # VERSION 的 BUILD 段超 MSI 上限 (≤65535), 由 desktop/build.gradle.kts 的
-          # msiSafeVersion 映射; deb/rpm/dmg 直接用原值
-          sed "s|packageVersion = \".*\"|packageVersion = \"${{ env.VERSION }}\"|" $GITHUB_WORKSPACE/desktop/build.gradle.kts -i
-      - name: Build Quickjs Native Lib (Windows .dll)
-        # desktop 打包前需要 quickjs native 库 (liblegado_quickjs.dll) 落到 jvm/native 目录
-        # Windows runner 自带 cmake + MSVC, 一般可成功; 失败时 continue-on-error, 让上层打包报错更明确
-        run: ./gradlew :modules:quickjs:buildJvmNativeLib --warning-mode all
-        continue-on-error: true
-      - name: Verify Quickjs Native Lib
-        shell: bash
-        # 上一步 continue-on-error, 静默失败会打出不含 legado_quickjs.dll 的包 (JS 引擎运行时才炸)
-        run: test -f "$GITHUB_WORKSPACE/modules/quickjs/build/libs/jvm/native/legado_quickjs.dll"
-      - name: Build MSI
-        # release buildType: 官方 ProGuard 集成仅 release 链启用 (proguardReleaseJars), default 链不瘦身
-        run: ./gradlew :desktop:packageReleaseMsi --build-cache --parallel --daemon --warning-mode all
-      - name: Collect MSI
-        shell: bash
-        run: |
-          mkdir -p ${{ github.workspace }}/msi/
-          # release 链产物在 binaries/main-release/msi 下 (官方 ProGuard 集成后 buildType 目录带 classifier),
-          # 全目录 find 避免路径变化再踩坑
-          find ${{ github.workspace }}/desktop/build/compose/binaries -name "*.msi" -exec mv {} ${{ github.workspace }}/msi/ \;
-      - name: Upload MSI Artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: desktop.msi
-          path: ${{ github.workspace }}/msi/*.msi
+          name: release-notes
+          path: RELEASE_NOTES.md
           if-no-files-found: ignore
-      - name: Upload MSI to Release
-        # build job 已创建 tag=VERSION 的 Release, 这里 allowUpdates 追加 MSI 资产
-        uses: ncipollo/release-action@v1
-        with:
-          name: ${{ env.VERSION }}
-          tag: ${{ env.VERSION }}
-          allowUpdates: true
-          # 追加资产时不要回写 body/name: 本 step 没传 bodyFile, 若不 omit,
-          # ncipollo 会把 build job 生成的 RELEASE_NOTES.md 覆盖成空白。
-          # (desktop/linux/macos/ios/ohos 多个 job 并行更新同一 tag, 每个都会踩)
-          omitBodyDuringUpdate: true
-          omitNameDuringUpdate: true
-          artifacts: ${{ github.workspace }}/msi/*.msi
-      # Windows 便携版 zip: 复用 createReleaseDistributable 产物 (packageReleaseMsi 上游), 仅打 zip 不经安装器
-      - name: Build portable zip
-        # packagePortableZip 仅 Windows 执行 (onlyIf), 依赖 createReleaseDistributable (release 链含 ProGuard 瘦身)
-        run: ./gradlew :desktop:packagePortableZip --build-cache --parallel --daemon --warning-mode all
-      - name: Collect portable zip
-        shell: bash
-        run: |
-          mkdir -p ${{ github.workspace }}/portable/
-          find ${{ github.workspace }}/desktop/build/outputs/portable -name "legado-portable-windows-x64-*.zip" -exec mv {} ${{ github.workspace }}/portable/ \;
-      - name: Upload portable zip Artifact
+
+      - name: Upload Artifacts (原包名 + 共存)
         uses: actions/upload-artifact@v6
         with:
-          name: legado-portable-windows-x64
-          path: ${{ github.workspace }}/portable/*.zip
-          if-no-files-found: ignore
-          retention-days: 30
-      - name: Upload portable zip to Release
-        # 追加便携 zip 到同一 Release (tag=VERSION)
-        uses: ncipollo/release-action@v1
-        with:
-          name: ${{ env.VERSION }}
-          tag: ${{ env.VERSION }}
-          allowUpdates: true
-          # 追加资产时不要回写 body/name: 本 step 没传 bodyFile, 若不 omit,
-          # ncipollo 会把 build job 生成的 RELEASE_NOTES.md 覆盖成空白。
-          # (desktop/linux/macos/ios/ohos 多个 job 并行更新同一 tag, 每个都会踩)
-          omitBodyDuringUpdate: true
-          omitNameDuringUpdate: true
-          artifacts: ${{ github.workspace }}/portable/*.zip
+          name: ${{ env.product }}.apk
+          path: apk/*.apk
+          # 一个 APK 都没搬到就当场失败: 否则 publish 会发出一个只有更新日志的空 Release
+          if-no-files-found: error
+  # ===== 桌面三端 MSI/便携zip/DEB/RPM/DMG (与 Android build 并行) =====
+  # 实现在 _desktop.yml, 与 test.yml 共用同一份
+  desktop:
+    needs: prepare
+    if: ${{ needs.prepare.outputs.sign && (github.event_name != 'workflow_dispatch' || inputs.mode == 'release') }}
+    uses: ./.github/workflows/_desktop.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
 
-  # Linux DEB/RPM: Ubuntu runner 上 jpackage 调 dpkg-deb / rpmbuild
-  linux-build:
-    needs: [ prepare, build ]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    env:
-      VERSION: ${{ needs.prepare.outputs.version }}
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-      - name: Set up JDK 21
-        uses: actions/setup-java@v5
-        with:
-          distribution: 'temurin'
-          java-version: 21
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v5
-      - name: Install Linux packaging deps
-        # jpackage 打 deb 需要 dpkg-deb, 打 rpm 需要 rpmbuild; ubuntu-latest 默认无 rpmbuild
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y dpkg-dev rpm
-      - name: Unify Desktop packageVersion
-        run: |
-          sed "s|packageVersion = \".*\"|packageVersion = \"${{ env.VERSION }}\"|" $GITHUB_WORKSPACE/desktop/build.gradle.kts -i
-      - name: Build Quickjs Native Lib (Linux .so)
-        run: ./gradlew :modules:quickjs:buildJvmNativeLib --warning-mode all
-        continue-on-error: true
-      - name: Verify Quickjs Native Lib
-        # 上一步 continue-on-error, 静默失败会打出不含 liblegado_quickjs.so 的包
-        run: test -f "$GITHUB_WORKSPACE/modules/quickjs/build/libs/jvm/native/liblegado_quickjs.so"
-      - name: Build DEB & RPM
-        # release buildType: 官方 ProGuard 集成仅 release 链启用, default 链不瘦身
-        run: ./gradlew :desktop:packageReleaseDeb :desktop:packageReleaseRpm --build-cache --parallel --daemon --warning-mode all
-      - name: Collect Linux packages
-        run: |
-          mkdir -p ${{ github.workspace }}/linux/
-          find ${{ github.workspace }}/desktop/build/compose/binaries -name "*.deb" -exec mv {} ${{ github.workspace }}/linux/ \;
-          find ${{ github.workspace }}/desktop/build/compose/binaries -name "*.rpm" -exec mv {} ${{ github.workspace }}/linux/ \;
-      - name: Upload Linux Artifacts
-        uses: actions/upload-artifact@v6
-        with:
-          name: desktop.linux
-          path: |
-            ${{ github.workspace }}/linux/*.deb
-            ${{ github.workspace }}/linux/*.rpm
-          if-no-files-found: ignore
-      - name: Upload Linux packages to Release
-        # 追加 deb/rpm 到同一 Release (与 desktop-build 并行, 各自更新 Release)
-        uses: ncipollo/release-action@v1
-        with:
-          name: ${{ env.VERSION }}
-          tag: ${{ env.VERSION }}
-          allowUpdates: true
-          # 追加资产时不要回写 body/name: 本 step 没传 bodyFile, 若不 omit,
-          # ncipollo 会把 build job 生成的 RELEASE_NOTES.md 覆盖成空白。
-          # (desktop/linux/macos/ios/ohos 多个 job 并行更新同一 tag, 每个都会踩)
-          omitBodyDuringUpdate: true
-          omitNameDuringUpdate: true
-          artifacts: |
-            ${{ github.workspace }}/linux/*.deb
-            ${{ github.workspace }}/linux/*.rpm
-
-  # macOS DMG: macOS runner 上 jpackage 打包, 追加到 Release
-  desktop-macos:
-    needs: [ prepare, build ]
-    runs-on: macos-latest
-    permissions:
-      contents: write
-    env:
-      VERSION: ${{ needs.prepare.outputs.version }}
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-      - name: Set up JDK 21
-        uses: actions/setup-java@v5
-        with:
-          distribution: 'temurin'
-          java-version: 21
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v5
-      - name: Unify Desktop packageVersion
-        # macOS 自带 BSD sed, -i 需要空字符串备份后缀 (与 GNU sed 语法不同)
-        run: |
-          sed -i '' "s|packageVersion = \".*\"|packageVersion = \"${{ env.VERSION }}\"|" $GITHUB_WORKSPACE/desktop/build.gradle.kts
-      - name: Build Quickjs Native Lib (macOS .dylib)
-        # desktop 打包前需要 quickjs native 库 (liblegado_quickjs.dylib) 落到 jvm/native 目录
-        # macos-latest 自带 cmake + clang, 一般可成功; 失败时 continue-on-error, 让上层打包报错更明确
-        run: ./gradlew :modules:quickjs:buildJvmNativeLib --warning-mode all
-        continue-on-error: true
-      - name: Verify Quickjs Native Lib
-        # 上一步 continue-on-error, 静默失败会打出不含 liblegado_quickjs.dylib 的包
-        run: test -f "$GITHUB_WORKSPACE/modules/quickjs/build/libs/jvm/native/liblegado_quickjs.dylib"
-      - name: Build macOS DMG
-        run: ./gradlew :desktop:packageDmg --build-cache --parallel --daemon --warning-mode all
-      - name: Collect DMG
-        run: |
-          mkdir -p ${{ github.workspace }}/dmg/
-          find ${{ github.workspace }}/desktop/build/compose/binaries -name "*.dmg" -exec mv {} ${{ github.workspace }}/dmg/ \;
-      - name: Upload DMG Artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: desktop.dmg
-          path: ${{ github.workspace }}/dmg/*.dmg
-          if-no-files-found: ignore
-      - name: Upload DMG to Release
-        # build job 已创建 tag=VERSION 的 Release, 这里 allowUpdates 追加 DMG 资产
-        uses: ncipollo/release-action@v1
-        with:
-          name: ${{ env.VERSION }}
-          tag: ${{ env.VERSION }}
-          allowUpdates: true
-          # 追加资产时不要回写 body/name: 本 step 没传 bodyFile, 若不 omit,
-          # ncipollo 会把 build job 生成的 RELEASE_NOTES.md 覆盖成空白。
-          # (desktop/linux/macos/ios/ohos 多个 job 并行更新同一 tag, 每个都会踩)
-          omitBodyDuringUpdate: true
-          omitNameDuringUpdate: true
-          artifacts: ${{ github.workspace }}/dmg/*.dmg
-
-  # iOS IPA (未签名): macOS runner 上 archive + 打包, 追加到 Release
-  # 流程: 1.预编 quickjs-ng/mbedtls iOS 静态库 2.link release framework 3.xcodegen 生成工程
-  #       4.xcodebuild archive (全程关签名) 5.按 Payload/ 规范打未签名 ipa
+  # ===== iOS IPA (未签名) =====
+  # 实现在 ios.yml (与手动触发同一份): 预编 quickjs-ng/mbedtls 静态库 → link release framework →
+  # xcodegen 生成工程 → xcodebuild archive (全程关签名) → 按 Payload/ 规范打未签名 ipa。
   # 未签名是刻意的: 本项目不上架 App Store, ipa 供 SideStore/AltStore/Xcode 自签侧载, 不碰签名 secrets。
-  ios-build:
-    needs: [ prepare, build ]
-    runs-on: macos-latest
+  # ios-beta 模式: ios.yml 只读构建 artifact，本 job 经 _publish.yml 的统一 beta 锁追加上传；
+  # 正式模式: IPA 与 APK/桌面产物一起发布到版本 Release。
+  ios:
+    needs: prepare
+    if: ${{ needs.prepare.outputs.sign || (github.event_name == 'workflow_dispatch' && inputs.mode == 'ios-beta') }}
+    # reusable iOS 构建严格保持 contents:read；写权限只存在于下方统一 publish job。
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ios.yml
+    with:
+      stage: ipa
+      version: ${{ needs.prepare.outputs.version }}
+
+  # ===== 鸿蒙 =====
+  # CI 不构建 (CPF 工具链在私有 Nexus 不可达 + 无 API 24 SDK 公开渠道)。
+  # 查证结论与本地构建步骤见 test.yml 末尾注释块; .so/HAP 需随 Release 发布时本地手动上传。
+
+  # ===== 统一发布正式 Release / 手动 iOS beta =====
+  publish:
+    needs: [ prepare, build, desktop, ios ]
+    # ios-beta 模式只要求 iOS 成功；正式模式仍以 Android 成功为发布前提。
+    # always() 让 publish 在正式模式的可选桌面/iOS失败后仍可发布已有产物；分支条件仍要求关键 job 成功。
+    if: ${{ always() && ((github.event_name == 'workflow_dispatch' && inputs.mode == 'ios-beta' && needs.ios.result == 'success') || ((github.event_name != 'workflow_dispatch' || inputs.mode == 'release') && needs.build.result == 'success')) }}
     permissions:
       contents: write
-    env:
-      VERSION: ${{ needs.prepare.outputs.version }}
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-      - name: Set up JDK 21
-        uses: actions/setup-java@v5
-        with:
-          distribution: 'temurin'
-          java-version: 21
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v5
-      - name: Cache Kotlin/Native toolchain
-        uses: actions/cache@v5
-        with:
-          path: ~/.konan
-          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
-          restore-keys: konan-${{ runner.os }}-
-      - name: Cache iOS native static libs
-        # 只依赖 C 源与构建脚本; key 与 ios.yml 不同 (那边编真机+模拟器两套, 这里只要真机)
-        id: cache-native
-        uses: actions/cache@v5
-        with:
-          path: shared/build/iosNativeLibs
-          key: ios-native-device-${{ runner.os }}-${{ hashFiles('shared/src/cinterop/quickjs-ng/**', 'shared/src/cinterop/mbedtls/**', 'scripts/build-ios-native.sh') }}
-      - name: Build iOS native static libs (quickjs-ng + mbedtls)
-        # cinterop 只编 .def 内 wrapper, C 源目标码要单独出 .a, 否则 framework link 报未定义符号
-        if: steps.cache-native.outputs.cache-hit != 'true'
-        run: |
-          chmod +x scripts/build-ios-native.sh
-          ./scripts/build-ios-native.sh ios_arm64
-      - name: Link shared framework (release)
-        run: ./gradlew :shared:linkReleaseFrameworkIosArm64 --stacktrace --warning-mode all --continue
-      - name: Install XcodeGen
-        # 用 xcodegen 从 project.yml 生成 .xcodeproj (避免二进制工程文件冲突)
-        run: brew install xcodegen
-      - name: Generate Xcode project
-        working-directory: iosApp/
-        run: xcodegen generate
-      - name: Archive (unsigned)
-        # 无 Apple 证书: 关掉全部签名。CODE_SIGN_STYLE=Manual 是为了绕开 Automatic
-        # 在 DEVELOPMENT_TEAM 为空时的 "requires a development team" 报错。
-        # framework 由 project.yml 的 preBuildScript (embedAndSignAppleFrameworkForXcode) 嵌入。
-        working-directory: iosApp/
-        run: |
-          xcodebuild archive \
-            -project iosApp.xcodeproj \
-            -scheme iosApp \
-            -configuration Release \
-            -destination 'generic/platform=iOS' \
-            -archivePath build/iosApp.xcarchive \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            DEVELOPMENT_TEAM="" \
-            PROVISIONING_PROFILE_SPECIFIER=""
-      - name: Package unsigned IPA
-        id: ipa
-        # 不用 xcodebuild -exportArchive: 它必须有签名身份+描述文件。
-        # 未签名 ipa 就是 Payload/xxx.app 的 zip, 侧载工具自行重签。
-        run: |
-          set -e
-          APP_PATH="$(find ${{ github.workspace }}/iosApp/build/iosApp.xcarchive/Products/Applications -maxdepth 1 -name '*.app' | head -1)"
-          if [ -z "$APP_PATH" ]; then
-            echo "未找到 .app, 跳过 ipa 打包"
-            exit 1
-          fi
-          rm -rf ${{ github.workspace }}/ipa
-          mkdir -p ${{ github.workspace }}/ipa/Payload
-          cp -R "$APP_PATH" ${{ github.workspace }}/ipa/Payload/
-          cd ${{ github.workspace }}/ipa
-          zip -qry "legado-${{ env.VERSION }}-ios-unsigned.ipa" Payload
-          rm -rf Payload
-          ls -lh *.ipa
-          echo "found=yes" >> $GITHUB_OUTPUT
-      - name: Upload IPA Artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: ios.ipa.unsigned
-          path: ${{ github.workspace }}/ipa/*.ipa
-          if-no-files-found: ignore
-      - name: Upload IPA to Release
-        # 追加 IPA 到同一 Release; 打包失败时不跑, 免得 ncipollo 因找不到资产报错
-        if: steps.ipa.outputs.found == 'yes'
-        uses: ncipollo/release-action@v1
-        with:
-          name: ${{ env.VERSION }}
-          tag: ${{ env.VERSION }}
-          allowUpdates: true
-          # 追加资产时不要回写 body/name: 本 step 没传 bodyFile, 若不 omit,
-          # ncipollo 会把 build job 生成的 RELEASE_NOTES.md 覆盖成空白。
-          # (desktop/linux/macos/ios/ohos 多个 job 并行更新同一 tag, 每个都会踩)
-          omitBodyDuringUpdate: true
-          omitNameDuringUpdate: true
-          artifacts: ${{ github.workspace }}/ipa/*.ipa
+    uses: ./.github/workflows/_publish.yml
+    with:
+      tag: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'ios-beta' && 'beta' || needs.prepare.outputs.version }}
+      artifact-name-pattern: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'ios-beta' && 'ios-ipa-unsigned' || '*' }}
+      name: ${{ needs.prepare.outputs.version }}
+      prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'ios-beta' }}
 
-  # 鸿蒙 .so (release): 已移除 (2026-08) — CPF 工具链构件仅发布在
-  # maven.eazytec-cloud.com (中国私有 Nexus), GitHub-hosted runner 无法访问, 该 job 必然失败。
-  # .so 改本地构建: ./gradlew :shared:linkReleaseSharedOhosArm64 -PenableOhosTarget=true
-  # 产物 shared/build/bin/ohosArm64/releaseShared/liblegado_shared.so,
-  # 需要随 Release 发布时由本地手动上传 (ncipollo/release-action 或网页上传)。
-
-  # ===== 鸿蒙 HAP (自托管 runner, 默认禁用) =====
-  # 鸿蒙 DevEco Studio / hvigor / HarmonyOS SDK (API 12+) 无官方公开 Docker 镜像,
-  # GitHub-hosted runner 不预装, 需自托管 runner (harmonyos 标签) + 预装 SDK.
-  # 用 if 条件控制: runner 就位后在仓库 Settings → Variables 设置 ENABLE_HARMONYOS_CI=true 即自动启用.
-  #
-  # 用户本地构建 HAP 步骤 (CI 未就位时):
-  #   1. 安装 DevEco Studio: https://developer.huawei.com/consumer/cn/deveco-studio/
-  #   2. 通过 DevEco Studio SDK Manager 安装 HarmonyOS SDK (API 12+, 即 compatibleSdkVersion 5.0.0(12))
-  #   3. 命令行打包 (在项目根 ohosApp/ 目录下):
-  #        # Windows: hvigorw.bat / Linux/macOS: ./hvigorw
-  #        node ./hvigorw assembleHap --mode module -p product=default --no-daemon
-  #   4. 产物路径:
-  #      - 未签名: ohosApp/entry/build/default/outputs/default/entry-default-unsigned.hap
-  #      - 已签名: ohosApp/entry/build/default/outputs/default/entry-default-signed.hap
-  ohos-build:
-    needs: [ prepare, build ]
-    # 默认禁用: 自托管 runner 就位后在仓库 Settings → Variables 设 ENABLE_HARMONYOS_CI=true 启用
-    if: ${{ vars.ENABLE_HARMONYOS_CI == 'true' }}
-    runs-on: [self-hosted, harmonyos]   # 需自托管 runner, 预装 DevEco 命令行工具
-    permissions:
-      contents: write
-    env:
-      VERSION: ${{ needs.prepare.outputs.version }}
-      HOS_SDK_HOME: ${{ secrets.HOS_SDK_HOME }}
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-      - name: Build HAP
-        working-directory: ohosApp/
-        run: node ./hvigorw assembleHap --mode module -p product=default --no-daemon
-      - name: Collect HAP
-        run: |
-          mkdir -p ${{ github.workspace }}/hap/
-          find ${{ github.workspace }}/ohosApp/entry/build/default/outputs/default -name "*.hap" -exec mv {} ${{ github.workspace }}/hap/ \;
-      - name: Upload HAP Artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: ohos.hap
-          path: ${{ github.workspace }}/hap/*.hap
-          if-no-files-found: ignore
-      - name: Upload HAP to Release
-        uses: ncipollo/release-action@v1
-        with:
-          name: ${{ env.VERSION }}
-          tag: ${{ env.VERSION }}
-          allowUpdates: true
-          # 追加资产时不要回写 body/name: 本 step 没传 bodyFile, 若不 omit,
-          # ncipollo 会把 build job 生成的 RELEASE_NOTES.md 覆盖成空白。
-          # (desktop/linux/macos/ios/ohos 多个 job 并行更新同一 tag, 每个都会踩)
-          omitBodyDuringUpdate: true
-          omitNameDuringUpdate: true
-          artifacts: ${{ github.workspace }}/hap/*.hap

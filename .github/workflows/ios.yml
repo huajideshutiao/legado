@@ -1,7 +1,9 @@
 name: iOS Build
 
-# ⚠️ 只手动触发: macOS runner 计费是 Linux 的 10 倍, 不挂 push/PR。
+# ⚠️ 手动触发不挂 push/PR: macOS runner 计费是 Linux 的 10 倍。
 # stage 控制深度, 调试 YAML/脚本语法时用 klib 即可, 不必每次跑完整 ipa。
+# 另经 workflow_call 被 release.yml 调用 (stage=ipa), 正式/Beta Release 的 IPA 只有这一份实现。
+# 写 Release 的手动入口位于 release.yml 的 ios-beta 模式；本 reusable workflow 始终只读。
 on:
   workflow_dispatch:
     inputs:
@@ -14,9 +16,23 @@ on:
           - klib
           - link
           - ipa
+  workflow_call:
+    inputs:
+      stage:
+        description: '构建深度: klib / link / ipa'
+        required: false
+        default: 'ipa'
+        type: string
+      version:
+        description: '版本号 (用于 ipa 文件名); 留空则按当前时间生成'
+        required: false
+        default: ''
+        type: string
 
+# 组名不能用 github.workflow: 被调用时它是调用方的工作流名, 会和调用方自己的
+# concurrency group 撞成死锁 (调用方占着组, 被调用 job 排队等同一个组)。
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ios-build-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -25,24 +41,35 @@ permissions:
 jobs:
   ios:
     runs-on: macos-latest
-    # 发布 ipa 到 beta release 需要写权限 (仅 stage=ipa 时用到)
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v5
 
       - name: Set version
         id: ver
-        run: echo "version=$(TZ=Asia/Shanghai date +3.%y.%m%d%H%M)" >> $GITHUB_OUTPUT
+        # 被 release.yml 调用时用上游 prepare 的版本号, 保证与 APK/桌面包同源
+        run: |
+          v="${{ inputs.version }}"
+          [ -n "$v" ] || v="$(TZ=Asia/Shanghai date +3.%y.%m%d%H%M)"
+          echo "version=$v" >> $GITHUB_OUTPUT
+
 
       - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: 21
-
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
+      - name: Gradle build-cache 共享
+        # 按 (OS, 分支) 共享 build-cache, 减少与桌面 macOS 腿重复编译 shared
+        uses: actions/cache@v5
+        with:
+          path: ~/.gradle/caches/build-cache-1
+          key: gradle-buildcache-${{ runner.os }}-${{ github.ref_name }}
+          restore-keys: |
+            gradle-buildcache-${{ runner.os }}-
 
       # ===== 环境诊断: 一次跑完就能定位环境类问题, 避免为查 SDK 路径再开一轮 =====
       - name: Environment diagnostics
@@ -204,21 +231,8 @@ jobs:
         with:
           name: ios-ipa-unsigned
           path: ${{ github.workspace }}/iosApp/build/ipa/*.ipa
-          if-no-files-found: ignore
-
-      # ipa 追加到 test.yml 维护的 beta release (只 upload 不删不建, 避免动到其他产物)
-      # 注意: test.yml 每次 push 会删除并重建 beta release, 重建后需重跑本 workflow 才能恢复 ipa 附件
-      - name: Publish IPA to beta release
-        id: publish
-        if: inputs.stage == 'ipa'
-        continue-on-error: true
-        run: |
-          gh release view beta >/dev/null 2>&1 || \
-            gh release create beta --prerelease --title "${{ steps.ver.outputs.version }}" \
-              --notes "iOS 未签名 ipa (SideStore/AltStore 自签侧载)"
-          gh release upload beta $GITHUB_WORKSPACE/iosApp/build/ipa/*.ipa --clobber
-        env:
-          GH_TOKEN: ${{ github.token }}
+          # IPA 是 stage=ipa 的发布契约；缺失或上传失败必须让工作流失败。
+          if-no-files-found: error
 
       # 失败时最需要日志, 故 always()
       - name: Collect logs
@@ -256,7 +270,6 @@ jobs:
           report "link framework" "${{ steps.link.outcome || 'skipped' }}"
           report "xcodebuild archive" "${{ steps.archive.outcome || 'skipped' }}"
           report "package ipa" "${{ steps.ipa.outcome || 'skipped' }}"
-          report "publish ipa" "${{ steps.publish.outcome || 'skipped' }}"
           if [ "$FAILED" = "1" ]; then
             echo "有步骤失败, 详见 ios-build-logs artifact"
             exit 1

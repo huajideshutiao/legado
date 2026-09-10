@@ -476,7 +476,7 @@ val copyWndChromeNativeToResources by tasks.registering(Copy::class) {
     include("*.dll")
 }
 
-// CI 用 sed 注入 packageVersion, 两条工作流格式不同: test.yml 是 "3.YY.MMDDHHMM",
+// CI 传 -PappVersion 注入 packageVersion, 格式随工作流不同: test.yml 是 "3.YY.MMDDHHMM",
 // release.yml 是 "3.YY.MMDDHH"。MSI 只接受三段 MAJOR.MINOR.BUILD 且 BUILD ≤ 65535,
 // 两者的 BUILD 段都超限; 该校验在配置期跑且遍历全部 targetFormats, 非法值会让整仓库任何
 // gradle 命令连带 deb/rpm/dmg 一起挂掉。故给 MSI 映射为 "3.YY.<年内第几小时>"
@@ -549,7 +549,7 @@ compose.desktop {
 
         // Compose Desktop 原生分发配置 (msi/deb/rpm) — 配合 .github/workflows 多端编译
         // CI 产物路径: desktop/build/compose/binaries/{msi,deb,rpm}/<package>-<version>.<ext>
-        // 注意: packageVersion 必须 x.y.z[.w] 格式; CI 通过 sed 注入实际版本号 (统一与 Android 版本一致)
+        // 注意: packageVersion 必须 x.y.z[.w] 格式; CI 通过 -PappVersion 注入实际版本号 (统一与 Android 版本一致)
         nativeDistributions {
             // 声明目标格式, 由 CI 在对应 runner 上分别打包 (Windows→msi, Linux→deb/rpm, macOS→dmg, AppImage→便携版镜像)
             targetFormats(TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Rpm, TargetFormat.Dmg, TargetFormat.AppImage)
@@ -574,8 +574,8 @@ compose.desktop {
                 "jdk.zipfs",
                 "jdk.management",
             )
-            // 默认版本号; CI 会用 sed 改为实际版本 (如 3.25.0722)
-            packageVersion = "1.0.0"
+            // CI 传 -PappVersion 注入实际版本 (与 Android 同源); 本地构建回落 1.0.0
+            packageVersion = providers.gradleProperty("appVersion").orNull ?: "1.0.0"
             // 应用元数据 (从 shared 模块继承项目名, 这里给桌面端独立 packageName)
             packageName = "legado"
             description = "Legado desktop reader (Compose Multiplatform)"
@@ -835,7 +835,7 @@ val packagePortableZip by tasks.registering(Zip::class) {
     // 便携标记落 zip 根 (exe 同级), 运行时据此启用便携模式 (无需编译期 -Plegado.installType)
     from(portableMarkerDir) { into("legado-portable-windows-x64") }
 
-    // 从 nativeDistributions 读 packageVersion (CI 用 sed 注入实际版本号), 拼到 zip 文件名
+    // 从 nativeDistributions 读 packageVersion (CI 传 -PappVersion 注入), 拼到 zip 文件名
     val version = compose.desktop.application.nativeDistributions.packageVersion ?: "1.0.0"
     archiveFileName.set("legado-portable-windows-x64-${version}.zip")
     // 独立输出目录, 避免与 jpackage 产物 (build/compose/binaries/) 及 Gradle 默认 distributions 目录混淆

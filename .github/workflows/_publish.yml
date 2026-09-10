@@ -1,0 +1,95 @@
+name: Publish release
+
+# release.yml / test.yml 共用的发布收口: 等全部构建 job 跑完后下载 artifact, 一次性建 Release。
+# 单发布者是刻意设计 —— 多 job 各自 allowUpdates 写同一 tag 会撞 already_exists,
+# 且后来者不带 bodyFile 会把更新日志清空 (旧实现靠 omitBodyDuringUpdate 逐处打补丁)。
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Release tag; test.yml 固定 beta, release.yml 用版本号'
+        required: true
+        type: string
+      artifact-name-pattern:
+        description: '下载 artifact 的名称 glob；可将手动 iOS beta 限定到专用 artifact'
+        required: false
+        default: '*'
+        type: string
+      name:
+        description: 'Release 标题 (版本号)'
+        required: true
+        type: string
+      prerelease:
+        description: '是否标记为预发布'
+        required: false
+        default: false
+        type: boolean
+
+# 同一目标 tag 的所有写入（统一发布与 iOS 手动追加）共用一把锁。
+concurrency:
+  group: publish-release-${{ github.repository }}-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # 删除/重建 Release 需要写权限 (仓库默认 token 只读); 调用方也要在 job 上放开同一权限
+    permissions:
+      contents: write
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: artifacts
+          pattern: ${{ inputs.artifact-name-pattern }}
+          merge-multiple: true
+
+      - name: Verify downloaded release artifacts
+        run: |
+          shopt -s nullglob
+          files=(artifacts/*)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::error::No release artifact matched '${{ inputs.artifact-name-pattern }}'"
+            exit 1
+          fi
+
+      - name: Delete Old Release
+        # 正式发布保持重建语义；手动 iOS beta 只能追加 IPA，不能删除其他 beta 资产。
+        if: inputs.artifact-name-pattern == '*'
+        continue-on-error: true
+        run: gh release delete "${{ inputs.tag }}" -y --cleanup-tag --repo ${{ github.repository }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Publish Release (全产物)
+        # iOS-only beta 只追加 IPA，保留 beta 现有 APK/桌面资产与正文。
+        if: inputs.artifact-name-pattern == '*'
+        uses: ncipollo/release-action@v1
+        with:
+          name: ${{ inputs.name }}
+          tag: ${{ inputs.tag }}
+          # 更新日志由 Android build job 以 release-notes artifact 传来
+          bodyFile: artifacts/RELEASE_NOTES.md
+          prerelease: ${{ inputs.prerelease }}
+          allowUpdates: true
+          removeArtifacts: true
+          artifacts: "artifacts/*.apk,artifacts/*.msi,artifacts/*.zip,artifacts/*.deb,artifacts/*.rpm,artifacts/*.dmg,artifacts/*.ipa"
+
+      - name: Append iOS IPA to beta
+        if: inputs.artifact-name-pattern != '*'
+        run: |
+          shopt -s nullglob
+          files=(artifacts/*.ipa)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::error::Downloaded artifact contains no IPA"
+            exit 1
+          fi
+          gh release view "${{ inputs.tag }}" --repo "$GH_REPO" >/dev/null 2>&1 || \
+            gh release create "${{ inputs.tag }}" --repo "$GH_REPO" --prerelease \
+              --title "${{ inputs.name }}" \
+              --notes "iOS 未签名 ipa (SideStore/AltStore 自签侧载)"
+          gh release upload "${{ inputs.tag }}" "${files[@]}" --repo "$GH_REPO" --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # 本 workflow 无 checkout；显式绑定调用方仓库，禁止 gh 从当前目录猜测目标。
+          GH_REPO: ${{ github.repository }}
