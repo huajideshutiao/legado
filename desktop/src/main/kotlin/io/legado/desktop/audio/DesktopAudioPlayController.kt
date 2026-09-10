@@ -14,24 +14,39 @@ import kotlin.coroutines.CoroutineContext
  * [AudioPlayController] 的 desktop 实现, 包装 [DesktopAudioPlayer] (mediamp-mpv)。
  *
  * 对标 app 端 [io.legado.app.model.audio.ExoPlayerAudioPlayController] 包装 ExoPlayer,
- * 供 shared commonMain [io.legado.app.model.audio.AudioPlayManager] 注入使用。
+ * 供 shared commonMain [io.legado.app.model.audio.AudioPlaySession] 注入使用。
  *
  * # 与 ExoPlayer 行为差异
- * - bufferedPosition: mpv 缓冲细节未暴露, 返回 [DesktopAudioPlayer.currentPosition]
- *   作近似, 让音频页缓冲条不恒空
- * - playbackState: 由 isPlaying 派生
- *   (STATE_READY=播放中, STATE_IDLE=暂停/停止/未启动);
- *   shared upPlayProgressForLrc 用 STATE_IDLE 守卫切歌中场景
- * - playWhenReady: 映射到实际播放态 (isPlaying); setter 转 play()/pause()
- * - release: 转发 [DesktopAudioPlayer.release] 释放 mpv 实例
- * - listener: shared AudioPlayManager 不经 controller.listener 感知状态
- *   (app 端由 ExoPlayerAudioPlayController 转发 ExoPlayer 回调),
- *   desktop 状态由 DesktopAudioPlayProvider 直接订阅 DesktopAudioPlayer.Listener,
- *   故 controller.listener 不使用
+ * - bufferedPosition: mpv 缓冲细节未暴露, 返回已播位置作近似, 让音频页缓冲条不恒空
+ * - playWhenReady: 存到 [onReady] 才应用 (mpv 在 prepare 阶段 play() 无效), 语义与 Media3
+ *   一致 —— 缓冲期按过暂停, 就绪后不自动起播
+ * - release: 桌面会话结束只 stop 不 release (mpv 实例贵, 下一轮复用), 退出/换源才释放
  */
-class DesktopAudioPlayController(private val player: DesktopAudioPlayer) : AudioPlayController {
+class DesktopAudioPlayController(private val player: DesktopAudioPlayer) :
+    AudioPlayController, DesktopAudioPlayer.Listener {
 
     override var listener: AudioPlayControllerListener? = null
+
+    private var state = AudioPlayController.STATE_IDLE
+
+    /** prepare 就绪后再应用的起播位置 (同 iOS / 鸿蒙 controller)。 */
+    private var pendingSeekMs = 0L
+
+    /**
+     * 本轮 prepare 是否已报过错。
+     *
+     * mediamp 对同一次 open 失败会同时 commit MediaStatus.Error **并** 让 setMediaData 抛出
+     * (AbstractMediampPlayer.runOpen 用的是同一个 PlaybackException), [DesktopAudioPlayer]
+     * 两条都接, 于是一次失败来两次 onError。上层的"首错静默重试一次"会被第二条顶掉,
+     * 表现为"报错了但播放照旧"(静默重试其实已经成功), 故在此收敛成一轮一次。
+     */
+    private var errorReported = false
+
+    override var playWhenReady = false
+
+    init {
+        player.listener = this
+    }
 
     override val isPlaying: Boolean
         get() = player.isPlaying
@@ -42,37 +57,75 @@ class DesktopAudioPlayController(private val player: DesktopAudioPlayer) : Audio
     override val currentPosition: Long
         get() = player.currentPosition
 
-    // mpv 缓冲细节未暴露, 用已播位置近似, 缓冲条至少不恒空
     override val bufferedPosition: Long
         get() = player.currentPosition
 
-    // 由 isPlaying 派生; 播放中=READY, 否则=IDLE (upPlayProgressForLrc 用 IDLE 守卫切歌)。
-    // 2026-08 修: play() 的 playing=true 在 controlScope 异步翻转, onReady 后立即调
-    // upPlayProgressForLrc 时会误判 IDLE 导致歌词不推进 —— prepared 即视为 READY
-    // (Media3 语义: pause 后仍 STATE_READY, 仅 stop/未加载为 IDLE)。
     override val playbackState: Int
-        get() = if (player.isPlaying || player.isPrepared) {
-            AudioPlayController.STATE_READY
-        } else {
-            AudioPlayController.STATE_IDLE
-        }
+        get() = state
 
-    // 映射到实际播放态; 写值转 play()/pause()
-    override var playWhenReady: Boolean
-        get() = player.isPlaying
-        set(value) {
-            if (value) player.play() else player.pause()
-        }
+    /** 设置播放源 (直链 + 请求头), [startPosMs] 就绪后生效。 */
+    fun setSource(url: String, headers: Map<String, String>, startPosMs: Long) {
+        pendingSeekMs = startPosMs
+        state = AudioPlayController.STATE_IDLE
+        player.setUrl(url, headers)
+    }
+
+    override fun prepare() {
+        errorReported = false
+        state = AudioPlayController.STATE_BUFFERING
+        player.prepare()
+    }
 
     override fun play() = player.play()
+
     override fun pause() = player.pause()
-    override fun stop() = player.stop()
-    override fun seekTo(position: Long) = player.seekTo(position)
+
+    override fun stop() {
+        state = AudioPlayController.STATE_IDLE
+        player.stop()
+    }
+
+    override fun seekTo(position: Long) {
+        if (state == AudioPlayController.STATE_READY) {
+            player.seekTo(position)
+        } else {
+            // 未就绪时暂存, 就绪后统一应用
+            pendingSeekMs = position
+        }
+    }
+
     override fun setPlaybackSpeed(speed: Float) = player.setSpeed(speed)
-    override fun prepare() = player.prepare()
 
     // 换源/退出时释放: 停线程/关流/关音频设备 (DesktopAudioPlayer.release 幂等)
     override fun release() = player.release()
+
+    // region DesktopAudioPlayer.Listener -> AudioPlayControllerListener 适配
+
+    override fun onReady(durationMs: Long) {
+        errorReported = false
+        // READY 未起播时 mpv 无法 seek, player.seekTo 会暂存到 play() 发起 loadfile 后应用
+        if (pendingSeekMs > 0) {
+            player.seekTo(pendingSeekMs)
+            pendingSeekMs = 0
+        }
+        state = AudioPlayController.STATE_READY
+        if (playWhenReady) player.play()
+        listener?.onPlaybackStateChanged(AudioPlayController.STATE_READY)
+    }
+
+    override fun onEndOfMedia() {
+        state = AudioPlayController.STATE_ENDED
+        listener?.onPlaybackStateChanged(AudioPlayController.STATE_ENDED)
+    }
+
+    override fun onError(message: String?) {
+        if (errorReported) return
+        errorReported = true
+        state = AudioPlayController.STATE_IDLE
+        listener?.onPlayerError(RuntimeException(message ?: "play error"))
+    }
+
+    // endregion
 }
 
 /**

@@ -240,6 +240,8 @@ fun OtherConfigRoute(
             onCustomPageKey = { screenModel.dispatch(OtherConfigUiEvent.CustomPageKey) },
             updateUrlSummary = state.updateUrlSummary,
             showUpdateUrl = AppUpdateManager.isAvailable(),
+            // 唤醒锁两项只在真持锁的端显示 (Android 前台 WebService / AudioPlayService)
+            showWakeLock = platform.wakeLockSupported,
         )
     }
 

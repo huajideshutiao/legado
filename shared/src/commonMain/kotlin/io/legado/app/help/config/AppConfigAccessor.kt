@@ -157,8 +157,19 @@ interface AppConfigAccessor {
     /** 音频播放唤醒锁 (原 AppConfig.audioPlayUseWakeLock)。 */
     val audioPlayUseWakeLock: Boolean
 
-    /** 持久化音频唤醒锁 (原 AppConfig.audioPlayUseWakeLock = value)。 */
-    fun setAudioPlayUseWakeLock(value: Boolean)
+    /**
+     * 是否对外发布歌词 (车载/锁屏 now-playing 标题), 默认 false。
+     *
+     * 打开后当前歌词行会顶掉章节名, 所以必须由用户显式开启。默认实现直读 pref, 各端无需覆写;
+     * pref 是唯一真源, [io.legado.app.model.audio.LyricPublisher] 靠 pref 变更监听跟随。
+     */
+    val publishLyric: Boolean
+        get() = PreferenceProviders.get().getBoolean(PreferKey.publishLyric, false)
+
+    /** 持久化 [publishLyric]。 */
+    fun setPublishLyric(value: Boolean) {
+        PreferenceProviders.get().putBoolean(PreferKey.publishLyric, value)
+    }
 
     /** 退出未上架书时是否弹加书架确认 (原 AppConfig.showAddToShelfAlert), 默认 true。 */
     val showAddToShelfAlert: Boolean

@@ -43,6 +43,13 @@ object MediaPlaybackNotification {
             .setSmallIcon(R.drawable.ic_volume_up)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
+            // when 钉死为 0: NotificationCompat.Builder 构造函数会写 when = currentTimeMillis,
+            // 而 NotificationRecord.calculateRankingTimeMs() 优先取 app 提供的 when
+            // (hasAppProvidedWhen() = when != 0 && when != creationTime), 于是每次重建通知都拿到新
+            // 时间戳 → 通知被重排到通知栏顶部、展开态丢失。归零后落到"继承上一条 ranking time"分支,
+            // 更新时排序稳定 (media3 DefaultMediaNotificationProvider 同样 setWhen(0L)+setShowWhen(false))。
+            .setWhen(0L)
+            .setShowWhen(false)
             .setVibrate(null)
             .setSound(null)
             .setLights(0, 0, 0)

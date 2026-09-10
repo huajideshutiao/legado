@@ -1,8 +1,5 @@
 package io.legado.app.model
 
-import io.legado.app.data.entities.Book
-import io.legado.app.data.entities.BookSource
-import io.legado.app.model.AudioPlayBookBridges.get
 import io.legado.app.model.AudioPlayCommanders.get
 import kotlin.concurrent.Volatile
 
@@ -36,9 +33,18 @@ interface AudioPlayCommander {
     /**
      * Service 未启动时 setTimer 暂存目标分钟数 (对应 app 端 `AudioPlayService.pendingTimerMinute`)。
      *
-     * Service onCreate 时读取此值装入 SleepTimer (见 AudioPlayService.onCreate)。
+     * 会话开启时读取此值装入 SleepTimer (见 `AudioPlaySession.ensureRunning`)。
      */
     var pendingTimerMinute: Int
+
+    /**
+     * 引擎实时播放位置 (毫秒); 无播放会话时为最后已知位置 ([AudioPlayShared.durChapterPos])。
+     *
+     * 歌词界面按帧读它求当前高亮行 —— 四端播放引擎与界面同进程, 绘制那一帧直读引擎比推送
+     * 派生索引更准, 也不存在陈旧索引可跳。seek 后引擎确认前返回目标位置
+     * (见 `AudioPlayManager.positionMs`)。
+     */
+    val positionMs: Int
 
     /** 派发 play 命令 (requireRunning=false, Service 未运行时启动) */
     fun play()
@@ -103,72 +109,6 @@ object AudioPlayCommanders {
      * 注册在后台 provider 链末尾, 未注册即"无音频会话"。命令派发仍用 [get] 保持严格语义。
      */
     fun getOrNull(): AudioPlayCommander? = impl
-
-    /** 仅测试场景: 清空注册 (生产代码勿调用)。 */
-    fun reset() {
-        impl = null
-    }
-}
-
-/**
- * AudioPlay 相关 Book 平台操作桥接 (shared commonMain)。
- *
- * # 背景
- * app 端 `AudioPlay.saveRead()` 调用 `book.saveRead()` / `AudioPlayService.onDestroy`
- * 调用 `AudioPlay.book?.save()` / `AudioPlay.resetData()` 调用 `book.getBookSource()`。
- * 这三个扩展位于 app 端 `BookExtensions.kt`, 依赖 `appDb` + `runBlocking` +
- * `System.currentTimeMillis()` (saveRead) / `appDb.bookSourceDao` (getBookSource)。
- *
- * 虽然底层依赖 (AppDbProviders / systemCurrentTimeMillis) 已下沉, 但 [Book.saveRead] /
- * [Book.save] / [Book.getBookSource] 扩展本身仍在 app 端, 下沉它们超出 AudioPlay 任务范围。
- * 故用本接口桥接, app 端实现委托现有扩展, 行为完全一致。
- *
- * 模式参考 [io.legado.app.help.book.BookHelpAccessor]。
- */
-interface AudioPlayBookBridge {
-
-    /**
-     * 保存书籍阅读进度 (对应 app 端 `Book.saveRead()` 扩展)。
-     *
-     * PATCH 进度字段 (durChapterIndex/durChapterPos/durChapterTime/durChapterTitle) 到 bookDao,
-     * 并 flush ReadTimeRecorder。
-     */
-    fun saveRead(book: Book)
-
-    /**
-     * 保存书籍整行 (对应 app 端 `Book.save()` 扩展)。
-     *
-     * removeType(notShelf) + insert/update bookDao。AudioPlayService.onDestroy 用。
-     */
-    fun save(book: Book)
-
-    /**
-     * 获取书籍对应 BookSource (对应 app 端 `Book.getBookSource()` 扩展)。
-     *
-     * suspend: 调用方 [AudioPlayShared.resetData] 可能从主线程协程进入,
-     * 实现内不得用 runBlocking 阻塞等 DB。
-     */
-    suspend fun getBookSource(book: Book): BookSource?
-}
-
-/**
- * [AudioPlayBookBridge] provider 容器。
- *
- * 宿主启动早期注册一次, shared 内通过 [get] 获取。
- */
-object AudioPlayBookBridges {
-
-    @Volatile
-    private var impl: AudioPlayBookBridge? = null
-
-    /** 宿主启动早期注册一次 (任何 AudioPlay Book 操作之前)。 */
-    fun register(impl: AudioPlayBookBridge) {
-        this.impl = impl
-    }
-
-    /** 获取已注册实现, 未注册抛出 IllegalStateException。 */
-    fun get(): AudioPlayBookBridge =
-        impl ?: error("AudioPlayBookBridges not registered; call registerAndroidAudioPlayBookBridge() first")
 
     /** 仅测试场景: 清空注册 (生产代码勿调用)。 */
     fun reset() {

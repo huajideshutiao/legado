@@ -10,6 +10,7 @@ import io.legado.app.help.media.SystemMediaControl.togglePlayPause
 import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.AudioPlayCommanders
 import io.legado.app.model.AudioPlayShared
+import io.legado.app.model.audio.LyricSink
 import kotlin.concurrent.Volatile
 
 /** 系统播控卡片要展示的一帧快照。 */
@@ -98,6 +99,17 @@ object SystemMediaControl {
     @Volatile
     private var lastAudioRate: Float = 1f
 
+    /** 对外发布中的歌词行 (null = 标题用章节名); 由 [NowPlayingLyricSink] 经 [setPublishedLyric] 写入。 */
+    @Volatile
+    private var publishedLyric: String? = null
+
+    internal fun setPublishedLyric(line: String?) {
+        if (publishedLyric == line) return
+        publishedLyric = line
+        // 只在有声书占着卡片时刷, 否则会把朗读的卡片抢过来
+        if (owner == Owner.Audio) syncAudio(playbackRate = lastAudioRate)
+    }
+
     /** 宿主启动早期注册平台卡片实现。 */
     fun registerSink(sink: NowPlayingSink) {
         this.sink = sink
@@ -126,10 +138,14 @@ object SystemMediaControl {
         val status = AudioPlayShared.status
         val isPlaying = status == Status.PLAY
         val book = AudioPlayShared.book
+        val lyric = publishedLyric
+        val chapterTitle = AudioPlayShared.durChapter?.title ?: ""
         sink?.sync(
             NowPlayingInfo(
-                title = AudioPlayShared.durChapter?.title ?: "",
-                bookName = book?.name ?: "",
+                // 开了车载歌词时标题就是当前歌词行 (车机/锁屏只有这一个文本通道),
+                // 章节名顺次提到书名位
+                title = lyric ?: chapterTitle,
+                bookName = if (lyric != null) chapterTitle else book?.name ?: "",
                 author = book?.author ?: "",
                 coverUrl = coverUrl ?: AudioPlayShared.durCoverUrl ?: book?.getDisplayCover(),
                 isPlaying = isPlaying,
@@ -296,4 +312,18 @@ object SystemMediaControl {
 
     private fun readPref(key: String): Boolean =
         PreferenceProviders.get().getBoolean(key, false)
+}
+
+/**
+ * 车载/锁屏歌词 sink (iOS / 鸿蒙 / 桌面共用这一份)。
+ *
+ * 三端的 now-playing 通道 (MPNowPlayingInfoCenter / 鸿蒙 AVSession AVMetadata / Windows SMTC)
+ * 都只有标题这一个文本位, 车机与蓝牙 AVRCP 读到的也是它 —— 所以"车载歌词"就是让歌词占用标题。
+ * Android 不走这条: 它自己持 MediaSessionCompat, 见 app 端 `MediaMetadataLyricSink`。
+ */
+object NowPlayingLyricSink : LyricSink {
+
+    override fun publish(line: String) = SystemMediaControl.setPublishedLyric(line)
+
+    override fun clear() = SystemMediaControl.setPublishedLyric(null)
 }

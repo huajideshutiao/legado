@@ -60,10 +60,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.ui.compose.component.AppDropdownMenu
-import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
@@ -75,7 +73,6 @@ import io.legado.app.utils.format
 import io.legado.app.utils.toDurationTime
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.audio_play
-import legado.shared.generated.resources.audio_play_wake_lock
 import legado.shared.generated.resources.back
 import legado.shared.generated.resources.change_origin
 import legado.shared.generated.resources.chapter_list
@@ -305,8 +302,7 @@ fun AudioPlayScreenContent(
                         lrcSlot(
                             Modifier
                                 .weight(1f)
-                                .fillMaxHeight()
-                                .padding(horizontal = 8.dp),
+                                .fillMaxHeight(),
                         )
                     }
                 } else {
@@ -336,12 +332,13 @@ fun AudioPlayScreenContent(
                                 )
                             }
                         }
-                        // 左右 16dp = 原版 iv_lrc paddingStart/End (arco_spacing_lg), 还原歌词左右留白
+                        // 上下 16dp = 原版 iv_lrc layout_marginTop/Bottom (arco_spacing_lg);
+                        // 左右留白在 LrcViewShared 内部 (当前行放大要留溢出余量, 见 H_PADDING)
                         lrcSlot(
                             Modifier
                                 .fillMaxWidth()
                                 .weight(1f)
-                                .padding(16.dp),
+                                .padding(vertical = 16.dp),
                         )
                     }
                 }
@@ -516,22 +513,6 @@ private fun AudioPlayOverflowMenu(actions: AudioPlayOverflowActions) {
             AudioOverflowItem("edit_book_source") {
                 dismiss()
                 actions.onEditBookSource()
-            }
-            // 唤醒锁 (Android 专属, onToggleWakeLock != null 时显示, 对照 app 端 audio_play_wake_lock)
-            if (actions.onToggleWakeLock != null) {
-                DropdownMenuItem(onClick = {
-                    dismiss()
-                    actions.onToggleWakeLock.invoke()
-                }) {
-                    Text(
-                        stringResource(Res.string.audio_play_wake_lock),
-                        color = AppTheme.colors.primaryText,
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(end = 12.dp),
-                    )
-                    AppMenuCheckbox(checked = AppConfigProviders.get().audioPlayUseWakeLock)
-                }
             }
             AudioOverflowItem("bookmark_add") {
                 dismiss()

@@ -9,6 +9,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.rememberScrollableState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -18,10 +19,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toArgb
@@ -31,8 +36,8 @@ import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -42,7 +47,13 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.help.image.BookImageLoaders
+import io.legado.app.model.AudioPlayCommanders
+import io.legado.app.model.AudioPlayShared
+import io.legado.app.model.Lrc
+import io.legado.app.model.LrcLine
+import io.legado.app.model.LrcWord
 import io.legado.app.utils.ColorUtils
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -59,11 +70,12 @@ import kotlin.math.roundToInt
  *
  * Android 端原 LrcView.kt (AndroidView 包装) 已由本控件取代, 各端仅一份实现。
  *
- * # 对照表 (原版 → 本实现, 参数/时序/插值全部一致)
+ * # 对照表 (原版 → 本实现, 除注明"刻意不复刻"处外参数/时序/插值一致)
  * | 原版 | 本实现 |
  * |------|--------|
  * | paint.textSize = 20.dpToPx() | fontSize = 20.sp (默认 fontScale=1, sp==dp) |
  * | lineMargin = 20.dpToPx() | lineMarginPx = 20.dp.toPx() |
+ * | availableWidth = 宽 - paddingStart/End (16dp), 裁剪在 View 全宽 | 同 ([H_PADDING] 在控件内, clipToBounds 在全宽) |
  * | 行高 = StaticLayout.height + lineMargin | 行高 = layout.size.height + lineMarginPx |
  * | offset 累加 (prepareLayouts) | 同 |
  * | ALIGN_CENTER + lineSpacing(0,1) + includePad(false) | TextAlign.Center |
@@ -73,7 +85,7 @@ import kotlin.math.roundToInt
  * | 首次 (lastIndex==-1) 无动画直接定位 | 同 |
  * | 切行滚动 startScroll(600ms, DecelerateInterpolator) | tween(600, [DECELERATE]) |
  * | DecelerateInterpolator: 1-(1-t)^2 | [DECELERATE] = Easing { 1f-(1f-it)*(1f-it) } |
- * | colorProgress 每帧 +0.1 (≈10帧) | tween(167) (60fps 下 10 帧) |
+ * | colorProgress 每帧 +0.1 (帧数驱动, 时长随刷新率变) | tween(100) 固定时长, 刻意不复刻 |
  * | 颜色: current=ArgbEval(sec→pri), last=ArgbEval(pri→sec) | lerp 同参同序 |
  * | 缩放: current 1+0.05p, last 1.05-0.05p, 锚点(内容中心X,行中心Y) | 同 |
  * | 透明度: 上下 0.35h 边界线性 255→40, 与颜色 alpha 相乘 | 同 (calculateAlpha) |
@@ -91,182 +103,136 @@ import kotlin.math.roundToInt
  */
 @Composable
 fun LrcViewShared(
-    lrcData: List<Pair<Int, String>>?,
+    lrcData: Lrc?,
     lrcProgress: Int,
     primaryColor: Color,
     secondaryColor: Color,
     onLineClick: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    resetKey: Any? = null,
 ) {
     val textMeasurer = rememberTextMeasurer()
     val scope = rememberCoroutineScope()
-    val viewConfiguration = LocalViewConfiguration.current
-    val touchSlopPx = viewConfiguration.touchSlop
-
-    // 行模型 (复刻原版 LrcLine: time/layout/height/offset)
-    class LrcLine(
-        val time: Int,
-        val layout: TextLayoutResult,
-        val height: Int,
-        val offset: Float,
-    )
+    val lineMarginPx = with(LocalDensity.current) { LINE_MARGIN.toPx() }
+    val hPaddingPx = with(LocalDensity.current) { H_PADDING.toPx() }
 
     var viewportW by remember { mutableIntStateOf(0) }
-    var lines by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
-    var lastData by remember { mutableStateOf<List<Pair<Int, String>>?>(null) }
+    val runtimeKey = resetKey ?: (lrcData to AudioPlayShared.durChapterIndex)
+    // 每份歌词一套运行态: 数据变化即整体复位 (等价原版 setLrcData 的重置)
+    val lrc = remember(runtimeKey) { LrcRuntime() }
 
-    // 原版字段
-    var currentIndex by remember { mutableIntStateOf(-1) }
-    var lastIndex by remember { mutableIntStateOf(-1) }
-    var colorProgress by remember { mutableFloatStateOf(1f) }
-    var scrollY by remember { mutableFloatStateOf(0f) }
-    var autoScroll by remember { mutableStateOf(true) }
-    // 手动滚动计时 (每次手动滚动 +1, 重启 5s 自动回中; 复刻 removeCallbacks+postDelayed)
-    var manualTick by remember { mutableIntStateOf(0) }
-    // 拖动中标记: 原版只在 ACTION_UP postDelayed(autoResetRunnable), onScroll 仅 removeCallbacks,
-    // 故长拖 (>5s) 期间不会中途自动回中
-    var dragging by remember { mutableStateOf(false) }
-
-    var scrollJob by remember { mutableStateOf<Job?>(null) }
-    var colorJob by remember { mutableStateOf<Job?>(null) }
-
-    val fontSize = 20.sp
-    val lineMarginPx = with(LocalDensity.current) { 20.dp.toPx() }
-
-    // 测量 (复刻 prepareLayouts; 数据/宽度/测量环境变化时重建。
-    // textMeasurer 由 density/fontScale/layoutDirection/字体解析器 remember 而来, 拿它当 key
-    // 就覆盖了 lineMarginPx 与 sp→px 的换算依赖)
-    LaunchedEffect(lrcData, viewportW, textMeasurer) {
-        val data = lrcData ?: emptyList()
-        if (viewportW <= 0 || data.isEmpty()) {
-            lines = emptyList()
-            return@LaunchedEffect
-        }
-        val dataChanged = lastData !== lrcData
-        lastData = lrcData
-        val oldCurrent = currentIndex
-        val oldAutoScroll = autoScroll
-        val style = TextStyle(fontSize = fontSize, textAlign = TextAlign.Center)
-        var offset = 0f
-        val newLines = data.map { (time, text) ->
-            val layout = textMeasurer.measure(
-                text,
-                style,
-                constraints = Constraints(maxWidth = viewportW),
-            )
-            val h = layout.size.height + lineMarginPx.roundToInt()
-            LrcLine(time, layout, h, offset).also { offset += h }
-        }
-        lines = newLines
-        if (dataChanged) {
-            // setLrcData: 重置全部状态, 滚到第一行中心
-            currentIndex = -1
-            lastIndex = -1
-            colorProgress = 1f
-            autoScroll = true
-            scrollJob?.cancel()
-            scrollY = newLines.firstOrNull()?.let { it.height / 2f } ?: 0f
-        } else {
-            // onSizeChanged: 重排后 autoScroll 时回中当前行 (保留 currentIndex/lastIndex)
-            if (oldAutoScroll && oldCurrent in newLines.indices) {
-                scrollJob?.cancel()
-                scrollY = newLines[oldCurrent].offset + newLines[oldCurrent].height / 2f
-            }
+    // 运行态换新或控件退出时，显式取消旧对象的动画 Job，避免泄漏
+    DisposableEffect(lrc) {
+        onDispose {
+            lrc.cancelJobs()
         }
     }
 
-    // 切行 (复刻 updateProgress)
-    LaunchedEffect(lrcProgress, lines) {
-        val index = lrcProgress
-        if (index < 0 || index >= lines.size || index == currentIndex) return@LaunchedEffect
-        lastIndex = currentIndex
-        currentIndex = index
-        colorProgress = 0f
-        autoScroll = true
-        // 切行取消 pending 自动回中 (复刻 removeCallbacks(autoResetRunnable))
-        manualTick++
-        val target = lines[index].offset + lines[index].height / 2f
-        if (lastIndex == -1) {
-            // 首次: 无动画直接定位
-            scrollJob?.cancel()
-            scrollY = target
-        } else {
-            // 600ms 减速滚动 (复刻 scroller.startScroll(..., 600) + DecelerateInterpolator)
-            scrollJob?.cancel()
-            val from = scrollY
-            scrollJob = scope.launch {
-                animate(from, target, animationSpec = tween(600, easing = DECELERATE)) { v, _ ->
-                    scrollY = v
-                }
-            }
+    // 纯排版测量与滚动运行态分离: remember 内只执行纯计算并返回不可变行列表,
+    // 严禁在 remember 期间产生取消动画或写 Snapshot 状态等副作用。
+    // textMeasurer 随 density/fontScale/layoutDirection/字体解析器重建, 拿它当 key 就覆盖了
+    // lineMarginPx 与 sp→px 的换算依赖。
+    // lrcProgress 刻意不当 key: 只需要重排那一刻的值用于定位, 加进 key 会让每次切行都重测全部行
+    val lines = remember(lrcData, viewportW, textMeasurer) {
+        // 左右留白就是当前行 1.05 倍缩放的溢出余量 (复刻原版 availableWidth = 宽 - 左右 padding,
+        // 裁剪留在全宽); 16dp 兜不住 5% 的超宽面板按视口比例抬升
+        val inset = max(hPaddingPx, viewportW * SCALE_INSET_RATIO)
+        measureLrcLines(
+            lrcData, (viewportW - inset * 2).roundToInt(), textMeasurer, lineMarginPx
+        )
+    }
+
+    // 排版结果到达后同步给运行态; 当视口重排且处于 autoScroll 时，校正回当前行中心
+    LaunchedEffect(lines) {
+        lrc.lines = lines
+        if (lrc.autoScroll && lines.isNotEmpty() && lrc.currentIndex in lines.indices) {
+            lrc.scrollJob?.cancel()
+            lrc.scrollY = lrc.centerOf(lrc.currentIndex)
         }
-        // 颜色渐变: 原版 computeScroll 每帧 +0.1 ≈ 10 帧 (60fps ≈ 167ms)
-        colorJob?.cancel()
-        colorJob = scope.launch {
-            animate(0f, 1f, animationSpec = tween(167)) { v, _ -> colorProgress = v }
+    }
+
+    // 切行 (复刻 updateProgress)。lines 也当 key: 首次测出行高那帧要把 lrcProgress 重放一遍
+    LaunchedEffect(lrcProgress, lines) {
+        lrc.lines = lines
+        if (lrcProgress !in lines.indices || lrcProgress == lrc.currentIndex) {
+            return@LaunchedEffect
+        }
+        lrc.lastIndex = lrc.currentIndex
+        lrc.currentIndex = lrcProgress
+        lrc.colorProgress = 0f
+        lrc.autoScroll = true
+        // 切行取消 pending 自动回中 (复刻 removeCallbacks(autoResetRunnable))
+        lrc.manualTick++
+        val target = lrc.centerOf(lrcProgress)
+        if (lrc.lastIndex == -1) {
+            // 首次: 无动画直接定位
+            lrc.scrollJob?.cancel()
+            lrc.scrollY = target
+        } else {
+            lrc.scrollTo(target, scope)
+        }
+        // 切行的颜色/缩放: 固定 100ms (原版是每帧 +0.1 的帧数驱动, 时长随刷新率变, 刻意不复刻)
+        lrc.colorJob?.cancel()
+        lrc.colorJob = scope.launch {
+            animate(0f, 1f, animationSpec = tween(100)) { v, _ -> lrc.colorProgress = v }
+        }
+    }
+
+    // 逐字填充的帧驱动: 只有当前行带字标签时才逐帧刷新时钟, 普通歌词一帧都不多画。
+    // 与 rememberLrcIndex 同一个原则 —— 时钟真源仍是播放引擎, 填充位置在绘制那一帧才求值,
+    // 所以这里只把采样发出去触发重绘, 换行那一帧读到上一帧的时钟也只是"还没开始填", 不会闪。
+    // currentIndex 走 snapshotFlow 而不是当 effect key: 它刻意不进组合, 当 key 会让每次切行都重组
+    LaunchedEffect(lines) {
+        snapshotFlow { lrc.currentIndex }.collectLatest { index ->
+            if (lines.getOrNull(index)?.words.isNullOrEmpty()) return@collectLatest
+            while (true) {
+                lrc.fillClockMs = positionNowMs()
+                withFrameNanos { }
+            }
         }
     }
 
     // 手动滚动 5 秒后自动回中 (复刻 autoResetRunnable)。
     // manualTick 走 snapshotFlow 而不是当 effect key: 滚轮每个 tick 都 ++, 当 key 会让整个控件
     // 跟着重组; collectLatest 天然实现"新的手动滚动重启计时" (复刻 removeCallbacks+postDelayed)
-    LaunchedEffect(Unit) {
-        snapshotFlow { manualTick }.collectLatest { tick ->
-            if (autoScroll || tick == 0 || dragging) return@collectLatest
+    LaunchedEffect(lrc) {
+        snapshotFlow { lrc.manualTick }.collectLatest { tick ->
+            if (lrc.autoScroll || tick == 0 || lrc.dragging) return@collectLatest
             delay(5000)
-            autoScroll = true
-            val idx = currentIndex
-            if (idx in lines.indices) {
-                val target = lines[idx].offset + lines[idx].height / 2f
-                scrollJob?.cancel()
-                scrollJob = scope.launch {
-                    animate(
-                        scrollY,
-                        target,
-                        animationSpec = tween(600, easing = DECELERATE),
-                    ) { v, _ -> scrollY = v }
-                }
+            lrc.autoScroll = true
+            if (lrc.currentIndex in lrc.lines.indices) {
+                lrc.scrollTo(lrc.centerOf(lrc.currentIndex), scope)
             }
         }
-    }
-
-    // pointerInput 在组合外执行, 直接读状态变量 (捕获的是 MutableState 对象, 取值恒最新)。
-    // 不用 rememberUpdatedState 包一层: 那会让组合作用域订阅 scrollY, 滚动每帧都重组整个控件
-    fun maxScrollY(): Float =
-        lines.lastOrNull()?.let { it.offset + it.height / 2f } ?: 0f
-
-    fun beginManualScroll() {
-        autoScroll = false
-        manualTick++
-        scrollJob?.cancel()
-        colorJob?.cancel()
-        colorProgress = 1f
     }
 
     // 惯性滑动状态: flingBehavior 的驱动目标 (ScrollableState 薄封装 scrollY)。
     // consumeScrollDelta 必须返回实际消费量 (new - old); 越界时未消费部分由 FlingBehavior 自然停止
     // (复刻 OverScroller 到达 min/max 即停)。
     val flingScrollState = rememberScrollableState { delta ->
-        val old = scrollY
-        val max = maxScrollY()
-        val new = (old + delta).coerceIn(0f, max)
-        scrollY = new
-        new - old
+        val old = lrc.scrollY
+        lrc.scrollBy(delta)
+        lrc.scrollY - old
     }
     // 平台默认惯性曲线 (spline 衰减; Android 与 OverScroller 同源物理, 密度经 LocalDensity 解析)
     val flingBehavior = ScrollableDefaults.flingBehavior()
 
     Canvas(
         modifier
+            // 裁到自身边界: 当前行之上的歌词行会画到负 Y (原版 LrcView 是 View, 天然裁剪),
+            // 不裁就会画到控件上方压住圆形封面。左右留白在控件内 (见 [H_PADDING]), 所以当前行
+            // 的缩放溢出画在留白里, 不会被这里裁掉
+            .clipToBounds()
             // 只有测量要重排才需要宽度进组合; 高度/命中判定直接用手势与绘制作用域自带的 size
             .onSizeChanged { viewportW = it.width }
-            // 点击/拖动/fling (复刻 GestureDetector: onScroll/onFling/onSingleTapUp)
-            .pointerInput(Unit) {
+            // 点击/拖动/fling (复刻 GestureDetector: onScroll/onFling/onSingleTapUp)。
+            // key 用 lrc: 换歌后运行态整体换新, 手势协程必须重新绑定
+            .pointerInput(lrc) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     // 复刻原版 onDown 的 forceFinished: 触摸立即停掉进行中的 fling (spline 惯性时长 1~3s,
                     // 不中断会残留滑动)
-                    scrollJob?.cancel()
+                    lrc.scrollJob?.cancel()
                     val velocityTracker = VelocityTracker()
                     // 速度采样必须走 addPointerInputChange (DOWN + 全部 MOVE): 它会把
                     // MotionEvent 批处理的 historical 采样点一并计入
@@ -281,21 +247,20 @@ fun LrcViewShared(
                             // 跨平台判断位置变化 (positionChanged 是 Android 专属扩展)
                             if (change.position != change.previousPosition) {
                                 val totalDy = change.position.y - down.position.y
-                                if (!dragged && abs(totalDy) > touchSlopPx) {
+                                if (!dragged && abs(totalDy) > viewConfiguration.touchSlop) {
                                     // 越过 touch slop 进入拖动 (原版 onScroll)
                                     dragged = true
-                                    dragging = true
-                                    beginManualScroll()
+                                    lrc.dragging = true
+                                    lrc.beginManualScroll()
                                     // 原版首个 onScroll 的 distanceY 从 DOWN 点算起且不扣 slop
                                     // (GestureDetector.java:742 mLastFocus* 仍停在 DOWN),
                                     // 只吃增量会留一个 slop 宽的起手死区
-                                    scrollY = (scrollY - totalDy).coerceIn(0f, maxScrollY())
+                                    lrc.scrollBy(-totalDy)
                                     change.consume()
                                 } else if (dragged) {
                                     // 原版 GestureDetector.distanceY = mLastFocusY - focusY (下滑为负,
                                     // 内容跟手); 此处 dy 为手指位移 (下滑为正), 取负对齐
-                                    val dy = change.position.y - change.previousPosition.y
-                                    scrollY = (scrollY - dy).coerceIn(0f, maxScrollY())
+                                    lrc.scrollBy(change.previousPosition.y - change.position.y)
                                     change.consume()
                                 }
                             }
@@ -312,8 +277,8 @@ fun LrcViewShared(
                                         val velocity =
                                             velocityTracker.calculateVelocity(Velocity(maxV, maxV)).y
                                         if (abs(velocity) > viewConfiguration.minimumFlingVelocity) {
-                                            scrollJob?.cancel()
-                                            scrollJob = scope.launch {
+                                            lrc.scrollJob?.cancel()
+                                            lrc.scrollJob = scope.launch {
                                                 flingScrollState.scroll {
                                                     // with() 显式 dispatch receiver (同 MangaRenderState.flingAfterMouseDrag
                                                     // 已验证模式: 成员扩展 performFling 需要外层 ScrollScope + FlingBehavior receiver)
@@ -323,24 +288,22 @@ fun LrcViewShared(
                                         }
                                     } else {
                                         // 点击行跳转 (复刻 onSingleTapUp 二分定位)
-                                        if (lines.isNotEmpty()) {
-                                            val touchY =
-                                                scrollY + change.position.y - size.height / 2f
-                                            val idx = lines.binarySearch { line ->
-                                                if (touchY < line.offset) 1
-                                                else if (touchY >= line.offset + line.height) -1
-                                                else 0
-                                            }
-                                            if (idx >= 0) {
-                                                val line = lines[idx]
-                                                // 点击宽度只限文本实际宽度 (用户拍板 2026-08):
-                                                // 水平 = 文本宽, 文本两侧空白不触发跳转;
-                                                // 垂直保持整行命中 (行高收窄会难受, 用户拍板)
-                                                val textWidth = line.layout.size.width
-                                                val dx = change.position.x - size.width / 2f
-                                                if (dx in -textWidth / 2f..textWidth / 2f) {
-                                                    onLineClick(line.time)
-                                                }
+                                        val lines = lrc.lines
+                                        val touchY = lrc.scrollY + change.position.y - size.height / 2f
+                                        val idx = lines.binarySearch { line ->
+                                            if (touchY < line.offset) 1
+                                            else if (touchY >= line.offset + line.height) -1
+                                            else 0
+                                        }
+                                        if (idx >= 0) {
+                                            val line = lines[idx]
+                                            // 点击宽度只限文本实际宽度 (用户拍板 2026-08):
+                                            // 水平 = 文本宽, 文本两侧空白不触发跳转;
+                                            // 垂直保持整行命中 (行高收窄会难受, 用户拍板)
+                                            val textWidth = line.layout.size.width
+                                            val dx = change.position.x - size.width / 2f
+                                            if (dx in -textWidth / 2f..textWidth / 2f) {
+                                                onLineClick(line.time)
                                             }
                                         }
                                     }
@@ -356,24 +319,23 @@ fun LrcViewShared(
                     } finally {
                         // 复刻原版 ACTION_UP/ACTION_CANCEL: 手势收尾重启 5s 自动回中计时。
                         // 放 finally 里, 手势被取消也不会把 dragging 卡在 true
-                        dragging = false
-                        manualTick++
+                        lrc.dragging = false
+                        lrc.manualTick++
                     }
                 }
             }
             // 滚轮 (复刻 onGenericMotionEvent: 滚动量 = AXIS_VSCROLL * lineMargin * 3;
             // Scroll 事件 delta>0 = 向下滚(看后面) = scrollY 增大, 与原版 VSCROLL>0=上滚(看前面)=减小 语义等价)
-            .pointerInput(Unit) {
+            .pointerInput(lrc) {
                 awaitPointerEventScope {
                     while (true) {
                         val event = awaitPointerEvent()
                         if (event.type != PointerEventType.Scroll) continue
-                        val delta = event.changes.firstOrNull()?.scrollDelta?.y ?: 0f
-                        if (delta != 0f && lines.isNotEmpty()) {
-                            beginManualScroll()
-                            scrollY = (scrollY + delta * lineMarginPx * 3)
-                                .coerceIn(0f, maxScrollY())
-                            event.changes.firstOrNull()?.consume()
+                        val change = event.changes.firstOrNull() ?: continue
+                        if (change.scrollDelta.y != 0f && lrc.lines.isNotEmpty()) {
+                            lrc.beginManualScroll()
+                            lrc.scrollBy(change.scrollDelta.y * lineMarginPx * 3)
+                            change.consume()
                         }
                     }
                 }
@@ -382,9 +344,14 @@ fun LrcViewShared(
         if (lines.isEmpty()) return@Canvas
         val centerY = size.height / 2f
         val contentCenterX = size.width / 2f
-        val viewTop = scrollY - centerY
+        val scrollY = lrc.scrollY
+        val currentIndex = lrc.currentIndex
+        val lastIndex = lrc.lastIndex
+        val colorProgress = lrc.colorProgress
+        val fillClockMs = lrc.fillClockMs
 
         // 二分定位首个可见行 (复刻原版 firstVisible)
+        val viewTop = scrollY - centerY
         val firstVisible = lines.binarySearch { line ->
             if (line.offset + line.height < viewTop) -1 else 1
         }.inv()
@@ -411,20 +378,259 @@ fun LrcViewShared(
             }
             val lineCenterY = lineY + line.height / 2f
             val layout = line.layout
-            // 透明度 (复刻 calculateAlpha: 上下 0.35h 边界线性 1→40/255)
+            // 原版: withTranslation(contentCenterX - layout.width / 2f, layoutY)
+            // —— Compose 文本块宽度自适应 (短文本 < 视口宽), 需按块宽居中
+            val topLeft = Offset(
+                contentCenterX - layout.size.width / 2f,
+                lineY + (line.height - layout.size.height) / 2f,
+            )
+            // 透明度 (复刻 calculateAlpha: 上下 0.35h 边界线性 1→40/255), 交给 drawText 内部 modulate
             val fade = calculateAlpha(lineCenterY, size.height)
 
-            scale(scaleFactor, scaleFactor, pivot = Offset(contentCenterX, lineCenterY)) {
-                val textY = lineY + (line.height - layout.size.height) / 2f
-                drawText(
-                    textLayoutResult = layout,
-                    // 原版: withTranslation(contentCenterX - layout.width / 2f, layoutY)
-                    // —— Compose 文本块宽度自适应 (短文本 < 视口宽), 需按块宽居中
-                    color = baseColor.copy(alpha = baseColor.alpha * fade),
-                    topLeft = Offset(contentCenterX - layout.size.width / 2f, textY),
-                )
+            // 逐字行: 未唱的部分留在 secondaryColor, 已唱的前缀盖 primaryColor;
+            // 整行 secondary→primary 的渐变只留给没有字标签的歌词, 否则会把填充对比冲掉
+            val karaoke = isCurrent && line.words.isNotEmpty()
+            val bodyColor = if (karaoke) secondaryColor else baseColor
+            val sungChars = if (karaoke) line.charProgressAt(fillClockMs + Lrc.OFFSET_MS) else 0f
+            // 只有当前/上一行会缩放, 其余行跳过 scale{} 的 save/concat/restore
+            if (scaleFactor == 1f) {
+                drawLrcLine(line, topLeft, bodyColor, fade, sungChars, primaryColor)
+            } else {
+                scale(scaleFactor, scaleFactor, pivot = Offset(contentCenterX, lineCenterY)) {
+                    drawLrcLine(line, topLeft, bodyColor, fade, sungChars, primaryColor)
+                }
             }
         }
+    }
+}
+
+/**
+ * 当前高亮行 (帧驱动派生, 喂给 [LrcViewShared] 的 lrcProgress)。
+ *
+ * 在要绘制的那一帧直接问播放引擎位置再二分定位: 引擎仍是唯一时钟真源, 只是把求值推迟到绘制时。
+ * 于是既没有跨层推送的陈旧索引 (进界面 / 切歌不会先跳到旧行再滚过来), 也不存在调度迟到 ——
+ * 比一帧更精细的高亮时机在屏幕上本就不可观测。
+ *
+ * 只有行变化时才写 state, 所以每帧只做"一次位置读 + 二分", 不产生重组或重绘; 界面不可见时
+ * Compose 帧时钟暂停, 循环自然停摆, 不需要额外的订阅门控。暂停时也照常求值 —— 暂停中拖进度条
+ * 要能带动高亮。
+ *
+ * 对外发布 (车载歌词) 是另一个消费者, 走 [io.legado.app.model.audio.LyricPublisher]:
+ * 它需要息屏后台也推进, 但共用 [Lrc.indexAt] 同一份判定。
+ */
+@Composable
+fun rememberLrcIndex(lrcData: Lrc?, resetKey: Any? = null): Int {
+    // 初值就地算出来 (不等 LaunchedEffect 的下一帧): 换歌那一帧 LrcViewShared 就能按正确的行定位,
+    // 否则会先居中第一行, 下一帧再 snap 过去 —— 肉眼是闪一下
+    val key = resetKey ?: (lrcData to AudioPlayShared.durChapterIndex)
+    var index by remember(key) { mutableIntStateOf(lrcData.indexNow()) }
+    LaunchedEffect(key) {
+        if (lrcData == null || !lrcData.hasTimeline) return@LaunchedEffect
+        while (true) {
+            index = lrcData.indexNow()
+            withFrameNanos { }
+        }
+    }
+    return index
+}
+
+/** 按引擎当前位置定位高亮行; 无歌词/无时间轴时 -1。 */
+private fun Lrc?.indexNow(): Int {
+    if (this == null || !hasTimeline) return -1
+    return indexAt(positionNowMs() + Lrc.OFFSET_MS)
+}
+
+/** 引擎当前位置; 引擎未就绪时用最近保存的章节进度。 */
+private fun positionNowMs(): Int =
+    AudioPlayCommanders.getOrNull()?.positionMs ?: AudioPlayShared.durChapterPos
+
+private val FONT_SIZE = 20.sp   // 原版 paint.textSize = 20.dpToPx() (fontScale=1 时 sp==dp)
+private val LINE_MARGIN = 20.dp // 原版 lineMargin = 20.dp.toPx()
+private val H_PADDING = 16.dp   // 原版 iv_lrc paddingStart/End (arco_spacing_lg)
+
+/** 当前行放大到 1.05 倍, 每侧溢出 2.5% 行宽; [H_PADDING] 兜不住的宽面板按这个比例留余量。 */
+private const val SCALE_INSET_RATIO = 0.025f
+
+/** 测量后的行 (复刻原版 LrcView.LrcLine); [words] 是逐字采样, 空表示这行整行高亮。 */
+private class MeasuredLrcLine(
+    val time: Int,
+    val layout: TextLayoutResult,
+    val height: Int,
+    val offset: Float,
+    val words: List<LrcWord>,
+)
+
+/**
+ * 逐字采样 + 一个收尾采样: Enhanced LRC 只标每个字的起点, 末字没有终点, 用下一行的时间戳补上。
+ * 终点是首语种正文的末尾 —— 译文是 `\n` 之后追加的, 不参与填充。
+ * 末行无下一行时间戳时，根据本行字符节奏预估终点时间，确保播放完毕时末尾字符能被点亮。
+ */
+private fun LrcLine.fillSamples(nextTimeMs: Int?): List<LrcWord> {
+    if (words.isEmpty()) return emptyList()
+    val end = text.indexOf('\n').let { if (it < 0) text.length else it }
+    val lastWord = words.last()
+    if (lastWord.charIndex >= end) return words
+    val closingTimeMs = if (nextTimeMs != null) {
+        nextTimeMs.coerceAtLeast(lastWord.timeMs)
+    } else {
+        val remainingChars = end - lastWord.charIndex
+        val charSpan = if (words.size > 1) {
+            val charDistance = (lastWord.charIndex - words.first().charIndex).coerceAtLeast(1)
+            ((lastWord.timeMs - words.first().timeMs) / charDistance).coerceIn(200, 2000)
+        } else {
+            500
+        }
+        lastWord.timeMs + remainingChars * charSpan
+    }
+    return words + LrcWord(closingTimeMs, end)
+}
+
+/** [positionMs] 处已唱到第几个字符 (含小数); 还没到首个采样时 0。 */
+private fun MeasuredLrcLine.charProgressAt(positionMs: Int): Float {
+    var i = -1
+    while (i + 1 <= words.lastIndex && words[i + 1].timeMs <= positionMs) i++
+    if (i < 0) return 0f
+    val from = words[i]
+    val to = words.getOrNull(i + 1) ?: return from.charIndex.toFloat()
+    val span = to.timeMs - from.timeMs
+    if (span <= 0) return to.charIndex.toFloat()
+    val t = ((positionMs - from.timeMs).toFloat() / span).coerceIn(0f, 1f)
+    return from.charIndex + (to.charIndex - from.charIndex) * t
+}
+
+/**
+ * 画一行歌词: [bodyColor] 打底, 再把前 [sungChars] 个字符 (含小数) 用 [sungColor] 盖一层。
+ * [sungChars] 不为正时只打底, 与逐字歌词落地前逐像素一致。
+ */
+private fun DrawScope.drawLrcLine(
+    line: MeasuredLrcLine,
+    topLeft: Offset,
+    bodyColor: Color,
+    fade: Float,
+    sungChars: Float,
+    sungColor: Color,
+) {
+    val layout = line.layout
+    drawText(layout, bodyColor, topLeft, alpha = fade)
+    if (sungChars <= 0f) return
+    val boundary = sungChars.toInt()
+    if (boundary >= layout.layoutInput.text.length) {
+        drawText(layout, sungColor, topLeft, alpha = fade)
+        return
+    }
+    val visualLine = layout.getLineForOffset(boundary)
+    val box = layout.getBoundingBox(boundary)
+    // 已唱满的可视行整段盖掉 (长行换行与双语的第二段都靠这个边界分开)
+    if (visualLine > 0) {
+        clipRect(top = topLeft.y, bottom = topLeft.y + layout.getLineTop(visualLine)) {
+            drawText(layout, sungColor, topLeft, alpha = fade)
+        }
+    }
+    clipRect(
+        right = topLeft.x + box.left + box.width * (sungChars - boundary),
+        top = topLeft.y + layout.getLineTop(visualLine),
+        bottom = topLeft.y + layout.getLineBottom(visualLine),
+    ) {
+        drawText(layout, sungColor, topLeft, alpha = fade)
+    }
+}
+
+/**
+ * 歌词运行态 (复刻原版 LrcView 的可变字段): 滚动/高亮/动画。滚动与颜色进度只被绘制、手势与
+ * 协程读写, 组合里不读 —— 所以每帧只失效绘制不重组。每份歌词数据一个实例, 数据变化即整体
+ * 复位 (等价原版 setLrcData 的重置)。
+ */
+private class LrcRuntime {
+    /** 测量结果; 只在组合期由 [layout] 整体替换, 所以绘制直接用它的返回值即可 */
+    var lines: List<MeasuredLrcLine> = emptyList()
+    var currentIndex by mutableIntStateOf(-1)
+    var lastIndex by mutableIntStateOf(-1)
+    var colorProgress by mutableFloatStateOf(1f)
+    /** 逐字填充用的时钟采样; 只有当前行带字标签时才逐帧刷新, 其余时候是陈旧值且无人读 */
+    var fillClockMs by mutableIntStateOf(0)
+    var scrollY by mutableFloatStateOf(0f)
+    // 手动滚动计时信号 (每次 +1 重启 5s 回中; 复刻 removeCallbacks+postDelayed)
+    var manualTick by mutableIntStateOf(0)
+    var autoScroll = true
+    /** 拖动中: 原版只在 ACTION_UP 才 postDelayed(autoResetRunnable), 故长拖期间不会中途回中 */
+    var dragging = false
+    var scrollJob: Job? = null
+    var colorJob: Job? = null
+
+    /** 行中心 (滚动定位基准, 复刻 scrollYOffset = 当前行中心) */
+    fun centerOf(index: Int): Float = lines[index].let { it.offset + it.height / 2f }
+
+    /** 600ms 减速滚动 (复刻 scroller.startScroll(..., 600) + DecelerateInterpolator) */
+    fun scrollTo(target: Float, scope: CoroutineScope) {
+        scrollJob?.cancel()
+        scrollJob = scope.launch {
+            animate(scrollY, target, animationSpec = tween(600, easing = DECELERATE)) { v, _ ->
+                scrollY = v
+            }
+        }
+    }
+
+    /** 手动滚动一段距离 (拖动/滚轮共用; 复刻 scrollYOffset 加减 + 边界钳制到末行中心) */
+    fun scrollBy(delta: Float) {
+        val max = if (lines.isEmpty()) 0f else centerOf(lines.lastIndex)
+        scrollY = (scrollY + delta).coerceIn(0f, max)
+    }
+
+    /** 手动滚动起手 (复刻 onScroll: 停掉自动滚动与颜色动画, 重启回中计时) */
+    fun beginManualScroll() {
+        autoScroll = false
+        manualTick++
+        scrollJob?.cancel()
+        colorJob?.cancel()
+        colorProgress = 1f
+    }
+
+    fun cancelJobs() {
+        scrollJob?.cancel()
+        scrollJob = null
+        colorJob?.cancel()
+        colorJob = null
+    }
+
+    fun reset() {
+        cancelJobs()
+        currentIndex = -1
+        lastIndex = -1
+        colorProgress = 1f
+        fillClockMs = 0
+        scrollY = 0f
+        manualTick = 0
+        autoScroll = true
+        dragging = false
+    }
+}
+
+/**
+ * 纯排版测量: 逐行计算 TextLayoutResult、行高与垂直偏移, 不修改任何运行态。
+ *
+ * @param availableW 扣除留白后的文本可用宽 (复刻原版 availableWidth)。
+ */
+private fun measureLrcLines(
+    data: Lrc?,
+    availableW: Int,
+    measurer: TextMeasurer,
+    marginPx: Float,
+): List<MeasuredLrcLine> {
+    val src = data?.lines
+    if (availableW <= 0 || src.isNullOrEmpty()) return emptyList()
+    val style = TextStyle(fontSize = FONT_SIZE, textAlign = TextAlign.Center)
+    var offset = 0f
+    return src.mapIndexed { i, line ->
+        val layout = measurer.measure(
+            line.text, style, constraints = Constraints(maxWidth = availableW)
+        )
+        MeasuredLrcLine(
+            line.timeMs,
+            layout,
+            layout.size.height + marginPx.roundToInt(),
+            offset,
+            line.fillSamples(src.getOrNull(i + 1)?.timeMs),
+        ).also { offset += it.height }
     }
 }
 
@@ -521,23 +727,23 @@ private fun ImageBitmap.representativeLrcColors(): Pair<Color, Color> =
     adjustLrcColors(representativeColor())
 
 /**
- * 封面取色状态 (全端共享): 封面 URL 变化时经 [BookImageLoaders] 加载封面,
- * 计算 [representativeLrcColors]; 未注册 loader / 加载失败 / 无封面 → null (用原版默认色)。
+ * 封面取色状态 (全端共享): 封面 URL 变化时经 [BookImageLoaders] 加载封面, 计算
+ * [representativeLrcColors]; 未注册 loader / 加载失败 / 无封面 → null (用原版默认色)。
  * 对照原版 AudioPlayActivity.updateCover → updateLrcColor 链路。
+ *
+ * keep-previous: 加载期间保留旧配色, 新色算出才换 (原版 updateLrcColor 无中间态, 不会先闪回默认色);
+ * 但换到无封面/加载失败的书要回落默认色, 不能沿用上一本的配色 (同 SharedAudioCoverSlot 的语义)。
  */
 @Composable
 fun rememberLrcColors(coverUrl: String?, sourceOrigin: String? = null): Pair<Color, Color>? {
-    var colors by remember(coverUrl) { mutableStateOf<Pair<Color, Color>?>(null) }
+    var colors by remember { mutableStateOf<Pair<Color, Color>?>(null) }
     LaunchedEffect(coverUrl, sourceOrigin) {
-        colors = null
-        if (coverUrl.isNullOrBlank()) return@LaunchedEffect
-        val loader = BookImageLoaders.getOrNull() ?: return@LaunchedEffect
         // 取色只要 64px 级别的小图 (原版 getRepresentativeColor 也是先缩到 64px 最长边):
         // 按原图请求会让像素读回整图搬一遍 (安卓端 Coil3 默认给 HARDWARE 位图, 读回还要先整图拷贝),
         // 而采样实际只用到几千个像素。磁盘缓存键只按 url, 不会多下载一次
-        val bitmap = loader.loadCoverOrNull(coverUrl, sourceOrigin, widthPx = 64, heightPx = 64)
-            ?: return@LaunchedEffect
-        colors = withContext(Dispatchers.Default) { bitmap.representativeLrcColors() }
+        val bitmap = if (coverUrl.isNullOrBlank()) null else BookImageLoaders.getOrNull()
+            ?.loadCoverOrNull(coverUrl, sourceOrigin, widthPx = 64, heightPx = 64)
+        colors = bitmap?.let { withContext(Dispatchers.Default) { it.representativeLrcColors() } }
     }
     return colors
 }

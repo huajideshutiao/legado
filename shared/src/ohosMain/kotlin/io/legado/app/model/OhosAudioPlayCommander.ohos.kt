@@ -1,37 +1,29 @@
 package io.legado.app.model
 
-import kotlin.concurrent.Volatile
-
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.BookType
-import io.legado.app.constant.EventBus
-import io.legado.app.constant.Status
-import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.NativeBookStorage
 import io.legado.app.help.coroutine.IoDispatcher
-import io.legado.app.help.book.removeType
 import io.legado.app.help.http.KmpRequestBuilder
 import io.legado.app.help.http.OkHttpClientProviders
-import io.legado.app.help.media.SleepTimer
+import io.legado.app.help.media.NowPlayingLyricSink
 import io.legado.app.help.media.SystemMediaControl
-import io.legado.app.help.toast.Toasters
 import io.legado.app.model.analyzeRule.AnalyzeRuleCore
 import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
 import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.model.audio.AudioPlayAnalyzeRuleFactory
 import io.legado.app.model.audio.AudioPlayController
 import io.legado.app.model.audio.AudioPlayControllerListener
-import io.legado.app.model.audio.AudioPlayManager
-import io.legado.app.model.audio.AudioPlayManagerListener
+import io.legado.app.model.audio.AudioPlaySession
+import io.legado.app.model.audio.LyricPublisher
+import io.legado.app.model.audio.NowPlayingSessionHost
 import io.legado.app.napi.OhosNativeBridge
-import io.legado.app.utils.KS_JSON
-import io.legado.app.utils.postEvent
-import io.legado.app.utils.systemCurrentTimeMillis
-import kotlin.coroutines.CoroutineContext
 import io.legado.app.utils.File
+import io.legado.app.utils.KS_JSON
+import kotlin.concurrent.Volatile
+import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -43,41 +35,31 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 
 /**
- * 鸿蒙端 AudioPlay 平台 provider (对标 app 端 AudioPlayService + AudioPlayProvidersImpl)。
+ * 鸿蒙端 AudioPlay 宿主 (对标 app 端 AudioPlayService 的平台部分)。
  *
- * 编排层复用 commonMain [AudioPlayManager], 播放原语经 napi Media 桥
- * (MediaBridgeHandler.ets 的 AVPlayer) 执行, 固定 playerId "audioBook" 独占一个实例,
+ * 会话状态机在 commonMain [AudioPlaySession] (四端共用), 播控卡片同步在
+ * [NowPlayingSessionHost] (三端共用), 本类只做 napi Media 桥接入与流播/预下载取舍。
+ * 播放原语经 MediaBridgeHandler.ets 的 AVPlayer 执行, 固定 playerId "audioBook" 独占一个实例,
  * 与网络朗读 (OhosHttpTtsPlayer, "httpTts") 可同时播放。
  * 网络直链默认走桥侧 setSourceUrl 流播 (MediaSource 可带请求头); 桥侧不支持该 action 时
- * 自动退回 Ktor 整段下载到缓存再播。桥未就绪时置 STOP + toast 报错, 不做静默假播放。
+ * 自动退回 Ktor 整段下载到缓存再播。桥未就绪时抛错让会话落 STOP, 不做静默假播放。
  */
-class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
-    AudioPlayControllerListener, AudioPlayManagerListener {
+class OhosAudioPlayCommander : NowPlayingSessionHost() {
 
     // 命令统一经 Main scope 串行派发 (等价 Service 主线程 onStartCommand)
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private val controller = OhosAvAudioPlayController()
-    private val manager = AudioPlayManager(controller, scope, OhosAudioPlayAnalyzeRuleFactory, this)
+    override val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-    /** 对应 AudioPlayService.isRun */
-    @Volatile private var running = false
+    private val avController = OhosAvAudioPlayController()
 
-    /** 对应 AudioPlayService.pause */
-    @Volatile private var pause = true
+    override val controller: AudioPlayController get() = avController
 
-    /** 对应 AudioPlayService.playSpeed */
-    @Volatile private var playSpeed = 1f
+    override val analyzeRuleFactory: AudioPlayAnalyzeRuleFactory
+        get() = OhosAudioPlayAnalyzeRuleFactory
 
-    /** 对应 AudioPlayService.url (当前播放直链) */
-    @Volatile private var url = ""
+    override var pendingTimerMinute: Int = 0
 
-    /** 对应 AudioPlayService.position (起播/暂停位置, 毫秒) */
-    @Volatile private var position = 0
-
-    private var sleepTimer: SleepTimer? = null
-
-    /** 播放出错后先 refreshChapter 重试一次, 再报错 (对应 app 端 hasRefreshedOnPlayError) */
-    private var hasRefreshedOnPlayError = false
+    /** 本轮起播位置 (流播失败回退预下载时复用) */
+    @Volatile private var startPosMs = 0L
 
     /** 当前章节的下载缓存文件, 换章/销毁时删除 */
     @Volatile private var cacheFile: File? = null
@@ -96,186 +78,47 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
     /** 流播 prepare 看门狗: 桥侧不认识 setSourceUrl 时不会有任何事件, 靠超时回退 */
     private var streamWatchdog: Job? = null
 
-    init {
-        controller.listener = this
-    }
-
-    // ===== AudioPlayCommander =====
-
-    override val isServiceRunning: Boolean get() = running
-
-    override var pendingTimerMinute: Int = 0
-
-    override fun play() {
-        ensureRunning()
-        scope.launch { triggerPlay(playNew = false) }
-    }
-
-    override fun playNew() {
-        ensureRunning()
-        scope.launch { triggerPlay(playNew = true) }
-    }
-
-    override fun stop() {
-        if (!running) return
-        scope.launch { destroySelf() }
-    }
-
-    override fun stopPlay() {
-        if (!running) return
-        scope.launch {
-            controller.stop()
-            manager.cancelProgressJobs()
-            AudioPlayShared.status = Status.STOP
-            AudioPlayShared.book?.let { save(it) }
-            postEvent(EventBus.AUDIO_STATE, Status.STOP)
-            // 停止即收掉加载转圈
-            postEvent(EventBus.AUDIO_LOADING, false)
-            // 服务还活着 (切章也走这里), 对照原版只更新播控状态不撤会话
-            syncNowPlaying()
-        }
-    }
-
-    override fun pause() {
-        if (!running) return
-        scope.launch { pauseImpl() }
-    }
-
-    override fun resume() {
-        if (!running) return
-        scope.launch { resumeImpl() }
-    }
-
-    override fun adjustSpeed(adjust: Float) {
-        if (!running) return
-        scope.launch { upSpeed(adjust) }
-    }
-
-    override fun adjustProgress(position: Int) {
-        if (!running) return
-        scope.launch {
-            this@OhosAudioPlayCommander.position = position
-            controller.seekTo(position.toLong())
-            // seek 后歌词位置失效, 重算 (对应 app 端 adjustProgress);
-            // 传目标位置: 引擎 seek 异步, currentPosition 未同步, 用目标位置扫描歌词行
-            manager.resetLrcPosition()
-            manager.upPlayProgressForLrc(position)
-            syncNowPlaying(positionMs = position.toLong())
-        }
-    }
-
-    override fun setTimer(minute: Int) {
-        if (!running) return
-        scope.launch { sleepTimer?.set(minute) }
-    }
-
-    override fun addTimer() {
-        ensureRunning()
-        scope.launch { sleepTimer?.add() }
-    }
-
-    override fun loadPlayUrl() {
-        ensureRunning()
-        manager.loadPlayUrl()
-    }
-
-    // ===== Service 生命周期等价 =====
-
-    /** 对应 AudioPlayService.onCreate */
-    private fun ensureRunning() {
-        if (running) return
-        running = true
-        pause = true
-        hasRefreshedOnPlayError = false
-        manager.playSpeed = playSpeed
-        sleepTimer = SleepTimer(
-            scope = scope,
-            postMinute = { postEvent(EventBus.AUDIO_DS, it) },
-            isPaused = { pause },
-            onTimeout = { AudioPlayShared.stop() },
-        )
-        ReadTimeRecorder.start(ReadTimeRecorder.Source.AUDIO, AudioPlayShared.book?.name ?: "")
-        if (pendingTimerMinute > 0) {
-            sleepTimer?.set(pendingTimerMinute)
-            pendingTimerMinute = 0
-        } else {
-            postEvent(EventBus.AUDIO_DS, 0)
-        }
-    }
-
-    /** 对应 AudioPlayService.onDestroy (stopSelf 等价) */
-    private fun destroySelf() {
-        running = false
-        sleepTimer?.cancel()
-        sleepTimer = null
-        ReadTimeRecorder.endImmediately(ReadTimeRecorder.Source.AUDIO)
-        AudioPlayShared.durChapterPos = controller.currentPosition.toInt()
-        AudioPlayShared.saveRead()
-        manager.onDestroy()
-        controller.release()
-        deleteCacheFile()
+    /** 直链解析 → 优先流播, 桥侧无响应/出错时回退整段预下载 (见 [fallbackToDownload])。 */
+    override suspend fun startPlayback(url: String, positionMs: Int) {
         clearStreamingState()
-        url = ""
-        pause = true
-        AudioPlayShared.status = Status.STOP
-        postEvent(EventBus.AUDIO_STATE, Status.STOP)
-        postEvent(EventBus.AUDIO_LOADING, false)
-        SystemMediaControl.releaseAudio()
-    }
-
-    /** 对应 AudioPlayService.triggerPlay */
-    private suspend fun triggerPlay(playNew: Boolean) {
-        if (url == AudioPlayShared.durPlayUrl && !playNew
-            && controller.playbackState != AudioPlayController.STATE_IDLE
-        ) return
-        controller.stop()
-        manager.cancelProgressJobs()
-        clearStreamingState()
-        pause = false
-        position = if (playNew) 0 else AudioPlayShared.book?.durChapterPos ?: 0
-        url = AudioPlayShared.durPlayUrl
-        playMedia()
-    }
-
-    /**
-     * 对应 AudioPlayService.play(): 置 LOADING → 解析直链 headers → 优先流播,
-     * 桥侧无响应/出错时回退整段预下载 (见 [fallbackToDownload])。
-     */
-    private suspend fun playMedia() {
-        try {
-            AudioPlayShared.status = Status.LOADING
-            postEvent(EventBus.AUDIO_STATE, Status.LOADING)
-            // 起播/缓冲阶段转圈 (覆盖 resume 直播路径; URL 加载路径已由 manager 发 true)
-            postEvent(EventBus.AUDIO_LOADING, true)
-            manager.cancelProgressJobs()
-            // 桥未就绪: 报错落 STOP, 不假播放 (catch 分支统一处理)
-            if (!OhosNativeBridge.isMediaBridgeReady()) {
-                throw IllegalStateException("napi media 桥未就绪, 无法播放音频")
-            }
-            val (mediaUrl, headers) = AnalyzeUrlFactories.create(
-                rawUrl = url,
-                source = AudioPlayShared.bookSource,
-                ruleData = AudioPlayShared.book,
-                chapter = AudioPlayShared.durChapter,
-                coroutineContext = currentCoroutineContext(),
-            ).resolveMedia()
-            resolvedUrl = mediaUrl
-            resolvedHeaders = headers
-            streamingFellBack = false
-            startStreaming(mediaUrl, headers)
-        } catch (e: Exception) {
-            AppLog.put("播放出错\n${e.message}", e)
-            toast("$url ${e.message}")
-            destroySelf()
+        startPosMs = positionMs.toLong()
+        // 桥未就绪就抛, 交会话的起播异常收尾统一处理 (落 STOP + 提示), 不假播放
+        if (!OhosNativeBridge.isMediaBridgeReady()) {
+            throw IllegalStateException("napi media 桥未就绪, 无法播放音频")
         }
+        val (mediaUrl, headers) = AnalyzeUrlFactories.create(
+            rawUrl = url,
+            source = AudioPlayShared.bookSource,
+            ruleData = AudioPlayShared.book,
+            chapter = AudioPlayShared.durChapter,
+            coroutineContext = currentCoroutineContext(),
+        ).resolveMedia()
+        resolvedUrl = mediaUrl
+        resolvedHeaders = headers
+        startStreaming(mediaUrl, headers)
     }
+
+    /** 流播阶段出错先退回预下载, 不惊动会话的重试/报错链路。 */
+    override fun onPlayerErrorIntercept(error: Throwable): Boolean {
+        if (!streaming) return false
+        fallbackToDownload(error.message ?: "流播失败")
+        return true
+    }
+
+    /** 流播已就绪, 撤看门狗。 */
+    override fun onPlaybackReady() {
+        streaming = false
+        streamWatchdog?.cancel()
+        streamWatchdog = null
+    }
+
+    // ===== 流播 / 预下载回退 =====
 
     /** 流播: 直链 + 请求头交桥侧 MediaSource, 免整段预下载 */
     private fun startStreaming(mediaUrl: String, headers: Map<String, String>) {
         streaming = true
-        controller.playWhenReady = true
-        controller.setStreamSource(mediaUrl, headers, position.toLong())
-        controller.prepare()
+        avController.setStreamSource(mediaUrl, headers, startPosMs)
+        avController.prepare()
         // 旧版桥不认识 setSourceUrl 时既无 onReady 也无 onError, 靠超时回退
         streamWatchdog?.cancel()
         streamWatchdog = scope.launch {
@@ -305,153 +148,29 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
         AppLog.put("音频流播回退预下载: $reason")
         scope.launch {
             try {
-                controller.stop()
+                avController.stop()
                 val file = downloadToCache(mediaUrl, resolvedHeaders)
                 swapCacheFile(file)
                 // 缓冲期按过暂停则回退后不自动起播
-                controller.playWhenReady = !pause
-                controller.setSource(file.path, position.toLong())
-                controller.prepare()
+                avController.playWhenReady = !session.isPaused
+                avController.setSource(file.path, startPosMs)
+                avController.prepare()
             } catch (e: Exception) {
                 AppLog.put("播放出错\n${e.message}", e)
-                toast("$url ${e.message}")
-                destroySelf()
+                toast("$mediaUrl ${e.message}")
+                session.endSession()
             }
         }
     }
 
-    /** 对应 AudioPlayService.pause() */
-    private fun pauseImpl() {
-        runCatching {
-            pause = true
-            ReadTimeRecorder.end(ReadTimeRecorder.Source.AUDIO)
-            manager.cancelProgressJobs()
-            position = controller.currentPosition.toInt()
-            // 对齐 ExoPlayer.pause() 语义: 缓冲中暂停则就绪后不自动起播
-            controller.playWhenReady = false
-            if (controller.isPlaying) controller.pause()
-            AudioPlayShared.status = Status.PAUSE
-            postEvent(EventBus.AUDIO_STATE, Status.PAUSE)
-            syncNowPlaying()
-        }
+    // ===== 会话收尾 =====
+
+    override fun onSessionEnd() {
+        avController.release()
+        deleteCacheFile()
+        clearStreamingState()
+        SystemMediaControl.releaseAudio()
     }
-
-    /** 对应 AudioPlayService.resume() */
-    private fun resumeImpl() {
-        runCatching {
-            pause = false
-            ReadTimeRecorder.start(ReadTimeRecorder.Source.AUDIO, AudioPlayShared.book?.name ?: "")
-            if (url.isEmpty()) {
-                AudioPlayShared.loadOrUpPlayUrl()
-                return
-            }
-            controller.playWhenReady = true
-            if (!controller.isPlaying) controller.play()
-            manager.upPlayProgress()
-            manager.upPlayProgressForLrc()
-            AudioPlayShared.status = Status.PLAY
-            postEvent(EventBus.AUDIO_STATE, Status.PLAY)
-            syncNowPlaying()
-        }.onFailure {
-            destroySelf()
-        }
-    }
-
-    /** 对应 AudioPlayService.upSpeed() (桥侧倍速就近吸附到 0.75/1/1.25/1.75/2 档) */
-    private fun upSpeed(adjust: Float) {
-        runCatching {
-            playSpeed = adjust
-            manager.playSpeed = adjust
-            controller.setPlaybackSpeed(adjust)
-            postEvent(EventBus.AUDIO_SPEED, adjust)
-            // 变速后 lrc 推进 delay 需按新速率重算
-            manager.upPlayProgressForLrc()
-            syncNowPlaying()
-        }
-    }
-
-    // ===== AudioPlayControllerListener (对应 AudioPlayService.onPlaybackStateChanged) =====
-
-    override fun onPlaybackStateChanged(state: Int) {
-        when (state) {
-            AudioPlayController.STATE_IDLE,
-            AudioPlayController.STATE_BUFFERING -> Unit
-
-            AudioPlayController.STATE_READY -> {
-                hasRefreshedOnPlayError = false
-                // 流播已就绪, 撤看门狗
-                streaming = false
-                streamWatchdog?.cancel()
-                streamWatchdog = null
-                postEvent(EventBus.AUDIO_LOADING, false)
-                AudioPlayShared.status =
-                    if (controller.playWhenReady) Status.PLAY else Status.PAUSE
-                postEvent(EventBus.AUDIO_STATE, AudioPlayShared.status)
-                val duration = controller.duration
-                // durationUpdate 事件未到时跳过, 避免把 chapter.end 冲成 0
-                if (duration > 0) {
-                    postEvent(EventBus.AUDIO_SIZE, duration.toInt())
-                    AudioPlayShared.saveDurChapter(duration)
-                }
-                manager.upPlayProgress()
-                manager.upPlayProgressForLrc()
-                syncNowPlaying()
-            }
-
-            AudioPlayController.STATE_ENDED -> {
-                manager.cancelProgressJobs()
-                AudioPlayShared.playPositionChanged(controller.duration.toInt())
-                AudioPlayShared.next()
-                syncNowPlaying()
-            }
-        }
-    }
-
-    override fun onPlayerError(error: Throwable) {
-        // 流播阶段出错: 先退回预下载, 不惊动重试/报错链路
-        if (streaming) {
-            fallbackToDownload(error.message ?: "流播失败")
-            return
-        }
-        if (!hasRefreshedOnPlayError) {
-            // 首次出错清 resourceUrl 重试 (对应 app 端 refreshChapter)
-            hasRefreshedOnPlayError = true
-            manager.refreshChapter()
-            return
-        }
-        AudioPlayShared.status = Status.STOP
-        postEvent(EventBus.AUDIO_STATE, Status.STOP)
-        postEvent(EventBus.AUDIO_LOADING, false)
-        syncNowPlaying()
-        val errorMsg = "音频播放出错\n${error.message}"
-        AppLog.put(errorMsg, error)
-        toast(errorMsg)
-    }
-
-    // ===== AudioPlayManagerListener =====
-
-    override fun onTriggerPlay(playNew: Boolean) {
-        scope.launch { triggerPlay(playNew) }
-    }
-
-    override fun onLoadCover(url: String?) {
-        // 书源 musicCover 规则算出的当前章节封面, 刷进播控卡片
-        syncNowPlaying(coverUrl = url)
-    }
-
-    override fun onResetCoverCache() {
-        // 卡片封面按 URL 去重, 切章换 URL 自然重载, 无需额外处理
-    }
-
-    override fun onToast(message: String) = toast(message)
-
-    private fun toast(message: String) {
-        runCatching { Toasters.get().toast(message) }
-    }
-
-    /** 同步系统播控卡片 (补上本实例的播放倍速)。 */
-    private fun syncNowPlaying(positionMs: Long? = null, coverUrl: String? = null) =
-        SystemMediaControl.syncAudio(positionMs, playSpeed, coverUrl)
 
     // ===== 下载缓存 (桥仅支持本地 fd 源, 参考 OhosHttpTtsPlayer.downloadToTempFile) =====
 
@@ -493,42 +212,6 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
             runCatching { if (file.exists()) file.delete() }
             cacheFile = null
         }
-    }
-
-    // ===== AudioPlayBookBridge (对应 app 端 BookExtensions, 直接走 DAO) =====
-
-    override fun saveRead(book: Book) {
-        scope.launch(IoDispatcher) {
-            runCatching {
-                book.durChapterTime = systemCurrentTimeMillis()
-                AppDbProviders.get().bookDao.updateProgress(
-                    bookUrl = book.bookUrl,
-                    durChapterIndex = book.durChapterIndex,
-                    durChapterPos = book.durChapterPos,
-                    durChapterTime = book.durChapterTime,
-                    durChapterTitle = book.durChapterTitle,
-                )
-                ReadTimeRecorder.flushAll()
-            }.onFailure { AppLog.put("保存阅读进度出错\n${it.message}", it) }
-        }
-    }
-
-    override fun save(book: Book) {
-        scope.launch(IoDispatcher) {
-            runCatching {
-                book.removeType(BookType.notShelf)
-                val dao = AppDbProviders.get().bookDao
-                if (dao.has(book.bookUrl)) dao.update(book) else dao.insert(book)
-            }.onFailure { AppLog.put("保存书籍出错\n${it.message}", it) }
-        }
-    }
-
-    override suspend fun getBookSource(book: Book): BookSource? = withContext(IoDispatcher) {
-        runCatching {
-            AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
-        }.onFailure {
-            AppLog.put("获取书源出错\n${it.message}", it)
-        }.getOrNull()
     }
 
     private companion object {
@@ -800,7 +483,6 @@ private object OhosAudioPlayAnalyzeRuleFactory : AudioPlayAnalyzeRuleFactory {
  * Media 桥已按 playerId 多实例, 与 OhosHttpTtsPlayer (网络朗读) 可同时播放。
  */
 fun registerOhosAudioPlayCommanders() {
-    val impl = OhosAudioPlayCommander()
-    AudioPlayCommanders.register(impl)
-    AudioPlayBookBridges.register(impl)
+    AudioPlayCommanders.register(OhosAudioPlayCommander().session)
+    LyricPublisher.register(NowPlayingLyricSink)
 }

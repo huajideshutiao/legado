@@ -223,6 +223,8 @@
     <string name="copy_play_url">Copy Play Url</string>
     <string name="check_add_bookshelf">Would you like to add %1$s to your Bookshelf?</string>
     <string name="audio_play_wake_lock">Audio service wake-up lock</string>
+    <string name="publish_lyric">Lyrics on car display</string>
+    <string name="publish_lyric_summary">Push the current lyric line to the now-playing title (car display / Bluetooth / lock screen); it replaces the chapter name</string>
     <string name="all_source">All Sources</string>
     <string name="groups_or_source">Multi-group / book source</string>
     <string name="precision_search">Precise search</string>

@@ -20,8 +20,8 @@ import io.legado.app.R
  *   app 端注册 [AndroidAudioPlayCommander] 实现 (见 AudioPlayProvidersImpl.kt),
  *   内部走 `appCtx.startService<AudioPlayService>` + IntentAction + extras,
  *   与原 `sendAction` 完全等价
- * - Book 操作: AudioPlayShared 通过 [io.legado.app.model.AudioPlayBookBridge] 接口抽象,
- *   app 端注册实现委托 `book.saveRead()` / `book.save()` / `book.getBookSource()` 扩展
+ * - Book 操作: 直接调 [io.legado.app.data.entities.Book] 的 `saveRead()` / `save()` 成员
+ *   (已在 commonMain, 四端同一份); 书源查询走 `AudioPlayShared.bookSourceOf`
  *
  * 注册时机: App.onCreate, 经 `registerAndroidAudioPlayProviders()` (见 AudioPlayProvidersImpl.kt)。
  */

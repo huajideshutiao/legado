@@ -19,10 +19,10 @@ import kotlin.coroutines.CoroutineContext
  * # 设计说明
  * - 状态常量值与 Media3 `Player.STATE_*` 对齐 (1/2/3/4), `playbackState` 直接透传
  * - `setMediaItem` 不在本接口 (MediaItem 构造依赖 AnalyzeUrl.getMediaItem, app 专属),
- *   Service 直接调 `exoPlayer.setMediaItem(...)` 完成
- * - Service 创建本控制器后, 设 `listener = service`, service 在
- *   `onPlaybackStateChanged` / `onPlayerError` 中做平台副作用 (通知/MediaSession/错误重试)
- *   并调 [AudioPlayManager] 处理纯逻辑 (进度上报 / LRC 推进)
+ *   由 `AudioPlayService.startPlayback` 直接调 `exoPlayer.setMediaItem(...)` 完成
+ * - 本控制器的 `listener` 由 [io.legado.app.model.audio.AudioPlaySession] 构造时接上,
+ *   会话在 `onPlaybackStateChanged` / `onPlayerError` 里驱动状态机, 平台副作用经
+ *   `AudioPlaySessionHost` 回调到 Service (通知/MediaSession/封面)
  *
  * @param exoPlayer 被包装的 ExoPlayer 实例 (Service 持有, setMediaItem 仍由 Service 直接调)
  */

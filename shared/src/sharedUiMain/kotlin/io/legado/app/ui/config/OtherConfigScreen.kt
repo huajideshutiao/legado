@@ -10,6 +10,7 @@ import io.legado.app.ui.compose.theme.AppTheme
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.add_to_text_context_menu_s
 import legado.shared.generated.resources.add_to_text_context_menu_t
+import legado.shared.generated.resources.audio_play_wake_lock
 import legado.shared.generated.resources.auto_check_update
 import legado.shared.generated.resources.bitmap_cache_size
 import legado.shared.generated.resources.book_info_delete_alert_summary
@@ -39,6 +40,8 @@ import legado.shared.generated.resources.pre_download
 import legado.shared.generated.resources.pref_cronet_summary
 import legado.shared.generated.resources.ps_auto_refresh
 import legado.shared.generated.resources.pt_auto_refresh
+import legado.shared.generated.resources.publish_lyric
+import legado.shared.generated.resources.publish_lyric_summary
 import legado.shared.generated.resources.read_aloud_by_media_button_summary
 import legado.shared.generated.resources.read_aloud_by_media_button_title
 import legado.shared.generated.resources.record_debug_log
@@ -100,6 +103,8 @@ fun OtherConfigScreen(
     updateUrlSummary: String = "",
     showUpdateUrl: Boolean = false,
     onUpdateUrl: () -> Unit = {},
+    /** 唤醒锁两项是否显示 (仅 Android 真持锁; 对照 PlatformCapabilities.wakeLockSupported) */
+    showWakeLock: Boolean = false,
 ) {
     val languageEntries = stringArrayResource(Res.array.language)
     val languageValues = stringArrayResource(Res.array.language_value)
@@ -119,6 +124,9 @@ fun OtherConfigScreen(
     val titleUserAgent = stringResource(Res.string.user_agent)
     val titleWebWakeLock = stringResource(Res.string.web_service_wake_lock)
     val summaryWebWakeLock = stringResource(Res.string.web_service_wake_lock_summary)
+    val titleAudioWakeLock = stringResource(Res.string.audio_play_wake_lock)
+    val titlePublishLyric = stringResource(Res.string.publish_lyric)
+    val summaryPublishLyric = stringResource(Res.string.publish_lyric_summary)
     val titleBookTree = stringResource(Res.string.book_tree_uri_t)
     val titleCheckSource = stringResource(Res.string.check_source_config)
     val titleUploadRule = stringResource(Res.string.direct_link_upload_rule)
@@ -197,12 +205,20 @@ fun OtherConfigScreen(
                 summary = userAgentSummary,
                 onClick = onUserAgent,
             )
-            switchPreference(
-                prefKey = PreferKey.webServiceWakeLock,
-                title = titleWebWakeLock,
-                summary = summaryWebWakeLock,
-                defaultValue = false,
-            )
+            // 唤醒锁: 仅 Android 前台服务真持锁 (WebService / AudioPlayService), 其余端拨了没效果
+            if (showWakeLock) {
+                switchPreference(
+                    prefKey = PreferKey.webServiceWakeLock,
+                    title = titleWebWakeLock,
+                    summary = summaryWebWakeLock,
+                    defaultValue = false,
+                )
+                switchPreference(
+                    prefKey = PreferKey.audioPlayWakeLock,
+                    title = titleAudioWakeLock,
+                    defaultValue = false,
+                )
+            }
             preference(
                 title = titleBookTree,
                 summary = bookTreeUriSummary,
@@ -256,6 +272,14 @@ fun OtherConfigScreen(
                 prefKey = PreferKey.ignoreAudioFocus,
                 title = titleIgnoreAudioFocus,
                 summary = summaryIgnoreAudioFocus,
+                defaultValue = false,
+            )
+            // 车载歌词: 当前歌词行顶掉 now-playing 标题 (车机/蓝牙/锁屏只有这一个文本通道)。
+            // 会顶掉章节名, 所以默认关、由用户显式开启
+            switchPreference(
+                prefKey = PreferKey.publishLyric,
+                title = titlePublishLyric,
+                summary = summaryPublishLyric,
                 defaultValue = false,
             )
             switchPreference(

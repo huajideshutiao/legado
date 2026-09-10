@@ -214,7 +214,7 @@ class App : Application() {
         registerAndroidWebAssetSource(instance)
         registerAndroidWebStrings(androidAppString("cannot_empty"))
         // 注册 AudioPlay 平台 provider (commonMain AudioPlayShared 调用
-        // AudioPlayCommanders/AudioPlayBookBridges 派发 Service 命令与 Book 操作,
+        // AudioPlayCommanders 派发 Service 命令,
         // 须在 registerAndroidWebBookProviders 之后, 因 AudioPlayShared 依赖 AppDbProviders)
         registerAndroidAudioPlayProviders()
         // 注册 ChangeBookSource 平台 provider (commonMain ChangeBookSourceViewModelShared 调用

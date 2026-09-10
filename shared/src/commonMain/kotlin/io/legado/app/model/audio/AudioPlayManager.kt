@@ -9,10 +9,10 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.AudioPlayShared
+import io.legado.app.model.Lrc
 import io.legado.app.model.LrcParser
 import io.legado.app.model.analyzeRule.AnalyzeRuleCore
 import io.legado.app.model.webBook.WebBook.getContentAwait
-import io.legado.app.utils.FlowBus
 import io.legado.app.utils.postEvent
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -20,58 +20,52 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.concurrent.Volatile
 import kotlin.coroutines.CoroutineContext
+import kotlin.math.abs
 
 /**
  * 音频播放纯逻辑管理器 (KMP commonMain)。
  *
  * 从 app 端 `AudioPlayService` 下沉的纯逻辑部分:
  * - 进度上报循环 ([upPlayProgress])
- * - 歌词 (LRC) 高亮推进算法 ([upPlayProgressForLrc])
+ * - 播放位置真源 ([positionMs] / [onSeekTo], 消化引擎 seek 异步)
  * - 章节资源加载流程 ([loadPlayUrl] / [loadCoverUrl] / [loadLrcData] / [contentLoadFinish] / [refreshChapter])
  * - 章节并发加载守卫 ([addLoading] / [removeLoading])
- * - 进度协程取消 ([cancelProgressJobs])
+ * - 进度协程取消 ([cancelProgressJob])
  *
  * # 平台差异处理
  * - 底层播放器状态查询 (currentPosition / bufferedPosition / playbackState) 经
  *   [AudioPlayController] 抽象注入, app 端用 ExoPlayer 实现
  * - AnalyzeRule 构造 (app 端 `AnalyzeRule` 子类带 JsExtensions) 经
  *   [AudioPlayAnalyzeRuleFactory] 抽象注入, 返回 commonMain 的 [AnalyzeRuleCore]
- * - 平台副作用 (Glide 加载封面 / toast / triggerPlay 调 service.play()) 经
- *   [AudioPlayManagerListener] 回调注入
+ * - 平台副作用 (封面加载 / toast / 起播) 经 [AudioPlaySession] 转给宿主
  * - CoroutineScope 由 Service 生命周期注入 (app 端 lifecycleScope)
  *
  * # 保留不动的逻辑 (与 app 端完全一致)
- * - LRC 推进的两层节能策略 (事件驱动 delay + subscriptionCount 门控)
  * - 章节加载的并发守卫 (loadingChapters synchronized)
  * - contentLoadFinish 的 isPlayToEnd 判断
+ *
+ * # 不在这里
+ * 歌词高亮行不由本类推送: 它是 (歌词, 播放位置) 的纯函数, 见 [io.legado.app.model.Lrc.indexAt]。
+ * 界面按帧求值, 对外发布见 [LyricPublisher]。
  *
  * 模式参考 [io.legado.app.help.tts.HttpTtsDownloadScheduler]。
  *
  * @param controller 底层播放器抽象 (app 端 ExoPlayer 包装)
  * @param scope 协程作用域 (app 端 lifecycleScope)
  * @param analyzeRuleFactory AnalyzeRule 工厂 (app 端创建带 JsExtensions 的子类)
- * @param listener 平台副作用回调 (cover/toast/triggerPlay)
+ * @param session 会话状态机 (起播 / 封面 / toast 的落点)
  */
 @Suppress("unused")
 class AudioPlayManager(
     val controller: AudioPlayController,
     private val scope: CoroutineScope,
     private val analyzeRuleFactory: AudioPlayAnalyzeRuleFactory,
-    private val listener: AudioPlayManagerListener,
+    private val session: AudioPlaySession,
 ) {
-
-    /** 播放速率 (对应 app 端 `AudioPlayService.playSpeed`), LRC 推进 delay 时长按此缩放。 */
-    @Volatile
-    var playSpeed: Float = 1f
-
-    /** 上次发出的歌词 position; 切章 / seek 时由调用方置回 -1。 */
-    private var lastLrcPosition = -1
 
     /** 正在加载的章节下标, 防止并发加载。 */
     private val loadingChapters = mutableListOf<Int>()
@@ -80,15 +74,47 @@ class AudioPlayManager(
     /** 进度上报协程。 */
     private var upPlayProgressJob: Job? = null
 
-    /** LRC 推进协程。 */
-    private var upPlayProgressForLrcJob: Job? = null
+    /**
+     * seek 目标位置 ([NO_SEEK] = 无进行中的 seek)。
+     *
+     * 引擎 seekTo 是异步的 (mpv / AVPlayer / 鸿蒙 AVPlayer 尤其明显), 完成前引擎自身报告的
+     * 仍是旧位置, 据此判定歌词行会先把高亮拉回旧行、等旧行播完才跳回。Media3 内部替调用方
+     * 消化了这件事, 别的引擎没有 —— 于是在此统一消化一次, 四端语义一致。
+     */
+    @Volatile
+    private var pendingSeekMs: Int = NO_SEEK
 
-    /** 歌词同步补偿偏移量 (毫秒)。 */
-    private val lrcOffsetMs = 60L
+    /**
+     * 播放位置真源 (毫秒): 歌词判定与进度上报都读它。
+     *
+     * 引擎空转时它报的还是上一章的位置 (换章要等新直链解析完才 setMediaItem), 此时本章的位置真源
+     * 是章节进度 —— next/prev/skipTo 已把起始位置同步写好。
+     *
+     * seek 后引擎确认前返回目标位置; 引擎报告落到目标附近即认为 seek 生效, 恢复实时值。
+     * 往后播必然经过这个窗口, 所以不需要超时兜底。
+     */
+    val positionMs: Int
+        get() {
+            if (controller.playbackState == AudioPlayController.STATE_IDLE) {
+                return AudioPlayShared.durChapterPos
+            }
+            val engine = controller.currentPosition.toInt()
+            val target = pendingSeekMs
+            if (target == NO_SEEK) return engine
+            if (abs(engine - target) < SEEK_ACK_MS) {
+                pendingSeekMs = NO_SEEK
+                return engine
+            }
+            return target
+        }
 
-    /** seek 后重置歌词位置, 使下次推进从真实位置重算 (对标 app 端 adjustProgress 的 lastLrcPosition = -1)。 */
-    fun resetLrcPosition() {
-        lastLrcPosition = -1
+    /**
+     * 引擎将要就位到 [position] 时告知 (拖动 seek 与起播, 对标原版 adjustProgress 里的歌词位置重置时机)。
+     */
+    fun onSeekTo(position: Int) {
+        pendingSeekMs = position
+        // 发布循环可能正睡在"旧的下一行"时间点上, 叫醒它重算 (界面走帧驱动, 下一帧自会正确)
+        LyricPublisher.invalidate()
     }
 
     // region 进度上报
@@ -102,7 +128,7 @@ class AudioPlayManager(
         upPlayProgressJob?.cancel()
         upPlayProgressJob = scope.launch {
             while (isActive) {
-                AudioPlayShared.durChapterPos = controller.currentPosition.toInt()
+                AudioPlayShared.durChapterPos = positionMs
                 postEvent(EventBus.AUDIO_BUFFER_PROGRESS, controller.bufferedPosition.toInt())
                 postEvent(EventBus.AUDIO_PROGRESS, AudioPlayShared.durChapterPos)
                 // 时长兜底: 流式资源 READY 时 duration 可能未知 (0/-1), 播放中变已知后
@@ -118,106 +144,9 @@ class AudioPlayManager(
         }
     }
 
-    /**
-     * 推进当前章节歌词高亮位置。
-     *
-     * 节能策略两层:
-     * 1. 事件驱动: 按下一句歌词时间戳精确 delay, 而非高频轮询;
-     *    一首歌只唤醒 N 行次, 而非 时长(s)*20 次。
-     * 2. 订阅门控: 通过 FlowBus 的 subscriptionCount 感知是否有 Activity 在收事件,
-     *    没有时直接挂起整个循环, 后台/锁屏场景零空转。
-     *
-     * 调用方在以下场景触发重启: STATE_READY / adjustProgress / 调整播放速度。
-     *
-     * @param seekTargetMs seek 跳转目标位置 (毫秒); 非空时开头扫描与内层循环首个迭代的
-     *   剩余时长/回扫基准都用该位置兜底, 因为 mpv/AVPlayer 等引擎 seekTo 是异步的,
-     *   seek 完成前 currentPosition 仍是旧值, 若用旧值扫描或计算剩余时长会先把高亮
-     *   推回旧行 (覆盖 UI 的立即高亮), 再等旧行剩余时长才跳回。
-     *
-     * 对标 app 端 `AudioPlayService.upPlayProgressForLrc`。
-     */
-    fun upPlayProgressForLrc(seekTargetMs: Int? = null) {
-        upPlayProgressForLrcJob?.cancel()
-        val lrc = AudioPlayShared.durLrcData ?: return
-        if (lrc.isEmpty() || lrc.last().first == -1) return
-        // 切歌中(stop 后未 prepare 新 mediaItem)player 处于 IDLE,
-        // currentPosition 仍是上一首的残留位置, 据此推进会把新章节歌词跳到旧位置;
-        // 新媒体 prepare 完成后 STATE_READY 会再次触发本方法, 这里直接退出。
-        if (controller.playbackState == AudioPlayController.STATE_IDLE) return
-        val subCount = FlowBus.withSticky(EventBus.AUDIO_LRCPROGRESS).subscriptionCount
-
-        // 注意: 此协程绑定主线程(scope 默认 Main), 因为 ExoPlayer 默认绑定主 looper,
-        // 从其它线程访问 currentPosition 会抛 IllegalStateException。
-        upPlayProgressForLrcJob = scope.launch {
-            while (isActive) {
-                subCount.first { it > 0 }
-                val curLrc = AudioPlayShared.durLrcData ?: break
-                if (curLrc.isEmpty()) break
-                // seek 场景用目标位置扫描 (见函数 KDoc: 引擎 seek 异步, currentPosition 未同步)
-                val curMs = (seekTargetMs ?: controller.currentPosition.toInt()) + lrcOffsetMs
-                // 续推: 上次位置仍在范围且没被新 lrc 失效就直接接上, 否则从头重新单向扫。
-                // 首行时间戳还没到时是 -1 (无高亮行), 不能兜到 0 —— 那会让首行一上来就常亮
-                // (原版此处 position 为 Int?, 扫不到发 null, 被 UI 的 is Int 判定丢弃)
-                var position = lastLrcPosition.takeIf {
-                    it in 0 until curLrc.size && curLrc[it].first <= curMs
-                } ?: if (curLrc[0].first <= curMs) 0 else -1
-                while (position + 1 < curLrc.size && curLrc[position + 1].first <= curMs) {
-                    position++
-                }
-                if (position != lastLrcPosition) {
-                    lastLrcPosition = position
-                    postEvent(EventBus.AUDIO_LRCPROGRESS, position)
-                }
-                // 已停在末行: 直接结束协程。线性播放不会再前进, 需要重启的事件
-                // (seek/换章/换速/新 lrc 到货) 都已在对应入口显式调用 upPlayProgressForLrc。
-                if (position >= curLrc.size - 1) return@launch
-
-                // seek 场景基准位置: 引擎 seekTo 异步, seek 完成前 currentPosition 仍是旧值,
-                // 首个内层迭代的剩余时长/回扫基准先用目标位置兜底, 否则旧值算出的 remain<0
-                // 会走"过期回扫"把高亮拉回旧行 (点击歌词闪现后又跳回原行, 之后卡住等待);
-                // seek 完成后 currentPosition 已同步, 消费掉兜底后恢复实时基准。
-                var seekBaseMs = seekTargetMs?.toLong()
-                while (isActive && position < curLrc.size - 1) {
-                    val baseMs = seekBaseMs ?: controller.currentPosition
-                    seekBaseMs = null
-                    val remain = ((curLrc[position + 1].first
-                        - baseMs - lrcOffsetMs) / playSpeed).toLong()
-                    if (remain > 0) {
-                        val dropped = withTimeoutOrNull(remain) {
-                            subCount.first { it == 0 }
-                            true
-                        } == true
-                        if (dropped) break
-                        position++
-                        lastLrcPosition = position
-                        postEvent(EventBus.AUDIO_LRCPROGRESS, position)
-                        continue
-                    }
-                    // 时间戳已过期: 可能是 seek 跳跃, 也可能是 currentPosition 停滞。
-                    // 单向向前扫到真实位置; 若仍未前进, 直接退出协程, 由 upPlayProgress 的 1s 心跳
-                    // 在 player 真正推进后重启, 避免无挂起点的忙等。
-                    val before = position
-                    val nowMs = baseMs + lrcOffsetMs
-                    while (position + 1 < curLrc.size && curLrc[position + 1].first <= nowMs) {
-                        position++
-                    }
-                    if (position == before) return@launch
-                    lastLrcPosition = position
-                    postEvent(EventBus.AUDIO_LRCPROGRESS, position)
-                }
-            }
-        }
-    }
-
-    /** 取消进度上报 + LRC 推进协程。 */
-    fun cancelProgressJobs() {
+    /** 取消进度上报协程。 */
+    fun cancelProgressJob() {
         upPlayProgressJob?.cancel()
-        upPlayProgressForLrcJob?.cancel()
-    }
-
-    /** 释放资源 (Service onDestroy 调用)。 */
-    fun onDestroy() {
-        cancelProgressJobs()
     }
 
     // endregion
@@ -252,7 +181,7 @@ class AudioPlayManager(
      *
      * 流程:
      * 1. 取 chapter.resourceUrl, 没有则 fetch 章节内容
-     * 2. 内容回来后写回章节并触发 [AudioPlayManagerListener.onTriggerPlay]
+     * 2. 内容回来后写回章节并触发 [AudioPlaySession.onTriggerPlay]
      * 3. 同时并行启动 [loadCoverUrl] 与 [loadLrcData]
      *
      * 对标 app 端 `AudioPlayService.loadPlayUrl`。
@@ -264,7 +193,7 @@ class AudioPlayManager(
         val bookSource = AudioPlayShared.bookSource
         if (book == null || bookSource == null) {
             removeLoading(index)
-            listener.onToast("book or source is null")
+            session.onToast("book or source is null")
             return
         }
         scope.launch {
@@ -284,9 +213,8 @@ class AudioPlayManager(
             AudioPlayShared.status = Status.LOADING
             postEvent(EventBus.AUDIO_STATE, Status.LOADING)
             AudioPlayShared.durCoverUrl = null
-            AudioPlayShared.durLrcData = null
-            lastLrcPosition = -1
-            listener.onResetCoverCache()
+            AudioPlayShared.durLrc.value = null
+            session.onResetCoverCache()
             loadCoverUrl(bookSource, book, chapter)
             loadLrcData(bookSource, book, chapter)
             Coroutine.async(scope = scope) {
@@ -295,7 +223,7 @@ class AudioPlayManager(
             }.onSuccess { content ->
                 if (content.isEmpty()) {
                     // 拿不到链接也要收掉 loading 并回落 STOP, 否则转圈一直挂着
-                    listener.onToast("未获取到资源链接")
+                    session.onToast("未获取到资源链接")
                     postEvent(EventBus.AUDIO_LOADING, false)
                     AudioPlayShared.status = Status.STOP
                     postEvent(EventBus.AUDIO_STATE, Status.STOP)
@@ -349,13 +277,13 @@ class AudioPlayManager(
             val coverUrl = AudioPlayShared.durCoverUrl
             if (!coverUrl.isNullOrBlank()) {
                 postEvent(EventBus.AUDIO_COVER, coverUrl)
-                listener.onLoadCover(coverUrl)
+                session.onLoadCover(coverUrl)
             }
         }
     }
 
     /**
-     * 用书源的 subContent 规则计算歌词数据。
+     * 用书源的 subContent 规则计算歌词数据, 就绪后写入 [AudioPlayShared.durLrc]。
      *
      * 对标 app 端 `AudioPlayService.loadLrcData`。
      */
@@ -363,24 +291,19 @@ class AudioPlayManager(
         bookSource: BookSource,
         book: Book,
         chapter: BookChapter
-    ): Coroutine<List<Pair<Int, String>>> {
+    ): Coroutine<Lrc?> {
         return Coroutine.async(scope = scope) {
             val subContent = bookSource.contentRule.subContent
-            if (subContent.isNullOrBlank()) return@async emptyList()
+            if (subContent.isNullOrBlank()) return@async null
             val rule = analyzeRuleFactory.create(
                 book, bookSource, chapter, currentCoroutineContext()
             )
-            val raw = rule.evalJS(subContent) as? List<*> ?: return@async emptyList()
+            val raw = rule.evalJS(subContent) as? List<*> ?: return@async null
             LrcParser.parse(raw)
         }.onSuccess {
-            if (it.isEmpty()) return@onSuccess
-            AudioPlayShared.durLrcData = it
-            lastLrcPosition = -1
-            postEvent(EventBus.AUDIO_LRC, it)
-            // 新歌词到货先清高亮 (-1 = 无当前行); 首行时间戳到了再由 upPlayProgressForLrc 发 0
-            postEvent(EventBus.AUDIO_LRCPROGRESS, -1)
-            // 歌词到货后显式启动推进协程 (STATE_READY 可能早于歌词加载完成)
-            upPlayProgressForLrc()
+            if (it == null || it.lines.isEmpty()) return@onSuccess
+            // 只发布数据; 当前行由消费方按播放位置求值 (界面按帧, 对外发布按行唤醒)
+            AudioPlayShared.durLrc.value = it
         }.onError {
             AppLog.put("获取歌词出错\n$it", it, true)
         }
@@ -397,34 +320,18 @@ class AudioPlayManager(
         val isPlayToEnd =
             AudioPlayShared.durChapterIndex + 1 == AudioPlayShared.simulatedChapterSize &&
                 AudioPlayShared.durChapterPos == AudioPlayShared.durAudioSize
-        listener.onTriggerPlay(isPlayToEnd)
+        session.onTriggerPlay(isPlayToEnd)
     }
 
     // endregion
-}
 
-/**
- * 平台副作用回调 (app 端 Service 实现)。
- *
- * 把 manager 不能直接做的平台操作抽出来:
- * - `onTriggerPlay`: 调 service.triggerPlay (acquire lock + request focus + ExoPlayer setMediaItem/play)
- * - `onLoadCover`: 调 service.loadCover (Glide 加载封面 Bitmap)
- * - `onResetCoverCache`: 重置 service.lastCoverUrl (切章时强制重新加载封面)
- * - `onToast`: 调 service.toastOnUi (Android Toast)
- */
-interface AudioPlayManagerListener {
+    private companion object {
+        /** [pendingSeekMs] 的空值 (真实位置不会是负数)。 */
+        const val NO_SEEK = -1
 
-    /** 章节资源加载完成, 调用方应触发播放 (service.triggerPlay(playNew))。 */
-    fun onTriggerPlay(playNew: Boolean)
-
-    /** 封面 URL 已计算完成, 调用方加载封面 Bitmap (service.loadCover(url))。 */
-    fun onLoadCover(url: String?)
-
-    /** 切章时重置封面缓存 (service.lastCoverUrl = null), 强制下次 loadCover 重新加载。 */
-    fun onResetCoverCache()
-
-    /** 显示 Toast (service.toastOnUi(message))。 */
-    fun onToast(message: String)
+        /** 引擎报告与 seek 目标的差值小于此值即认为 seek 已生效 (毫秒)。 */
+        const val SEEK_ACK_MS = 1000
+    }
 }
 
 /**

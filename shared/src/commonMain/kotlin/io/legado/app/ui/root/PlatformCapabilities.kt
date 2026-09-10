@@ -327,10 +327,10 @@ interface PlatformCapabilities {
     fun hasScreenOrientation(): Boolean = true
 
     /**
-     * 播放服务是否真持唤醒锁 (决定音频播放页溢出菜单"音频服务唤醒锁"项显隐)。
-     * 仅 Android 前台 AudioPlayService 消费 `AppConfig.audioPlayUseWakeLock`, 其余端拨了没效果。
+     * 服务是否真持唤醒锁 (决定其它设置页"音频服务唤醒锁"/"web 服务唤醒锁"两项显隐)。
+     * 仅 Android 前台 AudioPlayService / WebService 消费这两个 pref, 其余端拨了没效果。
      */
-    val audioWakeLockSupported: Boolean get() = false
+    val wakeLockSupported: Boolean get() = false
 
     /**
      * 是否平板设备（决定"平板/横屏双页" auto 分支是否启用双页，对照 app 端

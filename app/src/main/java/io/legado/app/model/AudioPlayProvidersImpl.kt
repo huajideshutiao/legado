@@ -3,29 +3,25 @@ package io.legado.app.model
 import android.content.Intent
 import io.legado.app.App
 import io.legado.app.constant.IntentAction
-import io.legado.app.data.appDb
-import io.legado.app.data.entities.Book
-import io.legado.app.data.entities.BookSource
+import io.legado.app.model.audio.LyricPublisher
+import io.legado.app.model.audio.LyricSink
 import io.legado.app.service.AudioPlayService
 import io.legado.app.utils.startService
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /**
  * AudioPlay 平台 provider 的 Android 实现。
  *
  * 包含:
- * - [AndroidAudioPlayCommander]: 实现 [AudioPlayCommander], 内部走
+ * - [AudioPlayProvidersImpl]: 实现 [AudioPlayCommander], 内部走
  *   `appCtx.startService<AudioPlayService>` + IntentAction + extras,
  *   与原 app 端 `AudioPlay.sendAction` 完全等价
- * - [AndroidAudioPlayBookBridge]: 实现 [AudioPlayBookBridge], 委托
- *   `book.saveRead()` / `book.save()` 扩展 (app 端 BookExtensions.kt); getBookSource 直接查 DAO
+ * - [MediaMetadataLyricSink]: 车载/锁屏 now-playing metadata 的歌词 sink
  *
  * 注册时机: App.onCreate, 经 [registerAndroidAudioPlayProviders]。
  *
  * 模式参考 `WebBookProvidersImpl` / `registerAndroidWebBookProviders`。
  */
-object AudioPlayProvidersImpl : AudioPlayCommander, AudioPlayBookBridge {
+object AudioPlayProvidersImpl : AudioPlayCommander {
 
     // ---------- AudioPlayCommander ----------
 
@@ -37,6 +33,9 @@ object AudioPlayProvidersImpl : AudioPlayCommander, AudioPlayBookBridge {
         set(value) {
             AudioPlayService.pendingTimerMinute = value
         }
+
+    override val positionMs: Int
+        get() = AudioPlayService.positionMs
 
     override fun play() = sendAction(IntentAction.play, requireRunning = false)
 
@@ -81,21 +80,19 @@ object AudioPlayProvidersImpl : AudioPlayCommander, AudioPlayBookBridge {
             extras()
         }
     }
+}
 
-    // ---------- AudioPlayBookBridge ----------
+/**
+ * 车载/锁屏 sink: 歌词行顶掉 now-playing 标题。
+ *
+ * AVRCP 的文本属性只有曲名/歌手/专辑, 没有歌词字段 —— 车机屏幕与蓝牙那行字来自 MediaSession
+ * metadata 的 TITLE, Android Auto 读的也是同一份, 所以"车载歌词"就是让歌词占用标题位。
+ */
+private object MediaMetadataLyricSink : LyricSink {
 
-    override fun saveRead(book: Book) {
-        book.saveRead()
-    }
+    override fun publish(line: String) = AudioPlayService.publishLyricLine(line)
 
-    override fun save(book: Book) {
-        book.save()
-    }
-
-    // 不走 book.getBookSource() 扩展: 那个扩展是 runBlocking, 调用链可能在主线程协程上
-    override suspend fun getBookSource(book: Book): BookSource? = withContext(Dispatchers.IO) {
-        appDb.bookSourceDao.getBookSource(book.origin)
-    }
+    override fun clear() = AudioPlayService.publishLyricLine(null)
 }
 
 /**
@@ -108,7 +105,6 @@ object AudioPlayProvidersImpl : AudioPlayCommander, AudioPlayBookBridge {
  * 模式参考 `registerAndroidWebBookProviders` / `registerAndroidServiceLauncher`。
  */
 fun registerAndroidAudioPlayProviders() {
-    val impl = AudioPlayProvidersImpl
-    AudioPlayCommanders.register(impl)
-    AudioPlayBookBridges.register(impl)
+    AudioPlayCommanders.register(AudioPlayProvidersImpl)
+    LyricPublisher.register(MediaMetadataLyricSink)
 }

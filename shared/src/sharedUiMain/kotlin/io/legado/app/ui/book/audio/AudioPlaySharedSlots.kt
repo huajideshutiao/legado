@@ -135,8 +135,9 @@ fun SharedAudioPlayScreenContent(
         blurBgSlot = { url, modifier -> SharedAudioBlurBgSlot(url, modifier) },
         lrcSlot = { modifier ->
             LrcViewShared(
-                lrcData = state.lrcData,
-                lrcProgress = state.lrcProgress,
+                lrcData = state.lrc,
+                // 当前行按帧派生 (只在歌词区在组合内时求值; 见 rememberLrcIndex)
+                lrcProgress = rememberLrcIndex(state.lrc),
                 primaryColor = lrcColors?.first ?: Color(0xFFFFFFFF),
                 secondaryColor = lrcColors?.second ?: Color(0x80FFFFFF),
                 onLineClick = { onEvent(AudioPlayUiEvent.LrcClick(it)) },

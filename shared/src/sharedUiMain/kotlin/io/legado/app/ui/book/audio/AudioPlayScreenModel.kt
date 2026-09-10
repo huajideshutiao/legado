@@ -14,8 +14,8 @@ import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.toast.Toasters
-import io.legado.app.model.AudioPlayBookBridges
 import io.legado.app.model.AudioPlayShared
+import io.legado.app.model.Lrc
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.FlowBus
@@ -61,6 +61,8 @@ interface AudioPlayPlatformProvider {
         sidePanelSlot: @Composable (AudioPlaySidePanelKind) -> Unit = {},
         /** 点击左侧内容区空白处时回调 (面板打开时点击外部关闭; 窄屏端不传)。 */
         onTapOutsideSidePanel: (() -> Unit)? = null,
+        /** 封面长按: 浏览全屏大图 (由 Route 经 navigator.showOverlay 驱动)。 */
+        onOpenCover: () -> Unit = {},
     )
 }
 
@@ -80,8 +82,6 @@ data class AudioPlayOverflowActions(
     val onShowAppLog: () -> Unit,
     /** 是否显示登录项 (对照 source?.hasLogin()) */
     val hasLogin: Boolean,
-    /** 唤醒锁切换 (Android 专属, null=不显示; 对照 AppConfig.audioPlayUseWakeLock) */
-    val onToggleWakeLock: (() -> Unit)? = null,
     /** 原版 audio_play.xml 无"浏览器打开"菜单项, 菜单已移除; 仅留形参兼容 app 端调用点 */
     val onOpenAudioUrl: () -> Unit = {},
 )
@@ -184,19 +184,11 @@ class AudioPlayScreenModel : ScreenModel {
                 if (value is String) _state.update { it.copy(coverUrl = value) }
             }
         }
-        // 歌词数据
+        // 歌词数据 (StateFlow: 订阅即拿当前值, 不经事件总线, 没有类型擦除与陈旧重放)。
+        // 当前高亮行不在此处托管 —— 它是 (歌词, 播放位置) 的派生量, 由 rememberLrcIndex 按帧求值。
         scope.launch {
-            FlowBus.withSticky(EventBus.AUDIO_LRC).collect { value ->
-                @Suppress("UNCHECKED_CAST")
-                if (value is List<*>) {
-                    _state.update { it.copy(lrcData = value as List<Pair<Int, String>>) }
-                }
-            }
-        }
-        // 歌词滚动进度。ScreenModel 生命周期与路由绑定，页面出栈后自动取消收集。
-        scope.launch {
-            FlowBus.withSticky(EventBus.AUDIO_LRCPROGRESS).collect { value ->
-                if (value is Int) _state.update { it.copy(lrcProgress = value) }
+            AudioPlayShared.durLrc.collect { lrc ->
+                _state.update { it.copy(lrc = lrc) }
             }
         }
         // 播放模式
@@ -257,10 +249,6 @@ class AudioPlayScreenModel : ScreenModel {
                     if (AudioPlayShared.status == Status.STOP) {
                         AudioPlayShared.loadOrUpPlayUrl()
                     }
-                    // 初始同步已加载的歌词 (切回页面时 lrc 可能已在 Service 端就绪)
-                    AudioPlayShared.durLrcData?.takeIf { it.isNotEmpty() }?.let { lrc ->
-                        _state.update { it.copy(lrcData = lrc) }
-                    }
                     // 同步云端进度
                     if (AudioPlayShared.inBookshelf) {
                         scope.launch {
@@ -317,11 +305,7 @@ class AudioPlayScreenModel : ScreenModel {
             is AudioPlayUiEvent.LrcClick -> {
                 AudioPlayShared.adjustProgress(event.time)
                 if (AudioPlayShared.status == Status.PAUSE) AudioPlayShared.resume()
-                // 立即高亮 (不等 Service 回发事件)
-                _state.update {
-                    val line = it.lrcData?.indexOfLast { pair -> pair.first <= event.time } ?: -1
-                    it.copy(lrcProgress = line)
-                }
+                // 不需要本地立即高亮: seek 目标已写进位置真源, 下一帧求值就是新行
             }
 
             AudioPlayUiEvent.CoverClick -> _state.update { it.copy(coverVisible = false) }
@@ -357,7 +341,7 @@ class AudioPlayScreenModel : ScreenModel {
             runCatching {
                 BookChapterLoader.loadChapterList(
                     book,
-                    AudioPlayBookBridges.get().getBookSource(book),
+                    AudioPlayShared.bookSourceOf(book),
                 )
             }.getOrDefault(emptyList())
         }.orEmpty()
@@ -399,8 +383,8 @@ class AudioPlayScreenModel : ScreenModel {
 /**
  * 音频播放页 UI 状态 (对照 [AudioPlayScreenContent] 同名参数)。
  *
- * lrcData/lrcProgress/lrcColors 由平台 lrcSlot/blurBgSlot 内部管理, 不在此处托管
- * (依赖平台自绘 LrcView + Bitmap.getRepresentativeColor)。
+ * 歌词只托管数据 ([lrc]); 当前高亮行由 [rememberLrcIndex] 按帧派生, 配色由
+ * [rememberLrcColors] 从封面取色, 都不进本状态。
  */
 data class AudioPlayUiState(
     val title: String = "",
@@ -417,8 +401,7 @@ data class AudioPlayUiState(
     val playMode: AudioPlayShared.PlayMode = AudioPlayShared.PlayMode.LIST_END_STOP,
     val prevEnabled: Boolean = true,
     val nextEnabled: Boolean = true,
-    val lrcData: List<Pair<Int, String>>? = null,
-    val lrcProgress: Int = -1,
+    val lrc: Lrc? = null,
     /** 是否在书架中 (退出时若 false 弹加书架确认) */
     val inShelf: Boolean = true,
     /** 书源是否配置了评论规则 (reviewUrl 判空, 决定右上角评论入口显隐) */

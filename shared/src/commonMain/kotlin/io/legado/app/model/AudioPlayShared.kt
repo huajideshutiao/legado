@@ -17,6 +17,7 @@ import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
 import io.legado.app.model.AudioPlayShared.resetData
 import io.legado.app.utils.postEvent
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.withContext
 
 /**
@@ -30,9 +31,8 @@ import kotlinx.coroutines.withContext
  *   `appCtx.startService<AudioPlayService>`, 依赖 Android Context/Intent/splitties,
  *   抽象为 [AudioPlayCommander] 接口, app 端注册 `AndroidAudioPlayCommander` 实现
  *   (内部仍走 startService<AudioPlayService> + IntentAction + extras, 行为完全等价)。
- * - **Book 平台操作**: `book.saveRead()` / `book.save()` / `book.getBookSource()` 扩展
- *   位于 app 端 BookExtensions.kt (依赖 runBlocking + appDb), 抽象为 [AudioPlayBookBridge]
- *   接口, app 端注册实现委托现有扩展。
+ * - **Book 操作**: `book.saveRead()` / `book.save()` 已是 [Book] 的 commonMain 成员, 四端直接调;
+ *   书源查询走 [bookSourceOf] (suspend DAO, 不用 runBlocking 的 `Book.getBookSource()` 扩展)。
  * - **PlayMode.iconRes**: R.drawable.* 是 Android 资源 ID, enum 构造参数无法跨平台。
  *   下沉后 PlayMode 不含 iconRes, app 端通过扩展属性 `PlayMode.iconRes` 提供
  *   (见 app 端 AudioPlay.kt), 调用方 `playMode.iconRes` 语法不变 (Kotlin 扩展属性与
@@ -48,11 +48,12 @@ import kotlinx.coroutines.withContext
  *
  * # 不在这里 (与 app 端一致)
  * - 歌词解析: 见 [LrcParser]
- * - 加载播放 URL / 封面 / 歌词: 见 app 端 `AudioPlayService` (Service 拥有生命周期作用域,
- *   适合做异步加载; ExoPlayer/MediaSession 等 Android 专属依赖保留 app 端)
+ * - 加载播放 URL / 封面 / 歌词: 见 [io.legado.app.model.audio.AudioPlayManager]
+ * - 播放会话状态机 (起播/暂停/倍速/定时/引擎回调): 见
+ *   [io.legado.app.model.audio.AudioPlaySession], 平台接入见 `AudioPlaySessionHost`
  *
- * UI 更新一律通过 EventBus 推送 (AUDIO_COVER / AUDIO_LRC / AUDIO_LOADING / ...),
- * 不持有 Activity 引用以避免内存泄漏。
+ * UI 更新一律通过 EventBus 推送 (AUDIO_COVER / AUDIO_LOADING / ...),
+ * 不持有 Activity 引用以避免内存泄漏。歌词是例外: 见 [durLrc]。
  *
  * UI 命令面应通过 AudioPlayViewModel, 而不是直接调本对象。
  */
@@ -81,6 +82,15 @@ object AudioPlayShared {
 
     var playMode = PlayMode.LIST_END_STOP
     var status = Status.STOP
+
+    /**
+     * 播放速率 (由 [io.legado.app.model.audio.AudioPlaySession] 写入)。
+     *
+     * 是共享状态而不是事件, 两个原因: [io.legado.app.model.audio.LyricPublisher] 要按它把
+     * "到下一行还有多少歌曲时间"换算成墙上时间, 而会话起始沿用上一轮倍速时并不会 post
+     * AUDIO_SPEED; 且 Android 的会话随 Service 重建, 倍速要靠这里跨会话存活。
+     */
+    var playSpeed = 1f
     var book: Book? = null
     var chapterSize = 0
     var simulatedChapterSize = 0
@@ -90,7 +100,15 @@ object AudioPlayShared {
     var durChapter: BookChapter? = null
     var durPlayUrl = ""
     var durCoverUrl: String? = null
-    var durLrcData: List<Pair<Int, String>>? = null
+
+    /**
+     * 当前章节歌词 (null = 无歌词/未就绪)。
+     *
+     * 用 StateFlow 而不是 sticky 事件: 歌词是状态不是通知, 订阅即拿到当前值, 换章置 null、
+     * 到货置新值, 没有"空列表"这种中间态。当前高亮行不在此处发布 —— 它是
+     * (歌词, 播放位置) 的派生量, 由消费方按需求值 (见 [Lrc.indexAt])。
+     */
+    val durLrc = MutableStateFlow<Lrc?>(null)
     var durAudioSize = 0
     var inBookshelf = false
     var bookSource: BookSource? = null
@@ -172,7 +190,6 @@ object AudioPlayShared {
             }
         }
         durCoverUrl?.let { postEvent(EventBus.AUDIO_COVER, it) }
-        durLrcData?.let { postEvent(EventBus.AUDIO_LRC, it) }
         postEvent(EventBus.AUDIO_PROGRESS, durChapterPos)
     }
 
@@ -189,7 +206,7 @@ object AudioPlayShared {
         }
         simulatedChapterSize =
             if (book.readSimulating()) book.simulatedTotalChapterNum() else chapterSize
-        bookSource = AudioPlayBookBridges.get().getBookSource(book)
+        bookSource = bookSourceOf(book)
         durChapterIndex = book.durChapterIndex
         durChapterPos = book.durChapterPos
         durPlayUrl = ""
@@ -225,9 +242,7 @@ object AudioPlayShared {
             AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, durChapterIndex)
         }
         durAudioSize = durChapter?.end?.toInt() ?: 0
-        durLrcData = null
-        postEvent(EventBus.AUDIO_LRC, emptyList<Pair<Int, String>>())
-        postEvent(EventBus.AUDIO_LRCPROGRESS, -1)
+        durLrc.value = null
         val title = durChapter?.title ?: appString(AppStringKey.data_loading)
         postEvent(EventBus.AUDIO_SUB_TITLE, title)
         postEvent(EventBus.AUDIO_SIZE, durAudioSize)
@@ -317,7 +332,7 @@ object AudioPlayShared {
                     book.getUseReplaceRule()
                 )
             }
-            AudioPlayBookBridges.get().saveRead(book)
+            book.saveRead()
             // 落库后通知书架重查 (对齐阅读器 uploadProgress 行为): 书架 DB 流驻留订阅,
             // UP_BOOKSHELF 让书架重查 (双保险; Room 失效推送实证正常, 见 Book.kt equals 定案)
             // durChapterTime, 否则书架停在旧快照不刷到第一位 (回归 2026-08)。
@@ -342,6 +357,15 @@ object AudioPlayShared {
 
     fun playPositionChanged(position: Int) {
         durChapterPos = position
+    }
+
+    /**
+     * 书籍对应书源。
+     *
+     * 不用 `Book.getBookSource()`: 那个是 runBlocking 扩展, 而调用方可能从主线程协程进入。
+     */
+    suspend fun bookSourceOf(book: Book): BookSource? = withContext(IoDispatcher) {
+        AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
     }
 
 }

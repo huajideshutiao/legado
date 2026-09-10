@@ -1768,8 +1768,8 @@ class AndroidPlatformCapabilities(
 
     override val launcherIconChangeSupported: Boolean get() = true
 
-    // AudioPlayService 用 MediaPlaybackLock 真持唤醒锁, 音频播放页的唤醒锁开关只在本端显示
-    override val audioWakeLockSupported: Boolean get() = true
+    // AudioPlayService / WebService 用 MediaPlaybackLock 真持唤醒锁, 两个唤醒锁开关只在本端显示
+    override val wakeLockSupported: Boolean get() = true
 
     // 对照 ThemeConfigFragment.configBottomNav: dialog_bottom_nav_config.xml Compose 重建
     override fun showBottomNavConfigDialog() {

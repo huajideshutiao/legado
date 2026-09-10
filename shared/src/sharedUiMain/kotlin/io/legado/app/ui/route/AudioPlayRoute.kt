@@ -29,6 +29,7 @@ import io.legado.app.help.IntentData
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.changeSourceTo
 import io.legado.app.help.book.isAudio
+import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfigProviders
@@ -50,6 +51,7 @@ import io.legado.app.ui.compose.platform.hasActiveBackLayer
 import io.legado.app.ui.compose.platform.mediaPlaybackKeys
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.AppNavigator
+import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
@@ -302,15 +304,6 @@ fun AudioPlayRoute(
             pendingBookmark = bookmark
         },
         onShowAppLog = { showLogDialog = true },
-        // 只有 Android 前台服务真持唤醒锁, 其余端不给回调让菜单项不显示
-        onToggleWakeLock = if (PlatformCapabilityProviders.get().audioWakeLockSupported) {
-            {
-                val config = AppConfigProviders.get()
-                config.setAudioPlayUseWakeLock(!config.audioPlayUseWakeLock)
-            }
-        } else {
-            null
-        },
     )
 
     platform.Content(
@@ -361,6 +354,20 @@ fun AudioPlayRoute(
                 panelKind = AudioPlaySidePanelKind.REVIEW
             } else {
                 PlatformCapabilityProviders.get().showReviewListDialog(book, chapter, 0)
+            }
+        },
+        onOpenCover = {
+            val cover = state.coverUrl
+            if (!cover.isNullOrBlank()) {
+                val playBook = AudioPlayShared.book ?: book
+                navigator.showOverlay(
+                    AppOverlay.Dialog(
+                        key = "photo",
+                        payload = cover,
+                        sourceOrigin = playBook.origin
+                            .takeIf { !playBook.isLocal && it.isNotBlank() },
+                    )
+                )
             }
         },
         overflowActions = overflowActions,

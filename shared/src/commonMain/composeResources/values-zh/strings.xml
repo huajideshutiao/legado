@@ -223,6 +223,8 @@
     <string name="copy_play_url">拷贝播放 URL</string>
     <string name="check_add_bookshelf">是否将《%1$s》放入书架？</string>
     <string name="audio_play_wake_lock">音频服务唤醒锁</string>
+    <string name="publish_lyric">车载歌词</string>
+    <string name="publish_lyric_summary">当前歌词行推到 now-playing 标题 (车机 / 蓝牙 / 锁屏), 会顶掉章节名</string>
     <string name="all_source">全部书源</string>
     <string name="groups_or_source">多分组/书源</string>
     <string name="precision_search">精准搜索</string>

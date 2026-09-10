@@ -36,6 +36,7 @@ object SharedAudioPlayPlatformProvider : AudioPlayPlatformProvider {
         sidePanelKind: AudioPlaySidePanelKind?,
         sidePanelSlot: @Composable (AudioPlaySidePanelKind) -> Unit,
         onTapOutsideSidePanel: (() -> Unit)?,
+        onOpenCover: () -> Unit,
     ) {
         SharedAudioPlayScreenContent(
             state = state,
@@ -51,6 +52,7 @@ object SharedAudioPlayPlatformProvider : AudioPlayPlatformProvider {
             sidePanelKind = sidePanelKind,
             sidePanelSlot = sidePanelSlot,
             onTapOutsideSidePanel = onTapOutsideSidePanel,
+            onOpenCover = onOpenCover,
             // 评论钮已收拢为 SharedAudioPlayScreenContent 默认 (见 AudioPlaySharedSlots.kt)
         )
     }
