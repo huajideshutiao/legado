@@ -60,10 +60,61 @@ dependencies {
     add("kspAndroid", project(':modules:quickjs-processor'))
 }
 
-// 桌面 JVM native 库由主机 CMake 构建，输出供 desktop:run 与桌面分发复用。
-def jvmNativeDir = layout.buildDirectory.dir("libs/jvm/native").get().asFile
-def jvmNativeBuildDir = layout.buildDirectory.dir("intermediates/cmake-jvm").get().asFile
+// 桌面 JVM native 库按主机平台隔离，输出供 desktop:run 与桌面分发复用。
+// 工具探测封装在 Provider 中：仅 buildJvmNativeLib 的任务输入被快照/任务执行时才求值，
+// 普通 Kotlin/Android 配置阶段不会启动 cmake/compiler 子进程。
+def hostOsName = System.getProperty("os.name").toLowerCase()
+def hostOs = hostOsName.contains("windows") ? "windows" :
+        (hostOsName.contains("mac") || hostOsName.contains("darwin") ? "macos" :
+                (hostOsName.contains("linux") ? "linux" : hostOsName.replaceAll("[^a-z0-9_.-]", "_")))
+// QuickJS native 目录架构契约（生产者/desktop/headless/runtime 必须一致）：
+// amd64|x86_64|x64 -> x86_64；arm64|aarch64 -> aarch64；其余仅做路径安全化。
+def hostArch = normalizeJvmNativeArch(System.getProperty("os.arch"))
+def platformId = "${hostOs}-${hostArch}"
+def isWindowsHost = hostOs == "windows"
 def cppDir = project(':modules:quickjs-android-native').file("src/main/cpp")
+def quickjsNgDir = rootProject.file("shared/src/cinterop/quickjs-ng")
+def jvmNativeDir = layout.buildDirectory.dir("libs/jvm/native/${platformId}")
+def effectiveJavaHome = new File(System.getenv("JAVA_HOME") ?: System.getProperty("java.home")).absoluteFile
+def jdkIncludeDir = new File(effectiveJavaHome, "include")
+def jdkPlatformIncludeDir = new File(jdkIncludeDir, isWindowsHost ? "win32" : (hostOs == "macos" ? "darwin" : "linux"))
+
+def nativeToolchain = providers.provider {
+    def cmake = findCmakeExecutable()
+    def cmakeIdentity = cmake == null ? "<missing>" : commandIdentity([cmake, "--version"])
+    def hasNmake = isWindowsHost && commandSucceeds(["nmake", "/?"])
+    def mingwBin = isWindowsHost && !hasNmake ? findMingwBinDir() : null
+    def generator = mingwBin != null ? "MinGW Makefiles" : "CMake default"
+    def compilerIdentity
+    if (mingwBin != null) {
+        compilerIdentity = commandIdentity([new File(mingwBin, "gcc.exe").absolutePath, "--version"])
+    } else if (isWindowsHost && hasNmake) {
+        compilerIdentity = commandIdentity(["cl"])
+    } else {
+        def cc = System.getenv("CC") ?: "cc"
+        def cxx = System.getenv("CXX") ?: "c++"
+        compilerIdentity = "CC=${cc}:${commandIdentity([cc, "--version"])};CXX=${cxx}:${commandIdentity([cxx, "--version"])}"
+    }
+    def fingerprint = "${cmake ?: ''}|${cmakeIdentity}|${generator}|${mingwBin ?: ''}|${compilerIdentity}|java=${effectiveJavaHome.absolutePath}"
+    def hash = Integer.toUnsignedString(fingerprint.hashCode(), 16)
+    return [
+            cmake           : cmake,
+            cmakeIdentity   : cmakeIdentity,
+            hasNmake        : hasNmake,
+            mingwBin        : mingwBin,
+            generator       : generator,
+            compilerIdentity: compilerIdentity,
+            fingerprint     : fingerprint,
+            id              : "${mingwBin != null ? 'mingw' : (hasNmake ? 'msvc' : 'default')}-${hash}"
+    ]
+}
+
+static String normalizeJvmNativeArch(String rawArch) {
+    def arch = rawArch.toLowerCase()
+    if (arch in ["amd64", "x86_64", "x64"]) return "x86_64"
+    if (arch in ["arm64", "aarch64"]) return "aarch64"
+    return arch.replaceAll("[^a-z0-9_.-]", "_")
+}
 
 static String nativeLibName() {
     String osName = System.getProperty("os.name").toLowerCase()
@@ -79,23 +130,51 @@ static String nativeLibName() {
 tasks.register("buildJvmNativeLib") {
     group = "native"
     description = "Build legado_quickjs native library for desktop JVM"
-    def libOutFile = new File(jvmNativeDir, nativeLibName())
-    // quickjs-ng 源码不在 cppDir 下 (CMakeLists 引 shared/src/cinterop/quickjs-ng),
-    // 两个目录都得进 inputs, 否则改 quickjs 源码不重建
-    inputs.dir cppDir
-    inputs.dir rootProject.file("shared/src/cinterop/quickjs-ng")
-    // 声明 outputs 才能参与增量判定 (同 desktop 的 buildSmtcNative/buildWndChromeNative);
-    // 原先只有 inputs 无 outputs, 每次 :desktop:run 都重跑一轮 cmake configure+build
-    outputs.file libOutFile
+    def libOutFile = jvmNativeDir.map { it.file(nativeLibName()) }
+    // Provider 作为任务输入保持 toolchain 增量隔离；Gradle 仅在本任务参与执行/快照输入时求值。
+    // 本自定义 native 任务只承诺本地 up-to-date 判定，不声明可跨机器复用的 build-cache 产物。
+    // 中间目录按工具链 fingerprint 分槽，避免本机切换工具链后复用错误 CMakeCache。
+    outputs.file(libOutFile)
+
+    // 只跟踪实际参与目标的桥接源码/CMake 配置，以及 QuickJS 编译单元和递归头文件。
+    inputs.files(project.fileTree(cppDir) {
+        include "CMakeLists.txt", "jni/**/*.cpp", "jni/**/*.h", "jni/**/*.hpp"
+    })
+    inputs.files(
+            new File(quickjsNgDir, "quickjs.c"),
+            new File(quickjsNgDir, "dtoa.c"),
+            new File(quickjsNgDir, "libregexp.c"),
+            new File(quickjsNgDir, "libunicode.c"),
+            project.fileTree(quickjsNgDir) { include "**/*.h", "**/*.hpp" }
+    )
+    inputs.files(project.fileTree(jdkIncludeDir) { include "*.h" })
+    inputs.files(project.fileTree(jdkPlatformIncludeDir) { include "**/*.h" })
+    inputs.property("nativeOs", hostOs)
+    inputs.property("nativeArch", hostArch)
+    inputs.property("javaHome", effectiveJavaHome.absolutePath)
+    inputs.property("jdkInclude", jdkIncludeDir.absolutePath)
+    inputs.property("jdkPlatformInclude", jdkPlatformIncludeDir.absolutePath)
+    inputs.property("toolchainFingerprint", nativeToolchain.map { it.fingerprint })
 
     doLast {
-        def cmakeCmd = findCmakeExecutable()
-        if (cmakeCmd == null) {
-            logger.warn("[quickjs-jvm] cmake not found, skipping native build. JS eval will fail at runtime.")
-            return
+        def toolchain = nativeToolchain.get()
+        def selectedCmake = toolchain.cmake
+        def selectedMingwBin = toolchain.mingwBin
+        def nativeGenerator = toolchain.generator
+        def hasNmake = toolchain.hasNmake
+        def jvmNativeDirFile = jvmNativeDir.get().asFile
+        def jvmNativeBuildDir = layout.buildDirectory.dir("intermediates/cmake-jvm/${platformId}-${toolchain.id}").get().asFile
+        def jvmNativeStagingDir = layout.buildDirectory.dir("intermediates/cmake-jvm-output/${platformId}-${toolchain.id}").get().asFile
+        def libOutFileValue = libOutFile.get().asFile
+        def stagedLibFile = new File(jvmNativeStagingDir, nativeLibName())
+        if (selectedCmake == null) {
+            throw new GradleException("[quickjs-jvm] CMake not found; the required JVM native library cannot be built.")
         }
 
-        jvmNativeDir.mkdirs()
+        jvmNativeDirFile.mkdirs()
+        // CMake 只写临时输出；失败时不会把旧库误当成本次构建结果。
+        project.delete(jvmNativeStagingDir)
+        jvmNativeStagingDir.mkdirs()
 
         // CMake 缓存绑定源码目录，源码迁移后仅清理失效的可再生中间目录。
         def cmakeCache = new File(jvmNativeBuildDir, "CMakeCache.txt")
@@ -106,9 +185,7 @@ tasks.register("buildJvmNativeLib") {
             if (cachedHome != null) {
                 def cachedPath = new File(cachedHome).canonicalPath
                 def currentPath = cppDir.canonicalPath
-                def sameSource = System.getProperty("os.name").toLowerCase().contains("windows")
-                        ? cachedPath.equalsIgnoreCase(currentPath)
-                        : cachedPath == currentPath
+                def sameSource = isWindowsHost ? cachedPath.equalsIgnoreCase(currentPath) : cachedPath == currentPath
                 if (!sameSource) {
                     logger.lifecycle("[quickjs-jvm] CMake source changed; resetting stale cache.")
                     project.delete(jvmNativeBuildDir)
@@ -117,70 +194,92 @@ tasks.register("buildJvmNativeLib") {
         }
         jvmNativeBuildDir.mkdirs()
 
-        def isWindows = System.getProperty("os.name").toLowerCase().contains("windows")
-        def useMinGW = false
-        def mingwBinDir = null
-        if (isWindows) {
-            def hasNmake = false
-            try {
-                def proc = ["nmake", "/?"].execute()
-                proc.waitFor()
-                hasNmake = proc.exitValue() == 0
-            } catch (IOException ignored) {
-            }
-
-            if (!hasNmake) {
-                mingwBinDir = findMingwBinDir()
-                if (mingwBinDir != null) {
-                    useMinGW = true
-                    logger.lifecycle("[quickjs-jvm] Using MinGW Makefiles: ${mingwBinDir}")
-                } else {
-                    logger.warn("[quickjs-jvm] No nmake/MSVC or MinGW found; CMake configure may fail.")
-                }
-            }
+        if (isWindowsHost && selectedMingwBin == null) {
+            logger.lifecycle("[quickjs-jvm] Using CMake default Windows generator${hasNmake ? ' (MSVC environment detected)' : ''}.")
+        } else if (selectedMingwBin != null) {
+            logger.lifecycle("[quickjs-jvm] Using MinGW Makefiles: ${selectedMingwBin}")
         }
 
-        def configureCmd = [cmakeCmd]
-        if (useMinGW) {
-            configureCmd += ["-G", "MinGW Makefiles"]
+        def configureCmd = [selectedCmake]
+        if (nativeGenerator != "CMake default") {
+            configureCmd += ["-G", nativeGenerator]
         }
         configureCmd += [
                 "-S", cppDir.absolutePath,
                 "-B", jvmNativeBuildDir.absolutePath,
                 "-DCMAKE_BUILD_TYPE=Release",
-                "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=" + jvmNativeDir.absolutePath,
-                "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=" + jvmNativeDir.absolutePath
+                "-DJDK_INCLUDE_DIR=" + jdkIncludeDir.absolutePath,
+                "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=" + jvmNativeStagingDir.absolutePath,
+                "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=" + jvmNativeStagingDir.absolutePath,
+                "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY_RELEASE=" + jvmNativeStagingDir.absolutePath,
+                "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE=" + jvmNativeStagingDir.absolutePath
         ]
         logger.lifecycle("[quickjs-jvm] cmake configure: ${configureCmd.join(' ')}")
-        def configurePB = new ProcessBuilder(configureCmd)
-        if (useMinGW && mingwBinDir != null) {
-            def path = configurePB.environment().get("PATH") ?: ""
-            configurePB.environment().put("PATH", mingwBinDir + File.pathSeparator + path)
-        }
-        configurePB.redirectErrorStream(true)
-        def configureProc = configurePB.start()
-        configureProc.inputStream.eachLine { logger.lifecycle(it) }
-        configureProc.waitFor()
-        if (configureProc.exitValue() != 0) {
-            logger.warn("[quickjs-jvm] cmake configure failed (exit=${configureProc.exitValue()}), skipping native build.")
-            return
+        def configureExit = runNativeCommand(configureCmd, selectedMingwBin, logger)
+        if (configureExit != 0) {
+            throw new GradleException("[quickjs-jvm] CMake configure failed (exit=${configureExit}).")
         }
 
-        def buildCmd = [cmakeCmd, "--build", jvmNativeBuildDir.absolutePath, "--config", "Release"]
-        def buildPB = new ProcessBuilder(buildCmd)
-        if (useMinGW && mingwBinDir != null) {
-            def path = buildPB.environment().get("PATH") ?: ""
-            buildPB.environment().put("PATH", mingwBinDir + File.pathSeparator + path)
+        def buildCmd = [selectedCmake, "--build", jvmNativeBuildDir.absolutePath, "--config", "Release"]
+        def buildExit = runNativeCommand(buildCmd, selectedMingwBin, logger)
+        if (buildExit != 0) {
+            throw new GradleException("[quickjs-jvm] CMake build failed (exit=${buildExit}).")
         }
-        buildPB.redirectErrorStream(true)
-        def buildProc = buildPB.start()
-        buildProc.inputStream.eachLine { logger.lifecycle(it) }
-        buildProc.waitFor()
-        if (buildProc.exitValue() != 0) {
-            logger.warn("[quickjs-jvm] cmake build failed (exit=${buildProc.exitValue()}), native lib may be missing.")
-            return
+        if (!stagedLibFile.isFile()) {
+            throw new GradleException("[quickjs-jvm] Build succeeded but native library is missing: ${stagedLibFile.absolutePath}")
         }
-        logger.lifecycle("[quickjs-jvm] native library built: ${libOutFile.absolutePath}")
+
+        try {
+            java.nio.file.Files.move(
+                    stagedLibFile.toPath(), libOutFileValue.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE
+            )
+        } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
+            java.nio.file.Files.move(
+                    stagedLibFile.toPath(), libOutFileValue.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING
+            )
+        }
+        if (!libOutFileValue.isFile()) {
+            throw new GradleException("[quickjs-jvm] Native library publication failed: ${libOutFileValue.absolutePath}")
+        }
+        logger.lifecycle("[quickjs-jvm] native library built: ${libOutFileValue.absolutePath}")
+    }
+}
+
+int runNativeCommand(List<String> command, String extraPath, def taskLogger) {
+    def processBuilder = new ProcessBuilder(command)
+    if (extraPath != null) {
+        def path = processBuilder.environment().get("PATH") ?: ""
+        processBuilder.environment().put("PATH", extraPath + File.pathSeparator + path)
+    }
+    processBuilder.redirectErrorStream(true)
+    def process = processBuilder.start()
+    process.inputStream.eachLine { taskLogger.lifecycle(it) }
+    process.waitFor()
+    return process.exitValue()
+}
+
+boolean commandSucceeds(List<String> command) {
+    try {
+        def process = new ProcessBuilder(command).redirectErrorStream(true).start()
+        process.inputStream.eachLine {}
+        process.waitFor()
+        return process.exitValue() == 0
+    } catch (Exception ignored) {
+        return false
+    }
+}
+
+String commandIdentity(List<String> command) {
+    try {
+        def process = new ProcessBuilder(command).redirectErrorStream(true).start()
+        def output = process.inputStream.getText("UTF-8").trim()
+        process.waitFor()
+        return "exit=${process.exitValue()};${output}"
+    } catch (Exception error) {
+        return "unavailable:${error.class.simpleName}"
     }
 }
 

@@ -108,10 +108,11 @@ endif ()
 
 # JNI 头文件目录 (Android NDK 自带 jni.h, 桌面端从 JDK include 引入)
 if (NOT ANDROID)
-    # 优先用 JAVA_HOME, 其次探测常见 JDK 路径
-    if (DEFINED ENV{JAVA_HOME})
+    # Gradle passes the selected toolchain JDK explicitly; JAVA_HOME remains a fallback
+    # for direct CMake invocation.
+    if (NOT JDK_INCLUDE_DIR AND DEFINED ENV{JAVA_HOME})
         set(JDK_INCLUDE_DIR "$ENV{JAVA_HOME}/include")
-    else ()
+    elseif (NOT JDK_INCLUDE_DIR)
         # 探测常见 JDK 路径 (Windows/macOS/Linux)
         find_path(JDK_INCLUDE_DIR
                 NAMES jni.h
