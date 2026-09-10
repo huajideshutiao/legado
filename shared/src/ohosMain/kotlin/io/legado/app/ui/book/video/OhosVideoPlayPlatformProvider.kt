@@ -31,7 +31,7 @@ object OhosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
     override fun createController(
         screenModel: VideoPlayScreenModel,
         onPlaybackEnded: () -> Unit,
-    ): VideoPlayerController = OhosVideoPlayerController(onPlaybackEnded)
+    ): VideoPlayerController = OhosVideoPlayerController(screenModel, onPlaybackEnded)
 
     /**
      * 画面渲染: 经 CPF interop 把 ArkTS 的 XComponent(type:'surface') 混排进 Compose 层级。
@@ -119,6 +119,7 @@ object OhosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
  * playerId 固定 "videoBook", 与音频书/HttpTTS 互不抢占 (同 OhosAvAudioPlayController 模式)。
  */
 class OhosVideoPlayerController(
+    private val screenModel: VideoPlayScreenModel,
     private val onPlaybackEnded: () -> Unit,
 ) : VideoPlayerController, OhosNativeBridge.MediaEventListener {
 
@@ -151,6 +152,10 @@ class OhosVideoPlayerController(
     @Volatile
     private var bufferingPercent = 100
 
+    /** 已缓存时长 ms (ArkTS onCachedDuration 推送 = AVPlayer CACHED_DURATION 档) */
+    @Volatile
+    private var cachedBufferedMs = 0L
+
     /** 缓冲中: 链接就绪后 AVPlayer 未 prepare 完成 (onReady 前), 或缓冲百分比 < 100 (起播/卡顿/seek)。 */
     val isBuffering: Boolean
         get() = !ready || bufferingPercent < 100
@@ -172,6 +177,7 @@ class OhosVideoPlayerController(
         loadedUrl = url
         ready = false
         bufferingPercent = 0
+        cachedBufferedMs = 0L
         ensureListener()
         sendCommand(MediaCommand(action = "setSourceUrl", url = url))
         syncBuffering()
@@ -186,18 +192,33 @@ class OhosVideoPlayerController(
 
     override val positionMs: Long get() = cachedPosition
     override val durationMs: Long get() = cachedDuration
-    override val bufferedMs: Long get() = cachedDuration
+
+    /**
+     * 已缓冲到的时间点 (进度条缓冲层用)。
+     *
+     * AVPlayer 的 CACHED_DURATION 档给的是"已缓存时长", 从当前播放位置往后算,
+     * 换成绝对时间点才能画进度条; 不用 [bufferingPercent] —— 那是起播缓冲进度,
+     * 缓冲完成后恒 100, 折算成时长就是一条永远铺满的假缓冲条。
+     */
+    override val bufferedMs: Long
+        get() {
+            if (cachedBufferedMs <= 0L) return 0L
+            val end = cachedPosition + cachedBufferedMs
+            return if (cachedDuration > 0L) end.coerceAtMost(cachedDuration) else end
+        }
 
     override fun playPause() {
         if (playing) {
             sendCommand(MediaCommand(action = "pause"))
         } else {
+            // play 命令只表示请求起播；重试计数只在 ArkTS 回推 onReady 后清零。
             sendCommand(MediaCommand(action = "play"))
             if (speed != 1f) sendCommand(MediaCommand(action = "setSpeed", speed = speed))
         }
     }
 
     override fun seekTo(positionMs: Long) {
+        cachedBufferedMs = 0L
         sendCommand(MediaCommand(action = "seekTo", position = positionMs))
         cachedPosition = positionMs
     }
@@ -235,6 +256,7 @@ class OhosVideoPlayerController(
         playing = false
         ready = false
         bufferingPercent = 100
+        cachedBufferedMs = 0L
         cachedDuration = 0L
         cachedPosition = 0L
         loadedUrl = null
@@ -250,9 +272,12 @@ class OhosVideoPlayerController(
             "onReady" -> {
                 ready = true
                 bufferingPercent = 100
+                screenModel.shared.resetRetryOnPlayError()
             }
 
             "onBufferingUpdate" -> event.percent?.let { bufferingPercent = it.toInt() }
+
+            "onCachedDuration" -> event.cachedDuration?.let { cachedBufferedMs = it }
 
             "onEndOfMedia" -> {
                 playing = false
@@ -263,6 +288,12 @@ class OhosVideoPlayerController(
             "onError" -> {
                 playing = false
                 bufferingPercent = 100
+                loadedUrl = null
+                val message = event.message ?: "视频播放出错"
+                val retried = screenModel.shared.retryOnPlayError()
+                if (!retried) {
+                    screenModel.dispatch(VideoPlayUiEvent.ShowError(message))
+                }
             }
 
             "onDuration" -> event.duration?.let { cachedDuration = it }
@@ -306,6 +337,7 @@ class OhosVideoPlayerController(
         val message: String? = null,
         val percent: Long? = null,
         val duration: Long? = null,
+        val cachedDuration: Long? = null,
         val position: Long? = null,
     )
 }

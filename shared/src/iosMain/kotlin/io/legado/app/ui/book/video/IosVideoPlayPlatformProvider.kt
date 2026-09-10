@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.interop.UIKitView
 import io.legado.app.help.media.AvPlayerBufferingObserver
 import io.legado.app.help.media.AvPlayerItemStatusObserver
+import io.legado.app.help.media.maxLoadedTimeRangeEndMs
 import io.legado.app.ui.IosStatusBarHiddenKey
 import io.legado.app.ui.IosStatusBarHiddenNotification
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerItem
 import platform.AVFoundation.AVPlayerItemDidPlayToEndTimeNotification
+import platform.AVFoundation.AVPlayerItemFailedToPlayToEndTimeNotification
 import platform.AVFoundation.AVURLAsset
 import platform.AVFoundation.currentTime
 import platform.AVFoundation.duration
@@ -46,7 +48,7 @@ object IosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
     override fun createController(
         screenModel: VideoPlayScreenModel,
         onPlaybackEnded: () -> Unit,
-    ): VideoPlayerController = IosVideoPlayerController(onPlaybackEnded)
+    ): VideoPlayerController = IosVideoPlayerController(screenModel, onPlaybackEnded)
 
     @Composable
     override fun RenderSurface(
@@ -126,6 +128,7 @@ object IosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
 
 // AVPlayer 视频控制器: 播放/暂停/进度/倍速 (参考 IosHttpTtsPlayer 的 AVPlayer 用法)
 class IosVideoPlayerController(
+    private val screenModel: VideoPlayScreenModel,
     private val onPlaybackEnded: () -> Unit,
 ) : VideoPlayerController {
 
@@ -133,6 +136,7 @@ class IosVideoPlayerController(
         private set
     private var item: AVPlayerItem? = null
     private var endObserver: Any? = null
+    private var failObserver: Any? = null
     private var statusObserver: AvPlayerItemStatusObserver? = null
     private var bufferingObserver: AvPlayerBufferingObserver? = null
     private var loadedUrl: String? = null
@@ -145,12 +149,16 @@ class IosVideoPlayerController(
         if (url == loadedUrl) return
         loadedUrl = url
         releasePlayer()
-        val nsUrl = NSURL.URLWithString(url) ?: return
+        val nsUrl = NSURL.URLWithString(url) ?: run {
+            handlePlayError("视频地址不可用")
+            return
+        }
         val newItem = AVPlayerItem(asset = AVURLAsset(nsUrl, null))
         item = newItem
         player = AVPlayer(playerItem = newItem)
         registerEndObserver(newItem)
         registerBufferingObserver(newItem)
+        registerStatusObserver(newItem)
     }
 
     override val positionMs: Long
@@ -165,11 +173,24 @@ class IosVideoPlayerController(
             if (sec.isNaN() || sec.isInfinite()) 0L else (sec * 1000.0).toLong()
         } ?: 0L
 
-    override val bufferedMs: Long get() = durationMs
+    /**
+     * 已缓冲到的时间点 (进度条缓冲层用)。
+     *
+     * `AVPlayerItem.loadedTimeRanges` 是 `NSValue`(装 `CMTimeRange`) 数组, 逐段取
+     * `CMTimeRangeGetEnd` 的最大值 = 缓冲到哪儿了。seek 后会出现多段不连续区间,
+     * 取最大 end 与 media3 `bufferedPosition` 口径一致。
+     */
+    override val bufferedMs: Long
+        get() = item?.maxLoadedTimeRangeEndMs() ?: 0L
 
     override fun playPause() {
         val pl = player ?: return
-        if (pl.rate() > 0f) pl.pause() else pl.play()
+        if (pl.rate() > 0f) {
+            pl.pause()
+        } else {
+            // play() 仅提交起播请求；重试计数只能在 item 真正 READY 后清零。
+            pl.play()
+        }
     }
 
     override fun seekTo(positionMs: Long) {
@@ -193,6 +214,31 @@ class IosVideoPlayerController(
         loadedUrl = null
     }
 
+    private fun handlePlayError(message: String) {
+        loadedUrl = null
+        val retried = screenModel.shared.retryOnPlayError()
+        if (!retried) {
+            screenModel.dispatch(VideoPlayUiEvent.ShowError(message))
+        }
+    }
+
+    private fun registerStatusObserver(target: AVPlayerItem) {
+        statusObserver?.dispose()
+        val observer = AvPlayerItemStatusObserver(
+            item = target,
+            onReady = {
+                statusObserver = null
+                screenModel.shared.resetRetryOnPlayError()
+            },
+            onFailed = { message ->
+                statusObserver = null
+                handlePlayError(message)
+            },
+        )
+        statusObserver = observer
+        observer.start()
+    }
+
     // 缓冲状态 KVO 观察 (事件驱动: item.status 加载中 / player.timeControlStatus 等待起播)
     private fun registerBufferingObserver(target: AVPlayerItem) {
         val pl = player ?: return
@@ -205,13 +251,22 @@ class IosVideoPlayerController(
         observer.start()
     }
 
-    // 注册播放结束监听 (AVPlayerItemDidPlayToEndTimeNotification)
+    // 注册播放结束监听 (AVPlayerItemDidPlayToEndTimeNotification 与 AVPlayerItemFailedToPlayToEndTimeNotification)
     private fun registerEndObserver(target: AVPlayerItem) {
-        endObserver = NSNotificationCenter.defaultCenter.addObserverForName(
+        val center = NSNotificationCenter.defaultCenter
+        endObserver = center.addObserverForName(
             AVPlayerItemDidPlayToEndTimeNotification,
             `object` = target,
             queue = NSOperationQueue.mainQueue,
         ) { _ -> onPlaybackEnded() }
+        failObserver = center.addObserverForName(
+            AVPlayerItemFailedToPlayToEndTimeNotification,
+            `object` = target,
+            queue = NSOperationQueue.mainQueue,
+        ) { _ ->
+            val message = target.error?.localizedDescription ?: "视频播放失败"
+            handlePlayError(message)
+        }
     }
 
     private fun releasePlayer() {
@@ -220,8 +275,11 @@ class IosVideoPlayerController(
         bufferingObserver?.dispose()
         bufferingObserver = null
         _isBuffering.value = false
-        endObserver?.let { NSNotificationCenter.defaultCenter.removeObserver(it) }
+        val center = NSNotificationCenter.defaultCenter
+        endObserver?.let { center.removeObserver(it) }
         endObserver = null
+        failObserver?.let { center.removeObserver(it) }
+        failObserver = null
         player?.pause()
         player?.replaceCurrentItemWithPlayerItem(null)
         player = null

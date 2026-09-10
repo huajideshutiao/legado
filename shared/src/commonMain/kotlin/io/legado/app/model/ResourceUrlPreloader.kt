@@ -86,6 +86,7 @@ class ResourceUrlPreloader(private val scope: CoroutineScope) {
                 runCatching {
                     val content = fetch(chapter)
                     if (content.isEmpty()) return@runCatching
+                    currentCoroutineContext().ensureActive()
                     // 直链回写 + 在架书 PATCH 落库 (与音视频播放侧共用 updateResourceUrl)
                     chapter.updateResourceUrl(content, inBookshelf)
                 }.onFailure {

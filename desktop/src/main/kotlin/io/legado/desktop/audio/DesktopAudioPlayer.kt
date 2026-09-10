@@ -1,5 +1,6 @@
 package io.legado.desktop.audio
 
+import io.legado.desktop.media.bufferedEndPositionMsOrZero
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -16,6 +17,7 @@ import org.openani.mediamp.MediampPlayer
 import org.openani.mediamp.PlayerState
 import org.openani.mediamp.errorOrNull
 import org.openani.mediamp.features.PlaybackSpeed
+import org.openani.mediamp.mpv.MPVHandle
 import org.openani.mediamp.source.UriMediaData
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.Volatile
@@ -142,6 +144,22 @@ class DesktopAudioPlayer {
 
     val currentPosition: Long
         get() = currentPositionMs
+
+    /**
+     * 已缓冲到的时间点 ms (进度条缓冲层用); 取不到给 0。
+     *
+     * 读 mpv `demuxer-cache-time` = 解复用缓存里最后一帧的时间戳。不用 mediamp 的
+     * [org.openani.mediamp.features.Buffering.bufferedPercentage]: 它取自
+     * `cache-buffering-state` (起播缓冲进度, 缓冲完成后恒 100), 折算成时长就是一条
+     * 永远铺满的假缓冲条。经公开的 [MediampPlayer.impl] 取句柄 (mediamp 的 `handle`
+     * 字段是 internal); released 后不取, MPVHandle 已 close, 取指针会抛异常。
+     */
+    val bufferedPosition: Long
+        get() {
+            if (released) return 0L
+            val mpv = engine?.impl as? MPVHandle ?: return 0L
+            return mpv.bufferedEndPositionMsOrZero()
+        }
 
     var listener: Listener?
         get() = listenerField

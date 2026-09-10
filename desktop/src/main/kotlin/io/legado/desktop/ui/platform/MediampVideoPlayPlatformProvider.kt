@@ -23,6 +23,7 @@ import io.legado.app.ui.book.video.VideoPlayUiEvent
 import io.legado.app.ui.book.video.VideoPlayerController
 import io.legado.desktop.audio.DesktopScreenBrightness
 import io.legado.desktop.audio.DesktopSystemVolume
+import io.legado.desktop.media.bufferedEndPositionMsOrZero
 import io.legado.desktop.ui.DesktopFullscreenController
 import io.legado.desktop.ui.DesktopWindowChrome
 import io.legado.desktop.ui.DesktopWindowHandle
@@ -39,6 +40,7 @@ import org.openani.mediamp.MediampPlayer
 import org.openani.mediamp.compose.MediampPlayerSurface
 import org.openani.mediamp.features.Buffering
 import org.openani.mediamp.features.PlaybackSpeed
+import org.openani.mediamp.mpv.MPVHandle
 import org.openani.mediamp.source.UriMediaData
 import org.openani.mediamp.togglePlayWhenReady
 import kotlin.concurrent.Volatile
@@ -241,7 +243,23 @@ class MediampVideoPlayerController(
 
     override val positionMs: Long get() = player.currentPositionMillis.value
     override val durationMs: Long get() = player.mediaProperties.value?.durationMillis ?: 0L
-    override val bufferedMs: Long get() = durationMs
+
+    /**
+     * 已缓冲到的时间点 (进度条缓冲层用)。
+     *
+     * 读 mpv `demuxer-cache-time` = 解复用缓存里最后一帧的时间戳, 即"缓冲到哪儿了"。
+     * 不用 mediamp 的 [Buffering.bufferedPercentage]: 它取自 `cache-buffering-state`
+     * (初始缓冲进度, 缓冲完成后恒 100), 折算成时长就是一条永远铺满的假缓冲条。
+     *
+     * 经公开的 [MediampPlayer.impl] 取 MPVHandle (mediamp 的 `handle` 字段是 internal)。
+     * released 后不再取属性: MPVHandle 已 close, 取指针会抛 IllegalStateException。
+     */
+    override val bufferedMs: Long
+        get() {
+            if (released) return 0L
+            val mpv = player.impl as? MPVHandle ?: return 0L
+            return mpv.bufferedEndPositionMsOrZero()
+        }
 
     override fun playPause() = player.togglePlayWhenReady()
     override fun seekTo(positionMs: Long) = player.seekTo(positionMs)

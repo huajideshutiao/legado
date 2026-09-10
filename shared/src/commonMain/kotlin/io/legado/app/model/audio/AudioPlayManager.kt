@@ -12,6 +12,7 @@ import io.legado.app.model.Lrc
 import io.legado.app.model.LrcParser
 import io.legado.app.model.ResourceUrlPreloader
 import io.legado.app.model.analyzeRule.AnalyzeRuleCore
+import io.legado.app.model.audio.AudioPlayManager.Companion.NO_SEEK
 import io.legado.app.model.chapter.ChapterLoadingGuard
 import io.legado.app.model.chapter.ChapterTocUpdater
 import io.legado.app.model.chapter.updateResourceUrl
@@ -26,6 +27,8 @@ import kotlinx.coroutines.launch
 import kotlin.concurrent.Volatile
 import kotlin.coroutines.CoroutineContext
 import kotlin.math.abs
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 /**
  * 音频播放纯逻辑管理器 (KMP commonMain)。
@@ -98,6 +101,20 @@ class AudioPlayManager(
     @Volatile
     private var pendingSeekMs: Int = NO_SEEK
 
+    /** 触发 seek 时的引擎位置, 用于区分近距离 seek。 */
+    @Volatile
+    private var seekOriginMs: Int = NO_SEEK
+
+    /** 触发 seek 时的单调时钟标记。 */
+    @Volatile
+    private var seekStartedAt: TimeMark? = null
+
+    /** 当前章节装载协程。 */
+    private var loadJob: Job? = null
+    private var contentJob: Coroutine<*>? = null
+    private var coverJob: Coroutine<*>? = null
+    private var lrcJob: Coroutine<*>? = null
+
     /**
      * 播放位置真源 (毫秒): 歌词判定与进度上报都读它。
      *
@@ -105,18 +122,60 @@ class AudioPlayManager(
      * 是章节进度 —— next/prev/skipTo 已把起始位置同步写好。
      *
      * seek 后引擎确认前返回目标位置; 引擎报告落到目标附近即认为 seek 生效, 恢复实时值。
-     * 往后播必然经过这个窗口, 所以不需要超时兜底。
      */
     val positionMs: Int
         get() {
-            if (controller.playbackState == AudioPlayController.STATE_IDLE) {
-                return AudioPlayShared.durChapterPos
+            var target = pendingSeekMs
+            val state = controller.playbackState
+
+            // 1. 播放结束时直接清理 pending，以媒体末尾或引擎实时值为准
+            if (state == AudioPlayController.STATE_ENDED) {
+                clearPendingSeek()
+                return controller.currentPosition.toInt()
             }
+
+            // 2. 无 pending seek 时，IDLE 状态回退到 durChapterPos，非 IDLE 返回引擎实时值
+            if (target == NO_SEEK) {
+                return if (state == AudioPlayController.STATE_IDLE) {
+                    AudioPlayShared.durChapterPos
+                } else {
+                    controller.currentPosition.toInt()
+                }
+            }
+
+            // 3. 有 pending seek: 控制器 IDLE 期间优先返回该目标 (起播登记的 seek 目标不被旧进度冲掉)
+            if (state == AudioPlayController.STATE_IDLE) {
+                return target
+            }
+
+            // 4. 控制器已有明确时长时，规范化越界目标 (防越界 seek 长期盖住真实位置)
+            val duration = controller.duration
+            if (duration > 0 && target > duration) {
+                target = duration.toInt()
+                pendingSeekMs = target
+            }
+
             val engine = controller.currentPosition.toInt()
-            val target = pendingSeekMs
-            if (target == NO_SEEK) return engine
-            if (abs(engine - target) < SEEK_ACK_MS) {
-                pendingSeekMs = NO_SEEK
+            val origin = seekOriginMs
+            val elapsed = seekStartedAt?.elapsedNow()?.inWholeMilliseconds ?: 0L
+
+            // 5. 判定 seek 是否已生效:
+            // - 超时兜底: 超过 SEEK_TIMEOUT_MS (3000ms) 则不再等待，放弃 pending
+            // - 远距离 seek (|origin - target| >= SEEK_ACK_MS 或无有效 origin): 引擎进入 target 邻域即可确认
+            // - 近距离 seek (|origin - target| < SEEK_ACK_MS): 须等待引擎实际移动到位或等待超过近距离保持期 (SEEK_HOLD_MS)
+            val isNearSeek = origin != NO_SEEK && abs(origin - target) < SEEK_ACK_MS
+            val isAck = when {
+                elapsed >= SEEK_TIMEOUT_MS -> true
+                isNearSeek -> {
+                    abs(engine - target) <= SEEK_NEAR_ACK_MS ||
+                        (elapsed >= SEEK_HOLD_MS && abs(engine - target) < SEEK_ACK_MS)
+                }
+
+                else -> abs(engine - target) < SEEK_ACK_MS
+            }
+
+            if (isAck) {
+                clearPendingSeek()
                 return engine
             }
             return target
@@ -126,9 +185,28 @@ class AudioPlayManager(
      * 引擎将要就位到 [position] 时告知 (拖动 seek 与起播, 对标原版 adjustProgress 里的歌词位置重置时机)。
      */
     fun onSeekTo(position: Int) {
-        pendingSeekMs = position
+        val duration = controller.duration
+        val target = if (duration > 0) {
+            position.coerceIn(0, duration.toInt())
+        } else {
+            position.coerceAtLeast(0)
+        }
+        pendingSeekMs = target
+        seekOriginMs = if (controller.playbackState != AudioPlayController.STATE_IDLE) {
+            controller.currentPosition.toInt()
+        } else {
+            NO_SEEK
+        }
+        seekStartedAt = TimeSource.Monotonic.markNow()
         // 发布循环可能正睡在"旧的下一行"时间点上, 叫醒它重算 (界面走帧驱动, 下一帧自会正确)
         LyricPublisher.invalidate()
+    }
+
+    /** 清理未完成的 seek 目标 (切章 / 停播 / 播放结束时调用)。 */
+    fun clearPendingSeek() {
+        pendingSeekMs = NO_SEEK
+        seekOriginMs = NO_SEEK
+        seekStartedAt = null
     }
 
     // region 进度上报
@@ -189,6 +267,21 @@ class AudioPlayManager(
     }
 
     /**
+     * 取消当前正在执行的章节装载任务 (封面、歌词、直链获取及守卫标记)。
+     */
+    fun cancelChapterLoad() {
+        loadJob?.cancel()
+        loadJob = null
+        contentJob?.cancel()
+        contentJob = null
+        coverJob?.cancel()
+        coverJob = null
+        lrcJob?.cancel()
+        lrcJob = null
+        loadGuard.clear()
+    }
+
+    /**
      * 加载当前章节的播放 URL, 并联动拉取封面 + 歌词。
      *
      * 流程:
@@ -208,7 +301,12 @@ class AudioPlayManager(
             session.onToast("book or source is null")
             return
         }
-        scope.launch {
+        // 切源重新装载时作废并清理先前的章节任务
+        contentJob?.cancel()
+        coverJob?.cancel()
+        lrcJob?.cancel()
+        loadJob?.cancel()
+        loadJob = scope.launch {
             // 装载权交接给下面的 Coroutine.async 之前 (取目录 / 起封面歌词) 若抛错或被取消,
             // 没人再释放标记, 该章将永久拉不起来 —— 未交接的路径统一由 finally 释放
             var handedOff = false
@@ -228,9 +326,9 @@ class AudioPlayManager(
                 AudioPlayShared.durCoverUrl = null
                 AudioPlayShared.durLrc.value = null
                 session.onResetCoverCache()
-                loadCoverUrl(bookSource, book, chapter)
-                loadLrcData(bookSource, book, chapter)
-                Coroutine.async(scope = scope) {
+                coverJob = loadCoverUrl(bookSource, book, chapter)
+                lrcJob = loadLrcData(bookSource, book, chapter)
+                contentJob = Coroutine.async(scope = scope) {
                     chapter.resourceUrl
                         ?: getContentAwait(bookSource, book, chapter, needSave = false)
                 }.onSuccess { content ->
@@ -293,7 +391,7 @@ class AudioPlayManager(
      *   否则连点切章时旧一轮的尾巴会跟新一轮抢书源
      */
     private fun preloadNeighbors(bookSource: BookSource, book: Book, chapter: BookChapter) {
-        if (chapter.index != AudioPlayShared.book?.durChapterIndex) return
+        if (chapter.index != AudioPlayShared.durChapterIndex) return
         preloader.preload(
             book = book,
             chapters = AudioPlayShared.chapterList,
@@ -312,19 +410,27 @@ class AudioPlayManager(
      * evalJS 的 null 经 toString() 变成字符串 "null" 当 URL 推送 —— 否则 UI
      * 加载 "null" 失败回落默认封面, 真实书封面被顶掉。
      */
-    private fun loadCoverUrl(bookSource: BookSource, book: Book, chapter: BookChapter) {
-        Coroutine.async(scope = scope) {
+    private fun loadCoverUrl(
+        bookSource: BookSource,
+        book: Book,
+        chapter: BookChapter
+    ): Coroutine<String?> {
+        return Coroutine.async(scope = scope) {
             val musicCover = bookSource.contentRule.musicCover
-            AudioPlayShared.durCoverUrl = if (!musicCover.isNullOrBlank()) {
+            if (!musicCover.isNullOrBlank()) {
                 runCatching {
                     val rule = analyzeRuleFactory.create(
                         book, bookSource, chapter, currentCoroutineContext()
                     )
                     rule.evalJS(musicCover)?.toString()?.takeIf { it.isNotBlank() }
                 }.getOrNull() ?: book.getDisplayCover()
-            } else book.getDisplayCover()
-        }.onSuccess {
-            val coverUrl = AudioPlayShared.durCoverUrl
+            } else {
+                book.getDisplayCover()
+            }
+        }.onSuccess { coverUrl ->
+            // 防旧章节封面异步晚到污染当前章节
+            if (chapter.index != AudioPlayShared.durChapterIndex) return@onSuccess
+            AudioPlayShared.durCoverUrl = coverUrl
             if (!coverUrl.isNullOrBlank()) {
                 postEvent(EventBus.AUDIO_COVER, coverUrl)
                 session.onLoadCover(coverUrl)
@@ -351,6 +457,8 @@ class AudioPlayManager(
             val raw = rule.evalJS(subContent) as? List<*> ?: return@async null
             LrcParser.parse(raw)
         }.onSuccess {
+            // 防旧章节歌词异步晚到污染当前章节
+            if (chapter.index != AudioPlayShared.durChapterIndex) return@onSuccess
             if (it == null || it.lines.isEmpty()) return@onSuccess
             // 只发布数据; 当前行由消费方按播放位置求值 (界面按帧, 对外发布按行唤醒)
             AudioPlayShared.durLrc.value = it
@@ -365,7 +473,7 @@ class AudioPlayManager(
      * 对标 app 端 `AudioPlayService.contentLoadFinish`。
      */
     private fun contentLoadFinish(chapter: BookChapter, content: String) {
-        if (chapter.index != AudioPlayShared.book?.durChapterIndex) return
+        if (chapter.index != AudioPlayShared.durChapterIndex) return
         AudioPlayShared.durPlayUrl = content
         val isPlayToEnd =
             AudioPlayShared.durChapterIndex + 1 == AudioPlayShared.simulatedChapterSize &&
@@ -379,8 +487,17 @@ class AudioPlayManager(
         /** [pendingSeekMs] 的空值 (真实位置不会是负数)。 */
         const val NO_SEEK = -1
 
-        /** 引擎报告与 seek 目标的差值小于此值即认为 seek 已生效 (毫秒)。 */
+        /** 引擎报告与 seek 目标的差值小于此值即认为远距离 seek 已生效 (毫秒)。 */
         const val SEEK_ACK_MS = 1000
+
+        /** 近距离 seek 紧邻域阈值 (毫秒)。 */
+        const val SEEK_NEAR_ACK_MS = 100
+
+        /** 近距离 seek 防早确认保持时间 (毫秒)。 */
+        const val SEEK_HOLD_MS = 600L
+
+        /** seek 确认超时兜底时长 (毫秒)。 */
+        const val SEEK_TIMEOUT_MS = 3000L
     }
 }
 

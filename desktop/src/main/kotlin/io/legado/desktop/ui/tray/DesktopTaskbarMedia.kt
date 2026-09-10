@@ -292,7 +292,7 @@ internal object DesktopTaskbarMedia {
         val audioActive = AudioPlayCommanders.getOrNull()?.isServiceRunning == true
         val aloudState = lastAloudState
         val aloudActive =
-            aloudState == ReadAloudState.PLAYING || aloudState == ReadAloudState.PAUSED
+            aloudState == ReadAloudState.PLAYING || aloudState == ReadAloudState.PAUSED || aloudState == ReadAloudState.WAITING
         val paused = when {
             audioActive -> audioStatus == Status.PAUSE
             aloudActive -> aloudState == ReadAloudState.PAUSED

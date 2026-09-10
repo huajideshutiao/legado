@@ -24,6 +24,7 @@ import io.legado.app.utils.File
 import io.legado.app.utils.KS_JSON
 import kotlin.concurrent.Volatile
 import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -77,6 +78,9 @@ class OhosAudioPlayCommander : NowPlayingSessionHost() {
 
     /** 流播 prepare 看门狗: 桥侧不认识 setSourceUrl 时不会有任何事件, 靠超时回退 */
     private var streamWatchdog: Job? = null
+
+    /** 流播回退预下载 Job: 换章或销毁时必须显式取消, 避免完成时将旧音频塞给新会话或已结束会话 */
+    private var downloadJob: Job? = null
 
     /** 直链解析 → 优先流播, 桥侧无响应/出错时回退整段预下载 (见 [fallbackToDownload])。 */
     override suspend fun startPlayback(url: String, positionMs: Int) {
@@ -133,6 +137,8 @@ class OhosAudioPlayCommander : NowPlayingSessionHost() {
         streamingFellBack = false
         streamWatchdog?.cancel()
         streamWatchdog = null
+        downloadJob?.cancel()
+        downloadJob = null
         resolvedUrl = null
         resolvedHeaders = emptyMap()
     }
@@ -146,7 +152,8 @@ class OhosAudioPlayCommander : NowPlayingSessionHost() {
         streamWatchdog?.cancel()
         streamWatchdog = null
         AppLog.put("音频流播回退预下载: $reason")
-        scope.launch {
+        downloadJob?.cancel()
+        downloadJob = scope.launch {
             try {
                 avController.stop()
                 val file = downloadToCache(mediaUrl, resolvedHeaders)
@@ -155,6 +162,8 @@ class OhosAudioPlayCommander : NowPlayingSessionHost() {
                 avController.playWhenReady = !session.isPaused
                 avController.setSource(file.path, startPosMs)
                 avController.prepare()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 AppLog.put("播放出错\n${e.message}", e)
                 toast("$mediaUrl ${e.message}")
@@ -166,6 +175,8 @@ class OhosAudioPlayCommander : NowPlayingSessionHost() {
     // ===== 会话收尾 =====
 
     override fun onSessionEnd() {
+        downloadJob?.cancel()
+        downloadJob = null
         avController.release()
         deleteCacheFile()
         clearStreamingState()
@@ -246,8 +257,11 @@ private class OhosAvAudioPlayController : AudioPlayController, OhosNativeBridge.
     /** ArkTS onPosition (timeUpdate) 事件缓存; seek 时乐观更新 */
     @Volatile private var cachedPosition = 0L
 
-    /** ArkTS onBufferingUpdate 事件缓存的缓冲百分比 */
+    /** ArkTS onBufferingUpdate 事件缓存的缓冲百分比 (起播缓冲进度, 只用于加载态判定) */
     @Volatile private var bufferedPercent = 0
+
+    /** 已缓存时长 ms (ArkTS onCachedDuration 推送 = AVPlayer CACHED_DURATION 档) */
+    @Volatile private var cachedBufferedMs = 0L
 
     @Volatile private var speed = 1f
 
@@ -273,8 +287,19 @@ private class OhosAvAudioPlayController : AudioPlayController, OhosNativeBridge.
 
     override val currentPosition: Long get() = cachedPosition
 
+    /**
+     * 已缓冲到的时间点 (进度条缓冲层用)。
+     *
+     * AVPlayer 的 CACHED_DURATION 档给的是"已缓存时长", 从当前播放位置往后算, 换成绝对
+     * 时间点才能画进度条; 不用 [bufferedPercent] —— 那是起播缓冲进度, 缓冲完成后恒 100,
+     * 折算成时长就是一条永远铺满的假缓冲条 (与视频端 OhosVideoPlayerController 同实现)。
+     */
     override val bufferedPosition: Long
-        get() = if (cachedDuration > 0) cachedDuration * bufferedPercent / 100 else 0L
+        get() {
+            if (cachedBufferedMs <= 0L) return 0L
+            val end = cachedPosition + cachedBufferedMs
+            return if (cachedDuration > 0L) end.coerceAtMost(cachedDuration) else end
+        }
 
     override val playbackState: Int get() = state
 
@@ -309,6 +334,7 @@ private class OhosAvAudioPlayController : AudioPlayController, OhosNativeBridge.
         cachedDuration = 0L
         cachedPosition = 0L
         bufferedPercent = 0
+        cachedBufferedMs = 0L
         state = AudioPlayController.STATE_IDLE
     }
 
@@ -347,6 +373,7 @@ private class OhosAvAudioPlayController : AudioPlayController, OhosNativeBridge.
     }
 
     override fun seekTo(position: Long) {
+        cachedBufferedMs = 0L
         if (state == AudioPlayController.STATE_READY || state == AudioPlayController.STATE_ENDED) {
             sendCommand(MediaCommand(action = "seekTo", position = position))
             // 乐观更新, 否则 1s 进度循环在 timeUpdate 事件到达前读到旧值
@@ -376,6 +403,7 @@ private class OhosAvAudioPlayController : AudioPlayController, OhosNativeBridge.
         cachedDuration = 0L
         cachedPosition = 0L
         bufferedPercent = 0
+        cachedBufferedMs = 0L
         state = AudioPlayController.STATE_IDLE
     }
 
@@ -414,6 +442,8 @@ private class OhosAvAudioPlayController : AudioPlayController, OhosNativeBridge.
             "onPosition" -> event.position?.let { cachedPosition = it }
 
             "onBufferingUpdate" -> event.percent?.let { bufferedPercent = it }
+
+            "onCachedDuration" -> event.cachedDuration?.let { cachedBufferedMs = it }
 
             "onPlaying" -> {
                 playing = true
@@ -456,6 +486,7 @@ private class OhosAvAudioPlayController : AudioPlayController, OhosNativeBridge.
         val message: String? = null,
         val percent: Int? = null,
         val duration: Long? = null,
+        val cachedDuration: Long? = null,
         val position: Long? = null,
     )
 }

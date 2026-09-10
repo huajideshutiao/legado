@@ -175,6 +175,8 @@ interface MediaEventPayload {
   message?: string;
   percent?: number;
   duration?: number;
+  /** 已缓存时长 ms (BUFFERING_PERCENT 之外的 CACHED_DURATION 档, 供进度条缓冲层用) */
+  cachedDuration?: number;
   position?: number;
   command?: string; // 播控指令: play / pause / stop / next / previous / seek
 }
@@ -450,6 +452,8 @@ function registerPlayerEvents(id: string, player: media.AVPlayer): void {
   // 回调签名为 (infoType, value): BufferingInfoType 是枚举, 百分比在 value 中,
   // BUFFERING_PERCENT 档携带 0-100 百分比; BUFFERING_START/END 是起止标记, 显式映射
   // 为 0/100, 避免 Kotlin 侧停在上一轮的旧百分比 (转圈常亮/常灭)
+  // CACHED_DURATION 档携带已缓存时长 ms, 单独走 cachedDuration 字段 (进度条缓冲层用:
+  // 百分比是"起播缓冲进度", 缓冲完成后恒 100, 折算成时长就是一条永远铺满的假缓冲条)
   player.on('bufferingUpdate', (infoType: media.BufferingInfoType, value: number) => {
     if (infoType === media.BufferingInfoType.BUFFERING_PERCENT) {
       emitEvent(id, { event: 'onBufferingUpdate', percent: value });
@@ -457,6 +461,8 @@ function registerPlayerEvents(id: string, player: media.AVPlayer): void {
       emitEvent(id, { event: 'onBufferingUpdate', percent: 0 });
     } else if (infoType === media.BufferingInfoType.BUFFERING_END) {
       emitEvent(id, { event: 'onBufferingUpdate', percent: 100 });
+    } else if (infoType === media.BufferingInfoType.CACHED_DURATION) {
+      emitEvent(id, { event: 'onCachedDuration', cachedDuration: value });
     }
   });
 }

@@ -17,7 +17,6 @@ import kotlin.coroutines.CoroutineContext
  * 供 shared commonMain [io.legado.app.model.audio.AudioPlaySession] 注入使用。
  *
  * # 与 ExoPlayer 行为差异
- * - bufferedPosition: mpv 缓冲细节未暴露, 返回已播位置作近似, 让音频页缓冲条不恒空
  * - playWhenReady: 存到 [onReady] 才应用 (mpv 在 prepare 阶段 play() 无效), 语义与 Media3
  *   一致 —— 缓冲期按过暂停, 就绪后不自动起播
  * - release: 桌面会话结束只 stop 不 release (mpv 实例贵, 下一轮复用), 退出/换源才释放
@@ -58,7 +57,7 @@ class DesktopAudioPlayController(private val player: DesktopAudioPlayer) :
         get() = player.currentPosition
 
     override val bufferedPosition: Long
-        get() = player.currentPosition
+        get() = player.bufferedPosition
 
     override val playbackState: Int
         get() = state

@@ -34,7 +34,14 @@ interface AudioPlayController {
     /** 当前播放位置 (毫秒)。 */
     val currentPosition: Long
 
-    /** 已缓冲位置 (毫秒)。 */
+    /**
+     * 已缓冲到的**绝对**时间点 (毫秒, 不是缓冲时长), 供进度条缓冲层绘制。
+     *
+     * 口径以 ExoPlayer `bufferedPosition` 为准: 桌面读 mpv `demuxer-cache-time`;
+     * iOS 取 `loadedTimeRanges` 各段 end 的最大值; 鸿蒙用 AVPlayer CACHED_DURATION
+     * 加当前位置。取不到时给 0 (缓冲层不绘制), 不要拿 duration 或已播位置顶替 ——
+     * 那会画出一条永远铺满 / 恒等于播放进度的假缓冲条。
+     */
     val bufferedPosition: Long
 
     /** 播放状态, 取值为 [STATE_IDLE] / [STATE_BUFFERING] / [STATE_READY] / [STATE_ENDED]。 */

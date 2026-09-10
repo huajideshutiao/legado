@@ -17,6 +17,7 @@ import io.legado.app.model.audio.AudioPlayControllerListener
 import io.legado.app.model.audio.AudioPlaySession
 import io.legado.app.model.audio.LyricPublisher
 import io.legado.app.model.audio.NowPlayingSessionHost
+import io.legado.app.help.media.maxLoadedTimeRangeEndMs
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -125,9 +126,15 @@ private class IosAvAudioPlayController : AudioPlayController {
             return (seconds * 1000.0).toLong()
         }
 
-    // AVPlayerItem.loadedTimeRanges 的 NSValue→CMTimeRange 桥接符号无法本机验证,
-    // 用已播位置近似缓冲
-    override val bufferedPosition: Long get() = currentPosition
+    /**
+     * 已缓冲到的时间点 (进度条缓冲层用)。
+     *
+     * `AVPlayerItem.loadedTimeRanges` 是 `NSValue`(装 `CMTimeRange`) 数组, 逐段取
+     * `CMTimeRangeGetEnd` 的最大值; seek 后会出现多段不连续区间, 取最大 end 与
+     * ExoPlayer `bufferedPosition` 口径一致 (与视频端 IosVideoPlayerController 同实现)。
+     */
+    override val bufferedPosition: Long
+        get() = item?.maxLoadedTimeRangeEndMs() ?: 0L
 
     override val playbackState: Int get() = state
 
