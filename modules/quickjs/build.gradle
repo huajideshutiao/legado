@@ -80,9 +80,15 @@ tasks.register("buildJvmNativeLib") {
     group = "native"
     description = "Build legado_quickjs native library for desktop JVM"
     def libOutFile = new File(jvmNativeDir, nativeLibName())
+    // quickjs-ng 源码不在 cppDir 下 (CMakeLists 引 shared/src/cinterop/quickjs-ng),
+    // 两个目录都得进 inputs, 否则改 quickjs 源码不重建
     inputs.dir cppDir
+    inputs.dir rootProject.file("shared/src/cinterop/quickjs-ng")
+    // 声明 outputs 才能参与增量判定 (同 desktop 的 buildSmtcNative/buildWndChromeNative);
+    // 原先只有 inputs 无 outputs, 每次 :desktop:run 都重跑一轮 cmake configure+build
+    outputs.file libOutFile
 
-    doFirst {
+    doLast {
         def cmakeCmd = findCmakeExecutable()
         if (cmakeCmd == null) {
             logger.warn("[quickjs-jvm] cmake not found, skipping native build. JS eval will fail at runtime.")

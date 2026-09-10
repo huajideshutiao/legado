@@ -12,7 +12,7 @@ on:
       ref:
         description: "上游 ref (tag / 分支 / commit sha)。默认 = 当前 pin 的 commit"
         required: true
-        default: "1ab8676f4b6d6d669baeb5f21790fb9734636a20"
+        default: "02368b6b1689c28ff2ebe6d1f73d9c1893ae4ce7"
       mode:
         description: "sync = 覆盖源码并开 PR; verify = 只比对不修改"
         required: true
@@ -40,7 +40,7 @@ jobs:
         uses: actions/checkout@v5
 
       # 只拉需要的文件, 不 clone 整个上游仓库 (上游带着 test262/fuzz/examples, 几十 MB)。
-      # LICENSE 在清单里: vendored 第三方源码应随带上游许可证原件。
+      # LICENSE 在清单里: vendored 第三方源码应随带上游许可证原件 (已于 2026-08-29 补齐)。
       - name: Resolve upstream ref
         id: resolve
         run: |
@@ -63,7 +63,7 @@ jobs:
         id: list
         run: |
           set -euo pipefail
-          # 现有 vendored 文件 + LICENSE (当前缺失, 应补回)
+          # 现有 vendored 文件 + LICENSE (LICENSE 无后缀, find 的通配匹不到, 显式补上)
           {
             find "$VENDOR_DIR" -maxdepth 1 -type f \
               \( -name '*.c' -o -name '*.h' -o -name '*.js' \) -printf '%f\n'
@@ -157,7 +157,7 @@ jobs:
           else
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "🔴 **存在差异**: 见上表与作业日志。要么 ref 选错了, 要么有人绕过流程改了源码。" >> "$GITHUB_STEP_SUMMARY"
-            echo "::error::vendored 副本与上游 ${{ inputs.ref }} 不一致。若非有意升级, 说明有人直接改了 $VENDOR_DIR 下的源码 —— 定制必须走 cinterop/JNI wrapper 层或 patch 文件, 见该目录 README。"
+            echo "::error::vendored 副本与上游 ${{ inputs.ref }} 不一致。若非有意升级, 说明有人直接改了 $VENDOR_DIR 下的源码 —— 定制必须走 cinterop/JNI wrapper 层或编译开关; 万不得已改源码须登记该目录 README 的 B 类小节, 见该 README。"
             exit 1
           fi
 

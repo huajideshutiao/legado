@@ -205,7 +205,11 @@ jobject JniValueConvert::toJavaObject(JSContext *ctx, JNIEnv *env, JSValue value
             JS_FreeValue(ctx, elem);
             // 递归 toJavaObject 抛 JsNativeException 后必须立刻退出, 否则后续
             // CallBooleanMethod / DeleteLocalRef 都属于 "pending exception 下的 JNI 调用",
-            // 会污染 JNI 状态, 表现为远处堆腐败 (JSString header.kind 被覆盖)
+            // 会污染 JNI 状态 (ART 在 check-jni 下直接 abort)。
+            // 注: 原先这里写"表现为远处堆腐败 (JSString header.kind 被覆盖)"是误判 —— 那个
+            // 症状来自上游 quickjs-ng 的 JS_ToCStringLenUTF16/JS_FreeCStringUTF16 反推头部,
+            // 与 pending exception 无关; 上游已在 PR #1709 修复 (本仓库 pin 已含, 见
+            // quickjs-ng/README.md 的「已知本地改动」B 类小节)。
             if (env->ExceptionCheck()) {
                 if (elemObj) env->DeleteLocalRef(elemObj);
                 env->DeleteLocalRef(arrayListCls);

@@ -1518,4 +1518,59 @@ abstract class QuickJsEngineTestBase {
             scope.close()
         }
     }
+
+    // ============ JS 字符串 → Java String 的边界内容 (UTF-16 转换路径) ============
+
+    /**
+     * 宽字符长子串转回 Java String 不得腐败父串。
+     *
+     * 上游 quickjs-ng v0.13.0 ~ v0.16.2 的 `JS_ToCStringLenUTF16()` 对宽字符直接返回
+     * `str16(p)`,而 `KIND_SLICE` 串的字符数据在父串数据区中间;配对的
+     * `js_free_cstring()` 却用 `(JSString *)ptr - 1` 反推头部,于是把父串的字符当引用计数
+     * 递减(静默腐败),那 4 字节恰好归零时还会拿一段文本当 JSString 头解引用 → SIGSEGV。
+     * 上游已在 PR #1709 (commit `396e1e0b4f`, 本项目上报 issue #1708) 修复, 本仓库随 pin 至
+     * `02368b6b16` 拿到修复并撤销了本地补丁(见 quickjs-ng/README.md);此测试防止降级回退。
+     *
+     * 触发条件: 宽字符(中文即是) + 子串长度 > 512 (`JS_STRING_SLICE_LEN_MAX >> 1`) + 不是整串。
+     * 数组元素按序转换,先转 sub 触发腐败,紧接着转 parent 就能读到被改的字符。
+     */
+    @Test
+    fun testWideSliceToJavaStringDoesNotCorruptParent() {
+        val result = QuickJsEngine.eval(
+            """
+            var parent = '一'.repeat(4000);
+            var sub = parent.slice(100, 2100);
+            [sub, parent];
+            """.trimIndent()
+        )
+        val list = result as List<*>
+        val sub = list[0] as String
+        val parent = list[1] as String
+        assertEquals(2000, sub.length)
+        assertEquals(4000, parent.length)
+        // 修复前: parent 里有一个字符被 --ref_count 改成 U+4DFF (下标随 sizeof(JSString) 变)
+        assertEquals(4000, parent.count { it == '一' })
+        assertEquals(2000, sub.count { it == '一' })
+    }
+
+    /**
+     * NUL 与未配对代理项必须原样穿过 JS → Java String。
+     *
+     * 这是当初把转换从 `JS_ToCString` 换成 UTF-16 路径的原因: JS 字符串含 U+0000 时
+     * C 字符串会被截断成空串(网易云 weapi 的 `'\0'.repeat(112)` 首字节即 NUL,截断后
+     * encryptHex("") 让 RSA 明文变 0,encSecKey 全 "00")。改回任何 NUL 终止或会把
+     * 非法码点替换成 U+FFFD 的方案,都会被这个测试挡住。
+     */
+    @Test
+    fun testNulAndLoneSurrogateSurviveJavaStringConversion() {
+        val result = QuickJsEngine.eval(
+            "'\\u0000'.repeat(8) + 'x' + String.fromCharCode(0xD800)"
+        )
+        val s = result as String
+        assertEquals(10, s.length)
+        assertEquals(0, s[0].code)
+        assertEquals(0, s[7].code)
+        assertEquals('x', s[8])
+        assertEquals('\uD800', s[9])
+    }
 }

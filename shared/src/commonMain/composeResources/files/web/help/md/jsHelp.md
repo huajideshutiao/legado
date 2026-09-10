@@ -1,8 +1,8 @@
 # js变量和函数
 
-> 阅读使用[QuickJS-ng](https://github.com/quickjs-ng/quickjs)（master 快照：位于 v0.15.1 之后、v0.16.0
-> 之前，pin commit `5f2fb55994413afcaeec2942021cc93bfafd0f81`，2026-06-27；quickjs.h 里的版本宏仍写
-> 0.15.1，不代表真实版本）作为JavaScript引擎，支持ES2023绝大部分特性；
+> 阅读使用[QuickJS-ng](https://github.com/quickjs-ng/quickjs)（master 快照：位于 v0.16.2 之后，
+> v0.16.3 尚未发布，pin commit `02368b6b1689c28ff2ebe6d1f73d9c1893ae4ce7`，2026-09-05；
+> quickjs.h 里的版本宏仍写 0.16.2，不代表真实版本）作为JavaScript引擎，支持ES2023绝大部分特性；
 > 并内置Java桥接层（兼容Rhino LiveConnect写法）用于调用Java类和方法
 
 |构造函数|函数|对象|简要说明|
