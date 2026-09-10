@@ -50,7 +50,7 @@ class NativeImportFile(
  * - **沙盒语义**: desktop 上架只引用原文件路径, 移动端外部目录无持久授权
  *   (iOS security-scoped URL 重启失效 / 鸿蒙 picker URI 跨会话不可靠), 故上架前把
  *   普通书文件**复制**进 `{filesDir}/books`, bookUrl 指向沙盒内副本, 保证重启后仍可读;
- * - **压缩包**: 无压缩包内选章阅读 UI, openReader 走 [NativeFileAssociationDispatch]
+ * - **压缩包**: 无压缩包内选章阅读 UI, openReader 走 [FileAssociationDispatch]
  *   的直接导入链 (对照 Android startRead 的 onArchiveFileClick 分支, 平台能力上限)。
  *
  * # 平台限制 (不假装与 Android 等价)
@@ -269,7 +269,7 @@ object NativeImportBook {
     /**
      * 打开已上架书籍阅读页 (对照 Android startRead)。
      *
-     * - 压缩包: native 无压缩包内选章阅读 UI, 走 [NativeFileAssociationDispatch]
+     * - 压缩包: native 无压缩包内选章阅读 UI, 走 [FileAssociationDispatch]
      *   (解压 → 导入 → 打开首个书籍文件), 与文件关联导入同链;
      * - 普通书: 按文件名查库, 未入库直接返回 (与 Android `getBookByFileName?.let` 行为一致);
      *   入库后确保书文件在沙盒内 (旧数据引用外部目录时复制修正 bookUrl), 再推阅读路由。
@@ -278,7 +278,7 @@ object NativeImportBook {
         val file = (item as? NativeImportFile)?.file ?: return
         val fileName = file.name
         if (fileName.matches(AppPattern.archiveFileRegex)) {
-            NativeFileAssociationDispatch.dispatch(file.path)
+            FileAssociationDispatch.dispatch(file.path)
             return
         }
         scope.launch {

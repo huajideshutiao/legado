@@ -70,6 +70,7 @@ fun BookmarkRoute(
             override fun export() {
                 scope.launch {
                     val files = PlatformServiceProviders.get().files
+                    val dao = AppDbProviders.get().bookmarkDao
                     try {
                         val fileName = "bookmark-${
                             ThreadSafeDateFormat("yyMMddHHmmss").format(systemCurrentTimeMillis())
@@ -78,7 +79,6 @@ fun BookmarkRoute(
                             files.saveFile(fileName)
                         } ?: return@launch
                         withContext(IoDispatcher) {
-                            val dao = AppDbProviders.get().bookmarkDao
                             val bookmarks = if (book != null) {
                                 dao.getByBook(book.name, book.author)
                             } else {
@@ -100,6 +100,7 @@ fun BookmarkRoute(
             override fun exportMd() {
                 scope.launch {
                     val files = PlatformServiceProviders.get().files
+                    val dao = AppDbProviders.get().bookmarkDao
                     try {
                         val fileName = "bookmark-${
                             ThreadSafeDateFormat("yyMMddHHmmss").format(systemCurrentTimeMillis())
@@ -108,7 +109,6 @@ fun BookmarkRoute(
                             files.saveFile(fileName)
                         } ?: return@launch
                         withContext(IoDispatcher) {
-                            val dao = AppDbProviders.get().bookmarkDao
                             val bookmarks = if (book != null) {
                                 dao.getByBook(book.name, book.author)
                             } else {

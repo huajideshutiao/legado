@@ -74,6 +74,7 @@ import io.legado.app.help.toast.registerDesktopToaster
 import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.model.fileBook.BitmapProviders
 import io.legado.app.model.fileBook.ZipFileWrapperFactoryProviders
+import io.legado.app.ui.FileAssociationDispatch
 import io.legado.app.ui.association.DeepLinkImportHost
 import io.legado.app.ui.association.LegadoDeepLink
 import io.legado.app.ui.association.LegadoDeepLinkHandler
@@ -172,6 +173,9 @@ import io.legado.desktop.ui.tray.DesktopMediaTray
 import io.legado.desktop.ui.tray.DesktopTaskbarMedia
 import io.legado.desktop.ui.tray.ReadAloudTrayBinding
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.getAndUpdate
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
 import org.openani.mediamp.mpv.MPVHandle
@@ -260,6 +264,11 @@ fun main(args: Array<String>) {
     // nativeDistributions.macOS.infoPlist), 详见 handleDeepLinkArgs KDoc
     DesktopUrlProtocol.ensureRegisteredAsync()
     handleDeepLinkArgs(args)
+    // 文件关联 (双击 .epub/.txt/.pdf/.cbz): 系统冷启动时把文件路径当 argv 送进来
+    // (打包期注册见 build.gradle.kts nativeDistributions.fileAssociation)
+    offerAssociationFiles(
+        effectiveArgs.filter { !LegadoDeepLink.isDeepLink(it) && File(it).isFile }
+    )
     // macOS: legado:// 经 Apple Event (OpenURIHandler) 送达而非 argv, 注册 handler 承接;
     // Windows/Linux 的 Desktop.Action.APP_OPEN_URI isSupported=false, 静默跳过
     runCatching {
@@ -268,6 +277,17 @@ fun main(args: Array<String>) {
         ) {
             Desktop.getDesktop().setOpenURIHandler { event ->
                 LegadoDeepLinkHandler.handle(event.uri.toString())
+            }
+        }
+    }
+    // macOS: 关联文件同样经 Apple Event (OpenFilesHandler) 送达; Windows/Linux 走 argv,
+    // APP_OPEN_FILE isSupported=false 静默跳过
+    runCatching {
+        if (Desktop.isDesktopSupported() &&
+            Desktop.getDesktop().isSupported(Desktop.Action.APP_OPEN_FILE)
+        ) {
+            Desktop.getDesktop().setOpenFileHandler { event ->
+                offerAssociationFiles(event.files.map { it.absolutePath })
             }
         }
     }
@@ -319,6 +339,21 @@ private fun handleDeepLinkArgs(args: Array<String>) {
     if (!LegadoDeepLinkHandler.handle(url)) {
         AppLog.put("deep link 解析失败 (缺 src 参数): $url", tag = TAG)
     }
+}
+
+/**
+ * 文件关联待分发队列 (对照 [LegadoDeepLinkHandler.pending] 的投递语义)。
+ *
+ * 三个投递方都可能早于首帧: argv 冷启动、macOS Apple Event、单实例转发;
+ * [FileAssociationDispatch] 打开书籍要 navigator, 而它到首帧组合才注册, 故一律先入队,
+ * 由窗口内 LaunchedEffect 订阅后分发。
+ */
+internal val pendingAssociationFiles = MutableStateFlow<List<String>>(emptyList())
+
+/** 投递关联文件路径 (空列表直接忽略); 线程安全, 各投递方可在任意线程调用。 */
+internal fun offerAssociationFiles(paths: List<String>) {
+    if (paths.isEmpty()) return
+    pendingAssociationFiles.update { it + paths }
 }
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
@@ -681,6 +716,17 @@ private fun runDesktopApp() = application {
         // 用 withContext(Dispatchers.Default) 在后台线程执行, 避免阻塞 UI 线程
         LaunchedEffect(Unit) {
             registerSecondaryProviders()
+        }
+        // 文件关联分发: 队列在 main() 就可能有值 (argv 冷启动), 这里等首帧组合完成
+        // (navigator 已注册) 再消费; 解压/读文件是阻塞 IO, 切 IO 线程
+        LaunchedEffect(Unit) {
+            pendingAssociationFiles.collect { queued ->
+                if (queued.isEmpty()) return@collect
+                val files = pendingAssociationFiles.getAndUpdate { emptyList() }
+                withContext(Dispatchers.IO) {
+                    files.forEach { FileAssociationDispatch.dispatch(it) }
+                }
+            }
         }
         // 注入 4 个 DesktopXxxProvider, 供 commonMain AppTheme 通过 LocalXxx 取依赖
         val themeStoreProvider = remember { DesktopThemeStoreProvider() }

@@ -39,7 +39,6 @@ import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.RouteResultPayload
-import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.asBook
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.FlowBus
@@ -58,7 +57,6 @@ import kotlinx.serialization.json.Json
 fun TocRoute(
     entry: RouteEntry,
     navigator: AppNavigator,
-    screenModelStore: ScreenModelStore,
 ) {
     val route = entry.route as AppRoute.Toc
     // 栈顶订阅: 目录页搜索拦截只在目录是栈顶时生效 (从搜索结果打开新阅读器后返回键
@@ -263,6 +261,7 @@ fun TocContent(
                 val curBook = screenModel.state.value.book ?: return
                 scope.launch {
                     val files = PlatformServiceProviders.get().files
+                    val bookmarkDao = AppDbProviders.get().bookmarkDao
                     try {
                         val path = withContext(IoDispatcher) {
                             files.saveFile(
@@ -270,7 +269,7 @@ fun TocContent(
                             )
                         } ?: return@launch
                         withContext(IoDispatcher) {
-                            val bookmarks = AppDbProviders.get().bookmarkDao
+                            val bookmarks = bookmarkDao
                                 .getByBook(curBook.name, curBook.author)
                             BackupFileOps.writeText(path, Json.encodeToString(bookmarks))
                         }
@@ -288,6 +287,7 @@ fun TocContent(
                 val curBook = screenModel.state.value.book ?: return
                 scope.launch {
                     val files = PlatformServiceProviders.get().files
+                    val bookmarkDao = AppDbProviders.get().bookmarkDao
                     try {
                         val path = withContext(IoDispatcher) {
                             files.saveFile(
@@ -297,7 +297,7 @@ fun TocContent(
                         withContext(IoDispatcher) {
                             val sb = StringBuilder()
                             sb.append("## ${curBook.name} ${curBook.author}\n\n")
-                            AppDbProviders.get().bookmarkDao
+                            bookmarkDao
                                 .getByBook(curBook.name, curBook.author).forEach {
                                     sb.append("#### ${it.chapterName}\n\n")
                                     sb.append("###### 原文\n ${it.bookText}\n\n")
@@ -327,7 +327,7 @@ fun TocContent(
             }
 
             // 弹出书签编辑对话框 (shared BookmarkDialog)
-            override fun editBookmark(bookmark: Bookmark, pos: Int) {
+            override fun editBookmark(bookmark: Bookmark) {
                 editingBookmark = bookmark
             }
         }

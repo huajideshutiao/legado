@@ -133,9 +133,9 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
     // 读系统剪贴板 (对照原版 ContextExtensions getClipText: 主题导入/规则粘贴等 7 场景)
     override fun getClipboardText(): String? = readFromClipboard()
 
-    // 完整分发链 (压缩包/JSON 一键导入/书籍文件) 见 NativeFileAssociationDispatch, 与鸿蒙共用
+    // 完整分发链 (压缩包/JSON 一键导入/书籍文件) 见 FileAssociationDispatch, 四端共用
     override fun openImportFile(filePath: String) {
-        scope.launch { NativeFileAssociationDispatch.dispatch(filePath) }
+        scope.launch { FileAssociationDispatch.dispatch(filePath) }
     }
 
     // ===== 导入本地书 (状态与扫描见 NativeImportBook, 与鸿蒙共用) =====

@@ -137,9 +137,9 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
 
     // ===== 文件关联 =====
 
-    // 完整分发链 (压缩包/JSON 一键导入/书籍文件) 见 NativeFileAssociationDispatch, 与 iOS 共用
+    // 完整分发链 (压缩包/JSON 一键导入/书籍文件) 见 FileAssociationDispatch, 四端共用
     override fun openImportFile(filePath: String) {
-        scope.launch { NativeFileAssociationDispatch.dispatch(filePath) }
+        scope.launch { FileAssociationDispatch.dispatch(filePath) }
     }
 
     // ===== 导入本地书 (状态与扫描见 NativeImportBook, 与 iOS 共用) =====

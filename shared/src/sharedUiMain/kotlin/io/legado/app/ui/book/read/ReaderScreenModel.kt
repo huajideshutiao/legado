@@ -165,7 +165,7 @@ interface ReaderPlatformProvider {
      * 默认走共享 "page_anim_config" 对话框; app 端覆写为菜单内的选择器。
      */
     fun showPageAnimConfig(screenModel: ReaderScreenModel) {
-        AppNavigatorProviders.getOrNull()?.showOverlay(AppOverlay.Dialog("page_anim_config"))
+        AppNavigatorProviders.get().showOverlay(AppOverlay.Dialog("page_anim_config"))
     }
 
     /** 自动翻页滑条抬手后同步 TTS 语速 (对照原版 AutoReadDialog upTtsSpeechRate) */
@@ -479,13 +479,13 @@ class ReaderScreenModel(
     /** 书源变量对话框 (对照原版 ReadMenu.showSourceVariableDialog, 走平台能力) */
     fun showSourceVariableDialog() {
         val source = viewModel.bookSource.value ?: return
-        PlatformCapabilityProviders.getOrNull()?.showBookSourceVariableDialog(source)
+        PlatformCapabilityProviders.get().showBookSourceVariableDialog(source)
     }
 
     /** 书籍变量对话框 (对照原版 ReadMenu.showBookVariableDialog, 走平台能力) */
     fun showBookVariableDialog() {
         val book = viewModel.book.value ?: return
-        PlatformCapabilityProviders.getOrNull()?.showBookVariableDialog(book)
+        PlatformCapabilityProviders.get().showBookVariableDialog(book)
     }
 
     /**

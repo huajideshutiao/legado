@@ -19,7 +19,7 @@ import io.legado.app.help.source.SourceVerificationHelpShared
 import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.Debug
-import io.legado.app.model.fileBook.FileBook
+import io.legado.app.ui.FileAssociationDispatch
 import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.read.config.FontItem
 import io.legado.app.ui.book.source.BookSourceSort
@@ -39,7 +39,6 @@ import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.RouteTransitionSpec
 import io.legado.app.ui.root.TransitionEasing
-import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.GSON
 import io.legado.app.utils.RemoteAssetsUtils
@@ -785,15 +784,9 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
         openImportFile(file.absolutePath)
     }
 
+    // 完整分发链 (压缩包/JSON 一键导入/书籍文件) 见 FileAssociationDispatch, 四端共用
     override fun openImportFile(filePath: String) {
-        scope.launch {
-            runCatching { FileBook.importLocalFile(filePath) }
-                .onSuccess { book ->
-                    AppNavigatorProviders.get().push(book.toReadRoute())
-                }.onFailure { error ->
-                    AppLog.put("导入关联书籍失败: ${error.message}", error)
-                }
-        }
+        scope.launch { FileAssociationDispatch.dispatch(filePath) }
     }
 
     // ===== 阅读样式平台能力 =====

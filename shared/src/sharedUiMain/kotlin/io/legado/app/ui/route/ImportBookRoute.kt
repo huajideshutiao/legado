@@ -5,7 +5,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import io.legado.app.help.config.AppConfigProviders
-import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.import.local.ImportBookScreen
 import io.legado.app.ui.book.import.local.ImportBookScreenModel
@@ -53,8 +52,7 @@ fun ImportBookRoute(
     LaunchedEffect(route.filePath) {
         screenModel.dispatch(ImportBookUiEvent.SetSort(AppConfigProviders.get().localBookImportSort))
         route.filePath?.let { filePath ->
-            runCatching { platform.openImportFile(filePath) }
-                .onFailure { Toasters.get().toast(it.message ?: "无法打开文件") }
+            platform.openImportFile(filePath)
         } ?: platform.initImportBookData()
     }
 

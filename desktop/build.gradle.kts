@@ -580,6 +580,14 @@ compose.desktop {
             packageName = "legado"
             description = "Legado desktop reader (Compose Multiplatform)"
             vendor = "gedoor"
+            // 文件关联 (jpackage --file-associations): 双击书籍文件用 legado 打开, 参数经 argv
+            // (macOS 经 Apple Event OpenFilesHandler) 送到 Main.kt 的 pendingAssociationFiles。
+            // 扩展名只取 AppPattern.bookFileRegex 的四种正文格式 —— 关联在 Windows 上是抢默认
+            // 打开方式, .json/.zip 不抢 (仍可从"打开方式"手动选, 分发链照样处理)
+            fileAssociation("text/plain", "txt", "TXT 电子书")
+            fileAssociation("application/epub+zip", "epub", "EPUB 电子书")
+            fileAssociation("application/pdf", "pdf", "PDF 文档")
+            fileAssociation("application/vnd.comicbook+zip", "cbz", "CBZ 漫画")
             // 应用图标 (从 Android ic_launcher 高清图转换生成): Windows ICO, Linux PNG
             // Windows MSI 专属配置
             windows {

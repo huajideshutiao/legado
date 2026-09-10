@@ -10,15 +10,15 @@ import io.legado.app.ui.association.DeepLinkImportRequest
 import io.legado.app.ui.association.LegadoDeepLinkHandler
 import io.legado.app.ui.association.detectJsonType
 import io.legado.app.ui.association.toDeepLinkImportType
+import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.toReadRoute
-import io.legado.app.utils.File
 import io.legado.app.utils.isJson
 import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
- * iOS/鸿蒙 文件关联导入分发链 (nativeMain 共用, 两端逻辑完全一致)。
+ * 文件关联导入分发链 (iOS/鸿蒙/桌面共用, 各端逻辑完全一致)。
  *
  * 对照 app 端 `FileAssociationViewModel.dispatchIntent` / `dispatch`:
  * 1. 压缩包 (archiveFileRegex) → 解压后逐个文件再分发;
@@ -30,9 +30,9 @@ import okio.Path.Companion.toPath
  *
  * 与 app 端差异: app 端结果推 LiveData 由 Fragment 弹窗, 这里直接触发路由/导入宿主。
  */
-object NativeFileAssociationDispatch {
+object FileAssociationDispatch {
 
-    /** 分发文件关联导入; [filePath] 为沙盒内绝对路径 (或 file:// URL)。 */
+    /** 分发文件关联导入; [filePath] 为绝对路径 (或 file:// URL)。 */
     fun dispatch(filePath: String) {
         val path = filePath.toLocalPath()
         val fileName = path.fileName()
@@ -64,10 +64,16 @@ object NativeFileAssociationDispatch {
             .onFailure { AppLog.put("尝试导入为JSON文件失败\n${it.message}", it) }
             .getOrDefault(false)
         if (isJson) {
-            val json = runCatching { File(path).readText() }
+            val json = runCatching { FileSystem.SYSTEM.read(path.toPath()) { readUtf8() } }
                 .onFailure { AppLog.put("尝试导入为JSON文件失败\n${it.message}", it) }
                 .getOrNull()
-            if (json != null && dispatchJson(json)) return
+            if (json != null) {
+                if (dispatchJson(json)) return
+                // 嗅探为 JSON 但业务类型未知: 明确报告格式错误并终止, 严禁继续向下命中文本书籍正则当成小说导入
+                Toasters.get().toast(syncGetString("wrong_format"))
+                AppLog.put("文件关联导入: 格式不对 (未知 JSON 业务类型) $path")
+            }
+            return
         }
 
         if (fileName.matches(AppPattern.bookFileRegex)) {
@@ -92,7 +98,7 @@ object NativeFileAssociationDispatch {
      */
     private fun dispatchJson(json: String): Boolean {
         val type = detectJsonType(json) ?: return false
-        LegadoDeepLinkHandler.handleResolved(
+        LegadoDeepLinkHandler.enqueue(
             DeepLinkImportRequest(type.toDeepLinkImportType(), json)
         )
         return true
@@ -125,12 +131,79 @@ object NativeFileAssociationDispatch {
         AppNavigatorProviders.getOrNull()?.push(book.toReadRoute())
     }
 
-    /** file:// URL 转沙盒绝对路径 (与 NativeFileBookAccessor.resolveLocalFile 剥离规则一致)。 */
-    private fun String.toLocalPath(): String = if (startsWith("file:")) {
-        val afterScheme = substringAfter("file://")
-        val slashIdx = afterScheme.indexOf('/')
-        if (slashIdx > 0) afterScheme.substring(slashIdx) else afterScheme
-    } else this
+    /**
+     * 将文件路径或 file:// URL 转为本地绝对路径。
+     * - 支持标准 RFC 8089 file: URI (file:///..., file://localhost/..., file:/...)
+     * - 支持 Windows UNC 网络路径 (file://server/share/...)
+     * - 补全 URL percent-decoding (如 %20、中文等 UTF-8 编码路径)
+     * - Windows 盘符前导斜杠剥离 (如 /C:/... → C:/...)
+     */
+    private fun String.toLocalPath(): String {
+        if (!startsWith("file:", ignoreCase = true)) return this
+        val rawAfterScheme = substring(5).percentDecode()
+        val path = when {
+            rawAfterScheme.startsWith("///") || rawAfterScheme.startsWith("\\\\\\") ->
+                rawAfterScheme.substring(2)
+
+            rawAfterScheme.startsWith("//") || rawAfterScheme.startsWith("\\\\") -> {
+                val slashIdx = rawAfterScheme.indexOfAny(charArrayOf('/', '\\'), startIndex = 2)
+                if (slashIdx < 0) {
+                    rawAfterScheme.substring(2)
+                } else {
+                    val authority = rawAfterScheme.substring(2, slashIdx)
+                    val rest = rawAfterScheme.substring(slashIdx)
+                    if (authority.isEmpty() || authority.equals("localhost", ignoreCase = true)) {
+                        rest
+                    } else {
+                        "//$authority$rest"
+                    }
+                }
+            }
+
+            else -> rawAfterScheme
+        }
+        return if (path.length >= 3 &&
+            (path[0] == '/' || path[0] == '\\') &&
+            (path[1] in 'a'..'z' || path[1] in 'A'..'Z') &&
+            path[2] == ':' &&
+            (path.length == 3 || path[3] == '/' || path[3] == '\\')
+        ) {
+            path.substring(1)
+        } else {
+            path
+        }
+    }
+
+    private fun String.percentDecode(): String {
+        if (!contains('%')) return this
+        val sb = StringBuilder(length)
+        val byteBuf = ArrayList<Byte>()
+        fun flushBytes() {
+            if (byteBuf.isNotEmpty()) {
+                sb.append(byteBuf.toByteArray().decodeToString())
+                byteBuf.clear()
+            }
+        }
+
+        var i = 0
+        while (i < length) {
+            val c = this[i]
+            if (c == '%' && i + 2 < length) {
+                val hi = this[i + 1].digitToIntOrNull(16)
+                val lo = this[i + 2].digitToIntOrNull(16)
+                if (hi != null && lo != null) {
+                    byteBuf.add(((hi shl 4) or lo).toByte())
+                    i += 3
+                    continue
+                }
+            }
+            flushBytes()
+            sb.append(c)
+            i++
+        }
+        flushBytes()
+        return sb.toString()
+    }
 
     private fun String.fileName(): String = substringAfterLast('/').substringAfterLast('\\')
 }

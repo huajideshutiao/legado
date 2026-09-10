@@ -2,8 +2,13 @@ package io.legado.app.ui.association
 
 import io.legado.app.ui.association.LegadoDeepLink.parse
 import io.legado.app.ui.association.LegadoDeepLinkHandler.consume
+import io.legado.app.ui.association.LegadoDeepLinkHandler.enqueue
 import io.legado.app.ui.association.LegadoDeepLinkHandler.handle
+import io.legado.app.ui.association.LegadoDeepLinkHandler.handleResolved
 import io.legado.app.ui.association.LegadoDeepLinkHandler.pending
+import kotlinx.atomicfu.atomic
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -38,10 +43,13 @@ enum class DeepLinkImportType {
     UNKNOWN,
 }
 
-/** deep link 解析结果: 导入类型 + `src` 参数 (待导入内容的 URL)。 */
+private val nextRequestId = atomic(0L)
+
+/** deep link 解析结果: 导入类型 + `src` 参数 (待导入内容的 URL 或纯 JSON 文本)。 */
 data class DeepLinkImportRequest(
     val type: DeepLinkImportType,
     val src: String,
+    val id: Long = nextRequestId.incrementAndGet(),
 )
 
 /**
@@ -186,31 +194,49 @@ object LegadoDeepLink {
  *
  * - 投递侧: desktop `main(args)`/macOS OpenURIHandler、iOS `handleLegadoDeepLink`
  *   (SwiftUI onOpenURL 转发)、鸿蒙 EntryAbility onCreate/onNewWant (napi handleDeepLink)
- *   拿到 URL 后调 [handle];
+ *   拿到 URL 后调 [handle]; 文件关联分发调 [enqueue] 或 [handleResolved];
  * - 消费侧: 各端 UI 顶层 collect [pending], 非 null 时弹对应导入对话框,
- *   完成/取消后调 [consume] 清空 (desktop 见 DesktopDeepLinkImportHost,
+ *   完成/取消后调 [consume] 移入下一项 (desktop 见 DesktopDeepLinkImportHost,
  *   iOS/鸿蒙见 sharedUiMain DeepLinkImportHost)。
  *
- * StateFlow 保证"先投递后订阅"(冷启动经启动参数投递, 窗口稍后才组合) 不丢事件。
- * 多次投递取最后一次 (与 app 端 singleTask AssociationActivity 一次处理一条一致)。
+ * 底层采用线程安全请求队列: 单项立即送达 UI, 批量关联文件或连续 deep link 依次排队,
+ * 避免单槽 StateFlow 覆盖导致的"只导入最后一个文件"问题。
  */
 object LegadoDeepLinkHandler {
 
+    private val lock = SynchronizedObject()
+    private val queue = ArrayDeque<DeepLinkImportRequest>()
     private val _pending = MutableStateFlow<DeepLinkImportRequest?>(null)
 
     /** 待处理导入请求 (null=无), 各端 UI 顶层订阅。 */
     val pending: StateFlow<DeepLinkImportRequest?> = _pending.asStateFlow()
 
-    /** 解析并记录 deep link; 返回 false 表示非 legado 系 URL 或缺 src 参数 (未记录)。 */
+    /** 解析并入队 deep link; 返回 false 表示非 legado 系 URL 或缺 src 参数 (未记录)。 */
     fun handle(url: String): Boolean {
         val request = LegadoDeepLink.parse(url) ?: return false
-        _pending.value = request
+        enqueue(request)
         return true
     }
 
-    /** 消费完成 (导入对话框关闭) 后清空待处理请求。 */
+    /**
+     * 将导入请求入队; 若当前无处理中的请求则立即暴露给 UI, 否则排入队列等待消费。
+     * 线程安全, 支持批量文件或 deep link 连续投递逐个被消费。
+     */
+    fun enqueue(request: DeepLinkImportRequest) {
+        synchronized(lock) {
+            if (_pending.value == null) {
+                _pending.value = request
+            } else {
+                queue.addLast(request)
+            }
+        }
+    }
+
+    /** 消费完成 (导入对话框关闭) 后, 从队列中取出下一个请求暴露给 UI; 若队列为空则置 null。 */
     fun consume() {
-        _pending.value = null
+        synchronized(lock) {
+            _pending.value = queue.removeFirstOrNull()
+        }
     }
 
     /**
@@ -221,8 +247,18 @@ object LegadoDeepLinkHandler {
      * 下载内容后, 把 `DeepLinkImportType.UNKNOWN` 请求"升级"为具体类型请求 (`src` 直接是
      * 已下载的 JSON 文本, 而非再次触发下载的 URL —— Import*ViewModelShared 的
      * `importSource`/`import` 均接受纯 JSON 文本, 与接受 URL 是同一入口)。
+     *
+     * 兼容文件关联分发: 若当前无待处理请求或非 UNKNOWN 类型升级, 行为等价于 [enqueue]。
      */
     fun handleResolved(request: DeepLinkImportRequest) {
-        _pending.value = request
+        synchronized(lock) {
+            if (_pending.value?.type == DeepLinkImportType.UNKNOWN) {
+                _pending.value = request
+            } else if (_pending.value == null) {
+                _pending.value = request
+            } else {
+                queue.addLast(request)
+            }
+        }
     }
 }

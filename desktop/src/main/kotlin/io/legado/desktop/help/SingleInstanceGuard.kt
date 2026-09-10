@@ -4,6 +4,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.help.file.desktopAppRootDir
 import io.legado.app.ui.association.LegadoDeepLink
 import io.legado.app.ui.association.LegadoDeepLinkHandler
+import io.legado.desktop.offerAssociationFiles
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -48,7 +49,8 @@ private data class ForwardMessage(val token: String, val args: List<String>)
  *
  * 1. args 里第一个 legado://`/`yuedu:// URL 投递 [LegadoDeepLinkHandler.handle]
  *    (与 Main.kt 冷启动 `handleDeepLinkArgs` 同一条链, 由 DeepLinkImportHost 弹导入框);
- * 2. 窗口前置 ([bindWindow] 注册的 AWT 窗口, EDT 上取消最小化 + toFront + requestFocus)。
+ * 2. args 里的存在文件路径投递 [offerAssociationFiles] (文件关联双击, 同一条队列);
+ * 3. 窗口前置 ([bindWindow] 注册的 AWT 窗口, EDT 上取消最小化 + toFront + requestFocus)。
  *
  * # 边界处理
  *
@@ -183,13 +185,14 @@ object SingleInstanceGuard {
         onForwardedArgs(message.args)
     }
 
-    /** 首实例消费转发来的启动参数: 投递 deep link + 前置窗口 (与 Main.kt 冷启动语义一致)。 */
+    /** 首实例消费转发来的启动参数: 投递 deep link + 关联文件 + 前置窗口 (与 Main.kt 冷启动语义一致)。 */
     private fun onForwardedArgs(args: List<String>) {
         args.firstOrNull { LegadoDeepLink.isDeepLink(it) }?.let { url ->
             if (!LegadoDeepLinkHandler.handle(url)) {
                 AppLog.put("转发的 deep link 解析失败 (缺 src 参数): $url", tag = TAG)
             }
         }
+        offerAssociationFiles(args.filter { !LegadoDeepLink.isDeepLink(it) && File(it).isFile })
         activateWindow()
     }
 
