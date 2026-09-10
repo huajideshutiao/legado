@@ -3,8 +3,9 @@ package io.legado.app.data.entities
 import androidx.room3.DatabaseView
 import io.legado.app.constant.AppPattern
 import io.legado.app.utils.splitNotBlank
+import kotlinx.serialization.Serializable
 
-
+@Serializable
 @DatabaseView(
     """select bookSourceUrl, bookSourceName, bookSourceGroup, customOrder, enabled, enabledExplore,
     (ifnull(trim(loginUrl), '') <> '' or ifnull(trim(loginUi), '') <> '') hasLoginUrl, lastUpdateTime, respondTime, weight,

@@ -1,6 +1,6 @@
 <template>
   <div class="source-form">
-    <div class="form-tabs">
+    <div class="form-tabs" ref="tabsRef" @wheel.passive="handleTabsWheel">
       <div class="web-tabs">
         <button
           v-for="(tab, key) in config"
@@ -22,21 +22,11 @@
           </label>
 
           <textarea
-            v-if="field.type === 'String' && !field.namespace"
-            class="web-textarea"
+            v-if="field.type === 'String'"
+            class="web-textarea auto-grow"
             :placeholder="field.hint || ''"
             :value="textValue(field)"
-            @input="updateField(field, $event)"
-            :rows="field.id === 'bookSourceComment' ? 1 : 2"
-          ></textarea>
-
-          <textarea
-            v-else-if="field.type === 'String' && field.namespace"
-            class="web-textarea"
-            :placeholder="field.hint || ''"
-            :value="textValue(field)"
-            @input="updateNsField(field, $event)"
-            :rows="2"
+            @input="onStringInput(field, $event)"
           ></textarea>
 
           <input
@@ -92,6 +82,14 @@ defineProps<{ config: Record<string, { name: string; children: SourceField[] }> 
 const store = useSourceStore()
 const source = computed(() => store.currentSource as Record<string, unknown>)
 const activeTab = ref('base')
+const tabsRef = ref<HTMLElement>()
+
+function handleTabsWheel(e: WheelEvent) {
+  const el = tabsRef.value?.querySelector('.web-tabs') as HTMLElement | null
+  if (el && e.deltaY) {
+    el.scrollLeft += e.deltaY
+  }
+}
 
 function getNsObject(nsValue: unknown): Record<string, unknown> {
   if (nsValue && typeof nsValue === 'object') {
@@ -152,6 +150,14 @@ function updateNsField(field: SourceField, e: Event) {
   }
 }
 
+function onStringInput(field: SourceField, e: Event) {
+  if (field.namespace) {
+    updateNsField(field, e)
+  } else {
+    updateField(field, e)
+  }
+}
+
 function updateBoolField(field: SourceField, e: Event) {
   const target = e.target as HTMLInputElement
   store.currentSource = { ...store.currentSource, [field.id]: target.checked }
@@ -168,20 +174,43 @@ function updateBoolField(field: SourceField, e: Event) {
 
 .form-tabs {
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .form-tabs .web-tabs {
   border-bottom: 2px solid var(--web-border-light);
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.form-tabs .web-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .form-tabs .web-tab {
   background: none;
   font-size: 14px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .form-body {
   flex: 1;
   overflow-y: auto;
   padding-top: 12px;
+}
+
+.web-textarea.auto-grow {
+  min-height: 40px;
+  height: auto;
+  field-sizing: content;
+  overflow-y: hidden;
+  resize: none;
+  line-height: 1.5;
+  font-family: 'Consolas', 'Courier New', monospace;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease;
 }
 </style>

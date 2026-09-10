@@ -33,6 +33,7 @@ class SearchWsHandler(
     private val searchModel = SearchModel(this, this)
 
     private val searchFinish = "Search finish"
+    private var customScope: String? = null
 
     override fun onMessage(text: String) {
         launch(IoDispatcher) {
@@ -51,6 +52,8 @@ class SearchWsHandler(
                         session.close(searchFinish)
                         return@launch
                     }
+                    val scope = searchMap["scope"]
+                    customScope = scope?.takeIf { it.isNotBlank() }
                     searchModel.search(systemCurrentTimeMillis(), key)
                 }
             }
@@ -66,7 +69,8 @@ class SearchWsHandler(
 
     }
 
-    override fun getSearchScope(): SearchScope = SearchScope(AppConfigProviders.get().searchScope)
+    override fun getSearchScope(): SearchScope =
+        customScope?.let { SearchScope(it) } ?: SearchScope(AppConfigProviders.get().searchScope)
 
     override fun onSearchStart() {
 

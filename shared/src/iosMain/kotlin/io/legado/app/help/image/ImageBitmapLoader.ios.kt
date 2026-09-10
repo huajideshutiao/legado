@@ -91,7 +91,8 @@ actual class ImageBitmapLoader actual constructor() {
                 if (bitmap != null && key != null) DecodedBitmapCache.put(key, bitmap)
                 return@withContext bitmap
             }
-            val bytes = loadBytes(url, book, bookSource, isCover) ?: return@withContext null
+            val bytes = loadBytesInternal(url, book, bookSource, isCover, useBitmapCache)
+                ?: return@withContext null
             val key = if (useBitmapCache) {
                 DecodedBitmapCache.cacheKey(url, bookSource?.bookSourceUrl, isCover, widthPx, heightPx)
             } else null
@@ -113,34 +114,34 @@ actual class ImageBitmapLoader actual constructor() {
         book: Book?,
         bookSource: BookSource?,
         isCover: Boolean,
-    ): ByteArray? =
-        withContext(IoDispatcher) {
-            runCatching {
-                when {
-                    // data: URI 内联图 (与 loadBitmap 的 data: 分支对齐, 原 app PhotoDialog
-                    // 的 base64 SVG 分支同源)
-                    url.startsWith("data:") -> parseDataUriBytes(url)
-                    url.startsWith("bg://") -> {
-                        // bg:// 内置背景图: 原版远程下载语义, 转 CDN URL 直下 (字节进 ImageBytesCache)
-                        downloadBytesSimple(bgCdnUrl(url.removePrefix("bg://")))
-                    }
+    ): ByteArray? = withContext(IoDispatcher) {
+        loadBytesInternal(url, book, bookSource, isCover, useBytesCache = true)
+    }
 
-                    url.startsWith("cbz://") -> loadCbzEntryBytes(url, book?.bookUrl)
-                    url.startsWith("file://") -> File(url.removePrefix("file://")).readBytes()
-                    url.startsWith("/") -> File(url).readBytes()
-                    url.startsWith("http://") || url.startsWith("https://") -> {
-                        if (isIosFailUrl(bookSource?.bookSourceUrl, url)) {
-                            // 跳过加载失败的图片 (原版 OkHttpStreamFetcher 同语义)
-                            null
-                        } else {
-                            loadNetworkBytes(url, bookSource, book, isCover)
-                        }
-                    }
+    private suspend fun loadBytesInternal(
+        url: String,
+        book: Book?,
+        bookSource: BookSource?,
+        isCover: Boolean,
+        useBytesCache: Boolean,
+    ): ByteArray? = runCatching {
+        when {
+            url.startsWith("data:") -> parseDataUriBytes(url)
+            url.startsWith("bg://") -> downloadBytesSimple(
+                bgCdnUrl(url.removePrefix("bg://")), useBytesCache
+            )
 
-                    else -> null
-                }
-            }.getOrNull()
+            url.startsWith("cbz://") -> loadCbzEntryBytes(url, book?.bookUrl)
+            url.startsWith("file://") -> File(url.removePrefix("file://")).readBytes()
+            url.startsWith("/") -> File(url).readBytes()
+            url.startsWith("http://") || url.startsWith("https://") -> {
+                if (useBytesCache && isIosFailUrl(bookSource?.bookSourceUrl, url)) null
+                else loadNetworkBytes(url, bookSource, book, isCover, useBytesCache)
+            }
+
+            else -> null
         }
+    }.getOrNull()
 
     /**
      * 网络图字节加载: 先查 [ImageBytesCache] (进程内 LRU + 磁盘, key 含 isCover,
@@ -151,26 +152,29 @@ actual class ImageBitmapLoader actual constructor() {
         bookSource: BookSource?,
         book: Book?,
         isCover: Boolean,
-    ): ByteArray? =
-        ImageBytesCache.get(url, bookSource?.bookSourceUrl, isCover) ?: run {
-            val bytes = if (bookSource == null || book?.isLocal == true) {
-                downloadBytesSimple(url)
-            } else {
-                downloadBytesWithSource(url, bookSource, book, isCover)
-            }
-            if (bytes != null) {
-                ImageBytesCache.put(url, bookSource?.bookSourceUrl, isCover, bytes)
-            }
-            bytes
+        useBytesCache: Boolean,
+    ): ByteArray? {
+        if (useBytesCache) {
+            ImageBytesCache.get(url, bookSource?.bookSourceUrl, isCover)?.let { return it }
         }
+        val bytes = if (bookSource == null || book?.isLocal == true) {
+            downloadBytesSimple(url, useBytesCache)
+        } else {
+            downloadBytesWithSource(url, bookSource, book, isCover, useBytesCache)
+        }
+        if (bytes != null && useBytesCache) {
+            ImageBytesCache.put(url, bookSource?.bookSourceUrl, isCover, bytes)
+        }
+        return bytes
+    }
 
     /** 简单 GET 取字节流 (本地书 / 无书源用); 非 2xx 进失败表不再重试。 */
-    private suspend fun downloadBytesSimple(url: String): ByteArray? {
+    private suspend fun downloadBytesSimple(url: String, recordFailure: Boolean): ByteArray? {
         val client = OkHttpClientProviders.get().okHttpClient.ktorClient ?: return null
         return runCatching {
             val response = client.get(url)
             if (!response.status.isSuccess()) {
-                markIosFailUrl(null, url)
+                if (recordFailure) markIosFailUrl(null, url)
                 null
             } else {
                 response.bodyAsBytes()
@@ -188,8 +192,9 @@ actual class ImageBitmapLoader actual constructor() {
         bookSource: BookSource?,
         book: Book?,
         isCover: Boolean,
+        recordFailure: Boolean,
     ): ByteArray? {
-        if (bookSource == null) return downloadBytesSimple(url)
+        if (bookSource == null) return downloadBytesSimple(url, recordFailure)
         return runCatching {
             val bytes = AnalyzeUrlCore(
                 rawUrl = url,
@@ -199,7 +204,7 @@ actual class ImageBitmapLoader actual constructor() {
             runScriptWithContext {
                 ImageUtils.decode(url, bytes, isCover, bookSource, book)
             } ?: run {
-                markIosFailUrl(bookSource.bookSourceUrl, url)
+                if (recordFailure) markIosFailUrl(bookSource.bookSourceUrl, url)
                 null
             }
         }.getOrNull()

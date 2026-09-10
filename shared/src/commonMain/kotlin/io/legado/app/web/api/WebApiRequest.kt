@@ -19,4 +19,6 @@ data class WebApiRequest(
     val files: Map<String, String> = emptyMap(),
     /** CORS 回显用的 origin header */
     val origin: String? = null,
+    /** HTTP 请求头 (全小写 key 方便查找) */
+    val headers: Map<String, String> = emptyMap(),
 )

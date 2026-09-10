@@ -92,7 +92,8 @@ actual class ImageBitmapLoader actual constructor() {
                 if (bitmap != null && key != null) DecodedBitmapCache.put(key, bitmap)
                 return@withContext bitmap
             }
-            val bytes = ohosLoadImageBytes(url, book, bookSource, isCover) ?: return@withContext null
+            val bytes = ohosLoadImageBytes(url, book, bookSource, isCover, useBitmapCache)
+                ?: return@withContext null
             val key = if (useBitmapCache) {
                 DecodedBitmapCache.cacheKey(url, bookSource?.bookSourceUrl, isCover, widthPx, heightPx)
             } else null
@@ -111,7 +112,7 @@ actual class ImageBitmapLoader actual constructor() {
         isCover: Boolean,
     ): ByteArray? =
         withContext(IoDispatcher) {
-            ohosLoadImageBytes(url, book, bookSource, isCover)
+            ohosLoadImageBytes(url, book, bookSource, isCover, useBytesCache = true)
         }
 }
 
@@ -133,6 +134,7 @@ private suspend fun ohosLoadImageBytes(
     book: Book?,
     bookSource: BookSource?,
     isCover: Boolean,
+    useBytesCache: Boolean,
 ): ByteArray? = when {
     // data: URI 内联图 (与 loadBitmap 的 data: 分支对齐)
     url.startsWith("data:") -> parseDataUriBytes(url)
@@ -148,7 +150,7 @@ private suspend fun ohosLoadImageBytes(
         File(url).readBytes()
     }.getOrNull()
     url.startsWith("http://") || url.startsWith("https://") ->
-        ohosLoadNetworkImageBytes(url, book, bookSource, isCover)
+        ohosLoadNetworkImageBytes(url, book, bookSource, isCover, useBytesCache)
     else -> null
 }
 
@@ -162,15 +164,19 @@ private suspend fun ohosLoadNetworkImageBytes(
     book: Book?,
     bookSource: BookSource?,
     isCover: Boolean,
+    useBytesCache: Boolean,
 ): ByteArray? {
-    if (ohosFailUrlsContains(bookSource?.bookSourceUrl, url)) return null
-    return ImageBytesCache.get(url, bookSource?.bookSourceUrl, isCover) ?: run {
-        val bytes = ohosDownloadImageBytes(url, book, bookSource, isCover)
-        if (bytes != null) {
-            ImageBytesCache.put(url, bookSource?.bookSourceUrl, isCover, bytes)
-        }
-        bytes
+    if (useBytesCache && ohosFailUrlsContains(bookSource?.bookSourceUrl, url)) return null
+    if (useBytesCache) {
+        ImageBytesCache.get(url, bookSource?.bookSourceUrl, isCover)?.let { return it }
     }
+    val bytes = ohosDownloadImageBytes(
+        url, book, bookSource, isCover, recordFailure = useBytesCache
+    )
+    if (bytes != null && useBytesCache) {
+        ImageBytesCache.put(url, bookSource?.bookSourceUrl, isCover, bytes)
+    }
+    return bytes
 }
 
 /**
@@ -184,6 +190,7 @@ internal suspend fun ohosDownloadImageBytes(
     book: Book?,
     bookSource: BookSource?,
     isCover: Boolean = false,
+    recordFailure: Boolean = true,
 ): ByteArray? {
     if (bookSource == null || book?.isLocal == true) {
         val client = OkHttpClientProviders.get().okHttpClient
@@ -192,7 +199,7 @@ internal suspend fun ohosDownloadImageBytes(
             val response = client.newCall(request).execute()
             try {
                 if (!response.isSuccessful) {
-                    ohosFailUrlsAdd(bookSource?.bookSourceUrl, url)
+                    if (recordFailure) ohosFailUrlsAdd(bookSource?.bookSourceUrl, url)
                     null
                 } else {
                     response.body.bytes()
@@ -212,7 +219,7 @@ internal suspend fun ohosDownloadImageBytes(
         runScriptWithContext {
             ImageUtils.decode(url, raw, isCover, bookSource, book)
         } ?: run {
-            ohosFailUrlsAdd(bookSource.bookSourceUrl, url)
+            if (recordFailure) ohosFailUrlsAdd(bookSource.bookSourceUrl, url)
             null
         }
     }.getOrNull()

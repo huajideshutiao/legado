@@ -2,9 +2,6 @@ package io.legado.app.web.utils
 
 import android.content.Context
 
-/** composeResources 打进 assets 的目录前缀 (含模块限定名, 由插件按模块生成)。 */
-private const val ASSET_PREFIX = "composeResources/legado.shared.generated.resources/files/"
-
 /**
  * [WebAssetSource] 的 Android actual 实现。
  *
@@ -17,7 +14,7 @@ private const val ASSET_PREFIX = "composeResources/legado.shared.generated.resou
 class AndroidWebAssetSource(private val context: Context) : WebAssetSource {
 
     override suspend fun read(path: String): ByteArray =
-        context.assets.open("$ASSET_PREFIX$path").use { it.readBytes() }
+        context.assets.open(composeResourcePath(path)).use { it.readBytes() }
 }
 
 /**

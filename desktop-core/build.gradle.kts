@@ -26,4 +26,6 @@ dependencies {
     implementation(project(":modules:quickjs"))
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
+    // 桌面端无 UI Skia 图形引擎 (DesktopImageOps 依赖, 纯 2D 位图与切片重排, 无 Compose UI)
+    implementation("org.jetbrains.skiko:skiko-awt:0.144.6")
 }

@@ -37,16 +37,11 @@ import io.legado.app.wifiManager
  * 本类只保留 Android Service 壳 (wakelock/wifiLock/前台通知/网络监听/Tile), 对齐原行为。
  *
  * # companion 委托
- * isRun / hostAddress 委托 [WebServerManager] (共享状态, 桌面端复用同一 object);
  * start/stop/serve 保留原 Service 启停入口 (Android Service 机制)。
  */
 class WebService : BaseService() {
 
     companion object {
-        val isRun: Boolean get() = WebServerManager.isRun
-
-        val hostAddress: String get() = WebServerManager.hostAddress
-
         fun start(context: Context) {
             context.startService<WebService>()
         }

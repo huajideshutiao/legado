@@ -5,7 +5,7 @@ import {
   convertSourcesToMap,
   ensureSourceRules,
 } from '@utils/souce'
-import type { BookSource, RawSource, Source } from '@/source'
+import type { RawSource, Source } from '@/source'
 
 const emptySource = emptyBookSource
 
@@ -15,7 +15,7 @@ export const useSourceStore = defineStore('source', {
       bookSources: shallowRef([] as Source[]),
       savedSources: [] as Source[],
       currentSource: ensureSourceRules(JSON.parse(JSON.stringify(emptySource))),
-      currentTab: localStorage.getItem('tabName') || 'editTab',
+      currentTab: localStorage.getItem('tabName') === 'editHelp' ? 'editHelp' : 'editDebug',
       editTabSource: {} as Source,
       isDebuging: false,
     }

@@ -3,9 +3,12 @@ package io.legado.app.web
 import io.legado.app.constant.EventBus
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.utils.postEvent
-import kotlin.concurrent.Volatile
+import io.legado.app.web.WebServerManager.hostAddress
+import io.legado.app.web.WebServerManager.start
+import io.legado.app.web.WebServerManager.stop
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import kotlin.concurrent.Volatile
 
 /**
  * Web 服务纯逻辑编排 (shared commonMain, 零平台依赖)。
@@ -30,6 +33,9 @@ object WebServerManager {
     @Volatile
     var isRun: Boolean = false
         private set
+
+    /** 是否处于启动过渡态 (已标记运行但主地址尚未就绪)。 */
+    val isStarting: Boolean get() = isRun && hostAddress.isEmpty()
 
     /** 当前主访问地址 (原 WebService.hostAddress), 形如 "http://192.168.1.2:1122"。 */
     @Volatile
@@ -100,6 +106,7 @@ object WebServerManager {
      */
     fun markRunning(): Unit = synchronized(lock) {
         isRun = true
+        postEvent(EventBus.WEB_SERVICE, hostAddress)
     }
 
     /**

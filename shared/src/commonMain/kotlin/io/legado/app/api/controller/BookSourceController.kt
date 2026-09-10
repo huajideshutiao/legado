@@ -5,6 +5,8 @@ import io.legado.app.api.ReturnData
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.source.SourceHelp
+import io.legado.app.help.source.exploreKinds
+import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
@@ -23,6 +25,14 @@ object BookSourceController {
 
     suspend fun sources(): ReturnData {
         val bookSources = AppDbProviders.get().bookSourceDao.all()
+        val returnData = ReturnData()
+        return if (bookSources.isEmpty()) {
+            returnData.setErrorMsg("设备源列表为空")
+        } else returnData.setData(bookSources)
+    }
+
+    suspend fun sourcesPart(): ReturnData {
+        val bookSources = AppDbProviders.get().bookSourceDao.allPart()
         val returnData = ReturnData()
         return if (bookSources.isEmpty()) {
             returnData.setErrorMsg("设备源列表为空")
@@ -84,5 +94,44 @@ object BookSourceController {
             return ReturnData().setErrorMsg(it.message ?: "数据格式错误")
         }
         return ReturnData().setData("已执行"/*okSources*/)
+    }
+
+    suspend fun exploreKinds(parameters: Map<String, List<String>>): ReturnData {
+        val url = parameters["url"]?.firstOrNull()
+        val returnData = ReturnData()
+        if (url.isNullOrEmpty()) {
+            return returnData.setErrorMsg("参数url不能为空，请指定源地址")
+        }
+        val bookSource = AppDbProviders.get().bookSourceDao.getBookSource(url)
+            ?: return returnData.setErrorMsg("未找到源，请检查书源地址")
+        return kotlin.runCatching {
+            val kinds = bookSource.exploreKinds()
+            returnData.setData(kinds)
+        }.getOrElse {
+            returnData.setErrorMsg("解析分类失败: ${it.message}")
+        }
+    }
+
+    suspend fun exploreBooks(parameters: Map<String, List<String>>): ReturnData {
+        val url = parameters["url"]?.firstOrNull()
+        val exploreUrl = parameters["exploreUrl"]?.firstOrNull()
+        val page = parameters["page"]?.firstOrNull()?.toIntOrNull() ?: 1
+        val returnData = ReturnData()
+        if (url.isNullOrEmpty() || exploreUrl.isNullOrEmpty()) {
+            return returnData.setErrorMsg("参数url和exploreUrl不能为空")
+        }
+        val bookSource = AppDbProviders.get().bookSourceDao.getBookSource(url)
+            ?: return returnData.setErrorMsg("未找到源，请检查书源地址")
+        return kotlin.runCatching {
+            val pageResult = WebBook.getBookListAwait(
+                bookSource = bookSource,
+                key = exploreUrl,
+                page = page,
+                isSearch = false
+            )
+            returnData.setData(pageResult.books)
+        }.getOrElse {
+            returnData.setErrorMsg("加载发现书籍失败: ${it.message}")
+        }
     }
 }

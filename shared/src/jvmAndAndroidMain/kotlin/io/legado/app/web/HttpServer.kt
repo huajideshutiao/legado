@@ -38,14 +38,26 @@ class HttpServer(port: Int) : NanoHTTPD(port) {
         val origin = session.headers["origin"]
 
         val startAt = System.currentTimeMillis()
-        AppLog.putDebug("$TAG: ${session.method.name} - $uri - ${session.queryParameterString} - Start($startAt)")
+        if (uri != "/mediaStream") {
+            AppLog.putDebug("$TAG: ${session.method.name} - $uri - ${session.queryParameterString} - Start($startAt)")
+        }
 
-        // OPTIONS 预检: 直接回, 不进路由层
+        // OPTIONS 预检: mediaStream 已永久下线，固定 410；其余接口按原规则回 CORS
         if (session.method == Method.OPTIONS) {
+            if (uri == "/mediaStream") {
+                val response = newFixedLengthResponse(
+                    goneStatus(),
+                    "text/plain; charset=utf-8",
+                    "Media stream proxy is gone"
+                )
+                response.addHeader("Cache-Control", "no-store")
+                response.addHeader("X-Content-Type-Options", "nosniff")
+                return response
+            }
             val response = newFixedLengthResponse("")
-            response.addHeader("Access-Control-Allow-Methods", "POST")
+            response.addHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
             response.addHeader("Access-Control-Allow-Headers", "content-type")
-            response.addHeader("Access-Control-Allow-Origin", origin)
+            response.addHeader("Access-Control-Allow-Origin", origin ?: "*")
             return response
         }
 
@@ -66,6 +78,7 @@ class HttpServer(port: Int) : NanoHTTPD(port) {
                 postData = postData,
                 files = files,
                 origin = origin,
+                headers = session.headers,
             )
 
             val response = when (val apiResponse = runBlocking { WebApi.handle(request) }) {
@@ -77,6 +90,39 @@ class HttpServer(port: Int) : NanoHTTPD(port) {
                         asset.mimeType,
                         ByteArrayInputStream(asset.bytes)
                     )
+                }
+                is WebApiResponse.Stream -> {
+                    val status = NanoHTTPD.Response.Status.lookup(apiResponse.statusCode)
+                        ?: object : NanoHTTPD.Response.IStatus {
+                            override fun getRequestStatus() = apiResponse.statusCode
+                            override fun getDescription() = "${apiResponse.statusCode} ${apiResponse.statusMessage}"
+                        }
+                    val contentLength = apiResponse.contentLength
+                    val streamResponse = if (contentLength != null && contentLength >= 0) {
+                        newFixedLengthResponse(
+                            status,
+                            apiResponse.contentType,
+                            apiResponse.inputStream,
+                            contentLength
+                        )
+                    } else {
+                        newChunkedResponse(
+                            status,
+                            apiResponse.contentType,
+                            apiResponse.inputStream
+                        )
+                    }
+                    apiResponse.headers.forEach { (name, value) ->
+                        if (!name.equals("Content-Length", ignoreCase = true) &&
+                            !name.equals("Content-Type", ignoreCase = true)
+                        ) {
+                            streamResponse.addHeader(name, value)
+                        }
+                    }
+                    if (uri != "/mediaStream") {
+                        AppLog.putDebug("$TAG: ${session.method.name} - $uri - ${session.queryParameterString} - End($startAt)")
+                    }
+                    return streamResponse
                 }
                 is WebApiResponse.Bytes -> {
                     val inputStream = ByteArrayInputStream(apiResponse.bytes)
@@ -110,7 +156,9 @@ class HttpServer(port: Int) : NanoHTTPD(port) {
             }
             response.addHeader("Access-Control-Allow-Methods", "GET, POST")
             response.addHeader("Access-Control-Allow-Origin", origin)
-            AppLog.putDebug("$TAG: ${session.method.name} - $uri - ${session.queryParameterString} - End($startAt)")
+            if (uri != "/mediaStream") {
+                AppLog.putDebug("$TAG: ${session.method.name} - $uri - ${session.queryParameterString} - End($startAt)")
+            }
             return response
         } catch (e: Exception) {
             AppLog.putDebug(
@@ -123,6 +171,12 @@ class HttpServer(port: Int) : NanoHTTPD(port) {
 
     companion object {
         private const val TAG = "HttpServer"
+
+        private fun goneStatus(): NanoHTTPD.Response.IStatus =
+            NanoHTTPD.Response.Status.lookup(410) ?: object : NanoHTTPD.Response.IStatus {
+                override fun getRequestStatus() = 410
+                override fun getDescription() = "410 Gone"
+            }
     }
 
 }

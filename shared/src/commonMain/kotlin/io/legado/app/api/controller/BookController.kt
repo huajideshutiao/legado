@@ -7,10 +7,13 @@ import io.legado.app.constant.BookType
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookProgress
+import io.legado.app.data.entities.BookSource
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.CacheManager
+import io.legado.app.help.JsExtensionsPlatform
 import io.legado.app.help.book.BookChapterLoader
 import io.legado.app.help.book.BookHelpProviders
+import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.isLocal
@@ -28,6 +31,8 @@ import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import legado.shared.generated.resources.Res
 import org.jetbrains.compose.resources.ExperimentalResourceApi
@@ -68,6 +73,9 @@ import kotlin.text.getOrNull
  */
 object BookController {
 
+    /** 目录/书源切换串行化，防止同一 bookUrl 的并发请求交叉覆盖 Book 与 chapters。 */
+    private val catalogMutationMutex = Mutex()
+
     /*
     * 分组号及名称
      */
@@ -84,7 +92,11 @@ object BookController {
      */
     suspend fun getBooks(parameters: Map<String, List<String>>): ReturnData {
         val groupId = parameters["groupId"]?.firstOrNull()?.toLong()
-        val books = if (groupId == null) AppDbProviders.get().bookDao.all() else AppDbProviders.get().bookDao.flowByGroup(groupId).first()
+        val books = if (groupId == null) {
+            AppDbProviders.get().bookDao.all().filterNot { (it.type and BookType.notShelf) > 0 }
+        } else {
+            AppDbProviders.get().bookDao.flowByGroup(groupId).first()
+        }
         val data = when (AppConfigProviders.get().bookshelfSort) {
             1 -> books.sortedByDescending { it.latestChapterTime }
             2 -> books.sortedWith { o1, o2 ->
@@ -164,27 +176,98 @@ object BookController {
     /**
      * 更新目录
      */
-    suspend fun refreshToc(parameters: Map<String, List<String>>): ReturnData {
-        val returnData = ReturnData()
-        try {
-            val bookUrl = parameters["url"]?.firstOrNull()
-            if (bookUrl.isNullOrEmpty()) {
-                return returnData.setErrorMsg("参数url不能为空，请指定书籍地址")
+    suspend fun refreshToc(parameters: Map<String, List<String>>): ReturnData =
+        catalogMutationMutex.withLock {
+            val returnData = ReturnData()
+            try {
+                val bookUrl = parameters["url"]?.firstOrNull()
+                    ?: return@withLock returnData.setErrorMsg("参数url不能为空，请指定书籍地址")
+                val bookDao = AppDbProviders.get().bookDao
+                val oldBook = bookDao.getBook(bookUrl)
+                val requestedOrigin =
+                    parameters["origin"]?.firstOrNull()?.takeIf { it.isNotBlank() }
+                val source = when {
+                    oldBook?.isLocal == true -> null
+                    requestedOrigin != null -> AppDbProviders.get().bookSourceDao.getBookSource(
+                        requestedOrigin
+                    )
+
+                    oldBook != null -> AppDbProviders.get().bookSourceDao.getBookSource(oldBook.origin)
+                    else -> resolveSourceByUniqueLongestPrefix(bookUrl).getOrElse {
+                        return@withLock returnData.setErrorMsg(it.message ?: "无法唯一确定书源")
+                    }
+                }
+                if (oldBook?.isLocal != true && source == null) {
+                    return@withLock returnData.setErrorMsg("未找到对应书源,请换源")
+                }
+
+                val sourceChanged =
+                    oldBook != null && source != null && oldBook.origin != source.bookSourceUrl
+                val book = if (oldBook == null) {
+                    Book(
+                        bookUrl = bookUrl,
+                        origin = source!!.bookSourceUrl,
+                        originName = parameters["originName"]?.firstOrNull()
+                            ?: source.bookSourceName,
+                        name = parameters["name"]?.firstOrNull().orEmpty(),
+                        author = parameters["author"]?.firstOrNull().orEmpty(),
+                        tocUrl = parameters["tocUrl"]?.firstOrNull().orEmpty(),
+                        type = parameters["type"]?.firstOrNull()?.toIntOrNull() ?: BookType.text,
+                        coverUrl = parameters["coverUrl"]?.firstOrNull(),
+                        intro = parameters["intro"]?.firstOrNull(),
+                        kind = parameters["kind"]?.firstOrNull(),
+                        wordCount = parameters["wordCount"]?.firstOrNull(),
+                        variable = parameters["variable"]?.firstOrNull(),
+                    ).apply { addType(BookType.notShelf) }
+                } else if (sourceChanged) {
+                    val previous = oldBook
+                    previous.copy(
+                        origin = source.bookSourceUrl,
+                        originName = parameters["originName"]?.firstOrNull()
+                            ?: source.bookSourceName,
+                        tocUrl = parameters["tocUrl"]?.firstOrNull().orEmpty(),
+                        coverUrl = parameters["coverUrl"]?.firstOrNull() ?: previous.coverUrl,
+                        intro = parameters["intro"]?.firstOrNull() ?: previous.intro,
+                        kind = parameters["kind"]?.firstOrNull() ?: previous.kind,
+                        wordCount = parameters["wordCount"]?.firstOrNull() ?: previous.wordCount,
+                        variable = parameters["variable"]?.firstOrNull() ?: previous.variable,
+                    )
+                } else {
+                    oldBook
+                }
+
+                if (source != null && book.tocUrl.isBlank()) {
+                    WebBook.getBookInfoAwait(source, book)
+                    // Web API 以请求 url 为稳定主键；书源详情规则不得在本次请求中悄然换主键。
+                    book.bookUrl = bookUrl
+                }
+                val keepNotShelf = oldBook == null || (oldBook.type and BookType.notShelf) > 0
+                // 禁止复用的 Loader 在网络返回后先行写入半套 Book/chapters；由本临界区统一发布。
+                book.addType(BookType.notShelf)
+                val toc = BookChapterLoader.fetchFromSource(book, source)
+                if (!keepNotShelf) book.removeType(BookType.notShelf)
+                if (sourceChanged) BookStorageProviders.get().delContent(oldBook)
+
+                // 发布顺序为「删旧目录 → 更新 Book/origin → 插入新目录」；任何单步失败最多留下空目录，
+                // 不会留下 B Book + A chapters。Web 正文/目录读取由同一锁隔离发布窗口。
+                val chapterDao = AppDbProviders.get().bookChapterDao
+                chapterDao.delByBook(book.bookUrl)
+                if (bookDao.has(book.bookUrl)) bookDao.update(book) else bookDao.insert(book)
+                if (toc.isNotEmpty()) chapterDao.insert(*toc.toTypedArray())
+                return@withLock returnData.setData(toc)
+            } catch (e: Exception) {
+                return@withLock returnData.setErrorMsg(e.message ?: "refresh toc error")
             }
-            val book = AppDbProviders.get().bookDao.getBook(bookUrl)
-                ?: return returnData.setErrorMsg("未在数据库找到对应书籍，请先添加")
-            val bookSource = if (book.isLocal) null else {
-                AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
-                    ?: return returnData.setErrorMsg("未找到对应书源,请换源")
-            }
-            if (bookSource != null && book.tocUrl.isBlank()) {
-                WebBook.getBookInfoAwait(bookSource, book)
-            }
-            val toc = BookChapterLoader.fetchFromSource(book, bookSource)
-            return returnData.setData(toc)
-        } catch (e: Exception) {
-            return returnData.setErrorMsg(e.message ?: "refresh toc error")
         }
+
+    private suspend fun resolveSourceByUniqueLongestPrefix(bookUrl: String): Result<BookSource> {
+        val matches = AppDbProviders.get().bookSourceDao.all()
+            .filter { it.bookSourceUrl.isNotEmpty() && bookUrl.startsWith(it.bookSourceUrl) }
+        if (matches.isEmpty()) return Result.failure(IllegalStateException("无法根据书籍地址确定书源，请传 origin"))
+        val longest = matches.maxOf { it.bookSourceUrl.length }
+        val best = matches.filter { it.bookSourceUrl.length == longest }
+        return if (best.size == 1) Result.success(best.single())
+        else Result.failure(IllegalStateException("书籍地址匹配到多个同长度书源，请明确传 origin"))
     }
 
     /**
@@ -196,17 +279,26 @@ object BookController {
         if (bookUrl.isNullOrEmpty()) {
             return returnData.setErrorMsg("参数url不能为空，请指定书籍地址")
         }
-        val chapterList = AppDbProviders.get().bookChapterDao.getChapterList(bookUrl)
-        if (chapterList.isEmpty()) {
-            return refreshToc(parameters)
+        val requestedOrigin = parameters["origin"]?.firstOrNull()?.takeIf { it.isNotBlank() }
+        val cached = catalogMutationMutex.withLock {
+            val book = AppDbProviders.get().bookDao.getBook(bookUrl)
+            if (book == null || (requestedOrigin != null && book.origin != requestedOrigin)) {
+                null
+            } else {
+                AppDbProviders.get().bookChapterDao.getChapterList(bookUrl)
+                    .takeIf { it.isNotEmpty() }
+            }
         }
-        return returnData.setData(chapterList)
+        return if (cached != null) returnData.setData(cached) else refreshToc(parameters)
     }
 
     /**
      * 获取正文
      */
-    suspend fun getBookContent(parameters: Map<String, List<String>>): ReturnData {
+    suspend fun getBookContent(parameters: Map<String, List<String>>): ReturnData =
+        catalogMutationMutex.withLock { getBookContentLocked(parameters) }
+
+    private suspend fun getBookContentLocked(parameters: Map<String, List<String>>): ReturnData {
         val bookUrl = parameters["url"]?.firstOrNull()
         val index = parameters["index"]?.firstOrNull()?.toInt()
         val returnData = ReturnData()
@@ -217,6 +309,10 @@ object BookController {
             return returnData.setErrorMsg("参数index不能为空, 请指定目录序号")
         }
         val book = AppDbProviders.get().bookDao.getBook(bookUrl)
+        val requestedOrigin = parameters["origin"]?.firstOrNull()?.takeIf { it.isNotBlank() }
+        if (book != null && requestedOrigin != null && book.origin != requestedOrigin) {
+            return returnData.setErrorMsg("书籍、目录与请求书源不一致，请重新加载目录")
+        }
         val bookChapterDao = AppDbProviders.get().bookChapterDao
         val chapter = bookChapterDao.getChapter(bookUrl, index) ?: withTimeoutOrNull(30_000) {
             bookChapterDao.flowChapter(bookUrl, index).filterNotNull().first()
@@ -224,12 +320,29 @@ object BookController {
         if (book == null || chapter == null) {
             return returnData.setErrorMsg("未找到")
         }
-        var content: String? = BookHelpProviders.get().getContent(book, chapter)
+        val refresh = parameters["refresh"]?.firstOrNull()?.toBoolean() == true ||
+            parameters["reParse"]?.firstOrNull()?.toBoolean() == true
+        if (refresh) {
+            chapter.resourceUrl = null
+            bookChapterDao.upResourceUrl(book.bookUrl, chapter.url, null)
+            BookStorageProviders.get().delContent(book, chapter)
+        }
+        var content: String? = if (refresh) null else BookHelpProviders.get().getContent(book, chapter)
+        if (content == null && book.isLocal) {
+            // 本地书 (txt/epub/cbz) 正文不经书源: 经 FileBook 处理器从原文件按章节
+            // start/end 切读 (缓存层 BookStorage 只存网书缓存, 本地书无缓存条目)
+            content = runCatching {
+                FileBookProviders.get().getHandler(book).getContent(book, chapter)
+            }.getOrElse { null }
+        }
         if (content != null) {
             content = ContentProcessorProviders.get().getContent(
                 book, chapter, content, includeTitle = false, useReplace = true
             ).toString()
-            return returnData.setData(content)
+            val bookSource = if (!book.isLocal) {
+                AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
+            } else null
+            return returnData.setData(transformProxyImagesIfNeeded(content, book, bookSource))
         }
         val bookSource = AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
             ?: return returnData.setErrorMsg("未找到书源")
@@ -239,11 +352,103 @@ object BookController {
                     book, chapter, it, includeTitle = false, useReplace = true
                 ).toString()
             }
-            returnData.setData(content)
+            returnData.setData(transformProxyImagesIfNeeded(content, book, bookSource))
         } catch (e: Exception) {
             returnData.setErrorMsg(e.stackTraceStr)
         }
         return returnData
+    }
+
+    private val imgTagRegex = Regex("""<img[^>]*\ssrc=['"]([^'"]*(?:['"][^>]+\})?)['"][^>]*>""", RegexOption.IGNORE_CASE)
+    private val mdImgRegex = Regex("""(!\[[^\]]*\]\()([^\)\s]+)(\))""")
+    private val legadoUrlParamRegex = Regex(""",\s*\{""")
+
+    /**
+     * 在输出给 Web 前端前，动态转换需要解密或中转的图片为相对代理路径 `/image?path=...&url=...`。
+     * 底层数据库和文件缓存仍保持纯净原始文本，不污染持久化缓存。
+     */
+    private fun transformProxyImagesIfNeeded(
+        content: String,
+        book: Book,
+        bookSource: BookSource?,
+    ): String {
+        if (content.isBlank()) return content
+
+        val hasImageDecode = !bookSource?.contentRule?.imageDecode.isNullOrBlank()
+        val hasLegadoUrl = content.contains(",{") || content.contains(", {")
+
+        if (!hasImageDecode && !hasLegadoUrl) {
+            return content
+        }
+
+        fun toProxyUrl(rawUrl: String): String {
+            val trimmed = rawUrl.trim()
+            if (trimmed.startsWith("/image?") ||
+                trimmed.startsWith("data:") ||
+                trimmed.startsWith("blob:")
+            ) {
+                return trimmed
+            }
+            val isLegado = legadoUrlParamRegex.containsMatchIn(trimmed)
+            if (!hasImageDecode && !isLegado) {
+                return trimmed
+            }
+            val encodedPath = JsExtensionsPlatform.urlEncode(trimmed, "UTF-8")
+            val encodedUrl = JsExtensionsPlatform.urlEncode(book.bookUrl, "UTF-8")
+            return "/image?path=$encodedPath&url=$encodedUrl"
+        }
+
+        // 1. 处理 HTML <img ... src="..."> 标签
+        var result = imgTagRegex.replace(content) { matchResult ->
+            val fullTag = matchResult.value
+            val src = matchResult.groupValues[1]
+            val proxySrc = toProxyUrl(src)
+            if (proxySrc != src) {
+                fullTag.replace(src, proxySrc)
+            } else {
+                fullTag
+            }
+        }
+
+        // 2. 处理 Markdown ![alt](url) 语法
+        result = mdImgRegex.replace(result) { matchResult ->
+            val prefix = matchResult.groupValues[1]
+            val src = matchResult.groupValues[2]
+            val suffix = matchResult.groupValues[3]
+            val proxySrc = toProxyUrl(src)
+            "$prefix$proxySrc$suffix"
+        }
+
+        // 3. 处理漫画纯图片 URL 行
+        result = result.lines().joinToString("\n") { line ->
+            val trimmed = line.trim()
+            if (isImageOrHttpLine(trimmed)) {
+                toProxyUrl(trimmed)
+            } else {
+                line
+            }
+        }
+
+        return result
+    }
+
+    private fun isImageOrHttpLine(line: String): Boolean {
+        if (line.isBlank()) return false
+        if (line.startsWith("/image?")) return false
+        if (line.startsWith("http://", ignoreCase = true) ||
+            line.startsWith("https://", ignoreCase = true) ||
+            line.startsWith("//")
+        ) {
+            return true
+        }
+        val clean = line.substringBefore(",{").trim()
+        return clean.endsWith(".jpg", ignoreCase = true) ||
+               clean.endsWith(".jpeg", ignoreCase = true) ||
+               clean.endsWith(".png", ignoreCase = true) ||
+               clean.endsWith(".gif", ignoreCase = true) ||
+               clean.endsWith(".webp", ignoreCase = true) ||
+               clean.endsWith(".bmp", ignoreCase = true) ||
+               clean.endsWith(".avif", ignoreCase = true)
     }
 
     /**
@@ -252,16 +457,32 @@ object BookController {
     suspend fun saveBook(postData: String?): ReturnData {
         val returnData = ReturnData()
         GSON.fromJsonObject<Book>(postData).getOrNull()?.let { book ->
-            AppWebDavShared.uploadBookProgress(book)
-            // 内联 book.save() 扩展 (app 端 BookExtensions.kt, 未下沉 commonMain):
-            // removeType(notShelf) + 按 bookUrl 判断 insert/update
-            book.removeType(BookType.notShelf)
             val bookDao = AppDbProviders.get().bookDao
-            if (bookDao.has(book.bookUrl)) {
-                bookDao.update(book)
+            val existing = bookDao.getBook(book.bookUrl)
+            val existingNotShelf = existing?.takeIf { (it.type and BookType.notShelf) > 0 }
+            val saved = if (existingNotShelf != null) {
+                // Web 搜索对象可能是稀疏 JSON；以已抓取的 notShelf 记录为底，仅合并有效元数据。
+                existingNotShelf.copy(
+                    name = book.name.ifBlank { existingNotShelf.name },
+                    author = book.author.ifBlank { existingNotShelf.author },
+                    origin = book.origin.ifBlank { existingNotShelf.origin },
+                    originName = book.originName.ifBlank { existingNotShelf.originName },
+                    tocUrl = book.tocUrl.ifBlank { existingNotShelf.tocUrl },
+                    kind = book.kind ?: existingNotShelf.kind,
+                    coverUrl = book.coverUrl ?: existingNotShelf.coverUrl,
+                    intro = book.intro ?: existingNotShelf.intro,
+                    wordCount = book.wordCount ?: existingNotShelf.wordCount,
+                    variable = book.variable ?: existingNotShelf.variable,
+                    latestChapterTitle = book.latestChapterTitle
+                        ?: existingNotShelf.latestChapterTitle,
+                    originOrder = if (book.originOrder != 0) book.originOrder else existingNotShelf.originOrder,
+                    type = existingNotShelf.type,
+                ).apply { removeType(BookType.notShelf) }
             } else {
-                bookDao.insert(book)
+                book.apply { removeType(BookType.notShelf) }
             }
+            AppWebDavShared.uploadBookProgress(saved)
+            if (existing != null) bookDao.update(saved) else bookDao.insert(saved)
             return returnData.setData("")
         }
         return returnData.setErrorMsg("格式不对")

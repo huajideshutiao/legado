@@ -10,6 +10,7 @@ import android.view.WindowManager.BadTokenException
 import io.legado.app.R
 import io.legado.app.constant.IntentAction
 import io.legado.app.utils.printOnDebug
+import io.legado.app.web.WebServerManager
 
 
 /**
@@ -39,7 +40,7 @@ class WebTileService : TileService() {
     override fun onStartListening() {
         super.onStartListening()
         qsTile?.run {
-            state = if (WebService.isRun) {
+            state = if (WebServerManager.isRun) {
                 Tile.STATE_ACTIVE
             } else {
                 Tile.STATE_INACTIVE
@@ -50,7 +51,7 @@ class WebTileService : TileService() {
 
     override fun onClick() {
         super.onClick()
-        if (WebService.isRun) {
+        if (WebServerManager.isRun) {
             WebService.stop(this)
         } else {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {

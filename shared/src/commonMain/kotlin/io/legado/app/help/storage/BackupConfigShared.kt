@@ -90,7 +90,8 @@ object BackupConfigShared {
         PreferKey.bitmapCacheSize,
         PreferKey.webServiceWakeLock,
         PreferKey.readAloudWakeLock,
-        PreferKey.audioPlayWakeLock
+        PreferKey.audioPlayWakeLock,
+        "useZhLayout"
     )
 
     //阅读配置

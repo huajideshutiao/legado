@@ -15,8 +15,8 @@ import io.legado.app.help.book.JvmBookImageStorage
 import io.legado.app.help.book.JvmBookStorage
 import io.legado.app.help.book.JvmLocalBookLocator
 import io.legado.app.help.book.LocalBookLocators
-import io.legado.app.help.config.COVER_CACHE_REF_SEGMENT
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.config.COVER_CACHE_REF_SEGMENT
 import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadBookConfigProviders
@@ -29,7 +29,6 @@ import io.legado.app.help.file.registerDesktopAppFilesDir
 import io.legado.app.help.file.registerDesktopFileDownloader
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.i18n.registerAppStringProvider
-import io.legado.app.help.image.registerJvmBookImageLoader
 import io.legado.app.help.notification.registerDesktopNotificationProgress
 import io.legado.app.help.service.DesktopUpdateBookCallback
 import io.legado.app.help.service.UpdateBookCallbacks
@@ -46,6 +45,11 @@ import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.web.registerDesktopWebServerPlatform
 import io.legado.app.web.utils.registerDesktopWebAssetSource
 import io.legado.app.web.utils.registerDesktopWebStrings
+import io.legado.desktop.DesktopCore.initDefaultData
+import io.legado.desktop.DesktopCore.initRuntimeEnvironment
+import io.legado.desktop.DesktopCore.registerCoreProviders
+import io.legado.desktop.DesktopCore.registerSecondaryCoreProviders
+import io.legado.desktop.DesktopCore.startupBackgroundTasks
 import io.legado.desktop.config.registerDesktopConfig
 import io.legado.desktop.data.DesktopAppDbAccessor
 import io.legado.desktop.help.DesktopCrashHandler
@@ -141,7 +145,7 @@ object DesktopCore {
             AppLog.put("portable 模式, dataDir = ${portableDataRoot.absolutePath}", tag = TAG)
         }
         // 2. native 库定位: 有文件即设属性, 让 quickjs 模块 Platform.kt 候选1 System.load 加载
-        if (quickjsLibFile != null && quickjsLibFile.exists()) {
+        if (quickjsLibFile != null && quickjsLibFile.isFile) {
             System.setProperty("legado.quickjs.lib", quickjsLibFile.absolutePath)
             AppLog.put("quickjs native 库已定位: ${quickjsLibFile.absolutePath}", tag = TAG)
         } else {
@@ -157,7 +161,7 @@ object DesktopCore {
      *
      * 从 :desktop Main.kt application{} 内的同步注册块机械抽取, 保持原相对顺序。
      * UI 绑定项 (AppUserModelId/ScreenInfo/TrayNotifier.uiSender/PlatformCapabilities/
-     * PlatformServices/系统 TTS 引擎/JS 图片绑定) 留在 :desktop Main.kt 原位置注册。
+     * PlatformServices/系统 TTS 引擎/BookImageLoader) 留在 :desktop Main.kt 原位置注册。
      *
      * @return 构造好的 [ReadBookConfigShared] (供 :desktop 阶段2 构造 LocalReadConfigProviders
      *   注入 Compose; 必须与全局 ReadBookConfigProviders 同实例, 否则配置写读分家)。
@@ -198,10 +202,6 @@ object DesktopCore {
         registerDesktopAppUpdate()
         // 注册桌面端 AppFilesDir (~/.legado/files), 供 BackupShared/RestoreShared 用
         registerDesktopAppFilesDir()
-        // Coil3 图片栈: 注册 BookImageLoader + SingletonImageLoader.setSafe (共享 ImageLoader,
-        // 拦截器/diskCache 装配见 shared BookImageLoader.jvm.kt)。必须早于首个图片加载请求。
-        // 注册零开销 (ImageLoader lazy, OkHttpClient 惰性到首次网络 fetch)
-        registerJvmBookImageLoader()
         // HTTP 层 (OkHttp + CookieJarBridge, 独立): 提前到阶段1, 与 JS 引擎同批就绪,
         // 消除"首次 JS eval 触发网络请求 → OkHttpClientProviders 未注册"的启动竞态
         // (registerDesktopJsEngines 在前, 书源 JS 里 java.ajax 依赖此层)
@@ -219,10 +219,8 @@ object DesktopCore {
         // 系统 TTS 引擎 (DesktopSystemTtsEngine) 依赖 JNA (WindowsSapiTtsBackend) 留 :desktop;
         // headless 仅缺系统 TTS 朗读引擎, Web 服务 HttpTTS 朗读可用
         TtsEngineProvider.registerHttpTtsPlayerFactory { DesktopHttpTtsPlayer() }
-        // JS 引擎 provider (JsEngines/SharedJsScope/简繁词典): 任何页面/协程首次 eval 前必然就绪;
+        // JS 引擎 provider (JsEngines/SharedJsScope/简繁词典/DesktopImageOps): 任何页面/协程首次 eval 前必然就绪;
         // 注册本身零开销 (native 库在首次 eval 时才加载)。
-        // JS 图片绑定 (skia DesktopImageOps) 不在此处 —— 调用方必须在首次 JS eval 前注册任一
-        // ImageOps (:desktop 注册 skia 版 registerDesktopJsImageOps, headless 注册显式报错兜底版)
         registerDesktopJsEngines()
         // 注册桌面端 DefaultDataResourceProvider: 必须在 AppDatabaseProviders.register 之前
         // (首次建库 dbCallback.onCreate → DefaultData.keyboardAssists → DefaultDataResourceProviders
@@ -307,8 +305,8 @@ object DesktopCore {
             //      压缩文件解压 provider (DesktopArchiveProvider → junrar/commons-compress) 留 :desktop
             registerDesktopRegexErrorHandler()
             // 11. WebBook 编排层 (依赖 AppDbProviders.replaceRuleDao 已就绪);
-            //     Web 服务封面/插图 provider (DesktopImageControllerProvider, skia) 拆到 :desktop
-            //     在本调用之后注册; headless 未注册时对应 Web API 抛 not registered
+            //     Web 服务封面/插图 provider (DesktopImageControllerProvider)
+            //     由 desktop Main.kt / headless Main.kt 注册
             registerDesktopWebBookProviders()
             // 11b. JS 扩展回调 provider (UserAgent, 供 JsExtensionsCommon 回调,
             //      必须在 JS 引擎首次 eval 之前注册); OpenUrl 确认框 provider (DesktopDialogs) 留 :desktop

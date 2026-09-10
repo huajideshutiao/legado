@@ -1,6 +1,10 @@
 package io.legado.app.help.storage
 
 import io.legado.app.utils.File
+import io.legado.app.utils.InputStream
+import okio.FileSystem
+import okio.Path.Companion.toPath
+import okio.buffer
 
 /**
  * [BackupFileOps] nativeMain 真实文件操作实现 (含 zip 压缩/解压)。
@@ -85,6 +89,43 @@ actual object BackupFileOps {
         }
         return file.readText()
     }
+
+    actual fun readBytes(path: String): ByteArray {
+        val file = File(path)
+        if (!file.exists()) {
+            throw IllegalStateException("BackupFileOps.readBytes: file not found: $path")
+        }
+        return file.readBytes()
+    }
+
+    actual fun openInputStream(path: String): InputStream {
+        val filePath = path.toPath()
+        val source = FileSystem.SYSTEM.source(filePath).buffer()
+        return object : InputStream() {
+            private var closed = false
+
+            override fun read(): Int {
+                val one = ByteArray(1)
+                return if (read(one, 0, 1) < 0) -1 else one[0].toInt() and 0xff
+            }
+
+            override fun read(b: ByteArray, off: Int, len: Int): Int {
+                check(!closed) { "Stream closed" }
+                if (len == 0) return 0
+                val read = source.read(b, off, len)
+                return if (read == 0) -1 else read
+            }
+
+            override fun close() {
+                if (!closed) {
+                    closed = true
+                    source.close()
+                }
+            }
+        }
+    }
+
+    actual fun fileSize(path: String): Long = File(path).length()
 
     actual fun listFiles(path: String): List<String>? {
         val file = File(path)

@@ -35,6 +35,12 @@ class DesktopAppFilesDir : AppFilesDir {
 
     /** 桌面端无外部缓存概念, 返回 null (调用方回退到 [cacheDir])。 */
     override val externalCacheDir: String? = null
+
+    /**
+     * 封面缓存目录 `{desktopAppRootDir}/covers` (对齐 app 端 externalFiles/covers)。
+     * 供 resolveImagePath 解析 coverCache/ 相对引用 (桌面端 coverUrl 存储格式)。
+     */
+    override val coversDir: String = Paths.get(rootDir, "covers").toString()
 }
 
 /**

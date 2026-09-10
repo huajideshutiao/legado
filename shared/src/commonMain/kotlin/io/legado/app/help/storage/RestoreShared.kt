@@ -84,7 +84,7 @@ object RestoreShared {
      *
      * @param zipPath 本地 zip 文件路径 (Android 可为 content:// uri)
      */
-    suspend fun restoreFromZip(zipPath: String) {
+    suspend fun restoreFromZip(zipPath: String): Boolean {
         val hooks = BackupRestoreHooks.get()
         val destPath = BackupShared.backupPath
         runCatching {
@@ -94,14 +94,15 @@ object RestoreShared {
             }
         }.onFailure {
             AppLog.put("复制解压文件出错\n${it.message}", it, tag = TAG)
-            return
+            return false
         }
-        runCatching {
+        return runCatching {
             restoreLocked(destPath)
             hooks.onRestoreFromZipFinished()
+            true
         }.onFailure {
             AppLog.put("恢复备份出错\n${it.message}", it, toast = true, tag = TAG)
-        }
+        }.getOrDefault(false)
     }
 
     /**
@@ -267,7 +268,7 @@ object RestoreShared {
             }
             val prefs = PreferenceProviders.get()
             configMap.forEach { (key, value) ->
-                if (BackupConfigShared.keyIsNotIgnore(key)) {
+                if (key != "useZhLayout" && BackupConfigShared.keyIsNotIgnore(key)) {
                     when (key) {
                         PreferKey.webDavPassword -> {
                             runCatching { aes.decryptStr(value.toString()) }
@@ -324,8 +325,8 @@ object RestoreShared {
         }
 
         currentCoroutineContext().ensureActive()
-        // 5.5 图集落位: 备份 zip 内的 customImg/、bg/ 目录 (条目保留文件根相对结构) 复制到当前
-        // 文件根, 覆盖同名文件; 设置点存相对引用 (裸文件名 → customImg 图集目录等) 无需路径重写, 跨机恢复即有效
+        // 5.5 图集落位: customImg/、bg/ 仍恢复到文件根; coverCache/ 是独立持久命名空间,
+        // 恢复到平台 coversDir, 不与 customImg/covers 混用。
         runCatching {
             val filesBase = AppFilesDirs.get().externalFilesDir ?: AppFilesDirs.get().filesDir
             listOf("customImg", "bg").forEach { dirName ->
@@ -337,14 +338,24 @@ object RestoreShared {
         }.onFailure {
             AppLog.put("恢复图集出错\n${it.message}", it, tag = TAG)
         }
+        val coverCacheSrc = path + sep + "coverCache"
+        val coversDir = AppFilesDirs.get().coversDir
+        if (coversDir != null && BackupFileOps.exists(coverCacheSrc)) {
+            try {
+                copyImageDirToRoot(coverCacheSrc, coversDir)
+            } catch (e: Exception) {
+                AppLog.put("恢复封面缓存出错\n${e.message}", e, tag = TAG)
+                throw e
+            }
+        }
 
         // 6. 宿主 UI 钩子 (app 端: toast 成功 + 图标切换 + 日夜间应用)
         hooks.onRestoreFinished()
     }
 
     /**
-     * 备份 zip 内图集目录 (customImg/、bg/) 复制到文件根: 条目保留 "目录名/文件名" 结构,
-     * 与备份时的相对路径一致, 逐条复制覆盖即可; 旧备份无图集目录时 exists 为 false 直接跳过。
+     * 备份 zip 内目录递归复制到指定物理目录并覆盖同名文件。用于 customImg/、bg/，以及
+     * 独立的 coverCache/ → AppFilesDirs.coversDir；旧备份缺少这些目录时由调用方跳过。
      * 目录判断用 [BackupFileOps.listFiles] 非 null (File.listFiles 语义: 非目录才返回 null)。
      *
      * 设置点与手动封面都存相对引用 (主题背景/启动图为裸文件名 → customImg 图集目录、
@@ -353,15 +364,16 @@ object RestoreShared {
      */
     private fun copyImageDirToRoot(srcDir: String, dstDir: String) {
         BackupFileOps.listFiles(srcDir)?.forEach { entry ->
-            runCatching {
-                if (BackupFileOps.listFiles(entry) != null) {
-                    copyImageDirToRoot(entry, dstDir + BackupFileOps.separator + entry.substringAfterLast(BackupFileOps.separator))
-                } else {
-                    BackupFileOps.createFolderIfNotExist(dstDir)
-                    val destFile =
-                        dstDir + BackupFileOps.separator + entry.substringAfterLast(BackupFileOps.separator)
-                    BackupFileOps.copyFile(entry, destFile)
-                }
+            if (BackupFileOps.listFiles(entry) != null) {
+                copyImageDirToRoot(
+                    entry,
+                    dstDir + BackupFileOps.separator + entry.substringAfterLast(BackupFileOps.separator)
+                )
+            } else {
+                BackupFileOps.createFolderIfNotExist(dstDir)
+                val destFile =
+                    dstDir + BackupFileOps.separator + entry.substringAfterLast(BackupFileOps.separator)
+                BackupFileOps.copyFile(entry, destFile)
             }
         }
     }

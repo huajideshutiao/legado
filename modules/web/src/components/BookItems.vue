@@ -80,31 +80,35 @@ const subJustify = computed(() =>
 <style lang="scss" scoped>
 .books-wrapper {
   overflow: auto;
+  width: 100%;
 
   .wrapper {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-    justify-content: space-around;
-    grid-gap: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    grid-gap: 4px;
+    width: 100%;
 
     .book {
       user-select: none;
       display: flex;
       cursor: pointer;
-      margin-bottom: 18px;
-      padding: 24px 24px;
+      margin-bottom: 0;
+      padding: 12px 10px;
       width: 100%;
       flex-direction: row;
-      justify-content: space-around;
       box-sizing: border-box;
+      border-radius: 4px;
 
       .cover-img {
-        width: 84px;
-        height: 112px;
+        width: 80px;
+        height: 108px;
+        flex-shrink: 0;
 
         .cover {
-          width: 84px;
-          height: 112px;
+          width: 80px;
+          height: 108px;
+          object-fit: cover;
+          border-radius: 3px;
         }
       }
 
@@ -113,14 +117,14 @@ const subJustify = computed(() =>
         flex-direction: column;
         justify-content: space-around;
         align-items: left;
-        height: 112px;
-        margin-left: 20px;
+        height: 108px;
+        margin-left: 14px;
         flex: 1;
         overflow: hidden;
 
         .name {
           width: fit-content;
-          font-size: 16px;
+          font-size: 15px;
           font-weight: 700;
           color: #33373d;
         }
@@ -166,13 +170,9 @@ const subJustify = computed(() =>
     }
 
     .book:hover {
-      background: rgba(0, 0, 0, 0.1);
-      transition-duration: 0.5s;
+      background: rgba(0, 0, 0, 0.06);
+      transition-duration: 0.2s;
     }
-  }
-
-  .wrapper:last-child {
-    margin-right: auto;
   }
 }
 
@@ -185,12 +185,13 @@ const subJustify = computed(() =>
     .wrapper {
       display: flex;
       flex-direction: column;
+      grid-gap: 0;
 
       .book {
         box-sizing: border-box;
         width: 100%;
         margin-bottom: 0;
-        padding: 10px 20px;
+        padding: 10px 8px;
       }
     }
   }

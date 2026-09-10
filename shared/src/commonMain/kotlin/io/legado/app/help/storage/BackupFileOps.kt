@@ -1,5 +1,7 @@
 package io.legado.app.help.storage
 
+import io.legado.app.utils.InputStream
+
 /**
  * 跨平台文件 + zip 操作 expect 声明（BackupShared/RestoreShared 用）。
  *
@@ -47,8 +49,17 @@ expect object BackupFileOps {
     /** 读取文件文本 (默认 UTF-8)。文件不存在抛异常。 */
     fun readText(path: String): String
 
+    /** 读取文件字节。文件不存在抛异常。 */
+    fun readBytes(path: String): ByteArray
+
+    /** 以流方式打开文件。调用方负责关闭返回的流。 */
+    fun openInputStream(path: String): InputStream
+
+    /** 获取文件字节长度。文件不存在时由 actual 按平台文件 API 语义处理。 */
+    fun fileSize(path: String): Long
+
     /**
-     * 列出目录下所有文件 (不含子目录) 的绝对路径。
+     * 列出目录下所有子项的绝对路径。
      *
      * 目录不存在或为空目录时返回 null (与 `java.io.File.listFiles()` 语义一致)。
      * 用于缓存清理场景 (如 [io.legado.app.help.config.ReadBookConfigShared.clearBgAndCache]

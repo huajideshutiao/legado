@@ -1,10 +1,21 @@
 package io.legado.app.help.storage
 
+import io.legado.app.help.storage.BackupFileOps.copyFile
+import io.legado.app.help.storage.BackupFileOps.createFileIfNotExist
+import io.legado.app.help.storage.BackupFileOps.createFolderIfNotExist
+import io.legado.app.help.storage.BackupFileOps.delete
+import io.legado.app.help.storage.BackupFileOps.exists
+import io.legado.app.help.storage.BackupFileOps.listFiles
+import io.legado.app.help.storage.BackupFileOps.readText
+import io.legado.app.help.storage.BackupFileOps.unZipToPath
+import io.legado.app.help.storage.BackupFileOps.writeText
+import io.legado.app.help.storage.BackupFileOps.zipFiles
 import io.legado.app.utils.FileUtilsBase
 import io.legado.app.utils.compress.ZipUtils
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.InputStream
 
 /**
  * [BackupFileOps] 的 jvmAndAndroidMain actual 实现。
@@ -55,6 +66,14 @@ actual object BackupFileOps {
     actual fun readText(path: String): String {
         return File(path).readText()
     }
+
+    actual fun readBytes(path: String): ByteArray {
+        return File(path).readBytes()
+    }
+
+    actual fun openInputStream(path: String): InputStream = FileInputStream(File(path))
+
+    actual fun fileSize(path: String): Long = File(path).length()
 
     actual fun listFiles(path: String): List<String>? {
         // 与 java.io.File.listFiles() 语义一致: 目录不存在返回 null

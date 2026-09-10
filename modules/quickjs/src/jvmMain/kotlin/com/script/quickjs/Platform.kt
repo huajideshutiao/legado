@@ -30,14 +30,14 @@ actual fun loadLegadoQuickJsNative() {
 
     // 1. 系统属性
     val propPath = System.getProperty("legado.quickjs.lib")
-    if (!propPath.isNullOrEmpty() && File(propPath).exists()) {
+    if (!propPath.isNullOrEmpty() && File(propPath).isFile) {
         System.load(File(propPath).absolutePath)
         return
     }
 
     // 2. 环境变量
     val envPath = System.getenv("LEGADO_QUICKJS_LIB")
-    if (!envPath.isNullOrEmpty() && File(envPath).exists()) {
+    if (!envPath.isNullOrEmpty() && File(envPath).isFile) {
         System.load(File(envPath).absolutePath)
         return
     }
@@ -59,7 +59,7 @@ actual fun loadLegadoQuickJsNative() {
     candidates.add(File(libName))
 
     for (candidate in candidates) {
-        if (candidate.exists()) {
+        if (candidate.isFile) {
             System.load(candidate.absolutePath)
             return
         }

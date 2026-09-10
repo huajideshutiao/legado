@@ -35,17 +35,21 @@ const props = defineProps<{
   spacing: webReadConfig['spacing']
   fontFamily: string
   fontSize: string
+  hasImageDecode?: boolean
 }>()
 
 const imgPattern = /<img[^>]*src=['"]([^'"]*(?:['"][^>]+\})?)['"][^>]*>/g
 
 const replaceImage = (content: string) => {
   return content.replace(imgPattern, (match, src) => {
-    if (isLegadoUrl(src)) {
+    if (src.startsWith('/image?') || src.startsWith('image?')) {
+      const absSrc = API.getProxyImageUrl(bookUrl.value, src)
+      return match.replace(src, absSrc)
+    }
+    if (props.hasImageDecode || isLegadoUrl(src)) {
       const proxySrc = API.getProxyImageUrl(
         bookUrl.value,
         src,
-        _fontSize.value * 2,
       )
       return match.replace(src, proxySrc)
     }
@@ -55,12 +59,16 @@ const replaceImage = (content: string) => {
 
 const getImageSrc = (content: string) => {
   const imgPattern = /<img[^>]*src=['"]([^'"]*(?:['"][^>]+\})?)['"][^>]*>/
-  const src = content.match(imgPattern)![1] //reg tested in template
-  if (isLegadoUrl(src))
+  const match = content.match(imgPattern)
+  if (!match) return ''
+  const src = match[1] //reg tested in template
+  if (src.startsWith('/image?') || src.startsWith('image?')) {
+    return API.getProxyImageUrl(bookUrl.value, src)
+  }
+  if (props.hasImageDecode || isLegadoUrl(src))
     return API.getProxyImageUrl(
       bookUrl.value,
       src,
-      readWidth.value,
     )
   return src
 }

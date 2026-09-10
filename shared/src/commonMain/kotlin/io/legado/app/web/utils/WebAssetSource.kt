@@ -1,5 +1,6 @@
 package io.legado.app.web.utils
 
+import io.legado.app.web.utils.WebAssetSources.get
 import kotlin.concurrent.Volatile
 
 /**
@@ -7,8 +8,8 @@ import kotlin.concurrent.Volatile
  *
  * # 单一数据源
  * web 资源唯一数据源在 `shared/src/commonMain/composeResources/files/web/`, 四端 actual
- * (Android / 桌面 JVM / iOS / 鸿蒙) 均通过 composeResources [org.jetbrains.compose.resources.Res.readBytes]
- * 读取, 无任何平台端资源副本 (Android 不再拷贝到 app/assets/web, 桌面不再放 jvmMain/resources/web)。
+ * Compose Resources 打包到 Android assets / JVM classpath；Native 端通过 `Res.readBytes`
+ * 读取同一 commonMain 资源目录，无任何平台端资源副本。
  *
  * # 下沉 commonMain (原 jvmAndAndroidMain)
  * 返回 [ByteArray] (资源都很小, 几 KB 到几百 KB), 避免 commonMain 无 java.io.InputStream 的问题,
@@ -22,6 +23,13 @@ interface WebAssetSource {
      */
     suspend fun read(path: String): ByteArray
 }
+
+/** Compose Resources 在 Android/JVM 打包产物中的公共 classpath/assets 前缀。 */
+const val COMPOSE_RESOURCE_FILES_PREFIX =
+    "composeResources/legado.shared.generated.resources/files/"
+
+/** 将公共逻辑资源路径转换为 Android/JVM 打包资源路径。 */
+fun composeResourcePath(path: String): String = "$COMPOSE_RESOURCE_FILES_PREFIX$path"
 
 /**
  * [WebAssetSource] 容器 (provider 注入模式)。
@@ -44,7 +52,6 @@ object WebAssetSources {
     /** 获取已注册实现, 未注册抛出 IllegalStateException。 */
     fun get(): WebAssetSource =
         impl ?: error("WebAssetSources not registered; call registerAndroidWebAssetSource() / registerDesktopWebAssetSource() / registerNativeWebAssetSource() first")
-    // 注: registerAndroidWebAssetSource() 现无参 (改用 composeResources, 不再需要 Context)
 
     /** 仅测试场景: 清空注册。 */
     fun reset() {

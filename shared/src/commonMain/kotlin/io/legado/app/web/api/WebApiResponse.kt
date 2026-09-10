@@ -1,6 +1,7 @@
 package io.legado.app.web.api
 
 import io.legado.app.api.ReturnData
+import io.legado.app.utils.InputStream
 
 /**
  * 平台无关的 web 响应模型 (零 android import)。
@@ -24,6 +25,20 @@ sealed interface WebApiResponse {
         val bytes: ByteArray,
         val contentType: String,
         override val returnData: ReturnData,
+    ) : WebApiResponse
+
+    /**
+     * 流式响应 (音视频/大文件透传中转)。
+     * 直连输入流, 避免把大文件缓冲入内存。
+     */
+    class Stream(
+        val inputStream: InputStream,
+        val contentType: String,
+        val contentLength: Long? = null,
+        val statusCode: Int = 200,
+        val statusMessage: String = "OK",
+        val headers: Map<String, String> = emptyMap(),
+        override val returnData: ReturnData? = null,
     ) : WebApiResponse
 
     /** 非 API 路由, 回退到平台静态资源 */

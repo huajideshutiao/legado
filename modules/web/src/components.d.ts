@@ -7,10 +7,11 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AudioReader: typeof import('./components/AudioReader.vue')['default']
+    BookCatalogDialog: typeof import('./components/BookCatalogDialog.vue')['default']
     BookItems: typeof import('./components/BookItems.vue')['default']
-    CatalogItem: typeof import('./components/CatalogItem.vue')['default']
     ChapterContent: typeof import('./components/ChapterContent.vue')['default']
-    PopCatalog: typeof import('./components/PopCatalog.vue')['default']
+    ComicReader: typeof import('./components/ComicReader.vue')['default']
     ReadSettings: typeof import('./components/ReadSettings.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
@@ -21,6 +22,8 @@ declare module 'vue' {
     SourceList: typeof import('./components/SourceList.vue')['default']
     SourceTabForm: typeof import('./components/SourceTabForm.vue')['default']
     SourceTabTools: typeof import('./components/SourceTabTools.vue')['default']
+    TabBar: typeof import('./components/TabBar.vue')['default']
     ToolBar: typeof import('./components/ToolBar.vue')['default']
+    VideoReader: typeof import('./components/VideoReader.vue')['default']
   }
 }

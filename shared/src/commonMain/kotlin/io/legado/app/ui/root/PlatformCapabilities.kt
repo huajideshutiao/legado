@@ -16,6 +16,7 @@ import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.read.config.FontItem
 import io.legado.app.ui.book.source.BookSourceSort
+import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.encodeURI
 import io.legado.app.utils.isAbsUrl
@@ -634,17 +635,26 @@ internal object PlatformCapabilitiesDefaults {
  * Web 服务访问地址 (进程级单例, 四端唯一一份)。
  *
  * WEB_SERVICE 事件的载荷就是地址, 但仍回读 [WebServerManager.hostAddress] 以免依赖载荷类型;
- * 空串即未运行, 运行但无可用网络时是平台传入的本地化文案。
+ * 空串即未运行, 服务启动中显示正在启动服务, 运行但无可用网络时是平台传入的本地化文案。
  */
 internal object WebServiceAddressState {
 
     private val scope = CoroutineScope(SupervisorJob() + IoDispatcher)
 
+    private fun currentAddress(): String {
+        val address = WebServerManager.hostAddress
+        if (address.isNotEmpty()) return address
+        if (WebServerManager.isRun) {
+            return syncGetString("service_starting")
+        }
+        return ""
+    }
+
     val flow: StateFlow<String> by lazy {
-        MutableStateFlow(WebServerManager.hostAddress).also { state ->
+        MutableStateFlow(currentAddress()).also { state ->
             scope.launch {
                 FlowBus.with(EventBus.WEB_SERVICE).collect {
-                    state.value = WebServerManager.hostAddress
+                    state.value = currentAddress()
                 }
             }
         }

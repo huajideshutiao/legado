@@ -27,6 +27,9 @@ class AndroidAppFilesDir(
     override val externalFilesDir: String? = context.getExternalFilesDir(null)?.path
 
     override val externalCacheDir: String? = context.externalCacheDir?.path
+
+    /** 正常封面缓存目录，对齐 app 端 `(externalFilesDir ?: filesDir)/covers`。 */
+    override val coversDir: String = "${externalFilesDir ?: filesDir}/covers"
 }
 
 /**

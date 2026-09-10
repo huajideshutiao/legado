@@ -1,5 +1,6 @@
 package io.legado.app.help.file
 
+import io.legado.app.help.file.AppFilesDirs.get
 import kotlin.concurrent.Volatile
 
 /**
@@ -35,6 +36,14 @@ interface AppFilesDir {
      * (参考 [io.legado.app.help.storage.BackupShared] 的 externalFilesDir ?: filesDir 模式)。
      */
     val externalCacheDir: String?
+
+    /**
+     * 封面缓存物理目录 (正常书籍封面落盘处, `FileBook.getCoverPath` 派生), 无则 null。
+     *
+     * 备份/恢复把它映射为独立的 `coverCache/` 命名空间，不与 `customImg/covers`
+     * 混用；图片路径解析也用它解析 `coverCache/<name>` 相对引用。
+     */
+    val coversDir: String? get() = null
 }
 
 /**

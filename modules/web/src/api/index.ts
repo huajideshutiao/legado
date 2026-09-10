@@ -8,13 +8,14 @@ import API, {
 import ajax, { type ApiResponse } from './axios'
 import { validatorHttpUrl } from '@/utils/utils'
 import { toast } from '@/utils/toast'
+import { useConnectionStore } from '@/store'
 
-import { createApp } from 'vue'
-import App from '@/App.vue'
-import store, { useConnectionStore } from '@/store'
-
-createApp(App).use(store)
-const connectionStore = useConnectionStore()
+// 拦截器内惰性取 connection store: 模块层不能引 App.vue 建 app —— App.vue 现经
+// TabBar 引 @/store, store 又引 @api, 模块层 createApp(App) 会成
+// App→TabBar→store→@api→App 循环依赖, 单文件产物里 App 半初始化直接崩。
+// 首次请求发生时 main.ts 已 app.use(pinia), activePinia 就绪。
+let connectionStore: ReturnType<typeof useConnectionStore> | null = null
+const conn = () => (connectionStore ??= useConnectionStore())
 
 const LeagdoApiResponseKeys: string[] = Array.of('isSuccess', 'errorMsg')
 
@@ -42,8 +43,8 @@ const responseCheckInterceptor = (resp: ApiResponse) => {
     toast.warning({ message: '后端返回内容格式错误', grouping: true })
     throw new Error()
   }
-  connectionStore.setConnectType('primary')
-  connectionStore.setConnectStatus('已连接 ' + legado_http_entry_point)
+  conn().setConnectType('primary')
+  conn().setConnectStatus('已连接 ' + legado_http_entry_point)
   return resp
 }
 
@@ -52,8 +53,8 @@ const fetchErrorInterceptor = (err: unknown) => {
     message: '后端连接失败，请检查阅读WEB服务或者设置其它可用链接',
     grouping: true,
   })
-  connectionStore.setConnectType('danger')
-  connectionStore.setConnectStatus('连接异常')
+  conn().setConnectType('danger')
+  conn().setConnectStatus('连接异常')
   throw err
 }
 // http全局
@@ -61,8 +62,8 @@ ajax.interceptors.response.use(responseCheckInterceptor, fetchErrorInterceptor)
 // websocket
 setWebsocketOnError(fetchErrorInterceptor)
 setWebsocketOnMessage(() => {
-  connectionStore.setConnectType('primary')
-  connectionStore.setConnectStatus('已连接 ' + legado_http_entry_point)
+  conn().setConnectType('primary')
+  conn().setConnectStatus('已连接 ' + legado_http_entry_point)
 })
 /**
  * 按照阅读的默认规则 解析阅读HTTP WebSocket API入口地址
@@ -76,7 +77,10 @@ export const parseLeagdoHttpUrlWithDefault = (
   }
   const { protocol, port } = url
   let legado_webSocket_port
-  if (port !== '') {
+  // 开发期 Vite (默认端口 8080): 本地无头后端 WebSocket 端口固定在 1123
+  if (port === '8080') {
+    legado_webSocket_port = '1123'
+  } else if (port !== '') {
     legado_webSocket_port = String(Number(port) + 1)
   } else {
     legado_webSocket_port = protocol.startsWith('https:') ? '444' : '81'

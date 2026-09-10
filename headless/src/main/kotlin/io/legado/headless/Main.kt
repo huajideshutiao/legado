@@ -4,13 +4,10 @@ import io.legado.app.api.controller.ImageControllerProviders
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDatabaseProviders
 import io.legado.app.help.coroutine.registerJvmDebugState
-import io.legado.app.help.i18n.registerAppStringProvider
-import io.legado.app.help.image.ImageOps
-import io.legado.app.help.image.ImageRef
 import io.legado.app.help.ui.OpenUrlProvider
 import io.legado.app.help.ui.OpenUrlProviders
-import io.legado.app.model.script.JsBindingInjector
 import io.legado.app.utils.browseUrl
+import io.legado.app.utils.toBrowseUri
 import io.legado.app.web.WebServerManager
 import io.legado.desktop.DesktopCore
 import io.legado.desktop.help.DesktopCrashHandler
@@ -18,10 +15,10 @@ import io.legado.desktop.model.fileBook.registerDesktopFileBookAccessor
 import io.legado.desktop.model.webBook.DesktopImageControllerProvider
 import io.legado.desktop.restartMainClass
 import io.legado.desktop.startupArgs
+import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import kotlin.system.exitProcess
-import kotlinx.coroutines.runBlocking
 
 private const val TAG = "legado-headless"
 
@@ -35,10 +32,10 @@ private const val TAG = "legado-headless"
  * 跑法: .\gradlew :headless:run (开发期, 数据落 headless/data/) 或
  * .\gradlew :headless:headlessDist (分发包 bin/lib, 资源与 native 内置 jar)。
  *
- * # 已知取舍 (本期)
- * - shared 的 jvm 变体与 Compose UI 源集绑死 (jvmMain 编译引用 compose 传递依赖), 本期
- *   headless 运行时仍携带 compose 相依 jar —— 全程不调用任何 UI 代码, UI 类不会被加载,
- *   仅磁盘/内存冗余; 后续可选裁剪 (拆 shared jvm 源集)。
+ * # 依赖与架构
+ * - 依赖边界: 依赖 :desktop-core + :shared; headless 经 build.gradle.kts 的 runtimeClasspath
+ *   彻底排除了 Compose UI / Skiko / Markdown 等渲染库, 仅保留轻量的 components-resources
+ *   用于读取字符串与静态 JSON 资源; jvmGetString 已解耦至纯资源工具层, 避免字节码符号连带加载。
  * - 单实例守卫 (SingleInstanceGuard) 因 java.awt/javax.swing import (bindWindow 窗口前置)
  *   留在 :desktop, 本期 headless 不做单实例互斥 —— 同时启动多个实例会争抢同一 SQLite 库,
  *   部署时需自行保证单进程 (systemd/任务计划等幂等拉起方式)。
@@ -46,13 +43,15 @@ private const val TAG = "legado-headless"
  *   内嵌浏览器 (BackstageWebView/书源验证码 UI, 书源 create 由调用方 runCatching 回退 HTTP)、
  *   压缩包内选书导入与解压 (DesktopArchiveCodec → junrar/commons-compress; txt/epub/cbz(zip)
  *   本地书导入经注入化 [registerDesktopFileBookAccessor](null, null) 可用, rar/7z/pdf 显式报错)、
- *   漫画位图处理 (skia DesktopBitmapProvider)、Web 封面/插图字节流可用但无超宽缩图
- *   ([DesktopImageControllerProvider] 恒等缩放策略)、音频播放/SMTC
+ *   漫画位图处理 (skia DesktopBitmapProvider)、Web 封面/插图直接提供原始字节流
+ *   ([DesktopImageControllerProvider])、音频播放/SMTC
  *   (mediamp)、系统 TTS 引擎 (JNA SAPI; HttpTTS 朗读不受影响)、打开链接确认框
- *   ([HeadlessOpenUrlProvider] 改为直开系统浏览器)、JS 图片 API ([HeadlessNoopImageOps]
- *   显式报错, JS eval 本体可用)。
+ *   ([HeadlessOpenUrlProvider] 改为直开系统浏览器); JS 图片 API 统一由 desktop-core 注入
+ *   成熟的 Skia 实现 [io.legado.desktop.image.DesktopImageOps] (原生高性能支持 WebP/JPG/PNG 切片混淆解密)。
  */
 fun main(args: Array<String>) {
+    // 强制声明 headless 模式, 确保 Linux/服务器环境下 AWT 离屏图形库不依赖 DISPLAY
+    System.setProperty("java.awt.headless", "true")
     // 打栈开关: 对齐 Android BuildConfig.DEBUG 语义, 仅 debug 打栈
     // (:headless:run 注入 -Dlegado.debug=true, 打包产物不注入 = 静默)
     registerJvmDebugState(System.getProperty("legado.debug")?.toBoolean() == true)
@@ -73,25 +72,14 @@ fun main(args: Array<String>) {
     // 并保存启动参数 (DesktopAppRestart 的 ProcessBuilder 复用)
     restartMainClass = "io.legado.headless.MainKt"
     startupArgs = args
-    // 4. JS 图片 API 兜底: skia 版 DesktopImageOps 留 :desktop, headless 注册显式报错实现。
-    //    必须先于 registerCoreProviders (JsBindings 构造访问 JsBindingInjector.image,
-    //    未注册 checkNotNull 失败, 任何 JsEngine.eval 都跑不了; 兜底后 eval 可跑,
-    //    仅图片 API 给出可诊断异常)
-    JsBindingInjector.registerImageOps(HeadlessNoopImageOps)
-    // 5. provider 注册: 阶段1 核心 (含 config/数据库/JS 引擎/HTTP/朗读工厂) —— 与桌面
-    //    DesktopCore.registerCoreProviders 完全等价
+    // 5. provider 注册: 阶段1 核心 (含 config/数据库/JS 引擎与 Skia 图片栈/HTTP/朗读工厂) —— 与桌面
+    //    DesktopCore.registerCoreProviders 完全等价 (JS 图片 API 统一在 registerDesktopJsEngines 注册)
     DesktopCore.registerCoreProviders()
-    // 5.2 AppString 兜底重注册: DesktopCore 注册的 jvmGetString 走 compose 字符串资源
-    //     (skiko/AWT 取系统主题), 无头 JVM 里必抛 → BackupConfigShared 等 <clinit> 调
-    //     appString 的类全部 NoClassDefFoundError。重注册为键名兜底 (语义同未注册 fallback,
-    //     文案损失仅影响极少数错误提示)。
-    registerAppStringProvider { key, _ -> key.name }
     // 5.5 本地书导入 + Web 封面/插图: 实现均在 desktop-core, 重能力注入化。
     //     - DesktopFileBookAccessor: 不注入压缩/PDF → txt/epub/cbz(zip) 导入可用,
     //       rar/7z/pdf 显式报错 (对齐桌面 registerDesktopFileBookAccessor 时机:
     //       任何 EpubFile/FileBook 调用之前)
-    //     - DesktopImageControllerProvider: 缩图策略恒等 (无 skia) → /cover /getImg
-    //       返回缓存/下载原始字节, 不做超宽缩图
+    //     - DesktopImageControllerProvider: /cover /getImg 返回缓存/下载原始字节
     registerDesktopFileBookAccessor(null, null)
     ImageControllerProviders.register(DesktopImageControllerProvider())
     // 无 UI 确认框: 书源 openUrl 直开系统浏览器 (桌面端有 DesktopDialogs 确认框,
@@ -213,6 +201,12 @@ private object HeadlessOpenUrlProvider : OpenUrlProvider {
         sourceTag: String?,
         sourceType: Int,
     ) {
+        val uri = url.toBrowseUri()
+        val scheme = uri?.scheme?.lowercase()
+        if (scheme != "http" && scheme != "https") {
+            AppLog.put("headless openUrl 拒绝非 http/https 链接: $url", tag = TAG)
+            return
+        }
         AppLog.put("headless openUrl (无确认框直开): $url", tag = TAG)
         if (!browseUrl(url)) {
             AppLog.put("headless 打开链接失败: $url", tag = TAG)
@@ -220,25 +214,3 @@ private object HeadlessOpenUrlProvider : OpenUrlProvider {
     }
 }
 
-/**
- * headless 兜底 [ImageOps]: 所有像素操作显式抛 UnsupportedOperationException。
- *
- * 注册它是为了让 JsBindingInjector.image 非空 —— JsBindings 构造时访问该 getter,
- * 未注册时任何 JsEngine.eval 都跑不了; 注册后 JS eval/书源规则正常, 仅图片类 API
- * (图片解密/裁切/拼接等) 给出可诊断异常而非启动崩溃。skia 版实现在 :desktop。
- */
-private object HeadlessNoopImageOps : ImageOps {
-
-    private fun unsupported(): Nothing =
-        throw UnsupportedOperationException("headless 模式无 skia 图片栈, JS 图片 API 不可用")
-
-    override fun decode(bytes: ByteArray): ImageRef = unsupported()
-    override fun decode(base64: String): ImageRef = unsupported()
-    override fun encode(img: ImageRef, format: String, quality: Int): ByteArray = unsupported()
-    override fun split(img: ImageRef, rows: Int, cols: Int): List<ImageRef> = unsupported()
-    override fun stitch(imgs: List<ImageRef>, direction: String): ImageRef = unsupported()
-    override fun crop(img: ImageRef, x: Int, y: Int, w: Int, h: Int): ImageRef = unsupported()
-    override fun rotate(img: ImageRef, deg: Int): ImageRef = unsupported()
-    override fun flip(img: ImageRef, direction: String): ImageRef = unsupported()
-    override fun size(img: ImageRef): Map<String, Int> = unsupported()
-}

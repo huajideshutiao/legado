@@ -1,6 +1,9 @@
 package io.legado.app.help.file
 
+import io.legado.app.help.config.COVER_CACHE_REF_SEGMENT
 import java.io.File
+import java.net.URI
+import java.nio.file.Paths
 
 /** codeSource 定位锚点 (top-level 函数无 Class 对象, 借私有类取 protectionDomain)。 */
 private class DesktopAppPathsAnchor
@@ -201,3 +204,82 @@ private fun xdgUserDir(key: String, home: String): File? = runCatching {
 private val osName: String = System.getProperty("os.name").orEmpty().lowercase()
 private val isWindows: Boolean = osName.contains("windows")
 private val isMac: Boolean = osName.contains("mac") || osName.contains("darwin")
+
+// ---------------------------------------------------------------------------
+// 存储引用 (books/、coverCache/ 相对引用) 与本地文件互转
+// ---------------------------------------------------------------------------
+
+/**
+ * 把本地文件归一为**存储引用**: 位于数据根下 (books/、covers/ 等应用自管目录) 时存
+ * 正斜杠相对引用 (如 `books/x.epub`), 其余 (用户任意外部路径) 存 `file:` URI。
+ *
+ * 便携模式下数据根随程序目录移动, 相对引用移动后仍有效; file: URI 只用于外部文件,
+ * 程序目录移动不影响其有效性。落库字段: Book.bookUrl (数据根下保存的书) / Book.coverUrl。
+ */
+fun desktopStoredLocalRef(file: File): String {
+    val abs = file.absolutePath
+    val rootPrefix = File(desktopAppRootDir()).absolutePath + File.separator
+    if (abs.startsWith(rootPrefix)) {
+        return abs.substring(rootPrefix.length).replace(File.separatorChar, '/')
+    }
+    return file.toURI().toString()
+}
+
+/**
+ * 解析存储引用为本地文件 ([desktopStoredLocalRef] 的逆, 兼容旧数据):
+ * - 相对引用 (不带 scheme / 盘符 / 根分隔符) → 数据根下解析;
+ *   `coverCache/` 首段是封面缓存命名空间 (自定义封面 `covers/` 图集的保留段不可复用),
+ *   物理落盘目录为 `{数据根}/covers` (与 [desktopAppCacheDir] 同理, 命名空间 ≠ 目录名)
+ * - `file:` URI / 绝对路径 → 原样 (旧数据)
+ */
+fun desktopResolveStoredRef(ref: String): File {
+    if (ref.startsWith("file:", ignoreCase = true)) {
+        val fileFromUri = runCatching {
+            val uri = URI(ref)
+            Paths.get(uri).toFile()
+        }.getOrNull()
+        if (fileFromUri != null) return fileFromUri
+
+        val withoutScheme = ref.substring(5)
+        return if (withoutScheme.startsWith("///")) {
+            val p = withoutScheme.substring(3)
+            if (p.length > 1 && p[1] == ':') File(p) else File("/$p")
+        } else if (withoutScheme.startsWith("//")) {
+            val p = withoutScheme.substring(2)
+            if (p.length > 1 && p[1] == ':') {
+                File(p)
+            } else if (isWindows) {
+                File("\\\\${p.replace('/', '\\')}")
+            } else {
+                File("/$p")
+            }
+        } else {
+            File(withoutScheme)
+        }
+    }
+    if (ref.startsWith('/') || ref.startsWith('\\') || (ref.length > 1 && ref[1] == ':')) {
+        return File(ref)
+    }
+    val rawSegments = ref.split('/', '\\').filter { it.isNotEmpty() }
+    if (rawSegments.isEmpty()) {
+        throw IllegalArgumentException("Empty path reference: $ref")
+    }
+    val rootPath = File(desktopAppRootDir()).toPath().toAbsolutePath().normalize()
+    if (rawSegments.first() == COVER_CACHE_REF_SEGMENT) {
+        val subSegments = rawSegments.drop(1)
+        if (subSegments.isEmpty() || subSegments.all { it == "." }) {
+            throw IllegalArgumentException("Invalid coverCache reference, missing filename: $ref")
+        }
+        val coversPath = rootPath.resolve("covers").normalize()
+        val targetPath = coversPath.resolve(subSegments.joinToString(File.separator)).normalize()
+        if (!targetPath.startsWith(coversPath)) {
+            throw IllegalArgumentException("Path traversal attempted in coverCache reference: $ref")
+        }
+        return targetPath.toFile()
+    }
+    val targetPath = rootPath.resolve(ref).normalize()
+    if (!targetPath.startsWith(rootPath)) {
+        throw IllegalArgumentException("Path traversal attempted in reference: $ref")
+    }
+    return targetPath.toFile()
+}

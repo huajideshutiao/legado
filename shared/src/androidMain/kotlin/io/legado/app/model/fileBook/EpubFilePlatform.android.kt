@@ -160,6 +160,13 @@ actual fun decodeBitmap(bytes: ByteArray): Any? {
 }
 
 /**
+ * [resolveStoredLocalPath] 的 Android actual 实现。
+ *
+ * Android 恒存绝对路径 (externalFiles/covers), 无相对引用格式, 原样返回。
+ */
+actual fun resolveStoredLocalPath(path: String): String = path
+
+/**
  * [compressBitmap] 的 Android actual 实现。
  *
  * 用 [Bitmap.compress], 行为对齐原 app 端

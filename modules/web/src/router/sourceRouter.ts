@@ -3,6 +3,11 @@ import { createWebHashHistory, createRouter } from 'vue-router'
 
 export const sourceRoutes = [
   {
+    path: '/sources',
+    name: 'source-manage',
+    component: () => import('../views/SourceManage.vue'),
+  },
+  {
     path: '/bookSource',
     name: 'book-home',
     component: sourceEditor,

@@ -11,4 +11,5 @@ export type webReadConfig = {
     line: number
     letter: number
   }
+  readerMode?: 'auto' | 'text' | 'comic' | 'audio' | 'video'
 }

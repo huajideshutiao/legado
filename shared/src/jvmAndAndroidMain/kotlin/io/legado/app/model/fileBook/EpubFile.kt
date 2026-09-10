@@ -337,7 +337,9 @@ class EpubFile(var book: Book) {
                 if (book.coverUrl.isNullOrEmpty()) {
                     book.coverUrl = FileBook.getCoverPath(book.bookUrl)
                 }
-                if (fastCheck && File(book.coverUrl!!).exists()) {
+                // coverUrl 是落库存储引用 (桌面端 coverCache/ 相对引用), 读写文件前先解析为本地路径
+                val coverPath = resolveStoredLocalPath(book.coverUrl!!)
+                if (fastCheck && File(coverPath).exists()) {
                     return
                 }
                 /*部分书籍DRM处理后，封面获取异常，待优化*/
@@ -347,7 +349,7 @@ class EpubFile(var book: Book) {
                     val bytes = input.readBytes()
                     val cover = decodeBitmap(bytes)
                     if (cover != null) {
-                        compressBitmap(cover, "JPEG", 90, book.coverUrl!!)
+                        compressBitmap(cover, "JPEG", 90, coverPath)
                     }
                 } ?: AppLog.putDebug("Epub: 封面获取为空. path: ${book.bookUrl}")
             }

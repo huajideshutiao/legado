@@ -10,10 +10,21 @@
 // 资源策略 (2026-09-06 裁决: 内置): files/ 资源随 shared jvmJar 分发 (classpath 直读);
 // quickjs native 库复制进 jar 资源 (copyQuickjsNativeToHeadlessResources), Main 启动时
 // 提取到临时文件 System.load。分发包 headlessDist 只含 bin/ + lib/。
+
+import org.gradle.internal.os.OperatingSystem
+
 plugins {
     // JVM application: 该约定插件只设置 kotlin jvm + Java 21 toolchain (已确认不含 compose)
     id("legado.jvm.application")
     application
+}
+
+// QuickJS native 目录架构契约（生产者/desktop/headless/runtime 必须一致）：
+// amd64|x86_64|x64 -> x86_64；arm64|aarch64 -> aarch64；其余仅做路径安全化。
+fun normalizeJvmNativeArch(rawArch: String): String = when (val arch = rawArch.lowercase()) {
+    "amd64", "x86_64", "x64" -> "x86_64"
+    "arm64", "aarch64" -> "aarch64"
+    else -> arch.replace(Regex("[^a-z0-9_.-]"), "_")
 }
 
 application {
@@ -27,23 +38,77 @@ dependencies {
     // desktop-core 对 shared 是 implementation 不外泄, 需显式声明
     implementation(project(":shared"))
     implementation(libs.kotlinx.coroutines.core)
+    // 基础图片加载单例 (SingletonImageLoader, 供 registerJvmBookImageLoader 注册, 50KB 纯核心无 Compose)
+    implementation("io.coil-kt.coil3:coil:${libs.versions.coil3.get()}")
+    // 引入 Skia 原生运行时 (支持 WebP/JPG/PNG 2D 硬件级位图编解码与切片混淆解密)
+    val osName = System.getProperty("os.name").lowercase()
+    val osArch = System.getProperty("os.arch").lowercase()
+    val skikoTarget = when {
+        osName.contains("win") -> "windows-x64"
+        osName.contains("mac") || osName.contains("darwin") -> if (osArch == "aarch64" || osArch == "arm64") "macos-arm64" else "macos-x64"
+        else -> if (osArch == "aarch64" || osArch == "arm64") "linux-arm64" else "linux-x64"
+    }
+    runtimeOnly("org.jetbrains.skiko:skiko-awt-runtime-$skikoTarget:0.144.6")
+}
+
+configurations.runtimeClasspath {
+    // 排除纯 Compose UI 组件层 (无头后台进程无需 UI, 保留 Skia 图形引擎供反爬切片重排)
+    // 保留 compose.runtime (纯响应式核心, 无 UI, 供 components-resources 静态读取 ResourceReader)
+    exclude(group = "org.jetbrains.compose.ui")
+    exclude(group = "org.jetbrains.compose.foundation")
+    exclude(group = "org.jetbrains.compose.material")
+    exclude(group = "org.jetbrains.compose.animation")
+    exclude(group = "io.coil-kt.coil3", module = "coil-compose")
+    exclude(group = "io.coil-kt.coil3", module = "coil-compose-core")
+    exclude(group = "org.jetbrains.androidx.lifecycle", module = "lifecycle-runtime-compose-desktop")
+    exclude(group = "org.jetbrains.androidx.savedstate", module = "savedstate-compose-desktop")
+    exclude(group = "sh.calvin.reorderable")
+    exclude(group = "com.mikepenz", module = "multiplatform-markdown-renderer-jvm")
+    exclude(group = "com.mikepenz", module = "multiplatform-markdown-renderer-coil3-jvm")
 }
 
 // ============================================================
 // quickjs native 库复制进资源 (打包自包含)
 // ============================================================
 // 开发期 :headless:run 无需本任务产物 —— Platform.kt 候选3 会从工作目录向上递归找到
-// modules/quickjs/build/libs/jvm/native/ 的开发产物。
-val quickjsNativeDir = file("${rootProject.projectDir}/modules/quickjs/build/libs/jvm/native")
+// modules/quickjs/build/libs/jvm/native/<os>-<arch>/ 的开发产物。
+val quickjsPlatformId = buildString {
+    val osName = when {
+        OperatingSystem.current().isWindows -> "windows"
+        OperatingSystem.current().isMacOsX -> "macos"
+        OperatingSystem.current().isLinux -> "linux"
+        else -> System.getProperty("os.name").lowercase().replace(Regex("[^a-z0-9_.-]"), "_")
+    }
+    val arch = normalizeJvmNativeArch(System.getProperty("os.arch"))
+    append(osName).append('-').append(arch)
+}
+val quickjsNativeDir =
+    file("${rootProject.projectDir}/modules/quickjs/build/libs/jvm/native/$quickjsPlatformId")
 val headlessNativeResDir = layout.buildDirectory.dir("generated/quickjs-native")
 
 val copyQuickjsNativeToHeadlessResources by tasks.registering(Copy::class) {
-    // 先触发 native 库构建 (cmake 编译 legado_quickjs.dll), 再复制进资源输出目录
+    // 先触发 native 库构建，再从当前平台独占目录复制；避免捎带其他平台的陈旧库。
     dependsOn(project(":modules:quickjs").tasks.named("buildJvmNativeLib"))
     from(quickjsNativeDir)
-    // 只复制 native 库文件, 避免带入其他构建产物
     include("*.dll", "*.so", "*.dylib")
     into(headlessNativeResDir)
+    inputs.dir(quickjsNativeDir).withPathSensitivity(PathSensitivity.RELATIVE)
+    doFirst {
+        val expected = when {
+            OperatingSystem.current().isWindows -> "legado_quickjs.dll"
+            OperatingSystem.current().isMacOsX -> "liblegado_quickjs.dylib"
+            else -> "liblegado_quickjs.so"
+        }
+        if (!quickjsNativeDir.resolve(expected).isFile) {
+            throw GradleException(
+                "QuickJS native library is missing: ${
+                    quickjsNativeDir.resolve(
+                        expected
+                    )
+                }"
+            )
+        }
+    }
 }
 
 sourceSets {

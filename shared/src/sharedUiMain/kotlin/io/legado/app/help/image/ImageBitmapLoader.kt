@@ -21,7 +21,7 @@ import io.legado.app.data.entities.BookSource
  *
  * [loadBitmap] 解码结果进 [DecodedBitmapCache] (进程级 LRU, 容量沿 AppConfig.bitmapCacheSize,
  * key 含 url+书源+isCover+采样尺寸), 同 URL 二次打开零重复解码; 验证码等同 URL 每次返回
- * 新图的场景传 `useBitmapCache=false` 绕过; 统一清缓存入口见 [DecodedBitmapCache] KDoc。
+ * 新图的场景传 `useBitmapCache=false` 同时绕过位图和网络原始字节缓存; 统一清缓存入口见 [DecodedBitmapCache] KDoc。
  *
  * # 目标尺寸采样 (I7)
  *
@@ -71,8 +71,9 @@ expect class ImageBitmapLoader() {
      * @param widthPx 目标显示宽度 (px), >0 时按目标尺寸采样解码; 默认 0 不采样
      *   (各端保持原语义: jvm/iOS/ohos 全尺寸, android 长边 ≤2048 防 OOM)
      * @param heightPx 目标显示高度 (px), >0 时按目标尺寸采样解码; 默认 0 不采样
-     * @param useBitmapCache 是否进 [DecodedBitmapCache] 进程级位图 LRU, 默认 true;
-     *   验证码等同 URL 每次返回新图的场景传 false 绕过 (避免二次打开显示旧图)
+     * @param useBitmapCache 是否使用图片缓存, 默认 true; false 时同时绕过
+     *   [DecodedBitmapCache] 位图 LRU 和网络原始字节缓存，确保固定 URL 也重新下载
+     *   (验证码等同 URL 每次返回新图的场景使用)
      * @return 已解码 [ImageBitmap], 失败或不支持的 scheme 返回 null
      */
     suspend fun loadBitmap(

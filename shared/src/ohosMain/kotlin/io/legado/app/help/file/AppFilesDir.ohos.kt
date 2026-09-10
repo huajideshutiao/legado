@@ -62,6 +62,10 @@ class OhosAppFilesDir : AppFilesDir {
     /** OHOS 无外部缓存概念, 返回 null (调用方回退到 [cacheDir])。 */
     override val externalCacheDir: String? = null
 
+    /** 沙盒内持久封面缓存目录；计算 getter 跟随延迟注入的 [filesDir]。 */
+    override val coversDir: String
+        get() = "$filesDir/covers"
+
     /**
      * 解析相对路径为绝对路径并确保目录存在。
      *

@@ -82,7 +82,8 @@ actual class ImageBitmapLoader actual constructor() {
                 if (bitmap != null && key != null) DecodedBitmapCache.put(key, bitmap)
                 return@withContext bitmap
             }
-            val bytes = loadBytes(url, book, bookSource, isCover) ?: return@withContext null
+            val bytes = loadBytesInternal(url, book, bookSource, isCover, useBitmapCache)
+                ?: return@withContext null
             val key = if (useBitmapCache) {
                 DecodedBitmapCache.cacheKey(url, bookSource?.bookSourceUrl, isCover, widthPx, heightPx)
             } else null
@@ -100,35 +101,43 @@ actual class ImageBitmapLoader actual constructor() {
         book: Book?,
         bookSource: BookSource?,
         isCover: Boolean,
-    ): ByteArray? =
-        withContext(Dispatchers.IO) {
-            runCatching {
-                when {
-                    // data: URI 内联图 (与 loadBitmap 的 data: 分支对齐, 原 app PhotoDialog
-                    // 的 base64 SVG 分支同源)
-                    url.startsWith("data:") -> parseDataUriBytes(url)
-                    url.startsWith("bg://") -> {
-                        val fileName = url.removePrefix("bg://")
-                        // 优先 composeResources 打包原图 (四端离线可用), 其次本地缓存/CDN 兜底
-                        RemoteAssetsUtils.getBgBytes(fileName)
-                    }
-                    url.startsWith("cbz://") && book != null ->
-                        CbzFile.getImage(book, url.removePrefix("cbz://"))?.use { it.readBytes() }
-                    url.startsWith("file://") -> File(url.removePrefix("file://")).readBytes()
-                    url.startsWith("/") -> File(url).readBytes()
-                    url.startsWith("http://") || url.startsWith("https://") -> {
-                        if (failUrls.contains(failKey(bookSource?.bookSourceUrl, url))) {
-                            // 跳过加载失败的图片 (原版 OkHttpStreamFetcher 同语义)
-                            null
-                        } else {
-                            loadNetworkBytes(url, bookSource, book, isCover)
-                        }
-                    }
-                    // Windows 盘符 (C:\...) / 相对路径: 与 loadBitmap else 分支同规则
-                    else -> File(url).takeIf { it.isFile }?.readBytes()
+    ): ByteArray? = withContext(Dispatchers.IO) {
+        loadBytesInternal(url, book, bookSource, isCover, useBytesCache = true)
+    }
+
+    private suspend fun loadBytesInternal(
+        url: String,
+        book: Book?,
+        bookSource: BookSource?,
+        isCover: Boolean,
+        useBytesCache: Boolean,
+    ): ByteArray? = runCatching {
+        when {
+            // data: URI 内联图 (与 loadBitmap 的 data: 分支对齐, 原 app PhotoDialog
+            // 的 base64 SVG 分支同源)
+            url.startsWith("data:") -> parseDataUriBytes(url)
+            url.startsWith("bg://") -> {
+                val fileName = url.removePrefix("bg://")
+                // 优先 composeResources 打包原图 (四端离线可用), 其次本地缓存/CDN 兜底
+                RemoteAssetsUtils.getBgBytes(fileName)
+            }
+
+            url.startsWith("cbz://") && book != null ->
+                CbzFile.getImage(book, url.removePrefix("cbz://"))?.use { it.readBytes() }
+
+            url.startsWith("file://") -> File(url.removePrefix("file://")).readBytes()
+            url.startsWith("/") -> File(url).readBytes()
+            url.startsWith("http://") || url.startsWith("https://") -> {
+                if (useBytesCache && failUrls.contains(failKey(bookSource?.bookSourceUrl, url))) {
+                    null
+                } else {
+                    loadNetworkBytes(url, bookSource, book, isCover, useBytesCache)
                 }
-            }.getOrNull()
+            }
+            // Windows 盘符 (C:\...) / 相对路径: 与 loadBitmap else 分支同规则
+            else -> File(url).takeIf { it.isFile }?.readBytes()
         }
+    }.getOrNull()
 
     /**
      * BitmapFactory 解码, 先读边界再按目标尺寸降采样 (inSampleSize 取 2 的幂,
@@ -156,27 +165,30 @@ actual class ImageBitmapLoader actual constructor() {
         bookSource: BookSource?,
         book: Book?,
         isCover: Boolean,
-    ): ByteArray? =
-        ImageBytesCache.get(url, bookSource?.bookSourceUrl, isCover) ?: run {
-            val bytes = if (bookSource == null || book?.isLocal == true) {
-                downloadBytesSimple(url)
-            } else {
-                downloadBytesWithSource(url, bookSource, book, isCover)
-            }
-            if (bytes != null) {
-                ImageBytesCache.put(url, bookSource?.bookSourceUrl, isCover, bytes)
-            }
-            bytes
+        useBytesCache: Boolean,
+    ): ByteArray? {
+        if (useBytesCache) {
+            ImageBytesCache.get(url, bookSource?.bookSourceUrl, isCover)?.let { return it }
         }
+        val bytes = if (bookSource == null || book?.isLocal == true) {
+            downloadBytesSimple(url, useBytesCache)
+        } else {
+            downloadBytesWithSource(url, bookSource, book, isCover, useBytesCache)
+        }
+        if (bytes != null && useBytesCache) {
+            ImageBytesCache.put(url, bookSource?.bookSourceUrl, isCover, bytes)
+        }
+        return bytes
+    }
 
     /** 简单 OkHttp GET 取字节流 (本地书 / 无书源用); 非 2xx 进失败表不再重试。 */
-    private fun downloadBytesSimple(url: String): ByteArray? {
+    private fun downloadBytesSimple(url: String, recordFailure: Boolean): ByteArray? {
         val client = OkHttpClientProviders.get().okHttpClient
         val request = Request.Builder().url(url).build()
         return runCatching {
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    failUrls.add(failKey(null, url))
+                    if (recordFailure) failUrls.add(failKey(null, url))
                     null
                 } else {
                     response.body.bytes()
@@ -195,8 +207,9 @@ actual class ImageBitmapLoader actual constructor() {
         bookSource: BookSource?,
         book: Book?,
         isCover: Boolean,
+        recordFailure: Boolean,
     ): ByteArray? {
-        if (bookSource == null) return downloadBytesSimple(url)
+        if (bookSource == null) return downloadBytesSimple(url, recordFailure)
         return runCatching {
             val bytes = AnalyzeUrlCore(
                 rawUrl = url,
@@ -206,7 +219,7 @@ actual class ImageBitmapLoader actual constructor() {
             runScriptWithContext {
                 ImageUtils.decode(url, bytes, isCover, bookSource, book)
             } ?: run {
-                failUrls.add(failKey(bookSource.bookSourceUrl, url))
+                if (recordFailure) failUrls.add(failKey(bookSource.bookSourceUrl, url))
                 null
             }
         }.getOrNull()

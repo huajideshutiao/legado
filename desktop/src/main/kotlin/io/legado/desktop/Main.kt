@@ -31,15 +31,14 @@ import com.sun.jna.Platform
 import io.legado.app.api.controller.ImageControllerProviders
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
-import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.LocalReadConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadConfigProviders
 import io.legado.app.help.config.ReadTipConfigShared
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.registerJvmDebugState
-import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.image.decodeBytesSampled
+import io.legado.app.help.image.registerJvmBookImageLoader
 import io.legado.app.help.image.registerReaderImageResolver
 import io.legado.app.help.toast.DesktopTrayNotifier
 import io.legado.app.help.tts.TtsEngineProvider
@@ -50,7 +49,6 @@ import io.legado.app.ui.association.LegadoDeepLink
 import io.legado.app.ui.association.LegadoDeepLinkHandler
 import io.legado.app.ui.book.audio.AudioPlayPlatformProviders
 import io.legado.app.ui.book.audio.SharedAudioPlayPlatformProvider
-import io.legado.app.ui.book.changecover.CoverStorageServiceProviders
 import io.legado.app.ui.book.info.LocalBlurCoverBgSlot
 import io.legado.app.ui.book.info.SharedBlurCoverBgCoil
 import io.legado.app.ui.book.manga.MangaReaderScreenModel
@@ -84,23 +82,21 @@ import io.legado.app.ui.root.ScreenModelStore
 import io.legado.desktop.audio.DesktopAppUserModelId
 import io.legado.desktop.audio.registerDesktopAudioPlayProviders
 import io.legado.desktop.audio.registerDesktopSystemMediaControl
+import io.legado.desktop.config.registerDesktopSystemNightModeDetector
 import io.legado.desktop.help.DesktopCrashHandler
 import io.legado.desktop.help.DesktopUrlProtocol
 import io.legado.desktop.help.SingleInstanceGuard
+import io.legado.desktop.help.archive.DesktopArchiveCodec
 import io.legado.desktop.help.book.DesktopBitmapProvider
-import io.legado.desktop.help.book.registerDesktopBookshelfManagePlatform
 import io.legado.desktop.help.http.registerDesktopBackstageWebView
 import io.legado.desktop.help.registerDesktopArchiveProvider
-import io.legado.desktop.help.archive.DesktopArchiveCodec
 import io.legado.desktop.help.registerDesktopScreenInfoProvider
 import io.legado.desktop.help.source.registerDesktopVerificationUiProvider
 import io.legado.desktop.help.tts.DesktopReadAloudHost
 import io.legado.desktop.help.ui.registerDesktopOpenUrlProvider
-import io.legado.desktop.js.registerDesktopJsImageOps
 import io.legado.desktop.model.fileBook.DesktopPdfFile
 import io.legado.desktop.model.fileBook.registerDesktopFileBookAccessor
 import io.legado.desktop.model.webBook.DesktopImageControllerProvider
-import io.legado.desktop.model.webBook.DesktopSkiaImageScaler
 import io.legado.desktop.tts.DesktopSystemTtsEngine
 import io.legado.desktop.ui.ChromeStripSpacer
 import io.legado.desktop.ui.DesktopDialogHost
@@ -125,12 +121,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
-import org.jsoup.Jsoup
 import org.openani.mediamp.mpv.MPVHandle
 import org.openani.mediamp.mpv.MpvMediampPlayer
 import java.awt.Desktop
 import java.io.File
-import java.util.concurrent.TimeUnit
 import javax.swing.SwingUtilities
 
 private const val TAG = "legado-desktop"
@@ -315,15 +309,18 @@ private fun runDesktopApp() = application {
     // 阶段1 核心子集 (无 UI 依赖的 provider 注册) 已下沉 :desktop-core 的
     // DesktopCore.registerCoreProviders() —— 与 headless 入口共用同一注册序列, 保证两种入口
     // 的数据/配置环境等价。包含: AppLog/AppString/AndroidId/Toaster/NotificationProgress/
-    // UpdateBookCallback/config+语言/AppUpdate/AppFilesDir/BookImageLoader/HTTP+jsoup/
+    // UpdateBookCallback/config+语言/AppUpdate/AppFilesDir/HTTP+jsoup/
     // DataStorage+BookImageStorage/HttpTTS 播放器工厂/JS 引擎/DefaultDataResource/数据库/
     // BookStorage/AppDb/BookHelp/ReadBookPlatform/CoverStorage。
     // remember: 只在首组合执行一次 (原实现非 remember 的注册函数本就幂等, 收敛后行为等价);
     // 返回值 desktopReadBookConfig 供阶段2 LocalReadConfigProviders 注入 (与全局同实例)。
-    val desktopReadBookConfig = remember { DesktopCore.registerCoreProviders() }
-    // JS 图片绑定 (skia DesktopImageOps → JsBindingInjector): 原 registerDesktopJsEngines 首行,
-    // UI 依赖拆分后单独注册, 必须在任何 JS eval 之前 (未注册时 JsBindingInjector.image 抛)
-    registerDesktopJsImageOps()
+    val desktopReadBookConfig = remember {
+        registerDesktopSystemNightModeDetector()
+        val config = DesktopCore.registerCoreProviders()
+        // Compose UI 类型的 JVM 图片加载器 (SingletonImageLoader + BookImageLoaders, 依赖 ImageBitmap, 仅桌面 GUI 需要)
+        registerJvmBookImageLoader()
+        config
+    }
     // ===== 以下为阶段1 的 UI 绑定注册 (依赖 AWT/Compose/JNA, 留在 :desktop) =====
     // Windows: 设置进程级 AppUserModelID + 保证开始菜单快捷方式身份注册 (SMTC 媒体卡
     // 应用名来源; :desktop:run/java -jar 无安装注册时按官方文档自建快捷方式)。
@@ -753,9 +750,9 @@ private suspend fun registerSecondaryProviders() {
         BitmapProviders.register(DesktopBitmapProvider)
         // 原 6. EpubFile 相关 (压缩/PDF 能力注入: DesktopArchiveCodec + DesktopPdfFile 均留 :desktop)
         registerDesktopFileBookAccessor(DesktopArchiveCodec, DesktopPdfFile)
-        // 原 11. Web 服务封面/插图 provider: 字节流实现在 desktop-core, skia 缩图策略注入;
+        // 原 11. Web 服务封面/插图 provider: 字节流实现在 desktop-core;
         //    未注册时 BookController.getCover/getImg 抛 IllegalStateException
-        ImageControllerProviders.register(DesktopImageControllerProvider(DesktopSkiaImageScaler))
+        ImageControllerProviders.register(DesktopImageControllerProvider())
         // 原 11b. OpenUrl provider (打开确认框走 DesktopDialogs, 无 UI 无法确认)
         registerDesktopOpenUrlProvider()
         // 原 11c. 书源验证 UI provider (图片验证码走 Swing 输入框, 网页验证给明确报错)
@@ -800,12 +797,20 @@ private fun initDesktopRuntimeEnvironment() {
     // 其 parentFile = jpackage package root (exe 所在目录的同级)。
     // portable 模式数据存 exe 同级 dataDir; installed/dev 模式传 null (走 portable.txt 标记
     // 检测 / 系统数据目录), 仅日志记录安装模式。
-    if (InstallType.IS_PORTABLE) {
+    val dataDir = if (InstallType.IS_PORTABLE) {
         val exeDir = resDirFile.parentFile?.parentFile ?: resDirFile.parentFile
-        DesktopCore.initRuntimeEnvironment(File(exeDir, "data"), resDirFile)
+        File(exeDir, "data")
     } else {
         AppLog.put(jvmGetString("desktop_install_mode_not_portable", InstallType.TYPE), tag = TAG)
-        // 非 portable 仍尝试定位 quickjs native 库 (打包产物在 resources 目录)
-        DesktopCore.initRuntimeEnvironment(null, resDirFile)
+        null
     }
+
+    val osName = System.getProperty("os.name").lowercase()
+    val libName = when {
+        osName.contains("windows") -> "legado_quickjs.dll"
+        osName.contains("mac") || osName.contains("darwin") -> "liblegado_quickjs.dylib"
+        else -> "liblegado_quickjs.so"
+    }
+    val libFile = File(resDirFile, libName).takeIf { it.isFile }
+    DesktopCore.initRuntimeEnvironment(dataDir, libFile)
 }

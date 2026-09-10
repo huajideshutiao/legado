@@ -1,3 +1,19 @@
+/* 全局高度链: tab 页页面组件 height:100% 依赖 #app 撑满视口 */
+body {
+  padding: 0;
+  margin: 0;
+  height: 100vh;
+}
+
+#app {
+  font-family: 'Avenir', Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: #2c3e50;
+  margin: 0;
+  height: 100%;
+}
+
 :root {
   --web-primary: #409eff;
   --web-primary-hover: #337ecc;

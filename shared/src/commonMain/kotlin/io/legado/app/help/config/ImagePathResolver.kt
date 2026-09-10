@@ -3,6 +3,9 @@ package io.legado.app.help.config
 import io.legado.app.help.FileUtilsCommon
 import io.legado.app.help.file.AppFilesDirs
 
+/** 封面缓存相对引用首段 (`coverCache/<md5>.jpg`, 见 [resolveImagePath] 解析规则)。 */
+const val COVER_CACHE_REF_SEGMENT = "coverCache"
+
 /**
  * 图集相对引用 → 绝对路径。
  *
@@ -13,6 +16,10 @@ import io.legado.app.help.file.AppFilesDirs
  * 跨机/跨端恢复备份时相对引用自动有效，无需按旧绝对路径重写/迁移文件。
  *
  * 解析规则:
+ * - **封面缓存相对引用** (`coverCache/<name>`, [COVER_CACHE_REF_SEGMENT]): 正常书籍封面缓存
+ *   (`FileBook.getCoverPath` 桌面端存储格式, 物理落盘平台 `coversDir`), **不入** customImg 图集
+ *   (那是自定义封面 `covers/<字节数>.<ext>` 的保留段, 两者同为 Book 封面字段但目录语义不同);
+ *   平台未注册 `coversDir` 时原样返回 (加载失败走占位, 与旧绝对路径跨端行为一致)
  * - 裸文件名 (无分隔符) → `{externalFiles|files}/customImg/<name>` (与阅读背景 novelBg 的
  *   「裸名→图集子目录」拼接规则一致, 见 [io.legado.app.help.config.ReadBookConfigShared])
  * - 图集内部相对路径 (如 `covers/<name>`) → `{externalFiles|files}/customImg/<covers>/<name>`,
@@ -31,13 +38,49 @@ fun resolveImagePath(ref: String?): String? {
         return ref
     }
     if (ref.contains("://")) return ref
+    val rawSegments = ref.split('/', '\\').filter { it.isNotEmpty() }
+    if (rawSegments.isEmpty()) return null
+
+    // 封面缓存引用: 对准平台封面缓存物理目录, 不经 customImg 图集
+    if (rawSegments[0] == COVER_CACHE_REF_SEGMENT) {
+        val subRaw = rawSegments.drop(1)
+        if (subRaw.isEmpty()) return null
+        val subSegments = mutableListOf<String>()
+        for (seg in subRaw) {
+            when (seg) {
+                "." -> continue
+                ".." -> {
+                    if (subSegments.isEmpty()) return null
+                    subSegments.removeAt(subSegments.size - 1)
+                }
+
+                else -> subSegments.add(seg)
+            }
+        }
+        if (subSegments.isEmpty()) return null
+        val coversDir = AppFilesDirs.get().coversDir ?: return ref
+        return FileUtilsCommon.getPath(coversDir, *subSegments.toTypedArray())
+    }
+
+    val normalized = mutableListOf<String>()
+    for (seg in rawSegments) {
+        when (seg) {
+            "." -> continue
+            ".." -> {
+                if (normalized.isEmpty()) return null
+                normalized.removeAt(normalized.size - 1)
+            }
+
+            else -> normalized.add(seg)
+        }
+    }
+    if (normalized.isEmpty()) return null
+
     val base = AppFilesDirs.get().externalFilesDir ?: AppFilesDirs.get().filesDir
-    val segments = ref.split('/', '\\').filter { it.isNotEmpty() }
     return when {
-        segments.isEmpty() -> null
         // 裸文件名: 图集根目录 customImg 下
-        segments.size == 1 -> FileUtilsCommon.getPath(base, "customImg", segments[0])
+        normalized.size == 1 -> FileUtilsCommon.getPath(base, "customImg", normalized[0])
         // 图集内部相对路径 (covers/... 等): 首段是图集子目录, 自动补 customImg 根
-        else -> FileUtilsCommon.getPath(base, "customImg", *segments.toTypedArray())
+        else -> FileUtilsCommon.getPath(base, "customImg", *normalized.toTypedArray())
     }
 }

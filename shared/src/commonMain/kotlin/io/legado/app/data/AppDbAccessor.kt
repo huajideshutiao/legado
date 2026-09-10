@@ -55,7 +55,7 @@ interface AppDbAccessor {
     /** TxtToc 规则 DAO (TxtTocRuleViewModelShared 用)。 */
     val txtTocRuleDao: TxtTocRuleDao
 
-    /** 字典规则 DAO (DictRuleViewModelShared 用)。 */
+    /** 字典规则 DAO。 */
     val dictRuleDao: DictRuleDao
 
     /** 搜索/发现结果过滤规则 DAO (SearchBookFilter 用)。 */

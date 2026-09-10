@@ -35,6 +35,10 @@ class IosAppFilesDir : AppFilesDir {
     /** iOS 无外部缓存概念, 返回 null (调用方回退到 [cacheDir])。 */
     override val externalCacheDir: String? = null
 
+    /** 沙盒内持久封面缓存目录。 */
+    override val coversDir: String
+        get() = "$filesDir/covers"
+
     private fun resolveSearchPath(directory: ULong): String {
         // NSSearchPathForDirectoriesInDomains 返回 NSArray<String>, 取首个匹配路径
         // iOS 沙盒保证 Documents/Caches 目录一定存在, 首个元素即绝对路径

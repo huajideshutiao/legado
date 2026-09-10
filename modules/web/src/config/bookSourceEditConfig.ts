@@ -3,13 +3,6 @@ export default {
     name: '基础',
     children: [
       {
-        title: '源类型',
-        id: 'bookSourceType',
-        type: 'Array',
-        array: ['文本', '音频', '图片', '文件'],
-        required: true,
-      },
-      {
         title: '源域名',
         id: 'bookSourceUrl',
         type: 'String',
@@ -88,6 +81,48 @@ export default {
         id: 'jsLib',
         type: 'String',
         hint: 'js库, 可填写js或者key-value object获取在线js文件',
+      },
+    ],
+  },
+  other: {
+    name: '其他',
+    children: [
+      {
+        title: '源类型',
+        id: 'bookSourceType',
+        type: 'Array',
+        array: ['文本', '音频', '图片', '文件'],
+        required: true,
+      },
+      {
+        title: '启用搜索',
+        id: 'enabled',
+        type: 'Boolean',
+      },
+      {
+        title: '启用发现',
+        id: 'enabledExplore',
+        type: 'Boolean',
+      },
+      {
+        title: '启用段评',
+        id: 'enabledReview',
+        type: 'Boolean',
+      },
+      {
+        title: 'CookieJar',
+        id: 'enabledCookieJar',
+        type: 'Boolean',
+      },
+      {
+        title: '搜索权重',
+        id: 'weight',
+        type: 'Number',
+      },
+      {
+        title: '排序编号',
+        id: 'customOrder',
+        type: 'Number',
       },
     ],
   },
@@ -634,41 +669,6 @@ export default {
         id: 'deleteRule',
         type: 'String',
         hint: '删除规则（JS），变量：paragraphIndex / reviewId',
-      },
-    ],
-  },
-  other: {
-    name: '其他',
-    children: [
-      {
-        title: '启用搜索',
-        id: 'enabled',
-        type: 'Boolean',
-      },
-      {
-        title: '启用发现',
-        id: 'enabledExplore',
-        type: 'Boolean',
-      },
-      {
-        title: '启用段评',
-        id: 'enabledReview',
-        type: 'Boolean',
-      },
-      {
-        title: 'CookieJar',
-        id: 'enabledCookieJar',
-        type: 'Boolean',
-      },
-      {
-        title: '搜索权重',
-        id: 'weight',
-        type: 'Number',
-      },
-      {
-        title: '排序编号',
-        id: 'customOrder',
-        type: 'Number',
       },
     ],
   },

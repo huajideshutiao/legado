@@ -44,3 +44,12 @@ fun syncGetString(key: String, vararg formatArgs: Any?): String {
         else getString(resource, *formatArgs.map { it.toString() }.toTypedArray())
     }
 }
+
+/**
+ * 桌面 JVM / 无头环境非 @Composable 字符串获取入口 (转发 [syncGetString])。
+ *
+ * 移至本文件以切断与 [ResourceProvider.jvm.kt] 中 @Composable 方法在同一 class 的字节码
+ * 符号绑定, 确保 headless 在排除 Compose UI 依赖后调用本函数不触发 NoClassDefFoundError。
+ */
+fun jvmGetString(key: String, vararg formatArgs: Any?): String = syncGetString(key, *formatArgs)
+

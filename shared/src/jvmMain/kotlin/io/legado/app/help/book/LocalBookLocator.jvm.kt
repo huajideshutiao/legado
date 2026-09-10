@@ -1,7 +1,7 @@
 package io.legado.app.help.book
 
 import io.legado.app.data.entities.Book
-import java.net.URI
+import io.legado.app.help.file.desktopResolveStoredRef
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.concurrent.ConcurrentHashMap
@@ -70,28 +70,17 @@ class JvmLocalBookLocator : LocalBookLocator {
     }
 
     /**
-     * 解析 bookUrl 为本地文件路径。
+     * 解析 bookUrl 为本地文件路径 (委托 [desktopResolveStoredRef], 缓存的是解析后的绝对路径)。
      *
-     * - `file:///C:/path/book.txt` → `C:\path\book.txt` (URI 解码 + 平台分隔符)
-     * - `/path/book.txt` → 直接当本地路径
-     * - `C:\path\book.txt` → 直接当本地路径
+     * - `books/x.epub` (数据根下相对引用, saveBookFile 新格式) → `{数据根}/books/x.epub`
+     * - `file:///C:/path/book.txt` → `C:\path\book.txt` (URI 解码 + 平台分隔符, 旧数据)
+     * - `/path/book.txt`、`C:\path\book.txt` → 直接当本地路径 (旧数据)
      * - `http(s)://...` → null (网络书源, 非本地)
      */
     private fun parseLocalPath(bookUrl: String): String? {
+        if (bookUrl.startsWith("http:") || bookUrl.startsWith("https:")) return null
         return try {
-            when {
-                bookUrl.startsWith("file:") -> {
-                    // URI 解析 file scheme, 自动处理 %20 等转义
-                    Paths.get(URI(bookUrl)).toString()
-                }
-                bookUrl.startsWith("http:") || bookUrl.startsWith("https:") -> {
-                    null
-                }
-                else -> {
-                    // 直接当本地路径 (/path 或 C:\path)
-                    Paths.get(bookUrl).toString()
-                }
-            }
+            desktopResolveStoredRef(bookUrl).absolutePath
         } catch (e: Exception) {
             null
         }
