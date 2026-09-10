@@ -65,6 +65,7 @@ import io.legado.app.ui.root.toComposeEasing
 import io.legado.app.utils.ScreenInfoProviders
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -232,13 +233,13 @@ fun AppDialog(
  *
  * 内容层挂两条互补的拖拽路径, 两条路径按指针事件竞争天然互斥, 不会重复累计:
  * - nestedScroll 连接: 面板内部可滚动区域 (目录/评论等 LazyColumn) 滚动到顶、
- *   无法再消费位移时, 框架把剩余位移经 onPostScroll 派发给连接 → 面板跟随;
+ *   无法再消费下拉位移时, 框架把剩余位移经 onPostScroll 派发给连接 → 面板跟随;
  *   列表未到顶时列表自己消费位移, 面板不动, 列表正常滚动 (与 M3 ModalBottomSheet
- *   的协调方式一致, 不碰列表滚动)。
+ *   的协调方式一致, 不碰列表滚动)。滚到底继续上滑的剩余位移不接 (见下文展开语义)。
  * - pointerInput 竖直拖拽: 无内部滚动消费位移 (朗读面板等非滚动内容) 时赢得
  *   touch slop 竞争, 面板直接跟随手指; 内部滚动消费了位移则检测自动让位。
  *
- * 位移带 ×0.6 阻力, 向上拖回弹 (不越位); 松手时位移达阈值 (max(120dp, 面板高/4))
+ * 下拉位移带 ×0.6 阻力; 松手时位移达阈值 (max(120dp, 面板高/4))
  * 或向下 fling 超 800dp/s → 走现有滑出动画关闭 (从当前位移续播, 无跳变);
  * 否则弹簧动画回弹复位。E-Ink 分支无动画无手势, 保持禁用。
  *
@@ -246,8 +247,11 @@ fun AppDialog(
  * 顶栏/空白区向上拖 → 面板高度实时放大 (底部贴窗底), 上限 = 锚点全高 - 状态栏高
  * (视觉全屏, 不压系统栏; 桌面 = 主窗口全高); 上推过半或快速上推 → 弹簧吸附全屏,
  * 否则回弹默认高度。全屏态下拉先缩回默认高度、再下拉才关闭 (先缩回再关闭)。
- * 展开的阻力系数与下拉相同 (×0.6)。内部列表滚动到顶/底时, 剩余位移经 nestedScroll
- * 路径同样参与展开/缩回。
+ * 展开的阻力系数与下拉相同 (×0.6)。上推展开只走 pointerInput 路径 (顶栏/空白区等无内部滚动
+ * 消费位移的区域): 内部列表滚到底继续上滑属列表自身的边界余量, 不该把面板顶高 (对照 M3
+ * ConsumeSwipeWithinBottomSheetBounds 与 BottomSheetBehavior: 上滑在 onPreScroll 阶段就已
+ * 展开完毕, 列表到底后的剩余上滑位移恒被锚点夹成 0)。内部列表滚到顶后继续下拉, 剩余位移
+ * 仍经 nestedScroll 路径缩回展开态/关闭面板。
  *
  * 拖拽只在"无可滚动内容消费位移"的区域生效 (顶栏/空白区): 内部 Compose 滚动组件
  * (LazyColumn 等) 会自己消费竖直手势, 面板不跟随。平台 WebView 这类 interop 视图不参与
@@ -343,6 +347,11 @@ fun AppBottomSheetDialog(
             val fullAnchorPx = (anchorHeightPx - rememberVisibleStatusBarHeightPx() - overlayTopInsetPx)
                 .coerceAtLeast(0)
             val fullAnchorState = rememberUpdatedState(fullAnchorPx)
+            // 展开量 (px) = 视觉全屏高 - 默认锚点高: 两条拖拽路径的上推下限与吸附判定
+            // 共用同一换算 (为让 remember 住的 nestedScroll 连接读到最新锚点而写成 lambda);
+            // 极短窗口下默认高可能反超视觉全屏高, 夹到 0 = 没有可展开的余量
+            val expandDistance: () -> Float =
+                { (fullAnchorState.value - defaultAnchorPx).toFloat().coerceAtLeast(0f) }
             // 回弹/吸附动画: 从当前位移续播到目标锚点 (新拖拽开始时由 drag 路径取消 bounceJob)
             val animateDragTo: (Float) -> Unit = { target ->
                 bounceJob?.cancel()
@@ -362,8 +371,7 @@ fun AppBottomSheetDialog(
             val settleDrag: (Float) -> Unit = { velocityY ->
                 if (!dismissing) {
                     val dismissDistancePx = maxOf(minDismissDistancePx, sheetHeightPx * 0.25f)
-                    // 展开量 (px) = 视觉全屏高 - 默认锚点高
-                    val expandDistancePx = (fullAnchorState.value - defaultAnchorPx).toFloat()
+                    val expandDistancePx = expandDistance()
                     when {
                         dragOffset > 0f &&
                             (dragOffset >= dismissDistancePx || velocityY >= flingDismissVelocityPx) ->
@@ -375,33 +383,83 @@ fun AppBottomSheetDialog(
                     }
                 }
             }
-            // 滚动内容协调: 内部列表到顶后无法消费的位移经 onPostScroll 派发到本连接,
-            // 面板跟随; 未到顶时列表自己消费, 余量为 0, 面板不动 (同 M3 ModalBottomSheet
+            // 滚动内容协调: 内部列表到顶后无法消费的下拉位移经 onPostScroll 派发到本连接,
+            // 面板跟随缩回/关闭; 未到顶时列表自己消费, 余量为 0, 面板不动 (同 M3 ModalBottomSheet
             // ConsumeSwipeWithinBottomSheetBoundsNestedScrollConnection 机制, 仅收 UserInput,
-            // 排除列表自身 fling/惯性位移; 鼠标滚轮到顶同样派发, 属原生 sheet 行为)
+            // 排除列表自身 fling/惯性位移; 鼠标滚轮到顶同样派发, 属原生 sheet 行为)。
+            // 上推展开不经本连接, 见 onPostScroll 注释。
             val nestedScrollConnection = remember {
                 object : NestedScrollConnection {
+                    /**
+                     * 手势开始时的稳定静止锚点 (视觉全屏 -expandDistancePx 或默认锚点 0f)。
+                     * 在单次连续下拉手势中保持稳定, 避免拉过中点后动态锚点突变为 0f,
+                     * 导致反向上滑时无法拉回视觉全屏、位移全被列表消费而卡在半空。
+                     */
+                    private var gestureStartAnchor: Float? = null
+
+                    /**
+                     * 当前静止锚点 (吸附目标, 判定与 settleDrag 同源): 已展开过半 =
+                     * 视觉全屏锚点 (负值), 否则默认锚点 0。
+                     */
+                    private fun restAnchor(): Float {
+                        val expandDistancePx = expandDistance()
+                        return if (dragOffset <= -expandDistancePx / 2f) -expandDistancePx else 0f
+                    }
+
+                    override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                        // 面板被下拉偏离静止锚点后, 向上位移先把它拉回锚点, 余量再放行给列表
+                        // (对照 M3 同名连接 onPreScroll 的反向位移优先归位, 差别是夹在当前锚点
+                        // 而非一路展开到全屏 —— 列表手势不参与展开)。少了这步, "下拉一段不松手
+                        // 再上滑"会被列表全额消费 (onPostScroll 收到 available.y == 0), 面板一直
+                        // 歪在下移位, 到松手才回弹。
+                        if (
+                            !dragEnabled.value ||
+                            dismissing ||
+                            source != NestedScrollSource.UserInput ||
+                            available.y >= 0f
+                        ) {
+                            return Offset.Zero
+                        }
+                        val anchor = gestureStartAnchor ?: restAnchor()
+                        if (dragOffset <= anchor) return Offset.Zero
+                        bounceJob?.cancel()
+                        bounceJob = null
+                        val target =
+                            (dragOffset + available.y * DragResistance).coerceAtLeast(anchor)
+                        // 本连接吃掉的手指位移 = 面板位移变化量 / 阻力系数 (与累积同一换算);
+                        // coerceAtLeast 夹住乘除往返的浮点误差, 保证不消费超过 available
+                        val usedY = ((target - dragOffset) / DragResistance)
+                            .coerceAtLeast(available.y)
+                        dragOffset = target
+                        return Offset(0f, usedY)
+                    }
+
                     override fun onPostScroll(
                         consumed: Offset,
                         available: Offset,
                         source: NestedScrollSource,
                     ): Offset {
+                        // 只接下拉方向 (available.y 正 = 列表滚到顶继续下滑): 先缩回展开态,
+                        // 继续下拉由 settleDrag 判定关闭/回弹。向上的剩余位移一律不接 ——
+                        // 那是"列表滚到底继续上滑"的边界余量, 接了会把半屏面板顶高; 上推展开
+                        // 只由 pointerInput 路径 (顶栏/空白区) 负责。
                         if (
                             !dragEnabled.value ||
                             dismissing ||
                             source != NestedScrollSource.UserInput ||
-                            available.y == 0f
+                            available.y <= 0f
                         ) {
                             return Offset.Zero
+                        }
+                        // 记录本次连续下拉手势开始时的稳定锚点
+                        if (gestureStartAnchor == null) {
+                            gestureStartAnchor = restAnchor()
                         }
                         // 新的拖拽开始: 取消回弹动画, 从当前位移继续
                         bounceJob?.cancel()
                         bounceJob = null
-                        // 双向夹紧: 上推 (available.y 负 = 列表滚到底继续上滑) 展开到视觉
-                        // 全屏为止; 下拉 (available.y 正 = 列表滚到顶继续下滑) 不设下限,
-                        // 由 settleDrag 判定关闭/回弹
-                        dragOffset = (dragOffset + available.y * DragResistance)
-                            .coerceAtLeast((defaultAnchorPx - fullAnchorState.value).toFloat())
+                        // 只向正方向累积, 无需再夹展开下限 (展开态起步时先缩回到 0 再下移)
+                        dragOffset += available.y * DragResistance
                         return Offset.Zero
                     }
 
@@ -412,6 +470,12 @@ fun AppBottomSheetDialog(
                         // 因此这里的 fling 必然是列表自身滚动 (滚到顶/底的剩余惯性), 速度
                         // 不得触发"快速下拉关闭"——只按位移判定 (滚到顶后继续下拉、位移达
                         // 阈值仍可关闭) 或回弹复位面板残留位移 (滚动尾段把面板带起的一点位移)。
+                        // 面板已在静止锚点 (无需归位) 时不认领这份速度: 交还给列表自己的边界
+                        // 回弹效果 (Android 拉伸 overscroll 的 fling 动画), 否则会被我们白吃掉。
+                        // 0.5px 容差: 乘除往返的浮点残差不算"需要归位"
+                        val anchor = gestureStartAnchor ?: restAnchor()
+                        gestureStartAnchor = null
+                        if (abs(dragOffset - anchor) < 0.5f) return Velocity.Zero
                         settleDrag(0f)
                         return available
                     }
@@ -519,7 +583,7 @@ fun AppBottomSheetDialog(
                             // 首段位移含越过 slop 的 overshoot, 与后续 delta 连续;
                             // 下限夹紧在视觉全屏展开量 (上推越位不越界)
                             dragOffset = (dragOffset + overSlop * DragResistance)
-                                .coerceAtLeast((defaultAnchorPx - fullAnchorState.value).toFloat())
+                                .coerceAtLeast(-expandDistance())
                             val velocityTracker = VelocityTracker()
                             velocityTracker.addPosition(down.uptimeMillis, down.position)
                             velocityTracker.addPosition(dragChange.uptimeMillis, dragChange.position)
@@ -531,7 +595,7 @@ fun AppBottomSheetDialog(
                                 // 向上 (deltaY 负) → 位移负向累积 → 面板高度放大,
                                 // 到视觉全屏后夹紧不越位
                                 dragOffset = (dragOffset + deltaY * DragResistance)
-                                    .coerceAtLeast((defaultAnchorPx - fullAnchorState.value).toFloat())
+                                    .coerceAtLeast(-expandDistance())
                             }
                             settleDrag(velocityTracker.calculateVelocity().y)
                         }

@@ -6,8 +6,6 @@ package io.legado.app.ui.about
 
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -22,8 +20,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import io.legado.app.ui.compose.SelectableText
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppTextButton
@@ -31,18 +27,11 @@ import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import io.legado.app.ui.root.PlatformCapabilityProviders
+import io.legado.app.ui.widget.dialog.TextDialog
 import legado.shared.generated.resources.Res
-import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.clear
-import legado.shared.generated.resources.copy
 import legado.shared.generated.resources.crash_log
-import legado.shared.generated.resources.ok
-import legado.shared.generated.resources.text_too_large
 import org.jetbrains.compose.resources.stringResource
-
-/** 超长崩溃日志截断阈值, 对齐 TextDialog 的 32KB 上限。 */
-private const val MAX_TEXT_LENGTH = 32 * 1024
 
 /**
  * 崩溃日志条目 (KMP 共享 UI 契约)。仅承载展示所需的文件名；
@@ -113,9 +102,10 @@ fun CrashLogsDialogContent(
         }
     }
 
-    // 文件内容弹窗 (点击某条日志触发)
+    // 文件内容弹窗 (点击某条日志触发) —— 与日志堆栈详情同一个 TextDialog, 对齐原版
+    // (原 CrashLogViewDialog 是 KMP 化时分裂出的第二份实现, 已收敛删除)
     fileContent?.let { (name, content) ->
-        CrashLogViewDialog(
+        TextDialog(
             title = name,
             content = content,
             onDismiss = { fileContent = null },
@@ -124,77 +114,9 @@ fun CrashLogsDialogContent(
 }
 
 /**
- * 单条崩溃日志内容查看对话框 (项目对话框规范: TitleBar + 内容 + 底部按钮栏)。
- *
- * 替代原 [io.legado.app.ui.widget.dialog.TextDialog] (M3 AlertDialog) 调用:
- * - 尺寸对齐 [io.legado.app.base.BaseComposeDialogFragment] fullHeight 模式:
- *   宽 0.9 屏宽 (上限 800dp), 高固定 0.7 屏高 (统一对话框高度规范)
- * - 顶部 [DialogTitleBar] (返回 + 文件名)
- * - 正文用 [SelectableText] (readOnly BasicTextField): 长按拖选/拖手柄越界自动滚动,
- *   对齐 master 分支原生 TextView 手感 (SelectionContainer 无自动滚动)
- * - 底部按钮栏: 复制 + 取消 + 确定 ([AppTextButton], 对齐 BookmarkDialog)
- * - 超长内容截断 (32KB, 对齐原 TextDialog)
- *
- * 不改变读取/分享等宿主回调逻辑, 仅替换展示层。
- */
-@Composable
-private fun CrashLogViewDialog(
-    title: String,
-    content: String,
-    onDismiss: () -> Unit,
-) {
-    val colors = AppTheme.colors
-    val okText = stringResource(Res.string.ok)
-    val cancelText = stringResource(Res.string.cancel)
-    val copyText = stringResource(Res.string.copy)
-    val tooLargeText = stringResource(Res.string.text_too_large)
-
-    AppDialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
-        // 圆角/底色对齐 BaseComposeDialogFragment.filletBackground + alert DSL AppAlertDialogContent
-        Surface(
-            shape = DesignTokens.shapeDefault,
-            color = colors.fillet,
-            modifier = Modifier.appDialogSize(fullHeight = true),
-        ) {
-            Column(Modifier.fillMaxWidth()) {
-                DialogTitleBar(
-                    title = title,
-                    onBack = onDismiss,
-                )
-                // 超长内容截断 (对齐 TextDialog 的 32KB 截断逻辑)
-                val displayText = if (content.length >= MAX_TEXT_LENGTH) {
-                    content.take(MAX_TEXT_LENGTH) + "\n\n" + tooLargeText
-                } else {
-                    content
-                }
-                // 正文区: weight 占满 0.7 屏高下的剩余空间, 超长内部滚动 (视口恒定, 按钮行恒可见)
-                SelectableText(
-                    text = displayText,
-                    color = colors.secondaryText,
-                    fontSize = 15.sp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .padding(horizontal = DesignTokens.spacingDefault, vertical = 8.dp),
-                )
-                // 底部按钮栏 (对齐 BookmarkDialog: 左侧 contextual + 右侧 cancel/ok)
-                Row(Modifier.fillMaxWidth()) {
-                    AppTextButton(text = copyText) {
-                        PlatformCapabilityProviders.get().copyToClipboard(content)
-                    }
-                    Spacer(Modifier.weight(1f))
-                    AppTextButton(text = cancelText) { onDismiss() }
-                    AppTextButton(text = okText) { onDismiss() }
-                }
-            }
-        }
-    }
-}
-
-/**
  * 崩溃日志对话框 (带 Dialog 窗口, 供桌面 / iOS 端直接使用)。
  *
- * app 端使用 [CrashLogsDialogContent] 嵌入自身 DialogFragment，不调用本函数 (避免双层窗口)。
+ * 四端唯一入口 (app 端原 CrashLogsDialog Fragment 已删, 统一走 crash_logs Overlay)。
  *
  * @see CrashLogsDialogContent
  */

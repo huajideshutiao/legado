@@ -1457,7 +1457,6 @@ private fun ExploreTabContent(
         TextDialog(
             title = "ERROR",
             content = kind.url.orEmpty(),
-            onConfirm = { kindError = null },
             onDismiss = { kindError = null },
         )
     }

@@ -23,11 +23,15 @@ import io.legado.app.help.DirectLinkUploadDefaultsProviders
 import io.legado.app.help.DirectLinkUploadRule
 import io.legado.app.help.DirectLinkUploadStoreProviders
 import io.legado.app.help.getRuleShared
+import androidx.compose.material.Surface
 import io.legado.app.ui.compose.component.AppCheckbox
+import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
+import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.GSON
@@ -51,6 +55,9 @@ import org.jetbrains.compose.resources.stringResource
  *
  * 表单四字段 + 溢出菜单(复制/粘贴/导入默认) + 底部 测试/取消/确定。
  * 平台专属能力(剪贴板/selector/test/alert)通过回调注入。
+ *
+ * 外壳走 [AppDialog] + [Surface] + [appDialogSize] (项目统一对话框底座): 少了它
+ * 内容会被平铺进 Overlay 的 Box 里 —— 撑满窗口、无背景、贴着窗口顶, 不像对话框。
  *
  * @param onDismiss 关闭回调
  * @param onToast 显示 toast
@@ -77,136 +84,144 @@ fun DirectLinkUploadConfigDialog(
     var summary by remember { mutableStateOf(initRule.summary) }
     var compress by remember { mutableStateOf(initRule.compress) }
 
-    Column(Modifier.fillMaxWidth()) {
-        DialogTitleBar(
-            title = "",
-            onBack = onDismiss,
-            actions = {
-                OverflowMenu { dismissMenu ->
-                    DropdownMenuItem(
-                        onClick = {
-                            dismissMenu()
-                            getRule(
-                                uploadUrl,
-                                downloadUrlRule,
-                                summary,
-                                compress,
-                                onToast
-                            )?.let { rule ->
-                                onSetClip(GSON.toJson(rule))
+    AppDialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
+        Surface(
+            modifier = Modifier.appDialogSize(),
+            shape = DesignTokens.shapeDefault,
+            color = AppTheme.colors.fillet,
+        ) {
+            Column(Modifier.fillMaxWidth()) {
+                DialogTitleBar(
+                    title = "",
+                    onBack = onDismiss,
+                    actions = {
+                        OverflowMenu { dismissMenu ->
+                            DropdownMenuItem(
+                                onClick = {
+                                    dismissMenu()
+                                    getRule(
+                                        uploadUrl,
+                                        downloadUrlRule,
+                                        summary,
+                                        compress,
+                                        onToast
+                                    )?.let { rule ->
+                                        onSetClip(GSON.toJson(rule))
+                                    }
+                                },
+                            ) {
+                                Text(stringResource(Res.string.copy_rule), color = colors.primaryText)
                             }
-                        },
-                    ) {
-                        Text(stringResource(Res.string.copy_rule), color = colors.primaryText)
-                    }
-                    DropdownMenuItem(
-                        onClick = {
-                            dismissMenu()
-                            val clipText = onGetClip()
-                            if (clipText != null) {
-                                runCatching {
-                                    GSON.fromJsonObject<DirectLinkUploadRule>(clipText).getOrThrow()
-                                }.onSuccess { rule ->
-                                    uploadUrl = rule.uploadUrl
-                                    downloadUrlRule = rule.downloadUrlRule
-                                    summary = rule.summary
-                                    compress = rule.compress
-                                }.onFailure {
-                                    onToast("剪贴板为空或格式不对")
-                                }
-                            } else {
-                                onToast("剪贴板为空或格式不对")
+                            DropdownMenuItem(
+                                onClick = {
+                                    dismissMenu()
+                                    val clipText = onGetClip()
+                                    if (clipText != null) {
+                                        runCatching {
+                                            GSON.fromJsonObject<DirectLinkUploadRule>(clipText).getOrThrow()
+                                        }.onSuccess { rule ->
+                                            uploadUrl = rule.uploadUrl
+                                            downloadUrlRule = rule.downloadUrlRule
+                                            summary = rule.summary
+                                            compress = rule.compress
+                                        }.onFailure {
+                                            onToast("剪贴板为空或格式不对")
+                                        }
+                                    } else {
+                                        onToast("剪贴板为空或格式不对")
+                                    }
+                                },
+                            ) {
+                                Text(stringResource(Res.string.paste_rule), color = colors.primaryText)
                             }
-                        },
-                    ) {
-                        Text(stringResource(Res.string.paste_rule), color = colors.primaryText)
-                    }
-                    DropdownMenuItem(
-                        onClick = {
-                            dismissMenu()
-                            val defaults =
-                                DirectLinkUploadDefaultsProviders.get()?.getDefaultRules()
-                                    ?: emptyList()
-                            onSelector(defaults.map { it.summary }) { index ->
-                                val rule = defaults[index]
-                                uploadUrl = rule.uploadUrl
-                                downloadUrlRule = rule.downloadUrlRule
-                                summary = rule.summary
-                                compress = rule.compress
+                            DropdownMenuItem(
+                                onClick = {
+                                    dismissMenu()
+                                    val defaults =
+                                        DirectLinkUploadDefaultsProviders.get()?.getDefaultRules()
+                                            ?: emptyList()
+                                    onSelector(defaults.map { it.summary }) { index ->
+                                        val rule = defaults[index]
+                                        uploadUrl = rule.uploadUrl
+                                        downloadUrlRule = rule.downloadUrlRule
+                                        summary = rule.summary
+                                        compress = rule.compress
+                                    }
+                                },
+                            ) {
+                                Text(
+                                    stringResource(Res.string.import_default_rule),
+                                    color = colors.primaryText
+                                )
                             }
-                        },
+                        }
+                    },
+                )
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = false)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = DesignTokens.spacingDefault),
+                ) {
+                    AppUnderlineTextField(
+                        value = uploadUrl,
+                        onValueChange = { uploadUrl = it },
+                        label = stringResource(Res.string.upload_url),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    AppUnderlineTextField(
+                        value = downloadUrlRule,
+                        onValueChange = { downloadUrlRule = it },
+                        label = stringResource(Res.string.download_url_rule),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    AppUnderlineTextField(
+                        value = summary,
+                        onValueChange = { summary = it },
+                        label = stringResource(Res.string.summary),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp)
+                            .toggleable(
+                                value = compress,
+                                role = Role.Checkbox,
+                                onValueChange = { compress = it },
+                            ),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
-                            stringResource(Res.string.import_default_rule),
-                            color = colors.primaryText
-                        )
+                        AppCheckbox(checked = compress, onCheckedChange = null)
+                        Text(stringResource(Res.string.is_compress), color = colors.primaryText)
                     }
                 }
-            },
-        )
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .weight(1f, fill = false)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = DesignTokens.spacingDefault),
-        ) {
-            AppUnderlineTextField(
-                value = uploadUrl,
-                onValueChange = { uploadUrl = it },
-                label = stringResource(Res.string.upload_url),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            AppUnderlineTextField(
-                value = downloadUrlRule,
-                onValueChange = { downloadUrlRule = it },
-                label = stringResource(Res.string.download_url_rule),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            AppUnderlineTextField(
-                value = summary,
-                onValueChange = { summary = it },
-                label = stringResource(Res.string.summary),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp)
-                    .toggleable(
-                        value = compress,
-                        role = Role.Checkbox,
-                        onValueChange = { compress = it },
-                    ),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                AppCheckbox(checked = compress, onCheckedChange = null)
-                Text(stringResource(Res.string.is_compress), color = colors.primaryText)
-            }
-        }
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(
-                    start = DesignTokens.spacingDefault,
-                    top = 4.dp,
-                    end = DesignTokens.spacingDefault,
-                    bottom = DesignTokens.spacingDefault,
-                ),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            AppTextButton(text = stringResource(Res.string.test)) {
-                val rule = getRule(uploadUrl, downloadUrlRule, summary, compress, onToast)
-                if (rule != null) {
-                    onTest(rule, { result -> onToast(result) }, { err -> onToast(err) })
-                }
-            }
-            Spacer(Modifier.weight(1f))
-            AppTextButton(text = stringResource(Res.string.cancel)) { onDismiss() }
-            AppTextButton(text = stringResource(Res.string.ok)) {
-                getRule(uploadUrl, downloadUrlRule, summary, compress, onToast)?.let { rule ->
-                    DirectLinkUploadStoreProviders.get()?.putConfig(rule)
-                    onDismiss()
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            start = DesignTokens.spacingDefault,
+                            top = 4.dp,
+                            end = DesignTokens.spacingDefault,
+                            bottom = DesignTokens.spacingDefault,
+                        ),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AppTextButton(text = stringResource(Res.string.test)) {
+                        val rule = getRule(uploadUrl, downloadUrlRule, summary, compress, onToast)
+                        if (rule != null) {
+                            onTest(rule, { result -> onToast(result) }, { err -> onToast(err) })
+                        }
+                    }
+                    Spacer(Modifier.weight(1f))
+                    AppTextButton(text = stringResource(Res.string.cancel)) { onDismiss() }
+                    AppTextButton(text = stringResource(Res.string.ok)) {
+                        getRule(uploadUrl, downloadUrlRule, summary, compress, onToast)?.let { rule ->
+                            DirectLinkUploadStoreProviders.get()?.putConfig(rule)
+                            onDismiss()
+                        }
+                    }
                 }
             }
         }

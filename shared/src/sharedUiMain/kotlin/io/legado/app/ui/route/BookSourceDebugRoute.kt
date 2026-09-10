@@ -94,7 +94,7 @@ fun BookSourceDebugRoute(
     // 对话框状态
     var showFxSelector by remember { mutableStateOf(false) }
     // 源码对话框: title to content (对照 app 端 showDialogFragment(TextDialog("html", src)),
-    // 其中 "html" 是 title 位置实参, mode 用默认 TEXT —— 源码要看原文, 不做 HTML 渲染)
+    // 其中 "html" 是 title 位置实参 —— 源码要看原文, 不做 HTML 渲染)
     var srcDialog by remember { mutableStateOf<Pair<String, String>?>(null) }
     var showHelp by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -131,7 +131,7 @@ fun BookSourceDebugRoute(
 
             override fun onChipFxLongClick() {
                 // 对照 app 端: 仅当 exploreKinds 非空时弹 selector
-                if (screenModel.exploreKinds.isNotEmpty()) {
+                if (screenModel.uiState.value.exploreKinds.isNotEmpty()) {
                     // 延迟一帧再弹出: 长按触发时鼠标仍处于按下状态, 立即弹出会让释放事件
                     // 落到对话框 scrim 上误触 dismissOnClickOutside 关闭对话框
                     scope.launch {
@@ -197,7 +197,7 @@ fun BookSourceDebugRoute(
         AppSelectorDialog(
             onDismissRequest = { showFxSelector = false },
             title = strSelectExplore,
-            items = screenModel.exploreKinds.map { it.title },
+            items = state.exploreKinds.map { it.title },
             onItemSelected = { index ->
                 showFxSelector = false
                 screenModel.dispatch(BookSourceDebugUiEvent.SelectExplore(index))
@@ -206,12 +206,11 @@ fun BookSourceDebugRoute(
     }
 
     // 源码查看对话框 (对照 app 端 showDialogFragment(TextDialog("html", src)): 原版 5 处
-    // 都只传 title+content, mode 走默认 TEXT; 标题这里取菜单项文案而非原版的字面 "html")
+    // 都只传 title+content; 标题这里取菜单项文案而非原版的字面 "html")
     srcDialog?.let { (title, content) ->
         TextDialog(
             title = title,
             content = content,
-            onConfirm = { srcDialog = null },
             onDismiss = { srcDialog = null },
         )
     }

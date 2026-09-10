@@ -11,13 +11,12 @@ import io.legado.app.ui.association.DeepLinkImportTarget
 import io.legado.app.ui.association.DeepLinkImportType
 import io.legado.app.ui.association.ImportTargetDialog
 import io.legado.app.ui.dialog.TextInputDialog
-import io.legado.app.ui.widget.dialog.CodeDialog
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.import_file_name
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * 6 个 Import 对话框 + CodeDialog 的 Overlay 渲染实现。
+ * 6 个 Import 对话框 + 按文件名导入编辑框的 Overlay 渲染实现。
  *
  * 对照 app 端原 BaseComposeDialogFragment 子类 (ImportBookSourceDialog 等):
  * - source 文本经 [IntentData] 侧信道传递 (可能为大段 JSON, 不直接走 payload 字符串);
@@ -69,17 +68,6 @@ internal fun ImportFileNameOverlayDialogContent(overlay: AppOverlay.Dialog, navi
             prefs.putString(PreferKey.bookImportFileName, text)
             navigator.dismissOverlay(overlay.key)
         },
-        onDismiss = { navigator.dismissOverlay(overlay.key) },
-    )
-}
-
-// 代码查看对话框 (key="codeDialog", payload=IntentData key for code text)
-@Composable
-internal fun CodeDialogOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavigator) {
-    val code = remember(overlay.payload) { IntentData.get<String>(overlay.payload).orEmpty() }
-    CodeDialog(
-        code = code,
-        disableEdit = true,
         onDismiss = { navigator.dismissOverlay(overlay.key) },
     )
 }

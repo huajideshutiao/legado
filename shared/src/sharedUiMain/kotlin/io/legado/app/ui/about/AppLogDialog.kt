@@ -53,7 +53,6 @@ import org.jetbrains.compose.resources.stringResource
 fun AppLogDialogContent(
     onDismiss: () -> Unit,
 ) {
-    val colors = AppTheme.colors
     val logs by AppLog.logsFlow.collectAsState()
 
     // 选中的堆栈日志 (非 null 时弹出堆栈对话框)
@@ -83,7 +82,6 @@ fun AppLogDialogContent(
         TextDialog(
             title = stringResource(Res.string.log),
             content = item.third?.stackTraceToString() ?: "",
-            onConfirm = { stackTraceItem = null },
             onDismiss = { stackTraceItem = null },
         )
     }
@@ -123,7 +121,7 @@ private fun LogItem(
 /**
  * 应用日志对话框 (带 Dialog 窗口, 供桌面 / iOS 端直接使用)。
  *
- * app 端使用 [AppLogDialogContent] 嵌入自身 DialogFragment，不调用本函数 (避免双层窗口)。
+ * 四端唯一入口 (app 端原 AppLogDialog Fragment 已删, 统一走 app_log Overlay / 直接组合)。
  *
  * @param onDismiss 用户取消 (返回按钮 / 点击对话框外部)
  */

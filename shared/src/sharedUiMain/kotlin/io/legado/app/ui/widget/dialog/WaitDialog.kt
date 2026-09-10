@@ -24,14 +24,12 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * 加载等待对话框内容 (KMP 共享, app + desktop + iOS 复用)。
  *
- * 对应 app 端 `io.legado.app.ui.widget.dialog.WaitDialog` 的 UI 部分 (Row +
+ * 对应原版 `io.legado.app.ui.widget.dialog.WaitDialog` 的 UI 部分 (Row +
  * CircularProgressIndicator + Text), 去掉对 Android ComponentDialog / FragmentActivity /
- * FragmentManager 的依赖, 改为纯 @Composable:
- * - app 端 [WaitDialog] 命令式类保留 (兼容现有 `WaitDialog.from(activity)` 调用方),
- *   其 `setComposeContent { ... }` 内部复用本 [WaitDialogContent];
- * - desktop / iOS 端直接用本 [WaitDialogContent] 或包装版 [WaitDialog] @Composable。
+ * FragmentManager 的依赖, 改为纯 @Composable。调用方要么直接用本 Content 内嵌,
+ * 要么用带外壳的 [WaitDialog] @Composable (四端唯一实现)。
  *
- * UI 逐项对齐 app 端 (严禁改变样式):
+ * UI 逐项对齐原版 (严禁改变样式):
  * - 容器: Row padding 顶 16dp / 左右底 8dp, 垂直居中, 水平居中
  * - 指示器: CircularProgressIndicator size=30dp, color=accent, strokeWidth=2dp
  * - 间距: Spacer width=8dp
@@ -62,14 +60,14 @@ fun WaitDialogContent(
 }
 
 /**
- * 加载等待对话框 (KMP 共享, desktop / iOS 直接复用)。
+ * 加载等待对话框 (KMP 共享, 四端唯一实现)。
  *
  * 用 [AppDialog] 包裹 [WaitDialogContent], 提供声明式 API:
- * - `dismissOnClickOutside = false` 对齐 app 端 `setCanceledOnTouchOutside(false)`
- * - `dismissOnBackPress = true` 对齐 app 端默认返回键关闭
+ * - `dismissOnClickOutside = false` 对齐原版 `setCanceledOnTouchOutside(false)`
+ * - `dismissOnBackPress = true` 对齐原版默认返回键关闭
  *
- * app 端不使用本函数 (app 端用命令式 [WaitDialog] 类 + ComponentDialog 容器,
- * 保持 `WaitDialog.from(activity)` API 兼容); desktop / iOS 端可直接调用。
+ * 四端共用 (原 app 端命令式 WaitDialog 类 + dialogMap 单例已删: 它唯一的调用方
+ * AppUpdate.check 已下沉 shared, 等待态由调用方自己的 state 驱动本函数)。
  *
  * @param visible 是否显示
  * @param message 提示文案 (默认取 i18n key "loading")
