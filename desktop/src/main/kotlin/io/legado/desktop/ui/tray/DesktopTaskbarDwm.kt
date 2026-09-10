@@ -32,6 +32,7 @@ import org.jetbrains.skia.Typeface
 import org.jetbrains.skia.impl.use
 import java.awt.Window
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -149,9 +150,9 @@ internal object DesktopTaskbarDwm {
     @Volatile
     private var coverFailCount = 0
 
-    /** 上次 invalidate 的时间戳 (节流)。 */
-    @Volatile
-    private var lastInvalidateAt = 0L
+    /** 上次 invalidate 的时间戳 (节流)。CAS 而非 volatile 读改写: 三个线程 (EDT/renderExecutor/
+     * coverExecutor) 都会调, 非原子的 check-then-act 会让节流漏判放过重复调用。 */
+    private val lastInvalidateAt = AtomicLong(0L)
 
     private val renderExecutor = Executors.newSingleThreadExecutor { r ->
         Thread(r, "legado-dwm-card").apply { isDaemon = true }
@@ -195,8 +196,9 @@ internal object DesktopTaskbarDwm {
         }
         clearCardContent()
         if (hwnd != null) {
+            // 只关属性, 不再 Invalidate: 属性关掉后 DWM 已不用 iconic 位图, 此刻窗口也即将销毁,
+            // 再调 DwmInvalidateIconicBitmaps 只会返回 E_INVALIDARG 刷噪声日志
             setIconicMode(hwnd, false)
-            invalidateIconicBitmaps(hwnd)
         }
         if (hooked) {
             DesktopWindowChromeNative.removeMessageHandler(messageHandler)
@@ -249,8 +251,8 @@ internal object DesktopTaskbarDwm {
                 iconicEnabled = active
             }
             if (!active) {
+                // 关属性即恢复系统实时缩略图, 不需再 Invalidate (属性已关, DWM 会返回 E_INVALIDARG)
                 clearCardContent()
-                invalidateIconicBitmaps(hwnd)
                 return
             }
         }
@@ -442,7 +444,11 @@ internal object DesktopTaskbarDwm {
         } catch (e: Throwable) {
             AppLog.put("DWM 卡片位图回传失败", e)
         } finally {
+            // DeleteObject 失败 = GDI 句柄泄漏 (每秒一张位图, 泄漏会累积到耗尽 10000 句柄上限),
+            // 不能静默吃: runCatching 只挡异常, 返回 false 也要上报
             runCatching { GDI32.INSTANCE.DeleteObject(hBitmap) }
+                .onSuccess { if (!it) AppLog.put("DWM 卡片位图 DeleteObject 返回 false (GDI 句柄泄漏)") }
+                .onFailure { AppLog.put("DWM 卡片位图 DeleteObject 异常", it) }
         }
     }
 
@@ -950,12 +956,21 @@ internal object DesktopTaskbarDwm {
     private fun setIconicMode(hwnd: WinDef.HWND, enable: Boolean) {
         runCatching {
             requireNotNull(DwmApi.dwmapi) { "dwmapi.dll 加载失败" }
-            DwmApi.setAttribute(
+            // 属性写失败 = 卡片彻底不生效 (DWM 不再发 WM_DWMSENDICONIC* 消息), 按 critical 上报
+            DwmApi.setAttributeChecked(
                 hwnd,
                 DwmApi.DWMWA_FORCE_ICONIC_REPRESENTATION,
-                if (enable) 1 else 0
+                if (enable) 1 else 0,
+                tag = "DWM iconic 开关",
+                critical = true,
             )
-            DwmApi.setAttribute(hwnd, DwmApi.DWMWA_HAS_ICONIC_BITMAP, if (enable) 1 else 0)
+            DwmApi.setAttributeChecked(
+                hwnd,
+                DwmApi.DWMWA_HAS_ICONIC_BITMAP,
+                if (enable) 1 else 0,
+                tag = "DWM iconic 开关",
+                critical = true,
+            )
         }.onFailure {
             AppLog.put("DWM iconic 开关失败", it)
         }
@@ -963,8 +978,9 @@ internal object DesktopTaskbarDwm {
 
     private fun invalidateIconicBitmaps(hwnd: WinDef.HWND) {
         val now = System.currentTimeMillis()
-        if (now - lastInvalidateAt < INVALIDATE_MIN_INTERVAL_MS) return
-        lastInvalidateAt = now
+        val last = lastInvalidateAt.get()
+        if (now - last < INVALIDATE_MIN_INTERVAL_MS) return
+        if (!lastInvalidateAt.compareAndSet(last, now)) return
         runCatching {
             val hr = DwmApi.dwmapi?.DwmInvalidateIconicBitmaps(hwnd) ?: return@runCatching
             if (hr != 0) {

@@ -23,6 +23,8 @@ import io.legado.desktop.help.win.DwmApi
  */
 internal object WebView2WindowTheme {
 
+    private const val TAG = "WebView2WindowTheme"
+
     // dwmapi 绑定与 DWMWA_* 常量统一收口在 help/win/DwmApi (原先与本文件各写一份)
 
     private interface UxTheme : StdCallLibrary {
@@ -58,14 +60,21 @@ internal object WebView2WindowTheme {
         if (DwmApi.dwmapi == null) return
         val dark = isDarkTheme()
         runCatching {
-            DwmApi.setAttribute(hwnd, DwmApi.DWMWA_USE_IMMERSIVE_DARK_MODE, if (dark) 1 else 0)
+            // Win10 不认 35/36 返回 E_INVALIDARG 是预期失败, 走 putDebug 不刷普通日志
+            DwmApi.setAttributeChecked(
+                hwnd, DwmApi.DWMWA_USE_IMMERSIVE_DARK_MODE, if (dark) 1 else 0, TAG
+            )
             themeBgArgb()?.let { bg ->
-                DwmApi.setAttribute(hwnd, DwmApi.DWMWA_CAPTION_COLOR, DwmApi.argbToColorRef(bg))
+                DwmApi.setAttributeChecked(
+                    hwnd, DwmApi.DWMWA_CAPTION_COLOR, DwmApi.argbToColorRef(bg), TAG
+                )
                 val fg = if (dark) 0xFFF2F2F2.toInt() else 0xFF1F1F1F.toInt()
-                DwmApi.setAttribute(hwnd, DwmApi.DWMWA_TEXT_COLOR, DwmApi.argbToColorRef(fg))
+                DwmApi.setAttributeChecked(
+                    hwnd, DwmApi.DWMWA_TEXT_COLOR, DwmApi.argbToColorRef(fg), TAG
+                )
             }
         }.onFailure {
-            AppLog.put("WebView2WindowTheme: DWM 主题同步失败", it)
+            AppLog.put("$TAG: DWM 主题同步失败", it)
         }
         applyDarkControls(hwnd, dark)
     }
@@ -76,7 +85,7 @@ internal object WebView2WindowTheme {
         runCatching {
             theme.SetWindowTheme(hwnd, if (dark) "DarkMode_Explorer" else null, null)
         }.onFailure {
-            AppLog.put("WebView2WindowTheme: SetWindowTheme 失败", it)
+            AppLog.put("$TAG: SetWindowTheme 失败", it)
         }
     }
 }

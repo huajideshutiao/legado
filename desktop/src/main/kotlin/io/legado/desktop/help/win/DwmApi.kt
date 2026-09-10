@@ -1,11 +1,14 @@
 package io.legado.desktop.help.win
 
 import com.sun.jna.Native
+import com.sun.jna.Platform
 import com.sun.jna.Pointer
 import com.sun.jna.platform.win32.WinDef
 import com.sun.jna.ptr.IntByReference
 import com.sun.jna.win32.StdCallLibrary
 import com.sun.jna.win32.W32APIOptions
+import io.legado.app.constant.AppLog
+import io.legado.desktop.help.win.DwmApi.setAttributeChecked
 
 /**
  * dwmapi.dll 公共 JNA 绑定 (DWM 窗口属性)。
@@ -51,10 +54,17 @@ internal object DwmApi {
         ): Int
     }
 
-    /** 加载失败 (非 Windows / dll 缺失) 时为 null, 调用方静默退化。 */
+    /**
+     * 加载失败 (非 Windows / dll 缺失) 时为 null, 调用方静默退化。
+     *
+     * Windows 上加载失败不是预期情形 (主窗口标题栏主题/圆角/任务栏卡片全丢),
+     * 要能看到原因; 非 Windows 上本就没有 dwmapi, 不记日志。
+     */
     val dwmapi: Dwmapi? by lazy {
         runCatching {
             Native.load("dwmapi", Dwmapi::class.java, W32APIOptions.DEFAULT_OPTIONS)
+        }.onFailure {
+            if (Platform.isWindows()) AppLog.put("dwmapi.dll 加载失败 (DWM 窗口属性全部失效)", it)
         }.getOrNull()
     }
 
@@ -75,12 +85,36 @@ internal object DwmApi {
     /**
      * 单条 DWM 属性写入 (int 值经 IntByReference 映射 int*)。
      *
-     * 返回 HRESULT (非 0 如 Win10 不认 35/36 由调用方决定是否忽略);
+     * private: 外部一律走 [setAttributeChecked] (丢弃 HRESULT 会让写失败无迹可寻);
      * dwmapi 未加载时返回 null。
      */
-    fun setAttribute(hwnd: WinDef.HWND, attribute: Int, value: Int): Int? {
+    private fun setAttribute(hwnd: WinDef.HWND, attribute: Int, value: Int): Int? {
         val dwm = dwmapi ?: return null
         return dwm.DwmSetWindowAttribute(hwnd, attribute, IntByReference(value), Int.SIZE_BYTES)
+    }
+
+    /**
+     * 属性写入 + HRESULT 检查 (三处调用点原先各写一份检查逻辑, 收敛于此)。
+     * 非零 HRESULT 不中断后续属性写入, 只记日志。
+     *
+     * @param tag 日志前缀, 标明哪个窗口/功能在写
+     * @param critical true = 写失败即功能彻底失效 (如任务栏卡片的 iconic 开关), 走 [AppLog.put];
+     *   false = 已知平台差异导致的预期失败 (如 Win10 不认 35/36), 只走 [AppLog.putDebug]
+     * @return 写入成功且 HRESULT == 0 返回 true; 底层调用失败、非零 HRESULT 或 dwmapi 不可用返回 false
+     */
+    fun setAttributeChecked(
+        hwnd: WinDef.HWND,
+        attribute: Int,
+        value: Int,
+        tag: String,
+        critical: Boolean = false,
+    ): Boolean {
+        val hr = setAttribute(hwnd, attribute, value) ?: return false
+        if (hr == 0) return true
+        val msg = "$tag: DwmSetWindowAttribute(attr=$attribute) 返回 HRESULT=0x" +
+            hr.toUInt().toString(16)
+        if (critical) AppLog.put(msg) else AppLog.putDebug(msg)
+        return false
     }
 
     /**
