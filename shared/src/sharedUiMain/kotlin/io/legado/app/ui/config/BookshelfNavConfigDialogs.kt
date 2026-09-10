@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -436,38 +435,20 @@ fun BookshelfLayoutConfigDialog(onDismiss: () -> Unit) {
 
 /**
  * 底栏配置对话框 (shared Compose 重建, 对照 app 端 ThemeConfigHost.configBottomNav
- * + dialog_bottom_nav_config.xml)。供桌面端平台能力调用; app 端仍走原 Fragment 实现。
+ * + dialog_bottom_nav_config.xml)。各平台复用同一 controller 与 Compose 内容。
  *
  * 顺序网格: 点按开关启用, 横向拖拽换序 (对照 rv_nav_items + ItemTouchHelper);
  * 高度/图标大小滑条 (对照 sb_height/sb_icon); 标签模式单选 (对照 rg_label_mode)。
  */
 @Composable
 fun BottomNavConfigDialog(onDismiss: () -> Unit) {
-    val prefs = remember { PreferenceProviders.get() }
-    val eventBus = LocalEventBusProvider.current
-    val appConfig = io.legado.app.help.config.AppConfigProviders.get()
+    val controller = remember { BottomNavConfigController() }
+    val navItems = controller.items
+    val height = controller.height
+    val iconSize = controller.iconSize
+    val labelMode = controller.labelMode
     val colors = AppTheme.colors
-
-    val defaultNavItems = listOf(
-        BottomNavConfigItem(BottomNavTag.HOME, Res.string.home, appConfig.showHome),
-        BottomNavConfigItem(BottomNavTag.BOOKSHELF, Res.string.bookshelf, true),
-        BottomNavConfigItem(BottomNavTag.DISCOVERY, Res.string.discovery, appConfig.showDiscovery),
-        BottomNavConfigItem(BottomNavTag.MY, Res.string.my, true),
-    )
-    // 对照原版: 保存顺序合法才采用, 否则回退默认顺序
-    val savedOrder = appConfig.bottomNavItemOrder.orEmpty().split(",").filter { it.isNotEmpty() }
-    val defaultTags = defaultNavItems.map { it.tag }.toSet()
-    val initialItems = if (savedOrder.size == defaultNavItems.size
-        && savedOrder.toSet() == defaultTags
-    ) {
-        savedOrder.mapNotNull { tag -> defaultNavItems.find { it.tag == tag } }
-    } else {
-        defaultNavItems
-    }
-    val navItems = remember { SnapshotStateList<BottomNavConfigItem>().apply { addAll(initialItems) } }
-    val height = remember { mutableIntStateOf(appConfig.bottomBarHeight) }
-    val iconSize = remember { mutableIntStateOf(appConfig.bottomBarIconSize) }
-    val labelMode = remember { mutableIntStateOf(appConfig.bottomBarLabelMode) }
+    val eventBus = LocalEventBusProvider.current
 
     AppDialog(
         onDismissRequest = onDismiss,
@@ -502,7 +483,7 @@ fun BottomNavConfigDialog(onDismiss: () -> Unit) {
                     val navListState = rememberLazyListState()
                     val navReorderState =
                         rememberReorderableListState(navListState, vertical = false) { from, to ->
-                            swapItems(navItems, from, to)
+                            controller.move(from, to)
                         }
                     BoxWithConstraints(Modifier.fillMaxWidth()) {
                         val cellWidth = maxWidth / navItems.size
@@ -516,12 +497,7 @@ fun BottomNavConfigDialog(onDismiss: () -> Unit) {
                                         item = item,
                                         iconSize = iconSize.intValue,
                                         cellWidth = cellWidth,
-                                        onToggle = {
-                                            val idx = navItems.indexOfFirst { it.tag == item.tag }
-                                            if (idx >= 0) {
-                                                navItems[idx] = item.copy(enabled = !item.enabled)
-                                            }
-                                        },
+                                        onToggle = { controller.toggle(item.tag) },
                                     )
                                 }
                             }
@@ -601,44 +577,15 @@ fun BottomNavConfigDialog(onDismiss: () -> Unit) {
                     .padding(horizontal = DesignTokens.spacingDefault, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Spacer(Modifier.weight(1f))
                 AppTextButton(text = stringResource(Res.string.reset)) {
-                    // 对照原版 neutralButton: 恢复默认值但不关闭对话框
-                    navItems.clear()
-                    navItems.addAll(defaultNavItems.map { it.copy(enabled = true) })
-                    height.intValue = AppConfigConstants.BOTTOM_BAR_HEIGHT_DEFAULT
-                    iconSize.intValue = AppConfigConstants.BOTTOM_BAR_ICON_DEFAULT
-                    labelMode.intValue = AppConfigConstants.BOTTOM_BAR_LABEL_DEFAULT
+                    controller.reset()
                 }
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.weight(1f))
                 AppTextButton(text = stringResource(Res.string.cancel), onClick = onDismiss)
                 Spacer(Modifier.width(8.dp))
                 AppTextButton(text = stringResource(Res.string.ok)) {
                     onDismiss()
-                    val newShowHome = navItems.find { it.tag == BottomNavTag.HOME }?.enabled ?: true
-                    val newShowDiscovery =
-                        navItems.find { it.tag == BottomNavTag.DISCOVERY }?.enabled ?: true
-                    val newOrder = navItems.joinToString(",") { it.tag }
-                    var changed = appConfig.showHome != newShowHome
-                        || appConfig.showDiscovery != newShowDiscovery
-                        || appConfig.bottomNavItemOrder != newOrder
-                    prefs.putBoolean(PreferKey.showHome, newShowHome)
-                    prefs.putBoolean(PreferKey.showDiscovery, newShowDiscovery)
-                    prefs.putString(PreferKey.bottomNavItemOrder, newOrder)
-                    if (appConfig.bottomBarHeight != height.intValue) {
-                        prefs.putInt(PreferKey.bottomBarHeight, height.intValue)
-                        changed = true
-                    }
-                    if (appConfig.bottomBarIconSize != iconSize.intValue) {
-                        prefs.putInt(PreferKey.bottomBarIconSize, iconSize.intValue)
-                        changed = true
-                    }
-                    if (appConfig.bottomBarLabelMode != labelMode.intValue) {
-                        prefs.putInt(PreferKey.bottomBarLabelMode, labelMode.intValue)
-                        changed = true
-                    }
-                    // 对照原版: 有变更才 recreateActivities()
-                    if (changed) eventBus.emitRecreate()
+                    if (controller.save()) eventBus.emitRecreate()
                 }
             }
             }
@@ -646,13 +593,92 @@ fun BottomNavConfigDialog(onDismiss: () -> Unit) {
     }
 }
 
-/** 底栏配置条目 (对照 app 端 BottomNavConfigItem, 书架/我的不可隐藏) */
-private data class BottomNavConfigItem(
+/** 底栏配置业务状态；默认值、顺序校验、保存和重置由各平台共用。 */
+class BottomNavConfigController {
+    private val prefs = PreferenceProviders.get()
+    private val appConfig = io.legado.app.help.config.AppConfigProviders.get()
+    private val defaults = listOf(
+        BottomNavConfigItem(BottomNavTag.HOME, appConfig.showHome),
+        BottomNavConfigItem(BottomNavTag.BOOKSHELF, true),
+        BottomNavConfigItem(BottomNavTag.DISCOVERY, appConfig.showDiscovery),
+        BottomNavConfigItem(BottomNavTag.MY, true),
+    )
+
+    val items = SnapshotStateList<BottomNavConfigItem>().apply {
+        val saved = appConfig.bottomNavItemOrder.split(",").filter(String::isNotEmpty)
+        val validTags = defaults.map { it.tag }.toSet()
+        addAll(
+            if (saved.size == defaults.size && saved.toSet() == validTags) {
+                saved.mapNotNull { tag -> defaults.find { it.tag == tag } }
+            } else {
+                defaults
+            }
+        )
+    }
+    val height = mutableIntStateOf(appConfig.bottomBarHeight)
+    val iconSize = mutableIntStateOf(appConfig.bottomBarIconSize)
+    val labelMode = mutableIntStateOf(appConfig.bottomBarLabelMode)
+
+    fun toggle(tag: String) {
+        val index = items.indexOfFirst { it.tag == tag }
+        if (index >= 0 && !items[index].locked) {
+            items[index] = items[index].copy(enabled = !items[index].enabled)
+        }
+    }
+
+    fun move(from: Int, to: Int) {
+        val item = items[from]
+        items[from] = items[to]
+        items[to] = item
+    }
+
+    fun reset() {
+        items.clear()
+        items.addAll(defaults.map { it.copy(enabled = true) })
+        height.intValue = AppConfigConstants.BOTTOM_BAR_HEIGHT_DEFAULT
+        iconSize.intValue = AppConfigConstants.BOTTOM_BAR_ICON_DEFAULT
+        labelMode.intValue = AppConfigConstants.BOTTOM_BAR_LABEL_DEFAULT
+    }
+
+    fun save(): Boolean {
+        val showHome = items.find { it.tag == BottomNavTag.HOME }?.enabled ?: true
+        val showDiscovery = items.find { it.tag == BottomNavTag.DISCOVERY }?.enabled ?: true
+        val order = items.joinToString(",") { it.tag }
+        val changed = appConfig.showHome != showHome ||
+            appConfig.showDiscovery != showDiscovery ||
+            appConfig.bottomNavItemOrder != order ||
+            appConfig.bottomBarHeight != height.intValue ||
+            appConfig.bottomBarIconSize != iconSize.intValue ||
+            appConfig.bottomBarLabelMode != labelMode.intValue
+        prefs.putBoolean(PreferKey.showHome, showHome)
+        prefs.putBoolean(PreferKey.showDiscovery, showDiscovery)
+        prefs.putString(PreferKey.bottomNavItemOrder, order)
+        if (appConfig.bottomBarHeight != height.intValue) {
+            prefs.putInt(PreferKey.bottomBarHeight, height.intValue)
+        }
+        if (appConfig.bottomBarIconSize != iconSize.intValue) {
+            prefs.putInt(PreferKey.bottomBarIconSize, iconSize.intValue)
+        }
+        if (appConfig.bottomBarLabelMode != labelMode.intValue) {
+            prefs.putInt(PreferKey.bottomBarLabelMode, labelMode.intValue)
+        }
+        return changed
+    }
+}
+
+/** 底栏配置条目，书架/我的不可隐藏。 */
+data class BottomNavConfigItem(
     val tag: String,
-    val nameRes: org.jetbrains.compose.resources.StringResource,
     val enabled: Boolean,
 ) {
     val locked get() = tag == BottomNavTag.BOOKSHELF || tag == BottomNavTag.MY
+}
+
+private fun bottomNavNameRes(tag: String) = when (tag) {
+    BottomNavTag.HOME -> Res.string.home
+    BottomNavTag.BOOKSHELF -> Res.string.bookshelf
+    BottomNavTag.DISCOVERY -> Res.string.discovery
+    else -> Res.string.my
 }
 
 /** 对照 MainNavItem.iconKey: 启用取实心, 禁用取空心 */
@@ -661,13 +687,6 @@ private fun bottomNavIconKey(tag: String, enabled: Boolean): String = when (tag)
     BottomNavTag.BOOKSHELF -> if (enabled) "ic_bottom_books_s" else "ic_bottom_books_e"
     BottomNavTag.DISCOVERY -> if (enabled) "ic_bottom_explore_s" else "ic_bottom_explore_e"
     else -> if (enabled) "ic_bottom_person_s" else "ic_bottom_person_e"
-}
-
-/** commonMain 无 java.util.Collections, 手写交换 (SnapshotStateList 支持索引写) */
-private fun <T> swapItems(list: SnapshotStateList<T>, a: Int, b: Int) {
-    val tmp = list[a]
-    list[a] = list[b]
-    list[b] = tmp
 }
 
 /**
@@ -693,12 +712,12 @@ private fun RuleItemScope.NavConfigItem(
     ) {
         Icon(
             painter = rememberPainter(bottomNavIconKey(item.tag, item.enabled)),
-            contentDescription = stringResource(item.nameRes),
+            contentDescription = stringResource(bottomNavNameRes(item.tag)),
             tint = tint,
             modifier = Modifier.size(iconSize.dp),
         )
         Text(
-            stringResource(item.nameRes),
+            stringResource(bottomNavNameRes(item.tag)),
             color = tint,
             fontSize = 12.sp,
         )

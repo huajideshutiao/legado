@@ -124,7 +124,7 @@ fun DefaultCoverGalleryDialogHost(
         AppTheme {
             Surface(
                 shape = DesignTokens.dialogShape,
-                color = AppTheme.colors.background,
+                color = AppTheme.colors.fillet,
                 modifier = Modifier.appDialogSize(fullHeight = true),
             ) {
                 Column(Modifier.fillMaxSize()) {
@@ -151,7 +151,6 @@ fun DefaultCoverGalleryDialogHost(
                                     .padding(8.dp)
                                     .aspectRatio(3f / 4f)
                                     .clip(DesignTokens.shapeDefault)
-                                    .background(AppTheme.colors.fillet)
                                     .clickable(enabled = !adding) {
                                         adding = true
                                         scope.launch {

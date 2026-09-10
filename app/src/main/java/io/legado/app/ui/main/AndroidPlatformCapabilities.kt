@@ -12,21 +12,14 @@ import android.provider.Settings
 import android.view.RoundedCorner
 import android.view.ViewConfiguration
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -40,10 +33,8 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -67,7 +58,6 @@ import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.BookType
-import io.legado.app.constant.BottomNavTag
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.appInfo
 import io.legado.app.data.appDb
@@ -96,7 +86,6 @@ import io.legado.app.help.book.toShelfJsonMap
 import io.legado.app.help.book.toggleBookshelfCore
 import io.legado.app.help.book.tryParesExportFileName
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.config.AppConfigConstants
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.coroutine.Coroutine
@@ -129,9 +118,6 @@ import io.legado.app.ui.compose.dialogs.selector
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.platform.rememberStringArray
-import io.legado.app.ui.compose.reorderable.RuleItemScope
-import io.legado.app.ui.compose.reorderable.RuleReorderableItem
-import io.legado.app.ui.compose.reorderable.rememberReorderableListState
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.config.ThemeCustomizeDialog
 import io.legado.app.ui.root.AppNavigatorProviders
@@ -166,7 +152,6 @@ import io.legado.app.utils.getClipText
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.isPad
-import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.isUri
 import io.legado.app.utils.list
 import io.legado.app.utils.openFileUri
@@ -174,6 +159,7 @@ import io.legado.app.utils.openInputStream
 import io.legado.app.utils.openOutputStream
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.postEvent
+import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.restart
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.share
@@ -203,7 +189,6 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.io.File
 import java.io.FileOutputStream
-import java.util.Collections
 
 /**
  * 等 Overlay 结果的超时上限: 取消关闭对话框不回传结果, 无超时则协程永久挂起。
@@ -681,9 +666,6 @@ class AndroidPlatformCapabilities(
     override fun goBackImportDir() {
         goBackDir()
     }
-
-    // 关于页"检查更新": 四端同一条 shared 链路 (AppUpdateManager 已在 App.onCreate 注册
-    // AndroidUpdateEnvironment), 无需平台分支, 所以 checkUpdateSupported 保持默认 false
 
     // 对照原版 AboutFragment "crashLog" 分支 / showDialogFragment<CrashLogsDialog>
     // 迁 Compose Overlay: 原 showDialogFragment<CrashLogsDialog>() 已由
@@ -1805,71 +1787,9 @@ class AndroidPlatformCapabilities(
         ComponentName(App.instance, "io.legado.app.ui.association.ProcessTextActivity")
     }
 
-    // 对照 ThemeConfigFragment.configBottomNav: dialog_bottom_nav_config.xml Compose 重建
+    // 底栏业务状态/UI 统一由 shared controller 托管，Android 仅负责 Overlay 宿主适配。
     override fun showBottomNavConfigDialog() {
-        val defaultNavItems = listOf(
-            BottomNavConfigItem(BottomNavTag.HOME, androidAppString("home"), AppConfig.showHome),
-            BottomNavConfigItem(BottomNavTag.BOOKSHELF, androidAppString("bookshelf"), true),
-            BottomNavConfigItem(
-                BottomNavTag.DISCOVERY,
-                androidAppString("discovery"),
-                AppConfig.showDiscovery
-            ),
-            BottomNavConfigItem(BottomNavTag.MY, androidAppString("my"), true),
-        )
-        // 对照原版: 保存顺序合法才采用, 否则回退默认顺序
-        val savedOrder =
-            AppConfig.bottomNavItemOrder.orEmpty().split(",").filter { it.isNotEmpty() }
-        val defaultTags = defaultNavItems.map { it.tag }.toSet()
-        val initialItems = if (savedOrder.size == defaultNavItems.size
-            && savedOrder.toSet() == defaultTags
-        ) {
-            savedOrder.mapNotNull { tag -> defaultNavItems.find { it.tag == tag } }
-        } else {
-            defaultNavItems
-        }
-        val navItems = mutableStateListOf<BottomNavConfigItem>().apply { addAll(initialItems) }
-        val height = mutableIntStateOf(AppConfig.bottomBarHeight)
-        val iconSize = mutableIntStateOf(AppConfig.bottomBarIconSize)
-        val labelMode = mutableIntStateOf(AppConfig.bottomBarLabelMode)
-
-        activity.alert(title = androidAppString("bottom_nav_config")) {
-            customView {
-                BottomNavConfigContent(navItems, height, iconSize, labelMode)
-            }
-            okButton {
-                val newShowHome = navItems.find { it.tag == BottomNavTag.HOME }?.enabled ?: true
-                val newShowDiscovery =
-                    navItems.find { it.tag == BottomNavTag.DISCOVERY }?.enabled ?: true
-                val newOrder = navItems.joinToString(",") { it.tag }
-                var changed = AppConfig.showHome != newShowHome
-                    || AppConfig.showDiscovery != newShowDiscovery
-                    || AppConfig.bottomNavItemOrder != newOrder
-                AppConfig.showHome = newShowHome
-                AppConfig.showDiscovery = newShowDiscovery
-                AppConfig.bottomNavItemOrder = newOrder
-                if (AppConfig.bottomBarHeight != height.intValue) {
-                    AppConfig.bottomBarHeight = height.intValue; changed = true
-                }
-                if (AppConfig.bottomBarIconSize != iconSize.intValue) {
-                    AppConfig.bottomBarIconSize = iconSize.intValue; changed = true
-                }
-                if (AppConfig.bottomBarLabelMode != labelMode.intValue) {
-                    AppConfig.bottomBarLabelMode = labelMode.intValue; changed = true
-                }
-                // 对照原版: 有变更才 recreateActivities()
-                if (changed) postEvent(EventBus.RECREATE, "")
-            }
-            neutralButtonRetain(androidAppString("reset")) {
-                // 对照原版 neutralButton: 恢复默认值但不关闭对话框
-                navItems.clear()
-                navItems.addAll(defaultNavItems.map { it.copy(enabled = true) })
-                height.intValue = AppConfigConstants.BOTTOM_BAR_HEIGHT_DEFAULT
-                iconSize.intValue = AppConfigConstants.BOTTOM_BAR_ICON_DEFAULT
-                labelMode.intValue = AppConfigConstants.BOTTOM_BAR_LABEL_DEFAULT
-            }
-            cancelButton()
-        }
+        AppNavigatorProviders.get().showOverlay(AppOverlay.Dialog("bottom_nav_config"))
     }
 
     // 对照 ThemeConfigFragment.configBookshelf: 书架布局配置对话框 (dialog_bookshelf_config.xml Compose 重建)
@@ -2265,168 +2185,6 @@ class AndroidPlatformCapabilities(
             }
         } catch (e: Exception) {
             AppLog.put("保存Logcat失败\n$e", e)
-        }
-    }
-}
-
-/** 底栏配置条目 (对照 ThemeConfigFragment.configBottomNav 内 NavItem, 书架/我的不可隐藏) */
-private data class BottomNavConfigItem(
-    val tag: String,
-    val name: String,
-    val enabled: Boolean,
-) {
-    val locked get() = tag == BottomNavTag.BOOKSHELF || tag == BottomNavTag.MY
-}
-
-/** 对照 MainNavItem.iconKey: 启用取实心, 禁用取空心 */
-private fun bottomNavIconKey(tag: String, enabled: Boolean): String = when (tag) {
-    BottomNavTag.HOME -> if (enabled) "ic_bottom_home_s" else "ic_bottom_home_e"
-    BottomNavTag.BOOKSHELF -> if (enabled) "ic_bottom_books_s" else "ic_bottom_books_e"
-    BottomNavTag.DISCOVERY -> if (enabled) "ic_bottom_explore_s" else "ic_bottom_explore_e"
-    else -> if (enabled) "ic_bottom_person_s" else "ic_bottom_person_e"
-}
-
-/** 底栏配置单项: 长按拖拽换序 + 点击切换启用 (对照 rv_nav_items item) */
-@Composable
-private fun RuleItemScope.AndroidNavConfigItem(
-    item: BottomNavConfigItem,
-    iconSize: Int,
-    cellWidth: androidx.compose.ui.unit.Dp,
-    onToggle: () -> Unit,
-) {
-    val colors = AppTheme.colors
-    val tint = if (item.enabled) colors.accent else colors.primaryText
-    Column(
-        Modifier
-            .width(cellWidth)
-            .longPressDraggableHandle(enabled = true)
-            .clickable(enabled = !item.locked, onClick = onToggle)
-            .padding(vertical = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Icon(
-            painter = rememberPainter(bottomNavIconKey(item.tag, item.enabled)),
-            contentDescription = item.name,
-            tint = tint,
-            modifier = Modifier.size(iconSize.dp),
-        )
-        Text(
-            item.name,
-            color = tint,
-            fontSize = 12.sp,
-        )
-    }
-}
-
-/**
- * 底栏配置正文 (对照 dialog_bottom_nav_config.xml Compose 重建)。
- * 顺序网格: 点按开关启用, 横向拖拽换序 (对照 rv_nav_items + ItemTouchHelper);
- * 高度/图标大小滑条 (对照 sb_height/sb_icon); 标签模式单选 (对照 rg_label_mode)。
- */
-@Composable
-private fun BottomNavConfigContent(
-    items: SnapshotStateList<BottomNavConfigItem>,
-    height: MutableState<Int>,
-    iconSize: MutableState<Int>,
-    labelMode: MutableState<Int>,
-) {
-    val colors = AppTheme.colors
-    Column(Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
-        Text(
-            rememberString("bottom_nav_items_order"),
-            color = colors.primaryText,
-            fontWeight = FontWeight.Bold,
-        )
-        Spacer(Modifier.height(8.dp))
-        val navListState = rememberLazyListState()
-        val navReorderState =
-            rememberReorderableListState(navListState, vertical = false) { from, to ->
-                Collections.swap(items, from, to)
-            }
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val cellWidth = maxWidth / items.size
-            LazyRow(
-                state = navListState,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                items(items, key = { it.tag }) { item ->
-                    RuleReorderableItem(navReorderState, key = item.tag) {
-                        AndroidNavConfigItem(
-                            item = item,
-                            iconSize = iconSize.value,
-                            cellWidth = cellWidth,
-                            onToggle = {
-                                val idx = items.indexOfFirst { it.tag == item.tag }
-                                if (idx >= 0) {
-                                    items[idx] = item.copy(enabled = !item.enabled)
-                                }
-                            },
-                        )
-                    }
-                }
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        // 高度滑条 (对照 sb_height: MIN 36, 范围 36..80)
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                rememberString("bottom_bar_height"),
-                color = colors.primaryText,
-                modifier = Modifier.weight(1f),
-            )
-            Text("${height.value}dp", color = colors.primaryText)
-        }
-        AppSlider(
-            value = height.value - AppConfigConstants.BOTTOM_BAR_HEIGHT_MIN,
-            max = AppConfigConstants.BOTTOM_BAR_HEIGHT_MAX - AppConfigConstants.BOTTOM_BAR_HEIGHT_MIN,
-            onValueChange = { height.value = it + AppConfigConstants.BOTTOM_BAR_HEIGHT_MIN },
-        )
-        // 图标大小滑条 (对照 sb_icon: MIN 18, 范围 18..36)
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                rememberString("bottom_bar_icon_size"),
-                color = colors.primaryText,
-                modifier = Modifier.weight(1f),
-            )
-            Text("${iconSize.value}dp", color = colors.primaryText)
-        }
-        AppSlider(
-            value = iconSize.value - AppConfigConstants.BOTTOM_BAR_ICON_MIN,
-            max = AppConfigConstants.BOTTOM_BAR_ICON_MAX - AppConfigConstants.BOTTOM_BAR_ICON_MIN,
-            onValueChange = { iconSize.value = it + AppConfigConstants.BOTTOM_BAR_ICON_MIN },
-        )
-        // 标签模式单选 (对照 rg_label_mode: 0=隐藏 1=常显 2=仅选中 3=自动, 可横向滚动)
-        Text(
-            rememberString("bottom_bar_label_mode"),
-            color = colors.primaryText,
-            modifier = Modifier.padding(top = 4.dp),
-        )
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .selectableGroup(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            val labelRes = listOf(
-                rememberString("bottom_bar_label_unlabeled"),
-                rememberString("bottom_bar_label_labeled"),
-                rememberString("bottom_bar_label_selected"),
-                rememberString("bottom_bar_label_auto"),
-            )
-            labelRes.forEachIndexed { i, res ->
-                Row(
-                    Modifier
-                        .selectable(
-                            selected = labelMode.value == i,
-                            onClick = { labelMode.value = i })
-                        .padding(horizontal = 4.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    AppRadioButton(selected = labelMode.value == i, onClick = null)
-                    Text(res, color = colors.primaryText)
-                }
-            }
         }
     }
 }
