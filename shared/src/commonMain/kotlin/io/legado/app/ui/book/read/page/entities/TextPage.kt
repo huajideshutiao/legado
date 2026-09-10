@@ -33,7 +33,6 @@ data class TextPage(
 
     /** 页首字符的章节内偏移；零行占位页（视口未注入时的消息页）无行，页首偏移即 0 */
     val chapterPosition: Int get() = textLines.firstOrNull()?.chapterPosition ?: 0
-    val searchResult = hashSetOf<TextColumn>()
     var isMsgPage: Boolean = false
 
     /**

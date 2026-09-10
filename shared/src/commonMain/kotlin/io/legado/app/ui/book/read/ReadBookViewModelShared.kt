@@ -34,6 +34,7 @@ import io.legado.app.model.fileBook.FileBookProviders
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.book.read.ReadBookViewModelShared.LayoutConfig.Companion.DEFAULT
 import io.legado.app.ui.book.read.page.PageDelegateShared
+import io.legado.app.ui.book.read.page.ReaderFontWeights
 import io.legado.app.ui.book.read.page.entities.TextChapterShared
 import io.legado.app.ui.book.read.page.entities.TextLine
 import io.legado.app.ui.book.read.page.entities.TextPage
@@ -301,7 +302,7 @@ class ReadBookViewModelShared(
     /**
      * 当前章节索引 (委托 [readBook.durChapterIndex])。
      *
-     * 桌面端 TocDrawerContent 用其高亮当前章节 + 跳转后自动滚动定位。
+     * 目录页/目录弹窗用其高亮当前章节 + 跳转后自动滚动定位。
      * 切章时 [moveToPrevChapter] / [moveToNextChapter] / [loadChapter] 会通过
      * [ReadBookShared.updateDurChapterIndex] 推送新值, Compose 自动重组刷新高亮。
      */
@@ -474,8 +475,8 @@ class ReadBookViewModelShared(
     }
 
     private fun applyLayoutConfig(config: LayoutConfig) {
-        // 换字体必须整表失效：ParagraphLayoutCache 的 key（SimpleChapterLayout.bodyFontKey）
-        // 只含字号/字距/useZhLayout，字号不变换字体会命中旧断行（字形宽度已变）
+        // 换字体必须整表失效：ParagraphLayoutCache 的 key（SimpleChapterLayout.bodyFontKey）只含
+        // 字号/字距，字号不变换字体会命中旧断行（字形宽度已变）
         if (config.textFontPath != _layoutConfig.value.textFontPath) {
             paragraphLayoutCache.clear()
         }
@@ -847,14 +848,18 @@ class ReadBookViewModelShared(
 
             val cfg = _layoutConfig.value
             val measurer = TextMeasurerProviders
-                .createOrNull(cfg.textSizePx, cfg.letterSpacingPx, cfg.textFontPath)
+                .createOrNull(
+                    cfg.textSizePx, cfg.letterSpacingPx, cfg.textFontPath, cfg.contentWeight,
+                )
                 ?: SimpleTextMeasurer(
                     textSizePx = cfg.textSizePx,
                     letterSpacingPx = cfg.letterSpacingPx,
                     descent = cfg.textSizePx * 0.2f,
                 )
             val titleMeasurer = TextMeasurerProviders
-                .createOrNull(cfg.titleSizePx, cfg.letterSpacingPx, cfg.textFontPath)
+                .createOrNull(
+                    cfg.titleSizePx, cfg.letterSpacingPx, cfg.textFontPath, cfg.titleWeight,
+                )
                 ?: SimpleTextMeasurer(
                     textSizePx = cfg.titleSizePx,
                     letterSpacingPx = cfg.letterSpacingPx,
@@ -1770,16 +1775,20 @@ class ReadBookViewModelShared(
     private fun buildLayout(): SimpleChapterLayout {
         val cfg = _layoutConfig.value
         val measurer = TextMeasurerProviders
-            .createOrNull(cfg.textSizePx, cfg.letterSpacingPx, cfg.textFontPath)
+            .createOrNull(
+                cfg.textSizePx, cfg.letterSpacingPx, cfg.textFontPath, cfg.contentWeight,
+            )
             ?: SimpleTextMeasurer(
                 textSizePx = cfg.textSizePx,
                 letterSpacingPx = cfg.letterSpacingPx,
                 descent = cfg.textSizePx * 0.2f,
             )
         // 标题独立度量器：对应 app 端 titlePaint（字号 = textSize + titleSize），
-        // 与绘制侧 ReaderDrawStyle.titleStyle 同一字号口径
+        // 与绘制侧 ReaderDrawStyle.titleStyle 同一字号与同一字重
         val titleMeasurer = TextMeasurerProviders
-            .createOrNull(cfg.titleSizePx, cfg.letterSpacingPx, cfg.textFontPath)
+            .createOrNull(
+                cfg.titleSizePx, cfg.letterSpacingPx, cfg.textFontPath, cfg.titleWeight,
+            )
             ?: SimpleTextMeasurer(
                 textSizePx = cfg.titleSizePx,
                 letterSpacingPx = cfg.letterSpacingPx,
@@ -1791,9 +1800,9 @@ class ReadBookViewModelShared(
             visibleHeight = cfg.visibleHeight,
             paddingLeft = cfg.paddingLeft,
             paddingTop = cfg.paddingTop,
-            // 真实字体高度（descent - ascent，对应 app 端 contentPaintTextHeight = paint.textHeight），
-            // 行距 = textHeight * lineSpacingExtra，与 app 端口径一致
-            textHeight = measurer.descent - measurer.ascent,
+            // 真实字体高度（descent - ascent + leading，与 app 端 `TextPaint.textHeight` 同口径），
+            // 行距 = textHeight * lineSpacingExtra
+            textHeight = measurer.descent - measurer.ascent + measurer.leading,
             descent = measurer.descent,
             lineSpacingExtra = cfg.lineSpacingExtra,
             paragraphSpacing = cfg.paragraphSpacing,
@@ -1802,7 +1811,6 @@ class ReadBookViewModelShared(
             endPadding = cfg.endPadding,
             paragraphIndent = cfg.paragraphIndent,
             textFullJustify = cfg.textFullJustify,
-            useZhLayout = cfg.useZhLayout,
             viewWidth = cfg.viewWidth,
             textBottomJustify = cfg.textBottomJustify,
             doublePage = cfg.doublePage,
@@ -1813,7 +1821,7 @@ class ReadBookViewModelShared(
             indentChar = "　",
             titleMode = cfg.titleMode,
             titleMeasurer = titleMeasurer,
-            titleTextHeight = titleMeasurer.descent - titleMeasurer.ascent,
+            titleTextHeight = titleMeasurer.descent - titleMeasurer.ascent + titleMeasurer.leading,
             titleDescent = titleMeasurer.descent,
             reviewChar = "▨",
             srcReplaceChar = ChapterContentParserShared.srcReplaceChar,
@@ -2302,13 +2310,15 @@ class ReadBookViewModelShared(
         }
         if (cfg.visibleWidth <= 0 || cfg.visibleHeight <= 0 || msg.isEmpty()) return page
         val measurer = TextMeasurerProviders
-            .createOrNull(cfg.textSizePx, cfg.letterSpacingPx, cfg.textFontPath)
+            .createOrNull(
+                cfg.textSizePx, cfg.letterSpacingPx, cfg.textFontPath, cfg.contentWeight,
+            )
             ?: SimpleTextMeasurer(
                 textSizePx = cfg.textSizePx,
                 letterSpacingPx = cfg.letterSpacingPx,
                 descent = cfg.textSizePx * 0.2f,
             )
-        val textHeight = measurer.descent - measurer.ascent
+        val textHeight = measurer.descent - measurer.ascent + measurer.leading
         val lineSpacing = textHeight * cfg.lineSpacingExtra
         // 贪心换行：按 \n 分段，逐字累积宽度，超出可见宽度断行（消息文案短，足够）。
         // 同时记下每行首字符在 msg 内的偏移：折行不增删字符，段间隔一个 \n，
@@ -2398,13 +2408,14 @@ class ReadBookViewModelShared(
      *   [SimpleChapterLayout] 用独立标题度量器按本字段度量并排版）
      * @param letterSpacingPx 字间距（px，= `ReadBookConfig.letterSpacing * textSizePx`）
      * @param lineSpacingExtra 行高乘数（= `ReadBookConfig.lineSpacingExtra / 10`）
+     * @param textBold 字重档位（= `ReadBookConfig.textBold`），经 [contentWeight] / [titleWeight]
+     *   决定度量器取哪一面字重
      * @param paragraphSpacing 段间距（对应 app 端 `ChapterProvider.paragraphSpacing`）
      * @param titleTopSpacing 标题顶部留白（px）
      * @param titleBottomSpacing 标题底部留白（px）
      * @param paragraphIndent 段落缩进字符串（默认全角空格 `　　`）
      * @param textFullJustify 是否两端对齐
      * @param textBottomJustify 是否底部对齐
-     * @param useZhLayout 是否启用 ZhLineBreaker 中文避头尾断行
      * @param titleMode 标题位置 0:居左 1:居中 2:隐藏（= `ReadBookConfig.titleMode`）
      * @param textFontPath 自定义正文字体文件路径（= `ReadBookConfig.textFont`，空 = 平台默认字体）；
      *   度量侧必须与绘制侧 `loadReaderFontFamily` 用同一个文件，否则选字体后正文错位
@@ -2424,29 +2435,41 @@ class ReadBookViewModelShared(
     data class LayoutConfig(
         val viewWidth: Int = 720,
         val viewHeight: Int = 1080,
-        val paddingLeft: Int = 32,
-        val paddingTop: Int = 24,
-        val paddingRight: Int = 32,
-        val paddingBottom: Int = 24,
-        val textSizePx: Float = 40f,
-        val titleSizePx: Float = 40f,
+        val paddingLeft: Int = 44,
+        val paddingTop: Int = 10,
+        val paddingRight: Int = 44,
+        val paddingBottom: Int = 8,
+        val textSizePx: Float = 48f,
+        val titleSizePx: Float = 60f,
         val letterSpacingPx: Float = 0f,
-        val lineSpacingExtra: Float = 1.2f,
-        val paragraphSpacing: Int = 2,
-        val titleTopSpacing: Int = 16,
-        val titleBottomSpacing: Int = 24,
+        // 行高乘数 / 段距与 ReadStyleConfig 默认值（已内聚的内置「微信读书」）同口径：
+        // lineSpacingExtra = 10/10，paragraphSpacing = 6
+        val lineSpacingExtra: Float = 1.0f,
+        val paragraphSpacing: Int = 6,
+        val titleTopSpacing: Int = 0,
+        val titleBottomSpacing: Int = 0,
         val paragraphIndent: String = "　　",
         val textFullJustify: Boolean = true,
-        // 默认值与 ReadBookConfig 一致（textBottomJustify=true / useZhLayout=false / titleMode=0）
+        // 默认值与 ReadBookConfig 一致（textBottomJustify=true / titleMode=0）
         val textBottomJustify: Boolean = true,
         /** 末页底部留白 px（原版为 20dp；DEFAULT 按 2x 密度折算 40px） */
         val endPadding: Int = 40,
-        val useZhLayout: Boolean = false,
         val titleMode: Int = 0,
         val textFontPath: String = "",
         /** 双页排版（对照 app 端 ChapterProvider.doublePage；true 时按半宽分栏排版） */
         val doublePage: Boolean = false,
+        /**
+         * 字重档位（= `ReadBookConfig.textBold`，0 正常 / 1 粗体 / 2 细体）。
+         * 度量器必须按绘制侧同一字重取字形，否则「粗体绘制 / 常规度量」会让行尾溢出。
+         */
+        val textBold: Int = 0,
     ) {
+        /** 正文字重（100..900），与绘制侧 ReaderDrawStyle 同源 [ReaderFontWeights]。 */
+        val contentWeight: Int get() = ReaderFontWeights.content(textBold)
+
+        /** 标题字重（100..900），与绘制侧 ReaderDrawStyle 同源 [ReaderFontWeights]。 */
+        val titleWeight: Int get() = ReaderFontWeights.title(textBold)
+
         /** 可视区宽度（px，扣除左右内边距；双页模式为单栏宽 = 全宽/2 - 左右内边距） */
         val visibleWidth: Int
             get() = if (doublePage) {
@@ -2459,7 +2482,12 @@ class ReadBookViewModelShared(
         val visibleHeight: Int get() = viewHeight - paddingTop - paddingBottom
 
         companion object {
-            /** 默认配置：桌面 720x1080 + 20sp 字号近似（textSizePx=40 @ 2x density） */
+            /**
+             * 无注入时的兜底配置：桌面 720x1080 视口，其余参数按 2x 密度折算自
+             * [io.legado.app.help.config.ReadStyleConfig] 的默认值（已内聚的内置「微信读书」）：
+             * 正文 24sp→48px、标题 (24+4+2)sp→60px、字距 0、边距 22/5/22/4dp→正整数 px。
+             * 真实阅读页一律走 `ReaderRoute.buildLayoutConfig` 的实测视口，不走本值。
+             */
             val DEFAULT = LayoutConfig()
         }
     }

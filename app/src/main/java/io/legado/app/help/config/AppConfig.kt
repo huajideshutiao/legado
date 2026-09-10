@@ -49,9 +49,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         key ?: return
         reloadCachedPref(key)
         when (key) {
-            PreferKey.useZhLayout -> ReadBookConfig.useZhLayout =
-                App.instance.getPrefBoolean(PreferKey.useZhLayout)
-
             PreferKey.cronet -> if (isCronet) {
                 io.legado.app.help.http.Cronet.preDownload { success ->
                     if (success) {

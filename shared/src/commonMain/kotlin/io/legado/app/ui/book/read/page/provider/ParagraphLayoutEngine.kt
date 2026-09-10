@@ -1,5 +1,6 @@
 package io.legado.app.ui.book.read.page.provider
 
+import io.legado.app.ui.book.read.page.provider.ParagraphLayoutEngine.breakLines
 import io.legado.app.utils.concurrent.newConcurrentMap
 import io.legado.app.utils.fastSum
 import kotlin.concurrent.Volatile
@@ -47,13 +48,13 @@ data class ParagraphCacheKey(
  *
  * @param lineIndex 段内行序号（0-based）
  * @param words 该行各字素簇字符串（已扣除几何缩进字符）
- * @param widths 该行各字素簇宽度（px）
- * @param rawWords 原始完整字素簇列表（含缩进字符）
- * @param rawWidths 原始完整字素簇宽度列表
+ * @param widths 该行各字素簇宽度（px，已含 [PunctuationTrimmer] 阶段 0/2 挤压后的结果）
  * @param text 该行完整文本
  * @param textHeight 字体高度（px，descent - ascent）
  * @param descent 文字下行度量（px）
- * @param desiredWidth 期望宽度（px，adjustedWidths 之和）
+ * @param desiredWidth 期望宽度（px）= adjustedWidths 之和 **减末簇那份字距**：行末字距不占版面
+ *   （[LineBreaker] 装行时同样把它算作余量），不减则两端对齐会把列盒尾对到右边线而墨迹
+ *   短一份字距（clreq 6.2.2.1 行尾对齐）；letterSpacing = 0 时二者相等
  * @param indentLength 缩进字符数
  * @param indentWidth 缩进占用宽度（px）
  * @param isFirstLine 是否为段落首行
@@ -68,13 +69,13 @@ data class ParagraphCacheKey(
  * @param hasReview 是否挂有段评气泡占位
  * @param reviewChar 段评占位字符
  * @param reviewCount 段评数量
+ * @param drawOffsets 逐簇绘制 X 偏移（px，与 [words]/[widths] 同长）：裁左半的开始夹注标点为
+ *   `-汉字宽/2`，其余为 0；全零时为 null（不占内存）。只影响绘制，不影响列命中盒。
  */
 data class LineMetrics(
     val lineIndex: Int,
     val words: List<String>,
     val widths: List<Float>,
-    val rawWords: List<String> = words,
-    val rawWidths: List<Float> = widths,
     val text: String,
     val textHeight: Float,
     val descent: Float,
@@ -94,6 +95,7 @@ data class LineMetrics(
     val hasReview: Boolean = false,
     val reviewChar: String = "",
     val reviewCount: Int = 0,
+    val drawOffsets: List<Float>? = null,
 ) {
     val charSize: Int get() = text.length
 }
@@ -141,8 +143,6 @@ data class ParagraphLineMetrics(
                 lineIndex = 0,
                 words = listOf(" "),
                 widths = listOf(width),
-                rawWords = listOf(" "),
-                rawWidths = listOf(width),
                 text = " ",
                 textHeight = height,
                 descent = 0f,
@@ -246,9 +246,12 @@ class ParagraphLayoutCache(val maxSize: Int = 1000) {
  * 核心设计：
  * 1. **纯函数度量**：输入文本、测量器、可视区宽度与缩进参数，输出 [ParagraphLineMetrics]，
  *    与 Y 轴行间距（[lineSpacingExtra]）、段间距（[paragraphSpacing]）、视口高度（[visibleHeight]）完全解耦。
- * 2. **中文避头尾断行**：内置 [ZhLineBreaker] 避头尾规则与按宽度累加的退化断行。
- * 3. **首行缩进几何度量**：支持字符拼接与等宽几何缩进（[indentCharWidth]）双模式。
- * 4. **段落折行缓存对接**：支持传入 [ParagraphLayoutCache] 实现秒级重排与 100% 缓存命中。
+ * 2. **单一断行器**：[breakLines] 封装 [LineBreaker]（平台 ICU 断点 ∩ 中文禁则）。
+ * 3. **标点挤压与中西间距先于断行**（无条件生效）：[PunctuationTrimmer.trimAdjacent]（阶段 0）与
+ *    [JustifySpacing.insertHanWestSpacing]（clreq 6.3.3）在 [breakLines] 之前定稿宽度，
+ *    [PunctuationTrimmer.trimLineEdges]（阶段 2）切行后逐行补做行首行尾。
+ * 4. **首行缩进几何度量**：支持字符拼接与等宽几何缩进（[indentCharWidth]）双模式。
+ * 5. **段落折行缓存对接**：支持传入 [ParagraphLayoutCache] 实现秒级重排与 100% 缓存命中。
  */
 object ParagraphLayoutEngine {
 
@@ -260,12 +263,12 @@ object ParagraphLayoutEngine {
      * @param visibleWidth 可视区宽度（px，双页模式为单栏宽）
      * @param paragraphIndent 首行缩进字符串（默认全角空格 `　　`）
      * @param indentCharWidth 缩进单字宽（px，>0 启用几何缩进；0 走字符拼接）
-     * @param useZhLayout 是否启用 [ZhLineBreaker] 中文避头尾断行
      * @param isTitle 是否为章节标题
      * @param isFirstLine 是否为段落首行（影响缩进判定）
      * @param paragraphNum 逻辑段号（0 为标题，>=1 为正文段号）
      * @param centerTitle 标题是否居中
-     * @param textHeight 字体高度（px，<=0 时自动取 measurer.descent - measurer.ascent）
+     * @param textHeight 字体高度（px，<=0 时自动取 `descent - ascent + leading`，
+     *   与 app 端 `TextPaint.textHeight` 同口径）
      * @param descent 文字下行度量（px，<=0 时自动取 measurer.descent）
      * @param reviewChar 段评占位符（如 `▨`）
      * @param reviewCount 段评数量
@@ -279,7 +282,6 @@ object ParagraphLayoutEngine {
         visibleWidth: Int,
         paragraphIndent: String = "　　",
         indentCharWidth: Float = 0f,
-        useZhLayout: Boolean = true,
         isTitle: Boolean = false,
         isFirstLine: Boolean = true,
         paragraphNum: Int = 0,
@@ -297,7 +299,11 @@ object ParagraphLayoutEngine {
             return ParagraphLineMetrics.EMPTY
         }
 
-        val th = if (textHeight > 0f) textHeight else (measurer.descent - measurer.ascent)
+        val th = if (textHeight > 0f) {
+            textHeight
+        } else {
+            measurer.descent - measurer.ascent + measurer.leading
+        }
         val d = if (descent > 0f) descent else measurer.descent
 
         val indentLenForCache = if (isFirstLine && !isTitle) paragraphIndent.length else 0
@@ -328,27 +334,30 @@ object ParagraphLayoutEngine {
         measurer.measureGlyphWidths(text, widthsArray)
         val split = measureTextSplit(text, widthsArray)
         val words = split.words
-        val widths = split.widths
         if (words.isEmpty()) {
             return ParagraphLineMetrics.EMPTY
         }
 
-        val lineRanges: List<IntRange> = if (useZhLayout) {
-            breakByZh(
-                words = words,
-                widths = widths,
-                measurer = measurer,
-                isFirstLine = isFirstLine && !isTitle,
-                indentLength = paragraphIndent.length,
-                visibleWidth = visibleWidth,
-            )
-        } else {
-            breakByAccumulateWidth(
-                words = words,
-                widths = widths,
-                visibleWidth = visibleWidth,
-            )
-        }
+        // 阶段 0：相邻标点挤压。必须在 breakLines 之前完成 —— clreq 6.1.1：挤压会影响换行位置，
+        // 先挤进才能少退字；放到断行之后就只剩负字距硬塞（迁移前的错路）。
+        val cnWidth = cnCharWidth(measurer)
+        val squeezed = PunctuationTrimmer.trimAdjacent(words, split.widths, cnWidth)
+        // clreq 6.3.3：汉字与西文字母 / 数字之间注入 1/4 汉字宽基础间距。同样改变行宽，
+        // 故与挤压并列在断行之前定稿。
+        val widths = JustifySpacing.insertHanWestSpacing(words, squeezed.widths, cnWidth)
+            ?: squeezed.widths
+        val baseOffsets = squeezed.drawOffsets
+
+        val lineRanges = breakLines(
+            text = text,
+            words = words,
+            widths = widths,
+            measurer = measurer,
+            isFirstLine = isFirstLine && !isTitle,
+            indentLength = paragraphIndent.length,
+            visibleWidth = visibleWidth,
+            cnCharWidth = cnWidth,
+        )
 
         val useGeomIndent = indentCharWidth > 0f
         val lines = ArrayList<LineMetrics>(lineRanges.size)
@@ -356,8 +365,28 @@ object ParagraphLayoutEngine {
 
         for ((lineIdx, range) in lineRanges.withIndex()) {
             val lineWords = words.subList(range.first, range.last + 1)
-            val lineWidths = widths.subList(range.first, range.last + 1)
             if (lineWords.isEmpty()) continue
+            var lineWidths = widths.subList(range.first, range.last + 1)
+            var lineOffsets = baseOffsets?.subList(range.first, range.last + 1)
+
+            // 阶段 2：行尾结束标点裁右半（GB/T 15834「应」）、行首开始夹注裁左半（clreq「可以」）。
+            // 在扣缩进之前做：首行行首是缩进字 `　`，不是开始夹注，不会误裁；
+            // 缩进后紧跟的开始夹注已由阶段 0 的 U+3000 触发位处理。
+            PunctuationTrimmer.trimLineEdges(lineWords, lineWidths, lineOffsets, cnWidth)?.let { edge ->
+                lineWidths = edge.widths
+                lineOffsets = edge.drawOffsets
+            }
+
+            // 若断行恰发生在汉字与西文边界处，移除上一行最后一列残留的中西间距（clreq 6.3.3 行尾不留空白）
+            if (range.last < words.size - 1 && cnWidth > 0f &&
+                JustifySpacing.isHanWestBoundary(words[range.last], words[range.last + 1])
+            ) {
+                val lastIdx = lineWidths.lastIndex
+                val quarter = cnWidth / 4f
+                val trimmed = ArrayList(lineWidths)
+                trimmed[lastIdx] = maxOf(0f, trimmed[lastIdx] - quarter)
+                lineWidths = trimmed
+            }
 
             val lineImages = if (images.isNotEmpty()) {
                 val countInLine = lineWords.count { isImagePlaceholder(it, srcReplaceChar) }
@@ -370,12 +399,13 @@ object ParagraphLayoutEngine {
             } else emptyList()
 
             val needsIndent = useGeomIndent && isFirstLine && lineIdx == 0 && !isTitle
-            val (adjustedWords, adjustedWidths, indentWidth, indentLength) = if (needsIndent) {
+            val (adjustedWords, adjustedWidths, adjustedOffsets, indentWidth, indentLength) = if (needsIndent) {
                 val indentLen = paragraphIndent.length.coerceAtMost(lineWords.size)
                 val indentW = indentLen * indentCharWidth
                 IndentAdjustment(
                     words = lineWords.subList(indentLen, lineWords.size),
                     widths = lineWidths.subList(indentLen, lineWidths.size),
+                    drawOffsets = lineOffsets?.subList(indentLen, lineOffsets.size),
                     indentWidth = indentW,
                     indentLength = indentLen,
                 )
@@ -383,12 +413,13 @@ object ParagraphLayoutEngine {
                 IndentAdjustment(
                     words = lineWords,
                     widths = lineWidths,
+                    drawOffsets = lineOffsets,
                     indentWidth = 0f,
                     indentLength = 0,
                 )
             }
 
-            val desiredWidth = adjustedWidths.fastSum()
+            val desiredWidth = adjustedWidths.fastSum() - trailingSpacingOf(measurer, adjustedWidths)
             val isLastLine = lineIdx == lineRanges.lastIndex
             val lineText = lineWords.joinToString("")
 
@@ -397,8 +428,6 @@ object ParagraphLayoutEngine {
                     lineIndex = lineIdx,
                     words = adjustedWords,
                     widths = adjustedWidths,
-                    rawWords = lineWords,
-                    rawWidths = lineWidths,
                     text = lineText,
                     textHeight = th,
                     descent = d,
@@ -415,6 +444,7 @@ object ParagraphLayoutEngine {
                     hasReview = reviewChar.isNotEmpty() && reviewCount > 0 && isLastLine,
                     reviewChar = reviewChar,
                     reviewCount = if (isLastLine) reviewCount else 0,
+                    drawOffsets = adjustedOffsets,
                 ),
             )
         }
@@ -474,23 +504,32 @@ object ParagraphLayoutEngine {
     }
 
     /**
-     * 用 [ZhLineBreaker] 避头尾断行。
+     * 断行收口：一律走 [LineBreaker]（平台 ICU 断点 ∩ 中文禁则），产出逐行的簇区间。
+     *
+     * 传入的 [widths] 必须是已定稿的最终宽度（含阶段 0 挤压与中西间距）：本函数不再改宽度。
+     *
+     * @param isFirstLine 段落首行（true 时首行回退不越过缩进，避免切出「只有缩进」的空行）
+     * @param indentLength 缩进字符数（[isFirstLine] 时作为首行回退下限）
+     * @param cnCharWidth 汉字基准宽（px），>0 时启用行末标点裁半回馈（clreq 6.1.1 先挤进）
      */
-    fun breakByZh(
+    fun breakLines(
+        text: String,
         words: List<String>,
         widths: List<Float>,
         measurer: TextMeasurer,
         isFirstLine: Boolean,
         indentLength: Int,
         visibleWidth: Int,
+        cnCharWidth: Float = 0f,
     ): List<IntRange> {
-        val breaker = ZhLineBreaker(
+        val breaker = LineBreaker(
             words = words,
             widths = widths,
+            opportunities = measurer.lineBreakOpportunities(text),
             indentSize = if (isFirstLine) indentLength else 0,
             width = visibleWidth,
-            cnCharWidth = cnCharWidth(measurer),
             letterSpacingPx = measurer.letterSpacingPx,
+            cnCharWidth = cnCharWidth,
         )
         val result = ArrayList<IntRange>(breaker.lineCount)
         for (i in 0 until breaker.lineCount) {
@@ -502,34 +541,23 @@ object ParagraphLayoutEngine {
     }
 
     /**
-     * 退化断行：按 [visibleWidth] 累积字宽。
+     * 行末那一份字距不占版面（[LineBreaker] 装行时同样把它算作余量），
+     * 故期望宽度要扣回来：不扣的话两端对齐会把列盒尾对到可视右边线，
+     * 而盒尾含这份多余字距 → 墨迹尾端短 1×letterSpacing，行尾对不齐（clreq 6.2.2.1）。
+     *
+     * 末簇宽度为 0（零宽字符）时说明它不带字距补偿，不扣。
      */
-    fun breakByAccumulateWidth(
-        words: List<String>,
-        widths: List<Float>,
-        visibleWidth: Int,
-    ): List<IntRange> {
-        val result = ArrayList<IntRange>()
-        var lineStart = 0
-        var lineWidth = 0f
-        for (i in words.indices) {
-            val cw = widths[i]
-            if (lineWidth + cw > visibleWidth && i > lineStart) {
-                result.add(lineStart..(i - 1))
-                lineStart = i
-                lineWidth = 0f
-            }
-            lineWidth += cw
-        }
-        if (lineStart < words.size) {
-            result.add(lineStart..(words.size - 1))
-        }
-        return result
+    private fun trailingSpacingOf(measurer: TextMeasurer, widths: List<Float>): Float {
+        val spacing = measurer.letterSpacingPx
+        if (spacing <= 0f) return 0f
+        val last = widths.lastOrNull() ?: return 0f
+        return if (last > 0f) spacing else 0f
     }
 
     /**
      * 汉字基准宽（`measureWidth("我")`）按度量器缓存：安卓上每次都是一次 JNI Paint 测量，
-     * 而每段都要取一次。度量器实例 + 字号 + 字距三者一致才复用，快照整体替换避免读到错配的宽度。
+     * 而每段都要取一次（[PunctuationTrimmer] 两阶段的全角判据都用它）。度量器实例 + 字号 + 字距
+     * 三者一致才复用，快照整体替换避免读到错配的宽度。
      */
     private class CnCharWidth(
         val measurer: TextMeasurer,
@@ -541,7 +569,7 @@ object ParagraphLayoutEngine {
     @Volatile
     private var cnCharWidthCache: CnCharWidth? = null
 
-    private fun cnCharWidth(measurer: TextMeasurer): Float {
+    internal fun cnCharWidth(measurer: TextMeasurer): Float {
         val textSizePx = measurer.textSizePx
         val letterSpacingPx = measurer.letterSpacingPx
         val cached = cnCharWidthCache
@@ -558,6 +586,7 @@ object ParagraphLayoutEngine {
     private data class IndentAdjustment(
         val words: List<String>,
         val widths: List<Float>,
+        val drawOffsets: List<Float>?,
         val indentWidth: Float,
         val indentLength: Int,
     )

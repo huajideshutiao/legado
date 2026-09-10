@@ -1,5 +1,6 @@
 package io.legado.app.help.config
 
+import io.legado.app.help.config.ReadConfigDefaults.readConfigs
 import io.legado.app.utils.KS_JSON
 
 /**
@@ -10,63 +11,31 @@ import io.legado.app.utils.KS_JSON
  */
 object ReadConfigDefaults {
 
-    /** 默认样式主题列表 (6 个: 微信读书 + 预设 1..5), 解码失败返回单个默认主题。 */
+    /** 默认样式主题列表 (6 个: 微信读书 + 预设 1..5)，内置常量是唯一来源。 */
     val readConfigs: List<ReadStyleConfig> by lazy {
-        runCatching { KS_JSON.decodeFromString<List<ReadStyleConfig>>(DEFAULT_READ_CONFIG_JSON) }
-            .getOrNull()?.takeIf { it.isNotEmpty() }
-            ?: listOf(ReadStyleConfig())
+        KS_JSON.decodeFromString<List<ReadStyleConfig>>(DEFAULT_READ_CONFIG_JSON).also {
+            require(it.isNotEmpty()) { "Default read style configuration is empty" }
+        }
     }
 
-    /** 与 origin/quickjs `app/src/main/assets/defaultData/readConfig.json` 逐字节一致。 */
+    /** 新增样式明确复制当前样式，避免把数据类兜底默认值当作业务模板。 */
+    fun newStyleFrom(current: ReadStyleConfig): ReadStyleConfig =
+        current.copy(name = "", textColor = 0, bgMeanColor = 0)
+
+    /**
+     * 字段集合与原版 `app/src/main/assets/defaultData/readConfig.json` 一致。
+     *
+     * 首项「微信读书」已内聚为 [ReadStyleConfig] 的字段默认值，故只保留 `name`：
+     * 原版在字段默认值与此 JSON 各存一套排版参数，而真正生效的始终是本首项，
+     * 字面默认值只在兜底路径（配置文件损坍 / 解码失败 / `resetAll` 补齐）露出来，
+     * 两套不一致就是缺陷。其余字段与默认值重合即冗余，不再重写。
+     *
+     * 预设 1..5 只换配色（背景 / 文字色 / 状态栏图标明暗），排版参数全部继承默认值。
+     */
     private const val DEFAULT_READ_CONFIG_JSON = """
 [
   {
-    "bgStr": "#ffc0edc6",
-    "bgStrEInk": "#FFFFFF",
-    "bgStrNight": "#000000",
-    "bgType": 0,
-    "bgTypeEInk": 0,
-    "bgTypeNight": 0,
-    "darkStatusIcon": true,
-    "darkStatusIconEInk": true,
-    "darkStatusIconNight": false,
-    "footerMode": 0,
-    "footerPaddingBottom": 10,
-    "footerPaddingLeft": 13,
-    "footerPaddingRight": 17,
-    "footerPaddingTop": 0,
-    "headerMode": 0,
-    "headerPaddingBottom": 0,
-    "headerPaddingLeft": 19,
-    "headerPaddingRight": 16,
-    "headerPaddingTop": 10,
-    "letterSpacing": 0,
-    "lineSpacingExtra": 10,
-    "name": "微信读书",
-    "paddingBottom": 4,
-    "paddingLeft": 22,
-    "paddingRight": 22,
-    "paddingTop": 5,
-    "paragraphIndent": "　　",
-    "paragraphSpacing": 6,
-    "showFooterLine": true,
-    "showHeaderLine": true,
-    "textBold": 0,
-    "textColor": "#ff0b0b0b",
-    "textColorEInk": "#000000",
-    "textColorNight": "#ADADAD",
-    "textSize": 24,
-    "tipColor": -10461088,
-    "tipFooterLeft": 7,
-    "tipFooterMiddle": 0,
-    "tipFooterRight": 6,
-    "tipHeaderLeft": 1,
-    "tipHeaderMiddle": 0,
-    "tipHeaderRight": 2,
-    "titleBottomSpacing": 0,
-    "titleMode": 0,
-    "titleSize": 4,
-    "titleTopSpacing": 0
+    "name": "微信读书"
   },
   {
     "name": "预设1",

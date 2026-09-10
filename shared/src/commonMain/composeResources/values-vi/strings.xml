@@ -515,7 +515,6 @@
     <string name="export_to_web_dav">Xuất sang WebDav</string>
     <string name="debug">Gỡ lỗi</string>
     <string name="crash_log">Nhật ký sự cố</string>
-    <string name="use_zh_layout">Sử dụng ngắt dòng tiếng Trung tùy chỉnh</string>
     <string name="image_style">Kiểu hình ảnh</string>
     <string name="system_tts">TTS hệ thống</string>
     <string name="export_type">Định dạng tệp xuất</string>

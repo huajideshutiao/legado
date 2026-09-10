@@ -31,7 +31,7 @@ import kotlinx.serialization.builtins.ListSerializer
  *    调用方通过 [ReadBookConfigProviders] / [ReadConfigProviders] /
  *    [io.legado.app.ui.compose.platform.LocalReadConfigProviders] 取得已注入实例。
  * 2. **全局简单值** (autoReadSpeed / readStyleSelect / comicStyleSelect / shareLayout /
- *    textFullJustify / textBottomJustify / hideStatusBar / hideNavigationBar / useZhLayout)
+ *    textFullJustify / textBottomJustify / hideStatusBar / hideNavigationBar)
  *    走 [prefs]，key 与 app 端 `PreferKey` 一致；**排版字段全部委托 [config]**
  *    (= shareLayout ? [shareConfig] : [durConfig])，与 app 端委托关系一一对应。
  *    app 端原本把这些值缓存在字段里，这里改为每次直读 prefs（安卓端底层同为
@@ -97,11 +97,6 @@ class ReadBookConfigShared(private val prefs: PreferenceProvider) {
     var hideNavigationBar: Boolean
         get() = prefs.getBoolean(PreferKey.hideNavigationBar, false)
         set(value) = prefs.putBoolean(PreferKey.hideNavigationBar, value)
-
-    /** 中文排版模式（默认 false）。 */
-    var useZhLayout: Boolean
-        get() = prefs.getBoolean(PreferKey.useZhLayout, false)
-        set(value) = prefs.putBoolean(PreferKey.useZhLayout, value)
 
     // -------------------- 样式主题列表 (readConfig.json 持久化) --------------------
 
@@ -889,11 +884,21 @@ class ReadBookConfigShared(private val prefs: PreferenceProvider) {
  * 序列化时经 [SerialName] 还原为 app 端的 `textColor` / `textColorNight` / `textColorEInk`。
  *
  * 不包含 Drawable / Bitmap / File 操作，背景图渲染由各平台 UI 自行完成。
+ *
+ * # 排版字段的默认值 = 内置主题「微信读书」
+ *
+ * 字号 / 字距 / 行距 / 段距 / 边距 / 页眉页脚这一整套是内置主题「微信读书」的
+ * 唯一代码模板；[ReadConfigDefaults] 的 JSON 首项只需保留名称并继承这些字段默认值。
+ * 存量用户不受影响（他们读已落盘的 `readConfig.json`）。
+ *
+ * 行距与段距的取值略低于 W3C clreq 7.1.1.5 的印刷建议区间（行距 = 字号的 50%–100%），
+ * 规范同时写明「行长较短或字号较小时行距设定也会相对较小」，手机屏属该情形；
+ * 用户可在阅读设置里自行调高。
  */
 @Serializable
 data class ReadStyleConfig(
     var name: String = "",
-    var bgStr: String = "#EEEEEE",// 白天背景
+    var bgStr: String = "#ffc0edc6",// 白天背景
     var bgStrNight: String = "#000000",// 夜间背景
     var bgStrEInk: String = "#FFFFFF",// EInk 背景
     var bgAlpha: Int = 100,// 背景透明度
@@ -903,46 +908,44 @@ data class ReadStyleConfig(
     var darkStatusIcon: Boolean = true,
     var darkStatusIconNight: Boolean = false,
     var darkStatusIconEInk: Boolean = true,
-    @SerialName("textColor") var textColorStr: String = "#3E3D3B",
+    @SerialName("textColor") var textColorStr: String = "#ff0b0b0b",
     @SerialName("textColorNight") var textColorStrNight: String = "#ADADAD",
     @SerialName("textColorEInk") var textColorStrEInk: String = "#000000",
     var pageAnim: Int = 0,// 翻页动画
     var pageAnimEInk: Int = PageAnim.noAnim,
     var textFont: String = "",// 字体
     var textBold: Int = 0,// 是否粗体字 0:正常 1:粗体 2:细体
-    var textSize: Int = 20,// 文字大小
-    var letterSpacing: Float = 0.1f,// 字间距
-    var lineSpacingExtra: Int = 12,// 行间距
-    var paragraphSpacing: Int = 2,// 段距
+    var textSize: Int = 24,// 文字大小
+    var letterSpacing: Float = 0f,// 字间距（em）；0 = 密排，对应 clreq 6.3.1 「字符外框彼此紧贴」
+    var lineSpacingExtra: Int = 10,// 行高乘数 ×10（行距 = 行盒高 × 本值/10）
+    var paragraphSpacing: Int = 6,// 段距 ×10（额外留白 = 行盒高 × 本值/10）
     var titleMode: Int = 0,// 标题位置 0:居左 1:居中 2:隐藏
-    var titleSize: Int = 0,
+    var titleSize: Int = 4,// 标题字号增量（sp，叠在正文字号上）
     var titleTopSpacing: Int = 0,
     var titleBottomSpacing: Int = 0,
-    var paragraphIndent: String = "　　",// 段落缩进
+    var paragraphIndent: String = "　　",// 段落缩进（clreq 6.2.1.1：中文出版以两个汉字为标准）
     var underline: Boolean = false,// 下划线
-    var paddingBottom: Int = 6,
-    var paddingLeft: Int = 16,
-    var paddingRight: Int = 16,
-    var paddingTop: Int = 6,
+    var paddingBottom: Int = 4,
+    var paddingLeft: Int = 22,
+    var paddingRight: Int = 22,
+    var paddingTop: Int = 5,
     var headerPaddingBottom: Int = 0,
-    var headerPaddingLeft: Int = 16,
+    var headerPaddingLeft: Int = 19,
     var headerPaddingRight: Int = 16,
-    var headerPaddingTop: Int = 0,
-    var footerPaddingBottom: Int = 6,
-    var footerPaddingLeft: Int = 16,
-    var footerPaddingRight: Int = 16,
-    var footerPaddingTop: Int = 6,
-    // 页眉线默认不显示 (对齐原版 ReadBookConfig.Config.showHeaderLine=false);
-    // 内置主题"微信读书"在 readConfig.json 中显式配置 true, 不受此默认值影响。
-    var showHeaderLine: Boolean = false,
+    var headerPaddingTop: Int = 10,
+    var footerPaddingBottom: Int = 10,
+    var footerPaddingLeft: Int = 13,
+    var footerPaddingRight: Int = 17,
+    var footerPaddingTop: Int = 0,
+    var showHeaderLine: Boolean = true,
     var showFooterLine: Boolean = true,
-    var tipHeaderLeft: Int = ReadTipConfigShared.time,
+    var tipHeaderLeft: Int = ReadTipConfigShared.chapterTitle,
     var tipHeaderMiddle: Int = ReadTipConfigShared.none,
-    var tipHeaderRight: Int = ReadTipConfigShared.battery,
-    var tipFooterLeft: Int = ReadTipConfigShared.chapterTitle,
+    var tipHeaderRight: Int = ReadTipConfigShared.time,
+    var tipFooterLeft: Int = ReadTipConfigShared.bookName,
     var tipFooterMiddle: Int = ReadTipConfigShared.none,
     var tipFooterRight: Int = ReadTipConfigShared.pageAndTotal,
-    var tipColor: Int = 0,
+    var tipColor: Int = -10461088,
     var tipDividerColor: Int = -1,
     var headerMode: Int = 0,
     var footerMode: Int = 0,
@@ -972,7 +975,7 @@ data class ReadStyleConfig(
     private fun initColorInt() {
         textColorIntEInk = parseColorOr(textColorStrEInk, 0xFF000000.toInt())
         textColorIntNight = parseColorOr(textColorStrNight, 0xFFADADAD.toInt())
-        textColor = parseColorOr(textColorStr, 0xFF3E3D3B.toInt())
+        textColor = parseColorOr(textColorStr, 0xFF0B0B0B.toInt())
         initColorInt = true
     }
 

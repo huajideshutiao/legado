@@ -5,6 +5,7 @@ import io.legado.app.ui.book.read.page.entities.column.ImageColumn
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -17,6 +18,7 @@ internal class FixedWidthMeasurer(
     override val letterSpacingPx: Float = 0f,
     override val descent: Float = 2f,
     override val ascent: Float = -8f,
+    override val leading: Float = 0f,
 ) : TextMeasurer {
 
     override fun measureGlyphWidths(text: String, widths: FloatArray) {
@@ -151,7 +153,7 @@ class TwoPhaseLayoutPipelineTest {
         val lineTexts = configs.map { cfg ->
             val metrics = bodyParagraph(text, cache = cache)
             assertEquals(6, metrics.lineCount)
-            PaginationEngine.paginate(listOf(metrics), cfg, measurer)
+            PaginationEngine.paginate(listOf(metrics), cfg)
                 .flatMap { page -> page.lines.map { it.text } }
         }
 
@@ -161,8 +163,8 @@ class TwoPhaseLayoutPipelineTest {
         assertEquals(lineTexts[0], lineTexts[2])
 
         // Y 轴参数确实改变了切页结果（否则上面的相等断言毫无意义）
-        val pagesTight = PaginationEngine.paginate(listOf(bodyParagraph(text, cache)), configs[0], measurer)
-        val pagesLoose = PaginationEngine.paginate(listOf(bodyParagraph(text, cache)), configs[2], measurer)
+        val pagesTight = PaginationEngine.paginate(listOf(bodyParagraph(text, cache)), configs[0])
+        val pagesLoose = PaginationEngine.paginate(listOf(bodyParagraph(text, cache)), configs[2])
         assertTrue(pagesTight.size > pagesLoose.size)
     }
 
@@ -186,6 +188,39 @@ class TwoPhaseLayoutPipelineTest {
         assertEquals(1L, cache.hitCount)
     }
 
+    /**
+     * 阶段 0 在断行之前就定稿宽度：句中 `：“` 的 `“` 裁左半（5px）并记下 -5px 绘制偏移。
+     * 这正是 clreq 6.1.1「挤压先于禁则」的可观测结果。
+     */
+    @Test
+    fun `句中冒号引号在断行前挤压宽度`() {
+        val line = bodyParagraph("甲乙：“丙丁").lines.single()
+
+        assertEquals(listOf(10f, 10f, 10f, 5f, 10f, 10f), line.widths)
+        assertEquals(listOf(0f, 0f, 0f, -5f, 0f, 0f), line.drawOffsets)
+        assertEquals(55f, line.desiredWidth, 0f)
+    }
+
+    /**
+     * 阶段 2 行首挤压：`“` 顶到行首 → 裁左半 + 偏移，行宽从 100 收到 95（两端对齐据此拉伸）；
+     * 次行不带偏移数组。
+     *
+     * 正文取 12 字而非 10 字：末行若只剩一个字会触发 [LineBreaker] 的孤字修正（clreq 7.1.2）
+     * 从首行取字下移，那是另一条金样的事，这里留足字数让首行切片保持满行。
+     */
+    @Test
+    fun `行首开始夹注在度量里留下裁半宽与绘制偏移`() {
+        val metrics = bodyParagraph("“甲乙丙丁戊己庚辛壬癸子丑")
+
+        assertEquals(2, metrics.lineCount)
+        val first = metrics.lines[0]
+        assertEquals(10, first.words.size)
+        assertEquals(5f, first.widths[0], 0f)
+        assertEquals(List(10) { idx -> if (idx == 0) -5f else 0f }, first.drawOffsets)
+        assertEquals(95f, first.desiredWidth, 0f)
+        assertNull(metrics.lines[1].drawOffsets)
+    }
+
     private fun imageParagraph(style: String, width: Float, height: Float, num: Int = 2) =
         ParagraphLineMetrics.createImage(
             img = ImgData(src = "img-$num.jpg", style = style, onclick = ""),
@@ -200,13 +235,13 @@ class TwoPhaseLayoutPipelineTest {
         val metrics = bodyParagraph(group.repeat(4))
         assertEquals(4, metrics.lineCount)
 
-        val exact = PaginationEngine.paginate(listOf(metrics), config(visibleHeight = 30), measurer)
+        val exact = PaginationEngine.paginate(listOf(metrics), config(visibleHeight = 30))
         assertEquals(2, exact.size)
         assertEquals(3, exact[0].lineSize)
         assertEquals(listOf(0f, 10f, 20f), exact[0].lines.map { it.lineTop })
         assertEquals(1, exact[1].lineSize)
 
-        val short = PaginationEngine.paginate(listOf(metrics), config(visibleHeight = 29), measurer)
+        val short = PaginationEngine.paginate(listOf(metrics), config(visibleHeight = 29))
         assertEquals(2, short.size)
         assertEquals(2, short[0].lineSize)
         assertEquals(2, short[1].lineSize)
@@ -224,7 +259,7 @@ class TwoPhaseLayoutPipelineTest {
             imageParagraph(Book.imgStyleFull, width = 60f, height = 50f, num = 3),
         )
 
-        val pages = PaginationEngine.paginate(paragraphs, config(visibleHeight = 100), measurer)
+        val pages = PaginationEngine.paginate(paragraphs, config(visibleHeight = 100))
 
         assertEquals(2, pages.size)
         // 第一张紧跟正文行（durY=10），50 <= 100-10 故不翻页
@@ -253,7 +288,7 @@ class TwoPhaseLayoutPipelineTest {
             bodyParagraph(group, paragraphNum = 3),
         )
 
-        val pages = PaginationEngine.paginate(paragraphs, config(visibleHeight = 100), measurer)
+        val pages = PaginationEngine.paginate(paragraphs, config(visibleHeight = 100))
 
         assertEquals(3, pages.size)
         assertEquals(1, pages[1].lineSize)
@@ -274,7 +309,6 @@ class TwoPhaseLayoutPipelineTest {
         val pages = PaginationEngine.paginate(
             listOf(metrics),
             config(visibleHeight = 30, doublePage = true, paddingLeft = 10, viewWidth = 240),
-            measurer,
         )
 
         assertEquals(2, pages.size)
@@ -294,13 +328,12 @@ class TwoPhaseLayoutPipelineTest {
     fun `endPadding 只抬高末页页高`() = runBlocking {
         val metrics = bodyParagraph(group)
 
-        val noPadding = PaginationEngine.paginate(listOf(metrics), config(visibleHeight = 100), measurer)
+        val noPadding = PaginationEngine.paginate(listOf(metrics), config(visibleHeight = 100))
         assertEquals(10f, noPadding.single().height, 0f)
 
         val padded = PaginationEngine.paginate(
             listOf(metrics),
             config(visibleHeight = 100, endPadding = 13),
-            measurer,
         )
         assertEquals(23f, padded.single().height, 0f)
     }
@@ -325,7 +358,6 @@ class TwoPhaseLayoutPipelineTest {
         val pages = PaginationEngine.paginate(
             listOf(inlineImageParagraph(listOf(img))),
             config(visibleHeight = 100),
-            measurer,
         )
 
         val columns = pages.single().lines.single().columns
@@ -341,12 +373,29 @@ class TwoPhaseLayoutPipelineTest {
         val pages = PaginationEngine.paginate(
             listOf(inlineImageParagraph(emptyList())),
             config(visibleHeight = 100),
-            measurer,
         )
 
         val columns = pages.single().lines.single().columns
         assertEquals(3, columns.size)
         assertTrue(columns.none { it is ImageColumn })
         assertEquals(ChapterContentParserShared.srcReplaceChar, (columns[1] as TextColumn).charData)
+    }
+
+    /**
+     * 中西间距恰好在断行处时行尾空白清理：
+     * 汉字「戊」与西文「A」之间注入 1/4 汉字宽（2.5px），但在「戊」与「A」之间断行时，
+     * 上一行末尾残留的 2.5px 必须被扣除，使第一行期望宽度与各字宽精确等于 50px（5 个汉字），
+     * 不残留行尾空白。
+     */
+    @Test
+    fun `中西间距恰在断行处时行尾空白清理`() {
+        val paragraph = bodyParagraph("甲乙丙丁戊A", visibleWidth = 53)
+        assertEquals(2, paragraph.lines.size)
+        val line0 = paragraph.lines[0]
+        val line1 = paragraph.lines[1]
+        assertEquals("甲乙丙丁戊", line0.text)
+        assertEquals("A", line1.text)
+        assertEquals(50f, line0.desiredWidth, 0.001f)
+        assertEquals(listOf(10f, 10f, 10f, 10f, 10f), line0.widths)
     }
 }

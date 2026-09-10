@@ -161,7 +161,7 @@ fun TextChapterShared.tryPatchReviewCounts(
     // 第一遍扫描：空间与换行折行安全性预检，顺带算出气泡宽度留给落地阶段复用
     val pending = mutableMapOf<Int, PendingReviewBubble>()
     for ((pIndex, count) in validCounts) {
-        val line = targetLines[pIndex] ?: continue
+        val line = targetLines[pIndex] ?: return false
         val page = line.textPage
 
         // 已有 ReviewColumn 仅需更新 count，无需占用新空间

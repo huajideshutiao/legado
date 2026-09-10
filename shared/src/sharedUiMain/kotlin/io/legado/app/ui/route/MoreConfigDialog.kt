@@ -93,8 +93,7 @@ private fun MoreConfigBody(
                 // 屏幕方向: 重应用窗口策略 (LegadoApp 收集后按新 pref 重建阅读页策略)
                 PreferKey.screenOrientation -> ReadBookEvents.postOrientationChange()
                 PreferKey.textFullJustify,
-                PreferKey.textBottomJustify,
-                PreferKey.useZhLayout -> {
+                PreferKey.textBottomJustify -> {
                     ReadBookEvents.postConfig(ReadConfigChange.LOAD_CONTENT)
                 }
 

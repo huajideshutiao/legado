@@ -59,7 +59,6 @@
     <string name="pt_hide_navigation_bar">隐藏导航栏</string>
     <string name="double_page_horizontal">平板/横屏双页</string>
     <string name="progress_bar_behavior">进度条行为</string>
-    <string name="use_zh_layout">使用自定义中文分行</string>
     <string name="text_full_justify">文字两端对齐</string>
     <string name="text_bottom_justify">文字底部对齐</string>
     <string name="volume_key_page_on_play">朗读时音量键翻页</string>

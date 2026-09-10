@@ -59,7 +59,6 @@
     <string name="pt_hide_navigation_bar">Hide navigation bar</string>
     <string name="double_page_horizontal">Tablet/Landscape Dual Page</string>
     <string name="progress_bar_behavior">Progress bar behavior</string>
-    <string name="use_zh_layout">Custom Chinese line feed</string>
     <string name="text_full_justify">Text justified</string>
     <string name="text_bottom_justify">Text align bottom</string>
     <string name="volume_key_page_on_play">Volume keys to turn page when reading</string>

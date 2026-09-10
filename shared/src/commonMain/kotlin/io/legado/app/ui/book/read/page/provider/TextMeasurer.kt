@@ -23,8 +23,21 @@ interface TextMeasurer {
     val letterSpacingPx: Float
 
     /**
+     * ICU（UAX#14）行断点：返回 [text] 上允许断行的 UTF-16 下标升序数组（含 0 与 `text.length`）。
+     * 平台无 ICU 断点能力时返回 null，调用方退化为按字素簇累加宽度断行。
+     *
+     * 对应原版 `useZhLayout=false` 分支的 `StaticLayout`：AOSP 默认 `LineBreakConfig.NONE`
+     * 不追加 `-u-lb-*` 关键字（`minikin/Locale.cpp:328`），落到 ICU 默认行分隔表
+     * （`minikin/WordBreaker.cpp:52` 的 `ubrk_open(UBRK_LINE)`）。这里取同一张表，
+     * 装行由 [LineBreaker] 在 commonMain 统一完成。
+     *
+     * 实现须复用同一个迭代器实例（每次新建约慢一倍），实例与度量器同生命周期、不跨线程共享。
+     */
+    fun lineBreakOpportunities(text: String): IntArray? = null
+
+    /**
      * textSize（px）：消除 [android.text.TextPaint.textSize] 直接访问，统一从测量面取值。
-     * 用于 justifyByLetterSpacing 把 px 偏移折算成 letterSpacing 单位（d / textSize）。
+     * 排版侧用它把 px 偏移折算回字号倒数单位（如回退量 / 字距补偿）。
      */
     val textSizePx: Float
 
@@ -36,6 +49,13 @@ interface TextMeasurer {
      * （`descent - ascent` = app 端 `paint.textHeight`，排版行盒高度与行距基准用）。
      */
     val ascent: Float
+
+    /**
+     * leading（px，字体建议的行间空白）：行盒高取 `descent - ascent + leading`，
+     * 与 app 端 `TextPaint.textHeight`（`PaintExtensions.android.kt` 里就是这三项之和）
+     * 同口径。漏算这一项会让行高比原版小一个 leading，四端每页行数与原版不一致。
+     */
+    val leading: Float
 }
 
 /**
@@ -62,11 +82,16 @@ object TextMeasurerProviders {
         tables.clear()
     }
 
-    /** 未注册返回 null，由调用方回退 [SimpleTextMeasurer]。 */
-    fun createOrNull(textSizePx: Float, letterSpacingPx: Float, fontPath: String): TextMeasurer? {
+    /** 未注册返回 null，由调用方回退 [SimpleTextMeasurer]。[weight] 取 100..900，见 [ReaderFontWeights]。 */
+    fun createOrNull(
+        textSizePx: Float,
+        letterSpacingPx: Float,
+        fontPath: String,
+        weight: Int,
+    ): TextMeasurer? {
         val factory = this.factory ?: return null
-        val delegate = factory(textSizePx, letterSpacingPx, fontPath)
-        val table = tableFor(textSizePx, letterSpacingPx, fontPath, delegate)
+        val delegate = factory(textSizePx, letterSpacingPx, fontPath, weight)
+        val table = tableFor(textSizePx, letterSpacingPx, fontPath, weight, delegate)
         return CachedTextMeasurer(delegate, table)
     }
 
@@ -75,12 +100,13 @@ object TextMeasurerProviders {
         textSizePx: Float,
         letterSpacingPx: Float,
         fontPath: String,
+        weight: Int,
         delegate: TextMeasurer,
     ): AdvanceTable = synchronized(tablesLock) {
         tables.firstOrNull {
             it.keySizePx == textSizePx && it.keySpacingPx == letterSpacingPx &&
-                    it.keyFontPath == fontPath
-        } ?: AdvanceTable(textSizePx, letterSpacingPx, fontPath).also {
+                    it.keyFontPath == fontPath && it.keyWeight == weight
+        } ?: AdvanceTable(textSizePx, letterSpacingPx, fontPath, weight).also {
             // 标定判定不可缓存的表也留在册子里（内部 slots=null），免得每章重探一次
             it.calibrate(delegate)
             if (tables.size >= TABLE_CACHE_SIZE) tables.removeAt(0)
@@ -90,12 +116,16 @@ object TextMeasurerProviders {
 }
 
 /**
- * 度量器工厂：[fontPath] 为 `ReadBookConfig.textFont`（自定义字体文件绝对路径，空 = 默认字体）。
+ * 度量器工厂：[fontPath] 为 `ReadBookConfig.textFont`（自定义字体文件绝对路径，空 = 默认字体），
+ * [weight] 为 100..900 字重（见 [ReaderFontWeights]，标题与正文字重不同）。
+ *
  * 实现必须与绘制侧 `loadReaderFontFamily` 读同一个文件、失败时回落同一个默认字体，
- * 否则「A 字体度量 / B 字体绘制」会让正文错位。
+ * 且**字重的取舍也要与绘制侧一致**：自定义字体只注册了一个字形，绘制侧的 `FontWeight`
+ * 对它不起作用，故度量侧此时必须忽略 [weight]；默认字体则按 [weight] 取面。
+ * 否则「A 字重量度 / B 字形绘制」会让正文行尾溢出、字距错乱。
  */
 typealias TextMeasurerFactory =
-        (textSizePx: Float, letterSpacingPx: Float, fontPath: String) -> TextMeasurer
+        (textSizePx: Float, letterSpacingPx: Float, fontPath: String, weight: Int) -> TextMeasurer
 
 private const val TABLE_CACHE_SIZE = 4
 
@@ -170,6 +200,7 @@ private class AdvanceTable(
     val keySizePx: Float,
     val keySpacingPx: Float,
     val keyFontPath: String,
+    val keyWeight: Int,
 ) {
 
     /** NaN 未测 / 正数为实测内部宽 / 负数 [POISON]；null = 未标定，或标定判定这组参数不可缓存。 */
@@ -321,6 +352,7 @@ private class CachedTextMeasurer(
     override val letterSpacingPx = delegate.letterSpacingPx
     override val descent = delegate.descent
     override val ascent = delegate.ascent
+    override val leading = delegate.leading
 
     override fun measureGlyphWidths(text: String, widths: FloatArray) {
         // 数组装不下整串时交回原实现（越界与否由它自己决定），命中路径只写 [0, text.length)
@@ -340,6 +372,10 @@ private class CachedTextMeasurer(
 
     /** 不缓存：各实现的整串口径与「逐字求和」并不相等（全零宽串就是反例）。 */
     override fun measureWidth(text: String): Float = delegate.measureWidth(text)
+
+    /** 断点由平台 ICU 给出，装饰器只透传（漏转发会让四端全部退化成按簇累加断行）。 */
+    override fun lineBreakOpportunities(text: String): IntArray? =
+        delegate.lineBreakOpportunities(text)
 
     /** 用一条合成串把 [text] 里未测的码位一次补齐；没有待测码位 = 别的 worker 已经补过了。 */
     private fun seed(text: String) {

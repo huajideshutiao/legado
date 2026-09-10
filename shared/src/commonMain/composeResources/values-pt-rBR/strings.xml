@@ -508,7 +508,6 @@
     <string name="export_to_web_dav">Exportar para WebDav</string>
     <string name="debug">Depuração</string>
     <string name="crash_log">Registro de falhas</string>
-    <string name="use_zh_layout">Utilização de layout chinesas personalizadas</string>
     <string name="image_style">Formato de imagem</string>
     <string name="system_tts">Sistema TTS</string>
     <string name="export_type">Formato de exportação</string>

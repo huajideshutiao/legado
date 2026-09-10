@@ -23,9 +23,6 @@ data class TextLine(
     var isImage: Boolean = false,
     var startX: Float = 0f,
     var indentSize: Int = 0,
-    var extraLetterSpacing: Float = 0f,
-    var extraLetterSpacingOffsetX: Float = 0f,
-    var wordSpacing: Float = 0f,
     var exceed: Boolean = false,
     var onlyTextColumn: Boolean = true,
 ) {
@@ -38,8 +35,6 @@ data class TextLine(
     val lineEnd: Float get() = textColumns.lastOrNull()?.end ?: 0f
     val chapterIndices: IntRange get() = chapterPosition..chapterPosition + charSize
     val height: Float inline get() = lineBottom - lineTop
-
-    var searchResultColumnCount = 0
 
     var textPage: TextPage = emptyTextPage
     var isLeftLine = true

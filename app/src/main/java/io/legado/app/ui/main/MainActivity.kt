@@ -46,7 +46,6 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.LocalReadConfigProviders
-import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ReadConfigProviders
 import io.legado.app.help.config.ReadTipConfigShared
@@ -629,10 +628,10 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
         MangaReaderScreenModel.Providers.register(AndroidMangaReaderPlatform)
         VideoPlayPlatformProviders.register(AndroidVideoPlayPlatformProvider(this))
         // 排版度量走真实字形（对照 TextStyleProvider.getPaints 的 contentPaint）
-        TextMeasurerProviders.register { textSizePx, letterSpacingPx, fontPath ->
+        TextMeasurerProviders.register { textSizePx, letterSpacingPx, fontPath, weight ->
             AndroidTextMeasurer(TextPaint().apply {
                 isAntiAlias = true
-                typeface = readerContentTypeface(fontPath)
+                typeface = readerMeasureTypeface(fontPath, weight)
                 textSize = textSizePx
                 letterSpacing = if (textSizePx > 0f) letterSpacingPx / textSizePx else 0f
             })
@@ -936,25 +935,20 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
 }
 
 /**
- * 正文度量字体：[fontPath] = `ReadBookConfig.textFont`，与绘制侧 `loadReaderFontFamily`
+ * 度量字体：[fontPath] = `ReadBookConfig.textFont`，与绘制侧 `loadReaderFontFamily`
  * （同为 `Typeface.createFromFile`）读同一文件；空路径 / 加载失败一并回落 SANS_SERIF。
+ *
+ * [weight]（100..900，由 [ReaderFontWeights] 产出，标题与正文不同档）只作用于默认字体：
+ * 自定义字体在绘制侧只注册了一个 `Font`，`FontWeight` 对它不起作用，
+ * 故此处对文件路径分支不合成粗体，否则「粗体绘制 / 常规度量」会让每行墨迹宽于列盒。
  */
-private fun readerContentTypeface(fontPath: String): Typeface {
-    val base = runCatching {
-        if (fontPath.isNotEmpty()) {
-            Typeface.createFromFile(fontPath)
-        } else {
-            Typeface.SANS_SERIF
-        }
-    }.getOrDefault(Typeface.SANS_SERIF)
-    return when (ReadBookConfig.textBold) {
-        1 -> Typeface.create(base, Typeface.BOLD)
-        2 -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            Typeface.create(base, 300, false)
-        } else {
-            Typeface.create(base, Typeface.NORMAL)
-        }
-
-        else -> Typeface.create(base, Typeface.NORMAL)
+private fun readerMeasureTypeface(fontPath: String, weight: Int): Typeface {
+    if (fontPath.isNotEmpty()) {
+        return runCatching { Typeface.createFromFile(fontPath) }.getOrDefault(Typeface.SANS_SERIF)
+    }
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        Typeface.create(Typeface.SANS_SERIF, weight, false)
+    } else {
+        Typeface.create(Typeface.SANS_SERIF, if (weight >= 700) Typeface.BOLD else Typeface.NORMAL)
     }
 }

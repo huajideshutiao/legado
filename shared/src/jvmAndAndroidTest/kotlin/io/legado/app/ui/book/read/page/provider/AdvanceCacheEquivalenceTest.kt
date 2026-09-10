@@ -23,6 +23,7 @@ internal class EdgeCompensatedMeasurer(
     override val letterSpacingPx: Float = 4f,
     override val descent: Float = 8f,
     override val ascent: Float = -32f,
+    override val leading: Float = 0f,
     private val ligatureChars: Set<Char> = setOf('—', '…'),
     private val edgeQuirkChars: Set<Char> = emptySet(),
 ) : TextMeasurer {
@@ -109,7 +110,7 @@ class AdvanceCacheEquivalenceTest {
     @Before
     fun install() {
         delegates.clear()
-        TextMeasurerProviders.register { size, spacing, _ ->
+        TextMeasurerProviders.register { size, spacing, _, _ ->
             EdgeCompensatedMeasurer(size, spacing).also { delegates += it }
         }
     }
@@ -120,7 +121,7 @@ class AdvanceCacheEquivalenceTest {
     /** 拿一个装饰器 + 它私有的 delegate（createOrNull 每次恰好造一个 delegate）。 */
     private fun newCached(): Pair<TextMeasurer, EdgeCompensatedMeasurer> {
         val before = delegates.size
-        val cached = TextMeasurerProviders.createOrNull(sizePx, spacingPx, fontPath)
+        val cached = TextMeasurerProviders.createOrNull(sizePx, spacingPx, fontPath, 400)
             ?: error("工厂已注册，createOrNull 不该返回 null")
         return cached to delegates[before]
     }
@@ -142,7 +143,7 @@ class AdvanceCacheEquivalenceTest {
     }
 
     private fun newCachedOnly(): TextMeasurer =
-        TextMeasurerProviders.createOrNull(sizePx, spacingPx, fontPath)
+        TextMeasurerProviders.createOrNull(sizePx, spacingPx, fontPath, 400)
             ?: error("工厂已注册，createOrNull 不该返回 null")
 
     /** 齐夫式偏斜的纯汉字语料：头部字符高频复现，尾部生僻字偶现，贴近真实章节。 */
@@ -346,7 +347,7 @@ class AdvanceCacheEquivalenceTest {
     @Test
     fun `首末补偿量与字符有关时整表禁用并退回直调`() {
         delegates.clear()
-        TextMeasurerProviders.register { size, spacing, _ ->
+        TextMeasurerProviders.register { size, spacing, _, _ ->
             EdgeCompensatedMeasurer(size, spacing, edgeQuirkChars = setOf('一')).also { delegates += it }
         }
         val (cached, delegate) = newCached()

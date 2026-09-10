@@ -6,7 +6,9 @@ import io.legado.app.ui.book.read.page.entities.column.BaseColumn
 import io.legado.app.ui.book.read.page.entities.column.ImageColumn
 import io.legado.app.ui.book.read.page.entities.column.ReviewColumn
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
+import kotlinx.coroutines.ensureActive
 import kotlin.concurrent.Volatile
+import kotlin.coroutines.coroutineContext
 
 /**
  * 解析后的段落（文本 + 内嵌图片），供 [SimpleChapterLayout.layout] 图片排版路径使用。
@@ -44,7 +46,7 @@ data class ParsedParagraph(
  * - **双页**：[doublePage]=true 时左右分栏，标记 [io.legado.app.ui.book.read.page.entities.TextLine.isLeftLine]。
  * - **底部对齐**：[textBottomJustify]=true 时由 [TextPage.upLinesPosition] 调整 surplus 均摊。
  * - **段落缩进**：支持字符拼接与等宽几何缩进（[indentCharWidth]）。
- * - **断行**：复用 [ZhLineBreaker] 中文避头尾状态机。
+ * - **断行**：复用 [LineBreaker]（平台 ICU 断点 ∩ 中文禁则），前置 [PunctuationTrimmer] 标点挤压。
  * - **朗读高亮**：写入真实连续章节字符偏移 [io.legado.app.ui.book.read.page.entities.TextLine.chapterPosition]。
  */
 @Suppress("unused", "MemberVisibilityCanBePrivate")
@@ -63,7 +65,6 @@ class SimpleChapterLayout(
     val endPadding: Int = 0,
     val paragraphIndent: String,
     val textFullJustify: Boolean,
-    val useZhLayout: Boolean = true,
     val viewWidth: Int = visibleWidth + paddingLeft * 2,
     val doublePage: Boolean = false,
     val textBottomJustify: Boolean = false,
@@ -76,6 +77,8 @@ class SimpleChapterLayout(
     val reviewChar: String = "",
     val srcReplaceChar: String = ChapterContentParserShared.srcReplaceChar,
     val layoutCache: ParagraphLayoutCache = ParagraphLayoutCache(),
+    val contentWeight: Int = 400,
+    val titleWeight: Int = 700,
 ) {
 
     /**
@@ -85,10 +88,10 @@ class SimpleChapterLayout(
     private var reviewCountMap: Map<Int, Int>? = null
 
     private val titleFontKey: String =
-        "title_${titleMeasurer.textSizePx}_${titleMeasurer.letterSpacingPx}_zh$useZhLayout"
+        "title_${titleMeasurer.textSizePx}_${titleMeasurer.letterSpacingPx}_$titleWeight"
 
     private val bodyFontKey: String =
-        "body_${measurer.textSizePx}_${measurer.letterSpacingPx}_zh$useZhLayout"
+        "body_${measurer.textSizePx}_${measurer.letterSpacingPx}_$contentWeight"
 
     /**
      * 排版章节正文，产出 [TextPage] 列表。
@@ -140,6 +143,7 @@ class SimpleChapterLayout(
         if (displayTitle.isNotEmpty() && (titleMode != 2 || emptyContent)) {
             val titleLines = displayTitle.split("\n").filter { it.isNotBlank() }
             titleLines.forEachIndexed { idx, titleLine ->
+                coroutineContext.ensureActive()
                 val isLastTitleLine = idx == titleLines.lastIndex
                 val reviewCountForTitle = if (isLastTitleLine) (reviewCountMap?.get(0) ?: 0) else 0
                 val titleText = if (reviewChar.isNotEmpty() && reviewCountForTitle > 0) {
@@ -152,7 +156,6 @@ class SimpleChapterLayout(
                     visibleWidth = visibleWidth,
                     paragraphIndent = "",
                     indentCharWidth = 0f,
-                    useZhLayout = useZhLayout,
                     isTitle = true,
                     isFirstLine = true,
                     paragraphNum = 0,
@@ -179,6 +182,7 @@ class SimpleChapterLayout(
         } else {
             var paragraphSeq = 0
             for (paragraph in contents) {
+                coroutineContext.ensureActive()
                 if (paragraph.isBlank()) continue
                 paragraphSeq++
                 val processed = contentProcessor?.invoke(paragraph.trim()) ?: paragraph.trim()
@@ -194,7 +198,6 @@ class SimpleChapterLayout(
                     visibleWidth = visibleWidth,
                     paragraphIndent = paragraphIndent,
                     indentCharWidth = indentCharWidth,
-                    useZhLayout = useZhLayout,
                     isTitle = false,
                     isFirstLine = true,
                     paragraphNum = paragraphSeq,
@@ -232,13 +235,14 @@ class SimpleChapterLayout(
             imageStyle = imageStyle,
             emptyContent = emptyContent,
             indentChar = indentChar,
+            // 两端对齐各档余量上限的基准（clreq 6.2.2.4），与 Phase 1 挤压取同一个汉字宽
+            cnCharWidth = ParagraphLayoutEngine.cnCharWidth(measurer),
             columnFactory = SimpleColumnFactory(),
         )
 
         return PaginationEngine.paginate(
             paragraphs = paragraphMetricsList,
             config = paginationConfig,
-            measurer = measurer,
         )
     }
 
@@ -256,6 +260,7 @@ class SimpleChapterLayout(
         val isTextImageStyle = styleUpper == Book.imgStyleText
 
         for (parsedLine in parsedParagraphs) {
+            coroutineContext.ensureActive()
             val contentText = parsedLine.text
             val imgList = ArrayDeque<ImgData>(parsedLine.images.size)
             parsedLine.images.forEach { imgList.add(it) }
@@ -263,6 +268,7 @@ class SimpleChapterLayout(
             var lineStartIndex = 0
             val contentLength = contentText.length
             while (lineStartIndex < contentLength) {
+                coroutineContext.ensureActive()
                 var lineEndIndex = contentText.indexOf('\n', lineStartIndex)
                 if (lineEndIndex == -1) lineEndIndex = contentLength
 
@@ -303,8 +309,7 @@ class SimpleChapterLayout(
                         visibleWidth = visibleWidth,
                         paragraphIndent = paragraphIndent,
                         indentCharWidth = indentCharWidth,
-                        useZhLayout = useZhLayout,
-                        isTitle = false,
+                            isTitle = false,
                         isFirstLine = true,
                         paragraphNum = paragraphSeq,
                         textHeight = textHeight,
@@ -337,8 +342,7 @@ class SimpleChapterLayout(
                                         visibleWidth = visibleWidth,
                                         paragraphIndent = paragraphIndent,
                                         indentCharWidth = indentCharWidth,
-                                        useZhLayout = useZhLayout,
-                                        isTitle = false,
+                                                            isTitle = false,
                                         isFirstLine = isFirstSegment,
                                         paragraphNum = paragraphSeq,
                                         textHeight = textHeight,
@@ -393,8 +397,7 @@ class SimpleChapterLayout(
                             visibleWidth = visibleWidth,
                             paragraphIndent = paragraphIndent,
                             indentCharWidth = indentCharWidth,
-                            useZhLayout = useZhLayout,
-                            isTitle = false,
+                                    isTitle = false,
                             isFirstLine = !hasNonEmbeddedImage && isFirstSegment,
                             paragraphNum = paragraphSeq,
                             textHeight = textHeight,
@@ -420,15 +423,6 @@ class SimpleChapterLayout(
      * [ImageColumn] / [TextColumn]。段号只认 [PaginationEngine] 传入的行内真实段号。
      */
     private inner class SimpleColumnFactory : ColumnFactory {
-        /** 两阶段管线没有「当前段号」这种排版期状态，[PaginationEngine] 一律走带段号的重载。 */
-        override fun createColumn(
-            absStartX: Int,
-            char: String,
-            xStart: Float,
-            xEnd: Float,
-            imgList: MutableList<ImgData>?,
-        ): BaseColumn = error("SimpleColumnFactory 需要行内真实段号，请调用带 paragraphIndex 的重载")
-
         override fun createColumn(
             absStartX: Int,
             char: String,
@@ -436,6 +430,7 @@ class SimpleChapterLayout(
             xEnd: Float,
             imgList: MutableList<ImgData>?,
             paragraphIndex: Int,
+            drawOffsetX: Float,
         ): BaseColumn = when {
             reviewChar.isNotEmpty() && char == reviewChar -> {
                 val cnt = reviewCountMap?.get(paragraphIndex) ?: 0
@@ -448,10 +443,10 @@ class SimpleChapterLayout(
                 if (img != null) {
                     ImageColumn(absStartX + xStart, absStartX + xEnd, img.src, img.onclick)
                 } else {
-                    TextColumn(absStartX + xStart, absStartX + xEnd, char)
+                    TextColumn(absStartX + xStart, absStartX + xEnd, char, drawOffsetX)
                 }
             }
-            else -> TextColumn(absStartX + xStart, absStartX + xEnd, char)
+            else -> TextColumn(absStartX + xStart, absStartX + xEnd, char, drawOffsetX)
         }
     }
 }

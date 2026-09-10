@@ -12,7 +12,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import io.legado.app.help.config.LocalReadConfigProviders
@@ -82,14 +81,39 @@ fun rememberReaderDrawStyle(): ReaderDrawStyle {
         ).collect { styleVersion++ }
     }
 
-    // 字体文件读盘只在路径变化时做一次，样式版本变动不重复加载
+    // 两条文本管线均从同一字体描述解析；字体文件只在路径变化时读一次
     val fontPath = remember(styleVersion, readBookConfig) { readBookConfig.textFont }
-    val fontFamily = remember(fontPath) {
-        if (fontPath.isEmpty()) null else loadReaderFontFamily(fontPath)
+    val contentFont = remember(fontPath, readBookConfig.textBold) {
+        readerFontDescription(fontPath, ReaderFontWeights.content(readBookConfig.textBold))
+    }
+    val titleFont = remember(fontPath, readBookConfig.textBold) {
+        readerFontDescription(fontPath, ReaderFontWeights.title(readBookConfig.textBold))
+    }
+    // FontFamily 只由字体来源/回退策略决定；字重由下方 TextStyle 应用。
+    // familyIdentity 不含 weight，切 textBold 不会重复读取同一个字体文件。
+    val fontFamily = remember(contentFont.familyIdentity) {
+        resolveReaderFontFamily(contentFont)
     }
 
-    return remember(styleVersion, fontFamily, accentColor, isEInk, readBookConfig, readTipConfig) {
-        buildReaderDrawStyle(readBookConfig, readTipConfig, fontFamily, accentColor, isEInk)
+    return remember(
+        styleVersion,
+        fontFamily,
+        contentFont,
+        titleFont,
+        accentColor,
+        isEInk,
+        readBookConfig,
+        readTipConfig
+    ) {
+        buildReaderDrawStyle(
+            readBookConfig,
+            readTipConfig,
+            fontFamily,
+            contentFont,
+            titleFont,
+            accentColor,
+            isEInk,
+        )
     }
 }
 
@@ -108,17 +132,17 @@ private val redrawChanges = setOf(
 private fun buildReaderDrawStyle(
     readBookConfig: ReadBookConfigShared,
     readTipConfig: ReadTipConfigShared,
-    fontFamily: FontFamily?,
+    fontFamily: FontFamily,
+    contentFont: ReaderFontDescription,
+    titleFont: ReaderFontDescription,
     accentColor: Color,
     isEInk: Boolean,
 ): ReaderDrawStyle {
     val textColor = Color(readBookConfig.textColor)
-    // 与 app 端 getPaints 一致：0 标题粗/正文常规，1 标题 900/正文粗，2 标题常规/正文 300
-    val (titleWeight, contentWeight) = when (readBookConfig.textBold) {
-        1 -> FontWeight.W900 to FontWeight.Bold
-        2 -> FontWeight.Normal to FontWeight.W300
-        else -> FontWeight.Bold to FontWeight.Normal
-    }
+    // 与 app 端 getPaints 一致：0 标题粗/正文常规，1 标题 900/正文粗，2 标题常规/正文 300；
+    // 字重映射单一来源见 ReaderFontWeights（排版度量侧取同一值，保证度量与绘制同字重）
+    val titleWeight = FontWeight(titleFont.weight)
+    val contentWeight = FontWeight(contentFont.weight)
     val letterSpacing = readBookConfig.letterSpacing
     val contentSize = readBookConfig.textSize.sp
     // 标题字号 = 正文 + titleSize 配置 + 固定"略大"增量（用户需求：正文标题比正文略大；

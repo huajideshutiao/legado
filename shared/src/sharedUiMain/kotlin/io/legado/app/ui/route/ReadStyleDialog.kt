@@ -36,6 +36,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadBookConfigProviders
+import io.legado.app.help.config.ReadConfigDefaults
 import io.legado.app.help.config.ReadStyleConfig
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.image.ImageBitmapLoader
@@ -219,7 +220,7 @@ private fun ReadStyleContent(
             override val configList: List<ReadStyleConfig> = readBookConfig.configList
             override fun curTextColor(): Int = readBookConfig.config.curTextColor()
             override fun addStyle(): Int {
-                readBookConfig.configList.add(ReadStyleConfig())
+                readBookConfig.configList.add(ReadConfigDefaults.newStyleFrom(readBookConfig.config))
                 return readBookConfig.configList.lastIndex
             }
 

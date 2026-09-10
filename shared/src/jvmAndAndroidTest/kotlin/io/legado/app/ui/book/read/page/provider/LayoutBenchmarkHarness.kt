@@ -31,7 +31,7 @@ class LayoutBenchmarkHarness {
 
     private val measurer = FixedWidthMeasurer(textSizePx = 40f, descent = 8f, ascent = -32f)
 
-    /** 含标点的字池，让 ZhLineBreaker 的避头尾分支真正被走到。 */
+    /** 含标点的字池，让 [LineBreaker] 的禁则回退分支真正被走到。 */
     private val pool = "甲乙丙丁戊，己庚辛壬癸。子丑寅卯辰巳午未申酉"
 
     private val paragraphs: List<String> = List(paragraphCount) { p ->
@@ -101,10 +101,10 @@ class LayoutBenchmarkHarness {
     private fun benchAdvanceCold(label: String): Long {
         var best = Long.MAX_VALUE
         repeat(6) { round ->
-            TextMeasurerProviders.register { size, spacing, _ ->
+            TextMeasurerProviders.register { size, spacing, _, _ ->
                 EdgeCompensatedMeasurer(size, spacing)
             }
-            val m = TextMeasurerProviders.createOrNull(benchSizePx, benchSpacingPx, "bench")
+            val m = TextMeasurerProviders.createOrNull(benchSizePx, benchSpacingPx, "bench", 400)
                 ?: error("工厂已注册")
             val start = System.nanoTime()
             measureAllGlyphs(m)
@@ -116,7 +116,7 @@ class LayoutBenchmarkHarness {
     }
 
     private fun benchAdvanceHot(label: String): Long {
-        val m = TextMeasurerProviders.createOrNull(benchSizePx, benchSpacingPx, "bench")
+        val m = TextMeasurerProviders.createOrNull(benchSizePx, benchSpacingPx, "bench", 400)
             ?: error("工厂已注册")
         repeat(3) { measureAllGlyphs(m) } // 填表 + 预热
         var best = Long.MAX_VALUE
@@ -134,7 +134,7 @@ class LayoutBenchmarkHarness {
     fun `排版分段耗时`() = runBlocking {
         val metrics = paragraphs.map { layoutOne(it, null) }
         val lineCount = metrics.sumOf { it.lineCount }
-        val pageCount = PaginationEngine.paginate(metrics, config, measurer).size
+        val pageCount = PaginationEngine.paginate(metrics, config).size
         println(
             "[layout-bench] 规模 $paragraphCount 段 × $charsPerParagraph 字 = " +
                 "${paragraphCount * charsPerParagraph} 字, 可视区 ${visibleWidth}x$visibleHeight"
@@ -157,10 +157,12 @@ class LayoutBenchmarkHarness {
         val hot = benchAdvanceHot("1c 测量(advance 表热)  ")
         println("[layout-bench] advance 缓存收益 冷/热 = ${if (hot > 0) cold / hot else -1} 倍")
 
-        // 2 断行：只跑 ZhLineBreaker 状态机，输入用上一段已聚好的簇
-        bench("2 断行(ZhLineBreaker)  ") {
-            for (split in splits) {
-                ParagraphLayoutEngine.breakByZh(
+        // 2 断行：只跑 LineBreaker 状态机，输入用上一段已聚好的簇
+        // FixedWidthMeasurer 不提供 ICU 断点，这里量的是中文禁则表退化路径
+        bench("2 断行(LineBreaker)     ") {
+            for ((idx, split) in splits.withIndex()) {
+                ParagraphLayoutEngine.breakLines(
+                    text = paragraphs[idx],
                     words = split.words,
                     widths = split.widths,
                     measurer = measurer,
@@ -185,7 +187,7 @@ class LayoutBenchmarkHarness {
 
         // 5 Phase 2 分页：纯算术切页 + 逐字 Column 构造
         bench("5 Phase2 分页(paginate)") {
-            PaginationEngine.paginate(metrics, config, measurer)
+            PaginationEngine.paginate(metrics, config)
         }
 
         assertTrue("基准数据必须真的排出页来", pageCount > 0 && lineCount > 0)

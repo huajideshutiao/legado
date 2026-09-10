@@ -41,6 +41,11 @@ data class PaginationConfig(
     val imageStyle: String? = null,
     val emptyContent: Boolean = false,
     val indentChar: String = "　",
+    /**
+     * 汉字基准宽（px，= `measureWidth("我")`）：两端对齐各档余量上限的基准
+     * （clreq 6.2.2.4 的 1/2 / 1/4 汉字宽）。<=0 时不拉伸，余量留在行尾。
+     */
+    val cnCharWidth: Float = 0f,
     val columnFactory: ColumnFactory? = null,
 )
 
@@ -61,14 +66,12 @@ object PaginationEngine {
      *
      * @param paragraphs Phase 1 产出的段落度量列表
      * @param config 分页参数配置
-     * @param measurer 文字度量器（两端对齐计算 extraLetterSpacing 时使用）
      * @param callback 协程取消与页面完成回调（可选）
      * @return 分页排版后的 [TextPage] 列表
      */
     suspend fun paginate(
         paragraphs: List<ParagraphLineMetrics>,
         config: PaginationConfig,
-        measurer: TextMeasurer? = null,
         callback: TextLayoutCallback? = null,
     ): ArrayList<TextPage> {
         val pages = arrayListOf<TextPage>()
@@ -179,10 +182,17 @@ object PaginationEngine {
             xStart: Float,
             xEnd: Float,
             imgList: MutableList<ImgData>? = null,
+            drawOffsetX: Float = 0f,
         ) {
-            val column = columnFactory.createColumn(absStartX, char, xStart, xEnd, imgList, textLine.paragraphNum)
+            val column = columnFactory.createColumn(
+                absStartX, char, xStart, xEnd, imgList, textLine.paragraphNum, drawOffsetX,
+            )
             textLine.addColumn(column)
         }
+
+        /** 取第 [index] 簇的绘制偏移（无挤压表时为 0）。 */
+        fun offsetAt(drawOffsets: List<Float>?, index: Int): Float =
+            drawOffsets?.get(index) ?: 0f
 
         fun addCharsToLineNatural(
             textLine: TextLine,
@@ -190,6 +200,7 @@ object PaginationEngine {
             startX: Float,
             textWidths: List<Float>,
             imgList: MutableList<ImgData>? = null,
+            drawOffsets: List<Float>? = null,
         ) {
             textLine.startX = absStartX + startX
             var x = startX
@@ -197,53 +208,39 @@ object PaginationEngine {
                 val char = words[index]
                 val cw = textWidths[index]
                 val x1 = x + cw
-                addCharsToLine(textLine, char, x, x1, imgList)
+                addCharsToLine(textLine, char, x, x1, imgList, offsetAt(drawOffsets, index))
                 x = x1
             }
             exceed(textLine, words)
         }
 
-        fun justifyBySpaces(
+        /**
+         * 两端对齐的余量分配（clreq 6.2.2.4 拉伸优先顺序）。
+         *
+         * 有意偏离原版：原版 `justifyByLetterSpacing` 把余量无上限均摊到**每一个**簇间隙，
+         * 会把 `Windows` 的字母、`2026/09/04` 的数字、`——` `……` 内部都拉开；clreq 禁止对
+         * 符号分离禁则与连接号 / 分隔号前后拉伸，6.2.3 又规定西文词组内不均排。
+         * 分类与上限见 [JustifySpacing]。
+         */
+        fun justifyLine(
             textLine: TextLine,
             words: List<String>,
             startX: Float,
             textWidths: List<Float>,
             residualWidth: Float,
-            spaceSize: Int,
             imgList: MutableList<ImgData>? = null,
+            drawOffsets: List<Float>? = null,
         ) {
-            val d = residualWidth / spaceSize
-            textLine.wordSpacing = d
+            val extra = JustifySpacing.distribute(
+                residual = residualWidth,
+                kinds = JustifySpacing.classifyGaps(words),
+                cnCharWidth = config.cnCharWidth,
+                widths = textWidths,
+            )
             var x = startX
             for (index in words.indices) {
-                val char = words[index]
-                val cw = textWidths[index]
-                val x1 = if (char == " " && index != words.lastIndex) x + cw + d else x + cw
-                addCharsToLine(textLine, char, x, x1, imgList)
-                x = x1
-            }
-        }
-
-        fun justifyByLetterSpacing(
-            textLine: TextLine,
-            words: List<String>,
-            startX: Float,
-            textWidths: List<Float>,
-            residualWidth: Float,
-            m: TextMeasurer?,
-            imgList: MutableList<ImgData>? = null,
-        ) {
-            val gapCount = words.lastIndex
-            val d = if (gapCount > 0) residualWidth / gapCount else 0f
-            textLine.extraLetterSpacingOffsetX = -d / 2
-            val ts = m?.textSizePx ?: 1f
-            textLine.extraLetterSpacing = d / ts
-            var x = startX
-            for (index in words.indices) {
-                val char = words[index]
-                val cw = textWidths[index]
-                val x1 = if (index != words.lastIndex) x + cw + d else x + cw
-                addCharsToLine(textLine, char, x, x1, imgList)
+                val x1 = x + textWidths[index] + (extra?.getOrNull(index) ?: 0f)
+                addCharsToLine(textLine, words[index], x, x1, imgList, offsetAt(drawOffsets, index))
                 x = x1
             }
         }
@@ -254,21 +251,18 @@ object PaginationEngine {
             desiredWidth: Float,
             startX: Float,
             textWidths: List<Float>,
-            m: TextMeasurer?,
             imgList: MutableList<ImgData>? = null,
+            drawOffsets: List<Float>? = null,
         ) {
             if (!config.textFullJustify) {
-                addCharsToLineNatural(textLine, words, startX, textWidths, imgList)
+                addCharsToLineNatural(textLine, words, startX, textWidths, imgList, drawOffsets)
                 return
             }
             textLine.startX = absStartX + startX
             val residualWidth = config.visibleWidth - startX - desiredWidth
-            val spaceSize = words.count { it == " " }
-            if (spaceSize > 0) {
-                justifyBySpaces(textLine, words, startX, textWidths, residualWidth, spaceSize, imgList)
-            } else {
-                justifyByLetterSpacing(textLine, words, startX, textWidths, residualWidth, m, imgList)
-            }
+            justifyLine(
+                textLine, words, startX, textWidths, residualWidth, imgList, drawOffsets,
+            )
             exceed(textLine, words)
         }
 
@@ -315,11 +309,9 @@ object PaginationEngine {
                     val shouldCenter = line.centerTitle || config.titleMode == 1 || config.emptyContent ||
                         config.imageStyle?.uppercase() == Book.imgStyleSingle
                     val startX = if (shouldCenter) (config.visibleWidth - line.desiredWidth) / 2 else 0f
-                    if (shouldCenter || line.isParagraphEnd || !config.textFullJustify) {
-                        addCharsToLineNatural(textLine, line.words, startX, line.widths)
-                    } else {
-                        addCharsToLineMiddle(textLine, line.words, line.desiredWidth, startX, line.widths, measurer)
-                    }
+                    // 标题不做两端对齐：clreq 6.2.1.3「单行对齐处理」—— 标题这类短文本取居中或
+                    // 行首对齐，行内文字原则上密排，不把余量均排到字间（长标题自动折行时同理）。
+                    addCharsToLineNatural(textLine, line.words, startX, line.widths, null, line.drawOffsets)
                     if (config.doublePage) textLine.isLeftLine = absStartX < config.viewWidth / 2
                     textLine.text = line.text
                     textLine.lineTop = config.paddingTop + durY
@@ -408,9 +400,14 @@ object PaginationEngine {
                     val isLast = lineIdx == paragraph.lines.lastIndex
                     val lineImgList = if (line.images.isNotEmpty()) line.images.toMutableList() else null
                     if (isLast || !config.textFullJustify) {
-                        addCharsToLineNatural(textLine, line.words, startX, line.widths, lineImgList)
+                        addCharsToLineNatural(
+                            textLine, line.words, startX, line.widths, lineImgList, line.drawOffsets,
+                        )
                     } else {
-                        addCharsToLineMiddle(textLine, line.words, line.desiredWidth, startX, line.widths, measurer, lineImgList)
+                        addCharsToLineMiddle(
+                            textLine, line.words, line.desiredWidth, startX, line.widths,
+                            lineImgList, line.drawOffsets,
+                        )
                     }
                     if (config.doublePage) textLine.isLeftLine = absStartX < config.viewWidth / 2
                     textLine.text = line.text
@@ -459,7 +456,7 @@ object PaginationEngine {
 
 /**
  * 未注入 [ColumnFactory] 时的兜底列工厂：只产出 [ImageColumn] / [TextColumn]，
- * 不产出段评列故与逻辑段号无关，无需重写带段号的重载。
+ * 不产出段评列故与逻辑段号无关。
  */
 private object DefaultColumnFactory : ColumnFactory {
     override fun createColumn(
@@ -468,6 +465,8 @@ private object DefaultColumnFactory : ColumnFactory {
         xStart: Float,
         xEnd: Float,
         imgList: MutableList<ImgData>?,
+        paragraphIndex: Int,
+        drawOffsetX: Float,
     ): BaseColumn {
         // 只有图片占位符才消费图片队列，普通字符不许把队首图片吞掉
         if (isImagePlaceholder(char)) {
@@ -476,6 +475,6 @@ private object DefaultColumnFactory : ColumnFactory {
                 return ImageColumn(absStartX + xStart, absStartX + xEnd, img.src, img.onclick)
             }
         }
-        return TextColumn(absStartX + xStart, absStartX + xEnd, char)
+        return TextColumn(absStartX + xStart, absStartX + xEnd, char, drawOffsetX)
     }
 }

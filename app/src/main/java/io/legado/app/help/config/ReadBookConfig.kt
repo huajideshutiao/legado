@@ -192,11 +192,6 @@ object ReadBookConfig {
         set(value) {
             shared.hideNavigationBar = value
         }
-    var useZhLayout
-        get() = shared.useZhLayout
-        set(value) {
-            shared.useZhLayout = value
-        }
 
     var bgAlpha
         get() = shared.bgAlpha

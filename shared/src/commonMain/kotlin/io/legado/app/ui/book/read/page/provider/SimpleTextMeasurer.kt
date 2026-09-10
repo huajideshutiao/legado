@@ -19,13 +19,15 @@ package io.legado.app.ui.book.read.page.provider
  * [halfWidthRatio] 默认 0.5（西文窄于中文一半的常见近似）。
  *
  * 与 app 端 `TextPaint.getTextWidthsCompat` 的差异：app 端按真实字形宽度度量，
- * 本类按等宽近似——断行位置可能略有偏移，但 `ZhLineBreaker` 避头尾逻辑不受影响。
+ * 本类按等宽近似——断行位置可能略有偏移。另本类不实现
+ * [TextMeasurer.lineBreakOpportunities]（无平台 ICU），[LineBreaker] 会退化为只用中文禁则表。
  */
 class SimpleTextMeasurer(
     override val textSizePx: Float,
     override val letterSpacingPx: Float = 0f,
     override val descent: Float = textSizePx * 0.2f,
     override val ascent: Float = -textSizePx * 0.8f,
+    override val leading: Float = 0f,
     private val halfWidthRatio: Float = 0.5f,
 ) : TextMeasurer {
 

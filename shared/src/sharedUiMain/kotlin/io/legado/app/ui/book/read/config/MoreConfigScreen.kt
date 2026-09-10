@@ -30,7 +30,6 @@ import legado.shared.generated.resources.screen_time_out_value
 import legado.shared.generated.resources.show_read_title_addition
 import legado.shared.generated.resources.text_bottom_justify
 import legado.shared.generated.resources.text_full_justify
-import legado.shared.generated.resources.use_zh_layout
 import org.jetbrains.compose.resources.stringArrayResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -72,7 +71,6 @@ fun MoreConfigScreen(
     val titleHideNavigationBar = stringResource(Res.string.pt_hide_navigation_bar)
     val titleDoublePage = stringResource(Res.string.double_page_horizontal)
     val titleProgressBarBehavior = stringResource(Res.string.progress_bar_behavior)
-    val titleUseZhLayout = stringResource(Res.string.use_zh_layout)
     val titleTextFullJustify = stringResource(Res.string.text_full_justify)
     val titleTextBottomJustify = stringResource(Res.string.text_bottom_justify)
     val titlePageTouchSlop = stringResource(Res.string.page_touch_slop_title)
@@ -136,13 +134,6 @@ fun MoreConfigScreen(
                 defaultValue = "page",
                 isBottomBackground = true,
                 onValueChange = { onPrefChange(PreferKey.progressBarBehavior) },
-            )
-            switchPreference(
-                prefKey = PreferKey.useZhLayout,
-                title = titleUseZhLayout,
-                defaultValue = false,
-                isBottomBackground = true,
-                onCheckedChange = { onPrefChange(PreferKey.useZhLayout) },
             )
             switchPreference(
                 prefKey = PreferKey.textFullJustify,

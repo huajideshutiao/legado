@@ -103,7 +103,6 @@ object PreferKey {
     const val autoCheckUpdate = "autoCheckUpdate"
     const val exportCharset = "exportCharset"
     const val exportUseReplace = "exportUseReplace"
-    const val useZhLayout = "useZhLayout"
     //const val expandTextMenu = "expandTextMenu"
     const val doublePageHorizontal = "doubleHorizontalPage"
     const val readUrlOpenInBrowser = "readUrlInBrowser"

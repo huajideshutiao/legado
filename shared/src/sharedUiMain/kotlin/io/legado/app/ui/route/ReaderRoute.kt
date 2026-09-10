@@ -1263,6 +1263,8 @@ private fun buildLayoutConfig(
         textSizePx = textSizePx,
         // 标题字号 = 正文 + titleSize + 固定"略大"增量（与绘制侧 ReaderDrawStyle.titleStyle 同口径）
         titleSizePx = (config.textSize + config.titleSize + TITLE_SIZE_EXTRA_SP).sp.toPx(),
+        // 字重档位：度量侧经 LayoutConfig.contentWeight/titleWeight 取与绘制侧同一面字重
+        textBold = config.textBold,
         // 原版 Paint.letterSpacing 是字号倍数，排版面按 px 消费
         letterSpacingPx = config.letterSpacing * textSizePx,
         lineSpacingExtra = config.lineSpacingExtra / 10f,
@@ -1274,7 +1276,6 @@ private fun buildLayoutConfig(
         paragraphIndent = config.paragraphIndent,
         textFullJustify = config.textFullJustify,
         textBottomJustify = config.textBottomJustify,
-        useZhLayout = config.useZhLayout,
         titleMode = config.titleMode,
         // 度量侧字体与 ReaderDrawStyle 的 loadReaderFontFamily 同一路径，避免度量/绘制不同字体
         textFontPath = config.textFont,

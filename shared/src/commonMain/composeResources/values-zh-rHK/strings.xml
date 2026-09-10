@@ -518,7 +518,6 @@
     <string name="export_to_web_dav">導出到WebDav</string>
     <string name="debug">調試</string>
     <string name="crash_log">崩潰日誌</string>
-    <string name="use_zh_layout">使用自訂中文分行</string>
     <string name="image_style">圖片樣式</string>
     <string name="system_tts">系統TTS</string>
     <string name="export_type">導出格式</string>

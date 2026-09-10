@@ -14,34 +14,17 @@ import io.legado.app.ui.book.read.page.entities.column.BaseColumn
 interface ColumnFactory {
 
     /**
-     * 创建列（无段号）。判断 char 类型：
-     * - 段评占位符 → ReviewColumn（段号由实现方自行维护）
-     * - 图片占位符且 imgList 非空 → ImageColumn（从 imgList 取出 src/onclick）
-     * - 其他 → TextColumn
-     *
-     * 自己维护段号的实现走本重载；[PaginationEngine] 没有「当前段号」这种排版期状态，
-     * 一律走带 [paragraphIndex] 的重载。
+     * 创建列（带逻辑段号）。[PaginationEngine] 分页切片时传入当前行的真实段号，
+     * 保证段评气泡（ReviewColumn）绑定准确的段落序号与评论数。
      *
      * @param absStartX 列绝对起始 X（含 paddingLeft）
      * @param char 字素簇字符串
      * @param xStart 列相对起始 X（相对 absStartX）
      * @param xEnd 列相对结束 X
      * @param imgList 嵌入图片队列（可为 null）；char 为图片占位符时取出下一项（removeFirst 副作用）
-     */
-    fun createColumn(
-        absStartX: Int,
-        char: String,
-        xStart: Float,
-        xEnd: Float,
-        imgList: MutableList<ImgData>?
-    ): BaseColumn
-
-    /**
-     * 创建列（带逻辑段号）。[PaginationEngine] 分页切片时传入当前行的真实段号，
-     * 保证段评气泡（ReviewColumn）绑定准确的段落序号与评论数。
-     *
-     * 默认实现丢弃段号退回无段号重载，只对「自己维护段号」的实现（如单相排版通道）成立；
-     * 产出 ReviewColumn 又要接 [PaginationEngine] 的实现必须重写本重载。
+     * @param paragraphIndex 逻辑段号
+     * @param drawOffsetX 绘制 X 偏移（px），仅 [io.legado.app.ui.book.read.page.entities.column.TextColumn]
+     *   消费（标点挤压裁左半），图片/段评列忽略
      */
     fun createColumn(
         absStartX: Int,
@@ -50,5 +33,6 @@ interface ColumnFactory {
         xEnd: Float,
         imgList: MutableList<ImgData>?,
         paragraphIndex: Int,
-    ): BaseColumn = createColumn(absStartX, char, xStart, xEnd, imgList)
+        drawOffsetX: Float = 0f,
+    ): BaseColumn
 }

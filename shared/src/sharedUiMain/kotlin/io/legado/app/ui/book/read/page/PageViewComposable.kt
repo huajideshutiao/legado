@@ -229,6 +229,7 @@ fun PageViewComposable(
                             drawTick = drawTick,
                             selection = selection,
                             ttsHighlight = ttsHighlight,
+                            searchHighlight = selection?.searchHighlight,
                             pagePos = pagePos,
                         )
                     }
@@ -827,6 +828,9 @@ fun ScrollPageView(
                                 page, style, cache, failedImage, offsetY,
                                 selection = selection,
                                 ttsHighlight = ttsHighlight,
+                                // 绘制期读取 searchHighlight state：变化只失效本 Canvas；
+                                // updateSearchHighlight 不再同时递增 selection.tick。
+                                searchHighlight = selection?.searchHighlight,
                                 pagePos = i,
                             )
                             offsetY += page.height
