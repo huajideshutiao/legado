@@ -74,12 +74,11 @@ import io.legado.app.ui.book.info.LocalIntroImageSlot
 import io.legado.app.ui.book.manga.AndroidMangaReaderPlatform
 import io.legado.app.ui.book.manga.MangaReaderScreenModel
 import io.legado.app.ui.book.read.AndroidReaderPlatformProvider
-import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReaderPlatformProviders
 import io.legado.app.ui.book.read.ReaderScreenModelRegistry
-import io.legado.app.ui.book.read.refreshReaderImage
 import io.legado.app.ui.book.read.page.provider.AndroidTextMeasurer
 import io.legado.app.ui.book.read.page.provider.TextMeasurerProviders
+import io.legado.app.ui.book.read.refreshReaderImage
 import io.legado.app.ui.book.source.SourceUiEventBridgeHost
 import io.legado.app.ui.book.video.AndroidVideoPlayPlatformProvider
 import io.legado.app.ui.book.video.VideoPlayPlatformProviders
@@ -88,10 +87,9 @@ import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
-import io.legado.app.ui.reader.ImageActionMenuEntry
-import io.legado.app.ui.reader.ImageActionMenuRequest
 import io.legado.app.ui.reader.ReaderDictWord
 import io.legado.app.ui.reader.ReaderImageActionMenu
+import io.legado.app.ui.reader.ReaderImageActions
 import io.legado.app.ui.reader.readerMenuAnchor
 import io.legado.app.ui.root.AppForegroundState
 import io.legado.app.ui.root.AppNavigator
@@ -342,43 +340,28 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
      * 自绘浮动菜单与文本长按菜单同款样式 (澎湃浮动菜单, 见 ReaderImageActionMenu)。
      */
     fun showImageActionMenu(src: String, x: Float, y: Float) {
-        // 各动作收尾对照原版 popupAction 菜单项点击 → mode.finish → onDismiss →
-        // postSelectionCancel (取消页内图片菜单标志, 防残留吞掉下一次点击)
-        fun finish() {
-            ReaderImageActionMenu.dismiss()
-            ReadBookEvents.postSelectionCancel()
-        }
-
-        fun entry(label: String, action: () -> Unit) =
-            ImageActionMenuEntry(label) {
-                action()
-                finish()
-            }
         ReaderImageActionMenu.show(
-            ImageActionMenuRequest(
-                anchor = readerMenuAnchor(x, y),
-                entries = listOf(
-                    entry(androidAppString("show")) { viewImage(src) },
-                    entry(androidAppString("refresh")) { refreshImage(src) },
-                    entry(androidAppString("action_save")) {
-                        val path = ACache.get().getAsString(AppConst.imagePathKey)
-                        if (path.isNullOrEmpty()) {
-                            pendingSaveImageSrc = src
-                            selectImageDir.launch {
-                                mode = HandleFileContract.DIR_SYS
-                            }
-                        } else {
-                            saveImage(src, path.toUri())
-                        }
-                    },
-                    entry(androidAppString("select_folder")) {
+            anchor = readerMenuAnchor(x, y),
+            actions = ReaderImageActions(
+                view = { viewImage(src) },
+                refresh = { refreshImage(src) },
+                save = {
+                    val path = ACache.get().getAsString(AppConst.imagePathKey)
+                    if (path.isNullOrEmpty()) {
+                        pendingSaveImageSrc = src
                         selectImageDir.launch {
                             mode = HandleFileContract.DIR_SYS
                         }
-                    },
-                ),
-                onDismiss = { finish() },
-            )
+                    } else {
+                        saveImage(src, path.toUri())
+                    }
+                },
+                selectDirectory = {
+                    selectImageDir.launch {
+                        mode = HandleFileContract.DIR_SYS
+                    }
+                },
+            ),
         )
     }
 
@@ -483,10 +466,15 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
 
     /**
      * 重置阅读页常亮计时 (对照原版 screenOffTimerStart):
+     * 非阅读窗口守卫：退出阅读页后一律移除回调、清除常亮 Flag 并返回，杜绝主界面残留常亮。
      * keepLight<0 恒常亮; keepLight 大于系统息屏时间时常亮并定时移除, 否则交还系统息屏。
      */
     fun screenOffTimerStart() {
         keepScreenOnHandler.removeCallbacks(screenOffRunnable)
+        if (!readerWindowActive) {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            return
+        }
         if (readerScreenTimeOut < 0) {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             return
@@ -800,7 +788,6 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
             notifyAppCrash()
             //备份同步
             backupSync()
-            //版本更新
             // 启动静默检查更新 (对照原版 AppUpdate.check(silent=true)): 无等待框无 toast,
             // 有新版本才弹 updateDialog Overlay
             if (AppConfig.autoCheckUpdate) {
@@ -860,9 +847,8 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
         if (LocalConfig.versionCode == AppConst.appInfo.versionCode) return
         LocalConfig.versionCode = AppConst.appInfo.versionCode
         if (!LocalConfig.isFirstOpenApp) return
-        // getOrNull: 本方法从 onPostCreate 的 Main.immediate 协程同步跑起来 (隐私协议已同意时
-        // privacyPolicy() 不挂起), 早于首帧组合, 那时 navigator 还没注册
-        val navigator = AppNavigatorProviders.getOrNull() ?: return
+        // 挂起等待首帧 navigator 注册就绪, 避免早于首帧组合静默跳过
+        val navigator = AppNavigatorProviders.awaitNavigator()
         navigator.showOverlay(AppOverlay.Dialog(key = "help", payload = "appHelp"))
         navigator.overlays.first { list ->
             list.none { it.key == "help" }

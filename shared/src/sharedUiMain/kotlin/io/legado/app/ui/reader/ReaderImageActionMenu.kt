@@ -5,6 +5,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Rect
+import io.legado.app.ui.book.read.ReadBookEvents
+import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.ui.compose.theme.AppTextMenuContent
 import io.legado.app.ui.compose.theme.AppTextMenuEntry
 import io.legado.app.ui.compose.theme.AppTextMenuHost
@@ -14,8 +16,9 @@ import io.legado.app.ui.compose.theme.AppTextMenuHost
  * (澎湃样式 + 溢出折叠 + 淡入淡出, 见 [AppTextMenuHost]), 与 [ReaderTextActionMenu] 同款。
  *
  * 对照原版 ReadBookActivity.onImageLongPress 的系统 ActionMode 浮窗 (旧 PopupAction)
- * 改为自绘: 菜单项 (查看/刷新/保存/选择目录) 与动作由平台侧 (Android MainActivity)
- * 提供, 关闭链路 ([ImageActionMenuRequest.onDismiss] / 条目动作后) 对照原版
+ * 改为自绘: 平台仅通过 [ReaderImageActions] 注入动作能力，菜单项文案、顺序及收尾由
+ * [buildReaderImageActionMenuRequest] 统一装配。关闭链路
+ * ([ImageActionMenuRequest.onDismiss] / 条目动作后) 对照原版
  * popupAction.onDismiss → ReadBookEvents.postSelectionCancel:
  * 取消页内选择标志 (imageMenuShowing), 后续翻页/换章走同一条 selectionDismissed 链路
  * 调 [dismiss] 关闭。
@@ -31,8 +34,49 @@ class ImageActionMenuRequest(
     val onDismiss: () -> Unit,
 )
 
-/** 图片操作菜单项 (标签 + 动作), 标签由平台侧按当前语言解析。 */
+/** 图片操作菜单项 (标签 + 动作)。 */
 class ImageActionMenuEntry(val label: String, val onClick: () -> Unit)
+
+/** 平台差异能力；目录选择为空时不显示“选择目录”。 */
+class ReaderImageActions(
+    val view: () -> Unit,
+    val refresh: () -> Unit,
+    val save: () -> Unit,
+    val selectDirectory: (() -> Unit)? = null,
+)
+
+/**
+ * 统一装配查看/刷新/保存/可选目录动作，固定顺序并保证动作异常时仍关闭菜单、取消页内选择。
+ */
+fun buildReaderImageActionMenuRequest(
+    anchor: Rect,
+    actions: ReaderImageActions,
+): ImageActionMenuRequest {
+    fun finish() {
+        ReaderImageActionMenu.dismiss()
+        ReadBookEvents.postSelectionCancel()
+    }
+
+    fun entry(labelKey: String, action: () -> Unit) =
+        ImageActionMenuEntry(syncGetString(labelKey)) {
+            try {
+                action()
+            } finally {
+                finish()
+            }
+        }
+
+    return ImageActionMenuRequest(
+        anchor = anchor,
+        entries = buildList {
+            add(entry("show", actions.view))
+            add(entry("refresh", actions.refresh))
+            add(entry("action_save", actions.save))
+            actions.selectDirectory?.let { add(entry("select_folder", it)) }
+        },
+        onDismiss = ::finish,
+    )
+}
 
 object ReaderImageActionMenu {
     var request by mutableStateOf<ImageActionMenuRequest?>(null)
@@ -40,6 +84,10 @@ object ReaderImageActionMenu {
 
     fun show(request: ImageActionMenuRequest) {
         this.request = request
+    }
+
+    fun show(anchor: Rect, actions: ReaderImageActions) {
+        show(buildReaderImageActionMenuRequest(anchor, actions))
     }
 
     fun dismiss() {

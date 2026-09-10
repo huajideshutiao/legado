@@ -259,18 +259,20 @@ class AndroidReaderPlatformProvider(
     }
 
     override fun onExit(screenModel: ReaderScreenModel) {
+        // 退出阅读页: 先停自动翻页 (对照原版返回键 → autoPageStop) + 停页面变化订阅,
+        // 再调 exitReaderWindow 清除常亮与系统栏状态, 避免 stopAutoPage 的常亮回落重加 FLAG_KEEP_SCREEN_ON
+        if (activeMenuState?.first === screenModel) {
+            activeMenuState?.second?.stopAutoPage()
+            activeMenuState?.second?.stopPageChangedWatch()
+            activeMenuState = null
+        }
+        readerAutoPageActive = false
         activity.exitReaderWindow()
         // 与 onEnter 的幂等注销一致包 runCatching: receiver 已被别的路径注销时 unregister 会抛异常
         batteryReceiver?.let { runCatching { activity.unregisterReceiver(it) } }
         batteryReceiver = null
         lifecycleObserver?.let { activity.lifecycle.removeObserver(it) }
         lifecycleObserver = null
-        // 退出阅读页: 停自动翻页 (对照原版返回键 → autoPageStop) + 停页面变化订阅
-        if (activeMenuState?.first === screenModel) {
-            activeMenuState?.second?.stopAutoPage()
-            activeMenuState?.second?.stopPageChangedWatch()
-            activeMenuState = null
-        }
         // 退出阅读页: 自动备份 (对照原版 ReadBookActivity.onDestroy → Backup.autoBack;
         // MainActivity.onDestroy 兜底保留)
         if (!BuildConfig.DEBUG) {
@@ -904,6 +906,7 @@ private class AndroidReaderMenuState(
     private fun startAutoPage() {
         stopAutoPage()
         autoPage = true
+        readerAutoPageActive = true
         autoPager = AutoPagerCompose(
             viewModel = screenModel.viewModel,
             scope = activity.lifecycleScope,
@@ -925,6 +928,7 @@ private class AndroidReaderMenuState(
         autoPager?.stop()
         autoPager = null
         autoPage = false
+        readerAutoPageActive = false
         // 恢复 keepLight 配置的常亮计时 (对照原版 autoPageStop(): upScreenTimeOut)
         if (wasRunning) activity.setReaderAutoPageKeepScreenOn(false)
     }
