@@ -27,8 +27,7 @@ import kotlinx.coroutines.flow.asStateFlow
  *
  * 设计: 组合委托 (BaseViewModel 是 AndroidViewModel 不能继承)。
  * 与 [io.legado.app.ui.replace.ReplaceEditViewModel] (旧版) 区别: 旧版是早期下沉的独立
- * KMP VM, 自带 scope 用回调暴露结果; 本类 scope 由宿主注入, 与 ReplaceRuleViewModelShared /
- * DictRuleViewModelShared 统一规范, 便于多端接管生命周期。
+ * KMP VM, 自带 scope 用回调暴露结果; 本类 scope 由宿主注入，便于多端接管生命周期。
  *
  * @param scope 协程作用域 (Android = viewModelScope / 桌面 = 应用主作用域)
  * @param clipTextProvider 剪贴板文本提供者 (替代 `getClipText()`)

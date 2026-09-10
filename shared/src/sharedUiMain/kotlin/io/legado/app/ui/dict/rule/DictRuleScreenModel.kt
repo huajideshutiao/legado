@@ -80,7 +80,7 @@ class DictRuleScreenModel(
         return cur.dictRules.filter { cur.selected.contains(it.name) }
     }
 
-    // ===== 业务写入 (对照 DictRuleViewModelShared) =====
+    // ===== 业务写入 =====
 
     private fun update(vararg dictRule: DictRule) {
         scope.launch(IoDispatcher) {

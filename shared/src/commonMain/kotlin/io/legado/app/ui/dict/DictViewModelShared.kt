@@ -33,8 +33,7 @@ import kotlinx.coroutines.CoroutineScope
  *
  * 不采用 `expect abstract class` 让 app 端子类继承: BaseViewModel 是 AndroidViewModel,
  * commonMain 不可用, Kotlin 单继承会冲突。改用组合委托模式 (对照
- * [io.legado.app.ui.replace.edit.ReplaceEditViewModelShared] /
- * [io.legado.app.ui.dict.rule.DictRuleViewModelShared]):
+ * [io.legado.app.ui.replace.edit.ReplaceEditViewModelShared]):
  * - app 端 `DictViewModel(application)` `extends BaseViewModel(application)`,
  *   内部持有本类实例, 通过 `viewModelScope` 注入;
  * - desktop 端在 Compose `remember` 中构造本类, 注入应用 scope。
