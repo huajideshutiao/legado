@@ -7,7 +7,7 @@ package io.legado.app.utils
  * - iosMain/ohosMain: 委托 commonMain 的 ChineseSimplifiedConverter (内嵌字典, 字符级转换)
  *
  * TransType 下沉到 commonMain, 让 ChineseUtils 公开 API (unLoad/loadDict) 可在 common 引用,
- * 同时让 app 端 (ReadStyleDialog/ChineseUtilsUi) 不再直接依赖 quick-transfer 库的 TransType。
+ * 同时让上层 UI (阅读样式对话框等) 不再直接依赖 quick-transfer 库的 TransType。
  *
  * pathProvider 类型为 Any?, 各平台自行决定具体类型:
  * - jvmAndAndroidMain: 实际存 TcDictCachePathProvider? (返回 java.io.File), 见同文件 actual
@@ -35,7 +35,7 @@ expect object ChineseUtils {
  * jvmAndAndroidMain actual 实现内部做映射 (TransType.toQuick())。
  *
  * 注: quick-transfer 还支持 SIMPLE_TO_HONGKONG/SIMPLE_TO_TAIWAN/HONGKONG_TO_SIMPLE/TAIWAN_TO_SIMPLE,
- * 但 app 端 (ChineseUtilsUi/ReadStyleDialog) 仅使用简繁互转, 故本枚举只保留两项,
+ * 但上层 UI (简繁转换选择器/阅读样式) 仅使用简繁互转, 故本枚举只保留两项,
  * 避免枚举值与 quick-transfer 实际不支持的项目 (如 TRADITIONAL_TO_HONGKONG) 产生映射错误。
  *
  * jvmAndAndroidMain 的 loadDict 内部 map key 用 quick-transfer TransType.type (s2t/t2s),

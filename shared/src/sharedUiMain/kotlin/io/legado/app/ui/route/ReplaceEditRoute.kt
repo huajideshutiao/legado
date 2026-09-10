@@ -11,6 +11,7 @@ import androidx.compose.runtime.setValue
 import io.legado.app.ui.replace.ReplaceEditScreen
 import io.legado.app.ui.replace.edit.ReplaceEditViewModelShared
 import io.legado.app.ui.root.AppNavigator
+import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
@@ -81,6 +82,10 @@ fun ReplaceEditRoute(
         },
         onHelp = { showHelp = true },
         requestFocusSignal = refocusSignal,
+        // 键盘辅助键条 ⚙️ (对照原版 showDialogFragment<KeyboardAssistsConfig>)
+        onShowKeyboardConfig = {
+            navigator.showOverlay(AppOverlay.Dialog("keyboardAssistsConfig"))
+        },
     )
 
     if (showHelp) {

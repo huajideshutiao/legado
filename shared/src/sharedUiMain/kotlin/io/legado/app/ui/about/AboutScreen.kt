@@ -98,15 +98,15 @@ fun AboutScreen(
         )
         preference(
             title = titlePrivacyPolicy,
-            onClick = { actions.onShowMdFile(titlePrivacyPolicy, "privacyPolicy.md") },
+            onClick = { actions.onShowMdFile(titlePrivacyPolicy, "md/privacyPolicy.md") },
         )
         preference(
             title = titleLicense,
-            onClick = { actions.onShowMdFile(titleLicense, "LICENSE.md") },
+            onClick = { actions.onShowMdFile(titleLicense, "md/LICENSE.md") },
         )
         preference(
             title = titleDisclaimer,
-            onClick = { actions.onShowMdFile(titleDisclaimer, "disclaimer.md") },
+            onClick = { actions.onShowMdFile(titleDisclaimer, "md/disclaimer.md") },
         )
     }
 }

@@ -12,11 +12,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import io.legado.app.constant.PreferKey
+import io.legado.app.help.UserAgentProviders
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.image.DecodedBitmapCache
 import io.legado.app.help.toast.Toasters
-import io.legado.app.help.update.AppUpdateManager
 import io.legado.app.model.CheckSourceShared
 import io.legado.app.ui.book.read.config.PageKeyDialog
 import io.legado.app.ui.compose.component.AlertButton
@@ -25,7 +25,6 @@ import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.config.ConfigActionsShared
 import io.legado.app.ui.config.OtherConfigScreen
 import io.legado.app.ui.config.OtherConfigScreenModel
-import io.legado.app.ui.config.OtherConfigUiEvent
 import io.legado.app.ui.dialog.NumberPickerDialog
 import io.legado.app.ui.dialog.TextInputDialog
 import io.legado.app.ui.root.AppNavigator
@@ -53,8 +52,6 @@ import legado.shared.generated.resources.sure
 import legado.shared.generated.resources.sure_del
 import legado.shared.generated.resources.threads_num
 import legado.shared.generated.resources.threads_num_title
-import legado.shared.generated.resources.update_url_hint
-import legado.shared.generated.resources.update_url_title
 import legado.shared.generated.resources.user_agent
 import legado.shared.generated.resources.web_port_summary
 import legado.shared.generated.resources.web_port_title
@@ -63,7 +60,7 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * 其它设置路由内容: 桥接 [OtherConfigScreenModel] 与 [OtherConfigScreen]。
  *
- * 点击型交互 (弹窗/NumberPicker/SAF/Dialog Fragment) 经构造函数 lambda 注入:
+ * 点击型交互由 Route 直接执行：
  * - UA 编辑/图片缓存/预下载/Web 端口/线程数/自定义翻页按键: 用 shared 端 Compose 弹窗实现
  *   (对照 app 端 alert DSL / showNumberPicker / PageKeyDialog)
  * - 本地密码/SAF 选目录/CheckSourceConfig/DirectLinkUploadConfig: 通过 [PlatformCapabilityProviders] 注入
@@ -106,108 +103,50 @@ fun OtherConfigRoute(
     var showWebPortPicker by remember { mutableStateOf(false) }
     var showThreadCountPicker by remember { mutableStateOf(false) }
     var showCustomPageKey by remember { mutableStateOf(false) }
-    var showUpdateUrlDialog by remember { mutableStateOf(false) }
     var showLocalPasswordDialog by remember { mutableStateOf(false) }
+    // 文字操作菜单开启态: 读组件真实启用态 (对照原版 onCreatePreferences 里的回填),
+    // 用户可能在系统设置里改过, 不能只信 pref
+    var processTextEnabled by remember { mutableStateOf(platform.isProcessTextEnabled()) }
     var showCleanCacheConfirm by remember { mutableStateOf(false) }
     var showClearWebViewConfirm by remember { mutableStateOf(false) }
     var showShrinkDatabaseConfirm by remember { mutableStateOf(false) }
 
-    // screenModelRef: 解决 screenModel 构造期 lambda 需引用 screenModel 自身的先有鸡先有蛋问题
-    var screenModelRef: OtherConfigScreenModel? = null
-
     val screenModel = screenModelStore.getOrCreateTyped(entry) {
-        OtherConfigScreenModel(
-            // 平台注入: TextInputDialog → PlatformCapabilities.setLocalPassword
-            onLocalPassword = { showLocalPasswordDialog = true },
-            onUserAgent = { showUserAgentDialog = true },
-            // 平台注入: SAF 选目录 (HandleFileContract.DIR_SYS), 选中后写 pref + 更新 summary
-            onBookTreeUri = {
-                platform.pickBookTreeUri { uri ->
-                    if (uri != null) {
-                        pref.putString(PreferKey.defaultBookTreeUri, uri)
-                        screenModelRef?.dispatch(OtherConfigUiEvent.UpdateBookTreeUriSummary(uri))
-                    }
-                }
-            },
-            // 平台注入: showDialogFragment<CheckSourceConfig>, dismiss 后重读 summary
-            onCheckSource = {
-                platform.showCheckSourceConfigDialog {
-                    screenModelRef?.dispatch(
-                        OtherConfigUiEvent.UpdateCheckSourceSummary(CheckSourceShared.summary)
-                    )
-                }
-            },
-            // 平台注入: showDialogFragment<DirectLinkUploadConfig>
-            onUploadRule = { platform.showDirectLinkUploadConfigDialog() },
-            onBitmapCacheSize = { showBitmapCachePicker = true },
-            onPreDownloadNum = { showPreDownloadPicker = true },
-            onWebPort = { showWebPortPicker = true },
-            // 下沉: alert 确认 → ConfigActionsShared.clearCache() (BookHelp.clearCache + cacheDir)
-            onCleanCache = { showCleanCacheConfirm = true },
-            // 平台注入: alert 确认 → PlatformCapabilities.clearWebViewData (Android WebView 专属)
-            onClearWebViewData = { showClearWebViewConfirm = true },
-            // 下沉: alert 确认 → ConfigActionsShared.shrinkDatabase() (Room VACUUM)
-            onShrinkDatabase = { showShrinkDatabaseConfirm = true },
-            onThreadCount = { showThreadCountPicker = true },
-            onCustomPageKey = { showCustomPageKey = true },
-            onUpdateUrl = { showUpdateUrlDialog = true },
-        )
+        OtherConfigScreenModel()
     }
-    screenModelRef = screenModel
     val state by screenModel.state.collectAsState()
 
     // 对照 app 端 init: 初始化 7 个动态 summary
     LaunchedEffect(Unit) {
         if (state.userAgentSummary.isEmpty()) {
-            screenModel.dispatch(
-                OtherConfigUiEvent.UpdateUserAgentSummary(
-                    pref.getStringOrNull(PreferKey.userAgent) ?: ""
-                )
-            )
+            screenModel.updateUserAgentSummary(UserAgentProviders.get())
         }
         if (state.bookTreeUriSummary.isEmpty()) {
-            screenModel.dispatch(
-                OtherConfigUiEvent.UpdateBookTreeUriSummary(
-                    pref.getStringOrNull(PreferKey.defaultBookTreeUri) ?: bookTreeUriSStr
-                )
+            screenModel.updateBookTreeUriSummary(
+                pref.getStringOrNull(PreferKey.defaultBookTreeUri) ?: bookTreeUriSStr
             )
         }
         if (state.checkSourceSummary.isEmpty()) {
-            screenModel.dispatch(OtherConfigUiEvent.UpdateCheckSourceSummary(CheckSourceShared.summary))
+            screenModel.updateCheckSourceSummary(CheckSourceShared.summary)
         }
         if (state.bitmapCacheSummary.isEmpty()) {
-            screenModel.dispatch(
-                OtherConfigUiEvent.UpdateBitmapCacheSummary(
-                    bitmapCacheFormat.replace("%s", appConfig.bitmapCacheSize.toString())
-                )
+            screenModel.updateBitmapCacheSummary(
+                bitmapCacheFormat.replace("%s", appConfig.bitmapCacheSize.toString())
             )
         }
         if (state.preDownloadSummary.isEmpty()) {
-            screenModel.dispatch(
-                OtherConfigUiEvent.UpdatePreDownloadSummary(
-                    preDownloadFormat.replace("%s", appConfig.preDownloadNum.toString())
-                )
+            screenModel.updatePreDownloadSummary(
+                preDownloadFormat.replace("%s", appConfig.preDownloadNum.toString())
             )
         }
         if (state.webPortSummary.isEmpty()) {
-            screenModel.dispatch(
-                OtherConfigUiEvent.UpdateWebPortSummary(
-                    webPortFormat.replace("%s", appConfig.webPort.toString())
-                )
+            screenModel.updateWebPortSummary(
+                webPortFormat.replace("%s", appConfig.webPort.toString())
             )
         }
         if (state.threadCountSummary.isEmpty()) {
-            screenModel.dispatch(
-                OtherConfigUiEvent.UpdateThreadCountSummary(
-                    threadCountFormat.replace("%s", appConfig.threadCount.toString())
-                )
-            )
-        }
-        if (state.updateUrlSummary.isEmpty()) {
-            screenModel.dispatch(
-                OtherConfigUiEvent.UpdateUpdateUrlSummary(
-                    pref.getStringOrNull(PreferKey.updateUrl) ?: ""
-                )
+            screenModel.updateThreadCountSummary(
+                threadCountFormat.replace("%s", appConfig.threadCount.toString())
             )
         }
     }
@@ -225,23 +164,47 @@ fun OtherConfigRoute(
             preDownloadSummary = state.preDownloadSummary,
             webPortSummary = state.webPortSummary,
             threadCountSummary = state.threadCountSummary,
-            onLocalPassword = { screenModel.dispatch(OtherConfigUiEvent.LocalPassword) },
-            onUserAgent = { screenModel.dispatch(OtherConfigUiEvent.UserAgent) },
-            onBookTreeUri = { screenModel.dispatch(OtherConfigUiEvent.BookTreeUri) },
-            onCheckSource = { screenModel.dispatch(OtherConfigUiEvent.CheckSource) },
-            onUploadRule = { screenModel.dispatch(OtherConfigUiEvent.UploadRule) },
-            onBitmapCacheSize = { screenModel.dispatch(OtherConfigUiEvent.BitmapCacheSize) },
-            onPreDownloadNum = { screenModel.dispatch(OtherConfigUiEvent.PreDownloadNum) },
-            onWebPort = { screenModel.dispatch(OtherConfigUiEvent.WebPort) },
-            onCleanCache = { screenModel.dispatch(OtherConfigUiEvent.CleanCache) },
-            onClearWebViewData = { screenModel.dispatch(OtherConfigUiEvent.ClearWebViewData) },
-            onShrinkDatabase = { screenModel.dispatch(OtherConfigUiEvent.ShrinkDatabase) },
-            onThreadCount = { screenModel.dispatch(OtherConfigUiEvent.ThreadCount) },
-            onCustomPageKey = { screenModel.dispatch(OtherConfigUiEvent.CustomPageKey) },
-            updateUrlSummary = state.updateUrlSummary,
-            showUpdateUrl = AppUpdateManager.isAvailable(),
+            onLocalPassword = { showLocalPasswordDialog = true },
+            onUserAgent = { showUserAgentDialog = true },
+            onBookTreeUri = {
+                platform.pickBookTreeUri { uri ->
+                    if (uri != null) {
+                        pref.putString(PreferKey.defaultBookTreeUri, uri)
+                        screenModel.updateBookTreeUriSummary(uri)
+                    }
+                }
+            },
+            onCheckSource = {
+                platform.showCheckSourceConfigDialog {
+                    screenModel.updateCheckSourceSummary(CheckSourceShared.summary)
+                }
+            },
+            onUploadRule = { platform.showDirectLinkUploadConfigDialog() },
+            onBitmapCacheSize = { showBitmapCachePicker = true },
+            onPreDownloadNum = { showPreDownloadPicker = true },
+            onWebPort = { showWebPortPicker = true },
+            onCleanCache = { showCleanCacheConfirm = true },
+            onClearWebViewData = { showClearWebViewConfirm = true },
+            onShrinkDatabase = { showShrinkDatabaseConfirm = true },
+            onThreadCount = { showThreadCountPicker = true },
+            onCustomPageKey = { showCustomPageKey = true },
             // 唤醒锁两项只在真持锁的端显示 (Android 前台 WebService / AudioPlayService)
             showWakeLock = platform.wakeLockSupported,
+            // 以下几项都是"只有声明支持的端才真实消费该 pref"的条目, 不支持的端隐藏,
+            // 免得用户拨了一个完全无效的开关 (各 gate 的判定依据见 PlatformCapabilities)
+            showCronet = platform.cronetSupported,
+            showLanguage = platform.languageSwitchSupported,
+            onLanguageChange = { platform.applyAppLanguage() },
+            showMediaButton = platform.mediaButtonSupported,
+            showAudioFocus = platform.audioFocusSupported,
+            showProcessText = platform.processTextSupported,
+            processTextEnabled = processTextEnabled,
+            onProcessTextChange = { enabled ->
+                // 对照原版 setProcessTextEnable: 真去切组件启用态, 再回读真实态
+                platform.setProcessTextEnabled(enabled)
+                processTextEnabled = platform.isProcessTextEnabled()
+            },
+            showHeapDumpRecord = platform.heapDumpRecordSupported,
         )
     }
 
@@ -249,36 +212,19 @@ fun OtherConfigRoute(
     if (showUserAgentDialog) {
         TextInputDialog(
             title = stringResource(Res.string.user_agent),
-            initialValue = pref.getStringOrNull(PreferKey.userAgent) ?: "",
+            initialValue = UserAgentProviders.get(),
             hint = stringResource(Res.string.user_agent),
             onConfirm = { userAgent ->
                 if (userAgent.isBlank()) {
-                    // 对照 app 端 resetUserAgent: 清空让宿主回退默认
-                    pref.putString(PreferKey.userAgent, "")
+                    // 对照原版 removePref(userAgent): 清空 = 回退内置 UA
+                    pref.remove(PreferKey.userAgent)
                 } else {
                     pref.putString(PreferKey.userAgent, userAgent)
                 }
-                screenModel.dispatch(OtherConfigUiEvent.UpdateUserAgentSummary(userAgent))
+                screenModel.updateUserAgentSummary(UserAgentProviders.get())
                 showUserAgentDialog = false
             },
             onDismiss = { showUserAgentDialog = false },
-        )
-    }
-
-    // 自定义更新地址编辑对话框 (app 端 updateUrl JSON 数组协议; 清空 = 回退 GitHub)
-    if (showUpdateUrlDialog) {
-        TextInputDialog(
-            title = stringResource(Res.string.update_url_title),
-            initialValue = pref.getStringOrNull(PreferKey.updateUrl) ?: "",
-            hint = stringResource(Res.string.update_url_hint),
-            onConfirm = { raw ->
-                val value = raw.trim()
-                // 空值存 null (= 回退 GitHub), 与 DesktopPreferenceProvider.putString(null) 移除语义对齐
-                pref.putString(PreferKey.updateUrl, value.ifEmpty { null })
-                screenModel.dispatch(OtherConfigUiEvent.UpdateUpdateUrlSummary(value))
-                showUpdateUrlDialog = false
-            },
-            onDismiss = { showUpdateUrlDialog = false },
         )
     }
 
@@ -291,29 +237,26 @@ fun OtherConfigRoute(
             onConfirm = {
                 pref.putInt(PreferKey.bitmapCacheSize, it)
                 // 对照 app 端 onSharedPreferenceChanged: bitmap_cache_size_summary
-                screenModel.dispatch(
-                    OtherConfigUiEvent.UpdateBitmapCacheSummary(
-                        bitmapCacheFormat.replace("%s", it.toString())
-                    )
+                screenModel.updateBitmapCacheSummary(
+                    bitmapCacheFormat.replace("%s", it.toString())
                 )
             },
             onDismiss = { showBitmapCachePicker = false },
         )
     }
 
-    // 预下载数量 NumberPicker (对照 app 端 onPreDownloadNum: 0..9999)
+    // 预下载数量 NumberPicker (原版 0..9999, 2026-09-04 用户要求收窄为 0..30:
+    // 预下载章数再大也没意义, 上限太高反而误触后疯狂拉全书)
     if (showPreDownloadPicker) {
         NumberPickerDialog(
             title = stringResource(Res.string.pre_download),
             value = appConfig.preDownloadNum,
-            range = 0..9999,
+            range = 0..30,
             onConfirm = {
                 pref.putInt(PreferKey.preDownloadNum, it)
                 // 对照 app 端 onSharedPreferenceChanged: pre_download_s
-                screenModel.dispatch(
-                    OtherConfigUiEvent.UpdatePreDownloadSummary(
-                        preDownloadFormat.replace("%s", it.toString())
-                    )
+                screenModel.updatePreDownloadSummary(
+                    preDownloadFormat.replace("%s", it.toString())
                 )
             },
             onDismiss = { showPreDownloadPicker = false },
@@ -329,10 +272,8 @@ fun OtherConfigRoute(
             onConfirm = {
                 pref.putInt(PreferKey.webPort, it)
                 // 对照 app 端 onSharedPreferenceChanged: web_port_summary
-                screenModel.dispatch(
-                    OtherConfigUiEvent.UpdateWebPortSummary(
-                        webPortFormat.replace("%s", it.toString())
-                    )
+                screenModel.updateWebPortSummary(
+                    webPortFormat.replace("%s", it.toString())
                 )
             },
             onDismiss = { showWebPortPicker = false },
@@ -348,10 +289,8 @@ fun OtherConfigRoute(
             onConfirm = {
                 pref.putInt(PreferKey.threadCount, it)
                 // 对照 app 端 onSharedPreferenceChanged: threads_num
-                screenModel.dispatch(
-                    OtherConfigUiEvent.UpdateThreadCountSummary(
-                        threadCountFormat.replace("%s", it.toString())
-                    )
+                screenModel.updateThreadCountSummary(
+                    threadCountFormat.replace("%s", it.toString())
                 )
             },
             onDismiss = { showThreadCountPicker = false },

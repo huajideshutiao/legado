@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.constant.AppConst
 import io.legado.app.constant.PageAnim
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
@@ -36,8 +37,8 @@ import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ReadBookConfigShared
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
-import io.legado.app.model.CacheBookShared
 import io.legado.app.model.ActiveReadBookRegistry
+import io.legado.app.model.CacheBookShared
 import io.legado.app.model.ReadBookPlatforms
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
@@ -72,7 +73,6 @@ import io.legado.app.ui.book.read.config.SpeakEngineDialog
 import io.legado.app.ui.book.read.page.TITLE_SIZE_EXTRA_SP
 import io.legado.app.ui.book.read.page.delegate.ScrollPageDelegateCompose
 import io.legado.app.ui.book.read.page.entities.PageDirectionShared
-import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import io.legado.app.ui.book.read.page.turnPage
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
@@ -85,6 +85,7 @@ import io.legado.app.ui.compose.platform.VolumeKeyPageTurnHandler
 import io.legado.app.ui.compose.platform.performBack
 import io.legado.app.ui.compose.platform.readerDirectionalKeys
 import io.legado.app.ui.compose.platform.rememberCustomPageKeys
+import io.legado.app.ui.reader.ReaderDictWord
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -95,6 +96,7 @@ import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.asBook
 import io.legado.app.ui.root.toRouteRef
+import io.legado.app.ui.widget.dialog.HelpDialog
 import io.legado.app.ui.widget.text.EditEntity
 import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.systemCurrentTimeMillis
@@ -173,18 +175,26 @@ fun ReaderRoute(
         // 注册为当前阅读屏 (鸿蒙 napi 回调/非 Compose 宿主取 dialogEvent/menuState 用)
         ReaderScreenModelRegistry.attach(screenModel)
         onDispose {
+            ReaderDictWord.dismiss()
             ReaderScreenModelRegistry.detach(screenModel)
             provider.onExit(screenModel)
         }
     }
 
-    // 原版 Activity onResume/onPause: 计时 + 落库上传 + 取消预下载。压栈 (目录/换源/详情)
-    // 与退到后台都算离开活跃期 —— 栈内页面全部留在组合中, 各端不再自挂平台生命周期监听
+    // 原版 Activity onResume/onPause: inactive 先停自动翻页，再做计时/落库/取消预下载。
+    // desktop/iOS/OHOS 的路由压栈与退后台不会销毁 ScreenModel，因此只停止可复用控制器，
+    // 不调用 provider.onExit/dispose；再次 active 后仍可由同一菜单状态重新启动。
+    // Android 已由 Activity lifecycle observer 执行 autoPageStop/自动备份，这里不重复触发平台副作用。
     RouteActiveEffect(
         entry = entry,
         navigator = navigator,
         onActive = { screenModel.onResume() },
-        onInactive = { screenModel.onPause() },
+        onInactive = {
+            if (AppConst.JS_PLATFORM != "android") {
+                provider.autoPageStop(screenModel)
+            }
+            screenModel.onPause()
+        },
     )
 
     // region 排版参数注入（对照原版 ContentTextView.onSizeChanged → ChapterProvider.upViewSize
@@ -246,7 +256,7 @@ fun ReaderRoute(
         object : ReaderUiActions {
             // 点击动作 0（默认中心区域）：显示菜单
             // 菜单显示时 ReadMenuOverlay 的 bg Box 拦截触摸调 onBgClick 收起，不经过本回调
-            override fun onPageClick(column: TextColumn?) {
+            override fun onPageClick() {
                 screenModel.showMenu()
             }
 
@@ -311,7 +321,7 @@ fun ReaderRoute(
 
     // region 阅读页快捷键 (对照 app 端 ReadBookKeyHandler.onKeyDown)
     // 栈内页面全部留在组合中, 故非栈顶时必须失效, 否则目录/换源等子页里按方向键会翻背景的书;
-    // 翻页键菜单可见时不响应 (原版 menuLayoutIsVisible 分支), 字号增减不受菜单影响
+    // 翻页键与 Ctrl+滚轮字号调整在菜单可见时不响应 (避免菜单滚动被阅读页消费)
     // 栈顶判定改为响应式: collectAsState 订阅 backStack, 栈变化驱动重组刷新下方消费点;
     // 旧写法 lambda 读 .value 不订阅 StateFlow, AppBackHandler 的 enabled 会停在过期值
     val backStack by navigator.backStack.collectAsState()
@@ -482,42 +492,38 @@ fun ReaderRoute(
     }
     // endregion
 
-    // Ctrl+滚轮调字号 (用户拍板: 替代 Ctrl+=/-= 快捷键, 更直观, 每格 ±2, 范围 5..50);
-    // 非 Ctrl 滚轮不消费 (滚轮翻页已彻底禁用 2026-08 用户拍板, 与 mouseWheelPage 设置项一并移除),
-    // 交还原链路; 菜单可见时也不消费滚轮, 让位菜单内列表滚动 (对照原版 onMouseWheel 的
-    // menuLayoutIsVisible 守卫)。
     ReaderScreen(
         state = state,
         actions = actions,
-        focusRequester = keyFocusRequester,
-        onTextAreaMeasured = { textAreaSize = it },
-        modifier = Modifier
-            .pointerInput(Unit) {
+        modifier = Modifier.pointerInput(screenModel, readBookConfig) {
             awaitPointerEventScope {
                 while (true) {
                     val event = awaitPointerEvent()
                     if (event.type != PointerEventType.Scroll) continue
-                    val change = event.changes.firstOrNull() ?: continue
-                    val delta = change.scrollDelta.y
-                    if (delta == 0f) continue
-                    if (event.keyboardModifiers.isCtrlPressed) {
-                        val deltaSize = if (delta > 0) 2 else -2
-                        val newSize = (readBookConfig.textSize + deltaSize)
-                            .coerceIn(MIN_TEXT_SIZE, MAX_TEXT_SIZE)
-                        if (newSize != readBookConfig.textSize) {
-                            readBookConfig.textSize = newSize
-                            readBookConfig.save()
-                            // 与 ReadStyleScreen 字号 seekBar 一致的重排事件
-                            ReadBookEvents.postConfig(
-                                ReadConfigChange.CHAPTER_STYLE,
-                                ReadConfigChange.LOAD_CONTENT,
-                            )
-                        }
-                        change.consume()
+                    if (!event.keyboardModifiers.isCtrlPressed ||
+                        screenModel.menuState.isVisible ||
+                        screenModel.searchMenuState.rootVisible
+                    ) {
+                        continue
+                    }
+                    val scrollY = event.changes.firstOrNull()?.scrollDelta?.y ?: 0f
+                    if (scrollY == 0f) continue
+                    val oldSize = readBookConfig.textSize
+                    val newSize = (oldSize + if (scrollY < 0f) 2 else -2).coerceIn(5, 50)
+                    event.changes.forEach { it.consume() }
+                    if (newSize != oldSize) {
+                        readBookConfig.textSize = newSize
+                        readBookConfig.save()
+                        ReadBookEvents.postConfig(
+                            ReadConfigChange.CHAPTER_STYLE,
+                            ReadConfigChange.LOAD_CONTENT,
+                        )
                     }
                 }
             }
         },
+        focusRequester = keyFocusRequester,
+        onTextAreaMeasured = { textAreaSize = it },
     )
 
     // region ReadBookEvents 订阅 (对照 app 端 ReadBookActivity.observeLiveBus 的 ReadBookEvents 收集)
@@ -1194,10 +1200,6 @@ fun ReaderRoute(
     // endregion
 }
 
-/** 字号可调范围，对照 ReadStyleScreen 字号 seekBar（内部 0..45，展示值 +5）。 */
-private const val MIN_TEXT_SIZE = 5
-private const val MAX_TEXT_SIZE = 50
-
 /**
  * 触发重排的配置事件：原版这些分支都落到 `ChapterProvider.upStyle/upLayout` +
  * `ReadBook.loadContent(resetPageOffset = false)`。
@@ -1315,6 +1317,7 @@ private fun HttpTtsEditDialogHost(
     }
     var editEntities by remember { mutableStateOf<List<EditEntity>>(emptyList()) }
     var showLog by remember { mutableStateOf(false) }
+    var showHelp by remember { mutableStateOf(false) }
 
     // 加载初始 HttpTTS (id=null 新建, 回调空 HttpTTS 表单)
     LaunchedEffect(Unit) {
@@ -1368,13 +1371,19 @@ private fun HttpTtsEditDialogHost(
             }
         },
         onShowLog = { showLog = true },
-        onShowHelp = { platform.showMdFile("帮助", "httpTTSHelp") },
+        // 对照原版 HttpTtsEditDialog 的 menu_help → showHelp("httpTTSHelp")
+        onShowHelp = { showHelp = true },
         onDismiss = onDismiss,
     )
 
     // 日志对话框 (嵌套 Overlay, 对照 app 端 showDialogFragment<AppLogDialog>)
     if (showLog) {
         AppLogDialog(onDismiss = { showLog = false })
+    }
+
+    // 帮助文档 (读 composeResources 内置 md, 四端同一条通道)
+    if (showHelp) {
+        HelpDialog("httpTTSHelp") { showHelp = false }
     }
 }
 

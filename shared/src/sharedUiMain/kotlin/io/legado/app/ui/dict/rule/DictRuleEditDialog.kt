@@ -1,4 +1,4 @@
-﻿package io.legado.app.ui.dict.rule
+package io.legado.app.ui.dict.rule
 
 // I18N KEYS (need to register in ResourceProvider.jvm.kt):
 //   "dict_rule_edit_name" to "名称",
@@ -158,7 +158,6 @@ fun DictRuleEditDialog(
                         Icon(
                             painter = painterResource(Res.drawable.ic_save),
                             contentDescription = saveDescText,
-                            tint = DesignTokens.arcoBlue6,
                         )
                     }
                     OverflowMenu { dismissMenu ->
@@ -194,13 +193,7 @@ fun DictRuleEditDialog(
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(
-                        start = DesignTokens.spacingDefault,
-                        top = 16.dp,
-                        end = DesignTokens.spacingDefault,
-                        bottom = DesignTokens.spacingDefault,
-                    ),
+                    .verticalScroll(rememberScrollState()),
             ) {
                 AppUnderlineTextField(
                     value = name,

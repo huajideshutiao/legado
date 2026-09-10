@@ -59,8 +59,6 @@ import legado.shared.generated.resources.shrink_database_summary
 import legado.shared.generated.resources.threads_num_title
 import legado.shared.generated.resources.update_to_variant_summary
 import legado.shared.generated.resources.update_to_variant_title
-import legado.shared.generated.resources.update_url_summary
-import legado.shared.generated.resources.update_url_title
 import legado.shared.generated.resources.user_agent
 import legado.shared.generated.resources.web_port_title
 import legado.shared.generated.resources.web_service_wake_lock
@@ -100,11 +98,26 @@ fun OtherConfigScreen(
     onShrinkDatabase: () -> Unit,
     onThreadCount: () -> Unit,
     onCustomPageKey: () -> Unit,
-    updateUrlSummary: String = "",
-    showUpdateUrl: Boolean = false,
-    onUpdateUrl: () -> Unit = {},
     /** 唤醒锁两项是否显示 (仅 Android 真持锁; 对照 PlatformCapabilities.wakeLockSupported) */
     showWakeLock: Boolean = false,
+    /** Cronet 开关是否显示 (仅 Android 注册了 CronetProvider) */
+    showCronet: Boolean = false,
+    /** 语言条目是否显示 (Android/desktop 能切, iOS/鸿蒙未接入) */
+    showLanguage: Boolean = false,
+    /** 媒体按键两项是否显示 (仅 Android 有 MediaButtonReceiver) */
+    showMediaButton: Boolean = false,
+    /** 忽略音频焦点是否显示 (桌面/鸿蒙无焦点模型) */
+    showAudioFocus: Boolean = false,
+    /** 文字操作菜单开关是否显示 (仅 Android PROCESS_TEXT) */
+    showProcessText: Boolean = false,
+    /** 文字操作菜单开启态 (读组件真实启用态, 不是 pref) */
+    processTextEnabled: Boolean = false,
+    /** 写文字操作菜单开启态 */
+    onProcessTextChange: (Boolean) -> Unit = {},
+    /** 记录堆转储开关是否显示 (仅 Android CrashHandler 消费) */
+    showHeapDumpRecord: Boolean = false,
+    /** 语言变更后的平台收尾 (对照原版 appCtx.restart()) */
+    onLanguageChange: () -> Unit = {},
 ) {
     val languageEntries = stringArrayResource(Res.array.language)
     val languageValues = stringArrayResource(Res.array.language_value)
@@ -149,8 +162,6 @@ fun OtherConfigScreen(
     val titleUpdateToVariant = stringResource(Res.string.update_to_variant_title)
     val summaryUpdateToVariant = stringResource(Res.string.update_to_variant_summary)
     val titleAutoCheckUpdate = stringResource(Res.string.auto_check_update)
-    val titleUpdateUrl = stringResource(Res.string.update_url_title)
-    val summaryUpdateUrlEmpty = stringResource(Res.string.update_url_summary)
     val titleWebPort = stringResource(Res.string.web_port_title)
     val titleCleanCache = stringResource(Res.string.clear_cache)
     val summaryCleanCache = stringResource(Res.string.clear_cache_summary)
@@ -169,13 +180,19 @@ fun OtherConfigScreen(
 
     AppTheme {
         PreferenceScreen {
-            listPreference(
-                prefKey = PreferKey.language,
-                title = titleLanguage,
-                entries = languageEntries,
-                values = languageValues,
-                defaultValue = "auto",
-            )
+            // 语言: 安卓 AppContextWrapper.wrap / 桌面 Locale.setDefault + 重启;
+            // iOS/鸿蒙未接入 —— 拨了不生效的端直接隐藏
+            if (showLanguage) {
+                listPreference(
+                    prefKey = PreferKey.language,
+                    title = titleLanguage,
+                    entries = languageEntries,
+                    values = languageValues,
+                    defaultValue = "auto",
+                    // 对照原版 onSharedPreferenceChanged 的 PreferKey.language -> appCtx.restart()
+                    onValueChange = { onLanguageChange() },
+                )
+            }
             listPreference(
                 prefKey = PreferKey.defaultHomePage,
                 title = titleHomePage,
@@ -234,12 +251,15 @@ fun OtherConfigScreen(
                 summary = summaryUploadRule,
                 onClick = onUploadRule,
             )
-            switchPreference(
-                prefKey = PreferKey.cronet,
-                title = "Cronet",
-                summary = summaryCronet,
-                defaultValue = false,
-            )
+            // Cronet: 只有 Android 注册了 CronetProvider, 其余端拨了无效
+            if (showCronet) {
+                switchPreference(
+                    prefKey = PreferKey.cronet,
+                    title = "Cronet",
+                    summary = summaryCronet,
+                    defaultValue = false,
+                )
+            }
             preference(
                 title = titleBitmapCache,
                 summary = bitmapCacheSummary,
@@ -256,24 +276,31 @@ fun OtherConfigScreen(
                 summary = summaryReplaceEnable,
                 defaultValue = true,
             )
-            switchPreference(
-                prefKey = "mediaButtonOnExit",
-                title = titleMediaButtonExit,
-                summary = summaryMediaButtonExit,
-                defaultValue = true,
-            )
-            switchPreference(
-                prefKey = PreferKey.readAloudByMediaButton,
-                title = titleReadAloudMediaButton,
-                summary = summaryReadAloudMediaButton,
-                defaultValue = false,
-            )
-            switchPreference(
-                prefKey = PreferKey.ignoreAudioFocus,
-                title = titleIgnoreAudioFocus,
-                summary = summaryIgnoreAudioFocus,
-                defaultValue = false,
-            )
+            // 媒体按键两项: 只有 Android MediaButtonReceiver 读这两个 pref
+            if (showMediaButton) {
+                switchPreference(
+                    prefKey = "mediaButtonOnExit",
+                    title = titleMediaButtonExit,
+                    summary = summaryMediaButtonExit,
+                    defaultValue = true,
+                )
+                switchPreference(
+                    prefKey = PreferKey.readAloudByMediaButton,
+                    title = titleReadAloudMediaButton,
+                    summary = summaryReadAloudMediaButton,
+                    defaultValue = false,
+                )
+            }
+            // 忽略音频焦点: 桌面 (DesktopSmtc) 与鸿蒙 (OhosMediaNotificationController)
+            // 的 setAudioFocus 是空实现, 拨了等于没拨
+            if (showAudioFocus) {
+                switchPreference(
+                    prefKey = PreferKey.ignoreAudioFocus,
+                    title = titleIgnoreAudioFocus,
+                    summary = summaryIgnoreAudioFocus,
+                    defaultValue = false,
+                )
+            }
             // 车载歌词: 当前歌词行顶掉 now-playing 标题 (车机/蓝牙/锁屏只有这一个文本通道)。
             // 会顶掉章节名, 所以默认关、由用户显式开启
             switchPreference(
@@ -307,15 +334,6 @@ fun OtherConfigScreen(
                 title = titleAutoCheckUpdate,
                 defaultValue = true,
             )
-            // 自定义更新地址: 仅接入 AppUpdateManager 的端显示 (当前仅桌面端),
-            // 与 AboutRoute 的"检查更新"入口同一 gate (AppUpdateManager.isAvailable)
-            if (showUpdateUrl) {
-                preference(
-                    title = titleUpdateUrl,
-                    summary = updateUrlSummary.ifEmpty { summaryUpdateUrlEmpty },
-                    onClick = onUpdateUrl,
-                )
-            }
             preference(
                 title = titleWebPort,
                 summary = webPortSummary,
@@ -341,24 +359,35 @@ fun OtherConfigScreen(
                 summary = threadCountSummary,
                 onClick = onThreadCount,
             )
-            switchPreference(
-                prefKey = PreferKey.processText,
-                title = titleProcessText,
-                summary = summaryProcessText,
-                defaultValue = true,
-            )
+            // 文字操作菜单: 对应 Android PROCESS_TEXT activity-alias。
+            // checked 读组件真实启用态而不是 pref (对照原版 onCreatePreferences 里
+            // putPrefBoolean(processText, isProcessTextEnabled()) 的回填),
+            // 拨动时真去改组件启用态 (对照 setProcessTextEnable)
+            if (showProcessText) {
+                switchPreference(
+                    prefKey = PreferKey.processText,
+                    title = titleProcessText,
+                    summary = summaryProcessText,
+                    defaultValue = true,
+                    checked = processTextEnabled,
+                    onCheckedChange = onProcessTextChange,
+                )
+            }
             switchPreference(
                 prefKey = PreferKey.recordLog,
                 title = titleRecordLog,
                 summary = summaryRecordLog,
                 defaultValue = false,
             )
-            switchPreference(
-                prefKey = PreferKey.recordHeapDump,
-                title = titleRecordHeapDump,
-                summary = summaryRecordHeapDump,
-                defaultValue = false,
-            )
+            // 记录堆转储: 只有 Android CrashHandler 在 OOM 时读它
+            if (showHeapDumpRecord) {
+                switchPreference(
+                    prefKey = PreferKey.recordHeapDump,
+                    title = titleRecordHeapDump,
+                    summary = summaryRecordHeapDump,
+                    defaultValue = false,
+                )
+            }
             preference(
                 title = titleCustomPageKey,
                 onClick = onCustomPageKey,

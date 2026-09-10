@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -387,9 +389,9 @@ private fun RecordList(
                         DesignTokens.responsiveColumnsReferenceWidth
                     ) >= 2
                 ) {
-                    Row(Modifier.fillMaxWidth()) {
-                        Box(Modifier.weight(1f)) {
-                            SummaryCard(state)
+                    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+                        Box(Modifier.weight(1f).fillMaxHeight()) {
+                            SummaryCard(state, fillHeight = true)
                         }
                         Box(Modifier.weight(1f).padding(top = 12.dp)) {
                             HeatMapCard(state, actions, heatmapSlot)
@@ -431,15 +433,17 @@ private fun RecordList(
 
 /** 复刻 view_read_record_header 统计卡: 左右两列 3 组「值+标签」 */
 @Composable
-private fun SummaryCard(state: ReadRecordUiState) {
+private fun SummaryCard(state: ReadRecordUiState, fillHeight: Boolean = false) {
     val colors = AppTheme.colors
+    val heightMod = if (fillHeight) Modifier.fillMaxHeight() else Modifier
     Row(
-        Modifier
+        heightMod
             .fillMaxWidth()
             .padding(12.dp)
             .clip(DesignTokens.shapeDefault)
             .background(colors.bottomBackground)
             .padding(vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
             SummaryItem(

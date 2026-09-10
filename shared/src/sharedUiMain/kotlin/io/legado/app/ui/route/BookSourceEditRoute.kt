@@ -31,6 +31,7 @@ import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.code.CodeEditorState
 import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.root.AppNavigator
+import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
@@ -295,6 +296,10 @@ fun BookSourceEditRoute(
         fieldEditors = fieldEditors,
         onFieldFocus = { fieldId, entity -> activeField.value = fieldId to entity },
         requestFocusSignal = refocusSignal,
+        // 键盘辅助键条 ⚙️ (对照原版 showDialogFragment<KeyboardAssistsConfig>)
+        onShowKeyboardConfig = {
+            navigator.showOverlay(AppOverlay.Dialog("keyboardAssistsConfig"))
+        },
     )
 
     // 帮助对话框 (对照 app 端 showHelp(fileName))
