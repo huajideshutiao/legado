@@ -7,7 +7,6 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
-import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.readSimulating
 import io.legado.app.help.book.simulatedTotalChapterNum
@@ -15,7 +14,11 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
+import io.legado.app.model.AudioPlayShared.bookSourceOf
+import io.legado.app.model.AudioPlayShared.durLrc
 import io.legado.app.model.AudioPlayShared.resetData
+import io.legado.app.model.chapter.ChapterProgressStore
+import io.legado.app.model.chapter.resolveChapter
 import io.legado.app.utils.postEvent
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.withContext
@@ -38,8 +41,8 @@ import kotlinx.coroutines.withContext
  *   (见 app 端 AudioPlay.kt), 调用方 `playMode.iconRes` 语法不变 (Kotlin 扩展属性与
  *   构造属性访问语法一致)。
  * - **appDb**: 改为 `AppDbProviders.get().bookChapterDao` (已下沉 provider)。
- * - **ContentProcessor**: 改为 `ContentProcessorProviders.get().getTitleReplaceRules(book)`
- *   (已下沉 provider)。
+ * - **进度落库**: 走 [io.legado.app.model.chapter.ChapterProgressStore] (四模式共用,
+ *   内部经 provider 访问 DAO 与标题替换规则)。
  *
  * # 保留不动的逻辑 (与 app 端完全一致)
  * - 跨 Activity / Service 的可见状态 (book, chapter, durPlayUrl, lrc 等)
@@ -238,8 +241,10 @@ object AudioPlayShared {
 
     suspend fun upDurChapter() {
         val book = book ?: return
-        durChapter = chapterList?.get(durChapterIndex) ?: withContext(IoDispatcher) {
-            AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, durChapterIndex)
+        // 内存目录优先, 库兜底 (实现已收敛至 resolveChapter, 四模式共用; 原 chapterList?.get()
+        // 在目录滞后于 durChapterIndex 时会抛 IndexOutOfBounds)
+        durChapter = withContext(IoDispatcher) {
+            resolveChapter(book, durChapterIndex, chapterList)
         }
         durAudioSize = durChapter?.end?.toInt() ?: 0
         durLrc.value = null
@@ -295,12 +300,12 @@ object AudioPlayShared {
         AudioPlayCommanders.get().loadPlayUrl()
     }
 
-    fun next() {
+    fun next(): Boolean {
         // 目录未就绪/为空时 RANDOM 分支 `(0 until 0).random()` 会抛异常, 防御
-        if (simulatedChapterSize <= 0) return
+        if (simulatedChapterSize <= 0) return false
         val newIndex = when (playMode) {
             PlayMode.LIST_END_STOP ->
-                if (durChapterIndex + 1 < simulatedChapterSize) durChapterIndex + 1 else return
+                if (durChapterIndex + 1 < simulatedChapterSize) durChapterIndex + 1 else return false
             PlayMode.SINGLE_LOOP -> durChapterIndex
             PlayMode.RANDOM -> (0 until simulatedChapterSize).random()
             PlayMode.LIST_LOOP -> (durChapterIndex + 1) % simulatedChapterSize
@@ -316,26 +321,22 @@ object AudioPlayShared {
         book?.durChapterPos = durChapterPos
         saveRead()
         AudioPlayCommanders.get().loadPlayUrl()
+        return true
     }
 
     fun saveRead() {
         val book = book ?: return
         Coroutine.async {
-            book.durChapterIndex = durChapterIndex
-            book.durChapterPos = durChapterPos
-            // 标题以当前 durChapter 为准: next/prev/skipTo 已预同步 book.durChapterIndex,
-            // 若仍用 "book.durChapterIndex != durChapterIndex" 判断 chapterChanged 恒为 false,
-            // 导致 durChapterTitle 永远停在旧章标题 (回归 2026-08)。
-            durChapter?.let {
-                book.durChapterTitle = it.getDisplayTitle(
-                    ContentProcessorProviders.get().getTitleReplaceRules(book),
-                    book.getUseReplaceRule()
-                )
-            }
-            book.saveRead()
-            // 落库后通知书架重查 (对齐阅读器 uploadProgress 行为): 书架 DB 流驻留订阅,
-            // UP_BOOKSHELF 让书架重查 (双保险; Room 失效推送实证正常, 见 Book.kt equals 定案)
-            // durChapterTime, 否则书架停在旧快照不刷到第一位 (回归 2026-08)。
+            // 落库 + 回写内存 book 实体 + 通知书架重查 (实现已收敛至 [ChapterProgressStore], 四模式共用)。
+            // 章名以当前 durChapter 为准: next/prev/skipTo 已预同步 book.durChapterIndex,
+            // 若按 "book.durChapterIndex != durChapterIndex" 判断章节是否变化则恒为 false,
+            // durChapterTitle 会永远停在旧章标题 (回归 2026-08)。
+            ChapterProgressStore.save(
+                book = book,
+                durChapterIndex = durChapterIndex,
+                durChapterPos = durChapterPos,
+                chapter = durChapter,
+            )
             postEvent(EventBus.UP_BOOKSHELF, book.bookUrl)
         }
     }

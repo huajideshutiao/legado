@@ -6,6 +6,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.model.chapter.updateResourceUrl
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -85,14 +86,8 @@ class ResourceUrlPreloader(private val scope: CoroutineScope) {
                 runCatching {
                     val content = fetch(chapter)
                     if (content.isEmpty()) return@runCatching
-                    chapter.resourceUrl = content
-                    if (inBookshelf) {
-                        AppDbProviders.get().bookChapterDao.upResourceUrl(
-                            chapter.bookUrl,
-                            chapter.url,
-                            content
-                        )
-                    }
+                    // 直链回写 + 在架书 PATCH 落库 (与音视频播放侧共用 updateResourceUrl)
+                    chapter.updateResourceUrl(content, inBookshelf)
                 }.onFailure {
                     // evalJS 的 "JS执行出错" RuntimeException 包装会吞掉 CancellationException 身份,
                     // 仅靠类型判断拦不住被换壳的取消: 补查协程状态, 已取消的轮次按取消路径

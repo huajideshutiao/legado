@@ -12,6 +12,7 @@ import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.changeSourceTo
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.model.chapter.ChapterLoadState
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.config.MangaFooterConfig
 import io.legado.app.ui.book.manga.entities.BaseMangaPage
@@ -188,9 +189,6 @@ class MangaReaderScreenModel : ScreenModel {
     val currentSource get() = shared.bookSource.value
     val platformRenderer: Platform? get() = platform
 
-    // shared.error 是事件流 (replay=1), 直接进 combine 会在未发射时卡住整条链, 先转本地状态
-    private val errorMsg = MutableStateFlow<String?>(null)
-
     // 信息条: 电池电量 (对照 ReaderScreenModel._batteryLevel; 平台缺失回落 100 恒显示)
     private val _batteryLevel = MutableStateFlow(platform?.getBatteryLevel() ?: 100)
     val batteryLevel: StateFlow<Int> = _batteryLevel.asStateFlow()
@@ -208,8 +206,8 @@ class MangaReaderScreenModel : ScreenModel {
         // 存活信号, 见下方 dispatch 注释), 丢掉 horizontal 就是"翻页后横竖模式跳回"。
         combine(
             shared.book, shared.durChapter, shared.mangaContent,
-            shared.durChapterIndex, shared.loading,
-        ) { book, durChapter, mangaContent, durChapterIndex, loading ->
+            shared.durChapterIndex, shared.loadState,
+        ) { book, durChapter, mangaContent, durChapterIndex, loadState ->
             // VM 侧的值在发射时刻取好, 不留到 update{} 里读 (update 失败重试会重复读)
             val imageCount = shared.currentImageCount
             val chapterSize = shared.chapterSize
@@ -228,19 +226,12 @@ class MangaReaderScreenModel : ScreenModel {
                     chapterSize = chapterSize,
                     currentPage = durChapterPos.coerceIn(0, (imageCount - 1).coerceAtLeast(0)),
                     pageCount = imageCount,
-                    loading = loading,
+                    loadState = loadState,
                     hasReview = hasReview,
                 )
             }
             merge
         }.onEach { merge -> _state.update(merge) }.launchIn(scope)
-
-        // 事件流转本地状态: 新一轮加载先清空, 保证同一个错误重试后仍能再次点亮重试页
-        // (对照 app 端 showLoading 隐藏 llRetry + loadFailLiveData.observe)
-        scope.launch { shared.error.collect { (msg, _) -> errorMsg.value = msg } }
-        scope.launch { shared.loading.collect { if (it) errorMsg.value = null } }
-        // error → state.error: 独立增量写, 不经过 combine 缓存链 (避免覆盖 VM 字段)
-        scope.launch { errorMsg.collect { msg -> _state.update { it.copy(error = msg) } } }
 
         // 章内页码/进度 → state: 独立增量写, 翻页 (durChapterPos 发射) 不覆盖
         // horizontal/jumpTick 等直写字段 (原 3 级 combine 链 stage-2 丢弃 stage-1 输出,
@@ -509,15 +500,9 @@ class MangaReaderScreenModel : ScreenModel {
                 shared.openChapter(event.index, event.position)
             }
             // 对照 app 端 tvRetry 点击: 先隐藏重试页再重新加载
-            MangaReaderUiEvent.Retry -> {
-                errorMsg.value = null
-                shared.loadOrUpContent()
-            }
+            MangaReaderUiEvent.Retry -> shared.loadOrUpContent()
             // 刷新当前章: 删缓存后重载 (对照 app 端 MangaMenuAction.REFRESH)
-            MangaReaderUiEvent.Refresh -> currentBook?.let {
-                errorMsg.value = null
-                shared.refreshContentDur(it)
-            }
+            MangaReaderUiEvent.Refresh -> currentBook?.let { shared.refreshContentDur(it) }
             // 换源回填: migrateTo + 落库 + 装载新源/目录 (对照原版 BaseReadViewModel.changeTo)
             is MangaReaderUiEvent.ChangeSource -> changeTo(event.source, event.book, event.toc)
         }
@@ -561,8 +546,8 @@ data class MangaReaderUiState(
     val chapterSize: Int = 0,
     val horizontal: Boolean = false,
     val autoPageSpeed: Int = 0,
-    val loading: Boolean = false,
-    val error: String? = null,
+    /** 章节装载状态 (空闲/加载中/失败, 单一状态源: shared VM 的 loadState 直传) */
+    val loadState: ChapterLoadState = ChapterLoadState.Idle,
     /** 显式"需要跳转到内容位置"信号 (菜单/目录切章时自增, 见 dispatch) */
     val jumpTick: Int = 0,
     val currentPage: Int = 0,

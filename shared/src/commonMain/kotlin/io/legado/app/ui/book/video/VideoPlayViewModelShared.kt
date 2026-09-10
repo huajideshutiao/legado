@@ -2,7 +2,6 @@ package io.legado.app.ui.book.video
 
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
-import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
@@ -18,12 +17,20 @@ import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.model.ResourceUrlPreloader
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
+import io.legado.app.model.chapter.ChapterLoadState
+import io.legado.app.model.chapter.ChapterLoadingGuard
+import io.legado.app.model.chapter.ChapterProgressStore
+import io.legado.app.model.chapter.ChapterTocUpdater
+import io.legado.app.model.chapter.resolveChapter
+import io.legado.app.model.chapter.updateResourceUrl
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -141,19 +148,30 @@ class VideoPlayViewModelShared(
 
     // ---- 加载状态 (UI 订阅) ----
 
-    private val _loading = MutableStateFlow(false)
-    /** 加载中标记 (覆盖层显示/隐藏) */
-    val loading: StateFlow<Boolean> = _loading.asStateFlow()
-
-    private val _error = MutableStateFlow<String?>(null)
-    /** 加载失败消息 (null = 无错误) */
-    val error: StateFlow<String?> = _error.asStateFlow()
+    /** 章节加载状态 ([ChapterLoadState], 视频与漫画模式共用) */
+    private val _loadState = MutableStateFlow<ChapterLoadState>(ChapterLoadState.Idle)
+    val loadState: StateFlow<ChapterLoadState> = _loadState.asStateFlow()
 
     /** 播放错误已重试标记 (配合 [retryOnPlayError] 仅首次重试) */
     private var hasRetriedOnError = false
 
-    /** [loadChapter] 轮次令牌: 连点切章时只有最新一轮可以复位 [_loading] */
-    private var loadChapterToken = 0
+    /**
+     * 章节装载守卫 (四模式共用, 见 [ChapterLoadingGuard])。
+     *
+     * 视频引擎一次只播一章, 每次装载先 [ChapterLoadingGuard.clear] 作废上一轮 ——
+     * 语义等价于原先的 loadChapterToken 计数, 但作废是真取消 (旧一轮的网络请求不再空跑),
+     * 且与其余三模式共用同一套记账。
+     */
+    private val loadGuard = ChapterLoadingGuard(scope)
+
+    /** 目录自动更新 (四模式共用实现; 原版音视频侧没有, 追更书播到末章就停) */
+    private val tocUpdater = ChapterTocUpdater(
+        scope = scope,
+        onUpdated = { _, chapters ->
+            chapterList = chapters
+            _chapterSize.value = chapters.size
+        },
+    )
 
     /**
      * 初始化数据 (对照 desktop `VideoPlayerViewModel.initData` /
@@ -174,7 +192,7 @@ class VideoPlayViewModelShared(
             BookChapterLoader.upBook(book)
         }.onFailure {
             AppLog.put("加载书籍失败\n${it.message}", it)
-            _error.value = "加载书籍失败: ${it.message}"
+            _loadState.value = ChapterLoadState.Error("加载书籍失败: ${it.message}")
         }.getOrNull()
 
         if (result == null) return
@@ -185,7 +203,7 @@ class VideoPlayViewModelShared(
         _chapterSize.value = result.chapterList.size
 
         if (result.chapterList.isEmpty()) {
-            _error.value = "章节列表为空"
+            _loadState.value = ChapterLoadState.Error("章节列表为空")
             return
         }
         // 启动阅读计时 (对照原版 VideoViewModel.initData)
@@ -242,7 +260,7 @@ class VideoPlayViewModelShared(
      * 3. 更新 [_videoUrl] / [_videoSource] / [_resolutions] / [_curChapterIndex] / [_curChapterTitle]
      * 4. 持久化阅读进度
      *
-     * @param index 章节序号 (0-based, 越界自动 clamp)
+     * @param index 章节序号 (0-based)
      * @param persistProgress 是否在加载完成后持久化章节进度 (调用 [saveRead])。
      *   默认 true (desktop 行为); app 端 BaseReadViewModel 已自行调用 `Book.saveRead()`
      *   保存 durChapterPos, 传 false 避免shared VM 用 durChapterPos=0 覆盖 app 端写入的位置。
@@ -250,43 +268,48 @@ class VideoPlayViewModelShared(
     fun loadChapter(index: Int, persistProgress: Boolean = true) {
         val book = curBook ?: return
         val source = curBookSource ?: if (book.isLocal) null else run {
-            _error.value = "书源不存在"
+            _loadState.value = ChapterLoadState.Error("书源不存在")
             return
         }
         val chapters = chapterList ?: run {
-            _error.value = "章节列表未加载"
+            _loadState.value = ChapterLoadState.Error("章节列表未加载")
             return
         }
         if (chapters.isEmpty()) {
-            _error.value = "章节列表为空"
-            return
-        }
-        val clampedIndex = index.coerceIn(0, chapters.lastIndex.coerceAtLeast(0))
-        val chapter = chapters.getOrNull(clampedIndex) ?: run {
-            _error.value = "章节不存在: $clampedIndex"
+            _loadState.value = ChapterLoadState.Error("章节列表为空")
             return
         }
         // 标记加载中, 清空旧视频源 (避免显示上一章视频)
-        _loading.value = true
-        _error.value = null
+        _loadState.value = ChapterLoadState.Loading
         _videoUrl.value = null
         _videoSource.value = null
         _resolutions.value = emptyList()
         currentResolutionIndex = 0
-        _curChapterIndex.value = clampedIndex
-        _curChapterTitle.value = chapter.title
-        // 本轮加载令牌: 连点切章时旧一轮的 finally 不得把新一轮的 loading 打成 false
-        val token = ++loadChapterToken
+        _curChapterIndex.value = index
+        _curChapterTitle.value = chapters.getOrNull(index)?.title.orEmpty()
         // 开解当前章前先作废上一轮预解析: 两者共用书源, 并行跑会拖慢用户等的这一章
         preloader.cancel()
-        scope.launch {
+        // loadGuard.launch 同章替换 + clear 作废其它章: 视频一次只播一章, 连点切章时
+        // 旧一轮被真取消 (原先用 loadChapterToken 只是让旧一轮不写状态, 网络请求仍空跑完)
+        loadGuard.clear()
+        loadGuard.launch(index) {
+            val currentJob = currentCoroutineContext()[Job]
             try {
                 // 拉取管线挪 IO: getContentAwait 内部无 withContext (AnalyzeUrl 构造 +
                 // header @js: 求值 + 规则解析均同步), 跑主线程会卡住进入转场窗口。
-                // StateFlow 写入线程安全, withContext 返回后 finally 在主线程落 loading。
+                // StateFlow 写入线程安全, withContext 返回后 finally 在主线程落 loadState。
                 withContext(IoDispatcher) {
+                    // 内存目录优先, 库兜底 (实现已收敛至 resolveChapter, 四模式共用)
+                    val chapter = resolveChapter(book, index, chapters) ?: run {
+                        if (loadGuard.isCurrentJob(index, currentJob)) {
+                            _loadState.value = ChapterLoadState.Error("章节不存在: $index")
+                        }
+                        return@withContext
+                    }
+                    _curChapterTitle.value = chapter.title
+
                     // 拉章节内容 (needSave=false: 视频内容是 URL 字符串非文件, 不写本地缓存)
-                    val nextChapterUrl = chapters.getOrNull(clampedIndex + 1)?.url
+                    val nextChapterUrl = chapters.getOrNull(index + 1)?.url
                     val content = runCatching {
                         if (book.isLocal) {
                             chapter.url
@@ -305,37 +328,32 @@ class VideoPlayViewModelShared(
                         }
                     }.onFailure {
                         if (it is CancellationException) throw it
-                        AppLog.put("加载章节内容出错\n${it.message}", it)
-                        _error.value = "加载失败: ${it.message}"
+                        AppLog.put("加载章节内容出错: ${it.message}", it)
+                        if (loadGuard.isCurrentJob(index, currentJob)) {
+                            _loadState.value = ChapterLoadState.Error("加载失败: ${it.message}")
+                        }
                     }.getOrNull()
                     if (content == null) {
                         return@withContext
                     }
                     if (content.isEmpty()) {
-                        _error.value = "未获取到资源链接"
+                        if (loadGuard.isCurrentJob(index, currentJob)) {
+                            _loadState.value = ChapterLoadState.Error("未获取到资源链接")
+                        }
                         return@withContext
                     }
-                    // 写回直链 (对齐原版 initChapter); 落库用单列 PATCH 而非原版的整行 update,
-                    // 与音频侧 AudioPlayManager 一致, 避免冲掉并发写入的其他章节字段
-                    if (!book.isLocal && chapter.resourceUrl != content) {
-                        chapter.resourceUrl = content
-                        if (!book.isNotShelf) {
-                            AppDbProviders.get().bookChapterDao.upResourceUrl(
-                                chapter.bookUrl,
-                                chapter.url,
-                                content
-                            )
-                        }
+                    // 直链回写 + 在架书 PATCH 落库 (实现已收敛至 updateResourceUrl, 音视频共用)
+                    if (!book.isLocal) {
+                        chapter.updateResourceUrl(content, inBookshelf = !book.isNotShelf)
                     }
                     // 解析视频源 (复用同包工具函数)
                     parseVideoContent(content, source)
-                    // 当前章就绪后再预解析前后各一章 (对标小说 contentLoadFinish → preDownload 的时机)。
-                    // token 守卫: 连点切章时旧一轮跑到这里不得抢新一轮的书源 (新一轮开头已 cancel 过)
-                    if (source != null && token == loadChapterToken) {
+                    // 当前章就绪后再预解析前后各一章 (对标小说 contentLoadFinish → preDownload 的时机)
+                    if (source != null) {
                         preloader.preload(
                             book = book,
                             chapters = chapters,
-                            centerIndex = clampedIndex,
+                            centerIndex = index,
                             inBookshelf = !book.isNotShelf,
                         ) { target ->
                             WebBook.getContentAwait(
@@ -349,21 +367,48 @@ class VideoPlayViewModelShared(
                     }
                     // 持久化阅读进度
                     if (persistProgress) {
-                        saveRead(clampedIndex)
+                        saveRead(index)
                     }
+                    // 播到目录尾部时检查新章 (四模式共用 [ChapterTocUpdater]; 原版音视频没有此步,
+                    // 追更书播到末章就停, 属缺陷)
+                    upToc()
                 }
             } catch (e: CancellationException) {
                 // 取消不是错误: 对照原版 Coroutine.dispatchCallback 的 !scope.isActive 早退,
                 // 被取消的 execute{} 不会走到 onError 弹提示
                 throw e
             } catch (e: Exception) {
-                AppLog.put("加载章节出错\n${e.message}", e)
-                _error.value = "加载出错: ${e.message}"
+                AppLog.put("加载章节出错: ${e.message}", e)
+                if (loadGuard.isCurrentJob(index, currentJob)) {
+                    _loadState.value = ChapterLoadState.Error("加载出错: ${e.message}")
+                }
             } finally {
-                // 失败分支也要落 loading, 否则 UI 停在加载态看不到错误
-                if (token == loadChapterToken) _loading.value = false
+                // 成功/失败都收掉加载态; 失败分支的 Error 已在上面写入, 不覆盖。
+                // isCurrentJob 守卫: 连点切章时被替换掉的旧一轮不得把新一轮的 Loading 打成 Idle
+                // (等价于原先的 loadChapterToken 判定)
+                if (loadGuard.isCurrentJob(index, currentJob) &&
+                    _loadState.value is ChapterLoadState.Loading
+                ) {
+                    _loadState.value = ChapterLoadState.Idle
+                }
             }
         }
+    }
+
+    /**
+     * 播到目录尾部时检查目录有无新章 (四模式共用 [ChapterTocUpdater])。
+     *
+     * @param force 跳过 canUpdate / 剩余章数 / 节流三重守卫
+     */
+    fun upToc(force: Boolean = false) {
+        val book = curBook ?: return
+        tocUpdater.upToc(
+            book = book,
+            bookSource = curBookSource,
+            chapterSize = _chapterSize.value,
+            durChapterIndex = _curChapterIndex.value,
+            force = force,
+        )
     }
 
     /**
@@ -544,24 +589,19 @@ class VideoPlayViewModelShared(
      */
     private suspend fun saveRead(index: Int, positionMs: Long = 0L) {
         val book = curBook ?: return
-        val chapters = chapterList ?: return
-        val chapter = chapters.getOrNull(index) ?: return
-        // 写回内存字段, 供 BookProgress 上传使用 (对照 app VideoViewModel.saveRead: curBook.durChapterPos = position)
-        book.durChapterIndex = index
-        book.durChapterPos = positionMs.toInt()
-        book.durChapterTitle = chapter.title
         runCatching {
-            AppDbProviders.get().bookDao.updateProgress(
-                bookUrl = book.bookUrl,
+            // 落库 + 回写内存 book 实体 (实现已收敛至 [ChapterProgressStore], 四模式共用);
+            // 章名过标题替换规则 —— 原先直接用 chapter.title 不过规则, 书架/详情显示的章名
+            // 会与阅读页不一致
+            ChapterProgressStore.save(
+                book = book,
                 durChapterIndex = index,
                 durChapterPos = positionMs.toInt(),
-                durChapterTime = systemCurrentTimeMillis(),
-                durChapterTitle = chapter.title,
+                chapter = resolveChapter(book, index, chapterList),
             )
         }.onFailure {
-            AppLog.put("保存阅读进度出错\n${it.message}", it)
+            AppLog.put("保存阅读进度出错: ${it.message}", it)
         }
-        ReadTimeRecorder.flushAll()
     }
 
     /**

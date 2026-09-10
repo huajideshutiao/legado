@@ -2,7 +2,6 @@ package io.legado.app.ui.book.manga
 
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
-import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
@@ -11,7 +10,6 @@ import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookChapterLoader
 import io.legado.app.help.book.BookStorageProviders
-import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.isSameNameAuthor
@@ -21,6 +19,15 @@ import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.ReadTimeRecorder
+import io.legado.app.model.chapter.ChapterLoadState
+import io.legado.app.model.chapter.ChapterLoadingGuard
+import io.legado.app.model.chapter.ChapterPreDownloader
+import io.legado.app.model.chapter.ChapterProgressStore
+import io.legado.app.model.chapter.ChapterTocUpdater
+import io.legado.app.model.chapter.ChapterWindowSlot
+import io.legado.app.model.chapter.chapterWindowIndices
+import io.legado.app.model.chapter.chapterWindowSlotOf
+import io.legado.app.model.chapter.resolveChapter as resolveChapterShared
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.config.MangaFooterConfig
@@ -33,30 +40,17 @@ import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.mapIndexed
 import io.legado.app.utils.postEvent
-import io.legado.app.utils.systemCurrentTimeMillis
-import kotlinx.atomicfu.locks.SynchronizedObject
-import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancelChildren
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
-import kotlin.math.min
 
 /**
  * 漫画图片提取器跨平台抽象。
@@ -118,16 +112,20 @@ data class MangaReaderConfig(
  *
  * 与 app 端 [io.legado.app.ui.book.manga.ReadMangaViewModel] 的对应:
  * - 状态流 [book]/[bookSource]/[chapterList]/[durChapterIndex]/[durChapter]/[durChapterPos]/
- *   [mangaContent]/[loading]/[error] 对应 app 端 curBook/curBookSource/chapterListData/
+ *   [mangaContent]/[loadState] 对应 app 端 curBook/curBookSource/chapterListData/
  *   durChapterIndex/durChapterPos/upContentLiveData/loadFailLiveData/showLoadingLiveData
  * - [loadContent]/[contentLoadFinish]/[moveToNextChapter]/[moveToPrevChapter]/[saveRead]/
  *   [preDownload]/[cancelPreDownloadTask] 方法签名与 app 端一致
- * - appDb → [AppDbProviders.get]; BookHelp.getContent/hasContent/delContent →
- *   [BookStorageProviders.get]; BookHelp.flowImages → [imageExtractor];
- *   AppConfig.hideMangaTitle/preDownloadNum → [config];
- *   ContentProcessor.get(name, origin).getTitleReplaceRules() →
- *   [ContentProcessorProviders.get].getTitleReplaceRules(book);
- *   book.saveRead() 内联 (AppDbProviders.bookDao.updateProgress + ReadTimeRecorder.flushAll)
+ * - BookHelp.getContent/hasContent/delContent → [BookStorageProviders.get];
+ *   BookHelp.flowImages → [imageExtractor]; AppConfig.hideMangaTitle → [config]
+ *
+ * 三章窗口装载的公共部分已收敛至 `io.legado.app.model.chapter` (四模式共用):
+ * 窗口判定 [io.legado.app.model.chapter.chapterWindowSlotOf]、装载守卫与任务表
+ * [io.legado.app.model.chapter.ChapterLoadingGuard]、章节解析
+ * [io.legado.app.model.chapter.resolveChapter]、预下载
+ * [io.legado.app.model.chapter.ChapterPreDownloader]、目录自动更新
+ * [io.legado.app.model.chapter.ChapterTocUpdater]、进度落库与云同步
+ * [io.legado.app.model.chapter.ChapterProgressStore]。
  *
  * 不下沉部分 (留 app 端薄壳):
  * - initData(intent: Intent) 的 Intent 解包 (Android 特有)
@@ -166,23 +164,18 @@ class MangaReaderViewModelShared(
     private val _mangaContent = MutableStateFlow<MangaContent?>(null)
     val mangaContent: StateFlow<MangaContent?> = _mangaContent.asStateFlow()
 
-    // 初值 true: 对照 app 端 activity_manga.xml 的 fl_loading 默认可见 / ReadMangaActivity
-    // loadingVisible=true, 进入即转圈, 由 upContent 或加载失败置回 false
-    private val _loading = MutableStateFlow(true)
-    val loading: StateFlow<Boolean> = _loading.asStateFlow()
-
     /**
-     * 错误信息 + 是否可重试 (对应 app 端 loadFailLiveData Pair<String, Boolean>)。
+     * 章节加载状态 (四模式共用类型 [ChapterLoadState])。
      *
-     * 用 SharedFlow 而非 StateFlow: 原版 postValue 每次都回调, StateFlow 按值去重,
-     * 重试后同一个错误串不会再发, 转圈就停不下来。
+     * 初值 Loading: 对照 app 端 activity_manga.xml 的 fl_loading 默认可见 / ReadMangaActivity
+     * loadingVisible=true, 进入即转圈, 由 upContent 或加载失败置回。
+     *
+     * 旧实现是 `_loading: StateFlow<Boolean>` + `_error: SharedFlow<Pair<String, Boolean>>`
+     * 两份状态: error 用 SharedFlow 是为了绕过 StateFlow 的去重 (同一错误重试后不再发 →
+     * 转圈停不下来)。合并后不再需要该绕路: 重试先置 Loading 再置 Error, 两次变化必发。
      */
-    private val _error = MutableSharedFlow<Pair<String, Boolean>>(
-        replay = 1,
-        extraBufferCapacity = 8,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST,
-    )
-    val error: SharedFlow<Pair<String, Boolean>> = _error.asSharedFlow()
+    private val _loadState = MutableStateFlow<ChapterLoadState>(ChapterLoadState.Loading)
+    val loadState: StateFlow<ChapterLoadState> = _loadState.asStateFlow()
     // endregion
 
     // region 内部状态 (对应 app 端 ReadMangaViewModel 字段)
@@ -209,21 +202,46 @@ class MangaReaderViewModelShared(
     private var prevMangaChapter: MangaChapter? = null
     private var curMangaChapter: MangaChapter? = null
     private var nextMangaChapter: MangaChapter? = null
-    private val loadingChapters = mutableSetOf<Int>()
 
-    // 替代原 @Synchronized/synchronized(this) 的 this 监视器 (kotlin.jvm.Synchronized 无 common 变体且 native 无效)
-    private val syncLock = SynchronizedObject()
-    private var preDownloadTask: Job? = null
-    private val downloadedChapters = mutableSetOf<Int>()
-    private val downloadFailChapters = mutableMapOf<Int, Int>()
+    /** 装载守卫 + 任务表 (四模式共用, 见 [ChapterLoadingGuard]); 同章新任务替换旧任务。 */
+    private val loadGuard = ChapterLoadingGuard(scope)
     private val downloadScope = screenModelScope("漫画预下载", IoDispatcher)
+
+    /** 正文预下载 (与文字模式共用实现)。 */
+    private val preDownloader = ChapterPreDownloader(
+        scope = scope,
+        downloadScope = downloadScope,
+        guard = loadGuard,
+        preDownloadNum = { AppConfigProviders.get().preDownloadNum },
+        chapterSize = { chapterSize },
+        durChapterIndex = { _durChapterIndex.value },
+        isLocalBook = { _book.value?.isLocal == true },
+        upToc = { force -> upToc(force) },
+        resolveChapter = { index ->
+            _book.value?.let { resolveChapter(it, index) }
+        },
+        hasContent = { chapter ->
+            _book.value?.let { BookStorageProviders.get().hasContent(it, chapter) } == true
+        },
+        download = { chapter, semaphore -> download(downloadScope, chapter, semaphore) },
+    )
+
+    /** 目录自动更新 (与文字模式共用实现)。 */
+    private val tocUpdater = ChapterTocUpdater(
+        scope = scope,
+        onUpdated = { book, chapters ->
+            _chapterList.value = chapters
+            onChapterListUpdated(book, false)
+            if (nextMangaChapter == null) loadContent(_durChapterIndex.value + 1)
+        },
+        onError = { _loadState.value = ChapterLoadState.Error("目录加载失败") },
+    )
 
     /** 退出时落库/上传专用作用域: UI scope 取消不打断 (对照 ReadBookViewModelShared.progressSyncScope) */
     private val progressSyncScope = screenModelScope("漫画进度同步", IoDispatcher)
 
     /** 已触发过云进度拉取的 bookUrl：每本书打开只拉一次 (原版 initManga 仅入口同步一次)。 */
     private var cloudSyncedBookUrl: String? = null
-    private val preDownloadSemaphore = Semaphore(2)
     val hasNextChapter: Boolean get() = _durChapterIndex.value < simulatedChapterSize - 1
     // endregion
 
@@ -262,15 +280,14 @@ class MangaReaderViewModelShared(
                     }
                     initManga(_book.value!!, isSameBook)
                 } else {
-                    _error.tryEmit("没有找到书" to true)
+                    _loadState.value = ChapterLoadState.Error("没有找到书")
                 }
             }.onSuccess {
                 success()
             }.onFailure {
                 AppLog.put("初始化数据失败\n${it.message}", it)
                 // 关键路径: 初始化失败必须可见 (错误页可重试), 否则 UI 永久转圈无提示
-                _loading.value = false
-                _error.tryEmit("初始化数据失败\n${it.message}" to true)
+                _loadState.value = ChapterLoadState.Error("初始化数据失败\n${it.message}")
             }
         }
     }
@@ -286,7 +303,7 @@ class MangaReaderViewModelShared(
             BookChapterLoader.upBook(book)
         }.onFailure {
             AppLog.put("读取书籍失败\n${it.message}", it)
-            _error.tryEmit("获取目录失败: ${it.message}" to true)
+            _loadState.value = ChapterLoadState.Error("获取目录失败: ${it.message}")
         }.getOrNull()
 
         if (result != null) {
@@ -295,7 +312,7 @@ class MangaReaderViewModelShared(
             onBookSourceChanged()
             _chapterList.value = result.chapterList
         } else {
-            _error.tryEmit("获取目录失败" to true)
+            _loadState.value = ChapterLoadState.Error("获取目录失败")
         }
     }
 
@@ -334,11 +351,8 @@ class MangaReaderViewModelShared(
             _durChapterIndex.value = 0
             _durChapterPos.value = 0
         }
-        synchronized(syncLock) {
-            loadingChapters.clear()
-            downloadedChapters.clear()
-            downloadFailChapters.clear()
-        }
+        loadGuard.clear()
+        preDownloader.reset()
     }
 
     /**
@@ -373,26 +387,15 @@ class MangaReaderViewModelShared(
         nextMangaChapter = null
     }
 
-    private fun addLoading(index: Int): Boolean = synchronized(syncLock) {
-        if (loadingChapters.contains(index)) return false
-        loadingChapters.add(index)
-        true
-    }
-
-    fun removeLoading(index: Int) {
-        synchronized(syncLock) {
-            loadingChapters.remove(index)
-        }
-    }
-
     /**
      * 加载当前章 + 前后章 (对应 app 端 ReadMangaViewModel.loadContent())。
      */
     fun loadContent() {
         clearMangaChapter()
-        loadContent(_durChapterIndex.value)
-        if (_durChapterIndex.value + 1 < chapterSize) loadContent(_durChapterIndex.value + 1)
-        if (_durChapterIndex.value - 1 >= 0) loadContent(_durChapterIndex.value - 1)
+        for (index in chapterWindowIndices(_durChapterIndex.value)) {
+            if (index < 0 || index >= chapterSize) continue
+            loadContent(index)
+        }
     }
 
     /**
@@ -401,8 +404,8 @@ class MangaReaderViewModelShared(
     fun loadOrUpContent() {
         if (curMangaChapter == null) {
             // 对照原版 "重新加载" 按钮: 先显示加载中再重载 (原版 loadingRowVisible=true → retryVisible=false → loadOrUpContent);
-            // 漏置 _loading 会导致失败页点击重载后 error 消失、转圈也不出现 → 无任何反馈
-            _loading.value = true
+            // 漏置加载态会导致失败页点击重载后 error 消失、转圈也不出现 → 无任何反馈
+            _loadState.value = ChapterLoadState.Loading
             loadContent(_durChapterIndex.value)
         } else upContent()
         if (nextMangaChapter == null) loadContent(_durChapterIndex.value + 1)
@@ -410,48 +413,56 @@ class MangaReaderViewModelShared(
     }
 
     /**
-     * 解析第 [index] 章: **内存目录优先, 库兜底** (对照原版 `chapterListData.value ?: appDb...`)。
-     *
-     * 收敛 loadContent / downloadIndex / saveRead / refreshContentDur 四处解析:
-     * saveRead 每翻一页都会调, 原来无条件查库。
+     * 解析第 [index] 章: **内存目录优先, 库兜底** (实现已收敛至
+     * [io.legado.app.model.chapter.resolveChapter], 四模式共用)。
      */
     private suspend fun resolveChapter(book: Book, index: Int): BookChapter? =
-        _chapterList.value.getOrNull(index) ?: runCatching {
-            AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, index)
-        }.getOrNull()
+        resolveChapterShared(book, index, _chapterList.value)
 
     /**
      * 加载指定章节正文 (对应 app 端 ReadMangaViewModel.loadContent(index))。
      *
      * 优先读本地缓存 (BookStorageProviders.getContent), 未命中则联网下载 (download)。
+     * 经 [loadGuard] 记账: 同章新任务取消并替换旧任务, 窗口外的在途任务切章时被取消。
      */
     private fun loadContent(index: Int) {
-        scope.launch {
-            runCatching {
-                val book = _book.value ?: return@launch
+        // launchIfIdle (不做同章替换): 本任务只负责启动下载 (download 内部的
+        // Coroutine.async 跑在独立 downloadScope 上, 不随本任务取消), 装载标记必须
+        // 活到 [contentLoadFinish] 回调 —— 原版同款 (removeLoading 只在 contentLoadFinish 入口)
+        loadGuard.launchIfIdle(index) {
+            // 未交接给下载/contentLoadFinish 的路径 (早退 / 抛错 / 取消) 必须自己释放标记,
+            // 否则该章永久堵住: 后续 loadContent 与重试按钮全被装载权挡下
+            var handedOff = false
+            try {
+                val book = _book.value ?: return@launchIfIdle
                 val chapter = resolveChapter(book, index)
                     ?: run {
                         if (index < simulatedChapterSize) {
                             upToc(true)
                         }
-                        return@launch
+                        return@launchIfIdle
                     }
-                if (addLoading(index)) {
-                    BookStorageProviders.get().getContent(book, chapter)?.let {
-                        contentLoadFinish(chapter, it)
-                    } ?: run {
-                        download(downloadScope, chapter)
-                    }
+                val cached = BookStorageProviders.get().getContent(book, chapter)
+                if (cached != null) {
+                    contentLoadFinish(chapter, cached)
+                    handedOff = true
+                } else {
+                    download(downloadScope, chapter)
+                    handedOff = true
                 }
-            }.onFailure {
-                AppLog.put("加载正文出错\n${it.message}")
+            } catch (e: CancellationException) {
+                // 切章/切书作废不是错误: 旧代码用 runCatching 整包, 把取消当成失败打了
+                // 错误页 (连点切章必现), 此处必须原样抛出
+                throw e
+            } catch (e: Exception) {
+                AppLog.put("加载正文出错\n${e.message}", e)
                 // 关键路径: 当前章加载失败必须可见 (错误页可重试), 否则 UI 永久转圈/空白无提示;
                 // prev/next 章为可选预加载, 失败不影响当前显示, 仅记日志
                 if (index == _durChapterIndex.value) {
-                    removeLoading(index)
-                    _loading.value = false
-                    _error.tryEmit("加载正文出错\n${it.message}" to true)
+                    _loadState.value = ChapterLoadState.Error("加载正文出错\n${e.message}")
                 }
+            } finally {
+                if (!handedOff) loadGuard.release(index)
             }
         }
     }
@@ -468,26 +479,23 @@ class MangaReaderViewModelShared(
         errorMsg: String = "加载内容失败",
         canceled: Boolean = false,
     ) {
-        removeLoading(chapter.index)
-        if (canceled || chapter.index !in _durChapterIndex.value - 1.._durChapterIndex.value + 1) {
-            return
-        }
-        when (val offset = chapter.index - _durChapterIndex.value) {
-            0 -> {
+        loadGuard.release(chapter.index)
+        if (canceled) return
+        when (chapterWindowSlotOf(chapter.index, _durChapterIndex.value)) {
+            null -> return
+
+            ChapterWindowSlot.CUR -> {
                 if (content == null) {
-                    _error.tryEmit(errorMsg to true)
-                    _loading.value = false
+                    _loadState.value = ChapterLoadState.Error(errorMsg)
                     return
                 }
                 if (content.isEmpty() && !chapter.isVolume) {
-                    _error.tryEmit("正文内容为空" to true)
-                    _loading.value = false
+                    _loadState.value = ChapterLoadState.Error("正文内容为空")
                     return
                 }
                 val mangaChapter = getManageChapter(chapter, content)
                 if (mangaChapter.imageCount == 0 && !chapter.isVolume) {
-                    _error.tryEmit("正文没有图片" to true)
-                    _loading.value = false
+                    _loadState.value = ChapterLoadState.Error("正文没有图片")
                     return
                 }
                 curMangaChapter = mangaChapter
@@ -495,7 +503,7 @@ class MangaReaderViewModelShared(
                 upContent()
             }
 
-            -1, 1 -> {
+            ChapterWindowSlot.PREV, ChapterWindowSlot.NEXT -> {
                 if (content == null || (!chapter.isVolume && content.isEmpty())) {
                     return
                 }
@@ -503,10 +511,10 @@ class MangaReaderViewModelShared(
                 if (mangaChapter.imageCount == 0 && !chapter.isVolume) {
                     return
                 }
-
-                when (offset) {
-                    -1 -> prevMangaChapter = mangaChapter
-                    1 -> nextMangaChapter = mangaChapter
+                if (chapter.index < _durChapterIndex.value) {
+                    prevMangaChapter = mangaChapter
+                } else {
+                    nextMangaChapter = mangaChapter
                 }
 
                 // 当前章尚未加载完成时, 不触发 upContent, 避免 submitList 只含 prev/next 内容
@@ -562,7 +570,7 @@ class MangaReaderViewModelShared(
     fun moveToNextChapter(toFirst: Boolean = false): Boolean {
         if (_durChapterIndex.value < simulatedChapterSize - 1) {
             if (toFirst) {
-                _loading.value = true
+                _loadState.value = ChapterLoadState.Loading
                 _durChapterPos.value = 0
             }
             _durChapterIndex.value++
@@ -570,7 +578,7 @@ class MangaReaderViewModelShared(
             curMangaChapter = nextMangaChapter
             nextMangaChapter = null
             if (curMangaChapter == null) {
-                _loading.value = true
+                _loadState.value = ChapterLoadState.Loading
                 loadContent(_durChapterIndex.value)
             } else {
                 upContent()
@@ -592,7 +600,7 @@ class MangaReaderViewModelShared(
     fun moveToPrevChapter(toFirst: Boolean = false): Boolean {
         if (_durChapterIndex.value > 0) {
             if (toFirst) {
-                _loading.value = true
+                _loadState.value = ChapterLoadState.Loading
                 _durChapterPos.value = 0
             }
             _durChapterIndex.value--
@@ -629,29 +637,15 @@ class MangaReaderViewModelShared(
     private suspend fun saveReadAwait() {
         runCatching {
             val book = _book.value ?: return
-            book.durChapterIndex = _durChapterIndex.value
-            book.durChapterPos = _durChapterPos.value * (
+            val index = _durChapterIndex.value
+            // 末图停留时 durChapterPos 取负编码"停在章末" (口径同文字模式的末页编码)
+            val pos = _durChapterPos.value * (
                 if (curMangaChapter?.imageCount == _durChapterPos.value + 1) -1 else 1
                 )
             // 每翻一页/切一章都会走这里: 章名从内存目录取, 内存没有才兜底查库
-            resolveChapter(book, _durChapterIndex.value)?.let {
-                book.durChapterTitle = it.getDisplayTitle(
-                    ContentProcessorProviders.get().getTitleReplaceRules(book),
-                    book.getUseReplaceRule()
-                )
-                _durChapter.value = it
-            }
-            // book.saveRead() 内联 (app 端 BookExtensions.kt: updateProgress + ReadTimeRecorder.flushAll)
-            book.lastCheckCount = 0
-            book.durChapterTime = systemCurrentTimeMillis()
-            AppDbProviders.get().bookDao.updateProgress(
-                book.bookUrl,
-                book.durChapterIndex,
-                book.durChapterPos,
-                book.durChapterTime,
-                book.durChapterTitle
-            )
-            ReadTimeRecorder.flushAll()
+            val chapter = resolveChapter(book, index)
+            chapter?.let { _durChapter.value = it }
+            ChapterProgressStore.save(book, index, pos, chapter)
         }.onFailure {
             AppLog.put("保存漫画阅读进度信息出错\n$it", it)
         }
@@ -703,21 +697,17 @@ class MangaReaderViewModelShared(
     }
 
     /**
-     * 打开书时拉取云进度并三路比对 (原版 BaseReadViewModel.syncProgress, syncBookProgressPlus 路径):
-     * - 云端无进度或本地较新 → 上传本地进度
-     * - 云端较新 → 发 [ReadBookEvents.newProgressConfirm] 确认事件 (replay=1),
-     *   UI 弹窗后由 [confirmSyncProgress] / [dismissSyncProgress] 收尾
-     * - 相等 → 无操作
+     * 拉云进度三路比对 (实现已收敛至 [ChapterProgressStore.pullCloud], 四模式共用):
+     * 云端较新 → 发 [ReadBookEvents.newProgressConfirm] 确认事件, UI 弹窗后由
+     * [confirmSyncProgress] / [dismissSyncProgress] 收尾。
      */
     private fun pullCloudProgress(book: Book) {
-        if (!config.syncBookProgressPlus) return
-        progressSyncScope.launch {
-            AppWebDavShared.syncProgress(
-                book = book,
-                manual = false,
-                onNewProgress = { ReadBookEvents.postConfirmNewProgress(it) },
-            )
-        }
+        ChapterProgressStore.pullCloud(
+            scope = progressSyncScope,
+            book = book,
+            enabled = config.syncBookProgressPlus,
+            onNewProgress = { ReadBookEvents.postConfirmNewProgress(it) },
+        )
     }
 
     /**
@@ -734,20 +724,9 @@ class MangaReaderViewModelShared(
         ReadBookEvents.clearNewProgressConfirm()
     }
 
-    /** 上传进度: 读 DB 最新行构造 BookProgress 上传 (对照 app 端 BaseReadViewModel.uploadProgress)。 */
+    /** 上传进度 (实现已收敛至 [ChapterProgressStore.uploadAwait], 四模式共用)。 */
     private suspend fun uploadProgressAwait(bookUrl: String) {
-        runCatching {
-            val fresh = AppDbProviders.get().bookDao.getBook(bookUrl) ?: return
-            val syncTimeBefore = fresh.syncTime
-            AppWebDavShared.uploadBookProgress(fresh)
-            currentCoroutineContext().ensureActive()
-            if (fresh.syncTime != syncTimeBefore) {
-                AppDbProviders.get().bookDao.update(fresh)
-            }
-        }.onFailure {
-            currentCoroutineContext().ensureActive()
-            AppLog.put("上传阅读进度失败\n${it.message}", it)
-        }
+        ChapterProgressStore.uploadAwait(bookUrl)
     }
 
     /**
@@ -762,16 +741,14 @@ class MangaReaderViewModelShared(
         chapter: BookChapter,
         semaphore: Semaphore? = null,
     ) {
-        val book = _book.value ?: return removeLoading(chapter.index)
+        val book = _book.value ?: return loadGuard.releaseNow(chapter.index)
         val bookSource = _bookSource.value
         if (bookSource != null) {
             downloadNetworkContent(bookSource, scope, chapter, book, semaphore, success = { content ->
-                downloadedChapters.add(chapter.index)
-                downloadFailChapters.remove(chapter.index)
+                preDownloader.markDownloaded(chapter.index)
                 contentLoadFinish(chapter, content)
             }, error = {
-                downloadFailChapters[chapter.index] =
-                    (downloadFailChapters[chapter.index] ?: 0) + 1
+                preDownloader.markFailed(chapter.index)
                 contentLoadFinish(chapter, null)
             }, cancel = {
                 contentLoadFinish(chapter, null, canceled = true)
@@ -815,128 +792,41 @@ class MangaReaderViewModelShared(
     }
 
     /**
-     * 预下载前后章节 (对应 app 端 ReadMangaViewModel.preDownload)。
+     * 预下载前后章节 (实现已收敛至 [ChapterPreDownloader], 与文字模式共用一份)。
      *
-     * 本地书不预下载; preDownloadNum < 2 时仅 upToc; 否则并发预下载前后各 preDownloadNum 章。
      * 章节批量预下载读小说的 AppConfig.preDownloadNum (原版同款, 2026-08-29 对齐):
      * 漫画自己的 mangaPreDownloadNum 只管页级图片预载页数 (setRecyclerViewPreloader /
-     * renderState.preloadCount), 不控制本方法 (2026-08-29 前误读 mangaPreDownloadNum)。
+     * renderState.preloadCount), 不控制本方法。
      */
     fun preDownload() {
-        if (_book.value?.isLocal == true) return
-        scope.launch {
-            val preDownloadNum = runCatching {
-                AppConfigProviders.get().preDownloadNum
-            }.getOrDefault(10)
-            if (preDownloadNum < 2) {
-                upToc()
-                return@launch
-            }
-            preDownloadTask?.cancel()
-            preDownloadTask = downloadScope.launch {
-                // 预下载
-                launch {
-                    val maxChapterIndex = min(_durChapterIndex.value + preDownloadNum, chapterSize)
-                    for (i in _durChapterIndex.value.plus(2)..maxChapterIndex) {
-                        if (downloadedChapters.contains(i)) continue
-                        if ((downloadFailChapters[i] ?: 0) >= 3) continue
-                        downloadIndex(i)
-                    }
-                }
-                launch {
-                    val minChapterIndex = _durChapterIndex.value - min(5, preDownloadNum)
-                    for (i in _durChapterIndex.value.minus(2) downTo minChapterIndex) {
-                        if (downloadedChapters.contains(i)) continue
-                        if ((downloadFailChapters[i] ?: 0) >= 3) continue
-                        downloadIndex(i)
-                    }
-                }
-            }
-        }
+        preDownloader.preDownload()
     }
 
     /**
      * 取消预下载任务 (对应 app 端 ReadMangaViewModel.cancelPreDownloadTask)。
      *
-     * 唯一调用方是 [onLeave], 故不带原版的 "当前章+下一章均就绪" 守卫: 该守卫会让
-     * "停在最后一章" 或 "下一章加载失败" 时离开阅读页也不取消, 预下载继续跑到跑完。
+     * 不带原版的 "当前章+下一章均就绪" 守卫: 该守卫会让 "停在最后一章" 或
+     * "下一章加载失败" 时离开阅读页也不取消, 预下载继续跑到跑完。
      */
     fun cancelPreDownloadTask() {
-        preDownloadTask?.cancel()
-        downloadScope.coroutineContext.cancelChildren()
+        preDownloader.cancel()
     }
 
     /**
-     * 预下载指定章节 (对应 app 端 ReadMangaViewModel.downloadIndex)。
-     *
-     * 已缓存 → 加入 downloadedChapters; 未缓存 → delay(1000) 后调 [download] (带 semaphore 限流)。
-     */
-    private suspend fun downloadIndex(index: Int) {
-        if (index < 0) return
-        if (index > chapterSize - 1) {
-            upToc()
-            return
-        }
-        val book = _book.value ?: return
-        val chapter = resolveChapter(book, index)
-            ?: run {
-                upToc(true)
-                return
-            }
-        if (BookStorageProviders.get().hasContent(book, chapter)) {
-            downloadedChapters.add(chapter.index)
-        } else {
-            delay(1000)
-            if (addLoading(index)) {
-                download(downloadScope, chapter, preDownloadSemaphore)
-            }
-        }
-    }
-
-    /**
-     * 同步目录 (对应 app 端 ReadMangaViewModel.upToc)。
+     * 同步目录 (实现已收敛至 [ChapterTocUpdater], 四模式共用一份)。
      *
      * 拉取最新章节列表, 若章节增多则更新 DB + 刷新 _chapterList + 加载下一章。
      * force=false 时受 canUpdate / 章节余量 / lastCheckTime 限制。
      */
     fun upToc(force: Boolean = false) {
-        synchronized(syncLock) {
-            val bookSource = _bookSource.value ?: return
-            val book = _book.value ?: return
-            if (!force) {
-                if (!book.canUpdate) return
-                if (chapterSize - _durChapterIndex.value - 1 >= 3) return
-                if (systemCurrentTimeMillis() - book.lastCheckTime < 600000) return
-            }
-            book.lastCheckTime = systemCurrentTimeMillis()
-            val oldBook = book.copy()
-            scope.launch {
-                // 落库块必须在 runCatching 内: 原版 execute{}.onSuccess{} 的成功回调与 block
-                // 同在 Coroutine 的 catch(Throwable) 里, DB 写失败走 onError 发错误而不外泄
-                runCatching {
-                    val cList = WebBook.getChapterListAwait(bookSource, book).getOrThrow()
-                    ensureActive()
-                    if (cList.size > chapterSize) {
-                        if (oldBook.bookUrl == book.bookUrl) {
-                            AppDbProviders.get().bookDao.update(book)
-                        } else {
-                            AppDbProviders.get().bookDao.replace(oldBook, book)
-                            BookStorageProviders.get().updateCacheFolder(oldBook, book)
-                        }
-                        if (!oldBook.isNotShelf) {
-                            AppDbProviders.get().bookChapterDao.delByBook(oldBook.bookUrl)
-                            AppDbProviders.get().bookChapterDao.insert(*cList.toTypedArray())
-                        }
-                        _chapterList.value = cList
-                        onChapterListUpdated(book, false)
-                        if (nextMangaChapter == null) loadContent(_durChapterIndex.value + 1)
-                    }
-                }.onFailure {
-                    if (it is CancellationException) throw it
-                    _error.tryEmit("目录加载失败" to true)
-                }
-            }
-        }
+        val book = _book.value ?: return
+        tocUpdater.upToc(
+            book = book,
+            bookSource = _bookSource.value,
+            chapterSize = chapterSize,
+            durChapterIndex = _durChapterIndex.value,
+            force = force,
+        )
     }
 
     /**
@@ -968,7 +858,7 @@ class MangaReaderViewModelShared(
             (_durChapterIndex.value != progress.durChapterIndex ||
                 _durChapterPos.value != progress.durChapterPos)
         ) {
-            _loading.value = true
+            _loadState.value = ChapterLoadState.Loading
             if (progress.durChapterIndex == _durChapterIndex.value) {
                 _durChapterPos.value = progress.durChapterPos
                 upContent()
@@ -986,7 +876,7 @@ class MangaReaderViewModelShared(
      */
     fun openChapter(index: Int, durChapterPos: Int = 0) {
         if (index < chapterSize) {
-            _loading.value = true
+            _loadState.value = ChapterLoadState.Loading
             _durChapterIndex.value = index
             _durChapterPos.value = durChapterPos * (if (durChapterPos < 0) -1 else 1)
             saveRead()
@@ -1095,6 +985,6 @@ class MangaReaderViewModelShared(
         // 对照原版 ReadMangaActivity.upContent: 仅当前章加载完成 (curFinish) 才收起整页
         // loading; 无条件收起会在当前章未就绪时提前暴露空白列表
         // (如 setProgress 同章刷新时 cur 尚未加载完成)
-        if (content.curFinish) _loading.value = false
+        if (content.curFinish) _loadState.value = ChapterLoadState.Idle
     }
 }

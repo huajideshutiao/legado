@@ -3,7 +3,6 @@ package io.legado.app.model.audio
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.Status
-import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
@@ -13,10 +12,11 @@ import io.legado.app.model.Lrc
 import io.legado.app.model.LrcParser
 import io.legado.app.model.ResourceUrlPreloader
 import io.legado.app.model.analyzeRule.AnalyzeRuleCore
+import io.legado.app.model.chapter.ChapterLoadingGuard
+import io.legado.app.model.chapter.ChapterTocUpdater
+import io.legado.app.model.chapter.updateResourceUrl
 import io.legado.app.model.webBook.WebBook.getContentAwait
 import io.legado.app.utils.postEvent
-import kotlinx.atomicfu.locks.SynchronizedObject
-import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
@@ -35,7 +35,7 @@ import kotlin.math.abs
  * - 播放位置真源 ([positionMs] / [onSeekTo], 消化引擎 seek 异步)
  * - 章节资源加载流程 ([loadPlayUrl] / [loadCoverUrl] / [loadLrcData] / [contentLoadFinish] / [refreshChapter])
  * - 前后章直链预解析 ([ResourceUrlPreloader])
- * - 章节并发加载守卫 ([addLoading] / [removeLoading])
+ * - 章节并发加载守卫 ([ChapterLoadingGuard], 四模式共用)
  * - 进度协程取消 ([cancelProgressJob])
  *
  * # 平台差异处理
@@ -47,7 +47,6 @@ import kotlin.math.abs
  * - CoroutineScope 由 Service 生命周期注入 (app 端 lifecycleScope)
  *
  * # 保留不动的逻辑 (与 app 端完全一致)
- * - 章节加载的并发守卫 (loadingChapters synchronized)
  * - contentLoadFinish 的 isPlayToEnd 判断
  *
  * # 不在这里
@@ -69,15 +68,25 @@ class AudioPlayManager(
     private val session: AudioPlaySession,
 ) {
 
-    /** 正在加载的章节下标, 防止并发加载。 */
-    private val loadingChapters = mutableListOf<Int>()
-    private val loadingLock = SynchronizedObject()
+    /** 章节装载守卫 (四模式共用, 见 [ChapterLoadingGuard]): 同一章不并发加载。 */
+    private val loadGuard = ChapterLoadingGuard(scope)
 
     /** 进度上报协程。 */
     private var upPlayProgressJob: Job? = null
 
     /** 前后各一章的直链预解析器 (窗口写死 ±1, 不读 preDownloadNum)。 */
     private val preloader = ResourceUrlPreloader(scope)
+
+    /**
+     * 目录自动更新 (四模式共用 [ChapterTocUpdater])。
+     *
+     * 原版音频侧没有这一步: 追更书播到内存目录最后一章就停, 不会去看有没有新章
+     * (文字/漫画都有 upToc), 属缺陷, 此处补齐。
+     */
+    private val tocUpdater = ChapterTocUpdater(
+        scope = scope,
+        onUpdated = { _, chapters -> AudioPlayShared.updateChapterList(chapters) },
+    )
 
     /**
      * seek 目标位置 ([NO_SEEK] = 无进行中的 seek)。
@@ -158,17 +167,6 @@ class AudioPlayManager(
 
     // region 章节数据加载
 
-    /** 同一章节不允许并发加载, 失败时也要 remove。 */
-    private fun addLoading(index: Int): Boolean = synchronized(loadingLock) {
-        if (loadingChapters.contains(index)) return false
-        loadingChapters.add(index)
-        true
-    }
-
-    private fun removeLoading(index: Int) = synchronized(loadingLock) {
-        loadingChapters.remove(index)
-    }
-
     /**
      * 清掉当前章节 URL 并重新加载, 用于播放器报错后的自动重试。
      *
@@ -202,74 +200,87 @@ class AudioPlayManager(
      */
     fun loadPlayUrl() {
         val index = AudioPlayShared.durChapterIndex
-        if (!addLoading(index)) return
+        if (!loadGuard.tryAdd(index)) return
         val book = AudioPlayShared.book
         val bookSource = AudioPlayShared.bookSource
         if (book == null || bookSource == null) {
-            removeLoading(index)
+            loadGuard.releaseNow(index)
             session.onToast("book or source is null")
             return
         }
         scope.launch {
-            AudioPlayShared.upDurChapter()
-            val chapter = AudioPlayShared.durChapter
-            if (chapter == null) {
-                removeLoading(index)
-                return@launch
-            }
-            if (chapter.isVolume) {
-                AudioPlayShared.skipTo(index + 1)
-                removeLoading(index)
-                return@launch
-            }
-            postEvent(EventBus.AUDIO_LOADING, true)
-            // 拉链接窗口置 LOADING, 让 UI 能区分"没在播"和"正在启动"(否则退出界面会被误判为停播)
-            AudioPlayShared.status = Status.LOADING
-            postEvent(EventBus.AUDIO_STATE, Status.LOADING)
-            // 开解当前章前先作废上一轮预解析: 两者共用书源, 并行跑会拖慢用户等的这一章
-            preloader.cancel()
-            AudioPlayShared.durCoverUrl = null
-            AudioPlayShared.durLrc.value = null
-            session.onResetCoverCache()
-            loadCoverUrl(bookSource, book, chapter)
-            loadLrcData(bookSource, book, chapter)
-            Coroutine.async(scope = scope) {
-                chapter.resourceUrl
-                    ?: getContentAwait(bookSource, book, chapter, needSave = false)
-            }.onSuccess { content ->
-                if (content.isEmpty()) {
-                    // 拿不到链接也要收掉 loading 并回落 STOP, 否则转圈一直挂着
-                    session.onToast("未获取到资源链接")
+            // 装载权交接给下面的 Coroutine.async 之前 (取目录 / 起封面歌词) 若抛错或被取消,
+            // 没人再释放标记, 该章将永久拉不起来 —— 未交接的路径统一由 finally 释放
+            var handedOff = false
+            try {
+                AudioPlayShared.upDurChapter()
+                val chapter = AudioPlayShared.durChapter ?: return@launch
+                if (chapter.isVolume) {
+                    AudioPlayShared.skipTo(index + 1)
+                    return@launch
+                }
+                postEvent(EventBus.AUDIO_LOADING, true)
+                // 拉链接窗口置 LOADING, 让 UI 能区分"没在播"和"正在启动"(否则退出界面会被误判为停播)
+                AudioPlayShared.status = Status.LOADING
+                postEvent(EventBus.AUDIO_STATE, Status.LOADING)
+                // 开解当前章前先作废上一轮预解析: 两者共用书源, 并行跑会拖慢用户等的这一章
+                preloader.cancel()
+                AudioPlayShared.durCoverUrl = null
+                AudioPlayShared.durLrc.value = null
+                session.onResetCoverCache()
+                loadCoverUrl(bookSource, book, chapter)
+                loadLrcData(bookSource, book, chapter)
+                Coroutine.async(scope = scope) {
+                    chapter.resourceUrl
+                        ?: getContentAwait(bookSource, book, chapter, needSave = false)
+                }.onSuccess { content ->
+                    if (content.isEmpty()) {
+                        // 拿不到链接也要收掉 loading 并回落 STOP, 否则转圈一直挂着
+                        session.onToast("未获取到资源链接")
+                        postEvent(EventBus.AUDIO_LOADING, false)
+                        AudioPlayShared.status = Status.STOP
+                        postEvent(EventBus.AUDIO_STATE, Status.STOP)
+                    } else {
+                        // 直链回写 + 在架书 PATCH 落库 (实现已收敛至 updateResourceUrl, 音视频共用)
+                        chapter.updateResourceUrl(content, AudioPlayShared.inBookshelf)
+                        contentLoadFinish(chapter, content)
+                        // 当前章就绪后再预解析前后各一章 (对标小说 contentLoadFinish → preDownload 的时机)
+                        preloadNeighbors(bookSource, book, chapter)
+                        // 播到目录尾部时检查新章 (对标小说 preDownload 里的 upToc)
+                        upToc()
+                    }
+                }.onError {
+                    AppLog.put("获取资源链接出错\n$it", it, true)
                     postEvent(EventBus.AUDIO_LOADING, false)
                     AudioPlayShared.status = Status.STOP
                     postEvent(EventBus.AUDIO_STATE, Status.STOP)
-                } else {
-                    if (chapter.resourceUrl != content) {
-                        chapter.resourceUrl = content
-                        if (AudioPlayShared.inBookshelf) {
-                            // 只 PATCH resourceUrl 列; 整行 update 会冲掉并发写入的章节字段
-                            AppDbProviders.get().bookChapterDao.upResourceUrl(
-                                chapter.bookUrl,
-                                chapter.url,
-                                chapter.resourceUrl
-                            )
-                        }
-                    }
-                    contentLoadFinish(chapter, content)
-                    // 当前章就绪后再预解析前后各一章 (对标小说 contentLoadFinish → preDownload 的时机)
-                    preloadNeighbors(bookSource, book, chapter)
+                }.onCancel {
+                    loadGuard.releaseNow(index)
+                }.onFinally {
+                    loadGuard.releaseNow(index)
                 }
-            }.onError {
-                AppLog.put("获取资源链接出错\n$it", it, true)
-                postEvent(EventBus.AUDIO_LOADING, false)
-                AudioPlayShared.status = Status.STOP
-                postEvent(EventBus.AUDIO_STATE, Status.STOP)
-            }.onCancel {
-                removeLoading(index)
-            }.onFinally {
-                removeLoading(index)
+                // 装载权已交给上面的 Coroutine (它的 onCancel/onFinally 负责释放)
+                handedOff = true
+            } finally {
+                if (!handedOff) loadGuard.releaseNow(index)
             }
         }
+    }
+
+    /**
+     * 播到目录尾部时检查目录有无新章 (四模式共用 [ChapterTocUpdater])。
+     *
+     * @param force 跳过 canUpdate / 剩余章数 / 节流三重守卫
+     */
+    fun upToc(force: Boolean = false) {
+        val book = AudioPlayShared.book ?: return
+        tocUpdater.upToc(
+            book = book,
+            bookSource = AudioPlayShared.bookSource,
+            chapterSize = AudioPlayShared.chapterSize,
+            durChapterIndex = AudioPlayShared.durChapterIndex,
+            force = force,
+        )
     }
 
     /**

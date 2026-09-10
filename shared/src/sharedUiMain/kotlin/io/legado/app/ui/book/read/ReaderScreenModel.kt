@@ -1,5 +1,8 @@
 package io.legado.app.ui.book.read
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Status
@@ -35,6 +38,7 @@ import io.legado.app.ui.book.read.ReaderPlatformProviders.register
 import io.legado.app.ui.book.read.page.PageSelPos
 import io.legado.app.ui.book.read.page.PageSelectionState
 import io.legado.app.ui.book.read.page.detectClickArea
+import io.legado.app.ui.book.read.page.overlay.SearchHighlightOverlay
 import io.legado.app.ui.book.searchContent.SearchResult
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppRoute
@@ -67,6 +71,12 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.concurrent.Volatile
+
+/**
+ * 阅读页自动翻页活动状态（由各平台自动翻页控制器/Provider 置位，统一聚合入阅读页窗口常亮策略）。
+ * 桌面端等无后台计时的平台以此为单一真相源驱动窗口常亮，杜绝自动翻页与窗口策略多头双写覆盖（拍板 4a）。
+ */
+var readerAutoPageActive: Boolean by mutableStateOf(false)
 
 /**
  * 阅读页平台能力注入接口。
@@ -304,20 +314,7 @@ class ReaderScreenModel(
             // 阅读消息/内容状态变化后的视图刷新（对照原版 ReadBook.CallBack.upContent →
             // ReadBookActivity.upContent → readView.upContent：重新推导三页流，
             // 呈现"更新目录中…"/"加载数据中…"等消息/占位页）
-            override fun upContent(
-                relativePosition: Int,
-                resetPageOffset: Boolean,
-                success: (() -> Unit)?,
-            ) {
-                viewModel.onUpContent()
-                success?.invoke()
-            }
-
-            override suspend fun upContentAwait(
-                relativePosition: Int,
-                resetPageOffset: Boolean,
-                success: (() -> Unit)?,
-            ) {
+            override fun upContent(success: (() -> Unit)?) {
                 viewModel.onUpContent()
                 success?.invoke()
             }
@@ -411,15 +408,6 @@ class ReaderScreenModel(
      * 普通字段非 Compose 状态：只被返回键/点屏/搜索回传等事件读取，不驱动 UI。
      */
     var isShowingSearchResult = false
-
-    /**
-     * 搜索跳转设置选区期间为 true（对照原版同名字段）：高亮标记随选区分发。
-     * setter 钳制与原版一致：非搜索态时恒 false。
-     */
-    var isSelectingSearchResult = false
-        set(value) {
-            field = value && isShowingSearchResult
-        }
 
     /** 搜索菜单状态（对照原版 SearchMenu View），由 [SearchMenuOverlay] 组合消费 */
     val searchMenuState: SearchMenuStateImpl by lazy { SearchMenuStateImpl(this) }
@@ -576,8 +564,8 @@ class ReaderScreenModel(
 
     /**
      * 跳转到命中位置并高亮（对照原版 ReadBookActivity.jumpToPosition:1140-1161）。
-     * 命中高亮即文字选择机制：skipToPage 完成回调里用 [selection.selectRange] 设置选区，
-     * isSelectingSearchResult 包夹期间同时标记 isSearchResult（对照旧 upSelectChars）。
+     * 定位选区仍供手柄/菜单使用；搜索视觉由独立章内区间在绘制期投影，
+     * 不再把命中状态写入排版列。
      */
     private fun jumpToPosition(searchResult: SearchResult) {
         val curTextChapter = viewModel.curTextChapter.value ?: return
@@ -593,27 +581,32 @@ class ReaderScreenModel(
             query = query,
             searchResult = searchResult,
         )
+        // searchResultPositions 的 charIndex 是行内 UTF-16 偏移，不是排版列号。
+        // 先得到章内半开区间；程序化选区随后按 TextColumn.charData.length 逐列反算，
+        // 与 PageOverlayProjector 的搜索高亮共用同一字符账本。
+        val chapterStart = curTextChapter.pages
+            .getOrNull(pos.pageIndex)
+            ?.lines
+            ?.getOrNull(pos.lineIndex)
+            ?.chapterPosition
+            ?.plus(pos.charIndex)
+            ?: return
+        val chapterEndExclusive = chapterStart + query.length
+        selection.updateSearchHighlight(
+            SearchHighlightOverlay(
+                chapterIndex = searchResult.chapterIndex,
+                start = chapterStart,
+                endExclusive = chapterEndExclusive,
+            )
+        )
         readBook.skipToPage(pos.pageIndex) {
-            val page = viewModel.curTextPage.value ?: return@skipToPage
-            // 对照旧 upSelectChars 的跨页覆盖清除：每次跳转重算 isSearchResult，
-            // 旧页（prev/next 流）残留的高亮在此清掉（只清 searchResult 列表内列，不动手动选区）
-            clearSearchResult()
-            isSelectingSearchResult = true
-            // 搜索跳转恒作用于当前页：pagePos 全传 0（对照原版 selectStartMoveIndex(0, ...)）
-            val start = PageSelPos(0, pos.lineIndex, pos.charIndex)
-            val end = when (pos.addLine) {
-                0 -> PageSelPos(0, pos.lineIndex, pos.charIndex + query.length - 1)
-                1 -> PageSelPos(0, pos.lineIndex + 1, pos.charIndex2)
-                // 跨页命中：原版 selectEndMoveIndex(1, 0, charIndex2) 终点落在下一页，
-                // 这里仍降级为当前页末行末列——与原版横向翻页模式的观感一致（终点在下一页时
-                // 当前页从起点到页尾全部 selected），同时右手柄留在本页页尾而非滚出屏外
-                else -> {
-                    if (page.lines.isEmpty()) return@skipToPage // 占位页无行不设选区
-                    PageSelPos(0, page.lines.lastIndex, page.lines.last().columns.lastIndex)
-                }
-            }
-            selection.selectRange(page, start, end, markSearchResult = true)
-            isSelectingSearchResult = false
+            viewModel.curTextPage.value ?: return@skipToPage
+            selection.selectChapterRange(
+                pages = curTextChapter.pages,
+                firstPageIndex = pos.pageIndex,
+                startChapterOffset = chapterStart,
+                endChapterOffsetExclusive = chapterEndExclusive,
+            )
         }
     }
 
@@ -627,12 +620,9 @@ class ReaderScreenModel(
         // 原版 searchMenu.invalidate() + invisible()（Compose 无重绘概念，只隐藏根）
         searchMenuState.hideRoot()
         // 原版 ReadBook.clearSearchResult() + readView.cancelSelect(true)
-        clearSearchResult()
+        selection.updateSearchHighlight(null)
         selection.cancel()
     }
-
-    /** 清搜索结果高亮（对照原版 ReadBook.clearSearchResult → TextChapter.clearSearchResult） */
-    fun clearSearchResult() = readBook.clearSearchResult()
 
     /**
      * 打开全文搜索页（对照原版 ReadBookActivity.openSearchActivity:823-833）：
@@ -950,7 +940,8 @@ class ReaderScreenModel(
      */
     fun readAloudTextCallback(): (String) -> Unit = { text ->
         if (PreferenceProviders.get().getInt(PreferKey.contentSelectSpeakMod, 0) == 1) {
-            scope.launch { readAloudFromSelection() }
+            val start = selection.start
+            scope.launch { readAloudFromSelection(start) }
         } else {
             selectionTts.speak(text)
         }
@@ -960,15 +951,17 @@ class ReaderScreenModel(
      * 从选区起点朗读（对照原版 `ReadView.aloudStartSelect`）：选区可能落在下一/下下页，
      * 先把阅读位置翻到那一页，再按行列换算成章内偏移交给朗读。
      */
-    private suspend fun readAloudFromSelection() {
-        val start = selection.start
+    private suspend fun readAloudFromSelection(start: PageSelPos) {
         if (!start.isValid) {
             readBook.readAloud()
             return
         }
         var pagePos = start.pagePos
         while (pagePos > 0) {
-            if (!readBook.moveToNextPage()) readBook.moveToNextChapterAwait(false)
+            // 走 VM 的翻页/切章 (与其余所有翻页入口同一条路径): 切章经三章滑窗,
+            // 目标章已排版则立即可取页, 未排版则由 VM 的装载任务补上, 下面取不到页时
+            // 自然回落"从当前进度读"
+            if (!viewModel.nextPage()) viewModel.moveToNextChapter()
             pagePos--
         }
         // 翻页后新章尚未排完时取不到页, 退回从当前进度读 (与 startPos=0 同义)

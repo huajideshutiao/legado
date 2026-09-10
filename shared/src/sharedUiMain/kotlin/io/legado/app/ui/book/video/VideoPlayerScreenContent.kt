@@ -28,7 +28,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.AlertDialog
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.DropdownMenuItem
@@ -53,7 +52,6 @@ import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -61,6 +59,7 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.VideoResolution
 import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.ChapterLoadStateOverlay
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppTitleBar
@@ -83,7 +82,6 @@ import legado.shared.generated.resources.next_chapter
 import legado.shared.generated.resources.pause
 import legado.shared.generated.resources.play
 import legado.shared.generated.resources.previous_chapter
-import legado.shared.generated.resources.reload
 import legado.shared.generated.resources.resolution
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
@@ -353,7 +351,6 @@ fun VideoControlsOverlay(
     accentColor: Color = AppTheme.colors.accent,
     secondaryTextColor: Color = AppTheme.colors.primaryText,
     speeds: List<Float> = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f),
-    controller: VideoControlsController? = null,
     bufferedMs: Long = 0L,
     onSeekDragStateChange: (Boolean) -> Unit = {},
     centerControls: @Composable (BoxScope.() -> Unit)? = null,
@@ -369,12 +366,6 @@ fun VideoControlsOverlay(
     exitTransition: ExitTransition = fadeOut(),
     modifier: Modifier = Modifier,
 ) {
-    val effectivePositionMs = controller?.positionMs ?: positionMs
-    val effectiveDurationMs = controller?.durationMs ?: durationMs
-    val effectiveBufferedMs = controller?.bufferedMs ?: bufferedMs
-    val effectiveBufferColor =
-        if (controller != null) accentColor.copy(alpha = 0.5f)
-        else Color.Unspecified
     AnimatedVisibility(
         visible = visible,
         enter = enterTransition,
@@ -403,16 +394,15 @@ fun VideoControlsOverlay(
                     .fillMaxWidth()
             ) {
                 VideoSeekBar(
-                    value = effectivePositionMs,
-                    max = effectiveDurationMs,
+                    value = positionMs,
+                    max = durationMs,
                     activeColor = accentColor,
                     onSeek = onSeek,
-                    buffered = effectiveBufferedMs,
-                    bufferColor = effectiveBufferColor,
-                    onDragStateChange = { dragging ->
-                        if (controller != null) controller.seeking = dragging
-                        else onSeekDragStateChange(dragging)
-                    },
+                    buffered = bufferedMs,
+                    // 缓冲层色同音频进度条 (accent 半透明), 对齐原版 media3 PlayerView
+                    // 自带 DefaultTimeBar 的缓冲显示
+                    bufferColor = accentColor.copy(alpha = 0.5f),
+                    onDragStateChange = onSeekDragStateChange,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 8.dp)
@@ -427,8 +417,8 @@ fun VideoControlsOverlay(
                     // 当前位置 / 总时长
                     Text(
                         text = "%s / %s".format(
-                            effectivePositionMs.toDurationTime(),
-                            effectiveDurationMs.toDurationTime(),
+                            positionMs.toDurationTime(),
+                            durationMs.toDurationTime(),
                         ),
                         color = Color.White,
                         fontSize = 14.sp,
@@ -662,13 +652,12 @@ fun VideoSeekBar(
             val playX = startX + (endX - startX) * playFrac
             // 进度背景
             drawLine(Color(0xB3FFFFFF), Offset(startX, cy), Offset(endX, cy), trackH, StrokeCap.Round)
-            // 缓冲层 (bufferColor 显式指定 + buffered > 0 时绘制)
-            if (bufferColor != Color.Unspecified && buffered > 0L) {
+            // 缓冲层 (bufferColor 显式指定 + 缓冲超过已播位置时绘制):
+            // 缓冲永远不落后于播放位置, 画到已播之前只会被已播层完全盖住, 白画一趟
+            if (bufferColor != Color.Unspecified && buffered > displayValue) {
                 val bufFrac = (buffered.toFloat() / range).coerceIn(0f, 1f)
                 val bufX = startX + (endX - startX) * bufFrac
-                if (bufX > startX) {
-                    drawLine(bufferColor, Offset(startX, cy), Offset(bufX, cy), trackH, StrokeCap.Round)
-                }
+                drawLine(bufferColor, Offset(startX, cy), Offset(bufX, cy), trackH, StrokeCap.Round)
             }
             // 已播层
             drawLine(activeColor, Offset(startX, cy), Offset(playX, cy), trackH, StrokeCap.Round)
@@ -829,32 +818,6 @@ fun Long.toDurationTime(): String {
 // 注: 由平台渲染槽按自己的状态调用, 本文件不自动叠加 —— 播放器是否就绪只有平台层知道
 // (desktop 未装 mpv 时要出安装引导, 盖上通用 loading 就永远转圈)。
 
-@Composable
-fun LoadingOverlay() {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        VideoBufferingIndicator()
-    }
-}
-
-@Composable
-fun ErrorOverlay(error: String, onRetry: () -> Unit) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(text = error, color = Color.White, textAlign = TextAlign.Center)
-            Text(
-                text = stringResource(Res.string.reload),
-                color = Color(0xFF165DFF),
-                fontSize = 18.sp,
-                modifier = Modifier
-                    .padding(16.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .clickable { onRetry() }
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-        }
-    }
-}
-
 // ---- 手势反馈标签 / 缓冲圈 / 锁定钮 ----
 // 注: 原 app AndroidVideoPlayPlatformProvider 与 desktop MediampVideoPlayPlatformProvider
 // 各写一份且细节分化 (标签: app 灰底 arco_fill_3 + primaryText + 24sp vs desktop 半透明黑
@@ -982,8 +945,10 @@ fun VideoPlayerHostContainer(
     }
     val gestureController = customGestureController ?: defaultGestureController
 
-    val error = uiState.error
-    val showLoading = error == null && uiState.loading
+    val loadState = uiState.loadState
+    // 覆盖层之外仍按布尔用 (控制层显隐 / 缓冲圈互斥), 从单一状态源派生
+    val error = loadState.errorMessage
+    val showLoading = loadState.isLoading
     val showBuffering = error == null && !showLoading && isBuffering
 
     Box(
@@ -1001,12 +966,13 @@ fun VideoPlayerHostContainer(
             modifier = Modifier.fillMaxSize(),
         )
 
-        // 3. 错误占位 / 加载中占位
-        if (error != null) {
-            ErrorOverlay(error = error, onRetry = screenModel::onRefreshChapter)
-        } else if (showLoading) {
-            LoadingOverlay()
-        }
+        // 3. 错误占位 / 加载中占位 (覆盖层实现已收敛至 ChapterLoadStateOverlay, 与漫画共用;
+        // 加载指示器仍用视频侧的缓冲圈, 与"缓冲中"样式统一)
+        ChapterLoadStateOverlay(
+            state = loadState,
+            onRetry = screenModel::onRefreshChapter,
+            loadingIndicator = { VideoBufferingIndicator() },
+        )
 
         // 4. 控制层 (加载/错误态不叠; 锁定态隐藏)
         if (!locked) {

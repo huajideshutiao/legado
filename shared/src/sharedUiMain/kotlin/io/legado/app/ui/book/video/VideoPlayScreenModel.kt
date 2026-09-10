@@ -10,6 +10,7 @@ import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.showSourceLogin
 import io.legado.app.model.ReadTimeRecorder
+import io.legado.app.model.chapter.ChapterLoadState
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.screenModelScope
@@ -34,7 +35,7 @@ import kotlin.concurrent.Volatile
  * - chapterListData.observe → combine(shared.curChapterIndex/chapterSize/curChapterTitle)
  * - videoUrl.observe → 平台渲染层订阅 (shared.videoUrl 由 host 注入播放器)
  * - resolutions.observe → combine(shared.resolutions/currentResolutionIndex) → state.resolutionText
- * - loading/error → combine(shared.loading/error)
+ * - loading/error → combine(shared.loadState)
  *
  * 章节切换 (onPrevChapter/onNextChapter) 委托 [shared] 的 moveToPrevChapter/moveToNextChapter,
  * 对照 Activity playPrevChapter/playNextChapter。
@@ -50,6 +51,15 @@ import kotlin.concurrent.Volatile
 interface VideoPlayerController {
     val positionMs: Long
     val durationMs: Long
+
+    /**
+     * 已缓冲到的**绝对**时间点 ms (不是缓冲时长), 供进度条缓冲层绘制。
+     *
+     * 口径以 media3 `bufferedPosition` 为准: 安卓直取; 桌面读 mpv `demuxer-cache-time`;
+     * iOS 取 `loadedTimeRanges` 各段 end 的最大值; 鸿蒙用 AVPlayer CACHED_DURATION
+     * 加当前位置。取不到时给 0 (缓冲层不绘制), 不要拿 duration 顶替 —— 那会画出一条
+     * 永远铺满的假缓冲条。
+     */
     val bufferedMs: Long
     fun playPause()
     fun seekTo(positionMs: Long)
@@ -156,8 +166,8 @@ class VideoPlayScreenModel : ScreenModel {
         // chapters 随每次发射一并取回, 避免与其它写入交错时丢失章节列表
         combine(
             shared.curChapterIndex, shared.chapterSize, shared.curChapterTitle,
-            shared.loading, shared.error,
-        ) { index, size, title, loading, error ->
+            shared.loadState,
+        ) { index, size, title, loadState ->
             // 返回增量合并函数交给 update{} 原子完成: scope 是线程池, 本收集器与下面的
             // 分辨率收集器、UI 线程直写并发操作同一个 _state, 非原子读改写会整字段丢更新
             val chapters = shared.chapters
@@ -166,8 +176,7 @@ class VideoPlayScreenModel : ScreenModel {
                     curChapterIndex = index,
                     chapterSize = size,
                     chapterTitle = title,
-                    loading = loading,
-                    error = error,
+                    loadState = loadState,
                     chapters = chapters,
                 )
             }
@@ -242,24 +251,8 @@ class VideoPlayScreenModel : ScreenModel {
                 }
             }
 
-            is VideoPlayUiEvent.UpdateChapterIndex -> _state.update {
-                it.copy(curChapterIndex = event.index)
-            }
-
-            is VideoPlayUiEvent.UpdateChapterTitle -> _state.update {
-                it.copy(chapterTitle = event.title)
-            }
-
-            VideoPlayUiEvent.ShowLoading -> _state.update {
-                it.copy(loading = true, error = null)
-            }
-
             is VideoPlayUiEvent.ShowError -> _state.update {
-                it.copy(loading = false, error = event.message)
-            }
-
-            VideoPlayUiEvent.HideLoading -> _state.update {
-                it.copy(loading = false, error = null)
+                it.copy(loadState = ChapterLoadState.Error(event.message))
             }
 
             is VideoPlayUiEvent.UpdatePlaying -> _state.update {
@@ -292,15 +285,6 @@ class VideoPlayScreenModel : ScreenModel {
 
             is VideoPlayUiEvent.UpdatePlaybackState -> _state.update {
                 it.copy(playbackState = event.playbackState)
-            }
-
-            is VideoPlayUiEvent.UpdateResolution -> _state.update {
-                it.copy(
-                    resolutionText = event.text,
-                    hasMultiResolution = event.hasMulti,
-                    currentResolutionIndex = event.index,
-                    resolutions = event.resolutions,
-                )
             }
         }
     }
@@ -517,8 +501,8 @@ data class VideoPlayUiState(
     val chapterTitle: String = "",
     val curChapterIndex: Int = 0,
     val chapterSize: Int = 0,
-    val loading: Boolean = false,
-    val error: String? = null,
+    /** 章节装载状态 (空闲/加载中/失败, 单一状态源: shared VM 的 loadState 直传) */
+    val loadState: ChapterLoadState = ChapterLoadState.Idle,
     val isPlaying: Boolean = false,
     val isBuffering: Boolean = false,
     val playbackSpeed: Float = 1f,
@@ -562,20 +546,8 @@ sealed interface VideoPlayUiEvent {
     /** 章节列表 + 当前索引更新 (对齐 chapterListData observe) */
     data class UpdateChapters(val chapters: List<BookChapter>, val curIndex: Int) : VideoPlayUiEvent
 
-    /** 当前章节索引更新 (对齐 playPrevChapter/playNextChapter) */
-    data class UpdateChapterIndex(val index: Int) : VideoPlayUiEvent
-
-    /** 当前章节标题更新 */
-    data class UpdateChapterTitle(val title: String) : VideoPlayUiEvent
-
-    /** 显示加载中 */
-    object ShowLoading : VideoPlayUiEvent
-
     /** 显示错误 */
     data class ShowError(val message: String) : VideoPlayUiEvent
-
-    /** 隐藏加载/错误态 */
-    object HideLoading : VideoPlayUiEvent
 
     /** 播放状态更新 (对齐 onIsPlayingChanged) */
     data class UpdatePlaying(val isPlaying: Boolean) : VideoPlayUiEvent
@@ -600,12 +572,4 @@ sealed interface VideoPlayUiEvent {
 
     /** 播放器状态更新 (对齐 onPlaybackStateChanged) */
     data class UpdatePlaybackState(val playbackState: Int) : VideoPlayUiEvent
-
-    /** 分辨率信息更新 (对齐 Activity resolutions.observe + updateResolutionText) */
-    data class UpdateResolution(
-        val text: String?,
-        val hasMulti: Boolean,
-        val index: Int,
-        val resolutions: List<VideoResolution>,
-    ) : VideoPlayUiEvent
 }

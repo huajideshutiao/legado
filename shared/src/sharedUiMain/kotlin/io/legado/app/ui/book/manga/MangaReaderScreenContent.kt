@@ -43,7 +43,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -60,7 +59,9 @@ import io.legado.app.ui.book.manga.render.MangaReaderBackground
 import io.legado.app.ui.book.manga.render.MangaRenderLayer
 import io.legado.app.ui.book.manga.render.MangaRenderState
 import io.legado.app.ui.book.read.config.ClickActionConfig
+import io.legado.app.model.chapter.ChapterLoadState
 import io.legado.app.ui.compose.component.AppDropdownMenu
+import io.legado.app.ui.compose.component.ChapterLoadStateOverlay
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.platform.AppShortcut
@@ -89,7 +90,6 @@ import legado.shared.generated.resources.ic_arrow_back
 import legado.shared.generated.resources.ic_more_vert
 import legado.shared.generated.resources.ic_refresh_black_24dp
 import legado.shared.generated.resources.ic_toc
-import legado.shared.generated.resources.loading
 import legado.shared.generated.resources.manga_auto_page_speed
 import legado.shared.generated.resources.manga_check_chapter
 import legado.shared.generated.resources.manga_check_page_number
@@ -131,8 +131,7 @@ private val mangaMenuKey = listOf(AppShortcut(Key.Menu))
  * @param chapterSize 总章节数
  * @param horizontal 横向翻页模式（true=LazyRow 整页，false=LazyColumn webtoon）
  * @param autoPageSpeed 自动翻页速度（横向=秒/页，纵向=滚动速度系数）
- * @param loading 加载中标记（覆盖层）
- * @param error 错误消息（null=无错误）
+ * @param loadState 章节装载状态 (加载中/失败 → 覆盖层; 与视频/音频共用一套状态与覆盖层)
  * @param batteryLevel 电池电量 0-100 (读取失败回落 100 恒显示, 用户拍板 2026-08; 原版信息条不含电池)
  * @param systemTime 系统时间 HH:mm
  * @param currentPage 章节内当前页 (0-based)
@@ -175,10 +174,9 @@ fun MangaReaderScreenContent(
     chapterSize: Int,
     horizontal: Boolean,
     autoPageSpeed: Int,
-    loading: Boolean,
+    loadState: ChapterLoadState,
     /** 菜单/目录切章的显式跳转信号 (见 ScreenModel.dispatch 的 jumpTick 自增) */
     jumpTick: Int = 0,
-    error: String?,
     batteryLevel: Int = -1,
     systemTime: String = "",
     currentPage: Int = 0,
@@ -225,6 +223,9 @@ fun MangaReaderScreenContent(
         (MangaCellState) -> Unit, Int, (String) -> Unit
     ) -> Unit,
 ) {
+    // 覆盖层之外仍按布尔用 (菜单抑制 / 信息条 / 切章跳转标记), 从单一状态源派生
+    val loading = loadState.isLoading
+    val error = loadState.errorMessage
     // 菜单 Overlay 显隐 (点击区域动作 0 呼出, 对照 app 端 click action 0)
     var menuVisible by remember { mutableStateOf(false) }
     // 菜单显隐转场状态 (对照原版 runMenuIn/runMenuOut 的 200ms 位移动画):
@@ -482,12 +483,8 @@ fun MangaReaderScreenContent(
         )
 
         // 对照 app 端 loadFail: 失败时 ll_loading 收起换 ll_retry, 故错误优先于转圈
-        if (loading && error == null) {
-            LoadingOverlay()
-        }
-        if (error != null) {
-            ErrorOverlay(error = error, onRetry = onRetry)
-        }
+        // (覆盖层实现已收敛至 ChapterLoadStateOverlay, 与视频/音频共用)
+        ChapterLoadStateOverlay(state = loadState, onRetry = onRetry)
 
         // 底部信息条: 加载完成后才显示, 对齐原版 curFinish 后 upInfoBar。
         if (!footerConfig.hideFooter && !loading && error == null && curFinish && pageCount > 0) {
@@ -1168,41 +1165,3 @@ private fun LazyItemScope.MangaPageCell(
     }
 }
 
-// ---- 加载/错误覆盖层 ----
-
-@Composable
-private fun LoadingOverlay() {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            CircularProgressIndicator(
-                color = Color.White,
-                strokeWidth = 4.dp,
-                modifier = Modifier.size(48.dp),
-            )
-            Text(
-                text = stringResource(Res.string.loading),
-                color = Color.White,
-                modifier = Modifier.padding(top = 12.dp),
-            )
-        }
-    }
-}
-
-@Composable
-private fun ErrorOverlay(error: String, onRetry: () -> Unit) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(text = error, color = Color.White, textAlign = TextAlign.Center)
-            Text(
-                text = stringResource(Res.string.reload),
-                color = Color(0xFF165DFF),
-                fontSize = 18.sp,
-                modifier = Modifier
-                    .padding(16.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .clickable { onRetry() }
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-        }
-    }
-}
