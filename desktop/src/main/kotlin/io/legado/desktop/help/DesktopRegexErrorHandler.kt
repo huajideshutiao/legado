@@ -7,8 +7,6 @@ import io.legado.app.utils.RegexErrorHandlers
 import io.legado.desktop.help.DesktopRegexErrorHandler.onTimeoutToast
 import io.legado.desktop.help.DesktopRegexErrorHandler.restartApp
 import io.legado.desktop.help.DesktopRegexErrorHandler.saveCrashInfo
-import io.legado.desktop.startupArgs
-import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.system.exitProcess
 
@@ -18,9 +16,7 @@ import kotlin.system.exitProcess
  * 对照 app 端 AndroidRegexErrorHandler:
  * - [onTimeoutToast] → [Toasters.get] 长通知 (替代 appCtx.longToastOnUi)
  * - [saveCrashInfo] → [AppLog.put] (桌面无 CrashHandler 落盘, 走统一日志通道)
- * - [restartApp] → 用 ProcessBuilder 重新拉起当前 JVM (java -cp classpath 主类) 后退出;
- *   新进程带 `--legado-restart-wait=<pid>` 等到本进程退出释放单实例锁后再接管
- *   (见 Main.kt [waitForOldProcessIfRestart]), 避免与 SingleInstanceGuard 竞争
+ * - [restartApp] → 共享的 [launchRestartProcess] (与切语言重启同一实现) 后退出进程
  *
  * 在 desktop Main.kt 经 [registerDesktopRegexErrorHandler] 注入, 供 shared RegexReplacerImpl 在
  * 正则替换超时分支调用。须在任何 webBook 编排层触发 RegexReplacers.get().replace 之前注册。
@@ -59,37 +55,6 @@ private object DesktopRegexErrorHandler : RegexErrorHandler {
         }
     }
 
-    /** 主类名 (Compose Desktop application 配置, 开发/打包一致)。 */
-    private const val MAIN_CLASS = "io.legado.desktop.MainKt"
-
-    /**
-     * 拉起新进程: java -cp {java.class.path} {主类} {原启动参数} --legado-restart-wait=<pid>。
-     *
-     * - java.home/bin/java 在开发 (gradle run) 与 jpackage 打包 (自带 runtime) 下均存在;
-     * - java.class.path 开发期是完整依赖 classpath, 打包期指向应用 jar, 两条路都可用;
-     * - 原启动参数经 Main.kt 保存的 [startupArgs] 恢复 (deep link 等参数不丢);
-     * - jpackage 的 -Xmx 等 JVM 参数不恢复 (新进程用默认堆, 可接受)。
-     */
-    private fun launchRestartProcess(): Boolean = runCatching {
-        val javaBin = File(
-            System.getProperty("java.home"),
-            "bin" + File.separator + (if (isWindows()) "java.exe" else "java")
-        )
-        if (!javaBin.isFile) return false
-        val classpath = System.getProperty("java.class.path")?.takeIf { it.isNotBlank() }
-            ?: return false
-        val command = arrayListOf(javaBin.absolutePath, "-cp", classpath, MAIN_CLASS)
-        command += startupArgs
-        command += "--legado-restart-wait=${ProcessHandle.current().pid()}"
-        ProcessBuilder(command).apply {
-            redirectOutput(ProcessBuilder.Redirect.INHERIT)
-            redirectError(ProcessBuilder.Redirect.INHERIT)
-        }.start()
-        true
-    }.getOrDefault(false)
-
-    private fun isWindows(): Boolean =
-        System.getProperty("os.name", "").lowercase().contains("win")
 }
 
 /** 桌面端 main 入口注册 [RegexErrorHandler], 须在任何正则替换之前。 */

@@ -30,8 +30,8 @@ actual class URL actual constructor(val url: String) {
 internal actual fun URL.urlQuery(): String? =
     url.substringAfter('?', "").substringBefore('#').takeIf { it.isNotEmpty() }
 
-actual abstract class InputStream {
-    abstract fun read(): Int
+actual abstract class InputStream actual constructor() {
+    actual abstract fun read(): Int
 
     actual open fun read(b: ByteArray): Int = read(b, 0, b.size)
 

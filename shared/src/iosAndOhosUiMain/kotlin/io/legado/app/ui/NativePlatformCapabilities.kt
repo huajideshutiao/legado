@@ -33,12 +33,6 @@ interface NativePlatformCapabilities : SharedPlatformCapabilities {
         AppNavigatorProviders.get().push(AppRoute.WebView(url, sourceKey, sourceName))
     }
 
-    /** 两端均无 assets, 直接开仓库上的文档 (对照 desktop 本地文件)。 */
-    override fun showMdFile(title: String, fileName: String) {
-        val path = if (fileName == "LICENSE.md") "LICENSE" else "app/src/main/assets/$fileName"
-        runCatching { openExternalUrl("https://github.com/gedoor/legado/blob/master/$path") }
-    }
-
     override fun enableCustomExport(): Boolean =
         PreferenceProviders.get().getBoolean(PreferKey.enableCustomExport, false)
 

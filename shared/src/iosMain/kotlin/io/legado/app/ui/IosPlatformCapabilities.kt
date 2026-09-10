@@ -122,6 +122,10 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
         openURL(url)
     }
 
+    // AVAudioSession 真按 exclusive 切 MixWithOthers (见 IosMediaNotificationController
+    // .setAudioFocus → applyAudioSession), 所以"忽略音频焦点"开关在本端真实生效
+    override val audioFocusSupported: Boolean get() = true
+
     override fun shareText(text: String) {
         presentShareSheet(listOf(text))
     }

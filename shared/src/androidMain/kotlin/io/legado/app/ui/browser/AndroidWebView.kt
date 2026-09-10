@@ -38,15 +38,10 @@ import androidx.webkit.ProcessGlobalConfig
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
-import androidx.webkit.WebViewOutcomeReceiver
-import androidx.webkit.WebViewStartUpConfig
-import androidx.webkit.WebViewStartUpResult
-import androidx.webkit.WebViewStartupException
 import io.legado.app.constant.AppConst
-import io.legado.app.constant.AppLog
-import io.legado.app.help.getUserAgent
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.getUserAgent
 import io.legado.app.help.http.CookieStoreProviders
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.Download
@@ -59,7 +54,6 @@ import io.legado.app.utils.EscapeUtils
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.splitNotBlank
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.asExecutor
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
@@ -156,10 +150,14 @@ fun AndroidWebView(
             web.settings.loadWithOverviewMode = true
         }
         web.settings.userAgentString = config.headerMap.getUserAgent()
-        // tag 持最终加载 url, html 模式与 loadUrl 模式互斥同源
-        val loadUrl = if (config.html.isNullOrEmpty()) config.url else ""
-        if (web.tag != loadUrl) {
-            web.tag = loadUrl
+        // tag 持加载键: url 模式用 url; html 模式带 url + html 哈希, 避免 HTML 更新时因固定 key 跳过重载
+        val loadKey = if (config.html.isNullOrEmpty()) {
+            config.url
+        } else {
+            "html:${config.url}:${config.html.hashCode()}"
+        }
+        if (web.tag != loadKey) {
+            web.tag = loadKey
             // 原 CookieManager.applyToWebView: 业务层 cookie → WebView, 登录态才带得过去
             applyCookiesToWebView(config.url)
             if (config.html.isNullOrEmpty()) {
@@ -533,32 +531,4 @@ fun configureWebViewStartUpMode(context: Context) {
     }
     // apply 全进程一次, WebView 已加载或重复调用抛 IllegalStateException
     runCatching { ProcessGlobalConfig.apply(config) }
-}
-
-/**
- * 预热 WebView 内核: 能后台跑的启动任务走 IO 线程, UI 线程那部分按
- * [configureWebViewStartUpMode] 设的 ASYNC 模式碎片化执行, 首次 new WebView 不再长阻塞。
- * 可重复调用, 已启动完成时回调立即触发; 耗时诊断在旧内核上恒为 null (框架不提供)。
- */
-fun warmUpWebViewKernel(context: Context) {
-    val config = WebViewStartUpConfig.Builder(IoDispatcher.asExecutor())
-        // 连 UI 线程任务一起预热: 留到首次 new WebView 才做就正好撞上转场动画
-        .setShouldRunUiThreadStartUpTasks(true)
-        .build()
-    WebViewCompat.startUpWebView(
-        context.applicationContext,
-        config,
-        object : WebViewOutcomeReceiver<WebViewStartUpResult, WebViewStartupException> {
-            override fun onResult(result: WebViewStartUpResult) {
-                AppLog.putDebug(
-                    "WebView 内核预热完成: UI 线程共 ${result.totalTimeInUiThreadMillis}ms, " +
-                        "单任务最长 ${result.maxTimePerTaskInUiThreadMillis}ms"
-                )
-            }
-
-            override fun onError(error: WebViewStartupException) {
-                AppLog.put("WebView 内核预热失败", error)
-            }
-        },
-    )
 }

@@ -196,8 +196,9 @@ android {
         resources.excludes.add("DebugProbesKt.bin")
         resources.excludes.add("kotlin-tooling-metadata.json")
         resources.excludes.add("play-services-*.properties")
-        // LICENSE/disclaimer/privacyPolicy.md 统一在 shared/src/commonMain/resources (共享一份),
-        // Android 端经 classpath 读 APK 根级副本 (AboutScreen/MainActivity), 不可排除
+        // LICENSE/disclaimer/privacyPolicy.md 已移到 shared composeResources files/md
+        // (四端共享一份, 经 WebAssetSources 读: Android assets / 桌面 classpath /
+        // iOS 鸿蒙 Res.readBytes), 不再走 java resources, 故此处无需保留豁免
         jniLibs.excludes.add("lib/*/libcronet*.so")
     }
 

@@ -9,7 +9,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
-import com.sun.jna.Platform
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
@@ -32,16 +31,15 @@ import io.legado.app.ui.book.read.ReadMenuState
 import io.legado.app.ui.book.read.ReaderDialogEvent
 import io.legado.app.ui.book.read.ReaderPlatformProvider
 import io.legado.app.ui.book.read.ReaderScreenModel
-import io.legado.app.ui.book.read.refreshReaderImage
 import io.legado.app.ui.book.read.createReadMenuColors
 import io.legado.app.ui.book.read.hasBgImageByPath
 import io.legado.app.ui.book.read.page.AutoPagerCompose
+import io.legado.app.ui.book.read.readerAutoPageActive
+import io.legado.app.ui.book.read.refreshReaderImage
 import io.legado.app.ui.compose.platform.DesktopThemeStoreProvider
-import io.legado.app.ui.compose.platform.syncGetString
-import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.reader.ImageActionMenuEntry
-import io.legado.app.ui.reader.ImageActionMenuRequest
+import io.legado.app.ui.compose.platform.LocalOverlayTopInset
 import io.legado.app.ui.reader.ReaderImageActionMenu
+import io.legado.app.ui.reader.ReaderImageActions
 import io.legado.app.ui.reader.ReaderTextActionMenu
 import io.legado.app.ui.reader.ReaderTextActions
 import io.legado.app.ui.reader.ReaderTextSelectionRequest
@@ -49,8 +47,6 @@ import io.legado.app.ui.reader.readerMenuAnchor
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
-import io.legado.app.ui.root.PlatformServiceProviders
-import io.legado.app.ui.root.readerKeepScreenOnPolicy
 import io.legado.app.ui.widget.dialog.encodePhotoOverlayPayload
 import io.legado.app.utils.FileUtilsBase
 import io.legado.app.utils.FlowBus
@@ -59,13 +55,13 @@ import io.legado.desktop.help.tts.DesktopReadAloudHost
 import io.legado.desktop.ui.DesktopDialogRequest
 import io.legado.desktop.ui.DesktopDialogs
 import io.legado.desktop.ui.DesktopPlatformCapabilities
-import io.legado.desktop.ui.DesktopWindowChrome
 import io.legado.desktop.ui.component.FileDialogs
 import io.legado.desktop.ui.readerWindowTint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
@@ -166,8 +162,14 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
         }
     }
 
-    /** 阅读页退出: 清除标题栏着色, 回落 AppTheme 主题色; 收起图片/文本长按菜单避免残留。 */
+    /**
+     * 阅读页销毁: 停止自动翻页并释放页面控制器/协程，清理窗口与浮层状态。
+     * 朗读宿主是进程级媒体会话，不随阅读路由销毁而停止，以保留后台/托盘控制语义。
+     */
     override fun onExit(screenModel: ReaderScreenModel) {
+        autoPageStop(screenModel)
+        (screenModel.menuController.state as? DesktopReadMenuState)?.dispose()
+        readerAutoPageActive = false
         titleBarTintJob?.cancel()
         titleBarTintJob = null
         readerWindowTint.value = null
@@ -226,29 +228,14 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
         y: Float,
     ) {
         if (src.isBlank()) return
-        fun finish() {
-            ReaderImageActionMenu.dismiss()
-            ReadBookEvents.postSelectionCancel()
-        }
-
-        fun entry(label: String, action: () -> Unit) =
-            ImageActionMenuEntry(label) {
-                action()
-                finish()
-            }
         ReaderImageActionMenu.show(
-            ImageActionMenuRequest(
-                anchor = readerMenuAnchor(x, y + menuTopOffsetPx),
-                entries = listOf(
-                    entry(syncGetString("show")) { viewImage(screenModel, src) },
-                    entry(syncGetString("refresh")) { refreshImage(screenModel, src) },
-                    entry(syncGetString("action_save")) { saveImage(screenModel, src) },
-                    entry(syncGetString("select_folder")) {
-                        saveImageToSelectedDir(screenModel, src)
-                    },
-                ),
-                onDismiss = { finish() },
-            )
+            anchor = readerMenuAnchor(x, y + menuTopOffsetPx),
+            actions = ReaderImageActions(
+                view = { viewImage(screenModel, src) },
+                refresh = { refreshImage(screenModel, src) },
+                save = { saveImage(screenModel, src) },
+                selectDirectory = { saveImageToSelectedDir(screenModel, src) },
+            ),
         )
     }
 
@@ -361,11 +348,8 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
     @Composable
     fun TextSelectionHost() {
         val actions = textActions
-        val titleBarTopPx = if (Platform.isMac() || DesktopWindowChrome.fullscreen) {
-            0f
-        } else {
-            with(LocalDensity.current) { AppTheme.DesignTokens.viewHeightLarge.toPx() }
-        }
+        // 与菜单/对话框同一份顶部安全区 (窗口控制条高度, 由 Main.kt 按平台/全屏态注入)
+        val titleBarTopPx = with(LocalDensity.current) { LocalOverlayTopInset.current.toPx() }
         // 图片菜单在非组合期装配请求, 借这里把同一偏移量存下 (见 [menuTopOffsetPx])
         SideEffect { menuTopOffsetPx = titleBarTopPx }
         val selection = rawSelection
@@ -593,6 +577,7 @@ private class DesktopReadMenuState(
     private fun startAutoPage() {
         stopAutoPage()
         autoPage = true
+        readerAutoPageActive = true
         autoPager = AutoPagerCompose(
             viewModel = screenModel.viewModel,
             scope = autoPageScope,
@@ -604,22 +589,23 @@ private class DesktopReadMenuState(
             pager.onEnd = { stopAutoPage() }
             pager.start()
         }
-        // 自动翻页期间阻止系统休眠/息屏 (对照原版 autoPage(): screenTimeOut = -1L +
-        // screenOffTimerStart; 桌面端无计时器, 直接抬升为常亮, 停止时按 keepLight 回落)
-        PlatformServiceProviders.get().window.setKeepScreenOn(true)
+        // 自动翻页常亮由 readerAutoPageActive 统一收敛到窗口策略层判定并下发 (拍板 4a),
+        // 杜绝此处与 LegadoApp 双写覆盖
     }
 
     /** 停止自动翻页: 复位控制器 + 复位开关 (对照 app 端 stopAutoPage)。 */
     fun stopAutoPage() {
-        val wasRunning = autoPager != null
         autoPager?.stop()
         autoPager = null
         autoPage = false
-        // 常亮回落 keepLight 配置 (对照原版 autoPageStop(): upScreenTimeOut)
-        if (wasRunning) {
-            PlatformServiceProviders.get().window
-                .setKeepScreenOn(readerKeepScreenOnPolicy())
-        }
+        readerAutoPageActive = false
+    }
+
+    /** 释放菜单状态与协程作用域 (阅读页退出时由 Provider 调用) */
+    fun dispose() {
+        stopAutoPage()
+        autoPageScope.cancel()
+        chapterLinkScope.cancel()
     }
 
     override fun clickPre() {

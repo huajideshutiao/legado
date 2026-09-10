@@ -8,6 +8,7 @@ import io.legado.app.help.file.desktopAppRootDir
 import io.legado.app.help.notification.NotificationProgresses
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.CacheBookShared
+import io.legado.app.utils.openFileWithSystem
 import io.legado.app.utils.postEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,14 +26,16 @@ import java.nio.file.Paths
  * - **startCacheBookService**: 接入已下沉的 [CacheBookShared], 创建 CacheBookModelShared +
  *   addDownload + 在 scope 内 launch startProcessJob (对照 app 端 CacheBookService.addDownloadData +
  *   download)
- * - **removeCacheBookService**: 调 [CacheBookShared.cacheBookMap][bookUrl]?.stop] +
+ * - **removeCacheBookService**: 调 `CacheBookShared.cacheBookMap[bookUrl]?.stop()` +
  *   postEvent (对照 app 端 CacheBookService.removeDownload, 桌面端无 stopSelf)
  * - **stopCacheBookService**: 调 [CacheBookShared.close] (对照 app 端 CacheBookService.onDestroy)
  * - **startUpdateBookService / stopUpdateBookService**: 接入已下沉的 [UpdateBookShared],
  *   start 从 DB 查全部书调 [UpdateBookShared.scheduleAutoUpdate], stop 调
  *   [UpdateBookShared.cancelRefreshJobs] (对照 app 端 MainViewModel 同名方法)
  * - **startDownloadService**: 真实下载, 用 [FileDownloaders] 写文件到
- *   `{desktopAppRootDir}/downloads/fileName`
+ *   `{desktopAppRootDir}/downloads/fileName`, 完成后交系统默认程序打开
+ *   (对照 app 端 DownloadService 下载完 openFileUri; 打不开时 openFileWithSystem 内部记 AppLog,
+ *   用户仍能从 toast 里的绝对路径找到文件)
  *
  * 模式参考 `registerAndroidMediaNotificationProvider`。
  *
@@ -104,13 +107,21 @@ class DesktopServiceLauncher(
     }
 
     override fun startDownloadService(url: String, fileName: String) {
-        // 真实下载: 用 FileDownloader 写文件到 {desktopAppRootDir}/downloads/fileName
+        // 真实下载: 用 FileDownloader 写文件到 {desktopAppRootDir}/downloads/fileName,
+        // 完成后交系统默认程序打开 (对照 app 端 DownloadService 监听
+        // ACTION_DOWNLOAD_COMPLETE 后 openFileUri: 安装包交给安装器, 其余交默认程序);
+        // toast 带绝对路径, 打不开时用户仍能自己找到文件
         scope.launch {
             val destPath = Paths.get(desktopAppRootDir(), "downloads").toString()
             val ok = FileDownloaders.get().download(url, destPath, fileName)
             if (!ok) {
                 AppLog.put("下载失败: url=$url fileName=$fileName", tag = "DesktopServiceLauncher")
+                Toasters.get().toast("下载失败: $fileName")
+                return@launch
             }
+            val file = Paths.get(destPath, fileName).toFile()
+            Toasters.get().toast("下载完成: ${file.absolutePath}")
+            openFileWithSystem(file.absolutePath)
         }
     }
 }

@@ -67,6 +67,7 @@ import io.legado.app.help.toast.registerAndroidToaster
 import io.legado.app.help.tts.registerAndroidSystemTtsEngine
 import io.legado.app.help.ui.registerAndroidOpenUrlProvider
 import io.legado.app.help.ui.registerAndroidUserAgentProvider
+import io.legado.app.help.update.registerAndroidAppUpdate
 import io.legado.app.model.BookCover
 import io.legado.app.model.CacheBook
 import io.legado.app.model.fileBook.registerAndroidFileBookProviders
@@ -117,7 +118,7 @@ class App : Application() {
         super.onCreate()
         instance = this
         // WebView 内核的 UI 线程初始化改成 ASYNC 分片 (见 configureWebViewStartUpMode)。
-        // 必须排在任何 WebView API 之前 (全进程一次生效, 须在 warmUpWebViewKernel / 任何 WebView 访问前)
+        // 必须排在任何 WebView API 之前 (全进程一次生效, 须在任何 WebView 访问前)
         configureWebViewStartUpMode(this)
         // Android-KMP library 不生成 BuildConfig，由宿主注入 ApplicationInfo 可调试状态。
         registerAndroidDebugState(this)
@@ -168,6 +169,9 @@ class App : Application() {
         // 供 shared jvmAndAndroidMain 的 RegexReplacerImpl 在替换超时分支调用;
         // 须在 registerAndroidWebBookProviders 之前 (任何 RegexReplacers.get().replace 之前)
         registerAndroidRegexErrorHandler()
+        // 注册 AppUpdateEnvironment (平台/版本号/渠道/ABI), 供 shared AppUpdateManager 检查更新;
+        // 关于页入口以 AppUpdateManager.isAvailable() 为 gate, 不注册就不显示"检查更新"
+        registerAndroidAppUpdate()
         // 注册 CronetProvider (桥接 app 端 Cronet object 与 AppConfig.isCronet);
         // 须在 registerAndroidWebBookProviders 之前 (OkHttpClientProviders 注册后,
         // shared okHttpClient 首次 lazy 初始化会读 CronetProviders.get())

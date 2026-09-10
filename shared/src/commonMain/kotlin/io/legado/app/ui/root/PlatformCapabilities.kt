@@ -212,14 +212,7 @@ interface PlatformCapabilities {
 
     // 关于页平台能力 (各端按需 override, 未实现端统一给出明确提示)
     // 对照原版 archive 分支 AboutFragment.onPreferenceTreeClick 各分支
-    /**
-     * 是否提供检查更新能力 (关于页"检查更新"入口 gate)。
-     * 实现 [checkUpdate] 的端必须返回 true, 否则关于页隐藏入口。
-     */
-    val checkUpdateSupported: Boolean get() = false
-
-    /** 检查更新 (对照 onCheckUpdate / AppUpdate.check) */
-    fun checkUpdate() = unsupported("检查更新")
+    // ("检查更新" 不在此列: 四端已统一走 shared AppUpdateManager, 无平台分支)
 
     /** 显示崩溃日志 (对照 onShowCrashLogs / showDialogFragment<CrashLogsDialog>) */
     fun showCrashLogs() = unsupported("查看崩溃日志")
@@ -229,9 +222,6 @@ interface PlatformCapabilities {
 
     /** 创建堆转储 (对照 onCreateHeapDump / createHeapDump) */
     fun createHeapDump() = unsupported("创建堆转储")
-
-    /** 显示 MD 文件 (对照 onShowMdFile / showMdFile) */
-    fun showMdFile(title: String, fileName: String) = unsupported("查看说明文档")
 
     // 书籍详情页平台能力 (各端按需 override, 未实现端统一给出明确提示)
     // 对照 app 端 BookInfoActivity 同名方法
@@ -331,6 +321,76 @@ interface PlatformCapabilities {
      * 仅 Android 前台 AudioPlayService / WebService 消费这两个 pref, 其余端拨了没效果。
      */
     val wakeLockSupported: Boolean get() = false
+
+    /**
+     * 是否真正消费 [io.legado.app.constant.PreferKey.cronet] (其他设置里的 Cronet 开关 gate)。
+     *
+     * 只有 Android 端注册了 CronetProvider (App.onCreate registerAndroidCronetProvider),
+     * 其余端的 shared createOkHttpClient 里 `CronetProviders.get()` 返回 null,
+     * 开关拨了完全无效 —— 所以不支持的端直接隐藏条目。
+     */
+    val cronetSupported: Boolean get() = false
+
+    /**
+     * 是否能切应用内语言 (其他设置里的"语言"条目 gate)。
+     *
+     * 安卓端靠 AppContextWrapper.wrap 包 Context; 桌面端靠
+     * [applyAppLanguage] + 重启进程; iOS/鸿蒙未接入。
+     */
+    val languageSwitchSupported: Boolean get() = false
+
+    /**
+     * 应用语言变更后的平台收尾 (已写入 [io.legado.app.constant.PreferKey.language] 之后调)。
+     *
+     * 对照原版 OtherConfigFragment 的 `PreferKey.language -> appCtx.restart()`:
+     * 安卓/桌面都是重启应用生效 (CMP 资源按 Locale.current 选 values-xx 目录,
+     * 进程内改默认 locale 不会重取已组合的字符串)。
+     */
+    fun applyAppLanguage() = unsupported("切换语言")
+
+    /**
+     * 是否有系统媒体按键通道 (其他设置里"退出后响应媒体按键"/"媒体按键唤醒朗读"两项 gate)。
+     *
+     * 两个 pref 只有 Android 的 MediaButtonReceiver 读, 其余端无消费方。
+     */
+    val mediaButtonSupported: Boolean get() = false
+
+    /**
+     * 是否能抢系统音频焦点 (其他设置里"忽略音频焦点"条目 gate)。
+     *
+     * Android 走 AudioFocusController, iOS 走 AVAudioSession 类别;
+     * 桌面 (DesktopSmtc.setAudioFocus = Unit) 与鸿蒙 (OhosMediaNotificationController
+     * .setAudioFocus = Unit) 无焦点模型, 拨了等于没拨。
+     */
+    val audioFocusSupported: Boolean get() = false
+
+    /**
+     * 是否有系统级文本操作菜单入口 (其他设置里"文字操作显示搜索"条目 gate)。
+     *
+     * 对应 Android 的 PROCESS_TEXT activity-alias, 其余端无此概念。
+     */
+    val processTextSupported: Boolean get() = false
+
+    /**
+     * 读"文字操作显示搜索"的真实开启态 (对照原版 OtherConfigFragment.isProcessTextEnabled:
+     * 读组件启用态而非 pref, 因为用户可能在系统设置里改过)。
+     */
+    fun isProcessTextEnabled(): Boolean = false
+
+    /**
+     * 写"文字操作显示搜索"开启态 (对照原版 setProcessTextEnable:
+     * setComponentEnabledSetting 切 ProcessTextActivity alias 的启用态)。
+     */
+    fun setProcessTextEnabled(enabled: Boolean) = unsupported("文字操作菜单")
+
+    /**
+     * 是否有堆转储能力 (其他设置里"记录堆转储"开关 gate)。
+     *
+     * PreferKey.recordHeapDump 只有 Android 的 CrashHandler (OOM 时 doHeapDump) 读。
+     * 关于页的"创建堆转储"是另一个手动入口 ([createHeapDump]), 桌面端有实现,
+     * 与本开关 (崩溃时自动转储) 不是同一件事。
+     */
+    val heapDumpRecordSupported: Boolean get() = false
 
     /**
      * 是否平板设备（决定"平板/横屏双页" auto 分支是否启用双页，对照 app 端

@@ -47,6 +47,8 @@ import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.toJson
 import io.legado.desktop.constant.DesktopAppInfo
 import io.legado.desktop.help.DesktopCrashLogDirs
+import io.legado.desktop.help.applyDesktopLanguagePref
+import io.legado.desktop.help.restartDesktopAppForLanguage
 import io.legado.desktop.help.book.DesktopBookExport
 import io.legado.desktop.help.source.DesktopCheckSource
 import io.legado.desktop.help.webview.DesktopWebViewEngines
@@ -120,6 +122,15 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
 
     override fun openExternalUrl(url: String) {
         browseUrl(url)
+    }
+
+    // 语言: CMP 资源按 Locale.current 选 values-xx 目录, 进程内改默认 locale 不会重取
+    // 已组合的字符串, 所以与安卓一样靠重启生效 (对照原版 appCtx.restart())
+    override val languageSwitchSupported: Boolean get() = true
+
+    override fun applyAppLanguage() {
+        applyDesktopLanguagePref()
+        restartDesktopAppForLanguage()
     }
 
     override fun openWebView(url: String, sourceKey: String, sourceName: String) {
@@ -351,8 +362,9 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     }
 
     // ===== 关于页 =====
-    // 检查更新不再走这里: shared AboutRoute 直接调 AboutScreenModel.checkUpdate →
-    // AppUpdateManager (环境/执行器由 registerDesktopAppUpdate 注册, 见 DesktopAppUpdate.kt)
+    // 检查更新四端统一走 shared: AboutRoute → AboutScreenModel.checkUpdate →
+    // AppUpdateManager (环境由 registerDesktopAppUpdate 注册, 见 DesktopAppUpdate.kt),
+    // 无平台分支
 
     // 崩溃日志: 与 app 端同走 shared OverlayContentHost 的 "crash_logs" key
     // (数据源 = DesktopPlatformServices.crashLogs, 写入方见 DesktopCrashHandler)
@@ -384,12 +396,6 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
                     Toasters.get().toast("保存堆转储失败\n${it.message}")
                 }
         }
-    }
-
-    // 桌面端无 assets, 直接打开仓库上的文档 (对照 app 端 showMdFile 读不到资源时的回退分支)
-    override fun showMdFile(title: String, fileName: String) {
-        val path = if (fileName == "LICENSE.md") "LICENSE" else "app/src/main/assets/$fileName"
-        runCatching { openExternalUrl("https://github.com/huajideshutiao/legado/blob/master/$path") }
     }
 
     /**

@@ -92,12 +92,17 @@ class NativeServiceLauncher(
         // 真实下载: 用 FileDownloader 写文件到 filesDir/downloads/fileName
         // (对照桌面端 ~/.legado/downloads; Native 端用 AppFilesDirs.get().filesDir 即
         // iOS 端沙盒 Documents 目录 / 鸿蒙端 {user.dir}/legado_data/files 替代 user.home)
+        // 成败都给用户可见反馈 (与安卓 DownloadManager 通知、桌面 toast 对齐):
+        // 两端都没有"交系统默认程序打开"的等价能力 (iOS 沙盒 / 鸿蒙无该桥), 故只报落盘路径
         scope.launch {
             val destPath = AppFilesDirs.get().filesDir + "/downloads"
             val ok = FileDownloaders.get().download(url, destPath, fileName)
             if (!ok) {
                 AppLog.put("下载失败: url=$url fileName=$fileName", tag = "NativeServiceLauncher")
+                Toasters.get().toast("下载失败: $fileName")
+                return@launch
             }
+            Toasters.get().toast("下载完成: $destPath/$fileName")
         }
     }
 }

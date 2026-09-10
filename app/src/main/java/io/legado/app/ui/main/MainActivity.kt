@@ -53,13 +53,13 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.image.registerReaderImageResolver
 import io.legado.app.help.storage.Backup
-import io.legado.app.help.update.AppUpdate
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.receiver.MediaButtonReceiver
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.service.ExportBookService
+import io.legado.app.ui.about.checkUpdateAndPrompt
 import io.legado.app.ui.association.DeepLinkImportHost
 import io.legado.app.ui.association.LegadoDeepLink
 import io.legado.app.ui.association.LegadoDeepLinkHandler
@@ -115,6 +115,7 @@ import io.legado.app.utils.showExportSuccess
 import io.legado.app.utils.startService
 import io.legado.app.utils.sysScreenOffTime
 import io.legado.app.utils.toastOnUi
+import io.legado.app.web.utils.WebAssetSources
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.flow.first
@@ -800,8 +801,14 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
             //备份同步
             backupSync()
             //版本更新
+            // 启动静默检查更新 (对照原版 AppUpdate.check(silent=true)): 无等待框无 toast,
+            // 有新版本才弹 updateDialog Overlay
             if (AppConfig.autoCheckUpdate) {
-                AppUpdate.check(this@MainActivity.lifecycleScope, this@MainActivity, true)
+                checkUpdateAndPrompt(
+                    silent = true,
+                    latestText = androidAppString("is_latest_version"),
+                    failedLabel = androidAppString("check_update"),
+                )
             }
         }
         viewModel.postLoad()
@@ -812,30 +819,34 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
      * 未同意时弹隐私协议对话框, 同意则 [LocalConfig.privacyPolicyOk] 置 true, 拒绝则退出应用。
      * 已同意直接返回 true (仅首启生效)。
      */
-    private suspend fun privacyPolicy(): Boolean = suspendCancellableCoroutine sc@{ block ->
-        if (LocalConfig.privacyPolicyOk) {
-            block.resume(true)
-            return@sc
+    private suspend fun privacyPolicy(): Boolean {
+        if (LocalConfig.privacyPolicyOk) return true
+        // privacyPolicy.md 统一存于 shared composeResources files/md (四端共享一份),
+        // 经 WebAssetSources 读 (Android 走 assets, 与关于页 MdDocDialog 同一条通道)
+        val privacyPolicy = withContext(IO) {
+            runCatching {
+                WebAssetSources.get().read("md/privacyPolicy.md").decodeToString()
+            }.getOrElse {
+                AppLog.put("读取隐私政策失败", it)
+                null
+            }
         }
-        // privacyPolicy.md 统一存于 shared/src/commonMain/resources (共享一份), 经 classpath 读取
-        val privacyPolicy = javaClass.classLoader
-            ?.getResourceAsStream("privacyPolicy.md")
-            ?.bufferedReader()
-            ?.use { it.readText() }
-        alert(androidAppString("privacy_policy"), privacyPolicy) {
-            positiveButton(androidAppString("agree")) {
-                LocalConfig.privacyPolicyOk = true
-                block.resume(true)
-            }
-            negativeButton(androidAppString("refuse")) {
-                finish()
-                block.resume(false)
-            }
-            // 取消/返回键视为未同意, 不 finish (finish 仅发生在明确点拒绝时)。
-            // 按钮点击后对话框同样会 dismiss, 此时 continuation 已被按钮 resume 过,
-            // 不加守卫会二次 resume 抛 IllegalStateException: Already resumed
-            onDismiss {
-                if (block.isActive) block.resume(false)
+        return suspendCancellableCoroutine sc@{ block ->
+            alert(androidAppString("privacy_policy"), privacyPolicy) {
+                positiveButton(androidAppString("agree")) {
+                    LocalConfig.privacyPolicyOk = true
+                    block.resume(true)
+                }
+                negativeButton(androidAppString("refuse")) {
+                    finish()
+                    block.resume(false)
+                }
+                // 取消/返回键视为未同意, 不 finish (finish 仅发生在明确点拒绝时)。
+                // 按钮点击后对话框同样会 dismiss, 此时 continuation 已被按钮 resume 过,
+                // 不加守卫会二次 resume 抛 IllegalStateException: Already resumed
+                onDismiss {
+                    if (block.isActive) block.resume(false)
+                }
             }
         }
     }

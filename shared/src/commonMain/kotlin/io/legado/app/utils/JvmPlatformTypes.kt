@@ -41,7 +41,8 @@ internal expect fun URL.urlQuery(): String?
 // 需用 abstract 修饰 (build.gradle 已配置 -Xexpect-actual-classes).
 // TextFileCore 下沉 commonMain 后补声明 read/skip/available/close 成员 (签名对齐 java.io.InputStream,
 // jvm 端 typealias 自动匹配; native actual 补默认实现, ByteArrayInputStream 按 JVM 语义 override)。
-expect abstract class InputStream {
+expect abstract class InputStream() {
+    abstract fun read(): Int
     open fun read(b: ByteArray): Int
     open fun read(b: ByteArray, off: Int, len: Int): Int
     open fun skip(n: Long): Long

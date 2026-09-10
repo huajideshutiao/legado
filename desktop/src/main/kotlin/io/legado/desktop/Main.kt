@@ -133,6 +133,7 @@ import io.legado.desktop.help.http.registerDesktopBackstageWebView
 import io.legado.desktop.help.initDesktopDefaultData
 import io.legado.desktop.help.log.registerDesktopAppLogHost
 import io.legado.desktop.help.registerDesktopAndroidId
+import io.legado.desktop.help.applyDesktopLanguagePref
 import io.legado.desktop.help.registerDesktopAppUpdate
 import io.legado.desktop.help.registerDesktopArchiveProvider
 import io.legado.desktop.help.registerDesktopDirectLinkUploadProviders
@@ -409,10 +410,12 @@ private fun runDesktopApp() = application {
     // - ReadBookConfigProviders + ThemeConfigProviders (备份格式兼容性补齐, 供 BackupShared 用)
     // 接住返回值: LocalReadConfigProviders 必须与全局 ReadBookConfigProviders 同实例, 否则配置写读分家
     val desktopReadBookConfig = remember { registerDesktopConfig() }
-    // 注册桌面端更新能力 (AppUpdateEnvironment + UpdateExecutor, 薄壳转发 shared AppUpdateManager):
-    // 依赖 PreferenceProviders (上方 registerDesktopConfig) + DesktopAppInfo, 与平台服务解耦
-    // (执行器运行时才取 PlatformServiceProviders.browser), 故可提前到阶段1同步注册,
-    // 避免"窗口显示后、异步注册完成前打开关于页 → 检查更新入口不显示"的竞态
+    // 应用内语言 (PreferKey.language → JVM 默认 Locale, CMP 资源据此选 values-xx 目录):
+    // 必须在 registerDesktopConfig 之后 (要读 pref)、任何 stringResource 取值之前
+    remember { applyDesktopLanguagePref() }
+    // 注册桌面端更新能力 (AppUpdateEnvironment, 薄壳转发 shared AppUpdateManager):
+    // 依赖 PreferenceProviders (上方 registerDesktopConfig) + DesktopAppInfo, 无其他依赖,
+    // 故可提前到阶段1同步注册, 避免"窗口显示后、异步注册完成前打开关于页 → 检查更新入口不显示"的竞态
     registerDesktopAppUpdate()
     // 注册桌面端 AppFilesDir (~/.legado/files), 供 BackupShared/RestoreShared 用
     registerDesktopAppFilesDir()

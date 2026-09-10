@@ -41,14 +41,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
-import io.legado.app.data.entities.Bookmark
-import io.legado.app.help.IntentData
-import io.legado.app.help.config.AppConfigProviders
-import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.showSourceLogin
 import io.legado.app.model.ActiveReadBookRegistry
@@ -59,15 +54,12 @@ import io.legado.app.ui.about.CrashLogsDialog
 import io.legado.app.ui.about.UpdateDialogOverlayContent
 import io.legado.app.ui.association.DeepLinkImportType
 import io.legado.app.ui.association.OpenUrlConfirmOverlayContent
-import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.book.changecover.ChangeCoverDialog
 import io.legado.app.ui.book.changecover.ChangeCoverPlatformProviders
 import io.legado.app.ui.book.changecover.ChangeCoverViewModelShared
 import io.legado.app.ui.book.group.GroupEditDialog
-import io.legado.app.ui.book.group.GroupManageDialog
 import io.legado.app.ui.book.group.GroupSelectDialog
 import io.legado.app.ui.book.group.GroupViewModelShared
-import io.legado.app.ui.book.manage.SourcePickerDialog
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
@@ -96,7 +88,6 @@ import io.legado.app.ui.route.ReviewListOverlayDialogContent
 import io.legado.app.ui.widget.dialog.PhotoViewOverlayDialog
 import io.legado.app.ui.widget.dialog.decodePhotoOverlayPayload
 import io.legado.app.ui.widget.keyboard.KeyboardAssistsConfigOverlayContent
-import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.merge
@@ -772,9 +763,6 @@ private fun DialogOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavig
     when (overlay.key) {
         "photo" -> PhotoOverlayDialogContent(overlay, navigator)
         "group_select" -> GroupSelectDialogContent(overlay, navigator)
-        "group_manage" -> GroupManageDialogContent(overlay, navigator)
-        "source_picker" -> SourcePickerDialogContent(overlay, navigator)
-        "bookmark" -> BookmarkDialogContent(overlay, navigator)
         "sourceLogin" -> SourceLoginOverlayContent(overlay, navigator)
         // 源/书变量编辑 (对照原版 VariableDialog; payload 携带实体, 见 VariableOverlayDialog.kt)
         "sourceVariable" -> SourceVariableOverlayDialogContent(overlay, navigator)
@@ -820,7 +808,7 @@ private fun DialogOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavig
             navigator
         )
 
-        // 更新弹窗 (对照 app 端 UpdateDialog; payload=IntentData key 携带 AppUpdateShared.UpdateInfo)
+        // 更新弹窗 (对照原版 UpdateDialog; payload=IntentData key 携带 UpdateCheckInfo)
         "updateDialog" -> UpdateDialogOverlayContent(overlay, navigator)
 
         // 跳转确认 (对照 app 端 OpenUrlConfirmDialog; payload=IntentData key 携带 OpenUrlConfirmPayload)
@@ -1014,106 +1002,6 @@ private fun GroupSelectDialogContent(overlay: AppOverlay.Dialog, navigator: AppN
             },
         )
     }
-}
-
-// 分组管理 (key="group_manage", 无 payload)
-// 对照 app 端 GroupManageDialog: 全高分组的增/删/改/排序/显示开关, 内嵌 GroupEditDialog
-@Composable
-private fun GroupManageDialogContent(overlay: AppOverlay.Dialog, navigator: AppNavigator) {
-    val scope = rememberCoroutineScope()
-    val groupViewModel = remember(scope) { GroupViewModelShared(scope) }
-    var groups by remember { mutableStateOf<List<BookGroup>>(emptyList()) }
-    var editingGroup by remember { mutableStateOf<BookGroup?>(null) }
-    var addingGroup by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        AppDbProviders.get().bookGroupDao.flowAll()
-            .catch { AppLog.put("分组管理获取分组数据失败\n${it.message}", it) }
-            .flowOn(IoDispatcher)
-            .conflate()
-            .collect { groups = it }
-    }
-    GroupManageDialog(
-        groups = groups,
-        onAddGroup = { addingGroup = true },
-        onEditGroup = { editingGroup = it },
-        onUpdateGroup = { groupViewModel.upGroup(it) },
-        onPersistOrder = { ordered -> groupViewModel.upGroup(*ordered.toTypedArray()) },
-        onDismiss = { navigator.dismissOverlay(overlay.key) },
-        canAddGroup = { AppDbProviders.get().bookGroupDao.canAddGroup() },
-    )
-    if (addingGroup || editingGroup != null) {
-        GroupEditDialog(
-            group = editingGroup,
-            onConfirm = { updated ->
-                if (addingGroup) {
-                    groupViewModel.addGroup(
-                        updated.groupName,
-                        updated.bookSort,
-                        updated.enableRefresh,
-                        updated.cover,
-                    ) { addingGroup = false }
-                } else {
-                    groupViewModel.upGroup(updated) { editingGroup = null }
-                }
-            },
-            onDismiss = {
-                addingGroup = false
-                editingGroup = null
-            },
-            onDelete = { group ->
-                groupViewModel.delGroup(group) { editingGroup = null }
-            },
-        )
-    }
-}
-
-// 书源选择 (key="source_picker", 无 payload)
-// 对照 app 端 SourcePickerDialog: 加载启用书源, 选中后回传 BookSource
-@Composable
-private fun SourcePickerDialogContent(overlay: AppOverlay.Dialog, navigator: AppNavigator) {
-    var sources by remember { mutableStateOf<List<BookSource>>(emptyList()) }
-    LaunchedEffect(Unit) {
-        sources = AppDbProviders.get().bookSourceDao.enabled()
-    }
-    SourcePickerDialog(
-        sources = sources,
-        initialDelay = AppConfigProviders.get().batchChangeSourceDelay,
-        onSourceSelected = { source ->
-            navigator.dismissOverlay(
-                overlay.key,
-                RouteResultPayload.SourcePicker(source),
-            )
-        },
-        onDelayChange = { delay ->
-            PreferenceProviders.get().putInt(PreferKey.batchChangeSourceDelay, delay)
-        },
-        onDismiss = { navigator.dismissOverlay(overlay.key) },
-    )
-}
-
-// 书签编辑 (key="bookmark", payload=IntentData key)
-// 对照 app 端 BookmarkDialog: 新建书签的插入, showDelete=false (所有 app 调用点均为新建)
-@Composable
-private fun BookmarkDialogContent(overlay: AppOverlay.Dialog, navigator: AppNavigator) {
-    val scope = rememberCoroutineScope()
-    val bookmark = remember(overlay.payload) {
-        IntentData.get<Bookmark>(overlay.payload)
-    }
-    if (bookmark == null) {
-        LaunchedEffect(Unit) { navigator.dismissOverlay(overlay.key) }
-        return
-    }
-    BookmarkDialog(
-        bookmark = bookmark,
-        showDelete = false,
-        onConfirm = { updated ->
-            scope.launch(IoDispatcher) {
-                runCatching { AppDbProviders.get().bookmarkDao.insert(updated) }
-            }
-            navigator.dismissOverlay(overlay.key)
-        },
-        onDismiss = { navigator.dismissOverlay(overlay.key) },
-    )
 }
 
 // 换封面 (key="change_cover", payload="name\nauthor")

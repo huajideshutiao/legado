@@ -1,8 +1,10 @@
 package io.legado.app.ui.main
 
 import android.app.SearchManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
@@ -100,7 +102,6 @@ import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.i18n.androidAppString
-import io.legado.app.help.update.AppUpdate
 import io.legado.app.model.BookCover
 import io.legado.app.model.CheckSource
 import io.legado.app.model.Debug
@@ -147,7 +148,6 @@ import io.legado.app.ui.root.encodeSourceVariableOverlayPayload
 import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.route.encodeReviewListDialogPayload
-import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.ACache
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
@@ -687,12 +687,8 @@ class AndroidPlatformCapabilities(
         goBackDir()
     }
 
-    // 对照原版 AboutFragment "check_update" 分支 / AppUpdate.check
-    override val checkUpdateSupported: Boolean get() = true
-
-    override fun checkUpdate() {
-        AppUpdate.check(activity.lifecycleScope, activity)
-    }
+    // 关于页"检查更新": 四端同一条 shared 链路 (AppUpdateManager 已在 App.onCreate 注册
+    // AndroidUpdateEnvironment), 无需平台分支, 所以 checkUpdateSupported 保持默认 false
 
     // 对照原版 AboutFragment "crashLog" 分支 / showDialogFragment<CrashLogsDialog>
     // 迁 Compose Overlay: 原 showDialogFragment<CrashLogsDialog>() 已由
@@ -710,11 +706,6 @@ class AndroidPlatformCapabilities(
     // 对照原版 AboutFragment.createHeapDump
     override fun createHeapDump() {
         createHeapDumpInternal()
-    }
-
-    // 对照原版 AboutFragment.showMdFile
-    override fun showMdFile(title: String, fileName: String) {
-        showMdFileInternal(title, fileName)
     }
 
     // ===== 书籍详情页平台能力: 对照 BookInfoActivity 同名方法 =====
@@ -1771,6 +1762,54 @@ class AndroidPlatformCapabilities(
     // AudioPlayService / WebService 用 MediaPlaybackLock 真持唤醒锁, 两个唤醒锁开关只在本端显示
     override val wakeLockSupported: Boolean get() = true
 
+    // 以下几项均为安卓独有能力, 其余端无消费方 (其他设置里相应条目自动隐藏)
+    // Cronet: App.onCreate registerAndroidCronetProvider 注册了 CronetProvider
+    override val cronetSupported: Boolean get() = true
+
+    // 语言: AppContextWrapper.wrap 包 Context (attachBaseContext), 改完重启生效
+    override val languageSwitchSupported: Boolean get() = true
+
+    // 对照原版 OtherConfigFragment 的 PreferKey.language -> appCtx.restart()
+    override fun applyAppLanguage() {
+        App.instance.restart()
+    }
+
+    // 媒体按键: MediaButtonReceiver 读 mediaButtonOnExit / readAloudByMediaButton
+    override val mediaButtonSupported: Boolean get() = true
+
+    // 音频焦点: AudioFocusController 真抢焦点 (ignoreAudioFocus 短路它)
+    override val audioFocusSupported: Boolean get() = true
+
+    // 堆转储记录: CrashHandler 在 OOM 时读 recordHeapDump 决定要不要 doHeapDump
+    override val heapDumpRecordSupported: Boolean get() = true
+
+    // 文字操作菜单 (PROCESS_TEXT): 对应 manifest 里的 ProcessTextActivity activity-alias
+    override val processTextSupported: Boolean get() = true
+
+    /**
+     * 读文字操作菜单开启态, 逐字对照原版 OtherConfigFragment.isProcessTextEnabled:
+     * 读 alias 组件启用态而非读 pref —— 用户可能在系统设置里改过。
+     * DEFAULT 态 (从未手动改过) 按 manifest 的 exported=true 算开启, 所以只排 DISABLED。
+     */
+    override fun isProcessTextEnabled(): Boolean =
+        activity.packageManager.getComponentEnabledSetting(processTextComponent) !=
+            PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+
+    /** 对照原版 setProcessTextEnable: setComponentEnabledSetting 切 alias 启用态。 */
+    override fun setProcessTextEnabled(enabled: Boolean) {
+        activity.packageManager.setComponentEnabledSetting(
+            processTextComponent,
+            if (enabled) PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+            else PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+            PackageManager.DONT_KILL_APP,
+        )
+    }
+
+    /** PROCESS_TEXT activity-alias (对照原版 OtherConfigFragment.componentName)。 */
+    private val processTextComponent by lazy {
+        ComponentName(App.instance, "io.legado.app.ui.association.ProcessTextActivity")
+    }
+
     // 对照 ThemeConfigFragment.configBottomNav: dialog_bottom_nav_config.xml Compose 重建
     override fun showBottomNavConfigDialog() {
         val defaultNavItems = listOf(
@@ -2143,23 +2182,6 @@ class AndroidPlatformCapabilities(
     }
 
     // ===== 关于页私有辅助: 复刻原版 AboutFragment 同名 private 方法 =====
-
-    private fun showMdFileInternal(title: String, fileName: String) {
-        val mdText = runCatching {
-            activity.assets.open(fileName).bufferedReader().use { it.readText() }
-        }.getOrNull() ?: javaClass.classLoader
-            ?.getResourceAsStream(fileName)
-            ?.bufferedReader()
-            ?.use { it.readText() }
-
-        if (mdText != null) {
-            activity.showDialogFragment(TextDialog(title, mdText, TextDialog.Mode.MD))
-        } else {
-            val path =
-                if (fileName == "LICENSE.md") "LICENSE" else "shared/src/commonMain/resources/$fileName"
-            activity.openUrl("https://github.com/huajideshutiao/legado/blob/master/$path")
-        }
-    }
 
     private fun saveLogInternal() {
         Coroutine.async {
