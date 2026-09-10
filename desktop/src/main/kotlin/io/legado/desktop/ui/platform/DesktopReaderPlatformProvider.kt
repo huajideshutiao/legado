@@ -256,7 +256,7 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
      *  (BookImageStorage, 对照原版 PhotoDialog.loadPhoto 的章节缓存文件分支)。 */
     private fun viewImage(screenModel: ReaderScreenModel, src: String) {
         val book = screenModel.currentBook
-        AppNavigatorProviders.getOrNull()?.showOverlay(
+        AppNavigatorProviders.get().showOverlay(
             AppOverlay.Dialog(
                 key = "photo",
                 payload = encodePhotoOverlayPayload(

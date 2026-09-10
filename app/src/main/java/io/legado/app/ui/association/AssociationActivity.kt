@@ -52,14 +52,10 @@ class AssociationActivity : BaseComposeActivity(theme = Theme.Transparent, image
     /** 本壳注册的 capabilities 实例, onDestroy 身份校验用。 */
     private var registeredCapabilities: PlatformCapabilities? = null
 
-    /** 注册前的旧值 (冷启动场景恒为 null), onDestroy 还原用。 */
-    private var previousCapabilities: PlatformCapabilities? = null
-
     override fun onCreate(savedInstanceState: Bundle?) {
         // 冷启动: 壳是首个 Activity, PlatformCapabilities 未注册 (AppDialog.get() 会 error);
         // 热启动 (MainActivity 已注册) 保留其实现, 避免覆盖系统动画缩放等差异
         if (PlatformCapabilityProviders.getOrNull() == null) {
-            previousCapabilities = PlatformCapabilityProviders.getOrNull()
             val capabilities = object : PlatformCapabilities {
                 override fun exitApplication() = finish()
 
@@ -94,9 +90,8 @@ class AssociationActivity : BaseComposeActivity(theme = Theme.Transparent, image
         val mine = registeredCapabilities
         if (mine != null && PlatformCapabilityProviders.getOrNull() === mine) {
             // Providers 无 unregister API 且 register 参数非空, "还原为未注册"不可达;
-            // 注册前旧值恒为 null, 故还原为不捕获 Activity 的静态兜底,
-            // 死壳 (持有本 Activity 的匿名对象) 不再常驻 get(), Activity 泄漏消除
-            PlatformCapabilityProviders.register(previousCapabilities ?: idleCapabilities)
+            // 换成不捕获 Activity 的静态兜底, 死壳 (持有本 Activity 的匿名对象) 不再常驻 get()
+            PlatformCapabilityProviders.register(idleCapabilities)
         }
         super.onDestroy()
     }

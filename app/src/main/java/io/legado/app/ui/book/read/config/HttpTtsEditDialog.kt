@@ -60,7 +60,7 @@ class HttpTtsEditDialog() : BaseComposeDialogFragment() {
                 viewModel.importFromClip { initView(it) }
             },
             onShowLog = {
-                AppNavigatorProviders.getOrNull()?.showOverlay(AppOverlay.Dialog("app_log"))
+                AppNavigatorProviders.get().showOverlay(AppOverlay.Dialog("app_log"))
             },
             onShowHelp = { showHelp("httpTTSHelp") },
         )

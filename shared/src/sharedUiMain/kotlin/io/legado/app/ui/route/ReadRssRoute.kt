@@ -97,7 +97,7 @@ fun ReadRssRoute(
 
     // 2026-08-07 桌面端 RSS 直开窗: 平台声明直开独立窗口时跳过页面外壳渲染,
     // 内容就绪后经 openRssReader 开窗, 收藏/朗读/分享/登录移入窗口工具栏
-    val desktopDirect = PlatformCapabilityProviders.getOrNull()?.rssDirectWindow == true
+    val desktopDirect = PlatformCapabilityProviders.get().rssDirectWindow
     // 窗口工具栏动作: 闭包引用可变 state (inShelf/state/source), 始终读到最新值
     lateinit var rssActions: RssToolbarActions
     // 页面外壳: 桌面端初始不渲染 (避免中转界面); 平台未处理时回退外壳
@@ -244,7 +244,7 @@ fun ReadRssRoute(
             onShare = {
                 scope.launch {
                     val url = state.currArticle?.url ?: book.tocUrl
-                    PlatformCapabilityProviders.getOrNull()?.shareText(url)
+                    PlatformCapabilityProviders.get().shareText(url)
                 }
             },
             onLogin = { scope.launch { showSourceLogin(book.origin, source) } },
@@ -268,7 +268,7 @@ fun ReadRssRoute(
         // 分享: 优先当前文章地址, 回退 tocUrl (对照原版 menu_share_it)
         override fun onShare() {
             val url = state.currArticle?.url ?: book.tocUrl
-            PlatformCapabilityProviders.getOrNull()?.shareText(url)
+            PlatformCapabilityProviders.get().shareText(url)
         }
 
         // 朗读: 抓 WebView 当前 DOM 文本交 TTS (对照原版 readAloud)
@@ -291,7 +291,7 @@ fun ReadRssRoute(
 
         override fun onOpenInBrowser() {
             val url = state.currArticle?.url ?: book.tocUrl
-            PlatformCapabilityProviders.getOrNull()?.openExternalUrl(url)
+            PlatformCapabilityProviders.get().openExternalUrl(url)
         }
 
         override fun onLogin() {
@@ -305,14 +305,14 @@ fun ReadRssRoute(
     LaunchedEffect(state.webConfig) {
         val config = state.webConfig ?: return@LaunchedEffect
         if (desktopDirect && !rssWindowOpened) {
-            val opened = PlatformCapabilityProviders.getOrNull()?.openRssReader(
+            val opened = PlatformCapabilityProviders.get().openRssReader(
                 book = book,
                 chapter = state.currArticle,
                 url = config.url,
                 html = config.html,
                 headerMap = config.headerMap,
                 actions = rssActions,
-            ) == true
+            )
             if (opened) {
                 rssWindowOpened = true
             } else {

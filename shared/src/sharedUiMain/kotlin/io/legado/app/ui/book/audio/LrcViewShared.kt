@@ -17,13 +17,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
@@ -41,9 +42,13 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.help.image.BookImageLoaders
+import io.legado.app.utils.ColorUtils
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -98,17 +103,15 @@ fun LrcViewShared(
     val viewConfiguration = LocalViewConfiguration.current
     val touchSlopPx = viewConfiguration.touchSlop
 
-    // 行模型 (复刻原版 LrcLine: time/text/layout/height/offset)
+    // 行模型 (复刻原版 LrcLine: time/layout/height/offset)
     class LrcLine(
         val time: Int,
-        val text: String,
-        val layout: TextLayoutResult?,
+        val layout: TextLayoutResult,
         val height: Int,
         val offset: Float,
     )
 
     var viewportW by remember { mutableIntStateOf(0) }
-    var viewportH by remember { mutableIntStateOf(0) }
     var lines by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
     var lastData by remember { mutableStateOf<List<Pair<Int, String>>?>(null) }
 
@@ -130,8 +133,10 @@ fun LrcViewShared(
     val fontSize = 20.sp
     val lineMarginPx = with(LocalDensity.current) { 20.dp.toPx() }
 
-    // 测量 (复刻 prepareLayouts; 数据/宽度变化时重建)
-    LaunchedEffect(lrcData, viewportW, fontSize) {
+    // 测量 (复刻 prepareLayouts; 数据/宽度/测量环境变化时重建。
+    // textMeasurer 由 density/fontScale/layoutDirection/字体解析器 remember 而来, 拿它当 key
+    // 就覆盖了 lineMarginPx 与 sp→px 的换算依赖)
+    LaunchedEffect(lrcData, viewportW, textMeasurer) {
         val data = lrcData ?: emptyList()
         if (viewportW <= 0 || data.isEmpty()) {
             lines = emptyList()
@@ -150,7 +155,7 @@ fun LrcViewShared(
                 constraints = Constraints(maxWidth = viewportW),
             )
             val h = layout.size.height + lineMarginPx.roundToInt()
-            LrcLine(time, text, layout, h, offset).also { offset += h }
+            LrcLine(time, layout, h, offset).also { offset += h }
         }
         lines = newLines
         if (dataChanged) {
@@ -202,18 +207,24 @@ fun LrcViewShared(
         }
     }
 
-    // 手动滚动 5 秒后自动回中 (复刻 autoResetRunnable)
-    LaunchedEffect(manualTick, lines) {
-        if (autoScroll || manualTick == 0 || dragging) return@LaunchedEffect
-        delay(5000)
-        autoScroll = true
-        val idx = currentIndex
-        if (idx in lines.indices) {
-            val target = lines[idx].offset + lines[idx].height / 2f
-            scrollJob?.cancel()
-            scrollJob = scope.launch {
-                animate(scrollY, target, animationSpec = tween(600, easing = DECELERATE)) { v, _ ->
-                    scrollY = v
+    // 手动滚动 5 秒后自动回中 (复刻 autoResetRunnable)。
+    // manualTick 走 snapshotFlow 而不是当 effect key: 滚轮每个 tick 都 ++, 当 key 会让整个控件
+    // 跟着重组; collectLatest 天然实现"新的手动滚动重启计时" (复刻 removeCallbacks+postDelayed)
+    LaunchedEffect(Unit) {
+        snapshotFlow { manualTick }.collectLatest { tick ->
+            if (autoScroll || tick == 0 || dragging) return@collectLatest
+            delay(5000)
+            autoScroll = true
+            val idx = currentIndex
+            if (idx in lines.indices) {
+                val target = lines[idx].offset + lines[idx].height / 2f
+                scrollJob?.cancel()
+                scrollJob = scope.launch {
+                    animate(
+                        scrollY,
+                        target,
+                        animationSpec = tween(600, easing = DECELERATE),
+                    ) { v, _ -> scrollY = v }
                 }
             }
         }
@@ -233,26 +244,24 @@ fun LrcViewShared(
     }
 
     // 惯性滑动状态: flingBehavior 的驱动目标 (ScrollableState 薄封装 scrollY)。
-    // consumeScrollDelta 返回实际消费量; 边界处未消费部分 >0.5f 会让默认
-    // FlingBehavior 提前终止动画 (复刻 OverScroller 到达 min/max 即停)。
+    // consumeScrollDelta 必须返回实际消费量 (new - old); 越界时未消费部分由 FlingBehavior 自然停止
+    // (复刻 OverScroller 到达 min/max 即停)。
     val flingScrollState = rememberScrollableState { delta ->
         val old = scrollY
         val max = maxScrollY()
         val new = (old + delta).coerceIn(0f, max)
         scrollY = new
-        delta - (new - old)
+        new - old
     }
     // 平台默认惯性曲线 (spline 衰减; Android 与 OverScroller 同源物理, 密度经 LocalDensity 解析)
     val flingBehavior = ScrollableDefaults.flingBehavior()
 
     Canvas(
         modifier
-            .onSizeChanged {
-                viewportW = it.width
-                viewportH = it.height
-            }
+            // 只有测量要重排才需要宽度进组合; 高度/命中判定直接用手势与绘制作用域自带的 size
+            .onSizeChanged { viewportW = it.width }
             // 点击/拖动/fling (复刻 GestureDetector: onScroll/onFling/onSingleTapUp)
-            .pointerInput(lrcData) {
+            .pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     // 复刻原版 onDown 的 forceFinished: 触摸立即停掉进行中的 fling (spline 惯性时长 1~3s,
@@ -260,14 +269,15 @@ fun LrcViewShared(
                     scrollJob?.cancel()
                     val velocityTracker = VelocityTracker()
                     // 速度采样必须走 addPointerInputChange (DOWN + 全部 MOVE): 它会把
-                    // MotionEvent 批处理的 historical 采样点一并计入, 手写 addPosition
-                    // 每帧只有 1 点, Lsq2 凑不满 3 点就返回 0 (松手不惯性)
+                    // MotionEvent 批处理的 historical 采样点一并计入
                     velocityTracker.addPointerInputChange(down)
                     var dragged = false
                     try {
                         while (true) {
                             val event = awaitPointerEvent()
                             val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            // 每一帧统一追踪速度采样点，避免遗漏 touchSlop 判定阶段的位移数据
+                            velocityTracker.addPointerInputChange(change)
                             // 跨平台判断位置变化 (positionChanged 是 Android 专属扩展)
                             if (change.position != change.previousPosition) {
                                 val totalDy = change.position.y - down.position.y
@@ -280,14 +290,12 @@ fun LrcViewShared(
                                     // (GestureDetector.java:742 mLastFocus* 仍停在 DOWN),
                                     // 只吃增量会留一个 slop 宽的起手死区
                                     scrollY = (scrollY - totalDy).coerceIn(0f, maxScrollY())
-                                    velocityTracker.addPointerInputChange(change)
                                     change.consume()
                                 } else if (dragged) {
                                     // 原版 GestureDetector.distanceY = mLastFocusY - focusY (下滑为负,
                                     // 内容跟手); 此处 dy 为手指位移 (下滑为正), 取负对齐
                                     val dy = change.position.y - change.previousPosition.y
                                     scrollY = (scrollY - dy).coerceIn(0f, maxScrollY())
-                                    velocityTracker.addPointerInputChange(change)
                                     change.consume()
                                 }
                             }
@@ -297,7 +305,6 @@ fun LrcViewShared(
                                         // 松手 fling: 平台默认 spline 衰减 (Android 端即
                                         // OverScroller 同一套物理)。速度取负: 拖动中 scrollY 与
                                         // 手指位移反号
-                                        velocityTracker.addPointerInputChange(change)
                                         // 上下限同原版 GestureDetector (computeCurrentVelocity 按
                                         // maximumFlingVelocity 截顶, 低于 minimum 不 fling);
                                         // 非 Android 端两值默认 MAX/0 即不设门限
@@ -318,7 +325,7 @@ fun LrcViewShared(
                                         // 点击行跳转 (复刻 onSingleTapUp 二分定位)
                                         if (lines.isNotEmpty()) {
                                             val touchY =
-                                                scrollY + change.position.y - viewportH / 2f
+                                                scrollY + change.position.y - size.height / 2f
                                             val idx = lines.binarySearch { line ->
                                                 if (touchY < line.offset) 1
                                                 else if (touchY >= line.offset + line.height) -1
@@ -326,16 +333,13 @@ fun LrcViewShared(
                                             }
                                             if (idx >= 0) {
                                                 val line = lines[idx]
-                                                val layout = line.layout
                                                 // 点击宽度只限文本实际宽度 (用户拍板 2026-08):
                                                 // 水平 = 文本宽, 文本两侧空白不触发跳转;
                                                 // 垂直保持整行命中 (行高收窄会难受, 用户拍板)
-                                                if (layout != null) {
-                                                    val centerX = viewportW / 2f
-                                                    val dx = change.position.x - centerX
-                                                    if (dx in -layout.size.width / 2f..layout.size.width / 2f) {
-                                                        onLineClick(line.time)
-                                                    }
+                                                val textWidth = line.layout.size.width
+                                                val dx = change.position.x - size.width / 2f
+                                                if (dx in -textWidth / 2f..textWidth / 2f) {
+                                                    onLineClick(line.time)
                                                 }
                                             }
                                         }
@@ -359,7 +363,7 @@ fun LrcViewShared(
             }
             // 滚轮 (复刻 onGenericMotionEvent: 滚动量 = AXIS_VSCROLL * lineMargin * 3;
             // Scroll 事件 delta>0 = 向下滚(看后面) = scrollY 增大, 与原版 VSCROLL>0=上滚(看前面)=减小 语义等价)
-            .pointerInput(lrcData) {
+            .pointerInput(Unit) {
                 awaitPointerEventScope {
                     while (true) {
                         val event = awaitPointerEvent()
@@ -389,7 +393,6 @@ fun LrcViewShared(
             val line = lines[i]
             val lineY = centerY + (line.offset - scrollY)
             if (lineY > size.height) break
-            if (lineY + line.height < 0) continue
 
             val isCurrent = i == currentIndex
             val isLast = i == lastIndex
@@ -407,8 +410,8 @@ fun LrcViewShared(
                 else -> 1f
             }
             val lineCenterY = lineY + line.height / 2f
-            val layout = line.layout ?: continue
-            // 透明度 (复刻 calculateAlpha: 上下 0.35h 边界线性 255→40)
+            val layout = line.layout
+            // 透明度 (复刻 calculateAlpha: 上下 0.35h 边界线性 1→40/255)
             val fade = calculateAlpha(lineCenterY, size.height)
 
             scale(scaleFactor, scaleFactor, pivot = Offset(contentCenterX, lineCenterY)) {
@@ -417,7 +420,7 @@ fun LrcViewShared(
                     textLayoutResult = layout,
                     // 原版: withTranslation(contentCenterX - layout.width / 2f, layoutY)
                     // —— Compose 文本块宽度自适应 (短文本 < 视口宽), 需按块宽居中
-                    color = baseColor.copy(alpha = baseColor.alpha * (fade / 255f)),
+                    color = baseColor.copy(alpha = baseColor.alpha * fade),
                     topLeft = Offset(contentCenterX - layout.size.width / 2f, textY),
                 )
             }
@@ -430,59 +433,53 @@ private val DECELERATE: Easing = Easing { fraction ->
     1f - (1f - fraction) * (1f - fraction)
 }
 
-/** 复刻原版 calculateAlpha: 距视口中心超过 35% 高度的行线性渐隐到 40。 */
-private fun calculateAlpha(lineCenterY: Float, viewportHeight: Float): Int {
+/** 复刻原版 calculateAlpha: 距视口中心超过 35% 高度的行线性渐隐到 40/255。 */
+private fun calculateAlpha(lineCenterY: Float, viewportHeight: Float): Float {
     val fadeBoundary = viewportHeight * 0.35f
     return when {
-        lineCenterY < fadeBoundary -> (lineCenterY / fadeBoundary * 255).toInt().coerceIn(40, 255)
+        lineCenterY < fadeBoundary -> (lineCenterY / fadeBoundary).coerceIn(40f / 255f, 1f)
         lineCenterY > viewportHeight - fadeBoundary ->
-            ((viewportHeight - lineCenterY) / fadeBoundary * 255).toInt().coerceIn(40, 255)
+            ((viewportHeight - lineCenterY) / fadeBoundary).coerceIn(40f / 255f, 1f)
 
-        else -> 255
+        else -> 1f
     }
 }
 
 // ==================== 封面取色 (复刻原版 getRepresentativeColor + updateLrcColor) ====================
 
-/** 像素读取抽象 (由 [ImageBitmapPixelReader] 提供; 与平台无关)。 */
-interface PixelReader {
-    val width: Int
-    val height: Int
-    fun pixel(x: Int, y: Int): Color
-}
-
-private class ImageBitmapPixelReader(
-    private val bitmap: ImageBitmap,
-) : PixelReader {
-    private val pixelMap = bitmap.toPixelMap()
-    override val width: Int = pixelMap.width
-    override val height: Int = pixelMap.height
-    override fun pixel(x: Int, y: Int): Color = pixelMap[x, y]
-}
-
 /**
  * 复刻原版 `Bitmap.getRepresentativeColor` (BitmapUtils.kt):
- * - 缩放到 64px 最长边 (此处用等距采样步长等价)
+ * - 缩放到 64px 最长边 (加载时已按 64px 请求, 这里的采样步长兜住更大的图)
  * - 过滤: alpha < 128 跳过; HSL 饱和度 <0.1 或 亮度 <0.1 或 >0.9 跳过
  * - 平均 RGB; 无有效像素时返回中心像素
+ *
+ * 一次性整块读回 (逐行 readPixels 在安卓端对 HARDWARE 位图每次都要整图拷贝), 通道走位运算,
+ * HSL 复用同一个 FloatArray —— 与原版逐行等价且采样过程零分配。
  */
-fun representativeColorOf(reader: PixelReader): Color {
-    val step = max(1, (max(reader.width, reader.height) / 64f).roundToInt())
+private fun ImageBitmap.representativeColor(): Color {
+    val pixels = IntArray(width * height)
+    readPixels(pixels)
+    val step = max(1, (max(width, height) / 64f).roundToInt())
+    val hsl = FloatArray(3)
     var rSum = 0L
     var gSum = 0L
     var bSum = 0L
     var count = 0
     var y = 0
-    while (y < reader.height) {
+    while (y < height) {
+        val rowStart = y * width
         var x = 0
-        while (x < reader.width) {
-            val c = reader.pixel(x, y)
-            if (c.alpha > 0.5f) { // 原版 (pixel shr 24) and 0xFF >= 128
-                val (_, s, l) = rgbToHsl(c.red, c.green, c.blue)
-                if (s >= 0.1f && l >= 0.1f && l <= 0.9f) {
-                    rSum += (c.red * 255).roundToInt()
-                    gSum += (c.green * 255).roundToInt()
-                    bSum += (c.blue * 255).roundToInt()
+        while (x < width) {
+            val pixel = pixels[rowStart + x]
+            if ((pixel ushr 24) >= 128) { // 原版 (pixel shr 24) and 0xFF >= 128
+                val r = ColorUtils.red(pixel)
+                val g = ColorUtils.green(pixel)
+                val b = ColorUtils.blue(pixel)
+                ColorUtils.RGBToHSL(r, g, b, hsl)
+                if (hsl[1] >= 0.1f && hsl[2] >= 0.1f && hsl[2] <= 0.9f) {
+                    rSum += r
+                    gSum += g
+                    bSum += b
                     count++
                 }
             }
@@ -490,16 +487,11 @@ fun representativeColorOf(reader: PixelReader): Color {
         }
         y += step
     }
-    return if (count == 0) {
-        if (reader.width == 0 || reader.height == 0) Color.Transparent
-        else reader.pixel(reader.width / 2, reader.height / 2)
-    } else {
-        Color(
-            red = (rSum / count) / 255f,
-            green = (gSum / count) / 255f,
-            blue = (bSum / count) / 255f,
-        )
-    }
+    // 全是黑白/透明时取中心像素 (复刻原版 pixels[size / 2])
+    if (count == 0) return Color(pixels[pixels.size / 2])
+    return Color(
+        ColorUtils.argb((rSum / count).toInt(), (gSum / count).toInt(), (bSum / count).toInt())
+    )
 }
 
 /**
@@ -509,21 +501,24 @@ fun representativeColorOf(reader: PixelReader): Color {
  * - primary: 基于 secondary 的 L 再 ±0.35 (下限 0.2 / 上限 0.8)
  * - 输出不透明色 (HSLToColor), 供歌词 setColors + SeekBar tint
  */
-fun adjustLrcColors(meanColor: Color): Pair<Color, Color> {
-    val (h, s, l) = rgbToHsl(meanColor.red, meanColor.green, meanColor.blue)
+private fun adjustLrcColors(meanColor: Color): Pair<Color, Color> {
+    val hsl = FloatArray(3)
+    ColorUtils.colorToHSL(meanColor.toArgb(), hsl)
+    val l = hsl[2]
     val isLight = l > 0.6f
     val secondaryL = if (isLight) (l - 0.45f).coerceAtLeast(0.3f)
     else (l + 0.45f).coerceAtMost(0.7f)
-    val secondary = hslToColor(h, s, secondaryL)
-    val primaryL = if (isLight) (secondaryL - 0.35f).coerceAtLeast(0.2f)
+    hsl[2] = secondaryL
+    val secondary = Color(ColorUtils.HSLToColor(hsl))
+    hsl[2] = if (isLight) (secondaryL - 0.35f).coerceAtLeast(0.2f)
     else (secondaryL + 0.35f).coerceAtMost(0.8f)
-    val primary = hslToColor(h, s, primaryL)
+    val primary = Color(ColorUtils.HSLToColor(hsl))
     return primary to secondary
 }
 
 /** 封面 → 歌词/SeekBar 配色 (原版 updateLrcColor 的完整链路, 全端共享)。 */
-fun ImageBitmap.representativeLrcColors(): Pair<Color, Color> =
-    adjustLrcColors(representativeColorOf(ImageBitmapPixelReader(this)))
+private fun ImageBitmap.representativeLrcColors(): Pair<Color, Color> =
+    adjustLrcColors(representativeColor())
 
 /**
  * 封面取色状态 (全端共享): 封面 URL 变化时经 [BookImageLoaders] 加载封面,
@@ -537,44 +532,13 @@ fun rememberLrcColors(coverUrl: String?, sourceOrigin: String? = null): Pair<Col
         colors = null
         if (coverUrl.isNullOrBlank()) return@LaunchedEffect
         val loader = BookImageLoaders.getOrNull() ?: return@LaunchedEffect
-        val bitmap = loader.loadCoverOrNull(coverUrl, sourceOrigin)
-        if (bitmap != null) colors = bitmap.representativeLrcColors()
+        // 取色只要 64px 级别的小图 (原版 getRepresentativeColor 也是先缩到 64px 最长边):
+        // 按原图请求会让像素读回整图搬一遍 (安卓端 Coil3 默认给 HARDWARE 位图, 读回还要先整图拷贝),
+        // 而采样实际只用到几千个像素。磁盘缓存键只按 url, 不会多下载一次
+        val bitmap = loader.loadCoverOrNull(coverUrl, sourceOrigin, widthPx = 64, heightPx = 64)
+            ?: return@LaunchedEffect
+        colors = withContext(Dispatchers.Default) { bitmap.representativeLrcColors() }
     }
     return colors
 }
 
-// ---- RGB ↔ HSL (标准转换, 对照 android.graphics.ColorUtils 的 HSL 空间) ----
-
-private fun rgbToHsl(r: Float, g: Float, b: Float): Triple<Float, Float, Float> {
-    val maxC = max(r, max(g, b))
-    val minC = minOf(r, g, b)
-    val delta = maxC - minC
-    val l = (maxC + minC) / 2f
-    if (delta == 0f) return Triple(0f, 0f, l)
-    var h = 0f
-    when (maxC) {
-        r -> h = ((g - b) / delta).mod(6f)
-        g -> h = (b - r) / delta + 2f
-        b -> h = (r - g) / delta + 4f
-    }
-    h *= 60f
-    if (h < 0) h += 360f
-    val s = delta / (1f - abs(2f * l - 1f))
-    return Triple(h, s, l)
-}
-
-private fun hslToColor(h: Float, s: Float, l: Float): Color {
-    val c = (1f - abs(2f * l - 1f)) * s
-    val hp = (h / 60f).mod(6f)
-    val x = c * (1f - abs(hp.mod(2f) - 1f))
-    val (r1, g1, b1) = when {
-        hp < 1f -> Triple(c, x, 0f)
-        hp < 2f -> Triple(x, c, 0f)
-        hp < 3f -> Triple(0f, c, x)
-        hp < 4f -> Triple(0f, x, c)
-        hp < 5f -> Triple(x, 0f, c)
-        else -> Triple(c, 0f, x)
-    }
-    val m = l - c / 2f
-    return Color(red = r1 + m, green = g1 + m, blue = b1 + m)
-}

@@ -692,7 +692,7 @@ fun ReaderRoute(
                         screenModel.payChapter { url ->
                             // 2026-08-06: 打开方式与 onChapterViewClick 一致, 走平台 openWebView
                             // (桌面端=独立窗口, 移动端=原 WebViewRoute 路由)
-                            PlatformCapabilityProviders.getOrNull()?.openWebView(
+                            PlatformCapabilityProviders.get().openWebView(
                                 url, book.origin, book.originName
                             )
                         }

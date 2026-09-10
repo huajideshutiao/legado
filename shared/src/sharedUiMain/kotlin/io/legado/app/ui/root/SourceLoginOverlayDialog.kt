@@ -143,7 +143,7 @@ internal fun SourceLoginOverlayContent(overlay: AppOverlay.Dialog, navigator: Ap
         LaunchedEffect(Unit) {
             if (urlLoginHandled) return@LaunchedEffect
             urlLoginHandled = true
-            PlatformCapabilityProviders.getOrNull()?.openLoginWebView(
+            PlatformCapabilityProviders.get().openLoginWebView(
                 url = loginUrl,
                 sourceKey = source?.getKey().orEmpty(),
                 sourceName = source?.getTag().orEmpty(),
@@ -166,7 +166,7 @@ internal fun SourceLoginOverlayContent(overlay: AppOverlay.Dialog, navigator: Ap
             else -> SourceLoginDialog(
                 source = formSource!!,
                 onDismiss = { navigator.dismissOverlay(overlay.key) },
-                onOpenUrl = { PlatformCapabilityProviders.getOrNull()?.openExternalUrl(it) },
+                onOpenUrl = { PlatformCapabilityProviders.get().openExternalUrl(it) },
                 book = book,
                 chapter = chapter,
                 formState = loginFormState,

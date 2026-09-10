@@ -17,7 +17,6 @@ import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.SharedPlatformCapabilities
 import io.legado.app.utils.GSON
 import io.legado.app.utils.toJson
-import io.legado.app.web.WebServerManager
 import kotlinx.coroutines.launch
 
 /**
@@ -31,11 +30,8 @@ interface NativePlatformCapabilities : SharedPlatformCapabilities {
 
     /** 移动端保留内嵌 WebViewRoute 路由语义 (对话框内嵌)。 */
     override fun openWebView(url: String, sourceKey: String, sourceName: String) {
-        AppNavigatorProviders.getOrNull()?.push(AppRoute.WebView(url, sourceKey, sourceName))
+        AppNavigatorProviders.get().push(AppRoute.WebView(url, sourceKey, sourceName))
     }
-
-    override fun getWebServiceUrl(): String? =
-        WebServerManager.hostAddress.takeIf { it.isNotEmpty() }
 
     /** 两端均无 assets, 直接开仓库上的文档 (对照 desktop 本地文件)。 */
     override fun showMdFile(title: String, fileName: String) {
@@ -51,19 +47,19 @@ interface NativePlatformCapabilities : SharedPlatformCapabilities {
 
     override fun showThemeCustomizeDialog(configIndex: Int?, isNight: Boolean) {
         val mode = if (configIndex == null) MODE_NEW_CONFIG else MODE_EDIT_CONFIG
-        AppNavigatorProviders.getOrNull()?.showOverlay(
+        AppNavigatorProviders.get().showOverlay(
             AppOverlay.Dialog("theme_customize", payload = "$mode,${configIndex ?: -1},$isNight")
         )
     }
 
     override fun showCustomizeDayThemeDialog() {
-        AppNavigatorProviders.getOrNull()?.showOverlay(
+        AppNavigatorProviders.get().showOverlay(
             AppOverlay.Dialog("theme_customize", payload = "$MODE_EDIT_PREFS,-1,false")
         )
     }
 
     override fun showCustomizeNightThemeDialog() {
-        AppNavigatorProviders.getOrNull()?.showOverlay(
+        AppNavigatorProviders.get().showOverlay(
             AppOverlay.Dialog("theme_customize", payload = "$MODE_EDIT_PREFS,-1,true")
         )
     }
@@ -83,7 +79,7 @@ interface NativePlatformCapabilities : SharedPlatformCapabilities {
 
     override fun pickBookTreeUri(onSelected: (String?) -> Unit) {
         capabilityScope.launch {
-            onSelected(PlatformServiceProviders.getOrNull()?.files?.pickDirectory())
+            onSelected(PlatformServiceProviders.get().files.pickDirectory())
         }
     }
 }

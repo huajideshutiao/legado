@@ -180,7 +180,7 @@ private fun CrashLogViewDialog(
                 // 底部按钮栏 (对齐 BookmarkDialog: 左侧 contextual + 右侧 cancel/ok)
                 Row(Modifier.fillMaxWidth()) {
                     AppTextButton(text = copyText) {
-                        PlatformCapabilityProviders.getOrNull()?.copyToClipboard(content)
+                        PlatformCapabilityProviders.get().copyToClipboard(content)
                     }
                     Spacer(Modifier.weight(1f))
                     AppTextButton(text = cancelText) { onDismiss() }

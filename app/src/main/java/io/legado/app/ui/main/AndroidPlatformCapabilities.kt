@@ -152,7 +152,6 @@ import io.legado.app.utils.ACache
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
-import io.legado.app.utils.FlowBus
 import io.legado.app.utils.GSON
 import io.legado.app.utils.RealPathUtil
 import io.legado.app.utils.RemoteAssetsUtils
@@ -380,7 +379,7 @@ class AndroidPlatformCapabilities(
 
     override fun openWebView(url: String, sourceKey: String, sourceName: String) {
         // 移动端保留内嵌 WebViewRoute 路由语义 (对话框内嵌)
-        AppNavigatorProviders.getOrNull()?.push(
+        AppNavigatorProviders.get().push(
             io.legado.app.ui.root.AppRoute.WebView(url, sourceKey, sourceName)
         )
     }
@@ -444,57 +443,35 @@ class AndroidPlatformCapabilities(
         }
     }
 
-    // 对照 WebService.hostAddress
-    override fun getWebServiceUrl(): String? =
-        WebService.hostAddress.takeIf { it.isNotEmpty() }
-
-    // 对照 WebService.isRun
-    override fun isWebServiceRunning(): Boolean = WebService.isRun
-
-    // 对照 WebService.start / WebService.stop
+    // 起停走 Android Service 壳; 运行态/地址由 PlatformCapabilities 默认实现回读 WebServerManager
     override fun setWebService(enabled: Boolean) {
         if (enabled) WebService.start(activity) else WebService.stop(activity)
     }
-
-    // 对照 MyTab FlowBus.withSticky(EventBus.WEB_SERVICE).collect, 桥接到 StateFlow
-    private val webServiceRunningState by lazy {
-        MutableStateFlow(WebService.isRun).also { state ->
-            activity.lifecycleScope.launch(IO) {
-                FlowBus.withSticky(EventBus.WEB_SERVICE).collect { running ->
-                    if (running is Boolean) state.value = running
-                }
-            }
-        }
-    }
-
-    override val webServiceState: StateFlow<Boolean>? get() = webServiceRunningState
 
     // 对照 BookInfoEditActivity.onChangeCoverSource + coverChangeTo
     // 迁 Compose Overlay: 原 showDialogFragment(ChangeCoverDialog) 已由
     // shared OverlayContentHost 的 "change_cover" key 接管 (payload="name\nauthor")
     // 结果回调: overlayResults 返回 RouteResultPayload.ChangeCover(coverUrl)
     override fun showChangeCoverDialog(book: Book, onCoverSelected: (String) -> Unit) {
-        val navigator = AppNavigatorProviders.getOrNull()
-        if (navigator != null) {
-            // 不带 IO: showOverlay 是 UI 操作, 必须主线程 (lifecycleScope 默认 Main.immediate),
-            // 同时保证"先入栈再收结果", 不会漏掉结果
-            activity.lifecycleScope.launch {
-                navigator.showOverlay(
-                    AppOverlay.Dialog(
-                        "change_cover",
-                        payload = "${book.name}\n${book.author}"
-                    )
+        val navigator = AppNavigatorProviders.get()
+        // 不带 IO: showOverlay 是 UI 操作, 必须主线程 (lifecycleScope 默认 Main.immediate),
+        // 同时保证"先入栈再收结果", 不会漏掉结果
+        activity.lifecycleScope.launch {
+            navigator.showOverlay(
+                AppOverlay.Dialog(
+                    "change_cover",
+                    payload = "${book.name}\n${book.author}"
                 )
-                // 等 Overlay 结果返回 (RouteResultPayload.ChangeCover);
-                // 用户取消关闭对话框时 payload=None 不 emit (见 AppNavigator.pop), first{} 会
-                // 永久挂起并把闭包留到 Activity 销毁, 故加超时兜底, 超时按"用户取消"处理
-                val result = withTimeoutOrNull(OVERLAY_RESULT_TIMEOUT_MS) {
-                    navigator.overlayResults.first { it.key == "change_cover" }
-                }
-                val payload = result?.payload
-                if (payload is io.legado.app.ui.root.RouteResultPayload.ChangeCover) {
-                    onCoverSelected(payload.coverUrl)
-                }
+            )
+            // 等 Overlay 结果返回 (RouteResultPayload.ChangeCover);
+            // 用户取消关闭对话框时 payload=None 不 emit (见 AppNavigator.pop), first{} 会
+            // 永久挂起并把闭包留到 Activity 销毁, 故加超时兜底, 超时按"用户取消"处理
+            val result = withTimeoutOrNull(OVERLAY_RESULT_TIMEOUT_MS) {
+                navigator.overlayResults.first { it.key == "change_cover" }
+            }
+            val payload = result?.payload
+            if (payload is io.legado.app.ui.root.RouteResultPayload.ChangeCover) {
+                onCoverSelected(payload.coverUrl)
             }
         }
     }
@@ -507,7 +484,7 @@ class AndroidPlatformCapabilities(
         paragraphIndex: Int,
         parentReview: Review?,
     ): Boolean {
-        AppNavigatorProviders.getOrNull()?.showOverlay(
+        AppNavigatorProviders.get().showOverlay(
             AppOverlay.Dialog(
                 key = "review_list",
                 payload = encodeReviewListDialogPayload(book, chapter, paragraphIndex, parentReview),
@@ -519,7 +496,7 @@ class AndroidPlatformCapabilities(
     // 迁 Compose Overlay: 原 app 端 DefaultCoverGalleryDialog Fragment 已随封面统一删除,
     // 与其他端一致走 shared DefaultCoverGalleryDialogHost (payload "1"=夜间, 其余=日间)
     override fun showDefaultCoverGallery(isNight: Boolean) {
-        val navigator = AppNavigatorProviders.getOrNull() ?: return
+        val navigator = AppNavigatorProviders.get()
         activity.lifecycleScope.launch {
             navigator.showOverlay(
                 AppOverlay.Dialog(
@@ -722,7 +699,7 @@ class AndroidPlatformCapabilities(
     // shared OverlayContentHost 的 "crash_logs" key 接管 (CrashLogsOverlayDialogContent
     // 通过 CrashLogProvider 提供数据/读文件/清空/分享)
     override fun showCrashLogs() {
-        AppNavigatorProviders.getOrNull()?.showOverlay(AppOverlay.Dialog("crash_logs"))
+        AppNavigatorProviders.get().showOverlay(AppOverlay.Dialog("crash_logs"))
     }
 
     // 对照 AboutActivity.onSaveLog / saveLog
@@ -836,7 +813,7 @@ class AndroidPlatformCapabilities(
             val source = appDb.bookSourceDao.getBookSource(book.origin)
             if (source != null) {
                 activity.runOnUiThread {
-                    AppNavigatorProviders.getOrNull()?.showOverlay(
+                    AppNavigatorProviders.get().showOverlay(
                         AppOverlay.Dialog(
                             key = "bookVariable",
                             payload = encodeBookVariableOverlayPayload(book, source),
@@ -857,7 +834,7 @@ class AndroidPlatformCapabilities(
                 return@launch
             }
             activity.runOnUiThread {
-                AppNavigatorProviders.getOrNull()?.showOverlay(
+                AppNavigatorProviders.get().showOverlay(
                     AppOverlay.Dialog(
                         key = "sourceVariable",
                         payload = encodeSourceVariableOverlayPayload(source),
@@ -1617,7 +1594,7 @@ class AndroidPlatformCapabilities(
 
     // 对照 BookSourceActivity.addBookSource: 新建书源走导航 push BookSourceEdit (sourceUrl 空串表新建)
     override fun addBookSource() {
-        AppNavigatorProviders.getOrNull()?.push(AppRoute.BookSourceEdit(""))
+        AppNavigatorProviders.get().push(AppRoute.BookSourceEdit(""))
     }
 
     // 对照 BookSourceActivity.cancelCheckSource (CheckSource.stop + Debug.finishChecking)
@@ -1722,8 +1699,8 @@ class AndroidPlatformCapabilities(
             }
             // 对照原版 getButton(BUTTON_NEUTRAL) 手动监听: 打开校验设置且不关闭输入框
             neutralButtonRetain(androidAppString("check_source_config")) {
-                AppNavigatorProviders.getOrNull()
-                    ?.showOverlay(AppOverlay.Dialog("check_source_config"))
+                AppNavigatorProviders.get()
+                    .showOverlay(AppOverlay.Dialog("check_source_config"))
             }
             cancelButton()
         }
@@ -1742,7 +1719,7 @@ class AndroidPlatformCapabilities(
     // 对照 BookSourceEditActivity.setSourceVariable / source.showSourceVariableDialog (route 已先 save);
     // VariableDialog 已下沉 shared: 经 sourceVariable Overlay 弹出
     override fun showBookSourceVariableDialog(source: BookSource) {
-        AppNavigatorProviders.getOrNull()?.showOverlay(
+        AppNavigatorProviders.get().showOverlay(
             AppOverlay.Dialog(
                 key = "sourceVariable",
                 payload = encodeSourceVariableOverlayPayload(source),
@@ -1758,7 +1735,7 @@ class AndroidPlatformCapabilities(
 // shared OverlayContentHost 的 "theme_list" key 接管 (ThemeListOverlayDialogContent
 // 通过 ThemeConfigProviders 获取数据, 编辑/新建委托 showThemeCustomizeDialog)
     override fun showThemeListDialog() {
-        AppNavigatorProviders.getOrNull()?.showOverlay(AppOverlay.Dialog("theme_list"))
+        AppNavigatorProviders.get().showOverlay(AppOverlay.Dialog("theme_list"))
     }
 
     // 主题自定义编辑 (对照 ThemeCustomizeDialog.editConfig / newConfig)
@@ -1984,16 +1961,14 @@ class AndroidPlatformCapabilities(
     // shared OverlayContentHost 的 "check_source_config" key 接管
     // onDismiss 回调: 监听 overlays 列表中 "check_source_config" 被移除
     override fun showCheckSourceConfigDialog(onDismiss: () -> Unit) {
-        val navigator = AppNavigatorProviders.getOrNull()
-        if (navigator != null) {
-            // 先同步入栈 (showOverlay 是 UI 操作), 再等它从栈中移除即可:
-            // 原先在 IO 协程里先等"出现"再等"移除", 若对话框在协程被调度前就已关闭,
-            // 等"出现"永不满足, onDismiss 丢失且协程挂到 Activity 销毁
-            navigator.showOverlay(AppOverlay.Dialog("check_source_config"))
-            activity.lifecycleScope.launch {
-                navigator.overlays.first { it.none { o -> o.key == "check_source_config" } }
-                onDismiss()
-            }
+        val navigator = AppNavigatorProviders.get()
+        // 先同步入栈 (showOverlay 是 UI 操作), 再等它从栈中移除即可:
+        // 原先在 IO 协程里先等"出现"再等"移除", 若对话框在协程被调度前就已关闭,
+        // 等"出现"永不满足, onDismiss 丢失且协程挂到 Activity 销毁
+        navigator.showOverlay(AppOverlay.Dialog("check_source_config"))
+        activity.lifecycleScope.launch {
+            navigator.overlays.first { it.none { o -> o.key == "check_source_config" } }
+            onDismiss()
         }
     }
 
@@ -2001,8 +1976,8 @@ class AndroidPlatformCapabilities(
     // 迁 Compose Overlay: 原 showDialogFragment<DirectLinkUploadConfig>() 已由
     // shared OverlayContentHost 的 "direct_link_upload_config" key 接管
     override fun showDirectLinkUploadConfigDialog() {
-        AppNavigatorProviders.getOrNull()
-            ?.showOverlay(AppOverlay.Dialog("direct_link_upload_config"))
+        AppNavigatorProviders.get()
+            .showOverlay(AppOverlay.Dialog("direct_link_upload_config"))
     }
 
     // 对照 ConfigViewModel.clearWebViewData: 删 webview 目录 + toast + delay + restart
@@ -2122,7 +2097,7 @@ class AndroidPlatformCapabilities(
                 book.bookUrl = filePath
                 withContext(IO) { appDb.bookDao.insert(book) }
             }
-            AppNavigatorProviders.getOrNull()?.push(book.toReadRoute())
+            AppNavigatorProviders.get().push(book.toReadRoute())
         }
     }
 
@@ -2146,7 +2121,7 @@ class AndroidPlatformCapabilities(
         activity.lifecycleScope.launch {
             val cached = withContext(IO) { appDb.bookDao.getBookByFileName(fileName) }
             if (cached != null) {
-                AppNavigatorProviders.getOrNull()?.push(cached.toReadRoute())
+                AppNavigatorProviders.get().push(cached.toReadRoute())
                 return@launch
             }
             activity.alert(androidAppString("draw"), androidAppString("no_book_found_bookshelf")) {
@@ -2158,7 +2133,7 @@ class AndroidPlatformCapabilities(
                             }
                         }.getOrNull()?.firstOrNull()
                         activity.runOnUiThread {
-                            book?.let { AppNavigatorProviders.getOrNull()?.push(it.toReadRoute()) }
+                            book?.let { AppNavigatorProviders.get().push(it.toReadRoute()) }
                         }
                     }
                 }

@@ -43,7 +43,7 @@ fun WebViewRoute(
         fullScreen = isFullScreen,
         onToggleFullScreen = {
             isFullScreen = !isFullScreen
-            PlatformServiceProviders.getOrNull()?.window?.setFullscreen(isFullScreen)
+            PlatformServiceProviders.get().window.setFullscreen(isFullScreen)
         },
         backHandler = { onScreenBack ->
             AppBackHandler(enabled = isTopEntry) { onScreenBack() }

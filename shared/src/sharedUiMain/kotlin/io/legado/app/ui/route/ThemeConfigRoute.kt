@@ -95,20 +95,20 @@ fun ThemeConfigRoute(
     val screenModel = screenModelStore.getOrCreateTyped(entry) {
         ThemeConfigScreenModel(
             onBookshelfLayout = {
-                PlatformCapabilityProviders.getOrNull()?.showBookshelfLayoutDialog()
+                PlatformCapabilityProviders.get().showBookshelfLayoutDialog()
             },
             onSearchLayout = { showSearchLayoutPicker = true },
             onBottomNavConfig = {
-                PlatformCapabilityProviders.getOrNull()?.showBottomNavConfigDialog()
+                PlatformCapabilityProviders.get().showBottomNavConfigDialog()
             },
             onThemeList = {
-                PlatformCapabilityProviders.getOrNull()?.showThemeListDialog()
+                PlatformCapabilityProviders.get().showThemeListDialog()
             },
             onCustomizeDayTheme = {
-                PlatformCapabilityProviders.getOrNull()?.showCustomizeDayThemeDialog()
+                PlatformCapabilityProviders.get().showCustomizeDayThemeDialog()
             },
             onCustomizeNightTheme = {
-                PlatformCapabilityProviders.getOrNull()?.showCustomizeNightThemeDialog()
+                PlatformCapabilityProviders.get().showCustomizeNightThemeDialog()
             },
             onFontScale = { showFontScalePicker = true },
             onSourceEditMaxLine = { showSourceEditMaxLinePicker = true },
@@ -120,7 +120,7 @@ fun ThemeConfigRoute(
     LaunchedEffect(Unit) {
         if (state.fontScaleSummary.isEmpty()) {
             // 对照 app 端 fontScaleSummary(): getString(R.string.font_scale_summary, getFontScale(activity))
-            val fontScale = PlatformCapabilityProviders.getOrNull()?.getFontScale()
+            val fontScale = PlatformCapabilityProviders.get().getFontScale()
             if (fontScale != null) {
                 screenModel.dispatch(
                     ThemeConfigUiEvent.UpdateFontScaleSummary(
@@ -165,9 +165,8 @@ fun ThemeConfigRoute(
             onSourceEditMaxLine = { screenModel.dispatch(ThemeConfigUiEvent.SourceEditMaxLine) },
             // 换桌面图标: 平台能力注入 (Android setComponentEnabledSetting / iOS
             // setAlternateIconName 实现; 桌面/鸿蒙无平台机制 → 该行隐藏)
-            iconChangeSupported =
-                PlatformCapabilityProviders.getOrNull()?.launcherIconChangeSupported == true,
-            onIconChange = { PlatformCapabilityProviders.getOrNull()?.changeLauncherIcon(it) },
+            iconChangeSupported = PlatformCapabilityProviders.get().launcherIconChangeSupported,
+            onIconChange = { PlatformCapabilityProviders.get().changeLauncherIcon(it) },
         )
     }
 
@@ -183,7 +182,7 @@ fun ThemeConfigRoute(
             onConfirm = {
                 pref.putInt(PreferKey.fontScale, it)
                 // 对照 app 端 onSharedPreferenceChanged: fontScaleSummary + recreate
-                val fontScale = PlatformCapabilityProviders.getOrNull()?.getFontScale()
+                val fontScale = PlatformCapabilityProviders.get().getFontScale()
                 if (fontScale != null) {
                     screenModel.dispatch(
                         ThemeConfigUiEvent.UpdateFontScaleSummary(
@@ -202,7 +201,7 @@ fun ThemeConfigRoute(
             onNeutral = {
                 // 对照 app 端 neutralButton: putPrefInt(PreferKey.fontScale, 0)
                 pref.putInt(PreferKey.fontScale, 0)
-                val fontScale = PlatformCapabilityProviders.getOrNull()?.getFontScale()
+                val fontScale = PlatformCapabilityProviders.get().getFontScale()
                 if (fontScale != null) {
                     screenModel.dispatch(
                         ThemeConfigUiEvent.UpdateFontScaleSummary(

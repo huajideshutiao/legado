@@ -81,15 +81,15 @@ fun WelcomeConfigRoute(
                 // 选择器是阻塞式的 (Android 端 runBlocking 等 SAF 回调), 必须切 IO
                 scope.launch {
                     val path = withContext(IoDispatcher) {
-                        PlatformServiceProviders.getOrNull()?.files?.pickFile(FileFilter.Images)
+                        PlatformServiceProviders.get().files.pickFile(FileFilter.Images)
                     }
                     if (path != null) {
                         // 选图导入原图进图集 (备份链路) + 按本端启动界面尺寸烘焙产物写缓存
                         // (使用链路, 平台层实现, 见 FilePickerService.processWelcomeImage)；
                         // 返回**原图相对引用**作 pref 值; 导入失败回落原路径
                         val processed = withContext(IoDispatcher) {
-                            val files = PlatformServiceProviders.getOrNull()?.files
-                            val ref = files?.processWelcomeImage(
+                            val files = PlatformServiceProviders.get().files
+                            val ref = files.processWelcomeImage(
                                 path,
                                 pref.getStringOrNull(
                                     if (isNight) PreferKey.welcomeImageDark

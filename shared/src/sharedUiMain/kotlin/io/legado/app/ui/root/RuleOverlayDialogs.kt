@@ -94,8 +94,8 @@ internal fun DictRuleEditDialogContent(overlay: AppOverlay.Dialog, navigator: Ap
             rule = rule,
             onConfirm = {},
             onDismiss = { navigator.dismissOverlay(overlay.key) },
-            clipTextProvider = { PlatformCapabilityProviders.getOrNull()?.getClipboardText() },
-            clipTextSink = { PlatformCapabilityProviders.getOrNull()?.copyToClipboard(it) },
+            clipTextProvider = { PlatformCapabilityProviders.get().getClipboardText() },
+            clipTextSink = { PlatformCapabilityProviders.get().copyToClipboard(it) },
         )
     }
 }
@@ -121,8 +121,8 @@ internal fun TxtTocRuleEditDialogContent(overlay: AppOverlay.Dialog, navigator: 
                 scope.launch(IoDispatcher) { AppDbProviders.get().txtTocRuleDao.insert(saved) }
             },
             onDismiss = { navigator.dismissOverlay(overlay.key) },
-            clipTextProvider = { PlatformCapabilityProviders.getOrNull()?.getClipboardText() },
-            clipTextSink = { PlatformCapabilityProviders.getOrNull()?.copyToClipboard(it) },
+            clipTextProvider = { PlatformCapabilityProviders.get().getClipboardText() },
+            clipTextSink = { PlatformCapabilityProviders.get().copyToClipboard(it) },
         )
     }
 }
@@ -265,9 +265,8 @@ private fun RuleImportDialogContent(
         val text = if (source != null) {
             source
         } else {
-            val services = PlatformServiceProviders.getOrNull()
-            val path = services?.let {
-                withContext(IoDispatcher) { it.files.pickFile(FileFilter.Text) }
+            val path = withContext(IoDispatcher) {
+                PlatformServiceProviders.get().files.pickFile(FileFilter.Text)
             }
             if (path == null) {
                 navigator.dismissOverlay(overlay.key)
@@ -301,8 +300,9 @@ internal fun RuleExportDialogContent(
     val json = overlay.payload.orEmpty()
     val successText = stringResource(Res.string.export_success)
     LaunchedEffect(overlay.key) {
-        val services = PlatformServiceProviders.getOrNull()
-        val path = services?.let { withContext(IoDispatcher) { it.files.saveFile(fileName) } }
+        val path = withContext(IoDispatcher) {
+            PlatformServiceProviders.get().files.saveFile(fileName)
+        }
         if (path != null) {
             withContext(IoDispatcher) { BackupFileOps.writeText(path, json) }
             Toasters.get().toast(successText)

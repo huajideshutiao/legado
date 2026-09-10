@@ -348,7 +348,7 @@ internal fun WebViewScreen(
             title = stringResource(Res.string.jump_to_another_app),
             okButton = AlertButton(stringResource(Res.string.ok), dismissOnClick = false) {
                 jumpUrl = null
-                PlatformCapabilityProviders.getOrNull()?.openExternalUrl(url)
+                PlatformCapabilityProviders.get().openExternalUrl(url)
             },
             cancelButton = AlertButton(stringResource(Res.string.cancel), dismissOnClick = false) {
                 jumpUrl = null

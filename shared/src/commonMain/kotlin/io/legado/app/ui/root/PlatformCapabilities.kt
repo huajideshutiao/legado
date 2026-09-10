@@ -1,5 +1,6 @@
 package io.legado.app.ui.root
 
+import io.legado.app.constant.EventBus
 import io.legado.app.constant.SourceType
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -9,15 +10,21 @@ import io.legado.app.data.entities.HttpTTS
 import io.legado.app.data.entities.Review
 import io.legado.app.help.DirectLinkUploadRule
 import io.legado.app.help.RssToolbarActions
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.read.config.FontItem
 import io.legado.app.ui.book.source.BookSourceSort
+import io.legado.app.utils.FlowBus
 import io.legado.app.utils.encodeURI
 import io.legado.app.utils.isAbsUrl
+import io.legado.app.web.WebServerManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 
 /** AppRoot 只依赖能力面；实现由唯一系统入口注册。 */
 interface PlatformCapabilities {
@@ -83,7 +90,7 @@ interface PlatformCapabilities {
         sourceName: String = "",
         sourceType: Int = SourceType.book,
     ): Boolean {
-        AppNavigatorProviders.getOrNull()?.push(
+        AppNavigatorProviders.get().push(
             AppRoute.WebView(
                 url = url,
                 sourceName = sourceName,
@@ -135,18 +142,11 @@ interface PlatformCapabilities {
         onError: (String) -> Unit,
     ) = unsupported("测试直链上传")
 
-    // Web 服务: 获取当前运行地址 (对照 app 端 WebService.hostAddress)
-    fun getWebServiceUrl(): String? = null
-
-    // Web 服务: 当前是否运行 (对照 app 端 WebService.isRun), 供 MyConfigRoute 初始化开关态
-    fun isWebServiceRunning(): Boolean = false
-
-    // Web 服务: 启停服务 (对照 app 端 WebService.start / WebService.stop), 由 MyConfigRoute 开关回调调用
+    // Web 服务: 启停服务 (Android 起 Service 壳, 其余端直接调 WebServerManager)
     fun setWebService(enabled: Boolean) = unsupported("setWebService")
 
-    // Web 服务: 运行状态变化流 (对照 app 端 FlowBus.withSticky(EventBus.WEB_SERVICE)),
-    // 平台可选实现; null 时 MyConfigRoute 回退本地 mutableStateOf
-    val webServiceState: StateFlow<Boolean>? get() = null
+    // Web 服务: 当前访问地址 ("" = 未运行), 开关态与副标题都由它派生
+    val webServiceAddress: StateFlow<String> get() = WebServiceAddressState.flow
 
     // 换封面源弹窗 (对照 app 端 ChangeCoverDialog)
     fun showChangeCoverDialog(book: Book, onCoverSelected: (String) -> Unit) =
@@ -571,4 +571,25 @@ internal object PlatformCapabilitiesDefaults {
     val emptyItemsFlow: StateFlow<List<ImportFileItem>> = MutableStateFlow(emptyList())
     val nullStringFlow: StateFlow<String?> = MutableStateFlow(null)
     val falseFlow: StateFlow<Boolean> = MutableStateFlow(false)
+}
+
+/**
+ * Web 服务访问地址 (进程级单例, 四端唯一一份)。
+ *
+ * WEB_SERVICE 事件的载荷就是地址, 但仍回读 [WebServerManager.hostAddress] 以免依赖载荷类型;
+ * 空串即未运行, 运行但无可用网络时是平台传入的本地化文案。
+ */
+internal object WebServiceAddressState {
+
+    private val scope = CoroutineScope(SupervisorJob() + IoDispatcher)
+
+    val flow: StateFlow<String> by lazy {
+        MutableStateFlow(WebServerManager.hostAddress).also { state ->
+            scope.launch {
+                FlowBus.with(EventBus.WEB_SERVICE).collect {
+                    state.value = WebServerManager.hostAddress
+                }
+            }
+        }
+    }
 }

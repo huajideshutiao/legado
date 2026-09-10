@@ -353,17 +353,15 @@ class VideoPlayScreenModel : ScreenModel {
     fun onToggleShelf() {
         val book = shared.curBook ?: return
         val inShelf = _state.value.inShelf
-        runCatching {
-            PlatformCapabilityProviders.getOrNull()?.toggleBookshelf(
-                book, inShelf, onComplete = { result ->
-                    if (result == true) {
-                        _state.update { it.copy(inShelf = true) }
-                    } else if (result == false) {
-                        _state.update { it.copy(inShelf = false) }
-                    }
+        PlatformCapabilityProviders.get().toggleBookshelf(
+            book, inShelf, onComplete = { result ->
+                if (result == true) {
+                    _state.update { it.copy(inShelf = true) }
+                } else if (result == false) {
+                    _state.update { it.copy(inShelf = false) }
                 }
-            )
-        }
+            }
+        )
     }
 
     /** 切换窗口内全屏 (对照 Activity toggleFullScreen: applyFullScreen(!isFullScreen))。
@@ -406,23 +404,21 @@ class VideoPlayScreenModel : ScreenModel {
      *  走平台能力 [PlatformCapabilityProviders.copyToClipboard] */
     fun onCopyPlayUrl() {
         val url = shared.videoUrl.value?.url ?: return
-        runCatching { PlatformCapabilityProviders.getOrNull()?.copyToClipboard(url) }
+        PlatformCapabilityProviders.get().copyToClipboard(url)
     }
 
     /** 源变量 (对照 Activity showSourceVariable: showSourceVariableDialog)。
      *  走平台能力 [PlatformCapabilityProviders.showBookSourceVariableDialog] */
     fun onShowSourceVariable() {
         val source = shared.curBookSource ?: return
-        runCatching {
-            PlatformCapabilityProviders.getOrNull()?.showBookSourceVariableDialog(source)
-        }
+        PlatformCapabilityProviders.get().showBookSourceVariableDialog(source)
     }
 
     /** 书籍变量 (对照 Activity showBookVariable: showBookVariableDialog)。
      *  走平台能力 [PlatformCapabilityProviders.showBookVariableDialog] */
     fun onShowBookVariable() {
         val book = shared.curBook ?: return
-        runCatching { PlatformCapabilityProviders.getOrNull()?.showBookVariableDialog(book) }
+        PlatformCapabilityProviders.get().showBookVariableDialog(book)
     }
 
     /** 添加书签 (对照 Activity addBookmark: 取 player 真实位置 + createBookmark + 弹 BookmarkDialog)。

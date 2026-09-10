@@ -117,14 +117,12 @@ fun LegadoApp(
     navigator: AppNavigator,
     screenModelStore: ScreenModelStore = remember { ScreenModelStore() },
     capabilities: PlatformCapabilities = PlatformCapabilityProviders.get(),
-    platformServices: PlatformServices? = PlatformServiceProviders.getOrNull(),
     initialRequest: LaunchRequest? = null,
 ) {
     CompositionLocalProvider(
         LocalAppNavigator provides navigator,
         LocalScreenModelStore provides screenModelStore,
         LocalPlatformCapabilities provides capabilities,
-        LocalPlatformServices provides platformServices,
     ) {
         // 暴露 navigator 给非 Composable 代码 (Dialog/Fragment/Activity)
         SideEffect { AppNavigatorProviders.register(navigator) }
@@ -626,11 +624,9 @@ val LocalPlatformCapabilities = staticCompositionLocalOf<PlatformCapabilities> {
     PlatformCapabilityProviders.get()
 }
 
-val LocalPlatformServices = staticCompositionLocalOf<PlatformServices?> { null }
-
 // 窗口策略应用: 委托 PlatformServices 的 window/keyboard 各 setter (pictureInPicture 暂无统一接口, 跳过)
 private fun applyWindowPolicy(policy: WindowPolicy) {
-    val services = PlatformServiceProviders.getOrNull() ?: return
+    val services = PlatformServiceProviders.get()
     val wc = services.window
     // 软输入策略先下发: 它决定窗口会不会被平移, 后面任一 setter 抛错都不该把它饿死
     // (Android 侧的兜底是 manifest 的 windowSoftInputMode=adjustResize)
@@ -1183,12 +1179,7 @@ private fun FallbackDialogContent(overlay: AppOverlay.Dialog, navigator: AppNavi
 // 包装 shared CrashLogsDialogContent, 通过 CrashLogProvider 提供数据/回调
 @Composable
 private fun CrashLogsOverlayDialogContent(overlay: AppOverlay.Dialog, navigator: AppNavigator) {
-    val services = PlatformServiceProviders.getOrNull()
-    val provider = services?.crashLogs
-    if (provider == null) {
-        LaunchedEffect(Unit) { navigator.dismissOverlay(overlay.key) }
-        return
-    }
+    val provider = PlatformServiceProviders.get().crashLogs
     val scope = rememberCoroutineScope()
     var logs by remember { mutableStateOf<List<CrashLogProvider.CrashLogEntry>>(emptyList()) }
 
@@ -1220,25 +1211,25 @@ private fun CrashLogsOverlayDialogContent(overlay: AppOverlay.Dialog, navigator:
 // ThemeCustomizeDialog 仍走平台 Fragment (ThemeCustomizeDialog 未下沉 shared)
 @Composable
 private fun ThemeListOverlayDialogContent(overlay: AppOverlay.Dialog, navigator: AppNavigator) {
-    val services = PlatformServiceProviders.getOrNull()
-    val platform = PlatformCapabilityProviders.getOrNull()
+    val services = PlatformServiceProviders.get()
+    val platform = PlatformCapabilityProviders.get()
 
     ThemeListDialog(
         onDismiss = { navigator.dismissOverlay(overlay.key) },
         onEditConfig = { configIndex ->
             // 编辑主题: 委托平台能力 (app 端 ThemeCustomizeDialog Fragment)
-            platform?.showThemeCustomizeDialog(configIndex)
+            platform.showThemeCustomizeDialog(configIndex)
         },
         onNewConfig = { isNight ->
             // 新建主题: 委托平台能力 (app 端 ThemeCustomizeDialog Fragment)
-            platform?.showThemeCustomizeDialog(null, isNight)
+            platform.showThemeCustomizeDialog(null, isNight)
         },
         onImportFromClip = {
-            platform?.getClipboardText()
+            platform.getClipboardText()
         },
         onShare = { json ->
             // 分享: 通过 ShareService
-            services?.sharing?.shareText(json)
+            services.sharing.shareText(json)
         },
     )
 }
@@ -1308,24 +1299,24 @@ private fun DirectLinkUploadConfigOverlayDialogContent(
     overlay: AppOverlay.Dialog,
     navigator: AppNavigator,
 ) {
-    val platform = PlatformCapabilityProviders.getOrNull()
+    val platform = PlatformCapabilityProviders.get()
     var selectorItems by remember { mutableStateOf<List<String>?>(null) }
     var selectorCallback by remember { mutableStateOf<((Int) -> Unit)?>(null) }
 
     DirectLinkUploadConfigDialog(
         onDismiss = { navigator.dismissOverlay(overlay.key) },
         onToast = { msg -> io.legado.app.help.toast.Toasters.get().toast(msg) },
-        onGetClip = { platform?.getClipboardText() },
-        onSetClip = { text -> platform?.copyToClipboard(text) },
+        onGetClip = { platform.getClipboardText() },
+        onSetClip = { text -> platform.copyToClipboard(text) },
         onSelector = { items, callback ->
             if (items.isNotEmpty()) {
                 selectorItems = items
                 selectorCallback = callback
             }
         },
+        // 平台未实现时由 PlatformCapabilities.unsupported 默认实现提示
         onTest = { rule, onSuccess, onError ->
-            platform?.testDirectLinkUpload(rule, onSuccess, onError)
-                ?: onError("当前平台暂不支持测试直链上传")
+            platform.testDirectLinkUpload(rule, onSuccess, onError)
         },
     )
 

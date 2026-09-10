@@ -167,8 +167,9 @@ class BookInfoScreenModel : ScreenModel {
         scope.launch(IoDispatcher) {
             // 对照 app 端 refreshBook 前置: 本地非漫画书拉 WebDav 远端更新, 其余同步书源名
             if (book.isLocal && !book.isImage) {
+                val capabilities = PlatformCapabilityProviders.get()
                 try {
-                    PlatformCapabilityProviders.get().refreshWebDavBook(book)
+                    capabilities.refreshWebDavBook(book)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Throwable) {
@@ -225,12 +226,15 @@ class BookInfoScreenModel : ScreenModel {
         val wordCounts = arrayListOf<String>()
         book.wordCount?.takeIf { it.isNotBlank() }?.let { wordCounts.add(it) }
         if (book.isLocal) {
+            // 能力面在块外取: try 只兜"读文件大小失败", 不该顺带吞掉 registry 未注册与协程取消
+            val capabilities = PlatformCapabilityProviders.get()
             val size = try {
                 if (book.bookUrl.startsWith("http", true) ||
                     book.bookUrl.startsWith("dav", true)
                 ) 0L
-                else PlatformCapabilityProviders.getOrNull()
-                    ?.localBookFileSize(book.bookUrl) ?: 0L
+                else capabilities.localBookFileSize(book.bookUrl)
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 0L
             }

@@ -90,6 +90,7 @@ object RemoteAssetsUtils {
             try {
                 val encodedFileName = URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
                 val url = "$BASE_URL/$dirPath/$encodedFileName"
+                // getOrNull: 简繁字库下载由书源 JS 的 t2s/s2t 触发, 可能跑在无 UI 宿主的后台链上
                 val versionName =
                     PlatformCapabilityProviders.getOrNull()?.getAppVersionName().orEmpty()
                 OkHttpClientProviders.get().okHttpClient.newCallResponse {

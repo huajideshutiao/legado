@@ -328,13 +328,13 @@ fun ThemeCustomizeDialog(
         scope.launch {
             // 选择器阻塞等平台回传 (Android 端 runBlocking 等 SAF 回调), 必须切 IO 线程
             val srcPath = withContext(IoDispatcher) {
-                PlatformServiceProviders.getOrNull()?.files?.pickFile(FileFilter.Images)
+                PlatformServiceProviders.get().files.pickFile(FileFilter.Images)
             } ?: return@launch
             val imported = withContext(IoDispatcher) {
-                val files = PlatformServiceProviders.getOrNull()?.files
-                val ref = files?.importBackgroundImage(srcPath, isNight)
+                val files = PlatformServiceProviders.get().files
+                val ref = files.importBackgroundImage(srcPath, isNight)
                 // 已复制进图集目录, 选图物化的临时副本不留在缓存里
-                files?.discardPickedFile(srcPath)
+                files.discardPickedFile(srcPath)
                 if (ref != null) {
                     // 选图当场就以内容特征值落图集并烘焙, 所以设置必须同步提交 ——
                     // 否则取消对话框会留下"文件已换、pref 未换"的错位态

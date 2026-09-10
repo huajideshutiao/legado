@@ -298,25 +298,22 @@ private fun ReadStyleContent(
             // "其它目录"入口: 走平台目录选择能力 (Android SAF OpenDocumentTree / iOS·鸿蒙文档选择器),
             // 选完写 fontFolder pref + 重扫列表 (对照 app 端 FontSelectDialog.openFolder → AppConfig.fontFolder)
             topBarTrailing = {
-                val services = PlatformServiceProviders.getOrNull()
-                if (services != null) {
-                    Text(
-                        text = stringResource(Res.string.other_folder),
-                        color = colors.primaryText,
-                        fontSize = 15.sp,
-                        modifier = Modifier
-                            .clickable {
-                                scope.launch {
-                                    val path = withContext(IoDispatcher) {
-                                        services.files.pickDirectory()
-                                    } ?: return@launch
-                                    prefs.putString(PreferKey.fontFolder, path)
-                                    rescanFontItems()
-                                }
+                Text(
+                    text = stringResource(Res.string.other_folder),
+                    color = colors.primaryText,
+                    fontSize = 15.sp,
+                    modifier = Modifier
+                        .clickable {
+                            scope.launch {
+                                val path = withContext(IoDispatcher) {
+                                    PlatformServiceProviders.get().files.pickDirectory()
+                                } ?: return@launch
+                                prefs.putString(PreferKey.fontFolder, path)
+                                rescanFontItems()
                             }
-                            .padding(vertical = 8.dp, horizontal = 12.dp),
-                    )
-                }
+                        }
+                        .padding(vertical = 8.dp, horizontal = 12.dp),
+                )
             },
         )
     }

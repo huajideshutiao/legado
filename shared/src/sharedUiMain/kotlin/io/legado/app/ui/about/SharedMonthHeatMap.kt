@@ -14,6 +14,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
@@ -24,7 +25,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.theme.AppTheme
-import kotlin.math.abs
+import io.legado.app.utils.ColorUtils
 
 /**
  * 纯 Compose 月度阅读热力图 (替代 app 端 AndroidView `MonthHeatMapView`)。
@@ -345,7 +346,8 @@ private fun DrawScope.drawLegend(
 // ---- 颜色 (对照 MonthHeatMapView.getColorForLevel) ----
 
 private fun colorForLevel(level: Int, accent: Color, isDark: Boolean): Color {
-    val hsl = rgbToHsl(accent.red, accent.green, accent.blue)
+    val hsl = FloatArray(3)
+    ColorUtils.colorToHSL(accent.toArgb(), hsl)
     // 对照 app 端: isBackgroundDark = !isDarkTheme; 深色背景用更亮色阶
     val l = if (isDark) {
         0.3f + level * 0.08f
@@ -353,64 +355,8 @@ private fun colorForLevel(level: Int, accent: Color, isDark: Boolean): Color {
         0.92f - level * 0.1f
     }
     val alpha = if (level == 0) 35f / 255f else (80f + level * 35f) / 255f
-    val rgb = hslToRgb(hsl[0], hsl[1], l.coerceIn(0f, 1f))
-    return Color(rgb[0], rgb[1], rgb[2], alpha)
-}
-
-private fun rgbToHsl(r: Float, g: Float, b: Float): FloatArray {
-    val max = maxOf(r, g, b)
-    val min = minOf(r, g, b)
-    val l = (max + min) / 2f
-    val h: Float
-    val s: Float
-    if (max == min) {
-        h = 0f
-        s = 0f
-    } else {
-        val d = max - min
-        s = if (l > 0.5f) d / (2f - max - min) else d / (max + min)
-        when (max) {
-            r -> h = ((g - b) / d + if (g < b) 6f else 0f) * 60f
-            g -> h = ((b - r) / d + 2f) * 60f
-            else -> h = ((r - g) / d + 4f) * 60f
-        }
-    }
-    return floatArrayOf(h, s, l)
-}
-
-private fun hslToRgb(h: Float, s: Float, l: Float): FloatArray {
-    val c = (1f - abs(2f * l - 1f)) * s
-    val x = c * (1f - abs((h / 60f) % 2f - 1f))
-    val m = l - c / 2f
-    val r: Float
-    val g: Float
-    val b: Float
-    when {
-        h < 60f -> {
-            r = c; g = x; b = 0f
-        }
-
-        h < 120f -> {
-            r = x; g = c; b = 0f
-        }
-
-        h < 180f -> {
-            r = 0f; g = c; b = x
-        }
-
-        h < 240f -> {
-            r = 0f; g = x; b = c
-        }
-
-        h < 300f -> {
-            r = x; g = 0f; b = c
-        }
-
-        else -> {
-            r = c; g = 0f; b = x
-        }
-    }
-    return floatArrayOf(r + m, g + m, b + m)
+    hsl[2] = l.coerceIn(0f, 1f)
+    return Color(ColorUtils.HSLToColor(hsl)).copy(alpha = alpha)
 }
 
 private fun levelFor(value: Long, maxReadSecs: Long): Int {

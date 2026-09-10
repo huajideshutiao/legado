@@ -217,7 +217,7 @@ fun Activity.toggleSystemBar(show: Boolean) {
  * 帮助文档对话框已下沉 shared (HelpDialog): 经 help Overlay 读 web/help/md/{fileName}.md 渲染
  */
 fun AppCompatActivity.showHelp(fileName: String) {
-    AppNavigatorProviders.getOrNull()?.showOverlay(
+    AppNavigatorProviders.get().showOverlay(
         AppOverlay.Dialog(key = "help", payload = fileName)
     )
 }

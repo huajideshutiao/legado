@@ -118,6 +118,7 @@ object VerificationUiProviderImpl : VerificationUiProvider {
         refetchAfterSuccess: Boolean?,
         asBottomSheet: Boolean,
     ) {
+        // getOrNull: 验证码请求由书源 JS 发起, 校验源/缓存下载等后台链上没有 UI 宿主
         val navigator = AppNavigatorProviders.getOrNull() ?: return
         // 半屏与全屏共用同一个参数包: 两形态跑的是同一段实现 (WebViewScreen), 参数一份
         // 才谈得上行为一致 —— 书源 headerMap 预取、跳转拦截、验证回传全部同源。

@@ -927,8 +927,8 @@ private fun dispatchColumnClick(
             val book = viewModel.book.value ?: return false
             val chapter =
                 viewModel.chapterList.value.getOrNull(hit.page.chapterIndex) ?: return false
-            PlatformCapabilityProviders.getOrNull()
-                ?.showReviewListDialog(book, chapter, column.paragraphIndex)
+            PlatformCapabilityProviders.get()
+                .showReviewListDialog(book, chapter, column.paragraphIndex)
             return true
         }
 
@@ -957,7 +957,7 @@ private fun dispatchColumnClick(
                 // 携带命中页章节索引 + 书源身份：对话框据此优先查阅读时已落盘的章节图片缓存
                 // （BookImageStorage），并按书源走防盗链 header / 解密（对照原版 PhotoDialog.loadPhoto）
                 val book = viewModel.book.value
-                AppNavigatorProviders.getOrNull()?.showOverlay(
+                AppNavigatorProviders.get().showOverlay(
                     AppOverlay.Dialog(
                         key = "photo",
                         payload = encodePhotoOverlayPayload(column.src, hit.page.chapterIndex),

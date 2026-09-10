@@ -464,6 +464,7 @@ class ThemeCustomizeDialog : BaseComposeDialogFragment() {
     private fun setBgFromUri(uri: Uri, success: (String) -> Unit) {
         // 图集化统一链路: uri 物化为临时文件后走 importBackgroundImage
         // (customImg 内容特征值命名, 返回相对引用), 不再 MD5 命名/写 bgImage 键名目录
+        val files = PlatformServiceProviders.get().files
         readUri(uri) { fileDoc, inputStream ->
             kotlin.runCatching {
                 val temp = File(
@@ -471,8 +472,7 @@ class ThemeCustomizeDialog : BaseComposeDialogFragment() {
                     "bg_import_${System.currentTimeMillis()}.${fileDoc.name.substringAfterLast(".")}",
                 )
                 temp.outputStream().use { inputStream.copyTo(it) }
-                val imported = PlatformServiceProviders.get()
-                    .files.importBackgroundImage(temp.absolutePath, isNight)
+                val imported = files.importBackgroundImage(temp.absolutePath, isNight)
                 temp.delete()
                 if (imported == null) {
                     throw IllegalStateException("背景图导入失败")

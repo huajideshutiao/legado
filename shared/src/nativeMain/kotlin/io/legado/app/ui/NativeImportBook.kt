@@ -290,7 +290,7 @@ object NativeImportBook {
                 book.bookUrl = bookUrl
                 runCatching { bookDao.update(book) }
             }
-            AppNavigatorProviders.getOrNull()?.push(book.toReadRoute())
+            AppNavigatorProviders.get().push(book.toReadRoute())
         }
     }
 

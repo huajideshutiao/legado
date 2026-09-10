@@ -113,6 +113,7 @@ class MediaButtonReceiver : BroadcastReceiver() {
                 }
 
                 // AudioPlay 已下沉为共享路由, 栈顶为该路由时由页面响应媒体键事件
+                // getOrNull: 广播接收器在无界面 (仅前台服务) 时也会收到媒体键
                 AppNavigatorProviders.getOrNull()?.currentRoute is AppRoute.AudioPlay ->
                     postEvent(EventBus.MEDIA_BUTTON, true)
 

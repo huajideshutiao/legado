@@ -129,7 +129,7 @@ fun TextDialog(
                         Spacer(Modifier.width(4.dp))
                     }
                     TextButton(onClick = {
-                        PlatformCapabilityProviders.getOrNull()?.copyToClipboard(content)
+                        PlatformCapabilityProviders.get().copyToClipboard(content)
                     }) {
                         Text(text = copyText, color = DesignTokens.arcoBlue6)
                     }

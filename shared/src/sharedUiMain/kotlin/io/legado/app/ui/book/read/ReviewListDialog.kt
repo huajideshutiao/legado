@@ -536,8 +536,8 @@ internal fun ReviewItem(
                             DropdownMenuItem(
                                 onClick = {
                                     menuOpen = false
-                                    PlatformCapabilityProviders.getOrNull()
-                                        ?.copyToClipboard(item.content)
+                                    PlatformCapabilityProviders.get()
+                                        .copyToClipboard(item.content)
                                 },
                             ) {
                                 Text(

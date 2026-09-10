@@ -181,8 +181,8 @@ fun DesktopNativeChromeHost(
                 AppDropdownMenu(expanded = true, onDismissRequest = { menuAnchor = null }) {
                     DropdownMenuItem(onClick = {
                         menuAnchor = null
-                        PlatformServiceProviders.getOrNull()?.window
-                            ?.setFullscreen(!DesktopWindowChrome.fullscreen)
+                        PlatformServiceProviders.get().window
+                            .setFullscreen(!DesktopWindowChrome.fullscreen)
                     }) {
                         Text(if (DesktopWindowChrome.fullscreen) "✓ 无边框" else "无边框")
                     }

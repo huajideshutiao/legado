@@ -40,7 +40,7 @@ interface RssJsApi {
 class RssJsActions(private val scope: CoroutineScope) : RssJsApi {
 
     override fun searchBook(key: String) {
-        AppNavigatorProviders.getOrNull()?.push(AppRoute.Search(key = key, submit = true))
+        AppNavigatorProviders.get().push(AppRoute.Search(key = key, submit = true))
     }
 
     override fun addBook(bookUrl: String) {
@@ -52,8 +52,8 @@ class RssJsActions(private val scope: CoroutineScope) : RssJsApi {
             runCatching {
                 withContext(IoDispatcher) { getBookInfoByUrlAwait(bookUrl) }
             }.onSuccess { book ->
-                AppNavigatorProviders.getOrNull()
-                    ?.push(AppRoute.BookInfo(book.apply { addType(BookType.notShelf) }
+                AppNavigatorProviders.get()
+                    .push(AppRoute.BookInfo(book.apply { addType(BookType.notShelf) }
                         .toRouteRef()))
             }.onFailure { e ->
                 AppLog.put("添加书籍 $bookUrl 出错", e)

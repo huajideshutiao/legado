@@ -273,8 +273,7 @@ private fun toggleMaximize(windowState: WindowState) {
 
 /** 全屏切换: 与 F11 同路径 (PlatformServices.window → DesktopFullscreenController)。 */
 private fun toggleFullscreen() {
-    val controller = PlatformServiceProviders.getOrNull()?.window ?: return
-    controller.setFullscreen(!DesktopWindowChrome.fullscreen)
+    PlatformServiceProviders.get().window.setFullscreen(!DesktopWindowChrome.fullscreen)
 }
 
 /**

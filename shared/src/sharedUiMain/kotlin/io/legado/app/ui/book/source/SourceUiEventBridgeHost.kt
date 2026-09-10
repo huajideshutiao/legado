@@ -94,7 +94,7 @@ fun SourceUiEventBridgeHost() {
             // SourceVariableDialog (初始值 = getVariable() 原文, 注释 = variableComment + 提示语,
             // 确定后 setVariable 原样写回, 不解析不校验; 全部逻辑见 VariableOverlayDialog.kt)
             LaunchedEffect(request) {
-                AppNavigatorProviders.getOrNull()?.showOverlay(
+                AppNavigatorProviders.get().showOverlay(
                     AppOverlay.Dialog(
                         key = "sourceVariable",
                         payload = encodeSourceVariableOverlayPayload(src),

@@ -49,8 +49,7 @@ object OpenPageUpdateExecutor : UpdateExecutor {
     override suspend fun execute(action: UpdateAction, info: UpdateCheckInfo): Boolean {
         val url = info.landingUrl.ifBlank { info.downloadUrl }
         if (url.isBlank()) return false
-        val browser = PlatformServiceProviders.getOrNull()?.browser ?: return false
-        browser.openUrl(url)
+        PlatformServiceProviders.get().browser.openUrl(url)
         return true
     }
 }

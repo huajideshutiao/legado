@@ -69,12 +69,13 @@ fun BookmarkRoute(
             // scope 是 rememberCoroutineScope (主线程调度), 选择器与写文件都得切 IO
             override fun export() {
                 scope.launch {
+                    val files = PlatformServiceProviders.get().files
                     try {
                         val fileName = "bookmark-${
                             ThreadSafeDateFormat("yyMMddHHmmss").format(systemCurrentTimeMillis())
                         }.json"
                         val path = withContext(IoDispatcher) {
-                            PlatformServiceProviders.get().files.saveFile(fileName)
+                            files.saveFile(fileName)
                         } ?: return@launch
                         withContext(IoDispatcher) {
                             val dao = AppDbProviders.get().bookmarkDao
@@ -98,12 +99,13 @@ fun BookmarkRoute(
             // 按书过滤时仅导出该书书签
             override fun exportMd() {
                 scope.launch {
+                    val files = PlatformServiceProviders.get().files
                     try {
                         val fileName = "bookmark-${
                             ThreadSafeDateFormat("yyMMddHHmmss").format(systemCurrentTimeMillis())
                         }.md"
                         val path = withContext(IoDispatcher) {
-                            PlatformServiceProviders.get().files.saveFile(fileName)
+                            files.saveFile(fileName)
                         } ?: return@launch
                         withContext(IoDispatcher) {
                             val dao = AppDbProviders.get().bookmarkDao

@@ -360,11 +360,7 @@ private fun rememberPhotoSaveAction(
                     Toasters.get().toast("保存图片失败")
                     return@launch
                 }
-            val files = PlatformServiceProviders.getOrNull()?.files
-            if (files == null) {
-                Toasters.get().toast("保存图片失败")
-                return@launch
-            }
+            val files = PlatformServiceProviders.get().files
             // 实际字节决定扩展名；用户取消选目录 (null) 静默返回。
             when (files.saveImageRememberingDir(imageSaveFileName(src, bytes), bytes)) {
                 true -> Toasters.get().toast("保存成功")

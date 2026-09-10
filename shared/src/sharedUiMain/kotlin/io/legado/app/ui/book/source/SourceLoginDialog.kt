@@ -309,7 +309,7 @@ fun SourceLoginDialog(
             message = loginHeader,
             okButton = io.legado.app.ui.compose.component.AlertButton(
                 text = copyText,
-                onClick = { PlatformCapabilityProviders.getOrNull()?.copyToClipboard(loginHeader) }
+                onClick = { PlatformCapabilityProviders.get().copyToClipboard(loginHeader) }
             ),
         )
     }

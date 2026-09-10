@@ -34,7 +34,7 @@ fun CopyConfirmOverlayDialogContent(overlay: AppOverlay.Dialog, navigator: AppNa
         title = stringResource(Res.string.copy_to_clipboard),
         message = text.take(PREVIEW_MAX_LEN) + if (text.length > PREVIEW_MAX_LEN) "…" else "",
         okButton = AlertButton(stringResource(Res.string.copy)) {
-            PlatformCapabilityProviders.getOrNull()?.copyToClipboard(text)
+            PlatformCapabilityProviders.get().copyToClipboard(text)
             onDismiss()
         },
         cancelButton = AlertButton(stringResource(Res.string.cancel)) {},

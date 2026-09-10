@@ -172,7 +172,7 @@ fun ReviewListContent(
                             showPostDialog = true
                         },
                         onReviewLongClick = { review ->
-                            PlatformCapabilityProviders.getOrNull()?.copyToClipboard(review.content)
+                            PlatformCapabilityProviders.get().copyToClipboard(review.content)
                         },
                         onToggleExpand = { viewModel.toggleExpand(it) },
                         onVoteUp = { viewModel.voteUp(it) },
@@ -190,7 +190,7 @@ fun ReviewListContent(
                         },
                         onAvatarClick = { url ->
                             url?.takeIf { it.isNotBlank() }?.let {
-                                AppNavigatorProviders.getOrNull()?.showOverlay(
+                                AppNavigatorProviders.get().showOverlay(
                                     AppOverlay.Dialog(
                                         key = "photo",
                                         payload = it,
@@ -202,7 +202,7 @@ fun ReviewListContent(
                             }
                         },
                         onImageClick = { url ->
-                            AppNavigatorProviders.getOrNull()?.showOverlay(
+                            AppNavigatorProviders.get().showOverlay(
                                 AppOverlay.Dialog(
                                     key = "photo",
                                     payload = url,

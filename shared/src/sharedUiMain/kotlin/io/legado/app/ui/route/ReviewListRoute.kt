@@ -102,7 +102,7 @@ fun ReviewListRoute(
         }
 
         override fun onReviewLongClick(review: Review) {
-            PlatformCapabilityProviders.getOrNull()?.copyToClipboard(review.content)
+            PlatformCapabilityProviders.get().copyToClipboard(review.content)
         }
 
         override fun onToggleExpand(key: String) {

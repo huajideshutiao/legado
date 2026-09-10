@@ -47,7 +47,7 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
 
     private val appDb get() = AppDbProviders.get()
     private val prefs get() = PreferenceProviders.get()
-    private val services get() = PlatformServiceProviders.getOrNull()
+    private val services get() = PlatformServiceProviders.get()
 
     // 鸿蒙由系统统一管理应用生命周期, 无 Activity.finish 等价物;
     // 退出经 OhosNativeBridge.exitApplication → window tsfn → ArkTS UIAbilityContext.terminateSelf()
@@ -61,7 +61,7 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
     }
 
     override fun shareText(text: String) {
-        services?.sharing?.shareText(text)
+        services.sharing.shareText(text)
     }
 
     override fun copyToClipboard(text: String) {
@@ -157,7 +157,7 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
     // 桥接未就绪或用户取消返回 null 时保持原目录不动
     override fun pickImportFolder() {
         scope.launch {
-            val path = services?.files?.pickDirectory() ?: return@launch
+            val path = services.files.pickDirectory() ?: return@launch
             NativeImportBook.setRoot(path)
         }
     }
@@ -168,7 +168,7 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
     // (key="import_file_name", LegadoApp 分支内写 PreferKey.bookImportFileName; 对照 app 端
     // alertImportFileName 的 editTextView + okButton 语义)
     override fun alertImportFileName() {
-        AppNavigatorProviders.getOrNull()?.showOverlay(AppOverlay.Dialog("import_file_name"))
+        AppNavigatorProviders.get().showOverlay(AppOverlay.Dialog("import_file_name"))
     }
 
 
@@ -193,7 +193,7 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
 
     /** 写到 [io.legado.app.ui.root.FilePickerService.saveFile] 给出的沙盒可写路径。 */
     private fun saveJson(defaultName: String, json: String) {
-        val path = services?.files?.saveFile(defaultName) ?: return
+        val path = services.files.saveFile(defaultName) ?: return
         runCatching { File(path).writeText(json) }
             .onSuccess { Toasters.get().toast("已导出到 $path") }
             .onFailure { Toasters.get().toast("导出失败\n${it.message}") }

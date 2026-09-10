@@ -102,7 +102,7 @@ private fun dispatchSourceLogin(
         // sourceType/isLogin }, 标题栏文案与源标识全程带着走
         val loginUrl = source.loginUrl
         if (loginUrl.isNullOrBlank()) return
-        PlatformCapabilityProviders.getOrNull()?.openLoginWebView(
+        PlatformCapabilityProviders.get().openLoginWebView(
             url = loginUrl,
             sourceKey = source.getKey(),
             sourceName = source.getTag(),
@@ -111,7 +111,7 @@ private fun dispatchSourceLogin(
         return
     }
     // 表单登录: 原版 IntentData.source = this + showDialogFragment<SourceLoginDialog>
-    val navigator = AppNavigatorProviders.getOrNull() ?: return
+    val navigator = AppNavigatorProviders.get()
     navigator.showOverlay(
         AppOverlay.Dialog(
             key = "sourceLogin",

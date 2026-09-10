@@ -12,15 +12,11 @@ import io.legado.app.help.book.toggleBookshelfCore
 import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ThemeConfigProviders
-import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.route.encodeReviewListDialogPayload
 import io.legado.app.utils.FlowBus
 import io.legado.app.web.WebServerManager
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -46,10 +42,6 @@ interface SharedPlatformCapabilities : PlatformCapabilities {
         }
     }
 
-    override fun isWebServiceRunning(): Boolean = WebServerManager.isRun
-
-    override val webServiceState: StateFlow<Boolean>? get() = WebServiceRunningState.flow
-
     // ===== 书源 / 书籍变量弹窗 =====
 
     override fun showSourceVariableDialog(book: Book) {
@@ -64,7 +56,7 @@ interface SharedPlatformCapabilities : PlatformCapabilities {
     }
 
     override fun showBookSourceVariableDialog(source: BookSource) {
-        AppNavigatorProviders.getOrNull()?.showOverlay(
+        AppNavigatorProviders.get().showOverlay(
             AppOverlay.Dialog(
                 key = "sourceVariable",
                 payload = encodeSourceVariableOverlayPayload(source),
@@ -76,7 +68,7 @@ interface SharedPlatformCapabilities : PlatformCapabilities {
         capabilityScope.launch {
             val source = AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
                 ?: return@launch
-            AppNavigatorProviders.getOrNull()?.showOverlay(
+            AppNavigatorProviders.get().showOverlay(
                 AppOverlay.Dialog(
                     key = "bookVariable",
                     payload = encodeBookVariableOverlayPayload(book, source),
@@ -100,7 +92,7 @@ interface SharedPlatformCapabilities : PlatformCapabilities {
     }
 
     override fun addBookSource() {
-        AppNavigatorProviders.getOrNull()?.push(AppRoute.BookSourceEdit(""))
+        AppNavigatorProviders.get().push(AppRoute.BookSourceEdit(""))
     }
 
     // ===== 书籍详情页 =====
@@ -130,7 +122,7 @@ interface SharedPlatformCapabilities : PlatformCapabilities {
         paragraphIndex: Int,
         parentReview: Review?,
     ): Boolean {
-        AppNavigatorProviders.getOrNull()?.showOverlay(
+        AppNavigatorProviders.get().showOverlay(
             AppOverlay.Dialog(
                 key = "review_list",
                 payload = encodeReviewListDialogPayload(
@@ -173,11 +165,11 @@ interface SharedPlatformCapabilities : PlatformCapabilities {
     // ===== 主题 / 封面 =====
 
     override fun showThemeListDialog() {
-        AppNavigatorProviders.getOrNull()?.showOverlay(AppOverlay.Dialog("theme_list"))
+        AppNavigatorProviders.get().showOverlay(AppOverlay.Dialog("theme_list"))
     }
 
     override fun showDefaultCoverGallery(isNight: Boolean) {
-        AppNavigatorProviders.getOrNull()?.showOverlay(
+        AppNavigatorProviders.get().showOverlay(
             AppOverlay.Dialog(
                 key = "default_cover_gallery",
                 payload = if (isNight) "1" else "0",
@@ -199,21 +191,4 @@ interface SharedPlatformCapabilities : PlatformCapabilities {
 
     /** 三端无 ViewConfiguration, 取与 Android 默认接近的固定值。 */
     override fun getScaledTouchSlop(): Int = 10
-}
-
-/**
- * Web 服务运行态 (进程级单例): 原先三端各自持一份 `by lazy { MutableStateFlow }`,
- * 内容逐字相同, 合并到此处。对照 app 端 `FlowBus.withSticky(EventBus.WEB_SERVICE)` 桥接。
- */
-private object WebServiceRunningState {
-
-    private val scope = CoroutineScope(SupervisorJob() + IoDispatcher)
-
-    val flow: MutableStateFlow<Boolean> by lazy {
-        MutableStateFlow(WebServerManager.isRun).also { state ->
-            scope.launch {
-                FlowBus.with(EventBus.WEB_SERVICE).collect { state.value = WebServerManager.isRun }
-            }
-        }
-    }
 }

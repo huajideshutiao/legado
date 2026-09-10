@@ -129,7 +129,7 @@ fun ReplaceRuleRoute(
         onAddRule = { navigator.push(AppRoute.ReplaceEdit()) },
         onEditRule = { id -> navigator.push(AppRoute.ReplaceEdit(id)) },
         onImportLocal = {
-            val services = PlatformServiceProviders.getOrNull() ?: return@ReplaceRuleListScreen
+            val services = PlatformServiceProviders.get()
             scope.launch {
                 val path = withContext(IoDispatcher) {
                     services.files.pickFile(FileFilter.Text)
@@ -144,7 +144,7 @@ fun ReplaceRuleRoute(
         onHelp = { showHelp = true },
         onGroupManage = { showGroupManage = true },
         onExport = { rules ->
-            val services = PlatformServiceProviders.getOrNull() ?: return@ReplaceRuleListScreen
+            val services = PlatformServiceProviders.get()
             scope.launch {
                 val path = withContext(IoDispatcher) {
                     services.files.saveFile("exportReplaceRule.json")

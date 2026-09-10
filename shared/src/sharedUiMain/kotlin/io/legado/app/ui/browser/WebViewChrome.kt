@@ -159,7 +159,7 @@ private fun WebViewOverflowMenuItems(
     DropdownMenuItem(
         onClick = {
             onDismiss()
-            PlatformCapabilityProviders.getOrNull()?.openExternalUrl(currentUrl())
+            PlatformCapabilityProviders.get().openExternalUrl(currentUrl())
         },
     ) {
         Text(
@@ -171,7 +171,7 @@ private fun WebViewOverflowMenuItems(
     DropdownMenuItem(
         onClick = {
             onDismiss()
-            PlatformCapabilityProviders.getOrNull()?.copyToClipboard(currentUrl())
+            PlatformCapabilityProviders.get().copyToClipboard(currentUrl())
         },
     ) {
         Text(

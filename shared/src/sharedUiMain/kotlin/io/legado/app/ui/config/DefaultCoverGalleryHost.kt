@@ -258,7 +258,7 @@ private fun DefaultCoverTile(entry: DefaultCoverEntry, onClick: () -> Unit) {
 private suspend fun addDefaultCoverFromPicker(prefKey: String) {
     // 选择器是阻塞式的 (各端 runBlocking 等系统回调), 必须切到 IO 再调
     val path = withContext(IoDispatcher) {
-        PlatformServiceProviders.getOrNull()?.files?.pickFile(FileFilter.Images)
+        PlatformServiceProviders.get().files.pickFile(FileFilter.Images)
     } ?: return
     val bytes = FileUtilsCommon.readBytes(path)
     if (bytes == null || bytes.isEmpty()) {

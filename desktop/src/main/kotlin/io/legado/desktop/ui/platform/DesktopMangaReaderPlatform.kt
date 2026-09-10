@@ -89,11 +89,12 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
         source: BookSource?,
     ): Boolean? = withContext(Dispatchers.IO) {
         book ?: return@withContext false
+        val files = PlatformServiceProviders.get().files
         runCatching {
             val bytes = MangaImageBytesLoader.load(url, book, source, currentCoroutineContext())
                 ?: return@runCatching false
             val name = "manga-${systemCurrentTimeMillis()}${imageExtension(bytes, url)}"
-            val destPath = PlatformServiceProviders.get().files.saveFile(name)
+            val destPath = files.saveFile(name)
                 ?: return@runCatching null
             File(destPath).apply {
                 parentFile?.mkdirs()

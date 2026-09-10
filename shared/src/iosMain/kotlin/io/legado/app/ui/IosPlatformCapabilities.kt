@@ -27,7 +27,6 @@ import io.legado.app.ui.book.source.manage.BookSourceViewModelShared
 import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.DefaultDialogTransitionSpec
 import io.legado.app.ui.root.DialogTransitionSpec
-import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteTransitionSpec
 import io.legado.app.ui.root.TransitionEasing
 import io.legado.app.ui.root.toRouteRef
@@ -79,7 +78,6 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
 
     private val appDb get() = AppDbProviders.get()
     private val prefs get() = PreferenceProviders.get()
-    private val services get() = PlatformServiceProviders.getOrNull()
 
     /** 书源分组增删改 (shared 下沉件)。 */
     private val bookSourceViewModel by lazy { BookSourceViewModelShared(scope) }

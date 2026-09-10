@@ -92,6 +92,7 @@ import io.legado.app.ui.bookshelf.toCoverBook
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.component.ExploreOptionsRow
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.component.horizontalMouseWheel
@@ -134,7 +135,6 @@ import io.legado.app.utils.FlowBus
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
@@ -1473,15 +1473,9 @@ private fun ExploreTabContent(
 private fun MyTabContent(navigator: AppNavigator) {
     val caps = LocalPlatformCapabilities.current
     val webServiceDesc = stringResource(Res.string.web_service_desc)
-    // 订阅平台 Web 服务运行态 (对照 MyConfigRoute LaunchedEffect 收集 webServiceState);
-    // 平台未提供 webServiceState 时回退本地 MutableStateFlow, 供 onWebServiceChange 乐观更新
-    val fallbackRunning = remember { MutableStateFlow(caps.isWebServiceRunning()) }
-    val webServiceRunning by (caps.webServiceState ?: fallbackRunning).collectAsState()
-    val webServiceSummary = if (webServiceRunning) {
-        caps.getWebServiceUrl().orEmpty()
-    } else {
-        webServiceDesc
-    }
+    // Web 服务地址: 空串=未运行 (对照原版 observeEvent<String>(WEB_SERVICE) 后回读 hostAddress)
+    val webServiceAddress by caps.webServiceAddress.collectAsState()
+    val webServiceSummary = webServiceAddress.ifEmpty { webServiceDesc }
     var showWebServiceMenu by remember { mutableStateOf(false) }
     // 对照 MyFragment.onCompatOptionsItemSelected: menu_help → showHelp("appHelp")
     var showAppHelp by remember { mutableStateOf(false) }
@@ -1491,16 +1485,12 @@ private fun MyTabContent(navigator: AppNavigator) {
         // tab 页无返回键, 故不用 AppTitleBar (它恒渲染返回箭头), 复刻其视觉容器
         MyTabTitleBar(onHelp = { showAppHelp = true })
         MyConfigScreen(
-            webServiceChecked = webServiceRunning,
+            webServiceChecked = webServiceAddress.isNotEmpty(),
             webServiceSummary = webServiceSummary,
             onThemeModeChange = {
                 PlatformCapabilityProviders.get().applyDayNight()
             },
-            onWebServiceChange = {
-                // 乐观更新回退态; 平台 webServiceState 非 null 时由流回填校正
-                fallbackRunning.value = it
-                caps.setWebService(it)
-            },
+            onWebServiceChange = { caps.setWebService(it) },
             onWebServiceLongClick = { showWebServiceMenu = true },
             onThemeSetting = { navigator.push(AppRoute.ThemeConfig) },
             onWebDavSetting = { navigator.push(AppRoute.BackupConfig) },
@@ -1524,38 +1514,19 @@ private fun MyTabContent(navigator: AppNavigator) {
 
     // web 服务长按菜单 (对照 app 端 selector: 复制地址 / 浏览器打开)
     if (showWebServiceMenu) {
-        val colors = AppTheme.colors
-        val url = PlatformCapabilityProviders.get().getWebServiceUrl()
-        AlertDialog(
+        val url = webServiceAddress.takeIf { it.isNotEmpty() }
+        AppSelectorDialog(
             onDismissRequest = { showWebServiceMenu = false },
-            modifier = Modifier.appDialogSize(),
-            properties = AppDialogSizes.properties(),
-            title = { Text(stringResource(Res.string.web_service), color = colors.primaryText) },
-            text = {
-                Column {
-                    TextButton(onClick = {
-                        showWebServiceMenu = false
-                        url?.let { PlatformCapabilityProviders.get().copyToClipboard(it) }
-                    }) { Text(stringResource(Res.string.copy_url), color = colors.primaryText) }
-                    TextButton(onClick = {
-                        showWebServiceMenu = false
-                        url?.let { PlatformCapabilityProviders.get().openExternalUrl(it) }
-                    }) {
-                        Text(
-                            stringResource(Res.string.open_in_browser),
-                            color = colors.primaryText
-                        )
-                    }
+            items = listOf(
+                stringResource(Res.string.copy_url),
+                stringResource(Res.string.open_in_browser)
+            ),
+            onItemSelected = { i ->
+                when (i) {
+                    0 -> url?.let { PlatformCapabilityProviders.get().copyToClipboard(it) }
+                    1 -> url?.let { PlatformCapabilityProviders.get().openExternalUrl(it) }
                 }
             },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = { showWebServiceMenu = false }) {
-                    Text(stringResource(Res.string.cancel))
-                }
-            },
-            shape = AppTheme.DesignTokens.dialogShape,
-            backgroundColor = colors.fillet,
         )
     }
 }

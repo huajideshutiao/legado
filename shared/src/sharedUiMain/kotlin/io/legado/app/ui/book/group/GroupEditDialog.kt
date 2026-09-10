@@ -133,8 +133,11 @@ fun GroupEditDialog(
     var showDeleteDialog by remember { mutableStateOf(false) }
     // 选图缺省: 平台文件选择器 (对照 BookInfoEditRoute.onSelectCover 同款; 阻塞式须切 IO)
     val pickCover = onPickCover ?: remember {
-        val files = PlatformServiceProviders.getOrNull()?.files
-        if (files == null) null else suspend { withContext(IoDispatcher) { files.pickFile(FileFilter.Images) } }
+        suspend {
+            withContext(IoDispatcher) {
+                PlatformServiceProviders.get().files.pickFile(FileFilter.Images)
+            }
+        }
     }
 
     val titleKey = if (isNew) "group_add" else "group_edit"
@@ -178,10 +181,8 @@ fun GroupEditDialog(
                         Modifier
                             .width(110.dp)
                             .aspectRatio(3f / 4f)
-                            .let { modifier ->
-                                if (pickCover == null) modifier else modifier.clickable {
-                                    scope.launch { pickCover()?.let { cover = it } }
-                                }
+                            .clickable {
+                                scope.launch { pickCover()?.let { cover = it } }
                             },
                     ) {
                         if (coverSlot != null) {

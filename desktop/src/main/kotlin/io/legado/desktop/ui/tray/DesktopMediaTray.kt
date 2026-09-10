@@ -267,7 +267,7 @@ object DesktopMediaTray {
         val aloud = readAloudBinding.value
         val aloudState = aloud?.controller?.state?.value
         val aloudActive =
-            aloudState == ReadAloudState.PLAYING || aloudState == ReadAloudState.PAUSED
+            aloudState == ReadAloudState.PLAYING || aloudState == ReadAloudState.PAUSED || aloudState == ReadAloudState.WAITING
         return audioActive || aloudActive
     }
 
@@ -339,7 +339,8 @@ object DesktopMediaTray {
         val audioActive = AudioPlayCommanders.getOrNull()?.isServiceRunning == true
         val aloud = readAloudBinding.value
         val aloudState = aloud?.controller?.state?.value
-        val aloudActive = aloudState == ReadAloudState.PLAYING || aloudState == ReadAloudState.PAUSED
+        val aloudActive =
+            aloudState == ReadAloudState.PLAYING || aloudState == ReadAloudState.PAUSED || aloudState == ReadAloudState.WAITING
         val tooltip = buildTooltip(audioStatus, audioActive, aloud, aloudState, aloudActive)
         SwingUtilities.invokeLater {
             runCatching { icon.toolTip = tooltip }
@@ -390,6 +391,7 @@ object DesktopMediaTray {
     private fun aloudTitleLine(aloud: ReadAloudTrayBinding?, aloudState: ReadAloudState?): String {
         val prefix = when {
             aloudState == ReadAloudState.PAUSED -> str("read_aloud_pause", "朗读暂停")
+            aloudState == ReadAloudState.WAITING -> "正在加载"
             (aloud?.timeMinute() ?: 0) > 0 -> timerText("read_aloud_timer", aloud!!.timeMinute())
             else -> str("read_aloud_t", "正在朗读")
         }
@@ -424,11 +426,12 @@ object DesktopMediaTray {
      * 经 AppNavigatorProviders 全局导航 (非 Composable 代码的既有入口)。
      */
     private fun jumpToActive() {
+        // getOrNull: 托盘菜单/媒体键动作不经界面, 窗口尚未组合过时没有 navigator
         val navigator = AppNavigatorProviders.getOrNull() ?: return
         val audioActive = AudioPlayCommanders.getOrNull()?.isServiceRunning == true
         val aloud = readAloudBinding.value
         val aloudActive = aloud?.controller?.state?.value?.let {
-            it == ReadAloudState.PLAYING || it == ReadAloudState.PAUSED
+            it == ReadAloudState.PLAYING || it == ReadAloudState.PAUSED || it == ReadAloudState.WAITING
         } ?: false
         val route = when {
             // 音频优先 (与托盘菜单/媒体键一致)
@@ -552,7 +555,8 @@ object DesktopMediaTray {
         val audioActive = AudioPlayCommanders.getOrNull()?.isServiceRunning == true
         val aloud = readAloudBinding.value
         val aloudState = aloud?.controller?.state?.value
-        val aloudActive = aloudState == ReadAloudState.PLAYING || aloudState == ReadAloudState.PAUSED
+        val aloudActive =
+            aloudState == ReadAloudState.PLAYING || aloudState == ReadAloudState.PAUSED || aloudState == ReadAloudState.WAITING
         // 两条链同时活跃时加标题分组, 免得两组"上一章"分不清 (文案取 app 端通知 subText)
         val grouped = audioActive && aloudActive
         if (audioActive) {

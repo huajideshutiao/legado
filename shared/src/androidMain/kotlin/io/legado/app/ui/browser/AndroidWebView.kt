@@ -123,14 +123,14 @@ fun AndroidWebView(
     // 目录记忆与失败清除都在 FilePickerService.saveImageRememberingDir 里,
     // forcePickDir = 长按菜单的"选择文件夹")
     fun saveImage(pic: String, forcePickDir: Boolean = false) {
+        val files = PlatformServiceProviders.get().files
         scope.launch(IoDispatcher) {
             runCatching {
                 // data: 前缀自动解包 (原 urlOrBase64ToBytes 的 base64 分支)
                 val bytes = AnalyzeUrlCore(
                     pic, coroutineContext = coroutineContext
                 ).getByteArrayAwait()
-                PlatformServiceProviders.get().files
-                    .saveImageRememberingDir(imageSaveFileName(pic), bytes, forcePickDir)
+                files.saveImageRememberingDir(imageSaveFileName(pic), bytes, forcePickDir)
             }.onSuccess { saved ->
                 val text = when (saved) {
                     true -> saveSuccessText
@@ -237,10 +237,10 @@ fun AndroidWebView(
                     // 对照原 CommonWebChromeClient.onShowCustomView: 方向解锁为 SENSOR、
                     // 屏幕常亮、隐藏系统栏; llView.invisible() 对应上报全屏态后由
                     // WebViewScreen 隐藏顶栏/进度条
-                    PlatformServiceProviders.getOrNull()?.window?.let { window ->
-                        window.setOrientation(OrientationPolicy.Sensor)
-                        window.setKeepScreenOn(true)
-                        window.setFullscreen(true)
+                    PlatformServiceProviders.get().window.run {
+                        setOrientation(OrientationPolicy.Sensor)
+                        setKeepScreenOn(true)
+                        setFullscreen(true)
                     }
                     customView = view
                     customViewCallback = callback
@@ -251,10 +251,10 @@ fun AndroidWebView(
                     // 对照原 CommonWebChromeClient.onHideCustomView: 方向复位、取消常亮、恢复系统栏
                     customView = null
                     customViewCallback = null
-                    PlatformServiceProviders.getOrNull()?.window?.let { window ->
-                        window.setOrientation(OrientationPolicy.Unspecified)
-                        window.setKeepScreenOn(false)
-                        window.setFullscreen(false)
+                    PlatformServiceProviders.get().window.run {
+                        setOrientation(OrientationPolicy.Unspecified)
+                        setKeepScreenOn(false)
+                        setFullscreen(false)
                     }
                     callbacksRef.onFullScreenChanged?.invoke(false)
                 }

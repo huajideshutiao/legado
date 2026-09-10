@@ -130,6 +130,8 @@ object AddToBookshelfShared {
     }
 
     suspend fun add(bookUrl: String) {
+        // getOrNull: Android 透明壳 AssociationActivity 也挂 DeepLinkImportHost, 壳内没有
+        // LegadoApp/navigator (壳把书籍类请求拦成 pendingBookNav 转发, 靠的是壳自己的拦截顺序)
         AppNavigatorProviders.getOrNull()?.push(resolveRoute(bookUrl))
     }
 }
@@ -149,6 +151,7 @@ object ReadBookShared {
     }
 
     suspend fun read(bookUrl: String) {
+        // getOrNull: 同 AddToBookshelfShared.add, 透明壳里没有 navigator
         AppNavigatorProviders.getOrNull()?.push(resolveRoute(bookUrl))
     }
 }

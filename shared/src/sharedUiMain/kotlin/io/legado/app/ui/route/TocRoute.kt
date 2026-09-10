@@ -262,9 +262,10 @@ fun TocContent(
             override fun exportBookmark() {
                 val curBook = screenModel.state.value.book ?: return
                 scope.launch {
+                    val files = PlatformServiceProviders.get().files
                     try {
                         val path = withContext(IoDispatcher) {
-                            PlatformServiceProviders.get().files.saveFile(
+                            files.saveFile(
                                 "bookmark-${curBook.name} ${curBook.author}.json"
                             )
                         } ?: return@launch
@@ -286,9 +287,10 @@ fun TocContent(
             override fun exportBookmarkMd() {
                 val curBook = screenModel.state.value.book ?: return
                 scope.launch {
+                    val files = PlatformServiceProviders.get().files
                     try {
                         val path = withContext(IoDispatcher) {
-                            PlatformServiceProviders.get().files.saveFile(
+                            files.saveFile(
                                 "bookmark-${curBook.name} ${curBook.author}.md"
                             )
                         } ?: return@launch

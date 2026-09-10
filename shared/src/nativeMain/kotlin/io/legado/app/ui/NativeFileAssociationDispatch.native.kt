@@ -121,6 +121,7 @@ object NativeFileAssociationDispatch {
     }
 
     private fun openBook(book: Book) {
+        // getOrNull: 文件关联可能在 UI 就绪前把系统传来的文件路径投进来
         AppNavigatorProviders.getOrNull()?.push(book.toReadRoute())
     }
 

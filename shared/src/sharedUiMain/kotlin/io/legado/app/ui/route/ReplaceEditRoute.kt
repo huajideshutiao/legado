@@ -41,7 +41,7 @@ fun ReplaceEditRoute(
     val scope = rememberCoroutineScope()
     // 剪贴板走平台能力注入 (替代 app 端 getClipText/sendToClip)
     val clipTextProvider: () -> String? = {
-        PlatformCapabilityProviders.getOrNull()?.getClipboardText()
+        PlatformCapabilityProviders.get().getClipboardText()
     }
     val viewModel = remember(route.ruleId, scope) {
         ReplaceEditViewModelShared(scope = scope, clipTextProvider = clipTextProvider)
@@ -74,7 +74,7 @@ fun ReplaceEditRoute(
         onBack = { navigator.pop() },
         onSaved = { navigator.pop(RouteResultPayload.Ok) },
         onCopyRule = { rule ->
-            PlatformCapabilityProviders.getOrNull()?.copyToClipboard(GSON.toJson(rule))
+            PlatformCapabilityProviders.get().copyToClipboard(GSON.toJson(rule))
         },
         onPasteRule = { success ->
             viewModel.pasteRule(success)

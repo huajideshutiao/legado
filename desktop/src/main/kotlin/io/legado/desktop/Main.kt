@@ -426,9 +426,8 @@ private fun runDesktopApp() = application {
     BookHelpProviders.register(DesktopBookHelpAccessor())
     // 注册桌面端 PlatformCapabilities (供 shared LegadoApp 经 PlatformCapabilityProviders.get() 取能力)
     PlatformCapabilityProviders.register(DesktopPlatformCapabilities)
-    // 注册桌面端 PlatformServices (对照 app 端 MainActivity.onActivityCreated 同步注册):
-    // shared 路由中 PlatformServiceProviders.getOrNull() ?: return 回退分支不再触发,
-    // 文件选择/分享/窗口控制等不再静默失败
+    // 注册桌面端 PlatformServices (必须早于 LegadoApp: shared 侧一律 PlatformServiceProviders.get(),
+    // 未注册即 error, 不再有静默回退分支)
     // windowHandle 在 Window 组装后由 DisposableEffect 注入 AWT 窗口, 供全屏切换
     val windowHandle = remember { DesktopWindowHandle() }
     PlatformServiceProviders.register(
@@ -651,7 +650,7 @@ private fun runDesktopApp() = application {
             // 路由的 dispatchCapture 在全屏 Esc 分支最先询问本策略, 与旧 Window 层判断等价
             AppKeyRouter.registerFullscreenEsc {
                 if (DesktopWindowChrome.fullscreen) {
-                    PlatformServiceProviders.getOrNull()?.window?.setFullscreen(false)
+                    PlatformServiceProviders.get().window.setFullscreen(false)
                     true
                 } else {
                     false

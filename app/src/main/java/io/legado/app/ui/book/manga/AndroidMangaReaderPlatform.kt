@@ -148,11 +148,12 @@ object AndroidMangaReaderPlatform : MangaReaderScreenModel.Platform {
         source: BookSource?,
     ): Boolean? = withContext(Dispatchers.IO) {
         book ?: return@withContext false
+        val files = PlatformServiceProviders.get().files
         runCatching {
             val bytes = MangaImageBytesLoader.load(url, book, source, currentCoroutineContext())
                 ?: return@runCatching false
             val name = "manga-${System.currentTimeMillis()}${imageExtension(bytes, url)}"
-            val destPath = PlatformServiceProviders.get().files.saveFile(name)
+            val destPath = files.saveFile(name)
                 ?: return@runCatching null
             val uri = destPath.toUri()
             App.instance.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }

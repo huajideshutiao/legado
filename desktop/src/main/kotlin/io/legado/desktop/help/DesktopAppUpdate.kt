@@ -51,9 +51,8 @@ private object DesktopUpdateExecutor : UpdateExecutor {
         // 有资产: 打开安装包直链; 无资产: 打开 release 页 (landingUrl)
         val url = info.downloadUrl.ifBlank { info.landingUrl }
         if (url.isBlank()) return false
-        val browser = PlatformServiceProviders.getOrNull()?.browser ?: return false
         Toasters.get().toast("正在打开下载页")
-        browser.openUrl(url)
+        PlatformServiceProviders.get().browser.openUrl(url)
         return true
     }
 }

@@ -46,7 +46,6 @@ import io.legado.app.utils.RemoteAssetsUtils
 import io.legado.app.utils.browseUrl
 import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.toJson
-import io.legado.app.web.WebServerManager
 import io.legado.desktop.constant.DesktopAppInfo
 import io.legado.desktop.help.DesktopCrashLogDirs
 import io.legado.desktop.help.book.DesktopBookExport
@@ -88,7 +87,7 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     override fun exitApplication() {
         // 主界面返回双击退出等 shared 调用: 关闭主窗口 (等价标题栏关闭按钮),
         // 触发 Window.onCloseRequest → compose exitApplication (含单实例守卫清理)
-        (PlatformServiceProviders.getOrNull() as? DesktopPlatformServices)
+        (PlatformServiceProviders.get() as? DesktopPlatformServices)
             ?.windowHandle?.window?.dispose()
     }
 
@@ -254,7 +253,7 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
                     // 的 close 回调不能再 pop, 否则会误弹 RSS 之下的路由 (reviewer 2026-08-07)
                     if (!detached.get()) {
                         scope.launch(Dispatchers.Main) {
-                            runCatching { AppNavigatorProviders.getOrNull()?.pop() }
+                            AppNavigatorProviders.get().pop()
                         }
                     }
                 },
@@ -307,28 +306,28 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
 
     // 书架布局 / 底栏配置: shared Compose 对话框 (BookshelfNavConfigDialogs.kt)
     override fun showBookshelfLayoutDialog() {
-        AppNavigatorProviders.getOrNull()?.showOverlay(AppOverlay.Dialog("bookshelf_layout"))
+        AppNavigatorProviders.get().showOverlay(AppOverlay.Dialog("bookshelf_layout"))
     }
 
     override fun showBottomNavConfigDialog() {
-        AppNavigatorProviders.getOrNull()?.showOverlay(AppOverlay.Dialog("bottom_nav_config"))
+        AppNavigatorProviders.get().showOverlay(AppOverlay.Dialog("bottom_nav_config"))
     }
 
     override fun showThemeCustomizeDialog(configIndex: Int?, isNight: Boolean) {
         val mode = if (configIndex == null) MODE_NEW_CONFIG else MODE_EDIT_CONFIG
         val index = configIndex ?: -1
-        AppNavigatorProviders.getOrNull()
-            ?.showOverlay(AppOverlay.Dialog("theme_customize", payload = "$mode,$index,$isNight"))
+        AppNavigatorProviders.get()
+            .showOverlay(AppOverlay.Dialog("theme_customize", payload = "$mode,$index,$isNight"))
     }
 
     override fun showCustomizeDayThemeDialog() {
-        AppNavigatorProviders.getOrNull()
-            ?.showOverlay(AppOverlay.Dialog("theme_customize", payload = "$MODE_EDIT_PREFS,-1,false"))
+        AppNavigatorProviders.get()
+            .showOverlay(AppOverlay.Dialog("theme_customize", payload = "$MODE_EDIT_PREFS,-1,false"))
     }
 
     override fun showCustomizeNightThemeDialog() {
-        AppNavigatorProviders.getOrNull()
-            ?.showOverlay(AppOverlay.Dialog("theme_customize", payload = "$MODE_EDIT_PREFS,-1,true"))
+        AppNavigatorProviders.get()
+            .showOverlay(AppOverlay.Dialog("theme_customize", payload = "$MODE_EDIT_PREFS,-1,true"))
     }
 
     override fun getAppVersionName(): String? = DesktopAppInfo.versionName
@@ -338,14 +337,10 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
 
     override fun hasScreenOrientation(): Boolean = false
 
-    // ===== Web 服务 (WebServerManager 已下沉) =====
-
-    override fun getWebServiceUrl(): String? = WebServerManager.hostAddress.takeIf { it.isNotEmpty() }
-
     // 换封面源: 对照 app 端同名方法, 走 "change_cover" overlay (payload="name\nauthor"),
     // 结果经 overlayResults 的 RouteResultPayload.ChangeCover 回传
     override fun showChangeCoverDialog(book: Book, onCoverSelected: (String) -> Unit) {
-        val navigator = AppNavigatorProviders.getOrNull() ?: return
+        val navigator = AppNavigatorProviders.get()
         scope.launch {
             navigator.showOverlay(
                 AppOverlay.Dialog("change_cover", payload = "${book.name}\n${book.author}")
@@ -363,7 +358,7 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     // 崩溃日志: 与 app 端同走 shared OverlayContentHost 的 "crash_logs" key
     // (数据源 = DesktopPlatformServices.crashLogs, 写入方见 DesktopCrashHandler)
     override fun showCrashLogs() {
-        AppNavigatorProviders.getOrNull()?.showOverlay(AppOverlay.Dialog("crash_logs"))
+        AppNavigatorProviders.get().showOverlay(AppOverlay.Dialog("crash_logs"))
     }
 
     // 对照 app 端 saveLog: 打包 logs + crash + heapDump 成 logs.zip 落到用户可见目录
@@ -655,8 +650,8 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
             val file = File(dir, "shareBookSource.json")
             runCatching { file.writeText(json, Charsets.UTF_8) }
                 .onSuccess {
-                    PlatformServiceProviders.getOrNull()?.sharing
-                        ?.shareFile(file.absolutePath, "application/json")
+                    PlatformServiceProviders.get().sharing
+                        .shareFile(file.absolutePath, "application/json")
                     Toasters.get().toast("已导出到 ${file.absolutePath}")
                 }
                 .onFailure { Toasters.get().toast("导出失败\n${it.message}") }
@@ -682,7 +677,7 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     // 书源校验设置 / 直链上传配置: shared 已有对话框实现, 与 app 端同走 overlay
     // onDismiss 契约同 app 端: 等 overlay 入栈再等其出栈
     override fun showCheckSourceConfigDialog(onDismiss: () -> Unit) {
-        val navigator = AppNavigatorProviders.getOrNull() ?: return
+        val navigator = AppNavigatorProviders.get()
         scope.launch {
             navigator.overlays.first { list -> list.any { it.key == "check_source_config" } }
             navigator.overlays.first { list -> list.none { it.key == "check_source_config" } }
@@ -692,8 +687,8 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     }
 
     override fun showDirectLinkUploadConfigDialog() {
-        AppNavigatorProviders.getOrNull()
-            ?.showOverlay(AppOverlay.Dialog("direct_link_upload_config"))
+        AppNavigatorProviders.get()
+            .showOverlay(AppOverlay.Dialog("direct_link_upload_config"))
     }
 
     /**
@@ -794,7 +789,7 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
         scope.launch {
             runCatching { FileBook.importLocalFile(filePath) }
                 .onSuccess { book ->
-                    AppNavigatorProviders.getOrNull()?.push(book.toReadRoute())
+                    AppNavigatorProviders.get().push(book.toReadRoute())
                 }.onFailure { error ->
                     AppLog.put("导入关联书籍失败: ${error.message}", error)
                 }

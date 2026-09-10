@@ -38,7 +38,7 @@ object AppUpdate {
         ).onSuccess {
             if (it != null) {
                 // UpdateDialog 已下沉 sharedUiMain: 经 AppOverlay 弹更新弹窗 (payload=IntentData 侧信道)
-                AppNavigatorProviders.getOrNull()?.showOverlay(
+                AppNavigatorProviders.get().showOverlay(
                     AppOverlay.Dialog(
                         key = "updateDialog",
                         payload = IntentData.put(it),

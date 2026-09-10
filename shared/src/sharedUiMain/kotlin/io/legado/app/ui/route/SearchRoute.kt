@@ -33,7 +33,8 @@ import io.legado.app.ui.compose.platform.AppShortcutHandler
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
-import io.legado.app.ui.root.GlobalShortcuts
+import androidx.compose.ui.input.key.Key
+import io.legado.app.ui.compose.platform.AppShortcut
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.toRouteRef
@@ -93,8 +94,9 @@ fun SearchRoute(
     val isTopEntry = backStack.lastOrNull()?.id == entry.id
     AppBackHandler(enabled = isTopEntry && fieldFocused) { focusManager.clearFocus() }
 
-    // 已在搜索页时 Ctrl/Cmd+F 改为聚焦搜索框 (页面级注册, 优先于全局的"跳搜索页")
-    AppShortcutHandler(GlobalShortcuts.Search, enabled = { isTopEntry }) {
+    // 已在搜索页时 Ctrl/Cmd+F 改为聚焦搜索框 (页面级注册)
+    val searchShortcut = remember { AppShortcut(Key.F, command = true) }
+    AppShortcutHandler(searchShortcut, enabled = { isTopEntry }) {
         viewModel.requestFocus()
     }
 

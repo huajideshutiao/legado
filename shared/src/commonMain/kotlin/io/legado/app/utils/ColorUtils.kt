@@ -199,6 +199,66 @@ object ColorUtils {
         return argb(255, r, g, b)
     }
 
+    // ---- 纯 Kotlin HSL↔RGB (替代 androidx.core.graphics.ColorUtils 的 HSL 一族) ----
+
+    /**
+     * RGB → HSL, 对齐 androidx.core.graphics.ColorUtils.RGBToHSL。
+     * hsl[0]=Hue [0,360), hsl[1]=Saturation [0,1], hsl[2]=Lightness [0,1]。
+     * 结果写入 [hsl], 逐像素采样可复用同一个数组。
+     */
+    fun RGBToHSL(r: Int, g: Int, b: Int, hsl: FloatArray) {
+        val rf = r / 255f
+        val gf = g / 255f
+        val bf = b / 255f
+        val max = max(rf, max(gf, bf))
+        val min = min(rf, min(gf, bf))
+        val delta = max - min
+        val l = (max + min) / 2f
+        var h = 0f
+        var s = 0f
+        if (delta != 0f) {
+            when (max) {
+                rf -> h = ((gf - bf) / delta) % 6f
+                gf -> h = (bf - rf) / delta + 2f
+                bf -> h = (rf - gf) / delta + 4f
+            }
+            h *= 60f
+            if (h < 0f) h += 360f
+            s = delta / (1f - abs(2f * l - 1f))
+        }
+        hsl[0] = h
+        hsl[1] = s
+        hsl[2] = l
+    }
+
+    /** RGB → HSL, 对齐 androidx.core.graphics.ColorUtils.colorToHSL (忽略 alpha)。 */
+    fun colorToHSL(color: Int, hsl: FloatArray) {
+        RGBToHSL(red(color), green(color), blue(color), hsl)
+    }
+
+    /** HSL → RGB (alpha=255), 对齐 androidx.core.graphics.ColorUtils.HSLToColor。 */
+    fun HSLToColor(hsl: FloatArray): Int {
+        val h = hsl[0]
+        val s = hsl[1].coerceIn(0f, 1f)
+        val l = hsl[2].coerceIn(0f, 1f)
+        val c = (1f - abs(2f * l - 1f)) * s
+        val hp = (h / 60f) % 6f
+        val x = c * (1f - abs(hp % 2f - 1f))
+        val m = l - c / 2f
+        val (r1, g1, b1) = when {
+            hp < 1f -> Triple(c, x, 0f)
+            hp < 2f -> Triple(x, c, 0f)
+            hp < 3f -> Triple(0f, c, x)
+            hp < 4f -> Triple(0f, x, c)
+            hp < 5f -> Triple(x, 0f, c)
+            else -> Triple(c, 0f, x)
+        }
+        val r = ((r1 + m) * 255).roundToInt().coerceIn(0, 255)
+        val g = ((g1 + m) * 255).roundToInt().coerceIn(0, 255)
+        val b = ((b1 + m) * 255).roundToInt().coerceIn(0, 255)
+        return argb(255, r, g, b)
+    }
+
     /**
      * 解析颜色字符串, 支持 #RRGGBB / #AARRGGBB / #RGB / #ARGB (对齐 android.graphics.Color.parseColor)。
      */

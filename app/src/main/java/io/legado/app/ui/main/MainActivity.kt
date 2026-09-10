@@ -380,7 +380,7 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
      */
     private fun viewImage(src: String) {
         val book = ActiveReadBookRegistry.current?.bookValue
-        AppNavigatorProviders.getOrNull()?.showOverlay(
+        AppNavigatorProviders.get().showOverlay(
             AppOverlay.Dialog(
                 key = "photo",
                 payload = encodePhotoOverlayPayload(
@@ -553,7 +553,6 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
                     navigator = navigator,
                     screenModelStore = screenModelStore,
                     capabilities = capabilities,
-                    platformServices = services,
                 )
             }
             // 书源 JS 弹窗事件桥宿主 (对照 desktop Main.kt / iOS MainViewController):
@@ -625,8 +624,7 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
 
         // 返回键: navigator.pop 优先 (导航栈有内容时返回上一页), 失败后走双击退出
         onBackPressedDispatcher.addCallback(this) {
-            val navigator = AppNavigatorProviders.getOrNull()
-            if (navigator?.pop() == true) {
+            if (AppNavigatorProviders.get().pop()) {
                 return@addCallback
             }
             if (System.currentTimeMillis() - exitTime > EXIT_INTERVAL) {
@@ -831,7 +829,8 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
         if (LocalConfig.versionCode == AppConst.appInfo.versionCode) return
         LocalConfig.versionCode = AppConst.appInfo.versionCode
         if (!LocalConfig.isFirstOpenApp) return
-        // Compose root 未就绪时不弹 (理论不会发生, onPostCreate 时已挂载)
+        // getOrNull: 本方法从 onPostCreate 的 Main.immediate 协程同步跑起来 (隐私协议已同意时
+        // privacyPolicy() 不挂起), 早于首帧组合, 那时 navigator 还没注册
         val navigator = AppNavigatorProviders.getOrNull() ?: return
         navigator.showOverlay(AppOverlay.Dialog(key = "help", payload = "appHelp"))
         navigator.overlays.first { list ->
@@ -871,7 +870,7 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
         LocalConfig.appCrash = false
         alert(androidAppString("draw"), "检测到阅读发生了崩溃，是否打开崩溃日志以便报告问题？") {
             yesButton {
-                AppNavigatorProviders.getOrNull()?.showOverlay(AppOverlay.Dialog("crash_logs"))
+                AppNavigatorProviders.get().showOverlay(AppOverlay.Dialog("crash_logs"))
             }
             noButton()
         }

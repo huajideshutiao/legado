@@ -714,7 +714,7 @@ private class AndroidReaderMenuState(
                 val chapter = screenModel.currentChapter
                 if (chapter != null) {
                     hide()
-                    AppNavigatorProviders.getOrNull()?.showOverlay(
+                    AppNavigatorProviders.get().showOverlay(
                         AppOverlay.Dialog(
                             key = "review_list",
                             payload = encodeReviewListDialogPayload(book, chapter, 0),
