@@ -1,5 +1,6 @@
 package io.legado.desktop.ui.tray
 
+import androidx.compose.ui.graphics.asSkiaBitmap
 import com.sun.jna.platform.win32.GDI32
 import com.sun.jna.platform.win32.User32
 import com.sun.jna.platform.win32.WinDef
@@ -14,7 +15,8 @@ import io.legado.app.service.ReadAloudControllerShared.ReadAloudState
 import io.legado.desktop.help.win.DwmApi
 import io.legado.desktop.ui.DesktopWindowChromeNative
 import io.legado.desktop.ui.hwndOrNull
-import androidx.compose.ui.graphics.asSkiaBitmap
+import io.legado.desktop.ui.tray.DesktopTaskbarDwm.iconicEnabled
+import io.legado.desktop.ui.tray.DesktopTaskbarDwm.renderExecutor
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.Canvas
 import org.jetbrains.skia.Font
@@ -127,6 +129,13 @@ internal object DesktopTaskbarDwm {
     @Volatile
     private var iconicEnabled = false
 
+    /**
+     * 两项 iconic 属性可能至少一项仍为 1。与 [iconicEnabled] 分开记录：启用事务失败且回滚也失败时，
+     * 完整模式虽未建立，后续会话关闭仍必须再次尝试清理残留属性。
+     */
+    @Volatile
+    private var iconicAttributesMayBeSet = false
+
     /** 动态主题配色 (原子更新，跟随全局应用主题色) */
     private val currentTheme = AtomicReference(ThemeColors())
 
@@ -181,6 +190,7 @@ internal object DesktopTaskbarDwm {
             mainHwnd = hwnd
             windowGeneration++
             iconicEnabled = false
+            iconicAttributesMayBeSet = false
         }
         // 处理器与窗口无关 (native 桥自己跟着窗口重挂), 幂等注册即可
         if (!hooked) hooked = DesktopWindowChromeNative.addMessageHandler(messageHandler)
@@ -195,11 +205,20 @@ internal object DesktopTaskbarDwm {
             current
         }
         clearCardContent()
-        if (hwnd != null) {
+        // IsWindow 守卫: 本函数在应用退出路径上跑, 而 HWND 此时可能已经销毁 —— CMP 的
+        // ComposeWindow.dispose() 先 super.dispose() 销毁原生窗口, 且 Compose runtime 对离开组合的
+        // 效果**逆序**派发 onForgotten, 于是后组合的 Window 先销毁、先组合的托盘 uninstall 后跑
+        // (挪到 DisposableEffect(window) 也一样晚, 它属于 composePanel 的子组合)。
+        // 对已销毁窗口写属性必返回 E_HANDLE(0x80070006), 而这里是 critical 上报 ⇒ 退出时必刷两行
+        // 噪声日志。窗口已死时 iconic 属性随窗口一起消失, 关属性本就是空操作, 直接跳过;
+        // 窗口仍存活 (如全屏切换重建窗口) 时照旧关属性, 真正的写失败仍按 critical 暴露。
+        if (hwnd != null && User32.INSTANCE.IsWindow(hwnd)) {
             // 只关属性, 不再 Invalidate: 属性关掉后 DWM 已不用 iconic 位图, 此刻窗口也即将销毁,
-            // 再调 DwmInvalidateIconicBitmaps 只会返回 E_INVALIDARG 刷噪声日志
+            // 再调 DwmInvalidateIconicBitmaps 只会返回 E_INVALIDARG 刷噪声日志。即使内部只清掉
+            // 一项也会继续尝试另一项；失败状态保留到函数返回，便于日志准确反映部分清理。
             setIconicMode(hwnd, false)
         }
+        iconicAttributesMayBeSet = false
         if (hooked) {
             DesktopWindowChromeNative.removeMessageHandler(messageHandler)
             hooked = false
@@ -238,23 +257,28 @@ internal object DesktopTaskbarDwm {
         val audioSession = AudioPlayCommanders.getOrNull()?.isServiceRunning == true
         val aloudState = aloud?.controller?.state?.value
         val aloudActive =
-            aloudState == ReadAloudState.PLAYING || aloudState == ReadAloudState.PAUSED
+            aloudState == ReadAloudState.PLAYING || aloudState == ReadAloudState.PAUSED || aloudState == ReadAloudState.WAITING
         val active = audioSession || aloudActive
         val hwnd = mainHwnd ?: return
         if (!hooked) return
 
-        // iconic 开关 (幂等; 会话终结时关闭恢复实时窗口缩略图, 并清空卡片内容)
-        if (active != iconicEnabled) {
-            synchronized(windowStateLock) {
+        // iconic 开关 (仅整体写入成功才推进 iconicEnabled, 写入失败保留原状态以便后续重试; 会话终结时清空卡片内容)
+        if (active != iconicEnabled || (!active && iconicAttributesMayBeSet)) {
+            val switched = synchronized(windowStateLock) {
                 if (mainHwnd?.pointer != hwnd.pointer) return
-                setIconicMode(hwnd, active)
-                iconicEnabled = active
+                if (setIconicMode(hwnd, active)) {
+                    iconicEnabled = active
+                    true
+                } else {
+                    false
+                }
             }
             if (!active) {
                 // 关属性即恢复系统实时缩略图, 不需再 Invalidate (属性已关, DWM 会返回 E_INVALIDARG)
                 clearCardContent()
                 return
             }
+            if (!switched) return
         }
         if (!active) return
 
@@ -444,11 +468,7 @@ internal object DesktopTaskbarDwm {
         } catch (e: Throwable) {
             AppLog.put("DWM 卡片位图回传失败", e)
         } finally {
-            // DeleteObject 失败 = GDI 句柄泄漏 (每秒一张位图, 泄漏会累积到耗尽 10000 句柄上限),
-            // 不能静默吃: runCatching 只挡异常, 返回 false 也要上报
-            runCatching { GDI32.INSTANCE.DeleteObject(hBitmap) }
-                .onSuccess { if (!it) AppLog.put("DWM 卡片位图 DeleteObject 返回 false (GDI 句柄泄漏)") }
-                .onFailure { AppLog.put("DWM 卡片位图 DeleteObject 异常", it) }
+            deleteObjectChecked(hBitmap)
         }
     }
 
@@ -870,7 +890,7 @@ internal object DesktopTaskbarDwm {
         ) ?: return null
 
         val ptr = ppvBits.value ?: run {
-            GDI32.INSTANCE.DeleteObject(hbm)
+            deleteObjectChecked(hbm)
             return null
         }
 
@@ -889,15 +909,26 @@ internal object DesktopTaskbarDwm {
                     ptr.write(0L, bytes, 0, bytes.size)
                 }
             } ?: run {
-                GDI32.INSTANCE.DeleteObject(hbm)
+                deleteObjectChecked(hbm)
                 return null
             }
             hbm
         } catch (t: Throwable) {
-            GDI32.INSTANCE.DeleteObject(hbm)
+            deleteObjectChecked(hbm)
             AppLog.put("CreateDIBSection 像素写入失败", t)
             null
         }
+    }
+
+    /**
+     * 统一释放 GDI 位图对象并检查返回值与异常。
+     * DeleteObject 失败 = GDI 句柄泄漏 (每秒一张位图, 泄漏会累积到耗尽 10000 句柄上限),
+     * 不能静默吃: runCatching 只挡异常, 返回 false 也要上报。
+     */
+    private fun deleteObjectChecked(hbm: WinDef.HBITMAP) {
+        runCatching { GDI32.INSTANCE.DeleteObject(hbm) }
+            .onSuccess { if (!it) AppLog.put("DWM 卡片位图 DeleteObject 返回 false (GDI 句柄泄漏)") }
+            .onFailure { AppLog.put("DWM 卡片位图 DeleteObject 异常", it) }
     }
 
     // ==================== 封面加载 ====================
@@ -953,27 +984,54 @@ internal object DesktopTaskbarDwm {
 
     // ==================== DWM API ====================
 
-    private fun setIconicMode(hwnd: WinDef.HWND, enable: Boolean) {
-        runCatching {
-            requireNotNull(DwmApi.dwmapi) { "dwmapi.dll 加载失败" }
-            // 属性写失败 = 卡片彻底不生效 (DWM 不再发 WM_DWMSENDICONIC* 消息), 按 critical 上报
-            DwmApi.setAttributeChecked(
+    private fun setIconicMode(hwnd: WinDef.HWND, enable: Boolean): Boolean {
+        return runCatching {
+            if (DwmApi.dwmapi == null) {
+                AppLog.put("DWM iconic 开关失败: dwmapi.dll 未加载")
+                return@runCatching false
+            }
+            // 两个属性构成一组。关闭时即使第一项失败也继续清第二项，保证部分启用状态可被清理；
+            // 第二项失败而第一项已成功时，把第一项回滚到切换前值，避免留下半切换窗口。
+            val target = if (enable) 1 else 0
+            val previous = if (enable) 0 else 1
+            val forceIconicChanged = DwmApi.setAttributeChecked(
                 hwnd,
                 DwmApi.DWMWA_FORCE_ICONIC_REPRESENTATION,
-                if (enable) 1 else 0,
+                target,
                 tag = "DWM iconic 开关",
                 critical = true,
             )
-            DwmApi.setAttributeChecked(
+            val hasBitmapChanged = DwmApi.setAttributeChecked(
                 hwnd,
                 DwmApi.DWMWA_HAS_ICONIC_BITMAP,
-                if (enable) 1 else 0,
+                target,
                 tag = "DWM iconic 开关",
                 critical = true,
             )
+            // 只有启用事务才回滚：关闭时第一项已清零就是有效进展，不能因第二项清理失败再把它设回 1。
+            val rollbackSucceeded = if (enable && !hasBitmapChanged && forceIconicChanged) {
+                DwmApi.setAttributeChecked(
+                    hwnd,
+                    DwmApi.DWMWA_FORCE_ICONIC_REPRESENTATION,
+                    previous,
+                    tag = "DWM iconic 回滚",
+                    critical = true,
+                )
+            } else {
+                false
+            }
+            val success = forceIconicChanged && hasBitmapChanged
+            iconicAttributesMayBeSet = when {
+                success -> enable
+                enable -> hasBitmapChanged || (forceIconicChanged && !rollbackSucceeded)
+                else -> true // 关闭未完整成功时保守保留，后续 update/uninstall 继续清理
+            }
+            success
         }.onFailure {
+            // 未知异常可能发生在任一属性写入之后；保守标记，确保关闭路径还会重试两项清理。
+            iconicAttributesMayBeSet = true
             AppLog.put("DWM iconic 开关失败", it)
-        }
+        }.getOrDefault(false)
     }
 
     private fun invalidateIconicBitmaps(hwnd: WinDef.HWND) {
