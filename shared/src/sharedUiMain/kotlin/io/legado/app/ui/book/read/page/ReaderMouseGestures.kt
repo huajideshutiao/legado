@@ -79,10 +79,13 @@ internal interface MouseDragDelegate {
  * - 单击 → [PageDelegateCompose.onTap]（九宫格动作/翻页/菜单，对照 delegate 的 detectTapGestures）
  * - 长按 → 页内文字选择起点（对照 detectTapGestures 的 onLongPress → 页内长按）
  * - 拖拽 → onDown → onScroll → 松手 onAnimStart（对照 delegate 的 detectDragGestures）
- * - 按下时已有文字选择 → 取消选择并吞掉本次点击（对照 selection 层 suppressedTap 语义）
+ * - 按下命中选区手柄 → 本次手势改成拖游标（不取消选区、不启长按、不翻页，对照原版
+ *   cursor_left/cursor_right 的 OnTouchListener：手柄吃下 DOWN 后 ReadView 根本收不到事件）
+ * - 按下已有文字选择且未命中手柄 → 取消选择并吞掉本次点击（对照原版 pressOnTextSelected：
+ *   只吞单击，不影响长按——按住 600ms 仍会在新位置重开选区）
  * - 选择激活期间拖拽 → 本层继续消费事件（Initial pass）并直接扩选（onSelectionExtend）；
- *   长按后松手由本层弹选择菜单（2026-08-04 修复：原实现依赖 selection 层在抬起事件
- *   上弹菜单，桌面端实测不弹，改为长按路径自包含——抬起即弹，不依赖下层事件时序）
+ *   长按后松手由本层调 [showSelectionMenu]（2026-08-04 修复：原实现依赖 selection 层在
+ *   抬起事件上弹菜单，桌面端实测不弹，改为长按路径自包含——抬起即弹，不依赖下层时序）
  *
  * # 四端安全
  *
@@ -94,15 +97,27 @@ internal suspend fun PointerInputScope.readerMouseGestures(
     onClickFallback: (TextColumn?) -> Unit,
     onLongPressAt: (Float, Float) -> Unit,
     isSelectionActive: () -> Boolean,
+    /**
+     * 选区或图片长按菜单任一在场（= 原版 `ReadView.isTextSelected` 的等价并集：
+     * onImageLongPress 同样置该标志借道取消链路关菜单）。按下分支的"手柄命中 /
+     * 取消选区 / 吞掉本次单击"三件事看它；扩选与弹菜单只看 [isSelectionActive]。
+     */
+    isTextSelected: () -> Boolean,
     cancelSelection: () -> Unit,
     /** 选择激活期间拖动扩选终点（鼠标层在 Initial pass 消费后直接扩选；原依赖
      *  selection 层 Main pass 同步扩选，统一分发器对鼠标让位后该对端已删） */
     onSelectionExtend: (x: Float, y: Float) -> Unit,
     menuVisible: () -> Boolean,
-    /** 长按选中后松手时弹选择菜单（携带选中文本；仅鼠标长按路径触发，触摸仍走 selection 层） */
-    onLongPressMenu: (String) -> Unit = {},
-    /** 当前选中文本（弹菜单时取，对照 selection.selectedText()） */
-    selectionText: () -> String = { "" },
+    /** 命中选区手柄判定（窗口坐标）：与触摸分发器共用同一份，见 ReadViewComposable */
+    handleAt: (x: Float, y: Float) -> SelectionHandle?,
+    /** 手柄拖动（窗口坐标）：与触摸分发器共用同一份折算与反转分流 */
+    dragHandle: (handle: SelectionHandle, x: Float, y: Float) -> Unit,
+    /** 手柄松手（对照原版手柄 ACTION_UP：resetReverseCursor + showTextActionMenu） */
+    onHandleDragEnd: () -> Unit,
+    /** 同步关浮动文本菜单（对照原版手柄 ACTION_DOWN → textActionMenu.dismiss） */
+    dismissMenu: () -> Unit,
+    /** 长按选中后松手弹选择菜单：与触摸分发器共用同一份（含"空选区改为取消"语义） */
+    showSelectionMenu: () -> Unit,
 ) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
@@ -115,8 +130,36 @@ internal suspend fun PointerInputScope.readerMouseGestures(
         val downId = down.id
         val startPos = down.position
         val slop = viewConfiguration.touchSlop
-        // 按下时已有文字选择：取消选择（对照 selection 层 ACTION_DOWN → cancelSelect）
-        val suppressedTap = if (isSelectionActive()) {
+        // 按下落在选区手柄上：本次手势只拖游标（对照原版 cursor_left/cursor_right 的
+        // OnTouchListener：手柄吃下事件后 ReadView 收不到 DOWN，既不 cancelSelect
+        // 也不启长按定时/不进翻页）。无 slop：MOVE 无条件 selectStartMove/selectEndMove
+        val grabbedHandle = if (isTextSelected()) handleAt(startPos.x, startPos.y) else null
+        if (grabbedHandle != null) {
+            dismissMenu()
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                val change = event.changes.firstOrNull { it.id == downId } ?: break
+                if (!change.pressed) {
+                    change.consume()
+                    onHandleDragEnd()
+                    break
+                }
+                // 非左键（中/右键）按下：结束手柄拖动且不消费（右键菜单等不受影响）。
+                // 仍要走 onHandleDragEnd：原版手柄 OnTouchListener 无按键分支、ACTION_UP 必到，
+                // 漏调会把 reverseStartCursor/reverseEndCursor 残留到下次拖动（左右手柄职责错位）
+                if (!event.buttons.isPrimaryPressed) {
+                    onHandleDragEnd()
+                    break
+                }
+                dragHandle(grabbedHandle, change.position.x, change.position.y)
+                change.consume()
+            }
+            return@awaitEachGesture
+        }
+        // 按下已有文字选择（且未命中手柄）：取消选择（对照原版 ACTION_DOWN → cancelSelect）。
+        // 仅吞本次单击（原版 pressOnTextSelected 只在 ACTION_UP 拦点击），不拦长按：
+        // 原版 DOWN 无条件 postDelayed(longPressRunnable)，所以按住不动仍会在新位置重开选区
+        val suppressedTap = if (isTextSelected()) {
             cancelSelection()
             true
         } else {
@@ -162,7 +205,9 @@ internal suspend fun PointerInputScope.readerMouseGestures(
         val upChange = up
         when {
             dragStartChange != null -> {
-                // 拖拽翻页（对照 detectDragGestures：onDragStart → onScroll → onDragEnd）
+                // 拖拽翻页（对照 detectDragGestures：onDragStart → onScroll → onDragEnd）。
+                // 选区已在 DOWN 分支取消（suppressedTap），本分支恒为纯翻页，
+                // 与原版 ACTION_MOVE 的 !isTextSelected → pageDelegate.onTouch 一致
                 delegate.onDown(dragStartChange.position.x, dragStartChange.position.y)
                 dragStartChange.consume()
                 while (true) {
@@ -171,27 +216,22 @@ internal suspend fun PointerInputScope.readerMouseGestures(
                     if (!change.pressed) {
                         change.consume()
                         // 松手启动翻页动画（滚动模式为 no-op，位置已随拖动滚动）
-                        if (!isSelectionActive()) {
-                            delegate.onAnimStart(PageDelegateCompose.DEFAULT_ANIMATION_SPEED)
-                        }
+                        delegate.onAnimStart(PageDelegateCompose.DEFAULT_ANIMATION_SPEED)
                         break
                     }
                     if (!event.buttons.isPrimaryPressed) break
-                    // 选择激活期间拖拽：本层继续消费并直接扩选（原让位 selection 层，
-                    // 其对端已随统一分发器对鼠标让位删除）
-                    if (isSelectionActive()) {
-                        onSelectionExtend(change.position.x, change.position.y)
-                        change.consume()
-                        continue
-                    }
                     delegate.onScroll(change.position.x, change.position.y)
                     change.consume()
                 }
             }
 
             isLongPress -> {
-                // 长按：文字选择起点；随后拖拽由本层直接扩选（onSelectionExtend）
-                if (!suppressedTap) onLongPressAt(startPos.x, startPos.y)
+                // 长按：文字选择起点；随后拖拽由本层直接扩选（onSelectionExtend）。
+                // 不看 suppressedTap：原版 pressOnTextSelected 只拦单击，长按照旧重开选区
+                onLongPressAt(startPos.x, startPos.y)
+                // 扩选前的 slop 门槛（对照原版 ACTION_MOVE 的 isMove）：过了就不再回退。
+                // 缺这道门槛时鼠标微动 1px 就会把长按选中的整个词塌成单个字
+                var extendSlopPassed = false
                 while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Initial)
                     val change = event.changes.firstOrNull { it.id == downId } ?: break
@@ -199,8 +239,8 @@ internal suspend fun PointerInputScope.readerMouseGestures(
                         change.consume()
                         // 长按后松手：本层直接弹选择菜单（不依赖 selection 层抬起事件处理，
                         // 触摸路径仍由 selection 层弹，两路不重复——selection 层对鼠标抬起跳过）
-                        if (!suppressedTap && isSelectionActive()) {
-                            onLongPressMenu(selectionText())
+                        if (isSelectionActive()) {
+                            showSelectionMenu()
                         }
                         break
                     }
@@ -208,7 +248,13 @@ internal suspend fun PointerInputScope.readerMouseGestures(
                     if (!event.buttons.isPrimaryPressed) break
                     // 选择激活后继续消费移动并直接扩选（原依赖 selection 层 Main pass
                     // 同步扩选，统一分发器对鼠标让位后该对端已删，扩选收归本层）
-                    if (isSelectionActive()) {
+                    if (!extendSlopPassed &&
+                        (abs(change.position.x - startPos.x) > slop ||
+                            abs(change.position.y - startPos.y) > slop)
+                    ) {
+                        extendSlopPassed = true
+                    }
+                    if (extendSlopPassed && isSelectionActive()) {
                         onSelectionExtend(change.position.x, change.position.y)
                     }
                     change.consume()

@@ -126,7 +126,7 @@ interface ReadStyleController {
  *
  * app 端原实现：
  * - `FontSelectDialog` 字体选择
- * - `ChineseUtils.showConverterSelector` 简繁转换（依赖 ChineseUtils 动态加载）
+ * - 简繁转换（对照原版 `ChineseUtils.showConverterSelector`，依赖 ChineseUtils 动态加载）
  * - `PaddingConfigDialog` 边距配置（已下沉 shared `PaddingConfigScreen`）
  * - `TipConfigDialog` 提示信息配置（已下沉 shared `TipConfigScreen`）
  * - `BgTextConfigDialog` 背景文字配置（已下沉 shared `BgTextConfigScreen`）
@@ -138,7 +138,7 @@ interface ReadStyleActions {
     /** 弹字体选择对话框（对应 `showDialogFragment<FontSelectDialog>()`） */
     fun showFontSelect()
 
-    /** 弹简繁转换选择器（对应 `ChineseUtils.showConverterSelector`） */
+    /** 弹简繁转换选择器（对照原版 `ChineseUtils.showConverterSelector`） */
     fun showChineseConverter()
 
     /** 弹边距配置（对应 `callBack.showPaddingConfig()`，已下沉 shared `PaddingConfigScreen`） */

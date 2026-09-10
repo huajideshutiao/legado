@@ -66,6 +66,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
+import io.legado.app.ui.compose.platform.LocalOverlayTopInset
+import io.legado.app.ui.compose.platform.OverlayInsetGap
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.copy
@@ -320,15 +322,22 @@ internal fun AppTextMenuHost(
     // 下方的空白捕获层兜住, 点空白即关菜单, 不碰任何窗口级可触区 API。
     val contentSize = metrics.maxSize
     val windowHeight = LocalWindowInfo.current.containerSize.height
+    // 可用区上界: 平台装饰 (桌面端 native 窗口控制条) 占掉的高度 + 视觉留白, 不小于屏边距。
+    // 翻转判定与纵向 clamp 必须同用它 —— 只钳到 marginPx 时, 选区略低于菜单高度的位置会
+    // 被判成"上方放得下", 算出的 y 又被钳进控制条带里, 卡片顶部被恒在画布之上的控制条盖掉。
+    // 同 AppDropdownMenu 的 topMargin; 移动端 LocalOverlayTopInset 恒 0 ⇒ 退化为 marginPx。
+    val topInset = LocalOverlayTopInset.current
+    val topBoundPx = max(marginPx, with(density) { (topInset + OverlayInsetGap).roundToPx() })
     // 弹出方向按最大包围盒判定, 开合过程中不翻转
     val opensUpwards =
-        remember(data.anchor, metrics.maxSize.height, windowHeight, marginPx, gapPx) {
-            windowHeight <= 0 || data.anchor.top - metrics.maxSize.height - gapPx >= marginPx
+        remember(data.anchor, metrics.maxSize.height, windowHeight, topBoundPx, gapPx) {
+            windowHeight <= 0 || data.anchor.top - metrics.maxSize.height - gapPx >= topBoundPx
     }
     val positionProvider = remember(
         data.anchor,
         gapPx,
         marginPx,
+        topBoundPx,
         shadowPx,
         contentSize,
         metrics.rowSize.width,
@@ -338,6 +347,7 @@ internal fun AppTextMenuHost(
             rect = data.anchor,
             gapPx = gapPx,
             marginPx = marginPx,
+            topBoundPx = topBoundPx,
             shadowPx = shadowPx,
             rowWidthPx = metrics.rowSize.width,
             contentWidthPx = contentSize.width,
@@ -645,6 +655,7 @@ private fun CollapseButton(onClick: () -> Unit) {
  * 锚定: 选区 rect 上方居中优先, 放不下翻下方, 左右按屏边距 clamp。
  * anchorBounds.topLeft 为弹层父节点在窗口中的偏移, 与 rect 坐标原点一致, 相加得窗口坐标。
  *
+ * [topBoundPx] 是纵向可用区上界 (含平台窗口装饰, 见调用处), 与调用处的翻转判定同源。
  * [shadowPx] 是弹层内容四周为阴影留的白 (见 ToolbarShadowPadding): popupContentSize 含这圈留白,
  * 故按视觉尺寸算完位置再整体回退 shadowPx。
  */
@@ -652,6 +663,7 @@ private class TextToolbarPositionProvider(
     private val rect: Rect,
     private val gapPx: Int,
     private val marginPx: Int,
+    private val topBoundPx: Int,
     private val shadowPx: Int,
     private val rowWidthPx: Int,
     private val contentWidthPx: Int,
@@ -680,8 +692,8 @@ private class TextToolbarPositionProvider(
             originY + rect.bottom.roundToInt() + gapPx
         }
         val boundedY = y.coerceIn(
-            marginPx,
-            (windowSize.height - height - marginPx).coerceAtLeast(marginPx),
+            topBoundPx,
+            (windowSize.height - height - marginPx).coerceAtLeast(topBoundPx),
         )
         return IntOffset(x - shadowPx, boundedY - shadowPx)
     }

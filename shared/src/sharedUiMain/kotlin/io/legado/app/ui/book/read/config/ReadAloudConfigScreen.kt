@@ -9,8 +9,6 @@ import io.legado.app.ui.compose.preference.switchPreference
 import io.legado.app.ui.compose.theme.AppTheme
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.aloud_config
-import legado.shared.generated.resources.ignore_audio_focus_summary
-import legado.shared.generated.resources.ignore_audio_focus_title
 import legado.shared.generated.resources.pause_read_aloud_while_phone_calls_summary
 import legado.shared.generated.resources.pause_read_aloud_while_phone_calls_title
 import legado.shared.generated.resources.pref_media_button_per_next
@@ -29,8 +27,9 @@ import legado.shared.generated.resources.system_media_control_compatibility_chan
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * 朗读设置（迁 pref_config_aloud.xml）。逐条对齐原条目顺序/key/默认值。
- * pauseReadAloudWhilePhoneCalls 联动 ignoreAudioFocus（enabled），
+ * 朗读设置（迁 pref_config_aloud.xml）。逐条对齐原条目顺序/key/默认值，
+ * 但"忽略音频焦点"只留其它设置页那一处（原版两页各挂一份同 key 开关）。
+ * pauseReadAloudWhilePhoneCalls 仍联动 ignoreAudioFocus 的值（enabled），
  * 朗读引擎 summary 动态（SpeakEngineDialog 回调刷新），事件广播由宿主承接。
  *
  * 下沉 shared/sharedUiMain 后:
@@ -48,8 +47,6 @@ fun ReadAloudConfigScreen(
     onSysTtsConfig: () -> Unit,
 ) {
     val titleAloudConfig = stringResource(Res.string.aloud_config)
-    val titleIgnoreAudioFocus = stringResource(Res.string.ignore_audio_focus_title)
-    val summaryIgnoreAudioFocus = stringResource(Res.string.ignore_audio_focus_summary)
     val titlePausePhoneCalls = stringResource(Res.string.pause_read_aloud_while_phone_calls_title)
     val summaryPausePhoneCalls =
         stringResource(Res.string.pause_read_aloud_while_phone_calls_summary)
@@ -72,12 +69,9 @@ fun ReadAloudConfigScreen(
     AppTheme {
         PreferenceScreen {
             preferenceCategory(titleAloudConfig)
-            switchPreference(
-                prefKey = PreferKey.ignoreAudioFocus,
-                title = titleIgnoreAudioFocus,
-                summary = summaryIgnoreAudioFocus,
-                defaultValue = false,
-            )
+            // "忽略音频焦点"不在此重复: 原版 pref_config_aloud.xml 与 pref_config_other.xml
+            // 各挂一份同 key 开关, 2026-09-04 用户拍板只留其它设置那一处。
+            // pauseReadAloudWhilePhoneCalls 仍按它的值联动 enabled (值由其它设置页改)
             switchPreference(
                 prefKey = PreferKey.pauseReadAloudWhilePhoneCalls,
                 title = titlePausePhoneCalls,

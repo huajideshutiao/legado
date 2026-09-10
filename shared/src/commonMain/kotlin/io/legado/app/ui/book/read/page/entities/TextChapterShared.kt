@@ -59,15 +59,4 @@ class TextChapterShared(
         return abs(bIndex + 1) - 1
     }
 
-    /** 清除本章搜索高亮 */
-    fun clearSearchResult() {
-        for (i in pages.indices) {
-            val page = pages[i]
-            page.searchResult.forEach {
-                it.selected = false
-                it.isSearchResult = false
-            }
-            page.searchResult.clear()
-        }
-    }
 }

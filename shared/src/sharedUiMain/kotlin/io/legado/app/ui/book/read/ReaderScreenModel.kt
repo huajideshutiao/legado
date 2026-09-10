@@ -595,7 +595,7 @@ class ReaderScreenModel(
         )
         readBook.skipToPage(pos.pageIndex) {
             val page = viewModel.curTextPage.value ?: return@skipToPage
-            // 对照旧 upSelectChars 的跨页覆盖清除：每次跳转重算前三页 selected/isSearchResult，
+            // 对照旧 upSelectChars 的跨页覆盖清除：每次跳转重算 isSearchResult，
             // 旧页（prev/next 流）残留的高亮在此清掉（只清 searchResult 列表内列，不动手动选区）
             clearSearchResult()
             isSelectingSearchResult = true

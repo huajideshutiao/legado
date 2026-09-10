@@ -9,6 +9,8 @@ import io.legado.app.ui.book.read.page.entities.TextLine
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.column.BaseColumn
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
+import io.legado.app.ui.book.read.page.overlay.PageOverlayProjector
+import io.legado.app.ui.book.read.page.overlay.SearchHighlightOverlay
 
 /**
  * 选择位置（页/行/列）。对照 app 端 [io.legado.app.ui.book.read.page.entities.TextPos]：
@@ -43,6 +45,13 @@ data class PageSelPos(
         val EMPTY = PageSelPos(0, -1, -1)
     }
 }
+
+/**
+ * 选区手柄标识（对照原版 activity_book_read.xml 的 cursor_left / cursor_right 两个 ImageView）。
+ * 命中判定与拖动折算由阅读视图层给唯一一份实现，统一触摸分发器与鼠标手势层共用
+ * （二者事件源不同，但手柄语义必须同源，否则一端改了另一端悄悄不跟）。
+ */
+enum class SelectionHandle { START, END }
 
 /**
  * 三页视图访问器（对照 app 端 `ContentTextView.relativePage` / `relativeOffset` /
@@ -135,6 +144,21 @@ class PageSelectionState {
      */
     var tick by mutableIntStateOf(0)
         private set
+
+    /**
+     * 搜索命中的外部章内区间；取消普通选区不清除，退出搜索态时显式置空。
+     *
+     * 它本身是 Compose state，普通/滚动分页都在 Canvas 绘制期读取，由快照系统自行
+     * 失效。更新时不得再递增 [tick]，否则一次搜索变化会同时
+     * 触发 state 与 tick 两条失效链；[tick] 只保留给普通选区的绘制期热路径。
+     */
+    var searchHighlight by mutableStateOf<SearchHighlightOverlay?>(null)
+        private set
+
+    fun updateSearchHighlight(highlight: SearchHighlightOverlay?) {
+        if (searchHighlight == highlight) return
+        searchHighlight = highlight
+    }
 
     /**
      * 三页访问器（对照旧 `ContentTextView` 持有的 pageFactory + pageOffset + callBack.isScroll）：
@@ -274,22 +298,25 @@ class PageSelectionState {
      * 拖拽扩选：按粗命中更新终点（对照旧 `ReadView.selectText`）。
      *
      * 拖动位置在初始命中之前：起点 = 拖动位置，终点 = 初始位置前一列（不含初始列）；
-     * 否则：起点 = 初始位置，终点 = 拖动位置。起止均按旧 `selectStartMoveIndex`
-     * （max(0, col)）/ `selectEndMoveIndex`（min(col, lastIndex)）钳制。
+     * 拖动位置在初始命中之后或就是初始命中（同一列内微动）：起点 = 初始位置，终点 = 拖动位置。
+     * 起止均按旧 `selectStartMoveIndex`（max(0, col)）/ `selectEndMoveIndex`
+     * （min(col, lastIndex)）钳制。
      *
      * @param x/y 正文区坐标（滚动偏移由本类按各页 relativeOffset 内部折算）
      */
     fun extendTo(x: Float, y: Float, viewWidth: Float) {
         if (!isActive) return
         val hit = hitRough(x, y, viewWidth) ?: return
-        val compare = hit.pos.compareTo(initialPos)
+        // 非文字列不动选区（对照旧 selectText 的 `if (column is TextColumn)` 守卫：
+        // 拖过图片/段评列时选区原地不动）
+        if (hit.column !is TextColumn) return
+        // 比较方向照旧 selectText 的 `initialTextPos.compare(textPos)`：相等（拖动没出初始列）
+        // 必须落进"起点 = 初始位置"分支。写成 hit.compareTo(initial) 会把相等归到另一分支 ——
+        // 起点被推到初始列、终点被推到前一列，起止反转：高亮多吃前一个字，两个手柄的锚点
+        // 收敛到同一个字间边界（挤在选区中间），桌面端鼠标长按后任何微动都能复现
+        val compare = initialPos.compareTo(hit.pos)
         when {
             compare > 0 -> {
-                start = initialPos
-                end = clampEnd(hit.pos)
-            }
-
-            else -> {
                 start = clampStart(hit.pos)
                 end = clampEnd(
                     PageSelPos(
@@ -298,6 +325,11 @@ class PageSelectionState {
                         initialPos.columnIndex - 1,
                     )
                 )
+            }
+
+            else -> {
+                start = initialPos
+                end = clampEnd(hit.pos)
             }
         }
         tick++
@@ -318,6 +350,10 @@ class PageSelectionState {
         viewWidth: Float,
     ) {
         if (!isActive) return
+        // 选区已作废（页实例被换 / 行号越界后 clampEnd 已把终点置 EMPTY）：不能再拿
+        // 无效起止参与“拖过头”比较 —— EMPTY 的 lineIndex/columnIndex 是 -1，任何命中都算
+        // “拖过了”，会把反转标志置上并写回 -1 位置（靠抬手时空选区自愈，但中间帧语义错）
+        if (!start.isValid || !end.isValid) return
         val hit = hitRough(x, y, viewWidth) ?: return
         // 同位置短路（对照旧 selectStartMove 首行 compare == 0 返回）
         if (hit.pos.compareTo(start) == 0) return
@@ -354,6 +390,8 @@ class PageSelectionState {
         viewWidth: Float,
     ) {
         if (!isActive) return
+        // 同 [moveStartTo]：选区已作废时不参与拖动
+        if (!start.isValid || !end.isValid) return
         val hit = hitRough(x, y, viewWidth) ?: return
         // 同位置短路（对照旧 selectEndMove 首行 compare == 0 返回）
         if (hit.pos.compareTo(end) == 0) return
@@ -385,18 +423,15 @@ class PageSelectionState {
 
     /**
      * 程序化设置选区（全文搜索跳转用，对照旧 `ContentTextView.selectStartMoveIndex` +
-     * `selectEndMoveIndex` + `upSelectChars` 的最终状态）。一次性设置起止；
-     * [markSearchResult] 为 true 时 [page] 内区间列同时标记 [TextColumn.isSearchResult]
-     * （对照旧 upSelectChars 的 `column.isSearchResult = selected && isSelectingSearchResult`）。
+     * `selectEndMoveIndex` + `upSelectChars` 的最终状态）。一次性设置起止。
      *
      * @param page 选区所在页，须是 [startPos] 的 pagePos 对应页（搜索跳转恒为当前页 = 0）；
-     *        [pageSource] 尚未注入时用它兜底，行钳制与 isSearchResult 覆盖也按它做
+     *        [pageSource] 尚未注入时用它兜底，行钳制也按它做
      */
     fun selectRange(
         page: TextPage,
         startPos: PageSelPos,
         endPos: PageSelPos,
-        markSearchResult: Boolean = false,
     ) {
         if (page.lines.isEmpty()) return
         // 搜索跳转恒作用于当前页（pagePos 0）：第 0 槽直接取传入页，
@@ -405,34 +440,94 @@ class PageSelectionState {
         for (pagePos in 1..2) anchorPages[pagePos] = pageAt(pagePos)
         initialPos = startPos
         start = clampStart(startPos)
-        // 行越界钳制到页内（旧版算法保证 addLine=1 时 lineIndex+1 不越界，此处兜底）
+        // 行越界钳制到目标页内（对照旧 selectEndMoveIndex，支持跨页至下一页）
+        val targetPage = anchorPages.getOrNull(endPos.pagePos) ?: page
+        val maxLine = targetPage.lines.lastIndex.coerceAtLeast(0)
         val safeEnd = PageSelPos(
             endPos.pagePos,
-            endPos.lineIndex.coerceIn(0, page.lines.lastIndex),
+            endPos.lineIndex.coerceIn(0, maxLine),
             endPos.columnIndex,
         )
-        end = clampEnd(safeEnd)
-        if (markSearchResult) {
-            // 对照旧 upSelectChars 的覆盖语义：整页重算 isSearchResult（区间外的列同步清除），
-            // 命中列同步加入 page.searchResult（旧版 `textPage.searchResult.add(column)`）——
-            // 否则该集合恒空，ReadBookShared.clearSearchResult 依赖它清标志会失效，
-            // 退出搜索态后本次搜索高亮残留
-            val s = start
-            val e = end
+        var clampedEnd = clampEnd(safeEnd)
+        if (!clampedEnd.isValid && endPos.pagePos > 0) {
+            clampedEnd = clampEnd(
+                PageSelPos(
+                    0,
+                    page.lines.lastIndex,
+                    page.lines.lastOrNull()?.columns?.lastIndex ?: 0
+                )
+            )
+        }
+        end = clampedEnd
+        isActive = true
+        tick++
+    }
+
+    /**
+     * 从章内 UTF-16 半开区间程序化建立选区（全文搜索跳转用）。
+     *
+     * [startChapterOffset], [endChapterOffsetExclusive] 与 [SearchHighlightOverlay] 使用同一字符账本：
+     * 每个 [TextColumn] 消耗 `charData.length`，非文字列消耗 1；区间相交判定直接复用
+     * [PageOverlayProjector.isSearchRangeHit]。因此 UTF-16 偏移只用于推进账本，绝不会被误当成
+     * 列下标；一个列即使承载代理对或组合字素，也只产生一个 [PageSelPos.columnIndex]。
+     *
+     * 选区页空间固定为当前页及后续两页（[SelectionPageSource] 的 0..2 窗口）。超出窗口的
+     * 搜索高亮仍由章内 overlay 在翻到对应页后绘制，交互选区则钳在当前三页窗口内。
+     */
+    fun selectChapterRange(
+        pages: List<TextPage>,
+        firstPageIndex: Int,
+        startChapterOffset: Int,
+        endChapterOffsetExclusive: Int,
+    ): Boolean {
+        if (startChapterOffset < 0 || endChapterOffsetExclusive <= startChapterOffset) return false
+        val firstPage = pages.getOrNull(firstPageIndex) ?: return false
+        val highlight = SearchHighlightOverlay(
+            chapterIndex = firstPage.chapterIndex,
+            start = startChapterOffset,
+            endExclusive = endChapterOffsetExclusive,
+        )
+        var rangeStart: PageSelPos? = null
+        var rangeEnd: PageSelPos? = null
+        val lastPageIndex = minOf(firstPageIndex + 2, pages.lastIndex)
+        for (pageIndex in firstPageIndex..lastPageIndex) {
+            val page = pages[pageIndex]
+            val pagePos = pageIndex - firstPageIndex
             for (lineIndex in page.lines.indices) {
-                val line = page.getLine(lineIndex)
-                for (charIndex in line.columns.indices) {
-                    val column = line.getColumn(charIndex)
-                    if (column !is TextColumn) continue
-                    val pos = PageSelPos(s.pagePos, lineIndex, charIndex)
-                    val hit = pos.compareTo(s) >= 0 && pos.compareTo(e) <= 0
-                    column.isSearchResult = hit
-                    if (hit) page.searchResult.add(column)
+                val line = page.lines[lineIndex]
+                var chapterOffset = line.chapterPosition
+                for (columnIndex in line.columns.indices) {
+                    val column = line.columns[columnIndex]
+                    val columnLength = if (column is TextColumn) column.charData.length else 1
+                    val columnEnd = chapterOffset + columnLength
+                    if (column is TextColumn && PageOverlayProjector.isSearchRangeHit(
+                            textPage = page,
+                            highlight = highlight,
+                            start = chapterOffset,
+                            endExclusive = columnEnd,
+                        )
+                    ) {
+                        val pos = PageSelPos(pagePos, lineIndex, columnIndex)
+                        if (rangeStart == null) rangeStart = pos
+                        rangeEnd = pos
+                    }
+                    chapterOffset = columnEnd
                 }
             }
         }
+        val startPos = rangeStart ?: return false
+        val endPos = rangeEnd ?: return false
+        // 直接以参与反算的同一批页建立锚点，不能再经 pageSource 回读：skipToPage 的回调
+        // 可能早于 Compose 把新三页注入 pageSource，回读会把新行列绑定到旧页实例。
+        for (pagePos in 0..2) {
+            anchorPages[pagePos] = pages.getOrNull(firstPageIndex + pagePos)
+        }
+        initialPos = startPos
+        start = startPos
+        end = endPos
         isActive = true
         tick++
+        return true
     }
 
     /** 取消选择（对照旧 cancelSelect）。翻页/点按/空白点击时调用：区间归零后高亮随投影消失。

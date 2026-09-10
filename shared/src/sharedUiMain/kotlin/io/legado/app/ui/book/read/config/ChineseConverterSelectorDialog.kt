@@ -12,14 +12,14 @@ import org.jetbrains.compose.resources.stringArrayResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * 跨平台"简繁转换"选择器对话框（对照 app 端 `ChineseUtils.showConverterSelector`）。
+ * 跨平台"简繁转换"选择器对话框（对照原版 `ChineseUtils.showConverterSelector`，四端唯一实现）。
  *
  * # 职责
  *
  * - 弹选项列表（关闭 / 繁体转简体 / 简体转繁体），单选 + dismiss
  * - 选中后写入 [AppConfigProviders.get().chineseConverterType]（对齐 app 端
  *   `AppConfig.chineseConverterType = i`）
- * - 若 i > 0 调用 [ChineseUtils.loadDict] 预加载对应词典（对齐 app 端 showConverterSelector
+ * - 若 i > 0 调用 [ChineseUtils.loadDict] 预加载对应词典（对齐原版 showConverterSelector
  *   内部 loadDict 分支；iOS/鸿蒙端 ChineseUtils.loadDict 为 no-op，字典已内嵌）
  * - 通过 [onChanged] 回调通知调用方更新 UI state + postConfig（对齐 app 端
  *   ReadStyleDialog 的 onChanged 回调：`chineseType = it; unLoad(...); postConfig(LOAD_CONTENT)`）

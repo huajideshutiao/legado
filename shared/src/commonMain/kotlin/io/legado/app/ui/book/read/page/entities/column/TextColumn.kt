@@ -19,18 +19,4 @@ data class TextColumn(
 
     override var textLine: TextLine = emptyTextLine
 
-    var selected: Boolean = false
-
-    var isSearchResult: Boolean = false
-        set(value) {
-            if (field != value) {
-                if (value) {
-                    textLine.searchResultColumnCount++
-                } else {
-                    textLine.searchResultColumnCount--
-                }
-            }
-            field = value
-        }
-
 }
