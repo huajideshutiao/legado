@@ -3,10 +3,12 @@ package io.legado.app.ui.book.import.remote
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Server
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.coroutine.mainDispatcher
 import io.legado.app.help.toast.Toasters
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 服务器配置 VM 共享核心 (KMP 版, commonMain)。
@@ -19,9 +21,11 @@ import kotlinx.coroutines.launch
  * - DAO 访问走 [AppDbProviders.get].serverDao (宿主启动时注册;
  *   AppDbAccessor 接口已暴露 serverDao)。
  * - 原 `execute { ... }.onSuccess { ... }` (BaseViewModel.Coroutine.async, onSuccess
- *   默认在 Main 线程回调) 改为 `scope.launch(Dispatchers.IO) { ... ; onSuccess.invoke() }`,
- *   onSuccess 在 IO 线程内同步调用 (Compose mutableStateOf 线程安全, 行为等价;
- *   与 [io.legado.app.ui.dict.rule.DictRuleViewModelShared] 的 try/catch 简化模式一致)。
+ *   默认在 Main 线程回调) 改为 `scope.launch(Dispatchers.IO) { ... ; withContext(mainDispatcher)
+ *   { onSuccess.invoke() } }` —— 业务体在 IO、回调投回主线程, 与原版 `executeContext =
+ *   Dispatchers.Main` 一致。调用方在 onSuccess 里写 Compose `mutableStateOf`（如
+ *   RemoteBookRoute 置弹窗显示态），快照状态必须主线程写: 它并非线程安全,
+ *   后台写会与主线程测量/重组撞在同一快照上。
  * - 原 `execute { ... }.onError { context.toastOnUi(...) }` 改为 `try { ... } catch (e) {
  *   Toasters.get().toast(msg) }`, 行为等价 (Toaster 接口已下沉 commonMain,
  *   androidMain 注册的实现内部切主线程, 与 `context.toastOnUi` 一致)。
@@ -70,7 +74,7 @@ class ServerConfigViewModelShared(
             } else {
                 Server()
             }
-            onSuccess.invoke()
+            withContext(mainDispatcher) { onSuccess.invoke() }
         }
     }
 
@@ -82,7 +86,7 @@ class ServerConfigViewModelShared(
                 }
                 mServer = server
                 appDb.serverDao.insert(server)
-                onSuccess.invoke()
+                withContext(mainDispatcher) { onSuccess.invoke() }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {

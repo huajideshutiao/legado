@@ -3,7 +3,6 @@ package io.legado.app.ui.book.source.debug
 import androidx.compose.runtime.mutableStateListOf
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookSource
-import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.help.IntentData
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.coroutine.mainDispatcher
@@ -23,6 +22,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 书源调试页 ScreenModel (shared sharedUiMain)。
@@ -45,9 +45,6 @@ class BookSourceDebugScreenModel(
     private val scope = screenModelScope("书源调试", IoDispatcher)
 
     private val logs = mutableStateListOf<String>()
-
-    var exploreKinds: List<ExploreKind> = emptyList()
-        private set
 
     /** 搜索框是否曾获得过焦点: 进入时旧界面焦点未释放, 首个 onFocusChanged(false) 不覆盖初值 helpVisible=true */
     private var hasFocusEver = false
@@ -81,6 +78,7 @@ class BookSourceDebugScreenModel(
             loading = false,
             textMy = defaultTextMy,
             textFx = defaultTextFx,
+            exploreKinds = emptyList(),
         )
     )
     val uiState: StateFlow<BookSourceDebugUiState> = _uiState.asStateFlow()
@@ -128,19 +126,26 @@ class BookSourceDebugScreenModel(
         scope.launch(IoDispatcher) {
             try {
                 val kinds = bookSource?.exploreKinds()?.filter { !it.url.isNullOrBlank() }.orEmpty()
-                exploreKinds = kinds
+                _uiState.update { state ->
+                    state.copy(
+                        exploreKinds = kinds,
+                        textFx = kinds.firstOrNull()?.let { "${it.title}::${it.url}" }
+                            ?: state.textFx,
+                    )
+                }
                 kinds.firstOrNull()?.let {
-                    _uiState.update { state -> state.copy(textFx = "${it.title}::${it.url}") }
                     if (it.title.startsWith("ERROR:")) {
                         // 对照原版: 探索分类解析出错时隐藏帮助面板并收键盘,
                         // 重新点击搜索框可唤回 (对齐 app 端 SearchView.clearFocus 语义)
-                        logs.add(exploreErrorText(it.url ?: ""))
+                        // logs 直喂 LazyColumn 的 items, 写入必须在主线程
+                        // (同 printLog 里 scope.launch(mainDispatcher) { logs.add(msg) } 的做法)
+                        withContext(mainDispatcher) { logs.add(exploreErrorText(it.url ?: "")) }
                         _uiState.update { state -> state.copy(helpVisible = false) }
                         _clearFocusFlow.tryEmit(Unit)
                     }
                 }
             } catch (e: NullPointerException) {
-                logs.add(exploreJsonErrorText(e))
+                withContext(mainDispatcher) { logs.add(exploreJsonErrorText(e)) }
                 _uiState.update { state -> state.copy(helpVisible = false) }
                 _clearFocusFlow.tryEmit(Unit)
             }
@@ -207,7 +212,7 @@ class BookSourceDebugScreenModel(
             BookSourceDebugUiEvent.ChipTocClick -> prefixAutoComplete("++")
             BookSourceDebugUiEvent.ChipContentClick -> prefixAutoComplete("--")
             is BookSourceDebugUiEvent.SelectExplore -> {
-                val explore = exploreKinds.getOrNull(event.index) ?: return
+                val explore = _uiState.value.exploreKinds.getOrNull(event.index) ?: return
                 val fx = "${explore.title}::${explore.url}"
                 _uiState.update { it.copy(textFx = fx) }
                 setQuery(fx, true)
@@ -252,7 +257,7 @@ class BookSourceDebugScreenModel(
     private fun refreshExplore() {
         scope.launch(IoDispatcher) {
             bookSource?.clearExploreKindsCache()
-            logs.clear()
+            withContext(mainDispatcher) { logs.clear() }
             _uiState.update { it.copy(helpVisible = true) }
             initExploreKinds()
         }

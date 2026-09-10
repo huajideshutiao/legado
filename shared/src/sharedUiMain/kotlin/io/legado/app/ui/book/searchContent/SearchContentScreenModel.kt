@@ -6,6 +6,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.coroutine.mainDispatcher
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.screenModelScope
 import kotlinx.coroutines.CancellationException
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 书内全文搜索 ScreenModel (shared sharedUiMain)。
@@ -65,9 +67,12 @@ class SearchContentScreenModel(
     )
     val state: StateFlow<SearchContentUiState> = _state.asStateFlow()
 
-    /** 暴露搜索结果列表，供类型化路由结果完整回传。 */
-    val searchResultList: MutableList<SearchResult>
-        get() = shared.searchResultList
+    /**
+     * 快照形式暴露搜索结果列表，供类型化路由结果完整回传。
+     * [results] 只在主线程更新，是搜索结果的唯一 UI 真源。
+     */
+    val searchResultList: List<SearchResult>
+        get() = results.toList()
 
     // ===== 初始化 (对照 Activity.onActivityCreated) =====
 
@@ -105,14 +110,11 @@ class SearchContentScreenModel(
 
     private fun initSearchResultList(list: List<SearchResult>?, position: Int) {
         list ?: return
-        shared.searchResultList.addAll(list)
-        shared.searchResultCounts = list.size
         results.addAll(list)
-        _state.update { it.copy(pendingScrollIndex = position) }
+        _state.update { it.copy(resultCount = list.size, pendingScrollIndex = position) }
     }
 
     private fun initBook(submit: Boolean, searchWord: String?) {
-        _state.update { it.copy(resultCount = shared.searchResultCounts) }
         shared.book?.let { book ->
             initCacheFileNames(book)
             _state.update { it.copy(durChapterIndex = book.durChapterIndex) }
@@ -128,7 +130,11 @@ class SearchContentScreenModel(
 
     private fun initCacheFileNames(book: Book) {
         initJob = scope.launch {
-            shared.cacheChapterNames.addAll(BookStorageProviders.get().getChapterFiles(book))
+            val files = BookStorageProviders.get().getChapterFiles(book)
+            // 列目录在 IO、写集合回主线程: cacheChapterNames 只允许主线程写
+            withContext(mainDispatcher) {
+                shared.cacheChapterNames.addAll(files)
+            }
         }
     }
 
@@ -157,18 +163,25 @@ class SearchContentScreenModel(
         val previous = searchJob
         searchJob = scope.launch {
             previous?.cancelAndJoin()
-            results.clear()
-            shared.searchResultList.clear()
-            shared.searchResultCounts = 0
-            _state.update { it.copy(searching = true) }
+            // [results] 直喂 LazyColumn 的 items，写入必须在主线程 (对照原版
+            // `tvCurrentSearchInfo.post { adapter.addItems(...) }`)；在 IO 线程改它会让
+            // LazyList 测量期按下标取项时列表已被改小 → IndexOutOfBoundsException
+            withContext(mainDispatcher) { results.clear() }
+            _state.update { it.copy(searching = true, resultCount = 0) }
             try {
                 initJob?.join()
-                shared.searchAllChapters(query) { batch ->
-                    _state.update { it.copy(resultCount = shared.searchResultCounts) }
+                // 已缓存章名集合在主线程拍只读快照交给 IO 循环查 (裸 HashSet 跨线程读写不安全)
+                val cachedChapterNames = withContext(mainDispatcher) { shared.cacheChapterNames.toSet() }
+                val allResults =
+                    shared.searchAllChapters(query, cachedChapterNames) { batch, totalCount ->
+                    // 本回调已由 searchAllChapters 投到主线程
                     results.addAll(batch)
+                        _state.update { it.copy(resultCount = totalCount) }
                 }
-                if (shared.searchResultCounts == 0) {
-                    results.add(SearchResult(resultText = emptyResultText()))
+                if (allResults.isEmpty()) {
+                    withContext(mainDispatcher) {
+                        results.add(SearchResult(resultText = emptyResultText()))
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e

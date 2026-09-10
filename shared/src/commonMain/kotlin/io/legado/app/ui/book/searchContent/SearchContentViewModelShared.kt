@@ -53,11 +53,12 @@ class SearchContentViewModelShared(
 
     var lastQuery: String = ""
 
-    var searchResultCounts: Int = 0
-
+    /**
+     * 已缓存章节文件名集合: 只允许主线程写 (ScreenModel 的 onSaveContent 与 initCacheFileNames
+     * 均在主线程落数据), IO 线程不直接读它——搜索开始时由调用方拍只读快照交给
+     * [searchAllChapters]。
+     */
     val cacheChapterNames = hashSetOf<String>()
-
-    val searchResultList: MutableList<SearchResult> = mutableListOf()
 
     var replaceEnabled: Boolean = false
 
@@ -107,7 +108,6 @@ class SearchContentViewModelShared(
      *    → [ContentProcessorProviders.get].getContent(book, chapter, content, useReplace)
      *    (WebBookProvidersImpl 委托 `ContentProcessor.get(book).getContent(...)`, 行为等价)。
      * 6. 正则搜索: [searchPosition] + [getResultAndQueryIndex] (纯函数, 直接复用)。
-     * 7. 累加 searchResultCounts (与原一致)。
      *
      * @param query 搜索关键词 (子串匹配, 非正则)
      * @param chapter 待搜索章节
@@ -142,7 +142,6 @@ class SearchContentViewModelShared(
             )
             searchResultsWithinChapter.add(result)
         }
-        searchResultCounts += searchResultsWithinChapter.size
         return searchResultsWithinChapter
     }
 
@@ -151,11 +150,11 @@ class SearchContentViewModelShared(
      *
      * 对照原 SearchContentActivity.startContentSearch 的搜索编排逻辑 (下沉到 shared):
      * 1. `appDb.bookChapterDao.getChapterList(bookUrl)` 获取所有章节;
-     * 2. 遍历章节, 跳过未缓存章节 (非本地书且 [cacheChapterNames] 不含章节文件名),
+     * 2. 遍历章节, 跳过未缓存章节 (非本地书且 [cachedChapterNames] 不含章节文件名),
      *    与原 `if (isLocalBook || viewModel.cacheChapterNames.contains(...))` 一致;
      * 3. 对每个已缓存章节调用 [searchChapter];
-     * 4. 累加非空结果到 [searchResultList] + 通过 [onResults] 回调通知调用方增量更新 UI;
-     * 5. 返回所有结果总和 ([searchResultList] 的快照)。
+     * 4. 结果仅在本次调用的局部列表中累计，并通过 [onResults] 回调通知调用方增量更新 UI;
+     * 5. 返回本次搜索的所有结果。
      *
      * UI 状态 (searching 标志 / 空结果提示 / 错误处理) 由调用方管理,
      * 本方法仅负责搜索编排 + 结果累加, 与原 Activity 职责划分一致。
@@ -163,32 +162,43 @@ class SearchContentViewModelShared(
      * 协程取消: 每次循环 [ensureActive] 检查, 与原 `ensureActive()` 一致;
      * 调用方取消协程即可中止整个搜索流程。
      *
+     * 线程: 本方法在调用方线程 (IO) 跑逐章读文件 + 子串匹配; [onResults] 每批经
+     * `withContext(mainDispatcher)` 投回主线程, 对照原版 `SearchContentActivity:210-214` 的
+     * `binding.tvCurrentSearchInfo.post { adapter.addItems(results) }` —— 原版就是「IO 干活 +
+     * 主线程改 UI 数据源」两份列表, 下沉时压成了一份 Compose 快照列表又留在 IO 直写,
+     * 导致 LazyList 测量期 itemCount 与实际 size 撕裂 (IndexOutOfBoundsException 闪退)。
+     *
      * @param query 搜索关键词 (子串匹配, 非正则)
-     * @param onResults 每章搜索完成回调 (入参为该章的非空结果), 供 UI 增量更新;
-     *   默认 no-op, 调用方可不传
-     * @return 所有章节的搜索结果总和 (已累加到 [searchResultList], 返回其快照)
+     * @param cachedChapterNames 已缓存章节文件名集合。由调用方在主线程从 [cacheChapterNames]
+     *   拍的只读快照传入: 该集合主线程 (SAVE_CONTENT 事件) 会写、本方法在 IO 线程逐章读,
+     *   裸 HashSet 跨线程读写会丢条目/读到扩容中的坏桶 (原版同样裸, 属缺陷不复制)。
+     * @param onResults 每章搜索完成回调 (该章非空结果、本次搜索累计命中数), 供 UI 增量更新;
+     *   **在主线程调用**, 默认 no-op, 调用方可不传
+     * @return 本次搜索所有章节的结果总和
      */
     suspend fun searchAllChapters(
         query: String,
-        onResults: (List<SearchResult>) -> Unit = {}
+        cachedChapterNames: Set<String>,
+        onResults: suspend (results: List<SearchResult>, totalCount: Int) -> Unit = { _, _ -> }
     ): List<SearchResult> {
         val book = book ?: return emptyList()
+        val allResults = mutableListOf<SearchResult>()
         // isLocal 书籍所有章节都视为已缓存 (与原 Activity.isLocalBook 判断一致)
         val isLocalBook = book.isLocal
         appDb.bookChapterDao.getChapterList(bookUrl).forEach { chapter ->
             currentCoroutineContext().ensureActive()
-            val results = if (isLocalBook || cacheChapterNames.contains(chapter.getFileName())) {
+            val results = if (isLocalBook || cachedChapterNames.contains(chapter.getFileName())) {
                 searchChapter(query, chapter)
             } else {
                 emptyList()
             }
             currentCoroutineContext().ensureActive()
             if (results.isNotEmpty()) {
-                searchResultList.addAll(results)
-                onResults(results)
+                allResults.addAll(results)
+                withContext(mainDispatcher) { onResults(results, allResults.size) }
             }
         }
-        return searchResultList.toList()
+        return allResults
     }
 
     /**
