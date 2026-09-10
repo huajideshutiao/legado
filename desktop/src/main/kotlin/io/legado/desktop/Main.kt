@@ -28,52 +28,22 @@ import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.sun.jna.Platform
+import io.legado.app.api.controller.ImageControllerProviders
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
-import io.legado.app.data.AppDatabaseProviders
-import io.legado.app.data.AppDbProviders
-import io.legado.app.data.BundledDatabaseDriver
-import io.legado.app.data.DesktopAppDatabaseProvider
-import io.legado.app.help.AppWebDavShared
-import io.legado.app.help.DefaultDataResourceProviders
-import io.legado.app.help.book.BookHelpProviders
-import io.legado.app.help.book.BookHelpShared
-import io.legado.app.help.book.BookImageStorageProviders
-import io.legado.app.help.book.BookStorageProviders
-import io.legado.app.help.book.JvmBookImageStorage
-import io.legado.app.help.book.JvmBookStorage
-import io.legado.app.help.book.JvmLocalBookLocator
-import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.help.config.AppConfigProviders
-import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.LocalReadConfigProviders
 import io.legado.app.help.config.PreferenceProviders
-import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ReadConfigProviders
 import io.legado.app.help.config.ReadTipConfigShared
-import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.registerJvmDebugState
-import io.legado.app.help.file.registerDesktopAppFilesDir
-import io.legado.app.help.file.registerDesktopFileDownloader
 import io.legado.app.help.http.OkHttpClientProviders
-import io.legado.app.help.i18n.registerAppStringProvider
 import io.legado.app.help.image.decodeBytesSampled
-import io.legado.app.help.image.registerJvmBookImageLoader
 import io.legado.app.help.image.registerReaderImageResolver
-import io.legado.app.help.notification.registerDesktopNotificationProgress
-import io.legado.app.help.service.DesktopUpdateBookCallback
-import io.legado.app.help.service.UpdateBookCallbacks
-import io.legado.app.help.service.registerDesktopServiceLauncher
-import io.legado.app.help.source.SourceHelp
-import io.legado.app.help.source.SourceHelpAccessors
-import io.legado.app.help.storage.BackupShared
-import io.legado.app.help.storage.registerJvmDataStorage
 import io.legado.app.help.toast.DesktopTrayNotifier
-import io.legado.app.help.toast.registerDesktopToaster
 import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.model.fileBook.BitmapProviders
-import io.legado.app.model.fileBook.ZipFileWrapperFactoryProviders
 import io.legado.app.ui.FileAssociationDispatch
 import io.legado.app.ui.association.DeepLinkImportHost
 import io.legado.app.ui.association.LegadoDeepLink
@@ -111,50 +81,26 @@ import io.legado.app.ui.root.LegadoApp
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.ScreenModelStore
-import io.legado.app.web.registerDesktopWebServerPlatform
-import io.legado.app.web.utils.registerDesktopWebAssetSource
-import io.legado.app.web.utils.registerDesktopWebStrings
 import io.legado.desktop.audio.DesktopAppUserModelId
 import io.legado.desktop.audio.registerDesktopAudioPlayProviders
 import io.legado.desktop.audio.registerDesktopSystemMediaControl
-import io.legado.desktop.config.registerDesktopConfig
-import io.legado.desktop.data.DesktopAppDbAccessor
 import io.legado.desktop.help.DesktopCrashHandler
-import io.legado.desktop.help.DesktopDefaultDataResourceProvider
 import io.legado.desktop.help.DesktopUrlProtocol
 import io.legado.desktop.help.SingleInstanceGuard
 import io.legado.desktop.help.book.DesktopBitmapProvider
-import io.legado.desktop.help.book.DesktopBookHelpAccessor
-import io.legado.desktop.help.book.DesktopZipFileWrapperFactory
 import io.legado.desktop.help.book.registerDesktopBookshelfManagePlatform
-import io.legado.desktop.help.changecover.DesktopCoverStorageService
-import io.legado.desktop.help.changesource.registerDesktopChangeBookSourcePlatform
-import io.legado.desktop.help.config.registerDesktopPasswordProvider
 import io.legado.desktop.help.http.registerDesktopBackstageWebView
-import io.legado.desktop.help.initDesktopDefaultData
-import io.legado.desktop.help.log.registerDesktopAppLogHost
-import io.legado.desktop.help.registerDesktopAndroidId
-import io.legado.desktop.help.applyDesktopLanguagePref
-import io.legado.desktop.help.registerDesktopAppUpdate
 import io.legado.desktop.help.registerDesktopArchiveProvider
-import io.legado.desktop.help.registerDesktopDirectLinkUploadProviders
-import io.legado.desktop.help.registerDesktopFileCacheProvider
-import io.legado.desktop.help.registerDesktopRegexErrorHandler
+import io.legado.desktop.help.archive.DesktopArchiveCodec
 import io.legado.desktop.help.registerDesktopScreenInfoProvider
-import io.legado.desktop.help.source.DesktopSourceHelpAccessor
-import io.legado.desktop.help.source.registerDesktopSourceProviders
 import io.legado.desktop.help.source.registerDesktopVerificationUiProvider
-import io.legado.desktop.help.storage.registerDesktopBackupRestoreHook
 import io.legado.desktop.help.tts.DesktopReadAloudHost
 import io.legado.desktop.help.ui.registerDesktopOpenUrlProvider
-import io.legado.desktop.help.ui.registerDesktopUserAgentProvider
-import io.legado.desktop.http.registerDesktopHttpProvider
-import io.legado.desktop.js.registerDesktopJsEngines
-import io.legado.desktop.model.DesktopCacheBook
+import io.legado.desktop.js.registerDesktopJsImageOps
+import io.legado.desktop.model.fileBook.DesktopPdfFile
 import io.legado.desktop.model.fileBook.registerDesktopFileBookAccessor
-import io.legado.desktop.model.registerDesktopReadBookPlatform
-import io.legado.desktop.model.webBook.registerDesktopWebBookProviders
-import io.legado.desktop.tts.DesktopHttpTtsPlayer
+import io.legado.desktop.model.webBook.DesktopImageControllerProvider
+import io.legado.desktop.model.webBook.DesktopSkiaImageScaler
 import io.legado.desktop.tts.DesktopSystemTtsEngine
 import io.legado.desktop.ui.ChromeStripSpacer
 import io.legado.desktop.ui.DesktopDialogHost
@@ -209,11 +155,9 @@ private const val TAG = "legado-desktop"
  * 阶段3: 后台异步注册非首屏 provider (LaunchedEffect + Dispatchers.Default) — 不阻塞首屏渲染
  */
 /**
- * 进程启动参数 (main() 入口保存, 剔除重启等待标记后), 供桌面端重启
- * ([io.legado.desktop.help.DesktopRegexErrorHandler] 的 ProcessBuilder 复用)。
+ * 进程启动参数说明: [startupArgs] 顶层声明已下沉 :desktop-core (DesktopCore.kt, 供
+ * DesktopAppRestart 复用), 本文件直接以同包名引用。headless 入口亦经 DesktopCore 共享该 API。
  */
-@Volatile
-var startupArgs: Array<String> = emptyArray()
 
 /** 重启等待标记前缀: 新进程凭它等到旧进程退出后再抢单实例锁。 */
 private const val RESTART_WAIT_PREFIX = "--legado-restart-wait="
@@ -367,12 +311,20 @@ private fun runDesktopApp() = application {
     // KP6: 便携模式检测 + native 库加载已提前到 main() 首行执行 (单实例守卫要先读数据目录),
     // 此处不再重复调用; 其结果 (legado.portable.root / legado.quickjs.lib 系统属性) 对
     // 下方所有 provider 注册依然有效。
-    // 注册桌面端 Host 类 provider (启动期最早, 让 shared commonMain 调用 AppLog/appString 时有输出)
-    // - AppLogHost: 桥接到 println, 未注册时 AppLog 副作用 (write/toast/debugPrint) 静默 no-op
-    // - AppStringProvider: key → strings.xml 同步查表 (jvmGetString, runBlocking 桥接),
-    //   未注册时 appString fallback 返回 key 名; 须先于任何 appString 调用 (快捷方式显示名等)
-    registerDesktopAppLogHost()
-    registerAppStringProvider { key, args -> jvmGetString(key.name, *args) }
+    //
+    // 阶段1 核心子集 (无 UI 依赖的 provider 注册) 已下沉 :desktop-core 的
+    // DesktopCore.registerCoreProviders() —— 与 headless 入口共用同一注册序列, 保证两种入口
+    // 的数据/配置环境等价。包含: AppLog/AppString/AndroidId/Toaster/NotificationProgress/
+    // UpdateBookCallback/config+语言/AppUpdate/AppFilesDir/BookImageLoader/HTTP+jsoup/
+    // DataStorage+BookImageStorage/HttpTTS 播放器工厂/JS 引擎/DefaultDataResource/数据库/
+    // BookStorage/AppDb/BookHelp/ReadBookPlatform/CoverStorage。
+    // remember: 只在首组合执行一次 (原实现非 remember 的注册函数本就幂等, 收敛后行为等价);
+    // 返回值 desktopReadBookConfig 供阶段2 LocalReadConfigProviders 注入 (与全局同实例)。
+    val desktopReadBookConfig = remember { DesktopCore.registerCoreProviders() }
+    // JS 图片绑定 (skia DesktopImageOps → JsBindingInjector): 原 registerDesktopJsEngines 首行,
+    // UI 依赖拆分后单独注册, 必须在任何 JS eval 之前 (未注册时 JsBindingInjector.image 抛)
+    registerDesktopJsImageOps()
+    // ===== 以下为阶段1 的 UI 绑定注册 (依赖 AWT/Compose/JNA, 留在 :desktop) =====
     // Windows: 设置进程级 AppUserModelID + 保证开始菜单快捷方式身份注册 (SMTC 媒体卡
     // 应用名来源; :desktop:run/java -jar 无安装注册时按官方文档自建快捷方式)。
     // 须在 AppString provider 注册之后 (快捷方式文件名取 app_name 显示名),
@@ -381,88 +333,14 @@ private fun runDesktopApp() = application {
     // 注册桌面端 ScreenInfoProvider (Toolkit.getDefaultToolkit().screenSize),
     // 供 shared commonMain 经 ScreenInfoProviders.get() 读屏幕尺寸; 无依赖, 同步注册
     registerDesktopScreenInfoProvider()
-    // 注入机器标识到 AndroidIdHolder (对照 app 端 JsEnginesAndroid 注入 ANDROID_ID)。
-    // 默认值 "null" 只有 4 字符, BaseSource 登录信息 AES 密钥取前 16 字节会越界被吞,
-    // 表现为桌面端书源登录信息无法持久化; 必须在任何 getLoginInfo/putLoginInfo 之前注入
-    registerDesktopAndroidId()
-    // 注册桌面端 Toaster + NotificationProgress provider (shared jvmMain 已实现)
-    // - Toasters: SystemTray + TrayIcon 显示通知 (forceRefresh 提示 / 错误反馈用)
-    // - NotificationProgresses: SystemTray 进度通知 (已弃用: 桌面端进度改走 UI 内 StateFlow)
-    // 未注册时 Toasters.get() 抛 IllegalStateException (forceRefresh 未 runCatching 防御);
-    // SystemTray 需在主线程初始化, 故同步注册
-    registerDesktopToaster()
     // Toaster 链路 (登录对话框"没有请求头！"等) 统一收口到主窗口 UI toast
     // (DesktopToasts → DesktopToastHost), 不再只依赖托盘气泡 (Windows 通知设置
     // 会静默拦截 TrayIcon.displayMessage, 曾表现为 toast 无反应)
+    // (Toaster/NotificationProgress provider 本体注册在上方 DesktopCore.registerCoreProviders)
     DesktopTrayNotifier.uiSender = { msg ->
         DesktopToasts.show(msg, false)
         true
     }
-    registerDesktopNotificationProgress()
-    // 注册 UpdateBookCallback 默认实现: shared BookshelfViewModel 据此构造 UpdateBookShared
-    // 刷新引擎 (书架菜单/下拉刷新、自动更新、条目转圈状态均依赖它)。须在阶段1同步注册:
-    // 书架激活后首个书籍流发射即可能触发 autoUpdateGroup → 引擎 lazy 构造,
-    // 晚于窗口显示的异步注册存在竞态 (引擎已构造为 null 则整个会话刷新失效)。
-    // 依赖上方 registerDesktopToaster + registerDesktopNotificationProgress, 故紧随其后。
-    // iOS/鸿蒙端在 registerNativeUpdateBookCallback 注册, app 端在 App.kt 注册。
-    UpdateBookCallbacks.registerDefault(DesktopUpdateBookCallback)
-    // 备份格式兼容性: 注册桌面端 config provider
-    // - PreferenceProvider + AppConfigAccessor
-    // - ReadBookConfigProviders + ThemeConfigProviders (备份格式兼容性补齐, 供 BackupShared 用)
-    // 接住返回值: LocalReadConfigProviders 必须与全局 ReadBookConfigProviders 同实例, 否则配置写读分家
-    val desktopReadBookConfig = remember { registerDesktopConfig() }
-    // 应用内语言 (PreferKey.language → JVM 默认 Locale, CMP 资源据此选 values-xx 目录):
-    // 必须在 registerDesktopConfig 之后 (要读 pref)、任何 stringResource 取值之前
-    remember { applyDesktopLanguagePref() }
-    // 注册桌面端更新能力 (AppUpdateEnvironment, 薄壳转发 shared AppUpdateManager):
-    // 依赖 PreferenceProviders (上方 registerDesktopConfig) + DesktopAppInfo, 无其他依赖,
-    // 故可提前到阶段1同步注册, 避免"窗口显示后、异步注册完成前打开关于页 → 检查更新入口不显示"的竞态
-    registerDesktopAppUpdate()
-    // 注册桌面端 AppFilesDir (~/.legado/files), 供 BackupShared/RestoreShared 用
-    registerDesktopAppFilesDir()
-    // Coil3 图片栈: 注册 BookImageLoader + SingletonImageLoader.setSafe (共享 ImageLoader,
-    // 拦截器/diskCache 装配见 shared BookImageLoader.jvm.kt)。必须在阶段1:
-    // setSafe 晚于首个 rememberAsyncImagePainter/AsyncImage 的 get 会抛 IllegalStateException。
-    // 注册零开销 (ImageLoader lazy, OkHttpClient 惰性到首次网络 fetch, 无启动期网络栈初始化)
-    registerJvmBookImageLoader()
-    // HTTP 层 (OkHttp + CookieJarBridge, 独立): 提前到阶段1, 与 JS 引擎同批就绪,
-    // 消除"窗口显示后、阶段2异步注册完成前首次 JS eval 触发网络请求 → OkHttpClientProviders
-    // 未注册"的启动竞态 (registerDesktopJsEngines 在前, 书源 JS 里 java.ajax 依赖此层)
-    registerDesktopHttpProvider()
-    // jsoup 走宿主共享 OkHttpClient (对照 app 端 App.kt:138 Jsoup.clientFactory = { okHttpClient })
-    Jsoup.clientFactory = { OkHttpClientProviders.get().okHttpClient }
-    // 漫画图片缓存 provider (webBook 漫画取图链路 BookImageStorageProviders.get() 的依赖):
-    // 提前到阶段1同步注册, 消除"窗口显示后阶段2异步注册前打开漫画页 → get() 抛 not registered
-    // → 图片全部加载失败"的启动竞态 (OkHttpClient 惰性到首次下载)。
-    // 注意: JvmBookImageStorage 构造会取 defaultRootPath → DataStorageProviders.get(),
-    // 必须先 registerJvmDataStorage() (注册本身零开销, 只 new JvmDataStorage)。
-    registerJvmDataStorage()
-    BookImageStorageProviders.register(JvmBookImageStorage())
-    // JS 引擎 provider (JsEngines/SharedJsScope/简繁词典): 提前到阶段1同步注册, 任何页面/协程
-    // 首次 eval 前必然就绪 (原阶段2第12步异步注册存在"先开漫画/详情页 → JS 规则失效"竞态);
-    // 注册本身零开销 (native 库在首次 eval 时才加载)
-    registerDesktopJsEngines()
-    // 注册桌面端 DefaultDataResourceProvider (actual 实现由另一子代理处理, 这里只负责 register)
-    // 必须在 AppDatabaseProviders.register 之前注册 (首次建库 dbCallback.onCreate →
-    // DefaultData.keyboardAssists → DefaultDataResourceProviders.get().readResource("keyboardAssists.json")),
-    // 否则首次建库时 dbCallback.onCreate 抛 IllegalStateException 被 runCatching 吞掉,
-    // 表现为 keyboardAssists 表无默认数据。
-    DefaultDataResourceProviders.register(DesktopDefaultDataResourceProvider())
-    // 注册桌面端 AppDatabase provider (首屏 BookshelfScreen 通过 AppDbProviders 访问 bookDao)
-    // BundledDatabaseDriver 用 Room.databaseBuilder + BundledSQLiteDriver 构造 AppDatabase
-    // (~/.legado/legado.db), 同一实例经 AppDatabaseProviders 共享
-    val dbDriver = BundledDatabaseDriver()
-    AppDatabaseProviders.register(DesktopAppDatabaseProvider(dbDriver))
-    // 注册桌面端 BookStorage provider (首屏书架/阅读用, ~/.legado/book_cache)
-    // ReadBookViewModelShared.loadChapter 通过 BookStorageProviders.get().getContent 读章节缓存正文
-    // 存储路径集中 provider 已在上方 registerJvmDataStorage() 提前注册 (JvmBookStorage 构造时取 chapterCacheDir)
-    BookStorageProviders.register(JvmBookStorage())
-    // 注: BookImageStorageProviders (漫画图片缓存) 非首屏必需, 延迟到阶段3 registerSecondaryProviders 注册
-    // 注册桌面端 AppDbAccessor / BookHelpAccessor provider (首屏书架间接访问)
-    // 供 shared commonMain 中下沉的 webBook 编排层通过 AppDbProviders.get() / BookHelpProviders.get()
-    // 间接访问 appDb 的 9 个 DAO / saveContent; 未注册时阅读流/搜索/书源管理全失效
-    AppDbProviders.register(DesktopAppDbAccessor())
-    BookHelpProviders.register(DesktopBookHelpAccessor())
     // 注册桌面端 PlatformCapabilities (供 shared LegadoApp 经 PlatformCapabilityProviders.get() 取能力)
     PlatformCapabilityProviders.register(DesktopPlatformCapabilities)
     // 注册桌面端 PlatformServices (必须早于 LegadoApp: shared 侧一律 PlatformServiceProviders.get(),
@@ -475,13 +353,11 @@ private fun runDesktopApp() = application {
             windowHandle
         )
     )
-    // 封面选图持久化 (对齐 Android 原版 externalFiles/covers, 落桌面应用数据根目录 covers/)
-    CoverStorageServiceProviders.register(DesktopCoverStorageService())
-    // 朗读引擎 + HttpTTS 播放器工厂 (Windows SAPI / Linux espeak / macOS say): 注册无 provider
-    // 依赖 (只读 os.name, 后端探测在守护线程惰性预热), 与其它无依赖 provider 同批放阶段1。
+    // 朗读引擎 (Windows SAPI / Linux espeak / macOS say): DesktopSystemTtsEngine 依赖 JNA
+    // (WindowsSapiTtsBackend) 留在 :desktop 注册; HttpTTS 播放器工厂 (DesktopHttpTtsPlayer,
+    // 纯 JVM) 已随上方 DesktopCore.registerCoreProviders 注册, headless 亦具备该能力
     val desktopTtsEngine = remember { DesktopSystemTtsEngine() }
     TtsEngineProvider.register(desktopTtsEngine)
-    TtsEngineProvider.registerHttpTtsPlayerFactory { DesktopHttpTtsPlayer() }
     // 系统托盘: 音频/朗读活跃时给播放控制菜单 (最小化后仍可控), 同时承载 toast/进度气泡
     DisposableEffect(Unit) {
         DesktopMediaTray.install(
@@ -508,9 +384,8 @@ private fun runDesktopApp() = application {
     // - Video: MPV 播放器 (SwingPanel + nativeHwnd 桥接, Windows 用 WComponentPeer getHwnd)
     val desktopReaderProvider = remember { DesktopReaderPlatformProvider() }
     ReaderPlatformProviders.register(desktopReaderProvider)
-    // ReadBookShared 的平台钩子 (朗读宿主 / 缓存运行态 / 本地 txt 分章缓存; 图片缓存为空实现,
-    // 见 DesktopReadBookPlatform 注释)。须早于任何阅读页打开
-    registerDesktopReadBookPlatform()
+    // 注: ReadBookShared 平台钩子 (registerDesktopReadBookPlatform) 无 UI 依赖,
+    // 已随上方 DesktopCore.registerCoreProviders 注册 (headless 共用)
     // 阅读排版度量: 注册 Skia 真实字形度量, 取代 SimpleTextMeasurer 等宽近似
     // (字形来源与 PageContentCanvas 的 loadReaderFontFamily / FontFamily.Default 同源)
     registerSkiaTextMeasurer()
@@ -857,154 +732,63 @@ private fun runDesktopApp() = application {
  * 后台异步注册非首屏必需的 provider (启动性能优化)。
  *
  * 首屏 (BookshelfScreen) 只依赖 AppDbProviders + BookHelpProviders + BookStorageProviders
- * (已在 main() 同步注册), 其余 provider 在窗口显示后用 [LaunchedEffect] + [withContext]
+ * (已在阶段1同步注册), 其余 provider 在窗口显示后用 [LaunchedEffect] + [withContext]
  * 在后台线程顺序注册, 保持原依赖关系:
  * - registerDesktopAudioPlayProviders 依赖 SourceHelpAccessors + WebBookProviders + JsEngines + OkHttpClientProviders
  *   (必须在它们之后注册)
+ *
+ * 无 UI 核心子集已下沉 :desktop-core 的 DesktopCore.registerSecondaryCoreProviders()
+ * (原 0/0.5/1/4/5(zip)/7/8/8b/9/10/10b(正则)/11/11b(UserAgent)/13b 步, 顺序保持),
+ * 本函数只保留 UI 绑定子集 + 尾部启动任务调度, headless 入口复用核心子集。
  */
 private suspend fun registerSecondaryProviders() {
     withContext(Dispatchers.Default) {
-        // 0. FileCacheProvider (CacheManager 文件/二进制层, 依赖 AppFilesDirs 已同步注册)
-        // 未注册时 CacheManager 文件层抛 IllegalStateException (不再静默 no-op),
-        // 且须在 JS 引擎 (第12步) 之前注册, 否则首次 JS 文件缓存调用即崩
-        registerDesktopFileCacheProvider()
-        // 0.5 文件下载器 (shared Download 编排: 更新弹窗"下载"等入口; 此前从未注册,
-        // FileDownloaders.get() 抛 IllegalStateException 且在协程内被吞, 表现为点了下载无反应)
-        registerDesktopFileDownloader()
-        // 1. 备份/直链相关 (依赖 PreferenceProviders, 已同步注册)
-        // - PasswordProvider: 供 BackupAES 无参构造经 PasswordProviders 反向获取 password
-        // - DirectLinkUploadProviders: 供 BackupShared/RestoreShared 备份恢复 directLinkUploadRule.json
-        registerDesktopPasswordProvider()
-        registerDesktopDirectLinkUploadProviders()
-        // - BackupRestoreHooks: 备份/恢复的平台收尾 (lastBackup 时间戳 + 恢复完成提示);
-        //   zip 复制/解压走 shared 默认文件分支, 桌面端无 SAF
-        registerDesktopBackupRestoreHook()
-        // 2. HTTP 层已提前到阶段1同步注册 (OkHttp + CookieJarBridge, 独立)
-        // 注: jsoup clientFactory 亦随 HTTP 层提前, 书源 JS 首次 eval 前网络栈必就绪
-        // 3. BackstageWebView (内嵌浏览器引擎: Windows 走系统自带 WebView2 Runtime;
+        // ===== 核心子集 (无 UI 依赖): 见 DesktopCore.registerSecondaryCoreProviders 注释 =====
+        DesktopCore.registerSecondaryCoreProviders()
+        // ===== UI 绑定子集 (依赖 Compose/AWT/JNA/skia/mediamp, 留在 :desktop) =====
+        // 原 3. BackstageWebView (内嵌浏览器引擎: Windows 走系统自带 WebView2 Runtime;
         //    引擎缺失时 create 仍抛 UnsupportedOperationException 由调用方 runCatching 回退 HTTP)
         registerDesktopBackstageWebView()
-        // 4. 本地书定位器 (独立, 供 DesktopBookshelfManagePlatform.deleteLocalBook 用)
-        LocalBookLocators.register(JvmLocalBookLocator())
-        // 5. CbzFile 相关 (独立, 漫画解析用)
+        // 原 5. CbzFile 位图 provider (skia; ZipFileWrapperFactory 已在核心子集注册)
         BitmapProviders.register(DesktopBitmapProvider)
-        ZipFileWrapperFactoryProviders.register(DesktopZipFileWrapperFactory)
-        // 注: BookImageStorageProviders (漫画图片缓存) 与 JS 引擎已提前到阶段1同步注册,
-        // 消除"早开漫画页未注册"启动竞态
-        // 6. EpubFile 相关 (依赖 AppDbProviders, 已同步注册)
-        registerDesktopFileBookAccessor()
-        // 7. SourceHelp (独立, 供 shared SourceHelp.saveSource/deleteBookSource 调用)
-        SourceHelpAccessors.register(DesktopSourceHelpAccessor())
-        // 8. 服务启动器 (依赖 AppDbProviders + BookHelpProviders + BookStorageProviders, 已同步注册)
-        registerDesktopServiceLauncher()
-        // 8b. Web 服务 provider (NanoHTTPD 独立, 不依赖其他 provider)
-        // - WebServerPlatform: HttpServer+WebSocketServer 起停 (JvmWebServerPlatform 共用逻辑)
-        // - WebAssetSource: composeResources 读 commonMain/composeResources/files/web/ 静态资源 (单一数据源)
-        // - WebStrings: 硬编码中文文案 (后续接入 i18n 资源后替换)
-        // 须在任何 WebServerManager.start()/stop() 之前注册 (MyScreen Web 服务开关触发时)
-        registerDesktopWebServerPlatform()
-        registerDesktopWebAssetSource()
-        registerDesktopWebStrings()
-        // 9. CacheBook 回调 (依赖 ServiceLauncher 已注册)
-        DesktopCacheBook.registerCallback()
-        // 10. Source 扩展 provider (依赖 PreferenceProviders, in-memory 实现)
-        registerDesktopSourceProviders()
-        // 10b. 正则替换错误处理 + 压缩文件解压 provider (供 shared RegexReplacerImpl / JsExtensionsCommon 调用,
-        //      必须在 WebBook 编排层 + JS 引擎首次 eval 之前注册, Toasters / AppFilesDirs 已就绪)
-        registerDesktopRegexErrorHandler()
-        registerDesktopArchiveProvider()
-        // 11. WebBook 编排层 (依赖 AppDbProviders.replaceRuleDao 已就绪)
-        registerDesktopWebBookProviders()
-        // 11b. JS 扩展回调 provider (Toast/OpenUrl/UserAgent, 供 JsExtensionsCommon 回调,
-        //      必须在 JS 引擎首次 eval 之前注册)
+        // 原 6. EpubFile 相关 (压缩/PDF 能力注入: DesktopArchiveCodec + DesktopPdfFile 均留 :desktop)
+        registerDesktopFileBookAccessor(DesktopArchiveCodec, DesktopPdfFile)
+        // 原 11. Web 服务封面/插图 provider: 字节流实现在 desktop-core, skia 缩图策略注入;
+        //    未注册时 BookController.getCover/getImg 抛 IllegalStateException
+        ImageControllerProviders.register(DesktopImageControllerProvider(DesktopSkiaImageScaler))
+        // 原 11b. OpenUrl provider (打开确认框走 DesktopDialogs, 无 UI 无法确认)
         registerDesktopOpenUrlProvider()
-        registerDesktopUserAgentProvider()
-        // 11c. 书源验证 UI provider (图片验证码走 Swing 输入框, 网页验证给明确报错)
-        //      依赖 OkHttpClientProviders (第2步, 拉验证码图片) + Toasters (上方已注册);
+        // 原 11c. 书源验证 UI provider (图片验证码走 Swing 输入框, 网页验证给明确报错)
+        //      依赖 OkHttpClientProviders (阶段1, 拉验证码图片) + Toasters (已注册);
         //      未注册时 JS 触发验证会 IllegalStateException 裸抛
         registerDesktopVerificationUiProvider()
-        // 注: JS 引擎 (JsEngines/SharedJsScope) 已提前到阶段1同步注册
-        // 13. AudioPlay (依赖 AppDbProviders + BookHelpProviders + SourceHelpAccessors + WebBookProviders
+        // 原 13. AudioPlay (依赖 AppDbProviders + BookHelpProviders + SourceHelpAccessors + WebBookProviders
         //     + JsEngines + OkHttpClientProviders, 必须最后注册)
         registerDesktopAudioPlayProviders()
-        // 13a. 系统媒体控制 (SMTC 卡片写入端 + 朗读宿主, 判定见 shared SystemMediaControl)
+        // 原 13a. 系统媒体控制 (SMTC 卡片写入端 + 朗读宿主, 判定见 shared SystemMediaControl)
         registerDesktopSystemMediaControl()
-        // 13b. ChangeBookSource / BookshelfManage 平台 provider (对照 app 端 App.kt:183/187
-        //      registerAndroidChangeBookSourcePlatform / registerAndroidBookshelfManagePlatform,
-        //      须在 registerDesktopWebBookProviders 之后, 因换源/书架管理依赖 AppDbProviders /
-        //      WebBookProviders / ContentProcessorProviders 已注册)
-        registerDesktopChangeBookSourcePlatform()
-        registerDesktopBookshelfManagePlatform()
         // 注: TTS 引擎 + HttpTTS 播放器工厂已提前到阶段1同步注册 (无依赖, 消除开窗即朗读的竞态)
+        // 压缩文件解压 provider (原 10b 后半, DesktopArchiveCodec 依赖 junrar/commons-compress)
+        registerDesktopArchiveProvider()
 
-        // 15. 启动期异步任务 (对照 app 端 App.kt onCreate 的 Coroutine.async 块)
-        // adjustSortNumber: 调整书源排序序号 (依赖 AppDbProviders, 已注册)
-        // 异常由 Coroutine 内部 printOnDebug 吞没, 与 app 端语义一致
-        Coroutine.async { SourceHelp.adjustSortNumber() }
-        // LogUtils.init 为 Android 专属, desktop 用 registerDesktopAppLogHost 替代
-        // 对照 app 端 App.kt:144 DefaultData.upVersion() + dbCallback.onCreate 预置数据:
-        // 桌面端 Room KMP 无 Callback, 首启/升级的默认数据统一在这里幂等补齐
-        initDesktopDefaultData()
-        // 注: app 端 App.kt:171 BookCover.toString() 未补齐 — BookCover object 依赖 Android
-        // Glide/Bitmap/Drawable/appCtx, desktop 详情页封面走 shared 的 SharedBlurCoverBgCoil (Coil3),
-        // 无对应下沉的封面缓存初始化逻辑。
-
-        // 16. 启动期缓存清理 + WebDav 进度同步
-        // (对照 app 端 App.kt onCreate 的两个 Coroutine.async 块:
-        //  - 缓存清理: 距上次备份超过 1 天才执行 (lastBackup 由桌面备份 hook 写入),
-        //    清 cacheDao 过期条目 + 无效书籍缓存 + 备份/阅读背景/主题背景缓存;
-        //  - 进度同步: syncBookProgress 开启时从 WebDav 拉取所有书籍进度写回本地)
-        Coroutine.async {
-            val lastBackup = PreferenceProviders.get().getLong(LocalConfigKeys.lastBackup, 0L)
-            if (lastBackup + TimeUnit.DAYS.toMillis(1) < System.currentTimeMillis()) {
-                AppDbProviders.get().cacheDao.clearDeadline(System.currentTimeMillis())
-                BookHelpShared.clearInvalidCache()
-                BackupShared.clearCache()
-                ReadBookConfigProviders.get().clearBgAndCache()
-                ThemeConfigProviders.get().clearBg()
-            }
-        }
-        Coroutine.async {
-            if (AppConfigProviders.get().syncBookProgress) {
-                AppWebDavShared.downloadAllBookProgress()
-            }
-        }
+        // ===== 尾部启动任务 (原 15/16 步, 逐行等价逻辑在 DesktopCore.startupBackgroundTasks) =====
+        DesktopCore.startupBackgroundTasks()
     }
 }
 
 /**
  * KP6 桌面端运行时环境初始化 (便携模式 + native 库加载)。
  *
- * 必须在所有 provider 注册前调用 (Main.kt application{} 第一行), 因下游:
- * - [io.legado.app.help.file.DesktopAppFilesDir] / [io.legado.app.data.BundledDatabaseDriver] /
- *   [io.legado.app.help.book.JvmBookStorage] 构造时经 [io.legado.app.help.file.desktopAppRootDir]
- *   读 `legado.portable.root` 系统属性定位配置根目录
- * - [io.legado.app.model.script.quickjs.QuickJsJsEngine] 首次 eval 经
- *   `com.script.quickjs.loadLegadoQuickJsNative()` 读 `legado.quickjs.lib` 系统属性定位 native 库
- *
- * # 便携模式定位 (KP6+: 编译期 InstallType 控制)
- *
- * 安装类型由 gradle property `legado.installType` (portable|installed|dev) 在编译期
- * 决定 (desktop/build.gradle.kts 生成 InstallType.kt), 不再靠运行时嗅探 runtime/ 目录
- * (用户裁决: 嗅探目录在用户安装到非指定目录时会误判)。
- *
- * portable 模式: 经 `compose.application.resources.dir` 定位 exe 所在目录, 在其同级
- * 创建 `data/` 作为便携配置根 (数据库/配置跟随 exe, 拷贝即迁移, 卸载即清空),
- * 设置 `legado.portable.root` 系统属性供下游读取。
- *
- * installed/dev 模式: 不设置系统属性, 下游 DesktopAppPaths 走 portable.txt 标记检测
- * (便携 zip 内置) / 系统数据目录 (%APPDATA%、XDG_DATA_HOME、Application Support)。
+ * 核心逻辑 (系统属性设置 + native 库定位) 已下沉 :desktop-core 的
+ * [DesktopCore.initRuntimeEnvironment] (与 headless 共用); 本函数只负责 :desktop 特有的
+ * 定位输入:
+ * - 便携模式: 经 `compose.application.resources.dir` 定位 exe 所在目录, 数据存其同级 data/
+ *   (编译期 InstallType 控制行为, InstallType 是 desktop/build.gradle.kts 生成类, headless 不用)
+ * - quickjs native: 从 resourcesDir (打包后 = app/{packageName}/, 含 copyQuickjsNativeToResources
+ *   task 纳入的 legado_quickjs.dll) 直接定位; 开发期目录无 dll → 不设属性,
+ *   Platform.kt 候选3 从当前目录向上递归找 modules/quickjs 构建产物
  *
  * 开发期默认 dev (build.gradle.kts 默认值), 保护项目源码树不被污染。
- *
- * # native 库加载
- *
- * 从 `compose.application.resources.dir` (打包后 = `app/{packageName}/`, 含经
- * `copyQuickjsNativeToResources` task 纳入的 `legado_quickjs.dll`) 定位 native 库,
- * 设置 `legado.quickjs.lib` 系统属性, 让 quickjs 模块 Platform.kt 属性1逻辑能 `System.load` 加载。
- *
- * 开发期该目录无 dll (copy task 未触发), 属性不设置, Platform.kt 走候选3
- * (向上递归找 `modules/quickjs/build/libs/jvm/native/`) 加载开发机构建产物。
  */
 private fun initDesktopRuntimeEnvironment() {
     val resourcesDir = System.getProperty("compose.application.resources.dir") ?: return
@@ -1012,36 +796,16 @@ private fun initDesktopRuntimeEnvironment() {
     val resDirFile = File(resourcesDir)
     if (!resDirFile.isDirectory) return
 
-    // 1. 便携模式定位 (KP6+: 由编译期 InstallType 控制, 不再嗅探 runtime/ 目录):
-    //    resDirFile 指向 app/<packageName>/ (jar + 资源所在目录),
-    //    其 parentFile = jpackage package root (exe 所在目录的同级)。
-    //    portable 模式: 数据存 exe 同级 dataDir (设置 legado.portable.root 系统属性,
-    //      下游 DesktopAppFilesDir/JvmBookStorage 读此属性定位配置根)。
-    //    installed/dev 模式: 不设置系统属性, 下游 DesktopAppPaths 走 portable.txt
-    //      标记检测 / 系统数据目录。
+    // 便携模式: resDirFile 指向 app/<packageName>/ (jar + 资源所在目录),
+    // 其 parentFile = jpackage package root (exe 所在目录的同级)。
+    // portable 模式数据存 exe 同级 dataDir; installed/dev 模式传 null (走 portable.txt 标记
+    // 检测 / 系统数据目录), 仅日志记录安装模式。
     if (InstallType.IS_PORTABLE) {
         val exeDir = resDirFile.parentFile?.parentFile ?: resDirFile.parentFile
-        val dataDir = File(exeDir, "data")
-        dataDir.mkdirs()
-        System.setProperty("legado.portable.root", dataDir.absolutePath)
-        AppLog.put("portable 模式, dataDir = ${dataDir.absolutePath}", tag = TAG)
+        DesktopCore.initRuntimeEnvironment(File(exeDir, "data"), resDirFile)
     } else {
         AppLog.put(jvmGetString("desktop_install_mode_not_portable", InstallType.TYPE), tag = TAG)
-    }
-
-    // 2. native 库加载: 从 resourcesDir 找平台对应 native 库
-    //    (经 copyQuickjsNativeToResources task 纳入, 与 jar 同级)
-    val osName = System.getProperty("os.name").lowercase()
-    val libName = when {
-        osName.contains("windows") -> "legado_quickjs.dll"
-        osName.contains("mac") || osName.contains("darwin") -> "liblegado_quickjs.dylib"
-        else -> "liblegado_quickjs.so"
-    }
-    val libFile = File(resDirFile, libName)
-    if (libFile.exists()) {
-        System.setProperty("legado.quickjs.lib", libFile.absolutePath)
-        AppLog.put("quickjs native 库已定位: ${libFile.absolutePath}", tag = TAG)
-    } else {
-        AppLog.put("quickjs native 库缺失: ${libFile.absolutePath}", tag = TAG)
+        // 非 portable 仍尝试定位 quickjs native 库 (打包产物在 resources 目录)
+        DesktopCore.initRuntimeEnvironment(null, resDirFile)
     }
 }

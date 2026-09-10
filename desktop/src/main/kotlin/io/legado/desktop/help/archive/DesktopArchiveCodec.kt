@@ -7,6 +7,7 @@ import io.legado.app.constant.AppPattern
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.utils.EncodingDetect
 import io.legado.desktop.help.archive.DesktopArchiveCodec.sniffFormat
+import io.legado.desktop.model.fileBook.DesktopArchiveSupport
 import org.apache.commons.compress.archivers.sevenz.SevenZFile
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry
@@ -35,10 +36,10 @@ import java.nio.charset.StandardCharsets
  * # 路径穿越
  * 与 app 端一致: 解压目标必须落在 destDir 内, 否则抛 [SecurityException]。
  */
-internal object DesktopArchiveCodec {
+internal object DesktopArchiveCodec : DesktopArchiveSupport {
 
     /** 压缩包格式校验 (对齐 app 端 `ArchiveUtils.checkArchive`)。 */
-    fun checkArchive(name: String) {
+    override fun checkArchive(name: String) {
         if (!AppPattern.archiveFileRegex.matches(name)) {
             throw IllegalArgumentException("Unexpected file suffix")
         }
@@ -49,11 +50,13 @@ internal object DesktopArchiveCodec {
      *
      * [filter] 为 null 时解出全部条目; 非 null 时只解出匹配条目 (目录仍照常创建)。
      */
-    fun unArchive(archiveFile: File, destDir: File, filter: ((String) -> Boolean)?): List<File> {
+    override fun unArchive(archiveFile: File, destDir: File, filter: ((String) -> Boolean)?): List<File> {
         val files = mutableListOf<File>()
+        val destPath = destDir.canonicalFile.toPath()
         forEachEntry(archiveFile) { entry ->
             val entryFile = File(destDir, entry.name)
-            if (!entryFile.canonicalPath.startsWith(destDir.canonicalPath)) {
+            val entryPath = entryFile.canonicalFile.toPath()
+            if (!entryPath.startsWith(destPath)) {
                 throw SecurityException("压缩文件只能解压到指定路径")
             }
             if (entry.isDirectory) {
@@ -69,7 +72,7 @@ internal object DesktopArchiveCodec {
     }
 
     /** 遍历条目名 (对齐 `LibArchiveUtils.getFilesName`, 目录跳过)。 */
-    fun getFilesName(archiveFile: File, filter: ((String) -> Boolean)?): List<String> {
+    override fun getFilesName(archiveFile: File, filter: ((String) -> Boolean)?): List<String> {
         val names = mutableListOf<String>()
         forEachEntry(archiveFile) { entry ->
             if (entry.isDirectory) return@forEachEntry

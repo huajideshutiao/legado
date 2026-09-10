@@ -1,6 +1,7 @@
 package io.legado.desktop.help
 
 import io.legado.app.constant.AppLog
+import io.legado.desktop.restartMainClass
 import io.legado.desktop.startupArgs
 import java.io.File
 
@@ -20,6 +21,9 @@ import java.io.File
  *
  * 两个调用方: 切语言 ([io.legado.desktop.ui.DesktopPlatformCapabilities.applyAppLanguage])
  * 与正则回溯失控兜底 (DesktopRegexErrorHandler.restartApp)。
+ *
+ * 主类名经 [restartMainClass] 注入 (默认 io.legado.desktop.MainKt; headless 入口覆写为
+ * io.legado.headless.MainKt, 避免无头进程重启时拉起桌面 UI)。
  */
 fun launchRestartProcess(): Boolean = runCatching {
     val javaBin = File(
@@ -29,7 +33,7 @@ fun launchRestartProcess(): Boolean = runCatching {
     if (!javaBin.isFile) return false
     val classpath = System.getProperty("java.class.path")?.takeIf { it.isNotBlank() }
         ?: return false
-    val command = arrayListOf(javaBin.absolutePath, "-cp", classpath, MAIN_CLASS)
+    val command = arrayListOf(javaBin.absolutePath, "-cp", classpath, restartMainClass)
     command += startupArgs
     command += "--legado-restart-wait=${ProcessHandle.current().pid()}"
     ProcessBuilder(command).apply {
@@ -40,9 +44,6 @@ fun launchRestartProcess(): Boolean = runCatching {
 }.onFailure {
     AppLog.put("拉起新进程失败: ${it.localizedMessage}", it)
 }.getOrDefault(false)
-
-/** 主类名 (Compose Desktop application 配置, 开发/打包一致)。 */
-private const val MAIN_CLASS = "io.legado.desktop.MainKt"
 
 private fun isWindowsOs(): Boolean =
     System.getProperty("os.name", "").lowercase().contains("win")

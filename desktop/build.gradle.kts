@@ -11,6 +11,14 @@ plugins {
     id("legado.compose")
 }
 
+// QuickJS native 目录架构契约（生产者/desktop/headless/runtime 必须一致）：
+// amd64|x86_64|x64 -> x86_64；arm64|aarch64 -> aarch64；其余仅做路径安全化。
+fun normalizeJvmNativeArch(rawArch: String): String = when (val arch = rawArch.lowercase()) {
+    "amd64", "x86_64", "x64" -> "x86_64"
+    "arm64", "aarch64" -> "aarch64"
+    else -> arch.replace(Regex("[^a-z0-9_.-]"), "_")
+}
+
 // ProGuard 瘦身已改用 Compose Desktop 官方集成 (见 compose.desktop.application.buildTypes.
 // release.proguard {}): 官方 release buildType 自动创建 proguardReleaseJars 并接线到
 // packageRelease*/createReleaseDistributable, joinOutputJars=false 逐 jar 输出规避 service 合并坑。
@@ -99,6 +107,9 @@ tasks.named("compileKotlin").configure { dependsOn(generateInstallType) }
 dependencies {
     // 引入 shared 模块 jvm target (传递 commonMain + jvmMain 全部 API)
     implementation(project(":shared"))
+    // 无 UI 核心 (从本模块机械抽取, 见 desktop-core/build.gradle.kts 头注释):
+    // Main.kt 的阶段1/阶段3 provider 注册核心子集与运行时环境初始化改调 DesktopCore
+    implementation(project(":desktop-core"))
     // shared 模块 commonMain 已声明 kotlinx-serialization-json api, 但 jvm target 传递依赖可能不完整, 显式补
     implementation(libs.kotlinx.coroutines.core)
     // JVM 的 Dispatchers.Main 由本 artifact 经 ServiceLoader 注册到 EDT, 缺失则 withContext(Main) 抛异常
@@ -247,7 +258,18 @@ tasks.matching { it.name == "createRuntimeImage" }.configureEach {
 // modules/quickjs 构建产物 (legado_quickjs.dll/.so/.dylib) 复制进去, jpackage 会把该目录
 // 内容复制到 app/{packageName}/ 下; Main.kt 通过 compose.application.resources.dir
 // 系统属性定位并设置 legado.quickjs.lib, quickjs 模块 Platform.kt 属性1逻辑 System.load 加载。
-val quickjsNativeDir = file("${rootProject.projectDir}/modules/quickjs/build/libs/jvm/native")
+val quickjsPlatformId = buildString {
+    val osName = when {
+        OperatingSystem.current().isWindows -> "windows"
+        OperatingSystem.current().isMacOsX -> "macos"
+        OperatingSystem.current().isLinux -> "linux"
+        else -> System.getProperty("os.name").lowercase().replace(Regex("[^a-z0-9_.-]"), "_")
+    }
+    val arch = normalizeJvmNativeArch(System.getProperty("os.arch"))
+    append(osName).append('-').append(arch)
+}
+val quickjsNativeDir =
+    file("${rootProject.projectDir}/modules/quickjs/build/libs/jvm/native/$quickjsPlatformId")
 val composeResourcesDir = file("build/compose-resources")
 
 val copyQuickjsNativeToResources by tasks.registering(Copy::class) {
@@ -292,6 +314,28 @@ fun runCmakeNativeBuild(
     if (cmakeCmd == null) {
         logger.warn("[$tag] cmake not found, skipping native build.")
         return
+    }
+    // CMake 缓存绑定源码目录, 项目迁移后残留的旧缓存会让 configure 直接报错退出;
+    // 与 modules/quickjs buildJvmNativeLib 同款检测, 源目录变了就清缓存重建
+    val cmakeCache = File(buildDir, "CMakeCache.txt")
+    if (cmakeCache.exists()) {
+        val homePrefix = "CMAKE_HOME_DIRECTORY:INTERNAL="
+        val cachedHome = cmakeCache.readLines()
+            .find { it.startsWith(homePrefix) }
+            ?.substring(homePrefix.length)
+        if (cachedHome != null) {
+            val cachedPath = File(cachedHome).canonicalPath
+            val currentPath = cppDir.canonicalPath
+            val sameSource = if (OperatingSystem.current().isWindows) {
+                cachedPath.equals(currentPath, ignoreCase = true)
+            } else {
+                cachedPath == currentPath
+            }
+            if (!sameSource) {
+                logger.lifecycle("[$tag] CMake source changed; resetting stale cache.")
+                buildDir.deleteRecursively()
+            }
+        }
     }
     outDir.mkdirs()
     buildDir.mkdirs()
@@ -528,8 +572,7 @@ compose.desktop {
         // 上根本不存在, 无意义。
         // native 库加载改走: appResourcesRootDir 纳入产物 + Main.kt 设
         // legado.quickjs.lib 系统属性 + Platform.kt 候选1 System.load 加载。
-        // 开发期 :desktop:run 不需要 java.library.path, Platform.kt 候选3 会从当前
-        // 工作目录向上递归找 modules/quickjs/build/libs/jvm/native/{dll|so|dylib}。
+        // 开发期 :desktop:run 通过 legado.quickjs.lib 指向按 os-arch 分层的 native 输出。
         jvmArgs += listOf(
             "-Xmx768m",                          // 提升堆上限避免大书架 OOM (原 512m 偏小)
             "-Xms128m",                          // 启动期小初始堆, 按需增长减少启动期内存申请开销
@@ -551,8 +594,8 @@ compose.desktop {
         // CI 产物路径: desktop/build/compose/binaries/{msi,deb,rpm}/<package>-<version>.<ext>
         // 注意: packageVersion 必须 x.y.z[.w] 格式; CI 通过 -PappVersion 注入实际版本号 (统一与 Android 版本一致)
         nativeDistributions {
-            // 声明目标格式, 由 CI 在对应 runner 上分别打包 (Windows→msi, Linux→deb/rpm, macOS→dmg, AppImage→便携版镜像)
-            targetFormats(TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Rpm, TargetFormat.Dmg, TargetFormat.AppImage)
+            // 声明目标格式, 由 CI 在对应 runner 上分别打包 (Windows→msi, Linux→deb/rpm, macOS→dmg)
+            targetFormats(TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Rpm, TargetFormat.Dmg)
             // KP6: 资源根目录, 内容会被 jpackage 复制到 app/{packageName}/ 下
             // copyQuickjsNativeToResources task 把 legado_quickjs.dll/.so/.dylib 复制进来,
             // Main.kt 通过 compose.application.resources.dir 定位并设置 legado.quickjs.lib 加载
@@ -660,7 +703,7 @@ tasks.jar {
 }
 
 // KP1.1: :desktop:run 之前确保 :modules:quickjs 的 native 库已构建 (.dll/.so/.dylib)
-// buildJvmNativeLib 探测系统 cmake + 编译器, 失败时只警告不失败 (Kotlin 编译不受影响, 仅 JS eval 运行时报错)
+// buildJvmNativeLib 探测系统 CMake + 编译器；缺失或失败会直接终止 run/打包，避免带病产物。
 // 注: compose.desktop.application{} 创建的 run task 需在 afterEvaluate 中追加依赖
 afterEvaluate {
     tasks.named("run").configure {
@@ -670,6 +713,15 @@ afterEvaluate {
         // 开发期 run 注入 debug 标志: 让 shared printStackTraceOnDebug 对齐 Android 的
         // BuildConfig.DEBUG 语义 (仅开发打栈); 打包产物不带该属性 = 静默
         if (this is JavaExec) {
+            val quickjsLibraryName = when {
+                OperatingSystem.current().isWindows -> "legado_quickjs.dll"
+                OperatingSystem.current().isMacOsX -> "liblegado_quickjs.dylib"
+                else -> "liblegado_quickjs.so"
+            }
+            systemProperty(
+                "legado.quickjs.lib",
+                quickjsNativeDir.resolve(quickjsLibraryName).absolutePath
+            )
             systemProperty("legado.debug", "true")
             // AppLog 的 write/debugPrint 走 desktopDebug 门控 (registerDesktopAppLogHost),
             // 开发期 run 一并打开, 否则 shared/desktop 的 AppLog.put 全部静默 (排查时误判"无异常")
@@ -685,11 +737,10 @@ afterEvaluate {
         it.name in listOf(
             "prepareAppResources",
             "createRuntimeImage", "createDistributable",
-            "packageMsi", "packageExe", "packageDeb", "packageRpm",
-            "packageDmg", "packageAppImage",
+            "packageMsi", "packageExe", "packageDeb", "packageRpm", "packageDmg",
             // release buildType 变体 (官方 ProGuard 集成启用后的打包任务名, 与 default 同名后缀 Release)
             "createReleaseDistributable", "packageReleaseMsi", "packageReleaseExe",
-            "packageReleaseDeb", "packageReleaseRpm", "packageReleaseDmg", "packageReleaseAppImage",
+            "packageReleaseDeb", "packageReleaseRpm", "packageReleaseDmg",
         )
     }.configureEach {
         dependsOn(copyQuickjsNativeToResources)
@@ -763,7 +814,7 @@ val dumpCdsArchive by tasks.registering {
 tasks.matching {
     it.name in listOf(
         "packageReleaseMsi", "packageReleaseExe",
-        "packageReleaseDeb", "packageReleaseRpm", "packageReleaseDmg", "packageReleaseAppImage",
+        "packageReleaseDeb", "packageReleaseRpm", "packageReleaseDmg",
     )
 }.configureEach {
     dependsOn(dumpCdsArchive)

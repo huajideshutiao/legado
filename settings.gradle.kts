@@ -62,6 +62,10 @@ include(":modules:quickjs-android-native")
 include(":modules:quickjs-processor")
 include(":shared")
 include(":desktop")
+// 桌面端无 UI 核心库 (从 :desktop 机械抽取, 供 :desktop 与 :headless 共用)
+include(":desktop-core")
+// 桌面端无头模式入口 (后台进程, 只依赖 :desktop-core, 无窗口/AV/UI 初始化)
+include(":headless")
 if (enableOhosTarget) {
     include(":modules:ksoup-ohos")
 }

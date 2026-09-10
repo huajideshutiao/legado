@@ -7,7 +7,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.BookHelpAccessor
 import io.legado.app.help.book.BookImageStorageProviders
 import io.legado.app.help.book.BookStorageProviders
-import io.legado.app.help.file.desktopAppRootDir
+import io.legado.app.help.config.COVER_CACHE_REF_SEGMENT
 import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.ui.book.read.page.provider.ChapterContentParserShared
 import io.legado.app.utils.MD5Utils
@@ -17,7 +17,6 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withContext
-import java.nio.file.Paths
 
 /**
  * 桌面端 [BookHelpAccessor] 实现: 委托 [BookStorageProviders.get].saveText 落盘章节正文,
@@ -119,18 +118,17 @@ class DesktopBookHelpAccessor : BookHelpAccessor {
     }.getOrDefault(false)
 
     /**
-     * 封面文件路径 (CbzFile 下沉新增, 对应 app 端 `FileBook.getCoverPath(bookUrl)`)。
+     * 封面缓存相对引用 (CbzFile 下沉新增, 对应 app 端 `FileBook.getCoverPath(bookUrl)`)。
      *
-     * 路径派生: `{desktopAppRootDir}/covers/{md5_16(bookUrl)}.jpg`
-     * - 便携模式: `data/covers/{md5_16}.jpg`
-     * - 开发模式: `~/.legado/covers/{md5_16}.jpg`
+     * 存储格式: `coverCache/{md5_16(bookUrl)}.jpg`, 物理落盘 `{desktopAppRootDir}/covers/`
+     * (便携模式 data/covers, 开发模式 ~/.legado/covers); 经 resolveImagePath 的 coverCache
+     * 规则 / desktopResolveStoredRef 解析为物理路径, 便携移动程序目录后仍有效。
      *
-     * 与 app 端 `{appCtx.externalFiles}/covers/{md5_16}.jpg` 语义对齐 (仅根目录不同),
+     * 与 app 端 `{appCtx.externalFiles}/covers/{md5_16}.jpg` 语义对齐 (仅存储格式不同),
      * 供 [io.legado.app.model.fileBook.CbzFile.upBookInfo] 在 book.coverUrl 为空时设置封面落盘路径。
      */
     override fun getCoverPath(bookUrl: String): String {
-        val root = desktopAppRootDir()
-        return Paths.get(root, "covers", "${MD5Utils.md5Encode16(bookUrl)}.jpg").toString()
+        return "$COVER_CACHE_REF_SEGMENT/${MD5Utils.md5Encode16(bookUrl)}.jpg"
     }
 
     // BookHelpShared 下沉新增: 平台专属临时文件清理 (桌面端无 ArchiveUtils.TEMP_PATH 等, no-op)

@@ -5,6 +5,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookImageStorageProviders
 import io.legado.app.help.book.LocalBookLocators
+import io.legado.app.help.file.desktopResolveStoredRef
 import io.legado.app.help.image.toSkiaImage
 import io.legado.app.model.fileBook.BaseFileBook
 import io.legado.app.model.fileBook.FileBook
@@ -203,12 +204,13 @@ class DesktopPdfFile(var book: Book) {
             if (book.coverUrl.isNullOrEmpty()) {
                 book.coverUrl = FileBook.getCoverPath(book.bookUrl)
             }
-            val coverUrl = book.coverUrl ?: return
-            if (fastCheck && File(coverUrl).exists()) {
+            // coverUrl 是落库存储引用 (coverCache/ 相对引用), 读写文件前先解析为本地路径
+            val coverFile = desktopResolveStoredRef(book.coverUrl ?: return)
+            if (fastCheck && coverFile.exists()) {
                 return
             }
             val bytes = synchronized(this) { openPdfPage(0)?.let { toJpegBytes(it) } } ?: return
-            FileUtilsBase.createFileIfNotExist(coverUrl).writeBytes(bytes)
+            FileUtilsBase.createFileIfNotExist(coverFile.absolutePath).writeBytes(bytes)
         } catch (e: Exception) {
             AppLog.put("加载书籍封面失败\n${e.localizedMessage}", e)
         }

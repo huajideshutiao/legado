@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicReference
  * 注意文本一律作为独立 argv 元素或走 stdin 传递, 不做 shell 引号包裹 ——
  * ProcessBuilder 不经过 shell, 手动加引号会把引号本身读出来。
  */
-internal abstract class CommandLineTtsBackend : DesktopTtsBackend {
+abstract class CommandLineTtsBackend : DesktopTtsBackend {
 
     override val supportsPause: Boolean = false
     override val supportsWordProgress: Boolean = false
@@ -158,7 +158,7 @@ internal abstract class CommandLineTtsBackend : DesktopTtsBackend {
  * - `say -v '?'` 枚举音色, 输出形如 `Tingting  zh_CN  # 您好...`
  * - `-r` 为词/分钟, 未文档化范围, 以 200 WPM 作 1.0x 基准
  */
-internal class MacSayTtsBackend : CommandLineTtsBackend() {
+class MacSayTtsBackend : CommandLineTtsBackend() {
 
     override val id: String = "say"
     override val textViaStdin: Boolean = true
@@ -207,7 +207,7 @@ internal class MacSayTtsBackend : CommandLineTtsBackend() {
  * - `-r` 为 -100..100 相对语速, 按倍率线性映射
  * - `-L` 枚举音色, 三列定宽 (NAME / LANGUAGE / VARIANT)
  */
-internal class LinuxSpeechDispatcherBackend : CommandLineTtsBackend() {
+class LinuxSpeechDispatcherBackend : CommandLineTtsBackend() {
 
     override val id: String = "spd-say"
 
@@ -253,7 +253,7 @@ internal class LinuxSpeechDispatcherBackend : CommandLineTtsBackend() {
  *
  * 文本走 `--stdin`, 进程阻塞直到读完才退出。
  */
-internal class LinuxEspeakNgBackend(private val binary: String) : CommandLineTtsBackend() {
+class LinuxEspeakNgBackend(private val binary: String) : CommandLineTtsBackend() {
 
     override val id: String = binary
     override val textViaStdin: Boolean = true

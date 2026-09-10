@@ -16,7 +16,7 @@ data class DesktopTtsVoice(
 /**
  * 后端朗读事件, 每次 [DesktopTtsBackend.speak] 必须恰好触发一次终止事件 (done/error)。
  */
-internal interface TtsBackendListener {
+interface TtsBackendListener {
     fun onStart(utteranceId: String)
 
     /** 词边界进度, 偏移基于传入 speak 的文本; 仅 Windows SAPI 提供。 */
@@ -32,7 +32,7 @@ internal interface TtsBackendListener {
  *
  * [speak] 立即返回, 朗读在后端自有线程进行。
  */
-internal interface DesktopTtsBackend {
+interface DesktopTtsBackend {
 
     /** 后端标识, 用于日志与错误提示。 */
     val id: String

@@ -314,10 +314,6 @@ class DesktopAppConfigAccessor : AppConfigAccessor {
     override val audioPlayUseWakeLock: Boolean
         get() = prefs.getBoolean(PreferKey.audioPlayWakeLock, false)
 
-    override fun setAudioPlayUseWakeLock(value: Boolean) {
-        prefs.putBoolean(PreferKey.audioPlayWakeLock, value)
-    }
-
     // ---- 主题 (热路径, 走缓存) ----
     override val themeMode: String
         get() = themeModeCache.get()
@@ -437,24 +433,22 @@ class DesktopAppConfigAccessor : AppConfigAccessor {
     }
 
     /**
-     * 仅 Windows: 读 `HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`
-     * 的 `AppsUseLightTheme` DWORD (0=深色, 1=浅色); 非 Windows 平台 (macOS/Linux)
-     * 无等价注册表, 返回 false (与 JVM 无系统主题 API 的事实对齐, UI 回落日间属正常降级)。
+     * 系统深色模式检测器 (平台注入): 读 `HKCU\...\Personalize` 的 `AppsUseLightTheme`
+     * DWORD (0=深色, 1=浅色)。原实现直调 JNA (com.sun.jna) —— 因本模块依赖闭包不得携带
+     * jna (:headless 复用本模块), 检测逻辑拆到 :desktop 的
+     * `registerDesktopSystemNightModeDetector()` 注入; 未注入时返回 false (与 macOS/Linux
+     * "无等价注册表, UI 回落日间属正常降级"行为一致, headless 仅影响跟随系统主题)。
      */
-    private fun detectSystemNightMode(): Boolean {
-        if (!com.sun.jna.Platform.isWindows()) return false
-        return runCatching {
-            com.sun.jna.platform.win32.Advapi32Util.registryGetIntValue(
-                com.sun.jna.platform.win32.WinReg.HKEY_CURRENT_USER,
-                "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
-                "AppsUseLightTheme",
-            ) == 0
-        }.getOrDefault(false)
-    }
+    private fun detectSystemNightMode(): Boolean =
+        systemNightModeDetector?.invoke() ?: false
 
-    private companion object {
+    companion object {
         /** 系统深色模式检测缓存时长 (毫秒)。 */
         const val SYS_NIGHT_TTL_MS = 10_000L
+
+        /** 系统深色模式检测器 (JNA 注册表版由 :desktop 注册; headless 不注册, 恒回落日间)。 */
+        @Volatile
+        var systemNightModeDetector: (() -> Boolean)? = null
     }
 
     // ---- 设置界面直写 pref 的开关 (热路径, 走缓存) ----

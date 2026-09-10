@@ -9,22 +9,17 @@ import io.legado.app.help.book.BookImageStorageProviders
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.utils.File
 import kotlinx.coroutines.runBlocking
-import org.jetbrains.skia.Bitmap
-import org.jetbrains.skia.Canvas
-import org.jetbrains.skia.ColorAlphaType
-import org.jetbrains.skia.EncodedImageFormat
-import org.jetbrains.skia.Image
-import org.jetbrains.skia.ImageInfo
-import org.jetbrains.skia.Rect
-import org.jetbrains.skia.SamplingMode
-import org.jetbrains.skia.impl.use
 
 /**
- * desktop 端 [ImageControllerProvider] 最小真实实现 (基于 Skia 原生渲染, 与 nativeMain 共用同一套逻辑)。
+ * desktop 端 [ImageControllerProvider] 最小真实实现 (封面/插图字节流; 超宽缩图策略经构造注入,
+ * :desktop 注入 Skia 实现 [DesktopSkiaImageScaler], headless 用默认恒等 —— 不背 skia 依赖)。
  *
  * 直接返回本地缓存原始字节, 失败返回 null → 调用方回 "getCover/getImg error", 不抛异常。
  */
-object DesktopImageControllerProvider : ImageControllerProvider {
+class DesktopImageControllerProvider(
+    /** 超宽等比缩图策略 (bytes, width) -> bytes; 默认恒等 (headless 无 skia, 原样返回缓存字节) */
+    private val scaleToWidth: (bytes: ByteArray, width: Int) -> ByteArray = { bytes, _ -> bytes },
+) : ImageControllerProvider {
 
     // 按 bookUrl 缓存 book, 避免重复查库
     private var book: Book? = null
@@ -55,39 +50,6 @@ object DesktopImageControllerProvider : ImageControllerProvider {
         scaleToWidth(bytes, width)
     }.getOrNull()
 
-    /** 等比缩图到 [width] (保持纵横比), 输出 PNG; 图片不超宽或解码失败时原样返回。 */
-    private fun scaleToWidth(bytes: ByteArray, width: Int): ByteArray {
-        if (width <= 0) return bytes
-        return runCatching {
-            val image = Image.makeFromEncoded(bytes)
-            if (image.width <= width) {
-                image.close()
-                return bytes
-            }
-            val height = (image.height.toLong() * width / image.width).toInt().coerceAtLeast(1)
-            val result = Bitmap()
-            result.allocPixels(ImageInfo.makeN32(width, height, ColorAlphaType.PREMUL))
-            result.use { dst ->
-                Canvas(dst).use { canvas ->
-                    image.use { img ->
-                        // 缩图必须给采样模式: 默认是最近邻, 缩下来全是锯齿
-                        canvas.drawImageRect(
-                            img,
-                            Rect.makeWH(img.width.toFloat(), img.height.toFloat()),
-                            Rect.makeWH(width.toFloat(), height.toFloat()),
-                            SamplingMode.MITCHELL,
-                            null,
-                            true,
-                        )
-                    }
-                }
-                Image.makeFromBitmap(dst).use { scaled ->
-                    scaled.encodeToData(EncodedImageFormat.PNG, 100)?.bytes ?: bytes
-                }
-            }
-        }.getOrDefault(bytes)
-    }
-
     private suspend fun downloadBytes(url: String): ByteArray? {
         val client = OkHttpClientProviders.get().okHttpClient
         return try {
@@ -105,7 +67,7 @@ object DesktopImageControllerProvider : ImageControllerProvider {
  * 图片缓存占位章节: 路径仅由 book+url 派生, chapter 只参与签名, 占位即可。
  * webBook 图片缓存 (上方 getImg) 与 PDF 页渲染缓存 (model/fileBook/DesktopPdfFile) 共用。
  */
-internal fun placeholderImageChapter(url: String, bookUrl: String): BookChapter =
+fun placeholderImageChapter(url: String, bookUrl: String): BookChapter =
     BookChapter(url = url, bookUrl = bookUrl)
 
 /**

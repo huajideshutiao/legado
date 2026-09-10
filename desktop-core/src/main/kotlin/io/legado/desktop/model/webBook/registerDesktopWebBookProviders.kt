@@ -1,6 +1,5 @@
 package io.legado.desktop.model.webBook
 
-import io.legado.app.api.controller.ImageControllerProviders
 import io.legado.app.api.controller.ReadBookStateProviders
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
@@ -50,8 +49,8 @@ fun registerDesktopWebBookProviders() {
     // 与 app 端一致直接注册 shared 实现: 桌面端已注册 QuickJs 引擎与 RegexErrorHandler,
     // 超时检测与 @js: 替换规则均可用
     RegexReplacers.register(RegexReplacerImpl)
-    // 注册 Web 服务封面/插图 provider: 未注册时 BookController.getCover/getImg 抛 IllegalStateException
-    ImageControllerProviders.register(DesktopImageControllerProvider)
+    // 注: Web 服务封面/插图 provider (DesktopImageControllerProvider) 由 desktop Main.kt /
+    // headless Main.kt 独立注册。
     // 注册 Web 服务阅读状态桥 (commonMain ActiveReadBookStateProvider 读 ActiveReadBookRegistry,
     // shared 阅读页全平台挂接): /deleteBook /saveBookProgress 同步"正在阅读的实例";
     // 此前未注册时静默跳过
