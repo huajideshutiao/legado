@@ -4,7 +4,7 @@ package io.legado.app.help.update
  * 商店渠道检测实现 (预留骨架, 上架后启用)。
  *
  * 现状: 本项目不上架任何应用市场, iOS/鸿蒙都靠 GitHub release 侧载,
- * 所以两个实现只落接口 + TODO, 不接网络。上架后在 [UpdateStrategies] 换绑即可,
+ * 所以两个实现只落接口 + TODO, 不接网络。上架后在 [UpdateCheckers] 换绑即可,
  * 检测层以外的代码不动。
  */
 
@@ -14,7 +14,7 @@ package io.legado.app.help.update
  * 上架后实现: GET `https://itunes.apple.com/lookup?bundleId=<id>&country=<region>`,
  * 取 `results[0].version` / `releaseNotes` / `trackViewUrl`,
  * [UpdateCheckInfo.landingUrl] 填 `itms-apps://itunes.apple.com/app/id<trackId>` 直接拉起 App Store。
- * 苹果审核禁止应用内自更新, 所以 downloadUrl 恒为空, 执行层配 [UpdateAction.OPEN_STORE]。
+ * 苹果审核禁止应用内自更新, 所以 downloadUrl 恒为空, 弹窗只剩“浏览器打开”一个按钮。
  */
 class AppStoreChecker(
     private val bundleId: String,
@@ -34,7 +34,7 @@ class AppStoreChecker(
  *
  * 上架后实现: 走 AppGallery Connect 的版本查询接口 (需 client credentials),
  * [UpdateCheckInfo.landingUrl] 填 `store://appgallery.huawei.com/app/detail?id=<pkg>`。
- * 同样禁止应用内自更新, 执行层配 [UpdateAction.OPEN_STORE]。
+ * 同样禁止应用内自更新, downloadUrl 恒为空。
  */
 class AppGalleryChecker(
     private val packageName: String,

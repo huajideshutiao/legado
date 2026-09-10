@@ -1,10 +1,9 @@
 package io.legado.app.help.update
 
 /**
- * 更新目标平台: 决定 release 资产的后缀匹配与默认更新策略。
+ * 更新目标平台: 决定 release 资产的后缀匹配与检测器选择。
  *
- * 检测与执行是正交的两层 (见 [UpdateChecker] / [UpdateExecutor]), 本枚举只描述"平台是什么",
- * 不硬编码"用哪个渠道查、怎么装" —— 那由 [UpdateStrategies] 一张表配置。
+ * 本枚举只描述“平台是什么”, 不硬编码“用哪个渠道查” —— 那由 [UpdateCheckers] 一张表配置。
  */
 enum class UpdatePlatform {
     ANDROID, WINDOWS, MACOS, LINUX, IOS, OHOS;

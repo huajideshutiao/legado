@@ -1,11 +1,7 @@
 package io.legado.app.ui.about
 
 import io.legado.app.help.toast.Toasters
-import io.legado.app.help.update.AppUpdateManager
-import io.legado.app.help.update.UpdateAction
-import io.legado.app.help.update.UpdateCheckInfo
-import io.legado.app.help.update.UpdateCheckResult
-import io.legado.app.help.update.UpdateStrategies
+import io.legado.app.ui.about.AboutScreenModel.Companion.HEADER_EASTER_EGG_CLICKS
 import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.ui.root.ScreenModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,7 +15,6 @@ import kotlinx.coroutines.flow.asStateFlow
  *
  * 平台资源 (版本号/URL) 由宿主 Activity/桌面端解析后推入 [AboutScreenModel.updateState]。
  *
- * @param version           应用版本号 (如 "3.25.070226")
  * @param updateLogSummary  更新日志条目 summary (如 "版本 3.25.070226")
  * @param contributorsUrl   贡献者页面 URL (平台各异: Android 读 R.string, 桌面端硬编码)
  * @param telegramGroupUrl  Telegram 群链接 (平台各异)
@@ -27,7 +22,6 @@ import kotlinx.coroutines.flow.asStateFlow
  * @param checkingUpdate    正在检查更新 (入口置灰)
  */
 data class AboutUiState(
-    val version: String = "",
     val updateLogSummary: String = "",
     val contributorsUrl: String = "",
     val telegramGroupUrl: String = "",
@@ -38,7 +32,7 @@ data class AboutUiState(
 /**
  * 关于页用户交互回调。
  *
- * 平台相关逻辑 (saveLog/createHeapDump/showMdFile/checkUpdate/share 等)
+ * 平台相关逻辑 (saveLog/createHeapDump/share 等)
  * 由宿主实现, shared 端不直接持有 Android Context / FileDoc / CrashHandler。
  *
  * - [onShare]: 顶栏分享按钮 (替代原 Activity 内 `share(...)`)
@@ -74,19 +68,13 @@ class AboutScreenModel : ScreenModel {
     private val _state = MutableStateFlow(AboutUiState())
     val state: StateFlow<AboutUiState> = _state.asStateFlow()
 
-    /** 待确认的新版本 (非空时弹 [UpdateAvailableDialog])。 */
-    private val _pendingUpdate = MutableStateFlow<PendingUpdate?>(null)
-    val pendingUpdate: StateFlow<PendingUpdate?> = _pendingUpdate.asStateFlow()
-
-    data class PendingUpdate(val info: UpdateCheckInfo, val action: UpdateAction)
-
     fun updateState(state: AboutUiState) {
         _state.value = state
     }
 
     // ===== 顶部卡片连点彩蛋 =====
 
-    /** 连点计数; 触发后清零, 离开页面时随 ScreenModel 销毁一起重置。 */
+    /** 连点计数; 触发后停在上限不再变化, 离开页面时随 ScreenModel 销毁一起重置。 */
     private var headerClickCount = 0
 
     /**
@@ -94,14 +82,15 @@ class AboutScreenModel : ScreenModel {
      *
      * 提示节奏照搬 AOSP `BuildNumberPreferenceController` (连点版本号开开发者选项):
      * 剩余次数满足 `remaining < 总次数 - 2` 才 toast「还差 N 次」——5 次即第 3、4 次有提示、
-     * 前两次静默、第 5 次触发。不做超时重新计数 (AOSP 也只在 onStart 重置倒计时),
-     * 离开页面时 ScreenModel 随路由销毁, 计数自然归零。
+     * 前两次静默、第 5 次触发。不做超时重新计数 (AOSP 也只在 onStart 重置倒计时);
+     * 触发后计数保持在上限, 本次停留期间继续点击一律忽略 (不再从头计数、不再 toast),
+     * 离开页面时 ScreenModel 随路由销毁, 计数自然归零, 重进可再触发一次。
      * 文案走 [syncGetString]: 点击处不在组合里, 同步取才能保证连点时 toast 顺序不乱。
      * 彩蛋当前为占位 toast, 真功能落地只需改触发分支。
      */
     fun onHeaderClick() {
+        if (headerClickCount >= HEADER_EASTER_EGG_CLICKS) return
         if (++headerClickCount >= HEADER_EASTER_EGG_CLICKS) {
-            headerClickCount = 0
             Toasters.get().toast(syncGetString("nothing_here"))
             return
         }
@@ -118,38 +107,16 @@ class AboutScreenModel : ScreenModel {
     }
 
     /**
-     * 检查更新: 检测走 [AppUpdateManager] (平台策略由 [UpdateStrategies] 决定),
-     * 有新版本时交由 [pendingUpdate] 弹窗, 已是最新/失败直接 toast。
+     * 检查更新: 四端同一条链 ([checkUpdateAndPrompt]), 进行中置灰入口
+     * (对照原版 AppUpdate.check 的 WaitDialog: 本端用条目置灰代替转圈弹窗)。
      */
-    suspend fun checkUpdate(latestText: String, failedText: String) {
+    suspend fun checkUpdate(latestText: String, failedLabel: String) {
         if (_state.value.checkingUpdate) return
         _state.value = _state.value.copy(checkingUpdate = true)
         try {
-            when (val result = AppUpdateManager.check()) {
-                is UpdateCheckResult.NewVersion -> {
-                    _pendingUpdate.value = PendingUpdate(
-                        result.info,
-                        AppUpdateManager.actionFor(result.info)
-                    )
-                }
-
-                UpdateCheckResult.UpToDate -> Toasters.get().toast(latestText)
-                is UpdateCheckResult.Failed -> Toasters.get()
-                    .toast(result.error.message ?: failedText)
-            }
+            checkUpdateAndPrompt(silent = false, latestText = latestText, failedLabel = failedLabel)
         } finally {
             _state.value = _state.value.copy(checkingUpdate = false)
         }
-    }
-
-    /** 用户确认更新: 执行方式由平台执行器决定, 失败降级为打开下载页。 */
-    suspend fun confirmUpdate() {
-        val pending = _pendingUpdate.value ?: return
-        _pendingUpdate.value = null
-        AppUpdateManager.execute(pending.info)
-    }
-
-    fun dismissUpdate() {
-        _pendingUpdate.value = null
     }
 }

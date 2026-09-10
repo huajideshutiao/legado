@@ -12,7 +12,7 @@ import kotlinx.serialization.decodeFromString
  *
  * 流程: 按渠道取 release → [AppVersions] 比版本号 → 按平台后缀 + 架构挑资产。
  * 挑不到本平台资产时仍返回新版本, 只是 [UpdateCheckInfo.downloadUrl] 为空,
- * 由执行层降级为打开 release 页。
+ * 弹窗里只剩“浏览器打开”按钮 (指向 release 页)。
  *
  * @param repo GitHub `owner/repo`, 便于 fork 或自建镜像替换
  */
@@ -21,10 +21,7 @@ class GitHubReleaseChecker(
 ) : UpdateChecker {
 
     override suspend fun check(request: UpdateCheckRequest): UpdateCheckResult = runCatching {
-        val checkVariant = AppUpdateShared.getCheckVariant(
-            request.updateToVariant,
-            request.currentAppVariant
-        )
+        val checkVariant = request.checkVariant
         val release = fetchRelease(checkVariant)
         val latestVersion = release.releaseVersion
         if (!AppVersions.isNewer(latestVersion, request.currentVersionName)) {
@@ -44,7 +41,7 @@ class GitHubReleaseChecker(
         )
     }.getOrElse { UpdateCheckResult.Failed(it) }
 
-    suspend fun fetchRelease(checkVariant: AppVariant): GithubRelease {
+    private suspend fun fetchRelease(checkVariant: AppVariant): GithubRelease {
         val url = if (checkVariant.isBeta()) {
             "https://api.github.com/repos/$repo/releases/tags/beta"
         } else {
