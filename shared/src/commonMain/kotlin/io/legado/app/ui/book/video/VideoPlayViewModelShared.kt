@@ -15,6 +15,7 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.ReadTimeRecorder
+import io.legado.app.model.ResourceUrlPreloader
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.model.webBook.WebBook
@@ -75,6 +76,9 @@ class VideoPlayViewModelShared(
 ) {
     /** 进度同步专用作用域: 不随 UI scope 取消 (对照 ReadBookViewModelShared.progressSyncScope) */
     private val progressSyncScope = screenModelScope("视频进度同步", IoDispatcher)
+
+    /** 前后各一章的直链预解析器 (窗口写死 ±1, 不读 preDownloadNum); 跟随 [scope] 寿命 */
+    private val preloader = ResourceUrlPreloader(scope)
 
     /** 当前书籍 (initData 写入, 退出时清空) */
     var curBook: Book? = null
@@ -273,6 +277,8 @@ class VideoPlayViewModelShared(
         _curChapterTitle.value = chapter.title
         // 本轮加载令牌: 连点切章时旧一轮的 finally 不得把新一轮的 loading 打成 false
         val token = ++loadChapterToken
+        // 开解当前章前先作废上一轮预解析: 两者共用书源, 并行跑会拖慢用户等的这一章
+        preloader.cancel()
         scope.launch {
             try {
                 // 拉取管线挪 IO: getContentAwait 内部无 withContext (AnalyzeUrl 构造 +
@@ -285,7 +291,9 @@ class VideoPlayViewModelShared(
                         if (book.isLocal) {
                             chapter.url
                         } else if (source != null) {
-                            WebBook.getContentAwait(
+                            // 复用已解析的直链 (原版 VideoViewModel.initChapter 同款口径):
+                            // 上次播放与 [preloader] 都把结果写在 resourceUrl 上, 命中就不再跑一遍书源规则
+                            chapter.resourceUrl ?: WebBook.getContentAwait(
                                 source,
                                 book,
                                 chapter,
@@ -307,8 +315,38 @@ class VideoPlayViewModelShared(
                         _error.value = "未获取到资源链接"
                         return@withContext
                     }
+                    // 写回直链 (对齐原版 initChapter); 落库用单列 PATCH 而非原版的整行 update,
+                    // 与音频侧 AudioPlayManager 一致, 避免冲掉并发写入的其他章节字段
+                    if (!book.isLocal && chapter.resourceUrl != content) {
+                        chapter.resourceUrl = content
+                        if (!book.isNotShelf) {
+                            AppDbProviders.get().bookChapterDao.upResourceUrl(
+                                chapter.bookUrl,
+                                chapter.url,
+                                content
+                            )
+                        }
+                    }
                     // 解析视频源 (复用同包工具函数)
                     parseVideoContent(content, source)
+                    // 当前章就绪后再预解析前后各一章 (对标小说 contentLoadFinish → preDownload 的时机)。
+                    // token 守卫: 连点切章时旧一轮跑到这里不得抢新一轮的书源 (新一轮开头已 cancel 过)
+                    if (source != null && token == loadChapterToken) {
+                        preloader.preload(
+                            book = book,
+                            chapters = chapters,
+                            centerIndex = clampedIndex,
+                            inBookshelf = !book.isNotShelf,
+                        ) { target ->
+                            WebBook.getContentAwait(
+                                source,
+                                book,
+                                target,
+                                chapters.getOrNull(target.index + 1)?.url,
+                                needSave = false
+                            )
+                        }
+                    }
                     // 持久化阅读进度
                     if (persistProgress) {
                         saveRead(clampedIndex)
@@ -411,6 +449,9 @@ class VideoPlayViewModelShared(
      * 清空当前视频源并重新加载 (用于播放出错时重试)。
      * 若章节列表尚未加载或为空，重新触发 [initData] 完整流程。
      *
+     * 先清 [BookChapter.resourceUrl] 再重拉 (原版 VideoViewModel.refreshChapter 同款):
+     * 不清的话 [loadChapter] 会命中缓存拿到同一条失效直链, 重试等于空转。
+     *
      * @param persistProgress 是否持久化章节进度, 透传给 [loadChapter]; app 端传 false
      *   避免覆盖已保存的播放位置。
      */
@@ -422,6 +463,7 @@ class VideoPlayViewModelShared(
             }
             return
         }
+        chapterList?.getOrNull(_curChapterIndex.value)?.resourceUrl = null
         loadChapter(_curChapterIndex.value, persistProgress)
     }
 

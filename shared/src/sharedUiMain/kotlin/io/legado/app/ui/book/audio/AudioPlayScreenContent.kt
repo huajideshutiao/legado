@@ -12,6 +12,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -85,7 +86,6 @@ import legado.shared.generated.resources.play_mode
 import legado.shared.generated.resources.previous_chapter
 import legado.shared.generated.resources.set_timer
 import legado.shared.generated.resources.speed
-import legado.shared.generated.resources.stop
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -98,12 +98,13 @@ enum class AudioPlaySidePanelKind { TOC, REVIEW }
 /**
  * 音频播放页主体内容 (模糊封面背景 + 遮罩 + 标题栏 + 副标题 + 封面/歌词区 + 进度条 + 播放控制排)。
  *
- * 结构对照 app 端 [io.legado.app.ui.book.audio.AudioPlayScreen], 通过 slot 注入平台特殊部分:
- * - [coverSlot]: 封面图加载 (app: Glide+AndroidView; desktop: OkHttp+ImageIO)
- * - [blurBgSlot]: 模糊封面背景加载槽 (app: blurConfig+TransitionDrawable 淡入+onBlurCoverLoaded 回调; desktop: null 复用 coverSlot)
- * - [lrcSlot]: 歌词渲染 (app: 自绘 LrcView; desktop: LazyColumn 简化版)
+ * 结构对照原版 AudioPlayActivity, 通过 slot 注入可替换部分 (四端现已共用同一份实参,
+ * 见 [SharedAudioPlayScreenContent]):
+ * - [coverSlot]: 封面图加载 (SharedAudioCoverSlot: BookImageLoaders + keep-previous 交叉淡化)
+ * - [blurBgSlot]: 模糊封面背景加载槽 (null=复用 coverSlot; SharedAudioBlurBgSlot 走整图模糊 + 淡入)
+ * - [lrcSlot]: 歌词渲染 (LrcViewShared: 复刻原版自绘 LrcView)
  * - [titleBarTrailingSlot]: 标题栏尾部 (默认评论钮, 四端一致; 见 SharedAudioPlayScreenContent)
- * - [timerDialogSlot]/[speedDialogSlot]: 定时/倍速弹窗 (app: Popup; desktop: AlertDialog)
+ * - [timerDialogSlot]/[speedDialogSlot]: 定时/倍速弹窗 (四端共用 AlertDialog 实现)
  *
  * 视觉参数 (图标/回显标签底色/控制排透明度/内边距) 已统一为 app 原版值,
  * 不再暴露平台参数 (原 desktop 半透明黑标签/1f 透明度/8dp 标题栏内边距等已移除);
@@ -124,11 +125,12 @@ enum class AudioPlaySidePanelKind { TOC, REVIEW }
  * @param prevEnabled 上一章钮可用
  * @param nextEnabled 下一章钮可用
  * @param accentColor 强调色 (圆形封面描边 + SeekBar 已播层 + 加载指示器)
- * @param lrcActiveColor SeekBar 已播层颜色 (null=用 accentColor; app 端从 lrcColors 取)
- * @param lrcInactiveColor SeekBar 缓冲层颜色 (null=用 accentColor.copy(0.5); app 端从 lrcColors 取)
+ * @param lrcActiveColor SeekBar 已播层颜色 (null=用 accentColor; 调用方从 lrcColors 取)
+ * @param lrcInactiveColor SeekBar 缓冲层颜色 (null=用 accentColor.copy(0.5); 调用方从 lrcColors 取)
  * @param onBack 返回
  * @param onOpenChangeSource 换源
  * @param onCoverClick 封面点击 (隐藏封面)
+ * @param onCoverLongClick 封面长按 (查看封面大图; 无封面 URL 时由调用方内部判空不动作)
  * @param onTogglePlay 播放/暂停切换
  * @param onPrev 上一章
  * @param onNext 下一章
@@ -137,9 +139,8 @@ enum class AudioPlaySidePanelKind { TOC, REVIEW }
  * @param onSeek 进度跳转 (ms)
  * @param onSetTimer 设定定时 (分钟)
  * @param onSetSpeed 设定倍速
- * @param onStop 停止回调 (null=不显示停止钮; desktop 端独有)
  * @param coverSlot 封面加载槽 (url, modifier) → 平台图片加载 Composable
- * @param blurBgSlot 模糊封面背景加载槽 (null=复用 coverSlot; app 端走 blurConfig + 淡入 + 回调)
+ * @param blurBgSlot 模糊封面背景加载槽 (null=复用 coverSlot; 整图模糊 + 交叉淡化)
  * @param lrcSlot 歌词渲染槽 (modifier) → 平台歌词 Composable
  * @param titleBarTrailingSlot 标题栏尾部槽 (默认评论钮, 四端一致)
  * @param timerDialogSlot 定时弹窗槽 (initial, onProgressChanged, onDismiss)
@@ -167,6 +168,7 @@ fun AudioPlayScreenContent(
     onBack: () -> Unit,
     onOpenChangeSource: () -> Unit,
     onCoverClick: () -> Unit,
+    onCoverLongClick: () -> Unit,
     onTogglePlay: () -> Unit,
     onPrev: () -> Unit,
     onNext: () -> Unit,
@@ -175,7 +177,6 @@ fun AudioPlayScreenContent(
     onSeek: (Int) -> Unit,
     onSetTimer: (Int) -> Unit,
     onSetSpeed: (Float) -> Unit,
-    onStop: (() -> Unit)? = null,
     overflowActions: AudioPlayOverflowActions? = null,
     coverSlot: @Composable (String?, Modifier) -> Unit,
     blurBgSlot: (@Composable (String?, Modifier) -> Unit)? = null,
@@ -292,6 +293,7 @@ fun AudioPlayScreenContent(
                                         coverUrl = coverUrl,
                                         accentColor = accentColor,
                                         onClick = onCoverClick,
+                                        onLongClick = onCoverLongClick,
                                         coverSlot = coverSlot,
                                         size = coverSize,
                                         modifier = Modifier.padding(coverTopPad),
@@ -326,6 +328,7 @@ fun AudioPlayScreenContent(
                                     coverUrl = coverUrl,
                                     accentColor = accentColor,
                                     onClick = onCoverClick,
+                                    onLongClick = onCoverLongClick,
                                     coverSlot = coverSlot,
                                     size = coverSize,
                                     modifier = Modifier.padding(top = coverTopPad),
@@ -380,7 +383,6 @@ fun AudioPlayScreenContent(
                 speed = speed,
                 prevEnabled = prevEnabled,
                 nextEnabled = nextEnabled,
-                onStop = onStop,
                 accentColor = accentColor,
                 onTogglePlay = onTogglePlay,
                 onPrev = onPrev,
@@ -567,6 +569,7 @@ private fun CoverImage(
     coverUrl: String?,
     accentColor: Color,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
     coverSlot: @Composable (String?, Modifier) -> Unit,
     size: Dp = COVER_MAX_SIZE,
     modifier: Modifier = Modifier,
@@ -577,7 +580,10 @@ private fun CoverImage(
             .size(size)
             .clip(CircleShape)
             .border(DesignTokens.strokeMedium, accentColor, CircleShape)
-            .clickable(onClick = onClick),
+            // 单击隐藏封面 (原版语义) + 长按查看大图; combinedClickable 保证长按不触发单击,
+            // 不会误隐藏封面。无封面 URL 时手势仍挂着, 由回调内部判空不动作
+            // (同书籍详情页封面: 可按但不响应, 不做 disabled)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     )
 }
 
@@ -759,7 +765,6 @@ private fun PlayMenu(
     speed: Float,
     prevEnabled: Boolean,
     nextEnabled: Boolean,
-    onStop: (() -> Unit)?,
     accentColor: Color,
     onTogglePlay: () -> Unit,
     onPrev: () -> Unit,
@@ -845,14 +850,6 @@ private fun PlayMenu(
             enabled = nextEnabled,
         ) { onNext() }
         Spacer(Modifier.weight(1f))
-        // 停止 (desktop 独有, app 端 onStop=null 不渲染)
-        if (onStop != null) {
-            PlayMenuButton(
-                iconKey = "ic_stop_black_24dp",
-                contentDescription = stringResource(Res.string.stop),
-            ) { onStop() }
-            Spacer(Modifier.weight(1f))
-        }
         // 播放模式
         PlayMenuButton(
             iconKey = playModeIconKey(playMode),

@@ -10,8 +10,10 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.book.addType
+import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isUpError
+import io.legado.app.help.book.isVideo
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.closeIfCloseable
@@ -667,6 +669,7 @@ class UpdateBookShared(
      *
      * 流程与 app 端完全一致:
      * 1. preDownloadNum == 0 时直接返回 (用户关闭预下载)
+     * 1.5. 音视频书直接返回 (有意偏离原版, 见下)
      * 2. 计算结束 index = min(totalChapterNum - 1, durChapterIndex + preDownloadNum)
      * 3. CacheBookShared.getOrCreate(source, book) 获取或创建下载模型
      * 4. cacheBook.addDownload(durChapterIndex, endIndex) 入队
@@ -681,6 +684,10 @@ class UpdateBookShared(
     // 保护 getOrCreate + addDownload 原子性, 避免并发产生两个 CacheBookModel
     private fun addDownload(source: BookSource, book: Book) {
         if (appConfig.preDownloadNum == 0) return
+        // 音视频章节的"正文"是带时效签名的播放直链, 播放侧一律现解析 (needSave=false) 从不读正文缓存,
+        // 拉下来只是把过期直链写成无效缓存文件 + 白耗流量。有意偏离原版 (原版 MainViewModel.addDownload
+        // 无类型过滤), 属修原版缺陷。直链复用走 BookChapter.resourceUrl, 不经这条正文缓存链路。
+        if (book.isAudio || book.isVideo) return
         synchronized(addDownloadLock) {
             // 结束章节 index (含): 不超过最后章节 - 1, 不超过当前阅读 + preDownloadNum
             val endIndex = min(

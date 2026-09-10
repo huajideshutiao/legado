@@ -37,7 +37,6 @@ import io.legado.app.model.AudioPlayShared
 import io.legado.app.model.BookCoverShared.CoverRatio
 import io.legado.app.ui.bookshelf.defaultCoverFilePath
 import io.legado.app.ui.compose.component.AppSlider
-import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
@@ -93,6 +92,7 @@ fun SharedAudioPlayScreenContent(
     sidePanelKind: AudioPlaySidePanelKind? = null,
     sidePanelSlot: @Composable (AudioPlaySidePanelKind) -> Unit = {},
     onTapOutsideSidePanel: (() -> Unit)? = null,
+    onOpenCover: () -> Unit = {},
 ) {
     // 封面取色 → 歌词 + SeekBar 配色 (对照原版 updateCover → updateLrcColor)
     val lrcColors = rememberLrcColors(
@@ -120,6 +120,7 @@ fun SharedAudioPlayScreenContent(
         onBack = onBack,
         onOpenChangeSource = onOpenChangeSource,
         onCoverClick = { onEvent(AudioPlayUiEvent.CoverClick) },
+        onCoverLongClick = onOpenCover,
         onTogglePlay = { onEvent(AudioPlayUiEvent.TogglePlay) },
         onPrev = { onEvent(AudioPlayUiEvent.Prev) },
         onNext = { onEvent(AudioPlayUiEvent.Next) },
@@ -128,20 +129,21 @@ fun SharedAudioPlayScreenContent(
         onSeek = { onEvent(AudioPlayUiEvent.Seek(it)) },
         onSetTimer = { onEvent(AudioPlayUiEvent.SetTimer(it)) },
         onSetSpeed = { onEvent(AudioPlayUiEvent.SetSpeed(it)) },
-        onStop = null,
         overflowActions = overflowActions,
         onTapOutsideSidePanel = onTapOutsideSidePanel,
         coverSlot = { url, modifier -> SharedAudioCoverSlot(url, modifier) },
         blurBgSlot = { url, modifier -> SharedAudioBlurBgSlot(url, modifier) },
         lrcSlot = { modifier ->
+            val lrcKey = state.title to state.lrc
             LrcViewShared(
                 lrcData = state.lrc,
                 // 当前行按帧派生 (只在歌词区在组合内时求值; 见 rememberLrcIndex)
-                lrcProgress = rememberLrcIndex(state.lrc),
+                lrcProgress = rememberLrcIndex(state.lrc, lrcKey),
                 primaryColor = lrcColors?.first ?: Color(0xFFFFFFFF),
                 secondaryColor = lrcColors?.second ?: Color(0x80FFFFFF),
                 onLineClick = { onEvent(AudioPlayUiEvent.LrcClick(it)) },
                 modifier = modifier,
+                resetKey = lrcKey,
             )
         },
         titleBarTrailingSlot = titleBarTrailingSlot,

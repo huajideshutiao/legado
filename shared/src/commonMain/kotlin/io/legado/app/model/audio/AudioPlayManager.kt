@@ -11,6 +11,7 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.model.Lrc
 import io.legado.app.model.LrcParser
+import io.legado.app.model.ResourceUrlPreloader
 import io.legado.app.model.analyzeRule.AnalyzeRuleCore
 import io.legado.app.model.webBook.WebBook.getContentAwait
 import io.legado.app.utils.postEvent
@@ -33,6 +34,7 @@ import kotlin.math.abs
  * - 进度上报循环 ([upPlayProgress])
  * - 播放位置真源 ([positionMs] / [onSeekTo], 消化引擎 seek 异步)
  * - 章节资源加载流程 ([loadPlayUrl] / [loadCoverUrl] / [loadLrcData] / [contentLoadFinish] / [refreshChapter])
+ * - 前后章直链预解析 ([ResourceUrlPreloader])
  * - 章节并发加载守卫 ([addLoading] / [removeLoading])
  * - 进度协程取消 ([cancelProgressJob])
  *
@@ -73,6 +75,9 @@ class AudioPlayManager(
 
     /** 进度上报协程。 */
     private var upPlayProgressJob: Job? = null
+
+    /** 前后各一章的直链预解析器 (窗口写死 ±1, 不读 preDownloadNum)。 */
+    private val preloader = ResourceUrlPreloader(scope)
 
     /**
      * seek 目标位置 ([NO_SEEK] = 无进行中的 seek)。
@@ -177,6 +182,15 @@ class AudioPlayManager(
     }
 
     /**
+     * 停播 / 会话终结时作废预解析 (由 [AudioPlaySession.endSession] 调)。
+     *
+     * 不跟着 [cancelProgressJob] 走: 进度上报每次换章都会重启, 预解析只在会话结束时才该停。
+     */
+    fun cancelPreload() {
+        preloader.cancel()
+    }
+
+    /**
      * 加载当前章节的播放 URL, 并联动拉取封面 + 歌词。
      *
      * 流程:
@@ -212,6 +226,8 @@ class AudioPlayManager(
             // 拉链接窗口置 LOADING, 让 UI 能区分"没在播"和"正在启动"(否则退出界面会被误判为停播)
             AudioPlayShared.status = Status.LOADING
             postEvent(EventBus.AUDIO_STATE, Status.LOADING)
+            // 开解当前章前先作废上一轮预解析: 两者共用书源, 并行跑会拖慢用户等的这一章
+            preloader.cancel()
             AudioPlayShared.durCoverUrl = null
             AudioPlayShared.durLrc.value = null
             session.onResetCoverCache()
@@ -240,6 +256,8 @@ class AudioPlayManager(
                         }
                     }
                     contentLoadFinish(chapter, content)
+                    // 当前章就绪后再预解析前后各一章 (对标小说 contentLoadFinish → preDownload 的时机)
+                    preloadNeighbors(bookSource, book, chapter)
                 }
             }.onError {
                 AppLog.put("获取资源链接出错\n$it", it, true)
@@ -251,6 +269,27 @@ class AudioPlayManager(
             }.onFinally {
                 removeLoading(index)
             }
+        }
+    }
+
+    /**
+     * 预解析前后各一章的播放直链。
+     *
+     * 窗口写死 ±1 而不读 `preDownloadNum`: 直链大多带时效签名, 预取多了到播的时候已失效。
+     * 不传 nextChapterUrl: 音频正文就是一条直链, 不存在正文翻页 (与 [loadPlayUrl] 一致)。
+     *
+     * @param chapter 刚就绪的章节; 已不是当前章就不预解析 —— 同 [contentLoadFinish] 的作废判定,
+     *   否则连点切章时旧一轮的尾巴会跟新一轮抢书源
+     */
+    private fun preloadNeighbors(bookSource: BookSource, book: Book, chapter: BookChapter) {
+        if (chapter.index != AudioPlayShared.book?.durChapterIndex) return
+        preloader.preload(
+            book = book,
+            chapters = AudioPlayShared.chapterList,
+            centerIndex = AudioPlayShared.durChapterIndex,
+            inBookshelf = AudioPlayShared.inBookshelf,
+        ) { target ->
+            getContentAwait(bookSource, book, target, needSave = false)
         }
     }
 

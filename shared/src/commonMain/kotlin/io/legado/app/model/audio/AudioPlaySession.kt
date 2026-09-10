@@ -10,9 +10,11 @@ import io.legado.app.model.AudioPlayCommander
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.utils.postEvent
-import kotlin.concurrent.Volatile
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlin.concurrent.Volatile
 
 /**
  * 音频播放会话的平台接入面 (四端各一份)。
@@ -123,6 +125,9 @@ class AudioPlaySession(private val host: AudioPlaySessionHost) :
     @Volatile
     private var position = 0
 
+    /** 当前起播任务 (新请求启动时取消前一个任务, 防止并发错乱)。 */
+    private var playJob: Job? = null
+
     private var sleepTimer: SleepTimer? = null
 
     /** 剩余定时分钟 (通知标题要显示)。 */
@@ -155,8 +160,12 @@ class AudioPlaySession(private val host: AudioPlaySessionHost) :
 
     override fun stopPlay() {
         if (!isRunning) return
+        playJob?.cancel()
+        playJob = null
         host.controller.stop()
         manager.cancelProgressJob()
+        manager.cancelChapterLoad()
+        manager.clearPendingSeek()
         AudioPlayShared.status = Status.STOP
         AudioPlayShared.book?.save()
         postEvent(EventBus.AUDIO_STATE, Status.STOP)
@@ -174,7 +183,8 @@ class AudioPlaySession(private val host: AudioPlaySessionHost) :
             isPaused = true
             ReadTimeRecorder.end(ReadTimeRecorder.Source.AUDIO)
             manager.cancelProgressJob()
-            position = host.controller.currentPosition.toInt()
+            position = manager.positionMs
+            AudioPlayShared.durChapterPos = position
             // 缓冲中按的暂停: 光调 pause() 不落 playWhenReady, 引擎缓冲完会自己起播
             host.controller.playWhenReady = false
             if (host.controller.isPlaying) host.controller.pause()
@@ -285,12 +295,17 @@ class AudioPlaySession(private val host: AudioPlaySessionHost) :
     fun endSession() {
         if (!isRunning) return
         isRunning = false
+        playJob?.cancel()
+        playJob = null
         sleepTimer?.cancel()
         sleepTimer = null
         ReadTimeRecorder.endImmediately(ReadTimeRecorder.Source.AUDIO)
-        AudioPlayShared.durChapterPos = host.controller.currentPosition.toInt()
+        AudioPlayShared.durChapterPos = manager.positionMs
         AudioPlayShared.saveRead()
         manager.cancelProgressJob()
+        manager.cancelPreload()
+        manager.cancelChapterLoad()
+        manager.clearPendingSeek()
         LyricPublisher.detach()
         url = ""
         isPaused = true
@@ -306,7 +321,8 @@ class AudioPlaySession(private val host: AudioPlaySessionHost) :
 
     private fun start(playNew: Boolean) {
         ensureRunning()
-        host.scope.launch { runTriggerPlay(playNew) }
+        playJob?.cancel()
+        playJob = host.scope.launch { runTriggerPlay(playNew) }
     }
 
     /**
@@ -317,6 +333,7 @@ class AudioPlaySession(private val host: AudioPlaySessionHost) :
      */
     private suspend fun runTriggerPlay(playNew: Boolean) {
         runCatching { triggerPlay(playNew) }.onFailure {
+            if (it is CancellationException) throw it
             AppLog.put("播放出错\n${it.message}", it)
             host.toast("$url ${it.message}")
             endSession()
@@ -339,16 +356,27 @@ class AudioPlaySession(private val host: AudioPlaySessionHost) :
         position = if (playNew) 0 else AudioPlayShared.book?.durChapterPos ?: 0
         url = playUrl
         host.onCoverUrl(AudioPlayShared.durCoverUrl)
-        if (!host.onBeforeStart()) return
         // 拉链接+缓冲窗口置 LOADING 而不是 STOP, 让 UI 能区分"没在播"和"正在启动"
         AudioPlayShared.status = Status.LOADING
         postEvent(EventBus.AUDIO_STATE, Status.LOADING)
         postEvent(EventBus.AUDIO_LOADING, true)
         host.controller.playWhenReady = true
-        host.onSessionSync()
-        // 起播位置也是一次 seek: 非 Android 端引擎要等 prepare 就绪才应用它, 不告知位置真源的话
-        // 就绪前歌词会按引擎的 0/旧值定位
+        if (!host.onBeforeStart()) {
+            // 焦点拒绝发生在完整 prepare 前；保留 URL/位置，resume 必须重新走 triggerPlay。
+            host.controller.playWhenReady = false
+            host.controller.stop()
+            url = ""
+            isPaused = true
+            AudioPlayShared.status = Status.PAUSE
+            postEvent(EventBus.AUDIO_STATE, Status.PAUSE)
+            postEvent(EventBus.AUDIO_LOADING, false)
+            host.onSessionSync(positionMs = position.toLong())
+            return
+        }
+        // 起播位置也是一次 seek: 非 Android 端引擎要等 prepare 就绪才应用它, 先告知位置真源目标值,
+        // 并传给外观同步, 避免首次播控同步读到旧进度
         manager.onSeekTo(position)
+        host.onSessionSync(positionMs = position.toLong())
         host.startPlayback(playUrl, position)
     }
 
@@ -384,9 +412,13 @@ class AudioPlaySession(private val host: AudioPlaySessionHost) :
 
             AudioPlayController.STATE_ENDED -> {
                 manager.cancelProgressJob()
+                manager.clearPendingSeek()
                 AudioPlayShared.playPositionChanged(host.controller.duration.toInt())
-                AudioPlayShared.next()
-                host.onSessionSync()
+                if (!AudioPlayShared.next()) {
+                    isPaused = true
+                    ReadTimeRecorder.end(ReadTimeRecorder.Source.AUDIO)
+                    stopPlay()
+                }
             }
         }
     }
