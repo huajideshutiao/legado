@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
@@ -34,7 +35,8 @@ import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import io.legado.app.ui.widget.dialog.PhotoViewDialog
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppOverlay
 import kotlinx.coroutines.launch
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
@@ -43,6 +45,7 @@ import legado.shared.generated.resources.delete_source
 import legado.shared.generated.resources.disable_source
 import legado.shared.generated.resources.draw
 import legado.shared.generated.resources.ic_more_vert
+import legado.shared.generated.resources.loading
 import legado.shared.generated.resources.more_menu
 import legado.shared.generated.resources.no
 import legado.shared.generated.resources.ok
@@ -60,15 +63,16 @@ import org.jetbrains.compose.resources.stringResource
  * [io.legado.app.help.source.SourceVerificationHelpShared.setResult]。
  *
  * 图片加载走 [ImageBitmapLoader] (直连拉取——验证码同 URL 每次返回不同图, 显式
- * `useBitmapCache=false` 不进 [DecodedBitmapCache] 进程级位图 LRU, 避免二次打开显示旧图;
- * 网络书源自动带 header/cookie; iOS actual 暂 stub 返回 null 走 URL 文案降级)。
+ * `useBitmapCache=false` 同时绕过 [DecodedBitmapCache] 位图 LRU 与网络原始字节缓存;
+ * 网络书源自动带 header/cookie)。
  *
  * 标题栏溢出菜单提供"禁用源/删除源" (对照 app 端同款对话框): 禁用走
  * [SourceHelp.enableSource](false), 删除先确认再走 [SourceHelp.deleteSource],
  * 操作完成后关对话框 (调用方 onDismiss 按 checkResult 语义回填空串)。
  *
  * 点图放大: 对照原版 setOnClickListener → PhotoDialog(imageUrl, sourceOrigin),
- * 走 sharedUiMain [PhotoViewDialog] (重新拉取, 与原版 PhotoDialog 重新请求行为一致)。
+ * 走全屏大图 overlay (key="photo" → PhotoViewOverlayDialog, 与阅读页/评论区同一通道;
+ * 原版 PhotoDialog 就是全屏, 验证码图与大图共用同一 URL 会重拉一次, 与原版行为一致)。
  *
  * @param url 验证码图片 URL
  * @param source 书源/订阅源 (取 tag 展示; BookSource 时图片请求带源 header)
@@ -85,16 +89,23 @@ fun VerificationCodeDialog(
     val colors = AppTheme.colors
     val scope = rememberCoroutineScope()
     var code by remember { mutableStateOf("") }
-    // 点图放大对话框状态 (null=隐藏; 对照原版点图 → PhotoDialog(imageUrl, sourceOrigin))
-    var photoSrc by remember { mutableStateOf<String?>(null) }
     // 删除源确认对话框状态 (对照 app 端溢出菜单 → alert(sure_del) { yesButton { deleteSource } })
     var showDeleteConfirm by remember { mutableStateOf(false) }
-    // 直连加载验证码 (produceState: 进组合即拉取, url 不变不重拉);
-    // useBitmapCache=false: 验证码同 URL 每次返回新图, 不进进程级位图 LRU (防二次打开显示旧图)
-    val bitmap by produceState<ImageBitmap?>(null, url) {
+    // 直连加载验证码 (produceState: 进组合即拉取, url 不变不重拉)。小图与全屏预览
+    // 都按封面链路解密；useBitmapCache=false 同时绕过位图和原始字节缓存，固定 URL 也会重下。
+    val imageState by produceState<CaptchaImageState>(CaptchaImageState.Loading, url) {
         value = runCatching {
-            ImageBitmapLoader().loadBitmap(url, null, source as? BookSource, useBitmapCache = false)
-        }.getOrNull()
+            ImageBitmapLoader().loadBitmap(
+                url = url,
+                book = null,
+                bookSource = source as? BookSource,
+                isCover = true,
+                useBitmapCache = false,
+            )
+        }.fold(
+            onSuccess = { it?.let(CaptchaImageState::Success) ?: CaptchaImageState.Error },
+            onFailure = { CaptchaImageState.Error },
+        )
     }
 
     AppAlertDialog(
@@ -155,21 +166,43 @@ fun VerificationCodeDialog(
                         }
                     }
                 }
-                val loaded = bitmap
-                if (loaded != null) {
-                    Image(
-                        bitmap = loaded,
+                when (val state = imageState) {
+                    CaptchaImageState.Loading -> Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 100.dp, max = 200.dp)
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator()
+                        Text(
+                            text = stringResource(Res.string.loading),
+                            color = colors.secondaryText,
+                            fontSize = 13.sp,
+                            modifier = Modifier.padding(top = 56.dp),
+                        )
+                    }
+
+                    is CaptchaImageState.Success -> Image(
+                        bitmap = state.bitmap,
                         contentDescription = null,
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(min = 100.dp, max = 200.dp)
                             .padding(vertical = 8.dp)
-                            // 点图放大 (对照原版 setOnClickListener → PhotoDialog)
-                            .clickable { photoSrc = url },
+                            // 点图放大 (对照原版 setOnClickListener → PhotoDialog): 全屏大图 overlay
+                            .clickable {
+                                AppNavigatorProviders.get().showOverlay(
+                                    AppOverlay.Dialog(
+                                        key = "photo",
+                                        payload = url,
+                                        sourceOrigin = (source as? BookSource)?.bookSourceUrl,
+                                    )
+                                )
+                            },
                     )
-                } else {
-                    // 加载中/失败降级: 提示手动打开 URL (对照 desktop 原 Swing 版降级文案)
-                    Text(
+
+                    CaptchaImageState.Error -> Text(
                         text = stringResource(Res.string.captcha_load_failed_hint) + "\n" + url,
                         color = colors.secondaryText,
                         fontSize = 13.sp,
@@ -205,13 +238,10 @@ fun VerificationCodeDialog(
             cancelButton = AlertButton(stringResource(Res.string.no)) { showDeleteConfirm = false },
         )
     }
+}
 
-    // 点图放大对话框 (验证码同 URL 每次返回不同图, 大图重新拉取与原版 PhotoDialog 行为一致)
-    photoSrc?.let { src ->
-        PhotoViewDialog(
-            src = src,
-            onDismiss = { photoSrc = null },
-            bookSource = source as? BookSource,
-        )
-    }
+private sealed interface CaptchaImageState {
+    data object Loading : CaptchaImageState
+    data class Success(val bitmap: ImageBitmap) : CaptchaImageState
+    data object Error : CaptchaImageState
 }

@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.ui.compose.component.AppFilletTextButton
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTitleBar
@@ -86,6 +87,8 @@ data class BookSourceDebugUiState(
     val textMy: String,
     /** 调试发现示例文本 ("title::url" 形式, ERROR: 前缀表示出错) */
     val textFx: String,
+    /** 异步解析出的发现分类，随 StateFlow 更新主动触发界面重组。 */
+    val exploreKinds: List<ExploreKind> = emptyList(),
 )
 
 /**
@@ -274,8 +277,7 @@ private fun HelpPanel(state: BookSourceDebugUiState, actions: BookSourceDebugUiA
     Column(
         Modifier
             .fillMaxWidth()
-            // 半透明底: 面板覆盖在调试日志上方, 透出下层内容
-            .background(colors.background.copy(alpha = 0.7f))
+            .background(colors.background)
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
     ) {

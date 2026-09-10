@@ -4,11 +4,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -46,18 +42,14 @@ import io.legado.app.model.BookCoverShared.CoverRatio
 import io.legado.app.model.defaultCoverDisplayPath
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.bookshelf.defaultCoverEntry
-import io.legado.app.ui.compose.component.AlertButton
-import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.NinePatchImageOrImage
 import io.legado.app.ui.compose.component.zoomable
-import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.imageSaveFileName
 import io.legado.app.utils.readAllAndClose
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
-import legado.shared.generated.resources.close
 import legado.shared.generated.resources.image_cover_default
 import legado.shared.generated.resources.loading
 import org.jetbrains.compose.resources.painterResource
@@ -97,7 +89,7 @@ import kotlin.math.max
  *
  * @param src 图片路径 (http(s):// / file:// / 绝对路径, 各端 actual 支持范围见 ImageBitmapLoader)
  * @param modifier 外层容器 Modifier (默认 wrap; 全屏场景传 fillMaxSize)
- * @param imageModifier 图片 Modifier (默认 fillMaxSize; 对话框场景传定高约束)
+ * @param imageModifier 图片 Modifier (默认 fillMaxSize)
  * @param book 当前书籍 (http 场景判断 isLocal 与解密 put("book")), 可空
  * @param bookSource 书源 (网络图防盗链 header/cookie/charset/JS + coverDecodeJs 封面解密), 可空
  * @param chapter 当前章节 (网络书阅读页点图时透传: 磁盘章节图片缓存 [BookImageStorage]
@@ -372,44 +364,7 @@ private fun rememberPhotoSaveAction(
 }
 
 /**
- * 大图查看对话框 (AppAlertDialog 形态, 视觉对照原 desktop DesktopPhotoDialog:
- * 内容区 + "关闭"按钮, 图片区占对话框高 0.8)。desktop/iOS/鸿蒙三端共用;
- * 全屏看图 (含 Android) 走 [PhotoViewOverlayDialog], 不经本件。
- *
- * @param src 图片路径
- * @param onDismiss 关闭回调
- * @param book 当前书籍, 可空 (透传 [PhotoDialogContent])
- * @param bookSource 书源 (网络图防盗链), 可空 (透传 [PhotoDialogContent])
- * @param chapter 当前章节, 可空 (网络书阅读页点图时透传, 磁盘章节缓存优先链路使用)
- */
-@Composable
-fun PhotoViewDialog(
-    src: String,
-    onDismiss: () -> Unit,
-    book: Book? = null,
-    bookSource: BookSource? = null,
-    chapter: BookChapter? = null,
-) {
-    val saveImage = rememberPhotoSaveAction(src, book, bookSource, chapter)
-    AppAlertDialog(
-        onDismissRequest = onDismiss,
-        okButton = AlertButton(stringResource(Res.string.close)),
-    ) {
-        Column(Modifier.padding(horizontal = DesignTokens.spacingDefault)) {
-            PhotoDialogContent(
-                src = src,
-                imageModifier = Modifier.fillMaxWidth().fillMaxHeight(0.8f),
-                book = book,
-                bookSource = bookSource,
-                chapter = chapter,
-                onLongPress = saveImage,
-            )
-        }
-    }
-}
-
-/**
- * 全屏大图 Overlay 的平台承载: 各端 actual 用对应平台的 Dialog 配置让黑色背景
+ * 全屏大图查看 Overlay 的平台承载: 各端 actual 用对应平台的 Dialog 配置让黑色背景
  * 铺满整屏并延伸到系统栏之下 (Android: decorFitsSystemWindows=false;
  * iOS/鸿蒙/桌面: usePlatformInsets=false)。
  */
