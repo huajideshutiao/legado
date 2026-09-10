@@ -3,22 +3,22 @@ package io.legado.app.help.tts
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Status
-import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.media.ReadAloudRemoteHost
 import io.legado.app.help.media.SleepTimer
-import io.legado.app.help.media.SystemMediaControl
-import io.legado.app.model.ActiveReadBookRegistry
-import io.legado.app.service.ReadAloudChapterNavigator
+import io.legado.app.model.ActiveReadAloudHostPorts
+import io.legado.app.service.ReadAloudChapterDataPort
+import io.legado.app.service.ReadAloudChapterPlan
 import io.legado.app.service.ReadAloudControllerShared
 import io.legado.app.service.ReadAloudControllerShared.ReadAloudState
-import io.legado.app.ui.book.read.ReadBookEvents
-import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
+import kotlin.concurrent.Volatile
 
 /**
  * 无前台 Service 的平台 (桌面 / iOS / 鸿蒙) 共用的朗读宿主: 把 [ReadAloudControllerShared]
@@ -28,7 +28,9 @@ import kotlinx.coroutines.launch
  * (章节未排版时退回本地缓存正文); 起始位置的累加方式 (段长 + 1 个换行) 与
  * [ReadAloudQueue.readAloudNumber] 一致。
  */
-abstract class ReadAloudHostShared : ReadAloudRemoteHost {
+abstract class ReadAloudHostShared(
+    private val ports: ReadAloudHostPorts = ActiveReadAloudHostPorts,
+) : ReadAloudRemoteHost {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -52,9 +54,9 @@ abstract class ReadAloudHostShared : ReadAloudRemoteHost {
     @Volatile
     private var lastSyncedPos: Int = -1
 
-    /** 暂停期间发生过翻页, resume 时按新位置重开 (对照原版 newReadAloud(play=false))。 */
+    /** 暂停期间发生过翻页；记录与章节绑定的新位置，resume 按它重建。 */
     @Volatile
-    private var restartOnResume: Boolean = false
+    private var pausedPosition: ReadAloudPosition? = null
 
     private var positionWatchJob: Job? = null
 
@@ -68,7 +70,7 @@ abstract class ReadAloudHostShared : ReadAloudRemoteHost {
     /** 对应 app 端 `BaseReadAloudService.isRun`。 */
     override val isRun: Boolean
         get() = controllerRef?.state?.value
-            .let { it == ReadAloudState.PLAYING || it == ReadAloudState.PAUSED }
+            .let { it == ReadAloudState.PLAYING || it == ReadAloudState.PAUSED || it == ReadAloudState.WAITING }
 
     /** 对应 app 端 `BaseReadAloudService.pause`。 */
     override val isPause: Boolean get() = controllerRef?.state?.value != ReadAloudState.PLAYING
@@ -81,13 +83,17 @@ abstract class ReadAloudHostShared : ReadAloudRemoteHost {
      * @param startPos 相对当前 `durChapterPos` 的附加偏移
      */
     fun play(play: Boolean = true, startPos: Int = 0) {
-        val readBook = ActiveReadBookRegistry.current ?: return
+        val position = ports.currentPosition ?: return
         if (!play) {
-            restartOnResume = true
+            pausedPosition = ReadAloudPosition(
+                position.chapterIndex,
+                (position.chapterPosition + startPos).coerceAtLeast(0),
+            )
+            startPositionWatch()
             return
         }
-        val pos = (readBook.durChapterPosValue + startPos).coerceAtLeast(0)
-        startAt(readBook.durChapterIndexValue, pos)
+        val pos = (position.chapterPosition + startPos).coerceAtLeast(0)
+        startAt(position.chapterIndex, pos)
     }
 
     /** 暂停朗读 (对照 `ReadAloud.pause`)。 */
@@ -97,9 +103,9 @@ abstract class ReadAloudHostShared : ReadAloudRemoteHost {
 
     /** 继续朗读; 暂停期间翻过页时按新位置重开 (对照 `ReadAloud.resume`)。 */
     override fun resume() {
-        val readBook = ActiveReadBookRegistry.current
-        if (restartOnResume && readBook != null) {
-            startAt(readBook.durChapterIndexValue, readBook.durChapterPosValue)
+        val position = pausedPosition ?: ports.currentPosition
+        if (pausedPosition != null && position != null) {
+            startAt(position.chapterIndex, position.chapterPosition)
         } else {
             controllerRef?.resume()
         }
@@ -107,9 +113,11 @@ abstract class ReadAloudHostShared : ReadAloudRemoteHost {
 
     /** 停止朗读并清理 (对照 `ReadAloud.stop`)。 */
     override fun stop() {
+        chapterWatchJob?.cancel()
+        chapterWatchJob = null
         positionWatchJob?.cancel()
         positionWatchJob = null
-        restartOnResume = false
+        pausedPosition = null
         sleepTimer.cancel()
         controllerRef?.stop()
     }
@@ -177,7 +185,7 @@ abstract class ReadAloudHostShared : ReadAloudRemoteHost {
     private val sleepTimer by lazy {
         SleepTimer(
             scope = scope,
-            postMinute = { ReadBookEvents.postReadAloudDs(it) },
+            postMinute = { ports.positionPublisher.publishTimer(it) },
             isPaused = { isPause },
             onTimeout = { pause() },
         )
@@ -185,7 +193,8 @@ abstract class ReadAloudHostShared : ReadAloudRemoteHost {
 
     private fun createController(): ReadAloudControllerShared {
         val instance = ReadAloudControllerShared(
-            navigator = navigator,
+            chapterData = chapterData,
+            chapterNavigation = ports.chapterNavigation,
         )
         controllerRef = instance
         scope.launch {
@@ -197,16 +206,37 @@ abstract class ReadAloudHostShared : ReadAloudRemoteHost {
         scope.launch {
             instance.lastError.collect { AppLog.put(it) }
         }
+        startChapterWatch()
         return instance
     }
 
     private fun startAt(chapterIndex: Int, pos: Int) {
-        pendingStartPos = pos
         lastSyncedPos = pos
-        restartOnResume = false
+        pausedPosition = null
+        startChapterWatch()
         applySpeechRate()
-        controller.start(chapterIndex)
+        controller.start(chapterIndex, pos)
         startPositionWatch()
+    }
+
+    private var chapterWatchJob: Job? = null
+
+    /**
+     * 监听章节装载就绪 (对照原版 BaseReadAloudService.armChapterWatch):
+     * 跨章未缓存时控制器置 WAITING, 待章节加载排版完成后自动续播。
+     */
+    private fun startChapterWatch() {
+        if (chapterWatchJob?.isActive == true) return
+        chapterWatchJob = scope.launch {
+            ports.chapterUpdates.collect { update ->
+                if (controller.state.value == ReadAloudState.WAITING &&
+                    update.chapterIndex == controller.chapterIndex.value
+                ) {
+                    if (update.error != null) controller.reportError(update.error)
+                    else if (update.ready) controller.retryWaiting(update.chapterIndex)
+                }
+            }
+        }
     }
 
     /** AppConfig.ttsSpeechRate (0..45) 折算为控制器倍率 (原版 (rate + 5) / 10f)。 */
@@ -232,14 +262,22 @@ abstract class ReadAloudHostShared : ReadAloudRemoteHost {
      */
     private fun startPositionWatch() {
         positionWatchJob?.cancel()
-        val readBook = ActiveReadBookRegistry.current ?: return
         positionWatchJob = scope.launch {
-            readBook.durChapterPos.collect { pos ->
-                if (controller.state.value != ReadAloudState.PLAYING) return@collect
-                if (pos == lastSyncedPos) return@collect
-                if (readBook.durChapterIndexValue != controller.chapterIndex.value) return@collect
-                if (pos in currentParagraphRange()) return@collect
-                startAt(readBook.durChapterIndexValue, pos)
+            ports.positionUpdates.collect { position ->
+                val state = controller.state.value
+                if (state == ReadAloudState.PAUSED) {
+                    if (position.chapterIndex != controller.chapterIndex.value ||
+                        position.chapterPosition !in currentParagraphRange()
+                    ) {
+                        pausedPosition = position
+                    }
+                    return@collect
+                }
+                if (state != ReadAloudState.PLAYING) return@collect
+                if (position.chapterPosition == lastSyncedPos) return@collect
+                if (position.chapterIndex != controller.chapterIndex.value) return@collect
+                if (position.chapterPosition in currentParagraphRange()) return@collect
+                startAt(position.chapterIndex, position.chapterPosition)
             }
         }
     }
@@ -260,34 +298,34 @@ abstract class ReadAloudHostShared : ReadAloudRemoteHost {
     private fun syncReadPosition(index: Int) {
         if (index < 0) return
         val controller = controllerRef ?: return
-        val readBook = ActiveReadBookRegistry.current ?: return
-        if (readBook.durChapterIndexValue != controller.chapterIndex.value) return
+        val position = ports.currentPosition ?: return
+        if (position.chapterIndex != controller.chapterIndex.value) return
         val real = paragraphBase + index
         var pos = paragraphOffsets.getOrNull(real) ?: return
         if (index == 0) pos += firstParagraphSkip
         lastSyncedPos = pos
-        ReadBookEvents.postTtsProgress(pos)
+        ports.positionPublisher.publishPosition(pos)
     }
 
     /** 朗读态广播; 暂停/停止时的清高亮由阅读页的 ALOUD_STATE 订阅负责。 */
     private fun onStateChanged(state: ReadAloudState) {
         when (state) {
             ReadAloudState.PLAYING -> {
-                ReadBookEvents.postAloudState(Status.PLAY)
-                SystemMediaControl.syncReadAloud(isPlaying = true)
+                ports.positionPublisher.publishState(Status.PLAY)
+                ports.mediaControl.sync(isPlaying = true)
             }
 
             ReadAloudState.PAUSED -> {
-                ReadBookEvents.postAloudState(Status.PAUSE)
-                SystemMediaControl.syncReadAloud(isPlaying = false)
+                ports.positionPublisher.publishState(Status.PAUSE)
+                ports.mediaControl.sync(isPlaying = false)
             }
 
             ReadAloudState.STOPPED, ReadAloudState.COMPLETED, ReadAloudState.ERROR -> {
-                ReadBookEvents.postAloudState(Status.STOP)
-                SystemMediaControl.releaseReadAloud()
+                ports.positionPublisher.publishState(Status.STOP)
+                ports.mediaControl.release()
             }
 
-            ReadAloudState.IDLE -> Unit
+            ReadAloudState.IDLE, ReadAloudState.WAITING -> Unit
         }
     }
 
@@ -295,25 +333,8 @@ abstract class ReadAloudHostShared : ReadAloudRemoteHost {
      * 取章节朗读文本: 已排版章节用页文本拼接 (位置与 durChapterPos 同口径), 否则退回本地
      * 缓存正文; 都没有时触发一次装载 (对照原版 newReadAloud 等章节排版完成再建队列)。
      */
-    private fun chapterText(chapterIndex: Int): String? {
-        val readBook = ActiveReadBookRegistry.current ?: return null
-        if (chapterIndex == readBook.durChapterIndexValue) {
-            val laidOut = readBook.curTextChapter.value
-            if (laidOut != null && laidOut.pages.isNotEmpty()) {
-                return laidOut.pages.joinToString("") { it.text }
-            }
-        }
-        val book = readBook.bookValue ?: return null
-        val chapter = readBook.chapterListValue?.getOrNull(chapterIndex)
-        // 缓存未命中 getContent 自己返回 null; 真读盘失败则抛到 controller.start 的错误出口
-        val content = chapter?.let { BookStorageProviders.get().getContent(book, it) }
-        if (content.isNullOrBlank()) {
-            // 控制器本次会置 ERROR, 装载完成后用户重试即可
-            ActiveReadBookRegistry.currentViewModel?.loadChapter(chapterIndex)
-            return null
-        }
-        return content
-    }
+    private fun chapterText(chapterIndex: Int): String? =
+        ports.chapterData.chapterText(chapterIndex)
 
     /**
      * 建段落表并按 [pendingStartPos] 裁掉已读部分。
@@ -350,29 +371,32 @@ abstract class ReadAloudHostShared : ReadAloudRemoteHost {
         return sub
     }
 
-    /** 章节导航: 桥接到当前阅读 ViewModel (对照原版 BaseReadAloudService 直接调 ReadBook)。 */
-    private val navigator = object : ReadAloudChapterNavigator {
+    /** 将宿主章节数据端口适配为控制器的播放计划。 */
+    private val chapterData = object : ReadAloudChapterDataPort {
+        override val chapterCount: Int get() = ports.chapterData.chapterCount
 
-        /** 原版切章走 `ReadBookShared.moveToNextChapter`, 边界是 simulatedChapterSize。 */
-        override val chapterCount: Int
-            get() = ActiveReadBookRegistry.current?.simulatedChapterSize ?: 0
-
-        override fun loadChapterParagraphs(chapterIndex: Int): List<String> =
-            buildParagraphs(chapterIndex)
-
-        override fun moveToChapter(chapterIndex: Int) {
-            val viewModel = ActiveReadBookRegistry.currentViewModel ?: return
-            // 控制器切章后会再调一次本方法, 已在目标章时不重复触发装载
-            if (viewModel.durChapterIndex.value == chapterIndex) return
-            viewModel.loadChapter(chapterIndex)
-        }
-
-        override fun moveToNextChapter() {
-            ActiveReadBookRegistry.currentViewModel?.moveToNextChapter()
-        }
-
-        override fun moveToPrevChapter() {
-            ActiveReadBookRegistry.currentViewModel?.moveToPrevChapter()
+        override fun loadChapterPlan(
+            chapterIndex: Int,
+            chapterPosition: Int,
+            fromLastSpeakable: Boolean,
+        ): ReadAloudChapterPlan? {
+            pendingStartPos = chapterPosition
+            val plan = buildParagraphs(chapterIndex)
+                .takeIf { it.isNotEmpty() }
+                ?.let { ReadAloudChapterPlan(it, chapterPosition = chapterPosition) }
+                ?: return null
+            if (!fromLastSpeakable) return plan
+            val index = plan.paragraphs.indexOfLast {
+                !it.matches(io.legado.app.constant.AppPattern.notReadAloudRegex)
+            }
+            if (index < 0) return null
+            val chapterPos = paragraphOffsets.getOrNull(paragraphBase + index)
+                ?: plan.paragraphs.take(index).sumOf { it.length + 1 }
+            return plan.copy(
+                paragraphIndex = index,
+                paragraphOffset = 0,
+                chapterPosition = chapterPos,
+            )
         }
     }
     // endregion
@@ -381,4 +405,38 @@ abstract class ReadAloudHostShared : ReadAloudRemoteHost {
         /** 原版 AppConfig.defaultSpeechRate。 */
         const val DEFAULT_SPEECH_RATE = 5
     }
+}
+
+data class ReadAloudPosition(val chapterIndex: Int, val chapterPosition: Int)
+data class ReadAloudChapterUpdate(
+    val chapterIndex: Int,
+    val ready: Boolean,
+    val error: String? = null
+)
+
+interface ReadAloudChapterDataHostPort {
+    val chapterCount: Int
+    fun chapterText(chapterIndex: Int): String?
+}
+
+interface ReadAloudPositionPublisher {
+    fun publishPosition(chapterPosition: Int)
+    fun publishState(state: Int)
+    fun publishTimer(minute: Int)
+}
+
+interface ReadAloudMediaControlPort {
+    fun sync(isPlaying: Boolean)
+    fun release()
+}
+
+/** 页面宿主能力集合；业务宿主只依赖这些端口，不反查活动 ViewModel/UI 总线。 */
+interface ReadAloudHostPorts {
+    val chapterData: ReadAloudChapterDataHostPort
+    val chapterNavigation: io.legado.app.service.ReadAloudChapterNavigationPort
+    val positionPublisher: ReadAloudPositionPublisher
+    val mediaControl: ReadAloudMediaControlPort
+    val currentPosition: ReadAloudPosition?
+    val positionUpdates: Flow<ReadAloudPosition> get() = emptyFlow()
+    val chapterUpdates: Flow<ReadAloudChapterUpdate> get() = emptyFlow()
 }

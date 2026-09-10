@@ -48,8 +48,7 @@ class OhosSystemTtsEngine : SystemTtsEngine, OhosNativeBridge.TtsEventListener {
     /** 语速倍率 (1.0 = 正常), 随 speak 命令发送给 ArkTS。 */
     @Volatile private var rateMultiplier: Float = 1.0f
 
-    /** 朗读进度回调 (由 [ReadAloudControllerShared] 注入)。 */
-    @Volatile private var listenerField: TtsProgressListener? = null
+    private val listeners = TtsProgressListenerRegistry()
 
     /** 是否已 shutdown, shutdown 后所有操作 no-op。 */
     @Volatile private var shutdown: Boolean = false
@@ -84,13 +83,16 @@ class OhosSystemTtsEngine : SystemTtsEngine, OhosNativeBridge.TtsEventListener {
             rateMultiplier = value.coerceIn(0.5f, 2.0f)
         }
 
-    override var progressListener: TtsProgressListener?
-        get() = listenerField
-        set(value) {
-            listenerField = value
-        }
+    override fun registerProgressListener(
+        listener: TtsProgressListener,
+        utteranceIdPrefix: String?,
+    ): TtsProgressListenerToken = listeners.register(listener, utteranceIdPrefix)
 
-    // ===== speak / enqueue =====
+    override fun unregisterProgressListener(token: TtsProgressListenerToken) {
+        listeners.unregister(token)
+    }
+
+    // ===== speak =====
 
     /**
      * 立即播放 (清空已有队列)。
@@ -98,8 +100,8 @@ class OhosSystemTtsEngine : SystemTtsEngine, OhosNativeBridge.TtsEventListener {
      * 桥接就绪: 发 "speak" 命令, 设 speaking=true, 等 ArkTS onComplete/onStop 回调再触发 onDone。
      * 降级: 上报 onError 置 ERROR 停止推进 (不 onDone, 避免整章被秒速静默"读完")。
      */
-    override fun speak(text: String, utteranceId: String) {
-        if (shutdown) return
+    override fun speak(text: String, utteranceId: String): Boolean {
+        if (shutdown) return false
         if (OhosNativeBridge.isTtsBridgeReady()) {
             speaking = true
             paused = false
@@ -110,23 +112,14 @@ class OhosSystemTtsEngine : SystemTtsEngine, OhosNativeBridge.TtsEventListener {
                 rate = rateMultiplier,
             )
             // onDone 由 ArkTS onComplete/onStop 回调触发, 不在此处立即触发
+            return true
         } else {
             // 降级: napi 桥未就绪无法出声, 走错误上报通道让用户可感知
             speaking = false
             paused = false
-            AppLog.put("speak: tts 桥未就绪, 上报错误。utteranceId=$utteranceId", tag = TAG)
-            listenerField?.onError(utteranceId, ERROR_BRIDGE_NOT_READY)
+            AppLog.put("speak: tts 桥未就绪, 提交失败。utteranceId=$utteranceId", tag = TAG)
+            return false
         }
-    }
-
-    /**
-     * 追加到队列尾部。
-     *
-     * 与 [OhosHttpTtsPlayer] / DesktopSystemTtsEngine 一致: ReadAloudControllerShared
-     * 通过 onDone 串行驱动段级推进, 不会并发 enqueue, 简化为 speak。
-     */
-    override fun enqueue(text: String, utteranceId: String) {
-        speak(text, utteranceId)
     }
 
     // ===== pause / resume / stop / shutdown =====
@@ -188,19 +181,28 @@ class OhosSystemTtsEngine : SystemTtsEngine, OhosNativeBridge.TtsEventListener {
 
         when (event.event) {
             "onStart" -> {
-                event.utteranceId?.let { listenerField?.onStart(it) }
+                event.utteranceId?.let {
+                    listeners.onStart(it)
+                }
             }
             "onComplete" -> {
                 speaking = false
-                event.utteranceId?.let { listenerField?.onDone(it) }
+                event.utteranceId?.let {
+                    listeners.onDone(it)
+                }
             }
             "onStop" -> {
                 speaking = false
-                event.utteranceId?.let { listenerField?.onDone(it) }
+                event.utteranceId?.let {
+                    listeners.onDone(it)
+                }
             }
             "onError" -> {
                 speaking = false
-                event.utteranceId?.let { listenerField?.onError(it, event.errorCode ?: 0) }
+                event.utteranceId?.let {
+                    val code = event.errorCode ?: 0
+                    listeners.onError(it, code)
+                }
             }
         }
     }

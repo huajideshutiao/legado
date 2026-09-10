@@ -106,6 +106,15 @@ object ReadBookEvents {
     private val _ttsProgress = eventFlow<Int>(replay = 1)
     val ttsProgress: SharedFlow<Int> get() = _ttsProgress
 
+    /**
+     * 朗读宿主输出端口：保持既有 Flow 语义，同时让 shared 状态机只依赖发布接口。
+     */
+    val readAloudPositionPublisher = object : io.legado.app.help.tts.ReadAloudPositionPublisher {
+        override fun publishPosition(chapterPosition: Int) = postTtsProgress(chapterPosition)
+        override fun publishState(state: Int) = postAloudState(state)
+        override fun publishTimer(minute: Int) = postReadAloudDs(minute)
+    }
+
     fun postConfig(vararg changes: ReadConfigChange) {
         _configChange.tryEmit(changes.asList())
     }

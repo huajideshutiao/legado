@@ -42,7 +42,7 @@ class DesktopSystemTtsEngine : SystemTtsEngine {
 
     @Volatile private var rateMultiplier: Float = 1.0f
 
-    @Volatile private var listenerField: TtsProgressListener? = null
+    private val listeners = io.legado.app.help.tts.TtsProgressListenerRegistry()
 
     /** 最后一次朗读的文本与 id, 供不支持真暂停的后端 resume 时重读。 */
     @Volatile private var lastText: String? = null
@@ -68,28 +68,27 @@ class DesktopSystemTtsEngine : SystemTtsEngine {
             rateMultiplier = value.coerceIn(0.5f, 2.0f)
         }
 
-    override var progressListener: TtsProgressListener?
-        get() = listenerField
-        set(value) {
-            listenerField = value
-        }
+    override fun registerProgressListener(
+        listener: TtsProgressListener,
+        utteranceIdPrefix: String?,
+    ): io.legado.app.help.tts.TtsProgressListenerToken =
+        listeners.register(listener, utteranceIdPrefix)
 
-    override fun speak(text: String, utteranceId: String) {
-        if (shutdown.get()) return
+    override fun unregisterProgressListener(token: io.legado.app.help.tts.TtsProgressListenerToken) {
+        listeners.unregister(token)
+    }
+
+    override fun speak(text: String, utteranceId: String): Boolean {
+        if (shutdown.get()) return false
         val engine = backend
-        if (engine == null) {
-            listenerField?.onError(utteranceId, ERROR_NO_BACKEND)
-            return
-        }
+        if (engine == null) return false
         lastText = text
         lastUtteranceId = utteranceId
         pausedField = false
         speakingField = true
         engine.speak(text, rateMultiplier, utteranceId, backendListener)
+        return true
     }
-
-    /** 上层 [ReadAloudControllerShared] 靠 onDone 串行推进段落, 不会并发入队。 */
-    override fun enqueue(text: String, utteranceId: String) = speak(text, utteranceId)
 
     override fun pause() {
         if (shutdown.get()) return
@@ -165,21 +164,21 @@ class DesktopSystemTtsEngine : SystemTtsEngine {
     private val backendListener = object : TtsBackendListener {
         override fun onStart(utteranceId: String) {
             speakingField = true
-            listenerField?.onStart(utteranceId)
+            listeners.onStart(utteranceId)
         }
 
         override fun onWord(utteranceId: String, start: Int, end: Int) {
-            listenerField?.onRangeStart(utteranceId, start, end, 0)
+            listeners.onRangeStart(utteranceId, start, end, 0)
         }
 
         override fun onDone(utteranceId: String) {
             speakingField = false
-            listenerField?.onDone(utteranceId)
+            listeners.onDone(utteranceId)
         }
 
         override fun onError(utteranceId: String, code: Int) {
             speakingField = false
-            listenerField?.onError(utteranceId, code)
+            listeners.onError(utteranceId, code)
         }
     }
 

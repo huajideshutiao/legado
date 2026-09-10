@@ -3,10 +3,25 @@ package io.legado.app.model
 import io.legado.app.api.controller.ReadBookStateProvider
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookProgress
+import io.legado.app.help.media.SystemMediaControl
+import io.legado.app.help.tts.ReadAloudChapterDataHostPort
+import io.legado.app.help.tts.ReadAloudChapterUpdate
+import io.legado.app.help.tts.ReadAloudHostPorts
+import io.legado.app.help.tts.ReadAloudMediaControlPort
+import io.legado.app.help.tts.ReadAloudPosition
+import io.legado.app.help.tts.ReadAloudPositionPublisher
+import io.legado.app.model.ActiveReadAloudHostPorts._owner
+import io.legado.app.model.ActiveReadBookRegistry.current
+import io.legado.app.service.ReadAloudChapterNavigationPort
+import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadBookViewModelShared
+import io.legado.app.ui.book.read.page.entities.TextChapterShared
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlin.concurrent.Volatile
 
 /** 当前 shared 阅读页的活动阅读状态。 */
@@ -16,7 +31,7 @@ object ActiveReadBookRegistry {
     @Volatile
     private var viewModel: ReadBookViewModelShared? = null
 
-    /** 当前活动阅读状态; 供非 Compose 宿主 (如朗读服务/桌面朗读宿主) 读取章节/位置。 */
+    /** 当前活动阅读状态；供非 Compose 宿主读取，不承担朗读端口适配。 */
     val current: ReadBookShared? get() = _current.value
 
     /** [current] 的可观察视图: 朗读宿主用它跟随阅读页的进入/退出/重建。 */
@@ -47,6 +62,73 @@ object ActiveReadBookRegistry {
             // 对照 app 端 `ReadBook.book = it` (元数据刷新, 不走 initData 的切书重置)
             readBook.bookValue = book
         }
+    }
+}
+
+interface ActiveReadAloudOwner {
+    val readBook: ReadBookShared
+    val positionUpdates: Flow<ReadAloudPosition>
+    val chapterUpdates: Flow<ReadAloudChapterUpdate>
+    fun chapterText(chapterIndex: Int): String?
+    fun moveToChapter(chapterIndex: Int)
+    fun moveToNextPage()
+    fun uploadProgress()
+}
+
+/**
+ * 活动阅读页到朗读宿主的唯一适配层。具体页面在 attach 时显式注入章节、导航、位置发布；
+ * 朗读宿主和 Android Service 都不再反查 currentViewModel 或直接发 UI 事件。
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+object ActiveReadAloudHostPorts : ReadAloudHostPorts {
+    private val _owner = MutableStateFlow<ActiveReadAloudOwner?>(null)
+
+    /** 同步调用使用的必要快照；flow 始终由 [_owner] 动态跟随重建。 */
+    @Volatile
+    private var ownerSnapshot: ActiveReadAloudOwner? = null
+
+    fun attach(value: ActiveReadAloudOwner) {
+        ownerSnapshot = value
+        _owner.value = value
+    }
+
+    fun detach(value: ActiveReadAloudOwner) {
+        if (ownerSnapshot === value) ownerSnapshot = null
+        if (_owner.value === value) _owner.value = null
+    }
+
+    val currentReadBook: ReadBookShared? get() = ownerSnapshot?.readBook
+    val currentChapter: TextChapterShared? get() = ownerSnapshot?.readBook?.curTextChapter?.value
+    fun moveToNextPage() = ownerSnapshot?.moveToNextPage()
+    fun uploadProgress() = ownerSnapshot?.uploadProgress()
+
+    override val currentPosition: ReadAloudPosition?
+        get() = ownerSnapshot?.readBook?.let {
+            ReadAloudPosition(it.durChapterIndexValue, it.durChapterPosValue)
+        }
+
+    override val positionUpdates: Flow<ReadAloudPosition> =
+        _owner.flatMapLatest { it?.positionUpdates ?: kotlinx.coroutines.flow.emptyFlow() }
+
+    override val chapterUpdates: Flow<ReadAloudChapterUpdate> =
+        _owner.flatMapLatest { it?.chapterUpdates ?: kotlinx.coroutines.flow.emptyFlow() }
+
+    override val chapterData = object : ReadAloudChapterDataHostPort {
+        override val chapterCount: Int get() = ownerSnapshot?.readBook?.simulatedChapterSize ?: 0
+        override fun chapterText(chapterIndex: Int): String? =
+            ownerSnapshot?.chapterText(chapterIndex)
+    }
+
+    override val chapterNavigation = ReadAloudChapterNavigationPort { chapterIndex ->
+        ownerSnapshot?.moveToChapter(chapterIndex)
+    }
+
+    override val positionPublisher: ReadAloudPositionPublisher
+        get() = ReadBookEvents.readAloudPositionPublisher
+
+    override val mediaControl = object : ReadAloudMediaControlPort {
+        override fun sync(isPlaying: Boolean) = SystemMediaControl.syncReadAloud(isPlaying)
+        override fun release() = SystemMediaControl.releaseReadAloud()
     }
 }
 

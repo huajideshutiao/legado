@@ -42,6 +42,7 @@ class TextToSpeechEngine(private val engineName: String? = null) {
 
     private var tts: TextToSpeech? = null
     private var pendingOnReady: (() -> Unit)? = null
+    private var pendingOnError: ((Int) -> Unit)? = null
 
     /**
      * 确保引擎已初始化。已就绪时同步执行 [block];否则触发异步初始化,初始化成功后执行 [block]。
@@ -49,12 +50,13 @@ class TextToSpeechEngine(private val engineName: String? = null) {
      * 在初始化过程中重复调用,只保留最后一个 [block]。
      */
     @Synchronized
-    fun ensureReady(block: () -> Unit) {
+    fun ensureReady(block: () -> Unit, onError: (Int) -> Unit = {}) {
         if (isReady) {
             block()
             return
         }
         pendingOnReady = block
+        pendingOnError = onError
         if (tts != null) return // 初始化中
         val listener = TextToSpeech.OnInitListener { status -> onInit(status) }
         tts = if (engineName.isNullOrBlank()) {
@@ -67,14 +69,22 @@ class TextToSpeechEngine(private val engineName: String? = null) {
     @Synchronized
     private fun onInit(status: Int) {
         if (status != TextToSpeech.SUCCESS) {
+            val failedEngine = tts
+            val error = pendingOnError
+            tts = null
+            isReady = false
             pendingOnReady = null
+            pendingOnError = null
+            failedEngine?.shutdown()
             onInitFailed()
+            error?.invoke(status)
             return
         }
         progressListener?.let { tts?.setOnUtteranceProgressListener(it) }
         isReady = true
         val block = pendingOnReady
         pendingOnReady = null
+        pendingOnError = null
         block?.invoke()
     }
 
@@ -107,6 +117,7 @@ class TextToSpeechEngine(private val engineName: String? = null) {
         tts = null
         isReady = false
         pendingOnReady = null
+        pendingOnError = null
     }
 }
 
@@ -140,6 +151,7 @@ private class AndroidSystemTtsEngine : SystemTtsEngine {
     private val idleShutdown = Runnable { engine.shutdown() }
 
     private var paused = false
+    private val listeners = TtsProgressListenerRegistry()
 
     override val isReady: Boolean get() = engine.isReady
 
@@ -147,51 +159,74 @@ private class AndroidSystemTtsEngine : SystemTtsEngine {
 
     override val isPaused: Boolean get() = paused
 
+    /** `TextToSpeech.QUEUE_ADD` 是真队列, 批量入队段间无缝 (对照原版 `TTS.emitPending`)。 */
+    override val supportsQueue: Boolean get() = true
+
     override var speechRate: Float = 1f
         set(value) {
             field = value
             engine.setSpeechRate(value)
         }
 
-    override var progressListener: TtsProgressListener? = null
+    override fun registerProgressListener(
+        listener: TtsProgressListener,
+        utteranceIdPrefix: String?,
+    ): TtsProgressListenerToken = listeners.register(listener, utteranceIdPrefix)
+
+    override fun unregisterProgressListener(token: TtsProgressListenerToken) {
+        listeners.unregister(token)
+    }
 
     init {
         engine.progressListener = object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {
                 handler.removeCallbacks(idleShutdown)
-                progressListener?.onStart(utteranceId.orEmpty())
+                listeners.onStart(utteranceId.orEmpty())
             }
 
             override fun onDone(utteranceId: String?) {
                 handler.postDelayed(idleShutdown, IDLE_TIMEOUT_MS)
-                progressListener?.onDone(utteranceId.orEmpty())
+                listeners.onDone(utteranceId.orEmpty())
             }
 
             @Deprecated("Deprecated in Java")
             override fun onError(utteranceId: String?) = Unit
 
             override fun onError(utteranceId: String?, errorCode: Int) {
-                progressListener?.onError(utteranceId.orEmpty(), errorCode)
+                listeners.onError(utteranceId.orEmpty(), errorCode)
             }
 
             override fun onRangeStart(utteranceId: String?, start: Int, end: Int, frame: Int) {
-                progressListener?.onRangeStart(utteranceId.orEmpty(), start, end, frame)
+                listeners.onRangeStart(utteranceId.orEmpty(), start, end, frame)
             }
         }
     }
 
     override fun init(onReady: (() -> Unit)?) {
-        engine.ensureReady { onReady?.invoke() }
+        engine.ensureReady({ onReady?.invoke() })
     }
 
-    override fun speak(text: String, utteranceId: String) {
+    override fun init(onReady: (() -> Unit)?, onError: (errorCode: Int) -> Unit) {
+        engine.ensureReady({ onReady?.invoke() }, onError)
+    }
+
+    override fun speak(text: String, utteranceId: String): Boolean {
         handler.removeCallbacks(idleShutdown)
         paused = false
-        engine.speak(text, utteranceId)
+        return reportIfError(engine.speak(text, utteranceId), utteranceId)
     }
 
-    override fun enqueue(text: String, utteranceId: String) {
-        engine.enqueue(text, utteranceId)
+    override fun enqueue(text: String, utteranceId: String): Boolean {
+        return reportIfError(engine.enqueue(text, utteranceId), utteranceId)
+    }
+
+    /**
+     * `TextToSpeech.speak` 返回 ERROR 时不会再有任何 utterance 回调, 改由这里补一次
+     * onError —— 不补的话按 onDone 串行/计数推进的调用方 (如 [OneShotTts]) 会永远等不到结束。
+     */
+    private fun reportIfError(result: Int, utteranceId: String): Boolean {
+        if (result == TextToSpeech.ERROR) return false
+        return true
     }
 
     override fun pause() {

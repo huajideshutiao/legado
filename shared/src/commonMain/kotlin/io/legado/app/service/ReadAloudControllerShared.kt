@@ -11,6 +11,7 @@ import io.legado.app.help.tts.ReadAloudQueue
 import io.legado.app.help.tts.SystemTtsEngine
 import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.help.tts.TtsProgressListener
+import io.legado.app.help.tts.TtsProgressListenerToken
 import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import kotlinx.atomicfu.locks.SynchronizedObject
@@ -47,18 +48,41 @@ import kotlin.concurrent.Volatile
  * @param httpTtsConfigLoader HttpTTS 源配置加载器, 用 id 从 DAO 查 [HttpTTS]
  */
 class ReadAloudControllerShared(
-    private val navigator: ReadAloudChapterNavigator,
+    private val chapterData: ReadAloudChapterDataPort,
+    private val chapterNavigation: ReadAloudChapterNavigationPort,
+    private val playbackPort: ReadAloudPlaybackPort? = null,
     private val engineProvider: () -> SystemTtsEngine? = { TtsEngineProvider.get() },
     private val httpTtsPlayerFactory: (HttpTTS) -> HttpTtsPlayer? = { TtsEngineProvider.getHttpTtsPlayer(it) },
     private val ttsEngineConfigProvider: () -> String? = { defaultTtsEngineConfig() },
     private val httpTtsConfigLoader: suspend (Long) -> HttpTTS? = { AppDbProviders.get().httpTTSDao.get(it) },
 ) {
 
-    /** 朗读队列 (段级状态机), 与 [io.legado.app.help.tts.ReadAloudController] 共用。 */
-    private val queue = ReadAloudQueue()
+    /** 朗读队列 (段级状态机), Android Service 与其它平台共用同一实例。 */
+    val playbackQueue = ReadAloudQueue()
+    private val queue: ReadAloudQueue get() = playbackQueue
 
     // atomicfu 锁对象 (Native target 必须用 SynchronizedObject, 不能用普通类实例当锁)
     private val queueLock = SynchronizedObject()
+
+    /** 本控制器持有的系统 TTS 监听订阅，只按 token 精确注销。 */
+    private var progressListenerToken: TtsProgressListenerToken? = null
+    private var progressListenerEngine: SystemTtsEngine? = null
+    private var systemRunCount = 0L
+    private var systemUtterancePrefix = ""
+    private var expectedSystemUtteranceId: String? = null
+
+    /** 每次实际下发播放都分配新令牌，迟到的完成回调不能推进新队列。 */
+    private var playbackToken = 0L
+    private var activePlaybackToken = 0L
+
+    /** 正文尚未就绪时保留的请求；位置始终与目标章节绑定。 */
+    private data class PendingChapterRequest(
+        val chapterIndex: Int,
+        val chapterPosition: Int,
+        val fromLastSpeakable: Boolean,
+    )
+
+    private var pendingChapterRequest: PendingChapterRequest? = null
 
     // region HttpTTS 路由状态
 
@@ -117,6 +141,10 @@ class ReadAloudControllerShared(
     private val _chapterSize = MutableStateFlow(0)
     val chapterSize: StateFlow<Int> = _chapterSize.asStateFlow()
 
+    /** 当前段在章内的起始位置。 */
+    private val _chapterPosition = MutableStateFlow(0)
+    val chapterPosition: StateFlow<Int> = _chapterPosition.asStateFlow()
+
     /** 当前段落文本 (供 UI 显示"正在朗读"高亮)。 */
     private val _currentText = MutableStateFlow("")
     val currentText: StateFlow<String> = _currentText.asStateFlow()
@@ -164,11 +192,13 @@ class ReadAloudControllerShared(
         }
 
         override fun onDone(utteranceId: String) {
-            // 引擎朗读完一段, 触发推进
-            onParagraphDone()
+            if (utteranceId == expectedSystemUtteranceId) {
+                onParagraphDone(activePlaybackToken)
+            }
         }
 
         override fun onError(utteranceId: String, errorCode: Int) {
+            if (utteranceId != expectedSystemUtteranceId) return
             _lastError.tryEmit("TTS 朗读出错 (code=$errorCode, utteranceId=$utteranceId)")
             _state.value = ReadAloudState.ERROR
         }
@@ -186,14 +216,17 @@ class ReadAloudControllerShared(
      * - onEndOfMedia: 本段播完 → [onParagraphDone] (复用系统 TTS 的段级推进逻辑)
      * - onError: 错误信息写入 [_lastError] + state 置 [ReadAloudState.ERROR]
      */
-    private val httpTtsProgressListener = object : HttpTtsPlayerListener {
+    private fun httpTtsProgressListener(token: Long) = object : HttpTtsPlayerListener {
         override fun onReady() {
-            if (_state.value == ReadAloudState.PLAYING) httpTtsPlayer?.play()
+            if (_state.value == ReadAloudState.PLAYING && token == activePlaybackToken) {
+                httpTtsPlayer?.play()
+            }
         }
 
-        override fun onEndOfMedia() = onParagraphDone()
+        override fun onEndOfMedia() = onParagraphDone(token)
 
         override fun onError(message: String) {
+            if (token != activePlaybackToken) return
             _lastError.tryEmit("HttpTTS 播放出错: $message")
             _state.value = ReadAloudState.ERROR
         }
@@ -206,66 +239,100 @@ class ReadAloudControllerShared(
      *
      * @param chapterIndex 章节序号 (0-based); 越界时 state 置 ERROR
      */
-    fun start(chapterIndex: Int) {
-        // 决定本次走 HttpTTS 还是系统 TTS (基于 ttsEngineConfigProvider)
-        useHttpTts = resolveEngine()
-
-        // 切章前先置为非 PLAYING 再停旧引擎: stopInternal 停旧引擎会触发旧引擎 onDone,
-        // 若 _state 仍是 PLAYING, onParagraphDone 守卫 (非 PLAYING 才 return) 放行,
-        // 会用旧队列推进 (切章竞态); 先置位让旧引擎回调被守卫拦截
-        _state.value = ReadAloudState.STOPPED
-        // 切章前先停掉当前朗读 (避免 onDone 触发推进与新章节竞态)
-        stopInternal(clearState = false)
-
-        if (useHttpTts) {
-            // HttpTTS 路径: 注入 player listener (player 由 resolveEngine 创建)
-            httpTtsPlayer?.listener = httpTtsProgressListener
-        } else {
-            // 系统 TTS 路径: 注入 progressListener (幂等, 引擎实例可能复用)
-            val engine = engineProvider()
-            if (engine == null) {
-                _lastError.tryEmit("未注册 TTS 引擎, 无法朗读")
-                _state.value = ReadAloudState.ERROR
-                return
-            }
-            engine.progressListener = progressListener
-            // 同步朗读语速到引擎 (start 路径, 每次开始朗读都把当前 speechRate 灌进去)
-            engine.speechRate = _speechRate.value
+    fun start(
+        chapterIndex: Int,
+        chapterPosition: Int = 0,
+        fromLastSpeakable: Boolean = false,
+    ) {
+        val request = PendingChapterRequest(
+            chapterIndex = chapterIndex,
+            chapterPosition = chapterPosition.coerceAtLeast(0),
+            fromLastSpeakable = fromLastSpeakable,
+        )
+        pendingChapterRequest = request
+        if (chapterIndex !in 0 until chapterData.chapterCount) {
+            pendingChapterRequest = null
+            _lastError.tryEmit("章节索引越界: $chapterIndex")
+            _state.value = ReadAloudState.ERROR
+            return
         }
 
-        // 通知 navigator 切到目标章节 (调用方会触发 viewModel.loadChapter)
-        navigator.moveToChapter(chapterIndex)
+        // 必须先按旧路由停播/注销，再读取配置解析新路由；否则切换系统/HttpTTS 会停错实例。
+        _state.value = ReadAloudState.STOPPED
+        stopInternal(clearState = false)
+        releaseHttpTtsPlayer()
+        useHttpTts = playbackPort == null && resolveEngine()
 
-        // 同步状态: 章节大小
-        _chapterSize.value = navigator.chapterCount
+        if (playbackPort == null && !useHttpTts) {
+            val existingEngine = progressListenerEngine
+            if (existingEngine != null && progressListenerToken != null) {
+                existingEngine.speechRate = _speechRate.value
+            } else {
+                val engine = engineProvider()
+                if (engine == null) {
+                    _lastError.tryEmit("未注册 TTS 引擎, 无法朗读")
+                    _state.value = ReadAloudState.ERROR
+                    return
+                }
+                systemUtterancePrefix = "legado_read_${++systemRunCount}_"
+                progressListenerEngine = engine
+                progressListenerToken = engine.registerProgressListener(
+                    progressListener,
+                    systemUtterancePrefix,
+                )
+                engine.speechRate = _speechRate.value
+            }
+        }
 
-        // 取章节段落 (调用方通过 navigator 桥接 BookStorageProviders / WebBook)
-        val paragraphs = runCatching {
-            navigator.loadChapterParagraphs(chapterIndex)
+        // 新请求先隔离旧队列。正文未就绪时任何旧段都不能被 resume/迟到回调重新播放。
+        clearQueue()
+        _chapterIndex.value = chapterIndex
+        _paragraphIndex.value = -1
+        _chapterPosition.value = request.chapterPosition
+        _currentText.value = ""
+        chapterNavigation.moveToChapter(chapterIndex)
+        _chapterSize.value = chapterData.chapterCount
+
+        val plan = runCatching {
+            chapterData.loadChapterPlan(
+                chapterIndex,
+                request.chapterPosition,
+                request.fromLastSpeakable,
+            )
         }.getOrElse {
+            pendingChapterRequest = null
             _lastError.tryEmit("加载章节内容失败: ${it.message}")
             _state.value = ReadAloudState.ERROR
             return
         }
-        if (paragraphs.isEmpty()) {
-            _lastError.tryEmit("章节内容为空")
-            _state.value = ReadAloudState.ERROR
+        if (plan == null || plan.paragraphs.isEmpty()) {
+            // WAITING 不持有新路由资源；就绪重试时再按最新配置解析并注册。
+            stopInternal(clearState = false)
+            releaseHttpTtsPlayer()
+            _state.value = ReadAloudState.WAITING
             return
         }
 
-        // 重置队列 + 状态
         synchronized(queueLock) {
-            queue.contentList = paragraphs
-            queue.nowSpeak = 0
-            queue.readAloudNumber = 0
-            queue.paragraphStartPos = 0
+            queue.contentList = plan.paragraphs
+            queue.nowSpeak = plan.paragraphIndex.coerceIn(0, plan.paragraphs.lastIndex)
+            queue.readAloudNumber = plan.chapterPosition.coerceAtLeast(0)
+            queue.paragraphStartPos = plan.paragraphOffset.coerceIn(
+                0,
+                plan.paragraphs[queue.nowSpeak].length,
+            )
         }
-        _chapterIndex.value = chapterIndex
-        // 先置 -1: 新队列的 nowSpeak 也是 0 时, StateFlow 去重会吞掉 playCurrent 的那次
-        // 段推进通知, 朗读高亮与阅读位置会停在上一段
-        _paragraphIndex.value = -1
+        if (pendingChapterRequest == request) pendingChapterRequest = null
         _state.value = ReadAloudState.PLAYING
         playCurrent()
+    }
+
+    /** 章节更新事件只可完成与其绑定的 pending 请求；成功建队后请求由 [start] 清理。 */
+    fun retryWaiting(chapterIndex: Int): Boolean {
+        val request =
+            pendingChapterRequest?.takeIf { it.chapterIndex == chapterIndex } ?: return false
+        start(request.chapterIndex, request.chapterPosition, request.fromLastSpeakable)
+        return _state.value != ReadAloudState.WAITING
     }
 
     /**
@@ -278,8 +345,6 @@ class ReadAloudControllerShared(
      * @return true 表示走 HttpTTS, false 表示走系统 TTS
      */
     private fun resolveEngine(): Boolean {
-        // 释放上次 HttpTTS player (避免状态残留, 与 app 端 HttpReadAloudService 重建 player 对齐)
-        releaseHttpTtsPlayer()
         httpTtsConfig = null
 
         val ttsEngine = ttsEngineConfigProvider()?.takeIf { it.isNotBlank() } ?: return false
@@ -308,14 +373,16 @@ class ReadAloudControllerShared(
      * 暂停后 [resume] 续读: 引擎支持真暂停时从中断处继续, 否则从当前段落起点重读。
      */
     fun pause() {
-        if (_state.value != ReadAloudState.PLAYING) return
-        if (useHttpTts) {
-            // HttpTTS 路径: 真暂停 (各平台 actual 支持)
-            httpTtsPlayer?.pause()
+        if (_state.value != ReadAloudState.PLAYING && _state.value != ReadAloudState.WAITING) return
+        if (playbackPort != null) {
+            playbackPort.onPause()
+        } else if (useHttpTts) {
+            // HttpTTS 的 stop/prepare 语义比平台 pause 一致，resume 会按当前段重新 prepare。
+            httpTtsPlayer?.stop()
         } else {
-            val engine = engineProvider()
+            val engine = progressListenerEngine
             engine?.pause()
-            // 引擎无真暂停能力时 (isPaused 未置位, 如命令行 say/espeak) 退化为 stop 让朗读线程退出;
+            // 引擎无真暂停能力时退化为 stop；订阅与路由保留，resume 可重放当前段。
             // 真暂停引擎 (Windows SAPI) 保留位置, resume 走 engine.resume() 续读
             if (engine?.isPaused != true) engine?.stop()
         }
@@ -329,13 +396,24 @@ class ReadAloudControllerShared(
      */
     fun resume() {
         if (_state.value != ReadAloudState.PAUSED) return
-        if (useHttpTts) {
-            // HttpTTS 路径: 直接 play (player 持有当前 url, 不重新求值)
+        if (queue.contentList.isEmpty()) {
+            val request = pendingChapterRequest
+            if (request != null) {
+                start(request.chapterIndex, request.chapterPosition, request.fromLastSpeakable)
+            } else {
+                _state.value = ReadAloudState.WAITING
+            }
+            return
+        }
+        if (playbackPort != null) {
             _state.value = ReadAloudState.PLAYING
-            httpTtsPlayer?.play()
+            if (!playbackPort.onResume()) playCurrent()
+        } else if (useHttpTts) {
+            _state.value = ReadAloudState.PLAYING
+            playCurrent()
         } else {
-            // 恢复时同步语速到引擎 (用户在 pause 期间拖了滑杆, resume 后生效新速度)
-            val engine = engineProvider()
+            // 恢复时同步语速到本轮绑定的引擎；真暂停才原位 continue，否则重放当前段。
+            val engine = progressListenerEngine
             engine?.speechRate = _speechRate.value
             _state.value = ReadAloudState.PLAYING
             if (engine?.isPaused == true) engine.resume() else playCurrent()
@@ -368,7 +446,8 @@ class ReadAloudControllerShared(
         val clamped = rate.coerceIn(0.5f, 5.0f)
         _speechRate.value = clamped
         // 同步到当前引擎实例 (朗读中下一段 speak 即生效, 无需等 start/resume)
-        engineProvider()?.speechRate = clamped
+        progressListenerEngine?.speechRate = clamped
+        playbackPort?.onSpeechRateChanged(clamped)
     }
 
     /**
@@ -394,14 +473,15 @@ class ReadAloudControllerShared(
      * 已是末段时触发 [nextChapter]。
      */
     fun nextParagraph() {
-        if (_state.value == ReadAloudState.IDLE) return
+        if (_state.value != ReadAloudState.PLAYING || queue.contentList.isEmpty()) return
+        invalidatePlayback()
         stopEngine()
-        synchronized(queueLock) {
-            if (!queue.stepNextOrEnd()) {
-                // 末段, 切下一章
-                nextChapter()
-                return
-            }
+        val hasNext = synchronized(queueLock) {
+            queue.stepNextOrEnd()
+        }
+        if (!hasNext) {
+            nextChapter()
+            return
         }
         playCurrent()
     }
@@ -412,15 +492,21 @@ class ReadAloudControllerShared(
      * 已是首段时触发 [prevChapter] (从上一章末段续读)。
      */
     fun prevParagraph() {
-        if (_state.value == ReadAloudState.IDLE) return
+        if (_state.value != ReadAloudState.PLAYING || queue.contentList.isEmpty()) return
+        invalidatePlayback()
         stopEngine()
-        synchronized(queueLock) {
-            if (queue.nowSpeak <= 0) {
-                // 首段, 切上一章 (navigator 自行决定是否跳到末段)
-                prevChapter()
-                return
+        val shouldCrossChapter = synchronized(queueLock) {
+            if (queue.nowSpeak <= 0) true
+            else {
+                queue.retreatToPrevSpeakable()
+                false
             }
-            queue.retreatToPrevSpeakable()
+        }
+        if (shouldCrossChapter) {
+            // “上一句”跨章时落到上一章最后一个可朗读段，和显式“上一章”语义分离。
+            val previous = _chapterIndex.value - 1
+            if (previous >= 0) start(previous, fromLastSpeakable = true)
+            return
         }
         playCurrent()
     }
@@ -433,15 +519,13 @@ class ReadAloudControllerShared(
     fun nextChapter() {
         val cur = _chapterIndex.value
         if (cur < 0) return
-        if (cur + 1 >= navigator.chapterCount) {
+        if (cur + 1 >= chapterData.chapterCount) {
             // 已是末章
             stopEngine()
             _state.value = ReadAloudState.COMPLETED
             return
         }
-        // 通知 navigator 切章 (会触发 viewModel.moveToNextChapter → loadChapter)
-        navigator.moveToNextChapter()
-        // 续读下一章 (start 会同步 queue 与状态)
+        // start 通过导航端口切章并同步新队列。
         start(cur + 1)
     }
 
@@ -453,8 +537,8 @@ class ReadAloudControllerShared(
     fun prevChapter() {
         val cur = _chapterIndex.value
         if (cur <= 0) return
-        navigator.moveToPrevChapter()
-        start(cur - 1)
+        // 显式“上一章”始终从章首开始，不借 Int.MAX_VALUE 伪造末尾位置。
+        start(cur - 1, chapterPosition = 0)
     }
 
     // region 内部实现
@@ -463,10 +547,12 @@ class ReadAloudControllerShared(
      * 停止当前播放引擎 (HttpTTS 或系统 TTS), 不清队列 (切段/切章前调用)。
      */
     private fun stopEngine() {
-        if (useHttpTts) {
+        if (playbackPort != null) {
+            playbackPort.onStop()
+        } else if (useHttpTts) {
             httpTtsPlayer?.stop()
         } else {
-            engineProvider()?.stop()
+            progressListenerEngine?.stop()
         }
     }
 
@@ -492,6 +578,7 @@ class ReadAloudControllerShared(
             }
             current?.let {
                 _paragraphIndex.value = queue.nowSpeak
+                _chapterPosition.value = queue.readAloudNumber
                 _currentText.value = it
             }
             current
@@ -501,16 +588,30 @@ class ReadAloudControllerShared(
             nextChapter()
             return
         }
-        if (useHttpTts) {
-            playHttpTtsCurrent(text)
+        val playbackText = synchronized(queueLock) {
+            val offset = queue.paragraphStartPos.coerceIn(0, text.length)
+            text.substring(offset)
+        }
+        val token = ++playbackToken
+        activePlaybackToken = token
+        if (playbackPort != null) {
+            playbackPort.onPlay(playbackText, _paragraphIndex.value, token)
+        } else if (useHttpTts) {
+            httpTtsPlayer?.listener = httpTtsProgressListener(token)
+            playHttpTtsCurrent(playbackText)
         } else {
-            val engine = engineProvider() ?: run {
+            val engine = progressListenerEngine ?: run {
                 _lastError.tryEmit("未注册 TTS 引擎")
                 _state.value = ReadAloudState.ERROR
                 return
             }
-            // utteranceId 用段下标字符串 (与 app 端 AppConst.APP_TAG + i 简化版一致)
-            engine.speak(text, _paragraphIndex.value.toString())
+            val utteranceId = systemUtterancePrefix + _paragraphIndex.value + "_" + token
+            expectedSystemUtteranceId = utteranceId
+            if (!engine.speak(playbackText, utteranceId)) {
+                expectedSystemUtteranceId = null
+                _lastError.tryEmit("TTS 朗读提交失败")
+                _state.value = ReadAloudState.ERROR
+            }
         }
     }
 
@@ -524,7 +625,11 @@ class ReadAloudControllerShared(
      *
      * POST/body 型源首版接受降级 (只支持 GET 流式, 由各平台 actual 兜底)。
      */
+    /** 请求代次；异步 URL 求值完成时只允许当前代次提交给播放器。 */
+    private var requestGeneration = 0L
+
     private fun playHttpTtsCurrent(text: String) {
+        val generation = ++requestGeneration
         val player = httpTtsPlayer ?: run {
             _lastError.tryEmit("未注册 HttpTTS 播放器")
             _state.value = ReadAloudState.ERROR
@@ -544,9 +649,13 @@ class ReadAloudControllerShared(
                 variables = HttpTtsRequest.speakVariables(speakText, httpTtsSpeechRate),
             )
         }.onSuccess { analyzeUrl ->
+            if (generation != requestGeneration || _state.value != ReadAloudState.PLAYING) {
+                return@onSuccess
+            }
             player.setUrl(analyzeUrl.url, analyzeUrl.headerMap)
             player.prepare()
         }.onFailure {
+            if (generation != requestGeneration) return@onFailure
             _lastError.tryEmit("HttpTTS url 求值失败: ${it.message}")
             _state.value = ReadAloudState.ERROR
         }
@@ -562,8 +671,12 @@ class ReadAloudControllerShared(
      *   返回 false 才 nextChapter; 这里不能无条件 nextChapter, 否则每段读完都切章,
      *   表现为"每章只念标题")
      */
-    private fun onParagraphDone() {
-        if (_state.value != ReadAloudState.PLAYING) return
+    /** 平台播放器完成当前段时回调；令牌不匹配说明它属于已停止的旧播放。 */
+    fun paragraphCompleted(token: Long) = onParagraphDone(token)
+
+    private fun onParagraphDone(token: Long) {
+        if (_state.value != ReadAloudState.PLAYING || token != activePlaybackToken) return
+        invalidatePlayback()
         val hasNext = synchronized(queueLock) {
             queue.stepNextOrEnd()
         }
@@ -582,19 +695,44 @@ class ReadAloudControllerShared(
      * @param clearState true=完全清空 (调用方 stop); false=保留状态供切章续读
      */
     private fun stopInternal(clearState: Boolean) {
+        invalidatePlayback()
+        if (useHttpTts) {
+            releaseHttpTtsPlayer()
+        } else if (playbackPort == null) {
+            val preservePausedSystemRoute = !clearState && _state.value == ReadAloudState.PAUSED
+            if (!preservePausedSystemRoute) {
+                progressListenerToken?.let { token ->
+                    progressListenerEngine?.unregisterProgressListener(token)
+                }
+                progressListenerToken = null
+                progressListenerEngine = null
+                systemUtterancePrefix = ""
+            }
+        }
+        expectedSystemUtteranceId = null
         stopEngine()
         if (clearState) {
+            pendingChapterRequest = null
             releaseHttpTtsPlayer()
-            synchronized(queueLock) {
-                queue.contentList = emptyList()
-                queue.nowSpeak = 0
-                queue.readAloudNumber = 0
-                queue.paragraphStartPos = 0
-            }
+            clearQueue()
             _chapterIndex.value = -1
             _paragraphIndex.value = -1
+            _chapterPosition.value = 0
             _currentText.value = ""
         }
+    }
+
+    private fun invalidatePlayback() {
+        activePlaybackToken = ++playbackToken
+        requestGeneration++
+        expectedSystemUtteranceId = null
+    }
+
+    private fun clearQueue() = synchronized(queueLock) {
+        queue.contentList = emptyList()
+        queue.nowSpeak = 0
+        queue.readAloudNumber = 0
+        queue.paragraphStartPos = 0
     }
 
     /**
@@ -604,6 +742,7 @@ class ReadAloudControllerShared(
      */
     private fun releaseHttpTtsPlayer() {
         httpTtsPlayer?.let {
+            it.listener = null
             it.stop()
             it.release()
         }
@@ -611,6 +750,12 @@ class ReadAloudControllerShared(
         httpTtsConfig = null
     }
     // endregion
+
+    /** 外部报告错误（如异步加载章节失败）。 */
+    fun reportError(message: String) {
+        _lastError.tryEmit(message)
+        _state.value = ReadAloudState.ERROR
+    }
 
     /**
      * 朗读状态枚举。
@@ -622,6 +767,7 @@ class ReadAloudControllerShared(
         STOPPED,
         COMPLETED,
         ERROR,
+        WAITING,
     }
 }
 
@@ -658,31 +804,49 @@ class ReadAloudControllerShared(
  * }
  * ```
  */
-interface ReadAloudChapterNavigator {
+data class ReadAloudChapterPlan(
+    val paragraphs: List<String>,
+    val paragraphIndex: Int = 0,
+    val paragraphOffset: Int = 0,
+    val chapterPosition: Int = 0,
+)
 
-    /** 章节总数。 */
+/** 章节数据访问端口：只负责提供章节规模与可播放计划。 */
+interface ReadAloudChapterDataPort {
     val chapterCount: Int
+    fun loadChapterPlan(
+        chapterIndex: Int,
+        chapterPosition: Int = 0,
+        fromLastSpeakable: Boolean = false,
+    ): ReadAloudChapterPlan?
+}
 
-    /**
-     * 加载指定章节正文并按 \n 切段, 返回非空段落列表。
-     *
-     * 实现方应:
-     * 1. 优先查本地缓存 ([io.legado.app.help.book.BookStorageProviders])
-     * 2. 缓存未命中时联网拉取 ([io.legado.app.model.webBook.WebBook.getContentAwait])
-     * 3. 用 [ReadAloudQueue.splitParagraphs] 切段
-     *
-     * 返回空列表表示章节内容不可用 (调用方会显示错误)。
-     */
-    fun loadChapterParagraphs(chapterIndex: Int): List<String>
-
-    /** 切到指定章节 (触发 ViewModel.loadChapter, 排版 + 联网拉取)。 */
+/** 章节导航端口：只负责让阅读宿主切到目标章节。 */
+fun interface ReadAloudChapterNavigationPort {
     fun moveToChapter(chapterIndex: Int)
+}
 
-    /** 切到下一章 (调用 viewModel.moveToNextChapter)。 */
-    fun moveToNextChapter()
+/** 平台播放器端口；Android Service 用它保留系统播放外壳而复用本控制器业务状态机。 */
+interface ReadAloudPlaybackPort {
+    fun onPlay(text: String, paragraphIndex: Int, playbackToken: Long)
+    fun onStop()
+    fun onPause()
+    fun onResume(): Boolean
+    fun onSpeechRateChanged(rate: Float) = Unit
+}
 
-    /** 切到上一章 (调用 viewModel.moveToPrevChapter)。 */
-    fun moveToPrevChapter()
+/** 兼容旧调用方的组合端口，新代码应分别注入数据与导航端口。 */
+@Deprecated("Inject ReadAloudChapterDataPort and ReadAloudChapterNavigationPort separately")
+interface ReadAloudChapterNavigator : ReadAloudChapterDataPort, ReadAloudChapterNavigationPort {
+    fun loadChapterParagraphs(chapterIndex: Int): List<String>
+    override fun loadChapterPlan(
+        chapterIndex: Int,
+        chapterPosition: Int,
+        fromLastSpeakable: Boolean,
+    ): ReadAloudChapterPlan? = ReadAloudChapterPlan(loadChapterParagraphs(chapterIndex))
+
+    fun moveToNextChapter() = Unit
+    fun moveToPrevChapter() = Unit
 }
 
 /**

@@ -3,6 +3,8 @@
 package io.legado.app.help.tts
 
 import kotlin.concurrent.Volatile
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.cinterop.CValue
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCSignatureOverride
@@ -71,9 +73,24 @@ class IosSystemTtsEngine : SystemTtsEngine {
     /** AVSpeechSynthesizer 单例 (整个引擎生命周期复用)。 */
     private val synthesizer: AVSpeechSynthesizer = AVSpeechSynthesizer()
 
-    /** 当前朗读的 utteranceId (由 speak/enqueue 传入, delegate 回调时用)。 */
-    @Volatile
-    private var currentUtteranceId: String = ""
+    /** 当前 utterance 实例到业务 id 的映射；迟到 delegate 必须按实例解析，不能读全局当前 id。 */
+    private val utteranceIds = mutableMapOf<AVSpeechUtterance, String>()
+    private val utteranceLock = SynchronizedObject()
+    private val listeners = TtsProgressListenerRegistry()
+
+    private fun idOf(utterance: AVSpeechUtterance): String? =
+        synchronized(utteranceLock) { utteranceIds[utterance] }
+
+    private fun bindId(utterance: AVSpeechUtterance, utteranceId: String) {
+        synchronized(utteranceLock) { utteranceIds[utterance] = utteranceId }
+    }
+
+    private fun removeId(utterance: AVSpeechUtterance): String? =
+        synchronized(utteranceLock) { utteranceIds.remove(utterance) }
+
+    private fun clearIds() {
+        synchronized(utteranceLock) { utteranceIds.clear() }
+    }
 
     /** 是否正在朗读 (speak 时 true, didFinish/didCancel 时 false)。 */
     @Volatile
@@ -86,10 +103,6 @@ class IosSystemTtsEngine : SystemTtsEngine {
     /** 语速倍率 (1.0 = 正常), 映射为 AVSpeechUtterance.rate。 */
     @Volatile
     private var rateMultiplier: Float = 1.0f
-
-    /** 朗读进度回调 (由 [ReadAloudControllerShared] 注入)。 */
-    @Volatile
-    private var listenerField: TtsProgressListener? = null
 
     /**
      * AVSpeechSynthesizer delegate 实现, 监听朗读事件转 [TtsProgressListener]。
@@ -104,8 +117,9 @@ class IosSystemTtsEngine : SystemTtsEngine {
             synthesizer: AVSpeechSynthesizer,
             didStartSpeechUtterance: AVSpeechUtterance
         ) {
-            // 朗读开始: 触发 onStart (与 Android UtteranceProgressListener.onStart 对齐)
-            listenerField?.onStart(currentUtteranceId)
+            idOf(didStartSpeechUtterance)?.let {
+                listeners.onStart(it)
+            }
         }
 
         @ObjCSignatureOverride
@@ -113,10 +127,12 @@ class IosSystemTtsEngine : SystemTtsEngine {
             synthesizer: AVSpeechSynthesizer,
             didFinishSpeechUtterance: AVSpeechUtterance
         ) {
-            // 朗读完成: 清状态 + 触发 onDone
+            // 朗读完成: 清状态 + 按 utterance 实例触发 onDone
             speakingState = false
             pausedState = false
-            listenerField?.onDone(currentUtteranceId)
+            removeId(didFinishSpeechUtterance)?.let {
+                listeners.onDone(it)
+            }
         }
 
         @ObjCSignatureOverride
@@ -128,6 +144,7 @@ class IosSystemTtsEngine : SystemTtsEngine {
             // 仅在非主动 stop 的取消场景触发 (AVSpeechSynthesizer 自动取消极少见)
             speakingState = false
             pausedState = false
+            removeId(didCancelSpeechUtterance)
         }
 
         @ObjCSignatureOverride
@@ -156,12 +173,14 @@ class IosSystemTtsEngine : SystemTtsEngine {
             // 朗读进度高亮: NSRange → onRangeStart (对齐 Android onRangeStart; frame iOS 无对应, 传 0)
             // 主线程回调, 与其余 delegate 方法线程约定一致
             willSpeakRangeOfSpeechString.useContents {
-                listenerField?.onRangeStart(
-                    currentUtteranceId,
-                    location.toInt(),
-                    (location + length).toInt(),
-                    0
-                )
+                idOf(utterance)?.let { id ->
+                    listeners.onRangeStart(
+                        id,
+                        location.toInt(),
+                        (location + length).toInt(),
+                        0,
+                    )
+                }
             }
         }
     }
@@ -190,13 +209,16 @@ class IosSystemTtsEngine : SystemTtsEngine {
             rateMultiplier = value.coerceIn(0.5f, 2.0f)
         }
 
-    override var progressListener: TtsProgressListener?
-        get() = listenerField
-        set(value) {
-            listenerField = value
-        }
+    override fun registerProgressListener(
+        listener: TtsProgressListener,
+        utteranceIdPrefix: String?,
+    ): TtsProgressListenerToken = listeners.register(listener, utteranceIdPrefix)
 
-    // ===== speak / enqueue =====
+    override fun unregisterProgressListener(token: TtsProgressListenerToken) {
+        listeners.unregister(token)
+    }
+
+    // ===== speak =====
 
     /**
      * 立即播放 (清空已有队列 → 创建 AVSpeechUtterance → speakUtterance)。
@@ -204,12 +226,11 @@ class IosSystemTtsEngine : SystemTtsEngine {
      * AVSpeechSynthesizer.speakUtterance 内部异步执行, 调用立即返回;
      * 朗读事件经 delegate 回调触发 listener.onStart / onDone。
      */
-    override fun speak(text: String, utteranceId: String) {
+    override fun speak(text: String, utteranceId: String): Boolean {
         // 清空已有朗读 (与 desktop 行为一致)
         if (speakingState || pausedState) {
             synthesizer.stopSpeakingAtBoundary(AVSpeechBoundary.AVSpeechBoundaryImmediate)
         }
-        currentUtteranceId = utteranceId
         pausedState = false
         speakingState = true
         val utterance = AVSpeechUtterance(string = text).apply {
@@ -220,19 +241,9 @@ class IosSystemTtsEngine : SystemTtsEngine {
                 AVSpeechUtteranceMaximumSpeechRate
             )
         }
+        bindId(utterance, utteranceId)
         synthesizer.speakUtterance(utterance)
-    }
-
-    /**
-     * 追加到队列尾部。
-     *
-     * AVSpeechSynthesizer 内部维护 utterance 队列, 多次 speakUtterance 会顺序执行;
-     * 但本引擎 P0 阶段简化为"立即播放" (与 desktop 行为一致), 由 [ReadAloudControllerShared]
-     * 通过 onDone 串行驱动段级推进。
-     */
-    override fun enqueue(text: String, utteranceId: String) {
-        // 等价于 speak: 由 ReadAloudControllerShared.onParagraphDone 串行触发, 不会并发
-        speak(text, utteranceId)
+        return true
     }
 
     // ===== pause / resume / stop / shutdown =====
@@ -270,6 +281,7 @@ class IosSystemTtsEngine : SystemTtsEngine {
      */
     override fun stop() {
         synthesizer.stopSpeakingAtBoundary(AVSpeechBoundary.AVSpeechBoundaryImmediate)
+        clearIds()
         speakingState = false
         pausedState = false
     }
@@ -282,9 +294,9 @@ class IosSystemTtsEngine : SystemTtsEngine {
     override fun shutdown() {
         synthesizer.stopSpeakingAtBoundary(AVSpeechBoundary.AVSpeechBoundaryImmediate)
         synthesizer.delegate = null
+        clearIds()
         speakingState = false
         pausedState = false
-        listenerField = null
     }
 
     // ===== synthesizeToBuffer =====

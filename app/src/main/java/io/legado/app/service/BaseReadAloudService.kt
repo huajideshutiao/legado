@@ -34,7 +34,7 @@ import io.legado.app.help.media.SleepTimer
 import io.legado.app.help.tts.ReadAloudQueue
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
-import io.legado.app.model.ActiveReadBookRegistry
+import io.legado.app.model.ActiveReadAloudHostPorts
 import io.legado.app.model.BookCover
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBookShared
@@ -42,15 +42,8 @@ import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.notificationManager
 import io.legado.app.receiver.MediaButtonReceiver
 import io.legado.app.telephonyManager
-import io.legado.app.ui.book.read.ReadBookEvents
-import io.legado.app.ui.book.read.ReadBookViewModelShared
 import io.legado.app.ui.book.read.page.entities.TextChapterShared
-import io.legado.app.ui.book.read.page.entities.getLastParagraphPosition
 import io.legado.app.ui.book.read.page.entities.getNeedReadAloud
-import io.legado.app.ui.book.read.page.entities.getParagraphNum
-import io.legado.app.ui.book.read.page.entities.getParagraphs
-import io.legado.app.ui.book.read.page.entities.pageParagraphsOf
-import io.legado.app.ui.book.read.page.entities.paragraphs
 import io.legado.app.ui.book.read.page.entities.title
 import io.legado.app.ui.main.MainActivity
 import io.legado.app.utils.LogUtils
@@ -58,7 +51,6 @@ import io.legado.app.utils.activityPendingIntent
 import io.legado.app.utils.broadcastPendingIntent
 import io.legado.app.utils.observeSharedPreferences
 import io.legado.app.utils.toastOnUi
-import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Dispatchers.Main
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
@@ -112,33 +104,31 @@ abstract class BaseReadAloudService : BaseService() {
         ReadAloudPhoneStateListener()
     }
 
-    /** 播放队列纯状态机(段落列表+位置推进),页跟踪与章节切换仍在本类 */
-    internal val aloudQueue = ReadAloudQueue()
+    /** Android 只实现播放端口；业务队列和推进统一复用 shared 控制器。 */
+    internal val readAloudController by lazy {
+        ReadAloudControllerShared(
+            chapterData = androidChapterData,
+            chapterNavigation = ActiveReadAloudHostPorts.chapterNavigation,
+            playbackPort = object : ReadAloudPlaybackPort {
+                override fun onPlay(text: String, paragraphIndex: Int, playbackToken: Long) {
+                    currentPlaybackText = text
+                    currentPlaybackToken = playbackToken
+                    lifecycleScope.launch(Main) { play() }
+                }
 
-    internal var contentList: List<String>
-        get() = aloudQueue.contentList
-        set(value) {
-            aloudQueue.contentList = value
-        }
-    internal var nowSpeak: Int
-        get() = aloudQueue.nowSpeak
-        set(value) {
-            aloudQueue.nowSpeak = value
-        }
-    internal var readAloudNumber: Int
-        get() = aloudQueue.readAloudNumber
-        set(value) {
-            aloudQueue.readAloudNumber = value
-        }
-    /**
-     * 当前活动阅读状态。app 端 `ReadBook` 单例与 Compose 阅读页的 ReadBookShared
-     * 不是同一实例, 朗读必须走阅读页 attach 进注册表的那一个。
-     */
-    internal val readBook: ReadBookShared? get() = ActiveReadBookRegistry.current
+                override fun onStop() = playStop()
+                override fun onPause() = playStop()
+                override fun onResume(): Boolean = false
+                override fun onSpeechRateChanged(rate: Float) = upSpeechRate(false)
+            },
+        )
+    }
 
-    /** 当前活动阅读 ViewModel: 翻页 / 切章 / 进度上传都由它驱动 */
-    internal val readBookViewModel: ReadBookViewModelShared?
-        get() = ActiveReadBookRegistry.currentViewModel
+    internal val readBook: ReadBookShared? get() = ActiveReadAloudHostPorts.currentReadBook
+    internal var currentPlaybackText: String = ""
+        private set
+    internal var currentPlaybackToken: Long = 0L
+        private set
 
     internal var textChapter: TextChapterShared? = null
     internal var pageIndex = 0
@@ -160,15 +150,51 @@ abstract class BaseReadAloudService : BaseService() {
     private var lastNotificationCover: Bitmap? = null
 
     var pageChanged = false
-    private var toLast = false
-    var paragraphStartPos: Int
-        get() = aloudQueue.paragraphStartPos
-        set(value) {
-            aloudQueue.paragraphStartPos = value
-        }
     var readAloudByPage = false
         private set
-    private var waitNewReadAloud = true
+
+    private var requestedChapterPosition = 0
+
+    private val androidChapterData = object : ReadAloudChapterDataPort {
+        override val chapterCount: Int get() = readBook?.simulatedChapterSize ?: 0
+
+        override fun loadChapterPlan(
+            chapterIndex: Int,
+            chapterPosition: Int,
+            fromLastSpeakable: Boolean,
+        ): ReadAloudChapterPlan? {
+            val chapter = readBook?.curTextChapter?.value
+                ?.takeIf { it.chapterIndex == chapterIndex && it.pages.isNotEmpty() && !it.pages.first().isMsgPage }
+                ?: return null
+            textChapter = chapter
+            readAloudByPage = AppConfig.readAloudByPage
+            val paragraphs =
+                ReadAloudQueue.splitParagraphs(chapter.getNeedReadAloud(0, readAloudByPage, 0))
+            if (paragraphs.isEmpty()) return null
+            val target = chapterPosition.coerceAtLeast(0)
+            var offset = 0
+            var index = 0
+            if (fromLastSpeakable) {
+                index =
+                    paragraphs.indexOfLast { !it.matches(io.legado.app.constant.AppPattern.notReadAloudRegex) }
+                if (index < 0) return null
+                offset = paragraphs.take(index).sumOf { it.length + 1 }
+            } else {
+                while (index + 1 < paragraphs.size && offset + paragraphs[index].length + 1 <= target) {
+                    offset += paragraphs[index].length + 1
+                    index++
+                }
+            }
+            return ReadAloudChapterPlan(
+                paragraphs = paragraphs,
+                paragraphIndex = index,
+                paragraphOffset = if (fromLastSpeakable) 0 else
+                    (target - offset).coerceIn(0, paragraphs[index].length),
+                // Android 计划的位置必须是请求目标；段起点另由 paragraphOffset 描述。
+                chapterPosition = if (fromLastSpeakable) offset else target,
+            )
+        }
+    }
 
     @CallSuper
     override fun onCreate() {
@@ -177,7 +203,7 @@ abstract class BaseReadAloudService : BaseService() {
         pause = false
         sleepTimer = SleepTimer(
             scope = lifecycleScope,
-            postMinute = { ReadBookEvents.postReadAloudDs(it) },
+            postMinute = { ActiveReadAloudHostPorts.positionPublisher.publishTimer(it) },
             isPaused = { pause },
             onTimeout = { ReadAloud.stop(this) },
             onTick = { upReadAloudNotification() }
@@ -221,11 +247,12 @@ abstract class BaseReadAloudService : BaseService() {
         sleepTimer = null
         chapterWatchJob?.cancel()
         chapterWatchJob = null
-        ReadBookEvents.postAloudState(Status.STOP)
+        readAloudController.stop()
+        ActiveReadAloudHostPorts.positionPublisher.publishState(Status.STOP)
         notificationManager.cancel(NotificationId.ReadAloudService)
         upMediaSessionPlaybackState(PlaybackStateCompat.STATE_STOPPED)
         mediaSessionCompat.release()
-        readBookViewModel?.uploadProgress()
+        ActiveReadAloudHostPorts.uploadProgress()
         unregisterPhoneStateListener(phoneStateListener)
         upNotificationJob?.invokeOnCompletion {
             notificationManager.cancel(NotificationId.ReadAloudService)
@@ -234,7 +261,7 @@ abstract class BaseReadAloudService : BaseService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            IntentAction.play -> newReadAloud(
+            IntentAction.play -> startReadAloud(
                 intent.getBooleanExtra("play", true),
                 intent.getIntExtra("pageIndex", readBook?.durPageIndexValue ?: 0),
                 intent.getIntExtra("startPos", 0)
@@ -254,56 +281,21 @@ abstract class BaseReadAloudService : BaseService() {
         return super.onStartCommand(intent, flags, startId)
     }
 
-    private fun newReadAloud(play: Boolean, pageIndex: Int, startPos: Int) {
-        execute(executeContext = IO) {
-            textChapter = readBook?.curTextChapter?.value
-            // 服务先起、章节后排版时靠本监听补一次; 早退分支也要挂上, 否则永远等不到队列
-            if (chapterWatchJob == null) armChapterWatch()
-            val textChapter = textChapter ?: return@execute
-            // 页号来自调用方 (通知栏/媒体键/注册表), 可能已过期, 越界会让后续定位全错
-            val startIndex = pageIndex.coerceIn(0, textChapter.lastIndex.coerceAtLeast(0))
-            this@BaseReadAloudService.pageIndex = startIndex
-            readAloudNumber = textChapter.getReadLength(startIndex) + startPos
-            readAloudByPage = AppConfig.readAloudByPage
-            contentList = ReadAloudQueue.splitParagraphs(
-                textChapter.getNeedReadAloud(0, readAloudByPage, 0)
-            )
-            var pos = startPos
-            val page = textChapter.getPage(startIndex) ?: return@execute
-            val pageParagraphs = textChapter.pageParagraphsOf(startIndex)
-            if (pos > 0) {
-                for (paragraph in pageParagraphs) {
-                    val tmp = pos - paragraph.length - 1
-                    if (tmp < 0) break
-                    pos = tmp
-                }
-            }
-            // getParagraphNum 未命中任何段时返回 -1, 直接减 1 会算出负下标
-            nowSpeak = (textChapter.getParagraphNum(readAloudNumber + 1, readAloudByPage) - 1)
-                .coerceIn(0, contentList.lastIndex.coerceAtLeast(0))
-            val paragraphs = textChapter.paragraphs
-            if (!readAloudByPage && startPos == 0 && !toLast) {
-                paragraphs.getOrNull(nowSpeak)?.let {
-                    pos = page.chapterPosition - it.chapterPosition
-                }
-            }
-            if (toLast) {
-                toLast = false
-                readAloudNumber = textChapter.getLastParagraphPosition()
-                nowSpeak = contentList.lastIndex.coerceAtLeast(0)
-                if (pageParagraphs.size == 1) {
-                    paragraphs.getOrNull(nowSpeak)?.let {
-                        pos = page.chapterPosition - it.chapterPosition
-                    }
-                }
-            }
-            paragraphStartPos = pos
-            waitNewReadAloud = false
-            launch(Main) {
-                if (play) play() else pageChanged = true
-            }
-        }.onError {
-            AppLog.put("启动朗读出错\n${it.localizedMessage}", it, true)
+    private fun startReadAloud(play: Boolean, pageIndex: Int, startPos: Int) {
+        if (chapterWatchJob?.isActive != true) armChapterWatch()
+        val chapter = readBook?.curTextChapter?.value
+        val chapterIndex = chapter?.chapterIndex ?: readBook?.durChapterIndexValue ?: return
+        this.pageIndex = pageIndex.coerceIn(0, chapter?.lastIndex?.coerceAtLeast(0) ?: 0)
+        requestedChapterPosition = if (chapter != null) {
+            chapter.getReadLength(this.pageIndex) + startPos
+        } else {
+            (readBook?.durChapterPosValue ?: 0) + startPos
+        }.coerceAtLeast(0)
+        if (play) {
+            pageChanged = false
+            readAloudController.start(chapterIndex, requestedChapterPosition)
+        } else {
+            pageChanged = true
         }
     }
 
@@ -316,11 +308,15 @@ abstract class BaseReadAloudService : BaseService() {
     private fun armChapterWatch() {
         chapterWatchJob?.cancel()
         chapterWatchJob = lifecycleScope.launch {
-            ActiveReadBookRegistry.currentFlow.collectLatest { readBook ->
-                readBook?.curTextChapter?.collect { chapter ->
-                    if (chapter == null) return@collect
-                    if (chapter === textChapter) return@collect
-                    newReadAloud(!pause, readBook.durPageIndexValue, 0)
+            ActiveReadAloudHostPorts.chapterUpdates.collectLatest { update ->
+                val error = update.error
+                if (error != null) {
+                    readAloudController.reportError(error)
+                } else if (update.ready &&
+                    readAloudController.state.value == ReadAloudControllerShared.ReadAloudState.WAITING &&
+                    update.chapterIndex == readAloudController.chapterIndex.value
+                ) {
+                    readAloudController.retryWaiting(update.chapterIndex)
                 }
             }
         }
@@ -332,26 +328,36 @@ abstract class BaseReadAloudService : BaseService() {
         pause = false
         upReadAloudNotification()
         upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PLAYING)
-        ReadBookEvents.postAloudState(Status.PLAY)
+        ActiveReadAloudHostPorts.positionPublisher.publishState(Status.PLAY)
     }
 
     abstract fun playStop()
 
     @CallSuper
     open fun pauseReadAloud(abandonFocus: Boolean = true) {
+        readAloudController.pause()
         playbackLock.release()
-        pause = true
+        pause = readAloudController.state.value != ReadAloudControllerShared.ReadAloudState.PLAYING
         ReadTimeRecorder.end(ReadTimeRecorder.Source.READ_ALOUD)
         if (abandonFocus) audioFocus.abandon()
         upReadAloudNotification()
         upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PAUSED)
-        ReadBookEvents.postAloudState(Status.PAUSE)
-        readBookViewModel?.uploadProgress()
+        ActiveReadAloudHostPorts.positionPublisher.publishState(Status.PAUSE)
+        ActiveReadAloudHostPorts.uploadProgress()
     }
 
     @CallSuper
     open fun resumeReadAloud() {
-        resumeReadAloudInternal()
+        if (pageChanged) {
+            val chapterIndex = readBook?.durChapterIndexValue ?: return
+            pageChanged = false
+            readAloudController.start(chapterIndex, requestedChapterPosition)
+        } else if (readAloudController.state.value == ReadAloudControllerShared.ReadAloudState.PAUSED) {
+            readAloudController.resume()
+        }
+        if (readAloudController.state.value == ReadAloudControllerShared.ReadAloudState.PLAYING) {
+            resumeReadAloudInternal()
+        }
     }
 
     private fun resumeReadAloudInternal() {
@@ -359,63 +365,21 @@ abstract class BaseReadAloudService : BaseService() {
         ReadTimeRecorder.start(ReadTimeRecorder.Source.READ_ALOUD, readBook?.bookValue?.name ?: "")
         upReadAloudNotification()
         upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PLAYING)
-        ReadBookEvents.postAloudState(Status.PLAY)
+        ActiveReadAloudHostPorts.positionPublisher.publishState(Status.PLAY)
     }
+
+    /** 播放端确认真正恢复后由子类调用；controller 是唯一 pause/resume 状态机。 */
+    protected fun onPlaybackResumed() = resumeReadAloudInternal()
 
     abstract fun upSpeechRate(reset: Boolean = false)
 
     fun upTtsProgress(progress: Int) {
-        ReadBookEvents.postTtsProgress(progress)
+        ActiveReadAloudHostPorts.positionPublisher.publishPosition(progress)
     }
 
-    private fun prevP() {
-        if (waitNewReadAloud) return
-        if (nowSpeak > 0) {
-            playStop()
-            aloudQueue.retreatToPrevSpeakable()
-            textChapter?.let {
-                if (readAloudByPage) {
-                    val paragraphs = it.getParagraphs(true)
-                    if (!paragraphs[nowSpeak].isParagraphEnd) readAloudNumber++
-                }
-                if (readAloudNumber < it.getReadLength(pageIndex)) {
-                    pageIndex--
-                    readBookViewModel?.prevPage()
-                }
-            }
-            upTtsProgress(readAloudNumber + 1)
-            play()
-        } else {
-            toLast = true
-            waitNewReadAloud = true
-            readBookViewModel?.moveToPrevChapter()
-        }
-    }
+    private fun prevP() = readAloudController.prevParagraph()
 
-    private fun nextP() {
-        if (waitNewReadAloud) return
-        if (nowSpeak < contentList.size - 1) {
-            playStop()
-            aloudQueue.stepNext()
-            textChapter?.let {
-                if (readAloudByPage) {
-                    val paragraphs = it.getParagraphs(true)
-                    if (!paragraphs[nowSpeak].isParagraphEnd) readAloudNumber--
-                }
-                if (pageIndex + 1 < it.pageSize
-                    && readAloudNumber >= it.getReadLength(pageIndex + 1)
-                ) {
-                    pageIndex++
-                    readBookViewModel?.nextPage()
-                }
-            }
-            upTtsProgress(readAloudNumber + 1)
-            play()
-        } else {
-            waitNewReadAloud = true
-            nextChapter()
-        }
-    }
+    private fun nextP() = readAloudController.nextParagraph()
 
     /**
      * 请求音频焦点。失败时暂停并 toast。
@@ -423,6 +387,7 @@ abstract class BaseReadAloudService : BaseService() {
     fun requestFocus(): Boolean {
         val granted = audioFocus.request()
         if (!granted) {
+            // 保持 controller 的 PAUSED/pending 语义，恢复时必须重新走完整 play/prepare。
             pauseReadAloud(false)
             toastOnUi("未获取到音频焦点")
         }
@@ -433,7 +398,7 @@ abstract class BaseReadAloudService : BaseService() {
         mediaSessionCompat.setPlaybackState(
             PlaybackStateCompat.Builder()
                 .setActions(MediaHelp.MEDIA_SESSION_ACTIONS)
-                .setState(state, nowSpeak.toLong(), 1f)
+                .setState(state, readAloudController.paragraphIndex.value.toLong(), 1f)
                 .addCustomAction(
                     PlaybackStateCompat.CustomAction.Builder(
                         "ACTION_ADD_TIMER",
@@ -577,19 +542,17 @@ abstract class BaseReadAloudService : BaseService() {
     abstract fun aloudServicePendingIntent(actionStr: String): PendingIntent?
 
     open fun prevChapter() {
-        toLast = false
         ReadTimeRecorder.flushAll()
         resumeReadAloudInternal()
-        readBookViewModel?.moveToPrevChapter(toLast = false)
+        readAloudController.prevChapter()
     }
 
     open fun nextChapter() {
         AppLog.putDebug("${readBook?.curTextChapter?.value?.title} 朗读结束跳转下一章并朗读")
         ReadTimeRecorder.flushAll()
         resumeReadAloudInternal()
-        if (readBookViewModel?.moveToNextChapter() != true) {
-            stopSelf()
-        }
+        readAloudController.nextChapter()
+        if (readAloudController.state.value == ReadAloudControllerShared.ReadAloudState.COMPLETED) stopSelf()
     }
 
     private fun initPhoneStateListener() {
