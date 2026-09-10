@@ -1043,7 +1043,7 @@ private fun ChapterNavText(text: String, color: Color, onClick: () -> Unit) {
 
 /**
  * GIF 播完翻页的平台注入槽 (对照原版 ReadMangaActivity gifAutoNext 接线): 单元格在组合期
- * Provide, 平台图片槽 (Android MangaPageImageView) 读取后把渲染器实例上报给
+ * Provide, 平台图片槽 (Android MangaCoilImage / skiko MangaSkiaImage) 读取后把渲染器实例上报给
  * [MangaRenderState] 的 GIF 注册表, 并设置装填/翻页三项回调。
  *
  * 无 GIF 能力的平台 (desktop 无动图解码, iOS/鸿蒙无 GIF 分支) 不读取, 保持 no-op。
@@ -1095,7 +1095,7 @@ private fun LazyItemScope.MangaPageCell(
     // 下载进度文本 (对照原版 MangaPageImageView.onProgress → 转圈内百分比; 原版布局初始文本为 "0%")。
     // 初始即显示 0% (加载开始就有进度字, 不等到第一个进度回调)
     var progress by remember(url) { mutableStateOf("0%") }
-    // 重试计数: "重新加载"点击自增, 平台图片槽据此重试 (Android 直接调 MangaPageImageView.retry())
+    // 重试计数: "重新加载"点击自增, 平台图片槽据此重试 (重试跳过内存缓存读但仍写回)
     var retryTick by remember(url) { mutableStateOf(0) }
     val cellModifier = when {
         horizontal -> Modifier.fillParentMaxSize()

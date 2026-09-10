@@ -53,7 +53,7 @@ import kotlin.math.ceil
  * - [onContainerSizeExtra]：容器尺寸变化时的额外回调（app 用来重设 ClickArea 矩形）。
  * - [preloadExecutor]：图片预加载执行体（Android/iOS/desktop 经 Coil3 WRITE_ONLY 预载到内存缓存;
  *   鸿蒙无 coil3 变体, 预载回填共享磁盘缓存）。
- * - [MangaPageRenderer]：GIF 单元格渲染器接口（app 用 MangaPageImageView，desktop 无 GIF）。
+ * - [MangaPageRenderer]：GIF 单元格渲染器接口（app 用 MangaDrawableGifPlayer，desktop 用 MangaAnimatedImageRenderer）。
  */
 class MangaRenderState {
 
@@ -461,7 +461,7 @@ class MangaRenderState {
 
     /**
      * GIF 单元格渲染器接口（平台注入）：
-     * - app actual: MangaPageImageView（Coil3 + MovieDrawable/AnimatedImageDrawable）
+     * - app actual: MangaDrawableGifPlayer（Coil3 + MovieDrawable/AnimatedImageDrawable）
      * - desktop: 无 GIF 动图支持，注册表保持空，方法 no-op
      */
     interface MangaPageRenderer {

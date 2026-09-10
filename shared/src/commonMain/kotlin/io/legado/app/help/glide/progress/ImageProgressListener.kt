@@ -6,8 +6,8 @@ package io.legado.app.help.glide.progress
  * 抽象自 jvmAndAndroidMain 的 `ProgressManager`，使 commonMain 代码可在
  * 不直接依赖 Glide / OkHttp 等 Android 平台库的前提下调用图片加载进度能力。
  *
- * - jvmAndAndroidMain 端 actual 实现：[ProgressManager]（Glide + OkHttp 拦截器）
- * - iOS / HarmonyOS 端可各自提供 actual 实现，再由 [ImageProgressProviders] 注入
+ * - jvmAndAndroidMain 端实现：[ProgressManager]（OkHttp 拦截器 ProgressResponseBody）
+ * - iOS / HarmonyOS 端用各自的下载进度注册表 (如 DownloadProgressRegistry)，不经本接口
  *
  * 设计要点：
  * - [internalListener] 由底层 HTTP 拦截器（如 ProgressResponseBody）回调，
@@ -23,13 +23,18 @@ interface ImageProgressListener {
      */
     val internalListener: InternalProgressListener
 
-    /** 注册进度监听器；url 为空则忽略。同一 url 重复注册会覆盖前者。 */
-    fun addListener(url: String, listener: OnProgressListener)
+    /** 注册进度监听器；url 为空则忽略。返回注销函数句柄。 */
+    fun addListener(url: String, listener: OnProgressListener): () -> Unit
 
-    /** 注销进度监听器；url 为空则忽略。未注册时调用为 no-op。 */
+    /** 注销指定 url 的所有进度监听器；url 为空则忽略。未注册时调用为 no-op。 */
     fun removeListener(url: String)
 
-    /** 获取指定 url 的监听器；未注册或 url 为空返回 null。 */
+    /** 注销指定 url 的特定进度监听器；url 为空或 listener 未注册时为 no-op。 */
+    fun removeListener(url: String, listener: OnProgressListener) {
+        removeListener(url)
+    }
+
+    /** 获取指定 url 的监听器（多监听器时返回首个）；未注册或 url 为空返回 null。 */
     fun getProgressListener(url: String): OnProgressListener?
 
     /**

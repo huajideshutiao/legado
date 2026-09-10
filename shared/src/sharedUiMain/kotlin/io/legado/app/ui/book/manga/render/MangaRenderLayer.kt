@@ -42,7 +42,7 @@ val MangaReaderBackground = Color(0xFF141414)
  * 缩放平移经 graphicsLayer 块读取，不触发重组；居中页/停稳/预加载全走 snapshotFlow，
  * 不经重组链。
  *
- * 图片单元格由 [pageCell] 平台注入：app 端为 MangaPageImageView(Coil3 + GIF 播完翻页),
+ * 图片单元格由 [pageCell] 平台注入：app 端为 MangaCoilImage(Coil3 + GIF 播完翻页),
  * 其他端为 MangaReaderScreenContent 的 imageSlot 单元格。
  */
 @Composable

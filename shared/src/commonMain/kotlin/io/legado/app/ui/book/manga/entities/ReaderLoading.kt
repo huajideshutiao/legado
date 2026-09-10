@@ -7,5 +7,5 @@ data class ReaderLoading(
     val isVolume: Boolean = false
 ) : BaseMangaPage
 
-/** 漫画图片单元格加载状态 (对照 app 端 render/MangaPageImageView.kt 同名枚举) */
+/** 漫画图片单元格加载状态 (供 MangaCoilImage 等漫画图片渲染槽使用) */
 enum class MangaCellState { LOADING, SUCCESS, ERROR }

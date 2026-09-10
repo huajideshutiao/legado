@@ -9,7 +9,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -34,7 +33,6 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
-import kotlin.math.roundToInt
 
 private sealed interface MangaSkiaImageState {
     data object Loading : MangaSkiaImageState
@@ -73,74 +71,39 @@ private suspend fun loadLocalMangaPage(
 }
 
 /**
- * 下载进度文本 (Skia 三端共用; 对照原版 MangaPageImageView.onProgress → 转圈环心百分比)。
- *
- * 有总长按百分比, 没有 (chunked / 服务端不给 Content-Length) 就按已下载量。
+ * Skia 三端共用的漫画动图控制器：翻页判定全部在共享 [MangaGifAutoNextPlayer] 状态机，
+ * 本类只提供帧表渲染侧的三个原子操作 (armed 态由状态机持有, 帧推进循环恒转, LOOP 态
+ * 播完回调被状态机忽略)。
  */
-fun mangaProgressText(bytesRead: Long, totalBytes: Long): String {
-    if (totalBytes > 0) return "${(bytesRead * 100 / totalBytes).coerceIn(0, 100)}%"
-    val kb = bytesRead / 1024.0
-    if (kb < 1024) return "${kb.toInt()}KB"
-    return "${(kb / 1024.0 * 10).roundToInt() / 10.0}MB"
-}
-
-/** Skia 三端共用的漫画动图控制器，行为对齐原版 GIF 自动翻页。 */
-class MangaAnimatedImageRenderer : MangaRenderState.MangaPageRenderer {
-    private enum class PlayMode { LOOP, ONCE }
+class MangaAnimatedImageRenderer : MangaGifAutoNextPlayer(), MangaRenderState.MangaPageRenderer {
 
     var frameIndex by mutableIntStateOf(0)
         internal set
     var restartToken by mutableIntStateOf(0)
         private set
 
-    private var playMode by mutableStateOf(PlayMode.LOOP)
-    private var turnConsumed = false
+    override fun enterPlayOnce() = Unit
 
-    var enabled: () -> Boolean = { false }
-    var isArmTarget: () -> Boolean = { false }
-    var onTurnPage: () -> Boolean = { false }
+    override fun enterLoopForever() = Unit
 
-    override fun playGifForCurrentPage() {
-        if (!enabled()) return
-        turnConsumed = false
-        playMode = PlayMode.ONCE
-        // 停稳后必须从首帧开始，避免页面预布局期间已播到末帧。
-        restartToken++
-    }
-
-    override fun stopGifAutoNext() {
-        // 关闭自动翻页或离开居中页时恢复无限循环，不强制改变当前帧。
-        playMode = PlayMode.LOOP
-    }
-
-    internal fun resetPlayback() {
-        playMode = PlayMode.LOOP
-        turnConsumed = false
+    override fun restartFromFirstFrame() {
         frameIndex = 0
         restartToken++
     }
 
+    override fun playGifForCurrentPage() = playForCurrentPage()
+
+    override fun stopGifAutoNext() = stopAutoNext()
+
+    internal fun resetPlayback() = onNewImageLoaded()
+
     /** 覆盖停稳回调先于图片加载完成的时序。 */
     internal fun onFramesReady() {
-        if (enabled() && isArmTarget()) {
-            if (playMode != PlayMode.ONCE) playGifForCurrentPage()
-        } else {
-            stopGifAutoNext()
-        }
+        if (shouldArmOnLoaded()) playForCurrentPage() else stopAutoNext()
     }
 
-    /** 播完一轮后翻页；翻页受阻时保留 ONCE，下一轮从首帧再次尝试。 */
-    internal fun onFrameLoopFinished() {
-        if (playMode != PlayMode.ONCE) return
-        if (turnConsumed || !isArmTarget()) {
-            playMode = PlayMode.LOOP
-            return
-        }
-        if (onTurnPage()) {
-            turnConsumed = true
-            playMode = PlayMode.LOOP
-        }
-    }
+    /** 播完一轮：翻页/滑走/受阻重播全交共享状态机。 */
+    internal fun onFrameLoopFinished() = onPlayOnceFinished()
 }
 
 @Composable

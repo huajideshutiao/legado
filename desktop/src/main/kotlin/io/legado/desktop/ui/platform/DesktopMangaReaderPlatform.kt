@@ -59,10 +59,10 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
     ) {
         val currentOnProgress by rememberUpdatedState(onProgress)
         DisposableEffect(url) {
-            ProgressManager.addListener(url) { _, _, bytesRead, totalBytes ->
+            val remove = ProgressManager.addListener(url) { _, _, bytesRead, totalBytes ->
                 currentOnProgress(mangaProgressText(bytesRead, totalBytes))
             }
-            onDispose { ProgressManager.removeListener(url) }
+            onDispose { remove() }
         }
         MangaSkiaImage(
             url = url,

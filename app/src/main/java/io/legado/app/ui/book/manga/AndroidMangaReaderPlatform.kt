@@ -2,33 +2,20 @@ package io.legado.app.ui.book.manga
 
 import android.content.Intent
 import android.content.IntentFilter
-import android.graphics.ColorMatrix
-import android.graphics.ColorMatrixColorFilter
 import android.os.BatteryManager
-import android.widget.ImageView
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.node.Ref
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.net.toUri
-import coil3.SingletonImageLoader
-import coil3.request.CachePolicy
-import coil3.request.ImageRequest
-import coil3.size.Size
 import io.legado.app.App
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.image.MangaImageBytesLoader
-import io.legado.app.model.manga.MangaModel
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
-import io.legado.app.ui.book.manga.config.isNoOp
-import io.legado.app.ui.book.manga.config.toColorMatrix
 import io.legado.app.ui.book.manga.entities.MangaCellState
-import io.legado.app.ui.book.manga.render.MangaPageImageView
+import io.legado.app.ui.book.manga.render.MangaCoilImage
+import io.legado.app.ui.book.manga.render.preloadMangaImageAndroid
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.imageExtension
 import kotlinx.coroutines.Dispatchers
@@ -46,21 +33,10 @@ object AndroidMangaReaderPlatform : MangaReaderScreenModel.Platform {
         return if (level >= 0 && scale > 0) (level * 100 / scale) else 100
     }
 
-    // 预载到内存缓存: WRITE_ONLY 只写不返回图 (对照原版 RecyclerViewPreloader 预载语义;
-    // 显示请求 memoryCachePolicy(ENABLED) 命中同 loader 同 Keyer 的 url 键, 翻到预载区间即秒显)。
-    // Size.ORIGINAL 全尺寸解码 (isSampled=false), 对任意显示请求尺寸均有效
-    // (Coil3 MemoryCacheService.isCacheValueValidForSize); 磁盘缓存禁用由 fetcher 层的
-    // BookHelp 缓存承担, 与显示请求参数一致 (desktop 同参同链路)。
+    // 预载到内存缓存: 实现体在 shared (preloadMangaImageAndroid), 与 MangaCoilImage 显示请求
+    // 同 key 同参, 翻到预载区间即秒显
     override suspend fun preloadImage(url: String, book: Book, source: BookSource?) {
-        runCatching {
-            val request = ImageRequest.Builder(App.instance)
-                .data(MangaModel(url, book, source))
-                .memoryCachePolicy(CachePolicy.WRITE_ONLY)
-                .diskCachePolicy(CachePolicy.DISABLED)
-                .size(Size.ORIGINAL)
-                .build()
-            SingletonImageLoader.get(App.instance).execute(request)
-        }
+        runCatching { preloadMangaImageAndroid(App.instance, url, book, source) }
     }
 
     override fun flowImages(
@@ -69,6 +45,8 @@ object AndroidMangaReaderPlatform : MangaReaderScreenModel.Platform {
     ): kotlinx.coroutines.flow.Flow<String> =
         BookHelp.flowImages(bookChapter, content)
 
+    // 渲染全在 shared/androidMain 的 MangaCoilImage (纯 Compose, GIF Drawable 控制 +
+    // 预载 peek + 绘制期灰度/调色), 本端只负责保存图片 (对齐 iOS/ohos Platform.Image 形态)
     @Composable
     override fun Image(
         url: String,
@@ -82,62 +60,17 @@ object AndroidMangaReaderPlatform : MangaReaderScreenModel.Platform {
         retryTick: Int,
         onProgress: (String) -> Unit,
     ) {
-        val viewRef = remember { Ref<MangaPageImageView>() }
-        // GIF 播完翻页上下文 (单元格 Provide): 渲染器实例上报注册表 + 装填/翻页回调
-        val gifSlot = LocalMangaGifSlot.current
-        // 重试: shared 单元格"重新加载"点击 → retryTick 自增 → 直接调 MangaPageImageView.retry() (对照 app 端 MangaRenderScreen)
-        LaunchedEffect(retryTick) {
-            if (retryTick > 0) viewRef.value?.retry()
-        }
-        if (book == null) {
-            // 缺少书籍上下文: loadPageImage 会 book ?: return 而永不回调, 这里不再静默, 直接上报错误态
-            LaunchedEffect(Unit) { onLoadState(MangaCellState.ERROR) }
-            return
-        }
-        AndroidView(
-            factory = {
-                MangaPageImageView(it).also { view ->
-                    // 渲染器实例就绪: 上报 GIF 注册表 (单元格已按 index 注册, 供停稳后装填)
-                    gifSlot?.onRenderer { view }
-                }
-            },
+        MangaCoilImage(
+            url = url,
             modifier = modifier,
-            onReset = { it.recycle() },
-            onRelease = { it.recycle() },
-            update = { view ->
-                viewRef.value = view
-                // 三项回调随组合刷新 (LazyColumn 复用单元格时 index/停稳判定须用最新闭包;
-                // 对照原版 MangaVH 的 gifAutoNextEnabled/isArmTargetPage/onTurnPage setter)
-                gifSlot?.let { slot ->
-                    view.gifAutoNextEnabled = slot.enabled
-                    view.isArmTarget = slot.isArmTarget
-                    view.onTurnPage = slot.onTurnPage
-                }
-                view.scaleType =
-                    if (horizontal) ImageView.ScaleType.FIT_CENTER else ImageView.ScaleType.FIT_XY
-                // 颜色滤镜: 复用 shared toColorMatrix, 全 0 时清除 (对照 app 端 MangaRenderScreen.toColorFilter)
-                view.colorFilter = if (colorFilterConfig.isNoOp()) null
-                else ColorMatrixColorFilter(ColorMatrix(colorFilterConfig.toColorMatrix()))
-                // 上报加载状态给 shared 单元格 (对齐 app 端 MangaRenderScreen: v.onStateChange = { load = it })
-                view.onStateChange = { state ->
-                    onLoadState(
-                        when (state) {
-                            io.legado.app.ui.book.manga.render.MangaCellState.LOADING ->
-                                MangaCellState.LOADING
-
-                            io.legado.app.ui.book.manga.render.MangaCellState.SUCCESS ->
-                                MangaCellState.SUCCESS
-
-                            io.legado.app.ui.book.manga.render.MangaCellState.ERROR ->
-                                MangaCellState.ERROR
-                        }
-                    )
-                }
-                // 上报下载进度给 shared 单元格转圈环心 (对照 app 端 MangaRenderScreen: v.onProgress = { progress = it })
-                view.onProgress = onProgress
-                // GIF 由 Coil3 自动识别解码 (coil3-gif MovieDrawable/AnimatedImageDrawable), 无需 isGif 标记
-                view.loadPageImage(url, book, source, grayEnabled)
-            },
+            horizontal = horizontal,
+            book = book,
+            source = source,
+            colorFilterConfig = colorFilterConfig,
+            grayEnabled = grayEnabled,
+            onLoadState = onLoadState,
+            retryTick = retryTick,
+            onProgress = onProgress,
         )
     }
 

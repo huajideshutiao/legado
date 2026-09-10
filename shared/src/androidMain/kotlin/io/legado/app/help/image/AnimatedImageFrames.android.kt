@@ -12,7 +12,7 @@ internal actual fun decodeAnimatedFrames(bytes: ByteArray): AnimatedFrames? = nu
 /**
  * [decodeImageAuto] 的 Android 实现: 回落 [decodeBytesSampled] 静态解码。
  *
- * Android 漫画页走 coil3-gif + MangaPageImageView, 不经本路径; 这里只为满足 expect。
+ * Android 漫画页走 coil3-gif + MangaCoilImage (Drawable 实例控制), 不经本路径; 这里只为满足 expect。
  */
 internal actual fun decodeImageAuto(bytes: ByteArray): DecodedImageResult? =
     decodeBytesSampled(bytes, 0)?.let { DecodedImageResult.Static(it) }

@@ -160,6 +160,7 @@ slf4j-nop = { module = "org.slf4j:slf4j-nop", version.ref = "slf4jNop" }
 # ===== AndroidX / Google 官方库 =====
 core-ktx = { module = "androidx.core:core-ktx", version.ref = "core" }
 appcompat-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
+vectordrawable-animated = { module = "androidx.vectordrawable:vectordrawable-animated", version = "1.1.0" }
 activity-ktx = { module = "androidx.activity:activity-ktx", version.ref = "activity" }
 fragment-ktx = { module = "androidx.fragment:fragment-ktx", version.ref = "fragment" }
 lifecycle-service = { module = "androidx.lifecycle:lifecycle-service", version.ref = "lifecycle" }
