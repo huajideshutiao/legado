@@ -7,7 +7,6 @@ import org.jetbrains.skia.FontMgr
 import org.jetbrains.skia.FontStyle
 import org.jetbrains.skia.Typeface
 import java.util.Locale
-import java.util.concurrent.ConcurrentHashMap
 
 /**
  * [TextMeasurer] 桌面实现：走 Skia 真实字形度量（[Font.getWidths] / [Font.metrics]），
@@ -67,6 +66,11 @@ class SkiaTextMeasurer(
 
     private val primaryFamily: String? = typeface?.familyName
 
+    /** 回退查表结果：主字体与字号由实例固定，实例经 [TextMeasurerProviders] 按参数跨章复用。 */
+    private val fallbackAdvances = HashMap<Int, Float>()
+    private val fallbackFonts = HashMap<String, Font>()
+    private val fallbackLock = Any()
+
     override val descent: Float get() = font.metrics.descent
 
     override val ascent: Float get() = font.metrics.ascent
@@ -119,10 +123,9 @@ class SkiaTextMeasurer(
      * 主字体缺字时按码点取回退字体的 advance（对应 SkParagraph 绘制时的 defaultFallback）。
      * 取不到返回 0，调用方保留 .notdef 宽度。
      */
-    private fun fallbackAdvance(codePoint: Int): Float {
-        val key = (codePoint.toLong() shl 32) or (textSizePx.toRawBits().toLong() and 0xFFFFFFFFL)
-        advanceCache[key]?.let { return it }
-        val advance = synchronized(cacheLock) {
+    private fun fallbackAdvance(codePoint: Int): Float = synchronized(fallbackLock) {
+        // 键只要码点：主字体与字号由实例固定（实例经 TextMeasurerProviders 按参数跨章复用）
+        fallbackAdvances.getOrPut(codePoint) {
             val typeface = runCatching {
                 FontMgr.default.matchFamilyStyleCharacter(
                     primaryFamily, FontStyle.NORMAL, localeTags, codePoint
@@ -131,23 +134,17 @@ class SkiaTextMeasurer(
             if (typeface == null) {
                 0f
             } else {
-                val fallbackFont = fontCache.getOrPut("${typeface.familyName}@$textSizePx") {
+                val fallbackFont = fallbackFonts.getOrPut(typeface.familyName) {
                     Font(typeface, textSizePx).apply { isSubpixel = true }
                 }
                 val text = String(Character.toChars(codePoint))
                 fallbackFont.getWidths(fallbackFont.getStringGlyphs(text)).firstOrNull() ?: 0f
             }
         }
-        advanceCache[key] = advance
-        return advance
     }
 
     companion object {
 
-        /** 回退查表结果全局缓存：度量器按章重建，缓存跟着重建就白查了。 */
-        private val advanceCache = ConcurrentHashMap<Long, Float>()
-        private val fontCache = HashMap<String, Font>()
-        private val cacheLock = Any()
         private val localeTags: Array<String> =
             arrayOf(Locale.getDefault().toLanguageTag())
 

@@ -292,11 +292,8 @@ object DesktopReadAloudHost : ReadAloudRemoteHost {
         lastSyncedPos = pos
         runCatching {
             viewModel.updateReadPosition(pos)
-            val chapter = readBook.curChapter ?: return
-            val pageIndex = readBook.durPageIndexValue
-            chapter.getPage(pageIndex)?.upPageAloudSpan(pos - chapter.getReadLength(pageIndex))
-            // 高亮是页对象原地修改，StateFlow 去重不重发；自增版本驱动 Compose Canvas 重绘
-            viewModel.bumpPageContentVersion()
+            // 高亮走 VM 的 ttsHighlight 区间，绘制期投影成行（不再往页对象写标志位）
+            viewModel.setAloudHighlight(pos)
         }.onFailure { AppLog.put("同步朗读位置出错", it) }
     }
 
@@ -324,12 +321,7 @@ object DesktopReadAloudHost : ReadAloudRemoteHost {
     }
 
     private fun removeAloudSpan() {
-        val readBook = ActiveReadBookRegistry.current ?: return
-        runCatching {
-            readBook.curChapter?.getPage(readBook.durPageIndexValue)?.removePageAloudSpan()
-            // 原地修改需自增版本驱动 Compose Canvas 重绘 (与 syncReadPosition 同口径)
-            ActiveReadBookRegistry.currentViewModel?.bumpPageContentVersion()
-        }
+        ActiveReadBookRegistry.currentViewModel?.clearAloudSpanForCurrentPage()
     }
 
     /**

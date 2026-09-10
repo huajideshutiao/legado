@@ -23,7 +23,9 @@ object ReadAloud {
     private var aloudClassOrNull: Class<*>? = null
     private val aloudClass: Class<*>
         get() = aloudClassOrNull ?: getReadAloudClass().also { aloudClassOrNull = it }
-    val ttsEngine get() = ReadBook.book?.config?.ttsEngine ?: AppConfig.ttsEngine
+    // 书内 TTS 引擎设置取活动阅读实例 (app 端 ReadBook 单例与 Compose 阅读器非同一实例)
+    val ttsEngine
+        get() = ActiveReadBookRegistry.current?.bookValue?.config?.ttsEngine ?: AppConfig.ttsEngine
     var httpTTS: HttpTTS? = null
 
     private fun getReadAloudClass(): Class<*> {
@@ -44,7 +46,7 @@ object ReadAloud {
     fun play(
         context: Context,
         play: Boolean = true,
-        pageIndex: Int = ReadBook.durPageIndex,
+        pageIndex: Int = ActiveReadBookRegistry.current?.durPageIndexValue ?: 0,
         startPos: Int = 0
     ) {
         val intent = Intent(context, aloudClass).apply {

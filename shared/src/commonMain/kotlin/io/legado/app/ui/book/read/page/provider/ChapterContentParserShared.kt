@@ -90,24 +90,38 @@ object ChapterContentParserShared {
     }
 
     fun getAttr(tag: String, attrName: String): String? {
-        val search = "$attrName="
-        val index = tag.indexOf(search, ignoreCase = true)
-        if (index == -1) return null
-
-        val valueStart = index + search.length
-        if (valueStart >= tag.length) return null
-
-        val quote = tag[valueStart]
-        return if (quote == '"' || quote == '\'') {
-            val endQuote = tag.indexOf(quote, valueStart + 1)
-            if (endQuote == -1) null else tag.substring(valueStart + 1, endQuote)
-        } else {
-            var end = valueStart
-            while (end < tag.length && tag[end] != ' ' && tag[end] != '>' && tag[end] != '/') {
-                end++
+        var fromIndex = 0
+        while (fromIndex < tag.length) {
+            val index = tag.indexOf(attrName, fromIndex, ignoreCase = true)
+            if (index == -1) return null
+            val isAttrBoundary = index == 0 || tag[index - 1].isWhitespace() || tag[index - 1] == '<'
+            if (isAttrBoundary) {
+                var eqIndex = index + attrName.length
+                while (eqIndex < tag.length && tag[eqIndex].isWhitespace()) {
+                    eqIndex++
+                }
+                if (eqIndex < tag.length && tag[eqIndex] == '=') {
+                    var valueStart = eqIndex + 1
+                    while (valueStart < tag.length && tag[valueStart].isWhitespace()) {
+                        valueStart++
+                    }
+                    if (valueStart >= tag.length) return null
+                    val quote = tag[valueStart]
+                    return if (quote == '"' || quote == '\'') {
+                        val endQuote = tag.indexOf(quote, valueStart + 1)
+                        if (endQuote == -1) null else tag.substring(valueStart + 1, endQuote)
+                    } else {
+                        var end = valueStart
+                        while (end < tag.length && !tag[end].isWhitespace() && tag[end] != '>' && tag[end] != '/') {
+                            end++
+                        }
+                        if (end > valueStart) tag.substring(valueStart, end) else null
+                    }
+                }
             }
-            if (end > valueStart) tag.substring(valueStart, end) else null
+            fromIndex = index + attrName.length
         }
+        return null
     }
 
     private fun decodeHtml(html: String): String {

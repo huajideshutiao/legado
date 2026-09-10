@@ -21,33 +21,80 @@ fun getFitSize(rawW: Float, rawH: Float, maxW: Float, maxH: Float): Pair<Float, 
 }
 
 /**
+ * 图片占位符判定：[srcReplaceChar] 为调用方注入值，默认即 [ChapterContentParserShared.srcReplaceChar]。
+ */
+internal fun isImagePlaceholder(
+    char: String,
+    srcReplaceChar: String = ChapterContentParserShared.srcReplaceChar,
+): Boolean = char == ChapterContentParserShared.srcReplaceChar ||
+    (srcReplaceChar.isNotEmpty() && char == srcReplaceChar)
+
+/**
  * 字素簇聚合结果：words 为逐簇字符串，widths 为逐簇宽度（取簇首字宽）。
  */
 class TextSplit(val words: ArrayList<String>, val widths: ArrayList<Float>)
 
+private val ASCII_STRINGS = Array(128) { it.toChar().toString() }
+private val FULLWIDTH_STRINGS = Array(96) { (0xFF00 + it).toChar().toString() }
+private val CJK_SYMBOLS_STRINGS = Array(64) { (0x3000 + it).toChar().toString() }
+private val GENERAL_PUNCTUATION_STRINGS = Array(112) { (0x2000 + it).toChar().toString() }
+private val CJK_COMPAT_STRINGS = Array(32) { (0xFE30 + it).toChar().toString() }
+
 /**
- * 按逐字宽度数组把 [text] 聚成字素簇：宽度>0 为簇首，其后宽度==0 且非零宽控制字符的字符并入同簇
- * （组合字符/emoji 代理对）。零宽控制字符（ZWSP/ZWNJ/ZWJ/WJ）自成簇边界。
+ * 单字符 String 享元：只覆盖预建的不可变常量表（ASCII / 全角 / CJK 符号 / 通用标点 / CJK 兼容），
+ * 其余（含汉字本体）直接 `toString()`，不引入全局可变共享状态。
+ */
+internal fun getSingleCharString(char: Char): String {
+    val code = char.code
+    if (code < 128) return ASCII_STRINGS[code]
+    if (code in 0xFF00..0xFF5F) return FULLWIDTH_STRINGS[code - 0xFF00]
+    if (code in 0x3000..0x303F) return CJK_SYMBOLS_STRINGS[code - 0x3000]
+    if (code in 0x2000..0x206F) return GENERAL_PUNCTUATION_STRINGS[code - 0x2000]
+    if (code in 0xFE30..0xFE4F) return CJK_COMPAT_STRINGS[code - 0xFE30]
+    if (code == 0x00B7) return "·"
+    return char.toString()
+}
+
+/**
+ * 按逐字宽度数组把 [text] 聚成字素簇：宽度>0 为簇首，其后宽度==0 的字符并入同簇
+ * （组合字符 / emoji 代理对 / ZWJ 复合表情）。零宽分隔字符（ZWSP / ZWNJ / WJ / BOM）自成簇边界。
  * @param widthsArray 逐字宽度，[start] 为其在数组中的起点偏移。
  */
 fun measureTextSplit(text: String, widthsArray: FloatArray, start: Int = 0): TextSplit {
     val length = text.length
+    if (length == 0) {
+        return TextSplit(ArrayList(0), ArrayList(0))
+    }
     var clusterCount = 0
-    for (i in start..<start + length) if (widthsArray[i] > 0) clusterCount++
-    val widths = ArrayList<Float>(clusterCount)
-    val stringList = ArrayList<String>(clusterCount)
+    val end = start + length
+    for (i in start until end) {
+        if (widthsArray[i] > 0f) clusterCount++
+    }
+    val initialCapacity = if (clusterCount > 0) clusterCount else length
+    val widths = ArrayList<Float>(initialCapacity)
+    val stringList = ArrayList<String>(initialCapacity)
     var i = 0
     while (i < length) {
-        val clusterBaseIndex = i++; widths.add(widthsArray[start + clusterBaseIndex])
-        while (i < length && widthsArray[start + i] == 0f && !isZeroWidthChar(text[i])) i++
-        stringList.add(text.substring(clusterBaseIndex, i))
+        val clusterBaseIndex = i++
+        widths.add(widthsArray[start + clusterBaseIndex])
+        while (i < length && widthsArray[start + i] == 0f && !isZeroWidthChar(text[i])) {
+            i++
+        }
+        val clusterLen = i - clusterBaseIndex
+        val clusterStr = when {
+            clusterLen == 1 -> getSingleCharString(text[clusterBaseIndex])
+            clusterBaseIndex == 0 && i == length -> text
+            else -> text.substring(clusterBaseIndex, i)
+        }
+        stringList.add(clusterStr)
     }
     return TextSplit(stringList, widths)
 }
 
 private fun isZeroWidthChar(char: Char): Boolean {
     val code = char.code
-    return code == 8203 || code == 8204 || code == 8205 || code == 8288
+    // ZWSP(8203), ZWNJ(8204), WJ(8288), BOM/ZWNBSP(65279) 作为独立边界；ZWJ(8205) 作为连接符并入表情簇
+    return code == 8203 || code == 8204 || code == 8288 || code == 65279
 }
 
 /**

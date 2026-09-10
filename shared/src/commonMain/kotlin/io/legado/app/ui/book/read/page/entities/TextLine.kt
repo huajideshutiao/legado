@@ -37,21 +37,8 @@ data class TextLine(
     val chapterIndices: IntRange get() = chapterPosition..chapterPosition + charSize
     val height: Float inline get() = lineBottom - lineTop
 
-    /**
-     * render 侧 Canvas 录制缓存句柄。
-     * 由 render 侧 lazy 注入（见 TextLineRender.ensureRecorder），
-     * 数据层只通过接口触发 invalidate/recycle，不直接持有 android CanvasRecorder。
-     */
-    var canvasRecorder: CanvasRecorderHandle? = null
-
     var searchResultColumnCount = 0
 
-    /**
-     * 朗读高亮标志。
-     * setter 无副作用，由调用方（TextPage.upPageAloudSpan / removePageAloudSpan）显式触发
-     * invalidate 与 hasReadAloudSpan 同步，避免数据层耦合 render 状态机。
-     */
-    var isReadAloud: Boolean = false
     var textPage: TextPage = emptyTextPage
     var isLeftLine = true
 
@@ -123,19 +110,6 @@ data class TextLine(
             else -> false
         }
         return visible
-    }
-
-    fun invalidate() {
-        invalidateSelf()
-        textPage.invalidate()
-    }
-
-    fun invalidateSelf() {
-        canvasRecorder?.invalidate()
-    }
-
-    fun recycleRecorder() {
-        canvasRecorder?.recycle()
     }
 
     companion object {

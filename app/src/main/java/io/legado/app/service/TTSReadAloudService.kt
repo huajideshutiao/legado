@@ -13,7 +13,6 @@ import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.tts.TextToSpeechEngine
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.model.ReadAloud
-import io.legado.app.model.ReadBook
 import io.legado.app.utils.GSON
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.fromJsonObject
@@ -73,7 +72,7 @@ class TTSReadAloudService : BaseReadAloudService() {
         if (!requestFocus()) return
         if (contentList.isEmpty()) {
             AppLog.putDebug("朗读列表为空")
-            ReadBook.readAloud()
+            readBook?.readAloud()
             return
         }
         super.play()
@@ -156,7 +155,7 @@ class TTSReadAloudService : BaseReadAloudService() {
                 && readAloudNumber + 1 > chapter.getReadLength(pageIndex + 1)
             ) {
                 pageIndex++
-                ReadBook.moveToNextPage()
+                readBookViewModel?.nextPage()
             }
             upTtsProgress(readAloudNumber + 1)
         }
@@ -178,7 +177,7 @@ class TTSReadAloudService : BaseReadAloudService() {
                 && readAloudNumber + start > chapter.getReadLength(pageIndex + 1)
             ) {
                 pageIndex++
-                ReadBook.moveToNextPage()
+                readBookViewModel?.nextPage()
                 upTtsProgress(readAloudNumber + start)
             }
         }

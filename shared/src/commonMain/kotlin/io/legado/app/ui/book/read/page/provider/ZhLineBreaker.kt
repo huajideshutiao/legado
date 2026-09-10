@@ -15,47 +15,40 @@ class ZhLineBreaker(
     letterSpacingPx: Float,
 ) {
     companion object {
-        private val postPanc = hashSetOf(
-            "！",
-            "，",
-            "。",
-            "、",
-            "；",
-            "：",
-            "？",
-            "”",
-            "’",
-            "）",
-            "］",
-            "｝",
-            "》",
-            "〉",
-            "〕",
-            "】",
-            "〗",
-            "」",
-            "』",
-            "﹂",
-            "﹄",
-            "…",
-            "—",
-            "～",
-            "·",
-            "!",
-            ",",
-            ".",
-            ":",
-            ";",
-            "?",
-            ")",
-            "]",
-            "}",
-            ">"
-        )
-        private val prePanc = hashSetOf(
-            "“", "‘", "（", "［", "｛", "《", "〈", "〔", "【", "〖", "『", "「", "﹁", "﹃",
-            "(", "[", "{", "<"
-        )
+        private const val POST_PANC_CHARS = "！，。、；：？”’）］｝》〉〕】〗」』﹂﹄…—～·!,.:;?)]}>"
+        private const val PRE_PANC_CHARS = "“‘（［｛《〈〔【〖『「﹁﹃([{<"
+
+        private val postPancBits = LongArray(1024).apply {
+            for (i in 0 until POST_PANC_CHARS.length) {
+                val c = POST_PANC_CHARS[i].code
+                this[c ushr 6] = this[c ushr 6] or (1L shl c)
+            }
+        }
+
+        private val prePancBits = LongArray(1024).apply {
+            for (i in 0 until PRE_PANC_CHARS.length) {
+                val c = PRE_PANC_CHARS[i].code
+                this[c ushr 6] = this[c ushr 6] or (1L shl c)
+            }
+        }
+
+        fun isPostPanc(char: Char): Boolean {
+            val code = char.code
+            return (postPancBits[code ushr 6] and (1L shl code)) != 0L
+        }
+
+        fun isPostPanc(string: String): Boolean {
+            return string.length == 1 && isPostPanc(string[0])
+        }
+
+        fun isPrePanc(char: Char): Boolean {
+            val code = char.code
+            return (prePancBits[code ushr 6] and (1L shl code)) != 0L
+        }
+
+        fun isPrePanc(string: String): Boolean {
+            return string.length == 1 && isPrePanc(string[0])
+        }
     }
 
     private val defaultCapacity = 10
@@ -77,7 +70,9 @@ class ZhLineBreaker(
         var lineW = 0f
         var cwPre = 0f
         var length = 0
-        words.forEachIndexed { index, s ->
+        val size = words.size
+        for (index in 0 until size) {
+            val s = words[index]
             val cw = widths[index]
             var breakMod: BreakMod
             var breakLine = false
@@ -86,17 +81,19 @@ class ZhLineBreaker(
             var breakCharCnt = 0
             var breakClusterCnt = 0
 
+            val currentLineStart = if (line == 0) indentSize else lineStartCluster[line]
             if (lineW > widthLimit) {
                 /*禁止在行尾的标点处理*/
-                breakMod = if (index >= 1 && isPrePanc(words[index - 1])) {
-                    if (index >= 2 && isPrePanc(words[index - 2])) BreakMod.CPS_2//如果后面还有一个禁首标点则异常
+                breakMod = if (index > currentLineStart && isPrePanc(words[index - 1])) {
+                    if (index >= currentLineStart + 2 && isPrePanc(words[index - 2])) BreakMod.CPS_2//如果后面还有一个禁首标点则异常
                     else BreakMod.BREAK_ONE_CHAR //无异常场景
                 }
                 /*禁止在行首的标点处理*/
                 else if (isPostPanc(words[index])) {
-                    if (index >= 1 && isPostPanc(words[index - 1])) BreakMod.CPS_1//如果后面还有一个禁首标点则异常，不过三个连续行尾标点的用法不通用
-                    else if (index >= 2 && isPrePanc(words[index - 2])) BreakMod.CPS_3//如果后面还有一个禁首标点则异常
-                    else BreakMod.BREAK_ONE_CHAR //无异常场景
+                    if (index >= currentLineStart + 1 && isPostPanc(words[index - 1])) BreakMod.CPS_1//如果后面还有一个禁首标点则异常，不过三个连续行尾标点的用法不通用
+                    else if (index >= currentLineStart + 2 && isPrePanc(words[index - 2])) BreakMod.CPS_3//如果后面还有一个禁首标点则异常
+                    else if (index > currentLineStart) BreakMod.BREAK_ONE_CHAR //无异常场景
+                    else BreakMod.NORMAL
                 } else {
                     BreakMod.NORMAL //无异常场景
                 }
@@ -120,7 +117,7 @@ class ZhLineBreaker(
                 /*特殊标点使用难保证显示效果，所以不考虑间隔，直接查找到能满足条件的分割字*/
                 var breakLength = 0
                 if (reCheck && index > 2) {
-                    val startPos = if (line == 0) indentSize else lineStart[line]
+                    val startPos = currentLineStart
                     breakMod = BreakMod.NORMAL
                     for (i in (index) downTo 1 + startPos) {
                         if (i == index) {
@@ -208,8 +205,8 @@ class ZhLineBreaker(
                 }
                 /*写满断行、段落末尾、且需要下移字符，这种特殊情况下要额外多一行*/
                 else if (breakCharCnt > 0) {
-                    lineStart[line + 1] = lineStart[line] + breakCharCnt
-                    lineStartCluster[line + 1] = lineStartCluster[line] + breakClusterCnt
+                    lineStart[line + 1] = length + s.length
+                    lineStartCluster[line + 1] = index + 1
                     lineWidth[line] = lineW
                     addLineArray(++line)
                 }
@@ -227,14 +224,6 @@ class ZhLineBreaker(
             lineStartCluster = lineStartCluster.copyOf(line + defaultCapacity)
             lineWidth = lineWidth.copyOf(line + defaultCapacity)
         }
-    }
-
-    private fun isPostPanc(string: String): Boolean {
-        return postPanc.contains(string)
-    }
-
-    private fun isPrePanc(string: String): Boolean {
-        return prePanc.contains(string)
     }
 
     private fun inCompressible(width: Float): Boolean {

@@ -24,8 +24,8 @@ import kotlinx.coroutines.runBlocking
  * 1. **Android 特有入口** (依赖 Context + Service): [start] / [remove] / [stop],
  *    通过 [ServiceLaunchers] 启 [CacheBookService] (与原 `context.startService<CacheBookService>`
  *    行为一致, 仅多一层 provider 间接)
- * 2. **[CacheBookCallback] 注册**, 桥接 [ReadBook] 单例 (contentLoadFinish /
- *    downloadedChapters / downloadFailChapters), 在 App.onCreate 调 [registerCallback]
+ * 2. **[CacheBookCallback] 注册**, 桥接活动阅读页 ([ActiveReadBookRegistry]), 在 App.onCreate
+ *    调 [registerCallback]
  *
  * 调度核心逻辑 (cacheBookMap / getOrCreate / startProcessJob / downloadSummary /
  * CacheBookModel 等) 全部委托 [CacheBookShared], 行为与下沉前完全一致。
@@ -126,44 +126,25 @@ object CacheBook {
     }
 
     /**
-     * 注册 [CacheBookCallback] 桥接 [ReadBook] 单例。
+     * 注册 [CacheBookCallback] 桥接活动阅读页。
      *
      * 在 App.onCreate 早期调用 (在任何 [CacheBookShared] 调用之前),
      * 与 `registerAndroidServiceLauncher` 同批次。
      *
-     * 桥接关系 (对照 app 端原 CacheBookModel 内部对 ReadBook 的直接引用):
-     * - [CacheBookCallback.markDownloaded] → `ReadBook.downloadedChapters.add(index)`
-     * - [CacheBookCallback.markDownloadFailed] → `ReadBook.downloadFailChapters[index]++`
-     * - [CacheBookCallback.markDownloadSuccess] → `ReadBook.downloadFailChapters.remove(index)`
-     * - [CacheBookCallback.onContentLoadFinish] → 检查 `ReadBook.book?.bookUrl == book.bookUrl`
-     *   才调 `ReadBook.contentLoadFinish(...)` (与原 CacheBookModel.downloadFinish 一致)
+     * [CacheBookCallback.onContentLoadFinish] 经 [ActiveReadBookRegistry] 找到活动阅读实例,
+     * 当前章正文下载完成时重载该章 (对照原 CacheBookModel.downloadFinish →
+     * `ReadBook.contentLoadFinish`)。下载计数标记走接口默认 no-op: 阅读器的
+     * downloadedChapters / downloadFailChapters 由 ReadBookViewModelShared 自持并直接同步
+     * [CacheBookShared.errorDownloadMap], 无需回调转写。
      */
     fun registerCallback() {
         CacheBookCallbacks.register(AppCacheBookCallback)
     }
 
     /**
-     * app 端 [CacheBookCallback] 实现, 桥接 [ReadBook] 单例。
-     *
-     * 对照 app 端原 [CacheBookModel] 内部对 [ReadBook] 的直接引用,
-     * 把下沉到 commonMain 的 [CacheBookShared.CacheBookModelShared] 回调到 app 端阅读流。
+     * app 端 [CacheBookCallback] 实现, 桥接活动阅读页 (对照桌面 DesktopCacheBookCallback)。
      */
     private object AppCacheBookCallback : CacheBookCallback {
-        override fun markDownloaded(chapterIndex: Int) {
-            ReadBook.downloadedChapters.add(chapterIndex)
-        }
-
-        override fun markDownloadFailed(chapterIndex: Int) {
-            ReadBook.downloadFailChapters[chapterIndex] =
-                (ReadBook.downloadFailChapters[chapterIndex] ?: 0) + 1
-        }
-
-        override fun markDownloadSuccess(chapterIndex: Int) {
-            // 对照 app 端 CacheBookModel.downloadAwait / download(scope, chapter, ...) 成功分支:
-            // ReadBook.downloadFailChapters.remove(chapter.index)
-            // 成功后清失败计数, 避免下次失败时累计旧值
-            ReadBook.downloadFailChapters.remove(chapterIndex)
-        }
 
         override fun onContentLoadFinish(
             book: Book,
@@ -172,15 +153,14 @@ object CacheBook {
             resetPageOffset: Boolean,
             canceled: Boolean
         ) {
-            // 对照 app 端 CacheBookModel.downloadFinish:
-            // 检查当前阅读书 == 下载书才调 ReadBook.contentLoadFinish
-            if (ReadBook.book?.bookUrl == book.bookUrl) {
-                ReadBook.contentLoadFinish(
-                    book, chapter, content,
-                    resetPageOffset = resetPageOffset,
-                    canceled = canceled
-                )
-            }
+            if (canceled) return
+            val readBook = ActiveReadBookRegistry.current ?: return
+            if (readBook.bookValue?.bookUrl != book.bookUrl) return
+            // 只处理当前章 (对照原版 contentLoadFinish 的 offset 0 分支: 同章重载保留 durChapterPos);
+            // 前后章由切章时的 launchChapterLoad 补载, 这里调 loadChapter 会把阅读器跳走
+            if (chapter.index != readBook.durChapterIndexValue) return
+            ActiveReadBookRegistry.currentViewModel
+                ?.loadChapter(chapter.index, keepScrollOffset = !resetPageOffset)
         }
     }
 }

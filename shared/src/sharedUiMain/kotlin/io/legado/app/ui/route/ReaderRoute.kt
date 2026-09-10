@@ -37,7 +37,7 @@ import io.legado.app.help.config.ReadBookConfigShared
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.CacheBookShared
-import io.legado.app.model.LocalReadBookProvider
+import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.ReadBookPlatforms
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
@@ -817,11 +817,12 @@ fun ReaderRoute(
 
         // 起效的替换规则 (对照原版 替换按钮 → EffectiveReplacesDialog)
         is ReaderDialogEvent.EffectiveReplaces -> {
-            val readBook = LocalReadBookProvider.current.readBook
             val replacesModel = remember {
                 EffectiveReplacesScreenModel(
                     getEffectiveReplaceRules = {
-                        readBook.curTextChapter.value?.effectiveReplaceRules ?: emptyList()
+                        // 取活动阅读实例：app 端 ReadBook 单例与阅读页不是同一个实例
+                        ActiveReadBookRegistry.current?.curTextChapter?.value
+                            ?.effectiveReplaceRules ?: emptyList()
                     },
                 )
             }

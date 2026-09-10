@@ -15,16 +15,9 @@ data class TextColumn(
     override var textLine: TextLine = emptyTextLine
 
     var selected: Boolean = false
-        set(value) {
-            if (field != value) {
-                textLine.invalidate()
-            }
-            field = value
-        }
     var isSearchResult: Boolean = false
         set(value) {
             if (field != value) {
-                textLine.invalidate()
                 if (value) {
                     textLine.searchResultColumnCount++
                 } else {

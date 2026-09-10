@@ -21,7 +21,7 @@ val LocalReaderTextMeasurer = staticCompositionLocalOf<TextMeasurer?> { null }
  *
  * [rememberTextMeasurer] 默认内部缓存仅 8 条，对一字一列的千列级页面等于全程失效；
  * 这里放大到常用汉字集量级，让翻页窗口内重复 measure 命中内部 LRU
- * （与 [TextLayoutCache] 逐列缓存互为两层）。
+ * （与 [TextLayoutCache] 字符享元缓存互为两层）。
  * 优先取 [LocalReaderTextMeasurer]（阅读页统一共享实例），未提供时自建。
  */
 @Composable
@@ -30,7 +30,7 @@ fun rememberReaderTextMeasurer(): TextMeasurer =
         ?: rememberTextMeasurer(cacheSize = READER_TEXT_MEASURER_CACHE_SIZE)
 
 /**
- * 正文 layout 缓存预热：把候选页的逐列 TextLayoutResult 增量构建到
+ * 正文 layout 缓存预热：把候选页的字符享元 TextLayoutResult 增量构建到
  * [io.legado.app.ui.book.read.page.entities.TextPage.textLayoutCache]
  * （与 [PageContentCanvas] 的取或建挂载同一挂载点），翻页入场页组合时
  * 命中缓存零 measure，消除首帧拖动阻塞（对照原版三个 PageView 常驻、

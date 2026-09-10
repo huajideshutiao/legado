@@ -8,7 +8,6 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.ui.book.getRealBookSort
-import io.legado.app.utils.canvasrecorder.CanvasRecorderFactory
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.getPrefString
@@ -45,7 +44,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var clickActionBR by cachedIntPref(PreferKey.clickActionBR, 1)
 
     val isEInkMode get() = themeMode == "3"
-    val optimizeRender get() = CanvasRecorderFactory.isSupport
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
         key ?: return

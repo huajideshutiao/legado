@@ -73,19 +73,19 @@ interface SelectionPageSource {
  *   是 moveToNextPage 显式 cancelSelect + setContent 换页实例后旧 selected 标志随实例废弃，
  *   upContent 链本身不含 cancelSelect）
  * - [selectedText] ← 旧 `ContentTextView.getSelectedText`
- * - [markColumns] ← 旧 `ContentTextView.upSelectChars`（区间内 TextColumn.selected = true，驱动高亮绘制）
  *
  * # 页维度（滚动模式跨页扩选）
  *
  * 位置带 [PageSelPos.pagePos]（= 旧 relativePagePos），页与页偏移经 [pageSource] 取。
- * 命中/标记/清除按旧版 `last = if (isScroll) 2 else 0` 遍历 0..last 三页：非滚动模式
+ * 命中按旧版 `last = if (isScroll) 2 else 0` 遍历 0..last 三页：非滚动模式
  * 恒只作用于第 0 页（对照旧 `touchRough` 的 `if (!callBack.isScroll) return`）。
  *
  * # 绘制联动
  *
- * 选择高亮由 [PageContentCanvas] 读取 `TextColumn.selected` 绘制。本类只改数据 +
- * 自增 [tick]；[PageContentCanvas] 在绘制块内读 [tick]（draw 阶段快照读，只失效绘制、
- * 不触发重组），拖拽热路径因此零重组开销（对照要求 5）。
+ * 本类只维护逻辑区间（[start]/[end]）+ 自增 [tick]，不再往排版产物写 `TextColumn.selected`
+ * （旧 `upSelectChars` 的三页逐列标记）：高亮几何由 `PageOverlayProjector` 在绘制期按起止行列
+ * 投影（见 `PageContentCanvas.projectSelectionState`）。[PageContentCanvas] 在绘制块内读 [tick]
+ * （draw 阶段快照读，只失效绘制、不触发重组），拖拽热路径因此零重组、零标记扫描。
  *
  * # 词级选中（无 BreakIterator 的等效实现）
  *
@@ -146,14 +146,6 @@ class PageSelectionState {
 
     /** 当前选择所属的页实例（只读视图，供外部判断选区是否仍位于当前页） */
     val currentPage: TextPage? get() = anchorPage
-
-    /**
-     * 本轮选择标记过的页（最多 3 个，按引用去重）：页滚出 0..2 窗口后按此清残留高亮
-     * （旧版 cancelSelect 只清当时的 0..last 三页，滚出窗口的页会残留）。
-     * 用 list + 引用比较而非 HashSet：TextPage 是 data class，hashCode 会深哈希整页列数据，
-     * 拖拽热路径每帧入集合就是一次整页遍历。
-     */
-    private val markedPages = ArrayList<TextPage>(3)
 
     /** 长按命中位置（对照旧 `ReadView.initialTextPos`，拖拽扩选的方向基准） */
     private var initialPos = PageSelPos.EMPTY
@@ -249,7 +241,8 @@ class PageSelectionState {
      * 长按命中：严格列命中文字列后做词级展开，激活选择。
      *
      * 对照旧 `ReadView.onLongPress`（BreakIterator 词边界）+ `ContentTextView.longPress`
-     * （column.selected = true）。命中图片等非文字列时返回 false，由调用方回落旧长按行为
+     * （旧版顺带置 column.selected，现改为只记区间、由绘制期投影）。命中图片等非文字列时返回 false，
+     * 由调用方回落旧长按行为
      * （app 端旧行为是图片长按菜单，Compose 链当前回落整章选择对话框，见 ReadViewComposable）。
      *
      * 命中页由 [pageSource] 三页遍历确定（对照旧 touch 的 relativePos 0..2），
@@ -262,8 +255,6 @@ class PageSelectionState {
         x: Float,
         y: Float,
     ): Boolean {
-        // 上一轮选择未清理时先清（防御：常规路径下点按已 cancel）
-        if (isActive || anchorPage != null) clearColumns()
         val hit = hitStrict(x, y) ?: return false
         if (hit.column !is TextColumn) return false
         val page = pageAt(hit.pos.pagePos) ?: return false
@@ -272,7 +263,6 @@ class PageSelectionState {
         initialPos = hit.pos
         start = wordStart
         end = wordEnd
-        markColumns()
         isActive = true
         tick++
         return true
@@ -308,7 +298,6 @@ class PageSelectionState {
                 )
             }
         }
-        markColumns()
         tick++
     }
 
@@ -347,7 +336,6 @@ class PageSelectionState {
             start = clampStart(end)
             end = clampEnd(check.pos)
         }
-        markColumns()
         tick++
     }
 
@@ -384,7 +372,6 @@ class PageSelectionState {
             end = clampEnd(start)
             start = clampStart(check.pos)
         }
-        markColumns()
         tick++
     }
 
@@ -396,10 +383,9 @@ class PageSelectionState {
 
     /**
      * 程序化设置选区（全文搜索跳转用，对照旧 `ContentTextView.selectStartMoveIndex` +
-     * `selectEndMoveIndex` + `upSelectChars` 的最终状态）。一次性设置起止并按
-     * [markColumns] 覆盖 selected 标记；[markSearchResult] 为 true 时 [page] 内选中列
-     * 同时标记 [TextColumn.isSearchResult]（对照旧 upSelectChars 的
-     * `column.isSearchResult = selected && isSelectingSearchResult`）。
+     * `selectEndMoveIndex` + `upSelectChars` 的最终状态）。一次性设置起止；
+     * [markSearchResult] 为 true 时 [page] 内区间列同时标记 [TextColumn.isSearchResult]
+     * （对照旧 upSelectChars 的 `column.isSearchResult = selected && isSelectingSearchResult`）。
      *
      * @param page 选区所在页，须是 [startPos] 的 pagePos 对应页（搜索跳转恒为当前页 = 0）；
      *        [pageSource] 尚未注入时用它兜底，行钳制与 isSearchResult 覆盖也按它做
@@ -410,10 +396,9 @@ class PageSelectionState {
         endPos: PageSelPos,
         markSearchResult: Boolean = false,
     ) {
-        // 上一轮选择未清理时先清（防御：与 longPressStart 同款守卫）
-        if (isActive || anchorPage != null) clearColumns()
+        if (page.lines.isEmpty()) return
         // 搜索跳转恒作用于当前页（pagePos 0）：anchorPage 直接取传入页，
-        // [pageSource] 未注入时 [pageAt] 也据此回落，标记/清除仍落在同一页
+        // [pageSource] 未注入时 [pageAt] 也据此回落
         anchorPage = page
         initialPos = startPos
         start = clampStart(startPos)
@@ -424,20 +409,22 @@ class PageSelectionState {
             endPos.columnIndex,
         )
         end = clampEnd(safeEnd)
-        markColumns()
         if (markSearchResult) {
-            // 对照旧 upSelectChars 的覆盖语义：整页重算 isSearchResult（未选中列同步清除），
+            // 对照旧 upSelectChars 的覆盖语义：整页重算 isSearchResult（区间外的列同步清除），
             // 命中列同步加入 page.searchResult（旧版 `textPage.searchResult.add(column)`）——
             // 否则该集合恒空，ReadBookShared.clearSearchResult 依赖它清标志会失效，
             // 退出搜索态后本次搜索高亮残留
-            for (line in page.lines) {
-                for (column in line.columns) {
-                    if (column is TextColumn) {
-                        column.isSearchResult = column.selected
-                        if (column.isSearchResult) {
-                            page.searchResult.add(column)
-                        }
-                    }
+            val s = start
+            val e = end
+            for (lineIndex in page.lines.indices) {
+                val line = page.getLine(lineIndex)
+                for (charIndex in line.columns.indices) {
+                    val column = line.getColumn(charIndex)
+                    if (column !is TextColumn) continue
+                    val pos = PageSelPos(s.pagePos, lineIndex, charIndex)
+                    val hit = pos.compareTo(s) >= 0 && pos.compareTo(e) <= 0
+                    column.isSearchResult = hit
+                    if (hit) page.searchResult.add(column)
                 }
             }
         }
@@ -445,12 +432,11 @@ class PageSelectionState {
         tick++
     }
 
-    /** 取消选择并清空高亮（对照旧 cancelSelect 的三页遍历）。翻页/点按/空白点击时调用。
+    /** 取消选择（对照旧 cancelSelect）。翻页/点按/空白点击时调用：区间归零后高亮随投影消失。
      *  图片长按菜单标志一并清除（对照旧 onCancelSelect → isImageMenuShowing = false）。 */
     fun cancel() {
         imageMenuShowing = false
         if (!isActive && anchorPage == null) return
-        clearColumns()
         anchorPage = null
         initialPos = PageSelPos.EMPTY
         start = PageSelPos.EMPTY
@@ -569,9 +555,6 @@ class PageSelectionState {
     /** 页相对视口偏移（对照旧 relativeOffset）：未注入 [pageSource] 时无滚动，恒 0 */
     private fun relativeOffset(pagePos: Int): Float = pageSource?.relativeOffset(pagePos) ?: 0f
 
-    /** 参与标记/清除的最后一页（对照旧 upSelectChars/cancelSelect 的 `if (isScroll) 2 else 0`） */
-    private val lastPagePos: Int get() = if (pageSource?.isScroll == true) 2 else 0
-
     private fun clampStart(pos: PageSelPos): PageSelPos =
         PageSelPos(pos.pagePos, pos.lineIndex, maxOf(0, pos.columnIndex))
 
@@ -583,52 +566,6 @@ class PageSelectionState {
             pos.lineIndex,
             minOf(pos.columnIndex, line.columns.lastIndex),
         )
-    }
-
-    /** 区间内 TextColumn 置 selected（对照旧 upSelectChars：遍历 0..last 三页逐列比较） */
-    private fun markColumns() {
-        val s = start
-        val e = end
-        for (pagePos in 0..lastPagePos) {
-            val page = pageAt(pagePos) ?: continue
-            if (markedPages.none { it === page }) markedPages.add(page)
-            for (lineIndex in page.lines.indices) {
-                val line = page.getLine(lineIndex)
-                for (charIndex in line.columns.indices) {
-                    val column = line.getColumn(charIndex)
-                    if (column is TextColumn) {
-                        val pos = PageSelPos(pagePos, lineIndex, charIndex)
-                        column.selected = s.isValid && e.isValid &&
-                            pos.compareTo(s) >= 0 && pos.compareTo(e) <= 0
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * 清空选中标志（对照旧 cancelSelect 的 0..last 三页遍历）：
-     * 另清本轮标记过、但已滚出 0..2 窗口的页，否则滚回去时残留高亮。
-     */
-    private fun clearColumns() {
-        val targets = ArrayList<TextPage>(4)
-        for (pagePos in 0..lastPagePos) {
-            val page = pageAt(pagePos) ?: continue
-            if (targets.none { it === page }) targets.add(page)
-        }
-        for (page in markedPages) {
-            if (targets.none { it === page }) targets.add(page)
-        }
-        for (page in targets) {
-            for (line in page.lines) {
-                for (column in line.columns) {
-                    if (column is TextColumn) {
-                        column.selected = false
-                    }
-                }
-            }
-        }
-        markedPages.clear()
     }
 
     /**

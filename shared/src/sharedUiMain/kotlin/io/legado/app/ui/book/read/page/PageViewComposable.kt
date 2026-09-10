@@ -43,6 +43,7 @@ import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.book.read.page.delegate.ScrollPageDelegateCompose
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
+import io.legado.app.ui.book.read.page.overlay.TTSHighlightOverlay
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.navigationBarFixedPadding
 import io.legado.app.ui.compose.platform.rememberColor
@@ -88,8 +89,10 @@ import org.jetbrains.compose.resources.decodeToImageBitmap
  * @param textPage 当前页内容，null 时显示加载占位
  * @param batteryLevel 电池电量 0-100 (读取失败回落 100 恒显示, 用户拍板 2026-08)
  * @param clockText 当前系统时间 HH:mm，随 timeChanged 刷新
- * @param drawTick 页内容原地变更版本号（朗读高亮等），透传给 [PageContentCanvas] 强制重绘
+ * @param drawTick 页内容原地变更版本号（段评气泡就地补丁等），透传给 [PageContentCanvas] 强制重绘
  * @param selection 页内文字选择状态, 透传给 [PageContentCanvas] (绘制块内订阅 tick 重绘)
+ * @param ttsHighlight 朗读高亮位置 (声明式参数, 透传给 [PageContentCanvas] 绘制期投影成行)
+ * @param pagePos 本页在选区页空间中的相对位置 (0=当前页 / 1=下一页 / -1=上一页不参与选区)
  * @param onHeaderMeasured 页眉实际测量高度回调 (px, 布局占位子节点 onSizeChanged)
  * @param onFooterMeasured 页脚实际测量高度回调 (px), 同上
  * @param onTextAreaMeasured 正文区实测尺寸回调 (px, 布局占位子节点 onSizeChanged):
@@ -106,6 +109,8 @@ fun PageViewComposable(
     onLongClick: (TextColumn?) -> Unit = {},
     drawTick: Int = 0,
     selection: PageSelectionState? = null,
+    ttsHighlight: TTSHighlightOverlay? = null,
+    pagePos: Int = 0,
     onHeaderMeasured: ((Int) -> Unit)? = null,
     onFooterMeasured: ((Int) -> Unit)? = null,
     onTextAreaMeasured: ((IntSize) -> Unit)? = null,
@@ -225,6 +230,8 @@ fun PageViewComposable(
                             onLongClick = onLongClick,
                             drawTick = drawTick,
                             selection = selection,
+                            ttsHighlight = ttsHighlight,
+                            pagePos = pagePos,
                         )
                     }
                 }
@@ -666,6 +673,7 @@ fun ScrollPageView(
     clockText: String = formatTimeOfDay(systemCurrentTimeMillis()),
     drawTick: Int = 0,
     selection: PageSelectionState? = null,
+    ttsHighlight: TTSHighlightOverlay? = null,
     onHeaderMeasured: ((Int) -> Unit)? = null,
     onFooterMeasured: ((Int) -> Unit)? = null,
     onTextAreaMeasured: ((IntSize) -> Unit)? = null,
@@ -799,7 +807,7 @@ fun ScrollPageView(
                                 translationY = scrollDelegate.contentOffset
                             }
                     ) {
-                        // draw 期快照读：renderVersion（页切换）/drawTick（朗读高亮）/
+                        // draw 期快照读：renderVersion（页切换）/drawTick（段评补丁）/
                         // selection.tick（选区）/ReaderImageCache.version（图片）任一
                         // 变化都只重绘不重组；页数据绘制期直读 → 与偏移同帧自洽
                         if (scrollDelegate.renderVersion < 0) return@Canvas
@@ -817,7 +825,12 @@ fun ScrollPageView(
                                 cache = TextLayoutCache.build(page, measurer, style, density)
                                 page.textLayoutCache = cache
                             }
-                            drawPageContent(page, style, cache, failedImage, offsetY)
+                            drawPageContent(
+                                page, style, cache, failedImage, offsetY,
+                                selection = selection,
+                                ttsHighlight = ttsHighlight,
+                                pagePos = i,
+                            )
                             offsetY += page.height
                         }
                     }

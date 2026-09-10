@@ -38,9 +38,12 @@ import io.legado.app.ui.book.read.page.entities.TextChapterShared
 import io.legado.app.ui.book.read.page.entities.TextLine
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
+import io.legado.app.ui.book.read.page.entities.tryPatchReviewCounts
+import io.legado.app.ui.book.read.page.overlay.TTSHighlightOverlay
 import io.legado.app.ui.book.read.page.provider.ChapterContentParserShared
 import io.legado.app.ui.book.read.page.provider.ImageResolver
 import io.legado.app.ui.book.read.page.provider.ImageResolverProviders
+import io.legado.app.ui.book.read.page.provider.ParagraphLayoutCache
 import io.legado.app.ui.book.read.page.provider.ParsedParagraph
 import io.legado.app.ui.book.read.page.provider.SimpleChapterLayout
 import io.legado.app.ui.book.read.page.provider.SimpleTextMeasurer
@@ -125,7 +128,7 @@ class ReadBookViewModelShared(
     val nextPlusTextPage: StateFlow<TextPage?> = _nextPlusTextPage.asStateFlow()
 
     /**
-     * 页内容原地变更版本号（朗读高亮等对 TextPage/TextLine 的原地修改）。
+     * 页内容原地变更版本号（段评气泡就地补丁等对 TextPage/TextLine 的原地修改）。
      *
      * 修改不改变 data class 相等性，StateFlow 去重后不会重发，Compose 侧 Canvas
      * 不会重绘。订阅者（PageViewComposable/PageContentCanvas）消费本值强制重绘，
@@ -134,9 +137,29 @@ class ReadBookViewModelShared(
     private val _pageContentVersion = MutableStateFlow(0)
     val pageContentVersion: StateFlow<Int> get() = _pageContentVersion
 
-    /** 页内容原地变更后自增，触发 Compose 阅读页重绘（朗读高亮/清除）。 */
+    /** 页内容原地变更后自增，触发 Compose 阅读页重绘（段评气泡就地补丁等）。 */
     fun bumpPageContentVersion() {
         _pageContentVersion.value++
+    }
+
+    /**
+     * 朗读高亮位置（章节序号 + 章内字符位置），null = 无高亮。
+     *
+     * 排版产物不再持有 `TextLine.isReadAloud` 标志位：绘制期由
+     * [io.legado.app.ui.book.read.page.overlay.PageOverlayProjector.projectTTS]
+     * 把本区间折算成页内高亮行区间（页/章不匹配自然投空）。
+     */
+    private val _ttsHighlight = MutableStateFlow<TTSHighlightOverlay?>(null)
+    val ttsHighlight: StateFlow<TTSHighlightOverlay?> = _ttsHighlight.asStateFlow()
+
+    /**
+     * 设置朗读高亮位置（章内字符位置，章节取当前章）。
+     *
+     * 平台朗读宿主（桌面 / iOS）自行推进段落进度时直调本方法，
+     * 与 [onTtsProgress] 的区别是不带"朗读播放中"守卫（宿主自己已判过状态）。
+     */
+    fun setAloudHighlight(chapterPos: Int) {
+        _ttsHighlight.value = TTSHighlightOverlay(readBook.durChapterIndex.value, chapterPos)
     }
     // endregion
 
@@ -254,6 +277,9 @@ class ReadBookViewModelShared(
     // 缓存已处理的章节内容，视口变化时只重排版不重新下载/处理
     private val processedContentCache = mutableMapOf<Int, ProcessedChapterContent>()
     private var processedContentBookUrl: String? = null
+
+    // 段落折行度量缓存（Phase 1），窗口高度/行距/段距变化时 100% 复用
+    private val paragraphLayoutCache = ParagraphLayoutCache()
     // endregion
 
     // region readBook 状态对外暴露 (readBook 私有, 桌面端 TTS Navigator 等外部消费者通过本区域访问)
@@ -385,7 +411,7 @@ class ReadBookViewModelShared(
                 AppLog.put("重命名章节失败\n${it.message}", it)
             }
             ReadBookEvents.postMenuRefresh()
-            loadContent(index)
+            launchChapterLoad(index) { loadContent(index) }
         }
     }
 
@@ -443,6 +469,11 @@ class ReadBookViewModelShared(
     }
 
     private fun applyLayoutConfig(config: LayoutConfig) {
+        // 换字体必须整表失效：ParagraphLayoutCache 的 key（SimpleChapterLayout.bodyFontKey）
+        // 只含字号/字距/useZhLayout，字号不变换字体会命中旧断行（字形宽度已变）
+        if (config.textFontPath != _layoutConfig.value.textFontPath) {
+            paragraphLayoutCache.clear()
+        }
         _layoutConfig.value = config
         // 当前章未装载时占位/消息页按新配置重建（加载中页几何与视口一致，对照原版
         // ChapterProvider.viewWidth 变化后 format() 重排消息页）
@@ -479,12 +510,10 @@ class ReadBookViewModelShared(
             if (cached != null) {
                 // 复用已处理内容，只重排版
                 launchChapterLoad(i) {
-                    removeLoading(i)
                     relayoutFromCache(i, cached)
                 }
             } else {
                 launchChapterLoad(i) {
-                    removeLoading(i)
                     loadContent(i)
                 }
             }
@@ -508,7 +537,6 @@ class ReadBookViewModelShared(
                 runCatching { BookStorageProviders.get().delContent(book, chapter) }
             }
             readBook.clearTextChapter()
-            removeLoading(index)
             loadContent(index)
         }
     }
@@ -538,6 +566,7 @@ class ReadBookViewModelShared(
             directoryLoadingJob?.cancel()
             directoryLoadFailed = false
             reviewCountBookUrl = currentBookUrl
+            paragraphLayoutCache.clear()
         }
         // 书籍切换时清空已处理内容缓存
         if (processedContentBookUrl != currentBookUrl) {
@@ -651,35 +680,47 @@ class ReadBookViewModelShared(
      * 启动目录加载任务（单飞）：已存在进行中任务则复用；任务内校验书未切换再更新内存目录，
      * 避免旧书拉取结果污染新书状态。切书/销毁时随 scope 取消。
      */
-    private fun startDirectoryLoad(book: Book): Job = synchronized(syncLock) {
-        directoryLoadingJob?.let { return it }
-        val job = scope.launch {
-            val list = fetchChapterListFromSource(book, readBook.bookSource.value)
-            if (readBook.book.value?.bookUrl == book.bookUrl) {
-                readBook.updateChapterList(list)
+    private fun startDirectoryLoad(book: Book): Job {
+        val job = synchronized(syncLock) {
+            directoryLoadingJob?.let { return it }
+            val newJob = scope.launch {
+                val list = fetchChapterListFromSource(book, readBook.bookSource.value)
+                if (readBook.book.value?.bookUrl == book.bookUrl) {
+                    readBook.updateChapterList(list)
+                }
             }
+            directoryLoadingJob = newJob
+            newJob
         }
-        directoryLoadingJob = job
+        // 注册必须在锁外：job 已完成时 invokeOnCompletion 同线程直跑处理器，
+        // 而处理器要取 syncLock（atomicfu 的锁在 Native 端不可重入）
         job.invokeOnCompletion {
             synchronized(syncLock) {
                 if (directoryLoadingJob === job) directoryLoadingJob = null
             }
         }
-        job
+        return job
     }
 
     /**
      * 以 chapter.index 记录任务；同章新任务替换旧任务，完成时仅清理自身。
      */
     private fun launchChapterLoad(index: Int, block: suspend CoroutineScope.() -> Unit): Job {
-        synchronized(syncLock) {
-            chapterLoadingJobs.remove(index)?.cancel()
+        // 旧任务的 cancel 出锁再做：job 已完成/未启动时 cancel 会同线程直跑
+        // invokeOnCompletion，而下方处理器要取 syncLock（atomicfu 的锁在 Native 端不可重入）
+        val expired = synchronized(syncLock) {
+            loadingChapters.remove(index)
+            chapterLoadingJobs.remove(index)
         }
+        expired?.cancel()
         val job: Job = scope.launch(block = block)
         synchronized(syncLock) { chapterLoadingJobs[index] = job }
         job.invokeOnCompletion {
             synchronized(syncLock) {
-                if (chapterLoadingJobs[index] === job) chapterLoadingJobs.remove(index)
+                if (chapterLoadingJobs[index] === job) {
+                    chapterLoadingJobs.remove(index)
+                    loadingChapters.remove(index)
+                }
             }
         }
         return job
@@ -687,27 +728,34 @@ class ReadBookViewModelShared(
 
     /**
      * 取消当前三章窗口外的排版/正文任务；clearAll 用于切书和销毁。
+     *
+     * 锁内只摘容器（纯内存），cancel 一律出锁：见 [launchChapterLoad] 的不可重入说明。
      */
     private fun clearExpiredChapterLoadingJobs(clearAll: Boolean = false) {
+        val expiredJobs = arrayListOf<Job>()
         synchronized(syncLock) {
             val iterator = chapterLoadingJobs.iterator()
             while (iterator.hasNext()) {
                 val (index, job) = iterator.next()
                 if (clearAll || index !in readBook.durChapterIndex.value - 1..readBook.durChapterIndex.value + 1) {
-                    job.cancel()
+                    expiredJobs.add(job)
                     iterator.remove()
                     loadingChapters.remove(index)
                 }
             }
         }
+        for (i in expiredJobs.indices) expiredJobs[i].cancel()
         clearExpiredReviewCount(clearAll)
     }
 
     /**
      * 装载单章正文并按滑窗归位（对照 app 端 `ReadBook.loadContentAwait`）：
      * 缓存未命中经 [downloadAwait] 联网，失败文案与原版一致作为正文排版展示。
+     *
+     * @param silent true = 段评迟到后的双缓冲静默重载：不先刷"加载数据中…"占位页，
+     *   当前章保持旧排版直到新排版就绪再原子替换
      */
-    private suspend fun loadContent(index: Int) {
+    private suspend fun loadContent(index: Int, silent: Boolean = false) {
         if (index < 0) return
         // 目录未就绪时先确保：打开初期 relayout 的同章替换会取消 loadChapter 主任务
         //（其中含网络目录拉取），重载任务在此补上目录前置，避免未入架书（目录不落库）
@@ -727,7 +775,7 @@ class ReadBookViewModelShared(
         // 当前章未装载：先刷新页面流，展示"加载数据中…"占位（对照原版 moveToNextChapter /
         // openChapter 的 upContent 后 pageFactory 无章兜底页；msg 优先，不覆盖消息页）。
         // 装载完成后由 contentLoadFinish → applyCurChapterPages 替换为正文。
-        if (index == readBook.durChapterIndex.value && readBook.msg == null) {
+        if (!silent && index == readBook.durChapterIndex.value && readBook.msg == null) {
             syncPageFlows()
         }
         try {
@@ -781,7 +829,7 @@ class ReadBookViewModelShared(
     }
 
     /**
-     * 段评数迟于当前章排版到达时触发整章重排；仅当前章且章节对象仍相同时生效。
+     * 段评数迟于当前章排版到达时触发轻量就地补丁或双缓冲静默切换重排；仅当前章且章节对象仍相同时生效。
      */
     private fun scheduleReviewRelayoutIfNeeded(
         deferred: Deferred<Map<Int, Int>?>?,
@@ -794,11 +842,60 @@ class ReadBookViewModelShared(
             if (map.isEmpty()) return@launch
             if (chapter.index != readBook.durChapterIndex.value) return@launch
             if (readBook.curTextChapter.value !== textChapter) return@launch
-            readBook.clearTextChapter()
             synchronized(syncLock) {
                 reviewCountDeferred[chapter.index] = CompletableDeferred(map)
             }
-            launchChapterLoad(chapter.index) { loadContent(chapter.index) }
+
+            val cfg = _layoutConfig.value
+            val measurer = TextMeasurerProviders
+                .createOrNull(cfg.textSizePx, cfg.letterSpacingPx, cfg.textFontPath)
+                ?: SimpleTextMeasurer(
+                    textSizePx = cfg.textSizePx,
+                    letterSpacingPx = cfg.letterSpacingPx,
+                    descent = cfg.textSizePx * 0.2f,
+                )
+            val titleMeasurer = TextMeasurerProviders
+                .createOrNull(cfg.titleSizePx, cfg.letterSpacingPx, cfg.textFontPath)
+                ?: SimpleTextMeasurer(
+                    textSizePx = cfg.titleSizePx,
+                    letterSpacingPx = cfg.letterSpacingPx,
+                    descent = cfg.titleSizePx * 0.2f,
+                )
+
+            // 1. 尝试轻量就地补丁（若末行剩余空间可容纳气泡且不引发换行折行）
+            if (textChapter.tryPatchReviewCounts(
+                    reviewCountMap = map,
+                    reviewChar = "▨",
+                    measurer = measurer,
+                    titleMeasurer = titleMeasurer,
+                    visibleWidth = cfg.visibleWidth,
+                    paddingLeft = cfg.paddingLeft,
+                    paddingRight = cfg.paddingRight,
+                    viewWidth = cfg.viewWidth,
+                    doublePage = cfg.doublePage,
+                )
+            ) {
+                // Patch 成功：更新已处理缓存中的 reviewCountMap，并刷新页面流与绘制缓存
+                processedContentCache[chapter.index]?.let { cached ->
+                    processedContentCache[chapter.index] = cached.copy(reviewCountMap = map)
+                }
+                bumpPageContentVersion()
+                syncPageFlows()
+                return@launch
+            }
+
+            // 2. 双缓冲静默切换机制：消除 clearTextChapter() 调用（避免白屏与视觉闪烁），
+            // 在后台协程中完成新 TextChapter 的排版加载，排版完成后原子替换 curChapter / curTextChapter
+            launchChapterLoad(chapter.index) {
+                val cached = processedContentCache[chapter.index]
+                if (cached != null) {
+                    val updated = cached.copy(reviewCountMap = map)
+                    processedContentCache[chapter.index] = updated
+                    relayoutFromCache(chapter.index, updated, silent = true)
+                } else {
+                    loadContent(chapter.index, silent = true)
+                }
+            }
             // 前后章属预下载范畴: preDownloadNum=0 时不重载 (同 loadChapter 的预载口径)
             if (AppConfigProviders.get().preDownloadNum > 0) {
                 launchChapterLoad(chapter.index + 1) { loadContent(chapter.index + 1) }
@@ -907,10 +1004,17 @@ class ReadBookViewModelShared(
     }
 
     /**
-     * 复用已缓存的处理结果只重排版（视口大小变化时调用，跳过下载/ContentProcessor/解析/JS执行）。
-     * 纯 UI 重排：复用 imageResolver（其内部 sizes 缓存避免重复网络请求），跳过 preDownload。
+     * 复用已缓存的处理结果只重排版（视口变化 / 段评迟到时调用，跳过下载/ContentProcessor/解析/JS执行）。
+     * 复用 imageResolver（其内部 sizes 缓存避免重复网络请求）。
+     *
+     * @param silent true = 段评迟到后的双缓冲静默重排：排完原子替换并保留滚动偏移与阅读位置；
+     *   false = 视口变化的纯 UI 重排：偏移归零且不触发 preDownload（避免网络请求/JS执行）
      */
-    private suspend fun relayoutFromCache(index: Int, cached: ProcessedChapterContent) {
+    private suspend fun relayoutFromCache(
+        index: Int,
+        cached: ProcessedChapterContent,
+        silent: Boolean = false,
+    ) {
         if (index !in readBook.durChapterIndex.value - 1..readBook.durChapterIndex.value + 1) return
         val book = readBook.book.value ?: return
         val pages = buildLayout().layout(
@@ -934,15 +1038,19 @@ class ReadBookViewModelShared(
         when (val offset = index - readBook.durChapterIndex.value) {
             0 -> {
                 readBook.updateTextChapter(offset, textChapter)
-                // 纯 UI 重排：只更新页状态，不触发 preDownload（避免网络请求/JS执行）
-                pageList.clear()
-                pageList.addAll(textChapter.pages)
-                // 重排后行几何整体变化，滚动偏移归零 (对照旧 LOAD_CONTENT → resetPageOffset)
-                resetScrollOffset()
-                if (readBook.durChapterPos.value == Int.MAX_VALUE) {
-                    readBook.updateDurChapterPos(textChapter.lastReadLength)
+                if (silent) {
+                    applyCurChapterPages(textChapter, resetOffset = false)
+                } else {
+                    // 纯 UI 重排：只更新页状态，不触发 preDownload（避免网络请求/JS执行）
+                    pageList.clear()
+                    pageList.addAll(textChapter.pages)
+                    // 重排后行几何整体变化，滚动偏移归零 (对照旧 LOAD_CONTENT → resetPageOffset)
+                    resetScrollOffset()
+                    if (readBook.durChapterPos.value == Int.MAX_VALUE) {
+                        readBook.updateDurChapterPos(textChapter.lastReadLength)
+                    }
+                    syncPageFlows()
                 }
-                syncPageFlows()
             }
 
             -1, 1 -> {
@@ -959,6 +1067,8 @@ class ReadBookViewModelShared(
      */
     fun nextPage(): Boolean {
         if (!readBook.nextPage()) return false
+        // 手动翻页离开朗读页即清高亮（对照原版 moveToNextPage 的 removePageAloudSpan）
+        _ttsHighlight.value = null
         syncPageFlows()
         // 对照 app 端 setPageIndex → curPageChanged → preDownload
         preDownload()
@@ -1266,6 +1376,9 @@ class ReadBookViewModelShared(
         clearExpiredChapterLoadingJobs(clearAll = true)
         directoryLoadingJob?.cancel()
         reviewCountBookUrl = null
+        processedContentCache.clear()
+        processedContentBookUrl = null
+        paragraphLayoutCache.clear()
         preDownloadTask?.cancel()
         // 未入架书退出后清理 DB 残留（对照原版 ReadBookActivity.onDestroy 的
         // `if (!ReadBook.inBookshelf && !isChangingConfigurations) removeFromBookshelf(null)` 兜底；
@@ -1402,17 +1515,13 @@ class ReadBookViewModelShared(
     private var pendingReadAloudStart: Int? = null
 
     /**
-     * 清除当前页朗读高亮 span 并刷新内容 (对照 app 端 ALOUD_STATE STOP/PAUSE 分支:
+     * 清除朗读高亮 (对照 app 端 ALOUD_STATE STOP/PAUSE 分支:
      * `page.removePageAloudSpan()` + `readView.upContent(resetPageOffset = false)`)。
      *
-     * 原版按 `durChapterPos` 定位所在页 (getPageByReadPos)，shared 等价为
-     * `durPageIndexValue` 对应页；高亮是原地修改，额外自增 [pageContentVersion]
-     * 驱动 Compose 重绘（等价 upContent 的 invalidate）。
+     * 高亮是 [ttsHighlight] 单一状态位，清空即全页失效，无需定位页。
      */
     fun clearAloudSpanForCurrentPage() {
-        val page = readBook.curTextChapter.value?.getPage(readBook.durPageIndexValue) ?: return
-        page.removePageAloudSpan()
-        bumpPageContentVersion()
+        _ttsHighlight.value = null
     }
 
     /**
@@ -1422,18 +1531,14 @@ class ReadBookViewModelShared(
      * - 仅朗读播放中推进（原版守卫 `BaseReadAloudService.isPlay()`，忽略停止/暂停后的粘性重放）
      * - `updateReadPosition` 等价原版 `durChapterPos = chapterStart` + `upContent`：
      *   跨页时页面流随之翻到朗读页（原版 pageIndex 由 durChapterPos 派生）
-     * - `aloudSpanStart = chapterStart - getReadLength(pageIndex)` 为页内字符偏移，
-     *   交给 [io.legado.app.ui.book.read.page.entities.TextPage.upPageAloudSpan] 按段落置高亮行
+     * - 高亮只记 [ttsHighlight] 区间，绘制期投影成行（原版是往行上写 isReadAloud 标志位）
      */
     fun onTtsProgress(chapterStart: Int) {
         val platform = ReadBookPlatforms.get()
         if (!platform.isReadAloudRun || platform.isReadAloudPause) return
-        val textChapter = readBook.curTextChapter.value ?: return
+        if (readBook.curTextChapter.value == null) return
         updateReadPosition(chapterStart)
-        val pageIndex = readBook.durPageIndexValue
-        val aloudSpanStart = chapterStart - textChapter.getReadLength(pageIndex)
-        textChapter.getPage(pageIndex)?.upPageAloudSpan(aloudSpanStart)
-        bumpPageContentVersion()
+        setAloudHighlight(chapterStart)
     }
     // endregion
 
@@ -1724,6 +1829,7 @@ class ReadBookViewModelShared(
             titleDescent = titleMeasurer.descent,
             reviewChar = "▨",
             srcReplaceChar = ChapterContentParserShared.srcReplaceChar,
+            layoutCache = paragraphLayoutCache,
         )
     }
 
@@ -1732,16 +1838,18 @@ class ReadBookViewModelShared(
      * 对照 app ReadBook.clearExpiredChapterLoadingJob 中 reviewCountDeferred 分支。
      */
     private fun clearExpiredReviewCount(clearAll: Boolean = false) {
+        val expired = arrayListOf<Deferred<Map<Int, Int>?>>()
         synchronized(syncLock) {
             val iterator = reviewCountDeferred.iterator()
             while (iterator.hasNext()) {
                 val (index, deferred) = iterator.next()
                 if (clearAll || (!deferred.isCompleted && index !in readBook.durChapterIndex.value - 1..readBook.durChapterIndex.value + 1)) {
-                    deferred.cancel()
+                    expired.add(deferred)
                     iterator.remove()
                 }
             }
         }
+        for (i in expired.indices) expired[i].cancel()
     }
 
     /** 章节加载互斥（对照 app 端 ReadBook.addLoading / removeLoading） */
@@ -1751,9 +1859,19 @@ class ReadBookViewModelShared(
         true
     }
 
-    private fun removeLoading(index: Int) {
+    /**
+     * 释放加载标记；只有当前登记在 [chapterLoadingJobs] 的 job 才允许释放。
+     * 被同章新任务替换掉的旧 job，它的 finally 会晚于新任务的 addLoading 执行，
+     * 没有身份校验就会清掉新任务刚设的标记，让后续调用越过互斥重复装载。
+     * 标记不会滞留：任务完成时 invokeOnCompletion 会为当时登记的 job 清一次。
+     */
+    private suspend fun removeLoading(index: Int) {
+        val job = currentCoroutineContext()[Job]
         synchronized(syncLock) {
-            loadingChapters.remove(index)
+            val owner = chapterLoadingJobs[index]
+            if (owner == null || job == null || owner === job) {
+                loadingChapters.remove(index)
+            }
         }
     }
 
@@ -1989,32 +2107,35 @@ class ReadBookViewModelShared(
      * 600000ms 节流；目录增长时落库并补载下一章）。
      */
     fun upToc() {
-        synchronized(syncLock) {
-            val bookSource = readBook.bookSource.value ?: return
-            val book = readBook.book.value ?: return
-            if (!book.canUpdate) return
-            if (readBook.chapterSize - readBook.durChapterIndex.value - 1 >= 3) return
+        val bookSource = readBook.bookSource.value ?: return
+        val book = readBook.book.value ?: return
+        if (!book.canUpdate) return
+        if (readBook.chapterSize - readBook.durChapterIndex.value - 1 >= 3) return
+        // 锁只护住节流的「读-改」（并发调用只放一个过）；协程在锁外启动——
+        // 它内部会调 launchChapterLoad（同样取 syncLock），锁内启动即埋自锁死
+        val oldBook = synchronized(syncLock) {
             if (systemCurrentTimeMillis() - book.lastCheckTime < 600000) return
             book.lastCheckTime = systemCurrentTimeMillis()
-            val oldBook = book.copy()
-            scope.launch {
-                runCatching {
-                    WebBook.getChapterListAwait(bookSource, book).getOrThrow()
-                }.onSuccess { cList ->
-                    ensureActive()
-                    if (cList.size > readBook.chapterSize) {
-                        if (oldBook.bookUrl == book.bookUrl) {
-                            AppDbProviders.get().bookDao.update(book)
-                        } else {
-                            AppDbProviders.get().bookDao.replace(oldBook, book)
-                            BookStorageProviders.get().updateCacheFolder(oldBook, book)
-                        }
-                        AppDbProviders.get().bookChapterDao.delByBook(oldBook.bookUrl)
-                        AppDbProviders.get().bookChapterDao.insert(*cList.toTypedArray())
-                        readBook.updateChapterList(cList)
-                        if (readBook.nextTextChapter.value == null) {
-                            loadContent(readBook.durChapterIndex.value + 1)
-                        }
+            book.copy()
+        }
+        scope.launch {
+            runCatching {
+                WebBook.getChapterListAwait(bookSource, book).getOrThrow()
+            }.onSuccess { cList ->
+                ensureActive()
+                if (cList.size > readBook.chapterSize) {
+                    if (oldBook.bookUrl == book.bookUrl) {
+                        AppDbProviders.get().bookDao.update(book)
+                    } else {
+                        AppDbProviders.get().bookDao.replace(oldBook, book)
+                        BookStorageProviders.get().updateCacheFolder(oldBook, book)
+                    }
+                    AppDbProviders.get().bookChapterDao.delByBook(oldBook.bookUrl)
+                    AppDbProviders.get().bookChapterDao.insert(*cList.toTypedArray())
+                    readBook.updateChapterList(cList)
+                    if (readBook.nextTextChapter.value == null) {
+                        val nextIdx = readBook.durChapterIndex.value + 1
+                        launchChapterLoad(nextIdx) { loadContent(nextIdx) }
                     }
                 }
             }
@@ -2217,27 +2338,38 @@ class ReadBookViewModelShared(
             )
         val textHeight = measurer.descent - measurer.ascent
         val lineSpacing = textHeight * cfg.lineSpacingExtra
-        // 贪心换行：按 \n 分段，逐字累积宽度，超出可见宽度断行（消息文案短，足够）
+        // 贪心换行：按 \n 分段，逐字累积宽度，超出可见宽度断行（消息文案短，足够）。
+        // 同时记下每行首字符在 msg 内的偏移：折行不增删字符，段间隔一个 \n，
+        // 因此行文本拼回来即 page.text（口径同 PaginationEngine 的 pagePosition）
         val wrappedLines = arrayListOf<String>()
+        val wrappedOffsets = arrayListOf<Int>()
+        var segmentStart = 0
         for (segment in msg.split('\n')) {
             if (segment.isEmpty()) {
                 wrappedLines.add("")
+                wrappedOffsets.add(segmentStart)
+                segmentStart++
                 continue
             }
             val widths = FloatArray(segment.length)
             measurer.measureGlyphWidths(segment, widths)
             val sb = StringBuilder()
+            var pieceStart = 0
             var lineWidth = 0f
             for (i in segment.indices) {
                 if (sb.isNotEmpty() && lineWidth + widths[i] > cfg.visibleWidth) {
                     wrappedLines.add(sb.toString())
+                    wrappedOffsets.add(segmentStart + pieceStart)
                     sb.setLength(0)
+                    pieceStart = i
                     lineWidth = 0f
                 }
                 sb.append(segment[i])
                 lineWidth += widths[i]
             }
             wrappedLines.add(sb.toString())
+            wrappedOffsets.add(segmentStart + pieceStart)
+            segmentStart += segment.length + 1
         }
         // 文本块总高（行盒高 × 行数），垂直居中于可视区（对照原版 format 的
         // y = (visibleHeight - layout.height) / 2）；行水平居中（x = paddingLeft +
@@ -2245,12 +2377,15 @@ class ReadBookViewModelShared(
         val totalHeight = wrappedLines.size * lineSpacing
         var y = cfg.paddingTop + (cfg.visibleHeight - totalHeight) / 2f
         if (y < cfg.paddingTop) y = cfg.paddingTop.toFloat()
-        for (lineText in wrappedLines) {
+        for ((lineIndex, lineText) in wrappedLines.withIndex()) {
             val textLine = TextLine(text = lineText)
             textLine.lineTop = y
             textLine.lineBottom = y + textHeight
             // baseline = lineTop - ascent（ascent 为负，同正文行 lineBase = lineBottom - descent）
             textLine.lineBase = y - measurer.ascent
+            // 字符坐标：占位页无章节基址，chapterPosition 与 pagePosition 同值
+            textLine.pagePosition = wrappedOffsets[lineIndex]
+            textLine.chapterPosition = wrappedOffsets[lineIndex]
             // 列宽度与本行换行测量同源（measureGlyphWidths），保证绘制不走样
             val widths = FloatArray(lineText.length)
             measurer.measureGlyphWidths(lineText, widths)
@@ -2303,7 +2438,7 @@ class ReadBookViewModelShared(
      *   度量侧必须与绘制侧 `loadReaderFontFamily` 用同一个文件，否则选字体后正文错位
      */
     /** 已处理的章节内容缓存（跳过下载/ContentProcessor/解析，只重排版） */
-    private class ProcessedChapterContent(
+    private data class ProcessedChapterContent(
         val chapter: BookChapter,
         val displayTitle: String,
         val textList: List<String>,

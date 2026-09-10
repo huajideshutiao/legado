@@ -30,22 +30,16 @@ data class TextPage(
     val lines: List<TextLine> get() = textLines
     val lineSize: Int get() = textLines.size
     val charSize: Int get() = text.length.coerceAtLeast(1)
-    val chapterPosition: Int get() = textLines.first().chapterPosition
+
+    /** 零行占位页无字符, 取 0 与 TextChapterShared.getReadLength 的 lineSize == 0 分支同口径 */
+    val chapterPosition: Int get() = textLines.firstOrNull()?.chapterPosition ?: 0
     val searchResult = hashSetOf<TextColumn>()
     var isMsgPage: Boolean = false
 
     /**
-     * render 侧 Canvas 录制缓存句柄。
-     * 由 render 侧 lazy 注入（见 TextPageRender.ensureRecorder），
-     * 数据层只通过接口触发 invalidate/recycle，不直接持有 android CanvasRecorder。
-     */
-    var canvasRecorder: CanvasRecorderHandle? = null
-
-    /**
      * render 侧正文逐列 TextLayoutResult 缓存句柄。
      * 由 render 侧 lazy 注入（见 PageContentCanvas 取或建挂载），
-     * 回收由渲染侧翻页窗口负责（PageLayoutPrewarmEffect），不走 recycleRecorders
-     * （那条通路在后台线程、且非 Android 为空实现）。朗读/搜索高亮等纯重绘路径
+     * 回收由渲染侧翻页窗口负责（PageLayoutPrewarmEffect）。朗读/搜索高亮等纯重绘路径
      * 不触发失效（颜色不参与 measure，绘制期覆盖）。
      */
     var textLayoutCache: TextLayoutCacheHandle? = null
@@ -65,7 +59,6 @@ data class TextPage(
     var lineSpacingExtra: Float = 0f
 
     var isCompleted = false
-    var hasReadAloudSpan = false
 
     /**
      * 所属章节引用。类型为 [TextChapterRef]（commonMain 最小接口，仅暴露 pageSize），
@@ -76,24 +69,6 @@ data class TextPage(
     @JvmField
     var textChapter: TextChapterRef? = null
     val pageSize get() = textChapter?.pageSize ?: 0
-
-    val paragraphs by lazy {
-        paragraphsInternal
-    }
-
-    val paragraphsInternal: ArrayList<TextParagraph>
-        get() {
-            val paragraphs = arrayListOf<TextParagraph>()
-            val lines = textLines.filter { it.paragraphNum > 0 }
-            val offset = lines.first().paragraphNum - 1
-            lines.forEach { line ->
-                if (paragraphs.lastIndex < line.paragraphNum - offset - 1) {
-                    paragraphs.add(TextParagraph(0))
-                }
-                paragraphs[line.paragraphNum - offset - 1].textLines.add(line)
-            }
-            return paragraphs
-        }
 
     fun addLine(line: TextLine) {
         line.textPage = this
@@ -119,7 +94,8 @@ data class TextPage(
             leftLineSize = lineSize
         }
         run {
-            val lastLine = textLines[leftLineSize - 1]
+            if (leftLineSize <= 1) return@run
+            val lastLine = textLines.getOrNull(leftLineSize - 1) ?: return@run
             if (lastLine.isImage) return@run
             val lastLineHeight = with(lastLine) { lineBottom - lineTop }
             val pageHeight = lastLine.lineBottom + contentPaintTextHeight * lineSpacingExtra
@@ -135,16 +111,17 @@ data class TextPage(
                 line.lineBottom += tj * i
             }
         }
-        if (leftLineSize == lineSize) return
+        if (leftLineSize >= lineSize - 1) return
         run {
-            val lastLine = textLines.last()
+            val rightLineCount = textLines.size - leftLineSize
+            val lastLine = textLines.lastOrNull() ?: return@run
             if (lastLine.isImage) return@run
             val lastLineHeight = with(lastLine) { lineBottom - lineTop }
             val pageHeight = lastLine.lineBottom + contentPaintTextHeight * lineSpacingExtra
             if (visibleHeight - pageHeight >= lastLineHeight) return@run
             val surplus = (visibleBottom - lastLine.lineBottom)
             if (surplus == 0f) return@run
-            val tj = surplus / (textLines.size - leftLineSize - 1)
+            val tj = surplus / (rightLineCount - 1)
             for (i in leftLineSize + 1 until textLines.size) {
                 val line = textLines[i]
                 val surplusIndex = i - leftLineSize
@@ -152,59 +129,6 @@ data class TextPage(
                 line.lineBase += tj * surplusIndex
                 line.lineBottom += tj * surplusIndex
             }
-        }
-    }
-
-    /**
-     * 移除朗读标志
-     *
-     * isReadAloud setter 副作用剥离后，由本方法显式触发 invalidateAll 重绘。
-     */
-    fun removePageAloudSpan(): TextPage {
-        if (!hasReadAloudSpan) {
-            return this
-        }
-        hasReadAloudSpan = false
-        for (i in textLines.indices) {
-            textLines[i].isReadAloud = false
-        }
-        invalidateAll()
-        return this
-    }
-
-    /**
-     * 更新朗读标志
-     * @param aloudSpanStart 朗读文字开始位置
-     *
-     * isReadAloud setter 副作用剥离后，由本方法显式同步 hasReadAloudSpan 与 invalidateAll。
-     */
-    fun upPageAloudSpan(aloudSpanStart: Int) {
-        removePageAloudSpan()
-        var lineStart = 0
-        for (index in textLines.indices) {
-            val textLine = textLines[index]
-            val lineLength = textLine.text.length + if (textLine.isParagraphEnd) 1 else 0
-            if (aloudSpanStart >= lineStart && aloudSpanStart < lineStart + lineLength) {
-                for (i in index - 1 downTo 0) {
-                    if (textLines[i].isParagraphEnd) {
-                        break
-                    } else {
-                        textLines[i].isReadAloud = true
-                    }
-                }
-                for (i in index until textLines.size) {
-                    if (textLines[i].isParagraphEnd) {
-                        textLines[i].isReadAloud = true
-                        break
-                    } else {
-                        textLines[i].isReadAloud = true
-                    }
-                }
-                hasReadAloudSpan = true
-                invalidateAll()
-                break
-            }
-            lineStart += lineLength
         }
     }
 
@@ -275,28 +199,10 @@ data class TextPage(
      * @return
      */
     fun containPos(chapterPos: Int): Boolean {
-        val line = lines.first()
+        val line = lines.firstOrNull() ?: return false
         val startPos = line.chapterPosition
         val endPos = startPos + charSize
         return chapterPos in startPos..<endPos
-    }
-
-    fun invalidate() {
-        canvasRecorder?.invalidate()
-    }
-
-    fun invalidateAll() {
-        for (i in lines.indices) {
-            lines[i].invalidateSelf()
-        }
-        invalidate()
-    }
-
-    fun recycleRecorders() {
-        canvasRecorder?.recycle()
-        for (i in lines.indices) {
-            lines[i].recycleRecorder()
-        }
     }
 
     fun hasImageOrEmpty(): Boolean {

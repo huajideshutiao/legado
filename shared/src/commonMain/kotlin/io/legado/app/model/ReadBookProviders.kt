@@ -4,6 +4,9 @@ import io.legado.app.api.controller.ReadBookStateProvider
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.ui.book.read.ReadBookViewModelShared
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlin.concurrent.Volatile
 
 /**
@@ -32,24 +35,26 @@ interface ReadBookProvider {
 
 /** 当前 shared 阅读页的活动阅读状态。 */
 object ActiveReadBookRegistry {
-    @Volatile
-    private var readBook: ReadBookShared? = null
+    private val _current = MutableStateFlow<ReadBookShared?>(null)
 
     @Volatile
     private var viewModel: ReadBookViewModelShared? = null
 
-    /** 当前活动阅读状态; 供非 Compose 宿主 (如桌面朗读宿主) 读取章节/位置。 */
-    val current: ReadBookShared? get() = readBook
+    /** 当前活动阅读状态; 供非 Compose 宿主 (如朗读服务/桌面朗读宿主) 读取章节/位置。 */
+    val current: ReadBookShared? get() = _current.value
+
+    /** [current] 的可观察视图: 朗读宿主用它跟随阅读页的进入/退出/重建。 */
+    val currentFlow: StateFlow<ReadBookShared?> = _current.asStateFlow()
 
     /** 当前活动阅读 ViewModel; 朗读宿主用其取正文、切章并回写朗读位置。 */
     val currentViewModel: ReadBookViewModelShared? get() = viewModel
 
     fun attach(value: ReadBookShared) {
-        readBook = value
+        _current.value = value
     }
 
     fun detach(value: ReadBookShared) {
-        if (readBook === value) readBook = null
+        if (_current.value === value) _current.value = null
     }
 
     fun attachViewModel(value: ReadBookViewModelShared) {
@@ -61,10 +66,10 @@ object ActiveReadBookRegistry {
     }
 
     fun updateIfCurrent(book: Book) {
-        val current = readBook ?: return
-        if (current.book.value?.bookUrl == book.bookUrl) {
+        val readBook = current ?: return
+        if (readBook.book.value?.bookUrl == book.bookUrl) {
             // 对照 app 端 `ReadBook.book = it` (元数据刷新, 不走 initData 的切书重置)
-            current.bookValue = book
+            readBook.bookValue = book
         }
     }
 }

@@ -5,12 +5,11 @@ import android.content.Context
 import android.content.Intent
 import android.view.KeyEvent
 import io.legado.app.constant.EventBus
-import io.legado.app.data.appDb
 import io.legado.app.help.LifecycleHelp
 import io.legado.app.help.config.AppConfig
+import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.AudioPlay
 import io.legado.app.model.ReadAloud
-import io.legado.app.model.ReadBook
 import io.legado.app.service.AudioPlayService
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.book.read.ReadBookEvents
@@ -18,7 +17,6 @@ import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.postEvent
-import kotlinx.coroutines.runBlocking
 
 
 /**
@@ -125,18 +123,14 @@ class MediaButtonReceiver : BroadcastReceiver() {
 
                 else -> if (AppConfig.mediaButtonOnExit || LifecycleHelp.activitySize() > 0 || !isMediaKey) {
                     ReadAloud.upReadAloudClass()
-                    if (ReadBook.book != null) {
-                        ReadBook.readAloud()
-                    } else {
-                        // Room KMP: lastReadBook 已改为 suspend 方法，readAloud 不能 suspend (BroadcastReceiver 调用)，用 runBlocking 适配
-                        runBlocking { appDb.bookDao.lastReadBook() }?.let {
-                            ReadBook.initData(it)
-                            ReadBook.clearTextChapter()
-                            ReadBook.loadContent(false) {
-                                ReadBook.readAloud()
-                            }
-                        }
+                    // 阅读页已挂接 (前台或后台驻留) 时按活动实例开播
+                    val readBook = ActiveReadBookRegistry.current
+                    if (readBook?.bookValue != null) {
+                        readBook.readAloud()
                     }
+                    // 无活动阅读页时的"直接朗读上次读的书"暂缺: 原实现靠 app 端 ReadBook 单例
+                    // 自建 TextChapter (0×0 视口, 产物无效), 该排版通路已删; 无界面朗读需要
+                    // 独立的无头朗读宿主, 设计待定
                 }
             }
         }

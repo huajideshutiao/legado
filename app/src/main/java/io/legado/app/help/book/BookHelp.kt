@@ -15,7 +15,7 @@ import io.legado.app.help.book.BookHelp.getCacheFile
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.script.runScriptWithContext
-import io.legado.app.ui.book.read.page.provider.ChapterContentParser
+import io.legado.app.ui.book.read.page.provider.ChapterContentParserShared
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.ImageUtils
@@ -139,7 +139,7 @@ object BookHelp {
 
     fun flowImages(bookChapter: BookChapter, content: String): Flow<String> {
         return flow {
-            val imgList = ChapterContentParser.extractImages(content)
+            val imgList = ChapterContentParserShared.extractImages(content)
             for (i in imgList) {
                 if (i.src.isBlank()) continue
                 emit(i.src)
@@ -325,7 +325,7 @@ object BookHelp {
         val op = BitmapFactory.Options()
         op.inJustDecodeBounds = true
         getContent(book, bookChapter)?.let {
-            val imgList = ChapterContentParser.extractImages(it)
+            val imgList = ChapterContentParserShared.extractImages(it)
             for (i in imgList) {
                 val src = i.src
                 val image = getImage(book, src)

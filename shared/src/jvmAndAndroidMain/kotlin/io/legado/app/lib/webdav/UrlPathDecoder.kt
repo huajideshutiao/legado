@@ -6,7 +6,7 @@ import java.nio.charset.Charset
  * URL 路径解码，行为对齐 hutool URLDecoder.decodeForPath：
  * %XX 转字节后按 charset 解码，'+' 不转空格，不合规的 '%' 原样输出。
  */
-internal object UrlPathDecoder {
+object UrlPathDecoder {
 
     private const val PERCENT = '%'.code.toByte()
 

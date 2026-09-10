@@ -46,6 +46,7 @@ import io.legado.app.ui.book.read.page.entities.column.BaseColumn
 import io.legado.app.ui.book.read.page.entities.column.ImageColumn
 import io.legado.app.ui.book.read.page.entities.column.ReviewColumn
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
+import io.legado.app.ui.book.read.page.overlay.TTSHighlightOverlay
 import io.legado.app.ui.compose.platform.rememberMandatoryGestureBottomPx
 import io.legado.app.ui.compose.platform.rememberNavigationBarHidden
 import io.legado.app.ui.compose.platform.rememberStatusBarHidden
@@ -166,8 +167,10 @@ fun ReadViewComposable(
     val curTextPage by viewModel.curTextPage.collectAsState()
     val nextTextPage by viewModel.nextTextPage.collectAsState()
     val nextPlusTextPage by viewModel.nextPlusTextPage.collectAsState()
-    // 朗读高亮等页内容原地变更版本号：自增时强制 Canvas 重绘（见 PageContentCanvas.drawTick）
+    // 段评气泡就地补丁等页内容原地变更版本号：自增时强制 Canvas 重绘（见 PageContentCanvas.drawTick）
     val pageDrawTick by viewModel.pageContentVersion.collectAsState()
+    // 朗读高亮位置（章节 + 章内字符位置）：声明式参数，绘制期折算成各页高亮行区间
+    val ttsHighlight by viewModel.ttsHighlight.collectAsState()
     // 按 ReadBookConfig.pageAnim 取翻页委托，配置变更时重建（对照原版 ReadView.upPageAnim）
     val composeDelegate = rememberPageDelegate(viewModel)
     val tapScope = rememberCoroutineScope()
@@ -378,6 +381,7 @@ fun ReadViewComposable(
                 clockText = clockText,
                 drawTick = pageDrawTick,
                 selection = selection,
+                ttsHighlight = ttsHighlight,
                 onHeaderMeasured = { headerTipMeasured = it },
                 onFooterMeasured = { footerTipMeasured = it },
                 onTextAreaMeasured = onTextAreaMeasured,
@@ -397,6 +401,10 @@ fun ReadViewComposable(
                             onLongClick = onLongClick,
                             drawTick = pageDrawTick,
                             selection = selection,
+                            ttsHighlight = ttsHighlight,
+                            // 上一页不在选区页空间内（SelectionPageSource 只有 cur/next/nextPlus），
+                            // 传 -1 让选区投影整页早退，不再把当前页的行列矩形画到本页
+                            pagePos = -1,
                             // 页眉/页脚实测高度上报（布局占位子节点 onSizeChanged）：
                             // 滚动连排占位与坐标折算共用；排版视口走 onTextAreaMeasured 单一来源
                             onHeaderMeasured = { headerTipMeasured = it },
@@ -417,6 +425,8 @@ fun ReadViewComposable(
                         onLongClick = onLongClick,
                         drawTick = pageDrawTick,
                         selection = selection,
+                        ttsHighlight = ttsHighlight,
+                        pagePos = 0,
                         onHeaderMeasured = { headerTipMeasured = it },
                         onFooterMeasured = { footerTipMeasured = it },
                         onTextAreaMeasured = onTextAreaMeasured,
@@ -433,6 +443,8 @@ fun ReadViewComposable(
                             onLongClick = onLongClick,
                             drawTick = pageDrawTick,
                             selection = selection,
+                            ttsHighlight = ttsHighlight,
+                            pagePos = 1,
                         )
                     }
                 },
@@ -455,6 +467,7 @@ fun ReadViewComposable(
                     onLongClick = onLongClick,
                     drawTick = pageDrawTick,
                     selection = selection,
+                    ttsHighlight = ttsHighlight,
                     onHeaderMeasured = { headerTipMeasured = it },
                     onFooterMeasured = { footerTipMeasured = it },
                 )
@@ -1064,6 +1077,7 @@ private fun AutoPageRevealOverlay(
     onLongClick: (TextColumn?) -> Unit,
     drawTick: Int,
     selection: PageSelectionState? = null,
+    ttsHighlight: TTSHighlightOverlay? = null,
     onHeaderMeasured: ((Int) -> Unit)? = null,
     onFooterMeasured: ((Int) -> Unit)? = null,
 ) {
@@ -1095,6 +1109,8 @@ private fun AutoPageRevealOverlay(
                     onLongClick = onLongClick,
                     drawTick = drawTick,
                     selection = selection,
+                    ttsHighlight = ttsHighlight,
+                    pagePos = 1,
                     onHeaderMeasured = onHeaderMeasured,
                     onFooterMeasured = onFooterMeasured,
                 )

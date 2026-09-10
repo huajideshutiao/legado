@@ -15,8 +15,7 @@ data class ReviewColumn(
 
     override var textLine: TextLine = emptyTextLine
 
-    val countText by lazy {
-        if (count > 99) "99+" else count.toString()
-    }
+    val countText: String
+        get() = if (count > 99) "99+" else count.toString()
 
 }

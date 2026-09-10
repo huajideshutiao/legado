@@ -42,8 +42,9 @@ import io.legado.app.help.tts.HttpTtsDownloadScheduler
 import io.legado.app.help.tts.HttpTtsFileInfo
 import io.legado.app.help.tts.ReadAloudQueue
 import io.legado.app.model.ReadAloud
-import io.legado.app.model.ReadBook
 import io.legado.app.model.analyzeRule.AnalyzeUrl
+import io.legado.app.ui.book.read.page.entities.getNeedReadAloud
+import io.legado.app.ui.book.read.page.entities.title
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.servicePendingIntent
 import io.legado.app.utils.toastOnUi
@@ -147,7 +148,7 @@ class HttpReadAloudService : BaseReadAloudService(),
         if (!requestFocus()) return
         if (contentList.isEmpty()) {
             AppLog.putDebug("朗读列表为空")
-            ReadBook.readAloud()
+            readBook?.readAloud()
         } else {
             super.play()
             if (AppConfig.streamReadAloudAudio) {
@@ -175,7 +176,7 @@ class HttpReadAloudService : BaseReadAloudService(),
             downloadTaskActiveLock.withLock {
                 ensureActive()
                 val httpTts = ReadAloud.httpTTS ?: throw NoStackTraceException("tts is null")
-                val preDownloadContents = ReadBook.nextTextChapter?.let {
+                val preDownloadContents = readBook?.nextTextChapter?.value?.let {
                     ReadAloudQueue.splitParagraphsSequence(
                         it.getNeedReadAloud(0, readAloudByPage, 0, 1)
                     )
@@ -243,7 +244,7 @@ class HttpReadAloudService : BaseReadAloudService(),
         httpTts: HttpTTS,
         downloaderChannel: Channel<Downloader>
     ) {
-        val textChapter = ReadBook.nextTextChapter ?: return
+        val textChapter = readBook?.nextTextChapter?.value ?: return
         val contentList = ReadAloudQueue
             .splitParagraphsSequence(textChapter.getNeedReadAloud(0, readAloudByPage, 0, 1))
             .toList()
@@ -346,7 +347,7 @@ class HttpReadAloudService : BaseReadAloudService(),
                     && readAloudNumber + i > textChapter.getReadLength(pageIndex + 1)
                 ) {
                     pageIndex++
-                    ReadBook.moveToNextPage()
+                    readBookViewModel?.nextPage()
                     upTtsProgress(readAloudNumber + i.toInt())
                 }
                 delay(sleep)

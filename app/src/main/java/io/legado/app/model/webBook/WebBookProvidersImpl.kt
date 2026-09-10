@@ -5,7 +5,6 @@ import androidx.room3.useWriterConnection
 import io.legado.app.App
 import io.legado.app.api.controller.BookControllerImageProviderImpl
 import io.legado.app.api.controller.ImageControllerProviders
-import io.legado.app.api.controller.ReadBookStateProviderImpl
 import io.legado.app.api.controller.ReadBookStateProviders
 import io.legado.app.data.AndroidAppDatabaseProvider
 import io.legado.app.data.AppDatabaseProviders
@@ -38,9 +37,10 @@ import io.legado.app.help.source.SourceHelpAccessors
 import io.legado.app.help.source.registerAndroidVerificationUiProvider
 import io.legado.app.help.storage.AndroidDataStorage
 import io.legado.app.help.storage.DataStorageProviders
+import io.legado.app.model.ActiveReadBookRegistry
+import io.legado.app.model.ActiveReadBookStateProvider
 import io.legado.app.model.AudioPlay
 import io.legado.app.model.Debug
-import io.legado.app.model.ReadBook
 import io.legado.app.model.fileBook.BitmapProviderImpl
 import io.legado.app.model.fileBook.BitmapProviders
 import io.legado.app.model.fileBook.ZipFileWrapperFactoryImpl
@@ -413,9 +413,9 @@ object WebBookProvidersImpl :
     override val okHttpClient get() = io.legado.app.help.http.okHttpClient
 
     // ---- SourceHelpAccessor ----
-    // 桥接 ReadBook/AudioPlay/SourceConfig/AppCacheManager, 供 shared SourceHelp 走 provider 间接调用
+    // 桥接活动阅读页/AudioPlay/SourceConfig/AppCacheManager, 供 shared SourceHelp 走 provider 间接调用
     override fun getCachedReadingBookSource(key: String?): BookSource? =
-        ReadBook.bookSource?.takeIf { it.bookSourceUrl == key }
+        ActiveReadBookRegistry.current?.bookSource?.value?.takeIf { it.bookSourceUrl == key }
 
     override fun getCachedAudioBookSource(key: String?): BookSource? =
         AudioPlay.bookSource?.takeIf { it.bookSourceUrl == key }
@@ -534,6 +534,7 @@ fun registerAndroidWebBookProviders() {
     registerAndroidVerificationUiProvider()
     // BookController 下沉新增: 注册 ImageControllerProvider (桥接 Glide/ImageProvider, 供 BookController.getCover/getImg)
     ImageControllerProviders.register(BookControllerImageProviderImpl)
-    // BookController 下沉新增: 注册 ReadBookStateProvider (桥接 ReadBook 单例, 供 BookController.deleteBook/saveBookProgress)
-    ReadBookStateProviders.register(ReadBookStateProviderImpl)
+    // BookController 下沉新增: 注册 ReadBookStateProvider (commonMain 实现读 ActiveReadBookRegistry,
+    // 与 desktop/iOS/鸿蒙同一份, 供 BookController.deleteBook/saveBookProgress)
+    ReadBookStateProviders.register(ActiveReadBookStateProvider)
 }
