@@ -32,6 +32,7 @@ import io.legado.app.ui.compose.platform.SharedThemeStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.reader.ReaderDictWord
 import io.legado.app.ui.reader.ReaderImageActionMenu
+import io.legado.app.ui.root.AppFontScaleScope
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.LegadoApp
@@ -94,26 +95,31 @@ fun MainOhos() {
             OhosWebViewSlot(config, modifier, callbacks)
         },
     ) {
-        AppTheme {
-            Surface(modifier = Modifier.fillMaxSize(), color = AppTheme.colors.background) {
-                // 零薄壳: shared LegadoApp 统一管理导航栈 + ScreenModel 生命周期,
-                // 所有路由由 shared RouteContent 直接渲染; 根级键盘焦点由 shared 内部处理
-                // (handleBackKey 与焦点节点同链, 无控件持焦时键盘事件仍可达)
-                LegadoApp(
-                    navigator = navigator,
-                    screenModelStore = screenModelStore,
-                )
-                // legado:// deep link 导入宿主
-                DeepLinkImportHost()
+        // 字体缩放: 把"界面设置→字体大小"档位接到 LocalDensity (安卓由 AppContextWrapper.wrap
+        // 写进 Configuration.fontScale 生效, 不需要这一层)。未设档位时不覆写, 保留平台自身
+        // fontScale (iOS 跟系统 Dynamic Type, 桌面/鸿蒙恒 1) —— 语义对照原版 getFontScale
+        AppFontScaleScope {
+            AppTheme {
+                Surface(modifier = Modifier.fillMaxSize(), color = AppTheme.colors.background) {
+                    // 零薄壳: shared LegadoApp 统一管理导航栈 + ScreenModel 生命周期,
+                    // 所有路由由 shared RouteContent 直接渲染; 根级键盘焦点由 shared 内部处理
+                    // (handleBackKey 与焦点节点同链, 无控件持焦时键盘事件仍可达)
+                    LegadoApp(
+                        navigator = navigator,
+                        screenModelStore = screenModelStore,
+                    )
+                    // legado:// deep link 导入宿主
+                    DeepLinkImportHost()
+                }
+                // 书源 UI 事件桥
+                SourceUiEventBridgeHost()
+                // 阅读页长按文本的自绘浮动操作菜单 (四端同一份, 见 shared ReaderTextActionMenu)
+                OhosReaderPlatformProvider.TextSelectionHost()
+                // 阅读页长按图片的自绘浮动操作菜单 (与文本菜单同款样式)
+                ReaderImageActionMenu.Host()
+                // 阅读页文本操作菜单查词宿主 (四端同一份, 见 shared ReaderDictWord)
+                ReaderDictWord.Host()
             }
-            // 书源 UI 事件桥
-            SourceUiEventBridgeHost()
-            // 阅读页长按文本的自绘浮动操作菜单 (四端同一份, 见 shared ReaderTextActionMenu)
-            OhosReaderPlatformProvider.TextSelectionHost()
-            // 阅读页长按图片的自绘浮动操作菜单 (与文本菜单同款样式)
-            ReaderImageActionMenu.Host()
-            // 阅读页文本操作菜单查词宿主 (四端同一份, 见 shared ReaderDictWord)
-            ReaderDictWord.Host()
         }
     }
 }

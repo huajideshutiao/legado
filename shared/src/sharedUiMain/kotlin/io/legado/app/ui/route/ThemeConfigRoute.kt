@@ -20,6 +20,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.PreferKey
@@ -43,6 +44,7 @@ import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
+import io.legado.app.utils.format
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.btn_default_s
 import legado.shared.generated.resources.cancel
@@ -116,22 +118,14 @@ fun ThemeConfigRoute(
     }
     val state by screenModel.state.collectAsState()
 
+    // 对照 app 端 upPreferenceSummary(fontScale): getString(R.string.font_scale_summary, fontScale)。
+    // 值取 LocalDensity.fontScale —— 它就是当前真正生效的缩放 (安卓由 AppContextWrapper.wrap
+    // 写进 Configuration.fontScale, 非安卓端由 AppFontScaleScope 覆写), 描述与观感必然同源;
+    // 改完档位 emitRecreate 后本组合直接重算, 不经 ScreenModel 绕一圈。
+    val fontScaleSummary = fontScaleFormat.format(LocalDensity.current.fontScale)
+
     // 对照 app 端 init: 初始化动态 summary
     LaunchedEffect(Unit) {
-        if (state.fontScaleSummary.isEmpty()) {
-            // 对照 app 端 fontScaleSummary(): getString(R.string.font_scale_summary, getFontScale(activity))
-            val fontScale = PlatformCapabilityProviders.get().getFontScale()
-            if (fontScale != null) {
-                screenModel.dispatch(
-                    ThemeConfigUiEvent.UpdateFontScaleSummary(
-                        fontScaleFormat.replace(
-                            "%s",
-                            fontScale
-                        )
-                    )
-                )
-            }
-        }
         if (state.sourceEditMaxLineSummary.isEmpty()) {
             // 对照 app 端 upPreferenceSummary(sourceEditMaxLine):
             // getString(R.string.source_edit_max_line_summary, AppConfig.sourceEditMaxLine)
@@ -151,7 +145,7 @@ fun ThemeConfigRoute(
             onBack = { navigator.pop() },
         )
         ThemeConfigScreen(
-            fontScaleSummary = state.fontScaleSummary,
+            fontScaleSummary = fontScaleSummary,
             onBookshelfLayout = { screenModel.dispatch(ThemeConfigUiEvent.BookshelfLayout) },
             onSearchLayout = { screenModel.dispatch(ThemeConfigUiEvent.SearchLayout) },
             onCoverConfig = { navigator.push(AppRoute.CoverConfig) },
@@ -181,19 +175,9 @@ fun ThemeConfigRoute(
             range = 8..16,
             onConfirm = {
                 pref.putInt(PreferKey.fontScale, it)
-                // 对照 app 端 onSharedPreferenceChanged: fontScaleSummary + recreate
-                val fontScale = PlatformCapabilityProviders.get().getFontScale()
-                if (fontScale != null) {
-                    screenModel.dispatch(
-                        ThemeConfigUiEvent.UpdateFontScaleSummary(
-                            fontScaleFormat.replace(
-                                "%s",
-                                fontScale
-                            )
-                        )
-                    )
-                }
                 // 对照 app 端 onSharedPreferenceChanged: fontScale 变更后 recreateActivities()
+                // (描述随 LocalDensity.fontScale 重算; 非安卓端由 AppFontScaleScope
+                //  订阅同一事件覆写 LocalDensity)
                 eventBus.emitRecreate()
             },
             onDismiss = { showFontScalePicker = false },
@@ -201,17 +185,6 @@ fun ThemeConfigRoute(
             onNeutral = {
                 // 对照 app 端 neutralButton: putPrefInt(PreferKey.fontScale, 0)
                 pref.putInt(PreferKey.fontScale, 0)
-                val fontScale = PlatformCapabilityProviders.get().getFontScale()
-                if (fontScale != null) {
-                    screenModel.dispatch(
-                        ThemeConfigUiEvent.UpdateFontScaleSummary(
-                            fontScaleFormat.replace(
-                                "%s",
-                                fontScale
-                            )
-                        )
-                    )
-                }
                 // 对照 app 端 onSharedPreferenceChanged: fontScale 变更后 recreateActivities()
                 eventBus.emitRecreate()
             },

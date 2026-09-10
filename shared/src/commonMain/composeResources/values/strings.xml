@@ -1167,7 +1167,6 @@
     <string name="ios_theme_list_not_implemented">Theme list is not implemented on iOS yet</string>
     <string name="ios_custom_light_theme_not_implemented">Custom light themes are not implemented on iOS yet</string>
     <string name="ios_custom_dark_theme_not_implemented">Custom dark themes are not implemented on iOS yet</string>
-    <string name="ios_font_scale_not_implemented">Font scaling is not implemented on iOS yet</string>
     <string name="ios_source_edit_max_line_not_implemented">Source editor line count is not implemented on iOS yet</string>
     <string name="ios_local_password_not_implemented">Local password is not implemented on iOS yet</string>
     <string name="ios_user_agent_not_implemented">UserAgent settings are not implemented on iOS yet</string>
@@ -1217,7 +1216,6 @@
     <string name="ohos_theme_list_not_implemented">Theme list is not implemented on HarmonyOS yet</string>
     <string name="ohos_custom_light_theme_not_implemented">Custom light themes are not implemented on HarmonyOS yet</string>
     <string name="ohos_custom_dark_theme_not_implemented">Custom dark themes are not implemented on HarmonyOS yet</string>
-    <string name="ohos_font_scale_not_implemented">Font scaling is not implemented on HarmonyOS yet</string>
     <string name="ohos_source_edit_max_line_not_implemented">Source editor line count is not implemented on HarmonyOS yet</string>
     <string name="ohos_tts_engine_not_implemented">TTS engine is not implemented on HarmonyOS yet</string>
     <string name="ohos_sys_tts_config_not_implemented">System TTS configuration is not implemented on HarmonyOS yet</string>
@@ -1336,7 +1334,7 @@
     <string name="enable_dangerous_api">Dangerous API</string>
     <string name="enable_dangerous_api_confirm">Warning: Allowing unknown sources to use dangerous APIs can cause unpredictable results. In the worst case, it may lead to app data being cleared or leaked, and locally accessible files being exposed. Please make sure you have audited the code and trust the source, otherwise do not enable this.</string>
     <string name="export_str">Export</string>
-    <string name="font_scale_summary">font scale:%s</string>
+    <string name="font_scale_summary">font scale:%.1f</string>
     <string name="font_weight_text">N/B/L</string>
     <string name="full_screen">full screen</string>
     <string name="import_default_rule">Import default rules</string>

@@ -63,7 +63,6 @@ import androidx.fragment.app.commit
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.App
-import io.legado.app.base.AppContextWrapper
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
@@ -564,10 +563,6 @@ class AndroidPlatformCapabilities(
             }
         }
     }
-
-    // 对照 AppContextWrapper.getFontScale, 返回 %.1f 字符串供 shared 端 %s 替换
-    override fun getFontScale(): String? =
-        String.format("%.1f", AppContextWrapper.getFontScale(activity))
 
     // 对照 ViewConfiguration.get(ctx).scaledTouchSlop
     override fun getScaledTouchSlop(): Int =

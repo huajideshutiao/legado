@@ -1226,7 +1226,6 @@ Windows: winget install shinchiro.mpv 或 scoop install mpv,
     <string name="ios_theme_list_not_implemented">iOS 端主题列表待接入</string>
     <string name="ios_custom_light_theme_not_implemented">iOS 端自定义日间主题待接入</string>
     <string name="ios_custom_dark_theme_not_implemented">iOS 端自定义夜间主题待接入</string>
-    <string name="ios_font_scale_not_implemented">iOS 端字体缩放待接入</string>
     <string name="ios_source_edit_max_line_not_implemented">iOS 端源编辑行数待接入</string>
     <string name="ios_local_password_not_implemented">iOS 端本地密码待接入</string>
     <string name="ios_user_agent_not_implemented">iOS 端 UserAgent 设置待接入</string>
@@ -1276,7 +1275,6 @@ Windows: winget install shinchiro.mpv 或 scoop install mpv,
     <string name="ohos_theme_list_not_implemented">鸿蒙端主题列表待接入</string>
     <string name="ohos_custom_light_theme_not_implemented">鸿蒙端自定义日间主题待接入</string>
     <string name="ohos_custom_dark_theme_not_implemented">鸿蒙端自定义夜间主题待接入</string>
-    <string name="ohos_font_scale_not_implemented">鸿蒙端字体缩放待接入</string>
     <string name="ohos_source_edit_max_line_not_implemented">鸿蒙端源编辑行数待接入</string>
     <string name="ohos_tts_engine_not_implemented">鸿蒙端 TTS 引擎待接入</string>
     <string name="ohos_sys_tts_config_not_implemented">鸿蒙端系统 TTS 配置待接入</string>
@@ -1404,7 +1402,7 @@ Windows: winget install shinchiro.mpv 或 scoop install mpv,
     <string name="enable_dangerous_api">高危API</string>
     <string name="enable_dangerous_api_confirm">注意，允许未知来源的源使用高危API会造成无法预测的结果，最严重的情况下会导致软件数据被清除、泄露，本地可访问文件泄露等，请确保你审计代码并信任该源，否则请不要启用。</string>
     <string name="export_str">导出</string>
-    <string name="font_scale_summary">当前字体大小：%s</string>
+    <string name="font_scale_summary">当前字体大小：%.1f</string>
     <string name="font_weight_text">中/粗/细</string>
     <string name="full_screen">全屏</string>
     <string name="import_default_rule">导入默认规则</string>

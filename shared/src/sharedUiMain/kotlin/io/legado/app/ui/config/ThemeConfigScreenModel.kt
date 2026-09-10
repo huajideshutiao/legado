@@ -10,25 +10,22 @@ import kotlinx.coroutines.flow.asStateFlow
 /**
  * 主题设置页 UI 状态 (动态 summary)。
  *
- * fontScale 的 summary 依赖平台资源 (Context + AppConfig),
- * 由宿主解析后通过 [ThemeConfigScreenModel.dispatch] 推入。
+ * 只留 sourceEditMaxLineSummary: 它直读 AppConfig 的普通 getter, 需 picker 写完后 dispatch
+ * 推新值才能重组。字体缩放不在此列 —— 它的生效值就是 `LocalDensity.fontScale`, 组合期直接
+ * 可读 (见 ThemeConfigRoute), 走状态是组合→状态→组合的无价值绕路。
  */
 data class ThemeConfigUiState(
-    val fontScaleSummary: String = "",
     val sourceEditMaxLineSummary: String = "",
 )
 
 /**
  * 主题设置页交互事件。
  *
- * prefs 变更回调 (fontScale) 由宿主 OnSharedPreferenceChangeListener 承接原副作用 (recreate),
- * summary 文案更新通过 dispatch 推入本类; 换图标 (launcherIcon) 副作用经 ThemeConfigRoute 的
- * onIconChange 直接委托 PlatformCapabilities.changeLauncherIcon, 不走 prefs 监听。
+ * 字体缩放 (fontScale) 的写入口只有本路由, 改完 pref 就 emitRecreate, 无需 prefs 监听回推;
+ * 换图标 (launcherIcon) 副作用经 ThemeConfigRoute 的 onIconChange 直接委托
+ * PlatformCapabilities.changeLauncherIcon, 同样不走 prefs 监听。
  */
 sealed interface ThemeConfigUiEvent {
-    /** 字体缩放 summary 变化。 */
-    data class UpdateFontScaleSummary(val value: String) : ThemeConfigUiEvent
-
     /** 源编辑框最大行数 summary 变化。 */
     data class UpdateSourceEditMaxLineSummary(val value: String) : ThemeConfigUiEvent
 
@@ -48,9 +45,9 @@ sealed interface ThemeConfigUiEvent {
 /**
  * 主题设置页 shared ScreenModel: 托管 [ThemeConfigUiState]。
  *
- * 平台资源 (fontScaleSummary 字符串) 无法在 shared 层直接读取
- * (依赖 Context + AppConfig), 由宿主在 init 及 prefs 回调中 dispatch 推入。
- * 平台专属动作 (布局/搜索/底栏/主题弹窗/NumberPicker) 经构造函数 lambda 注入, 由宿主实现。
+ * 只托管源编辑行数 summary (直读 AppConfig, 靠 dispatch 推新值); 字体缩放 summary 由
+ * ThemeConfigRoute 直接从 `LocalDensity.fontScale` 算。平台专属动作 (布局/搜索/底栏/主题弹窗/
+ * NumberPicker) 经构造函数 lambda 注入, 由宿主实现。
  */
 class ThemeConfigScreenModel(
     private val onBookshelfLayout: () -> Unit,
@@ -68,9 +65,6 @@ class ThemeConfigScreenModel(
 
     fun dispatch(event: ThemeConfigUiEvent) {
         when (event) {
-            is ThemeConfigUiEvent.UpdateFontScaleSummary ->
-                _state.value = _state.value.copy(fontScaleSummary = event.value)
-
             is ThemeConfigUiEvent.UpdateSourceEditMaxLineSummary ->
                 _state.value = _state.value.copy(sourceEditMaxLineSummary = event.value)
 

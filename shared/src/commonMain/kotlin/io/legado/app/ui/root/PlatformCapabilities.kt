@@ -173,9 +173,6 @@ interface PlatformCapabilities {
     /** 弹出 HttpTTS 引擎新增/编辑对话框 (对照 app 端 HttpTtsEditDialog, engine=null 新增) */
     fun showHttpTtsEditDialog(engine: HttpTTS?) = unsupported("编辑 TTS 引擎")
 
-    // 获取系统字体缩放值 (对照 app 端 AppContextWrapper.getFontScale), 默认 null 供各端按需覆写
-    fun getFontScale(): String? = null
-
     // 触摸滑动阈值 (对照 app 端 ViewConfiguration.get(ctx).scaledTouchSlop), 默认 0
     fun getScaledTouchSlop(): Int = 0
 

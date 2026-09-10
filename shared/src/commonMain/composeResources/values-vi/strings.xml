@@ -583,7 +583,7 @@
     <string name="show_login_header">hiển thị tiêu đề đăng nhập</string>
     <string name="login_header">tiêu đề đăng nhập</string>
     <string name="font_scale">tỷ lệ phông chữ</string>
-    <string name="font_scale_summary">tỷ lệ phông chữ hiện tại:%s</string>
+    <string name="font_scale_summary">tỷ lệ phông chữ hiện tại:%.1f</string>
     <string name="search_content_size">kết quả tìm kiếm</string>
     <string name="search_content_empty">Kết quả tìm kiếm trống, kiểm tra cài đặt chuyển đổi</string>
     <string name="tts_speech_reduce">Giảm tốc độ đọc</string>

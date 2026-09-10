@@ -7,6 +7,7 @@ import android.content.res.Resources
 import android.os.Build
 import android.os.LocaleList
 import io.legado.app.constant.PreferKey
+import io.legado.app.help.config.fontScaleFromLevel
 import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.sysConfiguration
@@ -38,13 +39,8 @@ object AppContextWrapper {
         return context.createConfigurationContext(configuration)
     }
 
-    fun getFontScale(context: Context): Float {
-        var fontScale = context.getPrefInt(PreferKey.fontScale) / 10f
-        if (fontScale !in 0.8f..1.6f) {
-            fontScale = sysConfiguration.fontScale
-        }
-        return fontScale
-    }
+    fun getFontScale(context: Context): Float =
+        fontScaleFromLevel(context.getPrefInt(PreferKey.fontScale)) ?: sysConfiguration.fontScale
 
     /**
      * 当前系统语言
