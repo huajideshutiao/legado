@@ -205,10 +205,11 @@ object WebBookProvidersImpl :
 
     // ---- 朗读业务 ----
     override val ttsEngine: String get() = AppConfig.ttsEngine ?: ""
-    override val audioPlayUseWakeLock: Boolean get() = AppConfig.audioPlayUseWakeLock
-    override fun setAudioPlayUseWakeLock(value: Boolean) {
-        AppConfig.audioPlayUseWakeLock = value
+    override fun setTtsEngine(value: String?) {
+        AppConfig.ttsEngine = value
     }
+
+    override val audioPlayUseWakeLock: Boolean get() = AppConfig.audioPlayUseWakeLock
 
     override val showAddToShelfAlert: Boolean get() = AppConfig.showAddToShelfAlert
     override val ttsSpeechRate: Int get() = AppConfig.ttsSpeechRate
@@ -471,6 +472,9 @@ object WebBookProvidersImpl :
     override fun applyThemeMode() {
         ThemeConfig.applyDayNight(App.instance)
     }
+
+    /** 包装 ThemeConfig.upConfig (清 configList 后从 themeConfig.json 重读) */
+    override fun upConfig() = ThemeConfig.upConfig()
 
     /** 包装 ThemeConfig.getBuiltinConfigs (默认日间 + 默认夜间, isBuiltin=true) */
     override fun getBuiltinConfigs(): List<ThemeConfigData> =

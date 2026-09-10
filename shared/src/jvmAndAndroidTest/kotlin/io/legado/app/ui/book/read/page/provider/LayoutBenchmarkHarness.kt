@@ -64,6 +64,7 @@ class LayoutBenchmarkHarness {
         visibleHeight = visibleHeight,
         lineSpacingExtra = 1.2f,
         paragraphSpacing = 5,
+        textHeight = textHeight,
         textFullJustify = true,
     )
 

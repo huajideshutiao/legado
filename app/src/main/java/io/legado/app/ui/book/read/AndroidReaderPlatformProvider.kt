@@ -1,7 +1,6 @@
 package io.legado.app.ui.book.read
 
 import android.app.DatePickerDialog
-import android.app.SearchManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -20,11 +19,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import androidx.core.net.toUri
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
@@ -35,7 +32,6 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.AppWebDav
-import io.legado.app.help.TTS
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.isEpub
@@ -64,17 +60,14 @@ import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.reader.ReaderTextActionMenu
 import io.legado.app.ui.reader.ReaderTextActions
 import io.legado.app.ui.reader.ReaderTextSelectionRequest
+import io.legado.app.ui.reader.readerMenuAnchor
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.route.encodeReviewListDialogPayload
-import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.openUrl
-import io.legado.app.utils.printOnDebug
-import io.legado.app.utils.sendToClip
-import io.legado.app.utils.share
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
@@ -136,12 +129,6 @@ class AndroidReaderPlatformProvider(
     }
 
     /**
-     * 空白长按回落：原版 ContentTextView.longPress 未命中任何列时无动作，此处 no-op。
-     * （文字长按由页内选择接管走 [onTextSelected]，图片长按走 [onImageLongPress]。）
-     */
-    override fun onLongPress(screenModel: ReaderScreenModel) = Unit
-
-    /**
      * 页内文字选择完成（长按选中文字后抬起）：弹自绘浮动文本操作菜单
      * （见共享 [ReaderTextActionMenu]，宿主 [TextSelectionHost] 挂在 MainActivity 根组合）。
      *
@@ -162,17 +149,13 @@ class AndroidReaderPlatformProvider(
         if (text.isBlank()) return
         textActions = ReaderTextActions(
             onReplace = screenModel.replaceTextCallback(),
-            onCopy = { activity.sendToClip(it) },
             onBookmark = screenModel.bookmarkTextCallback(),
-            onReadAloud = onReadAloud(screenModel),
-            onDict = { activity.showDictWord(it) },
+            onReadAloud = screenModel.readAloudTextCallback(),
             onSearchContent = screenModel.searchContentTextCallback(),
-            onBrowser = ::openInBrowser,
-            onShare = onShare(screenModel),
         )
         textSelection = ReaderTextSelectionRequest(
             text = text,
-            anchor = Rect(anchorX - 20f, anchorY - 20f, anchorX + 20f, anchorY + 20f),
+            anchor = readerMenuAnchor(anchorX, anchorY),
         )
     }
 
@@ -194,37 +177,20 @@ class AndroidReaderPlatformProvider(
         )
     }
 
-    /** 浏览器 (对照原版 TextActionMenu.menu_browser)：URL 直接打开，非 URL 走系统搜索 */
-    private fun openInBrowser(text: String) {
-        runCatching {
-            val intent = if (text.isAbsUrl()) {
-                Intent(Intent.ACTION_VIEW).apply { data = text.toUri() }
-            } else {
-                Intent(Intent.ACTION_WEB_SEARCH).apply { putExtra(SearchManager.QUERY, text) }
-            }
-            activity.startActivity(intent)
-        }.onFailure {
-            it.printOnDebug()
-            activity.toastOnUi(it.localizedMessage ?: "ERROR")
-        }
-    }
-
     /**
      * 页内选区已消失（点按取消选择/翻页/重排等任意路径）：收起浮动文本操作菜单
      * （对照原版 onCancelSelect → textActionMenu.dismiss）。幂等：菜单未显示时无操作。
      */
-    override fun onTextSelectionDismissed(screenModel: ReaderScreenModel) {
-        // 对照 master ReadBookActivity.cancelSelect: 文本/图片菜单互斥, 同时 dismiss
-        textSelection = null
-        activity.dismissImageActionMenu()
-    }
+    override fun onTextSelectionDismissed(screenModel: ReaderScreenModel) = dismissActionMenus()
 
     /**
      * 同步立即关闭浮动文本操作菜单（点按取消选择等手势分支在选区清除的同帧同步直调）。
      * 幂等，事件链兜底重复调用安全。
      */
-    override fun dismissTextActionMenu(screenModel: ReaderScreenModel) {
-        // 对照 master ReadBookActivity.cancelSelect: 文本/图片菜单互斥, 同时 dismiss
+    override fun dismissTextActionMenu(screenModel: ReaderScreenModel) = dismissActionMenus()
+
+    /** 对照 master ReadBookActivity.cancelSelect: 文本/图片菜单互斥, 同时 dismiss。 */
+    private fun dismissActionMenus() {
         textSelection = null
         activity.dismissImageActionMenu()
     }
@@ -239,26 +205,8 @@ class AndroidReaderPlatformProvider(
         x: Float,
         y: Float,
     ) {
+        if (src.isBlank()) return
         activity.showImageActionMenu(src, x, y)
-    }
-
-    /** 朗读选中文字 (对照原版 menu_aloud): 默认模式 TTS 朗读选中文本;
-     *  contentSelectSpeakMod=1 的 aloudStartSelect(从选中处朗读章节) 依赖 View 层选区位置,
-     *  Compose 阅读页无等价能力, 回落为从当前进度开始章节朗读 */
-    private fun onReadAloud(screenModel: ReaderScreenModel): (String) -> Unit = { text ->
-        when (AppConfig.contentSelectSpeakMod) {
-            1 -> {
-                ReadAloud.upReadAloudClass()
-                ReadAloud.play(activity)
-            }
-
-            else -> TTS().speak(text)
-        }
-    }
-
-    /** 分享 (对照原版 menu_share_str) */
-    private fun onShare(screenModel: ReaderScreenModel): (String) -> Unit = { text ->
-        activity.share(text)
     }
 
     /** 屏幕超时设置变更 → 重算常亮计时 (对照原版 keepLightChange → upScreenTimeOut) */

@@ -14,6 +14,8 @@ import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.read.config.FontItem
 import io.legado.app.ui.book.source.BookSourceSort
+import io.legado.app.utils.encodeURI
+import io.legado.app.utils.isAbsUrl
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -35,6 +37,19 @@ interface PlatformCapabilities {
     }
 
     fun shareText(text: String)
+
+    /**
+     * 网页搜索 (对照原版 TextActionMenu.menu_browser): [text] 是 URL 就直接打开, 否则搜索它。
+     * 默认走 bing; Android 覆写为 ACTION_VIEW / ACTION_WEB_SEARCH 交系统选择应用。
+     */
+    fun searchWeb(text: String) {
+        val url = if (text.isAbsUrl()) {
+            text
+        } else {
+            "https://www.bing.com/search?q=" + text.encodeURI()
+        }
+        openExternalUrl(url)
+    }
 
     /**
      * 打开 WebView (2026-08-06 用户拍板: 中转 WebView 界面不再内嵌路由):
@@ -145,11 +160,6 @@ interface PlatformCapabilities {
         paragraphIndex: Int,
         parentReview: Review? = null,
     ): Boolean = false
-
-    // 图片预览对话框 (阅读页点图预览: 各端一律走 key="photo" overlay), 未实现端提示不支持
-    // chapterIndex = 阅读页当前章节索引 (供实现端优先查阅读时已落盘的章节图片缓存;
-    // -1 = 未知/非阅读页调用, 实现端可忽略或回退当前阅读章节)
-    fun showImagePreview(url: String, chapterIndex: Int = -1) = unsupported("图片预览")
 
     // 默认封面画廊弹窗 (对照 app 端 DefaultCoverGalleryDialog)
     fun showDefaultCoverGallery(isNight: Boolean) = unsupported("选择默认封面")
@@ -315,6 +325,12 @@ interface PlatformCapabilities {
 
     /** 是否支持锁定屏幕方向 (决定 MoreConfig 的屏幕方向选项显隐) */
     fun hasScreenOrientation(): Boolean = true
+
+    /**
+     * 播放服务是否真持唤醒锁 (决定音频播放页溢出菜单"音频服务唤醒锁"项显隐)。
+     * 仅 Android 前台 AudioPlayService 消费 `AppConfig.audioPlayUseWakeLock`, 其余端拨了没效果。
+     */
+    val audioWakeLockSupported: Boolean get() = false
 
     /**
      * 是否平板设备（决定"平板/横屏双页" auto 分支是否启用双页，对照 app 端

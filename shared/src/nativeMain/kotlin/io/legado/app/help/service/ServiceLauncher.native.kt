@@ -50,21 +50,11 @@ class NativeServiceLauncher(
     }
 
     override fun startCacheBookService(bookUrl: String, start: Int, end: Int) {
-        // 接入已下沉的 CacheBookShared: 创建模型 + 入队 + 启动处理 job
-        // (对照 jvmMain DesktopServiceLauncher.startCacheBookService / app 端 CacheBookService.addDownloadData + download)
         scope.launch {
-            val cacheBook = CacheBookShared.getOrCreate(bookUrl) ?: return@launch
-            // end<0 表示下载到最后一章 (app 端 CacheBookService.addDownloadData 内
-            // `if (end < 0) book.lastChapterIndex else min(end, book.lastChapterIndex)`)
-            val actualEnd = if (end < 0) {
-                cacheBook.book.lastChapterIndex
-            } else {
-                minOf(end, cacheBook.book.lastChapterIndex)
+            if (enqueueCacheBook(bookUrl, start, end)) {
+                // 启动 startProcessJob (对照 app 端 CacheBookService.download)
+                CacheBookShared.startProcessJob()
             }
-            cacheBook.addDownload(start, actualEnd)
-            // 启动 startProcessJob (对照 app 端 CacheBookService.download)
-            // Native 端无 cachePool CoroutineDispatcher, 用 scope 默认 dispatcher
-            CacheBookShared.startProcessJob(scope.coroutineContext)
         }
     }
 
@@ -234,4 +224,25 @@ fun registerIosServiceLauncher(scope: CoroutineScope = CoroutineScope(Supervisor
  */
 fun registerOhosServiceLauncher(scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)) {
     ServiceLaunchers.register(NativeServiceLauncher(scope))
+}
+
+/**
+ * 入队一本书的缓存下载 (创建模型 + addDownload), 不启动处理 job。
+ *
+ * [NativeServiceLauncher.startCacheBookService] 是 fire-and-forget 的, 等不到入队结果;
+ * iOS 后台续跑 ([io.legado.app.help.service.IosBackgroundTasks]) 必须知道入队是否真的成功,
+ * 故把这段抽出来两边共用。
+ *
+ * @param end <0 表示下载到最后一章 (对照 app 端 CacheBookService.addDownloadData)
+ * @return false = 这个 bookUrl 已取不到书 (不在书架 / 已删)
+ */
+internal suspend fun enqueueCacheBook(bookUrl: String, start: Int, end: Int): Boolean {
+    val cacheBook = CacheBookShared.getOrCreate(bookUrl) ?: return false
+    val actualEnd = if (end < 0) {
+        cacheBook.book.lastChapterIndex
+    } else {
+        minOf(end, cacheBook.book.lastChapterIndex)
+    }
+    cacheBook.addDownload(start, actualEnd)
+    return true
 }

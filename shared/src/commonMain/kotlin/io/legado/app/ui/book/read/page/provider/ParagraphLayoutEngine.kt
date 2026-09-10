@@ -109,8 +109,8 @@ data class LineMetrics(
  * @param isImage 是否为块状图片段落
  * @param text 段落原始文本
  * @param paragraphNum 逻辑段号（1..N，0 为标题）
- * @param textHeight 段落字体高度（px）
- * @param descent 段落下行度量（px）
+ * @param textHeight 段落字体高度（px）；产出方一律显式传，默认 0 只给空段落 `EMPTY`
+ * @param descent 段落下行度量（px）；同上
  */
 data class ParagraphLineMetrics(
     val lines: List<LineMetrics>,
@@ -118,8 +118,8 @@ data class ParagraphLineMetrics(
     val isImage: Boolean = false,
     val text: String = "",
     val paragraphNum: Int = 0,
-    val textHeight: Float = lines.firstOrNull()?.textHeight ?: 0f,
-    val descent: Float = lines.firstOrNull()?.descent ?: 0f,
+    val textHeight: Float = 0f,
+    val descent: Float = 0f,
 ) {
     val lineCount: Int get() = lines.size
     val isEmpty: Boolean get() = lines.isEmpty()

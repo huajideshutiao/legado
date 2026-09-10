@@ -9,11 +9,7 @@ import io.legado.app.model.CacheBookCallbacks
 import io.legado.app.model.CacheBookShared
 import io.legado.app.model.CacheBookShared.CacheBookModelShared
 import io.legado.app.utils.postEvent
-import io.legado.desktop.model.DesktopCacheBook.DesktopCacheBookCallback.markDownloadFailed
-import io.legado.desktop.model.DesktopCacheBook.DesktopCacheBookCallback.markDownloadSuccess
-import io.legado.desktop.model.DesktopCacheBook.DesktopCacheBookCallback.markDownloaded
 import io.legado.desktop.model.DesktopCacheBook.close
-import kotlin.coroutines.CoroutineContext
 
 /**
  * 桌面端 CacheBook 薄壳 (委托 [CacheBookShared])。
@@ -56,8 +52,7 @@ object DesktopCacheBook {
     fun setWorkingState(value: Boolean) = CacheBookShared.setWorkingState(value)
 
     /** 对照原 DesktopCacheBook.startProcessJob */
-    suspend fun startProcessJob(context: CoroutineContext) =
-        CacheBookShared.startProcessJob(context)
+    suspend fun startProcessJob() = CacheBookShared.startProcessJob()
 
     /** 下载摘要文案 (对照原 DesktopCacheBook.downloadSummary) */
     val downloadSummary: String get() = CacheBookShared.downloadSummary
@@ -87,15 +82,8 @@ object DesktopCacheBook {
      * 对照原 [DesktopCacheBookModel.download] 成功分支:
      * `postEvent(EventBus.UP_DOWNLOAD, book.bookUrl)` +
      * `postEvent(EventBus.SAVE_CONTENT, Pair(book, chapter))`
-     *
-     * 桌面端无 ReadBook 单例, [markDownloaded] / [markDownloadFailed] /
-     * [markDownloadSuccess] no-op (与原 DesktopCacheBook 不维护 downloadedChapters 一致)。
      */
     private object DesktopCacheBookCallback : CacheBookCallback {
-        // 桌面端无 ReadBook 单例, 下载状态标记 no-op
-        override fun markDownloaded(chapterIndex: Int) {}
-        override fun markDownloadFailed(chapterIndex: Int) {}
-        override fun markDownloadSuccess(chapterIndex: Int) {}
 
         override fun onContentLoadFinish(
             book: Book,

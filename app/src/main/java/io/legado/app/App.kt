@@ -64,6 +64,7 @@ import io.legado.app.help.storage.Backup
 import io.legado.app.help.storage.registerAndroidBackupRestoreHook
 import io.legado.app.help.storage.registerAndroidPasswordProvider
 import io.legado.app.help.toast.registerAndroidToaster
+import io.legado.app.help.tts.registerAndroidSystemTtsEngine
 import io.legado.app.help.ui.registerAndroidOpenUrlProvider
 import io.legado.app.help.ui.registerAndroidUserAgentProvider
 import io.legado.app.model.BookCover
@@ -227,6 +228,8 @@ class App : Application() {
         // 注册 ReadBookShared 的 Android 平台出口 (朗读/缓存服务运行态 + 图片/本地 txt 缓存清理);
         // 阅读页可由 deep link 直达, 注册必须早于任何 Activity
         registerAndroidReadBookPlatform()
+        // 注册系统 TTS 引擎 (共享 OneShotTts 的一次性朗读: 选中文字朗读 / RSS 朗读)
+        registerAndroidSystemTtsEngine()
         // 注册 CacheBookCallback 桥接活动阅读页 (CacheBookShared 调度核心下沉到 commonMain 后,
         // app 端通过 callback 把下载完成事件回放到活动阅读实例)
         CacheBook.registerCallback()

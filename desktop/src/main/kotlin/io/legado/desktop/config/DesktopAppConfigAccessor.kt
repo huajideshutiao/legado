@@ -301,11 +301,22 @@ class DesktopAppConfigAccessor : AppConfigAccessor {
     override val ttsEngine: String
         get() = prefs.getString(PreferKey.ttsEngine, "")
 
+    override fun setTtsEngine(value: String?) {
+        prefs.putString(PreferKey.ttsEngine, value)
+    }
+
     override val ttsSpeechRate: Int
         get() = prefs.getInt(PreferKey.ttsSpeechRate, 5)
 
     override val ttsTimer: Int
         get() = prefs.getInt(PreferKey.ttsTimer, 0)
+
+    override val audioPlayUseWakeLock: Boolean
+        get() = prefs.getBoolean(PreferKey.audioPlayWakeLock, false)
+
+    override fun setAudioPlayUseWakeLock(value: Boolean) {
+        prefs.putBoolean(PreferKey.audioPlayWakeLock, value)
+    }
 
     // ---- 主题 (热路径, 走缓存) ----
     override val themeMode: String
@@ -388,6 +399,10 @@ class DesktopAppConfigAccessor : AppConfigAccessor {
 
     override val bitmapCacheSize: Int
         get() = prefs.getInt(PreferKey.bitmapCacheSize, 50)
+
+    override fun setBitmapCacheSize(value: Int) {
+        prefs.putInt(PreferKey.bitmapCacheSize, value)
+    }
 
     // 与 app 端 AppConfig.sourceEditMaxLine 语义一致: <10 视为不限制
     override val sourceEditMaxLine: Int

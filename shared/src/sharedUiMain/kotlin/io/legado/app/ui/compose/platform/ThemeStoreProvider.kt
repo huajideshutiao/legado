@@ -4,7 +4,6 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.FileThemeConfigProvider
-import io.legado.app.help.config.PreferenceProvider
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.currentNightTheme
 import io.legado.app.help.config.resolveImagePath
@@ -46,7 +45,7 @@ interface ThemeStoreProvider {
  * 走 [PreferenceProviders] 的 [ThemeStoreProvider] 实现，桌面 / iOS / 鸿蒙共用。
  *
  * 三端曾各抄一份：键名、派生规则、日夜分支逐字相同，只有底层读写 API 不同 —— 而 iOS 的
- * NSUserDefaults 与鸿蒙的 JSON 文件本就已由各自的 [PreferenceProvider] 封装，没有差异可留。
+ * NSUserDefaults 与鸿蒙的 JSON 文件本就已由各自的 PreferenceProvider 封装，没有差异可留。
  *
  * 兜底：持久层无记录时按当前日/夜取 [FileThemeConfigProvider] 的内置默认（源自原版
  * values / values-night），与 applyTheme 真正写入的值同一套 —— 三端原先各编一套硬编码色，
@@ -71,16 +70,17 @@ open class SharedThemeStoreProvider : ThemeStoreProvider {
     /** 对照 ThemeConfig.curBgImagePath: 按日/夜读相对引用并解析为绝对路径, 空白视为无壁纸 */
     override val bgImagePath: String?
         get() = resolveImagePath(
-            prefsOrNull()?.getStringOrNull(if (isNight) PreferKey.bgImageN else PreferKey.bgImage)
+            PreferenceProviders.get()
+                .getStringOrNull(if (isNight) PreferKey.bgImageN else PreferKey.bgImage)
                 ?.takeUnless { it.isBlank() }
         )
 
     /** 按日/夜读背景图模糊键 (对照原版 bgImageBlurring) */
     override val bgImageBlur: Int
-        get() = prefsOrNull()?.getInt(
+        get() = PreferenceProviders.get().getInt(
             if (isNight) PreferKey.bgImageNBlurring else PreferKey.bgImageBlurring,
             0,
-        ) ?: 0
+        )
 
     /** 日/夜判定与业务层同源 (含「跟随系统」档), 影响兜底色与壁纸/模糊取键 */
     protected val isNight: Boolean
@@ -89,9 +89,5 @@ open class SharedThemeStoreProvider : ThemeStoreProvider {
     private fun builtin(night: Int, day: Int) = Color(if (isNight) night else day)
 
     private fun readColor(key: String): Color? =
-        prefsOrNull()?.let { if (it.contains(key)) Color(it.getInt(key)) else null }
-
-    /** PreferenceProviders 未注册时返回 null (测试/@Preview), 主流程宿主已先注册 */
-    private fun prefsOrNull(): PreferenceProvider? =
-        runCatching { PreferenceProviders.get() }.getOrNull()
+        PreferenceProviders.get().let { if (it.contains(key)) Color(it.getInt(key)) else null }
 }

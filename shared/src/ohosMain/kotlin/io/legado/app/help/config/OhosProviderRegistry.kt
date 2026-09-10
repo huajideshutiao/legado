@@ -59,10 +59,14 @@ import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.registerOhosScreenInfoProvider
 import kotlinx.serialization.decodeFromString
 import io.legado.app.ui.book.manage.registerNativeBookshelfManagePlatform
-import io.legado.app.ui.book.read.page.provider.registerNativeTextMeasurer
+import io.legado.app.ui.book.read.page.provider.registerSkiaTextMeasurer
 import io.legado.app.web.registerNativeWebServerPlatform
 import io.legado.app.web.utils.registerNativeWebAssetSource
 import io.legado.app.web.utils.registerNativeWebStrings
+import kotlin.concurrent.Volatile
+
+@Volatile
+private var providersRegistered = false
 
 /**
  * 鸿蒙宿主启动早期的统一 provider 注册入口。
@@ -70,13 +74,17 @@ import io.legado.app.web.utils.registerNativeWebStrings
  * 鸿蒙 app (ArkTS) 在 EntryAbility.onCreate 早期通过 napi 调用本函数,
  * 一次性完成所有 commonMain provider 注入, 之后即可调用 shared 业务代码。
  *
+ * 只认第一次调用: napi 入口与 Compose 入口 (MainOhos) 各调一次, 而重复注册会换掉
+ * prefs/AppConfig/Room 实例, 旧实例的 pref 与系统深色监听留在全局表里不摘。
+ *
  * 注册顺序约束 (与 desktop `Main.kt` 一致, 详见 [registerIosProviders] 对齐说明):
  * 1. [registerOhosAppFilesDir] 必须最先 (其他 provider 持久化目录依赖 [AppFilesDirs])
  * 1.05 [registerOhosNativeBridge] + [registerOhosToaster] 须在 [registerNativeAppLogHost] 之前
  *    (AppLog 的 toast 出口走 [io.legado.app.help.toast.Toasters], 晚于 host 注册则初始化期
- *    `AppLog.put(toast = true)` 的失败提示会丢; OhosToaster 只依赖 [OhosNativeBridge], 不依赖
+ *    `AppLog.put(toast = true)` 直接抛; OhosToaster 只依赖 [OhosNativeBridge], 不依赖
  *    被它跳过的任何 provider)
- * 2. [registerOhosPreferenceProvider] 在 [registerNativeAppConfigAccessor] 之前
+ * 2. [registerOhosPreferenceProvider] 须在 [registerNativeAppLogHost] 之前 (log host 的 recordLog
+ *    门直读 PreferenceProviders), 也在 [registerNativeAppConfigAccessor] 之前
  *    (OhosAppConfigAccessor 委托 PreferenceProvider)
  * 3. [registerNativeAppDb] (Database + AppDatabase + AppDb) 在文件目录之后
  *    (OhosDatabaseDriver 默认 dbPath 从 AppFilesDirs.filesDir 派生)
@@ -121,6 +129,9 @@ import io.legado.app.web.utils.registerNativeWebStrings
  * desktop 端 `Main.kt` 中的 provider 注册序列。
  */
 fun registerOhosProviders() {
+    if (providersRegistered) return
+    providersRegistered = true
+
     // 0. 主线程 id 捕获 (任何 JS eval / webView 调用之前, EntryAbility.onCreate 在主线程执行本函数)
     registerOhosMainThread()
 
@@ -133,7 +144,7 @@ fun registerOhosProviders() {
     registerOhosAppFilesDir()
 
     // 1.05 napi 桥 + Toaster (须在 AppLog 宿主之前: AppLog.put(toast = true) 的 toast 出口走
-    // Toasters, 晚注册则初始化期的失败提示丢失; OhosToaster 仅依赖 OhosNativeBridge)
+    // Toasters, 晚注册则初始化期的提示直接抛; OhosToaster 仅依赖 OhosNativeBridge)
     registerOhosNativeBridge()
     registerOhosToaster()
 
@@ -142,12 +153,15 @@ fun registerOhosProviders() {
     // 零平台依赖顺序无关, 只须在任何 appString 调用之前)
     registerNativeAppStringProvider()
 
+    // 1.06 Preference provider (须在 AppLog 宿主之前: 宿主的 recordLog 门直读 PreferenceProviders,
+    // 晚注册则这中间的 AppLog.put 全按 recordLog=false 走, 不落盘)
+    registerOhosPreferenceProvider()
+
     // 1.1 AppLog 宿主 (崩溃日志落盘到 {filesDir}/logs, 供 CrashLogProvider 收集;
     // 须在 AppFilesDirs 之后 (日志目录从 filesDir 派生)、任何 AppLog.put 之前)
     registerNativeAppLogHost()
 
-    // 2. 配置 provider (PreferenceProvider -> AppConfigAccessor)
-    registerOhosPreferenceProvider()
+    // 2. 配置 provider (AppConfigAccessor 委托 1.06 已注册的 PreferenceProvider)
     registerNativeAppConfigAccessor()
 
     // 2.1 设备标识注入 (鸿蒙无现成设备 id 桥, 用首启生成后经 PreferenceProviders 落盘的 UUID;
@@ -296,8 +310,8 @@ fun registerOhosProviders() {
     registerNativeChangeBookSourcePlatform()
     // 书架管理平台 provider (commonMain BookshelfManageViewModelShared 调用, 须在 WebBookProviders 之后)
     registerNativeBookshelfManagePlatform()
-    // 阅读编排平台钩子 (朗读/缓存服务运行态暂缺, 本地 txt 分章缓存清理真实;
-    // 对照 iOS registerIosReadBookPlatform, 未注册时默认空实现行为一致)
+    // 阅读编排平台钩子 (朗读接 OhosReadAloudHost, 缓存运行态取 CacheBookShared.isRun;
+    // 对照 iOS registerIosReadBookPlatform, 未注册时 ReadBookPlatforms.get 直接抛)
     registerOhosReadBookPlatform()
     // 备份/恢复钩子 (lastBackup 时间戳 + 恢复完成提示; zip 复制/解压走 BackupFileOps 默认实现,
     // 与 iOS 端共用 nativeMain NativeBackupRestoreHook; 未注册时默认空实现静默丢这些副作用)
@@ -305,7 +319,7 @@ fun registerOhosProviders() {
 
     // 8.8 阅读排版真实字形度量器 (Skia Font 度量, 取代 SimpleTextMeasurer 等宽近似;
     // 须在任何章节排版之前, 依赖 skiko 随 compose ui 已就绪)
-    registerNativeTextMeasurer()
+    registerSkiaTextMeasurer()
 
     // 8.9 阅读页内嵌图片解析器 (EPUB 插图/PDF 单图页: 排版取尺寸 + 绘制取位图,
     // 对照 Android MainActivity / desktop Main.kt; 未注册时 ImageResolverProviders.createOrNull

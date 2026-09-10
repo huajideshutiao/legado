@@ -42,24 +42,24 @@ fun MyConfigRoute(
     navigator: AppNavigator,
     screenModelStore: ScreenModelStore,
 ) {
-    val caps = PlatformCapabilityProviders.getOrNull()
+    val caps = PlatformCapabilityProviders.get()
     // 进入时以服务实际运行态校准 (对照 MyTab 初始化 mutableStateOf(WebService.isRun))
-    var webServiceChecked by remember { mutableStateOf(caps?.isWebServiceRunning() ?: false) }
+    var webServiceChecked by remember { mutableStateOf(caps.isWebServiceRunning()) }
     val webServiceDesc = stringResource(Res.string.web_service_desc)
     var webServiceSummary by remember {
         mutableStateOf(
-            if (webServiceChecked) caps?.getWebServiceUrl().orEmpty() else webServiceDesc
+            if (webServiceChecked) caps.getWebServiceUrl().orEmpty() else webServiceDesc
         )
     }
     var showWebServiceMenu by remember { mutableStateOf(false) }
 
     // 复刻 MyTab LaunchedEffect: FlowBus.withSticky(EventBus.WEB_SERVICE).collect 校正开关态/地址
-    val webServiceState = remember { caps?.webServiceState }
+    val webServiceState = remember { caps.webServiceState }
     LaunchedEffect(webServiceState) {
         webServiceState?.collect { running ->
             webServiceChecked = running
             webServiceSummary = if (running) {
-                PlatformCapabilityProviders.getOrNull()?.getWebServiceUrl().orEmpty()
+                PlatformCapabilityProviders.get().getWebServiceUrl().orEmpty()
             } else {
                 webServiceDesc
             }
@@ -77,18 +77,18 @@ fun MyConfigRoute(
             webServiceChecked = webServiceChecked,
             webServiceSummary = webServiceSummary,
             onThemeModeChange = {
-                PlatformCapabilityProviders.getOrNull()?.applyDayNight()
+                PlatformCapabilityProviders.get().applyDayNight()
             },
             // 对照 MyTab: 开关切换即时回填态; 写 prefs 由 switchPreference 内部处理,
             // shared 端无 SharedPreferences 监听, 直接调 setWebService 触发 start/stop
             onWebServiceChange = {
                 webServiceChecked = it
                 webServiceSummary = if (it) {
-                    PlatformCapabilityProviders.getOrNull()?.getWebServiceUrl().orEmpty()
+                    PlatformCapabilityProviders.get().getWebServiceUrl().orEmpty()
                 } else {
                     webServiceDesc
                 }
-                PlatformCapabilityProviders.getOrNull()?.setWebService(it)
+                PlatformCapabilityProviders.get().setWebService(it)
             },
             onWebServiceLongClick = { showWebServiceMenu = true },
             onThemeSetting = { navigator.push(AppRoute.ThemeConfig) },
@@ -109,7 +109,7 @@ fun MyConfigRoute(
 
     // web 服务长按菜单 (对照 MyTab context.selector: 复制地址 / 浏览器打开)
     if (showWebServiceMenu) {
-        val url = PlatformCapabilityProviders.getOrNull()?.getWebServiceUrl()
+        val url = PlatformCapabilityProviders.get().getWebServiceUrl()
         AppSelectorDialog(
             onDismissRequest = { showWebServiceMenu = false },
             title = stringResource(Res.string.web_service),
@@ -119,8 +119,8 @@ fun MyConfigRoute(
             ),
             onItemSelected = { i ->
                 when (i) {
-                    0 -> url?.let { PlatformCapabilityProviders.getOrNull()?.copyToClipboard(it) }
-                    1 -> url?.let { PlatformCapabilityProviders.getOrNull()?.openExternalUrl(it) }
+                    0 -> url?.let { PlatformCapabilityProviders.get().copyToClipboard(it) }
+                    1 -> url?.let { PlatformCapabilityProviders.get().openExternalUrl(it) }
                 }
             },
         )

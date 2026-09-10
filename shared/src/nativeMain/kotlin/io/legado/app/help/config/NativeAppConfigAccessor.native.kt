@@ -301,11 +301,18 @@ class NativeAppConfigAccessor(
     override val ttsEngine: String
         get() = prefs.getString(PreferKey.ttsEngine, "")
 
+    override fun setTtsEngine(value: String?) {
+        prefs.putString(PreferKey.ttsEngine, value)
+    }
+
     override val ttsSpeechRate: Int
         get() = prefs.getInt(PreferKey.ttsSpeechRate, 5)
 
     override val ttsTimer: Int
         get() = prefs.getInt(PreferKey.ttsTimer, 0)
+
+    override val audioPlayUseWakeLock: Boolean
+        get() = prefs.getBoolean(PreferKey.audioPlayWakeLock, false)
 
     // ---- 主题 (热路径, 走缓存) ----
     override val themeMode: String
@@ -389,6 +396,10 @@ class NativeAppConfigAccessor(
 
     override val bitmapCacheSize: Int
         get() = prefs.getInt(PreferKey.bitmapCacheSize, 50)
+
+    override fun setBitmapCacheSize(value: Int) {
+        prefs.putInt(PreferKey.bitmapCacheSize, value)
+    }
 
     // 与 app 端 AppConfig.sourceEditMaxLine 语义一致: 设置界面 range 5..30,
     // 存储值不在该区间一律视为不限制 (兼容旧版写入的 Int.MAX_VALUE 与残留脏值)

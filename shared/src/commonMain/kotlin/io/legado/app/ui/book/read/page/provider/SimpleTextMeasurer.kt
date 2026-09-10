@@ -6,12 +6,8 @@ package io.legado.app.ui.book.read.page.provider
  * # 设计目的
  *
  * **fallback 专用**：仅在 [TextMeasurerProviders] 未注册平台真实字形度量时兜底。
- * Android 走 `AndroidTextMeasurer`（TextPaint），desktop 走 `SkiaTextMeasurer`（Skia Font），
- * 都是真实字形；本类是等宽近似，精度低于两者（西文 / 标点宽度估算偏差）。
- *
- * TODO(iOS / 鸿蒙)：两端尚未注册真实度量，仍走本类。
- * iOS 可用 CoreText（CTFont advances）或 skiko 的 `SkiaTextMeasurer` 同款实现，
- * 鸿蒙需 napi 桥接 ArkUI 文本度量；本机无法编译验证，留待各端接入时替换。
+ * 四端都已注册真实字形（安卓 `AndroidTextMeasurer`，desktop / iOS / 鸿蒙 `SkiaTextMeasurer`），
+ * 现在只有单元测试跑到本类——等宽近似，精度低于真实字形（西文 / 标点宽度估算偏差）。
  *
  * # 等宽口径
  *

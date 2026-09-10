@@ -70,7 +70,7 @@ private fun MoreConfigBody(
 ) {
     val pref = PreferenceProviders.get()
     // 触摸灵敏度摘要: 系统scaledTouchSlop格式化 (对照 app 端 page_touch_slop_summary)
-    val slopSquare = PlatformCapabilityProviders.getOrNull()?.getScaledTouchSlop() ?: 0
+    val slopSquare = PlatformCapabilityProviders.get().getScaledTouchSlop()
     val pageTouchSlopSummary =
         stringResource(Res.string.page_touch_slop_summary, slopSquare.toString())
     var showPageTouchSlop by remember { mutableStateOf(false) }
@@ -84,7 +84,6 @@ private fun MoreConfigBody(
             // 对照 app 端 MoreConfigDialog.onSharedPreferenceChanged
             when (key) {
                 PreferKey.hideStatusBar, PreferKey.hideNavigationBar -> {
-                    readBookConfig.reloadHideBarPrefs()
                     ReadBookEvents.postConfig(
                         ReadConfigChange.SYSTEM_UI, ReadConfigChange.STYLE
                     )

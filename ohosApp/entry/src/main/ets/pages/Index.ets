@@ -3,22 +3,9 @@ import { ArkUIViewController, Compose } from '@cpf-kmp-cmp/compose';
 // 包根 Index.d.ets 未 re-export 该函数, 只能从子模块直接导入。
 import { registerComposeInteropBuilder } from '@cpf-kmp-cmp/compose/src/main/ets/compose/ArkUIView';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { taskpool } from '@kit.ArkTS';
 import webview from '@ohos.web.webview';
-import http from '@ohos.net.http';
-import promptAction from '@ohos.promptAction';
-import { fileIo as fs } from '@kit.CoreFileKit';
-import { photoAccessHelper } from '@kit.MediaLibraryKit';
-import { common } from '@kit.AbilityKit';
 import legado from 'liblegado_napi.so';
 import { initWebViewBridge, handlePageEnd, handleErrorReceive, handleInterceptRequest } from '../bridge/WebViewBridgeHandler';
-import {
-  initTextActionBridge,
-  fireTextAction,
-  dismissTextActionMenu,
-  type TextActionMenuData,
-  type TextActionMenuItem
-} from '../bridge/TextActionBridgeHandler';
 import {
   initMarkdownBridge,
   handlePageBegin as handleMarkdownPageBegin,
@@ -26,10 +13,6 @@ import {
 } from '../bridge/MarkdownBridgeHandler';
 import { initKeyboardBridge } from '../bridge/KeyboardBridgeHandler';
 import { setVideoSurfaceId } from '../bridge/MediaBridgeHandler';
-import { ensurePermissionGranted } from '../bridge/PermissionBridgeHandler';
-import { base64ToArrayBuffer } from '../bridge/BridgeCodec';
-// taskpool 任务函数须放在无 ArkUI 顶层状态的独立模块 (worker VM 会重执行宿主模块顶层)
-import { loadImageBytesTask } from '../task/ImageDownloadTask';
 
 const DOMAIN: number = 0x0000;
 
@@ -76,8 +59,6 @@ function LegadoMarkdownWebBuilder(param: object) {
     })
 }
 
-// taskpool worker 任务: 见 ../task/ImageDownloadTask.ets
-
 /**
  * Legado 鸿蒙 Compose 入口。
  *
@@ -95,18 +76,9 @@ struct Index {
   private webController: webview.WebviewController = new webview.WebviewController();
   @State private webSrc: string = 'about:blank';
   @State private errorMessage: string = 'Compose controller is not ready';
-  // 文本操作浮动菜单状态 (长按选字 → KMP → handleShowTextActionMenu 更新)
-  @State private textMenu: TextActionMenuData = { visible: false, text: '', x: 0, y: 0, src: '', type: 'text', menuItems: [] };
-  // 图片全屏预览状态 (图片菜单"查看": 叠层 Image 加载网络图, 点击关闭)
-  @State private imagePreviewVisible: boolean = false;
-  @State private imagePreviewSrc: string = '';
 
   aboutToAppear(): void {
     try {
-      // 文本操作菜单状态注入 (KMP 经 tsfn 更新菜单显隐/定位)
-      initTextActionBridge((data: TextActionMenuData): void => {
-        this.textMenu = data;
-      });
       // 隐藏 Web 组件控制器注入 (须在首次 handleWebViewRequest 之前)
       initWebViewBridge(this.webController);
       // Markdown 查看器桥注入 (K/N MarkdownContent 的 tsfn 渲染请求 + 链接回送事件)。
@@ -154,94 +126,31 @@ struct Index {
   }
 
   build() {
-    Stack({ alignContent: Alignment.TopStart }) {
-      Column() {
-        if (this.controller) {
-          Compose({
-            controller: this.controller,
-            libraryName: 'legado_napi',
-            onBackPressed: (): boolean => this.controller!.onBackPress()
-          })
-        } else {
-          Text(this.errorMessage)
-        }
-        // 后台 WebView: 隐藏组件承载书源 webView 规则 (加载 + runJavaScript 取源码)
-        // visibility(Hidden) 不入渲染但仍执行网络请求与 JS; 尺寸 1vp 避免 0 尺寸组件被销毁
-        Web({ src: this.webSrc, controller: this.webController })
-          .visibility(Visibility.Hidden)
-          .width(1)
-          .height(1)
-          .onPageEnd((event: OnPageEndEvent): void => {
-            handlePageEnd();
-          })
-          .onErrorReceive((event: OnErrorReceiveEvent): void => {
-            handleErrorReceive(event.error.getErrorInfo());
-          })
-          .onInterceptRequest((event: OnInterceptRequestEvent): WebResourceResponse | undefined => {
-            return handleInterceptRequest(event);
-          })
-      }
-      .width('100%')
-      .height('100%')
-
-      // 文本操作浮动菜单叠层 (平台原生 ArkUI 组件, 对标 Android ActionMode 浮动菜单):
-      // 全屏半透明遮罩 (点外部收起 → __dismiss 取消选择) + 锚点定位的菜单气泡
-      // 菜单项清单由 K/N 下发 (TextActionBridgeHandler 已归一化: menuItems 优先,
-      // 缺失回退内置 TEXT_ACTION_ITEMS / IMAGE_ACTION_ITEMS)
-      if (this.textMenu.visible) {
-        // 遮罩与气泡是 Stack 的兄弟节点 (非父子): 气泡按 HitTestMode.Default 阻断被它遮住的
-        // 兄弟节点参与命中测试, 遮罩不进入手势响应链, 点菜单项不可能收起菜单。
-        // ClickEvent 无 stopPropagation (common.d.ts:11608 起区间内无该成员), 只有结构能保证。
-        Column()
-          .width('100%')
-          .height('100%')
-          .backgroundColor('rgba(0,0,0,0.25)')
-          .onClick((): void => {
-            dismissTextActionMenu();
-          })
-
-        Column() {
-          ForEach(this.textMenu.menuItems, (item: TextActionMenuItem): void => {
-            Text(item.label)
-              .fontSize(16)
-              .fontColor(Color.Black)
-              .width('100%')
-              .height(44)
-              .textAlign(TextAlign.Center)
-              .onClick((): void => {
-                this.onMenuActionClick(item.action, this.textMenu.text, this.textMenu.src);
-              })
-          }, (item: TextActionMenuItem): string => item.action)
-        }
-        .backgroundColor(Color.White)
-        .borderRadius(12)
-        .padding({ top: 4, bottom: 4 })
-        .position({ x: this.textMenu.x, y: this.textMenu.y })
-        .shadow({ radius: 16, color: 'rgba(0,0,0,0.2)' })
-        .onClick((): void => {
-          // 空实现但必须保留: 让气泡持有点击识别器, 命中气泡自身留白 (padding) 时消费掉
+    Column() {
+      if (this.controller) {
+        Compose({
+          controller: this.controller,
+          libraryName: 'legado_napi',
+          onBackPressed: (): boolean => this.controller!.onBackPress()
         })
+      } else {
+        Text(this.errorMessage)
       }
-
-      // 图片全屏预览叠层 (图片菜单"查看"): 黑底 + Image 网络图 (objectFit Contain),
-      // 点击任意处关闭 (对照原版 PhotoDialog 查看大图)
-      if (this.imagePreviewVisible) {
-        Stack({ alignContent: Alignment.Center }) {
-          Image(this.imagePreviewSrc)
-            .width('100%')
-            .height('100%')
-            .objectFit(ImageFit.Contain)
-            .onClick((): void => {
-              this.imagePreviewVisible = false;
-            })
-        }
-        .width('100%')
-        .height('100%')
-        .backgroundColor(Color.Black)
-        .onClick((): void => {
-          this.imagePreviewVisible = false;
+      // 后台 WebView: 隐藏组件承载书源 webView 规则 (加载 + runJavaScript 取源码)
+      // visibility(Hidden) 不入渲染但仍执行网络请求与 JS; 尺寸 1vp 避免 0 尺寸组件被销毁
+      Web({ src: this.webSrc, controller: this.webController })
+        .visibility(Visibility.Hidden)
+        .width(1)
+        .height(1)
+        .onPageEnd((event: OnPageEndEvent): void => {
+          handlePageEnd();
         })
-      }
+        .onErrorReceive((event: OnErrorReceiveEvent): void => {
+          handleErrorReceive(event.error.getErrorInfo());
+        })
+        .onInterceptRequest((event: OnInterceptRequestEvent): WebResourceResponse | undefined => {
+          return handleInterceptRequest(event);
+        })
     }
     .width('100%')
     .height('100%')
@@ -257,123 +166,5 @@ struct Index {
 
   onBackPressed(): boolean {
     return this.controller ? this.controller.onBackPress() : false;
-  }
-
-  /**
-   * 浮动菜单项点击分发:
-   * - 文本菜单: 全部经 fireTextAction 回送 KMP (对照原版 TextActionMenu 动作)
-   * - 图片菜单: view → 叠层全屏预览 (ArkTS 本地); save → 下载存系统相册 (ArkTS 本地);
-   *   refresh → 回送 KMP 清 ReaderImageCache + 重排 (见 OhosReaderPlatformProvider.onTextAction)
-   */
-  private onMenuActionClick(action: string, text: string, src: string): void {
-    if (this.textMenu.type === 'image') {
-      if (action === 'view') {
-        this.imagePreviewSrc = src;
-        this.imagePreviewVisible = true;
-        dismissTextActionMenu();
-      } else if (action === 'save') {
-        dismissTextActionMenu();
-        this.saveImageToGallery(src);
-      } else {
-        // refresh: 回送 KMP 处理 (清缓存 + 重排)
-        fireTextAction(action, text, src);
-      }
-    } else {
-      fireTextAction(action, text, src);
-    }
-  }
-
-  /**
-   * 保存图片到系统相册 (图片菜单"保存到相册", 对标原版 menu_save):
-   * 1. 下载图片字节 —— 优先复用 shared 下载管线 (K/N downloadImageBytes: AnalyzeUrlCore 带
-   *    书源 header/cookie/charset/JS + 解密, 解决防盗链), 经 TaskPool 离主线程执行
-   *    (K/N 下载内部走 HTTP 桥 tsfn → 主线程回调, 主线程直接调会死锁超时);
-   *    失败/无活动阅读书时回退 @ohos.net.http 裸下载 (保留旧行为)
-   * 2. 检查/申请 ohos.permission.WRITE_IMAGEVIDEO (user_grant, 已在 module.json5 声明;
-   *    未授予时经 abilityAccessCtrl.requestPermissionsFromUser 弹窗申请)
-   * 3. @ohos.file.photoAccessHelper getPhotoAccessHelper.createAsset 创建图库资源 URI
-   *    (PhotoType.IMAGE + 扩展名), 再 fileIo.openSync(uri, READ_WRITE|CREATE) + writeSync
-   *    把下载字节写入该 URI (createAsset 后 URI 即指向图库中的新文件, 无需再走沙盒中转)
-   */
-  private async saveImageToGallery(src: string): Promise<void> {
-    try {
-      // 1. 下载图片字节
-      const bytes = await this.downloadImageBytes(src);
-      if (bytes == null || bytes.byteLength === 0) {
-        promptAction.showToast({ message: '保存图片失败: 图片为空', duration: 2000 });
-        return;
-      }
-
-      // 2. 权限检查 + 运行时申请 (user_grant 权限, module.json5 已声明)
-      //    复用 PermissionBridgeHandler 导出的能力 (与本桥 check/request 两个 action 等价)
-      const context = getContext(this) as common.UIAbilityContext;
-      const granted = await ensurePermissionGranted(context, 'ohos.permission.WRITE_IMAGEVIDEO');
-      if (!granted) {
-        promptAction.showToast({ message: '保存图片失败: 未授予相册权限', duration: 2000 });
-        return;
-      }
-
-      // 3. photoAccessHelper.createAsset 创建图库资源 + fileIo 写入字节
-      const phAccessHelper = photoAccessHelper.getPhotoAccessHelper(context);
-      const uri = await phAccessHelper.createAsset(photoAccessHelper.PhotoType.IMAGE, this.guessImageExtension(src));
-      const file = fs.openSync(uri, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE);
-      try {
-        fs.writeSync(file.fd, bytes);
-      } finally {
-        fs.closeSync(file);
-      }
-      promptAction.showToast({ message: '已保存到相册', duration: 2000 });
-    } catch (e) {
-      console.error('[LegadoCompose] save image failed: ' + JSON.stringify(e) + ', src=' + src);
-      promptAction.showToast({ message: '保存图片失败', duration: 2000 });
-    }
-  }
-
-  /**
-   * 下载图片字节: 优先 K/N 共享下载管线 (带书源 header 防盗链, TaskPool 离主线程执行),
-   * 失败回退 @ohos.net.http 裸下载。
-   */
-  private async downloadImageBytes(src: string): Promise<ArrayBuffer | undefined> {
-    // 优先 K/N 下载管线 (TaskPool worker, 避免主线程死锁)
-    try {
-      const b64 = await taskpool.execute(new taskpool.Task(loadImageBytesTask, src)) as string;
-      if (b64 != null && b64.length > 0) {
-        // base64 → 独立 ArrayBuffer (复制语义/池化视图偏移注意点见 BridgeCodec)
-        const ab = base64ToArrayBuffer(b64);
-        if (ab.byteLength > 0) {
-          console.info('[LegadoCompose] image downloaded via K/N pipeline, bytes=' + ab.byteLength);
-          return ab;
-        }
-      }
-      console.warn('[LegadoCompose] K/N image download returned empty, fallback to bare http');
-    } catch (e) {
-      console.warn('[LegadoCompose] K/N image download failed, fallback to bare http: ' + JSON.stringify(e));
-    }
-    // 回退: @ohos.net.http 裸下载 (拿不到书源 header, 防盗链图可能失败, 保留旧行为)
-    const httpRequest = http.createHttp();
-    try {
-      const response = await httpRequest.request(src, {
-        method: http.RequestMethod.GET,
-        expectDataType: http.HttpDataType.ARRAY_BUFFER,
-      });
-      if (response.responseCode === 200 && response.result instanceof ArrayBuffer) {
-        return response.result as ArrayBuffer;
-      }
-    } catch (e) {
-      console.error('[LegadoCompose] bare http download failed: ' + JSON.stringify(e) + ', src=' + src);
-    } finally {
-      httpRequest.destroy();
-    }
-    return undefined;
-  }
-
-  /** 从 URL 猜测图片扩展名 (createAsset 的 extension 参数, 缺省 jpg)。 */
-  private guessImageExtension(src: string): string {
-    const lower = src.toLowerCase();
-    if (lower.includes('.png')) return 'png';
-    if (lower.includes('.webp')) return 'webp';
-    if (lower.includes('.gif')) return 'gif';
-    if (lower.includes('.bmp')) return 'bmp';
-    return 'jpg';
   }
 }

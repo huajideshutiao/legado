@@ -8,8 +8,10 @@ import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.screenModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -147,15 +149,20 @@ class SearchContentScreenModel(
 
     fun startContentSearch(query: String) {
         if (query.isBlank()) return
-        searchJob?.cancel()
-        results.clear()
-        shared.searchResultList.clear()
-        shared.searchResultCounts = 0
         shared.lastQuery = query
-        _state.update { it.copy(searching = true) }
+        // searching 的置位与清位必须同一执行路径: 置位留在协程外时, 协程体没跑到 (作用域已取消)
+        // 或在 initJob.join() 处被取消, 都会让进度条永久转。
+        // 旧任务先 cancelAndJoin 再清列表: 它的 finally 才不会擦掉本轮的 searching,
+        // 它最后一批结果也不会落进新一轮
+        val previous = searchJob
         searchJob = scope.launch {
-            initJob?.join()
-            kotlin.runCatching {
+            previous?.cancelAndJoin()
+            results.clear()
+            shared.searchResultList.clear()
+            shared.searchResultCounts = 0
+            _state.update { it.copy(searching = true) }
+            try {
+                initJob?.join()
                 shared.searchAllChapters(query) { batch ->
                     _state.update { it.copy(resultCount = shared.searchResultCounts) }
                     results.addAll(batch)
@@ -163,10 +170,13 @@ class SearchContentScreenModel(
                 if (shared.searchResultCounts == 0) {
                     results.add(SearchResult(resultText = emptyResultText()))
                 }
-            }.onFailure {
-                AppLog.put("全文搜索出错\n${it.message}", it)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                AppLog.put("全文搜索出错\n${e.message}", e)
+            } finally {
+                _state.update { it.copy(searching = false) }
             }
-            _state.update { it.copy(searching = false) }
         }
     }
 

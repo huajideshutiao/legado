@@ -65,6 +65,10 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        // commonMain 业务 provider 注册 (数据库/prefs/HTTP/JS 引擎等), 进程级一次。
+        // 对照 Android App.onCreate / desktop main; 必须先于下面的后台任务注册与
+        // Compose 场景创建 (BG 冷启动唤起也经本方法, 故后台路径同样拿到 provider)。
+        IosProviderRegistryKt.registerIosProviders()
         // 缓存书籍的后台续跑 (退后台收尾窗口 + BGProcessingTask 链式续约),
         // 实现见 shared iosMain help/service/IosBackgroundTasks.kt
         IosBackgroundTasksKt.registerIosBackgroundTasks()

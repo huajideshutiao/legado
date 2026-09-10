@@ -5,14 +5,11 @@ import io.legado.app.help.tts.OhosReadAloudHost
 import io.legado.app.model.fileBook.TextFile
 
 /**
- * 鸿蒙端 [ReadBookPlatform]: 朗读接 [OhosReadAloudHost] (ReadAloudControllerShared + 系统 TTS),
- * 缓存运行态暂缺, 缓存清理走真实实现。
+ * 鸿蒙端 [ReadBookPlatform]: 朗读接 [OhosReadAloudHost] (ReadAloudControllerShared + 系统 TTS)。
  *
  * 对照 app 端 `AndroidReadBookPlatform` / desktop 端 `DesktopReadBookPlatform`:
  * 鸿蒙无前台 Service, 朗读由 [OhosReadAloudHost] 驱动 ReadAloudControllerShared
  * (系统 TTS 引擎 = OhosSystemTtsEngine, 经 @ohos.textToSpeech napi 桥)。
- *
- * 未注册时 [ReadBookPlatforms.get] 返回空默认实现, 行为与本实现一致 (仅缺 TextFile 清理)。
  */
 private object OhosReadBookPlatform : ReadBookPlatform {
 
@@ -29,9 +26,9 @@ private object OhosReadBookPlatform : ReadBookPlatform {
         OhosReadAloudHost.pause()
     }
 
-    // 鸿蒙无前台 CacheBookService; 缓存 job 由 NativeServiceLauncher 进程内管理, 无运行态标志
-    // (对照 iOS IosBackgroundTasks.isCacheBookRunning; 待 ServiceLauncher 补 isRun 后接真值)
-    override val isCacheBookServiceRun: Boolean get() = false
+    // 鸿蒙无前台 CacheBookService, 缓存 job 由 NativeServiceLauncher 的 scope 管理, 运行态直接
+    // 取 CacheBookShared.isRun: 退出阅读时仍有下载在跑就不许 close 掉下载池
+    override val isCacheBookServiceRun: Boolean get() = CacheBookShared.isRun
 
     // 鸿蒙图片加载无 Coil 内存缓存, 但 ImageBitmapLoader 解码结果进进程级
     // DecodedBitmapCache (大图查看/阅读背景等), 退出阅读时一并清空 (I1)
@@ -40,7 +37,7 @@ private object OhosReadBookPlatform : ReadBookPlatform {
     }
 
     override fun clearTextFileCache() {
-        runCatching { TextFile.clear() }
+        TextFile.clear()
     }
 }
 

@@ -116,14 +116,14 @@ fun CoverConfigRoute(
         )
         CoverConfigScreen(
             onDefaultCover = { isNight ->
-                PlatformCapabilityProviders.getOrNull()?.showDefaultCoverGallery(isNight)
+                PlatformCapabilityProviders.get().showDefaultCoverGallery(isNight)
             },
             onCoverHeight = { showHeightPicker = true },
             coverHeightSummary = state.coverHeightSummary,
             dayCoverSummary = state.dayCoverSummary,
             nightCoverSummary = state.nightCoverSummary,
             onRefreshCover = {
-                PlatformCapabilityProviders.getOrNull()?.refreshDefaultCover()
+                PlatformCapabilityProviders.get().refreshDefaultCover()
             },
         )
     }

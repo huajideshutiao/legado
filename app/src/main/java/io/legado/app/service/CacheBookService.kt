@@ -11,7 +11,6 @@ import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.NotificationId
 import io.legado.app.data.appDb
-import io.legado.app.help.config.AppConfig
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.setLiveProgress
 import io.legado.app.model.CacheBook
@@ -20,13 +19,11 @@ import io.legado.app.notificationManager
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.servicePendingIntent
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.util.concurrent.Executors
 import kotlin.math.min
 
 /**
@@ -39,9 +36,6 @@ class CacheBookService : BaseService() {
             private set
     }
 
-    private val threadCount = AppConfig.threadCount
-    private var cachePool =
-        Executors.newFixedThreadPool(min(threadCount, AppConst.MAX_THREAD)).asCoroutineDispatcher()
     private var downloadJob: Job? = null
     private var notificationContent = androidAppString("service_starting")
     private var mutex = Mutex()
@@ -91,7 +85,6 @@ class CacheBookService : BaseService() {
 
     override fun onDestroy() {
         isRun = false
-        cachePool.close()
         CacheBook.close()
         super.onDestroy()
         postEvent(EventBus.UP_DOWNLOAD, "")
@@ -195,8 +188,8 @@ class CacheBookService : BaseService() {
 
     private fun download() {
         downloadJob?.cancel()
-        downloadJob = lifecycleScope.launch(cachePool) {
-            CacheBook.startProcessJob(cachePool)
+        downloadJob = lifecycleScope.launch {
+            CacheBook.startProcessJob()
             stopSelf()
         }
     }

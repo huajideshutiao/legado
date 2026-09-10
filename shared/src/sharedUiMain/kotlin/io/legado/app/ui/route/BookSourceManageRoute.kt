@@ -182,7 +182,7 @@ fun BookSourceManageRoute(
     // 不必各端自造释放时机 (安卓原先靠 CheckSourceService.onDestroy 发事件, 其余三端无该服务)
     val checking = Debug.checkState.collectAsState().value.isChecking
     LaunchedEffect(checking) {
-        PlatformServiceProviders.getOrNull()?.window?.setKeepScreenOn(checking)
+        PlatformServiceProviders.get().window.setKeepScreenOn(checking)
     }
 
     // 校验完成 (对照 app 端 observeLiveBus: EventBus.CHECK_SOURCE_DONE)
@@ -208,7 +208,7 @@ fun BookSourceManageRoute(
     // 进度条由该事件点亮 (对照原版 checkSourceProgressView 默认 gone, 由 CHECK_SOURCE 置 visible)
     LaunchedEffect(Unit) {
         if (Debug.isChecking) {
-            PlatformCapabilityProviders.getOrNull()?.resumeCheckSource()
+            PlatformCapabilityProviders.get().resumeCheckSource()
         }
     }
 
@@ -297,12 +297,11 @@ fun BookSourceManageRoute(
             },
             onDel = { delTarget = it },
             onDelSelection = { showDelSelection = true },
-            onCancelCheckSource = { PlatformCapabilityProviders.getOrNull()?.cancelCheckSource() },
-            onAddBookSource = { PlatformCapabilityProviders.getOrNull()?.addBookSource() },
+            onCancelCheckSource = { PlatformCapabilityProviders.get().cancelCheckSource() },
+            onAddBookSource = { PlatformCapabilityProviders.get().addBookSource() },
             onImportLocal = {
                 // 对照 ReplaceRuleRoute onImportLocal: 文件选择器 + ImportBookSourceViewModelShared
-                val services =
-                    PlatformServiceProviders.getOrNull() ?: return@BookSourceListCallbacks
+                val services = PlatformServiceProviders.get()
                 scope.launch {
                     val path = withContext(IoDispatcher) {
                         services.files.pickFile(io.legado.app.ui.root.FileFilter.Text)
@@ -326,12 +325,12 @@ fun BookSourceManageRoute(
                         screenModel.dispatch(BookSourceUiEvent.EnableSelection(false))
                     },
                     SelectAction(strAddGroup) {
-                        PlatformCapabilityProviders.getOrNull()
-                            ?.selectionAddToGroups(screenModel.selection())
+                        PlatformCapabilityProviders.get()
+                            .selectionAddToGroups(screenModel.selection())
                     },
                     SelectAction(strRemoveGroup) {
-                        PlatformCapabilityProviders.getOrNull()
-                            ?.selectionRemoveFromGroups(screenModel.selection())
+                        PlatformCapabilityProviders.get()
+                            .selectionRemoveFromGroups(screenModel.selection())
                     },
                     SelectAction(strEnableExplore) {
                         screenModel.dispatch(BookSourceUiEvent.EnableSelectExplore)
@@ -346,7 +345,7 @@ fun BookSourceManageRoute(
                         screenModel.dispatch(BookSourceUiEvent.SelectionToBottom)
                     },
                     SelectAction(strExportSelection) {
-                        PlatformCapabilityProviders.getOrNull()?.exportBookSourceSelection(
+                        PlatformCapabilityProviders.get().exportBookSourceSelection(
                             selection = screenModel.selection(),
                             allCount = screenModel.state.value.sources.size,
                             sortAscending = screenModel.state.value.sortAscending,
@@ -354,7 +353,7 @@ fun BookSourceManageRoute(
                         )
                     },
                     SelectAction(strShareSelectedSource) {
-                        PlatformCapabilityProviders.getOrNull()?.shareBookSourceSelection(
+                        PlatformCapabilityProviders.get().shareBookSourceSelection(
                             selection = screenModel.selection(),
                             allCount = screenModel.state.value.sources.size,
                             sortAscending = screenModel.state.value.sortAscending,
@@ -362,8 +361,8 @@ fun BookSourceManageRoute(
                         )
                     },
                     SelectAction(strCheckSelectSource) {
-                        PlatformCapabilityProviders.getOrNull()
-                            ?.checkBookSource(screenModel.selection())
+                        PlatformCapabilityProviders.get()
+                            .checkBookSource(screenModel.selection())
                     },
                     SelectAction(strCheckSelectedInterval) {
                         screenModel.dispatch(BookSourceUiEvent.CheckSelectedInterval)

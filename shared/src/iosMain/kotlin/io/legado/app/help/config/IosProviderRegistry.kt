@@ -51,7 +51,7 @@ import io.legado.app.model.script.registerNativeJsEngines
 import io.legado.app.model.webBook.registerNativeWebBookProviders
 import io.legado.app.ui.book.changesource.registerNativeChangeBookSourcePlatform
 import io.legado.app.ui.book.manage.registerNativeBookshelfManagePlatform
-import io.legado.app.ui.book.read.page.provider.registerNativeTextMeasurer
+import io.legado.app.ui.book.read.page.provider.registerSkiaTextMeasurer
 import io.legado.app.utils.registerIosScreenInfoProvider
 import io.legado.app.web.registerNativeWebServerPlatform
 import io.legado.app.web.utils.registerNativeWebAssetSource
@@ -60,19 +60,25 @@ import platform.UIKit.UIDevice
 import platform.UIKit.UIScreen
 import platform.UIKit.UITraitCollection
 import platform.UIKit.UIUserInterfaceStyle
+import kotlin.concurrent.Volatile
+
+@Volatile
+private var providersRegistered = false
 
 /**
  * iOS 宿主启动早期的统一 provider 注册入口。
  *
- * iOS app 在 didFinishLaunchingWithOptions 早期经 Kotlin/Native 桥接调用本函数,
- * 一次性完成所有 commonMain provider 注入。
+ * 调用方: Compose 入口 MainViewController (组合期) 与 BG 唤起时的 IosBackgroundTasks 补注册。
+ * 只认第一次调用: 重复注册会换掉 prefs/AppConfig/Room 实例, 旧实例的 pref 与系统深色监听
+ * 留在全局表里不摘 (见 NativeSystemTheme.listeners / PreferenceChangeNotifier)。
  *
  * 注册顺序约束 (与 desktop Main.kt / registerOhosProviders 对齐):
  * 1. registerIosAppFilesDir 最先 (其他 provider 持久化目录依赖 AppFilesDirs)
  * 1.05 registerIosToaster 须在 registerNativeAppLogHost 之前 (AppLog 的 toast 出口走 Toasters,
- *    晚于 host 注册则初始化期 `AppLog.put(toast = true)` 的失败提示被 runCatching 吞掉;
+ *    晚于 host 注册则初始化期 `AppLog.put(toast = true)` 直接抛 (Toasters 未注册);
  *    IosToaster 只依赖 UIKit (按钮文案经 syncGetString 查 composeResources), 不依赖被它跳过的任何 provider)
- * 2. registerIosPreferenceProvider 在 AppConfigAccessor 之前 (委托 PreferenceProvider)
+ * 2. registerIosPreferenceProvider 在 registerNativeAppLogHost 之前 (log host 的 recordLog 门直读
+ *    PreferenceProviders), 也在 AppConfigAccessor 之前 (委托 PreferenceProvider)
  * 3. registerNativeHttpProvider 在数据库/书籍缓存之前
  * 4. registerIosDatabaseDriver / BookStorage / BookImageStorage / LocalBookLocator 在文件目录之后
  *    (路径从 AppFilesDirs 派生)
@@ -90,11 +96,14 @@ import platform.UIKit.UIUserInterfaceStyle
  * (NativeUpdateBookCallback 桥接 NotificationProgresses + Toasters, 与 desktop 同步)。
  */
 fun registerIosProviders() {
+    if (providersRegistered) return
+    providersRegistered = true
+
     // 1. 文件系统目录 (其他 provider 持久化依赖)
     registerIosAppFilesDir()
 
     // 1.05 Toaster (须在 AppLog 宿主之前: AppLog.put(toast = true) 的 toast 出口走 Toasters,
-    // 晚注册则初始化期的失败提示丢失; IosToaster 只依赖 UIKit, 拿不到 vc 时 NSLog 兜底)
+    // 晚注册则初始化期的提示直接抛; IosToaster 只依赖 UIKit, 拿不到 vc 时 NSLog 兜底)
     registerIosToaster()
 
     // 1.05.5 AppString provider (help/i18n appString 通道: model/help 层异常与翻页边界提示等
@@ -102,12 +111,15 @@ fun registerIosProviders() {
     // 零平台依赖顺序无关, 只须在任何 appString 调用之前)
     registerNativeAppStringProvider()
 
+    // 1.06 Preference provider (须在 AppLog 宿主之前: 宿主的 recordLog 门直读 PreferenceProviders,
+    // 晚注册则这中间的 AppLog.put 全按 recordLog=false 走, 不落盘)
+    registerIosPreferenceProvider()
+
     // 1.1 AppLog 宿主 (日志落盘到 {filesDir}/logs, 供 CrashLogProvider 收集;
     // 须在 AppFilesDirs 之后 (日志目录从 filesDir 派生)、任何 AppLog.put 之前)
     registerNativeAppLogHost()
 
-    // 2. 配置 provider (PreferenceProvider -> AppConfigAccessor)
-    registerIosPreferenceProvider()
+    // 2. 配置 provider (AppConfigAccessor 委托 1.06 已注册的 PreferenceProvider)
     registerNativeAppConfigAccessor()
 
     // 2.3 设备标识注入 (identifierForVendor, 取不到回退落盘 UUID; BaseSource 登录信息加密依赖 ≥16 字符)
@@ -246,7 +258,7 @@ fun registerIosProviders() {
 
     // 9.5 阅读排版真实字形度量器 (Skia Font 度量, 取代 SimpleTextMeasurer 等宽近似;
     // 须在任何章节排版之前, 依赖 skiko 随 compose ui 已就绪)
-    registerNativeTextMeasurer()
+    registerSkiaTextMeasurer()
 
     // 9.6 阅读页内嵌图片解析器 (EPUB 插图/PDF 单图页: 排版取尺寸 + 绘制取位图,
     // 对照 Android MainActivity / desktop Main.kt; 未注册时 ImageResolverProviders.createOrNull
@@ -270,7 +282,5 @@ fun registerIosProviders() {
  * 业务侧一律读 [NativeSystemTheme.isNight] 内存缓存 (见 MainViewController 的 LocalSystemTheme 回写)。
  */
 internal actual fun probeSystemNightMode(): Boolean? =
-    runCatching {
-        UIScreen.mainScreen.traitCollection.userInterfaceStyle ==
-            UIUserInterfaceStyle.UIUserInterfaceStyleDark
-    }.getOrNull()
+    UIScreen.mainScreen.traitCollection.userInterfaceStyle ==
+        UIUserInterfaceStyle.UIUserInterfaceStyleDark

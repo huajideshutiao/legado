@@ -530,11 +530,7 @@ private fun AudioPlayOverflowMenu(actions: AudioPlayOverflowActions) {
                             .weight(1f)
                             .padding(end = 12.dp),
                     )
-                    AppMenuCheckbox(
-                        checked = runCatching {
-                            AppConfigProviders.get().audioPlayUseWakeLock
-                        }.getOrDefault(false),
-                    )
+                    AppMenuCheckbox(checked = AppConfigProviders.get().audioPlayUseWakeLock)
                 }
             }
             AudioOverflowItem("bookmark_add") {

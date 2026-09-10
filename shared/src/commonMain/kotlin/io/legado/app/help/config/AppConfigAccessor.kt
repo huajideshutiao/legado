@@ -22,13 +22,13 @@ interface AppConfigAccessor {
     val tocCountWords: Boolean
 
     /** 持久化 tocCountWords (原 AppConfig.tocCountWords = value)。 */
-    fun setTocCountWords(value: Boolean) {}
+    fun setTocCountWords(value: Boolean)
 
     /** 目录界面是否使用替换规则 (原 AppConfig.tocUiUseReplace), 默认 false。 */
     val tocUiUseReplace: Boolean
 
     /** 持久化 tocUiUseReplace (原 AppConfig.tocUiUseReplace = value)。 */
-    fun setTocUiUseReplace(value: Boolean) {}
+    fun setTocUiUseReplace(value: Boolean)
 
     /** 简繁转换类型 (原 AppConfig.chineseConverterType): 0=不转换, 1=t2s, 2=s2t。 */
     var chineseConverterType: Int
@@ -154,24 +154,17 @@ interface AppConfigAccessor {
     /** TTS 引擎 (原 AppConfig.ttsEngine), 默认空串。 */
     val ttsEngine: String
 
-    /** 音频播放唤醒锁 (原 AppConfig.audioPlayUseWakeLock), 默认 false。 */
-    val audioPlayUseWakeLock: Boolean get() = false
+    /** 音频播放唤醒锁 (原 AppConfig.audioPlayUseWakeLock)。 */
+    val audioPlayUseWakeLock: Boolean
 
     /** 持久化音频唤醒锁 (原 AppConfig.audioPlayUseWakeLock = value)。 */
-    fun setAudioPlayUseWakeLock(value: Boolean) {}
+    fun setAudioPlayUseWakeLock(value: Boolean)
 
-    /**
-     * 退出未上架书时是否弹加书架确认 (原 AppConfig.showAddToShelfAlert), 默认 true。
-     *
-     * 桌面/iOS/鸿蒙端 Accessor 均覆写为缓存字段 (设置界面经 PreferenceStore 直写
-     * 同一个 pref key, 由变更监听刷新); 本默认实现仅作兜底, 未注册时与其他字段
-     * 一致抛 IllegalStateException (不再静默返回 true)。
-     */
+    /** 退出未上架书时是否弹加书架确认 (原 AppConfig.showAddToShelfAlert), 默认 true。 */
     val showAddToShelfAlert: Boolean
-        get() = PreferenceProviders.get().getBoolean(PreferKey.showAddToShelfAlert, true)
 
-    // 持久化 ttsEngine (原 AppConfig.ttsEngine = value), 默认空实现供各端按需覆写
-    fun setTtsEngine(value: String?) {}
+    /** 持久化 ttsEngine (原 AppConfig.ttsEngine = value), null = 系统默认引擎。 */
+    fun setTtsEngine(value: String?)
 
     /** TTS 语速 (原 AppConfig.ttsSpeechRate), 默认 5 (= AppConfig.defaultSpeechRate)。 */
     val ttsSpeechRate: Int
@@ -193,10 +186,9 @@ interface AppConfigAccessor {
      * 系统当前是否深色 (themeMode="0" 跟随系统时 [isNightTheme] 的来源)。
      *
      * 供「切到某个模式时能否落回跟随系统」判断使用 —— 目标与系统一致就写 "0",
-     * 不把用户的「跟随系统」写死成显式档。平台探测不到时回退 [isNightTheme]
-     * (判断退化为恒不成立, 行为等同一直写显式档)。
+     * 不把用户的「跟随系统」写死成显式档。
      */
-    val systemNightTheme: Boolean get() = isNightTheme
+    val systemNightTheme: Boolean
 
     /** 是否使用默认封面 (原 AppConfig.useDefaultCover), 默认 false。 */
     val useDefaultCover: Boolean
@@ -260,7 +252,7 @@ interface AppConfigAccessor {
     val bitmapCacheSize: Int
 
     /** 持久化 bitmapCacheSize (原 AppConfig.bitmapCacheSize = value), 供 ImageProvider 下沉后修正非法值。 */
-    fun setBitmapCacheSize(value: Int) {}
+    fun setBitmapCacheSize(value: Int)
 
     /** 源编辑最大行数 (原 AppConfig.sourceEditMaxLine): 存储值不在 5..30 一律视为不限制, 返回 Int.MAX_VALUE。 */
     val sourceEditMaxLine: Int
@@ -268,28 +260,14 @@ interface AppConfigAccessor {
     /** 欢迎页展示时长毫秒 (原 AppConfig.welcomeShowTime), 默认 600, 范围 600..3000。 */
     val welcomeShowTime: Int
 
-    /**
-     * 是否启用开发特性 (原 AppConfig.devFeat), 默认 false。
-     *
-     * 各端 Accessor 均覆写: app 端读 AppConfig.devFeat (boolPref 直读),
-     * 桌面/iOS/鸿蒙读设置界面 (OtherConfigScreen) 写入的同一个 pref key (缓存字段)。
-     * 本默认实现仅作兜底, 未注册时与其他字段一致抛 IllegalStateException
-     * (不再静默返回 false)。
-     */
+    /** 是否启用开发特性 (原 AppConfig.devFeat), 默认 false。 */
     val devFeat: Boolean
-        get() = PreferenceProviders.get().getBoolean(PreferKey.devFeat, false)
 
     /**
      * 书籍详情页横向布局开关 (原 AppConfig.bookInfoHorizontalLayout), 默认 false。
      * BookInfoRoute 据此计算 useDevFeat (与 isVideo/isLandscape 组合)。
-     *
-     * 各端 Accessor 均覆写: app 端读 AppConfig.bookInfoHorizontalLayout,
-     * 桌面/iOS/鸿蒙读设置界面 (ThemeConfigScreen) 写入的同一个 pref key (缓存字段)。
-     * 本默认实现仅作兜底, 未注册时与其他字段一致抛 IllegalStateException
-     * (不再静默返回 false)。
      */
     val bookInfoHorizontalLayout: Boolean
-        get() = PreferenceProviders.get().getBoolean(PreferKey.bookInfoHorizontalLayout, false)
 
     /**
      * 阅读页屏幕方向 (原 AppConfig.screenOrientation): "0"=跟随系统 "1"=竖向 "2"=横向
@@ -347,17 +325,15 @@ object AppConfigProviders {
 }
 
 /**
- * 当前是否夜间主题; [AppConfigProviders] 未注册时按日间 (@Preview / 启动早期)。
+ * 当前是否夜间主题。
  *
  * 四端共 9 处曾各写一份同样的 runCatching, 归到此处一份 —— 判定语义 (含「跟随系统」档)
  * 只有 [AppConfigAccessor.isNightTheme] 一个来源。
  */
-fun currentNightTheme(): Boolean =
-    runCatching { AppConfigProviders.get().isNightTheme }.getOrDefault(false)
+fun currentNightTheme(): Boolean = AppConfigProviders.get().isNightTheme
 
-/** 当前是否 E-Ink 模式 (themeMode == "3"); 未注册时 false。同 [currentNightTheme]。 */
-fun currentEInkMode(): Boolean =
-    runCatching { AppConfigProviders.get().isEInkMode }.getOrDefault(false)
+/** 当前是否 E-Ink 模式 (themeMode == "3")。同 [currentNightTheme]。 */
+fun currentEInkMode(): Boolean = AppConfigProviders.get().isEInkMode
 
 /**
  * 切到 [targetNight] 时应写入的 themeMode: 与系统一致取 "0" (跟随系统), 否则取显式档。
@@ -366,9 +342,7 @@ fun currentEInkMode(): Boolean =
  * 再点一下回到深色时 → 应还原成「跟随系统」而不是写死「夜间」。
  */
 fun themeModeFor(targetNight: Boolean): String {
-    val followSystem = runCatching {
-        AppConfigProviders.get().systemNightTheme == targetNight
-    }.getOrDefault(false)
+    val followSystem = AppConfigProviders.get().systemNightTheme == targetNight
     return when {
         followSystem -> "0"
         targetNight -> "2"

@@ -11,6 +11,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.BookHelpShared
+import io.legado.app.help.book.BookImageStorageProviders
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.book.changeSourceTo
@@ -18,7 +19,11 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.coroutine.mainDispatcher
+import io.legado.app.help.image.ReaderImageCache
+import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.help.toast.Toasters
+import io.legado.app.help.tts.OneShotTts
 import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.ReadBookPlatforms
 import io.legado.app.model.ReadBookShared
@@ -32,18 +37,19 @@ import io.legado.app.ui.book.read.page.PageSelectionState
 import io.legado.app.ui.book.read.page.detectClickArea
 import io.legado.app.ui.book.searchContent.SearchResult
 import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.screenModelScope
-import io.legado.app.utils.encodeURI
 import io.legado.app.utils.formatTimeOfDay
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isTrue
 import io.legado.app.utils.mapParallelSafe
 import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.systemCurrentTimeMillis
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -51,6 +57,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
@@ -93,14 +100,11 @@ interface ReaderPlatformProvider {
      */
     fun onKeepLightChange(screenModel: ReaderScreenModel) {}
 
-    /** 长按页内文字触发选择 (对照 app 端 ReadView.CallBack.onPageLongClick) */
-    fun onLongPress(screenModel: ReaderScreenModel) {}
-
     /**
      * 页内文字选择完成（长按选中文字后抬起）：携带选中文本与选区起点锚点（窗口坐标，
      * 已折算滚动 + 页眉 + 状态栏），平台弹浮动文本操作菜单并跟随选区（对照旧
-     * ReadView.CallBack.showTextActionMenu → TextActionMenu 浮动菜单；app 端走共享自绘弹层
-     * [io.legado.app.ui.reader.ReaderTextActionMenu]，iOS 走 UIMenuController，桌面回落对话框）。
+     * ReadView.CallBack.showTextActionMenu → TextActionMenu 浮动菜单；四端统一走共享自绘弹层
+     * [io.legado.app.ui.reader.ReaderTextActionMenu]）。
      * 默认空实现。
      */
     fun onTextSelected(
@@ -156,8 +160,13 @@ interface ReaderPlatformProvider {
      */
     fun autoPageStop(screenModel: ReaderScreenModel) {}
 
-    /** 翻页动画配置 (对照原版 AutoReadDialog 设置按钮 → showPageAnimConfig) */
-    fun showPageAnimConfig(screenModel: ReaderScreenModel) {}
+    /**
+     * 翻页动画配置 (对照原版 AutoReadDialog 设置按钮 → showPageAnimConfig)。
+     * 默认走共享 "page_anim_config" 对话框; app 端覆写为菜单内的选择器。
+     */
+    fun showPageAnimConfig(screenModel: ReaderScreenModel) {
+        AppNavigatorProviders.getOrNull()?.showOverlay(AppOverlay.Dialog("page_anim_config"))
+    }
 
     /** 自动翻页滑条抬手后同步 TTS 语速 (对照原版 AutoReadDialog upTtsSpeechRate) */
     fun upTtsSpeechRate(screenModel: ReaderScreenModel) {}
@@ -551,15 +560,23 @@ class ReaderScreenModel(
         showActionMenu()
     }
 
+    /** 跨章跳转的等排版任务, 搜索菜单上一个/下一个连点时只保留最后一次 */
+    private var searchJumpJob: Job? = null
+
     /**
-     * 全文搜索跳转（对照原版 ReadBookActivity.skipToSearch）：跨章时等新章装载完成
-     * 再定位（用 ReadBookShared.openChapter 的 success 回调，与 app 端 ReadBook.openChapter
-     * 同语义；ReadBookViewModelShared.openChapter 的 success 是立即触发的不适用）。
+     * 全文搜索跳转（对照原版 ReadBookActivity.skipToSearch）：跨章时装载目标章并等排版完成再定位。
+     *
+     * 必须走 [ReadBookViewModelShared.loadChapter]：[ReadBookShared.openChapter] 那条链清掉三章
+     * 滑窗后只取正文不排版，curTextChapter 永不回填，阅读页卡"加载中"且 [jumpToPosition] 首行直接返回。
      */
     fun skipToSearch(searchResult: SearchResult) {
         if (searchResult.chapterIndex != readBook.durChapterIndexValue) {
-            readBook.openChapter(searchResult.chapterIndex) {
-                jumpToPosition(searchResult)
+            searchJumpJob?.cancel()
+            searchJumpJob = scope.launch {
+                viewModel.loadChapter(searchResult.chapterIndex)
+                // 排版产物回填滑窗后才有 pages 可定位 (装载失败的占位章同样带本章号, 不会干等)
+                viewModel.curTextChapter.first { it?.chapterIndex == searchResult.chapterIndex }
+                withContext(mainDispatcher) { jumpToPosition(searchResult) }
             }
         } else {
             jumpToPosition(searchResult)
@@ -573,6 +590,9 @@ class ReaderScreenModel(
      */
     private fun jumpToPosition(searchResult: SearchResult) {
         val curTextChapter = viewModel.curTextChapter.value ?: return
+        // 装载失败的章节是占位消息章 (正文里没有命中词, 视口未注入时还可能整页无行),
+        // searchResultPositions 会算出 -1 起的行列索引, 不能拿它去定位选区
+        if (curTextChapter.pages.firstOrNull()?.isMsgPage != false) return
         searchMenuState.updateSearchInfo()
         val query = searchContentQuery
         val pos = searchResultPositions(
@@ -760,8 +780,16 @@ class ReaderScreenModel(
     /** 存跳转前进度快照 (对照原版 ReadBook.saveCurrentBookProgress, 已有快照时不覆盖) */
     fun saveCurrentBookProgress() = readBook.saveCurrentBookProgress()
 
-    /** 恢复并清空快照 (对照原版 ReadBook.restoreLastBookProgress) */
-    fun restoreLastBookProgress() = readBook.restoreLastBookProgress()
+    /**
+     * 恢复并清空快照 (对照原版 ReadBook.restoreLastBookProgress)。
+     *
+     * 落位走 [ReadBookViewModelShared.setProgress]：只有它会排版并回填滑窗。
+     */
+    fun restoreLastBookProgress() {
+        val progress = readBook.lastBookProgress ?: return
+        readBook.lastBookProgress = null
+        viewModel.setProgress(progress)
+    }
 
     /** 放弃快照 (对照原版 restoreLastBookProcess 的 noButton/onCancelled 分支) */
     fun clearLastBookProgress() {
@@ -774,7 +802,7 @@ class ReaderScreenModel(
      */
     fun restoreLastBookProcess() {
         when {
-            confirmRestoreProcess == true -> readBook.restoreLastBookProgress()
+            confirmRestoreProcess == true -> restoreLastBookProgress()
             confirmRestoreProcess == null ->
                 postDialogEvent(ReaderDialogEvent.RestoreProcessConfirm)
         }
@@ -875,7 +903,8 @@ class ReaderScreenModel(
             readBook.book.value?.name ?: ""
         )
         readBook.webBookProgressValue?.let {
-            readBook.setProgress(it)
+            // 排版路径落位, 见 restoreLastBookProgress
+            viewModel.setProgress(it)
             readBook.updateWebBookProgress(null)
         }
     }
@@ -922,6 +951,39 @@ class ReaderScreenModel(
     fun searchContentTextCallback(): (String) -> Unit = { text ->
         searchContentQuery = text
         menuState.clickSearch()
+    }
+
+    /**
+     * 朗读选中文字回调（对照原版 menu_aloud）：`contentSelectSpeakMod == 1` 从选中处朗读整章，
+     * 否则一次性朗读选中段。
+     */
+    fun readAloudTextCallback(): (String) -> Unit = { text ->
+        if (PreferenceProviders.get().getInt(PreferKey.contentSelectSpeakMod, 0) == 1) {
+            scope.launch { readAloudFromSelection() }
+        } else {
+            selectionTts.speak(text)
+        }
+    }
+
+    /**
+     * 从选区起点朗读（对照原版 `ReadView.aloudStartSelect`）：选区可能落在下一/下下页，
+     * 先把阅读位置翻到那一页，再按行列换算成章内偏移交给朗读。
+     */
+    private suspend fun readAloudFromSelection() {
+        val start = selection.start
+        if (!start.isValid) {
+            readBook.readAloud()
+            return
+        }
+        var pagePos = start.pagePos
+        while (pagePos > 0) {
+            if (!readBook.moveToNextPage()) readBook.moveToNextChapterAwait(false)
+            pagePos--
+        }
+        // 翻页后新章尚未排完时取不到页, 退回从当前进度读 (与 startPos=0 同义)
+        val page = readBook.curChapter?.getPage(readBook.durPageIndexValue)
+            ?: return readBook.readAloud()
+        readBook.readAloud(startPos = page.getPosByLineColumn(start.lineIndex, start.columnIndex))
     }
 
     // endregion
@@ -1044,12 +1106,18 @@ sealed interface ReaderDialogEvent {
     data object SetCharset : ReaderDialogEvent
 }
 
-/** 选中文本在浏览器中打开 (URL 直接打开, 非 URL 走系统搜索引擎, 对照原版 menu_browser) */
-fun openTextInBrowser(text: String) {
-    val url = if (text.isAbsUrl()) {
-        text
-    } else {
-        "https://www.bing.com/search?q=" + text.encodeURI()
+/** 选中文字朗读用的一次性引擎: OneShotTts 每 new 一个都会在共享引擎上再套一层进度监听, 故单实例。 */
+private val selectionTts = OneShotTts()
+
+/**
+ * 刷新单张正文图 (对照原版 ReadBookViewModel.refreshImage): 删该图磁盘缓存文件 +
+ * 清共享内存缓存 + 重载当前章。只清内存缓存会立刻从磁盘读回同一份旧字节, 两处都得删。
+ */
+fun refreshReaderImage(book: Book?, chapter: BookChapter?, src: String) {
+    if (book != null && chapter != null) {
+        BookImageStorageProviders.get().getImagePath(book, chapter, src)
+            ?.let { BackupFileOps.delete(it) }
     }
-    PlatformCapabilityProviders.get().openExternalUrl(url)
+    ReaderImageCache.clear()
+    ReadBookEvents.postConfig(ReadConfigChange.LOAD_CONTENT)
 }

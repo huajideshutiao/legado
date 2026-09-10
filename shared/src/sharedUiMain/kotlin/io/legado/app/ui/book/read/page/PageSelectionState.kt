@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
+import io.legado.app.ui.book.read.page.entities.TextLine
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.column.BaseColumn
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
@@ -141,11 +142,12 @@ class PageSelectionState {
      */
     var pageSource: SelectionPageSource? = null
 
-    /** 选择创建时的第 0 页实例（翻页后旧页数据不再被改写；也是 [currentPage] 的来源） */
-    private var anchorPage: TextPage? = null
-
-    /** 当前选择所属的页实例（只读视图，供外部判断选区是否仍位于当前页） */
-    val currentPage: TextPage? get() = anchorPage
+    /**
+     * 选区各位置所属的页实例快照（下标 = pagePos，0/1/2），选区创建时记一次。
+     * [pageSource] 读的是活页流：静默重排换整批实例、相邻章装载只换 next/nextPlus 流，
+     * 与快照不一致就说明位置里的行号属于旧实例，见 [lineAt]。
+     */
+    private val anchorPages = arrayOfNulls<TextPage>(3)
 
     /** 长按命中位置（对照旧 `ReadView.initialTextPos`，拖拽扩选的方向基准） */
     private var initialPos = PageSelPos.EMPTY
@@ -219,8 +221,7 @@ class PageSelectionState {
                         return RoughHit(PageSelPos(pagePos, lineIndex, charIndex), column)
                     }
                 }
-                // 防御: 空列行 (异常排版产物) 时 first()/last() 抛 NoSuchElementException,
-                // 会杀死本手势协程导致后续长按选择全部失效, 这里按行首回落
+                // 零列行（消息页文案里的空行正常产出）无列可命中，按行首回落也无处落，跳过
                 val firstColumn = columns.firstOrNull() ?: continue
                 val isLast = firstColumn.start < x
                 val charIndex = if (isLast) columns.lastIndex + 1 else -1
@@ -259,7 +260,8 @@ class PageSelectionState {
         if (hit.column !is TextColumn) return false
         val page = pageAt(hit.pos.pagePos) ?: return false
         val (wordStart, wordEnd) = wordRangeAt(page, hit.pos)
-        anchorPage = pageAt(0)
+        // 本次命中的三页实例快照：之后所有位置解析都要与它对上（见 [lineAt]）
+        for (pagePos in 0..2) anchorPages[pagePos] = pageAt(pagePos)
         initialPos = hit.pos
         start = wordStart
         end = wordEnd
@@ -397,9 +399,10 @@ class PageSelectionState {
         markSearchResult: Boolean = false,
     ) {
         if (page.lines.isEmpty()) return
-        // 搜索跳转恒作用于当前页（pagePos 0）：anchorPage 直接取传入页，
+        // 搜索跳转恒作用于当前页（pagePos 0）：第 0 槽直接取传入页，
         // [pageSource] 未注入时 [pageAt] 也据此回落
-        anchorPage = page
+        anchorPages[0] = page
+        for (pagePos in 1..2) anchorPages[pagePos] = pageAt(pagePos)
         initialPos = startPos
         start = clampStart(startPos)
         // 行越界钳制到页内（旧版算法保证 addLine=1 时 lineIndex+1 不越界，此处兜底）
@@ -436,8 +439,8 @@ class PageSelectionState {
      *  图片长按菜单标志一并清除（对照旧 onCancelSelect → isImageMenuShowing = false）。 */
     fun cancel() {
         imageMenuShowing = false
-        if (!isActive && anchorPage == null) return
-        anchorPage = null
+        if (!isActive && anchorPages[0] == null) return
+        anchorPages.fill(null)
         initialPos = PageSelPos.EMPTY
         start = PageSelPos.EMPTY
         end = PageSelPos.EMPTY
@@ -453,45 +456,44 @@ class PageSelectionState {
     fun selectionAnchor(): Offset? {
         val s = start
         if (!s.isValid) return null
-        val page = pageAt(s.pagePos) ?: return null
-        val line = page.getLine(s.lineIndex)
+        val line = lineAt(s) ?: return null
         val column = line.columns.getOrNull(s.columnIndex) ?: return null
         return Offset((column.start + column.end) / 2f, line.lineTop + relativeOffset(s.pagePos))
     }
 
     /**
-     * 起点手柄锚点（正文区坐标）：起点列 start x（行尾越界取上一列 end）+ 起点行底 y
+     * 起点手柄锚点（正文区坐标）：起点列 start x（起点在行尾之后时取末列 end）+ 起点行底 y
      * + 起点所在页的 relativeOffset。
-     * 对照旧 `selectStartMoveIndex` → upSelectedStart 的游标定位（x = 列 start /
-     * charIndex == 列数取列 end；y = 行底 lineBottom + relativeOffset，与菜单锚点
-     * [selectionAnchor] 的 lineTop 口径不同：手柄贴行底，菜单锚点用行顶）。
+     * 对照旧 `selectStartMoveIndex` → upSelectedStart 的游标定位（y = 行底 lineBottom +
+     * relativeOffset，与菜单锚点 [selectionAnchor] 的 lineTop 口径不同：手柄贴行底，
+     * 菜单锚点用行顶）。
      */
     fun startHandleOffset(): Offset? {
         val s = start
         if (!s.isValid) return null
-        val page = pageAt(s.pagePos) ?: return null
-        val line = page.getLine(s.lineIndex)
+        val line = lineAt(s) ?: return null
         val columns = line.columns
-        val column = line.getColumn(s.columnIndex)
-        val x = if (s.columnIndex < columns.size) column.start else column.end
+        // columnIndex == columns.size 是选区模型有意编码的"行尾之后"（见 [selectedText]
+        // 的行尾换行分支），手柄贴末列右缘；零列行没有手柄可画
+        val x = if (s.columnIndex < columns.size) {
+            columns[s.columnIndex].start
+        } else {
+            columns.lastOrNull()?.end ?: return null
+        }
         return Offset(x, line.lineBottom + relativeOffset(s.pagePos))
     }
 
     /**
-     * 终点手柄锚点（正文区坐标）：终点列 end x（行首越界取上一列 start）+ 终点行底 y
-     * + 终点所在页的 relativeOffset。
-     * 对照旧 `selectEndMoveIndex` → upSelectedEnd（x = 列 end / charIndex == -1 取列
-     * start；y = 行底 lineBottom + relativeOffset）。
+     * 终点手柄锚点（正文区坐标）：终点列 end x + 终点行底 y + 终点所在页的 relativeOffset。
+     * 对照旧 `selectEndMoveIndex` → upSelectedEnd。终点落在"行首之前"（columnIndex == -1，
+     * 反向拖到行首时产生）不成选区，[PageSelPos.isValid] 已排除，不画手柄。
      */
     fun endHandleOffset(): Offset? {
         val e = end
         if (!e.isValid) return null
-        val page = pageAt(e.pagePos) ?: return null
-        val line = page.getLine(e.lineIndex)
-        val columns = line.columns
-        val column = line.getColumn(e.columnIndex)
-        val x = if (e.columnIndex > -1) column.end else column.start
-        return Offset(x, line.lineBottom + relativeOffset(e.pagePos))
+        val line = lineAt(e) ?: return null
+        val column = line.columns.getOrNull(e.columnIndex) ?: return null
+        return Offset(column.end, line.lineBottom + relativeOffset(e.pagePos))
     }
 
     /**
@@ -521,11 +523,6 @@ class PageSelectionState {
                                 sb.append("\n")
                             }
 
-                            // 终点在该行行首之前（终点 = -1）：补行首换行
-                            compareEnd == 1 -> if (e.columnIndex == -1 && charIndex == 0) {
-                                sb.append("\n")
-                            }
-
                             compareStart >= 0 && compareEnd <= 0 -> {
                                 sb.append(column.charData)
                                 if (
@@ -549,8 +546,20 @@ class PageSelectionState {
     // region 内部实现
 
     /** 按 pagePos 取页（对照旧 relativePage）：[pageSource] 未注入时只认第 0 页 = 选区所在页 */
-    private fun pageAt(pagePos: Int): TextPage? =
-        pageSource?.pageAt(pagePos) ?: anchorPage?.takeIf { pagePos == 0 }
+    private fun pageAt(pagePos: Int): TextPage? {
+        val source = pageSource ?: return anchorPages[0]?.takeIf { pagePos == 0 }
+        return source.pageAt(pagePos)
+    }
+
+    /**
+     * 位置所在页的行：页实例已不是选区创建时的那一个（静默重排 / 相邻章装载换了实例），
+     * 或行号越出页内行数时返回 null —— 位置里的行号属于旧实例，拿它索引新页只会算出
+     * 错的几何且不报错，一律按"定位未生效、选区已失效"处理。
+     */
+    private fun lineAt(pos: PageSelPos): TextLine? {
+        val page = pageAt(pos.pagePos)?.takeIf { it === anchorPages[pos.pagePos] } ?: return null
+        return page.lines.getOrNull(pos.lineIndex)
+    }
 
     /** 页相对视口偏移（对照旧 relativeOffset）：未注入 [pageSource] 时无滚动，恒 0 */
     private fun relativeOffset(pagePos: Int): Float = pageSource?.relativeOffset(pagePos) ?: 0f
@@ -558,9 +567,9 @@ class PageSelectionState {
     private fun clampStart(pos: PageSelPos): PageSelPos =
         PageSelPos(pos.pagePos, pos.lineIndex, maxOf(0, pos.columnIndex))
 
+    /** 终点列钳到行内末列；行定位未生效（页实例被换 / 行号越界）时整段终点归零让选区作废 */
     private fun clampEnd(pos: PageSelPos): PageSelPos {
-        val page = pageAt(pos.pagePos) ?: return pos
-        val line = page.getLine(pos.lineIndex)
+        val line = lineAt(pos) ?: return PageSelPos.EMPTY
         return PageSelPos(
             pos.pagePos,
             pos.lineIndex,

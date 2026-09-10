@@ -5,8 +5,8 @@ import kotlinx.atomicfu.locks.synchronized
 import kotlin.concurrent.Volatile
 
 /**
- * 排版测量面收口：把 TextChapterLayout/ZhLayout 消费的平台测量原语抽象出来。
- * 已下沉 shared commonMain（跨端共用）；安卓实现 AndroidTextMeasurer 留在 app。
+ * 排版测量面收口：把平台字形度量原语抽象成排版链路唯一的入口。
+ * 实现：安卓 `AndroidTextMeasurer`（androidMain，TextPaint）、其余三端 `SkiaTextMeasurer`（skikoUiMain）。
  */
 interface TextMeasurer {
 
@@ -28,11 +28,7 @@ interface TextMeasurer {
      */
     val textSizePx: Float
 
-    /**
-     * descent（px）：消除 [android.graphics.Paint.FontMetrics] 类型依赖，仅取下行度量 1 字段。
-     * 原链路用 FontMetrics 全字段透传，实际只消费 [descent]——下沉为 Float 让 TextChapterLayout
-     * 不再持 android.graphics 类型。
-     */
+    /** descent（px）：基线以下的下行度量。 */
     val descent: Float
 
     /**
@@ -45,7 +41,7 @@ interface TextMeasurer {
 /**
  * 平台真实字形度量注册处：未注册时排版回退等宽近似 [SimpleTextMeasurer]。
  *
- * desktop 在 `Main.kt` 注册 `SkiaTextMeasurer`；iOS / 鸿蒙注册 `NativeTextMeasurer`。
+ * desktop / iOS / 鸿蒙 三端统一走 `registerSkiaTextMeasurer()` 注册 `SkiaTextMeasurer`。
  * 每次 [createOrNull] 都新建一个私有的平台度量器（`TextPaint` / skia `Font` 都不是线程安全的，
  * 并行排版必须一个 worker 一个实例），再套上 [CachedTextMeasurer] 共享同一张按参数索引的字宽表。
  */
@@ -85,7 +81,7 @@ object TextMeasurerProviders {
             it.keySizePx == textSizePx && it.keySpacingPx == letterSpacingPx &&
                     it.keyFontPath == fontPath
         } ?: AdvanceTable(textSizePx, letterSpacingPx, fontPath).also {
-            // 标定失败的表也留在册子里（内部自禁用），免得每章重试一次探测
+            // 标定判定不可缓存的表也留在册子里（内部 slots=null），免得每章重探一次
             it.calibrate(delegate)
             if (tables.size >= TABLE_CACHE_SIZE) tables.removeAt(0)
             tables.add(it)
@@ -176,18 +172,13 @@ private class AdvanceTable(
     val keyFontPath: String,
 ) {
 
-    /** NaN 未测 / 正数为实测内部宽 / 负数 [POISON]；null = 未标定或已自禁用。 */
+    /** NaN 未测 / 正数为实测内部宽 / 负数 [POISON]；null = 未标定，或标定判定这组参数不可缓存。 */
     @Volatile
     private var slots: FloatArray? = null
 
     // 仅 calibrate() 内写，随 slots 的 volatile 发布一并可见
     private var edgeFirst = 0f
     private var edgeLast = 0f
-
-    /** 合成探测串把平台测崩了：交回直调，不再碰表。 */
-    fun disable() {
-        slots = null
-    }
 
     /** 逐码位查表填 [widths]，全命中才补首末补偿并返回 [FILLED]。 */
     fun fill(text: String, widths: FloatArray): Int {
@@ -260,12 +251,10 @@ private class AdvanceTable(
 
     /**
      * 建表时标定一次：实测首末补偿量，并两两验证探针 advance 与邻居无关。
-     * 补偿量与字符有关（探针之间对不上）就整表不用；某个探针对不上则只把它标记为永不缓存。
+     * 补偿量与字符有关（探针之间对不上）就整表不用（[probe] 给 null）；某个探针对不上则只把它标记为永不缓存。
      */
     fun calibrate(delegate: TextMeasurer) {
-        runCatching { probe(delegate) }.getOrNull()?.let { table ->
-            slots = table
-        }
+        slots = probe(delegate)
     }
 
     private fun probe(delegate: TextMeasurer): FloatArray? {
@@ -338,7 +327,10 @@ private class CachedTextMeasurer(
         if (text.isNotEmpty() && widths.size >= text.length) {
             when (table.fill(text, widths)) {
                 FILLED -> return
-                NEED_SEED -> if (seed(text) && table.fill(text, widths) == FILLED) return
+                NEED_SEED -> {
+                    seed(text)
+                    if (table.fill(text, widths) == FILLED) return
+                }
             }
         }
         delegate.measureGlyphWidths(text, widths)
@@ -349,15 +341,11 @@ private class CachedTextMeasurer(
     /** 不缓存：各实现的整串口径与「逐字求和」并不相等（全零宽串就是反例）。 */
     override fun measureWidth(text: String): Float = delegate.measureWidth(text)
 
-    /** 用一条合成串把 [text] 里未测的码位一次补齐。 */
-    private fun seed(text: String): Boolean {
-        val probe = table.missingProbe(text) ?: return true
+    /** 用一条合成串把 [text] 里未测的码位一次补齐；没有待测码位 = 别的 worker 已经补过了。 */
+    private fun seed(text: String) {
+        val probe = table.missingProbe(text) ?: return
         val out = FloatArray(probe.length)
-        if (runCatching { delegate.measureGlyphWidths(probe, out) }.isFailure) {
-            table.disable()
-            return false
-        }
+        delegate.measureGlyphWidths(probe, out)
         table.learn(probe, out)
-        return true
     }
 }

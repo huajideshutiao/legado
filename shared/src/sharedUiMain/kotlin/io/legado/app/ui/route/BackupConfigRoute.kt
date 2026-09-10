@@ -175,20 +175,18 @@ fun BackupConfigRoute(
     // Job 暂存供 WaitDialog 取消。两入口共用, 对照 app 端 restoreFromLocal()
     // (restoreDoc.launch 回调里才调 viewModel.restore(uri) → WaitDialog)
     val startRestoreFromLocal: () -> Unit = {
-        val services = PlatformServiceProviders.getOrNull()
-        if (services != null) {
-            backupRestoreJob = screenModel.scope.launch {
-                val path = withContext(IoDispatcher) {
-                    services.files.pickFile(FileFilter(extensions = listOf("zip")))
-                } ?: return@launch
-                waitDialogMessage = "恢复中…"
-                try {
-                    // 对照 app 端 viewModel.restore(uri) → Restore.restore: 失败由内部 runCatching
-                    // AppLog+toast 上报 (RestoreShared 内已对齐原版"恢复备份出错"), 本层不重复上报
-                    withContext(IoDispatcher) { RestoreShared.restoreFromZip(path) }
-                } finally {
-                    waitDialogMessage = null
-                }
+        backupRestoreJob = screenModel.scope.launch {
+            val path = withContext(IoDispatcher) {
+                PlatformServiceProviders.get().files
+                    .pickFile(FileFilter(extensions = listOf("zip")))
+            } ?: return@launch
+            waitDialogMessage = "恢复中…"
+            try {
+                // 对照 app 端 viewModel.restore(uri) → Restore.restore: 失败由内部 runCatching
+                // AppLog+toast 上报 (RestoreShared 内已对齐原版"恢复备份出错"), 本层不重复上报
+                withContext(IoDispatcher) { RestoreShared.restoreFromZip(path) }
+            } finally {
+                waitDialogMessage = null
             }
         }
     }
@@ -199,17 +197,37 @@ fun BackupConfigRoute(
             // 非空直接 BackupShared.backupLocked + WaitDialog
             // (对照 app 端 BackupConfigHost.backup + viewModel.backup + WaitDialog)
             onBackup = { uploadToWebDav ->
-                val services = PlatformServiceProviders.getOrNull()
-                if (services != null) {
-                    val backupPath = pref.getStringOrNull(PreferKey.backupPath)
-                    val defaultDir = DataStorageProviders.getOrNull()?.defaultBackupDir
-                    if (backupPath.isNullOrBlank() && defaultDir != null) {
-                        // 桌面/iOS: 有平台惯例目录, 不打扰用户 (不写 prefs, 设置项仍显示"未设置")
-                        startBackup(defaultDir, uploadToWebDav)
-                    } else if (backupPath.isNullOrBlank()) {
-                        // 没设路径: SAF 选目录, 选完写 prefs + 立即备份 (对照 app 端 backupDir.launch)
-                        screenModel.scope.launch {
-                            val path = withContext(IoDispatcher) { services.files.pickDirectory() }
+                val services = PlatformServiceProviders.get()
+                val backupPath = pref.getStringOrNull(PreferKey.backupPath)
+                val defaultDir = DataStorageProviders.getOrNull()?.defaultBackupDir
+                if (backupPath.isNullOrBlank() && defaultDir != null) {
+                    // 桌面/iOS: 有平台惯例目录, 不打扰用户 (不写 prefs, 设置项仍显示"未设置")
+                    startBackup(defaultDir, uploadToWebDav)
+                } else if (backupPath.isNullOrBlank()) {
+                    // 没设路径: SAF 选目录, 选完写 prefs + 立即备份 (对照 app 端 backupDir.launch)
+                    screenModel.scope.launch {
+                        val path = withContext(IoDispatcher) { services.files.pickDirectory() }
+                        if (path != null) {
+                            pref.putString(PreferKey.backupPath, path)
+                            screenModel.dispatch(
+                                BackupConfigUiEvent.UpdateBackupPathSummary(path)
+                            )
+                            startBackup(path, uploadToWebDav)
+                        }
+                    }
+                } else {
+                    // 对照 app 端 backup(): 已设路径先 checkWrite, 不可写则重新选目录再备份
+                    screenModel.scope.launch {
+                        val canWrite = withContext(IoDispatcher) {
+                            services.files.checkWrite(backupPath)
+                        }
+                        if (canWrite) {
+                            startBackup(backupPath, uploadToWebDav)
+                        } else {
+                            // 对照 app 端 backupDir.launch(): 重新选目录, 选完写 prefs + 立即备份
+                            val path = withContext(IoDispatcher) {
+                                services.files.pickDirectory()
+                            }
                             if (path != null) {
                                 pref.putString(PreferKey.backupPath, path)
                                 screenModel.dispatch(
@@ -218,81 +236,56 @@ fun BackupConfigRoute(
                                 startBackup(path, uploadToWebDav)
                             }
                         }
-                    } else {
-                        // 对照 app 端 backup(): 已设路径先 checkWrite, 不可写则重新选目录再备份
-                        screenModel.scope.launch {
-                            val canWrite = withContext(IoDispatcher) {
-                                services.files.checkWrite(backupPath)
-                            }
-                            if (canWrite) {
-                                startBackup(backupPath, uploadToWebDav)
-                            } else {
-                                // 对照 app 端 backupDir.launch(): 重新选目录, 选完写 prefs + 立即备份
-                                val path = withContext(IoDispatcher) {
-                                    services.files.pickDirectory()
-                                }
-                                if (path != null) {
-                                    pref.putString(PreferKey.backupPath, path)
-                                    screenModel.dispatch(
-                                        BackupConfigUiEvent.UpdateBackupPathSummary(path)
-                                    )
-                                    startBackup(path, uploadToWebDav)
-                                }
-                            }
-                        }
                     }
                 }
             },
             // 恢复: upConfig + getBackupNames, 有则 AppSelectorDialog 选 → restoreWebDav; 无则 alert 回退本地
             // (对照 app 端 BackupConfigHost.restore + viewModel.loadBackupNames + selector + restoreWebDav)
             onRestore = {
-                val services = PlatformServiceProviders.getOrNull()
-                if (services != null) {
-                    backupRestoreJob = screenModel.scope.launch {
-                        // 对照 app 端 loadBackupNames: 列表加载显示 R.string.loading
-                        waitDialogMessage = loadingStr
-                        try {
-                            withContext(IoDispatcher) {
-                                runCatching { AppWebDavShared.upConfig() }
-                                    .onFailure {
-                                        AppLog.put(
-                                            "BackupConfigRoute onRestore upConfig 失败\n${it.message}",
-                                            it
-                                        )
-                                    }
-                            }
-                            // 对照 app 端 loadBackupNames onSuccess/onError:
-                            // 拉取失败 toast "WebDavError\n{msg}" 后仍按空列表走"无备份"回退本地;
-                            // 坚果云列表 >700 条时 toast 清理提示
-                            var names: List<String> = emptyList()
-                            var errorMsg: String? = null
-                            var tooManyHint: String? = null
-                            withContext(IoDispatcher) {
-                                try {
-                                    names = AppWebDavShared.getBackupNames()
-                                    if (AppWebDavShared.isJianGuoYun && names.size > 700) {
-                                        tooManyHint = "由于坚果云限制列出文件数量，部分备份可能未显示，请及时清理旧备份"
-                                    }
-                                } catch (e: CancellationException) {
-                                    throw e
-                                } catch (e: Exception) {
-                                    AppLog.put("获取WebDav备份列表出错\n${e.message}", e)
-                                    errorMsg = "WebDavError\n${e.message}"
+                backupRestoreJob = screenModel.scope.launch {
+                    // 对照 app 端 loadBackupNames: 列表加载显示 R.string.loading
+                    waitDialogMessage = loadingStr
+                    try {
+                        withContext(IoDispatcher) {
+                            runCatching { AppWebDavShared.upConfig() }
+                                .onFailure {
+                                    AppLog.put(
+                                        "BackupConfigRoute onRestore upConfig 失败\n${it.message}",
+                                        it
+                                    )
                                 }
-                            }
-                            waitDialogMessage = null
-                            errorMsg?.let { Toasters.get().toast(it) }
-                            tooManyHint?.let { Toasters.get().toast(it) }
-                            if (names.isNotEmpty()) {
-                                backupNames = names
-                                showRestoreSelector = true
-                            } else {
-                                showNoBackupAlert = true
-                            }
-                        } finally {
-                            // 正常完成/取消/异常均清 WaitDialog
-                            waitDialogMessage = null
                         }
+                        // 对照 app 端 loadBackupNames onSuccess/onError:
+                        // 拉取失败 toast "WebDavError\n{msg}" 后仍按空列表走"无备份"回退本地;
+                        // 坚果云列表 >700 条时 toast 清理提示
+                        var names: List<String> = emptyList()
+                        var errorMsg: String? = null
+                        var tooManyHint: String? = null
+                        withContext(IoDispatcher) {
+                            try {
+                                names = AppWebDavShared.getBackupNames()
+                                if (AppWebDavShared.isJianGuoYun && names.size > 700) {
+                                    tooManyHint = "由于坚果云限制列出文件数量，部分备份可能未显示，请及时清理旧备份"
+                                }
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                AppLog.put("获取WebDav备份列表出错\n${e.message}", e)
+                                errorMsg = "WebDavError\n${e.message}"
+                            }
+                        }
+                        waitDialogMessage = null
+                        errorMsg?.let { Toasters.get().toast(it) }
+                        tooManyHint?.let { Toasters.get().toast(it) }
+                        if (names.isNotEmpty()) {
+                            backupNames = names
+                            showRestoreSelector = true
+                        } else {
+                            showNoBackupAlert = true
+                        }
+                    } finally {
+                        // 正常完成/取消/异常均清 WaitDialog
+                        waitDialogMessage = null
                     }
                 }
             },
@@ -303,14 +296,13 @@ fun BackupConfigRoute(
             // SAF 选目录 + 写 prefs + 更新 summary
             // (对照 app 端 selectBackupPath.launch + AppConfig.backupPath = uri.toString())
             onSelectBackupPath = {
-                val services = PlatformServiceProviders.getOrNull()
-                if (services != null) {
-                    screenModel.scope.launch {
-                        val path = withContext(IoDispatcher) { services.files.pickDirectory() }
-                        if (path != null) {
-                            pref.putString(PreferKey.backupPath, path)
-                            screenModel.dispatch(BackupConfigUiEvent.UpdateBackupPathSummary(path))
-                        }
+                screenModel.scope.launch {
+                    val path = withContext(IoDispatcher) {
+                        PlatformServiceProviders.get().files.pickDirectory()
+                    }
+                    if (path != null) {
+                        pref.putString(PreferKey.backupPath, path)
+                        screenModel.dispatch(BackupConfigUiEvent.UpdateBackupPathSummary(path))
                     }
                 }
             },

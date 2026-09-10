@@ -1,7 +1,10 @@
 import picker from '@ohos.file.picker';
 import fs from '@ohos.file.fs';
+import common from '@ohos.app.ability.common';
+import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { BusinessError } from '@ohos.base';
 import { BridgeRequest, BridgeResponse, dispatchBridgeRequest } from './BridgeDispatch';
+import { ensurePermissionGranted } from './PermissionBridgeHandler';
 import { arrayBufferToBase64, base64ToArrayBuffer } from './BridgeCodec';
 
 /**
@@ -16,7 +19,8 @@ import { arrayBufferToBase64, base64ToArrayBuffer } from './BridgeCodec';
  * ## 请求 (Kotlin → ArkTS)
  * {
  *   "requestId": <number>,
- *   "action": "pickDocuments" | "pickDocumentContent" | "pickImages" | "pickDirectory",
+ *   "action": "pickDocuments" | "pickDocumentContent" | "pickImages" | "pickDirectory"
+ *             | "saveDocument" | "saveImageToAlbum",
  *   "payload": "<JSON string, action-specific>"
  * }
  *
@@ -48,6 +52,7 @@ import { arrayBufferToBase64, base64ToArrayBuffer } from './BridgeCodec';
  * - pickImages 用户取消: `{ ok: true, cancelled: true }`
  * - pickDirectory 成功: `{ ok: true, uris: ["<dirUri>"] }`
  * - pickDirectory 用户取消: `{ ok: true, cancelled: true }`
+ * - saveImageToAlbum 成功: `{ ok: true, uris: ["<图库资源 URI>"] }`
  * - 失败: `{ ok: false, error: "<string>" }`
  *
  * # UTI → 后缀映射
@@ -64,6 +69,9 @@ import { arrayBufferToBase64, base64ToArrayBuffer } from './BridgeCodec';
 
 // FilePicker callback 类型 (由 EntryAbility 注入, 内部调 legado.filePickerCallback)
 export type FilePickerCallback = (requestId: number, resultJson: string) => void;
+
+// UIAbilityContext (saveImageToAlbum 的相册权限与 photoAccessHelper 需要; 由 EntryAbility 注入)
+let abilityContext: common.UIAbilityContext | undefined;
 
 // ===== 请求/响应接口定义 (与 Kotlin 侧 JSON 协议对齐) =====
 
@@ -96,6 +104,11 @@ interface SaveDocumentPayload {
   data: string; // base64 编码的文件内容
 }
 
+interface SaveImageToAlbumPayload {
+  extension: string; // 图片扩展名 (不含点), KMP 按字节魔数判定
+  data: string; // base64 编码的图片字节
+}
+
 // ===== UTI → 文件后缀映射表 (对照 iOS UTI 常用值) =====
 // 鸿蒙 DocumentSelectOptions 用 fileSuffixFilters (后缀数组) 过滤, 不接受 MIME;
 // 每项形如 '.txt' 或 '说明|.txt,.log' (竖线前为描述, 逗号分隔多后缀);
@@ -120,6 +133,15 @@ const UTI_TO_SUFFIX: Record<string, string> = {
 // 本桥只用于选图, 故所有图片类 UTI 统一落到 IMAGE_TYPE。
 
 /**
+ * 初始化文件桥 (由 EntryAbility.onCreate 调用, 注入 UIAbilityContext)。
+ *
+ * @param context UIAbility 上下文 (saveImageToAlbum 的相册权限申请与 photoAccessHelper 需要)
+ */
+export function initFilePickerBridge(context: common.UIAbilityContext): void {
+  abilityContext = context;
+}
+
+/**
  * 处理来自 Kotlin 的文件选择请求 (由 EntryAbility 注册的 tsfn 回调调用)。
  *
  * @param requestJson 请求 JSON 字符串 (含 requestId/action/payload)
@@ -137,6 +159,7 @@ async function handleAction(req: BridgeRequest): Promise<FilePickerResponse> {
     case 'pickImages': return await handlePickImages(req.payload ?? '');
     case 'pickDirectory': return await handlePickDirectory(req.payload ?? '');
     case 'saveDocument': return await handleSaveDocument(req.payload ?? '');
+    case 'saveImageToAlbum': return await handleSaveImageToAlbum(req.payload ?? '');
     default: return { ok: false, error: 'unknown action: ' + req.action };
   }
 }
@@ -319,11 +342,44 @@ async function handleSaveDocument(payload: string): Promise<FilePickerResponse> 
   }
 }
 
+// ===== saveImageToAlbum: photoAccessHelper.createAsset 建图库资源, fs.write 写入字节 =====
+// 相册写入只有 ArkTS 有 API (photoAccessHelper), 故 KMP 把字节交到这里落盘;
+// ohos.permission.WRITE_IMAGEVIDEO 是 user_grant (module.json5 已声明), 首次保存时弹窗申请。
+async function handleSaveImageToAlbum(payload: string): Promise<FilePickerResponse> {
+  const p = JSON.parse(payload) as SaveImageToAlbumPayload;
+  if (abilityContext == null) {
+    return { ok: false, error: 'abilityContext not initialized' };
+  }
+  const granted = await ensurePermissionGranted(abilityContext, 'ohos.permission.WRITE_IMAGEVIDEO');
+  if (!granted) {
+    return { ok: false, error: 'WRITE_IMAGEVIDEO not granted' };
+  }
+  let file: fs.File | undefined;
+  try {
+    // createAsset 返回的 URI 已指向图库中的新文件, 无需沙盒中转
+    const helper = photoAccessHelper.getPhotoAccessHelper(abilityContext);
+    const uri = await helper.createAsset(photoAccessHelper.PhotoType.IMAGE, p.extension);
+    file = fs.openSync(uri, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE);
+    fs.writeSync(file.fd, base64ToArrayBuffer(p.data));
+    return { ok: true, uris: [uri] };
+  } catch (e) {
+    console.error('[FilePickerBridge] saveImageToAlbum failed: ' + JSON.stringify(e));
+    return { ok: false, error: (e as BusinessError).message ?? String(e) };
+  } finally {
+    if (file != null) {
+      try {
+        fs.closeSync(file);
+      } catch (e) {
+        console.warn('[FilePickerBridge] closeSync failed: ' + JSON.stringify(e));
+      }
+    }
+  }
+}
+
 // ===== 工具函数 =====
 
 /**
- * 判断异常是否为用户取消 (对照 iOS documentPickerDidCancel)。
- *
+ * 判断异常是否为用户取消 (对照 iOS documentPickerDidCancel)。 *
  * 鸿蒙 DocumentViewPicker.select 在用户取消时抛 BusinessError, code 不统一:
  * - 13900042: ERR_ENOENT (无对应文件, 部分版本取消场景)
  * - 14000011: ERR_INVALID_INPUT (输入无效, 部分版本取消场景)

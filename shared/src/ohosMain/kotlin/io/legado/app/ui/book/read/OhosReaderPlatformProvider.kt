@@ -1,6 +1,7 @@
 package io.legado.app.ui.book.read
 
 import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -18,24 +19,37 @@ import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ThemeConfigProviders
-import io.legado.app.help.image.ReaderImageCache
+import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.file.saveImageToAlbum
+import io.legado.app.help.image.ImageBitmapLoader
 import io.legado.app.help.toast.Toasters
 import io.legado.app.help.tts.OhosReadAloudHost
-import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.ui.book.read.ReadBookEvents
-import io.legado.app.ui.book.read.ReadConfigChange
+import io.legado.app.ui.book.read.page.AutoPagerCompose
 import io.legado.app.ui.book.read.ReaderDialogEvent
 import io.legado.app.ui.compose.platform.SharedThemeStoreProvider
+import io.legado.app.ui.reader.ReaderImageActionMenu
+import io.legado.app.ui.reader.ReaderImageActions
+import io.legado.app.ui.reader.ReaderTextActionMenu
+import io.legado.app.ui.reader.ReaderTextActions
+import io.legado.app.ui.reader.ReaderTextSelectionRequest
+import io.legado.app.ui.reader.readerMenuAnchor
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
-import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteResults
+import io.legado.app.ui.root.imageExtension
 import io.legado.app.ui.root.toRouteRef
+import io.legado.app.ui.widget.dialog.encodePhotoOverlayPayload
 import io.legado.app.utils.KS_JSON
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
 /**
@@ -47,25 +61,18 @@ import kotlinx.serialization.Serializable
  */
 object OhosReaderPlatformProvider : ReaderPlatformProvider {
 
-    /** 查词请求 (选中词 → 暂存, 由 MainOhos 宿主渲染 DictDialogHost; 对照原版 menu_dict → DictDialog)。 */
-    internal var dictWord by mutableStateOf<String?>(null)
+    /** 图片长按动作协程 scope: 下载与相册写入都阻塞等 ArkTS 桥回调, 必须离开主线程。 */
+    private val scope = CoroutineScope(SupervisorJob() + IoDispatcher)
 
-    /** 当前浮动菜单的选中文本 (ArkTS 菜单项点击时经回调取参)。 */
-    private var textActionText: String = ""
+    /** 页内文字选择请求 (null = 不显示自绘浮动菜单), 由 [TextSelectionHost] 渲染。 */
+    private var textSelection by mutableStateOf<ReaderTextSelectionRequest?>(null)
 
-    init {
-        // 菜单动作回调注册 (ArkTS 菜单项点击 → legado_text_action_callback → 本分发)
-        OhosNativeBridge.textActionHandler = { action, text, src ->
-            onTextAction(action, text, src)
-        }
-    }
-
-    /** 空白长按回落: 原版 ContentTextView.longPress 未命中任何列时无动作，此处 no-op。 */
-    override fun onLongPress(screenModel: ReaderScreenModel) = Unit
+    /** 当次选择的动作集: 动作要 screenModel, 故在 onTextSelected 装配好存下。 */
+    private var textActions by mutableStateOf<ReaderTextActions?>(null)
 
     /**
-     * 页内文字选择完成：经 napi 桥弹 ArkTS 浮动菜单并跟随选区（平台原生 ArkUI 组件，
-     * 对标 Android 原版 TextActionMenu；动作见 [onTextAction]）。
+     * 页内文字选择完成: 弹共享自绘浮动文本操作菜单
+     * (见 [ReaderTextActionMenu], 宿主 [TextSelectionHost] 挂在 MainOhos 根组合)。
      */
     override fun onTextSelected(
         screenModel: ReaderScreenModel,
@@ -74,37 +81,65 @@ object OhosReaderPlatformProvider : ReaderPlatformProvider {
         anchorY: Float,
     ) {
         if (text.isBlank()) return
-        textActionText = text
-        OhosNativeBridge.showTextActionMenu(text, anchorX, anchorY)
+        textActions = ReaderTextActions(
+            onReplace = screenModel.replaceTextCallback(),
+            onBookmark = screenModel.bookmarkTextCallback(),
+            onReadAloud = screenModel.readAloudTextCallback(),
+            onSearchContent = screenModel.searchContentTextCallback(),
+        )
+        textSelection = ReaderTextSelectionRequest(text, readerMenuAnchor(anchorX, anchorY))
     }
 
     /**
-     * 页内选区已消失（点按取消选择/翻页/重排等任意路径）：收起 ArkTS 浮动菜单
+     * 页内选区已消失（点按取消选择/翻页/重排等任意路径）：收起浮动菜单
      * （对照原版 onCancelSelect → textActionMenu.dismiss）。幂等：菜单未显示时无操作。
      */
-    override fun onTextSelectionDismissed(screenModel: ReaderScreenModel) {
-        OhosNativeBridge.hideTextActionMenu()
-    }
+    override fun onTextSelectionDismissed(screenModel: ReaderScreenModel) = dismissActionMenus()
 
     /**
      * 同步立即关闭浮动菜单（点按取消选择等手势分支同帧同步直调，对照原版 ACTION_DOWN →
      * textActionMenu.dismiss() 同步语义，避免事件链异步延迟的菜单"闪一下再消失"）。
-     * hide 幂等（ArkTS 侧空 payload 隐藏已隐藏的菜单无操作），事件链兜底重复调用安全。
+     * 幂等，事件链兜底重复调用安全。
      */
-    override fun dismissTextActionMenu(screenModel: ReaderScreenModel) {
-        OhosNativeBridge.hideTextActionMenu()
+    override fun dismissTextActionMenu(screenModel: ReaderScreenModel) = dismissActionMenus()
+
+    /** 对照 master ReadBookActivity.cancelSelect: 文本/图片菜单互斥, 同时 dismiss。 */
+    private fun dismissActionMenus() {
+        textSelection = null
+        ReaderImageActionMenu.dismiss()
     }
 
-    /** 阅读页退出: 收起浮动菜单避免残留 (对照原版 onDestroy → textActionMenu.dismiss)。 */
+    /** 阅读页退出: 停止朗读宿主; 停止自动翻页并释放控制器/协程; 收起浮动菜单避免残留 (对照原版 onDestroy → textActionMenu.dismiss)。 */
     override fun onExit(screenModel: ReaderScreenModel) {
-        OhosNativeBridge.hideTextActionMenu()
+        OhosReadAloudHost.stop()
+        autoPageStop(screenModel)
+        (screenModel.menuController.state as? OhosReadMenuState)?.dispose()
+        readerAutoPageActive = false
+        dismissActionMenus()
+        textActions = null
     }
 
     /**
-     * 图片长按 (命中图片列): 经 napi 桥弹 ArkTS 图片浮动菜单 (查看/刷新/保存到相册)。
-     * 查看/保存由 ArkTS 侧本地处理 (全屏预览 / photoAccessHelper 存相册),
-     * 刷新回送本分发执行 [onTextAction] 的 "refresh" 分支 (清图片缓存 + 重排)。
-     * 对照原版 ReadBookActivity.onImageLongPress (无"选择目录", 平台适配为保存到相册)。
+     * 阅读页文本操作菜单宿主 (挂在 MainOhos 根组合, 对照 desktop
+     * DesktopReaderPlatformProvider.TextSelectionHost)。
+     */
+    @Composable
+    fun TextSelectionHost() {
+        val actions = textActions ?: return
+        ReaderTextActionMenu(
+            request = textSelection,
+            actions = actions,
+            // 对照原版 onMenuActionFinally: 关菜单 + 取消页内选择
+            onFinally = {
+                textSelection = null
+                ReadBookEvents.postSelectionCancel()
+            },
+        )
+    }
+
+    /**
+     * 图片长按: 弹共享自绘浮动菜单 (查看/刷新/保存; 鸿蒙无 SAF"选择目录", 保存直落系统相册)。
+     * 菜单项收尾对照原版 popupAction 点击 → onDismiss → postSelectionCancel。
      */
     override fun onImageLongPress(
         screenModel: ReaderScreenModel,
@@ -113,46 +148,46 @@ object OhosReaderPlatformProvider : ReaderPlatformProvider {
         y: Float,
     ) {
         if (src.isBlank()) return
-        OhosNativeBridge.showImageActionMenu(src, x, y)
+        ReaderImageActionMenu.show(
+            anchor = readerMenuAnchor(x, y),
+            actions = ReaderImageActions(
+                view = { viewImage(screenModel, src) },
+                refresh = {
+                    refreshReaderImage(screenModel.currentBook, screenModel.currentChapter, src)
+                },
+                save = { saveImage(screenModel, src) },
+            ),
+        )
     }
 
-    /**
-     * 文本菜单动作分发 (对标原版 ReadBookActivity.onMenuItemSelected/onMenuItemClick):
-     * 替换/书签/全文搜索走 shared 能力; 复制走剪贴板; 查词暂存 dictWord;
-     * 浏览器 URL 直开否则系统搜索; 朗读走系统 TTS 引擎 (TtsEngineProvider);
-     * 图片菜单 refresh 清图片缓存并重排;
-     * `__dismiss` = 菜单收起 → 取消页内选择 (对标原版 onMenuActionFinally)。
-     */
-    private fun onTextAction(action: String, text: String, src: String) {
-        val text = text.ifBlank { textActionText }
-        val screenModel = ReaderScreenModelRegistry.currentScreenModel
-        when (action) {
-            "replace" -> screenModel?.replaceTextCallback()?.invoke(text)
-            "copy" -> PlatformCapabilityProviders.get().copyToClipboard(text)
-            "bookmark" -> screenModel?.bookmarkTextCallback()?.invoke(text)
-            "aloud" -> {
-                // 朗读选中文本: 用已注册的系统 TTS 引擎 (经 TtsBridgeHandler → @ohos.textToSpeech,
-                // 对照原版 menu_aloud → ReadAloudControllerShared)
-                val engine = TtsEngineProvider.get()
-                if (engine != null) {
-                    engine.speak(text, "textActionAloud")
-                } else {
-                    Toasters.get().toast("朗读暂未支持")
-                }
-            }
-            "dict" -> dictWord = text
-            "search_content" -> screenModel?.searchContentTextCallback()?.invoke(text)
-            "browser" -> openTextInBrowser(text)
-            "share" -> PlatformCapabilityProviders.get().shareText(text)
+    /** 查看大图: 共享全屏大图 Overlay (key="photo", 口径同 desktop); payload 带章节索引让
+     *  对话框优先读阅读时已落盘的章节图片缓存, sourceOrigin 供防盗链 header/封面解密。 */
+    private fun viewImage(screenModel: ReaderScreenModel, src: String) {
+        val book = screenModel.currentBook
+        AppNavigatorProviders.get().showOverlay(
+            AppOverlay.Dialog(
+                key = "photo",
+                payload = encodePhotoOverlayPayload(
+                    src, screenModel.viewModel.durChapterIndex.value
+                ),
+                sourceOrigin = book?.origin?.takeIf { !book.isLocal && it.isNotBlank() },
+            )
+        )
+    }
 
-            // 图片菜单"刷新": 清 shared ReaderImageCache (鸿蒙阅读页图片走 shared
-            // ReaderImageResolver) + 发 LOAD_CONTENT 事件重排 (对照 app 端 refreshImage)
-            "refresh" -> {
-                ReaderImageCache.clear()
-                ReadBookEvents.postConfig(ReadConfigChange.LOAD_CONTENT)
+    /** 保存到相册: 下载解码 (带书源防盗链 header) → photoAccessHelper 写入 (仅 ArkTS 可调, 经文件桥)。 */
+    private fun saveImage(screenModel: ReaderScreenModel, src: String) {
+        val book = screenModel.currentBook
+        val bookSource = screenModel.viewModel.bookSource.value
+        Toasters.get().toast("正在保存")
+        scope.launch {
+            val bytes = ImageBitmapLoader().loadBytes(src, book, bookSource)
+            if (bytes == null) {
+                Toasters.get().toast("图片保存失败")
+                return@launch
             }
-
-            "__dismiss" -> ReadBookEvents.postSelectionCancel()
+            val saved = saveImageToAlbum(imageExtension(bytes, src).removePrefix("."), bytes)
+            Toasters.get().toast(if (saved) "已保存到相册" else "图片保存失败")
         }
     }
 
@@ -161,28 +196,14 @@ object OhosReaderPlatformProvider : ReaderPlatformProvider {
         screenModel: ReaderScreenModel,
     ): ReadMenuController = OhosReadMenuController(navigator, screenModel)
 
-    // 自动翻页面板停止按钮: 本端 autoPage 仅开关状态 (无 AutoPager), 复位开关即可
+    // 自动翻页面板停止按钮 (对照 app/desktop 端 autoPageStop → stopAutoPage: 停控制器 + 复位开关)
     override fun autoPageStop(screenModel: ReaderScreenModel) {
-        (screenModel.menuController.state as? OhosReadMenuState)?.autoPage = false
-    }
-
-    // 设置按钮 → 翻页动画配置 (对照 app 端 showPageAnimConfigSelector: 选择器回调忽略索引,
-    // 实际动画值在界面设置弹窗配置, 只触发 upPageAnim + 重载; 与菜单 PAGE_ANIM 分支同语义)
-    override fun showPageAnimConfig(screenModel: ReaderScreenModel) {
-        AppNavigatorProviders.getOrNull()?.showOverlay(AppOverlay.Dialog("page_anim_config"))
+        (screenModel.menuController.state as? OhosReadMenuState)?.stopAutoPage()
     }
 
     // 自动翻页滑条抬手 → 重新应用当前 TTS 语速 (对照 app 端 upTtsSpeechRate: 重读配置 +
     // pause/resume 让新语速立刻作用到当前段; 本方法不写配置, 只按现配置重放)
-    override fun upTtsSpeechRate(screenModel: ReaderScreenModel) {
-        val prefs = runCatching { PreferenceProviders.get() }.getOrNull() ?: return
-        val rate = if (prefs.getBoolean(PreferKey.ttsFollowSys, true)) {
-            5
-        } else {
-            prefs.getInt(PreferKey.ttsSpeechRate, 5)
-        }
-        OhosReadAloudHost.setSpeechRate(rate)
-    }
+    override fun upTtsSpeechRate(screenModel: ReaderScreenModel) = OhosReadAloudHost.upSpeechRate()
 
     // 经 napi Battery 桥查询 @ohos.batteryInfo.batterySOC; 桥未就绪/超时回落 100 (用户拍板 2026-08: 电量恒显示)
     override fun getBatteryLevel(): Int {
@@ -222,6 +243,12 @@ private class OhosReadMenuState(
     screenModel: ReaderScreenModel,
 ) : BaseReadMenuState(navigator, screenModel) {
 
+    /** 自动翻页控制器协程作用域 (Main)。 */
+    private val autoPageScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    /** 自动翻页控制器 (对照 Desktop/Android, shared AutoPagerCompose 承载)。 */
+    private var autoPager: AutoPagerCompose? = null
+
     // 菜单栏配色 (对照原版 ReadMenu.upColorConfig, 逻辑见 shared createReadMenuColors)
     private val menuTheme: ReadMenuColors
         get() = createReadMenuColors(
@@ -236,9 +263,64 @@ private class OhosReadMenuState(
     override val hasBgImage: Boolean
         get() = hasBgImageByPath(SharedThemeStoreProvider().bgImagePath)
 
+    override fun clickAutoPage() {
+        if (autoPage) {
+            stopAutoPage()
+        } else {
+            startAutoPage()
+            showAutoPagePanel()
+        }
+    }
+
+    /**
+     * 启动自动翻页: 三模式语义与 app/desktop 端一致 (E-Ink 定时整页翻 / 非 E-Ink 揭示动画覆盖层 /
+     * 滚动模式连续滚动), 由 shared [AutoPagerCompose] 驱动 [ReadBookViewModelShared].
+     * 翻到全书末尾自动停 (pager.onEnd)。
+     */
+    private fun startAutoPage() {
+        stopAutoPage()
+        autoPage = true
+        readerAutoPageActive = true
+        autoPager = AutoPagerCompose(
+            viewModel = screenModel.viewModel,
+            scope = autoPageScope,
+            // 每拍现读速度配置 (对照原版每次 postDelayed 现取 ReadBookConfig.autoReadSpeed)
+            autoReadSpeed = {
+                ReadBookConfigProviders.get().autoReadSpeed.coerceAtLeast(1)
+            },
+        ).also { pager ->
+            pager.onEnd = { stopAutoPage() }
+            pager.start()
+        }
+    }
+
+    /** 停止自动翻页: 复位控制器 + 复位开关 (对照 app/desktop 端 stopAutoPage)。 */
+    fun stopAutoPage() {
+        autoPager?.stop()
+        autoPager = null
+        autoPage = false
+        readerAutoPageActive = false
+    }
+
+    override fun clickPre() {
+        stopAutoPage()
+        super.clickPre()
+    }
+
+    override fun clickNext() {
+        stopAutoPage()
+        super.clickNext()
+    }
+
     override fun clickReadAloud() {
-        if (autoPage) autoPage = false
+        stopAutoPage()
         OhosReadAloudHost.toggle()
+    }
+
+    /** 释放自动翻页协程作用域 (阅读页退出时由 Provider 调用) */
+    fun dispose() {
+        stopAutoPage()
+        autoPageScope.cancel()
     }
 }
 

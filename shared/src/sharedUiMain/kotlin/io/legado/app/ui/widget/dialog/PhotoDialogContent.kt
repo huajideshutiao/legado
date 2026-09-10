@@ -75,7 +75,7 @@ import kotlin.math.max
  * ① 进程内阅读页位图缓存 [ReaderImageCache] (阅读时已解码的正文图, 免解码直接显示)
  * ② 磁盘章节图片缓存 [BookImageStorage] (网络书阅读时已落盘, 对齐原版 loadPhoto 的
  *    `BookHelp.getImage(book, src)` 分支——章节缓存文件存在即按 2× 屏尺寸解码显示;
- *    需 [chapter] 标识, 阅读页点图调用方随 [showImagePreview] 透传)
+ *    需 [chapter] 标识, 阅读页点图调用方随 [encodePhotoOverlayPayload] 透传)
  * ③ Coil3 封面/列表图磁盘缓存 (书架封面/列表图刚显示过时复用, 避免双链路重复下载;
  *    仅读缓存不触发网络, 见 [BookImageLoader.loadDiskCachedBytes])
  * ④ 现有 ImageBitmapLoader 链路 (ImageBytesCache 内存/磁盘缓存 → 网络下载+解密;

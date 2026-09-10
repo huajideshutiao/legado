@@ -4,6 +4,7 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import io.legado.app.App
 import io.legado.app.help.i18n.androidAppString
+import io.legado.app.utils.buildMainHandler
 import io.legado.app.utils.toastOnUi
 
 /**
@@ -18,7 +19,7 @@ import io.legado.app.utils.toastOnUi
  * **不**负责:断句/分段/章节跟踪/音频焦点/通知。这些是调用方业务。
  *
  * 设计目标是同时服务两个场景:
- * 1. [io.legado.app.help.TTS] — 单段文本快速播报(选词朗读 / RSS 朗读)
+ * 1. [AndroidSystemTtsEngine] — 单段文本快速播报(选词朗读 / RSS 朗读, 共享 [OneShotTts])
  * 2. [io.legado.app.service.TTSReadAloudService] — 章节级朗读
  */
 class TextToSpeechEngine(private val engineName: String? = null) {
@@ -106,5 +107,115 @@ class TextToSpeechEngine(private val engineName: String? = null) {
         tts = null
         isReady = false
         pendingOnReady = null
+    }
+}
+
+/**
+ * 注册 Android 的 [SystemTtsEngine] (选中文字/RSS 一次性朗读经 [TtsEngineProvider] 取用)。
+ *
+ * 宿主启动早期调用一次 (App.onCreate), 与 `registerAndroidReadBookPlatform` 同批。
+ */
+fun registerAndroidSystemTtsEngine() {
+    TtsEngineProvider.register(AndroidSystemTtsEngine())
+}
+
+/**
+ * [TextToSpeechEngine] 的 [SystemTtsEngine] 适配: 章节朗读走 `TTSReadAloudService` 自己的实例,
+ * 本实例只服务共享的一次性朗读 (commonMain `OneShotTts`)。
+ *
+ * `TextToSpeech` 无暂停能力, [pause] 停播并置标志、[resume] 只清标志 (接口已写明不支持暂停的
+ * 引擎 no-op); [speechRate] 底层只有 setter, 故适配器自存一份供回读。
+ */
+private class AndroidSystemTtsEngine : SystemTtsEngine {
+
+    private val engine = TextToSpeechEngine()
+
+    private val handler by lazy { buildMainHandler() }
+
+    /**
+     * 一分钟无朗读就释放底层 TextToSpeech (对照原版 `TTS.clearRunnable`)。
+     * 本实例是适配器私有的, 章节朗读用 `TTSReadAloudService` 自己那个, 释放互不影响;
+     * 下次 [speak] 经 `ensureReady` 自动重建。
+     */
+    private val idleShutdown = Runnable { engine.shutdown() }
+
+    private var paused = false
+
+    override val isReady: Boolean get() = engine.isReady
+
+    override val isSpeaking: Boolean get() = engine.isSpeaking
+
+    override val isPaused: Boolean get() = paused
+
+    override var speechRate: Float = 1f
+        set(value) {
+            field = value
+            engine.setSpeechRate(value)
+        }
+
+    override var progressListener: TtsProgressListener? = null
+
+    init {
+        engine.progressListener = object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String?) {
+                handler.removeCallbacks(idleShutdown)
+                progressListener?.onStart(utteranceId.orEmpty())
+            }
+
+            override fun onDone(utteranceId: String?) {
+                handler.postDelayed(idleShutdown, IDLE_TIMEOUT_MS)
+                progressListener?.onDone(utteranceId.orEmpty())
+            }
+
+            @Deprecated("Deprecated in Java")
+            override fun onError(utteranceId: String?) = Unit
+
+            override fun onError(utteranceId: String?, errorCode: Int) {
+                progressListener?.onError(utteranceId.orEmpty(), errorCode)
+            }
+
+            override fun onRangeStart(utteranceId: String?, start: Int, end: Int, frame: Int) {
+                progressListener?.onRangeStart(utteranceId.orEmpty(), start, end, frame)
+            }
+        }
+    }
+
+    override fun init(onReady: (() -> Unit)?) {
+        engine.ensureReady { onReady?.invoke() }
+    }
+
+    override fun speak(text: String, utteranceId: String) {
+        handler.removeCallbacks(idleShutdown)
+        paused = false
+        engine.speak(text, utteranceId)
+    }
+
+    override fun enqueue(text: String, utteranceId: String) {
+        engine.enqueue(text, utteranceId)
+    }
+
+    override fun pause() {
+        paused = true
+        engine.stop()
+    }
+
+    override fun resume() {
+        paused = false
+    }
+
+    override fun stop() {
+        handler.removeCallbacks(idleShutdown)
+        paused = false
+        engine.stop()
+    }
+
+    override fun shutdown() {
+        handler.removeCallbacks(idleShutdown)
+        paused = false
+        engine.shutdown()
+    }
+
+    private companion object {
+        const val IDLE_TIMEOUT_MS = 60_000L
     }
 }

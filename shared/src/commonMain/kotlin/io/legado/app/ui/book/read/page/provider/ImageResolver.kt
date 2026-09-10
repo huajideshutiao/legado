@@ -15,8 +15,8 @@ data class ImageSize(val width: Int, val height: Int)
  * 解码，排版层只查询尺寸。与原版一致，取不到图时返回错误占位尺寸而不是 0（原版返回
  * `errorBitmap` 的宽高），让排版仍产出图片行，由绘制层画错误占位。
  *
- * 未注入（[ImageResolverProviders] 未注册）时 [SimpleChapterLayout.setTypeImage] 跳过图片排版，
- * 退化为纯文本，保证无图片能力平台仍可跑通文字排版链路。
+ * 四端宿主启动时都注册（[ImageResolverProviders]）；未注入时 [SimpleChapterLayout] 仍排图片行，
+ * 只是尺寸取不到、退回默认占位方块。
  */
 interface ImageResolver {
 
@@ -26,9 +26,9 @@ interface ImageResolver {
 
 /**
  * [ImageResolver] 工厂注册处：实现在 sharedUiMain（需 Compose `ImageBitmap` 解码），
- * 由宿主启动时注册（desktop `Main.kt` / Android `MainActivity`）。
+ * 由宿主启动时注册（Android `MainActivity` / desktop `Main.kt` / iOS、鸿蒙 ProviderRegistry）。
  *
- * 未注册时 [createOrNull] 返回 null，排版跳过图片（与下沉前行为一致）。
+ * 未注册时 [createOrNull] 返回 null。
  */
 object ImageResolverProviders {
 

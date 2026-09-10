@@ -183,10 +183,7 @@ fun headerTipVisible(headerMode: Int, hideStatusBar: Boolean): Boolean = when (h
     else -> {
         // 无系统栏平台（桌面）：hideStatusBar 无入口可改且恒 false，状态栏恒不显示 →
         // headerMode=0 退化为恒显（原版语义：状态栏隐藏时页眉顶替显示）。
-        // 未注册 capabilities（如 @Preview）按有系统栏处理，与 MoreConfigScreen 约定一致，
-        // 移动端三态行为不变。
-        val hasSystemBars = PlatformCapabilityProviders.getOrNull()?.hasSystemBars() ?: true
-        !hasSystemBars || hideStatusBar
+        !PlatformCapabilityProviders.get().hasSystemBars() || hideStatusBar
     }
 }
 

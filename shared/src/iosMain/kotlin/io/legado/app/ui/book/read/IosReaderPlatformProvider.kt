@@ -1,8 +1,9 @@
-@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
 
 package io.legado.app.ui.book.read
 
 import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -22,24 +23,33 @@ import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.help.image.ImageBitmapLoader
-import io.legado.app.help.image.ReaderImageCache
 import io.legado.app.help.toast.Toasters
 import io.legado.app.help.tts.IosReadAloudHost
-import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.ui.book.read.ReadBookEvents
-import io.legado.app.ui.book.read.ReadConfigChange
+import io.legado.app.ui.book.read.page.AutoPagerCompose
 import io.legado.app.ui.compose.platform.SharedThemeStoreProvider
-import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
+import io.legado.app.ui.reader.ReaderImageActionMenu
+import io.legado.app.ui.reader.ReaderImageActions
+import io.legado.app.ui.reader.ReaderTextActionMenu
+import io.legado.app.ui.reader.ReaderTextActions
+import io.legado.app.ui.reader.ReaderTextSelectionRequest
+import io.legado.app.ui.reader.readerMenuAnchor
+import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
-import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.toRouteRef
+import io.legado.app.ui.widget.dialog.encodePhotoOverlayPayload
+import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import platform.Foundation.NSData
+import platform.Foundation.create
 import platform.UIKit.UIDevice
 import platform.UIKit.UIImage
 import platform.UIKit.UIImageWriteToSavedPhotosAlbum
@@ -59,59 +69,50 @@ import platform.UIKit.UIImageWriteToSavedPhotosAlbum
  */
 object IosReaderPlatformProvider : ReaderPlatformProvider {
 
-    /** 查词请求 (选中词 → 暂存, 由 MainViewController 宿主渲染 DictDialogHost; 对照原版 menu_dict → DictDialog)。 */
-    internal var dictWord by mutableStateOf<String?>(null)
-
     /** 图片长按动作协程 scope (Main: UIKit 操作/toast 需主线程, 网络下载在 loadBytes 内部切 IO)。 */
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    /** 页内文字选择请求 (null = 不显示自绘浮动菜单), 由 [TextSelectionHost] 渲染。 */
+    private var textSelection by mutableStateOf<ReaderTextSelectionRequest?>(null)
+
+    /** 当次选择的动作集: 动作要 screenModel, 故在 onTextSelected 装配好存下。 */
+    private var textActions by mutableStateOf<ReaderTextActions?>(null)
 
     override fun createMenuController(
         navigator: AppNavigator,
         screenModel: ReaderScreenModel,
     ): ReadMenuController = IosReadMenuController(navigator, screenModel)
 
-    // 自动翻页面板停止按钮: 本端 autoPage 仅开关状态 (无 AutoPager), 复位开关即可
+    // 自动翻页面板停止按钮 (对照 app/desktop 端 autoPageStop → stopAutoPage: 停控制器 + 复位开关)
     override fun autoPageStop(screenModel: ReaderScreenModel) {
-        (screenModel.menuController.state as? IosReadMenuState)?.autoPage = false
-    }
-
-    // 设置按钮 → 翻页动画配置 (对照 app 端 showPageAnimConfigSelector: 选择器回调忽略索引,
-    // 实际动画值在界面设置弹窗配置, 只触发 upPageAnim + 重载; 与菜单 PAGE_ANIM 分支同语义)
-    override fun showPageAnimConfig(screenModel: ReaderScreenModel) {
-        AppNavigatorProviders.getOrNull()?.showOverlay(AppOverlay.Dialog("page_anim_config"))
+        (screenModel.menuController.state as? IosReadMenuState)?.stopAutoPage()
     }
 
     // 自动翻页滑条抬手 → 重新应用当前 TTS 语速 (对照 app 端 upTtsSpeechRate: 重读配置 +
     // pause/resume 让新语速立刻作用到当前段; 本方法不写配置, 只按现配置重放)
-    override fun upTtsSpeechRate(screenModel: ReaderScreenModel) {
-        val prefs = runCatching { PreferenceProviders.get() }.getOrNull() ?: return
-        val rate = if (prefs.getBoolean(PreferKey.ttsFollowSys, true)) {
-            5
-        } else {
-            prefs.getInt(PreferKey.ttsSpeechRate, 5)
-        }
-        IosReadAloudHost.setSpeechRate(rate)
-    }
-
-    /** 空白长按回落: 原版 ContentTextView.longPress 未命中任何列时无动作，此处 no-op。 */
-    override fun onLongPress(screenModel: ReaderScreenModel) = Unit
+    override fun upTtsSpeechRate(screenModel: ReaderScreenModel) = IosReadAloudHost.upSpeechRate()
 
     /**
-     * 图片长按：弹平台原生浮动菜单（查看/刷新/保存到相册；iOS 无"选择目录"概念，
-     * 用"保存到相册"代替，动作分发见 [onImageAction]——对标原版 onImageLongPress）。
+     * 图片长按: 弹共享自绘浮动菜单 (查看/刷新/保存; iOS 无 SAF"选择目录", 保存直落系统相册)。
+     * 菜单项收尾对照原版 popupAction 点击 → onDismiss → postSelectionCancel。
      */
     override fun onImageLongPress(screenModel: ReaderScreenModel, src: String, x: Float, y: Float) {
         if (src.isBlank()) return
-        IosImageActionMenu.show(
-            anchorX = x,
-            anchorY = y,
-            onAction = { action -> onImageAction(screenModel, src, action) },
+        ReaderImageActionMenu.show(
+            anchor = readerMenuAnchor(x, y),
+            actions = ReaderImageActions(
+                view = { viewImage(screenModel, src) },
+                refresh = {
+                    refreshReaderImage(screenModel.currentBook, screenModel.currentChapter, src)
+                },
+                save = { saveImageToAlbum(screenModel, src) },
+            ),
         )
     }
 
     /**
-     * 页内文字选择完成：弹 UIMenuController 浮动菜单并跟随选区（平台原生实现，
-     * 对标 Android 原版 TextActionMenu；动作见 [onTextAction]）。
+     * 页内文字选择完成: 弹共享自绘浮动文本操作菜单
+     * (见 [ReaderTextActionMenu], 宿主 [TextSelectionHost] 挂在 MainViewController 根组合)。
      */
     override fun onTextSelected(
         screenModel: ReaderScreenModel,
@@ -120,101 +121,75 @@ object IosReaderPlatformProvider : ReaderPlatformProvider {
         anchorY: Float,
     ) {
         if (text.isBlank()) return
-        IosTextActionMenu.show(
-            anchorX = anchorX,
-            anchorY = anchorY,
-            onAction = { action -> onTextAction(screenModel, text, action) },
-            // 菜单关闭 (动作完成/点外部) → 取消页内选择 (对标原版 onMenuActionFinally)
-            onMenuFinally = { ReadBookEvents.postSelectionCancel() },
+        textActions = ReaderTextActions(
+            onReplace = screenModel.replaceTextCallback(),
+            onBookmark = screenModel.bookmarkTextCallback(),
+            onReadAloud = screenModel.readAloudTextCallback(),
+            onSearchContent = screenModel.searchContentTextCallback(),
         )
+        textSelection = ReaderTextSelectionRequest(text, readerMenuAnchor(anchorX, anchorY))
     }
 
     /**
-     * 页内选区已消失（点按取消选择/翻页/重排等任意路径）：收起 UIMenuController 浮动菜单
+     * 页内选区已消失（点按取消选择/翻页/重排等任意路径）：收起浮动菜单
      * （对照原版 onCancelSelect → textActionMenu.dismiss）。幂等：菜单未显示时无操作。
      */
-    override fun onTextSelectionDismissed(screenModel: ReaderScreenModel) {
-        IosTextActionMenu.dismiss()
-    }
+    override fun onTextSelectionDismissed(screenModel: ReaderScreenModel) = dismissActionMenus()
 
     /**
      * 同步立即关闭浮动菜单（点按取消选择等手势分支同帧同步直调，对照原版 ACTION_DOWN →
      * textActionMenu.dismiss() 同步语义，避免事件链异步延迟的菜单"闪一下再消失"）。
-     * dismiss 幂等（未显示时无操作），事件链兜底重复调用安全。
+     * 幂等，事件链兜底重复调用安全。
      */
-    override fun dismissTextActionMenu(screenModel: ReaderScreenModel) {
-        IosTextActionMenu.dismiss()
+    override fun dismissTextActionMenu(screenModel: ReaderScreenModel) = dismissActionMenus()
+
+    /** 对照 master ReadBookActivity.cancelSelect: 文本/图片菜单互斥, 同时 dismiss。 */
+    private fun dismissActionMenus() {
+        textSelection = null
+        ReaderImageActionMenu.dismiss()
     }
 
-    /** 阅读页退出: 收起浮动菜单 + 停朗读, 避免残留 (对照原版 onDestroy → textActionMenu.dismiss)。
+    /** 阅读页销毁: 停止自动翻页并释放控制器/协程; 收起浮动菜单 + 停朗读, 避免残留 (对照原版 onDestroy → textActionMenu.dismiss)。
      *  iOS 无前台 Service/后台控制面, 离开阅读页即无朗读控制入口, 显式停止。 */
     override fun onExit(screenModel: ReaderScreenModel) {
-        IosTextActionMenu.dismiss()
+        autoPageStop(screenModel)
+        (screenModel.menuController.state as? IosReadMenuState)?.dispose()
+        readerAutoPageActive = false
+        dismissActionMenus()
+        textActions = null
         IosReadAloudHost.stop()
     }
 
     /**
-     * 文本菜单动作分发 (对标原版 ReadBookActivity.onMenuItemSelected/onMenuItemClick):
-     * 替换/书签/全文搜索/分享走 screenModel 回调; 复制走剪贴板; 查词暂存 dictWord;
-     * 浏览器 URL 直开否则系统搜索; 朗读走系统 TTS 引擎 (见 [TtsEngineProvider])。
+     * 阅读页文本操作菜单宿主 (挂在 MainViewController 根组合, 对照 desktop
+     * DesktopReaderPlatformProvider.TextSelectionHost)。
      */
-    private fun onTextAction(screenModel: ReaderScreenModel, text: String, action: String) {
-        when (action) {
-            // T1: 替换/书签/全文搜索复用共享回调 (见 ReaderScreenModel.replaceTextCallback 等)
-            "replace" -> screenModel.replaceTextCallback().invoke(text)
-
-            "copy" -> PlatformCapabilityProviders.get().copyToClipboard(text)
-            "bookmark" -> screenModel.bookmarkTextCallback().invoke(text)
-            "aloud" -> {
-                // 朗读选中文本: 系统 TTS 引擎 (AVSpeechSynthesizer, 宿主启动经
-                // registerIosSystemTtsEngine 注册到 TtsEngineProvider; 未注册时提示)
-                val engine = TtsEngineProvider.get()
-                if (engine == null) {
-                    Toasters.get().toast("朗读引擎未就绪")
-                } else {
-                    engine.speak(text, "textActionAloud")
-                }
-            }
-
-            "dict" -> dictWord = text
-            "search_content" -> screenModel.searchContentTextCallback().invoke(text)
-
-            "browser" -> openTextInBrowser(text)
-            "share" -> PlatformCapabilityProviders.get().shareText(text)
-        }
+    @Composable
+    fun TextSelectionHost() {
+        val actions = textActions ?: return
+        ReaderTextActionMenu(
+            request = textSelection,
+            actions = actions,
+            // 对照原版 onMenuActionFinally: 关菜单 + 取消页内选择
+            onFinally = {
+                textSelection = null
+                ReadBookEvents.postSelectionCancel()
+            },
+        )
     }
 
-    /**
-     * 图片菜单动作分发 (对标原版 ReadBookActivity.onImageLongPress 的
-     * show/refresh/save 三分支; selectFolder 由 iOS"保存到相册"取代):
-     * 查看 → 下载解码 + 模态预览; 刷新 → 清内存缓存 + 重排; 保存 → 写系统相册。
-     */
-    private fun onImageAction(screenModel: ReaderScreenModel, src: String, action: String) {
-        when (action) {
-            "view" -> previewImage(screenModel, src)
-            "refresh" -> {
-                // 清共享内存缓存 + 重排 (对照原版 viewModel.refreshImage 的删缓存文件+清内存缓存+loadContent;
-                // iOS 阅读页图片走 shared ReaderImageResolver → ReaderImageCache, 磁盘缓存由 Coil3 自管)
-                ReaderImageCache.clear()
-                ReadBookEvents.postConfig(ReadConfigChange.LOAD_CONTENT)
-            }
-
-            "save" -> saveImageToAlbum(screenModel, src)
-        }
-    }
-
-    /** 查看图片: 下载解码 → 模态预览 (失败 toast; 对照原版 show → PhotoDialog)。 */
-    private fun previewImage(screenModel: ReaderScreenModel, src: String) {
-        val book = screenModel.viewModel.book.value
-        val bookSource = screenModel.viewModel.bookSource.value
-        scope.launch {
-            val image = loadImage(src, book, bookSource)
-            if (image == null) {
-                Toasters.get().toast("图片加载失败")
-                return@launch
-            }
-            showIosImagePreview(image)
-        }
+    /** 查看大图: 弹共享全屏大图 Overlay (key="photo", 口径同 desktop/ohos/android)。 */
+    private fun viewImage(screenModel: ReaderScreenModel, src: String) {
+        val book = screenModel.currentBook
+        AppNavigatorProviders.get().showOverlay(
+            AppOverlay.Dialog(
+                key = "photo",
+                payload = encodePhotoOverlayPayload(
+                    src, screenModel.viewModel.durChapterIndex.value
+                ),
+                sourceOrigin = book?.origin?.takeIf { !book.isLocal && it.isNotBlank() },
+            )
+        )
     }
 
     /** 保存到相册: 下载解码 → UIImageWriteToSavedPhotosAlbum (无完成回调, 保存后提示)。 */
@@ -237,7 +212,13 @@ object IosReaderPlatformProvider : ReaderPlatformProvider {
     private suspend fun loadImage(src: String, book: Book?, bookSource: BookSource?): UIImage? {
         val bytes = runCatching { ImageBitmapLoader().loadBytes(src, book, bookSource) }.getOrNull()
             ?: return null
-        return runCatching { bytes.toUIImage() }.getOrNull()
+        if (bytes.isEmpty()) return null
+        return runCatching {
+            val nsData = bytes.usePinned { pinned ->
+                NSData.create(bytes = pinned.addressOf(0), length = bytes.size.toULong())
+            }
+            UIImage.imageWithData(nsData)
+        }.getOrNull()
     }
 
     // UIDevice 电池监控: 返回 0~100, 未启用或未知回落 100 (用户拍板 2026-08: 电量恒显示)
@@ -275,6 +256,12 @@ private class IosReadMenuState(
     screenModel: ReaderScreenModel,
 ) : BaseReadMenuState(navigator, screenModel) {
 
+    /** 自动翻页控制器协程作用域 (Main)。 */
+    private val autoPageScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    /** 自动翻页控制器 (对照 Desktop/Android, shared AutoPagerCompose 承载)。 */
+    private var autoPager: AutoPagerCompose? = null
+
     // 菜单栏配色 (对照原版 ReadMenu.upColorConfig, 逻辑见 shared createReadMenuColors)
     private val menuTheme: ReadMenuColors
         get() = createReadMenuColors(
@@ -289,10 +276,65 @@ private class IosReadMenuState(
     override val hasBgImage: Boolean
         get() = hasBgImageByPath(SharedThemeStoreProvider().bgImagePath)
 
+    override fun clickAutoPage() {
+        if (autoPage) {
+            stopAutoPage()
+        } else {
+            startAutoPage()
+            showAutoPagePanel()
+        }
+    }
+
+    /**
+     * 启动自动翻页: 三模式语义与 app/desktop 端一致 (E-Ink 定时整页翻 / 非 E-Ink 揭示动画覆盖层 /
+     * 滚动模式连续滚动), 由 shared [AutoPagerCompose] 驱动 [ReadBookViewModelShared].
+     * 翻到全书末尾自动停 (pager.onEnd)。
+     */
+    private fun startAutoPage() {
+        stopAutoPage()
+        autoPage = true
+        readerAutoPageActive = true
+        autoPager = AutoPagerCompose(
+            viewModel = screenModel.viewModel,
+            scope = autoPageScope,
+            // 每拍现读速度配置 (对照原版每次 postDelayed 现取 ReadBookConfig.autoReadSpeed)
+            autoReadSpeed = {
+                ReadBookConfigProviders.get().autoReadSpeed.coerceAtLeast(1)
+            },
+        ).also { pager ->
+            pager.onEnd = { stopAutoPage() }
+            pager.start()
+        }
+    }
+
+    /** 停止自动翻页: 复位控制器 + 复位开关 (对照 app/desktop 端 stopAutoPage)。 */
+    fun stopAutoPage() {
+        autoPager?.stop()
+        autoPager = null
+        autoPage = false
+        readerAutoPageActive = false
+    }
+
+    override fun clickPre() {
+        stopAutoPage()
+        super.clickPre()
+    }
+
+    override fun clickNext() {
+        stopAutoPage()
+        super.clickNext()
+    }
+
     // 朗读短按: 停自动翻页后切换播放/暂停
     override fun clickReadAloud() {
-        if (autoPage) autoPage = false
+        stopAutoPage()
         screenModel.viewModel.toggleReadAloud()
+    }
+
+    /** 释放自动翻页协程作用域 (阅读页退出时由 Provider 调用) */
+    fun dispose() {
+        stopAutoPage()
+        autoPageScope.cancel()
     }
 }
 

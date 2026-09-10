@@ -30,13 +30,11 @@ import java.io.File
  * desktop 端 [MangaReaderScreenModel.Platform] 实现。
  *
  * 对照 app 端 [io.legado.app.ui.book.manga.AndroidMangaReaderPlatform]:
- * - config: 直读 [PreferenceProviders] 同 key PreferKey (与 app 端 AppConfig 同源),
- *   未纳入 [io.legado.app.help.config.AppConfigAccessor] 接口
- * - flowImages: 复用 shared [MangaImageExtractorShared] (与 app 端 BookHelp.flowImages 同一提取逻辑)
+ * - 漫画配置读写: 不经本接口, 由 [MangaReaderScreenModel] 统一直读/直写 [PreferenceProviders] 同 key
+ * - flowImages: 不覆写, 用接口默认实现 (ChapterContentParserShared.extractImages, 与 app 端 BookHelp.flowImages 同一提取器)
  * - Image: 走 Skia 三端共用的 [MangaSkiaImage] (Skia Codec 解码 + GIF/动画 WebP + 调色),
  *   本端只负责把 [ProgressManager] 的下载进度接到转圈环心;
  *   **不是 Coil3 链路** —— coil-gif 无 jvm/ios 变体, 动图只能自己解, 见 [MangaSkiaImage] 注释
- * - toggle/update*: 写回 [PreferenceProviders] 同 key (与 app 端 AppConfig = value 等价)
  * - getBatteryLevel: Windows 经 kernel32 (JNA) / macOS 经 `pmset -g batt` /
  *   Linux 经 sysfs BAT/capacity 读真实电量, 无电池/失败回落 100 (信息条恒显示电量)
  * - saveImage: 本地缓存 → 本地书 FileBook → 按书源下载, 写入 destPath

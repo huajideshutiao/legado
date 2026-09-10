@@ -5,8 +5,7 @@ import android.text.TextPaint
 import io.legado.app.utils.getTextWidthsCompat
 
 /**
- * [TextMeasurer] 安卓实现：原样包一层现有 TextPaint 逻辑，热路径零新增分配。
- * 与其绑定的 [paint] 同生命周期（随样式变化重建 TextChapterLayout），可长期复用。
+ * [TextMeasurer] 安卓实现：包一层 TextPaint，热路径零新增分配。
  */
 class AndroidTextMeasurer(private val paint: TextPaint) : TextMeasurer {
 

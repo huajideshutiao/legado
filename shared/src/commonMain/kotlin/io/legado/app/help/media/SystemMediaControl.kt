@@ -295,5 +295,5 @@ object SystemMediaControl {
         get() = readPref(PreferKey.ignoreAudioFocus)
 
     private fun readPref(key: String): Boolean =
-        runCatching { PreferenceProviders.get().getBoolean(key, false) }.getOrDefault(false)
+        PreferenceProviders.get().getBoolean(key, false)
 }

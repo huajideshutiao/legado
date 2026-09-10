@@ -4,7 +4,6 @@ package io.legado.app.help.service
 
 import io.legado.app.constant.AppLog
 import io.legado.app.help.config.PreferenceProviders
-import io.legado.app.help.config.registerIosProviders
 import io.legado.app.model.CacheBookShared
 import io.legado.app.ui.root.AppForegroundState
 import kotlin.concurrent.Volatile
@@ -13,12 +12,14 @@ import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.value
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import platform.BackgroundTasks.BGProcessingTaskRequest
@@ -37,8 +38,8 @@ import platform.UIKit.UIBackgroundTaskInvalid
  * iOS 端"尽力而为"后台缓存续跑 (对照 app 端 CacheBookService 前台服务)。
  *
  * iOS 没有常驻前台 Service, 退后台后进程会被挂起, [CacheBookShared] 的下载协程随之停摆。
- * 这里用系统给的两个时间窗把缓存推进下去, 两条通道都只走 [ServiceLaunchers] /
- * [CacheBookShared] 的既有入口, 不新增调度逻辑:
+ * 这里用系统给的两个时间窗把缓存推进下去, 两条通道都只走 [CacheBookShared] 的既有入口
+ * (入队走 [enqueueCacheBook]), 不新增调度逻辑:
  *
  * 1. **退后台收尾**: [UIApplication.beginBackgroundTaskWithExpirationHandler] 申请约 30s,
  *    把在飞章节跑完; 到期 handler 里 [CacheBookShared.setWorkingState] false 停派新章节并
@@ -133,6 +134,9 @@ object IosBackgroundTasks {
             ) {
                 delay(1000)
             }
+            // 回前台时 onEnterForeground 会先 cancel 本 job 再 setWorkingState(true), 取消不传出去
+            // 就会在它之后把下载重新掐掉 (收尾窗口内返回前台是常态)
+            currentCoroutineContext().ensureActive()
             CacheBookShared.setWorkingState(false)
             endFinishWindow()
         }
@@ -191,7 +195,16 @@ object IosBackgroundTasks {
             completeProcessingTask(task)
         }
         work = scope.launch {
-            val finished = runCatching { resumePending() }.getOrDefault(false)
+            // BGTask 契约要求无论成败都要 setTaskCompleted, 故这里是失败的唯一出口:
+            // 走 AppLog (与 submitProcessingRequest 的提交失败同一通道), 不再静默丢弃
+            val finished = try {
+                resumePending()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                AppLog.put("后台缓存续跑失败", e, tag = "IosBackgroundTasks")
+                false
+            }
             if (!finished) submitProcessingRequest()
             completeProcessingTask(task)
         }
@@ -211,36 +224,30 @@ object IosBackgroundTasks {
      * 冷启动 (进程被回收后由系统唤起) 时 [CacheBookShared.cacheBookMap] 是空的, 只能按 bookUrl
      * 整本重新入队; 已缓存章节在 `CacheBookModelShared.download` 内走 hasContent 快路径跳过。
      *
-     * @return true 表示队列已排空
+     * @return true 表示不必再唤起 (队列已排空, 或快照里的书都已取不到)
      */
     private suspend fun resumePending(): Boolean {
         val pending = loadPending()
         if (pending.isEmpty() && !CacheBookShared.isRun) return true
-        ensureProviders()
         CacheBookShared.setWorkingState(true)
         if (CacheBookShared.cacheBookMap.isEmpty()) {
-            val launcher = ServiceLaunchers.get()
-            // end<0 = 下载到最后一章 (NativeServiceLauncher.startCacheBookService 内 clamp)
-            pending.forEach { launcher.startCacheBookService(it, 0, -1) }
-            // 入队在 launcher 自己的协程里做, 等它把 model 放进 cacheBookMap 再判运行态
-            delay(2000)
+            // 直接 await 入队 (ServiceLauncher.startCacheBookService 是 fire-and-forget, 拿不到结果);
+            // 冷启动的开库 + 载书都在这一步里完成, 返回即代表队列已经有东西
+            val enqueued = pending.count { enqueueCacheBook(it, 0, -1) }
+            if (enqueued == 0) {
+                AppLog.put(
+                    "后台缓存待续列表里的书都已取不到: ${pending.joinToString()}",
+                    tag = "IosBackgroundTasks",
+                )
+                clearPending()
+                return true
+            }
         }
-        while (currentCoroutineContext().isActive && CacheBookShared.isRun) {
-            delay(1000)
-        }
-        val finished = !CacheBookShared.isRun
-        if (finished) clearPending()
-        return finished
-    }
-
-    /**
-     * BG 唤起时 Compose 场景可能压根没创建 (MainViewController 未跑), provider 还没注册,
-     * 这里补一次 (各 provider 的 register 都是覆盖式, 与 MainViewController 重复调用等价)。
-     */
-    private fun ensureProviders() {
-        if (runCatching { ServiceLaunchers.get() }.isFailure) {
-            runCatching { registerIosProviders() }
-        }
+        // 队列排空即返回 (内部 join 处理 job), 不轮询任何标志位; 被 expirationHandler 掐断时
+        // 取消从这里抛出, 走不到下面的 clearPending 去擦掉它刚落的快照
+        CacheBookShared.startProcessJob()
+        clearPending()
+        return true
     }
 
     // endregion
@@ -249,19 +256,18 @@ object IosBackgroundTasks {
 
     private fun savePending() {
         val urls = CacheBookShared.cacheBookMap.keys.toList()
-        runCatching {
-            PreferenceProviders.get().putString(PENDING_KEY, urls.joinToString(PENDING_SEP))
-        }
+        // 空列表不落盘: BGTask 到期时可能还没入队完 (冷启动), 写空串会把真正的待续列表擦掉
+        if (urls.isEmpty()) return
+        PreferenceProviders.get().putString(PENDING_KEY, urls.joinToString(PENDING_SEP))
     }
 
-    private fun loadPending(): List<String> = runCatching {
+    private fun loadPending(): List<String> =
         PreferenceProviders.get().getString(PENDING_KEY)
             .split(PENDING_SEP)
             .filter { it.isNotBlank() }
-    }.getOrDefault(emptyList())
 
     private fun clearPending() {
-        runCatching { PreferenceProviders.get().remove(PENDING_KEY) }
+        PreferenceProviders.get().remove(PENDING_KEY)
     }
 
     // endregion

@@ -5,16 +5,13 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.utils.splitNotBlank
 
 /**
- * 一次性朗读单段文本 (选词朗读、RSS 朗读), 下沉自 app 端 `io.legado.app.help.TTS`。
+ * 一次性朗读单段文本 (选中文字朗读、RSS 朗读), 下沉自 app 端原 `io.legado.app.help.TTS`。
  *
  * 与 [io.legado.app.service.ReadAloudControllerShared] 的区别: 不进前台服务、不接管
  * MediaSession 与通知, 只按 `\n` 切段丢进引擎队列, 并把 onStart/onDone 上报给调用方切菜单按钮。
  *
- * 与 app 端原版的一处差异: 原版一分钟无朗读会 `shutdown` 掉自己私有的 TextToSpeech 实例;
- * 这里的引擎是 [TtsEngineProvider] 注册的**进程级单例** (阅读器也在用), shutdown 会连带停掉
- * 阅读朗读, 故只 [stop] 不 shutdown。
- *
- * Android 端仍走原版 `TTS` (私有引擎实例 + 空闲释放), 见 `AndroidPlatformCapabilities`。
+ * 引擎是 [TtsEngineProvider] 注册的进程级单例, 多数端与章节朗读共用同一个, 故这里只 [stop]
+ * 不 shutdown; "一分钟无朗读释放底层实例" 由各端引擎自己按私有程度决定 (Android 适配器内做)。
  */
 class OneShotTts {
 

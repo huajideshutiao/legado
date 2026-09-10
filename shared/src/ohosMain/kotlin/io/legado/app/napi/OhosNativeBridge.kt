@@ -1030,85 +1030,6 @@ object OhosNativeBridge {
      */
     fun isOpenUrlBridgeReady(): Boolean = synchronized(lock) { openUrlTsfn != null }
 
-    // ===== TextAction tsfn (KMP → ArkTS 显示浮动菜单) + ArkTS → KMP 动作回调 =====
-    // 阅读页文本操作浮动菜单: KMP 长按选字完成 → 跨线程 dispatch 菜单请求到 ArkTS
-    // (Index.ets 叠层浮动菜单, 平台原生 ArkUI 组件), 菜单项点击经 @CName
-    // legado_text_action_callback (legado_napi.cpp TextActionCallback) 回送动作字符串。
-
-    /** textAction threadsafe_function 引用 (EntryAbility.ets 注册后注入)。 */
-    @Volatile
-    private var textActionTsfn: OhosTsfnCallback? = null
-
-    /** 菜单动作回调 (由 OhosReaderPlatformProvider 注册; ArkTS 菜单项点击 → [onTextActionResult])。
-     *  @param src 图片 src (图片菜单动作携带; 文本菜单动作为空串)。 */
-    @Volatile
-    var textActionHandler: ((action: String, text: String, src: String) -> Unit)? = null
-
-    /** 注入 textAction tsfn (由 legado_napi.cpp RegisterTextActionCallback 调用)。 */
-    fun registerTextActionFn(tsfn: OhosTsfnCallback) {
-        synchronized(lock) {
-            textActionTsfn = tsfn
-        }
-    }
-
-    /**
-     * 显示文本操作浮动菜单 (跨线程 dispatch 到 ArkTS)。未注册 tsfn 时丢弃。
-     *
-     * @param text 选中文本 (菜单动作参数)
-     * @param x/y 选区起点锚点 (阅读页内坐标)
-     */
-    fun showTextActionMenu(text: String, x: Float, y: Float) {
-        val json = KS_JSON.encodeToString(
-            TextActionMenuPayload(text = text, x = x, y = y, menuItems = TEXT_ACTION_MENU_ITEMS)
-        )
-        dispatchTsfn(synchronized(lock) { textActionTsfn }, json, "ohos-text-action", text)
-    }
-
-    /**
-     * 显示图片操作浮动菜单 (跨线程 dispatch 到 ArkTS, 同 [showTextActionMenu] 共用一个 tsfn)。
-     * 未注册 tsfn 时丢弃。
-     *
-     * payload 带 `type="image"` + `src`, ArkTS TextActionBridgeHandler 据此切换菜单项
-     * (查看/刷新/保存到相册, 对照原版 ReadBookActivity.onImageLongPress 图片菜单)。
-     *
-     * @param src 图片地址 (菜单动作参数)
-     * @param x/y 长按点锚点 (阅读页内坐标)
-     */
-    fun showImageActionMenu(src: String, x: Float, y: Float) {
-        val json = KS_JSON.encodeToString(
-            TextActionMenuPayload(
-                text = "",
-                x = x,
-                y = y,
-                src = src,
-                type = "image",
-                menuItems = IMAGE_ACTION_MENU_ITEMS,
-            )
-        )
-        dispatchTsfn(
-            synchronized(lock) { textActionTsfn },
-            json,
-            "ohos-text-action",
-            "image menu $src",
-        )
-    }
-
-    /** 隐藏文本操作浮动菜单 (菜单项点击/点外部收起后由 ArkTS 自行隐藏, 此方法供取消选择联动)。 */
-    fun hideTextActionMenu() {
-        val json = KS_JSON.encodeToString(TextActionMenuPayload(text = "", x = -1f, y = -1f))
-        dispatchTsfn(synchronized(lock) { textActionTsfn }, json, "ohos-text-action", "hide")
-    }
-
-    /**
-     * ArkTS → KMP 菜单动作结果 (由 legado_napi.cpp TextActionCallback 调用,
-     * 经 [LegadoNativeExports.textActionCallback] 转发)。
-     *
-     * @param src 图片 src (图片菜单动作携带; 文本菜单动作为空串)
-     */
-    fun onTextActionResult(action: String, text: String, src: String) {
-        textActionHandler?.invoke(action, text, src)
-    }
-
     // ===== Window tsfn (KMP → ArkTS, fire-and-forget, 同 OpenUrl 模式) =====
     // 窗口策略 (全屏/常亮/方向/系统栏) 走 ArkTS @ohos.window API (setWindowLayoutFullScreen /
     // setWindowKeepScreenOn / setPreferredOrientation / setWindowSystemBarEnable), 无 NDK C 接口,
@@ -1929,50 +1850,6 @@ object OhosNativeBridge {
     private data class KeyboardCommand(
         val action: String,
         val mode: Int? = null,
-    )
-
-    /**
-     * 文本/图片操作菜单 payload (Kotlin → ArkTS: 选中文本或图片 src + 锚点; x/y = -1 表示隐藏菜单)。
-     * type="text" 为文本操作菜单 (text 为选中文本), type="image" 为图片操作菜单 (src 为图片地址),
-     * ArkTS TextActionBridgeHandler 据 type 切换菜单项 ([TEXT_ACTION_MENU_ITEMS] / [IMAGE_ACTION_MENU_ITEMS])。
-     */
-    @Serializable
-    private data class TextActionMenuPayload(
-        val text: String,
-        val x: Float,
-        val y: Float,
-        /** 图片 src (type="image" 时携带; 文本菜单为 null)。 */
-        val src: String? = null,
-        /** 菜单类型: "text" = 文本操作菜单 / "image" = 图片操作菜单。 */
-        val type: String = "text",
-        /**
-         * 菜单项清单 (K/N 唯一一份, 下发替代 ArkTS 硬编码 TEXT_ACTION_ITEMS/IMAGE_ACTION_ITEMS;
-         * 空/缺失时 ArkTS 回退其内置清单, 兼容旧宿主)。
-         */
-        val menuItems: List<TextActionMenuItem>? = null,
-    )
-
-    /** 浮动菜单单项 (K/N 唯一一份的菜单项定义, 见 [TEXT_ACTION_MENU_ITEMS] / [IMAGE_ACTION_MENU_ITEMS])。 */
-    @Serializable
-    data class TextActionMenuItem(val label: String, val action: String)
-
-    /** 文本操作菜单项 (对标原版 content_select_action.xml 顺序: replace/copy/bookmark/aloud/dict/search_content/browser/share)。 */
-    private val TEXT_ACTION_MENU_ITEMS = listOf(
-        TextActionMenuItem("替换", "replace"),
-        TextActionMenuItem("复制", "copy"),
-        TextActionMenuItem("书签", "bookmark"),
-        TextActionMenuItem("朗读", "aloud"),
-        TextActionMenuItem("查词", "dict"),
-        TextActionMenuItem("全文搜索", "search_content"),
-        TextActionMenuItem("浏览器", "browser"),
-        TextActionMenuItem("分享", "share"),
-    )
-
-    /** 图片菜单项 (对标原版 ReadBookActivity.onImageLongPress; 无"选择目录" → 保存到相册)。 */
-    private val IMAGE_ACTION_MENU_ITEMS = listOf(
-        TextActionMenuItem("查看", "view"),
-        TextActionMenuItem("刷新", "refresh"),
-        TextActionMenuItem("保存到相册", "save"),
     )
 
     /** openUrl 跨语言传递 payload (序列化为 JSON 给 ArkTS, 同 Toast 模式 fire-and-forget)。 */

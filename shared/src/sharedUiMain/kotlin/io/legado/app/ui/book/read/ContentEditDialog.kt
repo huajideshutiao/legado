@@ -34,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.constant.AppLog
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
@@ -43,6 +44,9 @@ import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.action_save
@@ -52,6 +56,7 @@ import legado.shared.generated.resources.content_edit_copy_success
 import legado.shared.generated.resources.content_edit_reset
 import legado.shared.generated.resources.edit
 import legado.shared.generated.resources.ic_save
+import legado.shared.generated.resources.loading_error
 import legado.shared.generated.resources.ok
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
@@ -127,6 +132,7 @@ fun ContentEditDialog(
     val cancelText = stringResource(Res.string.cancel)
     val okText = stringResource(Res.string.ok)
     val editText = stringResource(Res.string.edit)
+    val loadErrorText = stringResource(Res.string.loading_error)
 
     // 标题本地 state: 重命名成功后由回调更新, chapterName 参数变化 (外部重载) 时重新同步
     var titleState by remember(chapterName) { mutableStateOf(chapterName) }
@@ -150,17 +156,38 @@ fun ContentEditDialog(
     // 会导致 loading 反复重置为 true 卡在转圈; 只以「是否传入 loader」决定初始态
     var loading by remember { mutableStateOf(contentLoader != null) }
     val scope = rememberCoroutineScope()
+    // 加载任务句柄: 重置可反复点击, 新任务先 cancelAndJoin 旧任务再置位,
+    // 否则旧任务的 finally 会擦掉新一轮刚置的 loading
+    var loadJob by remember { mutableStateOf<Job?>(null) }
 
     /**
      * 加载章节全文 (对照原版 ContentEditViewModel.initContent):
      * 初次打开 [reset]=false 读取缓存处理; 重置 [reset]=true 先删缓存重拉再读取。
+     *
+     * loading 的置位与清位同在协程体内 (对齐原版 onStart / onFinally), loader 抛异常也不会永久转圈。
+     *
+     * @param onLoaded 加载完成回调 (重置路径用于刷新阅读器), 失败时不回调
      */
-    fun loadContent(reset: Boolean) {
+    fun loadContent(reset: Boolean, onLoaded: (() -> Unit)? = null) {
         val loader = contentLoader ?: return
-        loading = true
-        scope.launch {
-            contentState = loader(reset) ?: ""
-            loading = false
+        val previous = loadJob
+        loadJob = scope.launch {
+            previous?.cancelAndJoin()
+            try {
+                loading = true
+                contentState = loader(reset) ?: ""
+                onLoaded?.invoke()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                // 原版失败只收转圈不提示 (静默空白), 这里补提示;
+                // AppLog 自带的 toast 开关在桌面端只打印日志, 走 Toasters 两端才可见
+                val reason = e.message ?: e.toString()
+                AppLog.put("编辑正文加载失败\n$reason", e)
+                Toasters.get().toast("$loadErrorText\n$reason")
+            } finally {
+                loading = false
+            }
         }
     }
 
@@ -180,14 +207,9 @@ fun ContentEditDialog(
             onReset?.invoke()
             return
         }
-        loading = true
-        scope.launch {
-            contentState = contentLoader(true) ?: ""
-            loading = false
-            // 正文重拉完成后刷新阅读器 (对照原版 initContent 回调里 ReadBook.loadContent,
-            // 此时缓存已就绪, 阅读器从缓存装载不重复下载)
-            onReset?.invoke()
-        }
+        // 正文重拉完成后刷新阅读器 (对照原版 initContent 回调里 ReadBook.loadContent,
+        // 此时缓存已就绪, 阅读器从缓存装载不重复下载)
+        loadContent(reset = true) { onReset?.invoke() }
     }
 
     /**

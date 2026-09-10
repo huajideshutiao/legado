@@ -136,6 +136,33 @@ fun saveDocument(fileName: String, bytes: ByteArray): Boolean {
 }
 
 /**
+ * 保存图片到系统相册 (对照 iOS UIImageWriteToSavedPhotosAlbum / Android SAF 落盘)。
+ *
+ * ArkTS 侧 FilePickerBridgeHandler 申请 ohos.permission.WRITE_IMAGEVIDEO 后调
+ * photoAccessHelper.createAsset 建图库资源, 再用 @ohos.file.fs 写入 [bytes]
+ * (photoAccessHelper 仅 ArkTS 可用, 故经桥)。
+ *
+ * @param extension 图片扩展名 (不含点, 如 "jpg", 由调用方按字节魔数判定)
+ * @param bytes 图片字节
+ * @return 是否写入成功 (未授予相册权限 / 写入失败均为 false, 属设备环境条件, 调用方 toast)
+ * @throws IllegalStateException 桥未就绪 / 桥调用超时 (本端不变量被破坏)
+ */
+@OptIn(ExperimentalEncodingApi::class)
+fun saveImageToAlbum(extension: String, bytes: ByteArray): Boolean {
+    check(OhosNativeBridge.isFilePickerBridgeReady()) {
+        "鸿蒙文件保存桥未就绪: napi filePicker tsfn 未注册 (EntryAbility.registerFilePickerCallback 未执行)"
+    }
+    val payload = KS_JSON.encodeToString(
+        SaveImageToAlbumPayload(extension = extension, data = Base64.encode(bytes))
+    )
+    val resultJson = OhosNativeBridge.invokeFilePickerSync("saveImageToAlbum", payload)
+        ?: error("鸿蒙相册保存桥调用失败: invokeFilePickerSync 超时或 tsfn 调用异常")
+    val resp = runCatching { KS_JSON.decodeFromString(FilePickerResponse.serializer(), resultJson) }.getOrNull()
+        ?: error("鸿蒙相册保存响应解析失败: $resultJson")
+    return resp.ok
+}
+
+/**
  * 选择目录 (对照 iOS pickDirectory / desktop FileDialogs.pickDirectory)。
  *
  * 鸿蒙端用 DocumentViewPicker 选目录 (maxSelectNumber=1), 返回目录 URI;
@@ -186,6 +213,13 @@ private data class SaveDocumentPayload(
     val data: String,
 )
 
+/** saveImageToAlbum 请求 payload (Kotlin → ArkTS, data 为 base64 编码图片字节)。 */
+@Serializable
+private data class SaveImageToAlbumPayload(
+    val extension: String,
+    val data: String,
+)
+
 /** pickDirectory 请求 payload (Kotlin → ArkTS, 无参数)。 */
 @Serializable
 private class PickDirectoryPayload
@@ -202,6 +236,7 @@ private class PickDirectoryPayload
  * - pickDirectory 用户取消: [ok]=true, [cancelled]=true
  * - saveDocument 成功: [ok]=true, [uris]=[目标文件 URI]
  * - saveDocument 用户取消: [ok]=true, [cancelled]=true
+ * - saveImageToAlbum 成功: [ok]=true
  * - 失败: [ok]=false, [error]=错误信息
  */
 @Serializable

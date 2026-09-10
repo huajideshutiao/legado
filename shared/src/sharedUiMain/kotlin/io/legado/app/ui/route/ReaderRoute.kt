@@ -248,10 +248,6 @@ fun ReaderRoute(
                 screenModel.showMenu()
             }
 
-            override fun onPageLongClick(column: TextColumn?) {
-                provider.onLongPress(screenModel)
-            }
-
             override fun onImageLongPress(src: String, x: Float, y: Float) {
                 provider.onImageLongPress(screenModel, src, x, y)
             }
@@ -1160,7 +1156,7 @@ fun ReaderRoute(
                                 end - 1
                             )
                             scope.launch(IoDispatcher) {
-                                CacheBookShared.startProcessJob(coroutineContext)
+                                CacheBookShared.startProcessJob()
                             }
                         }
                     },
@@ -1259,7 +1255,7 @@ private fun buildLayoutConfig(
         paragraphSpacing = config.paragraphSpacing,
         titleTopSpacing = config.titleTopSpacing.dp.roundToPx(),
         titleBottomSpacing = config.titleBottomSpacing.dp.roundToPx(),
-        // 末页底部留白 (对照 app 端 getTextChapter 末尾 20.dpToPx())
+        // 末页底部留白: 原版为 20dp
         endPadding = 20.dp.roundToPx(),
         paragraphIndent = config.paragraphIndent,
         textFullJustify = config.textFullJustify,

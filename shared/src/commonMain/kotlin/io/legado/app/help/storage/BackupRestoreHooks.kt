@@ -41,7 +41,7 @@ interface BackupRestoreHook {
 
     /** themeConfig.json 覆盖落盘后重载内存列表 (app 端: ThemeConfig.upConfig())。 */
     fun onThemeConfigRestored() {
-        runCatching { ThemeConfigProviders.get().upConfig() }
+        ThemeConfigProviders.get().upConfig()
     }
 
     /** 恢复完成后的 UI 钩子 (app 端: toast + LauncherIconHelp.changeIcon + ThemeConfig.applyDayNight)。 */

@@ -166,6 +166,11 @@ abstract class ReadAloudHostShared : ReadAloudRemoteHost {
         }
     }
 
+    /** 按当前语速配置重新生效 (对照 `ReadAloud.upTtsSpeechRate`): 不写配置, 只重放。 */
+    fun upSpeechRate() {
+        setSpeechRate(configuredSpeechRate())
+    }
+
     // region 内部实现
 
     /** 定时关闭: 到点暂停朗读, 与原版 BaseReadAloudService 的 SleepTimer 同语义。 */
@@ -206,14 +211,17 @@ abstract class ReadAloudHostShared : ReadAloudRemoteHost {
 
     /** AppConfig.ttsSpeechRate (0..45) 折算为控制器倍率 (原版 (rate + 5) / 10f)。 */
     private fun applySpeechRate() {
-        // 跟随系统时回落默认语速 (对照原版 AppConfig.speechRatePlay)
-        val prefs = runCatching { PreferenceProviders.get() }.getOrNull() ?: return
-        val rate = if (prefs.getBoolean(PreferKey.ttsFollowSys, true)) {
+        controller.setSpeechRate((configuredSpeechRate() + 5) / 10f)
+    }
+
+    /** 当前生效语速 0..45; 跟随系统时回落默认语速 (对照原版 AppConfig.speechRatePlay)。 */
+    private fun configuredSpeechRate(): Int {
+        val prefs = PreferenceProviders.get()
+        return if (prefs.getBoolean(PreferKey.ttsFollowSys, true)) {
             DEFAULT_SPEECH_RATE
         } else {
             prefs.getInt(PreferKey.ttsSpeechRate, DEFAULT_SPEECH_RATE)
         }
-        controller.setSpeechRate((rate + 5) / 10f)
     }
 
     /**
@@ -225,7 +233,6 @@ abstract class ReadAloudHostShared : ReadAloudRemoteHost {
     private fun startPositionWatch() {
         positionWatchJob?.cancel()
         val readBook = ActiveReadBookRegistry.current ?: return
-        val controller = controllerRef ?: return
         positionWatchJob = scope.launch {
             readBook.durChapterPos.collect { pos ->
                 if (controller.state.value != ReadAloudState.PLAYING) return@collect
@@ -292,15 +299,14 @@ abstract class ReadAloudHostShared : ReadAloudRemoteHost {
         val readBook = ActiveReadBookRegistry.current ?: return null
         if (chapterIndex == readBook.durChapterIndexValue) {
             val laidOut = readBook.curTextChapter.value
-            if (laidOut != null && laidOut.isCompleted && laidOut.pages.isNotEmpty()) {
+            if (laidOut != null && laidOut.pages.isNotEmpty()) {
                 return laidOut.pages.joinToString("") { it.text }
             }
         }
         val book = readBook.bookValue ?: return null
         val chapter = readBook.chapterListValue?.getOrNull(chapterIndex)
-        val content = chapter?.let {
-            runCatching { BookStorageProviders.get().getContent(book, it) }.getOrNull()
-        }
+        // 缓存未命中 getContent 自己返回 null; 真读盘失败则抛到 controller.start 的错误出口
+        val content = chapter?.let { BookStorageProviders.get().getContent(book, it) }
         if (content.isNullOrBlank()) {
             // 控制器本次会置 ERROR, 装载完成后用户重试即可
             ActiveReadBookRegistry.currentViewModel?.loadChapter(chapterIndex)

@@ -17,7 +17,7 @@ import { initMediaBridge, handleMediaCommand } from '../bridge/MediaBridgeHandle
 import { initTtsBridge, handleTtsCommand } from '../bridge/TtsBridgeHandler';
 import { handleCryptoRequest } from '../bridge/CryptoBridgeHandler';
 import { handleHttpRequest } from '../bridge/HttpBridgeHandler';
-import { handleFilePickerRequest } from '../bridge/FilePickerBridgeHandler';
+import { initFilePickerBridge, handleFilePickerRequest } from '../bridge/FilePickerBridgeHandler';
 import { handlePasteboardRequest } from '../bridge/PasteboardBridgeHandler';
 import { handleNetworkRequest } from '../bridge/NetworkBridgeHandler';
 import { handleTextCodecRequest } from '../bridge/TextCodecBridgeHandler';
@@ -27,7 +27,6 @@ import { handleWebViewRequest } from '../bridge/WebViewBridgeHandler';
 import { handleMarkdownRequest } from '../bridge/MarkdownBridgeHandler';
 // KP8+ System 桥接处理器 (ArkTS 侧 promptAction.showToast + context.startAbility 真实实现)
 import { initSystemBridge, handleShowToast, handleOpenUrl } from '../bridge/SystemBridgeHandler';
-import { handleShowTextActionMenu } from '../bridge/TextActionBridgeHandler';
 import { handleBatteryRequest } from '../bridge/BatteryBridgeHandler';
 import { initPlatformEvent, emitAppLifecycle, emitColorMode } from '../bridge/PlatformEventBridge';
 import { initShareBridge, handleShareRequest } from '../bridge/SystemShareBridgeHandler';
@@ -207,16 +206,6 @@ export default class EntryAbility extends UIAbility {
       legado.registerOpenUrlCallback(handleOpenUrl);
     }, '[Legado] openUrl tsfn callback registered via napi', '[Legado] registerOpenUrlCallback failed: ');
 
-    // KP8+: 注册 TextAction tsfn 回调 (KMP → ArkTS 跨线程 dispatch 文本操作菜单请求)。
-    // C++ 侧 (legado_napi.cpp RegisterTextActionCallback) 创建 napi_threadsafe_function 包装此回调,
-    // 并通过 @CName legado_register_text_action_fn 把 dispatch 函数指针
-    // 注入 Kotlin OhosNativeBridge.textActionTsfn。此后 KMP 长按选字完成 →
-    // OhosNativeBridge.showTextActionMenu 调用时, JSON payload 跨线程 dispatch 到此回调,
-    // 由 ArkTS TextActionBridgeHandler 更新 Index.ets 叠层浮动菜单。
-    registerSafely((): void => {
-      legado.registerTextActionCallback(handleShowTextActionMenu);
-    }, '[Legado] textAction tsfn callback registered via napi', '[Legado] registerTextActionCallback failed: ');
-
     // KP8+: 注册 FilePicker tsfn 回调 (KMP → ArkTS 跨线程 dispatch, 同 Image/Crypto/Http 模式)。
     // C++ 侧 (legado_napi.cpp RegisterFilePickerCallback) 创建 napi_threadsafe_function 包装此回调,
     // 并通过 @CName legado_register_file_picker_fn 把 dispatch 函数指针
@@ -226,6 +215,8 @@ export default class EntryAbility extends UIAbility {
     // @ohos.file.fs 读内容, 完成后调 legado.filePickerCallback(requestId, resultJson) 回送结果
     // 唤醒 KMP 侧 CompletableDeferred。未注册时 KMP 侧降级返回 null (见 OhosFilePicker.ohos.kt)。
     registerSafely((): void => {
+      // 相册保存 (saveImageToAlbum) 需 UIAbilityContext 申请权限 + 建图库资源
+      initFilePickerBridge(this.context);
       legado.registerFilePickerCallback((json: string): void => {
         handleFilePickerRequest(json, (requestId: number, resultJson: string): void => {
           legado.filePickerCallback(requestId, resultJson);

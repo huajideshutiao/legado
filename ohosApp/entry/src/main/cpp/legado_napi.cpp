@@ -205,18 +205,11 @@ static legado_int64_cstr_void_fn g_permission_callback = nullptr;
 // dlsym 加载的函数指针 - 外部启动请求投递 (ArkTS → Kotlin 同步推送, 同 legado_handle_deep_link 模式)
 static legado_str_int_fn g_handle_launch_request = nullptr;
 
-// dlsym 加载的函数指针 - 图片下载管线导出 (ArkTS 保存到相册, 带书源 header, 返回 base64)
-static legado_str_str_fn g_download_image_bytes = nullptr;
-
 // dlsym 加载的函数指针 - Markdown 查看器 HTML 构建导出 (ArkTS → Kotlin 同步调用, 无参返回字符串;
 // 运行时从 composeResources 直读模板 + js/css 内联, 零拷贝零重复)
 typedef const char *(*legado_void_cstr_fn)();
 
 static legado_void_cstr_fn g_build_markdown_viewer = nullptr;
-
-// dlsym 加载的函数指针 - TextAction tsfn 注入 + ArkTS → Kotlin 菜单动作回调 (阅读页文本操作浮动菜单, KP8+ 新增)
-static legado_register_dispatch_fn g_register_text_action_fn = nullptr;
-static legado_int64_cstr_void_fn g_text_action_callback = nullptr;
 
 // dlsym 加载的函数指针 - WebView tsfn 注入 + ArkTS → Kotlin 回调 (混合协议: 控制面 JSON + 数据面裸字符串, 后台 WebView 抓取)
 static legado_register_webview_dispatch_fn g_register_webview_fn = nullptr;
@@ -244,7 +237,6 @@ static napi_threadsafe_function g_tts_tsfn = nullptr;
 static napi_threadsafe_function g_crypto_tsfn = nullptr;
 static napi_threadsafe_function g_http_tsfn = nullptr;
 static napi_threadsafe_function g_open_url_tsfn = nullptr;
-static napi_threadsafe_function g_text_action_tsfn = nullptr;
 static napi_threadsafe_function g_file_picker_tsfn = nullptr;
 static napi_threadsafe_function g_pasteboard_tsfn = nullptr;
 static napi_threadsafe_function g_text_codec_tsfn = nullptr;
@@ -356,15 +348,8 @@ static bool load_legado_shared() {
     // 解析 @CName 导出符号 - 外部启动请求投递 (ArkTS → Kotlin 同步推送, 同 deep link 模式)
     g_handle_launch_request = (legado_str_int_fn) dlsym(g_legado_so, "legado_handle_launch_request");
 
-    // 解析 @CName 导出符号 - 图片下载管线 (ArkTS 保存到相册, 带书源 header, 返回 base64)
-    g_download_image_bytes = (legado_str_str_fn) dlsym(g_legado_so, "legado_download_image_bytes");
-
     // 解析 @CName 导出符号 - Markdown 查看器 HTML 构建 (运行时从 composeResources 直读内联)
     g_build_markdown_viewer = (legado_void_cstr_fn) dlsym(g_legado_so, "legado_build_markdown_viewer");
-
-    // 解析 @CName 导出符号 - TextAction tsfn 注入 + ArkTS → Kotlin 菜单动作回调
-    g_register_text_action_fn = (legado_register_dispatch_fn) dlsym(g_legado_so, "legado_register_text_action_fn");
-    g_text_action_callback = (legado_int64_cstr_void_fn) dlsym(g_legado_so, "legado_text_action_callback");
 
     // 解析 @CName 导出符号 - WebView tsfn 注入 + ArkTS → Kotlin 回调 (混合协议: 控制面 JSON + 数据面裸字符串)
     g_register_webview_fn = (legado_register_webview_dispatch_fn) dlsym(g_legado_so, "legado_register_webview_fn");
@@ -821,8 +806,8 @@ static void WindowCallJs(napi_env env, napi_value js_cb, void * /*context*/, voi
 }
 
 // ============ Register*Callback 通用宏 ============
-// 20 个注册函数 (Window/Toast/Notification/Markdown/Image/Media/Tts/Crypto/Http/WebView/OpenUrl/
-// FilePicker/Pasteboard/Network/TextCodec/TextAction/Battery/Share/Keyboard/Permission) 结构完全同构:
+// 19 个注册函数 (Window/Toast/Notification/Markdown/Image/Media/Tts/Crypto/Http/WebView/OpenUrl/
+// FilePicker/Pasteboard/Network/TextCodec/Battery/Share/Keyboard/Permission) 结构完全同构:
 // 校验 argc → 释放旧 tsfn → napi_create_threadsafe_function 包装 ArkTS callback (XxxCallJs) →
 // 存入 g_xxx_tsfn → 经 g_register_xxx_fn 把 dispatch 函数指针注入 Kotlin OhosNativeBridge。
 // name 派生 napi 方法名 (registerXxxCallback) 与 work_name (LegadoXxxTsfn); dispatch_fn 显式传入
@@ -1713,73 +1698,6 @@ static napi_value TextCodecCallback(napi_env env, napi_callback_info info) {
     return ret;
 }
 
-// ============ TextAction tsfn 接线 (阅读页文本操作浮动菜单, 同 OpenUrl fire-and-forget + ArkTS → Kotlin 回调) ============
-// - KMP OhosReaderPlatformProvider.onTextSelected → OhosNativeBridge.showTextActionMenu(text, x, y)
-// - 请求经 C++ ohos_text_action_dispatch → napi_call_threadsafe_function → ArkTS 主线程回调
-// - ArkTS TextActionBridgeHandler + Index.ets 叠层浮动菜单展示, 菜单项点击经
-//   TextActionCallback(requestId, resultJson) (napi → @CName legado_text_action_callback) 回送动作
-
-// C++ dispatch 入口: 由 Kotlin lambda (注入到 OhosNativeBridge.textActionTsfn) 调用
-extern "C" void ohos_text_action_dispatch(const char *json) {
-    if (g_text_action_tsfn == nullptr || json == nullptr) return;
-    size_t len = strlen(json) + 1;
-    char *json_dup = (char *) malloc(len);
-    if (json_dup == nullptr) return;
-    memcpy(json_dup, json, len);
-    napi_status status = napi_call_threadsafe_function(g_text_action_tsfn, json_dup, napi_tsfn_nonblocking);
-    if (status != napi_ok) {
-        free(json_dup);
-    }
-}
-
-// tsfn call-js 回调: 在 ArkTS 主线程执行, 把 data (JSON 串) 包成 napi string 后调用 ArkTS 回调
-static void TextActionCallJs(napi_env env, napi_value js_cb, void * /*context*/, void *data) {
-    if (js_cb == nullptr || data == nullptr) return;
-    char *json = static_cast<char *>(data);
-    napi_value json_arg;
-    napi_create_string_utf8(env, json, NAPI_AUTO_LENGTH, &json_arg);
-    napi_value undef;
-    napi_get_undefined(env, &undef);
-    napi_call_function(env, undef, js_cb, 1, &json_arg, nullptr);
-    free(json);
-}
-
-// napi 包装: registerTextActionCallback(callback: (json: string) => void): void
-// ArkTS 注册文本菜单回调; C++ 创建 tsfn, 通过 legado_register_text_action_fn 注入 ohos_text_action_dispatch 到 Kotlin
-REGISTER_TSFN_CALLBACK(TextAction, TextActionCallJs, g_text_action_tsfn, g_register_text_action_fn, ohos_text_action_dispatch,
-    "registerTextActionCallback: legado_register_text_action_fn not resolved (KMP showTextActionMenu 将降级 println)")
-
-// napi 包装: textActionCallback(requestId: number, resultJson: string): void
-// ArkTS 菜单项点击/收起 → C++ 转发 @CName legado_text_action_callback → KMP OhosNativeBridge.onTextActionResult
-static napi_value TextActionCallback(napi_env env, napi_callback_info info) {
-    size_t argc = 2;
-    napi_value args[2] = {nullptr};
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-    if (argc < 2) {
-        napi_throw_type_error(env, nullptr, "textActionCallback requires 2 arguments (requestId, resultJson)");
-        napi_value ret;
-        napi_get_undefined(env, &ret);
-        return ret;
-    }
-
-    int64_t request_id = 0;
-    napi_get_value_int64(env, args[0], &request_id);
-
-    size_t str_len = 0;
-    napi_get_value_string_utf8(env, args[1], nullptr, 0, &str_len);
-    char *buf = new char[str_len + 1];
-    napi_get_value_string_utf8(env, args[1], buf, str_len + 1, &str_len);
-
-    if (load_legado_shared() && g_text_action_callback != nullptr) {
-        g_text_action_callback(request_id, buf);
-    }
-    delete[] buf;
-
-    napi_value ret;
-    napi_get_undefined(env, &ret);
-    return ret;
-}
-
 // ============ Battery tsfn 接线 (同 Crypto 模式: tsfn 发请求 + @CName 回调返回结果) ============
 // 阅读页电池电量: KMP getBatteryLevel → invokeBatterySync → tsfn dispatch 到 ArkTS →
 // BatteryBridgeHandler 调 @ohos.batteryInfo.batterySOC → batteryCallback 回送结果。
@@ -1993,32 +1911,6 @@ static napi_value HandleLaunchRequest(napi_env env, napi_callback_info info) {
     return ret;
 }
 
-// ============ 图片下载管线导出 napi 包装 (ArkTS 保存到相册复用, 带书源 header 防盗链) ============
-// 返回 base64 编码的图片字节。内部 runBlocking 转同步且下载走 HTTP 桥 (tsfn → ArkTS 主线程回调),
-// 调用方必须在 TaskPool/Worker 线程调用 (主线程调用会死锁超时, 与 bookshelfList 等业务函数同约束)。
-
-// napi 包装: downloadImageBytes(url: string): string
-static napi_value DownloadImageBytes(napi_env env, napi_callback_info info) {
-    size_t argc = 1;
-    napi_value args[1] = {nullptr};
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-
-    size_t str_len = 0;
-    napi_get_value_string_utf8(env, args[0], nullptr, 0, &str_len);
-    char *buf = new char[str_len + 1];
-    napi_get_value_string_utf8(env, args[0], buf, str_len + 1, &str_len);
-
-    const char *result = "";  // 兜底空串 (so 未加载/下载失败, ArkTS 侧回退裸下载或 toast)
-    if (load_legado_shared() && g_download_image_bytes != nullptr) {
-        result = g_download_image_bytes(buf);
-    }
-    delete[] buf;
-
-    napi_value ret;
-    napi_create_string_utf8(env, result, NAPI_AUTO_LENGTH, &ret);
-    return ret;
-}
-
 // napi 包装: buildMarkdownViewerHtml(): string
 // ArkTS → Kotlin 同步调用: 运行时从 composeResources 直读模板 + js/css 内联成完整 viewer HTML,
 // 供 WebviewController.loadData 加载 (零拷贝零重复, 无平台端资源副本)。
@@ -2096,8 +1988,6 @@ androidx_compose_ui_arkui_init(env, exports
         {"networkCallback", nullptr, NetworkCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
         // TextCodec tsfn 回调注册 + ArkTS → Kotlin 回调 (同 Pasteboard 模式, decode/encode)
         {"registerTextCodecCallback", nullptr, RegisterTextCodecCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
-            {"registerTextActionCallback", nullptr, RegisterTextActionCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
-            {"textActionCallback", nullptr, TextActionCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"textCodecCallback", nullptr, TextCodecCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
             // WebView tsfn 回调注册 + ArkTS → Kotlin 回调 (后台 WebView 抓取, 同 Http/Image 模式)
             {"registerWebViewCallback", nullptr, RegisterWebViewCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
@@ -2119,8 +2009,6 @@ androidx_compose_ui_arkui_init(env, exports
             {"permissionCallback", nullptr, PermissionCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
             // 外部启动请求投递 (ArkTS → Kotlin 同步推送, 文件关联/其他 deep link)
             {"handleLaunchRequest", nullptr, HandleLaunchRequest, nullptr, nullptr, nullptr, napi_default, nullptr},
-            // 图片下载管线 (ArkTS 保存到相册, 带书源 header, 返回 base64; 须 TaskPool/Worker 调用)
-            {"downloadImageBytes", nullptr, DownloadImageBytes, nullptr, nullptr, nullptr, napi_default, nullptr},
     };
     napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
     return exports;

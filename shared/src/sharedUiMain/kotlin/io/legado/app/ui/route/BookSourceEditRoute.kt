@@ -92,7 +92,7 @@ fun BookSourceEditRoute(
             BookSourceEditViewModelShared(
                 scope = scope,
                 // 剪贴板: 平台能力注入 (替代 app 端 getClipText)
-                clipTextProvider = { PlatformCapabilityProviders.getOrNull()?.getClipboardText() },
+                clipTextProvider = { PlatformCapabilityProviders.get().getClipboardText() },
                 // SourceConfig 已下沉 commonMain, 直接调用 (替代 app 端 SourceConfig.removeSource)
                 sourceConfigRemover = { url -> SourceConfig.removeSource(url) },
                 // CookieStoreProviders 已下沉 commonMain (替代 app 端 CookieStore.removeCookie)
@@ -215,7 +215,7 @@ fun BookSourceEditRoute(
             onCopySource = {
                 // 对照 app 端 copySource: sendToClip(GSON.toJson(getSource()))
                 val source = screenModel.getSource(editState)
-                PlatformCapabilityProviders.getOrNull()?.copyToClipboard(GSON.toJson(source))
+                PlatformCapabilityProviders.get().copyToClipboard(GSON.toJson(source))
             },
             onPasteSource = {
                 // 对照 app 端 pasteSource: viewModel.pasteSource { upSourceView(it) }
@@ -250,13 +250,13 @@ fun BookSourceEditRoute(
                 // 对照 app 端 setSourceVariable: viewModel.save(getSource()) { source.showSourceVariableDialog(this) }
                 val source = screenModel.getSource(editState)
                 screenModel.dispatch(BookSourceEditUiEvent.Save(source) { saved ->
-                    PlatformCapabilityProviders.getOrNull()?.showBookSourceVariableDialog(saved)
+                    PlatformCapabilityProviders.get().showBookSourceVariableDialog(saved)
                 })
             },
             onShareSourceStr = {
                 // 对照 app 端 shareSourceStr: share(GSON.toJson(getSource()))
                 val source = screenModel.getSource(editState)
-                PlatformCapabilityProviders.getOrNull()?.shareText(GSON.toJson(source))
+                PlatformCapabilityProviders.get().shareText(GSON.toJson(source))
             },
             onHelp = { fileName ->
                 // 对照 app 端 help: showHelp(fileName)

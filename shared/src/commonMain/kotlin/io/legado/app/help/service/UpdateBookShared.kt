@@ -701,7 +701,7 @@ class UpdateBookShared(
      * 3. 在 upTocPool 上启动新 job:
      *    - 订阅 [_tocBusy]: 有目录更新时暂停预下载 (setWorkingState(false)),
      *      优先让网络资源服务目录更新 (与 app 端注释"现在更多网站限制并发"一致)
-     *    - 调用 CacheBookShared.startProcessJob(upTocPool) 持续处理 cacheBookMap
+     *    - 调用 CacheBookShared.startProcessJob 持续处理 cacheBookMap
      *
      * 平台差异:
      * - 直接调 [CacheBookShared.startProcessJob] (替代 app 端 `CacheBook.startProcessJob` /
@@ -724,7 +724,7 @@ class UpdateBookShared(
             try {
                 // startProcessJob 持续遍历 cacheBookMap 处理待下载章节
                 // (内部 onEachParallel(MAX_THREAD) 并发, Mutex 互斥避免重复启动)
-                CacheBookShared.startProcessJob(upTocPool)
+                CacheBookShared.startProcessJob()
             } finally {
                 busyJob.cancel()
                 CacheBookShared.setWorkingState(true)

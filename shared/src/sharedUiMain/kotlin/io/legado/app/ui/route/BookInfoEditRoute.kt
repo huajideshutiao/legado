@@ -82,7 +82,7 @@ fun BookInfoEditRoute(
         override fun onSelectCover() {
             scope.launch {
                 val path = withContext(IoDispatcher) {
-                    PlatformServiceProviders.getOrNull()?.files?.pickFile(FileFilter.Images)
+                    PlatformServiceProviders.get().files.pickFile(FileFilter.Images)
                         ?.let { picked ->
                             val displayName =
                                 picked.substringAfterLast('/').substringAfterLast('\\')
@@ -99,7 +99,7 @@ fun BookInfoEditRoute(
         // 换封面源弹窗 (对照 app 端 ChangeCoverDialog)
         override fun onChangeCoverSource() {
             screenModel.book?.let { book ->
-                PlatformCapabilityProviders.getOrNull()?.showChangeCoverDialog(book) { coverUrl ->
+                PlatformCapabilityProviders.get().showChangeCoverDialog(book) { coverUrl ->
                     screenModel.dispatch(BookInfoEditUiEvent.CoverChangeTo(coverUrl))
                 }
             }

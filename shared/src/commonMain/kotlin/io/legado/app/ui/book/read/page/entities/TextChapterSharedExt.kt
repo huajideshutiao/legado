@@ -11,12 +11,12 @@ import kotlin.math.min
  * 必须自洽: 段号 = 文本流按 `\n` 切分后的下标 + 1。
  */
 
-/** 章节标题 (取首页标题, 对照 app 端 TextChapter.title) */
+/** 章节标题 (取首页标题)。排版器恒产出至少一页 */
 val TextChapterShared.title: String
-    get() = pages.firstOrNull()?.title ?: ""
+    get() = pages.first().title
 
 /**
- * 章节段落列表 (对照 app 端 TextChapter.paragraphs)。
+ * 章节段落列表。
  *
  * 按 [TextLine.isParagraphEnd] 断段并跨页续接。不能按 paragraphNum 分组: 排版器给标题行
  * 的 paragraphNum 是 0 (逻辑段号口径, 0=标题/1..N=正文, 段评计数按此对齐), 按 `> 0` 过滤
@@ -25,7 +25,7 @@ val TextChapterShared.title: String
 val TextChapterShared.paragraphs: ArrayList<TextParagraph>
     get() = groupParagraphs(pages)
 
-/** 分页段落列表 (对照 app 端 TextChapter.pageParagraphs): 逐页断段, 段号按全章重排 */
+/** 分页段落列表: 逐页断段, 段号按全章重排 */
 val TextChapterShared.pageParagraphs: ArrayList<TextParagraph>
     get() {
         val paragraphList = arrayListOf<TextParagraph>()
@@ -38,10 +38,9 @@ val TextChapterShared.pageParagraphs: ArrayList<TextParagraph>
         return paragraphList
     }
 
-/** 单页段落列表 (对照 app 端 TextPage.paragraphs, 区别是标题也算一段) */
+/** 单页段落列表 (标题也算一段) */
 fun TextChapterShared.pageParagraphsOf(pageIndex: Int): List<TextParagraph> {
-    val page = pages.getOrNull(pageIndex) ?: return emptyList()
-    return groupParagraphs(listOf(page))
+    return groupParagraphs(listOf(pages[pageIndex]))
 }
 
 /**
@@ -69,7 +68,7 @@ private fun groupParagraphs(pages: List<TextPage>): ArrayList<TextParagraph> {
 }
 
 /**
- * 获取需要朗读的文本 (对照 app 端 TextChapter.getNeedReadAloud)
+ * 获取需要朗读的文本
  * @param pageIndex 起始页
  * @param pageSplit 是否分页
  * @param startPos 从当前页什么地方开始朗读
@@ -82,20 +81,15 @@ fun TextChapterShared.getNeedReadAloud(
     pageEndIndex: Int = pages.lastIndex
 ): String {
     val stringBuilder = StringBuilder()
-    if (pages.isNotEmpty()) {
-        for (index in pageIndex..min(pageEndIndex, pages.lastIndex)) {
-            stringBuilder.append(pages[index].text)
-            if (pageSplit && !stringBuilder.endsWith("\n")) {
-                stringBuilder.append("\n")
-            }
+    for (index in pageIndex..min(pageEndIndex, pages.lastIndex)) {
+        stringBuilder.append(pages[index].text)
+        if (pageSplit && !stringBuilder.endsWith("\n")) {
+            stringBuilder.append("\n")
         }
     }
     return stringBuilder.substring(startPos).toString()
 }
 
-/**
- * 根据章节字符位置获取段落号 (对照 app 端 TextChapter.getParagraphNum)
- */
 fun TextChapterShared.getParagraphNum(
     position: Int,
     pageSplit: Boolean,
@@ -109,21 +103,17 @@ fun TextChapterShared.getParagraphNum(
     return -1
 }
 
-/**
- * 获取段落列表 (对照 app 端 TextChapter.getParagraphs)
- * TextChapterShared 同步排版, isCompleted 恒为 true, 直接返回对应列表
- */
+/** 直接返回对应列表 (同步排版, 构造即全量) */
 fun TextChapterShared.getParagraphs(pageSplit: Boolean): List<TextParagraph> {
     return if (pageSplit) pageParagraphs else paragraphs
 }
 
-/** 最后一个段落的章节位置 (对照 app 端 TextChapter.getLastParagraphPosition) */
 fun TextChapterShared.getLastParagraphPosition(): Int {
     return pageParagraphs.last().chapterPosition
 }
 
 /**
- * 尝试就地为 [TextChapterContract] 打补丁添加/更新段评气泡（Patch 快速通道）。
+ * 尝试就地为 [TextChapterShared] 打补丁添加/更新段评气泡（Patch 快速通道）。
  *
  * 逻辑：
  * 1. reviewCountMap 无 >0 计数时，直接标记 reviewCountApplied 并返回 true。
@@ -135,7 +125,7 @@ fun TextChapterShared.getLastParagraphPosition(): Int {
  *
  * @return true 表示成功就地 Patch，false 表示存在换行折行风险需触发后台重排。
  */
-fun TextChapterContract.tryPatchReviewCounts(
+fun TextChapterShared.tryPatchReviewCounts(
     reviewCountMap: Map<Int, Int>,
     reviewChar: String = "▨",
     measurer: TextMeasurer? = null,
@@ -148,34 +138,23 @@ fun TextChapterContract.tryPatchReviewCounts(
 ): Boolean {
     val validCounts = reviewCountMap.filter { it.value > 0 }
     if (validCounts.isEmpty()) {
-        if (this is TextChapterShared) {
-            this.reviewCountApplied = true
-        }
+        reviewCountApplied = true
         return true
     }
     // 没有可视区宽度就拿不到可靠的行宽上界，无从判断气泡会不会挤出可视区
     if (visibleWidth <= 0) return false
 
-    val pageCount = this.pageSize
-    if (pageCount == 0) return false
-    val allPages = (0 until pageCount).mapNotNull { getPage(it) }
-    if (allPages.isEmpty()) return false
+    if (pages.isEmpty()) return false
 
     // 收集所有段落末行 (0=标题, 1..N=正文段落)
     val targetLines = mutableMapOf<Int, TextLine>()
-    for (page in allPages) {
+    for (page in pages) {
         for (line in page.lines) {
             if (line.isTitle && line.isParagraphEnd) {
                 targetLines[0] = line
             } else if (line.paragraphNum > 0 && line.isParagraphEnd) {
                 targetLines[line.paragraphNum] = line
             }
-        }
-    }
-    // 标题兜底：若标题未标记 isParagraphEnd，取首页最后一行标题
-    if (0 in validCounts && targetLines[0] == null) {
-        allPages.firstOrNull()?.lines?.lastOrNull { it.isTitle }?.let {
-            targetLines[0] = it
         }
     }
 
@@ -201,17 +180,12 @@ fun TextChapterContract.tryPatchReviewCounts(
             return false
         }
 
-        val isTitle = line.isTitle
-        val bubbleWidth = when {
-            isTitle && titleMeasurer != null -> titleMeasurer.measureWidth(reviewChar)
-            !isTitle && measurer != null -> measurer.measureWidth(reviewChar)
-            page.contentPaintTextHeight > 0f -> page.contentPaintTextHeight
-            else -> line.height.coerceAtLeast(20f)
-        }
+        // 没有度量器就算不出气泡宽度，回退后台重排（不许拿行高凑一个假宽度）
+        val bubbleWidth = (if (line.isTitle) titleMeasurer else measurer)
+            ?.measureWidth(reviewChar) ?: return false
 
         val lineMaxEnd = if (doublePage && !line.isLeftLine) {
-            if (viewWidth > 0) (viewWidth - paddingRight).toFloat()
-            else (paddingLeft + visibleWidth * 2).toFloat()
+            (viewWidth - paddingRight).toFloat()
         } else {
             (paddingLeft + visibleWidth).toFloat()
         }
@@ -225,7 +199,7 @@ fun TextChapterContract.tryPatchReviewCounts(
 
     // 第二遍扫描：按页序 / 行序单次遍历整章，先顺移位置账本再插入占位符
     var chapterDelta = 0
-    for (page in allPages) {
+    for (page in pages) {
         var pageDelta = 0
         for (line in page.lines) {
             line.chapterPosition += chapterDelta
@@ -256,9 +230,7 @@ fun TextChapterContract.tryPatchReviewCounts(
         }
     }
 
-    if (this is TextChapterShared) {
-        this.reviewCountApplied = true
-    }
+    reviewCountApplied = true
     return true
 }
 

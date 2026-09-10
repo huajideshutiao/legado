@@ -10,7 +10,7 @@ import io.legado.desktop.help.tts.DesktopReadAloudHost
  * 桌面端 [ReadBookPlatform]: 供 shared [io.legado.app.model.ReadBookShared] 回调平台副作用。
  *
  * 对照 app 端 `AndroidReadBookPlatform`, 桌面端接朗读宿主 / 缓存运行态 / 本地 txt 分章缓存,
- * 图片缓存保持接口默认空实现 (原因见 override 注释)。
+ * 图片缓存只清解码位图 LRU 不清 Coil 封面缓存 (原因见 override 注释)。
  */
 object DesktopReadBookPlatform : ReadBookPlatform {
 

@@ -10,7 +10,6 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.BookImageStorageProviders
 import io.legado.app.help.book.isLocal
-import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.image.ReaderImageCache.PLACEHOLDER_SIZE
 import io.legado.app.help.image.ReaderImageCache.bind
@@ -72,10 +71,6 @@ object ReaderImageCache {
      */
     var version by mutableIntStateOf(0)
         private set
-
-    private val maxBytes: Long
-        get() = runCatching { AppConfigProviders.get().bitmapCacheSize }
-            .getOrDefault(50).coerceIn(1, 1024) * 1024L * 1024L
 
     /**
      * 绑定当前书的字节加载器；换书时清空缓存。
@@ -173,7 +168,7 @@ object ReaderImageCache {
         bitmaps.remove(src)?.let { cachedBytes -= it.byteSize() }
         bitmaps[src] = bitmap
         cachedBytes += bitmap.byteSize()
-        val limit = maxBytes
+        val limit = bitmapCacheMaxBytes
         val iterator = bitmaps.entries.iterator()
         // 单张图超预算时保留自身（原版 ensureLruCacheSize 同样扩容而非丢弃当前图）
         while (cachedBytes > limit && bitmaps.size > 1 && iterator.hasNext()) {
@@ -183,8 +178,6 @@ object ReaderImageCache {
             iterator.remove()
         }
     }
-
-    private fun ImageBitmap.byteSize(): Long = width.toLong() * height.toLong() * 4L
 
     fun clear() {
         synchronized(lock) {

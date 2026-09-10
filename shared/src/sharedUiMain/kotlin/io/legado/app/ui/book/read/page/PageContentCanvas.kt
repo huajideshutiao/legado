@@ -72,7 +72,6 @@ fun PageContentCanvas(
     modifier: Modifier = Modifier,
     style: ReaderDrawStyle = rememberReaderDrawStyle(),
     onClick: (TextColumn?) -> Unit = {},
-    onLongClick: (TextColumn?) -> Unit = {},
     drawTick: Int = 0,
     selection: PageSelectionState? = null,
     ttsHighlight: TTSHighlightOverlay? = null,

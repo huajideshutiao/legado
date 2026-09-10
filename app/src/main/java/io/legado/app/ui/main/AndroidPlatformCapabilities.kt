@@ -1,5 +1,6 @@
 package io.legado.app.ui.main
 
+import android.app.SearchManager
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
@@ -147,7 +148,6 @@ import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.route.encodeReviewListDialogPayload
 import io.legado.app.ui.widget.dialog.TextDialog
-import io.legado.app.ui.widget.dialog.encodePhotoOverlayPayload
 import io.legado.app.utils.ACache
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
@@ -165,8 +165,10 @@ import io.legado.app.utils.externalCache
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.find
 import io.legado.app.utils.getClipText
+import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.isPad
+import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.isUri
 import io.legado.app.utils.list
 import io.legado.app.utils.openFileUri
@@ -387,6 +389,25 @@ class AndroidPlatformCapabilities(
         activity.share(text)
     }
 
+    /**
+     * 网页搜索 (对照原版 TextActionMenu.menu_browser): URL 直接 ACTION_VIEW,
+     * 非 URL 走 ACTION_WEB_SEARCH 交系统选择应用。
+     * 无浏览器/无应用响应属于设备环境条件 (非本端不变量被破坏), 故 toast 提示而非崩阅读页。
+     */
+    override fun searchWeb(text: String) {
+        runCatching {
+            val intent = if (text.isAbsUrl()) {
+                Intent(Intent.ACTION_VIEW).apply { data = text.toUri() }
+            } else {
+                Intent(Intent.ACTION_WEB_SEARCH).apply { putExtra(SearchManager.QUERY, text) }
+            }
+            activity.startActivity(intent)
+        }.onFailure {
+            it.printOnDebug()
+            activity.toastOnUi(it.localizedMessage ?: "ERROR")
+        }
+    }
+
     // 按 bookUrl 查 DB 解析为 BookRef, 供 LaunchRequest.OpenBook/OpenBookInfo/OpenReader 路由导航
     override suspend fun resolveBookRef(bookUrl: String): BookRef? =
         appDb.bookDao.getBook(bookUrl)?.toRouteRef()
@@ -493,14 +514,6 @@ class AndroidPlatformCapabilities(
             )
         )
         return true
-    }
-
-    // 图片预览: 与 desktop/iOS 同走共享全屏 overlay (key="photo" → PhotoViewOverlayDialog),
-    // chapterIndex 透传给章节磁盘缓存优先链路; book/书源由 overlay 宿主从当前阅读态取
-    override fun showImagePreview(url: String, chapterIndex: Int) {
-        AppNavigatorProviders.getOrNull()?.showOverlay(
-            AppOverlay.Dialog("photo", payload = encodePhotoOverlayPayload(url, chapterIndex))
-        )
     }
 
     // 迁 Compose Overlay: 原 app 端 DefaultCoverGalleryDialog Fragment 已随封面统一删除,
@@ -1777,6 +1790,9 @@ class AndroidPlatformCapabilities(
     }
 
     override val launcherIconChangeSupported: Boolean get() = true
+
+    // AudioPlayService 用 MediaPlaybackLock 真持唤醒锁, 音频播放页的唤醒锁开关只在本端显示
+    override val audioWakeLockSupported: Boolean get() = true
 
     // 对照 ThemeConfigFragment.configBottomNav: dialog_bottom_nav_config.xml Compose 重建
     override fun showBottomNavConfigDialog() {

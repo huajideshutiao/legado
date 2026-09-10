@@ -69,7 +69,7 @@ fun AboutRoute(
     val strLatestVersion = stringResource(Res.string.already_latest_version)
     val strCheckFailed = stringResource(Res.string.check_update_failed_no_msg)
     LaunchedEffect(Unit) {
-        val versionName = PlatformCapabilityProviders.getOrNull()?.getAppVersionName().orEmpty()
+        val versionName = PlatformCapabilityProviders.get().getAppVersionName().orEmpty()
         screenModel.updateState(
             AboutUiState(
                 version = versionName,
@@ -79,7 +79,7 @@ fun AboutRoute(
                 // 入口 gate: 平台声明能力 (app 端 = 原版 AppUpdate.check 链路) 或
                 // 已注册 AppUpdateEnvironment 的端 (desktop 走 shared AppUpdateManager 链路)
                 showCheckUpdate = AppUpdateManager.isAvailable() ||
-                    PlatformCapabilityProviders.getOrNull()?.checkUpdateSupported == true,
+                    PlatformCapabilityProviders.get().checkUpdateSupported,
             )
         )
     }
@@ -88,19 +88,19 @@ fun AboutRoute(
     val actions = object : AboutUiActions {
         // 外链统一走平台 BrowserService
         override fun onOpenUrl(url: String) {
-            PlatformServiceProviders.getOrNull()?.browser?.openUrl(url)
+            PlatformServiceProviders.get().browser.openUrl(url)
         }
 
         // 分享关于页: 内容与 app 端 share(app_share_description, app_name) 一致 (subject 由平台 share 自行处理)
         override fun onShare() {
-            PlatformServiceProviders.getOrNull()?.sharing?.shareText(strAppShareDescription)
+            PlatformServiceProviders.get().sharing.shareText(strAppShareDescription)
         }
 
         // 检查更新: 优先平台能力 (app 端 = 原版 AppUpdate.check 链路 WaitDialog/UpdateDialog/toast);
         // 未声明能力的端 (desktop) 回落 shared AppUpdateManager 检测链路, 弹 UpdateAvailableDialog
         override fun onCheckUpdate() {
-            val capabilities = PlatformCapabilityProviders.getOrNull()
-            if (capabilities?.checkUpdateSupported == true) {
+            val capabilities = PlatformCapabilityProviders.get()
+            if (capabilities.checkUpdateSupported) {
                 capabilities.checkUpdate()
             } else {
                 scope.launch { screenModel.checkUpdate(strLatestVersion, strCheckFailed) }
@@ -109,22 +109,22 @@ fun AboutRoute(
 
         // 显示崩溃日志: 委托平台能力 (app: CrashLogsDialog Fragment; desktop: 共享 CrashLogsDialog)
         override fun onShowCrashLogs() {
-            PlatformCapabilityProviders.getOrNull()?.showCrashLogs()
+            PlatformCapabilityProviders.get().showCrashLogs()
         }
 
         // 保存日志到备份目录: 委托平台能力 (app: copyLogs+copyHeapDump; desktop: 文件选择器导出)
         override fun onSaveLog() {
-            PlatformCapabilityProviders.getOrNull()?.saveLog()
+            PlatformCapabilityProviders.get().saveLog()
         }
 
         // 创建堆转储: 委托平台能力 (app: CrashHandler.doHeapDump; desktop: HotSpotDiagnosticMXBean)
         override fun onCreateHeapDump() {
-            PlatformCapabilityProviders.getOrNull()?.createHeapDump()
+            PlatformCapabilityProviders.get().createHeapDump()
         }
 
         // 显示 MD 文件: 委托平台能力 (app: assets+TextDialog.Mode.MD; desktop: classpath+MarkdownContent)
         override fun onShowMdFile(title: String, fileName: String) {
-            PlatformCapabilityProviders.getOrNull()?.showMdFile(title, fileName)
+            PlatformCapabilityProviders.get().showMdFile(title, fileName)
         }
     }
 

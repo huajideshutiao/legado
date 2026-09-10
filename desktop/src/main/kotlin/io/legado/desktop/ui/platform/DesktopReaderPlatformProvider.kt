@@ -1,33 +1,24 @@
 package io.legado.desktop.ui.platform
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
-import androidx.compose.material.DropdownMenuItem
-import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.IntOffset
 import com.sun.jna.Platform
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
-import io.legado.app.help.book.BookImageStorageProviders
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.image.ImageBitmapLoader
-import io.legado.app.help.image.ReaderImageCache
 import io.legado.app.help.source.SourceVerificationHelpShared
 import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.help.toast.Toasters
@@ -41,17 +32,20 @@ import io.legado.app.ui.book.read.ReadMenuState
 import io.legado.app.ui.book.read.ReaderDialogEvent
 import io.legado.app.ui.book.read.ReaderPlatformProvider
 import io.legado.app.ui.book.read.ReaderScreenModel
+import io.legado.app.ui.book.read.refreshReaderImage
 import io.legado.app.ui.book.read.createReadMenuColors
 import io.legado.app.ui.book.read.hasBgImageByPath
-import io.legado.app.ui.book.read.openTextInBrowser
 import io.legado.app.ui.book.read.page.AutoPagerCompose
-import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.platform.DesktopThemeStoreProvider
+import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.dict.DictDialogHost
+import io.legado.app.ui.reader.ImageActionMenuEntry
+import io.legado.app.ui.reader.ImageActionMenuRequest
+import io.legado.app.ui.reader.ReaderImageActionMenu
 import io.legado.app.ui.reader.ReaderTextActionMenu
 import io.legado.app.ui.reader.ReaderTextActions
 import io.legado.app.ui.reader.ReaderTextSelectionRequest
+import io.legado.app.ui.reader.readerMenuAnchor
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
@@ -76,7 +70,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.concurrent.Volatile
-import kotlin.math.roundToInt
 
 /**
  * desktop 端 [ReaderPlatformProvider] 真实实现: 菜单可见/可切, 导航经 [AppNavigator] 桥接。
@@ -122,13 +115,11 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
         ReadConfigChange.STYLE,
     )
 
-    /** 查词请求 (查词按钮 → onDict 回调暂存, 由 [TextSelectionHost] 渲染词典对话框)。 */
-    internal var dictWord by mutableStateOf<String?>(null)
-        private set
-
-    /** 图片长按菜单请求 (长按坐标 + 动作上下文, 由 [ImageActionMenuHost] 渲染)。 */
-    internal var imageActionMenu by mutableStateOf<ReaderImageMenuState?>(null)
-        private set
+    /**
+     * 菜单锚点的窗口坐标补偿 (px): 长按回调给的是阅读视口局部坐标, 自绘菜单宿主在窗口根坐标空间,
+     * 非 mac/非全屏时自绘控制栏占顶部 40dp。密度只在组合期可得, 故由 [TextSelectionHost] 写入。
+     */
+    private var menuTopOffsetPx = 0f
 
     override fun createMenuController(
         navigator: AppNavigator,
@@ -140,23 +131,9 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
         (screenModel.menuController.state as? DesktopReadMenuState)?.stopAutoPage()
     }
 
-    // 设置按钮 → 翻页动画配置 (对照 app 端 showPageAnimConfigSelector: 选择器回调忽略索引,
-    // 实际动画值在界面设置弹窗配置, 只触发 upPageAnim + 重载; 与菜单 PAGE_ANIM 分支同语义)
-    override fun showPageAnimConfig(screenModel: ReaderScreenModel) {
-        AppNavigatorProviders.getOrNull()?.showOverlay(AppOverlay.Dialog("page_anim_config"))
-    }
-
     // 自动翻页滑条抬手 → 重新应用当前 TTS 语速 (对照 app 端 upTtsSpeechRate: 重读配置 +
     // pause/resume 让新语速立刻作用到当前段; 本方法不写配置, 只按现配置重放)
-    override fun upTtsSpeechRate(screenModel: ReaderScreenModel) {
-        val prefs = runCatching { PreferenceProviders.get() }.getOrNull() ?: return
-        val rate = if (prefs.getBoolean(PreferKey.ttsFollowSys, true)) {
-            5
-        } else {
-            prefs.getInt(PreferKey.ttsSpeechRate, 5)
-        }
-        DesktopReadAloudHost.setSpeechRate(rate)
-    }
+    override fun upTtsSpeechRate(screenModel: ReaderScreenModel) = DesktopReadAloudHost.upSpeechRate()
 
     override fun getBatteryLevel(): Int = DesktopBattery.getBatteryLevel()
 
@@ -192,16 +169,10 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
         titleBarTintJob?.cancel()
         titleBarTintJob = null
         readerWindowTint.value = null
-        imageActionMenu = null
+        ReaderImageActionMenu.dismiss()
         rawSelection = null
         textActions = null
     }
-
-    /**
-     * 空白长按回落：原版 ContentTextView.longPress 未命中任何列时无动作，此处 no-op。
-     * （文字长按由页内选择接管走 [onTextSelected]，图片长按走 [onImageLongPress]。）
-     */
-    override fun onLongPress(screenModel: ReaderScreenModel) = Unit
 
     /**
      * 页内文字选择完成（长按/划选文字后抬起）：弹自绘浮动文本操作菜单
@@ -216,13 +187,9 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
         if (text.isBlank()) return
         textActions = ReaderTextActions(
             onReplace = screenModel.replaceTextCallback(),
-            onCopy = { DesktopPlatformCapabilities.copyToClipboard(it) },
             onBookmark = screenModel.bookmarkTextCallback(),
-            onReadAloud = onReadAloud(),
-            onDict = { dictWord = it },
+            onReadAloud = screenModel.readAloudTextCallback(),
             onSearchContent = screenModel.searchContentTextCallback(),
-            onBrowser = ::openTextInBrowser,
-            onShare = onShare(),
         )
         rawSelection = RawTextSelection(text, anchorX, anchorY)
     }
@@ -231,24 +198,24 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
      * 页内选区已消失（点按取消选择/翻页/重排等任意路径）：收起浮动文本操作菜单
      * （对照原版 onCancelSelect → textActionMenu.dismiss）。幂等：菜单未显示时无操作。
      */
-    override fun onTextSelectionDismissed(screenModel: ReaderScreenModel) {
-        rawSelection = null
-        imageActionMenu = null
-    }
+    override fun onTextSelectionDismissed(screenModel: ReaderScreenModel) = dismissActionMenus()
 
     /**
      * 同步立即关闭浮动文本操作菜单（点按取消选择等手势分支在选区清除的同帧同步直调）。
      * 幂等，事件链兜底重复调用安全。
      */
-    override fun dismissTextActionMenu(screenModel: ReaderScreenModel) {
+    override fun dismissTextActionMenu(screenModel: ReaderScreenModel) = dismissActionMenus()
+
+    /** 对照 master ReadBookActivity.cancelSelect: 文本/图片菜单互斥, 同时 dismiss。 */
+    private fun dismissActionMenus() {
         rawSelection = null
-        imageActionMenu = null
+        ReaderImageActionMenu.dismiss()
     }
 
     /**
-     * 图片长按: 弹图片操作菜单 (查看大图/刷新/保存, 对齐移动端三项; 对照原版
-     * ReadBookActivity.onImageLongPress 的 show/refresh/save 三分支, "选择目录"
-     * iOS/鸿蒙均未做故桌面也不做)。菜单由 [ImageActionMenuHost] 锚定在长按坐标处渲染。
+     * 图片长按: 弹共享自绘图片操作菜单 (查看/刷新/保存/选择目录, 对照原版
+     * ReadBookActivity.onImageLongPress; 桌面有目录选择器故保留"选择目录")。
+     * 菜单项收尾对照原版 popupAction 点击 → onDismiss → postSelectionCancel。
      */
     override fun onImageLongPress(
         screenModel: ReaderScreenModel,
@@ -257,7 +224,30 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
         y: Float,
     ) {
         if (src.isBlank()) return
-        imageActionMenu = ReaderImageMenuState(screenModel, src, x, y)
+        fun finish() {
+            ReaderImageActionMenu.dismiss()
+            ReadBookEvents.postSelectionCancel()
+        }
+
+        fun entry(label: String, action: () -> Unit) =
+            ImageActionMenuEntry(label) {
+                action()
+                finish()
+            }
+        ReaderImageActionMenu.show(
+            ImageActionMenuRequest(
+                anchor = readerMenuAnchor(x, y + menuTopOffsetPx),
+                entries = listOf(
+                    entry(syncGetString("show")) { viewImage(screenModel, src) },
+                    entry(syncGetString("refresh")) { refreshImage(screenModel, src) },
+                    entry(syncGetString("action_save")) { saveImage(screenModel, src) },
+                    entry(syncGetString("select_folder")) {
+                        saveImageToSelectedDir(screenModel, src)
+                    },
+                ),
+                onDismiss = { finish() },
+            )
+        )
     }
 
     /** 查看大图: 弹共享全屏大图 Overlay (key="photo" → PhotoViewOverlayDialog, 全屏黑底+缩放;
@@ -278,18 +268,11 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
     }
 
     /**
-     * 刷新图片: 删该图磁盘缓存文件 + 清共享内存缓存 + 重排 (对照原版 viewModel.refreshImage
-     * 的删缓存文件+清内存缓存+loadContent; 桌面阅读页图片走 ReaderImageResolver → 磁盘
-     * BookImageStorage 缓存, 只清内存缓存会读到旧磁盘字节, 故按单图删文件, 其余图片缓存不动)。
+     * 刷新图片: 删该图磁盘缓存文件 + 清共享内存缓存 + 重载当前章 (四端同一份,
+     * 见 shared [refreshReaderImage])。
      */
     private fun refreshImage(screenModel: ReaderScreenModel, src: String) {
-        val book = screenModel.currentBook
-        val chapter = screenModel.currentChapter
-        if (book != null && chapter != null) {
-            BookImageStorageProviders.get().getImagePath(book, chapter, src)?.let { File(it).delete() }
-        }
-        ReaderImageCache.clear()
-        ReadBookEvents.postConfig(ReadConfigChange.LOAD_CONTENT)
+        refreshReaderImage(screenModel.currentBook, screenModel.currentChapter, src)
     }
 
     /** 保存图片: 原生保存对话框选路径 → 下载解码字节 (书源防盗链+解密链路) → 落盘, toast 提示路径。 */
@@ -370,25 +353,6 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
     private var lastImageSaveDir: File? = null
 
     /**
-     * 朗读选中文字 (T7: 按 contentSelectSpeakMod 偏好, 对照 app 端 AndroidReaderPlatformProvider.
-     * onReadAloud 语义: ==1 朗读当前进度章节; 桌面无单句 TTS, 否则分支也回退为朗读当前进度章节)。
-     */
-    private fun onReadAloud(): (String) -> Unit = { _ ->
-        when (
-            PreferenceProviders.get().getInt(PreferKey.contentSelectSpeakMod, 0)
-        ) {
-            1 -> DesktopReadAloudHost.play()
-            // 桌面端无单句 TTS (无 View 层选区/无系统单句 TTS 引擎), 回退从当前进度朗读章节
-            else -> DesktopReadAloudHost.play()
-        }
-    }
-
-    /** 分享 (对照原版 menu_share_str; 桌面端无系统分享 UI, 写剪贴板) */
-    private fun onShare(): (String) -> Unit = { text ->
-        DesktopPlatformCapabilities.shareText(text)
-    }
-
-    /**
      * 阅读页自绘浮动文本菜单宿主 (挂在桌面 Compose 根, 对照 app 端 MainActivity 的
      * TextSelectionHost)。
      */
@@ -400,18 +364,15 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
         } else {
             with(LocalDensity.current) { AppTheme.DesignTokens.viewHeightLarge.toPx() }
         }
+        // 图片菜单在非组合期装配请求, 借这里把同一偏移量存下 (见 [menuTopOffsetPx])
+        SideEffect { menuTopOffsetPx = titleBarTopPx }
         val selection = rawSelection
         val request = remember(selection, titleBarTopPx) {
             selection?.let {
                 val adjustedY = it.anchorY + titleBarTopPx
                 ReaderTextSelectionRequest(
                     text = it.text,
-                    anchor = Rect(
-                        it.anchorX - 20f,
-                        adjustedY - 20f,
-                        it.anchorX + 20f,
-                        adjustedY + 20f,
-                    ),
+                    anchor = readerMenuAnchor(it.anchorX, adjustedY),
                 )
             }
         }
@@ -424,78 +385,6 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
                     ReadBookEvents.postSelectionCancel()
                 },
             )
-        }
-        // 查词对话框 (选中词/剪贴板词 → 词典查询, 本地/在线词典规则)
-        val word = dictWord
-        if (word != null) {
-            DictDialogHost(
-                word = word,
-                onDismiss = { dictWord = null },
-            )
-        }
-    }
-
-    /**
-     * 图片长按菜单宿主 (挂在桌面 Compose 根, 与 [TextSelectionHost] 并列; 对照
-     * IosImageActionMenu 浮动菜单, 桌面用 AppDropdownMenu 锚定在长按坐标处)。
-     *
-     * 坐标换算: 长按回调坐标是阅读视口局部坐标, 宿主在窗口根坐标空间; 非 mac/非全屏时
-     * 自绘控制栏占顶部 40dp (DesktopTitleBar 同款高度 token), 锚点 y 加回该偏移。
-     */
-    @Composable
-    fun ImageActionMenuHost() {
-        val menu = imageActionMenu ?: return
-        val titleBarTopPx = if (Platform.isMac() || DesktopWindowChrome.fullscreen) {
-            0f
-        } else {
-            with(LocalDensity.current) { AppTheme.DesignTokens.viewHeightLarge.toPx() }
-        }
-        Box(Modifier.fillMaxSize()) {
-            Box(
-                Modifier.offset {
-                    IntOffset(menu.x.roundToInt(), (menu.y + titleBarTopPx).roundToInt())
-                }
-            ) {
-                AppDropdownMenu(expanded = true, onDismissRequest = { imageActionMenu = null }) {
-                    // 查看大图 (对照原版 show → PhotoDialog)
-                    DropdownMenuItem(
-                        onClick = {
-                            imageActionMenu = null
-                            viewImage(menu.screenModel, menu.src)
-                        }
-                    ) {
-                        Text("查看大图")
-                    }
-                    // 刷新 (对照原版 refresh → refreshImage)
-                    DropdownMenuItem(
-                        onClick = {
-                            imageActionMenu = null
-                            refreshImage(menu.screenModel, menu.src)
-                        }
-                    ) {
-                        Text("刷新")
-                    }
-                    // 保存 (对照原版 save → saveImage; 桌面无相册, 走文件保存对话框)
-                    DropdownMenuItem(
-                        onClick = {
-                            imageActionMenu = null
-                            saveImage(menu.screenModel, menu.src)
-                        }
-                    ) {
-                        Text("保存")
-                    }
-                    // 选择目录 (T8: 对照原版 selectFolder → 选目录后保存; 桌面无 SAF 默认保存目录
-                    // 持久化, 直接选目录并保存当前图, 语义对齐 app 的 selectImageDir 分支)
-                    DropdownMenuItem(
-                        onClick = {
-                            imageActionMenu = null
-                            saveImageToSelectedDir(menu.screenModel, menu.src)
-                        }
-                    ) {
-                        Text("选择目录")
-                    }
-                }
-            }
         }
     }
 
@@ -510,15 +399,6 @@ private data class RawTextSelection(
     val text: String,
     val anchorX: Float,
     val anchorY: Float,
-)
-
-/** 图片长按菜单请求载荷: 长按图片 src + 视口坐标 + 阅读上下文 (由
- *  [DesktopReaderPlatformProvider.ImageActionMenuHost] 渲染)。 */
-internal data class ReaderImageMenuState(
-    val screenModel: ReaderScreenModel,
-    val src: String,
-    val x: Float,
-    val y: Float,
 )
 
 /**

@@ -15,7 +15,6 @@ import androidx.compose.ui.unit.IntSize
 import io.legado.app.ui.book.read.page.LocalReaderTextMeasurer
 import io.legado.app.ui.book.read.page.PageSelectionState
 import io.legado.app.ui.book.read.page.ReadViewComposable
-import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import io.legado.app.ui.book.read.page.rememberReaderTextMeasurer
 import kotlinx.coroutines.flow.StateFlow
 
@@ -54,10 +53,7 @@ data class ReaderUiState(
  */
 interface ReaderUiActions {
     /** 页面单击且动作为 0（菜单）时回调，其余动作在 [ReadViewComposable] 内消费或走 [onPageAction] */
-    fun onPageClick(column: TextColumn?)
-
-    /** 页面长按（仅空白区域回落；文字长按走页内选择，图片长按走 [onImageLongPress]） */
-    fun onPageLongClick(column: TextColumn?)
+    fun onPageClick()
 
     /** 图片长按（命中图片列，携带 src 与长按点坐标；对照旧 onImageLongPress → 图片操作菜单） */
     fun onImageLongPress(src: String, x: Float, y: Float) {}
@@ -128,8 +124,7 @@ fun ReaderScreen(
                 viewModel = state.viewModel,
                 batteryLevel = batteryLevel,
                 clockText = clockText,
-                onClick = { column -> actions.onPageClick(column) },
-                onLongClick = { column -> actions.onPageLongClick(column) },
+                onClick = { actions.onPageClick() },
                 onImageLongPress = { src, x, y -> actions.onImageLongPress(src, x, y) },
                 onAction = { action -> actions.onPageAction(action) },
                 onSelectionMenu = { text, anchor ->

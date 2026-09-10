@@ -260,7 +260,6 @@ abstract class BaseReadAloudService : BaseService() {
             // 服务先起、章节后排版时靠本监听补一次; 早退分支也要挂上, 否则永远等不到队列
             if (chapterWatchJob == null) armChapterWatch()
             val textChapter = textChapter ?: return@execute
-            if (!textChapter.isCompleted) return@execute
             // 页号来自调用方 (通知栏/媒体键/注册表), 可能已过期, 越界会让后续定位全错
             val startIndex = pageIndex.coerceIn(0, textChapter.lastIndex.coerceAtLeast(0))
             this@BaseReadAloudService.pageIndex = startIndex
@@ -319,7 +318,7 @@ abstract class BaseReadAloudService : BaseService() {
         chapterWatchJob = lifecycleScope.launch {
             ActiveReadBookRegistry.currentFlow.collectLatest { readBook ->
                 readBook?.curTextChapter?.collect { chapter ->
-                    if (chapter == null || !chapter.isCompleted) return@collect
+                    if (chapter == null) return@collect
                     if (chapter === textChapter) return@collect
                     newReadAloud(!pause, readBook.durPageIndexValue, 0)
                 }

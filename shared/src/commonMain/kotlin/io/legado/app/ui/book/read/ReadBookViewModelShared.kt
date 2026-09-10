@@ -398,17 +398,13 @@ class ReadBookViewModelShared(
     fun renameChapter(index: Int, newTitle: String) {
         val book = readBook.book.value ?: return
         scope.launch {
-            runCatching {
-                val chapter = AppDbProviders.get().bookChapterDao
-                    .getChapter(book.bookUrl, index) ?: return@launch
-                chapter.title = newTitle
-                AppDbProviders.get().bookChapterDao.update(chapter)
-                // 内存目录同步替换 (data class 新实例, 不影响其他字段引用)
-                readBook.chapterListValue = readBook.chapterListValue?.map { c ->
-                    if (c.index == index) chapter else c
-                }
-            }.onFailure {
-                AppLog.put("重命名章节失败\n${it.message}", it)
+            val chapterDao = AppDbProviders.get().bookChapterDao
+            val chapter = chapterDao.getChapter(book.bookUrl, index) ?: return@launch
+            chapter.title = newTitle
+            chapterDao.update(chapter)
+            // 内存目录同步替换 (data class 新实例, 不影响其他字段引用)
+            readBook.chapterListValue = readBook.chapterListValue?.map { c ->
+                if (c.index == index) chapter else c
             }
             ReadBookEvents.postMenuRefresh()
             launchChapterLoad(index) { loadContent(index) }
@@ -530,11 +526,9 @@ class ReadBookViewModelShared(
         launchChapterLoad(index) {
             // 内存目录优先, 库兜底 (口径同本类其它章节解析处)
             val chapter = readBook.chapterList.value.getOrNull(index)
-                ?: runCatching {
-                    AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, index)
-                }.getOrNull()
+                ?: AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, index)
             if (chapter != null) {
-                runCatching { BookStorageProviders.get().delContent(book, chapter) }
+                BookStorageProviders.get().delContent(book, chapter)
             }
             readBook.clearTextChapter()
             loadContent(index)
@@ -644,17 +638,11 @@ class ReadBookViewModelShared(
             readBook.updateBookSource(null)
         } else if (readBook.bookSource.value?.bookSourceUrl != book.origin) {
             readBook.updateBookSource(
-                runCatching {
-                    AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
-                }.getOrNull()
+                AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
             )
         }
         // 库里查目录（在架书路径；未入架书目录不落库，查不到）
-        val dbList = runCatching {
-            AppDbProviders.get().bookChapterDao.getChapterList(book.bookUrl)
-        }.onFailure {
-            AppLog.put("读取目录失败\n${it.message}", it)
-        }.getOrDefault(emptyList())
+        val dbList = AppDbProviders.get().bookChapterDao.getChapterList(book.bookUrl)
         if (dbList.firstOrNull()?.bookUrl == book.bookUrl) {
             readBook.updateChapterList(dbList)
             return dbList
@@ -780,18 +768,14 @@ class ReadBookViewModelShared(
         }
         try {
             val chapter = readBook.chapterList.value.getOrNull(index)
-                ?: runCatching {
-                    AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, index)
-                }.getOrNull()
+                ?: AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, index)
                 ?: return
             // 与 app ReadBook.loadContent 一致：正文 IO 前先并行启动段评数请求，正文缓存命中也不阻塞。
             val countDeferred = startReviewCountFetchAsync(book, chapter)
             // 正文缓存读取是同步文件 IO (JvmBookStorage.readAllBytes, MB 级), 必须切 IO 线程
-            val cached = runCatching {
-                withContext(IoDispatcher) {
-                    BookStorageProviders.get().getContent(book, chapter)
-                }
-            }.getOrNull()
+            val cached = withContext(IoDispatcher) {
+                BookStorageProviders.get().getContent(book, chapter)
+            }
             val content = cached ?: downloadAwait(book, chapter)
             // 原版在 contentLoadFinish 入口先 removeLoading；先释放守卫，确保段评迟到触发的重排
             // 可以立即重新加载同章，不会被本次 finally 尚未执行的 loading 标记挡住。
@@ -801,6 +785,12 @@ class ReadBookViewModelShared(
             throw e
         } catch (e: Exception) {
             AppLog.put("加载正文出错\n${e.message}", e)
+            // 正文处理/排版抛错也要落占位章: 不落则上面铺的"加载数据中…"永不被替换, 阅读页
+            // 永久卡住, 等本章排版的调用方 (skipToSearch) 也永远等不到本章。
+            // 只作用于当前章: showMessageChapter 写的是滑窗 0 位, 前后章预载失败不许顶掉在看的章
+            if (index == readBook.durChapterIndex.value) {
+                showMessageChapter("加载正文失败\n${e.message}", index, readBook.chapterSize)
+            }
         } finally {
             removeLoading(index)
         }
@@ -937,9 +927,8 @@ class ReadBookViewModelShared(
             processor.getTitleReplaceRules(book),
             book.getUseReplaceRule(),
         )
-        // 原版 ReadBook.processContent 把完整 BookContent 交给 ChapterProvider/TextChapterLayout：
         // textList 的项边界、空行、首尾空白和 HTML 图片标签均属于排版输入，不能先压平后
-        // split/trim/filter。这里直接消费同一份 BookContent，并复用下沉的解析器。
+        // split/trim/filter。
         val bookContent = processor.getBookContent(
             book = book,
             chapter = chapter,
@@ -1210,44 +1199,35 @@ class ReadBookViewModelShared(
     /** [saveProgress] 的 suspend 核心，供进度上传前"先落库再上传"复用（原版 onPause 先 saveRead 再 uploadProgress）。 */
     private suspend fun saveProgressAwait() {
         val book = readBook.book.value ?: return
-        runCatching {
-            val durChapterIndex = readBook.durChapterIndex.value
-            val textChapter = readBook.curTextChapter.value
-            // 末页停留时 durChapterPos 取负编码「停在章末」（原版 ReadBook.saveRead:904），
-            // 重进时由 ReadBookShared.loadBook 归一还原
-            val durChapterPos = readBook.durChapterPos.value *
-                (if (textChapter != null && textChapter.isLastIndex(readBook.durPageIndexValue)) -1 else 1)
-            // durChapterTitle 过 titleReplaceRules（原版 ReadBook.saveRead:905-910）
-            // 内存目录优先, 库兜底 (存进度是热路径, 不该每次无条件查库)
-            val chapter = readBook.chapterList.value.getOrNull(durChapterIndex)
-                ?: runCatching {
-                    AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, durChapterIndex)
-                }.getOrNull()
-            val durChapterTitle = chapter?.let { c ->
-                runCatching {
-                    c.getDisplayTitle(
-                        ContentProcessorProviders.get().getTitleReplaceRules(book),
-                        book.getUseReplaceRule(),
-                    )
-                }.getOrDefault(c.title)
-            } ?: book.durChapterTitle
-            val durChapterTime = systemCurrentTimeMillis()
-            // 对齐原版 ReadBook.saveRead: 落库同时回写内存 book 实体 (详情页 IntentData
-            // 传递依赖内存实时性, 无需 push 前额外落库桥接)
-            book.durChapterIndex = durChapterIndex
-            book.durChapterPos = durChapterPos
-            book.durChapterTitle = durChapterTitle
-            book.durChapterTime = durChapterTime
-            AppDbProviders.get().bookDao.updateProgress(
-                bookUrl = book.bookUrl,
-                durChapterIndex = durChapterIndex,
-                durChapterPos = durChapterPos,
-                durChapterTime = durChapterTime,
-                durChapterTitle = durChapterTitle,
-            )
-        }.onFailure {
-            AppLog.put("保存书籍阅读进度信息出错\n$it", it)
-        }
+        val durChapterIndex = readBook.durChapterIndex.value
+        val textChapter = readBook.curTextChapter.value
+        // 末页停留时 durChapterPos 取负编码「停在章末」（原版 ReadBook.saveRead:904），
+        // 重进时由 ReadBookShared.loadBook 归一还原
+        val durChapterPos = readBook.durChapterPos.value *
+            (if (textChapter != null && textChapter.isLastIndex(readBook.durPageIndexValue)) -1 else 1)
+        // durChapterTitle 过 titleReplaceRules（原版 ReadBook.saveRead:905-910）
+        // 内存目录优先, 库兜底 (存进度是热路径, 不该每次无条件查库)
+        val chapter = readBook.chapterList.value.getOrNull(durChapterIndex)
+            ?: AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, durChapterIndex)
+        // getDisplayTitle 内部已逐条捕获坏替换规则(超时禁用/异常 toast), 外层不再兜 c.title
+        val durChapterTitle = chapter?.getDisplayTitle(
+            ContentProcessorProviders.get().getTitleReplaceRules(book),
+            book.getUseReplaceRule(),
+        ) ?: book.durChapterTitle
+        val durChapterTime = systemCurrentTimeMillis()
+        // 对齐原版 ReadBook.saveRead: 落库同时回写内存 book 实体 (详情页 IntentData
+        // 传递依赖内存实时性, 无需 push 前额外落库桥接)
+        book.durChapterIndex = durChapterIndex
+        book.durChapterPos = durChapterPos
+        book.durChapterTitle = durChapterTitle
+        book.durChapterTime = durChapterTime
+        AppDbProviders.get().bookDao.updateProgress(
+            bookUrl = book.bookUrl,
+            durChapterIndex = durChapterIndex,
+            durChapterPos = durChapterPos,
+            durChapterTime = durChapterTime,
+            durChapterTitle = durChapterTitle,
+        )
     }
 
     // region WebDav 进度同步（对照 app 端 BaseReadViewModel.syncProgress/uploadProgress + ReadBookViewModel.initBook）
@@ -1284,10 +1264,7 @@ class ReadBookViewModelShared(
      * AppWebDav.getBookProgress 委托实现同语义），走上传分支由上传自身的失败捕获兜底。
      */
     private fun pullCloudProgress(book: Book) {
-        val syncBookProgressPlus = runCatching {
-            PreferenceProviders.get().getBoolean(PreferKey.syncBookProgressPlus, false)
-        }.getOrDefault(false)
-        if (!syncBookProgressPlus) return
+        if (!PreferenceProviders.get().getBoolean(PreferKey.syncBookProgressPlus, false)) return
         progressSyncScope.launch {
             AppWebDavShared.syncProgress(
                 book = book,
@@ -1298,23 +1275,35 @@ class ReadBookViewModelShared(
     }
 
     /**
-     * 用户确认同步云端进度（原版 ReadBookActivity.sureNewProgress okButton → ReadBook.setProgress）：
-     * 越界守卫 + index/pos 未变则跳过，跳转后重载当前章并落库。
+     * 跳到指定进度并重排当前章（原版 ReadBook.setProgress 的等价物）：越界守卫 + index/pos 未变则跳过。
+     *
+     * 带进度的跳转一律走本方法：只有本路径会排版并回填三章滑窗。
+     *
+     * 原版 setProgress：赋 index/pos + clearTextChapter + loadContent(resetPageOffset=true)，
+     * 无 saveRead。故不借 loadChapter 的 chapterPos 落位 (跳章分支会 saveRead、同章分支不清
+     * 滑窗)：这里自行成对写 index/pos，让 loadChapter 只当同章重载
+     *
+     * @return false = 越界或进度未变, 未发生跳转
      */
-    fun confirmSyncProgress(progress: BookProgress) {
-        ReadBookEvents.clearNewProgressConfirm()
-        if (progress.durChapterIndex >= readBook.chapterSize) return
+    fun setProgress(progress: BookProgress): Boolean {
+        if (progress.durChapterIndex >= readBook.chapterSize) return false
         if (readBook.durChapterIndex.value == progress.durChapterIndex &&
             readBook.durChapterPos.value == progress.durChapterPos
-        ) return
-        // 原版 setProgress：赋 index/pos + clearTextChapter + loadContent(resetPageOffset=true)，
-        // 无 saveRead。故不借 loadChapter 的 chapterPos 落位 (跳章分支会 saveRead、同章分支不清
-        // 滑窗)：这里自行成对写 index/pos，让 loadChapter 只当同章重载
+        ) return false
         readBook.clearTextChapter()
         readBook.updateDurChapterIndex(progress.durChapterIndex)
         readBook.updateDurChapterPos(progress.durChapterPos)
         loadChapter(progress.durChapterIndex)
-        saveProgress()
+        return true
+    }
+
+    /**
+     * 用户确认同步云端进度（原版 ReadBookActivity.sureNewProgress okButton → ReadBook.setProgress）：
+     * 跳转后落库。
+     */
+    fun confirmSyncProgress(progress: BookProgress) {
+        ReadBookEvents.clearNewProgressConfirm()
+        if (setProgress(progress)) saveProgress()
     }
 
     /** 用户取消同步云端进度：仅清事件 replay 缓存，避免 UI 重建时重复弹窗。 */
@@ -1348,15 +1337,16 @@ class ReadBookViewModelShared(
         // 重订阅 Room 流拿到最新进度/排序)。单页架构下书架 DB 流全程驻留, 阅读期间不摘订阅,
         // Room 连续失效推送为主, 显式 postEvent 作双保险, 保证立即刷新。
         postEvent(EventBus.UP_BOOKSHELF, bookUrl)
-        if (!runCatching { AppConfigProviders.get().syncBookProgress }.getOrDefault(false)) return
+        if (!AppConfigProviders.get().syncBookProgress) return
+        val bookDao = AppDbProviders.get().bookDao
         runCatching {
-            val fresh = AppDbProviders.get().bookDao.getBook(bookUrl) ?: return
+            val fresh = bookDao.getBook(bookUrl) ?: return
             val syncTimeBefore = fresh.syncTime
             // 内部已守卫 syncBookProgress/authorization，成功时写 fresh.syncTime
             AppWebDavShared.uploadBookProgress(fresh)
             currentCoroutineContext().ensureActive()
             if (fresh.syncTime != syncTimeBefore) {
-                AppDbProviders.get().bookDao.update(fresh)
+                bookDao.update(fresh)
             }
         }.onFailure {
             currentCoroutineContext().ensureActive()
@@ -1386,10 +1376,8 @@ class ReadBookViewModelShared(
         val book = readBook.book.value
         if (book != null && book.isNotShelf) {
             progressSyncScope.launch {
-                runCatching {
-                    AppDbProviders.get().bookDao.delete(book)
-                    book.addType(BookType.notShelf)
-                }
+                AppDbProviders.get().bookDao.delete(book)
+                book.addType(BookType.notShelf)
             }
         }
         downloadScope.coroutineContext.cancelChildren()
@@ -1405,11 +1393,10 @@ class ReadBookViewModelShared(
     fun disableSource() {
         val book = readBook.book.value ?: return
         scope.launch {
-            runCatching {
-                val source = AppDbProviders.get().bookSourceDao.getBookSource(book.origin) ?: return@launch
-                source.enabled = false
-                AppDbProviders.get().bookSourceDao.update(source)
-            }
+            val sourceDao = AppDbProviders.get().bookSourceDao
+            val source = sourceDao.getBookSource(book.origin) ?: return@launch
+            source.enabled = false
+            sourceDao.update(source)
         }
     }
 
@@ -1586,7 +1573,7 @@ class ReadBookViewModelShared(
      */
     fun replaceRuleChanged() {
         scope.launch {
-            runCatching { ContentProcessorProviders.get().upReplaceRules() }
+            ContentProcessorProviders.get().upReplaceRules()
             val book = readBook.book.value ?: return@launch
             val index = readBook.durChapterIndex.value
             // 清已处理内容缓存, 强制重新走 ContentProcessor 链路 (含新替换规则)
@@ -1618,10 +1605,9 @@ class ReadBookViewModelShared(
             val book = readBook.book.value
             if (book != null) {
                 // 重新从 DB 加载书源 (对照 app 端 onUpSource)
-                val src = runCatching {
+                readBook.updateBookSource(
                     AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
-                }.getOrNull()
-                readBook.updateBookSource(src)
+                )
             }
             success?.invoke()
         }
@@ -1677,16 +1663,13 @@ class ReadBookViewModelShared(
     fun removeFromBookshelf(success: (() -> Unit)?) {
         val book = readBook.book.value ?: return
         scope.launch {
-            runCatching {
-                // 删的是当前书: 清 readBook.book 引用 (对照 app 端 Book.delete 的 ReadBook.book = null)
-                if (readBook.book.value?.bookUrl == book.bookUrl) {
-                    readBook.bookValue = null
-                }
-                AppDbProviders.get().bookDao.delete(book)
-                book.addType(BookType.notShelf)
-            }.onSuccess {
-                success?.invoke()
+            // 删的是当前书: 清 readBook.book 引用 (对照 app 端 Book.delete 的 ReadBook.book = null)
+            if (readBook.book.value?.bookUrl == book.bookUrl) {
+                readBook.bookValue = null
             }
+            AppDbProviders.get().bookDao.delete(book)
+            book.addType(BookType.notShelf)
+            success?.invoke()
         }
     }
 
@@ -1698,8 +1681,8 @@ class ReadBookViewModelShared(
         val book = readBook.book.value ?: return
         val chapters = readBook.chapterList.value
         scope.launch {
-            runCatching { book.toggleBookshelfCore(inBookshelf = false, chapters = chapters) }
-                .onSuccess { success?.invoke() }
+            book.toggleBookshelfCore(inBookshelf = false, chapters = chapters)
+            success?.invoke()
         }
     }
 
@@ -1713,9 +1696,9 @@ class ReadBookViewModelShared(
             val durIndex = readBook.durChapterIndex.value
             val chapterList = readBook.chapterList.value
             // 删除 durChapterIndex 之后所有章节缓存 (对照 app 端 getChapterList + delContent)
+            val storage = BookStorageProviders.get()
             for (i in durIndex..chapterList.lastIndex) {
-                val chapter = chapterList.getOrNull(i) ?: continue
-                runCatching { BookStorageProviders.get().delContent(book, chapter) }
+                storage.delContent(book, chapterList[i])
             }
             // 清当前章已处理内容缓存 + 重载 (对照 app 端 ReadBook.loadContent(false))
             processedContentCache.remove(durIndex)
@@ -1734,11 +1717,9 @@ class ReadBookViewModelShared(
         scope.launch {
             val durIndex = readBook.durChapterIndex.value
             val chapter = readBook.chapterList.value.getOrNull(durIndex)
-                ?: runCatching {
-                    AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, durIndex)
-                }.getOrNull()
+                ?: AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, durIndex)
                 ?: return@launch
-            runCatching { BookHelpShared.saveContent(book, chapter, content) }
+            BookHelpShared.saveContent(book, chapter, content)
             // 清当前章已处理内容缓存 + 重载 (对照 app 端 ReadBook.loadContent(durChapterIndex, resetPageOffset=false))
             processedContentCache.remove(durIndex)
             readBook.clearTextChapter()
@@ -1758,9 +1739,7 @@ class ReadBookViewModelShared(
             val textChapter = readBook.curTextChapter.value ?: return@launch
             val durIndex = readBook.durChapterIndex.value
             val chapter = readBook.chapterList.value.getOrNull(durIndex)
-                ?: runCatching {
-                    AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, durIndex)
-                }.getOrNull()
+                ?: AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, durIndex)
                 ?: return@launch
             // 翻转去重标记 (对照 app 端 BookHelp.setRemoveSameTitle(book, chapter, !sameTitleRemoved))
             BookHelpShared.setRemoveSameTitleMarker(book, chapter, !textChapter.sameTitleRemoved)
@@ -1776,8 +1755,8 @@ class ReadBookViewModelShared(
      * 用 [layoutConfig] 构造 [SimpleChapterLayout] 实例。
      *
      * 每次调用新建（排版参数可能动态变化，如窗口尺寸变化后）。
-     * 度量器优先取 [TextMeasurerProviders] 注册的平台真实字形实现（desktop = SkiaTextMeasurer），
-     * 未注册（iOS / 鸿蒙）才回退 [SimpleTextMeasurer] 等宽近似。
+     * 度量器取 [TextMeasurerProviders] 注册的平台真实字形实现（四端都注册 SkiaTextMeasurer）；
+     * [SimpleTextMeasurer] 等宽近似只在未注册时兜底（实际只有单测环境）。
      */
     private fun buildLayout(): SimpleChapterLayout {
         val cfg = _layoutConfig.value
@@ -2031,9 +2010,7 @@ class ReadBookViewModelShared(
     private fun preDownload() {
         if (readBook.book.value?.isLocal == true) return
         scope.launch {
-            val preDownloadNum = runCatching {
-                AppConfigProviders.get().preDownloadNum
-            }.getOrDefault(10)
+            val preDownloadNum = AppConfigProviders.get().preDownloadNum
             if (preDownloadNum < 2) {
                 upToc()
                 return@launch
@@ -2072,11 +2049,9 @@ class ReadBookViewModelShared(
         if (index > readBook.chapterSize - 1) return
         val book = readBook.book.value ?: return
         val chapter = readBook.chapterList.value.getOrNull(index)
-            ?: runCatching {
-                AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, index)
-            }.getOrNull()
+            ?: AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, index)
             ?: return
-        if (runCatching { BookStorageProviders.get().hasContent(book, chapter) }.getOrDefault(false)) {
+        if (BookStorageProviders.get().hasContent(book, chapter)) {
             downloadedChapters.add(chapter.index)
         } else {
             // 失败计数同步自 CacheBookShared.errorDownloadMap（原版经 CacheBook 回调写 ReadBook.downloadFailChapters）
@@ -2155,14 +2130,10 @@ class ReadBookViewModelShared(
         // 对照原版菜单"更新目录" → loadChapterList：整页显示"更新目录中…"
         readBook.upMsg(appString(AppStringKey.toc_updateing))
         scope.launch(IoDispatcher) {
-            // 本地 txt 解析句柄缓存清空 (对照原版 UPDATE_TOC: it.getHandler().clear()), 失败不阻断
-            runCatching { FileBookProviders.get().getHandler(book).clear() }.onFailure {
-                AppLog.put("更新目录失败\n${it.message}", it)
-            }
+            // 本地 txt 解析句柄缓存清空 (对照原版 UPDATE_TOC: it.getHandler().clear())
+            FileBookProviders.get().getHandler(book).clear()
             if (book.isEpub) {
-                runCatching { BookStorageProviders.get().clearCache(book) }.onFailure {
-                    AppLog.put("更新目录失败\n${it.message}", it)
-                }
+                BookStorageProviders.get().clearCache(book)
             }
             val list = loadChapterListFromSource(book)
             if (list.isEmpty()) {
@@ -2191,8 +2162,7 @@ class ReadBookViewModelShared(
     fun refreshContentAll() {
         val book = readBook.book.value ?: return
         scope.launch(IoDispatcher) {
-            runCatching { BookStorageProviders.get().clearCache(book) }
-                .onFailure { AppLog.put("清理缓存失败\n${it.message}", it) }
+            BookStorageProviders.get().clearCache(book)
             processedContentCache.clear()
             readBook.clearTextChapter()
             val index = readBook.durChapterIndex.value
@@ -2212,11 +2182,9 @@ class ReadBookViewModelShared(
         val book = readBook.book.value ?: return
         book.config.useReplaceRule = !book.getUseReplaceRule()
         scope.launch {
-            runCatching {
-                ContentProcessorProviders.get().upReplaceRules()
-                // 只 PATCH 阅读配置列; 整行 update 会冲掉后台 updateToc 写入的目录/元数据
-                AppDbProviders.get().bookDao.updateReadConfig(book.bookUrl, book.config)
-            }.onFailure { AppLog.put("切换替换规则失败\n${it.message}", it) }
+            ContentProcessorProviders.get().upReplaceRules()
+            // 只 PATCH 阅读配置列; 整行 update 会冲掉后台 updateToc 写入的目录/元数据
+            AppDbProviders.get().bookDao.updateReadConfig(book.bookUrl, book.config)
             loadChapter(readBook.durChapterIndex.value)
         }
     }
@@ -2229,9 +2197,7 @@ class ReadBookViewModelShared(
         book.config.reSegment = !book.config.reSegment
         scope.launch {
             // 只 PATCH 阅读配置列; 整行 update 会冲掉后台 updateToc 写入的目录/元数据
-            runCatching {
-                AppDbProviders.get().bookDao.updateReadConfig(book.bookUrl, book.config)
-            }.onFailure { AppLog.put("切换重新分段失败\n${it.message}", it) }
+            AppDbProviders.get().bookDao.updateReadConfig(book.bookUrl, book.config)
             loadChapter(readBook.durChapterIndex.value)
         }
     }
@@ -2250,9 +2216,7 @@ class ReadBookViewModelShared(
         }
         scope.launch {
             // 只 PATCH 阅读配置列; 整行 update 会冲掉后台 updateToc 写入的目录/元数据
-            runCatching {
-                AppDbProviders.get().bookDao.updateReadConfig(book.bookUrl, book.config)
-            }.onFailure { AppLog.put("切换标签删除失败\n${it.message}", it) }
+            AppDbProviders.get().bookDao.updateReadConfig(book.bookUrl, book.config)
             refreshContentAll()
         }
     }
@@ -2326,7 +2290,6 @@ class ReadBookViewModelShared(
             chapterSize = chapterSize,
         ).apply {
             isMsgPage = true
-            isCompleted = true
         }
         if (cfg.visibleWidth <= 0 || cfg.visibleHeight <= 0 || msg.isEmpty()) return page
         val measurer = TextMeasurerProviders
@@ -2467,7 +2430,7 @@ class ReadBookViewModelShared(
         val textFullJustify: Boolean = true,
         // 默认值与 ReadBookConfig 一致（textBottomJustify=true / useZhLayout=false / titleMode=0）
         val textBottomJustify: Boolean = true,
-        /** 末页底部留白 px（对照 app 端 getTextChapter 末尾 20dp；DEFAULT 按 2x 密度折算 40px） */
+        /** 末页底部留白 px（原版为 20dp；DEFAULT 按 2x 密度折算 40px） */
         val endPadding: Int = 40,
         val useZhLayout: Boolean = false,
         val titleMode: Int = 0,

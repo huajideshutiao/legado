@@ -34,6 +34,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import io.legado.app.constant.PreferKey
+import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
 import io.legado.app.ui.book.read.ReadBookEvents
@@ -52,7 +53,10 @@ import io.legado.app.ui.compose.platform.rememberNavigationBarHidden
 import io.legado.app.ui.compose.platform.rememberStatusBarHidden
 import io.legado.app.ui.compose.platform.rememberVisibleNavigationBarHeightPx
 import io.legado.app.ui.compose.platform.rememberVisibleStatusBarHeightPx
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.PlatformCapabilityProviders
+import io.legado.app.ui.widget.dialog.encodePhotoOverlayPayload
 import io.legado.app.utils.formatTimeOfDay
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.delay
@@ -128,8 +132,6 @@ private const val LONG_PRESS_TIMEOUT = 600L
  * @param batteryLevel 电池电量 0-100 (读取失败回落 100 恒显示, 用户拍板 2026-08)
  * @param clockText 当前系统时间 HH:mm，随 timeChanged 刷新
  * @param onClick 单击回调（动作 0=菜单，由调用方处理；翻页/切章在本 Composable 内消费）
- * @param onLongClick 长按回调（仅非文字非图片区域回落：空白长按；文字长按由页内选择接管，
- *   图片长按走 [onImageLongPress]，均对照旧 ReadView.onLongPress 的列分发）
  * @param onImageLongPress 图片长按回调（命中图片列，携带 src 与长按点窗口坐标；对照旧
  *   ContentTextView.longPress 的 ImageColumn 分支 → ReadBookActivity.onImageLongPress 图片菜单）
  * @param onAction 非翻页类点击动作（书签/目录/搜索等），对照 app 端 ReadView.click 的 callBack 分支
@@ -154,7 +156,6 @@ fun ReadViewComposable(
     batteryLevel: Int = -1,
     clockText: String = formatTimeOfDay(systemCurrentTimeMillis()),
     onClick: (TextColumn?) -> Unit = {},
-    onLongClick: (TextColumn?) -> Unit = {},
     onImageLongPress: (String, Float, Float) -> Unit = { _, _, _ -> },
     onAction: (Int) -> Unit = {},
     onSelectionMenu: (String, Offset?) -> Unit = { _, _ -> },
@@ -210,15 +211,23 @@ fun ReadViewComposable(
     // 重建 contentTranslationY lambda → 整页重绘），改为在事件回调（长按/弹菜单/扩选）内直接读
     // StateFlow.value 取最新值，滚动热路径只走 graphicsLayer 绘制期订阅（只失效图层）。
     // 整页切换/重排时清除选择（对照旧版：翻页清选择来自 ReadBook.moveToNextPage 的显式
-    // cancelSelect + setContent 换页实例后旧 selected 标志随实例废弃；upContent 链本身
-    // 不含 cancelSelect）; 未激活时无操作。
-    // 搜索跳转守卫：程序化 selectRange 作用于目标页（pageRef 与新页一致）时不清除——
-    // KMP 组合观察（LaunchedEffect 重启）晚于 model 侧 selectRange（旧版跳转选区同样设置
-    // 在 skipToPage 的 upContent 成功回调之后，但旧版无“页切换自动清选择”机制，故无此问题），
-    // 无脑 cancel 会清掉刚设的搜索高亮。
-    // 真实翻页/重排时 pageRef 仍指向旧页，与新页不一致，仍按原语义清除。
+    // cancelSelect；upContent 链本身不含 cancelSelect）。判据是起止手柄能否定位：页实例
+    // 被换掉后旧行号索引新页只会算出错的几何（见 PageSelectionState.lineAt），而相邻章
+    // 装载只换 next/nextPlus 流、curTextPage 不变，只比当前页会漏掉滚动模式落在
+    // pagePos 1/2 的终点。三页实例任一变化才重跑，每次只做两处定位、不扫页内容。
+    // 搜索跳转的程序化 selectRange 已把目标页记进快照，定位成立故不会被清掉
+    // （KMP 组合观察晚于 model 侧 selectRange，无脑 cancel 会清掉刚设的搜索高亮）。
+    LaunchedEffect(curTextPage, nextTextPage, nextPlusTextPage) {
+        if (
+            selection.isActive &&
+            (selection.startHandleOffset() == null || selection.endHandleOffset() == null)
+        ) {
+            selection.cancel()
+        }
+    }
     LaunchedEffect(curTextPage) {
-        if (selection.currentPage !== curTextPage) {
+        // 图片长按菜单随页切换关闭（对照旧 isImageMenuShowing：翻页/换章靠它关菜单）
+        if (selection.imageMenuShowing) {
             selection.cancel()
         }
         // 选择被页切换中断后恢复自动翻页（激活选择时已暂停）
@@ -333,10 +342,9 @@ fun ReadViewComposable(
         // 长按落点回调（分发器长按定时触发）: 命中文字列 → 词级选中（对照旧
         // ReadView.onLongPress → ContentTextView.longPress + BreakIterator 词边界）;
         // 命中图片列 → onImageLongPress（对照旧 ImageColumn 分支 → 图片长按菜单）;
-        // 空白 → onLongClick(null)（原版空白长按无动作，四端一致无动作）。
+        // 空白无动作（原版空白长按无动作，四端一致）。
         // pointerInput(Unit) 不随重组重启, 用 rememberUpdatedState 取最新页/宽度/回调。
         val latestPageWidth by rememberUpdatedState(pageWidthPx)
-        val latestOnLongClick by rememberUpdatedState(onLongClick)
         val latestOnImageLongPress by rememberUpdatedState(onImageLongPress)
         val onPageLongPress: (Float, Float) -> Unit = onPageLongPress@{ x, y ->
             // 同上：系统栏区域长按无动作（原版占位区域不触发长按选择/空白长按）
@@ -353,9 +361,6 @@ fun ReadViewComposable(
                     // 选择激活期间暂停自动翻页（对照旧手势按下 → autoPager.pause），
                     // 避免翻页打断选择；选择取消时在分发器/页切换处恢复
                     latestDelegate.autoPager?.pause()
-                } else {
-                    // 词展开失败（异常路径）：回落空白长按
-                    latestOnLongClick(null)
                 }
             } else if (hit?.column is ImageColumn) {
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -364,8 +369,6 @@ fun ReadViewComposable(
                 selection.imageMenuShowing = true
                 // 菜单定位坐标保持窗口坐标（平台浮动菜单按窗口定位）
                 latestOnImageLongPress(hit.column.src, x, y)
-            } else {
-                latestOnLongClick(null)
             }
         }
 
@@ -398,7 +401,6 @@ fun ReadViewComposable(
                             batteryLevel = batteryLevel,
                             clockText = clockText,
                             onClick = onClick,
-                            onLongClick = onLongClick,
                             drawTick = pageDrawTick,
                             selection = selection,
                             ttsHighlight = ttsHighlight,
@@ -422,7 +424,6 @@ fun ReadViewComposable(
                         batteryLevel = batteryLevel,
                         clockText = clockText,
                         onClick = onClick,
-                        onLongClick = onLongClick,
                         drawTick = pageDrawTick,
                         selection = selection,
                         ttsHighlight = ttsHighlight,
@@ -440,7 +441,6 @@ fun ReadViewComposable(
                             batteryLevel = batteryLevel,
                             clockText = clockText,
                             onClick = onClick,
-                            onLongClick = onLongClick,
                             drawTick = pageDrawTick,
                             selection = selection,
                             ttsHighlight = ttsHighlight,
@@ -464,7 +464,6 @@ fun ReadViewComposable(
                     batteryLevel = batteryLevel,
                     clockText = clockText,
                     onClick = onClick,
-                    onLongClick = onLongClick,
                     drawTick = pageDrawTick,
                     selection = selection,
                     ttsHighlight = ttsHighlight,
@@ -955,10 +954,16 @@ private fun dispatchColumnClick(
                 PreferenceProviders.get().getBoolean(PreferKey.previewImageByClick, false)
             }.getOrDefault(false)
             if (preview) {
-                // 携带命中页章节索引：实现端据此优先查阅读时已落盘的章节图片缓存
-                // （BookImageStorage，对照原版 PhotoDialog.loadPhoto 的章节缓存文件分支）
-                PlatformCapabilityProviders.getOrNull()
-                    ?.showImagePreview(column.src, hit.page.chapterIndex)
+                // 携带命中页章节索引 + 书源身份：对话框据此优先查阅读时已落盘的章节图片缓存
+                // （BookImageStorage），并按书源走防盗链 header / 解密（对照原版 PhotoDialog.loadPhoto）
+                val book = viewModel.book.value
+                AppNavigatorProviders.getOrNull()?.showOverlay(
+                    AppOverlay.Dialog(
+                        key = "photo",
+                        payload = encodePhotoOverlayPayload(column.src, hit.page.chapterIndex),
+                        sourceOrigin = book?.origin?.takeIf { !book.isLocal && it.isNotBlank() },
+                    )
+                )
                 return true
             }
             return false
@@ -1074,7 +1079,6 @@ private fun AutoPageRevealOverlay(
     batteryLevel: Int,
     clockText: String,
     onClick: (TextColumn?) -> Unit,
-    onLongClick: (TextColumn?) -> Unit,
     drawTick: Int,
     selection: PageSelectionState? = null,
     ttsHighlight: TTSHighlightOverlay? = null,
@@ -1106,7 +1110,6 @@ private fun AutoPageRevealOverlay(
                     batteryLevel = batteryLevel,
                     clockText = clockText,
                     onClick = onClick,
-                    onLongClick = onLongClick,
                     drawTick = drawTick,
                     selection = selection,
                     ttsHighlight = ttsHighlight,

@@ -103,9 +103,8 @@ fun BgTextConfigContent(
     // 原版由 RemoteAssetsUtils.getBgList() 提供内置背景列表；迁移后由平台能力注入，
     // 这样 shared UI 不依赖 Android assets，同时 Android 端不会再得到空列表。
     val bgImageList = remember {
-        PlatformCapabilityProviders.getOrNull()
-            ?.readerBackgroundImageNames()
-            .orEmpty()
+        PlatformCapabilityProviders.get()
+            .readerBackgroundImageNames()
             .map { fileName ->
                 BgImageItem(
                     label = fileName.substringBeforeLast('.', fileName),
@@ -204,7 +203,7 @@ fun BgTextConfigContent(
     val actions = object : BgTextConfigActions {
         // 导入配置 zip: 平台文件选择器选 zip → importFromPath → 更新 durConfig → postConfig
         override fun onImportConfig() {
-            val services = PlatformServiceProviders.getOrNull() ?: return
+            val services = PlatformServiceProviders.get()
             scope.launch {
                 runCatching {
                     val path = withContext(IoDispatcher) {
@@ -233,7 +232,7 @@ fun BgTextConfigContent(
 
         // 导出配置 zip: exportConfigZip 生成临时 zip → 平台文件选择器选保存路径 → 复制 → 提示
         override fun onExportConfig() {
-            val services = PlatformServiceProviders.getOrNull() ?: return
+            val services = PlatformServiceProviders.get()
             scope.launch {
                 runCatching {
                     val exportFileName = if (readBookConfig.config.name.isBlank()) {
@@ -267,7 +266,7 @@ fun BgTextConfigContent(
 
         // 选择背景图: 平台文件选择器选图 → setBgFromPath 复制到 bg 目录 → setCurBg(2, fileName) → postConfig
         override fun onSelectBgImage() {
-            val services = PlatformServiceProviders.getOrNull() ?: return
+            val services = PlatformServiceProviders.get()
             scope.launch {
                 runCatching {
                     val path = withContext(IoDispatcher) {

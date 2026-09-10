@@ -54,8 +54,7 @@ object IosICloudProgressSync {
 
     /** iCloud 已启用且用户开了进度同步 (三个入口共用的前置判断)。 */
     private val syncEnabled: Boolean
-        get() = IosICloud.enabled &&
-            runCatching { AppConfigProviders.get().syncBookProgress }.getOrDefault(false)
+        get() = IosICloud.enabled && AppConfigProviders.get().syncBookProgress
 
     /** 上传单本进度 (对照 [io.legado.app.help.AppWebDavShared.uploadBookProgress])。 */
     fun uploadBookProgress(book: Book) {

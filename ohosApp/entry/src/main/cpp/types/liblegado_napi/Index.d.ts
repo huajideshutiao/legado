@@ -184,30 +184,6 @@ export interface LegadoNativeBridge {
    */
   registerWindowCallback(callback: (json: string) => void): void;
 
-  // ===== TextAction tsfn 回调注册 + ArkTS → Kotlin 回调 (长按选字浮动菜单) =====
-  /**
-   * 注册 TextAction 回调 (KMP → ArkTS 跨线程 dispatch, 文本/图片操作菜单请求)。
-   *
-   * C++ 侧创建 napi_threadsafe_function 包装 [callback], 并通过 @CName legado_register_text_action_fn
-   * 把 dispatch 函数指针注入 Kotlin OhosNativeBridge.textActionTsfn。此后 KMP 长按选字完成 →
-   * OhosNativeBridge.showTextActionMenu 时, JSON payload 跨线程 dispatch 到此 [callback],
-   * 由 ArkTS TextActionBridgeHandler 更新 Index.ets 叠层浮动菜单。
-   *
-   * @param callback 接收 JSON payload `{ text, x, y, src?, type, menuItems }`
-   */
-  registerTextActionCallback(callback: (json: string) => void): void;
-
-  /**
-   * TextAction 菜单结果回调 (ArkTS → Kotlin)。
-   *
-   * ArkTS 菜单项点击 / 点遮罩收起后调用, C++ 转发 @CName legado_text_action_callback →
-   * KMP OhosNativeBridge.onTextActionResult。
-   *
-   * @param requestId 请求 ID (菜单为单例通道, 固定传 0)
-   * @param result 结果 JSON, 如 `{ action: 'copy'|'__dismiss'|..., text: '...', src: '...' }`
-   */
-  textActionCallback(requestId: number, result: string): void;
-
   // ===== Image / Media tsfn 回调注册 + ArkTS → Kotlin 回调 (KP8+ 新增) =====
 
   /**
@@ -683,20 +659,6 @@ export interface LegadoNativeBridge {
    * @param result 结果 JSON: 成功 `{ ok: true, granted: <boolean> }`; 失败 `{ ok: false, error: '<string>' }`
    */
   permissionCallback(requestId: number, result: string): void;
-
-  // ===== 图片下载管线 (ArkTS 保存到相册复用, 带书源 header 防盗链) =====
-
-  /**
-   * 下载图片字节并返回 base64 (复用 shared 下载管线: AnalyzeUrlCore 带书源 header/cookie/charset/JS
-   * + ImageUtils.decode 解密, 解决 ArkTS 裸下载拿不到书源 header 导致的防盗链失败)。
-   *
-   * **必须从 TaskPool/Worker 线程调用**: 本函数内部 runBlocking 转同步且下载走 HTTP 桥
-   * (tsfn → ArkTS 主线程处理回调), 主线程直接调用会因主线程被阻塞而无法处理 HTTP 回调 → 死锁超时。
-   *
-   * @param url 图片地址
-   * @return base64 编码的图片字节; 下载失败/解密失败/无活动阅读书时返回空串 (调用方回退裸下载或提示)
-   */
-  downloadImageBytes(url: string): string;
 
 }
 

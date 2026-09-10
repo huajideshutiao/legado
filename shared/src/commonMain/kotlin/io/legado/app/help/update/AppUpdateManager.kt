@@ -77,7 +77,7 @@ interface AppUpdateEnvironment {
      * 自建更新源配置 (app 端 `AppConfig.updateUrl` JSON 协议, 见 [CustomUrlUpdateChecker]);
      * 空串 = 走默认策略的检测器 ([GitHubReleaseChecker])。
      */
-    val updateUrl: String get() = ""
+    val updateUrl: String
 }
 
 /**

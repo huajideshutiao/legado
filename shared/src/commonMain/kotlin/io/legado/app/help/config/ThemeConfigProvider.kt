@@ -200,7 +200,7 @@ interface ThemeConfigProvider {
      *
      * @param isNight 目标是否夜间模式
      */
-    fun applyDayNight(isNight: Boolean) {}
+    fun applyDayNight(isNight: Boolean)
 
     /**
      * 按当前 themeMode 重新应用主题色并触发全局重组 (对照 app 端无参的
@@ -210,7 +210,7 @@ interface ThemeConfigProvider {
      * (0 跟随系统 / 1 日间 / 2 夜间 / 3 E-Ink), [applyDayNight] 的布尔入参表达不了,
      * 且会把 "0"/"3" 覆盖成 "1"/"2"。
      */
-    fun applyThemeMode() {}
+    fun applyThemeMode()
 
     /**
      * 返回内置主题配置列表 (对照 `ThemeConfig.getBuiltinConfigs(context: Context): List<Config>`)。
@@ -233,9 +233,9 @@ interface ThemeConfigProvider {
     /**
      * 从磁盘重载 configList (对照 app 端 `ThemeConfig.upConfig()`)。
      *
-     * 恢复备份覆盖 themeConfig.json 后调用, 默认无操作 (由实现按需覆写)。
+     * 恢复备份覆盖 themeConfig.json 后调用。
      */
-    fun upConfig() {}
+    fun upConfig()
 
     /**
      * 清理主题背景图片缓存 (对照 app 端 `ThemeConfig.clearBg`)。

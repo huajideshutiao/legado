@@ -111,6 +111,12 @@ class NativeSourceCacheProvider : SourceCacheProvider {
         memoryStore.remove(key)
     }
 
+    override fun clearMemoryByPrefixes(prefixes: List<String>) {
+        memoryStore.keys
+            .filter { key -> prefixes.any { key.startsWith(it) } }
+            .forEach { memoryStore.remove(it) }
+    }
+
     // ---- JS 绑定 ----
 
     /**

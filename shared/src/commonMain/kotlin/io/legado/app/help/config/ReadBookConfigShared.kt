@@ -103,12 +103,6 @@ class ReadBookConfigShared(private val prefs: PreferenceProvider) {
         get() = prefs.getBoolean(PreferKey.useZhLayout, false)
         set(value) = prefs.putBoolean(PreferKey.useZhLayout, value)
 
-    /**
-     * 兼容 app 端 `reloadHideBarPrefs()` 的占位实现。
-     * Shared 版 [hideStatusBar] / [hideNavigationBar] 直接读 prefs，无需 reload。
-     */
-    fun reloadHideBarPrefs() = Unit
-
     // -------------------- 样式主题列表 (readConfig.json 持久化) --------------------
 
     /** 当前是否漫画模式（内存字段，与 app 端 `isComic` 一致）。 */

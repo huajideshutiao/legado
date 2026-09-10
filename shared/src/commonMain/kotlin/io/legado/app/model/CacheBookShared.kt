@@ -179,11 +179,8 @@ object CacheBookShared {
      * (同一时刻至多一个循环), 差异仅是新调用方 join 活跃循环而非排队重跑。
      * flow 循环: 只要 map 非空且协程活跃就持续遍历, 对每个非 loading 的 model
      * 调用 [CacheBookModelShared.download]; 无可下载项时 delay(1000) 避免空转。
-     *
-     * @param context 协程上下文 (兼容调用方, 供下载任务块切 dispatcher;
-     *   循环本身运行在 [processScope])
      */
-    suspend fun startProcessJob(context: CoroutineContext) {
+    suspend fun startProcessJob() {
         val job = synchronized(processLock) {
             processJob?.takeIf { it.isActive } ?: launchProcessJob().also { processJob = it }
         }
@@ -528,29 +525,22 @@ object CacheBookShared {
          *
          * app 端阅读流 (ReadBook.loadContent) 在缓存未命中时调用本方法同步获取正文。
          * 桌面端阅读流 (ReadBookViewModelShared) 不经此方法, 直接用 WebBook.getContentAwait。
-         *
-         * 平台差异: app 端 callback 桥接 ReadBook.downloadedChapters /
-         * downloadFailChapters; 桌面端 callback no-op (无 ReadBook 单例)。
          */
         suspend fun downloadAwait(chapter: BookChapter): String {
             synchronized(lock) {
                 onDownloadSet.add(chapter.index)
                 waitDownloadSet.remove(chapter.index)
             }
-            val callback = CacheBookCallbacks.get()
             try {
                 val nextChapterUrl = chapterList?.getOrNull(chapter.index + 1)?.url
                 val content = getContentAwait(bookSource, book, chapter, nextChapterUrl)
                 onSuccess(chapter)
-                callback.markDownloaded(chapter.index)
-                callback.markDownloadSuccess(chapter.index)
                 return content
             } catch (e: Exception) {
                 if (e is CancellationException) {
                     onCancel(chapter.index)
                 }
                 onError(chapter, e)
-                callback.markDownloadFailed(chapter.index)
                 return "获取正文失败\n${e.message}"
             } finally {
                 postEvent(EventBus.UP_DOWNLOAD, book.bookUrl)
@@ -580,7 +570,6 @@ object CacheBookShared {
                 }
                 onDownloadSet.add(chapter.index)
                 waitDownloadSet.remove(chapter.index)
-                val callback = CacheBookCallbacks.get()
                 val nextChapterUrl = chapterList?.getOrNull(chapter.index + 1)?.url
                 Coroutine.async(
                     scope,
@@ -590,12 +579,9 @@ object CacheBookShared {
                     getContentAwait(bookSource, book, chapter, nextChapterUrl)
                 }.onSuccess { content ->
                     onSuccess(chapter)
-                    callback.markDownloaded(chapter.index)
-                    callback.markDownloadSuccess(chapter.index)
                     downloadFinish(chapter, content, resetPageOffset)
                 }.onError {
                     onError(chapter, it)
-                    callback.markDownloadFailed(chapter.index)
                     downloadFinish(chapter, "获取正文失败\n${it.message}", resetPageOffset)
                 }.onCancel {
                     onCancel(chapter.index)
@@ -652,30 +638,6 @@ object CacheBookShared {
  * 模式参考 [io.legado.app.help.book.BookHelpProviders] / [io.legado.app.help.service.ServiceLaunchers]。
  */
 interface CacheBookCallback {
-
-    /**
-     * 章节下载成功, 标记已下载 (对应 app 端 `ReadBook.downloadedChapters.add(index)`)。
-     *
-     * 桌面端无 ReadBook 单例, 默认 no-op。
-     */
-    fun markDownloaded(chapterIndex: Int) {}
-
-    /**
-     * 章节下载失败, 累计失败次数 (对应 app 端
-     * `ReadBook.downloadFailChapters[index] = (ReadBook.downloadFailChapters[index] ?: 0) + 1`)。
-     *
-     * 桌面端无 ReadBook 单例, 默认 no-op。
-     */
-    fun markDownloadFailed(chapterIndex: Int) {}
-
-    /**
-     * 章节下载失败计数清零 (对应 app 端 `ReadBook.downloadFailChapters.remove(index)`)。
-     *
-     * 与 [markDownloadFailed] 配对: 成功后清失败计数, 避免下次失败时累计旧值。
-     * app 端在 `downloadAwait` / `download(scope, chapter, ...)` 成功分支调
-     * `ReadBook.downloadFailChapters.remove(chapter.index)`。
-     */
-    fun markDownloadSuccess(chapterIndex: Int) {}
 
     /**
      * 章节正文下载完成, 通知阅读流重载 (对应 app 端 `ReadBook.contentLoadFinish`)。

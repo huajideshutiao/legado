@@ -24,26 +24,16 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.coroutine.mainDispatcher
 import io.legado.app.help.coroutine.runBlockingInScope
-import io.legado.app.help.toast.Toasters
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
-import io.legado.app.ui.book.read.page.entities.TextChapterContract
 import io.legado.app.ui.book.read.page.entities.TextChapterShared
-import io.legado.app.ui.book.read.page.entities.tryPatchReviewCounts
-import io.legado.app.utils.concurrent.newConcurrentMap
-import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -52,9 +42,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
@@ -66,16 +54,16 @@ import kotlin.math.min
  * 章节索引推进 / 三章滑窗 / loadContent 编排 / 预下载 / 目录自动更新 / 进度落库与上传
  * 全部照搬 app 版实现，平台差异只经三类出口：
  * - 已有 provider：[AppDbProviders] / [BookStorageProviders] / [ContentProcessorProviders] /
- *   [AppConfigProviders] / [ReadBookConfigProviders] / [CacheBookShared] / [AppWebDavShared] / [Toasters]
+ *   [AppConfigProviders] / [ReadBookConfigProviders] / [CacheBookShared] / [AppWebDavShared]
  * - [ReadBookPlatform]：朗读服务、缓存服务运行态、图片/本地 txt 缓存释放
- * - open 成员：[createTextChapter]（排版）/ [collectLayout]（逐页推送）/
- *   [runOnBackground]，app 端子类用 ChapterProvider + TextChapterLayout + globalExecutor 覆盖
+ * - open 成员：[runOnBackground]（后台执行）
  *
- * 三章滑窗元素类型抽象为 [TextChapterContract]：app 端为 `TextChapter`（异步排版），
- * 其余端为 [TextChapterShared]（SimpleChapterLayout 同步排版）。为兼容既有 Compose 消费方，
- * [prevTextChapter] / [curTextChapter] / [nextTextChapter] 仍以 `StateFlow<TextChapterShared?>`
- * 暴露（非 TextChapterShared 实现时为 null），app 风格的可写视图见 [prevChapter] / [curChapter] /
- * [nextChapter]。同理其余状态字段一律「StateFlow 只读 + `xxxValue` 可写视图」双出口。
+ * 正文排版不在本类：视口/字号参数在 UI 侧，由 [io.legado.app.ui.book.read.ReadBookViewModelShared]
+ * 排版后经 [updateTextChapter] 回填滑窗。
+ *
+ * 三章滑窗以 [prevTextChapter] / [curTextChapter] / [nextTextChapter] 只读暴露，
+ * 可写视图见 [prevChapter] / [curChapter] / [nextChapter]；其余状态字段一律
+ * 「StateFlow 只读 + `xxxValue` 可写视图」双出口。
  */
 @Suppress("MemberVisibilityCanBePrivate")
 open class ReadBookShared : CoroutineScope {
@@ -153,33 +141,26 @@ open class ReadBookShared : CoroutineScope {
     private val _nextTextChapter = MutableStateFlow<TextChapterShared?>(null)
     val nextTextChapter: StateFlow<TextChapterShared?> = _nextTextChapter.asStateFlow()
 
-    private var prevChapterInternal: TextChapterContract? = null
-    private var curChapterInternal: TextChapterContract? = null
-    private var nextChapterInternal: TextChapterContract? = null
-
     /** app 端 `ReadBook.prevTextChapter` 可写视图 */
-    var prevChapter: TextChapterContract?
-        get() = prevChapterInternal
+    var prevChapter: TextChapterShared?
+        get() = _prevTextChapter.value
         set(value) {
-            prevChapterInternal = value
-            _prevTextChapter.value = value as? TextChapterShared
+            _prevTextChapter.value = value
         }
 
     /** app 端 `ReadBook.curTextChapter` 可写视图 */
-    var curChapter: TextChapterContract?
-        get() = curChapterInternal
+    var curChapter: TextChapterShared?
+        get() = _curTextChapter.value
         set(value) {
-            curChapterInternal = value
-            _curTextChapter.value = value as? TextChapterShared
+            _curTextChapter.value = value
             _durPageIndex.value = durPageIndexValue
         }
 
     /** app 端 `ReadBook.nextTextChapter` 可写视图 */
-    var nextChapter: TextChapterContract?
-        get() = nextChapterInternal
+    var nextChapter: TextChapterShared?
+        get() = _nextTextChapter.value
         set(value) {
-            nextChapterInternal = value
-            _nextTextChapter.value = value as? TextChapterShared
+            _nextTextChapter.value = value
         }
 
     private val _inBookshelf = MutableStateFlow(false)
@@ -224,13 +205,6 @@ open class ReadBookShared : CoroutineScope {
     var callback: ReadBookCallback? = null
 
     private val loadingChapters = arrayListOf<Int>()
-    private val chapterLoadingJobs = newConcurrentMap<Int, Coroutine<*>>()
-    private val prevChapterLoadingLock = Mutex()
-    private val curChapterLoadingLock = Mutex()
-    private val nextChapterLoadingLock = Mutex()
-
-    // 段评数按 chapter.index 复用 Deferred，已完成的留作不切书时的缓存
-    private val reviewCountDeferred = newConcurrentMap<Int, Deferred<Map<Int, Int>?>>()
 
     // 替代 app 端 @Synchronized（kotlin.jvm.Synchronized 无 common 变体）
     private val lock = SynchronizedObject()
@@ -247,33 +221,6 @@ open class ReadBookShared : CoroutineScope {
      */
     protected open fun runOnBackground(block: () -> Unit) {
         downloadScope.launch { block() }
-    }
-
-    /**
-     * 正文 → 章节排版产物（app 端 `processContent`: ContentProcessor + ChapterProvider）。
-     *
-     * 默认返回 null：commonMain 侧排版（SimpleChapterLayout）需要视口/字号参数，
-     * 由消费方 (ReadBookViewModelShared) 注入后自行排版，故此处不做臆造实现。
-     */
-    protected open suspend fun createTextChapter(
-        scope: CoroutineScope,
-        book: Book,
-        chapter: BookChapter,
-        content: String,
-        reviewCountDeferred: Deferred<Map<Int, Int>?>?,
-    ): TextChapterContract? = null
-
-    /**
-     * 消费排版产物并刷新视图（app 端 contentLoadFinish 里的 layoutChannel 逐页推送）。
-     * 同步排版的平台无逐页通道，整章刷新一次即可。
-     */
-    protected open suspend fun collectLayout(
-        textChapter: TextChapterContract,
-        offset: Int,
-        upContent: Boolean,
-        resetPageOffset: Boolean,
-    ) {
-        if (upContent) callback?.upContent(offset, resetPageOffset)
     }
     // endregion
 
@@ -304,17 +251,7 @@ open class ReadBookShared : CoroutineScope {
             isLocalBook = book.isLocal
             clearTextChapter()
         }
-        if (!isDiffBook) {
-            if (curChapter?.isCompleted == false) {
-                curChapter = null
-            }
-            if (nextChapter?.isCompleted == false) {
-                nextChapter = null
-            }
-            if (prevChapter?.isCompleted == false) {
-                prevChapter = null
-            }
-        } else {
+        if (isDiffBook) {
             callback?.upContent()
             ReadBookEvents.postConfig(ReadConfigChange.PAGE_ANIM)
             lastBookProgress = null
@@ -360,7 +297,7 @@ open class ReadBookShared : CoroutineScope {
     }
 
     fun upReadBookConfig(book: Book) {
-        val readBookConfig = ReadBookConfigProviders.getOrNull() ?: return
+        val readBookConfig = ReadBookConfigProviders.get()
         val oldIndex = readBookConfig.styleSelect
         readBookConfig.isComic = book.isImage
         if (oldIndex != readBookConfig.styleSelect) {
@@ -371,35 +308,13 @@ open class ReadBookShared : CoroutineScope {
         }
     }
 
-    fun setProgress(progress: BookProgress) {
-        if (progress.durChapterIndex < chapterSize &&
-            (durChapterIndexValue != progress.durChapterIndex
-                || durChapterPosValue != progress.durChapterPos)
-        ) {
-            durChapterIndexValue = progress.durChapterIndex
-            durChapterPosValue = progress.durChapterPos
-            clearTextChapter()
-            callback?.upContent()
-            loadContent(resetPageOffset = true)
-        }
-    }
-
     //暂时保存跳转前进度
     fun saveCurrentBookProgress() {
         if (lastBookProgress != null) return //避免进度条连续跳转不能覆盖最初的进度记录
         lastBookProgress = bookValue?.let { BookProgress(it) }
     }
 
-    //恢复跳转前进度
-    fun restoreLastBookProgress() {
-        lastBookProgress?.let {
-            setProgress(it)
-            lastBookProgress = null
-        }
-    }
-
     fun clearTextChapter() {
-        clearExpiredChapterLoadingJob(true)
         prevChapter = null
         curChapter = null
         nextChapter = null
@@ -438,7 +353,6 @@ open class ReadBookShared : CoroutineScope {
             if (nextPagePos >= 0) {
                 hasNextPage = true
                 durChapterPosValue = nextPagePos
-                callback?.cancelSelect()
                 callback?.upContent()
             }
         }
@@ -462,7 +376,6 @@ open class ReadBookShared : CoroutineScope {
         if (durChapterIndexValue < simulatedChapterSize - 1) {
             durChapterPosValue = 0
             durChapterIndexValue++
-            clearExpiredChapterLoadingJob()
             prevChapter = curChapter
             curChapter = nextChapter
             nextChapter = null
@@ -493,7 +406,6 @@ open class ReadBookShared : CoroutineScope {
         if (durChapterIndexValue < simulatedChapterSize - 1) {
             durChapterPosValue = 0
             durChapterIndexValue++
-            clearExpiredChapterLoadingJob()
             prevChapter = curChapter
             curChapter = nextChapter
             nextChapter = null
@@ -525,7 +437,6 @@ open class ReadBookShared : CoroutineScope {
         if (durChapterIndexValue > 0) {
             durChapterPosValue = if (toLast) prevChapter?.lastReadLength ?: Int.MAX_VALUE else 0
             durChapterIndexValue--
-            clearExpiredChapterLoadingJob()
             nextChapter = curChapter
             curChapter = prevChapter
             prevChapter = null
@@ -580,10 +491,8 @@ open class ReadBookShared : CoroutineScope {
      * 当前页面变化
      */
     private fun curPageChanged(pageChanged: Boolean = false) {
-        callback?.pageChanged()
         curChapter?.let {
-            it.notifyPageChanged()
-            if (platform.isReadAloudRun && it.isCompleted) {
+            if (platform.isReadAloudRun) {
                 val scrollPageAnim = pageAnim() == 3
                 if (scrollPageAnim && pageChanged) {
                     platform.pauseReadAloud()
@@ -600,10 +509,8 @@ open class ReadBookShared : CoroutineScope {
      */
     fun readAloud(play: Boolean = true, startPos: Int = 0) {
         bookValue ?: return
-        val textChapter = curChapter ?: return
-        if (textChapter.isCompleted) {
-            platform.playReadAloud(play, startPos)
-        }
+        curChapter ?: return
+        platform.playReadAloud(play, startPos)
     }
 
     /** 当前页数（对应 app 端 `ReadBook.durPageIndex` 计算属性） */
@@ -617,7 +524,7 @@ open class ReadBookShared : CoroutineScope {
     /**
      * chapterOnDur: 0为当前页,1为下一页,-1为上一页
      */
-    fun textChapter(chapterOnDur: Int = 0): TextChapterContract? {
+    fun textChapter(chapterOnDur: Int = 0): TextChapterShared? {
         return when (chapterOnDur) {
             0 -> curChapter
             1 -> nextChapter
@@ -682,7 +589,6 @@ open class ReadBookShared : CoroutineScope {
                 ?: AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, index)
                 ?: return@async
             if (addLoading(index)) {
-                startReviewCountFetchAsync(book, chapter)
                 BookHelpProviders.get().getContent(book, chapter)?.let {
                     contentLoadFinish(
                         book,
@@ -714,10 +620,7 @@ open class ReadBookShared : CoroutineScope {
                 val book = bookValue!!
                 val chapter = chapterListValue?.getOrNull(index)
                     ?: AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, index)!!
-                startReviewCountFetchAsync(book, chapter)
-                val content = BookHelpProviders.get().getContent(book, chapter)
-                    ?: downloadAwait(chapter)
-                contentLoadFinishAwait(book, chapter, content, upContent, resetPageOffset)
+                BookHelpProviders.get().getContent(book, chapter) ?: downloadAwait(chapter)
                 success?.invoke()
             } catch (e: Exception) {
                 AppLog.put("加载正文出错\n${e.message}")
@@ -818,167 +721,15 @@ open class ReadBookShared : CoroutineScope {
         canceled: Boolean = false,
         success: (() -> Unit)? = null
     ) {
-        // 锁内只做纯内存状态读写（释放加载标记 + 窗口判定 + 登记任务）；
-        // 旧任务 cancel 与新任务 start 都可能同线程回调，一律出锁后再做（见 clearExpiredChapterLoadingJob）
+        // 锁内只做纯内存状态读写（释放加载标记 + 窗口判定）
         synchronized(lock) {
             removeLoadingLocked(chapter.index)
             if (canceled || chapter.index !in durChapterIndexValue - 1..durChapterIndexValue + 1) {
                 return
             }
         }
-        val job = Coroutine.async(this, start = CoroutineStart.LAZY) {
-            val countDeferred = startReviewCountFetchAsync(book, chapter)
-            val textChapter = createTextChapter(this, book, chapter, content, countDeferred)
-                ?: return@async
-            when (val offset = chapter.index - durChapterIndexValue) {
-                0 -> curChapterLoadingLock.withLock {
-                    withContext(mainDispatcher) {
-                        ensureActive()
-                        curChapter = textChapter
-                    }
-                    ReadBookEvents.postMenuRefresh()
-                    collectLayout(textChapter, offset, upContent, resetPageOffset)
-                    curPageChanged()
-                    callback?.contentLoadFinish()
-                    scheduleReviewRelayoutIfNeeded(countDeferred, chapter, textChapter)
-                }
-
-                -1 -> prevChapterLoadingLock.withLock {
-                    withContext(mainDispatcher) {
-                        ensureActive()
-                        prevChapter = textChapter
-                    }
-                    collectLayout(textChapter, offset, upContent, resetPageOffset)
-                }
-
-                1 -> nextChapterLoadingLock.withLock {
-                    withContext(mainDispatcher) {
-                        ensureActive()
-                        nextChapter = textChapter
-                    }
-                    collectLayout(textChapter, offset, upContent, resetPageOffset)
-                }
-            }
-
-            return@async
-        }.onError {
-            if (it is CancellationException) {
-                return@onError
-            }
-            AppLog.put("ChapterProvider ERROR", it)
-            runCatching { Toasters.get().toast("ChapterProvider ERROR:\n${it.stackTraceStr}") }
-        }.onSuccess {
-            success?.invoke()
-        }
-        val expired = synchronized(lock) { chapterLoadingJobs.put(chapter.index, job) }
-        expired?.cancel()
-        job.start()
-    }
-
-    suspend fun contentLoadFinishAwait(
-        book: Book,
-        chapter: BookChapter,
-        content: String,
-        upContent: Boolean = true,
-        resetPageOffset: Boolean
-    ) {
-        removeLoading(chapter.index)
-        if (chapter.index !in durChapterIndexValue - 1..durChapterIndexValue + 1) {
-            return
-        }
-        runCatching {
-            // 排版作用域取本实例 (原版 processContent 是 ReadBook 这个 CoroutineScope 的扩展)
-            val countDeferred = startReviewCountFetchAsync(book, chapter)
-            val textChapter = createTextChapter(this, book, chapter, content, countDeferred)
-                ?: return@runCatching
-            when (val offset = chapter.index - durChapterIndexValue) {
-                0 -> {
-                    curChapter?.cancelLayout()
-                    withContext(mainDispatcher) {
-                        curChapter = textChapter
-                    }
-                    ReadBookEvents.postMenuRefresh()
-                    collectLayout(textChapter, offset, upContent, resetPageOffset)
-                    curPageChanged()
-                    callback?.contentLoadFinish()
-                    scheduleReviewRelayoutIfNeeded(countDeferred, chapter, textChapter)
-                }
-
-                -1 -> {
-                    prevChapter?.cancelLayout()
-                    withContext(mainDispatcher) {
-                        prevChapter = textChapter
-                    }
-                    collectLayout(textChapter, offset, upContent, resetPageOffset)
-                }
-
-                1 -> {
-                    nextChapter?.cancelLayout()
-                    withContext(mainDispatcher) {
-                        nextChapter = textChapter
-                    }
-                    collectLayout(textChapter, offset, upContent, resetPageOffset)
-                }
-            }
-        }.onFailure {
-            if (it is CancellationException) {
-                return@onFailure
-            }
-            AppLog.put("ChapterProvider ERROR", it)
-            runCatching { Toasters.get().toast("ChapterProvider ERROR:\n${it.stackTraceStr}") }
-        }
-    }
-
-    /**
-     * 与正文加载并行启动段评数 IO，按 chapter.index 复用 Deferred。
-     * 返回 null 表示不需要拉。
-     */
-    private fun startReviewCountFetchAsync(
-        book: Book, chapter: BookChapter
-    ): Deferred<Map<Int, Int>?>? {
-        val source = bookSourceValue ?: return null
-        if (!source.enabledReview) return null
-        if (source.ruleReview.isNullOrEmpty()) return null
-        val rule = source.reviewRule
-        if (rule.reviewUrl.isNullOrBlank()) return null
-        if (rule.reviewCountRule.isNullOrBlank()) return null
-        reviewCountDeferred[chapter.index]?.let { return it }
-        val deferred = async(IoDispatcher) {
-            WebBook.getReviewCountAwait(source, book, chapter).getOrNull()
-        }
-        reviewCountDeferred[chapter.index] = deferred
-        return deferred
-    }
-
-    /**
-     * 段评数迟于排版到达时触发轻量就地补丁或双缓冲整章重排
-     */
-    private fun CoroutineScope.scheduleReviewRelayoutIfNeeded(
-        deferred: Deferred<Map<Int, Int>?>?,
-        chapter: BookChapter,
-        textChapter: TextChapterContract,
-    ) {
-        if (deferred == null) return
-        if (textChapter.reviewCountApplied) return
-        launch {
-            val map = deferred.await() ?: return@launch
-            if (map.isEmpty()) return@launch
-            if (chapter.index != durChapterIndexValue) return@launch
-            if (curChapter !== textChapter) return@launch
-            withContext(mainDispatcher) {
-                if (chapter.index != durChapterIndexValue) return@withContext
-                if (curChapter !== textChapter) return@withContext
-                reviewCountDeferred[chapter.index] = CompletableDeferred(map)
-                // 1. 就地补丁：计数全 0 时直接标记完成；需要挂气泡时要可视区宽度做行宽上界，
-                // app 端排版几何在 ChapterProvider（commonMain 拿不到 px），传不了就返回 false 走重排
-                if (textChapter.tryPatchReviewCounts(map)) {
-                    callback?.upContent()
-                    return@withContext
-                }
-                // 2. 双缓冲静默切换：不 clearTextChapter，后台排完新 TextChapter 再原子替换，避免白屏闪烁
-                loadContent(resetPageOffset = false)
-            }
-        }
+        // 排版在 ReadBookViewModelShared；这里只把完成回调投回主线程（原 Coroutine.onSuccess 语义）
+        launch { success?.invoke() }
     }
 
     fun upToc() {
@@ -1021,7 +772,7 @@ open class ReadBookShared : CoroutineScope {
     }
 
     fun pageAnim(): Int {
-        val anim = ReadBookConfigProviders.getOrNull()?.pageAnim ?: PageAnim.coverPageAnim
+        val anim = ReadBookConfigProviders.get().pageAnim
         return if (bookValue?.config?.imageStyle
                 .equals(Book.imgStyleSingle, true) && anim == scrollPageAnim
         ) {
@@ -1040,29 +791,25 @@ open class ReadBookShared : CoroutineScope {
 
     fun saveRead() {
         runOnBackground {
-            runCatching {
-                val book = bookValue ?: return@runCatching
-                book.durChapterIndex = durChapterIndexValue
-                book.durChapterPos = durChapterPosValue *
-                    (if (curChapter?.isLastIndex(durPageIndexValue) == true) -1 else 1)
-                // 每翻一页都会走这里: 章名先取内存目录, 内存没有才兜底查库
-                // (原来无条件 runBlockingInScope 查库 = 热路径上的阻塞 IO)
-                (chapterListValue?.getOrNull(durChapterIndexValue)
-                    ?: runBlockingInScope(EmptyCoroutineContext) {
-                        AppDbProviders.get().bookChapterDao.getChapter(
-                            book.bookUrl,
-                            durChapterIndexValue
-                        )
-                    })?.let {
-                    book.durChapterTitle = it.getDisplayTitle(
-                        ContentProcessorProviders.get().getTitleReplaceRules(book),
-                        book.getUseReplaceRule()
+            val book = bookValue ?: return@runOnBackground
+            book.durChapterIndex = durChapterIndexValue
+            book.durChapterPos = durChapterPosValue *
+                (if (curChapter?.isLastIndex(durPageIndexValue) == true) -1 else 1)
+            // 每翻一页都会走这里: 章名先取内存目录, 内存没有才兜底查库
+            // (原来无条件 runBlockingInScope 查库 = 热路径上的阻塞 IO)
+            (chapterListValue?.getOrNull(durChapterIndexValue)
+                ?: runBlockingInScope(EmptyCoroutineContext) {
+                    AppDbProviders.get().bookChapterDao.getChapter(
+                        book.bookUrl,
+                        durChapterIndexValue
                     )
-                }
-                saveReadProgress(book)
-            }.onFailure {
-                AppLog.put("保存书籍阅读进度信息出错\n$it", it)
+                })?.let {
+                book.durChapterTitle = it.getDisplayTitle(
+                    ContentProcessorProviders.get().getTitleReplaceRules(book),
+                    book.getUseReplaceRule()
+                )
             }
+            saveReadProgress(book)
         }
     }
 
@@ -1145,44 +892,9 @@ open class ReadBookShared : CoroutineScope {
     }
 
     /**
-     * 锁内只摘容器（纯内存），[Job.cancel] 一律移出锁：job 已完成 / 未启动时
-     * cancel 会同线程同步跑 invokeOnCompletion，处理器里若再取 [lock]，
-     * atomicfu 的锁在 Native 端不可重入即自锁死。
-     */
-    private fun clearExpiredChapterLoadingJob(clearAll: Boolean = false) {
-        val expiredJobs = arrayListOf<Coroutine<*>>()
-        val expiredCounts = arrayListOf<Deferred<Map<Int, Int>?>>()
-        synchronized(lock) {
-            val iterator = chapterLoadingJobs.iterator()
-            while (iterator.hasNext()) {
-                val (index, job) = iterator.next()
-                if (clearAll || index !in durChapterIndexValue - 1..durChapterIndexValue + 1) {
-                    expiredJobs.add(job)
-                    iterator.remove()
-                    loadingChapters.remove(index)
-                }
-            }
-            // 已完成的留作不切书时的缓存；未完成且出窗口的取消，避免快速翻章累积并行 IO
-            val reviewIter = reviewCountDeferred.iterator()
-            while (reviewIter.hasNext()) {
-                val (index, deferred) = reviewIter.next()
-                if (!deferred.isCompleted &&
-                    (clearAll || index !in durChapterIndexValue - 1..durChapterIndexValue + 1)
-                ) {
-                    expiredCounts.add(deferred)
-                    reviewIter.remove()
-                }
-            }
-        }
-        for (i in expiredJobs.indices) expiredJobs[i].cancel()
-        for (i in expiredCounts.indices) expiredCounts[i].cancel()
-    }
-
-    /**
      * 注册回调
      */
     fun register(cb: ReadBookCallback) {
-        callback?.notifyBookChanged()
         callback = cb
     }
 
@@ -1202,9 +914,6 @@ open class ReadBookShared : CoroutineScope {
         downloadScope.coroutineContext.cancelChildren()
         coroutineContext.cancelChildren()
         platform.clearImageCache()
-        reviewCountDeferred.values.forEach { it.cancel() }
-        reviewCountDeferred.clear()
-        clearExpiredChapterLoadingJob(true)
         if (!platform.isCacheBookServiceRun) {
             CacheBookShared.close()
         }
@@ -1327,14 +1036,6 @@ open class ReadBookShared : CoroutineScope {
             success: (() -> Unit)? = null
         ) {
         }
-
-        fun pageChanged() {}
-
-        fun contentLoadFinish() {}
-
-        fun notifyBookChanged() {}
-
-        fun cancelSelect() {}
 
         /** 装载新书 / 切书后触发 ([initData] 完成) */
         fun onBookChanged(book: Book) {}

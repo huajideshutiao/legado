@@ -32,6 +32,8 @@ data class TextLine(
 
     val columns: List<BaseColumn> get() = textColumns
     val charSize: Int get() = text.length
+
+    /** 零列行（消息页文案里的空行）无几何可取，行首尾归 0 */
     val lineStart: Float get() = textColumns.firstOrNull()?.start ?: 0f
     val lineEnd: Float get() = textColumns.lastOrNull()?.end ?: 0f
     val chapterIndices: IntRange get() = chapterPosition..chapterPosition + charSize
@@ -51,9 +53,7 @@ data class TextLine(
     }
 
     fun getColumn(index: Int): BaseColumn {
-        return textColumns.getOrElse(index) {
-            textColumns.last()
-        }
+        return textColumns[index]
     }
 
     fun getColumnReverseAt(index: Int, offset: Int = 0): BaseColumn {

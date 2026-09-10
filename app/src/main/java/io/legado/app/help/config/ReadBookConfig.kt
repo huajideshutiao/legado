@@ -198,9 +198,6 @@ object ReadBookConfig {
             shared.useZhLayout = value
         }
 
-    /** 设置页直写 pref 后同步缓存字段 */
-    fun reloadHideBarPrefs() = shared.reloadHideBarPrefs()
-
     var bgAlpha
         get() = shared.bgAlpha
         set(value) {

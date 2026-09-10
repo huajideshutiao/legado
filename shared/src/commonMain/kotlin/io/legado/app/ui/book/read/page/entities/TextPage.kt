@@ -31,7 +31,7 @@ data class TextPage(
     val lineSize: Int get() = textLines.size
     val charSize: Int get() = text.length.coerceAtLeast(1)
 
-    /** 零行占位页无字符, 取 0 与 TextChapterShared.getReadLength 的 lineSize == 0 分支同口径 */
+    /** 页首字符的章节内偏移；零行占位页（视口未注入时的消息页）无行，页首偏移即 0 */
     val chapterPosition: Int get() = textLines.firstOrNull()?.chapterPosition ?: 0
     val searchResult = hashSetOf<TextColumn>()
     var isMsgPage: Boolean = false
@@ -46,11 +46,7 @@ data class TextPage(
 
     var doublePage = false
 
-    /**
-     * 排版几何参数，由排版层（TextChapterLayout）在 onPageCompleted 时注入。
-     * 数据化前由 ChapterProvider / ReadBookConfig 静态字段提供，
-     * 现改为实例字段以解耦 android 依赖，供 upLinesPosition / paddingTop 使用。
-     */
+    /** 排版几何参数，由 PaginationEngine 每页切完时注入，供 upLinesPosition 与绘制裁剪使用。 */
     var paddingTop: Int = 0
     var textBottomJustify: Boolean = false
     var visibleHeight: Int = 0
@@ -58,16 +54,9 @@ data class TextPage(
     var contentPaintTextHeight: Float = 0f
     var lineSpacingExtra: Float = 0f
 
-    var isCompleted = false
-
-    /**
-     * 所属章节引用。类型为 [TextChapterRef]（commonMain 最小接口，仅暴露 pageSize），
-     * 实际运行时由 app 端 TextChapter 实现并注入。
-     * 数据化前字段类型为 TextChapter（依赖 Book/BookChapter 等 android 类，无法下沉 commonMain）。
-     * 默认 null，调用方通过 [TextPage.getTextChapter] 扩展函数（app 端）取回强类型 TextChapter。
-     */
+    /** 所属章节，排版产出后由 ReadBookViewModelShared 逐页回填；[pageSize] 供阅读进度计算。 */
     @JvmField
-    var textChapter: TextChapterRef? = null
+    var textChapter: TextChapterShared? = null
     val pageSize get() = textChapter?.pageSize ?: 0
 
     fun addLine(line: TextLine) {
@@ -76,9 +65,7 @@ data class TextPage(
     }
 
     fun getLine(index: Int): TextLine {
-        return textLines.getOrElse(index) {
-            textLines.last()
-        }
+        return textLines[index]
     }
 
     /**
@@ -95,7 +82,7 @@ data class TextPage(
         }
         run {
             if (leftLineSize <= 1) return@run
-            val lastLine = textLines.getOrNull(leftLineSize - 1) ?: return@run
+            val lastLine = textLines[leftLineSize - 1]
             if (lastLine.isImage) return@run
             val lastLineHeight = with(lastLine) { lineBottom - lineTop }
             val pageHeight = lastLine.lineBottom + contentPaintTextHeight * lineSpacingExtra
@@ -114,7 +101,7 @@ data class TextPage(
         if (leftLineSize >= lineSize - 1) return
         run {
             val rightLineCount = textLines.size - leftLineSize
-            val lastLine = textLines.lastOrNull() ?: return@run
+            val lastLine = textLines.last()
             if (lastLine.isImage) return@run
             val lastLineHeight = with(lastLine) { lineBottom - lineTop }
             val pageHeight = lastLine.lineBottom + contentPaintTextHeight * lineSpacingExtra

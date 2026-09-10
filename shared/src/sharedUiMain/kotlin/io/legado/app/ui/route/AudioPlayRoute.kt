@@ -265,17 +265,17 @@ fun AudioPlayRoute(
         onCopyAudioUrl = {
             val url = AudioPlayShared.durPlayUrl
             if (url.isNotEmpty()) {
-                PlatformCapabilityProviders.getOrNull()?.copyToClipboard(url)
+                PlatformCapabilityProviders.get().copyToClipboard(url)
             }
         },
         onSetSourceVariable = {
             source?.let {
-                PlatformCapabilityProviders.getOrNull()?.showBookSourceVariableDialog(it)
+                PlatformCapabilityProviders.get().showBookSourceVariableDialog(it)
             }
         },
         onSetBookVariable = {
             AudioPlayShared.book?.let { b ->
-                PlatformCapabilityProviders.getOrNull()?.showBookVariableDialog(b)
+                PlatformCapabilityProviders.get().showBookVariableDialog(b)
             }
         },
         onEditBookSource = {
@@ -302,9 +302,14 @@ fun AudioPlayRoute(
             pendingBookmark = bookmark
         },
         onShowAppLog = { showLogDialog = true },
-        onToggleWakeLock = {
-            val config = AppConfigProviders.get()
-            config.setAudioPlayUseWakeLock(!config.audioPlayUseWakeLock)
+        // 只有 Android 前台服务真持唤醒锁, 其余端不给回调让菜单项不显示
+        onToggleWakeLock = if (PlatformCapabilityProviders.get().audioWakeLockSupported) {
+            {
+                val config = AppConfigProviders.get()
+                config.setAudioPlayUseWakeLock(!config.audioPlayUseWakeLock)
+            }
+        } else {
+            null
         },
     )
 

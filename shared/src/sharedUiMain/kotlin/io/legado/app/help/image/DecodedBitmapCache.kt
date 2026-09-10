@@ -41,10 +41,6 @@ object DecodedBitmapCache {
     private val bitmaps = LinkedHashMap<String, ImageBitmap>()
     private var cachedBytes = 0L
 
-    private val maxBytes: Long
-        get() = runCatching { AppConfigProviders.get().bitmapCacheSize }
-            .getOrDefault(50).coerceIn(1, 1024) * 1024L * 1024L
-
     /** 缓存 key: 书源维度 (origin 为空时与旧版格式一致) + 封面/正文规则 + 目标采样尺寸。 */
     fun cacheKey(
         url: String,
@@ -67,7 +63,7 @@ object DecodedBitmapCache {
             bitmaps.remove(key)?.let { cachedBytes -= it.byteSize() }
             bitmaps[key] = bitmap
             cachedBytes += bitmap.byteSize()
-            val limit = maxBytes
+            val limit = bitmapCacheMaxBytes
             val iterator = bitmaps.entries.iterator()
             // 单张图超预算时保留自身 (对齐 ReaderImageCache/原版 ensureLruCacheSize 语义)
             while (cachedBytes > limit && bitmaps.size > 1 && iterator.hasNext()) {
@@ -86,6 +82,11 @@ object DecodedBitmapCache {
             cachedBytes = 0
         }
     }
-
-    private fun ImageBitmap.byteSize(): Long = width.toLong() * height.toLong() * 4L
 }
+
+/** 解码位图 LRU 预算 (`AppConfig.bitmapCacheSize` MB → 字节), 本缓存与 [ReaderImageCache] 共用。 */
+internal val bitmapCacheMaxBytes: Long
+    get() = AppConfigProviders.get().bitmapCacheSize.coerceIn(1, 1024) * 1024L * 1024L
+
+/** 位图占用字节 (ARGB_8888 口径, 对照原版 ensureLruCacheSize 的 byteCount)。 */
+internal fun ImageBitmap.byteSize(): Long = width.toLong() * height.toLong() * 4L

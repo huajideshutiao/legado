@@ -12,8 +12,6 @@ import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.registerOhosProviders
-import io.legado.app.help.image.ohosDownloadImageBytes
-import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.ui.association.LegadoDeepLinkHandler
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppRoute
@@ -39,14 +37,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.add
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
-import kotlin.io.encoding.Base64
 import kotlin.native.CName
 
 /**
@@ -96,12 +89,6 @@ import kotlin.native.CName
  */
 @OptIn(kotlin.experimental.ExperimentalNativeApi::class)
 object LegadoNativeExports {
-
-    init {
-        // 模块加载时自动注册 provider (便于 ArkTS 直接调用转换函数)
-        // 真实部署可改在 EntryAbility.onCreate 显式调用 legado_register_providers()
-        runCatching { registerOhosProviders() }
-    }
 
     private fun allocateCString(value: String): CPointer<ByteVar> {
         val bytes = value.encodeToByteArray()
@@ -206,7 +193,8 @@ object LegadoNativeExports {
     }
 
     /**
-     * 显式触发 provider 注册 (供 ArkTS EntryAbility.onCreate 调用)。
+     * 触发 provider 注册 (ArkTS EntryAbility.onCreate 调用, 须在 filesDir/cacheDir 注入之后:
+     * OhosDatabaseDriver 等消费方在注册时就取真实沙盒路径)。
      */
     @CName("legado_register_providers")
     fun registerProviders() {
@@ -909,46 +897,6 @@ object LegadoNativeExports {
         }
     }
 
-    // ===== TextAction tsfn 注入 + ArkTS → KMP 菜单动作回调 (阅读页文本操作浮动菜单) =====
-
-    /**
-     * 注入 textAction dispatch 函数指针 (由 legado_napi.cpp RegisterTextActionCallback 调用)。
-     *
-     * 注入到 [OhosNativeBridge.textActionTsfn], 使 KMP [OhosNativeBridge.showTextActionMenu]
-     * 能跨线程 dispatch 菜单请求到 ArkTS (Index.ets 叠层浮动菜单)。
-     *
-     * @param dispatch C++ tsfn dispatch 入口 (`ohos_text_action_dispatch`), 类型 `void(*)(const char*)`
-     */
-    @CName("legado_register_text_action_fn")
-    fun registerTextActionFn(dispatch: CPointer<CFunction<(CPointer<ByteVar>) -> Unit>>) {
-        OhosNativeBridge.registerTextActionFn { json ->
-            memScoped {
-                dispatch(json.cstr.getPointer(this))
-            }
-        }
-    }
-
-    /**
-     * ArkTS → KMP 文本操作菜单动作回调 (由 legado_napi.cpp TextActionCallback 调用)。
-     *
-     * @param requestId 请求 ID (当前未用, 保留与其它回调一致的签名)
-     * @param result 动作 JSON: `{ action: "replace|copy|bookmark|aloud|dict|search_content|browser|share|view|refresh|save|__dismiss", text: "...", src?: "..." }`
-     *   (`view`/`save` 由 ArkTS 本地处理不回送, 回送的主要是 `refresh` (图片刷新);
-     *   `src` 为图片 src (图片菜单动作携带, 文本菜单为空);
-     *   `__dismiss` = 菜单收起, 取消页内选择, 对标原版 onMenuActionFinally)
-     */
-    @CName("legado_text_action_callback")
-    fun textActionCallback(requestId: Long, result: CPointer<ByteVar>) {
-        val json = result.toKString()
-        val payload = runCatching {
-            Json.parseToJsonElement(json).jsonObject
-        }.getOrNull() ?: return
-        val action = payload["action"]?.jsonPrimitive?.contentOrNull ?: return
-        val text = payload["text"]?.jsonPrimitive?.contentOrNull.orEmpty()
-        val src = payload["src"]?.jsonPrimitive?.contentOrNull.orEmpty()
-        OhosNativeBridge.onTextActionResult(action, text, src)
-    }
-
     // ===== FilePicker tsfn 注入 + ArkTS → Kotlin 结果回调 (KP8+, 同 Image/Crypto/Http 模式) =====
 
     /**
@@ -1188,45 +1136,6 @@ object LegadoNativeExports {
     @CName("legado_permission_callback")
     fun permissionCallback(requestId: Long, result: CPointer<ByteVar>) {
         OhosNativeBridge.onPermissionResult(requestId, result.toKString())
-    }
-
-    // ===== 图片下载管线导出 (ArkTS 保存到相册复用, 带书源 header 防盗链) =====
-
-    /**
-     * 下载图片字节并返回 base64 (ArkTS 保存到相册用, 复用 shared 下载管线)。
-     *
-     * # 与 ArkTS 裸 @ohos.net.http 下载的差异
-     * ArkTS 侧拿不到书源 header (防盗链 Referer/Cookie/解密 JS 在 K/N 侧),
-     * 裸下载防盗链图片会失败。本函数复用 [io.legado.app.help.image.ohosDownloadImageBytes]
-     * (AnalyzeUrlCore 带书源 header/cookie/charset/JS + ImageUtils.decode 解密), 返回 base64
-     * 字符串供 ArkTS 侧解码后写入相册 (photoAccessHelper 仅 ArkTS 可用)。
-     *
-     * # 线程约束
-     * 内部 [runBlocking] 把 suspend 下载转同步, 且下载内部走 HTTP 桥 (invokeHttpSync → tsfn
-     * → ArkTS 主线程处理回调)。调用方必须在 **非主线程** (ArkTS TaskPool/Worker) 调用,
-     * 否则主线程被 runBlocking 阻塞, tsfn 回调无法处理 → 死锁超时。
-     *
-     * # 失败兜底
-     * 未注册 provider / 下载失败 / 解密失败时返回空字符串 (ArkTS 侧回退裸下载或 toast)。
-     *
-     * @param url 图片地址 (UTF-8 C 字符串)
-     * @return UTF-8 C 字符串, base64 编码的图片字节; 失败时为空串
-     */
-    @CName("legado_download_image_bytes")
-    fun downloadImageBytes(url: CPointer<ByteVar>): CPointer<ByteVar> {
-        val urlStr = url.toKString()
-        val result = runCatching {
-            // 当前阅读书的书源 (防盗链 header 来源); 无活动阅读书时按无书源裸 GET 降级
-            val book = ActiveReadBookRegistry.current?.bookValue
-            val source = book?.let {
-                runBlocking { AppDbProviders.get().bookSourceDao.getBookSource(it.origin) }
-            }
-            val bytes = runBlocking {
-                ohosDownloadImageBytes(urlStr, book, source)
-            } ?: return@runCatching ""
-            Base64.encode(bytes)
-        }.getOrNull() ?: ""
-        return allocateCString(result)
     }
 
     // ===== 外部启动请求投递 (ArkTS → Kotlin, 同 legado_handle_deep_link 模式) =====

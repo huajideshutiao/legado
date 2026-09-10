@@ -276,8 +276,7 @@ fun VideoPlayRoute(
     }
 
     // 选集字数显示 (对照 app VideoChapterItem 读 AppConfig.tocCountWords)
-    val countWords =
-        remember { runCatching { AppConfigProviders.get().tocCountWords }.getOrDefault(false) }
+    val countWords = remember { AppConfigProviders.get().tocCountWords }
 
     VideoPlayerScreenContent(
         bookName = state.bookName,

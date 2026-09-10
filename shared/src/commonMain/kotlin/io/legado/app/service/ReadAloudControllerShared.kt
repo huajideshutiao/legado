@@ -273,7 +273,7 @@ class ReadAloudControllerShared(
      *
      * 读 [ttsEngineConfigProvider] 取配置 (Book.ttsEngine 优先, 否则 AppConfig.ttsEngine),
      * isNumeric → 用 [httpTtsConfigLoader] 查 DAO 拿 [HttpTTS] → 用 [httpTtsPlayerFactory] 造 player。
-     * 任何环节失败 (配置缺失/DAO 查不到/工厂未注册) 都降级走系统 TTS。
+     * 配置缺失 / DAO 查不到源 / 工厂未注册时降级走系统 TTS。
      *
      * @return true 表示走 HttpTTS, false 表示走系统 TTS
      */
@@ -287,16 +287,15 @@ class ReadAloudControllerShared(
         if (ttsEngine.any { !it.isDigit() }) return false
 
         val id = ttsEngine.toLong()
-        val config = runCatching {
-            runBlocking { httpTtsConfigLoader(id) }
-        }.getOrNull() ?: return false
+        // 源被删掉时回落系统 TTS (对照原版 ReadAloud.getReadAloudClass: httpTTS == null 走 TTSReadAloudService)
+        val config = runBlocking { httpTtsConfigLoader(id) } ?: return false
 
         val player = httpTtsPlayerFactory(config) ?: return false
 
         httpTtsConfig = config
         httpTtsPlayer = player
-        // HttpTTS speakSpeed (Int, 对标原版 AppConfig.ttsSpeechRate); runCatching 兜底未注册场景
-        httpTtsSpeechRate = runCatching { AppConfigProviders.get().ttsSpeechRate }.getOrDefault(0)
+        // HttpTTS speakSpeed (Int, 对标原版 AppConfig.ttsSpeechRate)
+        httpTtsSpeechRate = AppConfigProviders.get().ttsSpeechRate
         return true
     }
 
@@ -692,4 +691,4 @@ interface ReadAloudChapterNavigator {
  */
 fun defaultTtsEngineConfig(): String? =
     ActiveReadBookRegistry.current?.bookValue?.config?.ttsEngine?.takeIf { it.isNotBlank() }
-        ?: runCatching { AppConfigProviders.get().ttsEngine }.getOrNull()?.takeIf { it.isNotBlank() }
+        ?: AppConfigProviders.get().ttsEngine.takeIf { it.isNotBlank() }

@@ -41,7 +41,6 @@ import io.legado.app.ui.root.RouteTransitionSpec
 import io.legado.app.ui.root.TransitionEasing
 import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.root.toRouteRef
-import io.legado.app.ui.widget.dialog.encodePhotoOverlayPayload
 import io.legado.app.utils.GSON
 import io.legado.app.utils.RemoteAssetsUtils
 import io.legado.app.utils.browseUrl
@@ -342,14 +341,6 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     // ===== Web 服务 (WebServerManager 已下沉) =====
 
     override fun getWebServiceUrl(): String? = WebServerManager.hostAddress.takeIf { it.isNotEmpty() }
-
-    // 图片预览: 与 app 端 PhotoDialog 同一份 shared 实现, 经 "photo" overlay 弹出
-    // (阅读页点击正文图片; payload = 图片 src + 章节索引, 供对话框优先查章节图片缓存)
-    override fun showImagePreview(url: String, chapterIndex: Int) {
-        AppNavigatorProviders.getOrNull()?.showOverlay(
-            AppOverlay.Dialog("photo", payload = encodePhotoOverlayPayload(url, chapterIndex))
-        )
-    }
 
     // 换封面源: 对照 app 端同名方法, 走 "change_cover" overlay (payload="name\nauthor"),
     // 结果经 overlayResults 的 RouteResultPayload.ChangeCover 回传

@@ -1,8 +1,7 @@
 package io.legado.app.ui.book.read.page.provider
 
 /**
- * 排版纯算术面（无 android 依赖，已下沉 shared commonMain）：图片适配尺寸 + 字素簇聚合。
- * TextChapterLayout 调用，跨端共用。
+ * 排版纯算术面：图片适配尺寸 + 字素簇聚合。
  */
 
 /**

@@ -84,8 +84,7 @@ import io.legado.app.ui.book.info.LocalBlurCoverBgSlot
 import io.legado.app.ui.book.info.SharedBlurCoverBgCoil
 import io.legado.app.ui.book.manga.MangaReaderScreenModel
 import io.legado.app.ui.book.read.ReaderPlatformProviders
-import io.legado.app.ui.book.read.page.provider.SkiaTextMeasurer
-import io.legado.app.ui.book.read.page.provider.TextMeasurerProviders
+import io.legado.app.ui.book.read.page.provider.registerSkiaTextMeasurer
 import io.legado.app.ui.book.source.SourceUiEventBridgeHost
 import io.legado.app.ui.book.video.VideoPlayPlatformProviders
 import io.legado.app.ui.browser.LocalWebViewSlot
@@ -101,6 +100,8 @@ import io.legado.app.ui.compose.platform.SharedEventBusProvider
 import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.reader.ReaderDictWord
+import io.legado.app.ui.reader.ReaderImageActionMenu
 import io.legado.app.ui.root.AppForegroundState
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
@@ -438,6 +439,11 @@ private fun runDesktopApp() = application {
     )
     // 封面选图持久化 (对齐 Android 原版 externalFiles/covers, 落桌面应用数据根目录 covers/)
     CoverStorageServiceProviders.register(DesktopCoverStorageService())
+    // 朗读引擎 + HttpTTS 播放器工厂 (Windows SAPI / Linux espeak / macOS say): 注册无 provider
+    // 依赖 (只读 os.name, 后端探测在守护线程惰性预热), 与其它无依赖 provider 同批放阶段1。
+    val desktopTtsEngine = remember { DesktopSystemTtsEngine() }
+    TtsEngineProvider.register(desktopTtsEngine)
+    TtsEngineProvider.registerHttpTtsPlayerFactory { DesktopHttpTtsPlayer() }
     // 系统托盘: 音频/朗读活跃时给播放控制菜单 (最小化后仍可控), 同时承载 toast/进度气泡
     DisposableEffect(Unit) {
         DesktopMediaTray.install(
@@ -469,13 +475,7 @@ private fun runDesktopApp() = application {
     registerDesktopReadBookPlatform()
     // 阅读排版度量: 注册 Skia 真实字形度量, 取代 SimpleTextMeasurer 等宽近似
     // (字形来源与 PageContentCanvas 的 loadReaderFontFamily / FontFamily.Default 同源)
-    TextMeasurerProviders.register { textSizePx, letterSpacingPx, fontPath ->
-        SkiaTextMeasurer(
-            textSizePx = textSizePx,
-            letterSpacingPx = letterSpacingPx,
-            typeface = SkiaTextMeasurer.readerTypeface(fontPath),
-        )
-    }
+    registerSkiaTextMeasurer()
     // 阅读页内嵌图片 (PDF 单图页 / EPUB 插图): 排版取尺寸 + 绘制取位图
     registerReaderImageResolver()
     AudioPlayPlatformProviders.register(SharedAudioPlayPlatformProvider)
@@ -736,8 +736,10 @@ private fun runDesktopApp() = application {
                 DesktopToastHost()
                 // 阅读页长按文字选择对话框宿主 (对照 app 端 MainActivity.readerSelection 分支)
                 desktopReaderProvider.TextSelectionHost()
-                // 阅读页图片长按菜单宿主 (DropdownMenu 锚定长按坐标: 查看大图/刷新/保存)
-                desktopReaderProvider.ImageActionMenuHost()
+                // 阅读页图片长按菜单宿主 (四端同一份自绘浮动菜单, 见 shared ReaderImageActionMenu)
+                ReaderImageActionMenu.Host()
+                // 阅读页查词对话框宿主 (四端同一份, 见 shared ReaderDictWord)
+                ReaderDictWord.Host()
                 // legado:// deep link 导入对话框宿主: 消费 main(args)/OpenURIHandler 经
                 // LegadoDeepLinkHandler 记录的待导入请求 (对照 app 端 AssociationActivity 分发)
                 DeepLinkImportHost()
@@ -879,10 +881,7 @@ private suspend fun registerSecondaryProviders() {
         //      WebBookProviders / ContentProcessorProviders 已注册)
         registerDesktopChangeBookSourcePlatform()
         registerDesktopBookshelfManagePlatform()
-        // 14. TTS 引擎 (独立, Windows SAPI / Linux espeak / macOS say)
-        TtsEngineProvider.register(DesktopSystemTtsEngine())
-        // 14b. HttpTTS 播放器工厂 (三端朗读 HttpTTS 路径)
-        TtsEngineProvider.registerHttpTtsPlayerFactory { DesktopHttpTtsPlayer() }
+        // 注: TTS 引擎 + HttpTTS 播放器工厂已提前到阶段1同步注册 (无依赖, 消除开窗即朗读的竞态)
 
         // 15. 启动期异步任务 (对照 app 端 App.kt onCreate 的 Coroutine.async 块)
         // adjustSortNumber: 调整书源排序序号 (依赖 AppDbProviders, 已注册)

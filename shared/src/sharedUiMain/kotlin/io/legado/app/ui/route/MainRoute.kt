@@ -1250,11 +1250,9 @@ private fun BookshelfTabContent(
                 dismissOnClick = false,
                 onClick = {
                     scope.launch {
-                        val services = PlatformServiceProviders.getOrNull()
-                        val path = services?.let {
-                            withContext(IoDispatcher) {
-                                it.files.pickFile(FileFilter(extensions = listOf("txt", "json")))
-                            }
+                        val path = withContext(IoDispatcher) {
+                            PlatformServiceProviders.get().files
+                                .pickFile(FileFilter(extensions = listOf("txt", "json")))
                         }
                         if (path != null) {
                             val text = withContext(IoDispatcher) { BackupFileOps.readText(path) }
@@ -1496,7 +1494,7 @@ private fun MyTabContent(navigator: AppNavigator) {
             webServiceChecked = webServiceRunning,
             webServiceSummary = webServiceSummary,
             onThemeModeChange = {
-                PlatformCapabilityProviders.getOrNull()?.applyDayNight()
+                PlatformCapabilityProviders.get().applyDayNight()
             },
             onWebServiceChange = {
                 // 乐观更新回退态; 平台 webServiceState 非 null 时由流回填校正
@@ -1527,7 +1525,7 @@ private fun MyTabContent(navigator: AppNavigator) {
     // web 服务长按菜单 (对照 app 端 selector: 复制地址 / 浏览器打开)
     if (showWebServiceMenu) {
         val colors = AppTheme.colors
-        val url = PlatformCapabilityProviders.getOrNull()?.getWebServiceUrl()
+        val url = PlatformCapabilityProviders.get().getWebServiceUrl()
         AlertDialog(
             onDismissRequest = { showWebServiceMenu = false },
             modifier = Modifier.appDialogSize(),
@@ -1537,11 +1535,11 @@ private fun MyTabContent(navigator: AppNavigator) {
                 Column {
                     TextButton(onClick = {
                         showWebServiceMenu = false
-                        url?.let { PlatformCapabilityProviders.getOrNull()?.copyToClipboard(it) }
+                        url?.let { PlatformCapabilityProviders.get().copyToClipboard(it) }
                     }) { Text(stringResource(Res.string.copy_url), color = colors.primaryText) }
                     TextButton(onClick = {
                         showWebServiceMenu = false
-                        url?.let { PlatformCapabilityProviders.getOrNull()?.openExternalUrl(it) }
+                        url?.let { PlatformCapabilityProviders.get().openExternalUrl(it) }
                     }) {
                         Text(
                             stringResource(Res.string.open_in_browser),

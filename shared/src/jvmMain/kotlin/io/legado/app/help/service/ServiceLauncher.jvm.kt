@@ -72,8 +72,7 @@ class DesktopServiceLauncher(
             }
             cacheBook.addDownload(start, actualEnd)
             // 启动 startProcessJob (对照 app 端 CacheBookService.download)
-            // 桌面端无 cachePool CoroutineDispatcher, 用 scope 默认 dispatcher
-            CacheBookShared.startProcessJob(scope.coroutineContext)
+            CacheBookShared.startProcessJob()
         }
     }
 

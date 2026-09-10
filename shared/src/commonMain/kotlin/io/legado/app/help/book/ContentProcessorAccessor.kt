@@ -69,8 +69,8 @@ interface ContentProcessorAccessor {
     /**
      * 返回完整正文处理结果，保留 [BookContent.textList]、去重标题标记和实际生效规则。
      *
-     * 阅读排版不能先把 [BookContent] 压平成字符串再 `split/trim/filter`：原版
-     * `TextChapterLayout` 逐项消费 `textList`，并在每项内部按换行遍历；提前压平会丢失
+     * 阅读排版不能先把 [BookContent] 压平成字符串再 `split/trim/filter`：
+     * `ChapterContentParserShared` 逐项消费 `textList`，并在每项内部按换行遍历；提前压平会丢失
      * 空段、首尾空白以及 HTML 图片标签的解析边界。默认实现仅用于兼容第三方实现，
      * 正式平台实现必须覆写并直接返回 ContentProcessor 的原始 [BookContent]。
      */

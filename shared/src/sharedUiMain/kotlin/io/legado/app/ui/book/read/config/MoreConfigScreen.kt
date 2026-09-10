@@ -61,10 +61,10 @@ fun MoreConfigScreen(
     val progressBarEntries = stringArrayResource(Res.array.progress_bar_behavior_title)
     val progressBarValues = stringArrayResource(Res.array.progress_bar_behavior_value)
 
-    // 按平台过滤: 桌面无系统栏/无屏幕方向, 这三项拨了没有任何效果; 未注册 capabilities 时(如 @Preview)按显示处理
-    val caps = PlatformCapabilityProviders.getOrNull()
-    val hasSystemBars = caps?.hasSystemBars() ?: true
-    val hasScreenOrientation = caps?.hasScreenOrientation() ?: true
+    // 按平台过滤: 桌面无系统栏/无屏幕方向, 这三项拨了没有任何效果
+    val caps = PlatformCapabilityProviders.get()
+    val hasSystemBars = caps.hasSystemBars()
+    val hasScreenOrientation = caps.hasScreenOrientation()
 
     val titleScreenDirection = stringResource(Res.string.screen_direction)
     val titleKeepLight = stringResource(Res.string.keep_light)

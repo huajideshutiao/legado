@@ -23,7 +23,10 @@ data class PaginationConfig(
     val viewWidth: Int = visibleWidth + paddingLeft * 2,
     val lineSpacingExtra: Float = 1.0f,
     val paragraphSpacing: Int = 0,
-    /** 正文行盒高（px）：图片段落的段间距按它算，图片高不参与（对齐 app 端 setTypeImage）。 */
+    /**
+     * 正文行盒高（px，= `descent - ascent`）：底部对齐折算与图片段落的段间距都按它算，
+     * 图片高不参与。标题段落的行高另存在各自的 [ParagraphLineMetrics.textHeight] 里。
+     */
     val textHeight: Float = 0f,
     val titleTopSpacing: Int = 0,
     val titleBottomSpacing: Int = 0,
@@ -75,10 +78,8 @@ object PaginationEngine {
         val stringBuilder = StringBuilder()
 
         val columnFactory = config.columnFactory ?: DefaultColumnFactory
-        // 正文行盒高（全章常量）：底部对齐折算与图片段落的段间距都用它，
-        // config 未给时退回首个非图片段落（图片段落的 textHeight 存的是图片高）
-        val bodyTextHeight = config.textHeight.takeIf { it > 0f }
-            ?: (paragraphs.firstOrNull { !it.isImage }?.textHeight ?: 0f)
+        // 正文行盒高（全章常量）：底部对齐折算与图片段落的段间距都用它
+        val bodyTextHeight = config.textHeight
 
         fun onPageCompleted() {
             val page = pendingTextPage
@@ -94,7 +95,6 @@ object PaginationEngine {
             page.visibleBottom = config.paddingTop + config.visibleHeight
             page.contentPaintTextHeight = bodyTextHeight
             page.lineSpacingExtra = config.lineSpacingExtra
-            page.isCompleted = true
             if (page.leftLineSize == 0) page.leftLineSize = page.lineSize
             page.upLinesPosition()
             if (page.lineSize > 0) {
@@ -348,8 +348,9 @@ object PaginationEngine {
                 }
             } else if (paragraph.isImage) {
                 val line = paragraph.lines.first()
-                val img = line.imageData
-                val effectiveStyle = img?.style?.takeIf { it.isNotBlank() } ?: config.imageStyle
+                // 块状图片段落只由 ParagraphLineMetrics.createImage 产出，imageData 必然在
+                val img = checkNotNull(line.imageData) { "图片段落缺 ImgData" }
+                val effectiveStyle = img.style.takeIf { it.isNotBlank() } ?: config.imageStyle
                 val styleUpper = effectiveStyle?.uppercase()
                 val isSingle = styleUpper == Book.imgStyleSingle
 
@@ -373,25 +374,14 @@ object PaginationEngine {
                 textLine.lineTop = durY + config.paddingTop
                 textLine.lineBottom = durY + line.imageHeight + config.paddingTop
                 val startX = if (config.visibleWidth > line.imageWidth) (config.visibleWidth - line.imageWidth) / 2f else 0f
-                if (img != null) {
-                    textLine.addColumn(
-                        ImageColumn(
-                            absStartX + startX,
-                            absStartX + startX + line.imageWidth,
-                            img.src,
-                            img.onclick,
-                        ),
-                    )
-                } else {
-                    // 没有图片数据的图片段落只占位（行文本就是一个空格），不发空 src 图片列
-                    textLine.addColumn(
-                        TextColumn(
-                            absStartX + startX,
-                            absStartX + startX + line.imageWidth,
-                            " ",
-                        ),
-                    )
-                }
+                textLine.addColumn(
+                    ImageColumn(
+                        absStartX + startX,
+                        absStartX + startX + line.imageWidth,
+                        img.src,
+                        img.onclick,
+                    ),
+                )
                 if (config.doublePage) textLine.isLeftLine = absStartX < config.viewWidth / 2
                 textLine.chapterPosition = calcChapterPosition(stringBuilder.length)
                 textLine.pagePosition = stringBuilder.length
@@ -459,7 +449,7 @@ object PaginationEngine {
                     title = config.displayTitle,
                     chapterIndex = config.chapterIndex,
                     chapterSize = config.chapterSize,
-                ).apply { isCompleted = true },
+                ),
             )
         }
 

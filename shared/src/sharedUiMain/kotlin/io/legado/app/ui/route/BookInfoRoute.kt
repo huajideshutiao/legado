@@ -196,7 +196,7 @@ fun BookInfoRoute(
             val b = state.book ?: book
             if (b.isWebFile) {
                 // webFile: 下载导入后跳阅读 (对照 onReadClick isWebFile + readBook)
-                PlatformCapabilityProviders.getOrNull()?.handleWebFileRead(
+                PlatformCapabilityProviders.get().handleWebFileRead(
                     b,
                     onWaitDialog = { screenModel.upWaitDialog(it) },
                     onAction = { screenModel.postAction(it) },
@@ -288,12 +288,12 @@ fun BookInfoRoute(
 
         // 上传: 委托平台 (依赖确认弹窗 + WebDav)
         override fun onUploadBook() {
-            PlatformCapabilityProviders.getOrNull()?.uploadBook(state.book ?: book)
+            PlatformCapabilityProviders.get().uploadBook(state.book ?: book)
         }
 
         // 下载到本地: 委托平台 (依赖 FileBook/Uri)
         override fun onDownloadToLocal() {
-            PlatformCapabilityProviders.getOrNull()?.downloadBookToLocal(state.book ?: book)
+            PlatformCapabilityProviders.get().downloadBookToLocal(state.book ?: book)
         }
 
         // 置顶: 更新 order + durChapterTime
@@ -322,12 +322,12 @@ fun BookInfoRoute(
 
         // 源变量: 委托平台弹窗 (需 BookSource 对象)
         override fun onSetSourceVariable() {
-            PlatformCapabilityProviders.getOrNull()?.showSourceVariableDialog(state.book ?: book)
+            PlatformCapabilityProviders.get().showSourceVariableDialog(state.book ?: book)
         }
 
         // 书籍变量: 委托平台弹窗 (需 BookSource 对象)
         override fun onSetBookVariable() {
-            PlatformCapabilityProviders.getOrNull()?.showBookVariableDialog(state.book ?: book)
+            PlatformCapabilityProviders.get().showBookVariableDialog(state.book ?: book)
         }
 
         // 复制书籍 URL
@@ -418,8 +418,8 @@ fun BookInfoRoute(
         // 书架: 上架/下架, 委托平台 (含删除确认/webFile 弹窗)
         override fun onShelfClick() {
             val b = state.book ?: book
-            PlatformCapabilityProviders.getOrNull()
-                ?.toggleBookshelf(
+            PlatformCapabilityProviders.get()
+                .toggleBookshelf(
                     b, state.inBookshelf,
                     onComplete = { result ->
                         if (result == null) navigator.pop(RouteResultPayload.Deleted)
@@ -470,7 +470,7 @@ fun BookInfoRoute(
         // 简介动作: JS 派发, 委托平台 (需 BookSource + JS 引擎)
         override fun onDispatchIntroAction(action: String) {
             val js = action.trim().ifEmpty { return }
-            PlatformCapabilityProviders.getOrNull()?.evalIntroAction(state.book ?: book, js)
+            PlatformCapabilityProviders.get().evalIntroAction(state.book ?: book, js)
         }
 
         // 查看简介图片 (同封面: 带书源身份, 简介图防盗链/解密与封面同链路)

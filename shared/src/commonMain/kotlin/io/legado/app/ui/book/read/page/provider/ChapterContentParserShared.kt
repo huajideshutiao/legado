@@ -43,14 +43,19 @@ object ChapterContentParserShared {
                 val tagContent = content.substring(tagStart + 1, tagEnd)
                 if (tagContent.startsWith("img", ignoreCase = true)) {
                     val fullTag = content.substring(tagStart, tagEnd + 1)
-                    images.add(
-                        ImgData(
-                            src = getAttr(fullTag, "src") ?: "",
-                            style = getAttr(fullTag, "style") ?: "",
-                            onclick = getAttr(fullTag, "onclick") ?: "",
+                    // 取不到 src 就整个丢弃, 不写占位符: 兜成空串只会在阅读页留一个永远
+                    // 加载不出的 ▩, 且与 extractImages / 缓存侧口径不一致
+                    val src = getAttr(fullTag, "src")
+                    if (src != null) {
+                        images.add(
+                            ImgData(
+                                src = src,
+                                style = getAttr(fullTag, "style") ?: "",
+                                onclick = getAttr(fullTag, "onclick") ?: "",
+                            )
                         )
-                    )
-                    textBuilder.append(srcReplaceChar)
+                        textBuilder.append(srcReplaceChar)
+                    }
                 } else if (
                     tagContent.equals("br", ignoreCase = true) ||
                     tagContent.equals("br/", ignoreCase = true)

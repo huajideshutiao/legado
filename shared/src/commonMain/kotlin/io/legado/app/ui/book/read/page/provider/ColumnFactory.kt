@@ -6,8 +6,7 @@ import io.legado.app.ui.book.read.page.entities.column.BaseColumn
  * 列工厂接口（平台/排版器实现注入）。
  *
  * 列构造依赖排版器自身状态（段评占位符与图片占位符常量、段评计数 map、imgList 嵌入图片队列），
- * 不下沉 commonMain。[TextLayoutEngine] 与 [PaginationEngine] 通过本接口调用，
- * 实现「纯算术面下沉 + 列构造留调用方」。
+ * 故留给调用方实现，[PaginationEngine] 只通过本接口拿列。
  *
  * imgList 由调用方在每次 addCharsToLineNatural/Middle 前注入并维护（removeFirst 副作用），
  * 实现只在 char 是图片占位符时取出下一项。
@@ -20,8 +19,8 @@ interface ColumnFactory {
      * - 图片占位符且 imgList 非空 → ImageColumn（从 imgList 取出 src/onclick）
      * - 其他 → TextColumn
      *
-     * 单相排版通道（[TextLayoutEngine]）走本重载，段号由实现方按段推进；
-     * 两阶段管线（[PaginationEngine]）没有「当前段号」状态，一律走带 [paragraphIndex] 的重载。
+     * 自己维护段号的实现走本重载；[PaginationEngine] 没有「当前段号」这种排版期状态，
+     * 一律走带 [paragraphIndex] 的重载。
      *
      * @param absStartX 列绝对起始 X（含 paddingLeft）
      * @param char 字素簇字符串

@@ -425,14 +425,6 @@ class VideoPlayScreenModel : ScreenModel {
         runCatching { PlatformCapabilityProviders.getOrNull()?.showBookVariableDialog(book) }
     }
 
-    /** 编辑书源 (对照 Activity editSource: sourceEditResult.launch)。
-     *  Route 端走导航 push AppRoute.BookSourceEdit, 此处占位 */
-    fun onEditSource() = Unit
-
-    /** 打开书评 (对照 Activity openReview: viewModel.openCommentDialog)。
-     *  Route 端经 PlatformCapabilities.showReviewListDialog 弹段评列表, 此处占位 */
-    fun onOpenReview() = Unit
-
     /** 添加书签 (对照 Activity addBookmark: 取 player 真实位置 + createBookmark + 弹 BookmarkDialog)。
      *  从 controller 取当前 positionMs/durationMs, 构造书签后置 pendingBookmark,
      *  由 Route 订阅 state 弹 shared BookmarkDialog 供用户编辑 */
@@ -460,10 +452,6 @@ class VideoPlayScreenModel : ScreenModel {
     fun onSwitchResolution(index: Int) {
         shared.switchResolution(index)
     }
-
-    /** 显示分辨率对话框 (对照 Activity showResolutionDialog: alert + singleChoiceItems)。
-     *  shared 端 VideoPlayerScreenContent 已内置 ResolutionButton 弹窗, 此处占位 */
-    fun onShowResolutionDialog() = Unit
 
     fun onPlayerState(
         isPlaying: Boolean? = null,

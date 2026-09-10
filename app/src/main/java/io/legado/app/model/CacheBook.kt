@@ -8,7 +8,6 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.service.ServiceLaunchers
 import io.legado.app.model.CacheBookShared.CacheBookModelShared
 import io.legado.app.service.CacheBookService
-import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -72,8 +71,7 @@ object CacheBook {
     fun setWorkingState(value: Boolean) = CacheBookShared.setWorkingState(value)
 
     /** 对照 app 端原 CacheBook.startProcessJob */
-    suspend fun startProcessJob(context: CoroutineContext) =
-        CacheBookShared.startProcessJob(context)
+    suspend fun startProcessJob() = CacheBookShared.startProcessJob()
 
     /** 对照 app 端原 CacheBook.downloadSummary */
     val downloadSummary: String get() = CacheBookShared.downloadSummary

@@ -38,7 +38,7 @@ private object IosReadBookPlatform : ReadBookPlatform {
     }
 
     override fun clearTextFileCache() {
-        runCatching { TextFile.clear() }
+        TextFile.clear()
     }
 }
 

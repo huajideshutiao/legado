@@ -18,7 +18,6 @@ import io.legado.app.ui.book.audio.SharedAudioPlayPlatformProvider
 import io.legado.app.ui.book.manga.MangaReaderScreenModel
 import io.legado.app.ui.book.manga.OhosMangaReaderPlatform
 import io.legado.app.ui.book.read.OhosReaderPlatformProvider
-import io.legado.app.ui.dict.DictDialogHost
 import io.legado.app.ui.book.read.ReaderPlatformProviders
 import io.legado.app.ui.book.source.SourceUiEventBridgeHost
 import io.legado.app.ui.book.video.OhosVideoPlayPlatformProvider
@@ -31,6 +30,8 @@ import io.legado.app.ui.compose.platform.SharedAppConfigProvider
 import io.legado.app.ui.compose.platform.SharedEventBusProvider
 import io.legado.app.ui.compose.platform.SharedThemeStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.reader.ReaderDictWord
+import io.legado.app.ui.reader.ReaderImageActionMenu
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.LegadoApp
@@ -107,14 +108,12 @@ fun MainOhos() {
             }
             // 书源 UI 事件桥
             SourceUiEventBridgeHost()
-            // 阅读页文本操作菜单查词宿主 (对照 desktop TextSelectionHost 的 dictWord 分支)
-            val dictWord = OhosReaderPlatformProvider.dictWord
-            if (dictWord != null) {
-                DictDialogHost(
-                    word = dictWord,
-                    onDismiss = { OhosReaderPlatformProvider.dictWord = null },
-                )
-            }
+            // 阅读页长按文本的自绘浮动操作菜单 (四端同一份, 见 shared ReaderTextActionMenu)
+            OhosReaderPlatformProvider.TextSelectionHost()
+            // 阅读页长按图片的自绘浮动操作菜单 (与文本菜单同款样式)
+            ReaderImageActionMenu.Host()
+            // 阅读页文本操作菜单查词宿主 (四端同一份, 见 shared ReaderDictWord)
+            ReaderDictWord.Host()
         }
     }
 }

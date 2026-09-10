@@ -25,7 +25,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
@@ -53,7 +52,6 @@ import io.legado.app.help.config.ReadConfigProviders
 import io.legado.app.help.config.ReadTipConfigShared
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.i18n.androidAppString
-import io.legado.app.help.image.ReaderImageCache
 import io.legado.app.help.image.registerReaderImageResolver
 import io.legado.app.help.storage.Backup
 import io.legado.app.help.update.AppUpdate
@@ -79,6 +77,8 @@ import io.legado.app.ui.book.manga.MangaReaderScreenModel
 import io.legado.app.ui.book.read.AndroidReaderPlatformProvider
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReaderPlatformProviders
+import io.legado.app.ui.book.read.ReaderScreenModelRegistry
+import io.legado.app.ui.book.read.refreshReaderImage
 import io.legado.app.ui.book.read.page.provider.AndroidTextMeasurer
 import io.legado.app.ui.book.read.page.provider.TextMeasurerProviders
 import io.legado.app.ui.book.source.SourceUiEventBridgeHost
@@ -87,12 +87,13 @@ import io.legado.app.ui.book.video.VideoPlayPlatformProviders
 import io.legado.app.ui.browser.AndroidWebView
 import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.compose.dialogs.alert
-import io.legado.app.ui.dict.DictDialogHost
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.reader.ImageActionMenuEntry
 import io.legado.app.ui.reader.ImageActionMenuRequest
+import io.legado.app.ui.reader.ReaderDictWord
 import io.legado.app.ui.reader.ReaderImageActionMenu
+import io.legado.app.ui.reader.readerMenuAnchor
 import io.legado.app.ui.root.AppForegroundState
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppNavigatorProviders
@@ -104,6 +105,7 @@ import io.legado.app.ui.root.LegadoApp
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.ScreenModelStore
+import io.legado.app.ui.widget.dialog.encodePhotoOverlayPayload
 import io.legado.app.utils.ACache
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.isContentScheme
@@ -141,9 +143,6 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
     /** SAF 选书籍目录回调暂存: 由 [AndroidPlatformCapabilities.pickBookTreeUri] 写入,
      *  [bookTreeUriSelect] 回调时消费。 */
     var pendingBookTreeUriCallback: ((String?) -> Unit)? = null
-
-    /** 查词请求 (选中词 → dictWord 暂存, 由 Content 渲染词典对话框; 对照原版 menu_dict → DictDialog)。 */
-    private var dictWord by mutableStateOf<String?>(null)
 
     /** 图片保存目录选择 (对照原版 selectImageDir.launch: SAF 选目录 → 写 ACache imagePathKey)。 */
     private val selectImageDir = registerHandleFile { result ->
@@ -324,14 +323,6 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
     }
 
     /**
-     * 查词 (对照原版 TextActionMenu 的 menu_dict → DictDialog): 阅读页文本菜单调用,
-     * 由 Content 里的 [DictDialogHost] 渲染。
-     */
-    fun showDictWord(word: String) {
-        dictWord = word
-    }
-
-    /**
      * 收起图片操作浮动菜单（对照文本菜单 dismiss; 幂等：菜单未显示时无操作）。
      */
     fun dismissImageActionMenu() {
@@ -355,14 +346,11 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
                 action()
                 finish()
             }
-        // 锚点矩形按长按点取 40px 方区 (对照旧 PopupAction contentRect 20px 留边),
-        // 窗口坐标与自绘弹层宿主父节点坐标空间一致
-        val anchor = Rect(x - 20f, y - 20f, x + 20f, y + 20f)
         ReaderImageActionMenu.show(
             ImageActionMenuRequest(
-                anchor = anchor,
+                anchor = readerMenuAnchor(x, y),
                 entries = listOf(
-                    entry(androidAppString("show")) { capabilities.showImagePreview(src, -1) },
+                    entry(androidAppString("show")) { viewImage(src) },
                     entry(androidAppString("refresh")) { refreshImage(src) },
                     entry(androidAppString("action_save")) {
                         val path = ACache.get().getAsString(AppConst.imagePathKey)
@@ -387,21 +375,30 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
     }
 
     /**
-     * 刷新图片 (对照原版 ReadBookViewModel.refreshImage): 删缓存文件 + 清内存缓存 + 重排。
-     * 迁移版内存缓存为 shared ReaderImageCache (单书作用域, clear 清当前书);
-     * 磁盘缓存文件沿用 BookHelp.getImage 路径 (原版同一路径)。
+     * 查看大图 (对照原版 onImageLongPress 的 show → PhotoDialog): 走共享 "photo" overlay,
+     * 带章节索引 (优先查已落盘的章节图片缓存) 与书源身份 (防盗链 header / 解密), 口径同桌面端。
+     */
+    private fun viewImage(src: String) {
+        val book = ActiveReadBookRegistry.current?.bookValue
+        AppNavigatorProviders.getOrNull()?.showOverlay(
+            AppOverlay.Dialog(
+                key = "photo",
+                payload = encodePhotoOverlayPayload(
+                    src,
+                    ActiveReadBookRegistry.current?.durChapterIndexValue ?: -1,
+                ),
+                sourceOrigin = book?.origin?.takeIf { !book.isLocal && it.isNotBlank() },
+            )
+        )
+    }
+
+    /**
+     * 刷新图片: 删该图磁盘缓存文件 + 清共享内存缓存 + 重载当前章 (四端同一份,
+     * 见 shared [refreshReaderImage])。
      */
     private fun refreshImage(src: String) {
-        Coroutine.async(context = Dispatchers.IO) {
-            ActiveReadBookRegistry.current?.bookValue?.let { book ->
-                val vFile = BookHelp.getImage(book, src)
-                ReaderImageCache.clear()
-                vFile.delete()
-            }
-        }.onFinally {
-            // 对照原版 ReadBook.loadContent(false): 保进度重排当前章, 重排期图片尺寸重新解析
-            ActiveReadBookRegistry.currentViewModel?.relayoutCurrentChapter()
-        }
+        val screenModel = ReaderScreenModelRegistry.currentScreenModel
+        refreshReaderImage(screenModel?.currentBook, screenModel?.currentChapter, src)
     }
 
     /**
@@ -590,13 +587,8 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
             readerPlatform.TextSelectionHost()
             // 阅读页长按图片的自绘浮动操作菜单 (与文本菜单同款样式, 见 ReaderImageActionMenu)
             ReaderImageActionMenu.Host()
-            // 查词对话框 (选中词 → 词典查询, 本地/在线词典规则; 对照原版 menu_dict → DictDialog)
-            dictWord?.let { word ->
-                DictDialogHost(
-                    word = word,
-                    onDismiss = { dictWord = null },
-                )
-            }
+            // 查词对话框 (选中词 → 词典查询, 本地/在线词典规则; 四端同一份, 见 shared ReaderDictWord)
+            ReaderDictWord.Host()
         }
     }
 
