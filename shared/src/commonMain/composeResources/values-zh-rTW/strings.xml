@@ -138,7 +138,6 @@
     <string name="img_cover">封面</string>
     <string name="book">書</string>
     <string name="page_anim">翻頁動畫</string>
-    <string name="book_page_anim">翻頁動畫(本書)</string>
     <string name="keep_light">螢幕超時</string>
     <string name="menu">選單</string>
     <string name="replace_rule_summary">取代規則名稱</string>
@@ -1017,4 +1016,8 @@
         <item>字典規則</item>
         <item>文字轉語音</item>
     </string-array>
+    <string name="nothing_here">這裡沒有內容</string>
+    <string name="about_dev_hint">還差 %1$d 次</string>
+    <string name="donate_qrcode">捐贈 QR Code</string>
+    <string name="donate_thanks">感謝您的支持！</string>
 </resources>

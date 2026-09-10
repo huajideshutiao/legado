@@ -135,7 +135,6 @@
     <string name="img_cover">Cover</string>
     <string name="book">Book</string>
     <string name="page_anim">Flip animation</string>
-    <string name="book_page_anim">Flip animation (book)</string>
     <string name="keep_light">Keep screen awake</string>
     <string name="menu">Menu</string>
     <string name="replace_rule_summary">Rule name</string>
@@ -580,7 +579,7 @@
     <string name="show_login_header">查看登录头</string>
     <string name="login_header">登录头</string>
     <string name="font_scale">字体大小</string>
-    <string name="font_scale_summary">当前字体大小:%.1f</string>
+    <string name="font_scale_summary">現在のフォントサイズ %.1f</string>
     <string name="search_content_size">search result</string>
     <string name="search_content_empty">Empty search result, check conversation settings</string>
     <string name="tts_speech_reduce">语速减</string>
@@ -820,4 +819,8 @@
     <string name="auto_check_new_backup_t">自动检查新备份</string>
     <string name="auto_check_new_backup_s">打开软件时检查是否有新备份，有新备份时提示是否更新</string>
     <string name="sys_image_picker">系统图片选择器</string>
+    <string name="nothing_here">何もありません</string>
+    <string name="about_dev_hint">あと%1$d回です</string>
+    <string name="donate_qrcode">寄付用QRコード</string>
+    <string name="donate_thanks">ご支援ありがとうございます！</string>
 </resources>

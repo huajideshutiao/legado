@@ -134,7 +134,6 @@
     <string name="img_cover">Bìa</string>
     <string name="book">Sách</string>
     <string name="page_anim">Hiệu ứng lật trang</string>
-    <string name="book_page_anim">Hiệu ứng lật trang (sách này)</string>
     <string name="keep_light">Giữ màn hình sáng</string>
     <string name="menu">Menu</string>
     <string name="replace_rule_summary">Tên quy tắc</string>
@@ -904,4 +903,8 @@
         <item>Quy tắc từ điển</item>
         <item>TTS</item>
     </string-array>
+    <string name="nothing_here">Không có gì ở đây</string>
+    <string name="about_dev_hint">Chỉ còn %1$d lần nữa</string>
+    <string name="donate_qrcode">Mã QR ủng hộ</string>
+    <string name="donate_thanks">Cảm ơn bạn đã ủng hộ!</string>
 </resources>

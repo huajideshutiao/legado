@@ -135,7 +135,6 @@
     <string name="img_cover">Portada</string>
     <string name="book">Libro</string>
     <string name="page_anim">Animación de hojeada</string>
-    <string name="book_page_anim">Animación de hojeada (libro)</string>
     <string name="keep_light">Mantener pantalla encendida</string>
     <string name="menu">Menú</string>
     <string name="replace_rule_summary">Nombre de regla</string>
@@ -580,7 +579,7 @@
     <string name="show_login_header">查看登录头</string>
     <string name="login_header">登录头</string>
     <string name="font_scale">字体大小</string>
-    <string name="font_scale_summary">当前字体大小:%.1f</string>
+    <string name="font_scale_summary">Tamaño de fuente actual %.1f</string>
     <string name="search_content_size">search result</string>
     <string name="search_content_empty">Empty search result, check conversation settings</string>
     <string name="tts_speech_reduce">语速减</string>
@@ -908,4 +907,8 @@
         <item>字典规则</item>
         <item>TTS</item>
     </string-array>
+    <string name="nothing_here">No hay nada aquí</string>
+    <string name="about_dev_hint">Solo faltan %1$d veces</string>
+    <string name="donate_qrcode">Código QR de donación</string>
+    <string name="donate_thanks">¡Gracias por tu apoyo!</string>
 </resources>

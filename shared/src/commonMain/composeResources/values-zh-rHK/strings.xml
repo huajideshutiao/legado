@@ -135,7 +135,6 @@
     <string name="img_cover">封面</string>
     <string name="book">書</string>
     <string name="page_anim">翻頁動畫</string>
-    <string name="book_page_anim">翻頁動畫(本書)</string>
     <string name="keep_light">屏幕超時</string>
     <string name="menu">菜單</string>
     <string name="replace_rule_summary">規則替換名稱</string>
@@ -592,7 +591,7 @@
     <string name="show_login_header">查看登錄頭</string>
     <string name="login_header">登錄頭</string>
     <string name="font_scale">字體大小</string>
-    <string name="font_scale_summary">當前字亂大小:%.1f</string>
+    <string name="font_scale_summary">當前字體大小:%.1f</string>
     <string name="tts_speech_reduce">語速减</string>
     <string name="tts_speech_add">語速加</string>
     <string name="open_sys_dir_picker_error">打開系統資料夾選擇器出錯，自動打開應用資料夾選擇器</string>
@@ -1029,4 +1028,8 @@
         <item>字典規則</item>
         <item>TTS</item>
     </string-array>
+    <string name="nothing_here">呢度冇嘢</string>
+    <string name="about_dev_hint">仲差 %1$d 次</string>
+    <string name="donate_qrcode">捐贈二維碼</string>
+    <string name="donate_thanks">多謝你嘅支持！</string>
 </resources>

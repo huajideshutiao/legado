@@ -135,7 +135,6 @@
     <string name="img_cover">Capa</string>
     <string name="book">Livro</string>
     <string name="page_anim">Virar animação</string>
-    <string name="book_page_anim">Virar animação (livro)</string>
     <string name="keep_light">Manter a tela ligada</string>
     <string name="menu">Menu</string>
     <string name="replace_rule_summary">Nome da regra</string>
@@ -578,7 +577,7 @@
     <string name="show_login_header">查看登录头</string>
     <string name="login_header">登录头</string>
     <string name="font_scale">字体大小</string>
-    <string name="font_scale_summary">当前字体大小:%.1f</string>
+    <string name="font_scale_summary">Tamanho atual da fonte %.1f</string>
     <string name="search_content_size">search result</string>
     <string name="search_content_empty">Empty search result, check conversation settings</string>
     <string name="tts_speech_reduce">语速减</string>
@@ -908,4 +907,8 @@
         <item>字典规则</item>
         <item>TTS</item>
     </string-array>
+    <string name="nothing_here">Nada aqui</string>
+    <string name="about_dev_hint">Faltam apenas %1$d vezes</string>
+    <string name="donate_qrcode">Código QR para doação</string>
+    <string name="donate_thanks">Obrigado pelo seu apoio!</string>
 </resources>
