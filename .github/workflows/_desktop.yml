@@ -72,6 +72,41 @@ jobs:
         # release buildType: 官方 ProGuard 集成仅 release 链启用 (proguardReleaseJars), default 链不瘦身
         run: ${{ matrix.gradlew }} ${{ matrix.tasks }} -PappVersion=$APP_VERSION --build-cache --parallel --daemon --warning-mode all
 
+      - name: Collect jpackage logs
+        if: failure()
+        # jpackage 的真实报错只落在 desktop/build/compose/logs/<task>/jpackage-*-out|err.txt,
+        # Gradle 的失败信息只给文件路径不给内容 (2026-09-11 Windows MSI 实测: 整条 CI 日志里
+        # 只有 "External tool execution failed / Exit code: 1", 根因完全不可见)。这里把整个
+        # logs 目录 + jpackage 参数文件 (tmp/*.args.txt) 收进 ci-logs, 并 tail 到日志里直接可读。
+        run: |
+          mkdir -p ci-logs
+          logs=desktop/build/compose/logs
+          if [ -d "$logs" ]; then
+            while IFS= read -r -d '' f; do
+              echo "===== $f ====="
+              tail -n 200 "$f"
+            done < <(find "$logs" -type f -print0) | tee ci-logs/jpackage-tail.txt
+            cp -R "$logs" ci-logs/compose-logs
+          else
+            echo "::warning::no jpackage log dir at $logs (failure happened before jpackage was invoked)"
+          fi
+          for args in desktop/build/compose/tmp/*.args.txt; do
+            [ -f "$args" ] || continue
+            echo "===== $args ====="
+            cat "$args" | tee -a ci-logs/jpackage-args.txt
+            cp "$args" "ci-logs/$(basename "$args")"
+          done
+          ls -lR ci-logs/
+
+      - name: Upload jpackage logs
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: desktop-logs-${{ runner.os }}
+          path: ci-logs/
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Verify final app image quickjs library
         # 校验 jpackage 最终 app-image（安装器和便携包的共同输入），不接受仅资源输入目录有库。
         run: |
