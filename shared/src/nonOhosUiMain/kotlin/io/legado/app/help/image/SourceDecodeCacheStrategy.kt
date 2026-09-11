@@ -17,7 +17,6 @@ import okio.Buffer
 import okio.BufferedSink
 import okio.FileSystem
 import okio.Path
-import okio.buffer
 
 /** Coil3 Extras key: 请求是否为封面图 (default=true 保持封面语义, 兼容未显式标注的调用)。 */
 val IsCoverKey = Extras.Key<Boolean>(default = true)
@@ -115,7 +114,11 @@ private class BytesResponseBody(private val bytes: ByteArray) : NetworkResponseB
     }
 
     override suspend fun writeTo(fileSystem: FileSystem, path: Path) {
-        fileSystem.sink(path).buffer().use { it.write(bytes) }
+        // okio 的 FileSystem.write 是 commonMain 的 inline 成员 (okio 3.18.1 FileSystem.kt:250),
+        // 与 coil3 SourceResponseBody.writeTo 同款写法。不能用 sink(path).buffer().use {}:
+        // Native 上 okio.BufferedSink 实现的是 okio.Closeable 而非 kotlin.AutoCloseable,
+        // 默认导入的 kotlin.io.use 接收者不匹配 → iosArm64 编译报 Unresolved reference。
+        fileSystem.write(path) { write(bytes) }
     }
 
     override fun close() {}
