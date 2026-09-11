@@ -19,24 +19,6 @@ import io.legado.app.utils.NetworkUtils
 import kotlin.coroutines.coroutineContext
 
 /**
- * Coil3 Extras key: 携带书源 bookUrl (sourceOrigin), 供 fetcher 层解析防盗链 header。
- *
- * 与 jvmAndAndroidMain 的 SourceImageHeaders.jvmAndAndroid.kt 同名同语义 (iOS 侧最小等价);
- * 逻辑仅依赖 commonMain 符号 + coil3 commonMain API, 后续可抽 commonMain 通用层合并两份。
- */
-val SourceOriginKey = Extras.Key<String?>(default = null)
-
-/** Coil3 Extras key: 非 wifi 且 loadOnlyWifi 时只在 fetcher 层拦网络获取 (对齐原版 Glide `loadOnlyWifiOption`)。 */
-val LoadOnlyWifiKey = Extras.Key<Boolean>(default = false)
-
-/**
- * Coil3 Extras key: 请求是否为封面图 (default=true 保持封面语义, 兼容未显式标注的调用)。
- * fetcher 层据此选解密规则: 封面 → coverDecodeJs, 正文图 → contentRule.imageDecode
- * (对齐原版: 封面链 OkHttpStreamFetcher 用 coverDecodeJs, 正文链 BookHelp.saveImage 用 imageDecode)。
- */
-val IsCoverKey = Extras.Key<Boolean>(default = true)
-
-/**
  * 按 [sourceOrigin] (书源 bookUrl) 解析防盗链 header (对齐原版 `AnalyzeUrl.getGlideUrl()`)。
  *
  * 与 jvmAndAndroid 版差异: 不写入 [cookieJarHeader] 内部标记头 —— 该标记在 OkHttp 端由
@@ -111,7 +93,7 @@ class SourceOriginHeaderFetcher(
         }
         if (headers.isNullOrEmpty()) return inner.fetch()
         val networkHeaders = NetworkHeaders.Builder().apply {
-            headers.forEach { (k, v) -> add(k, v) }
+            headers?.forEach { (k, v) -> add(k, v) }
         }.build()
         val newOptions = options.copy(
             extras = options.extras.newBuilder()

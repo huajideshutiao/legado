@@ -57,9 +57,6 @@ interface BookImageLoader {
      * [widthPx]/[heightPx] 均 > 0 时按目标尺寸降采样解码 (Scale.FILL + Precision.INEXACT,
      * 对齐消费端的 ContentScale.Crop); 否则解原图 —— 同屏几十张封面时决定性的开销差别。
      *
-     * [loadOnlyWifi] 为 true 且非 WiFi 时 fetcher 层拦截网络获取 (缓存命中仍显示),
-     * 对齐原版 Glide `loadOnlyWifiOption` (仅 Android/iOS/鸿蒙消费; 桌面恒不拦截)。
-     *
      * @return 失败返回 null (不抛)
      */
     suspend fun loadImageOrNull(
@@ -67,7 +64,6 @@ interface BookImageLoader {
         sourceOrigin: String?,
         widthPx: Int = 0,
         heightPx: Int = 0,
-        loadOnlyWifi: Boolean = false,
     ): ImageBitmap?
 
     /**
@@ -82,18 +78,16 @@ interface BookImageLoader {
         sourceOrigin: String?,
         widthPx: Int = 0,
         heightPx: Int = 0,
-        loadOnlyWifi: Boolean = false,
-    ): ImageBitmap? = loadImageOrNull(url, sourceOrigin, widthPx, heightPx, loadOnlyWifi)
+    ): ImageBitmap? = loadImageOrNull(url, sourceOrigin, widthPx, heightPx)
 
     /**
      * 仅读 Coil3 磁盘缓存字节（不触发网络/解码/写缓存）：供大图查看等自下载链路在下载前
      * 复用书架封面/列表图缓存（双链路架构下 Coil3 磁盘缓存与 [ImageBitmapLoader] 自下载链路
      * 不共享，封面刚显示过大图仍会重新下载——先经本方法命中即零网络）。
      *
-     * key 规则（与 Coil3 fetcher 写盘一致）：先查封面解密字节 key（"coverDecode:$url"，
-     * 带 coverDecodeJs 书源由 CoverDecodeFetcher 自管写盘），再查网络 fetcher 默认 key
-     * （裸 url，无解密规则书源由 NetworkFetcher 自管写盘）；临时区/covers 持久区双区
-     * 由各端 DiskCache 实现（jvmAndAndroid MultiDiskCache）自动兜底。
+     * key 规则：查裸 url（解密书源的字节为解密后内容, 由 SourceDecodeCacheStrategy 写入;
+     * 历史 coverDecode: key 兼容由各端实现自行保留）；临时区/covers 持久区双区
+     * 由各端 DiskCache 实现（MultiDiskCache）自动兜底。
      *
      * @param url 图片 URL
      * @param sourceOrigin 书源 bookUrl (可为 null), 未参与缓存 key 但保留签名对称性

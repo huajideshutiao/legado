@@ -55,7 +55,7 @@ private fun markIosFailUrl(origin: String?, url: String) {
  * # 双链路设计 (2026-08 拍板, 对齐 jvm/android)
  *
  * 正文图/图片预览/字节消费方走本自下载链路 ([ImageBytesCache] 独立缓存, 与其他图片隔离);
- * 书架封面等常规组件仍走 Coil3 共享管线 (BookImageLoader.ios → CoverDecodeFetcher,
+ * 书架封面等常规组件仍走 Coil3 共享管线 (BookImageLoader.ios → SourceDecodeCacheStrategy,
  * 磁盘缓存 + 防盗链), 两条链路互不共享缓存, 正文图缓存不受封面换源/重试影响。
  *
  * 失败: 返回 null (调用方负责占位/日志)。

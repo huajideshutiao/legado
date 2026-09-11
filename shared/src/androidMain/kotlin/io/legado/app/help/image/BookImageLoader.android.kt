@@ -8,7 +8,8 @@ import coil3.ComponentRegistry
 import coil3.ImageLoader
 import coil3.gif.AnimatedImageDecoder
 import coil3.gif.GifDecoder
-import coil3.network.okhttp.OkHttpNetworkFetcherFactory
+import coil3.network.NetworkFetcher
+import coil3.network.okhttp.asNetworkClient
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.size.Precision
@@ -69,16 +70,14 @@ class AndroidBookImageLoader(
         sourceOrigin: String?,
         widthPx: Int,
         heightPx: Int,
-        loadOnlyWifi: Boolean,
-    ): ImageBitmap? = execute(url, sourceOrigin, widthPx, heightPx, persistent = false, loadOnlyWifi = loadOnlyWifi)
+    ): ImageBitmap? = execute(url, sourceOrigin, widthPx, heightPx, persistent = false)
 
     override suspend fun loadCoverOrNull(
         url: String,
         sourceOrigin: String?,
         widthPx: Int,
         heightPx: Int,
-        loadOnlyWifi: Boolean,
-    ): ImageBitmap? = execute(url, sourceOrigin, widthPx, heightPx, persistent = true, loadOnlyWifi = loadOnlyWifi)
+    ): ImageBitmap? = execute(url, sourceOrigin, widthPx, heightPx, persistent = true)
 
     /**
      * 仅读 Coil3 磁盘缓存字节（不触发网络/解码）：先查封面解密 key（"coverDecode:$url"），
@@ -127,10 +126,9 @@ class AndroidBookImageLoader(
         widthPx: Int,
         heightPx: Int,
         persistent: Boolean,
-        loadOnlyWifi: Boolean = false,
     ): ImageBitmap? =
         BookImageLoadDedup.singleFlight(
-            "${url}\u0000${sourceOrigin ?: ""}\u0000${widthPx}x$heightPx\u0000$persistent\u0000$loadOnlyWifi"
+            "${url}\u0000${sourceOrigin ?: ""}\u0000${widthPx}x$heightPx\u0000$persistent"
         ) {
             // 手动封面 (图集引用) 优先读缓存烘焙产物, 减轻大图原图解码
             val displayUrl = resolveCoverBakedForDisplay(url, widthPx, heightPx)
@@ -140,11 +138,6 @@ class AndroidBookImageLoader(
                 .apply {
                     if (persistent) {
                         diskCacheKey(coverDiskCacheKey(url))
-                        extras[PersistentCoverKey] = true
-                    }
-                    // 非 wifi 且 loadOnlyWifi 时 fetcher 层拦网络获取 (对齐原版 loadOnlyWifiOption)
-                    if (loadOnlyWifi) {
-                        extras[LoadOnlyWifiKey] = true
                     }
                     // 按显示尺寸降采样; FILL 对齐消费端 ContentScale.Crop, INEXACT 允许复用更大的内存缓存项
                     if (widthPx > 0 && heightPx > 0) {
@@ -213,21 +206,23 @@ internal fun buildBookImageLoader(
     val sharedClient = OkHttpClientProviders.get().okHttpClient
     return ImageLoader.Builder(context)
         .components {
-            // 封面解密 + 失败 url 跳过 + 防盗链 header: 全部下沉 fetcher 层 (对齐原 Glide
-            // OkHttpStreamFetcher: 缓存命中不解析不解密, 取数据时跑 IO 线程)。
-            // 外层 CoverDecodeFetcher → 中层 SourceOriginHeaderFetcher → 内层 OkHttp 网络 fetcher
-            add(DecodedCoverKeyer(), DecodedCoverBytes::class)
-            add(DecodedCoverFetcher.Factory(), DecodedCoverBytes::class)
-            // 漫画页: 经 BookHelp 缓存 + AnalyzeUrl 下载 + 解密取字节 (裸 url 走不通防盗链/解密站点)
-            add(MangaModelKeyer(), MangaModel::class)
-            add(MangaModelFetcher.Factory())
+            // 防盗链 header + 解密落盘 + 网络层守卫: SourceOriginHeaderFetcher 注入书源防盗链
+            // header; 磁盘缓存写入前由 [SourceDecodeCacheStrategy] 解密
+            // (对齐原版 Glide DiskCacheStrategy.DATA 缓存解密后字节的语义); failUrls
+            // 由 [ImageGuardNetworkClient] 在磁盘查询之后拦截 (缓存命中不受影响)
             add(
-                CoverDecodeFetcher.Factory(
-                    SourceOriginHeaderFetcher.Factory(
-                        OkHttpNetworkFetcherFactory(callFactory = { sharedClient })
+                SourceOriginHeaderFetcher.Factory(
+                    // 守卫网络客户端: failUrls 跳过 + 非 2xx 拉黑必须真正
+                    // 接进网络链路 (裸 callFactory 时两道守卫失效)
+                    NetworkFetcher.Factory(
+                        networkClient = { ImageGuardNetworkClient(sharedClient.asNetworkClient()) },
+                        cacheStrategy = { SourceDecodeCacheStrategy },
                     )
                 )
             )
+            // 漫画页: 经 BookHelp 缓存 + AnalyzeUrl 下载 + 解密取字节 (裸 url 走不通防盗链/解密站点)
+            add(MangaModelKeyer(), MangaModel::class)
+            add(MangaModelFetcher.Factory())
             // GIF: API 28+ 用 AnimatedImageDecoder(还支持 animated WebP/HEIF), 低版本用 GifDecoder(Movie)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 add(AnimatedImageDecoder.Factory())

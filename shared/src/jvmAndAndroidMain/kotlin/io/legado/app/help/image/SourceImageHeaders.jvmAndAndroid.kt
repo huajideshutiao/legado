@@ -19,20 +19,6 @@ import io.legado.app.utils.NetworkUtils
 import kotlin.coroutines.coroutineContext
 
 /**
- * Coil3 Extras key: 携带书源 bookUrl (sourceOrigin), 供 fetcher 层解析防盗链 header。
- *
- * 消费点构造 [ImageRequest] 时 `.extras.set(SourceOriginKey, sourceOrigin)`,
- * fetcher 在真正取数据时 (IO 线程) 自动 resolve header 注入, 消费点无需在 @Composable 内调 suspend。
- */
-val SourceOriginKey = Extras.Key<String?>(default = null)
-
-/** Coil3 Extras key: 非 wifi 且 loadOnlyWifi 时只在 fetcher 层拦网络获取 (对齐原版 Glide `loadOnlyWifiOption`)。 */
-val LoadOnlyWifiKey = Extras.Key<Boolean>(default = false)
-
-/** Coil3 Extras key: 封面落持久磁盘分区, 与 `diskCacheKey(coverDiskCacheKey(url))` 配套 (CoverDecodeFetcher 据此给手动写盘 key 加 #covers 后缀)。 */
-val PersistentCoverKey = Extras.Key<Boolean>(default = false)
-
-/**
  * 按 [sourceOrigin] (书源 bookUrl) 解析防盗链 header。
  *
  * 对齐原版 `AnalyzeUrl.getGlideUrl()`: 构造 AnalyzeUrl 解析 header (请求头规则 JS 在 AnalyzeUrl
@@ -110,7 +96,7 @@ class SourceOriginHeaderFetcher(
         }
         if (headers.isNullOrEmpty()) return inner.fetch()
         val networkHeaders = NetworkHeaders.Builder().apply {
-            headers.forEach { (k, v) -> add(k, v) }
+            headers?.forEach { (k, v) -> add(k, v) }
         }.build()
         val newOptions = options.copy(
             extras = options.extras.newBuilder()

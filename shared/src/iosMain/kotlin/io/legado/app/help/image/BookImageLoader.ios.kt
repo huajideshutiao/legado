@@ -5,9 +5,8 @@ import androidx.compose.ui.graphics.asComposeImageBitmap
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
-import coil3.disk.DiskCache
 import coil3.memory.MemoryCache
-import coil3.network.ktor3.KtorNetworkFetcherFactory
+import coil3.network.ktor3.asNetworkClient
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.size.Precision
@@ -20,7 +19,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import okio.Path.Companion.toPath
 import okio.FileSystem
 import okio.buffer
 
@@ -35,8 +33,8 @@ import okio.buffer
  *   SourceImageHeaders.ios.kt; 缓存命中不解析, 取数据时跑 IO 线程)。
  * - diskCache: `{AppFilesDirs.cacheDir}/image_cache` (Library/Caches 下, 系统可清理);
  *   memoryCache: 默认 maxSizePercent (与 android/desktop 的 Coil3 默认策略一致)。
- * - coverDecodeJs 封面解密: [CoverDecodeFetcher] 下载原始字节跑共享
- *   ImageUtils.decode (native QuickJs) 后经 [DecodedCoverBytes] 回灌 (CoverDecodeFetcher.ios.kt)。
+ * - coverDecodeJs 封面解密: [SourceDecodeCacheStrategy] 在磁盘缓存写入前解密响应字节
+ *   (对齐原版 Glide DATA 策略缓存解密后字节), 书架封面落持久区; 冷启动磁盘命中零下载零 JS。
  *
  * 注册: [io.legado.app.help.config.registerIosProviders] 调用 [registerIosBookImageLoader]。
  */
@@ -66,19 +64,56 @@ class IosBookImageLoader : BookImageLoader {
         sourceOrigin: String?,
         widthPx: Int,
         heightPx: Int,
-        loadOnlyWifi: Boolean,
+    ): ImageBitmap? =
+        execute(url, sourceOrigin, widthPx, heightPx, persistent = false)
+
+    override suspend fun loadCoverOrNull(
+        url: String,
+        sourceOrigin: String?,
+        widthPx: Int,
+        heightPx: Int,
+    ): ImageBitmap? =
+        execute(url, sourceOrigin, widthPx, heightPx, persistent = true)
+
+    /**
+     * 仅读 Coil3 磁盘缓存字节（不触发网络/解码）：查裸 url key（解密书源的字节为解密后内容,
+     * 由 [SourceDecodeCacheStrategy] 写入; 书架封面 #covers 持久区由 [MultiDiskCache] 裸 key
+     * miss 自动兜底）。
+     */
+    override suspend fun loadDiskCachedBytes(
+        url: String,
+        sourceOrigin: String?,
+    ): ByteArray? =
+        BookImageLoadDedup.singleFlight("diskCached\u0000$url\u0000${sourceOrigin ?: ""}") {
+            val diskCache = iosCoilImageLoader.diskCache ?: return@singleFlight null
+            val snapshot = diskCache.openSnapshot(url) ?: return@singleFlight null
+            try {
+                val bytes = FileSystem.SYSTEM.source(snapshot.data).buffer().readByteArray()
+                if (bytes.isNotEmpty()) return@singleFlight bytes
+            } finally {
+                snapshot.close()
+            }
+            null
+        }
+
+    /** [persistent] 为 true 时改写 diskCacheKey, 由 [MultiDiskCache] 分流到封面持久区 (对齐 jvm/android)。 */
+    private suspend fun execute(
+        url: String,
+        sourceOrigin: String?,
+        widthPx: Int,
+        heightPx: Int,
+        persistent: Boolean,
     ): ImageBitmap? =
         // 同 URL 并发请求经 BookImageLoadDedup 单飞去重 (I6, 与 jvm/android 端一致)
         BookImageLoadDedup.singleFlight(
-            "${url}\u0000${sourceOrigin ?: ""}\u0000${widthPx}x$heightPx\u0000false\u0000$loadOnlyWifi"
+            "${url}\u0000${sourceOrigin ?: ""}\u0000${widthPx}x$heightPx\u0000$persistent"
         ) {
             val request = ImageRequest.Builder(PlatformContext.INSTANCE)
                 .data(url)
                 .sourceOrigin(sourceOrigin)
                 .apply {
-                    // 非 wifi 且 loadOnlyWifi 时 fetcher 层拦网络获取 (CoverDecodeFetcher.ios.kt, 对齐原版 loadOnlyWifiOption)
-                    if (loadOnlyWifi) {
-                        extras.set(LoadOnlyWifiKey, true)
+                    if (persistent) {
+                        diskCacheKey(coverDiskCacheKey(url))
                     }
                     // 按显示尺寸降采样; FILL 对齐消费端 ContentScale.Crop, INEXACT 允许复用更大的内存缓存项
                     if (widthPx > 0 && heightPx > 0) {
@@ -91,28 +126,6 @@ class IosBookImageLoader : BookImageLoader {
             val result = iosCoilImageLoader.execute(request)
             val bitmap = (result as? SuccessResult)?.image?.toBitmap() ?: return@singleFlight null
             bitmap.asComposeImageBitmap()
-        }
-
-    /**
-     * 仅读 Coil3 磁盘缓存字节（不触发网络/解码）：先查封面解密 key（"coverDecode:$url"），
-     * 再查网络 fetcher 默认 key（裸 url）。iOS 单区 diskCache（无 #covers 持久区）。
-     */
-    override suspend fun loadDiskCachedBytes(
-        url: String,
-        sourceOrigin: String?,
-    ): ByteArray? =
-        BookImageLoadDedup.singleFlight("diskCached\u0000$url\u0000${sourceOrigin ?: ""}") {
-            val diskCache = iosCoilImageLoader.diskCache ?: return@singleFlight null
-            for (key in listOf("coverDecode:$url", url)) {
-                val snapshot = diskCache.openSnapshot(key) ?: continue
-                try {
-                    val bytes = FileSystem.SYSTEM.source(snapshot.data).buffer().readByteArray()
-                    if (bytes.isNotEmpty()) return@singleFlight bytes
-                } finally {
-                    snapshot.close()
-                }
-            }
-            null
         }
 }
 
@@ -129,12 +142,11 @@ internal val iosCoilImageLoader: ImageLoader by lazy { buildIosBookImageLoader()
 private fun buildIosBookImageLoader(): ImageLoader {
     return ImageLoader.Builder(PlatformContext.INSTANCE)
         .components {
-            // 封面解密 + 失败 url 跳过 + 防盗链 header: 全部下沉 fetcher 层 (对齐原 Glide
-            // OkHttpStreamFetcher: 缓存命中不解析不解密, 取数据时跑 IO 线程)。
-            // 外层 CoverDecodeFetcher → 中层 SourceOriginHeaderFetcher → 内层 Ktor 网络 fetcher
-            // (CoverDecodeFetcher.ios.kt, 与 jvmAndAndroid 版注册顺序一致)
-            add(DecodedCoverKeyer(), DecodedCoverBytes::class)
-            add(DecodedCoverFetcher.Factory(), DecodedCoverBytes::class)
+            // 防盗链 header + 解密落盘 + 网络层守卫: 同 android/desktop (SourceOriginHeaderFetcher 注入;
+            // SourceDecodeCacheStrategy 解密落盘对齐 Glide DATA; ImageGuardNetworkClient 拦截在磁盘查询后)。
+            // 直接构 NetworkFetcher.Factory 包 NetworkClient (KtorNetworkFetcherFactory 不接受
+            // NetworkClient), Ktor client 复用 NativeHttpProvider 的 KmpHttpClient 内部 client
+            // (internal 字段同模块可见; lambda 惰性求值, ImageLoader 构建时不触发网络栈初始化)
             // 漫画页: MangaModel 走完整取图链路 (图片缓存 → 本地书 FileBook → AnalyzeUrl 防盗链
             // header 下载 → ImageUtils.decode 解密), 与 android/desktop 同源
             add(MangaModelKeyer(), MangaModel::class)
@@ -142,16 +154,15 @@ private fun buildIosBookImageLoader(): ImageLoader {
             // 漫画页解码: 与 desktop 同源 (MangaPageCoil.kt), 预载与翻页共用同一条内存缓存
             add(MangaPageDecoder.Factory())
             add(
-                CoverDecodeFetcher.Factory(
-                    SourceOriginHeaderFetcher.Factory(
-                        // 网络后端: 复用 NativeHttpProvider 的 Ktor HttpClient (KmpHttpClient 内部
-                        // client, internal 字段同模块可见; lambda 惰性求值, ImageLoader 构建时
-                        // 不触发网络栈初始化)
-                        KtorNetworkFetcherFactory(httpClient = {
-                            requireNotNull(OkHttpClientProviders.get().okHttpClient.ktorClient) {
+                SourceOriginHeaderFetcher.Factory(
+                    coil3.network.NetworkFetcher.Factory(
+                        networkClient = {
+                            val ktorClient = requireNotNull(OkHttpClientProviders.get().okHttpClient.ktorClient) {
                                 "KmpHttpClient 未初始化 (需经 KmpHttpClientBuilder.build 创建)"
                             }
-                        })
+                            ImageGuardNetworkClient(ktorClient.asNetworkClient())
+                        },
+                        cacheStrategy = { SourceDecodeCacheStrategy },
                     )
                 )
             )
@@ -160,9 +171,10 @@ private fun buildIosBookImageLoader(): ImageLoader {
             MemoryCache.Builder().maxSizePercent(PlatformContext.INSTANCE).build()
         }
         .diskCache {
-            DiskCache.Builder()
-                .directory("${AppFilesDirs.get().cacheDir.trimEnd('/')}/image_cache".toPath())
-                .build()
+            // 双区 (MultiDiskCache): 封面落持久区 Documents/covers (commonMain bookCoverCacheDir
+            // 默认实现, NativeDataStorage 未 override), 其余图落 Library/Caches/image_cache;
+            // 与 android/desktop 同语义 (对齐原版 Glide MultiDiskCacheFactory)
+            buildImageDiskCache("${AppFilesDirs.get().cacheDir.trimEnd('/')}/image_cache")
         }
         .build()
 }

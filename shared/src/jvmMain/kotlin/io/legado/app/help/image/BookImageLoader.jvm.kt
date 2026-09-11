@@ -5,7 +5,9 @@ import androidx.compose.ui.graphics.asComposeImageBitmap
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
-import coil3.network.okhttp.OkHttpNetworkFetcherFactory
+import coil3.annotation.ExperimentalCoilApi
+import coil3.network.NetworkFetcher
+import coil3.network.okhttp.asNetworkClient
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.size.Precision
@@ -34,14 +36,12 @@ import java.io.File
  * 进程内单实例: DiskCache 同目录不可多实例 (okio 文件锁冲突),
  * [SingletonImageLoader] 与 [JvmBookImageLoader] 共用本 lazy。
  */
+@OptIn(ExperimentalCoilApi::class)
 internal val jvmBookImageLoader: ImageLoader by lazy {
     ImageLoader.Builder(PlatformContext.INSTANCE)
         .components {
-            // 封面解密 + 失败 url 跳过 + 防盗链 header: 全部下沉 fetcher 层 (对齐原 Glide
-            // OkHttpStreamFetcher: 缓存命中不解析不解密, 取数据时跑 IO 线程)。
-            // 外层 CoverDecodeFetcher → 中层 SourceOriginHeaderFetcher → 内层 OkHttp 网络 fetcher
-            add(DecodedCoverKeyer(), DecodedCoverBytes::class)
-            add(DecodedCoverFetcher.Factory(), DecodedCoverBytes::class)
+            // 防盗链 header + 解密落盘 + 网络层守卫: 同 androidMain (SourceOriginHeaderFetcher 注入;
+            // SourceDecodeCacheStrategy 解密落盘对齐 Glide DATA; ImageGuardNetworkClient 拦截在磁盘查询后)
             // 漫画页: 经图片缓存 + AnalyzeUrl 下载 + 解密取字节 (与 app 端同一条链路)
             add(MangaModelKeyer(), MangaModel::class)
             add(MangaModelFetcher.Factory())
@@ -49,11 +49,13 @@ internal val jvmBookImageLoader: ImageLoader by lazy {
             // MangaPageImage 进 Coil 内存缓存, 预载与翻页共用同一条缓存 (见 MangaPageCoil.kt)
             add(MangaPageDecoder.Factory())
             add(
-                CoverDecodeFetcher.Factory(
-                    SourceOriginHeaderFetcher.Factory(
-                        OkHttpNetworkFetcherFactory(callFactory = {
-                            OkHttpClientProviders.get().okHttpClient
-                        })
+                SourceOriginHeaderFetcher.Factory(
+                    // 守卫网络客户端: 同 androidMain, failUrls 必须真正接进网络链路
+                    NetworkFetcher.Factory(
+                        networkClient = {
+                            ImageGuardNetworkClient(OkHttpClientProviders.get().okHttpClient.asNetworkClient())
+                        },
+                        cacheStrategy = { SourceDecodeCacheStrategy },
                     )
                 )
             )
@@ -100,20 +102,19 @@ class JvmBookImageLoader : BookImageLoader {
         sourceOrigin: String?,
         widthPx: Int,
         heightPx: Int,
-        loadOnlyWifi: Boolean,
-    ): ImageBitmap? = execute(url, sourceOrigin, widthPx, heightPx, persistent = false, loadOnlyWifi = loadOnlyWifi)
+    ): ImageBitmap? = execute(url, sourceOrigin, widthPx, heightPx, persistent = false)
 
     override suspend fun loadCoverOrNull(
         url: String,
         sourceOrigin: String?,
         widthPx: Int,
         heightPx: Int,
-        loadOnlyWifi: Boolean,
-    ): ImageBitmap? = execute(url, sourceOrigin, widthPx, heightPx, persistent = true, loadOnlyWifi = loadOnlyWifi)
+    ): ImageBitmap? = execute(url, sourceOrigin, widthPx, heightPx, persistent = true)
 
     /**
-     * 仅读 Coil3 磁盘缓存字节（不触发网络/解码）：先查封面解密 key（"coverDecode:$url"），
-     * 再查网络 fetcher 默认 key（裸 url）；MultiDiskCache 临时/covers 双区自动兜底。
+     * 仅读 Coil3 磁盘缓存字节（不触发网络/解码）：先查封面解密历史 key（"coverDecode:$url",
+     * 旧版手写落盘兼容, 新写入已由 [SourceDecodeCacheStrategy] 落在裸 url key 下且为解密后字节）,
+     * 再查裸 url; MultiDiskCache 临时/covers 双区自动兜底。
      */
     override suspend fun loadDiskCachedBytes(
         url: String,
@@ -141,10 +142,9 @@ class JvmBookImageLoader : BookImageLoader {
         widthPx: Int,
         heightPx: Int,
         persistent: Boolean,
-        loadOnlyWifi: Boolean = false,
     ): ImageBitmap? =
         BookImageLoadDedup.singleFlight(
-            "${url}\u0000${sourceOrigin ?: ""}\u0000${widthPx}x$heightPx\u0000$persistent\u0000$loadOnlyWifi"
+            "${url}\u0000${sourceOrigin ?: ""}\u0000${widthPx}x$heightPx\u0000$persistent"
         ) {
             val request = ImageRequest.Builder(PlatformContext.INSTANCE)
                 .data(url)
@@ -152,11 +152,6 @@ class JvmBookImageLoader : BookImageLoader {
                 .apply {
                     if (persistent) {
                         diskCacheKey(coverDiskCacheKey(url))
-                        extras.set(PersistentCoverKey, true)
-                    }
-                    // 非 wifi 且 loadOnlyWifi 时 fetcher 层拦网络获取 (对齐原版 loadOnlyWifiOption)
-                    if (loadOnlyWifi) {
-                        extras.set(LoadOnlyWifiKey, true)
                     }
                     // 按显示尺寸降采样; FILL 对齐消费端 ContentScale.Crop, INEXACT 允许复用更大的内存缓存项
                     if (widthPx > 0 && heightPx > 0) {

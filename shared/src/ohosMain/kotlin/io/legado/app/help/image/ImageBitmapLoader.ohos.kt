@@ -166,15 +166,17 @@ private suspend fun ohosLoadNetworkImageBytes(
     isCover: Boolean,
     useBytesCache: Boolean,
 ): ByteArray? {
-    if (useBytesCache && ohosFailUrlsContains(bookSource?.bookSourceUrl, url)) return null
     if (useBytesCache) {
-        ImageBytesCache.get(url, bookSource?.bookSourceUrl, isCover)?.let { return it }
+        // 封面 (isCover=true) 字节落持久区 (persistent=true, 系统清缓存清不掉, 对齐 Coil 端
+        // #covers 持久区语义); 正文图维持临时缓存区。死链跳过只拦真下载, 不得挡缓存命中。
+        ImageBytesCache.get(url, bookSource?.bookSourceUrl, isCover, persistent = isCover)?.let { return it }
+        if (ohosFailUrlsContains(bookSource?.bookSourceUrl, url)) return null
     }
     val bytes = ohosDownloadImageBytes(
         url, book, bookSource, isCover, recordFailure = useBytesCache
     )
     if (bytes != null && useBytesCache) {
-        ImageBytesCache.put(url, bookSource?.bookSourceUrl, isCover, bytes)
+        ImageBytesCache.put(url, bookSource?.bookSourceUrl, isCover, bytes, persistent = isCover)
     }
     return bytes
 }

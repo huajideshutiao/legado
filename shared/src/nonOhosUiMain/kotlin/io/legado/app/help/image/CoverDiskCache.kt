@@ -26,6 +26,8 @@ fun coverDiskCacheKey(url: String): String = url + COVER_KEY_SUFFIX
  * 双区磁盘缓存: 书架封面落应用数据目录 (系统清缓存清不掉), 其余图片落缓存目录。
  *
  * 移植原版 `MultiDiskCacheFactory` —— 书源失效后封面不可重获, 不能跟普通图片同区被系统抹掉。
+ * 三端共享 (android/jvm/ios): iOS 持久区经 commonMain `bookCoverCacheDir` 默认实现
+ * 解析到沙盒 Documents/covers, 与 Android filesDir/covers 同语义。
  */
 class MultiDiskCache(
     private val covers: DiskCache,
@@ -67,7 +69,7 @@ class MultiDiskCache(
 
 /**
  * 装配双区磁盘缓存。持久区目录取 [io.legado.app.help.storage.DataStorage.bookCoverCacheDir]
- * (Android `filesDir/covers`, 与原版 Glide 同址), 取不到时整体回退单区。
+ * (Android `filesDir/covers` / iOS `Documents/covers`, 与原版 Glide 同址), 取不到时整体回退单区。
  *
  * @param temporaryDir 临时区目录 (各端自己的缓存目录下的 image_cache)
  */
@@ -77,7 +79,10 @@ fun buildImageDiskCache(temporaryDir: String): DiskCache {
         .maxSizeBytes(TEMP_CACHE_MAX_BYTES)
         .build()
     val coversDir = runCatching { DataStorageProviders.getOrNull()?.bookCoverCacheDir }.getOrNull()
-        ?: return temporary
+        // 回退单区时也包 MultiDiskCache(同实例双区): 保住裸 url ←→ "url#covers" 双向兑底查询
+        // (封面仍带 #covers key 写入, 裸 url 消费方如 epub 导出才能命中; 同实例双次 shutdown 安全,
+        // DiskLruCache.close 幂等)
+        ?: return MultiDiskCache(temporary, temporary)
     val covers = DiskCache.Builder()
         .directory(coversDir.toPath())
         .maxSizeBytes(COVER_CACHE_MAX_BYTES)
