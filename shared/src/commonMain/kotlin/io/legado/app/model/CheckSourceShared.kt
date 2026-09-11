@@ -178,8 +178,8 @@ object CheckSourceShared {
      * 内部执行:
      * 1. `withTimeout([timeout])` 调用 [doCheckSource]
      * 2. 成功: `Debug.updateFinalMessage` 写入 "校验成功"
-     * 3. 失败: 按 TimeoutCancellationException / Exception / 其他分类 addGroup
-     *    + addErrorComment + updateFinalMessage
+     * 3. 失败: 按 TimeoutCancellationException / Exception / 其他分类 addGroup，
+     *    并统一追加"失效"分组 + addErrorComment + updateFinalMessage
      * 4. 末尾同步 `source.respondTime`
      *
      * 调用方 (app 端 CheckSourceService) 仅负责并发调度 + Notification, 业务流程在本方法内完成。
@@ -198,6 +198,9 @@ object CheckSourceShared {
                 JsEngines.isJsException(it) -> source.addGroup("js失效")
                 it !is NoStackTraceException -> source.addGroup("网站失效")
             }
+            // 统一失效分组：所有失效源都追加进"失效"组，便于按组精确筛选后一次性全删；
+            // 具体失效原因仍保留在上面各分组里（搜索/发现/目录/正文失效由 doCheckSource 写入）
+            source.addGroup("失效")
             source.addErrorComment(it)
             Debug.updateFinalMessage(source.bookSourceUrl, "校验失败:${it.message}")
         }

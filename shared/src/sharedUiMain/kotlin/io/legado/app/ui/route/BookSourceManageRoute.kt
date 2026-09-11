@@ -191,12 +191,14 @@ fun BookSourceManageRoute(
             screenModel.dispatch(BookSourceUiEvent.HideCheckSource)
             val st = screenModel.state.value
             if (st.searchKey.isEmpty()) {
-                st.groups.forEach { group ->
-                    if (group.contains("失效")) {
-                        screenModel.dispatch(BookSourceUiEvent.Search("失效"))
-                        Toasters.get().toast("发现有失效书源，已为您自动筛选！")
-                        return@collect
-                    }
+                // 失效源已统一带"失效"分组：用 group: 前缀按组精确筛选，避免模糊搜"失效"
+                // 误命中名称/URL 含"失效"的源；筛选后全选+删除即可一次性清掉。
+                // 判定必须与筛选动作严格一致 (精确"失效"组): 旧版存量源的"网站失效"等分组
+                // 不含独立"失效" token, group:失效 筛不出 —— 重新校验后才归入"失效"组
+                if (st.groups.any { it == "失效" }) {
+                    screenModel.dispatch(BookSourceUiEvent.Search("group:失效"))
+                    Toasters.get().toast("发现有失效书源，已为您自动筛选！")
+                    return@collect
                 }
             }
         }
