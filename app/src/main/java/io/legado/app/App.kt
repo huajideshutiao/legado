@@ -39,6 +39,7 @@ import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.config.ThemeConfig.applyDayNight
 import io.legado.app.help.config.ThemeConfig.applyDayNightInit
+import io.legado.app.help.config.migrateLegacyHomeSp
 import io.legado.app.help.config.registerAndroidLocalConfigStore
 import io.legado.app.help.config.registerAndroidPreferenceProvider
 import io.legado.app.help.coroutine.Coroutine
@@ -238,6 +239,9 @@ class App : Application() {
         // app 端通过 callback 把下载完成事件回放到活动阅读实例)
         CacheBook.registerCallback()
         registerAndroidPreferenceProvider()
+        // 旧版 SP 主页设置/收藏迁移 (e8b2c5837d 改存 filesDir JSON 后旧数据弃读, 见 LegacyHomeSpMigration);
+        // 须在 registerAndroidAppFilesDir (onCreate 早段) 之后、Home 首次 load 之前
+        migrateLegacyHomeSp(defaultSharedPreferences)
         registerAndroidDirectLinkUploadProviders()
         // 注册 help 引导版本标记存储 (委托 "local" prefs, 与原版 LocalConfig 同存储)
         registerAndroidLocalConfigStore()
