@@ -447,6 +447,8 @@
     <string name="auto_indent">Auto indent</string>
     <string name="ps_auto_refresh">Update books automatically when opening the software</string>
     <string name="pt_auto_refresh">Auto-refresh</string>
+    <string name="pt_container_transform_anim">Container transform animation</string>
+    <string name="ps_container_transform_anim">Card-scale transition when opening book info from bookshelf and other lists</string>
     <string name="click_book_open_read">Directly play video books</string>
     <string name="click_book_open_read_summary">Click video books in search/discovery to play directly, skipping details</string>
     <string name="media_button_on_exit_title">Headset buttons are always available</string>

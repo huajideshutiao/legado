@@ -38,6 +38,14 @@ class RoutePageAnchorScope internal constructor(internal val pageKey: Any) {
 /** 由 [LegadoApp] 逐路由页提供; null = 不在路由页内 (预览等), 锚点直接不登记。 */
 val LocalRoutePageAnchor = staticCompositionLocalOf<RoutePageAnchorScope?> { null }
 
+/** 由 [LegadoApp] 逐路由页提供: 本页正处于页面级转场 (容器变换或普通淡入) 中。
+ * 平台互操作层 (视频 Surface 等原生渲染面) 录不进容器快照、也不吃页面 graphicsLayer alpha,
+ * 转场中留着会全屏突兀显示, 消费方应据此在转场期间移出组合, 动画结束自动恢复。
+ * 注意消费是整体移出组合而非仅隐藏: 会连带卸载 RenderSurface 内的加载副作用
+ * (videoUrl.collect), 恢复后由 StateFlow 补发 + URL 守卫接续; 代价是 push 进入视频页的
+ * 起播/缓冲推迟一个转场时长, 属已知取舍。 */
+val LocalPageTransitionActive = staticCompositionLocalOf { false }
+
 /**
  * [BookRef] 书源 origin 扩展: Stored/Search 分别代理其内部 Book / SearchBook 的 origin。
  */
@@ -304,10 +312,13 @@ internal fun Modifier.containerTransformDraw(
         )
         val startCornerRadiusPx = startBounds.cornerRadiusPx * min(scaleX, scaleY)
         val p = openness().coerceIn(0f, 1f)
-        val left = startRect.left * (1f - p)
-        val top = startRect.top * (1f - p)
         val width = startRect.width + (pageSize.width - startRect.width) * p
         val height = startRect.height + (pageSize.height - startRect.height) * p
+        // 中心点插值: 中心从卡片中心线性走向视口中心, 缩放围绕中心进行 (不再左上角对齐)
+        val centerX = startRect.center.x + (pageSize.width / 2f - startRect.center.x) * p
+        val centerY = startRect.center.y + (pageSize.height / 2f - startRect.center.y) * p
+        val left = centerX - width / 2f
+        val top = centerY - height / 2f
         snapshot.draw(
             scope = this,
             layer = layer,

@@ -42,6 +42,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
@@ -76,6 +77,7 @@ import io.legado.app.ui.compose.platform.PlatformBackHandler
 import io.legado.app.ui.compose.platform.handleBackKey
 import io.legado.app.ui.compose.platform.performBack
 import io.legado.app.ui.compose.platform.rememberVisibleStatusBarHeightPx
+import io.legado.app.ui.compose.preference.rememberPrefState
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.ui.config.BookshelfLayoutConfigDialog
@@ -126,6 +128,10 @@ fun LegadoApp(
         val cardRects = remember { BookCardRectRegistry() }
         // eInk 上提到状态机之前: 下方容器变换段判定要用它 (背景图读取处仍是同一份值)
         val eInk = LocalEInk.current
+        // 容器变换开关 (「其他设置」): 经 rememberPrefState 跟随偏好变更即时生效,
+        // 关闭时容器段回落普通页转场
+        val containerTransformAnim =
+            rememberPrefState(PreferKey.containerTransformAnim) { it.getBoolean(PreferKey.containerTransformAnim, true) }
         val transition = remember { Animatable(1f) }
         // 方向/出栈页/动画标志在组合阶段维护: LaunchedEffect 滞后一帧, 动画参数若等
         // effect 定, 首帧会先按"无动画终态"渲染 (前进: 旧页瞬间消失露底; 返回: 目标页
@@ -224,9 +230,10 @@ fun LegadoApp(
         // 转场动画平台 spec: 随导航事件读取 (Android 端每次动态读系统动画时长缩放, 即时生效)
         val transitionSpec = remember(entries, capabilities) { capabilities.routeTransitionSpec }
         // 容器变换段: 列表页 ↔ 书籍页 构成页对 (见 ContainerTransform.kt) 且列表页里该书卡片
-        // 矩形已登记时启用。eInk 与系统动画关闭 (时长归零) 时整段跳过。
+        // 矩形已登记时启用。eInk、用户关闭容器变换动画开关、系统动画关闭 (时长归零) 时整段跳过。
         val containerBookUrl = if (
-            eInk || transitionSpec.pushDurationMillis <= 0 || transitionSpec.popDurationMillis <= 0
+            eInk || !containerTransformAnim.value ||
+            transitionSpec.pushDurationMillis <= 0 || transitionSpec.popDurationMillis <= 0
         ) {
             null
         } else {
@@ -678,7 +685,15 @@ fun LegadoApp(
                         WallpaperLayer(wallpaper)
                     }
                     saveableStateHolder.SaveableStateProvider(entry.id.value) {
-                        CompositionLocalProvider(LocalRoutePageAnchor provides pageAnchor) {
+                        CompositionLocalProvider(
+                            LocalRoutePageAnchor provides pageAnchor,
+                            // 转场进行中标志: 容器段 (containerRect 非空, push/pop 两向) 或
+                            // 普通页转场 (animating 且本页是目标页/滑动页)。视频等平台
+                            // Surface 据此暂停显示, 动画结束自动恢复
+                            LocalPageTransitionActive provides (
+                                containerRect != null || (animating && (isTarget || isSliding))
+                            ),
+                        ) {
                             RouteContent(entry, navigator, screenModelStore)
                         }
                     }

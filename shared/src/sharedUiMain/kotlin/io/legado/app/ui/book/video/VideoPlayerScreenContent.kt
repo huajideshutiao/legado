@@ -68,6 +68,7 @@ import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.root.LocalPageTransitionActive
 import io.legado.app.utils.format
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
@@ -956,8 +957,13 @@ fun VideoPlayerHostContainer(
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        // 1. 平台纯 Surface
-        platform.RenderSurface(controller, screenModel, Modifier.fillMaxSize())
+        // 1. 平台纯 Surface (转场期间整体移出组合: 原生 Surface 录不进容器快照、不吃页面
+        //    alpha, 留着会在转场中全屏突兀显示; 移出会连带卸载 RenderSurface 内的加载副作用
+        //    collect, 播放器本体由 controller 持有不受影响, 恢复后 StateFlow 补发 +
+        //    updateSource 的 loadedUrl 守卫接续不重播; 代价: push 进入时起播推迟一个转场时长)
+        if (!LocalPageTransitionActive.current) {
+            platform.RenderSurface(controller, screenModel, Modifier.fillMaxSize())
+        }
 
         // 2. 共享手势层
         VideoGestureOverlay(

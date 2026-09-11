@@ -169,6 +169,11 @@ private class AndroidVideoPlayerController(
     val player: ExoPlayer = ExoPlayerHelper.createHttpExoPlayer(activity)
     private var bound = false
 
+    /** 已加载的 url: 页面转场会重建 RenderSurface 组合, LaunchedEffect(videoUrl.collect)
+     *  随之重启并被 StateFlow 补发同值, 守卫避免重复 setMediaItem+prepare 从头重播
+     *  (对齐桌面 startedUrl / iOS / ohos loadedUrl 模式)。 */
+    private var loadedUrl: String? = null
+
     private val listener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             screenModel.onPlayerState(isPlaying = isPlaying)
@@ -194,6 +199,9 @@ private class AndroidVideoPlayerController(
         }
 
         override fun onPlayerError(error: PlaybackException) {
+            // 对齐 iOS handlePlayError: 先清 loadedUrl 守卫, 自动重试 (refreshChapter 重新
+            // emit 同 URL) 才能放行重载
+            loadedUrl = null
             val retried = screenModel.shared.retryOnPlayError()
             if (!retried && error is ExoPlaybackException && error.type == ExoPlaybackException.TYPE_SOURCE) {
                 val message = when (error.sourceException) {
@@ -224,6 +232,10 @@ private class AndroidVideoPlayerController(
     }
 
     fun updateSource(analyzeUrl: AnalyzeUrlCore) {
+        // 同 URL 已在播则跳过: 转场结束 RenderSurface 重新组合后 collect 补发同值,
+        // 不重复 setMediaItem (会清播放列表并把位置重置为 0)
+        if (analyzeUrl.url == loadedUrl) return
+        loadedUrl = analyzeUrl.url
         if (analyzeUrl.url.startsWith("http")) {
             player.setMediaItem(
                 ExoPlayerHelper.createMediaItem(
