@@ -103,8 +103,8 @@ import org.jetbrains.compose.resources.stringResource
  *   - ThemeConfig.curBgImagePath (顶栏背景透明判断)
  *     → 替换为 LocalThemeStoreProvider.current.bgImagePath (跨平台 provider)
  *   - item.getBookSource() + item.exploreKinds() (DB/规则解析, IO 协程)
- *     → 由 app 端 ExploreTabState 在 toggleExpand/refreshSource 内加载并写入
- *       state.expandedKinds / state.expandedLoading, shared 端仅读渲染
+ *     → 已下沉: 由 shared 端 ExploreScreenModel 在 toggleExpand/refreshSource 内加载并写入
+ *       state.expandedSource / state.expandedKinds / state.loadingUrl
  *   - ExploreViewModel.topSource / deleteSource (DB 写)
  *     → app 端 ExploreTabState.toTop / deleteSource 内调用
  *   - 路由跳转 (startActivity<ExploreShowActivity/BookSourceEditActivity/SearchActivity>)
@@ -139,14 +139,15 @@ private const val EXPAND_RECHECK_BUFFER_MS = 64L
  * 字段语义对照 app 端原 `ExploreTabState`:
  * - [sources] / [pinned] / [groups] / [searchKey] / [expandedUrl]:
  *   与原同名字段一一对应 (搜索/展开驱动)
- * - [expandedKinds]: 已展开项的发现分类缓存 (url → source+kinds)
- *   替代原 Composable 内 `remember(url) { kindState }` 局部缓存,
- *   上浮到 state 后跨展开/收起周期复用 (原行为: 收起后保留旧值供动画)
- * - [expandedLoading]: 正在异步加载 kinds 的 url 集合
+ * - [expandedSource] / [expandedKinds]: 当前展开行 ([expandedUrl]) 本次现取的数据;
+ *   不做跨展开历史的 Map 缓存 —— 每次展开由 ExploreScreenModel.loadKinds 现查现算
+ *   (对照原版 handleExpand 每次 bind 现查, 底层 exploreKinds() 自带 md5 两级缓存);
+ *   收起动画的最后一帧由各 item 内 remember 局部冻结, 不占 state
+ * - [loadingUrl]: 正在异步加载 kinds 的行 url (单槽, null=无)
  * - [listState]: LazyColumn 滚动位 (reselect 滚顶用)
  *
- * 注: 原 ExploreTabState.refreshTick 字段下沉后不需要 - 由 ExploreTabState.refreshSource
- * 直接调用 loadKinds(force=true) 重载并更新 expandedKinds, 不再依赖 LaunchedEffect 重键。
+ * 注: 原 ExploreTabState.refreshTick 字段下沉后不需要 - refreshSource 清底层缓存后
+ * 直接再次现查重取, 不依赖 LaunchedEffect 重键。
  */
 data class ExploreUiState(
     val sources: List<BookSourcePart>,
@@ -154,8 +155,9 @@ data class ExploreUiState(
     val groups: List<String>,
     val searchKey: String,
     val expandedUrl: String?,
-    val expandedKinds: Map<String, Pair<BookSource?, List<ExploreKind>>>,
-    val expandedLoading: Set<String>,
+    val expandedSource: BookSource?,
+    val expandedKinds: List<ExploreKind>,
+    val loadingUrl: String?,
     val listState: LazyListState,
 )
 
@@ -290,13 +292,13 @@ fun ExploreScreen(
             // 预滚只会"少滚"不会"多滚", 剩余误差由动画结束后的单次实测复查兜底。
             val density = LocalDensity.current
             val lastContentHeightPx = remember { mutableMapOf<String, Int>() }
-            LaunchedEffect(state.expandedUrl, state.expandedKinds[state.expandedUrl]) {
+            LaunchedEffect(state.expandedUrl, state.expandedKinds) {
                 val url = state.expandedUrl ?: run {
                     lastContentHeightPx.clear() // 收起: 下次展开内容从 0 高开始, 旧高度记录失效
                     return@LaunchedEffect
                 }
-                val kindPair = state.expandedKinds[url] ?: return@LaunchedEffect
-                val (_, kinds) = kindPair
+                if (state.expandedSource == null) return@LaunchedEffect // 现取未就绪: 数据到达后本 effect 随 state 变化重跑
+                val kinds = state.expandedKinds
                 // 无展开内容时无高度变化, 无需滚动 (对照 origin 仅动画结束时检查)
                 if (kinds.isEmpty()) {
                     lastContentHeightPx[url] = 0
@@ -422,10 +424,14 @@ private fun ExploreSourceItem(
     val colors = AppTheme.colors
     val eInk = LocalEInk.current
     var showMenu by remember { mutableStateOf(false) }
-    // kinds 上浮到 state holder: 收起后保留旧值供动画期间渲染 (原局部 kindState 行为)
     val url = item.bookSourceUrl
-    val kindPair = state.expandedKinds[url]
-    val loading = url in state.expandedLoading
+    val current: Pair<BookSource, List<ExploreKind>>? =
+        if (state.expandedUrl == url) state.expandedSource?.let { it to state.expandedKinds } else null
+    // 退出动画最后一帧: 按 item 局部冻结 (仅供本行动画期间渲染), 不写回 state、
+    // 也不参与"是否需要重新加载"的判定 - 数据新鲜度由每次展开现取保证
+    var shown by remember(url) { mutableStateOf(current) }
+    LaunchedEffect(current) { if (current != null) shown = current }
+    val loading = state.loadingUrl == url
     // 箭头 right→down 用旋转 90° 过渡 (原版直接换图, Compose 补动画)
     val arrowRotation by animateFloatAsState(
         targetValue = if (expanded) 90f else 0f,
@@ -487,17 +493,16 @@ private fun ExploreSourceItem(
         // 外框始终占 4dp)。收起态相邻项间距 = 本项尾 4dp + 下项根 paddingTop 4dp = 8dp
         Column(Modifier.fillMaxWidth().padding(top = 4.dp)) {
             val kindContent: @Composable () -> Unit = {
-                kindPair?.let { (source, kinds) ->
-                    if (source != null && kinds.isNotEmpty()) {
-                        Box(Modifier.fillMaxWidth()) {
-                            KindFlow(actions, source, kinds)
-                        }
+                val data = shown
+                if (data != null && data.second.isNotEmpty()) {
+                    Box(Modifier.fillMaxWidth()) {
+                        KindFlow(actions, data.first, data.second)
                     }
                 }
             }
             if (eInk) {
                 if (expanded) kindContent()
-            } else if (expanded || kindPair != null) {
+            } else if (expanded || shown != null) {
                 // 从没展开过的项不建 AnimatedVisibility 的 Transition (整屏几十项都要建一份);
                 // 首次展开时它以 visible=false 建立再翻 true, 进场动画与原来一致
                 //
@@ -506,8 +511,8 @@ private fun ExploreSourceItem(
                 // 首次组合时 visible 已为 true —— 初始状态即目标状态, 进场动画被跳过,
                 // 内容直接出现。这里用本地 animateIn 强制先以 visible=false 完成首帧组合,
                 // 下一帧再翻 true, 保证 false→true 转变必然发生、进场动画必然触发。
-                // (第二次展开: AnimatedVisibility 已被 kindPair 保活, 行为不变, 仅动画晚一帧开始)
-                val contentReady = expanded && kindPair != null
+                // (第二次展开: AnimatedVisibility 已被 shown 保活, 行为不变, 仅动画晚一帧开始)
+                val contentReady = expanded && shown != null
                 var animateIn by remember(contentReady) { mutableStateOf(false) }
                 LaunchedEffect(contentReady) {
                     if (contentReady) {

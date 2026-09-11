@@ -163,32 +163,55 @@ class ExploreScreenModel : ScreenModel {
         }
     }
 
-    /** 对照 ExploreTabState.loadKinds: 已缓存则跳过 (force=false); force=true 强制重载 */
-    private fun loadKinds(item: BookSourcePart, force: Boolean = false) {
+    /**
+     * 展开项现查现取源与分类 (对照原版 ExploreAdapter.handleExpand:
+     * 每次 bind 都 `item.getBookSource()` 现查 + `bookSource.exploreKinds()` 现算)。
+     *
+     * 本层不再做跨展开历史的 kinds 快照: 底层 exploreKinds() 自带
+     * md5(bookSourceUrl + exploreUrl) 内存 + 磁盘两级缓存, 命中即返回, 现取无额外解析成本;
+     * 而 UI 层再按 bookSourceUrl 缓一份快照, 会让底层 md5 自动失效机制完全落空
+     * (书源编辑后分类陈旧、进 show 用旧源对象), 故每次展开必现取。
+     */
+    private fun loadKinds(item: BookSourcePart) {
         val url = item.bookSourceUrl
-        if (!force && _state.value.expandedKinds.containsKey(url)) return
+        // 清槽 + 置 loading 同步做 (在改 expandedUrl 的同一次调用内、协程派发前):
+        // 若放进 scope.launch 延后一帧, toggleExpand 已把 expandedUrl 改成 B、
+        // 而槽里仍是 A 的残留 → B 行渲染 A 的数据 (原版按 position 判定无此窗口)
+        _state.update {
+            it.copy(
+                loadingUrl = url,
+                expandedSource = null,
+                expandedKinds = emptyList(),
+            )
+        }
         scope.launch {
-            _state.update { it.copy(expandedLoading = it.expandedLoading + url) }
             try {
-                val result = runCatching {
+                val (source, kinds) = runCatching {
                     withContext(IoDispatcher) {
                         val source = appDb.bookSourceDao.getBookSource(url)
-                        val kinds = source?.exploreKinds() ?: emptyList()
-                        source to kinds
+                        source to (source?.exploreKinds() ?: emptyList())
                     }
                 }.getOrDefault(null to emptyList())
-                _state.update { it.copy(expandedKinds = it.expandedKinds + (url to result)) }
+                // 归属校验: 仅当 url 仍是当前展开行才写槽 (恢复原版 ExploreAdapter.handleRefresh
+                // 回写前 "pos 未变才写" 的保护): 防收起/切到别的行后 A 的慢查询后到,
+                // 把 A 的源/分类覆盖成展开中 B 行的数据并点分类跳错发现页
+                _state.update {
+                    if (it.expandedUrl != url) it
+                    else it.copy(expandedSource = source, expandedKinds = kinds)
+                }
             } finally {
-                _state.update { it.copy(expandedLoading = it.expandedLoading - url) }
+                _state.update { it.copy(loadingUrl = if (it.loadingUrl == url) null else it.loadingUrl) }
             }
         }
     }
 
-    /** 对照 ExploreTabState.refreshSource: clearExploreKindsCache + loadKinds(force=true) */
+    /** 对照原版长按菜单"刷新分类": clearExploreKindsCache (清底层 md5 缓存) + 现查重取 */
     private fun refreshSource(item: BookSourcePart) {
         scope.launch {
             withContext(IoDispatcher) { item.clearExploreKindsCache() }
-            loadKinds(item, force = true)
+            // 对齐原版: 未展开的行只清底层缓存 (下次展开 loadKinds 现取天然新鲜),
+            // 只有当前展开行才立即重查写槽 —— 否则刷新未展开的 C 会同步清掉展开中 A 的槽 (A 突然空白)
+            if (_state.value.expandedUrl == item.bookSourceUrl) loadKinds(item)
         }
     }
 
@@ -237,9 +260,15 @@ data class ExploreScreenState(
     val pinned: List<PinnedExplore> = emptyList(),
     val groups: List<String> = emptyList(),
     val searchKey: String = "",
+    /** 当前展开行 url (null = 全部收起); 对应原版 ExploreAdapter.exIndex */
     val expandedUrl: String? = null,
-    val expandedKinds: Map<String, Pair<BookSource?, List<ExploreKind>>> = emptyMap(),
-    val expandedLoading: Set<String> = emptySet(),
+    /** 当前展开行本次现查的源对象: 点分类进 show 直接用
+     *  (对齐原版 bind 现查 + 传对象不二次查库; 收起动画期间的渲染由 Compose 局部冻结负责) */
+    val expandedSource: BookSource? = null,
+    /** 当前展开行本次现算的分类列表 */
+    val expandedKinds: List<ExploreKind> = emptyList(),
+    /** 正在异步加载 kinds 的行 url (单槽不变式: 同一时刻至多一行在加载; null=无) */
+    val loadingUrl: String? = null,
 )
 
 /** ExploreScreenModel 可下沉处理的 UI 事件 (平台相关回调仍走 ExploreUiActions) */
@@ -253,7 +282,7 @@ sealed interface ExploreUiEvent {
     /** 切换某书源展开/收起 (触发 kinds 异步加载) */
     data class ToggleExpand(val item: BookSourcePart) : ExploreUiEvent
 
-    /** 刷新分类 (clearExploreKindsCache + 强制重载) */
+    /** 刷新分类 (清底层 md5 缓存 + 现查重取) */
     data class RefreshSource(val item: BookSourcePart) : ExploreUiEvent
 
     /** 置顶源 (ExploreViewModelShared.topSource) */

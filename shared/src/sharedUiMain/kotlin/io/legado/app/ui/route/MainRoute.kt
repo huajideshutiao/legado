@@ -1338,8 +1338,9 @@ private fun ExploreTabContent(
             groups = screenState.groups,
             searchKey = screenState.searchKey,
             expandedUrl = screenState.expandedUrl,
+            expandedSource = screenState.expandedSource,
             expandedKinds = screenState.expandedKinds,
-            expandedLoading = screenState.expandedLoading,
+            loadingUrl = screenState.loadingUrl,
             listState = listState,
         )
     }
@@ -1427,7 +1428,11 @@ private fun ExploreTabContent(
         }
     }
 
-    // 书源编辑返回: 触发发现页刷新当前展开源分类 (sources 列表由 DB flow 自动刷新)
+    // 书源编辑返回: 重取当前展开项分类。原版的"编辑返回不发任何事件"在 Compose 下不成立
+    // (行留在 composition 不会重新绑数据), 故保留此通知, 语义为"展开中也能立即看到新分类" (优于原版);
+    // 未展开的行本来就不持有数据, 下次展开靠 loadKinds 现取天然新鲜。
+    // 原版"按旧 url 在 sources 里 find 不到就静默不刷"的分支仍保留
+    // (refreshCurrentExpanded: expandedUrl 命中不了 sources.find 即 return, 语义同原版 getItem(pos) ?: return)。
     LaunchedEffect(Unit) {
         navigator.resultsFor(entry.id).filter { it.key == RouteResults.BOOK_SOURCE_EDIT }.collect {
             FlowBus.with(EventBus.REFRESH_EXPLORE).tryEmit("")
