@@ -23,12 +23,11 @@ import okio.buffer
 val IsCoverKey = Extras.Key<Boolean>(default = true)
 
 /**
- * Coil3 Extras key: 携带书源 bookUrl (sourceOrigin), 供 fetcher 层解析防盗链 header。
+ * Coil3 Extras key: 携带书源 bookUrl (sourceOrigin)。
  *
- * 消费点构造 [coil3.request.ImageRequest] 时 `.extras.set(SourceOriginKey, sourceOrigin)`,
- * fetcher 在真正取数据时 (IO 线程) 自动 resolve header 注入, 消费点无需在 @Composable 内调 suspend。
- * 定义下沉本源集 (android/jvm/ios 三端共同祖先): 两端 SourceImageHeaders 曾各自重复定义,
- * 本策略 write 读不到。
+ * 消费点构造 [coil3.request.ImageRequest] 时 `.extras.set(SourceOriginKey, sourceOrigin)`;
+ * 真实读取者在网络层 [SourceHeaderNetworkClient] (磁盘查询之后解析防盗链 header + 改写 url)
+ * 与本策略 [write] (解密落盘取书源), 均在 IO/网络线程内读, 消费点无需在 @Composable 内调 suspend。
  */
 val SourceOriginKey = Extras.Key<String?>(default = null)
 

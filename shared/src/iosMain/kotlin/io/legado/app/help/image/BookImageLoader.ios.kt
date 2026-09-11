@@ -26,11 +26,11 @@ import okio.buffer
  * [BookImageLoader] 的 iOS Coil3 实现 (对照 androidMain BookImageLoader.android.kt /
  * jvmMain BookImageLoader.jvm.kt, 网络后端差异: OkHttp → Ktor3)。
  *
- * - ImageLoader 用 Coil3 + Ktor3 网络后端 ([KtorNetworkFetcherFactory]),
+ * - ImageLoader 用 Coil3 + Ktor3 网络后端 (手搜 NetworkFetcher.Factory + ktorClient.asNetworkClient()),
  *   HttpClient 复用 [io.legado.app.help.http.NativeHttpProvider] 经 [OkHttpClientProviders]
  *   注册的 KmpHttpClient 内部 Ktor client (CIO engine, 继承 timeout 配置)。
- * - 书源防盗链 header: fetcher 层自动解析注入 (与 android/desktop 同语义, iOS 版见
- *   SourceImageHeaders.ios.kt; 缓存命中不解析, 取数据时跑 IO 线程)。
+ * - 书源防盗链 header + header 规则 JS 改写后的 url: 网络层自动解析注入 (与 android/desktop
+ *   同语义, 解析实现见 nonOhosUiMain/SourceImageHeaders.kt; 内存/磁盘命中零查源, 真发请求时才解析)。
  * - diskCache: `{AppFilesDirs.cacheDir}/image_cache` (Library/Caches 下, 系统可清理);
  *   memoryCache: 默认 maxSizePercent (与 android/desktop 的 Coil3 默认策略一致)。
  * - coverDecodeJs 封面解密: [SourceDecodeCacheStrategy] 在磁盘缓存写入前解密响应字节
@@ -142,8 +142,10 @@ internal val iosCoilImageLoader: ImageLoader by lazy { buildIosBookImageLoader()
 private fun buildIosBookImageLoader(): ImageLoader {
     return ImageLoader.Builder(PlatformContext.INSTANCE)
         .components {
-            // 防盗链 header + 解密落盘 + 网络层守卫: 同 android/desktop (SourceOriginHeaderFetcher 注入;
-            // SourceDecodeCacheStrategy 解密落盘对齐 Glide DATA; ImageGuardNetworkClient 拦截在磁盘查询后)。
+            // 防盗链 header + URL 重写 + 解密落盘 + 网络层守卫: 同 android/desktop (书源 header 与
+            // JS 改写后的 url 由 SourceHeaderNetworkClient 在 Coil3 磁盘查询之后注入;
+            // SourceDecodeCacheStrategy 解密落盘对齐 Glide DATA; ImageGuardNetworkClient 包最外层
+            // 按原始 url 拦 failUrls)。
             // 直接构 NetworkFetcher.Factory 包 NetworkClient (KtorNetworkFetcherFactory 不接受
             // NetworkClient), Ktor client 复用 NativeHttpProvider 的 KmpHttpClient 内部 client
             // (internal 字段同模块可见; lambda 惰性求值, ImageLoader 构建时不触发网络栈初始化)
@@ -154,16 +156,20 @@ private fun buildIosBookImageLoader(): ImageLoader {
             // 漫画页解码: 与 desktop 同源 (MangaPageCoil.kt), 预载与翻页共用同一条内存缓存
             add(MangaPageDecoder.Factory())
             add(
-                SourceOriginHeaderFetcher.Factory(
-                    coil3.network.NetworkFetcher.Factory(
-                        networkClient = {
-                            val ktorClient = requireNotNull(OkHttpClientProviders.get().okHttpClient.ktorClient) {
-                                "KmpHttpClient 未初始化 (需经 KmpHttpClientBuilder.build 创建)"
-                            }
-                            ImageGuardNetworkClient(ktorClient.asNetworkClient())
-                        },
-                        cacheStrategy = { SourceDecodeCacheStrategy },
-                    )
+                coil3.network.NetworkFetcher.Factory(
+                    networkClient = {
+                        val ktorClient = requireNotNull(OkHttpClientProviders.get().okHttpClient.ktorClient) {
+                            "KmpHttpClient 未初始化 (需经 KmpHttpClientBuilder.build 创建)"
+                        }
+                        ImageGuardNetworkClient(
+                            SourceHeaderNetworkClient(
+                                ktorClient.asNetworkClient(),
+                                ::resolveSourceRequest,
+                                keepCookieJarMarker = false,
+                            )
+                        )
+                    },
+                    cacheStrategy = { SourceDecodeCacheStrategy },
                 )
             )
         }

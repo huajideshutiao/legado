@@ -540,17 +540,34 @@ open class AnalyzeUrlCore(
     }
 
     /**
-     * 解析媒体直链: setCookie 后取真实 url + 请求头 (对应 app 端 `AnalyzeUrl.getMediaItem`)。
+     * 解析图片真实请求: setCookie 后取真实 url + 请求头 (对应原版 `AnalyzeUrl.getGlideUrl()`
+     * 的取值面 —— 原版即 `GlideUrl(url, GlideHeaders(headerMap))`, 同样保留 cookieJar 伪头,
+     * 该头由 OkHttp 端 CookieJar 桥拦截器摘除)。
      *
-     * 播放器只认裸 url, 故必须经本方法而非直接用 rawUrl —— 后者可能带 legado 的
-     * `url,{options}` 后缀 (已由 initUrl 拆成 [url] + [headerMap])。
-     * cookieJar 伪头只对 OkHttp 拦截器有意义, 直喂播放器会被当真请求头发出, 故剔除。
+     * 必须经本方法而非直接用 rawUrl: rawUrl 可能带 legado 的 `url,{options}` 后缀
+     * (已由 initUrl 拆成 [url] + [headerMap]), 且书源 header 规则 JS 可改写 url。
+     *
+     * 故意为 `internal` 不开 public: 本类 public 方法会被 app 端 `@JsApi` 分派表
+     * (JsApiProcessor.getAllFunctions 只收 public) 自动收进 JS 可见面, 违反本文件 KDoc 的
+     * 「方法名集合与原 AnalyzeUrl 完全一致 (零 diff)」约定; 唯一调用方 nonOhosUiMain 的
+     * `resolveSourceRequest` 同属 :shared 模块, internal 即可见。
+     *
+     * 返回**副本**可变 Map: 就地改写 (剔除伪头/proxy) 不会回写 [headerMap]; 调用方按需加工
+     * (剔除伪头见 [resolveMedia])。
+     */
+    internal fun resolveImageRequest(): Pair<String, MutableMap<String, String>> {
+        setCookie()
+        return url to LinkedHashMap(headerMap)
+    }
+
+    /**
+     * 解析媒体直链: [resolveImageRequest] 后剔除 cookieJar 伪头 (对应 app 端 `AnalyzeUrl.getMediaItem`)。
+     * 播放器只认裸 url + 真实请求头, 伪头直喂播放器会被当真请求头发出, 故剔除。
      */
     fun resolveMedia(): Pair<String, Map<String, String>> {
-        setCookie()
-        val headers = LinkedHashMap(headerMap)
+        val (mediaUrl, headers) = resolveImageRequest()
         headers.remove(cookieJarHeader)
-        return url to headers
+        return mediaUrl to headers
     }
 
     /**

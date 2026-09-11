@@ -40,8 +40,10 @@ import java.io.File
 internal val jvmBookImageLoader: ImageLoader by lazy {
     ImageLoader.Builder(PlatformContext.INSTANCE)
         .components {
-            // 防盗链 header + 解密落盘 + 网络层守卫: 同 androidMain (SourceOriginHeaderFetcher 注入;
-            // SourceDecodeCacheStrategy 解密落盘对齐 Glide DATA; ImageGuardNetworkClient 拦截在磁盘查询后)
+            // 防盗链 header + URL 重写 + 解密落盘 + 网络层守卫: 同 androidMain (书源 header 与
+            // JS 改写后的 url 由 SourceHeaderNetworkClient 在 Coil3 磁盘查询之后注入;
+            // SourceDecodeCacheStrategy 解密落盘对齐 Glide DATA; ImageGuardNetworkClient 包最外层
+            // 按原始 url 拦 failUrls)
             // 漫画页: 经图片缓存 + AnalyzeUrl 下载 + 解密取字节 (与 app 端同一条链路)
             add(MangaModelKeyer(), MangaModel::class)
             add(MangaModelFetcher.Factory())
@@ -49,14 +51,18 @@ internal val jvmBookImageLoader: ImageLoader by lazy {
             // MangaPageImage 进 Coil 内存缓存, 预载与翻页共用同一条缓存 (见 MangaPageCoil.kt)
             add(MangaPageDecoder.Factory())
             add(
-                SourceOriginHeaderFetcher.Factory(
-                    // 守卫网络客户端: 同 androidMain, failUrls 必须真正接进网络链路
-                    NetworkFetcher.Factory(
-                        networkClient = {
-                            ImageGuardNetworkClient(OkHttpClientProviders.get().okHttpClient.asNetworkClient())
-                        },
-                        cacheStrategy = { SourceDecodeCacheStrategy },
-                    )
+                // 守卫网络客户端: 同 androidMain, failUrls 必须真正接进网络链路
+                NetworkFetcher.Factory(
+                    networkClient = {
+                        ImageGuardNetworkClient(
+                            SourceHeaderNetworkClient(
+                                OkHttpClientProviders.get().okHttpClient.asNetworkClient(),
+                                ::resolveSourceRequest,
+                                keepCookieJarMarker = true,
+                            )
+                        )
+                    },
+                    cacheStrategy = { SourceDecodeCacheStrategy },
                 )
             )
         }
@@ -70,8 +76,9 @@ internal val jvmBookImageLoader: ImageLoader by lazy {
  * [BookImageLoader] 的桌面 JVM Coil3 实现。
  *
  * - ImageLoader 共用进程级 [jvmBookImageLoader] (fetcher/缓存配置见其 KDoc)
- * - 书源防盗链 header: 在 fetcher 层自动解析注入 (消费点 [loadImage] / AsyncImage 只传
- *   sourceOrigin, 缓存命中不解析, 取数据时跑 IO 线程), 对齐 app 端行为
+ * - 书源防盗链 header + header 规则 JS 改写后的 url: 在网络层自动解析注入 (消费点 [loadImage] /
+ *   AsyncImage 只传 sourceOrigin, 内存/磁盘命中零查源, 真发请求时跑 IO 线程解析),
+ *   对齐原版 Glide「磁盘命中不进 loadData」语义
  * - 成功结果转 [ImageBitmap] 回调 (Image.toBitmap → skia Bitmap.asComposeImageBitmap)
  *
  * 注册: desktop Main.kt 调用 [registerJvmBookImageLoader]。

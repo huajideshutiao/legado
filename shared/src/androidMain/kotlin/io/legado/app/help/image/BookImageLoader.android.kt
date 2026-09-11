@@ -32,10 +32,11 @@ import java.io.File
 /**
  * [BookImageLoader] 的 Android Coil3 实现。
  *
- * - ImageLoader 用 Coil3 + OkHttp 网络后端 (OkHttpNetworkFetcherFactory),
+ * - ImageLoader 用 Coil3 + OkHttp 网络后端 (手搜 NetworkFetcher.Factory; 网络链 ImageGuard→SourceHeader→OkHttp),
  *   OkHttpClient 走项目共享 [OkHttpClientProviders] (继承 CookieJar/限流/Cronet)。
- * - 书源防盗链 header: 在 fetcher 层自动解析注入 (对齐原 Glide OkHttpModelLoader:
- *   消费点 [loadImage] / AsyncImage 只传 sourceOrigin, 缓存命中不解析, 取数据时跑 IO 线程)。
+ * - 书源防盗链 header + header 规则 JS 改写后的 url: 在网络层自动解析注入 (对齐原版 Glide
+ *   「磁盘命中不进 loadData」: 消费点 [loadImage] / AsyncImage 只传 sourceOrigin,
+ *   内存/磁盘命中零查源, 只有真发请求时跑 IO 线程解析一次)。
  * - 成功结果转 [ImageBitmap] 回调 (Image.toBitmap → Bitmap.asImageBitmap)。
  *
  * 注册: app 端 App.onCreate 调用 [registerAndroidBookImageLoader]。
@@ -185,7 +186,7 @@ fun registerAndroidBookImageLoader(context: Context) {
 }
 
 /**
- * 构建共享 Coil3 ImageLoader (fetcher 层注册防盗链 header + 共享 OkHttpClient),
+ * 构建共享 Coil3 ImageLoader (网络层注入防盗链 header/URL + 共享 OkHttpClient),
  * 供 [AndroidBookImageLoader] 和 app 端 [coil3.SingletonImageLoader.Factory] 共用。
  *
  * app 端 AsyncImage 默认走 SingletonImageLoader, 需在 App.onCreate 设置 Factory 返回此 loader,
@@ -206,18 +207,25 @@ internal fun buildBookImageLoader(
     val sharedClient = OkHttpClientProviders.get().okHttpClient
     return ImageLoader.Builder(context)
         .components {
-            // 防盗链 header + 解密落盘 + 网络层守卫: SourceOriginHeaderFetcher 注入书源防盗链
-            // header; 磁盘缓存写入前由 [SourceDecodeCacheStrategy] 解密
-            // (对齐原版 Glide DiskCacheStrategy.DATA 缓存解密后字节的语义); failUrls
-            // 由 [ImageGuardNetworkClient] 在磁盘查询之后拦截 (缓存命中不受影响)
+            // 防盗链 header + URL 重写 + 解密落盘 + 网络层守卫: 书源 header 与 header 规则 JS
+            // 改写后的 url 由 [SourceHeaderNetworkClient] 在 Coil3 磁盘查询之后注入 (内存/磁盘命中
+            // 零查源, 对齐原版 Glide 「磁盘命中不进 loadData」); 落盘前由 [SourceDecodeCacheStrategy]
+            // 解密 (对齐原版 Glide DiskCacheStrategy.DATA 缓存解密后字节的语义); failUrls
+            // 由 [ImageGuardNetworkClient] 包在最外层按原始 url 拦截 (缓存命中不受影响)
             add(
-                SourceOriginHeaderFetcher.Factory(
-                    // 守卫网络客户端: failUrls 跳过 + 非 2xx 拉黑必须真正
-                    // 接进网络链路 (裸 callFactory 时两道守卫失效)
-                    NetworkFetcher.Factory(
-                        networkClient = { ImageGuardNetworkClient(sharedClient.asNetworkClient()) },
-                        cacheStrategy = { SourceDecodeCacheStrategy },
-                    )
+                // 守卫网络客户端: failUrls 跳过 + 非 2xx 拉黑必须真正
+                // 接进网络链路 (裸 callFactory 时两道守卫失效)
+                NetworkFetcher.Factory(
+                    networkClient = {
+                        ImageGuardNetworkClient(
+                            SourceHeaderNetworkClient(
+                                sharedClient.asNetworkClient(),
+                                ::resolveSourceRequest,
+                                keepCookieJarMarker = true,
+                            )
+                        )
+                    },
+                    cacheStrategy = { SourceDecodeCacheStrategy },
                 )
             )
             // 漫画页: 经 BookHelp 缓存 + AnalyzeUrl 下载 + 解密取字节 (裸 url 走不通防盗链/解密站点)
