@@ -623,8 +623,6 @@
     <string name="show_icon">Hiển thị biểu tượng</string>
     <string name="show_default_book_icon">Hiển thị biểu tượng sách mặc định</string>
     <string name="assists_key_config">Cấu hình phím phụ</string>
-    <string name="only_wifi">Chỉ WIFI</string>
-    <string name="only_wifi_summary">Chỉ tải bìa mạng khi có WIFI</string>
     <string name="sys_tts_config">Cài đặt TTS hệ thống</string>
     <string name="sys_tts_config_summary">Mở giao diện cài đặt TTS hệ thống</string>
     <string name="all_bookmark">Tất cả dấu trang</string>

@@ -223,7 +223,6 @@ object WebBookProvidersImpl :
     // 对照 AppConfig.isNightTheme 的 else 分支 (themeMode="0" 跟随系统)
     override val systemNightTheme: Boolean get() = sysConfiguration.isNightMode
     override val useDefaultCover: Boolean get() = AppConfig.useDefaultCover
-    override val loadCoverOnlyWifi: Boolean get() = AppConfig.loadCoverOnlyWifi
     override val coverDrawBookName: Boolean
         get() = if (AppConfig.isNightTheme) AppConfig.coverShowNameN else AppConfig.coverShowName
     override val coverDrawBookAuthor: Boolean

@@ -636,8 +636,6 @@
     <string name="show_icon">顯示圖示</string>
     <string name="show_default_book_icon">顯示預設書籍圖示</string>
     <string name="assists_key_config">輔助按鍵配置</string>
-    <string name="only_wifi">僅WIFI</string>
-    <string name="only_wifi_summary">僅在wifi下載入網路封面</string>
     <string name="sys_tts_config">系統tts設定</string>
     <string name="sys_tts_config_summary">打開系統tts設定介面</string>
     <string name="all_bookmark">所有書籤</string>

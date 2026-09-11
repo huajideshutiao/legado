@@ -13,16 +13,14 @@ import kotlin.time.ExperimentalTime
  * @ohos.net.connection 的 getDefaultNetSync / getConnectionPropertiesSync 仅 ArkTS API,
  * 经 [OhosNativeBridge] napi 桥同步查询 (NetworkBridgeHandler.ets):
  * - [isNetworkAvailable]: getDefaultNetSync 能取到默认网络句柄 (有可用网络)
- * - [isWifiConnect]: 连接属性 bearerType == BEARER_WIFI
  *
  * 降级策略 (与 iOS 端统一, 依据 Android actual): Android 侧拿不到 ConnectivityManager /
- * activeNetwork / NetworkCapabilities 时一律 `return false` (原版 `Context.isWifiConnect`
- * 的 `info?.isConnected == true` 同为 fail-closed), 故桥已就绪但查询/解析失败按 false;
+ * activeNetwork / NetworkCapabilities 时一律 `return false` (fail-closed),
+ * 故桥已就绪但查询/解析失败按 false;
  * 桥未接入时属"无查询能力", 同 desktop jvm 恒 true 放行, 保证 napi 未接入阶段行为不变。
  *
- * 短缓存: 书架网格每格封面加载都会查一次 (仅开"仅 WiFi 加载封面"时), 每格一次
- * napi 同步往返会串行排队在调用线程上; 3s TTL 让首屏只往返一次, 网络切换感知
- * 延迟可接受 (WiFi 下拦截本就不生效, 缓存命中无副作用)。
+ * 短缓存: napi 同步查询有跨语言往返开销 (调用线程上串行排队), 3s TTL 让
+ * 高频调用方 (如书架封面网格) 首屏只往返一次, 网络切换感知延迟可接受。
  */
 @Serializable
 private data class NetworkQueryResponse(
@@ -67,5 +65,3 @@ private fun queryNetwork(): NetworkQueryResponse? {
 private fun networkFallback(): Boolean = !OhosNativeBridge.isNetworkBridgeReady()
 
 actual fun isNetworkAvailable(): Boolean = queryNetwork()?.network ?: networkFallback()
-
-actual fun isWifiConnect(): Boolean = queryNetwork()?.wifi ?: networkFallback()

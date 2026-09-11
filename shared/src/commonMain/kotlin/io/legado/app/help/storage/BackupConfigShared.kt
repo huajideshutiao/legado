@@ -132,7 +132,6 @@ object BackupConfigShared {
 
     private val coverPrefKeys = arrayOf(
         PreferKey.useDefaultCover,
-        PreferKey.loadCoverOnlyWifi,
         PreferKey.coverShowName,
         PreferKey.coverShowAuthor,
         PreferKey.coverShowNameN,

@@ -233,7 +233,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val webDavDir by stringPref(PreferKey.webDavDir, "legado")
     val webDavDeviceName by stringPref(PreferKey.webDavDeviceName, Build.MODEL)
     val recordHeapDump by boolPref(PreferKey.recordHeapDump, false)
-    val loadCoverOnlyWifi by boolPref(PreferKey.loadCoverOnlyWifi, false)
     val showAddToShelfAlert by boolPref(PreferKey.showAddToShelfAlert, true)
     val coverShowName by boolPref(PreferKey.coverShowName, true)
     val coverShowNameN by boolPref(PreferKey.coverShowNameN, true)

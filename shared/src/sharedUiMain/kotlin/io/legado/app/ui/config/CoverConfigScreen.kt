@@ -23,8 +23,6 @@ import legado.shared.generated.resources.cover_show_name_summary
 import legado.shared.generated.resources.day
 import legado.shared.generated.resources.default_cover
 import legado.shared.generated.resources.night
-import legado.shared.generated.resources.only_wifi
-import legado.shared.generated.resources.only_wifi_summary
 import legado.shared.generated.resources.use_default_cover
 import legado.shared.generated.resources.use_default_cover_s
 import org.jetbrains.compose.resources.stringResource
@@ -64,8 +62,6 @@ fun CoverConfigScreen(
 
     // rememberString 须在 @Composable 上下文取值，LazyListScope 构建 lambda 内不可调用
     val titleCoverHeight = stringResource(Res.string.bookshelf_cover_height)
-    val titleOnlyWifi = stringResource(Res.string.only_wifi)
-    val summaryOnlyWifi = stringResource(Res.string.only_wifi_summary)
     val titleUseDefault = stringResource(Res.string.use_default_cover)
     val summaryUseDefault = stringResource(Res.string.use_default_cover_s)
     val labelDay = stringResource(Res.string.day)
@@ -82,12 +78,6 @@ fun CoverConfigScreen(
                 title = titleCoverHeight,
                 summary = coverHeightSummary,
                 onClick = onCoverHeight,
-            )
-            switchPreference(
-                prefKey = PreferKey.loadCoverOnlyWifi,
-                title = titleOnlyWifi,
-                summary = summaryOnlyWifi,
-                defaultValue = false,
             )
             switchPreference(
                 prefKey = PreferKey.useDefaultCover,

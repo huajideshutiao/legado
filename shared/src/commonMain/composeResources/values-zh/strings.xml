@@ -381,8 +381,6 @@
     <string name="default_cover">默认封面</string>
     <string name="default_home_page">默认主页</string>
     <string name="font_scale">字体大小</string>
-    <string name="only_wifi">仅 WiFi</string>
-    <string name="only_wifi_summary">仅在 WiFi 下加载网络封面</string>
     <string name="show_default_book_icon">显示默认书籍图标</string>
     <string name="use_default_cover">总是使用默认封面</string>
     <string name="use_default_cover_s">总是显示默认封面（不显示网络封面）</string>

@@ -1281,7 +1281,7 @@ object OhosNativeBridge {
     fun isPasteboardBridgeReady(): Boolean = synchronized(lock) { pasteboardTsfn != null }
 
     // ===== Network 同步桥 (tsfn + callback, 同 Pasteboard 模式) =====
-    // 网络状态查询 (isNetworkAvailable/isWifiConnect) 走 ArkTS @ohos.net.connection
+    // 网络状态查询 (isNetworkAvailable) 走 ArkTS @ohos.net.connection
     // (getDefaultNetSync + getConnectionPropertiesSync, 同步 API 但仅 ArkTS 侧可调),
     // 采用与 Pasteboard 完全一致的 "tsfn 发请求 + @CName 回调返回结果" 的同步等待模式:
     //

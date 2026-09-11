@@ -39,8 +39,6 @@ class DesktopAppConfigAccessor : AppConfigAccessor {
     private val themeModeCache = CachedPrefValue(prefs) { it.getString(PreferKey.themeMode, "0") }
     private val useDefaultCoverCache =
         CachedPrefValue(prefs) { it.getBoolean(PreferKey.useDefaultCover, false) }
-    private val loadCoverOnlyWifiCache =
-        CachedPrefValue(prefs) { it.getBoolean(PreferKey.loadCoverOnlyWifi, false) }
     private val coverShowNameCache = CachedPrefValue(prefs) {
         it.getBoolean(
             if (isNightTheme) PreferKey.coverShowNameN else PreferKey.coverShowName, true
@@ -119,7 +117,6 @@ class DesktopAppConfigAccessor : AppConfigAccessor {
     private fun refreshCached() {
         themeModeCache.refresh(prefs)
         useDefaultCoverCache.refresh(prefs)
-        loadCoverOnlyWifiCache.refresh(prefs)
         coverShowNameCache.refresh(prefs)
         coverShowAuthorCache.refresh(prefs)
         bookshelfSortCache.refresh(prefs)
@@ -336,8 +333,6 @@ class DesktopAppConfigAccessor : AppConfigAccessor {
 
     override val useDefaultCover: Boolean
         get() = useDefaultCoverCache.get()
-    override val loadCoverOnlyWifi: Boolean
-        get() = loadCoverOnlyWifiCache.get()
     override val coverDrawBookName: Boolean
         get() = coverShowNameCache.get()
     override val coverDrawBookAuthor: Boolean

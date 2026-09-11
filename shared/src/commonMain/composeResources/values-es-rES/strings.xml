@@ -620,8 +620,6 @@
     <string name="show_icon">显示图标</string>
     <string name="show_default_book_icon">显示默认书籍图标</string>
     <string name="assists_key_config">辅助按键配置</string>
-    <string name="only_wifi">仅WIFI</string>
-    <string name="only_wifi_summary">仅在wifi下加载网络封面</string>
     <string name="sys_tts_config">系统tts设置</string>
     <string name="sys_tts_config_summary">打开系统tts设置界面</string>
     <string name="all_bookmark">Todos los marcadores</string>
