@@ -124,9 +124,10 @@ fun BookSourceEditRoute(
     LaunchedEffect(sourceUrl) {
         // 空 url = 新建 (对照 app 端 intent 无 sourceUrl extra 时 getStringExtra 返回 null)
         screenModel.dispatch(BookSourceEditUiEvent.Init(sourceUrl.ifBlank { null }) {
-            screenModel.bookSource?.let { bs ->
-                applySourceToEditState(bs, editState)
-            }
+            // 无条件同步表单: 对照原版 `upSourceView(viewModel.bookSource)` —— bookSource 为 null
+            // (新建书源 / 按 url 查库未命中) 时原版同样按空 BookSource 默认值刷表单并刷列表。
+            // 早先写成 `?.let` 使这条路径下 sourceVersion 不自增, 整页字段停在 Init 前的空列表上
+            applySourceToEditState(screenModel.bookSource ?: BookSource(), editState)
         })
     }
 

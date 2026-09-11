@@ -370,8 +370,8 @@ data class FileFilter(
             extensions = listOf("png", "jpg", "jpeg", "gif", "webp", "bmp"),
         )
         val Text = FileFilter(
-            mimeTypes = listOf("text/*"),
-            extensions = listOf("txt", "log", "md", "json", "xml"),
+            mimeTypes = listOf("text/plain", "application/json"),
+            extensions = listOf("txt", "json"),
         )
     }
 }

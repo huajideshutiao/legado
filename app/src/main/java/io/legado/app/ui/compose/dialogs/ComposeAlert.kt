@@ -178,7 +178,9 @@ class AlertBuilder(val context: Context) {
                 autoFocus = autoFocus,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 8.dp),
+                    // 左右不叠加额外边距: AppAlertDialogContent 内容槽已给 spacingDefault(8dp),
+                    // 输入框与标题/正文同一边界 (再加 24dp 会让字段比正文多缩进 24dp)
+                    .padding(vertical = 8.dp),
             )
         }
         return { state.value }

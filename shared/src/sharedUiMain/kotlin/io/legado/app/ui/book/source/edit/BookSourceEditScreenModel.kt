@@ -1,5 +1,8 @@
 package io.legado.app.ui.book.source.edit
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
 import io.legado.app.constant.BookSourceType
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
@@ -44,6 +47,7 @@ class BookSourceEditScreenModel(
     val bookSource: BookSource? get() = shared.bookSource
 
     // 各 tab 实体列表 (对照 app 端 BookSourceEditActivity 的 ArrayList<EditEntity>)
+    // 普通 MutableList: clear+add 原地重建, 本身不参与快照观察, 重建信号由 [entitiesVersion] 下发
     private val sourceEntities = mutableListOf<EditEntity>()
     private val searchEntities = mutableListOf<EditEntity>()
     private val exploreEntities = mutableListOf<EditEntity>()
@@ -51,6 +55,16 @@ class BookSourceEditScreenModel(
     private val tocEntities = mutableListOf<EditEntity>()
     private val contentEntities = mutableListOf<EditEntity>()
     private val reviewEntities = mutableListOf<EditEntity>()
+
+    /**
+     * 实体列表代次 (Compose State): [upSourceView] 原地重建七个列表后自增。
+     *
+     * 实体列表是普通 MutableList, 组合期读取不构成订阅; 没有这个版本号, UI 就收不到
+     * "列表已重建"的信号 (原版 View 版对应 `adapter.notifyDataSetChanged()` 无条件刷新)。
+     * 读取点在 [editEntities] 内, 谁在组合期取列表谁就自动订阅。
+     */
+    var entitiesVersion by mutableIntStateOf(0)
+        private set
 
     // 图片样式选项 (对照 app 端 imageStyleSelections)
     // first 是展示名: "text_default" 为资源 key (对照 getString(R.string.text_default)),
@@ -93,15 +107,22 @@ class BookSourceEditScreenModel(
         }
     }
 
-    /** 按 tab 返回当前页实体列表 (对照 app 端 editEntities(tab))。 */
-    fun editEntities(tab: Int): List<EditEntity> = when (tab) {
-        1 -> searchEntities
-        2 -> exploreEntities
-        3 -> infoEntities
-        4 -> tocEntities
-        5 -> contentEntities
-        6 -> reviewEntities
-        else -> sourceEntities
+    /**
+     * 按 tab 返回当前页实体列表 (对照 app 端 editEntities(tab))。
+     *
+     * 组合期调用会订阅 [entitiesVersion]: 列表被 [upSourceView] 重建后, 取过列表的组合槽自动重组。
+     */
+    fun editEntities(tab: Int): List<EditEntity> {
+        entitiesVersion
+        return when (tab) {
+            1 -> searchEntities
+            2 -> exploreEntities
+            3 -> infoEntities
+            4 -> tocEntities
+            5 -> contentEntities
+            6 -> reviewEntities
+            else -> sourceEntities
+        }
     }
 
     /**
@@ -409,6 +430,8 @@ class BookSourceEditScreenModel(
             add(EditEntity("replyRule", rr.replyRule, "rule_reply"))
             add(EditEntity("deleteRule", rr.deleteRule, "rule_delete_review"))
         }
+        // 列表重建完成: 下发代次, 驱动取过实体的组合槽重组 (对齐原版 notifyDataSetChanged)
+        entitiesVersion++
     }
 }
 

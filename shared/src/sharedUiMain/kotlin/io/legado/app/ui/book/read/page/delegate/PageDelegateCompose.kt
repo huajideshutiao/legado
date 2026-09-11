@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
@@ -247,6 +248,13 @@ abstract class PageDelegateCompose(
             _currentOffset = value
             onAnimOffsetChanged(value)
         }
+        // 终点帧尽量先上屏再换页 (对齐原版帧序倾向): 原版 View 管线是先绘制后由 computeScroll
+        // 推进 Scroller, 动画结束判定发生在终点帧已上屏之后, onAnimStop 换页在静止画面
+        // 上执行; Animatable.animateTo 相反 —— 返回时终点值尚未渲染, 同步换页会让换页
+        // 重组抢在终点帧之前, 终点帧被吞 (观感: 动画停在后段随后瞬间跳变换页)。
+        // 等一帧给终点值一个上屏机会再换页 (尽力而为: withFrameNanos 在帧回调起点恢复,
+        // 不严格保证终点帧已完成上屏); 换页后当前页内容与终点帧一致, 无可见跳变。
+        withFrameNanos { }
         onAnimStop()
     }
 
