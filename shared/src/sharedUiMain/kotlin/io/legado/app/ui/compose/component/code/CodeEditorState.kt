@@ -112,13 +112,19 @@ class CodeEditorState(initial: String) {
         textFieldState.edit(block)
     }
 
-    /** 光标/选区处插入 (键盘辅助条 sendText), 可撤销 */
+    /** 光标/选区处插入 (键盘辅助条 sendText), 可撤销; 含 "#in" 占位符时剔除并定位光标 (对齐原版 InputFilter) */
     fun insertAtCursor(insert: String) = edit {
         val start = selection.min
         val end = selection.max
-        replace(start, end, insert)
-        // 光标落到插入文本之后 (对齐旧 insertAtCursor 的 TextRange(start + insert.length))
-        selection = TextRange(start + insert.length)
+        if (insert.contains("#in")) {
+            replace(start, end, insert.replace("#in", ""))
+            // 光标定位到首个占位符起点 (对齐原版 InputFilter 的 setSelection(dStart + indexOf("#in") - start))
+            selection = TextRange(start + insert.indexOf("#in"))
+        } else {
+            replace(start, end, insert)
+            // 光标落到插入文本之后 (对齐旧 insertAtCursor 的 TextRange(start + insert.length))
+            selection = TextRange(start + insert.length)
+        }
     }
 
     @OptIn(ExperimentalFoundationApi::class)
