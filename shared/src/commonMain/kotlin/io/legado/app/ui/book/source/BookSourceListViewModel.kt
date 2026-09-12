@@ -127,6 +127,8 @@ class BookSourceListViewModel(
     fun update(vararg bookSource: BookSource) {
         Coroutine.async(scope = scope) {
             AppDbProviders.get().bookSourceDao.update(*bookSource)
+            // 整行重写: 失效封面链路的源短时缓存
+            bookSource.forEach { SourceHelp.evict(it.bookSourceUrl) }
         }
     }
 

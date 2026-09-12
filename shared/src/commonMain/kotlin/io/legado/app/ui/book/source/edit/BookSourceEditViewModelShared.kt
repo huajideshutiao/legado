@@ -148,6 +148,8 @@ class BookSourceEditViewModelShared(
                 }
             }
             appDb.bookSourceDao.insert(source)
+            // 书源行已重写: 封面链路的短时源缓存必须同步失效 (header / coverDecodeJs 可能已变)
+            SourceHelp.evict(source.bookSourceUrl)
             bookSource = source
             source
         }.onSuccess {

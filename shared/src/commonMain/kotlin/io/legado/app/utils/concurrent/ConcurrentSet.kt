@@ -8,14 +8,15 @@ package io.legado.app.utils.concurrent
  * `java.util.concurrent.ConcurrentHashMap` 在 Kotlin/Native iOS target 不可用,
  * 阻塞 iOS 编译, 故抽出 expect/actual。
  *
- * 各平台 actual 实现策略:
- * - jvm/android: 仍用 `ConcurrentHashMap.newKeySet()`, 保持线程安全 (与原实现完全一致)。
- * - iOS/鸿蒙: Kotlin/Native 单线程 STM, `Collections.synchronizedSet` 不可用,
- *   直接返回 `mutableSetOf()` (Kotlin/Native 默认线程安全模型)。
+ * 各平台 actual 实现策略: 两端**都是真线程安全**:
+ * - jvm/android: 直接委托 `ConcurrentHashMap.newKeySet()`。
+ * - iOS/鸿蒙 (nativeMain): 用 atomicfu [kotlinx.atomicfu.locks.SynchronizedObject] 包一层,
+ *   **每个操作 (含 contains/size/iterator) 都进同一把实例锁**; 迭代面返回快照副本。
  *
- * 注意: 在 Kotlin/Native 上, 跨线程访问 mutableSetOf 仍需手动同步
- * (推荐 kotlinx.atomicfu)。此处仅作为编译期兼容,
- * 调用方应避免在 Kotlin/Native 上跨线程访问。
+ * 历史注记: 本段旧文字曾写"Kotlin/Native 单线程 STM, 直接返回 mutableSetOf()"。
+ * 该前提已不成立 (IoDispatcher 的 native actual 是 Dispatchers.Default 线程池),
+ * 实现已改为加锁包装; 本工厂是"每读一锁", 读密的热路径请改走
+ * [io.legado.app.help.casUpdate] 的不可变快照。
  *
  * @param T Set 元素类型
  * @return 平台适当的可变 Set

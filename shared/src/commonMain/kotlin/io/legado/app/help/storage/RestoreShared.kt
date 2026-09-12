@@ -22,6 +22,7 @@ import io.legado.app.data.entities.toBookSource
 import io.legado.app.help.DirectLinkUploadStoreProviders
 import io.legado.app.help.HomeTabHelpShared
 import io.legado.app.help.PinnedExploreHelp
+import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.upType
 import io.legado.app.help.config.PreferenceProviders
@@ -154,9 +155,12 @@ object RestoreShared {
         }
         fileToListT<BookSource>(path, "bookSource.json")?.let {
             appDb.bookSourceDao.insert(*it.toTypedArray())
+            // 恢复备份 REPLACE 整批书源行: 全量失效源缓存
+            SourceHelp.evictAll()
         }
         fileToListT<OldRssSource>(path, "rssSources.json")?.let {
             appDb.bookSourceDao.insert(*it.map { old -> old.toBookSource() }.toTypedArray())
+            SourceHelp.evictAll()
         }
         fileToListT<ReplaceRule>(path, "replaceRule.json")?.let {
             appDb.replaceRuleDao.insert(*it.toTypedArray())

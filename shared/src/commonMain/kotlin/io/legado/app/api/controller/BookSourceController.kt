@@ -48,6 +48,8 @@ object BookSourceController {
                 returnData.setErrorMsg("源名称和URL不能为空")
             } else {
                 AppDbProviders.get().bookSourceDao.insert(bookSource)
+                // WebApi 改源后失效封面链路源缓存
+                SourceHelp.evict(bookSource.bookSourceUrl)
                 returnData.setData("")
             }
         } else {
@@ -68,6 +70,7 @@ object BookSourceController {
                 && bookSource.bookSourceUrl.isNotBlank()
             ) {
                 AppDbProviders.get().bookSourceDao.insert(bookSource)
+                SourceHelp.evict(bookSource.bookSourceUrl)
                 okSources.add(bookSource)
             }
         }

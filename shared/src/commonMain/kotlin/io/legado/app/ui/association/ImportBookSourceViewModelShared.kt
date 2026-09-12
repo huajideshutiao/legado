@@ -167,6 +167,8 @@ class ImportBookSourceViewModelShared(
                 }
             }
             appDb.bookSourceDao.insert(*selectSource.toTypedArray())
+            // 批量导入会 REPLACE 已有书源行: 失效封面链路的源短时缓存
+            SourceHelp.evictAll()
             Coroutine.async {
                 SourceHelp.adjustSortNumber()
             }
