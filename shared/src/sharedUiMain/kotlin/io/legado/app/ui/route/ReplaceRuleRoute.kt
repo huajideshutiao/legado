@@ -46,6 +46,7 @@ import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.FileFilter
 import io.legado.app.ui.root.PlatformServiceProviders
+import io.legado.app.ui.root.pushExportDispatch
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.widget.dialog.HelpDialog
@@ -144,16 +145,11 @@ fun ReplaceRuleRoute(
         onHelp = { showHelp = true },
         onGroupManage = { showGroupManage = true },
         onExport = { rules ->
-            val services = PlatformServiceProviders.get()
-            scope.launch {
-                val path = withContext(IoDispatcher) {
-                    services.files.saveFile("exportReplaceRule.json")
-                } ?: return@launch
-                withContext(IoDispatcher) {
-                    BackupFileOps.writeText(path, GSON.toJson(rules))
-                }
-                Toasters.get().toast("导出成功")
-            }
+            pushExportDispatch(
+                fileName = "exportReplaceRule.json",
+                content = GSON.toJson(rules),
+                contentType = "application/json",
+            )
         },
     )
 

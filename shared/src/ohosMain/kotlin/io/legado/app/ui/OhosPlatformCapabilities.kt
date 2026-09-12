@@ -1,9 +1,11 @@
 package io.legado.app.ui
 
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSourcePart
+import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.copyToClipboard as copyTextToClipboard
@@ -11,6 +13,7 @@ import io.legado.app.help.readFromClipboard
 import io.legado.app.help.openURL
 import io.legado.app.help.source.OhosCheckSource
 import io.legado.app.help.toast.Toasters
+import io.legado.app.help.upLoadToDirectLink
 import io.legado.app.model.Debug
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.ui.book.import.ImportFileItem
@@ -70,6 +73,26 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
 
     // 读系统剪贴板 (对照原版 ContextExtensions getClipText: 主题导入/规则粘贴等 7 场景)
     override fun getClipboardText(): String? = readFromClipboard()
+
+    /**
+     * 导出分发「上传 URL」: 走 nativeMain 下沉的 [upLoadToDirectLink] (对照 app 端
+     * `DirectLinkUpload.upLoad`)。失败路径也必须回调 (传 null) —— 导出对话框的防重复
+     * 点击标志靠这一次回调解开, 不回调就是整个对话框永久点不动。
+     */
+    override fun upLoadFile(
+        fileName: String,
+        file: Any,
+        contentType: String,
+        onResult: (String?) -> Unit,
+    ) {
+        Coroutine.async { upLoadToDirectLink(fileName, file, contentType) }
+            .onSuccess { onResult(it) }
+            .onError { error ->
+                AppLog.put("上传文件失败\n${error.message}", error)
+                Toasters.get().toast("上传文件失败\n${error.message}")
+                onResult(null)
+            }
+    }
 
     // 按 bookUrl 查 DB 解析 BookRef, 供 deep link / 文件关联的路由导航
     override suspend fun resolveBookRef(bookUrl: String): BookRef? =

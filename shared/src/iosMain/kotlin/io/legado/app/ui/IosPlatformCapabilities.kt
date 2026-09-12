@@ -12,6 +12,7 @@ import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.help.book.toShelfJsonMap
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.file.exportFile
 import io.legado.app.help.file.pickDirectory as pickDirectoryDocument
 import io.legado.app.help.openURL
@@ -19,6 +20,7 @@ import io.legado.app.help.copyToClipboard as copyTextToClipboard
 import io.legado.app.help.readFromClipboard
 import io.legado.app.help.toast.Toasters
 import io.legado.app.help.topMostViewController
+import io.legado.app.help.upLoadToDirectLink
 import io.legado.app.model.CheckSourceShared
 import io.legado.app.model.Debug
 import io.legado.app.ui.book.import.ImportFileItem
@@ -136,6 +138,26 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
 
     // 读系统剪贴板 (对照原版 ContextExtensions getClipText: 主题导入/规则粘贴等 7 场景)
     override fun getClipboardText(): String? = readFromClipboard()
+
+    /**
+     * 导出分发「上传 URL」: 走 nativeMain 下沉的 [upLoadToDirectLink] (对照 app 端
+     * `DirectLinkUpload.upLoad`)。失败路径也必须回调 (传 null) —— 导出对话框的防重复
+     * 点击标志靠这一次回调解开, 不回调就是整个对话框永久点不动。
+     */
+    override fun upLoadFile(
+        fileName: String,
+        file: Any,
+        contentType: String,
+        onResult: (String?) -> Unit,
+    ) {
+        Coroutine.async { upLoadToDirectLink(fileName, file, contentType) }
+            .onSuccess { onResult(it) }
+            .onError { error ->
+                AppLog.put("上传文件失败\n${error.message}", error)
+                Toasters.get().toast("上传文件失败\n${error.message}")
+                onResult(null)
+            }
+    }
 
     // 完整分发链 (压缩包/JSON 一键导入/书籍文件) 见 FileAssociationDispatch, 四端共用
     override fun openImportFile(filePath: String) {

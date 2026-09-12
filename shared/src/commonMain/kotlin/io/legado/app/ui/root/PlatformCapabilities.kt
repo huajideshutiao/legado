@@ -137,6 +137,11 @@ interface PlatformCapabilities {
 
     fun getClipboardText(): String? = null
 
+    // 导出分发: 上传文件到直链上传规则接口并解析直链 (对照 app 端 HandleFileViewModel.upload → DirectLinkUpload.upLoad)
+    // onResult 传 null 表失败 (失败提示由实现内 toast, 对照原版 errorLiveData → toastOnUi)
+    fun upLoadFile(fileName: String, file: Any, contentType: String, onResult: (String?) -> Unit) =
+        unsupported("上传文件")
+
     fun testDirectLinkUpload(
         rule: DirectLinkUploadRule,
         onSuccess: (String) -> Unit,

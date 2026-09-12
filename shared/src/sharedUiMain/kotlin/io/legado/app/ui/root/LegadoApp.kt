@@ -1008,6 +1008,10 @@ private fun DialogOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavig
         "sourceFilterRuleExport" ->
             RuleExportDialogContent(overlay, navigator, "exportSourceFilterRule.json")
 
+        // 导出分发 (上传 URL / 保存到文件, 对照 app 端 HandleFileContract.EXPORT) + 导出成功
+        "exportDispatch" -> ExportDispatchDialogContent(overlay, navigator)
+        "exportSuccess" -> ExportSuccessDialogContent(overlay, navigator)
+
         else -> FallbackDialogContent(overlay, navigator)
     }
 }

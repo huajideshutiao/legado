@@ -409,6 +409,25 @@ class AndroidPlatformCapabilities(
 
     override fun readerBackgroundImageNames(): List<String> = RemoteAssetsUtils.getBgList()
 
+    override fun upLoadFile(
+        fileName: String,
+        file: Any,
+        contentType: String,
+        onResult: (String?) -> Unit
+    ) {
+        activity.lifecycleScope.launch(IO) {
+            runCatching {
+                DirectLinkUpload.upLoad(fileName, file, contentType)
+            }.onSuccess { url ->
+                withContext(kotlinx.coroutines.Dispatchers.Main) { onResult(url) }
+            }.onFailure { error ->
+                AppLog.put("上传文件失败\n${error.localizedMessage}", error)
+                activity.toastOnUi(error.localizedMessage ?: error.toString())
+                withContext(kotlinx.coroutines.Dispatchers.Main) { onResult(null) }
+            }
+        }
+    }
+
     override fun testDirectLinkUpload(
         rule: io.legado.app.help.DirectLinkUploadRule,
         onSuccess: (String) -> Unit,

@@ -38,6 +38,8 @@ import io.legado.app.ui.root.SharedPlatformCapabilities
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.RouteTransitionSpec
+import io.legado.app.ui.root.pushExportDispatch
+import io.legado.app.utils.cnCompare
 import io.legado.app.ui.root.TransitionEasing
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.GSON
@@ -315,6 +317,27 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
         }
     }
 
+    override fun upLoadFile(
+        fileName: String,
+        file: Any,
+        contentType: String,
+        onResult: (String?) -> Unit
+    ) {
+        scope.launch {
+            runCatching {
+                io.legado.desktop.help.DesktopDirectLinkUpload.upLoad(
+                    fileName, file, contentType
+                )
+            }.onSuccess { url ->
+                withContext(Dispatchers.Main) { onResult(url) }
+            }.onFailure { error ->
+                AppLog.put("上传文件失败\n${error.message}", error)
+                Toasters.get().toast("上传文件失败\n${error.message}")
+                withContext(Dispatchers.Main) { onResult(null) }
+            }
+        }
+    }
+
     // 按 bookUrl 查 DB 解析 BookRef, 供 deep link / 文件关联的路由导航
     override suspend fun resolveBookRef(bookUrl: String): BookRef? =
         appDb.bookDao.getBook(bookUrl)?.toRouteRef()
@@ -474,7 +497,10 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
                 Toasters.get().toast("导出所用书源失败\n${it.message}")
                 return@launch
             }
-            saveJsonToPickedFile("bookSource.json", GSON.toJson(sources))
+            val json = GSON.toJson(sources)
+            withContext(Dispatchers.Main) {
+                pushExportDispatch("bookSource.json", json, "application/json")
+            }
         }
     }
 
@@ -484,7 +510,8 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
             Toasters.get().toast("书籍不能为空")
             return
         }
-        scope.launch { saveJsonToPickedFile("bookshelf.json", GSON.toJson(books.map { it.toShelfJsonMap() })) }
+        val json = GSON.toJson(books.map { it.toShelfJsonMap() })
+        pushExportDispatch("bookshelf.json", json, "application/json")
     }
 
     // 导出书籍正文, 格式取导出配置 (0=txt 1=epub, 对照 app 端 AppConfig.exportType;
@@ -640,9 +667,12 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
         sortAscending: Boolean,
         sort: BookSourceSort
     ) {
+        if (selection.isEmpty()) return
         scope.launch {
-            val json = selectedSourcesJson(selection) ?: return@launch
-            saveJsonToPickedFile("bookSource.json", json)
+            val json = selectedSourcesJson(selection, sortAscending, sort) ?: return@launch
+            withContext(Dispatchers.Main) {
+                pushExportDispatch("bookSource.json", json, "application/json")
+            }
         }
     }
 
@@ -655,7 +685,7 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
         sort: BookSourceSort
     ) {
         scope.launch {
-            val json = selectedSourcesJson(selection) ?: return@launch
+            val json = selectedSourcesJson(selection, sortAscending, sort) ?: return@launch
             val dir = File(DataStorageProviders.get().userExportDir).apply { mkdirs() }
             val file = File(dir, "shareBookSource.json")
             runCatching { file.writeText(json, Charsets.UTF_8) }
@@ -850,30 +880,37 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
         File(bookUrl)
     }
 
-    /** 选中书源转 JSON (选中率>=100% 时按当前排序取全量, 与 app 端 saveToFile 的 3 分支等价简化)。 */
-    private suspend fun selectedSourcesJson(selection: List<BookSourcePart>): String? {
+    /** 选中书源转 JSON, 按当前界面排序规则对齐 (对照 app 端 saveToFile + getBookSources)。 */
+    private suspend fun selectedSourcesJson(
+        selection: List<BookSourcePart>,
+        sortAscending: Boolean = true,
+        sort: BookSourceSort = BookSourceSort.Default
+    ): String? {
         val urls = selection.map { it.bookSourceUrl }
-        val sources = runCatching { appDb.bookSourceDao.getBookSourcesFix(urls) }.getOrElse {
+        val rawSources = runCatching { appDb.bookSourceDao.getBookSourcesFix(urls) }.getOrElse {
             Toasters.get().toast("导出书源失败\n${it.message}")
             return null
         }
+        val sorted = when (sort) {
+            BookSourceSort.Weight -> rawSources.sortedBy { it.weight }
+            BookSourceSort.Name -> rawSources.sortedWith { o1, o2 ->
+                o1.bookSourceName.cnCompare(o2.bookSourceName)
+            }
+            BookSourceSort.Url -> rawSources.sortedBy { it.bookSourceUrl }
+            BookSourceSort.Update -> rawSources.sortedByDescending { it.lastUpdateTime }
+            BookSourceSort.Respond -> rawSources.sortedBy { it.respondTime }
+            BookSourceSort.Enable -> rawSources.sortedWith { o1, o2 ->
+                var sortNum = -o1.enabled.compareTo(o2.enabled)
+                if (sortNum == 0) sortNum = o1.weight.compareTo(o2.weight)
+                if (sortNum == 0) sortNum = o1.bookSourceName.cnCompare(o2.bookSourceName)
+                sortNum
+            }
+            else -> rawSources
+        }
+        val sources = if (sortAscending) sorted else sorted.reversed()
         // 对照 app 端: 导出前强制关闭危险 API 开关
         sources.forEach { if (it.enableDangerousApi == true) it.enableDangerousApi = false }
         return GSON.toJson(sources)
-    }
-
-    private fun saveJsonToPickedFile(defaultName: String, json: String) {
-        val file = FileDialogs.pickSaveFile(
-            defaultName = defaultName,
-            extensions = listOf("json"),
-            extensionDesc = "JSON",
-            initialDir = runCatching {
-                File(DataStorageProviders.get().userExportDir).apply { mkdirs() }
-            }.getOrNull()?.takeIf { it.isDirectory },
-        ) ?: return
-        runCatching { file.writeText(json, Charsets.UTF_8) }
-            .onSuccess { Toasters.get().toast("已导出到 ${file.absolutePath}") }
-            .onFailure { Toasters.get().toast("导出失败\n${it.message}") }
     }
 
     /** 书架导出字段 (与 app 端 exportBookshelf 的 13 个字段一致)。 */

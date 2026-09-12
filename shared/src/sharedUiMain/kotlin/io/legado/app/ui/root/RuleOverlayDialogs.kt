@@ -41,7 +41,6 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
-import legado.shared.generated.resources.export_success
 import legado.shared.generated.resources.import_dict_rule
 import legado.shared.generated.resources.import_source_filter_rule
 import legado.shared.generated.resources.import_txt_toc_rule
@@ -288,7 +287,7 @@ private fun RuleImportDialogContent(
 }
 
 /**
- * 规则导出 (key="*Export", payload=选中规则 JSON): 选保存路径后写文件。
+ * 规则导出 (key="*Export", payload=选中规则 JSON): 弹导出分发框 (上传 URL / 保存到文件)。
  * 对照 app 端 `exportResult.launch { mode = EXPORT; fileData = ... }` + showExportSuccess。
  */
 @Composable
@@ -298,17 +297,12 @@ internal fun RuleExportDialogContent(
     fileName: String,
 ) {
     val json = overlay.payload.orEmpty()
-    val successText = stringResource(Res.string.export_success)
-    LaunchedEffect(overlay.key) {
-        val path = withContext(IoDispatcher) {
-            PlatformServiceProviders.get().files.saveFile(fileName)
-        }
-        if (path != null) {
-            withContext(IoDispatcher) { BackupFileOps.writeText(path, json) }
-            Toasters.get().toast(successText)
-        }
-        navigator.dismissOverlay(overlay.key)
-    }
+    ExportDispatchDialog(
+        fileName = fileName,
+        content = json,
+        contentType = "application/json",
+        onDismiss = { navigator.dismissOverlay(overlay.key) },
+    )
 }
 
 /** 各规则类型的在线导入历史 key (与 app 端 Activity 内常量一致)。 */
