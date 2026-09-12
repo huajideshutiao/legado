@@ -791,7 +791,7 @@ fun ResolutionButton(
             title = { Text(stringResource(Res.string.resolution)) },
             text = {
                 // 单选列表 (对照 app 端 VideoPlayActivity.showResolutionDialog 的 singleChoiceItems 交互;
-                // 样式为 Compose 近似: 24/12 padding + 12 间距 + selectable(role=RadioButton) + 16sp weight)
+                // 条目不叠加额外 padding, 由 AlertDialog text 槽位及组件原生尺寸承载)
                 Column {
                     resolutions.forEachIndexed { index, resolution ->
                         Row(
@@ -806,8 +806,7 @@ fun ResolutionButton(
                                             onSwitchResolution(index)
                                         }
                                     },
-                                )
-                                .padding(horizontal = 24.dp, vertical = 12.dp),
+                                ),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
