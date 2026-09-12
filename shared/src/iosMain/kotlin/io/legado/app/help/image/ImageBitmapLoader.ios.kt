@@ -14,8 +14,6 @@ import io.legado.app.utils.ImageUtils
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsBytes
 import io.ktor.http.isSuccess
-import kotlinx.atomicfu.locks.SynchronizedObject
-import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.Color
@@ -24,20 +22,18 @@ import org.jetbrains.skia.Surface
 import org.jetbrains.skia.svg.SVGDOM
 import org.jetbrains.skia.svg.SVGLengthContext
 
-/** 失败 url 进程级跳过表 (对照原版 Glide OkHttpStreamFetcher.companion failUrl: 非 2xx/解密失败进表)。
- * key 带书源维度 (origin+url): 不同书源同 URL 互不影响, 换源/无源→有源切换后不再被
- * 旧失败记录拦截可重新加载; 无书源 (裸 GET) 时 key 即 url, 保持原死链跳过语义。 */
-private val iosFailUrlsLock = SynchronizedObject()
-private val iosFailUrls = HashSet<String>()
-
+/** 失败 url 跳过表已收敛至共用的 [isImageLoadFailed] / [markImageLoadFailed]
+ * (带 TTL + 容量上界, 修原版 failUrl 永久拉黑 + 无界增长问题)。
+ * key 仍带书源维度 (origin+url): 不同书源同 URL 互不影响, 换源/无源→有源切换后
+ * 不再被旧失败记录拦截可重新加载; 无书源 (裸 GET) 时 key 即 url。 */
 private fun iosFailKey(origin: String?, url: String): String =
     if (origin.isNullOrEmpty()) url else "$origin\u0000$url"
 
 private fun isIosFailUrl(origin: String?, url: String): Boolean =
-    synchronized(iosFailUrlsLock) { iosFailUrls.contains(iosFailKey(origin, url)) }
+    isImageLoadFailed(iosFailKey(origin, url))
 
 private fun markIosFailUrl(origin: String?, url: String) {
-    synchronized(iosFailUrlsLock) { iosFailUrls.add(iosFailKey(origin, url)) }
+    markImageLoadFailed(iosFailKey(origin, url))
 }
 
 /**
@@ -55,7 +51,7 @@ private fun markIosFailUrl(origin: String?, url: String) {
  * # 双链路设计 (2026-08 拍板, 对齐 jvm/android)
  *
  * 正文图/图片预览/字节消费方走本自下载链路 ([ImageBytesCache] 独立缓存, 与其他图片隔离);
- * 书架封面等常规组件仍走 Coil3 共享管线 (BookImageLoader.ios → SourceDecodeCacheStrategy,
+ * 书架封面等常规组件仍走 Coil3 共享管线 (BookImageLoader.ios → SourceHeaderNetworkClient,
  * 磁盘缓存 + 防盗链), 两条链路互不共享缓存, 正文图缓存不受封面换源/重试影响。
  *
  * 失败: 返回 null (调用方负责占位/日志)。

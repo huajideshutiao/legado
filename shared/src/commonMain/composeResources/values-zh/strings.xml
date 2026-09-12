@@ -326,6 +326,10 @@
     <string name="bitmap_cache_size">图片绘制缓存</string>
     <string name="clear_cache">清理缓存</string>
     <string name="clear_cache_summary">清除已下载书籍和字体缓存</string>
+    <string name="clear_cover_cache">清除封面缓存</string>
+    <string name="clear_cover_cache_summary">封面存在受保护分区，“清除缓存”与系统清缓存都不会动它。仅在封面占用过大、或需要让所有封面重新下载时使用。</string>
+    <string name="clear_cover_cache_success">封面缓存已清除</string>
+    <string name="clear_cover_cache_failed">清除失败：图片加载器未就绪</string>
     <string name="clear_webview_data">清除 WebView 数据</string>
     <string name="clear_webview_data_summary">清除内置浏览器所有数据</string>
     <string name="shrink_database">压缩数据库</string>
@@ -1714,4 +1718,5 @@ Windows: winget install shinchiro.mpv 或 scoop install mpv,
         <item>字典规则</item>
         <item>TTS</item>
     </string-array>
+    <string name="save_to_file">保存到文件</string>
 </resources>

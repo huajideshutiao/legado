@@ -56,6 +56,7 @@ import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.image.BookImageLoaders
+import io.legado.app.help.image.DecodedBitmapCache
 import io.legado.app.model.BookCoverShared
 import io.legado.app.model.BookCoverShared.CoverRatio
 import io.legado.app.model.BookCoverShared.DefaultCoverEntry
@@ -70,6 +71,7 @@ import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.ui.root.LocalBookListActive
 import io.legado.app.utils.FlowBus
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -621,8 +623,12 @@ internal fun DefaultBookshelfActions(
  * 默认封面链对齐 app 端 `BookCover.newDefaultDrawable`: 用户图集非空时按 seed (书名, 无则封面
  * 路径) 稳定选一张烘焙图, 读缓存产物/图集原图 (见 [io.legado.app.model.defaultCoverDisplayPath]); 图集为空回落内置
  * `image_cover_default` (.9 图当普通图拉伸)。竖排书名/作者 overlay 只画在默认封面上,
- * 对照原版 `defaultCover=true` 才 drawNameAuthor。网络封面加载期间也先铺该默认封面作占位
- * (对照原 View 版的 Coil placeholder), 成功后覆盖为真实封面。
+ * 对照原版 `defaultCover=true` 才 drawNameAuthor。网络封面加载期间先铺该默认封面作占位,
+ * 占位与真封面并发发起, 真封面命中缓存时同帧覆盖不闪占位。
+ *
+ * 占位位图经 [DecodedBitmapCache] 跨条目共享 (命中即 O(1)): 原版 `BookCover.load` 只在
+ * `.error()` 兜底、加载期间不铺默认封面, 本端保留占位是为了消除加载期空白, 但不再为占位
+ * 重复走图片管线。
  *
  * 高度按 [isVideoCover] 选 16:9 / 3:4 由宽度自动算出 (对齐原 View 版 onMeasure 按 coverRatio
  * 自适应, 不再硬编码 160dp)。
@@ -656,42 +662,46 @@ fun SharedBookCover(
         val decodeSize = firstValidCoverDecodeSize(displaySize)
         val ratio = if (isVideoCover) CoverRatio.VIDEO else CoverRatio.NOVEL
 
-        // 默认封面链要读 prefs + 解 JSON (解析已按 raw 串记忆化), 挪到协程内真用得上时再算
-        suspend fun loadDefault() {
+        // 默认封面链要读 prefs + 解 JSON (解析已按 raw 串记忆化), 挪到协程内真用得上时再算。
+        // 解码结果进 [DecodedBitmapCache] 跨条目共享: 旧实现每条封面都完整跑一遍图片管线解
+        // 一张占位图 (真封面已命中内存缓存时也要先解占位), 首屏/滚动的请求与解码开销翻倍。
+        suspend fun defaultState(): CoverBitmap {
             // 渲染需知 ninePatch 标记, 走 entry 版选图 (defaultCoverFilePath 保留给 AudioPlay 等调用)
             val entry = defaultCoverEntry(
                 seed = book.name.takeIf { it.isNotBlank() } ?: cover,
                 ratio = ratio,
+            ) ?: return NoCoverBitmap
+            val path = defaultCoverDisplayPath(entry, ratio)
+            // reloadTick 并入 key: 封面重载信号变了不得复用旧位图 (重烘焙/换图集后路径可能不变)
+            val key = DecodedBitmapCache.cacheKey(
+                "$path#$reloadTick", null, isCover = true,
+                widthPx = decodeSize.width, heightPx = decodeSize.height,
             )
-            if (entry == null) {
-                coverState = NoCoverBitmap
-                return
-            }
-            val bmp = loader.loadImageOrNull(
-                defaultCoverDisplayPath(entry, ratio), null,
-                decodeSize.width, decodeSize.height,
-            )
-            coverState = if (bmp == null) NoCoverBitmap else CoverBitmap(bmp, true, entry.ninePatch)
+            DecodedBitmapCache.get(key)?.let { return CoverBitmap(it, true, entry.ninePatch) }
+            val bmp = loader.loadImageOrNull(path, null, decodeSize.width, decodeSize.height)
+                ?: return NoCoverBitmap
+            DecodedBitmapCache.put(key, bmp)
+            return CoverBitmap(bmp, true, entry.ninePatch)
         }
         if (useDefaultCover || cover.isNullOrBlank()) {
-            loadDefault()
+            coverState = defaultState()
             return@LaunchedEffect
         }
-        // 网络加载期间先铺按 seed 选中的图集默认封面作占位 (对照 View 版的 Coil
-        // placeholder), 成功后覆盖为真实封面; 失败时保持默认封面不变
-        loadDefault()
-        val bmp = if (book.isNotShelf) {
-            // 非书架书 (搜索/发现/主页结果) 的封面只落临时缓存区, 不占书架持久区
-            loader.loadImageOrNull(
-                cover, book.origin, decodeSize.width, decodeSize.height,
-            )
-        } else {
-            loader.loadCoverOrNull(
-                cover, book.origin, decodeSize.width, decodeSize.height,
-            )
-        }
-        if (bmp != null) {
-            coverState = CoverBitmap(bmp, false)
+        // 真封面与占位并发 (旧的串行写法让真封面白等一次占位加载): 真封面命中内存缓存时与
+        // 占位在同帧完成, 两次赋值只重组一次 → 不闪占位; 需下载时占位已铺好, 不出现空白。
+        coroutineScope {
+            val real = async {
+                if (book.isNotShelf) {
+                    // 非书架书 (搜索/发现/主页结果) 的封面只落临时缓存区, 不占书架持久区
+                    loader.loadImageOrNull(cover, book.origin, decodeSize.width, decodeSize.height)
+                } else {
+                    loader.loadCoverOrNull(cover, book.origin, decodeSize.width, decodeSize.height)
+                }
+            }
+            coverState = defaultState()
+            val bmp = real.await()
+            // 失败保持默认封面不变 (对照原版 BookCover.load 的 .error(newDefaultDrawable))
+            if (bmp != null) coverState = CoverBitmap(bmp, false)
         }
     }
     // 对齐原 View 版 onMeasure: 高度有界时按比例反推宽度, 否则按宽度推高度。

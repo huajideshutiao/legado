@@ -43,11 +43,10 @@ import kotlin.math.max
 actual class ImageBitmapLoader actual constructor() {
 
     companion object {
-        /** 失败 url 跳过表 (对照原版 Glide OkHttpStreamFetcher.companion failUrl: 非 2xx/解密失败进表)。
-         * key 带书源维度 (origin+url): 不同书源同 URL 互不影响, 换源/无源→有源切换后不再被
-         * 旧失败记录拦截可重新加载; 无书源 (裸 GET) 时 key 即 url, 保持原死链跳过语义。 */
-        private val failUrls = java.util.Collections.synchronizedSet(HashSet<String>())
-
+        /** 失败 url 跳过表已收敛至共用的 [isImageLoadFailed] / [markImageLoadFailed]
+         * (带 TTL + 容量上界, 修原版 failUrl 永久拉黑问题)。
+         * key 仍带书源维度 (origin+url): 不同书源同 URL 互不影响, 换源/无源→有源切换后
+         * 不再被旧失败记录拦截可重新加载; 无书源 (裸 GET) 时 key 即 url。 */
         private fun failKey(origin: String?, url: String): String =
             if (origin.isNullOrEmpty()) url else "$origin\u0000$url"
     }
@@ -128,7 +127,7 @@ actual class ImageBitmapLoader actual constructor() {
             url.startsWith("file://") -> File(url.removePrefix("file://")).readBytes()
             url.startsWith("/") -> File(url).readBytes()
             url.startsWith("http://") || url.startsWith("https://") -> {
-                if (useBytesCache && failUrls.contains(failKey(bookSource?.bookSourceUrl, url))) {
+                if (useBytesCache && isImageLoadFailed(failKey(bookSource?.bookSourceUrl, url))) {
                     null
                 } else {
                     loadNetworkBytes(url, bookSource, book, isCover, useBytesCache)
@@ -188,7 +187,7 @@ actual class ImageBitmapLoader actual constructor() {
         return runCatching {
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    if (recordFailure) failUrls.add(failKey(null, url))
+                    if (recordFailure) markImageLoadFailed(failKey(null, url))
                     null
                 } else {
                     response.body.bytes()
@@ -219,7 +218,7 @@ actual class ImageBitmapLoader actual constructor() {
             runScriptWithContext {
                 ImageUtils.decode(url, bytes, isCover, bookSource, book)
             } ?: run {
-                if (recordFailure) failUrls.add(failKey(bookSource.bookSourceUrl, url))
+                if (recordFailure) markImageLoadFailed(failKey(bookSource.bookSourceUrl, url))
                 null
             }
         }.getOrNull()

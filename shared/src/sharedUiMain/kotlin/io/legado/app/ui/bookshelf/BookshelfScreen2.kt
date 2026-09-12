@@ -26,6 +26,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.image.BookImageLoaders
+import io.legado.app.help.image.DecodedBitmapCache
 import io.legado.app.model.BookCoverShared.CoverRatio
 import io.legado.app.model.defaultCoverDisplayPath
 import io.legado.app.ui.compose.component.DefaultCoverNineImage
@@ -33,6 +34,8 @@ import io.legado.app.ui.compose.component.NinePatchImageOrImage
 import io.legado.app.ui.compose.platform.PlatformBackHandler
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.bookshelf
@@ -162,7 +165,7 @@ internal fun BookshelfScreen2(
  * 走 [BookImageLoaders] 加载 [BookGroup.cover], 行为与书架书籍封面 [SharedBookCover] 对齐
  * (即"以书架封面行为为准"):
  * - 真封面经 [BookImageLoaders.loadCoverOrNull] 落持久区, 与书架书一致;
- *   网络加载期间先铺图集默认封面作占位 (与 SharedBookCover 同款)
+ *   网络加载期间先铺图集默认封面作占位 (与 [SharedBookCover] 同款, 占位位图跨条目共享)
  * - 无 cover / 加载失败 / [AppConfigAccessor.useDefaultCover] / 未注册 loader 时,
  *   走默认封面链: 用户图集烘焙图 (seed=组名, 稳定选图) → 内置 `image_cover_default`;
  *   不再渲染组名首字色块 (原版分组封面 name=null, 默认封面上也不叠书名)
@@ -191,34 +194,39 @@ fun SharedGroupCover(
         val decodeSize = firstValidCoverDecodeSize(displaySize)
         val ratio = if (isVideoCover) CoverRatio.VIDEO else CoverRatio.NOVEL
 
-        // 默认封面链要读 prefs + 解 JSON (已按 raw 串记忆化), 挪到协程内真用得上时再算
-        suspend fun loadDefault() {
+        // 默认封面链要读 prefs + 解 JSON (已按 raw 串记忆化), 挪到协程内真用得上时再算。
+        // 占位位图同样经 [DecodedBitmapCache] 共享 (与 [SharedBookCover] 同策略, 不再重复解码)
+        suspend fun defaultState(): CoverBitmap {
             // seed = 组名 (即分组的"书名", 对照书架书 seed=书名 稳定选图), 不回落封面路径;
             // 走 entry 版选图拿 ninePatch 标记 (defaultCoverFilePath 保留给 AudioPlay 等调用)
             val entry = defaultCoverEntry(seed = group.groupName, ratio = ratio)
-            if (entry == null) {
-                coverState = NoCoverBitmap
-                return
-            }
-            val bmp = loader.loadImageOrNull(
-                defaultCoverDisplayPath(entry, ratio), null,
-                decodeSize.width, decodeSize.height,
+                ?: return NoCoverBitmap
+            val path = defaultCoverDisplayPath(entry, ratio)
+            // reloadTick 并入 key: 封面重载信号变了不得复用旧位图
+            val key = DecodedBitmapCache.cacheKey(
+                "$path#$reloadTick", null, isCover = true,
+                widthPx = decodeSize.width, heightPx = decodeSize.height,
             )
-            coverState = if (bmp == null) NoCoverBitmap else CoverBitmap(bmp, true, entry.ninePatch)
+            DecodedBitmapCache.get(key)?.let { return CoverBitmap(it, true, entry.ninePatch) }
+            val bmp = loader.loadImageOrNull(path, null, decodeSize.width, decodeSize.height)
+                ?: return NoCoverBitmap
+            DecodedBitmapCache.put(key, bmp)
+            return CoverBitmap(bmp, true, entry.ninePatch)
         }
         if (useDefaultCover || cover.isNullOrBlank()) {
-            loadDefault()
+            coverState = defaultState()
             return@LaunchedEffect
         }
-        // 网络加载期间先铺组名选中的图集默认封面作占位 (与 SharedBookCover 同款,
-        // 对照原 View 版的 Coil placeholder); 成功后覆盖为真实封面, 失败保持默认封面
-        loadDefault()
-        // 与书架书同款: 真封面落持久磁盘分区, 清缓存不会把书架/分组清成默认封面
-        val bmp = loader.loadCoverOrNull(
-            cover, null, decodeSize.width, decodeSize.height,
-        )
-        if (bmp != null) {
-            coverState = CoverBitmap(bmp, false)
+        // 真封面与占位并发 (与 [SharedBookCover] 同款): 命中内存缓存时同帧覆盖不闪占位,
+        // 需下载时占位已铺好。失败保持默认封面 (对照原版 BookCover.load 的 .error())。
+        coroutineScope {
+            val real = async {
+                // 与书架书同款: 真封面落持久磁盘分区, 清缓存不会把书架/分组清成默认封面
+                loader.loadCoverOrNull(cover, null, decodeSize.width, decodeSize.height)
+            }
+            coverState = defaultState()
+            val bmp = real.await()
+            if (bmp != null) coverState = CoverBitmap(bmp, false)
         }
     }
     val aspectRatio = if (isVideoCover) VIDEO_COVER_RATIO else NOVEL_COVER_RATIO

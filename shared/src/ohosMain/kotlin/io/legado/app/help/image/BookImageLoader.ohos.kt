@@ -1,11 +1,14 @@
 package io.legado.app.help.image
 
 import androidx.compose.ui.graphics.ImageBitmap
-import io.legado.app.data.AppDbProviders
+import io.legado.app.data.entities.BookSource
+import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.source.SourceHelp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 鸿蒙端 [BookImageLoader]: 复用 [ImageBitmapLoader] 的 OHOS 图像管线
@@ -37,26 +40,57 @@ class OhosBookImageLoader : BookImageLoader {
         }
     }
 
+    /**
+     * 非持久区加载 (对齐 Coil 端同名方法的 persistent=false): 非书架书封面/书评头像/歌词取色/
+     * 默认封面占位一律落临时缓存区。旧实现经 loadBitmap(isCover=true) 被连带判成持久区
+     * (鸿蒙把"封面解密规则"与"字节分区"绑成了同一个参数), 现经 [ImageBitmapLoader.loadCoverBitmap] 分开传。
+     */
     override suspend fun loadImageOrNull(
         url: String,
         sourceOrigin: String?,
         widthPx: Int,
         heightPx: Int,
+    ): ImageBitmap? = loadInternal(url, sourceOrigin, widthPx, heightPx, persistent = false)
+
+    /** 书架/分组/音频页真封面: 解密后字节落封面持久区 (系统清缓存清不掉), 与 Coil 端同语义。 */
+    override suspend fun loadCoverOrNull(
+        url: String,
+        sourceOrigin: String?,
+        widthPx: Int,
+        heightPx: Int,
+    ): ImageBitmap? = loadInternal(url, sourceOrigin, widthPx, heightPx, persistent = true)
+
+    private suspend fun loadInternal(
+        url: String,
+        sourceOrigin: String?,
+        widthPx: Int,
+        heightPx: Int,
+        persistent: Boolean,
     ): ImageBitmap? {
-        // 书源防盗链/解密上下文: sourceOrigin 查 DB; book 规则上下文可空
+        // 书源防盗链/解密上下文: 走 SourceHelp.getSource (享会话缓存与单飞去重); book 规则上下文可空
         // (ImageUtils.decode 的 book 参数默认 null, 解密脚本仅依赖 src/result 时不受影响)
         val bookSource = sourceOrigin?.takeIf { it.isNotBlank() }?.let {
-            runCatching { AppDbProviders.get().bookSourceDao.getBookSource(it) }.getOrNull()
+            runCatching { SourceHelp.getSource(it) as? BookSource }.getOrNull()
         }
-        return ImageBitmapLoader().loadBitmap(
+        return ImageBitmapLoader().loadCoverBitmap(
             url = url,
-            book = null,
             bookSource = bookSource,
-            isCover = true,
             widthPx = widthPx,
             heightPx = heightPx,
-            useBitmapCache = true,
+            persistent = persistent,
         )
+    }
+
+    /**
+     * 鸿蒙无 Coil3 DiskCache, 封面字节只落在 [ImageBytesCache] 的持久子目录
+     * (`bookCoverCacheDir/image_cache_p`), 所以下载层缓存 + 失败表就是该端的全部封面缓存。
+     */
+    override suspend fun clearCoverCache(): Boolean {
+        withContext(IoDispatcher) {
+            ImageBytesCache.clearPersistent()
+            clearImageLoadFailures()
+        }
+        return true
     }
 }
 

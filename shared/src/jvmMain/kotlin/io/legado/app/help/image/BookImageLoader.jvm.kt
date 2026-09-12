@@ -20,6 +20,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okio.FileSystem
 import okio.buffer
 import java.io.File
@@ -40,9 +41,9 @@ import java.io.File
 internal val jvmBookImageLoader: ImageLoader by lazy {
     ImageLoader.Builder(PlatformContext.INSTANCE)
         .components {
-            // 防盗链 header + URL 重写 + 解密落盘 + 网络层守卫: 同 androidMain (书源 header 与
+            // 防盗链 header + URL 重写 + 解密 + 网络层守卫: 同 androidMain (书源 header 与
             // JS 改写后的 url 由 SourceHeaderNetworkClient 在 Coil3 磁盘查询之后注入;
-            // SourceDecodeCacheStrategy 解密落盘对齐 Glide DATA; ImageGuardNetworkClient 包最外层
+            // SourceHeaderNetworkClient 响应原地解密对齐 Glide DATA; ImageGuardNetworkClient 包最外层
             // 按原始 url 拦 failUrls)
             // 漫画页: 经图片缓存 + AnalyzeUrl 下载 + 解密取字节 (与 app 端同一条链路)
             add(MangaModelKeyer(), MangaModel::class)
@@ -62,7 +63,6 @@ internal val jvmBookImageLoader: ImageLoader by lazy {
                             )
                         )
                     },
-                    cacheStrategy = { SourceDecodeCacheStrategy },
                 )
             )
         }
@@ -120,7 +120,7 @@ class JvmBookImageLoader : BookImageLoader {
 
     /**
      * 仅读 Coil3 磁盘缓存字节（不触发网络/解码）：先查封面解密历史 key（"coverDecode:$url",
-     * 旧版手写落盘兼容, 新写入已由 [SourceDecodeCacheStrategy] 落在裸 url key 下且为解密后字节）,
+     * 旧版手写落盘兼容, 新写入已由 [SourceHeaderNetworkClient] 解密后落在裸 url key 下）,
      * 再查裸 url; MultiDiskCache 临时/covers 双区自动兜底。
      */
     override suspend fun loadDiskCachedBytes(
@@ -140,6 +140,18 @@ class JvmBookImageLoader : BookImageLoader {
             }
             null
         }
+
+    /** 清封面持久区 (设置页"清除封面缓存"), 同 androidMain。 */
+    override suspend fun clearCoverCache(): Boolean {
+        val diskCache = jvmBookImageLoader.diskCache as? MultiDiskCache ?: return false
+        // Coil 自身内存缓存也要清: 清了磁盘不内存, 封面全从 MemoryCache 命中, 看上去就是没清掉
+        jvmBookImageLoader.memoryCache?.clear()
+        withContext(Dispatchers.IO) {
+            diskCache.clearCovers()
+            ImageBytesCache.clearPersistent()
+        }
+        return true
+    }
 
     /** [persistent] 为 true 时改写 diskCacheKey, 由 [MultiDiskCache] 分流到封面持久区。
      * 同 URL 并发请求经 [BookImageLoadDedup] 单飞去重 (I6)。 */

@@ -44,8 +44,47 @@ class MultiDiskCache(
 
     /** 读: 命中不了本区时查另一区 —— 导出 epub 封面等调用点拿裸 url 查, 不带后缀也要能找到。 */
     override fun openSnapshot(key: String): DiskCache.Snapshot? {
-        if (key.endsWith(COVER_KEY_SUFFIX)) return covers.openSnapshot(key)
+        if (key.endsWith(COVER_KEY_SUFFIX)) {
+            // 书架/封面读: 持久区未命中但临时区已有同图裸 url 条目 (该书之前以"未加架"身份
+            // 在发现/搜索页下过) —— 对照原版缺陷 #5「书架内外两份缓存 + 加架后重下」的修复:
+            // 把临时区条目提升到持久区后交给调用方, 不再重复走网络 (一次文件拷贝 << 一次下载+解密)。
+            return covers.openSnapshot(key) ?: promoteFromTemporary(key)
+        }
         return temporary.openSnapshot(key) ?: covers.openSnapshot(key + COVER_KEY_SUFFIX)
+    }
+
+    /**
+     * 临时区条目 → 持久区。失败 (并发编辑/写盘出错) 时退回直接交临时区快照,
+     * 语义仍然正确 (只是没完成提升, 下次再试), 不影响调用方读图。
+     */
+    private fun promoteFromTemporary(coverKey: String): DiskCache.Snapshot? {
+        val plainKey = coverKey.removeSuffix(COVER_KEY_SUFFIX)
+        val src = temporary.openSnapshot(plainKey) ?: return null
+        val promoted = try {
+            // 用 FileSystem.read 而不是手 source(): 后者返回的 Source 没人关, 每提升一张封面漏一个 FD
+            val bytes = temporary.fileSystem.read(src.data) { readByteArray() }
+            val editor = if (bytes.isNotEmpty()) covers.openEditor(coverKey) else null
+            if (editor == null) {
+                false
+            } else {
+                try {
+                    covers.fileSystem.write(editor.data) { write(bytes) }
+                    editor.commit()
+                    true
+                } catch (e: Exception) {
+                    runCatching { editor.abort() }
+                    false
+                }
+            }
+        } catch (e: Exception) {
+            false
+        } finally {
+            src.close()
+        }
+        if (!promoted) return temporary.openSnapshot(plainKey)
+        // 提升成功后抹掉临时区副本: 否则同一图仍占两份 (原缺陷的另一半)
+        runCatching { temporary.remove(plainKey) }
+        return covers.openSnapshot(coverKey)
     }
 
     override fun openEditor(key: String): DiskCache.Editor? {
@@ -60,6 +99,21 @@ class MultiDiskCache(
 
     /** 只清临时区: 用户"清除缓存"不该抹掉书架封面 (原版 `MultiDiskCacheFactory.clear` 同义)。 */
     override fun clear() = temporary.clear()
+
+    /**
+     * 单独清封面持久区。
+     *
+     * 修原版缺陷 #7: 原版 `MultiDiskCacheFactory` 的 `clear()` 只清 defaultsCache,
+     * 而全仓无任何地方调 `Glide.clearDiskCache()`, 设置页"清除缓存"删的是 `cacheDir` +
+     * `book_cache` —— `filesDir/covers` 这最多 250MB 的封面库在任何清理路径上都是死角,
+     * 用户无法清掉。本方法给持久区一个显式入口 (由"清除封面缓存"设置项调用,
+     * 刻意不并入"清除缓存": 书源失效后封面不可重获)。
+     */
+    fun clearCovers() {
+        covers.clear()
+        // 清了封面缓存 = 让用户重走网络, 之前被 failUrl 永久拉黑的死链也该重新试一次
+        clearImageLoadFailures()
+    }
 
     override fun shutdown() {
         covers.shutdown()

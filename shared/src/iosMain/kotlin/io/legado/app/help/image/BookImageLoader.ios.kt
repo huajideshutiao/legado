@@ -19,6 +19,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import io.legado.app.help.coroutine.IoDispatcher
 import okio.FileSystem
 import okio.buffer
 
@@ -33,8 +35,8 @@ import okio.buffer
  *   同语义, 解析实现见 nonOhosUiMain/SourceImageHeaders.kt; 内存/磁盘命中零查源, 真发请求时才解析)。
  * - diskCache: `{AppFilesDirs.cacheDir}/image_cache` (Library/Caches 下, 系统可清理);
  *   memoryCache: 默认 maxSizePercent (与 android/desktop 的 Coil3 默认策略一致)。
- * - coverDecodeJs 封面解密: [SourceDecodeCacheStrategy] 在磁盘缓存写入前解密响应字节
- *   (对齐原版 Glide DATA 策略缓存解密后字节), 书架封面落持久区; 冷启动磁盘命中零下载零 JS。
+ * - coverDecodeJs 封面解密: [SourceHeaderNetworkClient] 在网络响应到达后原地解密响应字节
+ *   (对齐原版 Glide OkHttpStreamFetcher 响应解密与 DATA 策略写入解密后字节), 书架封面落持久区; 冷启动磁盘命中零下载零 JS。
  *
  * 注册: [io.legado.app.help.config.registerIosProviders] 调用 [registerIosBookImageLoader]。
  */
@@ -77,7 +79,7 @@ class IosBookImageLoader : BookImageLoader {
 
     /**
      * 仅读 Coil3 磁盘缓存字节（不触发网络/解码）：查裸 url key（解密书源的字节为解密后内容,
-     * 由 [SourceDecodeCacheStrategy] 写入; 书架封面 #covers 持久区由 [MultiDiskCache] 裸 key
+     * 由 [SourceHeaderNetworkClient] 解密后写入; 书架封面 #covers 持久区由 [MultiDiskCache] 裸 key
      * miss 自动兜底）。
      */
     override suspend fun loadDiskCachedBytes(
@@ -95,6 +97,18 @@ class IosBookImageLoader : BookImageLoader {
             }
             null
         }
+
+    /** 清封面持久区 (设置页"清除封面缓存"), 同 androidMain / jvmMain。 */
+    override suspend fun clearCoverCache(): Boolean {
+        val diskCache = iosCoilImageLoader.diskCache as? MultiDiskCache ?: return false
+        // Coil 自身内存缓存也要清: 清了磁盘不内存, 封面全从 MemoryCache 命中, 看上去就是没清掉
+        iosCoilImageLoader.memoryCache?.clear()
+        withContext(IoDispatcher) {
+            diskCache.clearCovers()
+            ImageBytesCache.clearPersistent()
+        }
+        return true
+    }
 
     /** [persistent] 为 true 时改写 diskCacheKey, 由 [MultiDiskCache] 分流到封面持久区 (对齐 jvm/android)。 */
     private suspend fun execute(
@@ -144,7 +158,7 @@ private fun buildIosBookImageLoader(): ImageLoader {
         .components {
             // 防盗链 header + URL 重写 + 解密落盘 + 网络层守卫: 同 android/desktop (书源 header 与
             // JS 改写后的 url 由 SourceHeaderNetworkClient 在 Coil3 磁盘查询之后注入;
-            // SourceDecodeCacheStrategy 解密落盘对齐 Glide DATA; ImageGuardNetworkClient 包最外层
+            // SourceHeaderNetworkClient 响应解密对齐 Glide DATA; ImageGuardNetworkClient 包最外层
             // 按原始 url 拦 failUrls)。
             // 直接构 NetworkFetcher.Factory 包 NetworkClient (KtorNetworkFetcherFactory 不接受
             // NetworkClient), Ktor client 复用 NativeHttpProvider 的 KmpHttpClient 内部 client
@@ -169,7 +183,6 @@ private fun buildIosBookImageLoader(): ImageLoader {
                             )
                         )
                     },
-                    cacheStrategy = { SourceDecodeCacheStrategy },
                 )
             )
         }

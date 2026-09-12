@@ -19,7 +19,7 @@ import kotlinx.coroutines.sync.withLock
  * MultiDiskCache, 均不经过本类; android 端 shared ImageBitmapLoader 为旁路, 一并补齐)。
  *
  * - 内存: 32 条 LRU (对齐原 CoverDecodeFetcher decodedBytesCache 语义, 该类已由
- *   SourceDecodeCacheStrategy 解密下沉替代)
+ *   SourceHeaderNetworkClient 解密下沉替代)
  * - 磁盘: `{cachePath}/image_cache/{md5(url或origin+url)}_{isCover}`, 存**解密后**字节
  *   (对齐原版 Glide DATA 缓存的是 fetcher 输出流 = 解密后字节; key 区分封面/正文规则,
  *   避免同一 url 两种规则互相污染 —— 原版 Glide 缓存 key 不区分, 此处语义更严格)
@@ -37,8 +37,18 @@ internal object ImageBytesCache {
 
     private const val MAX_MEMORY_ENTRIES = 32
 
-    /** 磁盘文件数上限, 超限时按文件名排序淘汰一半 (md5 文件名均匀分布, 等效随机淘汰)。 */
+    /** 磁盘文件数上限, 超限时按 mtime 淘汰到 [DISK_PRUNE_KEEP_FILES] 水位。 */
     private const val MAX_DISK_FILES = 1000
+
+    /**
+     * 淘汰水位 (上限的 80%): 一次淘汰到水位线, 后续写盘不再反复触发清理。
+     * 对照原版 Glide `LruDiskCache` 的 evictAllBytes 语义 (超 maxSize 后淘汰到阈值以下,
+     * 而不是"一删一半"反复抖动)。
+     */
+    private const val DISK_PRUNE_KEEP_FILES = MAX_DISK_FILES * 4 / 5
+
+    /** 每这么多次写盘无条件重新列目录校准一次计数, 防其他写者 (Coil / 手清目录) 让计数失真。 */
+    private const val DISK_COUNT_CALIBRATE_EVERY = 256
 
     private val mutex = Mutex()
 
@@ -56,6 +66,10 @@ internal object ImageBytesCache {
         val suffix = if (persistent) "${isCover}p" else "$isCover"
         return "${MD5Utils.md5Encode(key)}_$suffix"
     }
+
+    /** 各目录文件数估计值 (在 [mutex] 内读写); 无条目 = 未校准。 */
+    private val diskFileCounts = HashMap<String, Int>()
+    private var putCount = 0
 
     private fun diskDir(persistent: Boolean): String {
         if (persistent) {
@@ -121,11 +135,50 @@ internal object ImageBytesCache {
         pruneIfDiskOverflow(dir)
     }
 
-    /** 磁盘文件数超限时按文件名排序删掉一半 (对照原版 Glide 磁盘缓存 maxSize 清理语义)。 */
-    private fun pruneIfDiskOverflow(dir: String) {
-        val files = FileUtilsCommon.listFiles(dir)
-        if (files.size <= MAX_DISK_FILES) return
-        val toDelete = files.sorted().take(files.size / 2)
-        toDelete.forEach { FileUtilsCommon.delete(it) }
+    /**
+     * 磁盘文件数超限时按 mtime 升序淘汰到 [DISK_PRUNE_KEEP_FILES] 水位。
+     *
+     * 与旧实现的两处修正: ① 旧版每次写盘都 `listFiles` + 排序, 目录堆到上限后等于每存一张图
+     * 都全目录扫一遍并**删掉一半** (md5 文件名的字典序是随机序, 一半里必然包含刚用的条目),
+     * 造成"删了又重下"的缓存抖动; ② 现改为先用计数判定是否可能超限, 未达上限零 IO,
+     * 超限时一次淘汰到水位, 并按最久未用先走。
+     *
+     * 整段在 [mutex] 内: 计数与目录实际内容必须一致, 否则并发写盘会重复列目录/重复淘汰。
+     * 代价可控 —— 列目录只在"已达上限或每 [DISK_COUNT_CALIBRATE_EVERY] 次写盘"时发生。
+     */
+    private suspend fun pruneIfDiskOverflow(dir: String) {
+        mutex.withLock {
+            putCount++
+            val known = diskFileCounts[dir]
+            val dueCalibrate = putCount % DISK_COUNT_CALIBRATE_EVERY == 0
+            if (known != null && known < MAX_DISK_FILES && !dueCalibrate) return@withLock
+            val files = FileUtilsCommon.listFiles(dir)
+            if (files.size <= MAX_DISK_FILES) {
+                diskFileCounts[dir] = files.size
+                return@withLock
+            }
+            val victims = files
+                .sortedBy { FileUtilsCommon.lastModified(it) }
+                .take(files.size - DISK_PRUNE_KEEP_FILES)
+            victims.forEach { FileUtilsCommon.delete(it) }
+            diskFileCounts[dir] = files.size - victims.size
+        }
+    }
+
+    /**
+     * 清空本类落在**封面持久区**的字节 (设置页"清除封面缓存"与本类的持久写入成对)。
+     *
+     * 不顺手清它们的话, 持久区会被两处写 (Coil MultiDiskCache + 本类 image_cache_p) 各占一半,
+     * 用户清了 Coil 区仍发现封面没消失。
+     *
+     * 同时整表清 [memory]: 内存层的 key 不带持久/临时维度 ([cacheKey]), 单独圈出"哪些是从
+     * 持久区来的"做不到; 不一起清的话磁盘删完了但封面全从内存命中, 用户观感就是"没清掉"。
+     */
+    suspend fun clearPersistent() {
+        val dir = runCatching { DataStorageProviders.getOrNull()?.bookCoverCacheDir }.getOrNull()
+            ?: return
+        val target = FileUtilsCommon.getPath(dir, "image_cache_p")
+        FileUtilsCommon.listFiles(target).forEach { FileUtilsCommon.delete(it) }
+        mutex.withLock { memory.clear() }
     }
 }

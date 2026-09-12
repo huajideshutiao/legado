@@ -19,6 +19,8 @@ import legado.shared.generated.resources.book_tree_uri_t
 import legado.shared.generated.resources.check_source_config
 import legado.shared.generated.resources.clear_cache
 import legado.shared.generated.resources.clear_cache_summary
+import legado.shared.generated.resources.clear_cover_cache
+import legado.shared.generated.resources.clear_cover_cache_summary
 import legado.shared.generated.resources.clear_webview_data
 import legado.shared.generated.resources.clear_webview_data_summary
 import legado.shared.generated.resources.click_book_open_read
@@ -96,6 +98,8 @@ fun OtherConfigScreen(
     onPreDownloadNum: () -> Unit,
     onWebPort: () -> Unit,
     onCleanCache: () -> Unit,
+    /** "清除封面缓存" (封面持久区专用入口, 与 [onCleanCache] 分开是刻意的: 后者不该抹掉书架封面) */
+    onCleanCoverCache: () -> Unit = {},
     onClearWebViewData: () -> Unit,
     onShrinkDatabase: () -> Unit,
     onThreadCount: () -> Unit,
@@ -169,6 +173,8 @@ fun OtherConfigScreen(
     val titleWebPort = stringResource(Res.string.web_port_title)
     val titleCleanCache = stringResource(Res.string.clear_cache)
     val summaryCleanCache = stringResource(Res.string.clear_cache_summary)
+    val titleCleanCoverCache = stringResource(Res.string.clear_cover_cache)
+    val summaryCleanCoverCache = stringResource(Res.string.clear_cover_cache_summary)
     val titleClearWebView = stringResource(Res.string.clear_webview_data)
     val summaryClearWebView = stringResource(Res.string.clear_webview_data_summary)
     val titleShrinkDatabase = stringResource(Res.string.shrink_database)
@@ -353,6 +359,11 @@ fun OtherConfigScreen(
                 title = titleCleanCache,
                 summary = summaryCleanCache,
                 onClick = onCleanCache,
+            )
+            preference(
+                title = titleCleanCoverCache,
+                summary = summaryCleanCoverCache,
+                onClick = onCleanCoverCache,
             )
             preference(
                 title = titleClearWebView,

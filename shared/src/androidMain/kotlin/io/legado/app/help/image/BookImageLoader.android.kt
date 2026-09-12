@@ -25,6 +25,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import io.legado.app.help.coroutine.IoDispatcher
 import okio.FileSystem
 import okio.buffer
 import java.io.File
@@ -119,6 +121,18 @@ class AndroidBookImageLoader(
         return abs
     }
 
+    /** 清封面持久区 (设置页"清除封面缓存")。DiskCache.clear() 是阻塞 IO, 走 IO 线程。 */
+    override suspend fun clearCoverCache(): Boolean {
+        val diskCache = imageLoader.diskCache as? MultiDiskCache ?: return false
+        // Coil 自身内存缓存也要清: 清了磁盘不内存, 封面全从 MemoryCache 命中, 看上去就是没清掉
+        imageLoader.memoryCache?.clear()
+        withContext(IoDispatcher) {
+            diskCache.clearCovers()
+            ImageBytesCache.clearPersistent()
+        }
+        return true
+    }
+
     /** [persistent] 为 true 时改写 diskCacheKey, 由 [MultiDiskCache] 分流到封面持久区。
      * 同 URL 并发请求经 [BookImageLoadDedup] 单飞去重 (I6)。 */
     private suspend fun execute(
@@ -207,11 +221,11 @@ internal fun buildBookImageLoader(
     val sharedClient = OkHttpClientProviders.get().okHttpClient
     return ImageLoader.Builder(context)
         .components {
-            // 防盗链 header + URL 重写 + 解密落盘 + 网络层守卫: 书源 header 与 header 规则 JS
+            // 防盗链 header + URL 重写 + 解密 + 网络层守卫: 书源 header 与 header 规则 JS
             // 改写后的 url 由 [SourceHeaderNetworkClient] 在 Coil3 磁盘查询之后注入 (内存/磁盘命中
-            // 零查源, 对齐原版 Glide 「磁盘命中不进 loadData」); 落盘前由 [SourceDecodeCacheStrategy]
-            // 解密 (对齐原版 Glide DiskCacheStrategy.DATA 缓存解密后字节的语义); failUrls
-            // 由 [ImageGuardNetworkClient] 包在最外层按原始 url 拦截 (缓存命中不受影响)
+            // 零查源, 对齐原版 Glide 「磁盘命中不进 loadData」); 响应返回后由 [SourceHeaderNetworkClient]
+            // 原地解密并交付明文 (对齐原版 Glide OkHttpStreamFetcher 响应解密与 DiskCacheStrategy.DATA
+            // 写入解密后字节的语义); failUrls 由 [ImageGuardNetworkClient] 包在最外层按原始 url 拦截
             add(
                 // 守卫网络客户端: failUrls 跳过 + 非 2xx 拉黑必须真正
                 // 接进网络链路 (裸 callFactory 时两道守卫失效)
@@ -225,7 +239,6 @@ internal fun buildBookImageLoader(
                             )
                         )
                     },
-                    cacheStrategy = { SourceDecodeCacheStrategy },
                 )
             )
             // 漫画页: 经 BookHelp 缓存 + AnalyzeUrl 下载 + 解密取字节 (裸 url 走不通防盗链/解密站点)

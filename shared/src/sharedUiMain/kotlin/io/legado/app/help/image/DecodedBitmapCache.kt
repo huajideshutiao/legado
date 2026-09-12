@@ -26,7 +26,9 @@ import kotlinx.atomicfu.locks.synchronized
  * - [ReaderBackgroundImageCache] (阅读背景 4 条): 背景图也走 [ImageBitmapLoader], 本缓存是
  *   其外层二级; 背景切换靠本缓存预算淘汰, 不主动清 (避免误伤其他消费点)
  * - [ImageBytesCache] (字节层): 本缓存在其之上, 只缓存解码结果, 字节缓存不变
- * - Coil3 封面管线: 不经过本类 (走 Coil 自身内存缓存)
+ * - Coil3 封面管线: 真封面不经过本类 (走 Coil 自身内存缓存); 例外是书架/分组封面的**默认封面
+ *   占位**位图 —— 由 [io.legado.app.ui.bookshelf.SharedBookCover] / SharedGroupCover 在 Coil
+ *   结果之上手工挂本类, 避免每条封面都为占位再走一遍图片管线 (key 额外拼上封面重载信号)
  *
  * 统一清缓存入口: 设置页"清缓存" ([io.legado.app.ui.route.OtherConfigRoute]) 与各端
  * `ReadBookPlatform.clearImageCache` (退出阅读) 均挂 [clear]。

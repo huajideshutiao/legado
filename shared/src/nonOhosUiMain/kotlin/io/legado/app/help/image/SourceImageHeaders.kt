@@ -1,13 +1,27 @@
 package io.legado.app.help.image
 
+import coil3.Extras
 import coil3.request.ImageRequest
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import kotlin.coroutines.coroutineContext
 
+/** Coil3 Extras key: 请求是否为封面图 (default=true 保持封面语义, 兼容未显式标注的调用)。 */
+val IsCoverKey = Extras.Key<Boolean>(default = true)
+
+/** Coil3 Extras key: 携带书源 bookUrl (sourceOrigin)。 */
+val SourceOriginKey = Extras.Key<String?>(default = null)
+
+/** 书源图片真实请求解析结果 (url, 请求头, 书源对象)。 */
+data class ResolvedSourceRequest(
+    val url: String,
+    val headers: Map<String, String>,
+    val source: BaseSource?,
+)
+
 /**
- * 按 [sourceOrigin] (书源 bookUrl) + 图片 [imageUrl] 解析真实请求 (url + 防盗链 header)。
+ * 按 [sourceOrigin] (书源 bookUrl) + 图片 [imageUrl] 解析真实请求 (url + 防盗链 header + 书源对象)。
  * android/jvm/ios 三端共享单份 (原 jvmAndAndroidMain / iosMain 两份重复实现合并, 差异只剩
  * cookieJar 伪头去留, 上移到 [SourceHeaderNetworkClient] 的装配参数)。
  *
@@ -31,7 +45,7 @@ import kotlin.coroutines.coroutineContext
  */
 suspend fun resolveSourceRequest(
     sourceOrigin: String, imageUrl: String
-): Pair<String, Map<String, String>> {
+): ResolvedSourceRequest {
     val source: BaseSource? = SourceHelp.getSource(sourceOrigin)
     // 注: native (iOS) 端未注册 AnalyzeUrlFactories 实现, create 回落裸 AnalyzeUrlCore,
     // 与 iOS 主请求链路一致。
@@ -45,7 +59,7 @@ suspend fun resolveSourceRequest(
     // 的 urlHeaders 回填会把 URL 级 `{headers:{proxy}}` 重新塞回 headerMap 并发出 (source 级
     // proxy 已在 init 抽出作代理配置)。这里继续剔除, 不把代理配置当真请求头发出去。
     headerMap.remove("proxy")
-    return url to headerMap
+    return ResolvedSourceRequest(url, headerMap, source)
 }
 
 /** 消费点构造 ImageRequest 时便捷设置 sourceOrigin (替代 `.extras.set(SourceOriginKey, ...)`)。 */

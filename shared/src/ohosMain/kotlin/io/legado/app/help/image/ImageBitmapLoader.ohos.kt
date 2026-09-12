@@ -15,8 +15,6 @@ import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.utils.ImageUtils
 import io.legado.app.utils.File
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.Color
 import org.jetbrains.skia.Data
@@ -24,20 +22,19 @@ import org.jetbrains.skia.Surface
 import org.jetbrains.skia.svg.SVGDOM
 import org.jetbrains.skia.svg.SVGLengthContext
 
-/** 失败 url 跳过表 (对照原版 Glide OkHttpStreamFetcher.companion failUrl: 非 2xx/解密失败进表)。
- * key 带书源维度 (origin+url): 不同书源同 URL 互不影响, 换源/无源→有源切换后不再被
+/** 失败 url 跳过表已收敛至共用的 [isImageLoadFailed] / [markImageLoadFailed]
+ * (带 TTL + 容量上界, 修原版 failUrl 永久拉黑 + 无界增长问题; 与 android/ios/jvm 三端同一张表,
+ * 否则鸿蒙端「清除封面缓存」清不到本端拉黑记，死链会到进程结束都不恢复)。
+ * key 仍带书源维度 (origin+url): 不同书源同 URL 互不影响, 换源/无源→有源切换后不再被
  * 旧失败记录拦截可重新加载; 无书源 (裸 GET) 时 key 即 url, 保持原死链跳过语义。 */
-private val ohosFailUrls = HashSet<String>()
-private val ohosFailUrlsMutex = Mutex()
-
 private fun ohosFailKey(origin: String?, url: String): String =
     if (origin.isNullOrEmpty()) url else "$origin\u0000$url"
 
-private suspend fun ohosFailUrlsContains(origin: String?, url: String): Boolean =
-    ohosFailUrlsMutex.withLock { ohosFailUrls.contains(ohosFailKey(origin, url)) }
+private fun ohosFailUrlsContains(origin: String?, url: String): Boolean =
+    isImageLoadFailed(ohosFailKey(origin, url))
 
-private suspend fun ohosFailUrlsAdd(origin: String?, url: String) {
-    ohosFailUrlsMutex.withLock { ohosFailUrls.add(ohosFailKey(origin, url)) }
+private fun ohosFailUrlsAdd(origin: String?, url: String) {
+    markImageLoadFailed(ohosFailKey(origin, url))
 }
 
 
@@ -71,6 +68,52 @@ actual class ImageBitmapLoader actual constructor() {
         widthPx: Int,
         heightPx: Int,
         useBitmapCache: Boolean,
+    ): ImageBitmap? = loadBitmapImpl(
+        url, book, bookSource, isCover, widthPx, heightPx, useBitmapCache,
+        // 既有语义原样保留: 直接经 loadBitmap 的调用点 (漫画/大图/背景) 仍以 isCover 兼作分区
+        persistent = isCover,
+    )
+
+    /**
+     * 带字节分区选择的封面加载入口 (本端专有, 不在 commonMain expect 内)。
+     *
+     * [persistent] 决定解密后字节落封面持久区还是临时区, 与 [isCover] (coverDecodeJs /
+     * imageDecode 解密规则选择) 解耦。存在理由: Coil 端由 `diskCacheKey = url#covers` 分流
+     * 持久区, 鸿蒙无 Coil3 变体、分区只能本端显式决定; 旧实现把两件事绑成
+     * `persistent = isCover`, 而封面链上 isCover 恒为 true (解密规则需要), 于是凡经
+     * [BookImageLoaders] 的图 (非书架书封面/书评头像/歌词取色/默认封面占位) 全部永久落进
+     * 封面持久区 —— 用户清缓存清不掉, 塞满后又触发淘汰、反复重下。
+     *
+     * android/ios/jvm 的自下载链路没有需要持久区的调用方 (封面全走 Coil), 故不进 expect,
+     * 免给三端造无人使用的参数。
+     */
+    suspend fun loadCoverBitmap(
+        url: String,
+        bookSource: BookSource?,
+        widthPx: Int,
+        heightPx: Int,
+        persistent: Boolean,
+    ): ImageBitmap? = loadBitmapImpl(
+        url = url,
+        book = null,
+        bookSource = bookSource,
+        // 封面解密规则不变 (coverDecodeJs), 只改字节分区
+        isCover = true,
+        widthPx = widthPx,
+        heightPx = heightPx,
+        useBitmapCache = true,
+        persistent = persistent,
+    )
+
+    private suspend fun loadBitmapImpl(
+        url: String,
+        book: Book?,
+        bookSource: BookSource?,
+        isCover: Boolean,
+        widthPx: Int,
+        heightPx: Int,
+        useBitmapCache: Boolean,
+        persistent: Boolean,
     ): ImageBitmap? =
         withContext(IoDispatcher) {
             // data: URI 早返回: 内联 svg/图片直接解析内容, 不走网络/文件加载 (简介图等)
@@ -92,7 +135,7 @@ actual class ImageBitmapLoader actual constructor() {
                 if (bitmap != null && key != null) DecodedBitmapCache.put(key, bitmap)
                 return@withContext bitmap
             }
-            val bytes = ohosLoadImageBytes(url, book, bookSource, isCover, useBitmapCache)
+            val bytes = ohosLoadImageBytes(url, book, bookSource, isCover, useBitmapCache, persistent)
                 ?: return@withContext null
             val key = if (useBitmapCache) {
                 DecodedBitmapCache.cacheKey(url, bookSource?.bookSourceUrl, isCover, widthPx, heightPx)
@@ -135,6 +178,7 @@ private suspend fun ohosLoadImageBytes(
     bookSource: BookSource?,
     isCover: Boolean,
     useBytesCache: Boolean,
+    persistent: Boolean = isCover,
 ): ByteArray? = when {
     // data: URI 内联图 (与 loadBitmap 的 data: 分支对齐)
     url.startsWith("data:") -> parseDataUriBytes(url)
@@ -150,7 +194,7 @@ private suspend fun ohosLoadImageBytes(
         File(url).readBytes()
     }.getOrNull()
     url.startsWith("http://") || url.startsWith("https://") ->
-        ohosLoadNetworkImageBytes(url, book, bookSource, isCover, useBytesCache)
+        ohosLoadNetworkImageBytes(url, book, bookSource, isCover, useBytesCache, persistent)
     else -> null
 }
 
@@ -165,18 +209,21 @@ private suspend fun ohosLoadNetworkImageBytes(
     bookSource: BookSource?,
     isCover: Boolean,
     useBytesCache: Boolean,
+    persistent: Boolean,
 ): ByteArray? {
     if (useBytesCache) {
-        // 封面 (isCover=true) 字节落持久区 (persistent=true, 系统清缓存清不掉, 对齐 Coil 端
-        // #covers 持久区语义); 正文图维持临时缓存区。死链跳过只拦真下载, 不得挡缓存命中。
-        ImageBytesCache.get(url, bookSource?.bookSourceUrl, isCover, persistent = isCover)?.let { return it }
+        // 字节分区由 [persistent] 单独决定 (与解密规则 [isCover] 无关): 书架封面落持久区
+        // (系统清缓存清不掉, 对齐 Coil 端 #covers 语义), 其余落临时区。
+        // 死链跳过只拦真下载, 不得挡缓存命中。
+        ImageBytesCache.get(url, bookSource?.bookSourceUrl, isCover, persistent = persistent)
+            ?.let { return it }
         if (ohosFailUrlsContains(bookSource?.bookSourceUrl, url)) return null
     }
     val bytes = ohosDownloadImageBytes(
         url, book, bookSource, isCover, recordFailure = useBytesCache
     )
     if (bytes != null && useBytesCache) {
-        ImageBytesCache.put(url, bookSource?.bookSourceUrl, isCover, bytes, persistent = isCover)
+        ImageBytesCache.put(url, bookSource?.bookSourceUrl, isCover, bytes, persistent = persistent)
     }
     return bytes
 }
