@@ -7,13 +7,16 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.VideoResolution
 import io.legado.app.help.book.ContentProcessorProviders
+import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.showSourceLogin
+import io.legado.app.help.toast.Toasters
 import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.model.chapter.ChapterLoadState
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.screenModelScope
+import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,15 +43,57 @@ import kotlin.concurrent.Volatile
  * 章节切换 (onPrevChapter/onNextChapter) 委托 [shared] 的 moveToPrevChapter/moveToNextChapter,
  * 对照 Activity playPrevChapter/playNextChapter。
  *
- * 播放器控制 (onPlayPause/onSeekDelta/onSpeedChange/onToggleControls) 属平台专属
- * (ExoPlayer/mpv API), 待 host 注入; 下沉前为空实现占位。
+ * 播放器回显 (播放态/倍速/缓冲) 不在本 ScreenModel 缓存: 直接由
+ * [VideoPlayerController.playback] 快照流供给 UI (见 [PlaybackSnapshot])。
  *
  * 菜单动作 (onRefreshChapter/onToggleShelf/onShowLogin 等) 对照 Activity 同名方法:
  * - shared VM 能做的 (refreshChapter/switchResolution/loadChapter) 直接调用
  * - 平台能力 (剪贴板/书源变量/书架) 走 [PlatformCapabilityProviders]
  * - 平台专属 (Dialog/Activity 结果) 待 host 注入, 暂空实现
  */
+/**
+ * 播放器实时态快照 —— 视频播放界面回显的**唯一数据源**。
+ *
+ * 由各端 [VideoPlayerController] 维护并以 [VideoPlayerController.playback] 暴露，共享层
+ * `collectAsState` 现取。上一版把播放态缓存进 [VideoPlayUiState]、靠各端「记得回灌」，
+ * 结果桌面/iOS/鸿蒙三端全漏（播放钮恒显示暂停态、控制栏永不自动隐藏），Android 端则因
+ * 监听器随渲染面进出组合而丢状态沿（缓冲圈永转 / 丢 ENDED 不自动下一章）—— 故改回
+ * 需要时向唯一数据源现取，平台不再背「回灌义务」。
+ */
+data class PlaybackSnapshot(
+    /** 用户播放意图（对应 media3 `playWhenReady`）：驱动播放/暂停钮图标。 */
+    val playWhenReady: Boolean = false,
+    /** 时钟是否真在前进（缓冲中为 false）：驱动控制栏自动隐藏计时。 */
+    val isPlaying: Boolean = false,
+    /** 是否在等数据（起播缓冲 / 中途卡顿 / seek 后）。 */
+    val isBuffering: Boolean = false,
+    /** 当前倍速（驱动倍速钮文字与档位高亮）。 */
+    val speed: Float = 1f,
+    /** 已播到末尾（对应 media3 `STATE_ENDED`）。 */
+    val ended: Boolean = false,
+    /** 尚未装载任何媒体（对应 media3 `STATE_IDLE`）。 */
+    val idle: Boolean = true,
+) {
+    /**
+     * 播放/暂停钮是否画「播放三角」。
+     *
+     * 逐字对齐原版 media3 `Util.shouldShowPlayButton`：`!playWhenReady || IDLE || ENDED`。
+     * 刻意不用 [isPlaying]：那会让缓冲卡顿的瞬间图标从暂停条跳成播放三角，原版不会。
+     */
+    val showPlayIcon: Boolean
+        get() = !playWhenReady || ended || idle
+}
+
+/**
+ * 平台播放器控制器。
+ *
+ * 播放态一律经 [playback] 单一快照流暴露（图标/倍速/缓冲/自动隐藏都读它），
+ * 位置/时长/缓冲时间点属高频读数，仍走普通属性由控制层轮询现取。
+ */
 interface VideoPlayerController {
+    /** 播放态快照流（回显唯一数据源，见 [PlaybackSnapshot]）。 */
+    val playback: StateFlow<PlaybackSnapshot>
+
     val positionMs: Long
     val durationMs: Long
 
@@ -62,6 +107,20 @@ interface VideoPlayerController {
      */
     val bufferedMs: Long
     fun playPause()
+
+    /**
+     * 无条件暂停 (不切换)。对照原版 `VideoPlayActivity` 点标题进书籍详情前的
+     * `player?.pause()` (那条路径是显式暂停, 不是 toggle)。
+     */
+    fun pause()
+
+    /**
+     * 停止并卸载当前媒体（切章 / 刷新时调用）。
+     *
+     * `videoUrl` 置 null 只是「没有新源」的数据状态，不是命令：不显式 stop 的话上一章
+     * 画面与声音会一直播到新章解析完。实现须同时清掉「已装载 url」守卫，让同链接重试可用。
+     */
+    fun stop()
     fun seekTo(positionMs: Long)
     fun seekBy(deltaMs: Long)
     fun setSpeed(speed: Float)
@@ -99,24 +158,29 @@ interface VideoPlayPlatformProvider {
     /**
      * 是否处于缓冲态 (可选)。平台可通过控制器或特定状态源自定义判定, 未提供时依据 UiState 判定。
      */
+    /**
+     * 平台「系统级全屏」真实态（可选）。非 null 时共享层以它为准渲染，页面不再自存副本：
+     * 桌面真全屏由窗口决定（ESC / 标题栏 / 原生控制条都能改），返回窗口实际全屏态即可，
+     * 全屏切换失败的平台上它恒 false，页面就不会按全屏渲染。返回 null 表示该平台全屏是
+     * 页面意图驱动（安卓横屏 / 鸿蒙锁向 / iOS 隐藏状态栏），沿用 `UiState.isSystemFullScreen`。
+     */
     @Composable
-    fun isBuffering(
-        controller: VideoPlayerController,
-        screenModel: VideoPlayScreenModel,
-    ): Boolean? = null
+    fun rememberSystemFullScreen(): Boolean? = null
 
+    /**
+     * 该平台是否有可用的"系统返回"通道 (返回键 / 滑动返回会进 AppBackHandler)。
+     * 默认 true。iOS 的 PlatformBackHandler 是 no-op: 视频页一进全屏就把顶栏隐掉,
+     * 而“窗口内全屏”的退出口只顶栏菜单里有 → 用户退不出全屏也打不开菜单。
+     * 置 false 时路由会在全屏期间常驻一个退出入口。
+     */
+    val supportsSystemBack: Boolean get() = true
+
+    /** 全屏切换失败时不得置真页面全屏态 */
     fun applyFullscreen(enabled: Boolean) {}
 
     // 系统级全屏 (隐藏系统底栏/窗口装饰, 对照 app applyFullscreen 在桌面端的增强版);
     // 与 applyFullscreen (右上角菜单的窗口内全屏) 区分
     fun applySystemFullScreen(enabled: Boolean) {}
-
-    /**
-     * 视频页内是否有 Compose 弹层 (菜单/对话框) 打开。
-     * 平台可借此处理 airspace 遮挡: 桌面端 mpv 是重量级原生窗口, 弹层会被盖住,
-     * 弹出时临时隐藏 mpv 窗口, 关闭后恢复。
-     */
-    fun setOverlayVisible(visible: Boolean) {}
 }
 
 object VideoPlayPlatformProviders {
@@ -162,12 +226,11 @@ class VideoPlayScreenModel : ScreenModel {
     private var lastTitledChapters: List<BookChapter>? = null
 
     init {
-        // 合并 shared 各 StateFlow → 统一 UiState (对照 Activity chapterListData/videoUrl/resolutions observe)
+        // 合并 shared 各 StateFlow → 统一 UiState (对照 Activity chapterListData/resolutions observe)
         // chapters 随每次发射一并取回, 避免与其它写入交错时丢失章节列表
         combine(
-            shared.curChapterIndex, shared.chapterSize, shared.curChapterTitle,
-            shared.loadState,
-        ) { index, size, title, loadState ->
+            shared.curChapterIndex, shared.chapterSize, shared.loadState,
+        ) { index, size, loadState ->
             // 返回增量合并函数交给 update{} 原子完成: scope 是线程池, 本收集器与下面的
             // 分辨率收集器、UI 线程直写并发操作同一个 _state, 非原子读改写会整字段丢更新
             val chapters = shared.chapters
@@ -175,7 +238,6 @@ class VideoPlayScreenModel : ScreenModel {
                 cur.copy(
                     curChapterIndex = index,
                     chapterSize = size,
-                    chapterTitle = title,
                     loadState = loadState,
                     chapters = chapters,
                 )
@@ -190,17 +252,16 @@ class VideoPlayScreenModel : ScreenModel {
             }
         }.launchIn(scope)
 
-        // 分辨率列表 + 当前索引 → resolutionText/hasMultiResolution (对照 Activity resolutions.observe + updateResolutionText)
-        combine(shared.resolutions, shared.videoSource) { resolutions, _ ->
-            val currentIndex = shared.currentResolutionIndex
+        // 分辨率列表 + 当前索引 → hasMultiResolution/currentResolutionIndex
+        // (对照 Activity resolutions.observe + updateResolutionText)。索引必须是状态流:
+        // 上一版它是普通 var、combine 键只有 resolutions/videoSource, 切档后无任何上游发射
+        // → 钮文字与对话框高亮永远停在旧档。
+        combine(shared.resolutions, shared.currentResolutionIndex) { resolutions, currentIndex ->
             val merge: (VideoPlayUiState) -> VideoPlayUiState = { cur ->
                 cur.copy(
                     resolutions = resolutions,
                     currentResolutionIndex = currentIndex,
                     hasMultiResolution = resolutions.size > 1,
-                    resolutionText = if (resolutions.size > 1) {
-                        resolutions.getOrNull(currentIndex)?.name
-                    } else null,
                 )
             }
             merge
@@ -226,65 +287,43 @@ class VideoPlayScreenModel : ScreenModel {
     fun dispatch(event: VideoPlayUiEvent) {
         when (event) {
             is VideoPlayUiEvent.ShowBook -> {
-                // 初始化书籍名 + 章节列表 (对照 Activity viewModel.initData + chapterListData.observe)
-                _state.update { it.copy(bookName = event.book.name) }
-                scope.launch {
-                    val targetIndex = event.chapterIndex ?: event.book.durChapterIndex
-                    val targetPos = event.chapterPos ?: 0
-                    // 先写回 chapterIndex/chapterPos 到 Book + 落库 (对照 app initData override 分支)
-                    shared.applyChapterOverride(event.book, targetIndex, targetPos)
-                    // 再加载章节 (persistProgress=false 避免覆盖刚写入的 durChapterPos)
-                    shared.initData(event.book, targetIndex, persistProgress = false)
-                }
-            }
-
-            is VideoPlayUiEvent.UpdateChapters -> {
-                // 外部已加载章节列表时直接注入 (对照 Activity 经 BaseReadViewModel.upBook 注入)
+                // 初始化书籍名 + 章节列表 + 书架态 (对照 Activity viewModel.initData +
+                // chapterListData.observe + BaseReadViewModel.upBook 的 inBookshelf = !book.isNotShelf)
+                // 上一版 ShowBook 只写 bookName、从不初始化 inShelf → 从书架进页星恒空心,
+                // 下一次点击又拿陈旧 false 当“不在架”去上架 (空点一下)
                 _state.update {
-                    it.copy(
-                        chapterSize = event.chapters.size,
-                        curChapterIndex = event.curIndex,
-                        chapterTitle = event.chapters.getOrNull(event.curIndex)?.title
-                            ?: it.chapterTitle,
-                        chapters = event.chapters,
+                    it.copy(bookName = event.book.name, inShelf = !event.book.isNotShelf)
+                }
+                scope.launch {
+                    val book = event.book
+                    // 只有显式带了章节定位 (书签/目录回传) 才覆盖已存进度 —— 对照原版
+                    // `initData` 的 `if (overrideIndex >= 0)` 门控。上一版无条件
+                    // `chapterPos ?: 0` + applyChapterOverride, 而所有常规入口都不带定位
+                    // → 进页那一瞬就把用户看到一半的 durChapterPos 清零并 PATCH 落库。
+                    // 未覆盖时由 initData 自己从 book.durChapterPos 取恢复位置。
+                    val overrideIndex = event.chapterIndex
+                    if (overrideIndex != null) {
+                        shared.applyChapterOverride(
+                            book, overrideIndex, event.chapterPos ?: 0
+                        )
+                    }
+                    // persistProgress=false: 首次装载不得回写进度 (会把 just 取到的
+                    // durChapterPos 归零), 与原版 initData 一致
+                    shared.initData(
+                        book,
+                        overrideIndex ?: book.durChapterIndex,
+                        persistProgress = false,
                     )
                 }
             }
 
-            is VideoPlayUiEvent.ShowError -> _state.update {
-                it.copy(loadState = ChapterLoadState.Error(event.message))
-            }
-
-            is VideoPlayUiEvent.UpdatePlaying -> _state.update {
-                it.copy(isPlaying = event.isPlaying)
-            }
-
-            is VideoPlayUiEvent.UpdatePlaybackSpeed -> _state.update {
-                it.copy(playbackSpeed = event.speed)
-            }
-
-            is VideoPlayUiEvent.UpdateControlsVisible -> _state.update {
-                it.copy(controlsVisible = event.visible)
-            }
+            // 播放器错误归一到 shared VM 的 loadState (单一状态源): 上一版直接写 _state.loadState,
+            // 而 combine 每次发射都用 shared.loadState 覆盖回去 → 错误占位要么被无声抹掉
+            // (黑屏无重试钮), 要么挂在已恢复的画面上不走
+            is VideoPlayUiEvent.ShowError -> shared.reportPlayError(event.message)
 
             is VideoPlayUiEvent.UpdateInShelf -> _state.update {
                 it.copy(inShelf = event.inShelf)
-            }
-
-            is VideoPlayUiEvent.UpdateFullScreen -> _state.update {
-                it.copy(isFullScreen = event.isFullScreen)
-            }
-
-            is VideoPlayUiEvent.UpdateSystemFullScreen -> _state.update {
-                it.copy(isSystemFullScreen = event.isSystemFullScreen)
-            }
-
-            is VideoPlayUiEvent.UpdatePlayWhenReady -> _state.update {
-                it.copy(playWhenReady = event.playWhenReady)
-            }
-
-            is VideoPlayUiEvent.UpdatePlaybackState -> _state.update {
-                it.copy(playbackState = event.playbackState)
             }
         }
     }
@@ -296,7 +335,19 @@ class VideoPlayScreenModel : ScreenModel {
     }
 
     fun onNextChapter() {
-        shared.moveToNextChapter()
+        // 末章播完给一条提示: 原版什么都不做 (停在末帧 + 控制层自动收起), 看起来像卡死
+        if (!shared.moveToNextChapter() && allowEndedToast()) {
+            Toasters.get().toast("已播放到最后一章")
+        }
+    }
+
+    /** 末章提示节流: 引擎 Ended 是电平态, 防连发 */
+    private var lastEndedToastAt = 0L
+    private fun allowEndedToast(): Boolean {
+        val now = systemCurrentTimeMillis()
+        if (now - lastEndedToastAt < 5000L) return false
+        lastEndedToastAt = now
+        return true
     }
 
     /** 选集网格点击章节 (对照 Activity openChapter) */
@@ -314,6 +365,23 @@ class VideoPlayScreenModel : ScreenModel {
         _state.update { it.copy(controlsVisible = !it.controlsVisible) }
     }
 
+    /** 锁定 / 解锁 (锁定态只影响鼠标手势与控制层的问题已修: 键盘快捷键同步让位) */
+    fun setLocked(locked: Boolean) {
+        _state.update { it.copy(isLocked = locked) }
+    }
+
+    /**
+     * 点标题进书籍详情前暂停播放 (对照原版 toolbar.setOnClickListener 里
+     * `bookInfoResult.launch { … player?.pause() }`)。
+     *
+     * 只覆盖这一个入口: 原版 `onPause()` 本身**不暂停播放器** (只结束计时 + saveRead +
+     * uploadProgress), 所以退后台/压其他页仍继续出声是原版行为, 不在这里改。
+     */
+    fun onPausePlayback() = controller?.pause() ?: Unit
+
+    /** 当前是否锁定 (键盘快捷键分发读它) */
+    fun isLocked(): Boolean = _state.value.isLocked
+
     /** 手势/按键反馈文字 (null = 隐藏), 见 [gestureText]。 */
     fun onGestureText(text: String?) {
         _gestureText.value = text
@@ -326,24 +394,30 @@ class VideoPlayScreenModel : ScreenModel {
 
     /** 刷新当前章节 (对照 Activity refreshChapter: pause + viewModel.refreshChapter) */
     fun onRefreshChapter() {
-        shared.refreshChapter(persistProgress = false)
+        // 刷新后从当前位置续播 (对照原版 refreshChapter 不清 position)
+        shared.refreshChapter(
+            persistProgress = false,
+            seekPositionMs = controller?.positionMs ?: 0L,
+        )
     }
 
     /**
      * 上架/下架切换 (对照 Activity toggleShelf)。
      * 平台能力走 [PlatformCapabilityProviders.toggleBookshelf];
-     * 完成回调更新 state.inShelf。
+     *
+     * 在不在架以 [curBook] 的 `isNotShelf` 为权威源 (它是 toggleBookshelfCore 原地增删的位),
+     * 不再拿 UiState 缓存值当分支判据; 完成回调按平台契约写回 (true=已上架, false=取消上架,
+     * **null=下架成功**, 见 BookExtensionsShared.toggleBookshelfCore)。
      */
     fun onToggleShelf() {
         val book = shared.curBook ?: return
-        val inShelf = _state.value.inShelf
+        val inShelf = !book.isNotShelf
         PlatformCapabilityProviders.get().toggleBookshelf(
             book, inShelf, onComplete = { result ->
-                if (result == true) {
-                    _state.update { it.copy(inShelf = true) }
-                } else if (result == false) {
-                    _state.update { it.copy(inShelf = false) }
-                }
+                // null = 下架成功: 上一版只接 true/false → 书已删但星永远亮着,
+                // 再点又是“删一本不存在的书”
+                val nowInShelf = if (result == null) false else result
+                _state.update { it.copy(inShelf = nowInShelf) }
             }
         )
     }
@@ -363,10 +437,14 @@ class VideoPlayScreenModel : ScreenModel {
         platform?.applyFullscreen(enabled)
     }
 
-    // 系统级全屏切换 (桌面端隐藏系统底栏/窗口装饰; 与窗口内全屏互斥)
-    fun onToggleSystemFullScreen() {
-        val enabled = !_state.value.isSystemFullScreen
+    // 系统级全屏切换 (桌面端隐藏系统底栏/窗口装饰; 与窗口内全屏互斥)。
+    // 目标值由调用方传入 —— 桌面真全屏由窗口决定, 页面自己取反会与窗口实际态分叉
+    fun onToggleSystemFullScreen(enabled: Boolean) {
+        val wasWindowFullScreen = _state.value.isFullScreen
         _state.update { it.copy(isSystemFullScreen = enabled, isFullScreen = false) }
+        // 互斥反向补齐: 上一版只改标志位不退窗口内全屏, 会留下“页面按新全屏渲染、
+        // 旧全屏的系统栏/方向没回收”的错乱
+        if (enabled && wasWindowFullScreen) platform?.applyFullscreen(false)
         platform?.applySystemFullScreen(enabled)
     }
 
@@ -427,29 +505,14 @@ class VideoPlayScreenModel : ScreenModel {
         _state.update { it.copy(pendingBookmark = null) }
     }
 
-    /** 分辨率切换 (对照 Activity switchResolution: 重建 ExoPlayer + seekTo)。
-     *  shared VM 仅更新 videoUrl State, UI 层订阅后自行重建播放器 */
+    /** 分辨率切换 (对照 Activity switchResolution: 重建播放器 + seekTo 原位置)。
+     *  位置从控制器现取: 上一版不传位置 → 切清晰度必从片头重播 */
     fun onSwitchResolution(index: Int) {
-        shared.switchResolution(index)
+        shared.switchResolution(index, seekPositionMs = controller?.positionMs ?: 0L)
     }
 
-    fun onPlayerState(
-        isPlaying: Boolean? = null,
-        playWhenReady: Boolean? = null,
-        playbackState: Int? = null,
-        playbackSpeed: Float? = null,
-        isBuffering: Boolean? = null,
-    ) {
-        _state.update { current ->
-            current.copy(
-                isPlaying = isPlaying ?: current.isPlaying,
-                playWhenReady = playWhenReady ?: current.playWhenReady,
-                playbackState = playbackState ?: current.playbackState,
-                playbackSpeed = playbackSpeed ?: current.playbackSpeed,
-                isBuffering = isBuffering ?: current.isBuffering,
-            )
-        }
-    }
+    /** 当前倍速 (键盘长按前快照用): 直读控制器快照, 不在 UiState 里缓存副本 */
+    fun currentSpeed(): Float = controller?.playback?.value?.speed ?: 1f
 
     /** 进入活跃期 (对照原版 onResume): 开始计时; 重开 [exited] 让本次活跃期结束时能再保存。 */
     fun onResume() {
@@ -469,8 +532,12 @@ class VideoPlayScreenModel : ScreenModel {
     fun onExit() {
         if (exited) return
         exited = true
-        val pos = controller?.positionMs ?: 0L
-        val dur = controller?.durationMs?.takeIf { it > 0 } ?: 0L
+        val c = controller
+        val pos = c?.positionMs ?: 0L
+        val dur = c?.durationMs?.takeIf { it > 0 } ?: 0L
+        // 保存屏障: 媒体已卸载 (切章时 stop() 卸源 / release 后引擎把位置归零) 时读到的 0
+        // 不是真实进度, 拿它写库会把用户看到一半的位置抹成 0。此时不覆盖已存进度。
+        if (c != null && pos <= 0L && c.playback.value.idle) return
         // 保存进度: Preference 视频位置 + books 表 durChapterPos + WebDav 上传
         shared.onExit(pos, dur)
     }
@@ -498,27 +565,21 @@ class VideoPlayScreenModel : ScreenModel {
 /** 视频播放页 UI 状态 (章节 + 加载/错误 + 播放控制回显 + 屏幕状态)。 */
 data class VideoPlayUiState(
     val bookName: String = "",
-    val chapterTitle: String = "",
     val curChapterIndex: Int = 0,
     val chapterSize: Int = 0,
     /** 章节装载状态 (空闲/加载中/失败, 单一状态源: shared VM 的 loadState 直传) */
     val loadState: ChapterLoadState = ChapterLoadState.Idle,
-    val isPlaying: Boolean = false,
-    val isBuffering: Boolean = false,
-    val playbackSpeed: Float = 1f,
     val controlsVisible: Boolean = false,
+    /** 锁定态 (手势层与控制层隐藏)。存于页面状态而非渲染层 remember:
+     *  remember 会随布局分支切换被子树重建而静默丢失，键盘快捷键也读不到它 */
+    val isLocked: Boolean = false,
     /** 是否在书架中 (对照 Activity inShelf) */
     val inShelf: Boolean = false,
     /** 是否全屏 (对照 Activity isFullScreen) */
     val isFullScreen: Boolean = false,
-    /** 是否系统级全屏 (隐藏系统底栏/窗口装饰, 对照 app applyFullscreen 在桌面端的增强) */
+    /** 是否系统级全屏 (仅作无平台真实态钩子端的页面意图; 桌面由
+     *  [VideoPlayPlatformProvider.rememberSystemFullScreen] 取窗口真值覆盖) */
     val isSystemFullScreen: Boolean = false,
-    /** 播放就绪态 (对照 Activity playWhenReady) */
-    val playWhenReady: Boolean = false,
-    /** 播放器状态 (对照 Activity playbackState, Player.STATE_*) */
-    val playbackState: Int = 0,
-    /** 强制分辨率钮回显文字, null 时用资源 resolution (对照 Activity resolutionText) */
-    val resolutionText: String? = null,
     /** 是否多分辨率源 (控制分辨率钮显隐) */
     val hasMultiResolution: Boolean = false,
     /** 分辨率列表 */
@@ -533,7 +594,12 @@ data class VideoPlayUiState(
     val pendingBookmark: Bookmark? = null,
 )
 
-/** 视频播放页事件, 由宿主 (app Activity / desktop Window) 推入。 */
+/**
+ * 视频播放页事件, 由宿主 (app Activity / desktop Window / Route) 推入。
+ *
+ * 只保留真实有生产者的三个: 播放态不再走事件回灌 (改由
+ * [VideoPlayerController.playback] 单一快照流现取, 见 [PlaybackSnapshot])。
+ */
 sealed interface VideoPlayUiEvent {
     /** 书籍数据更新 (对齐 VideoPlayActivity.titleText/durChapterIndex 初始化)。
      *  chapterIndex/chapterPos 用于书签/目录回传定位 (对照 AudioPlayUiEvent.Init) */
@@ -543,33 +609,9 @@ sealed interface VideoPlayUiEvent {
         val chapterPos: Int? = null,
     ) : VideoPlayUiEvent
 
-    /** 章节列表 + 当前索引更新 (对齐 chapterListData observe) */
-    data class UpdateChapters(val chapters: List<BookChapter>, val curIndex: Int) : VideoPlayUiEvent
-
     /** 显示错误 */
     data class ShowError(val message: String) : VideoPlayUiEvent
 
-    /** 播放状态更新 (对齐 onIsPlayingChanged) */
-    data class UpdatePlaying(val isPlaying: Boolean) : VideoPlayUiEvent
-
-    /** 倍速更新 (对齐 onPlaybackParametersChanged) */
-    data class UpdatePlaybackSpeed(val speed: Float) : VideoPlayUiEvent
-
-    /** 控制层显隐更新 */
-    data class UpdateControlsVisible(val visible: Boolean) : VideoPlayUiEvent
-
     /** 书架状态更新 (对齐 Activity inShelf) */
     data class UpdateInShelf(val inShelf: Boolean) : VideoPlayUiEvent
-
-    /** 全屏状态更新 (对齐 Activity isFullScreen) */
-    data class UpdateFullScreen(val isFullScreen: Boolean) : VideoPlayUiEvent
-
-    /** 系统级全屏状态更新 (对齐桌面端 applySystemFullScreen) */
-    data class UpdateSystemFullScreen(val isSystemFullScreen: Boolean) : VideoPlayUiEvent
-
-    /** 播放就绪态更新 (对齐 onPlayWhenReadyChanged) */
-    data class UpdatePlayWhenReady(val playWhenReady: Boolean) : VideoPlayUiEvent
-
-    /** 播放器状态更新 (对齐 onPlaybackStateChanged) */
-    data class UpdatePlaybackState(val playbackState: Int) : VideoPlayUiEvent
 }

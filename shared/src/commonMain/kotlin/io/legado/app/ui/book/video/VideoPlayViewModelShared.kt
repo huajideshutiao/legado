@@ -142,14 +142,42 @@ class VideoPlayViewModelShared(
     /** 分辨率列表 (空 = 单一直链或未加载) */
     val resolutions: StateFlow<List<VideoResolution>> = _resolutions.asStateFlow()
 
-    /** 当前分辨率索引 (切换分辨率时更新) */
-    var currentResolutionIndex: Int = 0
-        public set
+    /**
+     * 当前分辨率索引 (切换分辨率时更新)。
+     *
+     * 必须是 StateFlow: 上一版是普通 var，而回显它的 combine 只 listen
+     * resolutions/videoSource，切档后无任何上游发射 → 钮文字与对话框高亮停在旧档。
+     */
+    private val _currentResolutionIndex = MutableStateFlow(0)
+    val currentResolutionIndex: StateFlow<Int> = _currentResolutionIndex.asStateFlow()
+
+    /**
+     * 下一次装载的起播位置 ms (对照原版 `VideoViewModel.position`)。
+     *
+     * 与 [_videoUrl] 一同下发 (先写位置再写 url)：UI 层在订阅到 url 时取这里读，
+     * 不再在组合期快照 `book.durChapterPos` (那样会快照到上一次重组的旧值，
+     * 与切章位置重置赛跑 → 新章从上一章位置起播)。约定：装载消费后归 0，
+     * 所以切章自然从头播，只有显式传了 seekPositionMs 的入口才恢复位置。
+     */
+    private val _startPositionMs = MutableStateFlow(0L)
+    val startPositionMs: StateFlow<Long> = _startPositionMs.asStateFlow()
+
+    /**
+     * [loadChapter] 入口传入的待用位置，由 [parseVideoContent] 在写 [_videoUrl] 前
+     * 搬到 [_startPositionMs] 并消耗 (保证“位置与 url 同拍到达”，UI 无需比较时间戳)。
+     */
+    private var pendingSeekMs = 0L
 
     // ---- 加载状态 (UI 订阅) ----
 
-    /** 章节加载状态 ([ChapterLoadState], 视频与漫画模式共用) */
-    private val _loadState = MutableStateFlow<ChapterLoadState>(ChapterLoadState.Idle)
+    /**
+     * 章节加载状态 ([ChapterLoadState], 视频与漫画模式共用)。
+     *
+     * 初值 Loading (对齐漫画侧 `MangaReaderViewModelShared`): 进入页面到首次
+     * [loadChapter] 之间要跑 `getBookInfoAwait` + 拉目录 (可数秒)，上一版初值 Idle
+     * 使那整段黑屏且无任何转圈提示。
+     */
+    private val _loadState = MutableStateFlow<ChapterLoadState>(ChapterLoadState.Loading)
     val loadState: StateFlow<ChapterLoadState> = _loadState.asStateFlow()
 
     /** 播放错误已重试标记 (配合 [retryOnPlayError] 仅首次重试) */
@@ -209,10 +237,16 @@ class VideoPlayViewModelShared(
         // 启动阅读计时 (对照原版 VideoViewModel.initData)
         ReadTimeRecorder.setBook(ReadTimeRecorder.Source.VIDEO, result.book.name)
         ReadTimeRecorder.start(ReadTimeRecorder.Source.VIDEO, result.book.name)
-        // 加载初始章节
+        // 加载初始章节: 从已存进度恢复起播位置 (对照原版
+        // `VideoViewModel.position = curBook.durChapterPos.coerceAtLeast(0)`;
+        // 片尾编码 -1 被 coerce 抹成 0 = 从头播)
         val targetIndex =
             initialChapterIndex.coerceIn(0, (result.chapterList.size - 1).coerceAtLeast(0))
-        loadChapter(targetIndex, persistProgress)
+        loadChapter(
+            targetIndex,
+            persistProgress,
+            seekPositionMs = result.book.durChapterPos.coerceAtLeast(0).toLong(),
+        )
         // 书架书自动同步阅读进度
         if (!result.book.isNotShelf) {
             progressSyncScope.launch {
@@ -247,7 +281,11 @@ class VideoPlayViewModelShared(
         chapterList = chapters
         _chapterSize.value = chapters.size
         val targetIndex = initialChapterIndex.coerceIn(0, chapters.lastIndex.coerceAtLeast(0))
-        loadChapter(targetIndex, persistProgress = false)
+        loadChapter(
+            targetIndex,
+            persistProgress = false,
+            seekPositionMs = book.durChapterPos.coerceAtLeast(0).toLong(),
+        )
     }
 
     /**
@@ -264,8 +302,14 @@ class VideoPlayViewModelShared(
      * @param persistProgress 是否在加载完成后持久化章节进度 (调用 [saveRead])。
      *   默认 true (desktop 行为); app 端 BaseReadViewModel 已自行调用 `Book.saveRead()`
      *   保存 durChapterPos, 传 false 避免shared VM 用 durChapterPos=0 覆盖 app 端写入的位置。
+     * @param seekPositionMs 装载完成后起播位置 ms (0 = 从头播)。只有显式入口 (首次进页恢复
+     *   进度、书签/目录定位、刷新/重试续播) 会传非 0; 切章不传 = 新章从头播。
      */
-    fun loadChapter(index: Int, persistProgress: Boolean = true) {
+    fun loadChapter(
+        index: Int,
+        persistProgress: Boolean = true,
+        seekPositionMs: Long = 0L,
+    ) {
         val book = curBook ?: return
         val source = curBookSource ?: if (book.isLocal) null else run {
             _loadState.value = ChapterLoadState.Error("书源不存在")
@@ -279,12 +323,14 @@ class VideoPlayViewModelShared(
             _loadState.value = ChapterLoadState.Error("章节列表为空")
             return
         }
-        // 标记加载中, 清空旧视频源 (避免显示上一章视频)
+        // 标记加载中, 清空旧视频源 (清空只是「没有新源」的数据状态, 停旧媒体由
+        // 渲染层观察 null 后调 controller.stop() 完成 —— 不清会让上一章一直响到新章解析完)
         _loadState.value = ChapterLoadState.Loading
         _videoUrl.value = null
         _videoSource.value = null
         _resolutions.value = emptyList()
-        currentResolutionIndex = 0
+        _currentResolutionIndex.value = 0
+        pendingSeekMs = seekPositionMs
         _curChapterIndex.value = index
         _curChapterTitle.value = chapters.getOrNull(index)?.title.orEmpty()
         // 开解当前章前先作废上一轮预解析: 两者共用书源, 并行跑会拖慢用户等的这一章
@@ -434,23 +480,35 @@ class VideoPlayViewModelShared(
         val videoSource = parseVideoSource(content)
 
         if (videoSource != null && videoSource.resolutions.isNotEmpty()) {
-            // 多分辨率源: 取默认分辨率 URL
+            // 多分辨率源: 取默认分辨率 URL。
+            // 写序必须先改状态源再发 url: 上一版把 currentResolutionIndex 排在两个 flow
+            // 之后且它根本不是状态源, 收集器抢跑时只能读到刚被 loadChapter 重置的 0
+            // → defaultIndex>0 的源「钮显示第 1 档、实际播第 N 档」。
             _videoSource.value = videoSource
             _resolutions.value = videoSource.resolutions
-            currentResolutionIndex = videoSource.defaultIndex
+            _currentResolutionIndex.value = videoSource.defaultIndex
             val resolution = videoSource.getResolution()
-            if (resolution != null) {
-                _videoUrl.value = AnalyzeUrlFactories.create(
-                    rawUrl = resolution.url,
-                    source = source,
-                    headerMapF = videoSource.headers,
+            if (resolution == null) {
+                // defaultIndex 越界等坏配置: 不得静默回 Idle (那是“纯黑且连重试入口都没有”)
+                _loadState.value = ChapterLoadState.Error(
+                    "视频源分辨率配置错误 (defaultIndex=${videoSource.defaultIndex})"
                 )
+                return
             }
+            _startPositionMs.value = pendingSeekMs
+            pendingSeekMs = 0L
+            _videoUrl.value = AnalyzeUrlFactories.create(
+                rawUrl = resolution.url,
+                source = source,
+                headerMapF = videoSource.headers,
+            )
         } else {
             // 直接 URL / 内存 m3u8
             _videoSource.value = null
             _resolutions.value = emptyList()
-            currentResolutionIndex = 0
+            _currentResolutionIndex.value = 0
+            _startPositionMs.value = pendingSeekMs
+            pendingSeekMs = 0L
             _videoUrl.value = if (content.startsWith("http")) {
                 // http 直链: 用 AnalyzeUrlCore 包装 (带书源 header / cookie / charset)
                 AnalyzeUrlFactories.create(rawUrl = content, source = source)
@@ -473,16 +531,19 @@ class VideoPlayViewModelShared(
      * 本 VM 只更新 [videoUrl] State, UI 层订阅后自行处理播放器重建与 seek。
      *
      * @param index 分辨率索引 (0-based)
-     * @param seekPositionMs 切换后跳转到的位置 (毫秒, 0 = 从头播; 仅供 UI 层参考, 本 VM 不做 seek)
+     * @param seekPositionMs 切换后跳转到的位置 (毫秒, 0 = 从头播)。与 [_videoUrl] 同拍写入，
+     *   渲染层订阅新 url 时从 [startPositionMs] 取到它就是它。
      */
     fun switchResolution(index: Int, seekPositionMs: Long = 0L) {
         val source = _videoSource.value ?: return
         val resolution = source.getResolution(index) ?: return
-        val bookSource = curBookSource ?: return
-        currentResolutionIndex = index
+        _currentResolutionIndex.value = index
+        _startPositionMs.value = seekPositionMs
         _videoUrl.value = AnalyzeUrlFactories.create(
             rawUrl = resolution.url,
-            source = bookSource,
+            // 本地书无书源 (loadChapter 对 null source 已明确容忍), 此处不得提前 return:
+            // 上一版 `curBookSource ?: return` 使本地多分辨率书点清晰度完全无反应
+            source = curBookSource,
             headerMapF = source.headers,
         )
     }
@@ -499,8 +560,9 @@ class VideoPlayViewModelShared(
      *
      * @param persistProgress 是否持久化章节进度, 透传给 [loadChapter]; app 端传 false
      *   避免覆盖已保存的播放位置。
+     * @param seekPositionMs 刷新后从哪续播 (调用方从播放器现取当前位置; 0 = 从头)。
      */
-    fun refreshChapter(persistProgress: Boolean = true) {
+    fun refreshChapter(persistProgress: Boolean = true, seekPositionMs: Long = 0L) {
         val book = curBook
         if (book != null && chapterList.isNullOrEmpty()) {
             scope.launch {
@@ -509,7 +571,7 @@ class VideoPlayViewModelShared(
             return
         }
         chapterList?.getOrNull(_curChapterIndex.value)?.resourceUrl = null
-        loadChapter(_curChapterIndex.value, persistProgress)
+        loadChapter(_curChapterIndex.value, persistProgress, seekPositionMs)
     }
 
     /**
@@ -522,12 +584,13 @@ class VideoPlayViewModelShared(
      * (播放成功) 才由调用方经 [resetRetryOnPlayError] 重置; 链接不可用时播放器永不
      * READY, 标记不再被重置, 同一章节只自动重试一次, 避免无限重试循环 (双重进度条闪烁)。
      *
+     * @param seekPositionMs 重试时续播位置 (调用方从播放器现取; 0 = 从头)。
      * @return true 已触发重试, false 已重试过需调用方自行处理
      */
-    fun retryOnPlayError(): Boolean {
+    fun retryOnPlayError(seekPositionMs: Long = 0L): Boolean {
         if (hasRetriedOnError) return false
         hasRetriedOnError = true
-        refreshChapter(persistProgress = false)
+        refreshChapter(persistProgress = false, seekPositionMs = seekPositionMs)
         return true
     }
 
@@ -539,6 +602,16 @@ class VideoPlayViewModelShared(
      */
     fun resetRetryOnPlayError() {
         hasRetriedOnError = false
+    }
+
+    /**
+     * 播放侧错误上报为加载失败 ([ChapterLoadState.Error]) —— [loadState] 的唯一写入口。
+     *
+     * 上一版由 ScreenModel 直接写 `UiState.loadState`，而 combine 每次发射都用本 VM 的
+     * loadState 覆盖回去 → 错误占位会被下一次无关发射无声抹掉 (黑屏无重试钮)。
+     */
+    fun reportPlayError(message: String) {
+        _loadState.value = ChapterLoadState.Error(message)
     }
 
     /**

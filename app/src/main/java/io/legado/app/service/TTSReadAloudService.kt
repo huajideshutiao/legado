@@ -190,13 +190,12 @@ class TTSReadAloudService : BaseReadAloudService() {
 
         override fun onError(utteranceId: String?, errorCode: Int) {
             if (generation != engineGeneration || utteranceId != AppConst.APP_TAG + currentPlaybackToken) return
-            val id = utteranceId ?: return
             LogUtils.d(
                 TAG,
                 "onError nowSpeak:${readAloudController.playbackQueue.nowSpeak} pageIndex:$pageIndex utteranceId:$utteranceId " +
                     "errorCode:$errorCode"
             )
-            nextParagraph(id.removePrefix(AppConst.APP_TAG).toLongOrNull() ?: return)
+            nextParagraph(utteranceId.removePrefix(AppConst.APP_TAG).toLongOrNull() ?: return)
         }
 
         @Deprecated("Deprecated in Java")

@@ -39,9 +39,11 @@ class VideoGestureController(
     private val setSpeed: (Float) -> Unit,
     private val onPlayPause: () -> Unit,
     private val seekTo: (Long) -> Unit,
-    private val readBrightness: () -> Float,
+    /** 读当前亮度/音量 (原始单位); null = 读不到。禁止各端拿固定值 (如 0.5f) 把
+     *  “读不到”伪装成“真的读到 50%”—— 那会让手势起手第一帧就把系统亮度/音量硬拉到一半。 */
+    private val readBrightness: () -> Float?,
     private val writeBrightness: (Float) -> Unit,
-    private val readVolume: () -> Float,
+    private val readVolume: () -> Float?,
     private val writeVolume: (Float) -> Unit,
     private val onToggleControls: () -> Unit,
     private val onGestureText: (String?) -> Unit,

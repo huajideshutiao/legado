@@ -159,6 +159,7 @@ interface MediaCommand extends BridgeCommand {
   headers?: Record<string, string>;
   position?: number;
   speed?: number;
+  volume?: number;
   // AVSession 元数据与播放状态同步字段
   title?: string;
   artist?: string;
@@ -256,6 +257,9 @@ export function handleMediaCommand(commandJson: string): void {
       break;
     case 'setSpeed':
       handleSetSpeed(id, cmd.speed ?? 1);
+      break;
+    case 'setVolume':
+      handleSetVolume(id, cmd.volume ?? 1);
       break;
     case 'syncNowPlaying':
       handleSyncNowPlaying(cmd).catch((err: Error) => {
@@ -385,6 +389,21 @@ function handleSetSpeed(id: string, speed: number): void {
     player.setSpeed(mapSpeed(speed));
   } else {
     console.warn('[MediaBridge] setSpeed: avPlayer is null, id=' + id);
+  }
+}
+
+function handleSetVolume(id: string, volume: number): void {
+  const player = playerOf(id);
+  if (player != null) {
+    // 0..1 归一后夹住: Kotlin 侧手势给的就是 0..1, 越界会被 AVPlayer 拒报错
+    const v = Math.min(Math.max(volume, 0), 1);
+    try {
+      player.setVolume(v);
+    } catch (err) {
+      console.warn('[MediaBridge] setVolume failed: ' + String(err));
+    }
+  } else {
+    console.warn('[MediaBridge] setVolume: avPlayer is null, id=' + id);
   }
 }
 

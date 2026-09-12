@@ -19,7 +19,6 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.help.book.changeSourceTo
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfigProviders
-import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.book.video.VideoPlayScreenModel
@@ -46,7 +45,6 @@ import io.legado.app.ui.root.asBook
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.format
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.bookmark_add
 import legado.shared.generated.resources.copy_play_url
@@ -127,9 +125,13 @@ fun VideoPlayRoute(
                                 screenModel.shared.applyChapterOverride(
                                     book, toc.chapterIndex, toc.chapterPos
                                 )
-                                // 再加载章节 (persistProgress=false 避免覆盖刚写入的 durChapterPos)
+                                // 再加载章节并指定起播位置 (persistProgress=false 避免覆盖刚写入的
+                                // durChapterPos; 位置必须随 loadChapter 显式传，上一版只写库、
+                                // 装载端不读 → 书签/目录的“跳到 xx 秒”对视频完全失效)
                                 screenModel.shared.loadChapter(
-                                    toc.chapterIndex, persistProgress = false
+                                    toc.chapterIndex,
+                                    persistProgress = false,
+                                    seekPositionMs = toc.chapterPos.coerceAtLeast(0).toLong(),
                                 )
                             }
                         }
@@ -159,28 +161,34 @@ fun VideoPlayRoute(
                 }
 
                 RouteResults.BOOK_INFO -> {
-                    // 书籍详情返回: 查库确认是否仍在书架 (BookInfoRoute 不区分 Ok/Deleted payload)。
-                    // LaunchedEffect 里抛出会连坐 Recomposer, 查库异常按"仍在书架"处理
-                    val inShelf = runCatching {
-                        withContext(IoDispatcher) {
-                            AppDbProviders.get().bookDao.getBook(book.bookUrl) != null
+                    // 书籍详情返回: 按回传 payload 分流 (对照原版 bookInfoResult 的 RESULT_DELETED
+                    // 分支, 也与 ReaderRoute / MangaReaderRoute 同口径)。
+                    // 上一版忽略 payload、改查 `bookDao.getBook(bookUrl) != null` 当“在架”判据:
+                    // 从搜索/发现打开的视频书 (BookRef.Search, 不入 books 表) 本就不在库,
+                    // 于是“点标题进详情 → 返回”会把视频页自己 pop 关掉。
+                    if (result.payload is RouteResultPayload.Deleted) {
+                        navigator.pop(RouteResultPayload.Deleted)
+                    } else {
+                        screenModel.shared.curBook?.let { b ->
+                            screenModel.dispatch(VideoPlayUiEvent.UpdateInShelf(!b.isNotShelf))
                         }
-                    }.onFailure {
-                        AppLog.put("查询书架状态出错\n${it.message}", it)
-                    }.getOrDefault(true)
-                    if (!inShelf) navigator.pop(RouteResultPayload.Deleted)
-                    else screenModel.dispatch(VideoPlayUiEvent.UpdateInShelf(true))
+                    }
                 }
             }
         }
     }
+
+    // 系统级全屏真实态 (桌面为窗口实际全屏, 其他端 null → 页面意图): 退栈链必须按真实态分流,
+    // 否则 ESC 退过窗口全屏后页面仍自认为全屏、多吞一次返回
+    val systemFullScreen = screenModel.platform?.rememberSystemFullScreen()
+        ?: state.isSystemFullScreen
 
     // 返回栈由导航器统一管理; 对照 Activity onBackPressedDispatcher 返回逻辑
     // (系统级全屏与窗口内全屏互斥: 当前是哪种全屏就退哪种, 退全屏后下次 ESC 才 pop)
     val onBack: () -> Unit = {
         val s = screenModel.state.value
         when {
-            s.isSystemFullScreen -> screenModel.setSystemFullScreen(false)
+            systemFullScreen -> screenModel.setSystemFullScreen(false)
             s.isFullScreen -> screenModel.setFullScreen(false)
             else -> navigator.pop()
         }
@@ -189,10 +197,10 @@ fun VideoPlayRoute(
     // 两种全屏互斥, 同时只可能有一种激活; 非栈顶不拦截 (栈内页面全程留在 Composition)
     val backStack by navigator.backStack.collectAsState()
     val isTopEntry = backStack.lastOrNull()?.id == entry.id
-    AppBackHandler(enabled = isTopEntry && (state.isFullScreen || state.isSystemFullScreen)) {
+    AppBackHandler(enabled = isTopEntry && (state.isFullScreen || systemFullScreen)) {
         val s = screenModel.state.value
         when {
-            s.isSystemFullScreen -> screenModel.setSystemFullScreen(false)
+            systemFullScreen -> screenModel.setSystemFullScreen(false)
             s.isFullScreen -> screenModel.setFullScreen(false)
         }
     }
@@ -216,8 +224,10 @@ fun VideoPlayRoute(
     val longPressTimeoutMs = LocalViewConfiguration.current.longPressTimeoutMillis
     AppShortcutHandler(
         shortcuts = mediaPlaybackKeys,
-        // 媒体键捕获阶段抢占 (preemptive=true), 弹层打开时让位 (菜单/对话框方向键导航优先)
-        enabled = { isTopEntry && !hasActiveBackLayer() },
+        // 媒体键捕获阶段抢占 (preemptive=true), 弹层打开时让位 (菜单/对话框方向键导航优先);
+        // 锁定态一并让位: 上一版 locked 只屏蔽鼠标手势, 空格/方向键仍能暂停、seek、
+        // 切章、改倍速 —— 锁屏形同未锁
+        enabled = { isTopEntry && !hasActiveBackLayer() && !screenModel.isLocked() },
         onKeyUp = { shortcut ->
             // 右方向键: 长按松开恢复倍速 / 窗口内松开执行短按 seek +10s (KeyUp 判定)
             if (shortcut.key == Key.DirectionRight) {
@@ -236,7 +246,9 @@ fun VideoPlayRoute(
             Key.DirectionLeft -> screenModel.onSeekDelta(-10_000L)
             Key.DirectionRight -> keyLongPress.onPress(scope, longPressTimeoutMs) {
                 // 长按激活: 记录长按前倍速, 切 当前倍速×2 (对齐手势长按语义, 见 VideoGestureController.onLongPress)
-                prePressSpeed.value = screenModel.state.value.playbackSpeed
+                // 倍速从控制器快照现取: 上一版读 UiState.playbackSpeed, 而除 app 外三端
+                // 从不回灌该字段 → 永远读到 1f, 松手就把用户自设倍速抹成 1X
+                prePressSpeed.value = screenModel.currentSpeed()
                 val boosted = prePressSpeed.value * 2f
                 screenModel.onSpeedChange(boosted)
                 screenModel.onGestureText("%.1fX".format(boosted))
@@ -246,9 +258,14 @@ fun VideoPlayRoute(
         }
     }
 
-    // 对照 Activity onTitleClick: bookInfoResult.launch(IntentData.book=...)
-    val onTitleClick: () -> Unit =
-        { navigator.push(AppRoute.BookInfo(book.toRouteRef()), resultKey = RouteResults.BOOK_INFO) }
+    // 对照 Activity onTitleClick: bookInfoResult.launch(IntentData.book=…) + **player?.pause()**。
+    // 原版进详情前显式暂停播放器, 下沉时只留了 push → 声音一直播到详情页后面。
+    // 只补这一个入口: 原版 onPause() 本身不暂停 (只结束计时 + saveRead + uploadProgress),
+    // 所以“退后台继续出声”是原版行为, 不在这里改。
+    val onTitleClick: () -> Unit = {
+        screenModel.onPausePlayback()
+        navigator.push(AppRoute.BookInfo(book.toRouteRef()), resultKey = RouteResults.BOOK_INFO)
+    }
     // 对照 Activity editSource: sourceEditResult.launch
     val onEditSource: () -> Unit = {
         screenModel.shared.curBookSource?.let {
@@ -266,14 +283,6 @@ fun VideoPlayRoute(
 
     // 平台对话框状态 (对照 TocRoute showLogDialog/editingBookmark)
     var showLogDialog by remember { mutableStateOf(false) }
-
-    // 弹层可见性: 桌面端 mpv 是重量级原生窗口 (airspace), 会盖住 Compose 弹层
-    // (菜单/对话框), 弹层打开时上报平台临时隐藏 mpv 窗口, 关闭后恢复
-    var menuExpanded by remember { mutableStateOf(false) }
-    val overlayVisible = menuExpanded || showLogDialog || state.pendingBookmark != null
-    LaunchedEffect(overlayVisible) {
-        screenModel.platform?.setOverlayVisible(overlayVisible)
-    }
 
     // 选集字数显示 (对照 app VideoChapterItem 读 AppConfig.tocCountWords)
     val countWords = remember { AppConfigProviders.get().tocCountWords }
@@ -293,7 +302,7 @@ fun VideoPlayRoute(
         },
         onTitleClick = onTitleClick,
         // 系统级全屏同样隐藏标题栏与选集网格 (两者视觉上都需要视频占满)
-        isFullScreen = state.isFullScreen || state.isSystemFullScreen,
+        isFullScreen = state.isFullScreen || systemFullScreen,
         chapters = state.chapters,
         displayTitles = state.displayTitles,
         countWords = countWords,
@@ -321,7 +330,6 @@ fun VideoPlayRoute(
             VideoOverflowMenu(
                 hasLogin = screenModel.shared.curBookSource?.hasLogin() == true,
                 hasReview = !screenModel.shared.curBookSource?.reviewRule?.reviewUrl.isNullOrBlank(),
-                onExpandedChange = { menuExpanded = it },
                 // 右上角菜单"全屏" = 窗口内全屏 (隐藏顶栏/选集网格, 对照 Activity toggleFullScreen);
                 // 右下角按钮 = 系统级全屏 (onToggleSystemFullScreen, 覆盖任务栏) —— 用户拍板两者行为区分
                 onFullScreen = screenModel::onToggleFullScreen,
@@ -366,7 +374,6 @@ fun VideoPlayRoute(
 private fun VideoOverflowMenu(
     hasLogin: Boolean,
     hasReview: Boolean,
-    onExpandedChange: (Boolean) -> Unit = {},
     onFullScreen: () -> Unit,
     onLogin: () -> Unit,
     onCopyPlayUrl: () -> Unit,
@@ -377,7 +384,7 @@ private fun VideoOverflowMenu(
     onAddBookmark: () -> Unit,
     onAppLog: () -> Unit,
 ) {
-    OverflowMenu(onExpandedChange = onExpandedChange) { dismiss ->
+    OverflowMenu { dismiss ->
         VideoMenuItem(Res.string.full_screen) { dismiss(); onFullScreen() }
         if (hasLogin) {
             VideoMenuItem(Res.string.login) { dismiss(); onLogin() }
