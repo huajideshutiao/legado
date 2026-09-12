@@ -18,8 +18,8 @@ import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.model.analyzeRule.RuleData
 import io.legado.app.model.analyzeRule.UrlOptionSerializer
-import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.NetworkUtils
+import io.legado.app.utils.decodeOrNull
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -131,16 +131,12 @@ object WebBook {
             ?: throw NoStackTraceException("书籍地址格式不对")
         val urlMatch = AnalyzeUrlCore.paramPattern.find(bookUrl)
         val source = if (urlMatch != null) {
-            // GSON.fromJsonObject<AnalyzeUrlCore.UrlOption>(...).getOrNull() → KS_JSON.decodeFromString(UrlOptionSerializer, ...).getOrNull()
-            // Pattern.matcher → Regex.find: urlMatch.range.last + 1 对应 matcher.end()
-            val opt = try {
-                KS_JSON.decodeFromString(
-                    UrlOptionSerializer,
-                    bookUrl.substring(urlMatch.range.last + 1)
-                )
-            } catch (_: Exception) {
-                null
-            }
+            // 对齐原版 GSON.fromJsonObject<AnalyzeUrl.UrlOption>(...).getOrNull()
+            // decodeOrNull 走宽松策略 (流式状态机容错单引号及非标语法)
+            val opt = decodeOrNull(
+                UrlOptionSerializer,
+                bookUrl.substring(urlMatch.range.last + 1)
+            )
             opt?.origin?.let {
                 AppDbProviders.get().bookSourceDao.getBookSource(it)
             }

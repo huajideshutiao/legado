@@ -40,13 +40,12 @@ import io.legado.app.model.script.JsEngines
 import io.legado.app.model.script.buildScriptBindings
 import io.legado.app.model.webBook.replaceExploreOptionsInUrl
 import io.legado.app.utils.InputStream
-import io.legado.app.utils.KS_JSON
-import io.legado.app.utils.KS_JSON_STRICT
 import io.legado.app.utils.MimeBase64Decoder
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.PercentCodec
 import io.legado.app.utils.byteStreamAsInput
 import io.legado.app.utils.decodeAnyMapOrNull
+import io.legado.app.utils.decodeWithFallbackOrNull
 import io.legado.app.utils.formatDoubleNoDecimal
 import io.legado.app.utils.get
 import io.legado.app.utils.isDataUrl
@@ -226,17 +225,9 @@ open class AnalyzeUrlCore(
         NetworkUtils.getBaseUrl(url)?.let { baseUrl = it }
         if (urlOptionEnd != -1) {
             val urlOptionStr = tmpUrl.substring(urlOptionEnd)
-            // GSONStrict/GSON.fromJsonObject<UrlOption>(urlOptionStr) 双栈 → KS_JSON_STRICT/KS_JSON.decodeFromString(UrlOptionSerializer)
-            // 复刻原双栈语义: 先严格解析, 失败则降级到宽松 (并打 log 提示 JSON 格式不规范)
-            option = try {
-                KS_JSON_STRICT.decodeFromString(UrlOptionSerializer, urlOptionStr)
-            } catch (_: Exception) {
-                null
-            } ?: try {
-                KS_JSON.decodeFromString(UrlOptionSerializer, urlOptionStr)
-            } catch (_: Exception) {
-                null
-            }?.also {
+            // 对齐原版 GSONStrict.fromJsonObject<UrlOption>(...) ?: GSON.fromJsonObject<UrlOption>(...) 双栈语义:
+            // 严格解析失败则降级到宽松 (流式状态机容错单引号及非标语法, 并记录格式不规范日志)
+            option = decodeWithFallbackOrNull(UrlOptionSerializer, urlOptionStr) {
                 SourceDebugLoggers.impl?.log("链接参数 JSON 格式不规范，请改为规范格式")
             }
             option?.let { opt ->

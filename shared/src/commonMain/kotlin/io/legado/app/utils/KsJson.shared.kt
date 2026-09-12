@@ -1,7 +1,9 @@
 package io.legado.app.utils
 
+import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.descriptors.SerialDescriptor
@@ -20,6 +22,7 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.serializer
 import kotlin.math.ceil
 
 // 宽松 JSON 解析（对应原 GSON，容错降级用）
@@ -178,7 +181,7 @@ object AnyMapSerializer : KSerializer<Map<String, Any?>> {
 fun decodeAnyMapOrNull(json: String?): Map<String, Any?>? {
     if (json.isNullOrEmpty()) return null
     return try {
-        KS_JSON.decodeFromString(AnyMapSerializer, json)
+        decodeFromStringLenient(AnyMapSerializer, json)
     } catch (_: Exception) {
         null
     }
@@ -220,25 +223,86 @@ inline fun <reified T> decodeListWithFallbackOrNull(
         null
     }
     if (strict != null) return strict
-    // 降级到宽松解析, 仅宽松成功才提示格式不规范
-    val lenient = try {
-        KS_JSON.decodeFromString<List<T>>(json)
+    // 降级到宽松解析, 与对象版 [decodeWithFallbackOrNull] 走同一条链路 ([decodeFromStringLenient]:
+    // KS_JSON → 流式宽松解析器)。旧实现只再跑一遍 [KS_JSON].decodeFromString, 于是同一段非法 JSON
+    // 对象版能救回、数组版直接判无效。仅宽松成功才提示格式不规范。
+    return try {
+        decodeFromStringLenient<List<T>>(json).also {
+            logFallbackToLenient?.invoke()
+        }
     } catch (_: Exception) {
         null
     }
-    if (lenient != null) logFallbackToLenient?.invoke()
-    return lenient
 }
+
+/**
+ * 解析 JSON 字符串为 JsonElement, 宽松支持单引号、无引号 key 与多层嵌套 (对齐原版 GSON 解析容错)。
+ */
+fun parseToJsonElementLenient(json: String): JsonElement {
+    if (json.contains('\'')) {
+        return try {
+            KS_JSON_STRICT.parseToJsonElement(json)
+        } catch (_: Exception) {
+            LenientJsonParser.parse(json)
+        }
+    }
+    return try {
+        KS_JSON.parseToJsonElement(json)
+    } catch (_: Exception) {
+        LenientJsonParser.parse(json)
+    }
+}
+
+/**
+ * 宽松反序列化 (对应原 GSON.fromJsonObject / GSON.fromJson 默认宽松模式)。
+ * 优先标准宽松解析, 失败则降级通过流式状态机解析为 JsonElement 后解码, 支持单引号及非标语法。
+ */
+fun <T> decodeFromStringLenient(
+    deserializer: DeserializationStrategy<T>,
+    json: String
+): T {
+    if (json.contains('\'')) {
+        return try {
+            KS_JSON_STRICT.decodeFromString(deserializer, json)
+        } catch (_: Exception) {
+            val element = LenientJsonParser.parse(json)
+            KS_JSON.decodeFromJsonElement(deserializer, element)
+        }
+    }
+    return try {
+        KS_JSON.decodeFromString(deserializer, json)
+    } catch (_: Exception) {
+        // [KS_JSON] 的宽松解析已在上一趟对同一文本用过, 这里直接上流式宽松解析器:
+        // 再调 [parseToJsonElementLenient] 只会重跑一遍注定失败的解析 (它还多一次 strict 尝试)
+        val element = LenientJsonParser.parse(json)
+        KS_JSON.decodeFromJsonElement(deserializer, element)
+    }
+}
+
+inline fun <reified T> decodeFromStringLenient(json: String): T =
+    decodeFromStringLenient(serializer<T>(), json)
 
 /**
  * 解析 JSON 字符串为 T, 复刻 `GSON.fromJsonObject<T>(json).getOrNull()` 语义。
  *
- * 用 [KS_JSON] 宽松策略, 解析失败返回 null。
+ * 用宽松策略 (含单引号容错), 解析失败返回 null。
  */
 inline fun <reified T> decodeOrNull(json: String?): T? {
     if (json.isNullOrEmpty()) return null
     return try {
-        KS_JSON.decodeFromString<T>(json)
+        decodeFromStringLenient(json)
+    } catch (_: Exception) {
+        null
+    }
+}
+
+inline fun <T> decodeOrNull(
+    deserializer: DeserializationStrategy<T>,
+    json: String?
+): T? {
+    if (json.isNullOrEmpty()) return null
+    return try {
+        decodeFromStringLenient(deserializer, json)
     } catch (_: Exception) {
         null
     }
@@ -252,18 +316,260 @@ inline fun <reified T> decodeOrNull(json: String?): T? {
 inline fun <reified T> decodeWithFallbackOrNull(
     json: String?,
     noinline logFallbackToLenient: (() -> Unit)? = null
+): T? = decodeWithFallbackOrNull(serializer<T>(), json, logFallbackToLenient)
+
+inline fun <T> decodeWithFallbackOrNull(
+    deserializer: DeserializationStrategy<T>,
+    json: String?,
+    noinline logFallbackToLenient: (() -> Unit)? = null
 ): T? {
     if (json.isNullOrEmpty()) return null
     val strict = try {
-        KS_JSON_STRICT.decodeFromString<T>(json)
+        KS_JSON_STRICT.decodeFromString(deserializer, json)
     } catch (_: Exception) {
         null
     }
     if (strict != null) return strict
-    logFallbackToLenient?.invoke()
     return try {
-        KS_JSON.decodeFromString<T>(json)
+        decodeFromStringLenient(deserializer, json).also {
+            logFallbackToLenient?.invoke()
+        }
     } catch (_: Exception) {
         null
+    }
+}
+
+/**
+ * 轻量流式非严格 JSON 解析器（基于字符流状态机，对齐原版 Gson JsonReader 核心语义）。
+ * 纯私有内部实现，对外通过 [parseToJsonElementLenient] 与 [decodeFromStringLenient] 暴露。
+ */
+private class LenientJsonParser private constructor(private val src: String) {
+
+    private var pos = 0
+    private val len = src.length
+
+    companion object {
+        fun parse(json: String): JsonElement {
+            val parser = LenientJsonParser(json)
+            parser.skipWhitespaceAndComments()
+            if (parser.pos >= parser.len) {
+                throw SerializationException("JSON 字符串为空")
+            }
+            val result = parser.parseElement()
+            parser.skipWhitespaceAndComments()
+            if (parser.pos < parser.len) {
+                throw SerializationException("JSON 在字符位置 ${parser.pos} 处有多余内容: '${parser.src.substring(parser.pos)}'")
+            }
+            return result
+        }
+    }
+
+    private fun parseElement(): JsonElement {
+        skipWhitespaceAndComments()
+        if (pos >= len) throw SerializationException("非预期的输入结束")
+
+        return when (val c = src[pos]) {
+            '{' -> parseObject()
+            '[' -> parseArray()
+            '\'', '"' -> JsonPrimitive(nextQuotedValue(c))
+            else -> parseUnquotedValue()
+        }
+    }
+
+    private fun parseObject(): JsonObject {
+        pos++ // 跳过 '{'
+        val map = LinkedHashMap<String, JsonElement>()
+
+        while (true) {
+            skipWhitespaceAndComments()
+            if (pos >= len) throw SerializationException("未闭合的对象: 缺少 '}'")
+            if (src[pos] == '}') {
+                pos++
+                break
+            }
+
+            // 读取 Key
+            val key = when (val c = src[pos]) {
+                '\'', '"' -> nextQuotedValue(c)
+                else -> nextUnquotedKey()
+            }
+            if (key.isEmpty()) throw SerializationException("在位置 $pos 期望属性名")
+
+            skipWhitespaceAndComments()
+            if (pos >= len || src[pos] != ':') {
+                throw SerializationException("在位置 $pos 的属性 '$key' 后面缺少冒号 ':'")
+            }
+            pos++ // 跳过 ':'
+
+            // 读取 Value
+            val value = parseElement()
+            map[key] = value
+
+            skipWhitespaceAndComments()
+            if (pos >= len) throw SerializationException("未闭合的对象: 缺少 '}' 或 ','")
+            if (src[pos] == ',') {
+                pos++
+                skipWhitespaceAndComments()
+                // 容忍尾逗号
+                if (pos < len && src[pos] == '}') {
+                    pos++
+                    break
+                }
+            } else if (src[pos] == '}') {
+                pos++
+                break
+            } else {
+                throw SerializationException("在位置 $pos 期望 ',' 或 '}'，实际为: '${src[pos]}'")
+            }
+        }
+        return JsonObject(map)
+    }
+
+    private fun parseArray(): JsonArray {
+        pos++ // 跳过 '['
+        val list = ArrayList<JsonElement>()
+
+        while (true) {
+            skipWhitespaceAndComments()
+            if (pos >= len) throw SerializationException("未闭合的数组: 缺少 ']'")
+            if (src[pos] == ']') {
+                pos++
+                break
+            }
+
+            val value = parseElement()
+            list.add(value)
+
+            skipWhitespaceAndComments()
+            if (pos >= len) throw SerializationException("未闭合的数组: 缺少 ']' 或 ','")
+            if (src[pos] == ',') {
+                pos++
+                skipWhitespaceAndComments()
+                // 容忍尾逗号
+                if (pos < len && src[pos] == ']') {
+                    pos++
+                    break
+                }
+            } else if (src[pos] == ']') {
+                pos++
+                break
+            } else {
+                throw SerializationException("在位置 $pos 期望 ',' 或 ']'，实际为: '${src[pos]}'")
+            }
+        }
+        return JsonArray(list)
+    }
+
+    /**
+     * 消费由 [quote] 包裹的字符串，处理转义字符（对齐 Gson nextQuotedValue 逻辑）。
+     */
+    private fun nextQuotedValue(quote: Char): String {
+        pos++ // 跳过起始 quote
+        val sb = StringBuilder()
+        while (pos < len) {
+            val c = src[pos++]
+            if (c == quote) {
+                return sb.toString()
+            }
+            if (c == '\\') {
+                if (pos >= len) throw SerializationException("未完成的转义序列")
+                val escape = src[pos++]
+                when (escape) {
+                    'u' -> {
+                        if (pos + 4 > len) throw SerializationException("未完成的 \\uXXXX Unicode 转义")
+                        val hex = src.substring(pos, pos + 4)
+                        pos += 4
+                        val code = hex.toIntOrNull(16)
+                            ?: throw SerializationException("非法的 Unicode 转义: \\u$hex")
+                        sb.append(code.toChar())
+                    }
+                    't' -> sb.append('\t')
+                    'b' -> sb.append('\b')
+                    'n' -> sb.append('\n')
+                    'r' -> sb.append('\r')
+                    '\'' -> sb.append('\'')
+                    '"' -> sb.append('"')
+                    '\\' -> sb.append('\\')
+                    '/' -> sb.append('/')
+                    else -> sb.append(escape) // 容错非标转义
+                }
+            } else {
+                sb.append(c)
+            }
+        }
+        throw SerializationException("未闭合的字符串: 缺少 $quote")
+    }
+
+    /**
+     * 读取未加引号的 Key。遇到冒号、逗号、大括号或空白结束。
+     */
+    private fun nextUnquotedKey(): String {
+        val start = pos
+        while (pos < len) {
+            val c = src[pos]
+            if (c == ':' || c == ',' || c == '}' || c == '{' || c <= ' ' || c == '/') break
+            pos++
+        }
+        return src.substring(start, pos).trim()
+    }
+
+    /**
+     * 读取未加引号的字面量（true, false, null, 数字，或字符串）。
+     */
+    private fun parseUnquotedValue(): JsonElement {
+        val start = pos
+        while (pos < len) {
+            val c = src[pos]
+            if (c == ',' || c == '}' || c == ']' || c <= ' ' || c == '/') break
+            pos++
+        }
+        val literal = src.substring(start, pos).trim()
+        if (literal.equals("null", ignoreCase = true)) return JsonNull
+        if (literal.equals("true", ignoreCase = true)) return JsonPrimitive(true)
+        if (literal.equals("false", ignoreCase = true)) return JsonPrimitive(false)
+
+        // 尝试解析为整数或浮点数
+        literal.toLongOrNull()?.let { return JsonPrimitive(it) }
+        literal.toDoubleOrNull()?.let { return JsonPrimitive(it) }
+
+        return JsonPrimitive(literal)
+    }
+
+    /**
+     * 跳过空白字符与注释（// 或 /* ... */）。
+     */
+    private fun skipWhitespaceAndComments() {
+        while (pos < len) {
+            val c = src[pos]
+            if (c <= ' ') {
+                pos++
+            } else if (c == '/' && pos + 1 < len) {
+                val next = src[pos + 1]
+                if (next == '/') {
+                    // 行注释
+                    pos += 2
+                    while (pos < len && src[pos] != '\n' && src[pos] != '\r') {
+                        pos++
+                    }
+                } else if (next == '*') {
+                    // 块注释
+                    pos += 2
+                    var closed = false
+                    while (pos + 1 < len) {
+                        if (src[pos] == '*' && src[pos + 1] == '/') {
+                            pos += 2
+                            closed = true
+                            break
+                        }
+                        pos++
+                    }
+                    if (!closed) pos = len
+                } else {
+                    break
+                }
+            } else {
+                break
+            }
+        }
     }
 }

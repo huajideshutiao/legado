@@ -2,6 +2,7 @@ package io.legado.app.model.analyzeRule
 
 import io.legado.app.utils.AnyMapSerializer
 import io.legado.app.utils.KS_JSON
+import io.legado.app.utils.parseToJsonElementLenient
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerializationException
@@ -135,7 +136,7 @@ object UrlOptionSerializer : KSerializer<AnalyzeUrlCore.UrlOption> {
                         // 字符串形态: parse 字符串为 JsonElement, 若为 JsonObject 则解析, 否则 null
                         if (el.isString) {
                             val parsed = try {
-                                KS_JSON.parseToJsonElement(el.content)
+                                parseToJsonElementLenient(el.content)
                             } catch (_: Exception) {
                                 null
                             }
