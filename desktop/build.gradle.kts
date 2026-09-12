@@ -627,10 +627,17 @@ compose.desktop {
             // (macOS 经 Apple Event OpenFilesHandler) 送到 Main.kt 的 pendingAssociationFiles。
             // 扩展名只取 AppPattern.bookFileRegex 的四种正文格式 —— 关联在 Windows 上是抢默认
             // 打开方式, .json/.zip 不抢 (仍可从"打开方式"手动选, 分发链照样处理)
-            fileAssociation("text/plain", "txt", "TXT 电子书")
-            fileAssociation("application/epub+zip", "epub", "EPUB 电子书")
-            fileAssociation("application/pdf", "pdf", "PDF 文档")
-            fileAssociation("application/vnd.comicbook+zip", "cbz", "CBZ 漫画")
+            //
+            // 【硬约束: 第三个参数 (描述) 必须 ASCII-only】它会被写进安装包的 Windows 注册表
+            // 字符串 (light.exe 链进 MSI 字符串表)。jpackage 不传 culture, 由构建机 locale 现场
+            // 决定: GitHub windows runner 是 en-us → 数据库代码页 1252, 任何非 ASCII 字符 (中文
+            // 在内) 都会让 light.exe 报 LGHT0311、退出码 311, MSI 直接打不出来; 本地中文 Windows
+            // (936) 反而能过, 所以这类问题只在 CI 暴露 (2026-09-11 CI run 34599585893 实测,
+            // 探针复现见 failures 记录)。三端统一用英文描述, 顺带避开"英文系统装出乱码"。
+            fileAssociation("text/plain", "txt", "TXT Book")
+            fileAssociation("application/epub+zip", "epub", "EPUB Book")
+            fileAssociation("application/pdf", "pdf", "PDF Document")
+            fileAssociation("application/vnd.comicbook+zip", "cbz", "CBZ Comic")
             // 应用图标 (从 Android ic_launcher 高清图转换生成): Windows ICO, Linux PNG
             // Windows MSI 专属配置
             windows {
