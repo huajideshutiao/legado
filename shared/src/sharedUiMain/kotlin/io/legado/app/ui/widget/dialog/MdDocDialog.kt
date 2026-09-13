@@ -70,7 +70,14 @@ fun MdDocDialog(title: String, assetPath: String, onDismiss: () -> Unit) {
             shape = DesignTokens.shapeDefault,
             color = colors.fillet,
         ) {
-            Column(Modifier.padding(16.dp)) {
+            Column(
+                Modifier.padding(
+                    start = 16.dp,
+                    top = 16.dp,
+                    end = 16.dp,
+                    bottom = 8.dp,
+                )
+            ) {
                 Text(
                     text = title,
                     color = colors.primaryText,
