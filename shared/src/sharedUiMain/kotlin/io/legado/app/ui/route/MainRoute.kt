@@ -119,6 +119,7 @@ import io.legado.app.ui.root.MainTabSwitcher
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteEntry
+import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.ScreenModelStore
@@ -1434,8 +1435,13 @@ private fun ExploreTabContent(
     // 原版"按旧 url 在 sources 里 find 不到就静默不刷"的分支仍保留
     // (refreshCurrentExpanded: expandedUrl 命中不了 sources.find 即 return, 语义同原版 getItem(pos) ?: return)。
     LaunchedEffect(Unit) {
-        navigator.resultsFor(entry.id).filter { it.key == RouteResults.BOOK_SOURCE_EDIT }.collect {
-            FlowBus.with(EventBus.REFRESH_EXPLORE).tryEmit("")
+        navigator.resultsFor(entry.id).filter { it.key == RouteResults.BOOK_SOURCE_EDIT }.collect { result ->
+            val saved = (result.payload as? RouteResultPayload.BookSourceEdit)?.source
+            if (saved != null) {
+                screenModel.dispatch(ExploreUiEvent.OnBookSourceSaved(saved))
+            } else {
+                FlowBus.with(EventBus.REFRESH_EXPLORE).tryEmit("")
+            }
         }
     }
 

@@ -17,6 +17,7 @@ import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.throttleLatest
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.ensureActive
@@ -87,6 +88,7 @@ class ExploreScreenModel : ScreenModel {
             is ExploreUiEvent.DeleteSource -> viewModelShared.deleteSource(event.item)
             is ExploreUiEvent.RemovePinned -> removePinned(event.item)
             is ExploreUiEvent.RunKindJs -> runKindJs(event.source, event.js)
+            is ExploreUiEvent.OnBookSourceSaved -> onBookSourceSaved(event.source)
         }
     }
 
@@ -153,6 +155,9 @@ class ExploreScreenModel : ScreenModel {
 
     // ===== 展开 / 分类加载 =====
 
+    /** 展开槽分类取数的代次: 后发的一次作废先发的一次 (同一 URL 连续展开/保存与在飞查询竞争同一槽) */
+    private var kindsToken = 0
+
     private fun toggleExpand(item: BookSourcePart) {
         val url = item.bookSourceUrl
         if (_state.value.expandedUrl == url) {
@@ -174,6 +179,7 @@ class ExploreScreenModel : ScreenModel {
      */
     private fun loadKinds(item: BookSourcePart) {
         val url = item.bookSourceUrl
+        val token = ++kindsToken
         // 清槽 + 置 loading 同步做 (在改 expandedUrl 的同一次调用内、协程派发前):
         // 若放进 scope.launch 延后一帧, toggleExpand 已把 expandedUrl 改成 B、
         // 而槽里仍是 A 的残留 → B 行渲染 A 的数据 (原版按 position 判定无此窗口)
@@ -194,9 +200,10 @@ class ExploreScreenModel : ScreenModel {
                 }.getOrDefault(null to emptyList())
                 // 归属校验: 仅当 url 仍是当前展开行才写槽 (恢复原版 ExploreAdapter.handleRefresh
                 // 回写前 "pos 未变才写" 的保护): 防收起/切到别的行后 A 的慢查询后到,
-                // 把 A 的源/分类覆盖成展开中 B 行的数据并点分类跳错发现页
+                // 把 A 的源/分类覆盖成展开中 B 行的数据并点分类跳错发现页;
+                // 代次校验: 同一行连续取数 (再展开 / 保存后直刷) 时只认最后一次
                 _state.update {
-                    if (it.expandedUrl != url) it
+                    if (it.expandedUrl != url || token != kindsToken) it
                     else it.copy(expandedSource = source, expandedKinds = kinds)
                 }
             } finally {
@@ -219,6 +226,46 @@ class ExploreScreenModel : ScreenModel {
         val url = _state.value.expandedUrl ?: return
         val source = _state.value.sources.find { it.bookSourceUrl == url } ?: return
         refreshSource(source)
+    }
+
+    /**
+     * 书源编辑保存后直接回传最新实体更新展开槽, 消除查库时差与 sources 节流延迟。
+     * 仅当编辑的正是当前展开项时直刷; 其余情况 (编辑的是别的源 / URL 已改名)
+     * 回退 REFRESH_EXPLORE 旧路径 (对照原 refreshCurrentExpanded 语义, 不把展开槽
+     * 劫持到别的源)。
+     */
+    private fun onBookSourceSaved(source: BookSource) {
+        scope.launch {
+            withContext(IoDispatcher) { source.clearExploreKindsCache() }
+            val currentExpandedUrl = _state.value.expandedUrl ?: return@launch
+            if (source.bookSourceUrl != currentExpandedUrl) {
+                FlowBus.with(EventBus.REFRESH_EXPLORE).tryEmit("")
+                return@launch
+            }
+            // 直接用回传的新实体取数写槽 (不再查库: sources 流有 throttleLatest(500) 节流,
+            // 查库会拿到旧源); 代次与 loadKinds 共用一份, 保证"后开始的取数"才写得进槽 ——
+            // 否则编辑前已在飞的 loadKinds 会用旧快照把刚写的新分类盖回去
+            val token = ++kindsToken
+            val kinds = try {
+                withContext(IoDispatcher) { source.exploreKinds() }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                // exploreKinds 自己已把规则失败包成 ERROR: 条目返回, 能抛到这里的只有真异常
+                // (如源对象缺失); 吞成空列表会让"保存后分类空白"无法定位
+                AppLog.put("书源保存后重取分类失败\n${e.message}", e)
+                emptyList()
+            }
+            _state.update {
+                if (it.expandedUrl != currentExpandedUrl || token != kindsToken) it
+                else it.copy(
+                    expandedSource = source,
+                    expandedKinds = kinds,
+                    // 只清自己这一行的 loading: 无条件清会提前掐掉别行在飞查询的转圈
+                    loadingUrl = if (it.loadingUrl == currentExpandedUrl) null else it.loadingUrl,
+                )
+            }
+        }
     }
 
     /** reselect 发现 tab: 收起已展开项, 返回是否实际收起 (未展开返回 false, 由 Route 滚顶) */
@@ -296,4 +343,7 @@ sealed interface ExploreUiEvent {
 
     /** 分类项为 button 类型: 执行其 JS (runScriptWithContext + evalJS) */
     data class RunKindJs(val source: BookSource, val js: String) : ExploreUiEvent
+
+    /** 书源编辑保存回传最新实体: 展开中时直刷展开槽, 避免回库查询时序竞争 */
+    data class OnBookSourceSaved(val source: BookSource) : ExploreUiEvent
 }

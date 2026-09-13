@@ -493,7 +493,7 @@ private fun ExploreSourceItem(
         // 外框始终占 4dp)。收起态相邻项间距 = 本项尾 4dp + 下项根 paddingTop 4dp = 8dp
         Column(Modifier.fillMaxWidth().padding(top = 4.dp)) {
             val kindContent: @Composable () -> Unit = {
-                val data = shown
+                val data = current ?: shown
                 if (data != null && data.second.isNotEmpty()) {
                     Box(Modifier.fillMaxWidth()) {
                         KindFlow(actions, data.first, data.second)

@@ -108,6 +108,33 @@ import org.jetbrains.compose.resources.stringResource
 /** 书架内绿点颜色 (复刻 R.color.md_green_600 = #43A047, Material Green 600) */
 private val InBookshelfDotColor = Color(0xFF43A047)
 
+/** 触底预加载阈值 (倒数第 N 项可见时触发下一页加载) */
+private const val PRELOAD_THRESHOLD = 5
+
+/**
+ * 触底预加载的**重判信号** (只决定"何时再判一次", 不参与判据本身)。
+ *
+ * 分两种形态, 不能合并成一个"滚动位置 + 内容规模"的键:
+ *
+ * - [Scrolled]: 列表可继续前滚时只认滚动位置。对照 archive 只在 `onScrolled` 里判
+ *   (`findLastVisibleItemPosition() >= lm.itemCount - 2`): 新页 append 改变内容规模时
+ *   不重复判定, 否则视口停在末几项会"不滚动也连拉多页"。
+ * - [Resized]: 列表已无法前滚 (整页被一次性显示完) 时滚动位置恒为 (0, 0), 键永不变化,
+ *   改用内容规模——每拉回一页就再判一次, 直到书源到底。
+ *
+ * 只取滚动位置时, 宽屏/大屏一次性显示完整页 → 键恒为 (0, 0) → snapshotFlow 不发射
+ * → 下一页永远不加载 (原版在同样场景也不触发, 但它只在手机窄屏跑, 桌面端天生宽屏);
+ * 只取内容规模时, 窄屏又会因每页 append 而重复判定。两者必须分开。
+ */
+private sealed interface ExplorePreloadSignal {
+    data class Scrolled(
+        val firstVisibleItemIndex: Int,
+        val firstVisibleItemScrollOffset: Int,
+    ) : ExplorePreloadSignal
+
+    data class Resized(val totalItemsCount: Int) : ExplorePreloadSignal
+}
+
 /**
  * 发现结果页展示状态 (KMP 共享)。
  *
@@ -177,7 +204,7 @@ interface ExploreShowUiActions {
     /** footer 点击 (错误时弹详情+重试, 否则触发加载下一页) */
     fun onFooterClick()
 
-    /** 触底预加载 (对齐原 findLastVisibleItemPosition >= itemCount - 2) */
+    /** 触底预加载 (末项进入倒数第 [PRELOAD_THRESHOLD] 项时触发) */
     fun onScrollToBottom()
 
     /** 书籍点击/长按 (补 notShelf type 后进详情, 宿主实现跳转) */
@@ -324,13 +351,28 @@ private fun ResultArea(
     LaunchedEffect(state.scrollTopEpoch) {
         if (state.scrollTopEpoch > 0) gridState.animateScrollToItem(0)
     }
-    // 触底预加载 (对齐原 findLastVisibleItemPosition >= itemCount - 2)
+    // 触底预加载: 判据统一为"末项 (含 footer) 进入倒数第 PRELOAD_THRESHOLD 项"。
+    // 宽屏整页一次性显示完时末项必然可见, 该判据天然成立, 无需另开"填不满就续拉"的分支。
+    // 重判信号分可前滚/不可前滚两种形态 (理由见 [ExplorePreloadSignal]);
+    // 重复触发由 ExploreShowScreenModel.footerHasMore / footerLoading 与 VM 的
+    // "去重后无增长即到底"兜底拦住, 不会无限连拉。
     LaunchedEffect(gridState) {
         snapshotFlow {
-            gridState.layoutInfo.totalItemsCount to
-                (gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1)
-        }.collect { (total, last) ->
-            if (total > 0 && last >= total - 2) actions.onScrollToBottom()
+            if (gridState.canScrollForward) {
+                ExplorePreloadSignal.Scrolled(
+                    firstVisibleItemIndex = gridState.firstVisibleItemIndex,
+                    firstVisibleItemScrollOffset = gridState.firstVisibleItemScrollOffset,
+                )
+            } else {
+                ExplorePreloadSignal.Resized(gridState.layoutInfo.totalItemsCount)
+            }
+        }.collect {
+            val layout = gridState.layoutInfo
+            if (layout.totalItemsCount <= 0) return@collect
+            val last = layout.visibleItemsInfo.lastOrNull()?.index ?: -1
+            if (last >= layout.totalItemsCount - PRELOAD_THRESHOLD) {
+                actions.onScrollToBottom()
+            }
         }
     }
     FastScrollLazyVerticalGrid(
