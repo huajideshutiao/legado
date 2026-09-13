@@ -1,12 +1,13 @@
 package io.legado.app.ui.root
 
 /**
- * 书籍页侧: 详情页 + [BookRef.toReadRoute] 分流出的 5 种阅读路由 (音频/视频/漫画/RSS/文字)。
- * 返回 null 即"本路由不是书籍页"。
+ * 书籍页侧: 详情页 + [BookRef.toReadRoute] 分流出的阅读类路由中适合卡片容器形变的路由。
+ * 小说阅读页 ([AppRoute.Reader]) 为全屏动态排版引擎，需实测视口后异步排版，不参与首帧静态快照容器变换，
+ * 回归沉浸式平滑平移转场 (与从目录/书签进入一致，对齐原版)；
+ * 返回 null 即"本路由不参与容器变换"。
  */
 internal fun AppRoute.containerBookUrl(): String? = when (this) {
     is AppRoute.BookInfo -> book.bookUrl
-    is AppRoute.Reader -> book.bookUrl
     is AppRoute.AudioPlay -> book.bookUrl
     is AppRoute.VideoPlay -> book.bookUrl
     is AppRoute.MangaReader -> book.bookUrl

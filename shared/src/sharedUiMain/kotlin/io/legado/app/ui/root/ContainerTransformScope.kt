@@ -56,11 +56,10 @@ val BookRef.origin: String
     }
 
 /**
- * 获取书籍类路由的书源 origin, 非书籍路由返回 null。
+ * 获取书籍类路由的书源 origin, 非书籍或不参与容器变换的路由返回 null。
  */
 internal fun AppRoute.containerBookOrigin(): String? = when (this) {
     is AppRoute.BookInfo -> book.origin
-    is AppRoute.Reader -> book.origin
     is AppRoute.AudioPlay -> book.origin
     is AppRoute.VideoPlay -> book.origin
     is AppRoute.MangaReader -> book.origin
