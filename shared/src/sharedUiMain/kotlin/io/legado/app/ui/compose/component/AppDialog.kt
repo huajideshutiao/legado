@@ -200,17 +200,26 @@ fun AppDialog(
                 }
             }
             val p = progress.value
-            // 不套 fillMaxSize: 对话框窗口是 wrap_content, 撑满会占掉整个可用空间;
-            // Box 尺寸跟随内容, 缩放/淡入只作用于内容框本身
+            val topInset = LocalOverlayTopInset.current
+            // 不套 fillMaxSize: 对话框层 bounds 跟随内容尺寸 (CMP 桌面 rememberDialogMeasurePolicy
+            // 把 layer.boundsInWindow 设为内容实测尺寸; Android 窗口 wrap_content), 铺满后
+            // dismissOnClickOutside 的"外部"永远不存在, 外点关闭失效。保持 wrap 内容 +
+            // padding(top = inset): 内容中心下移到可用区中心 (与铺满+padding 视觉等价),
+            // 平台外点关闭天然可用。顶部 inset 条带虽归入层内不响应外点, 但恰是 Windows
+            // native 控制条的物理覆盖区, 本就点不到; 移动端 inset=0 零影响
             Box(
-                Modifier.graphicsLayer {
-                    val scale = dialogSpec.enterScaleFrom + (1f - dialogSpec.enterScaleFrom) * p
-                    scaleX = scale
-                    scaleY = scale
-                    alpha = if (dialogSpec.enterFadeIn) p else 1f
-                },
+                Modifier.then(if (topInset > 0.dp) Modifier.padding(top = topInset) else Modifier),
             ) {
-                content()
+                Box(
+                    Modifier.graphicsLayer {
+                        val scale = dialogSpec.enterScaleFrom + (1f - dialogSpec.enterScaleFrom) * p
+                        scaleX = scale
+                        scaleY = scale
+                        alpha = if (dialogSpec.enterFadeIn) p else 1f
+                    },
+                ) {
+                    content()
+                }
             }
         }
     }

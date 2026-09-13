@@ -47,12 +47,10 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import io.legado.app.ui.compose.platform.BackLayerHandler
 import io.legado.app.ui.compose.platform.LocalOverlayTopInset
-import io.legado.app.ui.compose.platform.OverlayInsetGap
 import io.legado.app.ui.compose.theme.AppTheme
 import kotlin.math.max
 import kotlin.math.min
@@ -88,7 +86,8 @@ fun AppDropdownMenu(
     if (expandedStates.currentState || expandedStates.targetState) {
         val transformOriginState = remember { mutableStateOf(TransformOrigin.Center) }
         val density = LocalDensity.current
-        // 顶部平台装饰 (桌面端 native 控制条) 占用的高度: 定位与限高都要扣掉
+        // 顶部平台装饰 (桌面端 native 控制条) 占用的高度: 本文件只用它做**限高**
+        // (定位由 AppPopup 统一钳制, 不再在 DropdownMenuPositionProvider 里扣)
         val topInset = LocalOverlayTopInset.current
         // 窗口高度必须在 Popup 外读: Popup/对话框内的 LocalWindowInfo 给的是自身层尺寸
         // (同一个坑见 AppDialogSizes.LocalDialogAnchorSize 的注释)
@@ -104,12 +103,11 @@ fun AppDropdownMenu(
         val popupPositionProvider = DropdownMenuPositionProvider(
             offset,
             density,
-            topInset,
         ) { parentBounds, menuBounds ->
             transformOriginState.value = calculateTransformOrigin(parentBounds, menuBounds)
         }
         // Popup 的 onKeyEvent 仅 skiko 有, 跨端统一用 expect 签名, 方向键焦点移到容器 modifier
-        Popup(
+        AppPopup(
             onDismissRequest = onDismissRequest,
             popupPositionProvider = popupPositionProvider,
             properties = PopupProperties(focusable = true),
@@ -199,7 +197,6 @@ private fun MenuContainer(
 private data class DropdownMenuPositionProvider(
     val contentOffset: DpOffset,
     val density: Density,
-    val topInset: Dp = 0.dp,
     val onPositionCalculated: (IntRect, IntRect) -> Unit = { _, _ -> },
 ) : PopupPositionProvider {
     override fun calculatePosition(
@@ -210,11 +207,7 @@ private data class DropdownMenuPositionProvider(
     ): IntOffset {
         // The min margin above and below the menu, relative to the screen.
         val verticalMargin = with(density) { MenuVerticalMargin.roundToPx() }
-        // 顶部下界: 平台装饰高度 + 视觉留白, 不小于原版的 verticalMargin
-        val topMargin = max(
-            verticalMargin,
-            with(density) { (topInset + OverlayInsetGap).roundToPx() },
-        )
+        val topMargin = verticalMargin
         // The content offset specified using the dropdown offset parameter.
         val contentOffsetX =
             with(density) {

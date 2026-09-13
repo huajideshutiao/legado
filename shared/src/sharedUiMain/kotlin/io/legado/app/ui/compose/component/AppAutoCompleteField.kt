@@ -99,7 +99,7 @@ fun AppAutoCompleteField(
             singleLine = singleLine,
         )
         if (suggestions.isNotEmpty()) {
-            Popup(
+            AppPopup(
                 alignment = Alignment.TopStart,
                 offset = IntOffset(0, fieldSize.height),
                 properties = PopupProperties(focusable = false),

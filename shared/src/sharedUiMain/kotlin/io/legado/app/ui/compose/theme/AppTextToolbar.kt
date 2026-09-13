@@ -63,9 +63,9 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
+import io.legado.app.ui.compose.component.AppPopup
 import io.legado.app.ui.compose.platform.LocalOverlayTopInset
 import io.legado.app.ui.compose.platform.OverlayInsetGap
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -359,7 +359,7 @@ internal fun AppTextMenuHost(
     // focusable=false: 不抢文本框焦点/选区, 显隐交由框架回调驱动
     // onDismissRequest 空实现: 鼠标微动会触发系统 dismiss 回调清空选区菜单,
     // 改由框架 (旧通道 hide() / 新通道取消 show 协程) 在选区真正清除时统一隐藏
-    Popup(
+    AppPopup(
         popupPositionProvider = positionProvider,
         onDismissRequest = {},
         properties = PopupProperties(focusable = false, clippingEnabled = false),

@@ -102,6 +102,7 @@ import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import io.legado.app.ui.compose.component.AppDecorationBox
 import io.legado.app.ui.compose.component.AppFieldColors
+import io.legado.app.ui.compose.component.AppPopup
 import io.legado.app.ui.compose.component.AppTextFieldImpl
 import io.legado.app.ui.compose.component.TextFieldBottomInset
 import io.legado.app.ui.compose.component.TextFieldHorizontalPadding
@@ -1113,7 +1114,7 @@ private fun AutoCompletePopup(
             }
         }
     }
-    Popup(
+    AppPopup(
         popupPositionProvider = positionProvider,
         properties = PopupProperties(focusable = false),
         onDismissRequest = {},
