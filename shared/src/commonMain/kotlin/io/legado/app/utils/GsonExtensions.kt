@@ -18,7 +18,7 @@ import kotlinx.serialization.serializer
  * - [GSON]/[GSONStrict]: 别名, 复用 shared 模块的 [KS_JSON]/[KS_JSON_STRICT] 实例
  * - [toJson]/[fromJsonObject]/[fromJsonArray]: 扩展函数, 复刻原 GsonExtensions.shared.kt 的语义
  *
- * 注意: 这是过渡兼容层, 新代码应直接使用 KS_JSON.encodeToString / decodeOrNull / decodeListOrNull。
+ * 注意: 这是过渡兼容层, 新代码应直接使用 KS_JSON.encodeToString / decodeOrNull / decodeListWithFallbackOrNull。
  *
  * 本文件仅含纯 Kotlin / KMP 标准库依赖, 可下沉 commonMain;
  * 涉及 java.io.OutputStream/Reader/Writer 的流式重载在 jvmAndAndroidMain

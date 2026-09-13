@@ -45,15 +45,6 @@ val KS_JSON_STRICT: Json = Json {
     encodeDefaults = false
 }
 
-// 容错降级解析（先 strict 失败则用宽松重试）
-inline fun <reified T> decodeFromStringWithFallback(json: String): T {
-    return try {
-        KS_JSON_STRICT.decodeFromString(json)
-    } catch (e: Exception) {
-        KS_JSON.decodeFromString(json)
-    }
-}
-
 /**
  * Map<String, String> 专用序列化器, 用于 Book/BookChapter/SearchBook 的 variableMap 等 HashMap<String, String> 字段。
  *
@@ -188,22 +179,6 @@ fun decodeAnyMapOrNull(json: String?): Map<String, Any?>? {
 }
 
 /**
- * 解析 JSON 字符串为 List<T>, 复刻 `GSON.fromJsonArray<T>(json).getOrNull()` 语义。
- *
- * 用 [KS_JSON] 宽松策略 (ignoreUnknownKeys + isLenient + coerceInputValues),
- * 对齐原 GsonExtensions.shared.kt 中 `GSON.fromJsonArray(json)` 行为。
- * 解析失败返回 null, 调用方回落到默认值。
- */
-inline fun <reified T> decodeListOrNull(json: String?): List<T>? {
-    if (json.isNullOrEmpty()) return null
-    return try {
-        KS_JSON.decodeFromString<List<T>>(json)
-    } catch (_: Exception) {
-        null
-    }
-}
-
-/**
  * 严格/宽松双栈 List 解析, 复刻 `GSONStrict.fromJsonArray<T>(json).getOrNull() ?: GSON.fromJsonArray<T>(json).getOrNull()` 语义。
  *
  * 先用 [KS_JSON_STRICT] 严格解析, 失败则降级到 [KS_JSON] 宽松解析,
@@ -296,7 +271,7 @@ inline fun <reified T> decodeOrNull(json: String?): T? {
     }
 }
 
-inline fun <T> decodeOrNull(
+fun <T> decodeOrNull(
     deserializer: DeserializationStrategy<T>,
     json: String?
 ): T? {
@@ -318,10 +293,10 @@ inline fun <reified T> decodeWithFallbackOrNull(
     noinline logFallbackToLenient: (() -> Unit)? = null
 ): T? = decodeWithFallbackOrNull(serializer<T>(), json, logFallbackToLenient)
 
-inline fun <T> decodeWithFallbackOrNull(
+fun <T> decodeWithFallbackOrNull(
     deserializer: DeserializationStrategy<T>,
     json: String?,
-    noinline logFallbackToLenient: (() -> Unit)? = null
+    logFallbackToLenient: (() -> Unit)? = null
 ): T? {
     if (json.isNullOrEmpty()) return null
     val strict = try {
