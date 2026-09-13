@@ -137,13 +137,20 @@ fun SharedAudioPlayScreenContent(
             val lrcKey = state.title to state.lrc
             LrcViewShared(
                 lrcData = state.lrc,
-                // 当前行按帧派生 (只在歌词区在组合内时求值; 见 rememberLrcIndex)
-                lrcProgress = rememberLrcIndex(state.lrc, lrcKey),
+                // 当前行按自适应精准延时调度派生 (见 rememberLrcIndex)
+                lrcProgress = rememberLrcIndex(
+                    lrcData = state.lrc,
+                    isPlaying = state.isPlaying,
+                    playSpeed = state.speed,
+                    resetKey = lrcKey,
+                ),
                 primaryColor = lrcColors?.first ?: Color(0xFFFFFFFF),
                 secondaryColor = lrcColors?.second ?: Color(0x80FFFFFF),
                 onLineClick = { onEvent(AudioPlayUiEvent.LrcClick(it)) },
                 modifier = modifier,
                 resetKey = lrcKey,
+                isPlaying = state.isPlaying,
+                playSpeed = state.speed,
             )
         },
         titleBarTrailingSlot = titleBarTrailingSlot,

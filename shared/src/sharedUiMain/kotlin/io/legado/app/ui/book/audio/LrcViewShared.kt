@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.constant.Status
 import io.legado.app.help.image.BookImageLoaders
 import io.legado.app.model.AudioPlayCommanders
 import io.legado.app.model.AudioPlayShared
@@ -58,6 +59,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
@@ -110,6 +112,8 @@ fun LrcViewShared(
     onLineClick: (Int) -> Unit,
     modifier: Modifier = Modifier,
     resetKey: Any? = null,
+    isPlaying: Boolean = AudioPlayShared.status == Status.PLAY,
+    playSpeed: Float = AudioPlayShared.playSpeed,
 ) {
     val textMeasurer = rememberTextMeasurer()
     val scope = rememberCoroutineScope()
@@ -178,15 +182,43 @@ fun LrcViewShared(
         }
     }
 
-    // 逐字填充的帧驱动: 只有当前行带字标签时才逐帧刷新时钟, 普通歌词一帧都不多画。
-    // 与 rememberLrcIndex 同一个原则 —— 时钟真源仍是播放引擎, 填充位置在绘制那一帧才求值,
-    // 所以这里只把采样发出去触发重绘, 换行那一帧读到上一帧的时钟也只是"还没开始填", 不会闪。
-    // currentIndex 走 snapshotFlow 而不是当 effect key: 它刻意不进组合, 当 key 会让每次切行都重组
-    LaunchedEffect(lines) {
-        snapshotFlow { lrc.currentIndex }.collectLatest { index ->
-            if (lines.getOrNull(index)?.words.isNullOrEmpty()) return@collectLatest
-            while (true) {
-                lrc.fillClockMs = positionNowMs()
+    // 逐字填充的帧驱动: 播放态门控 + 字词有效区间门控。
+    // 1. 只有当前行带字标签时才激活, 普通歌词一帧都不画;
+    // 2. 暂停/缓冲时停在当前采样点, 挂起不刷帧;
+    // 3. 句前等待段 (前奏/空隙) 精准 delay 到首字开唱, 避免无效空转刷帧;
+    // 4. 整句唱完后固定 100% 填满并挂起停帧, 避免等待下一行期间持续无效重绘;
+    // 5. 仅在真正的唱词区间以 withFrameNanos 高刷驱动平滑变色;
+    // 6. seekEpoch 联动: 句内 seek 立即打断睡眠/停帧重定位。
+    LaunchedEffect(lines, isPlaying, playSpeed) {
+        snapshotFlow { lrc.currentIndex to AudioPlayShared.seekEpoch.value }.collectLatest { (index, _) ->
+            val words = lines.getOrNull(index)?.words
+            if (words.isNullOrEmpty()) return@collectLatest
+            val firstWordTime = words.first().timeMs
+            val lastWordTime = words.last().timeMs
+            val speed = playSpeed.coerceAtLeast(0.1f)
+
+            while (isActive) {
+                val now = positionNowMs() + Lrc.OFFSET_MS
+                lrc.fillClockMs = now - Lrc.OFFSET_MS
+
+                if (!isPlaying) {
+                    // 暂停/缓冲: 采样一次固定在当前变色进度, 随后挂起休眠
+                    break
+                }
+
+                if (now < firstWordTime) {
+                    // 句前等待段: 尚未开唱, 精准延时到首字开唱时刻
+                    val waitMs = ((firstWordTime - now) / speed).toLong()
+                    if (waitMs > 0) {
+                        delay(waitMs)
+                        continue
+                    }
+                } else if (now >= lastWordTime) {
+                    // 整句已唱完: 固定停在末字 100% 填充, 停帧挂起等待切行
+                    break
+                }
+
+                // 正在唱词区间: 逐帧平滑重绘
                 withFrameNanos { }
             }
         }
@@ -405,30 +437,52 @@ fun LrcViewShared(
 }
 
 /**
- * 当前高亮行 (帧驱动派生, 喂给 [LrcViewShared] 的 lrcProgress)。
+ * 当前高亮行 (自适应精准延时调度派生, 喂给 [LrcViewShared] 的 lrcProgress)。
  *
- * 在要绘制的那一帧直接问播放引擎位置再二分定位: 引擎仍是唯一时钟真源, 只是把求值推迟到绘制时。
- * 于是既没有跨层推送的陈旧索引 (进界面 / 切歌不会先跳到旧行再滚过来), 也不存在调度迟到 ——
- * 比一帧更精细的高亮时机在屏幕上本就不可观测。
- *
- * 只有行变化时才写 state, 所以每帧只做"一次位置读 + 二分", 不产生重组或重绘; 界面不可见时
- * Compose 帧时钟暂停, 循环自然停摆, 不需要额外的订阅门控。暂停时也照常求值 —— 暂停中拖进度条
- * 要能带动高亮。
+ * 对齐原版 AudioPlayService.upPlayProgressForLrc 的节能策略:
+ * 1. 响应式驱动: 状态变化 (换歌/切章/seek/换速/暂停/播放) 立即重算定位;
+ * 2. 精确 delay: 播放时按下一句歌词时间差精准挂起休眠, 一首歌仅在切行时刻唤醒 N 次,
+ *    杜绝每秒 60~120 次的死循环帧轮询;
+ * 3. 暂停休眠: 暂停/缓冲时完全挂起零开销, 拖动进度条或恢复播放时即时响应。
  *
  * 对外发布 (车载歌词) 是另一个消费者, 走 [io.legado.app.model.audio.LyricPublisher]:
- * 它需要息屏后台也推进, 但共用 [Lrc.indexAt] 同一份判定。
+ * 它需要息屏后台也推进, 共用 [AudioPlayShared.seekEpoch] 与 [Lrc.indexAt] 同一份判定。
  */
 @Composable
-fun rememberLrcIndex(lrcData: Lrc?, resetKey: Any? = null): Int {
+fun rememberLrcIndex(
+    lrcData: Lrc?,
+    isPlaying: Boolean = AudioPlayShared.status == Status.PLAY,
+    playSpeed: Float = AudioPlayShared.playSpeed,
+    resetKey: Any? = null,
+): Int {
     // 初值就地算出来 (不等 LaunchedEffect 的下一帧): 换歌那一帧 LrcViewShared 就能按正确的行定位,
     // 否则会先居中第一行, 下一帧再 snap 过去 —— 肉眼是闪一下
     val key = resetKey ?: (lrcData to AudioPlayShared.durChapterIndex)
     var index by remember(key) { mutableIntStateOf(lrcData.indexNow()) }
-    LaunchedEffect(key) {
+    LaunchedEffect(key, isPlaying, playSpeed) {
         if (lrcData == null || !lrcData.hasTimeline) return@LaunchedEffect
-        while (true) {
-            index = lrcData.indexNow()
-            withFrameNanos { }
+        // 观察 seek 重算纪元 (进度跳转时立即打断 delay 并重新校准)
+        snapshotFlow { AudioPlayShared.seekEpoch.value }.collectLatest {
+            while (isActive) {
+                val now = positionNowMs() + Lrc.OFFSET_MS
+                val targetIndex = lrcData.indexAt(now)
+                if (index != targetIndex) {
+                    index = targetIndex
+                }
+                if (!isPlaying) {
+                    // 暂停/非播放中: 停在当前行, 挂起等待状态或 seek 唤醒
+                    break
+                }
+                val nextTime = lrcData.timeAfter(targetIndex) ?: break
+                val speed = playSpeed.coerceAtLeast(0.1f)
+                val remainWallMs = ((nextTime - now) / speed).toLong()
+                if (remainWallMs <= 0) {
+                    // 临界时间微延时防紧密循环
+                    delay(16)
+                } else {
+                    delay(remainWallMs)
+                }
+            }
         }
     }
     return index

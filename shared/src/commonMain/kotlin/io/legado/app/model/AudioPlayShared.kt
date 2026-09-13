@@ -112,6 +112,11 @@ object AudioPlayShared {
      * (歌词, 播放位置) 的派生量, 由消费方按需求值 (见 [Lrc.indexAt])。
      */
     val durLrc = MutableStateFlow<Lrc?>(null)
+
+    /**
+     * seek 重算纪元 (进度跳转时自增, 驱动歌词调度与车载发布循环立即重定位)。
+     */
+    val seekEpoch = MutableStateFlow(0)
     var durAudioSize = 0
     var inBookshelf = false
     var bookSource: BookSource? = null
@@ -138,6 +143,7 @@ object AudioPlayShared {
 
     fun adjustProgress(position: Int) {
         durChapterPos = position
+        seekEpoch.value = seekEpoch.value + 1
         AudioPlayCommanders.get().adjustProgress(position)
     }
 

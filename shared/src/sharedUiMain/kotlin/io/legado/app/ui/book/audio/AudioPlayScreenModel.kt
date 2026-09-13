@@ -185,7 +185,7 @@ class AudioPlayScreenModel : ScreenModel {
             }
         }
         // 歌词数据 (StateFlow: 订阅即拿当前值, 不经事件总线, 没有类型擦除与陈旧重放)。
-        // 当前高亮行不在此处托管 —— 它是 (歌词, 播放位置) 的派生量, 由 rememberLrcIndex 按帧求值。
+        // 当前高亮行不在此处托管 —— 它是 (歌词, 播放位置) 的派生量, 由 rememberLrcIndex 自适应精准延时调度。
         scope.launch {
             AudioPlayShared.durLrc.collect { lrc ->
                 _state.update { it.copy(lrc = lrc) }
@@ -383,7 +383,7 @@ class AudioPlayScreenModel : ScreenModel {
 /**
  * 音频播放页 UI 状态 (对照 [AudioPlayScreenContent] 同名参数)。
  *
- * 歌词只托管数据 ([lrc]); 当前高亮行由 [rememberLrcIndex] 按帧派生, 配色由
+ * 歌词只托管数据 ([lrc]); 当前高亮行由 [rememberLrcIndex] 自适应精准延时派生, 配色由
  * [rememberLrcColors] 从封面取色, 都不进本状态。
  */
 data class AudioPlayUiState(

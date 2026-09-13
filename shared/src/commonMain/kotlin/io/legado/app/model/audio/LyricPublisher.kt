@@ -54,9 +54,6 @@ object LyricPublisher {
 
     private var job: Job? = null
 
-    /** seek 重算信号: 发布循环可能正睡在"旧的下一行"时间点上, 不叫醒它就会停在过期的行。 */
-    private val seekEpoch = MutableStateFlow(0)
-
     private var lastLrc: Lrc? = null
     private var lastPublishedIndex: Int = -1
     private var lastPublishedText: String? = null
@@ -68,7 +65,7 @@ object LyricPublisher {
 
     /** seek 后重算 (由 [AudioPlayManager.onSeekTo] 统一调用, 四端只此一处)。 */
     fun invalidate() {
-        seekEpoch.value = seekEpoch.value + 1
+        AudioPlayShared.seekEpoch.value = AudioPlayShared.seekEpoch.value + 1
     }
 
     /**
@@ -84,7 +81,7 @@ object LyricPublisher {
                 statusFlow(),
                 speedFlow(),
                 enabledFlow(),
-                seekEpoch,
+                AudioPlayShared.seekEpoch,
             ) { lrc, status, speed, enabled, _ -> Drive(lrc, status, speed, enabled) }
                 // 输入变了就重算: 换章 / 播放态 / 倍速 / 开关 / seek, 一律取消上一轮重入
                 .collectLatest { publishLoop(it, positionMs) }
