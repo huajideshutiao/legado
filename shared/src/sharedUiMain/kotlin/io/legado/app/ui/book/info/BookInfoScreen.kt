@@ -80,6 +80,7 @@ import io.legado.app.ui.compose.platform.transitionStatusBarHeight
 import io.legado.app.ui.compose.platform.transitionStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.root.photoSourceAnchor
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.splitNotBlank
 import legado.shared.generated.resources.Res
@@ -722,6 +723,10 @@ private fun InfoCover(
             .then(
                 if (cardBg) Modifier.background(AppTheme.colors.bottomBackground)
                 else Modifier
+            )
+            .photoSourceAnchor(
+                key = book?.getDisplayCover(),
+                cornerRadius = DesignTokens.radiusDefault,
             )
             .combinedClickable(
                 onClick = { actions.onCoverClick() },

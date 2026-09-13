@@ -1,28 +1,43 @@
 package io.legado.app.ui.widget.dialog
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.util.lerp
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
@@ -30,6 +45,7 @@ import io.legado.app.help.FileUtilsCommon
 import io.legado.app.help.book.BookImageStorageProviders
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.image.BookImageLoaders
 import io.legado.app.help.image.ImageBitmapLoader
@@ -44,6 +60,8 @@ import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.bookshelf.defaultCoverEntry
 import io.legado.app.ui.compose.component.NinePatchImageOrImage
 import io.legado.app.ui.compose.component.zoomable
+import io.legado.app.ui.compose.platform.LocalOverlayTopInset
+import io.legado.app.ui.root.LocalPhotoBoundsRegistry
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.imageSaveFileName
 import io.legado.app.utils.readAllAndClose
@@ -55,6 +73,7 @@ import legado.shared.generated.resources.loading
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 /**
  * 跨平台大图查看内容件 (四端唯一实现; 原 app 端 PhotoDialog DialogFragment 已删,
@@ -398,23 +417,116 @@ fun PhotoViewOverlayDialog(
     placeholder: (@Composable () -> Unit)? = null,
 ) {
     val saveImage = rememberPhotoSaveAction(src, book, bookSource, chapter)
-    PlatformPhotoOverlayDialog(onDismissRequest = onDismiss) {
-        if (placeholder != null) {
+    val eInk = AppConfigProviders.get().isEInkMode
+    val registry = LocalPhotoBoundsRegistry.current
+    val sourceBounds = remember(src, eInk) { if (eInk) null else registry.get(src) }
+    var dismissing by remember { mutableStateOf(false) }
+    val progress = remember { Animatable(if (sourceBounds != null) 0f else 1f) }
+
+    LaunchedEffect(sourceBounds) {
+        if (sourceBounds != null && !dismissing) {
+            progress.animateTo(1f, tween(durationMillis = 280, easing = FastOutSlowInEasing))
+        }
+    }
+
+    val requestDismiss: () -> Unit = {
+        if (sourceBounds != null && !dismissing) {
+            dismissing = true
+        } else {
+            onDismiss()
+        }
+    }
+
+    LaunchedEffect(dismissing) {
+        if (dismissing) {
+            progress.animateTo(0f, tween(durationMillis = 240, easing = FastOutSlowInEasing))
+            onDismiss()
+        }
+    }
+
+    PlatformPhotoOverlayDialog(onDismissRequest = requestDismiss) {
+        if (placeholder != null && sourceBounds == null) {
             placeholder()
         } else {
-            PhotoDialogContent(
-                src = src,
+            val density = LocalDensity.current
+            val p = progress.value
+            val bgAlpha = 0.6f * p
+            BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.55f)),
-                imageModifier = Modifier.fillMaxSize(),
-                book = book,
-                bookSource = bookSource,
-                chapter = chapter,
-                onLongPress = saveImage,
-                onTap = onDismiss,
-                loadingContent = { Text(stringResource(Res.string.loading), color = Color.White) },
-            )
+                    .background(Color.Black.copy(alpha = bgAlpha))
+                    .pointerInput(Unit) {
+                        detectTapGestures(onTap = { requestDismiss() })
+                    }
+            ) {
+                val screenWidthPx = constraints.maxWidth.toFloat()
+                val screenHeightPx = constraints.maxHeight.toFloat()
+                if (screenWidthPx <= 0f || screenHeightPx <= 0f) return@BoxWithConstraints
+
+                val inAnimation = sourceBounds != null && (p < 1f || dismissing)
+                val contentModifier = if (inAnimation) {
+                    val topInset = LocalOverlayTopInset.current
+                    val topInsetPx = with(density) { topInset.toPx() }
+                    val startRect = sourceBounds!!.rect
+                    val startRadius = sourceBounds.cornerRadiusPx
+                    val startLeft = startRect.left
+                    val startTop = startRect.top - topInsetPx
+                    val startW = startRect.width
+                    val startH = startRect.height
+
+                    val imgRatio = if (startH > 0f) startW / startH else (3f / 4f)
+                    val screenRatio = screenWidthPx / screenHeightPx
+                    val targetW: Float
+                    val targetH: Float
+                    if (screenRatio > imgRatio) {
+                        targetH = screenHeightPx
+                        targetW = targetH * imgRatio
+                    } else {
+                        targetW = screenWidthPx
+                        targetH = targetW / imgRatio
+                    }
+                    val startCenterX = startLeft + startW / 2f
+                    val startCenterY = startTop + startH / 2f
+                    val targetCenterX = screenWidthPx / 2f
+                    val targetCenterY = screenHeightPx / 2f
+
+                    val currentCenterX = lerp(startCenterX, targetCenterX, p)
+                    val currentCenterY = lerp(startCenterY, targetCenterY, p)
+                    val currentW = lerp(startW, targetW, p)
+                    val currentH = lerp(startH, targetH, p)
+                    val currentLeft = currentCenterX - currentW / 2f
+                    val currentTop = currentCenterY - currentH / 2f
+                    val currentRadius = lerp(startRadius, 0f, p)
+
+                    // 退出到最后 15% 进度平滑淡出到透明, 避免末帧瞬隐跳变
+                    val contentAlpha = if (dismissing) (p / 0.15f).coerceIn(0f, 1f) else 1f
+
+                    Modifier
+                        .offset { IntOffset(currentLeft.roundToInt(), currentTop.roundToInt()) }
+                        .size(
+                            with(density) { currentW.toDp() },
+                            with(density) { currentH.toDp() },
+                        )
+                        .clip(RoundedCornerShape(currentRadius))
+                        .graphicsLayer { alpha = contentAlpha }
+                } else {
+                    Modifier.fillMaxSize()
+                }
+
+                Box(modifier = contentModifier) {
+                    PhotoDialogContent(
+                        src = src,
+                        modifier = Modifier.fillMaxSize(),
+                        imageModifier = Modifier.fillMaxSize(),
+                        book = book,
+                        bookSource = bookSource,
+                        chapter = chapter,
+                        onLongPress = saveImage,
+                        onTap = requestDismiss,
+                        loadingContent = { Text(stringResource(Res.string.loading), color = Color.White) },
+                    )
+                }
+            }
         }
     }
 }

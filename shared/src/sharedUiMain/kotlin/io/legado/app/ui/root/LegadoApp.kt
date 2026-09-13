@@ -126,6 +126,8 @@ fun LegadoApp(
         // 卡片矩形登记表: 整个应用一份 —— 列表卡片在布局阶段写, 本层在导航事件那次组合读
         // (见 ContainerTransformScope.kt), 下方经 LocalBookCardRects 下发给列表
         val cardRects = remember { BookCardRectRegistry() }
+        // 图片查看器源图片几何登记表 (见 PhotoTransitionScope.kt)
+        val photoBounds = remember { PhotoBoundsRegistry() }
         // eInk 上提到状态机之前: 下方容器变换段判定要用它 (背景图读取处仍是同一份值)
         val eInk = LocalEInk.current
         // 容器变换开关 (「其他设置」): 经 rememberPrefState 跟随偏好变更即时生效,
@@ -413,6 +415,7 @@ fun LegadoApp(
         CompositionLocalProvider(
             LocalTransitionFrozenStatusBarHeightPx provides frozenStatusBarHeightPx,
             LocalBookCardRects provides cardRects,
+            LocalPhotoBoundsRegistry provides photoBounds,
         ) {
         Box(
             Modifier

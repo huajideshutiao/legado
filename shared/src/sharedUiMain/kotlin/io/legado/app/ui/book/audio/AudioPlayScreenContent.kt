@@ -70,6 +70,7 @@ import io.legado.app.ui.compose.platform.transitionStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
+import io.legado.app.ui.root.photoSourceAnchor
 import io.legado.app.utils.format
 import io.legado.app.utils.toDurationTime
 import legado.shared.generated.resources.Res
@@ -580,6 +581,10 @@ private fun CoverImage(
             .size(size)
             .clip(CircleShape)
             .border(DesignTokens.strokeMedium, accentColor, CircleShape)
+            .photoSourceAnchor(
+                key = coverUrl,
+                cornerRadius = size / 2,
+            )
             // 单击隐藏封面 (原版语义) + 长按查看大图; combinedClickable 保证长按不触发单击,
             // 不会误隐藏封面。无封面 URL 时手势仍挂着, 由回调内部判空不动作
             // (同书籍详情页封面: 可按但不响应, 不做 disabled)

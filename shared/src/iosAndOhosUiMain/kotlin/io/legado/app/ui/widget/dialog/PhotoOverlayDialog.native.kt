@@ -23,6 +23,8 @@ internal actual fun PlatformPhotoOverlayDialog(
             usePlatformDefaultWidth = false,
             usePlatformInsets = false,
         ),
+        dim = false,
+        animate = false,
         content = content,
     )
 }

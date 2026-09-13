@@ -28,6 +28,8 @@ internal actual fun PlatformPhotoOverlayDialog(
             dismissOnBackPress = true,
             dismissOnClickOutside = false,
         ),
+        dim = false,
+        animate = false,
     ) {
         val view = LocalView.current
         DisposableEffect(view) {
