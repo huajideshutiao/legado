@@ -1,14 +1,12 @@
 package io.legado.desktop.ui.platform
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalDensity
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
@@ -37,7 +35,6 @@ import io.legado.app.ui.book.read.page.AutoPagerCompose
 import io.legado.app.ui.book.read.readerAutoPageActive
 import io.legado.app.ui.book.read.refreshReaderImage
 import io.legado.app.ui.compose.platform.DesktopThemeStoreProvider
-import io.legado.app.ui.compose.platform.LocalOverlayTopInset
 import io.legado.app.ui.reader.ReaderImageActionMenu
 import io.legado.app.ui.reader.ReaderImageActions
 import io.legado.app.ui.reader.ReaderTextActionMenu
@@ -112,12 +109,6 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
         ReadConfigChange.BG_ALPHA,
         ReadConfigChange.STYLE,
     )
-
-    /**
-     * 菜单锚点的窗口坐标补偿 (px): 长按回调给的是阅读视口局部坐标, 自绘菜单宿主在窗口根坐标空间,
-     * 非 mac/非全屏时自绘控制栏占顶部 40dp。密度只在组合期可得, 故由 [TextSelectionHost] 写入。
-     */
-    private var menuTopOffsetPx = 0f
 
     override fun createMenuController(
         navigator: AppNavigator,
@@ -229,7 +220,7 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
     ) {
         if (src.isBlank()) return
         ReaderImageActionMenu.show(
-            anchor = readerMenuAnchor(x, y + menuTopOffsetPx),
+            anchor = readerMenuAnchor(x, y),
             actions = ReaderImageActions(
                 view = { viewImage(screenModel, src) },
                 refresh = { refreshImage(screenModel, src) },
@@ -342,23 +333,17 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
     private var lastImageSaveDir: File? = null
 
     /**
-     * 阅读页自绘浮动文本菜单宿主 (挂在桌面 Compose 根, 对照 app 端 MainActivity 的
-     * TextSelectionHost)。
+     * 阅读页自绘浮动文本菜单宿主 (挂在阅读内容容器内, 坐标系与页面完全一致)。
      */
     @Composable
     fun TextSelectionHost() {
         val actions = textActions
-        // 与菜单/对话框同一份顶部安全区 (窗口控制条高度, 由 Main.kt 按平台/全屏态注入)
-        val titleBarTopPx = with(LocalDensity.current) { LocalOverlayTopInset.current.toPx() }
-        // 图片菜单在非组合期装配请求, 借这里把同一偏移量存下 (见 [menuTopOffsetPx])
-        SideEffect { menuTopOffsetPx = titleBarTopPx }
         val selection = rawSelection
-        val request = remember(selection, titleBarTopPx) {
+        val request = remember(selection) {
             selection?.let {
-                val adjustedY = it.anchorY + titleBarTopPx
                 ReaderTextSelectionRequest(
                     text = it.text,
-                    anchor = readerMenuAnchor(it.anchorX, adjustedY),
+                    anchor = readerMenuAnchor(it.anchorX, it.anchorY),
                 )
             }
         }

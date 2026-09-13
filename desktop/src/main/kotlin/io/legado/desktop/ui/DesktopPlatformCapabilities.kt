@@ -294,6 +294,7 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
 
     override fun copyToClipboard(text: String) {
         shareText(text)
+        runCatching { Toasters.get().toast(jvmGetString("copy_complete")) }
     }
 
     override fun getClipboardText(): String? = runCatching {

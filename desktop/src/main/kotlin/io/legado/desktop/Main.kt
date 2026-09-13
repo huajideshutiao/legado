@@ -334,8 +334,8 @@ private fun runDesktopApp() = application {
     // (DesktopToasts → DesktopToastHost), 不再只依赖托盘气泡 (Windows 通知设置
     // 会静默拦截 TrayIcon.displayMessage, 曾表现为 toast 无反应)
     // (Toaster/NotificationProgress provider 本体注册在上方 DesktopCore.registerCoreProviders)
-    DesktopTrayNotifier.uiSender = { msg ->
-        DesktopToasts.show(msg, false)
+    DesktopTrayNotifier.uiSender = { msg, isLong ->
+        DesktopToasts.show(msg, isLong)
         true
     }
     // 注册桌面端 PlatformCapabilities (供 shared LegadoApp 经 PlatformCapabilityProviders.get() 取能力)
@@ -650,73 +650,76 @@ private fun runDesktopApp() = application {
             // fontScale (iOS 跟系统 Dynamic Type, 桌面/鸿蒙恒 1) —— 语义对照原版 getFontScale
             AppFontScaleScope {
                 AppTheme {
-
-                    // 书源 JS 弹窗事件桥宿主: 订阅 FlowBus(SOURCE_UI_REQUEST) 弹 Compose Dialog
-                    // (四端同一份, 实现见 shared/sharedUiMain 的 SourceUiEventBridgeHost)
-                    SourceUiEventBridgeHost()
-                    // 桌面端命令式对话框宿主: PlatformCapabilities 的同步方法经 DesktopDialogs 推请求
-                    DesktopDialogHost()
-                    // 桌面端 Toast 宿主: JS java.toast / Toaster 链路统一收口到窗口内 UI toast
-                    // (Popup 呈现: 独立合成层不被 LegadoApp 覆盖, 相对主窗口底部定位)
-                    DesktopToastHost()
-                    // 阅读页长按文字选择对话框宿主 (对照 app 端 MainActivity.readerSelection 分支)
-                    desktopReaderProvider.TextSelectionHost()
-                    // 阅读页图片长按菜单宿主 (四端同一份自绘浮动菜单, 见 shared ReaderImageActionMenu)
-                    ReaderImageActionMenu.Host()
-                    // 阅读页查词对话框宿主 (四端同一份, 见 shared ReaderDictWord)
-                    ReaderDictWord.Host()
-                    // legado:// deep link 导入对话框宿主: 消费 main(args)/OpenURIHandler 经
-                    // LegadoDeepLinkHandler 记录的待导入请求 (对照 app 端 AssociationActivity 分发)
-                    DeepLinkImportHost()
-                    // 窗口控制栏三分支: macOS 原生红绿灯 / Windows 自研 native 控制条
-                    // (legado_wndchrome, 客户区顶到窗口顶 + 鼠标穿透 layered 子窗口自绘整条,
-                    //  拖拽/双击最大化/贴靠/Snap Layouts 由 WM_NCHITTEST 返回值换取) /
-                    // Linux 自绘全功能控制栏 (DesktopTitleBar)。
-                    // 全屏时 Esc 优先退出全屏 (用户拍板 2026-08): 由 shared AppKeyRouter 的
-                    // fullscreenEsc 策略 (上方 DisposableEffect(window) 注册) 在统一返回链前处理
-                    if (Platform.isMac()) {
-                        // macOS: 纯系统标题栏 (原生红绿灯), 深浅色/设置走设置页 (原版观感)
-                        LegadoApp(
-                            navigator = navigator,
-                            screenModelStore = screenModelStore,
-                        )
-                    } else {
-                        // Windows: 控制条整条由 native (legado_wndchrome) 画在鼠标穿透的 layered
-                        //   子窗口里, 命中测试全在 native WndProc —— Compose 侧只留等高空位 +
-                        //   DesktopNativeChromeHost 推主题色/标题/图标并承接按键回调。
-                        // Linux: 保持自绘全功能控制栏 (DesktopTitleBar) 不动。
-                        if (Platform.isWindows()) {
-                            DesktopNativeChromeHost(
-                                appName = appName,
-                                window = window,
-                                themeStore = themeStoreProvider,
-                                navigator = navigator,
-                            )
-                        }
-                        Column(Modifier.fillMaxSize()) {
-                            if (!DesktopWindowChrome.fullscreen) {
-                                if (Platform.isWindows()) {
-                                    // native 控制条的占位: 必须显式涂同色底, 见 ChromeStripSpacer
-                                    ChromeStripSpacer()
-                                } else {
-                                    DesktopTitleBar(
-                                        appName = appName,
-                                        icon = iconPainter,
-                                        window = window,
-                                        windowState = windowState,
-                                        themeStore = themeStoreProvider,
-                                        navigator = navigator,
-                                        onCloseRequest = ::exitApplication,
-                                    )
-                                }
-                            }
-                            Box(Modifier.weight(1f).fillMaxWidth()) {
+                    Box(Modifier.fillMaxSize()) {
+                        // 书源 JS 弹窗事件桥宿主: 订阅 FlowBus(SOURCE_UI_REQUEST) 弹 Compose Dialog
+                        // (四端同一份, 实现见 shared/sharedUiMain 的 SourceUiEventBridgeHost)
+                        SourceUiEventBridgeHost()
+                        // 桌面端命令式对话框宿主: PlatformCapabilities 的同步方法经 DesktopDialogs 推请求
+                        DesktopDialogHost()
+                        // legado:// deep link 导入对话框宿主: 消费 main(args)/OpenURIHandler 经
+                        // LegadoDeepLinkHandler 记录的待导入请求 (对照 app 端 AssociationActivity 分发)
+                        DeepLinkImportHost()
+                        // 窗口控制栏三分支: macOS 原生红绿灯 / Windows 自研 native 控制条
+                        // (legado_wndchrome, 客户区顶到窗口顶 + 鼠标穿透 layered 子窗口自绘整条,
+                        //  拖拽/双击最大化/贴靠/Snap Layouts 由 WM_NCHITTEST 返回值换取) /
+                        // Linux 自绘全功能控制栏 (DesktopTitleBar)。
+                        // 全屏时 Esc 优先退出全屏 (用户拍板 2026-08): 由 shared AppKeyRouter 的
+                        // fullscreenEsc 策略 (上方 DisposableEffect(window) 注册) 在统一返回链前处理
+                        if (Platform.isMac()) {
+                            // macOS: 纯系统标题栏 (原生红绿灯), 深浅色/设置走设置页 (原版观感)
+                            Box(Modifier.fillMaxSize()) {
                                 LegadoApp(
                                     navigator = navigator,
                                     screenModelStore = screenModelStore,
                                 )
+                                desktopReaderProvider.TextSelectionHost()
+                                ReaderImageActionMenu.Host()
+                                ReaderDictWord.Host()
+                            }
+                        } else {
+                            // Windows: 控制条整条由 native (legado_wndchrome) 画在鼠标穿透的 layered
+                            //   子窗口里, 命中测试全在 native WndProc —— Compose 侧只留等高空位 +
+                            //   DesktopNativeChromeHost 推主题色/标题/图标并承接按键回调。
+                            // Linux: 保持自绘全功能控制栏 (DesktopTitleBar) 不动。
+                            if (Platform.isWindows()) {
+                                DesktopNativeChromeHost(
+                                    appName = appName,
+                                    window = window,
+                                    themeStore = themeStoreProvider,
+                                    navigator = navigator,
+                                )
+                            }
+                            Column(Modifier.fillMaxSize()) {
+                                if (!DesktopWindowChrome.fullscreen) {
+                                    if (Platform.isWindows()) {
+                                        // native 控制条的占位: 必须显式涂同色底, 见 ChromeStripSpacer
+                                        ChromeStripSpacer()
+                                    } else {
+                                        DesktopTitleBar(
+                                            appName = appName,
+                                            icon = iconPainter,
+                                            window = window,
+                                            windowState = windowState,
+                                            themeStore = themeStoreProvider,
+                                            navigator = navigator,
+                                            onCloseRequest = ::exitApplication,
+                                        )
+                                    }
+                                }
+                                Box(Modifier.weight(1f).fillMaxWidth()) {
+                                    LegadoApp(
+                                        navigator = navigator,
+                                        screenModelStore = screenModelStore,
+                                    )
+                                    // 阅读页浮动菜单宿主放与页面同一可用区, 坐标系与页面完全对齐, 无需手动补偿控制条高度
+                                    desktopReaderProvider.TextSelectionHost()
+                                    ReaderImageActionMenu.Host()
+                                    ReaderDictWord.Host()
+                                }
                             }
                         }
+                        // 桌面端 Toast 宿主: 顶层 Overlay 渲染 (居底 48dp, 独立层不被页面覆盖, 天然穿透点击)
+                        DesktopToastHost()
                     }
                 }
             }

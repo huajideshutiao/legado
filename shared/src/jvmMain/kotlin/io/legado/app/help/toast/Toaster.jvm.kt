@@ -22,7 +22,7 @@ object DesktopTrayNotifier {
      * 才是与 app 端 Toast 语义一致的可靠反馈; 窗口最小化时由宿主自行转 [sender]。
      */
     @Volatile
-    var uiSender: ((message: String) -> Boolean)? = null
+    var uiSender: ((message: String, isLong: Boolean) -> Boolean)? = null
 }
 
 /**
@@ -50,7 +50,7 @@ class DesktopToaster : Toaster {
     /** 显示消息: 优先主窗口 UI toast, 其次宿主托盘图标, 退化到 [AppLog]。 */
     private fun showMessage(message: String, isLong: Boolean) {
         val sent = runCatching {
-            DesktopTrayNotifier.uiSender?.invoke(message) == true ||
+            DesktopTrayNotifier.uiSender?.invoke(message, isLong) == true ||
                 DesktopTrayNotifier.sender?.invoke(message) == true
         }.getOrDefault(false)
         if (sent) return
