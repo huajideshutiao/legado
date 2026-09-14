@@ -361,6 +361,36 @@ class MediampVideoPlayerController(
         }
     }
 
+    /**
+     * 按当前地址与请求头重装一次 (外部直投错误遮罩的「重新加载」, 见
+     * [VideoPlayerController.reload])。
+     *
+     * 不能靠重发 StateFlow: 渲染层是 `LaunchedEffect(url)`, 同址不重跑, StateFlow 对相等值
+     * 也不发射; 而 [startPlayback] 开头的 `startedUrl == url` 守卫会把同址重载直接吃成空操作
+     * (就是之前那颗死按钮), 所以必须先把守卫清掉。
+     *
+     * 停与装排在**同一条**协程里顺序发出: 复用 [stop] 会另起一条 launch, 其 `stopPlayback()`
+     * 挂起期间本方法后续的 `setMediaData` 能插到它前面, 同一条地址就变成两次并发装载。
+     */
+    override fun reload() {
+        val source = screenModel.shared.videoUrl.value
+        if (source == null) {
+            // 没有地址可重装: 退化成卸载 (与切章同语义), 不装空气
+            stop()
+            return
+        }
+        val url = source.url
+        val headers = source.headerMap.toMap()
+        // 守卫先清 (startPlayback 自会重挂); released 后不得再碰播放器
+        startedUrl = null
+        if (released) return
+        scope.launch {
+            runCatching { player.stopPlayback() }
+                .onFailure { AppLog.putDebug("mediamp 重载前停止播放失败: ${it.message}") }
+            startPlayback(url, headers, screenModel.shared.startPositionMs.value)
+        }
+    }
+
     override fun seekTo(positionMs: Long) = player.seekTo(positionMs)
     override fun seekBy(deltaMs: Long) = player.skip(deltaMs)
     override fun setSpeed(speed: Float) {
@@ -528,6 +558,15 @@ object EmptyDesktopVideoPlayerController : VideoPlayerController {
     override fun playPause() = Unit
     override fun pause() = Unit
     override fun stop() = Unit
+
+    /**
+     * 占位控制器无引擎可重装 (mediamp 初始化就失败了), 只能空实现。
+     *
+     * 它是全仓唯一一颗“按了不会动”的重新加载钮: 那里连播放器都没有, 错误文案也不走
+     * 直投那套重试提示 ([io.legado.app.ui.book.video.VideoPlayViewModelShared.reportPlayError]
+     * 在建控制器阶段还没进直投态), 需重拉只能退页重进。
+     */
+    override fun reload() = Unit
     override fun seekTo(positionMs: Long) = Unit
     override fun seekBy(deltaMs: Long) = Unit
     override fun setSpeed(speed: Float) = Unit

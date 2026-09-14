@@ -10,6 +10,7 @@ import io.legado.app.help.openURL
 import io.legado.app.help.toast.Toasters
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.ui.OhosPlatformCapabilities
+import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.BrowserService
 import io.legado.app.ui.root.CrashLogProvider
 import io.legado.app.ui.root.ExternalRequestService
@@ -28,6 +29,7 @@ import io.legado.app.ui.root.ShareService
 import io.legado.app.ui.root.SoftInputPolicy
 import io.legado.app.ui.root.SystemBarsPolicy
 import io.legado.app.ui.root.WindowController
+import io.legado.app.ui.video.VideoDirect
 import io.legado.app.utils.File
 import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.systemCurrentTimeMillis
@@ -147,11 +149,13 @@ object OhosPlatformServices : PlatformServices {
 
     /**
      * 通用媒体播放: 复用已通的 media 桥 (ArkTS AVPlayer), 独占 playerId 避免抢占
-     * 音频书/HttpTTS/视频书实例。headers 鸿蒙 AVPlayer 无对应入参, 忽略 (对照 Android 端同为空实现)。
+     * 音频书/HttpTTS/视频书实例。headers 随 setSourceUrl 下发 —— ArkTS 侧
+     * `media.createMediaSourceWithUrl(url, headers)` (API 12+) 就是为请求头准备的
+     * (见 MediaBridgeHandler.ets handleSetSourceUrl), 早先"鸿蒙无对应入参"的注释不成立。
      */
     override val media: MediaService = object : MediaService {
         override fun playMedia(url: String, headers: Map<String, String>) {
-            send(MediaCommand(action = "setSourceUrl", url = url))
+            send(MediaCommand(action = "setSourceUrl", url = url, headers = headers.takeIf { it.isNotEmpty() }))
             send(MediaCommand(action = "play"))
         }
 
@@ -209,7 +213,9 @@ object OhosPlatformServices : PlatformServices {
  * 鸿蒙外部启动请求解析/投递 (对照 app 端 `Intent.toLaunchRequest`)。
  *
  * ArkTS 侧 Want 无法跨 napi 传对象, 约定只传 `want.uri`; 通知点击等携带路由的场景
- * 约定前缀 `route:`。由 [io.legado.app.napi.LegadoNativeExports.handleLaunchRequest] 调用。
+ * 约定前缀 `route:`; Want 带了 MIME (`want.type`) 时约定 `mime:<type>|<uri>` 同串捎带
+ * (两种前缀都只存在于本对象与 ArkTS EntryAbility 之间, napi 导出签名不变)。
+ * 由 [io.legado.app.napi.LegadoNativeExports.handleLaunchRequest] 调用。
  */
 object OhosLaunchRequests {
 
@@ -221,12 +227,34 @@ object OhosLaunchRequests {
             return value.removePrefix(ROUTE_PREFIX).takeIf { it.isNotEmpty() }
                 ?.let(LaunchRequest::NavigateTo)
         }
-        val scheme = value.substringBefore("://", missingDelimiterValue = "").lowercase()
+        val hint = extractMimeHint(value)
+        val address = hint?.second ?: value
+        if (address.isEmpty()) return null
+        // 外部明确告知 MIME 是视频: 直投播放态。判据仍用 shared 的 [VideoDirect] (与 iOS/桌面
+        // 一份), 只是把 mimeIsVideo 替它填上; 地址不带可播 scheme 时 targetFor 返回 null,
+        // 落回下面的常规分支 (不得因为一个 MIME 把路由偷换成视频)。
+        if (hint != null && VideoDirect.isVideoMime(hint.first)) {
+            // 标题只能取地址末段: 系统媒体库投来的形如 `file://media/Video/<fileId>`, 末段是
+            // fileId 而不是 `x.mp4`, 所以从图库投视频时标题会显示成一串数字 (用户已拍板 1A:
+            // 接受这个观感, 不加权限)。两条依据均取自本机 SDK 声明, 不是推断:
+            //  - @ohos.app.ability.Want.d.ts:281-287 —— `parameters?: Record<string, Object>`,
+            //    官方**未规定任何显示名/文件名键**, 拿它取名等于编造键名去赌;
+            //  - @ohos.file.photoAccessHelper.d.ts —— `PhotoAsset.displayName` 存在 (:928),
+            //    但取 PhotoAsset 的接口**每一条都标着 @permission ohos.permission.READ_IMAGEVIDEO**
+            //    (:627/646/665/…), 那是 user_grant 受限权限 —— 为一个标题让阅读器弹一次
+            //    “允许读取相册视频”并背上上架审核代价, 不对等, 故不走这条路。
+            // 不要再“顺手补上真实文件名”: 要么加权限(行为变更, 需拍板), 要么维持现状。
+            VideoDirect.targetFor(address, mimeIsVideo = true)?.let { direct ->
+                return LaunchRequest.OpenRoute(AppRoute.VideoPlay(direct))
+            }
+        }
+        val scheme = address.substringBefore("://", missingDelimiterValue = "").lowercase()
         return when (scheme) {
             // 鸿蒙文件关联给出的是 file://docs/... 授权体 URI, 与 Android content/file 同语义
-            "file", "content", "app", "datashare" -> LaunchRequest.ImportFile(value)
+            // (没扩展名又没 MIME 提示的视频只能走这条链, 由 shared 侧嗅探后报"不支持的文件")
+            "file", "content", "app", "datashare" -> LaunchRequest.ImportFile(address)
             "" -> null
-            else -> LaunchRequest.DeepLink(value)
+            else -> LaunchRequest.DeepLink(address)
         }
     }
 
@@ -234,7 +262,24 @@ object OhosLaunchRequests {
     fun post(request: LaunchRequest): Boolean =
         runCatching { LaunchRequestBus.dispatch(request) }.isSuccess
 
+    /**
+     * 解出同串捎带的 MIME 提示 (`mime:<type>|<address>`); 不是该形态返回 null。
+     *
+     * 为什么要捎: Want 对象过不了 napi (只能传一个字符串), 而 `file://media/Video/<fileId>`
+     * 这类系统媒体库 URI 末段是 fileId 而不是 `x.mp4`, 光靠扩展名嗅探判不出视频,
+     * 只有 want.type 能认。只按首个分隔符切一次, 后面整串当地址 (URI 里再出 '|' 不影响)。
+     */
+    private fun extractMimeHint(value: String): Pair<String, String>? {
+        if (!value.startsWith(MIME_PREFIX)) return null
+        val body = value.removePrefix(MIME_PREFIX)
+        val separator = body.indexOf(MIME_SEPARATOR)
+        if (separator <= 0) return null
+        return body.substring(0, separator) to body.substring(separator + 1)
+    }
+
     private const val ROUTE_PREFIX = "route:"
+    private const val MIME_PREFIX = "mime:"
+    private const val MIME_SEPARATOR = '|'
 }
 
 /** 权限请求 payload (Kotlin → ArkTS)。 */
@@ -255,6 +300,7 @@ private data class MediaCommand(
     val action: String,
     val playerId: String = "platformMedia",
     val url: String? = null,
+    val headers: Map<String, String>? = null,
 )
 
 /**

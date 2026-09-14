@@ -41,6 +41,7 @@ import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.main.MainActivity
+import io.legado.app.utils.hasPlayableScheme
 import io.legado.app.utils.toggleSystemBar
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -249,16 +250,25 @@ private class AndroidVideoPlayerController(
             val retried = screenModel.shared.retryOnPlayError(
                 seekPositionMs = player.currentPosition.coerceAtLeast(0L),
             )
-            if (!retried && error is ExoPlaybackException && error.type == ExoPlaybackException.TYPE_SOURCE) {
-                val message = when (error.sourceException) {
+            if (retried) return
+            val sourceType = error is ExoPlaybackException &&
+                error.type == ExoPlaybackException.TYPE_SOURCE
+            // 由书进入的口径逐字不变: 只把源类错误摆到页面上 (非源错误多为可自愈抖动,
+            // 原版只写日志)。直投必须全报: retryOnPlayError 在直投恒 false, 什么错都到不了
+            // “重新装载”, 不报就是一圈永不落地的转圈 + 连「重新加载」入口都没有
+            if (!sourceType && !screenModel.shared.isDirect) return
+            val message = if (!sourceType) {
+                "视频播放出错"
+            } else {
+                when ((error as ExoPlaybackException).sourceException) {
                     is UnrecognizedInputFormatException -> "不是视频链接"
                     is androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException -> "视频地址不可用"
                     else -> "视频播放出错"
                 }
-                AppLog.put(message, error, true)
-                // 重试后仍失败: 上报 UI 显示错误 (原版只写日志, 用户要求"及时表现出来")
-                screenModel.dispatch(VideoPlayUiEvent.ShowError(message))
             }
+            AppLog.put(message, error, true)
+            // 重试后仍失败: 上报 UI 显示错误 (原版只写日志, 用户要求"及时表现出来")
+            screenModel.dispatch(VideoPlayUiEvent.ShowError(message))
         }
     }
 
@@ -293,7 +303,10 @@ private class AndroidVideoPlayerController(
                 && player.playbackState != Player.STATE_IDLE
                 && !player.playWhenReady
         loadedUrl = analyzeUrl.url
-        if (analyzeUrl.url.startsWith("http")) {
+        // 直链判定用 shared 的同一份判据 (http/https/file/content): 上一版只判 http 开头,
+        // 外部投来的本地视频 (file:// 与 content://) 会掉进下面的内存 m3u8 清单分支 ——
+        // 拿一条文件 URI 去建 HlsMediaSource, 观感就是进页黑屏报错。
+        if (analyzeUrl.url.hasPlayableScheme()) {
             player.setMediaItem(
                 ExoPlayerHelper.createMediaItem(
                     analyzeUrl.url,
@@ -353,6 +366,23 @@ private class AndroidVideoPlayerController(
         player.pause()
         player.clearMediaItems()
         publishPlayback()
+    }
+
+    /**
+     * 按当前地址与请求头重装一次 (外部直投错误遮罩的「重新加载」, 见
+     * [VideoPlayerController.reload])。
+     *
+     * 不靠重发 StateFlow: 渲染层订阅的就是这条地址, 同值不发射、collect 也不会重跑。
+     * 这里复用 [stop] (清 [loadedUrl] 守卫 + 卸媒体), 再用**同一个** AnalyzeUrlCore 重走
+     * [updateSource]: 直链与内存 m3u8 两条分支按原地址形态自然分流, 起播位置仍读
+     * startPositionMs (ScreenModel 在 reload 前已写好续播点)。
+     * 守卫不清的话 [updateSource] 第一行的同址判定会把重试直接吃成空操作。
+     */
+    override fun reload() {
+        val source = screenModel.shared.videoUrl.value
+        stop()
+        if (source == null) return
+        updateSource(source)
     }
 
     override val positionMs: Long get() = player.currentPosition.coerceAtLeast(0L)

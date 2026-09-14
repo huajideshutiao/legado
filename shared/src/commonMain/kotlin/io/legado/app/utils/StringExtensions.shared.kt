@@ -42,6 +42,17 @@ fun String?.safeTrim() = if (this.isNullOrBlank()) null else this.trim()
 
 fun String?.isContentScheme(): Boolean = this?.startsWith("content://") == true
 
+/**
+ * 已是“可直接交给播放器的地址”的判据: 带 `http/https/file/content` 四种 scheme 之一。
+ *
+ * 两处必用: 视频装载链区分“直链”与“内存 m3u8 文本” ([io.legado.app.ui.book.video]),
+ * 以及各端渲染层决定“走普通媒体项”还是“走清单数据源”。上一版各处只判 `startsWith("http")`,
+ * 导致本地视频文件 (`file://`) 与 `content://` 被当成 m3u8 清单文本处理而永远播不出。
+ */
+fun String.hasPlayableScheme(): Boolean =
+    startsWith("http://", true) || startsWith("https://", true) ||
+            startsWith("file://", true) || isContentScheme()
+
 fun String?.isFilePath(): Boolean = this?.startsWith("/storage") == true
 
 fun String?.isAbsUrl() =

@@ -18,6 +18,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import io.legado.app.App
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.AppPattern
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.resolveImagePath
@@ -25,6 +26,7 @@ import io.legado.app.model.bakeCoverImageFile
 import io.legado.app.model.bakedImagePath
 import io.legado.app.model.deleteImageIfUnreferenced
 import io.legado.app.notificationManager
+import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.BrowserService
 import io.legado.app.ui.root.CrashLogProvider
 import io.legado.app.ui.root.ExternalRequestService
@@ -41,16 +43,20 @@ import io.legado.app.ui.root.PlatformServices
 import io.legado.app.ui.root.ShareService
 import io.legado.app.ui.root.SoftInputPolicy
 import io.legado.app.ui.root.SystemBarsPolicy
+import io.legado.app.ui.root.VideoPlayTarget
 import io.legado.app.ui.root.WindowController
 import io.legado.app.ui.root.importImageSetFile
+import io.legado.app.ui.video.VideoDirect
 import io.legado.app.utils.ActivityResultLauncherAwait
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.checkWrite
 import io.legado.app.utils.createFileIfNotExist
 import io.legado.app.utils.delete
+import io.legado.app.utils.displayName
 import io.legado.app.utils.find
 import io.legado.app.utils.getFile
+import io.legado.app.utils.hasPlayableScheme
 import io.legado.app.utils.list
 import io.legado.app.utils.openOutputStream
 import io.legado.app.utils.openUrl
@@ -425,6 +431,28 @@ private class AndroidWindowController(
             }
         }
     }
+
+    // 进入深色覆盖层前的图标明暗; null = 当前无人持有。嵌套打开不重复存, 否则会抹掉真正的原值
+    private var savedLightStatusBars: Boolean? = null
+    private var savedLightNavigationBars: Boolean? = null
+
+    override fun setLightIconOverlay(enabled: Boolean) {
+        val controller =
+            WindowCompat.getInsetsController(activity.window, activity.window.decorView)
+        if (enabled) {
+            if (savedLightStatusBars == null) {
+                savedLightStatusBars = controller.isAppearanceLightStatusBars
+                savedLightNavigationBars = controller.isAppearanceLightNavigationBars
+            }
+            controller.isAppearanceLightStatusBars = false
+            controller.isAppearanceLightNavigationBars = false
+        } else {
+            savedLightStatusBars?.let { controller.isAppearanceLightStatusBars = it }
+            savedLightNavigationBars?.let { controller.isAppearanceLightNavigationBars = it }
+            savedLightStatusBars = null
+            savedLightNavigationBars = null
+        }
+    }
 }
 
 private class AndroidKeyboardController(
@@ -546,6 +574,8 @@ private class AndroidExternalRequestService : ExternalRequestService {
  * 解析外部 Intent 为 [LaunchRequest]: 覆盖 VIEW(deep link / 文件关联) 与 PROCESS_TEXT / SEND。
  *
  * scheme 区分:
+ * - 视频直投 (content/file/http(s) 命中 MIME 或视频扩展名) → [LaunchRequest.OpenRoute] 播放页
+ *   (**排在下面书籍分流之前**, 见 [videoDirectTarget]; mp4 不是书, 落到 ImportFile 会被导入流程判不支持)
  * - content/file/app → [LaunchRequest.ImportFile] (走导入书籍流程)
  * - legado/yuedu/其他 → [LaunchRequest.DeepLink] (legado 系由 [LegadoDeepLinkHandler] 进一步接管导入对话框)
  *
@@ -592,10 +622,16 @@ fun Intent.toLaunchRequest(): LaunchRequest? {
         }
     }
     when (action) {
-        Intent.ACTION_VIEW -> dataString?.let { url ->
-            return when (data?.scheme) {
-                "content", "file", "app" -> LaunchRequest.ImportFile(url)
-                else -> LaunchRequest.DeepLink(url)
+        Intent.ACTION_VIEW -> {
+            // 视频排在书籍分流之前: 外部给的 mp4/mkv/m3u8 已是可播地址, 不是书也不是书源网页
+            videoDirectTarget()?.let {
+                return LaunchRequest.OpenRoute(AppRoute.VideoPlay(it))
+            }
+            dataString?.let { url ->
+                return when (data?.scheme) {
+                    "content", "file", "app" -> LaunchRequest.ImportFile(url)
+                    else -> LaunchRequest.DeepLink(url)
+                }
             }
         }
 
@@ -603,6 +639,11 @@ fun Intent.toLaunchRequest(): LaunchRequest? {
             getStringExtra(Intent.EXTRA_PROCESS_TEXT)?.let { return LaunchRequest.ProcessText(it) }
 
         Intent.ACTION_SEND -> {
+            // 分享 mp4 给阅读: manifest 的 SEND */* 挂在 ProcessTextActivity alias 上, 以前会
+            // 一路进"导入本地书"页再被判不支持 —— 这里截给播放页
+            videoDirectTarget()?.let {
+                return LaunchRequest.OpenRoute(AppRoute.VideoPlay(it))
+            }
             @Suppress("DEPRECATION")
             getParcelableExtra<Uri>(Intent.EXTRA_STREAM)?.let {
                 return LaunchRequest.ImportFile(it.toString())
@@ -613,6 +654,58 @@ fun Intent.toLaunchRequest(): LaunchRequest? {
     // 无法识别: 返回 null。不回落 IntentData.book —— 它取一次即失效, 而每个 MainActivity
     // intent (含普通启动 intent) 都过一遍本函数, 回落等于让无关 intent 取走别处刚寄存的书。
     return null
+}
+
+/**
+ * 外部投递的视频 → 播放页直投载荷 (判据唯一来源: shared [VideoDirect], 四端共用一份)。
+ *
+ * 覆盖两种投递形态:
+ * - `ACTION_VIEW`: [data] 是 content/file/http(s) URI (文件管理器"打开方式"、浏览器点直链)
+ * - `ACTION_SEND`: [Intent.EXTRA_STREAM] 是视频 URI (分享面板), 或 [Intent.EXTRA_TEXT]
+ *   本身就是一条带视频后缀的 http(s) 直链
+ *
+ * # 为什么不能只信 `intent.type`
+ * 不少文件管理器给 mp4 报的是 `application/octet-stream` 甚至主/次类型全星号的通配 (它们本来就命中透明壳上
+ * 那条 octet-stream filter); 反过来 `content://media/.../video/123` 的末段是数字 id 而不是
+ * `x.mp4`, 那种只有 MIME 能认。两条判据缺一不可, 所以这里把 `type` 与查到的 `DISPLAY_NAME`
+ * 合成一个 `mimeIsVideo` 交给 [VideoDirect] (扩展名那条它自己按地址末段判)。
+ *
+ * @return null = 这不是可直接播放的视频, 调用方继续按书 / JSON / 文本原链路处理
+ */
+fun Intent.videoDirectTarget(): VideoPlayTarget.Direct? {
+    val mimeIsVideo = VideoDirect.isVideoMime(type)
+    return when (action) {
+        Intent.ACTION_VIEW -> data?.let { videoTargetOfUri(it, mimeIsVideo) }
+
+        Intent.ACTION_SEND -> {
+            @Suppress("DEPRECATION")
+            val stream = getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+            if (stream != null) {
+                videoTargetOfUri(stream, mimeIsVideo)
+            } else {
+                // 分享的是纯文本: 只有整条就是一个可播地址 (结尾 .m3u8/.mp4 等) 才截给播放页,
+                // 否则保持原语义 (ProcessText → 搜索), 不得把书名/普通文案当链接去播
+                getStringExtra(Intent.EXTRA_TEXT)?.trim()
+                    ?.takeIf { it.hasPlayableScheme() }
+                    ?.let { VideoDirect.targetFor(it, mimeIsVideo) }
+            }
+        }
+
+        else -> null
+    }
+}
+
+/** URI → 直投载荷: 只负责补显示名 (标题 + 扩展名判据), 其余判定全在 [VideoDirect]。 */
+private fun videoTargetOfUri(uri: Uri, mimeIsVideo: Boolean): VideoPlayTarget.Direct? {
+    val address = uri.toString()
+    if (!address.hasPlayableScheme()) return null
+    val displayName = uri.displayName(App.instance)
+    return VideoDirect.targetFor(
+        address = address,
+        // DISPLAY_NAME 命中视频后缀 等同于 MIME 命中 (content URI 的末段常不是文件名)
+        mimeIsVideo = mimeIsVideo || displayName?.matches(AppPattern.videoFileRegex) == true,
+        title = displayName,
+    )
 }
 
 /**

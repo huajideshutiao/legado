@@ -24,7 +24,9 @@ import io.legado.app.model.chapter.ChapterTocUpdater
 import io.legado.app.model.chapter.resolveChapter
 import io.legado.app.model.chapter.updateResourceUrl
 import io.legado.app.model.webBook.WebBook
+import io.legado.app.ui.root.VideoPlayTarget
 import io.legado.app.ui.root.screenModelScope
+import io.legado.app.utils.hasPlayableScheme
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.CancellationException
@@ -94,6 +96,18 @@ class VideoPlayViewModelShared(
     /** 当前书源 (按 book.origin 查 DB, 拉取章节内容用) */
     var curBookSource: BookSource? = null
         private set
+
+    /**
+     * 外部直投目标 (null = 由书进入的常规视频书)。
+     *
+     * 直投态下 [curBook] / [curBookSource] / 章节列表恒为空: 外部给的已经是可播地址,
+     * 不存在“书”也不存在“书源规则”, 因此不查库、不拉目录、不落进度、不写书签。
+     */
+    var directTarget: VideoPlayTarget.Direct? = null
+        private set
+
+    /** 是否外部直投播放 (页面据此隐藏上架/书签/刷新等依赖书的能力) */
+    val isDirect: Boolean get() = directTarget != null
 
     /** 章节列表 (内存缓存, 首次加载章节内容时拉取, 后续章节切换直接查) */
     private var chapterList: List<BookChapter>? = null
@@ -216,6 +230,7 @@ class VideoPlayViewModelShared(
         initialChapterIndex: Int = book.durChapterIndex,
         persistProgress: Boolean = true,
     ) {
+        directTarget = null
         val result = runCatching {
             BookChapterLoader.upBook(book)
         }.onFailure {
@@ -289,6 +304,61 @@ class VideoPlayViewModelShared(
     }
 
     /**
+     * 为直投重载预备装载参数 (只服务直投态, 由书进入的刷新/重试一律不经过这里)。
+     *
+     * 与 [refreshChapter] / [retryOnPlayError] 的分工: 后两者是「重拉章节内容 + 重跑解析规则」,
+     * 直投没有章节可重拉 (故在 isDirect 下早退是原设计); 本方法是直投专属的另一条腿 ——
+     * 地址不变、请求头不变, 只把「下一次起播从哪开始」与「页面不再停在错误态」两件事定下来,
+     * 真正的重装由调用方交给控制器上的 `VideoPlayerController.reload`。
+     *
+     * 为什么这里清错误态而不是置 Loading: 直投没有任何后台装载任务会把它收回去,
+     * 停在 Loading 就是错误遮罩换成了永久转圈。清成 [ChapterLoadState.Idle] 后,
+     * 起播等待由播放引擎自己报 (平台侧的 `PlaybackSnapshot.isBuffering`),
+     * 再次失败时平台侧会重新 [reportPlayError] 写回错误。
+     *
+     * @param seekPositionMs 重装后的起播位置 (调用方必须在 reload **前**从播放器现取)
+     */
+    fun prepareDirectReload(seekPositionMs: Long) {
+        if (!isDirect) return
+        // 与首次 playDirect 同口径: 不允许把旧进度当作负数喂给引擎 (片尾编码 -1 不在此链上)
+        _startPositionMs.value = seekPositionMs.coerceAtLeast(0L)
+        if (_loadState.value is ChapterLoadState.Error) {
+            _loadState.value = ChapterLoadState.Idle
+        }
+    }
+
+    /**
+     * 外部直投起播: 把地址直接喂给播放器, 跳过 书 → 书源 → 章节 → 规则解析 整条装载链。
+     *
+     * 与 [initData] 互斥: 进页后只会走其中一条。直投不做任何解析与持久化:
+     * 不查书源 ([BookChapterLoader] 会因“书源不存在”直接失败)、不拉章节、
+     * 不 [saveRead]、不进阅读计时 ([ReadTimeRecorder])、不写书签。
+     *
+     * @param target 已归一化的可播地址 + 请求头 + 显示标题
+     */
+    fun playDirect(target: VideoPlayTarget.Direct) {
+        directTarget = target
+        curBook = null
+        curBookSource = null
+        chapterList = null
+        _chapterSize.value = 0
+        _curChapterIndex.value = 0
+        _curChapterTitle.value = target.displayTitle
+        _videoSource.value = null
+        _resolutions.value = emptyList()
+        _currentResolutionIndex.value = 0
+        _startPositionMs.value = 0L
+        // 地址已是可直接交给播放器的 URI, 不得再过 AnalyzeUrl 的规则/JS 解析:
+        // 那会把 content:// 地址里的 ',' ':' 等当规则语法切掉。与内存 m3u8 分支同一写法
+        // (先建对象再直填 url + header)。
+        _videoUrl.value = AnalyzeUrlFactories.create("").apply {
+            url = target.url
+            headerMap.putAll(target.headers)
+        }
+        _loadState.value = ChapterLoadState.Idle
+    }
+
+    /**
      * 加载指定章节 (对照 desktop `VideoPlayerViewModel.loadChapter` /
      * app `VideoViewModel.initChapter`)。
      *
@@ -310,6 +380,9 @@ class VideoPlayViewModelShared(
         persistProgress: Boolean = true,
         seekPositionMs: Long = 0L,
     ) {
+        // 直投态没有章节可言: 入口 UI (选集网格 / 上下一条 / 刷新) 已按 isDirect 隐藏,
+        // 快捷键等旁路调到这里就直接返回, 不得去读不存在的书源与章节表
+        if (isDirect) return
         val book = curBook ?: return
         val source = curBookSource ?: if (book.isLocal) null else run {
             _loadState.value = ChapterLoadState.Error("书源不存在")
@@ -509,8 +582,8 @@ class VideoPlayViewModelShared(
             _currentResolutionIndex.value = 0
             _startPositionMs.value = pendingSeekMs
             pendingSeekMs = 0L
-            _videoUrl.value = if (content.startsWith("http")) {
-                // http 直链: 用 AnalyzeUrlCore 包装 (带书源 header / cookie / charset)
+            _videoUrl.value = if (content.hasPlayableScheme()) {
+                // 可播直链: 用 AnalyzeUrlCore 包装 (带书源 header / cookie / charset)
                 AnalyzeUrlFactories.create(rawUrl = content, source = source)
             } else {
                 // 内存 m3u8: 保留 fakeUrl + Referer 语义, 供 UI 层播放库接入时复用
@@ -563,6 +636,8 @@ class VideoPlayViewModelShared(
      * @param seekPositionMs 刷新后从哪续播 (调用方从播放器现取当前位置; 0 = 从头)。
      */
     fun refreshChapter(persistProgress: Boolean = true, seekPositionMs: Long = 0L) {
+        // 直投地址就是一条固定 URI, 没有“重新拉取章节内容”可做 (刷新钮在直投态不渲染)
+        if (isDirect) return
         val book = curBook
         if (book != null && chapterList.isNullOrEmpty()) {
             scope.launch {
@@ -588,6 +663,11 @@ class VideoPlayViewModelShared(
      * @return true 已触发重试, false 已重试过需调用方自行处理
      */
     fun retryOnPlayError(seekPositionMs: Long = 0L): Boolean {
+        // 直投态的“重试”等于重新解析章节内容, 而直投根本没有章节可重新解析:
+        // 这里必须返回 false 让平台层把错误真报给用户, 严禁返回 true 把错误静默吞成一次空重试。
+        // （不=直投无救: 报错后遮罩上的「重新加载」走 prepareDirectReload + 控制器 reload,
+        //  按原地址与原请求头重新起播; 不做成自动重试是为了避开“无人接管的失败循环”）
+        if (isDirect) return false
         if (hasRetriedOnError) return false
         hasRetriedOnError = true
         refreshChapter(persistProgress = false, seekPositionMs = seekPositionMs)
@@ -611,7 +691,15 @@ class VideoPlayViewModelShared(
      * loadState 覆盖回去 → 错误占位会被下一次无关发射无声抹掉 (黑屏无重试钮)。
      */
     fun reportPlayError(message: String) {
-        _loadState.value = ChapterLoadState.Error(message)
+        // 直投态的失败与「章节加载失败」不是一回事: 没有书源规则可重跑, 也没有新直链可拿,
+        // 遮罩上那颗钮只会按原地址重新起播 —— 不说清楚, 用户会以为它能“刷新出”一条新地址
+        _loadState.value = if (isDirect) {
+            ChapterLoadState.Error(
+                "$message\n外部地址无章节可重新解析：重新加载 = 按原地址与原请求头重新起播"
+            )
+        } else {
+            ChapterLoadState.Error(message)
+        }
     }
 
     /**
@@ -627,6 +715,7 @@ class VideoPlayViewModelShared(
     fun moveToNextChapter(): Boolean {
         val cur = _curChapterIndex.value
         val size = _chapterSize.value
+        if (isDirect) return false
         if (cur >= size - 1) return false
         loadChapter(cur + 1)
         return true
@@ -641,6 +730,7 @@ class VideoPlayViewModelShared(
      * @return true 切换成功, false 已到首章
      */
     fun moveToPrevChapter(): Boolean {
+        if (isDirect) return false
         val cur = _curChapterIndex.value
         if (cur <= 0) return false
         loadChapter(cur - 1)
@@ -716,6 +806,8 @@ class VideoPlayViewModelShared(
 
     /** 进入活跃期 (对照原版 VideoPlayActivity.onResume): 开始阅读计时。 */
     fun onResume() {
+        // 直投不进阅读计时 (外部分享一个链接不构成任何一本书的阅读行为)
+        if (isDirect) return
         ReadTimeRecorder.start(ReadTimeRecorder.Source.VIDEO, curBook?.name ?: "")
     }
 
@@ -731,6 +823,8 @@ class VideoPlayViewModelShared(
      * @param durationMs 媒体总时长 (毫秒, 0 = 未知时长按原位置存)
      */
     fun onExit(positionMs: Long, durationMs: Long) {
+        // 直投不留痕: 既不存进度也不上传, 还不通知书架刷新
+        if (isDirect) return
         // 结束视频计时 (对照 app onPause: ReadTimeRecorder.end)
         ReadTimeRecorder.end(ReadTimeRecorder.Source.VIDEO)
         ReadTimeRecorder.flushAll()

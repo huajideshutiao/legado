@@ -41,6 +41,7 @@ import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModelStore
+import io.legado.app.ui.root.VideoPlayTarget
 import io.legado.app.ui.root.asBook
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.format
@@ -87,19 +88,29 @@ fun VideoPlayRoute(
     screenModelStore: ScreenModelStore,
 ) {
     val route = entry.route as AppRoute.VideoPlay
-    // BookRef -> Book, 导航时再 toRouteRef() 转回 (防御性拷贝, 避免与路由持有对象别名)
+    // BookRef -> Book, 导航时再 toRouteRef() 转回 (防御性拷贝, 避免与路由持有对象别名)。
     // asBook() 每次调用都 copy() 新实例, 若不 remember 固定, 路由每次重组 book 都变,
-    // LaunchedEffect(book) 会反复重启 → 重拉章节/重跑 JS header 规则 (调窗即报 js 错)
-    val book = remember(route) { route.book.asBook() }
+    // LaunchedEffect(book) 会反复重启 → 重拉章节/重跑 JS header 规则 (调窗即报 js 错)。
+    // 外部直投 ([VideoPlayTarget.Direct]) 没有书 → null, 依赖书的入口整块不参与。
+    val book = remember(route) { route.book?.asBook() }
 
     val screenModel = screenModelStore.getOrCreateTyped(entry) { VideoPlayScreenModel() }
     val state by screenModel.state.collectAsState()
     val scope = rememberCoroutineScope()
 
     // 用路由持有的 Book 初始化章节状态 (bookName/chapterTitle/curChapterIndex/inShelf);
-    // chapterIndex/chapterPos 用于书签/目录回传定位 (对照 AudioPlayUiEvent.Init)
+    // chapterIndex/chapterPos 用于书签/目录回传定位 (对照 AudioPlayUiEvent.Init)。
+    // 直投形态则走 PlayDirect, 不携书也不查书源。
     LaunchedEffect(book) {
-        screenModel.dispatch(VideoPlayUiEvent.ShowBook(book, route.chapterIndex, route.chapterPos))
+        when (val target = route.target) {
+            is VideoPlayTarget.FromBook -> screenModel.dispatch(
+                VideoPlayUiEvent.ShowBook(target.book.asBook(), route.chapterIndex, route.chapterPos)
+            )
+
+            is VideoPlayTarget.Direct -> screenModel.dispatch(
+                VideoPlayUiEvent.PlayDirect(target)
+            )
+        }
     }
 
     // 计时 + 落库上传 (对照 app onResume/onPause; onCleared 兜底释放播放器)。
@@ -263,8 +274,14 @@ fun VideoPlayRoute(
     // 只补这一个入口: 原版 onPause() 本身不暂停 (只结束计时 + saveRead + uploadProgress),
     // 所以“退后台继续出声”是原版行为, 不在这里改。
     val onTitleClick: () -> Unit = {
-        screenModel.onPausePlayback()
-        navigator.push(AppRoute.BookInfo(book.toRouteRef()), resultKey = RouteResults.BOOK_INFO)
+        // 直投无书: 没有详情页可去 (入口在直投态已不渲染, 这里只堆兼其他路径误调)
+        if (book != null) {
+            screenModel.onPausePlayback()
+            navigator.push(
+                AppRoute.BookInfo(book.toRouteRef()),
+                resultKey = RouteResults.BOOK_INFO,
+            )
+        }
     }
     // 对照 Activity editSource: sourceEditResult.launch
     val onEditSource: () -> Unit = {
@@ -277,8 +294,10 @@ fun VideoPlayRoute(
     }
     // 对照 Activity openReview: viewModel.openCommentDialog → ReviewListDialog(book, chapter, 0)
     val onOpenReview: () -> Unit = {
-        val chapter = state.chapters.getOrNull(state.curChapterIndex)
-        PlatformCapabilityProviders.get().showReviewListDialog(book, chapter, 0)
+        if (book != null) {
+            val chapter = state.chapters.getOrNull(state.curChapterIndex)
+            PlatformCapabilityProviders.get().showReviewListDialog(book, chapter, 0)
+        }
     }
 
     // 平台对话框状态 (对照 TocRoute showLogDialog/editingBookmark)
@@ -309,25 +328,29 @@ fun VideoPlayRoute(
         onOpenChapter = screenModel::onOpenChapter,
         titleActions = {
             // 对照 app VideoTitleActions: refresh + shelf + OverflowMenu
-            IconButton(onClick = screenModel::onRefreshChapter) {
-                Icon(
-                    painter = painterResource(Res.drawable.ic_refresh_black_24dp),
-                    contentDescription = stringResource(Res.string.refresh),
-                    tint = AppTheme.colors.primaryText,
-                )
-            }
-            IconButton(onClick = screenModel::onToggleShelf) {
-                Icon(
-                    painter = rememberPainter(
-                        if (state.inShelf) "ic_star" else "ic_star_border"
-                    ),
-                    contentDescription = stringResource(
-                        if (state.inShelf) Res.string.in_favorites else Res.string.out_favorites
-                    ),
-                    tint = AppTheme.colors.primaryText,
-                )
+            // (直投态不渲染刷新与上架: 没有章节可重新解析, 也没有一本书可上架)
+            if (!state.isDirect) {
+                IconButton(onClick = screenModel::onRefreshChapter) {
+                    Icon(
+                        painter = painterResource(Res.drawable.ic_refresh_black_24dp),
+                        contentDescription = stringResource(Res.string.refresh),
+                        tint = AppTheme.colors.primaryText,
+                    )
+                }
+                IconButton(onClick = screenModel::onToggleShelf) {
+                    Icon(
+                        painter = rememberPainter(
+                            if (state.inShelf) "ic_star" else "ic_star_border"
+                        ),
+                        contentDescription = stringResource(
+                            if (state.inShelf) Res.string.in_favorites else Res.string.out_favorites
+                        ),
+                        tint = AppTheme.colors.primaryText,
+                    )
+                }
             }
             VideoOverflowMenu(
+                isDirect = state.isDirect,
                 hasLogin = screenModel.shared.curBookSource?.hasLogin() == true,
                 hasReview = !screenModel.shared.curBookSource?.reviewRule?.reviewUrl.isNullOrBlank(),
                 // 右上角菜单"全屏" = 窗口内全屏 (隐藏顶栏/选集网格, 对照 Activity toggleFullScreen);
@@ -372,6 +395,7 @@ fun VideoPlayRoute(
  */
 @Composable
 private fun VideoOverflowMenu(
+    isDirect: Boolean,
     hasLogin: Boolean,
     hasReview: Boolean,
     onFullScreen: () -> Unit,
@@ -386,17 +410,23 @@ private fun VideoOverflowMenu(
 ) {
     OverflowMenu { dismiss ->
         VideoMenuItem(Res.string.full_screen) { dismiss(); onFullScreen() }
-        if (hasLogin) {
-            VideoMenuItem(Res.string.login) { dismiss(); onLogin() }
+        // 直投态只留与“一条地址”相容的动作: 全屏 / 复制地址 / 日志。
+        // 登录、源/书变量、编辑书源、书评、添加书签全部依赖书与书源, 一并隐去。
+        if (!isDirect) {
+            if (hasLogin) {
+                VideoMenuItem(Res.string.login) { dismiss(); onLogin() }
+            }
+            VideoMenuItem(Res.string.copy_play_url) { dismiss(); onCopyPlayUrl() }
+            VideoMenuItem(Res.string.set_source_variable) { dismiss(); onSourceVariable() }
+            VideoMenuItem(Res.string.set_book_variable) { dismiss(); onBookVariable() }
+            VideoMenuItem(Res.string.edit_book_source) { dismiss(); onEditSource() }
+            if (hasReview) {
+                VideoMenuItem(Res.string.review) { dismiss(); onReview() }
+            }
+            VideoMenuItem(Res.string.bookmark_add) { dismiss(); onAddBookmark() }
+        } else {
+            VideoMenuItem(Res.string.copy_play_url) { dismiss(); onCopyPlayUrl() }
         }
-        VideoMenuItem(Res.string.copy_play_url) { dismiss(); onCopyPlayUrl() }
-        VideoMenuItem(Res.string.set_source_variable) { dismiss(); onSourceVariable() }
-        VideoMenuItem(Res.string.set_book_variable) { dismiss(); onBookVariable() }
-        VideoMenuItem(Res.string.edit_book_source) { dismiss(); onEditSource() }
-        if (hasReview) {
-            VideoMenuItem(Res.string.review) { dismiss(); onReview() }
-        }
-        VideoMenuItem(Res.string.bookmark_add) { dismiss(); onAddBookmark() }
         VideoMenuItem(Res.string.log) { dismiss(); onAppLog() }
     }
 }

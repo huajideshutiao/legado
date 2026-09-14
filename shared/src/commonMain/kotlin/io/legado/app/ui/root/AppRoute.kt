@@ -95,10 +95,30 @@ sealed interface AppRoute {
     @Serializable
     @SerialName("video_play")
     data class VideoPlay(
-        val book: BookRef,
+        val target: VideoPlayTarget,
         val chapterIndex: Int? = null,
         val chapterPos: Int? = null,
-    ) : AppRoute
+    ) : AppRoute {
+        /**
+         * 由书进入时的书籍引用; 外部直投 ([VideoPlayTarget.Direct]) 没有书, 返回 null。
+         *
+         * 转场身份/容器变换等"需要书"的逻辑读到 null 即自然不参与 (外部播放器不是书卡片)。
+         */
+        val book: BookRef? get() = (target as? VideoPlayTarget.FromBook)?.book
+
+        companion object {
+            /**
+             * 书籍入口的既有构造形态 (等价于 [VideoPlay] + [VideoPlayTarget.FromBook]):
+             * 阅读类分流 ([BookRef.toReadRoute]) 与详情页/搜索/发现等 8 处入口都只有一本
+             * 书, 不该在调用点重复包一层 FromBook。
+             */
+            operator fun invoke(
+                book: BookRef,
+                chapterIndex: Int? = null,
+                chapterPos: Int? = null,
+            ): VideoPlay = VideoPlay(VideoPlayTarget.FromBook(book), chapterIndex, chapterPos)
+        }
+    }
 
     @Serializable
     @SerialName("manga_reader")
@@ -225,6 +245,43 @@ sealed interface AppRoute {
         val refetchAfterSuccess: Boolean = true,
     ) : AppRoute
 
+}
+
+/**
+ * 视频播放页的播放目标 (对照 [AppRoute.VideoPlay])。
+ *
+ * - [FromBook]: 书源体系内的视频书 —— 必须有书 + 书源 + 章节目录, 装载链走
+ *   [io.legado.app.help.book.BookChapterLoader] (原路径, 行为零变化)。
+ * - [Direct]: 外部交给我们的**已经可播的地址** (直链 / 本地文件 / content URI) ——
+ *   没有书、不查书源、不拉目录、不落进度、不写书签, 页面按"最小播放器"渲染。
+ *   需要书源规则解析的网页地址不走这里 (那条路必须先进书, 见
+ *   [io.legado.app.ui.association.SchemeImportOps.resolveRoute])。
+ */
+@Serializable
+sealed interface VideoPlayTarget {
+
+    @Serializable
+    @SerialName("book")
+    data class FromBook(val book: BookRef) : VideoPlayTarget
+
+    @Serializable
+    @SerialName("direct")
+    data class Direct(
+        /** 已归一化的可播地址 (带 scheme: http/https/file/content) */
+        val url: String,
+        /** 起播请求头 (Referer/Cookie/UA 等), 由四端渲染层带给播放器 */
+        val headers: Map<String, String> = emptyMap(),
+        /** 外部给的显示标题 (文件名/分享文案), 空则从 [url] 推导 */
+        val title: String? = null,
+    ) : VideoPlayTarget {
+        /** 标题栏显示名: 显式标题优先, 否则取地址末段 (先切掉 fragment/query) */
+        val displayTitle: String
+            get() = title?.takeIf { it.isNotBlank() }
+                ?: url.substringBefore('#').substringBefore('?')
+                    .substringAfterLast('/').substringAfterLast('\\')
+                    .takeIf { it.isNotBlank() }
+                ?: url
+    }
 }
 
 @Serializable

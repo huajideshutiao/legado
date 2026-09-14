@@ -10,11 +10,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.interop.UIKitView
+import io.legado.app.help.http.cookieJarHeader
 import io.legado.app.help.media.AvPlayerBufferingObserver
 import io.legado.app.help.media.AvPlayerItemStatusObserver
 import io.legado.app.help.media.maxLoadedTimeRangeEndMs
 import io.legado.app.ui.IosStatusBarHiddenKey
 import io.legado.app.ui.IosStatusBarHiddenNotification
+import io.legado.app.utils.hasPlayableScheme
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -60,6 +62,12 @@ object IosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
         val iosController = controller as? IosVideoPlayerController ?: return
         val videoUrl by screenModel.shared.videoUrl.collectAsState()
         val url = videoUrl?.url
+        // 装载键必须同时带上请求头: 只订阅 url 时, 「同 url 换 header」不会重装载 ——
+        // 刷新章节重签名的直链 / 切清晰度带不同 Referer / 书签定位后换 header 重试,
+        // 都拿着上一批 header 去请求, 服务端 403 而画面停在旧流 (AVPlayer 实例不换,
+        // 下面的 playback 重绑 effect 也救不了它 —— 换的只是 item 里的 asset 参数)。
+        // Map 的 equals 按内容比, 同一个 AnalyzeUrlCore 反复重组不会误触发重载。
+        val headers = videoUrl?.headerMap?.toMap()
         // 订阅播放态快照 (不画任何东西, 只当 effect 的 key): 重绑只在 AVPlayer 实例真的
         // 变了时才需要 (首次装载 null→player / release player→null), 两者都会翻转快照的 idle;
         // 换章不换实例, 本来就不需重绑。UIKitView 的 update 槽拿走了这一份: 它只在本组合体
@@ -68,9 +76,9 @@ object IosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
         // AVPlayerViewController: 只出画面 (showsPlaybackControls=false), 系统控制条不显示
         val avpvc = remember { AVPlayerViewController() }
 
-        LaunchedEffect(url) {
+        LaunchedEffect(url, headers) {
             if (url != null) {
-                iosController.loadUrl(url)
+                iosController.loadUrl(url, headers.orEmpty())
             } else {
                 // 切章/刷新把源置 null 只是"没有新源"的数据状态, 不是命令:
                 // 不显式 stop 的话上一章画面与声音会一直播到新章解析完
@@ -186,6 +194,9 @@ class IosVideoPlayerController(
     private var bufferingObserver: AvPlayerBufferingObserver? = null
     private var loadedUrl: String? = null
 
+    /** 本次装载真正生效的请求头 (伪头已剔除), 与 [loadedUrl] 同作装载守卫 */
+    private var loadedHeaders: Map<String, String> = emptyMap()
+
     /** KVO 上报的缓冲态 (item.status 加载中 / timeControlStatus 等待起播), 事件驱动无轮询 */
     private var kvoBuffering = false
 
@@ -212,13 +223,30 @@ class IosVideoPlayerController(
     /** 播放态快照 (共享层回显唯一数据源) */
     override val playback: StateFlow<PlaybackSnapshot> = _playback.asStateFlow()
 
-    // 加载 URL: 创建 AVPlayerItem + AVPlayer, 注册播放结束监听, 按用户意图起播
-    fun loadUrl(url: String) {
-        if (url == loadedUrl) return
+    /**
+     * 装载一条地址 (headers 默认空 = 与修复前逐字同行为)。
+     *
+     * [headers] 必须与 url 一起进守卫 (见 RenderSurface 装载键注释): 只比 url 会把
+     * "同地址换请求头" 吃成一次空装载。
+     *
+     * 先过 [iosPlayRejectReason]: AVPlayer 播不了的地址不给它试错的份 —— 交给 AVFoundation
+     * 只会拿到一个不透明的系统错误 (甚至什么都不报), 黑屏到用户退出为止。
+     */
+    fun loadUrl(url: String, headers: Map<String, String> = emptyMap()) {
+        iosPlayRejectReason(url)?.let { message ->
+            rejectUnsupportedAddress(message)
+            return
+        }
+        // cookieJarHeader 是给 legado 自己的 HTTP 栈的开关伪头, 喂进 AVURLAsset 会被
+        // 当真实请求头发出 —— 与 commonMain AnalyzeUrlCore.resolveMedia() 同一剔除口径
+        // (不直接调 resolveMedia: 它内部的 setCookie 会在组合期同步读库)
+        val realHeaders = headers.filterKeys { key -> key != cookieJarHeader }
+        if (url == loadedUrl && realHeaders == loadedHeaders) return
         // 换源前记下用户意图: 首次装载 (守卫为空) 与出错重试后的重新装载照旧播,
         // 暂停态换源 (如切清晰度) 不得被强制恢复播放
         val keepPlaying = loadedUrl == null || playWhenReady
         loadedUrl = url
+        loadedHeaders = realHeaders
         // 先卸上一件媒体 (保留 AVPlayer 本体: 渲染面绑的是实例引用, 换源不换实例可避开
         // 「新 player 已建但 avpvc 仍指旧实例」的黑屏窗口; 真的换实例只有首装与 release 两条路)
         unloadMedia()
@@ -226,7 +254,14 @@ class IosVideoPlayerController(
             handlePlayError("视频地址不可用")
             return
         }
-        val newItem = AVPlayerItem(asset = AVURLAsset(nsUrl, null))
+        // 请求头经 AVURLAsset options 注入 (与 HttpTtsPlayer.ios.kt / IosMediaService 同一写法);
+        // 无头时传 null → 与修复前的 `AVURLAsset(nsUrl, null)` 逐字一致, 零行为变化
+        val options: Map<Any?, Any?>? = if (realHeaders.isEmpty()) {
+            null
+        } else {
+            mapOf<Any?, Any?>(AV_URL_ASSET_HTTP_HEADER_FIELDS_KEY to realHeaders)
+        }
+        val newItem = AVPlayerItem(asset = AVURLAsset(nsUrl, options))
         item = newItem
         val existing = player
         if (existing != null) {
@@ -324,12 +359,33 @@ class IosVideoPlayerController(
      */
     override fun stop() {
         loadedUrl = null
+        loadedHeaders = emptyMap()
         unloadMedia()
         publishPlayback()
     }
 
+    /**
+     * 按当前地址与请求头重装一次 (外部直投错误遮罩的「重新加载」, 见
+     * [VideoPlayerController.reload])。
+     *
+     * 重发 StateFlow 推不动它: 渲染层键是 `LaunchedEffect(url, headers)`, 同址同头不重跑,
+     * 而 [loadUrl] 的守卫比的也正是这一对 (url + 剔除伪头后的 headers) —— 守卫不清则重试
+     * 被当成“已在播”直接 return。故先用 [stop] 把守卫与媒体一起清掉, 再走与首帧完全同一条
+     * [loadUrl] 通道: 伪头剔除 / AVURLAsset 请求头注入 / KVO 与播完通知重注册 / 起播位置
+     * (读 shared.startPositionMs, 装完在 onReady 才 seek) 都在里面。
+     *
+     * AVPlayer 实例不换 ([stop] 只卸 item), 所以不依赖 `LaunchedEffect(playback)` 重绑渲染面。
+     */
+    override fun reload() {
+        val source = screenModel.shared.videoUrl.value
+        stop()
+        if (source == null) return
+        loadUrl(source.url, source.headerMap.toMap())
+    }
+
     override fun release() {
         loadedUrl = null
+        loadedHeaders = emptyMap()
         unloadMedia()
         playWhenReady = false
         // 页面销毁: 连 AVPlayer 本体一起放掉 (stop 不放, 见 [unloadMedia] 注释)
@@ -375,12 +431,49 @@ class IosVideoPlayerController(
         // 卸载失败媒体 + 清装载守卫: 快照回到 idle (钮画播放三角, 与 media3 出错进 IDLE 一致),
         // 守卫不清的话重试重新 emit 的同一条 url 必被吃掉 ("重新加载"是死按钮)
         loadedUrl = null
+        loadedHeaders = emptyMap()
         unloadMedia()
         playWhenReady = false
         publishPlayback()
         val retried = screenModel.shared.retryOnPlayError(seekPositionMs = pos)
         if (!retried) {
             screenModel.dispatch(VideoPlayUiEvent.ShowError(message))
+        }
+    }
+
+    /**
+     * 本端根本播不了的地址: 直接落错误, 不走 [handlePlayError] 的自动重试 ——
+     * 重试会重新拉章节再解析一次, 拿回来的还是同一条 iOS 认不出的地址,
+     * 白费一次网络请求与进度条闪烁, 然后还是要报错。
+     */
+    private fun rejectUnsupportedAddress(message: String) {
+        loadedUrl = null
+        loadedHeaders = emptyMap()
+        unloadMedia()
+        playWhenReady = false
+        publishPlayback()
+        screenModel.dispatch(VideoPlayUiEvent.ShowError(message))
+    }
+
+    /**
+     * iOS 能直接交给 AVPlayer 的地址 = `http` / `https` (含原生 HLS 的 .m3u8) / `file`。
+     *
+     * [hasPlayableScheme] 是四端并集 (含 Android 专有的 `content://`), 外部投递链
+     * ([io.legado.app.ui.video.VideoDirect]) 按它放行, 所以 `content://` 真的会被投到 iOS
+     * 播放页; 不在装载侧显式拦下, AVFoundation 只会给一个读不懂的系统错误甚至静默失败。
+     *
+     * @return null = 本端可播; 非空 = 给用户看的错误文案
+     */
+    private fun iosPlayRejectReason(url: String): String? {
+        if (url.startsWith("http://", true) || url.startsWith("https://", true) ||
+            url.startsWith("file://", true)
+        ) {
+            return null
+        }
+        return if (url.hasPlayableScheme()) {
+            "该地址是 Android 专有格式 (content://), iOS 播放器无法读取"
+        } else {
+            "iOS 只支持 http / https / m3u8 直链与本地视频文件, 无法播放该地址"
         }
     }
 
@@ -484,5 +577,18 @@ class IosVideoPlayerController(
         player?.pause()
         player?.replaceCurrentItemWithPlayerItem(null)
         item = null
+    }
+
+    private companion object {
+        /**
+         * AVURLAsset options 里的 HTTP 请求头 key。
+         *
+         * 该常量未随 Kotlin/Native platform.AVFoundation 绑定导出 (已核
+         * `~/.konan/kotlin-native-prebuilt-<版本号>/klib/platform/ios_arm64/org.jetbrains.kotlin.native.platform.AVFoundation`
+         * 的 linkdata: 只有 AVURLAssetHTTPCookiesKey / AVURLAssetHTTPUserAgentKey 等, 没有 HTTPHeaderFieldsKey),
+         * 故按同名字面量传 —— 仓库既成写法, 见 HttpTtsPlayer.ios.kt / IosPlatformServices.kt /
+         * IosAudioPlayCommander.ios.kt。
+         */
+        const val AV_URL_ASSET_HTTP_HEADER_FIELDS_KEY = "AVURLAssetHTTPHeaderFieldsKey"
     }
 }

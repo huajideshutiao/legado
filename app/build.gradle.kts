@@ -302,6 +302,10 @@ dependencies {
     implementation(libs.media3.exoplayer)
     implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.media3.exoplayer.hls)
+    // DASH (.mpd) 解码模块: 缺它则书源给的 .mpd 直链必失败 (MIME 已设 APPLICATION_MPD,
+    // 但 DefaultMediaSourceFactory 反射加载 DashMediaSource$Factory 抛 ClassNotFoundException)。
+    // 仅 Android 内部受益; 跨端对外声明 AppPattern.videoFileRegex 仍不含 mpd (iOS AVPlayer 不支持 DASH)。
+    implementation(libs.androidx.media3.exoplayer.dash)
     implementation(libs.media3.datasource.okhttp)
 
     implementation(libs.room.runtime)

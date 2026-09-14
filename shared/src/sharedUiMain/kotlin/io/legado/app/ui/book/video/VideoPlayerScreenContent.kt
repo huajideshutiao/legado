@@ -1033,7 +1033,9 @@ fun VideoPlayerHostContainer(
         // 加载指示器仍用视频侧的缓冲圈, 与"缓冲中"样式统一)
         ChapterLoadStateOverlay(
             state = loadState,
-            onRetry = screenModel::onRefreshChapter,
+            // 不走 onRefreshChapter: 它在直投态被 isDirect 早退, 错误页会挂着一颗死按钮;
+            // onRetryLoad 按形态分流 (由书进入→重解析章节, 直投→按原地址重装)
+            onRetry = screenModel::onRetryLoad,
             loadingIndicator = { VideoBufferingIndicator() },
         )
 

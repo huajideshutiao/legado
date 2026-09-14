@@ -172,6 +172,73 @@
                 <data android:pathPattern=".*\\.7z" />
                 <data android:pathPattern=".*\\.7Z" />
             </intent-filter>
+            <!-- 视频直投 (与 shared AppPattern.videoFileRegex / VideoDirect 逐一对应):
+                 外部"打开方式 / 浏览器点直链"把可播地址交给播放页, 不再走导入书籍链路。
+                 三条 filter 各自补一种投递形态:
+                 1) content/file + video/*  —— 相册/文件管理器给本地视频 (末段常是数字 id, 只能靠 MIME);
+                 2) http(s) + video/*       —— 投递方明确声明是视频的直链;
+                 3) host="*" + 视频扩展名 pathPattern —— 不给 MIME 的 VIEW intent (浏览器/自研管理器)
+                    按扩展名兜底, 写法照上组 txt/json/epub (pathAdvancedPattern 走大小写类, pathPattern
+                    不支持字符类故大小写各写一条)。
+                 注:**没有**把 application/octet-stream 或泛 */* 单独挂给视频 —— 泛 MIME 只配
+                 精确扩展名 pathPattern 才有意义; 已带 octet-stream 的 content/file 投递本来就命中
+                 上面那条既有 filter (所以代码侧仍要按扩展名判, 见 Intent.videoDirectTarget)。 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:host="*" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:pathAdvancedPattern=".*\\.[mM]3[uU]8" />
+                <data android:pathPattern=".*\\.m3u8" />
+                <data android:pathPattern=".*\\.M3U8" />
+                <data android:pathAdvancedPattern=".*\\.[mM][pP]4" />
+                <data android:pathPattern=".*\\.mp4" />
+                <data android:pathPattern=".*\\.MP4" />
+                <data android:pathAdvancedPattern=".*\\.[mM][kK][vV]" />
+                <data android:pathPattern=".*\\.mkv" />
+                <data android:pathPattern=".*\\.MKV" />
+                <data android:pathAdvancedPattern=".*\\.[mM][oO][vV]" />
+                <data android:pathPattern=".*\\.mov" />
+                <data android:pathPattern=".*\\.MOV" />
+                <data android:pathAdvancedPattern=".*\\.[wW][eE][bB][mM]" />
+                <data android:pathPattern=".*\\.webm" />
+                <data android:pathPattern=".*\\.WEBM" />
+                <data android:pathAdvancedPattern=".*\\.[fF][lL][vV]" />
+                <data android:pathPattern=".*\\.flv" />
+                <data android:pathPattern=".*\\.FLV" />
+                <data android:pathAdvancedPattern=".*\\.[aA][vV][iI]" />
+                <data android:pathPattern=".*\\.avi" />
+                <data android:pathPattern=".*\\.AVI" />
+                <data android:pathAdvancedPattern=".*\\.[tT][sS]" />
+                <data android:pathPattern=".*\\.ts" />
+                <data android:pathPattern=".*\\.TS" />
+            </intent-filter>
         </activity>
         <!-- windowSoftInputMode 必须在 manifest 声明 (对照原版逐 Activity 的 adjustResize):
              adjustResize 下 contentInsets 与 visibleInsets 都含 ime, ViewRootImpl 的窗口

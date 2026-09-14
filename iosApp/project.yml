@@ -95,6 +95,38 @@ targets:
             CFBundleURLSchemes:
               - legado
               - yuedu
+        # 外部视频投递入口 (对照 Android FileAssociationProvider 的 VIEW/SEND + video/* intent-filter):
+        # 让 legado 出现在"用其他应用打开 / 分享到"候选里, 打开后由 iOSApp.swift onOpenURL →
+        # shared handleIosLaunchRequest → LaunchRequest.ImportFile → LegadoApp 嗅探视频 →
+        # AppRoute.VideoPlay(VideoPlayTarget.Direct)。
+        # 为什么两条 entry: 只声明自己确证的 UTI (public.movie 总类 + 4 个具体电影类),
+        # mkv/webm/flv/m3u8 在 iOS 公开 UTI 表里查不到可确证的标识符 (本机无 macOS 可核,
+        # 且 UTI 注册表在系统 LaunchServices 里, 不随 Kotlin platform klib 提供),
+        # 按"不凭空造 UTI"的约定改用 CFBundleTypeExtensions 兜底, 扩展名集合与
+        # commonMain AppPattern.videoFileRegex (mp4|mkv|mov|webm|flv|avi|ts|m3u8) 逐一对齐。
+        # ⚠️ 本段与 Info.plist 双写 (xcodegen generate 会用本段重写 Info.plist)
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Movie
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.movie
+              - public.mpeg-4
+              - public.mpeg-2-transport-stream
+              - public.quicktime-movie
+              - public.avi
+          - CFBundleTypeName: Video File
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            CFBundleTypeExtensions:
+              - mp4
+              - mkv
+              - mov
+              - webm
+              - flv
+              - avi
+              - ts
+              - m3u8
         # 应用图标与交替图标 (换桌面图标, 对照 Android Launcher1/4/5):
         # 主图标 AppIcon.png (默认), 交替图标 Icon1/Icon4/Icon5.png, 经
         # UIApplication.setAlternateIconName 切换 (见 shared IosPlatformCapabilities.changeLauncherIcon)。

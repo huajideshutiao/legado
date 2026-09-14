@@ -54,11 +54,14 @@ object OhosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
     ) {
         val videoUrl by screenModel.shared.videoUrl.collectAsState()
         val url = videoUrl?.url
+        // headerMap 必须与 url 同轨取: 书源视频与外部直投地址常靠 Referer/Cookie 过 CDN 防盗链,
+        // 只把 url 递给 AVPlayer 就是裸请求 → 403, 观感是"黑屏一下然后报错"
+        val headers = videoUrl?.headerMap?.toMap().orEmpty()
         val ohosController = controller as? OhosVideoPlayerController
 
-        LaunchedEffect(url) {
+        LaunchedEffect(url, headers) {
             if (url != null) {
-                ohosController?.loadUrl(url)
+                ohosController?.loadUrl(url, headers)
             } else {
                 // 切章/刷新把源置 null 只是"没有新源"的数据状态, 不是命令:
                 // 不显式 stop 的话上一章画面与声音会一直播到新章解析完
@@ -185,8 +188,15 @@ class OhosVideoPlayerController(
     private var cachedDuration = 0L
     @Volatile
     private var cachedPosition = 0L
+    /** 本次装载的地址 (http(s) 直链 / 本地 URI); null = 未装载、已 stop 或出错卸载 */
     @Volatile
     private var loadedUrl: String? = null
+    /**
+     * 本次装载走的是哪条通道: true = 本地 fd (`setSource`), false = 网络流播 (`setSourceUrl`)。
+     * 与 [loadedUrl] 同拍写入; 缓冲回显与错误文案要按通道区分 (见 [bufferedMs])。
+     */
+    @Volatile
+    private var loadedLocal = false
     @Volatile
     private var listenerRegistered = false
     /** AVPlayer prepare 完成 (onReady) 前视为加载中 */
@@ -245,14 +255,30 @@ class OhosVideoPlayerController(
         }
     }
 
-    // 加载 URL: 经 tsfn 发 setSourceUrl 命令, ArkTS 创建 AVPlayer 设源 prepare
-    fun loadUrl(url: String) {
+    /**
+     * 装载播放源: 经 tsfn 发命令给 ArkTS, 由它创建 AVPlayer + 设源 + prepare。
+     *
+     * 两条通道按地址形态分流 (判据见 [unsupportedPlaySource]):
+     * - http(s) 直链 → `setSourceUrl` + headers, ArkTS 走 `media.createMediaSourceWithUrl` 流播;
+     * - `file://` 授权体 URI / 沙箱绝对路径 → `setSource`, ArkTS 用 `fs.openSync` 升成 fd 喂 AVPlayer
+     *   (与音频书缓存播同一条通道, 画面靠 [ARKUI_BUILDER_VIDEO_SURFACE] 的 surface 照常出)。
+     */
+    fun loadUrl(url: String, headers: Map<String, String> = emptyMap()) {
         if (url == loadedUrl) return
+        if (url.isBlank()) return  // 空串 = 这一拍还没有源 (不是错), 等下一次 videoUrl 变化
+        unsupportedPlaySource(url)?.let { message ->
+            // 装不了的源不下发命令 (ArkTS 侧也只会回一次 onError), 直接把文案报给页面:
+            // loadedUrl 保持 null ⇒ 快照 idle, 不转圈、不黑屏, 错误走与播放失败同一条通道
+            screenModel.dispatch(VideoPlayUiEvent.ShowError(message))
+            return
+        }
         // 换源前记下用户意图 (必须在写 loadedUrl 之前取): 暂停态换源 (切清晰度) 不得被强制
         // 起播; 无守卫 (= 首次装载 / 刚 stop()) 照旧自动起播。play 命令延到 onReady 再发:
         // ArkTS 侧 prepare 未完成时 play 会被状态机拒 (同 OhosAudioPlayCommander 的时序)。
         val keepPlaying = loadedUrl == null || playWhenReady
+        val local = isLocalPlayUrl(url)
         loadedUrl = url
+        loadedLocal = local
         playWhenReady = keepPlaying
         ready = false
         playing = false
@@ -264,7 +290,18 @@ class OhosVideoPlayerController(
         pendingStartSeekMs = screenModel.shared.startPositionMs.value
         startSeekApplied = pendingStartSeekMs <= 0L
         ensureListener()
-        sendCommand(MediaCommand(action = "setSourceUrl", url = url))
+        sendCommand(
+            if (local) {
+                // 本地形态不带 headers: 请求头只对网络流有意义, 授权体 URI 的访问权在 fd 上
+                MediaCommand(action = "setSource", path = url)
+            } else {
+                MediaCommand(
+                    action = "setSourceUrl",
+                    url = url,
+                    headers = headers.takeIf { it.isNotEmpty() },
+                )
+            }
+        )
         publishPlayback()
     }
 
@@ -284,9 +321,15 @@ class OhosVideoPlayerController(
      * AVPlayer 的 CACHED_DURATION 档给的是"已缓存时长", 从当前播放位置往后算,
      * 换成绝对时间点才能画进度条; 不用 [bufferingPercent] —— 那是起播缓冲进度,
      * 缓冲完成后恒 100, 折算成时长就是一条永远铺满的假缓冲条。
+     *
+     * 本地 fd 播是例外: `@ohos.multimedia.media.d.ts` 的 `on('bufferingUpdate')` 明写
+     * "This subscription is supported only in network playback scenarios", 整只文件都在盘上
+     * 时系统一条缓冲事件都不发, 照网络口径算就永远得到 0 (进度条缓冲层空着, 看着像没缓冲)。
+     * 本地源的全部时长都可随机读, 缓冲层直接铺满 duration。
      */
     override val bufferedMs: Long
         get() {
+            if (loadedLocal) return cachedDuration
             if (cachedBufferedMs <= 0L) return 0L
             val end = cachedPosition + cachedBufferedMs
             return if (cachedDuration > 0L) end.coerceAtMost(cachedDuration) else end
@@ -328,12 +371,14 @@ class OhosVideoPlayerController(
      * 约束: ArkTS `handleMediaCommand` 的 action 白名单里只有 setSource/setSourceUrl/play/
      * pause/stop/seekTo/setSpeed/syncNowPlaying/clearNowPlaying/release, 没有"清源"这一档,
      * 本文件也不得新造它不认识的字符串 —— 所以用既有 `stop` (player.stop() 让 AVPlayer 回
-     * idle 并卸媒体), Kotlin 侧同步清 [loadedUrl] 守卫与就绪位。下一次 loadUrl 的
-     * setSourceUrl 在 ArkTS 内部会先 releasePlayer 重建实例, 不会残留上一章的画面与声音。
+     * idle 并卸媒体), Kotlin 侧同步清 [loadedUrl] 守卫与就绪位。下一次 loadUrl 的装载命令
+     * (setSource / setSourceUrl) 在 ArkTS 内部会先 releasePlayer 重建实例 (并关掉上一轮的 fd),
+     * 不会残留上一章的画面与声音。
      */
     override fun stop() {
         val hadSource = loadedUrl != null
         loadedUrl = null
+        loadedLocal = false
         ready = false
         playing = false
         ended = false
@@ -347,6 +392,37 @@ class OhosVideoPlayerController(
         // 残留事件与新装载抢状态
         if (hadSource) sendCommand(MediaCommand(action = "stop"))
         publishPlayback()
+    }
+
+    /**
+     * 按当前地址与请求头重装一次 (外部直投错误遮罩的「重新加载」, 见
+     * [VideoPlayerController.reload])。
+     *
+     * 渲染层是 `LaunchedEffect(url, headers)`: 同址同头不重跑, 而 [loadUrl] 守卫比的也正是
+     * url —— 不清守卫则重试直接 return (就是之前那颗死按钮)。[stop] 契约里对本次重试真正
+     * 有用的就是「清守卫」这一步, 这里只拿它, **不下发 ArkTS 的 stop**:
+     * 1. 两条装源通道 (setSource / setSourceUrl) 进 ArkTS 的第一件事就是
+     *    `await releasePlayer(id)` —— 旧实例连同上一轮的 fd 已经在那里收掉了, 再叠一条
+     *    stop 不会更干净;
+     * 2. 反而是害: 出错后 AVPlayer 多停在 error 态, `player.stop()` 会被系统回绝, 而
+     *    handleStop 把拒绝转成一条 onError 发回来 —— 它落地时 [loadedUrl] 已被新一轮
+     *    loadUrl 写上, Kotlin 侧分不出新旧实例, 刚装好的流会被当成“播放失败”再报一次。
+     *
+     * 重发的仍是同一条地址, **形态分流在 loadUrl 里自己走** (`isLocalPlayUrl` 比前缀):
+     * http(s) → setSourceUrl + 原请求头, file:// 授权体 URI / 沙箱绝对路径 → setSource + fd
+     * 通道, 不会把本地那条打回 http 分支。起播位置同其他三端: 读 shared.startPositionMs,
+     * 延到 ArkTS `onReady` 才 seekTo。
+     */
+    override fun reload() {
+        val source = screenModel.shared.videoUrl.value
+        if (source == null) {
+            // 没有地址可重装: 退化成卸载 (与切章同语义)。此时后面不会紧跟一条装源命令,
+            // stop 的回执没人抢状态, 照旧下发
+            stop()
+            return
+        }
+        loadedUrl = null
+        loadUrl(source.url, source.headerMap.toMap())
     }
 
     override fun seekTo(positionMs: Long) {
@@ -402,6 +478,7 @@ class OhosVideoPlayerController(
         pendingStartSeekMs = 0L
         startSeekApplied = true
         loadedUrl = null
+        loadedLocal = false
         publishPlayback()
     }
 
@@ -457,10 +534,18 @@ class OhosVideoPlayerController(
                 bufferingPercent = 100
                 // 先取位置再清守卫: 重试要带当前真实进度续播
                 val pos = cachedPosition
+                val local = loadedLocal
                 loadedUrl = null
+                loadedLocal = false
                 ready = false
                 publishPlayback()
-                val message = event.message ?: "视频播放出错"
+                // fd 通道回的是 ArkTS 的英文 errno (fs.openSync / prepare 报错), 补一句中文把
+                // "本地这条路没走通"说清楚; 网络流播的报错文案逐字保持原样
+                val message = if (local) {
+                    "本地视频装载失败: ${event.message ?: "文件不存在、格式不支持或访问权已失效"}"
+                } else {
+                    event.message ?: "视频播放出错"
+                }
                 val retried = screenModel.shared.retryOnPlayError(seekPositionMs = pos)
                 if (!retried) {
                     screenModel.dispatch(VideoPlayUiEvent.ShowError(message))
@@ -499,11 +584,23 @@ class OhosVideoPlayerController(
         )
     }
 
+    /**
+     * media 命令 (Kotlin → ArkTS, 与 MediaBridgeHandler.ets 的 MediaCommand 接口对齐)。
+     *
+     * 两条装源通道共用一个结构: `setSourceUrl` 填 [url] + [headers], `setSource` 填 [path]
+     * (ArkTS `handleSetSource` 拿它直喂 `fs.openSync`, 绝对路径与 file URI 两种形态都认)。
+     *
+     * headers 走 `headers` 键: ArkTS 侧 `cmd.headers` 直接喂 `media.createMediaSourceWithUrl(url, headers)`。
+     * KS_JSON 是 encodeDefaults=false, 空/null 时整个键被省略 (不是 `"headers":null`),
+     * ArkTS 读到 undefined 走无头分支 —— 与 OhosAudioPlayCommander.MediaCommand 同一套写法。
+     */
     @Serializable
     private data class MediaCommand(
         val action: String,
         val playerId: String = "",
+        val path: String? = null,
         val url: String? = null,
+        val headers: Map<String, String>? = null,
         val position: Long? = null,
         val speed: Float? = null,
         val volume: Double? = null,
@@ -518,4 +615,46 @@ class OhosVideoPlayerController(
         val cachedDuration: Long? = null,
         val position: Long? = null,
     )
+}
+
+/**
+ * 鸿蒙端装不出这个源时给用户的文案 (null = 可装)。
+ *
+ * 两条装载通道各有 SDK 层面的适用边界 (判据取自声明文件, 不凭记忆):
+ * - http(s) 直链 → `media.createMediaSourceWithUrl`, 它只覆盖流媒体
+ *   (`@ohos.multimedia.media.d.ts`: "The following streaming media formats are supported: HLS,
+ *   HTTP-FLV, DASH, and HTTPS");
+ * - 本地形态 ([isLocalPlayUrl]) → ArkTS `fs.openSync` 拿 fd 再喂 `AVPlayer.url = 'fd://<n>'`
+ *   (`@ohos.file.fs.d.ts` openSync: "Application sandbox path or file URI of the file to open"),
+ *   媒体库 `file://media/Video/<id>` 与文档 `file://docs/...` 授权体 URI 走这条。
+ * 剩下的地址 (content:// / datashare:// 等非 file 的自定义 scheme) 两条通道都递不进去,
+ * 在装载处就说清楚, 不许挂个空 surface 静默黑屏。
+ */
+private fun unsupportedPlaySource(url: String): String? {
+    if (isStreamPlayUrl(url) || isLocalPlayUrl(url)) return null
+    val scheme = url.substringBefore("://", missingDelimiterValue = "")
+        .substringBefore('/')
+        .lowercase()
+    // 不带 "://" 又不是绝对路径 (如书源规则漏出的相对路径): 不能把它当 scheme 拼进文案
+    return if (scheme.isEmpty() || !url.contains("://")) {
+        "鸿蒙端视频只支持 http(s) 直链与本地文件, 拿到的地址既不是链接也不是可打开的本地路径: $url"
+    } else {
+        "鸿蒙端不支持直接播放 $scheme:// 视频, 请改用 http(s) 直链或本地文件 (file://)"
+    }
+}
+
+/** 网络流播地址 (走 setSourceUrl + headers)。 */
+private fun isStreamPlayUrl(url: String): Boolean {
+    val lower = url.lowercase()
+    return lower.startsWith("http://") || lower.startsWith("https://")
+}
+
+/**
+ * 本地形态: `file://` URI (媒体库授权体 / 文档授权体 / 沙箱绝对路径拼成的三段形式)
+ * 或裸绝对路径 —— 后者就是音频书缓存播在用的形态
+ * (OhosAudioPlayCommander.ohos.kt 拿 `file.path` 发同一个 `setSource`)。
+ */
+private fun isLocalPlayUrl(url: String): Boolean {
+    if (url.startsWith("/")) return true
+    return url.substringBefore(":", missingDelimiterValue = "").lowercase() == "file"
 }
