@@ -59,6 +59,19 @@ object DecodedBitmapCache {
         bitmaps.remove(key)?.also { bitmaps[key] = it }
     }
 
+    /**
+     * 按 URL 前缀查找已缓存的位图 (忽略尺寸/书源等参数维度),
+     * 供大图查看器在打开首帧即刻同步获取现成封面位图, 0 延迟即刻起飞。
+     */
+    fun findByUrl(url: String): ImageBitmap? = synchronized(lock) {
+        if (url.isEmpty()) return null
+        val prefix = "$url\u0000"
+        for ((k, v) in bitmaps) {
+            if (k.startsWith(prefix) || k == url) return v
+        }
+        null
+    }
+
     /** 写入解码结果; 超预算淘汰最久未用条目。 */
     fun put(key: String, bitmap: ImageBitmap) {
         synchronized(lock) {

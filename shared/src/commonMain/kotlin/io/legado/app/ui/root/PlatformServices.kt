@@ -299,6 +299,18 @@ interface WindowController {
     fun setKeepScreenOn(enabled: Boolean)
     fun setOrientation(policy: OrientationPolicy)
     fun setSystemBars(policy: SystemBarsPolicy)
+
+    /**
+     * 深色覆盖层期间把系统栏图标强制改成浅色 (白), [enabled]=false 时交还进入前的值。
+     *
+     * 全屏看图这类"主窗口内覆盖层"需要它: 原来那个查看器跑在独立 Dialog 窗口里, 由 Dialog
+     * 自己的 insetsController 改白; 换成同窗口覆盖层 (共享元素要求同一棵 layout 树) 之后
+     * 只能由主窗口代管, 否则浅色主题页面进大图后黑底上仍是黑图标。
+     *
+     * 只 Android 需要实现; iOS/鸿蒙的原 Dialog 承载本来就没动图标明暗, 桌面无系统栏,
+     * 故其余端走默认空实现。
+     */
+    fun setLightIconOverlay(enabled: Boolean) {}
 }
 
 /** 软输入法控制（hide/show/resize）。 */

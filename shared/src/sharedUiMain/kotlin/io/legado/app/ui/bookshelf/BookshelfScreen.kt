@@ -69,6 +69,7 @@ import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.ui.root.LocalBookListActive
+import io.legado.app.ui.root.photoSharedSource
 import io.legado.app.utils.FlowBus
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.async
@@ -707,7 +708,13 @@ fun SharedBookCover(
     // 对齐原 View 版 onMeasure: 高度有界时按比例反推宽度, 否则按宽度推高度。
     // 不能硬加 fillMaxWidth() —— 列表条目/发现结果页传的是定高 modifier, 撑满宽度会让封面失控放大。
     val aspectRatio = if (isVideoCover) VIDEO_COVER_RATIO else NOVEL_COVER_RATIO
-    val resolvedModifier = modifier
+    // 共享元素源端点挂在链首: 下方的 aspectRatio/clip 与图片渲染都成了它的子级,
+    // 飞行副本才能带着封面圆角一起变形 (官方 KDoc 要求裁剪写在共享修饰符之后)。
+    // 全屏大图查看器用的就是同一个 key (getDisplayCover() 与 overlay payload 同源),
+    // 所以在这唯一入口挂一次, 书架/搜索/发现/详情/音频的封面就全部覆盖。
+    val resolvedModifier = Modifier
+        .photoSharedSource(cover)
+        .then(modifier)
         .aspectRatio(aspectRatio, matchHeightConstraintsFirst = true)
         .clip(DesignTokens.shapeSm)
         .onSizeChanged { displaySize.value = it }

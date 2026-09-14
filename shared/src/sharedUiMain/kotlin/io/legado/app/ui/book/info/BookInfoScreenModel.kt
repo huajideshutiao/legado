@@ -10,6 +10,7 @@ import io.legado.app.help.book.BookChapterLoader
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isLocalTxt
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.updateTo
@@ -49,7 +50,7 @@ import org.jetbrains.compose.resources.getString
  * 桌面/iOS 端可直接构造本类复用。派生状态 (isLandscape/useDevFeat/isDarkTheme/menuState)
  * 由宿主在 Composition 时经 [BookInfoUiState.copy] 覆盖, 不走 dispatch。
  */
-class BookInfoScreenModel : ScreenModel {
+class BookInfoScreenModel(initialBook: Book? = null) : ScreenModel {
 
     private val appDb get() = AppDbProviders.get()
 
@@ -58,28 +59,28 @@ class BookInfoScreenModel : ScreenModel {
 
     private val _state = MutableStateFlow(
         BookInfoUiState(
-            book = null,
+            book = initialBook,
             bookTick = 0,
             coverTick = 0,
             inBookshelf = false,
             groupName = "",
             tocText = null,
-            lastedTitle = "",
+            lastedTitle = initialBook?.latestChapterTitle ?: "",
             wordCountText = null,
             isLandscape = false,
             useDevFeat = false,
             isDarkTheme = false,
             menuState = BookInfoMenuState(
-                isLocal = false,
-                isWebDav = false,
+                isLocal = initialBook?.isLocal == true,
+                isWebDav = initialBook?.origin?.startsWith(BookType.webDavTag) == true,
                 hasSource = false,
                 sourceHasLogin = false,
                 sourceHasReviewRule = false,
-                canUpdate = true,
-                isLocalTxt = false,
-                splitLongChapter = false,
-                bookUrl = null,
-                tocUrl = null,
+                canUpdate = initialBook?.canUpdate ?: true,
+                isLocalTxt = initialBook?.isLocalTxt == true,
+                splitLongChapter = initialBook?.config?.splitLongChapter ?: false,
+                bookUrl = initialBook?.bookUrl,
+                tocUrl = initialBook?.tocUrl,
             ),
         )
     )

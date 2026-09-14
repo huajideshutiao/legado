@@ -152,8 +152,6 @@ fun AppDialog(
     properties: DialogProperties = AppDialogSizes.properties(),
     /** 背景暗化: 原版 BaseDialogFragment 默认保留 dim, 个别对话框 (PaddingConfigDialog) 清 FLAG_DIM_BEHIND */
     dim: Boolean = true,
-    /** false = 跳过对话框进入/退出动画 (供大图查看器等自管转场的全屏内容; E-Ink 模式恒跳过) */
-    animate: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     // 顶层覆盖物返回拦截: 对话框打开期间返回键 (桌面端 ESC / 统一链) 优先关闭对话框,
@@ -161,38 +159,13 @@ fun AppDialog(
     // 播退出动画, E-Ink 无动画直接关闭 (对齐 E-Ink 分支 Dialog 直连 onDismissRequest)。
     var dismissing by remember { mutableStateOf(false) }
     BackLayerHandler(enabled = true) {
-        if (!animate || AppConfigProviders.get().isEInkMode) onDismissRequest() else dismissing = true
+        if (AppConfigProviders.get().isEInkMode) onDismissRequest() else dismissing = true
     }
     if (AppConfigProviders.get().isEInkMode) {
         Dialog(
             onDismissRequest = onDismissRequest,
             properties = properties,
             content = { WithWindowTextMenu { content() } },
-        )
-        return
-    }
-    if (!animate) {
-        // 无动画分支: 服务自管转场的全屏内容 (大图查看器)。铺满容器并下移
-        // LocalOverlayTopInset (桌面端控制条 40dp), 让全屏内容坐标系与页面可用区严格对齐;
-        // 此类调用方自管点击关闭 (dismissOnClickOutside=false), 不依赖平台外点关闭;
-        // dim 由内容自绘 (需要时仍可 dim=true 补平台 dim)
-        Dialog(
-            onDismissRequest = onDismissRequest,
-            properties = properties,
-            content = {
-                WithWindowTextMenu {
-                    if (dim) PlatformDialogDim()
-                    val topInset = LocalOverlayTopInset.current
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .then(if (topInset > 0.dp) Modifier.padding(top = topInset) else Modifier),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        content()
-                    }
-                }
-            },
         )
         return
     }

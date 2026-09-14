@@ -83,7 +83,7 @@ fun BookInfoRoute(
     // 显式 copy, 此处直接共享路由快照; 页面改动走 bookDao.update 落库, 快照随 DB 一致)
     val book = route.book.asBook()
 
-    val screenModel = screenModelStore.getOrCreateTyped(entry) { BookInfoScreenModel() }
+    val screenModel = screenModelStore.getOrCreateTyped(entry) { BookInfoScreenModel(book) }
     val state by screenModel.state.collectAsState()
     val scope = rememberCoroutineScope()
 
@@ -696,6 +696,7 @@ fun BookInfoRoute(
         tocUrl = currentBook.tocUrl,
     )
     val screenState = state.copy(
+        book = currentBook,
         menuState = menuState,
         isLandscape = isLandscape,
         useDevFeat = useDevFeat,

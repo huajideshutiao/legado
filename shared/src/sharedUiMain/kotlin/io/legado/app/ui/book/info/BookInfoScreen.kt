@@ -80,7 +80,6 @@ import io.legado.app.ui.compose.platform.transitionStatusBarHeight
 import io.legado.app.ui.compose.platform.transitionStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import io.legado.app.ui.root.photoSourceAnchor
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.splitNotBlank
 import legado.shared.generated.resources.Res
@@ -714,25 +713,25 @@ private fun InfoCover(
     val book = state.book
     // 对照原 View 版 onMeasure: 高固定 144dp, 宽按比例反推 (视频 16:9, 小说 3:4)
     val coverRatio = if (book?.isVideo == true) 16f / 9f else 3f / 4f
-    coverSlot(
-        book,
-        modifier
-            .height(144.dp)
-            .aspectRatio(coverRatio, matchHeightConstraintsFirst = true)
-            .clip(DesignTokens.shapeDefault)
-            .then(
-                if (cardBg) Modifier.background(AppTheme.colors.bottomBackground)
-                else Modifier
-            )
-            .photoSourceAnchor(
-                key = book?.getDisplayCover(),
-                cornerRadius = DesignTokens.radiusDefault,
-            )
-            .combinedClickable(
-                onClick = { actions.onCoverClick() },
-                onLongClick = { actions.onCoverLongClick() },
-            )
-    )
+    // align/padding 留在父节点: 共享端点由 SharedBookCover 统一挂在它收到的链首,
+    // 与封面同一 LayoutNode 的 padding 会被算进共享元素的起止盒 (起手矩形比可见封面大 8dp)
+    Box(modifier) {
+        coverSlot(
+            book,
+            Modifier
+                .height(144.dp)
+                .aspectRatio(coverRatio, matchHeightConstraintsFirst = true)
+                .clip(DesignTokens.shapeDefault)
+                .then(
+                    if (cardBg) Modifier.background(AppTheme.colors.bottomBackground)
+                    else Modifier
+                )
+                .combinedClickable(
+                    onClick = { actions.onCoverClick() },
+                    onLongClick = { actions.onCoverLongClick() },
+                )
+        )
+    }
 }
 
 // ---- 动作行(作者/来源/分组/目录) ----

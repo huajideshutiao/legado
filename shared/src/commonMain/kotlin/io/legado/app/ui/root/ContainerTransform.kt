@@ -9,7 +9,7 @@ package io.legado.app.ui.root
 internal fun AppRoute.containerBookUrl(): String? = when (this) {
     is AppRoute.BookInfo -> book.bookUrl
     is AppRoute.AudioPlay -> book.bookUrl
-    is AppRoute.VideoPlay -> book.bookUrl
+    is AppRoute.VideoPlay -> book?.bookUrl
     is AppRoute.MangaReader -> book.bookUrl
     is AppRoute.ReadRss -> book.bookUrl
     else -> null

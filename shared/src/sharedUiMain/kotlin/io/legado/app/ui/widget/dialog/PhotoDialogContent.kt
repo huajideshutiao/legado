@@ -1,19 +1,17 @@
 package io.legado.app.ui.widget.dialog
 
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -22,22 +20,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalWindowInfo
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.util.lerp
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
@@ -45,9 +40,9 @@ import io.legado.app.help.FileUtilsCommon
 import io.legado.app.help.book.BookImageStorageProviders
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isLocal
-import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.image.BookImageLoaders
+import io.legado.app.help.image.DecodedBitmapCache
 import io.legado.app.help.image.ImageBitmapLoader
 import io.legado.app.help.image.ReaderImageCache
 import io.legado.app.help.image.decodeBytesSampled
@@ -60,11 +55,17 @@ import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.bookshelf.defaultCoverEntry
 import io.legado.app.ui.compose.component.NinePatchImageOrImage
 import io.legado.app.ui.compose.component.zoomable
-import io.legado.app.ui.compose.platform.LocalOverlayTopInset
-import io.legado.app.ui.root.LocalPhotoBoundsRegistry
+import io.legado.app.ui.compose.platform.BackLayerHandler
+import io.legado.app.ui.root.LocalPhotoSharedState
+import io.legado.app.ui.root.LocalSharedTransitionEnabled
+import io.legado.app.ui.root.LocalSharedTransitionScope
+import io.legado.app.ui.root.PhotoSharedBoundsDurationMillis
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.imageSaveFileName
+import io.legado.app.ui.root.photoSharedTarget
 import io.legado.app.utils.readAllAndClose
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
@@ -73,7 +74,6 @@ import legado.shared.generated.resources.loading
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.max
-import kotlin.math.roundToInt
 
 /**
  * 跨平台大图查看内容件 (四端唯一实现; 原 app 端 PhotoDialog DialogFragment 已删,
@@ -106,41 +106,24 @@ import kotlin.math.roundToInt
  * 原 Android 专属的四条分支 (章节缓存文件/EPUB/SVG/data URI/Coil 磁盘缓存) 都已在本件
  * 字节链内, 故 app 端不再需要自己那份加载/手势实现。
  *
- * @param src 图片路径 (http(s):// / file:// / 绝对路径, 各端 actual 支持范围见 ImageBitmapLoader)
+ * @param loadState 图片加载三态, 由调用方持有 (查看器按它决定何时起飞, 见 rememberPhotoLoadState)
  * @param modifier 外层容器 Modifier (默认 wrap; 全屏场景传 fillMaxSize)
  * @param imageModifier 图片 Modifier (默认 fillMaxSize)
- * @param book 当前书籍 (http 场景判断 isLocal 与解密 put("book")), 可空
- * @param bookSource 书源 (网络图防盗链 header/cookie/charset/JS + coverDecodeJs 封面解密), 可空
- * @param chapter 当前章节 (网络书阅读页点图时透传: 磁盘章节图片缓存 [BookImageStorage]
- *   优先链路需要; 非阅读页调用可空, 跳过②直接走 ③ 链路)
  * @param onLongPress 长按回调 (app 端长按保存等场景), 默认无
  * @param onTap 单击回调 (全屏看图单击关闭): 加载中占位与图片区都挂, 图没出来也点得掉
  * @param loadingContent 加载中占位 (默认 i18n "loading" 文案, 对照原 DesktopPhotoDialog)
  */
 @Composable
-fun PhotoDialogContent(
-    src: String,
+internal fun PhotoDialogContent(
+    loadState: PhotoLoadState,
     modifier: Modifier = Modifier,
     imageModifier: Modifier = Modifier.fillMaxSize(),
-    book: Book? = null,
-    bookSource: BookSource? = null,
-    chapter: BookChapter? = null,
     onLongPress: (() -> Unit)? = null,
     onTap: (() -> Unit)? = null,
     loadingContent: @Composable () -> Unit = { Text(stringResource(Res.string.loading)) },
 ) {
-    // 解码尺寸上限: 2× 屏幕长边 (对齐原版 PhotoDialog.loadPhoto 的 dm.widthPixels*2 /
-    // heightPixels*2 语义, 给 PhotoView 放大留余量; 组合期取一次, 窗口 resize 不重启加载)
-    val containerSize = LocalWindowInfo.current.containerSize
-    val photoMaxDim = max(containerSize.width, containerSize.height) * 2
-    // 三态: 加载中 / 成功 / 失败 (失败走默认封面占位, 对齐原版 PhotoDialog 的 glide error 兜底)
-    val photoState by produceState<PhotoLoadState>(
-        PhotoLoadState.Loading, src, chapter, book, bookSource
-    ) {
-        value = loadPhotoState(src, book, bookSource, chapter, photoMaxDim)
-    }
     // 动图: 原始字节在 loadPhotoState 单次读取时顺带获取 (见 [PhotoLoadState.Success.rawBytes])
-    val successState = photoState as? PhotoLoadState.Success
+    val successState = loadState as? PhotoLoadState.Success
     val animatedFrame = rememberAnimatedImageBitmap(successState?.rawBytes)
     val successBitmap = successState?.bitmap
     val image = animatedFrame ?: successBitmap
@@ -160,7 +143,7 @@ fun PhotoDialogContent(
     Box(
         // 占位态没有图片可挂 zoomable, 单击/长按要挂到容器上, 否则加载中时全屏
         // 看图层没有任何可点区域, 点不掉也退不出 (对照原 PhotoDialog 点击即关)
-        modifier = if (image == null && photoState is PhotoLoadState.Loading) {
+        modifier = if (image == null && loadState is PhotoLoadState.Loading) {
             modifier.pointerInput(hasTap, hasLongPress) {
                 detectTapGestures(
                     onTap = if (hasTap) {
@@ -179,9 +162,9 @@ fun PhotoDialogContent(
         },
         contentAlignment = Alignment.Center,
     ) {
-        when (val state = photoState) {
+        when (loadState) {
             is PhotoLoadState.Success -> {
-                val b = if (animatedFrame != null) animatedFrame else state.bitmap
+                val b = animatedFrame ?: loadState.bitmap
                 Image(
                     bitmap = b,
                     contentDescription = null,
@@ -201,11 +184,11 @@ fun PhotoDialogContent(
                 // 对齐原版 PhotoDialog glide error(BookCover.newDefaultDrawable()):
                 // 用户自定义默认封面集优先 (含 .9 图九宫格拉伸), 空集回落内置占位图;
                 // 两者都保持可缩放/可点关闭
-                val cover = state.cover
+                val cover = loadState.cover
                 // .9 图拉伸铺满容器, 钳制按容器算 (传 null); 普通图按位图宽高比
                 val placeholderRatio = when {
                     cover == null -> defaultCoverRatio
-                    state.coverNinePatch -> null
+                    loadState.coverNinePatch -> null
                     else -> cover.width.toFloat() / cover.height
                 }
                 val placeholderModifier = imageModifier
@@ -218,7 +201,7 @@ fun PhotoDialogContent(
                 if (cover != null) {
                     NinePatchImageOrImage(
                         bitmap = cover,
-                        isNinePatch = state.coverNinePatch,
+                        isNinePatch = loadState.coverNinePatch,
                         modifier = placeholderModifier,
                         contentScale = ContentScale.Fit,
                     )
@@ -238,11 +221,32 @@ fun PhotoDialogContent(
 }
 
 /** 图片加载三态 (失败占位对齐原版 glide error 默认封面)。 */
-private sealed interface PhotoLoadState {
+internal sealed interface PhotoLoadState {
     data object Loading : PhotoLoadState
 
     /** @param rawBytes 原始图片字节，供 [rememberAnimatedImageBitmap] 判定并逐帧播放动图 */
-    data class Success(val bitmap: ImageBitmap, val rawBytes: ByteArray?) : PhotoLoadState
+    data class Success(val bitmap: ImageBitmap, val rawBytes: ByteArray?) : PhotoLoadState {
+        /**
+         * 手写 equals/hashCode: data class 生成版对 [rawBytes] 是数组引用比较 (既会把
+         * "同字节重复解码"误判为不等, 也让 hash 不稳定), 故按内容重算。
+         * 写成显式判空形式: 不依赖可空接收者的 contentEquals/contentHashCode 重载。
+         */
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is Success) return false
+            if (bitmap != other.bitmap) return false
+            val a = rawBytes
+            val b = other.rawBytes
+            if ((a == null) != (b == null)) return false
+            if (a != null && !a.contentEquals(b)) return false
+            return true
+        }
+
+        override fun hashCode(): Int {
+            val bytes = rawBytes
+            return 31 * bitmap.hashCode() + (bytes?.contentHashCode() ?: 0)
+        }
+    }
     /** @param cover 用户自定义默认封面集选出的位图 (null = 图集为空/缺文件, 用内置占位图) */
     data class Failed(
         val cover: ImageBitmap?,
@@ -383,29 +387,62 @@ private fun rememberPhotoSaveAction(
 }
 
 /**
- * 全屏大图查看 Overlay 的平台承载: 各端 actual 用对应平台的 Dialog 配置让黑色背景
- * 铺满整屏并延伸到系统栏之下 (Android: decorFitsSystemWindows=false;
- * iOS/鸿蒙/桌面: usePlatformInsets=false)。
+ * 大图加载态 (原本写在 [PhotoDialogContent] 里, 提出来是因为查看器要按它决定"什么时候起飞"):
+ * 未就绪前不能接管共享元素, 否则飞出去的是占位内容, 就绪那一刻又在飞行途中把内容换掉
+ * —— 这正是"图闪一下才完整"的成因。
+ *
+ * @param request false = 前置信息未就绪 (书源身份查询中), 不发起加载, 避免以无书源状态先裸 GET
  */
 @Composable
-internal expect fun PlatformPhotoOverlayDialog(
-    onDismissRequest: () -> Unit,
-    content: @Composable () -> Unit,
-)
+private fun rememberPhotoLoadState(
+    src: String,
+    book: Book?,
+    bookSource: BookSource?,
+    chapter: BookChapter?,
+    request: Boolean,
+): PhotoLoadState {
+    if (!request) return PhotoLoadState.Loading
+    // 解码尺寸上限: 2× 屏幕长边 (对齐原版 PhotoDialog.loadPhoto 的 dm.widthPixels*2 /
+    // heightPixels*2 语义, 给放大留余量; 组合期取一次, 窗口 resize 不重启加载)
+    val containerSize = LocalWindowInfo.current.containerSize
+    val photoMaxDim = max(containerSize.width, containerSize.height) * 2
+    // 首帧尝试同步命中内存中的位图 (阅读页 Peek 或封面已解码缓存):
+    // 命中时首帧即为 Success 态, 共享元素直接携带真实图像零延迟起飞, 彻底杜绝起飞前顿挫与微闪
+    val initialCached = remember(src) {
+        ReaderImageCache.peek(src) ?: DecodedBitmapCache.findByUrl(src)
+    }
+    val initialValue = remember(initialCached) {
+        if (initialCached != null) PhotoLoadState.Success(initialCached, null)
+        else PhotoLoadState.Loading
+    }
+    // 三态: 加载中 / 成功 / 失败 (失败走默认封面占位, 对齐原版 PhotoDialog 的 glide error 兜底)
+    // key 只能位置传: produceState 的重载是 key1/key2/key3 + vararg keys, 具名 key4 对 vararg 非法
+    return produceState<PhotoLoadState>(initialValue, src, chapter, book, bookSource) {
+        value = loadPhotoState(src, book, bookSource, chapter, photoMaxDim)
+    }.value
+}
 
 /**
- * 大图查看 Overlay: 全屏铺满 + 黑色半透明底色, 图片加载和缩放复用 [PhotoDialogContent]。
+ * 全屏大图查看 Overlay: **主窗口内**的全屏覆盖层 (黑色半透明底 + 缩放复用 [PhotoDialogContent])。
  *
- * 内容区支持前置占位 [placeholder]: 占位与图片内容共用同一对话框实例, 状态就绪后
- * 只换内容不重建窗口, 对话框进入动画只播一次 (书源身份查询完成时若销毁重建对话框
- * 会重播 AppDialog 进入动画, 表现为二次闪烁)。
+ * 共享元素走官方 androidx.compose.animation 的 SharedTransition: 源封面与本查看器是同一 key 的
+ * 两个端点, 谁可见由 [PhotoSharedState.visibleKey] 一处决定; 翻转那一帧起官方把内容提升到
+ * SharedTransitionLayout 的覆盖层、逐帧按动画尺寸重排真实内容, 并让让位那一端整层不再重放。
+ * 所以这里没有"上报源矩形 + 手工 offset/size 插值 + 两端互补 alpha"那套轮子 —— 它的空窗帧
+ * (源已隐、副本还没出现)、飞行途中飞 loading、末端跳变 (终态盒按封面宽高比算, 与 p=1 之后的
+ * 真实 Fit 布局不同源) 都是结构性的, 补不干净。
  *
- * @param src 图片路径 (http(s):// / file:// / 绝对路径 / data URI)
+ * 为什么必须在主窗口: 官方两端点靠同一棵 layout 树的 lookahead 坐标换算目标位, 独立 Dialog
+ * 窗口是另一条 LayoutNode 树 (跨树换算在 compose-ui 里直接抛 "layouts are not part of the
+ * same hierarchy")。这也是旧实现要手工减 LocalOverlayTopInset 补坐标、且窗口自身淡入会与
+ * 本动画叠加的根因 —— 换成同窗口后这两件事都不存在。
+ *
+ * @param src 图片路径 (http(s):// / file:// / 绝对路径 / data URI), 同时作为共享元素的 key
  * @param onDismiss 关闭回调 (返回键 / 单击)
- * @param book 当前书籍, 可空 (透传 [PhotoDialogContent])
- * @param bookSource 书源 (网络图防盗链), 可空 (透传 [PhotoDialogContent])
+ * @param book 当前书籍 (加载链判 isLocal/解密/章节缓存定位), 可空
+ * @param bookSource 书源 (网络图防盗链), 可空
  * @param chapter 当前章节, 可空 (网络书阅读页点图时透传, 磁盘章节缓存优先链路使用)
- * @param placeholder 图片内容就绪前的占位内容 (如书源查询中), 传 null 直接显示图片
+ * @param placeholder 前置信息未就绪时的占位 (书源查询中); null = 可以直接发起图片加载
  */
 @Composable
 fun PhotoViewOverlayDialog(
@@ -417,116 +454,103 @@ fun PhotoViewOverlayDialog(
     placeholder: (@Composable () -> Unit)? = null,
 ) {
     val saveImage = rememberPhotoSaveAction(src, book, bookSource, chapter)
-    val eInk = AppConfigProviders.get().isEInkMode
-    val registry = LocalPhotoBoundsRegistry.current
-    val sourceBounds = remember(src, eInk) { if (eInk) null else registry.get(src) }
-    var dismissing by remember { mutableStateOf(false) }
-    val progress = remember { Animatable(if (sourceBounds != null) 0f else 1f) }
+    val scope = LocalSharedTransitionScope.current
+    val enabled = LocalSharedTransitionEnabled.current
+    val photoShared = LocalPhotoSharedState.current
+    // 书源身份未就绪时先不发起加载 (避免无书源裸 GET: 进黑名单/写脏缓存)
+    val loadState = rememberPhotoLoadState(src, book, bookSource, chapter, placeholder == null)
+    var closing by remember { mutableStateOf(false) }
+    // 开关开 + 在作用域内 + 源封面在场, 才有共享转场; 阅读页内联图、验证码图等没有源端点,
+    // 本来就不该有动画, 保持原行为立即显示, 不因门控变成"点了没反应"
+    val shareable = enabled && scope != null && photoShared.hasSource(src)
+    // 唯一可见性口径: 源封面与查看器都只读 photoShared.visibleKey (两端各自再算一份必然错帧,
+    // 错帧就会两端同时报称可见 → 官方按"缺 target"处理, 一个都不动画), 写只在下面的 effect 里
+    val taken = photoShared.visibleKey == src
 
-    LaunchedEffect(sourceBounds) {
-        if (sourceBounds != null && !dismissing) {
-            progress.animateTo(1f, tween(durationMillis = 280, easing = FastOutSlowInEasing))
-        }
+    LaunchedEffect(shareable, closing, src, placeholder) {
+        if (closing) return@LaunchedEffect
+        // 进入时无需等待后台大图解码, 直接接管共享元素 (首帧有内存位图即带图起飞, 杜绝等待卡顿与微闪);
+        // 前置占位 (书源身份查询中) 时先不接管
+        if (placeholder == null) photoShared.visibleKey = src
+    }
+    // 离开组合一律归还让位 (关闭 / 被替换 / 中途关开关), 不让源封面永久隐身
+    DisposableEffect(src) {
+        onDispose { if (photoShared.visibleKey == src) photoShared.visibleKey = null }
     }
 
-    val requestDismiss: () -> Unit = {
-        if (sourceBounds != null && !dismissing) {
-            dismissing = true
+    val requestDismiss: () -> Unit = { closing = true }
+    // 返回键/ESC 必须走"先播退场飞行、飞完再卸载"这条路: 同窗口覆盖层不再拥有独立窗口的
+    // 返回拦截, 故本层用与 AppDialog 同一套 BackLayerHandler 抢在根之前接键 (见 BackKeyHandler.kt)
+    val windowController = remember { PlatformServiceProviders.get().window }
+    BackLayerHandler(enabled = !closing) { requestDismiss() }
+    LaunchedEffect(closing) {
+        if (!closing) return@LaunchedEffect
+        photoShared.visibleKey = null
+        if (shareable) {
+            // 退场 bounds 动画与蒙版渐变严格同频 (PhotoSharedBoundsDurationMillis 280ms),
+            // 等待退场完整落回原位并完成蒙版渐变, 再交还系统栏并卸载 Overlay, 彻底杜绝瞬退闪回
+            delay(PhotoSharedBoundsDurationMillis + 20L)
+        }
+        windowController.setLightIconOverlay(false)
+        onDismiss()
+    }
+
+    // 深色蒙版期间把系统栏图标改白: 原实现靠独立 Dialog 窗口自己的 insetsController,
+    // 同窗口覆盖层必须由主窗口代管。只在真正接管后开、离开组合时归还 ——
+    // 未就绪的等待期里页面还是普通亮底, 提前改白会让状态栏图标看不见
+    LaunchedEffect(taken) {
+        if (taken) windowController.setLightIconOverlay(true)
+    }
+    DisposableEffect(windowController) {
+        onDispose { windowController.setLightIconOverlay(false) }
+    }
+
+    // 蒙版与飞行同时长同源: targetValue 直接由 taken (= visibleKey == src) 推, 不再另算就绪条件
+    val scrimAlpha by animateFloatAsState(
+        targetValue = if (taken) 0.6f else 0f,
+        // 共享路径与飞行同时长同曲线; 非共享路径保持旧的"直接就位"(旧实现 progress 初值即 1f)
+        animationSpec = if (shareable) {
+            tween(durationMillis = PhotoSharedBoundsDurationMillis, easing = FastOutSlowInEasing)
         } else {
-            onDismiss()
-        }
-    }
+            snap()
+        },
+        label = "photoOverlayScrim",
+    )
 
-    LaunchedEffect(dismissing) {
-        if (dismissing) {
-            progress.animateTo(0f, tween(durationMillis = 240, easing = FastOutSlowInEasing))
-            onDismiss()
-        }
-    }
-
-    PlatformPhotoOverlayDialog(onDismissRequest = requestDismiss) {
-        if (placeholder != null && sourceBounds == null) {
-            placeholder()
-        } else {
-            val density = LocalDensity.current
-            val p = progress.value
-            val bgAlpha = 0.6f * p
-            BoxWithConstraints(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = bgAlpha))
-                    .pointerInput(Unit) {
-                        detectTapGestures(onTap = { requestDismiss() })
-                    }
-            ) {
-                val screenWidthPx = constraints.maxWidth.toFloat()
-                val screenHeightPx = constraints.maxHeight.toFloat()
-                if (screenWidthPx <= 0f || screenHeightPx <= 0f) return@BoxWithConstraints
-
-                val inAnimation = sourceBounds != null && (p < 1f || dismissing)
-                val contentModifier = if (inAnimation) {
-                    val topInset = LocalOverlayTopInset.current
-                    val topInsetPx = with(density) { topInset.toPx() }
-                    val startRect = sourceBounds!!.rect
-                    val startRadius = sourceBounds.cornerRadiusPx
-                    val startLeft = startRect.left
-                    val startTop = startRect.top - topInsetPx
-                    val startW = startRect.width
-                    val startH = startRect.height
-
-                    val imgRatio = if (startH > 0f) startW / startH else (3f / 4f)
-                    val screenRatio = screenWidthPx / screenHeightPx
-                    val targetW: Float
-                    val targetH: Float
-                    if (screenRatio > imgRatio) {
-                        targetH = screenHeightPx
-                        targetW = targetH * imgRatio
-                    } else {
-                        targetW = screenWidthPx
-                        targetH = targetW / imgRatio
-                    }
-                    val startCenterX = startLeft + startW / 2f
-                    val startCenterY = startTop + startH / 2f
-                    val targetCenterX = screenWidthPx / 2f
-                    val targetCenterY = screenHeightPx / 2f
-
-                    val currentCenterX = lerp(startCenterX, targetCenterX, p)
-                    val currentCenterY = lerp(startCenterY, targetCenterY, p)
-                    val currentW = lerp(startW, targetW, p)
-                    val currentH = lerp(startH, targetH, p)
-                    val currentLeft = currentCenterX - currentW / 2f
-                    val currentTop = currentCenterY - currentH / 2f
-                    val currentRadius = lerp(startRadius, 0f, p)
-
-                    // 退出到最后 15% 进度平滑淡出到透明, 避免末帧瞬隐跳变
-                    val contentAlpha = if (dismissing) (p / 0.15f).coerceIn(0f, 1f) else 1f
-
-                    Modifier
-                        .offset { IntOffset(currentLeft.roundToInt(), currentTop.roundToInt()) }
-                        .size(
-                            with(density) { currentW.toDp() },
-                            with(density) { currentH.toDp() },
-                        )
-                        .clip(RoundedCornerShape(currentRadius))
-                        .graphicsLayer { alpha = contentAlpha }
-                } else {
-                    Modifier.fillMaxSize()
-                }
-
-                Box(modifier = contentModifier) {
-                    PhotoDialogContent(
-                        src = src,
-                        modifier = Modifier.fillMaxSize(),
-                        imageModifier = Modifier.fillMaxSize(),
-                        book = book,
-                        bookSource = bookSource,
-                        chapter = chapter,
-                        onLongPress = saveImage,
-                        onTap = requestDismiss,
-                        loadingContent = { Text(stringResource(Res.string.loading), color = Color.White) },
-                    )
-                }
+    // 主窗口内的全屏层: 页栈与 Overlay 栈同在 SharedTransitionLayout 内 (见 LegadoApp),
+    // 因此不需要任何跨窗口坐标补偿, 也没有第二层窗口入场动画与飞行叠加
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = scrimAlpha))
+            .pointerInput(Unit) {
+                detectTapGestures(onTap = { requestDismiss() })
+            }
+    ) {
+        // 目标端点从第一帧就参与组合与测量 (官方要拿到它的全屏 bounds 才能配对起飞);
+        // 未接管时它不绘制自己, 屏幕上仍是源封面 —— 所以不存在"两头都空"的帧
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .photoSharedTarget(key = src, visible = taken)
+        ) {
+            if (placeholder != null) {
+                // 前置信息未就绪 (书源身份查询中): 不发起加载, 也不参与飞行 ——
+                // 有源封面时本层还没接管 (屏幕上仍是封面), 无源封面时这就是原来的黑底+loading
+                placeholder()
+            } else {
+                PhotoDialogContent(
+                    loadState = loadState,
+                    modifier = Modifier.fillMaxSize(),
+                    imageModifier = Modifier.fillMaxSize(),
+                    onLongPress = saveImage,
+                    onTap = requestDismiss,
+                    loadingContent = {
+                        Text(stringResource(Res.string.loading), color = Color.White)
+                    },
+                )
             }
         }
     }
 }
+

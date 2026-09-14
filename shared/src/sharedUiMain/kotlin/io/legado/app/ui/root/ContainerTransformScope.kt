@@ -8,20 +8,15 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toSize
-import kotlin.math.min
-import kotlin.math.roundToInt
 
 /**
  * 路由页给页内锚点的参考系: 页身份 + 页自身坐标。
@@ -61,7 +56,7 @@ val BookRef.origin: String
 internal fun AppRoute.containerBookOrigin(): String? = when (this) {
     is AppRoute.BookInfo -> book.origin
     is AppRoute.AudioPlay -> book.origin
-    is AppRoute.VideoPlay -> book.origin
+    is AppRoute.VideoPlay -> book?.origin
     is AppRoute.MangaReader -> book.origin
     is AppRoute.ReadRss -> book.origin
     else -> null
@@ -83,8 +78,12 @@ data class ContainerTransformIdentity(
 }
 
 /**
- * 锚点在登记时所处的完整坐标系。窗口尺寸在转场中变化时，[containerTransformDraw] 会先按
- * [viewportSize] 换算 [rect] 和圆角，再向新页面尺寸插值，避免把旧视口坐标直接用于新视口。
+ * 锚点登记到的几何快照。
+ *
+ * 快照绘制轮子已删除, 现在这份数据的唯一用途是判定"本段有没有该书的卡片在场"
+ * (LegadoApp 据此决定是否归零页级位移, 让封面共享元素独占这段形变)。
+ * rect/viewportSize/cornerRadiusPx 因此不再被读用来绘制, 保留是为了复用同一份登记与
+ * 避免再引一个"只记在场"的并行结构 (后续要精简时一起收)。
  */
 internal data class ContainerAnchorBounds(
     val rect: Rect,
@@ -237,97 +236,4 @@ private fun BoxScope.ContainerTransformAnchor(
                 )
             }
     )
-}
-
-/**
- * 内容淡入淡出占容器开合度的比例: 容器张开到这个程度时内容已完全不透明。
- *
- * 不可直接用段进度当 alpha: 平台转场曲线普遍前重 (桌面 Fluent 的 0.1,0.9,0.2,1 在 20% 时间
- * 就走完 90% 进度), 返回时页面几十毫秒就透明了, 后面的收缩过程根本看不见 —— 观感就是
- * "返回没有动画"。改跟开合度后两个方向对称, 形变全程可见。
- *
- * 也不能整段不淡: 起手帧整页被非等比压成卡片形状, 全不透明会把那几帧的拉伸失真直接暴露出来。
- */
-internal const val ContainerContentFadeOpenness = 0.25f
-
-/**
- * 容器变换绘制: [startBounds] 非空时用段开始录下的页内容代替实时绘制, 从其中的卡片矩形逐帧长到
- * 全屏; 为空则原样绘制。录一次、逐帧只贴一次的理由与分端实现见 [ContainerSnapshot]。
- *
- * **必须接在 `.background(...)` 之前**: 修饰符链靠前的画在外层, `drawContent()` 只能录到
- * 自己之后的东西 —— 接在 background 之后会录不到页底色, 录制内容缺底。
- *
- * 仅书籍候选页面挂载录制层 (由 [LegadoApp] 按页面身份条件挂载): 未进入容器变换的普通
- * 路由避免无条件 rememberGraphicsLayer() 与 ContainerSnapshot 申请开销。
- *
- * @param openness 0=卡片位置与尺寸, 1=全屏; 只在 draw 阶段读, 逐帧不重组
- * @param contentAlpha 内容不透明度 (见 [ContainerContentFadeOpenness])
- */
-@Composable
-internal fun Modifier.containerTransformDraw(
-    startBounds: ContainerAnchorBounds?,
-    openness: () -> Float,
-    contentAlpha: () -> Float,
-): Modifier {
-    // 按页存活的录制层: rememberGraphicsLayer 负责离开组合时归还给 GraphicsContext
-    val layer = rememberGraphicsLayer()
-    val snapshot = remember { ContainerSnapshot() }
-    // 段结束即释放离屏资源并把图层属性归位 (全屏离屏约 8MB, 不常驻)
-    if (startBounds == null) snapshot.release(layer)
-    return this.drawWithContent {
-        val pageSize = IntSize(size.width.toInt(), size.height.toInt())
-        if (startBounds == null || pageSize.width <= 0 || pageSize.height <= 0) {
-            drawContent()
-            return@drawWithContent
-        }
-        // 页尺寸变了 (桌面拖窗) 就作废重录
-        if (snapshot.capturedSize != pageSize) {
-            // 录制入口交给各端在自己需要的时机调用 (见 ContainerSnapshot.capture)。
-            // 不能直接把 drawContent() 引向自建 canvas —— 它只往 drawContext.canvas 画,
-            // 而 record 正是官方提供的"临时换掉那个 canvas"入口
-            snapshot.capture(this, layer, pageSize) {
-                layer.record(pageSize) { this@drawWithContent.drawContent() }
-            }
-        }
-        // 起点与登记时页面坐标系绑定。转场中窗口变化时，先把起点同步换算到当前视口，
-        // 再向当前 pageSize 插值；快照重录与几何坐标更新因此使用同一尺寸版本。
-        val sourceViewport = startBounds.viewportSize
-        val scaleX = if (sourceViewport.width > 0) {
-            pageSize.width.toFloat() / sourceViewport.width
-        } else {
-            1f
-        }
-        val scaleY = if (sourceViewport.height > 0) {
-            pageSize.height.toFloat() / sourceViewport.height
-        } else {
-            1f
-        }
-        val sourceRect = startBounds.rect
-        val startRect = Rect(
-            left = sourceRect.left * scaleX,
-            top = sourceRect.top * scaleY,
-            right = sourceRect.right * scaleX,
-            bottom = sourceRect.bottom * scaleY,
-        )
-        val startCornerRadiusPx = startBounds.cornerRadiusPx * min(scaleX, scaleY)
-        val p = openness().coerceIn(0f, 1f)
-        val width = startRect.width + (pageSize.width - startRect.width) * p
-        val height = startRect.height + (pageSize.height - startRect.height) * p
-        // 中心点插值: 中心从卡片中心线性走向视口中心, 缩放围绕中心进行 (不再左上角对齐)
-        val centerX = startRect.center.x + (pageSize.width / 2f - startRect.center.x) * p
-        val centerY = startRect.center.y + (pageSize.height / 2f - startRect.center.y) * p
-        val left = centerX - width / 2f
-        val top = centerY - height / 2f
-        snapshot.draw(
-            scope = this,
-            layer = layer,
-            dstOffset = IntOffset(left.roundToInt(), top.roundToInt()),
-            dstSize = IntSize(
-                width.roundToInt().coerceAtLeast(1),
-                height.roundToInt().coerceAtLeast(1),
-            ),
-            alpha = contentAlpha().coerceIn(0f, 1f),
-            cornerRadiusPx = startCornerRadiusPx * (1f - p),
-        )
-    }
 }
