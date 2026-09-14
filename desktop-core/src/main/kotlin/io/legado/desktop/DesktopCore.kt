@@ -167,7 +167,7 @@ object DesktopCore {
      *   注入 Compose; 必须与全局 ReadBookConfigProviders 同实例, 否则配置写读分家)。
      *   headless 不消费该返回值, 但注册本身必须执行 (备份格式兼容性补齐)。
      */
-    fun registerCoreProviders(): ReadBookConfigShared {
+    fun registerEarlyProviders(): ReadBookConfigShared {
         // 注册桌面端 Host 类 provider (启动期最早, 让 shared commonMain 调用 AppLog/appString 时有输出)
         // - AppLogHost: 桥接到 println, 未注册时 AppLog 副作用 (write/toast/debugPrint) 静默 no-op
         // - AppStringProvider: key → strings.xml 同步查表 (jvmGetString, runBlocking 桥接),
@@ -197,6 +197,17 @@ object DesktopCore {
         // 应用内语言 (PreferKey.language → JVM 默认 Locale):
         // 必须在 registerDesktopConfig 之后 (要读 pref)
         applyDesktopLanguagePref()
+        return desktopReadBookConfig
+    }
+
+    /**
+     * 阶段1 的余下部分 (HTTP/JS/Room/存储/封面等重注册)。
+     *
+     * 与 [registerEarlyProviders] 拆开的原因 (2026-09 启动实测): 闪屏只能读偏好+主题, 却被排在
+     * 整段注册之后才 show, 导致冷启动 0.96s 屏幕上仍无任何反馈 (用户报的“启动卡顿”很大程度是这段
+     * 无反馈)。拆开后 :desktop 可以在 early 完成即弹闪屏, 再做重注册; 注册相对顺序与拆分前一致。
+     */
+    fun registerRestProviders() {
         // 注册桌面端更新能力 (AppUpdateEnvironment, 薄壳转发 shared AppUpdateManager):
         // 依赖 PreferenceProviders (上方 registerDesktopConfig) + DesktopAppInfo, 无其他依赖
         registerDesktopAppUpdate()
@@ -244,8 +255,16 @@ object DesktopCore {
         registerDesktopReadBookPlatform()
         // 封面选图持久化 (对齐 Android 原版 externalFiles/covers, 落桌面应用数据根目录 covers/)
         CoverStorageServiceProviders.register(DesktopCoverStorageService())
-        return desktopReadBookConfig
     }
+
+    /**
+     * 全量注册 = [registerEarlyProviders] + [registerRestProviders]。
+     *
+     * headless 入口无 UI/无闪屏, 保持单调用原语义; 与 :desktop 的分两段调用等价
+     * (早段返回的 ReadBookConfig 实例经全局 ReadBookConfigProviders 共享, 不存在两份实例)。
+     */
+    fun registerCoreProviders(): ReadBookConfigShared =
+        registerEarlyProviders().also { registerRestProviders() }
 
     /**
      * 阶段3: 后台异步注册非首屏必需 provider — 核心子集 (无 UI 依赖)。

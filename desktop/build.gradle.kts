@@ -2,6 +2,7 @@ import org.gradle.internal.os.OperatingSystem
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import java.time.LocalDate
 import java.util.Properties
+import java.util.zip.ZipFile
 
 plugins {
     id("legado.jvm.application")
@@ -211,6 +212,30 @@ dependencies {
 // Compose Desktop 统一配置入口 (mainClass + nativeDistributions)
 // 注: 不使用 Gradle application 插件, 避免与 compose.desktop.application{} 注册的 run task 冲突
 
+// ============================================================
+// release 运行时 classpath 剔除测试库 (2026-09 实测缺陷)
+// ============================================================
+// 链路 (硬证据: ./gradlew :desktop:dependencyInsight --dependency junit --configuration runtimeClasspath):
+//   runtimeClasspath → org.jetbrains.compose.desktop:desktop-jvm-windows-x64 → desktop-jvm
+//     → org.jetbrains.compose.ui:ui-tooling-preview(-desktop)          ← “IDE 预览”用
+//     → org.jetbrains.compose.ui:ui-test(-desktop)
+//     → junit:4.13.2 (+ hamcrest / com.google.truth / guava / kotlinx-coroutines-test 一串传递依赖)
+// 即 ui-tooling-preview 在 desktop 变体里把整套测试库挂在 runtime 方向上, 3.26.09121949 便携版
+// app/ 目录实测含 junit-4.13.2、hamcrest-core、truth-1.0.1、ui-test-desktop、
+// ui-test-junit4-desktop、kotlinx-coroutines-test-jvm。危害除体积与启动期类扫描外, 还有
+// ServiceLoader 污染: coroutines-test 声明的 TestMainDispatcherFactory 与 coroutines-swing 的
+// Swing 工厂同屏竞争 Dispatchers.Main (2026-08-18 已实测过同类覆盖导致 Dispatchers.Main 崩溃),
+// 再叠加本次修的“ProGuard 删了 services 实现类但留着服务文件”, 组合起来就是随机启动故障。
+// 只裁 runtimeClasspath: testRuntimeClasspath 不继承它 (两者是兄弟, 均 extendsFrom
+// implementation/runtimeOnly), 所以 :desktop:test 仍能用 testImplementation 的 junit/ui-test-junit4。
+// 排除根只选 ui-test*: junit/truth/guava 全部从它往下传, 扒掉根即整串消失。
+configurations.named("runtimeClasspath") {
+    exclude(group = "org.jetbrains.compose.ui", module = "ui-test")
+    exclude(group = "org.jetbrains.compose.ui", module = "ui-test-desktop")
+    exclude(group = "org.jetbrains.compose.ui", module = "ui-test-junit4")
+    exclude(group = "org.jetbrains.compose.ui", module = "ui-test-junit4-desktop")
+}
+
 // 桌面端编译目标 Java 21 (JvmApplicationConventionPlugin jvmToolchain(21)), 但 Compose 插件的
 // run/jpackage 任务默认用 Gradle daemon 的 JVM (System.getProperty("java.home")), 不跟工具链走:
 // daemon 是 17 时 :desktop:run 启动即抛 UnsupportedClassVersionError (class file v65)。
@@ -248,6 +273,28 @@ tasks.matching { it.name == "createRuntimeImage" }.configureEach {
         logger.lifecycle("[legado-desktop] jlink --compress=2 (zip) 已启用")
     }.onFailure {
         logger.warn("[legado-desktop] jlink --compress 设置失败(插件版本差异), 跳过: ${it.message}")
+    }
+
+    // CDS 前置条件: jlink 必须保留 bin/java.exe。
+    // 插件默认 --strip-native-commands=true, 产物 runtime/bin 下根本没有 java.exe
+    // (3.26.09121949 便携版实测: runtime/bin 只剩 *.dll, runtime/lib/server 为空),
+    // 于是旧版 dumpCdsArchive 的 `if (!jreJava.exists()) warn + return` 静默跳过,
+    // -Xshare:auto 全程空转 —— 注释里宣称的“启动期类加载时间降 20~40%”从未落地。
+    // 代价: 产物 runtime 多几个 launcher (量级 MB), 换回默认 CDS 归档。
+    // 刻意不用上方 compressionLevel 的 runCatching 静默降级: 拿不到这个属性 = CDS 又会静默失效,
+    // 必须当场构建失败。
+    run {
+        val getter = javaClass.methods.firstOrNull { it.name.startsWith("getStripNativeCommands") }
+            ?: error(
+                "AbstractJLinkTask.stripNativeCommands 不存在 (插件版本差异): CDS 归档将无法生成, " +
+                    "请同步更新本配置, 不得静默跳过"
+            )
+        @Suppress("UNCHECKED_CAST") // 同 compressionLevel: 运行期擦除后 cast 为 Property<Any>
+        val stripProp = getter.invoke(this) as Property<Any>
+        stripProp.set(false)
+        logger.lifecycle(
+            "[legado-desktop] jlink --strip-native-commands=false 已启用 (为 CDS 归档保留 bin/java)"
+        )
     }
 }
 
@@ -534,6 +581,121 @@ private fun msiSafeVersion(pkgVer: String): String {
     return "$major.$yy.${(dayOfYear - 1) * 24 + (hh.toIntOrNull() ?: 0)}"
 }
 
+// ============================================================
+// 依赖 jar consumer 规则合并
+// ============================================================
+// 背景 (读 compose-gradle-plugin-1.11.1-sources 的 AbstractProguardTask.execute 实证):
+// 插件生成的 root-config.pro 只 -include jars-config.pro +
+// default-compose-desktop-rules.pro + DSL 的 configurationFiles, 全程不读依赖 jar 里的
+// META-INF/proguard/*.pro (consumer rules 是 AGP/R8 机制, 独立 ProGuard 无此功能;
+// 插件源码里自己还留着 "todo: also consider pulling coroutines rules from coroutines artifact"),
+// 也不会为 META-INF/services 声明的实现类生成 keep。
+// 3.26.09121949 正式版产物实测出三处硬损伤 (均已用 unzip/javap + 探针在产物上复现):
+// 1) androidx sqlite-bundled 自带的
+//    -keepclasseswithmembers class androidx.sqlite.driver.bundled.** { native <methods>; }
+//    未生效 → nativeThreadSafeMode 等 5 个 native 方法被删 → jar 内 sqliteJni.dll 的
+//    JNI_OnLoad RegisterNatives 抛 NoSuchMethodError → 数据库整体不可用
+//    (同 proguard-rules.pro 的 JNI 小节, 两处一并修);
+// 2) coil-network-okhttp 的 OkHttpNetworkFetcherServiceLoaderTarget 被删而 jar 内
+//    META-INF/services/coil3.util.FetcherServiceLoaderTarget 保留 → Coil 每次取图抛
+//    ServiceConfigurationError 被 EngineInterceptor 吞成 ErrorResult → 封面全空,
+//    且异常不入 lazy 缓存 → 每张未命中缓存的图都要重扫一遍 classpath → 启动卡顿;
+// 3) kxml2 的 org.kxml2.io.KXmlParser / KXmlSerializer 被删 → XmlPullParserFactory 回落
+//    默认实现 → EPUB 导出链路 NPE。
+// 做法: 打包期遍历 :desktop 的 runtimeClasspath, 提取上述两类元数据合成一份 .pro,
+// 经 configurationFiles.from(task) 追加给 ProGuard
+// (ConfigurableFileCollection 接受 TaskProvider 时自带隐式任务依赖, 另加下方显式兜底接线)。
+val dependencyConsumerRulesFile =
+    layout.buildDirectory.file("generated/desktop-proguard/dependency-consumer-rules.pro")
+
+val mergeDependencyProguardRules by tasks.registering {
+    group = "compose desktop distribution"
+    description =
+        "提取依赖 jar 自带 consumer 规则与 META-INF/services 实现类, 合成 ProGuard 规则文件"
+    val runtimeClasspath = configurations.named("runtimeClasspath")
+    inputs.files(runtimeClasspath)
+    outputs.file(dependencyConsumerRulesFile)
+    doLast {
+        // 只取 ProGuard 通用约定路径 META-INF/proguard/*.pro: 各库另有的
+        // META-INF/com.android.tools/{proguard,r8}/*.pro 是给 AGP/R8 消费的, 可能含 R8 专属语法,
+        // 而实际内容不超出 META-INF/proguard/ 版本 (sqlite/room/coroutines/serialization 均三处同存)
+        val consumerRuleDir = "META-INF/proguard/"
+        val servicesDir = "META-INF/services/"
+        val ruleBlocks = StringBuilder()
+        val serviceClasses = sortedSetOf<String>()
+        val serviceOrigin = mutableMapOf<String, String>()
+        // 排序保证输出确定性 (否则 jar 遍历顺序变化会频繁弄脏下游 ProGuard 任务缓存)
+        for (jar in runtimeClasspath.get().files.sortedBy { it.name }) {
+            if (!jar.isFile || !jar.name.endsWith(".jar", ignoreCase = true)) continue
+            ZipFile(jar).use { zip ->
+                val entries = zip.entries()
+                while (entries.hasMoreElements()) {
+                    val entry = entries.nextElement()
+                    when {
+                        entry.isDirectory -> Unit
+                        entry.name.startsWith(consumerRuleDir) && entry.name.endsWith(".pro") -> {
+                            ruleBlocks.appendLine("# ---- ${jar.name} : ${entry.name} ----")
+                            zip.getInputStream(entry).reader().use { ruleBlocks.append(it.readText()) }
+                            ruleBlocks.appendLine()
+                        }
+                        entry.name.startsWith(servicesDir) &&
+                            entry.name.length > servicesDir.length -> {
+                            val text = zip.getInputStream(entry).bufferedReader().readText()
+                            for (rawLine in text.lines()) {
+                                // services 文件写法两种都存在: 一行一类名 (空白分隔) 与一行多类名
+                                // 逗号分隔 —— kxml2 的
+                                // META-INF/services/org.xmlpull.v1.XmlPullParserFactory 实为
+                                // "org.kxml2.io.KXmlParser,org.kxml2.io.KXmlSerializer" 单行逗号分隔。
+                                // 只按空白拆会把整行当成一个非法类名跳过 → kxml2 照样被删 (JAXP
+                                // XmlPullParserFactory 自己就是按逗号解析的), 故必须一并拆逗号。
+                                for (impl in rawLine.substringBefore('#').trim().split(Regex("[\\s,]+"))) {
+                                    if (impl.isEmpty()) continue
+                                    val looksLikeClassName = impl.contains('.') &&
+                                        impl.all { c ->
+                                            c.isLetterOrDigit() || c == '.' || c == '_' || c == '$'
+                                        }
+                                    if (!looksLikeClassName) continue
+                                    if (serviceClasses.add(impl)) {
+                                        serviceOrigin[impl] = "${jar.name} : ${entry.name}"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        val out = dependencyConsumerRulesFile.get().asFile
+        out.parentFile.mkdirs()
+        out.bufferedWriter().use { w ->
+            w.appendLine("# 自动生成, 勿手改: 由 :desktop:mergeDependencyProguardRules 生成")
+            w.appendLine("# 来源: :desktop runtimeClasspath 上各依赖 jar 的 META-INF 元数据")
+            w.appendLine()
+            w.appendLine(
+                "# ===== A. 依赖 jar 自带 consumer 规则 (官方 ProGuard 集成不会自动读取) ====="
+            )
+            w.append(ruleBlocks)
+            w.appendLine()
+            w.appendLine(
+                "# ===== B. META-INF/services 声明的实现类 (运行期按类名字符串反射实例化) ====="
+            )
+            for (impl in serviceClasses) {
+                w.appendLine("# ${serviceOrigin[impl]}")
+                w.appendLine("-keep class $impl { *; }")
+            }
+        }
+        logger.lifecycle(
+            "[legado-desktop] 依赖 consumer 规则已合成: 服务实现类 ${serviceClasses.size} 个 → $out"
+        )
+    }
+}
+
+// 显式兜底接线: ProGuard 任务由 compose 插件在 compose.desktop.application{} 求值后才注册,
+// 用惰性 matching 补上依赖 (configurationFiles.from(task) 已携隐式依赖, 此处双保险)。
+tasks.matching { it.name.startsWith("proguard") && it.name.endsWith("Jars") }.configureEach {
+    dependsOn(mergeDependencyProguardRules)
+}
+
 compose.desktop {
     application {
         mainClass = "io.legado.desktop.MainKt"
@@ -560,6 +722,9 @@ compose.desktop {
                     // 体积差距来自工具链优化能力差异 + class vs dex 格式差异, 非规则差异。
                     optimize.set(false)
                     configurationFiles.from(file("proguard-rules.pro"))
+                    // 依赖 jar 自带 consumer 规则 + META-INF/services 实现类 keep
+                    // (官方集成不读这两类元数据, 缺口与实测损伤见 mergeDependencyProguardRules 注释)
+                    configurationFiles.from(mergeDependencyProguardRules)
                 }
             }
         }
@@ -575,13 +740,20 @@ compose.desktop {
         // 开发期 :desktop:run 通过 legado.quickjs.lib 指向按 os-arch 分层的 native 输出。
         jvmArgs += listOf(
             "-Xmx768m",                          // 提升堆上限避免大书架 OOM (原 512m 偏小)
-            "-Xms128m",                          // 启动期小初始堆, 按需增长减少启动期内存申请开销
+            "-Xms384m",                          // 启动期堆底提到 384m: 实测 -Xms128m 下启动头 1.1s 内跳 4 次
+                                                // young GC 且堆反复顶在 128M 上限扩张 (G1 扩容+迁移是白送成本)
             "-XX:+UseG1GC",                      // JDK 17 默认即 G1, 显式声明更稳定
             "-XX:MaxGCPauseMillis=200",          // G1 目标停顿
-            "-XX:TieredStopAtLevel=1",           // 仅 C1 编译, 启动期 JIT 时间降 30~50%
-            "-XX:CompileThreshold=10000",        // 提高 JIT 阈值减少冷路径编译
-            "-Xshare:auto",                      // 启用 CDS: 正式版由 dumpCdsArchive task 预生成归档; 失败自动回退
-            "-XX:+UseStringDeduplication",       // G1 字符串去重
+            // -XX:TieredStopAtLevel=1 / -XX:CompileThreshold 已删除 (2026-09 复盘):
+            // TieredStopAtLevel=1 = 只用 C1 编译器, 确实省启动期 JIT 时间, 但代价是后续全部
+            // 代码停在低优化级别 (无 C2 内联/逃逸消除)。Compose Desktop 是常驻交互型进程:
+            // 组合/布局/绘制热点长期跑在 C1 上, 点击后那一帧的重组合+渲染比默认分层编译慢几倍,
+            // 用户感知就是“点了没反应 / 操作卡顿”。启动优化应走 CDS (见 dumpCdsArchive),
+            // 而不是牺牲整个生命周期的吞吐。
+            "-Xshare:auto",                      // 启用 CDS: 正式版由 dumpCdsArchive 预生成归档, 生成失败会让构建直接失败
+            // -XX:+UseStringDeduplication 已删除 (2026-09 启动实测): 字符串去重靠并发标记周期顺带做,
+            // 官方适用场景是堆充裕的大服务; 本包 -Xmx768m 且启动期大量临时字符串 (Compose 资源/文案),
+            // 为了省几十 MB 常驻去重的 CPU/标记开销反而拖慢启动。
             "-Dfile.encoding=UTF-8",             // Windows 默认 GBK, 显式声明 UTF-8 避免资源乱码
             // 反射访问 AWT 原生句柄 (任务栏按钮/DWM 卡片等经 WComponentPeer.getHWnd 拿 HWND):
             // Component.peer 字段在 java.awt (需 opens), getHWnd 在 sun.awt.windows (需 opens),
@@ -638,6 +810,24 @@ compose.desktop {
             fileAssociation("application/epub+zip", "epub", "EPUB Book")
             fileAssociation("application/pdf", "pdf", "PDF Document")
             fileAssociation("application/vnd.comicbook+zip", "cbz", "CBZ Comic")
+            // 视频文件关联 (让"打开方式"能把视频直接交给 legado 开播): 扩展名与 shared
+            // AppPattern.videoFileRegex 逐一对应, 少一个就会出现"系统交给我们、自己不认"。
+            // 交给 Main.kt 的文件关联链 → shared FileAssociationDispatch 在 JSON/书籍正则之前
+            // 先判视频 (VideoDirect) → 直接 push 播放页直投态, 不建书不查书源。
+            // MIME 用各扩展名的规范值: .ts 是 MPEG-TS 传输流 (video/mp2t),
+            // .m3u8 是 HLS 清单 (application/vnd.apple.mpegurl) —— 不是猜的字符串,
+            // Linux 的 .desktop MimeType 与 macOS UTI 换算都按它匹配。
+            // 已知代价: .ts 同时是 TypeScript 源码扩展名, 装上后 Windows 会把它抢给 legado;
+            // 与 videoFileRegex 保持一致优先于避开歧义 (要改就得两边同时改)。
+            // 描述一律 ASCII-only, 同上方 MSI 代码页 1252 硬约束。
+            fileAssociation("video/mp4", "mp4", "MP4 Video")
+            fileAssociation("video/x-matroska", "mkv", "Matroska Video")
+            fileAssociation("video/quicktime", "mov", "QuickTime Video")
+            fileAssociation("video/webm", "webm", "WebM Video")
+            fileAssociation("video/x-flv", "flv", "Flash Video")
+            fileAssociation("video/x-msvideo", "avi", "AVI Video")
+            fileAssociation("video/mp2t", "ts", "MPEG TS Video")
+            fileAssociation("application/vnd.apple.mpegurl", "m3u8", "HLS Playlist")
             // 应用图标 (从 Android ic_launcher 高清图转换生成): Windows ICO, Linux PNG
             // Windows MSI 专属配置
             windows {
@@ -777,49 +967,92 @@ afterEvaluate {
 // 背景: jlink 精简的 JRE 不含默认 CDS 归档 (classes_nocoops.jsa),
 // -Xshare:auto 静默回退到非 CDS 模式 → 每次启动从零加载/解析全部类元数据,
 // 是正式版 (jlink JRE) 比 debug 版 (完整 JDK 自带 CDS) 启动慢的主因之一。
-// 本 task 在 jpackage app image 生成后, 用该 JRE 的 java -Xshare:dump
-// 生成默认 CDS 归档, 写入 runtime/lib/server/ 目录, 打包时随 JRE 一起纳入产物。
+// 本 task 在 jlink 输出目录上跑该 JRE 自己的 java -Xshare:dump 生成默认 CDS 归档。
 // 实测: CDS 归档可减少启动期类加载时间 20~40% (JDK 21 默认归档含 ~15k 核心类)。
-// 归档生成失败只 warn 不 fail (CDS 缺失只影响启动速度, 不影响功能)。
+//
+// 【为何写在 jlink 输出目录而不是 app image 里】(2026-09 修正): 插件的 createRuntimeImage
+// 不带 buildType 后缀 (所有 buildType 共用 tmp/main/runtime), createReleaseDistributable 和
+// packageReleaseMsi 的 --runtime-image 全部指向它 (见两份 .args.txt 实测) —— 旧实现把归档
+// 写进已生成的 app/legado/runtime, 只对便携 zip 有效, MSI 那条链永远拿不到。现写回 jlink 输出,
+// 两条链共享。
+//
+// 【为何失败必须响】: 旧实现只 logger.warn 不 fail, 而 jlink 默认 --strip-native-commands=true
+// 把 bin/java.exe 整个剔掉 (3.26.09121949 便携版实测: runtime/bin 下无任何 *.exe),
+// 于是本任务每次都走 `!exists() → 跳过` 分支 —— 产物里一个 .jsa 都没有, -Xshare:auto 静默空转,
+// 注释里宣称的 20~40% 启动提速从未落地。静默失效就是缺陷被长期掩埋的根因, 故现在:
+// 启动器缺失 / 退出码非 0 / 归档未落地, 均当场抛 GradleException。
+// 【归档目录跟平台走, 不是写死的 lib/server】(2026-09-14 实测纠正):
+// Windows 上 HotSpot 的默认归档落在 runtime/bin/server/ (与 jvm.dll 同级),
+// Linux/macOS 才是 runtime/lib/server/。用错路径会让本任务在 Windows 上
+// 误判“dump 成功但归档不存在”而抛异常, 反而把构建卡住。
+// 本机实测: java -Xshare:dump 产出 runtime/bin/server/{classes.jsa, classes_nocoops.jsa},
+// 且 -Xlog:cds 确认“Opened archive ...”; java -version 中位耗时 218ms → 193ms (-Xshare:auto)。
+val cdsRuntimeImageDir = file("build/compose/tmp/main/runtime")
+
 val dumpCdsArchive by tasks.registering {
     group = "compose desktop distribution"
-    description = "Generate default CDS archive for jlink JRE to speed up startup"
-    // 依赖 app image 生成 (产物路径: build/compose/binaries/main-release/app/legado/)
-    // createReleaseDistributable 是 release 链的 app image 生成 task
-    dependsOn("createReleaseDistributable")
-    // 输出标记: CDS 归档在 runtime/lib/server/ 下, 由 jpackage 随 JRE 打包
-    outputs.file(file("build/compose/binaries/main-release/app/legado/runtime/lib/server/classes_nocoops.jsa"))
+    description = "为 jlink JRE 生成默认 CDS 归档 (启动期类加载加速, 便携版与 MSI 共享)"
+    // 依赖 jlink 输出 (插件的公共 task, 不带 buildType 后缀)
+    dependsOn("createRuntimeImage")
+
+    val serverDir = File(
+        cdsRuntimeImageDir,
+        if (OperatingSystem.current().isWindows) "bin/server" else "lib/server",
+    )
+    val baseArchive = File(serverDir, "classes.jsa")
+    val nocoopsArchive = File(serverDir, "classes_nocoops.jsa")
+    // 刻意不把归档声明成本 task 的 outputs: 它们落在 createRuntimeImage 的 @OutputDirectory
+    // (jlink 输出目录) 里面, 两个 task 输出重叠会被 Gradle 判为互相弄脏, 结果是每次构建都
+    // 重跑一遗 jlink。改为 upToDateWhen(false) 让 dump 每次都跑 (单次 ~1s, 比丢归档便宜)。
+    outputs.upToDateWhen { false }
+
     doLast {
-        val jreJava = file("build/compose/binaries/main-release/app/legado/runtime/bin/java")
-        if (!jreJava.exists()) {
-            logger.warn("[legado-desktop] CDS dump: JRE java not found at $jreJava, skipping")
-            return@doLast
+        val javaExe = if (OperatingSystem.current().isWindows) {
+            File(cdsRuntimeImageDir, "bin/java.exe")
+        } else {
+            File(cdsRuntimeImageDir, "bin/java")
         }
-        // java -Xshare:dump 在 JRE 安装目录的 lib/server/ 下生成 classes_nocoops.jsa
-        // JDK 21+: 默认就生成 nocoops 变体 (--version 显示 "Archive" 行确认)
-        runCatching {
-            val pb = ProcessBuilder(
-                jreJava.absolutePath,
-                "-Xshare:dump",
+        if (!javaExe.isFile) {
+            throw GradleException(
+                "CDS dump 失败: jlink 输出 $cdsRuntimeImageDir 里没有启动器 $javaExe —— "
+                        + "需在 createRuntimeImage 里保持 --strip-native-commands=false (见该 task 注释)"
             )
+        }
+        // -Xshare:dump 按当前压缩指针模式选归档文件名, 故跑两遍:
+        // 默认模式出 classes.jsa, -XX:-UseCompressedOops 出 classes_nocoops.jsa。
+        // 本包 -Xmx768m 必走压缩指针, 真正必需的是 classes.jsa; nocoops 归档缺失不影响本包。
+        listOf<List<String>>(emptyList(), listOf("-XX:-UseCompressedOops")).forEach { extraArgs ->
+            val pb = ProcessBuilder(
+                listOf(javaExe.absolutePath) + extraArgs + listOf("-Xshare:dump")
+            )
+            pb.directory(cdsRuntimeImageDir)
             pb.redirectErrorStream(true)
             val proc = pb.start()
-            proc.inputStream.bufferedReader().forEachLine { logger.lifecycle("[cds-dump] $it") }
+            val output = proc.inputStream.bufferedReader().use { it.readText() }
             val exit = proc.waitFor()
+            output.lines().filter { it.isNotBlank() }
+                .forEach { logger.lifecycle("[cds-dump] $it") }
             if (exit != 0) {
-                logger.warn("[legado-desktop] CDS dump exited with code $exit (non-fatal)")
-            } else {
-                logger.lifecycle("[legado-desktop] CDS archive generated successfully")
+                throw GradleException("CDS dump 失败 (args=$extraArgs, exit=$exit):\n$output")
             }
-        }.onFailure {
-            logger.warn("[legado-desktop] CDS dump failed (non-fatal): ${it.message}")
         }
+        if (!baseArchive.isFile) {
+            throw GradleException(
+                "CDS dump 退出码为 0 但未产出 $baseArchive —— -Xshare:auto 会继续空转, 拒绝静默放行"
+            )
+        }
+        val produced = listOf(baseArchive, nocoopsArchive).filter { it.isFile }
+            .joinToString { "${it.name} (${it.length() / 1024} KB)" }
+        logger.lifecycle("[legado-desktop] CDS 归档已生成: $produced")
     }
 }
 
-// 确保打包 task 在 CDS 归档生成之后执行
+// 确保 “复制 jlink 输出”的下游 task (app image 与各类安装包) 都在 CDS 归档生成之后才跑,
+// 否则 jpackage 会先把没有 .jsa 的 runtime 复制走。
 tasks.matching {
     it.name in listOf(
+        "createDistributable", "createReleaseDistributable",
+    ) || it.name in listOf(
         "packageReleaseMsi", "packageReleaseExe",
         "packageReleaseDeb", "packageReleaseRpm", "packageReleaseDmg",
     )

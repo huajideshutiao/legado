@@ -4,7 +4,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.help.file.desktopAppRootDir
 import io.legado.app.ui.association.LegadoDeepLink
 import io.legado.app.ui.association.LegadoDeepLinkHandler
-import io.legado.desktop.offerAssociationFiles
+import io.legado.desktop.offerAssociationArgs
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -49,7 +49,7 @@ private data class ForwardMessage(val token: String, val args: List<String>)
  *
  * 1. args 里第一个 legado://`/`yuedu:// URL 投递 [LegadoDeepLinkHandler.handle]
  *    (与 Main.kt 冷启动 `handleDeepLinkArgs` 同一条链, 由 DeepLinkImportHost 弹导入框);
- * 2. args 里的存在文件路径投递 [offerAssociationFiles] (文件关联双击, 同一条队列);
+ * 2. args 里的关联文件地址投递 [offerAssociationArgs] (文件关联双击, 与冷启动共用同一入口筛子);
  * 3. 窗口前置 ([bindWindow] 注册的 AWT 窗口, EDT 上取消最小化 + toFront + requestFocus)。
  *
  * # 边界处理
@@ -192,7 +192,10 @@ object SingleInstanceGuard {
                 AppLog.put("转发的 deep link 解析失败 (缺 src 参数): $url", tag = TAG)
             }
         }
-        offerAssociationFiles(args.filter { !LegadoDeepLink.isDeepLink(it) && File(it).isFile })
+        // 必须走 Main.kt 的同一个入口筛子 offerAssociationArgs: 上一版这里自己内联了
+        // `File(it).isFile`, 于是 file URI 形态 (Linux .desktop 的 %u、部分文件管理器) 在
+        // 首实例已运行时被滤掉 —— 观感是"第一次双击能播, 第二次双击什也不会发生"
+        offerAssociationArgs(args)
         activateWindow()
     }
 

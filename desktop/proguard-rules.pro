@@ -104,9 +104,26 @@
 -keep class **.*_Impl { *; }
 
 ############################
-# JNI native 方法 (quickjs 桥 System.load 加载 native 库)
+# JNI native 方法 (quickjs 桥 / androidx sqlite-bundled 的 sqliteJni.dll 等:
+# 这些 native 库在 JNI_OnLoad 里用 RegisterNatives 按「类名+方法名+签名」批量绑定方法表)
 ############################
--keepclasseswithmembernames class * { native <methods>; }
+# 指令选型必须看清语义: -keepclasseswithmembernames 等价 keepclasseswithmembers,allowshrinking,
+# 只保证「名字不被改」, 仍然允许把方法整个删掉。3.26.09121949 正式版实测踩坑:
+# 旧写法下 ProGuard 把 sqlite-bundled 里 Java 侧没有直接调用点的 nativeThreadSafeMode /
+# nativeBindBlob / nativeBindDouble / nativeGetBlob / nativeGetDouble 当死代码删除,
+# 而 jar 内 sqliteJni.dll 仍按 21 个方法注册 → System.load 抛
+# NoSuchMethodError → BundledSQLiteDriver$NativeLibraryObject 静态初始化失败 →
+# 桌面端数据库整体不可用 → 书架 LaunchedEffect 未捕获异常打停 Recomposer → 界面定格、键鼠失灵。
+# 本项目本就 -dontobfuscate (改名风险为零), 所以旧写法连它唯一的好处都不提供, 只有副作用。
+# 必须用 -keepclasseswithmembers (不带 names 后缀) 才是「不许删」。
+# 对照实验 (2026-09-14, 用构建同版本 ProGuard 7.9.1 + 原始 sqlite-bundled jar + 一个只调
+# BundledSQLiteDriver.open() 的合成种子作入口, 模拟 Room 的真实可达面):
+#   本条旧写法 → BundledSQLiteDriverKt 的 native 从 2 个被删到 1 个, 产物跑 System.load
+#     报 NoSuchMethodError: ...nativeThreadSafeMode()I not found (与正式崩溃日志一致)
+#   改成下方写法 → 2 个全在, System.load 通过
+# 被删的根因链: 未使用的 public BundledSQLiteDriver.getThreadingMode() → 唯一调用
+# access$nativeThreadSafeMode() 的地方 → 连带它下面的 external fun 一起被当死代码删除。
+-keepclasseswithmembers class * { native <methods>; }
 
 ############################
 # Hutool (书源 JS 直调 cn.hutool.crypto.SecureUtil/AES/SymmetricCrypto 等, 按名反射;

@@ -48,6 +48,14 @@ class DesktopSplashScreen(
     private var splashWindow: JWindow? = null
     private var showDurationMs: Long = 0L
 
+    /** 闪屏实际置为可见的时刻 (未显示为 0), 供调用方算"已驻留多久"决定关闭时机。 */
+    var shownAtMs: Long = 0L
+        private set
+
+    /** 自闪屏显示起算的毫秒数; 尚未显示时返 [Long.MAX_VALUE] (语义: 已远超任何驻留时长)。 */
+    fun elapsedSinceShow(): Long =
+        if (shownAtMs == 0L) Long.MAX_VALUE else System.currentTimeMillis() - shownAtMs
+
     /** 基准画布 (内容布局/字号/图标尺寸的参照系), 实际窗口按屏幕比例缩放。 */
     companion object {
         const val BASE_WIDTH = 800
@@ -160,6 +168,7 @@ class DesktopSplashScreen(
         )
         window.isAlwaysOnTop = true
         window.isVisible = true
+        shownAtMs = System.currentTimeMillis()
         splashWindow = window
         return showDurationMs
     }
