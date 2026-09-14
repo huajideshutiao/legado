@@ -332,6 +332,7 @@ class FunctionValueExpression(private val function: FunctionExtension, private v
         val result = mutableListOf<String>()
         var current = StringBuilder()
         var inQuotes = false
+        var inSingleQuotes = false
         var inBrackets = 0
         var escape = false
 
@@ -345,19 +346,23 @@ class FunctionValueExpression(private val function: FunctionExtension, private v
                     current.append(char)
                     escape = true
                 }
-                char == '"' -> {
+                char == '"' && !inSingleQuotes -> {
                     current.append(char)
                     inQuotes = !inQuotes
                 }
-                char == '(' && !inQuotes -> {
+                char == '\'' && !inQuotes -> {
+                    current.append(char)
+                    inSingleQuotes = !inSingleQuotes
+                }
+                char == '(' && !inQuotes && !inSingleQuotes -> {
                     current.append(char)
                     inBrackets++
                 }
-                char == ')' && !inQuotes -> {
+                char == ')' && !inQuotes && !inSingleQuotes -> {
                     current.append(char)
                     inBrackets--
                 }
-                char == ',' && !inQuotes && inBrackets == 0 -> {
+                char == ',' && !inQuotes && !inSingleQuotes && inBrackets == 0 -> {
                     result.add(current.toString())
                     current = StringBuilder()
                 }
@@ -415,6 +420,7 @@ class FunctionFilterExpression(private val function: FunctionExtension, private 
         val result = mutableListOf<String>()
         var current = StringBuilder()
         var inQuotes = false
+        var inSingleQuotes = false
         var inBrackets = 0
         var escape = false
 
@@ -428,23 +434,25 @@ class FunctionFilterExpression(private val function: FunctionExtension, private 
                     current.append(char)
                     escape = true
                 }
-                char == '"' -> {
+                //两种引号各用独立标志且互斥：共用一个 inQuotes 会让双引号串里的 `
+                //把状态翻反，后面真正的分隔符反而不切开
+                char == '"' && !inSingleQuotes -> {
                     current.append(char)
                     inQuotes = !inQuotes
                 }
-                char == '\'' -> {
+                char == '\'' && !inQuotes -> {
                     current.append(char)
-                    inQuotes = !inQuotes
+                    inSingleQuotes = !inSingleQuotes
                 }
-                char == '(' && !inQuotes -> {
+                char == '(' && !inQuotes && !inSingleQuotes -> {
                     current.append(char)
                     inBrackets++
                 }
-                char == ')' && !inQuotes -> {
+                char == ')' && !inQuotes && !inSingleQuotes -> {
                     current.append(char)
                     inBrackets--
                 }
-                char == ',' && !inQuotes && inBrackets == 0 -> {
+                char == ',' && !inQuotes && !inSingleQuotes && inBrackets == 0 -> {
                     result.add(current.toString().trim())
                     current = StringBuilder()
                 }

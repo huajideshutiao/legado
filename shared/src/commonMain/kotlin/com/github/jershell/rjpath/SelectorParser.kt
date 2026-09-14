@@ -20,6 +20,7 @@ class SelectorParser(private val functionRegistry: FunctionRegistry = FunctionRe
         var current = StringBuilder()
         var inBrackets = false
         var inQuotes = false
+        var inSingleQuotes = false //RFC 9535 规定 JSONPath 字面量用单引号，必须与双引号同等受保护
         var escape = false
         var depth = 0 // Track bracket nesting depth for ..[?()]..
 
@@ -44,11 +45,15 @@ class SelectorParser(private val functionRegistry: FunctionRegistry = FunctionRe
                      current.append(char)
                      escape = true
                 }
-                char == '"' -> {
+                char == '"' && !inSingleQuotes -> {
                     current.append(char)
                     inQuotes = !inQuotes
                 }
-                char == '[' && !inQuotes -> {
+                char == '\'' && !inQuotes -> {
+                    current.append(char)
+                    inSingleQuotes = !inSingleQuotes
+                }
+                char == '[' && !inQuotes && !inSingleQuotes -> {
                     if (current.isNotEmpty() && depth == 0) {
                         tokens.add(current.toString())
                         current = StringBuilder()
@@ -57,7 +62,7 @@ class SelectorParser(private val functionRegistry: FunctionRegistry = FunctionRe
                     inBrackets = true
                     depth++
                 }
-                char == ']' && !inQuotes -> {
+                char == ']' && !inQuotes && !inSingleQuotes -> {
                     current.append(char)
                     depth--
                     if (depth == 0) {
@@ -66,7 +71,7 @@ class SelectorParser(private val functionRegistry: FunctionRegistry = FunctionRe
                         inBrackets = false
                     }
                 }
-                char == '.' && !inBrackets && !inQuotes -> {
+                char == '.' && !inBrackets && !inQuotes && !inSingleQuotes -> {
                     // Handling ".."
                     if (i + 1 < path.length && path[i+1] == '.') {
                          if (current.isNotEmpty()) {
@@ -84,7 +89,7 @@ class SelectorParser(private val functionRegistry: FunctionRegistry = FunctionRe
                         // Don't add the dot as a token
                     }
                 }
-                 char == '*' && !inBrackets && !inQuotes -> {
+                 char == '*' && !inBrackets && !inQuotes && !inSingleQuotes -> {
                      if (current.isNotEmpty()) {
                         tokens.add(current.toString())
                         current = StringBuilder()
@@ -126,8 +131,19 @@ class SelectorParser(private val functionRegistry: FunctionRegistry = FunctionRe
                     }
                 }
                 token.startsWith('[') -> {
+                    //未闭合的方括号（如规则写错的 `$.a[`）原实现会 substring(1, 0) 抛越界崩溃，
+                    //这里改按“非法路径”抛出带原文的语义错误，由上层当规则错误处理
+                    if (!token.endsWith(']')) {
+                        throw IllegalArgumentException("Unbalanced '[' in JSONPath token: $token")
+                    }
                     val content = token.substring(1, token.length - 1).trim()
+                    //整段是一个引号字面量时，它就是成员名：必须在切片与联合判定之前，
+                    //否则 $['a:b'] 被当成切片、$['a,b'] 被拆成两个带残留引号的键
+                    val quotedName = quotedLiteralOrNull(content)
                     when {
+                        quotedName != null -> {
+                            currentSelectorChain.addSelector(PropertySelector(quotedName))
+                        }
                         content.startsWith('?') -> {
                             // Filter: ?(expression)
                             val filterExpression = content.substring(1, content.length)
@@ -149,20 +165,14 @@ class SelectorParser(private val functionRegistry: FunctionRegistry = FunctionRe
                              val elements = content.split(",").map { it.trim() }
                              val selectors = elements.mapNotNull {
                                  it.toIntOrNull()?.let { index -> ArraySelector(index) } ?: 
-                                 if (it.startsWith("'") && it.endsWith("'") || it.startsWith("\"") && it.endsWith("\"")) {
-                                     PropertySelector(it.substring(1, it.length - 1))
-                                 } else {
-                                     PropertySelector(it)
-                                 }
+                                 quotedLiteralOrNull(it)?.let { name -> PropertySelector(name) }
+                                     ?: PropertySelector(it)
                              }
                              currentSelectorChain.addSelector(UnionSelector(selectors))
                         }
                         content.toIntOrNull() != null -> {
                             currentSelectorChain.addSelector(ArraySelector(content.toInt()))
                         }
-                         content.startsWith("'") && content.endsWith("'") || content.startsWith("\"") && content.endsWith("\"") -> {
-                             currentSelectorChain.addSelector(PropertySelector(content.substring(1, content.length - 1)))
-                         }
                         else -> {
                              currentSelectorChain.addSelector(PropertySelector(content))
                         }
@@ -188,6 +198,32 @@ class SelectorParser(private val functionRegistry: FunctionRegistry = FunctionRe
         }
 
         return root
+    }
+
+    /**
+     * 整段是否被同种引号完整包裹（且中间的引号不构成提前闭合），是则返回去引号后的内容。
+     *
+     * 两种引号都收：RFC 9535 只允许单引号，但双引号写法在存量书源与部分实现里广泛存在，
+     * 按规范收紧会让这些规则突然取不到数据，故保留宽容。`['a','b']` 会在 `'a` 后的 `'`
+     * 处发现提前闭合 → 返回 null，仍按多键联合处理。
+     */
+    private fun quotedLiteralOrNull(content: String): String? {
+        if (content.length < 2) return null
+        val quote = content[0]
+        if (quote != '\'' && quote != '"') return null
+        if (content[content.length - 1] != quote) return null
+        var escaped = false
+        for (i in 1 until content.length - 1) {
+            val c = content[i]
+            if (escaped) {
+                escaped = false
+            } else if (c == '\\') {
+                escaped = true
+            } else if (c == quote) {
+                return null
+            }
+        }
+        return content.substring(1, content.length - 1)
     }
 
     private fun parseFilter(filter: String): FilterSelector {
@@ -304,6 +340,7 @@ class SelectorParser(private val functionRegistry: FunctionRegistry = FunctionRe
         val result = mutableListOf<String>()
         var current = StringBuilder()
         var inQuotes = false
+        var inSingleQuotes = false
         var inBrackets = 0
         var escape = false
         var i = 0
@@ -319,19 +356,23 @@ class SelectorParser(private val functionRegistry: FunctionRegistry = FunctionRe
                     current.append(char)
                     escape = true
                 }
-                char == '"' -> {
+                char == '"' && !inSingleQuotes -> {
                     current.append(char)
                     inQuotes = !inQuotes
                 }
-                char == '(' && !inQuotes -> {
+                char == '\'' && !inQuotes -> {
+                    current.append(char)
+                    inSingleQuotes = !inSingleQuotes
+                }
+                char == '(' && !inQuotes && !inSingleQuotes -> {
                     current.append(char)
                     inBrackets++
                 }
-                char == ')' && !inQuotes -> {
+                char == ')' && !inQuotes && !inSingleQuotes -> {
                     current.append(char)
                     inBrackets--
                 }
-                !inQuotes && inBrackets == 0 && i + operator.length <= expression.length && 
+                !inQuotes && !inSingleQuotes && inBrackets == 0 && i + operator.length <= expression.length && 
                 expression.substring(i, i + operator.length) == operator -> {
                     result.add(current.toString())
                     current = StringBuilder()
@@ -352,6 +393,7 @@ class SelectorParser(private val functionRegistry: FunctionRegistry = FunctionRe
     public fun findTopLevelComparisonOperator(expression: String): Pair<String, Int>? {
         val operators = listOf("==", "!=", "<=", ">=", "<", ">")
         var inQuotes = false
+        var inSingleQuotes = false
         var inBrackets = 0
         var escape = false
         var i = 0
@@ -374,16 +416,19 @@ class SelectorParser(private val functionRegistry: FunctionRegistry = FunctionRe
                 char == '\\' -> {
                     escape = true
                 }
-                char == '"' -> {
+                char == '"' && !inSingleQuotes -> {
                     inQuotes = !inQuotes
                 }
-                char == '(' && !inQuotes -> {
+                char == '\'' && !inQuotes -> {
+                    inSingleQuotes = !inSingleQuotes
+                }
+                char == '(' && !inQuotes && !inSingleQuotes -> {
                     inBrackets++
                 }
-                char == ')' && !inQuotes -> {
+                char == ')' && !inQuotes && !inSingleQuotes -> {
                     inBrackets--
                 }
-                !inQuotes && inBrackets == 0 -> {
+                !inQuotes && !inSingleQuotes && inBrackets == 0 -> {
                     for (op in operators) {
                         if (i + op.length <= expr.length && 
                             expr.substring(i, i + op.length) == op) {

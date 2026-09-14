@@ -1,6 +1,7 @@
 package io.legado.app.ui.book.read.page.provider
 
 import io.legado.app.help.book.BookContent
+import io.legado.app.utils.scan.TagScan
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -66,8 +67,8 @@ class ChapterContentParserSharedTest {
     fun `属性名边界判定 不取 style 内的 src`() {
         val tag = """<img style="background:url(x?src=y)" src="a.jpg">"""
 
-        assertEquals("a.jpg", ChapterContentParserShared.getAttr(tag, "src"))
-        assertEquals("background:url(x?src=y)", ChapterContentParserShared.getAttr(tag, "style"))
+        assertEquals("a.jpg", TagScan.attr(tag, "src"))
+        assertEquals("background:url(x?src=y)", TagScan.attr(tag, "style"))
         assertEquals("a.jpg", ChapterContentParserShared.extractImages(tag).single().src)
     }
 
@@ -75,16 +76,16 @@ class ChapterContentParserSharedTest {
     fun `getAttr 容忍等号前后空白`() {
         val tag = """<img src = "a.jpg">"""
 
-        assertEquals("a.jpg", ChapterContentParserShared.getAttr(tag, "src"))
+        assertEquals("a.jpg", TagScan.attr(tag, "src"))
         assertEquals("a.jpg", ChapterContentParserShared.extractImages(tag).single().src)
     }
 
     @Test
     fun `无引号值在空白 右尖括号与斜杠处截断`() {
-        assertEquals("a.jpg", ChapterContentParserShared.getAttr("<img src=a.jpg>", "src"))
-        assertEquals("a.jpg", ChapterContentParserShared.getAttr("<img src=a.jpg />", "src"))
-        assertEquals("a.jpg", ChapterContentParserShared.getAttr("<img src=a.jpg/>", "src"))
-        assertEquals("a.jpg", ChapterContentParserShared.getAttr("<img src=a.jpg\n>", "src"))
+        assertEquals("a.jpg", TagScan.attr("<img src=a.jpg>", "src"))
+        assertEquals("a.jpg", TagScan.attr("<img src=a.jpg />", "src"))
+        assertEquals("a.jpg", TagScan.attr("<img src=a.jpg/>", "src"))
+        assertEquals("a.jpg", TagScan.attr("<img src=a.jpg\n>", "src"))
         assertEquals(
             listOf("a.jpg", "a.jpg"),
             ChapterContentParserShared.extractImages("<img src=a.jpg\n><img src=a.jpg/>")
@@ -94,7 +95,7 @@ class ChapterContentParserSharedTest {
 
     @Test
     fun `单引号值正常取到`() {
-        assertEquals("a.jpg", ChapterContentParserShared.getAttr("<img src='a.jpg'>", "src"))
+        assertEquals("a.jpg", TagScan.attr("<img src='a.jpg'>", "src"))
         assertEquals(
             "a.jpg",
             ChapterContentParserShared.extractImages("<img src='a.jpg'>").single().src,
@@ -105,7 +106,7 @@ class ChapterContentParserSharedTest {
     fun `空 src 取到空串 且仍产出一张图`() {
         val tag = """<img src="">"""
 
-        assertEquals("", ChapterContentParserShared.getAttr(tag, "src"))
+        assertEquals("", TagScan.attr(tag, "src"))
         assertEquals(1, ChapterContentParserShared.extractImages(tag).size)
         assertEquals("", ChapterContentParserShared.extractImages(tag).single().src)
     }
@@ -116,9 +117,9 @@ class ChapterContentParserSharedTest {
         val both = """<img data-src="real" src="ph">"""
         val onlyDataSrc = """<img data-src="real">"""
 
-        assertEquals("ph", ChapterContentParserShared.getAttr(both, "src"))
+        assertEquals("ph", TagScan.attr(both, "src"))
         assertEquals("ph", ChapterContentParserShared.extractImages(both).single().src)
-        assertNull(ChapterContentParserShared.getAttr(onlyDataSrc, "src"))
+        assertNull(TagScan.attr(onlyDataSrc, "src"))
         assertTrue(ChapterContentParserShared.extractImages(onlyDataSrc).isEmpty())
     }
 

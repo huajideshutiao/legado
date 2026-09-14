@@ -2,6 +2,7 @@ package io.legado.app.ui.book.read.page.provider
 
 import io.legado.app.help.book.BookContent
 import io.legado.app.utils.EscapeUtils
+import io.legado.app.utils.scan.TagScan
 
 /**
  * 章节正文轻量解析器的共享实现。
@@ -23,35 +24,26 @@ object ChapterContentParserShared {
 
             val images = mutableListOf<ImgData>()
             val textBuilder = StringBuilder(content.length)
-            var index = 0
-            while (index < content.length) {
-                val tagStart = content.indexOf('<', index)
-                if (tagStart == -1) {
-                    textBuilder.append(content.substring(index))
-                    break
+            var cursor = 0
+            //发现规则与 [extractImages] 共用 TagScan.forEachTag：旧实现本函数另写一遍
+            //indexOf('<')/indexOf('>') 发现循环，两端口径会分叉（引号内的 `>`、`<a<img ...>`）
+            TagScan.forEachTag(content) { tagStart, tagEnd, name ->
+                if (tagStart > cursor) {
+                    textBuilder.append(content, cursor, tagStart)
                 }
-                if (tagStart > index) {
-                    textBuilder.append(content.substring(index, tagStart))
-                }
-
-                val tagEnd = content.indexOf('>', tagStart)
-                if (tagEnd == -1) {
-                    textBuilder.append(content.substring(tagStart))
-                    break
-                }
-
                 val tagContent = content.substring(tagStart + 1, tagEnd)
-                if (tagContent.startsWith("img", ignoreCase = true)) {
+                if (TagScan.isImgTag(name)) {
+                    //标签整名比对：`<image>`/`<imgx>` 不再是图片标签（旧版用 startsWith("img") 会误吃原文）
                     val fullTag = content.substring(tagStart, tagEnd + 1)
                     // 取不到 src 就整个丢弃, 不写占位符: 兜成空串只会在阅读页留一个永远
                     // 加载不出的 ▩, 且与 extractImages / 缓存侧口径不一致
-                    val src = getAttr(fullTag, "src")
+                    val src = TagScan.attr(fullTag, "src")
                     if (src != null) {
                         images.add(
                             ImgData(
                                 src = src,
-                                style = getAttr(fullTag, "style") ?: "",
-                                onclick = getAttr(fullTag, "onclick") ?: "",
+                                style = TagScan.attr(fullTag, "style") ?: "",
+                                onclick = TagScan.attr(fullTag, "onclick") ?: "",
                             )
                         )
                         textBuilder.append(srcReplaceChar)
@@ -62,7 +54,12 @@ object ChapterContentParserShared {
                 ) {
                     textBuilder.append('\n')
                 }
-                index = tagEnd + 1
+                cursor = tagEnd + 1
+            }
+            //最后一个标签之后的正文、以及回调不到的残缺标签 (无闭合 `>`) 都要原样保留:
+            //forEachTag 正常扫完返回串长、遇残缺标签返回那个 `<`, 两种情况都从 cursor 补到串尾
+            if (cursor < content.length) {
+                textBuilder.append(content, cursor, content.length)
             }
 
             ParsedParagraph(decodeHtml(textBuilder.toString()), images)
@@ -72,61 +69,23 @@ object ChapterContentParserShared {
     fun extractImages(content: String): List<ImgData> {
         if (!content.contains("<img", ignoreCase = true)) return emptyList()
         val images = mutableListOf<ImgData>()
-        var index = 0
-        while (index < content.length) {
-            val tagStart = content.indexOf("<img", index, ignoreCase = true)
-            if (tagStart == -1) break
-            val tagEnd = content.indexOf('>', tagStart)
-            if (tagEnd == -1) break
+        //发现规则与 parse 共用 TagScan.forEachTag：旧版本函数直接搜 `<img` 子串，
+        //遇到 `<a<img src="b.jpg">` 会取到阅读页根本不显示的图，两端口径不一致
+        TagScan.forEachTag(content) { tagStart, tagEnd, name ->
+            if (!TagScan.isImgTag(name)) return@forEachTag
             val fullTag = content.substring(tagStart, tagEnd + 1)
-            val src = getAttr(fullTag, "src")
+            val src = TagScan.attr(fullTag, "src")
             if (src != null) {
                 images.add(
                     ImgData(
                         src = src,
-                        style = getAttr(fullTag, "style") ?: "",
-                        onclick = getAttr(fullTag, "onclick") ?: "",
+                        style = TagScan.attr(fullTag, "style") ?: "",
+                        onclick = TagScan.attr(fullTag, "onclick") ?: "",
                     )
                 )
             }
-            index = tagEnd + 1
         }
         return images
-    }
-
-    fun getAttr(tag: String, attrName: String): String? {
-        var fromIndex = 0
-        while (fromIndex < tag.length) {
-            val index = tag.indexOf(attrName, fromIndex, ignoreCase = true)
-            if (index == -1) return null
-            val isAttrBoundary = index == 0 || tag[index - 1].isWhitespace() || tag[index - 1] == '<'
-            if (isAttrBoundary) {
-                var eqIndex = index + attrName.length
-                while (eqIndex < tag.length && tag[eqIndex].isWhitespace()) {
-                    eqIndex++
-                }
-                if (eqIndex < tag.length && tag[eqIndex] == '=') {
-                    var valueStart = eqIndex + 1
-                    while (valueStart < tag.length && tag[valueStart].isWhitespace()) {
-                        valueStart++
-                    }
-                    if (valueStart >= tag.length) return null
-                    val quote = tag[valueStart]
-                    return if (quote == '"' || quote == '\'') {
-                        val endQuote = tag.indexOf(quote, valueStart + 1)
-                        if (endQuote == -1) null else tag.substring(valueStart + 1, endQuote)
-                    } else {
-                        var end = valueStart
-                        while (end < tag.length && !tag[end].isWhitespace() && tag[end] != '>' && tag[end] != '/') {
-                            end++
-                        }
-                        if (end > valueStart) tag.substring(valueStart, end) else null
-                    }
-                }
-            }
-            fromIndex = index + attrName.length
-        }
-        return null
     }
 
     private fun decodeHtml(html: String): String {

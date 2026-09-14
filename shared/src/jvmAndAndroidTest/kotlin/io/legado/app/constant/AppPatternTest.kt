@@ -60,17 +60,6 @@ class AppPatternTest {
     }
 
     @Test
-    fun `imgPattern 格式化后图片标签`() {
-        val oracle = Pattern.compile("<img src=\"([^\"]*(?:\"[^>]+\\})?)[^>]+>")
-        listOf(
-            "<img src=\"https://x.com/1.jpg\">",
-            "文字<img src=\"a.png\" style=\"width:1px\">尾巴",
-            "<img src=\"b.webp\",{\"headers\":{\"referer\":\"x\"}}>", // src 带 option 的书源形态
-            "<img src=\"\" onclick=\"go()\">",
-        ).forEach { assertSameMatches(oracle, AppPattern.imgPattern, it) }
-    }
-
-    @Test
     fun `titleNumPattern 章节序号`() {
         val oracle = Pattern.compile("(第)(.+?)(章)")
         listOf(

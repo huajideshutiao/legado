@@ -4,6 +4,7 @@ import com.fleeksoft.ksoup.nodes.Element
 import com.fleeksoft.ksoup.nodes.Node
 import com.fleeksoft.ksoup.nodes.TextNode
 import com.fleeksoft.ksoup.select.Elements
+import io.legado.app.utils.scan.BalanceScan
 import kotlin.reflect.KClass
 
 /**
@@ -109,7 +110,7 @@ class XPathEvaluator {
                 } else {
                     element.getElementsByTag(firstPart.tag)
                 }
-                filterByPredicate(elements, firstPart.predicate)
+                filterByPredicate(elements, firstPart.predicates)
             }
             is PathPart.Current -> listOf(element)
             is PathPart.Parent -> {
@@ -171,8 +172,8 @@ class XPathEvaluator {
                 segment == "." -> parts.add(PathPart.Current)
                 segment == "*" -> parts.add(PathPart.AllChildren)
                 segment.contains("[") -> {
-                    val (tagName, predicate) = parsePredicate(segment)
-                    parts.add(PathPart.TagWithPredicate(tagName, predicate))
+                    val (tagName, predicates) = parsePredicates(segment)
+                    parts.add(PathPart.TagWithPredicate(tagName, predicates))
                 }
                 else -> parts.add(PathPart.Tag(segment))
             }
@@ -181,18 +182,41 @@ class XPathEvaluator {
         return parts
     }
 
-    private fun parsePredicate(segment: String): Pair<String, String> {
-        val bracketStart = segment.indexOf('[')
-        val bracketEnd = segment.lastIndexOf(']')
-
-        if (bracketStart == -1 || bracketEnd == -1) {
-            return segment to ""
+    /**
+     * 切出标签名与它的**全部**顶层谓词。
+     *
+     * 谓词边界用计数式 [BalanceScan.chomp] 逐个拉出，并把连续的多个谓词（`div[a][b]`）全部
+     * 收集后求交——这才是 archive 原版（`org.jsoup.select.selectXpath`，jsoup 原生 XPath）的语义。
+     * 本文件原先用 `indexOf('[')` + `lastIndexOf(']')` 只取一段，`div[a][b]` 会切成垃圾谓词
+     * `a][b`，一条正则都不命中 → 落到 [evaluatePredicate] 末尾的 `return true` 兜底 →
+     * 两个谓词**静默失效**、元素全量返回。
+     *
+     * 残缺（有 `[` 但无配对 `]`）时与原实现同形：整段当标签名、不带谓词，
+     * 于是 `getElementsByTag("div[")` 取不到任何东西（宁可漏选，也不静默多选）。
+     */
+    private fun parsePredicates(segment: String): Pair<String, List<String>> {
+        val first = segment.indexOf('[')
+        if (first == -1) {
+            return segment to emptyList()
         }
 
-        val tag = segment.substring(0, bracketStart)
-        val predicate = segment.substring(bracketStart + 1, bracketEnd)
+        val predicates = ArrayList<String>(2)
+        var pos = first
+        while (pos < segment.length && segment[pos] == '[') {
+            //谓词内允许带引号的字面量（`@id='x'`），引号内符号不计层；引号内反斜杠无效
+            val end = BalanceScan.chomp(
+                segment, pos, '[', ']',
+                quote = true, escape = BalanceScan.Escape.OUTSIDE_QUOTES
+            )
+            if (end < 0) {
+                return segment to emptyList()
+            }
+            predicates.add(segment.substring(pos + 1, end - 1))
+            pos = end
+            while (pos < segment.length && segment[pos] == ' ') pos++ //谓词间空白容忍
+        }
 
-        return tag to predicate
+        return segment.substring(0, first) to predicates
     }
 
     private fun selectPart(part: PathPart, element: Element): List<Element> {
@@ -210,16 +234,17 @@ class XPathEvaluator {
                 } else {
                     element.getElementsByTag(part.tag)
                 }
-                filterByPredicate(elements, part.predicate)
+                filterByPredicate(elements, part.predicates)
             }
         }
     }
 
-    private fun filterByPredicate(elements: List<Element>, predicate: String): List<Element> {
-        if (predicate.isEmpty()) return elements
+    /** 多个谓词求交：对齐 jsoup 原生 XPath 的 `div[a][b]` 语义。 */
+    private fun filterByPredicate(elements: List<Element>, predicates: List<String>): List<Element> {
+        if (predicates.isEmpty()) return elements
 
         return elements.filter { element ->
-            evaluatePredicate(element, predicate)
+            predicates.all { evaluatePredicate(element, it) }
         }
     }
 
@@ -255,26 +280,48 @@ class XPathEvaluator {
         val posMatch = posPattern.find(predicate)
         if (posMatch != null) {
             val pos = posMatch.groupValues[1].toIntOrNull() ?: return false
-            val index = element.elementSiblingIndex() + 1
-            return index == pos
+            return siblingPositionAndTotal(element).first == pos
         }
 
-        if (predicate == "last()") {
-            val parent = element.parent() ?: return false
-            val siblings = parent.children()
-            return element == siblings.lastOrNull()
+        if (predicate == "last()" || predicate == "position()=last()") {
+            val (position, total) = siblingPositionAndTotal(element)
+            return position == total
         }
 
         // Handle numeric index [n]
         val indexPattern = Regex("""^\d+$""")
         if (indexPattern.matches(predicate)) {
-            val index = predicate.toIntOrNull() ?: return false
-            val parent = element.parent() ?: return false
-            val siblings = parent.children()
-            return index in siblings.indices && siblings[index] == element
+            val n = predicate.toIntOrNull() ?: return false
+            //XPath 位置谓词是 1 基的，且按“同一父节点下同名兄弟”计数（节点先经节点测试过滤）：
+            //`//div[1]` = 每个父节点下的第一个 div，而不是“全部子元素里下标 1 的那个”。
+            //原实现用 `siblings[index] == element` 既走了 0 基、又未按标签名过滤，
+            //与同文件 `position()=n` 的 1 基算法互相矛盾，现两者共用同一个序号口径。
+            return n >= 1 && siblingPositionAndTotal(element).first == n
         }
 
         return true
+    }
+
+    /**
+     * 元素在其父节点**同名**子元素序列中的 1 基序号，与同名子元素总数。
+     *
+     * 基准为 W3C XPath 1.0 的谓词位置语义（节点先经节点测试过滤、位置从 1 开始），而不是 archive 行为：
+     * 本件是 KMP 新增的重写件（archive 直接调 jsoup 原生 `selectXpath`），没有“与原版一致”的包袱，
+     * 只能按规范定对错。原实现三处互相矛盾：`[n]` 走 0 基且未按标签过滤、`position()=n` 走 1 基全兄弟、
+     * `last()` 比的是全部子元素的末尾，导致 `//div[1]` 与 `//div[position()=1]`、`//div[last()]` 结果不一致。
+     */
+    private fun siblingPositionAndTotal(element: Element): Pair<Int, Int> {
+        val parent = element.parent() ?: return 1 to 1
+        val tag = element.tagName()
+        var position = 0
+        var total = 0
+        for (child in parent.children()) {
+            if (child.tagName() == tag) {
+                total++
+                if (child === element) position = total
+            }
+        }
+        return (if (position == 0) 1 else position) to total
     }
 }
 
@@ -283,7 +330,7 @@ sealed class PathPart {
     object Current : PathPart()
     object AllChildren : PathPart()
     data class Tag(val name: String) : PathPart()
-    data class TagWithPredicate(val tag: String, val predicate: String) : PathPart()
+    data class TagWithPredicate(val tag: String, val predicates: List<String>) : PathPart()
 }
 
 // Extension function for Element to support selectXpath

@@ -26,6 +26,7 @@ import io.legado.app.utils.cnCompare
 import io.legado.app.utils.mapAsync
 import io.legado.app.utils.mapAsyncIndexed
 import io.legado.app.utils.normalizeFileName
+import io.legado.app.utils.scan.TagScan
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -35,7 +36,6 @@ import kotlinx.coroutines.runBlocking
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.InputStream
-import java.util.regex.Pattern
 import java.util.zip.Deflater
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -542,12 +542,9 @@ class ExportBookEpubShared(
         val resources = arrayListOf<Resource>()
         content.split("\n").forEach { text ->
             var text1 = text
-            // 本地缓存内容经过 formatKeepImg 处理，img 标签格式统一为 <img src="...">
-            // 直接用简单的正则提取 src 即可
-            val imgPattern = Pattern.compile("<img src=\"([^\"]+)\"", Pattern.CASE_INSENSITIVE)
-            val matcher = imgPattern.matcher(text)
-            while (matcher.find()) {
-                val src = matcher.group(1) ?: continue
+            // 本地缓存内容经过 formatKeepImg 处理，img 标签格式统一为 <img src="...">；
+            // 提取口径走 TagScan 共用件，语义与原正则 `<img src="([^"]+)"` 逐字对齐
+            TagScan.forEachNormalizedImgSrc(text) { src ->
                 val originalHref =
                     "${MD5Utils.md5Encode16(src)}.${BookHelpLogic.getImageSuffix(src)}"
                 val href =
@@ -587,11 +584,10 @@ class ExportBookEpubShared(
         )
         val pages = ArrayList<Pair<String, () -> InputStream?>>()
         var pageIndex = 0
-        // 本地缓存内容经过 formatKeepImg 处理，img 标签格式统一为 <img src="...">
-        val imgPattern = Pattern.compile("<img src=\"([^\"]+)\"", Pattern.CASE_INSENSITIVE)
-        val matcher = imgPattern.matcher(content)
-        while (matcher.find()) {
-            val src = matcher.group(1) ?: continue
+        // 本地缓存内容经过 formatKeepImg 处理，img 标签格式统一为 <img src="...">；
+        // 提取口径走 TagScan 共用件，语义与原正则 `<img src="([^"]+)"` 逐字对齐
+        //（原 `matcher.group(1) ?: continue` 是死分支：find() 成功时捕获组必非 null，已删）
+        TagScan.forEachNormalizedImgSrc(content) { src ->
             pageIndex++
             val entryName = "$chapterDir/%04d.%s"
                 .format(pageIndex, BookHelpLogic.getImageSuffix(src))

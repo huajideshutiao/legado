@@ -1,5 +1,6 @@
 package io.legado.app.model.analyzeRule
 
+import io.legado.app.utils.scan.BalanceScan
 import kotlin.jvm.JvmName
 
 //通用的规则切分处理
@@ -88,41 +89,17 @@ class RuleAnalyzer(data: String, code: Boolean = false) {
     }
 
     /**
-     * 拉出一个非内嵌代码平衡组，存在转义文本
+     * 拉出一个内嵌代码（`{$.js}` / JSON 表达式）平衡组，存在转义文本。
+     * 语义参数：`[]` 恒计层、传入对仅在主对归零时计层；反斜杠在引号内外都吃掉下一个字符。
      */
     private fun chompCodeBalanced(open: Char, close: Char): Boolean {
-
-        var pos = pos //声明临时变量记录匹配位置，匹配成功后才同步到类的pos
-
-        var depth = 0 //嵌套深度
-        var otherDepth = 0 //其他对称符合嵌套深度
-
-        var inSingleQuote = false //单引号
-        var inDoubleQuote = false //双引号
-
-        do {
-            if (pos == queue.length) break
-            val c = queue[pos++]
-            if (c != ESC) { //非转义字符
-                if (c == '\'' && !inDoubleQuote) inSingleQuote = !inSingleQuote //匹配具有语法功能的单引号
-                else if (c == '"' && !inSingleQuote) inDoubleQuote = !inDoubleQuote //匹配具有语法功能的双引号
-
-                if (inSingleQuote || inDoubleQuote) continue //语法单元未匹配结束，直接进入下个循环
-
-                if (c == '[') depth++ //开始嵌套一层
-                else if (c == ']') depth-- //闭合一层嵌套
-                else if (depth == 0) {
-                    //处于默认嵌套中的非默认字符不需要平衡，仅depth为0时默认嵌套全部闭合，此字符才进行嵌套
-                    if (c == open) otherDepth++
-                    else if (c == close) otherDepth--
-                }
-
-            } else pos++
-
-        } while (depth > 0 || otherDepth > 0) //拉出一个平衡字串
-
-        return if (depth > 0 || otherDepth > 0) false else {
-            this.pos = pos //同步位置
+        val end = BalanceScan.chomp(
+            queue, pos, open, close,
+            primaryOpen = '[', primaryClose = ']',
+            escape = BalanceScan.Escape.ALWAYS
+        )
+        return if (end < 0) false else {
+            pos = end //同步位置
             true
         }
     }
@@ -131,31 +108,12 @@ class RuleAnalyzer(data: String, code: Boolean = false) {
      * 拉出一个规则平衡组，经过仔细测试xpath和jsoup中，引号内转义字符无效。
      */
     private fun chompRuleBalanced(open: Char, close: Char): Boolean {
-
-        var pos = pos //声明临时变量记录匹配位置，匹配成功后才同步到类的pos
-        var depth = 0 //嵌套深度
-        var inSingleQuote = false //单引号
-        var inDoubleQuote = false //双引号
-
-        do {
-            if (pos == queue.length) break
-            val c = queue[pos++]
-            if (c == '\'' && !inDoubleQuote) inSingleQuote = !inSingleQuote //匹配具有语法功能的单引号
-            else if (c == '"' && !inSingleQuote) inDoubleQuote = !inDoubleQuote //匹配具有语法功能的双引号
-
-            if (inSingleQuote || inDoubleQuote) continue //语法单元未匹配结束，直接进入下个循环
-            else if (c == '\\') { //不在引号中的转义字符才将下个字符转义
-                pos++
-                continue
-            }
-
-            if (c == open) depth++ //开始嵌套一层
-            else if (c == close) depth-- //闭合一层嵌套
-
-        } while (depth > 0) //拉出一个平衡字串
-
-        return if (depth > 0) false else {
-            this.pos = pos //同步位置
+        val end = BalanceScan.chomp(
+            queue, pos, open, close,
+            escape = BalanceScan.Escape.OUTSIDE_QUOTES
+        )
+        return if (end < 0) false else {
+            pos = end //同步位置
             true
         }
     }
@@ -368,13 +326,4 @@ class RuleAnalyzer(data: String, code: Boolean = false) {
 
     //设置平衡组函数，json或JavaScript时设置成chompCodeBalanced，否则为chompRuleBalanced
     val chompBalanced = if (code) ::chompCodeBalanced else ::chompRuleBalanced
-
-    companion object {
-
-        /**
-         * 转义字符
-         */
-        private const val ESC = '\\'
-
-    }
 }

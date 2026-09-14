@@ -1,5 +1,7 @@
 package io.legado.app.model.webBook
 
+import io.legado.app.utils.scan.BalanceScan
+
 data class ExploreOption(
     val name: String,
     val options: List<Pair<String, String>>,
@@ -60,7 +62,8 @@ data class ExploreOption(
  * 同名键以第一次出现为准；中间无 `:` 时键值取同一字符串；剩余可选项为空则跳过整段。
  * 末尾 `|sep` 表示多选，多个选中值用 `sep` 拼接；不存在 `|sep` 即单选。
  *
- * 走手写扫描器: content 段用括号深度定位收尾 `)`, tag label 里的成对括号
+ * 扫描走共用件 [io.legado.app.utils.scan.BalanceScan]:content 段用括号深度定位收尾 `)`,
+ * tag label 里的成对括号
  * (例如 `动作(热血):action`) 才能被正确切出;顺带绕开 Regex.findAll 的 Matcher/MatchResult 分配。
  */
 fun parseExploreOptionsFromUrl(url: String): List<ExploreOption> {
@@ -129,23 +132,17 @@ private inline fun tryParseSegment(
     }
     if (p == nameStart || p >= n || url[p] != '(') return -1
     val nameEnd = p
-    p++
-    val contentStart = p
-    var depth = 1
-    while (p < n) {
-        when (url[p]) {
-            '(' -> depth++
-            ')' -> {
-                depth--
-                if (depth == 0) break
-            }
-        }
-        p++
-    }
-    if (depth != 0) return -1
-    val contentEnd = p
+    //content 段用共用件拉出平衡括号组：返回右括号后一位，未闭合返回 -1。
+    //不认引号也不认转义，与该段原语义一致。
+    val afterContent = BalanceScan.chomp(
+        url, nameEnd, '(', ')',
+        quote = false, escape = BalanceScan.Escape.NEVER
+    )
+    if (afterContent < 0) return -1
+    val contentStart = nameEnd + 1
+    val contentEnd = afterContent - 1
     if (contentEnd == contentStart) return -1
-    p++
+    p = afterContent
     var separator = ""
     if (p < n && url[p] == '|') {
         val sepStart = p + 1
@@ -178,21 +175,9 @@ private fun buildExploreOption(
 ): ExploreOption? {
     // 深度平衡切逗号:tag label 里的 `(a,b)` 不能被拆开
     val tokens = ArrayList<String>()
-    var tokenStart = contentStart
-    var depth = 0
-    var i = contentStart
-    while (i < contentEnd) {
-        when (url[i]) {
-            '(' -> depth++
-            ')' -> depth--
-            ',' -> if (depth == 0) {
-                tokens.add(url.substring(tokenStart, i).trim())
-                tokenStart = i + 1
-            }
-        }
-        i++
+    BalanceScan.splitTopLevel(url, contentStart, contentEnd, ',') { start, endExclusive ->
+        tokens.add(url.substring(start, endExclusive).trim())
     }
-    tokens.add(url.substring(tokenStart, contentEnd).trim())
 
     val prefix = if (tokens.firstOrNull()?.let { it.isNotEmpty() && ':' !in it } == true) {
         tokens.removeAt(0)
@@ -204,7 +189,8 @@ private fun buildExploreOption(
     val pairs = ArrayList<Pair<String, String>>(tokens.size)
     for (token in tokens) {
         if (token.isEmpty()) continue
-        val colon = firstColonAtDepth0(token)
+        //找 token 中第一个位于 depth 0 的 `:`,让 `label(x:y):val` 这类嵌套也能被正确切成 pair
+        val colon = BalanceScan.indexOfTopLevel(token, 0, token.length, ':')
         if (colon < 0) {
             pairs.add(token to token)
             continue
@@ -227,17 +213,4 @@ private fun buildExploreOption(
         suffix = suffix,
         selectedValue = if (multiSelect) "" else pairs[0].second
     )
-}
-
-/** 找 token 中第一个位于 depth 0 的 `:`,让 `label(x:y):val` 这类嵌套也能被正确切成 pair。 */
-private fun firstColonAtDepth0(token: String): Int {
-    var depth = 0
-    for (i in token.indices) {
-        when (token[i]) {
-            '(' -> depth++
-            ')' -> depth--
-            ':' -> if (depth == 0) return i
-        }
-    }
-    return -1
 }
