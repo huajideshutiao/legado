@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import android.provider.OpenableColumns
 import androidx.appcompat.app.AppCompatActivity
 import androidx.documentfile.provider.DocumentFile
 import androidx.fragment.app.Fragment
@@ -29,6 +30,31 @@ import java.nio.charset.Charset
 fun Uri.isContentScheme() = this.scheme == "content"
 
 fun Uri.isFileScheme() = this.scheme == "file"
+
+/**
+ * URI 的显示名 (外部投递判视频 / 起标题用)。
+ *
+ * `content://media/.../video/123` 这类 URI 末段是数字 id, 真正的文件名 (`x.mp4`) 只在 provider 的
+ * `OpenableColumns.DISPLAY_NAME` 里; 查不到 (provider 不支持 / 无权限) 回落 URI 末段。
+ * 非 content scheme 直接取末段, 不发查询。
+ */
+fun Uri.displayName(context: Context): String? =
+    if (isContentScheme()) {
+        runCatching {
+            context.contentResolver.query(
+                this,
+                arrayOf(OpenableColumns.DISPLAY_NAME),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
+            }
+        }.getOrNull()?.takeIf { it.isNotBlank() } ?: lastPathSegment
+    } else {
+        lastPathSegment
+    }
 
 /**
  * 读取URI

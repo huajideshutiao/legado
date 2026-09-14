@@ -14,6 +14,7 @@ import io.legado.app.constant.Theme
 import io.legado.app.help.LifecycleHelp
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.main.MainActivity
+import io.legado.app.ui.main.videoDirectTarget
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.LaunchRequest
 import io.legado.app.ui.root.LaunchRequestBus
@@ -183,6 +184,15 @@ class AssociationActivity : BaseComposeActivity(theme = Theme.Transparent, image
     }
 
     private fun handleIntent(intent: Intent?) {
+        // 视频直投排在文件关联(书籍)分流之前: manifest 的视频 VIEW filter 就挂在本壳上, 不抢下来
+        // 会被 FileAssociationFragment 当书嗅探并弹"不支持该格式"。判据与 MainActivity 共用
+        // [videoDirectTarget] (shared VideoDirect 一份); asRoot = 书架不进栈, back 即退调用方。
+        intent?.videoDirectTarget()?.let { target ->
+            LaunchRequestBus.dispatch(LaunchRequest.OpenRoute(AppRoute.VideoPlay(target), asRoot = true))
+            startActivity<MainActivity>()
+            finish()
+            return
+        }
         val uri = intent?.data ?: run {
             finish()
             return

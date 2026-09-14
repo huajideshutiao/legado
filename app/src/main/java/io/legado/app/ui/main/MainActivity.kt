@@ -696,6 +696,7 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
      * Intent → 可直达的目标路由 (仅创建路径用, 见 [handleExternalIntent]):
      * - SearchActivity alias (key/searchScope/submit extra)
      * - ExploreShowActivity alias (exploreName/exploreUrl/sourceUrl extra, 查源下沉路由内)
+     * - 视频直投 (content/file/http(s) 可播地址 → 播放页, 排在书籍导入之前)
      * - 文件关联 / PROCESS_TEXT / SEND
      *
      * 书籍类直达 (透明壳深链 / 文件关联打开书籍) 不在此: 它们的载荷是内存对象,
@@ -720,6 +721,10 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
                 exploreUrl = intent.getStringExtra("exploreUrl"),
             )
         }
+        // 视频直投排在书籍分流之前 (判据与 toLaunchRequest 共用 [Intent.videoDirectTarget]):
+        // 外部给的 mp4/m3u8 已是可播地址, 不是书 —— 落到 AppRoute.ImportBook 会进"导入本地书"
+        // 页再被嗅探判为不支持格式。命中即冷启动直达播放页 (调用方处包 asRoot, back 即退调用方)。
+        intent?.videoDirectTarget()?.let { return AppRoute.VideoPlay(it) }
         // 文件关联 / PROCESS_TEXT / SEND (对齐 toLaunchRequest 分支)
         return when (intent?.action) {
             Intent.ACTION_VIEW -> intent.dataString?.let { url ->

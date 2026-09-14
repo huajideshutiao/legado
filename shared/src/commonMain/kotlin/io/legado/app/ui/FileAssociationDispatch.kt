@@ -12,7 +12,9 @@ import io.legado.app.ui.association.detectJsonType
 import io.legado.app.ui.association.toDeepLinkImportType
 import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.toReadRoute
+import io.legado.app.ui.video.VideoDirect
 import io.legado.app.utils.isJson
 import okio.FileSystem
 import okio.Path.Companion.toPath
@@ -21,7 +23,9 @@ import okio.Path.Companion.toPath
  * 文件关联导入分发链 (iOS/鸿蒙/桌面共用, 各端逻辑完全一致)。
  *
  * 对照 app 端 `FileAssociationViewModel.dispatchIntent` / `dispatch`:
- * 1. 压缩包 (archiveFileRegex) → 解压后逐个文件再分发;
+ * 0. 视频文件 (videoFileRegex) → 播放页直投态 (不建书、不查书源);
+ * 1. 压缩包 (archiveFileRegex) → 解压后只把包内的**书籍文件**逐个交回 [dispatchFile]
+ *    (包内视频不在本层放行, 原因见 [dispatch]);
  * 2. JSON → [detectJsonType] 识别类型, 经 [LegadoDeepLinkHandler.handleResolved] 交
  *    sharedUiMain `DeepLinkImportHost` 走对应 Import*ViewModelShared (与 deep link 同链,
  *    弹勾选对话框后入库);
@@ -29,10 +33,20 @@ import okio.Path.Companion.toPath
  * 4. 都不是 → toast 明确不支持 (不静默吞掉)。
  *
  * 与 app 端差异: app 端结果推 LiveData 由 Fragment 弹窗, 这里直接触发路由/导入宿主。
+ * 压缩包分支与 app 端同口径 (app 端 `FileAssociationViewModel.dispatchIntent` 给
+ * `ArchiveUtils.deCompress` 传了自己的 `filter = { it.matches(bookFileRegex) }`): 两端包内都只导书。
  */
 object FileAssociationDispatch {
 
-    /** 分发文件关联导入; [filePath] 为绝对路径 (或 file:// URL)。 */
+    /**
+     * 分发文件关联导入; [filePath] 为绝对路径 (或 file:// URL)。
+     *
+     * # 压缩包里的视频故意不在本层放行
+     * 只按改动前的口径取书籍文件。包内视频要不要解压出来再投给播放器**没人拍板过**:
+     * 它意味着临时目录里落一盘电影、多个视频依次弹多个播放页、以及 native 侧
+     * `NativeImportBook.openReader` 同入口下“阅读页 + 播放页”叠两层这些新行为,
+     * 需要单独定 (各端 `deCompress` 本身**不按扩展名过滤**, 过滤就在下面这一行)。
+     */
     fun dispatch(filePath: String) {
         val path = filePath.toLocalPath()
         val fileName = path.fileName()
@@ -43,7 +57,7 @@ object FileAssociationDispatch {
                 AppLog.put("解压关联文件失败: $path", e)
                 return
             }
-            // 与 app 端一致只取压缩包内的书籍文件 (deCompress 的 filter 语义)
+            // 与 app 端调用点自己传的 filter 同口径: 只取书籍文件 (非拍板项不得顺手扩)
             val books = extracted.filter { it.fileName().matches(AppPattern.bookFileRegex) }
             if (books.isEmpty()) {
                 Toasters.get().toast("压缩包内没有可导入的书籍文件")
@@ -55,9 +69,16 @@ object FileAssociationDispatch {
         dispatchFile(path)
     }
 
-    /** 单文件分发 (对照 app 端 dispatch: 先试 JSON, 再试书籍文件, 否则不支持)。 */
+    /** 单文件分发 (对照 app 端 dispatch: 先试视频, 再试 JSON, 再试书籍文件, 否则不支持)。 */
     private fun dispatchFile(path: String) {
         val fileName = path.fileName()
+        // 视频文件优先判定: 它们既不是 JSON 也不是书, 且动辄上百 MB —— 不能先走 JSON 探字节
+        // 再落回“不支持”。判据与 Android/iOS/鸿蒙 入口共用 [VideoDirect] 一份。
+        VideoDirect.targetFor(path, title = fileName)?.let { target ->
+            // getOrNull: 文件关联可能在 UI 就绪前就把路径投进来 (navigator 未注册)
+            AppNavigatorProviders.getOrNull()?.push(AppRoute.VideoPlay(target))
+            return
+        }
         // 先试 JSON: 与 app 端 InputStream.isJson() 一样只探首尾 128 字节, 命中才全量读
         // (epub/pdf 可能上百 MB, 不能为了判定就整份读进内存)
         val isJson = runCatching { probeIsJson(path) }
@@ -73,6 +94,7 @@ object FileAssociationDispatch {
                 Toasters.get().toast(syncGetString("wrong_format"))
                 AppLog.put("文件关联导入: 格式不对 (未知 JSON 业务类型) $path")
             }
+            // 读过就当处完了: 报错已报 (或读取失败已落日志), 不得再往下走书籍分支
             return
         }
 
