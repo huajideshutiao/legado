@@ -11,6 +11,7 @@ import io.legado.app.help.book.addType
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalTxt
+import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.updateTo
@@ -62,10 +63,13 @@ class BookInfoScreenModel(initialBook: Book? = null) : ScreenModel {
             book = initialBook,
             bookTick = 0,
             coverTick = 0,
-            inBookshelf = false,
+            refreshing = false,
+            inBookshelf = initialBook?.let { !it.isNotShelf } ?: false,
             groupName = "",
-            tocText = null,
-            lastedTitle = initialBook?.latestChapterTitle ?: "",
+            // 目录文案初值 = 已入库的阅读进度 (零查询即知), 不在页面落定前显示假"加载中"
+            tocText = initialBook?.durChapterTitle?.takeIf { it.isNotBlank() },
+            // 最新章节需套本地化模板 (getString 是挂起函数), 首帧留空 —— 对照原版该控件首帧无文本
+            lastedTitle = "",
             wordCountText = null,
             isLandscape = false,
             useDevFeat = false,
@@ -113,15 +117,30 @@ class BookInfoScreenModel(initialBook: Book? = null) : ScreenModel {
     var loadedChapterList: List<BookChapter>? = null
         private set
 
+    /**
+     * 落地加载是否已开工。放在 ScreenModel 而不是 remember: 模型随路由 entry 存活
+     * (ScreenModelStore.retain), 从阅读页/目录页/编辑页返回本页时组合体重建而模型不重建 ——
+     * 对照原版 `BookInfoViewModel.initData` 的 `curBook != null → return`, 不重复查库/回源,
+     * 也不再二次执行 rss 书的 tocUrl/bookUrl 换位 (二次执行会把 bookUrl 写成 "data:")。
+     */
+    var bootStarted: Boolean = false
+
     fun dispatch(event: BookInfoUiEvent) {
         when (event) {
-            BookInfoUiEvent.Refresh -> _state.update { it.copy(tocText = null) }
+            // 只置刷新标志: 不再把 tocText 清成 null —— 同一个 null 曾被界面同时当成
+            // "未加载完"与"刷新中", 导致每次刷新整页变"加载中"
+            BookInfoUiEvent.Refresh -> _state.update { it.copy(refreshing = true) }
+            // 书籍数据更新 (bookData observe 触发)。**不**顺带 bump coverTick:
+            // 封面重载只由真换了封面驱动 (BumpCoverTick / getDisplayCover 变化后 remember 重启),
+            // 否则每次刷新都销毁封面子树 → 首帧退回默认封面
             is BookInfoUiEvent.ShowBook -> _state.update {
                 it.copy(
                     book = event.book,
                     bookTick = it.bookTick + 1,
-                    coverTick = it.coverTick + 1,
                     lastedTitle = event.lastedTitle,
+                    // 刷新的收尾就是 ShowBook + UpdateToc 一对, 两处都复位刷新标志:
+                    // 只靠 UpdateToc 时, 协程在两步之间被取消会留下永久转圈
+                    refreshing = false,
                 )
             }
 
@@ -129,6 +148,7 @@ class BookInfoScreenModel(initialBook: Book? = null) : ScreenModel {
                 it.copy(
                     tocText = event.tocText,
                     lastedTitle = event.lastedTitle ?: it.lastedTitle,
+                    refreshing = false,
                 )
             }
 
@@ -144,12 +164,33 @@ class BookInfoScreenModel(initialBook: Book? = null) : ScreenModel {
                 it.copy(wordCountText = event.text)
             }
 
+            BookInfoUiEvent.RefreshDone -> _state.update {
+                if (it.refreshing) it.copy(refreshing = false) else it
+            }
+
             BookInfoUiEvent.BumpBookTick -> _state.update {
                 it.copy(bookTick = it.bookTick + 1)
             }
 
             BookInfoUiEvent.BumpCoverTick -> _state.update {
                 it.copy(coverTick = it.coverTick + 1)
+            }
+        }
+    }
+
+    /**
+     * 刷新期协程: 统一挂 [BookInfoUiEvent.Refresh] 开工、无论成功/异常/取消都复位刷新标志。
+     *
+     * 不加这一层的话, 协程体开头 [PlatformCapabilityProviders.get] 一类在 try 之外的调用报错,
+     * 或协程在 ShowBook 与 UpdateToc 之间被取消, 下拉指示器会永久转圈。
+     */
+    private fun launchRefreshing(block: suspend () -> Unit) {
+        dispatch(BookInfoUiEvent.Refresh)
+        scope.launch(IoDispatcher) {
+            try {
+                block()
+            } finally {
+                dispatch(BookInfoUiEvent.RefreshDone)
             }
         }
     }
@@ -166,8 +207,7 @@ class BookInfoScreenModel(initialBook: Book? = null) : ScreenModel {
         runPreUpdateJs: Boolean = true,
         isSearchBook: Boolean = false,
     ) {
-        dispatch(BookInfoUiEvent.Refresh)
-        scope.launch(IoDispatcher) {
+        launchRefreshing {
             // 对照 app 端 refreshBook 前置: 本地非漫画书拉 WebDav 远端更新, 其余同步书源名
             if (book.isLocal && !book.isImage) {
                 val capabilities = PlatformCapabilityProviders.get()
@@ -214,8 +254,7 @@ class BookInfoScreenModel(initialBook: Book? = null) : ScreenModel {
         errorLoadToc: String,
         runPreUpdateJs: Boolean = true,
     ) {
-        dispatch(BookInfoUiEvent.Refresh)
-        scope.launch(IoDispatcher) {
+        launchRefreshing {
             val toc = loadChapterList(book, bookSource, runPreUpdateJs)
             upShowBook(book, toc, errorLoadToc)
         }
@@ -361,10 +400,18 @@ class BookInfoScreenModel(initialBook: Book? = null) : ScreenModel {
 }
 
 sealed interface BookInfoUiEvent {
-    /** 下拉刷新: 标记目录加载中 */
+    /**
+     * 开始刷新: 只置刷新标志 (驱动下拉指示器), **不清**已有目录文案。
+     *
+     * 旧实现把 tocText 置 null, 同一个 null 同时被当成"未加载完"与"刷新中",
+     * 每次刷新整页变“加载中”。
+     */
     object Refresh : BookInfoUiEvent
 
-    /** 书籍数据更新 (bookData observe 触发) */
+    /** 刷新流程收尾 (成功/失败/取消均发): 只复位刷新标志, 不动文案 */
+    object RefreshDone : BookInfoUiEvent
+
+    /** 书籍数据更新 (bookData observe 触发); 不驱动封面重载 */
     data class ShowBook(val book: Book, val lastedTitle: String) : BookInfoUiEvent
 
     /** 目录加载状态更新 (chapterListData observe / upLoading 触发) */

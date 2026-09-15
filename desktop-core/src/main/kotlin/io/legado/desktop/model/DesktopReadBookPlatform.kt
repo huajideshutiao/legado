@@ -40,10 +40,10 @@ object DesktopReadBookPlatform : ReadBookPlatform {
     }
 
     // clearImageCache: Coil 单例内存缓存与书架封面共用, 退出阅读时清会误伤封面, 保持不清;
-    // 解码位图进程级 LRU (DecodedBitmapCache: 大图查看/阅读背景/样式预览, 与封面链无关),
-    // 退出阅读时清空 (I1, 与 iOS/鸿蒙端对齐)。
+    // 解码位图进程级 LRU 主表 (DecodedBitmapCache: 大图查看/阅读背景/样式预览), 退出阅读时清空
+    // (I1, 与 iOS/鸿蒙端对齐)。封面小表属封面链, [DecodedBitmapCache.clearDecoded] 不碰它。
     override fun clearImageCache() {
-        DecodedBitmapCache.clear()
+        DecodedBitmapCache.clearDecoded()
     }
 }
 

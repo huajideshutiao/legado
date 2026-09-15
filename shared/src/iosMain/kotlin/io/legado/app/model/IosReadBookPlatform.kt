@@ -31,10 +31,11 @@ private object IosReadBookPlatform : ReadBookPlatform {
     override val isCacheBookServiceRun: Boolean get() = IosBackgroundTasks.isCacheBookRunning
 
     // 对照 app 端 ImageProvider.clear(): 释放 Coil3 内存缓存 (磁盘缓存保留) +
-    // 解码位图进程级 LRU (PhotoDialog/阅读背景等, I1)
+    // 解码位图进程级 LRU 主表 (PhotoDialog/阅读背景等, I1)。
+    // 只清主表不清封面小表: 退出阅读与封面链无关, 清了会让书架/详情首帧真封面失效
     override fun clearImageCache() {
         runCatching { iosCoilImageLoader.memoryCache?.clear() }
-        DecodedBitmapCache.clear()
+        DecodedBitmapCache.clearDecoded()
     }
 
     override fun clearTextFileCache() {

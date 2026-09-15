@@ -38,8 +38,13 @@ val LocalRoutePageAnchor = staticCompositionLocalOf<RoutePageAnchorScope?> { nul
  * 转场中留着会全屏突兀显示, 消费方应据此在转场期间移出组合, 动画结束自动恢复。
  * 注意消费是整体移出组合而非仅隐藏: 会连带卸载 RenderSurface 内的加载副作用
  * (videoUrl.collect), 恢复后由 StateFlow 补发 + URL 守卫接续; 代价是 push 进入视频页的
- * 起播/缓冲推迟一个转场时长, 属已知取舍。 */
-val LocalPageTransitionActive = staticCompositionLocalOf { false }
+ * 起播/缓冲推迟一个转场时长, 属已知取舍。
+ *
+ * 用 [compositionLocalOf] 而非 static: 读侧要**订阅**它的变化。详情页把"落地查库/回源"推到转场
+ * 结束之后 (见 BookInfoRoute 的 transitionActive 门控), 靠的就是动画收尾那一帧标志翻回 false 时
+ * 唤醒读者; static 不记读依赖, 那种唤醒只能沾"提供方整棵子树重算 + 本页不可 skip"的光, 属巧合而非机制。
+ */
+val LocalPageTransitionActive = compositionLocalOf { false }
 
 /**
  * [BookRef] 书源 origin 扩展: Stored/Search 分别代理其内部 Book / SearchBook 的 origin。

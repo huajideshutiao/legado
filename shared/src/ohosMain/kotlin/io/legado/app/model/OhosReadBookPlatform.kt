@@ -31,9 +31,10 @@ private object OhosReadBookPlatform : ReadBookPlatform {
     override val isCacheBookServiceRun: Boolean get() = CacheBookShared.isRun
 
     // 鸿蒙图片加载无 Coil 内存缓存, 但 ImageBitmapLoader 解码结果进进程级
-    // DecodedBitmapCache (大图查看/阅读背景等), 退出阅读时一并清空 (I1)
+    // DecodedBitmapCache (大图查看/阅读背景等), 退出阅读时清其主表 (I1);
+    // 封面小表跨页面存活、不在此清 (清了书架/详情首帧真封面即失效)
     override fun clearImageCache() {
-        DecodedBitmapCache.clear()
+        DecodedBitmapCache.clearDecoded()
     }
 
     override fun clearTextFileCache() {

@@ -11,7 +11,6 @@ import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -64,8 +63,10 @@ val LocalBlurCoverBgSlot =
 /**
  * 书籍详情封面: 委托书架通用封面 slot ([LocalBookCoverSlot], 默认 SharedBookCover)。
  *
- * 保留详情页的 [coverTick] 强制刷新语义 (coverTick 变化经 key 强制重建触发重载),
- * 不再平行实现一套; 原平台注入端点已随封面统一删除, 各端共用本实现。
+ * [coverTick] 只作为封面重载信号传给组件 (reloadTick 不参与已解位图的 remember 键), **不再当组合键**
+ * 销毁子树: 旧实现 `key(bookUrl, coverTick)` 会在每次计数变化时丢掉已解位图, 首帧退回默认封面 ——
+ * 共享元素飞行中即为可见闪图; 改为传 reloadTick 后行为对照原版 ImageView: 旧图保留到新图就绪。
+ * 原平台注入端点已随封面统一删除, 各端共用本实现。
  */
 @Composable
 fun BookInfoCover(
@@ -75,9 +76,7 @@ fun BookInfoCover(
 ) {
     if (book == null) return
     val coverSlot = LocalBookCoverSlot.current
-    key(book.bookUrl, coverTick) {
-        coverSlot(book, modifier, book.isVideo, 0)
-    }
+    coverSlot(book, modifier, book.isVideo, coverTick)
 }
 
 /**

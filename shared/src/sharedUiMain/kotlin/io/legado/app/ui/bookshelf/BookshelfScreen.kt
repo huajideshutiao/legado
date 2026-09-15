@@ -626,8 +626,9 @@ internal fun DefaultBookshelfActions(
  * 默认封面链对齐 app 端 `BookCover.newDefaultDrawable`: 用户图集非空时按 seed (书名, 无则封面
  * 路径) 稳定选一张烘焙图, 读缓存产物/图集原图 (见 [io.legado.app.model.defaultCoverDisplayPath]); 图集为空回落内置
  * `image_cover_default` (.9 图当普通图拉伸)。竖排书名/作者 overlay 只画在默认封面上,
- * 对照原版 `defaultCover=true` 才 drawNameAuthor。网络封面加载期间先铺该默认封面作占位,
- * 占位与真封面并发发起, 真封面命中缓存时同帧覆盖不闪占位。
+ * 对照原版 `defaultCover=true` 才 drawNameAuthor。只有**手上没有真图**时才在加载期先铺该默认
+ * 封面作占位: 首帧会先按 url 同步取已解码位图 (书架↔详情↔大图共用), 命中即首帧出真图;
+ * [reloadTick] 重载期间保留上一张真图直到新图就绪 (对照原版 ImageView 不清空)。
  *
  * 占位位图经 [DecodedBitmapCache] 跨条目共享 (命中即 O(1)): 原版 `BookCover.load` 只在
  * `.error()` 兜底、加载期间不铺默认封面, 本端保留占位是为了消除加载期空白, 但不再为占位
@@ -655,8 +656,19 @@ fun SharedBookCover(
     // useDefaultCover 时跳过网络加载, 直接走默认封面链 (对照原 View 版封面组件行为);
     // 每次组合读 prefs (不 remember): 宿主重组触发 LaunchedEffect 重启时读到的是最新配置
     val useDefaultCover = AppConfigProviders.get().useDefaultCover
+    // 首帧即出真图: 同一张封面已在别处 (书架格子/列表/上一次详情) 解码过时, 组合期同步取回,
+    // 不再让首帧摆默认封面——共享元素飞的是"可见那一端"的内容, 详情页首帧占位会被放大到整个
+    // 飞行尺寸, 观感即"闪一下默认封面"。小表同 url 只留面积最大的一档
+    // (见 [DecodedBitmapCache.recordCover]), 取回的是迄今解过的最大那份;
+    // 若它仍比当前显示尺寸小, 会先糊一帧, 下面按自己尺寸解完替换。
+    val cachedCover = remember(cover, book.origin, useDefaultCover) {
+        if (useDefaultCover || cover.isNullOrBlank()) null
+        else DecodedBitmapCache.peekCover(cover)
+    }
     // 位图与"是否默认封面"合成一个 state: 一次加载只引发一次重组
-    var coverState by remember(cover, book.origin) { mutableStateOf(NoCoverBitmap) }
+    var coverState by remember(cover, book.origin) {
+        mutableStateOf(cachedCover?.let { CoverBitmap(it, false) } ?: NoCoverBitmap)
+    }
     // 尺寸只用于首次按显示大小降采样；后续窗口 resize 不应重新发起封面请求。
     // 否则每跨过一个量化尺寸档都会再次进入图片 Interceptor，重复执行书源 JS header 规则。
     val displaySize = remember { MutableStateFlow(IntSize.Zero) }
@@ -690,8 +702,9 @@ fun SharedBookCover(
             coverState = defaultState()
             return@LaunchedEffect
         }
-        // 真封面与占位并发 (旧的串行写法让真封面白等一次占位加载): 真封面命中内存缓存时与
-        // 占位在同帧完成, 两次赋值只重组一次 → 不闪占位; 需下载时占位已铺好, 不出现空白。
+        // 真封面与占位并发 (旧的串行写法让真封面白等一次占位加载)。手上已有真图时不铺占位:
+        // 缓存同步命中的首帧、以及 reloadTick 重载期间的上一张真图, 都一直显示到新图就绪
+        // (对照原版 ImageView 加载期间保留上一帧 drawable); 确实无图可显示才铺默认封面消空白。
         coroutineScope {
             val real = async {
                 if (book.isNotShelf) {
@@ -701,10 +714,21 @@ fun SharedBookCover(
                     loader.loadCoverOrNull(cover, book.origin, decodeSize.width, decodeSize.height)
                 }
             }
-            coverState = defaultState()
+            if (coverState.bitmap == null || coverState.isDefault) {
+                coverState = defaultState()
+            }
             val bmp = real.await()
-            // 失败保持默认封面不变 (对照原版 BookCover.load 的 .error(newDefaultDrawable))
-            if (bmp != null) coverState = CoverBitmap(bmp, false)
+            // 失败保持当前图不变 (对照原版 BookCover.load 的 .error(newDefaultDrawable))
+            if (bmp != null) {
+                // 记进封面小表 (预算与解码主缓存分开, 同 url 只留面积最大的一档, 见
+                // [DecodedBitmapCache.recordCover])。不能改从 Coil 内存缓存按 url 现取:
+                // 它的 key 就是 url、不带尺寸, 书架格子/详情大图/歌词栏小图会互相覆写;
+                // 有效性判定与超预算弱引用淘汰都在库内部, 外部手取只能拿到上采样糊图或空;
+                // 安卓端 data 还被换成烘焙 webp 路径、鸿蒙端不注册 BookImageLoaders,
+                // 动图更是永不进内存缓存。这张小表是书架↔详情↔列表间复用已解位图的唯一通道
+                DecodedBitmapCache.recordCover(cover, bmp)
+                coverState = CoverBitmap(bmp, false)
+            }
         }
     }
     // 对齐原 View 版 onMeasure: 高度有界时按比例反推宽度, 否则按宽度推高度。

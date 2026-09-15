@@ -367,6 +367,8 @@ fun OtherConfigRoute(
             okButton = AlertButton(text = okStr) {
                 showCleanCoverCacheConfirm = false
                 scope.launch {
+                    // 封面小表也是封面缓存的一部分, 不挂上就清不到（它就是“清完还看到旧图”的根源）
+                    DecodedBitmapCache.clearCovers()
                     // 不拿无条件 toast 假装成功: 未注册 loader / diskCache 不是 MultiDiskCache 时
                     // clearCoverCache() 返 false, 那才是真没清
                     val cleared = BookImageLoaders.getOrNull()?.clearCoverCache() == true

@@ -160,6 +160,7 @@ import org.jetbrains.compose.resources.stringResource
  * 字段语义对照原 `BookInfoActivity` 同名字段:
  * - [book] / [bookTick] / [coverTick] / [inBookshelf] / [groupName] /
  *   [tocText] / [lastedTitle] / [wordCountText]: 与 Activity 同名字段一一对应
+ * - [refreshing]: 刷新中标志 (对照原版 upLoading), 只驱动下拉指示器
  * - [isLandscape] / [useDevFeat] / [isDarkTheme] / [isEInkMode]: 由路由层计算后传入
  *   (useDevFeat = bookInfoHorizontalLayout && !isVideo && !isLandscape;
  *   isEInkMode 时模糊封面背景与取色均跳过, 回退固定色)
@@ -169,6 +170,8 @@ data class BookInfoUiState(
     val book: Book?,
     val bookTick: Int,
     val coverTick: Int,
+    /** 正在刷新 (下拉/菜单/F5/事件触发): 只驱动指示器, 不清已有文案 (与"未加载完"分开) */
+    val refreshing: Boolean,
     val inBookshelf: Boolean,
     val groupName: String,
     val tocText: String?,
@@ -280,7 +283,9 @@ fun BookInfoScreen(
     coverSlot: @Composable (Book?, Modifier) -> Unit,
     introImageSlot: @Composable (String, () -> Unit) -> Unit,
 ) {
-    state.bookTick // 读 tick: book 原地可变对象, post 时递增驱动重组
+    // 注: 本层不读 tick —— 本函数是否重组由调用方对 [state] 参数的比较决定, 体内再读一次
+    // tick 无法反向影响该比较 (旧实现的 `state.bookTick` 顶读是死代码, 已删);
+    // book 原地可变时的强制重组靠 tick 进入 [BookInfoUiState] 使新旧不等
     // 模糊封面背景显示时 (竖屏非 devFeat / 横屏左列), 顶栏与头部文字按封面取色;
     // 取色由 blur 背景的加载回调驱动 (LocalCoverLoaded 送来原图, 见 BookCoverPalette),
     // 未回调 (加载中/失败/E-Ink) 前 palette 为 null, 回退原有固定色
@@ -328,7 +333,7 @@ private fun PortraitLayout(
     introImageSlot: @Composable (String, () -> Unit) -> Unit,
 ) {
     val pullState = rememberPullToRefreshState()
-    val isRefreshing = state.tocText == null
+    val isRefreshing = state.refreshing
     Box(Modifier.fillMaxSize()) {
         Box(
             Modifier
@@ -414,7 +419,7 @@ private fun LandscapeLayout(
         }
         // 右半:下拉刷新 + 动作行/分类/简介 + 底部按钮
         val pullState = rememberPullToRefreshState()
-        val isRefreshing = state.tocText == null
+        val isRefreshing = state.refreshing
         Box(
             Modifier
                 .weight(1f)
