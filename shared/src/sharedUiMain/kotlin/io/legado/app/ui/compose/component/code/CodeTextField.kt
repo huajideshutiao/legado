@@ -406,10 +406,20 @@ fun CodeTextField(
     var autoDismissedText by remember { mutableStateOf<String?>(null) }
     val matches = if (autoDismissedText == value.text.toString()) emptyList() else autoMatches
     LaunchedEffect(matches) { autoSelectedIndex = -1 }
+    // ESC/返回键收起候选必须走这一层: 预览阶段是"根→叶", 根节点 handleBackKey 的 dispatchCapture
+    // 会在本字段的 onPreviewKeyEvent 之前拿到 ESC 并 performBack —— 不注册的话按 ESC 直接关掉
+    // 所在页面/对话框 (编辑内容可能丢), 本字段里那个 Escape 分支永远不可达。
+    // dismissTopLayer 在 overlay/pop 之前, 注册后本层先消费 (与 AppDropdownMenu 同一套语义)
+    BackLayerHandler(enabled = matches.isNotEmpty()) {
+        autoDismissedText = value.text.toString()
+    }
     // 确认候选 (键盘回车/Tab 与点击共用), 对齐原版 replaceText 后 dismissDropDown
     val applyMatch: (Int) -> Unit = { index ->
+        // autoSelectedIndex 只在 LaunchedEffect(matches) 里异步复位: 输入让候选变短、该 effect 还没跑
+        // 时按回车会拿旧下标索引新表 → 越界。按当前表长钳制 (matches 非空由调用点保证)
+        val safeIndex = index.coerceIn(0, matches.lastIndex)
         val (newText, newSelection) =
-            applyCompletion(value.text.toString(), value.selection, matches[index])
+            applyCompletion(value.text.toString(), value.selection, matches[safeIndex])
         autoDismissedText = newText
         autoSelectedIndex = -1
         value.edit {
@@ -659,8 +669,8 @@ fun CodeTextField(
     // 的 isRealLineStart 判定同语义 (续行不画号), 也让行号列与正文逐行严格对齐。
     // layout 未就绪时先按逻辑行数排 (首帧, 随即被 onTextLayout 校正)
     // 行号窗口: 布局过期帧 (文本刚变, onTextLayout 未回传) 复用上次结果, 首帧无历史回退
-    // 逻辑行数估算 (见 gutterWindow)
-    var lastGutterWindow by remember { mutableStateOf<Triple<String, Float, Int>?>(null) }
+    // 逻辑行数估算 (见 gutterWindow)；普通引用容器避免组合期写状态引发额外重组
+    val lastGutterWindow = remember { ValueHolder<Triple<String, Float, Int>?>(null) }
     // 换行位置索引 (按文本记忆一次): 窗口首行的逻辑行号起点改二分 (见 logicalLineBefore),
     // 不再每帧从 0 扫全文换行符; 不显示行号时不建索引
     val newlineIndex = remember(gutterShown, value.text.toString()) {
@@ -678,7 +688,7 @@ fun CodeTextField(
         if (layout == null) {
             // 布局未就绪 (首帧/刚载入) 按逻辑行数估算; 过期帧复用上次结果, 避免行号串
             // 逐键闪变 (估算串与挂载窗口不匹配)
-            lastGutterWindow ?: Triple(buildLineNumbers(lineCount), 0f, 0)
+            lastGutterWindow.value ?: Triple(buildLineNumbers(lineCount), 0f, 0)
         } else {
             // 可见区域 = 外部滚动贡献 (externalVisibleTopPx, onGloballyPositioned 更新) +
             // 内部滚动贡献 (internalScroll.value) —— 两种滚动场景一个公式; 渲染余量 ±5 行
@@ -704,7 +714,7 @@ fun CodeTextField(
                     layout.getLineTop(from).coerceAtLeast(0f),
                     from,
                 )
-            }.also { lastGutterWindow = it }
+            }.also { lastGutterWindow.value = it }
         }
     }
     val numbersText = gutterWindow?.first ?: ""
@@ -726,8 +736,9 @@ fun CodeTextField(
     } else {
         0.dp
     }
-    // 补全弹层锚点: 布局过期帧复用上次已算好的锚点 (见 popupOffset), 首帧无历史回退 Zero
-    var lastPopupOffset by remember { mutableStateOf(IntOffset.Zero) }
+    // 补全弹层锚点: 布局过期帧复用上次已算好的锚点 (见 popupOffset), 首帧无历史回退 Zero；
+    // 普通引用容器避免组合期写状态引发额外重组
+    val lastPopupOffset = remember { ValueHolder(IntOffset.Zero) }
     val popupOffset = if (matches.isEmpty()) {
         IntOffset.Zero
     } else {
@@ -740,7 +751,7 @@ fun CodeTextField(
         if (layout == null) {
             // 布局未就绪 (首帧) 或过期 (文本刚变, onTextLayout 未回传): 复用上次锚点,
             // 避免弹层逐键闪回字段角落; 无历史 (首帧) 才退回 Zero
-            lastPopupOffset
+            lastPopupOffset.value
         } else {
             remember(layout, value.selection, gutterWidthPx, contentPadding, density, fieldWindowOffset, label != null, internalScroll.value) {
                 val cursor = value.selection.start.coerceIn(0, value.text.length)
@@ -761,7 +772,7 @@ fun CodeTextField(
                 // 弹层锚点换算见 AutoCompletePopup: 组件内偏移 + 字段窗口位置, 由 PopupPositionProvider
                 // 减去内容根窗口偏移 (anchorBounds.topLeft) 得最终 offset
                 IntOffset(x, y) + fieldWindowOffset
-            }.also { lastPopupOffset = it }
+            }.also { lastPopupOffset.value = it }
         }
     }
     AppTextFieldImpl(
@@ -1664,3 +1675,6 @@ private class CompletionSnapshotCache {
         return result
     }
 }
+
+/** 普通引用容器, 供组合阶段跨重组缓存上一帧派生值 (不触发额外重组)。 */
+private class ValueHolder<T>(var value: T)
