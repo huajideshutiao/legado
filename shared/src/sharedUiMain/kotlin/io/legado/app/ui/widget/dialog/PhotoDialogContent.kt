@@ -21,7 +21,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -64,10 +63,10 @@ import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.imageSaveFileName
 import io.legado.app.ui.root.photoSharedTarget
 import io.legado.app.utils.readAllAndClose
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.image_cover_default
 import legado.shared.generated.resources.loading
@@ -467,7 +466,9 @@ fun PhotoViewOverlayDialog(
     // 错帧就会两端同时报称可见 → 官方按"缺 target"处理, 一个都不动画), 写只在下面的 effect 里
     val taken = photoShared.visibleKey == src
 
-    LaunchedEffect(shareable, closing, src, placeholder) {
+    // key 只留真正决定"进入时是否接管"的项: shareable 在 body 内没用到; placeholder 是调用点
+    // 内联 lambda (每次父重组都是新实例), 拿它当 key 会让 effect 白白重启写同值
+    LaunchedEffect(closing, src, placeholder == null) {
         if (closing) return@LaunchedEffect
         // 进入时无需等待后台大图解码, 直接接管共享元素 (首帧有内存位图即带图起飞, 杜绝等待卡顿与微闪);
         // 前置占位 (书源身份查询中) 时先不接管
@@ -480,16 +481,25 @@ fun PhotoViewOverlayDialog(
 
     val requestDismiss: () -> Unit = { closing = true }
     // 返回键/ESC 必须走"先播退场飞行、飞完再卸载"这条路: 同窗口覆盖层不再拥有独立窗口的
-    // 返回拦截, 故本层用与 AppDialog 同一套 BackLayerHandler 抢在根之前接键 (见 BackKeyHandler.kt)
+    // 返回拦截, 故本层用与 AppDialog 同一套 BackLayerHandler 抢在根之前接键 (见 BackKeyHandler.kt)。
+    // 退场期间 (closing=true) 也保持接键: 漏给根处理器会走 dismissTopOverlay 把回飞硬切掉
     val windowController = remember { PlatformServiceProviders.get().window }
-    BackLayerHandler(enabled = !closing) { requestDismiss() }
+    BackLayerHandler(enabled = true) { requestDismiss() }
     LaunchedEffect(closing) {
         if (!closing) return@LaunchedEffect
         photoShared.visibleKey = null
         if (shareable) {
-            // 退场 bounds 动画与蒙版渐变严格同频 (PhotoSharedBoundsDurationMillis 280ms),
-            // 等待退场完整落回原位并完成蒙版渐变, 再交还系统栏并卸载 Overlay, 彻底杜绝瞬退闪回
-            delay(PhotoSharedBoundsDurationMillis + 20L)
+            // 退场以官方转场状态为准, 不用定长 delay 近似 (慢帧下会提前把回飞与蒙版渐变硬切掉)。
+            // 信号是作用域级的, 刚置 visibleKey=null 时可能还是 false (尚未起飞), 故先等它变 true
+            // 再等它变 false。上限只比飞行时长多留一半: Overlay 未卸载期间仍会吃掉点击,
+            // 源封面中途被回收 (LazyGrid 滚出/刷新/旋屏) 导致信号永不到来时不能多挡太久
+            val transitionScope = scope
+            if (transitionScope != null) {
+                withTimeoutOrNull(PhotoSharedBoundsDurationMillis.toLong() * 3 / 2) {
+                    snapshotFlow { transitionScope.isTransitionActive }.first { it }
+                    snapshotFlow { transitionScope.isTransitionActive }.first { !it }
+                }
+            }
         }
         windowController.setLightIconOverlay(false)
         onDismiss()

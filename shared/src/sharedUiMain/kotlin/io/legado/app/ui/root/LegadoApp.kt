@@ -73,6 +73,7 @@ import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.LocalTransitionFrozenStatusBarHeightPx
 import io.legado.app.ui.compose.platform.PlatformBackHandler
+import io.legado.app.ui.compose.platform.dismissTopLayer
 import io.legado.app.ui.compose.platform.handleBackKey
 import io.legado.app.ui.compose.platform.performBack
 import io.legado.app.ui.compose.platform.rememberVisibleStatusBarHeightPx
@@ -607,8 +608,8 @@ fun LegadoApp(
         } // LocalSharedTransitionScope
         } // SharedTransitionLayout
 
-        // 系统返回键: Overlay 存在时关闭顶层 Overlay (Android 走 BackHandler;
-        // 桌面端 ESC/Backspace 由上方 handleBackKey → performBack 先 dismissTopOverlay)。
+        // 系统返回键: Overlay 存在时关闭顶层 Overlay (Android 走 BackHandler; 桌面端 ESC/Backspace
+        // 由上方 handleBackKey → performBack, 先关顶层覆盖物层再关 Overlay)。
         // 栈顶 Overlay 挂起 (窗口已隐藏, 如登录对话框被 WebView 路由盖住) 时不拦截返回键,
         // 落到路由层 pop (对照原版 WebViewActivity 在前台时返回键先退出它)。
         // 栈顶 Overlay 不可由返回键关闭 (dismissOnBack=false) 时同样不拦截: 拦截只会
@@ -618,7 +619,10 @@ fun LegadoApp(
                 && overlays.lastOrNull()?.key !in suspendedKeys
                 && navigator.isTopOverlayDismissibleOnBack()
         ) {
-            navigator.dismissTopOverlay()
+            // 先给层内自管退场的机会: 大图查看器等组件用 BackLayerHandler 自己播退场回飞,
+            // 播完再卸载 Overlay (见 PhotoDialogContent)。直接 dismissTopOverlay 会把 280ms
+            // 回飞与蒙版渐变硬切掉, 且与桌面 ESC 走 performBack 的行为不一致。
+            if (!dismissTopLayer()) navigator.dismissTopOverlay()
         }
 
         // 处理初始启动请求
