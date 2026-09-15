@@ -6,7 +6,6 @@ import io.legado.app.data.entities.BookGroup
 import io.legado.app.help.DefaultDataShared
 import io.legado.app.help.config.HelpVersion
 import io.legado.app.help.config.LocalConfigKeys
-import io.legado.app.help.config.LocalConfigShared
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.desktop.constant.DesktopAppInfo
 
@@ -17,7 +16,7 @@ import io.legado.desktop.constant.DesktopAppInfo
  * app 端两条来源桌面端都缺:
  * - `DefaultData.upVersion()`: 依赖 `LocalConfig` (SharedPreferences) + `AppConst.appInfo`
  *   (PackageManager); 这里换成 [PreferenceProviders] + [DesktopAppInfo] + 已下沉的
- *   [LocalConfigShared] 版本比较算法, 导入 httpTTS / txtTocRule / dictRule
+ *   下面的 importOnce 版本号门 (导入成功才推进, 失败下次再补), 导入 httpTTS / txtTocRule / dictRule
  * - `dbCallback.onCreate` 的预置书架分组 + 键盘助手: 桌面端**已经**挂在建库回调 ——
  *   `BundledDatabaseDriver` 构造时 `.addCallback(AppDatabaseDefaults)`, 其 `onCreate` 调
  *   `AppDatabaseDefaultData.insert` 插同名的 4 个预置分组与键盘助手 (SQL 自带 not exists /
@@ -58,13 +57,15 @@ private suspend fun ensurePresetBookGroups() {
     }.onFailure { AppLog.put("补齐预置书架分组失败", it) }
 }
 
-/** 键盘助手: 空表时导入默认值 (对照 app 端 dbCallback 的 insert or replace)。 */
+/** 键盘助手: 按 (type,key) 逐项补齐缺失项 (对照 app 端 dbCallback 的 insert or replace)。 */
 private suspend fun ensureKeyboardAssists() {
     runCatching {
         val dao = AppDbProviders.get().keyboardAssistsDao
-        if (dao.all().isEmpty()) {
-            dao.insert(*DefaultDataShared.keyboardAssists.toTypedArray())
-        }
+        // 旧实现是"整表为空才写": 库非空时以后新增的预置助手永远补不进去, 与该函数 KDoc
+        // 自述的"兜以后新增的预置项"相反; 这里改为按主键 (type,key) 缺啥补啥
+        val existing = dao.all().map { it.type to it.key }.toSet()
+        val missing = DefaultDataShared.keyboardAssists.filter { (it.type to it.key) !in existing }
+        if (missing.isNotEmpty()) dao.insert(*missing.toTypedArray())
     }.onFailure { AppLog.put("补齐默认键盘助手失败", it) }
 }
 
@@ -74,27 +75,32 @@ private suspend fun upDefaultDataVersion() {
     val recorded = prefs.getLong(LocalConfigKeys.appVersionCode, 0L)
     if (recorded >= DesktopAppInfo.versionCode.toLong()) return
 
-    // isLastVersion 命中即写回最新版本号, 故只会导入一次 (与 app 端 needUpXxx 语义一致)
-    fun needUp(versionKey: String, lastVersion: Int): Boolean = !LocalConfigShared.isLastVersion(
-        lastVersion = lastVersion,
-        versionKey = versionKey,
-        getInt = { k, d -> prefs.getInt(k, d) },
-        getBoolean = { k, d -> prefs.getBoolean(k, d) },
-        putInt = { k, v -> prefs.putInt(k, v) },
-    )
+    // 版本 key 只在**导入成功**后才写回。旧实现直接复用 LocalConfigShared.isLastVersion
+    // (命中即先写回版本号), 加上本函数末尾无条件写 appVersionCode —— 导入失败那一次之后
+    // 两个门都已关, 默认 httpTTS/目录规则/字典规则永远补不上 (桌面端没有 app 端那条
+    // "下次启动再走 upVersion" 的路径)。任一项失败就不推进 appVersionCode, 下次启动重试。
+    var allImported = true
+    fun importOnce(versionKey: String, lastVersion: Int, what: String, import: () -> Unit) {
+        if (prefs.getInt(versionKey, 0) >= lastVersion) return
+        runCatching(import)
+            .onSuccess { prefs.putInt(versionKey, lastVersion) }
+            .onFailure {
+                allImported = false
+                AppLog.put("$what 失败 (不推进版本号, 下次启动重试)", it)
+            }
+    }
 
-    if (needUp(LocalConfigKeys.httpTtsVersion, HelpVersion.httpTts)) {
-        runCatching { DefaultDataShared.importDefaultHttpTTS() }
-            .onFailure { AppLog.put("导入默认 httpTTS 失败", it) }
+    importOnce(LocalConfigKeys.httpTtsVersion, HelpVersion.httpTts, "导入默认 httpTTS") {
+        DefaultDataShared.importDefaultHttpTTS()
     }
-    if (needUp(LocalConfigKeys.txtTocRuleVersion, HelpVersion.txtTocRule)) {
-        runCatching { DefaultDataShared.importDefaultTocRules() }
-            .onFailure { AppLog.put("导入默认 txt 目录规则失败", it) }
+    importOnce(LocalConfigKeys.txtTocRuleVersion, HelpVersion.txtTocRule, "导入默认 txt 目录规则") {
+        DefaultDataShared.importDefaultTocRules()
     }
-    if (needUp(LocalConfigKeys.needUpDictRule, HelpVersion.dictRule)) {
-        runCatching { DefaultDataShared.importDefaultDictRules() }
-            .onFailure { AppLog.put("导入默认字典规则失败", it) }
+    importOnce(LocalConfigKeys.needUpDictRule, HelpVersion.dictRule, "导入默认字典规则") {
+        DefaultDataShared.importDefaultDictRules()
     }
     // app 端由 MainActivity 展示更新日志后写回, 桌面端无更新日志弹窗, 就地写回
-    prefs.putLong(LocalConfigKeys.appVersionCode, DesktopAppInfo.versionCode.toLong())
+    if (allImported) {
+        prefs.putLong(LocalConfigKeys.appVersionCode, DesktopAppInfo.versionCode.toLong())
+    }
 }
