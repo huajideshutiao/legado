@@ -3,6 +3,7 @@ package io.legado.desktop.config
 import com.sun.jna.Platform
 import com.sun.jna.platform.win32.Advapi32Util
 import com.sun.jna.platform.win32.WinReg
+import io.legado.app.constant.AppLog
 import io.legado.desktop.config.DesktopAppConfigAccessor.Companion.systemNightModeDetector
 
 /**
@@ -38,7 +39,11 @@ fun probeSystemNightMode(): Boolean =
                 "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
                 "AppsUseLightTheme",
             ) == 0
-        }.getOrDefault(false)
+        }
+            // 失败不静默回落浅色: 全局主题/标题栏按钮态/isDark 都跟着它, 系统实为深色时
+            // 会整体反色且无任何可查痕迹
+            .onFailure { AppLog.put("读取系统深色模式失败, 按浅色处理", it) }
+            .getOrDefault(false)
     }
 
 fun registerDesktopSystemNightModeDetector() {

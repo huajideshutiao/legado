@@ -244,7 +244,13 @@ object SingleInstanceGuard {
 
     private fun acceptLoop(server: ServerSocket, token: String) {
         while (!server.isClosed) {
-            val socket = runCatching { server.accept() }.getOrElse { return }
+            val socket = runCatching { server.accept() }
+                .onFailure {
+                    // 静默 return 会让监听线程默默死掉而 lock 文件还在: 后续二次启动连到已死端口
+                    // → 连接被拒 → 各自当首实例, 单实例能力静默失效
+                    if (!server.isClosed) AppLog.put("单实例监听 accept 异常, 监听退出", it, tag = TAG)
+                }
+                .getOrElse { return }
             runCatching { handleConnection(socket, token) }
                 .onFailure { AppLog.put("处理转发连接异常", it, tag = TAG) }
             runCatching { socket.close() }
@@ -320,7 +326,9 @@ object SingleInstanceGuard {
     /** 解析 lock; 文件缺失/损坏/端口非法一律返回 null (调用方按"无实例"处理)。 */
     private fun readLock(lockFile: File): InstanceLock? {
         if (!lockFile.isFile) return null
-        val text = runCatching { lockFile.readText(StandardCharsets.UTF_8) }.getOrNull()
+        val text = runCatching { lockFile.readText(StandardCharsets.UTF_8) }
+            .onFailure { AppLog.put("lock 文件读取失败 (按无实例处理): ${lockFile.absolutePath}", it, tag = TAG) }
+            .getOrNull()
             ?.trim()?.takeIf { it.isNotEmpty() } ?: return null
         val lock = runCatching { json.decodeFromString<InstanceLock>(text) }.getOrElse {
             AppLog.put("lock 文件损坏, 按无实例处理: ${lockFile.absolutePath}", tag = TAG)

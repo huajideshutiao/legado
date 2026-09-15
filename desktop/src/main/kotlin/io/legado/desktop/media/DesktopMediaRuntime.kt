@@ -153,10 +153,17 @@ object DesktopMediaRuntime {
     }
 
     private fun isInstalled(dir: File): Boolean {
-        val marker = markerFile(dir)
         val expected = expectedSha1 ?: return false
-        return File(dir, wrapperFileName()).isFile &&
-            marker.isFile && marker.readText().trim().equals(expected, ignoreCase = true)
+        if (!File(dir, wrapperFileName()).isFile) return false
+        val marker = markerFile(dir)
+        if (!marker.isFile) return false
+        // .sha1 完成标记读取失败 (被占用/权限/刚被删的竞争窗口) 不能当成"已装好", 也不能
+        // 把 IOException 丢给调用方 —— isReady() 会被视频页构造器直接调, 异常会变成"进页即崩"。
+        // 记日志后按未安装处理, 走正常确认/下载流程。
+        val actual = runCatching { marker.readText() }.onFailure {
+            AppLog.put("媒体组件完成标记读取失败: ${marker.absolutePath}", it)
+        }.getOrNull() ?: return false
+        return actual.trim().equals(expected, ignoreCase = true)
     }
 
     /** prepareLibraries 会把 native 永久装进本进程, 失败必须留日志且不许静默当作成功 */
