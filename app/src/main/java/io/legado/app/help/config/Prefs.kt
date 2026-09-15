@@ -80,7 +80,7 @@ internal class CachedPref<T>(
     override fun getValue(thisRef: Any?, property: KProperty<*>): T = current
     override fun setValue(thisRef: Any?, property: KProperty<*>, value: T) {
         store(value)
-        current = value
+        current = load()
     }
 }
 
