@@ -1,8 +1,13 @@
 import org.gradle.internal.os.OperatingSystem
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import java.io.BufferedOutputStream
+import java.io.FileOutputStream
 import java.time.LocalDate
 import java.util.Properties
+import java.util.zip.Deflater
+import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
 
 plugins {
     id("legado.jvm.application")
@@ -280,7 +285,8 @@ tasks.matching { it.name == "createRuntimeImage" }.configureEach {
     // (3.26.09121949 便携版实测: runtime/bin 只剩 *.dll, runtime/lib/server 为空),
     // 于是旧版 dumpCdsArchive 的 `if (!jreJava.exists()) warn + return` 静默跳过,
     // -Xshare:auto 全程空转 —— 注释里宣称的“启动期类加载时间降 20~40%”从未落地。
-    // 代价: 产物 runtime 多几个 launcher (量级 MB), 换回默认 CDS 归档。
+    // 代价: 产物 runtime 多 3 个 launcher —— 实测 java.exe 50296 + javaw.exe 50296 +
+    // keytool.exe 24696 = 125,288B (0.12MB, 不是此前注释写的"量级 MB", 那数字夸大约 10 倍)。
     // 刻意不用上方 compressionLevel 的 runCatching 静默降级: 拿不到这个属性 = CDS 又会静默失效,
     // 必须当场构建失败。
     run {
@@ -696,6 +702,137 @@ tasks.matching { it.name.startsWith("proguard") && it.name.endsWith("Jars") }.co
     dependsOn(mergeDependencyProguardRules)
 }
 
+// ============================================================
+// 打包期剔除 jar 内非构建平台的 native
+// ============================================================
+// 根因 (实测于 3.26.09150109 镜像): 三方 jar 把全平台 native 装同一个 artifact —
+//  - sqlite-bundled-jvm 2.7.0: natives/{windows_x64,linux_x64,linux_arm64,osx_arm64} 四份
+//    sqliteJni, 解压 7.17MiB, 非本平台三份在 jar 内仍占 2.66MiB;
+//  - jna 5.19.1: com/sun/jna/ 下 27 份 jnidispatch (aix/sunos/freebsd/loongarch64/s390x…),
+//    解压 5.04MiB, 本机只认 win32-x86-64 一份。
+// 这些条目在 jar 内已 deflate, jpackage 外层再压不动 (实测整树 gzip-6 与 MSI 比值接近),
+// 所以每出一个平台的包就把其它平台的字节照抄一遍 —— Windows 安装包里约 4MiB 是死字节。
+// 做法: 在官方 ProGuard 输出目录上就地重写 jar, 只留构建平台自己的 native 目录。ProGuard
+// 已在该目录上产出、下游 createReleaseDistributable / packageRelease* 全部从该目录取件, 所以
+// 一个钩子同时覆盖 MSI / deb / rpm / dmg / 便携 zip 五条链; CI 矩阵下构建平台即目标平台
+// (windows/ubuntu/macos runner), 无需按 targetFormat 分支。
+// 判定口径: 只有 token 命中下方已知平台目录名单、且不是本平台的那份才删; 名单外的目录名
+// (如 com/sun/jna/platform/ 这种普通包) 一律保留, 避免误删 Java 类。
+private val foreignNativeRoots = listOf("natives/", "com/sun/jna/")
+
+private val knownNativeTokens = setOf(
+    // sqlite-bundled: natives/<token>/
+    "windows_x64", "windows_arm64", "linux_x64", "linux_arm64", "osx_x64", "osx_arm64",
+    // jna: com/sun/jna/<token>/
+    "win32-x86", "win32-x86-64", "win32-aarch64", "win32-amd64",
+    "linux-x86", "linux-x86-64", "linux-arm", "linux-armel", "linux-aarch64",
+    "linux-ppc", "linux-ppc64", "linux-ppc64le", "linux-mips64el", "linux-loongarch64",
+    "linux-riscv64", "linux-s390x", "linux-x86_64",
+    "darwin-x86", "darwin-x86-64", "darwin-aarch64", "darwin-universal",
+    "sunos-x86", "sunos-x86-64", "sunos-sparc", "sunos-sparcv9",
+    "freebsd-x86", "freebsd-x86-64", "freebsd-arm", "freebsd-ia64",
+    "openbsd-x86", "openbsd-x86-64", "netbsd-x86", "netbsd-x86-64",
+    "dragonflybsd-x86-64", "kfreebsd-i386", "kfreebsd-x86-64", "aix-ppc", "aix-ppc64",
+)
+
+private fun nativeTokensToKeep(os: OperatingSystem, arch: String): Set<String> {
+    val arm = arch.contains("aarch64") || arch.contains("arm64")
+    return when {
+        os.isWindows -> if (arm) setOf("win32-aarch64", "windows_arm64")
+        else setOf("win32-x86-64", "win32-amd64", "windows_x64")
+        os.isMacOsX -> if (arm) setOf("darwin-aarch64", "osx_arm64")
+        else setOf("darwin-x86-64", "darwin-x86", "osx_x64")
+        else -> if (arm) setOf("linux-aarch64", "linux_arm64")
+        else setOf("linux-x86-64", "linux-x86_64", "linux_x64")
+    }
+}
+
+/** 未知目录名一律视为非平台目录 (不删); 已知平台 token 且不属于本平台 → 删。 */
+private fun isForeignNativeEntry(
+    name: String,
+    keep: Set<String>,
+): Boolean {
+    val root = foreignNativeRoots.firstOrNull { name.startsWith(it) } ?: return false
+    val token = name.substring(root.length).substringBefore('/')
+    return token in knownNativeTokens && token !in keep
+}
+
+private fun stripForeignNativeEntries(
+    jarDir: File,
+    keep: Set<String>,
+    report: (String) -> Unit,
+) {
+    if (!jarDir.isDirectory) {
+        throw GradleException(
+            "剔除跨平台 native 失败: ProGuard 输出目录不存在 $jarDir —— " +
+                "插件输出路径已变, 不得静默跳过 (否则白背体积又回来)"
+        )
+    }
+    var totalSaved = 0L
+    var rewritten = 0
+    val jars = jarDir.listFiles { f: File -> f.isFile && f.name.endsWith(".jar") }
+        ?.sortedBy { it.name } ?: emptyList()
+    for (jar in jars) {
+        val dropNames = HashSet<String>()
+        ZipFile(jar).use { zf ->
+            zf.entries().asSequence().forEach { e ->
+                if (!e.isDirectory && isForeignNativeEntry(e.name, keep)) dropNames += e.name
+            }
+        }
+        if (dropNames.isEmpty()) continue
+        val tmp = File(jar.parentFile, jar.name + ".stripping")
+        var after = 0L
+        ZipFile(jar).use { zf ->
+            ZipOutputStream(
+                BufferedOutputStream(FileOutputStream(tmp))
+            ).use { out ->
+                out.setLevel(Deflater.BEST_COMPRESSION)
+                zf.entries().asSequence().forEach { e ->
+                    if (e.name in dropNames) return@forEach
+                    // 原为 STORED 的条目保持 STORED, 不改变 jar 内存储形态以免影响加载路径
+                    val ne = ZipEntry(e.name)
+                    if (e.method == ZipEntry.STORED) ne.method = ZipEntry.STORED
+                    out.putNextEntry(ne)
+                    zf.getInputStream(e).use { it.copyTo(out) }
+                    out.closeEntry()
+                }
+            }
+        }
+        after = tmp.length()
+        val original = jar.length()
+        if (after >= original) {
+            // 重写后反而变大 (理论上只会变小: 删的都是已压缩条目) → 保留原件, 不静默接受负收益
+            tmp.delete()
+            report("[native-strip] ${jar.name} 重写后未变小, 保留原件")
+            continue
+        }
+        if (!jar.delete() || !tmp.renameTo(jar)) {
+            throw GradleException("[native-strip] 替换 jar 失败: ${jar.absolutePath}")
+        }
+        totalSaved += original - after
+        rewritten++
+        report(
+            "[native-strip] ${jar.name}: $original B → $after B (剔 ${dropNames.size} 个非本平台 native 条目)"
+        )
+    }
+    report(
+        "[legado-desktop] 跨平台 native 剔除完成: 保留目录 $keep, 重写 $rewritten 个 jar, 省 ${totalSaved / 1024} KB"
+    )
+}
+
+// ProGuard 输出就地在末尾 doLast 处理: Gradle 在全部 action (含 doLast) 跑完后才取输出指纹,
+// 因此不会把 proguardReleaseJars 变成永久 dirty。
+tasks.matching { it.name == "proguardReleaseJars" }.configureEach {
+    val proguardOutDir = layout.buildDirectory.dir("compose/tmp/main-release/proguard")
+    val keepTokens = nativeTokensToKeep(
+        OperatingSystem.current(),
+        System.getProperty("os.arch").orEmpty(),
+    )
+    doLast {
+        stripForeignNativeEntries(proguardOutDir.get().asFile, keepTokens) { logger.lifecycle(it) }
+    }
+}
+
 compose.desktop {
     application {
         mainClass = "io.legado.desktop.MainKt"
@@ -964,7 +1101,7 @@ afterEvaluate {
 // ============================================================
 // CDS (Class Data Sharing) 归档生成
 // ============================================================
-// 背景: jlink 精简的 JRE 不含默认 CDS 归档 (classes_nocoops.jsa),
+// 背景: jlink 精简的 JRE 不含默认 CDS 归档 (classes.jsa),
 // -Xshare:auto 静默回退到非 CDS 模式 → 每次启动从零加载/解析全部类元数据,
 // 是正式版 (jlink JRE) 比 debug 版 (完整 JDK 自带 CDS) 启动慢的主因之一。
 // 本 task 在 jlink 输出目录上跑该 JRE 自己的 java -Xshare:dump 生成默认 CDS 归档。
@@ -1018,32 +1155,34 @@ val dumpCdsArchive by tasks.registering {
                         + "需在 createRuntimeImage 里保持 --strip-native-commands=false (见该 task 注释)"
             )
         }
-        // -Xshare:dump 按当前压缩指针模式选归档文件名, 故跑两遍:
-        // 默认模式出 classes.jsa, -XX:-UseCompressedOops 出 classes_nocoops.jsa。
-        // 本包 -Xmx768m 必走压缩指针, 真正必需的是 classes.jsa; nocoops 归档缺失不影响本包。
-        listOf<List<String>>(emptyList(), listOf("-XX:-UseCompressedOops")).forEach { extraArgs ->
-            val pb = ProcessBuilder(
-                listOf(javaExe.absolutePath) + extraArgs + listOf("-Xshare:dump")
-            )
-            pb.directory(cdsRuntimeImageDir)
-            pb.redirectErrorStream(true)
-            val proc = pb.start()
-            val output = proc.inputStream.bufferedReader().use { it.readText() }
-            val exit = proc.waitFor()
-            output.lines().filter { it.isNotBlank() }
-                .forEach { logger.lifecycle("[cds-dump] $it") }
-            if (exit != 0) {
-                throw GradleException("CDS dump 失败 (args=$extraArgs, exit=$exit):\n$output")
-            }
+        // 只 dump 压缩指针那一份归档: jpackage cfg 里 -Xmx768m 恒走压缩指针, JVM 只映射
+        // classes.jsa, classes_nocoops.jsa 运行时永不加载 —— 旧实现跑两遍 dump, 每次白往包里
+        // 塞 12,386,304B (3.26.09150109 便携包实测含该文件)。下方 nocoops 的清理分支负责把
+        // 旧构建留在复用 jlink 输出目录里的归档删掉, 否则只停 dump 不减体积。
+        val pb = ProcessBuilder(listOf(javaExe.absolutePath, "-Xshare:dump"))
+        pb.directory(cdsRuntimeImageDir)
+        pb.redirectErrorStream(true)
+        val proc = pb.start()
+        val output = proc.inputStream.bufferedReader().use { it.readText() }
+        val exit = proc.waitFor()
+        output.lines().filter { it.isNotBlank() }
+            .forEach { logger.lifecycle("[cds-dump] $it") }
+        if (exit != 0) {
+            throw GradleException("CDS dump 失败 (exit=$exit):\n$output")
+        }
+        // 冗余归档必须真删: createRuntimeImage 的产物目录被 Gradle 判定 up-to-date 时不会清空,
+        // 只停掉第二遍 dump 会让上一次构建留下的 classes_nocoops.jsa 继续进包。
+        if (nocoopsArchive.isFile && !nocoopsArchive.delete()) {
+            throw GradleException("冗余 CDS 归档删除失败: $nocoopsArchive")
         }
         if (!baseArchive.isFile) {
             throw GradleException(
                 "CDS dump 退出码为 0 但未产出 $baseArchive —— -Xshare:auto 会继续空转, 拒绝静默放行"
             )
         }
-        val produced = listOf(baseArchive, nocoopsArchive).filter { it.isFile }
-            .joinToString { "${it.name} (${it.length() / 1024} KB)" }
-        logger.lifecycle("[legado-desktop] CDS 归档已生成: $produced")
+        logger.lifecycle(
+            "[legado-desktop] CDS 归档已生成: ${baseArchive.name} (${baseArchive.length() / 1024} KB)"
+        )
     }
 }
 
