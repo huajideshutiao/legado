@@ -102,7 +102,7 @@ fun VideoPlayRoute(
     // chapterIndex/chapterPos 用于书签/目录回传定位 (对照 AudioPlayUiEvent.Init)。
     // 直投形态则走 PlayDirect, 不携书也不查书源。
     LaunchedEffect(book) {
-        when (val target = route.target) {
+        when (val target = route.playTarget) {
             is VideoPlayTarget.FromBook -> screenModel.dispatch(
                 VideoPlayUiEvent.ShowBook(target.book.asBook(), route.chapterIndex, route.chapterPos)
             )

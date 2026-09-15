@@ -95,16 +95,40 @@ sealed interface AppRoute {
     @Serializable
     @SerialName("video_play")
     data class VideoPlay(
-        val target: VideoPlayTarget,
+        val target: VideoPlayTarget? = null,
+        /**
+         * 旧快照字段: origin/master 及更早的版本只写 `book`。已发布版本的 saveable state
+         * (Android 进程被杀重建 / 窗口恢复) 恢复时会走到这里，只用于读出，新快照不再写出。
+         * 不能把它当“可选就完事”: 缺字段会让整份快照解码抛 MissingFieldException，所以这里
+         * 必须能容纳旧形态，否则更新后回到前台整个导航栈会弹回书架。
+         *
+         * 旧形态恒为“由书进入” → 等价于 [VideoPlayTarget.FromBook] (见 [playTarget])。
+         */
+        @SerialName("book")
+        val legacyBook: BookRef? = null,
         val chapterIndex: Int? = null,
         val chapterPos: Int? = null,
     ) : AppRoute {
+        init {
+            // 两个字段都没有 = 快照被写坏/伪造 (本项目两个 writer 都必带 target)。
+            // 在解码期就抛, 让 decodeSnapshot 的 runCatching 接住并回落初始路由,
+            // 而不是等到渲染时在 [playTarget] 里抛——那会是进页即崩
+            require(target != null || legacyBook != null) { "video_play 快照既无 target 也无 book" }
+        }
+
+        /**
+         * 归一后的播放目标: 新快照走 [target], 旧快照 (只有 [legacyBook]) 等价于
+         * [VideoPlayTarget.FromBook]。非空由上面的 init 保证。
+         */
+        val playTarget: VideoPlayTarget
+            get() = target ?: VideoPlayTarget.FromBook(legacyBook!!)
+
         /**
          * 由书进入时的书籍引用; 外部直投 ([VideoPlayTarget.Direct]) 没有书, 返回 null。
          *
-         * 转场身份/容器变换等"需要书"的逻辑读到 null 即自然不参与 (外部播放器不是书卡片)。
+         * 转场身份等"需要书"的逻辑读到 null 即自然不参与 (外部播放器不是书卡片)。
          */
-        val book: BookRef? get() = (target as? VideoPlayTarget.FromBook)?.book
+        val book: BookRef? get() = (playTarget as? VideoPlayTarget.FromBook)?.book
 
         companion object {
             /**
@@ -116,7 +140,11 @@ sealed interface AppRoute {
                 book: BookRef,
                 chapterIndex: Int? = null,
                 chapterPos: Int? = null,
-            ): VideoPlay = VideoPlay(VideoPlayTarget.FromBook(book), chapterIndex, chapterPos)
+            ): VideoPlay = VideoPlay(
+                target = VideoPlayTarget.FromBook(book),
+                chapterIndex = chapterIndex,
+                chapterPos = chapterPos,
+            )
         }
     }
 

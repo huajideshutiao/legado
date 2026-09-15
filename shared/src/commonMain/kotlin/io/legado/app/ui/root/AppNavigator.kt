@@ -1,5 +1,6 @@
 package io.legado.app.ui.root
 
+import io.legado.app.constant.AppLog
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -319,6 +320,10 @@ class AppNavigator(
                     NavigationSnapshot.serializer(),
                     value
                 )
+            }.onFailure {
+                // 不静默吞: 快照解码失败会让 RouteBackStack 回落到 initialRoute (整个导航栈弹回
+                // 书架), 属用户可感知行为, 必须留痕才能定位是哪个字段/版本不兼容
+                AppLog.put("导航快照解码失败, 回落初始路由", it)
             }.getOrNull()
     }
 }
