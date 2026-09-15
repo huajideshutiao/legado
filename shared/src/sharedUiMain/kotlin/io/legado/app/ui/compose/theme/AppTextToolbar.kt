@@ -40,6 +40,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -708,10 +709,13 @@ private class TextToolbarPositionProvider(
 @Composable
 fun TextToolbarFindReplaceEffect(action: () -> Unit) {
     val state = LocalAppTextMenuState.current
-    DisposableEffect(state, action) {
-        state?.findReplaceAction = action
+    val currentAction by rememberUpdatedState(action)
+    DisposableEffect(state) {
+        if (state == null) return@DisposableEffect onDispose {}
+        val registeredAction: () -> Unit = { currentAction() }
+        state.findReplaceAction = registeredAction
         onDispose {
-            if (state?.findReplaceAction === action) {
+            if (state.findReplaceAction === registeredAction) {
                 state.findReplaceAction = null
             }
         }
