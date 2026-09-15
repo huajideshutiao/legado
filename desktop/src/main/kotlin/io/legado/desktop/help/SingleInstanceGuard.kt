@@ -18,6 +18,8 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.SecureRandom
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import javax.swing.SwingUtilities
 import kotlin.system.exitProcess
 
@@ -34,6 +36,16 @@ private data class ForwardMessage(val token: String, val args: List<String>)
  *
  * 用户已运行 legado 时再次启动 (浏览器点 `legado://` 链接 / 双击 exe), 应把启动参数转发给
  * 已运行实例并前置其窗口, 而不是开第二个进程 (第二个进程会与首实例争抢同一个 SQLite 库)。
+ *
+ * # 启动耗时 (2026-09 实测与本类为何不在主线程跑完整套)
+ *
+ * 同步跑完整套“探活 + bind + 写 lock”在主线程吃掉 110~166ms, 而这段与 Compose 开窗前的
+ * AWT/Swing 初始化 (实测 189ms) 本来可以并行。所以入口改为 [startAsync] (后台线程) +
+ * [awaitPrimaryDecision] (主线程在碰到任何配置/数据库之前的唯一一次等待), 等待只覆盖
+ * “探活判定”, 不覆盖 bind/写 lock (那些跟本进程的启动无关)。
+ *
+ * 并发双起 (连击双击) 的竞态窗口不因此变宽: 今天同样是“探活后紧接着 bind+写 lock”之间那段
+ * 窗口 (两进程都探到无实例 → 都当首实例), 本类只把这段从主线程搬到守卫线程, 时长不变。
  *
  * # 协议
  *
@@ -81,26 +93,96 @@ object SingleInstanceGuard {
     @Volatile
     private var ownToken: String? = null
 
+    /** 守卫线程句柄 (仅 [startAsync] 写)。 */
+    @Volatile
+    private var guardThread: Thread? = null
+
+    /** “探活判定已完成”门闩: 主线程在 [awaitPrimaryDecision] 上等它, 幂等。 */
+    private val decided = CountDownLatch(1)
+
     /** 首实例的主窗口 (Main.kt 在 Window 内 bind), 供转发到达时前置; 窗口未组合完成时为 null。 */
     @Volatile
     private var mainWindow: java.awt.Window? = null
 
     /**
-     * 单实例入口: **必须在 main() 最前调用** (在 handleDeepLinkArgs / 任何数据库或 provider 初始化之前),
-     * 否则二次启动进程会先碰 SQLite 再退出。
+     * 入口 (后台线程版): 在 `main()` 里起守卫线程后立即返回, 主线程继续做与数据无关的初始化
+     * (AWT/Swing 类加载、deep link/关联文件入队); “是不是第二个实例”的判定由
+     * [awaitPrimaryDecision] 在**任何配置/数据库初始化之前** 收口。
      *
      * 调用前需保证 `legado.portable.root` 已设置 (Main.kt 的 initDesktopRuntimeEnvironment),
      * 因为 [desktopAppRootDir] 的解析结果进程内 lazy 缓存一次, 提前调用会把便携模式的数据根定位歪。
-     *
-     * 已有实例存活: 转发 args 后 `exitProcess(0)`, **本函数不返回**。
-     * 无实例 / 残留 lock: 接管为首实例 (开监听 + 写 lock + 注册 shutdown hook) 并正常返回。
      */
-    fun ensureSingleInstance(args: Array<String>) {
+    fun startAsync(args: Array<String>) {
+        val thread = Thread({
+            try {
+                ensureSingleInstance(args)
+            } finally {
+                // 守卫线程抱异常也要放闸: 不能让主线程干等。判定没做成就继续启动, 与“bind
+                // 失败降级为多实例”同一取向 —— 宁可丢单实例能力, 不可把启动卡死。
+                decided.countDown()
+            }
+        }, "legado-single-instance-guard")
+        // daemon: 本线程可能长期挂在 acceptLoop 上, 当用户线程会阻止 JVM 正常退出
+        thread.isDaemon = true
+        guardThread = thread
+        thread.start()
+    }
+
+    /**
+     * 等 [startAsync] 的探活判定 (已有实例存活时守卫线程直接 exitProcess, 本函数不会被走到)。
+     *
+     * 必须在首次触碰 java.util.prefs / Room 数据库 / 任何数据文件写入之前调用。
+     * 默认上限 [DEFAULT_DECIDE_WAIT_MS] 覆盖探活内部两处超时 (connect 800ms + 读应答 1500ms),
+     * 所以超时不是“正常慢”, 而是守卫线程真挂死 —— 那种情况选择继续启动并留痕,
+     * 代价是可能与已有实例同时开同一库, 比把窗口永久卡在闪屏上可接受。
+     *
+     * @return true = 判定已完成 (本进程是首实例); false = 超时后放行
+     */
+    fun awaitPrimaryDecision(maxWaitMs: Long = DEFAULT_DECIDE_WAIT_MS): Boolean {
+        if (guardThread == null) return true
+        val ok = decided.await(maxWaitMs, TimeUnit.MILLISECONDS)
+        if (!ok) {
+            // 超时 = 守卫线程挂死 (探活内部自带 connect 800ms + 读应答 1500ms 上界, 正常走不到)。
+            // 此刻主线程将往下走 java.util.prefs 与 Room, 所以必须先立旗再放行:
+            // 否则守卫随后探到存活实例会 exitProcess(0), 把一个**已经开始写注册表/开库**的进程腰斩
+            // (这是改异步后新增的窗口: 旧代码同步阻塞, 二次进程在 exitProcess 前不可能碰数据)。
+            decisionAbandoned = true
+            AppLog.put("单实例判定超时 ${maxWaitMs}ms, 放行启动 (可能与已有实例并存, 已禁止守卫事后退出)", tag = TAG)
+        }
+        return ok
+    }
+
+    /**
+     * 主线程是否已"不等判定"放行。置位后守卫线程**不得再 exitProcess**:
+     * 宁可退化成"两个进程同时开一个库"(SQLite WAL 有文件锁, 只会 SQLITE_BUSY),
+     * 也不能在写注册表/写库中途被自己 kill。
+     */
+    @Volatile
+    private var decisionAbandoned = false
+
+    /** 探活内部超时总和 (connect 800 + 读应答 1500) 的宽容量, 见 [awaitPrimaryDecision]。 */
+    private const val DEFAULT_DECIDE_WAIT_MS = 3_000L
+
+    /**
+     * 单实例主体: 探活 → (已有实例则转发 + `exitProcess(0)`, **不返回**) → 判定完成 → 接管为首实例。
+     *
+     * 由 [startAsync] 在守卫线程上调; 主线程必须经 [awaitPrimaryDecision] 等过判定才能碰数据。
+     */
+    private fun ensureSingleInstance(args: Array<String>) {
         val lockFile = lockFile() ?: return
         if (forwardToRunningInstance(lockFile, args)) {
+            if (decisionAbandoned) {
+                // 主线程已经越过判定点开始碰数据 —— 这里再 exitProcess 就是腰斩。
+                // 参数已送达首实例, 本进程不接管 lock (写了会抢走真首实例的 lock), 就此静默做旁观者。
+                AppLog.put("参数已转发, 但主线程已超时放行 → 本进程不退出也不再接管 lock", tag = TAG)
+                decided.countDown()
+                return
+            }
             AppLog.put("已有实例接收本次启动参数, 当前进程退出", tag = TAG)
             exitProcess(0)
         }
+        // 判定到此完成: 后面的 bind/写 lock 只影响“下一个进程能不能找到我们”, 与本进程启动无关
+        decided.countDown()
         becomePrimary(lockFile)
     }
 

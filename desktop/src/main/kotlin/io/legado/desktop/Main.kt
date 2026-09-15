@@ -83,11 +83,11 @@ import io.legado.app.ui.root.ScreenModelStore
 import io.legado.desktop.audio.DesktopAppUserModelId
 import io.legado.desktop.audio.registerDesktopAudioPlayProviders
 import io.legado.desktop.audio.registerDesktopSystemMediaControl
+import io.legado.desktop.config.probeSystemNightMode
 import io.legado.desktop.config.registerDesktopSystemNightModeDetector
 import io.legado.desktop.help.DesktopCrashHandler
 import io.legado.desktop.help.DesktopUrlProtocol
 import io.legado.desktop.help.SingleInstanceGuard
-import io.legado.desktop.help.StartupTiming
 import io.legado.desktop.help.archive.DesktopArchiveCodec
 import io.legado.desktop.help.book.DesktopBitmapProvider
 import io.legado.desktop.help.http.registerDesktopBackstageWebView
@@ -107,6 +107,7 @@ import io.legado.desktop.ui.DesktopPlatformCapabilities
 import io.legado.desktop.ui.DesktopPlatformServices
 import io.legado.desktop.ui.DesktopTitleBar
 import io.legado.desktop.ui.DesktopToastHost
+import io.legado.desktop.ui.DesktopMediaRuntimeHost
 import io.legado.desktop.ui.DesktopToasts
 import io.legado.desktop.ui.DesktopWindowChrome
 import io.legado.desktop.ui.DesktopWindowChromeNative
@@ -126,7 +127,6 @@ import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import org.openani.mediamp.mpv.MPVHandle
-import org.openani.mediamp.mpv.MpvMediampPlayer
 import java.awt.Desktop
 import java.io.File
 import javax.swing.SwingUtilities
@@ -164,9 +164,6 @@ private const val SPLASH_SAFETY_CAP_MS = 15_000L
 private const val RESTART_WAIT_PREFIX = "--legado-restart-wait="
 
 fun main(args: Array<String>) {
-    // 计时起点必须是 main() 真正第一行: 上一版把 begin() 放在 initDesktopRuntimeEnvironment 之后,
-    // 导致那一句吃成的 ~460ms 落在计时窗外, 差点漏掉一个纯浪费的启动开销 (见该函数注释)。
-    StartupTiming.begin()
     // 打栈开关: 对齐 Android BuildConfig.DEBUG 语义, 仅 debug 打栈。
     // build.gradle.kts 的 run 任务注入 -Dlegado.debug=true, 打包产物不注入 = 静默。
     registerJvmDebugState(System.getProperty("legado.debug")?.toBoolean() == true)
@@ -181,19 +178,9 @@ fun main(args: Array<String>) {
     // 它设置的 legado.portable.root 决定 desktopAppRootDir() 的解析结果, 而后者进程内 lazy
     // 只解析一次 —— 单实例守卫要在数据目录写 instance.lock, 提前读会把便携模式的根目录定位歪。
     initDesktopRuntimeEnvironment()
-    StartupTiming.attachLog()
-    StartupTiming.mark("main() 进入, 便携定位/native 库就绪")
     // 全局崩溃日志 (对照 app 端 CrashHandler): 必须紧跟 initDesktopRuntimeEnvironment ——
     // 落盘目录依赖它设的 legado.portable.root, 提前装会把便携模式的日志写到系统缓存目录去。
     DesktopCrashHandler.install()
-    StartupTiming.mark("崩溃处理器已装")
-    // 视频: mediamp mpv natives 后台预解包 (独立协程, 早于窗口创建): 首次创建播放器时
-    // 同步解包 ~20MB DLL + System.load 会硬卡顿, 启动期后台完成解包+加载,
-    // 之后打开视频零等待 (prepareLibraries 幂等, 内部有锁, 与首次播放时的同步路径互斥安全)
-    Coroutine.async {
-        runCatching { MpvMediampPlayer.prepareLibraries() }
-            .onFailure { AppLog.put("mediamp mpv natives 预解包失败: ${it.message}", it) }
-    }
     // mpv 日志接入 AppLog: 播放失败时 mediamp 只给出 mpv_error 码 (如 -13
     // MPV_ERROR_LOADING_FAILED), 拿不到 mpv 自己那行原因 (HTTP 状态 / Failed to recognize
     // file format / 解码器缺失)。sink 汇总 mpv 事件、JNI 层与 mediamp Kotlin 三处日志,
@@ -207,16 +194,28 @@ fun main(args: Array<String>) {
     // 避免新进程把启动参数转发给正在退出的旧进程后自杀 (表现为“应用直接消失”)
     val effectiveArgs = waitForOldProcessIfRestart(args)
     startupArgs = effectiveArgs
-    // 单实例守卫: 已有实例存活时把 args 转发过去 + 前置其窗口, 本进程 exitProcess(0) 不返回
-    // (对照 app 端 AssociationActivity singleTask)。必须在 handleDeepLinkArgs 与任何
-    // provider/数据库初始化之前, 否则二次启动进程会先碰同一个 SQLite 库再退出。
-    SingleInstanceGuard.ensureSingleInstance(effectiveArgs)
-    StartupTiming.mark("单实例守卫完成")
+    // 单实例守卫: 已有实例存活时把 args 转发过去 + 前置其窗口, 那个线程 exitProcess(0) 不返回
+    // (对照 app 端 AssociationActivity singleTask)。本函数不再同步等完整套探活+bind+写 lock
+    // (实测 110~166ms), 而是交给守卫线程, 主线程继续做与数据无关的初始化;
+    // 判定收口点在 runDesktopApp 的 application 块开头 (awaitPrimaryDecision) ——
+    // 它必须在任何配置/数据库初始化之前, 否则二次启动进程会先碰同一个 SQLite 库再退出。
+    SingleInstanceGuard.startAsync(effectiveArgs)
+    // 启动期原生依赖预热 (与 AWT/Swing 初始化赛跑, 两者都不写配置值也不碰数据库, 故可以抢在
+    // 单实例判定之前):
+    //   1) JNA —— 阶段0 构 DesktopAppConfigAccessor 时 isNightTheme 会走 JNA 读注册表,
+    //      实测那一段 81~86ms, 而只加载类不真调用是没用的 (得真跑一次 probeSystemNightMode);
+    //   2) AWT 字体环境 —— 首次枚举系统字体只在主线程发生时会压在闪屏构造与首帧排版前面。
+    DesktopCore.warmUpNativeDependencies()
+    Thread({
+        runCatching { probeSystemNightMode() }
+            .onFailure { AppLog.put("系统深色模式预热失败 (不影响功能, 阶段0 会再读一次)", it) }
+    }, "jna-warm").apply {
+        isDaemon = true
+        start()
+    }
     // legado:// deep link 启动参数处理 (对照 app 端 AssociationActivity intent-filter):
-    // 系统级 URL protocol 注册: Windows/Linux 运行时幂等自注册 ([DesktopUrlProtocol]),
-    // macOS 打包期 Info.plist CFBundleURLTypes (见 build.gradle.kts
-    // nativeDistributions.macOS.infoPlist), 详见 handleDeepLinkArgs KDoc
-    DesktopUrlProtocol.ensureRegisteredAsync()
+    // 系统级 URL protocol 注册已下移到 awaitPrimaryDecision 之后 (见 runDesktopApp):
+    // 它是幂等地写 HKCU / ~/.local 的副作用, 不该让"注定要退出的第二个实例"去做。
     handleDeepLinkArgs(args)
     // 文件关联 (双击 .epub/.txt/.pdf/.cbz / 视频 .mp4/.mkv…): 系统冷启动时把文件路径当 argv
     // 送进来 (打包期注册见 build.gradle.kts nativeDistributions.fileAssociation)
@@ -243,7 +242,6 @@ fun main(args: Array<String>) {
             }
         }
     }
-    StartupTiming.mark("main() 前置 (协议注册/deep link/文件关联) 完成, 进 application")
     runDesktopApp()
 }
 
@@ -268,7 +266,7 @@ fun main(args: Array<String>) {
  *
  * 旧进程 [io.legado.desktop.help.DesktopRegexErrorHandler.restartApp] 会先拉起本进程再
  * `exitProcess(0)`; 单实例锁 (instance.lock) 由旧进程的 shutdown hook 在退出时释放, 故新进程
- * 必须先等旧进程死掉, 否则 [SingleInstanceGuard.ensureSingleInstance] 会把参数转发给正在退出的
+ * 必须先等旧进程死掉, 否则 [SingleInstanceGuard.startAsync] 的探活会把参数转发给正在退出的
  * 旧进程后自杀。最多等 [RESTART_WAIT_TIMEOUT_MS], 超时后继续 (残留进程按陈旧 lock 接管)。
  */
 private fun waitForOldProcessIfRestart(args: Array<String>): Array<String> {
@@ -382,21 +380,33 @@ private fun runDesktopApp() = application {
     val splashScreen = remember { DesktopSplashScreen(DesktopThemeStoreProvider()) }
     // 返回值: _1 = 首屏要注入的 ReadBookConfig (与全局同实例), _2 = 闪屏计划驻留时长
     val (desktopReadBookConfig, splashDuration) = remember {
-        StartupTiming.mark("进入 application 块")
         registerDesktopSystemNightModeDetector()
+        // 单实例判定收口点 (见 SingleInstanceGuard.startAsync): 主线程已经把 AWT/Swing 初始化
+        // 吃完, 守卫那 110~166ms 在其期间并行跑完了, 所以这个等待实测接近 0;
+        // 再往下就是 java.util.prefs 与 Room 数据库, 必须知道"本进程是不是首实例"。
+        SingleInstanceGuard.awaitPrimaryDecision()
+        // 系统级 URL protocol 注册 (Windows 写 HKCU\Software\Classes\<scheme> / Linux 写 xdg-mime,
+        // macOS 靠打包期 Info.plist): 异步且不阻塞启动; 放到判定之后是为了不让二次启动去做这个写入
+        DesktopUrlProtocol.ensureRegisteredAsync()
         // 阶段0 (日志/字符串/AndroidId/Toast/进度/更新回调/config+语言): 闪屏所需最小集
         val early = DesktopCore.registerEarlyProviders()
-        StartupTiming.mark("阶段0 完成 (偏好/字符串可读)")
         val duration = splashScreen.show()
-        StartupTiming.mark("闪屏已显示 (计划驻留 ${duration}ms)")
-        // 预热字符串资源: CMP 首次取串要经 runBlocking + 资源表初始化 (ComposeResourceLookup.syncGetString),
-        // 放在这里是把这笔开销藏进闪屏可见期, 而不是留在首屏组合中途反复触发
-        jvmGetString("app_name")
+        // 预热 CMP 字符串资源表: 首次取串要走 runBlocking + 资源表初始化, 实测 178~289ms。
+        // 放后台线程而不是主线程: 同步预热虽然落在"闪屏可见期", 但占的是主线程, 直接拖后首帧。
+        // 无主线程回跳风险已查依赖源码确认: JvmResourceReader.read() 仅 classloader 流读取,
+        // getString 路径里没有 withContext(Main), 不会构成"后台持 lazy 锁等 EDT + EDT 等锁"。
+        // 起在 applyDesktopLanguagePref (阶段0 已跑完) 之后: 预热与最终语言一致, 不会白跑一份错 locale。
+        Thread({
+            runCatching { jvmGetString("app_name") }
+                .onFailure { AppLog.put("预热 app_name 失败", it) }
+        }, "string-res-warm").apply {
+            isDaemon = true
+            start()
+        }
         // 阶段1 余下重注册 (HTTP/JS/Room/存储/封面)
         DesktopCore.registerRestProviders()
         // Compose UI 类型的 JVM 图片加载器 (SingletonImageLoader + BookImageLoaders, 依赖 ImageBitmap, 仅桌面 GUI 需要)
         registerJvmBookImageLoader()
-        StartupTiming.mark("阶段1 完成 (HTTP/JS/Room/图片栈就绪)")
         early to duration
     }
     // ===== 以下为阶段1 的 UI 绑定注册 (依赖 AWT/Compose/JNA, 留在 :desktop) =====
@@ -405,7 +415,6 @@ private fun runDesktopApp() = application {
     // 须在 AppString provider 注册之后 (快捷方式文件名取 app_name 显示名),
     // 且必须在首窗口创建前 (MSDN: SetCurrentProcessExplicitAppUserModelID 须先于 UI)。
     DesktopAppUserModelId.ensureProcessAppId()
-    StartupTiming.mark("AppUserModelId/ScreenInfo/能力与服务注册完成")
     // 注册桌面端 ScreenInfoProvider (Toolkit.getDefaultToolkit().screenSize),
     // 供 shared commonMain 经 ScreenInfoProviders.get() 读屏幕尺寸; 无依赖, 同步注册
     registerDesktopScreenInfoProvider()
@@ -467,7 +476,6 @@ private fun runDesktopApp() = application {
     registerSkiaTextMeasurer()
     // 阅读页内嵌图片 (PDF 单图页 / EPUB 插图): 排版取尺寸 + 绘制取位图
     registerReaderImageResolver()
-    StartupTiming.mark("阅读器平台/字体度量/图片解析 provider 就绪")
     AudioPlayPlatformProviders.register(SharedAudioPlayPlatformProvider)
     MangaReaderScreenModel.Providers.register(DesktopMangaReaderPlatform)
     VideoPlayPlatformProviders.register(MediampVideoPlayPlatformProvider(windowHandle))
@@ -510,19 +518,16 @@ private fun runDesktopApp() = application {
     var windowVisible by remember { mutableStateOf(false) }
     // classpath 资源加载: 手动 Skia 解码 + BitmapPainter
     val iconPainter = remember {
-        val iconMarkStart = System.nanoTime()
         runCatching {
             Thread.currentThread().contextClassLoader
                 ?.getResourceAsStream("icon.png")?.use { decodeBytesSampled(it.readBytes(), 0) }
                 ?.let { BitmapPainter(it) }
         }.getOrNull().also {
-            StartupTiming.mark("窗口图标解码完成 (${(System.nanoTime() - iconMarkStart) / 1_000_000}ms)")
         }
     }
     // AppNavigator: 零薄壳导航唯一状态源 (替代旧 DesktopApp 的 20+ 并行状态字段)
     val navigator = remember { AppNavigator(AppRoute.Main()) }
     val screenModelStore = remember { ScreenModelStore() }
-    StartupTiming.mark("窗口外状态就绪, 即将进 Window 构造")
     // Compose 未捕获异常兜底: CMP 默认工厂 (DefaultWindowExceptionHandlerFactory) 弹的是
     // 模态 JOptionPane —— 模态窗口会禁用主窗口输入却不影响重绘, 又常被置顶的 Dialog 图层
     // 或全屏窗口遮住, 表现就是"窗口还能 resize 重排, 键鼠全部失灵"。改为只记日志不弹窗。
@@ -573,13 +578,11 @@ private fun runDesktopApp() = application {
         // 计数打点: 上一版文案叫“首次组合”但它在组合体内, 每次重组都触发, 会把重组误读成首帧
         // (实测启动期共 4 次进入, 其中一次本段 1068ms, 比首帧本身还贵)。改成带序号, 能分清第几次。
         val composeRound = remember { java.util.concurrent.atomic.AtomicInteger() }
-        StartupTiming.mark("Window content 组合第 ${composeRound.incrementAndGet()} 次")
         // 单实例守卫绑定主窗口: 二次启动转发到达时前置本窗口 (取消最小化 + toFront + 请求焦点);
         // DisposableEffect 保证窗口销毁后解绑, 不让守卫持有已 dispose 的 AWT Window
         // 同步注入 AWT 窗口句柄到 DesktopWindowHandle, 供 DesktopWindowController 切换全屏;
         // 同时注入任务栏媒体 (缩略图按钮/进度条) 的 HWND (窗口重建时自动重挂)
         DisposableEffect(window) {
-            StartupTiming.mark("DisposableEffect(window) 进入")
             // 主窗口最小尺寸 (用户拍板 2026-08-13): 极窄窗口曾致 JBR 客户区布局锁死
             // (拉窄再拉宽后内容区不复原), 直接限制最小宽 300dp/高 600dp 从根上规避。
             // AWT 尺寸在 Windows 缩放下是逻辑单位, 与 dp 同尺 (CMP 自己也是 width.dp 直转),
@@ -599,7 +602,6 @@ private fun runDesktopApp() = application {
                 }
             }
             windowVisible = true
-            StartupTiming.mark("主窗口 visible 置位")
             // 闪屏关闭时机 (2026-09 修正): 主窗口已显示 且 已驻留满用户设定时长才关。
             // 旧实现是 (计划时长 - 200ms) 定时器与 componentShown “取先到者”, 而定时器从本效果
             // 执行时才开始跑 (实测 +1576ms) —— 默认 600ms 时长会在主窗口就绪 (实测 ~2.6s) 之前
@@ -697,7 +699,6 @@ private fun runDesktopApp() = application {
         // 用 LaunchedEffect 在窗口显示后立即启动协程注册, 不阻塞首屏渲染
         // 用 withContext(Dispatchers.Default) 在后台线程执行, 避免阻塞 UI 线程
         LaunchedEffect(Unit) {
-            StartupTiming.mark("首帧组合完成, 进阶段3 后台注册")
             registerSecondaryProviders()
         }
         // 文件关联分发: 队列在 main() 就可能有值 (argv 冷启动), 这里等首帧组合完成
@@ -838,6 +839,9 @@ private fun runDesktopApp() = application {
                         FileDropHintOverlay(fileDropHint)
                         // 桌面端 Toast 宿主: 顶层 Overlay 渲染 (居底 48dp, 独立层不被页面覆盖, 天然穿透点击)
                         DesktopToastHost()
+                        // 媒体播放组件按需下载弹框宿主 (视频页与桌面音频共用一套 mpv natives, 两处都由
+                        // DesktopMediaRuntime 推同一个状态; 挂最后 = Z 序高于 Toast, 进度不会被气泡遮住)
+                        DesktopMediaRuntimeHost()
                     }
                 }
             }
@@ -891,6 +895,10 @@ private suspend fun registerSecondaryProviders() {
 
         // ===== 尾部启动任务 (原 15/16 步, 逐行等价逻辑在 DesktopCore.startupBackgroundTasks) =====
         DesktopCore.startupBackgroundTasks()
+        // 注: 原先这里还有一发 `MpvMediampPlayer.prepareLibraries()` 预解包 (上一轮从 main() 推迟过来的)。
+        // 已删除: 用户拍板把 mpv 运行时从发布 classpath 摘掉、改"视频与本地音频首次播放时按需下载",
+        // 摘掉后无参 prepareLibraries() 会因找不到清单资源报 IllegalStateException, 启动期只会多出噪声日志。
+        // 媒体运行时的准备改由播放平台层 (MediampVideoPlayPlatformProvider / DesktopAudioPlayer) 触发。
     }
 }
 

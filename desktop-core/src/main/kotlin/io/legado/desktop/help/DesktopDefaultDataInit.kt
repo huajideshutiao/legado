@@ -18,14 +18,27 @@ import io.legado.desktop.constant.DesktopAppInfo
  * - `DefaultData.upVersion()`: 依赖 `LocalConfig` (SharedPreferences) + `AppConst.appInfo`
  *   (PackageManager); 这里换成 [PreferenceProviders] + [DesktopAppInfo] + 已下沉的
  *   [LocalConfigShared] 版本比较算法, 导入 httpTTS / txtTocRule / dictRule
- * - `dbCallback.onCreate` 的预置书架分组 + 键盘助手: Room KMP 的 BundledSQLiteDriver 未挂
- *   Callback (见 `BundledDatabaseDriver`), 改为启动期幂等补齐
+ * - `dbCallback.onCreate` 的预置书架分组 + 键盘助手: 桌面端**已经**挂在建库回调 ——
+ *   `BundledDatabaseDriver` 构造时 `.addCallback(AppDatabaseDefaults)`, 其 `onCreate` 调
+ *   `AppDatabaseDefaultData.insert` 插同名的 4 个预置分组与键盘助手 (SQL 自带 not exists /
+ *   insert or replace 幂等)。所以下面两个 `ensure*` **不是**主路径, 只兜两件事: 建库回调挂上
+ *   之前的老库, 以及以后新增的预置项 —— 因此与 upVersion 共用同一道版本门。
+ *
+ * 为什么必须入门 (2026-09 启动实测): 原来两个 `ensure*` 每次启动无条件跑 5 条 SQL
+ * (4 条 `getByID` + 1 条 keyboardAssists 全表读), 空库照跑; 更要紧的是它们可能在首帧之后往
+ * book_groups 写数据 → 多推一次 Room 失效推送 → 多一轮书架整树重组。
  *
  * 每一项独立 runCatching: 单项资源缺失/解析失败不影响其余项与启动流程。
  */
 suspend fun initDesktopDefaultData() {
-    ensurePresetBookGroups()
-    ensureKeyboardAssists()
+    // 建库预置项只在版本号推进时补一次。upDefaultDataVersion 是在自己末尾才写回 appVersionCode,
+    // 所以本判断必须在它之前, 否则同一版本内就再也补不上。
+    if (PreferenceProviders.get().getLong(LocalConfigKeys.appVersionCode, 0L)
+        < DesktopAppInfo.versionCode.toLong()
+    ) {
+        ensurePresetBookGroups()
+        ensureKeyboardAssists()
+    }
     upDefaultDataVersion()
 }
 

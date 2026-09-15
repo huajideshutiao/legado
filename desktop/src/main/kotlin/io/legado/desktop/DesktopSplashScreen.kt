@@ -16,6 +16,7 @@ import java.awt.Graphics2D
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import javax.swing.JWindow
+import javax.swing.SwingUtilities
 import kotlin.math.ceil
 
 /**
@@ -61,18 +62,25 @@ class DesktopSplashScreen(
         const val BASE_WIDTH = 800
         const val BASE_HEIGHT = 480
 
-        /** 闪屏窗口尺寸: 屏幕宽高一半 (≥400x300, 低分辨率屏如 1024x768 也能完整显示)。 */
-        fun splashSize(): Dimension {
-            val screen = java.awt.Toolkit.getDefaultToolkit().screenSize
-            return Dimension(
-                (screen.width / 2).coerceAtLeast(400),
-                (screen.height / 2).coerceAtLeast(300),
-            )
-        }
+        /**
+         * 闪屏窗口尺寸: 屏幕宽高一半 (≥400x300, 低分辨率屏如 1024x768 也能完整显示)。
+         *
+         * 入参是屏幕尺寸而不是自己读屏幕: 屏幕尺寸要走 `Toolkit.getDefaultToolkit().screenSize`
+         * (一次原生显示设备枚举 + 显示模式/DPI 查询, 不是纳秒级), 而闪屏显示路径必须"读一次,
+         * 窗口尺寸与居中都用它" —— 所以纯计算单独成函数, 不必为了拿尺寸再碰一次 Toolkit。
+         * 分两次读还有个正确性问题: 多块屏分辨率不同的机器上, 尺寸与居中可能落在不同屏的几何上。
+         */
+        fun splashSizeFor(screen: Dimension): Dimension = Dimension(
+            (screen.width / 2).coerceAtLeast(400),
+            (screen.height / 2).coerceAtLeast(300),
+        )
     }
 
     /**
-     * 显示闪屏。在 EDT 调用。
+     * 显示闪屏。由启动主线程 (CMP `application` 首组合) 同步调用。
+     *
+     * 本方法内部不做 invokeAndWait/invokeLater, 所以它不是"排队等 EDT": 耗时全部落在调用线程上;
+     * 调用线程到底是不是 EDT 由段内归因打点在线判定 (见方法末尾那条 mark)。
      * 返回闪屏持续时间 (ms); 0 = 不显示 (配置关闭或时长为 0)。
      */
     fun show(): Long {
@@ -109,9 +117,14 @@ class DesktopSplashScreen(
             (bgColor.blue * 255).toInt(),
         )
 
-        // 尺寸规则见 [splashSize] (选图裁剪共用)
-        val width = splashSize().width
-        val height = splashSize().height
+        // 屏幕尺寸只读这一次: 下面窗口尺寸、居中、缺产物时的补烘焙目标尺寸全复用它。
+        // 原实现 splashSize() 调两次 + 居中一次 + 补烘焙一次, 每次都是一轮原生显示设备枚举
+        // 与显示模式/DPI 查询。
+        val screen = java.awt.Toolkit.getDefaultToolkit().screenSize
+        // 尺寸规则见 [splashSizeFor]
+        val size = splashSizeFor(screen)
+        val width = size.width
+        val height = size.height
         val scale = minOf(
             width.toFloat() / BASE_WIDTH,
             height.toFloat() / BASE_HEIGHT,
@@ -119,7 +132,6 @@ class DesktopSplashScreen(
 
         val window = JWindow()
         // 无控制栏不可拖动 (JWindow 本身无边框)
-        val size = Dimension(width, height)
         window.size = size
         window.minimumSize = size
         window.maximumSize = size  // 锁定尺寸, 防止任何意外 resize
@@ -132,7 +144,6 @@ class DesktopSplashScreen(
         if (bgImagePath != null) {
             val baked = bakedImagePath(bgImagePath)
             val displayPath = if (java.io.File(baked).exists()) baked else {
-                val screen = java.awt.Toolkit.getDefaultToolkit().screenSize
                 Thread {
                     // 补烘焙复用全端冷路径 ensureBakedImage (屏幕尺寸, WEBP q80, 不放大)
                     runCatching { ensureBakedImage(bgImagePath, screen.width, screen.height) }
@@ -160,8 +171,7 @@ class DesktopSplashScreen(
         window.contentPane.add(content)
         content.bounds = java.awt.Rectangle(0, 0, width, height)
 
-        // 居中
-        val screen = java.awt.Toolkit.getDefaultToolkit().screenSize
+        // 居中 (screen 用上方那一次读取, 不再二次枚举显示设备)
         window.setLocation(
             (screen.width - width) / 2,
             (screen.height - height) / 2,
@@ -198,6 +208,26 @@ class DesktopSplashScreen(
 
         init {
             isOpaque = true
+        }
+
+        /**
+         * 染色后的书本图标 (首绘时解码一次, 之后复用)。
+         *
+         * 为什么要缓存: 原实现把"读 classpath 里的 PNG → Skia 解码 → 新建一张 ARGB 位图染色"
+         * 放在 paintComponent 里, 而 paintComponent 跑在图形绘制线程上; 闪屏驻留 600~3000ms,
+         * 期间任何一次重绘 (被其他窗口遮蔽后 expose、系统刷新主题等) 都会把这三步重做一遍,
+         * 既拖后"真正出现像素"的时间, 也在启动期反复分配大对象。染色结果与本次绘制的 iconSize
+         * 无关 (缩放在 drawImage 里做), 所以按实例算一次即可。
+         * 保留原有"取不到/解不了返 null 则不画图标"的行为 (未改动异常处理口径)。
+         */
+        private val tintedIcon: BufferedImage? by lazy {
+            runCatching {
+                // 与 app 端共用同一份 icon_read_book.png (desktop sourceSets 挂载 drawable-nodpi)
+                val decoded = Thread.currentThread().contextClassLoader
+                    ?.getResourceAsStream("icon_read_book.png")
+                    ?.use { decodeBytesSampled(it.readBytes(), 0) }?.toAwtImage()
+                decoded?.let { tintImage(it, accentColor) }
+            }.getOrNull()
         }
 
         override fun paintComponent(g: Graphics) {
@@ -272,16 +302,10 @@ class DesktopSplashScreen(
                 // ============ 右侧: 书本图标 (对照原版 @drawable/icon_read_book, 染 accent 色) ============
                 if (showIcon) {
                     val iconSize = (140 * scale).toInt().coerceAtLeast(64)
-                    val icon = runCatching {
-                        // 与 app 端共用同一份 icon_read_book.png (desktop sourceSets 挂载 drawable-nodpi)
-                        Thread.currentThread().contextClassLoader
-                            ?.getResourceAsStream("icon_read_book.png")
-                            ?.use { decodeBytesSampled(it.readBytes(), 0) }?.toAwtImage()
-                    }.getOrNull()
-                    if (icon != null) {
+                    val tinted = tintedIcon
+                    if (tinted != null) {
                         val iconX = halfWidth + (halfWidth - iconSize) / 2
                         val iconY = (height - iconSize) / 2
-                        val tinted = tintImage(icon, accentColor)
                         g2d.drawImage(tinted, iconX, iconY, iconSize, iconSize, null)
                     }
                 }

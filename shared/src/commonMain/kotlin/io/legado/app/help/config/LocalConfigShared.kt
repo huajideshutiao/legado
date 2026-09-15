@@ -36,6 +36,15 @@ object LocalConfigKeys {
     const val password = "password"
     const val lastBackup = "lastBackup"
 
+    /**
+     * 桌面/headless 端「上次执行启动期缓存清理」的时间戳 (毫秒)。
+     *
+     * 为什么要单独一个 key 而不是复用 [lastBackup]: lastBackup 只在用户真的执行备份/恢复时才写
+     * (见 DesktopBackupRestoreHook), 从不备份的用户它恒为 0, 拿它当「每天最多清一次」的节流信号
+     * 会让门控每次启动都命中, 清理族天天全跑; 清理必须自己记账。
+     */
+    const val lastCacheCleanup = "lastCacheCleanup"
+
     // help 引导版本 key
     const val readHelpVersion = "readHelpVersion"
     const val firstRead = "firstRead"
