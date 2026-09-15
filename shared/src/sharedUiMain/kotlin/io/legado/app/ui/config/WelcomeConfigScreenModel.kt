@@ -10,10 +10,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * AppConfig 仅 app 端可用, 由宿主 Activity 解析后通过 [WelcomeConfigScreenModel.dispatch] 推入。
  */
 data class WelcomeConfigUiState(
-    val enableWelcome: Boolean = true,
     val welcomeShowTime: Int = 600,
-    val welcomeShowText: Boolean = true,
-    val welcomeShowIcon: Boolean = true,
     val welcomeImage: String? = null,
     val welcomeImageDark: String? = null,
 )
