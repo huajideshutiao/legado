@@ -237,6 +237,10 @@ internal object DesktopTaskbarDwm {
             DesktopWindowChromeNative.removeMessageHandler(messageHandler)
             hooked = false
         }
+        // 渲染/封面执行器随托盘一起结束 (uninstall 只在应用退出路径调用, 窗口重建路径当前不可达):
+        // 留着会在进程收尾期间继续跑投递进来的绘制/取图任务
+        renderExecutor.shutdown()
+        coverExecutor.shutdown()
     }
 
     /** 会话终结时清空卡片内容 (封面/文案/进度与加载去重状态), 下次会话从干净状态开始。 */

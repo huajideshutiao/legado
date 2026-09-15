@@ -195,6 +195,19 @@ internal object DesktopTaskbarMedia {
         Thread(r, "legado-taskbar-cmd").apply { isDaemon = true }
     }
 
+    /**
+     * 统一释放 GDI/COM 对象并检查返回值与异常。
+     *
+     * DeleteObject/ImageList_Destroy 返回 false 或抛异常都是**句柄泄漏**, 泄漏累积到上限后
+     * 任务栏按钮会整体画不出来, 不能静默吃 —— 口径同 [DesktopTaskbarDwm] 的 deleteObjectChecked
+     * (runCatching 只挡异常, 返回 false 也要上报)。
+     */
+    private inline fun releaseChecked(what: String, block: () -> Any?) {
+        runCatching(block)
+            .onSuccess { if (it == false) AppLog.put("$what 返回 false (句柄泄漏)") }
+            .onFailure { AppLog.put("$what 释放异常", it) }
+    }
+
     // ==================== 生命周期 ====================
 
     /** 启动消息线程 (隐藏窗口 + 全局媒体键 + TaskbarCreated) (幂等; 非 Windows 跳过)。 */
@@ -246,9 +259,11 @@ internal object DesktopTaskbarMedia {
         DesktopTaskbarDwm.uninstall()
         // 释放 COM 实例 (IUnknown::Release, vtable slot 2) —— 须在创建它的 STA 线程上
         runOnPump {
-            cachedTaskbarList?.let { runCatching { vtbl(it, 2) } }
+            cachedTaskbarList?.let { list -> releaseChecked("ITaskbarList3 Release") { vtbl(list, 2) } }
             cachedTaskbarList = null
-            imageList?.let { runCatching { ComCtl32.INSTANCE.ImageList_Destroy(it) } }
+            imageList?.let { himl ->
+                releaseChecked("任务栏图标 ImageList_Destroy") { ComCtl32.INSTANCE.ImageList_Destroy(himl) }
+            }
             imageList = null
         }
         val pump = pumpWindow
@@ -256,6 +271,9 @@ internal object DesktopTaskbarMedia {
         if (pump != null) {
             User32.INSTANCE.PostMessage(pump, WM_QUIT, WinDef.WPARAM(0), WinDef.LPARAM(0))
         }
+        // 命令执行器随托盘一起结束 (uninstall 只在应用退出路径调用): 留着会在进程收尾期间
+        // 继续跑投递进来的任务
+        commandExecutor.shutdown()
     }
 
     // ==================== 状态刷新 ====================
@@ -679,7 +697,7 @@ internal object DesktopTaskbarMedia {
             // HrInit (slot 3): 必须在任何其他调用前; 失败则整个 ITaskbarList3 不可用
             if (vtbl(punk, SLOT_HRINIT) != 0) {
                 AppLog.put("ITaskbarList3 HrInit 失败")
-                runCatching { vtbl(punk, 2) }   // Release
+                releaseChecked("ITaskbarList3 Release") { vtbl(punk, 2) }
                 return null
             }
             cachedTaskbarList = punk
@@ -748,14 +766,14 @@ internal object DesktopTaskbarMedia {
                     }
                 } finally {
                     bitmaps.forEach { (hbm, mask) ->
-                        runCatching { GDI32.INSTANCE.DeleteObject(hbm) }
-                        runCatching { GDI32.INSTANCE.DeleteObject(mask) }
+                        releaseChecked("任务栏图标位图 DeleteObject") { GDI32.INSTANCE.DeleteObject(hbm) }
+                        releaseChecked("任务栏图标掩码 DeleteObject") { GDI32.INSTANCE.DeleteObject(mask) }
                     }
                 }
             }
             if (built.isFailure) {
                 AppLog.put("任务栏按钮图标构建失败", built.exceptionOrNull())
-                runCatching { ComCtl32.INSTANCE.ImageList_Destroy(himl) }
+                releaseChecked("构建失败时 ImageList_Destroy") { ComCtl32.INSTANCE.ImageList_Destroy(himl) }
                 return null
             }
             imageList = himl
@@ -773,7 +791,7 @@ internal object DesktopTaskbarMedia {
         val img = drawGlyphImage(this, glyph)
         val hbm = toPremultipliedHBitmap(img) ?: return null
         val hbmMask = createMaskDib(this, img) ?: run {
-            runCatching { GDI32.INSTANCE.DeleteObject(hbm) }
+            releaseChecked("掩码创建失败时 DeleteObject") { GDI32.INSTANCE.DeleteObject(hbm) }
             return null
         }
         return hbm to hbmMask
