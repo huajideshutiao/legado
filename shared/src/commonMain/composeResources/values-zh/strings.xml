@@ -1719,4 +1719,9 @@ Windows: winget install shinchiro.mpv 或 scoop install mpv,
         <item>TTS</item>
     </string-array>
     <string name="save_to_file">保存到文件</string>
+    <string name="media_runtime_title">媒体播放组件</string>
+    <string name="media_runtime_need_download">播放视频和音频需要先下载媒体播放组件（约 21 MB）。是否现在下载？</string>
+    <string name="media_runtime_downloading">正在下载媒体播放组件：%1$s</string>
+    <string name="media_runtime_download_failed">媒体播放组件下载失败：%1$s</string>
+    <string name="media_runtime_not_installed">未安装媒体播放组件</string>
 </resources>

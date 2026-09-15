@@ -1030,4 +1030,9 @@
     <string name="about_dev_hint">仲差 %1$d 次</string>
     <string name="donate_qrcode">捐贈二維碼</string>
     <string name="donate_thanks">多謝你嘅支持！</string>
+    <string name="media_runtime_title">媒體播放組件</string>
+    <string name="media_runtime_need_download">播放影片同音頻要先下載媒體播放組件（約 21 MB）。係咪而家下載？</string>
+    <string name="media_runtime_downloading">正在下載媒體播放組件：%1$s</string>
+    <string name="media_runtime_download_failed">媒體播放組件下載失敗：%1$s</string>
+    <string name="media_runtime_not_installed">未安裝媒體播放組件</string>
 </resources>

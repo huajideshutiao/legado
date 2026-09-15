@@ -158,6 +158,12 @@ interface VideoPlayPlatformProvider {
     ): VideoPlayerController
 
     /**
+     * [controller] 是否只是降级占位实现。默认 false —— 其它端的「重新加载」永不重建控制器,
+     * 行为与引入按需下载前完全一致; 桌面端在媒体组件未就绪时给空控制器, 此时为 true。
+     */
+    fun isPlaceholderController(controller: VideoPlayerController?): Boolean = false
+
+    /**
      * 渲染平台原生视频画面 (纯 Surface, 如 Android PlayerView / 桌面 mpv Canvas / iOS UIKitView / 鸿蒙 ArkUIView2)。
      * 全部 UI 覆盖层 (手势、加载转圈、缓冲圈、错误重试、播放控制条、锁定钮、手势提示) 统一由共享层 [VideoPlayerHostContainer] 编排。
      */
@@ -221,10 +227,16 @@ class VideoPlayScreenModel : ScreenModel {
 
     val shared = VideoPlayViewModelShared(scope = scope)
     val platform = VideoPlayPlatformProviders.getOrNull()
-    val controller: VideoPlayerController? = platform?.createController(
+
+    /**
+     * 播控器。不写成 val: 桌面端媒体播放组件是首次进本页才按需下载的, 构造期可能还没装好,
+     * 当时拿到的是占位控制器 —— 下载完成后靠 [onRetryLoad] 补建真控制器。其它端一次创建即定型。
+     */
+    var controller: VideoPlayerController? = platform?.createController(
         screenModel = this,
         onPlaybackEnded = ::onNextChapter,
     )
+        private set
 
     private val _state = MutableStateFlow(VideoPlayUiState())
     val state: StateFlow<VideoPlayUiState> = _state.asStateFlow()
@@ -451,7 +463,22 @@ class VideoPlayScreenModel : ScreenModel {
      * → 错误页上是一颗死按钮 (只能退页重进)。
      */
     fun onRetryLoad() {
+        recreateControllerIfPlaceholder()
         if (shared.isDirect) retryDirectPlay() else onRefreshChapter()
+    }
+
+    /**
+     * 占位控制器 → 真控制器: 现有实例是占位时就重新走一次 [VideoPlayPlatformProvider.createController]。
+     *
+     * **不得**先拿平台的"当前是否就绪"判定早退: 取消下载后它恒为 false,
+     * 早退会让「重新加载」既不重弹下载确认框也不换控制器 —— 画面永远起不来, 只能退页重进。
+     * `createController` 内部已用 `ensureReady()` 把"未就绪"推成确认弹框并返回占位,
+     * 用户在那里下载完再点本按钮即可直接起播。
+     */
+    private fun recreateControllerIfPlaceholder() {
+        val p = platform ?: return
+        if (!p.isPlaceholderController(controller)) return
+        controller = p.createController(screenModel = this, onPlaybackEnded = ::onNextChapter)
     }
 
     /**

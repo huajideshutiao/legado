@@ -1018,4 +1018,9 @@
     <string name="about_dev_hint">還差 %1$d 次</string>
     <string name="donate_qrcode">捐贈 QR Code</string>
     <string name="donate_thanks">感謝您的支持！</string>
+    <string name="media_runtime_title">媒體播放元件</string>
+    <string name="media_runtime_need_download">播放影片與音訊需要先下載媒體播放元件（約 21 MB）。是否現在下載？</string>
+    <string name="media_runtime_downloading">正在下載媒體播放元件：%1$s</string>
+    <string name="media_runtime_download_failed">媒體播放元件下載失敗：%1$s</string>
+    <string name="media_runtime_not_installed">未安裝媒體播放元件</string>
 </resources>

@@ -1651,4 +1651,9 @@
         <item>TTS</item>
     </string-array>
     <string name="save_to_file">Save to file</string>
+    <string name="media_runtime_title">Media playback component</string>
+    <string name="media_runtime_need_download">Playing video and audio requires downloading the media playback component (about 21 MB). Download now?</string>
+    <string name="media_runtime_downloading">Downloading the media playback component: %1$s</string>
+    <string name="media_runtime_download_failed">Failed to download the media playback component: %1$s</string>
+    <string name="media_runtime_not_installed">Media playback component is not installed</string>
 </resources>

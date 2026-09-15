@@ -821,4 +821,9 @@
     <string name="about_dev_hint">あと%1$d回です</string>
     <string name="donate_qrcode">寄付用QRコード</string>
     <string name="donate_thanks">ご支援ありがとうございます！</string>
+    <string name="media_runtime_title">メディア再生コンポーネント</string>
+    <string name="media_runtime_need_download">動画と音声の再生にはメディア再生コンポーネントのダウンロードが必要です（約 21 MB）。今すぐダウンロードしますか？</string>
+    <string name="media_runtime_downloading">メディア再生コンポーネントをダウンロード中：%1$s</string>
+    <string name="media_runtime_download_failed">メディア再生コンポーネントのダウンロードに失敗しました：%1$s</string>
+    <string name="media_runtime_not_installed">メディア再生コンポーネントがインストールされていません</string>
 </resources>

@@ -1,5 +1,8 @@
 package io.legado.desktop.audio
 
+import io.legado.app.constant.AppLog
+import io.legado.app.ui.compose.platform.jvmGetString
+import io.legado.desktop.media.DesktopMediaRuntime
 import io.legado.desktop.media.bufferedEndPositionMsOrZero
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -116,6 +119,9 @@ class DesktopAudioPlayer {
     /** 引擎创建失败原因 (惰性创建失败后不再重试, 直接 onError) */
     @Volatile
     private var engineError: String? = null
+
+    /** 上一次失败是否仅因媒体播放组件未安装 (下载完成后要能重新起播, 不能当粘性错误留着) */
+    private var runtimePending = false
 
     private val engineLock = Any()
 
@@ -335,7 +341,18 @@ class DesktopAudioPlayer {
     /** 惰性创建 mediamp 引擎; 失败一次后不再重试, 返回 null 并置 [engineError] */
     private fun ensureEngine(): MediampPlayer? = synchronized(engineLock) {
         engine?.let { return it }
+        // 媒体组件未装不算"引擎失败": 下完还要能直接播, 所以走可清的临时态而不是粘性的 engineError
+        if (runtimePending && DesktopMediaRuntime.isReady()) {
+            runtimePending = false
+            engineError = null
+        }
         engineError?.let { return null }
+        if (!DesktopMediaRuntime.ensureReady()) {
+            runtimePending = true
+            engineError = jvmGetString("media_runtime_not_installed")
+            AppLog.put("音频播放: 媒体播放组件未就绪, 已转按需下载", tag = "媒体组件")
+            return null
+        }
         return try {
             MediampPlayer(Unit, controlScope.coroutineContext).also {
                 engine = it

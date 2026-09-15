@@ -905,4 +905,9 @@
     <string name="about_dev_hint">Chỉ còn %1$d lần nữa</string>
     <string name="donate_qrcode">Mã QR ủng hộ</string>
     <string name="donate_thanks">Cảm ơn bạn đã ủng hộ!</string>
+    <string name="media_runtime_title">Thành phần phát phương tiện</string>
+    <string name="media_runtime_need_download">Để phát video và âm thanh cần tải thành phần phát phương tiện (khoảng 21 MB). Tải ngay?</string>
+    <string name="media_runtime_downloading">Đang tải thành phần phát phương tiện: %1$s</string>
+    <string name="media_runtime_download_failed">Tải thành phần phát phương tiện thất bại: %1$s</string>
+    <string name="media_runtime_not_installed">Chưa cài đặt thành phần phát phương tiện</string>
 </resources>

@@ -909,4 +909,9 @@
     <string name="about_dev_hint">Solo faltan %1$d veces</string>
     <string name="donate_qrcode">Código QR de donación</string>
     <string name="donate_thanks">¡Gracias por tu apoyo!</string>
+    <string name="media_runtime_title">Componente de reproducción multimedia</string>
+    <string name="media_runtime_need_download">Reproducir vídeo y audio requiere descargar el componente de reproducción multimedia (unos 21 MB). ¿Descargarlo ahora?</string>
+    <string name="media_runtime_downloading">Descargando el componente de reproducción multimedia: %1$s</string>
+    <string name="media_runtime_download_failed">No se pudo descargar el componente de reproducción multimedia: %1$s</string>
+    <string name="media_runtime_not_installed">El componente de reproducción multimedia no está instalado</string>
 </resources>

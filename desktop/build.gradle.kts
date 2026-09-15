@@ -102,6 +102,7 @@ object InstallType {
 sourceSets {
     main {
         kotlin.srcDir("build/generated/installType/kotlin")
+        kotlin.srcDir("build/generated/mediaRuntime/kotlin")
         // 直接挂载 app 端 drawable-nodpi 为桌面资源目录 (闪屏书本图标等),
         // 与 app 端共用同一份图片文件, 避免复制相同资源
         resources.srcDir("../app/src/main/res/drawable-nodpi")
@@ -109,6 +110,65 @@ sourceSets {
 }
 
 tasks.named("compileKotlin").configure { dependsOn(generateInstallType) }
+
+// ============================================================
+// 媒体播放组件 (mpv/FFmpeg native) 按需下载参数生成
+// ============================================================
+// 背景: 这套 native 实测 jar 21.0MiB (37 个 dll, 解压 52.7MiB), 是安装包最大单项。用户裁决不随包
+// 发布, 改成首次播视频/本地音频时从镜像下载 (见 desktop/media/DesktopMediaRuntime)。
+// 版本单一来源 = libs.versions.toml 的 mediamp; 各平台工件的 SHA-1 按版本预置在此 —— 升 mediamp
+// 版本必须同时补新版本的五个校验值, 否则配置期直接报错 (比运行期下载失败早发现)。
+private val mediaRuntimeSha1ByRelease: Map<String, Map<String, String>> = mapOf(
+    // 值来源: Maven Central 上各平台 <artifact>-<version>.jar.sha1 (2026-09-15 实测与阿里镜像一致)
+    "0.3.0" to mapOf(
+        "windows-x64" to "77ba37f9ef80537dafbcdf3009802e839464943c",
+        "windows-arm64" to "684ebeac4a8a85d97e965ae7928e84f2198e0726",
+        "linux-x64" to "8e221ff2bb7b58957dbfd3b257e705539f078612",
+        "macos-x64" to "78ce63a55e433a1dc041d56d72f90829270c7380",
+        "macos-arm64" to "7ceb34bd7269baaf64dc1f304a9ef1a4ee5add2b",
+    ),
+)
+
+val mediaRuntimeVersion = libs.versions.mediamp.get()
+val mediaRuntimeSha1 = mediaRuntimeSha1ByRelease[mediaRuntimeVersion]
+    ?: error(
+        "libs.versions.toml mediamp=$mediaRuntimeVersion 在 desktop/build.gradle.kts 的 " +
+            "mediaRuntimeSha1ByRelease 里没有校验值: 补上该版本五个平台的 jar SHA-1 再打包 " +
+            "(来源: https://repo1.maven.org/maven2/org/openani/mediamp/<artifact>/<version>/...jar.sha1)"
+    )
+
+val mediaRuntimeDir = file("build/generated/mediaRuntime/kotlin/io/legado/desktop/media/")
+val generateMediaRuntimeConfig by tasks.registering {
+    outputs.dir(mediaRuntimeDir)
+    doLast {
+        mediaRuntimeDir.mkdirs()
+        val entries = mediaRuntimeSha1.entries.sortedBy { it.key }
+            .joinToString(",\n        ") { "\"${it.key}\" to \"${it.value}\"" }
+        file("${mediaRuntimeDir.path}/MediaRuntimeConfig.kt").writeText(
+            """package io.legado.desktop.media
+
+/**
+ * 媒体播放组件按需下载参数 (由 :desktop:generateMediaRuntimeConfig 生成, 勿手改)。
+ *
+ * version 来自 libs.versions.toml `mediamp`; sha1ByPlatform 来自 Maven Central 官方 .sha1。
+ */
+object MediaRuntimeConfig {
+    const val VERSION: String = "$mediaRuntimeVersion"
+
+    val sha1ByPlatform: Map<String, String> = mapOf(
+        $entries
+    )
+}
+""".trimIndent() + "\n"
+        )
+    }
+}
+
+tasks.named("compileKotlin").configure { dependsOn(generateMediaRuntimeConfig) }
+
+// 媒体运行时 (mpv/ffmpeg native jar) 专用 configuration: **不**从 runtimeClasspath 继承,
+// 故 jpackage 产物与便携包里都不会出现它; 仅手动挂到 :desktop:run 的 classpath 上供开发期用。
+val mediaRuntimeOnly: Configuration by configurations.creating
 
 dependencies {
     // 引入 shared 模块 jvm target (传递 commonMain + jvmMain 全部 API)
@@ -171,7 +231,11 @@ dependencies {
         // 消除 "implicitly cast to Any" 警告 (旧写法直接把组对象当依赖传, 兜底分支实际是坏的)。
         else -> libs.mediamp.mpv.runtime.asProvider()
     }
-    runtimeOnly(mpvRuntime)
+    // 媒体运行时 (单工件实测 21.0MiB, 37 个 native) **不再进发布 classpath**: 用户裁决改首次播
+    // 视频/本地音频时按需下载 (见 desktop/media/DesktopMediaRuntime)。它同时服务视频与音频
+    // (同一套 mpv natives), 所以文案与门禁都是"媒体播放组件"而不是"视频组件"。
+    // 开发期 :desktop:run 仍挂上它 (mediaRuntimeOnly + 下方 run 任务 classpath), 本地跑代码不必每次先下一遍。
+    mediaRuntimeOnly(mpvRuntime)
     // jna 保留: WindowsFileDialogs (jna-platform) / DesktopAppConfigAccessor / DesktopBattery /
     // DesktopWebViewEngines 直调 Win32; 视频侧 JNA 绑定已随自研渲染器删除。
     implementation(libs.jna)
@@ -1044,6 +1108,11 @@ afterEvaluate {
         dependsOn(project(":modules:quickjs").tasks.named("buildJvmNativeLib"))
         dependsOn(buildSmtcNative)
         dependsOn(buildWndChromeNative)
+        // 开发期把媒体运行时挂回 classpath: 它已不在 runtimeClasspath (不进包), 挂上后
+        // DesktopMediaRuntime 走"清单在 classpath → 本地解包"分支, 与改动前行为一致。
+        if (this is JavaExec) {
+            classpath += mediaRuntimeOnly
+        }
         // 开发期 run 注入 debug 标志: 让 shared printStackTraceOnDebug 对齐 Android 的
         // BuildConfig.DEBUG 语义 (仅开发打栈); 打包产物不带该属性 = 静默
         if (this is JavaExec) {

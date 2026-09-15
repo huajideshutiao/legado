@@ -24,6 +24,8 @@ import io.legado.app.ui.book.video.VideoPlayerController
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.desktop.audio.DesktopScreenBrightness
 import io.legado.desktop.audio.DesktopSystemVolume
+import io.legado.app.ui.compose.platform.jvmGetString
+import io.legado.desktop.media.DesktopMediaRuntime
 import io.legado.desktop.media.bufferedEndPositionMsOrZero
 import io.legado.desktop.ui.DesktopWindowChrome
 import io.legado.desktop.ui.DesktopWindowHandle
@@ -64,10 +66,21 @@ class MediampVideoPlayPlatformProvider(
     private val windowHandle: DesktopWindowHandle = DesktopWindowHandle(),
 ) : VideoPlayPlatformProvider {
 
+    override fun isPlaceholderController(controller: VideoPlayerController?): Boolean =
+        controller === EmptyDesktopVideoPlayerController
+
     override fun createController(
         screenModel: VideoPlayScreenModel,
         onPlaybackEnded: () -> Unit,
     ): VideoPlayerController {
+        // 媒体播放组件 (mpv + FFmpeg native, 实测 21MB) 不再随包发布: 未就绪时不建真控制器,
+        // ensureReady() 已把状态推到全局弹框 (确认 → 进度 → 失败重试), 这里只负责降级为占位。
+        // 不拼到下面的 catch: 那里报的是"引擎初始化失败", 把"还没下载"当成故障报会误导用户。
+        if (!DesktopMediaRuntime.ensureReady()) {
+            AppLog.put("视频播放: 媒体播放组件未就绪, 已转按需下载", tag = "媒体组件")
+            screenModel.dispatch(VideoPlayUiEvent.ShowError(jvmGetString("media_runtime_not_installed")))
+            return EmptyDesktopVideoPlayerController
+        }
         return try {
             MediampVideoPlayerController(screenModel, onPlaybackEnded).also {
                 AppLog.put("视频播放: mediamp-mpv 后端")
