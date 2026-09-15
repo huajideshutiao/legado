@@ -702,7 +702,10 @@ fun BookInfoRoute(
     val useDevFeat = AppConfigProviders.get().bookInfoHorizontalLayout &&
         !currentBook.isVideo && !isLandscape
 
-    // 计算 menuState (对照 Activity Content 内 menuState 构造)
+    // 计算 menuState (对照 Activity Content 内 menuState 构造)。
+    // isLocal 用 origin 判定而非 Book.isLocal 扩展: 原版菜单的“上传到 WebDav”项就是
+    // `book?.origin == BookType.localTag` (archive BookInfoActivity:229), 而扩展把
+    // origin.startsWith(webDavTag) 也算 local (webDav 书两套结论相反)。
     val menuState = BookInfoMenuState(
         isLocal = currentBook.origin == BookType.localTag,
         isWebDav = currentBook.origin.startsWith(BookType.webDavTag),
@@ -742,10 +745,12 @@ fun BookInfoRoute(
         state = screenState,
         actions = actions,
         blurCoverBgSlot = { modifier, land ->
-            // 适配 (Modifier,Boolean)->Unit 到 (Book?,Int,Boolean,Boolean,Modifier,Boolean)->Unit 签名
+            // 适配 (Modifier,Boolean)->Unit 到 (Book?,Int,Boolean,Boolean,Modifier,Boolean)->Unit 签名;
+            // 重载计数与 coverSlot 同源: 换默认封面图集/重烘焙后模糊背景也必须失效,
+            // 只传 coverTick 会让背景一直用旧图 (三端 actual 都把这一位当失效 key; 鸿蒙无该 slot 实现)
             blurCoverBgSlot(
                 currentBook,
-                state.coverTick,
+                state.coverTick + coverConfigTick,
                 state.inBookshelf,
                 isEInkMode,
                 modifier,

@@ -25,6 +25,7 @@ import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.ConvertUtils
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.currentCoroutineContext
@@ -36,6 +37,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.error_get_book_info
@@ -75,7 +77,9 @@ class BookInfoScreenModel(initialBook: Book? = null) : ScreenModel {
             useDevFeat = false,
             isDarkTheme = false,
             menuState = BookInfoMenuState(
-                isLocal = initialBook?.isLocal == true,
+                // 与路由层同一口径 (origin 判定): 路由每次组合都会重算并覆盖本初值,
+                // 两处语义不一就会出现"模型说本地书、菜单按非本地渲染"的错位
+                isLocal = initialBook?.origin == BookType.localTag,
                 isWebDav = initialBook?.origin?.startsWith(BookType.webDavTag) == true,
                 hasSource = false,
                 sourceHasLogin = false,
@@ -138,9 +142,8 @@ class BookInfoScreenModel(initialBook: Book? = null) : ScreenModel {
                     book = event.book,
                     bookTick = it.bookTick + 1,
                     lastedTitle = event.lastedTitle,
-                    // 刷新的收尾就是 ShowBook + UpdateToc 一对, 两处都复位刷新标志:
-                    // 只靠 UpdateToc 时, 协程在两步之间被取消会留下永久转圈
-                    refreshing = false,
+                    // refreshing 不在这里复位: 收口在 [launchRefreshing] 的 finally,
+                    // 否则刷新的两步 (ShowBook/UpdateToc) 各自复位一次, 只是重复
                 )
             }
 
@@ -148,7 +151,6 @@ class BookInfoScreenModel(initialBook: Book? = null) : ScreenModel {
                 it.copy(
                     tocText = event.tocText,
                     lastedTitle = event.lastedTitle ?: it.lastedTitle,
-                    refreshing = false,
                 )
             }
 
@@ -181,16 +183,24 @@ class BookInfoScreenModel(initialBook: Book? = null) : ScreenModel {
     /**
      * 刷新期协程: 统一挂 [BookInfoUiEvent.Refresh] 开工、无论成功/异常/取消都复位刷新标志。
      *
+     * 叠跑按“后一次取代前一次”处理: 起新协程前先取消在飞那次, 被取代那次**不**派发
+     * [BookInfoUiEvent.RefreshDone] (它的 finally 里 isActive 已为 false)。refreshing 是单一
+     * 布尔、没有序号可对, 让被取代者照常收尾就会先把后一次的转圈提前掐掉。
+     *
      * 不加这一层的话, 协程体开头 [PlatformCapabilityProviders.get] 一类在 try 之外的调用报错,
      * 或协程在 ShowBook 与 UpdateToc 之间被取消, 下拉指示器会永久转圈。
      */
+    private var refreshingJob: Job? = null
+
     private fun launchRefreshing(block: suspend () -> Unit) {
+        refreshingJob?.cancel()
         dispatch(BookInfoUiEvent.Refresh)
-        scope.launch(IoDispatcher) {
+        refreshingJob = scope.launch(IoDispatcher) {
             try {
                 block()
             } finally {
-                dispatch(BookInfoUiEvent.RefreshDone)
+                // 只让“仍在跑的那一次”收尾
+                if (isActive) dispatch(BookInfoUiEvent.RefreshDone)
             }
         }
     }

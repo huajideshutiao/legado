@@ -160,7 +160,9 @@ import org.jetbrains.compose.resources.stringResource
  * 字段语义对照原 `BookInfoActivity` 同名字段:
  * - [book] / [bookTick] / [coverTick] / [inBookshelf] / [groupName] /
  *   [tocText] / [lastedTitle] / [wordCountText]: 与 Activity 同名字段一一对应
- * - [refreshing]: 刷新中标志 (对照原版 upLoading), 只驱动下拉指示器
+ * - [refreshing]: 刷新中标志, 只驱动下拉指示器。**非**原版 upLoading 的等价物 ——
+ *   原版 `upLoading(true)` 只改 `tvToc` 文案 (archive BookInfoActivity:523-535),
+ *   下拉指示器在 `setOnRefreshListener` 开头就 `isRefreshing = false` (:616-619), 从不表达刷新中
  * - [isLandscape] / [useDevFeat] / [isDarkTheme] / [isEInkMode]: 由路由层计算后传入
  *   (useDevFeat = bookInfoHorizontalLayout && !isVideo && !isLandscape;
  *   isEInkMode 时模糊封面背景与取色均跳过, 回退固定色)
