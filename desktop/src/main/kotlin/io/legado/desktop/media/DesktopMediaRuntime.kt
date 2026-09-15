@@ -330,6 +330,11 @@ object DesktopMediaRuntime {
      *
      * 清单是 mediamp 自己维护的权威文件名单, 不在我们这边复制一份, 避免升级时名单漂移;
      * 条目名带 `-` 版本号 (如 avcodec-62.dll), 必须逐字节保持原名, 否则 wrapper 的依赖找不到。
+     *
+     * # 条目名先过"纯文件名"硬约束再落盘
+     * 清单与 dll 同源于下载来的工件, 拼出 `../x.dll` 就会把文件写到安装目录之外 —— 而本目录会被
+     * `prepareLibraries` 交 `SetDllDirectoryW` 进 dll 搜索路径, 写到外面的东西副作用不可控。
+     * 因此带路径分隔符/`..`/绝对路径的条目名直接抛, 不静默跳过 (跳过 = 默认收下坏清单)。
      */
     private fun extractNatives(jar: File, dir: File): Int {
         ZipFile(jar).use { zf ->
@@ -337,6 +342,14 @@ object DesktopMediaRuntime {
                 ?: throw IllegalStateException("工件内缺少 mpv-natives-$platformSuffix.txt")
             val names = zf.getInputStream(manifestEntry).bufferedReader().use { reader ->
                 reader.readLines().map(String::trim).filter(String::isNotEmpty)
+            }
+            names.forEach { name ->
+                val asFile = File(name)
+                if (name == "." || name == ".." || name.contains('/') || name.contains('\\') ||
+                    asFile.isAbsolute || asFile.parent != null || name != asFile.name
+                ) {
+                    throw IllegalStateException("清单条目名不是纯文件名, 拒绝解包: $name")
+                }
             }
             dir.mkdirs()
             var count = 0
