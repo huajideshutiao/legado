@@ -6,20 +6,17 @@ import androidx.compose.foundation.draganddrop.dragAndDropTarget
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.State
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draganddrop.DragAndDropEvent
 import androidx.compose.ui.draganddrop.DragAndDropTarget
 import androidx.compose.ui.draganddrop.DragData
 import androidx.compose.ui.draganddrop.dragData
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
+import io.legado.app.ui.compose.platform.LocalOverlayTopInset
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.desktop.offerDroppedFiles
 
@@ -112,8 +109,32 @@ fun Modifier.onFilesDroppedToWindow(dropHint: MutableState<Boolean>): Modifier {
 }
 
 /**
- * [onFilesDroppedToWindow] 的反馈层: 文件被拖进窗口期间, 在整个客户区盖一层"accent 描边 + 同色极淡
- * 底 + 居中胶囊文案"的松手提示 (对应桌面平台拖放高亮的通用形态), 拖出/落下/会话结束自动消失。
+ * [onFilesDroppedToWindow] 的反馈层: 文件被拖进窗口期间, 在整个客户区盖一层同色极淡底,
+ * 并在其内描一圈 accent 圆角细框, 拖出/落下/会话结束自动消失。
+ *
+ * # 不声称"符合系统规范" (2026-11 实抓 Microsoft Learn 取证)
+ *
+ * 可取证页面 (`windows/apps/develop/data/drag-and-drop` 与 `windows/apps/design/signature-experiences/color`)
+ * **未规定** drop target 高亮的边框粗细 / 圆角 / 颜色令牌 / 填充 alpha / 整窗高亮形态。
+ * 官方能证实、且本层据以取舍的只有两条原则: accent 应克制使用、叠加层不得破坏下层内容对比度。
+ * 所以本层的数值 (10% 底 / [AppTheme.DesignTokens.strokeMedium] 框 / 8dp 圆角) 一律是**本地选型**,
+ * 不得在注释或提交信息里写成"Fluent/官方要求"。
+ *
+ * # 为什么不再自绘提示文字
+ *
+ * 被拖内容的缩略图与光标旁的操作含义 (如"→ 移动") 由系统拖拽 UI 负责, 官方把这类文案归给
+ * drag UI 的 caption 通道。原居中"松开即可打开"块与它职责重复、又正压在书架内容上, 已删 (用户拍板)。
+ * 不支持的文件类型仍由落下后的 Toast 告知 (见 [offerDroppedFiles] 一侧的分发链)。
+ *
+ * # 顶边为什么必须让开 ("描边四周不一样"的根因)
+ *
+ * Windows 的窗口控制条由 native (legado_wndchrome) 画在一个 layered 子窗口里: 横贯整个客户区宽度、
+ * 逐像素 alpha=255 不透明、z-order 恒在 Compose 画布之上 (见 [LocalOverlayTopInset] 与
+ * DesktopNativeChromeHost 的 KDoc)。描边贴在客户区顶边画 ⇒ 那一段被整条吃掉, 观感就是
+ * "上边没有线、左右下有"。所以描边顶部从 [LocalOverlayTopInset] 之下起画
+ * (macOS 与真全屏该值为 0 ⇒ 仍是完整一圈)。
+ * 落点热区**不变**, 仍是整个客户区 (用户拍板: 标题条上照样能落, 只是不画线), 因此可见范围比
+ * 真实热区小顶部一条 —— 方向上只会"看着不能落的地方其实能落", 不会反过来误导用户。
  *
  * # 为什么画在这一层
  *
@@ -121,7 +142,7 @@ fun Modifier.onFilesDroppedToWindow(dropHint: MutableState<Boolean>): Modifier {
  * 事件坐标 `DragAndDropEvent.positionInRoot` 由 `AwtDragAndDropManager` 从 AWT 的
  * `DropTargetDragEvent.location` 换算而来 —— 两者同以**场景根容器**为原点。所以遮罩必须与热区同一个
  * 容器: 作为挂了 [onFilesDroppedToWindow] 的那个 Box 的子项、用 `matchParentSize()` 取同一个尺寸,
- * 做到"看到的高亮 == 能落下的范围", 不额外引入新图层窗口。
+ * 不额外引入新图层窗口。
  *
  * 不加 pointerInput/clickable ⇒ 不吃鼠标事件; 也不是 dragAndDropTarget ⇒ 不参与拖放命中,
  * 不会把事件从根 Box 那里抢走。
@@ -129,45 +150,28 @@ fun Modifier.onFilesDroppedToWindow(dropHint: MutableState<Boolean>): Modifier {
  * 本函数必须是 `BoxScope` 的扩展: `matchParentSize` 是 BoxScope 的**成员**扩展
  * (foundation-layout `Box.kt:262`), 不能 import, 只能靠隐式接收者解析。
  *
+ * 圆角取 [AppTheme.DesignTokens.shapeDefault] (8dp) 而非直角: 主窗口被显式设成 Win11 圆角
+ * (WindowTitleBar.applyWindowCornerPreference), 直角描边的四个角会被 DWM 圆角切掉, 观感是"四角缺口"。
+ *
  * @param dropHint 与 [onFilesDroppedToWindow] 同一个实例。
- * @param text 提示文案 (默认只说"松开即可打开", 具体分流仍由 shared FileAssociationDispatch 决定)。
  */
 @Composable
-fun BoxScope.FileDropHintOverlay(
-    dropHint: State<Boolean>,
-    text: String = "松开即可打开",
-) {
+fun BoxScope.FileDropHintOverlay(dropHint: State<Boolean>) {
     // 唯一的 state 读点: 失效范围 = 本 composable 自身, 不牵连根 Box 的其它子项。
     if (!dropHint.value) return
     val accent = AppTheme.colors.accent
     Box(
         modifier = Modifier
             .matchParentSize()
+            // 泛染仍铺满整个客户区 (与热区同形), 只有描边让开 native 控制条
             .background(accent.copy(alpha = DROP_SCRIM_ALPHA))
-            .border(DROP_BORDER_WIDTH, accent),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = text,
-            color = Color.White,
-            modifier = Modifier
-                .background(DROP_HINT_BACKGROUND, AppTheme.DesignTokens.shapeDefault)
-                .padding(
-                    horizontal = AppTheme.DesignTokens.spacingLg,
-                    vertical = AppTheme.DesignTokens.spacingDefault,
-                ),
-        )
-    }
+            .padding(top = LocalOverlayTopInset.current)
+            .border(AppTheme.DesignTokens.strokeMedium, accent, AppTheme.DesignTokens.shapeDefault),
+    )
 }
-
-/** 描边宽度: 官方示例那种小方块目标用 2dp 就够, 整窗口周长下 2dp 几乎看不见, 抬到 3dp。 */
-private val DROP_BORDER_WIDTH = 3.dp
 
 /** 遮罩底色: 只取主题 accent 的极淡一层, 保证底下页面仍看得清 (不是模态遮罩)。 */
 private const val DROP_SCRIM_ALPHA = 0.10f
-
-/** 文案胶囊底色, 与 [DesktopToastHost] 的 Toast 胶囊同值 (高对比深色半透明)。 */
-private val DROP_HINT_BACKGROUND = Color(0xE6212121)
 
 /**
  * 拖放载荷 → 文件地址列表。形态 = `File.toURI()`: Windows 为 `file:///D:/x/y.mp4`,

@@ -214,8 +214,11 @@ fun DesktopNativeChromeHost(
  *
  * 不能用裸 `Spacer`: 它什么都不画, 那块区域露出的是 Skia 清屏色, 未必等于主题底色 ——
  * 一旦 native 控制条底边与本占位顶边差一个取整像素 (125% 等分数缩放下会), 就露出一条异色发丝
- * (用户实测)。这里显式涂**与 native 完全同一个颜色源**的底色, 于是即便有残余一行也看不出来;
- * native 侧另有 1px 重叠 (见 wndchrome.c reposition) 双保险。
+ * (用户实测)。这里显式涂**与 native 完全同一个颜色源**的底色, 于是即便有残余一行也看不出来。
+ *
+ * 注: native 侧**没有**额外的 1px 重叠 —— wndchrome.c 的 `reposition()` 把子窗口高度设为恰好
+ * `g_captionH`, 与本占位的 40.dp 同一取整口径 (两边都是 round(40 × density)); 防发丝靠的是上面
+ * 那句同色底, 不是靠重叠。
  */
 @Composable
 fun ChromeStripSpacer(modifier: Modifier = Modifier) {
