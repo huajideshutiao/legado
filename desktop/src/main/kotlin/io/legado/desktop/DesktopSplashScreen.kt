@@ -141,22 +141,17 @@ class DesktopSplashScreen(
         window.background = bgRgb
         window.contentPane.background = bgRgb
 
-        // 背景图: 产物优先 (选图时已烘焙); 缺失直解原图保显示 (EDT 不做烘焙),
-        // 同时后台补烘焙落盘供下次秒读 —— 与壁纸产物/启动图渲染端冷路径同构
+        // 背景图: 产物优先 (选图时已烘焙); 缺失时不卡 EDT 硬解原图 (对齐 Android 端 WelcomeActivity
+        // upBackgroundImage), 先展示主题纯色闪屏, 由后台线程现场重烘焙+解码后回填重绘
         var bgImage: BufferedImage? = null
-        if (bgImagePath != null) {
-            val baked = bakedImagePath(bgImagePath)
-            val displayPath = if (java.io.File(baked).exists()) baked else {
-                Thread {
-                    // 补烘焙复用全端冷路径 ensureBakedImage (屏幕尺寸, WEBP q80, 不放大)
-                    runCatching { ensureBakedImage(bgImagePath, screen.width, screen.height) }
-                }.apply { isDaemon = true }.start()
-                bgImagePath
-            }
+        val bakedPath = bgImagePath?.let { bakedImagePath(it) }
+        val bakedFile = bakedPath?.let { java.io.File(it) }
+        val bakedExists = bakedFile?.exists() == true
+
+        if (bakedExists && bakedFile != null) {
+            // 常态: 产物在, 直接采样解码 (与 Android 端一致, 快速)
             bgImage = runCatching {
-                val file =
-                    java.io.File(displayPath).takeIf { it.exists() } ?: return@runCatching null
-                decodeBytesSampled(file.readBytes(), 0)?.toAwtImage()
+                decodeBytesSampled(bakedFile.readBytes(), 0)?.toAwtImage()
             }.getOrNull()
         }
 
@@ -173,6 +168,26 @@ class DesktopSplashScreen(
         )
         window.contentPane.add(content)
         content.bounds = java.awt.Rectangle(0, 0, width, height)
+
+        if (bgImagePath != null && !bakedExists) {
+            // 冷路径 (缓存被清/跨端同步首启): 后台重烘焙 + 解码, 不卡首帧
+            Thread({
+                runCatching {
+                    val baked = ensureBakedImage(bgImagePath, screen.width, screen.height) ?: bgImagePath
+                    val file = java.io.File(baked).takeIf { it.exists() } ?: return@runCatching
+                    val image = decodeBytesSampled(file.readBytes(), 0)?.toAwtImage() ?: return@runCatching
+                    SwingUtilities.invokeLater {
+                        if (splashWindow === window) {
+                            content.bgImage = image
+                            content.repaint()
+                        }
+                    }
+                }
+            }, "splash-bake-bg").apply {
+                isDaemon = true
+                start()
+            }
+        }
 
         // 居中 (screen 用上方那一次读取, 不再二次枚举显示设备)
         window.setLocation(
@@ -203,7 +218,7 @@ class DesktopSplashScreen(
         private val showIcon: Boolean,
         private val accentColor: Color,
         private val backgroundColor: Color,
-        private val bgImage: BufferedImage?,
+        @Volatile var bgImage: BufferedImage?,
         private val width: Int,
         private val height: Int,
         private val scale: Float,
@@ -244,11 +259,12 @@ class DesktopSplashScreen(
                     RenderingHints.KEY_TEXT_ANTIALIASING,
                     RenderingHints.VALUE_TEXT_ANTIALIAS_ON
                 )
-                // 背景图或纯色
-                if (bgImage != null) {
+                // 背景图或纯色 (背景图可能被烘焙线程回填, 先取本地引用再判空, 避免并发改动使智能转换失效)
+                val bg = bgImage
+                if (bg != null) {
                     // 有意偏离原版：原版拉伸铺满会变形，改为中心裁切保持宽高比
-                    val imgW = bgImage.width.coerceAtLeast(1)
-                    val imgH = bgImage.height.coerceAtLeast(1)
+                    val imgW = bg.width.coerceAtLeast(1)
+                    val imgH = bg.height.coerceAtLeast(1)
                     val coverScale = maxOf(
                         width.toDouble() / imgW,
                         height.toDouble() / imgH,
@@ -259,7 +275,7 @@ class DesktopSplashScreen(
                     val drawH = ceil(imgH * coverScale).toInt()
                     val drawX = (width - drawW) / 2
                     val drawY = (height - drawH) / 2
-                    g2d.drawImage(bgImage, drawX, drawY, drawW, drawH, null)
+                    g2d.drawImage(bg, drawX, drawY, drawW, drawH, null)
                 } else {
                     g2d.color = backgroundColor
                     g2d.fillRect(0, 0, width, height)
