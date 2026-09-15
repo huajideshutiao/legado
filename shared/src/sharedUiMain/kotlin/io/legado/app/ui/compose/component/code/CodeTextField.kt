@@ -110,6 +110,7 @@ import io.legado.app.ui.compose.component.TextFieldLabelToText
 import io.legado.app.ui.compose.component.appFieldDefaultMinHeight
 import io.legado.app.ui.compose.component.appTextSelectionColors
 import io.legado.app.ui.compose.component.asHighlightOutputTransformation
+import io.legado.app.ui.compose.platform.BackLayerHandler
 import io.legado.app.ui.compose.component.rememberSyncedTextFieldState
 import io.legado.app.ui.compose.component.toKeyboardActionHandler
 import io.legado.app.ui.compose.platform.rememberImeAnimating
@@ -418,7 +419,8 @@ fun CodeTextField(
     }
     // 键盘事件: onPreviewKeyEvent 挂在字段外层 Box (BasicTextField 的祖先), 预览阶段先于字段
     // 内部 keyInput, 弹层 focusable=false 不抢焦点, 按键由字段统一接收 (原版 popup 亦如此)。
-    // 候选弹出时 上下/回车/Tab 优先走补全, ESC 收起; 无候选时回车交还字段 (换行缩进走
+    // 候选弹出时 上下/回车/Tab 优先走补全; ESC 由上面的 BackLayerHandler 消费 (根节点预览阶段
+    // 更早, 拿不到这里)。无候选时回车交还字段 (换行缩进走
     // CodeEditorState.adjustInput), Tab 插入 "\t" (对齐原版 EditText 硬件 Tab 行为)。
     val previewKeyHandler: (KeyEvent) -> Boolean = { event ->
         if (!autoComplete || readOnly || !isFocused) {
@@ -460,10 +462,7 @@ fun CodeTextField(
                     true
                 }
 
-                Key.Escape -> if (matches.isEmpty()) false else {
-                    autoDismissedText = value.text.toString()
-                    true
-                }
+                Key.Escape -> false
 
                 else -> false
             }

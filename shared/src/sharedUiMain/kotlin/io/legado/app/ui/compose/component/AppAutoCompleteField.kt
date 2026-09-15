@@ -35,6 +35,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import io.legado.app.constant.AppLog
+import io.legado.app.ui.compose.platform.BackLayerHandler
 import io.legado.app.ui.compose.theme.AppTheme
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.ic_clear_all
@@ -70,9 +72,16 @@ fun AppAutoCompleteField(
     var fieldSize by remember { mutableStateOf(IntSize.Zero) }
     val suggestions =
         history.filter { expanded && (value.isEmpty() || it.contains(value, ignoreCase = true)) }
+    // ESC/返回键收起历史下拉: 同候选补全 —— 根节点在预览阶段比内容更早拿到 ESC, 不注册本层
+    // 就会把宿主页面/对话框关掉 (dismissTopLayer 先于 overlay/pop; 同 AppDropdownMenu 语义)
+    BackLayerHandler(enabled = suggestions.isNotEmpty()) { expanded = false }
     val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
     if (autoFocus) {
-        LaunchedEffect(Unit) { runCatching { focusRequester.requestFocus() } }
+        LaunchedEffect(Unit) {
+            // 不静默吞: 节点未挂载时 requestFocus 会抛, 吞掉就表现为"自动聚焦偶尔不生效"无法定位
+            runCatching { focusRequester.requestFocus() }
+                .onFailure { AppLog.put("历史下拉输入框自动聚焦失败", it) }
+        }
     }
     Box(modifier) {
         AppUnderlineTextField(
