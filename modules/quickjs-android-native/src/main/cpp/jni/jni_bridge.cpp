@@ -49,7 +49,6 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
         JavaObjectClass::initBridgeCache(env);
         initJniCallbacksCache(env);
     }
-    LOGI("legado_quickjs native loaded");
     return JNI_VERSION_1_6;
 }
 
