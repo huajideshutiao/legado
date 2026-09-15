@@ -2,8 +2,10 @@ package org.jsoup.select
 
 import com.fleeksoft.ksoup.Ksoup
 import com.fleeksoft.ksoup.nodes.Element
+import io.legado.app.exception.NoStackTraceException
 import io.legado.app.model.analyzeRule.AnalyzeByXPath
 import kotlin.test.Test
+import kotlin.test.assertFailsWith
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -16,7 +18,9 @@ import kotlin.test.assertTrue
  * - [XPathEvaluator.evaluateElements] / [XPathEvaluator.evaluate](companion, 本文件主用)
  * - `selectXpath`(Element.selectXpath 扩展, 同包)
  * - `AnalyzeByXPath.getElements`(书源规则真实入口: AnalyzeByXPath → RuleAnalyzer.splitRule → getResult → selectXpath)
- * 谓词落到 `evaluatePredicate`(private) 后若一条正则都不命中, 走末尾 `return true` 兜底(等于不过滤)。
+ * 谓词落到 `evaluatePredicate`(private) 后若整串不命中任何已实现形式, 按规则层统一口径
+ * 直接 `throw NoStackTraceException("XPath 谓词不支持: …")`（异常类型必须是 Exception 系: 书源入口 `AnalyzeByXPath.getResult` 兜的是 `catch (Exception)`, 抛 Error 会穿出规则层）。
+ * 旧实现是末尾 `return true`（等于不过滤）, 会把整个标签集合静默吐给上层。
  *
  * 观测口径: tag 决定 `getElementsByTag(tag)` 能捞到哪些标签, predicate 决定过滤结果,
  * 两者共同体现在"返回的 id 序列"上; 每条用例注释里给出 `parsePredicate` 的实际 tag / predicate 切片。
@@ -49,10 +53,11 @@ class XPathEvaluatorPredicateTest {
     }
 
     @Test
-    fun `谓词为裸名字 正则全不命中 兜底 return true 不过滤`() {
-        // segment "div[a]": tag="div", predicate="a"
-        // 现状: 所有 div 都保留(d1/d2/d3), span 因 tag 过滤被排除 → 证明 tag 取的是第一个 '[' 之前
-        assertEquals(listOf("d1", "d2", "d3"), ids("//div[a]"))
+    fun `谓词为裸名字 不支持 按规则层口径抛错`() {
+        // segment "div[a]": predicate="a" 不属于任何已实现形式
+        // 旧行为: 落到末尾 `return true` → 不过滤 → 把 d1/d2/d3 全量吐出去（静默多选）
+        // 现行为: 跟 `RuleAnalyzer.splitRule` 对 `[…后未平衡` 一样直接抛错, 不把坏规则伪装成"没数据"
+        assertFailsWith<NoStackTraceException> { ids("//div[a]") }
     }
 
     @Test
@@ -65,25 +70,24 @@ class XPathEvaluatorPredicateTest {
     // ─────────────────── 多谓词 / 嵌套谓词(疑似缺陷, 待重构修正) ───────────────────
 
     @Test
-    fun `两个谓词被并成一个垃圾谓词 疑似缺陷 待重构修正`() {
-        // segment "div[a][b]": 现在拿到的 tag="div" + **两个**谓词 "a"/"b"(旧版切成垃圾谓词 `a][b`),
-        // 但 "a"/"b" 不属于已支持的谓词形式 → evaluatePredicate 兜底 true → 两个谓词都不过滤,
-        // 所有 div 仍被选中(与旧版 observable 相同;切分已正确, 缺的是谓词语言本身)
-        assertEquals(listOf("d1", "d2", "d3"), ids("//div[a][b]"))
+    fun `两个不支持谓词求交前就抛错`() {
+        // segment "div[a][b]": 计数式切分后拿到两个谓词 "a"/"b", 均不支持
+        // （旧行为: 两个谓词都被 `return true` 放过 → 全量返回）
+        assertFailsWith<NoStackTraceException> { ids("//div[a][b]") }
     }
 
     @Test
-    fun `嵌套非属性谓词被压平后失效 疑似缺陷 待重构修正`() {
-        // segment "div[a[b=1]]": 计数式取到配对收尾 → 谓词 = "a[b=1]"(旧版 lastIndexOf 巧合同结果)
-        // 无 '@' → 全部正则不命中 → 兜底 true → "含子元素 a 且 a 的 b=1" 语义仍丢失
-        assertEquals(listOf("d1", "d2", "d3"), ids("//div[a[b=1]]"))
+    fun `嵌套非属性谓词不支持 抛错`() {
+        // segment "div[a[b=1]]": 计数式取到外层配对收尾 → 谓词 = "a[b=1]", 整串不等于任何已实现形式
+        assertFailsWith<NoStackTraceException> { ids("//div[a[b=1]]") }
     }
 
     @Test
-    fun `嵌套属性谓词降级为自身属性匹配 疑似缺陷 待重构修正`() {
-        // segment "div[a[@id='d3']]": 计数式取到外层配对收尾 → 谓词 = "a[@id='d3']"(与旧版同结果)
-        // attrPattern 在串内仍找到 @id='d3' → 变成"div 自身 id=d3", 与"含子节点 a 且 a 的 id=d3"完全跑偏
-        assertEquals(listOf("d3"), ids("//div[a[@id='d3']]"))
+    fun `嵌套属性谓词不再降级为自身属性匹配`() {
+        // segment "div[a[@id='d3']]": 谓词 = "a[@id='d3']"
+        // 旧行为: 非锚定正则在串内 find 到 @id='d3' → 变成“div 自身 id=d3”→ 误选 d3
+        // 现行为: 谓词形式整串匹配不成立 → 不支持 → 抛错（不把错语义伪装成正常工作）
+        assertFailsWith<NoStackTraceException> { ids("//div[a[@id='d3']]") }
     }
 
     @Test
@@ -122,8 +126,8 @@ class XPathEvaluatorPredicateTest {
 
     @Test
     fun `selectXpath 扩展入口与 companion 入口结果一致`() {
-        // Element.selectXpath → XPathEvaluator.evaluateElements, 走同一 parsePredicate
-        assertEquals(listOf("d1", "d2", "d3"), doc.selectXpath("//div[a]").map { it.attr("id") })
+        // Element.selectXpath → XPathEvaluator.evaluateElements, 走同一谓词切分
+        assertFailsWith<NoStackTraceException> { doc.selectXpath("//div[a]") } //不支持谓词: 两个入口同样报错, 不静默多选
         assertEquals(listOf("d2"), doc.body().selectXpath("./div[@id='d2']").map { it.attr("id") })
     }
 
@@ -131,9 +135,135 @@ class XPathEvaluatorPredicateTest {
     fun `AnalyzeByXPath 书源入口同样吃到该谓词切分结果`() {
         // AnalyzeByXPath(html).getElements("//div[a]") → RuleAnalyzer.splitRule("&&","||","%%")
         // 该串无分隔符 → rules.size == 1 → baseElement.selectXpath(rule, Node::class)
-        val nodes = AnalyzeByXPath(html).getElements("//div[a]")
-            ?.filterIsInstance<Element>()
-            .orEmpty()
-        assertEquals(listOf("d1", "d2", "d3"), nodes.map { it.attr("id") })
+        val nodes = runCatching {
+            AnalyzeByXPath(html).getElements("//div[a]")
+                ?.filterIsInstance<Element>()
+                .orEmpty()
+                .map { it.attr("id") }
+        }
+        //书源真实入口: 坏谓词要么报错, 要么被上层吃掉, 但不得静默变成“全量返回”
+        assertTrue(nodes.isFailure || nodes.getOrThrow().isEmpty())
+    }
+
+    // ─────────────────── 序号口径与引号边界（XPath 1.0 应然行为） ───────────────────
+
+    private val deepHtml = """
+        <html><body>
+        <div id="b1"><div id="n1"></div></div>
+        <span id="s2"></span>
+        <div id="b2"><a id="l1" href="/b/c">L1</a></div>
+        <p id="p1" data-src="x.png" class="article novel">P1</p>
+        </body></html>
+    """.trimIndent()
+
+    private fun idsOf(html: String, xpath: String): List<String> =
+        XPathEvaluator.evaluateElements(xpath, Ksoup.parse(html)).map { it.attr("id") }
+
+    @Test
+    fun `纯数字与 position()=n 与 last() 共用同名兄弟 1 基序号`() {
+        val body = """<body><div id="a"></div><span id="s"></span><div id="b"></div><div id="c"></div></body>"""
+        // 同名兄弟计数: span 不得占位（旧实现 [n] 按全部子元素下标取）
+        assertEquals(listOf("a"), idsOf(body, "//div[1]"))
+        assertEquals(listOf("b"), idsOf(body, "//div[2]"))
+        assertEquals(listOf("c"), idsOf(body, "//div[3]"))
+        assertEquals(idsOf(body, "//div[1]"), idsOf(body, "//div[position()=1]"))
+        assertEquals(idsOf(body, "//div[3]"), idsOf(body, "//div[last()]"))
+        assertEquals(idsOf(body, "//div[3]"), idsOf(body, "//div[position()=last()]"))
+        // 不存在的序号与 0 基写法一律空结果, 不绕回首位
+        assertTrue(idsOf(body, "//div[4]").isEmpty())
+        assertTrue(idsOf(body, "//div[0]").isEmpty())
+    }
+
+    @Test
+    fun `contains() 不被属性存在分支抢先`() {
+        val body = """
+            <body><p id="hit" class="article novel">H</p><p id="miss" class="article">M</p><p id="none">N</p></body>
+        """.trimIndent()
+        // 旧顺序下 exists 分支先 return hasAttr("class") → 三个 p 全命中
+        assertEquals(listOf("hit"), idsOf(body, "//p[contains(@class,'novel')]"))
+        assertEquals(listOf("hit", "miss"), idsOf(body, "//p[contains(@class,'article')]"))
+        //存在性与等值仍各自成立
+        assertEquals(listOf("hit", "miss", "none"), idsOf(body, "//p"))
+        assertEquals(listOf("hit", "miss"), idsOf(body, "//p[@class]"))
+    }
+
+    @Test
+    fun `引号内的斜杠不作层级分隔符`() {
+        // 旧实现 path.split("/") 把 `a[@href='/b/c']` 切成三截 → getElementsByTag("a[@href='") 空
+        assertEquals(listOf("l1"), idsOf(deepHtml, "//a[@href='/b/c']"))
+        // `/` 与 `//` 两种层级仍按原口径工作（getElementsByTag 本身含全部后代）
+        assertEquals(listOf("n1"), idsOf(deepHtml, "//div//div"))
+        assertEquals(listOf("s2"), idsOf(deepHtml, "//body/span"))
+    }
+
+    @Test
+    fun `属性名可含连字符`() {
+        assertEquals(listOf("p1"), idsOf(deepHtml, "//p[@data-src='x.png']"))
+        //旧实现的 @(\w+) 不认 '-', 该谓词落到兜底 → 全量返回
+        assertEquals(listOf("p1"), idsOf(deepHtml, "//p[@data-src]"))
+    }
+
+    @Test
+    fun `谓词两侧空白与属性值内含引号边界`() {
+        assertEquals(listOf("b2"), idsOf(deepHtml, "//div[ @id = 'b2' ]"))
+        assertEquals(listOf("p1"), idsOf(deepHtml, "//p[ contains(@class, 'novel') ]"))
+    }
+
+    @Test
+    fun `不支持的 text 类谓词不静默多选`() {
+        assertFailsWith<NoStackTraceException> { idsOf(deepHtml, "//p[text()='P1']") }
+        assertFailsWith<NoStackTraceException> { idsOf(deepHtml, "//div[contains(text(),'x')]") }
+    }
+
+    // ─────────────────── 比较符 / and-or / not / starts-with（本轮补齐的合法形态） ───────────────────
+
+    @Test
+    fun `不等与大小比较`() {
+        val body = """<body><i id="i1" v="1"></i><i id="i2" v="9"></i><i id="i3" v=""></i><i id="i4"></i></body>"""
+        // 无 v 属性的 i4 是空节点集: 参与相等/关系比较恒 false (规范 §3.1)
+        assertEquals(listOf("i2", "i3"), idsOf(body, "//i[@v!='1']"))
+        assertEquals(listOf("i1"), idsOf(body, "//i[@v<5]"))
+        assertEquals(listOf("i2"), idsOf(body, "//i[@v>=5]"))
+        // 属性缺失 ≠ 属性值为空串: 旧实现用 attr() 比, 会把 i4 也当命中
+        assertEquals(listOf("i3"), idsOf(body, "//i[@v='']"))
+    }
+
+    @Test
+    fun `and 与 or 的优先级与分组`() {
+        val body = """<body><r id="a" x="1" y="1"></r><r id="b" x="1"></r><r id="c" y="1"></r><r id="d"></r></body>"""
+        assertEquals(listOf("a"), idsOf(body, "//r[@x and @y]"))
+        assertEquals(listOf("a", "b", "c"), idsOf(body, "//r[@x or @y]"))
+        // or 优先级低于 and: `@x or @y and @nope` == `@x or (@y and @nope)`
+        assertEquals(listOf("a", "b"), idsOf(body, "//r[@x or @y and @nope]"))
+        assertEquals(listOf("c"), idsOf(body, "//r[(@x or @y) and not(@x)]"))
+    }
+
+    @Test
+    fun `not 与 starts-with`() {
+        val body = """<body><s id="h1" href="http://a"></s><s id="h2" href="ftp://b"></s><s id="h3"></s></body>"""
+        assertEquals(listOf("h1"), idsOf(body, "//s[starts-with(@href,'http')]"))
+        assertEquals(listOf("h2", "h3"), idsOf(body, "//s[not(starts-with(@href,'http'))]"))
+        assertEquals(listOf("h3"), idsOf(body, "//s[not(@href)]"))
+        assertEquals(listOf("h1", "h2"), idsOf(body, "//s[@href and not(@id='h3')]"))
+    }
+
+    @Test
+    fun `位置比较与布尔字面量`() {
+        val body = """<body><div id="a"></div><div id="b"></div><div id="c"></div></body>"""
+        assertEquals(listOf("b", "c"), idsOf(body, "//div[position()>1]"))
+        assertEquals(listOf("a", "b"), idsOf(body, "//div[position()<last()]"))
+        assertEquals(listOf("b"), idsOf(body, "//div[position()>=2 and position()<=2]"))
+        assertEquals(listOf("a", "b", "c"), idsOf(body, "//div[true()]"))
+        assertTrue(idsOf(body, "//div[false()]").isEmpty())
+    }
+
+    @Test
+    fun `未支持形态与坏语法仍抛错`() {
+        // 节点测试/轴/未实现函数: 都是合法 XPath 1.0, 只是本件子集没做 → 抛错而不是静默多选
+        assertFailsWith<NoStackTraceException> { idsOf(deepHtml, "//div[*]") }
+        assertFailsWith<NoStackTraceException> { idsOf(deepHtml, "//div[string-length(@id)>1]") }
+        assertFailsWith<NoStackTraceException> { idsOf(deepHtml, "//div[@id='b1' extra]") }
+        assertFailsWith<NoStackTraceException> { idsOf(deepHtml, "//div[not(@id='b1']") }
     }
 }
+

@@ -23,6 +23,9 @@ internal object BalanceScan {
     /** [chomp] 的 primary 参数取此值表示不另设主对。 */
     const val NO_PRIMARY: Char = 0.toChar()
 
+    /** [splitQuoted] 的引号哨兵：正常文本不会出现 0 号字符。 */
+    private const val NO_QUOTE: Char = 0.toChar()
+
     /** 转义生效范围。三态不可合并为布尔：原始三处实现恰好各占一种。 */
     internal enum class Escape {
         /** 完全不认反斜杠（`ExploreOption` 的 `<name(...)>` content 段） */
@@ -158,5 +161,49 @@ internal object BalanceScan {
             tokenStart = at + 1
         }
         onSegment(tokenStart, until)
+    }
+
+    /**
+     * 按分隔符 [separator] 切分，**引号内**与 [open]/[close] 嵌套内的分隔符一律不算分隔符。
+     *
+     * [pair] 决定命中的是“连续两个”还是“单个”分隔符，两趟配合即可区分 XPath 的 `//`（后代步）
+     * 与 `/`（子步）：`pair = true` 只在成对处切开并吞掉第二个字符，`pair = false` 只在单个处切开。
+     *
+     * 不与 [splitTopLevel] 合并：那件不认引号、且允许深度走负（对齐 `ExploreOption` 替换前的行为，
+     * 已锁在 `ExploreOptionUrlScanTest`），本件服务 XPath 路径，两者口径不同、各有调用方。
+     */
+    fun splitQuoted(
+        text: String,
+        separator: Char,
+        pair: Boolean,
+        open: Char = '[',
+        close: Char = ']',
+    ): List<String> {
+        val out = ArrayList<String>(4)
+        var depth = 0
+        var quote = NO_QUOTE
+        var start = 0
+        var i = 0
+        while (i < text.length) {
+            val c = text[i]
+            if (quote != NO_QUOTE) {
+                if (c == quote) quote = NO_QUOTE //引号闭合，引号内字符不参与切分与计层
+            } else when (c) {
+                '\'', '"' -> quote = c
+                open -> depth++
+                close -> if (depth > 0) depth--
+                separator -> if (depth == 0) {
+                    val paired = i + 1 < text.length && text[i + 1] == separator
+                    if (paired == pair) {
+                        out.add(text.substring(start, i))
+                        if (paired) i++ //成对分隔符吞掉第二个，避免 `a//b` 被当成三个 token
+                        start = i + 1
+                    }
+                }
+            }
+            i++
+        }
+        out.add(text.substring(start))
+        return out
     }
 }
