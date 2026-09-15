@@ -90,9 +90,6 @@ object SingleInstanceGuard {
     @Volatile
     private var serverSocket: ServerSocket? = null
 
-    @Volatile
-    private var ownToken: String? = null
-
     /** 守卫线程句柄 (仅 [startAsync] 写)。 */
     @Volatile
     private var guardThread: Thread? = null
@@ -228,11 +225,9 @@ object SingleInstanceGuard {
             return
         }
         serverSocket = server
-        ownToken = token
         if (!writeLock(lockFile, InstanceLock(server.localPort, token, currentPid()))) {
             runCatching { server.close() }
             serverSocket = null
-            ownToken = null
             return
         }
         Runtime.getRuntime().addShutdownHook(Thread { releaseLock(lockFile, token) })
@@ -368,7 +363,6 @@ object SingleInstanceGuard {
         if (readLock(lockFile)?.token == token) {
             runCatching { lockFile.delete() }
         }
-        ownToken = null
     }
 
     // ==================== 工具 ====================
