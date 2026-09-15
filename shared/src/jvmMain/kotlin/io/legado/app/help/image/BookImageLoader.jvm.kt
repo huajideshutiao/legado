@@ -192,7 +192,8 @@ class JvmBookImageLoader : BookImageLoader {
  * 调用时机: desktop Main.kt 阶段1 (首个 Composable 图片加载之前) —
  * setSafe 在默认 loader 已被 get 创建后调用会抛 IllegalStateException,
  * 故必须先于任何 AsyncImage / rememberAsyncImagePainter 组合。
- * 注册本身零开销 (ImageLoader lazy 构建, OkHttpClient 惰性到首次网络 fetch)。
+ * 注册本身零开销 ([jvmBookImageLoader] 是 lazy, OkHttpClient 惰性到首次网络 fetch) ——
+ * 真正的开销在首次 get 触发 lazy 构建那一次。
  */
 fun registerJvmBookImageLoader() {
     SingletonImageLoader.setSafe { jvmBookImageLoader }

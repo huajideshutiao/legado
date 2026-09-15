@@ -158,7 +158,11 @@ class BookshelfViewModel {
     /** 分组列表流订阅 job */
     private var bookGroupsJob: Job? = null
 
-    /** 书架激活态 (UI 层按 tab 激活 + 生命周期 RESUMED 驱动); false 时零 DB 订阅 */
+    /**
+     * 书架订阅开关。当前唯一驱动方是 BookshelfScreen 的 `LaunchedEffect(Unit)` —— 书架页组合期恒 true,
+     * 只在组合销毁 (离开导航栈) 时置 false; 不随 tab 切走 / 窗口失焦取消 (用户拍板 2026-08: 对齐原版
+     * LiveData 语义, 消除"旧快照首帧"导致音频页误跳旧进度)。false 期间零 DB 订阅。
+     */
     @Volatile
     private var active = false
 
@@ -262,6 +266,9 @@ class BookshelfViewModel {
                     // (selectGroup/upSort/setBookshelfActive) 恢复订阅 (对齐原版 catch 打日志语义)
                     AppLog.put("书架书籍数据加载出错 groupId=$groupId", it)
                 }.map { list -> sortBooks(list, sortOf(groupId)) }
+                    // debounce(100) 与拆分前完全一致: 曾试过"首发射直通 + 后续 100ms 聚合",
+                    // 但实测对启动那 470ms 首绘没有可测影响, 而本文件是桌面/iOS/鸿蒙三端共用的
+                    // 书架数据链 → 拿不到三端回归就不留未证实的行为改动。
                     .debounce(100)
                     .flowOn(IoDispatcher).conflate()
                 if (isCurrent) {

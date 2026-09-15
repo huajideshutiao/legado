@@ -334,6 +334,8 @@ fun BookshelfScreen(
             HorizontalPager(
                 state = pagerState,
                 beyondViewportPageCount = 1, // 对齐原版 offscreenPageLimit=1，手势开始前相邻页已完成组合
+                // (2026-09-15 实测过对照: 改成 0 对启动那 470ms 首绘无帮（429~468ms vs 448~470ms）,
+                //  反而会让滑到相邻分组时才开始组合 → 保留 1)。
                 key = { index -> groups.getOrNull(index)?.groupId ?: index.toLong() },
             ) { page ->
                 val group = groups.getOrNull(page) ?: return@HorizontalPager
