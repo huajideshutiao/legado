@@ -628,7 +628,9 @@ fun Intent.toLaunchRequest(): LaunchRequest? {
                 return LaunchRequest.OpenRoute(AppRoute.VideoPlay(it))
             }
             dataString?.let { url ->
-                return when (data?.scheme) {
+                // scheme 按 RFC 3986 大小写不敏感 (iOS/鸿蒙两端都已 lowercase): 旧写法拿原始
+                // scheme 比, 大写 scheme 的 URI 会落 DeepLink 而非文件导入
+                return when (data?.scheme?.lowercase()) {
                     "content", "file", "app" -> LaunchRequest.ImportFile(url)
                     else -> LaunchRequest.DeepLink(url)
                 }
