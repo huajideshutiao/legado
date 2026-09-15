@@ -210,13 +210,10 @@ fun main(args: Array<String>) {
         isDaemon = true
         start()
     }
-    // legado:// deep link 启动参数处理 (对照 app 端 AssociationActivity intent-filter):
-    // 系统级 URL protocol 注册已下移到 awaitPrimaryDecision 之后 (见 runDesktopApp):
-    // 它是幂等地写 HKCU / ~/.local 的副作用, 不该让"注定要退出的第二个实例"去做。
-    handleDeepLinkArgs(args)
-    // 文件关联 (双击 .epub/.txt/.pdf/.cbz / 视频 .mp4/.mkv…): 系统冷启动时把文件路径当 argv
-    // 送进来 (打包期注册见 build.gradle.kts nativeDistributions.fileAssociation)
-    offerAssociationArgs(effectiveArgs.toList())
+    // legado:// deep link 与文件关联的启动参数**不在这里消费**: 本进程可能是二次实例,
+    // 守卫线程会把同一份 args 转发给首实例, 而两边都会各自入队 —— 早于单实例判定消费会让
+    // 同一次双击被导入两次 (旧代码就摆在判定之前)。两者现在跟在 runDesktopApp 的
+    // SingleInstanceGuard.awaitPrimaryDecision() 之后 (那里才是"本进程就是首实例"的确切点)。
     // macOS: legado:// 经 Apple Event (OpenURIHandler) 送达而非 argv, 注册 handler 承接;
     // Windows/Linux 的 Desktop.Action.APP_OPEN_URI isSupported=false, 静默跳过
     runCatching {
@@ -243,22 +240,6 @@ fun main(args: Array<String>) {
 }
 
 /**
- * 解析启动参数中的 legado://`/`yuedu:// deep link, 经 [LegadoDeepLinkHandler] 记录,
- * 待 [DeepLinkImportHost] 在窗口内消费弹导入对话框。
- *
- * # 各 OS 系统级 URL protocol 注册 (让浏览器点 `legado://` 链接能唤起本应用)
- *
- * - **Windows**: 运行时注册 `HKCU\Software\Classes\<scheme>` (空字符串值 `URL Protocol` +
- *   `shell\open\command` 默认值 `"<exe>" "%1"`), 见 [DesktopUrlProtocol];
- *   jpackage MSI / 便携 zip 产物启动时自动完成, per-user 无需管理员权限。
- * - **Linux**: 运行时写 `~/.local/share/applications/legado.desktop`
- *   (`MimeType=x-scheme-handler/legado;x-scheme-handler/yuedu;` + `Exec="<launcher>" %u`)
- *   并 `xdg-mime default` 设为默认 handler, 见 [DesktopUrlProtocol]。
- * - **macOS**: 打包期把 `CFBundleURLTypes` (CFBundleURLSchemes=[legado,yuedu]) 注入
- *   app bundle Info.plist (desktop/build.gradle.kts nativeDistributions.macOS.infoPlist);
- *   运行时回调走 Apple Event, 由 main() 里的 Desktop.setOpenURIHandler 承接 (非 argv)。
- */
-/**
  * 重启场景: 新进程启动参数里带 `--legado-restart-wait=<pid>` 时, 等到旧进程退出再继续。
  *
  * 旧进程 [io.legado.desktop.help.DesktopRegexErrorHandler.restartApp] 会先拉起本进程再
@@ -282,10 +263,29 @@ private fun waitForOldProcessIfRestart(args: Array<String>): Array<String> {
 
 private const val RESTART_WAIT_TIMEOUT_MS = 30_000L
 
+/**
+ * 解析启动参数中的 legado://`/`yuedu:// deep link, 经 [LegadoDeepLinkHandler] 记录,
+ * 待 [DeepLinkImportHost] 在窗口内消费弹导入对话框。
+ *
+ * # 各 OS 系统级 URL protocol 注册 (让浏览器点 `legado://` 链接能唤起本应用)
+ *
+ * - **Windows**: 运行时注册 `HKCU\Software\Classes\<scheme>` (空字符串值 `URL Protocol` +
+ *   `shell\open\command` 默认值 `"<exe>" "%1"`), 见 [DesktopUrlProtocol];
+ *   jpackage MSI / 便携 zip 产物启动时自动完成, per-user 无需管理员权限。
+ * - **Linux**: 运行时写 `~/.local/share/applications/legado.desktop`
+ *   (`MimeType=x-scheme-handler/legado;x-scheme-handler/yuedu;` + `Exec="<launcher>" %u`)
+ *   并 `xdg-mime default` 设为默认 handler, 见 [DesktopUrlProtocol]。
+ * - **macOS**: 打包期把 `CFBundleURLTypes` (CFBundleURLSchemes=[legado,yuedu]) 注入
+ *   app bundle Info.plist (desktop/build.gradle.kts nativeDistributions.macOS.infoPlist);
+ *   运行时回调走 Apple Event, 由 main() 里的 Desktop.setOpenURIHandler 承接 (非 argv)。
+ */
 private fun handleDeepLinkArgs(args: Array<String>) {
-    val url = args.firstOrNull { LegadoDeepLink.isDeepLink(it) } ?: return
-    if (!LegadoDeepLinkHandler.handle(url)) {
-        AppLog.put("deep link 解析失败 (缺 src 参数): $url", tag = TAG)
+    // 一次启动/转发可能携带多个 legado:// (LegadoDeepLinkHandler 内部有队列), 旧实现只取首个
+    args.filter { LegadoDeepLink.isDeepLink(it) }.forEach { url ->
+        if (!LegadoDeepLinkHandler.handle(url)) {
+            // 文案不写死"缺 src 参数": parse 对未知 host/路径同样返回 null
+            AppLog.put("deep link 解析失败 (缺 src 参数或 scheme/路径非法): $url", tag = TAG)
+        }
     }
 }
 
@@ -382,6 +382,10 @@ private fun runDesktopApp() = application {
         // 吃完, 守卫那 110~166ms 在其期间并行跑完了, 所以这个等待实测接近 0;
         // 再往下就是 java.util.prefs 与 Room 数据库, 必须知道"本进程是不是首实例"。
         SingleInstanceGuard.awaitPrimaryDecision()
+        // 启动参数 (deep link / 关联文件) 必须在单实例判定之后消费: 本进程若是二次实例,
+        // 守卫线程已把同一份 args 转发给首实例, 两边都入队就会重复导入同一次双击
+        handleDeepLinkArgs(startupArgs)
+        offerAssociationArgs(startupArgs.toList())
         // 系统级 URL protocol 注册 (Windows 写 HKCU\Software\Classes\<scheme> / Linux 写 xdg-mime,
         // macOS 靠打包期 Info.plist): 异步且不阻塞启动; 放到判定之后是为了不让二次启动去做这个写入
         DesktopUrlProtocol.ensureRegisteredAsync()
@@ -519,8 +523,7 @@ private fun runDesktopApp() = application {
             Thread.currentThread().contextClassLoader
                 ?.getResourceAsStream("icon.png")?.use { decodeBytesSampled(it.readBytes(), 0) }
                 ?.let { BitmapPainter(it) }
-        }.getOrNull().also {
-        }
+        }.getOrNull()
     }
     // AppNavigator: 零薄壳导航唯一状态源 (替代旧 DesktopApp 的 20+ 并行状态字段)
     val navigator = remember { AppNavigator(AppRoute.Main()) }

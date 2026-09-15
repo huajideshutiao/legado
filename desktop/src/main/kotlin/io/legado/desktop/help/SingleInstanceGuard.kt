@@ -269,9 +269,10 @@ object SingleInstanceGuard {
 
     /** 首实例消费转发来的启动参数: 投递 deep link + 关联文件 + 前置窗口 (与 Main.kt 冷启动语义一致)。 */
     private fun onForwardedArgs(args: List<String>) {
-        args.firstOrNull { LegadoDeepLink.isDeepLink(it) }?.let { url ->
+        // 一次转发可能带多个 legado://, 旧实现只取首个
+        args.filter { LegadoDeepLink.isDeepLink(it) }.forEach { url ->
             if (!LegadoDeepLinkHandler.handle(url)) {
-                AppLog.put("转发的 deep link 解析失败 (缺 src 参数): $url", tag = TAG)
+                AppLog.put("转发的 deep link 解析失败 (缺 src 参数或 scheme/路径非法): $url", tag = TAG)
             }
         }
         // 必须走 Main.kt 的同一个入口筛子 offerAssociationArgs: 上一版这里自己内联了
