@@ -24,8 +24,9 @@ import kotlin.math.ceil
  *
  * 对照 app 端 WelcomeActivity 的行为:
  * - enableWelcome 关闭时不显示闪屏, 直接进入主窗口
- * - welcomeShowTime 控制闪屏时长 (ms), 默认 600 (设置对话框范围 600..3000);
- *   <=0 不显示 (兼容历史遗留值, 旧版曾允许存 0)
+ * - welcomeShowTime 控制闪屏时长 (ms), 默认 600; 存什么用什么, 四端读取路径都不做区间钳制
+ *   (设置界面的数值选择器只能限定"能从界面里选出哪些值", 不参与改写已有存储值);
+ *   <=0 不显示 (与 app 端 WelcomeActivity 的 `if (delayMs > 0)` 同语义)
  * - 白天/夜间各有独立的 showText/showIcon 开关 (welcomeShowText/Dark, welcomeShowIcon/Dark)
  * - 白天/夜间各有独立的背景图 (welcomeImage/welcomeImageDark)
  * - 主题色 (accent) 从 DesktopThemeStoreProvider 读取
@@ -37,7 +38,8 @@ import kotlin.math.ceil
  * 布局为左右并排 (用户拍板): 左半文字「阅读」+ 副标题, 右半书本图标。
  * 尺寸取屏幕宽高的一半 (低分辨率屏幕也能完整容纳), 内容按基准比例缩放。
  *
- * 闪屏在主窗口 [application] 的 Window 创建前显示, 主窗口可见后由 [close] 关闭。
+ * 闪屏在主窗口 [application] 的 Window 创建前显示; 主窗口放行可见之前由 [close] 先撤掉
+ * (同一次交接里先撤后显, 两者不同框), 见 Main.kt 的 reveal。
  *
  * @param themeStore 主题色提供者 (已完成初始化); 偏好读取走 [PreferenceProviders] 单例
  *   (须已注册 DesktopPreferenceProvider)
@@ -49,7 +51,7 @@ class DesktopSplashScreen(
     private var splashWindow: JWindow? = null
     private var showDurationMs: Long = 0L
 
-    /** 闪屏实际置为可见的时刻 (未显示为 0), 供调用方算"已驻留多久"决定关闭时机。 */
+    /** 闪屏实际置为可见的时刻 (未显示为 0), 供调用方算"已驻留多久"决定主窗口的放行时机。 */
     var shownAtMs: Long = 0L
         private set
 
@@ -86,7 +88,8 @@ class DesktopSplashScreen(
     fun show(): Long {
         // enableWelcome 开关 (默认 true)
         if (!prefs.getBoolean(PreferKey.enableWelcome, true)) return 0
-        // 闪屏时长 (默认 600ms, 设置对话框限定 600..3000)
+        // 闪屏时长 (默认 600ms): 原样取存储值, 不钳制 —— 主窗口的出现时机也直接挂在这个数上
+        // (见 Main.kt 的 revealDelay), 所以它大了就是真的等那么久, 不再有上界兜底。
         val timeMs = prefs.getInt(PreferKey.welcomeShowTime, 600)
         if (timeMs <= 0) return 0
         showDurationMs = timeMs.toLong()

@@ -133,9 +133,6 @@ import javax.swing.SwingUtilities
 
 private const val TAG = "legado-desktop"
 
-/** 闪屏驻留异常兜底上限: 主窗口因故一直未显示时, 超过这个时间强制关掉闪屏。 */
-private const val SPLASH_SAFETY_CAP_MS = 15_000L
-
 /**
  * 桌面端入口 (desktop/jvm 走 CMP 桌面官方 JVM)。
  *
@@ -601,52 +598,33 @@ private fun runDesktopApp() = application {
                         window.extendedState or javax.swing.JFrame.MAXIMIZED_BOTH
                 }
             }
-            windowVisible = true
-            // 闪屏关闭时机 (2026-09 修正): 主窗口已显示 且 已驻留满用户设定时长才关。
-            // 旧实现是 (计划时长 - 200ms) 定时器与 componentShown “取先到者”, 而定时器从本效果
-            // 执行时才开始跑 (实测 +1576ms) —— 默认 600ms 时长会在主窗口就绪 (实测 ~2.6s) 之前
-            // 就把闪屏关掉, 中间出现完全无反馈的空白, 正是“双击没反应 / 启动卡顿”的观感来源。
-            if (splashDuration > 0) {
-                var splashClosed = false
-                var windowShown = false
-                fun closeSplash() {
-                    if (!splashClosed) {
-                        splashClosed = true
-                        SwingUtilities.invokeLater { splashScreen.close() }
-                    }
-                }
-
-                fun closeIfReady() {
-                    if (splashClosed || !windowShown) return
-                    val wait = splashDuration - splashScreen.elapsedSinceShow()
-                    if (wait <= 0L) {
-                        closeSplash()
-                    } else {
-                        Coroutine.async {
-                            kotlinx.coroutines.delay(wait)
-                            closeSplash()
-                        }
-                    }
-                }
-
-                // 异常兜底上限: 主窗口始终没能显示时不至于永远挂着闪屏
+            // 闪屏 ↔ 主窗口交接 (对照原版 app WelcomeActivity: 闪屏期间屏幕上不存在主界面,
+            // 到点 finish 才 startMainActivity)。两条规则:
+            // 1) 不早退: 主窗口未就绪时闪屏一直顶着 (旧版按定时器到点就关, 中间是一片无反馈空白)。
+            //    设定时长比主窗口就绪耗时时, 闪屏就多驻留一会儿 —— 这是刻意的。
+            // 2) 不同框: 撤闪屏与放行主窗口排在同一次交接里, 且先撤后显。旧版是
+            //    "windowVisible=true → 等 componentShown → 才关闪屏", 中间那一帧主界面会从
+            //    半屏置顶闪屏的四周先露出来, 就是用户报的"启动界面没消失主界面就出来了"。
+            // 窗口本体、内容组合与首帧绘制在闪屏期间已照常完成 (CMP 1.11.1: pack 使窗口
+            // displayable 时已 renderImmediately 画过首帧), 所以晚点放行不会多等一次渲染。
+            val revealDelay = if (splashDuration > 0) {
+                (splashDuration - splashScreen.elapsedSinceShow()).coerceAtLeast(0L)
+            } else {
+                0L
+            }
+            val reveal: () -> Unit = {
+                if (splashDuration > 0) splashScreen.close()
+                windowVisible = true
+            }
+            if (revealDelay > 0L) {
                 Coroutine.async {
-                    kotlinx.coroutines.delay(SPLASH_SAFETY_CAP_MS)
-                    closeSplash()
+                    kotlinx.coroutines.delay(revealDelay)
+                    SwingUtilities.invokeLater(reveal)
                 }
-                // AWT componentShown 在窗口显示时触发
-                if (window.isVisible) {
-                    windowShown = true
-                    closeIfReady()
-                } else {
-                    window.addComponentListener(object : java.awt.event.ComponentAdapter() {
-                        override fun componentShown(e: java.awt.event.ComponentEvent) {
-                            windowShown = true
-                            window.removeComponentListener(this)
-                            closeIfReady()
-                        }
-                    })
-                }
+            } else {
+                // reveal 内含 splashScreen.close(), 该函数合同要求必须在 EDT 调用
+                // (同段其它 AWT 调用都显式 invokeLater); 幂等所以重复调度无害
+                SwingUtilities.invokeLater(reveal)
             }
             windowHandle.window = window
             SingleInstanceGuard.bindWindow(window)
