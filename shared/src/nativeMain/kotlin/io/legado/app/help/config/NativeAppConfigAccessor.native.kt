@@ -404,9 +404,9 @@ class NativeAppConfigAccessor(
             return if (maxLine in 5..30) maxLine else Int.MAX_VALUE
         }
 
+    // 不钳制: 存储值原样使用 (四端口径一致, 见 commonMain AppConfigAccessor.welcomeShowTime)
     override val welcomeShowTime: Int
         get() = prefs.getInt(PreferKey.welcomeShowTime, 600)
-            .coerceIn(AppConfigRanges.welcomeShowTime)
 
     // ---- 设置界面直写 pref 的开关 (热路径, 走缓存) ----
     // 原版 AppConfig 均为 boolPref 直读; 覆写为缓存字段, 变更由监听刷新

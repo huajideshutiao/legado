@@ -80,8 +80,16 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var showLastUpdateTime by boolPref(PreferKey.showLastUpdateTime, false)
     var bookshelfListShowKind by boolPref(PreferKey.bookshelfListShowKind, false)
     var bookshelfListShowIntro by boolPref(PreferKey.bookshelfListShowIntro, false)
-    var bookshelfListIntroLines by intPref(PreferKey.bookshelfListIntroLines, 2, 1..3)
-    var bookshelfCoverHeight by intPref(PreferKey.bookshelfCoverHeight, 120, 90..220)
+    var bookshelfListIntroLines by intPref(
+        PreferKey.bookshelfListIntroLines,
+        2,
+        AppConfigRanges.bookshelfListIntroLines,
+    )
+    var bookshelfCoverHeight by intPref(
+        PreferKey.bookshelfCoverHeight,
+        120,
+        AppConfigRanges.bookshelfCoverHeight,
+    )
 
     // 与 BookSource.exploreStyle 同一套位编码 (低 3 位列数, 0x10 视频)
     var searchLayout by intPref(PreferKey.searchLayout, 1)
@@ -337,7 +345,9 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var welcomeImage by stringPref(PreferKey.welcomeImage)
     var welcomeShowText by boolPref(PreferKey.welcomeShowText, true)
     var welcomeShowIcon by boolPref(PreferKey.welcomeShowIcon, true)
-    var welcomeShowTime by intPref(PreferKey.welcomeShowTime, 600, 600..3000)
+    // 不再做区间钳制: 存什么就用什么 (设置界面数值选择器只能限制"能从界面里选出哪些值",
+    // 不能反过来改写已有存储值); <=0 时 WelcomeActivity 直接进主界面
+    var welcomeShowTime by intPref(PreferKey.welcomeShowTime, 600)
     var welcomeImageDark by stringPref(PreferKey.welcomeImageDark)
     var welcomeShowTextDark by boolPref(PreferKey.welcomeShowTextDark, true)
     var welcomeShowIconDark by boolPref(PreferKey.welcomeShowIconDark, true)

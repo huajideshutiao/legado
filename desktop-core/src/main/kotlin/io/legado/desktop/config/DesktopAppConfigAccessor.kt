@@ -402,9 +402,9 @@ class DesktopAppConfigAccessor : AppConfigAccessor {
             return if (maxLine < 10) Int.MAX_VALUE else maxLine
         }
 
+    // 不钳制: 存储值原样使用 (四端口径一致, 见 commonMain AppConfigAccessor.welcomeShowTime)
     override val welcomeShowTime: Int
         get() = prefs.getInt(PreferKey.welcomeShowTime, 600)
-            .coerceIn(AppConfigRanges.welcomeShowTime)
 
     // ---- 系统深色模式检测 (themeMode="0" 跟随系统时用) ----
 
