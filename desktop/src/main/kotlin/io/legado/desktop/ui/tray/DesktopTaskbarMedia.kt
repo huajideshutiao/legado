@@ -213,7 +213,10 @@ internal object DesktopTaskbarMedia {
 
     /**
      * 主窗口可用时注入 (Main.kt 在 Window 组装后调用), 挂缩略图按钮 + DWM 卡片。
-     * 窗口重建 (如全屏切换) 时重新挂。
+     *
+     * 当前只在主窗口组装时调一次 (全屏切换走改样式、不重建窗口, 故 HWND 不变)。若将来真引入
+     * 窗口重建, 本函数与 [DesktopTaskbarDwm.attach] 都只换 mainHwnd 而不对旧 HWND 关两项 iconic
+     * 属性 —— 那条路径现在不可达, 不预先加清理代码。
      */
     fun attach(window: Window) {
         if (!Platform.isWindows()) return
@@ -415,10 +418,12 @@ internal object DesktopTaskbarMedia {
         mem.setInt(base + 8, iconIndex) // iBitmap
         mem.setLong(base + 16, 0) // hIcon (x64 指针, 12..16 为对齐填充)
         val tipBase = base + 24
-        tip.take(259).forEachIndexed { i, c -> mem.setChar(tipBase + i * 2L, c) }
-        // szTip[260] WCHAR: 内容后显式补 0 终止符 —— JNA Memory 分配后不清零,
-        // 不终止的话 explorer 读 tip 越界读到未初始化内存 (乱码尾巴/随机乱码)
-        mem.setChar(tipBase + tip.length * 2L, '\u0000')
+        // szTip[260] WCHAR: 按**实际写入长度**补 0 终止符 —— JNA Memory 分配后不清零,
+        // 不终止 explorer 会越界读到未初始化内存 (乱码尾巴); 用未截断的 tip.length 算偏移会在
+        // 本地化文案超过 259 字符时把终止符写到 szTip[260] 之外, 破坏相邻按钮字段
+        val written = tip.take(259)
+        written.forEachIndexed { i, c -> mem.setChar(tipBase + i * 2L, c) }
+        mem.setChar(tipBase + written.length * 2L, '\u0000')
         mem.setInt(base + 544, flags) // dwFlags
     }
 
