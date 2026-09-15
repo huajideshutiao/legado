@@ -285,7 +285,7 @@ object DesktopMediaRuntime {
             if (!resp.isSuccessful) {
                 throw IllegalStateException("HTTP ${resp.code} $url")
             }
-            val body = resp.body ?: throw IllegalStateException("响应体为空")
+            val body = resp.body
             val total = body.contentLength()
             val digest = MessageDigest.getInstance("SHA-1")
             dest.outputStream().buffered().use { fileOut ->

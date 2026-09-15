@@ -82,9 +82,7 @@ class MediampVideoPlayPlatformProvider(
             return EmptyDesktopVideoPlayerController
         }
         return try {
-            MediampVideoPlayerController(screenModel, onPlaybackEnded).also {
-                AppLog.put("视频播放: mediamp-mpv 后端")
-            }
+            MediampVideoPlayerController(screenModel, onPlaybackEnded)
         } catch (e: Throwable) {
             AppLog.put("mediamp 初始化失败: ${e.message}", e)
             screenModel.dispatch(VideoPlayUiEvent.ShowError("mediamp 初始化失败: ${e.message}"))
