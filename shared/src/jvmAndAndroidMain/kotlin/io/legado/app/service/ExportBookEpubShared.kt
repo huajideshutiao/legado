@@ -212,7 +212,7 @@ class ExportBookEpubShared(
             val content = BookHelpProviders.get().getContent(book, chapter)
             val (contentFix, resources) = fixPic(
                 book,
-                content ?: if (chapter.isVolume) "" else "null",
+                content ?: missingChapterContent(book, chapter),
                 chapter
             )
             // 不导出vip标识
@@ -300,7 +300,7 @@ class ExportBookEpubShared(
             BookHelpProviders.get().getContent(book, chapter).let { content ->
                 val (contentFix, resources) = fixPic(
                     book,
-                    content ?: if (chapter.isVolume) "" else "null",
+                    content ?: missingChapterContent(book, chapter),
                     chapter
                 )
                 epubBook.resources.addAll(resources)
@@ -525,6 +525,19 @@ class ExportBookEpubShared(
         }.onFailure {
             AppLog.put("获取书籍封面出错\n${it.localizedMessage}", it)
         }
+    }
+
+    /**
+     * 章节正文缺失时的占位: 卷标题本就无正文, 其余章节写**空正文**并留痕。
+     *
+     * 旧实现写字符串 `"null"`, 导出成品在阅读器里直接显示"正文=null" (静默坏值兜底);
+     * 正文缺失说明缓存/源有问题, 不能用一个看似内容的字面量盖过去。
+     */
+    private fun missingChapterContent(book: Book, chapter: BookChapter): String {
+        if (!chapter.isVolume) {
+            AppLog.put("导出 EPUB: 章节正文为空, 已写空正文 (${book.name} / ${chapter.title})")
+        }
+        return ""
     }
 
     /**
