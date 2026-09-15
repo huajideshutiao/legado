@@ -130,7 +130,7 @@ fun LazyListScope.preference(
  * themeMode）也同步刷新显示 —— 无 key 的 `remember` 是一次性快照, 会让设置项停在旧值
  * (用户实测: 标题栏切完主题, 「我的」里「主题模式」仍显示切换前的档位)。
  *
- * 公共 API: 设置面板之外需要“跟随偏好变更即时生效”的读数 (如 LegadoApp 容器变换开关)
+ * 公共 API: 设置面板之外需要“跟随偏好变更即时生效”的读数 (如 LegadoApp 共享元素转场总闸)
  * 也复用本方法, 禁止再手写同构的 DisposableEffect 监听块。
  */
 @Composable

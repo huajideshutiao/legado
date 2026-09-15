@@ -110,8 +110,6 @@ import io.legado.app.ui.main.home.homeSectionKey
 import io.legado.app.ui.main.my.MyConfigScreen
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
-import io.legado.app.ui.root.ContainerTransformCard
-import io.legado.app.ui.root.ContainerTransformIdentity
 import io.legado.app.ui.root.FileFilter
 import io.legado.app.ui.root.LocalPlatformCapabilities
 import io.legado.app.ui.root.MainTab
@@ -733,70 +731,60 @@ private fun HomeCoverRow(
         if (isVideoStyle) {
             // 对照原 VideoCoverCardVH.bind: bindVideoCard(coverRatio=VIDEO, isInBookshelf=false,
             // showBookshelfBadge=false); 封面走 LocalBookCoverSlot (与书架/探索页一致)
-            //
-            // 卡片外包一层 Box: 容器变换锚点要 BoxScope 才能 matchParentSize 铺满卡片已测尺寸
-            // (只登记 bounds 不绘制, Box 自身取卡片尺寸, 对行布局零影响); 包一层也让锚点的
-            // sharedBounds 与卡片自身的 modifier 链分开. 锚点必须后声明: matchParentSize 取的
-            // 是前面兄弟节点决定出来的尺寸. 数据项是 SearchBook, 其 bookUrl 经 toRouteRef()
-            // 原样带入 BookInfo 路由 (见 openHomeBook), 两边同值
             books.forEach { book ->
-                ContainerTransformCard(ContainerTransformIdentity(book.bookUrl, book.origin)) {
-                    ShelfVideoItem(
-                        book = book.toCoverBook(),
-                        coverReloadTick = 0,
-                        onClick = { onBookClick(book) },
-                        onLongClick = { onBookLongClick(book) },
-                        modifier = Modifier.width(220.dp),
-                        coverSlot = { b, m, isVideoCover, tick ->
-                            LocalBookCoverSlot.current(b, m, isVideoCover, tick)
-                        },
-                    )
-                }
+                ShelfVideoItem(
+                    book = book.toCoverBook(),
+                    coverReloadTick = 0,
+                    onClick = { onBookClick(book) },
+                    onLongClick = { onBookLongClick(book) },
+                    modifier = Modifier.width(220.dp),
+                    coverSlot = { b, m, isVideoCover, tick ->
+                        LocalBookCoverSlot.current(b, m, isVideoCover, tick)
+                    },
+                )
             }
         } else {
             val colors = AppTheme.colors
             // 对照 item_home_cover_card.xml + CoverCardVH.bind: 封面 120×160dp (高 160dp 由
             // 封面组件按 NOVEL 3:4 反推宽 120dp), item 总宽 128 = 120 + 两侧 4dp padding
             books.forEach { book ->
-                ContainerTransformCard(ContainerTransformIdentity(book.bookUrl, book.origin)) {
-                    Column(
+                Column(
+                    Modifier
+                        .width(128.dp)
+                        .padding(4.dp)
+                        .combinedClickable(
+                            onClick = { onBookClick(book) },
+                            onLongClick = { onBookLongClick(book) },
+                        ),
+                ) {
+                    // 封面: 走 LocalBookCoverSlot (与书架/探索页一致)
+                    LocalBookCoverSlot.current(
+                        book.toCoverBook(),
                         Modifier
-                            .width(128.dp)
-                            .padding(4.dp)
-                            .combinedClickable(
-                                onClick = { onBookClick(book) },
-                                onLongClick = { onBookLongClick(book) },
-                            ),
-                    ) {
-                        // 封面: 走 LocalBookCoverSlot (与书架/探索页一致)
-                        LocalBookCoverSlot.current(
-                            book.toCoverBook(),
-                            Modifier
-                                .width(120.dp)
-                                .height(160.dp),
-                            false,
-                            0,
-                        )
-                        // 对照 XML tv_name: 12sp 最多 2 行 (minLines=2 保持卡片等高)
-                        Text(
-                            text = book.name,
-                            color = colors.primaryText,
-                            fontSize = 12.sp,
-                            maxLines = 2,
-                            minLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                        )
-                        // 对照 XML tv_author: 10sp 摘要色, 最多 1 行, marginTop 2dp
-                        Text(
-                            text = book.getRealAuthor(),
-                            color = colors.secondaryText,
-                            fontSize = 10.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
-                        )
-                    }
+                            .width(120.dp)
+                            .height(160.dp),
+                        false,
+                        0,
+                    )
+                    // 对照 XML tv_name: 12sp 最多 2 行 (minLines=2 保持卡片等高)
+                    Text(
+                        text = book.name,
+                        color = colors.primaryText,
+                        fontSize = 12.sp,
+                        maxLines = 2,
+                        minLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    )
+                    // 对照 XML tv_author: 10sp 摘要色, 最多 1 行, marginTop 2dp
+                    Text(
+                        text = book.getRealAuthor(),
+                        color = colors.secondaryText,
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                    )
                 }
             }
         }
@@ -1013,55 +1001,53 @@ private fun HomeRankItem(
     onBookLongClick: (SearchBook) -> Unit,
 ) {
     val colors = AppTheme.colors
-    ContainerTransformCard(ContainerTransformIdentity(book.bookUrl, book.origin)) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .combinedClickable(
-                    onClick = { onBookClick(book) },
-                    onLongClick = { onBookLongClick(book) },
-                )
-                .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (showRank) {
-                // 对照 RankBookVH: 前 3 名红/橙/黄, 其余摘要色
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = { onBookClick(book) },
+                onLongClick = { onBookLongClick(book) },
+            )
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (showRank) {
+            // 对照 RankBookVH: 前 3 名红/橙/黄, 其余摘要色
+            Text(
+                text = "$rank",
+                color = when (rank) {
+                    1 -> Color(0xFFE53935)
+                    2 -> Color(0xFFF57C00)
+                    3 -> Color(0xFFFBC02D)
+                    else -> colors.secondaryText
+                },
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.width(28.dp),
+            )
+        }
+        // 封面固定 70dp 高 (对照 XML iv_cover height=70dp), 恒 NOVEL 比例
+        Box(Modifier.height(70.dp).padding(start = if (showRank) 8.dp else 0.dp)) {
+            LocalBookCoverSlot.current(book.toCoverBook(), Modifier.fillMaxHeight(), false, 0)
+        }
+        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+            Text(
+                text = book.name,
+                color = colors.primaryText,
+                fontSize = 14.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (book.author.isNotBlank()) {
                 Text(
-                    text = "$rank",
-                    color = when (rank) {
-                        1 -> Color(0xFFE53935)
-                        2 -> Color(0xFFF57C00)
-                        3 -> Color(0xFFFBC02D)
-                        else -> colors.secondaryText
-                    },
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.width(28.dp),
-                )
-            }
-            // 封面固定 70dp 高 (对照 XML iv_cover height=70dp), 恒 NOVEL 比例
-            Box(Modifier.height(70.dp).padding(start = if (showRank) 8.dp else 0.dp)) {
-                LocalBookCoverSlot.current(book.toCoverBook(), Modifier.fillMaxHeight(), false, 0)
-            }
-            Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                Text(
-                    text = book.name,
-                    color = colors.primaryText,
-                    fontSize = 14.sp,
-                    maxLines = 2,
+                    text = book.getRealAuthor(),
+                    color = colors.secondaryText,
+                    fontSize = 12.sp,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp),
                 )
-                if (book.author.isNotBlank()) {
-                    Text(
-                        text = book.getRealAuthor(),
-                        color = colors.secondaryText,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 2.dp),
-                    )
-                }
             }
         }
     }
@@ -1102,8 +1088,7 @@ private fun HomeInfiniteGridCard(
     val stableOnBookClick: () -> Unit = remember { { currentOnBookClick.value() } }
     val currentOnBookLongClick = rememberUpdatedState(onBookLongClick)
     val stableOnBookLongClick: () -> Unit = remember { { currentOnBookLongClick.value() } }
-    ContainerTransformCard(
-        identity = ContainerTransformIdentity(book.bookUrl, book.origin),
+    Box(
         modifier = Modifier.fillMaxWidth().combinedClickable(
             onClick = stableOnBookClick,
             onLongClick = stableOnBookLongClick,

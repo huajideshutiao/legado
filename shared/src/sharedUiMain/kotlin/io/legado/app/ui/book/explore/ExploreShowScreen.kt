@@ -49,8 +49,6 @@ import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.component.rememberResponsiveColumns
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.root.ContainerTransformCard
-import io.legado.app.ui.root.ContainerTransformIdentity
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.explore_cols
 import legado.shared.generated.resources.ic_bookmark
@@ -383,42 +381,29 @@ private fun ResultArea(
     ) {
         items(books, key = { it.bookUrl }, contentType = { "exploreBook" }) { book ->
             when {
-                // 复合身份与 BookInfo 路由一致；伪 URL 条目无人匹配，登记无害。
-                isVideo && cols >= 1 -> ContainerTransformCard(
-                    ContainerTransformIdentity(book.bookUrl, book.origin)
-                ) {
-                    videoItemSlot(
-                        book,
-                        actions.isInBookshelf(book),
-                        { actions.onBookClick(book, false) },
-                        { actions.onBookClick(book, true) },
-                    )
-                }
+                isVideo && cols >= 1 -> videoItemSlot(
+                    book,
+                    actions.isInBookshelf(book),
+                    { actions.onBookClick(book, false) },
+                    { actions.onBookClick(book, true) },
+                )
 
-                spanCount == 1 -> ContainerTransformCard(
-                    ContainerTransformIdentity(book.bookUrl, book.origin)
-                ) {
-                    ExploreListItem(
-                        book = book,
-                        isVideoStyle = cols == 0 && isVideo,
-                        inBookshelf = actions.isInBookshelf(book),
-                        coverSlot = coverSlot,
-                        onClick = { actions.onBookClick(book, false) },
-                        onLongClick = { actions.onBookClick(book, true) },
-                    )
-                }
+                spanCount == 1 -> ExploreListItem(
+                    book = book,
+                    isVideoStyle = cols == 0 && isVideo,
+                    inBookshelf = actions.isInBookshelf(book),
+                    coverSlot = coverSlot,
+                    onClick = { actions.onBookClick(book, false) },
+                    onLongClick = { actions.onBookClick(book, true) },
+                )
 
-                else -> ContainerTransformCard(
-                    ContainerTransformIdentity(book.bookUrl, book.origin)
-                ) {
-                    ExploreGridItem(
-                        book = book,
-                        inBookshelf = actions.isInBookshelf(book),
-                        coverSlot = coverSlot,
-                        onClick = { actions.onBookClick(book, false) },
-                        onLongClick = { actions.onBookClick(book, true) },
-                    )
-                }
+                else -> ExploreGridItem(
+                    book = book,
+                    inBookshelf = actions.isInBookshelf(book),
+                    coverSlot = coverSlot,
+                    onClick = { actions.onBookClick(book, false) },
+                    onLongClick = { actions.onBookClick(book, true) },
+                )
             }
         }
         // footer 不设 key: 首屏仅 footer 可见时, keyed 锚定会让视口跟随 footer 被顶到列表末尾;

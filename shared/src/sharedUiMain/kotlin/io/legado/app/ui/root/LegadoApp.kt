@@ -40,10 +40,8 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
@@ -78,7 +76,6 @@ import io.legado.app.ui.compose.platform.PlatformBackHandler
 import io.legado.app.ui.compose.platform.handleBackKey
 import io.legado.app.ui.compose.platform.performBack
 import io.legado.app.ui.compose.platform.rememberVisibleStatusBarHeightPx
-import io.legado.app.ui.compose.preference.rememberPrefState
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.ui.config.BookshelfLayoutConfigDialog
@@ -125,17 +122,10 @@ fun LegadoApp(
         SideEffect { AppNavigatorProviders.register(navigator) }
 
         val entries by navigator.backStack.collectAsState()
-        // 卡片矩形登记表: 整个应用一份 —— 列表卡片在布局阶段写, 本层在导航事件那次组合读
-        // (见 ContainerTransformScope.kt), 下方经 LocalBookCardRects 下发给列表
-        val cardRects = remember { BookCardRectRegistry() }
         // 大图共享元素状态 (整个应用一份): 源封面与全屏查看器按它推导各自的 visible
         val photoShared = remember { PhotoSharedState() }
-        // eInk 上提到状态机之前: 下方容器变换段判定要用它 (背景图读取处仍是同一份值)
+        // eInk 上提到状态机之前: 下方共享元素转场总闸要用它 (背景图读取处仍是同一份值)
         val eInk = LocalEInk.current
-        // 容器变换开关 (「其他设置」): 经 rememberPrefState 跟随偏好变更即时生效,
-        // 关闭时容器段回落普通页转场
-        val containerTransformAnim =
-            rememberPrefState(PreferKey.containerTransformAnim) { it.getBoolean(PreferKey.containerTransformAnim, true) }
         val transition = remember { Animatable(1f) }
         // 方向/出栈页/动画标志在组合阶段维护: LaunchedEffect 滞后一帧, 动画参数若等
         // effect 定, 首帧会先按"无动画终态"渲染 (前进: 旧页瞬间消失露底; 返回: 目标页
@@ -225,57 +215,18 @@ fun LegadoApp(
         }
         val currentEntry = entries.lastOrNull()
         val currentRoute = currentEntry?.route
-        // 容器变换只允许一个来源 entry: popTo 多页时取视觉最上那页
-        val containerSource = if (navigatingForward && !forwardOverOutgoing) {
-            entries.getOrNull(entries.lastIndex - 1)
-        } else {
-            outgoingEntries.lastOrNull()
-        }
         // 转场动画平台 spec: 随导航事件读取 (Android 端每次动态读系统动画时长缩放, 即时生效)
         val transitionSpec = remember(entries, capabilities) { capabilities.routeTransitionSpec }
-        // 共享元素转场总闸: 「其他设置 → 容器变换动画」一个开关同时管住两处共享元素转场
-        // (列表↔书籍页容器变换、封面↔全屏查看器), eInk 与系统动画时长为 0 整段旁路。
-        // 两处共用同一个判定, 不会出现"一处有动画一处没动画"的飘移
-        val sharedTransitionEnabled = !eInk && containerTransformAnim.value &&
+        // 共享元素转场总闸: 只由 eInk 与系统动画时长决定 (原先还有一个「容器变换动画」开关,
+        // 该机制已被删除、效果常开; 多出来的开关只会多一条"关了就没动画"的旁路)。
+        // 整段旁路时共享元素端点不挂修饰符, 卡片进页/大图都走普通页转场
+        val sharedTransitionEnabled = !eInk &&
             transitionSpec.pushDurationMillis > 0 && transitionSpec.popDurationMillis > 0
-        // 容器变换段: 列表页 ↔ 书籍页 构成页对 (见 ContainerTransform.kt) 且列表页里该书卡片
-        // 矩形已登记时启用。eInk、用户关闭容器变换动画开关、系统动画关闭 (时长归零) 时整段跳过。
-        val containerBookUrl = if (!sharedTransitionEnabled) {
-            null
-        } else {
-            containerTransformBookUrl(containerSource?.route, currentEntry?.route)
-        }
-        // 两端分派: 书籍页那侧画容器裁剪, 列表页那侧提供起手矩形 (方向无关)。
-        // 必须钉到具体 entry 而非只比 bookUrl: popTo 回书架时 [详情页, 阅读页] 两页 bookUrl 相同,
-        // 按 bookUrl 匹配会让两页同时画裁剪
-        val sourceIsBookPage = containerSource?.route?.containerBookUrl() != null
-        val containerPageId = if (sourceIsBookPage) containerSource.id else currentEntry?.id
-        val containerListPageId = if (sourceIsBookPage) currentEntry?.id else containerSource?.id
-        val containerBookRoute =
-            if (sourceIsBookPage) containerSource.route else currentEntry?.route
-        val containerBookOrigin = containerBookRoute?.containerBookOrigin()
-        // 起手矩形 (列表页自身坐标系, 与书籍页页坐标系同原点同尺寸):
-        // 取不到 (书被滚出视口而条目已回收 / 从无该书的列表进入) 就整段不做容器变换, 回落普通
-        // 页转场 —— 否则页级位移被归零, 观感是"什么动画都没有"。
-        // 按导航事件 remember: 段内只读一次 —— 段内卡片可能被 LazyGrid 回收, 逐帧读会拿到
-        // 已消失的值。登记表是普通 map (非快照), 读它不注册依赖, 滚列表不会重组本层
-        val containerStartBounds = remember(
-            entries,
-            outgoingEntries,
-            containerBookUrl,
-            containerBookOrigin,
-        ) {
-            containerBookUrl?.let {
-                cardRects.boundsOf(containerListPageId, containerBookOrigin, it)
-            }
-        }
-        val containerSegment = containerStartBounds != null
         // 页面转场动画平台 spec: 保持项目原本的页面级转场 (新页滑入/旧页移位等),
         // 封面在 SharedTransitionLayout 的全局 Overlay 中独立跨页面平滑飞行
         val effectiveSpec = transitionSpec
         // 转场采样器: 变换全由 spec 参数推导, 消费动画层曲线进度 (与 tween(spec.easing) 匹配)。
-        // 按结构相等重建, 只在"普通段 ↔ 容器段"切换时换一次; 采样器无状态 (动画状态在 transition),
-        // 重建无副作用
+        // 采样器无状态 (动画状态在 transition), 重建无副作用
         val transitionSampler = remember(effectiveSpec) { RouteTransitionSampler(effectiveSpec) }
 
         // 应用当前路由对应的窗口策略。只在策略真变了才下发: 桌面端 setFullscreen 会调
@@ -390,7 +341,6 @@ fun LegadoApp(
         LaunchedEffect(Unit) { runCatching { rootFocusRequester.requestFocus() } }
         CompositionLocalProvider(
             LocalTransitionFrozenStatusBarHeightPx provides frozenStatusBarHeightPx,
-            LocalBookCardRects provides cardRects,
             LocalPhotoSharedState provides photoShared,
             LocalSharedTransitionEnabled provides sharedTransitionEnabled,
         ) {
@@ -520,13 +470,6 @@ fun LegadoApp(
                 // 目录链路单段前进时栈顶就是阅读页, 详情页不参与本段 (落进下方隐藏分支)
                 val isTarget = entry.id == topEntry?.id
                 val isSliding = entry.id in slidingIds
-                    // 本页是否本段的书籍页 (页面级动画归零与"转场进行中"标志都要它; 静止态必须为
-                    // false, 否则页面被永久按段内参数渲染)
-                    val containerPageActive = entry.route.containerBookUrl() != null &&
-                        animating && containerSegment && entry.id == containerPageId
-                // 页参系: 页内卡片锚点按它登记矩形 (见 ContainerTransformScope.kt)。
-                // 按 entry 身份 remember: 组合身份已由外层 key(entry.id) 固定, 与页面同寿
-                val pageAnchor = remember { RoutePageAnchorScope(entry.id) }
                 // 单帧变换采样 (图层变换与压暗蒙版共用); null = 本段不参与的隐藏页。
                 // 只在 graphicsLayer 块内调用: 对 transition 的读取是图层阶段读, 逐帧只更新
                 // 图层属性, 不触发页面内容重绘
@@ -623,14 +566,6 @@ fun LegadoApp(
                         }
                         .background(if (hasBgImage) Color.Transparent else AppTheme.colors.background),
                 ) {
-                    // 页参系上报: 挂在页图层之内 (本 Box 的子节点), 卡片矩形才与上方裁剪窗口同坐标系
-                    // —— 页转场靠 graphicsLayer 平移页面, 若按 compose root 记矩形, 非栈顶页被平移到
-                    // -width 后卡片矩形全是屏外值, 而返回那一段恰好要用它
-                    Box(
-                        Modifier
-                            .matchParentSize()
-                            .onGloballyPositioned { pageAnchor.coords = it }
-                    )
                     // 壁纸层挂在本页底部 (随转场移动, 对齐原版页面背景随页面走的语义): 页面内容
                     // 透明区域透出本层; 无壁纸时恒主题纯色。文件不存在/解码失败仅空白无崩溃
                     if (wallpaper != null) {
@@ -638,16 +573,9 @@ fun LegadoApp(
                     }
                     saveableStateHolder.SaveableStateProvider(entry.id.value) {
                         CompositionLocalProvider(
-                            LocalRoutePageAnchor provides pageAnchor,
                             // 共享元素端点消歧: 同 key 的封面只允许栈顶页那一个报称可见
                             // (正身只有一个, 否则大图会从被压在下面的卡片矩形起飞)
                             LocalPageIsTopPage provides (entry.id == topEntry?.id),
-                            // 转场进行中标志: 容器段 (containerRect 非空, push/pop 两向) 或
-                            // 普通页转场 (animating 且本页是目标页/滑动页)。视频等平台
-                            // Surface 据此暂停显示, 动画结束自动恢复
-                            LocalPageTransitionActive provides (
-                                containerPageActive || (animating && (isTarget || isSliding))
-                            ),
                         ) {
                             RouteContent(entry, navigator, screenModelStore)
                         }

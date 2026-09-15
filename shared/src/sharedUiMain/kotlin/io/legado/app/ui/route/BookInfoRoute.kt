@@ -46,7 +46,6 @@ import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.BookRef
-import io.legado.app.ui.root.LocalPageTransitionActive
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.RouteResultPayload
@@ -105,16 +104,15 @@ fun BookInfoRoute(
     val errorLoadTocLabel = stringResource(Res.string.error_load_toc)
     val needMoreTimeLabel = stringResource(Res.string.need_more_time_load_content)
     val clearCacheSuccessLabel = stringResource(Res.string.clear_cache_success)
-    // 转场进行中不启动落地加载: 首帧只渲染路由快照 (详情页首帧数据 = 构造时的 initialBook,
-    // 本就无需再推一次), 页面落定后再查库/回源 —— 飞行途中零 IO 竞争、零重组, 封面与文字
-    // 不会在动画中途变化。标志由 [LegadoApp] 逐页下发, 动画结束必回 false (transition 收尾处复位)
-    val transitionActive = LocalPageTransitionActive.current
-    // 一次性守卫放在 ScreenModel.bootStarted (不放在 remember): 本标志是**逐页**下发的, 从目录页/
-    // 阅读页/编辑页 pop 回本页时本页会再走一次 false→true→false, 只拿它当 effect key 会让整段
+    // 落地加载在首次组合即开工 (对照原版 onActivityCreated → upBook): 不再等页面转场结束 ——
+    // 那个转场标志已随容器变换一并删除, 而详情页首帧数据本就来自路由快照, 早一次查库/回源
+    // 不会让首帧变化 (结果经 StateFlow 到达, 与动画无关)
+    // 一次性守卫放在 ScreenModel.bootStarted (不放在 remember): 从目录页/
+    // 阅读页/编辑页 pop 回本页时本页会再组合一次, 只拿 bookUrl 当 key 会让整段
     // 落地加载每次返回都重跑 (多打一次回源); 且工作体在 scope 里 launch, 不归本 effect 管,
     // 重跑就是并发双跑 + 竞写 bookSource, rss 书还会二次执行 url 换位把 bookUrl 写成 "data:"
-    LaunchedEffect(book.bookUrl, transitionActive) {
-        if (transitionActive || screenModel.bootStarted) return@LaunchedEffect
+    LaunchedEffect(book.bookUrl) {
+        if (screenModel.bootStarted) return@LaunchedEffect
         screenModel.bootStarted = true
         val boot = scope.launch(IoDispatcher) {
             val db = AppDbProviders.get()

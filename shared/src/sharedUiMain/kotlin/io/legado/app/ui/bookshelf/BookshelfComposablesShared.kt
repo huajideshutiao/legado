@@ -59,8 +59,6 @@ import io.legado.app.ui.compose.platform.transitionStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
-import io.legado.app.ui.root.ContainerTransformCard
-import io.legado.app.ui.root.ContainerTransformIdentity
 import io.legado.app.utils.toTimeAgo
 import kotlinx.coroutines.delay
 import legado.shared.generated.resources.Res
@@ -302,14 +300,8 @@ fun ShelfBooksContent(
                 items(items, key = ::shelfItemKey, contentType = ::shelfItemType) { item ->
                     val itemModifier = if (eInk) Modifier else Modifier.animateItem()
                     when (item) {
-                        // 书籍条目外包一层 Box: itemModifier(animateItem) 留在 Box 上, 容器变换锚点的
-                        // sharedBounds 走另一条 modifier 链, 避开两者同链在 LazyGrid 下的未验证行为;
-                        // 锚点本身要 BoxScope 才能 matchParentSize 铺满条目已测尺寸. 分组不是书,
-                        // 没有对应二级页, 故不挂锚点
-                        is Book -> ContainerTransformCard(
-                            identity = ContainerTransformIdentity(item.bookUrl, item.origin),
-                            modifier = itemModifier,
-                        ) {
+                        // 书籍条目外包一层 Box: itemModifier(animateItem) 留在 Box 上, 分组不是书
+                        is Book -> Box(modifier = itemModifier) {
                             ShelfListItem(
                                 // 逐项窄化: 非刷新项恒拿 emptySet 单例, 集合变化时可跳过重组
                                 item, spec.isVideoList, coverReloadTick,
@@ -343,11 +335,8 @@ fun ShelfBooksContent(
                 items(items, key = ::shelfItemKey, contentType = ::shelfItemType) { item ->
                     val itemModifier = if (eInk) Modifier else Modifier.animateItem()
                     when (item) {
-                        // 外层 Box 同 LIST 分支: 隔开 animateItem 与锚点的 modifier 链
-                        is Book -> ContainerTransformCard(
-                            identity = ContainerTransformIdentity(item.bookUrl, item.origin),
-                            modifier = itemModifier,
-                        ) {
+                        // 外层 Box 同 LIST 分支: 让 animateItem 留在 Box 上
+                        is Book -> Box(modifier = itemModifier) {
                             ShelfGridItem(
                                 // 逐项窄化: 同 LIST 分支, 避免刷新集合每次变化重组全部可见项
                                 item, coverReloadTick,
@@ -379,11 +368,8 @@ fun ShelfBooksContent(
                 items(items, key = ::shelfItemKey, contentType = ::shelfItemType) { item ->
                     val itemModifier = if (eInk) Modifier else Modifier.animateItem()
                     when (item) {
-                        // 外层 Box 同 LIST 分支: 隔开 animateItem 与锚点的 modifier 链
-                        is Book -> ContainerTransformCard(
-                            identity = ContainerTransformIdentity(item.bookUrl, item.origin),
-                            modifier = itemModifier,
-                        ) {
+                        // 外层 Box 同 LIST 分支: 让 animateItem 留在 Box 上
+                        is Book -> Box(modifier = itemModifier) {
                             ShelfVideoItem(
                                 item, coverReloadTick,
                                 onClick = { onBookClick(item) },
