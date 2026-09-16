@@ -1,6 +1,7 @@
 package io.legado.app.ui.route
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -46,12 +47,14 @@ import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.BookRef
+import io.legado.app.ui.root.LocalSharedCoverBinding
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.asBook
+import io.legado.app.ui.root.rememberSharedCoverDestinationBinding
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.FlowBus
@@ -88,6 +91,10 @@ fun BookInfoRoute(
     val screenModel = screenModelStore.getOrCreateTyped(entry) { BookInfoScreenModel(book) }
     val state by screenModel.state.collectAsState()
     val scope = rememberCoroutineScope()
+    // 本页封面端点的共享身份: 页转场 token 来自发起方 (被点的卡片) 经导航带过来的 entry.sharedToken,
+    // 大图 token 由本页自签 —— 两者都只在本页唯一, 不依赖封面 URL 与页面栈位置
+    // (entryKey 用 entry.id: 同一位置换页时必须换大图 token, 否则会顶着一张旧配对)
+    val coverBinding = rememberSharedCoverDestinationBinding(entry.id, entry.sharedToken)
 
     // 搜索结果进入的书 (对照 app 端 BaseReadViewModel.upBook 的 isSearchBook)
     val isSearchBook = route.book is BookRef.Search
@@ -412,6 +419,9 @@ fun BookInfoRoute(
                         key = "photo",
                         payload = cover,
                         sourceOrigin = b.origin.takeIf { !b.isLocal && it.isNotBlank() },
+                        // 本页封面端点自签的大图 token: 查看器拿同一个值当自己的 key,
+                        // 两端才配得上对 (封面 URL 已不再参与配对)
+                        photoToken = coverBinding.photoToken,
                     )
                 )
             }
@@ -741,6 +751,8 @@ fun BookInfoRoute(
     val isEInkMode = screenState.isEInkMode
     val blurCoverBgSlot = LocalBlurCoverBgSlot.current
     val introImageSlot = LocalIntroImageSlot.current
+    // 本页封面端点在这里认下共享身份: 页转场 token 来自 entry (发起方卡片交出), 大图 token 本页自签
+    CompositionLocalProvider(LocalSharedCoverBinding provides coverBinding) {
     BookInfoScreen(
         state = screenState,
         actions = actions,
@@ -766,6 +778,7 @@ fun BookInfoRoute(
             introImageSlot(src, onClick)
         },
     )
+    } // CompositionLocalProvider(封面共享身份)
 
     // 整书换源弹窗 (对照原版长按来源 → ChangeBookSourceDialog 全高底部弹窗, 与阅读页换源同款)
     if (showChangeSourceDialog) {

@@ -12,6 +12,7 @@ import io.legado.app.constant.BookType
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.book.addType
+import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isRss
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfigProviders
@@ -245,7 +246,7 @@ fun ExploreShowRoute(
             }
 
             // 对照 Activity.onBookClickImpl + showBookInfo
-            override fun onBookClick(book: SearchBook, longClick: Boolean) {
+            override fun onBookClick(book: SearchBook, longClick: Boolean, sharedToken: String?) {
                 // 补 notShelf type (对齐原 registerListener)
                 if (!vm.isInBookShelf(book)) {
                     book.addType(BookType.notShelf)
@@ -259,13 +260,20 @@ fun ExploreShowRoute(
                 }
                 // longClick || !devFeat → BookInfo; 否则按类型分流
                 if (longClick || !AppConfigProviders.get().devFeat) {
-                    navigator.push(AppRoute.BookInfo(book.toRouteRef()))
+                    navigator.push(AppRoute.BookInfo(book.toRouteRef()), sharedToken = sharedToken)
                     return
                 }
                 when {
                     book.isVideo -> navigator.push(AppRoute.VideoPlay(book.toRouteRef()))
                     book.isRss -> navigator.push(AppRoute.ReadRss(book.toRouteRef()))
-                    else -> navigator.push(AppRoute.BookInfo(book.toRouteRef()))
+                    book.isAudio -> navigator.push(
+                        AppRoute.AudioPlay(book.toRouteRef()),
+                        sharedToken = sharedToken,
+                    )
+                    else -> navigator.push(
+                        AppRoute.BookInfo(book.toRouteRef()),
+                        sharedToken = sharedToken,
+                    )
                 }
             }
 

@@ -796,6 +796,11 @@ if (enableOhosTarget) {
     tasks.matching { it.name == "compileKotlinOhosArm64" }.configureEach {
         deriveOhosRoomImpl?.let { dependsOn(it) }
         verifyOhosRoomDerived?.let { dependsOn(it) }
+        // CPF fork CMP 1.9.2 的 sharedBounds/SharedTransitionLayout 仍带
+        // @ExperimentalSharedTransitionApi (官方 1.11 已转正), 而 sharedUiMain 是四端共享源码,
+        // 不能为鸿蒙单独加 @OptIn —— 只在这一条编译上开 opt-in。
+        (this as? org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile)?.compilerOptions?.optIn
+            ?.add("androidx.compose.animation.ExperimentalSharedTransitionApi")
     }
 }
 

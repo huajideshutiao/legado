@@ -1,9 +1,15 @@
 package io.legado.app.ui.widget.dialog
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -59,6 +65,7 @@ import io.legado.app.ui.root.LocalPhotoSharedState
 import io.legado.app.ui.root.LocalSharedTransitionEnabled
 import io.legado.app.ui.root.LocalSharedTransitionScope
 import io.legado.app.ui.root.PhotoSharedBoundsDurationMillis
+import io.legado.app.ui.root.PhotoSharedContentFade
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.imageSaveFileName
 import io.legado.app.ui.root.photoSharedTarget
@@ -105,7 +112,8 @@ import kotlin.math.max
  * 原 Android 专属的四条分支 (章节缓存文件/EPUB/SVG/data URI/Coil 磁盘缓存) 都已在本件
  * 字节链内, 故 app 端不再需要自己那份加载/手势实现。
  *
- * @param loadState 图片加载三态, 由调用方持有 (查看器按它决定何时起飞, 见 rememberPhotoLoadState)
+ * @param loadState 图片加载三态, 由调用方持有 (查看器不等它起飞: 首帧由 [rememberPhotoLoadState]
+ *   的三级同步兜底保证有图可飞, 见那边的注释)
  * @param modifier 外层容器 Modifier (默认 wrap; 全屏场景传 fillMaxSize)
  * @param imageModifier 图片 Modifier (默认 fillMaxSize)
  * @param onLongPress 长按回调 (app 端长按保存等场景), 默认无
@@ -280,13 +288,32 @@ private suspend fun loadPhotoState(
         loadPhotoBytes(src, book, bookSource, chapter, isCover = true)
     }.getOrNull()
     // 内存位图命中时跳过解码, 但仍用上面读到的字节供动图播放 (阅读页缓存只存单帧)
-    if (cached != null) return@withContext PhotoLoadState.Success(cached, bytes)
+    if (cached != null) {
+        cachePhotoBitmap(src, bookSource, cached)
+        return@withContext PhotoLoadState.Success(cached, bytes)
+    }
     if (bytes == null) return@withContext defaultCoverState(maxDim)
     // 栅格解码 → SVG 兜底（对齐原版 decodeBytes ?: SvgUtils.renderInto 语义）
     val bitmap = decodeBytesSampled(bytes, maxDim)
         ?: decodeSvgFallback(bytes, maxDim)
         ?: return@withContext defaultCoverState(maxDim)
+    cachePhotoBitmap(src, bookSource, bitmap)
     PhotoLoadState.Success(bitmap, bytes)
+}
+
+/**
+ * 大图解码结果回填 [DecodedBitmapCache] 主表。
+ *
+ * 主表原先只有 `ImageBitmapLoader.loadBitmap` 会写, 而大图走的是 loadBytes + decodeBytesSampled
+ * (只解码、不写表), 真封面又只进封面小表 ([DecodedBitmapCache.recordCover]) —— 于是查看器"首帧同步
+ * 取回现成位图"的 [DecodedBitmapCache.findByUrl] 在封面链上是死路, 连同一张图第二次打开都不命中。
+ * 回填后二次打开才是真的 0 延迟起飞。
+ */
+private fun cachePhotoBitmap(src: String, bookSource: BookSource?, bitmap: ImageBitmap) {
+    DecodedBitmapCache.put(
+        DecodedBitmapCache.cacheKey(src, bookSource?.bookSourceUrl, isCover = true),
+        bitmap,
+    )
 }
 
 /**
@@ -405,10 +432,14 @@ private fun rememberPhotoLoadState(
     // heightPixels*2 语义, 给放大留余量; 组合期取一次, 窗口 resize 不重启加载)
     val containerSize = LocalWindowInfo.current.containerSize
     val photoMaxDim = max(containerSize.width, containerSize.height) * 2
-    // 首帧尝试同步命中内存中的位图 (阅读页 Peek 或封面已解码缓存):
-    // 命中时首帧即为 Success 态, 共享元素直接携带真实图像零延迟起飞, 彻底杜绝起飞前顿挫与微闪
+    // 首帧尝试同步命中内存中的位图 (阅读页 Peek → 大图主缓存 → 封面小表):
+    // 命中时首帧即为 Success 态, 共享元素直接携带真实图像零延迟起飞, 彻底杜绝起飞前顿挫与微闪。
+    // 第三档 [DecodedBitmapCache.peekCover] 是按封面/列表尺寸解的糊图, 只用来撑住接管那一帧 (官方
+    // sharedBounds 把内容按终态布局整体缩放到动画盒, 飞行期间看不出分辨率), 高清图就绪后替换。
     val initialCached = remember(src) {
-        ReaderImageCache.peek(src) ?: DecodedBitmapCache.findByUrl(src)
+        ReaderImageCache.peek(src)
+            ?: DecodedBitmapCache.findByUrl(src)
+            ?: DecodedBitmapCache.peekCover(src)
     }
     val initialValue = remember(initialCached) {
         if (initialCached != null) PhotoLoadState.Success(initialCached, null)
@@ -424,9 +455,13 @@ private fun rememberPhotoLoadState(
 /**
  * 全屏大图查看 Overlay: **主窗口内**的全屏覆盖层 (黑色半透明底 + 缩放复用 [PhotoDialogContent])。
  *
- * 共享元素走官方 androidx.compose.animation 的 SharedTransition: 源封面与本查看器是同一 key 的
- * 两个端点, 谁可见由 [PhotoSharedState.visibleKey] 一处决定; 翻转那一帧起官方把内容提升到
- * SharedTransitionLayout 的覆盖层、逐帧按动画尺寸重排真实内容, 并让让位那一端整层不再重放。
+ * 共享元素走官方 androidx.compose.animation 的 SharedTransition: 源封面与本查看器是
+ * [photoSharedViewerKey] 同一 key 的两个端点, 谁接管由 [PhotoSharedState.viewerToken] 一处决定;
+ * 翻转那一帧起官方把内容提升到 SharedTransitionLayout 的覆盖层飞完整段。这一对用官方 sharedBounds
+ * (不是 sharedElement): 两端内容视觉上不等价 (屏级 Fit 大图 vs 格级 Crop 小封面), 而 sharedElement
+ * 只绘制"报称可见"那一端、且逐帧按动画尺寸重排它, 于是退场会先把封面那份放大到满屏再缩回,
+ * 并在交接帧留下两份都不画的空窗; sharedBounds 两端都绘制, 内容按终态尺寸布局一次再整体缩放
+ * (理由与参数详见 [photoSharedTarget] / [PhotoSharedCoverHost])。
  * 所以这里没有"上报源矩形 + 手工 offset/size 插值 + 两端互补 alpha"那套轮子 —— 它的空窗帧
  * (源已隐、副本还没出现)、飞行途中飞 loading、末端跳变 (终态盒按封面宽高比算, 与 p=1 之后的
  * 真实 Fit 布局不同源) 都是结构性的, 补不干净。
@@ -451,6 +486,7 @@ fun PhotoViewOverlayDialog(
     bookSource: BookSource? = null,
     chapter: BookChapter? = null,
     placeholder: (@Composable () -> Unit)? = null,
+    photoToken: String? = null,
 ) {
     val saveImage = rememberPhotoSaveAction(src, book, bookSource, chapter)
     val scope = LocalSharedTransitionScope.current
@@ -459,24 +495,26 @@ fun PhotoViewOverlayDialog(
     // 书源身份未就绪时先不发起加载 (避免无书源裸 GET: 进黑名单/写脏缓存)
     val loadState = rememberPhotoLoadState(src, book, bookSource, chapter, placeholder == null)
     var closing by remember { mutableStateOf(false) }
-    // 开关开 + 在作用域内 + 源封面在场, 才有共享转场; 阅读页内联图、验证码图等没有源端点,
-    // 本来就不该有动画, 保持原行为立即显示, 不因门控变成"点了没反应"
-    val shareable = enabled && scope != null && photoShared.hasSource(src)
-    // 唯一可见性口径: 源封面与查看器都只读 photoShared.visibleKey (两端各自再算一份必然错帧,
+    // 开关开 + 在作用域内 + 这次真的有一份源封面端点 (token 由发起方页面自签并随 overlay 带过来),
+    // 才有共享转场; 阅读页内联图、验证码图等没有源端点, 本来就不该有动画, 保持原行为立即显示,
+    // 不因门控变成"点了没反应"
+    val shareable = enabled && scope != null && photoToken != null
+    // 唯一可见性口径: 源封面与查看器都只读 photoShared.viewerToken (两端各自再算一份必然错帧,
     // 错帧就会两端同时报称可见 → 官方按"缺 target"处理, 一个都不动画), 写只在下面的 effect 里
-    val taken = photoShared.visibleKey == src
+    val taken = photoToken != null && photoShared.viewerToken == photoToken
 
     // key 只留真正决定"进入时是否接管"的项: shareable 在 body 内没用到; placeholder 是调用点
     // 内联 lambda (每次父重组都是新实例), 拿它当 key 会让 effect 白白重启写同值
-    LaunchedEffect(closing, src, placeholder == null) {
-        if (closing) return@LaunchedEffect
-        // 进入时无需等待后台大图解码, 直接接管共享元素 (首帧有内存位图即带图起飞, 杜绝等待卡顿与微闪);
+    LaunchedEffect(closing, photoToken, placeholder == null) {
+        if (closing || photoToken == null) return@LaunchedEffect
+        // 进入时不等后台大图解码完成就接管共享元素: 首帧的图由 rememberPhotoLoadState 的三级同步兜底
+        // (阅读页位图 → 大图主缓存 → 封面小表) 保证, 所以既不用等也不会空一帧; 高清图就绪后中途替换。
         // 前置占位 (书源身份查询中) 时先不接管
-        if (placeholder == null) photoShared.visibleKey = src
+        if (placeholder == null) photoShared.viewerToken = photoToken
     }
     // 离开组合一律归还让位 (关闭 / 被替换 / 中途关开关), 不让源封面永久隐身
-    DisposableEffect(src) {
-        onDispose { if (photoShared.visibleKey == src) photoShared.visibleKey = null }
+    DisposableEffect(photoToken) {
+        onDispose { if (photoShared.viewerToken == photoToken) photoShared.viewerToken = null }
     }
 
     val requestDismiss: () -> Unit = { closing = true }
@@ -487,18 +525,17 @@ fun PhotoViewOverlayDialog(
     BackLayerHandler(enabled = true) { requestDismiss() }
     LaunchedEffect(closing) {
         if (!closing) return@LaunchedEffect
-        photoShared.visibleKey = null
+        photoShared.viewerToken = null
+        // shareable 成立即蕴含 scope 非空 (见其定义), K2 会把这一事实带入下面的块与 lambda
+        // (局部 val 的智能转换不因进 lambda 而失效) —— 不需要再取一份局部引用判空
         if (shareable) {
             // 退场以官方转场状态为准, 不用定长 delay 近似 (慢帧下会提前把回飞与蒙版渐变硬切掉)。
-            // 信号是作用域级的, 刚置 visibleKey=null 时可能还是 false (尚未起飞), 故先等它变 true
+            // 信号是作用域级的, 刚置 viewerToken=null 时可能还是 false (尚未起飞), 故先等它变 true
             // 再等它变 false。上限只比飞行时长多留一半: Overlay 未卸载期间仍会吃掉点击,
             // 源封面中途被回收 (LazyGrid 滚出/刷新/旋屏) 导致信号永不到来时不能多挡太久
-            val transitionScope = scope
-            if (transitionScope != null) {
-                withTimeoutOrNull(PhotoSharedBoundsDurationMillis.toLong() * 3 / 2) {
-                    snapshotFlow { transitionScope.isTransitionActive }.first { it }
-                    snapshotFlow { transitionScope.isTransitionActive }.first { !it }
-                }
+            withTimeoutOrNull(PhotoSharedBoundsDurationMillis.toLong() * 3 / 2) {
+                snapshotFlow { scope.isTransitionActive }.first { it }
+                snapshotFlow { scope.isTransitionActive }.first { !it }
             }
         }
         windowController.setLightIconOverlay(false)
@@ -515,7 +552,7 @@ fun PhotoViewOverlayDialog(
         onDispose { windowController.setLightIconOverlay(false) }
     }
 
-    // 蒙版与飞行同时长同源: targetValue 直接由 taken (= visibleKey == src) 推, 不再另算就绪条件
+    // 蒙版与飞行同时长同源: targetValue 直接由 taken (= viewerToken 是我) 推, 不再另算就绪条件
     val scrimAlpha by animateFloatAsState(
         targetValue = if (taken) 0.6f else 0f,
         // 共享路径与飞行同时长同曲线; 非共享路径保持旧的"直接就位"(旧实现 progress 初值即 1f)
@@ -537,28 +574,49 @@ fun PhotoViewOverlayDialog(
                 detectTapGestures(onTap = { requestDismiss() })
             }
     ) {
-        // 目标端点从第一帧就参与组合与测量 (官方要拿到它的全屏 bounds 才能配对起飞);
-        // 未接管时它不绘制自己, 屏幕上仍是源封面 —— 所以不存在"两头都空"的帧
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .photoSharedTarget(key = src, visible = taken)
+        // 大图端 = "大图↔封面" 共享对的进入/退出端, 进出由 taken 驱动官方 sharedBounds (见
+        // [photoSharedTarget]): 两端内容在同一个动画盒里交叉淡化, 离场那份不会因为"不再报称可见"
+        // 而提前停绘。没有源封面端点 (阅读页内联图 / 验证码图 / 总闸已关) 时本层就是普通全屏图,
+        // 恒显示、不做淡变 —— 与挂不上共享修饰符时的旧行为一致。
+        AnimatedVisibility(
+            visible = taken || !shareable,
+            modifier = Modifier.fillMaxSize(),
+            enter = if (shareable) fadeIn(PhotoSharedContentFade) else EnterTransition.None,
+            exit = if (shareable) fadeOut(PhotoSharedContentFade) else ExitTransition.None,
+            label = "photoViewerSharedTarget",
         ) {
-            if (placeholder != null) {
-                // 前置信息未就绪 (书源身份查询中): 不发起加载, 也不参与飞行 ——
-                // 有源封面时本层还没接管 (屏幕上仍是封面), 无源封面时这就是原来的黑底+loading
-                placeholder()
-            } else {
-                PhotoDialogContent(
-                    loadState = loadState,
-                    modifier = Modifier.fillMaxSize(),
-                    imageModifier = Modifier.fillMaxSize(),
-                    onLongPress = saveImage,
-                    onTap = requestDismiss,
-                    loadingContent = {
-                        Text(stringResource(Res.string.loading), color = Color.White)
-                    },
-                )
+            val viewerVisibilityScope: AnimatedVisibilityScope = this
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(
+                        // 没有源封面端点时不挂共享节点 (与源侧“不参与”同一口径)
+                        photoToken?.let {
+                            Modifier.photoSharedTarget(
+                                photoToken = it,
+                                animatedVisibilityScope = viewerVisibilityScope,
+                                // 大图浮在页栈与其它共享元素之上 (飞行途中要盖住页面内容)
+                                zIndexInOverlay = 1f,
+                            )
+                        } ?: Modifier
+                    ),
+            ) {
+                if (placeholder != null) {
+                    // 前置信息未就绪 (书源身份查询中): 不发起加载, 也不参与飞行 ——
+                    // 有源封面时本层还没接管 (屏幕上仍是封面), 无源封面时这就是原来的黑底+loading
+                    placeholder()
+                } else {
+                    PhotoDialogContent(
+                        loadState = loadState,
+                        modifier = Modifier.fillMaxSize(),
+                        imageModifier = Modifier.fillMaxSize(),
+                        onLongPress = saveImage,
+                        onTap = requestDismiss,
+                        loadingContent = {
+                            Text(stringResource(Res.string.loading), color = Color.White)
+                        },
+                    )
+                }
             }
         }
     }

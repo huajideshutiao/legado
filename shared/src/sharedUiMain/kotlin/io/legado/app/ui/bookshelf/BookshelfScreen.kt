@@ -68,7 +68,7 @@ import io.legado.app.ui.compose.platform.transitionStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
-import io.legado.app.ui.root.photoSharedSource
+import io.legado.app.ui.root.PhotoSharedCoverHost
 import io.legado.app.utils.FlowBus
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.async
@@ -134,8 +134,8 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 fun BookshelfScreen(
     viewModel: BookshelfViewModel,
-    onBookClick: (Book) -> Unit,
-    onBookLongClick: (Book) -> Unit = {},
+    onBookClick: (Book, String?) -> Unit,
+    onBookLongClick: (Book, String?) -> Unit = { _, _ -> },
     onSearchClick: () -> Unit = {},
     onGroupLongClick: (BookGroup) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -188,10 +188,11 @@ fun BookshelfScreen(
         }
     }
     val currentOnBookClick = rememberUpdatedState(onBookClick)
-    val stableOnBookClick: (Book) -> Unit = remember { { book -> currentOnBookClick.value(book) } }
+    val stableOnBookClick: (Book, String?) -> Unit =
+        remember { { book, token -> currentOnBookClick.value(book, token) } }
     val currentOnBookLongClick = rememberUpdatedState(onBookLongClick)
-    val stableOnBookLongClick: (Book) -> Unit =
-        remember { { book -> currentOnBookLongClick.value(book) } }
+    val stableOnBookLongClick: (Book, String?) -> Unit =
+        remember { { book, token -> currentOnBookLongClick.value(book, token) } }
     val currentOnGroupLongClick = rememberUpdatedState(onGroupLongClick)
     val stableOnGroupLongClick: (BookGroup) -> Unit =
         remember { { group -> currentOnGroupLongClick.value(group) } }
@@ -432,8 +433,8 @@ private fun GroupBooksPage(
     viewModel: BookshelfViewModel,
     configTick: Int,
     books: List<Book>?,
-    onBookClick: (Book) -> Unit,
-    onBookLongClick: (Book) -> Unit,
+    onBookClick: (Book, String?) -> Unit,
+    onBookLongClick: (Book, String?) -> Unit,
     bookCoverSlot: @Composable (Book, Modifier, Boolean, Int) -> Unit,
     groupCoverSlot: @Composable (BookGroup, Modifier, Boolean, Int) -> Unit,
     onRefresh: () -> Unit,
@@ -629,7 +630,8 @@ internal fun DefaultBookshelfActions(
  * 自适应, 不再硬编码 160dp)。
  *
  * @param book 当前书籍
- * @param modifier 外部尺寸约束; 默认 [Modifier] 时 fillMaxWidth + aspectRatio + shapeSm
+ * @param modifier 外部尺寸约束 (调用方给宽高/内边距等); 本组件自己只补 `aspectRatio` + 圆角,
+ *   **不**加 fillMaxWidth (下方有硬约束说明)
  * @param isVideoCover 是否视频封面 (true: 16:9, false: 3:4; 对照 CoverRatio.VIDEO/NOVEL)
  * @param reloadTick 封面重载信号 (configTick): 变化时重启加载, 不变不额外触发
  *
@@ -725,48 +727,53 @@ fun SharedBookCover(
     // 对齐原 View 版 onMeasure: 高度有界时按比例反推宽度, 否则按宽度推高度。
     // 不能硬加 fillMaxWidth() —— 列表条目/发现结果页传的是定高 modifier, 撑满宽度会让封面失控放大。
     val aspectRatio = if (isVideoCover) VIDEO_COVER_RATIO else NOVEL_COVER_RATIO
-    // 共享元素源端点挂在链首: 下方的 aspectRatio/clip 与图片渲染都成了它的子级,
-    // 飞行副本才能带着封面圆角一起变形 (官方 KDoc 要求裁剪写在共享修饰符之后)。
-    // 全屏大图查看器用的就是同一个 key (getDisplayCover() 与 overlay payload 同源),
-    // 所以在这唯一入口挂一次, 书架/搜索/发现/详情/音频的封面就全部覆盖。
-    val resolvedModifier = Modifier
-        .photoSharedSource(cover)
+    // 外层链: 尺寸/内边距/裁剪全留在外层 —— [PhotoSharedCoverHost] 里的 AnimatedVisibility 把内容
+    // 卸载后自己会缩成 0, 靠 aspectRatio 把这一格定住, 端点起止盒才不塌。
+    // 共享配对身份不再从封面 URL 推: 出发侧 (列表卡) 由条目绑定提供自签 token, 落位侧由目标页 entry
+    // 的 token 提供 (见 [io.legado.app.ui.root.LocalSharedCoverBinding])。
+    val outerModifier = Modifier
         .then(modifier)
         .aspectRatio(aspectRatio, matchHeightConstraintsFirst = true)
         .clip(DesignTokens.shapeSm)
         .onSizeChanged { displaySize.value = it }
     val bmp = coverState.bitmap
-    if (bmp != null && !coverState.isDefault) {
-        Image(
-            bitmap = bmp,
-            contentDescription = book.name,
-            modifier = resolvedModifier,
-            contentScale = ContentScale.Crop,
-        )
-        return
-    }
-    Box(resolvedModifier) {
-        if (bmp != null) {
-            // 用户图集里的烘焙图 (已按 ratio 裁好); .9 图按九宫格拉伸
-            NinePatchImageOrImage(
+    // 两套端点 (页转场对 + 大图对) 都在这唯一入口挂: 书架/搜索/发现/详情/音频的封面全部覆盖
+    PhotoSharedCoverHost(
+        cover = cover,
+        outerModifier = outerModifier,
+        // 圆角要写在共享节点之内, 飞行副本才有圆角
+        sharedModifier = Modifier.clip(DesignTokens.shapeSm),
+    ) {
+        if (bmp != null && !coverState.isDefault) {
+            Image(
                 bitmap = bmp,
-                isNinePatch = coverState.isNinePatch,
                 contentDescription = book.name,
                 modifier = Modifier.matchParentSize(),
+                contentScale = ContentScale.Crop,
             )
         } else {
-            // 图集为空 / 读盘失败: 内置默认封面, 运行期 3:4 居中裁剪 + 九宫格拉伸 (四角不变形)
-            DefaultCoverNineImage(
+            if (bmp != null) {
+                // 用户图集里的烘焙图 (已按 ratio 裁好); .9 图按九宫格拉伸
+                NinePatchImageOrImage(
+                    bitmap = bmp,
+                    isNinePatch = coverState.isNinePatch,
+                    contentDescription = book.name,
+                    modifier = Modifier.matchParentSize(),
+                )
+            } else {
+                // 图集为空 / 读盘失败: 内置默认封面, 运行期 3:4 居中裁剪 + 九宫格拉伸 (四角不变形)
+                DefaultCoverNineImage(
+                    modifier = Modifier.matchParentSize(),
+                    contentDescription = book.name,
+                )
+            }
+            CoverNameAuthorOverlay(
+                name = book.name,
+                author = book.author,
+                accent = AppTheme.colors.accent,
                 modifier = Modifier.matchParentSize(),
-                contentDescription = book.name,
             )
         }
-        CoverNameAuthorOverlay(
-            name = book.name,
-            author = book.author,
-            accent = AppTheme.colors.accent,
-            modifier = Modifier.matchParentSize(),
-        )
     }
 }
 

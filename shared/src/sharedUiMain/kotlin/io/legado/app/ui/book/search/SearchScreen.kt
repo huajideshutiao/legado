@@ -34,6 +34,7 @@ import androidx.compose.material.Icon
 import androidx.compose.material.LinearProgressIndicator
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -67,6 +68,8 @@ import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.ui.bookshelf.KindLabels
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
+import io.legado.app.ui.root.LocalSharedCoverBinding
+import io.legado.app.ui.root.rememberSharedCoverSourceBinding
 import io.legado.app.ui.bookshelf.ShelfGridItem
 import io.legado.app.ui.bookshelf.ShelfLastUpdateText
 import io.legado.app.ui.bookshelf.ShelfListItem
@@ -123,8 +126,8 @@ interface SearchNavCallbacks {
     /** 返回 (标题栏返回箭头 / 系统返回手势)。 */
     fun onBack()
 
-    /** 点击书籍 (补 notShelf type 后进详情, 宿主实现跳转)。 */
-    fun onBookClick(book: BaseBook, longClick: Boolean = false)
+    /** 点击书籍 (补 notShelf type 后进详情, 宿主实现跳转); [sharedToken] = 被点封面自签的共享配对 token。 */
+    fun onBookClick(book: BaseBook, longClick: Boolean = false, sharedToken: String? = null)
 
     /** 进入书源管理页。 */
     fun onManageBookSources()
@@ -154,7 +157,7 @@ interface SearchNavCallbacks {
  */
 object NoOpSearchNavCallbacks : SearchNavCallbacks {
     override fun onBack() {}
-    override fun onBookClick(book: BaseBook, longClick: Boolean) {}
+    override fun onBookClick(book: BaseBook, longClick: Boolean, sharedToken: String?) {}
     override fun onManageBookSources() {}
     override fun onAlertSearchScope() {}
     override fun onShowSourceFilterRule() {}
@@ -497,50 +500,66 @@ private fun ColumnScope.InputHelp(
                 .weight(1f),
         ) {
             items(bookshelfBooks, key = { it.bookUrl }) { book ->
-                when {
-                    // 视频网格卡 (cols>=1 且视频, 对照 ExploreShow 视频卡分支)
-                    styleIsVideo && styleCols >= 1 -> ShelfVideoItem(
-                        book = book,
-                        coverReloadTick = bookshelfVersion,
-                        onClick = { navCallbacks.onBookClick(book) },
-                        onLongClick = { navCallbacks.onBookClick(book, true) },
-                        coverSlot = tickedShelfCoverSlot,
-                    )
+                // 共享配对身份按条目下发 (被点的封面 = 出发端, 页转场 token 自签)
+                val binding = rememberSharedCoverSourceBinding(book.bookUrl)
+                CompositionLocalProvider(LocalSharedCoverBinding provides binding) {
+                    when {
+                        // 视频网格卡 (cols>=1 且视频, 对照 ExploreShow 视频卡分支)
+                        styleIsVideo && styleCols >= 1 -> ShelfVideoItem(
+                            book = book,
+                            coverReloadTick = bookshelfVersion,
+                            onClick = {
+                                navCallbacks.onBookClick(book, sharedToken = binding.pageToken)
+                            },
+                            onLongClick = {
+                                navCallbacks.onBookClick(book, true, binding.pageToken)
+                            },
+                            coverSlot = tickedShelfCoverSlot,
+                        )
 
-                    // 单列行 (cols 0/1; 宽屏经 rememberResponsiveColumns(1) 自动加列, 行内布局不变)
-                    spanCount == 1 -> ShelfListItem(
-                        book = book,
-                        isVideoStyle = styleCols == 0 && styleIsVideo,
-                        coverReloadTick = bookshelfVersion,
-                        refreshingUrls = emptySet(),
-                        showLastUpdateTime = true,
-                        showKindIntro = true,
-                        onClick = { navCallbacks.onBookClick(book) },
-                        onLongClick = { navCallbacks.onBookClick(book, true) },
-                        // 对照原版 BookAdapter: kind/intro/更新时间恒显(不受书架配置门控),
-                        // flHasNew.gone() 故不画未读徽标
-                        forceShowKind = true,
-                        forceShowIntro = true,
-                        forceShowUpdateTime = true,
-                        hideUnread = true,
-                        coverSlot = tickedShelfCoverSlot,
-                        lastUpdateTextSlot = {
-                            ShelfLastUpdateText(
-                                book.durChapterTime,
-                                remember { mutableIntStateOf(0) },
-                            )
-                        },
-                    )
+                        // 单列行 (cols 0/1; 宽屏经 rememberResponsiveColumns(1) 自动加列, 行内布局不变)
+                        spanCount == 1 -> ShelfListItem(
+                            book = book,
+                            isVideoStyle = styleCols == 0 && styleIsVideo,
+                            coverReloadTick = bookshelfVersion,
+                            refreshingUrls = emptySet(),
+                            showLastUpdateTime = true,
+                            showKindIntro = true,
+                            onClick = {
+                                navCallbacks.onBookClick(book, sharedToken = binding.pageToken)
+                            },
+                            onLongClick = {
+                                navCallbacks.onBookClick(book, true, binding.pageToken)
+                            },
+                            // 对照原版 BookAdapter: kind/intro/更新时间恒显(不受书架配置门控),
+                            // flHasNew.gone() 故不画未读徽标
+                            forceShowKind = true,
+                            forceShowIntro = true,
+                            forceShowUpdateTime = true,
+                            hideUnread = true,
+                            coverSlot = tickedShelfCoverSlot,
+                            lastUpdateTextSlot = {
+                                ShelfLastUpdateText(
+                                    book.durChapterTime,
+                                    remember { mutableIntStateOf(0) },
+                                )
+                            },
+                        )
 
-                    // 多列网格卡 (cols>=2 非视频)
-                    else -> ShelfGridItem(
-                        book = book,
-                        coverReloadTick = bookshelfVersion,
-                        refreshingUrls = emptySet(),
-                        onClick = { navCallbacks.onBookClick(book) },
-                        onLongClick = { navCallbacks.onBookClick(book, true) },
-                        coverSlot = tickedShelfCoverSlot,
-                    )
+                        // 多列网格卡 (cols>=2 非视频)
+                        else -> ShelfGridItem(
+                            book = book,
+                            coverReloadTick = bookshelfVersion,
+                            refreshingUrls = emptySet(),
+                            onClick = {
+                                navCallbacks.onBookClick(book, sharedToken = binding.pageToken)
+                            },
+                            onLongClick = {
+                                navCallbacks.onBookClick(book, true, binding.pageToken)
+                            },
+                            coverSlot = tickedShelfCoverSlot,
+                        )
+                    }
                 }
             }
         }
@@ -813,54 +832,70 @@ private fun ColumnScope.ResultArea(
             books,
             key = { "${it.origin}|${it.bookUrl}" },
             contentType = { "searchBook" }) { book ->
-            when {
-                // 视频网格卡 (cols>=1 且视频, 对照 ExploreShow 视频卡分支)
-                styleIsVideo && styleCols >= 1 -> {
-                    val displayBook = remember(book) { book.toBook() }
-                    val cover: @Composable (Book, Modifier, Boolean, Int) -> Unit =
-                        { _, modifier, isVideoCover, _ ->
-                            coverSlot(book, modifier, isVideoCover)
-                        }
-                    ShelfVideoItem(
-                        book = displayBook,
-                        coverReloadTick = 0,
-                        onClick = { navCallbacks.onBookClick(book) },
-                        onLongClick = { navCallbacks.onBookClick(book, true) },
-                        coverSlot = cover,
-                    )
-                }
+            // 共享配对身份按条目下发 (被点的封面 = 出发端, 页转场 token 自签)
+            val binding = rememberSharedCoverSourceBinding(book.bookUrl)
+            CompositionLocalProvider(LocalSharedCoverBinding provides binding) {
+                when {
+                    // 视频网格卡 (cols>=1 且视频, 对照 ExploreShow 视频卡分支)
+                    styleIsVideo && styleCols >= 1 -> {
+                        val displayBook = remember(book) { book.toBook() }
+                        val cover: @Composable (Book, Modifier, Boolean, Int) -> Unit =
+                            { _, modifier, isVideoCover, _ ->
+                                coverSlot(book, modifier, isVideoCover)
+                            }
+                        ShelfVideoItem(
+                            book = displayBook,
+                            coverReloadTick = 0,
+                            onClick = {
+                                navCallbacks.onBookClick(book, sharedToken = binding.pageToken)
+                            },
+                            onLongClick = {
+                                navCallbacks.onBookClick(book, true, binding.pageToken)
+                            },
+                            coverSlot = cover,
+                        )
+                    }
 
-                // 单列行 (cols 0/1; 宽屏经 rememberResponsiveColumns(1) 自动加列, 行内布局不变)
-                spanCount == 1 -> {
-                    val isVideoStyle = styleCols == 0 && styleIsVideo
-                    SearchListItem(
-                        book = book,
-                        isVideoStyle = isVideoStyle,
-                        inBookshelf = viewModel.isInBookShelf(book),
-                        showShelfDot = true,
-                        originCount = book.origins.size,
-                        intro = book.intro,
-                        onClick = { navCallbacks.onBookClick(book) },
-                        onLongClick = { navCallbacks.onBookClick(book, true) },
-                        coverSlot = { modifier -> coverSlot(book, modifier, isVideoStyle) },
-                    )
-                }
+                    // 单列行 (cols 0/1; 宽屏经 rememberResponsiveColumns(1) 自动加列, 行内布局不变)
+                    spanCount == 1 -> {
+                        val isVideoStyle = styleCols == 0 && styleIsVideo
+                        SearchListItem(
+                            book = book,
+                            isVideoStyle = isVideoStyle,
+                            inBookshelf = viewModel.isInBookShelf(book),
+                            showShelfDot = true,
+                            originCount = book.origins.size,
+                            intro = book.intro,
+                            onClick = {
+                                navCallbacks.onBookClick(book, sharedToken = binding.pageToken)
+                            },
+                            onLongClick = {
+                                navCallbacks.onBookClick(book, true, binding.pageToken)
+                            },
+                            coverSlot = { modifier -> coverSlot(book, modifier, isVideoStyle) },
+                        )
+                    }
 
-                // 多列网格卡 (cols>=2 非视频)
-                else -> {
-                    val displayBook = remember(book) { book.toBook() }
-                    val cover: @Composable (Book, Modifier, Boolean, Int) -> Unit =
-                        { _, modifier, isVideoCover, _ ->
-                            coverSlot(book, modifier, isVideoCover)
-                        }
-                    ShelfGridItem(
-                        book = displayBook,
-                        coverReloadTick = 0,
-                        refreshingUrls = emptySet(),
-                        onClick = { navCallbacks.onBookClick(book) },
-                        onLongClick = { navCallbacks.onBookClick(book, true) },
-                        coverSlot = cover,
-                    )
+                    // 多列网格卡 (cols>=2 非视频)
+                    else -> {
+                        val displayBook = remember(book) { book.toBook() }
+                        val cover: @Composable (Book, Modifier, Boolean, Int) -> Unit =
+                            { _, modifier, isVideoCover, _ ->
+                                coverSlot(book, modifier, isVideoCover)
+                            }
+                        ShelfGridItem(
+                            book = displayBook,
+                            coverReloadTick = 0,
+                            refreshingUrls = emptySet(),
+                            onClick = {
+                                navCallbacks.onBookClick(book, sharedToken = binding.pageToken)
+                            },
+                            onLongClick = {
+                                navCallbacks.onBookClick(book, true, binding.pageToken)
+                            },
+                            coverSlot = cover,
+                        )
+                    }
                 }
             }
         }

@@ -26,6 +26,16 @@ data class RouteEntry(
     val route: AppRoute,
     val resultKey: String? = null,
     val resultTargetEntryId: RouteEntryId? = null,
+    /**
+     * 本次进入本页时, 发起方 (被点的那张封面) 交出的共享转场配对 token; null = 本次不是从封面点进来的。
+     *
+     * 只给共享元素配对用 (目标页封面据此认下配对身份), **不**参与路由相等/入栈幂等判据 —— 若把 token
+     * 放进 AppRoute 里, 同一本书连点两次会因为 token 不同而绕过幂等, 真的叠出两个详情页。
+     *
+     * 带默认值的可空字段: 旧快照缺它按 null 解, 新快照被旧代码读时由 ignoreUnknownKeys 挡掉, 双向
+     * 兼容 (同 resultTargetEntryId / AppOverlay.Dialog.sourceOrigin 方案)。
+     */
+    val sharedToken: String? = null,
 )
 
 @Serializable
@@ -45,6 +55,10 @@ sealed interface AppOverlay {
         // 按书源加载网络资源 (与全局当前阅读书解耦); 本地书/无书源场景不传, 保持裸 GET。
         // 默认值 + routeJson(ignoreUnknownKeys) 保证旧快照双向兼容 (同 keepOnPush 方案)。
         val sourceOrigin: String? = null,
+        // 大图查看器本次配对的那份封面端点 token (由发起方页面自签并交给本 overlay);
+        // null = 没有源封面端点 (阅读页内联图/验证码图等), 查看器按原行为立即显示、不做共享飞行。
+        // 默认值 + ignoreUnknownKeys 保证旧快照双向兼容 (同 sourceOrigin 方案)。
+        val photoToken: String? = null,
     ) : AppOverlay
 
     @Serializable
@@ -141,7 +155,18 @@ class AppNavigator(
 
     private val refreshHandlers = mutableMapOf<RouteEntryId, () -> Unit>()
 
-    fun push(route: AppRoute, resultKey: String? = null): RouteEntryId {
+    /**
+     * 入栈一页。
+     *
+     * @param sharedToken 共享元素配对 token: 由发起方 (被点的那张封面) 在点击那一刻交出, 落在新 entry 上
+     *   供目标页封面认配对身份 (见 [RouteEntry.sharedToken])。**不**参与下面的幂等判据: 同一本书连点两次
+     *   仍应只叠一页 (token 不同只是说明第二次点击没有真的发生导航, 自然也没有飞行)
+     */
+    fun push(
+        route: AppRoute,
+        resultKey: String? = null,
+        sharedToken: String? = null,
+    ): RouteEntryId {
         val current = currentEntry
         if (current.route == route && current.resultKey == resultKey) return current.id
         // 任何新导航动作 (push 路由) 先自动关闭对话框类 overlay。对照原版:
@@ -158,6 +183,7 @@ class AppNavigator(
             route = route,
             resultKey = resultKey,
             resultTargetEntryId = resultKey?.let { currentEntry.id },
+            sharedToken = sharedToken,
         )
         targetedResults.getOrPut(entryId) { Channel(Channel.UNLIMITED) }
         return entryId

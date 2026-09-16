@@ -26,6 +26,7 @@ import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
@@ -54,6 +55,8 @@ import io.legado.app.ui.compose.component.pullToRefresh
 import io.legado.app.ui.compose.component.rememberPullToRefreshState
 import io.legado.app.ui.compose.component.rememberResponsiveColumns
 import io.legado.app.ui.compose.platform.rememberPainter
+import io.legado.app.ui.root.LocalSharedCoverBinding
+import io.legado.app.ui.root.rememberSharedCoverSourceBinding
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.platform.transitionStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
@@ -227,8 +230,8 @@ fun ShelfBooksContent(
     // 引擎正在执行目录更新的 bookUrl 集合 (对照 app 端 MainViewModel.onUpTocBooks)：启动自动
     // 更新链路不登记 refreshingUrls，条目转圈判据需合并本集合；下拉指示器仍只用 refreshingUrls
     engineUpdatingUrls: Set<String> = emptySet(),
-    onBookClick: (Book) -> Unit,
-    onBookLongClick: (Book) -> Unit,
+    onBookClick: (Book, String?) -> Unit,
+    onBookLongClick: (Book, String?) -> Unit,
     showLastUpdateTime: Boolean,
     showKindIntro: Boolean,
     // isVideoCover: 是否用 VIDEO(16:9) 封面比例。对照原版 ShelfCover ratio 选取:
@@ -302,16 +305,21 @@ fun ShelfBooksContent(
                     when (item) {
                         // 书籍条目外包一层 Box: itemModifier(animateItem) 留在 Box 上, 分组不是书
                         is Book -> Box(modifier = itemModifier) {
-                            ShelfListItem(
-                                // 逐项窄化: 非刷新项恒拿 emptySet 单例, 集合变化时可跳过重组
-                                item, spec.isVideoList, coverReloadTick,
-                                if (item.bookUrl in refreshingUrlsSet) refreshingUrlsSet else emptySet(),
-                                showLastUpdateTime, showKindIntro,
-                                onClick = { onBookClick(item) },
-                                onLongClick = { onBookLongClick(item) },
-                                coverSlot = bookCoverSlot,
-                                lastUpdateTextSlot = { ShelfLastUpdateText(item.latestChapterTime, timeTickState) },
-                            )
+                            // 共享配对身份按条目下发: 被点的封面 = 出发端 (页转场 token 自签, 点击时交给导航),
+                            // 同屏重复封面 (同书/同 URL) 也不会互相抢正身
+                            val binding = rememberSharedCoverSourceBinding(item.bookUrl)
+                            CompositionLocalProvider(LocalSharedCoverBinding provides binding) {
+                                ShelfListItem(
+                                    // 逐项窄化: 非刷新项恒拿 emptySet 单例, 集合变化时可跳过重组
+                                    item, spec.isVideoList, coverReloadTick,
+                                    if (item.bookUrl in refreshingUrlsSet) refreshingUrlsSet else emptySet(),
+                                    showLastUpdateTime, showKindIntro,
+                                    onClick = { onBookClick(item, binding.pageToken) },
+                                    onLongClick = { onBookLongClick(item, binding.pageToken) },
+                                    coverSlot = bookCoverSlot,
+                                    lastUpdateTextSlot = { ShelfLastUpdateText(item.latestChapterTime, timeTickState) },
+                                )
+                            }
                         }
 
                         is BookGroup -> GroupListItem(
@@ -337,14 +345,18 @@ fun ShelfBooksContent(
                     when (item) {
                         // 外层 Box 同 LIST 分支: 让 animateItem 留在 Box 上
                         is Book -> Box(modifier = itemModifier) {
-                            ShelfGridItem(
-                                // 逐项窄化: 同 LIST 分支, 避免刷新集合每次变化重组全部可见项
-                                item, coverReloadTick,
-                                if (item.bookUrl in refreshingUrlsSet) refreshingUrlsSet else emptySet(),
-                                onClick = { onBookClick(item) },
-                                onLongClick = { onBookLongClick(item) },
-                                coverSlot = bookCoverSlot,
-                            )
+                            // 共享配对身份按条目下发 (同上)
+                            val binding = rememberSharedCoverSourceBinding(item.bookUrl)
+                            CompositionLocalProvider(LocalSharedCoverBinding provides binding) {
+                                ShelfGridItem(
+                                    // 逐项窄化: 同 LIST 分支, 避免刷新集合每次变化重组全部可见项
+                                    item, coverReloadTick,
+                                    if (item.bookUrl in refreshingUrlsSet) refreshingUrlsSet else emptySet(),
+                                    onClick = { onBookClick(item, binding.pageToken) },
+                                    onLongClick = { onBookLongClick(item, binding.pageToken) },
+                                    coverSlot = bookCoverSlot,
+                                )
+                            }
                         }
 
                         is BookGroup -> GroupGridItem(
@@ -370,12 +382,16 @@ fun ShelfBooksContent(
                     when (item) {
                         // 外层 Box 同 LIST 分支: 让 animateItem 留在 Box 上
                         is Book -> Box(modifier = itemModifier) {
-                            ShelfVideoItem(
-                                item, coverReloadTick,
-                                onClick = { onBookClick(item) },
-                                onLongClick = { onBookLongClick(item) },
-                                coverSlot = bookCoverSlot,
-                            )
+                            // 共享配对身份按条目下发 (同上)
+                            val binding = rememberSharedCoverSourceBinding(item.bookUrl)
+                            CompositionLocalProvider(LocalSharedCoverBinding provides binding) {
+                                ShelfVideoItem(
+                                    item, coverReloadTick,
+                                    onClick = { onBookClick(item, binding.pageToken) },
+                                    onLongClick = { onBookLongClick(item, binding.pageToken) },
+                                    coverSlot = bookCoverSlot,
+                                )
+                            }
                         }
 
                         is BookGroup -> GroupVideoItem(

@@ -70,7 +70,7 @@ import io.legado.app.ui.compose.platform.transitionStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
-import io.legado.app.ui.root.photoSharedSource
+import io.legado.app.ui.root.PhotoSharedCoverHost
 import io.legado.app.utils.format
 import io.legado.app.utils.toDurationTime
 import legado.shared.generated.resources.Res
@@ -576,20 +576,23 @@ private fun CoverImage(
     modifier: Modifier = Modifier,
 ) {
     // align/padding/尺寸约束留在父 Box: 与封面同节点的装饰会被算进共享元素起止盒,
-    // 而共享端点必须是封面自己链首的那个节点 (在场登记也在 photoSharedSource 内一并做)
+    // 而共享端点必须是封面自己链首的那个节点
     Box(modifier) {
-        coverSlot(
-            coverUrl,
-            Modifier
-                .photoSharedSource(coverUrl)
-                .size(size)
+        // 圆形封面同样是两套共享端点的封面端 (页转场 + 长按看大图): 圆角/描边/手势写进共享节点之内,
+        // 飞行副本才带得起来; 尺寸留在外层, 内容被 AnimatedVisibility 卸载时本格不塌
+        PhotoSharedCoverHost(
+            cover = coverUrl,
+            outerModifier = Modifier.size(size),
+            sharedModifier = Modifier
                 .clip(CircleShape)
                 .border(DesignTokens.strokeMedium, accentColor, CircleShape)
                 // 单击隐藏封面 (原版语义) + 长按查看大图; combinedClickable 保证长按不触发单击,
                 // 不会误隐藏封面。无封面 URL 时手势仍挂着, 由回调内部判空不动作
                 // (同书籍详情页封面: 可按但不响应, 不做 disabled)
                 .combinedClickable(onClick = onClick, onLongClick = onLongClick),
-        )
+        ) {
+            coverSlot(coverUrl, Modifier.matchParentSize())
+        }
     }
 }
 

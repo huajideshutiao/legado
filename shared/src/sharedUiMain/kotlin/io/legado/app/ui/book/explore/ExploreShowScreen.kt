@@ -29,6 +29,7 @@ import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
@@ -43,6 +44,8 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.ui.bookshelf.KindLabels
+import io.legado.app.ui.root.LocalSharedCoverBinding
+import io.legado.app.ui.root.rememberSharedCoverSourceBinding
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.FastScrollLazyVerticalGrid
 import io.legado.app.ui.compose.component.OverflowMenu
@@ -205,8 +208,8 @@ interface ExploreShowUiActions {
     /** 触底预加载 (末项进入倒数第 [PRELOAD_THRESHOLD] 项时触发) */
     fun onScrollToBottom()
 
-    /** 书籍点击/长按 (补 notShelf type 后进详情, 宿主实现跳转) */
-    fun onBookClick(book: SearchBook, longClick: Boolean)
+    /** 书籍点击/长按 (补 notShelf type 后进详情, 宿主实现跳转); [sharedToken] = 被点封面自签的配对 token */
+    fun onBookClick(book: SearchBook, longClick: Boolean, sharedToken: String?)
 
     /** 查询书籍是否在书架 (绿点/徽标渲染用) */
     fun isInBookshelf(book: SearchBook): Boolean
@@ -380,30 +383,35 @@ private fun ResultArea(
         contentPadding = navPad,
     ) {
         items(books, key = { it.bookUrl }, contentType = { "exploreBook" }) { book ->
-            when {
-                isVideo && cols >= 1 -> videoItemSlot(
-                    book,
-                    actions.isInBookshelf(book),
-                    { actions.onBookClick(book, false) },
-                    { actions.onBookClick(book, true) },
-                )
+            // 共享配对身份按条目下发: 被点的封面就是出发端 (页转场 token 自签, 点击时交给导航),
+            // 因此同屏重复的封面 (同书/同 URL) 也不会互相抢正身
+            val binding = rememberSharedCoverSourceBinding(book.bookUrl)
+            CompositionLocalProvider(LocalSharedCoverBinding provides binding) {
+                when {
+                    isVideo && cols >= 1 -> videoItemSlot(
+                        book,
+                        actions.isInBookshelf(book),
+                        { actions.onBookClick(book, false, binding.pageToken) },
+                        { actions.onBookClick(book, true, binding.pageToken) },
+                    )
 
-                spanCount == 1 -> ExploreListItem(
-                    book = book,
-                    isVideoStyle = cols == 0 && isVideo,
-                    inBookshelf = actions.isInBookshelf(book),
-                    coverSlot = coverSlot,
-                    onClick = { actions.onBookClick(book, false) },
-                    onLongClick = { actions.onBookClick(book, true) },
-                )
+                    spanCount == 1 -> ExploreListItem(
+                        book = book,
+                        isVideoStyle = cols == 0 && isVideo,
+                        inBookshelf = actions.isInBookshelf(book),
+                        coverSlot = coverSlot,
+                        onClick = { actions.onBookClick(book, false, binding.pageToken) },
+                        onLongClick = { actions.onBookClick(book, true, binding.pageToken) },
+                    )
 
-                else -> ExploreGridItem(
-                    book = book,
-                    inBookshelf = actions.isInBookshelf(book),
-                    coverSlot = coverSlot,
-                    onClick = { actions.onBookClick(book, false) },
-                    onLongClick = { actions.onBookClick(book, true) },
-                )
+                    else -> ExploreGridItem(
+                        book = book,
+                        inBookshelf = actions.isInBookshelf(book),
+                        coverSlot = coverSlot,
+                        onClick = { actions.onBookClick(book, false, binding.pageToken) },
+                        onLongClick = { actions.onBookClick(book, true, binding.pageToken) },
+                    )
+                }
             }
         }
         // footer 不设 key: 首屏仅 footer 可见时, keyed 锚定会让视口跟随 footer 被顶到列表末尾;

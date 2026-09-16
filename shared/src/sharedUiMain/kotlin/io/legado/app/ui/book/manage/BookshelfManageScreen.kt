@@ -19,6 +19,7 @@ import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,6 +45,8 @@ import io.legado.app.ui.compose.component.SelectActionBar
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.root.LocalSharedCoverBinding
+import io.legado.app.ui.root.rememberSharedCoverSourceBinding
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.action_download
 import legado.shared.generated.resources.bookshelf_management
@@ -197,7 +200,7 @@ data class BookshelfManageCallbacks(
     val onMainAction: () -> Unit = {},
     val onSelectActions: () -> List<SelectAction> = { emptyList() },
     val onToggle: (Book, Boolean) -> Unit = { _, _ -> },
-    val onOpenBook: (Book) -> Unit = {},
+    val onOpenBook: (Book, String?) -> Unit = { _, _ -> },
     val onToggleDownload: (Book) -> Unit = {},
     val isItemDownloading: (Book) -> Boolean = { false },
     val onOriginText: (Book) -> String = { "" },
@@ -395,16 +398,20 @@ private fun RuleItemScope.BookItem(
             modifier = Modifier.align(Alignment.CenterVertically),
         )
         // 封面槽: 默认经 LocalBookCoverSlot 落到 SharedBookCover (可由 host 端注入覆盖)
-        // 把 Box 的尺寸约束通过 fillMaxSize 透传给 coverSlot, 让封面按封面框 60x80dp 渲染
+        // 把 Box 的尺寸约束通过 fillMaxSize 透传给 coverSlot, 让封面按封面框 60x80dp 渲染。
+        // 本条目封面的共享配对身份 (页转场出发端): 点击时随 onOpenBook 交给导航
+        val coverBinding = rememberSharedCoverSourceBinding(book.bookUrl)
         Box(
             modifier = Modifier
                 .align(Alignment.CenterVertically)
                 .padding(start = 8.dp)
                 .width(60.dp)
                 .height(80.dp)
-                .clickable { callbacks.onOpenBook(book) },
+                .clickable { callbacks.onOpenBook(book, coverBinding.pageToken) },
         ) {
-            coverSlot(book, Modifier.fillMaxSize())
+            CompositionLocalProvider(LocalSharedCoverBinding provides coverBinding) {
+                coverSlot(book, Modifier.fillMaxSize())
+            }
         }
         Column(
             Modifier

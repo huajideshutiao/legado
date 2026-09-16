@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -53,12 +54,14 @@ import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.LocalSharedCoverBinding
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.asBook
+import io.legado.app.ui.root.rememberSharedCoverDestinationBinding
 import io.legado.app.ui.root.toReadRoute
 import io.legado.app.utils.toDurationTime
 import kotlinx.coroutines.launch
@@ -306,6 +309,11 @@ fun AudioPlayRoute(
         onShowAppLog = { showLogDialog = true },
     )
 
+    // 本页封面端点的共享身份: 页转场 token 来自发起方 (被点的卡片) 经导航带过来的 entry.sharedToken,
+    // 大图 token 由本页自签 (见 [LocalSharedCoverBinding] 的说明)
+    val coverBinding = rememberSharedCoverDestinationBinding(entry.id, entry.sharedToken)
+
+    CompositionLocalProvider(LocalSharedCoverBinding provides coverBinding) {
     platform.Content(
         state = state,
         onBack = onBack,
@@ -366,6 +374,8 @@ fun AudioPlayRoute(
                         payload = cover,
                         sourceOrigin = playBook.origin
                             .takeIf { !playBook.isLocal && it.isNotBlank() },
+                        // 本页圆形封面自签的大图 token: 查看器拿同一个值当自己的 key
+                        photoToken = coverBinding.photoToken,
                     )
                 )
             }
@@ -412,6 +422,7 @@ fun AudioPlayRoute(
             }
         },
     )
+    } // CompositionLocalProvider(封面共享身份)
 
     // 日志对话框 (对照 VideoPlayRoute AppLogDialog)
     if (showLogDialog) {

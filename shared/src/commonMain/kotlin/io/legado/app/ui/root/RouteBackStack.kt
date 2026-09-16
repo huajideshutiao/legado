@@ -26,6 +26,7 @@ class RouteBackStack(
         route: AppRoute,
         resultKey: String? = null,
         resultTargetEntryId: RouteEntryId? = null,
+        sharedToken: String? = null,
     ): RouteEntryId {
         val current = _backStack.value.lastOrNull()
         if (
@@ -35,7 +36,7 @@ class RouteBackStack(
         ) {
             return current.id
         }
-        val entry = newEntry(route, resultKey, resultTargetEntryId)
+        val entry = newEntry(route, resultKey, resultTargetEntryId, sharedToken)
         _backStack.value += entry
         return entry.id
     }
@@ -78,10 +79,12 @@ class RouteBackStack(
         route: AppRoute,
         resultKey: String?,
         resultTargetEntryId: RouteEntryId? = null,
+        sharedToken: String? = null,
     ): RouteEntry = RouteEntry(
         id = RouteEntryId(nextEntryId++),
         route = route,
         resultKey = resultKey,
         resultTargetEntryId = resultTargetEntryId,
+        sharedToken = sharedToken,
     )
 }

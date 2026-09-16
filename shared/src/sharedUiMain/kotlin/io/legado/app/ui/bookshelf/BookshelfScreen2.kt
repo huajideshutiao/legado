@@ -58,8 +58,8 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 internal fun BookshelfScreen2(
     viewModel: BookshelfViewModel,
-    onBookClick: (Book) -> Unit,
-    onBookLongClick: (Book) -> Unit,
+    onBookClick: (Book, String?) -> Unit,
+    onBookLongClick: (Book, String?) -> Unit,
     onGroupLongClick: (BookGroup) -> Unit,
     actions: @Composable RowScope.() -> Unit,
     modifier: Modifier = Modifier,

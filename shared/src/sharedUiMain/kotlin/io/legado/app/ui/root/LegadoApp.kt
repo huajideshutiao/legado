@@ -214,6 +214,15 @@ fun LegadoApp(
             reversingPush || !navigatingForward -> entries + outgoingEntries
             else -> entries
         }
+        // 页转场共享对的飞行阶段: 落位页还在页面栈内 = 前进飞行中。
+        // 只从“当前栈”取 (出栈页已不在 entries, 它的 token 自然退出发前进集合 → 出发端恢复绘制,
+        // 回程飞行由出发端的 enter 驱动); 端点只读自己手上这个 token 的阶段。
+        // 必须经可追踪的 compositionLocalOf 下发: 封面在 LazyGrid 的独立重组域里, static local
+        // 不会让它们重组 (读到过期值 → 方向变成“看谁先组合”的赌博)。
+        // 结构相等 (data class + Set) 保证未变化时不下发重组。
+        val sharedPageFlights = remember(entries) {
+            SharedPageFlights(entries.mapNotNullTo(mutableSetOf()) { it.sharedToken })
+        }
         val currentEntry = entries.lastOrNull()
         val currentRoute = currentEntry?.route
         // 转场动画平台 spec: 随导航事件读取 (Android 端每次动态读系统动画时长缩放, 即时生效)
@@ -230,6 +239,21 @@ fun LegadoApp(
         // 采样器无状态 (动画状态在 transition), 重建无副作用
         val transitionSampler = remember(effectiveSpec) { RouteTransitionSampler(effectiveSpec) }
 
+        // 页转场共享对的飞行参数与本次页面转场同源: 前进取 push, 返回取 pop
+        // (时长/曲线不同源会让飞行先到位、再被仍在位移的页面拖一下, 见 [SharedPageFlightSpec])
+        val pageFlightSpec = remember(navigatingForward, effectiveSpec) {
+            if (navigatingForward) {
+                SharedPageFlightSpec(
+                    effectiveSpec.pushDurationMillis,
+                    effectiveSpec.pushEasing.toComposeEasing(),
+                )
+            } else {
+                SharedPageFlightSpec(
+                    effectiveSpec.popDurationMillis,
+                    effectiveSpec.popEasing.toComposeEasing(),
+                )
+            }
+        }
         // 应用当前路由对应的窗口策略。只在策略真变了才下发: 桌面端 setFullscreen 会调
         // AWT GraphicsDevice.setFullScreenWindow, 每次重组都下发等于持续折腾窗口本体
         // 阅读页系统栏跟随 hideStatusBar/hideNavigationBar 配置 (对照原版 upSystemUiVisibility),
@@ -344,6 +368,8 @@ fun LegadoApp(
             LocalTransitionFrozenStatusBarHeightPx provides frozenStatusBarHeightPx,
             LocalPhotoSharedState provides photoShared,
             LocalSharedTransitionEnabled provides sharedTransitionEnabled,
+            LocalSharedPageFlights provides sharedPageFlights,
+            LocalSharedPageFlightSpec provides pageFlightSpec,
         ) {
         // 官方共享转场作用域: 页栈与 Overlay 栈都必须在它之内 —— 共享元素的起止位全靠
         // 本作用域根的 lookahead 坐标换算, 跳窗口在 compose-ui 里直接抛
@@ -533,8 +559,11 @@ fun LegadoApp(
                         .graphicsLayer {
                             val transform = sampleTransform(size.width)
                             if (transform != null) {
-                                // 封面共享段页图层取到的就是恒等变换 (effectiveSpec 已把本段位移/
-                                // 缩放/淡入归零), 无需特例
+                                // 本页参与本段转场: 按采样器给的变换逐帧滑入/滑出/压暗。
+                                // 注: 封面飞行不参与这里的特例 (历史上的"容器变换"已整体下线),
+                                // 共享内容在飞行期间画在 SharedTransitionLayout 自己的覆盖层里,
+                                // 不受本页图层的位移/裁剪影响 (静止期仍照旧受本页 clip 裁切)
+                                // → 页滑动与封面飞行是叠加发生的
                                 alpha = transform.alpha
                                 scaleX = transform.scaleX
                                 scaleY = transform.scaleY
@@ -573,11 +602,9 @@ fun LegadoApp(
                         WallpaperLayer(wallpaper)
                     }
                     saveableStateHolder.SaveableStateProvider(entry.id.value) {
-                        CompositionLocalProvider(
-                            // 共享元素端点消歧: 同 key 的封面只允许栈顶页那一个报称可见
-                            // (正身只有一个, 否则大图会从被压在下面的卡片矩形起飞)
-                            LocalPageIsTopPage provides (entry.id == topEntry?.id),
-                        ) {
+                        // 页转场共享对阶段 + 本页 entry 的共享身份都在这里下发:
+                        // 端点只读自己手上那个 token 的阶段 (compositionLocalOf, 会下发重组)
+                        CompositionLocalProvider(LocalSharedPageFlights provides sharedPageFlights) {
                             RouteContent(entry, navigator, screenModelStore)
                         }
                     }
@@ -994,6 +1021,8 @@ private fun PhotoOverlayDialogContent(overlay: AppOverlay.Dialog, navigator: App
         book = book,
         bookSource = bookSource,
         chapter = chapter,
+        // 发起方页面自签的大图配对 token (没有源封面端点时为 null → 立即显示不飞行)
+        photoToken = overlay.photoToken,
         // 书源查询中: 黑色占位 + loading (毫秒级; 点击可关, 防查询慢时无响应)
         placeholder = if (sourceState is PhotoSourceState.Querying) {
             {

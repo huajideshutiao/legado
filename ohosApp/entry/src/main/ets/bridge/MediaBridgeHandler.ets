@@ -332,7 +332,7 @@ async function handleSetSource(id: string, path: string): Promise<void> {
     // 装载中途失败 (开不出 fd / 建实例 / prepare 被拒): 释放实例并关掉已开的 fd 后原样抛出,
     // 由 handleMediaCommand 的 catch 统一回 onError
     await releasePlayer(id);
-    throw err;
+    throw err as Error;
   }
 }
 
