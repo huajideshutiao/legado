@@ -80,9 +80,9 @@ private suspend fun upDefaultDataVersion() {
     // 两个门都已关, 默认 httpTTS/目录规则/字典规则永远补不上 (桌面端没有 app 端那条
     // "下次启动再走 upVersion" 的路径)。任一项失败就不推进 appVersionCode, 下次启动重试。
     var allImported = true
-    fun importOnce(versionKey: String, lastVersion: Int, what: String, import: () -> Unit) {
+    suspend fun importOnce(versionKey: String, lastVersion: Int, what: String, import: suspend () -> Unit) {
         if (prefs.getInt(versionKey, 0) >= lastVersion) return
-        runCatching(import)
+        runCatching { import() }
             .onSuccess { prefs.putInt(versionKey, lastVersion) }
             .onFailure {
                 allImported = false
