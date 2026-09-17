@@ -46,6 +46,7 @@ import io.legado.app.help.http.CookieStoreProviders
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.Download
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
+import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.OrientationPolicy
 import io.legado.app.ui.root.PlatformServiceProviders
@@ -303,22 +304,20 @@ fun AndroidWebView(
         }
     }
 
-    // 长按图片保存菜单 (对照原 WebViewUtil.setupImageLongClick 的 selector: 保存/选择文件夹)
+    // 长按图片菜单用 shared 列表式选择器: 与我的页 web 服务长按菜单同为 selector 形态,
+    // 全仓长按菜单观感一致 (原 WebViewUtil.setupImageLongClick 的 selector: 保存/选择文件夹)
     imageToSave?.let { pic ->
-        AlertDialog(
+        AppSelectorDialog(
             onDismissRequest = { imageToSave = null },
-            title = { Text(stringResource(Res.string.action_save)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    imageToSave = null
-                    saveImage(pic)
-                }) { Text(stringResource(Res.string.action_save)) }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    imageToSave = null
-                    saveImage(pic, forcePickDir = true)
-                }) { Text(stringResource(Res.string.select_folder)) }
+            items = listOf(
+                stringResource(Res.string.action_save),
+                stringResource(Res.string.select_folder)
+            ),
+            onItemSelected = { i ->
+                when (i) {
+                    0 -> saveImage(pic)
+                    1 -> saveImage(pic, forcePickDir = true)
+                }
             },
         )
     }
