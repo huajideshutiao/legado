@@ -1268,6 +1268,17 @@ tasks.matching {
     dependsOn(dumpCdsArchive)
 }
 
+// Compose 的 deb/rpm 打包 task 不依赖 app image (jpackage 能自 --input 直接构建), 而
+// QuickJS native 经 appResourcesRootDir 只落进 app/legado/, CI 校验步骤也是查这棵树。
+// Windows 有 packagePortableZip 的 dependsOn 顺带拉起 app image, macOS 的 dmg 由 jpackage
+// 自身要求 app image, 只剩 Linux 两端没人拉 → 按各自 buildType 显式补上。
+tasks.matching { it.name in listOf("packageDeb", "packageRpm") }.configureEach {
+    dependsOn("createDistributable")
+}
+tasks.matching { it.name in listOf("packageReleaseDeb", "packageReleaseRpm") }.configureEach {
+    dependsOn("createReleaseDistributable")
+}
+
 // ============================================================
 // Windows 便携版 zip 打包 task
 // ============================================================
