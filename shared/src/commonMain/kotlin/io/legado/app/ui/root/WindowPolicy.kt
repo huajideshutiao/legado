@@ -71,7 +71,9 @@ object WindowPolicies {
 /**
  * 阅读页系统栏策略：对照原版 ReadBookActivity.upSystemUiVisibility 语义
  * (toolBarHide = 菜单未显示时)：
- * - 菜单显示时状态栏/导航栏一律显示
+ * - 菜单显示时状态栏跟随显示；导航栏仅在未配置隐藏时显示（hideNavigationBar 开启时
+ *   菜单期间保持隐藏——否则菜单开合两次系统栏切换会让正文视口高度抖动，重排版按
+ *   字符位置恢复后页首漂移，表现为收菜单时"自动翻到前一页"）
  * - 菜单隐藏时分别跟随 hideStatusBar / hideNavigationBar 配置（默认不隐藏）
  */
 fun readerSystemBarsPolicy(menuVisible: Boolean): SystemBarsPolicy {
@@ -79,6 +81,7 @@ fun readerSystemBarsPolicy(menuVisible: Boolean): SystemBarsPolicy {
     val hideStatus = cfg?.hideStatusBar == true
     val hideNav = cfg?.hideNavigationBar == true
     return when {
+        menuVisible && hideNav -> SystemBarsPolicy.HiddenNavigationBar
         menuVisible -> SystemBarsPolicy.Default
         hideStatus && hideNav -> SystemBarsPolicy.Hidden
         hideStatus -> SystemBarsPolicy.HiddenStatusBar
