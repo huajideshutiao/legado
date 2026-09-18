@@ -1,7 +1,6 @@
 package io.legado.app.ui.root
 
 import androidx.compose.animation.SharedTransitionLayout
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
@@ -127,93 +126,21 @@ fun LegadoApp(
         val photoShared = remember { PhotoSharedState() }
         // eInk 上提到状态机之前: 下方共享元素转场总闸要用它 (背景图读取处仍是同一份值)
         val eInk = LocalEInk.current
-        val transition = remember { Animatable(1f) }
-        // 方向/出栈页/动画标志在组合阶段维护: LaunchedEffect 滞后一帧, 动画参数若等
-        // effect 定, 首帧会先按"无动画终态"渲染 (前进: 旧页瞬间消失露底; 返回: 目标页
-        // 硬切), 正是切换闪烁的来源。组合阶段先定方向, 首帧即渲染动画起始位
-        var navigatingForward by remember { mutableStateOf(true) }
-        var animating by remember { mutableStateOf(false) }
-        // 返回导航时缓存即将消失的页面 (pop 单个 / popTo 多个), 用于滑出动画;
-        // 动画结束后由 effect 清空复位
-        var outgoingEntries by remember { mutableStateOf<List<RouteEntry>>(emptyList()) }
-        // 单段前进 (pop 紧接 push, 如详情页→目录→选章节→阅读页; replace 换页同理):
-        // 滑出的是出栈页 (目录) 而非栈内倒数第二页, 中间页 (详情) 全程不露脸。
-        // 用户拍板 2026-08: 不要原版那种"目录滑出→详情闪一下→阅读页滑入"的三段转场
-        var forwardOverOutgoing by remember { mutableStateOf(false) }
-        // 打断 Push 倒放标志: 当进场动画中途用户按返回时置 true, 动画沿原进场轨迹反向
-        // 倒放回 0f (新页退回屏幕右侧, 旧页退回屏幕居中), 到达 0f 后释放出栈页并复位。
-        // 首帧与进场帧位移严格连续, 无角色切换突变, 零闪烁。
-        var reversingPush by remember { mutableStateOf(false) }
-        // 上次已消化(动画播完)的栈, 由下方动画 effect 更新, 组合阶段据此检测新导航
-        val lastSettled = remember { mutableStateOf(entries) }
-        // 上一帧的栈: push 动画中 pop 回 push 前栈时 entries == lastSettled, 仅凭栈差
-        // 无法发现刚离栈的页面, 需与上一帧对比才能把被打断的新页挂为出栈页续播
-        val previousEntries = remember { mutableStateOf(entries) }
-        // 本次导航分类: 只从"两份栈快照的差"纯推导, 不把自身上一次的结论 (animating /
-        // navigatingForward) 当输入。lastSettled 直到动画播完才更新, 整段动画期间每次重组
-        // 都会重跑本段; 结论若自反, pop+push 配对 (目录链路/replace) 会在"单段前进"与
-        // "返回"之间每帧翻转, 出栈页在 openExit(原地淡出) 与 closeExit(向右滑出) 两套系统
-        // 动画间逐帧跳变 —— 肉眼即"目录页闪来闪去"。判据: 有出栈页残留且栈顶是新页 = 单段前进
-        // 返回动画未播完时又来一次纯返回: 先把在飞那段当作已完成 (它的出栈页已滑出大半),
-        // 否则 lastSettled 还停在两段之前, dropped 会把上一段的出栈页一并算进来 —— 它排在
-        // displayEntries 最上层, 随后 snapTo(0f) 让它盖回满屏重播一遍滑出 (发现页第二次
-        // 返回时先变成详情页的来源)。限定"本次导航自身是纯 pop": 单段前进 (pop 紧接 push)
-        // 必须保留旧段出栈页, 清掉会让中间页露脸。
-        if (entries != previousEntries.value && animating && !navigatingForward &&
-            !reversingPush && outgoingEntries.isNotEmpty() &&
-            entries.size < previousEntries.value.size &&
-            entries.all { e -> previousEntries.value.any { it.id == e.id } }
-        ) {
-            lastSettled.value = previousEntries.value
-            outgoingEntries = emptyList()
-        }
-        if (entries != lastSettled.value) {
-            val forward = entries.size > lastSettled.value.size
-            val sameSize = entries.size == lastSettled.value.size
-            // 已离栈的页面 (pop 单个 / popTo 多个 / replace 被换掉的那页)
-            val dropped = lastSettled.value.filterNot { e -> entries.any { it.id == e.id } }
-            val singleSegmentForward = dropped.isNotEmpty() && (forward || sameSize)
-            // 检测是否处于 Push 进场动画中途被打断返回
-            val isInterruptingPush = animating && navigatingForward && !forwardOverOutgoing &&
-                transition.value > 0f && transition.value < 1f && !forward
-
-            if (isInterruptingPush) {
-                reversingPush = true
-                navigatingForward = false
-                forwardOverOutgoing = false
-                outgoingEntries = dropped
-                animating = true
-            } else {
-                reversingPush = false
-                navigatingForward = forward || sameSize
-                forwardOverOutgoing = singleSegmentForward
-                // 纯前进无出栈页; 返回与单段前进都保留出栈页滑出 (popTo 多页一并滑出, 消除中间页瞬消)
-                outgoingEntries = if (forward && !singleSegmentForward) emptyList() else dropped
-                animating = true
-            }
-        } else if (transition.value > 0f && transition.value < 1f &&
-            previousEntries.value != entries
-        ) {
-            // 打开动画途中关闭页面 (push 动画中 pop 回 push 前的栈): entries 与 lastSettled
-            // 相等, 但上一帧 push 进来的页刚被 pop 离栈 —— 挂为出栈页并启动反向倒放
-            val flickedBack = previousEntries.value.filterNot { e -> entries.any { it.id == e.id } }
-            if (flickedBack.isNotEmpty()) {
-                reversingPush = true
-                outgoingEntries = flickedBack
-                navigatingForward = false
-                forwardOverOutgoing = false
-                animating = true
-            }
-        }
-        previousEntries.value = entries
-        // 出栈页保留在栈内滑出, 动画结束后由 effect 清空复位。
-        // 单段前进时出栈页要插在栈顶之下: 新页在上才是前进转场的 z 序, 排到栈尾会让不透明
-        // 的旧页盖住新页滑入 (中段两层 alpha 之和 <1 还透出根背景, 观感是"发白的交叉淡入")
-        val displayEntries = when {
-            forwardOverOutgoing -> entries.dropLast(1) + outgoingEntries + entries.takeLast(1)
-            reversingPush || !navigatingForward -> entries + outgoingEntries
-            else -> entries
-        }
+        // 页面转场状态机: 唯一可变状态 = 当前段 + 进度, 其余全是当场算出的派生量。
+        // "是否在转场中"由段的两端与进度当场算出, 不存独立标志 —— 独立标志可能停在与动画事实
+        // 矛盾的值上 (动画结束与完成回调调度之间存在窗口), 按错误的态渲染会整屏空白
+        // (见 [RouteTransitionState])。
+        val routeTransition = remember { RouteTransitionState(entries) }
+        // 本段 (纯推导, 组合期即可用): 首帧就按本段起点位渲染, 不必等 effect 的 snapTo 到位
+        val activeSegment = routeTransition.resolve(entries) ?: routeTransition.segment
+        // 本段渲染进度是否逐帧取真实进度 (false = 固定起点位 0f)。进度值的逐帧读取只允许发生在
+        // graphicsLayer 块内 (图层阶段读, 只更新图层属性); 组合期读 Animatable 会把整棵页面树
+        // 订阅到动画帧上, 逐帧重组
+        val renderLive = routeTransition.rendersLiveProgress(entries)
+        // 转场中 (供状态栏高度冻结 / 页面圆角消费): 由段两端当场算, 只在导航与落定时变化
+        val animating = routeTransition.animating(entries)
+        // 本段参与渲染的页面 (含正在离场的): 离场页留在组合里播完滑出, 否则返回时会先空一格
+        val displayEntries = activeSegment.displayEntries
         // 页转场共享对的飞行阶段: 落位页还在页面栈内 = 前进飞行中。
         // 只从“当前栈”取 (出栈页已不在 entries, 它的 token 自然退出发前进集合 → 出发端恢复绘制,
         // 回程飞行由出发端的 enter 驱动); 端点只读自己手上这个 token 的阶段。
@@ -239,10 +166,12 @@ fun LegadoApp(
         // 采样器无状态 (动画状态在 transition), 重建无副作用
         val transitionSampler = remember(effectiveSpec) { RouteTransitionSampler(effectiveSpec) }
 
-        // 页转场共享对的飞行参数与本次页面转场同源: 前进取 push, 返回取 pop
-        // (时长/曲线不同源会让飞行先到位、再被仍在位移的页面拖一下, 见 [SharedPageFlightSpec])
-        val pageFlightSpec = remember(navigatingForward, effectiveSpec) {
-            if (navigatingForward) {
+        // 页转场共享对的飞行参数与本次页面转场同源: 前进取 push, 返回与倒放取 pop —— 页面动画在
+        // 倒放段按 pop 时长从当前位置退回起点位, 飞行若仍取 push 时长会先到位、再被仍在位移的
+        // 页面拖一下 (见 [SharedPageFlightSpec])
+        val flightIsPush = activeSegment.forward && !activeSegment.reversing
+        val pageFlightSpec = remember(flightIsPush, effectiveSpec) {
+            if (flightIsPush) {
                 SharedPageFlightSpec(
                     effectiveSpec.pushDurationMillis,
                     effectiveSpec.pushEasing.toComposeEasing(),
@@ -411,56 +340,48 @@ fun LegadoApp(
                 // 返回键按下即 onPause → saveRead 落库的即时性: 落库不再等 300ms pop 动画
                 // 播完后的 retain → onCleared, 退出阅读回书架立即可见最新进度
                 screenModelStore.notifyPreRemoved(entries)
-                if (reversingPush) {
-                    // 打断 Push 倒放模式: 从当前 progress 平滑回退至 0f
-                    val currentProgress = transition.value
-                    val remainingDuration =
-                        (transitionSampler.popDurationMillis * currentProgress).toInt()
-                            .coerceAtLeast(1)
-                    transition.animateTo(
-                        0f,
-                        tween(
-                            durationMillis = remainingDuration,
-                            easing = effectiveSpec.popEasing.toComposeEasing(),
+                // 本段 (纯推导): 组合期已用同一函数算出渲染用的段, 此处取到的就是本帧真实段。
+                // resolve 返回非空即表示还有未落定的段要播 (已静止时它返回 null)。
+                val next = routeTransition.resolve(entries)
+                if (next != null) {
+                    routeTransition.applySegment(next)
+                    if (next.reversing) {
+                        // 倒放: 保持本段起止栈不变, 从当前位置平滑退回起点位 (0f)。
+                        // 必须先把当前进度读出来再动 Animatable —— 先 snapTo 会把剩余路程归零,
+                        // 倒放就变成瞬移
+                        val remaining = routeTransition.progress.value
+                        routeTransition.progress.animateTo(
+                            0f,
+                            tween(
+                                durationMillis =
+                                    (transitionSampler.popDurationMillis * remaining)
+                                        .toInt().coerceAtLeast(1),
+                                easing = effectiveSpec.popEasing.toComposeEasing(),
+                            ),
                         )
-                    )
-                    // 倒放完毕: 出栈新页已完全退回屏幕右侧, 释放出栈页并将 transition 归位至 1f
-                    outgoingEntries = emptyList()
-                    transition.snapTo(1f)
-                    lastSettled.value = entries
-                    reversingPush = false
-                    animating = false
-                } else if (entries != lastSettled.value) {
-                    // 正常前进或正常返回 (含单段前进)
-                    transition.snapTo(0f)
-                    transition.animateTo(
-                        1f,
-                        tween(
-                            durationMillis = if (navigatingForward) {
-                                transitionSampler.pushDurationMillis
-                            } else {
-                                transitionSampler.popDurationMillis
-                            },
-                            easing = if (navigatingForward) {
-                                effectiveSpec.pushEasing.toComposeEasing()
-                            } else {
-                                effectiveSpec.popEasing.toComposeEasing()
-                            },
+                    } else {
+                        // 正常段: 从本段起点位跑到终位。动画中途被新导航打断时, 新段从其起点位起播,
+                        // 打断瞬间页面先落到上一段终点位再播新段
+                        routeTransition.progress.snapTo(0f)
+                        routeTransition.progress.animateTo(
+                            1f,
+                            tween(
+                                durationMillis = if (next.forward) {
+                                    transitionSampler.pushDurationMillis
+                                } else {
+                                    transitionSampler.popDurationMillis
+                                },
+                                easing = if (next.forward) {
+                                    effectiveSpec.pushEasing.toComposeEasing()
+                                } else {
+                                    effectiveSpec.popEasing.toComposeEasing()
+                                },
+                            ),
                         )
-                    )
-                    lastSettled.value = entries
-                    outgoingEntries = emptyList()
-                    forwardOverOutgoing = false
-                    animating = false
-                } else if (transition.value != 1f) {
-                    // 动画中途导航被打断且栈规模不变 (如快速 push+pop): 复位动画,
-                    // 否则页面会停在动画中间位; 同时清理滑出页/待播方向 (状态污染修复:
-                    // 不清会残留已销毁页面, 后续返回时滑出幽灵页)
-                    transition.snapTo(1f)
-                    animating = false
-                    forwardOverOutgoing = false
-                    reversingPush = false
-                    outgoingEntries = emptyList()
+                    }
+                    // 跑完才落定: 协程被取消时不执行, 但那时页面栈已变, 新 effect 会重算段继续播,
+                    // 不会停在半路无人接管
+                    routeTransition.settle(entries)
                 }
                 // ScreenModel 生命周期与栈绑定 (清理已出栈的 ScreenModel)
                 screenModelStore.retain(entries)
@@ -470,22 +391,6 @@ fun LegadoApp(
                 }
                 retainedEntryIds = currentIds
             }
-            // 动画角色: top=动画后留存的栈顶页, slide=前进时的旧页或返回时的出栈页们;
-            val topEntry = entries.lastOrNull()
-            // 滑出的旧页: 纯前进 = 栈内倒数第二; 返回 / 单段前进 / 倒放 = 出栈页
-            val slidingIds = remember(
-                entries,
-                outgoingEntries,
-                navigatingForward,
-                forwardOverOutgoing,
-                reversingPush
-            ) {
-                if (navigatingForward && !forwardOverOutgoing) {
-                    entries.getOrNull(entries.lastIndex - 1)?.let { setOf(it.id) } ?: emptySet()
-                } else {
-                    outgoingEntries.mapTo(mutableSetOf()) { it.id }
-                }
-            }
             // 每个 entry 用 key(entry.id) 固定组合身份: 前进/返回/单段前进时 displayEntries
             // 顺序会变化 (出栈页被插进新栈), 无 key 时
             // Compose 按组合位置匹配, 页面 remember 状态 (LazyGridState/remember(route)/
@@ -493,60 +398,20 @@ fun LegadoApp(
             // 存活, 对齐原版单例 Activity 复用语义 (返回页面不重建)
             displayEntries.forEach { entry ->
                 key(entry.id) {
-                // 栈顶即本段的目标页 (前进=滑入的新页, 返回=露出的目标页);
-                // 目录链路单段前进时栈顶就是阅读页, 详情页不参与本段 (落进下方隐藏分支)
-                val isTarget = entry.id == topEntry?.id
-                val isSliding = entry.id in slidingIds
+                // 本页在本段的角色; null = 不参与本段 (移出屏幕, 不绘制也不参与命中测试)。
+                // 角色由段描述纯推导 (见 [RouteTransitionSegment.roleOf]): 段内固定不变,
+                // 不会出现"逐帧重算导致角色翻转"的跳变
+                val role = activeSegment.roleOf(entry)
                 // 单帧变换采样 (图层变换与压暗蒙版共用); null = 本段不参与的隐藏页。
-                // 只在 graphicsLayer 块内调用: 对 transition 的读取是图层阶段读, 逐帧只更新
-                // 图层属性, 不触发页面内容重绘
+                // 进度值在本 lambda 内读取: graphicsLayer 块对状态读的失效只作用于本页图层,
+                // 逐帧只更新图层属性, 不触发页面内容重组
                 val sampleTransform: (Float) -> PageTransform? = { width ->
-                    val progress = transition.value
-                    // 动画尚未启动的首帧 (组合先于 effect 的 snapTo): 按起始位渲染,
-                    // 与 snapTo(0) 后的动画首帧位置一致, 避免先闪终态再动画
-                    val idleFrame = animating && !transition.isRunning && progress == 1f
-                    val effectiveProgress = if (idleFrame) 0f else progress
-                    when {
-                        reversingPush -> {
-                            // 打断 Push 倒放: 出栈新页保持 NewPage 角色 (从当前 tx 滑出屏幕右侧)
-                            // 栈顶恢复旧页保持 OldPage 角色 (从当前 -shift·p 滑回屏幕居中)
-                            when {
-                                isSliding && animating -> transitionSampler.sample(
-                                    TransitionRole.NewPage,
-                                    progress, width
-                                )
-
-                                isTarget -> transitionSampler.sample(
-                                    TransitionRole.OldPage,
-                                    progress, width
-                                )
-
-                                else -> null
-                            }
-                        }
-
-                        isTarget -> transitionSampler.sample(
-                            if (navigatingForward) {
-                                TransitionRole.NewPage
-                            } else {
-                                TransitionRole.TargetPage
-                            },
-                            effectiveProgress, width
-                        )
-
-                        // 动画结束后 (animating=false) 的滑出页归入隐藏分支: 原公式
-                        // 该态为半透明离屏 (alpha=1-progress, translationX=-width), 与
-                        // effect 末尾同步移除仅差同帧, 直接隐藏行为更干净且不可见差异
-                        isSliding && animating -> transitionSampler.sample(
-                            if (navigatingForward) {
-                                TransitionRole.OldPage
-                            } else {
-                                TransitionRole.OutgoingPage
-                            },
-                            effectiveProgress, width
-                        )
-
-                        else -> null
+                    if (role == null) {
+                        null
+                    } else {
+                        val progress =
+                            if (renderLive) routeTransition.progress.value else 0f
+                        transitionSampler.sample(role, progress, width)
                     }
                 }
                 // 转场期间的页面圆角形状 (hoist 避免逐帧新建 Shape)
