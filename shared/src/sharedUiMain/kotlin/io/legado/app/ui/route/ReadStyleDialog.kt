@@ -17,7 +17,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -65,23 +64,20 @@ import org.jetbrains.compose.resources.stringResource
 
 /**
  * 阅读样式设置底部弹窗形态 (对照原版 ReadStyleDialog: BaseBottomDialogFragment, 无标题栏)。
- * 由阅读菜单"界面"按钮弹起; 内嵌子配置 (边距/提示/背景文字) 在此以对话框叠层打开,
- * 不再 push 整屏路由 (对照原版 showDialogFragment<TipConfigDialog> 等)。
+ * 由阅读菜单"界面"按钮弹起; 内嵌子配置在此打开, 不再 push 整屏路由: 版面 (边距+提示信息
+ * 合并)/背景文字弹窗打开期间本弹窗隐藏 (对照原版 tvPadding / showBgTextConfig 先
+ * dismissAllowingStateLoss; 提示弹窗原版 tvTip 为子对话框叠层, 与边距合并后统一隐藏)。
  */
 @Composable
 fun ReadStyleDialogHost(
     onDismiss: () -> Unit,
 ) {
     var subConfig by remember { mutableStateOf(ReadStyleSubConfig.NONE) }
-    // 子弹窗（背景文字）叠层形态下配置变更的版本号：改名/换背景/换色后自增，
-    // 让本弹窗的样式列表（名称/缩略图）实时刷新（对照原版弹窗形态 dismiss 后重进自然读新值）
-    var styleRefresh by remember { mutableIntStateOf(0) }
-    // 信息设置弹窗打开即关闭界面设置弹窗（在信息弹窗动画播放前移除，对照原版
-    // ReadStyleDialog dismiss 后再 showDialogFragment<TipConfigDialog>）：半透明信息弹窗下
-    // 露出阅读页，页眉/页脚隐约可见。边距/背景文字仍走叠层形态
-    // （背景文字依赖本弹窗样式列表实时刷新，见 styleRefresh）。
-    var readStyleVisible by remember { mutableStateOf(true) }
-    if (readStyleVisible) {
+    // 版面/背景文字弹窗打开期间不显示本弹窗 (对照原版 tvPadding / showBgTextConfig 先
+    // dismissAllowingStateLoss 再弹子对话框), 关掉后 subConfig 复位 NONE 本弹窗即恢复,
+    // 恢复时整棵重组自然读到新配置 —— 显隐由 subConfig 单一状态派生, 不另设无人复位
+    // 的独立开关 (重蹈"关掉后呼不出来"的覆辙)
+    if (subConfig == ReadStyleSubConfig.NONE) {
         AppBottomSheetDialog(
             onDismissRequest = onDismiss,
             properties = AppDialogSizes.properties(),
@@ -97,47 +93,34 @@ fun ReadStyleDialogHost(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     ReadStyleContent(
-                        onShowPaddingConfig = { subConfig = ReadStyleSubConfig.PADDING },
-                        onShowTipConfig = {
-                            subConfig = ReadStyleSubConfig.TIP
-                            readStyleVisible = false
-                        },
+                        onShowLayoutConfig = { subConfig = ReadStyleSubConfig.LAYOUT },
                         onShowBgTextConfig = { subConfig = ReadStyleSubConfig.BG_TEXT },
-                        bgTextConfigTick = styleRefresh,
                     )
                 }
             }
         }
     }
     when (subConfig) {
-        ReadStyleSubConfig.PADDING ->
-            PaddingConfigDialogHost(onDismiss = { subConfig = ReadStyleSubConfig.NONE })
+        // 版面弹窗 (边距+提示信息合并) 独占屏幕 (本弹窗已隐藏, 见上方 if), 关掉即恢复
+        ReadStyleSubConfig.LAYOUT ->
+            ReadLayoutConfigDialogHost(onDismiss = { subConfig = ReadStyleSubConfig.NONE })
 
-        ReadStyleSubConfig.TIP ->
-            TipConfigDialogHost(onDismiss = { subConfig = ReadStyleSubConfig.NONE })
-
+        // 背景文字弹窗独占屏幕 (本弹窗已隐藏, 见上方 if), 关掉即恢复
         ReadStyleSubConfig.BG_TEXT ->
-            BgTextConfigDialogHost(
-                onDismiss = { subConfig = ReadStyleSubConfig.NONE },
-                onConfigChanged = { styleRefresh++ },
-            )
+            BgTextConfigDialogHost(onDismiss = { subConfig = ReadStyleSubConfig.NONE })
 
         ReadStyleSubConfig.NONE -> Unit
     }
-    // 信息弹窗关闭后不再恢复界面设置弹窗（对照原版 TipConfigDialog 为独立弹窗，关掉即回到阅读页）。
 }
 
-/** 界面设置弹窗内可叠层的子配置 (对照原版 边距/提示/背景文字 三个对话框)。 */
-private enum class ReadStyleSubConfig { NONE, PADDING, TIP, BG_TEXT }
+/** 界面设置弹窗内打开的子配置 (对照原版 边距/提示/背景文字 三个对话框, 前两者合并为版面)。 */
+private enum class ReadStyleSubConfig { NONE, LAYOUT, BG_TEXT }
 
 /** 阅读样式正文 (Screen + 内嵌对话框), 路由/弹窗两形态共用 */
 @Composable
 private fun ReadStyleContent(
-    onShowPaddingConfig: () -> Unit,
-    onShowTipConfig: () -> Unit,
+    onShowLayoutConfig: () -> Unit,
     onShowBgTextConfig: (Int) -> Unit,
-    /** 背景文字弹窗叠层形态的配置变更版本号，透传给 ReadStyleScreen 刷新样式列表 */
-    bgTextConfigTick: Int = 0,
 ) {
     val readBookConfig = ReadBookConfigProviders.get()
     var showFontSelect by remember { mutableStateOf(false) }
@@ -237,12 +220,8 @@ private fun ReadStyleContent(
             showChineseConverter = true
         }
 
-        override fun showPaddingConfig() {
-            onShowPaddingConfig()
-        }
-
-        override fun showTipConfig() {
-            onShowTipConfig()
+        override fun showLayoutConfig() {
+            onShowLayoutConfig()
         }
 
         override fun showBgTextConfig(index: Int) {
@@ -277,7 +256,6 @@ private fun ReadStyleContent(
                 onLongClick = onLongClick,
             )
         },
-        externalRefresh = bgTextConfigTick,
     )
 
     // 字体选择对话框 (fontItems 由平台 [PlatformCapabilityProviders] 扫描注入)
@@ -343,8 +321,7 @@ private fun ReadStyleContent(
  * - 用户图（本地路径）：直接加载
  * 加载中/失败时回落背景代表色（[ReadStyleConfig.bgMeanColor]），避免列表退化成空槽位。
  *
- * 背景源变化（换背景）时 LaunchedEffect key 重建重新加载；上层弹窗配置变更经
- * [ReadStyleScreen.externalRefresh] 触发重组后自动取到新配置。
+ * 背景源变化（换背景）时 LaunchedEffect key 重建重新加载。
  */
 @OptIn(ExperimentalResourceApi::class)
 @Composable

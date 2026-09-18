@@ -121,6 +121,7 @@
     <string name="padding_config">Padding settings</string>
     <string name="main_body">Content</string>
     <string name="showLine">Display divider</string>
+    <string name="divider_line">Divider</string>
     <string name="padding_top">Top</string>
     <string name="padding_bottom">Bottom</string>
     <string name="padding_left">Left</string>
@@ -1257,7 +1258,6 @@
     <string name="load_info">Load book detail</string>
     <string name="load_toc">Load chapters</string>
     <string name="login_source">Login%1$s</string>
-    <string name="padding">Padding</string>
     <string name="page_anim">Flip animation</string>
     <string name="page_anim_scroll">Scroll</string>
     <string name="page_anim_simulation">Simulation</string>

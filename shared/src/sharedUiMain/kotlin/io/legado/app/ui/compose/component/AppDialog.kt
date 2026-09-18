@@ -150,7 +150,7 @@ internal fun WithWindowTextMenu(content: @Composable () -> Unit) {
 fun AppDialog(
     onDismissRequest: () -> Unit,
     properties: DialogProperties = AppDialogSizes.properties(),
-    /** 背景暗化: 原版 BaseDialogFragment 默认保留 dim, 个别对话框 (PaddingConfigDialog) 清 FLAG_DIM_BEHIND */
+    /** 背景暗化: 原版 BaseDialogFragment 默认保留 dim */
     dim: Boolean = true,
     content: @Composable () -> Unit,
 ) {

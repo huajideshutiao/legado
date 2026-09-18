@@ -58,9 +58,9 @@ fun rememberString(key: String, vararg formatArgs: Any): String {
  * - `screen_time_out` / `screen_time_out_value`          屏幕超时 (MoreConfigScreen)
  * - `double_page_title` / `double_page_value`            双页模式 (MoreConfigScreen)
  * - `progress_bar_behavior_title` / `progress_bar_behavior_value`  进度条行为 (MoreConfigScreen)
- * - `read_tip`              tip 信息位名称 (TipConfigScreen: 无/书名/标题/时间/电量/...)
- * - `tip_color`             tip 颜色名称 (TipConfigScreen: 跟随内容/自定义)
- * - `tip_divider_color`     tip 分隔线颜色名称 (TipConfigScreen: 默认/跟随内容/自定义)
+ * - `read_tip`              tip 信息位名称 (ReadLayoutConfigScreen: 无/书名/标题/时间/电量/...)
+ * - `tip_color`             tip 颜色名称 (ReadLayoutConfigScreen: 跟随内容/自定义)
+ * - `tip_divider_color`     tip 分隔线颜色名称 (ReadLayoutConfigScreen: 默认/跟随内容/自定义)
  */
 @Composable
 fun rememberStringArray(key: String): List<String> {

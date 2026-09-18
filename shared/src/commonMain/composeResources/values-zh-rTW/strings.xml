@@ -181,7 +181,6 @@
     <string name="text">文字</string>
     <string name="right">右</string>
     <string name="left">左</string>
-    <string name="padding">邊距</string>
     <string name="padding_top">上邊距</string>
     <string name="padding_bottom">下邊距</string>
     <string name="padding_left">左邊距</string>

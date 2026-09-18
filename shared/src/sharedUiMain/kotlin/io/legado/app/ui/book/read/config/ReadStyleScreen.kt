@@ -49,7 +49,6 @@ import legado.shared.generated.resources.ic_add
 import legado.shared.generated.resources.indent
 import legado.shared.generated.resources.information
 import legado.shared.generated.resources.line_size
-import legado.shared.generated.resources.padding
 import legado.shared.generated.resources.page_anim
 import legado.shared.generated.resources.page_anim_cover
 import legado.shared.generated.resources.page_anim_none
@@ -127,8 +126,7 @@ interface ReadStyleController {
  * app 端原实现：
  * - `FontSelectDialog` 字体选择
  * - 简繁转换（对照原版 `ChineseUtils.showConverterSelector`，依赖 ChineseUtils 动态加载）
- * - `PaddingConfigDialog` 边距配置（已下沉 shared `PaddingConfigScreen`）
- * - `TipConfigDialog` 提示信息配置（已下沉 shared `TipConfigScreen`）
+ * - `PaddingConfigDialog` + `TipConfigDialog` 边距/提示信息配置（合并下沉 shared `ReadLayoutConfigScreen`）
  * - `BgTextConfigDialog` 背景文字配置（已下沉 shared `BgTextConfigScreen`）
  * - `callBack.upPageAnim()` + `ReadBook.loadContent(false)` 翻页动画切换
  *
@@ -141,11 +139,8 @@ interface ReadStyleActions {
     /** 弹简繁转换选择器（对照原版 `ChineseUtils.showConverterSelector`） */
     fun showChineseConverter()
 
-    /** 弹边距配置（对应 `callBack.showPaddingConfig()`，已下沉 shared `PaddingConfigScreen`） */
-    fun showPaddingConfig()
-
-    /** 弹提示信息配置（对应 `TipConfigDialog().show`，已下沉 shared `TipConfigScreen`） */
-    fun showTipConfig()
+    /** 弹版面设置（边距+提示信息合并；对应原 `callBack.showPaddingConfig()` / `TipConfigDialog().show`） */
+    fun showLayoutConfig()
 
     /**
      * 弹背景文字配置（对应 `callBack.showBgTextConfig()`）。
@@ -179,7 +174,7 @@ interface ReadStyleActions {
  *
  * 行为对齐原 ReadStyleDialog：
  * - 顶部按钮行：字重 SegmentChip + 字体 StrokeTextChip + 缩进 StrokeTextChip +
- *   简繁 SegmentChip + 边距 StrokeTextChip + 信息 StrokeTextChip
+ *   简繁 SegmentChip + 信息 StrokeTextChip (弹版面设置)
  * - 4 SeekBar：字号(5-45, +5 显示) / 字间距(30-100, (it-50)/100 显示) /
  *   行距(5-20, (it-10)/10 显示) / 段距(0-20, /10 显示)
  * - 翻页动画 5 RadioChip：覆盖/滑动/仿真/滚动/无动画
@@ -200,8 +195,6 @@ interface ReadStyleActions {
  * @param controller 配置读写桥接
  * @param actions 动作回调桥接
  * @param bgPreviewSlot 单个样式预览渲染（config, size, selected, onClick, onLongClick）
- * @param externalRefresh 外部变更版本号：背景文字弹窗（叠层形态）改名/换背景/换色后自增，
- *        让样式列表（名称/缩略图）实时刷新（原版弹窗形态下本弹窗已 dismiss，重进自然读新值）
  */
 @Composable
 fun ReadStyleScreen(
@@ -213,14 +206,12 @@ fun ReadStyleScreen(
         onClick: () -> Unit,
         onLongClick: () -> Unit,
     ) -> Unit,
-    externalRefresh: Int = 0,
 ) {
     val colors = AppTheme.colors
     // 资源 key 在 Composable 顶层一次性求值
     val fontWeightTextStr = stringResource(Res.string.font_weight_text)
     val textFontStr = stringResource(Res.string.text_font)
     val textIndentStr = stringResource(Res.string.text_indent)
-    val paddingStr = stringResource(Res.string.padding)
     val informationStr = stringResource(Res.string.information)
     val textSizeStr = stringResource(Res.string.text_size)
     val textLetterSpacingStr = stringResource(Res.string.text_letter_spacing)
@@ -243,29 +234,25 @@ fun ReadStyleScreen(
     // 文字色取自当前样式 (用于样式列表预览文字色, 对齐 app 端 textColor = Color(item.curTextColor()))
     val textColor = Color(controller.curTextColor())
 
-    // 样式切换/共用布局切换后需整体重读配置（对齐原 upView）；
-    // externalRefresh 并入 key：背景文字弹窗叠层形态下外部改名/换背景后强制重读
+    // 样式切换/共用布局切换后需整体重读配置（对齐原 upView）
     var refresh by remember { mutableIntStateOf(0) }
-    var textBold by remember(refresh, externalRefresh) { mutableIntStateOf(controller.textBold) }
+    var textBold by remember(refresh) { mutableIntStateOf(controller.textBold) }
     var chineseType by remember { mutableIntStateOf(controller.chineseType) }
-    var pageAnim by remember(refresh, externalRefresh) { mutableIntStateOf(controller.pageAnim) }
-    var shareLayout by remember(refresh, externalRefresh) {
+    var pageAnim by remember(refresh) { mutableIntStateOf(controller.pageAnim) }
+    var shareLayout by remember(refresh) {
         mutableStateOf(controller.shareLayout)
     }
-    var textSize by remember(
-        refresh,
-        externalRefresh
-    ) { mutableIntStateOf(controller.textSize - 5) }
-    var letterSpacing by remember(refresh, externalRefresh) {
+    var textSize by remember(refresh) { mutableIntStateOf(controller.textSize - 5) }
+    var letterSpacing by remember(refresh) {
         mutableIntStateOf((controller.letterSpacing * 100).toInt() + 50)
     }
-    var lineSize by remember(refresh, externalRefresh) {
+    var lineSize by remember(refresh) {
         mutableIntStateOf(controller.lineSpacingExtra)
     }
-    var paragraphSpacing by remember(refresh, externalRefresh) {
+    var paragraphSpacing by remember(refresh) {
         mutableIntStateOf(controller.paragraphSpacing)
     }
-    var styleSelect by remember(refresh, externalRefresh) {
+    var styleSelect by remember(refresh) {
         mutableIntStateOf(controller.styleSelect)
     }
     var showTextBoldSelector by remember { mutableStateOf(false) }
@@ -332,12 +319,8 @@ fun ReadStyleScreen(
                 actions.showChineseConverter()
             }
             Spacer(Modifier.weight(1f))
-            StrokeTextChip(paddingStr, textColor = colors.secondaryText) {
-                actions.showPaddingConfig()
-            }
-            Spacer(Modifier.weight(1f))
             StrokeTextChip(informationStr, textColor = colors.secondaryText) {
-                actions.showTipConfig()
+                actions.showLayoutConfig()
             }
         }
         // 字号 SeekBar (内部 5-45, 显示 +5)

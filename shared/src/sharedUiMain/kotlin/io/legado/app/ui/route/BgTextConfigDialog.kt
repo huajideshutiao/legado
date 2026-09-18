@@ -49,16 +49,13 @@ import org.jetbrains.compose.resources.stringResource
 
 /**
  * 背景文字配置弹窗形态 (对照原版 BgTextConfigDialog: BaseBottomDialogFragment
- * 底部全宽弹层, 无标题栏)。由界面设置弹窗"背景文字"入口弹起。
- *
- * @param onConfigChanged 配置变更回调：改名/换背景/换色等改动后触发，供上层界面设置弹窗
- *        实时刷新样式列表（缩略图与名称）。原版 ReadStyleDialog 在打开本弹窗前已 dismiss，
- *        重新进入时自然读到新值；迁移版两窗叠层，需显式通知（2026-08-04 用户反馈）。
+ * 底部全宽弹层, 无标题栏)。由界面设置弹窗"背景文字"入口 (长按样式) 弹起,
+ * 弹起期间界面设置弹窗已隐藏 (对照原版 showBgTextConfig 先 dismissAllowingStateLoss),
+ * 关掉后恢复并整棵重组, 样式列表自然读到新值。
  */
 @Composable
 fun BgTextConfigDialogHost(
     onDismiss: () -> Unit,
-    onConfigChanged: () -> Unit = {},
 ) {
     AppBottomSheetDialog(
         onDismissRequest = onDismiss,
@@ -72,7 +69,7 @@ fun BgTextConfigDialogHost(
                 color = AppTheme.colors.bottomBackground,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                BgTextConfigContent(onDismiss = onDismiss, onConfigChanged = onConfigChanged)
+                BgTextConfigContent(onDismiss = onDismiss)
             }
         }
     }
@@ -94,8 +91,6 @@ fun BgTextConfigDialogHost(
 fun BgTextConfigContent(
     /** 删除当前主题成功后关闭对话框（对照原版 deleteDur 成功后 dismissAllowingStateLoss） */
     onDismiss: (() -> Unit)? = null,
-    /** 配置变更通知（改名/换背景/换色/恢复预设），供上层界面设置弹窗实时刷新样式列表 */
-    onConfigChanged: () -> Unit = {},
 ) {
     val readBookConfig = ReadBookConfigProviders.get()
     val scope = rememberCoroutineScope()
@@ -126,8 +121,6 @@ fun BgTextConfigContent(
                     // 改名即落盘 (对照原版 BgTextConfigDialog.onDismiss -> ReadBookConfig.save,
                     // 这里提前到确认时, 防进程被杀丢配置)
                     readBookConfig.save()
-                    // 样式列表名称实时刷新 (迁移版叠窗形态, 见 BgTextConfigDialogHost)
-                    onConfigChanged()
                 }
 
             override fun darkStatusIcon(): Boolean =
@@ -163,23 +156,20 @@ fun BgTextConfigContent(
                 // 取色确认即落盘 (对照原版 BgTextConfigDialog.onDismiss -> save,
                 // 这里提前到确认时, 防进程被杀丢配置)
                 readBookConfig.save()
-                onConfigChanged()
             }
 
             override fun setCurBg(type: Int, value: String) {
                 readBookConfig.config.setCurBg(type, value)
                 // 取色/选背景图确认即落盘 (同上)
                 readBookConfig.save()
-                onConfigChanged()
             }
 
             // 删除当前主题 (对照 app 端 ReadBookConfig.deleteDur; 删除成功后关闭次级
-            // 对话框 [见 BgTextConfigScreen 删除按钮] 并通知上级界面设置弹窗实时刷新样式列表)
+            // 对话框 [见 BgTextConfigScreen 删除按钮])
             override fun deleteDur(): Boolean {
                 val deleted = readBookConfig.deleteDur()
                 if (deleted) {
                     readBookConfig.save()
-                    onConfigChanged()
                 }
                 return deleted
             }
@@ -195,7 +185,6 @@ fun BgTextConfigContent(
             override fun restorePreset(index: Int) {
                 readBookConfig.durConfig = ReadConfigDefaults.readConfigs[index].copy()
                 readBookConfig.save()
-                onConfigChanged()
             }
         }
     }
@@ -215,8 +204,6 @@ fun BgTextConfigContent(
                     readBookConfig.durConfig = config
                     // 导入后立即落盘 (对照原版 onDismiss -> save, 提前到导入完成时)
                     readBookConfig.save()
-                    // 导入整包替换 durConfig → 上级界面设置弹窗样式列表实时刷新
-                    onConfigChanged()
                 }.onSuccess {
                     ReadBookEvents.postConfig(
                         ReadConfigChange.BG, ReadConfigChange.STYLE, ReadConfigChange.LOAD_CONTENT
@@ -318,7 +305,7 @@ fun BgTextConfigContent(
     )
 
     // 离开时持久化 (对照 app 端 BgTextConfigViewModel.onCleared → readBookConfig.save,
-    // 与 TipConfigDialog / ReadStyleDialog / PaddingConfigDialog 保持一致)
+    // 与 ReadLayoutConfigDialog / ReadStyleDialog 保持一致)
     DisposableEffect(Unit) {
         onDispose { readBookConfig.save() }
     }
@@ -340,8 +327,6 @@ fun BgTextConfigContent(
                         readBookConfig.durConfig = config
                         // 导入后立即落盘 (对照原版 onDismiss -> save, 提前到导入完成时)
                         readBookConfig.save()
-                        // 导入整包替换 durConfig → 上级界面设置弹窗样式列表实时刷新
-                        onConfigChanged()
                     }.onSuccess {
                         ReadBookEvents.postConfig(
                             ReadConfigChange.BG,

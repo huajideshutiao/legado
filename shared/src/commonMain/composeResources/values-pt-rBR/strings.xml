@@ -178,7 +178,6 @@
     <string name="text">Texto</string>
     <string name="right">Direita</string>
     <string name="left">Esquerda</string>
-    <string name="padding">Com espaço</string>
     <string name="padding_top">Espaço superior</string>
     <string name="padding_bottom">Espaço inferior</string>
     <string name="padding_left">Espaço da esquerda</string>

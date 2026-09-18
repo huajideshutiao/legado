@@ -121,6 +121,7 @@
     <string name="padding_config">边距配置</string>
     <string name="main_body">正文</string>
     <string name="showLine">显示分隔线</string>
+    <string name="divider_line">分隔线</string>
     <string name="padding_top">上边距</string>
     <string name="padding_bottom">下边距</string>
     <string name="padding_left">左边距</string>
@@ -1325,7 +1326,6 @@ Windows: winget install shinchiro.mpv 或 scoop install mpv,
     <string name="load_info">加载详情页</string>
     <string name="load_toc">加载目录</string>
     <string name="login_source">登录 %1$s</string>
-    <string name="padding">边距</string>
     <string name="page_anim">翻页动画</string>
     <string name="page_anim_scroll">滚动</string>
     <string name="page_anim_simulation">仿真</string>
