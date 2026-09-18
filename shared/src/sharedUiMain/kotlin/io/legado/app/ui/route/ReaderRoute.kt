@@ -11,12 +11,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.isCtrlPressed
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
@@ -495,33 +491,6 @@ fun ReaderRoute(
     ReaderScreen(
         state = state,
         actions = actions,
-        modifier = Modifier.pointerInput(screenModel, readBookConfig) {
-            awaitPointerEventScope {
-                while (true) {
-                    val event = awaitPointerEvent()
-                    if (event.type != PointerEventType.Scroll) continue
-                    if (!event.keyboardModifiers.isCtrlPressed ||
-                        screenModel.menuState.isVisible ||
-                        screenModel.searchMenuState.rootVisible
-                    ) {
-                        continue
-                    }
-                    val scrollY = event.changes.firstOrNull()?.scrollDelta?.y ?: 0f
-                    if (scrollY == 0f) continue
-                    val oldSize = readBookConfig.textSize
-                    val newSize = (oldSize + if (scrollY < 0f) 2 else -2).coerceIn(5, 50)
-                    event.changes.forEach { it.consume() }
-                    if (newSize != oldSize) {
-                        readBookConfig.textSize = newSize
-                        readBookConfig.save()
-                        ReadBookEvents.postConfig(
-                            ReadConfigChange.CHAPTER_STYLE,
-                            ReadConfigChange.LOAD_CONTENT,
-                        )
-                    }
-                }
-            }
-        },
         focusRequester = keyFocusRequester,
         onTextAreaMeasured = { textAreaSize = it },
     )
