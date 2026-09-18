@@ -9,8 +9,8 @@ import io.legado.app.help.crypto.NativeSymmetricCrypto
 import io.legado.app.help.crypto.Sign
 import io.legado.app.help.crypto.SymmetricCrypto
 import io.legado.app.utils.MD5Utils
-import io.legado.app.utils.encodeBase64Standard
 import io.legado.app.utils.toHexLower
+import io.legado.app.utils.Base64Lenient
 
 /**
  * nativeMain actual: [JsEncodeUtils] actual interface, 纯 abstract
@@ -25,7 +25,7 @@ import io.legado.app.utils.toHexLower
  * - digestHex / digestBase64Str: [NativeDigestOps] 提供 MD5/SHA-1/SHA-224/SHA-256/SHA-384/SHA-512/RIPEMD160,
  *   与 jvmAndAndroidMain 的 hutool DigestUtil 字节级一致 (标准 FIPS 180-4 / RFC 1321 算法)。
  * - HMacHex / HMacBase64: [NativeHmacOps] HMAC, 与 jvmAndAndroidMain 的 hutool HMac 字节级一致 (RFC 2104)。
- * - Base64 编码: [encodeBase64Standard] (标准字母表 + padding + 不换行, 对齐 java.util.Base64.getEncoder())。
+ * - Base64 编码: [Base64Lenient.encodeToString] (标准字母表 + padding + 不换行, 对齐 java.util.Base64.getEncoder())。
  * - 摘要/HMAC 输出小写 hex (hutool DigestUtil.digestHex 默认小写, [toHexLower] 对齐)。
  *
  * 算法名归一化: 接受 hutool/JDK 常见别名 (MD5/SHA-1/SHA1/SHA-256/SHA256/SHA-512/SHA512,
@@ -73,7 +73,7 @@ interface JsEncodeUtilsDefaults : JsEncodeUtils {
 
     override fun digestBase64Str(data: String, algorithm: String): String {
         val bytes = data.encodeToByteArray()
-        return NativeDigestOps.digest(algorithm, bytes).encodeBase64Standard()
+        return Base64Lenient.encodeToString(NativeDigestOps.digest(algorithm, bytes))
     }
 
     @Suppress("FunctionName")
@@ -85,7 +85,7 @@ interface JsEncodeUtilsDefaults : JsEncodeUtils {
     @Suppress("FunctionName")
     override fun HMacBase64(data: String, algorithm: String, key: String): String {
         val mac = NativeHmacOps.hmac(algorithm, key.encodeToByteArray(), data.encodeToByteArray())
-        return mac.encodeBase64Standard()
+        return Base64Lenient.encodeToString(mac)
     }
 
     //******************对称加密解密工厂************************//

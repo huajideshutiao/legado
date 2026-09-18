@@ -4,7 +4,6 @@ import io.legado.app.help.config.PasswordProviders
 import io.legado.app.help.crypto.NativeAesOps
 import io.legado.app.utils.Base64Lenient
 import io.legado.app.utils.MD5Utils
-import io.legado.app.utils.encodeBase64Standard
 
 /**
  * nativeMain actual: 备份加解密 AES/ECB/PKCS5Padding (iOS / 鸿蒙 两端共用壳)。
@@ -31,7 +30,7 @@ actual class BackupAES actual constructor(key: ByteArray) {
     actual fun encrypt(data: ByteArray): ByteArray = NativeAesOps.encryptEcbPkcs7(aesKey, data)
 
     actual fun encryptBase64(data: String): String =
-        NativeAesOps.encryptEcbPkcs7(aesKey, data.encodeToByteArray()).encodeBase64Standard()
+        Base64Lenient.encodeToString(NativeAesOps.encryptEcbPkcs7(aesKey, data.encodeToByteArray()))
 
     actual fun decrypt(data: ByteArray): ByteArray = NativeAesOps.decryptEcbPkcs7(aesKey, data)
 

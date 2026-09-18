@@ -1,7 +1,6 @@
 package io.legado.app.help.crypto
 
 import io.legado.app.utils.Base64Lenient
-import io.legado.app.utils.encodeBase64Standard
 import io.legado.app.utils.toHexLower
 
 /**
@@ -15,7 +14,7 @@ import io.legado.app.utils.toHexLower
  *   与 hutool KeyUtil.generate*Key(algorithm, key) 一致 (key 即原始 DER 字节)。
  * - encrypt(String) → UTF-8 字节 (hutool encrypt(String) = StrUtil.utf8Bytes, 不解码 Hex/Base64);
  * - decrypt(String) → SecureUtil.decode (Hex 优先, 否则 Base64) 解码为密文字节 (hutool decrypt(String) = SecureUtil.decode);
- * - encryptHex/encryptBase64 = encrypt 后 toHexLower/encodeBase64Standard (对齐 hutool HexUtil/Base64)。
+ * - encryptHex/encryptBase64 = encrypt 后 toHexLower/Base64Lenient.encodeToString (对齐 hutool HexUtil/Base64)。
  *
  * usePublicKey 语义 (对齐 jvmAndAndroid getKeyType): true→公钥, false/null→私钥。
  * RSA 四向 (公钥加密/私钥解密/私钥加密/公钥解密) 均由 mbedTLS 主实现支持 (v1.5;
@@ -65,7 +64,7 @@ class NativeAsymmetricCrypto(
         encrypt(data, usePublicKey).toHexLower()
 
     override fun encryptBase64(data: Any, usePublicKey: Boolean?): String =
-        encrypt(data, usePublicKey).encodeBase64Standard()
+        Base64Lenient.encodeToString(encrypt(data, usePublicKey))
 
     /** encrypt 入参: ByteArray 直传, String → UTF-8 字节 (对齐 hutool StrUtil.utf8Bytes)。 */
     private fun encodeInput(data: Any): ByteArray = when (data) {

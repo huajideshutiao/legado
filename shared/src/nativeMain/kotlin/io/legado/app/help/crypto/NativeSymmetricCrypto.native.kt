@@ -1,7 +1,6 @@
 package io.legado.app.help.crypto
 
 import io.legado.app.utils.Base64Lenient
-import io.legado.app.utils.encodeBase64Standard
 import io.legado.app.utils.textCharsetCodec
 import io.legado.app.utils.toHexLower
 
@@ -80,7 +79,7 @@ class NativeSymmetricCrypto(
 
     override fun encryptHex(data: String): String = encrypt(data).toHexLower()
 
-    override fun encryptBase64(data: ByteArray): String = encrypt(data).encodeBase64Standard()
+    override fun encryptBase64(data: ByteArray): String = Base64Lenient.encodeToString(encrypt(data))
 
     override fun encryptBase64(data: String, charset: String?): String {
         // 对齐 hutool encrypt(data, charset) = StrUtil.bytes(data, charset);
@@ -94,10 +93,10 @@ class NativeSymmetricCrypto(
                 )
             codec.encode(data)
         }
-        return encrypt(bytes).encodeBase64Standard()
+        return Base64Lenient.encodeToString(encrypt(bytes))
     }
 
-    override fun encryptBase64(data: String): String = encrypt(data).encodeBase64Standard()
+    override fun encryptBase64(data: String): String = Base64Lenient.encodeToString(encrypt(data))
 
     override fun decrypt(data: String): ByteArray {
         val bytes = if (hexRegex.matches(data)) decodeHex(data) else Base64Lenient.decode(data)
