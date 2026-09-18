@@ -845,7 +845,6 @@ private fun stripForeignNativeEntries(
         }
         if (dropNames.isEmpty()) continue
         val tmp = File(jar.parentFile, jar.name + ".stripping")
-        var after = 0L
         ZipFile(jar).use { zf ->
             ZipOutputStream(
                 BufferedOutputStream(FileOutputStream(tmp))
@@ -862,7 +861,7 @@ private fun stripForeignNativeEntries(
                 }
             }
         }
-        after = tmp.length()
+        val after = tmp.length()
         val original = jar.length()
         if (after >= original) {
             // 重写后反而变大 (理论上只会变小: 删的都是已压缩条目) → 保留原件, 不静默接受负收益
