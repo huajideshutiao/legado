@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -389,9 +388,9 @@ private fun RecordList(
                         DesignTokens.responsiveColumnsReferenceWidth
                     ) >= 2
                 ) {
-                    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
-                        Box(Modifier.weight(1f).fillMaxHeight()) {
-                            SummaryCard(state, fillHeight = true)
+                    Row(Modifier.fillMaxWidth()) {
+                        Box(Modifier.weight(1f)) {
+                            SummaryCard(state)
                         }
                         Box(Modifier.weight(1f).padding(top = 12.dp)) {
                             HeatMapCard(state, actions, heatmapSlot)
