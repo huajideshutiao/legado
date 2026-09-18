@@ -90,6 +90,7 @@ import io.legado.app.ui.route.ReviewListOverlayDialogContent
 import io.legado.app.ui.video.VideoDirect
 import io.legado.app.ui.widget.dialog.PhotoViewOverlayDialog
 import io.legado.app.ui.widget.dialog.decodePhotoOverlayPayload
+import io.legado.app.ui.widget.dialog.photoOverlayTextColor
 import io.legado.app.ui.widget.keyboard.KeyboardAssistsConfigOverlayContent
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
@@ -888,19 +889,19 @@ private fun PhotoOverlayDialogContent(overlay: AppOverlay.Dialog, navigator: App
         chapter = chapter,
         // 发起方页面自签的大图配对 token (没有源封面端点时为 null → 立即显示不飞行)
         photoToken = overlay.photoToken,
-        // 书源查询中: 黑色占位 + loading (毫秒级; 点击可关, 防查询慢时无响应)
+        // 书源查询中: 查看器自己的暗底 + loading (毫秒级; 点击可关, 防查询慢时无响应)。
+        // 占位不自带底色: 暗度只由查看器一处表达, 两处各写一份会在查询完成时深浅跳变
         placeholder = if (sourceState is PhotoSourceState.Querying) {
             {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.55f))
                         .pointerInput(Unit) {
                             detectTapGestures(onTap = { navigator.dismissOverlay(overlay.key) })
                         },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(stringResource(Res.string.loading), color = Color.White)
+                    Text(stringResource(Res.string.loading), color = photoOverlayTextColor())
                 }
             }
         } else {

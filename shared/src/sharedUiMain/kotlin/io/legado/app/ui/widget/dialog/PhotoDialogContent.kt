@@ -61,6 +61,8 @@ import io.legado.app.ui.bookshelf.defaultCoverEntry
 import io.legado.app.ui.compose.component.NinePatchImageOrImage
 import io.legado.app.ui.compose.component.zoomable
 import io.legado.app.ui.compose.platform.BackLayerHandler
+import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.ui.root.LocalPhotoSharedState
 import io.legado.app.ui.root.LocalSharedTransitionEnabled
 import io.legado.app.ui.root.LocalSharedTransitionScope
@@ -118,7 +120,7 @@ import kotlin.math.max
  * @param imageModifier 图片 Modifier (默认 fillMaxSize)
  * @param onLongPress 长按回调 (app 端长按保存等场景), 默认无
  * @param onTap 单击回调 (全屏看图单击关闭): 加载中占位与图片区都挂, 图没出来也点得掉
- * @param loadingContent 加载中占位 (默认 i18n "loading" 文案, 对照原 DesktopPhotoDialog)
+ * @param loadingContent 加载中占位 (默认 i18n "loading" 文案, 跟随查看器暗底取对比色)
  */
 @Composable
 internal fun PhotoDialogContent(
@@ -127,7 +129,9 @@ internal fun PhotoDialogContent(
     imageModifier: Modifier = Modifier.fillMaxSize(),
     onLongPress: (() -> Unit)? = null,
     onTap: (() -> Unit)? = null,
-    loadingContent: @Composable () -> Unit = { Text(stringResource(Res.string.loading)) },
+    loadingContent: @Composable () -> Unit = {
+        Text(stringResource(Res.string.loading), color = photoOverlayTextColor())
+    },
 ) {
     // 动图: 原始字节在 loadPhotoState 单次读取时顺带获取 (见 [PhotoLoadState.Success.rawBytes])
     val successState = loadState as? PhotoLoadState.Success
@@ -453,7 +457,24 @@ private fun rememberPhotoLoadState(
 }
 
 /**
- * 全屏大图查看 Overlay: **主窗口内**的全屏覆盖层 (黑色半透明底 + 缩放复用 [PhotoDialogContent])。
+ * 大图查看器暗底不透明度 (非 E-Ink): 原版该层由系统对话框窗口的 dim 提供, 本层没有自己的
+ * 窗口, 只能自绘同一档暗度。
+ */
+private const val PhotoOverlayScrimAlpha = 0.6f
+
+/**
+ * 大图查看器上的文字色: 非 E-Ink 是黑色暗底 → 白字; E-Ink 是主题背景纯色 → 跟随主题正文色
+ * (纯白底上白字不可读)。
+ */
+@Composable
+internal fun photoOverlayTextColor(): Color =
+    if (LocalEInk.current) AppTheme.colors.primaryText else Color.White
+
+/**
+ * 全屏大图查看 Overlay: **主窗口内**的全屏覆盖层 (暗底 + 缩放复用 [PhotoDialogContent])。
+ *
+ * 暗底不是平台对话框窗口的 dim (本层是主窗口内的覆盖层, 没有自己的窗口): 非 E-Ink 自绘
+ * 黑色 0.6 蒙版, E-Ink 用主题背景不透明纯色 (用户拍板: 不用透明底)。
  *
  * 共享元素走官方 androidx.compose.animation 的 SharedTransition: 源封面与本查看器是
  * [photoSharedViewerKey] 同一 key 的两个端点, 谁接管由 [PhotoSharedState.viewerToken] 一处决定;
@@ -489,6 +510,7 @@ fun PhotoViewOverlayDialog(
     photoToken: String? = null,
 ) {
     val saveImage = rememberPhotoSaveAction(src, book, bookSource, chapter)
+    val eInk = LocalEInk.current
     val scope = LocalSharedTransitionScope.current
     val enabled = LocalSharedTransitionEnabled.current
     val photoShared = LocalPhotoSharedState.current
@@ -542,20 +564,23 @@ fun PhotoViewOverlayDialog(
         onDismiss()
     }
 
-    // 深色蒙版期间把系统栏图标改白: 原实现靠独立 Dialog 窗口自己的 insetsController,
-    // 同窗口覆盖层必须由主窗口代管。只在真正接管后开、离开组合时归还 ——
-    // 未就绪的等待期里页面还是普通亮底, 提前改白会让状态栏图标看不见
-    LaunchedEffect(taken) {
-        if (taken) windowController.setLightIconOverlay(true)
-    }
     DisposableEffect(windowController) {
         onDispose { windowController.setLightIconOverlay(false) }
     }
 
-    // 蒙版与飞行同时长同源: targetValue 直接由 taken (= viewerToken 是我) 推, 不再另算就绪条件
+    // 暗底: 有配对端点且图片内容已就绪时随飞行起落 (起飞的同一帧才压暗); 其余情况
+    // (没有配对端点的大图: 阅读页内联图/验证码图等, 以及书源查询期) 恒为
+    // [PhotoOverlayScrimAlpha] —— 暗度不能由"查看器是否已接管"推, 那个状态只对配对有意义,
+    // 无 token 时读不出值, 整屏就没有底。
     val scrimAlpha by animateFloatAsState(
-        targetValue = if (taken) 0.6f else 0f,
-        // 共享路径与飞行同时长同曲线; 非共享路径保持旧的"直接就位"(旧实现 progress 初值即 1f)
+        targetValue = when {
+            eInk -> 1f
+            // 有配对端点: 书源查询期本层还不是普通全屏层 (占位只出文案, 底色由本层提供) 且
+            // 屏幕上还是封面 → 不压暗; 已接管 → 压暗; 退场归还 token 后回 0, 与回飞同步淡出
+            shareable && (placeholder != null || !taken) -> 0f
+            else -> PhotoOverlayScrimAlpha
+        },
+        // 共享路径与飞行同时长同曲线; 非共享路径无飞行可对齐, 直接就位
         animationSpec = if (shareable) {
             tween(durationMillis = PhotoSharedBoundsDurationMillis, easing = FastOutSlowInEasing)
         } else {
@@ -564,12 +589,23 @@ fun PhotoViewOverlayDialog(
         label = "photoOverlayScrim",
     )
 
+    // 深色蒙版期间把系统栏图标改白: 原实现靠独立 Dialog 窗口自己的 insetsController,
+    // 同窗口覆盖层必须由主窗口代管。判据是"底是不是深色", 不是"是否已配对接管" ——
+    // 阅读页内联图没有配对却同样有深色蒙版, E-Ink 的底是主题背景纯色 (白) 则必须留深色图标。
+    // 归还只走上面的 onDispose (与原实现同)
+    val darkScrim = !eInk && scrimAlpha > 0f
+    LaunchedEffect(darkScrim) {
+        if (darkScrim) windowController.setLightIconOverlay(true)
+    }
+
     // 主窗口内的全屏层: 页栈与 Overlay 栈同在 SharedTransitionLayout 内 (见 LegadoApp),
     // 因此不需要任何跨窗口坐标补偿, 也没有第二层窗口入场动画与飞行叠加
     Box(
         Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = scrimAlpha))
+            .background(
+                (if (eInk) AppTheme.colors.background else Color.Black).copy(alpha = scrimAlpha)
+            )
             .pointerInput(Unit) {
                 detectTapGestures(onTap = { requestDismiss() })
             }
@@ -603,7 +639,8 @@ fun PhotoViewOverlayDialog(
             ) {
                 if (placeholder != null) {
                     // 前置信息未就绪 (书源身份查询中): 不发起加载, 也不参与飞行 ——
-                    // 有源封面时本层还没接管 (屏幕上仍是封面), 无源封面时这就是原来的黑底+loading
+                    // 有源封面时本层还没接管 (屏幕上仍是封面), 无源封面时这就是查看器自己的
+                    // 暗底 + loading (底色由本层提供, 占位只出文案)
                     placeholder()
                 } else {
                     PhotoDialogContent(
@@ -612,9 +649,6 @@ fun PhotoViewOverlayDialog(
                         imageModifier = Modifier.fillMaxSize(),
                         onLongPress = saveImage,
                         onTap = requestDismiss,
-                        loadingContent = {
-                            Text(stringResource(Res.string.loading), color = Color.White)
-                        },
                     )
                 }
             }
