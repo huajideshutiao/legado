@@ -38,9 +38,10 @@ fun Book.readSimulating(): Boolean {
 fun Book.simulatedTotalChapterNum(): Int {
     return if (readSimulating()) {
         val currentDate = localDateNow()
-        val startDate = config.startDate
-        // startDate 为 null 时 periodDaysBetween 抛 NPE, 与模拟阅读开启但未设起始日期时的行为一致
-        val daysPassed = periodDaysBetween(startDate, currentDate) + 1
+        // 起始日期缺失 (旧备份/导入的 ReadConfig 可能 readSimulating=true 而 startDate=null)
+        // 按今天起算, 对齐 getStartDate 与模拟追读弹窗空日期的语义; 直接传 null 会在
+        // periodDaysBetween 崩 (原版 Period.between 同样崩, 此缺陷不复刻)
+        val daysPassed = periodDaysBetween(config.startDate ?: currentDate, currentDate) + 1
         // 计算当前应该解锁到哪一章
         val chaptersToUnlock =
             max(0, (config.startChapter ?: 0) + (daysPassed * config.dailyChapters))

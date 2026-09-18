@@ -12,13 +12,15 @@ import io.legado.app.utils.yearMonthDayFromMillis
  *
  * commonMain 不能直接声明带属性的 expect class (actual typealias 到 Java 类时 getter
  * 不被识别为 val 成员), 故所有访问经 top-level fun: [localDateNow] / [localDateOf] /
- * [toYearMonthDay]。
+ * [localDateParseOrNull] / [toYearMonthDay]。
  */
 class LocalDate(val year: Int, val month: Int, val day: Int) {
+    /** ISO-8601 本地日期: 年补零到 4 位, 月/日各补零到 2 位。 */
     override fun toString(): String {
-        val m = if (month < 10) "0$month" else month.toString()
-        val d = if (day < 10) "0$day" else day.toString()
-        return "$year-$m-$d"
+        val y = year.toString().padStart(4, '0')
+        val m = month.toString().padStart(2, '0')
+        val d = day.toString().padStart(2, '0')
+        return "$y-$m-$d"
     }
 
     override fun equals(other: Any?): Boolean {
@@ -38,8 +40,36 @@ fun localDateNow(): LocalDate {
     return LocalDate(y, m, d)
 }
 
-fun localDateOf(year: Int, month: Int, dayOfMonth: Int): LocalDate =
-    LocalDate(year, month, dayOfMonth)
+fun localDateOf(year: Int, month: Int, dayOfMonth: Int): LocalDate {
+    require(month in 1..12) { "Invalid value for MonthOfYear (valid values 1 - 12): $month" }
+    require(dayOfMonth in 1..daysInMonth(year, month)) {
+        "Invalid date '$month/$dayOfMonth' as it does not exist in year $year"
+    }
+    return LocalDate(year, month, dayOfMonth)
+}
+
+/**
+ * 严格解析 yyyy-MM-dd: 段数、数字、日期合法性 (闰年/大小月) 全部校验, 非法返回 null。
+ * 对齐 java.time.LocalDate.parse 的严格语义, 只是失败不抛而是返回 null。
+ */
+fun localDateParseOrNull(text: String): LocalDate? {
+    val parts = text.trim().split("-")
+    if (parts.size != 3) return null
+    val y = parts[0].toIntOrNull() ?: return null
+    val m = parts[1].toIntOrNull() ?: return null
+    val d = parts[2].toIntOrNull() ?: return null
+    return runCatching { localDateOf(y, m, d) }.getOrNull()
+}
+
+/** 公历某月的天数。 */
+internal fun daysInMonth(year: Int, month: Int): Int = when (month) {
+    1, 3, 5, 7, 8, 10, 12 -> 31
+    4, 6, 9, 11 -> 30
+    else -> if (isLeapYear(year)) 29 else 28
+}
+
+internal fun isLeapYear(year: Int): Boolean =
+    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
 
 /**
  * 拆出 year/month/day, 供 LocalDateAsGsonSerializer 读写。

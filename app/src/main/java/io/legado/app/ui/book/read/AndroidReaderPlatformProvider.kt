@@ -31,6 +31,8 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.localDateNow
+import io.legado.app.data.entities.localDateOf
+import io.legado.app.data.entities.localDateParseOrNull
 import io.legado.app.data.entities.toYearMonthDay
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.book.BookHelp
@@ -75,9 +77,6 @@ import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Locale
 
 class AndroidReaderPlatformProvider(
     private val activity: MainActivity,
@@ -753,7 +752,7 @@ private class AndroidReaderMenuState(
         val enabledState = mutableStateOf(book.config.readSimulating)
         val startState = mutableStateOf(book.getStartChapter().toString())
         val numState = mutableStateOf(book.config.dailyChapters.toString())
-        val dateState = mutableStateOf(book.getStartDate()?.let { formatDate(it.year, it.month, it.day) }.orEmpty())
+        val dateState = mutableStateOf(book.getStartDate()?.toString().orEmpty())
         activity.alert(androidAppString("simulated_reading")) {
             customView {
                 val colors = AppTheme.colors
@@ -799,14 +798,14 @@ private class AndroidReaderMenuState(
                             modifier = Modifier
                                 .weight(1f)
                                 .clickable {
-                                    val localStartDate = runCatching {
-                                        parseDate(dateState.value)
-                                    }.getOrNull() ?: localDateNow()
+                                    val localStartDate = localDateParseOrNull(dateState.value)
+                                        ?: localDateNow()
                                     val (ly, lm, ld) = localStartDate.toYearMonthDay()
                                     DatePickerDialog(
                                         activity,
                                         { _, yy, mm, dayOfMonth ->
-                                            dateState.value = formatDate(yy, mm + 1, dayOfMonth)
+                                            dateState.value =
+                                                localDateOf(yy, mm + 1, dayOfMonth).toString()
                                         },
                                         ly,
                                         lm - 1,
@@ -850,11 +849,9 @@ private class AndroidReaderMenuState(
                 }
             }
             okButton {
-                val date = dateState.value.let {
-                    if (it.isEmpty()) localDateNow()
-                    else parseDate(it)
-                }
-                book.config.startDate = date
+                // 日期来自 DatePicker, 只会是 formatDate 产物或空 (空=今天)
+                book.config.startDate =
+                    localDateParseOrNull(dateState.value) ?: localDateNow()
                 book.config.dailyChapters = numState.value.intOr(book.totalChapterNum)
                 book.config.startChapter = startState.value.intOr(0)
                 book.config.readSimulating = enabledState.value
@@ -1103,28 +1100,3 @@ private class AndroidReaderMenuState(
     }
 }
 
-/** 模拟阅读日期选择框的显示格式。 */
-private const val DATE_PATTERN = "yyyy-MM-dd"
-
-/** 格式化为 yyyy-MM-dd。SimpleDateFormat 非线程安全, 每次新建。 */
-private fun formatDate(year: Int, month: Int, day: Int): String =
-    SimpleDateFormat(DATE_PATTERN, Locale.US).format(
-        Calendar.getInstance().apply {
-            clear()
-            set(year, month - 1, day)
-        }.time
-    )
-
-/** 解析 yyyy-MM-dd。lenient=false 保持与 java.time.LocalDate.parse 一致的严格校验。 */
-private fun parseDate(text: String): io.legado.app.data.entities.LocalDate {
-    val cal = Calendar.getInstance().apply {
-        clear()
-        time = SimpleDateFormat(DATE_PATTERN, Locale.US).apply { isLenient = false }.parse(text)
-            ?: throw IllegalArgumentException("Unparseable date: $text")
-    }
-    return io.legado.app.data.entities.localDateOf(
-        cal.get(Calendar.YEAR),
-        cal.get(Calendar.MONTH) + 1,
-        cal.get(Calendar.DAY_OF_MONTH),
-    )
-}

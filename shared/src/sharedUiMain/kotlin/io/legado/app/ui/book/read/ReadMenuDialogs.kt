@@ -19,7 +19,7 @@ import io.legado.app.constant.AppConst
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.LocalDate
 import io.legado.app.data.entities.localDateNow
-import io.legado.app.data.entities.localDateOf
+import io.legado.app.data.entities.localDateParseOrNull
 import io.legado.app.data.entities.toYearMonthDay
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppNumberField
@@ -70,9 +70,9 @@ fun SimulatedReadingDialog(
         okButton = io.legado.app.ui.compose.component.AlertButton(
             text = "确认",
             onClick = {
-                val date = parseDateOrToday(dateText)
+                // 空白=今天 (与预填语义一致); 非法输入保留原值, 不静默改写成今天 (会重置解锁进度)
+                config.startDate = parseStartDate(dateText) ?: config.startDate
                 config.readSimulating = enabled
-                config.startDate = date
                 config.startChapter = startChapter.toIntOrNull() ?: 0
                 config.dailyChapters = dailyChapters.toIntOrNull() ?: book.totalChapterNum
                 onApply()
@@ -246,16 +246,9 @@ fun CharsetDialog(
     )
 }
 
-/** 解析 yyyy-MM-dd, 非法/空回退今天。 */
-private fun parseDateOrToday(text: String): LocalDate {
-    val parts = text.trim().split("-")
-    if (parts.size == 3) {
-        val y = parts[0].toIntOrNull()
-        val m = parts[1].toIntOrNull()
-        val d = parts[2].toIntOrNull()
-        if (y != null && m != null && d != null && m in 1..12 && d in 1..31) {
-            return localDateOf(y, m, d)
-        }
-    }
-    return localDateNow()
+/** 解析 yyyy-MM-dd: 空白按今天 (与日期框预填语义一致); 格式非法或日期不存在返回 null。 */
+private fun parseStartDate(text: String): LocalDate? {
+    val trimmed = text.trim()
+    if (trimmed.isEmpty()) return localDateNow()
+    return localDateParseOrNull(trimmed)
 }

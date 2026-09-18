@@ -1,6 +1,7 @@
 package io.legado.app.help.book
 
 import io.legado.app.data.entities.LocalDate
+import io.legado.app.data.entities.daysInMonth
 import io.legado.app.data.entities.toYearMonthDay
 
 /**
@@ -39,12 +40,3 @@ private fun civilToDays(y: Int, m: Int, d: Int): Int {
     val doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
     return era * 146_097 + doe - 719_468
 }
-
-/** 公历某月的天数。 */
-private fun daysInMonth(y: Int, m: Int): Int = when (m) {
-    1, 3, 5, 7, 8, 10, 12 -> 31
-    4, 6, 9, 11 -> 30
-    else -> if (isLeapYear(y)) 29 else 28
-}
-
-private fun isLeapYear(y: Int): Boolean = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
