@@ -98,7 +98,6 @@ import legado.shared.generated.resources.ic_arrow_drop_down
 import legado.shared.generated.resources.my
 import legado.shared.generated.resources.ok
 import legado.shared.generated.resources.reset
-import legado.shared.generated.resources.show_bookshelf_fast_scroller
 import legado.shared.generated.resources.show_last_update_time
 import legado.shared.generated.resources.show_unread
 import legado.shared.generated.resources.sort
@@ -141,7 +140,6 @@ fun BookshelfLayoutConfigDialog(onDismiss: () -> Unit) {
     val selectedCols = remember { mutableIntStateOf(BookSource.exploreStyleCols(appConfig.bookshelfLayout)) }
     val isVideo = remember { mutableStateOf(BookSource.exploreStyleIsVideo(appConfig.bookshelfLayout)) }
     val showUnread = remember { mutableStateOf(appConfig.showUnread) }
-    val showFastScroller = remember { mutableStateOf(appConfig.showBookshelfFastScroller) }
     val showLastUpdateTime = remember { mutableStateOf(appConfig.showLastUpdateTime) }
     val showGroupCount = remember { mutableStateOf(appConfig.bookshelfShowGroupCount) }
     val showKind = remember { mutableStateOf(appConfig.bookshelfListShowKind) }
@@ -191,13 +189,6 @@ fun BookshelfLayoutConfigDialog(onDismiss: () -> Unit) {
                     )
                     ConfigSwitchRow(stringResource(Res.string.show_unread), showUnread.value) {
                         showUnread.value = it
-                    }
-                    // 快速滚动条 (对照原版 sw_show_bookshelf_fast_scroller, 位于固定宽模式前)
-                    ConfigSwitchRow(
-                        stringResource(Res.string.show_bookshelf_fast_scroller),
-                        showFastScroller.value,
-                    ) {
-                        showFastScroller.value = it
                     }
                     ConfigSwitchRow(
                         stringResource(Res.string.bookshelf_show_group_count),
@@ -385,10 +376,6 @@ fun BookshelfLayoutConfigDialog(onDismiss: () -> Unit) {
                     }
                     if (appConfig.bookshelfShowGroupCount != showGroupCount.value) {
                         prefs.putBoolean(PreferKey.bookshelfShowGroupCount, showGroupCount.value)
-                        FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
-                    }
-                    if (appConfig.showBookshelfFastScroller != showFastScroller.value) {
-                        prefs.putBoolean(PreferKey.showBookshelfFastScroller, showFastScroller.value)
                         FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
                     }
                     if (appConfig.bookshelfListShowKind != showKind.value) {

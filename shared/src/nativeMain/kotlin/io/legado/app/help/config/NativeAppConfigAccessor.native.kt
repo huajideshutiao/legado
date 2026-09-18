@@ -61,8 +61,6 @@ class NativeAppConfigAccessor(
         CachedPrefValue(prefs) { it.getInt(PreferKey.bookshelfGridWidth, 120) }
     private val showUnreadCache =
         CachedPrefValue(prefs) { it.getBoolean(PreferKey.showUnread, true) }
-    private val showBookshelfFastScrollerCache =
-        CachedPrefValue(prefs) { it.getBoolean(PreferKey.showBookshelfFastScroller, true) }
     private val bookshelfListShowKindCache =
         CachedPrefValue(prefs) { it.getBoolean(PreferKey.bookshelfListShowKind, false) }
     private val bookshelfListShowIntroCache =
@@ -126,7 +124,6 @@ class NativeAppConfigAccessor(
         bookshelfCoverHeightCache.refresh(prefs)
         bookshelfGridWidthCache.refresh(prefs)
         showUnreadCache.refresh(prefs)
-        showBookshelfFastScrollerCache.refresh(prefs)
         bookshelfListShowKindCache.refresh(prefs)
         bookshelfListShowIntroCache.refresh(prefs)
         bookshelfListIntroLinesCache.refresh(prefs)
@@ -192,9 +189,6 @@ class NativeAppConfigAccessor(
 
     override val showUnread: Boolean
         get() = showUnreadCache.get()
-
-    override val showBookshelfFastScroller: Boolean
-        get() = showBookshelfFastScrollerCache.get()
 
     override val bookshelfListShowKind: Boolean
         get() = bookshelfListShowKindCache.get()

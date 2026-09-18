@@ -402,7 +402,6 @@
     <string name="group_style">Group style</string>
     <string name="show_unread">Show unread flag</string>
     <string name="bookshelf_show_group_count">Show book count on groups</string>
-    <string name="show_bookshelf_fast_scroller">Show fast scroller</string>
     <string name="fixed_width_mode">Fixed width mode</string>
     <string name="view">View</string>
     <string name="column_count">Columns</string>

@@ -402,7 +402,6 @@
     <string name="group_style">分组样式</string>
     <string name="show_unread">显示未读标志</string>
     <string name="bookshelf_show_group_count">分组显示书籍数</string>
-    <string name="show_bookshelf_fast_scroller">显示快速滚动条</string>
     <string name="fixed_width_mode">固定宽度模式</string>
     <string name="view">视图</string>
     <string name="column_count">列数</string>
