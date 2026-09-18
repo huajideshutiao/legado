@@ -1044,15 +1044,6 @@ sealed interface ReaderDialogEvent {
     /** 朗读设置 (对照原版 朗读面板设置按钮 → ReadAloudConfigDialog) */
     object ReadAloudConfig : ReaderDialogEvent
 
-    /** 编辑 HTTP TTS (对照原版 SpeakEngineDialog 中 "+" 按钮 → HttpTtsEditDialog, 默认新增) */
-    data object HttpTtsEdit : ReaderDialogEvent
-
-    /** 选择朗读引擎 (对照原版 朗读面板选择引擎 → SpeakEngineDialog) */
-    data object SpeakEngine : ReaderDialogEvent
-
-    /** 翻页键配置 (对照原版 更多设置 → PageKeyDialog) */
-    data object PageKey : ReaderDialogEvent
-
     /** 章节购买确认 (对照原版 ReadBookActivity.payAction 的 alert 确认, 确认后执行 payAction JS) */
     data object ChapterPay : ReaderDialogEvent
 
