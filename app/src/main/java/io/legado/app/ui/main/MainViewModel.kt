@@ -1,27 +1,14 @@
 package io.legado.app.ui.main
 
 import android.app.Application
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.viewModelScope
-import androidx.recyclerview.widget.RecyclerView.RecycledViewPool
 import io.legado.app.base.BaseViewModel
-import io.legado.app.constant.AppLog
-import io.legado.app.data.AppDatabase
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.DefaultData
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.service.UpdateBookShared
-import io.legado.app.utils.flowWithLifecycleAndDatabaseChangeFirst
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.conflate
-import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.runBlocking
 
 /**
  * app 端主 ViewModel (书架数据层刷新引擎)。
@@ -33,10 +20,8 @@ import kotlinx.coroutines.runBlocking
  * cacheBook / startUpTocJob / onUpTocJobCompleted / addToWaitUp / pollWaitUpTocBook /
  * upPool 等), 与桌面端 `DesktopMainViewModel` 高度重复。本类已把这些**非平台特有**
  * 的编排逻辑下沉到 shared commonMain 的 [UpdateBookShared], 本类仅保留:
- * - **平台特有方法**: [observeGroupBooks] (依赖 Android Lifecycle) / [postLoad]
- *   (依赖 assets DefaultData) / [restoreWebDav] (依赖 app 端 AppWebDav)
- * - **平台特有状态**: [isActivityVisible] (callback 内判断是否显示通知) /
- *   [booksListRecycledViewPool] / [booksGridRecycledViewPool] (RecyclerView 复用池)
+ * - **平台特有方法**: [postLoad] (依赖 assets DefaultData) / [restoreWebDav] (依赖 app 端 AppWebDav)
+ * - **平台特有状态**: [isActivityVisible] (callback 内判断是否显示通知)
  * - **Android 通知实现**: [AndroidUpdateBookCallback] object (由 [io.legado.app.App] 注册为
  *   [io.legado.app.help.service.UpdateBookCallbacks] 默认实现, 书架 VM 引擎共用), 桥接
  *   [io.legado.app.help.service.UpdateBookCallback] 到 `NotificationManagerCompat` +
@@ -76,13 +61,6 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         set(value) {
             AndroidUpdateBookCallback.isActivityVisible = value
         }
-
-    val booksListRecycledViewPool = RecycledViewPool().apply {
-        setMaxRecycledViews(0, 30)
-    }
-    val booksGridRecycledViewPool = RecycledViewPool().apply {
-        setMaxRecycledViews(0, 100)
-    }
 
     fun markGroupAutoUpdated(groupId: Long): Boolean {
         return updateBookShared.markGroupAutoUpdated(groupId)
@@ -133,35 +111,6 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
      */
     fun scheduleAutoUpdate(books: List<Book>) {
         updateBookShared.scheduleAutoUpdate(books)
-    }
-
-    /**
-     * 观察一个分组的书籍列表, 并在首次发射时触发一次自动更新.
-     *
-     * 排序逻辑由调用方通过 [sorter] 提供 (style1 用本地 bookSort, style2 用 AppConfig 按 groupId 取).
-     * 生命周期感知由 [lifecycle] 接入: 只在 RESUMED 时下发, 与首次自动更新触发时机绑定.
-     * 上游在 Default 上执行, 调用方在 collect 块里只做 UI 更新.
-     */
-    fun observeGroupBooks(
-        groupId: Long,
-        lifecycle: Lifecycle,
-        sorter: (List<Book>) -> List<Book>,
-    ): Flow<List<Book>> = runBlocking {
-        appDb.bookDao.flowByGroup(groupId)
-            .map { sorter(it) }
-            .flowWithLifecycleAndDatabaseChangeFirst(
-                lifecycle,
-                Lifecycle.State.RESUMED,
-                AppDatabase.BOOK_TABLE_NAME
-            )
-            .catch { AppLog.put("书架更新出错", it) }
-            .onEach { list ->
-                if (markGroupAutoUpdated(groupId) && AppConfig.autoRefreshBook) {
-                    scheduleAutoUpdate(list)
-                }
-            }
-            .conflate()
-            .flowOn(Dispatchers.Default)
     }
 
     override fun onCleared() {
