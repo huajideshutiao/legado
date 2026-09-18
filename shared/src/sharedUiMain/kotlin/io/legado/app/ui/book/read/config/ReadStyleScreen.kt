@@ -89,13 +89,13 @@ interface ReadStyleController {
     /** 是否共享排版（对应 `ReadBookConfig.shareLayout`） */
     var shareLayout: Boolean
 
-    /** 文字大小（对应 `ReadBookConfig.textSize`，5-50） */
+    /** 文字大小（对应 `ReadBookConfig.textSize`，10-50） */
     var textSize: Int
 
     /** 字间距（对应 `ReadBookConfig.letterSpacing`） */
     var letterSpacing: Float
 
-    /** 行距（对应 `ReadBookConfig.lineSpacingExtra`，10-20） */
+    /** 行距（对应 `ReadBookConfig.lineSpacingExtra`，5-20） */
     var lineSpacingExtra: Int
 
     /** 段距（对应 `ReadBookConfig.paragraphSpacing`，0-20） */
@@ -180,8 +180,8 @@ interface ReadStyleActions {
  * 行为对齐原 ReadStyleDialog：
  * - 顶部按钮行：字重 SegmentChip + 字体 StrokeTextChip + 缩进 StrokeTextChip +
  *   简繁 SegmentChip + 边距 StrokeTextChip + 信息 StrokeTextChip
- * - 4 SeekBar：字号(0-45, +5 显示) / 字间距(-50~50, /100 显示) /
- *   行距(0-20, -10/10 显示) / 段距(0-20, /10 显示)
+ * - 4 SeekBar：字号(5-45, +5 显示) / 字间距(30-100, (it-50)/100 显示) /
+ *   行距(5-20, (it-10)/10 显示) / 段距(0-20, /10 显示)
  * - 翻页动画 5 RadioChip：覆盖/滑动/仿真/滚动/无动画
  * - shareLayout 开关
  * - 样式列表 LazyRow + 新增样式项
@@ -340,10 +340,10 @@ fun ReadStyleScreen(
                 actions.showTipConfig()
             }
         }
-        // 字号 SeekBar (内部 0-45, 显示 +5)
+        // 字号 SeekBar (内部 5-45, 显示 +5)
         AppDetailSeekBar(
             title = textSizeStr,
-            value = textSize, max = 45, textColor = colors.primaryText,
+            value = textSize, max = 45, min = 5, textColor = colors.primaryText,
             valueFormat = { (it + 5).toString() },
             onChanged = {
                 textSize = it
@@ -354,10 +354,10 @@ fun ReadStyleScreen(
             },
             modifier = Modifier.padding(top = 4.dp),
         )
-        // 字间距 SeekBar (内部 0-100, 显示 (it-50)/100)
+        // 字间距 SeekBar (内部 30-100, 显示 (it-50)/100)
         AppDetailSeekBar(
             title = textLetterSpacingStr,
-            value = letterSpacing, max = 100, textColor = colors.primaryText,
+            value = letterSpacing, max = 100, min = 30, textColor = colors.primaryText,
             valueFormat = { ((it - 50) / 100f).toString() },
             onChanged = {
                 letterSpacing = it
@@ -367,10 +367,10 @@ fun ReadStyleScreen(
                 )
             },
         )
-        // 行距 SeekBar (内部 0-20, 显示 (it-10)/10)
+        // 行距 SeekBar (内部 5-20, 显示 (it-10)/10)
         AppDetailSeekBar(
             title = lineSizeStr,
-            value = lineSize, max = 20, textColor = colors.primaryText,
+            value = lineSize, max = 20, min = 5, textColor = colors.primaryText,
             valueFormat = { ((it - 10) / 10f).toString() },
             onChanged = {
                 lineSize = it
