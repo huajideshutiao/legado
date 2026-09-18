@@ -5,7 +5,7 @@ package io.legado.app.help.storage
  *
  * KMP expect class: 各端 actual 实现需保证字节级互通。
  *
- * - jvmAndAndroidMain actual: javax.crypto.Cipher + java.util.Base64 (原实现, 行为零变化)
+ * - jvmAndAndroidMain actual: javax.crypto.Cipher + Base64Lenient (原实现, 行为零变化)
  * - iosMain actual: 纯 Kotlin AES 实现 (无平台依赖, 字节级对齐 javax.crypto 输出)
  * - ohosMain actual: 纯 Kotlin AES 实现 (同 iosMain, 保证鸿蒙端备份加解密可用)
  *

@@ -1,9 +1,14 @@
 package io.legado.app.utils
 
+import okio.ByteString.Companion.toByteString
+
 /**
  * 宽松 Base64 解码，行为对齐 hutool Base64Decoder：
  * 标准与 URL-safe 字母表混收，非法字符（含中途 '='）忽略，末尾不足 8bit 丢弃。
  * expect 门面：JVM 半区 actual 另有 decodeStr(source, charset) 附加重载（common 无 Charset）。
+ *
+ * 另承载标准 Base64 编码 [encodeToString] (RFC 4648, 与 java.util.Base64.getEncoder 输出一致):
+ * 后者是 API 26+, 三端共用的编码入口必须落在本类。
  */
 expect object Base64Lenient {
 
@@ -12,6 +17,14 @@ expect object Base64Lenient {
     fun decodeStr(source: String?): String?
 
     fun decode(input: ByteArray): ByteArray
+
+    /**
+     * 标准 Base64 编码 (RFC 4648: 标准字母表 + padding, 不换行)。
+     *
+     * 等价于 java.util.Base64.getEncoder().encodeToString(bytes) —— 后者是 API 26+,
+     * minSdk 24 设备上不可用。
+     */
+    fun encodeToString(input: ByteArray): String
 }
 
 /** 解码算法主体（common），各端 actual 委托此处。 */
@@ -72,4 +85,12 @@ internal object Base64LenientCore {
         }
         return PADDING
     }
+
+    /**
+     * 标准 Base64 编码 (RFC 4648: 标准字母表 + padding + 不换行)。
+     *
+     * 委托 okio 的 [okio.ByteString.base64] —— 与 java.util.Base64.getEncoder() 输出一致,
+     * 而后者是 API 26+, minSdk 24 设备上不可用。
+     */
+    fun encodeToString(input: ByteArray): String = input.toByteString().base64()
 }

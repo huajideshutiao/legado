@@ -15,4 +15,6 @@ actual object Base64Lenient {
     }
 
     actual fun decode(input: ByteArray): ByteArray = Base64LenientCore.decode(input)
+
+    actual fun encodeToString(input: ByteArray): String = Base64LenientCore.encodeToString(input)
 }

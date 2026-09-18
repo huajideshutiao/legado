@@ -8,8 +8,8 @@ import io.legado.app.help.crypto.AsymmetricCryptoAndroid
 import io.legado.app.help.crypto.Sign
 import io.legado.app.help.crypto.SignAndroid
 import io.legado.app.help.crypto.SymmetricCryptoAndroid
+import io.legado.app.utils.Base64Lenient
 import io.legado.app.utils.MD5Utils
-import java.util.Base64
 
 
 /**
@@ -18,7 +18,7 @@ import java.util.Base64
  * 牵 app crypto 包的 createSymmetricCrypto/createAsymmetricCrypto/createSign 在 JsEncodeUtilsAndroid
  *
  * KMP actual interface: 纯 abstract (与 commonMain expect 的 abstract modality 对齐)。
- * 默认实现 (hutool + java.util.Base64) 移至 [JsEncodeUtilsDefaults] interface,
+ * 默认实现 (hutool + Base64Lenient) 移至 [JsEncodeUtilsDefaults] interface,
  * 由调用方多继承注入, jvmAndAndroidTest `object : JsEncodeUtilsDefaults {}` 可复用。
  *
  * 行为零变化: 原 actual interface 方法体原样搬到 Defaults, 仅是 host 类型变化。
@@ -74,7 +74,7 @@ actual interface JsEncodeUtils {
 }
 
 /**
- * jvmAndAndroidMain 端 [JsEncodeUtils] 默认实现 (hutool + java.util.Base64)。
+ * jvmAndAndroidMain 端 [JsEncodeUtils] 默认实现 (hutool + Base64Lenient)。
  *
  * KMP 限制: actual interface 成员 modality 必须与 expect 一致 (abstract), 不能带方法体;
  * 故将默认实现下沉到独立的 Defaults interface, 由调用方多继承注入:
@@ -104,8 +104,8 @@ interface JsEncodeUtilsDefaults : JsEncodeUtils {
     }
 
     override fun digestBase64Str(data: String, algorithm: String): String {
-        // 原 android.util.Base64.NO_WRAP: 标准字母表+padding+不换行 = java.util.Base64.getEncoder()
-        return Base64.getEncoder().encodeToString(DigestUtil.digester(algorithm).digest(data))
+        // 原 android.util.Base64.NO_WRAP: 标准字母表+padding+不换行
+        return Base64Lenient.encodeToString(DigestUtil.digester(algorithm).digest(data))
     }
 
     @Suppress("FunctionName")
@@ -115,8 +115,8 @@ interface JsEncodeUtilsDefaults : JsEncodeUtils {
 
     @Suppress("FunctionName")
     override fun HMacBase64(data: String, algorithm: String, key: String): String {
-        // 原 android.util.Base64.NO_WRAP: 标准字母表+padding+不换行 = java.util.Base64.getEncoder()
-        return Base64.getEncoder().encodeToString(HMac(algorithm, key.toByteArray()).digest(data))
+        // 原 android.util.Base64.NO_WRAP: 标准字母表+padding+不换行
+        return Base64Lenient.encodeToString(HMac(algorithm, key.toByteArray()).digest(data))
     }
 
     //******************对称加密解密************************//

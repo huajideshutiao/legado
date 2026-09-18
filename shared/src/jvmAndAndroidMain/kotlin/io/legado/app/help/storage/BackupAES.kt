@@ -3,7 +3,6 @@ package io.legado.app.help.storage
 import io.legado.app.help.config.PasswordProviders
 import io.legado.app.utils.Base64Lenient
 import io.legado.app.utils.MD5Utils
-import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
 
@@ -14,7 +13,8 @@ import javax.crypto.spec.SecretKeySpec
  * 下沉 shared jvmAndAndroidMain 后, 原 app 端 `LocalConfig.password` (SharedPreferences)
  * 经 [PasswordProviders] 接口注入, 行为不变 (未注册时 password() 返回 null, 等价默认空密码)。
  *
- * javax.crypto.Cipher / SecretKeySpec / java.util.Base64 均为 JVM API,
+ * javax.crypto.Cipher / SecretKeySpec 均为 JVM API, Base64 编解码走 commonMain 的
+ * [Base64Lenient] (java.util.Base64 是 API 26+, minSdk 24 不可用),
  * 故下沉至 jvmAndAndroidMain (android + jvm 共用), 而非 commonMain。
  *
  * KMP 化: 加 `actual class` 标记, 对齐 commonMain expect class BackupAES。
@@ -34,7 +34,7 @@ actual class BackupAES actual constructor(key: ByteArray) {
     actual fun encrypt(data: ByteArray): ByteArray = cipher(Cipher.ENCRYPT_MODE).doFinal(data)
 
     actual fun encryptBase64(data: String): String =
-        Base64.getEncoder().encodeToString(encrypt(data.encodeToByteArray()))
+        Base64Lenient.encodeToString(encrypt(data.encodeToByteArray()))
 
     actual fun decrypt(data: ByteArray): ByteArray = cipher(Cipher.DECRYPT_MODE).doFinal(data)
 
