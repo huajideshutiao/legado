@@ -56,6 +56,8 @@
 import SwiftUI
 import shared  // Kotlin Multiplatform shared framework (deep link 入口)
 
+private typealias URL = Foundation.URL
+
 /// 外部 URI 投递闸门 (deep link / 文档打开 的全部系统投递入口都汇到 `handle`)。
 ///
 /// # 为什么要闸门
