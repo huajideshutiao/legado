@@ -5,7 +5,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
-import java.time.LocalDate
 
 /**
  * ReadConfig JSON 兼容测试:
@@ -53,7 +52,7 @@ class BookReadConfigConverterCompatTest {
             ttsEngine = "engineX",
             splitLongChapter = false,
             readSimulating = true,
-            startDate = LocalDate.of(2024, 3, 5),
+            startDate = localDateOf(2024, 3, 5),
             startChapter = 12,
             dailyChapters = 7
         )
@@ -68,7 +67,7 @@ class BookReadConfigConverterCompatTest {
             """{"readSimulating":true,"startDate":{"year":2020,"month":12,"day":31}}"""
         )
         assertNotNull(json)
-        assertEquals(LocalDate.of(2020, 12, 31), json!!.startDate)
+        assertEquals(localDateOf(2020, 12, 31), json!!.startDate)
         assertEquals(true, json.readSimulating)
     }
 
@@ -120,7 +119,7 @@ class BookReadConfigConverterCompatTest {
             ReadConfig(reverseToc = true, delTag = 2L),
             ReadConfig(
                 readSimulating = true,
-                startDate = LocalDate.of(2023, 1, 1),
+                startDate = localDateOf(2023, 1, 1),
                 startChapter = 3,
                 dailyChapters = 9,
                 imageStyle = "FULL",

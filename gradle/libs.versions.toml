@@ -5,7 +5,6 @@ kotlin = "2.3.20"
 # KSP2 与 Kotlin 版本解耦; 2.2.21-2.0.4 的 KSP1 在 KMP expect/actual 上会抛
 # "Unexpected symbol type null", 必须用 2.3.x 的 KSP2。
 ksp = "2.3.11"
-desugar = "2.1.5"
 
 # ===== Compose Multiplatform (Android/桌面共用基线) =====
 cmp = "1.11.1"
@@ -124,7 +123,6 @@ jetbrains-material = { module = "org.jetbrains.compose.material:material", versi
 kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "kotlin" }
 kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect" }
 # KSP 处理器模块 (quickjs-processor) 直接字符串引用 symbol-processing-api, 无需 catalog 条目
-desugar = { module = "com.android.tools:desugar_jdk_libs_nio", version.ref = "desugar" }
 
 # ===== Compose Multiplatform / UI =====
 compose-activity = { module = "androidx.activity:activity-compose", version.ref = "activity" }

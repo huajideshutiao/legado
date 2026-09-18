@@ -7,8 +7,6 @@ import com.script.quickjs.JsSecurityPolicy.systemClassProtectedName
 import java.io.ObjectInputStream
 import java.io.ObjectOutputStream
 import java.lang.reflect.Member
-import java.nio.file.FileSystem
-import java.nio.file.Path
 import java.util.Collections
 
 /**
@@ -30,6 +28,19 @@ object JsSecurityPolicy {
      */
     private val androidContextClass: Class<*>? by lazy {
         runCatching { Class.forName("android.content.Context") }.getOrNull()
+    }
+
+    /**
+     * java.nio.file.FileSystem/Path 类引用 (跨平台)。
+     * Android 侧不引入 java.nio.file (minSdk 24 下会拉入 desugar 的 j$/nio 运行时),
+     * 用反射加载; null 表示当前平台无此类, 黑名单跳过该项。
+     */
+    private val nioFileSystemClass: Class<*>? by lazy {
+        runCatching { Class.forName("java.nio.file.FileSystem") }.getOrNull()
+    }
+
+    private val nioPathClass: Class<*>? by lazy {
+        runCatching { Class.forName("java.nio.file.Path") }.getOrNull()
     }
 
     private val protectedClassNamesMatcher by lazy {
@@ -157,8 +168,8 @@ object JsSecurityPolicy {
         )
         // android.content.Context: 桌面 JVM 不存在, 反射加载, 存在则加入黑名单
         androidContextClass?.let { list.add(it) }
-        list.add(FileSystem::class.java)
-        list.add(Path::class.java)
+        nioFileSystemClass?.let { list.add(it) }
+        nioPathClass?.let { list.add(it) }
         list.toTypedArray()
     }
 
@@ -192,10 +203,9 @@ object JsSecurityPolicy {
         }
         // android.content.Context: 桌面 JVM 不存在, 通过反射 isInstance 检查 (Android 端走此分支)
         androidContextClass?.takeIf { it.isInstance(obj) }?.let { return false }
-        when (obj) {
-            is FileSystem,
-            is Path -> return false
-        }
+        // java.nio.file: 桌面 JVM 存在, Android 端未引入
+        nioFileSystemClass?.takeIf { it.isInstance(obj) }?.let { return false }
+        nioPathClass?.takeIf { it.isInstance(obj) }?.let { return false }
         return isClassVisible(obj.javaClass.name, false)
     }
 

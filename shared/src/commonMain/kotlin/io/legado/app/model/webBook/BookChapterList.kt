@@ -36,8 +36,7 @@ import kotlinx.coroutines.flow.flow
  * - mapAsync 扩展已下沉到 shared FlowExtensionsShared.kt, 包名不变
  * - getDisplayTitle/getUseReplaceRule/simulatedTotalChapterNum 扩展已下沉到 shared
  *   BookDisplayExtensionsShared.kt (commonMain), 包名不变
- *   ChineseUtils.t2s/s2t 与 java.time.Period.between 经 expect/actual 桥接
- *   (BookDisplayBridge: chineseT2S/chineseS2T/periodDaysBetween)
+ *   ChineseUtils.t2s/s2t 经 expect/actual 桥接 (BookDisplayBridge: chineseT2S/chineseS2T)
  *
  * 包名保持 io.legado.app.model.webBook, app 端调用方 import 零改动。
  */

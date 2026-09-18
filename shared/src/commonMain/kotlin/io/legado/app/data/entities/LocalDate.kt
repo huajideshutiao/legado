@@ -1,34 +1,47 @@
 package io.legado.app.data.entities
 
-/**
- * Book/ReadConfig 下沉 commonMain 的 java.time.LocalDate 抽象面。
- *
- * commonMain 不允许直接引用 java.time.*; 经 expect class + actual typealias 桥接到
- * 各端 java.time.LocalDate (androidMain/jvmMain)。
- *
- * Kotlin 限制: actual typealias 到 Java 类时, Java 类的 getter (getYear()/getMonthValue()/
- * getDayOfMonth()) 不被识别为 expect class 的 val 成员, 故 expect class 不能声明这些属性。
- * 改用 top-level expect fun (localDateNow / localDateOf / toYearMonthDay) 暴露所需 API。
- *
- * Book.ReadConfig.startDate 字段 + LocalDateAsGsonSerializer 用本 expect 类型; jvmAndAndroidMain
- * 中 BookDisplayExtensionsShared 等通过 commonMain 间接引用, 编译期解析为 java.time.LocalDate,
- * 原有 Period.between / LocalDate.parse / LocalDate.now 等调用零行为变化。
- */
-expect class LocalDate
+import io.legado.app.utils.systemCurrentTimeMillis
+import io.legado.app.utils.yearMonthDayFromMillis
 
 /**
- * 桥接 java.time.LocalDate.now()。
+ * Book.ReadConfig.startDate 的日期类型, 纯 Kotlin 公历日期 (年月日三字段)。
+ *
+ * 不用 java.time.LocalDate: Android minSdk 24 低于 java.time 的 API 26, 引用它会把整个
+ * desugar_jdk_libs 的 java.time 运行时 (j$/time 约 170KB) 打进 APK。三端共用本实现后
+ * 该依赖可整体移除。
+ *
+ * commonMain 不能直接声明带属性的 expect class (actual typealias 到 Java 类时 getter
+ * 不被识别为 val 成员), 故所有访问经 top-level fun: [localDateNow] / [localDateOf] /
+ * [toYearMonthDay]。
  */
-expect fun localDateNow(): LocalDate
+class LocalDate(val year: Int, val month: Int, val day: Int) {
+    override fun toString(): String {
+        val m = if (month < 10) "0$month" else month.toString()
+        val d = if (day < 10) "0$day" else day.toString()
+        return "$year-$m-$d"
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is LocalDate) return false
+        return year == other.year && month == other.month && day == other.day
+    }
+
+    override fun hashCode(): Int = 31 * (31 * year + month) + day
+}
 
 /**
- * 桥接 java.time.LocalDate.of(year, month, dayOfMonth)。
+ * 当前本地日期。
  */
-expect fun localDateOf(year: Int, month: Int, dayOfMonth: Int): LocalDate
+fun localDateNow(): LocalDate {
+    val (y, m, d) = yearMonthDayFromMillis(systemCurrentTimeMillis())
+    return LocalDate(y, m, d)
+}
+
+fun localDateOf(year: Int, month: Int, dayOfMonth: Int): LocalDate =
+    LocalDate(year, month, dayOfMonth)
 
 /**
- * 桥接 java.time.LocalDate 的 year/monthValue/dayOfMonth 三个属性,
- * 用于 LocalDateAsGsonSerializer.serialize() 中读取字段值。
- * 返回 Triple<year, monthValue, dayOfMonth>。
+ * 拆出 year/month/day, 供 LocalDateAsGsonSerializer 读写。
  */
-expect fun LocalDate.toYearMonthDay(): Triple<Int, Int, Int>
+fun LocalDate.toYearMonthDay(): Triple<Int, Int, Int> = Triple(year, month, day)

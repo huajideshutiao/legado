@@ -31,8 +31,9 @@ import java.io.IOException
 import java.io.InputStream
 import java.net.MalformedURLException
 import java.net.URL
-import java.time.ZonedDateTime
-import java.time.format.DateTimeFormatter
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -59,7 +60,10 @@ actual open class WebDav actual constructor(
             return WebDav(path, authorization)
         }
 
-        private val dateTimeFormatter = DateTimeFormatter.RFC_1123_DATE_TIME
+        // WebDAV getlastmodified 是 RFC 1123 格式 ("Tue, 15 Nov 1994 12:45:26 GMT")。
+        // SimpleDateFormat 非线程安全, 每次解析新建实例。
+        // lenient=false: 严格校验日期字段, 避免 "32 Nov"/"99:99:99" 被静默换算成其他时间。
+        private const val RFC_1123_PATTERN = "EEE, dd MMM yyyy HH:mm:ss zzz"
 
         // 指定返回哪些属性
         @Language("xml")
@@ -220,8 +224,12 @@ actual open class WebDav actual constructor(
                 val lastModify: Long = kotlin.runCatching {
                     element.findNS("getlastmodified", ns)
                         .firstOrNull()?.text()?.let {
-                            ZonedDateTime.parse(it, dateTimeFormatter)
-                                .toInstant().toEpochMilli()
+                            SimpleDateFormat(RFC_1123_PATTERN, Locale.US)
+                                .apply {
+                                    timeZone = TimeZone.getTimeZone("GMT")
+                                    isLenient = false
+                                }
+                                .parse(it)?.time
                         }
                 }.getOrNull() ?: 0
                 var fullURL = NetworkUtils.getAbsoluteURL(baseUrl, hrefDecode)
