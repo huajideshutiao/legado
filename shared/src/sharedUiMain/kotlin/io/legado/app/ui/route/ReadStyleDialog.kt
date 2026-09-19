@@ -39,6 +39,7 @@ import io.legado.app.help.config.ReadConfigDefaults
 import io.legado.app.help.config.ReadStyleConfig
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.image.ImageBitmapLoader
+import io.legado.app.model.resolveBakedReadingBgSource
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.book.read.config.ChineseConverterSelectorDialog
@@ -58,8 +59,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.other_folder
-import org.jetbrains.compose.resources.ExperimentalResourceApi
-import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -313,17 +312,12 @@ private fun ReadStyleContent(
  * 阅读样式组合预览。
  *
  * 原版由 [ReadStyleConfig.curBgDrawable] 生成背景缩略图（颜色或真实背景图，centerCrop
- * 到 100x150）；shared UI 没有 Drawable，这里渲染真实缩略图，二级缓冲对标原版
- * curBgDrawable（缓存有原图 → 原图；否则 preview 立即显示 + 后台下载原图后切换）：
- * - 内置图（bg:// 前缀）：一级直接读 shared composeResources 的 bg_preview 缩略图
- *   （四端同一份, 本地零网络, 见 commonMain/composeResources/files/bg_preview），
- *   二级经 bg:// 加载原图（缓存命中直读，未命中下载后切换）
- * - 用户图（本地路径）：直接加载
+ * 到 100x150）；shared UI 没有 Drawable，这里渲染真实缩略图：用户图（本地路径）优先
+ * 烘焙产物加载（[resolveBakedReadingBgSource]，缺失现场重烘焙），按槽位像素采样解码。
  * 加载中/失败时回落背景代表色（[ReadStyleConfig.bgMeanColor]），避免列表退化成空槽位。
  *
  * 背景源变化（换背景）时 LaunchedEffect key 重建重新加载。
  */
-@OptIn(ExperimentalResourceApi::class)
 @Composable
 private fun ReadStylePreviewSlot(
     config: ReadStyleConfig,
@@ -343,18 +337,11 @@ private fun ReadStylePreviewSlot(
             bgBitmap = null
             return@LaunchedEffect
         }
-        if (bgSource.startsWith("bg://")) {
-            val fileName = bgSource.removePrefix("bg://")
-            // 一级: shared composeResources 内置 bg_preview 缩略图立即显示 (四端本地零网络)
-            bgBitmap = runCatching { Res.readBytes("files/bg_preview/$fileName") }
-                .getOrNull()
-                ?.let { runCatching { it.decodeToImageBitmap() }.getOrNull() }
-            // 二级: 原图按槽位尺寸采样 (bg:// 加载器内部缓存命中直读, 未命中下载), 下好切换
-            ImageBitmapLoader().loadBitmap(bgSource, null, null, widthPx = slotPx, heightPx = slotPx)
-                ?.let { bgBitmap = it }
-        } else {
-            bgBitmap = ImageBitmapLoader().loadBitmap(
-                bgSource, null, null, widthPx = slotPx, heightPx = slotPx,
+        // 优先烘焙产物 (缺失现场重烘焙, 重烘焙是整张图 CPU 活, 推到 IO 线程)
+        bgBitmap = withContext(IoDispatcher) {
+            ImageBitmapLoader().loadBitmap(
+                resolveBakedReadingBgSource(bgSource), null, null,
+                widthPx = slotPx, heightPx = slotPx,
             )
         }
     }

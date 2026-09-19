@@ -6,8 +6,6 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.coroutine.IoDispatcher
-import io.legado.app.help.FileUtilsCommon
-import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.http.KmpRequestBuilder
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
@@ -183,9 +181,6 @@ private suspend fun ohosLoadImageBytes(
     // data: URI 内联图 (与 loadBitmap 的 data: 分支对齐)
     url.startsWith("data:") -> parseDataUriBytes(url)
 
-    // bg:// 内置背景图: 原版远程下载语义 (全图不随包, 本地缓存一级兜底)
-    url.startsWith("bg://") -> ohosLoadBgBytes(url.removePrefix("bg://"))
-
     url.startsWith("cbz://") -> loadCbzEntryBytes(url, book?.bookUrl)
     url.startsWith("file://") -> runCatching {
         File(url.removePrefix("file://")).readBytes()
@@ -272,27 +267,6 @@ internal suspend fun ohosDownloadImageBytes(
             null
         }
     }.getOrNull()
-}
-
-/**
- * 内置背景图 (bg://) 本地缓存读取 + CDN 下载回填 (对照原版 RemoteAssetsUtils 的
- * getBgCachePath/downloadBgIfNeeded 语义: 下载过即本地可用, 离线/重复选择零网络)。
- * 缓存位置 `{cacheDir}/remote_assets/bg/{fileName}`, 与 jvm/android 同目录名。
- */
-private suspend fun ohosLoadBgBytes(fileName: String): ByteArray? {
-    val cacheDir = AppFilesDirs.get().cacheDir
-    val bgDir = "$cacheDir/remote_assets/bg"
-    val cachePath = "$bgDir/$fileName"
-    if (FileUtilsCommon.exist(cachePath)) {
-        val cached = runCatching { FileUtilsCommon.readBytes(cachePath) }.getOrNull()
-        if (cached != null && cached.isNotEmpty()) return cached
-    }
-    val bytes = bgCdnUrl(fileName).let { ohosDownloadImageBytes(it, null, null) } ?: return null
-    runCatching {
-        FileUtilsCommon.createFolderIfNotExist(bgDir)
-        FileUtilsCommon.writeBytes(cachePath, bytes)
-    }
-    return bytes
 }
 
 /** 通过 CPF OHOS 图形兼容门面将编码字节解码为融合渲染可绘制的 [ImageBitmap]。 */

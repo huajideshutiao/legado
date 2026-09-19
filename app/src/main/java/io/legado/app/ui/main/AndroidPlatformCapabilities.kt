@@ -138,7 +138,6 @@ import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.RealPathUtil
-import io.legado.app.utils.RemoteAssetsUtils
 import io.legado.app.utils.UrlUtil
 import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.createFileIfNotExist
@@ -405,8 +404,6 @@ class AndroidPlatformCapabilities(
     }
 
     override fun getClipboardText(): String? = getClipText()
-
-    override fun readerBackgroundImageNames(): List<String> = RemoteAssetsUtils.getBgList()
 
     override fun upLoadFile(
         fileName: String,

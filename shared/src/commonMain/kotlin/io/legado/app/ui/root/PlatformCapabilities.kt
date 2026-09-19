@@ -492,12 +492,6 @@ interface PlatformCapabilities {
     /** 扫描字体文件列表 (对照 app 端 FontSelectDialog, 未实现端空列表) */
     suspend fun scanFontItems(): List<FontItem> = emptyList()
 
-    /**
-     * 阅读背景内置图片列表（对照 app 端 [RemoteAssetsUtils.getBgList]）。
-     * shared UI 只负责展示和派发选择事件，资源列表由平台提供；未实现端返回空列表。
-     */
-    fun readerBackgroundImageNames(): List<String> = emptyList()
-
     // 书源管理平台能力 (各端按需 override, 未实现端统一给出明确提示)
     // 对照 app 端 BookSourceActivity 同名方法
     /** 新建书源 (对照 addBookSource / startActivity<BookSourceEditActivity>()) */

@@ -2,12 +2,14 @@ package io.legado.app.model
 
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.unit.IntRect
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.FileUtilsCommon
 import io.legado.app.help.config.PreferenceProvider
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.resolveImagePath
 import io.legado.app.help.file.AppFilesDirs
+import io.legado.app.utils.ScreenInfoProviders
 import kotlin.math.roundToInt
 
 /** 移动端模糊工作图的短边上限 (纯 CPU/大图模糊会卡)。 */
@@ -144,6 +146,32 @@ fun ensureBakedBlurredImage(srcAbs: String, radiusPx: Int): String? {
     val blurred = blurredImageVariantPath(srcAbs)
     if (FileUtilsCommon.exist(blurred)) return blurred
     return if (bakeBlurredImageFile(srcAbs, blurred, radiusPx)) blurred else null
+}
+
+/**
+ * 阅读背景图烘焙 (选图导入时调用): 按本端屏幕尺寸居中裁剪+不放大缩放产出清晰 WEBP
+ * ([bakedImagePath], 与界面背景同一机制, 原图在 novelBg 图集随 readConfig.zip 打包)。
+ * 屏幕尺寸未注册/非法时跳过; 烘焙失败记 AppLog 不抛出 —— 渲染端
+ * [resolveBakedReadingBgSource] 会现场重烘焙兜底。阻塞 IO, 必须在 IO 线程调用。
+ */
+fun bakeReadingBgImage(srcAbs: String) {
+    val si = runCatching { ScreenInfoProviders.get() }.getOrNull() ?: return
+    if (si.screenWidthPx <= 0 || si.screenHeightPx <= 0) return
+    if (!bakeCoverImageFile(srcAbs, bakedImagePath(srcAbs), si.screenWidthPx, si.screenHeightPx)) {
+        AppLog.put("阅读背景图烘焙失败: $srcAbs")
+    }
+}
+
+/**
+ * 阅读背景加载源解析 (IO 线程调用): 本地文件路径源优先用烘焙产物
+ * ([ensureBakedImage], 缺失现场重烘焙, 渲染端零重复解码原图); 带 scheme 的源
+ * (http/file/data 等) 与屏幕尺寸缺失时原样返回。阅读页背景与样式预览槽共用。
+ */
+fun resolveBakedReadingBgSource(source: String): String {
+    if (source.contains("://")) return source
+    val si = runCatching { ScreenInfoProviders.get() }.getOrNull() ?: return source
+    if (si.screenWidthPx <= 0 || si.screenHeightPx <= 0) return source
+    return ensureBakedImage(source, si.screenWidthPx, si.screenHeightPx) ?: source
 }
 
 /**

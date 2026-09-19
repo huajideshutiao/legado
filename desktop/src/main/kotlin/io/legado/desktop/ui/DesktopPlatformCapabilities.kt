@@ -43,7 +43,6 @@ import io.legado.app.utils.cnCompare
 import io.legado.app.ui.root.TransitionEasing
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.GSON
-import io.legado.app.utils.RemoteAssetsUtils
 import io.legado.app.utils.browseUrl
 import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.toJson
@@ -825,16 +824,6 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     override fun openImportFile(filePath: String) {
         scope.launch { FileAssociationDispatch.dispatch(filePath) }
     }
-
-    // ===== 阅读样式平台能力 =====
-
-    /**
-     * 阅读背景内置图片列表 (对照 app 端 [RemoteAssetsUtils.getBgList])。
-     * RemoteAssetsUtils 位于 shared jvmAndAndroidMain, 桌面 JVM 直接复用同一下载/缓存链路
-     * (bg:// 由 ImageBitmapLoader.jvm 的 RemoteAssetsUtils.getBgCachePath/downloadBgIfNeeded 支撑),
-     * 背景文字配置弹窗的内置预设列表 (午后沙滩等) 与 Android 端一致。
-     */
-    override fun readerBackgroundImageNames(): List<String> = RemoteAssetsUtils.getBgList()
 
     /**
      * 系统 TTS 设置入口 (朗读设置弹窗"系统TTS设置"项): 各平台打开自己的语音设置页。

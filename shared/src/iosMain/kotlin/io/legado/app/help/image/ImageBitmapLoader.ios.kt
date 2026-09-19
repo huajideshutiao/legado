@@ -40,8 +40,6 @@ private fun markIosFailUrl(origin: String?, url: String) {
  * [ImageBitmapLoader] 的 iOS 实现（自下载链路, 与 android/jvm/ohos 四端同构）。
  *
  * - `file://` / 绝对路径: 直接读文件字节 → Skia 解码
- * - `bg://`: 转 CDN 下载 URL 直下 (原版全图不随包远程下载语义; 字节进 [ImageBytesCache] 磁盘缓存,
- *   下载过即本地可用)
  * - `cbz://`: 前置直解, 不经网络 ([loadCbzEntryBytes] 经 ArchiveProviders 抽压缩包条目字节 → Skia 解码)
  * - `http(s)://`: 自下载 (本地书/无书源 → Ktor 直 GET; 网络书 → [AnalyzeUrlCore] 带书源
  *   header/cookie/charset/JS) → 按 [isCover] 跑共享 [ImageUtils.decode] 响应字节解密
@@ -123,10 +121,6 @@ actual class ImageBitmapLoader actual constructor() {
     ): ByteArray? = runCatching {
         when {
             url.startsWith("data:") -> parseDataUriBytes(url)
-            url.startsWith("bg://") -> downloadBytesSimple(
-                bgCdnUrl(url.removePrefix("bg://")), useBytesCache
-            )
-
             url.startsWith("cbz://") -> loadCbzEntryBytes(url, book?.bookUrl)
             url.startsWith("file://") -> File(url.removePrefix("file://")).readBytes()
             url.startsWith("/") -> File(url).readBytes()

@@ -40,8 +40,8 @@ import kotlinx.serialization.builtins.ListSerializer
  * 3. **样式主题列表** [configList] 持久化到 `{filesDir}/readConfig.json`
  *    (共享排版为 `shareReadConfig.json`)，用 kotlinx JSON + [BackupFileOps] 文件 IO，
  *    JSON 字段名与 app 端旧 Gson 输出逐字段一致，老配置文件可直接读取、两端备份包可互相恢复。
- * 4. **不包含** Drawable / Bitmap 操作 (curBgDrawable / upBg 等)，由各端 UI 自行渲染
- *    (安卓端见 `ReadBookConfig.kt` 里的 `ReadStyleConfig.curBgDrawable` 扩展)；
+ * 4. **不包含** Drawable / Bitmap 操作，由各端 UI 自行渲染 (阅读背景为 novelBg 原图 +
+ *    按屏烘焙产物，见 [io.legado.app.model.resolveBakedReadingBgSource])；
  *    clearBgAndCache / [import] / [exportConfigZip] 已下沉 (基于 [AppFilesDirs] + [BackupFileOps])。
  */
 @Suppress("MemberVisibilityCanBePrivate")
@@ -214,6 +214,8 @@ class ReadBookConfigShared(private val prefs: PreferenceProvider) {
         internalConfigList.clear()
         // copy 隔离: 直接复用默认实例会被用户修改写脏 ReadConfigDefaults 进程级默认值
         internalConfigList.addAll((configs ?: ReadConfigDefaults.readConfigs).map { it.copy() })
+        // 旧版内置背景 (bgType==1) 已下线, 落盘前统一迁回纯色
+        internalConfigList.forEach { it.migrateLegacyBuiltInBg() }
         // 配置文件可能比 prefs 索引短（备份恢复/文件被替换后未同步），
         // 这里修正越界索引，避免后续 deleteDur / durConfig 越界崩溃。
         val lastIndex = internalConfigList.lastIndex.coerceAtLeast(0)
@@ -232,7 +234,8 @@ class ReadBookConfigShared(private val prefs: PreferenceProvider) {
                 ).getOrThrow()
             }
         }
-        internalShareConfig = c ?: internalConfigList.getOrNull(5) ?: ReadStyleConfig()
+        internalShareConfig = (c ?: internalConfigList.getOrNull(5) ?: ReadStyleConfig())
+            .also { it.migrateLegacyBuiltInBg() }
     }
 
     /**
@@ -388,6 +391,9 @@ class ReadBookConfigShared(private val prefs: PreferenceProvider) {
         val config = GSON.fromJsonObject<ReadStyleConfig>(
             BackupFileOps.readText(configDir + sep + configFileName)
         ).getOrThrow()
+
+        // 老包里的内置背景 (bgType==1) 已下线, 先迁回纯色再走背景落地
+        config.migrateLegacyBuiltInBg()
 
         if (config.textFont.isNotEmpty()) {
             val fontName = config.textFont
@@ -1051,13 +1057,11 @@ data class ReadStyleConfig(
     /**
      * 当前生效背景图片的加载地址。
      *
-     * - 内置图片使用 `bg://` 前缀，由各平台图片加载器负责缓存/下载；
-     * - 用户图片沿用配置中的绝对路径或 `{files}/bg/{fileName}`；
+     * - 用户图片为绝对路径或 `{files}/customImg/novelBg/{fileName}`；
      * - 纯色背景返回 null。
      */
     fun curBgImageSource(): String? {
         return when (curBgType()) {
-            1 -> curBgStr().takeIf { it.isNotBlank() }?.let { "bg://$it" }
             2 -> {
                 val bgIndex = when {
                     isEInk -> 2
@@ -1069,6 +1073,33 @@ data class ReadStyleConfig(
 
             else -> null
         }
+    }
+
+    /**
+     * 迁移旧版"内置背景图" (bgType==1, 曾随包缩略图 + CDN 下载原图的预设)：该机制已移除,
+     * 置回对应模式的默认纯色 (对照字段默认值), bgStr 的旧文件名一并覆盖避免残留无消费方
+     * 的引用。幂等; 配置加载 ([initConfigs] / [initShareConfig]) 与 zip 导入共用。
+     */
+    fun migrateLegacyBuiltInBg() {
+        if (bgType == 1) {
+            bgType = 0
+            bgStr = "#ffc0edc6"
+        }
+        if (bgTypeNight == 1) {
+            bgTypeNight = 0
+            bgStrNight = "#000000"
+        }
+        if (bgTypeEInk == 1) {
+            bgTypeEInk = 0
+            bgStrEInk = "#FFFFFF"
+        }
+    }
+
+    /** 当前模式清除图片背景后的默认纯色 (对照字段默认值: 白天浅绿 / 夜间纯黑 / E-Ink 白)。 */
+    fun defaultCurBgStr(): String = when {
+        isEInk -> "#FFFFFF"
+        isNight -> "#000000"
+        else -> "#ffc0edc6"
     }
 
     /**

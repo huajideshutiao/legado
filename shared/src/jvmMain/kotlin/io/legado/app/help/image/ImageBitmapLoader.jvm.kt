@@ -11,7 +11,6 @@ import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.fileBook.CbzFile
 import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.utils.ImageUtils
-import io.legado.app.utils.RemoteAssetsUtils
 import io.legado.app.utils.SvgRasterizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -127,7 +126,6 @@ actual class ImageBitmapLoader actual constructor() {
     ): ByteArray? = runCatching {
         when {
             url.startsWith("data:") -> parseDataUriBytes(url)
-            url.startsWith("bg://") -> RemoteAssetsUtils.getBgBytes(url.removePrefix("bg://"))
             url.startsWith("cbz://") && book != null ->
                 CbzFile.getImage(book, url.removePrefix("cbz://"))?.use { it.readBytes() }
 

@@ -11,6 +11,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.image.ImageBitmapLoader
+import io.legado.app.model.resolveBakedReadingBgSource
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.book.read.page.ReaderBackgroundImageCache.FAIL_RETRY_INTERVAL_MS
@@ -65,7 +66,13 @@ object ReaderBackgroundImageCache {
         }
         scope.launch {
             val bitmap = runCatching {
-                ImageBitmapLoader().loadBitmap(source, book = null, bookSource = null)
+                // 图片背景优先烘焙产物 (缺失现场重烘焙, 见 resolveBakedReadingBgSource);
+                // 本函数跑在 IoDispatcher, 现场重烘焙的一次性 CPU 开销不占绘制线程
+                ImageBitmapLoader().loadBitmap(
+                    resolveBakedReadingBgSource(source),
+                    book = null,
+                    bookSource = null,
+                )
             }.onFailure {
                 AppLog.put("阅读背景图加载失败 $source\n${it.message}", it)
             }.getOrNull()

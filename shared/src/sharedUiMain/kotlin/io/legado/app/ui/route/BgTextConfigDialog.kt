@@ -17,14 +17,12 @@ import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.http.newCallResponseBody
 import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.help.toast.Toasters
+import io.legado.app.model.bakeReadingBgImage
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
-import io.legado.app.ui.book.read.config.BgImageItem
 import io.legado.app.ui.book.read.config.BgTextConfigActions
 import io.legado.app.ui.book.read.config.BgTextConfigController
 import io.legado.app.ui.book.read.config.BgTextConfigScreen
-import io.legado.app.ui.book.read.config.DefaultBgImagePreviewSlot
-import io.legado.app.ui.book.read.page.ReaderBackgroundImageCache
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialogContent
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
@@ -35,7 +33,6 @@ import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.FileFilter
-import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.utils.stackTraceStr
 import kotlinx.coroutines.CancellationException
@@ -95,18 +92,6 @@ fun BgTextConfigContent(
     val readBookConfig = ReadBookConfigProviders.get()
     val scope = rememberCoroutineScope()
     var showUrlInput by remember { mutableStateOf(false) }
-    // 原版由 RemoteAssetsUtils.getBgList() 提供内置背景列表；迁移后由平台能力注入，
-    // 这样 shared UI 不依赖 Android assets，同时 Android 端不会再得到空列表。
-    val bgImageList = remember {
-        PlatformCapabilityProviders.get()
-            .readerBackgroundImageNames()
-            .map { fileName ->
-                BgImageItem(
-                    label = fileName.substringBeforeLast('.', fileName),
-                    fileName = fileName,
-                )
-            }
-    }
 
     val controller = remember {
         object : BgTextConfigController {
@@ -161,6 +146,12 @@ fun BgTextConfigContent(
             override fun setCurBg(type: Int, value: String) {
                 readBookConfig.config.setCurBg(type, value)
                 // 取色/选背景图确认即落盘 (同上)
+                readBookConfig.save()
+            }
+
+            // 清除图片背景回到当前模式默认纯色 (对照 ThemeCustomizeDialog 背景图清除按钮)
+            override fun clearBgImage() {
+                readBookConfig.config.setCurBg(0, readBookConfig.config.defaultCurBgStr())
                 readBookConfig.save()
             }
 
@@ -251,8 +242,9 @@ fun BgTextConfigContent(
             showUrlInput = true
         }
 
-        // 选择背景图: 平台文件选择器选图 → setBgFromPath 复制到 bg 目录 → setCurBg(2, fileName) → postConfig
-        override fun onSelectBgImage() {
+        // 选择背景图: 平台文件选择器选图 → setBgFromPath 复制进 novelBg 图集 →
+        // setCurBg(2, 文件名) → 烘焙清晰产物 (对齐界面背景) → postConfig + onPicked
+        override fun onSelectBgImage(onPicked: () -> Unit) {
             val services = PlatformServiceProviders.get()
             scope.launch {
                 runCatching {
@@ -263,28 +255,22 @@ fun BgTextConfigContent(
                         readBookConfig.setBgFromPath(path)
                     }
                     readBookConfig.config.setCurBg(2, fileName)
+                    withContext(IoDispatcher) {
+                        // 烘焙失败不影响导入 (渲染端 resolveBakedReadingBgSource 现场重烘焙兜底)
+                        readBookConfig.config.curBgImageSource()?.let { bakeReadingBgImage(it) }
+                    }
                 }.onSuccess {
                     // 原版 setBgFromUri 完成后立即更新当前组合；这里同时落盘，
                     // 避免用户在图片选择后尚未退出详细设置时进程被回收而丢失配置。
                     readBookConfig.save()
                     ReadBookEvents.postConfig(ReadConfigChange.BG)
+                    onPicked()
                 }.onFailure {
                     // 取消不当作失败上报 (对照原版 execute{}.onError{} 的 isActive 守卫)
                     if (it is CancellationException) throw it
                     Toasters.get().toast(it.message ?: "设置背景图失败")
                 }
             }
-        }
-
-        // 选择 assets 背景图预设 (对照 app 端 setCurBg(1, fileName) + postConfig(BG))
-        override fun onSelectBgPreset(fileName: String) {
-            controller.setCurBg(1, fileName)
-            val source = "bg://$fileName"
-            // 清除失败冷却并主动发起加载: 重选同一预设时 LaunchedEffect(source) 不会重启,
-            // 若上次加载失败 (60s 冷却) 会一直卡在"不生效"状态, 这里主动重试。
-            ReaderBackgroundImageCache.clearFailed(source)
-            ReaderBackgroundImageCache.requestAsync(source)
-            ReadBookEvents.postConfig(ReadConfigChange.BG)
         }
 
         // 配置变更通知 (对照 app 端 ReadBookEvents.postConfig)
@@ -297,10 +283,6 @@ fun BgTextConfigContent(
         controller = controller,
         actions = actions,
         isImageBook = false,
-        bgImageList = bgImageList,
-        bgImagePreviewSlot = { item, onClick ->
-            DefaultBgImagePreviewSlot(item, onClick)
-        },
         onDismiss = onDismiss,
     )
 

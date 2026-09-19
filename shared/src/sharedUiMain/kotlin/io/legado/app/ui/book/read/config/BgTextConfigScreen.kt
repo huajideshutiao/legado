@@ -1,23 +1,21 @@
 ﻿package io.legado.app.ui.book.read.config
 
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -26,11 +24,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.legado.app.help.image.ImageBitmapLoader
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.compose.component.AlertButton
@@ -55,7 +51,7 @@ import legado.shared.generated.resources.delete
 import legado.shared.generated.resources.edit
 import legado.shared.generated.resources.export_str
 import legado.shared.generated.resources.ic_edit
-import legado.shared.generated.resources.ic_image
+import legado.shared.generated.resources.ic_baseline_close
 import legado.shared.generated.resources.import_str
 import legado.shared.generated.resources.ok
 import legado.shared.generated.resources.restore
@@ -63,8 +59,6 @@ import legado.shared.generated.resources.select_image
 import legado.shared.generated.resources.style_name
 import legado.shared.generated.resources.text_color
 import legado.shared.generated.resources.text_underline
-import org.jetbrains.compose.resources.ExperimentalResourceApi
-import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -99,7 +93,7 @@ interface BgTextConfigController {
     /** 当前文字颜色 Int（对应 `durConfig.curTextColor()`） */
     fun curTextColor(): Int
 
-    /** 当前背景类型 0:颜色 1:assets 图片 2:其它图片（对应 `durConfig.curBgType()`） */
+    /** 当前背景类型 0:颜色 2:其它图片（对应 `durConfig.curBgType()`） */
     fun curBgType(): Int
 
     /** 当前背景字符串 hex 或文件名（对应 `durConfig.curBgStr()`） */
@@ -110,10 +104,13 @@ interface BgTextConfigController {
 
     /**
      * 设置当前背景（对应 `durConfig.setCurBg(type, value)`）
-     * @param type 0:颜色 1:assets 图片 2:其它图片
+     * @param type 0:颜色 2:其它图片
      * @param value 颜色 hex 或图片文件名
      */
     fun setCurBg(type: Int, value: String)
+
+    /** 清除图片背景，回到当前模式的默认纯色（背景行清除按钮用） */
+    fun clearBgImage()
 
     /** 删除当前主题（对应 `ReadBookConfig.deleteDur()`），返回是否删除成功 */
     fun deleteDur(): Boolean
@@ -135,16 +132,14 @@ interface BgTextConfigController {
 }
 
 /**
- * 背景文字配置动作回调：把 app 端 Android 专属操作（文件选择 / 网络导入 / 背景图列表 /
+ * 背景文字配置动作回调：把 app 端 Android 专属操作（文件选择 / 网络导入 /
  * Bitmap 解码）抽象为接口，由各平台 wrapper 桥接到各自平台 API。
  *
  * app 端原实现：
  * - `selectBgImage` / `selectExportDir` / `selectImportDoc` 用 `registerHandleFile`（SAF）
- * - `RemoteAssetsUtils.getBgList()` / `getBgPreviewBytes()` 取背景图 (现为 shared
- *   composeResources 单一数据源, 见 commonMain/composeResources/files/bg_preview)
  * - `BgTextConfigViewModel` 处理 zip 导入导出 + 网络下载
  *
- * shared/commonMain 无 SAF / RemoteAssetsUtils / ViewModel，由 wrapper 实现。
+ * shared/commonMain 无 SAF / ViewModel，由 wrapper 实现。
  */
 interface BgTextConfigActions {
     /** 弹文件选择导入配置 zip（对应 `selectImportDoc.launch`） */
@@ -156,28 +151,16 @@ interface BgTextConfigActions {
     /** 弹网络导入地址输入框（对应 `importNetConfigAlert`） */
     fun onImportNetConfig()
 
-    /** 弹图片选择器选背景图（对应 `selectBgImage.launch`） */
-    fun onSelectBgImage()
-
     /**
-     * 选择 assets 背景图预设（对应 `ReadBookConfig.durConfig.setCurBg(1, fileName)`）。
-     * @param fileName assets 内背景图文件名
+     * 弹图片选择器选背景图（对应 `selectBgImage.launch`）。
+     * 选图写入配置成功后回调 [onPicked]（主线程），供调用方刷新背景行文案；
+     * 取消/失败不回调。
      */
-    fun onSelectBgPreset(fileName: String)
+    fun onSelectBgImage(onPicked: () -> Unit)
 
     /** 配置变更通知（对应 `ReadBookEvents.postConfig(...)`） */
     fun onPostConfig(changes: List<ReadConfigChange>)
 }
-
-/**
- * 背景图列表项数据，由 wrapper 提供（shared/commonMain 不依赖 RemoteAssetsUtils）。
- */
-data class BgImageItem(
-    /** 显示名（文件名去后缀） */
-    val label: String,
-    /** assets 内文件名或图片路径 */
-    val fileName: String,
-)
 
 /**
  * 背景/文字样式配置 Screen 正文 Composable。
@@ -197,25 +180,19 @@ data class BgImageItem(
  * # 颜色选择器
  * 直接复用 shared 的 [ColorPickerDialog]，无需 callback 桥接。
  *
- * # 背景图列表
- * 原实现依赖 `RemoteAssetsUtils.getBgList()` + `BitmapFactory.decodeByteArray`，
- * shared/commonMain 无对应 API，通过 [bgImageList] + [bgImagePreviewSlot] 桥接：
- * - [bgImageList] 提供背景图文件名列表（wrapper 实现）
- * - [bgImagePreviewSlot] 为单个背景图渲染预览（wrapper 实现，接收 item 与 onClick）
+ * # 背景图片行
+ * 原版底部是 LazyRow 预设列表（内置图已下线），现为单行：左"背景图片"文案 +
+ * 右"选择图片"/文件名，整行可点击唤起平台选图（对照 ThemeCustomizeDialog 背景图行）。
  *
  * @param controller 配置读写桥接
  * @param actions 动作回调桥接
  * @param isImageBook 是否图片书籍（控制是否显示下划线开关）
- * @param bgImageList 背景图列表（由 wrapper 提供，shared 不依赖 RemoteAssetsUtils）
- * @param bgImagePreviewSlot 单个背景图预览渲染（item, onClick）
  */
 @Composable
 fun BgTextConfigScreen(
     controller: BgTextConfigController,
     actions: BgTextConfigActions,
     isImageBook: Boolean,
-    bgImageList: List<BgImageItem>,
-    bgImagePreviewSlot: @Composable (item: BgImageItem, onClick: () -> Unit) -> Unit,
     /** 删除当前主题成功后关闭对话框（对照原版 deleteDur 成功后 dismissAllowingStateLoss） */
     onDismiss: (() -> Unit)? = null,
 ) {
@@ -249,6 +226,14 @@ fun BgTextConfigScreen(
     var showBgColorPicker by remember { mutableStateOf(false) }
     var showNameEditDialog by remember { mutableStateOf(false) }
     var showRestorePresetDialog by remember { mutableStateOf(false) }
+    // 背景图片行状态: 变更只发生在本对话框三处 (选色确认/清除/选图回调), 各自就地
+    // 刷新, 不订阅 ReadBookEvents (恢复预设走 refresh 重读)
+    var bgState by remember(refresh) {
+        mutableStateOf(controller.curBgType() to controller.curBgStr())
+    }
+    fun refreshBgState() {
+        bgState = controller.curBgType() to controller.curBgStr()
+    }
 
     Column(
         Modifier
@@ -352,30 +337,40 @@ fun BgTextConfigScreen(
                 actions.onPostConfig(listOf(ReadConfigChange.BG_ALPHA))
             },
         )
-        // 背景图列表
-        Text(bgImageStr, color = colors.primaryText)
-        // 渲染"选择图片"按钮 + wrapper 提供的背景图列表
-        // 对齐 app 端 LazyRow(Modifier.fillMaxWidth().height(100.dp).padding(vertical = 8.dp))
-        // 每个 BgItem 66x88dp, 由 wrapper 通过 bgImagePreviewSlot 渲染
-        androidx.compose.foundation.lazy.LazyRow(
+        // 背景图片行: 整行可点击唤起平台选图 (原版底部 LazyRow 预设列表随内置图下线移除,
+        // 行式布局对照 ThemeCustomizeDialog 背景图行)
+        Row(
             Modifier
                 .fillMaxWidth()
-                .height(100.dp)
-                .padding(vertical = 8.dp)
+                .heightIn(min = DesignTokens.viewHeightLarge)
+                .clickable(onClick = { actions.onSelectBgImage { refreshBgState() } }),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            // "选择图片"按钮 (对应 app 端 BgItem(icon = ic_image))
-            item {
-                bgImagePreviewSlot(
-                    BgImageItem(label = selectImageStr, fileName = ""),
-                ) {
-                    actions.onSelectBgImage()
-                }
-            }
-            // wrapper 提供的背景图列表
-            items(bgImageList.size) { index ->
-                val item = bgImageList[index]
-                bgImagePreviewSlot(item) {
-                    actions.onSelectBgPreset(item.fileName)
+            Text(
+                bgImageStr, color = colors.primaryText, fontSize = 15.sp,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = if (bgState.first == 2) bgState.second.ifBlank { selectImageStr } else selectImageStr,
+                color = colors.secondaryText,
+                fontSize = 13.sp,
+                maxLines = 1,
+                // 文件名长时从头部省略, 保留文件名 (对齐 ThemeCustomizeDialog ellipsize start)
+                overflow = TextOverflow.StartEllipsis,
+                modifier = Modifier.widthIn(max = 180.dp),
+            )
+            if (bgState.first == 2) {
+                IconButton(onClick = {
+                    controller.clearBgImage()
+                    // 与选图/选色路径同款: 通知阅读页背景立即刷新
+                    actions.onPostConfig(listOf(ReadConfigChange.BG))
+                    refreshBgState()
+                }) {
+                    Icon(
+                        painter = painterResource(Res.drawable.ic_baseline_close),
+                        contentDescription = deleteStr,
+                        tint = colors.secondaryText,
+                    )
                 }
             }
         }
@@ -415,6 +410,8 @@ fun BgTextConfigScreen(
             onDismissRequest = { showBgColorPicker = false },
             onConfirm = { color ->
                 controller.setCurBg(0, ColorUtils.intToString(color))
+                // 背景色变化会置 bgType=0, 背景行文案同步回"选择图片"
+                refreshBgState()
                 actions.onPostConfig(listOf(ReadConfigChange.BG))
             },
         )
@@ -478,81 +475,6 @@ private fun SwitchRow(
     ) {
         Text(label, color = AppTheme.colors.primaryText, modifier = Modifier.weight(1f))
         AppSwitch(checked = checked, onCheckedChange = onCheckedChange)
-    }
-}
-
-/**
- * 默认背景图槽位：平台 wrapper 可以提供真正的缩略图，但不能把“选择图片”
- * 这一项留成空槽。原版始终显示一个带 ic_image 的可点击 header；这里在
- * wrapper 没有预览实现时也保持同样的可用性。
- *
- * 内置背景图预设（[BgImageItem.fileName] 非空）加载真实缩略图，二级缓冲对标原版
- * curBgDrawable/BgAdapter：一级直接读 shared composeResources 的 bg_preview 缩略图
- * （四端同一份, 本地零网络, 见 commonMain/composeResources/files/bg_preview）；
- * 二级再加载原图（缓存命中直接读，未命中后台下载），下好自动切换为原图。
- * 加载中/失败回落图标占位。
- */
-@OptIn(ExperimentalResourceApi::class)
-@Composable
-fun DefaultBgImagePreviewSlot(
-    item: BgImageItem,
-    onClick: () -> Unit,
-) {
-    val colors = AppTheme.colors
-    val fileName = item.fileName
-    var bitmap by remember(fileName) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(fileName) {
-        if (fileName.isEmpty()) return@LaunchedEffect
-        // 一级: shared composeResources 内置 bg_preview 缩略图立即显示 (四端本地零网络)
-        bitmap = runCatching { Res.readBytes("files/bg_preview/$fileName") }
-            .getOrNull()
-            ?.let { runCatching { it.decodeToImageBitmap() }.getOrNull() }
-        // 二级: 原图 (bg:// 加载器内部缓存命中直读, 未命中下载), 下好切换
-        ImageBitmapLoader().loadBitmap("bg://$fileName", null, null)?.let { bitmap = it }
-    }
-    Column(
-        modifier = Modifier
-            .size(66.dp, 88.dp)
-            // 原版 BgAdapter/BgTextConfigDialog header: root 66x88 + setPadding(2dp) 内缩;
-            // clickable 先于 padding, 点击区域覆盖整个 66x88 槽位 (原版 root.setOnClickListener)
-            .clickable(onClick = onClick)
-            .padding(2.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                // 原版 ImageView 无圆角; 背景仅作加载占位
-                .background(colors.bottomBackground),
-            contentAlignment = Alignment.Center,
-        ) {
-            val bmp = bitmap
-            if (bmp != null) {
-                // 中心裁剪铺满缩略图槽（对照原版 Glide centerCrop 语义）
-                Image(
-                    bitmap = bmp,
-                    contentDescription = item.label,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
-                Icon(
-                    painter = painterResource(Res.drawable.ic_image),
-                    contentDescription = item.label,
-                    tint = colors.primaryText,
-                    // 原版 header: ImageView FIT_CENTER + ic_image 原始 24dp
-                    modifier = Modifier.size(24.dp),
-                )
-            }
-        }
-        Text(
-            text = item.label,
-            color = colors.secondaryText,
-            // 原版 tvName 未设 textSize, 走 TextView 默认字号
-            fontSize = 14.sp,
-            maxLines = 1,
-        )
     }
 }
 
