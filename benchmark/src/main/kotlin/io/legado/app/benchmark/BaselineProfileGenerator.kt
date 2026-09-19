@@ -90,14 +90,16 @@ class BaselineProfileGenerator {
             // 「书源」分类在 MyConfigScreen 靠后, 滚动查找
             scrollUntilFound("书源管理", maxSwipes = 6)
             device.findObject(By.text("书源管理")).click()
-            // 书源列表页: 顶部溢出菜单 desc 恒有
-            device.wait(Until.hasObject(By.desc(MORE_MENU)), 8_000)
-            val editButton = device.findObject(By.desc(EDIT))
-            if (editButton != null) {
-                editButton.click()
+            // 就绪信号 = 行内「编辑」按钮出现 (列表加载完);
+            // 顶栏「更多菜单」随页面骨架立即出现, 不能作为列表就绪信号
+            if (device.wait(Until.hasObject(By.desc(EDIT)), 15_000)) {
+                device.findObject(By.desc(EDIT)).click()
             } else {
+                // 空书源列表兜底: 顶栏溢出菜单 → 新建书源 (顺带为后续采集造数据)
                 device.findObject(By.desc(MORE_MENU)).click()
-                device.wait(Until.hasObject(By.text(NEW_SOURCE)), 5_000)
+                check(device.wait(Until.hasObject(By.text(NEW_SOURCE)), 8_000)) {
+                    "书源列表为空且溢出菜单无「新建书源」"
+                }
                 device.findObject(By.text(NEW_SOURCE)).click()
             }
             // 编辑页 (新建/编辑同页): 保存按钮 desc 恒有
