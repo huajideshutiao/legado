@@ -91,7 +91,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
@@ -736,11 +735,13 @@ private fun ReadMenuTopBar(state: ReadMenuState) {
     val topBg = palette.topSurface
     val topText = palette.onSurface
     val chapterText = palette.secondaryText
-    // 下缘阴影只用栏内渐变暗带一处; 不再叠加 Modifier.shadow(低 elevation 只有
-    // 四周均匀晕, 与渐变带上下贴出双影)
     Column(
         Modifier
             .fillMaxWidth()
+            // 下缘真阴影(与底栏同源 4dp): 光源默认在上方, 阴影落在栏下方;
+            // 全宽贴屏幕顶, 左右/顶部阴影在屏外, 只露出下缘一条。
+            // E-Ink 下灰阶晕影会糊屏, 不加阴影, 用栏内 1dp 分隔线。
+            .then(if (eInk) Modifier else Modifier.shadow(4.dp))
             .background(topBg)
             // 浮层顶栏逐帧跟随状态栏 insets (对齐原版 TitleBar insets listener 语义):
             // 菜单滑入与系统栏显隐动画并行时 padding 平滑增长, 无离散跳变;
@@ -873,18 +874,6 @@ private fun ReadMenuTopBar(state: ReadMenuState) {
                     .fillMaxWidth()
                     .height(1.dp)
                     .background(rememberColor("divider"))
-            )
-        } else {
-            // 下缘投影条: 用渐变暗带补出 app bar 式下缘阴影 (四端渲染一致)
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(6.dp)
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color.Black.copy(alpha = 0.20f), Color.Transparent)
-                        )
-                    )
             )
         }
     }
