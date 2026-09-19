@@ -966,7 +966,6 @@
     <string name="desktop_cookie_set_error">Failed to set cookie on desktop domain=%1$s cookie=%2$s</string>
     <string name="download_jslib_failed">Failed to download jsLib-%1$s</string>
     <string name="native_book_format_not_supported">Parsing local %1$s books is not supported on this platform yet (pdf/cbz parsers not ported)</string>
-    <string name="rhino_deprecated_unreachable">Rhino is deprecated, JsEngines.type is fixed to QUICKJS, type=%1$s should never be reached</string>
     <string name="upload_url_not_configured">Upload URL not configured</string>
     <string name="download_url_rule_not_configured">Download URL rule not configured</string>
     <string name="upload_failed_with_body">Upload failed: %1$s</string>

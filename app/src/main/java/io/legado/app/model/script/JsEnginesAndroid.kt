@@ -53,13 +53,11 @@ fun registerAndroidJsEngines() {
     JsEngines.registerProvider { type ->
         when (type) {
             JsEngineType.QUICKJS -> QuickJsJsEngine
-            else -> error("rhino 已弃用,JsEngines.type 固定 QUICKJS,不应到达 type=$type")
         }
     }
     SharedJsScope.registerProviders { type ->
         when (type) {
             JsEngineType.QUICKJS -> QuickJsSharedJsScopeProvider
-            else -> error("rhino 已弃用,JsEngines.type 固定 QUICKJS,不应到达 type=$type")
         }
     }
     // 简繁词典 tc 缓存定位器(含缺失后台拉取), shared ChineseUtils 走 provider 注入

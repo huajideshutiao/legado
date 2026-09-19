@@ -978,7 +978,6 @@
     <string name="desktop_cookie_set_error">桌面端设置 cookie 出错 domain=%1$s cookie=%2$s</string>
     <string name="download_jslib_failed">下载jsLib-%1$s失败</string>
     <string name="native_book_format_not_supported">iOS/鸿蒙端暂不支持解析 %1$s 格式本地书 (pdf/cbz 解析器未下沉)</string>
-    <string name="rhino_deprecated_unreachable">rhino 已弃用,JsEngines.type 固定 QUICKJS,不应到达 type=%1$s</string>
     <string name="upload_url_not_configured">上传url未配置</string>
     <string name="download_url_rule_not_configured">下载地址规则未配置</string>
     <string name="upload_failed_with_body">上传失败,%1$s</string>

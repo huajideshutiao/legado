@@ -91,7 +91,6 @@ xz = "1.12"
 pdfbox = "3.0.8"
 
 # ===== JS 引擎 / 加密 / 简繁转换 =====
-rhino = "1.9.1"
 hutool = "5.8.22"
 # 桌面端 JVM 用: SunJCE 无 PKCS7Padding, 书源 java.createSymmetricCrypto('AES/CBC/PKCS7Padding')
 # 在桌面端报 "Cannot find any provider supporting AES/CBC/PKCS7Padding"; bcprov (Oracle 签名,
@@ -220,7 +219,6 @@ xz = { module = "org.tukaani:xz", version.ref = "xz" }
 pdfbox = { module = "org.apache.pdfbox:pdfbox", version.ref = "pdfbox" }
 
 # ===== JS 引擎 / 加密 / 简繁转换 =====
-mozilla-rhino = { module = "org.mozilla:rhino", version.ref = "rhino" }
 hutool-crypto = { module = "cn.hutool:hutool-crypto", version.ref = "hutool" }
 # 桌面端 JCE 补丁 provider (见 bouncycastle version 注释); 已禁用, 仅 desktop jvm 曾依赖
 bcprov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }

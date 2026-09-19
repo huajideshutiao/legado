@@ -7,7 +7,6 @@ import io.legado.app.model.script.JsBindingInjector
 import io.legado.app.model.script.JsEngineType
 import io.legado.app.model.script.JsEngines
 import io.legado.app.model.script.quickjs.QuickJsJsEngine
-import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.utils.ChineseUtils
 import io.legado.app.utils.RemoteAssetsUtils
 import io.legado.app.utils.TcDictCachePathProvider
@@ -58,7 +57,6 @@ fun registerDesktopJsEngines() {
     JsEngines.registerProvider { type ->
         when (type) {
             JsEngineType.QUICKJS -> QuickJsJsEngine
-            else -> error(jvmGetString("rhino_deprecated_unreachable", type))
         }
     }
     // 注册 SharedJsScope provider (jsLib 共享 scope 缓存)
@@ -67,7 +65,6 @@ fun registerDesktopJsEngines() {
     SharedJsScope.registerProviders { type ->
         when (type) {
             JsEngineType.QUICKJS -> DesktopQuickJsSharedJsScopeProvider
-            else -> error(jvmGetString("rhino_deprecated_unreachable", type))
         }
     }
     // 注册简繁词典缓存定位器 (替代 app 端 registerAndroidChineseUtils)
