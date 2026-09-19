@@ -728,7 +728,7 @@ private fun InfoCover(
             Modifier
                 .height(144.dp)
                 .aspectRatio(coverRatio, matchHeightConstraintsFirst = true)
-                .clip(DesignTokens.shapeDefault)
+                .clip(DesignTokens.shapeSm)
                 .then(
                     if (cardBg) Modifier.background(AppTheme.colors.bottomBackground)
                     else Modifier
