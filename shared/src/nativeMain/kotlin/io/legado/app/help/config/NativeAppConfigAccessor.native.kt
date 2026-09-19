@@ -9,7 +9,7 @@ import kotlin.concurrent.Volatile
  * nativeMain: [AppConfigAccessor] 的 iOS / 鸿蒙 两端共用实现。
  *
  * 详见 [AppConfigAccessor] 接口注释。Android 端在 app 模块用
- * `AppConfigAccessorImpl` 包装 `AppConfig` (SharedPreferences-backed),
+ * `WebBookProvidersImpl` 包装 `AppConfig` (SharedPreferences-backed),
  * iOS / 鸿蒙端无 SharedPreferences, 用 [PreferenceProvider] 委托:
  * - 数值类配置走 [PreferenceProvider] (iOS 端 NSUserDefaults 真实持久化 / 鸿蒙端文件持久化,
  *   由各端 [IosPreferenceProvider] / [OhosPreferenceProvider] 提供)
@@ -29,7 +29,7 @@ import kotlin.concurrent.Volatile
  *
  * 前置依赖: PreferenceProvider 需先注册 (AppConfigAccessor 委托 PreferenceProvider)。
  *
- * 模式参考桌面端 `DesktopAppConfigAccessorImpl`。
+ * 模式参考桌面端 `DesktopAppConfigAccessor`。
  */
 class NativeAppConfigAccessor(
     private val prefs: PreferenceProvider = PreferenceProviders.get(),

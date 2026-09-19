@@ -42,7 +42,7 @@ class SearchContentViewModelShared(
     /** DAO 容器 (宿主启动时由 app 端注册 AppDbAccessorImpl), 供 [searchAllChapters] 取章节列表。 */
     private val appDb get() = AppDbProviders.get()
 
-    /** AppConfig 容器 (宿主启动时由 app 端注册 AppConfigAccessorImpl)。 */
+    /** AppConfig 容器 (宿主启动时由 app 端注册 WebBookProvidersImpl)。 */
     private val appConfig get() = AppConfigProviders.get()
 
     var bookUrl: String = ""

@@ -55,7 +55,7 @@ class BookshelfManageViewModelShared(
     /** DAO 容器 (宿主启动时由 app 端注册 AppDbAccessorImpl)。 */
     private val appDb get() = AppDbProviders.get()
 
-    /** AppConfig 容器 (宿主启动时由 app 端注册 AppConfigAccessorImpl)。 */
+    /** AppConfig 容器 (宿主启动时由 app 端注册 WebBookProvidersImpl)。 */
     private val appConfig get() = AppConfigProviders.get()
 
     /** 书架分组 ID (Activity 在 onActivityCreated 时设置)。 */

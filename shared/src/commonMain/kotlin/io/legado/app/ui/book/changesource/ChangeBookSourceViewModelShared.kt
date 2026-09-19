@@ -937,7 +937,7 @@ class ChangeBookSourceViewModelShared(
  * # 为何不扩展既有 Provider 接口
  *
  * - `AppConfigAccessor` 接口暂未包含 4 个 changeSource* 字段, 扩散接口需改 app 端
- *   `AppConfigAccessorImpl` + 桌面端 `DesktopAppConfigAccessor` + 接口本身, 改动面较大;
+ *   `WebBookProvidersImpl` + 桌面端 `DesktopAppConfigAccessor` + 接口本身, 改动面较大;
  * - `ContentProcessorAccessor` / `BookHelpAccessor` 同样缺 getContent / getDurChapter;
  * - `SourceConfig` 已下沉 commonMain (走 PreferenceProviders), 但评分方法仍通过
  *   [ChangeBookSourcePlatform] 注入以聚合 getDurChapter/processContent 等其他平台差异;

@@ -9,8 +9,8 @@ import kotlin.concurrent.Volatile
  * AppConfig 依赖 SharedPreferences + appCtx, 留 app 端。本接口暴露 webBook
  * 编排层 (BookChapterList/BookContent) 及下沉的 Book 扩展
  * (getDisplayTitle/getUseReplaceRule 等) 用到的配置项, 由 app 端
- * AppConfigAccessorImpl 包装 AppConfig 实现, 在 App.onCreate 经
- * [AppConfigProviders.register] 注册。
+ * WebBookProvidersImpl 实现 (包装 AppConfig), 在 App.onCreate 的
+ * registerAndroidWebBookProviders 经 [AppConfigProviders.register] 注册。
  *
  * 模式参考 BookInfoRefreshers / SourceDebugLoggers。
  */

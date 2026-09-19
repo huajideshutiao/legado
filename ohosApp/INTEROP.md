@@ -75,7 +75,7 @@ ArkTS 通过 NAPI 获取 `liblegado_shared.so` 导出的 Compose 控制器和业
 ### 3.4 ohosMain 配置 provider stub
 
 - **`modules/shared/src/ohosMain/.../config/OhosPreferenceProvider.kt`** - 文件持久化的 PreferenceProvider stub
-- **`modules/shared/src/ohosMain/.../config/OhosAppConfigAccessor.kt`** - AppConfigAccessor stub (委托 PreferenceProvider)
+- **`modules/shared/src/nativeMain/.../config/NativeAppConfigAccessor.native.kt`** - AppConfigAccessor 实现 (iOS/鸿蒙共用, 委托 PreferenceProvider, 由 OhosProviderRegistry 注册)
 - **`modules/shared/src/ohosMain/.../config/OhosProviderRegistry.kt`** - 集中注册入口 `registerOhosProviders()`
 
 ## 4. 编译与运行流程
