@@ -72,7 +72,7 @@ val installType = (project.findProperty("legado.installType") as String?)
     ?: "dev"
 
 val installTypeDir = file("build/generated/installType/kotlin/io/legado/desktop/")
-val generateInstallType by tasks.registering {
+val generateInstallType = tasks.register("generateInstallType") {
     outputs.dir(installTypeDir)
     // 配置缓存约束: doLast 不得引用脚本级对象或 Project, 同 generateMediaRuntimeConfig
     val type = installType
@@ -141,7 +141,7 @@ val mediaRuntimeSha1 = mediaRuntimeSha1ByRelease[mediaRuntimeVersion]
     )
 
 val mediaRuntimeDir = file("build/generated/mediaRuntime/kotlin/io/legado/desktop/media/")
-val generateMediaRuntimeConfig by tasks.registering {
+val generateMediaRuntimeConfig = tasks.register("generateMediaRuntimeConfig") {
     outputs.dir(mediaRuntimeDir)
     // 配置缓存约束: doLast 不得引用脚本级对象或 Project —— 版本/校验值在配置期捕获为
     // 可串行化局部量, 输出目录经任务自身 outputs.files 取, 文件用 File.resolve 而非 file()
@@ -176,7 +176,7 @@ tasks.named("compileKotlin").configure { dependsOn(generateMediaRuntimeConfig) }
 
 // 媒体运行时 (mpv/ffmpeg native jar) 专用 configuration: **不**从 runtimeClasspath 继承,
 // 故 jpackage 产物与便携包里都不会出现它; 仅手动挂到 :desktop:run 的 classpath 上供开发期用。
-val mediaRuntimeOnly: Configuration by configurations.creating
+val mediaRuntimeOnly = configurations.create("mediaRuntimeOnly")
 
 dependencies {
     // 引入 shared 模块 jvm target (传递 commonMain + jvmMain 全部 API)
@@ -397,7 +397,7 @@ val quickjsNativeDir =
     file("${rootProject.projectDir}/modules/quickjs/build/libs/jvm/native/$quickjsPlatformId")
 val composeResourcesDir = file("build/compose-resources")
 
-val copyQuickjsNativeToResources by tasks.registering(Copy::class) {
+val copyQuickjsNativeToResources = tasks.register<Copy>("copyQuickjsNativeToResources") {
     // 先触发 native 库构建 (cmake 编译 legado_quickjs.dll), 再复制到 appResourcesRootDir
     dependsOn(project(":modules:quickjs").tasks.named("buildJvmNativeLib"))
     from(quickjsNativeDir)
@@ -526,7 +526,7 @@ fun runCmakeNativeBuild(
     }
 }
 
-val buildSmtcNative by tasks.registering {
+val buildSmtcNative = tasks.register("buildSmtcNative") {
     group = "native"
     description = "Build legado_smtc native library (SMTC bridge) for desktop JVM"
     // SMTC 桥是纯 Win32 代码 (smtc_bridge.c 直引 windows.h), 非 Windows 平台无法编译,
@@ -602,7 +602,7 @@ fun findMingwBinDir(): String? {
     return null
 }
 
-val copySmtcNativeToResources by tasks.registering(Copy::class) {
+val copySmtcNativeToResources = tasks.register<Copy>("copySmtcNativeToResources") {
     dependsOn(buildSmtcNative)
     onlyIf { OperatingSystem.current().isWindows }
     from(smtcNativeDir)
@@ -620,7 +620,7 @@ val wndchromeNativeBuildDir =
     layout.buildDirectory.dir("intermediates/cmake-wndchrome").get().asFile
 val wndchromeCppDir = file("src/main/cpp/wndchrome")
 
-val buildWndChromeNative by tasks.registering {
+val buildWndChromeNative = tasks.register("buildWndChromeNative") {
     group = "native"
     description = "Build legado_wndchrome native library (window chrome bridge) for Windows"
     onlyIf { OperatingSystem.current().isWindows }
@@ -637,7 +637,7 @@ val buildWndChromeNative by tasks.registering {
     }
 }
 
-val copyWndChromeNativeToResources by tasks.registering(Copy::class) {
+val copyWndChromeNativeToResources = tasks.register<Copy>("copyWndChromeNativeToResources") {
     dependsOn(buildWndChromeNative)
     onlyIf { OperatingSystem.current().isWindows }
     from(wndchromeNativeDir)
@@ -686,7 +686,7 @@ private fun msiSafeVersion(pkgVer: String): String {
 val dependencyConsumerRulesFile =
     layout.buildDirectory.file("generated/desktop-proguard/dependency-consumer-rules.pro")
 
-val mergeDependencyProguardRules by tasks.registering {
+val mergeDependencyProguardRules = tasks.register("mergeDependencyProguardRules") {
     group = "compose desktop distribution"
     description =
         "提取依赖 jar 自带 consumer 规则与 META-INF/services 实现类, 合成 ProGuard 规则文件"
@@ -1202,7 +1202,7 @@ afterEvaluate {
 // 且 -Xlog:cds 确认“Opened archive ...”; java -version 中位耗时 218ms → 193ms (-Xshare:auto)。
 val cdsRuntimeImageDir = file("build/compose/tmp/main/runtime")
 
-val dumpCdsArchive by tasks.registering {
+val dumpCdsArchive = tasks.register("dumpCdsArchive") {
     group = "compose desktop distribution"
     description = "为 jlink JRE 生成默认 CDS 归档 (启动期类加载加速, 便携版与 MSI 共享)"
     // 依赖 jlink 输出 (插件的公共 task, 不带 buildType 后缀)
@@ -1297,7 +1297,7 @@ tasks.matching { it.name in listOf("packageReleaseDeb", "packageReleaseRpm") }.c
 
 // data/ 目录占位 (空目录无法直接打 zip, 用 README 占位)
 val portableDataPlaceholderDir = file("build/generated/portable-data-placeholder/")
-val generatePortableDataPlaceholder by tasks.registering {
+val generatePortableDataPlaceholder = tasks.register("generatePortableDataPlaceholder") {
     outputs.dir(portableDataPlaceholderDir)
     doLast {
         portableDataPlaceholderDir.mkdirs()
@@ -1310,7 +1310,7 @@ val generatePortableDataPlaceholder by tasks.registering {
 // 便携标记文件: 运行时 DesktopAppPaths 检测到程序目录存在 portable.txt 即启用便携模式
 // (数据存 exe 同级 data/); MSI/DEB/DMG 安装版无此文件, 走系统数据目录
 val portableMarkerDir = file("build/generated/portable-marker/")
-val generatePortableMarker by tasks.registering {
+val generatePortableMarker = tasks.register("generatePortableMarker") {
     outputs.dir(portableMarkerDir)
     doLast {
         portableMarkerDir.mkdirs()
@@ -1320,7 +1320,7 @@ val generatePortableMarker by tasks.registering {
     }
 }
 
-val packagePortableZip by tasks.registering(Zip::class) {
+val packagePortableZip = tasks.register<Zip>("packagePortableZip") {
     description = "Windows 便携版 zip 打包: jpackage app image + data/ 占位 → zip"
     group = "compose desktop distribution"
 

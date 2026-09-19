@@ -86,7 +86,7 @@ val quickjsNativeDir =
     file("${rootProject.projectDir}/modules/quickjs/build/libs/jvm/native/$quickjsPlatformId")
 val headlessNativeResDir = layout.buildDirectory.dir("generated/quickjs-native")
 
-val copyQuickjsNativeToHeadlessResources by tasks.registering(Copy::class) {
+val copyQuickjsNativeToHeadlessResources = tasks.register<Copy>("copyQuickjsNativeToHeadlessResources") {
     // 先触发 native 库构建，再从当前平台独占目录复制；避免捎带其他平台的陈旧库。
     dependsOn(project(":modules:quickjs").tasks.named("buildJvmNativeLib"))
     from(quickjsNativeDir)
@@ -130,7 +130,7 @@ tasks.named("processResources") {
 // (本仓库 Gradle 8.14.5 下脚本平铺在 build/scripts/, 拷进 bin/ 即标准布局)。
 val headlessBundleDir = layout.buildDirectory.dir("headless-bundle")
 
-val bundleLib by tasks.registering(Sync::class) {
+val bundleLib = tasks.register<Sync>("bundleLib") {
     dependsOn(tasks.named("jar"))
     from(tasks.named("jar"))
     from(configurations.named("runtimeClasspath"))
@@ -140,7 +140,7 @@ val bundleLib by tasks.registering(Sync::class) {
     into(headlessBundleDir.map { it.dir("lib") })
 }
 
-val bundleBin by tasks.registering(Copy::class) {
+val bundleBin = tasks.register<Copy>("bundleBin") {
     dependsOn(tasks.named("startScripts"))
     from(layout.buildDirectory.dir("scripts"))
     into(headlessBundleDir.map { it.dir("bin") })

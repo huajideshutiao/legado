@@ -7,8 +7,9 @@ import org.gradle.kotlin.dsl.configure
 
 /**
  * Android Baseline Profile 生成模块约定 (仅 :benchmark 使用):
- * - com.android.test + androidx.baselineprofile + kotlin-android 三插件按依赖顺序 apply;
+ * - com.android.test + androidx.baselineprofile 按依赖顺序 apply;
  *   com.android.test 不得再在模块中显式声明版本 (已由 baselineprofile 插件带入 classpath)。
+ * - Kotlin 编译由 AGP 内置 Kotlin 承担 (与 :app 一致, jvmTarget 跟随 compileOptions)。
  * - self-instrumenting 开关在 gradle.properties 的 android.experimental.self-instrumenting
  *   (项目 android.newDsl=true 已移除 CommonExtension.experimentalProperties DSL)。
  */
@@ -16,9 +17,8 @@ class AndroidBenchmarkConventionPlugin : Plugin<Project> {
     override fun apply(target: Project) = with(target) {
         pluginManager.apply("com.android.test")
         pluginManager.apply("androidx.baselineprofile")
-        pluginManager.apply("org.jetbrains.kotlin.android")
 
-        configureKotlinAndroidJvm21()
+        configureAndroidJvm21Toolchain()
 
         extensions.configure<TestExtension> {
             compileSdk = 37

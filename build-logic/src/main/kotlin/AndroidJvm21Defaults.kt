@@ -3,24 +3,24 @@ package io.legado.buildlogic
 import com.android.build.api.dsl.CompileOptions
 import org.gradle.api.JavaVersion
 import org.gradle.api.Project
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import org.jetbrains.kotlin.gradle.dsl.KotlinAndroidProjectExtension
+import org.gradle.api.plugins.JavaPluginExtension
+import org.gradle.jvm.toolchain.JavaLanguageVersion
+import org.gradle.kotlin.dsl.configure
 
 /**
- * Android 模块公共 JVM 版本约定 (JDK 21) —— androidApplication / androidBenchmark 等约定插件共用,
- * 原先在两插件内逐行重复的 Kotlin 工具链 + Java 编译选项配置统一收敛到此。
- */
-
-/**
- * Kotlin Android 扩展的 JDK 21 约定: jvmToolchain(21) + compilerOptions.jvmTarget = JVM_21。
+ * Android 模块公共 JVM 版本约定 (JDK 21) —— androidApplication / androidBenchmark 等约定插件共用。
  *
- * 在模块 apply kotlin-android 插件之后调用; 扩展未就绪时 (findByType 为 null) 静默跳过,
- * 与原先各插件内联写法的语义一致。
+ * AGP 9 起模块 Kotlin 编译由内置 Kotlin 承担: jvmTarget 自动跟随 compileOptions.targetCompatibility。
+ * Kotlin 工具链不再有 KGP jvmToolchain() 代劳, 需经 java 工具链显式给到 21 —— daemon 常跑系统
+ * JDK 17, javac 在其上无法 target 21 ("无效的源发行版：21")。
  */
-fun Project.configureKotlinAndroidJvm21() {
-    extensions.findByType(KotlinAndroidProjectExtension::class.java)?.apply {
-        jvmToolchain(21)
-        compilerOptions.jvmTarget.set(JvmTarget.JVM_21)
+
+/**
+ * 项目 Java/Kotlin 编译工具链统一为 JDK 21 (foojay resolver 自动解析本机/缓存的 JDK 21)。
+ */
+fun Project.configureAndroidJvm21Toolchain() {
+    extensions.configure<JavaPluginExtension> {
+        toolchain.languageVersion.set(JavaLanguageVersion.of(21))
     }
 }
 

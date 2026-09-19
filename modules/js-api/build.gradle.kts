@@ -10,7 +10,7 @@ val enableOhosTarget = (project.findProperty("enableOhosTarget") ?: "false").toS
 
 kotlin {
     jvm()
-    androidLibrary {
+    android {
         namespace = "com.script.jsdispatch.annotation"
         compileSdk = 36
         minSdk = 24

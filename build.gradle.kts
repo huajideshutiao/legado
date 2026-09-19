@@ -4,7 +4,6 @@ plugins {
     alias(libs.plugins.android.application) apply false
     alias(libs.plugins.android.library) apply false
     alias(libs.plugins.android.kmp.library) apply false
-    alias(libs.plugins.kotlin.android) apply false
     alias(libs.plugins.kotlin.multiplatform) apply false
     alias(libs.plugins.kotlin.parcelize) apply false
     alias(libs.plugins.ksp) apply false
@@ -107,7 +106,7 @@ val ohosSharedOutputDir =
     layout.projectDirectory.dir("shared/build/bin/ohosArm64/${ohosBuildType}Shared")
 val ohosSharedLibrary = ohosSharedOutputDir.file("liblegado_shared.so")
 
-val stageOhosNativeLibraries by tasks.registering(Copy::class) {
+val stageOhosNativeLibraries = tasks.register<Copy>("stageOhosNativeLibraries") {
     group = "ohos"
     description = "Build and stage CPF-KMP-CMP OHOS shared library and generated API header."
     if ("arm64-v8a" in ohosAbis) {
@@ -144,7 +143,7 @@ val stageOhosNativeLibraries by tasks.registering(Copy::class) {
     }
 }
 
-val verifyOhosNativeLibraries by tasks.registering {
+val verifyOhosNativeLibraries = tasks.register("verifyOhosNativeLibraries") {
     group = "verification"
     description = "Verify that the CPF OHOS fusion-renderer artifacts have been staged."
     dependsOn(stageOhosNativeLibraries)
@@ -172,7 +171,7 @@ val verifyOhosNativeLibraries by tasks.registering {
 // 同步目标: iosApp/project.yml 的 info.properties (xcodegen generate 会用它重写 Info.plist)
 // 与 iosApp/Info.plist 两处, 保证双写一致。
 // 已挂进 iosApp Xcode 构建的 preBuildScripts, 每次构建自动执行; 也可手动 ./gradlew syncIosVersion。
-val syncIosVersion by tasks.registering {
+val syncIosVersion = tasks.register("syncIosVersion") {
     group = "ios"
     description =
         "Sync iOS CFBundleShortVersionString/CFBundleVersion with Android versionName/versionCode."

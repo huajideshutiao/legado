@@ -8,11 +8,8 @@ import org.gradle.kotlin.dsl.configure
 class AndroidApplicationConventionPlugin : Plugin<Project> {
     override fun apply(target: Project) = with(target) {
         pluginManager.apply("com.android.application")
-        // AGP 8.13.2 built-in Kotlin has a CheckClasspathTask serialization defect.
-        // Retain kotlin-android only until the AGP version upgrade; AGP 9 will remove this line.
-        pluginManager.apply("org.jetbrains.kotlin.android")
 
-        configureKotlinAndroidJvm21()
+        configureAndroidJvm21Toolchain()
 
         extensions.configure<ApplicationExtension> {
             compileSdk = 37
