@@ -260,7 +260,7 @@ private class AndroidVideoPlayerController(
             val message = if (!sourceType) {
                 "视频播放出错"
             } else {
-                when ((error as ExoPlaybackException).sourceException) {
+                when (error.sourceException) {
                     is UnrecognizedInputFormatException -> "不是视频链接"
                     is androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException -> "视频地址不可用"
                     else -> "视频播放出错"
