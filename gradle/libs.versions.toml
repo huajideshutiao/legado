@@ -8,12 +8,17 @@ ksp = "2.3.11"
 
 # ===== Compose Multiplatform (Android/桌面共用基线) =====
 cmp = "1.11.1"
-# 必须与 cmp 基线匹配: 0.41.0 起对 CMP 1.10 编译, 在 1.9.2 上运行时 NoSuchMethodError
-# 0.43.0 含 inlineCode 字号/TextUnit 崩溃修复与同步 parseMarkdown API
-# (注: 0.43.0 按 CMP 1.10 编译; 升 CMP 1.11 后若运行时 NoSuchMethodError 需同步升级 mikepenz 版本)
-# 0.43.0/0.42.0 的 iosArm64 klib 由 Kotlin 2.4.0 编译 (abi_version=2.4.0), 项目 Kotlin 2.3.20
-# 只能消费 abi<=2.3.0; 暂钉 0.41.0 (Kotlin 2.3.21 编译, abi 2.3.0 兼容), 升 Kotlin 2.4.x 后回 0.43.0。
+# 0.41.0 对 CMP 1.10 编译 (Kotlin 2.3.21, iosArm64 klib abi 2.3.0), 与本项目工具链兼容。
+# 2026-09-19 实测 0.44.0/0.45.0: 其自身 klib 已恢复 Kotlin 2.3 可消费, 但 0.43+ 的
+# markdown-renderer-coil3 强制 coil3 >= 3.5.0 (runtime 依赖), 而 coil 3.5.0/3.6.0 的
+# iosArm64 klib 均为 Kotlin 2.4.10 编译 (abi 2.4.0, KLIB resolver 拒载), coil 3.6.0 还会
+# 拉入 CMP foundation 1.12.0 触发 plugin 版本不匹配警告。
+# 解锁条件: 项目迁移 Kotlin 2.4.x 工具链 (连带 CMP 1.12 / KSP 2.4; 注意 ohos fork 模式
+# 钉在 Kotlin 2.2.21-0.5.0, 需 fork 侧同步跟进)。到时直接上 0.45.0 (含 0.43/0.44 全部修复)。
 multiplatformMarkdown = "0.41.0"
+# coil 3.4.0 = iOS klib 兼容 Kotlin 2.3.20 的最高版本 (3.5.0+ 的 iOS klib 为 Kotlin 2.4 ABI)。
+# 运行时 skiko 已被 Gradle 裁决为 CMP 的 0.144.6 (实测稳定); CMP 插件的 "Skiko 版本不匹配"
+# 警告为声明层面提示, 无法在不破坏 KMP 源集依赖处理器语义的前提下消除, 升 Kotlin 2.4 后自愈。
 # 桌面视频播放引擎: open-ani/mediamp (Compose Multiplatform 播放抽象, 替代自研 libmpv 直通渲染)。
 # 0.3.0 于 2026-08-09 发布 (基于 CMP 1.11 基线), 与 CMP 1.11.1 + Kotlin 2.3.20 匹配。
 mediamp = "0.3.0"
@@ -77,7 +82,7 @@ okhttp = "5.4.0"
 okio = "3.18.1"
 ktor = "3.5.2"
 cronet = "143.7445.0"
-coil3 = "3.3.0"
+coil3 = "3.4.0"
 
 # ===== HTML / XML / SVG 解析 =====
 ksoup = "0.2.6"
@@ -246,7 +251,6 @@ android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
 android-kmp-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
 androidx-baselineprofile = { id = "androidx.baselineprofile", version.ref = "macrobenchmark" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlin-parcelize = { id = "org.jetbrains.kotlin.plugin.parcelize", version.ref = "kotlin" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
