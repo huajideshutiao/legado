@@ -1,10 +1,6 @@
 import com.android.build.api.artifact.SingleArtifact
 import com.android.build.api.variant.BuiltArtifactsLoader
 import com.android.build.api.variant.FilterConfiguration
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-
 plugins {
     id("legado.android.application")
     // Baseline Profile app target/consumer: 为 :app 创建 nonMinifiedRelease/benchmarkRelease
@@ -227,20 +223,22 @@ android {
 // shared 侧删除会被 merge 覆盖, 故挂在此处 doLast: merge 完成后删除合并输出下的 4 个
 // 小语种子目录, 删除先于 package{Variant} 打包 (package 任务消费 merge 输出)。
 // 输出目录用 outputs.files 取, 不硬编码路径。
-val excludedComposeLocales = listOf(
-    "values-es-rES",
-    "values-ja-rJP",
-    "values-pt-rBR",
-    "values-vi",
-)
+// 配置缓存约束: doLast 内不得引用脚本级对象或 Task.project —— 待删列表就地声明,
+// 删除用 File.deleteRecursively 而非 project.delete。
 tasks.matching {
     it.name == "mergeAppDebugAssets" || it.name == "mergeAppReleaseAssets"
 }.configureEach {
     doLast {
+        val excludedLocales = listOf(
+            "values-es-rES",
+            "values-ja-rJP",
+            "values-pt-rBR",
+            "values-vi",
+        )
         outputs.files.forEach { output ->
             val resourcesRoot = output.resolve("composeResources/legado.shared.generated.resources")
-            excludedComposeLocales.forEach { locale ->
-                project.delete(resourcesRoot.resolve(locale))
+            excludedLocales.forEach { locale ->
+                resourcesRoot.resolve(locale).deleteRecursively()
             }
         }
     }
@@ -321,6 +319,7 @@ dependencies {
     implementation(libs.cronet.api)
     implementation(libs.cronet.embedded)
 
+    // coil 声明的旧版 skiko 一律排除 (Android 端本就不用 skiko, 统一吃 CMP 解析结果)
     implementation(libs.coil3.compose)
     implementation(libs.coil3.gif)
     implementation(libs.coil3.network.okhttp)

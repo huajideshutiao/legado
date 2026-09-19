@@ -74,9 +74,12 @@ val installType = (project.findProperty("legado.installType") as String?)
 val installTypeDir = file("build/generated/installType/kotlin/io/legado/desktop/")
 val generateInstallType by tasks.registering {
     outputs.dir(installTypeDir)
+    // 配置缓存约束: doLast 不得引用脚本级对象或 Project, 同 generateMediaRuntimeConfig
+    val type = installType
     doLast {
-        installTypeDir.mkdirs()
-        file("${installTypeDir.path}/InstallType.kt").writeText(
+        val outputDir = outputs.files.singleFile
+        outputDir.mkdirs()
+        outputDir.resolve("InstallType.kt").writeText(
             """package io.legado.desktop
 
 /**
@@ -89,7 +92,7 @@ val generateInstallType by tasks.registering {
  * - DEV: 数据存项目工作目录 (开发期)
  */
 object InstallType {
-    const val TYPE: String = "$installType"
+    const val TYPE: String = "$type"
     val IS_PORTABLE: Boolean = TYPE == "portable"
     val IS_INSTALLED: Boolean = TYPE == "installed"
     val IS_DEV: Boolean = TYPE == "dev"
@@ -140,11 +143,16 @@ val mediaRuntimeSha1 = mediaRuntimeSha1ByRelease[mediaRuntimeVersion]
 val mediaRuntimeDir = file("build/generated/mediaRuntime/kotlin/io/legado/desktop/media/")
 val generateMediaRuntimeConfig by tasks.registering {
     outputs.dir(mediaRuntimeDir)
+    // 配置缓存约束: doLast 不得引用脚本级对象或 Project —— 版本/校验值在配置期捕获为
+    // 可串行化局部量, 输出目录经任务自身 outputs.files 取, 文件用 File.resolve 而非 file()
+    val version = mediaRuntimeVersion
+    val sha1ByPlatform = mediaRuntimeSha1
     doLast {
-        mediaRuntimeDir.mkdirs()
-        val entries = mediaRuntimeSha1.entries.sortedBy { it.key }
+        val outputDir = outputs.files.singleFile
+        outputDir.mkdirs()
+        val entries = sha1ByPlatform.entries.sortedBy { it.key }
             .joinToString(",\n        ") { "\"${it.key}\" to \"${it.value}\"" }
-        file("${mediaRuntimeDir.path}/MediaRuntimeConfig.kt").writeText(
+        outputDir.resolve("MediaRuntimeConfig.kt").writeText(
             """package io.legado.desktop.media
 
 /**
@@ -153,7 +161,7 @@ val generateMediaRuntimeConfig by tasks.registering {
  * version 来自 libs.versions.toml `mediamp`; sha1ByPlatform 来自 Maven Central 官方 .sha1。
  */
 object MediaRuntimeConfig {
-    const val VERSION: String = "$mediaRuntimeVersion"
+    const val VERSION: String = "$version"
 
     val sha1ByPlatform: Map<String, String> = mapOf(
         $entries
