@@ -430,9 +430,7 @@ object AppWebDavShared {
             uploadBookProgress(fresh, toast = manual, onSuccess = onUploadSuccess)
             if (fresh.syncTime != syncTimeBefore) {
                 book.syncTime = fresh.syncTime
-                runCatching {
-                    AppDbProviders.get().bookDao.update(fresh)
-                }
+                AppDbProviders.get().bookDao.upSyncTime(fresh.bookUrl, fresh.syncTime)
             }
         } else if (progress.durChapterIndex > book.durChapterIndex ||
             progress.durChapterPos > book.durChapterPos
