@@ -70,13 +70,6 @@ interface BookGroupDao {
     @Delete
     suspend fun delete(vararg bookGroup: BookGroup)
 
-    fun isInRules(id: Long): Boolean {
-        if (id < 0) {
-            return true
-        }
-        return id and (id - 1) == 0L
-    }
-
     suspend fun getUnusedId(): Long {
         var id = 1L
         val idsSum = idsSum()

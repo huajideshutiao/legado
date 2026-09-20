@@ -68,14 +68,6 @@ interface BookmarkDao {
     )
     suspend fun getByBook(bookName: String, bookAuthor: String): List<Bookmark>
 
-    @Query(
-        """SELECT * FROM bookmarks 
-        where bookName = :bookName and bookAuthor = :bookAuthor 
-        and (chapterName like '%'||:key||'%' or content like '%'||:key||'%')
-        order by chapterIndex"""
-    )
-    suspend fun search(bookName: String, bookAuthor: String, key: String): List<Bookmark>
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(vararg bookmark: Bookmark)
 

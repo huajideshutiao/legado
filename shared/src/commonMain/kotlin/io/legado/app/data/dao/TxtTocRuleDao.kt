@@ -21,9 +21,6 @@ interface TxtTocRuleDao {
     @Query("select * from txtTocRules where enable = 1 order by serialNumber")
     suspend fun enabled(): List<TxtTocRule>
 
-    @Query("select * from txtTocRules where enable != 1 order by serialNumber")
-    suspend fun disabled(): List<TxtTocRule>
-
     @Query("select count(*) from txtTocRules")
     suspend fun count(): Int
 

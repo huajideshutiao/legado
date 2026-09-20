@@ -44,14 +44,8 @@ interface ReplaceRuleDao {
     @Query("select distinct `group` from replace_rules where trim(`group`) <> ''")
     suspend fun allGroupsUnProcessed(): List<String>
 
-    @Query("SELECT * FROM replace_rules WHERE isEnabled = 1 ORDER BY sortOrder ASC")
-    suspend fun allEnabled(): List<ReplaceRule>
-
     @Query("SELECT * FROM replace_rules WHERE id = :id")
     suspend fun findById(id: Long): ReplaceRule?
-
-    @Query("SELECT * FROM replace_rules WHERE id in (:ids)")
-    suspend fun findByIds(vararg ids: Long): List<ReplaceRule>
 
     @Query(
         """SELECT * FROM replace_rules WHERE isEnabled = 1 and scopeContent = 1
@@ -74,12 +68,6 @@ interface ReplaceRuleDao {
 
     @Query("select * from replace_rules where `group` is null or `group` = ''")
     suspend fun noGroup(): List<ReplaceRule>
-
-    @Query("SELECT COUNT(*) - SUM(isEnabled) FROM replace_rules")
-    suspend fun summary(): Int
-
-    @Query("UPDATE replace_rules SET isEnabled = :enable")
-    suspend fun enableAll(enable: Boolean)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(vararg replaceRule: ReplaceRule): List<Long>

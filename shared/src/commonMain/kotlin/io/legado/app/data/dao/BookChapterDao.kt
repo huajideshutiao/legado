@@ -11,9 +11,6 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface BookChapterDao {
 
-    @Query("SELECT * FROM chapters where bookUrl = :bookUrl and title like '%'||:key||'%' order by `index`")
-    suspend fun search(bookUrl: String, key: String): List<BookChapter>
-
     @Query("SELECT * FROM chapters where bookUrl = :bookUrl and `index` >= :start and `index` <= :end and title like '%'||:key||'%' order by `index`")
     suspend fun search(bookUrl: String, key: String, start: Int, end: Int): List<BookChapter>
 
@@ -28,9 +25,6 @@ interface BookChapterDao {
 
     @Query("select * from chapters where bookUrl = :bookUrl and `index` = :index")
     fun flowChapter(bookUrl: String, index: Int): Flow<BookChapter?>
-
-    @Query("select * from chapters where bookUrl = :bookUrl and `title` = :title")
-    suspend fun getChapter(bookUrl: String, title: String): BookChapter?
 
     @Query("select count(url) from chapters where bookUrl = :bookUrl")
     suspend fun getChapterCount(bookUrl: String): Int

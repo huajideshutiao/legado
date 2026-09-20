@@ -24,17 +24,11 @@ interface HttpTTSDao {
     @Query("select * from httpTTS where id = :id")
     suspend fun get(id: Long): HttpTTS?
 
-    @Query("select name from httpTTS where id = :id")
-    suspend fun getName(id: Long): String?
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(vararg httpTTS: HttpTTS)
 
     @Delete
     suspend fun delete(vararg httpTTS: HttpTTS)
-
-    @Update
-    suspend fun update(vararg httpTTS: HttpTTS)
 
     @Query("delete from httpTTS where id < 0")
     suspend fun deleteDefault()

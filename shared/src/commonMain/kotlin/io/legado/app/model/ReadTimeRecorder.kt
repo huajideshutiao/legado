@@ -171,7 +171,7 @@ object ReadTimeRecorder {
         val endSec = systemCurrentTimeMillis() / 1000
         if (endSec - startSec < 5) return
         Coroutine.async {
-            AppDbProviders.get().readRecordDao.insertSession(
+            AppDbProviders.get().readRecordDao.insert(
                 ReadRecord(
                     bookName,
                     ReadRecord.dayKey(startSec),

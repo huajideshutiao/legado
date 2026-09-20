@@ -16,9 +16,6 @@ interface SearchKeywordDao {
     @Query("SELECT * FROM search_keywords")
     suspend fun all(): List<SearchKeyword>
 
-    @Query("SELECT * FROM search_keywords ORDER BY usage DESC")
-    fun flowByUsage(): Flow<List<SearchKeyword>>
-
     @Query("SELECT * FROM search_keywords ORDER BY lastUseTime DESC")
     fun flowByTime(): Flow<List<SearchKeyword>>
 

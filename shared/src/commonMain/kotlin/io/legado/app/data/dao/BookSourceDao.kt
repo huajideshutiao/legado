@@ -22,16 +22,6 @@ interface BookSourceDao {
     fun flowAll(): Flow<List<BookSourcePart>>
 
     @Query(
-        """select * from book_sources 
-        where bookSourceName like '%' || :searchKey || '%'
-        or bookSourceGroup like '%' || :searchKey || '%'
-        or bookSourceUrl like '%' || :searchKey || '%'
-        or bookSourceComment like '%' || :searchKey || '%' 
-        order by customOrder asc"""
-    )
-    suspend fun search(searchKey: String): List<BookSource>
-
-    @Query(
         """select bp.*
     from book_sources b join book_sources_part bp on b.bookSourceUrl = bp.bookSourceUrl
     where (:enabled IS NULL OR b.enabled = :enabled)
@@ -158,9 +148,6 @@ fun flowSearch(searchKey: String, enabled: Boolean? = null): Flow<List<BookSourc
     @Query("select * from book_sources where enabled = 1 order by customOrder asc")
     suspend fun allEnabled(): List<BookSource>
 
-    @Query("select * from book_sources_part where enabled = 1 order by customOrder asc")
-    suspend fun allEnabledPart(): List<BookSourcePart>
-
     @Query(
         """select bp.*
         from book_sources b join book_sources_part bp on b.bookSourceUrl = bp.bookSourceUrl 
@@ -200,9 +187,6 @@ fun flowSearch(searchKey: String, enabled: Boolean? = null): Flow<List<BookSourc
 
     @Query("select count(*) from book_sources")
     suspend fun allCount(): Int
-
-    @Query("SELECT EXISTS(select 1 from book_sources where bookSourceUrl = :key)")
-    suspend fun has(key: String): Boolean
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(vararg bookSource: BookSource)
@@ -254,9 +238,6 @@ fun flowSearch(searchKey: String, enabled: Boolean? = null): Flow<List<BookSourc
             enableIn(chunk, enable)
         }
     }
-
-    @Query("update book_sources set enabledExplore = :enable where bookSourceUrl = :bookSourceUrl")
-    suspend fun enableExplore(bookSourceUrl: String, enable: Boolean)
 
     @Query("update book_sources set enabledExplore = :enable where bookSourceUrl in (:urls)")
     suspend fun enableExploreIn(urls: List<String>, enable: Boolean)

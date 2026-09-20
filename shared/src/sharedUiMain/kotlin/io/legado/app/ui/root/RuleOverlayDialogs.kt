@@ -135,7 +135,7 @@ internal fun SourceFilterEditDialogContent(overlay: AppOverlay.Dialog, navigator
     // 对照 app 端 SourceFilterEditDialog.onCreate: 传主键到达端重查最新 DB 行
     LaunchedEffect(overlay.payload) {
         val id = overlay.payload ?: return@LaunchedEffect
-        rule = withContext(IoDispatcher) { AppDbProviders.get().sourceFilterRuleDao.get(id) }
+        rule = withContext(IoDispatcher) { AppDbProviders.get().sourceFilterRuleDao.findById(id) }
         loaded = true
     }
     if (!loaded) return

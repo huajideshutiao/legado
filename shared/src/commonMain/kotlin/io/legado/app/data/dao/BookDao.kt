@@ -18,9 +18,6 @@ import kotlinx.coroutines.flow.map
 interface BookDao {
 
     fun flowByGroup(groupId: Long): Flow<List<Book>> {
-        // 原调用 app 端 BaseBook.isNotShelf 扩展 (app/.../help/book/BookExtensions.kt),
-        // DAO 下沉到 shared 后无法引用 app 端扩展; 按 BaseBook.isType(notShelf) = type and notShelf > 0
-        // 内联等价改写 (BookType.notShelf 已下沉 commonMain), 行为零变化。
         return when (groupId) {
             BookGroup.IdRoot -> flowRoot()
             BookGroup.IdAll -> flowAll()
@@ -63,9 +60,6 @@ interface BookDao {
     @Query("SELECT * FROM books WHERE type & ${BookType.updateError} > 0")
     fun flowUpdateError(): Flow<List<Book>>
 
-    @Query("SELECT * FROM books WHERE (`group` & :group) > 0")
-    suspend fun getBooksByGroup(group: Long): List<Book>
-
     @Query("SELECT * FROM books WHERE `name` in (:names)")
     suspend fun findByName(vararg names: String): List<Book>
 
@@ -102,17 +96,8 @@ interface BookDao {
     )
     fun searchShelfBooks(key: String): Flow<List<Book>>
 
-    @Query("SELECT * FROM books where type & ${BookType.local} = 0")
-    suspend fun webBooks(): List<Book>
-
-    @Query("SELECT * FROM books where type & ${BookType.local} = 0 and canUpdate = 1")
-    suspend fun hasUpdateBooks(): List<Book>
-
     @Query("SELECT * FROM books")
     suspend fun all(): List<Book>
-
-    @Query("SELECT * FROM books where type & :type > 0 and type & ${BookType.local} = 0")
-    suspend fun getByTypeOnLine(type: Int): List<Book>
 
     @Query("SELECT * FROM books where type & ${BookType.text} > 0 ORDER BY durChapterTime DESC limit 1")
     suspend fun lastReadBook(): Book?
@@ -125,9 +110,6 @@ interface BookDao {
 
     @Query("select min(`order`) from books")
     suspend fun minOrder(): Int
-
-    @Query("select max(`order`) from books")
-    suspend fun maxOrder(): Int
 
     @Query("select exists(select 1 from books where bookUrl = :bookUrl)")
     suspend fun has(bookUrl: String): Boolean
@@ -155,9 +137,6 @@ interface BookDao {
         delete(oldBook)
         insert(newBook)
     }
-
-    @Query("update books set durChapterPos = :pos where bookUrl = :bookUrl")
-    suspend fun upProgress(bookUrl: String, pos: Int)
 
     /**
      * 仅 PATCH 当前章节定位 (目录选章节跳阅读). 整行 update 会冲掉并发写入的其他列,
@@ -188,7 +167,7 @@ interface BookDao {
     )
 
     /**
-     * WebDAV 上传进度成功后只落 syncTime（原版整行 update 的唯一目的）
+     * WebDAV 上传进度成功后只落 syncTime
      */
     @Query("update books set syncTime = :syncTime where bookUrl = :bookUrl")
     suspend fun upSyncTime(bookUrl: String, syncTime: Long)
@@ -237,9 +216,6 @@ interface BookDao {
      */
     @Query("update books set `order` = :order where bookUrl = :bookUrl")
     suspend fun upOrder(bookUrl: String, order: Int)
-
-    @Query("update books set `group` = :newGroupId where `group` = :oldGroupId")
-    suspend fun upGroup(oldGroupId: Long, newGroupId: Long)
 
     @Query("update books set `group` = `group` - :group where `group` & :group > 0")
     suspend fun removeGroup(group: Long)

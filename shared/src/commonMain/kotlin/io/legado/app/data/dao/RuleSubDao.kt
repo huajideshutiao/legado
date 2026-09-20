@@ -18,12 +18,6 @@ interface RuleSubDao {
     @Query("select * from ruleSubs order by customOrder")
     fun flowAll(): Flow<List<RuleSub>>
 
-    @Query("select customOrder from ruleSubs order by customOrder limit 0,1")
-    suspend fun maxOrder(): Int
-
-    @Query("select * from ruleSubs where url = :url")
-    suspend fun findByUrl(url: String): RuleSub?
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(vararg ruleSub: RuleSub)
 

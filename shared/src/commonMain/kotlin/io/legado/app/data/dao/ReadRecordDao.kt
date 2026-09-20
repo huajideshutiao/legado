@@ -15,9 +15,6 @@ interface ReadRecordDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(vararg record: ReadRecord)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertSession(record: ReadRecord)
-
     @Query("delete from readRecord")
     suspend fun clear()
 

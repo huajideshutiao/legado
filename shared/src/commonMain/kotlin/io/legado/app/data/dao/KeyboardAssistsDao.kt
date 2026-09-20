@@ -15,9 +15,6 @@ interface KeyboardAssistsDao {
     @Query("select * from keyboardAssists order by serialNo")
     suspend fun all(): List<KeyboardAssist>
 
-    @Query("select * from keyboardAssists where type = :type order by serialNo")
-    suspend fun getByType(type: Int): List<KeyboardAssist>
-
     @get:Query("select * from keyboardAssists order by serialNo")
     val flowAll: Flow<List<KeyboardAssist>>
 

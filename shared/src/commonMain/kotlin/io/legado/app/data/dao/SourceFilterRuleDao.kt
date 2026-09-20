@@ -31,9 +31,6 @@ interface SourceFilterRuleDao {
     suspend fun maxOrder(): Int
 
     @Query("SELECT * FROM source_filter_rules WHERE id = :id")
-    suspend fun get(id: String): SourceFilterRule?
-
-    @Query("SELECT * FROM source_filter_rules WHERE id = :id")
     suspend fun findById(id: String): SourceFilterRule?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
