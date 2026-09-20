@@ -5,6 +5,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.constant.ThreadSafeDateFormat
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.dao.sortedByLocalizedOrder
+import io.legado.app.data.entities.ReadRecord
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.DirectLinkUploadStoreProviders
 import io.legado.app.help.HomeTabHelpShared
@@ -201,7 +202,7 @@ object BackupShared {
             writeListToJson(appDb.bookGroupDao.all(), "bookGroup.json")
             writeListToJson(appDb.bookSourceDao.all(), "bookSource.json")
             writeListToJson(appDb.replaceRuleDao.all(), "replaceRule.json")
-            writeListToJson(appDb.readRecordDao.all(), "readRecord.json")
+            writeReadRecords(appDb.readRecordDao.all(), "readRecord.json")
             writeListToJson(appDb.searchKeywordDao.all(), "searchHistory.json")
             writeListToJson(appDb.ruleSubDao.all(), "sourceSub.json")
             writeListToJson(appDb.txtTocRuleDao.all(), "txtTocRule.json")
@@ -406,6 +407,24 @@ object BackupShared {
         BackupFileOps.writeText(
             backupPath + BackupFileOps.separator + fileName,
             GSON.toJson(list)
+        )
+    }
+
+    /** 写入阅读记录为 1A+1C 紧凑 Map 结构 (区间融合 + 按书名归组)。空列表跳过。 */
+    private suspend fun writeReadRecords(records: List<ReadRecord>, fileName: String) {
+        currentCoroutineContext().ensureActive()
+        if (records.isEmpty()) {
+            AppLog.putDebug("阅读备份 $fileName 列表为空", tag = TAG)
+            return
+        }
+        val merged = ReadRecord.mergeIntervals(records)
+        val recordMap = merged.groupBy { it.bookName }.mapValues { (_, list) ->
+            list.map { listOf(it.startSec, it.endSec) }
+        }
+        AppLog.putDebug("阅读备份 $fileName 原始 ${records.size} 条, 合并后 ${merged.size} 条", tag = TAG)
+        BackupFileOps.writeText(
+            backupPath + BackupFileOps.separator + fileName,
+            GSON.toJson(recordMap)
         )
     }
 

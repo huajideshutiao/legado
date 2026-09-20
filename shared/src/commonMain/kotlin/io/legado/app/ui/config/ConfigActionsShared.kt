@@ -2,7 +2,10 @@ package io.legado.app.ui.config
 
 import androidx.room3.executeSQL
 import androidx.room3.useWriterConnection
+import io.legado.app.data.AppDatabase
 import io.legado.app.data.AppDatabaseProviders
+import io.legado.app.data.AppDbProviders
+import io.legado.app.data.entities.ReadRecord
 import io.legado.app.help.FileUtilsCommon
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.coroutine.IoDispatcher
@@ -49,7 +52,8 @@ object ConfigActionsShared {
      *
      * 1. 删除不在书架的书籍章节: `bookChapterDao.deleteNotShelfBookChapters()`
      * 2. 删除不在书架的书籍: `bookDao.deleteNotShelfBook()`
-     * 3. VACUUM 回收空间: `useWriterConnection { it.executeSQL("VACUUM") }`
+     * 3. 融合压缩阅读记录重叠会话: `compactReadRecords(appDb)`
+     * 4. VACUUM 回收空间: `useWriterConnection { it.executeSQL("VACUUM") }`
      *
      * 成功后调用方应 toast `success`。
      */
@@ -60,10 +64,28 @@ object ConfigActionsShared {
             val appDb = AppDatabaseProviders.get().appDb
             appDb.bookChapterDao.deleteNotShelfBookChapters()
             appDb.bookDao.deleteNotShelfBook()
+            compactReadRecords(appDb)
             // 配置 SQLiteDriver 后 openHelper 不可用, 走 driver 连接执行
             // useWriterConnection 的 block 接收 Transactor (继承 PooledConnection)
             // PooledConnection.executeSQL 是 androidx.room3 的 suspend 扩展
             appDb.useWriterConnection { it.executeSQL("VACUUM") }
+        }
+    }
+
+    /**
+     * 压缩/合并 readRecord 表中的连续与重叠阅读会话 (1C 区间融合)。
+     *
+     * 消除频繁微切片积累的冗余行, 配合 VACUUM 释放页空间。
+     */
+    private suspend fun compactReadRecords(appDb: AppDatabase) {
+        val records = appDb.readRecordDao.all()
+        if (records.size <= 1) return
+        val merged = ReadRecord.mergeIntervals(records)
+        if (merged.size < records.size) {
+            AppDbProviders.get().runInTransactionSuspending {
+                appDb.readRecordDao.clear()
+                appDb.readRecordDao.insert(*merged.toTypedArray())
+            }
         }
     }
 }

@@ -33,5 +33,26 @@ data class ReadRecord(
             val (y, m, d) = yearMonthDayFromMillis(timeSec * 1000L)
             return y * 10000 + m * 100 + d
         }
+
+        /**
+         * 合并同一本书、同一天内重叠或连续的阅读区间。
+         *
+         * 纯函数，按 (bookName, day, startSec) 升序排列。
+         */
+        fun mergeIntervals(records: List<ReadRecord>): List<ReadRecord> {
+            if (records.size <= 1) return records
+            val sorted = records.sortedWith(compareBy({ it.bookName }, { it.day }, { it.startSec }))
+            val result = ArrayList<ReadRecord>(sorted.size)
+            for (r in sorted) {
+                if (r.bookName.isEmpty() || r.endSec <= r.startSec) continue
+                val last = result.lastOrNull()
+                if (last != null && last.bookName == r.bookName && last.day == r.day && r.startSec <= last.endSec) {
+                    last.endSec = maxOf(last.endSec, r.endSec)
+                } else {
+                    result.add(r.copy())
+                }
+            }
+            return result
+        }
     }
 }

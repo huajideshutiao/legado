@@ -44,6 +44,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.decodeFromString
 
 /**
  * 恢复流程 (KMP 共享版, 全平台唯一实现)。
@@ -386,33 +387,68 @@ object RestoreShared {
     }
 
     /**
-     * 恢复阅读记录 (新格式 + 旧格式迁移, 与 app 端 [io.legado.app.help.storage.Restore.restoreReadRecord] 同语义)。
+     * 恢复阅读记录。
      *
-     * - 新格式 (startSec > 0 && endSec > startSec): 收集后批量 insert
-     * - 旧格式 (readTime > 0): 用 [restoreOldRecord] 迁移算法还原为时间段后收集批量 insert
+     * 兼容两类备份结构：
+     * 1. 1A 紧凑映射 (Map<String, List<List<Long>>>): `{ "书名": [ [startSec, endSec], ... ] }`
+     * 2. 传统对象数组: `[ {"bookName": "...", "startSec": ..., "endSec": ...}, ... ]`
+     *    与远古累计时长 `[ {"bookName": "...", "readTime": ..., "lastRead": ...}, ... ]` (走 [restoreOldRecord] 迁移)
      *
-     * @see io.legado.app.help.storage.RestoreShared.ReadRecordBackup
+     * 导入前统一经 [ReadRecord.mergeIntervals] 融合重叠与接续切片后批量写入。
      */
     private suspend fun restoreReadRecord(path: String) {
-        val backups = fileToListT<ReadRecordBackup>(path, "readRecord.json") ?: return
-        if (backups.isEmpty()) return
+        val file = path + BackupFileOps.separator + "readRecord.json"
+        if (!BackupFileOps.exists(file)) return
+        val json = runCatching { BackupFileOps.readText(file) }.getOrNull()?.trim() ?: return
+        if (json.isEmpty()) return
+
         val dao = AppDbProviders.get().readRecordDao
         val nowSec = systemCurrentTimeMillis() / 1000
-        val recordsToInsert = arrayListOf<ReadRecord>()
-        backups.forEach { b ->
-            if (b.bookName.isEmpty()) return@forEach
-            if (b.startSec > 0 && b.endSec > b.startSec) {
-                // 新格式：直接插入
-                recordsToInsert.add(ReadRecord(b.bookName, b.day, b.startSec, b.endSec))
-            } else if (b.readTime > 0) {
-                // 旧格式：用迁移算法还原为时间段 (与 app 端 Restore.restoreOldRecord 同算法)
-                val endSec0 = if (b.lastRead > 0) b.lastRead / 1000 else nowSec
-                val day0 = if (b.day != 0) b.day else ReadRecord.dayKey(endSec0)
-                restoreOldRecord(recordsToInsert, b.bookName, day0, b.readTime / 1000, endSec0)
+        val rawRecords = arrayListOf<ReadRecord>()
+
+        if (json.startsWith("{")) {
+            // 1A 紧凑映射结构: { "书名": [ [startSec, endSec], ... ] }
+            runCatching {
+                val map = GSON.decodeFromString<Map<String, List<List<Long>>>>(json)
+                map.forEach { (bookName, intervals) ->
+                    if (bookName.isNotEmpty()) {
+                        intervals.forEach { interval ->
+                            if (interval.size >= 2) {
+                                val s = interval[0]
+                                val e = interval[1]
+                                if (e > s) {
+                                    rawRecords.add(ReadRecord(bookName, ReadRecord.dayKey(s), s, e))
+                                }
+                            }
+                        }
+                    }
+                }
+            }.onFailure {
+                AppLog.put("readRecord.json 紧凑格式解析出错\n${it.message}", it, toast = true, tag = TAG)
+            }
+        } else {
+            // 兼容传统 JSON 数组格式
+            val backups = runCatching {
+                GSON.fromJsonArray<ReadRecordBackup>(json).getOrThrow()
+            }.onFailure {
+                AppLog.put("readRecord.json 读取解析出错\n${it.message}", it, toast = true, tag = TAG)
+            }.getOrNull()
+
+            backups?.forEach { b ->
+                if (b.bookName.isEmpty()) return@forEach
+                if (b.startSec > 0 && b.endSec > b.startSec) {
+                    rawRecords.add(ReadRecord(b.bookName, b.day, b.startSec, b.endSec))
+                } else if (b.readTime > 0) {
+                    val endSec0 = if (b.lastRead > 0) b.lastRead / 1000 else nowSec
+                    val day0 = if (b.day != 0) b.day else ReadRecord.dayKey(endSec0)
+                    restoreOldRecord(rawRecords, b.bookName, day0, b.readTime / 1000, endSec0)
+                }
             }
         }
-        if (recordsToInsert.isNotEmpty()) {
-            dao.insert(*recordsToInsert.toTypedArray())
+
+        if (rawRecords.isNotEmpty()) {
+            val merged = ReadRecord.mergeIntervals(rawRecords)
+            dao.insert(*merged.toTypedArray())
         }
     }
 
