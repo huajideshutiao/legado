@@ -2,8 +2,8 @@ package io.legado.app.ui.about
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
@@ -35,6 +35,11 @@ import io.legado.app.utils.ColorUtils
  *
  * 布局/颜色/交互与 app 端 `MonthHeatMapView` 完全对齐, 仅将 Canvas/View 桥接改为
  * Compose `Canvas` + `drawText`, 让 shared 路由无需平台 AndroidView 注入即可渲染。
+ *
+ * 分三段独立测量 (表头固定高 / 网格按 7 列宽高比 / 底部固定高): 网格高度由
+ * `aspectRatio` 从宽度推出, 组件因此支持 intrinsic 测量 —— `BoxWithConstraints`
+ * 内部是 SubcomposeLayout, 不实现 intrinsic, 会让外层 `height(IntrinsicSize.Min)`
+ * 直接抛 IllegalStateException (宽屏双列并排等高即触发)。
  */
 @Composable
 fun SharedMonthHeatMap(
@@ -56,9 +61,14 @@ fun SharedMonthHeatMap(
 
     val cellGapPx = with(density) { 3.dp.toPx() }
     val cellRadiusPx = with(density) { 4.dp.toPx() }
-    val headerHeightPx = with(density) { 22.dp.toPx() }
-    val selectedInfoHeightPx = with(density) { 28.dp.toPx() }
-    val legendHeightPx = with(density) { 24.dp.toPx() }
+    // 三段固定高 (dp 单一来源: Canvas 高度与绘制坐标同源)
+    val headerHeight = 22.dp
+    val selectedInfoHeight = 28.dp
+    val legendHeight = 24.dp
+    val footerHeight = selectedInfoHeight + legendHeight
+    val headerHeightPx = with(density) { headerHeight.toPx() }
+    val selectedInfoHeightPx = with(density) { selectedInfoHeight.toPx() }
+    val legendHeightPx = with(density) { legendHeight.toPx() }
     val legendCellSizePx = with(density) { 12.dp.toPx() }
     val legendCellGapPx = with(density) { 3.dp.toPx() }
     val legendLabelGapPx = with(density) { 6.dp.toPx() }
@@ -72,12 +82,7 @@ fun SharedMonthHeatMap(
         (firstColumnIndex + daysInMonth + 6) / 7
     }
 
-    BoxWithConstraints(modifier) {
-        val availWidthPx = with(density) { maxWidth.toPx() }
-        val cellSize = availWidthPx / 7f
-        val totalHeightPx = headerHeightPx + cellSize * rowCount +
-            selectedInfoHeightPx + legendHeightPx
-
+    Column(modifier) {
         val textColor = colors.primaryText
         val secondaryColor = colors.secondaryText
         val accent = colors.accent
@@ -88,17 +93,27 @@ fun SharedMonthHeatMap(
         val selectedInfoStyle = TextStyle(fontSize = 12.sp, color = textColor)
         val legendStyle = TextStyle(fontSize = 10.sp, color = secondaryColor)
 
+        Canvas(Modifier.fillMaxWidth().height(headerHeight)) {
+            drawHeatmapHeader(
+                weekdayLabels = weekdayLabels,
+                headerHeightPx = headerHeightPx,
+                textMeasurer = textMeasurer,
+                headerStyle = headerStyle,
+            )
+        }
+
+        // 网格: 高度由 7 列宽高比推出 (cellSize = 宽/7, 高 = cellSize * rowCount)
         Canvas(
             Modifier
                 .fillMaxWidth()
-                .height(with(density) { totalHeightPx.toDp() })
+                .aspectRatio(7f / rowCount)
                 .pointerInput(year, month) {
                     detectTapGestures(
                         onTap = { offset ->
-                            val cellSize = availWidthPx / 7f
+                            val cellSize = size.width / 7f
                             if (cellSize <= 0f) return@detectTapGestures
                             val x = offset.x
-                            val y = offset.y - headerHeightPx
+                            val y = offset.y
                             if (x < 0 || y < 0) return@detectTapGestures
                             val col = (x / cellSize).toInt()
                             val row = (y / cellSize).toInt()
@@ -110,10 +125,10 @@ fun SharedMonthHeatMap(
                             }
                         },
                         onLongPress = { offset ->
-                            val cellSize = availWidthPx / 7f
+                            val cellSize = size.width / 7f
                             if (cellSize <= 0f) return@detectTapGestures
                             val x = offset.x
-                            val y = offset.y - headerHeightPx
+                            val y = offset.y
                             if (x < 0 || y < 0) return@detectTapGestures
                             val col = (x / cellSize).toInt()
                             val row = (y / cellSize).toInt()
@@ -126,17 +141,9 @@ fun SharedMonthHeatMap(
                     )
                 },
         ) {
-            drawHeatmap(
-                cellSize = cellSize,
+            drawHeatmapGrid(
                 cellGapPx = cellGapPx,
                 cellRadiusPx = cellRadiusPx,
-                headerHeightPx = headerHeightPx,
-                selectedInfoHeightPx = selectedInfoHeightPx,
-                legendHeightPx = legendHeightPx,
-                legendCellSizePx = legendCellSizePx,
-                legendCellGapPx = legendCellGapPx,
-                legendLabelGapPx = legendLabelGapPx,
-                weekdayLabels = weekdayLabels,
                 year = year,
                 month = month,
                 data = data,
@@ -147,12 +154,27 @@ fun SharedMonthHeatMap(
                 maxReadSecs = maxReadSecs,
                 firstColumnIndex = firstColumnIndex,
                 daysInMonth = daysInMonth,
-                rowCount = rowCount,
                 accent = accent,
                 isDark = isDark,
                 textMeasurer = textMeasurer,
-                headerStyle = headerStyle,
                 dayStyle = dayStyle,
+            )
+        }
+
+        Canvas(Modifier.fillMaxWidth().height(footerHeight)) {
+            drawHeatmapFooter(
+                selectedInfoHeightPx = selectedInfoHeightPx,
+                legendHeightPx = legendHeightPx,
+                legendCellSizePx = legendCellSizePx,
+                legendCellGapPx = legendCellGapPx,
+                legendLabelGapPx = legendLabelGapPx,
+                cellRadiusPx = cellRadiusPx,
+                month = month,
+                data = data,
+                selectedDay = selectedDay,
+                accent = accent,
+                isDark = isDark,
+                textMeasurer = textMeasurer,
                 selectedInfoStyle = selectedInfoStyle,
                 legendStyle = legendStyle,
             )
@@ -161,18 +183,33 @@ fun SharedMonthHeatMap(
 }
 
 // ---- 绘制 (Canvas DrawScope 扩展) ----
+// 三段各自独立测量: 表头/网格/底部。网格 Canvas 的 size.width 即卡片可用宽,
+// cellSize = size.width / 7 (与原 BoxWithConstraints 的 maxWidth 同值)。
 
-private fun DrawScope.drawHeatmap(
-    cellSize: Float,
+/** 星期表头 (固定 22dp 高) */
+private fun DrawScope.drawHeatmapHeader(
+    weekdayLabels: Array<String>,
+    headerHeightPx: Float,
+    textMeasurer: TextMeasurer,
+    headerStyle: TextStyle,
+) {
+    for (i in 0..6) {
+        val cx = size.width / 7f * (i + 0.5f)
+        val text = textMeasurer.measure(AnnotatedString(weekdayLabels[i]), headerStyle)
+        drawText(
+            text,
+            topLeft = Offset(
+                cx - text.size.width / 2f,
+                headerHeightPx / 2f - text.size.height / 2f,
+            ),
+        )
+    }
+}
+
+/** 热力图单元格网格 (高度 = 宽/7 * 行数, 由 aspectRatio 决定) */
+private fun DrawScope.drawHeatmapGrid(
     cellGapPx: Float,
     cellRadiusPx: Float,
-    headerHeightPx: Float,
-    selectedInfoHeightPx: Float,
-    legendHeightPx: Float,
-    legendCellSizePx: Float,
-    legendCellGapPx: Float,
-    legendLabelGapPx: Float,
-    weekdayLabels: Array<String>,
     year: Int,
     month: Int,
     data: Map<Int, Long>,
@@ -183,39 +220,20 @@ private fun DrawScope.drawHeatmap(
     maxReadSecs: Long,
     firstColumnIndex: Int,
     daysInMonth: Int,
-    rowCount: Int,
     accent: Color,
     isDark: Boolean,
     textMeasurer: TextMeasurer,
-    headerStyle: TextStyle,
     dayStyle: TextStyle,
-    selectedInfoStyle: TextStyle,
-    legendStyle: TextStyle,
 ) {
+    val cellSize = size.width / 7f
     if (cellSize <= 0f) return
 
-    // 星期表头
-    for (i in 0..6) {
-        val cx = cellSize * (i + 0.5f)
-        val text = textMeasurer.measure(AnnotatedString(weekdayLabels[i]), headerStyle)
-        drawText(
-            text,
-            topLeft = Offset(
-                cx - text.size.width / 2f,
-                headerHeightPx / 2f - text.size.height / 2f,
-            ),
-        )
-    }
-
-    val gridTop = headerHeightPx
-
-    // 热力图单元格
     for (d in 1..daysInMonth) {
         val idx = firstColumnIndex + d - 1
         val col = idx % 7
         val row = idx / 7
         val left = cellSize * col + cellGapPx
-        val top = gridTop + cellSize * row + cellGapPx
+        val top = cellSize * row + cellGapPx
         val right = left + cellSize - cellGapPx * 2
         val bottom = top + cellSize - cellGapPx * 2
 
@@ -267,9 +285,26 @@ private fun DrawScope.drawHeatmap(
             )
         }
     }
+}
 
+/** 选中日信息行 + 色阶图例 (固定 52dp 高: 信息行 28dp + 图例 24dp) */
+private fun DrawScope.drawHeatmapFooter(
+    selectedInfoHeightPx: Float,
+    legendHeightPx: Float,
+    legendCellSizePx: Float,
+    legendCellGapPx: Float,
+    legendLabelGapPx: Float,
+    cellRadiusPx: Float,
+    month: Int,
+    data: Map<Int, Long>,
+    selectedDay: Int,
+    accent: Color,
+    isDark: Boolean,
+    textMeasurer: TextMeasurer,
+    selectedInfoStyle: TextStyle,
+    legendStyle: TextStyle,
+) {
     // 选中日信息行
-    val infoTop = gridTop + cellSize * rowCount
     if (selectedDay != 0) {
         val readTime = data[selectedDay] ?: 0L
         val infoText = "${month}月${selectedDay}日 · ${formatDuration(readTime)}"
@@ -278,14 +313,14 @@ private fun DrawScope.drawHeatmap(
             text,
             topLeft = Offset(
                 (size.width - text.size.width) / 2f,
-                infoTop + (selectedInfoHeightPx - text.size.height) / 2f,
+                (selectedInfoHeightPx - text.size.height) / 2f,
             ),
         )
     }
 
     // 色阶图例
     drawLegend(
-        legendTop = infoTop + selectedInfoHeightPx,
+        legendTop = selectedInfoHeightPx,
         legendHeightPx = legendHeightPx,
         legendCellSizePx = legendCellSizePx,
         legendCellGapPx = legendCellGapPx,

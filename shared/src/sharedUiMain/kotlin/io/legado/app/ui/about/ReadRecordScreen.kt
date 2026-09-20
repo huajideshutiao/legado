@@ -3,6 +3,7 @@ package io.legado.app.ui.about
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -47,6 +48,8 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.constant.ThreadSafeDateFormat
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.ReadRecordShow
+import io.legado.app.ui.bookshelf.NOVEL_COVER_RATIO
+import io.legado.app.ui.bookshelf.shelfCoverHeightDp
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppRadioButton
@@ -379,8 +382,9 @@ private fun RecordList(
     ) {
         // 顶部统计卡与热力图卡: 基于可用宽度自适应, 不做平台判断
         // (与列表分列同一口径 rememberResponsiveColumns(1): 400dp→1列, 800dp→2列;
-        //  列数≥2 时同行各占一半, 否则纵向堆叠; HeatMapCard 同行布局下补 12dp top padding
-        //  与 SummaryCard 顶部对齐, 纵向布局下由 SummaryCard bottom 提供间距, 保持原值)
+        //  列数≥2 时同行并排等高 —— 两卡背景框顶/底对齐: 卡高由热力图内容 (按半宽推出)
+        //  决定, SummaryCard 的 fillHeight 撑满行高, 12dp top padding 抵消 SummaryCard
+        //  自带外边距与 HeatMapCard 无 top 外边距的差值)
         item(key = "header", span = { GridItemSpan(maxLineSpan) }) {
             BoxWithConstraints {
                 if (effectiveColumns(
@@ -389,6 +393,10 @@ private fun RecordList(
                         DesignTokens.responsiveColumnsReferenceWidth
                     ) >= 2
                 ) {
+                    // IntrinsicSize.Min 要求两侧子项都能提供固有高度: HeatMapCard 内
+                    // SharedMonthHeatMap 的网格高由 aspectRatio 从宽度推出, 不读父约束
+                    // 宽度, 故可用; 若回到 BoxWithConstraints 会抛
+                    // IllegalStateException(SubcomposeLayout 不支持 intrinsic)
                     Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
                         Box(Modifier.weight(1f).fillMaxHeight()) {
                             SummaryCard(state, fillHeight = true)
@@ -436,6 +444,11 @@ private fun RecordList(
 private fun SummaryCard(state: ReadRecordUiState, fillHeight: Boolean = false) {
     val colors = AppTheme.colors
     val heightMod = if (fillHeight) Modifier.fillMaxHeight() else Modifier
+    // 并排等高时卡高由热力图决定, 3 组数据在卡内自适应均分 (SpaceEvenly); 堆叠时卡高按内容
+    // (对照原版 view_read_record_header 的固定 16dp 间距)
+    val fillMode = fillHeight
+    val itemArrangement = if (fillMode) Arrangement.SpaceEvenly else Arrangement.Top
+    val itemGap = if (fillMode) 0.dp else 16.dp
     Row(
         heightMod
             .fillMaxWidth()
@@ -445,7 +458,11 @@ private fun SummaryCard(state: ReadRecordUiState, fillHeight: Boolean = false) {
             .padding(vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            Modifier.weight(1f).then(if (fillMode) Modifier.fillMaxHeight() else Modifier),
+            verticalArrangement = itemArrangement,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
             SummaryItem(
                 rememberFormatDuring(state.summaryToday),
                 stringResource(Res.string.today_read_time)
@@ -453,15 +470,19 @@ private fun SummaryCard(state: ReadRecordUiState, fillHeight: Boolean = false) {
             SummaryItem(
                 rememberFormatDuring(state.summaryMonth),
                 stringResource(Res.string.month_read_time),
-                topPadding = 16.dp,
+                topPadding = itemGap,
             )
             SummaryItem(
                 state.summaryBookCount.toString(),
                 stringResource(Res.string.read_book_count),
-                topPadding = 16.dp,
+                topPadding = itemGap,
             )
         }
-        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            Modifier.weight(1f).then(if (fillMode) Modifier.fillMaxHeight() else Modifier),
+            verticalArrangement = itemArrangement,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
             SummaryItem(
                 rememberFormatDuring(state.summaryWeek),
                 stringResource(Res.string.week_read_time)
@@ -469,12 +490,12 @@ private fun SummaryCard(state: ReadRecordUiState, fillHeight: Boolean = false) {
             SummaryItem(
                 rememberFormatDuring(state.summaryAll),
                 stringResource(Res.string.all_read_time),
-                topPadding = 16.dp,
+                topPadding = itemGap,
             )
             SummaryItem(
                 rememberFormatDuring(state.summaryAvgRead),
                 stringResource(Res.string.avg_book_read_time),
-                topPadding = 16.dp,
+                topPadding = itemGap,
             )
         }
     }
@@ -634,12 +655,17 @@ private fun RecordRow(
             .padding(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // 高度跟随全局配置 (shelfCoverHeightDp)。原版此处不调 applyCoverHeight, 封面恒为布局里
+        // 的 120dp; 按用户决定改为跟随配置, 与其他列表档同源。
+        // 宽度必须显式给出: 无对应 Book 时走 ReadRecordDefaultCover, 那个分支没有按比例推宽的
+        // 尺寸链, 只给高度会得到 0 宽
+        val coverHeight = remember { shelfCoverHeightDp(false) }
         coverSlot(
             item,
             book,
             Modifier
-                .width(90.dp)
-                .height(120.dp)
+                .height(coverHeight.dp)
+                .width((coverHeight * NOVEL_COVER_RATIO).dp)
         )
         Column(
             Modifier
