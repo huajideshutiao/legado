@@ -1,6 +1,10 @@
 import com.android.build.api.artifact.SingleArtifact
 import com.android.build.api.variant.BuiltArtifactsLoader
 import com.android.build.api.variant.FilterConfiguration
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+
 plugins {
     id("legado.android.application")
     // Baseline Profile app target/consumer: 为 :app 创建 nonMinifiedRelease/benchmarkRelease
@@ -319,8 +323,13 @@ dependencies {
     implementation(libs.cronet.api)
     implementation(libs.cronet.embedded)
 
-    // coil 声明的旧版 skiko 一律排除 (Android 端本就不用 skiko, 统一吃 CMP 解析结果)
-    implementation(libs.coil3.compose)
+    // coil 声明 skiko 0.9.22.2 (远古版), 与 CMP 1.11.1 声明的 0.144.6 差在 major.minor;
+    // Android 端本就不用 skiko (走 android.graphics), 排除后由 CMP 解析结果供给其余端。
+    // 排除必须作用在可变副本上: catalog accessor 取出的 MinimalExternalModuleDependency
+    // 是 Gradle 内部不可变实现 (改它会抛 "Minimal dependencies are immutable"), .copy() 才是可变依赖。
+    implementation(libs.coil3.compose.get().copy()) {
+        exclude(group = "org.jetbrains.skiko")
+    }
     implementation(libs.coil3.gif)
     implementation(libs.coil3.network.okhttp)
 

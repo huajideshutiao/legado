@@ -103,33 +103,42 @@ require(ohosAbis.isNotEmpty() && ohosAbis.all { it == "arm64-v8a" }) {
 }
 val ohosBuildTypeCapitalized = ohosBuildType.replaceFirstChar { it.titlecase() }
 val ohosSharedOutputDir =
-    layout.projectDirectory.dir("shared/build/bin/ohosArm64/${ohosBuildType}Shared")
-val ohosSharedLibrary = ohosSharedOutputDir.file("liblegado_shared.so")
+    layout.projectDirectory.dir("shared/build/bin/ohosArm64/${ohosBuildType}Shared").asFile
+val ohosSharedLibrary = ohosSharedOutputDir.resolve("liblegado_shared.so")
+val ohosAppDir = layout.projectDirectory.dir("ohosApp").asFile
+// 任务动作只允许引用可序列化的局部量 (File/String/Set), 不得引用脚本级 val 或 Project
+val stageAbis = ohosAbis
+val stageBuildType = ohosBuildType
+val stageLinkTask = ":shared:link${ohosBuildTypeCapitalized}SharedOhosArm64"
+val stagedLibDir = ohosLibsDir.asFile
+val stagedIncludeDir = ohosIncludeDir.asFile
 
 val stageOhosNativeLibraries = tasks.register<Copy>("stageOhosNativeLibraries") {
     group = "ohos"
     description = "Build and stage CPF-KMP-CMP OHOS shared library and generated API header."
-    if ("arm64-v8a" in ohosAbis) {
-        dependsOn(":shared:link${ohosBuildTypeCapitalized}SharedOhosArm64")
+    val abis = stageAbis
+    val sharedLib = ohosSharedLibrary
+    val sharedOutputDir = ohosSharedOutputDir
+    val buildType = stageBuildType
+    if ("arm64-v8a" in abis) {
+        dependsOn(stageLinkTask)
     }
-    into(layout.projectDirectory.dir("ohosApp"))
-    if ("arm64-v8a" in ohosAbis) {
-        from(ohosSharedLibrary) {
+    into(ohosAppDir)
+    if ("arm64-v8a" in abis) {
+        from(sharedLib) {
             into("entry/libs/arm64-v8a")
         }
-        from(ohosSharedOutputDir) {
+        from(sharedOutputDir) {
             include("*.h")
             into("entry/src/main/cpp/include/arm64-v8a")
         }
     }
     doFirst {
         val missing = buildList {
-            if ("arm64-v8a" in ohosAbis) {
-                if (!ohosSharedLibrary.asFile.isFile) add(ohosSharedLibrary.asFile)
-                if (ohosSharedOutputDir.asFile.listFiles { f -> f.extension == "h" }.orEmpty()
-                        .isEmpty()
-                ) {
-                    add(ohosSharedOutputDir.file("<generated-api-header>.h").asFile)
+            if ("arm64-v8a" in abis) {
+                if (!sharedLib.isFile) add(sharedLib)
+                if (sharedOutputDir.listFiles { f -> f.extension == "h" }.orEmpty().isEmpty()) {
+                    add(File(sharedOutputDir, "<generated-api-header>.h"))
                 }
             }
         }
@@ -137,7 +146,7 @@ val stageOhosNativeLibraries = tasks.register<Copy>("stageOhosNativeLibraries") 
             throw GradleException(
                 "Missing CPF OHOS outputs: ${missing.joinToString()}. " +
                     "Run with -PenableOhosTarget=true, rendererBackend=fusion-renderer " +
-                    "and ohosBuildType=$ohosBuildType."
+                    "and ohosBuildType=$buildType."
             )
         }
     }
@@ -147,14 +156,15 @@ val verifyOhosNativeLibraries = tasks.register("verifyOhosNativeLibraries") {
     group = "verification"
     description = "Verify that the CPF OHOS fusion-renderer artifacts have been staged."
     dependsOn(stageOhosNativeLibraries)
+    val abis = stageAbis
+    val libDir = stagedLibDir
+    val includeDir = stagedIncludeDir
     doLast {
         val missing = buildList {
-            if ("arm64-v8a" in ohosAbis) {
-                if (!ohosLibsDir.file("liblegado_shared.so").asFile.isFile) add(ohosLibsDir.asFile)
-                if (ohosIncludeDir.asFile.listFiles { f -> f.extension == "h" }.orEmpty()
-                        .isEmpty()
-                ) {
-                    add(ohosIncludeDir.asFile)
+            if ("arm64-v8a" in abis) {
+                if (!File(libDir, "liblegado_shared.so").isFile) add(libDir)
+                if (includeDir.listFiles { f -> f.extension == "h" }.orEmpty().isEmpty()) {
+                    add(includeDir)
                 }
             }
         }
@@ -163,6 +173,19 @@ val verifyOhosNativeLibraries = tasks.register("verifyOhosNativeLibraries") {
                 "Missing HarmonyOS native artifacts in ${missing.joinToString()}."
             )
         }
+    }
+}
+
+/**
+ * 构建时间戳 ValueSource: 纳入配置缓存指纹, 避免 Instant.now() 在命中缓存时被跳过而导致版本名过期。
+ * 按小时 (yy.MMddHH) 离散化, 同一小时内复用配置缓存, 跨小时自然失效重算。
+ */
+abstract class BuildTimestampValueSource : ValueSource<String, ValueSourceParameters.None> {
+    override fun obtain(): String {
+        return java.time.format.DateTimeFormatter
+            .ofPattern("yy.MMddHH")
+            .withZone(java.time.ZoneId.of("GMT+8"))
+            .format(java.time.Instant.now())
     }
 }
 
@@ -175,21 +198,22 @@ val syncIosVersion = tasks.register("syncIosVersion") {
     group = "ios"
     description =
         "Sync iOS CFBundleShortVersionString/CFBundleVersion with Android versionName/versionCode."
+    // versionCode/versionName 经 providers.exec 与 BuildTimestampValueSource 纳入配置缓存输入指纹
+    val commits = providers.exec {
+        commandLine("git", "rev-list", "HEAD", "--count")
+    }.standardOutput.asText.get().trim().toInt()
+    val versionCode = 10000 + commits
+    val buildTime = providers.of(BuildTimestampValueSource::class) {}.get()
+    val appVersion = providers.gradleProperty("appVersion").orNull
+    val versionName = appVersion ?: "3.$buildTime"
+    val projectYml = rootProject.file("iosApp/project.yml")
+    val infoPlist = rootProject.file("iosApp/Info.plist")
     doLast {
-        val commits = providers.exec {
-            commandLine("git", "rev-list", "HEAD", "--count")
-        }.standardOutput.asText.get().trim().toInt()
-        val versionCode = 10000 + commits
-        val versionName = "3." + java.time.format.DateTimeFormatter
-            .ofPattern("yy.MMddHH")
-            .withZone(java.time.ZoneId.of("GMT+8"))
-            .format(java.time.Instant.now())
-
         fun rewrite(path: File, transform: (String) -> String) {
             val updated = transform(path.readText())
             if (updated != path.readText()) path.writeText(updated)
         }
-        rewrite(rootProject.file("iosApp/project.yml")) {
+        rewrite(projectYml) {
             it.replace(
                 Regex("CFBundleShortVersionString:\\s*\"[^\"]*\""),
                 "CFBundleShortVersionString: \"$versionName\"",
@@ -198,7 +222,7 @@ val syncIosVersion = tasks.register("syncIosVersion") {
                 "CFBundleVersion: \"$versionCode\"",
             )
         }
-        rewrite(rootProject.file("iosApp/Info.plist")) {
+        rewrite(infoPlist) {
             it.replace(
                 Regex("(<key>CFBundleShortVersionString</key>\\s*<string>)[^<]*(</string>)"),
                 "$1$versionName$2",

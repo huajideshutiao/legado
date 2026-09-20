@@ -9,6 +9,8 @@ kotlin {
         namespace = 'com.script.quickjs'
         compileSdk = 37
         minSdk = 24
+        withDeviceTest {
+        }
     }
 
     sourceSets {
@@ -41,19 +43,20 @@ kotlin {
                 implementation(libs.jetbrains.kotlin.test)
             }
         }
-        // 注: src/androidDeviceTest 目录 (QuickJsEngineTest / RealWorldSourceScenarioTest 等 8 个
-        // Android 设备端测试) 目前未接线 —— AGP KMP library 插件需显式 kotlin.androidLibrary.withDeviceTest {}
-        // 才创建对应编译 (当前构建无此源集的编译任务与依赖声明)。其中两个与 jvmTest 重复的测试已改为
-        // commonTest 基类 + 本目录薄子类 (仅 runner 注解与 android.graphics.Point 差异);
-        // 将来启用 withDeviceTest 时, 需将 commonTest 接入 androidDeviceTest 源集并补测试依赖。
+        androidDeviceTest {
+            dependencies {
+                implementation(libs.androidx.runner)
+                implementation(libs.androidx.junit)
+            }
+        }
     }
 }
 
-// 显式接线 jvmTest → commonTest (仓级 kotlin.mpp.applyDefaultHierarchyTemplate=false,
-// 接线方式同 shared/build.gradle.kts 的 jvmAndAndroidTest): 保证 commonTest 的共享测试基类
-// (QuickJsEngineTestBase / RealWorldSourceScenarioTestBase) 编译进 jvmTest, jvmTest 留薄子类
-// 注入桌面端差异 (java.awt.Point)。
+// 显式接线 jvmTest / androidDeviceTest → commonTest (仓级 kotlin.mpp.applyDefaultHierarchyTemplate=false):
+// 保证 commonTest 的共享测试基类 (QuickJsEngineTestBase / RealWorldSourceScenarioTestBase)
+// 分别编译进 jvmTest 与 androidDeviceTest。
 kotlin.sourceSets.jvmTest.dependsOn(kotlin.sourceSets.commonTest)
+kotlin.sourceSets.androidDeviceTest.dependsOn(kotlin.sourceSets.commonTest)
 
 // 修正 KSP 配置：KMP Android 环境下使用标准 kspAndroid 钩子
 dependencies {
@@ -95,10 +98,11 @@ def localSdkDir = {
 }()
 
 // doLast 内禁止引用 layout/project (配置缓存约束): 配置期取下 buildDir 根路径 (File 可快照),
-// 中间目录的分槽拼接放任务执行期做。按工具链 fingerprint 分槽, 避免切换工具链后复用错误 CMakeCache。
+// 中间目录的分槽拼接放任务执行期做。按工具链 id (fingerprint 哈希) 分槽, 避免切换工具链后复用
+// 错误 CMakeCache。
 def quickjsBuildDirRoot = layout.buildDirectory.get().asFile
 
-def nativeToolchain = providers.of(io.legado.buildlogic.QuickjsNativeToolchainValueSource) { valueSourceSpec ->
+def nativeToolchain = providers.of(io.legado.buildlogic.NativeToolchainValueSource) { valueSourceSpec ->
     // 显式 p. 前缀引用 Params 属性, 避免与脚本同名局部变量 (isWindowsHost) 的 Groovy 解析冲突
     def p = valueSourceSpec.parameters
     p.windowsHost.set(isWindowsHost)
@@ -140,7 +144,7 @@ tasks.register("buildJvmNativeLib") {
     def libOutFile = new File(jvmNativeDirFile, libFileName)
     // Provider 作为任务输入保持 toolchain 增量隔离；Gradle 仅在本任务参与执行/快照输入时求值。
     // 本自定义 native 任务只承诺本地 up-to-date 判定，不声明可跨机器复用的 build-cache 产物。
-    // 中间目录按工具链 fingerprint 分槽，避免本机切换工具链后复用错误 CMakeCache。
+    // 中间目录按工具链 id (fingerprint 哈希) 分槽，避免本机切换工具链后复用错误 CMakeCache。
     outputs.file(libOutFile)
 
     // 只跟踪实际参与目标的桥接源码/CMake 配置，以及 QuickJS 编译单元和递归头文件。
@@ -164,13 +168,15 @@ tasks.register("buildJvmNativeLib") {
     inputs.property("toolchainFingerprint", nativeToolchain.map { it.fingerprint })
 
     doLast {
-        def toolchain = nativeToolchain.get()
+        def probe = nativeToolchain.get()
+        def toolchain = probe.toNativeToolchain()
         def selectedCmake = toolchain.cmake
         def selectedMingwBin = toolchain.mingwBin
         def nativeGenerator = toolchain.generator
         def hasNmake = toolchain.hasNmake
-        def jvmNativeBuildDir = new File(quickjsBuildDirRoot, "intermediates/cmake-jvm/${platformId}-${toolchain.id}")
-        def jvmNativeStagingDir = new File(quickjsBuildDirRoot, "intermediates/cmake-jvm-output/${platformId}-${toolchain.id}")
+        // 中间目录按工具链 id 分槽, 避免本机切换工具链后复用错误 CMakeCache
+        def jvmNativeBuildDir = new File(quickjsBuildDirRoot, "intermediates/cmake-jvm/${platformId}-${probe.id}")
+        def jvmNativeStagingDir = new File(quickjsBuildDirRoot, "intermediates/cmake-jvm-output/${platformId}-${probe.id}")
         def libOutFileValue = libOutFile
         def stagedLibFile = new File(jvmNativeStagingDir, libFileName)
 
@@ -221,7 +227,7 @@ tasks.register("buildJvmNativeLib") {
         }
 
         def configureCmd = [selectedCmake]
-        if (nativeGenerator != "CMake default") {
+        if (nativeGenerator != null) {
             configureCmd += ["-G", nativeGenerator]
         }
         configureCmd += [

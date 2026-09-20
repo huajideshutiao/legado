@@ -10,14 +10,16 @@ import java.io.Serializable
 import javax.inject.Inject
 
 /**
- * QuickJS 桌面 JVM native 库的工具链探测 (cmake / MSVC nmake / llvm-mingw)。
+ * 桌面 JVM native 库的工具链探测 (cmake / MSVC nmake / llvm-mingw),
+ * 供 modules/quickjs 与 desktop 的 smtc / wndchrome 三处 native 构建共用。
  *
  * 外部进程经 ExecOperations 执行, 结果由配置缓存计入指纹 (缓存复用时自动重查)。
- * 裸 ProcessBuilder 在配置期启动子进程是 CC 违规项, 故从 modules/quickjs/build.gradle 迁入。
- * Gradle 9.6 的 ValueSource: obtain() 无参, 参数经 @Inject 注入, 不得引用 Project。
+ * 裸 ProcessBuilder 在配置期启动子进程是 CC 违规项 (官方配置缓存要求: Running External Processes),
+ * 故探测一律收敛到本 ValueSource。Gradle 9.6 的 ValueSource: obtain() 无参,
+ * 参数经 @Inject 注入, 不得引用 Project。
  */
-abstract class QuickjsNativeToolchainValueSource :
-    ValueSource<QuickjsNativeToolchainValueSource.Toolchain, QuickjsNativeToolchainValueSource.Params> {
+abstract class NativeToolchainValueSource :
+    ValueSource<NativeToolchainValueSource.Toolchain, NativeToolchainValueSource.Params> {
 
     interface Params : ValueSourceParameters {
         // 勿以 is 开头命名 Property 抽象方法: Gradle 装饰器按 JavaBean 规范保留 is* 前缀, 会拒生成
@@ -44,7 +46,16 @@ abstract class QuickjsNativeToolchainValueSource :
         val compilerIdentity: String,
         val fingerprint: String,
         val id: String,
-    ) : Serializable
+    ) : Serializable {
+        /** 脚本可直接使用的工具链描述 (同一份 ValueSource 服务多个 native 任务)。 */
+        fun toNativeToolchain(): NativeToolchain = NativeToolchain(
+            cmake = cmake.ifEmpty { null },
+            generator = generator.takeIf { it != "CMake default" },
+            mingwBin = mingwBin.ifEmpty { null },
+            hasNmake = hasNmake,
+            fingerprint = fingerprint,
+        )
+    }
 
     @get:Inject
     protected abstract val execOperations: ExecOperations
@@ -57,18 +68,19 @@ abstract class QuickjsNativeToolchainValueSource :
         val cmake = findCmakeExecutable()
         val cmakeIdentity = if (cmake == null) "<missing>" else commandIdentity(listOf(cmake, "--version"))
         val hasNmake = isWindows && commandSucceeds(listOf("nmake", "/?"))
+        // nmake 存在不代表 cl.exe 可用: 非 VS 开发者提示符下 nmake 能启动而 cl 缺失,
+        // cmake 会选到 Visual Studio 生成器但构建失败。指纹里带上 cl 身份, 该状态变化能被发现。
+        val msvcIdentity = if (isWindows && hasNmake) commandIdentity(listOf("cl")) else "<absent>"
         val mingwBin = if (isWindows && !hasNmake) findMingwBinDir() else null
         val generator = if (mingwBin != null) "MinGW Makefiles" else "CMake default"
         val compilerIdentity = when {
             mingwBin != null ->
                 commandIdentity(listOf(File(mingwBin, "gcc.exe").absolutePath, "--version"))
-            isWindows && hasNmake ->
-                commandIdentity(listOf("cl"))
+            isWindows && hasNmake -> msvcIdentity
             else -> {
                 val cc = parameters.envCc.orNull ?: "cc"
                 val cxx = parameters.envCxx.orNull ?: "c++"
-                "CC=${cc}:${commandIdentity(listOf(cc, "--version"))};" +
-                    "CXX=${cxx}:${commandIdentity(listOf(cxx, "--version"))}"
+                "CC=$cc:${probeCompiler(cc)};CXX=$cxx:${probeCompiler(cxx)}"
             }
         }
         val fingerprint = listOf(
@@ -76,7 +88,8 @@ abstract class QuickjsNativeToolchainValueSource :
             cmakeIdentity,
             generator,
             mingwBin ?: "",
-            compilerIdentity,
+            msvcIdentity,
+            if (isWindows && hasNmake) "msvc" else compilerIdentity,
             "java=" + parameters.javaHome.get(),
         ).joinToString("|")
         val hash = Integer.toUnsignedString(fingerprint.hashCode(), 16)
@@ -113,6 +126,63 @@ abstract class QuickjsNativeToolchainValueSource :
         }
     }
 
+    /**
+     * 探测编译器身份 (版本号由首轮输出提取, 提取失败才回落 which 路径, 避免重复起子进程)。
+     */
+    private fun probeCompiler(binary: String): String {
+        val identity = commandIdentity(listOf(binary, "--version"))
+        val version = Regex("\\d+(?:\\.\\d+)+|clang-\\d+|LLVM\\s*\\d+").find(identity)?.value
+        val fallback = if (version == null) identityOrPath(binary) else version
+        return "$identity:$fallback"
+    }
+
+    /**
+     * 无版本号输出的编译器 (Apple clang) 用真实路径区分, 路径变化 (Xcode 升级) 同样计入指纹。
+     */
+    private fun identityOrPath(name: String): String {
+        val output = ByteArrayOutputStream()
+        return try {
+            execOperations.exec {
+                commandLine("which", name)
+                standardOutput = output
+                errorOutput = output
+            }
+            val path = output.toString("UTF-8").trim()
+            if (path.isEmpty()) "no-path" else "path=$path"
+        } catch (_: Exception) {
+            "no-path"
+        }
+    }
+
+    /**
+     * 供 [NativeToolchainValueSource.obtain] 判定 / 供脚本拼装 cmake 命令行的工具链描述。
+     * 全部字段可序列化: 任务动作与配置缓存都不允许携带 Project / 进程句柄。
+     */
+    data class NativeToolchain(
+        val cmake: String?,
+        val generator: String?,
+        val mingwBin: String?,
+        val hasNmake: Boolean,
+        val fingerprint: String,
+    ) {
+        /** cmake 命令行前缀: 非默认生成器时带 -G。 */
+        fun configureCommand(): List<String> {
+            val base = mutableListOf(cmake ?: error("cmake 未找到"))
+            if (generator != null) base += listOf("-G", generator)
+            return base
+        }
+
+        /** 把工具链目录前置到子进程 PATH (MinGW 时 cmake 需要在 PATH 上找到 gcc/make)。 */
+        fun applyToolchainPath(environment: MutableMap<String, String>) {
+            val binDir = mingwBin ?: return
+            environment["PATH"] =
+                binDir + File.pathSeparator + (environment["PATH"] ?: "")
+        }
+
+        /** 任务输入指纹: 工具链或其版本/路径变化即让 native 任务失效重建。 */
+        fun fingerprintProperty(): String = fingerprint
+    }
+
     private fun commandIdentity(command: List<String>): String {
         return try {
             val output = ByteArrayOutputStream()
@@ -124,6 +194,24 @@ abstract class QuickjsNativeToolchainValueSource :
             "ok;${output.toString("UTF-8").trim()}"
         } catch (error: Exception) {
             "unavailable:${error.javaClass.simpleName}"
+        }
+    }
+
+    /** `where`/`which` 查 gcc 真实路径, 取所在 bin 目录。 */
+    private fun gccParentDir(): String? {
+        val output = ByteArrayOutputStream()
+        val command = if (parameters.windowsHost.get()) listOf("where", "gcc") else listOf("which", "gcc")
+        return try {
+            execOperations.exec {
+                commandLine(command)
+                standardOutput = output
+                errorOutput = output
+            }
+            output.toString("UTF-8").trim().split("[\r\n]".toRegex())[0].trim()
+                .takeIf { it.isNotEmpty() && File(it).exists() }
+                ?.let { File(it).parent }
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -162,20 +250,9 @@ abstract class QuickjsNativeToolchainValueSource :
             if (File(propPath, "gcc.exe").exists()) return propPath
         }
 
-        try {
-            if (commandSucceeds(listOf("gcc", "--version"))) {
-                val output = ByteArrayOutputStream()
-                execOperations.exec {
-                    commandLine("where", "gcc")
-                    standardOutput = output
-                    errorOutput = output
-                }
-                val gccPath = output.toString("UTF-8").trim().split("[\r\n]".toRegex())[0].trim()
-                if (gccPath.isNotEmpty() && File(gccPath).exists()) {
-                    return File(gccPath).parent
-                }
-            }
-        } catch (_: Exception) {
+        if (commandSucceeds(listOf("gcc", "--version"))) {
+            val binDir = gccParentDir()
+            if (binDir != null) return binDir
         }
 
         return try {
