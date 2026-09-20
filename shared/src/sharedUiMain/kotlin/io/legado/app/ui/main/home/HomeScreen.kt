@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
@@ -45,7 +46,7 @@ import io.legado.app.ui.compose.component.pullToRefresh
 import io.legado.app.ui.compose.component.rememberPullToRefreshState
 import io.legado.app.ui.compose.component.rememberResponsiveColumns
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
-import io.legado.app.ui.compose.platform.transitionStatusBarPadding
+import io.legado.app.ui.compose.platform.platformStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
 import kotlinx.coroutines.launch
@@ -195,8 +196,6 @@ fun HomeScreen(
     val eInk = LocalEInk.current
     val tabs = state.tabs
     val scope = rememberCoroutineScope()
-    // 每 tab 的网格滚动状态, 组合存活期间保留分页位置 (对照原 HomeTabState.gridState)
-    val gridStates = remember { mutableMapOf<String, LazyGridState>() }
     // 稳定化透传到条目层的 slot: 上层 (MainRoute) 重组会新建 slot lambda 实例,
     // 直接透传时每次上层重组 → 本屏/各 tab 页重组 → LazyVerticalGrid content lambda 换新实例
     // (LazyGridItemProvider 按引用比较) → 全部可见条目全量重组。
@@ -248,7 +247,6 @@ fun HomeScreen(
                     HomeTabPage(
                         state = state,
                         tabTitle = tab.title,
-                        gridState = gridStates.getOrPut(tab.title) { LazyGridState() },
                         actions = actions,
                         sectionBlockSlot = stableSectionBlockSlot,
                         infiniteHeaderSlot = stableInfiniteHeaderSlot,
@@ -270,7 +268,7 @@ private fun HomeTopBar(
     onSelectTab: (Int) -> Unit,
 ) {
     val colors = AppTheme.colors
-    Box(Modifier.fillMaxWidth().then(if (eInk) Modifier else Modifier.transitionStatusBarPadding())) {
+    Box(Modifier.fillMaxWidth().then(if (eInk) Modifier else Modifier.platformStatusBarPadding())) {
         Row(
             Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(start = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -354,13 +352,13 @@ private fun HomeTabItem(title: String, selected: Boolean, onClick: () -> Unit) {
 private fun HomeTabPage(
     state: HomeUiState,
     tabTitle: String,
-    gridState: LazyGridState,
     actions: HomeUiActions,
     sectionBlockSlot: @Composable (String, HomeSection) -> Unit,
     infiniteHeaderSlot: @Composable (String, HomeSection) -> Unit,
     infiniteGridCardSlot: @Composable (String, HomeSection, SearchBook) -> Unit,
 ) {
     val colors = AppTheme.colors
+    val gridState = rememberLazyGridState()
     val sections = state.tabSections[tabTitle] ?: emptyList()
     if (sections.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

@@ -70,12 +70,10 @@ import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
-import io.legado.app.ui.compose.platform.LocalTransitionFrozenStatusBarHeightPx
 import io.legado.app.ui.compose.platform.PlatformBackHandler
 import io.legado.app.ui.compose.platform.dismissTopLayer
 import io.legado.app.ui.compose.platform.handleBackKey
 import io.legado.app.ui.compose.platform.performBack
-import io.legado.app.ui.compose.platform.rememberVisibleStatusBarHeightPx
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.ui.config.BookshelfLayoutConfigDialog
@@ -217,13 +215,6 @@ fun LegadoApp(
                     .onFailure { AppLog.put("应用窗口策略失败", it) }
             }
         }
-        // 转场动画期间冻结状态栏可见高度, 供页面顶栏 transitionStatusBarPadding /
-        // 滚动内容区 transitionStatusBarHeight 消费: 系统栏显隐动画与页面转场并行播放
-        // (进入阅读页立即隐藏状态栏, 对齐原版独立窗口进入即隐藏的观感), 内容区不跟随
-        // insets 逐帧重排; 动画结束解除冻结 (push 方向旧页已销毁, pop 方向系统栏动画
-        // 已播完, 实时值即可见高度, 无跳变)
-        val visibleStatusBarHeightPx = rememberVisibleStatusBarHeightPx()
-        val frozenStatusBarHeightPx = if (animating) visibleStatusBarHeightPx else null
         // 阅读页隐藏状态栏/导航栏开关在对话框里切换后重应用系统栏策略 (原版 SharedPreference
         // 监听 → upSystemUiVisibility); 用 rememberUpdatedState 取最新路由
         val currentRouteState = rememberUpdatedState(currentRoute)
@@ -295,7 +286,6 @@ fun LegadoApp(
         var rootFocusOwner by remember { mutableStateOf("none") } // none|root|descendant
         LaunchedEffect(Unit) { runCatching { rootFocusRequester.requestFocus() } }
         CompositionLocalProvider(
-            LocalTransitionFrozenStatusBarHeightPx provides frozenStatusBarHeightPx,
             LocalPhotoSharedState provides photoShared,
             LocalSharedTransitionEnabled provides sharedTransitionEnabled,
             LocalSharedPageFlights provides sharedPageFlights,

@@ -377,7 +377,10 @@ class BookshelfViewModel {
      * - 切换瞬间用缓存快照回填 [_books], 免掉重启流前的一帧空态
      */
     fun selectGroup(groupId: Long) {
-        if (_currentGroupId.value == groupId) return
+        if (_currentGroupId.value == groupId) {
+            ensureGroupFlow(groupId)
+            return
+        }
         val previous = _currentGroupId.value
         _currentGroupId.value = groupId
         _books.value = booksCache.value[groupId].orEmpty()

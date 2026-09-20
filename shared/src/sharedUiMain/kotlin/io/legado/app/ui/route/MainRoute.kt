@@ -93,7 +93,7 @@ import io.legado.app.ui.compose.component.ExploreOptionsRow
 import io.legado.app.ui.compose.component.horizontalMouseWheel
 import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
-import io.legado.app.ui.compose.platform.transitionStatusBarPadding
+import io.legado.app.ui.compose.platform.platformStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.ui.dialog.TextInputDialog
@@ -1596,7 +1596,7 @@ private fun MyTabContent(navigator: AppNavigator) {
 private fun MyTabTitleBar(onHelp: () -> Unit) {
     val colors = AppTheme.colors
     val eInk = LocalEInk.current
-    Box(Modifier.fillMaxWidth().then(if (eInk) Modifier else Modifier.transitionStatusBarPadding())) {
+    Box(Modifier.fillMaxWidth().then(if (eInk) Modifier else Modifier.platformStatusBarPadding())) {
         Row(
             Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = 16.dp),
             verticalAlignment = Alignment.CenterVertically,

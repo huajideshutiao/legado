@@ -1,12 +1,10 @@
 package io.legado.app.ui.bookshelf
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -17,7 +15,6 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -33,14 +30,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.BookType
@@ -55,28 +47,14 @@ import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
-import io.legado.app.help.image.BookImageLoaders
-import io.legado.app.help.image.DecodedBitmapCache
-import io.legado.app.model.BookCoverShared
 import io.legado.app.model.BookCoverShared.CoverRatio
-import io.legado.app.model.BookCoverShared.DefaultCoverEntry
-import io.legado.app.model.defaultCoverDisplayPath
 import io.legado.app.ui.compose.component.AppScrollTabRow
-import io.legado.app.ui.compose.component.DefaultCoverNineImage
-import io.legado.app.ui.compose.component.NinePatchImageOrImage
-import io.legado.app.ui.compose.platform.transitionStatusBarPadding
+import io.legado.app.ui.compose.platform.platformStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
-import io.legado.app.ui.root.PhotoSharedCoverHost
 import io.legado.app.utils.FlowBus
 import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
@@ -154,6 +132,8 @@ fun BookshelfScreen(
     isRootTop: Boolean = true,
 ) {
     val colors = AppTheme.colors
+    /** 各分组滚动状态登记表 (供 tab 双击滚顶取当前分组实例) */
+    val pageScrollStates: MutableMap<Long, ShelfScrollState> = remember { mutableStateMapOf() }
     // 订阅常驻 (用户拍板 2026-08): 对齐原版 LiveData 语义 —— 订阅不随页面停止/
     // tab 切走取消, 落库即经 Room 失效推送刷新。原门控 (repeatOnLifecycle) 在
     // 恢复时产生"旧快照首帧"窗口, 快速"切章→离开→点击书架"会点到过期进度,
@@ -234,7 +214,7 @@ fun BookshelfScreen(
     // 布局 spec 各 pager 页共用, 计算一次。
     val layoutSpec = rememberBookshelfLayoutSpec(tier)
     // 各分组页的滚动状态 (对照 BookshelfFragment1.fragmentMap): 滚顶要作用于当前分组页
-    val pageScrollStates = remember { mutableStateMapOf<Long, ShelfScrollState>() }
+    // 登记表由宿主持有 (随主界面 entry 存活), 页面离开组合后滚顶仍能拿到实例
 
     // HorizontalPager (对照 app 端 BookshelfScreen1, pageCount 动态跟随 groups)
     val pagerState = rememberPagerState(
@@ -540,7 +520,7 @@ internal fun BookshelfTopBarContainer(
         // 不涂背景, 颜色由页面容器/壁纸层统一管; 内容推到状态栏之下, eInk 不避让
         Modifier
             .fillMaxWidth()
-            .then(if (eInk) Modifier else Modifier.transitionStatusBarPadding())
+            .then(if (eInk) Modifier else Modifier.platformStatusBarPadding())
     ) {
         Row(
             Modifier
@@ -612,30 +592,20 @@ internal fun DefaultBookshelfActions(
 }
 
 /**
- * 共享封面加载: 走 [BookImageLoaders] (各端注入 coil3 实现) 加载实际封面,
- * 加载中/失败/无 cover URL/未注册 loader/[AppConfigAccessor.useDefaultCover] 时走默认封面。
+ * 书籍封面 (加载与渲染管线见 [SharedCoverContent])。
  *
- * 默认封面链对齐 app 端 `BookCover.newDefaultDrawable`: 用户图集非空时按 seed (书名, 无则封面
- * 路径) 稳定选一张烘焙图, 读缓存产物/图集原图 (见 [io.legado.app.model.defaultCoverDisplayPath]); 图集为空回落内置
- * `image_cover_default` (.9 图当普通图拉伸)。竖排书名/作者 overlay 只画在默认封面上,
- * 对照原版 `defaultCover=true` 才 drawNameAuthor。只有**手上没有真图**时才在加载期先铺该默认
- * 封面作占位: 首帧会先按 url 同步取已解码位图 (书架↔详情↔大图共用), 命中即首帧出真图;
- * [reloadTick] 重载期间保留上一张真图直到新图就绪 (对照原版 ImageView 不清空)。
+ * 书籍特有的输入: 默认封面选图 seed = 书名 (无书名回落封面路径), 与详情/搜索/发现共用
+ * [DecodedBitmapCache] 的已解码封面小表, 默认封面上叠竖排书名/作者, 挂共享元素转场端点。
  *
- * 占位位图经 [DecodedBitmapCache] 跨条目共享 (命中即 O(1)): 原版 `BookCover.load` 只在
- * `.error()` 兜底、加载期间不铺默认封面, 本端保留占位是为了消除加载期空白, 但不再为占位
- * 重复走图片管线。
- *
- * 高度按 [isVideoCover] 选 16:9 / 3:4 由宽度自动算出 (对齐原 View 版 onMeasure 按 coverRatio
- * 自适应, 不再硬编码 160dp)。
+ * 尺寸按 [isVideoCover] 选 16:9 / 3:4, 由调用方给出的那一个维度反算另一个维度 (对齐原 View 版
+ * `CoverImageView.onMeasure` 按 coverRatio 自适应)。
  *
  * @param book 当前书籍
- * @param modifier 外部尺寸约束 (调用方给宽高/内边距等); 本组件自己只补 `aspectRatio` + 圆角,
- *   **不**加 fillMaxWidth (下方有硬约束说明)
+ * @param modifier 外部尺寸约束 (调用方给宽/高/内边距等); 本组件只追加比例与圆角
  * @param isVideoCover 是否视频封面 (true: 16:9, false: 3:4; 对照 CoverRatio.VIDEO/NOVEL)
  * @param reloadTick 封面重载信号 (configTick): 变化时重启加载, 不变不额外触发
  *
- * ohos 未注册 [BookImageLoaders], 恒走内置图 + overlay (与替换前占位语义一致)。
+ * ohos 未注册 BookImageLoader, 恒走内置图 + overlay (与替换前占位语义一致)。
  */
 @Composable
 fun SharedBookCover(
@@ -645,147 +615,28 @@ fun SharedBookCover(
     reloadTick: Int = 0,
 ) {
     val cover = book.getDisplayCover()
-    val loader = remember { BookImageLoaders.getOrNull() }
-    // useDefaultCover 时跳过网络加载, 直接走默认封面链 (对照原 View 版封面组件行为);
-    // 每次组合读 prefs (不 remember): 宿主重组触发 LaunchedEffect 重启时读到的是最新配置
-    val useDefaultCover = AppConfigProviders.get().useDefaultCover
-    // 首帧即出真图: 同一张封面已在别处 (书架格子/列表/上一次详情) 解码过时, 组合期同步取回,
-    // 不再让首帧摆默认封面——共享元素飞的是"可见那一端"的内容, 详情页首帧占位会被放大到整个
-    // 飞行尺寸, 观感即"闪一下默认封面"。小表同 url 只留面积最大的一档
-    // (见 [DecodedBitmapCache.recordCover]), 取回的是迄今解过的最大那份;
-    // 若它仍比当前显示尺寸小, 会先糊一帧, 下面按自己尺寸解完替换。
-    val cachedCover = remember(cover, book.origin, useDefaultCover) {
-        if (useDefaultCover || cover.isNullOrBlank()) null
-        else DecodedBitmapCache.peekCover(cover)
-    }
-    // 位图与"是否默认封面"合成一个 state: 一次加载只引发一次重组
-    var coverState by remember(cover, book.origin) {
-        mutableStateOf(cachedCover?.let { CoverBitmap(it, false) } ?: NoCoverBitmap)
-    }
-    // 尺寸只用于首次按显示大小降采样；后续窗口 resize 不应重新发起封面请求。
-    // 否则每跨过一个量化尺寸档都会再次进入图片 Interceptor，重复执行书源 JS header 规则。
-    val displaySize = remember { MutableStateFlow(IntSize.Zero) }
-    LaunchedEffect(cover, book.origin, loader, useDefaultCover, isVideoCover, reloadTick) {
-        if (loader == null) return@LaunchedEffect
-        val decodeSize = firstValidCoverDecodeSize(displaySize)
-        val ratio = if (isVideoCover) CoverRatio.VIDEO else CoverRatio.NOVEL
-
-        // 默认封面链要读 prefs + 解 JSON (解析已按 raw 串记忆化), 挪到协程内真用得上时再算。
-        // 解码结果进 [DecodedBitmapCache] 跨条目共享: 旧实现每条封面都完整跑一遍图片管线解
-        // 一张占位图 (真封面已命中内存缓存时也要先解占位), 首屏/滚动的请求与解码开销翻倍。
-        suspend fun defaultState(): CoverBitmap {
-            // 渲染需知 ninePatch 标记, 走 entry 版选图 (defaultCoverFilePath 保留给 AudioPlay 等调用)
-            val entry = defaultCoverEntry(
-                seed = book.name.takeIf { it.isNotBlank() } ?: cover,
-                ratio = ratio,
-            ) ?: return NoCoverBitmap
-            val path = defaultCoverDisplayPath(entry, ratio)
-            // reloadTick 并入 key: 封面重载信号变了不得复用旧位图 (重烘焙/换图集后路径可能不变)
-            val key = DecodedBitmapCache.cacheKey(
-                "$path#$reloadTick", null, isCover = true,
-                widthPx = decodeSize.width, heightPx = decodeSize.height,
-            )
-            DecodedBitmapCache.get(key)?.let { return CoverBitmap(it, true, entry.ninePatch) }
-            val bmp = loader.loadImageOrNull(path, null, decodeSize.width, decodeSize.height)
-                ?: return NoCoverBitmap
-            DecodedBitmapCache.put(key, bmp)
-            return CoverBitmap(bmp, true, entry.ninePatch)
-        }
-        if (useDefaultCover || cover.isNullOrBlank()) {
-            coverState = defaultState()
-            return@LaunchedEffect
-        }
-        // 真封面与占位并发 (旧的串行写法让真封面白等一次占位加载)。手上已有真图时不铺占位:
-        // 缓存同步命中的首帧、以及 reloadTick 重载期间的上一张真图, 都一直显示到新图就绪
-        // (对照原版 ImageView 加载期间保留上一帧 drawable); 确实无图可显示才铺默认封面消空白。
-        coroutineScope {
-            val real = async {
-                if (book.isNotShelf) {
-                    // 非书架书 (搜索/发现/主页结果) 的封面只落临时缓存区, 不占书架持久区
-                    loader.loadImageOrNull(cover, book.origin, decodeSize.width, decodeSize.height)
-                } else {
-                    loader.loadCoverOrNull(cover, book.origin, decodeSize.width, decodeSize.height)
-                }
-            }
-            if (coverState.bitmap == null || coverState.isDefault) {
-                coverState = defaultState()
-            }
-            val bmp = real.await()
-            // 失败保持当前图不变 (对照原版 BookCover.load 的 .error(newDefaultDrawable))
-            if (bmp != null) {
-                // 记进封面小表 (预算与解码主缓存分开, 同 url 只留面积最大的一档, 见
-                // [DecodedBitmapCache.recordCover])。不能改从 Coil 内存缓存按 url 现取:
-                // 它的 key 就是 url、不带尺寸, 书架格子/详情大图/歌词栏小图会互相覆写;
-                // 有效性判定与超预算弱引用淘汰都在库内部, 外部手取只能拿到上采样糊图或空;
-                // 安卓端 data 还被换成烘焙 webp 路径、鸿蒙端不注册 BookImageLoaders,
-                // 动图更是永不进内存缓存。这张小表是书架↔详情↔列表间复用已解位图的唯一通道
-                DecodedBitmapCache.recordCover(cover, bmp)
-                coverState = CoverBitmap(bmp, false)
-            }
-        }
-    }
-    // 对齐原 View 版 onMeasure: 高度有界时按比例反推宽度, 否则按宽度推高度。
-    // 不能硬加 fillMaxWidth() —— 列表条目/发现结果页传的是定高 modifier, 撑满宽度会让封面失控放大。
-    val aspectRatio = if (isVideoCover) VIDEO_COVER_RATIO else NOVEL_COVER_RATIO
-    // 外层链: 尺寸/内边距/裁剪全留在外层 —— [PhotoSharedCoverHost] 里的 AnimatedVisibility 把内容
-    // 卸载后自己会缩成 0, 靠 aspectRatio 把这一格定住, 端点起止盒才不塌。
-    // 共享配对身份不再从封面 URL 推: 出发侧 (列表卡) 由条目绑定提供自签 token, 落位侧由目标页 entry
-    // 的 token 提供 (见 [io.legado.app.ui.root.LocalSharedCoverBinding])。
-    val outerModifier = Modifier
-        .then(modifier)
-        .aspectRatio(aspectRatio, matchHeightConstraintsFirst = true)
-        .clip(DesignTokens.shapeSm)
-        .onSizeChanged { displaySize.value = it }
-    val bmp = coverState.bitmap
-    // 两套端点 (页转场对 + 大图对) 都在这唯一入口挂: 书架/搜索/发现/详情/音频的封面全部覆盖
-    PhotoSharedCoverHost(
-        cover = cover,
-        outerModifier = outerModifier,
-        // 圆角要写在共享节点之内, 飞行副本才有圆角
-        sharedModifier = Modifier.clip(DesignTokens.shapeSm),
-    ) {
-        if (bmp != null && !coverState.isDefault) {
-            Image(
-                bitmap = bmp,
-                contentDescription = book.name,
-                modifier = Modifier.matchParentSize(),
-                contentScale = ContentScale.Crop,
-            )
-        } else {
-            if (bmp != null) {
-                // 用户图集里的烘焙图 (已按 ratio 裁好); .9 图按九宫格拉伸
-                NinePatchImageOrImage(
-                    bitmap = bmp,
-                    isNinePatch = coverState.isNinePatch,
-                    contentDescription = book.name,
-                    modifier = Modifier.matchParentSize(),
-                )
-            } else {
-                // 图集为空 / 读盘失败: 内置默认封面, 运行期 3:4 居中裁剪 + 九宫格拉伸 (四角不变形)
-                DefaultCoverNineImage(
-                    modifier = Modifier.matchParentSize(),
-                    contentDescription = book.name,
-                )
-            }
-            CoverNameAuthorOverlay(
-                name = book.name,
-                author = book.author,
-                accent = AppTheme.colors.accent,
-                modifier = Modifier.matchParentSize(),
-            )
-        }
-    }
+    SharedCoverContent(
+        source = CoverSource(
+            coverUrl = cover,
+            origin = book.origin,
+            // 同 URL 不同来源是不同资源, origin 必须进 key (对照原版 ImageLoader 的 sourceOrigin)
+            cacheKey = book.origin,
+            defaultCoverSeed = book.name.takeIf { it.isNotBlank() } ?: cover,
+            shareDecodedCover = true,
+            // 非书架书 (搜索/发现/主页结果) 的封面只落临时缓存区, 不占书架持久区
+            persistentCover = !book.isNotShelf,
+            sharedTransition = true,
+            contentDescription = book.name,
+            title = book.name,
+            author = book.author,
+        ),
+        modifier = modifier,
+        isVideoCover = isVideoCover,
+        reloadTick = reloadTick,
+        nameAuthorOverlay = true,
+    )
 }
 
-/** 封面位图 + 是否默认封面 (决定要不要叠竖排书名/作者) + 是否 .9 图 (决定渲染路径) */
-@Immutable
-internal class CoverBitmap(
-    val bitmap: ImageBitmap?,
-    val isDefault: Boolean,
-    val isNinePatch: Boolean = false,
-)
-
-internal val NoCoverBitmap = CoverBitmap(null, false)
 
 /**
  * 默认分组封面 slot: 与书架同源 (转 [LocalGroupCoverSlot] → [SharedGroupCover]),
@@ -793,57 +644,6 @@ internal val NoCoverBitmap = CoverBitmap(null, false)
  */
 private val DefaultGroupCoverSlot: @Composable (BookGroup, Modifier, Boolean, Int) -> Unit =
     { group, m, isVideoCover, tick -> LocalGroupCoverSlot.current(group, m, isVideoCover, tick) }
-
-/**
- * 解码目标尺寸: 向上取到 64 的倍数, 让相邻列宽/微小布局抖动共用同一份内存缓存,
- * 也避免尺寸每变一像素就重新解一次。
- */
-internal fun coverDecodeSize(size: IntSize): IntSize {
-    if (size.width <= 0 || size.height <= 0) return IntSize.Zero
-    fun step(px: Int) = (px + 63) / 64 * 64
-    return IntSize(step(size.width), step(size.height))
-}
-
-/**
- * 等待首个有效布局尺寸并量化，随后立即返回。
- *
- * 图片请求只需要首个显示尺寸来降采样；不能持续 collect 尺寸，否则桌面窗口 resize 会触发
- * 新请求，并让书源的 JS 请求头规则跟着重复执行。
- */
-internal suspend fun firstValidCoverDecodeSize(sizes: Flow<IntSize>): IntSize =
-    sizes.map(::coverDecodeSize).first { it != IntSize.Zero }
-
-/**
- * 用户自定义默认封面集选出的 entry (对照 app 端 `BookCover.newDefaultDrawable` 的选图段)。
- *
- * 图集为空时返回 null, 调用方回落内置图; [DefaultCoverEntry.ninePatch] 供渲染端决定
- * 是否走九宫格拉伸。
- */
-internal fun defaultCoverEntry(seed: String?, ratio: CoverRatio): DefaultCoverEntry? {
-    val covers = BookCoverShared.currentDefaultCovers(
-        PreferenceProviders.get(),
-        AppConfigProviders.get().isNightTheme,
-    )
-    val index = BookCoverShared.pickDefaultCoverIndex(covers.size, seed)
-    if (index < 0) return null
-    return covers[index]
-}
-
-/**
- * 用户自定义默认封面集选图的烘焙路径 ([defaultCoverEntry] 的路径形态, 供只需路径的调用方)。
- *
- * 图集为空时返回 null, 调用方回落内置图。
- */
-internal fun defaultCoverFilePath(seed: String?, ratio: CoverRatio): String? {
-    val entry = defaultCoverEntry(seed, ratio) ?: return null
-    return defaultCoverDisplayPath(entry, ratio)
-}
-
-/** 封面宽高比 (宽/高); 对照 BookCoverShared.CoverRatio: NOVEL=3:4 → 0.75 */
-internal const val NOVEL_COVER_RATIO = 3f / 4f
-
-/** 封面宽高比 (宽/高); 对照 BookCoverShared.CoverRatio: VIDEO=16:9 → 1.78 */
-internal const val VIDEO_COVER_RATIO = 16f / 9f
 
 /**
  * 封面渲染 slot 的 CompositionLocal: 默认兜底 [SharedBookCover]。
