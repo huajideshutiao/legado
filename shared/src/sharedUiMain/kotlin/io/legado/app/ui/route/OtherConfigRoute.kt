@@ -15,7 +15,6 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.help.UserAgentProviders
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
-import io.legado.app.help.image.BookImageLoaders
 import io.legado.app.help.image.DecodedBitmapCache
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.CheckSourceShared
@@ -40,9 +39,6 @@ import legado.shared.generated.resources.book_tree_uri_s
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.clear_cache
 import legado.shared.generated.resources.clear_cache_success
-import legado.shared.generated.resources.clear_cover_cache
-import legado.shared.generated.resources.clear_cover_cache_success
-import legado.shared.generated.resources.clear_cover_cache_failed
 import legado.shared.generated.resources.clear_webview_data
 import legado.shared.generated.resources.ok
 import legado.shared.generated.resources.other_setting
@@ -98,8 +94,6 @@ fun OtherConfigRoute(
     val cancelStr = stringResource(Res.string.cancel)
     val sureDelStr = stringResource(Res.string.sure_del)
     val clearCacheSuccessStr = stringResource(Res.string.clear_cache_success)
-    val clearCoverCacheSuccessStr = stringResource(Res.string.clear_cover_cache_success)
-    val clearCoverCacheFailedStr = stringResource(Res.string.clear_cover_cache_failed)
     val successStr = stringResource(Res.string.success)
 
     // 弹窗显示状态 (对照 app 端各 showXxx / onXxx 点击型交互)
@@ -114,7 +108,6 @@ fun OtherConfigRoute(
     // 用户可能在系统设置里改过, 不能只信 pref
     var processTextEnabled by remember { mutableStateOf(platform.isProcessTextEnabled()) }
     var showCleanCacheConfirm by remember { mutableStateOf(false) }
-    var showCleanCoverCacheConfirm by remember { mutableStateOf(false) }
     var showClearWebViewConfirm by remember { mutableStateOf(false) }
     var showShrinkDatabaseConfirm by remember { mutableStateOf(false) }
 
@@ -191,7 +184,6 @@ fun OtherConfigRoute(
             onPreDownloadNum = { showPreDownloadPicker = true },
             onWebPort = { showWebPortPicker = true },
             onCleanCache = { showCleanCacheConfirm = true },
-            onCleanCoverCache = { showCleanCoverCacheConfirm = true },
             onClearWebViewData = { showClearWebViewConfirm = true },
             onShrinkDatabase = { showShrinkDatabaseConfirm = true },
             onThreadCount = { showThreadCountPicker = true },
@@ -351,30 +343,6 @@ fun OtherConfigRoute(
                     // 解码位图进程级 LRU (大图查看/阅读背景/样式预览等) 一并清空 (I1)
                     DecodedBitmapCache.clear()
                     Toasters.get().toast(clearCacheSuccessStr)
-                }
-            },
-            cancelButton = AlertButton(text = cancelStr),
-        )
-    }
-
-    // 清封面缓存确认对话框: 与"清缓存"分开 —— 封面持久区刻意不进通用清缓存路径
-    // (书源失效后封面不可重获), 但不能像原版那样成为谁也都清不到的死角
-    if (showCleanCoverCacheConfirm) {
-        AppAlertDialog(
-            onDismissRequest = { showCleanCoverCacheConfirm = false },
-            title = stringResource(Res.string.clear_cover_cache),
-            message = sureDelStr,
-            okButton = AlertButton(text = okStr) {
-                showCleanCoverCacheConfirm = false
-                scope.launch {
-                    // 封面小表也是封面缓存的一部分, 不挂上就清不到（它就是“清完还看到旧图”的根源）
-                    DecodedBitmapCache.clearCovers()
-                    // 不拿无条件 toast 假装成功: 未注册 loader / diskCache 不是 MultiDiskCache 时
-                    // clearCoverCache() 返 false, 那才是真没清
-                    val cleared = BookImageLoaders.getOrNull()?.clearCoverCache() == true
-                    Toasters.get().toast(
-                        if (cleared) clearCoverCacheSuccessStr else clearCoverCacheFailedStr
-                    )
                 }
             },
             cancelButton = AlertButton(text = cancelStr),

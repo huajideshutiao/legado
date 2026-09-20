@@ -62,13 +62,3 @@ fun markImageLoadFailed(key: String) {
         }
     }
 }
-
-/**
- * 清空失败表。
- *
- * 用于「死链前提已变」的场合: 清除封面缓存 (给用户重试的机会)、书源批量变更后
- * (换 header / 换 cookie 后原本 403 的链接可能就能开了)。
- */
-fun clearImageLoadFailures() {
-    failedRef.value = emptyMap()
-}

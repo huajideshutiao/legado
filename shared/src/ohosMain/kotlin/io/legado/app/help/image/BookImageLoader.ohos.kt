@@ -2,13 +2,11 @@ package io.legado.app.help.image
 
 import androidx.compose.ui.graphics.ImageBitmap
 import io.legado.app.data.entities.BookSource
-import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.source.SourceHelp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * 鸿蒙端 [BookImageLoader]: 复用 [ImageBitmapLoader] 的 OHOS 图像管线
@@ -79,18 +77,6 @@ class OhosBookImageLoader : BookImageLoader {
             heightPx = heightPx,
             persistent = persistent,
         )
-    }
-
-    /**
-     * 鸿蒙无 Coil3 DiskCache, 封面字节只落在 [ImageBytesCache] 的持久子目录
-     * (`bookCoverCacheDir/image_cache_p`), 所以下载层缓存 + 失败表就是该端的全部封面缓存。
-     */
-    override suspend fun clearCoverCache(): Boolean {
-        withContext(IoDispatcher) {
-            ImageBytesCache.clearPersistent()
-            clearImageLoadFailures()
-        }
-        return true
     }
 }
 

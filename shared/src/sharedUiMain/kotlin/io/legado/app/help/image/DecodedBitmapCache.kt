@@ -34,10 +34,10 @@ import kotlinx.atomicfu.locks.synchronized
  *   同步取回, 首帧不再摆默认封面 —— 只有书籍封面挂 (分组封面无跨页复用方); 大图链路
  *   ([findByUrl]) 不读这张小表, 因为里面是按列表尺寸解的糊图
  *
- * 清缓存入口按语义分三档: 设置页"清缓存" ([io.legado.app.ui.route.OtherConfigRoute]) 清全部
- * ([clear]); 设置页"清封面缓存"清封面小表 ([clearCovers]); 退出阅读的 `clearImageCache` 在
- * iOS/鸿蒙/桌面三端只清解码主表 ([clearDecoded]) —— 封面小表要跨页面存活, 退出阅读把它清掉就等于
- * 书架首帧真封面失效 (Android 端退出阅读走 `ImageProvider.clear()` 自有链路, 不经过本缓存)。
+ * 清缓存入口按语义分两档: 设置页"清缓存" ([io.legado.app.ui.route.OtherConfigRoute]) 清全部
+ * ([clear]); 退出阅读的 `clearImageCache` 在 iOS/鸿蒙/桌面三端只清解码主表 ([clearDecoded])
+ * —— 封面小表要跨页面存活, 退出阅读把它清掉就等于书架首帧真封面失效
+ * (Android 端退出阅读走 `ImageProvider.clear()` 自有链路, 不经过本缓存)。
  *
  * 验证码等同 URL 每次返回新图的场景, 调用方传 `useBitmapCache=false` 不进本缓存。
  */
@@ -146,14 +146,6 @@ object DecodedBitmapCache {
         synchronized(lock) {
             bitmaps.clear()
             cachedBytes = 0
-        }
-    }
-
-    /** 只清封面小表（设置页"清除封面缓存"挂此入口, 与封面持久区同语义）。 */
-    fun clearCovers() {
-        synchronized(lock) {
-            coversByUrl.clear()
-            coverBytes = 0L
         }
     }
 

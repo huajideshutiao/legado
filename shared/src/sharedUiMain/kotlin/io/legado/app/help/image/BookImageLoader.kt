@@ -97,17 +97,6 @@ interface BookImageLoader {
         url: String,
         sourceOrigin: String?,
     ): ByteArray? = null
-
-    /**
-     * 清除**封面持久区**缓存 (书架/发现/搜索的封面字节)。
-     *
-     * 与"清除缓存"分开是有意的: 持久区的设计目的就是"系统清缓存也清不掉书架封面"
-     * (书源一旦失效封面不可重获), 所以它不能归入通用清缓存; 但它也不能像原版那样
-     * 成为谁也都清不到的死角 —— 给用户一个显式入口。
-     *
-     * 默认 false (未接入的平台如 ohos 无 Coil3 DiskCache)。
-     */
-    suspend fun clearCoverCache(): Boolean = false
 }
 
 /**

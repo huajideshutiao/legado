@@ -100,21 +100,6 @@ class MultiDiskCache(
     /** 只清临时区: 用户"清除缓存"不该抹掉书架封面 (原版 `MultiDiskCacheFactory.clear` 同义)。 */
     override fun clear() = temporary.clear()
 
-    /**
-     * 单独清封面持久区。
-     *
-     * 修原版缺陷 #7: 原版 `MultiDiskCacheFactory` 的 `clear()` 只清 defaultsCache,
-     * 而全仓无任何地方调 `Glide.clearDiskCache()`, 设置页"清除缓存"删的是 `cacheDir` +
-     * `book_cache` —— `filesDir/covers` 这最多 250MB 的封面库在任何清理路径上都是死角,
-     * 用户无法清掉。本方法给持久区一个显式入口 (由"清除封面缓存"设置项调用,
-     * 刻意不并入"清除缓存": 书源失效后封面不可重获)。
-     */
-    fun clearCovers() {
-        covers.clear()
-        // 清了封面缓存 = 让用户重走网络, 之前被 failUrl 永久拉黑的死链也该重新试一次
-        clearImageLoadFailures()
-    }
-
     override fun shutdown() {
         covers.shutdown()
         temporary.shutdown()

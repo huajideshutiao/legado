@@ -327,10 +327,6 @@
     <string name="bitmap_cache_size">bitmap cache size</string>
     <string name="clear_cache">Clear cache</string>
     <string name="clear_cache_summary">Clear the cache of the downloaded books and fonts</string>
-    <string name="clear_cover_cache">Clear cover cache</string>
-    <string name="clear_cover_cache_summary">Covers are kept in a protected area that "Clear cache" and the system cache cleanup never touch. Use this only when that area grows too large or to force every cover to re-download.</string>
-    <string name="clear_cover_cache_success">Cover cache cleared</string>
-    <string name="clear_cover_cache_failed">Clear failed: image loader not ready</string>
     <string name="clear_webview_data">Clear WebView Data</string>
     <string name="clear_webview_data_summary">Clear all data in WebView</string>
     <string name="shrink_database">Shrink database</string>

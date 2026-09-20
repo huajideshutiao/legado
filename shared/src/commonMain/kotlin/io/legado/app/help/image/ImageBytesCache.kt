@@ -164,21 +164,4 @@ internal object ImageBytesCache {
             diskFileCounts[dir] = files.size - victims.size
         }
     }
-
-    /**
-     * 清空本类落在**封面持久区**的字节 (设置页"清除封面缓存"与本类的持久写入成对)。
-     *
-     * 不顺手清它们的话, 持久区会被两处写 (Coil MultiDiskCache + 本类 image_cache_p) 各占一半,
-     * 用户清了 Coil 区仍发现封面没消失。
-     *
-     * 同时整表清 [memory]: 内存层的 key 不带持久/临时维度 ([cacheKey]), 单独圈出"哪些是从
-     * 持久区来的"做不到; 不一起清的话磁盘删完了但封面全从内存命中, 用户观感就是"没清掉"。
-     */
-    suspend fun clearPersistent() {
-        val dir = runCatching { DataStorageProviders.getOrNull()?.bookCoverCacheDir }.getOrNull()
-            ?: return
-        val target = FileUtilsCommon.getPath(dir, "image_cache_p")
-        FileUtilsCommon.listFiles(target).forEach { FileUtilsCommon.delete(it) }
-        mutex.withLock { memory.clear() }
-    }
 }

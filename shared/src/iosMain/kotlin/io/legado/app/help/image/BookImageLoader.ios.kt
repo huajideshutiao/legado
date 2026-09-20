@@ -19,8 +19,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import io.legado.app.help.coroutine.IoDispatcher
 import okio.FileSystem
 import okio.buffer
 
@@ -97,18 +95,6 @@ class IosBookImageLoader : BookImageLoader {
             }
             null
         }
-
-    /** 清封面持久区 (设置页"清除封面缓存"), 同 androidMain / jvmMain。 */
-    override suspend fun clearCoverCache(): Boolean {
-        val diskCache = iosCoilImageLoader.diskCache as? MultiDiskCache ?: return false
-        // Coil 自身内存缓存也要清: 清了磁盘不内存, 封面全从 MemoryCache 命中, 看上去就是没清掉
-        iosCoilImageLoader.memoryCache?.clear()
-        withContext(IoDispatcher) {
-            diskCache.clearCovers()
-            ImageBytesCache.clearPersistent()
-        }
-        return true
-    }
 
     /** [persistent] 为 true 时改写 diskCacheKey, 由 [MultiDiskCache] 分流到封面持久区 (对齐 jvm/android)。 */
     private suspend fun execute(
