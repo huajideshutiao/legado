@@ -174,7 +174,7 @@ object ReadTimeRecorder {
             AppDbProviders.get().readRecordDao.insertSession(
                 ReadRecord(
                     bookName,
-                    ReadRecord.dayKey(),
+                    ReadRecord.dayKey(startSec),
                     startSec,
                     endSec
                 )

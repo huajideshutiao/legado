@@ -1,7 +1,6 @@
 package io.legado.app.data.entities
 
 import androidx.room3.Entity
-import io.legado.app.utils.systemCurrentTimeMillis
 import io.legado.app.utils.yearMonthDayFromMillis
 import kotlinx.serialization.Serializable
 
@@ -27,7 +26,7 @@ data class ReadRecord(
 ) {
     companion object {
         /** 把秒时间戳转成本地日期 yyyyMMdd 整数键 */
-        fun dayKey(timeSec: Long = systemCurrentTimeMillis() / 1000): Int {
+        fun dayKey(timeSec: Long): Int {
             // Calendar.getInstance() + cal.get(YEAR/MONTH/DAY_OF_MONTH) 改走
             // yearMonthMonthDayFromMillis expect/actual，避免 commonMain 引入 java.util.Calendar
             val (y, m, d) = yearMonthDayFromMillis(timeSec * 1000L)
