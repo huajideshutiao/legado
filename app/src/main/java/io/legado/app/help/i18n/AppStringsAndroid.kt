@@ -81,76 +81,18 @@ fun warmAppStringCache() {
     }
 }
 
-/** 同步上下文额外 key (AppStringKey 之外), 新增同步引用时补入本清单。 */
+/** 启动期同步上下文关键 key (AppStringKey 之外)。仅保留首屏/前台/渠道初始化依赖项。 */
 private val warmKeys = listOf(
     // ---- 通知渠道 / 前台服务 ----
-    "action_download", "read_aloud", "web_service", "service_starting",
-    "offline_cache", "cancel", "check_book_source", "progress_show",
-    "export_wait", "export_book", "export_book_notification_content", "export_success",
-    "author_show", "intro_show", "img_cover", "book_intro",
-    "tts_init_failed", "update_toc", "network_connection_unavailable",
-    "download_start", "cannot_empty",
-    // ---- 朗读/音频通知与媒体会话 ----
-    "stop", "set_timer", "audio_pause", "playing_timer", "audio_play_t", "audio_play_s",
-    "resume", "pause", "pref_media_button_per_next", "pref_media_button_per_next_summary",
-    "audio", "read_aloud_pause", "read_aloud_timer", "read_aloud_t", "read_aloud_s",
-    "previous_chapter", "next_chapter", "set_charset",
-    // ---- 权限 rationale / 对话框 ----
-    "read_aloud_read_phone_state_permission_rationale",
+    "action_download", "read_aloud", "web_service", "cannot_empty",
+    // ---- 快捷方式 ----
+    "bookshelf", "last_read",
+    // ---- 启动协议 / 更新 / 退出 ----
+    "privacy_policy", "agree", "refuse", "double_click_exit",
+    "is_latest_version", "check_update", "restore", "webdav_after_local_restore_confirm",
+    // ---- 核心权限提示与通用对话框 ----
     "notification_permission_rationale", "ignore_battery_permission_rationale",
-    "get_storage_per", "tip_perm_request_storage", "tip_cannot_jump_setting_page",
-    "dialog_title", "dialog_setting", "dialog_cancel",
-    // ---- 回调 / VM toast / 平台 provider ----
-    "force_refresh_busy", "clear_cache_success", "error_no_source", "error_get_book_info",
-    "error_get_chapter_list", "source_auto_changing", "unknown_error", "success", "error",
-    "no_book", "no_books_dir", "restore_success", "is_latest_version", "check_update",
-    "cronet_enabled", "cronet_download_failed", "error_read_file", "copy_complete",
-    "can_not_open", "double_click_exit", "download_and_import_file", "import_select_book",
-    "start_read", "simulated_reading", "switch_on", "start_from", "start_chapter",
-    "daily_chapters", "btn_default_s", "page_anim", "page_anim_cover", "page_anim_slide",
-    "page_anim_simulation", "page_anim_scroll", "page_anim_none", "image_style",
-    "use_browser_open", "upload_book_success", "sync_book_progress_success",
-    "jump_to_another_app", "confirm", "action_save", "select_folder", "open_fun",
-    "upload_url", "sys_folder_picker", "sys_file_picker", "sys_image_picker",
-    "app_folder_picker", "app_file_picker", "manual_input", "enter_directory_path",
-    "empty_directory_input", "invalid_directory", "path", "select_book_folder",
-    "add_to_bookshelf", "chinese_converter", "loading", "help", "share",
-    "no_prev_page", "no_next_page",
-    "restore", "webdav_after_local_restore_confirm", "privacy_policy", "agree", "refuse",
-    "set_local_password", "set_local_password_summary",
-    // ---- 快捷方式 / 书架 ----
-    "bookshelf", "last_read", "home", "my", "discovery", "bottom_nav_config", "reset",
-    "bookshelf_layout", "group_style", "explore_style", "show_unread",
-    "bookshelf_show_group_count", "fixed_width_mode", "view", "column_count",
-    "bookshelf_list_show_kind", "bookshelf_list_show_intro", "bookshelf_list_intro_lines",
-    "show_last_update_time", "grid_width_dp", "sort", "bookshelf_px_0", "bookshelf_px_1",
-    "bookshelf_px_2", "bookshelf_px_3", "bookshelf_px_4", "bookshelf_px_5",
-    // ---- 导入/导出对话框 ----
-    "import_file_name", "import_book_source", "import_replace_rule", "import_dict_rule",
-    "import_tts", "import_txt_toc_rule", "import_theme", "wrong_format",
-    "diy_edit_source_group", "diy_edit_source_group_title", "diy_source_group",
-    "add_group", "remove_group", "group_name", "keep_original_name", "keep_group",
-    "keep_enable", "select_new_source", "select_update_source", "custom_group_summary",
-    "export_config", "export_file_name", "export_type", "export_charset",
-    "export_no_chapter_name", "select_section_export", "export_all", "custom_export",
-    "result_analyzed", "file_contains_number", "export_chapter_index", "error_scope_input",
-    "ok", "yes", "no", "search_book_key", "check_source_config", "share_selected_source",
-    "clear_webview_data_success", "unsupport_archivefile_entry", "start", "end",
-    "file_not_supported", "draw", "sure_del", "no_book_found_bookshelf",
-    "archive_not_found", "confirm_delete_review", "review", "review_post_hint", "reply_review",
-    "review_replies_detail_title", "review_replies_section_title", "review_list_section_title",
-    "set_book_variable", "set_source_variable", "variable_comment", "open_in_browser",
-    "delete", "add", "assists_key_config", "create_folder", "folder_chooser",
-    "file_chooser", "empty", "default_cover", "night", "day", "change_cover_source",
-    "refresh", "bg_image", "welcome", "theme_name", "accent", "background_color",
-    "navbar_color", "background_image", "select_image", "background_image_blurring",
-    "day_background_too_dark", "night_background_too_light", "customize_day_theme",
-    "customize_night_theme", "new_theme", "theme_customize_title", "default_day_theme",
-    "default_night_theme", "open_sys_dir_picker_error", "login_header",
-    "login_url", "login_ui", "login_check_js", "source_http_header", "name",
-    "concurrent_rate", "book_source", "all", "local", "no_group", "update_book_fail",
-    "intro_show_null", "verification_code", "more_menu", "disable_source", "delete_source",
-    "hide_when_status_bar_show", "show", "hide",
+    "dialog_title", "dialog_setting", "dialog_cancel", "cancel", "ok",
 )
 
 /** 同步上下文 string-array key (ReadTipConfig 等)。 */

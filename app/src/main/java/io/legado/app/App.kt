@@ -67,9 +67,10 @@ import io.legado.app.help.storage.registerAndroidPasswordProvider
 import io.legado.app.help.toast.registerAndroidToaster
 import io.legado.app.help.tts.registerAndroidSystemTtsEngine
 import io.legado.app.help.ui.registerAndroidOpenUrlProvider
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.ui.registerAndroidUserAgentProvider
 import io.legado.app.help.update.registerAndroidAppUpdate
-import io.legado.app.model.BookCover
+import io.legado.app.model.BookCoverShared
 import io.legado.app.model.CacheBook
 import io.legado.app.model.fileBook.registerAndroidFileBookProviders
 import io.legado.app.model.fileBook.registerEpubApplicationContext
@@ -290,8 +291,11 @@ class App : Application() {
             URL.setURLStreamHandlerFactory(ObsoleteUrlFactory(okHttpClient))
             launch { installGmsTlsProvider(instance) }
             initQuickJs()
-            //初始化封面
-            BookCover.toString()
+            // 预热封面图集 (配置了自定义默认封面时, 提前在后台反序列化填热记忆化缓存)
+            BookCoverShared.currentDefaultCovers(
+                PreferenceProviders.get(),
+                AppConfig.isNightTheme
+            )
         }
         Coroutine.async {
             if (LocalConfig.lastBackup + TimeUnit.DAYS.toMillis(1) < System.currentTimeMillis()) {
@@ -410,7 +414,11 @@ class App : Application() {
     }
 
     private fun initQuickJs() {
-        // 触发当前 JS 引擎单例初始化,预加载 bootstrap (quickjs 预编译 bytecode / rhino 加载类)
-        JsEngines.get()
+        // 触发 JS 引擎初始化, 提前加载 native 动态库并预编译 bootstrap bytecode
+        runCatching {
+            JsEngines.get().createStandaloneScope().close()
+        }.onFailure {
+            LogUtils.d("App", "initQuickJs prewarm failed: ${it.message}")
+        }
     }
 }
