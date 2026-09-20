@@ -316,6 +316,15 @@ interface PlatformCapabilities {
     /** 是否有系统状态栏/导航栏 (决定 MoreConfig 的隐藏状态栏/导航栏开关显隐) */
     fun hasSystemBars(): Boolean = true
 
+    /**
+     * 当前窗口是否处于多窗口模式 (分屏/自由窗口)。
+     *
+     * 对照原版 `BaseActivity.isInMultiWindow`: 多窗口下窗口没有真正的全屏语义,
+     * 原版据此让 `PageView.vwStatusBar` 占位恒 gone (不避让状态栏) 且不加
+     * `SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN` (不进沉浸式布局)。非 Android 端无此概念, 恒 false。
+     */
+    val isInMultiWindow: Boolean get() = false
+
     /** 是否支持锁定屏幕方向 (决定 MoreConfig 的屏幕方向选项显隐) */
     fun hasScreenOrientation(): Boolean = true
 

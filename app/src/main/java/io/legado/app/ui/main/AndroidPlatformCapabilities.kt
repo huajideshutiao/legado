@@ -1165,6 +1165,9 @@ class AndroidPlatformCapabilities(
     // 对照 ChapterProvider.upLayout 的 appCtx.isPad（"平板/横屏双页" auto 分支）
     override fun isTablet(): Boolean = activity.isPad
 
+    // 对照原版 BaseActivity.isInMultiWindow: 多窗口下阅读页不避让状态栏、不进沉浸式布局
+    override val isInMultiWindow: Boolean get() = activity.isInMultiWindow
+
     // ===== 书架管理平台能力: 对照 BookshelfManageActivity 同名方法/状态 =====
 
     // 对照 BookshelfManageActivity.exportUseReplace (AppConfig 读取)

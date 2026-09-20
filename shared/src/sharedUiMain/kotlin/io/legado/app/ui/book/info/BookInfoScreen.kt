@@ -76,8 +76,8 @@ import io.legado.app.ui.compose.component.rememberPullToRefreshState
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
-import io.legado.app.ui.compose.platform.transitionStatusBarHeight
-import io.legado.app.ui.compose.platform.transitionStatusBarPadding
+import io.legado.app.ui.compose.platform.platformStatusBarHeight
+import io.legado.app.ui.compose.platform.platformStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.ColorUtils
@@ -361,7 +361,7 @@ private fun PortraitLayout(
                         )
                     }
                     Column(Modifier.fillMaxWidth()) {
-                        Spacer(Modifier.height(transitionStatusBarHeight()))
+                        Spacer(Modifier.height(platformStatusBarHeight()))
                         Spacer(Modifier.height(56.dp)) // actionBarSize
                         if (state.useDevFeat) TopSectionHorizontal(state, coverSlot)
                         else TopSectionVertical(state, coverSlot, land = false)
@@ -442,7 +442,7 @@ private fun LandscapeLayout(
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = 8.dp),
                 ) {
-                    Spacer(Modifier.height(transitionStatusBarHeight()))
+                    Spacer(Modifier.height(platformStatusBarHeight()))
                     ActionsRow(state, actions, Modifier)
                     KindsSection(state, actions, Modifier)
                     IntroSection(state, actions, introImageSlot, Modifier.padding(start = 8.dp, bottom = 8.dp))
@@ -473,7 +473,7 @@ private fun InfoTitleBar(
     Row(
         modifier
             .fillMaxWidth()
-            .transitionStatusBarPadding()
+            .platformStatusBarPadding()
             .height(DesignTokens.viewHeightMax),
         verticalAlignment = Alignment.CenterVertically,
     ) {

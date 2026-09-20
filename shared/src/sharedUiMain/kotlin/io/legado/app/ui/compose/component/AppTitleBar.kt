@@ -33,7 +33,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.legado.app.ui.compose.platform.transitionStatusBarPadding
+import io.legado.app.ui.compose.platform.platformStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
@@ -72,7 +72,7 @@ fun AppTitleBar(
         // 内容推到状态栏之下; eInk 不避让
         modifier
             .fillMaxWidth()
-            .then(if (eInk) Modifier else Modifier.transitionStatusBarPadding()),
+            .then(if (eInk) Modifier else Modifier.platformStatusBarPadding()),
     ) {
         Row(
             Modifier

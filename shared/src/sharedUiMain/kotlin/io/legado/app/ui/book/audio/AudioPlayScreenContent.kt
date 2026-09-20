@@ -66,7 +66,7 @@ import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
-import io.legado.app.ui.compose.platform.transitionStatusBarPadding
+import io.legado.app.ui.compose.platform.platformStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
@@ -445,7 +445,7 @@ private fun AudioTitleBar(
     Row(
         Modifier
             .fillMaxWidth()
-            .transitionStatusBarPadding()
+            .platformStatusBarPadding()
             .heightIn(min = 56.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

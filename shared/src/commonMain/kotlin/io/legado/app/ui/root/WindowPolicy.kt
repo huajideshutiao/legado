@@ -73,6 +73,8 @@ object WindowPolicies {
  * (toolBarHide = 菜单未显示时)：
  * - 菜单显示时状态栏/导航栏一律显示
  * - 菜单隐藏时分别跟随 hideStatusBar / hideNavigationBar 配置（默认不隐藏）
+ * - 注: 多窗口下窗口不加 LAYOUT_FULLSCREEN 且不避让状态栏 (由 StatusBarsPadding 承载),
+ *   但系统栏本身的显隐控制器仍按配置执行, 与原版保持一致。
  */
 fun readerSystemBarsPolicy(menuVisible: Boolean): SystemBarsPolicy {
     val cfg = ReadBookConfigProviders.getOrNull()

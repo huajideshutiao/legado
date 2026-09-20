@@ -23,6 +23,8 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.lib.theme.backgroundColor
+import io.legado.app.ui.book.read.ReadBookEvents
+import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.compose.platform.AndroidAppConfigProvider
 import io.legado.app.ui.compose.platform.AndroidEventBusProvider
 import io.legado.app.ui.compose.platform.AndroidThemeStoreProvider
@@ -118,6 +120,10 @@ abstract class BaseComposeActivity(
     override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, newConfig: Configuration) {
         super.onMultiWindowModeChanged(isInMultiWindowMode, newConfig)
         setupSystemBar()
+        // 阅读页避让与系统栏策略都跟多窗口状态 (原版 PageView.upStatusBar 的
+        // isInMultiWindow 判据 + upSystemUiVisibilityO 不加 LAYOUT_FULLSCREEN),
+        // 复用 SYSTEM_UI 事件让阅读页重读配置并重下发策略 (LegadoApp / readerBarConfig 均订阅)
+        ReadBookEvents.postConfig(ReadConfigChange.SYSTEM_UI)
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

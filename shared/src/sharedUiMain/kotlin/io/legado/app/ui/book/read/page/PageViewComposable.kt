@@ -45,9 +45,8 @@ import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import io.legado.app.ui.book.read.page.overlay.TTSHighlightOverlay
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
-import io.legado.app.ui.compose.platform.navigationBarFixedPadding
+import io.legado.app.ui.compose.platform.readerSystemBarPadding
 import io.legado.app.ui.compose.platform.rememberColor
-import io.legado.app.ui.compose.platform.statusBarFixedPadding
 import io.legado.app.utils.formatTimeOfDay
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.flow.combine
@@ -176,10 +175,9 @@ fun PageViewComposable(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                // 事件化系统栏 padding (对齐原版 vwStatusBar/vwNavigationBar 配置驱动占位:
-                // 菜单显隐动画期间恒定, 仅显隐翻转时重排一次, 不逐帧跟随)
-                .statusBarFixedPadding()
-                .navigationBarFixedPadding()
+                // 配置驱动系统栏 padding (对齐原版 vwStatusBar/vwNavigationBar 占位 View:
+                // 只看 hideStatusBar/hideNavigationBar 配置, 菜单显隐/手势 transient 不改避让量)
+                .readerSystemBarPadding()
         ) {
             // 页眉：wrap 高度布局子节点（对照原版 llHeader，含页眉分割线）
             if (headerVisible) {
@@ -749,8 +747,7 @@ fun ScrollPageView(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarFixedPadding()
-                .navigationBarFixedPadding()
+                .readerSystemBarPadding()
         ) {
             // 页眉：wrap 高度布局子节点（同 PageViewComposable）
             if (headerVisible) {

@@ -49,10 +49,7 @@ import io.legado.app.ui.book.read.page.entities.column.ReviewColumn
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import io.legado.app.ui.book.read.page.overlay.TTSHighlightOverlay
 import io.legado.app.ui.compose.platform.rememberMandatoryGestureBottomPx
-import io.legado.app.ui.compose.platform.rememberNavigationBarHidden
-import io.legado.app.ui.compose.platform.rememberStatusBarHidden
-import io.legado.app.ui.compose.platform.rememberVisibleNavigationBarHeightPx
-import io.legado.app.ui.compose.platform.rememberVisibleStatusBarHeightPx
+import io.legado.app.ui.compose.platform.readerSystemBarInsetsPx
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -262,14 +259,13 @@ fun ReadViewComposable(
         val pageWidthInt = pageWidthPx.roundToInt()
         val pageHeightPx = with(LocalDensity.current) { maxHeight.toPx() }
         val pageHeightInt = pageHeightPx.roundToInt()
-        // 系统栏 inset：正文内容层已整体避让（PageViewComposable 内 statusBarFixedPadding
-        // + navigationBarFixedPadding），但九宫格/长按分区仍按全窗坐标判定，须排除系统栏区域
+        // 系统栏 inset：正文内容层已整体避让（PageViewComposable 内 readerSystemBarPadding），
+        // 但九宫格/长按分区仍按全窗坐标判定，须排除系统栏区域
         // （对照原版 contentTextView 被 vwStatusBar/vwNavigationBar 占位挤小后的 bounds）。
-        // 与正文避让同源取值: 隐藏时 0, 显示时缓存可见高度 (事件化, 不逐帧跟随)
+        // 与正文避让同源：判据是 hideStatusBar/hideNavigationBar 配置而非系统栏当前可见性
+        // （否则菜单呼出时正文区顶边未动、命中基准却按状态栏高偏移，点击/翻页分区错位）
         val density = LocalDensity.current
-        val systemBarTopPx = if (rememberStatusBarHidden()) 0 else rememberVisibleStatusBarHeightPx()
-        val systemBarBottomPx =
-            if (rememberNavigationBarHidden()) 0 else rememberVisibleNavigationBarHeightPx()
+        val (systemBarTopPx, systemBarBottomPx) = readerSystemBarInsetsPx()
         // 选区手柄尺寸（px，对照原版 cursorWidth = 24.dpToPx：手柄 24dp 方形）
         val handleSizePx = with(density) { 24.dp.toPx() }
         // 内容区高度（全窗高 - 状态栏 - 导航栏）：九宫格分区与命中判定统一按内容区坐标

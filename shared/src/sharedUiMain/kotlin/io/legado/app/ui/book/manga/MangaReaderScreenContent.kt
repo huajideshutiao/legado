@@ -807,8 +807,8 @@ private fun MangaMenuTopBar(
     // 沉浸式全屏时 inset=0 无多余空白。逐帧跟随 insets (对齐原版 TitleBar 的
     // setOnApplyWindowInsetsListenerCompat → topPadding = insets.top):
     // 系统栏显隐动画期间 padding 平滑增长, 不会对静止顶栏产生离散跳变。
-    // 注意: 这里不用事件化 statusBarFixedPadding —— 那是内容区"占位避让"语义
-    // (动画期间零重排), 原版菜单栏 TitleBar 恰恰是逐帧跟随的。
+    // 注意: 这里不用配置驱动的 readerSystemBarFixedPadding —— 那是正文内容区"占位避让"语义
+    // (动画期间零重排), 原版菜单栏 TitleBar 恰恰是逐帧跟随系统栏可见性的。
     Column(
         Modifier
             .fillMaxWidth()

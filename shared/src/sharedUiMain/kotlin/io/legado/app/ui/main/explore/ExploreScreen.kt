@@ -63,7 +63,7 @@ import io.legado.app.ui.compose.component.GridPackLayout
 import io.legado.app.ui.compose.component.estimateGridHeight
 import io.legado.app.ui.compose.component.toGridPackSpec
 import io.legado.app.ui.compose.platform.rememberNavigationBarPaddingValues
-import io.legado.app.ui.compose.platform.transitionStatusBarPadding
+import io.legado.app.ui.compose.platform.platformStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
@@ -636,7 +636,7 @@ private fun ExploreTitleBar(
 ) {
     val colors = AppTheme.colors
     val eInk = LocalEInk.current
-    Box(Modifier.fillMaxWidth().then(if (eInk) Modifier else Modifier.transitionStatusBarPadding())) {
+    Box(Modifier.fillMaxWidth().then(if (eInk) Modifier else Modifier.platformStatusBarPadding())) {
         Row(
             // 有返回箭头时 IconButton 自带 48dp 宽度, 去掉 12dp 起始留白
             Modifier.fillMaxWidth().heightIn(min = 56.dp)

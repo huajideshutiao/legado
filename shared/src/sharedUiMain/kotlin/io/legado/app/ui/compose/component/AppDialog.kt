@@ -53,7 +53,7 @@ import androidx.compose.ui.window.DialogProperties
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.ui.compose.platform.BackLayerHandler
 import io.legado.app.ui.compose.platform.LocalOverlayTopInset
-import io.legado.app.ui.compose.platform.LocalTransitionFrozenStatusBarHeightPx
+import io.legado.app.ui.compose.platform.LocalStatusBarPaddingEnabled
 import io.legado.app.ui.compose.platform.PlatformDialogDim
 import io.legado.app.ui.compose.platform.platformStatusBarPadding
 import io.legado.app.ui.compose.platform.rememberVisibleStatusBarHeightPx
@@ -635,8 +635,8 @@ fun AppBottomSheetDialog(
  * 恒在画布之上的 native 子窗口, Linux 是 Column 里的自绘条), 而弹层是铺满整窗的 Popup 层 ——
  * 全屏后顶栏会被控制条盖住, 只能主动避让。移动端恒 0。
  *
- * 顶部 inset 归本骨架所有: 弹层内 [LocalTransitionFrozenStatusBarHeightPx] 提供 0
- * ("此处没有状态栏"), content 里的顶栏 (如 [AppTitleBar]) 不再自行叠加 —— 弹层贴底、
+ * 顶部 inset 归本骨架所有: 弹层内 [LocalStatusBarPaddingEnabled] 提供 false
+ * ("此处不叠加状态栏"), content 里的顶栏 (如 [AppTitleBar]) 不再自行叠加 —— 弹层贴底、
  * 顶部够不到状态栏, 自行避让只会凭空多出一层状态栏高的空白带。
  */
 @Composable
@@ -677,7 +677,7 @@ private fun BottomSheetScaffold(
                 ),
             contentAlignment = Alignment.BottomCenter,
         ) {
-            CompositionLocalProvider(LocalTransitionFrozenStatusBarHeightPx provides 0) {
+            CompositionLocalProvider(LocalStatusBarPaddingEnabled provides false) {
                 content()
             }
         }
