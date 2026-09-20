@@ -201,15 +201,7 @@ dependencies {
     // Coil3 图片栈 (封面/ReviewListScreen 直接用 rememberAsyncImagePainter/ImageRequest):
     // shared 对 coil3 是 implementation 不外泄, desktop 显式声明; coil-compose 传递 api 出
     // coil(SingletonImageLoader)/coil-core(ImageRequest/DiskCache)/coil-compose-core(painter)。
-    // coil 声明 skiko 0.9.22.2 (远古版), 与 CMP 1.11.1 经 ui-desktop 声明的 0.144.6 差在
-    // major.minor: 桌面端按排除法吃掉 CMP 自己那份 —— CMP 的 desktop 变体经 ui-desktop 直提
-    // skiko (非传递自 coil), 排除后仍由它供上 0.144.6, 而 CMP 插件的版本不匹配告警
-    // (RuntimeLibrariesCompatibilityCheck 按 requested vs selected 的 major.minor 判) 也随之消失。
-    // 排除必须作用在可变副本上: catalog accessor 取出的 MinimalExternalModuleDependency
-    // 是 Gradle 内部不可变实现 (改它会抛 "Minimal dependencies are immutable"), .copy() 才是可变依赖。
-    implementation(libs.coil3.compose.get().copy()) {
-        exclude(group = "org.jetbrains.skiko")
-    }
+    implementation(libs.coil3.compose)
     // 桌面端音频播放: open-ani/mediamp (mediamp-mpv 后端, 与视频同引擎, mpv=FFmpeg 全格式)。
     // 引擎实例在 DesktopAudioPlayer 惰性创建 (ServiceLoader 解析 mediamp-mpv);
     // mpv runtime 由下方 mediamp-mpv-runtime 提供 (与视频端共用同一套解包加载)。

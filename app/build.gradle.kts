@@ -323,13 +323,7 @@ dependencies {
     implementation(libs.cronet.api)
     implementation(libs.cronet.embedded)
 
-    // coil 声明 skiko 0.9.22.2 (远古版), 与 CMP 1.11.1 声明的 0.144.6 差在 major.minor;
-    // Android 端本就不用 skiko (走 android.graphics), 排除后由 CMP 解析结果供给其余端。
-    // 排除必须作用在可变副本上: catalog accessor 取出的 MinimalExternalModuleDependency
-    // 是 Gradle 内部不可变实现 (改它会抛 "Minimal dependencies are immutable"), .copy() 才是可变依赖。
-    implementation(libs.coil3.compose.get().copy()) {
-        exclude(group = "org.jetbrains.skiko")
-    }
+    implementation(libs.coil3.compose)
     implementation(libs.coil3.gif)
     implementation(libs.coil3.network.okhttp)
 

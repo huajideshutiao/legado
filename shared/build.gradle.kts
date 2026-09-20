@@ -534,8 +534,6 @@ kotlin {
             dependsOn(sharedUiMain)
             dependencies {
                 implementation(libs.reorderable)
-                // coil 声明的旧版 skiko 一律排除, 统一吃 CMP 自带的 skiko (解析结果与排除前
-                // 的 Gradle 冲突裁决一致, 仅消除 CMP 插件的 skiko 版本不匹配警告)
                 implementation(libs.coil3.compose)
                 implementation(libs.multiplatformMarkdown)
                 implementation(libs.multiplatformMarkdown.coil3)
@@ -735,8 +733,9 @@ tasks.matching {
     it.name == "copyDebugComposeResourcesToAndroidAssets" ||
         it.name == "copyReleaseComposeResourcesToAndroidAssets"
 }.configureEach {
+    val outputsToClear = outputs.files
     doFirst {
-        outputs.files.forEach { output -> project.delete(output) }
+        outputsToClear.forEach { output -> output.deleteRecursively() }
     }
 }
 

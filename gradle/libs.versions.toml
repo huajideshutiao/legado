@@ -17,8 +17,9 @@ cmp = "1.11.1"
 # 钉在 Kotlin 2.2.21-0.5.0, 需 fork 侧同步跟进)。到时直接上 0.45.0 (含 0.43/0.44 全部修复)。
 multiplatformMarkdown = "0.41.0"
 # coil 3.4.0 = iOS klib 兼容 Kotlin 2.3.20 的最高版本 (3.5.0+ 的 iOS klib 为 Kotlin 2.4 ABI)。
-# 运行时 skiko 已被 Gradle 裁决为 CMP 的 0.144.6 (实测稳定); CMP 插件的 "Skiko 版本不匹配"
-# 警告为声明层面提示, 无法在不破坏 KMP 源集依赖处理器语义的前提下消除, 升 Kotlin 2.4 后自愈。
+# coil 传递的 skiko (0.9.22.2) 远旧于 CMP 1.11.1 的 skiko (0.144.6); skiko 版本归 CMP 拥有,
+# 由 legado.compose 约定插件的 ComponentMetadataRule 统一剔除 coil3 组件元数据中的 skiko 依赖。
+# 升级守卫: 未来升级 CMP 或 coil 时, 须在 :desktop 端验证图片解码 (SkiaImageDecoder) 运行时兼容性。
 # 桌面视频播放引擎: open-ani/mediamp (Compose Multiplatform 播放抽象, 替代自研 libmpv 直通渲染)。
 # 0.3.0 于 2026-08-09 发布 (基于 CMP 1.11 基线), 与 CMP 1.11.1 + Kotlin 2.3.20 匹配。
 mediamp = "0.3.0"
