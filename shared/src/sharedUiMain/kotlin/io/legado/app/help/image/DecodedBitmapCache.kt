@@ -27,11 +27,12 @@ import kotlinx.atomicfu.locks.synchronized
  *   其外层二级; 背景切换靠本缓存预算淘汰, 不主动清 (避免误伤其他消费点)
  * - [ImageBytesCache] (字节层): 本缓存在其之上, 只缓存解码结果, 字节缓存不变
  * - Coil3 封面管线: 四端真封面均走 Coil 自身内存/磁盘缓存, **不进主 [bitmaps]** (那些条目只给
- *   大图 / 阅读背景 / 漫画的解码复用用)。例外两类由 [io.legado.app.ui.bookshelf.SharedBookCover] /
- *   SharedGroupCover 在本类上手工挂账: ① **默认封面占位**位图挂进主 [bitmaps] (避免每条封面
- *   为占位再走一遍图片管线, key 额外拼上封面重载信号); ② **真封面解码结果**挂进单列的封面小表
- *   ([peekCover] / [recordCover], 预算为主缓存 1/8), 让同一张封面在书架↔详情↔列表间同步取回,
- *   首帧不再摆默认封面——大图链路 ([findByUrl]) 不读这张小表, 因为里面是按列表尺寸解的糊图
+ *   大图 / 阅读背景 / 漫画的解码复用用)。例外两类由 [io.legado.app.ui.bookshelf.SharedCoverContent]
+ *   在本类上手工挂账: ① **默认封面占位**位图挂进主 [bitmaps] (避免每条封面为占位再走一遍
+ *   图片管线, key 额外拼上封面重载信号) —— 书籍与分组封面都挂; ② **真封面解码结果**挂进单列
+ *   的封面小表 ([peekCover] / [recordCover], 预算为主缓存 1/8), 让同一张封面在书架↔详情↔列表间
+ *   同步取回, 首帧不再摆默认封面 —— 只有书籍封面挂 (分组封面无跨页复用方); 大图链路
+ *   ([findByUrl]) 不读这张小表, 因为里面是按列表尺寸解的糊图
  *
  * 清缓存入口按语义分三档: 设置页"清缓存" ([io.legado.app.ui.route.OtherConfigRoute]) 清全部
  * ([clear]); 设置页"清封面缓存"清封面小表 ([clearCovers]); 退出阅读的 `clearImageCache` 在

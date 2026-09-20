@@ -58,7 +58,7 @@ import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.root.LocalSharedCoverBinding
 import io.legado.app.ui.root.rememberSharedCoverSourceBinding
 import io.legado.app.ui.compose.platform.rememberString
-import io.legado.app.ui.compose.platform.transitionStatusBarPadding
+import io.legado.app.ui.compose.platform.platformStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
@@ -109,6 +109,53 @@ private const val VIDEO_HEIGHT_SCALE = 0.75f
 
 /** 布局三档: 与原 createAdapter 的 List/Grid/Video tier 一一对应 */
 enum class ShelfTier { LIST, GRID, VIDEO }
+
+/**
+ * 条目层给封面的尺寸约束档位。封面组件按 "哪个维度被约束" 反算另一个维度 (见
+ * `SharedCoverContent` 内部 `coverSizeModifier`), 所以容器约束与传给封面的 modifier 必须
+ * 成对出现: 列表档钉高、给 [androidx.compose.foundation.layout.fillMaxHeight]; 网格/视频档
+ * 钉宽、给 [androidx.compose.foundation.layout.fillMaxWidth]。
+ */
+enum class ShelfCoverSlot { LIST, GRID, VIDEO }
+
+/**
+ * 封面容器: 同时决定容器自身约束与下发给封面的 modifier, 两者由同一处给出。
+ *
+ * 拆开写就会出现"容器钉高、封面却拿到 fillMaxWidth"的错配: 宽高两维都被钉死且比例与容器宽
+ * 不一致时, 封面的 `aspectRatio` 会静默放弃比例按宽度测量, 封面撑满整行。
+ *
+ * @param coverHeightDp 列表档封面高度 (网格/视频档高度由宽度算出, 此值不用)
+ * @param cover 封面渲染回调, 收到与 [slot] 配套的尺寸 modifier 与比例标志
+ */
+@Composable
+internal fun ShelfCoverBox(
+    slot: ShelfCoverSlot,
+    coverHeightDp: Int = 0,
+    listIsVideo: Boolean = false,
+    contentAlignment: Alignment = Alignment.TopStart,
+    cover: @Composable (Modifier, isVideoCover: Boolean) -> Unit,
+) {
+    val boxModifier: Modifier = when (slot) {
+        // 列表档: 高度由 bookshelfCoverHeight 决定, 宽度按封面比例反算
+        ShelfCoverSlot.LIST -> Modifier.height(coverHeightDp.dp)
+        // 网格档: 宽度填满格子 (左右各 12dp 内边距, 对照原 XML iv_cover match_parent + 12dp margin)
+        ShelfCoverSlot.GRID -> Modifier.fillMaxWidth().padding(start = 12.dp, top = 12.dp, end = 12.dp)
+        // 视频档: 宽度填满格子
+        ShelfCoverSlot.VIDEO -> Modifier.fillMaxWidth()
+    }
+    val coverModifier: Modifier = when (slot) {
+        ShelfCoverSlot.LIST -> Modifier.fillMaxHeight()
+        ShelfCoverSlot.GRID, ShelfCoverSlot.VIDEO -> Modifier.fillMaxWidth()
+    }
+    // 比例标志对照原 bindExploreCard / bindGridCard / bindVideoCard 与各 GroupViewHolder:
+    // 列表档书籍随 listIsVideo (分组列表档恒 NOVEL, 对照原版 GroupViewHolder 不设 coverRatio), 网格档恒 NOVEL, 视频档恒 VIDEO
+    val isVideoCover = when (slot) {
+        ShelfCoverSlot.LIST -> listIsVideo
+        ShelfCoverSlot.GRID -> false
+        ShelfCoverSlot.VIDEO -> true
+    }
+    Box(boxModifier, contentAlignment = contentAlignment) { cover(coverModifier, isVideoCover) }
+}
 
 data class ShelfLayoutSpec(
     val tier: ShelfTier,
@@ -187,8 +234,16 @@ private fun shelfGridCells(spec: ShelfLayoutSpec): GridCells =
     if (spec.fixedWidth) GridCells.Adaptive(spec.gridWidthDp.dp)
     else rememberResponsiveColumns(spec.cols)
 
-/** 计算封面高度 (对照 app 端 shelfCoverHeightDp, 视频模式按 0.75 收窄) */
-private fun shelfCoverHeightDp(isVideoStyle: Boolean): Int {
+/**
+ * 列表档封面高度: 读全局配置 `bookshelfCoverHeight`, 视频样式按 0.75 收窄。
+ *
+ * 收窄的理由 (对照原版 `applyCoverHeight` 注释): 16:9 视频封面横宽, 列表里容易挤到别的列,
+ * 按 3/4 倍高度收一下, 视觉上宽度仍与 3:4 小说封面同量级。
+ *
+ * 本函数是列表档封面高度的唯一来源: 书架/发现页/搜索列表/阅读记录四处条目共用, 不得在
+ * 条目层内联同一公式 (内联副本会随配置项或收窄系数变化而各自漂移)。
+ */
+internal fun shelfCoverHeightDp(isVideoStyle: Boolean): Int {
     val base = AppConfigProviders.get().bookshelfCoverHeight
     return if (isVideoStyle) (base * VIDEO_HEIGHT_SCALE).toInt() else base
 }
@@ -426,7 +481,7 @@ fun ShelfBooksContent(
 fun BookshelfTopBar(content: @Composable RowScope.() -> Unit) {
     val colors = AppTheme.colors
     val eInk = LocalEInk.current
-    Box(Modifier.fillMaxWidth().then(if (eInk) Modifier else Modifier.transitionStatusBarPadding())) {
+    Box(Modifier.fillMaxWidth().then(if (eInk) Modifier else Modifier.platformStatusBarPadding())) {
         Row(
             // 56dp 对照原 TitleBar/Toolbar minHeight=actionBarSize
             Modifier.fillMaxWidth().heightIn(min = 56.dp),
@@ -599,8 +654,8 @@ fun ShelfListItem(
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(8.dp),
     ) {
-        Box(Modifier.height(coverHeight.dp)) {
-            coverSlot(book, Modifier.fillMaxHeight(), isVideoStyle, coverReloadTick)
+        ShelfCoverBox(ShelfCoverSlot.LIST, coverHeightDp = coverHeight, listIsVideo = isVideoStyle) { m, isVideoCover ->
+            coverSlot(book, m, isVideoCover, coverReloadTick)
         }
         Column(
             Modifier
@@ -727,12 +782,8 @@ fun ShelfGridItem(
         Column(Modifier.fillMaxWidth()) {
             // 封面 Box: 宽度填满 (减 12dp 左右内边距), 对照原 XML iv_cover match_parent + 12dp margin
             // 无 cover URL 时仍渲染封面 Box (走占位), 对齐原 View 版无 path 也显示默认封面
-            Box(
-                Modifier.fillMaxWidth().padding(start = 12.dp, top = 12.dp, end = 12.dp),
-                contentAlignment = Alignment.TopCenter,
-            ) {
-                // 对照原 bindGridCard: ivCover.coverRatio = NOVEL (恒)
-                coverSlot(book, Modifier.fillMaxWidth(), false, coverReloadTick)
+            ShelfCoverBox(ShelfCoverSlot.GRID, contentAlignment = Alignment.TopCenter) { m, isVideoCover ->
+                coverSlot(book, m, isVideoCover, coverReloadTick)
             }
             Text(
                 text = book.name,
@@ -785,9 +836,8 @@ fun ShelfVideoItem(
             .padding(8.dp),
     ) {
         // 无 cover URL 时仍渲染封面 Box (走占位), 对齐原 View 版无 path 也显示默认封面
-        Box(Modifier.fillMaxWidth()) {
-            // 对照原 bindVideoCard: ivCover.coverRatio = VIDEO (恒)
-            coverSlot(book, Modifier.fillMaxWidth(), true, coverReloadTick)
+        ShelfCoverBox(ShelfCoverSlot.VIDEO) { m, isVideoCover ->
+            coverSlot(book, m, isVideoCover, coverReloadTick)
         }
         Text(
             text = book.name,
@@ -838,10 +888,8 @@ fun GroupListItem(
             .padding(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.height(coverHeight.dp)) {
-            // 对照原 style2 BooksAdapterList.GroupViewHolder: applyCoverHeight(isVideoStyle) 收窄高度,
-            // 但不设 coverRatio (保持默认 NOVEL); 故 isVideoCover 恒 false
-            coverSlot(group, Modifier.fillMaxHeight(), false, coverReloadTick)
+        ShelfCoverBox(ShelfCoverSlot.LIST, coverHeightDp = coverHeight) { m, isVideoCover ->
+            coverSlot(group, m, isVideoCover, coverReloadTick)
         }
         Text(
             text = group.groupName,
@@ -869,11 +917,8 @@ fun GroupGridItem(
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
-        Box(
-            Modifier.fillMaxWidth().padding(start = 12.dp, top = 12.dp, end = 12.dp),
-        ) {
-            // 对照原 style2 BooksAdapterGrid.GroupViewHolder: 不设 coverRatio (保持默认 NOVEL)
-            coverSlot(group, Modifier.fillMaxWidth(), false, coverReloadTick)
+        ShelfCoverBox(ShelfCoverSlot.GRID) { m, isVideoCover ->
+            coverSlot(group, m, isVideoCover, coverReloadTick)
         }
         Text(
             text = group.groupName,
@@ -903,9 +948,8 @@ fun GroupVideoItem(
             .padding(8.dp),
     ) {
         // 无 cover URL 时仍渲染封面 Box (走占位), 对齐 app 端无 path 也显示默认封面
-        Box(Modifier.fillMaxWidth()) {
-            // 对照原 style2 BooksAdapterVideo.GroupViewHolder: ivCover.coverRatio = VIDEO
-            coverSlot(group, Modifier.fillMaxWidth(), true, coverReloadTick)
+        ShelfCoverBox(ShelfCoverSlot.VIDEO) { m, isVideoCover ->
+            coverSlot(group, m, isVideoCover, coverReloadTick)
         }
         Text(
             text = group.groupName,

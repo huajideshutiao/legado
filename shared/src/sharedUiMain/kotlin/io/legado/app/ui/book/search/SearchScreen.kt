@@ -75,6 +75,7 @@ import io.legado.app.ui.bookshelf.ShelfLastUpdateText
 import io.legado.app.ui.bookshelf.ShelfListItem
 import io.legado.app.ui.bookshelf.ShelfRowIcon
 import io.legado.app.ui.bookshelf.ShelfVideoItem
+import io.legado.app.ui.bookshelf.shelfCoverHeightDp
 import io.legado.app.ui.bookshelf.UnreadBadge
 import io.legado.app.ui.bookshelf.toCoverBook
 import io.legado.app.ui.compose.component.AlertButton
@@ -929,11 +930,8 @@ private fun SearchListItem(
             .padding(8.dp),
     ) {
         // 视频列表按原 applyCoverHeight 收窄高度，宽度始终由封面比例反算。
-        // 换算别每次重组都做, 仅跟随视频样式变化 (对照书架 shelfCoverHeightDp)
-        val coverHeight = remember(isVideoStyle) {
-            AppConfigProviders.get().bookshelfCoverHeight
-                .let { if (isVideoStyle) (it * 0.75f).toInt() else it }
-        }
+        // 高度与书架列表档同源 (shelfCoverHeightDp): 收窄系数只在那里维护
+        val coverHeight = remember(isVideoStyle) { shelfCoverHeightDp(isVideoStyle) }
         Box(Modifier.height(coverHeight.dp)) {
             coverSlot(Modifier.fillMaxHeight())
         }

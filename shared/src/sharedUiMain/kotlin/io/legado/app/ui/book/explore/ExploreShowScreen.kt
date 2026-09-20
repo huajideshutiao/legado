@@ -42,8 +42,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
-import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.ui.bookshelf.KindLabels
+import io.legado.app.ui.bookshelf.shelfCoverHeightDp
 import io.legado.app.ui.root.LocalSharedCoverBinding
 import io.legado.app.ui.root.rememberSharedCoverSourceBinding
 import io.legado.app.ui.compose.component.AppTitleBar
@@ -473,9 +473,8 @@ private fun ExploreListItem(
     onLongClick: () -> Unit,
 ) {
     val colors = AppTheme.colors
-    // 0.75f: 16:9 视频封面按 3/4 高度收窄, 对齐 applyCoverHeight
-    val coverHeight = AppConfigProviders.get().bookshelfCoverHeight
-        .let { if (isVideoStyle) (it * 0.75f).toInt() else it }
+    // 高度与书架列表档同源 (shelfCoverHeightDp): 视频样式收窄系数只在那里维护
+    val coverHeight = shelfCoverHeightDp(isVideoStyle)
     Row(
         Modifier
             .fillMaxWidth()
