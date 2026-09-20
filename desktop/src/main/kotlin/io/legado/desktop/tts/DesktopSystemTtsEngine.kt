@@ -27,9 +27,11 @@ class DesktopSystemTtsEngine : SystemTtsEngine {
 
     private val backend: DesktopTtsBackend? get() = backendHolder.value
 
-    init {
-        // 后端探测会阻塞 (Windows 走 SAPI COM 初始化, 最长等 5s; Linux/mac 起探测子进程),
-        // 而朗读按钮的点击路径是在 EDT 上同步调进来的, 所以启动时就在后台线程预热。
+    /**
+     * 后台异步预热 TTS 后端 (Windows 走 SAPI COM 初始化, Linux/mac 起探测子进程)。
+     * 由桌面端启动阶段3 (首屏窗口显示后) 异步调用, 避免首屏前阻塞或唤醒系统 COM 组件。
+     */
+    fun warmUpAsync() {
         Thread({ runCatching { backendHolder.value } }, "desktop-tts-warmup").apply {
             isDaemon = true
             start()

@@ -873,6 +873,8 @@ private suspend fun registerSecondaryProviders() {
         // 注: TTS 引擎 + HttpTTS 播放器工厂已提前到阶段1同步注册 (无依赖, 消除开窗即朗读的竞态)
         // 压缩文件解压 provider (原 10b 后半, DesktopArchiveCodec 依赖 junrar/commons-compress)
         registerDesktopArchiveProvider()
+        // 系统 TTS 引擎后台预热 (推迟至阶段3窗口显示后, 避免首屏前唤醒 COM/子进程)
+        (TtsEngineProvider.get() as? DesktopSystemTtsEngine)?.warmUpAsync()
 
         // ===== 尾部启动任务 (原 15/16 步, 逐行等价逻辑在 DesktopCore.startupBackgroundTasks) =====
         DesktopCore.startupBackgroundTasks()
