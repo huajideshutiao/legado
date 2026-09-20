@@ -138,9 +138,22 @@ object BackupConfigShared {
         PreferKey.coverShowAuthorN
     )
 
+    /**
+     * 有效期: 半年 (至 2027-03-21)
+     * 加入日期: 2026-09-21
+     *
+     * 过滤历史配置与备份中遗留的视频播放进度条目。
+     * 视频进度由 ChapterProgressStore 持久化到 books 表, 不属于偏好配置;
+     * 桌面端 java.util.prefs 键名 ≤ 80 限制会抛异常, 且避免膨胀 config.json。
+     */
+    fun isIgnoredLegacyVideoProgressKey(key: String): Boolean {
+        return key.startsWith("video_progress")
+    }
+
     fun keyIsNotIgnore(key: String): Boolean {
         return when {
             ignorePrefKeys.contains(key) -> false
+            isIgnoredLegacyVideoProgressKey(key) -> false
             // 动态 key 的历史遗留 (书源评分 origin/origin_name_author, 已迁 caches 表):
             // 备份/恢复都不再经过 preference —— 桌面端 java.util.prefs key ≤ 80 会抛
             // IllegalArgumentException, 且 SourceConfig 已不再读取 preference
