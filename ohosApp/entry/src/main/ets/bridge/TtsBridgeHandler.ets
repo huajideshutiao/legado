@@ -184,7 +184,12 @@ async function handleSpeak(text: string, utteranceId: string, rate: number): Pro
   };
 
   console.info('[TtsBridge] speak: utteranceId=' + utteranceId + ' text.len=' + text.length + ' rate=' + rate);
-  await ttsEngine.speak(text, speakParams);
+  try {
+    await ttsEngine.speak(text, speakParams);
+  } catch (e) {
+    console.error('[TtsBridge] speak failed: ' + JSON.stringify(e));
+    emitEvent({ event: 'onError', utteranceId, message: String(e) });
+  }
 }
 
 // ===== pause / resume =====

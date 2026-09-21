@@ -156,6 +156,9 @@ async function handleEncode(payload: string): Promise<ImageActionResult> {
     const packed = await packer.packToData(pixelMap, { format: formatStr, quality: p.quality });
     // packed 是 ArrayBuffer: 原样裸传 (零拷贝, 二进制保真)
     return { resp: { ok: true }, body: packed };
+  } catch (e) {
+    const err = e as BusinessError;
+    return { resp: { ok: false, error: 'packToData failed: ' + (err.message ?? String(e)) } };
   } finally {
     packer.release();
   }
@@ -163,142 +166,162 @@ async function handleEncode(payload: string): Promise<ImageActionResult> {
 
 // ===== size: 获取 PixelMap 宽高 =====
 async function handleSize(payload: string): Promise<ImageResponse> {
-  const p = JSON.parse(payload) as SizePayload;
-  const pixelMap = pixelMaps.get(p.pixelMapId);
-  if (pixelMap == null) {
-    return { ok: false, error: 'pixelMap not found: ' + p.pixelMapId };
+  try {
+    const p = JSON.parse(payload) as SizePayload;
+    const pixelMap = pixelMaps.get(p.pixelMapId);
+    if (pixelMap == null) {
+      return { ok: false, error: 'pixelMap not found: ' + p.pixelMapId };
+    }
+    const info = pixelMap.getImageInfoSync();
+    return { ok: true, width: info.size.width, height: info.size.height };
+  } catch (e) {
+    const err = e as BusinessError;
+    return { ok: false, error: err.message ?? String(e) };
   }
-  const info = pixelMap.getImageInfoSync();
-  return { ok: true, width: info.size.width, height: info.size.height };
 }
 
 // ===== crop: 裁剪 PixelMap 区域, 返回新 PixelMap =====
 async function handleCrop(payload: string): Promise<ImageResponse> {
-  const p = JSON.parse(payload) as CropPayload;
-  const srcMap = pixelMaps.get(p.pixelMapId);
-  if (srcMap == null) {
-    return { ok: false, error: 'pixelMap not found: ' + p.pixelMapId };
+  try {
+    const p = JSON.parse(payload) as CropPayload;
+    const srcMap = pixelMaps.get(p.pixelMapId);
+    if (srcMap == null) {
+      return { ok: false, error: 'pixelMap not found: ' + p.pixelMapId };
+    }
+    // 创建独立副本后裁剪 (crop 修改 in-place, 不能直接操作原图)
+    const croppedMap = await createCroppedCopy(srcMap, p.x, p.y, p.w, p.h);
+    const id = nextPixelMapId++;
+    pixelMaps.set(id, croppedMap);
+    return { ok: true, pixelMapId: id };
+  } catch (e) {
+    const err = e as BusinessError;
+    return { ok: false, error: err.message ?? String(e) };
   }
-  // 创建独立副本后裁剪 (crop 修改 in-place, 不能直接操作原图)
-  const croppedMap = await createCroppedCopy(srcMap, p.x, p.y, p.w, p.h);
-  const id = nextPixelMapId++;
-  pixelMaps.set(id, croppedMap);
-  return { ok: true, pixelMapId: id };
 }
 
 // ===== split: 将 PixelMap 切分为 rows×cols 网格, 返回多个 PixelMap id =====
 async function handleSplit(payload: string): Promise<ImageResponse> {
-  const p = JSON.parse(payload) as SplitPayload;
-  const srcMap = pixelMaps.get(p.pixelMapId);
-  if (srcMap == null) {
-    return { ok: false, error: 'pixelMap not found: ' + p.pixelMapId };
-  }
-  if (p.rows <= 0 || p.cols <= 0) {
-    return { ok: false, error: 'invalid rows/cols: ' + p.rows + 'x' + p.cols };
-  }
-
-  const info = srcMap.getImageInfoSync();
-  const totalW = info.size.width;
-  const totalH = info.size.height;
-  const cellW = Math.floor(totalW / p.cols);
-  const cellH = Math.floor(totalH / p.rows);
-
-  // 读取一次原图像素, 供所有 cell 复用 (createPixelMap 内部拷贝数据)
-  const srcBuffer = new ArrayBuffer(totalW * totalH * 4);
-  await srcMap.readPixelsToBuffer(srcBuffer);
-
-  const ids: number[] = [];
-  for (let row = 0; row < p.rows; row++) {
-    for (let col = 0; col < p.cols; col++) {
-      const x = col * cellW;
-      const y = row * cellH;
-      const cellMap = await createPixelMapFromSubRegion(srcBuffer, totalW, totalH, x, y, cellW, cellH);
-      const id = nextPixelMapId++;
-      pixelMaps.set(id, cellMap);
-      ids.push(id);
+  try {
+    const p = JSON.parse(payload) as SplitPayload;
+    const srcMap = pixelMaps.get(p.pixelMapId);
+    if (srcMap == null) {
+      return { ok: false, error: 'pixelMap not found: ' + p.pixelMapId };
     }
+    if (p.rows <= 0 || p.cols <= 0) {
+      return { ok: false, error: 'invalid rows/cols: ' + p.rows + 'x' + p.cols };
+    }
+
+    const info = srcMap.getImageInfoSync();
+    const totalW = info.size.width;
+    const totalH = info.size.height;
+    const cellW = Math.floor(totalW / p.cols);
+    const cellH = Math.floor(totalH / p.rows);
+
+    // 读取一次原图像素, 供所有 cell 复用 (createPixelMap 内部拷贝数据)
+    const srcBuffer = new ArrayBuffer(totalW * totalH * 4);
+    await srcMap.readPixelsToBuffer(srcBuffer);
+
+    const ids: number[] = [];
+    for (let row = 0; row < p.rows; row++) {
+      for (let col = 0; col < p.cols; col++) {
+        const x = col * cellW;
+        const y = row * cellH;
+        const cellMap = await createPixelMapFromSubRegion(srcBuffer, totalW, totalH, x, y, cellW, cellH);
+        const id = nextPixelMapId++;
+        pixelMaps.set(id, cellMap);
+        ids.push(id);
+      }
+    }
+    return { ok: true, pixelMapIds: ids };
+  } catch (e) {
+    const err = e as BusinessError;
+    return { ok: false, error: err.message ?? String(e) };
   }
-  return { ok: true, pixelMapIds: ids };
 }
 
 // ===== stitch: 将多个 PixelMap 合并为一个, 返回新 PixelMap =====
 async function handleStitch(payload: string): Promise<ImageResponse> {
-  const p = JSON.parse(payload) as StitchPayload;
-  if (p.pixelMapIds.length === 0) {
-    return { ok: false, error: 'empty pixelMapIds' };
-  }
-
-  // 收集所有源 PixelMap 及其尺寸
-  const sources: image.PixelMap[] = [];
-  const sizes: StitchSource[] = [];
-  for (const id of p.pixelMapIds) {
-    const pm = pixelMaps.get(id);
-    if (pm == null) {
-      return { ok: false, error: 'pixelMap not found: ' + id };
+  try {
+    const p = JSON.parse(payload) as StitchPayload;
+    if (p.pixelMapIds.length === 0) {
+      return { ok: false, error: 'empty pixelMapIds' };
     }
-    sources.push(pm);
-  }
 
-  // 读取每个源 PixelMap 的像素数据
-  for (const pm of sources) {
-    const info = pm.getImageInfoSync();
-    const w = info.size.width;
-    const h = info.size.height;
-    const buf = new ArrayBuffer(w * h * 4);
-    await pm.readPixelsToBuffer(buf);
-    const src: StitchSource = { w: w, h: h, buffer: buf };
-    sizes.push(src);
-  }
+    // 收集所有源 PixelMap 及其尺寸
+    const sources: image.PixelMap[] = [];
+    const sizes: StitchSource[] = [];
+    for (const id of p.pixelMapIds) {
+      const pm = pixelMaps.get(id);
+      if (pm == null) {
+        return { ok: false, error: 'pixelMap not found: ' + id };
+      }
+      sources.push(pm);
+    }
 
-  // 计算合并后画布尺寸
-  const isHorizontal = p.direction === 'horizontal';
-  let totalW: number;
-  let totalH: number;
-  if (isHorizontal) {
-    totalW = sizes.reduce((sum, s) => sum + s.w, 0);
-    totalH = sizes.reduce((max, s) => Math.max(max, s.h), 0);
-  } else {
-    totalW = sizes.reduce((max, s) => Math.max(max, s.w), 0);
-    totalH = sizes.reduce((sum, s) => sum + s.h, 0);
-  }
+    // 读取每个源 PixelMap 的像素数据
+    for (const pm of sources) {
+      const info = pm.getImageInfoSync();
+      const w = info.size.width;
+      const h = info.size.height;
+      const buf = new ArrayBuffer(w * h * 4);
+      await pm.readPixelsToBuffer(buf);
+      const src: StitchSource = { w: w, h: h, buffer: buf };
+      sizes.push(src);
+    }
 
-  // 创建合并后的像素 buffer, 初始填 0 (透明)
-  const combinedBuffer = new ArrayBuffer(totalW * totalH * 4);
-  const dstView = new Uint8Array(combinedBuffer);
-
-  // 逐个源拷贝到合并 buffer 的正确位置
-  let offset = 0;
-  for (const s of sizes) {
-    const srcView = new Uint8Array(s.buffer);
+    // 计算合并后画布尺寸
+    const isHorizontal = p.direction === 'horizontal';
+    let totalW: number;
+    let totalH: number;
     if (isHorizontal) {
-      // 水平排列: 每行拷贝 s.w 个像素 (s.w*4 字节) 到 (offset, y) 位置
-      for (let y = 0; y < s.h; y++) {
-        const srcStart = y * s.w * 4;
-        const dstStart = y * totalW * 4 + offset * 4;
-        dstView.set(srcView.subarray(srcStart, srcStart + s.w * 4), dstStart);
-      }
-      offset += s.w;
+      totalW = sizes.reduce((sum, s) => sum + s.w, 0);
+      totalH = sizes.reduce((max, s) => Math.max(max, s.h), 0);
     } else {
-      // 垂直排列: 每行拷贝 s.w 个像素到 (0, offset+y) 位置
-      for (let y = 0; y < s.h; y++) {
-        const srcStart = y * s.w * 4;
-        const dstStart = (offset + y) * totalW * 4;
-        dstView.set(srcView.subarray(srcStart, srcStart + s.w * 4), dstStart);
-      }
-      offset += s.h;
+      totalW = sizes.reduce((max, s) => Math.max(max, s.w), 0);
+      totalH = sizes.reduce((sum, s) => sum + s.h, 0);
     }
-  }
 
-  // 从合并 buffer 创建新 PixelMap
-  const stitchedMap = await image.createPixelMap(combinedBuffer, {
-    size: { width: totalW, height: totalH },
-    pixelFormat: image.PixelMapFormat.RGBA_8888,
-    editable: true,
-    alphaType: image.AlphaType.PREMUL,
-  });
-  const id = nextPixelMapId++;
-  pixelMaps.set(id, stitchedMap);
-  return { ok: true, pixelMapId: id };
+    // 创建合并后的像素 buffer, 初始填 0 (透明)
+    const combinedBuffer = new ArrayBuffer(totalW * totalH * 4);
+    const dstView = new Uint8Array(combinedBuffer);
+
+    // 逐个源拷贝到合并 buffer 的正确位置
+    let offset = 0;
+    for (const s of sizes) {
+      const srcView = new Uint8Array(s.buffer);
+      if (isHorizontal) {
+        // 水平排列: 每行拷贝 s.w 个像素 (s.w*4 字节) 到 (offset, y) 位置
+        for (let y = 0; y < s.h; y++) {
+          const srcStart = y * s.w * 4;
+          const dstStart = y * totalW * 4 + offset * 4;
+          dstView.set(srcView.subarray(srcStart, srcStart + s.w * 4), dstStart);
+        }
+        offset += s.w;
+      } else {
+        // 垂直排列: 每行拷贝 s.w 个像素到 (0, offset+y) 位置
+        for (let y = 0; y < s.h; y++) {
+          const srcStart = y * s.w * 4;
+          const dstStart = (offset + y) * totalW * 4;
+          dstView.set(srcView.subarray(srcStart, srcStart + s.w * 4), dstStart);
+        }
+        offset += s.h;
+      }
+    }
+
+    // 从合并 buffer 创建新 PixelMap
+    const stitchedMap = await image.createPixelMap(combinedBuffer, {
+      size: { width: totalW, height: totalH },
+      pixelFormat: image.PixelMapFormat.RGBA_8888,
+      editable: true,
+      alphaType: image.AlphaType.PREMUL,
+    });
+    const id = nextPixelMapId++;
+    pixelMaps.set(id, stitchedMap);
+    return { ok: true, pixelMapId: id };
+  } catch (e) {
+    const err = e as BusinessError;
+    return { ok: false, error: err.message ?? String(e) };
+  }
 }
 
 // ===== rotate: PixelMap 旋转 (in-place, 先复制再旋转), 返回新 PixelMap =====
@@ -362,12 +385,17 @@ async function handleRelease(payload: string): Promise<ImageResponse> {
 async function createCroppedCopy(
   srcMap: image.PixelMap, x: number, y: number, w: number, h: number
 ): Promise<image.PixelMap> {
-  const info = srcMap.getImageInfoSync();
-  const srcW = info.size.width;
-  const srcH = info.size.height;
-  const srcBuffer = new ArrayBuffer(srcW * srcH * 4);
-  await srcMap.readPixelsToBuffer(srcBuffer);
-  return await createPixelMapFromSubRegion(srcBuffer, srcW, srcH, x, y, w, h);
+  try {
+    const info = srcMap.getImageInfoSync();
+    const srcW = info.size.width;
+    const srcH = info.size.height;
+    const srcBuffer = new ArrayBuffer(srcW * srcH * 4);
+    await srcMap.readPixelsToBuffer(srcBuffer);
+    return await createPixelMapFromSubRegion(srcBuffer, srcW, srcH, x, y, w, h);
+  } catch (e) {
+    console.error('[ImageBridge] createCroppedCopy failed: ' + JSON.stringify(e));
+    throw e as Error;
+  }
 }
 
 /**
@@ -375,17 +403,22 @@ async function createCroppedCopy(
  * 读像素到 buffer → 以同尺寸 RGBA_8888 editable 重建, 与原图完全隔离。
  */
 async function createEditableCopy(srcMap: image.PixelMap): Promise<image.PixelMap> {
-  const info = srcMap.getImageInfoSync();
-  const w = info.size.width;
-  const h = info.size.height;
-  const buf = new ArrayBuffer(w * h * 4);
-  await srcMap.readPixelsToBuffer(buf);
-  return await image.createPixelMap(buf, {
-    size: { width: w, height: h },
-    pixelFormat: image.PixelMapFormat.RGBA_8888,
-    editable: true,
-    alphaType: image.AlphaType.PREMUL,
-  });
+  try {
+    const info = srcMap.getImageInfoSync();
+    const w = info.size.width;
+    const h = info.size.height;
+    const buf = new ArrayBuffer(w * h * 4);
+    await srcMap.readPixelsToBuffer(buf);
+    return await image.createPixelMap(buf, {
+      size: { width: w, height: h },
+      pixelFormat: image.PixelMapFormat.RGBA_8888,
+      editable: true,
+      alphaType: image.AlphaType.PREMUL,
+    });
+  } catch (e) {
+    console.error('[ImageBridge] createEditableCopy failed: ' + JSON.stringify(e));
+    throw e as Error;
+  }
 }
 
 /**

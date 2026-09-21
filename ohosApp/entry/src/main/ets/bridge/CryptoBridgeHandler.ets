@@ -153,133 +153,163 @@ async function handleAction(req: BridgeRequest): Promise<CryptoResponse> {
 
 // ===== encrypt/decrypt: cryptoFramework.createCipher + init + doFinal =====
 async function handleEncryptDecrypt(payload: string, isEncrypt: boolean): Promise<CryptoResponse> {
-  const p = JSON.parse(payload) as AsyCryptoPayload;
-  // 公钥加密场景需 publicKey; 私钥解密场景需 privateKey; 私钥加密/公钥解密按 usePublicKey 取对应 key
-  const keyB64 = p.usePublicKey ? p.publicKey : p.privateKey;
-  if (keyB64 == null) {
-    return { ok: false, error: (p.usePublicKey ? 'publicKey' : 'privateKey') + ' not set' };
+  try {
+    const p = JSON.parse(payload) as AsyCryptoPayload;
+    // 公钥加密场景需 publicKey; 私钥解密场景需 privateKey; 私钥加密/公钥解密按 usePublicKey 取对应 key
+    const keyB64 = p.usePublicKey ? p.publicKey : p.privateKey;
+    if (keyB64 == null) {
+      return { ok: false, error: (p.usePublicKey ? 'publicKey' : 'privateKey') + ' not set' };
+    }
+    const keyDer = base64ToUint8(keyB64);
+    const dataBytes = base64ToUint8(p.data);
+
+    // 探测 RSA keysize (加解密仅支持 RSA, ECC 无 Cipher)
+    const keySize = await detectRsaKeySize(keyDer, !p.usePublicKey);
+    // 映射 JCA transformation → cryptoFramework Cipher spec
+    const spec = mapAsyCodecSpec(p.algorithm, keySize);
+
+    // 创建 Cipher + 转换密钥 + init + doFinal (RSA 加解密用 createCipher, OHOS 无独立 AsyCodec API)
+    const cipher = cryptoFramework.createCipher(spec);
+    const keyPair = await convertKey('RSA' + keySize, keyDer, !p.usePublicKey);
+    const key = p.usePublicKey ? keyPair.pubKey : keyPair.priKey;
+    await initAsyCipher(cipher, isEncrypt, key);
+    const resultBytes = await doFinalAsyCipher(cipher, dataBytes);
+
+    return { ok: true, data: uint8ToBase64(resultBytes) };
+  } catch (e) {
+    const err = e as BusinessError;
+    return { ok: false, error: err.message ?? String(e) };
   }
-  const keyDer = base64ToUint8(keyB64);
-  const dataBytes = base64ToUint8(p.data);
-
-  // 探测 RSA keysize (加解密仅支持 RSA, ECC 无 Cipher)
-  const keySize = await detectRsaKeySize(keyDer, !p.usePublicKey);
-  // 映射 JCA transformation → cryptoFramework Cipher spec
-  const spec = mapAsyCodecSpec(p.algorithm, keySize);
-
-  // 创建 Cipher + 转换密钥 + init + doFinal (RSA 加解密用 createCipher, OHOS 无独立 AsyCodec API)
-  const cipher = cryptoFramework.createCipher(spec);
-  const keyPair = await convertKey('RSA' + keySize, keyDer, !p.usePublicKey);
-  const key = p.usePublicKey ? keyPair.pubKey : keyPair.priKey;
-  await initAsyCipher(cipher, isEncrypt, key);
-  const resultBytes = await doFinalAsyCipher(cipher, dataBytes);
-
-  return { ok: true, data: uint8ToBase64(resultBytes) };
 }
 
 // ===== sign: cryptoFramework.createSign + init + sign =====
 async function handleSign(payload: string): Promise<CryptoResponse> {
-  const p = JSON.parse(payload) as SignPayload;
-  const keyDer = base64ToUint8(p.privateKey);
-  const dataBytes = base64ToUint8(p.data);
+  try {
+    const p = JSON.parse(payload) as SignPayload;
+    const keyDer = base64ToUint8(p.privateKey);
+    const dataBytes = base64ToUint8(p.data);
 
-  const algUpper = p.algorithm.toUpperCase();
-  let spec: string;
-  let keyPair: cryptoFramework.KeyPair;
-  if (algUpper.includes('ECDSA')) {
-    const keySize = await detectEccKeySize(keyDer, true);
-    spec = mapSignSpec(p.algorithm, keySize, true);
-    keyPair = await convertKey('ECC' + keySize, keyDer, true);
-  } else {
-    const keySize = await detectRsaKeySize(keyDer, true);
-    spec = mapSignSpec(p.algorithm, keySize, false);
-    keyPair = await convertKey('RSA' + keySize, keyDer, true);
+    const algUpper = p.algorithm.toUpperCase();
+    let spec: string;
+    let keyPair: cryptoFramework.KeyPair;
+    if (algUpper.includes('ECDSA')) {
+      const keySize = await detectEccKeySize(keyDer, true);
+      spec = mapSignSpec(p.algorithm, keySize, true);
+      keyPair = await convertKey('ECC' + keySize, keyDer, true);
+    } else {
+      const keySize = await detectRsaKeySize(keyDer, true);
+      spec = mapSignSpec(p.algorithm, keySize, false);
+      keyPair = await convertKey('RSA' + keySize, keyDer, true);
+    }
+
+    const signer = cryptoFramework.createSign(spec);
+    await initSign(signer, keyPair.priKey);
+    const sigBytes = await signData(signer, dataBytes);
+    return { ok: true, data: uint8ToBase64(sigBytes) };
+  } catch (e) {
+    const err = e as BusinessError;
+    return { ok: false, error: err.message ?? String(e) };
   }
-
-  const signer = cryptoFramework.createSign(spec);
-  await initSign(signer, keyPair.priKey);
-  const sigBytes = await signData(signer, dataBytes);
-  return { ok: true, data: uint8ToBase64(sigBytes) };
 }
 
 // ===== verify: cryptoFramework.createVerify + init + verify =====
 async function handleVerify(payload: string): Promise<CryptoResponse> {
-  const p = JSON.parse(payload) as VerifyPayload;
-  const keyDer = base64ToUint8(p.publicKey);
-  const dataBytes = base64ToUint8(p.data);
-  const sigBytes = base64ToUint8(p.signature);
+  try {
+    const p = JSON.parse(payload) as VerifyPayload;
+    const keyDer = base64ToUint8(p.publicKey);
+    const dataBytes = base64ToUint8(p.data);
+    const sigBytes = base64ToUint8(p.signature);
 
-  const algUpper = p.algorithm.toUpperCase();
-  let spec: string;
-  let keyPair: cryptoFramework.KeyPair;
-  if (algUpper.includes('ECDSA')) {
-    const keySize = await detectEccKeySize(keyDer, false);
-    spec = mapSignSpec(p.algorithm, keySize, true);
-    keyPair = await convertKey('ECC' + keySize, keyDer, false);
-  } else {
-    const keySize = await detectRsaKeySize(keyDer, false);
-    spec = mapSignSpec(p.algorithm, keySize, false);
-    keyPair = await convertKey('RSA' + keySize, keyDer, false);
+    const algUpper = p.algorithm.toUpperCase();
+    let spec: string;
+    let keyPair: cryptoFramework.KeyPair;
+    if (algUpper.includes('ECDSA')) {
+      const keySize = await detectEccKeySize(keyDer, false);
+      spec = mapSignSpec(p.algorithm, keySize, true);
+      keyPair = await convertKey('ECC' + keySize, keyDer, false);
+    } else {
+      const keySize = await detectRsaKeySize(keyDer, false);
+      spec = mapSignSpec(p.algorithm, keySize, false);
+      keyPair = await convertKey('RSA' + keySize, keyDer, false);
+    }
+
+    const verifier = cryptoFramework.createVerify(spec);
+    await initVerify(verifier, keyPair.pubKey);
+    // 验签返回 boolean: true→签名匹配, false→签名不匹配 (不抛异常, 对齐 JCA Signature.verify)
+    const isVerified = await verifyData(verifier, dataBytes, sigBytes);
+    return { ok: true, result: isVerified };
+  } catch (e) {
+    const err = e as BusinessError;
+    return { ok: false, error: err.message ?? String(e) };
   }
-
-  const verifier = cryptoFramework.createVerify(spec);
-  await initVerify(verifier, keyPair.pubKey);
-  // 验签返回 boolean: true→签名匹配, false→签名不匹配 (不抛异常, 对齐 JCA Signature.verify)
-  const isVerified = await verifyData(verifier, dataBytes, sigBytes);
-  return { ok: true, result: isVerified };
 }
 
 // ===== digest: cryptoFramework.createMd + update + digest =====
 // KMP NativeDigestOps.digest → action="digest"
 async function handleDigest(payload: string): Promise<CryptoResponse> {
-  const p = JSON.parse(payload) as DigestPayload;
-  const dataBytes = base64ToUint8(p.data);
+  try {
+    const p = JSON.parse(payload) as DigestPayload;
+    const dataBytes = base64ToUint8(p.data);
 
-  // 归一化算法名: MD5/SHA-1/SHA1/SHA-256/SHA256 → MD5/SHA1/SHA256/SHA512 (OHOS createMd 无连字符)
-  const algName = normalizeDigestAlg(p.algorithm);
-  const md = cryptoFramework.createMd(algName);
-  await updateMd(md, dataBytes);
-  const resultBytes = await digestMd(md);
-  return { ok: true, data: uint8ToBase64(resultBytes) };
+    // 归一化算法名: MD5/SHA-1/SHA1/SHA-256/SHA256 → MD5/SHA1/SHA256/SHA512 (OHOS createMd 无连字符)
+    const algName = normalizeDigestAlg(p.algorithm);
+    const md = cryptoFramework.createMd(algName);
+    await updateMd(md, dataBytes);
+    const resultBytes = await digestMd(md);
+    return { ok: true, data: uint8ToBase64(resultBytes) };
+  } catch (e) {
+    const err = e as BusinessError;
+    return { ok: false, error: err.message ?? String(e) };
+  }
 }
 
 // ===== hmac: cryptoFramework.createMac + SymKeyGenerator.convertKey + init + update + doFinal =====
 // KMP NativeHmacOps.hmac → action="hmac"
 async function handleHmac(payload: string): Promise<CryptoResponse> {
-  const p = JSON.parse(payload) as HmacPayload;
-  const keyBytes = base64ToUint8(p.key);
-  const dataBytes = base64ToUint8(p.data);
+  try {
+    const p = JSON.parse(payload) as HmacPayload;
+    const keyBytes = base64ToUint8(p.key);
+    const dataBytes = base64ToUint8(p.data);
 
-  // 归一化算法名: HmacMD5/HmacSHA256/HMAC-SHA512 → SHA-256 等 (OHOS createMac 用连字符格式)
-  const algName = normalizeHmacAlg(p.algorithm);
-  const mac = cryptoFramework.createMac(algName);
-  // HMAC 密钥: SymKeyGenerator("HMAC").convertKey(DataBlob) → SymKey
-  const symKey = await convertSymKey('HMAC', keyBytes);
-  await initMac(mac, symKey);
-  await updateMac(mac, dataBytes);
-  const resultBytes = await doFinalMac(mac);
-  return { ok: true, data: uint8ToBase64(resultBytes) };
+    // 归一化算法名: HmacMD5/HmacSHA256/HMAC-SHA512 → SHA-256 等 (OHOS createMac 用连字符格式)
+    const algName = normalizeHmacAlg(p.algorithm);
+    const mac = cryptoFramework.createMac(algName);
+    // HMAC 密钥: SymKeyGenerator("HMAC").convertKey(DataBlob) → SymKey
+    const symKey = await convertSymKey('HMAC', keyBytes);
+    await initMac(mac, symKey);
+    await updateMac(mac, dataBytes);
+    const resultBytes = await doFinalMac(mac);
+    return { ok: true, data: uint8ToBase64(resultBytes) };
+  } catch (e) {
+    const err = e as BusinessError;
+    return { ok: false, error: err.message ?? String(e) };
+  }
 }
 
 // ===== aesEncrypt/aesDecrypt: cryptoFramework.createCipher + SymKeyGenerator.convertKey + init + doFinal =====
 // KMP NativeAesOps.encryptEcbPkcs7/decryptEcbPkcs7 → action="aesEncrypt"/"aesDecrypt"
 async function handleAesEncryptDecrypt(payload: string, isEncrypt: boolean): Promise<CryptoResponse> {
-  const p = JSON.parse(payload) as AesPayload;
-  const keyBytes = base64ToUint8(p.key);
-  const dataBytes = base64ToUint8(p.data);
+  try {
+    const p = JSON.parse(payload) as AesPayload;
+    const keyBytes = base64ToUint8(p.key);
+    const dataBytes = base64ToUint8(p.data);
 
-  // AES key size 由 key 字节长度推断: 16→AES128, 24→AES192, 32→AES256
-  const keySize = detectAesKeySize(keyBytes.length);
-  // ECB + PKCS7 (PKCS7 在 AES 块大小 16 下与 PKCS5 等价, 对齐 KMP NativeAesOps)
-  const cipherSpec = `AES${keySize}|ECB|PKCS7`;
-  const keyGenSpec = `AES${keySize}`;
+    // AES key size 由 key 字节长度推断: 16→AES128, 24→AES192, 32→AES256
+    const keySize = detectAesKeySize(keyBytes.length);
+    // ECB + PKCS7 (PKCS7 在 AES 块大小 16 下与 PKCS5 等价, 对齐 KMP NativeAesOps)
+    const cipherSpec = `AES${keySize}|ECB|PKCS7`;
+    const keyGenSpec = `AES${keySize}`;
 
-  const cipher = cryptoFramework.createCipher(cipherSpec);
-  const symKey = await convertSymKey(keyGenSpec, keyBytes);
-  // ECB 模式无 IV, params 传 null
-  await initCipher(cipher, isEncrypt, symKey);
-  const resultBytes = await doFinalCipher(cipher, dataBytes);
-  return { ok: true, data: uint8ToBase64(resultBytes) };
+    const cipher = cryptoFramework.createCipher(cipherSpec);
+    const symKey = await convertSymKey(keyGenSpec, keyBytes);
+    // ECB 模式无 IV, params 传 null
+    await initCipher(cipher, isEncrypt, symKey);
+    const resultBytes = await doFinalCipher(cipher, dataBytes);
+    return { ok: true, data: uint8ToBase64(resultBytes) };
+  } catch (e) {
+    const err = e as BusinessError;
+    return { ok: false, error: err.message ?? String(e) };
+  }
 }
 
 // ===== 算法名归一化 (KMP → OHOS cryptoFramework) =====

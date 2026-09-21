@@ -86,18 +86,26 @@ function handleAction(req: BridgeRequest): TextCodecResponse {
 
 // ===== decode: base64 → bytes → 按 charset 解码为字符串 =====
 function handleDecode(payload: string): TextCodecResponse {
-  const p = JSON.parse(payload) as DecodePayload;
-  const buf = buffer.from(p.data, 'base64');
-  const bytes = new Uint8Array(buf.buffer, buf.byteOffset, buf.length);
-  const text = getDecoder(p.charset).decodeToString(bytes, { stream: false });
-  return { ok: true, text };
+  try {
+    const p = JSON.parse(payload) as DecodePayload;
+    const buf = buffer.from(p.data, 'base64');
+    const bytes = new Uint8Array(buf.buffer, buf.byteOffset, buf.length);
+    const text = getDecoder(p.charset).decodeToString(bytes, { stream: false });
+    return { ok: true, text };
+  } catch (e) {
+    return { ok: false, error: 'decode failed: ' + JSON.stringify(e) };
+  }
 }
 
 // ===== encode: 字符串 → 按 charset 编码为 bytes → base64 =====
 function handleEncode(payload: string): TextCodecResponse {
-  const p = JSON.parse(payload) as EncodePayload;
-  const encoder = new util.TextEncoder(p.charset);
-  const bytes = encoder.encodeInto(p.text);
-  const data = buffer.from(bytes.buffer, bytes.byteOffset, bytes.length).toString('base64');
-  return { ok: true, data };
+  try {
+    const p = JSON.parse(payload) as EncodePayload;
+    const encoder = new util.TextEncoder(p.charset);
+    const bytes = encoder.encodeInto(p.text);
+    const data = buffer.from(bytes.buffer, bytes.byteOffset, bytes.length).toString('base64');
+    return { ok: true, data };
+  } catch (e) {
+    return { ok: false, error: 'encode failed: ' + JSON.stringify(e) };
+  }
 }

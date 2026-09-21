@@ -72,19 +72,24 @@ export function initPermissionBridge(context: common.UIAbilityContext): void {
  * @param permission 权限名 (如 'ohos.permission.WRITE_IMAGEVIDEO')
  */
 export async function ensurePermissionGranted(context: common.UIAbilityContext, permission: string): Promise<boolean> {
-  const atManager = abilityAccessCtrl.createAtManager();
-  // accessTokenId 取应用自身 token: UIAbilityContext.applicationInfo.accessTokenId
-  const tokenId = context.applicationInfo.accessTokenId;
-  let granted = atManager.checkAccessTokenSync(tokenId, permission as Permissions) ===
-    abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED;
-  if (!granted) {
-    // Permissions 是 SDK 的字符串字面量联合类型, 调用方传的是普通 string, 此处断言收窄
-    const permissions: Array<Permissions> = [permission as Permissions];
-    const result = await atManager.requestPermissionsFromUser(context, permissions);
-    granted = result.authResults.length > 0 &&
-      result.authResults[0] === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED;
+  try {
+    const atManager = abilityAccessCtrl.createAtManager();
+    // accessTokenId 取应用自身 token: UIAbilityContext.applicationInfo.accessTokenId
+    const tokenId = context.applicationInfo.accessTokenId;
+    let granted = atManager.checkAccessTokenSync(tokenId, permission as Permissions) ===
+      abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED;
+    if (!granted) {
+      // Permissions 是 SDK 的字符串字面量联合类型, 调用方传的是普通 string, 此处断言收窄
+      const permissions: Array<Permissions> = [permission as Permissions];
+      const result = await atManager.requestPermissionsFromUser(context, permissions);
+      granted = result.authResults.length > 0 &&
+        result.authResults[0] === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED;
+    }
+    return granted;
+  } catch (e) {
+    console.error('[PermissionBridge] ensurePermissionGranted failed: ' + JSON.stringify(e));
+    return false;
   }
-  return granted;
 }
 
 /**

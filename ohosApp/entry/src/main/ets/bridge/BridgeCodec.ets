@@ -21,23 +21,38 @@ export function base64ToUint8(b64: string): Uint8Array {
 
 /** Uint8Array → base64 字符串 (先复制到独立 ArrayBuffer, 消除子视图偏移)。 */
 export function uint8ToBase64(bytes: Uint8Array): string {
-  const ab = new ArrayBuffer(bytes.byteLength);
-  const view = new Uint8Array(ab);
-  view.set(bytes);
-  return buffer.from(ab).toString('base64');
+  try {
+    const ab = new ArrayBuffer(bytes.byteLength);
+    const view = new Uint8Array(ab);
+    view.set(bytes);
+    return buffer.from(ab).toString('base64');
+  } catch (e) {
+    console.error('[BridgeCodec] uint8ToBase64 failed: ' + JSON.stringify(e));
+    return '';
+  }
 }
 
 /** ArrayBuffer → base64 字符串。 */
 export function arrayBufferToBase64(ab: ArrayBuffer): string {
-  return buffer.from(ab).toString('base64');
+  try {
+    return buffer.from(ab).toString('base64');
+  } catch (e) {
+    console.error('[BridgeCodec] arrayBufferToBase64 failed: ' + JSON.stringify(e));
+    return '';
+  }
 }
 
 /** base64 字符串 → 独立 ArrayBuffer (与 [base64ToUint8] 同一复制语义, 直接给按 ArrayBuffer 收参的 API 用)。 */
 export function base64ToArrayBuffer(b64: string): ArrayBuffer {
-  const buf = buffer.from(b64, 'base64');
-  const ab = new ArrayBuffer(buf.length);
-  new Uint8Array(ab).set(new Uint8Array(buf.buffer, buf.byteOffset, buf.length));
-  return ab;
+  try {
+    const buf = buffer.from(b64, 'base64');
+    const ab = new ArrayBuffer(buf.length);
+    new Uint8Array(ab).set(new Uint8Array(buf.buffer, buf.byteOffset, buf.length));
+    return ab;
+  } catch (e) {
+    console.error('[BridgeCodec] base64ToArrayBuffer failed: ' + JSON.stringify(e));
+    return new ArrayBuffer(0);
+  }
 }
 
 /** 字符串 → UTF-8 编码的 ArrayBuffer (slice 出独立副本, 不共享 Buffer 池化底层)。 */

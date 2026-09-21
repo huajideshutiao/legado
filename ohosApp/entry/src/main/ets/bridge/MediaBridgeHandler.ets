@@ -403,20 +403,26 @@ async function handleSetSourceUrl(id: string, url: string, headers?: Record<stri
   const slot = new PlayerSlot();
   players.set(id, slot);
 
-  const player = await media.createAVPlayer();
-  slot.player = player;
-  registerPlayerEvents(id, player);
-  bindVideoSurfaceIfNeeded(id, player);
+  try {
+    const player = await media.createAVPlayer();
+    slot.player = player;
+    registerPlayerEvents(id, player);
+    bindVideoSurfaceIfNeeded(id, player);
 
-  // MediaSource 支持自定义请求头 (Referer/User-Agent/Cookie), 直接设 url 属性做不到
-  const source: media.MediaSource = media.createMediaSourceWithUrl(url, headers);
-  await player.setMediaSource(source);
-  // 只记条数不记内容: headers 里常是 Cookie/Token, 不得进日志
-  console.info('[MediaBridge] setSourceUrl: id=' + id + ' url=' + url
-    + ' headerCount=' + (headers === undefined ? 0 : Object.keys(headers).length));
+    // MediaSource 支持自定义请求头 (Referer/User-Agent/Cookie), 直接设 url 属性做不到
+    const source: media.MediaSource = media.createMediaSourceWithUrl(url, headers);
+    await player.setMediaSource(source);
+    // 只记条数不记内容: headers 里常是 Cookie/Token, 不得进日志
+    console.info('[MediaBridge] setSourceUrl: id=' + id + ' url=' + url
+      + ' headerCount=' + (headers === undefined ? 0 : Object.keys(headers).length));
 
-  // setMediaSource 完成即进入 initialized, 仍需 prepare 才 ready
-  await player.prepare();
+    // setMediaSource 完成即进入 initialized, 仍需 prepare 才 ready
+    await player.prepare();
+  } catch (e) {
+    const err = e as BusinessError;
+    console.error('[MediaBridge] setSourceUrl failed: ' + (err.message ?? String(e)));
+    emitEvent(id, { event: 'onError', message: 'setSourceUrl failed: ' + (err.message ?? String(e)) });
+  }
 }
 
 // ===== play =====
@@ -699,34 +705,43 @@ async function buildLaunchWantAgent(context: common.UIAbilityContext): Promise<W
     requestCode: 0,
     wantAgentFlags: [wantAgent.WantAgentFlags.UPDATE_PRESENT_FLAG]
   };
-  return await wantAgent.getWantAgent(wantAgentInfo);
+  try {
+    return await wantAgent.getWantAgent(wantAgentInfo);
+  } catch (e) {
+    console.error('[MediaBridge] getWantAgent failed: ' + JSON.stringify(e));
+    throw e as Error;
+  }
 }
 
 /** 注册 AVSession 的远程播控回调 (指令统一回传 Kotlin 侧 SystemMediaControl 判定归属)。 */
 function registerAvSessionCallbacks(session: avSession.AVSession): void {
-  session.on('play', () => {
-    emitEvent(PLAYER_ID_SESSION, { event: 'onCommand', command: 'play' });
-  });
+  try {
+    session.on('play', () => {
+      emitEvent(PLAYER_ID_SESSION, { event: 'onCommand', command: 'play' });
+    });
 
-  session.on('pause', () => {
-    emitEvent(PLAYER_ID_SESSION, { event: 'onCommand', command: 'pause' });
-  });
+    session.on('pause', () => {
+      emitEvent(PLAYER_ID_SESSION, { event: 'onCommand', command: 'pause' });
+    });
 
-  session.on('stop', () => {
-    emitEvent(PLAYER_ID_SESSION, { event: 'onCommand', command: 'stop' });
-  });
+    session.on('stop', () => {
+      emitEvent(PLAYER_ID_SESSION, { event: 'onCommand', command: 'stop' });
+    });
 
-  session.on('playNext', () => {
-    emitEvent(PLAYER_ID_SESSION, { event: 'onCommand', command: 'next' });
-  });
+    session.on('playNext', () => {
+      emitEvent(PLAYER_ID_SESSION, { event: 'onCommand', command: 'next' });
+    });
 
-  session.on('playPrevious', () => {
-    emitEvent(PLAYER_ID_SESSION, { event: 'onCommand', command: 'previous' });
-  });
+    session.on('playPrevious', () => {
+      emitEvent(PLAYER_ID_SESSION, { event: 'onCommand', command: 'previous' });
+    });
 
-  session.on('seek', (positionMs: number) => {
-    emitEvent(PLAYER_ID_SESSION, { event: 'onCommand', command: 'seek', position: positionMs });
-  });
+    session.on('seek', (positionMs: number) => {
+      emitEvent(PLAYER_ID_SESSION, { event: 'onCommand', command: 'seek', position: positionMs });
+    });
+  } catch (e) {
+    console.error('[MediaBridge] registerAvSessionCallbacks failed: ' + JSON.stringify(e));
+  }
 }
 
 /** 开启/关闭后台长时音频播放保活任务 (AUDIO_PLAYBACK 要求会话已注册, 故先 ensureAvSession)。 */
