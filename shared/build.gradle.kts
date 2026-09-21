@@ -420,32 +420,32 @@ kotlin {
 
     if (enableIosTarget) {
         val configureNativeCinterops: KotlinNativeTarget.() -> Unit = {
-            // quickjs-ng / mbedtls 的 C 目标码由 scripts/build-ios-native.sh 预编译 (cinterop 只编 .def 内 wrapper),
-            // 按 konanTarget 名分目录, 缺 .a 时 link 阶段报未定义符号。
-            val nativeLibDir = file("${projectDir}/build/iosNativeLibs/${konanTarget.name}")
-            binaries {
-                framework {
-                    baseName = "shared"
-                    isStatic = false
-                    // 不给则 Info.plist 的 CFBundleIdentifier 回落成 bundle name "shared" 并告警
-                    binaryOption("bundleId", "shutiao.reader.shared")
-                }
-                all {
-                    // -lsqlite3: room3/sqlite-framework 的 cinterop wrapper 直呼 sqlite3_* 符号,
-                    // 系统 libsqlite3 必须显式链接; 全量 LTO 时代死代码消除掩盖了缺失,
-                    // 关优化后 ld 真实解析才暴露 (2026-08-26 ios.yml 实测)。
-                    linkerOpts("-L${nativeLibDir.absolutePath}", "-lquickjs", "-lmbedtls", "-lsqlite3")
-                    // 显式关优化: release 全量 LTO 的 DevirtualizationAnalysis 峰值堆需求超 10g,
-                    // CI runner 仅 8G 物理内存必 OOM (2026-08-26 ios.yml 实测), 代价是 framework
-                    // 体积增大, 换取 CI 稳定出包。死代码剥离不自己传: Apple ld 不认 GNU 的
-                    // --gc-sections (硬失败), 且 K/N 链 framework 时已自带 -dead_strip (konan Linker.kt)。
-                    optimized = false
-                }
-            }
-            // KGP 的 klib 跨平台编译要求目标不含任何 cinterop (见 KotlinNativeTarget
-            // .crossCompilationOnCurrentHostSupported); 且 cinterop 本身在非 mac 上无法运行。
-            // 非 mac host 跳过声明, 以便在 Windows 上跑 compileKotlinIosArm64 做语法/签名校验。
+            // framework 与 cinterop 均依赖 Apple 工具链与 sysroot, 非 mac 无法链接与生成。
+            // 非 mac host 跳过声明, 仅在 Windows 上跑 compileKotlinIosArm64 做语法/类型校验,
+            // 消除在不支持平台配置 releaseFramework 导致的 Incompatible Binary 告警。
             if (isMacHost) {
+                // quickjs-ng / mbedtls 的 C 目标码由 scripts/build-ios-native.sh 预编译 (cinterop 只编 .def 内 wrapper),
+                // 按 konanTarget 名分目录, 缺 .a 时 link 阶段报未定义符号。
+                val nativeLibDir = file("${projectDir}/build/iosNativeLibs/${konanTarget.name}")
+                binaries {
+                    framework {
+                        baseName = "shared"
+                        isStatic = false
+                        // 不给则 Info.plist 的 CFBundleIdentifier 回落成 bundle name "shared" 并告警
+                        binaryOption("bundleId", "shutiao.reader.shared")
+                    }
+                    all {
+                        // -lsqlite3: room3/sqlite-framework 的 cinterop wrapper 直呼 sqlite3_* 符号,
+                        // 系统 libsqlite3 必须显式链接; 全量 LTO 时代死代码消除掩盖了缺失,
+                        // 关优化后 ld 真实解析才暴露 (2026-08-26 ios.yml 实测)。
+                        linkerOpts("-L${nativeLibDir.absolutePath}", "-lquickjs", "-lmbedtls", "-lsqlite3")
+                        // 显式关优化: release 全量 LTO 的 DevirtualizationAnalysis 峰值堆需求超 10g,
+                        // CI runner 仅 8G 物理内存必 OOM (2026-08-26 ios.yml 实测), 代价是 framework
+                        // 体积增大, 换取 CI 稳定出包。死代码剥离不自己传: Apple ld 不认 GNU 的
+                        // --gc-sections (硬失败), 且 K/N 链 framework 时已自带 -dead_strip (konan Linker.kt)。
+                        optimized = false
+                    }
+                }
                 compilations.getByName("main").cinterops {
                     create("quickjs") {
                         defFile(file("src/cinterop/quickjs.def"))
