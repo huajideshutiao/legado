@@ -9,7 +9,7 @@ import org.junit.Test
 import java.util.Base64
 
 /**
- * QuickJsEngine 核心功能单元测试 (commonTest 共享基类: 桌面 jvmTest 与 Android androidDeviceTest 两端薄子类继承)。
+ * QuickJsEngine 核心功能单元测试 (共享基类: 桌面 jvmTest 与 Android androidDeviceTest 两端薄子类继承)。
  *
  * 以加解密相关 Java 调用为主轴,覆盖:
  * - 基本 eval 表达式

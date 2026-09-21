@@ -5,7 +5,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 真实书源场景功能性测试 (commonTest 共享基类: 桌面 jvmTest 与 Android androidDeviceTest 两端薄子类继承)。
+ * 真实书源场景功能性测试 (共享基类: 桌面 jvmTest 与 Android androidDeviceTest 两端薄子类继承)。
  *
  * 从 [JsBenchmarkTest] 剥离的"能不能用"验证 (原 benchmark 内嵌的结果一致性校验),
  * 作为独立功能性断言。覆盖番茄小说书源 (b75a16a67ee45c5303049c20205afc43) 的各类 JS 场景:
