@@ -7,7 +7,7 @@
   "license": "Apache-2.0",
   "dependencies": {
     "liblegado_napi.so": "file:./src/main/cpp/types/liblegado_napi",
-    "@cpf-kmp-cmp/compose": "1.9.2-0.4.0"
+    "@cpf-kmp-cmp/compose": "1.9.2-0.5.0-10"
   },
   "devDependencies": {
     "@ohos/hypium": "1.0.21"
