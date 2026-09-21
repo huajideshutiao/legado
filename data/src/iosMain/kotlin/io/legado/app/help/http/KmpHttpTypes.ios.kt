@@ -118,7 +118,7 @@ actual interface KmpInterceptorChain {
  * 实际使用通过 [KmpHttpClientBuilder.build] 创建已初始化的实例。
  */
 actual class KmpHttpClient {
-    internal var ktorClient: HttpClient? = null
+    var ktorClient: HttpClient? = null
         private set
     private var readTimeoutMillis: Long = 0L
     private var callTimeoutMillis: Long = 0L

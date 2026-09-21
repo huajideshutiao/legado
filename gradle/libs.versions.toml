@@ -43,6 +43,7 @@ serialization-ohos = "1.9.1-0.4.0"
 ktor-ohos = "3.3.3-0.3.0"
 androidx-ohos = "2.9.4-0.5.0-25"
 room-ohos = "3.0.0-alpha01-0.3.0"
+sqlite-ohos = "2.7.0-alpha01-0.3.0"
 stately-ohos = "2.1.0-0.4.0"
 
 # ===== JetBrains 官方库 (kotlinx) =====

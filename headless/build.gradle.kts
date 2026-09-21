@@ -36,7 +36,7 @@ dependencies {
     implementation(project(":desktop-core"))
     // headless 直接调用 shared API (WebServerManager / registerJvmDebugState / ImageOps ...):
     // desktop-core 对 shared 是 implementation 不外泄, 需显式声明
-    implementation(project(":shared"))
+    implementation(project(":core"))
     implementation(libs.kotlinx.coroutines.core)
     // 基础图片加载单例 (SingletonImageLoader, 供 registerJvmBookImageLoader 注册, 50KB 纯核心无 Compose)
     implementation("io.coil-kt.coil3:coil:${libs.versions.coil3.get()}")

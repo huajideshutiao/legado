@@ -10,6 +10,6 @@ import io.legado.app.help.image.ImageOps
  * 由本 stub 顶替, 使 nativeMain 的 expect/actual 配对通过 klib 语法/签名校验。
  * 本代码不会在真实设备执行 (iOS 实际注册走 leaf 内的真实实现)。
  */
-internal actual fun registerNativeJsEngines(imageOps: ImageOps) {
+actual fun registerNativeJsEngines(imageOps: ImageOps) {
     // 仅满足 expect/actual 配对; 不注册任何引擎
 }

@@ -1,5 +1,7 @@
 package io.legado.app.model
 
+import kotlin.concurrent.Volatile
+
 /**
  * 图片加载失败兜底图字节提供者 (Android 端 ImageProvider.errorBitmap 用)。
  *

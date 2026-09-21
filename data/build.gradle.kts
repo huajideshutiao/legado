@@ -6,6 +6,7 @@
 // JS 桥架构约束: model/script + JsExtensionsCommon + StrResponse 必须同模块
 // (KSP 生成的 NativeGeneratedDispatch 是 internal object, 桥代码在 model/script 内引用)。
 import io.legado.buildlogic.generateCNamesAliases
+import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 import org.jetbrains.kotlin.gradle.plugin.KotlinDependencyHandler
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 
@@ -296,6 +297,28 @@ val verifyOhosRoomDerived = if (enableOhosTarget) {
 // ohosArm64 只存在于 CPF 分支 KGP, 交给 build-logic 的约定插件声明。
 if (enableOhosTarget) {
     pluginManager.apply("legado.kmp.ohos")
+    // cinterop (quickjs/mbedtls) 的 def/头文件在本模块 src/cinterop, 故 cinterop 绑定
+    // 也随本模块配置 (旧版在 OhosTargetConventionPlugin 里对全部模块注入, 其它模块无 def
+    // 文件导致 cinterop 任务失败)。用标准 targets.named API 配置, 不依赖 CPF DSL。
+    extensions.configure<KotlinMultiplatformExtension> {
+        targets.named<KotlinNativeTarget>("ohosArm64") {
+            compilations.getByName("main").cinterops {
+                create("quickjs") {
+                    defFile(file("src/cinterop/quickjs.def"))
+                    // 头文件与 C 源码在 :shared (modules/quickjs 的 CMake 也引用该目录),
+                    // 本模块只编 cinterop 绑定, 链接用预编译 native 库
+                    includeDirs(file("${rootProject.projectDir}/modules/quickjs/src/main/cinterop/quickjs-ng"))
+                }
+                create("mbedtls") {
+                    defFile(file("src/cinterop/mbedtls.def"))
+                    includeDirs(
+                        file("${projectDir}/src/cinterop/mbedtls/include"),
+                        file("${projectDir}/src/cinterop/mbedtls"),
+                    )
+                }
+            }
+        }
+    }
 }
 
 // JVM+Android 共享依赖 (与 :shared 同款 helper, 切分后随本源集移动)。
@@ -371,11 +394,10 @@ kotlin {
                 api(libs.okio)
                 api(libs.room.common)
                 api(libs.room.runtime)
-                if (enableOhosTarget) {
-                    implementation(project(":modules:ksoup-ohos"))
-                } else {
-                    implementation(libs.ksoup)
-                }
+                // 标准 ksoup 无 ohosArm64 klib 而 ksoup-ohos 只有 ohosArm64 target, 两者都
+                // 不能进 commonMain; 由 OhosTargetConventionPlugin 在 ohos 配置上把标准 ksoup
+                // 替换为 :modules:ksoup-ohos, 其余平台照常解析标准 ksoup。
+                implementation(libs.ksoup)
                 implementation(libs.kotlinx.serialization.json)
             }
         }
@@ -425,6 +447,16 @@ kotlin {
                     implementation(libs.ktor.client.core)
                     implementation(libs.ktor.client.cio)
                 }
+                // 非 mac: nskeyvalueobserving cinterop (需 Xcode sysroot) 无法生成,
+                // KVO 观察器 (依赖其协议类型) 排除, 由 iosWindowsCheckMain 源根的
+                // 同签名 stub 类顶替 (与旧 :shared 同款处理)。
+                if (!isMacHost) {
+                    kotlin.exclude(
+                        "io/legado/app/help/media/AvPlayerBufferingObserver.ios.kt",
+                        "io/legado/app/help/media/AvPlayerItemStatusObserver.ios.kt",
+                    )
+                    kotlin.srcDir("src/iosWindowsCheckMain/kotlin")
+                }
             }
             // 显式 dependsOn 会让 KGP 回退到 pre-1.9.20 默认边, 中间源集须手工连。
             maybeCreate("iosArm64Main").apply {
@@ -434,6 +466,7 @@ kotlin {
                     kotlin.exclude(
                         *nativeInteropSourcePatterns.toTypedArray(),
                         "io/legado/app/napi/quickjs/CNamesAliases.kt",
+                        "io/legado/app/nativecrypto/mbedtls/CNamesAliases.kt",
                     )
                 }
             }
@@ -444,6 +477,7 @@ kotlin {
                     kotlin.exclude(
                         *nativeInteropSourcePatterns.toTypedArray(),
                         "io/legado/app/napi/quickjs/CNamesAliases.kt",
+                        "io/legado/app/nativecrypto/mbedtls/CNamesAliases.kt",
                     )
                 }
             }
@@ -452,13 +486,18 @@ kotlin {
             val ohosMain = maybeCreate("ohosMain").apply {
                 dependsOn(nativeMain!!)
                 dependencies {
-                    implementation("androidx.sqlite:sqlite-framework:2.7.0-alpha01-0.3.0")
                     implementation(libs.ktor.client.core)
                     implementation(libs.ktor.client.cio)
                 }
             }
             maybeCreate("ohosArm64Main").apply {
                 dependsOn(ohosMain)
+                // sqlite-framework 的 klib 供 KSP 生成的 DAO (prepare/step) 编译使用,
+                // 声明在叶源集上确保进 ohosArm64 主编译 classpath (经 ohosMain 的
+                // implementation 在 K/N klib 传递中不可靠)。
+                dependencies {
+                    implementation("androidx.sqlite:sqlite-framework:2.7.0-alpha01-0.3.0")
+                }
                 kotlin.srcDir(layout.buildDirectory.dir("generated/nativeInterop/ohosArm64Main"))
                 kotlin.srcDir(layout.buildDirectory.dir("generated/ksp/ohosArm64/ohosArm64Main/kotlin"))
                 kotlin.srcDir(ohosRoomDerivedDir)

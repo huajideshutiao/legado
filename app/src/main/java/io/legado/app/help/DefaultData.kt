@@ -19,7 +19,7 @@ import io.legado.app.utils.printOnDebug
  * (同 [io.legado.app.web.utils.AndroidWebAssetSource] 读 files/web/ 的方式)。
  */
 internal const val DEFAULT_DATA_ASSET_PREFIX =
-    "composeResources/legado.shared.generated.resources/files/defaultData/"
+    "composeResources/legado.ui.generated.resources/files/defaultData/"
 
 /**
  * 默认数据加载入口 (app 端薄壳)。

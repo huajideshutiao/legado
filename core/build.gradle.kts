@@ -89,7 +89,7 @@ kotlin {
         } else null
 
         if (enableIosTarget) {
-            maybeCreate("iosMain").apply {
+            val iosMain = maybeCreate("iosMain").apply {
                 dependsOn(nativeMain!!)
                 dependencies {
                     implementation(libs.ktor.client.core)
@@ -97,14 +97,27 @@ kotlin {
                     implementation(libs.coil3.network.ktor3)
                 }
             }
+            // KGP 不会自动把 iosArm64Main/iosSimulatorArm64Main 连到自定义的 iosMain,
+            // 必须显式 dependsOn (否则 nativeMain 的 actual 进不了 iOS 编译; 与 :data 同款连接)。
+            maybeCreate("iosArm64Main").apply {
+                dependsOn(iosMain)
+            }
+            maybeCreate("iosSimulatorArm64Main").apply {
+                dependsOn(iosMain)
+            }
         }
         if (enableOhosTarget) {
-            maybeCreate("ohosMain").apply {
+            val ohosMain = maybeCreate("ohosMain").apply {
                 dependsOn(nativeMain!!)
                 dependencies {
                     implementation(libs.ktor.client.core)
                     implementation(libs.ktor.client.cio)
                 }
+            }
+            // KGP 不会自动把 ohosArm64Main 连到自定义的 ohosMain, 必须显式 dependsOn
+            // (否则 ohosMain 的依赖/源码进不了 ohosArm64 编译; 与 :data 同款连接)。
+            maybeCreate("ohosArm64Main").apply {
+                dependsOn(ohosMain)
             }
         }
 

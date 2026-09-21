@@ -20,20 +20,13 @@ import kotlinx.coroutines.withContext
  * 只在 `contentRule.shouldOverrideUrlLoading` 拦截 JS 里可见: 书源用它把站内的
  * "搜索"/"加入书架" 链接接回 App 自己的搜索页与详情页。
  *
+ * 接口定义下沉在 :data (data 的 native 桥按 methodId 分派需要引用), 本文件只保留实现。
  * 各端由 [RssJsBindingFactory] 把本接口与平台自己的 JS 扩展面合成一个对象后绑到 `java`,
  * 见 `createRssJsBinding`。
  */
-interface RssJsApi {
-
-    /** 对照 `SearchActivity.start(activity, key)` */
-    fun searchBook(key: String)
-
-    /** 对照 `AddToBookshelfHelper.add(activity, bookUrl)` */
-    fun addBook(bookUrl: String)
-}
 
 /**
- * [RssJsApi] 的共享实现: 走 [AppNavigatorProviders] 推路由, 与 app 端 Activity 跳转等价。
+ * [io.legado.app.ui.rss.RssJsApi] 的共享实现: 走 [AppNavigatorProviders] 推路由, 与 app 端 Activity 跳转等价。
  *
  * 平台的 `java` 包装类把这两个方法委托到本类 (`RssJsApi by RssJsActions(scope)`)。
  */

@@ -109,7 +109,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: shared/build/iosNativeLibs
-          key: ios-native-${{ runner.os }}-${{ hashFiles('shared/src/cinterop/quickjs-ng/**', 'shared/src/cinterop/mbedtls/**', 'scripts/build-ios-native.sh') }}
+          key: ios-native-${{ runner.os }}-${{ hashFiles('modules/quickjs/src/main/cinterop/quickjs-ng/**', 'data/src/cinterop/mbedtls/**', 'scripts/build-ios-native.sh') }}
 
       - name: Build iOS native static libs (quickjs-ng + mbedtls)
         id: native
@@ -138,7 +138,7 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          ./gradlew :shared:tasks --all --console=plain 2>&1 \
+          ./gradlew :ui:tasks --all --console=plain 2>&1 \
             | grep -i -E "ios|cinterop|framework" \
             | tee "$GITHUB_WORKSPACE/ci-logs/20-ios-tasks.log" || true
 
@@ -147,7 +147,7 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          ./gradlew :shared:compileKotlinIosArm64 \
+          ./gradlew :ui:compileKotlinIosArm64 \
             --info --stacktrace --warning-mode all --continue --console=plain 2>&1 \
             | tee "$GITHUB_WORKSPACE/ci-logs/30-compile-klib.log"
 
@@ -158,9 +158,9 @@ jobs:
         run: |
           set -o pipefail
           if [ "${{ inputs.stage }}" = "ipa" ]; then
-            TASK=":shared:linkReleaseFrameworkIosArm64"
+            TASK=":ui:linkReleaseFrameworkIosArm64"
           else
-            TASK=":shared:linkDebugFrameworkIosArm64"
+            TASK=":ui:linkDebugFrameworkIosArm64"
           fi
           echo "===== gradle $TASK ====="
           ./gradlew "$TASK" \

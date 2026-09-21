@@ -13,6 +13,7 @@ import io.legado.app.utils.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import legado.ui.generated.resources.Res
 
 /**
  * desktop 端 [ImageControllerProvider] 真实实现 (封面/插图字节流)。
@@ -75,6 +76,10 @@ class DesktopImageControllerProvider : ImageControllerProvider {
         val book: Book,
         val source: BookSource?,
     )
+
+    override fun defaultCoverBytes(): ByteArray? = runCatching {
+        runBlocking { Res.readBytes("drawable/image_cover_default.jpg") }
+    }.getOrNull()
 }
 
 /**

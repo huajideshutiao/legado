@@ -48,7 +48,7 @@ import io.legado.app.utils.File
  * - PKWARE APPNOTE 6.3.10 (ZIP 文件格式): https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT
  * - zlib puff.c (inflate 参考实现): https://github.com/madler/zlib/blob/master/contrib/puff/puff.c
  */
-internal object NativeZipCodec {
+object NativeZipCodec {
 
     // ============================================================
     // 公共 API

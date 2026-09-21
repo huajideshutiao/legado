@@ -9,6 +9,7 @@ import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
 import android.content.res.Configuration
 import android.os.Build
+import kotlinx.coroutines.runBlocking
 import io.legado.app.base.AppContextWrapper
 import io.legado.app.constant.AppConst.channelIdDownload
 import io.legado.app.constant.AppConst.channelIdReadAloud
@@ -16,6 +17,8 @@ import io.legado.app.constant.AppConst.channelIdWeb
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.registerAndroidAppLogHost
 import io.legado.app.data.appDb
+import io.legado.app.model.ImageErrorBytesProviders
+import legado.ui.generated.resources.Res
 import io.legado.app.help.AppFreezeMonitor
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.CrashHandler
@@ -126,6 +129,10 @@ class App : Application() {
         registerAndroidDebugState(this)
         // 注册 shared 模块的 ApplicationContext, 供 commonMain 的 stringRes(resId) 使用
         registerSharedAppContext(this)
+        // 注册图片加载失败兜底图字节 (image_loading_error.png 单点持于 :ui composeResources)
+        ImageErrorBytesProviders.register {
+            runBlocking { Res.readBytes("drawable/image_loading_error.png") }
+        }
         // 注册 commonMain 的 Toasters actual (AndroidToaster), 供下沉业务调用 Toasters.get().toast()
         registerAndroidToaster(this)
         // 注册 EpubFile androidMain 的 ApplicationContext, 供 LocalEpubResource android actual

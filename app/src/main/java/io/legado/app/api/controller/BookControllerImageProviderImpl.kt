@@ -1,5 +1,6 @@
 package io.legado.app.api.controller
 
+import legado.ui.generated.resources.Res
 import android.graphics.Bitmap
 import androidx.core.graphics.drawable.toBitmap
 import coil3.PlatformContext
@@ -120,4 +121,7 @@ object BookControllerImageProviderImpl : ImageControllerProvider {
         compress(Bitmap.CompressFormat.PNG, 100, outputStream)
         return outputStream.toByteArray().also { outputStream.close() }
     }
+    override fun defaultCoverBytes(): ByteArray? = runCatching {
+        runBlocking { Res.readBytes("drawable/image_cover_default.jpg") }
+    }.getOrNull()
 }

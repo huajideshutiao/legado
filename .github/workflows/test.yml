@@ -196,7 +196,7 @@ jobs:
   # ===== 鸿蒙 HAP (CI 不构建, 仅本地; 2026-08-19 查证结论) =====
   # 决策: 维持本地构建, CI 不建鸿蒙 job。原因链如下 (均已实测查证):
   #   1. shared .so 需 CPF 工具链: fork 构件仅发布在 maven.eazytec-cloud.com (中国私有 Nexus),
-  #      GitHub-hosted runner 实测不可达, :shared:link*SharedOhosArm64 无法在 CI 跑。
+  #      GitHub-hosted runner 实测不可达, :ui:link*SharedOhosArm64 无法在 CI 跑。
   #   2. HAP 打包需 HarmonyOS SDK: 华为云公开镜像 (repo.huaweicloud.com/harmonyos/ohpm/) 最高
   #      commandline-tools 5.1.0.840, 自带 SDK = HarmonyOS 5.1.0 (API 18) + hvigor 5.18.5,
   #      无 API 24 SDK 公开下载渠道 (DevEco Studio SDK Manager 的 SDK 无公开直链)。

@@ -99,10 +99,10 @@ actual fun formatTimeOfDay(epochMillis: Long): String {
  * 4. 差值即本地偏移 (标准时 + 夏令时), 与 NSTimeZone.localTimeZone.secondsFromGMT 等价
  *
  * 失败 (localtime_r 返回 null) 时回退 0 (UTC), 不抛异常。
- * internal: iOS/鸿蒙 AppLogHost 的 timeZoneOffsetMillis 复用同一份换算, 不再各自接平台 TZ API。
+ * public: core 的 AppLogHost 与 foundation 内部共用同一份换算 (跨模块 internal 不可见)。
  */
 @OptIn(ExperimentalForeignApi::class)
-internal fun currentLocalOffsetMillis(): Long = memScoped {
+fun currentLocalOffsetMillis(): Long = memScoped {
     val now = alloc<time_tVar>()
     time(now.ptr)
     val tm = alloc<tm>()

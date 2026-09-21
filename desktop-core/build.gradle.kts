@@ -20,7 +20,7 @@ plugins {
 dependencies {
     // 引入 shared 模块 jvm target (传递 commonMain + jvmMain 全部 API;
     // okhttp/jsoup/room 等经 shared 的 api 依赖可见, 无需显式声明)
-    implementation(project(":shared"))
+    implementation(project(":ui"))
     // KP1.1: quickjs 自研 JNI 桥 (DesktopQuickJsSharedJsScopeProvider 直接 import
     // com.script.quickjs.*; shared/jvmMain 已 api 本模块, 显式声明对齐 :desktop 写法)
     implementation(project(":modules:quickjs"))

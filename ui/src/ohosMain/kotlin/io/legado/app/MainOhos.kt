@@ -10,6 +10,9 @@ import androidx.compose.ui.window.ComposeArkUIViewController
 import io.legado.app.help.config.LocalReadConfigProviders
 import io.legado.app.help.config.ReadConfigProviders
 import io.legado.app.help.config.registerOhosProviders
+import io.legado.app.help.registerNativeAppStringProvider
+import io.legado.app.help.registerNativeDefaultDataResourceProvider
+import io.legado.app.ui.compose.platform.registerComposeSyncStringProvider
 import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.browser.OhosWebViewSlot
 import io.legado.app.ui.OhosPlatformCapabilities
@@ -62,6 +65,14 @@ fun MainArkUIViewController(env: napi_env): napi_value {
 @Composable
 fun MainOhos() {
     // provider 注册 (首次组合时执行一次, 幂等)
+    // 注: AppString / 默认数据 provider 的 native 实现依赖 composeResources (legado.ui.generated
+    // .resources.Res), 随 :ui 下沉, 须在 registerOhosProviders() 之前注册 (core 序列里的
+    // directLinkUpload 依赖 DefaultDataResourceProvider)。
+    remember {
+        registerComposeSyncStringProvider()
+        registerNativeAppStringProvider()
+        registerNativeDefaultDataResourceProvider()
+    }
     remember { registerOhosProviders() }
     // 注册平台能力 (供 shared LegadoApp 经 PlatformCapabilityProviders.get() 取能力)
     remember { PlatformCapabilityProviders.register(OhosPlatformCapabilities) }

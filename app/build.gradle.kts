@@ -195,7 +195,7 @@ android {
         resources.excludes.add("DebugProbesKt.bin")
         resources.excludes.add("kotlin-tooling-metadata.json")
         resources.excludes.add("play-services-*.properties")
-        // LICENSE/disclaimer/privacyPolicy.md 已移到 shared composeResources files/md
+        // LICENSE/disclaimer/privacyPolicy.md 在 :ui composeResources files/md
         // (四端共享一份, 经 WebAssetSources 读: Android assets / 桌面 classpath /
         // iOS 鸿蒙 Res.readBytes), 不再走 java resources, 故此处无需保留豁免
         jniLibs.excludes.add("lib/*/libcronet*.so")
@@ -222,9 +222,9 @@ android {
 // values-pt-rBR/values-vi)。用户决策小语种暂缓打包; 资源文件本体保留在 shared 全量
 // (desktop/iOS 资源生成不受影响)。androidResources.localeFilters 只作用于 AAPT 合并的
 // res/ 资源, 管不到 composeResources (它作为 assets 走 merge{Variant}Assets)。
-// 机制: shared 的 copy*ComposeResourcesToAndroidAssets 只把 composeResources 复制进
-// shared AAR, 全量合并发生在本模块的 merge{Variant}Assets (把 AAR 资产复制进合并输出)。
-// shared 侧删除会被 merge 覆盖, 故挂在此处 doLast: merge 完成后删除合并输出下的 4 个
+// 机制: :ui 的 copy*ComposeResourcesToAndroidAssets 只把 composeResources 复制进
+// :ui AAR, 全量合并发生在本模块的 merge{Variant}Assets (把 AAR 资产复制进合并输出)。
+// :ui 侧删除会被 merge 覆盖, 故挂在此处 doLast: merge 完成后删除合并输出下的 4 个
 // 小语种子目录, 删除先于 package{Variant} 打包 (package 任务消费 merge 输出)。
 // 输出目录用 outputs.files 取, 不硬编码路径。
 // 配置缓存约束: doLast 内不得引用脚本级对象或 Task.project —— 待删列表就地声明,
@@ -240,7 +240,7 @@ tasks.matching {
             "values-vi",
         )
         outputs.files.forEach { output ->
-            val resourcesRoot = output.resolve("composeResources/legado.shared.generated.resources")
+            val resourcesRoot = output.resolve("composeResources/legado.ui.generated.resources")
             excludedLocales.forEach { locale ->
                 resourcesRoot.resolve(locale).deleteRecursively()
             }
@@ -313,7 +313,7 @@ dependencies {
 
     implementation(libs.ksoup)
     implementation(libs.kotlinx.serialization.json)
-    implementation(project(":shared"))
+    implementation(project(":ui"))
     implementation(project(":modules:quickjs"))
     ksp(project(":modules:quickjs-processor"))
 

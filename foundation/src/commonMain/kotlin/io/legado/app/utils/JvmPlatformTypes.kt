@@ -84,15 +84,6 @@ expect interface Closeable {
  */
 expect fun ByteArray.toInputStream(): InputStream
 
-/**
- * ResponseBody → InputStream 转换 (JVM-only API 包装)。
- * actual: `ResponseBody.byteStream()` (okhttp3 commonJvmAndroid, 返回 java.io.InputStream)。
- *
- * KP4: 接收者改为 [Any] 以避免 commonMain 引用 okhttp3.ResponseBody;
- * jvmAndAndroidMain actual 内部 cast 回 okhttp3.ResponseBody。
- */
-expect fun Any.byteStreamAsInput(): InputStream
-
 /** java.lang.SecurityException 判定 (native 无此类型, actual 恒 false)。 */
 expect fun Throwable.isSecurityException(): Boolean
 

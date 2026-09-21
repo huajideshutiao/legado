@@ -9,4 +9,4 @@ import io.legado.app.help.image.ImageOps
  * [NativeJsEngine] 等 leaf 类), expect 留在 nativeMain 供 iosMain/ohosMain 的
  * provider 注册序列直接调用 (各自传平台 ImageOps), 签名不含 cinterop 类型。
  */
-internal expect fun registerNativeJsEngines(imageOps: ImageOps)
+expect fun registerNativeJsEngines(imageOps: ImageOps)

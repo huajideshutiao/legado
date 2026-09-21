@@ -70,7 +70,7 @@ def hostArch = normalizeJvmNativeArch(System.getProperty("os.arch"))
 def platformId = "${hostOs}-${hostArch}"
 def isWindowsHost = hostOs == "windows"
 def cppDir = project(':modules:quickjs-android-native').file("src/main/cpp")
-def quickjsNgDir = rootProject.file("shared/src/cinterop/quickjs-ng")
+def quickjsNgDir = rootProject.file("modules/quickjs/src/main/cinterop/quickjs-ng")
 def jvmNativeDir = layout.buildDirectory.dir("libs/jvm/native/${platformId}")
 def effectiveJavaHome = new File(System.getenv("JAVA_HOME") ?: System.getProperty("java.home")).absoluteFile
 def jdkIncludeDir = new File(effectiveJavaHome, "include")

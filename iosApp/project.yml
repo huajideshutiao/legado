@@ -200,7 +200,7 @@ targets:
             exit 0
           fi
           cd "$SRCROOT/.."
-          ./gradlew :shared:embedAndSignAppleFrameworkForXcode --stacktrace
+          ./gradlew :ui:embedAndSignAppleFrameworkForXcode --stacktrace
         name: Embed and sign shared framework
         basedOnDependencyAnalysis: false
     scheme:

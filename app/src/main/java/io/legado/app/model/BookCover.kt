@@ -26,7 +26,7 @@ import io.legado.app.model.BookCover.loadCoverBitmap
 import io.legado.app.model.BookCover.newDefaultDrawable
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.runBlocking
-import legado.shared.generated.resources.Res
+import legado.ui.generated.resources.Res
 import kotlin.random.Random
 
 /**

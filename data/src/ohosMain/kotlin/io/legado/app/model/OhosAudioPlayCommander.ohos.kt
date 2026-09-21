@@ -4,12 +4,12 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
-import io.legado.app.help.book.NativeBookStorage
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.http.KmpRequestBuilder
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.media.NowPlayingLyricSink
 import io.legado.app.help.media.SystemMediaControl
+import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.model.analyzeRule.AnalyzeRuleCore
 import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
 import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
@@ -199,7 +199,7 @@ class OhosAudioPlayCommander : NowPlayingSessionHost() {
                 if (!response.isSuccessful) {
                     throw IllegalStateException("HTTP ${response.code}: $url")
                 }
-                val cacheDir = File("${NativeBookStorage.defaultRootPath()}/$AUDIO_CACHE_DIR")
+                val cacheDir = File("${DataStorageProviders.get().chapterCacheDir}/$AUDIO_CACHE_DIR")
                 if (!cacheDir.exists()) cacheDir.mkdirs()
                 val tmpFile = File(cacheDir, "${url.hashCode() and 0x7FFFFFFF}.tmp")
                 tmpFile.writeBytes(response.body.bytes())

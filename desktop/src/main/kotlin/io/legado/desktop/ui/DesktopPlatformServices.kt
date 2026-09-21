@@ -242,7 +242,6 @@ private class DesktopWindowController(
 // 软输入法: desktop 无软键盘, no-op
 private class DesktopKeyboardController : KeyboardController {
     override fun hideSoftInput() = Unit
-    override fun showSoftInput() = Unit
     override fun setSoftInputPolicy(policy: SoftInputPolicy) = Unit
 }
 

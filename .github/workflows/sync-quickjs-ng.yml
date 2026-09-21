@@ -1,7 +1,7 @@
 name: Sync quickjs-ng
 
 # vendored 上游副本的同步 / 纯净度校验工具。
-# 详见 shared/src/cinterop/quickjs-ng/README.md
+# 详见 modules/quickjs/src/main/cinterop/quickjs-ng/README.md
 #
 # mode=verify : 只比对不修改, 确认没人绕过流程偷改源码 (可安全随时跑)
 # mode=sync   : 拉取指定 ref 覆盖源码, 然后开 PR (绝不直推默认分支)
@@ -27,7 +27,7 @@ permissions:
   pull-requests: write
 
 env:
-  VENDOR_DIR: shared/src/cinterop/quickjs-ng
+  VENDOR_DIR: modules/quickjs/src/main/cinterop/quickjs-ng
   UPSTREAM: quickjs-ng/quickjs
 
 jobs:
@@ -205,10 +205,10 @@ jobs:
 
             - [ ] **Android / JVM (JNI + CMake)** —
                   `./gradlew :modules:quickjs-android-native:externalNativeBuildAppDebug`
-            - [ ] **Desktop / shared-jvm** — `./gradlew :shared:compileKotlinJvm`
+            - [ ] **Desktop / shared-jvm** — `./gradlew :ui:compileKotlinJvm`
             - [ ] **iOS**（需 macOS）— `bash scripts/build-ios-native.sh` 且
-                  `./gradlew :shared:cinteropQuickjsIosArm64`
-            - [ ] **鸿蒙**（需鸿蒙 SDK）— `./gradlew :shared:cinteropQuickjsLinuxArm64`
+                  `./gradlew :ui:cinteropQuickjsIosArm64`
+            - [ ] **鸿蒙**（需鸿蒙 SDK）— `./gradlew :ui:cinteropQuickjsLinuxArm64`
 
             ## 需人工审查
 

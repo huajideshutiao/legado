@@ -42,12 +42,11 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.atomicfu)
                 implementation(libs.kotlinx.serialization.json)
-                // JsoupExtensions/HtmlFormatter 等直接用 ksoup (org/jsoup 移植在 :data)
-                if (enableOhosTarget) {
-                    implementation(project(":modules:ksoup-ohos"))
-                } else {
-                    implementation(libs.ksoup)
-                }
+                // JsoupExtensions/HtmlFormatter 等直接用 ksoup (org/jsoup 移植在 :data)。
+                // 标准 ksoup 无 ohosArm64 klib 而 ksoup-ohos 只有 ohosArm64 target, 两者都
+                // 不能进 commonMain; 由 OhosTargetConventionPlugin 在 ohos 配置上把标准 ksoup
+                // 替换为 :modules:ksoup-ohos, 其余平台照常解析标准 ksoup。
+                implementation(libs.ksoup)
             }
         }
         // JVM+Android 共享源码根 (与 :shared 同款模式: 原 jvmAndAndroidMain 源集删除,
@@ -83,13 +82,26 @@ kotlin {
         } else null
 
         if (enableIosTarget) {
-            maybeCreate("iosMain").apply {
+            val iosMain = maybeCreate("iosMain").apply {
                 dependsOn(nativeMain!!)
+            }
+            // KGP 不会自动把 iosArm64Main/iosSimulatorArm64Main 连到自定义的 iosMain,
+            // 必须显式 dependsOn (否则 nativeMain 的 actual 进不了 iOS 编译; 与 :data 同款连接)。
+            maybeCreate("iosArm64Main").apply {
+                dependsOn(iosMain)
+            }
+            maybeCreate("iosSimulatorArm64Main").apply {
+                dependsOn(iosMain)
             }
         }
         if (enableOhosTarget) {
-            maybeCreate("ohosMain").apply {
+            val ohosMain = maybeCreate("ohosMain").apply {
                 dependsOn(nativeMain!!)
+            }
+            // KGP 不会自动把 ohosArm64Main 连到自定义的 ohosMain, 必须显式 dependsOn
+            // (否则 ohosMain 的依赖/源码进不了 ohosArm64 编译; 与 :data 同款连接)。
+            maybeCreate("ohosArm64Main").apply {
+                dependsOn(ohosMain)
             }
         }
     }

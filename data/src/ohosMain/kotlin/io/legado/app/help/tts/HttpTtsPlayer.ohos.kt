@@ -5,10 +5,10 @@ package io.legado.app.help.tts
 import kotlin.concurrent.Volatile
 
 import io.legado.app.constant.AppLog
-import io.legado.app.help.book.NativeBookStorage
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.http.KmpRequestBuilder
 import io.legado.app.help.http.OkHttpClientProviders
+import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.MD5Utils
@@ -55,7 +55,7 @@ import io.legado.app.utils.File
  * "网络下载已就绪, 播放占位" 模式 (play/pause/stop 仅维护标志, 不出声),
  * 让 [ReadAloudController] 状态机能正常推进 (onReady/onEndOfMedia 触发段落推进)。
  *
- * # 缓存: `{NativeBookStorage.defaultRootPath}/httpTTS/{md5(url)}.mp3`
+ * # 缓存: `{DataStorageProviders.chapterCacheDir}/httpTTS/{md5(url)}.mp3`
  * url 已含 speakText+语速 (AnalyzeUrl 求值后), 去重粒度对齐原版 md5(url-|-rate-|-content);
  * 命中直接复用 (跨会话缓存), 连续下载失败经 [HttpTtsRequest.DownloadErrorBreaker] 熔断 (>5 次放弃),
  * release 时按 10 分钟老化清理 (近似原版 removeCacheFile, 无章节名分组靠新鲜度保护当前章节)
@@ -297,7 +297,7 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
      * 未命中循环下载, 每次失败记入熔断器, 超过 5 次抛出放弃 (对标原版 getSpeakStream)。
      */
     private suspend fun obtainCacheFile(url: String, headers: Map<String, String>): File {
-        val cacheDir = File("${NativeBookStorage.defaultRootPath()}/$TTS_CACHE_DIR")
+        val cacheDir = File("${DataStorageProviders.get().chapterCacheDir}/$TTS_CACHE_DIR")
         if (!cacheDir.exists()) cacheDir.mkdirs()
         val target = File(cacheDir, MD5Utils.md5Encode16(url) + ".mp3")
         if (target.exists() && target.length() > 0L) {
@@ -358,7 +358,7 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
      */
     private fun cleanupAgedCache() {
         runCatching {
-            val cacheDir = File("${NativeBookStorage.defaultRootPath()}/$TTS_CACHE_DIR")
+            val cacheDir = File("${DataStorageProviders.get().chapterCacheDir}/$TTS_CACHE_DIR")
             if (!cacheDir.exists()) return
             val now = kotlin.time.Clock.System.now().toEpochMilliseconds()
             cacheDir.listFiles()?.forEach { file ->
@@ -414,7 +414,7 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
     companion object {
         private const val TAG = "ohos-httts"
 
-        /** TTS 缓存子目录名 (位于 [NativeBookStorage.defaultRootPath] 下, 与原版 httpTTS 目录名对齐)。 */
+        /** TTS 缓存子目录名 (位于 [io.legado.app.help.storage.DataStorageProviders] 的 chapterCacheDir 下, 与原版 httpTTS 目录名对齐)。 */
         private const val TTS_CACHE_DIR = "httpTTS"
     }
 }

@@ -35,6 +35,11 @@ val ohosDependencyVersions = mapOf(
     "org.jetbrains.kotlinx:kotlinx-serialization-json" to ohosVersion("serialization-ohos"),
     "androidx.room3:room3-common" to ohosVersion("room-ohos"),
     "androidx.room3:room3-runtime" to ohosVersion("room-ohos"),
+    // sqlite 与 room3 一起由 CPF fork 发布 (官方 2.7.0 无 ohosArm64 变体);
+    // Gradle consistent resolution 会把 androidx.sqlite 原子组内版本对齐,
+    // 若不加此映射, 组内其余请求方的官方 2.7.0 会把 fork 版拉回去。
+    "androidx.sqlite:sqlite" to ohosVersion("sqlite-ohos"),
+    "androidx.sqlite:sqlite-framework" to ohosVersion("sqlite-ohos"),
 )
 
 subprojects {
@@ -105,14 +110,15 @@ require(ohosAbis.isNotEmpty() && ohosAbis.all { it == "arm64-v8a" }) {
     "ohosAbis must be 'arm64-v8a' (x86_64 target 已移除), but was: $ohosAbis"
 }
 val ohosBuildTypeCapitalized = ohosBuildType.replaceFirstChar { it.titlecase() }
+// :shared 已拆分为 foundation/data/core/ui, liblegado_shared.so 由出口模块 :ui 产出
 val ohosSharedOutputDir =
-    layout.projectDirectory.dir("shared/build/bin/ohosArm64/${ohosBuildType}Shared").asFile
+    layout.projectDirectory.dir("ui/build/bin/ohosArm64/${ohosBuildType}Shared").asFile
 val ohosSharedLibrary = ohosSharedOutputDir.resolve("liblegado_shared.so")
 val ohosAppDir = layout.projectDirectory.dir("ohosApp").asFile
 // 任务动作只允许引用可序列化的局部量 (File/String/Set), 不得引用脚本级 val 或 Project
 val stageAbis = ohosAbis
 val stageBuildType = ohosBuildType
-val stageLinkTask = ":shared:link${ohosBuildTypeCapitalized}SharedOhosArm64"
+val stageLinkTask = ":ui:link${ohosBuildTypeCapitalized}SharedOhosArm64"
 val stagedLibDir = ohosLibsDir.asFile
 val stagedIncludeDir = ohosIncludeDir.asFile
 

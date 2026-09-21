@@ -2,83 +2,44 @@ package io.legado.buildlogic
 
 import org.gradle.api.Plugin
 import org.gradle.api.Project
-import org.gradle.api.artifacts.VersionCatalogsExtension
 import org.gradle.kotlin.dsl.configure
-import org.gradle.kotlin.dsl.getByType
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
-import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
-import org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType
-import java.io.File
 
 /**
- * 给 :shared 添加 CPF 的 ohosArm64 target (真机); x86_64 模拟器因 CPF fork 生态库
+ * 给各共享模块添加 CPF 的 ohosArm64 target (真机); x86_64 模拟器因 CPF fork 生态库
  * 无 ohosX64 变体不再声明 (2026-08-16 实测链接失败)。
  * 只有 CPF 分支 KGP 才有这个 DSL, 所以本文件放在 src/ohos, 由开关决定是否参与编译。
+ *
+ * 职责:
+ * 1. 注册 ohosArm64 target (模块脚本无法直接用该 DSL)。
+ * 2. 鸿蒙模式下把标准 ksoup 替换为本地 ksoup-ohos project module:
+ *    commonMain 源码 (EncodingDetect/HtmlFormatter/JsoupExtensions 等) 直接引用 ksoup API,
+ *    但标准 com.fleeksoft.ksoup:ksoup 没有 ohosArm64 klib, 而 ksoup-ohos 只有 ohosArm64
+ *    target —— 两者都不能进 commonMain (前者 ohos 解析失败, 后者 jvm/android 解析失败)。
+ *    故 commonMain 统一声明标准 ksoup, 仅在 ohos 相关配置上用 dependencySubstitution
+ *    替换为 :modules:ksoup-ohos, 其余平台照常解析标准 ksoup。
+ *
+ * sharedLib 产物 (liblegado_shared.so) 由出口模块 :ui 配置, cinterop (quickjs/mbedtls,
+ * def 文件在 data/src/cinterop) 由 :data 配置 —— 本插件不注入, 见各自 build.gradle.kts。
  */
 class OhosTargetConventionPlugin : Plugin<Project> {
     override fun apply(target: Project) = with(target) {
-        val rendererBackend = rootProject.findProperty("rendererBackend")?.toString()
-            ?: "fusion-renderer"
-        require(rendererBackend == "fusion-renderer") {
-            "Legado OHOS only supports CPF fusion rendering; rendererBackend must be 'fusion-renderer', " +
-                "but was '$rendererBackend'."
-        }
-        val composeExport = extensions.getByType<VersionCatalogsExtension>().named("libs")
-            .findVersion("composeMultiplatform-ohos").get().requiredVersion
-        val cinteropDir = File(projectDir, "src/cinterop")
-
-        // arm64-v8a 与 x86_64 共用同一套 sharedLib/cinterop 配置 (K/N 各编一套 ABI 产物)。
-        fun KotlinNativeTarget.configureOhosSharedLib() {
-            binaries {
-                sharedLib {
-                    baseName = "legado_shared"
-                    if (buildType == NativeBuildType.RELEASE) {
-                        // 2026-08-29 (原 optimized=true 实测: 减 6MB (8.5%), 但需 10g 堆且链接约 30 分钟)
-                        // 体积仍走链接期轻量手段: -s strip 本地符号表/.debug (约 38MB,
-                        // 动态导出符号 .dynsym 保留, ArkTS dlopen/dlsym 不受影响) +
-                        // --gc-sections 死代码消除 (对标 R8 未开混淆的精简)。
-                        // 注意: linkerOpts 直传 ld.lld, 不能用 GNU ld 的 -Wl, 前缀。
-                        optimized = false
-                        linkerOpts("-s", "--gc-sections")
-                        // 经实测验证 (2026-09-21): -O1 在 16GB 机器上会触发 LLVM codegen 阶段
-                        // "LLVM ERROR: out of memory / Allocation failed" 硬崩溃 (退出码 -1073741795);
-                        // 故稳定保持 -O0 档位, 保留 release buildType (包名/strip 不变)。
-                        freeCompilerArgs += "-Xoverride-konan-properties=clangNooptFlags.ohos_arm64=-O0"
+        // 仅对含 ohos 的配置替换 ksoup (jvm/android 等配置保持标准 ksoup)。
+        // 排除 ksoup-ohos 自身: 它不依赖标准 ksoup, 且 substitution 会与自身 project
+        // 依赖成环 (虽无实际依赖, 避免配置期意外)。
+        if (name != "ksoup-ohos") {
+            configurations.configureEach {
+                if (name.contains("ohos", ignoreCase = true)) {
+                    resolutionStrategy.dependencySubstitution {
+                        substitute(module("com.fleeksoft.ksoup:ksoup"))
+                            .using(project(":modules:ksoup-ohos"))
                     }
-                    export("org.jetbrains.compose.export:export:$composeExport")
-                    linkerOpts("-lz")
-                    linkerOpts(
-                        "-lnative_drawing",
-                        "-limage_source",
-                        "-lpixelmap",
-                        "-lpixelmap_ndk.z",
-                        "-lnative_window",
-                        "-lace_napi.z",
-                        "-lhilog_ndk.z",
-                        "-lhitrace_ndk.z",
-                        "-luv",
-                        "-lunwind",
-                        "-licu",
-                    )
-                }
-            }
-            compilations.getByName("main").cinterops.apply {
-                create("quickjs") {
-                    defFile(File(cinteropDir, "quickjs.def"))
-                    includeDirs(File(cinteropDir, "quickjs-ng"))
-                }
-                create("mbedtls") {
-                    defFile(File(cinteropDir, "mbedtls.def"))
-                    includeDirs(
-                        File(cinteropDir, "mbedtls/include"),
-                        File(cinteropDir, "mbedtls"),
-                    )
                 }
             }
         }
 
         extensions.configure<KotlinMultiplatformExtension> {
-            ohosArm64 { configureOhosSharedLib() }
+            ohosArm64 {}
         }
     }
 }

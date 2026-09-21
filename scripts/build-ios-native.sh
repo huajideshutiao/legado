@@ -3,15 +3,15 @@
 # cinterop 只编译 .def 内的 wrapper, 不编 includeDirs 下的 C 源, 缺 .a 时 framework link 阶段必然未定义符号。
 #
 # 用法: scripts/build-ios-native.sh [ios_arm64|ios_simulator_arm64 ...]   (默认两个都编)
-# 产物: shared/build/iosNativeLibs/<konanTarget>/libquickjs.a, libmbedtls.a
-#       目录名刻意用 konanTarget.name, 与 shared/build.gradle.kts 的 linkerOpts 一一对应。
+# 产物: data/build/iosNativeLibs/<konanTarget>/libquickjs.a, libmbedtls.a
+#       目录名刻意用 konanTarget.name, 与 :data/:ui 的 linkerOpts 一一对应。
 
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-QUICKJS_DIR="$ROOT_DIR/shared/src/cinterop/quickjs-ng"
-MBEDTLS_DIR="$ROOT_DIR/shared/src/cinterop/mbedtls"
-OUT_ROOT="$ROOT_DIR/shared/build/iosNativeLibs"
+QUICKJS_DIR="$ROOT_DIR/modules/quickjs/src/main/cinterop/quickjs-ng"
+MBEDTLS_DIR="$ROOT_DIR/data/src/cinterop/mbedtls"
+OUT_ROOT="$ROOT_DIR/data/build/iosNativeLibs"
 # 与 iosApp/project.yml 的 deploymentTarget.iOS 保持一致
 IOS_MIN_VERSION="14.0"
 
@@ -89,7 +89,7 @@ for KONAN_TARGET in $TARGET_LIST; do
     LIBTOOL_BIN="$(xcrun --sdk "$SDK" --find libtool)"
     SYSROOT="$(xcrun --sdk "$SDK" --show-sdk-path)"
     OUT_DIR="$OUT_ROOT/$KONAN_TARGET"
-    OBJ_ROOT="$ROOT_DIR/shared/build/tmp/iosNativeObj/$KONAN_TARGET"
+    OBJ_ROOT="$ROOT_DIR/data/build/tmp/iosNativeObj/$KONAN_TARGET"
 
     echo "======================================================================"
     echo "[ios-native] target  = $KONAN_TARGET"

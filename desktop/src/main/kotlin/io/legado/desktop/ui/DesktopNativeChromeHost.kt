@@ -44,9 +44,9 @@ import io.legado.app.ui.root.MainTab
 import io.legado.app.ui.root.MainTabSwitcher
 import io.legado.app.ui.root.PlatformServiceProviders
 import kotlinx.coroutines.delay
-import legado.shared.generated.resources.Res
-import legado.shared.generated.resources.ic_brightness
-import legado.shared.generated.resources.ic_daytime
+import legado.ui.generated.resources.Res
+import legado.ui.generated.resources.ic_brightness
+import legado.ui.generated.resources.ic_daytime
 import org.jetbrains.compose.resources.painterResource
 import java.awt.EventQueue
 import java.awt.image.BufferedImage

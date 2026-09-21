@@ -14,8 +14,9 @@ package io.legado.app.napi
  * 模式参考 [io.legado.app.help.config.registerOhosProviders] 中其余 registerOhosXxx 函数。
  */
 fun registerOhosNativeBridge() {
-    // 当前为空操作: OhosNativeBridge 默认 tsfn 为 null (降级记日志)。
-    // 等 legado_napi.cpp 实现 registerToastCallback / registerNotificationCallback 后,
-    // 由 ArkTS EntryAbility.onCreate 调用 napi 方法注入 tsfn, 无需在此处主动初始化。
-    // 保留此函数作为注册序列占位, 便于后续扩展 (如 module 卸载时释放 tsfn 的清理逻辑)。
+    // OhosNativeBridge 下沉到 :foundation 后不再持有 ui 层的 OhosPlatformEventChannel,
+    // 此处把统一平台事件通道接回 (ArkTS → Kotlin 事件分发)。
+    OhosNativeBridge.registerPlatformEventChannel(OhosNativeBridge.PlatformEventChannel {
+        OhosPlatformEventChannel.onEvent(it)
+    })
 }

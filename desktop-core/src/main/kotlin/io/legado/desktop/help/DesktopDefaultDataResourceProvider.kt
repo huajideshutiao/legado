@@ -4,7 +4,7 @@ import io.legado.app.help.DefaultDataResourceProvider
 
 /** composeResources 打进 classpath 的 defaultData 目录前缀 (含模块限定名, 由插件按模块生成)。 */
 private const val RESOURCE_PREFIX =
-    "composeResources/legado.shared.generated.resources/files/defaultData/"
+    "composeResources/legado.ui.generated.resources/files/defaultData/"
 
 /**
  * 桌面 JVM 端 [DefaultDataResourceProvider] 实现。

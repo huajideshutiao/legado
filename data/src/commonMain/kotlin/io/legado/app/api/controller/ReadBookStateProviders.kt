@@ -1,6 +1,7 @@
 package io.legado.app.api.controller
 
 import io.legado.app.data.entities.BookProgress
+import kotlin.concurrent.Volatile
 
 /**
  * ReadBook 单例状态跨平台 provider 契约。

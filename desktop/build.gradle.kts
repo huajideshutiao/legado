@@ -178,7 +178,7 @@ val mediaRuntimeOnly = configurations.create("mediaRuntimeOnly")
 
 dependencies {
     // 引入 shared 模块 jvm target (传递 commonMain + jvmMain 全部 API)
-    implementation(project(":shared"))
+    implementation(project(":ui"))
     // 无 UI 核心 (从本模块机械抽取, 见 desktop-core/build.gradle.kts 头注释):
     // Main.kt 的阶段1/阶段3 provider 注册核心子集与运行时环境初始化改调 DesktopCore
     implementation(project(":desktop-core"))
