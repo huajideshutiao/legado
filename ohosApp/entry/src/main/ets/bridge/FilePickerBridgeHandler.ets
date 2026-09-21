@@ -271,13 +271,32 @@ async function handlePickImages(payload: string): Promise<FilePickerResponse> {
   }
 }
 
-// ===== pickDirectory: 调 DocumentViewPicker 选目录, maxSelectNumber=1, 返回目录 URI =====
+// ===== pickDirectory: 选目录 (2in1/Tablet) 或 选文件取父目录 (Phone) =====
+//
+// 目录选择是 2in1/Tablet 能力 (syscap UserFileService.FolderSelection),
+// 官方设备 syscap 清单里 Phone 无该能力, 且 Phone 也无任何目录授权类 API
+// (目录权限 READ_WRITE_*_DIRECTORY 的支持设备是 PC/2in1 | Tablet)。
+// Phone 降级为“选该目录下的任一文件, 取其父目录”: 用户仍能指定导入目录,
+// 空目录需先放入一个文件才能选中。
 async function handlePickDirectory(payload: string): Promise<FilePickerResponse> {
-  // 选目录: 不传 fileSuffixFilters (允许用户导航文件系统选择目录), maxSelectNumber=1 限定单选
+  if (canIUse('SystemCapability.FileManagement.UserFileService.FolderSelection')) {
+    return await pickDirectoryNative();
+  }
+  return await pickDirectoryViaFileParent();
+}
+
+/** 2in1/Tablet: 原生选目录 (selectMode=FOLDER)。 */
+async function pickDirectoryNative(): Promise<FilePickerResponse> {
+  if (!canIUse('SystemCapability.FileManagement.UserFileService.FolderSelection')) {
+    return await pickDirectoryViaFileParent();
+  }
+  // 不传 fileSuffixFilters (允许用户导航文件系统选择目录), maxSelectNumber=1 限定单选
   const documentSelectOptions = new picker.DocumentSelectOptions();
   documentSelectOptions.maxSelectNumber = 1;
   // 必须显式选目录模式, 默认 FILE 会选文件而非目录
-  documentSelectOptions.selectMode = picker.DocumentSelectMode.FOLDER;
+  if (canIUse('SystemCapability.FileManagement.UserFileService.FolderSelection')) {
+    documentSelectOptions.selectMode = picker.DocumentSelectMode.FOLDER;
+  }
   const documentViewPicker = new picker.DocumentViewPicker();
   try {
     const uris: string[] = await documentViewPicker.select(documentSelectOptions);
@@ -295,6 +314,54 @@ async function handlePickDirectory(payload: string): Promise<FilePickerResponse>
     const err = e as BusinessError;
     return { ok: false, error: err.message ?? String(e) };
   }
+}
+
+/**
+ * Phone: 选一个文件, 取其父目录作为导入根目录。
+ *
+ * 文件选择 (selectMode 保持默认 FILE) 的 syscap 是基础 UserFileService, 手机可用。
+ * URI 形如 file://docs/storage/Users/currentUser/Documents/books/novel.txt,
+ * 去掉末段文件名即目录 URI。
+ */
+async function pickDirectoryViaFileParent(): Promise<FilePickerResponse> {
+  const documentSelectOptions = new picker.DocumentSelectOptions();
+  documentSelectOptions.maxSelectNumber = 1;
+  const documentViewPicker = new picker.DocumentViewPicker();
+  try {
+    const uris: string[] = await documentViewPicker.select(documentSelectOptions);
+    if (uris == null || uris.length === 0) {
+      return { ok: true, cancelled: true };
+    }
+    const dirUri = parentUriOf(uris[0]);
+    if (dirUri == null) {
+      return { ok: false, error: 'cannot resolve parent directory of: ' + uris[0] };
+    }
+    return { ok: true, uris: [dirUri] };
+  } catch (e) {
+    if (isUserCancelled(e)) {
+      return { ok: true, cancelled: true };
+    }
+    const err = e as BusinessError;
+    return { ok: false, error: err.message ?? String(e) };
+  }
+}
+
+/**
+ * 取文件 URI 的父目录 URI (去掉最后一段路径)。
+ *
+ * 只按 '/' 分段, 不解析 file:// authority: 父目录 URI 仍交给下游 fileIo 按同一 URI 方案访问,
+ * 保持与原生选目录返回值同形。
+ *
+ * @returns 父目录 URI; URI 无可去尾段时返回 null
+ */
+function parentUriOf(fileUri: string): string | null {
+  const idx = fileUri.lastIndexOf('/');
+  if (idx <= 0) {
+    return null;
+  }
+  const parent = fileUri.substring(0, idx);
+  // file://docs (仅剩 scheme+authority) 不是可用目录
+  return parent.includes('://') && parent.indexOf('/', parent.indexOf('://') + 3) < 0 ? null : parent;
 }
 
 // ===== saveDocument: 调 DocumentViewPicker.save 弹系统保存器, fs.write 写入内容 =====

@@ -165,7 +165,8 @@ fun saveImageToAlbum(extension: String, bytes: ByteArray): Boolean {
 /**
  * 选择目录 (对照 iOS pickDirectory / desktop FileDialogs.pickDirectory)。
  *
- * 鸿蒙端用 DocumentViewPicker 选目录 (maxSelectNumber=1), 返回目录 URI;
+ * 2in1/Tablet 用 DocumentViewPicker 原生选目录; Phone 无该能力 (官方设备 syscap 清单
+ * 无 FolderSelection), 由 ArkTS 侧降级为“选一个文件取父目录”, 返回值同形。
  * 调用方需通过 @ohos.file.fs 或 security-scoped 访问 URI 对应目录。
  *
  * @return 选中目录 URI, 用户取消或桥接未就绪返回 null
