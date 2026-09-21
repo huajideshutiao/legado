@@ -76,7 +76,10 @@ class JsApiProcessor(
             HMacBase64,HMacHex,log,login,loginUi,logType,md5Encode,md5Encode16,openUrl,post,put,
             queryBase64TTF,queryTTF,readTxtFile,replaceFont,showLoginDialog,showSourceVariableDialog,
             startBrowser,startBrowserAwait,strToBytes,toURL,toString,webView,webViewGetOverrideUrl,
-            webViewGetSource
+            webViewGetSource,
+            org.jsoup.Connection.Response.url,
+            org.jsoup.Connection.Base.headers,
+            org.jsoup.Connection.Base.url
         """.trimIndent().split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
 
         /** REF 返回且不在 NATIVE_HANDLE_METHODS 白名单: 静默跳过 (无法模板化是已知事实, 不算漏)。 */
@@ -782,8 +785,9 @@ class JsApiProcessor(
                 // 判定跳过原因 (排除名单内的存量方法不算漏, 不 warn)
                 val retCat =
                     if (retQn == "kotlin.Unit" || retQn == "?") null else ret?.let { categorize(it) }
+                val isExcluded = name in NATIVE_EXCLUDED_METHODS || (ownerFqn + "." + name) in NATIVE_EXCLUDED_METHODS
                 val skipReason = when {
-                    name in NATIVE_EXCLUDED_METHODS -> "已在 NATIVE_EXCLUDED_METHODS 名单(手写桥处理)"
+                    isExcluded -> "已在 NATIVE_EXCLUDED_METHODS 名单(手写桥处理)"
                     jsFactory == null ->
                         "声明类不在 NATIVE_JS_FACTORY_BY_CLASS 映射 (无法确定 JS 工厂分区)"
                     Modifier.SUSPEND in f.modifiers -> "suspend 函数无法静态分派"
@@ -848,7 +852,8 @@ class JsApiProcessor(
                 continue
             }
             if (c.skipReason != null) {
-                if (c.skipReason != SKIP_SILENT_REF && c.name !in NATIVE_EXCLUDED_METHODS && emittedWarns.add(
+                val isExcluded = c.name in NATIVE_EXCLUDED_METHODS || (c.ownerFqn + "." + c.name) in NATIVE_EXCLUDED_METHODS
+                if (c.skipReason != SKIP_SILENT_REF && !isExcluded && emittedWarns.add(
                         ownerKey
                     )
                 ) {
