@@ -241,20 +241,20 @@ async function handlePickDocumentContent(payload: string): Promise<FilePickerRes
   }
 }
 
-// ===== pickImages: 调 PhotoViewPicker 选图片, 返回图片 URI 列表 =====
+// ===== pickImages: 调 photoAccessHelper.PhotoViewPicker 选图片, 返回图片 URI 列表 =====
 async function handlePickImages(payload: string): Promise<FilePickerResponse> {
   const p = JSON.parse(payload) as PickImagesPayload;
 
-  const photoSelectOptions = new picker.PhotoSelectOptions();
+  const photoSelectOptions = new photoAccessHelper.PhotoSelectOptions();
   // maxSelectNumber: 鸿蒙默认 1, 多选时设较大值 (与 iOS allowsMultipleSelection 语义对齐)
   photoSelectOptions.maxSelectNumber = p.allowsMultiple ? 100 : 1;
   // MIMEType 只接受 PhotoViewMIMETypes 枚举 (image/* | video/* | */*), 无逐格式过滤能力;
   // 调用方传的图片类 UTI (public.jpeg/public.png/...) 统一落到 IMAGE_TYPE
-  photoSelectOptions.MIMEType = picker.PhotoViewMIMETypes.IMAGE_TYPE;
+  photoSelectOptions.MIMEType = photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE;
 
-  const photoViewPicker = new picker.PhotoViewPicker();
+  const photoViewPicker = new photoAccessHelper.PhotoViewPicker();
   try {
-    const result: picker.PhotoSelectResult = await photoViewPicker.select(photoSelectOptions);
+    const result: photoAccessHelper.PhotoSelectResult = await photoViewPicker.select(photoSelectOptions);
     const uris: string[] = result.photoUris;
     if (uris == null || uris.length === 0) {
       // select 返回空数组视为取消 (理论上不会发生, 取消会抛异常)

@@ -1,9 +1,9 @@
-import promptAction from '@ohos.promptAction';
 import common from '@ohos.app.ability.common';
 import type Want from '@ohos.app.ability.Want';
+import { UIContext } from '@ohos.arkui.UIContext';
 
 /**
- * ArkTS 侧系统桥接处理器 (桥接 promptAction.showToast + context.startAbility)。
+ * ArkTS 侧系统桥接处理器 (桥接 UIContext.getPromptAction().showToast + context.startAbility)。
  *
  * 接收 Kotlin OhosNativeBridge.showToast / openUrl 通过 tsfn dispatch 过来的请求,
  * 调用鸿蒙系统 API 执行真实操作 (KMP 无 ArkTS API 访问能力, 需 tsfn 桥接)。
@@ -16,7 +16,7 @@ import type Want from '@ohos.app.ability.Want';
  * - toast:
  *   KMP OhosToastProvider.showToast → OhosNativeBridge.showToast → toastTsfn →
  *   C++ ohos_toast_dispatch → napi_call_threadsafe_function → ArkTS ToastCallJs →
- *   [handleShowToast] → promptAction.showToast
+ *   [handleShowToast] → uiContext.getPromptAction().showToast
  * - openUrl:
  *   KMP OhosOpenUrlProvider.openUrl → OhosNativeBridge.openUrl → openUrlTsfn →
  *   C++ ohos_open_url_dispatch → napi_call_threadsafe_function → ArkTS OpenUrlCallJs →
@@ -45,8 +45,11 @@ interface OpenUrlPayload {
 }
 
 // 由 EntryAbility 注入的 UIAbilityContext (供 startAbility 使用)
-// 注: promptAction.showToast 无需 context (全局 API), 但 startAbility 必须通过 UIAbilityContext 调用
+// 注: startAbility 必须通过 UIAbilityContext 调用
 let abilityContext: common.UIAbilityContext | undefined;
+
+// 由 Index.ets 注入的 UIContext (showToast 需 UIContext.getPromptAction(), 见 handleShowToast)
+let uiContext: UIContext | undefined;
 
 /**
  * 初始化系统桥 (由 EntryAbility.onCreate 调用, 注入 UIAbilityContext)。
@@ -58,6 +61,15 @@ export function initSystemBridge(context: common.UIAbilityContext): void {
 }
 
 /**
+ * 注入 UIContext (由 Index.ets aboutToAppear 调用)。
+ *
+ * @param ctx 当前窗口 UIContext (用于 getPromptAction().showToast)
+ */
+export function initSystemBridgeUiContext(ctx: UIContext): void {
+  uiContext = ctx;
+}
+
+/**
  * 处理 toast 请求 (由 EntryAbility 注册的 tsfn 回调调用)。
  *
  * @param json ToastPayload JSON 字符串, 形如 `{ message: '<text>', durationMs: <number> }`
@@ -65,7 +77,11 @@ export function initSystemBridge(context: common.UIAbilityContext): void {
 export function handleShowToast(json: string): void {
   try {
     const payload = JSON.parse(json) as ToastPayload;
-    promptAction.showToast({ message: payload.message, duration: payload.durationMs });
+    if (uiContext == null) {
+      console.error('[SystemBridge] toast failed: uiContext not injected, json=' + json);
+      return;
+    }
+    uiContext.getPromptAction().showToast({ message: payload.message, duration: payload.durationMs });
   } catch (e) {
     console.error('[SystemBridge] toast failed: ' + JSON.stringify(e) + ', json=' + json);
   }

@@ -153,7 +153,7 @@ async function handleEncode(payload: string): Promise<ImageActionResult> {
   try {
     // format 规范: "jpeg" → "image/jpeg", "png" → "image/png"
     const formatStr = p.format.startsWith('image/') ? p.format : 'image/' + p.format;
-    const packed = await packer.packing(pixelMap, { format: formatStr, quality: p.quality });
+    const packed = await packer.packToData(pixelMap, { format: formatStr, quality: p.quality });
     // packed 是 ArrayBuffer: 原样裸传 (零拷贝, 二进制保真)
     return { resp: { ok: true }, body: packed };
   } finally {

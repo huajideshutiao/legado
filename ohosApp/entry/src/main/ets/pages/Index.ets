@@ -12,6 +12,7 @@ import {
   handlePageEnd as handleMarkdownPageEnd
 } from '../bridge/MarkdownBridgeHandler';
 import { initKeyboardBridge } from '../bridge/KeyboardBridgeHandler';
+import { initSystemBridgeUiContext } from '../bridge/SystemBridgeHandler';
 import { setVideoSurfaceId } from '../bridge/MediaBridgeHandler';
 
 const DOMAIN: number = 0x0000;
@@ -96,6 +97,13 @@ struct Index {
         initKeyboardBridge(this.getUIContext());
       } catch (e) {
         hilog.warn(DOMAIN, 'LegadoCompose', 'initKeyboardBridge failed (keyboard avoid mode unavailable): %{public}s', JSON.stringify(e));
+      }
+      // Toast 桥: 注入 UIContext (UIContext.getPromptAction().showToast 需要)。
+      // 独立 try: 失败不应阻断 Compose 控制器创建 (仅 Toast 不可用)。
+      try {
+        initSystemBridgeUiContext(this.getUIContext());
+      } catch (e) {
+        hilog.warn(DOMAIN, 'LegadoCompose', 'initSystemBridgeUiContext failed (toast unavailable): %{public}s', JSON.stringify(e));
       }
       // 视频画面 surface builder 注册 (K/N ArkUIView2(name="legadoVideoSurface") 混排 XComponent 的入口;
       // 未注册时该 interop 节点为空, 视频只能出声。注册 key 与 OhosVideoPlayPlatformProvider.
