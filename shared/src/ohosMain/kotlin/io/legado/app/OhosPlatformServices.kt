@@ -3,9 +3,10 @@ package io.legado.app
 import io.legado.app.help.copyToClipboard
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.file.pickDocumentContent
-import io.legado.app.help.log.NativeCrashLogs
 import io.legado.app.help.file.pickDocuments
 import io.legado.app.help.file.pickDirectory as pickDirectoryDocument
+import io.legado.app.help.file.saveImageToAlbum
+import io.legado.app.help.log.NativeCrashLogs
 import io.legado.app.help.openURL
 import io.legado.app.help.toast.Toasters
 import io.legado.app.napi.OhosNativeBridge
@@ -28,6 +29,7 @@ import io.legado.app.ui.root.PlatformServices
 import io.legado.app.ui.root.ShareService
 import io.legado.app.ui.root.SoftInputPolicy
 import io.legado.app.ui.root.SystemBarsPolicy
+import io.legado.app.ui.root.imageExtension
 import io.legado.app.ui.root.WindowController
 import io.legado.app.ui.video.VideoDirect
 import io.legado.app.utils.File
@@ -333,12 +335,25 @@ private object OhosFilePickerService : FilePickerService {
     }
 
     override fun saveImageBytes(suggestedName: String, bytes: ByteArray): Boolean? {
+        val ext = imageExtension(bytes, suggestedName).removePrefix(".")
+        val savedToAlbum = runCatching { saveImageToAlbum(ext, bytes) }.getOrDefault(false)
+        if (savedToAlbum) return true
         val path = saveFile(suggestedName) ?: return null
         return runCatching {
             File(path).writeBytes(bytes)
             true
         }.getOrDefault(false)
     }
+
+    override fun checkWrite(path: String): Boolean = runCatching {
+        val testDir = File(path)
+        if (!testDir.exists()) testDir.mkdirs()
+        if (!testDir.isDirectory) return@runCatching false
+        val testFile = File(testDir, ".write_test_${systemCurrentTimeMillis()}")
+        testFile.writeText("test")
+        testFile.delete()
+        true
+    }.getOrDefault(false)
 
     override fun pickDirectory(): String? = pickDirectoryDocument()?.toSandboxPath()
 
