@@ -1,0 +1,151 @@
+package io.legado.app.ui.book.read
+
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.unit.IntSize
+import io.legado.app.ui.book.read.page.LocalReaderTextMeasurer
+import io.legado.app.ui.book.read.page.PageSelectionState
+import io.legado.app.ui.book.read.page.ReadViewComposable
+import io.legado.app.ui.book.read.page.rememberReaderTextMeasurer
+import kotlinx.coroutines.flow.StateFlow
+
+/**
+ * 阅读页 Composable 展示状态。
+ *
+ * 对照 app 端 [ReadBookActivity.Content] 的渲染输入：
+ * - [viewModel] 驱动 [ReadViewComposable]（三页流 + pageDelegate）
+ * - [menuState] 驱动 [ReadMenuOverlay]（顶/底栏菜单）
+ * - [searchMenuState] 驱动 [SearchMenuOverlay]（全文搜索菜单，对照原版 SearchMenu）
+ * - [selection] 页内文字选择状态（搜索跳转与手势选择共用，注入 [ReadViewComposable]）
+ * - [batteryLevel] 传给 [ReadViewComposable] 显示页眉/页脚电量
+ * - [clockText] 传给 [ReadViewComposable] 显示页眉/页脚时间
+ *
+ * 标注 @Stable：全部属性为 val 且引用稳定（viewModel/menuState 组合期不换实例，
+ * battery/clock 是 StateFlow 引用，内部值变化经 collectAsState 局部订阅，不改变
+ * 本类相等性），上层可安全按 equals 跳过无效重组；菜单显隐等内部可变状态由
+ * [ReadMenuOverlay]/[SearchMenuOverlay] 直接订阅各自 state，不经本类驱动。
+ */
+@Stable
+data class ReaderUiState(
+    val viewModel: ReadBookViewModelShared,
+    val menuState: ReadMenuState,
+    val searchMenuState: SearchMenuState,
+    val selection: PageSelectionState,
+    val batteryLevel: StateFlow<Int>,
+    val clockText: StateFlow<String>,
+)
+
+/**
+ * 阅读页用户交互回调。
+ *
+ * 平台层（app/桌面）实现本接口，桥接平台专属行为（返回导航、文字选择等）。
+ * 菜单项交互（目录/朗读/设置等）由 [ReadMenuState] 的回调方法直接桥接平台实现，
+ * 不经过本接口。
+ */
+interface ReaderUiActions {
+    /** 页面单击且动作为 0（菜单）时回调，其余动作在 [ReadViewComposable] 内消费或走 [onPageAction] */
+    fun onPageClick()
+
+    /** 图片长按（命中图片列，携带 src 与长按点坐标；对照旧 onImageLongPress → 图片操作菜单） */
+    fun onImageLongPress(src: String, x: Float, y: Float) {}
+
+    /**
+     * 页内文字选择完成（长按选中文字后抬起）：携带选中文本与选区起点锚点
+     * （阅读页内坐标，含滚动折算），平台弹浮动文本操作菜单并跟随选区
+     * （对照旧 ReadView.CallBack.showTextActionMenu；默认空实现，未接入的平台忽略）
+     */
+    fun onTextSelection(text: String, anchorX: Float, anchorY: Float) {}
+
+    /**
+     * 同步关闭浮动文本操作菜单（对照原版 ReadView ACTION_DOWN → textActionMenu.dismiss()
+     * 同步语义）：点按取消选择等手势分支在选区清除的同帧同步直调，避免事件链异步延迟
+     * （约 2~5 帧）造成的菜单"闪一下再消失"。由 ReadViewComposable DOWN 分支同步调用；
+     * 事件链异步兜底仍保留（[ReadBookEvents.selectionDismissed] → provider.onTextSelectionDismissed，
+     * 覆盖翻页/重排等非手势路径）。默认空实现，未接入的平台忽略。
+     */
+    fun onDismissTextActionMenu() {}
+
+    /**
+     * 九宫格点击的非翻页动作（对照 app 端 ReadView.click 里走 callBack 的分支）：
+     * 7=添加书签 / 9=替换状态 / 10=目录 / 11=全文搜索 / 13=朗读暂停继续。
+     */
+    fun onPageAction(action: Int) {}
+
+    /** 返回 */
+    fun onBack()
+}
+
+/**
+ * 阅读页主体：组合 [ReadViewComposable] + [ReadMenuOverlay]。
+ *
+ * 对照 app 端 [ReadBookActivity.Content]：
+ * ```kotlin
+ * Box(Modifier.fillMaxSize()) {
+ *     AndroidView(factory = { renderLayer }, modifier = Modifier.fillMaxSize())
+ *     ReadMenuOverlay(readMenu)
+ *     ...
+ * }
+ * ```
+ * shared 版用 [ReadViewComposable] 替代 AndroidView(renderLayer)，其余结构一致。
+ * 菜单隐藏时 [ReadMenuOverlay] 内部 early return 零组合，仅 [ReadViewComposable] 接管手势。
+ */
+@Composable
+fun ReaderScreen(
+    state: ReaderUiState,
+    actions: ReaderUiActions,
+    modifier: Modifier = Modifier,
+    focusRequester: FocusRequester? = null,
+    onTextAreaMeasured: ((IntSize) -> Unit)? = null,
+) {
+    val batteryLevel by state.batteryLevel.collectAsState()
+    val clockText by state.clockText.collectAsState()
+    // 阅读页统一测量器：正文绘制（PageContentCanvas）与预热（PageLayoutPrewarmEffect）
+    // 必须共用同一实例，否则各带一份 LRU，预热暖的不是绘制取的那份
+    val readerTextMeasurer = rememberReaderTextMeasurer()
+    Box(
+        modifier
+            .fillMaxSize()
+            // 键盘翻页前提: 全应用无焦点节点时 Compose 不会把按键派发进节点树
+            // (FocusOwnerImpl.dispatchKeyEvent 找不到 KeyInput 节点直接 return false)
+            .then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
+            .focusable()
+    ) {
+        CompositionLocalProvider(LocalReaderTextMeasurer provides readerTextMeasurer) {
+            ReadViewComposable(
+                viewModel = state.viewModel,
+                batteryLevel = batteryLevel,
+                clockText = clockText,
+                onClick = { actions.onPageClick() },
+                onImageLongPress = { src, x, y -> actions.onImageLongPress(src, x, y) },
+                onAction = { action -> actions.onPageAction(action) },
+                onSelectionMenu = { text, anchor ->
+                    actions.onTextSelection(
+                        text,
+                        anchor?.x ?: 0f,
+                        anchor?.y ?: 0f,
+                    )
+                },
+                // 点按取消选择等手势分支：同步关平台浮动菜单（对照原版 ACTION_DOWN →
+                // textActionMenu.dismiss 同步语义，避免事件链异步延迟的"闪一下再消失"）
+                onDismissSelectionMenu = { actions.onDismissTextActionMenu() },
+                // 菜单可见让位判定含搜索菜单（对照原版 menuLayoutIsVisible =
+                // readMenu.isVisible || searchMenu.isVisible）
+                menuVisible = { state.menuState.isVisible || state.searchMenuState.rootVisible },
+                onTextAreaMeasured = onTextAreaMeasured,
+                externalSelection = state.selection,
+            )
+        }
+        ReadMenuOverlay(state = state.menuState)
+        // 对照原版 activity_book_read.xml：SearchMenu 在 ReadMenu 之后（上层）
+        SearchMenuOverlay(state = state.searchMenuState)
+    }
+}

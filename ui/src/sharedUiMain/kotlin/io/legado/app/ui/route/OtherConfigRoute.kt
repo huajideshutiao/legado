@@ -1,0 +1,398 @@
+package io.legado.app.ui.route
+
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import io.legado.app.constant.PreferKey
+import io.legado.app.help.UserAgentProviders
+import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.image.DecodedBitmapCache
+import io.legado.app.help.toast.Toasters
+import io.legado.app.model.CheckSourceShared
+import io.legado.app.ui.book.read.config.PageKeyDialog
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppTitleBar
+import io.legado.app.ui.config.ConfigActionsShared
+import io.legado.app.ui.config.OtherConfigScreen
+import io.legado.app.ui.config.OtherConfigScreenModel
+import io.legado.app.ui.dialog.NumberPickerDialog
+import io.legado.app.ui.dialog.TextInputDialog
+import io.legado.app.ui.root.AppNavigator
+import io.legado.app.ui.root.PlatformCapabilityProviders
+import io.legado.app.ui.root.RouteEntry
+import io.legado.app.ui.root.ScreenModelStore
+import kotlinx.coroutines.launch
+import legado.ui.generated.resources.Res
+import legado.ui.generated.resources.bitmap_cache_size
+import legado.ui.generated.resources.bitmap_cache_size_summary
+import legado.ui.generated.resources.book_tree_uri_s
+import legado.ui.generated.resources.cancel
+import legado.ui.generated.resources.clear_cache
+import legado.ui.generated.resources.clear_cache_success
+import legado.ui.generated.resources.clear_webview_data
+import legado.ui.generated.resources.ok
+import legado.ui.generated.resources.other_setting
+import legado.ui.generated.resources.pre_download
+import legado.ui.generated.resources.pre_download_s
+import legado.ui.generated.resources.set_local_password
+import legado.ui.generated.resources.set_local_password_summary
+import legado.ui.generated.resources.shrink_database
+import legado.ui.generated.resources.success
+import legado.ui.generated.resources.sure
+import legado.ui.generated.resources.sure_del
+import legado.ui.generated.resources.threads_num
+import legado.ui.generated.resources.threads_num_title
+import legado.ui.generated.resources.user_agent
+import legado.ui.generated.resources.web_port_summary
+import legado.ui.generated.resources.web_port_title
+import org.jetbrains.compose.resources.stringResource
+
+/**
+ * 其它设置路由内容: 桥接 [OtherConfigScreenModel] 与 [OtherConfigScreen]。
+ *
+ * 点击型交互由 Route 直接执行：
+ * - UA 编辑/图片缓存/预下载/Web 端口/线程数/自定义翻页按键: 用 shared 端 Compose 弹窗实现
+ *   (对照 app 端 alert DSL / showNumberPicker / PageKeyDialog)
+ * - 本地密码/SAF 选目录/CheckSourceConfig/DirectLinkUploadConfig: 通过 [PlatformCapabilityProviders] 注入
+ *   (对照 app 端 LocalConfig.password / HandleFileContract / showDialogFragment)
+ * - 清缓存/收缩数据库: 下沉到 [ConfigActionsShared] (纯 Kotlin, 跨平台)
+ * - 清 WebView 数据: 通过 [PlatformCapabilityProviders] 注入 (Android WebView 专属)
+ */
+@Composable
+fun OtherConfigRoute(
+    entry: RouteEntry,
+    navigator: AppNavigator,
+    screenModelStore: ScreenModelStore,
+) {
+    val pref = PreferenceProviders.get()
+    val appConfig = remember { AppConfigProviders.get() }
+    val scope = rememberCoroutineScope()
+    val platform = remember { PlatformCapabilityProviders.get() }
+
+    // 顶栏标题 (对照 app 端 R.string.other_setting)
+    val titleStr = stringResource(Res.string.other_setting)
+
+    // Summary 格式串 (对照 app 端 getString(R.string.xxx, value))
+    val preDownloadFormat = stringResource(Res.string.pre_download_s)
+    val threadCountFormat = stringResource(Res.string.threads_num)
+    val webPortFormat = stringResource(Res.string.web_port_summary)
+    val bitmapCacheFormat = stringResource(Res.string.bitmap_cache_size_summary)
+    val bookTreeUriSStr = stringResource(Res.string.book_tree_uri_s)
+
+    // 弹窗/Toast 文案 (对照 app 端 R.string.xxx, 预解析供非 Composable lambda 使用)
+    val okStr = stringResource(Res.string.ok)
+    val cancelStr = stringResource(Res.string.cancel)
+    val sureDelStr = stringResource(Res.string.sure_del)
+    val clearCacheSuccessStr = stringResource(Res.string.clear_cache_success)
+    val successStr = stringResource(Res.string.success)
+
+    // 弹窗显示状态 (对照 app 端各 showXxx / onXxx 点击型交互)
+    var showUserAgentDialog by remember { mutableStateOf(false) }
+    var showBitmapCachePicker by remember { mutableStateOf(false) }
+    var showPreDownloadPicker by remember { mutableStateOf(false) }
+    var showWebPortPicker by remember { mutableStateOf(false) }
+    var showThreadCountPicker by remember { mutableStateOf(false) }
+    var showCustomPageKey by remember { mutableStateOf(false) }
+    var showLocalPasswordDialog by remember { mutableStateOf(false) }
+    // 文字操作菜单开启态: 读组件真实启用态 (对照原版 onCreatePreferences 里的回填),
+    // 用户可能在系统设置里改过, 不能只信 pref
+    var processTextEnabled by remember { mutableStateOf(platform.isProcessTextEnabled()) }
+    var showCleanCacheConfirm by remember { mutableStateOf(false) }
+    var showClearWebViewConfirm by remember { mutableStateOf(false) }
+    var showShrinkDatabaseConfirm by remember { mutableStateOf(false) }
+
+    val screenModel = screenModelStore.getOrCreateTyped(entry) {
+        OtherConfigScreenModel()
+    }
+    val state by screenModel.state.collectAsState()
+
+    // 对照 app 端 init: 初始化 7 个动态 summary
+    LaunchedEffect(Unit) {
+        if (state.userAgentSummary.isEmpty()) {
+            screenModel.updateUserAgentSummary(UserAgentProviders.get())
+        }
+        if (state.bookTreeUriSummary.isEmpty()) {
+            screenModel.updateBookTreeUriSummary(
+                pref.getStringOrNull(PreferKey.defaultBookTreeUri) ?: bookTreeUriSStr
+            )
+        }
+        if (state.checkSourceSummary.isEmpty()) {
+            screenModel.updateCheckSourceSummary(CheckSourceShared.summary)
+        }
+        if (state.bitmapCacheSummary.isEmpty()) {
+            screenModel.updateBitmapCacheSummary(
+                bitmapCacheFormat.replace("%s", appConfig.bitmapCacheSize.toString())
+            )
+        }
+        if (state.preDownloadSummary.isEmpty()) {
+            screenModel.updatePreDownloadSummary(
+                preDownloadFormat.replace("%s", appConfig.preDownloadNum.toString())
+            )
+        }
+        if (state.webPortSummary.isEmpty()) {
+            screenModel.updateWebPortSummary(
+                webPortFormat.replace("%s", appConfig.webPort.toString())
+            )
+        }
+        if (state.threadCountSummary.isEmpty()) {
+            screenModel.updateThreadCountSummary(
+                threadCountFormat.replace("%s", appConfig.threadCount.toString())
+            )
+        }
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        AppTitleBar(
+            title = titleStr,
+            onBack = { navigator.pop() },
+        )
+        OtherConfigScreen(
+            userAgentSummary = state.userAgentSummary,
+            bookTreeUriSummary = state.bookTreeUriSummary,
+            checkSourceSummary = state.checkSourceSummary,
+            bitmapCacheSummary = state.bitmapCacheSummary,
+            preDownloadSummary = state.preDownloadSummary,
+            webPortSummary = state.webPortSummary,
+            threadCountSummary = state.threadCountSummary,
+            onLocalPassword = { showLocalPasswordDialog = true },
+            onUserAgent = { showUserAgentDialog = true },
+            onBookTreeUri = {
+                platform.pickBookTreeUri { uri ->
+                    if (uri != null) {
+                        pref.putString(PreferKey.defaultBookTreeUri, uri)
+                        screenModel.updateBookTreeUriSummary(uri)
+                    }
+                }
+            },
+            onCheckSource = {
+                platform.showCheckSourceConfigDialog {
+                    screenModel.updateCheckSourceSummary(CheckSourceShared.summary)
+                }
+            },
+            onUploadRule = { platform.showDirectLinkUploadConfigDialog() },
+            onBitmapCacheSize = { showBitmapCachePicker = true },
+            onPreDownloadNum = { showPreDownloadPicker = true },
+            onWebPort = { showWebPortPicker = true },
+            onCleanCache = { showCleanCacheConfirm = true },
+            onClearWebViewData = { showClearWebViewConfirm = true },
+            onShrinkDatabase = { showShrinkDatabaseConfirm = true },
+            onThreadCount = { showThreadCountPicker = true },
+            onCustomPageKey = { showCustomPageKey = true },
+            // 唤醒锁两项只在真持锁的端显示 (Android 前台 WebService / AudioPlayService)
+            showWakeLock = platform.wakeLockSupported,
+            // 以下几项都是"只有声明支持的端才真实消费该 pref"的条目, 不支持的端隐藏,
+            // 免得用户拨了一个完全无效的开关 (各 gate 的判定依据见 PlatformCapabilities)
+            showCronet = platform.cronetSupported,
+            showLanguage = platform.languageSwitchSupported,
+            onLanguageChange = { platform.applyAppLanguage() },
+            showMediaButton = platform.mediaButtonSupported,
+            showAudioFocus = platform.audioFocusSupported,
+            showProcessText = platform.processTextSupported,
+            processTextEnabled = processTextEnabled,
+            onProcessTextChange = { enabled ->
+                // 对照原版 setProcessTextEnable: 真去切组件启用态, 再回读真实态
+                platform.setProcessTextEnabled(enabled)
+                processTextEnabled = platform.isProcessTextEnabled()
+            },
+            showHeapDumpRecord = platform.heapDumpRecordSupported,
+        )
+    }
+
+    // User-Agent 编辑对话框 (对照 app 端 showUserAgentDialog: alert + editTextView)
+    if (showUserAgentDialog) {
+        TextInputDialog(
+            title = stringResource(Res.string.user_agent),
+            initialValue = UserAgentProviders.get(),
+            hint = stringResource(Res.string.user_agent),
+            onConfirm = { userAgent ->
+                if (userAgent.isBlank()) {
+                    // 对照原版 removePref(userAgent): 清空 = 回退内置 UA
+                    pref.remove(PreferKey.userAgent)
+                } else {
+                    pref.putString(PreferKey.userAgent, userAgent)
+                }
+                screenModel.updateUserAgentSummary(UserAgentProviders.get())
+                showUserAgentDialog = false
+            },
+            onDismiss = { showUserAgentDialog = false },
+        )
+    }
+
+    // 图片缓存大小 NumberPicker (对照 app 端 onBitmapCacheSize: 1..1024)
+    if (showBitmapCachePicker) {
+        NumberPickerDialog(
+            title = stringResource(Res.string.bitmap_cache_size),
+            value = appConfig.bitmapCacheSize,
+            range = 1..1024,
+            onConfirm = {
+                pref.putInt(PreferKey.bitmapCacheSize, it)
+                // 对照 app 端 onSharedPreferenceChanged: bitmap_cache_size_summary
+                screenModel.updateBitmapCacheSummary(
+                    bitmapCacheFormat.replace("%s", it.toString())
+                )
+            },
+            onDismiss = { showBitmapCachePicker = false },
+        )
+    }
+
+    // 预下载数量 NumberPicker (原版 0..9999, 2026-09-04 用户要求收窄为 0..30:
+    // 预下载章数再大也没意义, 上限太高反而误触后疯狂拉全书)
+    if (showPreDownloadPicker) {
+        NumberPickerDialog(
+            title = stringResource(Res.string.pre_download),
+            value = appConfig.preDownloadNum,
+            range = 0..30,
+            onConfirm = {
+                pref.putInt(PreferKey.preDownloadNum, it)
+                // 对照 app 端 onSharedPreferenceChanged: pre_download_s
+                screenModel.updatePreDownloadSummary(
+                    preDownloadFormat.replace("%s", it.toString())
+                )
+            },
+            onDismiss = { showPreDownloadPicker = false },
+        )
+    }
+
+    // Web 端口 NumberPicker (对照 app 端 onWebPort: 1024..60000)
+    if (showWebPortPicker) {
+        NumberPickerDialog(
+            title = stringResource(Res.string.web_port_title),
+            value = appConfig.webPort,
+            range = 1024..60000,
+            onConfirm = {
+                pref.putInt(PreferKey.webPort, it)
+                // 对照 app 端 onSharedPreferenceChanged: web_port_summary
+                screenModel.updateWebPortSummary(
+                    webPortFormat.replace("%s", it.toString())
+                )
+            },
+            onDismiss = { showWebPortPicker = false },
+        )
+    }
+
+    // 并发线程数 NumberPicker (对照 app 端 onThreadCount: 1..999)
+    if (showThreadCountPicker) {
+        NumberPickerDialog(
+            title = stringResource(Res.string.threads_num_title),
+            value = appConfig.threadCount,
+            range = 1..999,
+            onConfirm = {
+                pref.putInt(PreferKey.threadCount, it)
+                // 对照 app 端 onSharedPreferenceChanged: threads_num
+                screenModel.updateThreadCountSummary(
+                    threadCountFormat.replace("%s", it.toString())
+                )
+            },
+            onDismiss = { showThreadCountPicker = false },
+        )
+    }
+
+    // 自定义翻页按键对话框 (对照 app 端 onCustomPageKey: PageKeyDialog().show)
+    if (showCustomPageKey) {
+        val keyMappings = remember {
+            val prev = pref.getStringOrNull(PreferKey.prevKeys) ?: ""
+            val next = pref.getStringOrNull(PreferKey.nextKeys) ?: ""
+            parsePageKeyMappings(prev, next)
+        }
+        PageKeyDialog(
+            keyMappings = keyMappings,
+            onConfirm = { mappings ->
+                val (prev, next) = splitPageKeyMappings(mappings)
+                pref.putString(PreferKey.prevKeys, prev)
+                pref.putString(PreferKey.nextKeys, next)
+                showCustomPageKey = false
+            },
+            onDismiss = { showCustomPageKey = false },
+        )
+    }
+
+    // 本地密码对话框 (对照 app 端 alertLocalPassword: alert + editTextView + LocalConfig.password =)
+    if (showLocalPasswordDialog) {
+        TextInputDialog(
+            title = stringResource(Res.string.set_local_password),
+            message = stringResource(Res.string.set_local_password_summary),
+            hint = "password",
+            onConfirm = { password ->
+                platform.setLocalPassword(password)
+                showLocalPasswordDialog = false
+            },
+            onDismiss = { showLocalPasswordDialog = false },
+        )
+    }
+
+    // 清缓存确认对话框 (对照 app 端 clearCache: alert 确认 → viewModel.clearCache)
+    if (showCleanCacheConfirm) {
+        AppAlertDialog(
+            onDismissRequest = { showCleanCacheConfirm = false },
+            title = stringResource(Res.string.clear_cache),
+            message = sureDelStr,
+            okButton = AlertButton(text = okStr) {
+                showCleanCacheConfirm = false
+                scope.launch {
+                    ConfigActionsShared.clearCache()
+                    // 解码位图进程级 LRU (大图查看/阅读背景/样式预览等) 一并清空 (I1)
+                    DecodedBitmapCache.clear()
+                    Toasters.get().toast(clearCacheSuccessStr)
+                }
+            },
+            cancelButton = AlertButton(text = cancelStr),
+        )
+    }
+
+    // 清 WebView 数据确认对话框 (对照 app 端 clearWebViewData: alert 确认 → viewModel.clearWebViewData)
+    if (showClearWebViewConfirm) {
+        AppAlertDialog(
+            onDismissRequest = { showClearWebViewConfirm = false },
+            title = stringResource(Res.string.clear_webview_data),
+            message = sureDelStr,
+            okButton = AlertButton(text = okStr) {
+                showClearWebViewConfirm = false
+                platform.clearWebViewData()
+            },
+            cancelButton = AlertButton(text = cancelStr),
+        )
+    }
+
+    // 收缩数据库确认对话框 (对照 app 端 shrinkDatabase: alert 确认 → viewModel.shrinkDatabase)
+    if (showShrinkDatabaseConfirm) {
+        AppAlertDialog(
+            onDismissRequest = { showShrinkDatabaseConfirm = false },
+            title = stringResource(Res.string.sure),
+            message = stringResource(Res.string.shrink_database),
+            okButton = AlertButton(text = okStr) {
+                showShrinkDatabaseConfirm = false
+                scope.launch {
+                    ConfigActionsShared.shrinkDatabase()
+                    Toasters.get().toast(successStr)
+                }
+            },
+            cancelButton = AlertButton(text = cancelStr),
+        )
+    }
+}
+
+// 解析 prevKeys/nextKeys 字符串为 PageKeyDialog 需要的 Map<Int, String>
+// 与 PageKeyDialog 内部 buildKeyMappings 反向逻辑对齐
+private fun parsePageKeyMappings(prevKeys: String, nextKeys: String): Map<Int, String> {
+    val map = mutableMapOf<Int, String>()
+    prevKeys.split(",").mapNotNull { it.trim().toIntOrNull() }.forEach { map[it] = "prev_page" }
+    nextKeys.split(",").mapNotNull { it.trim().toIntOrNull() }.forEach { map[it] = "next_page" }
+    return map
+}
+
+// 将 Map<Int, String> 反序列化为 prevKeys/nextKeys 字符串写回 prefs
+private fun splitPageKeyMappings(mappings: Map<Int, String>): Pair<String, String> {
+    val prev = mappings.filter { it.value == "prev_page" }.keys.joinToString(",") { it.toString() }
+    val next = mappings.filter { it.value == "next_page" }.keys.joinToString(",") { it.toString() }
+    return prev to next
+}

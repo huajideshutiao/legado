@@ -1,0 +1,1651 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ok">OK</string>
+    <string name="cancel">Cancel</string>
+    <string name="exit">Exit</string>
+    <string name="exit_no_save">It has not been saved. Do you want to continue editing?</string>
+    <string name="yes">Yes</string>
+    <string name="no">No</string>
+    <string name="reduce">Minus</string>
+    <string name="plus">Plus</string>
+    <string name="clear">Clear</string>
+    <string name="more_menu">More menu</string>
+    <string name="empty">Empty</string>
+    <string name="revert_selection">Inverse</string>
+    <string name="book_source">Book sources</string>
+    <string name="search_book_source">Search book sources</string>
+    <string name="sort">Sort</string>
+    <string name="sort_desc">Descend order</string>
+    <string name="sort_manual">Sort manually</string>
+    <string name="sort_auto">Sort automatically</string>
+    <string name="sort_by_name">Sort by name</string>
+    <string name="sort_by_url">Sort by URL</string>
+    <string name="sort_by_lastUpdateTime">Sort by update time</string>
+    <string name="sort_by_respondTime">Sort by respond time</string>
+    <string name="is_enabled">Is enabled</string>
+    <string name="menu_action_group">Groups</string>
+    <string name="group_manage">Group management</string>
+    <string name="enabled">Enabled</string>
+    <string name="disabled">Disabled</string>
+    <string name="need_login">need login</string>
+    <string name="no_group">Ungrouped</string>
+    <string name="enabled_explore">Discovery Enabled</string>
+    <string name="disabled_explore">Discovery Disabled</string>
+    <string name="add_book_source">Add Book source</string>
+    <string name="import_local">Import local</string>
+    <string name="import_on_line">Import online</string>
+    <string name="group_sources_by_domain">Group by domain</string>
+    <string name="help">Help</string>
+    <string name="edit">Edit</string>
+    <string name="to_top">To Top</string>
+    <string name="to_bottom">To Bottom</string>
+    <string name="login">Login</string>
+    <string name="login_url">Log in url(loginUrl)</string>
+    <string name="login_header">login header</string>
+    <string name="show_login_header">show login header</string>
+    <string name="del_login_header">del login header</string>
+    <string name="search">Search</string>
+    <string name="debug">Debug</string>
+    <string name="delete">Delete</string>
+    <string name="enable_explore">Enable Discovery</string>
+    <string name="disable_explore">Disable Discovery</string>
+    <string name="open">open</string>
+    <string name="select_all_count">Select all(%1$d/%2$d)</string>
+    <string name="select_cancel_count">Cancel select all(%1$d/%2$d)</string>
+    <string name="more_config">More settings</string>
+    <string name="screen_direction">Screen orientation</string>
+    <string name="keep_light">Keep screen awake</string>
+    <string name="pt_hide_status_bar">Hide status bar</string>
+    <string name="pt_hide_navigation_bar">Hide navigation bar</string>
+    <string name="double_page_horizontal">Tablet/Landscape Dual Page</string>
+    <string name="progress_bar_behavior">Progress bar behavior</string>
+    <string name="text_full_justify">Text justified</string>
+    <string name="text_bottom_justify">Text align bottom</string>
+    <string name="volume_key_page_on_play">Volume keys to turn page when reading</string>
+    <string name="page_touch_slop_title">Sliding Page Threshold</string>
+    <string name="auto_change_source">Change source automatically</string>
+    <string name="preview_image_by_click">Click to preview image</string>
+    <string name="click_regional_config">Screen touch control</string>
+    <string name="custom_page_key">Set page-turning buttons</string>
+    <string name="show_read_title_addition">show read title addition area</string>
+    <string name="read_aloud_config">Read-aloud settings</string>
+    <string name="aloud_config">Speech settings</string>
+    <string name="ignore_audio_focus_title">Ignore audio focus</string>
+    <string name="ignore_audio_focus_summary">Allow audio to be played at the same time as other applications</string>
+    <string name="pause_read_aloud_while_phone_calls_title">Pause speech during calls</string>
+    <string name="pause_read_aloud_while_phone_calls_summary">Pause speech during calls, requires phone state permission</string>
+    <string name="read_aloud_wake_lock">Read aloud service wake-up lock</string>
+    <string name="read_aloud_wake_lock_summary">The wake-up lock is enabled when reading aloud is enabled, and the wake-up lock on some mobile phones will be killed in the background.</string>
+    <string name="system_media_control_compatibility_change">System Media Control Compatibility Change</string>
+    <string name="system_media_control_compatibility_change_summary">If system media controls do not appear on the lock screen, you can try enabling this, for example on OneUI 7.0 or Vivo devices.</string>
+    <string name="pref_media_button_per_next">Media Buttons • Previous | Next</string>
+    <string name="pref_media_button_per_next_summary">Previous Paragraph|Next Paragraph/Previous Chapter|Next Chapter</string>
+    <string name="read_aloud_by_page">Speak by pages</string>
+    <string name="read_aloud_by_page_summary">Turning pages in time, with a pause when the page is turned</string>
+    <string name="stream_read_aloud_audio">Stream audio playback</string>
+    <string name="stream_read_aloud_audio_summary">Play while downloading, may stutter when network is poor, only valid for TTS sources</string>
+    <string name="speak_engine">Speak Engine</string>
+    <string name="sys_tts_config">System tts Settings</string>
+    <string name="sys_tts_config_summary">Open the system tts settings interface</string>
+    <string name="chapter_list">Chapters</string>
+    <string name="bookmark">Bookmarks</string>
+    <string name="export">Export</string>
+    <string name="export_md">Export(MD)</string>
+    <string name="txt_toc_rule">Txt Catalog Rule</string>
+    <string name="split_long_chapter">Split extra-long chapters</string>
+    <string name="reverse_toc">Reverse toc</string>
+    <string name="use_replace">Use replace</string>
+    <string name="load_word_count">Load word count</string>
+    <string name="log">Log</string>
+    <string name="go_to_top">Scroll to the top</string>
+    <string name="go_to_bottom">Scroll to the bottom</string>
+    <string name="body_title">Title</string>
+    <string name="title_left">Left</string>
+    <string name="title_center">Center</string>
+    <string name="title_hide">Hide</string>
+    <string name="title_font_size">Font size</string>
+    <string name="title_margin_top">Margin top</string>
+    <string name="title_margin_bottom">Margin bottom</string>
+    <string name="header">Header</string>
+    <string name="footer">Footer</string>
+    <string name="header_footer">Footer <![CDATA[&]]> Header</string>
+    <string name="show_hide">Show/Hide</string>
+    <string name="left">Left</string>
+    <string name="middle">Middle</string>
+    <string name="right">Right</string>
+    <string name="text_color">Text color</string>
+    <string name="tip_divider_color">Divider color</string>
+    <string name="show">Show</string>
+    <string name="hide">Hide</string>
+    <string name="hide_when_status_bar_show">Hide when status bar show</string>
+    <string name="padding_config">Padding settings</string>
+    <string name="main_body">Content</string>
+    <string name="showLine">Display divider</string>
+    <string name="divider_line">Divider</string>
+    <string name="padding_top">Top</string>
+    <string name="padding_bottom">Bottom</string>
+    <string name="padding_left">Left</string>
+    <string name="padding_right">Right</string>
+    <string name="effective_replaces">Effective replacement</string>
+    <string name="add">Add</string>
+    <string name="close">Close</string>
+    <string name="source_filter_rule_manage">Manage all</string>
+    <string name="source_filter_rule_no_match">No block rules apply to this scope.</string>
+    <string name="select_font">Select fonts</string>
+    <string name="default_font">Default font</string>
+    <string name="other_folder">Other folder</string>
+    <string name="system_typeface">System typeface</string>
+    <string name="bookshelf">Bookshelf</string>
+    <string name="bookshelf_empty">The bookshelf is still empty. Search for books or add them from discovery!</string>
+    <string name="book_local">Import books</string>
+    <string name="add_url">Add url</string>
+    <string name="add_book_url">Add book url</string>
+    <string name="force_refresh_book">Force refresh book</string>
+    <string name="select_file">Select a file</string>
+    <string name="add_remote_book">RemoteBook</string>
+    <string name="replace_rule_edit">Edit replacement rule</string>
+    <string name="action_save">Save</string>
+    <string name="copy_rule">Copy Rule</string>
+    <string name="paste_rule">Paste Rule</string>
+    <string name="replace_rule_summary">Rule name</string>
+    <string name="replace_rule">Pattern</string>
+    <string name="replace_to">Replacement</string>
+    <string name="replace_scope">Replacement object. Book name or source url is available</string>
+    <string name="replace_exclude_scope">Exclude range, optional title or source URL</string>
+    <string name="replace_rule_title">Replacement</string>
+    <string name="replace_purify">Replacement</string>
+    <string name="replace_purify_search">Search Replacement</string>
+    <string name="replace_enable_default_s">For new added books</string>
+    <string name="replace_enable_default_t">Enable replace rule by default</string>
+    <string name="replace">Replace</string>
+    <string name="browser">Browser</string>
+    <string name="scope_title">Act on the title</string>
+    <string name="scope_content">Act on the content</string>
+    <string name="use_regex">Using Regex</string>
+    <string name="add_replace_rule">New replacement</string>
+    <string name="sure_del">Are you sure to delete it?</string>
+    <string name="draw">Warning</string>
+    <string name="timeout_millisecond">Timed out milliseconds</string>
+    <string name="respondTime">respondTime: %1$d ms</string>
+    <string name="rule_subscription">Rule Subscription</string>
+    <string name="rss_sources">RSS</string>
+    <string name="dict_rule">Dict rule</string>
+    <string name="enable_selection">Enable selected</string>
+    <string name="disable_selection">Disable selected</string>
+    <string name="selection_to_top">Selection To Top</string>
+    <string name="selection_to_bottom">Selection To Bottom</string>
+    <string name="export_selection">Export selected</string>
+    <string name="book_info">Book information</string>
+    <string name="book_info_delete_alert_summary">Show a confirmation dialog when removing a book from the bookshelf</string>
+    <string name="book_info_delete_alert_title">Confirm before deleting book</string>
+    <string name="book_info_horizontal_layout">Wide book details layout</string>
+    <string name="book_info_horizontal_layout_summary">Place the cover on the left and book info on the right in the details page</string>
+    <string name="book_intro">Book description</string>
+    <string name="book_name">Title</string>
+    <string name="book_source_manage">Sources management</string>
+    <string name="book_source_manage_desc">Create/Import/Edit/Manage Book sources</string>
+    <string name="change_source_progress">Result %1$d, Progress %2$d / %3$d: %4$s</string>
+    <string name="book_type_different">Different types of books</string>
+    <string name="book_type_novel">Novel</string>
+    <string name="book_type_comic">Comic</string>
+    <string name="soure_change_source">Whether to confirm the source change</string>
+    <string name="book_tree_uri_t">Book Save Location</string>
+    <string name="book_type">Type:</string>
+    <string name="bookshelf_cover_height">Cover height in list mode</string>
+    <string name="bookshelf_layout">Layout</string>
+    <string name="bookshelf_management">Book management</string>
+    <string name="author">Author</string>
+    <string name="cookie">Clear cookie</string>
+    <string name="copy_book_url">Copy book URL</string>
+    <string name="copy_source">Copy source</string>
+    <string name="copy_toc_url">Copy chapters URL</string>
+    <string name="debug_source">Debug source</string>
+    <string name="delete_source">delete source</string>
+    <string name="disable_source">disable source</string>
+    <string name="verification_code">Verification code</string>
+    <string name="captcha_load_failed_hint">Failed to load the CAPTCHA image, please open it manually:</string>
+    <string name="edit_book_source">Edit Book source</string>
+    <string name="edit_source">Edit source</string>
+    <string name="paste_source">Paste source</string>
+    <string name="like_source">Like</string>
+    <string name="not_like_source">Not like</string>
+    <string name="review">Comments</string>
+    <string name="share">Share</string>
+    <string name="str_share">Strings sharing</string>
+    <string name="in_favorites">in Favorites</string>
+    <string name="out_favorites">Not in Favorites</string>
+    <string name="favorite">Favorite</string>
+    <string name="author_show">Author: %1$s</string>
+    <string name="intro_show">Description:%1$s</string>
+    <string name="intro_show_null">Description: no introduction</string>
+    <string name="add_to_bookshelf">Add to Bookshelf</string>
+    <string name="remove_from_bookshelf">Remove</string>
+    <string name="copy_play_url">Copy Play Url</string>
+    <string name="check_add_bookshelf">Would you like to add %1$s to your Bookshelf?</string>
+    <string name="audio_play_wake_lock">Audio service wake-up lock</string>
+    <string name="publish_lyric">Lyrics on car display</string>
+    <string name="publish_lyric_summary">Push the current lyric line to the now-playing title (car display / Bluetooth / lock screen); it replaces the chapter name</string>
+    <string name="all_source">All Sources</string>
+    <string name="groups_or_source">Multi-group / book source</string>
+    <string name="precision_search">Precise search</string>
+    <string name="screen">Filter</string>
+    <string name="search_book_key">Search book name/author</string>
+    <string name="search_content">Search content</string>
+    <string name="search_content_size">search result</string>
+    <string name="search_layout">Search layout</string>
+    <string name="searchHistory">Search history</string>
+    <string name="source_filter_rule">Block rules</string>
+    <string name="start">Start</string>
+    <string name="stop">Stop</string>
+    <string name="refresh">Refresh</string>
+    <string name="next_chapter">Next</string>
+    <string name="previous_chapter">Prior</string>
+    <string name="read_dur_progress">Origin: %1$s</string>
+    <string name="read_record">Read record</string>
+    <string name="reading">Read</string>
+    <string name="read_record_today_total">Day %1$s / Total %2$s</string>
+    <string name="reading_time_sort">Sort by reading duration</string>
+    <string name="last_read_time_sort">Sort by read time</string>
+    <string name="enable_record">Enable record</string>
+    <string name="delete_all">Delete all</string>
+    <string name="sure_del_any">Are you sure to delete %1$s?</string>
+    <string name="today_read_time">Today</string>
+    <string name="month_read_time">This month</string>
+    <string name="read_book_count">Books read</string>
+    <string name="week_read_time">This week</string>
+    <string name="all_read_time">Total read time</string>
+    <string name="avg_book_read_time">Avg per book</string>
+    <string name="read_heatmap_title">Reading heatmap</string>
+    <string name="prev_month">Previous month</string>
+    <string name="next_month">Next month</string>
+    <string name="month_label_format">%1$d.%2$02d</string>
+    <string name="loading">Loading…</string>
+    <string name="code_view">Code view</string>
+    <string name="success">Success</string>
+    <string name="switchLayout">Switch Layout</string>
+    <string name="action_download">Download</string>
+    <string name="allow_update">Enable update</string>
+    <string name="download_to_local">Download to local</string>
+    <string name="empty_msg_import_book">Click the folder icon in the upper right corner and select the folder</string>
+    <string name="export_all_use_book_source">Export book source for all books</string>
+    <string name="export_config">Export file config</string>
+    <string name="export_folder">Export folder</string>
+    <string name="export_to_web_dav">Export to WebDav</string>
+    <string name="custom_export_section">Custom export chapter of epub</string>
+    <string name="select_section_export">Choose some chapters to be exported</string>
+    <string name="export_file_name">Export file name</string>
+    <string name="export_type">Exported file format</string>
+    <string name="export_charset">Exported text coding</string>
+    <string name="export_no_chapter_name">No export chapter names</string>
+    <string name="file_contains_number">The number of chapters contained in each file</string>
+    <string name="export_chapter_index">The section index that needs to be exported</string>
+    <string name="error_scope_input">Please enter the correct range</string>
+    <string name="result_analyzed">Analyzed</string>
+    <string name="custom_export">Custom Export</string>
+    <string name="filter_book_type">Filter by Type</string>
+    <string name="import_file_name">Imported-file name</string>
+    <string name="local_book">Local books</string>
+    <string name="menu_download_after">Download the chapter after</string>
+    <string name="menu_download_all">Download all chapter</string>
+    <string name="move_to_group">Move to group</string>
+    <string name="pre_download">Download in advance</string>
+    <string name="remote_book">Remote book</string>
+    <string name="scan_folder">Intelligent scanning</string>
+    <string name="select_folder">Select a folder</string>
+    <string name="sub_dir">Sub dir</string>
+    <string name="group">Group</string>
+    <string name="about">About</string>
+    <string name="app_name">Legado</string>
+    <string name="backup_config">Backup settings</string>
+    <string name="backup">Backup</string>
+    <string name="backup_path">Backup to</string>
+    <string name="backup_restore">Backup and restore</string>
+    <string name="backup_summary">Backup the local and WebDav simultaneously</string>
+    <string name="auto_check_new_backup_s">Check for new backups when opening the app, prompt to update if available</string>
+    <string name="auto_check_new_backup_t">Auto check for new backup</string>
+    <string name="only_latest_backup_s">Local backup keeps only the latest backup file</string>
+    <string name="only_latest_backup_t">Keep only the latest backup</string>
+    <string name="restore">Restore</string>
+    <string name="restore_ignore">Bypass list</string>
+    <string name="restore_ignore_summary">Ignore some contents while restoring</string>
+    <string name="restore_summary">Restore from WebDAV first, Restore form the local backup on long click</string>
+    <string name="select_restore_file">Select restore file</string>
+    <string name="set_local_password">Setting the local password</string>
+    <string name="set_local_password_summary">The local password is used to encrypt and decrypt the sensitive information of the backup, if you need to synchronize between different devices, the local password should be the same.</string>
+    <string name="web_dav_account">WebDav account</string>
+    <string name="web_dav_pw">WebDav password</string>
+    <string name="web_dav_set">WebDav settings</string>
+    <string name="web_dav_set_import_old">WebDav settings/Import legacy data</string>
+    <string name="web_dav_url">WebDav server address</string>
+    <string name="webdav_device_name">Device name</string>
+    <string name="web_port_title">Web port</string>
+    <string name="web_service">Web service</string>
+    <string name="web_service_wake_lock">WebService Wake up Lock</string>
+    <string name="web_service_wake_lock_summary">The wake-up lock is enabled when the web service is enabled, and some phones will be killed when the wake-up lock is enabled.</string>
+    <string name="user_agent">User agent</string>
+    <string name="threads_num_title">Number of concurrent tasks</string>
+    <string name="bitmap_cache_size">bitmap cache size</string>
+    <string name="clear_cache">Clear cache</string>
+    <string name="clear_cache_summary">Clear the cache of the downloaded books and fonts</string>
+    <string name="clear_webview_data">Clear WebView Data</string>
+    <string name="clear_webview_data_summary">Clear all data in WebView</string>
+    <string name="shrink_database">Shrink database</string>
+    <string name="shrink_database_summary">Reduce the size of the database file</string>
+    <string name="auto_check_update">Auto check for updates</string>
+    <string name="check_update">Check for Updates</string>
+    <string name="update_to_variant_title">Check update for variant versions</string>
+    <string name="update_to_variant_summary">Check for other signature versions when updating</string>
+    <string name="pref_cronet_summary">use Cronet access network</string>
+    <string name="server_config">Server Configuration</string>
+    <string name="create">Create</string>
+    <string name="text_default">Default</string>
+    <string name="name">Name</string>
+    <string name="direct_link_upload_rule">Straight chain upload rule</string>
+    <string name="direct_link_upload_rule_summary">Used to generate direct link url when exporting book source, book list</string>
+    <string name="check_source_config">Check setting</string>
+    <string name="check_source_timeout">Single book source check timeout (seconds)</string>
+    <string name="check_source_item">Check item</string>
+    <string name="cannot_empty">The input content cannot be empty</string>
+    <string name="less_than">Less than</string>
+    <string name="seconds">Seconds</string>
+    <string name="timeout">Timeout</string>
+    <string name="contributors">Contributors</string>
+    <string name="contributors_summary">gedoor,Invinciblelee,Xwite etc. Checking in github for details</string>
+    <string name="join_telegram_group">Join Telegram group</string>
+    <string name="update_log">What\'s new</string>
+    <string name="crash_log">Crash log</string>
+    <string name="save_log">Save logs</string>
+    <string name="create_heap_dump">Create heap dump</string>
+    <string name="record_debug_log">Record debug log</string>
+    <string name="record_heap_dump_s">Saving a heap dump when the application crashes by OOM</string>
+    <string name="record_heap_dump_t">Capture heap dump</string>
+    <string name="record_log">Record log</string>
+    <string name="license">License</string>
+    <string name="disclaimer">Disclaimer</string>
+    <string name="other">Other</string>
+    <string name="other_setting">Other settings</string>
+    <string name="theme_config">Theme config</string>
+    <string name="welcome_config">Welcome screen settings</string>
+    <string name="background_image">Background image</string>
+    <string name="bg_image_import_failed">Failed to import background image</string>
+    <string name="change_icon">Change icon</string>
+    <string name="change_icon_summary">Switch the software icon displayed on the desktop</string>
+    <string name="cover_config">cover config</string>
+    <string name="cover_config_summary">Generic Cover Rules and Default Cover Style</string>
+    <string name="cover_show_author">show author</string>
+    <string name="cover_show_author_summary">Author shown on cover</string>
+    <string name="cover_show_name">show name</string>
+    <string name="cover_show_name_summary">Book title shown on cover</string>
+    <string name="customize_day_theme">Customize day theme</string>
+    <string name="customize_night_theme">Customize night theme</string>
+    <string name="dark_theme">Dark mode</string>
+    <string name="default_cover">Default cover</string>
+    <string name="default_home_page">Default HomePage</string>
+    <string name="font_scale">font scale</string>
+    <string name="show_default_book_icon">Show default book icon</string>
+    <string name="use_default_cover">Always show default cover</string>
+    <string name="use_default_cover_s">Always show the default cover, do not show the network cover</string>
+    <string name="bottom_nav_config">Bottom bar</string>
+    <string name="bottom_nav_config_summary">Bar height, icon size, label visibility</string>
+    <string name="bottom_bar_items_order">Entry order</string>
+    <string name="bottom_bar_height">Bar height</string>
+    <string name="bottom_bar_icon_size">Icon size</string>
+    <string name="bottom_bar_label_mode">Label visibility</string>
+    <string name="bottom_bar_label_unlabeled">Hidden</string>
+    <string name="bottom_bar_label_labeled">Always shown</string>
+    <string name="bottom_bar_label_selected">Selected only</string>
+    <string name="bottom_bar_label_auto">Auto</string>
+    <string name="group_style">Group style</string>
+    <string name="show_unread">Show unread flag</string>
+    <string name="bookshelf_show_group_count">Show book count on groups</string>
+    <string name="fixed_width_mode">Fixed width mode</string>
+    <string name="view">View</string>
+    <string name="column_count">Columns</string>
+    <string name="bookshelf_list_show_kind">Show category</string>
+    <string name="bookshelf_list_show_intro">Show intro</string>
+    <string name="bookshelf_list_intro_lines">Intro lines</string>
+    <string name="show_last_update_time">Show last updated time</string>
+    <string name="grid_width_dp">Width</string>
+    <string name="bookshelf_px_0">By recent list</string>
+    <string name="bookshelf_px_1">By update time</string>
+    <string name="bookshelf_px_2">By book title</string>
+    <string name="bookshelf_px_3">By sort manually</string>
+    <string name="bookshelf_px_4">Comprehensive</string>
+    <string name="bookshelf_px_5">Sort by author</string>
+    <string name="theme_list">Theme list</string>
+    <string name="theme_list_summary">Save, Import, Share theme</string>
+    <string name="accent">Accent</string>
+    <string name="background_color">Background color</string>
+    <string name="navbar_color">NavBar color</string>
+    <string name="theme_name">Theme name</string>
+    <string name="new_theme">New</string>
+    <string name="theme_customize_title">Edit theme</string>
+    <string name="select_image">Select a picture</string>
+    <string name="default_cover_count">%1$d images</string>
+    <string name="background_image_blurring">Background image blurring</string>
+    <string name="day_background_too_dark">Day background can not be too dark!</string>
+    <string name="night_background_too_light">Night background can not be too bright!</string>
+    <string name="theme_mode">Theme mode</string>
+    <string name="default_day_theme">Default · Day</string>
+    <string name="default_night_theme">Default · Night</string>
+    <string name="theme_setting">Interface settings</string>
+    <string name="theme_setting_s">Some settings related to interface or color</string>
+    <string name="welcome_show_time">Welcome page show time</string>
+    <string name="welcome_style">Launch interface style</string>
+    <string name="welcome_style_summary">Startup screen image and whether to display text, etc.</string>
+    <string name="welcome_text">Legado|Enjoy Good Times</string>
+    <string name="enable_welcome">Enable welcome page</string>
+    <string name="enable_welcome_summary">Whether to show welcome page on startup</string>
+    <string name="show_welcome_text">Display text</string>
+    <string name="show_icon">Show icon</string>
+    <string name="day">Day</string>
+    <string name="night">Night</string>
+    <string name="source_edit_text_max_line">Maximum number of rows in the source edit box</string>
+    <string name="unlimited">Unlimited</string>
+    <string name="auto_indent">Auto indent</string>
+    <string name="ps_auto_refresh">Update books automatically when opening the software</string>
+    <string name="pt_auto_refresh">Auto-refresh</string>
+    <string name="click_book_open_read">Directly play video books</string>
+    <string name="click_book_open_read_summary">Click video books in search/discovery to play directly, skipping details</string>
+    <string name="media_button_on_exit_title">Headset buttons are always available</string>
+    <string name="media_button_on_exit_summary">Headset buttons are available even exit the app.</string>
+    <string name="read_aloud_by_media_button_title">Headset button to start speech</string>
+    <string name="read_aloud_by_media_button_summary">Use headset buttons to start speech</string>
+    <string name="auto_next_page">Auto scroll</string>
+    <string name="auto_next_page_stop">Stop Auto scroll</string>
+    <string name="edit_content">Edit Content</string>
+    <string name="simulated_reading">Simulated Reading</string>
+    <string name="same_title_removed">Remove duplicate title</string>
+    <string name="re_segment">Re-segment</string>
+    <string name="del_h_tag">Delete h tag</string>
+    <string name="del_ruby_tag">Delete ruby tag</string>
+    <string name="image_style">Style of Images</string>
+    <string name="update_toc">Update chapters</string>
+    <string name="set_charset">Text encoding</string>
+    <string name="offline_cache">Offline cache</string>
+    <string name="interface_setting">Interface</string>
+    <string name="menu_refresh_dur">Refresh the current chapter</string>
+    <string name="menu_refresh_after">Refresh the chapter after</string>
+    <string name="menu_refresh_all">Refresh all chapters</string>
+    <string name="book_change_source">Change the source of the whole book</string>
+    <string name="chapter_change_source">Single chapter source switching</string>
+    <string name="chapter_pay">pay</string>
+    <string name="disable_book_source">Disable Book source</string>
+    <string name="bottom_line">I AM OVER!</string>
+    <string name="discovery">Discovery</string>
+    <string name="explore_cols">Columns</string>
+    <string name="explore_empty">Empty now!</string>
+    <string name="explore_style">Style</string>
+    <string name="explore_style_video">Video</string>
+    <string name="home">Home</string>
+    <string name="home_manage">Manage sections</string>
+    <string name="home_more">More</string>
+    <string name="home_tab_empty">No sections in this group, tap + in upper right to add</string>
+    <string name="home_tab_manage">Manage groups</string>
+    <string name="my">Me</string>
+    <string name="language">Language</string>
+    <string name="add_to_text_context_menu_s">Long tap to display Legado·Search in the operation menu</string>
+    <string name="add_to_text_context_menu_t">Text operation display Search</string>
+    <string name="show_add_to_shelf_alert_summary">Prompt to add to bookshelf when return from reading books that are not on the bookshelf</string>
+    <string name="show_add_to_shelf_alert_title">Prompt to add to bookshelf when return</string>
+    <string name="set_book_variable">Set book variable</string>
+    <string name="set_source_variable">Set source variable</string>
+    <string name="sync_book_progress_s">Synchronize reading progress when entering / exiting the reading interface</string>
+    <string name="sync_book_progress_t">Synchronous reading progress</string>
+    <string name="sync_book_progress_plus_s">Sync cloud progress when re-entering the page (screen off, returning from background, etc.) or when the network becomes available. You will be prompted before syncing new progress.</string>
+    <string name="sync_book_progress_plus_t">Sync Enhancement</string>
+    <string name="upload_to_remote">Upload</string>
+    <string name="sort_by_size">Sort by size</string>
+    <string name="sort_by_time">Sort by time</string>
+    <string name="save_book_source_failed">Failed to save book source</string>
+    <string name="debug_book_source_save_failed">Failed to save the debugged book source</string>
+    <string name="search_book_source_save_failed">Failed to save searched book source</string>
+    <string name="book_source_copied">Book source copied to clipboard</string>
+    <string name="copy_book_source_failed">Failed to copy book source</string>
+    <string name="book_source_str_copied_desktop">Book source string copied to clipboard (desktop uses clipboard instead of sharing)</string>
+    <string name="share_book_source_failed">Failed to share book source</string>
+    <string name="paste_book_source_failed">Failed to paste book source</string>
+    <string name="dialog_title">Prompt</string>
+    <string name="not_set">Not set</string>
+    <string name="zero_disable_suffix">(0 = disabled)</string>
+    <string name="retry">Retry</string>
+    <string name="new_book_source">New book source</string>
+    <string name="select_book_source_json">Select book source JSON file</string>
+    <string name="input_book_source_url">Enter the book source subscription URL</string>
+    <string name="net_import_book_source">Import book sources from network</string>
+    <string name="export_book_source_json">Export book sources as JSON</string>
+    <string name="json_file_filter">JSON file (*.json)</string>
+    <string name="sure_del_source">Delete this book source?</string>
+    <string name="image_style_default">Default</string>
+    <string name="image_style_full">Full-bleed</string>
+    <string name="image_style_text">Wrap text</string>
+    <string name="image_style_single">Single</string>
+    <string name="searched_count_progress">Searched %1$d items / source %2$d / %3$d in total (%4$s)</string>
+    <string name="sure_del_explore_favorite">Delete this discovery favorite?</string>
+    <string name="explore_category_error">Discovery category error</string>
+    <string name="bottom_reached">Reached the bottom</string>
+    <string name="loading_error">Loading error</string>
+    <string name="loading_error_click_detail">Loading error, tap for details</string>
+    <string name="replace_rule_net_import_title">Import replace rules from network</string>
+    <string name="replace_rule_input_url">Enter the replace rule subscription URL</string>
+    <string name="replace_rule_select_json_file">Select replace rule JSON file</string>
+    <string name="replace_rule_save_json_file">Save replace rules as JSON file</string>
+    <string name="explore_show_empty">Empty</string>
+    <string name="previous_segment">Previous paragraph</string>
+    <string name="next_segment">Next paragraph</string>
+    <string name="play">Play</string>
+    <string name="pause">Pause</string>
+    <string name="speech_rate">Speech rate</string>
+    <string name="reading_not_started">Read-aloud not started</string>
+    <string name="reading_progress_format">Reading chapter %1$d, paragraph %2$d</string>
+    <string name="paused">Paused</string>
+    <string name="stopped">Stopped</string>
+    <string name="reading_completed">Read-aloud completed</string>
+    <string name="reading_error">Read-aloud error</string>
+    <string name="read_aloud">Speech</string>
+    <string name="aloud_stop">Speak Stopped</string>
+    <string name="select_cover_image">Select cover image</string>
+    <string name="input_new_cover_url">Enter the new cover URL</string>
+    <string name="change_cover_source">Change origin</string>
+    <string name="select_import_book_dir">Select the directory to import books from</string>
+    <string name="filename_import_js_title">File name import JS</string>
+    <string name="filename_import_js_summary">Use JS to process the file name variable src, assign the book name and author to the variables name and author</string>
+    <string name="image_label_with_src">Image: %1$s</string>
+    <string name="pending_operation">Pending operation</string>
+    <string name="test_connection">Test connection</string>
+    <string name="connecting">Testing connection...</string>
+    <string name="connection_success">Connection succeeded</string>
+    <string name="connection_no_account">Not connected: account or password is empty</string>
+    <string name="connection_failed">Connection failed: %1$s</string>
+    <string name="web_dav_jianGuoYun">Jianguoyun</string>
+    <string name="web_dav_other">Other WebDav</string>
+    <string name="backup_success_uploaded">Backup succeeded (uploaded to WebDav)</string>
+    <string name="backup_failed">Backup failed: %1$s</string>
+    <string name="local_backup_success">Local backup succeeded (not uploaded to WebDav)</string>
+    <string name="local_backup_failed">Local backup failed: %1$s</string>
+    <string name="web_dav_no_backup">No backup files on WebDav</string>
+    <string name="restore_success">Restore succeed</string>
+    <string name="restore_failed">Restore failed: %1$s</string>
+    <string name="seconds_unit">seconds</string>
+    <string name="btn_default_s">Default</string>
+    <string name="page_touch_slop_dialog_title">Sliding page turn threshold (0 = system default)</string>
+    <string name="page_touch_slop_summary">How far to slide to trigger a page slide (system default %1$s px)</string>
+    <string name="search_src">Search source code</string>
+    <string name="book_src">Book source code</string>
+    <string name="toc_src">Chapters source code</string>
+    <string name="content_src">Content source code</string>
+    <string name="review_src">Review source code</string>
+    <string name="refresh_explore">Refresh explore</string>
+    <string name="group_name">Group name</string>
+    <string name="group_select">Group selection</string>
+    <string name="source_url">Source url(sourceUrl)</string>
+    <string name="source_name">Source Name(sourceName)</string>
+    <string name="source_group">Source group(sourceGroup)</string>
+    <string name="comment">Source comment(sourceComment)</string>
+    <string name="login_check_js">Login check js(loginCheckJs)</string>
+    <string name="book_url_pattern">Book url pattern(bookUrlPattern)</string>
+    <string name="source_http_header">HTTP Header</string>
+    <string name="concurrent_rate">Concurrency rate(concurrentRate)</string>
+    <string name="r_search_url">Search url(url)</string>
+    <string name="check_key_word">Check key word(checkKeyWord)</string>
+    <string name="r_book_list">Book list(bookList)</string>
+    <string name="r_book_name">Book title(name)</string>
+    <string name="r_author">Author(author)</string>
+    <string name="rule_book_kind">Classification(kind)</string>
+    <string name="rule_word_count">Word count(wordCount)</string>
+    <string name="rule_last_chapter">Last chapter(lastChapter)</string>
+    <string name="rule_book_intro">Intro(intro)</string>
+    <string name="rule_cover_url">CoverUrl(coverUrl)</string>
+    <string name="r_book_url">Details page url(bookUrl)</string>
+    <string name="rule_has_more">Has more(hasMoreRule)</string>
+    <string name="r_find_url">Discover url(url)</string>
+    <string name="rule_book_info_init">Book info init(bookInfoInit)</string>
+    <string name="rule_toc_url">TOC url(tocUrl)</string>
+    <string name="rule_can_re_name">Can re name(canReName)</string>
+    <string name="download_url_rule">downloadUrlRule(downloadUrls)</string>
+    <string name="pre_update_js">Js before update(preUpdateJs)</string>
+    <string name="rule_chapter_name">Chapter name(chapterName)</string>
+    <string name="rule_chapter_url">Chapter url(chapterUrl)</string>
+    <string name="rule_is_volume">Is volume(isVolume)</string>
+    <string name="rule_update_time">Chapter info(ChapterInfo)</string>
+    <string name="rule_is_vip">Is vip(isVip)</string>
+    <string name="rule_is_pay">Is pay(isPay)</string>
+    <string name="rule_next_toc_url">Next toc url(nextTocUrl)</string>
+    <string name="rule_book_content">Content(content)</string>
+    <string name="rule_should_override_url_loading">Intercept web request(shouldOverrideUrlLoading)</string>
+    <string name="rule_web_js">Web view js(webJs)</string>
+    <string name="rule_source_regex">Source regex(sourceRegex)</string>
+    <string name="rule_replace_regex">Replace regex(replaceRegex)</string>
+    <string name="rule_image_style">Image style(imageStyle)</string>
+    <string name="rule_pay_action">Pay action(payAction)</string>
+    <string name="cover_decode_js">Decode Cover Js(coverDecodeJs)</string>
+    <string name="variable_comment">Variable Comment(variableComment)</string>
+    <string name="js_lib">JS library</string>
+    <string name="sub_content_rule">Additional content rule</string>
+    <string name="image_decode">Image decryption</string>
+    <string name="music_cover_rule">Music cover rule</string>
+    <string name="review_count_rule">Comment count rule</string>
+    <string name="total_review_count_rule">Total comment count rule</string>
+    <string name="review_url_rule">Comment URL rule</string>
+    <string name="review_list_rule">Comment list rule</string>
+    <string name="review_id_rule">Comment ID rule</string>
+    <string name="avatar_rule">Avatar rule</string>
+    <string name="nickname_rule">Nickname rule</string>
+    <string name="content_rule">Comment content</string>
+    <string name="post_time_rule">Post time rule</string>
+    <string name="extra_rule">Extra rule</string>
+    <string name="images_rule">Image rule</string>
+    <string name="vote_up_count_rule">Like count rule</string>
+    <string name="vote_up_selected_rule">Liked rule</string>
+    <string name="vote_down_selected_rule">Disliked rule</string>
+    <string name="reply_count_rule">Reply count rule</string>
+    <string name="reply_list_url">Reply list URL</string>
+    <string name="vote_up_rule">Like rule</string>
+    <string name="vote_down_rule">Dislike rule</string>
+    <string name="reply_rule">Reply rule</string>
+    <string name="source_login_url">Login URL</string>
+    <string name="source_login_ui">Login screen</string>
+    <string name="delete_rule">Delete rule</string>
+    <string name="source_tab_base">Basic</string>
+    <string name="source_tab_search">Search</string>
+    <string name="source_tab_find">Discovery</string>
+    <string name="source_tab_info">Information</string>
+    <string name="source_tab_toc">Chapters</string>
+    <string name="source_tab_content">Content</string>
+    <string name="source_tab_review">Review</string>
+    <string name="is_enable">Enable</string>
+    <string name="auto_save_cookie">CookieJar</string>
+    <string name="enable_review">Enable paragraph review</string>
+    <string name="login_ui">Login UI(loginUi)</string>
+    <string name="rule_chapter_list">Chapter list(chapterList)</string>
+    <string name="rule_next_content">Next content url(nextContentUrl)</string>
+    <string name="rule_sub_content">Additional Content Rule(subContent)</string>
+    <string name="rule_image_decode">Decode Image(imageDecode)</string>
+    <string name="rule_music_cover">music cover url rule</string>
+    <string name="rule_review_count">Chapter review count rule(reviewCountRule)</string>
+    <string name="rule_review_total_count">Comment total count(totalCountRule)</string>
+    <string name="rule_review_url">Paragraph review URL(reviewUrl)</string>
+    <string name="rule_review_list">Paragraph review list(reviewList)</string>
+    <string name="rule_review_id">Paragraph comment ID(reviewIdRule)</string>
+    <string name="rule_avatar">Paragraph review author avatar(avatarRule)</string>
+    <string name="rule_review_name">Paragraph review author name(nameRule)</string>
+    <string name="rule_review_content">Paragraph review content（contentRule）</string>
+    <string name="rule_post_time">Release time of paragraph comments（postTimeRule）</string>
+    <string name="rule_review_extra">Paragraph review extra info(extraRule)</string>
+    <string name="rule_review_images">Paragraph review images list(imagesRule)</string>
+    <string name="rule_vote_up_count">Vote up count(voteUpCountRule)</string>
+    <string name="rule_vote_up_selected">Liked state rule(voteUpSelectedRule)</string>
+    <string name="rule_vote_down_selected">Disliked state rule(voteDownSelectedRule)</string>
+    <string name="rule_reply_count">Reply count(replyCountRule)</string>
+    <string name="rule_reply_list_url">Reply list URL(replyListUrl)</string>
+    <string name="rule_vote_up">Like rule(voteUpRule)</string>
+    <string name="rule_vote_down">Dislike rule(voteDownRule)</string>
+    <string name="rule_reply">Reply rule(replyRule)</string>
+    <string name="rule_delete_review">Delete rule(deleteRule)</string>
+    <string name="read_config">Reading interface settings</string>
+    <string name="text_size">Text size</string>
+    <string name="line_size">Line spacing</string>
+    <string name="paragraph_size">Paragraph spacing</string>
+    <string name="background">Background</string>
+    <string name="page_turn">Page turn</string>
+    <string name="page_anim_none">None</string>
+    <string name="page_anim_cover">Cover</string>
+    <string name="page_anim_slide">Slide</string>
+    <string name="search_result_empty">Search result is empty</string>
+    <string name="search_result_empty_close_precision">%1$s group search result is empty, close precision search?</string>
+    <string name="search_result_empty_switch_all">%1$s group search result is empty, switch to all groups?</string>
+    <string name="copy">Copy</string>
+    <string name="cut">Cut</string>
+    <string name="paste">Paste</string>
+    <string name="select_all">Select all</string>
+    <string name="time_format_minutes">%1$d minutes</string>
+    <string name="time_format_hours_minutes">%1$d hours %2$d minutes</string>
+    <string name="time_format_hours">%1$d hours</string>
+    <string name="time_format_minutes_only">%1$d minutes</string>
+    <string name="time_format_seconds">%1$d seconds</string>
+    <string name="book_source_tutorial">Book source tutorial</string>
+    <string name="js_tutorial">JS tutorial</string>
+    <string name="regex_tutorial">Regex tutorial</string>
+    <string name="debug_search_hint">Debug search&gt;&gt;input keyword, e.g.:</string>
+    <string name="debug_explore_hint">Debug explore&gt;&gt;input explore URL, e.g.:</string>
+    <string name="debug_book_info_hint">Debug detail&gt;&gt;input detail page URL, e.g.:</string>
+    <string name="debug_toc_hint">Debug TOC&gt;&gt;input TOC page URL, e.g.:</string>
+    <string name="debug_content_hint">Debug content&gt;&gt;input content page URL, e.g.:</string>
+    <string name="system">System</string>
+    <string name="text_too_large">Data too large to display fully…</string>
+    <string name="log_level_all">All</string>
+    <string name="log_level_error">Error</string>
+    <string name="log_level_warn">Warn</string>
+    <string name="log_level_info">Info</string>
+    <string name="log_level_debug">Debug</string>
+    <string name="log_stack_trace">Stack trace</string>
+    <string name="bookmark_content">Content</string>
+    <string name="bookmark_note">Note</string>
+    <string name="search_scope">Search scope</string>
+    <string name="source_variable_tab">Source variable</string>
+    <string name="book_variable_tab">Book variable</string>
+    <string name="variable_key">Variable name</string>
+    <string name="variable_value">Variable value</string>
+    <string name="variable_edit_title">Edit variable</string>
+    <string name="variable_empty">No variables</string>
+    <string name="group_edit">Group editing</string>
+    <string name="group_add">Add group</string>
+    <string name="allow_drop_down_refresh">Allow drop-down refresh</string>
+    <string name="book_sort_default">Default</string>
+    <string name="book_sort_reading_time">By reading time</string>
+    <string name="book_sort_update_time">By update time</string>
+    <string name="book_sort_name">By name</string>
+    <string name="book_sort_manual">Manual</string>
+    <string name="book_sort_comprehensive">Comprehensive</string>
+    <string name="book_sort_author">By author</string>
+    <string name="txt_toc_rule_edit_name">Name</string>
+    <string name="txt_toc_rule_edit_rule">Rule</string>
+    <string name="txt_toc_rule_edit_example">Example</string>
+    <string name="txt_toc_rule_edit_name_required">Name cannot be empty</string>
+    <string name="txt_toc_rule_edit_regex_error">Regex syntax error or unsupported (txt)</string>
+    <string name="txt_toc_rule_edit_copy_success">Copied</string>
+    <string name="dict_rule_edit_name">Name</string>
+    <string name="dict_rule_edit_url_rule">URL rule</string>
+    <string name="dict_rule_edit_show_rule">Show rule</string>
+    <string name="dict_rule_edit_copy_success">Copied</string>
+    <string name="source_filter_rule_edit_name">Rule name</string>
+    <string name="source_filter_rule_edit_pattern">Pattern</string>
+    <string name="source_filter_rule_edit_invalid_pattern">Regex invalid or empty</string>
+    <string name="source_filter_rule_edit_title_add">Add filter rule</string>
+    <string name="source_filter_rule_edit_title_edit">Filter rule</string>
+    <string name="source_filter_rule_name">Name</string>
+    <string name="source_filter_rule_pattern">Regex pattern</string>
+    <string name="source_filter_rule_fields">Apply to fields (any matches → drop)</string>
+    <string name="source_filter_rule_scope_label">Apply to</string>
+    <string name="source_filter_rule_scope_summary_all">All sources</string>
+    <string name="source_filter_rule_invalid_pattern">Invalid regex</string>
+    <string name="source_filter_rule_no_field">Pick at least one field</string>
+    <string name="source_filter_field_name">Title</string>
+    <string name="source_filter_field_author">Author</string>
+    <string name="source_filter_field_intro">Intro</string>
+    <string name="source_filter_field_kind">Category</string>
+    <string name="source_filter_field_word_count">Word count</string>
+    <string name="content_edit_reset">Reset</string>
+    <string name="content_edit_copy_all">Copy all</string>
+    <string name="content_edit_copy_success">Copied</string>
+    <string name="select_action">Selection action</string>
+    <string name="menu">Menu</string>
+    <string name="next_page">Next page</string>
+    <string name="prev_page">Prior page</string>
+    <string name="read_aloud_prev_paragraph">Read aloud the previous paragraph</string>
+    <string name="read_aloud_next_paragraph">Read aloud the next paragraph</string>
+    <string name="bookmark_add">Add to Bookmarks</string>
+    <string name="replace_state_change">Replace (enable / disable)</string>
+    <string name="read_aloud_pause_resume">Pause/Resume Speech</string>
+    <string name="prev_page_key">Page up button</string>
+    <string name="next_page_key">Page down button</string>
+    <string name="reset">Reset</string>
+    <string name="system_default">System default</string>
+    <string name="prev_sentence">Prior sentence</string>
+    <string name="next_sentence">Next sentence</string>
+    <string name="audio_play">Play</string>
+    <string name="audio_play_t">Playing</string>
+    <string name="audio_pause">Pause</string>
+    <string name="audio_play_s">Click to open the Playing</string>
+    <string name="playing_timer">Playing(%1$d min left)</string>
+    <string name="read_aloud_timer">Speaking(%1$d min left)</string>
+    <string name="read_aloud_t">Speaking</string>
+    <string name="read_aloud_pause">Speak Paused</string>
+    <string name="read_aloud_s">Click to open the Reading</string>
+    <string name="resume">Resume</string>
+    <string name="audio">Audio</string>
+    <string name="set_timer">Timer</string>
+    <string name="timer_m">%1$d min</string>
+    <string name="read_aloud_speed">Speech rate</string>
+    <string name="flow_sys">Follow system</string>
+    <string name="tts_speech_reduce">Decrease speech speed</string>
+    <string name="tts_speech_add">Increase speech speed</string>
+    <string name="main_menu">Main menu</string>
+    <string name="to_backstage">Background</string>
+    <string name="select_book_source">Select book source</string>
+    <string name="change_source_delay">Change source delay</string>
+    <string name="tts_error_prepare_no_url">prepare failed: URL not set</string>
+    <string name="tts_error_prepare_exception">prepare error: %1$s</string>
+    <string name="tts_error_resume_failed">Failed to resume playback: %1$s</string>
+    <string name="tts_error_play_exception">Playback error: %1$s</string>
+    <string name="tts_error_http_connect_failed">HTTP connection failed: %1$s</string>
+    <string name="tts_error_input_stream_null">InputStream is null</string>
+    <string name="tts_error_unsupported_audio_format">Unsupported audio format (desktop only supports WAV/PCM/AU/AIFF; MP3 requires MP3 SPI): %1$s</string>
+    <string name="tts_error_read_stream_failed">Failed to read audio stream: %1$s</string>
+    <string name="tts_error_audio_line_unavailable">Audio output line unavailable: %1$s</string>
+    <string name="tts_error_open_line_failed">Failed to open audio output line: %1$s</string>
+    <string name="tts_error_source_line_not_ready">Playback failed: SourceDataLine not ready</string>
+    <string name="tts_error_audio_stream_not_ready">Playback failed: AudioInputStream not ready</string>
+    <string name="tts_error_start_failed">Failed to start playback: %1$s</string>
+    <string name="tts_error_read_stream_interrupted">Audio stream reading interrupted: %1$s</string>
+    <string name="tts_error_write_line_failed">Failed to write to audio line: %1$s</string>
+    <string name="debug_explore_error">Error getting explore\n%1$s</string>
+    <string name="debug_explore_json_error">Error getting explore JSON data\n%1$s</string>
+    <string name="debug_source_not_found">ERROR:Source not found %1$s</string>
+    <string name="import_tts">Import TTS</string>
+    <string name="http_tts_net_import_title">Import TTS from network</string>
+    <string name="http_tts_input_url">Enter the TTS subscription URL</string>
+    <string name="http_tts_select_json_file">Select TTS JSON file</string>
+    <string name="back">Back</string>
+    <string name="change_source">Change source</string>
+    <string name="cover">Cover</string>
+    <string name="no_lyrics">No lyrics</string>
+    <string name="speed">Speed</string>
+    <string name="play_mode">Play mode</string>
+    <string name="log_saved">Log saved</string>
+    <string name="save_log_failed">Failed to save log</string>
+    <string name="heap_dump_saved">Heap dump saved</string>
+    <string name="save_heap_dump_failed">Failed to save heap dump</string>
+    <string name="net_import_theme">Import themes from network</string>
+    <string name="input_theme_url">Enter the theme subscription URL</string>
+    <string name="import_theme_success">Import completed, %1$d themes in total</string>
+    <string name="clipboard_empty_or_invalid">Clipboard is empty or invalid</string>
+    <string name="format_invalid_add_failed">Invalid format, failed to add</string>
+    <string name="copied_to_clipboard">Copied to clipboard</string>
+    <string name="copy_to_clipboard">Copy to clipboard</string>
+    <string name="copy_failed">Copy failed</string>
+    <string name="load_chapter_content_failed">Failed to load chapter content</string>
+    <string name="text_action">Text actions</string>
+    <string name="loading_chapter_content">Loading chapter content...</string>
+    <string name="address_copied">Address copied</string>
+    <string name="copy_address">Copy address</string>
+    <string name="open_failed">Failed to open: %1$s</string>
+    <string name="open_in_browser">open in browser</string>
+    <string name="jump_to_another_app">Jump to another app</string>
+    <string name="check_host_cookie">Opening the homepage, it will return to start page automatically after success</string>
+    <string name="restore_from_local_prompt">The app will be restored from a local backup.</string>
+    <string name="clear_cache_success">Cache cleared</string>
+    <string name="export_bookmark_json">Export bookmarks as JSON</string>
+    <string name="export_success">export success</string>
+    <string name="export_bookmark_md">Export bookmarks as Markdown</string>
+    <string name="no_book">No books</string>
+    <string name="non_null_name_url">name and URL cannot be empty</string>
+    <string name="resolution">resolution</string>
+    <string name="reload">Reload</string>
+    <string name="manga_color_filter">Color filter</string>
+    <string name="contrast">Contrast</string>
+    <string name="enable_manga_gray">Enable grayscale images</string>
+    <string name="manga_footer_config">Footer config</string>
+    <string name="enable_manga_horizontal_scroll">Left-Right page turn</string>
+    <string name="disable_manga_page_anim">Disable flip animation</string>
+    <string name="enable_auto_page_scroll">Enable auto page scroll</string>
+    <string name="manga_auto_page_speed">Page speed %1$s</string>
+    <string name="setting_manga_auto_page_speed">Set auto page speed</string>
+    <string name="hide_manga_title">Hide manga list title</string>
+    <string name="pre_download_m">Pre-download %1$s pages</string>
+    <string name="manga_gif_auto_next">Turn page after GIF finishes</string>
+    <string name="manga_check_chapter_label">"Ch." prefix</string>
+    <string name="manga_check_chapter">Number</string>
+    <string name="manga_check_chapter_name">Name</string>
+    <string name="manga_check_page_label">"P." prefix</string>
+    <string name="manga_check_page_number">Number</string>
+    <string name="manga_check_progress_label">Prefix</string>
+    <string name="manga_check_progress">Percentage</string>
+    <string name="manga_header_footer">Show footer</string>
+    <string name="manga_header_chapter">Chapter</string>
+    <string name="manga_header_page">Page</string>
+    <string name="manga_header_progress">Progress</string>
+    <string name="no_more_chapter">No more chapters!</string>
+    <string name="manga_header_orientation">Alignment</string>
+    <string name="manga_radio_left">Left</string>
+    <string name="manga_radio_center">Center</string>
+    <string name="page_preview">Nine-grid preview</string>
+    <string name="save_image_as">Save image</string>
+    <string name="review_post_hint">Have something to say?</string>
+    <string name="reply_review">Reply</string>
+    <string name="review_replies_detail_title">Comment detail</string>
+    <string name="review_replies_section_title">All replies · %1$d</string>
+    <string name="review_list_section_title">All comments · %1$s</string>
+    <string name="review_sort_hot">Hot</string>
+    <string name="review_sort_latest">Latest</string>
+    <string name="review_expand">Expand</string>
+    <string name="review_collapse">Collapse</string>
+    <string name="confirm_delete_review">Delete this comment?</string>
+    <string name="vote_up">Like</string>
+    <string name="vote_down">Dislike</string>
+    <string name="review_replies_count">All %1$d replies &gt;</string>
+    <string name="check_source_cancelled">Book source check cancelled</string>
+    <string name="check_source_in_progress">A book source check is already in progress, try again after it finishes</string>
+    <string name="check_source_progress_msg">Checking book source %1$d/%2$d %3$s</string>
+    <string name="check_source_completed">Book source check completed</string>
+    <string name="check_source_error">Book source check failed\n%1$s</string>
+    <string name="new_book_source_added">New book source added: %1$s</string>
+    <string name="no_source_selected">No book source selected</string>
+    <string name="export_source_no_selection">Export book sources: no book sources selected</string>
+    <string name="export_source_db_empty">Export book sources: database query is empty</string>
+    <string name="export_source_cancelled">Export book sources: user cancelled the selection</string>
+    <string name="export_source_done">Export book sources completed, %1$d in total -&gt; %2$s</string>
+    <string name="export_source_write_failed">Export book sources: failed to write file</string>
+    <string name="share_source_no_selection">Share book sources: no book sources selected</string>
+    <string name="share_source_db_empty">Share book sources: database query is empty</string>
+    <string name="share_source_copied">Shared book sources copied to clipboard, %1$d in total</string>
+    <string name="import_source_cancelled">Import book sources: user cancelled the selection</string>
+    <string name="debug_fx_default">System::http://xxx</string>
+    <string name="import_state_new">New</string>
+    <string name="import_state_update">Update</string>
+    <string name="import_state_existing">Existing</string>
+    <string name="import_book_source">Import book sources</string>
+    <string name="import_replace_rule">Import replace rules</string>
+    <string name="import_dict_rule">Import dict rule</string>
+    <string name="import_txt_toc_rule">Import txt directory rules</string>
+    <string name="import_source_filter_rule">Import block rules</string>
+    <string name="import_theme">Import theme</string>
+    <string name="select_new_source">Select new source</string>
+    <string name="select_update_source">Select update source</string>
+    <string name="diy_source_group">Custom source grouping</string>
+    <string name="diy_edit_source_group">Enter the custom source group name</string>
+    <string name="keep_original_name">Keep the original name</string>
+    <string name="keep_group">Keep group</string>
+    <string name="keep_enable">Retain Enabled Status</string>
+    <string name="deep_link_type_not_supported">This legado:// import type is not supported yet: %1$s</string>
+    <string name="rule_sub_load_failed">Failed to load data in the rule subscription screen\n%1$s</string>
+    <string name="input_valid_url">Enter a valid URL</string>
+    <string name="check_update_failed">Failed to check for updates\n%1$s</string>
+    <string name="desktop_install_mode_not_portable">[legado-desktop] install mode = %1$s (portable.root not set, falls back to portable.txt marker/system data directory)</string>
+    <string name="image_decode_failed_bytes">image.decode: failed to decode image bytes (%1$s bytes)</string>
+    <string name="image_encode_unsupported_format">image.encode: unsupported format %1$s, only png/jpg/webp</string>
+    <string name="image_encode_write_failed">image.encode: ImageIO.write failed format=%1$s</string>
+    <string name="image_encode_webp_failed">image.encode: failed to encode WebP via Skia</string>
+    <string name="image_split_rows_cols_positive">image.split: rows/cols must be positive (%1$s,%2$s)</string>
+    <string name="image_split_exceeds_size">image.split: tile count exceeds pixel size (%1$sx%2$s / %3$s rows %4$s columns)</string>
+    <string name="image_stitch_imgs_empty">image.stitch: imgs is empty</string>
+    <string name="image_stitch_direction_invalid">image.stitch: direction only supports h/v, got %1$s</string>
+    <string name="image_ref_type_invalid">image: argument is not an ImageRef returned by image.decode/split/stitch/crop (%1$s)</string>
+    <string name="desktop_audio_play_error">Audio playback error on desktop\n%1$s</string>
+    <string name="desktop_audio_no_resource_url">No resource URL obtained</string>
+    <string name="desktop_audio_load_failed">Failed to load audio on desktop\n%1$s</string>
+    <string name="desktop_lrc_load_failed">Failed to load lyrics on desktop\n%1$s</string>
+    <string name="desktop_cover_load_failed">Failed to load cover on desktop\n%1$s</string>
+    <string name="desktop_audio_save_read_failed">SaveRead failed on desktop\n%1$s</string>
+    <string name="desktop_audio_save_failed">Save failed on desktop\n%1$s</string>
+    <string name="desktop_audio_get_book_source_failed">Failed to get book source on desktop\n%1$s</string>
+    <string name="desktop_cookie_set_error">Failed to set cookie on desktop domain=%1$s cookie=%2$s</string>
+    <string name="download_jslib_failed">Failed to download jsLib-%1$s</string>
+    <string name="native_book_format_not_supported">Parsing local %1$s books is not supported on this platform yet (pdf/cbz parsers not ported)</string>
+    <string name="upload_url_not_configured">Upload URL not configured</string>
+    <string name="download_url_rule_not_configured">Download URL rule not configured</string>
+    <string name="upload_failed_with_body">Upload failed: %1$s</string>
+    <string name="desktop_backstage_webview_unsupported">BackstageWebView is not supported on desktop (depends on android.webkit.WebView). Use HTTP paths or book sources that do not rely on WebView instead</string>
+    <string name="book_info_copied">Book info copied</string>
+    <string name="need_more_time_load_content">When the body length is too long, it may take more time to load the text.</string>
+    <string name="clear_cache_failed">Failed to clear cache: %1$s\n%2$s</string>
+    <string name="intro_action_dispatch_failed">Failed to dispatch description action: %1$s</string>
+    <string name="no_book_source">No book source</string>
+    <string name="select_cover_cancelled">Select cover: user cancelled the selection</string>
+    <string name="bookshelf_manage_load_groups_failed">Failed to load group data in bookshelf management\n%1$s</string>
+    <string name="bookshelf_manage_load_sources_failed">Failed to load book source data in bookshelf management\n%1$s</string>
+    <string name="bookshelf_manage_load_books_failed">Failed to load the book list in bookshelf management\n%1$s</string>
+    <string name="export_bookshelf_json">Export bookshelf as JSON</string>
+    <string name="export_bookshelf_cancelled">Export bookshelf: user cancelled the selection</string>
+    <string name="delete_local_book_file_failed">Failed to delete local book source file: %1$s\n%2$s</string>
+    <string name="add_book_url_failed">Failed to add %1$s\n%2$s</string>
+    <string name="add_book_url_success">Added %1$d/%2$d</string>
+    <string name="add_book_url_all_failed">Failed to add URLs</string>
+    <string name="adding_book">Adding...</string>
+    <string name="read_file_failed">Failed to read file</string>
+    <string name="import_book_failed">Failed to import &lt;%1$s&gt;\n%2$s</string>
+    <string name="import_complete">Import completed %1$d</string>
+    <string name="import_bookshelf_failed">Failed to import bookshelf\n%1$s</string>
+    <string name="import_bookshelf">Import the list of books</string>
+    <string name="importing_book">Importing...</string>
+    <string name="url_import">URL import</string>
+    <string name="upload_url_empty">Upload URL cannot be empty</string>
+    <string name="download_url_rule_empty">Download URL rule cannot be empty</string>
+    <string name="summary_empty">Summary cannot be empty</string>
+    <string name="copy_rule_failed">Failed to copy rule</string>
+    <string name="clear_all_cache_failed">Failed to clear cache\n%1$s</string>
+    <string name="shrink_database_failed">Failed to shrink the database\n%1$s</string>
+    <string name="more">More</string>
+    <string name="source_invalid">Book source is invalid</string>
+    <string name="widget_count">%1$d widgets</string>
+    <string name="no_widget">No widget</string>
+    <string name="home_style_rank_list">Ranking list</string>
+    <string name="home_style_four_row">Four rows horizontal scroll</string>
+    <string name="home_style_infinite_grid">Waterfall grid</string>
+    <string name="home_style_cover_row">Horizontal cover</string>
+    <string name="home_style">Style</string>
+    <string name="home_add_section">Add section</string>
+    <string name="home_edit_section">Edit section</string>
+    <string name="home_section_title">Section title</string>
+    <string name="home_select_source">Select source</string>
+    <string name="home_select_category">Select category</string>
+    <string name="home_pick_favorite">Pick from favorites</string>
+    <string name="current_selection">Selected: %1$s</string>
+    <string name="home_no_favorite">No favorite categories</string>
+    <string name="home_source_no_explore">No categories in this source</string>
+    <string name="home_title_empty">Title cannot be empty</string>
+    <string name="home_infinite_only_one">Only one waterfall grid can be added</string>
+    <string name="home_cover_video">Video cover (16:9)</string>
+    <string name="home_tab_add">Add group</string>
+    <string name="home_tab_edit">Edit group</string>
+    <string name="home_tab_title">Group name</string>
+    <string name="home_tab_name_duplicate">Group name already exists</string>
+    <string name="home_tab_section_count">%1$d sections</string>
+    <string name="home_tab_delete_confirm">Delete group "%1$s"?</string>
+    <string name="home_tab_delete_confirm_with_sections">Group "%1$s" contains %2$d sections, all will be deleted</string>
+    <string name="home_manage_for_tab">Manage "%1$s" sections</string>
+    <string name="home_manage_empty">No sections in this group, tap + in upper right to add</string>
+    <string name="load_default_http_tts_failed">Failed to load default HttpTTS\n%1$s</string>
+    <string name="webdav_sync_progress_failed">Failed to sync reading progress to WebDav\n%1$s</string>
+    <string name="force_refresh_busy">Refreshing in progress, please wait</string>
+    <string name="force_refresh_start">Force refreshing %1$d books</string>
+    <string name="refresh_complete">Refresh completed</string>
+    <string name="copy_chapter_title">Copy chapter title</string>
+    <string name="lookup_word">Look up word</string>
+    <string name="browser_search">Search in browser</string>
+    <string name="select_and_copy_first_hint">Please select and copy text first</string>
+    <string name="replace_rule_copied_to_clipboard">Replace rule copied to clipboard</string>
+    <string name="dict_rule_load_failed">Failed to load data in the dictionary rule screen\n%1$s</string>
+    <string name="import_default_dict_rule_failed">Failed to import default dictionary rules</string>
+    <string name="import_dict_rule_user_canceled">Import dictionary rules: user cancelled the selection</string>
+    <string name="export_dict_rule_no_selection">Export dictionary rules: no rules selected</string>
+    <string name="export_dict_rule_user_canceled">Export dictionary rules: user cancelled the selection</string>
+    <string name="export_dict_rule_done">Export dictionary rules completed, %1$d in total -&gt; %2$s</string>
+    <string name="export_dict_rule_failed">Failed to export dictionary rules</string>
+    <string name="explore_update_groups_error">Failed to update groups in the discovery screen</string>
+    <string name="explore_update_data_error">Failed to update data in the discovery screen</string>
+    <string name="explore_pinned_source_not_found">Discovery favorites: book source not found %1$s</string>
+    <string name="explore_js_error">JS error %1$s</string>
+    <string name="import_replace_rule_user_canceled">Import replace rules: user cancelled the selection</string>
+    <string name="export_replace_rule_no_selection">Export replace rules: no rules selected</string>
+    <string name="rss_articles_empty">No articles</string>
+    <string name="rss_no_content_rule_hint">No content rule or content is empty\nPlease open with a browser</string>
+    <string name="rss_sources_empty_hint">No RSS sources\nAdd a book whose type includes the rss bit in the bookshelf</string>
+    <string name="latest_version">Latest version: %1$s</string>
+    <string name="search_content_failed">Failed to search in book\n%1$s</string>
+    <string name="restore_from_local_failed">Local restore failed\n%1$s</string>
+    <string name="get_webdav_backup_list_failed">Failed to get the WebDav backup list\n%1$s</string>
+    <string name="webdav_backup_failed">WebDav backup failed\n%1$s</string>
+    <string name="webdav_local_backup_failed">WebDav local backup failed\n%1$s</string>
+    <string name="webdav_restore_failed">WebDav restore failed\n%1$s</string>
+    <string name="all_bookmark_load_data_failed_log">Failed to load bookmark data\n%1$s</string>
+    <string name="export_bookmark_no_book">Export bookmarks: no books</string>
+    <string name="export_bookmark_user_cancelled">Export bookmarks: user cancelled the selection</string>
+    <string name="export_failed_log">Export failed\n%1$s</string>
+    <string name="export_failed">Export failed\n%1$s</string>
+    <string name="save_success">Saved</string>
+    <string name="delete_success">Deleted</string>
+    <string name="delete_http_tts_failed">Failed to delete HttpTTS</string>
+    <string name="copy_http_tts_failed">Failed to copy HttpTTS</string>
+    <string name="load_font_failed">Failed to load font: %1$s</string>
+    <string name="load_http_tts_list_failed">Failed to load the HttpTTS list</string>
+    <string name="import_http_tts_user_cancelled">Import HttpTTS: user cancelled the selection</string>
+    <string name="change_chapter_source_load_toc_error_log">Failed to get the TOC when changing the chapter source\n%1$s</string>
+    <string name="change_source_load_toc_error_log">Failed to get the TOC when changing the source\n%1$s</string>
+    <string name="audio_cover_load_failed_log">Failed to load audio cover on desktop: %1$s\n%2$s</string>
+    <string name="cbz_import_parse_failed_log">Failed to parse CBZ import: %1$s\n%2$s</string>
+    <string name="epub_import_parse_failed_log">Failed to parse EPUB import: %1$s\n%2$s</string>
+    <string name="filename_import_js_input_log">File name import JS input (not persisted on desktop yet): %1$s</string>
+    <string name="import_local_book_user_cancelled">Import local books: user cancelled the directory selection</string>
+    <string name="remote_book_webdav_not_sunk_log">Remote books: WebDav client not available, remote list not loaded on desktop for now</string>
+    <string name="review_no_current_book">No current book</string>
+    <string name="review_no_source">No book source</string>
+    <string name="review_load_failed">Failed to load comments: %1$s</string>
+    <string name="review_operation_failed">Operation failed: %1$s</string>
+    <string name="review_no_action_rule">The book source has no rule configured for this operation</string>
+    <string name="current_chapter_prefix"> / Current chapter:</string>
+    <string name="import_default_txt_toc_rule_failed">Failed to import default TXT TOC rules</string>
+    <string name="import_txt_toc_rule_user_cancelled">Import TXT TOC rules: user cancelled the selection</string>
+    <string name="export_txt_toc_rule_no_selection">Export TXT TOC rules: no rules selected</string>
+    <string name="export_txt_toc_rule_user_cancelled">Export TXT TOC rules: user cancelled the selection</string>
+    <string name="export_txt_toc_rule_done_log">Export TXT TOC rules completed, %1$s in total -&gt; %2$s</string>
+    <string name="export_txt_toc_rule_failed">Failed to export TXT TOC rules</string>
+    <string name="source_filter_rule_load_data_failed_log">Failed to load data in the block rule screen\n%1$s</string>
+    <string name="import_source_filter_rule_user_cancelled">Import block rules: user cancelled the selection</string>
+    <string name="export_source_filter_rule_no_selection">Export block rules: no rules selected</string>
+    <string name="export_source_filter_rule_user_cancelled">Export block rules: user cancelled the selection</string>
+    <string name="export_source_filter_rule_done_log">Export block rules completed, %1$s in total -&gt; %2$s</string>
+    <string name="export_source_filter_rule_failed">Failed to export block rules</string>
+    <string name="mpv_not_found">mpv player not detected</string>
+    <string name="mpv_install_guide">Video playback depends on mpv (https://mpv.io)\nWindows: winget install shinchiro.mpv or scoop install mpv,\nor download it from the official site and add the directory of mpv.exe to PATH,\nor specify the full path in the mpvPath config item</string>
+    <string name="mpv_open_website">Open the mpv official website</string>
+    <string name="mpv_auto_download">Auto-download the portable version</string>
+    <string name="mpv_downloading">Preparing the portable mpv...</string>
+    <string name="mpv_downloading_percent">Downloading the portable mpv... %1$s%%</string>
+    <string name="mpv_download_failed">Failed to download mpv: %1$s\nYou can install it via winget/scoop, or download it manually and set its path in the mpvPath config item</string>
+    <string name="mpv_redetect">Re-detect</string>
+    <string name="mpv_open_in_browser">Open directly in browser</string>
+    <string name="mpv_open_in_browser_warn">Opened the video stream with the system default program (no anti-hotlink request headers, some sources may fail to play)</string>
+    <string name="mpv_detached_playing">Playing in a separate mpv window (window embedding is not supported on this system)</string>
+    <string name="video_mpv_launch_error_log">Failed to launch mpv for desktop video\n%1$s</string>
+    <string name="video_mpv_ipc_error_log">mpv IPC bridge connection failed, progress write-back/auto-play-next/shortcuts unavailable: %1$s</string>
+    <string name="video_play_error_mpv">Desktop video playback error (mpv: %1$s)</string>
+    <string name="manga_cbz_load_chapter_list_error_log">Failed to get the chapter list on desktop (CBZ)\n%1$s</string>
+    <string name="manga_load_chapter_list_error_log">Failed to get the chapter list in desktop manga\n%1$s</string>
+    <string name="manga_load_chapter_list_failed">Failed to get the chapter list: %1$s</string>
+    <string name="source_not_exists">Book source does not exist</string>
+    <string name="chapter_list_not_loaded">Chapter list not loaded</string>
+    <string name="chapter_not_exists">Chapter does not exist: %1$s</string>
+    <string name="manga_cbz_load_chapter_content_error_log">Failed to get chapter content on desktop (CBZ)\n%1$s</string>
+    <string name="manga_load_chapter_content_error_log">Failed to get chapter content on desktop manga\n%1$s</string>
+    <string name="load_failed">Failed to load: %1$s</string>
+    <string name="content_empty">Content is empty</string>
+    <string name="content_no_images">Content has no images</string>
+    <string name="manga_load_chapter_error_log">Failed to load the chapter in desktop manga\n%1$s</string>
+    <string name="load_error">Failed to load: %1$s</string>
+    <string name="manga_pre_download_chapter_failed_log">Failed to pre-download chapter %1$s in desktop manga\n%2$s</string>
+    <string name="manga_save_read_progress_error_log">Failed to save reading progress in desktop manga\n%1$s</string>
+    <string name="manga_image_load_failed_log">Failed to load manga images on desktop: %1$s\n%2$s</string>
+    <string name="toc_load_chapter_failed_log">Failed to load chapters in the TOC screen\n%1$s</string>
+    <string name="toc_load_bookmark_failed_log">Failed to load bookmark data in the TOC screen\n%1$s</string>
+    <string name="toc_reload_bookmark_failed_log">Failed to reload bookmarks in the TOC screen\n%1$s</string>
+    <string name="txt_toc_rule_load_data_failed_log">Failed to load data in the TXT TOC rule screen\n%1$s</string>
+    <string name="theme_arcoblue_light">Arcoblue Light</string>
+    <string name="theme_arcoblue_dark">Arcoblue Dark</string>
+    <string name="theme_arcogreen_light">Arcogreen Light</string>
+    <string name="theme_arcogreen_dark">Arcogreen Dark</string>
+    <string name="theme_arcoorange_light">Arcoorange Light</string>
+    <string name="theme_arcoorange_dark">Arcoorange Dark</string>
+    <string name="theme_arcopurple_light">Arcopurple Light</string>
+    <string name="theme_arcopurple_dark">Arcopurple Dark</string>
+    <string name="theme_arcored_light">Arcored Light</string>
+    <string name="theme_arcored_dark">Arcored Dark</string>
+    <string name="ios_heap_dump_not_supported">Heap dump is not supported on iOS</string>
+    <string name="ios_clear_webview_data_not_supported">Clearing WebView data is not supported on iOS</string>
+    <string name="ios_import_default_txt_toc_rule_not_supported">Importing default TXT TOC rules is not supported on iOS yet</string>
+    <string name="ios_import_default_dict_rule_not_supported">Importing default dictionary rules is not supported on iOS yet</string>
+    <string name="cannot_access_selected_dir">Cannot access the selected directory</string>
+    <string name="ios_webdav_client_not_available_log">WebDav client is not available on iOS yet, remote book list loading is unavailable for now</string>
+    <string name="ohos_clear_webview_data_not_supported">Clearing WebView data is not supported on HarmonyOS</string>
+    <string name="format_invalid">Invalid format</string>
+    <string name="copied_rules_to_clipboard_count">Copied %1$d rules to clipboard</string>
+    <string name="copied_rule_to_clipboard">Rule copied to clipboard</string>
+    <string name="copied_bookmarks_to_clipboard_count">Copied %1$d bookmarks to clipboard</string>
+    <string name="copied_markdown_to_clipboard">Markdown copied to clipboard</string>
+    <string name="import_complete_with_fail_count">Import completed: %1$d succeeded, %2$d failed</string>
+    <string name="upload_success">Upload succeeded</string>
+    <string name="upload_failed">Upload failed</string>
+    <string name="download_success">Downloaded</string>
+    <string name="book_source_disabled">Book source disabled</string>
+    <string name="import_local_book_failed_log">Failed to import local books\n%1$s</string>
+    <string name="get_toc_failed_log">Failed to get the TOC\n%1$s</string>
+    <string name="download_remote_book_failed_log">Failed to download remote book &lt;%1$s&gt;</string>
+    <string name="intro_action_failed_log">Failed to execute description action\n%1$s</string>
+    <string name="pick_image_failed_log">Failed to pick image: cannot get the path</string>
+    <string name="new_book_source_added_log">New book source added: %1$s</string>
+    <string name="save_book_source_failed_log">Failed to save book source</string>
+    <string name="debug_source_save_failed_log">Failed to save the debugged book source</string>
+    <string name="search_in_book_failed_log">Failed to search in book\n%1$s</string>
+    <string name="bookmark_load_failed_log">Failed to load bookmark data\n%1$s</string>
+    <string name="change_source_toc_failed_log">Failed to get the TOC when changing the source\n%1$s</string>
+    <string name="change_chapter_source_toc_failed_log">Failed to get the TOC when changing the chapter source\n%1$s</string>
+    <string name="load_toc_failed">Failed to load the TOC</string>
+    <string name="bookshelf_manage_load_group_failed_log">Failed to load groups in bookshelf management\n%1$s</string>
+    <string name="bookshelf_manage_load_book_failed_log">Failed to load books in bookshelf management\n%1$s</string>
+    <string name="ios_unlock_scope_failed_access_selected_dir_log">Failed to unlock the security scope on iOS, cannot access the selected directory</string>
+    <string name="ios_unlock_scope_failed_access_subdir_log">Failed to unlock the security scope on iOS, cannot access the subdirectory</string>
+    <string name="ios_unlock_scope_failed_access_parent_dir_log">Failed to unlock the security scope on iOS, cannot access the parent directory</string>
+    <string name="ios_unlock_scope_failed_scan_dir_log">Failed to unlock the security scope on iOS, cannot scan the directory</string>
+    <string name="ios_user_cancel_select_import_dir_log">User cancelled the import directory selection on iOS</string>
+    <string name="ios_filename_import_js_input_log">File name import JS input: %1$s</string>
+    <string name="read_style">Reading style</string>
+    <string name="video_play">Video playback</string>
+    <string name="manga_read">Manga reading</string>
+    <string name="association_import">Associated import</string>
+    <string name="js_edit">JS editing</string>
+    <string name="run">Run</string>
+    <string name="result">Result</string>
+    <string name="web_view">WebView</string>
+    <string name="web_back">Back</string>
+    <string name="web_forward">Forward</string>
+    <string name="publish_review">Publish comment</string>
+    <string name="post_review">Post</string>
+    <string name="sure">OK</string>
+    <string name="error">Error</string>
+    <string name="error_no_source">No source</string>
+    <string name="error_get_book_info">Failed to obtain book information</string>
+    <string name="error_get_chapter_list">Failed to obtain chapters list</string>
+    <string name="error_load_toc">Failed to load chapters list</string>
+    <string name="error_load_msg">Failed to load\n%1$s</string>
+    <string name="error_get_web_content">Failed to access website:%1$s</string>
+    <string name="chapter_list_empty">Chapters is empty</string>
+    <string name="unsupport_archivefile_entry">Cannot find supported files in archive</string>
+    <string name="error_decode_bitmap">Fail to decode bitmap</string>
+    <string name="error_image_url_empty">Image url is empty, check replacement rules</string>
+    <string name="check_source_config_summary">Check timeout: %1$ss\nCheck item:%2$s</string>
+    <string name="data_loading">Loading…</string>
+    <string name="toc_updateing">Updating Chapters</string>
+    <string name="webdav_application_authorization_error">Fail to authorize WebDav application</string>
+    <string name="replace_rule_invalid">Pattern rule is empty or does not conform the regex specification.</string>
+    <string name="thread_count">Thread count</string>
+    <string name="delete_book_file">Delete source file</string>
+    <string name="cloud_progress_exceeds_current">The cloud progress exceeds the current progress. Do you want to synchronize?</string>
+    <string name="reply_review_to">Reply: %1$s</string>
+    <string name="about_description">This is an open source reading software newly developed by Kotlin, welcome to join us.</string>
+    <string name="add_group">Add to Groups</string>
+    <string name="add_to_group">Add to Group</string>
+    <string name="all_bookmark">All bookmarks</string>
+    <string name="app_share_description">Legado (YueDu 3.0) download link：https://github.com/huajideshutiao/legado/releases</string>
+    <string name="auto_page_speed">Auto scroll speed</string>
+    <string name="bg_alpha">Background alpha</string>
+    <string name="bg_color">Background color</string>
+    <string name="bg_image">Background images</string>
+    <string name="bitmap_cache_size_summary">Current cache max size %s MB</string>
+    <string name="book_info_edit">Edit book information</string>
+    <string name="book_tree_uri_s">Save location for books opened from other apps</string>
+    <string name="book_url">Book Path</string>
+    <string name="bookshelf_cover_height_summary">Current: %s</string>
+    <string name="change_origin">Change Origin</string>
+    <string name="checkAuthor">Check by author</string>
+    <string name="check_select_source">Check the selected source</string>
+    <string name="check_selected_interval">Select zones</string>
+    <string name="chinese_converter">Simplified conversion</string>
+    <string name="contributors_url" translatable="false">https://github.com/huajideshutiao/legado/graphs/contributors</string>
+    <string name="copy_url">copy url</string>
+    <string name="cover_path">Cover path</string>
+    <string name="dark_status_icon">Darken the status bar\'s icon color</string>
+    <string name="enable">Enable</string>
+    <string name="enable_dangerous_api">Dangerous API</string>
+    <string name="enable_dangerous_api_confirm">Warning: Allowing unknown sources to use dangerous APIs can cause unpredictable results. In the worst case, it may lead to app data being cleared or leaked, and locally accessible files being exposed. Please make sure you have audited the code and trust the source, otherwise do not enable this.</string>
+    <string name="export_str">Export</string>
+    <string name="font_scale_summary">font scale:%.1f</string>
+    <string name="font_weight_text">N/B/L</string>
+    <string name="full_screen">full screen</string>
+    <string name="import_default_rule">Import default rules</string>
+    <string name="upload_url">upload url</string>
+    <string name="is_compress">Compressed or not</string>
+    <string name="test">Test</string>
+    <string name="summary">summary</string>
+    <string name="import_str">Import</string>
+    <string name="information">Information</string>
+    <string name="lasted_show">Latest: %1$s</string>
+    <string name="load_info">Load book detail</string>
+    <string name="load_toc">Load chapters</string>
+    <string name="login_source">Login%1$s</string>
+    <string name="page_anim">Flip animation</string>
+    <string name="page_anim_scroll">Scroll</string>
+    <string name="page_anim_simulation">Simulation</string>
+    <string name="pre_download_s">Download %s chapters in advance</string>
+    <string name="privacy_policy">User Privacy and Agreement</string>
+    <string name="refresh_cover">Refresh cover</string>
+    <string name="refresh_list">Refresh list</string>
+    <string name="remove_group">Remove from Groups</string>
+    <string name="rss_source">RSS source</string>
+    <string name="rule_sub_empty_msg">Add the rule import address provided by the bosses\nClick to import rules after adding</string>
+    <string name="search_content_empty">Empty search result, check conversation settings</string>
+    <string name="select_backup_path">Please select a backup path.</string>
+    <string name="select_local_image">Local image</string>
+    <string name="setting">Settings</string>
+    <string name="share_layout">Shared layout</string>
+    <string name="share_selected_source">Share selected sources</string>
+    <string name="source_edit_max_line_summary">%s,Setting the number of rows less than the maximum number of rows that can be displayed on the screen makes it easier to slide to other fields for editing.</string>
+    <string name="source_filter_rule_delete_all_confirm">Delete all block rules?</string>
+    <string name="source_filter_rule_empty">No rules. Tap + to add.</string>
+    <string name="style_name">Style name:</string>
+    <string name="sure_clear_search_history">Are you sure to clear all search history</string>
+    <string name="system_tts">System tts</string>
+    <string name="telegram_group_url" translatable="false">https://t.me/+mT22ceIeiSllM2U1</string>
+    <string name="text">Text</string>
+    <string name="text_bg_style">Color and background (long tap to customize)</string>
+    <string name="text_font">Font</string>
+    <string name="text_font_weight_converter">Text font weight switching</string>
+    <string name="text_indent">Indent</string>
+    <string name="text_letter_spacing">Word spacing</string>
+    <string name="text_underline">Text underline</string>
+    <string name="threads_num">Current threads %s</string>
+    <string name="tts">TTS</string>
+    <string name="version">Version</string>
+    <string name="web_dav_account_s">Input your WebDav account</string>
+    <string name="web_dav_pw_s">Input you WebDav authorized password</string>
+    <string name="web_dav_url_s">Input you server address</string>
+    <string name="web_port_summary">Current port %s</string>
+    <string name="web_service_desc">Web edit source and read book</string>
+    <string name="wrong_format">Wrong format</string>
+    <string name="no_source_found">No source found</string>
+    <string name="select_explore">Select explore</string>
+    <string name="code">Code</string>
+    <string name="favorites">Favorites</string>
+    <string name="file_name">File name</string>
+    <string name="rating">Rating</string>
+    <string name="web_view_open_hint">Open in browser</string>
+    <string name="change_source_batch">Batch source switching</string>
+    <string name="download_count">Downloaded %1$d/%2$d</string>
+    <string name="export_all">Export all</string>
+    <string name="disable_update">Disable update</string>
+    <string name="export_bookshelf">Export the list of books</string>
+    <string name="select_one_book">Please select one book</string>
+    <string name="all">All</string>
+    <string name="skip_previous">Prior</string>
+    <string name="skip_next">Next</string>
+    <string name="regular_expression">Regular expression</string>
+    <string name="match_whole_word">Match whole word</string>
+    <string name="match_case">Match case</string>
+    <string name="keyboard_shortcuts">Keyboard shortcuts</string>
+    <string name="keyboard_shortcuts_s">Available keys on desktop and external keyboards</string>
+    <string name="keyboard_shortcuts_global">Global</string>
+    <string-array name="language">
+        <item>Auto</item>
+        <item>Simplified_Chinese</item>
+        <item>Traditional_Chinese</item>
+        <item>English</item>
+    </string-array>
+    <string-array name="language_value">
+        <item>auto</item>
+        <item>zh</item>
+        <item>tw</item>
+        <item>en</item>
+    </string-array>
+    <string-array name="default_home_page_value">
+        <item>home</item>
+        <item>bookshelf</item>
+        <item>explore</item>
+        <item>my</item>
+    </string-array>
+    <string-array name="default_app_variant">
+        <item>Current</item>
+        <item>Official</item>
+        <item>Beta</item>
+        <item>Coexist</item>
+    </string-array>
+    <string-array name="default_app_variant_value">
+        <item>default_version</item>
+        <item>official_version</item>
+        <item>beta_release_version</item>
+        <item>beta_releaseA_version</item>
+    </string-array>
+    <string-array name="screen_direction_title">
+        <item>Follow system</item>
+        <item>Portrait</item>
+        <item>Landscape</item>
+        <item>Auto(sensor)</item>
+        <item>Portrait Reversed</item>
+    </string-array>
+    <string-array name="screen_direction_value">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+        <item>4</item>
+    </string-array>
+    <string-array name="screen_time_out">
+        <item>Default</item>
+        <item>1 min</item>
+        <item>5 min</item>
+        <item>10 min</item>
+        <item>Always</item>
+    </string-array>
+    <string-array name="screen_time_out_value">
+        <item>0</item>
+        <item>60</item>
+        <item>300</item>
+        <item>600</item>
+        <item>-1</item>
+    </string-array>
+    <string-array name="double_page_title">
+        <item>Single page</item>
+        <item>Double page</item>
+        <item>Double page in landscape</item>
+        <item>Double page on tablet or landscape</item>
+    </string-array>
+    <string-array name="double_page_value">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+    </string-array>
+    <string-array name="progress_bar_behavior_title">
+        <item>Adjust of chapter page</item>
+        <item>Adjust of chapter index</item>
+    </string-array>
+    <string-array name="progress_bar_behavior_value">
+        <item>page</item>
+        <item>chapter</item>
+    </string-array>
+    <string-array name="read_tip">
+        <item>Blank</item>
+        <item>Book name</item>
+        <item>Title</item>
+        <item>Time</item>
+        <item>Battery</item>
+        <item>Battery%</item>
+        <item>Pages</item>
+        <item>Progress(%)</item>
+        <item>Progress(xx/yyy)</item>
+        <item>Pages and progress</item>
+        <item>Time and Battery</item>
+        <item>Time and Battery%</item>
+    </string-array>
+    <string-array name="tip_color">
+        <item>Same color as content</item>
+        <item>Customize</item>
+    </string-array>
+    <string-array name="tip_divider_color">
+        <item>Default</item>
+        <item>Same color as content</item>
+        <item>Customize</item>
+    </string-array>
+    <string-array name="book_type">
+        <item>Text</item>
+        <item>Audio</item>
+        <item>Image</item>
+        <item>File</item>
+        <item>Video</item>
+        <item>RSS</item>
+    </string-array>
+    <string-array name="explore_item_style">
+        <item>Normal</item>
+        <item>Video</item>
+    </string-array>
+    <string-array name="group_style">
+        <item>Tab</item>
+        <item>Folder</item>
+    </string-array>
+    <string-array name="icon_names">
+        <item>iconMain</item>
+        <item>icon1</item>
+        <item>icon4</item>
+        <item>icon5</item>
+    </string-array>
+    <string-array name="icons">
+        <item>ic_launcher</item>
+        <item>launcher1</item>
+        <item>launcher4</item>
+        <item>launcher5</item>
+    </string-array>
+    <string-array name="theme_mode">
+        <item>Follow system</item>
+        <item>Bright mode</item>
+        <item>Dark mode</item>
+        <item>E-Ink mode</item>
+    </string-array>
+    <string-array name="theme_mode_v">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+    </string-array>
+    <string-array name="chinese_mode">
+        <item>Off</item>
+        <item>Traditional to Simplified</item>
+        <item>Simplified to Traditional</item>
+    </string-array>
+    <string-array name="system_typefaces">
+        <item>Default font</item>
+        <item>Serif font</item>
+        <item>Monospaced font</item>
+    </string-array>
+    <string-array name="text_font_weight">
+        <item>Normal</item>
+        <item>Bold</item>
+        <item>Light</item>
+    </string-array>
+    <string-array name="indent">
+        <item>None</item>
+        <item>Indent with 1 chars</item>
+        <item>Indent with 2 chars</item>
+        <item>Indent with 3 chars</item>
+        <item>Indent with 4 chars</item>
+    </string-array>
+    <string-array name="default_home_page">
+        <item>Home</item>
+        <item>Bookshelf</item>
+        <item>Discovery</item>
+        <item>Me</item>
+    </string-array>
+    <string name="app_name_a">Legado·A</string>
+    <string name="receiving_shared_label">Legado·search</string>
+    <string name="tip_perm_request_storage">Legado needs storage access to find and read books. please go "App Settings" to allow "Storage permission".</string>
+    <string name="dialog_cancel">Cancel</string>
+    <string name="dialog_setting">Go to Settings</string>
+    <string name="tip_cannot_jump_setting_page">Cannot jump to Settings.</string>
+    <string name="manual_input">Manual Input</string>
+    <string name="enter_directory_path">Enter directory path</string>
+    <string name="invalid_directory">Invalid directory path</string>
+    <string name="empty_directory_input">Directory path cannot be empty</string>
+    <string name="dynamic_click_retry">Retry</string>
+    <string name="dynamic_loading">Loading</string>
+    <string name="last_read">Last reading</string>
+    <string name="layout_list">List</string>
+    <string name="local">Local</string>
+    <string name="origin_format">Origin: %1$s</string>
+    <string name="backup_success">Backup succeed</string>
+    <string name="backup_fail">Backup failed\n%1$s</string>
+    <string name="screen_sensor">Auto(sensor)</string>
+    <string name="screen_landscape">Landscape</string>
+    <string name="screen_portrait">Portrait</string>
+    <string name="screen_unspecified">Follow system</string>
+    <string name="can_not_open">Open failed</string>
+    <string name="is_latest_version">Already latest version</string>
+    <string name="img_cover">Cover</string>
+    <string name="book">Book</string>
+    <string name="welcome">Welcome page</string>
+    <string name="download_start">Download start</string>
+    <string name="import_select_book">Import selected book(s)</string>
+    <string name="start_read">Start reading</string>
+    <string name="content">Content</string>
+    <string name="copy_text">Copy</string>
+    <string name="copy_complete">Copied successfully</string>
+    <string name="check_book_source">Check book sources</string>
+    <string name="progress_show">%1$s      Progress %2$d/%3$d</string>
+    <string name="tts_init_failed">TTS initialization failed!</string>
+    <string name="sys_file_picker">System file picker</string>
+    <string name="debug_hint">Book name,Author,URL</string>
+    <string name="no_prev_page">No prior page</string>
+    <string name="no_next_page">No next page</string>
+    <string name="error_read_file">Failed to read file</string>
+    <string name="join_qq_group">Join QQ group</string>
+    <string name="get_storage_per">requires storage permission</string>
+    <string name="double_click_exit">Tap again to exit the program</string>
+    <string name="network_connection_unavailable">Network connection is not available</string>
+    <string name="chapter">Chapter</string>
+    <string name="to">To</string>
+    <string name="indent_0">None</string>
+    <string name="indent_1">Indent with 1 chars</string>
+    <string name="indent_2">Indent with 2 chars</string>
+    <string name="indent_3">Indent with 3 chars</string>
+    <string name="indent_4">Indent with 4 chars</string>
+    <string name="group_s">Group: %1$s</string>
+    <string name="toc_s">Chapters: %1$s</string>
+    <string name="service_starting">Starting service</string>
+    <string name="file_chooser">File selection</string>
+    <string name="folder_chooser">Folder selection</string>
+    <string name="sys_folder_picker">System folder picker</string>
+    <string name="app_folder_picker">App folder picker</string>
+    <string name="app_file_picker">App file picker</string>
+    <string name="select_end">Select end</string>
+    <string name="select_start">Select start</string>
+    <string name="regex">Regex</string>
+    <string name="example">Example</string>
+    <string name="default1">Default-1</string>
+    <string name="title">Title</string>
+    <string name="source_auto_changing">Changing source</string>
+    <string name="note_content">Remarks section</string>
+    <string name="page_key_set_help">Focusing on the input box and pressing a physical key will automatically enter the value of the key, and multiple keys will be automatically separated by commas.</string>
+    <string name="sync_book_progress_success">Sync progress success</string>
+    <string name="create_bookmark_error">Failed to create bookmark</string>
+    <string name="show_discovery">Show Discovery</string>
+    <string name="show_home">Show home page</string>
+    <string name="null_url">Null url</string>
+    <string name="dict">dict</string>
+    <string name="unknown_error">unknown error</string>
+    <string name="end">end</string>
+    <string name="custom_group_summary">Turn off Replace Group / Turn on Add Group</string>
+    <string name="cronet_enabled">Cronet enabled</string>
+    <string name="cronet_download_failed">Cronet download failed</string>
+    <string name="path">path</string>
+    <string name="direct_link_upload_config">Direct link upload configuration</string>
+    <string name="open_fun">open function</string>
+    <string name="use_browser_open">Is it opened in an external browser?</string>
+    <string name="open_sys_dir_picker_error">Error opening system folder selector, automatically open application folder selector</string>
+    <string name="select_book_folder">Select the folder where the books are saved</string>
+    <string name="general">General</string>
+    <string name="copy_all">Copy all</string>
+    <string name="assists_key_config">Secondary button configuration</string>
+    <string name="input_verification_code">Enter the CAPTCHA</string>
+    <string name="file_not_supported">Continue to open although %1$s is not supported ?</string>
+    <string name="download_and_import_file">Import online book files</string>
+    <string name="upload_book_success">Upload Success</string>
+    <string name="tag_explore_enabled">Flag: found enabled</string>
+    <string name="tag_explore_disabled">Flag: found disabled</string>
+    <string name="restore_last_book_process">Whether to return to the reading progress before the jump？</string>
+    <string name="update_book_fail">Update failed</string>
+    <string name="notification_permission_rationale">Reading requires sending notifications to show reading control and download progress</string>
+    <string name="webdav_after_local_restore_confirm">The webDav book source is newer than the local one, whether to restore it or not</string>
+    <string name="confirm">Confirm</string>
+    <string name="url_rule">URL Rule(urlRule)</string>
+    <string name="show_rule">Show Rule(showRule)</string>
+    <string name="sure_upload">Remote webDav url exists, Continue?</string>
+    <string name="no_books_dir">There is no book save location set!</string>
+    <string name="no_book_found_bookshelf">No book found in bookshelf, import again ?</string>
+    <string name="archive_not_found">Can not find archive selected, continue to download ?</string>
+    <string name="agree">Agree</string>
+    <string name="refuse">Refuse</string>
+    <string name="create_folder">Create Folder</string>
+    <string name="export_book">Export Book</string>
+    <string name="export_book_notification_content">Exporting (%1$s), with %2$d to be exported.</string>
+    <string name="export_wait">Waiting for export</string>
+    <string name="screen_portrait_reversed">Portrait Reversed</string>
+    <string name="adjust_chapter_page">Adjust of chapter page</string>
+    <string name="adjust_chapter_index">Adjust of chapter index</string>
+    <string name="clear_webview_data_success">Cleared successfully, automatically restarts the application after 3 seconds</string>
+    <string name="keep_swipe_tip">Keep swiping to load the next chapter…</string>
+    <string name="ignore_battery_permission_rationale">Legado needs background permission to keep services running normally</string>
+    <string name="switch_on">Switch</string>
+    <string name="start_from">Start from</string>
+    <string name="daily_chapters">Daily Chapters</string>
+    <string name="start_chapter">Start Chapter</string>
+    <string name="default_version">Current</string>
+    <string name="official_version">Official</string>
+    <string name="beta_release_version">Beta</string>
+    <string name="beta_releaseA_version">Coexist</string>
+    <string name="read_aloud_read_phone_state_permission_rationale">Legado needs phone state permission to pause speech during calls</string>
+    <string name="sys_image_picker">System image picker</string>
+    <string name="source_filter_rule_filtered_count">Filtered %1$d books</string>
+    <string name="explore_style_normal">Normal</string>
+    <string name="home_source_invalid">Source is invalid</string>
+    <string name="bottom_nav_items_order">Bottom bar items order</string>
+    <string name="debug_error">Debug error</string>
+    <string name="select_explore_kind">Select explore kind</string>
+    <string name="no_source_code">No source code</string>
+    <string name="cookie_input">Cookie</string>
+    <string name="qq_group_url" translatable="false"></string>
+    <string name="http_ip" translatable="false">http://%1$s:%2$d</string>
+    <string name="diy_edit_source_group_title" translatable="false">【%1$s】</string>
+    <string name="nothing_here">Nothing here</string>
+    <string name="about_dev_hint">Only %1$d more to go</string>
+    <string name="donate_qrcode">Donate QR code</string>
+    <string name="donate_thanks">Thanks for your kindness</string>
+    <string-array name="book_sort">
+        <item>Default</item>
+        <item>By recent list</item>
+        <item>By update time</item>
+        <item>By book title</item>
+        <item>By sort manually</item>
+        <item>Comprehensive</item>
+        <item>Sort by author</item>
+    </string-array>
+    <string-array name="rule_type">
+        <item>Book sources</item>
+        <item>RSS source</item>
+        <item>Pattern</item>
+        <item>Txt Catalog Rule</item>
+        <item>Dict rule</item>
+        <item>TTS</item>
+    </string-array>
+    <string name="save_to_file">Save to file</string>
+    <string name="media_runtime_title">Media playback component</string>
+    <string name="media_runtime_need_download">Playing video and audio requires downloading the media playback component (about 21 MB). Download now?</string>
+    <string name="media_runtime_downloading">Downloading the media playback component: %1$s</string>
+    <string name="media_runtime_download_failed">Failed to download the media playback component: %1$s</string>
+    <string name="media_runtime_not_installed">Media playback component is not installed</string>
+</resources>

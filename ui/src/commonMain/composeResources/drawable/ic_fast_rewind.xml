@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?><!-- 快退: 双左三角 (ic_fast_forward 镜像) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M20,18l-8.5,-6L20,6v12zM11,6v12l-8.5,-6L11,6z" />
+</vector>

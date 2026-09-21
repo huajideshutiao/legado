@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 来源: Material Icons AutoMirrored.Filled.ArrowForward (Apache-2.0) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:autoMirrored="true">
+    <path
+        android:pathData="M12,4L10.59,5.41L16.17,11H4V13H16.17L10.59,18.59L12,20L20,12Z"
+        android:fillColor="#FF000000" />
+</vector>

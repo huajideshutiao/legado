@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0,minimum-scale=1.0,maximum-scale=1.0,user-scalable=no">
+    <title>WiFi 传书</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #f9f9f6;
+            font-size: 14px;
+            color: #333;
+            font-family: "微软雅黑", Arial, sans-serif;
+            line-height: 150%;
+            -webkit-tap-highlight-color: rgba(0,0,0,0);
+        }
+        .title-wrap {
+            border-bottom: 1px solid #fff;
+            outline: 1px solid #f0efed;
+            width: 100%;
+        }
+        .main-wrap {
+            width: 900px;
+            max-width: 100%;
+            margin: 0 auto;
+            padding: 0 12px;
+        }
+        .s-title {
+            padding: 16px 17px;
+            display: flex;
+            align-items: baseline;
+            gap: 12px;
+        }
+        .s-title .app-name { font-size: 36px; color: #202020; }
+        .s-title .sep { color: #999; font-size: 14px; }
+        .s-title .page-name { color: #999; font-size: 20px; }
+        .top-cont {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 22px 20px;
+            gap: 16px;
+        }
+        .top-cont .status { font-size: 12px; }
+        .top-cont .type { font-size: 12px; margin-top: 8px; }
+        .select-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            line-height: 50px;
+            height: 50px;
+            width: 180px;
+            text-align: center;
+            background-color: #ea5449;
+            color: #fff;
+            border-radius: 3px;
+            cursor: pointer;
+            position: relative;
+        }
+        .select-btn input {
+            position: absolute;
+            left: 0; right: 0; top: 0; bottom: 0;
+            width: 100%; height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+        .s-table { overflow-x: auto; }
+        .s-table table {
+            width: 100%;
+            background-color: #fff;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+        .s-table thead tr {
+            height: 40px;
+            font-size: 12px;
+        }
+        .s-table thead td {
+            text-align: center;
+            border-bottom: 1px solid #f5f5f5;
+            border-right: 1px solid #f5f5f5;
+        }
+        .s-table thead td:nth-child(1) { width: 40px; }
+        .s-table thead td:nth-child(2) { text-align: left; padding-left: 15px; }
+        .s-table thead td:last-child { border-right: 0; }
+        .s-table tbody tr:nth-child(odd) { background-color: #fbfaf8; }
+        .s-table tbody td {
+            text-align: center;
+            line-height: 20px;
+            padding: 11px 0;
+            font-size: 12px;
+            border-bottom: 1px solid #f5f5f5;
+            border-right: 1px solid #f5f5f5;
+        }
+        .s-table tbody td:first-child { padding: 0 15px; }
+        .s-table tbody td:nth-child(2) { text-align: left; padding-left: 15px; }
+        .s-table tbody td:nth-child(3),
+        .s-table tbody td:nth-child(4) { padding: 0 15px; }
+        .s-table tbody td:last-child { border-right: 0; }
+        .last-row {
+            color: #999;
+            border-bottom: 0;
+            padding: 12px;
+            text-align: center;
+        }
+        .progress { color: #ea5449; }
+        .success {
+            display: inline-block;
+            width: 16px; height: 16px;
+            background: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAALCAYAAAB24g05AAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAyZpVFh0WE1MOmNvbS5hZG9iZS54bXAAAAAAADw/eHBhY2tldCBiZWdpbj0i77u/IiBpZD0iVzVNME1wQ2VoaUh6cmVTek5UY3prYzlkIj8+IDx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9IkFkb2JlIFhNUCBDb3JlIDUuNS1jMDIxIDc5LjE1NTc3MiwgMjAxNC8wMS8xMy0xOTo0NDowMCAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1sbnM6c3RSZWY9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZVJlZiMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTQgKFdpbmRvd3MpIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOkJDQjdEMzEyNUZDNTExRTZBRUU2OTJEQUQzRkEwODBDIiB4bXBNTTpEb2N1bWVudElEPSJ4bXAuZGlkOkJDQjdEMzEzNUZDNTExRTZBRUU2OTJEQUQzRkEwODBDIj4gPHhtcE1NOkRlcml2ZWRGcm9tIHN0UmVmOmluc3RhbmNlSUQ9InhtcC5paWQ6QkNCN0QzMTA1RkM1MTFFNkFFRTY5MkRBRDNGQTA4MEMiIHN0UmVmOmRvY3VtZW50SUQ9InhtcC5kaWQ6QkNCN0QzMTE1RkM1MTFFNkFFRTY5MkRBRDNGQTA4MEMiLz4gPC9yZGY6RGVzY3JpcHRpb24+IDwvcmRmOlJERj4gPC94OnhtcG1ldGE+IDw/eHBhY2tldCBlbmQ9InIiPz7kHHJGAAAA1ElEQVR42mJkIANwMDMxHHO3m/f73//3TKRqZmNiYphuZlCsxc+bKMnJzkiy5uU2JhX/YwL+vwn1XOwsIcpGtmY3STFmsESmmqLIdifLKKAAN8maQeCSt6M7VGI9UIKdJM0gwMPCwjTf0jAdqmAdsiFQzZU4NaMpzIYZ4gIMHGZGRqI0gwX//v/PsPnJi9OqvNxvzESEiu3FRFR9ZCQ0PKXEW9//+rUk6sjZhF3PX/0lNqSz/0X7//8R6QuyeRFOZ+MzZLGVcdarEM9JwHhmIaQeIMAAfyFqiI5SI7gAAAAASUVORK5CYII=") center no-repeat;
+            background-size: 16px auto;
+            vertical-align: -2px;
+        }
+        .fail {
+            display: inline-block;
+            width: 12px; height: 12px;
+            background: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAwAAAAMCAYAAABWdVznAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAyZpVFh0WE1MOmNvbS5hZG9iZS54bXAAAAAAADw/eHBhY2tldCBiZWdpbj0i77u/IiBpZD0iVzVNME1wQ2VoaUh6cmVTek5UY3prYzlkIj8+IDx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9IkFkb2JlIFhNUCBDb3JlIDUuNS1jMDIxIDc5LjE1NTc3MiwgMjAxNC8wMS8xMy0xOTo0NDowMCAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1sbnM6c3RSZWY9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZVJlZiMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTQgKFdpbmRvd3MpIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOkQ4OUM0MDdFNUZDNTExRTY4RDVDOTMwMTBCQjcwNTlBIiB4bXBNTTpEb2N1bWVudElEPSJ4bXAuZGlkOkQ4OUM0MDdGNUZDNTExRTY4RDVDOTMwMTBCQjcwNTlBIj4gPHhtcE1NOkRlcml2ZWRGcm9tIHN0UmVmOmluc3RhbmNlSUQ9InhtcC5paWQ6RDg5QzQwN0M1RkM1MTFFNjhENUM5MzAxMEJCNzA1OUEiIHN0UmVmOmRvY3VtZW50SUQ9InhtcC5kaWQ6RDg5QzQwN0Q1RkM1MTFFNjhENUM5MzAxMEJCNzA1OUEiLz4gPC9yZGY6RGVzY3JpcHRpb24+IDwvcmRmOlJERj4gPC94OnhtcG1ldGE+IDw/eHBhY2tldCBlbmQ9InIiPz5XnInwAAABsUlEQVR42myRTUsCURSGp7mCn4vAhUTT6KYCwYUKrkLQX1ALIW0jCspUCxcmto0Iaja2CklBXactUhdu/MofICotFVyqyJhEzshM54YjFR24m3vfc877Phclk8kbj8dzplQq871eTyT+Ka1WSyQSiWer1bpLqlSqfZ7nj9xu973T6ST/itVqNcEwzDU0HdI0vYWgoWwymTYRQqd2u52azWblfr8vypMjkcidxWKJS5JUymaz56jb7fIgqoB4e7lcBm02GzWdTouj0UgC8a3ZbI7BfTGXy53UajVuQ17tcrlIv9//CI8BOA8clMFgiMNTKZPJeKvV6jvWIblhMBhIk8nkBdYbwB4Ddg4gWz6VSh03m80PWfcrZKvVksAeR5IkIYrfMTg4nz816w0ajYaIRqOs0WiMLRaLAoRsKRSKoMPhoMFdETtYN2AxpgEBL2ByOZ1Oe9vtdgGLBUEIYBAyPaTX61EoFLoC75crGr5GozEfDocEFsFnrelBxgpiWfaJoqjwirNPpoELT8R2APkOuAhANgHBhD2dTvcG6ML1en3+96ex9/F4XAJyy06n8/olwAAZkOOKxYY/pwAAAABJRU5ErkJggg==") center no-repeat;
+            background-size: 12px auto;
+        }
+        #drag.active {
+            box-shadow: 0 0 15px rgba(0,0,0,.1);
+        }
+        @media (max-width: 600px) {
+            .s-title .app-name { font-size: 24px; }
+            .s-title .page-name { font-size: 16px; }
+            .top-cont {
+                flex-wrap: wrap;
+                padding: 16px 12px;
+            }
+            .select-btn {
+                width: 100%;
+                height: 44px;
+                line-height: 44px;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="title-wrap">
+    <div class="s-title">
+        <span class="app-name">阅读</span>
+        <span class="sep">|</span>
+        <span class="page-name">WiFi传输</span>
+        </div>
+    </div>
+<div class="main-wrap">
+    <div class="top-cont">
+        <div>
+            <p class="status">可支持文件格式：</p>
+            <p class="type">TXT、EPUB、PDF</p>
+            </div>
+        <form class="select-btn">
+            选择文件
+            <input id="fileInput" multiple type="file">
+        </form>
+    </div>
+    <div class="s-table" id="drag">
+        <table>
+            <thead>
+            <tr>
+                <td></td>
+                <td>文件名</td>
+                <td>大小</td>
+                <td>操作</td>
+            </tr>
+            </thead>
+            <tbody id="fileList">
+            <tr>
+                <td class="last-row" colspan="4">请将图书或字体拖拽至此即可上传</td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+    </div>
+
+<script>
+    const FILE_TYPES = /(\.|\/)(txt|epub|pdf)$/i;
+    const UPLOAD_URL = '../addLocalBook';
+    const fileMap = {};
+    const uploadQueue = [];
+    let isUploading = false;
+    let fileCounter = 0;
+
+    const fileList = document.getElementById('fileList');
+    const dragArea = document.getElementById('drag');
+    const fileInput = document.getElementById('fileInput');
+
+    function formatSize(bytes) {
+        if (bytes < 1024) return bytes + 'B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + 'KB';
+        return (bytes / (1024 * 1024)).toFixed(2) + 'MB';
+    }
+
+    function truncateName(name) {
+        if (name.length < 30) return name;
+        const dot = name.lastIndexOf('.');
+        const suffix = name.slice(dot);
+        const pre = name.slice(0, dot);
+        return pre.slice(0, 20) + '....' + pre.slice(-4) + suffix;
+    }
+
+    function addFileRow(file) {
+        const idx = ++fileCounter;
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+            '<td><span>' + idx + '</span></td>' +
+            '<td><span>' + truncateName(file.name) + '</span></td>' +
+            '<td><span>' + formatSize(file.size) + '</span></td>' +
+            '<td><span><i class="progress">0%</i></span></td>';
+        const lastRow = fileList.querySelector('.last-row');
+        if (lastRow) {
+            fileList.insertBefore(tr, lastRow);
+        } else {
+            fileList.appendChild(tr);
+        }
+        fileMap[file.name] = tr.querySelector('i');
+    }
+
+    function checkFile(file) {
+        if (!FILE_TYPES.test(file.name)) return '格式不支持';
+        if (fileMap[file.name]) return '文件已存在';
+        return null;
+    }
+
+    function uploadFile(file) {
+        isUploading = true;
+        const fd = new FormData();
+        fd.append('fileName', file.name);
+        fd.append('fileData', file);
+
+        const xhr = new XMLHttpRequest();
+        const indicator = fileMap[file.name];
+
+        xhr.upload.addEventListener('progress', e => {
+            if (e.lengthComputable) {
+                indicator.textContent = Math.round(e.loaded / e.total * 100) + '%';
+            }
+        });
+
+        xhr.addEventListener('load', () => {
+            if (xhr.status === 200) {
+                indicator.className = 'success';
+                indicator.textContent = '';
+            } else {
+                indicator.className = 'fail';
+                indicator.textContent = '';
+            }
+            nextUpload();
+        });
+
+        xhr.addEventListener('error', () => {
+            indicator.className = 'fail';
+            indicator.textContent = '';
+            nextUpload();
+        });
+
+        xhr.open('POST', UPLOAD_URL);
+        xhr.send(fd);
+    }
+
+    function nextUpload() {
+        isUploading = false;
+        if (uploadQueue.length > 0) {
+            uploadFile(uploadQueue.shift());
+        }
+    }
+
+    function handleFiles(files) {
+        const errors = [];
+        for (const file of files) {
+            const msg = checkFile(file);
+            if (msg) {
+                errors.push(msg);
+            } else {
+                addFileRow(file);
+                uploadQueue.push(file);
+            }
+        }
+        if (errors.length > 0) {
+            if (files.length === 1) {
+                alert(errors[0]);
+            } else {
+                alert('你选择了' + files.length + '个文件，只能上传' + (files.length - errors.length) + '个文件。\n请选择可支持文件格式且文件名不能重复。');
+            }
+        }
+        if (!isUploading && uploadQueue.length > 0) {
+            uploadFile(uploadQueue.shift());
+        }
+    }
+
+    fileInput.addEventListener('change', function () {
+        if (this.files.length > 0) {
+            handleFiles(this.files);
+        }
+        this.value = '';
+    });
+
+    dragArea.addEventListener('dragover', e => {
+        e.preventDefault();
+        dragArea.classList.add('active');
+    });
+
+    dragArea.addEventListener('dragleave', e => {
+        e.preventDefault();
+        dragArea.classList.remove('active');
+    });
+
+    dragArea.addEventListener('drop', e => {
+        e.preventDefault();
+        dragArea.classList.remove('active');
+        if (e.dataTransfer.files.length > 0) {
+            handleFiles(e.dataTransfer.files);
+        }
+    });
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 来源: app/src/main/res/drawable/ic_layout_video.xml (视频布局: 6 个方块; 原 @color/primaryText, 由 Compose tint 着色, 这里用黑色) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:pathData="M4,4h7v4h-7z M13,4h7v4h-7z M4,10h7v4h-7z M13,10h7v4h-7z M4,16h7v4h-7z M13,16h7v4h-7z"
+        android:fillColor="#FF000000" />
+</vector>

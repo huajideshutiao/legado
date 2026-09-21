@@ -1,0 +1,372 @@
+package io.legado.app.help.image
+
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.ImageBitmap
+import io.legado.app.constant.AppLog
+import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.BookSource
+import io.legado.app.help.book.BookImageStorageProviders
+import io.legado.app.help.book.isLocal
+import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.image.ReaderImageCache.PLACEHOLDER_SIZE
+import io.legado.app.help.image.ReaderImageCache.bind
+import io.legado.app.help.image.ReaderImageCache.sizeOf
+import io.legado.app.help.image.ReaderImageCache.version
+import io.legado.app.model.analyzeRule.AnalyzeUrlCore
+import io.legado.app.model.fileBook.FileBook
+import io.legado.app.ui.book.read.page.provider.ImageResolver
+import io.legado.app.ui.book.read.page.provider.ImageResolverProviders
+import io.legado.app.ui.book.read.page.provider.ImageSize
+import io.legado.app.utils.readAllAndClose
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.jetbrains.compose.resources.decodeToImageBitmap
+
+/**
+ * 阅读页内嵌图片的位图缓存（对照 app 端 `ImageProvider.bitmapLruCache`）。
+ *
+ * 排版只经 [sizeOf] 取宽高（先读图片头，读不出才整解码，对照原版 `inJustDecodeBounds`），
+ * 位图在绘制时按需加载并留在 LRU 里，上限沿用 `AppConfig.bitmapCacheSize`（MB，默认 50）。
+ *
+ * 单本书作用域：[bind] 传入新的 bookUrl 时清空，避免 PDF 这类以页码（`0`/`1`…）作 src
+ * 的书跨书撞 key。
+ */
+object ReaderImageCache {
+
+    /** 取图失败时的占位尺寸（对照原版返回 `errorBitmap` 宽高，让排版仍产出图片行）。 */
+    private const val PLACEHOLDER_SIZE = 512
+
+    /**
+     * 阅读页内嵌图解码目标长边上限 (I2): 2000px 量级 ≈ 2× 典型页宽 (手机 1080p 物理宽 /
+     * 桌面 1440p 窗口), 阅读器无图片放大路径, 采样对显示无感知差异; 解码内存/耗时按 ~1/4 计
+     * (4000px 图 → 2048px), 采样因子取 2 的幂。原图字节保留, 未来加放大可再解全图。
+     */
+    private const val SAMPLE_MAX_DIM = 2048
+
+    private val lock = SynchronizedObject()
+
+    /** 手写 LRU：命中时先 remove 再 put 把条目挪到队尾，超预算从队首淘汰。 */
+    private val bitmaps = LinkedHashMap<String, ImageBitmap>()
+    private var cachedBytes = 0L
+    private val sizes = HashMap<String, ImageSize>()
+    private val failed = HashSet<String>()
+    private val inFlight = HashSet<String>()
+
+    private var boundBookUrl: String? = null
+    private var loader: (suspend (String) -> ByteArray?)? = null
+
+    private val scope = CoroutineScope(SupervisorJob() + IoDispatcher)
+
+    /**
+     * 位图就绪计数：绘制层（`PageContentCanvas`）在 Canvas 里读它建立快照订阅，
+     * 异步加载完成后自增触发该页重绘。
+     */
+    var version by mutableIntStateOf(0)
+        private set
+
+    /**
+     * 绑定当前书的字节加载器；换书时清空缓存。
+     * 同一本书三章滑窗会各建一个 resolver 重复绑定，取图路径只由 book + src 决定，覆盖无副作用。
+     */
+    fun bind(bookUrl: String, loader: suspend (String) -> ByteArray?) {
+        synchronized(lock) {
+            if (boundBookUrl != bookUrl) {
+                bitmaps.clear()
+                sizes.clear()
+                failed.clear()
+                cachedBytes = 0
+                boundBookUrl = bookUrl
+            }
+            this.loader = loader
+        }
+    }
+
+    /** 已就绪位图；未加载 / 已淘汰返回 null。 */
+    fun peek(src: String): ImageBitmap? = synchronized(lock) {
+        bitmaps.remove(src)?.also { bitmaps[src] = it }
+    }
+
+    /** 取图失败（画错误占位，不再重试）。 */
+    fun isFailed(src: String): Boolean = synchronized(lock) { failed.contains(src) }
+
+    /**
+     * 排版取尺寸：命中尺寸缓存直接返回；否则取字节，先解析图片头，
+     * 头解析不出（如 SVG / 少见格式）才整解码并把位图留在 LRU。
+     * 取不到图返回 [PLACEHOLDER_SIZE] 方块（对照原版 errorBitmap 尺寸）。
+     */
+    suspend fun sizeOf(src: String): ImageSize {
+        synchronized(lock) { sizes[src] }?.let { return it }
+        val size = resolveSize(src) ?: ImageSize(PLACEHOLDER_SIZE, PLACEHOLDER_SIZE)
+        synchronized(lock) { sizes[src] = size }
+        return size
+    }
+
+    private suspend fun resolveSize(src: String): ImageSize? {
+        peek(src)?.let { return ImageSize(it.width, it.height) }
+        val bytes = loadBytes(src) ?: return null
+        probeImageSize(bytes)?.let { return it }
+        val bitmap = decode(src, bytes) ?: return null
+        return ImageSize(bitmap.width, bitmap.height)
+    }
+
+    /** 绘制层发现位图未就绪时异步加载，完成后自增 [version] 触发重绘。 */
+    fun requestAsync(src: String) {
+        synchronized(lock) {
+            if (bitmaps.containsKey(src) || failed.contains(src) || inFlight.contains(src)) return
+            inFlight.add(src)
+        }
+        scope.launch {
+            try {
+                val bytes = loadBytes(src)
+                if (bytes == null) {
+                    synchronized(lock) { failed.add(src) }
+                } else {
+                    decode(src, bytes)
+                }
+            } finally {
+                synchronized(lock) { inFlight.remove(src) }
+            }
+        }
+    }
+
+    private suspend fun loadBytes(src: String): ByteArray? {
+        val load = synchronized(lock) { loader } ?: return null
+        return runCatching { load(src) }.onFailure {
+            AppLog.put("阅读页图片加载失败 $src\n${it.message}", it)
+        }.getOrNull()
+    }
+
+    private fun decode(src: String, bytes: ByteArray): ImageBitmap? {
+        // I2: 先按目标尺寸采样解码 (解码前采样才有峰值内存收益), 失败依次回落 SVG 兜底
+        // (对齐原版 `decodeBitmap ?: SvgUtils.createBitmap`; 矢量按目标长边渲染) 与全尺寸
+        // 解码 (格式兜底, 如桌面 ImageIO 无 reader 的 WEBP 走 skia decodeToImageBitmap)。
+        val bitmap = runCatching { decodeBytesSampled(bytes, SAMPLE_MAX_DIM) }.getOrNull()
+            ?: runCatching { decodeSvgFallback(bytes, SAMPLE_MAX_DIM) }.getOrNull()
+            ?: runCatching { bytes.decodeToImageBitmap() }.getOrNull()
+        synchronized(lock) {
+            if (bitmap == null) {
+                failed.add(src)
+            } else {
+                failed.remove(src)
+                put(src, bitmap)
+            }
+        }
+        if (bitmap != null) version++
+        return bitmap
+    }
+
+    /** 调用方持锁。 */
+    private fun put(src: String, bitmap: ImageBitmap) {
+        bitmaps.remove(src)?.let { cachedBytes -= it.byteSize() }
+        bitmaps[src] = bitmap
+        cachedBytes += bitmap.byteSize()
+        val limit = bitmapCacheMaxBytes
+        val iterator = bitmaps.entries.iterator()
+        // 单张图超预算时保留自身（原版 ensureLruCacheSize 同样扩容而非丢弃当前图）
+        while (cachedBytes > limit && bitmaps.size > 1 && iterator.hasNext()) {
+            val entry = iterator.next()
+            if (entry.key == src) continue
+            cachedBytes -= entry.value.byteSize()
+            iterator.remove()
+        }
+    }
+
+    fun clear() {
+        synchronized(lock) {
+            bitmaps.clear()
+            sizes.clear()
+            failed.clear()
+            cachedBytes = 0
+        }
+    }
+}
+
+/**
+ * 只读图片头取宽高（PNG / JPEG / GIF / BMP / WEBP / SVG 常见写法），对应原版 `BitmapFactory.Options
+ * .inJustDecodeBounds = true`——排版拿到宽高即可算行高，不必整解码占内存。
+ * 无法识别返回 null，由调用方回落整解码（SVG 经 [decodeSvgFallback] 渲染后取位图尺寸）。
+ */
+internal fun probeImageSize(bytes: ByteArray): ImageSize? {
+    fun be16(at: Int) = ((bytes[at].toInt() and 0xff) shl 8) or (bytes[at + 1].toInt() and 0xff)
+    fun be32(at: Int) = (be16(at) shl 16) or be16(at + 2)
+    fun le16(at: Int) = ((bytes[at + 1].toInt() and 0xff) shl 8) or (bytes[at].toInt() and 0xff)
+    fun le32(at: Int) = (le16(at + 2) shl 16) or le16(at)
+
+    if (bytes.size < 16) return null
+    // PNG: 8 字节签名 + IHDR(宽高各 4 字节大端)
+    if (bytes[0] == 0x89.toByte() && bytes[1] == 'P'.code.toByte() &&
+        bytes[2] == 'N'.code.toByte() && bytes[3] == 'G'.code.toByte()
+    ) {
+        return if (bytes.size >= 24) ImageSize(be32(16), be32(20)) else null
+    }
+    // GIF: "GIF8" + 逻辑屏幕宽高(小端)
+    if (bytes[0] == 'G'.code.toByte() && bytes[1] == 'I'.code.toByte() &&
+        bytes[2] == 'F'.code.toByte()
+    ) {
+        return ImageSize(le16(6), le16(8))
+    }
+    // BMP: "BM" + DIB header 宽高(小端, 高可能为负表示自顶向下)
+    if (bytes[0] == 'B'.code.toByte() && bytes[1] == 'M'.code.toByte() && bytes.size >= 26) {
+        return ImageSize(le32(18), kotlin.math.abs(le32(22)))
+    }
+    // WEBP: "RIFF"...."WEBP" + VP8 / VP8L / VP8X 三种块
+    if (bytes.size >= 30 && bytes[0] == 'R'.code.toByte() && bytes[8] == 'W'.code.toByte() &&
+        bytes[9] == 'E'.code.toByte() && bytes[10] == 'B'.code.toByte()
+    ) {
+        return when {
+            bytes[15] == 'X'.code.toByte() ->
+                if (bytes.size < 31) null
+                else ImageSize((le32(24) and 0xffffff) + 1, (le32(27) and 0xffffff) + 1)
+            bytes[15] == 'L'.code.toByte() -> {
+                val bits = le32(21)
+                ImageSize((bits and 0x3fff) + 1, ((bits ushr 14) and 0x3fff) + 1)
+            }
+            bytes[15] == ' '.code.toByte() -> ImageSize(le16(26) and 0x3fff, le16(28) and 0x3fff)
+            else -> null
+        }
+    }
+    // JPEG: 逐段跳到 SOFn(0xC0..0xCF, 排除 C4/C8/CC), 段内偏移 5/7 处为高/宽(大端)
+    if (bytes[0] == 0xff.toByte() && bytes[1] == 0xd8.toByte()) {
+        var offset = 2
+        while (offset + 9 < bytes.size) {
+            if (bytes[offset] != 0xff.toByte()) {
+                offset++
+                continue
+            }
+            val marker = bytes[offset + 1].toInt() and 0xff
+            if (marker == 0xd8 || marker == 0x01 || marker in 0xd0..0xd7) {
+                offset += 2
+                continue
+            }
+            val segmentLength = be16(offset + 2)
+            if (segmentLength < 2) return null
+            if (marker in 0xc0..0xcf && marker != 0xc4 && marker != 0xc8 && marker != 0xcc) {
+                return ImageSize(be16(offset + 7), be16(offset + 5))
+            }
+            offset += 2 + segmentLength
+        }
+        return null
+    }
+    // SVG: 解析 <svg> 标签的 width/height / viewBox 拿固有宽高 (矢量无固定像素尺寸,
+    // 宽高比供排版算行高; 实际渲染尺寸由 decodeSvgFallback 按目标长边等比缩放, 比例一致)
+    probeSvgSize(bytes)?.let { return it }
+    return null
+}
+
+/**
+ * 只读 SVG 头取固有宽高（对应原版 `SvgUtils.getSize`: documentWidth/Height → viewBox 兜底）。
+ *
+ * 解析 `<svg` 标签内 width/height（数值+单位，百分比/auto 视为未指定）或 viewBox 后两值；
+ * 解析不出返回 null（调用方回落整解码经 [decodeSvgFallback] 渲染后取位图尺寸）。
+ * 仅做字符串扫描，不依赖平台 SVG 解析器，四端共用。
+ */
+private fun probeSvgSize(bytes: ByteArray): ImageSize? {
+    // 只取文件头部 (XML 声明/注释/DOCTYPE 之后、<svg> 标签的属性不会超出前几 KB)
+    val head = bytes.copyOf(minOf(bytes.size, 4096)).decodeToString()
+    val tagStart = head.indexOf("<svg")
+    if (tagStart < 0) return null
+    val tagEnd = head.indexOf('>', tagStart)
+    if (tagEnd < 0) return null
+    val tag = head.substring(tagStart, tagEnd)
+
+    // 取属性值 (双/单引号均可, 属性名不含正则特殊字符)
+    fun attr(name: String): String? =
+        Regex("""$name\s*=\s*["']([^"']*)["']""").find(tag)?.groupValues?.get(1)?.trim()
+
+    // 取数值前缀 (忽略 px/pt/em 等单位, 比例用途下可忽略单位换算误差)
+    fun number(v: String?): Float? =
+        v?.let { Regex("""^(\d+(?:\.\d+)?)""").find(it.trim())?.groupValues?.get(1)?.toFloatOrNull() }
+
+    val rawW = attr("width")
+    val rawH = attr("height")
+    // 百分比/auto 视为未指定 (对应原版 SvgUtils.getSize: documentWidth 对百分比返回 0 再回落 viewBox)
+    fun absolute(v: String?): Float? =
+        v?.takeIf { !it.endsWith('%') && !it.equals("auto", ignoreCase = true) }?.let(::number)
+    val absW = absolute(rawW)
+    val absH = absolute(rawH)
+    if (absW != null && absH != null && absW > 0 && absH > 0) {
+        return ImageSize(absW.toInt().coerceAtLeast(1), absH.toInt().coerceAtLeast(1))
+    }
+
+    // viewBox="minX minY w h" (空白/逗号分隔)
+    val vb = attr("viewBox")?.split(Regex("""[\s,]+""")) ?: emptyList()
+    if (vb.size >= 4) {
+        val w = vb[2].toFloatOrNull()
+        val h = vb[3].toFloatOrNull()
+        if (w != null && h != null && w > 0 && h > 0) {
+            return ImageSize(w.toInt().coerceAtLeast(1), h.toInt().coerceAtLeast(1))
+        }
+    }
+    return null
+}
+
+/**
+ * 共享阅读器的 [ImageResolver] 实现（sharedUiMain，四端共用）。
+ *
+ * 取图顺序对照 app 端 `ImageProvider.cacheImage`：
+ * 1. 本地书（PDF / EPUB / CBZ，含 WebDav 下载件）：[FileBook.getImage] 直接取流
+ *    （桌面 PDF 的页面渲染与图片缓存写入在 `DesktopPdfFile.getImage` 内部完成）
+ * 2. 网络书：先查图片磁盘缓存（[BookImageStorageProviders]），未命中用 [AnalyzeUrlCore]
+ *    带书源 header/cookie/JS 下载并写入缓存
+ *
+ * 解码走 [decodeBytesSampled] (I2 图片加载深度优化): 按 [SAMPLE_MAX_DIM] 长边上限解码前采样
+ * (jvm ImageIO setSourceSubsampling / android inSampleSize / iOS Skia 后缩放 / ohos 全尺寸),
+ * 采样失败依次回落 [decodeSvgFallback] (SVG 矢量按目标长边渲染, 对齐原版
+ * `decodeBitmap ?: SvgUtils.createBitmap`) 与 compose resources `decodeToImageBitmap`
+ * 全尺寸解码 (格式兜底如桌面 WEBP)。尺寸探测 [probeImageSize] 支持 SVG 头 (width/height/viewBox),
+ * 排版拿固有宽高比算行高, 无需整解码。字节路径不变 (原图字节仍在磁盘/ImageBytesCache,
+ * 未来加放大可再解全图)。
+ */
+class ReaderImageResolver(
+    private val book: Book,
+    private val chapter: BookChapter,
+    private val bookSource: BookSource?,
+) : ImageResolver {
+
+    init {
+        ReaderImageCache.bind(book.bookUrl) { src -> loadBytes(src) }
+    }
+
+    override suspend fun getImageSize(src: String): ImageSize = ReaderImageCache.sizeOf(src)
+
+    private suspend fun loadBytes(src: String): ByteArray? = withContext(IoDispatcher) {
+        if (src.isBlank()) return@withContext null
+        if (book.isLocal) {
+            return@withContext runCatching {
+                FileBook.getImage(book, src)?.readAllAndClose()
+            }.getOrNull()
+        }
+        val storage = runCatching { BookImageStorageProviders.get() }.getOrNull()
+        // 磁盘缓存命中：经平台图片加载器读文件字节（Android 端该实现为 stub，退化为重新下载）
+        storage?.let { s ->
+            runCatching { s.getImagePath(book, chapter, src) }.getOrNull()?.let { path ->
+                ImageBitmapLoader().loadBytes(path, book, bookSource)
+                    ?.let { return@withContext it }
+            }
+        }
+        val downloaded = runCatching {
+            AnalyzeUrlCore(
+                rawUrl = src,
+                source = bookSource,
+                coroutineContext = currentCoroutineContext(),
+            ).getByteArrayAwait()
+        }.getOrNull() ?: return@withContext null
+        storage?.let { runCatching { it.saveImage(book, chapter, src, downloaded) } }
+        downloaded
+    }
+}
+
+/** 宿主启动时注册共享图片解析器（desktop `Main.kt` / Android `MainActivity`）。 */
+fun registerReaderImageResolver() {
+    ImageResolverProviders.register { book, chapter, bookSource ->
+        ReaderImageResolver(book, chapter, bookSource)
+    }
+}
