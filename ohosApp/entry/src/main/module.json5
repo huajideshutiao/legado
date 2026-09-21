@@ -28,6 +28,25 @@
       {
         "name": "ohos.permission.GET_NETWORK_INFO"
       },
+      // 网络访问 (normal 级, system_grant 安装即授予), 与 Android 端
+      // AndroidManifest 的 android.permission.INTERNET 对齐;
+      // 未申报时 @ohos.net.http 全部请求失败 (HttpBridgeHandler 经它发真实请求)。
+      {
+        "name": "ohos.permission.INTERNET"
+      },
+      // 读剪贴板 (user_grant, 首次读取时弹窗申请): 书源/替换规则编辑页的
+      // "从剪贴板粘贴" 经 PasteboardBridgeHandler 读系统剪贴板。
+      // 拒绝授权时 PlatformCapabilities.getClipboardText 返回 null, 粘贴入口无内容。
+      {
+        "name": "ohos.permission.READ_PASTEBOARD",
+        "reason": "$string:permission_read_pasteboard_reason",
+        "usedScene": {
+          "abilities": [
+            "EntryAbility"
+          ],
+          "when": "inuse"
+        }
+      },
       {
         "name": "ohos.permission.KEEP_BACKGROUND_RUNNING"
       }

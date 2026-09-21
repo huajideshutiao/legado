@@ -1,6 +1,8 @@
 import pasteboard from '@ohos.pasteboard';
 import { BusinessError } from '@ohos.base';
+import common from '@ohos.app.ability.common';
 import { BridgeRequest, BridgeResponse, dispatchBridgeRequest } from './BridgeDispatch';
+import { ensurePermissionGranted } from './PermissionBridgeHandler';
 
 /**
  * ArkTS 侧剪贴板处理器。
@@ -37,6 +39,18 @@ import { BridgeRequest, BridgeResponse, dispatchBridgeRequest } from './BridgeDi
 // Pasteboard callback 类型 (由 EntryAbility 注入, 内部调 legado.pasteboardCallback)
 export type PasteboardCallback = (requestId: number, resultJson: string) => void;
 
+// UIAbilityContext (读剪贴板需 requestPermissionsFromUser 申请 READ_PASTEBOARD; 由 EntryAbility 注入)
+let abilityContext: common.UIAbilityContext | undefined;
+
+/**
+ * 初始化剪贴板桥 (由 EntryAbility 注入 UIAbilityContext)。
+ *
+ * @param context UIAbility 上下文 (读剪贴板申请 ohos.permission.READ_PASTEBOARD 需要)
+ */
+export function initPasteboardBridge(context: common.UIAbilityContext): void {
+  abilityContext = context;
+}
+
 // ===== 请求/响应接口定义 (与 Kotlin 侧 JSON 协议对齐) =====
 
 interface PasteboardResponse extends BridgeResponse {
@@ -68,6 +82,16 @@ async function handleAction(req: BridgeRequest): Promise<PasteboardResponse> {
 
 // ===== read: getSystemPasteboard().getData() → getPrimaryText() =====
 async function handleRead(): Promise<PasteboardResponse> {
+  // ohos.permission.READ_PASTEBOARD 是 user_grant: 首次读取时弹窗申请, 拒绝则无内容可粘
+  if (abilityContext == null) {
+    console.warn('[PasteboardBridge] read: abilityContext not injected, skip permission request');
+  } else {
+    const granted = await ensurePermissionGranted(abilityContext, 'ohos.permission.READ_PASTEBOARD');
+    if (!granted) {
+      console.warn('[PasteboardBridge] read: READ_PASTEBOARD not granted');
+      return { ok: true, text: '' };
+    }
+  }
   try {
     const systemPasteboard = pasteboard.getSystemPasteboard();
     const data: pasteboard.PasteData = await systemPasteboard.getData();
@@ -88,7 +112,7 @@ async function handleRead(): Promise<PasteboardResponse> {
     }
     return { ok: true, text: '' };
   } catch (e) {
-    // 剪贴板为空 / 无读取权限时 getData 抛 BusinessError, 归一为空文本而非错误
+    // 剪贴板为空时 getData 抛 BusinessError, 归一为空文本而非错误
     const err = e as BusinessError;
     console.warn('[PasteboardBridge] getData failed: ' + (err.message ?? String(e)));
     return { ok: true, text: '' };

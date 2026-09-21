@@ -25,6 +25,10 @@
     {
       "name": "permission_write_imagevideo_reason",
       "value": "用于将阅读页长按图片保存到系统相册"
+    },
+    {
+      "name": "permission_read_pasteboard_reason",
+      "value": "用于书源与替换规则编辑页从剪贴板粘贴内容"
     }
   ]
 }
