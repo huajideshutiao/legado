@@ -25,45 +25,72 @@ object LogUtils {
     val logTimeFormat by lazy { SimpleDateFormat(TIME_PATTERN, Locale.US) }
 
     fun init(context: Context) {
-        fileHandler = createFileHandler(context)?.also {
-            logger.addHandler(it)
+        cleanExpiredLogs(context)
+    }
+
+    private fun cleanExpiredLogs(context: Context) {
+        val root = context.externalCacheDir ?: return
+        val logFolder = java.io.File(root, "logs")
+        if (!logFolder.exists() || !logFolder.isDirectory) return
+        globalExecutor.execute {
+            val expiredTime = System.currentTimeMillis() - 7.days.inWholeMilliseconds
+            logFolder.listFiles()?.forEach {
+                if (it.lastModified() < expiredTime || it.name.endsWith(".lck")) {
+                    it.delete()
+                }
+            }
         }
     }
 
     @JvmStatic
     fun d(tag: String, msg: String) {
-        logger.log(Level.INFO, "$tag $msg")
+        if (!AppConfig.recordLog) return
+        runCatching {
+            if (fileHandlerOrNull() != null) {
+                logger.log(Level.INFO, "$tag $msg")
+            }
+        }
     }
 
     inline fun d(tag: String, lazyMsg: () -> String) {
-        if (logger.isLoggable(Level.INFO)) {
-            logger.log(Level.INFO, "$tag ${lazyMsg()}")
+        if (AppConfig.recordLog) {
+            d(tag, lazyMsg())
         }
     }
 
     @JvmStatic
     fun e(tag: String, msg: String) {
-        logger.log(Level.WARNING, "$tag $msg")
+        if (!AppConfig.recordLog) return
+        runCatching {
+            if (fileHandlerOrNull() != null) {
+                logger.log(Level.WARNING, "$tag $msg")
+            }
+        }
     }
 
     val logger: Logger by lazy {
         Logger.getLogger("Legado")
     }
 
+    private val logLock = Any()
+
+    @Volatile
     private var fileHandler: FileHandler? = null
 
-    private fun createFileHandler(context: Context): FileHandler? {
-        try {
-            val root = context.externalCacheDir ?: return null
-            val logFolder = FileUtils.createFolderIfNotExist(root, "logs")
-            globalExecutor.execute {
-                val expiredTime = System.currentTimeMillis() - 7.days.inWholeMilliseconds
-                logFolder.listFiles()?.forEach {
-                    if (it.lastModified() < expiredTime || it.name.endsWith(".lck")) {
-                        it.delete()
-                    }
-                }
+    private fun fileHandlerOrNull(): FileHandler? {
+        fileHandler?.let { return it }
+        return synchronized(logLock) {
+            fileHandler ?: createFileHandler()?.also {
+                logger.addHandler(it)
+                fileHandler = it
             }
+        }
+    }
+
+    private fun createFileHandler(): FileHandler? {
+        try {
+            val root = App.instance.externalCacheDir ?: return null
+            val logFolder = FileUtils.createFolderIfNotExist(root, "logs")
             val date = getCurrentDateStr(TIME_PATTERN).replace(" ", "_").replace(":", "-")
             val logPath = FileUtils.getPath(root = logFolder, "appLog-$date.txt")
             return AsyncFileHandler(logPath).apply {
@@ -73,26 +100,13 @@ object LogUtils {
                         return getCurrentDateStr(TIME_PATTERN) + ": " + record.message + "\n"
                     }
                 }
-                level = if (AppConfig.recordLog) {
-                    Level.INFO
-                } else {
-                    Level.OFF
-                }
+                level = Level.INFO
             }
         } catch (e: Exception) {
             e.printStackTrace()
             AppLog.putNotSave("创建fileHandler出错\n$e", e)
             return null
         }
-    }
-
-    fun upLevel() {
-        val level = if (AppConfig.recordLog) {
-            Level.INFO
-        } else {
-            Level.OFF
-        }
-        fileHandler?.level = level
     }
 
     /**

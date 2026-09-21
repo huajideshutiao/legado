@@ -117,7 +117,6 @@ private val desktopAppLogHost = object : AppLogHost {
     override fun write(tag: String, message: String) {
         // 不在此处 debugLog: [debugPrint] 已把同一条消息打到 stdout, 两处都打会让
         // 开发期日志逐条重复 (安卓端 write→文件 / debugPrint→logcat 两个 sink 不重复)
-        // app 端用 handler.level 做门控, 这里每次读 pref, 开关立即生效且不需要 upLevel()
         if (!recordLog) return
         runCatching {
             if (fileHandlerOrNull() != null) logger.log(Level.INFO, "$tag $message")
