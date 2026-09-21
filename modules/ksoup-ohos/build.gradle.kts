@@ -1,7 +1,7 @@
 import org.gradle.api.tasks.Sync
 
 plugins {
-    id("legado.kmp.library")
+    id("legado.kmp.native.library")
 }
 
 val enableOhosTarget = providers.gradleProperty("enableOhosTarget").orNull?.toBoolean() ?: false

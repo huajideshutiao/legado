@@ -10,7 +10,10 @@ plugins {
     alias(libs.plugins.room) apply false
     alias(libs.plugins.kotlin.jvm) apply false
     alias(libs.plugins.kotlin.serialization) apply false
-    alias(libs.plugins.compose.multiplatform) apply false
+    // 不声明 compose-multiplatform 插件: 该插件由 build-logic 的 legado.compose 约定插件
+    // 从自己的 classpath apply。在此声明会让 pluginManagement 把未修补的 fork 插件也挂上
+    // 根 buildscript classpath, 抢先于 ohos 模式下的字节码补丁 jar (见
+    // scripts/patch-cmp-plugin-for-agp9.sh), 使补丁失效并抛 NoSuchMethodError。
     alias(libs.plugins.compose.compiler) apply false
 }
 
