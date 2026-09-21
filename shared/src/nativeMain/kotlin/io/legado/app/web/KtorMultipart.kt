@@ -58,6 +58,7 @@ suspend fun ApplicationCall.parseMultipart(): MultipartParseResult {
             }
             else -> {}
         }
+        @Suppress("DEPRECATION")
         part.dispose()
     }
 

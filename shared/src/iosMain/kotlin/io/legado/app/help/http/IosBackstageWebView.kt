@@ -8,6 +8,7 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.UserAgentProviders
 import io.legado.app.help.getUserAgent
 import io.legado.app.help.coroutine.IoDispatcher
+import kotlinx.cinterop.ObjCSignatureOverride
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -303,11 +304,9 @@ private class IosBackstageWebViewHandle(
  * WKNavigationDelegate: didFinish 回收 cookie, didFailProvisionalNavigation 快速失败,
  * decidePolicyForNavigationAction 对应原版 shouldOverrideUrlLoading。
  *
- * 只实现 didFinishNavigation 与 didFailProvisionalNavigation 各一个:
- * 同形参签名的兄弟方法 (didStart/didCommit, didFailNavigation) 在 Kotlin 侧是冲突重载,
- * 每族只实现一个就无需 @ObjCSignatureOverride, 类级 @Suppress 即可。
+ * didStart/didCommit/didFailNavigation 与已实现的方法在 Kotlin 侧同形参签名, 逐方法标
+ * [ObjCSignatureOverride] 声明实际重写的是哪个 ObjC 选择器。
  */
-@Suppress("CONFLICTING_OVERLOADS")
 private class BackstageNavDelegate(
     private val overrideRegex: Regex?,
     private val onFinish: (WKWebView) -> Unit,
@@ -315,10 +314,12 @@ private class BackstageNavDelegate(
     private val onHit: (String) -> Unit,
 ) : NSObject(), WKNavigationDelegateProtocol {
 
+    @ObjCSignatureOverride
     override fun webView(webView: WKWebView, didFinishNavigation: WKNavigation?) {
         onFinish(webView)
     }
 
+    @ObjCSignatureOverride
     override fun webView(
         webView: WKWebView,
         didFailProvisionalNavigation: WKNavigation?,
@@ -327,6 +328,7 @@ private class BackstageNavDelegate(
         onFail(withError.localizedDescription)
     }
 
+    @ObjCSignatureOverride
     override fun webView(
         webView: WKWebView,
         decidePolicyForNavigationAction: WKNavigationAction,

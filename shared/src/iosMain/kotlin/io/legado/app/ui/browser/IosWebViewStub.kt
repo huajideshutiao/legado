@@ -6,7 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.interop.UIKitView
+import androidx.compose.ui.viewinterop.UIKitView
 import io.legado.app.help.http.CookieStoreProviders
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSHTTPCookie

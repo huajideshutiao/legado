@@ -5,6 +5,7 @@ import androidx.compose.ui.graphics.asComposeImageBitmap
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
+import coil3.annotation.ExperimentalCoilApi
 import coil3.memory.MemoryCache
 import coil3.network.ktor3.asNetworkClient
 import coil3.request.ImageRequest
@@ -139,6 +140,7 @@ class IosBookImageLoader : BookImageLoader {
 internal val iosCoilImageLoader: ImageLoader by lazy { buildIosBookImageLoader() }
 
 /** 构建 iOS Coil3 ImageLoader (注册防盗链 fetcher + Ktor3 网络后端 + 磁盘/内存缓存)。 */
+@OptIn(ExperimentalCoilApi::class)
 private fun buildIosBookImageLoader(): ImageLoader {
     return ImageLoader.Builder(PlatformContext.INSTANCE)
         .components {

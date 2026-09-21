@@ -9,7 +9,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.interop.UIKitView
+import androidx.compose.ui.viewinterop.UIKitView
 import io.legado.app.help.http.cookieJarHeader
 import io.legado.app.help.media.AvPlayerBufferingObserver
 import io.legado.app.help.media.AvPlayerItemStatusObserver
@@ -411,7 +411,7 @@ class IosVideoPlayerController(
         _playback.update {
             it.copy(
                 playWhenReady = playWhenReady && hasMedia,
-                isPlaying = hasMedia && (pl?.rate() ?: 0f) > 0f,
+                isPlaying = hasMedia && pl.rate() > 0f,
                 isBuffering = buffering,
                 speed = requestedSpeed,
                 ended = ended,

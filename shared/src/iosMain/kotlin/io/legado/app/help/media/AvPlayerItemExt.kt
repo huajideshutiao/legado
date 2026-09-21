@@ -18,9 +18,8 @@ import platform.Foundation.NSValue
  * media3/ExoPlayer `bufferedPosition` 口径一致。
  */
 fun AVPlayerItem.maxLoadedTimeRangeEndMs(): Long {
-    val ranges = loadedTimeRanges ?: return 0L
     var maxEndMs = 0L
-    for (value in ranges) {
+    for (value in loadedTimeRanges) {
         val range = (value as? NSValue)?.CMTimeRangeValue ?: continue
         val seconds = CMTimeGetSeconds(CMTimeRangeGetEnd(range))
         if (seconds.isNaN() || seconds.isInfinite()) continue

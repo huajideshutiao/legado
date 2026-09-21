@@ -29,7 +29,6 @@ actual fun registerNativeJsEngines(imageOps: ImageOps) {
     SharedJsScope.registerProviders { type ->
         when (type) {
             JsEngineType.QUICKJS -> NativeQuickJsSharedJsScopeProvider
-            else -> error("rhino 已弃用,JsEngines.type 固定 QUICKJS,不应到达 type=$type")
         }
     }
 
