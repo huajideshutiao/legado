@@ -404,8 +404,8 @@ export default class EntryAbility extends UIAbility {
     }, '[Legado] share tsfn callback registered via napi', '[Legado] registerShareCallback failed: ');
 
     // Keyboard tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 软键盘显隐/避让, 同 Window 模式 fire-and-forget)
-    // KMP OhosPlatformServices.keyboard.hideSoftInput/showSoftInput/setSoftInputPolicy
-    // → OhosNativeBridge.hideSoftInput/showSoftInput/setKeyboardAvoidMode 经 tsfn dispatch 到此回调,
+    // KMP OhosPlatformServices.keyboard.hideSoftInput/setSoftInputPolicy
+    // → OhosNativeBridge.hideSoftInput/setKeyboardAvoidMode 经 tsfn dispatch 到此回调,
     // ArkTS 侧 KeyboardBridgeHandler 调 @ohos.inputMethod / UIContext。
     // 未注册时 KMP 侧降级 println。
     registerSafely((): void => {

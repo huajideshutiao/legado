@@ -5,8 +5,8 @@ import { BridgeCommand, parseBridgeCommand } from './BridgeDispatch';
 /**
  * ArkTS 侧软键盘处理器 (桥接 @ohos.inputMethod + UIContext)。
  *
- * 接收 Kotlin OhosNativeBridge.hideSoftInput / showSoftInput / setKeyboardAvoidMode
- * 通过 tsfn dispatch 过来的键盘命令, 调用 @ohos.inputMethod 执行真实显隐 / 避让。
+ * 接收 Kotlin OhosNativeBridge.hideSoftInput / setKeyboardAvoidMode
+ * 通过 tsfn dispatch 过来的键盘命令, 调用 @ohos.inputMethod 执行真实收起 / 避让。
  *
  * # JSON 协议 (与 OhosNativeBridge.kt KeyboardCommand 对齐)
  *
@@ -19,7 +19,7 @@ import { BridgeCommand, parseBridgeCommand } from './BridgeDispatch';
  * # 调用链
  * KMP OhosPlatformServices.keyboard.hideSoftInput → OhosNativeBridge.hideSoftInput
  *   → keyboardTsfn → C++ ohos_keyboard_dispatch → napi_call_threadsafe_function → KeyboardCallJs
- *   → [handleKeyboardCommand] → inputMethod.getController().stopInputSession() / showSoftKeyboard() /
+ *   → [handleKeyboardCommand] → inputMethod.getController().stopInputSession() /
  *   uiContext.setKeyboardAvoidMode(...)
  *
  * # 设计说明
@@ -48,7 +48,7 @@ export function initKeyboardBridge(ctx: UIContext): void {
 /**
  * 处理来自 Kotlin 的软键盘命令 (由 EntryAbility 注册的 tsfn 回调调用)。
  *
- * @param json 命令 JSON 字符串, 形如 `{ action: 'hide'|'show'|'setAvoidMode', mode? }`
+ * @param json 命令 JSON 字符串, 形如 `{ action: 'hide'|'setAvoidMode', mode? }`
  */
 export function handleKeyboardCommand(json: string): void {
   const parsed = parseBridgeCommand(json, 'KeyboardBridge', 'command');
@@ -60,9 +60,6 @@ export function handleKeyboardCommand(json: string): void {
   switch (cmd.action) {
     case 'hide':
       handleHide();
-      break;
-    case 'show':
-      handleShow();
       break;
     case 'setAvoidMode':
       handleSetAvoidMode(cmd.mode ?? 0);
@@ -80,17 +77,6 @@ function handleHide(): void {
     console.info('[KeyboardBridge] hide');
   } catch (e) {
     console.error('[KeyboardBridge] hide failed: ' + JSON.stringify(e));
-  }
-}
-
-/** 拉起软键盘 (对照 inputMethod.getController().showSoftKeyboard)。 */
-function handleShow(): void {
-  try {
-    const controller = inputMethod.getController();
-    controller.showSoftKeyboard();
-    console.info('[KeyboardBridge] show');
-  } catch (e) {
-    console.error('[KeyboardBridge] show failed: ' + JSON.stringify(e));
   }
 }
 

@@ -134,8 +134,6 @@ object OhosPlatformServices : PlatformServices {
     override val keyboard: KeyboardController = object : KeyboardController {
         override fun hideSoftInput() = OhosNativeBridge.hideSoftInput()
 
-        override fun showSoftInput() = OhosNativeBridge.showSoftInput()
-
         override fun setSoftInputPolicy(policy: SoftInputPolicy) {
             when (policy) {
                 // KeyboardAvoidMode: 0=OFFSET(上推, 同 ADJUST_PAN), 1=RESIZE(收缩), 2=NONE

@@ -1563,11 +1563,6 @@ object OhosNativeBridge {
         sendKeyboardCommand(KS_JSON.encodeToString(KeyboardCommand(action = "hide")))
     }
 
-    /** 拉起软键盘 (对照 inputMethod.getController().showSoftKeyboard)。 */
-    fun showSoftInput() {
-        sendKeyboardCommand(KS_JSON.encodeToString(KeyboardCommand(action = "show")))
-    }
-
     /**
      * 设置键盘避让模式 (对照 UIContext.setKeyboardAvoidMode)。
      *

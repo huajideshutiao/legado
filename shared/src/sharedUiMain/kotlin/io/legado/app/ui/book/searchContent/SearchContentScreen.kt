@@ -219,11 +219,11 @@ private fun SearchField(state: SearchContentUiState, actions: SearchContentUiAct
         }
         onDispose { actions.setClearFocusHandler(null) }
     }
-    // 无既有结果进入/点击底栏计数时聚焦并弹键盘(对齐 isIconified=false 与 showSoftInput)
+    // 无既有结果进入 / 点击底栏计数时聚焦搜索框 (对照原版 requestFocus; 键盘由
+    // Compose 焦点机制自行请求, 见 KeyboardController 注释)
     LaunchedEffect(state.focusEpoch) {
         if (state.focusEpoch > 0) runCatching {
             focusRequester.requestFocus()
-            keyboard?.show()
         }
     }
     AppSearchField(

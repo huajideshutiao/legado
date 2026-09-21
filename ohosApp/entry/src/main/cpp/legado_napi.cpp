@@ -1792,7 +1792,7 @@ REGISTER_TSFN_CALLBACK(Share, ShareCallJs, g_share_tsfn, g_register_share_fn, oh
     "registerShareCallback: legado_register_share_fn not resolved (KMP shareText/shareFile 将降级剪贴板)")
 
 // ============ Keyboard tsfn 接线 (同 Window 模式: fire-and-forget dispatch, 无结果回调) ============
-// 软键盘显隐/避让: KMP hideSoftInput/showSoftInput/setKeyboardAvoidMode → tsfn dispatch 到 ArkTS →
+// 软键盘收起/避让: KMP hideSoftInput/setKeyboardAvoidMode → tsfn dispatch 到 ArkTS →
 // KeyboardBridgeHandler 调 @ohos.inputMethod。命令 fire-and-forget, 无 ArkTS → Kotlin 回调。
 
 // C++ dispatch 入口: 由 Kotlin lambda (注入到 OhosNativeBridge.keyboardTsfn) 调用

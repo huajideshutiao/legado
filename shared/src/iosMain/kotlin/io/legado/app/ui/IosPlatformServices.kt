@@ -304,10 +304,6 @@ private object IosKeyboardController : KeyboardController {
         }
     }
 
-    override fun showSoftInput() {
-        // iOS 无强制唤起键盘的公开 API, no-op
-    }
-
     override fun setSoftInputPolicy(policy: SoftInputPolicy) {
         // iOS 键盘避让由系统 + Compose 自动处理, 仅 Hidden 需要主动收起
         if (policy == SoftInputPolicy.Hidden) hideSoftInput()

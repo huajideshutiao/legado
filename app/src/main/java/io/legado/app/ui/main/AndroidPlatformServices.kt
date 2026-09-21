@@ -466,12 +466,6 @@ private class AndroidKeyboardController(
         imm?.hideSoftInputFromWindow(view.windowToken, 0)
     }
 
-    @Suppress("DEPRECATION") // SHOW_IMPLICIT 无等价替代 (WindowInsetsController.show 语义不同)
-    override fun showSoftInput() {
-        val view = activity.currentFocus ?: activity.window.decorView
-        imm?.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
-    }
-
     /**
      * `Window.setSoftInputMode` 是**整字段覆盖**, 且 mode == SOFT_INPUT_STATE_UNSPECIFIED(0)
      * 时 AOSP 直接丢弃不写 —— 所以除 Default 外每个分支都要显式带 adjust 位, 否则窗口的

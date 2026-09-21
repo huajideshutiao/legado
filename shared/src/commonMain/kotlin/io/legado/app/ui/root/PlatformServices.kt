@@ -313,10 +313,14 @@ interface WindowController {
     fun setLightIconOverlay(enabled: Boolean) {}
 }
 
-/** 软输入法控制（hide/show/resize）。 */
+/** 软输入法控制（hide/resize）。
+ *
+ * 无 show: Compose 输入框获得焦点时由框架自身向输入法请求键盘, 各端手动拉起要么无效果
+ * (Android 需 SHOW_FORCED 才生效, iOS 无公开 API), 要么需系统级权限 (鸿蒙 showSoftKeyboard 需
+ * ohos.permission.CONNECT_IME_ABILITY, availableLevel=system_core 普通应用申请不到)。
+ */
 interface KeyboardController {
     fun hideSoftInput()
-    fun showSoftInput()
     fun setSoftInputPolicy(policy: SoftInputPolicy)
 }
 
