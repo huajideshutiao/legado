@@ -9,9 +9,6 @@ const val OLD_COVERS_REF_SEGMENT = "oldCovers"
 /** 历史遗留封面相对引用兼容段。 */
 const val LEGACY_COVER_CACHE_REF_SEGMENT = "coverCache"
 
-@Deprecated("Use OLD_COVERS_REF_SEGMENT instead", ReplaceWith("OLD_COVERS_REF_SEGMENT"))
-const val COVER_CACHE_REF_SEGMENT = OLD_COVERS_REF_SEGMENT
-
 /**
  * 图集相对引用 → 绝对路径。
  *

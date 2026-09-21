@@ -1,6 +1,7 @@
 package io.legado.app.help.file
 
-import io.legado.app.help.config.COVER_CACHE_REF_SEGMENT
+import io.legado.app.help.config.LEGACY_COVER_CACHE_REF_SEGMENT
+import io.legado.app.help.config.OLD_COVERS_REF_SEGMENT
 import java.io.File
 import java.net.URI
 import java.nio.file.Paths
