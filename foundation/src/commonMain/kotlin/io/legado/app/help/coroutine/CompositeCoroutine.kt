@@ -1,0 +1,89 @@
+package io.legado.app.help.coroutine
+
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
+
+@Suppress("unused")
+class CompositeCoroutine : CoroutineContainer {
+
+    private val lock = SynchronizedObject()
+
+    private var resources: HashSet<Coroutine<*>>? = null
+
+    val size: Int
+        get() = resources?.size ?: 0
+
+    val isEmpty: Boolean
+        get() = size == 0
+
+    constructor()
+
+    constructor(vararg coroutines: Coroutine<*>) {
+        this.resources = hashSetOf(*coroutines)
+    }
+
+    constructor(coroutines: Iterable<Coroutine<*>>) {
+        this.resources = hashSetOf()
+        for (d in coroutines) {
+            this.resources?.add(d)
+        }
+    }
+
+    override fun add(coroutine: Coroutine<*>): Boolean {
+        synchronized(lock) {
+            var set: HashSet<Coroutine<*>>? = resources
+            if (resources == null) {
+                set = hashSetOf()
+                resources = set
+            }
+            return set!!.add(coroutine)
+        }
+    }
+
+    override fun addAll(vararg coroutines: Coroutine<*>): Boolean {
+        synchronized(lock) {
+            var set: HashSet<Coroutine<*>>? = resources
+            if (resources == null) {
+                set = hashSetOf()
+                resources = set
+            }
+            for (coroutine in coroutines) {
+                val add = set!!.add(coroutine)
+                if (!add) {
+                    return false
+                }
+            }
+        }
+        return true
+    }
+
+    override fun remove(coroutine: Coroutine<*>): Boolean {
+        if (delete(coroutine)) {
+            coroutine.cancel()
+            return true
+        }
+        return false
+    }
+
+    override fun delete(coroutine: Coroutine<*>): Boolean {
+        synchronized(lock) {
+            val set = resources
+            if (set == null || !set.remove(coroutine)) {
+                return false
+            }
+        }
+        return true
+    }
+
+    override fun clear() {
+        val set: HashSet<Coroutine<*>>? = synchronized(lock) {
+            val current = resources
+            resources = null
+            current
+        }
+
+        set?.forEachIndexed { _, coroutine ->
+            coroutine.cancel()
+        }
+    }
+}
