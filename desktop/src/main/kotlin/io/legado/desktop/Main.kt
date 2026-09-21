@@ -41,6 +41,7 @@ import io.legado.app.help.file.desktopResolveStoredRef
 import io.legado.app.help.image.decodeBytesSampled
 import io.legado.app.help.image.registerJvmBookImageLoader
 import io.legado.app.help.image.registerReaderImageResolver
+import io.legado.app.help.storage.BackupShared
 import io.legado.app.help.toast.DesktopTrayNotifier
 import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.model.fileBook.BitmapProviders
@@ -442,13 +443,17 @@ private fun runDesktopApp() = application {
     // 朗读引擎 (Windows SAPI / Linux espeak / macOS say): DesktopSystemTtsEngine 依赖 JNA
     // (WindowsSapiTtsBackend) 留在 :desktop 注册; HttpTTS 播放器工厂 (DesktopHttpTtsPlayer,
     // 纯 JVM) 已随上方 DesktopCore.registerCoreProviders 注册, headless 亦具备该能力
+    val performExit = {
+        BackupShared.autoBack()
+        exitApplication()
+    }
     val desktopTtsEngine = remember { DesktopSystemTtsEngine() }
     TtsEngineProvider.register(desktopTtsEngine)
     // 系统托盘: 音频/朗读活跃时给播放控制菜单 (最小化后仍可控), 同时承载 toast/进度气泡
     DisposableEffect(Unit) {
         DesktopMediaTray.install(
             windowProvider = { windowHandle.window },
-            exitAction = ::exitApplication,
+            exitAction = performExit,
         )
         // 朗读控制器绑定: 托盘按 controller.state 增删朗读菜单项, 空闲时自动隐藏
         DesktopMediaTray.readAloud = ReadAloudTrayBinding(
@@ -539,7 +544,7 @@ private fun runDesktopApp() = application {
         }
     ) {
     Window(
-        onCloseRequest = ::exitApplication,
+        onCloseRequest = performExit,
         visible = windowVisible,
         // 按键由 shared AppKeyRouter 统一分发 (全屏 Esc 退全屏 → 统一返回链 → F5 刷新 →
         // 快捷键栈捕获/冒泡两阶段), desktop Window 不再做任何业务判断。
@@ -799,7 +804,7 @@ private fun runDesktopApp() = application {
                                             windowState = windowState,
                                             themeStore = themeStoreProvider,
                                             navigator = navigator,
-                                            onCloseRequest = ::exitApplication,
+                                            onCloseRequest = performExit,
                                         )
                                     }
                                 }

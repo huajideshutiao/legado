@@ -4,6 +4,7 @@ package io.legado.app.napi
 
 import io.legado.app.help.config.NativeSystemTheme
 import io.legado.app.help.glide.progress.OnProgressListener
+import io.legado.app.help.storage.BackupShared
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.ui.root.AppForegroundState
 import io.legado.app.utils.KS_JSON
@@ -51,6 +52,9 @@ object OhosAppLifecycle {
     /** 事件分发 (由 [OhosPlatformEventChannel] 调用)。 */
     internal fun dispatch(event: OhosLifecycleEvent) {
         AppForegroundState.set(event == OhosLifecycleEvent.ON_FOREGROUND)
+        if (event == OhosLifecycleEvent.ON_BACKGROUND) {
+            BackupShared.autoBack()
+        }
     }
 }
 

@@ -17,6 +17,7 @@ import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.image.ImageBitmapLoader
 import io.legado.app.help.source.SourceVerificationHelpShared
+import io.legado.app.help.storage.BackupShared
 import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.read.BaseReadMenuState
@@ -167,6 +168,7 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
         ReaderImageActionMenu.dismiss()
         rawSelection = null
         textActions = null
+        BackupShared.autoBack()
     }
 
     /**

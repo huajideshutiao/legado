@@ -42,35 +42,12 @@ object Backup {
     /** 备份 zip 临时文件, 与 [BackupShared.zipFilePath] 同一路径。 */
     val zipFilePath: String get() = BackupShared.zipFilePath
 
-    /** autoBack 自身的互斥, 避免多入口并发触发自动备份。 */
-    private val mutex = Mutex()
-
-    private fun shouldBackup(): Boolean {
-        val lastBackup = LocalConfig.lastBackup
-        return lastBackup + TimeUnit.DAYS.toMillis(1) < System.currentTimeMillis()
-    }
-
     /**
      * 自动备份 (距上次备份超过一天时触发, 云端已有当日备份则只更新时间戳)。
      */
     @Suppress("UNUSED_PARAMETER")
     fun autoBack(context: Context) {
-        if (shouldBackup()) {
-            Coroutine.async {
-                mutex.withLock {
-                    if (shouldBackup()) {
-                        val backupZipFileName = BackupShared.nowZipFileName()
-                        if (!AppWebDav.hasBackUp(backupZipFileName)) {
-                            BackupShared.backupLocked(AppConfig.backupPath)
-                        } else {
-                            LocalConfig.lastBackup = System.currentTimeMillis()
-                        }
-                    }
-                }
-            }.onError {
-                AppLog.put("自动备份失败\n${it.localizedMessage}")
-            }
-        }
+        BackupShared.autoBack(AppConfig.backupPath)
     }
 
     @Suppress("UNUSED_PARAMETER")
@@ -112,6 +89,12 @@ object Backup {
  * 备份/恢复流程中 Android 专属环节的实现, 由 App 启动早期注册到 [BackupRestoreHooks]。
  */
 object AndroidBackupRestoreHook : BackupRestoreHook {
+
+    override fun getLastBackup(): Long = LocalConfig.lastBackup
+
+    override fun setLastBackup(time: Long) {
+        LocalConfig.lastBackup = time
+    }
 
     override fun onBackupStart() {
         LocalConfig.lastBackup = System.currentTimeMillis()

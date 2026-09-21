@@ -1,5 +1,7 @@
 package io.legado.app.help.storage
 
+import io.legado.app.help.config.LocalConfigKeys
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ThemeConfigProviders
 import kotlin.concurrent.Volatile
 
@@ -12,6 +14,15 @@ import kotlin.concurrent.Volatile
  * 所有方法都有默认实现, 桌面/iOS/鸿蒙不注册即可跑通。
  */
 interface BackupRestoreHook {
+
+    /** 获取上次备份时间戳 (毫秒)。未记录时默认 0L。 */
+    fun getLastBackup(): Long =
+        PreferenceProviders.get().getLong(LocalConfigKeys.lastBackup, 0L)
+
+    /** 更新上次备份时间戳 (毫秒)。 */
+    fun setLastBackup(time: Long) {
+        PreferenceProviders.get().putLong(LocalConfigKeys.lastBackup, time)
+    }
 
     /** 备份开始 (app 端: LocalConfig.lastBackup = now)。 */
     fun onBackupStart() {}

@@ -23,6 +23,7 @@ import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.help.image.ImageBitmapLoader
+import io.legado.app.help.storage.BackupShared
 import io.legado.app.help.toast.Toasters
 import io.legado.app.help.tts.IosReadAloudHost
 import io.legado.app.ui.book.read.ReadBookEvents
@@ -158,6 +159,7 @@ object IosReaderPlatformProvider : ReaderPlatformProvider {
         dismissActionMenus()
         textActions = null
         IosReadAloudHost.stop()
+        BackupShared.autoBack()
     }
 
     /**

@@ -22,6 +22,7 @@ import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.file.saveImageToAlbum
 import io.legado.app.help.image.ImageBitmapLoader
+import io.legado.app.help.storage.BackupShared
 import io.legado.app.help.toast.Toasters
 import io.legado.app.help.tts.OhosReadAloudHost
 import io.legado.app.model.ActiveReadBookRegistry
@@ -117,6 +118,7 @@ object OhosReaderPlatformProvider : ReaderPlatformProvider {
         readerAutoPageActive = false
         dismissActionMenus()
         textActions = null
+        BackupShared.autoBack()
     }
 
     /**

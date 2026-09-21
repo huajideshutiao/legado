@@ -4,6 +4,7 @@ package io.legado.app.help.service
 
 import io.legado.app.constant.AppLog
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.storage.BackupShared
 import io.legado.app.model.CacheBookShared
 import io.legado.app.ui.root.AppForegroundState
 import kotlin.concurrent.Volatile
@@ -114,6 +115,7 @@ object IosBackgroundTasks {
 
     private fun onEnterBackground() {
         AppForegroundState.set(false)
+        BackupShared.autoBack()
         if (!CacheBookShared.isRun) return
         savePending()
         beginFinishWindow()

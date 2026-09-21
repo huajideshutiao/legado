@@ -12,6 +12,7 @@ import io.legado.app.help.HomeTabHelpShared
 import io.legado.app.help.PinnedExploreHelp
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ReadBookConfigShared
 import io.legado.app.help.config.ThemeConfigProviders
@@ -117,6 +118,39 @@ object BackupShared {
         THEME_CONFIG_FILE_NAME,
         "config.json"
     )
+
+    /** autoBack 自身的互斥, 避免多入口并发触发自动备份。 */
+    private val autoBackMutex = Mutex()
+
+    /** 检查是否满足每日自动备份条件 (距上次备份超过 1 天)。 */
+    fun shouldAutoBackup(): Boolean {
+        val lastBackup = BackupRestoreHooks.get().getLastBackup()
+        return lastBackup + 86_400_000L < systemCurrentTimeMillis()
+    }
+
+    /**
+     * 自动备份 (距上次备份超过一天时触发, 云端已有当日备份则只更新时间戳)。
+     * 跨平台统一调度 (对照原版 Backup.autoBack)。
+     */
+    fun autoBack(
+        destinationPath: String? = PreferenceProviders.get().getStringOrNull(PreferKey.backupPath),
+    ) {
+        if (!shouldAutoBackup()) return
+        Coroutine.async {
+            autoBackMutex.withLock {
+                if (!shouldAutoBackup()) return@async
+                val backupZipFileName = nowZipFileName()
+                val hasRemote = runCatching { AppWebDavShared.hasBackUp(backupZipFileName) }.getOrDefault(false)
+                if (!hasRemote) {
+                    backupLocked(destinationPath)
+                } else {
+                    BackupRestoreHooks.get().setLastBackup(systemCurrentTimeMillis())
+                }
+            }
+        }.onError {
+            AppLog.put("自动备份失败\n${it.message}", it, tag = TAG)
+        }
+    }
 
     /**
      * 备份执行入口 (互斥锁保护)。
