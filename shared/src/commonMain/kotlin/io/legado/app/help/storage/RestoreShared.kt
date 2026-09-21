@@ -333,8 +333,8 @@ object RestoreShared {
         }
 
         currentCoroutineContext().ensureActive()
-        // 5.5 图集落位: customImg/、bg/ 仍恢复到文件根; coverCache/ 是独立持久命名空间,
-        // 恢复到平台 coversDir, 不与 customImg/covers 混用。
+        // 5.5 图集落位: customImg/、bg/ 恢复到文件根; oldCovers/ 是独立命名空间,
+        // 恢复到平台 coversDir, 避免与 customImg/covers 混用。
         runCatching {
             val filesBase = AppFilesDirs.get().externalFilesDir ?: AppFilesDirs.get().filesDir
             listOf("customImg", "bg").forEach { dirName ->
@@ -346,14 +346,19 @@ object RestoreShared {
         }.onFailure {
             AppLog.put("恢复图集出错\n${it.message}", it, tag = TAG)
         }
-        val coverCacheSrc = path + sep + "coverCache"
         val coversDir = AppFilesDirs.get().coversDir
-        if (coversDir != null && BackupFileOps.exists(coverCacheSrc)) {
-            try {
-                copyImageDirToRoot(coverCacheSrc, coversDir)
-            } catch (e: Exception) {
-                AppLog.put("恢复封面缓存出错\n${e.message}", e, tag = TAG)
-                throw e
+        if (coversDir != null) {
+            val oldCoversSrc = listOf(
+                path + sep + "oldCovers",
+                path + sep + "coverCache"
+            ).firstOrNull { BackupFileOps.exists(it) }
+            if (oldCoversSrc != null) {
+                try {
+                    copyImageDirToRoot(oldCoversSrc, coversDir)
+                } catch (e: Exception) {
+                    AppLog.put("恢复本地与遗留封面出错\n${e.message}", e, tag = TAG)
+                    throw e
+                }
             }
         }
 
@@ -363,12 +368,12 @@ object RestoreShared {
 
     /**
      * 备份 zip 内目录递归复制到指定物理目录并覆盖同名文件。用于 customImg/、bg/，以及
-     * 独立的 coverCache/ → AppFilesDirs.coversDir；旧备份缺少这些目录时由调用方跳过。
+     * 独立的 oldCovers/ (及历史 coverCache/) → AppFilesDirs.coversDir；旧备份缺少这些目录时由调用方跳过。
      * 目录判断用 [BackupFileOps.listFiles] 非 null (File.listFiles 语义: 非目录才返回 null)。
      *
      * 设置点与手动封面都存相对引用 (主题背景/启动图为裸文件名 → customImg 图集目录、
      * 手动封面 `covers/<字节数>.jpg`),
-     * 落位后无需重写任何路径; 旧备份里的绝对路径**不做迁移**, 读取端按绝对路径原样处理。
+     * 落位后无需重写任何路径; 旧备份里的绝对路径不做迁移, 读取端按绝对路径处理。
      */
     private fun copyImageDirToRoot(srcDir: String, dstDir: String) {
         BackupFileOps.listFiles(srcDir)?.forEach { entry ->

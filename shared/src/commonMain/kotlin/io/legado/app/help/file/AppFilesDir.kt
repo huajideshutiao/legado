@@ -38,10 +38,10 @@ interface AppFilesDir {
     val externalCacheDir: String?
 
     /**
-     * 封面缓存物理目录 (正常书籍封面落盘处, `FileBook.getCoverPath` 派生), 无则 null。
+     * 本地书与遗留封面物理目录 (本地书封面落盘处, `FileBook.getCoverPath` 派生), 无则 null。
      *
-     * 备份/恢复把它映射为独立的 `coverCache/` 命名空间，不与 `customImg/covers`
-     * 混用；图片路径解析也用它解析 `coverCache/<name>` 相对引用。
+     * 备份/恢复映射为独立的 `oldCovers/` 命名空间，避免与 `customImg/covers`
+     * 混用；图片路径解析也用它解析 `oldCovers/<name>` (及历史 `coverCache/<name>`) 相对引用。
      */
     val coversDir: String? get() = null
 }

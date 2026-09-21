@@ -204,7 +204,7 @@ class DesktopPdfFile(var book: Book) {
             if (book.coverUrl.isNullOrEmpty()) {
                 book.coverUrl = FileBook.getCoverPath(book.bookUrl)
             }
-            // coverUrl 是落库存储引用 (coverCache/ 相对引用), 读写文件前先解析为本地路径
+            // coverUrl 是落库存储引用 (oldCovers/ 相对引用), 读写文件前先解析为本地路径
             val coverFile = desktopResolveStoredRef(book.coverUrl ?: return)
             if (fastCheck && coverFile.exists()) {
                 return

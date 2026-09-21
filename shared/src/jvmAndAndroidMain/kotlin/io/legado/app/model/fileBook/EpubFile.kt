@@ -337,7 +337,7 @@ class EpubFile(var book: Book) {
                 if (book.coverUrl.isNullOrEmpty()) {
                     book.coverUrl = FileBook.getCoverPath(book.bookUrl)
                 }
-                // coverUrl 是落库存储引用 (桌面端 coverCache/ 相对引用), 读写文件前先解析为本地路径
+                // coverUrl 是落库存储引用 (桌面端 oldCovers/ 相对引用), 读写文件前先解析为本地路径
                 val coverPath = resolveStoredLocalPath(book.coverUrl!!)
                 if (fastCheck && File(coverPath).exists()) {
                     return

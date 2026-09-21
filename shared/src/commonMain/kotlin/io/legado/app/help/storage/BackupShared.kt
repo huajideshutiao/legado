@@ -60,8 +60,8 @@ object BackupShared {
     /** 备份工作目录名 (相对于 [AppFilesDirs.filesDir])。 */
     private const val BACKUP_DIR_NAME = "backup"
 
-    /** zip 内 coverCache 独立命名空间, 对应 [AppFilesDirs.get].coversDir。 */
-    private const val COVER_CACHE_DIR_NAME = "coverCache"
+    /** zip 内 oldCovers 独立命名空间，对应 [AppFilesDirs.get].coversDir。 */
+    private const val OLD_COVERS_DIR_NAME = "oldCovers"
 
     /** 备份 zip 临时文件名。 */
     private const val ZIP_FILE_NAME = "tmp_backup.zip"
@@ -335,21 +335,21 @@ object BackupShared {
             }
             // 图集目录随备份打包 (zip 内条目保留相对文件根结构): customImg/ (封面图集+
             // 主题背景图+启动图+阅读背景 novelBg 子目录) 与旧版兼容目录 bg/; 恢复时解回文件根。
-            // coversDir 是 coverCache/ 持久引用的物理目录, 必须映射为独立 zip 命名空间,
-            // 不能与 customImg/covers 混用。先复制进工作目录以固定 zip 条目名。
+            // coversDir 是持久引用的物理目录，映射为独立 zip 命名空间 oldCovers/，
+            // 避免与 customImg/covers 混用。复制进工作目录以固定 zip 条目名。
             val filesBase = AppFilesDirs.get().externalFilesDir ?: AppFilesDirs.get().filesDir
             val imageDirs = listOf("customImg", "bg").mapNotNull { dirName ->
                 val dir = filesBase + BackupFileOps.separator + dirName
                 if (BackupFileOps.exists(dir)) dir else null
             }
-            val coverCacheBackupDir = AppFilesDirs.get().coversDir
+            val oldCoversBackupDir = AppFilesDirs.get().coversDir
                 ?.takeIf { BackupFileOps.exists(it) }
                 ?.let { coversDir ->
-                    val stagedDir = workDirPath + BackupFileOps.separator + COVER_CACHE_DIR_NAME
+                    val stagedDir = workDirPath + BackupFileOps.separator + OLD_COVERS_DIR_NAME
                     copyDir(coversDir, stagedDir)
                     stagedDir
                 }
-            val pathsWithImages = paths + imageDirs + listOfNotNull(coverCacheBackupDir)
+            val pathsWithImages = paths + imageDirs + listOfNotNull(oldCoversBackupDir)
             // WebDav 始终使用带日期的文件名; onlyLatestBackup 仅控制本地副本名称
             val localFileName = localFileNameOverride ?: if (
                 PreferenceProviders.get().getBoolean(PreferKey.onlyLatestBackup, true)
@@ -462,7 +462,7 @@ object BackupShared {
         )
     }
 
-    /** 递归复制目录, 用于把平台 coversDir 映射到 zip 的 coverCache/ 命名空间。 */
+    /** 递归复制目录，用于把平台 coversDir 映射到 zip 的 oldCovers/ 命名空间。 */
     private fun copyDir(srcDir: String, dstDir: String) {
         BackupFileOps.listFiles(srcDir)?.forEach { entry ->
             val dst =

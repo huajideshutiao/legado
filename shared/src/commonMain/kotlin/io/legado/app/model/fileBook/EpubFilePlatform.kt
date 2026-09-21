@@ -64,10 +64,10 @@ expect fun compressBitmap(bitmap: Any?, format: String, quality: Int, destPath: 
 /**
  * 解析持久化的本地文件存储引用为可读写路径。
  *
- * Book.coverUrl (封面缓存) 等落库引用在桌面端存相对引用 (`coverCache/<name>.jpg`,
- * 见 [io.legado.app.help.config.COVER_CACHE_REF_SEGMENT]); 读写文件前经本函数补全:
+ * Book.coverUrl 等落库引用在桌面端存相对引用 (`oldCovers/<name>.jpg`,
+ * 见 [io.legado.app.help.config.OLD_COVERS_REF_SEGMENT]); 读写文件前经本函数补全:
  * - Android: 恒存绝对路径, 原样返回
- * - 桌面 JVM: 相对引用对准数据根 (`coverCache/x` → `{数据根}/covers/x`),
+ * - 桌面 JVM: 相对引用对准数据根 (`oldCovers/x` → `{数据根}/covers/x`),
  *   `file:` URI / 绝对路径 (旧数据) 原样
  *
  * @param path 落库存储引用或绝对路径

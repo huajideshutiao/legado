@@ -206,7 +206,7 @@ private val isWindows: Boolean = osName.contains("windows")
 private val isMac: Boolean = osName.contains("mac") || osName.contains("darwin")
 
 // ---------------------------------------------------------------------------
-// 存储引用 (books/、coverCache/ 相对引用) 与本地文件互转
+// 存储引用 (books/、oldCovers/ 相对引用) 与本地文件互转
 // ---------------------------------------------------------------------------
 
 /**
@@ -228,8 +228,8 @@ fun desktopStoredLocalRef(file: File): String {
 /**
  * 解析存储引用为本地文件 ([desktopStoredLocalRef] 的逆, 兼容旧数据):
  * - 相对引用 (不带 scheme / 盘符 / 根分隔符) → 数据根下解析;
- *   `coverCache/` 首段是封面缓存命名空间 (自定义封面 `covers/` 图集的保留段不可复用),
- *   物理落盘目录为 `{数据根}/covers` (与 [desktopAppCacheDir] 同理, 命名空间 ≠ 目录名)
+ *   `oldCovers/` 首段是本地书与遗留封面命名空间 (兼容历史 `coverCache/`, 自定义封面 `covers/` 图集的保留段不可复用),
+ *   物理落盘目录为 `{数据根}/covers` (命名空间 ≠ 目录名)
  * - `file:` URI / 绝对路径 → 原样 (旧数据)
  */
 fun desktopResolveStoredRef(ref: String): File {
@@ -265,15 +265,16 @@ fun desktopResolveStoredRef(ref: String): File {
         throw IllegalArgumentException("Empty path reference: $ref")
     }
     val rootPath = File(desktopAppRootDir()).toPath().toAbsolutePath().normalize()
-    if (rawSegments.first() == COVER_CACHE_REF_SEGMENT) {
+    val firstSeg = rawSegments.first()
+    if (firstSeg == OLD_COVERS_REF_SEGMENT || firstSeg == LEGACY_COVER_CACHE_REF_SEGMENT) {
         val subSegments = rawSegments.drop(1)
         if (subSegments.isEmpty() || subSegments.all { it == "." }) {
-            throw IllegalArgumentException("Invalid coverCache reference, missing filename: $ref")
+            throw IllegalArgumentException("Invalid $firstSeg reference, missing filename: $ref")
         }
         val coversPath = rootPath.resolve("covers").normalize()
         val targetPath = coversPath.resolve(subSegments.joinToString(File.separator)).normalize()
         if (!targetPath.startsWith(coversPath)) {
-            throw IllegalArgumentException("Path traversal attempted in coverCache reference: $ref")
+            throw IllegalArgumentException("Path traversal attempted in $firstSeg reference: $ref")
         }
         return targetPath.toFile()
     }

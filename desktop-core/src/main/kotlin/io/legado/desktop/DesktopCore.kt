@@ -17,7 +17,7 @@ import io.legado.app.help.book.JvmBookStorage
 import io.legado.app.help.book.JvmLocalBookLocator
 import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.help.config.AppConfigProviders
-import io.legado.app.help.config.COVER_CACHE_REF_SEGMENT
+import io.legado.app.help.config.OLD_COVERS_REF_SEGMENT
 import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadBookConfigProviders
@@ -417,8 +417,7 @@ object DesktopCore {
             // 对照 app 端 App.kt:144 DefaultData.upVersion() + dbCallback.onCreate 预置数据:
             // 桌面端 Room KMP 无 Callback, 首启/升级的默认数据统一在这里幂等补齐
             initDesktopDefaultData()
-            // 15b. 旧数据封面引用修复: 旧版 coverUrl 存绝对路径, 便携移动程序目录后失效,
-            // 同名文件在当前 covers 目录存在时改存 coverCache/ 相对引用 (幂等)
+            // 15b. 旧数据封面引用修复: 绝对路径改存 oldCovers/ 相对引用 (幂等)
             Coroutine.async { repairLegacyStoredCoverRefs() }
             // 16. 启动期缓存清理 + WebDav 进度同步
             // (对照 app 端 App.kt onCreate 的两个 Coroutine.async 块:
@@ -461,11 +460,8 @@ object DesktopCore {
     /**
      * 旧数据封面引用修复 (一次性兜底, 幂等可重复执行)。
      *
-     * 背景: 桌面端落库引用曾存绝对路径/file: URI (Book.coverUrl), 便携版移动程序目录后
-     * 指向移动前位置失效; 新数据已存 coverCache/ 相对引用 (getCoverPath)。本修复把
-     * "旧格式引用 + 同名封面文件 (md5_16(bookUrl).jpg) 已随数据目录迁移到当前 covers 目录"
-     * 的书改存相对引用。bookUrl (主键) 不重写: 主键变更牵动 chapters/toc/缓存目录联动,
-     * 且 books/ 相对引用的读取端本就有 originName 兜底 (openLocalFile)。
+     * 便携版移动程序目录后，绝对路径与 file: URI 失效；同名封面文件在当前 covers 目录存在时，
+     * 改存 oldCovers/ 相对引用。
      */
     private suspend fun repairLegacyStoredCoverRefs() {
         runCatching {
@@ -484,7 +480,7 @@ object DesktopCore {
                 if (!isLegacyRef) return@forEach
                 val candidate = File(coversDir, desktopResolveStoredRef(coverUrl).name)
                 if (!candidate.isFile) return@forEach
-                book.coverUrl = "$COVER_CACHE_REF_SEGMENT/${candidate.name}"
+                book.coverUrl = "$OLD_COVERS_REF_SEGMENT/${candidate.name}"
                 bookDao.update(book)
             }
         }.onFailure { AppLog.put("封面引用修复失败\n${it.message}", it) }

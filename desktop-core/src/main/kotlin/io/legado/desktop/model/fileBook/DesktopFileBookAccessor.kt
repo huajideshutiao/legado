@@ -19,7 +19,7 @@ import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isPdf
 import io.legado.app.help.config.PreferenceProviders
-import io.legado.app.help.config.COVER_CACHE_REF_SEGMENT
+import io.legado.app.help.config.OLD_COVERS_REF_SEGMENT
 import io.legado.app.help.file.desktopAppCacheDir
 import io.legado.app.help.file.desktopAppRootDir
 import io.legado.app.help.file.desktopResolveStoredRef
@@ -92,7 +92,7 @@ class DesktopFileBookAccessor(
     /** 解压临时目录名 (对齐 app 端 `ArchiveUtils.TEMP_FOLDER_NAME`)。 */
     private val archiveTempFolderName = "ArchiveTemp"
 
-    /** 封面缓存目录: `{desktopAppRootDir}/covers` (删除旧封面等文件操作经 desktopResolveStoredRef 解析)。 */
+    /** 本地书与遗留封面目录: `{desktopAppRootDir}/covers` (删除旧封面等文件操作经 desktopResolveStoredRef 解析)。 */
     private val coversDir: String = Paths.get(desktopAppRootDir(), "covers").toString()
 
     /** 书籍保存目录: `{desktopAppRootDir}/books` (对齐 app 端 `AppConfig.defaultBookTreeUri`)。 */
@@ -100,12 +100,12 @@ class DesktopFileBookAccessor(
         get() = Paths.get(desktopAppRootDir(), "books").toFile().apply { mkdirs() }
 
     /**
-     * 封面缓存相对引用 (`coverCache/{md516}.jpg`, 物理目录 `{desktopAppRootDir}/covers`,
+     * 本地书提取封面相对引用 (`oldCovers/{md516}.jpg`, 物理目录 `{desktopAppRootDir}/covers`,
      * 对齐 app 端 externalFiles/covers; 经 [io.legado.app.help.config.resolveImagePath]
-     * 的 coverCache 规则解析, 便携移动后仍有效)。
+     * 解析, 便携移动后仍有效)。
      */
     override fun getCoverPath(bookUrl: String): String =
-        "$COVER_CACHE_REF_SEGMENT/${MD5Utils.md5Encode16(bookUrl)}.jpg"
+        "$OLD_COVERS_REF_SEGMENT/${MD5Utils.md5Encode16(bookUrl)}.jpg"
 
     override fun getHandler(book: Book): BaseFileBook {
         // 分派逻辑对齐 app 端 FileBookAccessorImpl.getHandler (PdfFile → PDFBox 版 DesktopPdfFile)

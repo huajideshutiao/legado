@@ -90,7 +90,7 @@ actual fun decodeBitmap(bytes: ByteArray): Any? {
  * @return 成功 true
  */
 actual fun resolveStoredLocalPath(path: String): String {
-    // 桌面端落库引用: 数据根下相对引用 (books/, coverCache/) 对准数据根, 其余 (file: URI/绝对路径) 原样
+    // 桌面端落库引用: 数据根下相对引用 (books/, oldCovers/) 对准数据根, 其余 (file: URI/绝对路径) 原样
     return desktopResolveStoredRef(path).absolutePath
 }
 

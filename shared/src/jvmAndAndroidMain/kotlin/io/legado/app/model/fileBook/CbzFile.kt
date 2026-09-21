@@ -197,7 +197,7 @@ class CbzFile(var book: Book) {
      */
     private fun extractCover(zf: ZipFileWrapper) {
         val coverUrl = book.coverUrl ?: return
-        // coverUrl 是落库存储引用 (桌面端 coverCache/ 相对引用), 读写文件前先解析为本地路径
+        // coverUrl 是落库存储引用 (桌面端 oldCovers/ 相对引用), 读写文件前先解析为本地路径
         val coverFile = File(resolveStoredLocalPath(coverUrl))
         if (coverFile.exists()) return
         imageEntries?.firstOrNull()?.let { entry ->
