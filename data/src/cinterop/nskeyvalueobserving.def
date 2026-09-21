@@ -1,0 +1,12 @@
+package = io.legado.app.platform.kvo
+language = Objective-C
+---
+#import <Foundation/Foundation.h>
+
+@protocol LegadoKeyValueObserving <NSObject>
+@required
+- (void)observeValueForKeyPath:(NSString * _Nullable)keyPath
+                      ofObject:(id _Nullable)object
+                        change:(NSDictionary<NSKeyValueChangeKey, id> * _Nullable)change
+                       context:(void * _Nullable)context;
+@end
