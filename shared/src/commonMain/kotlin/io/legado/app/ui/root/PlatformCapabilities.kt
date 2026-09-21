@@ -126,6 +126,15 @@ interface PlatformCapabilities {
      */
     val rssDirectWindow: Boolean get() = false
 
+    /**
+     * 该端是否存在"系统返回"通道: 返回键/返回手势 (Android/鸿蒙) 或桌面 ESC 统一返回链。
+     *
+     * false 的端 (iOS) 按键返回不进 AppBackHandler,
+     * 页面内的子状态必须自带可见退出口 (书架文件夹样式分组内顶栏返回箭头 /
+     * 视频页全屏退出钮)。
+     */
+    val supportsSystemBack: Boolean get() = true
+
     // 书籍路由解析: shared 无 DB 能力, 按 bookUrl 解析为 BookRef 供 LaunchRequest 路由导航
     suspend fun resolveBookRef(bookUrl: String): BookRef? = null
 

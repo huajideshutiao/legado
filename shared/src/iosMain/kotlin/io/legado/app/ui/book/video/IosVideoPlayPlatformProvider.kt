@@ -137,11 +137,6 @@ object IosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
     @Composable
     override fun rememberSystemFullScreen(): Boolean? = null
 
-    // 顶栏整体隐藏后唯一退出口在顶栏菜单里, 而 iOS 的 PlatformBackHandler 是 no-op
-    // (无物理/手势返回进统一链) → 视频页进全屏后既退不出全屏也打不开菜单。
-    // 声明本端无系统返回通道, 由路由在全屏期间常驻一个退出入口。
-    override val supportsSystemBack: Boolean get() = false
-
     override fun applyFullscreen(enabled: Boolean) {
         setStatusBarHidden(enabled)
     }
@@ -152,8 +147,8 @@ object IosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
      * 点一下只翻 `UiState.isSystemFullScreen`, 页面按全屏重排而系统栏纹丝不动,
      * 观感上就是"进得去、画面没变、退不出去"。
      *
-     * 退全屏入口: iOS 的 PlatformBackHandler 是 no-op, 所以靠本对象上面的
-     * [supportsSystemBack] = false 让共享层在全屏期间常驻一个退出钮 (不随控制栏自动隐藏而消失),
+     * 退全屏入口: iOS 无系统返回通道 (PlatformCapabilities.supportsSystemBack=false),
+     * 共享层据此在全屏期间常驻一个退出钮 (不随控制栏自动隐藏而消失),
      * 与本方法搭成完整闭环: 系统栏真的隐了, 也真的退得回来。
      */
     override fun applySystemFullScreen(enabled: Boolean) {

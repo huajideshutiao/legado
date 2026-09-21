@@ -3,6 +3,8 @@ package io.legado.app.ui.bookshelf
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -18,10 +20,15 @@ import androidx.compose.ui.Modifier
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.help.config.AppConfigProviders
-import io.legado.app.ui.compose.platform.PlatformBackHandler
+import io.legado.app.ui.compose.platform.AppBackHandler
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
+import io.legado.app.ui.root.LocalPlatformCapabilities
 import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.back
 import legado.shared.generated.resources.bookshelf
+import legado.shared.generated.resources.ic_arrow_back
+import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -71,6 +78,8 @@ internal fun BookshelfScreen2(
     val groups by viewModel.bookGroups.collectAsState()
     val refreshingUrls by viewModel.refreshingUrls.collectAsState()
     val engineUpTocUrls by viewModel.engineUpTocUrls.collectAsState()
+    // 无系统返回通道的端 (iOS) 需在分组内常驻可见退出口, 见下方顶栏
+    val capabilities = LocalPlatformCapabilities.current
     // 单一数据源: 根级=IdRoot 未分组书, 分组内=该组书 (读 VM 缓存切片, 无独立 Room 流)
     val booksCache by viewModel.booksCache.collectAsState()
 
@@ -110,7 +119,7 @@ internal fun BookshelfScreen2(
     // isRootTop 门控: 栈内页面保持同一 Composition, 压栈页面打开时不可见书架页仍注册着本拦截器;
     // 若无门控, 从分组打开的页面 (无自身拦截器的详情/已入架书阅读器等) 第一下返回会被静默消费
     // (分组重置回根, 画面无变化), 第二下才真正退出——表现为"返回键要按两次"
-    PlatformBackHandler(enabled = groupId != BookGroup.IdRoot && isRootTop) {
+    AppBackHandler(enabled = groupId != BookGroup.IdRoot && isRootTop) {
         groupId = BookGroup.IdRoot
     }
 
@@ -122,6 +131,17 @@ internal fun BookshelfScreen2(
 
     Column(modifier.fillMaxSize()) {
         BookshelfTopBarContainer(actions) {
+            // 无系统返回通道的端 (iOS) 没有按键返回可走, 分组内必须给出可见退出口;
+            // 有返回通道的端 (Android/鸿蒙系统返回键, 桌面 ESC) 保持原版顶栏形态
+            if (!capabilities.supportsSystemBack && groupId != BookGroup.IdRoot) {
+                IconButton(onClick = { groupId = BookGroup.IdRoot }) {
+                    Icon(
+                        painter = painterResource(Res.drawable.ic_arrow_back),
+                        contentDescription = stringResource(Res.string.back),
+                        tint = AppTheme.colors.primaryText,
+                    )
+                }
+            }
             BookshelfTitleText(title)
         }
         ShelfBooksContent(

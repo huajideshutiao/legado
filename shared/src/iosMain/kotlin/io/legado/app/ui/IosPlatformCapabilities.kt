@@ -78,6 +78,10 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
 
     override val capabilityScope: CoroutineScope get() = scope
 
+    // iOS 无物理/手势返回键, PlatformBackHandler 是 no-op → 无系统返回通道,
+    // 页面内的子状态需自带可见退出口。
+    override val supportsSystemBack: Boolean get() = false
+
     private val appDb get() = AppDbProviders.get()
     private val prefs get() = PreferenceProviders.get()
 

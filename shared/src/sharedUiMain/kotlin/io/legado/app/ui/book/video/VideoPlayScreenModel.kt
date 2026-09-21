@@ -196,12 +196,12 @@ interface VideoPlayPlatformProvider {
     fun rememberSystemFullScreen(): Boolean? = null
 
     /**
-     * 该平台是否有可用的"系统返回"通道 (返回键 / 滑动返回会进 AppBackHandler)。
-     * 默认 true。iOS 的 PlatformBackHandler 是 no-op: 视频页一进全屏就把顶栏隐掉,
-     * 而“窗口内全屏”的退出口只顶栏菜单里有 → 用户退不出全屏也打不开菜单。
-     * 置 false 时路由会在全屏期间常驻一个退出入口。
+     * 该平台是否有可用的"系统返回"通道 (返回键 / 滑动返回 / 桌面 ESC 统一返回链),
+     * 取平台能力 [io.legado.app.ui.root.PlatformCapabilities.supportsSystemBack]。
+     * 无返回通道的端 (iOS): 视频页一经全屏就把顶栏隐掉, 而"窗口内全屏"的退出口只在顶栏菜单里
+     * → 路由在全屏期间常驻一个退出入口。
      */
-    val supportsSystemBack: Boolean get() = true
+    val supportsSystemBack: Boolean get() = PlatformCapabilityProviders.get().supportsSystemBack
 
     /** 全屏切换失败时不得置真页面全屏态 */
     fun applyFullscreen(enabled: Boolean) {}

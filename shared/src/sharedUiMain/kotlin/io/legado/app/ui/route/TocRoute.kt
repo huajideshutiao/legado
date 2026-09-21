@@ -31,7 +31,7 @@ import io.legado.app.ui.book.toc.TocUiActions
 import io.legado.app.ui.book.toc.TocUiEvent
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.platform.PlatformBackHandler
+import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.AppNavigator
@@ -333,9 +333,10 @@ fun TocContent(
         }
     }
 
-    // 搜索模式下系统返回键退出搜索 (对照 app TocActivity.Content 的 BackHandler);
+    // 搜索模式下按键返回退出搜索 (对照 app TocActivity.Content 的 BackHandler);
+    // 经 AppBackHandler 注册: 系统返回键 (Android/鸿蒙) 与统一返回链 (桌面 ESC) 共用同一拦截器
     // isTopEntry 门控: 目录压栈后从搜索结果开新阅读器时, 不可见目录页不得拦截返回键
-    PlatformBackHandler(enabled = state.searching && isTopEntry) { actions.setSearchMode(false) }
+    AppBackHandler(enabled = state.searching && isTopEntry) { actions.setSearchMode(false) }
 
     // 日志对话框
     if (showLogDialog) {
