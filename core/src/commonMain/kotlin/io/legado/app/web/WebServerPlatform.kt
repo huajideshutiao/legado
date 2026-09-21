@@ -1,0 +1,82 @@
+package io.legado.app.web
+
+import kotlin.concurrent.Volatile
+
+/**
+ * Web 服务 (HttpServer + WebSocketServer) 平台实现抽象 (shared commonMain)。
+ *
+ * # 背景
+ * app 端 [io.legado.app.service.WebService] 是 Android Service, 持有 HttpServer(NanoHTTPD) +
+ * WebSocketServer(NanoWSD); 桌面端无 Service 概念, 复用同一套 NanoHTTPD 壳直接起服务。
+ * iOS/鸿蒙共用 nativeMain [KtorWebServerPlatform] (Ktor embeddedServer CIO)。
+ * 启停/端口/状态 (isRun/hostAddress) 等纯逻辑上移至
+ * [WebServerManager], 本接口只承接平台相关的「起/停服务器 + 枚举本机 IP + keepalive」三件事。
+ *
+ * # 设计
+ * - [startServers] 起 HttpServer(=port) + WebSocketServer(=port+1), 返回本机可访问地址列表
+ *   (形如 "http://192.168.1.2:1122"), 供 [WebServerManager] 回填 hostAddress 与通知文案
+ * - [stopServers] 停两个服务器
+ * - [serve] 对应 app 端原 WebService.serve(): 拉起 Service 续命 (wakelock); 非 Android 端 no-op
+ *
+ * 模式参考 [io.legado.app.help.service.ServiceLaunchers]。
+ */
+interface WebServerPlatform {
+    /**
+     * 起 HttpServer + WebSocketServer。
+     *
+     * @param port HttpServer 端口; WebSocketServer 用 port+1 (对齐 app 端 [WebService.upWebServer])
+     * @return 起服务结果; [WebServerStartResult.addresses] 为空表示失败, 失败原因见 errorMsg
+     */
+    fun startServers(port: Int): WebServerStartResult
+
+    /** 停 HttpServer + WebSocketServer (对齐 app 端 [WebService.onDestroy] / [WebService.upWebServer] 首段)。 */
+    fun stopServers()
+
+    /** app 端 Service 续命 (wakelock); 非 Android 端 no-op (对齐 app 端 WebService.serve)。 */
+    fun serve()
+}
+
+/**
+ * 起 Web 服务的结果。
+ *
+ * 原 app 端 WebService.upWebServer 在 catch(IOException) 里直接 toast 异常信息;
+ * 下沉后 shared 不能 toast, 故把失败原因回传给平台壳 (Android WebService) 提示用户。
+ *
+ * @param addresses 本机可访问 URL 列表 (空=启动失败或无可用 IP)
+ * @param errorMsg 启动异常信息 (对齐原版 e.message); null 表示非异常失败 (如无 IP)
+ */
+data class WebServerStartResult(
+    val addresses: List<String> = emptyList(),
+    val errorMsg: String? = null,
+)
+
+/**
+ * [WebServerPlatform] 容器 (provider 注入模式)。
+ *
+ * 宿主启动早期注册一次 (App.onCreate / desktop main), shared 内通过 [get] 获取。
+ * 未注册时调用 [get] 抛 [IllegalStateException]。
+ *
+ * 安卓端调用 `registerAndroidWebServerPlatform(context, cannotEmptyResId)` (见 androidMain),
+ * 桌面端调用 `registerDesktopWebServerPlatform()` (见 jvmMain)。
+ *
+ * 模式参考 [io.legado.app.help.service.ServiceLaunchers]。
+ */
+object WebServerPlatforms {
+
+    @Volatile
+    private var impl: WebServerPlatform? = null
+
+    /** 宿主启动早期注册一次 (任何 WebServerManager 调用之前)。 */
+    fun register(impl: WebServerPlatform) {
+        this.impl = impl
+    }
+
+    /** 获取已注册实现, 未注册抛出 IllegalStateException。 */
+    fun get(): WebServerPlatform =
+        impl ?: error("WebServerPlatforms not registered; call registerAndroidWebServerPlatform() or registerDesktopWebServerPlatform() first")
+
+    /** 仅测试场景: 清空注册 (生产代码勿调用)。 */
+    fun reset() {
+        impl = null
+    }
+}

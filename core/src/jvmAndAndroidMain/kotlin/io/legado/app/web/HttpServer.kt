@@ -1,0 +1,198 @@
+package io.legado.app.web
+
+import fi.iki.elonen.NanoHTTPD
+import io.legado.app.api.ReturnData
+import io.legado.app.constant.AppLog
+import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.utils.stackTraceStr
+import io.legado.app.utils.toJsonElement
+import io.legado.app.web.api.WebApi
+import io.legado.app.web.api.WebApiRequest
+import io.legado.app.web.api.WebApiResponse
+import io.legado.app.web.utils.AssetsWeb
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonPrimitive
+import okio.Pipe
+import okio.buffer
+import java.io.ByteArrayInputStream
+import java.io.Writer
+
+/**
+ * nanohttpd 薄壳: IHTTPSession -> WebApiRequest -> WebApi.handle -> WebApiResponse -> Response。
+ * 分派逻辑已上移至 [WebApi]; 本类只做原生请求转换、CORS、大列表流式与静态资源回写。
+ *
+ * # 下沉说明 (原 app 端 io.legado.app.web.HttpServer)
+ * - `WebService.serve()` (app Android Service 续命) → [WebServerManager.serve] (commonMain)
+ * - `LogUtils.d(TAG) { ... }` (app 专属) → [AppLog.put] (commonMain, 已下沉)
+ * - 其余逻辑逐字等价, 保真红线
+ */
+class HttpServer(port: Int) : NanoHTTPD(port) {
+    private val assetsWeb = AssetsWeb("web")
+
+    override fun serve(session: IHTTPSession): Response {
+        // 拉起 Service 续命 (app 端) / no-op (桌面端)
+        WebServerManager.serve()
+        val ct = ContentType(session.headers["content-type"]).tryUTF8()
+        session.headers["content-type"] = ct.contentTypeHeader
+        val uri = session.uri
+        val origin = session.headers["origin"]
+
+        val startAt = System.currentTimeMillis()
+        if (uri != "/mediaStream") {
+            AppLog.putDebug("$TAG: ${session.method.name} - $uri - ${session.queryParameterString} - Start($startAt)")
+        }
+
+        // OPTIONS 预检: mediaStream 已永久下线，固定 410；其余接口按原规则回 CORS
+        if (session.method == Method.OPTIONS) {
+            if (uri == "/mediaStream") {
+                val response = newFixedLengthResponse(
+                    goneStatus(),
+                    "text/plain; charset=utf-8",
+                    "Media stream proxy is gone"
+                )
+                response.addHeader("Cache-Control", "no-store")
+                response.addHeader("X-Content-Type-Options", "nosniff")
+                return response
+            }
+            val response = newFixedLengthResponse("")
+            response.addHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+            response.addHeader("Access-Control-Allow-Headers", "content-type")
+            response.addHeader("Access-Control-Allow-Origin", origin ?: "*")
+            return response
+        }
+
+        try {
+            val files = HashMap<String, String>()
+            val postData: String?
+            if (session.method == Method.POST) {
+                session.parseBody(files)
+                postData = files["postData"]
+            } else {
+                postData = null
+            }
+
+            val request = WebApiRequest(
+                method = session.method.name,
+                path = uri,
+                query = session.parameters,
+                postData = postData,
+                files = files,
+                origin = origin,
+                headers = session.headers,
+            )
+
+            val response = when (val apiResponse = runBlocking { WebApi.handle(request) }) {
+                is WebApiResponse.StaticAsset -> {
+                    // AssetsWeb 已下沉 commonMain, 返回 WebAssetResponse (bytes + mime)
+                    val asset = runBlocking { assetsWeb.getResponse(apiResponse.path) }
+                    return newChunkedResponse(
+                        NanoHTTPD.Response.Status.OK,
+                        asset.mimeType,
+                        ByteArrayInputStream(asset.bytes)
+                    )
+                }
+                is WebApiResponse.Stream -> {
+                    val status = NanoHTTPD.Response.Status.lookup(apiResponse.statusCode)
+                        ?: object : NanoHTTPD.Response.IStatus {
+                            override fun getRequestStatus() = apiResponse.statusCode
+                            override fun getDescription() = "${apiResponse.statusCode} ${apiResponse.statusMessage}"
+                        }
+                    val contentLength = apiResponse.contentLength
+                    val streamResponse = if (contentLength != null && contentLength >= 0) {
+                        newFixedLengthResponse(
+                            status,
+                            apiResponse.contentType,
+                            apiResponse.inputStream,
+                            contentLength
+                        )
+                    } else {
+                        newChunkedResponse(
+                            status,
+                            apiResponse.contentType,
+                            apiResponse.inputStream
+                        )
+                    }
+                    apiResponse.headers.forEach { (name, value) ->
+                        if (!name.equals("Content-Length", ignoreCase = true) &&
+                            !name.equals("Content-Type", ignoreCase = true)
+                        ) {
+                            streamResponse.addHeader(name, value)
+                        }
+                    }
+                    if (uri != "/mediaStream") {
+                        AppLog.putDebug("$TAG: ${session.method.name} - $uri - ${session.queryParameterString} - End($startAt)")
+                    }
+                    return streamResponse
+                }
+                is WebApiResponse.Bytes -> {
+                    val inputStream = ByteArrayInputStream(apiResponse.bytes)
+                    newFixedLengthResponse(
+                        Response.Status.OK,
+                        apiResponse.contentType,
+                        inputStream,
+                        apiResponse.bytes.size.toLong()
+                    )
+                }
+
+                is WebApiResponse.Json -> {
+                    val returnData = apiResponse.returnData
+                    val data = returnData.data
+                    if (data is List<*> && data.size > 3000) {
+                        val pipe = Pipe(16 * 1024)
+                        Coroutine.async {
+                            pipe.sink.buffer().outputStream().bufferedWriter(Charsets.UTF_8).use {
+                                returnData.writeJsonTo(it, data)
+                            }
+                        }
+                        newChunkedResponse(
+                            Response.Status.OK,
+                            "application/json",
+                            pipe.source.buffer().inputStream()
+                        )
+                    } else {
+                        newFixedLengthResponse(returnData.toJsonString())
+                    }
+                }
+            }
+            response.addHeader("Access-Control-Allow-Methods", "GET, POST")
+            response.addHeader("Access-Control-Allow-Origin", origin)
+            if (uri != "/mediaStream") {
+                AppLog.putDebug("$TAG: ${session.method.name} - $uri - ${session.queryParameterString} - End($startAt)")
+            }
+            return response
+        } catch (e: Exception) {
+            AppLog.putDebug(
+                "$TAG: ${session.method.name} - $uri - ${session.queryParameterString} - Error End($startAt)\n$e\n${e.stackTraceStr}",
+                e
+            )
+            return newFixedLengthResponse(e.message)
+        }
+    }
+
+    companion object {
+        private const val TAG = "HttpServer"
+
+        private fun goneStatus(): NanoHTTPD.Response.IStatus =
+            NanoHTTPD.Response.Status.lookup(410) ?: object : NanoHTTPD.Response.IStatus {
+                override fun getRequestStatus() = 410
+                override fun getDescription() = "410 Gone"
+            }
+    }
+
+}
+
+/**
+ * 大列表 JSON 逐元素写入 [Writer], 避免整串驻留内存 (对齐原版 GSON.toJson(returnData, writer) 的流式语义)。
+ *
+ * 外层 {isSuccess,errorMsg,data} 结构与 [ReturnData.toJsonString] 保持一致, 仅 data 数组逐项序列化后写出。
+ */
+private fun ReturnData.writeJsonTo(writer: Writer, data: List<*>) {
+    writer.write("{\"isSuccess\":$isSuccess,\"errorMsg\":")
+    writer.write(JsonPrimitive(errorMsg).toString())
+    writer.write(",\"data\":[")
+    data.forEachIndexed { index, item ->
+        if (index > 0) writer.write(",")
+        writer.write(item.toJsonElement().toString())
+    }
+    writer.write("]}")
+}
