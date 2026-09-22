@@ -46,7 +46,6 @@ object FileUtilsBase {
         return file
     }
 
-    @Synchronized
     fun createFileIfNotExist(filePath: String): File {
         val file = File(filePath)
         try {

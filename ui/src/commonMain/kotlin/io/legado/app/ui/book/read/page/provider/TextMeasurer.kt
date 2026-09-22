@@ -95,22 +95,33 @@ object TextMeasurerProviders {
         return CachedTextMeasurer(delegate, table)
     }
 
-    /** 找 / 建这组参数的共享字宽表：全流程唯一的同步点，度量热路径一把锁都没有。 */
+    /** 找 / 建这组参数的共享字宽表：查表与注册短临界区，标定（逐字实测）在锁外执行。 */
     private fun tableFor(
         textSizePx: Float,
         letterSpacingPx: Float,
         fontPath: String,
         weight: Int,
         delegate: TextMeasurer,
-    ): AdvanceTable = synchronized(tablesLock) {
-        tables.firstOrNull {
-            it.keySizePx == textSizePx && it.keySpacingPx == letterSpacingPx &&
-                    it.keyFontPath == fontPath && it.keyWeight == weight
-        } ?: AdvanceTable(textSizePx, letterSpacingPx, fontPath, weight).also {
-            // 标定判定不可缓存的表也留在册子里（内部 slots=null），免得每章重探一次
-            it.calibrate(delegate)
+    ): AdvanceTable {
+        synchronized(tablesLock) {
+            tables.firstOrNull {
+                it.keySizePx == textSizePx && it.keySpacingPx == letterSpacingPx &&
+                        it.keyFontPath == fontPath && it.keyWeight == weight
+            }?.let { return it }
+        }
+        val table = AdvanceTable(textSizePx, letterSpacingPx, fontPath, weight)
+        // 标定判定不可缓存的表也留在册子里（内部 slots=null），免得每章重探一次；
+        // 标定用本次调用私有的 delegate，锁外执行不与任何其他 worker 共享可变状态。
+        table.calibrate(delegate)
+        return synchronized(tablesLock) {
+            // 标定窗口内其他 worker 可能已注册同参表，用先注册的那张
+            tables.firstOrNull {
+                it.keySizePx == textSizePx && it.keySpacingPx == letterSpacingPx &&
+                        it.keyFontPath == fontPath && it.keyWeight == weight
+            }?.let { return it }
             if (tables.size >= TABLE_CACHE_SIZE) tables.removeAt(0)
-            tables.add(it)
+            tables.add(table)
+            table
         }
     }
 }

@@ -40,8 +40,7 @@ object DesktopCacheBook {
     /** 失败章节主键 -> 累计错误次数 (对照原 DesktopCacheBook.errorDownloadMap) */
     val errorDownloadMap get() = CacheBookShared.errorDownloadMap
 
-    /** 对照原 DesktopCacheBook.getOrCreate(bookSource, book) */
-    @Synchronized
+    /** 按书源+书籍获取或创建下载模型 (并发安全由 [CacheBookShared] 内部锁保证) */
     fun getOrCreate(bookSource: BookSource, book: Book): CacheBookModelShared =
         CacheBookShared.getOrCreate(bookSource, book)
 

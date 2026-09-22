@@ -168,9 +168,7 @@ object BookHelp {
         if (isImageExist(book, src)) {
             return
         }
-        val mutex = synchronized(this) {
-            downloadImages.getOrPut(src) { Mutex() }
-        }
+        val mutex = downloadImages.computeIfAbsent(src) { Mutex() }
         mutex.lock()
         try {
             if (isImageExist(book, src)) {
@@ -213,12 +211,10 @@ object BookHelp {
         )
     }
 
-    @Synchronized
     fun writeImage(book: Book, src: String, bytes: ByteArray) {
         getImage(book, src).createFileIfNotExist().writeBytes(bytes)
     }
 
-    @Synchronized
     fun isImageExist(book: Book, src: String): Boolean {
         return getImage(book, src).exists()
     }

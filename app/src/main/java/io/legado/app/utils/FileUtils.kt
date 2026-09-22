@@ -23,7 +23,6 @@ object FileUtils {
     fun createFolderIfNotExist(filePath: String): File =
         FileUtilsBase.createFolderIfNotExist(filePath)
 
-    @Synchronized
     fun createFileIfNotExist(filePath: String): File =
         FileUtilsBase.createFileIfNotExist(filePath)
 

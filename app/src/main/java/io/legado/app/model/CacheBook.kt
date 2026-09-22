@@ -52,15 +52,13 @@ object CacheBook {
     val errorDownloadMap get() = CacheBookShared.errorDownloadMap
 
     /**
-     * 对照 app 端原 CacheBook.getOrCreate(bookUrl)。
-     * 被包裹方是 suspend (DB 查询), 调用方 (CacheBookService) 为同步签名, 保留 runBlocking
-     * (原版就是 @Synchronized 内阻塞 DAO 查询, 语义一致)。
+     * 按 bookUrl 获取或创建下载模型。
+     * 被包裹方是 suspend (DB 查询), 调用方 (CacheBookService) 为同步签名, 保留 runBlocking;
+     * 并发安全由 [CacheBookShared] 内部锁保证, 外层不加锁。
      */
-    @Synchronized
     fun getOrCreate(bookUrl: String): CacheBookModel? = runBlocking { CacheBookShared.getOrCreate(bookUrl) }
 
-    /** 对照 app 端原 CacheBook.getOrCreate(bookSource, book); 被包裹方非 suspend, 直接透传 (阅读热路径, 免 runBlocking 开销) */
-    @Synchronized
+    /** 按书源+书籍获取或创建下载模型 (阅读热路径直接透传, 并发安全由 [CacheBookShared] 内部锁保证) */
     fun getOrCreate(bookSource: BookSource, book: Book): CacheBookModel =
         CacheBookShared.getOrCreate(bookSource, book)
 
