@@ -1,7 +1,6 @@
 package io.legado.app.ui.route
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -34,6 +33,7 @@ import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteEntry
+import io.legado.app.ui.root.OnRouteLifecycle
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.ui.root.toRouteRef
@@ -77,9 +77,8 @@ fun ExploreShowRoute(
     // VM 创建 (组合委托, 对照 app 端 ExploreShowViewModel)
     val vmScope = remember { screenModelScope("发现列表") }
     val vm = remember(vmScope) { ExploreShowViewModelShared(vmScope) }
-    DisposableEffect(vmScope) {
-        onDispose { vmScope.cancel() }
-    }
+    // VM 作用域挂"在栈期间" (STARTED): 对照原版 Activity 存活期, 出栈才取消
+    OnRouteLifecycle(onLeave = { vmScope.cancel() })
 
     // footer 文案 (对照 Activity getString(R.string.empty / bottom_line / error_load_msg))
     val emptyText = stringResource(Res.string.empty)
@@ -290,12 +289,11 @@ fun ExploreShowRoute(
         }
     }
 
-    DisposableEffect(entry.id, vm) {
-        navigator.registerRefreshHandler(entry.id) {
-            refresh()
-        }
-        onDispose { navigator.unregisterRefreshHandler(entry.id) }
-    }
+    // 刷新处理器挂本页 Lifecycle 的"在栈期间" (STARTED), 不挂组合存亡
+    OnRouteLifecycle(
+        onEnter = { navigator.registerRefreshHandler(entry.id) { refresh() } },
+        onLeave = { navigator.unregisterRefreshHandler(entry.id) },
+    )
 
     // 列数选择器 (对照 Activity.showColumnPicker → showNumberPicker(min=0, max=6))
     if (showColumnPicker) {

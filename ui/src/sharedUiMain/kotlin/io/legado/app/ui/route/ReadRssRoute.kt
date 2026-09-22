@@ -2,7 +2,6 @@ package io.legado.app.ui.route
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -35,6 +34,7 @@ import io.legado.app.ui.browser.WebViewCallbacks
 import io.legado.app.ui.browser.WebViewConfig
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.root.OnRouteLifecycle
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -327,10 +327,9 @@ fun ReadRssRoute(
         state.error?.let { Toasters.get().toast(it) }
     }
 
-    // 路由出栈 → 关闭 RSS 窗口 (桌面端直开窗, onDetach 由平台实现挂接; 移动端为 no-op)
-    DisposableEffect(route) {
-        onDispose { rssActions.onDetach?.invoke() }
-    }
+    // 路由出栈 → 关闭 RSS 窗口 (桌面端直开窗, onDetach 由平台实现挂接; 移动端为 no-op)。
+    // 挂"在栈期间" (STARTED): 被压栈不关窗, 对照原版 Activity 存活
+    OnRouteLifecycle(onLeave = { rssActions.onDetach?.invoke() })
 
     if (showShell) {
         ReadRssScreen(

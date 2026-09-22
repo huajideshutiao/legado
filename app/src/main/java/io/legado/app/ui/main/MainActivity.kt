@@ -758,7 +758,7 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
         viewModel.updateUpdateNotification()
     }
 
-    // app 前后台唯一置位点 (单 Activity 宿主): 阅读/漫画/视频页经 RouteActiveEffect 消费,
+    // app 前后台唯一置位点 (单 Activity 宿主): 各页经本页 Lifecycle 消费 (见 RouteLifecycle),
     // 各页不再自挂生命周期监听 (对照原版各 Activity 的 onResume/onPause)
     override fun onResume() {
         super.onResume()

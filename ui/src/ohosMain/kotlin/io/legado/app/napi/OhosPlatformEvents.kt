@@ -44,7 +44,7 @@ enum class OhosLifecycleEvent { ON_FOREGROUND, ON_BACKGROUND }
 /**
  * 应用生命周期事件入口: 只把前后台状态灌进 [AppForegroundState] (全局唯一真源)。
  *
- * 消费方订阅 [AppForegroundState.isForeground] (阅读/漫画/视频页经 RouteActiveEffect),
+ * 消费方订阅 [AppForegroundState.isForeground] (由页面级 Lifecycle 消费, 见 RouteLifecycle),
  * 不再各自挂监听。
  */
 object OhosAppLifecycle {

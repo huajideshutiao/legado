@@ -28,6 +28,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.lifecycle.Lifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -50,10 +51,10 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.BookCoverShared.CoverRatio
 import io.legado.app.ui.compose.component.AppScrollTabRow
 import io.legado.app.ui.compose.platform.platformStatusBarPadding
+import io.legado.app.ui.root.OnRouteLifecycle
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.FlowBus
-import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -130,23 +131,27 @@ fun BookshelfScreen(
     gotoTopTick: Int = 0,
     // 主界面是否栈顶: 分组返回拦截只在主界面可见时生效, 详见 BookshelfScreen2.isRootTop
     isRootTop: Boolean = true,
+    /**
+     * 本页在当前 tab 内是否处于选中态 (书架 tab 被选中)。
+     *
+     * 只承担"tab"这一个维度: "前台 + 主界面栈顶"由本页 Lifecycle 提供 (RESUMED),
+     * 两者相乘即"书架可见" —— 与 DB 订阅的启停判据同源, 不另立一套手写判定。
+     */
+    tabSelected: Boolean = true,
 ) {
     val colors = AppTheme.colors
     /** 各分组滚动状态登记表 (供 tab 双击滚顶取当前分组实例) */
     val pageScrollStates: MutableMap<Long, ShelfScrollState> = remember { mutableStateMapOf() }
-    // 订阅常驻 (用户拍板 2026-08): 对齐原版 LiveData 语义 —— 订阅不随页面停止/
-    // tab 切走取消, 落库即经 Room 失效推送刷新。原门控 (repeatOnLifecycle) 在
-    // 恢复时产生"旧快照首帧"窗口, 快速"切章→离开→点击书架"会点到过期进度,
-    // 导致音频页 upData 误判 resetData 跳回旧记录位置 (回归报告 2026-08)。
-    // 组合销毁 (书架页离开导航栈) 才取消订阅。
-    LaunchedEffect(Unit) {
-        viewModel.setBookshelfActive(true)
-        try {
-            awaitCancellation()
-        } finally {
-            viewModel.setBookshelfActive(false)
-        }
-    }
+    // 订阅启停 = 本页可见 (Lifecycle RESUMED) 且书架 tab 选中。
+    // 对照原版: 书架 Fragment 被详情页盖住 / 退到后台 / 切到其它 tab 时 Lifecycle 降到 STARTED,
+    // flowWithLifecycleAndDatabaseChangeFirst(RESUMED) 挂起收集 → 不查库; 回到 RESUMED 才重订并重查。
+    // 缓存快照 (booksCache) 不随开关清空, 恢复时先用旧快照出帧再刷。
+    OnRouteLifecycle(
+        minState = Lifecycle.State.RESUMED,
+        enabled = tabSelected,
+        onEnter = { viewModel.setBookshelfActive(true) },
+        onLeave = { viewModel.setBookshelfActive(false) },
+    )
     val appConfig = remember { AppConfigProviders.get() }
     // 配置项每次变更后重读 (对照原版: 分组样式变更走 NOTIFY_MAIN 重建 Fragment,
     // 数量开关变更走 BOOKSHELF_REFRESH 重绑 tab)

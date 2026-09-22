@@ -3,7 +3,6 @@ package io.legado.app.ui.route
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -38,6 +37,7 @@ import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteEntry
+import io.legado.app.ui.root.OnRouteLifecycle
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.asBook
 import io.legado.app.ui.widget.dialog.WaitDialog
@@ -153,10 +153,9 @@ fun TocContent(
     }
     val state by screenModel.state.collectAsState()
     val waitDialogVisible by screenModel.waitDialog.collectAsState()
-    // 弹窗关闭时释放 ScreenModel 的协程 (对照 screenModelStore.onCleared)
-    DisposableEffect(screenModel) {
-        onDispose { screenModel.onCleared() }
-    }
+    // 释放 ScreenModel 的协程 (对照 screenModelStore.onCleared), 挂"在栈期间" (STARTED):
+    // 目录页被压栈时 (如选中章节跳阅读) 不释放, 对照原版目录 Activity 存活
+    OnRouteLifecycle(onLeave = { screenModel.onCleared() })
 
     // TXT 目录规则对话框显隐 (对照原版 TxtTocRuleDialog: 全高底部弹窗, 基于当前生效规则)
     var showTocRegexDialog by remember { mutableStateOf(false) }

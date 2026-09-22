@@ -1,7 +1,6 @@
 package io.legado.app.ui.route
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -11,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.lifecycle.Lifecycle
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalDensity
@@ -77,8 +77,8 @@ import io.legado.app.ui.compose.platform.rememberCustomPageKeys
 import io.legado.app.ui.reader.ReaderDictWord
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.OnRouteLifecycle
 import io.legado.app.ui.root.PlatformCapabilityProviders
-import io.legado.app.ui.root.RouteActiveEffect
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.RouteResults
@@ -157,26 +157,34 @@ fun ReaderRoute(
         )
     }
 
-    DisposableEffect(screenModel, provider) {
-        provider.onEnter(screenModel)
-        // 注册为当前阅读屏 (鸿蒙 napi 回调/非 Compose 宿主取 dialogEvent/menuState 用)
-        ReaderScreenModelRegistry.attach(screenModel)
-        onDispose {
+    // 页面级副作用统一挂本页 Lifecycle, 不再挂组合存亡 (两者在单 Activity 架构下不是同一件事):
+    //
+    // ① 在栈内期间 (STARTED): 进页注册/退页释放, 对照原版 Activity onCreate/onDestroy。
+    //    原先挂在 DisposableEffect 上, 判据是组合存亡 —— 转场期间被移出渲染列表、或宿主状态
+    //    导致重新组合时, 副作用会跟着启停, 与本页实际是否在栈无关
+    OnRouteLifecycle(
+        minState = Lifecycle.State.STARTED,
+        onEnter = {
+            provider.onEnter(screenModel)
+            // 注册为当前阅读屏 (鸿蒙 napi 回调/非 Compose 宿主取 dialogEvent/menuState 用)
+            ReaderScreenModelRegistry.attach(screenModel)
+        },
+        onLeave = {
             ReaderDictWord.dismiss()
             ReaderScreenModelRegistry.detach(screenModel)
             provider.onExit(screenModel)
-        }
-    }
+        },
+    )
 
-    // 原版 Activity onResume/onPause: inactive 先停自动翻页，再做计时/落库/取消预下载。
-    // desktop/iOS/OHOS 的路由压栈与退后台不会销毁 ScreenModel，因此只停止可复用控制器，
-    // 不调用 provider.onExit/dispose；再次 active 后仍可由同一菜单状态重新启动。
-    // Android 已由 Activity lifecycle observer 执行 autoPageStop/自动备份，这里不重复触发平台副作用。
-    RouteActiveEffect(
-        entry = entry,
-        navigator = navigator,
-        onActive = { screenModel.onResume() },
-        onInactive = {
+    // ② 可见期间 (RESUMED): 对照原版 Activity onResume/onPause。
+    //    被压栈或退到后台即挂起: inactive 先停自动翻页, 再做计时/落库/取消预下载。
+    //    desktop/iOS/OHOS 的路由压栈与退后台不会销毁 ScreenModel, 因此只停可复用控制器,
+    //    不调用 provider.onExit/dispose; 再次可见后仍可由同一菜单状态重新启动。
+    //    Android 已由 Activity lifecycle observer 执行 autoPageStop/自动备份, 这里不重复触发平台副作用。
+    OnRouteLifecycle(
+        minState = Lifecycle.State.RESUMED,
+        onEnter = { screenModel.onResume() },
+        onLeave = {
             if (AppConst.JS_PLATFORM != "android") {
                 provider.autoPageStop(screenModel)
             }

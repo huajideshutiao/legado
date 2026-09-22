@@ -38,6 +38,7 @@ import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteEntry
+import io.legado.app.ui.root.OnRouteLifecycle
 import io.legado.app.ui.root.RouteResult
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.RouteResults
@@ -139,7 +140,8 @@ fun ChangeSourceContent(
     val viewModel = remember(book.bookUrl) {
         ChangeBookSourceViewModelShared(scope = scope, platform = platform)
     }
-    // 释放搜索线程池 (对照 app 端 ViewModel.onCleared)
+    // 释放搜索线程池 (对照 app 端 ViewModel.onCleared):
+    // 绑定 viewModel 实例, 换书产生新实例或页面出栈销毁时均能及时释放旧线程池
     DisposableEffect(viewModel) {
         onDispose { viewModel.onCleared() }
     }
@@ -229,12 +231,8 @@ fun ChangeSourceContent(
         }
     }
 
-    // 清理 searchFinishCallback (对照 Dialog.onDestroy 第 112-115 行)
-    DisposableEffect(Unit) {
-        onDispose {
-            viewModel.searchFinishCallback = null
-        }
-    }
+    // 清理 searchFinishCallback (对照 Dialog.onDestroy 第 112-115 行), 挂"在栈期间" (STARTED)
+    OnRouteLifecycle(onLeave = { viewModel.searchFinishCallback = null })
 
     // 书源编辑返回: 刷新源列表 (弹窗形态传 null, 编辑前已 dismiss)
     if (bookSourceEditFlow != null) {

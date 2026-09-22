@@ -48,6 +48,7 @@ import io.legado.app.ui.root.FileFilter
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.pushExportDispatch
 import io.legado.app.ui.root.RouteEntry
+import io.legado.app.ui.root.OnRouteLifecycle
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.widget.dialog.HelpDialog
 import io.legado.app.ui.widget.dialog.OnlineImportUrlDialog
@@ -83,15 +84,16 @@ fun ReplaceRuleRoute(
     screenModelStore: ScreenModelStore,
 ) {
     val viewModel = remember { ReplaceRuleListViewModel() }
-    DisposableEffect(viewModel) {
-        onDispose {
+    // 释放挂本页 Lifecycle 的"在栈期间" (STARTED): 对照原版 Activity onDestroy
+    OnRouteLifecycle(
+        onLeave = {
             viewModel.onCleared()
             // 对照 Activity onDestroy: 刷新替换规则缓存 (fire-and-forget)
             runCatching { ContentProcessorProviders.get() }.getOrNull()?.let {
                 Coroutine.async { it.upReplaceRules() }
             }
-        }
-    }
+        },
+    )
 
     val scope = rememberCoroutineScope()
     val groups by viewModel.groups.collectAsState()

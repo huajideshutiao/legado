@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookProgress
@@ -29,7 +30,7 @@ import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
-import io.legado.app.ui.root.RouteActiveEffect
+import io.legado.app.ui.root.OnRouteLifecycle
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.RouteResults
@@ -112,13 +113,12 @@ fun MangaReaderRoute(
 
     // 阅读计时 + 离开时落库/上传进度/取消预下载 (对照 app 端 onResume ReadTimeRecorder.start /
     // onPause ReadTimeRecorder.end + saveRead + uploadProgress + cancelPreDownloadTask)。
-    // 走 RouteActiveEffect 而非 DisposableEffect(Unit): 压栈 (顶栏进详情/换源) 与退到后台
-    // 都要按 onPause 收尾, 否则计时继续走、预下载继续把正文写回刚清掉的缓存目录
-    RouteActiveEffect(
-        entry = entry,
-        navigator = navigator,
-        onActive = { screenModel.onEnter() },
-        onInactive = { screenModel.onLeave() },
+    // 挂本页 Lifecycle 的可见期 (RESUMED): 压栈 (顶栏进详情/换源) 与退到后台都按 onPause 收尾,
+    // 否则计时继续走、预下载继续把正文写回刚清掉的缓存目录
+    OnRouteLifecycle(
+        minState = Lifecycle.State.RESUMED,
+        onEnter = { screenModel.onEnter() },
+        onLeave = { screenModel.onLeave() },
     )
 
     // 云进度同步确认对话框 (对照 app 端 ReadMangaActivity.sureNewProgress)

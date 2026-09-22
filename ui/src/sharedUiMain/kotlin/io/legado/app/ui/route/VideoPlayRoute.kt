@@ -12,6 +12,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalViewConfiguration
 import io.legado.app.constant.AppLog
@@ -36,7 +37,7 @@ import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
-import io.legado.app.ui.root.RouteActiveEffect
+import io.legado.app.ui.root.OnRouteLifecycle
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.RouteResults
@@ -114,13 +115,12 @@ fun VideoPlayRoute(
     }
 
     // 计时 + 落库上传 (对照 app onResume/onPause; onCleared 兜底释放播放器)。
-    // 走 RouteActiveEffect: 压栈 (目录/详情/换源) 与退到后台都要按 onPause 收尾,
+    // 挂本页 Lifecycle 的可见期 (RESUMED): 压栈 (目录/详情/换源) 与退到后台都按 onPause 收尾,
     // 否则阅读计时在别的页面继续累计
-    RouteActiveEffect(
-        entry = entry,
-        navigator = navigator,
-        onActive = { screenModel.onResume() },
-        onInactive = { screenModel.onPause() },
+    OnRouteLifecycle(
+        minState = Lifecycle.State.RESUMED,
+        onEnter = { screenModel.onResume() },
+        onLeave = { screenModel.onPause() },
     )
 
     // 订阅子页结果回填 (对照 Activity bookInfoResult/sourceEditResult)

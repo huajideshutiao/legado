@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -57,6 +56,7 @@ import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.LocalSharedCoverBinding
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
+import io.legado.app.ui.root.OnRouteLifecycle
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModelStore
@@ -165,13 +165,9 @@ fun AudioPlayRoute(
     }
 
     // 退出音频页: 落库进度 + 通知书架刷新 (对齐阅读器/视频/漫画行为, 回归 2026-08)。
-    // 页面离开导航栈才触发 (LegadoApp 动画结束后组合销毁)。saveRead 内部会发
-    // UP_BOOKSHELF 让书架重启分组流强制重查 durChapterTime (异步落库不随组合取消)。
-    DisposableEffect(Unit) {
-        onDispose {
-            AudioPlayShared.saveRead()
-        }
-    }
+    // 挂本页 Lifecycle 的"在栈期间" (STARTED): 出栈才落库, 被压栈 (进书源编辑等) 不落。
+    // saveRead 内部会发 UP_BOOKSHELF 让书架重启分组流强制重查 durChapterTime
+    OnRouteLifecycle(onLeave = { AudioPlayShared.saveRead() })
 
     // 订阅子页结果回填 (对照 VideoPlayRoute navigator.resultsFor(entry.id).collect)
     LaunchedEffect(Unit) {

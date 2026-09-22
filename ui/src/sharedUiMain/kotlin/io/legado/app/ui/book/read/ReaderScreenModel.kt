@@ -849,7 +849,7 @@ class ReaderScreenModel(
 
     /**
      * 离开活跃期（对照 app 端 ReadBookActivity.onPause）：被压栈 / 退到后台 / 出栈时,
-     * 由 ReaderRoute 的 [io.legado.app.ui.root.RouteActiveEffect] 调用。完成：
+     * 由 ReaderRoute 的 [io.legado.app.ui.root.OnRouteLifecycle] 调用。完成：
      * - 落库并上传当前阅读进度（对照原版 onPause 的 `ReadBook.saveRead()` + `uploadProgress()`，
      *   [ReadBookViewModelShared.uploadProgress] 内部先落库再按配置上传，走独立 progressSyncScope）
      * - 取消预下载任务（对照原版 `ReadBook.cancelPreDownloadTask()`）
@@ -870,7 +870,7 @@ class ReaderScreenModel(
 
     /**
      * 进入活跃期（对照 app 端 ReadBookActivity.onResume）：本页在栈顶且 app 在前台时,
-     * 由 ReaderRoute 的 [io.legado.app.ui.root.RouteActiveEffect] 调用。
+     * 由 ReaderRoute 的 [io.legado.app.ui.root.OnRouteLifecycle] 调用。
      *
      * - 开始阅读计时 (原版 onResume 首行 ReadTimeRecorder.start(READ_BOOK))
      * - web 端阅读时, app 处于阅读界面, 本地记录会覆盖 web 保存的进度, 在此处恢复

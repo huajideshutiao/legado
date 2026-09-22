@@ -639,7 +639,7 @@ private fun runDesktopApp() = application {
             DesktopTaskbarMedia.attach(window)
             // app 前后台唯一置位点: 主窗口失活=其他应用在前台 (对应原版 Activity.onPause 语义;
             // 进程内对话框/菜单同属本 ComposeWindow, 不触发失活)。阅读/漫画/视频页经
-            // RouteActiveEffect 消费, 各页不再自挂 AWTEventListener
+            // 本页 Lifecycle 消费, 各页不再自挂 AWTEventListener
             val foregroundListener = object : java.awt.event.WindowAdapter() {
                 override fun windowActivated(e: java.awt.event.WindowEvent) =
                     AppForegroundState.set(true)

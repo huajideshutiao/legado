@@ -30,7 +30,6 @@ import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -119,6 +118,7 @@ import io.legado.app.ui.root.MainTabSwitcher
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteEntry
+import io.legado.app.ui.root.OnRouteLifecycle
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModel
@@ -261,8 +261,8 @@ fun MainRoute(
     // 书架滚顶信号 (对照 BookshelfTabController.gotoTop): 具体滚哪个状态由 BookshelfScreen
     // 按"当前分组页 + 布局档位"决定, 此处只发信号
     var bookshelfGotoTopTick by remember { mutableIntStateOf(0) }
-    // 书架 tab 激活态: 书架 DB 订阅开关 (tab 切走即取消订阅, 零全表流)
-    val bookshelfActive = visibleTags.getOrNull(currentPage) == BottomNavTag.BOOKSHELF
+    // 书架 tab 是否选中: 书架 DB 订阅的另一个维度 (前台 + 栈顶由本页 Lifecycle 提供)
+    val bookshelfTabSelected = visibleTags.getOrNull(currentPage) == BottomNavTag.BOOKSHELF
     // home tab 激活态: 用停稳页判定 (对照原版仅当前 Fragment 才 onResume→initTab),
     // 拖拽到一半又滑回不触发; 预组合的 home 页保持组合但不加载
     val homeActive = visibleTags.getOrNull(settledPage) == BottomNavTag.HOME
@@ -279,16 +279,20 @@ fun MainRoute(
     // (书架 upToc / 首页 refreshCurrentTab; 发现、我的无刷新动作)。
     // 当前页用 rememberUpdatedState 透传, 保证 handler 只注册/注销一次。
     val refreshTag = rememberUpdatedState(visibleTags.getOrNull(currentPage))
-    DisposableEffect(entry.id) {
-        navigator.registerRefreshHandler(entry.id) {
-            when (refreshTag.value) {
-                BottomNavTag.BOOKSHELF -> mainScreenModel.bookshelfViewModel.upToc()
-                BottomNavTag.HOME -> mainScreenModel.homeScreenModel.refreshCurrentTab()
-                else -> Unit
+    // 刷新处理器挂本页 Lifecycle 的"在栈期间" (STARTED), 不挂组合存亡:
+    // 组合会因被压栈/转场期间移出渲染列表而生死, 与"本页是否还在栈里"不是同一件事
+    OnRouteLifecycle(
+        onEnter = {
+            navigator.registerRefreshHandler(entry.id) {
+                when (refreshTag.value) {
+                    BottomNavTag.BOOKSHELF -> mainScreenModel.bookshelfViewModel.upToc()
+                    BottomNavTag.HOME -> mainScreenModel.homeScreenModel.refreshCurrentTab()
+                    else -> Unit
+                }
             }
-        }
-        onDispose { navigator.unregisterRefreshHandler(entry.id) }
-    }
+        },
+        onLeave = { navigator.unregisterRefreshHandler(entry.id) },
+    )
 
     // 主界面返回键/ESC: 对照原版 MainActivity.onActivityCreated 的 onBackPressedDispatcher 回调——
     // 非书架 tab → 先切回书架 (不再继续); 书架 tab → 双击退出 (2000ms 窗口, 对齐原版 EXIT_INTERVAL)。
@@ -299,6 +303,7 @@ fun MainRoute(
     // (backStack.last 为本 entry) 时才拦截——详情页等顶层页面无自身拦截器时返回键正常出栈。
     val backStack by navigator.backStack.collectAsState()
     val overlays by navigator.overlays.collectAsState()
+    val isMainTop = backStack.lastOrNull()?.id == entry.id
     val bookshelfIndex = visibleTags.indexOf(BottomNavTag.BOOKSHELF)
     var exitTime by remember { mutableLongStateOf(0L) }
     val platformCapabilities = LocalPlatformCapabilities.current
@@ -366,8 +371,8 @@ fun MainRoute(
                 navigator,
                 bookshelfScrollState,
                 bookshelfGotoTopTick,
-                bookshelfActive,
-                isRootTop = backStack.lastOrNull()?.id == entry.id,
+                bookshelfTabSelected,
+                isRootTop = isMainTop,
             )
         },
         exploreTab = {
@@ -1201,7 +1206,8 @@ private fun BookshelfTabContent(
     navigator: AppNavigator,
     scrollState: ShelfScrollState,
     gotoTopTick: Int,
-    active: Boolean,
+    // 书架 tab 是否选中 (书架 DB 订阅的 tab 维度; 前台 + 栈顶由本页 Lifecycle 提供)
+    tabSelected: Boolean,
     // 主界面是栈顶时分组返回拦截才生效 (否则压栈页面的返回键会被不可见书架页吞掉)
     isRootTop: Boolean,
 ) {
@@ -1215,8 +1221,8 @@ private fun BookshelfTabContent(
     val groups by viewModel.bookGroups.collectAsState()
     var manageableGroups by remember { mutableStateOf<List<BookGroup>>(emptyList()) }
     // 分组管理对话框数据流, 随 tab 激活启停 (不可见时零订阅)
-    LaunchedEffect(active) {
-        if (!active) return@LaunchedEffect
+    LaunchedEffect(tabSelected) {
+        if (!tabSelected) return@LaunchedEffect
         AppDbProviders.get().bookGroupDao.flowAll()
             .distinctUntilChanged()
             .conflate()
@@ -1265,6 +1271,7 @@ private fun BookshelfTabContent(
         scrollState = scrollState,
         gotoTopTick = gotoTopTick,
         isRootTop = isRootTop,
+        tabSelected = tabSelected,
     )
     // 添加网址 / 导入书架进度 (对照 BaseBookshelfFragment.observeLiveBus + ensureWaitDialog:
     // count<0 关闭, 否则 "添加中... (n)"; 取消时 cancel addBookJob)

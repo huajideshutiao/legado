@@ -2,7 +2,6 @@ package io.legado.app.ui.route
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -50,6 +49,7 @@ import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.LocalSharedCoverBinding
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
+import io.legado.app.ui.root.OnRouteLifecycle
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModelStore
@@ -516,10 +516,11 @@ fun BookInfoRoute(
         }
     }
 
-    DisposableEffect(entry.id, actions) {
-        navigator.registerRefreshHandler(entry.id, actions::onRefresh)
-        onDispose { navigator.unregisterRefreshHandler(entry.id) }
-    }
+    // 刷新处理器挂本页 Lifecycle 的"在栈期间" (STARTED), 不挂组合存亡
+    OnRouteLifecycle(
+        onEnter = { navigator.registerRefreshHandler(entry.id, actions::onRefresh) },
+        onLeave = { navigator.unregisterRefreshHandler(entry.id) },
+    )
 
     // 事件订阅作用域: 各 launch 独立收集路由结果与 FlowBus
     LaunchedEffect(Unit) {

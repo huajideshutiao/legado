@@ -140,6 +140,15 @@ fun LegadoApp(
         val animating = routeTransition.animating(entries)
         // 本段参与渲染的页面 (含正在离场的): 离场页留在组合里播完滑出, 否则返回时会先空一格
         val displayEntries = activeSegment.displayEntries
+        // 页面级生命周期载体: 每页一份 Lifecycle, 状态 = 栈顶且前台 ? RESUMED : STARTED。
+        // 页面级副作用 (订阅/计时/落盘/注册表) 挂它而不是挂组合存亡 —— 组合成员资格会因被压栈、
+        // Lazy 回收、转场期间移出渲染列表而变化, 与"页面是否可见/存活"不是同一件事。
+        val foreground by AppForegroundState.isForeground.collectAsState()
+        val routeLifecycles = remember { RouteLifecycleStore() }
+        // 栈事实或前后台变化时在渲染子节点前对齐状态:
+        // 必须在子组件组合前同步, 否则子组件首帧读到 INITIALIZED 导致副作用推迟一帧启动并引发额外重组
+        val stackTopId = entries.lastOrNull()?.id
+        routeLifecycles.sync(displayEntries, stackTopId, foreground)
         // 页转场共享对的飞行阶段: 落位页还在页面栈内 = 前进飞行中。
         // 只从“当前栈”取 (出栈页已不在 entries, 它的 token 自然退出发前进集合 → 出发端恢复绘制,
         // 回程飞行由出发端的 enter 驱动); 端点只读自己手上这个 token 的阶段。
@@ -458,6 +467,11 @@ fun LegadoApp(
                         WallpaperLayer(wallpaper)
                     }
                     saveableStateHolder.SaveableStateProvider(entry.id.value) {
+                        // 本页的生命周期载体: 页面级副作用挂它, 不挂组合存亡
+                        // (组合会因被压栈/Lazy 回收/转场期间移出渲染列表而生死, 页面不会)。
+                        // 出栈页在退场动画期间仍在 displayEntries 中 —— 其页面级副作用活到离开组合那一刻,
+                        // 与原版 Activity 退出动画播完才 onDestroy 的时序一致
+                        val routeLifecycle = routeLifecycles.ownerOf(displayEntries, entry)
                         // 页转场共享对阶段 + 本页 entry 的共享身份都在这里下发:
                         // 端点只读自己手上那个 token 的阶段 (compositionLocalOf, 会下发重组)。
                         // 页面身份 (entry.id) 也在这里下发 —— 共享元素配对键由 (页面, 区块, 条目) 派生,
@@ -466,7 +480,13 @@ fun LegadoApp(
                             LocalSharedPageFlights provides sharedPageFlights,
                             LocalSharedPairPage provides entry.id.value,
                         ) {
-                            RouteContent(entry, navigator, screenModelStore)
+                            if (routeLifecycle != null) {
+                                ProvideRouteLifecycle(routeLifecycle) {
+                                    RouteContent(entry, navigator, screenModelStore)
+                                }
+                            } else {
+                                RouteContent(entry, navigator, screenModelStore)
+                            }
                         }
                     }
                     // 压暗蒙版 (前进时旧页压暗, 返回时目标页随进度恢复): 独立图层只改 alpha,

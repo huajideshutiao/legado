@@ -247,7 +247,7 @@ class AndroidReaderPlatformProvider(
         batteryReceiver = receiver
         // 注册生命周期观察者: 退后台停自动翻页 + 自动备份 (对照原版 onPause 的
         // autoPageStop / Backup.autoBack)。计时/落库/取消预下载改由 shared
-        // RouteActiveEffect 统一驱动 (AppForegroundState + 栈顶判定), 此处不再转发
+        // 本页 Lifecycle 统一驱动 (OnRouteLifecycle), 此处不再转发
         val observer = object : DefaultLifecycleObserver {
             override fun onPause(owner: LifecycleOwner) {
                 activeMenuState?.second?.stopAutoPage()

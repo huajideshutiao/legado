@@ -35,6 +35,7 @@ import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteEntry
+import io.legado.app.ui.root.OnRouteLifecycle
 import io.legado.app.ui.root.RouteResult
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.RouteResults
@@ -140,7 +141,8 @@ fun ChangeChapterSourceContent(
     val viewModel = remember(book.bookUrl) {
         ChangeBookSourceViewModelShared(scope = scope, platform = platform)
     }
-    // 释放搜索线程池 (对照 app 端 ViewModel.onCleared)
+    // 释放搜索线程池 (对照 app 端 ViewModel.onCleared):
+    // 绑定 viewModel 实例, 换书产生新实例或页面出栈销毁时均能及时释放旧线程池
     DisposableEffect(viewModel) {
         onDispose { viewModel.onCleared() }
     }

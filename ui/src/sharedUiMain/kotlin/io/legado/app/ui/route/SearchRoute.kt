@@ -10,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.Lifecycle
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import io.legado.app.constant.BookType
@@ -37,6 +38,7 @@ import io.legado.app.ui.root.AppRoute
 import androidx.compose.ui.input.key.Key
 import io.legado.app.ui.compose.platform.AppShortcut
 import io.legado.app.ui.root.RouteEntry
+import io.legado.app.ui.root.OnRouteLifecycle
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.toRouteRef
 import kotlinx.coroutines.launch
@@ -73,14 +75,18 @@ fun SearchRoute(
             viewModel.setQuery(key, route.submit)
         }
     }
-    // 对照 Activity.repeatOnLifecycle(RESUMED) { resume(); ... finally { pause() } }
-    DisposableEffect(viewModel) {
-        viewModel.resume()
-        onDispose {
-            viewModel.pause()
-            viewModel.close()
-        }
-    }
+    // 搜索会话生命周期: 对照原版 SearchActivity repeatOnLifecycle(RESUMED) { resume(); finally { pause() } }
+    // 可见期 (RESUMED): 压栈 (进书籍详情) 或退后台时 pause 停止后台抓取, 再次可见时 resume 恢复
+    OnRouteLifecycle(
+        minState = Lifecycle.State.RESUMED,
+        onEnter = { viewModel.resume() },
+        onLeave = { viewModel.pause() },
+    )
+    // 在栈期 (STARTED): 出栈离开导航栈时彻底关闭会话 (对照原版 Activity onDestroy)
+    OnRouteLifecycle(
+        minState = Lifecycle.State.STARTED,
+        onLeave = { viewModel.close() },
+    )
 
     // 对话框状态
     var showSearchScope by remember { mutableStateOf(false) }

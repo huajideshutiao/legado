@@ -122,7 +122,7 @@ class ScreenModelStore {
  * 应用前后台状态 (各端宿主在自己的生命周期入口置位, 全局唯一真源)。
  *
  * 阅读/漫画/视频页据此暂停计时、落库、取消预下载 (对照原版 Activity onPause/onResume);
- * 消费方不要自己再挂平台生命周期监听, 用 sharedUiMain 的 RouteActiveEffect。
+ * 消费方不要自己再挂平台生命周期监听, 用 sharedUiMain 的 RouteLifecycle (页面级 Lifecycle)。
  *
  * 置位点: Android MainActivity 生命周期、iOS UIApplication 前后台通知、
  * 鸿蒙 OhosAppLifecycle.dispatch、桌面主窗口 WINDOW_ACTIVATED/DEACTIVATED。
