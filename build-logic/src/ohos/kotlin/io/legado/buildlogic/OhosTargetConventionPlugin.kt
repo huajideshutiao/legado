@@ -40,10 +40,9 @@ class OhosTargetConventionPlugin : Plugin<Project> {
                         // 注意: linkerOpts 直传 ld.lld, 不能用 GNU ld 的 -Wl, 前缀。
                         optimized = false
                         linkerOpts("-s", "--gc-sections")
-                        // optimized=false 只把 clang 档位降到 noopt 档, 而 konan.properties 里
-                        // clangNooptFlags.ohos_arm64 = -O1 —— LLVM 仍会跑 Machine Instruction
-                        // Scheduler, 16GB 机器上 OOM (崩在 -O1 的 codegen 阶段)。
-                        // 把该档位覆写成 debug 档的 -O0, 保留 release buildType (包名/strip 不变)。
+                        // 经实测验证 (2026-09-21): -O1 在 16GB 机器上会触发 LLVM codegen 阶段
+                        // "LLVM ERROR: out of memory / Allocation failed" 硬崩溃 (退出码 -1073741795);
+                        // 故稳定保持 -O0 档位, 保留 release buildType (包名/strip 不变)。
                         freeCompilerArgs += "-Xoverride-konan-properties=clangNooptFlags.ohos_arm64=-O0"
                     }
                     export("org.jetbrains.compose.export:export:$composeExport")
