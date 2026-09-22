@@ -204,9 +204,12 @@ class BookshelfViewModel {
     // region 数据流订阅
 
     /**
-     * 书架订阅开关 (对齐原版 flowWithLifecycle 的"页面可见才订阅"): UI 层在
-     * "书架 tab 激活 + 窗口生命周期 RESUMED" 时开, 否则关。关闭即取消分组/书籍
-     * DB 流订阅, 书架不可见时 books 表任意写入零查询; 缓存快照不随开关清空。
+     * 书架订阅开关: 开启即订阅分组列表与各分组书籍的 DB 流, 关闭即全部取消。
+     *
+     * 判据 = 前台 + 主界面在栈顶 + 当前 tab 是书架 (对照原版书架 Fragment 的 RESUMED 态:
+     * 被详情页盖住 / 切到其它 tab / 退到后台都挂起收集, 回到 RESUMED 才重新订阅并重查一次)。
+     * 组合存亡不等于可见性 —— 单 Activity 架构下被压栈的页仍在组合中, 故由 UI 显式下发。
+     * 缓存快照 ([booksCache]) 不随开关清空, 恢复时先用旧快照出帧再刷。
      */
     fun setBookshelfActive(active: Boolean) {
         if (this.active == active) return
@@ -386,7 +389,8 @@ class BookshelfViewModel {
         _books.value = booksCache.value[groupId].orEmpty()
         booksFlowJobs.remove(previous)?.cancel()
         booksFlowJobs.remove(groupId)?.cancel()
-        startGroupFlow(groupId)
+        // 不可见时不订阅 (对照原版切到非 RESUMED 后不收集), 恢复时由 setBookshelfActive 重订
+        ensureGroupFlow(groupId)
     }
 
     /**
@@ -442,10 +446,12 @@ class BookshelfViewModel {
      */
     fun upSort() {
         // 排序配置变更: 重启当前分组持续流 + 组合中相邻页的预加载流 (对齐原版 adapter
-        // 全量重绑, 已实例化 fragment 均 upRecyclerData 重订阅)
+        // 全量重绑, 已实例化 fragment 均 upRecyclerData 重订阅)。
+        // 经 ensureGroupFlow 而非直接 startGroupFlow: 不可见时不订阅 (对齐原版非 RESUMED
+        // 不收集), 恢复时由 setBookshelfActive 重订
         (composedGroupIds + _currentGroupId.value).forEach {
             booksFlowJobs.remove(it)?.cancel()
-            startGroupFlow(it)
+            ensureGroupFlow(it)
         }
         FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
     }

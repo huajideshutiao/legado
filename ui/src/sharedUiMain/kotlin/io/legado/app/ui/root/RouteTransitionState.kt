@@ -51,15 +51,13 @@ data class RouteTransitionSegment(
      * 否则返回时会先空一格。单段前进时出栈页插在栈顶之下 —— 新页在上才是前进的 z 序,
      * 排到栈尾会让不透明的旧页盖住新页滑入 (中段两层 alpha 之和 <1 会透出根背景)。
      *
-     * 静止态 (段已落定, 两端相等) 只组合栈顶页:
-     * 契约: 被盖页不得依赖持续组合存活, UI 状态由 rememberSaveable 保留, 业务状态由
-     * ScreenModelStore 保留, 返回出栈时经 SaveableStateHolder 恢复。
-     * 收益: 被盖页完全移出组合树, 避免宿主窗口尺寸、系统栏 insets、主题与全局配置变化时
-     * 对栈底不可见页面造成无谓的逐帧测量与重组级联 (如阅读菜单呼出时避免底层书架全量重测)。
+     * 静止态 (段已落定, 两端相等) 组合整条栈: 被盖页保留其组合树与页面级副作用
+     * (订阅/注册表/计时/已解码封面), 返回时零重建, 对齐原版一页一 Activity 时
+     * “被盖页 Activity 不销毁”的语义。被盖页的不可见由渲染循环的图层变换承担
+     * (移出屏幕 + alpha=0 + clip), 不由组合成员资格承担。
      */
     val displayEntries: List<RouteEntry>
         get() = when {
-            from == to -> to.takeLast(1)
             reversing -> from + retreating
             overOutgoing -> to.dropLast(1) + dropped + to.takeLast(1)
             !forward -> to + dropped
