@@ -298,6 +298,13 @@ fun ShelfBooksContent(
     modifier: Modifier = Modifier,
     onGroupClick: ((BookGroup) -> Unit)? = null,
     onGroupLongClick: ((BookGroup) -> Unit)? = null,
+    /**
+     * 本列表在页内的配对区块身份: 共享元素配对键 = (页面, 本区块, 条目) 三元组。
+     *
+     * 必须区分同页可能同时展示同一本书的位置 (书架分组 pager 的相邻页 / 搜索页的
+     * “书架命中区”与“搜索结果区”), 否则同页两个区块的同名书会挤在同一个配对键下互抢起飞位。
+     */
+    pairBlockId: String = "shelf",
 ) {
     val colors = AppTheme.colors
     val pullState = rememberPullToRefreshState()
@@ -359,9 +366,10 @@ fun ShelfBooksContent(
                     when (item) {
                         // 书籍条目外包一层 Box: itemModifier(animateItem) 留在 Box 上, 分组不是书
                         is Book -> Box(modifier = itemModifier) {
-                            // 共享配对身份按条目下发: 被点的封面 = 出发端 (页转场 token 自签, 点击时交给导航),
+                            // 共享配对身份按条目下发: 被点的封面 = 出发端 (token 由页面+区块+条目派生,
+                            // 点击时交给导航),
                             // 同屏重复封面 (同书/同 URL) 也不会互相抢正身
-                            val binding = rememberSharedCoverSourceBinding(item.bookUrl)
+                            val binding = rememberSharedCoverSourceBinding(item.bookUrl, pairBlockId)
                             CompositionLocalProvider(LocalSharedCoverBinding provides binding) {
                                 ShelfListItem(
                                     // 逐项窄化: 非刷新项恒拿 emptySet 单例, 集合变化时可跳过重组
@@ -399,7 +407,7 @@ fun ShelfBooksContent(
                         // 外层 Box 同 LIST 分支: 让 animateItem 留在 Box 上
                         is Book -> Box(modifier = itemModifier) {
                             // 共享配对身份按条目下发 (同上)
-                            val binding = rememberSharedCoverSourceBinding(item.bookUrl)
+                            val binding = rememberSharedCoverSourceBinding(item.bookUrl, pairBlockId)
                             CompositionLocalProvider(LocalSharedCoverBinding provides binding) {
                                 ShelfGridItem(
                                     // 逐项窄化: 同 LIST 分支, 避免刷新集合每次变化重组全部可见项
@@ -435,7 +443,7 @@ fun ShelfBooksContent(
                         // 外层 Box 同 LIST 分支: 让 animateItem 留在 Box 上
                         is Book -> Box(modifier = itemModifier) {
                             // 共享配对身份按条目下发 (同上)
-                            val binding = rememberSharedCoverSourceBinding(item.bookUrl)
+                            val binding = rememberSharedCoverSourceBinding(item.bookUrl, pairBlockId)
                             CompositionLocalProvider(LocalSharedCoverBinding provides binding) {
                                 ShelfVideoItem(
                                     item, coverReloadTick,

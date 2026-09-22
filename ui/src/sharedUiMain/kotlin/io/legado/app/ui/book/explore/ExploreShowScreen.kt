@@ -383,9 +383,10 @@ private fun ResultArea(
         contentPadding = navPad,
     ) {
         items(books, key = { it.bookUrl }, contentType = { "exploreBook" }) { book ->
-            // 共享配对身份按条目下发: 被点的封面就是出发端 (页转场 token 自签, 点击时交给导航),
+            // 共享配对身份按条目下发: 被点的封面就是出发端 (token 由页面+区块+条目派生,
+            // 点击时交给导航),
             // 因此同屏重复的封面 (同书/同 URL) 也不会互相抢正身
-            val binding = rememberSharedCoverSourceBinding(book.bookUrl)
+            val binding = rememberSharedCoverSourceBinding(book.bookUrl, "explore-result")
             CompositionLocalProvider(LocalSharedCoverBinding provides binding) {
                 when {
                     isVideo && cols >= 1 -> videoItemSlot(

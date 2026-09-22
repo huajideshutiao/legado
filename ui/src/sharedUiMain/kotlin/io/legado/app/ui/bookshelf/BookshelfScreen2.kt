@@ -163,6 +163,8 @@ internal fun BookshelfScreen2(
             // 对照 onItemClick(BookGroup): 进入该分组; onItemLongClick(BookGroup): GroupEditDialog
             onGroupClick = stableOnGroupClick,
             onGroupLongClick = onGroupLongClick,
+            // 区块 = 样式2 当前分组 (同一本书可能同时出现在根级与某分组内)
+            pairBlockId = "shelf2-group-$groupId",
         )
     }
 }

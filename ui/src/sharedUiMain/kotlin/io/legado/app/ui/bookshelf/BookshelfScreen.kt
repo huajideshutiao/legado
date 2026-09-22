@@ -307,6 +307,7 @@ fun BookshelfScreen(
                 showKindIntro = true,
                 bookCoverSlot = bookCoverSlot,
                 groupCoverSlot = groupCoverSlot,
+                pairBlockId = "shelf-loading",
             )
         } else {
             // 初始分组 groupId: 该分组的页用外部 scrollState (保留宿主 gotoTop 入口), 其他页独立 state
@@ -453,6 +454,8 @@ private fun GroupBooksPage(
         showKindIntro = true,
         bookCoverSlot = bookCoverSlot,
         groupCoverSlot = groupCoverSlot,
+        // 区块 = 分组页: 相邻分组页可能同时展示同一本书, 必须分开配对
+        pairBlockId = "shelf-group-${group.groupId}",
     )
 }
 

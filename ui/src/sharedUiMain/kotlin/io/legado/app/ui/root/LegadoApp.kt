@@ -459,8 +459,13 @@ fun LegadoApp(
                     }
                     saveableStateHolder.SaveableStateProvider(entry.id.value) {
                         // 页转场共享对阶段 + 本页 entry 的共享身份都在这里下发:
-                        // 端点只读自己手上那个 token 的阶段 (compositionLocalOf, 会下发重组)
-                        CompositionLocalProvider(LocalSharedPageFlights provides sharedPageFlights) {
+                        // 端点只读自己手上那个 token 的阶段 (compositionLocalOf, 会下发重组)。
+                        // 页面身份 (entry.id) 也在这里下发 —— 共享元素配对键由 (页面, 区块, 条目) 派生,
+                        // 而 entry.id 是导航栈事实 (随快照持久化), 故重新组合/进程重建后派生值不变
+                        CompositionLocalProvider(
+                            LocalSharedPageFlights provides sharedPageFlights,
+                            LocalSharedPairPage provides entry.id.value,
+                        ) {
                             RouteContent(entry, navigator, screenModelStore)
                         }
                     }

@@ -400,7 +400,7 @@ private fun RuleItemScope.BookItem(
         // 封面槽: 默认经 LocalBookCoverSlot 落到 SharedBookCover (可由 host 端注入覆盖)
         // 把 Box 的尺寸约束通过 fillMaxSize 透传给 coverSlot, 让封面按封面框 60x80dp 渲染。
         // 本条目封面的共享配对身份 (页转场出发端): 点击时随 onOpenBook 交给导航
-        val coverBinding = rememberSharedCoverSourceBinding(book.bookUrl)
+        val coverBinding = rememberSharedCoverSourceBinding(book.bookUrl, "manage-list")
         Box(
             modifier = Modifier
                 .align(Alignment.CenterVertically)

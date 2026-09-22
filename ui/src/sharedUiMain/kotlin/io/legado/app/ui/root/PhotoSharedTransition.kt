@@ -23,7 +23,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
-import kotlin.random.Random
 
 /**
  * 官方共享转场作用域 (androidx.compose.animation 的 SharedTransitionLayout 提供)。
@@ -54,46 +53,64 @@ internal expect val photoSharedResizeMode: ResizeMode
 val LocalSharedTransitionEnabled = staticCompositionLocalOf { false }
 
 /**
- * 共享元素配对 token 的签发器。
+ * 共享元素配对身份的签发器: 身份是 (页面 entry, 配对区块, 条目键) 三元组的确定性派生值。
  *
- * 为什么不再拿封面 URL 当配对键: 官方 [SharedTransitionScope] 按 key 配对, 且 key 空间是**全局**的
+ * 为什么不用封面 URL 当配对键: 官方 [SharedTransitionScope] 按 key 配对, 且 key 空间是**全局**的
  * (同一 key 的所有端点住在同一个 SharedElement 里, 官方只认「同一时刻恰好一个端点报称目标」)。
  * 封面 URL 是**被展示的数据**: 同一张封面同时出现在书架卡片/搜索列表/详情页/音频页是常态, 一旦同 key
  * 有多个端点在场, 官方只能取"组合顺序里最靠前的那个报目标端点", 起飞位与落位随之选错; 更根本的是
  * 配对正确性被绑到了数据一致性上 (详情页加载后回写 coverUrl、搜索书与书架书 URL 不同源等), 于是
  * "该配的配不上、不该配的配上了"。
  *
- * 改成"端点自签的配对身份": 谁的封面被点了, 谁就把自己的 token 交给这次导航, 目标页拿着同一个值当
- * 自己的 key —— 配对正确性由点击因果保证, 与被展示的数据完全解耦。这正是 Android 系统转场的形状
- * (`makeSceneTransitionAnimation(view, "name")`: 名字只是这一次转场的标识, 由发起方当场交出)。
+ * 为什么不用组合期自签的随机 token: 自签值的生命周期 = 端点所在条目的组合寿命, 而配对键必须在**整段
+ * 转场期间**稳定 —— 列表卡片被 Lazy 回收重建、或页面因任何原因重新组合时, 自签值会变成一个新值,
+ * 而目标页 entry 上记的是点击那一刻交出的旧值, 两端 key 不再相等, 官方就当成两个不相干的共享元素
+ * 各自淡入淡出 (退出详情页时共享元素动画整个消失)。
  *
- * 进程盐 + 单调计数: token 只需在**本进程**唯一。导航快照会持久化 (进程被杀后恢复), 若一律从 0
- * 开始计数, 恢复出来的旧 token 会与本次新签发的撞号 → 两端误配。盐让两代 token 天然不撞。
+ * 三元组派生的性质:
+ * - **确定性**: 同样的 (页面, 区块, 条目) 恒等出同一个值, 与组合时机/重建次数无关;
+ * - **可快照恢复**: [RouteEntry.id] 随导航快照持久化 (nextEntryId 一并持久化), 进程重建后同一页
+ *   仍派生同一个值, 而目标页 entry 上持久化的旧值也还在 ⇒ 两端重新配得上;
+ * - **同页多区块不撞**: 区块维度区分「搜索页的书架命中区」与「搜索结果区」等同时展示同一本书的位置;
+ * - **同区块多端点不撞**: 条目键区分同一区块内不同条目。
  *
- * 只在主线程/组合期调用 (端点自签发生在组合期), 故不加锁。
+ * 命名空间: 页转场与「封面↔全屏大图」两对共享同一份三元组基底, 后者加前缀分命名空间 (见
+ * [photoSharedViewerKey]); 大图对两端都在同一页内, 不跨页, 故不需要额外维度。
  */
-object SharedPairTokens {
-    private var counter: Long = 0
-    private val salt: String = Random.nextLong().toString(36)
+object SharedPairKeys {
 
-    fun newToken(): String = "s$salt.${++counter}"
+    /** 页转场对 (列表封面 ↔ 目标页封面) 的配对键。 */
+    fun pageToken(pageId: Long, blockId: String, itemKey: Any?): String =
+        "p$pageId|$blockId|${itemKey ?: ""}"
+
+    /** 「封面 ↔ 全屏大图查看器」对的配对键基底 (本页唯一: 每页至多一个可点开的封面端点)。 */
+    fun photoToken(pageId: Long): String = "v$pageId"
 }
 
 /** 页转场里的角色: [Source] = 被点的那张封面 (出发端), [Destination] = 目标页上的封面 (落位端)。 */
 enum class SharedPageRole { Source, Destination }
 
 /**
+ * 本页的配对身份 (页面 entry id): 由 [LegadoApp] 的页面渲染循环下发。
+ *
+ * 未下发 (null) = 本处封面不参与页转场配对。页面身份必须来自**导航栈事实**而非组合期随机值,
+ * 这样同一页在任意次重新组合后都派生同一个配对键。
+ */
+val LocalSharedPairPage = staticCompositionLocalOf<Long?> { null }
+
+/**
  * 本封面端点的共享身份 (由宿主条目/页面经 [LocalSharedCoverBinding] 提供; 没提供 = 这份封面完全不
  * 参与共享转场)。
  *
  * 两套端点各要一份 token:
- * - [pageToken] 页转场 (列表封面 ↔ 目标页封面): [SharedPageRole.Source] 侧组合期自签, 点击时交给
- *   导航 ([AppNavigator.push] 的 sharedToken 参数), 目标页从自己的 [RouteEntry.sharedToken] 取同一个值;
+ * - [pageToken] 页转场 (列表封面 ↔ 目标页封面): 出发侧由 [LocalSharedPairPage] + 区块身份
+ *   + 条目键派生, 点击时交给导航 ([AppNavigator.push] 的 sharedToken 参数), 目标页从自己的
+ *   [RouteEntry.sharedToken] 取同一个值;
  * - [photoToken] 封面 ↔ 全屏大图查看器: 只有"本页封面能点开大图"的页面提供 (页面自签)。
  *
- * 为什么出发侧要在组合期就自签、而不是点击那一帧才签发: 官方要靠"对端上一次被放置的矩形"当飞行起点
- * (SharedTransitionStateMachine 的 currentBounds)。端点节点必须在本帧之前就已经在场并完成过布局;
- * 点击那一帧才新建节点, 起点会退化成目标自己的矩形 —— 飞行退化成原地淡入。
+ * 出发侧的 token 必须在点击之前就已存在 (官方要靠"对端上一次被放置的矩形"当飞行起点,
+ * SharedTransitionStateMachine 的 currentBounds; 点击那一帧才新建节点会退化成原地淡入),
+ * 故派生发生在组合期, 而不是点击时。
  */
 class SharedCoverBinding internal constructor(
     val pageRole: SharedPageRole,
@@ -108,33 +125,43 @@ class SharedCoverBinding internal constructor(
 val LocalSharedCoverBinding = staticCompositionLocalOf<SharedCoverBinding?> { null }
 
 /**
- * 建一份出发侧绑定 (列表卡片): 页转场 token 组合期签发, 点击时经 [SharedCoverBinding.pageToken] 交给导航。
+ * 建一份出发侧绑定 (列表卡片): 页转场 token 由 (本页身份, 本区块身份, 条目键) 派生,
+ * 点击时经 [SharedCoverBinding.pageToken] 交给导航。
  *
- * @param bookKey 条目身份键 (通常 bookUrl): 同一条目位置换成另一本书时必须换 token, 否则新书的封面
+ * @param itemKey 条目身份键 (通常 bookUrl): 同一条目位置换成另一本书时必须换 token, 否则新书的封面
  *   会顶着一张刚离场的旧配对 (两端都还挂着同一个 token)。
+ * @param blockId 配对区块身份: 区分同页内多个可能展示同一本书的区块。区块身份只需在本页内唯一。
  */
 @Composable
-fun rememberSharedCoverSourceBinding(bookKey: Any?): SharedCoverBinding =
-    remember(bookKey) {
-        SharedCoverBinding(SharedPageRole.Source, pageToken = SharedPairTokens.newToken())
+fun rememberSharedCoverSourceBinding(
+    itemKey: Any?,
+    blockId: String = "page",
+): SharedCoverBinding {
+    val pageId = LocalSharedPairPage.current
+    return remember(pageId, blockId, itemKey) {
+        SharedCoverBinding(
+            SharedPageRole.Source,
+            pageToken = pageId?.let { SharedPairKeys.pageToken(it, blockId, itemKey) },
+        )
     }
+}
 
 /**
  * 建一份落位侧绑定 (目标页: 详情页封面 / 音频页封面)。
  *
- * @param entryKey 本页 entry 身份 (entry.id): 同一位置换成另一页时必须换大图 token
+ * @param pageId 本页 entry 身份 (entry.id.value): 大图 token 与页转场 token 都从它派生
  * @param pageToken 本页进入时由发起方交出的页转场 token (null = 本次不是从封面点进来的, 不参与页对)
  */
 @Composable
 fun rememberSharedCoverDestinationBinding(
-    entryKey: Any?,
+    pageId: Long,
     pageToken: String?,
 ): SharedCoverBinding =
-    remember(entryKey) {
+    remember(pageId) {
         SharedCoverBinding(
             SharedPageRole.Destination,
             pageToken = pageToken,
-            photoToken = SharedPairTokens.newToken(),
+            photoToken = SharedPairKeys.photoToken(pageId),
         )
     }
 

@@ -94,7 +94,7 @@ fun BookInfoRoute(
     // 本页封面端点的共享身份: 页转场 token 来自发起方 (被点的卡片) 经导航带过来的 entry.sharedToken,
     // 大图 token 由本页自签 —— 两者都只在本页唯一, 不依赖封面 URL 与页面栈位置
     // (entryKey 用 entry.id: 同一位置换页时必须换大图 token, 否则会顶着一张旧配对)
-    val coverBinding = rememberSharedCoverDestinationBinding(entry.id, entry.sharedToken)
+    val coverBinding = rememberSharedCoverDestinationBinding(entry.id.value, entry.sharedToken)
 
     // 搜索结果进入的书 (对照 app 端 BaseReadViewModel.upBook 的 isSearchBook)
     val isSearchBook = route.book is BookRef.Search

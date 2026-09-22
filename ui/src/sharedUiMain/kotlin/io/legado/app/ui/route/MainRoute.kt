@@ -501,6 +501,8 @@ private fun HomeTabContent(
             HomeInfiniteGridCard(
                 book = book,
                 coverVideo = section.coverVideo,
+                // 区块身份按展示项给出: 同页多个展示项可能含同一本书, 必须分开配对
+                blockId = "home-${section.id}",
                 onBookClick = { token -> onBook(book, section, false, token) },
                 onBookLongClick = { token -> onBook(book, section, true, token) },
             )
@@ -598,6 +600,8 @@ private fun HomeSectionBlock(
         remember { { book, token -> currentOnBookLongClick.value(book, token) } }
     val currentOnMoreClick = rememberUpdatedState(onMoreClick)
     val stableOnMoreClick: () -> Unit = remember { { currentOnMoreClick.value() } }
+    // 区块身份 (同页多个展示项可能含同一本书, 必须分开配对); tab 已按 tab 分页, 无需入 id
+    val blockId = "home-${section.id}"
     // 对照 SectionHolder.root: 每个展示项上下留白 (top default=8 / bottom xs=4)
     Column(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp)) {
         HomeSectionTitleRow(section.title, stableOnMoreClick)
@@ -617,16 +621,16 @@ private fun HomeSectionBlock(
             else -> when (section.style) {
                 // 对照 HomeSectionAdapter.RANK_LIMIT: 排行榜单列前 5 名, 宽屏自适应两列前 10 名
                 HomeSection.STYLE_RANK_LIST ->
-                    HomeRankList(books, stableOnBookClick, stableOnBookLongClick)
+                    HomeRankList(books, stableOnBookClick, stableOnBookLongClick, blockId)
 
                 // 对照 FourColumnAdapter: 每列 4 本, 横向翻列 (宽屏不限数量)
-                HomeSection.STYLE_FOUR_ROW -> HomeFourRow(books, stableOnBookClick, stableOnBookLongClick)
+                HomeSection.STYLE_FOUR_ROW -> HomeFourRow(books, stableOnBookClick, stableOnBookLongClick, blockId)
 
                 // 对照 HomeSectionAdapter: COVER_ROW 走封面行, 未知样式回落排行榜
                 HomeSection.STYLE_COVER_ROW ->
-                    HomeCoverRow(books, stableOnBookClick, stableOnBookLongClick, section.coverVideo)
+                    HomeCoverRow(books, stableOnBookClick, stableOnBookLongClick, section.coverVideo, blockId)
 
-                else -> HomeRankList(books, stableOnBookClick, stableOnBookLongClick)
+                else -> HomeRankList(books, stableOnBookClick, stableOnBookLongClick, blockId)
             }
         }
     }
@@ -728,6 +732,7 @@ private fun HomeCoverRow(
     onBookClick: (SearchBook, String?) -> Unit,
     onBookLongClick: (SearchBook, String?) -> Unit,
     isVideoStyle: Boolean,
+    blockId: String,
 ) {
     val scrollState = rememberScrollState()
     Row(
@@ -741,8 +746,8 @@ private fun HomeCoverRow(
             // 对照原 VideoCoverCardVH.bind: bindVideoCard(coverRatio=VIDEO, isInBookshelf=false,
             // showBookshelfBadge=false); 封面走 LocalBookCoverSlot (与书架/探索页一致)
             books.forEach { book ->
-                // 共享配对身份按条目下发 (被点的封面 = 出发端, 页转场 token 自签)
-                val binding = rememberSharedCoverSourceBinding(book.bookUrl)
+                // 共享配对身份按条目下发 (被点的封面 = 出发端, token 由页面+区块+条目派生)
+                val binding = rememberSharedCoverSourceBinding(book.bookUrl, blockId)
                 CompositionLocalProvider(LocalSharedCoverBinding provides binding) {
                     ShelfVideoItem(
                         book = book.toCoverBook(),
@@ -762,7 +767,7 @@ private fun HomeCoverRow(
             // 封面组件按 NOVEL 3:4 反推宽 120dp), item 总宽 128 = 120 + 两侧 4dp padding
             books.forEach { book ->
                 // 共享配对身份按条目下发 (同上)
-                val binding = rememberSharedCoverSourceBinding(book.bookUrl)
+                val binding = rememberSharedCoverSourceBinding(book.bookUrl, blockId)
                 CompositionLocalProvider(LocalSharedCoverBinding provides binding) {
                     Column(
                         Modifier
@@ -814,6 +819,7 @@ private fun HomeRankList(
     books: List<SearchBook>,
     onBookClick: (SearchBook, String?) -> Unit,
     onBookLongClick: (SearchBook, String?) -> Unit,
+    blockId: String,
 ) {
     BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
         val isWide = maxWidth >= AppTheme.DesignTokens.wideScreenMinWidth
@@ -824,14 +830,14 @@ private fun HomeRankList(
             Row(Modifier.fillMaxWidth()) {
                 Column(Modifier.weight(1f)) {
                     leftBooks.forEachIndexed { index, book ->
-                        // 共享配对身份按条目下发 (被点的封面 = 出发端, 页转场 token 自签)
-                        val binding = rememberSharedCoverSourceBinding(book.bookUrl)
+                        // 共享配对身份按条目下发 (被点的封面 = 出发端, token 由页面+区块+条目派生)
+                        val binding = rememberSharedCoverSourceBinding(book.bookUrl, blockId)
                         HomeRankItem(index + 1, book, true, onBookClick, onBookLongClick, binding)
                     }
                 }
                 Column(Modifier.weight(1f).padding(start = 8.dp)) {
                     rightBooks.forEachIndexed { index, book ->
-                        val binding = rememberSharedCoverSourceBinding(book.bookUrl)
+                        val binding = rememberSharedCoverSourceBinding(book.bookUrl, blockId)
                         HomeRankItem(index + 6, book, true, onBookClick, onBookLongClick, binding)
                     }
                 }
@@ -840,7 +846,7 @@ private fun HomeRankList(
             val displayBooks = books.take(HOME_RANK_LIMIT)
             Column(Modifier.fillMaxWidth()) {
                 displayBooks.forEachIndexed { index, book ->
-                    val binding = rememberSharedCoverSourceBinding(book.bookUrl)
+                    val binding = rememberSharedCoverSourceBinding(book.bookUrl, blockId)
                     HomeRankItem(index + 1, book, true, onBookClick, onBookLongClick, binding)
                 }
             }
@@ -862,6 +868,7 @@ private fun HomeFourRow(
     books: List<SearchBook>,
     onBookClick: (SearchBook, String?) -> Unit,
     onBookLongClick: (SearchBook, String?) -> Unit,
+    blockId: String,
 ) {
     val density = LocalDensity.current
     val itemWidthPx = with(density) { 220.dp.toPx() }
@@ -881,8 +888,8 @@ private fun HomeFourRow(
         columns.forEach { column ->
             Column(Modifier.width(220.dp)) {
                 column.forEach { book ->
-                    // 共享配对身份按条目下发 (被点的封面 = 出发端, 页转场 token 自签)
-                    val binding = rememberSharedCoverSourceBinding(book.bookUrl)
+                    // 共享配对身份按条目下发 (被点的封面 = 出发端, token 由页面+区块+条目派生)
+                    val binding = rememberSharedCoverSourceBinding(book.bookUrl, blockId)
                     CompositionLocalProvider(LocalSharedCoverBinding provides binding) {
                         HomeRankItem(0, book, false, onBookClick, onBookLongClick, binding)
                     }
@@ -1119,12 +1126,13 @@ private fun HomeInfiniteHeader(
 private fun HomeInfiniteGridCard(
     book: SearchBook,
     coverVideo: Boolean,
+    blockId: String,
     onBookClick: (String?) -> Unit,
     onBookLongClick: (String?) -> Unit,
 ) {
     val colors = AppTheme.colors
     // 本卡片封面的共享配对身份 (页转场出发端): 点击时随回调交给导航
-    val binding = rememberSharedCoverSourceBinding(book.bookUrl)
+    val binding = rememberSharedCoverSourceBinding(book.bookUrl, blockId)
     // 稳定化回调: 同 HomeSectionBlock, 数据未变时卡片整体跳过重组
     val currentOnBookClick = rememberUpdatedState(onBookClick)
     val stableOnBookClick: () -> Unit = remember { { currentOnBookClick.value(binding.pageToken) } }

@@ -501,8 +501,8 @@ private fun ColumnScope.InputHelp(
                 .weight(1f),
         ) {
             items(bookshelfBooks, key = { it.bookUrl }) { book ->
-                // 共享配对身份按条目下发 (被点的封面 = 出发端, 页转场 token 自签)
-                val binding = rememberSharedCoverSourceBinding(book.bookUrl)
+                // 共享配对身份按条目下发 (被点的封面 = 出发端, token 由页面+区块+条目派生)
+                val binding = rememberSharedCoverSourceBinding(book.bookUrl, "search-shelf")
                 CompositionLocalProvider(LocalSharedCoverBinding provides binding) {
                     when {
                         // 视频网格卡 (cols>=1 且视频, 对照 ExploreShow 视频卡分支)
@@ -833,8 +833,8 @@ private fun ColumnScope.ResultArea(
             books,
             key = { "${it.origin}|${it.bookUrl}" },
             contentType = { "searchBook" }) { book ->
-            // 共享配对身份按条目下发 (被点的封面 = 出发端, 页转场 token 自签)
-            val binding = rememberSharedCoverSourceBinding(book.bookUrl)
+            // 共享配对身份按条目下发 (被点的封面 = 出发端, token 由页面+区块+条目派生)
+            val binding = rememberSharedCoverSourceBinding(book.bookUrl, "search-result")
             CompositionLocalProvider(LocalSharedCoverBinding provides binding) {
                 when {
                     // 视频网格卡 (cols>=1 且视频, 对照 ExploreShow 视频卡分支)

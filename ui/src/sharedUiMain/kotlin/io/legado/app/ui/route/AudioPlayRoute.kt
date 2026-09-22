@@ -311,7 +311,7 @@ fun AudioPlayRoute(
 
     // 本页封面端点的共享身份: 页转场 token 来自发起方 (被点的卡片) 经导航带过来的 entry.sharedToken,
     // 大图 token 由本页自签 (见 [LocalSharedCoverBinding] 的说明)
-    val coverBinding = rememberSharedCoverDestinationBinding(entry.id, entry.sharedToken)
+    val coverBinding = rememberSharedCoverDestinationBinding(entry.id.value, entry.sharedToken)
 
     CompositionLocalProvider(LocalSharedCoverBinding provides coverBinding) {
     platform.Content(
