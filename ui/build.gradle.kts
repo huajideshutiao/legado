@@ -110,15 +110,15 @@ kotlin {
                 sharedLib {
                     baseName = "legado_shared"
                     if (buildType == NativeBuildType.RELEASE) {
-                        // 模块分割后 -O1 预期不再 OOM: 单体 :shared 时代 -O1 在 16GB 机器上触发
-                        // LLVM codegen "LLVM ERROR: out of memory" 硬崩溃 (退出码 -1073741795),
-                        // 当时退到 -O0 (clangNooptFlags.ohos_arm64=-O0); 现按模块分编, LLVM 单任务
-                        // 输入大幅缩小。clangNooptFlags.ohos_arm64 默认即 -O1, 显式写出 + 并行
-                        // LLVM codegen (-Xbackend-threads=4) + 函数/数据级 section (-ffunction-sections
-                        // -fdata-sections, 配合链接期 --gc-sections 做 R8 对标死代码消除)。
-                        optimized = false
-                        freeCompilerArgs += "-Xbackend-threads=4"
-                        freeCompilerArgs += "-Xoverride-konan-properties=clangNooptFlags.ohos_arm64=-O1 -ffunction-sections -fdata-sections"
+                        // 激进优化: optimized=true 开 Kotlin 编译优化 pass, clang 走
+                        // clangOptFlags.ohos_arm64 (默认 -O3 -ffunction-sections)。模块分割后
+                        // LLVM 单任务输入变小, 配合 10g daemon 堆 (历史 optimized=true 需 10g)
+                        // 预期不再 OOM (单体 :shared 时代 -O1 曾在 16GB 机器硬崩溃, 退出码
+                        // -1073741795)。-Xbackend-threads 并行 LLVM codegen 提速;
+                        // -fdata-sections 配合链接期 --gc-sections 做死代码消除 (R8 对标)。
+                        optimized = true
+                        freeCompilerArgs += "-Xbackend-threads=8"
+                        freeCompilerArgs += "-Xoverride-konan-properties=clangOptFlags.ohos_arm64=-O3 -ffunction-sections -fdata-sections"
                         linkerOpts("-s", "--gc-sections")
                     }
                     export("org.jetbrains.compose.export:export:$composeVersion")
