@@ -44,7 +44,9 @@
 ############################
 # 项目反射 keep (危险区, 随 shared/quickjs 下沉的规则照搬)
 ############################
--include ../shared/consumer-rules.pro
+-include ../core/consumer-rules.pro
+-include ../data/consumer-rules.pro
+-include ../foundation/consumer-rules.pro
 -include ../modules/quickjs/consumer-rules.pro
 
 # AnalyzeRuleCore 下沉 commonMain 后无法用 androidx @Keep (无 common 变体), 按类名 keep (JS 反射调用其方法)
