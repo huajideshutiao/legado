@@ -48,10 +48,10 @@ object BookList {
         shouldBreak: ((size: Int) -> Boolean)? = null,
     ): BookListPage {
         body ?: throw NoStackTraceException(
-            appString(AppStringKey.error_get_web_content, analyzeUrl.urlAfterJs)
+            appString(AppStringKey.error_get_web_content, analyzeUrl.ruleUrl)
         )
         val bookList = ArrayList<SearchBook>()
-        SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "≡获取成功:${analyzeUrl.urlAfterJs}")
+        SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "≡获取成功:${analyzeUrl.ruleUrl}")
         SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, body, state = 10)
         val analyzeRule = AnalyzeRuleFactories.create(ruleData, bookSource)
         analyzeRule.setContent(body).setBaseUrl(baseUrl)
@@ -171,7 +171,7 @@ object BookList {
         book.bookUrl = if (isRedirect) {
             baseUrl
         } else {
-            NetworkUtils.getAbsoluteURL(analyzeUrl.url, analyzeUrl.urlAfterJs)
+            NetworkUtils.getAbsoluteURL(analyzeUrl.url, analyzeUrl.ruleUrl)
         }
         book.origin = bookSource.bookSourceUrl
         book.originName = bookSource.bookSourceName

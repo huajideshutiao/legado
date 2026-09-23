@@ -100,7 +100,7 @@ open class AnalyzeUrlCore(
      * `ruleUrl` 经过 @js / <js></js> 解析后、{{...}} 与 <name(opts)> 替换之前的形态，
      * 供调用方发现 URL 中静态声明的可选项。
      */
-    var urlAfterJs = ""
+    var ruleUrl = ""
         protected set
     var url: String = ""
     val headerMap = LinkedHashMap<String, String>()
@@ -156,7 +156,7 @@ open class AnalyzeUrlCore(
         tmpUrl = rawUrl
         //执行@js,<js></js>
         analyzeJs()
-        urlAfterJs = tmpUrl
+        ruleUrl = tmpUrl
         //替换参数
         tmpUrl = replaceKeyPageJs(replaceDynamicOptions(tmpUrl))
         //处理URL

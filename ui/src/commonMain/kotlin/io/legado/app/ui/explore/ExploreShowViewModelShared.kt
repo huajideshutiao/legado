@@ -328,7 +328,7 @@ class ExploreShowViewModelShared(
                 source, url, page, isSearch = false,
                 onUrlResolved = { analyzeUrl: AnalyzeUrlCore ->
                     val oldSize = exploreOptions.size
-                    mergeOptions(parseExploreOptionsFromUrl(analyzeUrl.urlAfterJs))
+                    mergeOptions(parseExploreOptionsFromUrl(analyzeUrl.ruleUrl))
                     if (exploreOptions.size > oldSize) {
                         _optionsReadyFlow.tryEmit(Unit)
                     }

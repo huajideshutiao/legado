@@ -185,7 +185,7 @@ object NativeJsPropertyBridge {
         2104 -> (obj as? AnalyzeUrlCore)?.let { longToJsValue(ctx, it.serverID) } // serverID
         2105 -> (obj as? AnalyzeUrlCore)?.let { stringToJsValue(ctx, GSON.toJson(it.headerMap)) } // headerMap → JSON (JS 侧 JSON.parse)
         2106 -> (obj as? AnalyzeUrlCore)?.let { stringToJsValue(ctx, it.url) } // url
-        2107 -> (obj as? AnalyzeUrlCore)?.let { stringToJsValue(ctx, it.urlAfterJs) } // urlAfterJs
+        2107 -> (obj as? AnalyzeUrlCore)?.let { stringToJsValue(ctx, it.ruleUrl) } // ruleUrl
         2108 -> (obj as? AnalyzeUrlCore)?.let { stringToJsValue(ctx, it.encodedParams) } // encodedParams
 
         // ============ AnalyzeRuleCore 属性 (2109-2112, java binding 的 AnalyzeRule 面) ============
@@ -545,7 +545,7 @@ object NativeJsPropertyBridge {
 
         // ============ AnalyzeUrlCore 面 (3102/3106/3108) ============
         // 3101 rawUrl(val) / 3103 type(val get) / 3104 serverID(val get) / 3105 headerMap(val) 只读,
-        // 3107 urlAfterJs(protected set) 两端均不可写 (JVM getMethods 不含 protected setter)
+        // 3107 ruleUrl(protected set) 两端均不可写 (JVM getMethods 不含 protected setter)
         methodId == 3102 -> (obj as? AnalyzeUrlCore)?.let { b ->
             toNullableString(args.getOrNull(0))?.let { b.urlNoQuery = it }
             jsUndefined()
@@ -763,7 +763,7 @@ function __createAnalyzeObj(handle) {
         return (s === null || s === undefined) ? null : JSON.parse(s);
     } }); // val 只读
     Object.defineProperty(obj, "url", { get: function() { return __nativeDispatch(handle, 2106, []); }, set: function(v) { __nativeDispatch(handle, 3106, [v]); } });
-    Object.defineProperty(obj, "urlAfterJs", { get: function() { return __nativeDispatch(handle, 2107, []); } }); // protected set 两端不可写
+    Object.defineProperty(obj, "ruleUrl", { get: function() { return __nativeDispatch(handle, 2107, []); } }); // protected set 两端不可写
     Object.defineProperty(obj, "encodedParams", { get: function() { return __nativeDispatch(handle, 2108, []); }, set: function(v) { __nativeDispatch(handle, 3108, [v]); } });
     // AnalyzeRuleCore 面 (2109-2112; AnalyzeUrlCore 实例取到 undefined/null)
     Object.defineProperty(obj, "chapter", { get: function() { return __createChapterObj(__nativeDispatch(handle, 2109, [])); } });
