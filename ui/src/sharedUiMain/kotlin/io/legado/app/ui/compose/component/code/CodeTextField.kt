@@ -110,6 +110,7 @@ import io.legado.app.ui.compose.component.TextFieldLabelToText
 import io.legado.app.ui.compose.component.appFieldDefaultMinHeight
 import io.legado.app.ui.compose.component.appTextSelectionColors
 import io.legado.app.ui.compose.component.asHighlightOutputTransformation
+import io.legado.app.ui.compose.component.safeMaxFieldHeight
 import io.legado.app.ui.compose.platform.BackLayerHandler
 import io.legado.app.ui.compose.component.rememberSyncedTextFieldState
 import io.legado.app.ui.compose.component.toKeyboardActionHandler
@@ -271,7 +272,8 @@ fun CodeTextField(
      * 最小/最大行数 (对齐原版 BookSourceEditAdapter 的 editText.maxLines = sourceEditMaxLine),
      * 直接交给 BasicTextField 的 lineLimits: 超过 [maxLines] 行时 foundation 限高并在字段内
      * 滚动 (光标可见/拖选自动滚动是它的原生行为), 装饰层的行号列按滚动量平移跟随。
-     * 默认不限制 (Int.MAX_VALUE = 内容自适应, 滚动全归宿主容器)。
+     * 默认不限制 (Int.MAX_VALUE), 但字段高度有 Compose 物理上限兜底 (见 SafeMaxFieldHeightPx):
+     * 内容超高时字段封顶并在内部滚动 (行号/高亮窗口均跟随)。
      * maxLines 有限时高亮挂载窗口恒全区间: 字段根节点位置不随内部滚动变化, 窗口无从跟随。
      */
     minLines: Int = 1,
@@ -540,6 +542,54 @@ fun CodeTextField(
     // internalScroll.value` 驱动, 两种滚动场景一个公式, 不按 maxLines 分分支
     var externalVisibleTopPx by remember { mutableFloatStateOf(0f) }
     var externalVisibleHeightPx by remember { mutableFloatStateOf(0f) }
+    // 着色挂载窗口重算 (对照原版 updateVisibleSpans: getLocalVisibleRect + getLineForVertical
+    // ±10 行判定 / ±20 行挂载, 窗口仍被覆盖时提前返回不重挂): 可见首行 = 外部滚动贡献
+    // (externalVisibleTopPx, onGloballyPositioned 量化写入) + 内部滚动贡献 (internalScroll),
+    // 与行号窗口 (gutterWindow) 同一公式。触发 = snapshotFlow 观察 (外部可见区 / 内部滚动
+    // 偏移 / 文本布局就绪) 任一变化, 内部滚动时窗口跟随滚动区平移。
+    val updateRenderRange: () -> Unit = updateRenderRange@{
+        // IME 动画期间冻结窗口重算: 视口逐帧变化会反复触发下方全量 buildAnnotatedString
+        // (见 imeAnimating 声明处); 动画结束后按最终视口重算一次。
+        if (imeAnimating) return@updateRenderRange
+        // maxLines 有限时文本在字段自己的滚动区内平移, 本函数挂在字段根 (滚动区外), 位置
+        // 不变 → 高亮窗口不跟随 → 恒全区间挂载: span 是文本属性随平移, 滚动后新显示的行
+        // 仍有着色 (窗口化高亮需按 internalScroll 重建 transformation, 滚动逐帧 O(n)
+        // 重布局, 得不偿失, 见 maxLines KDoc)。
+        if (maxLines != Int.MAX_VALUE) {
+            if (renderRange.last != Int.MAX_VALUE) renderRange = 0..Int.MAX_VALUE
+            return@updateRenderRange
+        }
+        val layout = textLayout ?: return@updateRenderRange
+        if (externalVisibleHeightPx <= 0f) return@updateRenderRange
+        val topInText = externalVisibleTopPx + internalScroll.value
+        val bottomInText = topInText + externalVisibleHeightPx
+        val lastLine = layout.lineCount - 1
+        val firstVisible = layout.getLineForVerticalPosition(topInText).coerceIn(0, lastLine)
+        val lastVisible = layout.getLineForVerticalPosition(bottomInText).coerceIn(0, lastLine)
+        // ±10 行判定窗口仍在已挂载区间内 → 不动 (hysteresis, 滚动不逐帧重挂)
+        val keepStart = layout.getLineStart((firstVisible - 10).coerceAtLeast(0))
+        val keepEnd = layout.getLineEnd((lastVisible + 10).coerceAtMost(lastLine))
+        if (keepStart >= renderRange.first && keepEnd <= renderRange.last) {
+            return@updateRenderRange
+        }
+        val start = layout.getLineStart((firstVisible - 20).coerceAtLeast(0))
+        val end = layout.getLineEnd((lastVisible + 20).coerceAtMost(lastLine))
+        renderRange = start..end
+    }
+    // 重算触发链: 外部滚动写 externalVisibleTopPx/Height (onGloballyPositioned 量化) →
+    // snapshotFlow 发射; 内部滚动 internalScroll.value 逐帧变 → 发射; 文本布局就绪
+    // (onTextLayout 回传) → 发射。hysteresis 保证滚动中不逐帧重挂, 只读 state 无重组。
+    val latestUpdateRenderRange by rememberUpdatedState(updateRenderRange)
+    LaunchedEffect(Unit) {
+        snapshotFlow {
+            listOf(
+                externalVisibleTopPx,
+                externalVisibleHeightPx,
+                internalScroll.value,
+                textLayout,
+            )
+        }.collect { latestUpdateRenderRange() }
+    }
     // 字段在窗口中的位置: Popup 的 offset 锚点是窗口内容根 (见 PopupPositionProvider 的
     // anchorBounds 注释), 自动补全弹层要锚定光标, 组件内相对偏移必须换算成窗口坐标。
     // 常挂跟踪: 挂载即回调一次取最新值 (首次弹层可见时不再用 Zero 错位一帧),
@@ -578,31 +628,9 @@ fun CodeTextField(
         // (见 imeAnimating 声明处); 动画结束后按最终视口重算一次。
         // fieldWindowOffset 更新保留在冻结前: 补全弹层锚点仍需跟随滚动/位置变化。
         if (imeAnimating) return@onGloballyPositioned
-        // maxLines 有限时文本在字段自己的滚动区内平移, 本回调挂在字段根 (滚动区外), 位置
-        // 不变 → 高亮窗口不跟随 → 恒全区间挂载: span 是文本属性随平移, 滚动后新显示的行
-        // 仍有着色 (窗口化高亮需按 internalScroll 重建 transformation, 滚动逐帧 O(n)
-        // 重布局, 得不偿失, 见 maxLines KDoc)。
-        if (maxLines != Int.MAX_VALUE) {
-            if (renderRange.last != Int.MAX_VALUE) renderRange = 0..Int.MAX_VALUE
-            return@onGloballyPositioned
-        }
-        // 可见区间 → 着色挂载窗口 (对照原版 updateVisibleSpans: getLocalVisibleRect +
-        // getLineForVertical ±10 行判定 / ±20 行挂载, 窗口仍被覆盖时提前返回不重挂)
-        val layout = textLayout ?: return@onGloballyPositioned
-        if (visible.height <= 0f) return@onGloballyPositioned
-        val bottomInText = visible.bottom - pos.y - textTopPx
-        val lastLine = layout.lineCount - 1
-        val firstVisible = layout.getLineForVerticalPosition(topInText).coerceIn(0, lastLine)
-        val lastVisible = layout.getLineForVerticalPosition(bottomInText).coerceIn(0, lastLine)
-        // ±10 行判定窗口仍在已挂载区间内 → 不动 (hysteresis, 滚动不逐帧重挂)
-        val keepStart = layout.getLineStart((firstVisible - 10).coerceAtLeast(0))
-        val keepEnd = layout.getLineEnd((lastVisible + 10).coerceAtMost(lastLine))
-        if (keepStart >= renderRange.first && keepEnd <= renderRange.last) {
-            return@onGloballyPositioned
-        }
-        val start = layout.getLineStart((firstVisible - 20).coerceAtLeast(0))
-        val end = layout.getLineEnd((lastVisible + 20).coerceAtMost(lastLine))
-        renderRange = start..end
+        // 外部可见区已量化写入: 着色挂载窗口重算统一走 updateRenderRange (snapshotFlow 触发),
+        // 本回调只需兜底初帧/布局就绪时的窗口刷新
+        updateRenderRange()
     }
     // 焦点/光标 bringIntoView 滚动目标: 光标所在视觉行 (根 Box 局部坐标)。BasicTextField 获焦时
     // 焦点系统按整个字段 bounds 发起请求, 长字段 (高 > 视口) 会把字段底对齐视口底, 表现
@@ -810,7 +838,11 @@ fun CodeTextField(
                             Modifier
                         }
                     )
-                    .defaultMinSize(minWidth = TextFieldDefaults.MinWidth, minHeight = minHeight),
+                    .defaultMinSize(minWidth = TextFieldDefaults.MinWidth, minHeight = minHeight)
+                    // 最大高度兜底 (见 SafeMaxFieldHeightPx): 内容超物理上限时字段封顶并内部滚动
+                    // (TextFieldCoreModifier 原生钳制 + internalScroll, 行号/高亮窗口已按滚动跟随),
+                    // 防止超长内容撑爆 Constraints 崩溃 (书源编辑超长字段实测 widthBits+heightBits>31)
+                    .heightIn(max = safeMaxFieldHeight(density)),
                 enabled = enabled,
                 readOnly = readOnly,
                 textStyle = codeStyle.copy(color = textColor),

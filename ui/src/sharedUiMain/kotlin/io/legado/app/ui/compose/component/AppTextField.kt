@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActionScope
@@ -38,12 +39,14 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.takeOrElse
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -293,7 +296,10 @@ private fun <T : Any> AppTextFieldCore(
                         label != null,
                         effectiveFontSize,
                     ),
-                ),
+                )
+                // 最大高度兜底 (见 SafeMaxFieldHeightPx): 多行内容超物理上限时字段封顶并内部滚动
+                // (TextFieldCoreModifier 原生钳制 + scrollState, 光标可见/拖选滚动照常)
+                .heightIn(max = safeMaxFieldHeight(LocalDensity.current)),
             enabled = enabled,
             readOnly = readOnly,
             textStyle = effectiveTextStyle.copy(color = textColor),
@@ -328,6 +334,20 @@ private fun <T : Any> AppTextFieldCore(
 }
 
 // ===== 下划线输入框统一几何 (与 component/code/CodeTextField 共用同一套常量) =====
+
+/**
+ * 字段最大高度 (px) 兜底: Compose Constraints 单维可表示上限为 262143px (MaxFocusMask 0x3FFFF,
+ * 打包位宽 31 bit 预算)。多行文本字段内容高度超过该值后, 任何按实际高度构造 Constraints 的路径
+ * (如 Box.matchParentSize / 约束 offset) 都会因 widthBits + heightBits > 31 抛
+ * IllegalArgumentException 崩溃 (书源编辑超长字段实测)。字段高度超过本值后由 foundation 的
+ * TextFieldCoreModifier 钳制到 maxHeight 并在字段内部滚动 (scrollState 原生行为, maxLines
+ * 不限制时同样生效), 内容完整可编辑查看 —— Compose 物理上限下对齐原版 EditText 超长不崩的语义。
+ * 上限 262143 留 2K 余量覆盖 offset 等衍生计算。
+ */
+internal const val SafeMaxFieldHeightPx = 260_000
+
+/** [SafeMaxFieldHeightPx] 按当前密度换算的 dp 值 (px 上限与设备密度无关, 需除以 density 折算)。 */
+internal fun safeMaxFieldHeight(density: Density): Dp = with(density) { SafeMaxFieldHeightPx.toDp() }
 
 /** 水平内容留白: 下划线形态收窄至 4dp (M2 filled 默认 16dp 是容器形态所需) */
 internal val TextFieldHorizontalPadding = 4.dp
