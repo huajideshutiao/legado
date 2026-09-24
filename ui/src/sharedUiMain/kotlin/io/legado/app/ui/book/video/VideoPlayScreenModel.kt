@@ -387,8 +387,9 @@ class VideoPlayScreenModel : ScreenModel {
     fun onNextChapter() {
         // 直投只有一条地址, 无章可切 (不得弹“已播放到最后一章”那种类书提示)
         if (shared.isDirect) return
-        // 末章播完给一条提示: 原版什么都不做 (停在末帧 + 控制层自动收起), 看起来像卡死
-        if (!shared.moveToNextChapter() && allowEndedToast()) {
+        // 末章播完给一条提示: 原版什么都不做 (停在末帧 + 控制层自动收起), 看起来像卡死。
+        // 单章视频不存在"最后一章"这回事 (播完即播完), 只在多章目录下提示
+        if (!shared.moveToNextChapter() && shared.chapterSize.value > 1 && allowEndedToast()) {
             Toasters.get().toast("已播放到最后一章")
         }
     }
