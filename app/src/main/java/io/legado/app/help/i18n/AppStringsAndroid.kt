@@ -3,18 +3,12 @@ package io.legado.app.help.i18n
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.ui.compose.platform.findStringArrayResource
 import io.legado.app.ui.compose.platform.findStringResource
-import kotlinx.coroutines.runBlocking
+import io.legado.app.ui.compose.platform.syncGetString
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.getStringArray
 
 /**
- * appString 的安卓实现 (strings.xml 已整体删除, 多语言统一走 shared composeResources)。
- *
- * # 通道演进
- * 原实现 key→R.string 后转发 appCtx.getString, 依赖 app 端 strings.xml 多语言资产;
- * strings.xml 删除后 R.string 不复存在, 改从 shared Compose Resources 映射表取值
- * ([findStringResource] → [getString]), 与 desktop 端 Main.kt 内联注册的 jvmGetString
- * 同构 (runBlocking 桥接 suspend 取值)。
+ * 安卓端同步字符串取值的薄壳 (多语言统一走 shared composeResources)。
  *
  * # 取值性能
  * Compose Resources 的字符串记录读取带 AsyncCache (按资源路径+偏移缓存), 首次读取后
@@ -25,40 +19,29 @@ import org.jetbrains.compose.resources.getStringArray
  * # 取值通道全景 (三档)
  * - Composable 上下文: rememberString(key, *args) (ResourceProvider.kt)
  * - suspend 上下文: findStringResource(key) + getString(res) (ComposeResourceLookup.kt)
- * - 同步非协程上下文: 本文件 [androidAppString] (Service 通知/回调/VM toast/dialog 构建/权限 rationale)
+ * - 同步非协程上下文: [androidAppString] (Service 通知/回调/VM toast/dialog 构建/权限 rationale)
  *
- * shared 侧 appString(AppStringKey) 走 provider 注册通道 (非 expect/actual), 宿主启动时
- * 调 [registerAndroidAppStringProvider]; 未注册时 fallback 返回 key 名, 运行期安全不崩。
+ * 三个通道取值同源, provider 注册集中在 :ui 的 registerComposeStringProviders (App.onCreate 调),
+ * 未注册时 fallback 返回 key 名, 运行期安全不崩。
  */
-private val androidAppStringProvider = AppStringProvider { key, args ->
-    androidAppString(key.name, *args)
-}
-
-/** 宿主启动早期注册一次(App.onCreate, 在 warmAppStringCache 之后)。 */
-fun registerAndroidAppStringProvider() {
-    registerAppStringProvider(androidAppStringProvider)
-}
 
 /**
  * 同步取 key 对应的本地化字符串 (第三档通道)。
+ *
+ * 取值转发 [syncGetString] (foundation 下沉的注册式入口)。
+ *
+ * # 前置条件
+ * 须在 App.onCreate 调过 :ui 的 registerComposeStringProviders 之后调用 (那里
+ * 注册 key→本地化串的查表实现); 早于注册的调用命中 fallback 直接返回 key 名。
+ *
  * - key 在 shared 资源表缺失时返回 key 名 (与 rememberString 兜底一致, 运行期可见即查)
- * - 占位符由 Compose Resources 的 getString(res, *args) 填充 (只认索引式 %1$s/%1$d;
- *   无索引 %s 原样保留, 供代码 .replace 消费的白名单 key 不要带参调用)
- * - formatArgs 为 `Any?` (可空), null 输出为 "null" (与 desktop jvmGetString 一致)
+ * - 占位符只认索引式 %1$s/%1$d; 无索引 %s 原样保留, 供代码 .replace 消费的白名单 key 不要带参调用
+ * - formatArgs 为 `Any?` (可空), null 输出为 "null"
+ *
+ * 本函数是 app 端 200+ 调用点的既有名字, 只做转发, 不是第二条取值实现;
+ * 新增代码直接调 [syncGetString], 不要新依赖本函数。
  */
-fun androidAppString(key: String, vararg formatArgs: Any?): String {
-    val resource = findStringResource(key) ?: return key
-    return runBlocking {
-        if (formatArgs.isEmpty()) getString(resource)
-        else getString(resource, *formatArgs.map { it.toString() }.toTypedArray())
-    }
-}
-
-/** 同步取 key 对应的本地化 string-array; key 缺失返回空列表 (调用方按需处理空态)。 */
-fun androidAppStringArray(key: String): List<String> {
-    val resource = findStringArrayResource(key) ?: return emptyList()
-    return runBlocking { getStringArray(resource) }
-}
+fun androidAppString(key: String, vararg formatArgs: Any?): String = syncGetString(key, *formatArgs)
 
 /**
  * 启动期暖缓存: 集中预读同步上下文 (Service 通知/回调/VM toast/dialog 构建/权限 rationale/
@@ -68,7 +51,7 @@ fun androidAppStringArray(key: String): List<String> {
  */
 fun warmAppStringCache() {
     // 后台预热: 冷启动同步段 runBlocking 预读 ~250 条会被 assets IO 阻塞主线程;
-    // 预热只是加速 (androidAppString 首次未命中仍同步 runBlocking 兜底读取),
+    // 预热只是加速 (首次未命中仍同步 runBlocking 兜底读取),
     // 正确性不依赖预热的完成时机
     val keys = AppStringKey.entries.map { it.name } + warmKeys
     Coroutine.async {

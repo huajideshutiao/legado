@@ -41,6 +41,7 @@ import io.legado.app.help.toast.registerOhosToaster
 import io.legado.app.help.tts.OhosHttpTtsPlayer
 import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.help.tts.registerOhosSystemTtsEngine
+import io.legado.app.ui.compose.platform.registerComposeStringProviders
 import io.legado.app.help.ui.registerOhosOpenUrlProvider
 import io.legado.app.help.ui.registerNativeUserAgentProvider
 import io.legado.app.model.fileBook.BitmapProviders
@@ -146,12 +147,14 @@ fun registerOhosProviders() {
     registerOhosNativeBridge()
     registerOhosToaster()
 
-    // 1.05.5 AppString provider (help/i18n appString 通道: model/help 层异常与翻页边界提示等
-    // 同步文案; 未注册时 fallback 返回 key 名, 运行期可见为 "no_prev_page" 之类原始 key。
-    // 零平台依赖顺序无关, 只须在任何 appString 调用之前)。
-    // 注: native 实现依赖 composeResources (legado.ui.generated.resources.Res),
-    // 随 :ui 的 ComposeResourceDefaultDataProvider 下沉, 由 :ui 侧在
-    // registerOhosProviders() 之前注册 (见 ui MainOhos.kt)。
+    // 1.05.5 字符串通道 (syncGetString 与 appString 同源同一份实现: model/help 层异常、
+    // 翻页边界提示、Toaster 按钮文案等; 未注册时两条通道均返回 key 名, 运行期可见为
+    // "no_prev_page" 之类原始 key。实现依赖 composeResources (legado.ui.generated.resources.Res),
+    // 由 :ui 侧提供, 故注册点写在本函数内而不在 :ui 的 Compose 组合期 —— 外部启动请求
+    // (EntryAbility 的 want.uri) 在本函数返回后即可能取串, 等首帧组合才注册会落到 key 名兜底。
+    // 排在 1.06 Preference 之前与平台无关, 只须在任何取值调用之前)
+    registerComposeStringProviders()
+
     // 1.06 Preference provider (须在 AppLog 宿主之前: 宿主的 recordLog 门直读 PreferenceProviders,
     // 晚注册则这中间的 AppLog.put 全按 recordLog=false 走, 不落盘)
     registerOhosPreferenceProvider()

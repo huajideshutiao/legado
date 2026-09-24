@@ -3,13 +3,13 @@ package io.legado.app.help.i18n
 import kotlin.concurrent.Volatile
 
 /**
- * 非 UI 层字符串通道 (KJ3 方案 b)。model/help 的异常/报错文案统一走 appString 取本地化字符串,
- * key 与 R.string 资源名一一对应; 本文件零 Android 依赖, 已下沉 commonMain。
+ * 非 UI 层字符串通道。model/help 的异常/报错文案统一走 appString 取本地化字符串,
+ * key 与 composeResources 的资源名一一对应; 本文件零 Android 依赖, 已下沉 commonMain。
  *
- * 取值走「provider 注册」而非 expect/actual: appString 的平台差异只在「谁提供 key→本地化串的映射」
- * (安卓=R.string+appCtx.getString), 取值逻辑本身无平台 API 差异, 是依赖注入而非编译期分叉。
- * 故 shared 只留注入点, 宿主启动时 registerAppStringProvider 注册映射(见 app 侧 AppStringsAndroid.kt);
- * 未注册时 fallback 返回 key 名, 运行期安全不崩。新平台(iOS/鸿蒙)注册各自 provider 即可, 无需补 actual。
+ * 取值走「provider 注册」而非 expect/actual: appString 的平台差异只在「谁提供 key→本地化串的映射」,
+ * 取值逻辑本身无平台 API 差异, 是依赖注入而非编译期分叉。故 :data 只留注入点, 四端宿主启动时
+ * 调 :ui 的 registerComposeStringProviders 注册同一份 composeResources 查表实现
+ * (ComposeResourceLookup.kt); 未注册时 fallback 返回 key 名, 运行期安全不崩。
  */
 @Suppress("EnumEntryName")
 enum class AppStringKey {

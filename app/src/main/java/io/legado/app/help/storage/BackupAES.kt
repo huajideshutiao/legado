@@ -13,7 +13,7 @@ import io.legado.app.help.config.PasswordProviders
  * 反向获取 `LocalConfig.password` (SharedPreferences)。调用时机: App.onCreate,
  * 在 Backup/Restore 任何 `BackupAES()` 无参构造之前。
  *
- * 模式参考 `registerAndroidWebBookProviders` / `registerAndroidAppStringProvider`。
+ * 模式参考 `registerAndroidWebBookProviders` / `registerComposeStringProviders`。
  */
 fun registerAndroidPasswordProvider() {
     PasswordProviders.register(object : PasswordProvider {

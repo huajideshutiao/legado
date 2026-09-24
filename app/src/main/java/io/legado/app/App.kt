@@ -56,7 +56,6 @@ import io.legado.app.help.http.registerAndroidCookieStoreProvider
 import io.legado.app.help.http.registerAndroidCronetProvider
 import io.legado.app.help.http.registerSharedCookieJarBridge
 import io.legado.app.help.i18n.androidAppString
-import io.legado.app.help.i18n.registerAndroidAppStringProvider
 import io.legado.app.help.i18n.warmAppStringCache
 import io.legado.app.help.image.registerAndroidBookImageLoader
 import io.legado.app.help.registerAndroidDirectLinkUploadProviders
@@ -88,6 +87,7 @@ import io.legado.app.service.WebService
 import io.legado.app.ui.book.changesource.registerAndroidChangeBookSourcePlatform
 import io.legado.app.ui.book.manage.registerAndroidBookshelfManagePlatform
 import io.legado.app.ui.browser.configureWebViewStartUpMode
+import io.legado.app.ui.compose.platform.registerComposeStringProviders
 import io.legado.app.ui.main.AndroidUpdateBookCallback
 import io.legado.app.ui.platform.registerSharedAppContext
 import io.legado.app.utils.LogUtils
@@ -149,7 +149,7 @@ class App : Application() {
         // 非正确性前提); 须在 Locale.setDefault 之后 — attachBaseContext 的
         // AppContextWrapper.wrap 已设置
         warmAppStringCache()
-        registerAndroidAppStringProvider()
+        registerComposeStringProviders()
         registerAndroidAppLogHost()
         // 注册 ScreenInfoProvider (供 SystemUtils.screenWidthPx/screenHeightPx 委托读取),
         // 须在任何 SystemUtils 屏幕尺寸访问之前 (PdfFile 渲染等)

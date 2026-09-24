@@ -6,6 +6,7 @@ import io.legado.app.data.AppDatabaseProviders
 import io.legado.app.help.coroutine.registerJvmDebugState
 import io.legado.app.help.ui.OpenUrlProvider
 import io.legado.app.help.ui.OpenUrlProviders
+import io.legado.app.ui.compose.platform.registerComposeStringProviders
 import io.legado.app.utils.browseUrl
 import io.legado.app.utils.toBrowseUri
 import io.legado.app.web.WebServerManager
@@ -74,6 +75,8 @@ fun main(args: Array<String>) {
     startupArgs = args
     // 5. provider 注册: 阶段1 核心 (含 config/数据库/JS 引擎与 Skia 图片栈/HTTP/朗读工厂) —— 与桌面
     //    DesktopCore.registerCoreProviders 完全等价 (JS 图片 API 统一在 registerDesktopJsEngines 注册)
+    //    字符串通道须先于它注册 (本入口无闪屏, 不经过 :desktop 宿主那一步)
+    registerComposeStringProviders()
     DesktopCore.registerCoreProviders()
     // 5.5 本地书导入 + Web 封面/插图: 实现均在 desktop-core, 重能力注入化。
     //     - DesktopFileBookAccessor: 不注入压缩/PDF → txt/epub/cbz(zip) 导入可用,

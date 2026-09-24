@@ -1,5 +1,6 @@
 package io.legado.app.ui.compose.platform
 
+import io.legado.app.help.i18n.registerAppStringProvider
 import kotlinx.coroutines.runBlocking
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.allDrawableResources
@@ -23,12 +24,19 @@ fun findStringArrayResource(key: String): StringArrayResource? = Res.allStringAr
 fun findDrawableResource(key: String): DrawableResource? = Res.allDrawableResources[key]
 
 /**
- * 注册同步字符串 provider: [syncGetString] (foundation 下沉的注册式入口) 的 compose 资源实现。
+ * 注册 composeResources 字符串的两个同步通道, 二者共用同一份按 key 查表的实现:
+ * - [syncGetString]: key 为 String, 供 :ui/:core/:data 的同步调用点 (非组合、非挂起上下文)
+ * - [appString]: key 为 AppStringKey, 供 :data/:core 的非 UI 层异常与提示文案
+ *
  * 取值经 runBlocking 桥接 suspend: CMP 资源读取在三端均为同步文件 IO、无 dispatcher
  * 跳转 (native 端 ResourceReader 直读 NSBundle/本地路径), 主线程调用不会死锁; 首次
  * 读取后走 AsyncCache, 之后零 IO。语言切换按 locale 路径自动取新语言。
+ *
+ * 四端宿主启动早期各调用一次, 须早于任何取值调用: Android App.onCreate /
+ * desktop Main.runDesktopApp (闪屏构造要取主题名, 比阶段0更早) / headless main /
+ * IosProviderRegistry / MainOhos。未注册时两条通道均返回 key 名。
  */
-fun registerComposeSyncStringProvider() {
+fun registerComposeStringProviders() {
     registerSyncStringProvider { key, formatArgs ->
         val resource = findStringResource(key) ?: return@registerSyncStringProvider key
         runBlocking {
@@ -36,6 +44,7 @@ fun registerComposeSyncStringProvider() {
             else getString(resource, *formatArgs.map { it.toString() }.toTypedArray())
         }
     }
+    registerAppStringProvider { key, args -> syncGetString(key.name, *args) }
 }
 
 /**

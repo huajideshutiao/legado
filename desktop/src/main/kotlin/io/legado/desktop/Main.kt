@@ -69,6 +69,7 @@ import io.legado.app.ui.compose.platform.LocalOverlayTopInset
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.SharedEventBusProvider
 import io.legado.app.ui.compose.platform.jvmGetString
+import io.legado.app.ui.compose.platform.registerComposeStringProviders
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.reader.ReaderDictWord
@@ -391,6 +392,9 @@ private fun runDesktopApp() = application {
         // macOS 靠打包期 Info.plist): 异步且不阻塞启动; 放到判定之后是为了不让二次启动去做这个写入
         DesktopUrlProtocol.ensureRegisteredAsync()
         // 阶段0 (日志/字符串/AndroidId/Toast/进度/更新回调/config+语言): 闪屏所需最小集
+        // 闪屏构造 (DesktopSplashScreen → DesktopThemeStoreProvider → 内置主题名) 早于阶段0,
+        // 故字符串通道注册须排在它之前
+        registerComposeStringProviders()
         val early = DesktopCore.registerEarlyProviders()
         val duration = splashScreen.show()
         // 预热 CMP 字符串资源表: 首次取串要走 runBlocking + 资源表初始化, 实测 178~289ms。
