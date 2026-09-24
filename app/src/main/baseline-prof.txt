@@ -17699,9 +17699,6 @@ HSPLio/legado/app/help/config/AndroidPreferenceProvider;->putInt(Ljava/lang/Stri
 HSPLio/legado/app/help/config/AndroidPreferenceProviderKt;->access$migrateLegacyConfigOnce(Landroid/content/SharedPreferences;)V
 HSPLio/legado/app/help/config/AndroidPreferenceProviderKt;->migrateLegacyConfigOnce(Landroid/content/SharedPreferences;)V
 HSPLio/legado/app/help/config/AndroidPreferenceProviderKt;->registerAndroidPreferenceProvider()V
-HSPLio/legado/app/help/config/AndroidReadConfigProviders;-><clinit>()V
-HSPLio/legado/app/help/config/AndroidReadConfigProviders;-><init>()V
-HSPLio/legado/app/help/config/AndroidReadConfigProviders;->getReadBookConfig()Lio/legado/app/help/config/ReadBookConfigShared;
 HSPLio/legado/app/help/config/AppConfig$$ExternalSyntheticLambda0;-><init>()V
 HSPLio/legado/app/help/config/AppConfig$$ExternalSyntheticLambda0;->invoke()Ljava/lang/Object;
 HSPLio/legado/app/help/config/AppConfig$$ExternalSyntheticLambda1;-><init>()V
@@ -38240,7 +38237,6 @@ Lio/legado/app/help/config/AndroidPreferenceProvider$$ExternalSyntheticLambda0;
 Lio/legado/app/help/config/AndroidPreferenceProvider$$ExternalSyntheticLambda1;
 Lio/legado/app/help/config/AndroidPreferenceProvider;
 Lio/legado/app/help/config/AndroidPreferenceProviderKt;
-Lio/legado/app/help/config/AndroidReadConfigProviders;
 Lio/legado/app/help/config/AppConfig$$ExternalSyntheticLambda0;
 Lio/legado/app/help/config/AppConfig$$ExternalSyntheticLambda1;
 Lio/legado/app/help/config/AppConfig;

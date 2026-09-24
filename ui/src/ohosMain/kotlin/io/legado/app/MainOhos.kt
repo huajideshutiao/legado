@@ -89,7 +89,8 @@ fun MainOhos() {
     val eventBusProvider = remember { SharedEventBusProvider() }
 
     // 阅读页注入点: 未注入时 LocalReadConfigProviders 取值即 error,
-    // 阅读页与 EffectiveReplaces 路由会崩 (默认值为 error 而非兜底实现)
+    // 阅读页与 EffectiveReplaces 路由会崩 (默认值为 error 而非兜底实现);
+    // 实例来自全局注册 (须在 registerOhosProviders 之后), 与设置弹窗读写同一份配置
     val readConfigProviders = remember { ReadConfigProviders() }
 
     CompositionLocalProvider(

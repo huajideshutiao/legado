@@ -18,7 +18,7 @@ import io.legado.app.help.config.ThemeConfigProviders
  * 调用时机: 桌面端 main 入口, 任何 shared 调用之前。
  * 模式参考 app 端 `registerAndroidWebBookProviders` / `registerAndroidPasswordProvider`。
  *
- * @return 构造好的 [ReadBookConfigShared] 实例 (供 Main.kt 构造 LocalReadConfigProviders 用)
+ * @return 构造好的 [ReadBookConfigShared] 实例 (已注册到 [ReadBookConfigProviders])
  */
 fun registerDesktopConfig(): ReadBookConfigShared {
     PreferenceProviders.register(DesktopPreferenceProvider())

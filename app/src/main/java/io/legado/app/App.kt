@@ -34,11 +34,11 @@ import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.BookImageStorageProviders
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.LocalBookLocators
-import io.legado.app.help.config.AndroidReadConfigProviders
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ReadBookConfigProviders
+import io.legado.app.help.config.ReadBookConfigShared
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.config.ThemeConfig.applyDayNight
 import io.legado.app.help.config.ThemeConfig.applyDayNightInit
@@ -256,10 +256,10 @@ class App : Application() {
         // 注册备份/恢复的 Android 钩子 (SAF 复制解压 / config.xml 旧格式 / 主题与图标刷新)
         registerAndroidBackupRestoreHook()
         // 注册 ReadBookConfigProviders: app 端 ReadBookConfig 已收敛为薄壳, 全部转发到这里
-        // 注册的 ReadBookConfigShared 实例 (shared UI / BackupShared 也共用同一实例)。
+        // 注册的 ReadBookConfigShared 实例 (shared UI / BackupShared / ReadConfigProviders() 也共用同一实例)。
         // 须在 registerAndroidAppFilesDir + registerAndroidWebBookProviders(AppConfigProviders) 之后。
         ReadBookConfigProviders.register(
-            AndroidReadConfigProviders().readBookConfig
+            ReadBookConfigShared(PreferenceProviders.get())
         )
         CrashHandler(this)
         oldConfig = Configuration(resources.configuration)

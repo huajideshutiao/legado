@@ -34,7 +34,6 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.LocalReadConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadConfigProviders
-import io.legado.app.help.config.ReadTipConfigShared
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.registerJvmDebugState
 import io.legado.app.help.file.desktopResolveStoredRef
@@ -366,19 +365,20 @@ private fun runDesktopApp() = application {
     // 下方所有 provider 注册依然有效。
     //
     // 阶段1 核心子集 (无 UI 依赖的 provider 注册) 已下沉 :desktop-core 的
-    // DesktopCore.registerCoreProviders() —— 与 headless 入口共用同一注册序列, 保证两种入口
-    // 的数据/配置环境等价。包含: AppLog/AppString/AndroidId/Toaster/NotificationProgress/
+    // DesktopCore.registerEarlyProviders + registerRestProviders —— 与 headless 入口共用同一
+    // 注册序列, 保证两种入口的数据/配置环境等价。包含: AppLog/AppString/AndroidId/Toaster/NotificationProgress/
     // UpdateBookCallback/config+语言/AppUpdate/AppFilesDir/HTTP+jsoup/
     // DataStorage+BookImageStorage/HttpTTS 播放器工厂/JS 引擎/DefaultDataResource/数据库/
     // BookStorage/AppDb/BookHelp/ReadBookPlatform/CoverStorage。
     // remember: 只在首组合执行一次 (原实现非 remember 的注册函数本就幂等, 收敛后行为等价);
-    // 返回值 desktopReadBookConfig 供阶段2 LocalReadConfigProviders 注入 (与全局同实例)。
+    // 阶段1 返回的 ReadBookConfigShared 已注册到 ReadBookConfigProviders, 阶段2 经
+    // ReadConfigProviders() 取回同一实例注入 Compose。
     // 闪屏必须在「偏好+主题可读」的第一时间弹出, 所以它的构造提到阶段1 拆分之前。
     // 实测拆分前 show() 落在 +0.96s (同 runtime 起一个纯 AWT 窗口只 298ms), 那之前屏幕
     // 无任何反馈, 用户报的“启动卡顿/双击没反应”很大程度是这段空白。
     val splashScreen = remember { DesktopSplashScreen(DesktopThemeStoreProvider()) }
-    // 返回值: _1 = 首屏要注入的 ReadBookConfig (与全局同实例), _2 = 闪屏计划驻留时长
-    val (desktopReadBookConfig, splashDuration) = remember {
+    // 返回值: 闪屏计划驻留时长 (ReadBookConfig 实例已经全局注册, 不再经返回值传递)
+    val splashDuration = remember {
         registerDesktopSystemNightModeDetector()
         // 单实例判定收口点 (见 SingleInstanceGuard.startAsync): 主线程已经把 AWT/Swing 初始化
         // 吃完, 守卫那 110~166ms 在其期间并行跑完了, 所以这个等待实测接近 0;
@@ -395,7 +395,7 @@ private fun runDesktopApp() = application {
         // 闪屏构造 (DesktopSplashScreen → DesktopThemeStoreProvider → 内置主题名) 早于阶段0,
         // 故字符串通道注册须排在它之前
         registerComposeStringProviders()
-        val early = DesktopCore.registerEarlyProviders()
+        DesktopCore.registerEarlyProviders()
         val duration = splashScreen.show()
         // 预热 CMP 字符串资源表: 首次取串要走 runBlocking + 资源表初始化, 实测 178~289ms。
         // 放后台线程而不是主线程: 同步预热虽然落在"闪屏可见期", 但占的是主线程, 直接拖后首帧。
@@ -413,7 +413,7 @@ private fun runDesktopApp() = application {
         DesktopCore.registerRestProviders()
         // Compose UI 类型的 JVM 图片加载器 (SingletonImageLoader + BookImageLoaders, 依赖 ImageBitmap, 仅桌面 GUI 需要)
         registerJvmBookImageLoader()
-        early to duration
+        return@remember duration
     }
     // ===== 以下为阶段1 的 UI 绑定注册 (依赖 AWT/Compose/JNA, 留在 :desktop) =====
     // Windows: 设置进程级 AppUserModelID + 保证开始菜单快捷方式身份注册 (SMTC 媒体卡
@@ -491,7 +491,7 @@ private fun runDesktopApp() = application {
     VideoPlayPlatformProviders.register(MediampVideoPlayPlatformProvider(windowHandle))
 
     // ==================== 阶段2: 显示窗口 ====================
-    // 启动闪屏已在阶段0 后、阶段1 重注册前显示 (见上方 splashScreen / desktopReadBookConfig 块):
+    // 启动闪屏已在阶段0 后、阶段1 重注册前显示 (见上方 splashScreen / 阶段1 块):
     // 目的是把“第一次有反馈”的时间从实测 +0.96s 提前到偏好就绪即弹出。
     val appName = rememberString("app_name")
     // 窗口状态记忆: 读"上次是否最大化" + 普通状态下的位置尺寸 (恢复规则用户拍板 2026-08-18):
@@ -707,13 +707,9 @@ private fun runDesktopApp() = application {
         val appConfigProvider = remember { DesktopAppConfigProvider() }
         val eventBusProvider = remember { SharedEventBusProvider() }
         // 阅读器注入: ReaderRoute/ReaderDrawStyle/PageViewComposable 消费, 缺省值是 error()
-        // —— 未注入时打开阅读器即抛异常, 被 DesktopCoroutineExceptionHandler 吞掉后表现为输入冻结
-        val readConfigProviders = remember {
-            object : ReadConfigProviders {
-                override val readBookConfig = desktopReadBookConfig
-                override val readTipConfig = ReadTipConfigShared(desktopReadBookConfig)
-            }
-        }
+        // —— 未注入时打开阅读器即抛异常, 被 DesktopCoroutineExceptionHandler 吞掉后表现为输入冻结;
+        // 注入实例取全局注册的同一份 (registerDesktopConfig 已注册), 与设置弹窗读写同一份配置
+        val readConfigProviders = remember { ReadConfigProviders() }
         // 对话框尺寸锚点: 主窗口尺寸 (场景根处读取, 非对话框层; 随 resize 自动重组刷新)
         val dialogAnchor = LocalWindowInfo.current.containerSize
         // 覆盖物 (菜单/划词条/补全条) 的顶部安全区 = 窗口控制条高度: Windows 的控制条在

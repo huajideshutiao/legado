@@ -18,7 +18,7 @@ import kotlin.concurrent.Volatile
  *
  * # 注册时机
  * - app 端: App.onCreate 中, 在 ReadBookConfig 初始化之后注册
- * - 桌面端: Main.kt 中, 构造 DesktopReadConfigProviders 之后注册
+ * - 桌面端: Main.kt 中, registerDesktopConfig 注册之后注入
  *
  * 模式参考 [ThemeConfigProviders] / [io.legado.app.data.AppDatabaseProviders]。
  */

@@ -4,16 +4,17 @@ package io.legado.app.help.config
  * 阅读配置 Provider 容器接口（KMP 共用）。
  *
  * 包装 [ReadBookConfigShared] 和 [ReadTipConfigShared] 两个实例，供 Compose UI
- * 通过 [LocalReadConfigProviders] 一次性注入。各平台实现负责构造：
- * - Android: `App.onCreate` 用 [AndroidReadConfigProviders] 构造。
- * - 桌面 jvm: [DesktopReadConfigProviders] (Main.kt 构造)。
- * - iOS: `MainViewController` 用工厂函数构造 (Provider 由 `registerIosProviders()` 注册)。
+ * 通过 [LocalReadConfigProviders] 一次性注入。
+ *
+ * 实例由 [ReadConfigProviders] 工厂从 [ReadBookConfigProviders] 的全局注册实例派生，
+ * 各端宿主在启动早期注册一次（Android `App.onCreate` / 桌面 `registerDesktopConfig` /
+ * `registerIosProviders` / `registerOhosProviders`）。
  *
  * 模式参考 `AppConfigProviders` / `ThemeStoreProvider`，
  * 用 interface 而非 expect/actual，避免 shared androidMain 反向依赖 app 模块。
  *
  * KP5: [LocalReadConfigProviders] (Compose 依赖) 已拆分到 sharedUiMain 的 ReadConfigProvidersUi.kt,
- * 本文件保留 interface 定义和工厂函数 (偏好读写统一走 [PreferenceProviders] 单例, 纯接口无 Compose 依赖),
+ * 本文件保留 interface 定义和工厂函数 (纯接口无 Compose 依赖),
  * 让 ohos/linuxArm64 不依赖 Compose 也能编译。
  */
 interface ReadConfigProviders {
@@ -25,15 +26,19 @@ interface ReadConfigProviders {
 }
 
 /**
- * 便捷工厂：用 [PreferenceProviders] 单例构造一个最小化的 [ReadConfigProviders] 实现，
- * 供各平台 actual 复用（避免重复样板代码）。须在宿主注册 PreferenceProvider 之后调用。
+ * 便捷工厂：包装 [ReadBookConfigProviders] 已注册的 [ReadBookConfigShared] 实例。
  *
- * 调用方可以在此基础上包装成自己平台特有的 Provider（如桌面端附加状态管理）。
+ * 阅读页的排版与绘制读本注入实例，而阅读设置弹窗（界面 / 版面 / 背景文字）读写全局
+ * 注册实例；工厂若自建实例，两者分家会让字号 / 字距 / 行距 / 段距 / 边距等设置只落盘，
+ * 阅读页当场与重新进入都不生效，冷启动才从 readConfig.json 读回。故此处只包装不新建。
+ *
+ * 须在宿主注册 [ReadBookConfigShared]（`App.onCreate` / `registerDesktopConfig` /
+ * `registerIosProviders` / `registerOhosProviders`）之后调用，未注册即 error 早失败。
  */
-fun ReadConfigProviders(): ReadConfigProviders =
-    object : ReadConfigProviders {
-        override val readBookConfig: ReadBookConfigShared =
-            ReadBookConfigShared(PreferenceProviders.get())
-        override val readTipConfig: ReadTipConfigShared =
-            ReadTipConfigShared(readBookConfig)
+fun ReadConfigProviders(): ReadConfigProviders {
+    val readBookConfig = ReadBookConfigProviders.get()
+    return object : ReadConfigProviders {
+        override val readBookConfig: ReadBookConfigShared = readBookConfig
+        override val readTipConfig: ReadTipConfigShared = ReadTipConfigShared(readBookConfig)
     }
+}

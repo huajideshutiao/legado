@@ -46,9 +46,7 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.LocalReadConfigProviders
-import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ReadConfigProviders
-import io.legado.app.help.config.ReadTipConfigShared
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.image.registerReaderImageResolver
@@ -533,13 +531,8 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
         val context = LocalContext.current
 
         // 阅读器注入: ReaderRoute/ReaderDrawStyle 消费, 缺省值是 error() 会崩;
-        // readBookConfig 必须与全局 ReadBookConfigProviders 同实例, 否则配置写读分家
-        val readConfigProviders = remember {
-            object : ReadConfigProviders {
-                override val readBookConfig = ReadBookConfigProviders.get()
-                override val readTipConfig = ReadTipConfigShared(readBookConfig)
-            }
-        }
+        // 注入实例取全局注册的同一份, 与设置弹窗读写同一份配置
+        val readConfigProviders = remember { ReadConfigProviders() }
 
         Box(Modifier.fillMaxSize()) {
             // 封面渲染不再注入 app 端 View 实现, 各端统一走 shared 默认 SharedBookCover
