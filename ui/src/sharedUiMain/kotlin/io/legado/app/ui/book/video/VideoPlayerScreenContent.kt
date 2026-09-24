@@ -790,12 +790,13 @@ fun ResolutionButton(
             title = { Text(stringResource(Res.string.resolution)) },
             text = {
                 // 单选列表 (对照 app 端 VideoPlayActivity.showResolutionDialog 的 singleChoiceItems 交互;
-                // 条目不叠加额外 padding, 由 AlertDialog text 槽位及组件原生尺寸承载)
+                // 条目不叠加额外 padding, 最小高度取主题 viewHeightLarge)
                 Column {
                     resolutions.forEachIndexed { index, resolution ->
                         Row(
                             Modifier
                                 .fillMaxWidth()
+                                .heightIn(min = DesignTokens.viewHeightLarge)
                                 .selectable(
                                     selected = index == currentResolutionIndex,
                                     role = Role.RadioButton,
