@@ -19,7 +19,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
@@ -799,9 +798,9 @@ private fun DeleteConfirmDialog(
                             value = deleteFile.value,
                             onValueChange = { deleteFile.value = it },
                         )
-                        .padding(horizontal = DesignTokens.spacingDefault, vertical = 8.dp),
+                        .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingDefault),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(DesignTokens.spacingMd),
                 ) {
                     AppCheckbox(checked = deleteFile.value, onCheckedChange = null)
                     Text(

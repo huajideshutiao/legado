@@ -44,6 +44,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.ui.bookshelf.KindLabels
 import io.legado.app.ui.bookshelf.shelfCoverHeightDp
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.LocalSharedCoverBinding
 import io.legado.app.ui.root.rememberSharedCoverSourceBinding
 import io.legado.app.ui.compose.component.AppTitleBar
@@ -437,7 +438,7 @@ private fun LoadMoreFooter(state: ExploreShowUiState, actions: ExploreShowUiActi
                 color = colors.accent,
                 strokeWidth = 2.dp,
                 modifier = Modifier
-                    .padding(8.dp)
+                    .padding(DesignTokens.spacingDefault)
                     .size(36.dp),
             )
         } else {
@@ -448,7 +449,7 @@ private fun LoadMoreFooter(state: ExploreShowUiState, actions: ExploreShowUiActi
                     color = colors.secondaryText,
                     fontSize = 14.sp,
                     maxLines = 1,
-                    modifier = Modifier.padding(12.dp),
+                    modifier = Modifier.padding(DesignTokens.spacingMd),
                 )
             }
         }
@@ -480,7 +481,7 @@ private fun ExploreListItem(
         Modifier
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(8.dp),
+            .padding(DesignTokens.spacingDefault),
     ) {
         coverSlot(
             book,
@@ -491,7 +492,7 @@ private fun ExploreListItem(
         Column(
             Modifier
                 .weight(1f)
-                .padding(start = 8.dp)
+                .padding(start = DesignTokens.spacingDefault)
                 .heightIn(min = coverHeight.dp),
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
@@ -511,7 +512,7 @@ private fun ExploreListItem(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
                         .weight(1f)
-                        .padding(start = 4.dp),
+                        .padding(start = DesignTokens.spacingXs),
                 )
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -590,7 +591,7 @@ private fun ExploreGridItem(
                 false,
                 Modifier
                     .fillMaxWidth()
-                    .padding(start = 12.dp, top = 12.dp, end = 12.dp),
+                    .padding(start = DesignTokens.spacingMd, top = DesignTokens.spacingMd, end = DesignTokens.spacingMd),
             )
             Text(
                 text = book.name,
@@ -601,7 +602,7 @@ private fun ExploreGridItem(
                 textAlign = TextAlign.Center,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 8.dp),
+                    .padding(top = DesignTokens.spacingDefault),
             )
         }
         if (inBookshelf) {
@@ -610,7 +611,7 @@ private fun ExploreGridItem(
                 contentDescription = null,
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = 12.dp, top = 12.dp)
+                    .padding(start = DesignTokens.spacingMd, top = DesignTokens.spacingMd)
                     .fillMaxWidth(0.22f)
                     .aspectRatio(1f),
             )

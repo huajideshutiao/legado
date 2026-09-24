@@ -132,7 +132,7 @@ fun SpeakEngineDialog(
             // 原版 isFullHeight = true, 高度固定 0.7 屏高
             modifier = Modifier.appDialogSize(fullHeight = true).padding(
                 start = DesignTokens.spacingDefault,
-                top = 16.dp,
+                top = DesignTokens.spacingLg,
                 end = DesignTokens.spacingDefault,
                 bottom = DesignTokens.spacingDefault,
             ),

@@ -153,12 +153,12 @@ fun AppSearchField(
     Row(
         modifier
             .fillMaxWidth()
-            .padding(end = 8.dp)
+            .padding(end = DesignTokens.spacingDefault)
             .height(DesignTokens.viewHeightDefault)
             .clip(DesignTokens.shapeDefault)
             .border(DesignTokens.strokeHairline, fillStroke, DesignTokens.shapeDefault)
             .background(fillStroke)
-            .padding(horizontal = 8.dp),
+            .padding(horizontal = DesignTokens.spacingDefault),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
@@ -167,7 +167,7 @@ fun AppSearchField(
             tint = colors.secondaryText,
             modifier = Modifier.size(18.dp),
         )
-        Box(Modifier.weight(1f).padding(start = 8.dp), contentAlignment = Alignment.CenterStart) {
+        Box(Modifier.weight(1f).padding(start = DesignTokens.spacingDefault), contentAlignment = Alignment.CenterStart) {
             if (value.isEmpty()) {
                 Text(hint, color = colors.secondaryText, fontSize = 14.sp, maxLines = 1)
             }

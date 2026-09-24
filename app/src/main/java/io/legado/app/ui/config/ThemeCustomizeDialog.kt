@@ -239,7 +239,7 @@ class ThemeCustomizeDialog : BaseComposeDialogFragment() {
                     .fillMaxWidth()
                     .weight(1f, fill = false)
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp),
+                    .padding(horizontal = DesignTokens.spacingLg),
             ) {
                 // 主题名字段：EDIT_CONFIG / NEW_CONFIG 显示，EDIT_PREFS 隐藏
                 if (mode != MODE_EDIT_PREFS) {
@@ -350,7 +350,7 @@ class ThemeCustomizeDialog : BaseComposeDialogFragment() {
                     AppTextButton(text = rememberString("cancel")) {
                         dismissAllowingStateLoss()
                     }
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(DesignTokens.spacingDefault))
                     AppTextButton(text = rememberString("ok")) { onSaveClicked() }
                 }
             }

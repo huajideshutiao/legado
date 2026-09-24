@@ -18,7 +18,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.unit.dp
 import io.legado.app.help.DirectLinkUploadDefaultsProviders
 import io.legado.app.help.DirectLinkUploadRule
 import io.legado.app.help.DirectLinkUploadStoreProviders
@@ -185,7 +184,7 @@ fun DirectLinkUploadConfigDialog(
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .padding(top = 4.dp)
+                            .padding(top = DesignTokens.spacingXs)
                             .toggleable(
                                 value = compress,
                                 role = Role.Checkbox,
@@ -202,7 +201,7 @@ fun DirectLinkUploadConfigDialog(
                         .fillMaxWidth()
                         .padding(
                             start = DesignTokens.spacingDefault,
-                            top = 4.dp,
+                            top = DesignTokens.spacingXs,
                             end = DesignTokens.spacingDefault,
                             bottom = DesignTokens.spacingDefault,
                         ),

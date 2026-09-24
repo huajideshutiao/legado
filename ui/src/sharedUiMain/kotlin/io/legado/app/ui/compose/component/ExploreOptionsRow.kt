@@ -23,7 +23,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
-import androidx.compose.ui.unit.dp
 import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.ui.generated.resources.Res
@@ -87,8 +86,7 @@ fun ExploreOptionsRow(
                                 Modifier
                             }
                         )
-                        // space.default × space.xs
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                        .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingXs),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (option.multiSelect) {
@@ -207,15 +205,15 @@ private fun MultiSelectOptionDialog(
             hint = stringResource(Res.string.search),
             modifier = Modifier.padding(
                 start = DesignTokens.spacingDefault,
-                top = 8.dp,
-                bottom = 4.dp
+                top = DesignTokens.spacingDefault,
+                bottom = DesignTokens.spacingXs
             ),
         )
         FlowRow(
             Modifier
                 .height(listHeight)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = DesignTokens.spacingDefault, vertical = 4.dp),
+                .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingXs),
         ) {
             visibleOptions.forEach { (label, value) ->
                 val selected = value in working

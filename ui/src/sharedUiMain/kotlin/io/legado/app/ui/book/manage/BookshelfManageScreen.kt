@@ -45,6 +45,7 @@ import io.legado.app.ui.compose.component.SelectActionBar
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.LocalSharedCoverBinding
 import io.legado.app.ui.root.rememberSharedCoverSourceBinding
 import legado.ui.generated.resources.Res
@@ -388,7 +389,7 @@ private fun RuleItemScope.BookItem(
                 onDragStopped = callbacks.onPersistOrder,
             )
             .clickable { callbacks.onToggle(book, !checked) }
-            .padding(8.dp),
+            .padding(DesignTokens.spacingDefault),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // 原 checkbox 上下约束到 parent → 垂直居中
@@ -404,7 +405,7 @@ private fun RuleItemScope.BookItem(
         Box(
             modifier = Modifier
                 .align(Alignment.CenterVertically)
-                .padding(start = 8.dp)
+                .padding(start = DesignTokens.spacingDefault)
                 .width(60.dp)
                 .height(80.dp)
                 .clickable { callbacks.onOpenBook(book, coverBinding.pageToken) },
@@ -416,7 +417,7 @@ private fun RuleItemScope.BookItem(
         Column(
             Modifier
                 .weight(1f)
-                .padding(start = 8.dp),
+                .padding(start = DesignTokens.spacingDefault),
         ) {
             // 上半部分单独一块：书名 + 作者，占满宽度不受右侧操作按钮挤压
             Text(
@@ -461,7 +462,7 @@ private fun RuleItemScope.BookItem(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 // 分组名与书源间保留 8dp 间距(便于视觉区分)
-                                modifier = Modifier.padding(start = 8.dp),
+                                modifier = Modifier.padding(start = DesignTokens.spacingDefault),
                             )
                         }
                     }
@@ -499,7 +500,7 @@ private fun RuleItemScope.BookItem(
                         color = colors.secondaryText,
                         modifier = Modifier
                             .clickable { callbacks.onEditGroup(book) }
-                            .padding(8.dp),
+                            .padding(DesignTokens.spacingDefault),
                     )
                     IconButton(
                         onClick = { callbacks.onDeleteBook(book) },

@@ -156,7 +156,7 @@ internal fun RuleItemScope.HomeManageItem(
             .fillMaxWidth()
             .longPressDraggableHandle(onDragStopped = onPersistOrder)
             .clickable(onClick = onClick)
-            .padding(8.dp),
+            .padding(DesignTokens.spacingDefault),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
@@ -165,7 +165,7 @@ internal fun RuleItemScope.HomeManageItem(
             tint = colors.secondaryText,
             modifier = Modifier.size(24.dp),
         )
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(DesignTokens.spacingMd))
         Column(Modifier.weight(1f)) {
             Text(
                 text = title,
@@ -189,7 +189,7 @@ internal fun RuleItemScope.HomeManageItem(
             fontSize = 14.sp,
             modifier = Modifier
                 .clickable(onClick = onAction)
-                .padding(8.dp),
+                .padding(DesignTokens.spacingDefault),
         )
     }
 }

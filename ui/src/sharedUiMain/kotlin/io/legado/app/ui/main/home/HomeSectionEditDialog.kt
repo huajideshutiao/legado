@@ -315,7 +315,7 @@ fun HomeSectionEditDialog(
                         text = stringResource(Res.string.home_style),
                         color = colors.accent,
                         fontSize = 13.sp,
-                        modifier = Modifier.padding(top = 8.dp),
+                        modifier = Modifier.padding(top = DesignTokens.spacingDefault),
                     )
                     Row(
                         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -341,7 +341,7 @@ fun HomeSectionEditDialog(
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .padding(top = 8.dp)
+                            .padding(top = DesignTokens.spacingDefault)
                             .clickable { coverVideo = !coverVideo },
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -438,7 +438,7 @@ private fun PickEntry(text: String, enabled: Boolean, onClick: () -> Unit) {
         Modifier
             .height(DesignTokens.viewHeightXl)
             .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(horizontal = 8.dp),
+            .padding(horizontal = DesignTokens.spacingDefault),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -454,7 +454,7 @@ private fun PickEntry(text: String, enabled: Boolean, onClick: () -> Unit) {
 @Composable
 private fun StyleRadio(text: String, selected: Boolean, onClick: () -> Unit) {
     Row(
-        Modifier.clickable(onClick = onClick).padding(end = 8.dp),
+        Modifier.clickable(onClick = onClick).padding(end = DesignTokens.spacingDefault),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         AppRadioButton(selected = selected, onClick = onClick)
@@ -490,7 +490,7 @@ private fun <T> HomeSearchPickDialog(
             color = colors.fillet,
         ) {
             Column(
-                Modifier.fillMaxWidth().padding(top = 16.dp, bottom = DesignTokens.spacingDefault)
+                Modifier.fillMaxWidth().padding(top = DesignTokens.spacingLg, bottom = DesignTokens.spacingDefault)
             ) {
                 Text(
                     text = title,
@@ -498,7 +498,7 @@ private fun <T> HomeSearchPickDialog(
                     fontSize = 18.sp,
                     modifier = Modifier.padding(
                         horizontal = DesignTokens.spacingDefault,
-                        vertical = 4.dp
+                        vertical = DesignTokens.spacingXs
                     ),
                 )
                 AppSearchField(
@@ -514,7 +514,7 @@ private fun <T> HomeSearchPickDialog(
                         .fillMaxWidth()
                         // 对照原版 searchPick 的 ListView 固定 360dp 高
                         .heightIn(max = 360.dp)
-                        .padding(top = 8.dp),
+                        .padding(top = DesignTokens.spacingDefault),
                 ) {
                     items(shown) { item ->
                         Text(
@@ -526,7 +526,7 @@ private fun <T> HomeSearchPickDialog(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { onPick(item) }
-                                .padding(horizontal = 24.dp, vertical = 12.dp),
+                                .padding(horizontal = DesignTokens.spacingXl, vertical = DesignTokens.spacingMd),
                         )
                     }
                 }

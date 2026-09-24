@@ -32,7 +32,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.AppLog
 import io.legado.app.help.toast.Toasters
@@ -294,7 +293,7 @@ fun ContentEditDialog(
                         .verticalScroll(rememberScrollState())
                         .padding(
                             start = DesignTokens.spacingDefault,
-                            top = 12.dp,
+                            top = DesignTokens.spacingMd,
                             end = DesignTokens.spacingDefault,
                             bottom = DesignTokens.spacingDefault,
                         ),
@@ -348,7 +347,7 @@ fun ContentEditDialog(
                         TextButton(onClick = { showTitleEdit = false }) {
                             Text(cancelText, color = colors.secondaryText)
                         }
-                        Spacer(Modifier.width(4.dp))
+                        Spacer(Modifier.width(DesignTokens.spacingXs))
                         TextButton(onClick = {
                             showTitleEdit = false
                             titleState = titleEditState

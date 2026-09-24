@@ -213,7 +213,7 @@ private fun ThemeListItem(
                 onClick = onClick,
                 onLongClick = onLongClick,
             )
-            .padding(vertical = 4.dp),
+            .padding(vertical = DesignTokens.spacingXs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(

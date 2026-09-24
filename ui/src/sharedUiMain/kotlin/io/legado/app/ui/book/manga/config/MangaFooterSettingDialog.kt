@@ -19,7 +19,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppDialog
@@ -197,7 +196,7 @@ fun MangaFooterSettingDialog(
                         Row(
                             Modifier
                                 .fillMaxWidth()
-                                .padding(top = 8.dp),
+                                .padding(top = DesignTokens.spacingDefault),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
@@ -205,7 +204,7 @@ fun MangaFooterSettingDialog(
                                 color = colors.primaryText,
                                 fontSize = 14.sp,
                             )
-                            Spacer(Modifier.width(8.dp))
+                            Spacer(Modifier.width(DesignTokens.spacingDefault))
                             RadioItem(
                                 label = stringResource(Res.string.manga_radio_left),
                                 value = INFO_BAR_ALIGN_LEFT,
@@ -214,7 +213,7 @@ fun MangaFooterSettingDialog(
                                 orientation = it
                                 upConfig { footerOrientation = it }
                             }
-                            Spacer(Modifier.width(12.dp))
+                            Spacer(Modifier.width(DesignTokens.spacingMd))
                             RadioItem(
                                 label = stringResource(Res.string.manga_radio_center),
                                 value = INFO_BAR_ALIGN_CENTER,
@@ -240,14 +239,14 @@ private fun CheckRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(top = 8.dp),
+            .padding(top = DesignTokens.spacingDefault),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(text = header, color = colors.primaryText, fontSize = 14.sp)
         checks.forEach { (label, checked, onChange) ->
             Row(
                 Modifier
-                    .padding(start = 8.dp)
+                    .padding(start = DesignTokens.spacingDefault)
                     .clickable { onChange(!checked) },
                 verticalAlignment = Alignment.CenterVertically,
             ) {

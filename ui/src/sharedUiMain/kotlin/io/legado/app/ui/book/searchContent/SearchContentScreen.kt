@@ -54,6 +54,7 @@ import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppColors
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.ColorUtils
 import kotlinx.coroutines.launch
@@ -294,7 +295,7 @@ private fun SearchResultItem(item: SearchResult, isDur: Boolean, onClick: () -> 
         modifier = Modifier
             .fillMaxWidth()
             .clickable(enabled = item.query.isNotBlank(), onClick = onClick)
-            .padding(12.dp),
+            .padding(DesignTokens.spacingMd),
     )
 }
 
@@ -356,7 +357,7 @@ private fun StopFab(
     val tint = if (ColorUtils.isColorLight(colors.accent.toArgb())) Color.Black else Color.White
     Box(
         modifier
-            .padding(16.dp)
+            .padding(DesignTokens.spacingLg)
             .shadow(6.dp, CircleShape)
             .size(40.dp)
             .background(colors.accent, CircleShape)
@@ -397,7 +398,7 @@ private fun BottomInfoBar(
             .background(colors.bottomBackground)
             .navigationBarsPadding() // 对齐 applyNavigationBarMargin
             .height(36.dp)
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = DesignTokens.spacingLg),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
@@ -405,7 +406,7 @@ private fun BottomInfoBar(
                 .weight(1f)
                 .fillMaxHeight()
                 .clickable { actions.onRequestFocusSearch() }
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = DesignTokens.spacingLg),
             contentAlignment = Alignment.CenterStart,
         ) {
             Text(
@@ -416,7 +417,7 @@ private fun BottomInfoBar(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        Spacer(Modifier.width(20.dp))
+        Spacer(Modifier.width(DesignTokens.spacingMax))
         BarIcon("ic_arrow_drop_up", "go_to_top", btc, onScrollTop)
         BarIcon("ic_arrow_drop_down", "go_to_bottom", btc, onScrollBottom)
     }

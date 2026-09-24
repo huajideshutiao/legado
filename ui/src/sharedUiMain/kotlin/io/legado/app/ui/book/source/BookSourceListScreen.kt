@@ -345,7 +345,7 @@ private fun SortItem(
     val colors = AppTheme.colors
     DropdownMenuItem(onClick = { onClick(value) }) {
         Text(text, color = colors.primaryText)
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(DesignTokens.spacingMd))
         AppMenuCheckbox(checked = current == value)
     }
 }
@@ -355,7 +355,7 @@ private fun CheckDropdownItem(text: String, checked: Boolean, onClick: () -> Uni
     val colors = AppTheme.colors
     DropdownMenuItem(onClick = onClick) {
         Text(text, color = colors.primaryText)
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(DesignTokens.spacingMd))
         AppMenuCheckbox(checked = checked)
     }
 }
@@ -414,7 +414,7 @@ private fun RuleItemScope.BookSourceItem(
                 enabled = canDrag,
                 onDragStopped = { callbacks.onPersistOrder() },
             )
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingXs),
     ) {
         // 按域名分组开启时, 每个 host 组首项上方显示 host 头 (对照 tv_host_text/AccentTextView 16sp)
         if (groupSourcesByDomain && headerUrls.contains(item.bookSourceUrl)) {
@@ -450,7 +450,7 @@ private fun RuleItemScope.BookSourceItem(
                 checked = item.enabled,
                 onCheckedChange = { callbacks.onEnable(it, item) },
             )
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(DesignTokens.spacingDefault))
             IconButton(onClick = { callbacks.onEdit(item) }) {
                 Icon(
                     painter = painterResource(Res.drawable.ic_edit),
@@ -573,13 +573,13 @@ private fun CheckSourceProgress(msg: String, onCancel: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .padding(horizontal = DesignTokens.spacingMd, vertical = DesignTokens.spacingDefault)
             .clip(DesignTokens.shapeDefault)
             .background(colors.bottomBackground)
             .border(DesignTokens.strokeHairline, colors.secondaryText.copy(alpha = 0.2f), DesignTokens.shapeDefault)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingMd),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(DesignTokens.spacingDefault),
     ) {
         CircularProgressIndicator(
             color = colors.accent,

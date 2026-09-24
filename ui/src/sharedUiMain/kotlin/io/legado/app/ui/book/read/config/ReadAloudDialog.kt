@@ -167,7 +167,7 @@ fun ReadAloudDialog(
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = DesignTokens.spacingDefault, vertical = 8.dp),
+                    .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingDefault),
             ) {
                 // 章节/段落播放控制行 (与原版 Row + Text(上一章) + AloudIcon x4 + Text(下一章) 对齐)
                 Row(
@@ -180,7 +180,7 @@ fun ReadAloudDialog(
                         fontSize = 14.sp,
                         modifier = Modifier
                             .clickable(onClick = onPrev)
-                            .padding(horizontal = 12.dp, vertical = 12.dp),
+                            .padding(horizontal = DesignTokens.spacingMd, vertical = DesignTokens.spacingMd),
                     )
                     Spacer(Modifier.weight(1f))
                     AloudIcon(
@@ -217,7 +217,7 @@ fun ReadAloudDialog(
                         fontSize = 14.sp,
                         modifier = Modifier
                             .clickable(onClick = onNext)
-                            .padding(horizontal = 12.dp, vertical = 12.dp),
+                            .padding(horizontal = DesignTokens.spacingMd, vertical = DesignTokens.spacingMd),
                     )
                 }
 
@@ -225,7 +225,7 @@ fun ReadAloudDialog(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(8.dp),
+                        .padding(DesignTokens.spacingDefault),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     // 定时图标: 点击保存当前定时 (与原版 AloudIcon(time_add) + AppConfig.ttsTimer = timer 对齐)
@@ -282,7 +282,7 @@ fun ReadAloudDialog(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(8.dp),
+                        .padding(DesignTokens.spacingDefault),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
@@ -295,7 +295,7 @@ fun ReadAloudDialog(
                             text = ((speechRate + 5) / 10f).toString(),
                             color = colors.primaryText,
                             fontSize = 14.sp,
-                            modifier = Modifier.padding(horizontal = 4.dp),
+                            modifier = Modifier.padding(horizontal = DesignTokens.spacingXs),
                         )
                     }
                     Spacer(Modifier.weight(1f))
@@ -317,7 +317,7 @@ fun ReadAloudDialog(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp),
+                        .padding(horizontal = DesignTokens.spacingDefault),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     AloudIcon(
@@ -366,7 +366,7 @@ fun ReadAloudDialog(
                 // 底部功能按钮行: 目录 / 主菜单 / 转到后台 / 设置 (原版 4×60dp 按钮 + weight2 spacer 均分,
                 // 图标 maxHeight 20dp + 文字 12sp marginTop 3dp + paddingBottom default)
                 Row(
-                    Modifier.fillMaxWidth().padding(top = 8.dp),
+                    Modifier.fillMaxWidth().padding(top = DesignTokens.spacingDefault),
                 ) {
                     BottomIconButton(
                         iconKey = "ic_toc",
@@ -419,7 +419,7 @@ private fun AloudIcon(
         contentDescription = description,
         tint = if (enabled) tint else AppTheme.colors.secondaryText,
         modifier = Modifier
-            .padding(horizontal = 8.dp)
+            .padding(horizontal = DesignTokens.spacingDefault)
             .size(30.dp)
             .clickable(enabled = enabled, onClick = onClick),
     )
@@ -443,7 +443,7 @@ private fun BottomIconButton(
         Modifier
             .width(60.dp)
             .clickable(onClick = onClick)
-            .padding(bottom = 8.dp),
+            .padding(bottom = DesignTokens.spacingDefault),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(

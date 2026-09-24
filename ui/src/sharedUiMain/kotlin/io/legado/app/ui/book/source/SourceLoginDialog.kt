@@ -50,6 +50,7 @@ import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.GridPackLayout
 import io.legado.app.ui.compose.component.toGridPackSpec
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.FlowBus
@@ -379,10 +380,10 @@ private fun LoginRow(
         )
 
         // 原 select/toggle 行: setPadding(space.default)=8dp
-        RowUi.Type.select -> SelectRow(rowUi, modifier.padding(8.dp), loginData, onButtonClick)
+        RowUi.Type.select -> SelectRow(rowUi, modifier.padding(DesignTokens.spacingDefault), loginData, onButtonClick)
 
         RowUi.Type.toggle -> Row(
-            modifier.padding(8.dp),
+            modifier.padding(DesignTokens.spacingDefault),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(rowUi.name, color = colors.primaryText, modifier = Modifier.weight(1f))
@@ -418,7 +419,7 @@ private fun SelectRow(
         modifier,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(rowUi.name, color = colors.primaryText, modifier = Modifier.padding(end = 8.dp))
+        Text(rowUi.name, color = colors.primaryText, modifier = Modifier.padding(end = DesignTokens.spacingDefault))
         // 自定义实现替代 MD3 ExposedDropdownMenuBox: Box + TextField + AppDropdownMenu
         Box(modifier = Modifier.weight(1f)) {
             AppUnderlineTextField(

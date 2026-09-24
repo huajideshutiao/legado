@@ -49,7 +49,7 @@ fun StrokeTextChip(
                 onLongClick = onLongClick,
                 onClick = onClick,
             )
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingXs),
     )
 }
 
@@ -79,6 +79,6 @@ fun RadioChip(
             .background(if (checked) accent else Color.Transparent)
             .border(DesignTokens.strokeMedium, if (checked) accent else textColor, shape)
             .clickable(role = Role.RadioButton, onClick = onClick)
-            .padding(4.dp),
+            .padding(DesignTokens.spacingXs),
     )
 }

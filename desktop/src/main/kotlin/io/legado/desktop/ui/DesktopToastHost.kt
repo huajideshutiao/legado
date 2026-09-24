@@ -24,6 +24,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -123,7 +124,7 @@ fun DesktopToastHost(
                         }
                         .padding(bottom = shadowOffset)
                         .background(Color(0xE6212121), RoundedCornerShape(corner))
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                        .padding(horizontal = DesignTokens.spacingLg, vertical = 10.dp),
                 )
             }
         }

@@ -54,7 +54,7 @@ fun WaitDialogContent(
             color = colors.accent,
             strokeWidth = 2.dp,
         )
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(DesignTokens.spacingDefault))
         Text(message, color = colors.primaryText)
     }
 }

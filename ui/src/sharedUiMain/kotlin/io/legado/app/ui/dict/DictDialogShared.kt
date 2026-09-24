@@ -152,7 +152,7 @@ fun DictDialogContent(
                     .fillMaxWidth()
                     .padding(
                         start = DesignTokens.spacingDefault,
-                        top = 16.dp,
+                        top = DesignTokens.spacingLg,
                         end = DesignTokens.spacingDefault,
                         bottom = DesignTokens.spacingDefault,
                     ),
@@ -162,7 +162,7 @@ fun DictDialogContent(
                     color = colors.accent,
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .padding(top = 8.dp)
+                        .padding(top = DesignTokens.spacingDefault)
                         .size(60.dp)
                 )
             }

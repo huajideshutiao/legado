@@ -86,9 +86,8 @@ fun AppOutlinedButton(
 
 // 胶囊基础几何: 内边距语义同原 XML (自视图外缘计, 含 inset), 内层要减掉 inset 否则比原生大一圈。
 // 内边距 internal: 简介行内胶囊要按它算 InlineTextContent 占位尺寸, 避免调用点再写一份。
-private val filletInset = 4.dp
-internal val filletChipPaddingH = 16.dp // arco lg
-internal val filletChipPaddingV = 12.dp // arco md
+internal val filletChipPaddingH = DesignTokens.spacingLg
+internal val filletChipPaddingV = DesignTokens.spacingMd
 
 /**
  * 复刻 selector_fillet_btn_bg + item_fillet_text：半透明 btn_bg 填充 + 8dp 圆角 + 4dp inset，
@@ -124,7 +123,7 @@ fun AppFilletTextButton(
     Box(
         modifier
             .alpha(alpha)
-            .padding(filletInset)
+            .padding(DesignTokens.spacingXs)
             .clip(DesignTokens.shapeDefault)
             .background(if (pressed) pressedBg else normalBg)
             .then(
@@ -137,8 +136,8 @@ fun AppFilletTextButton(
             )
             .then(if (focusable) Modifier else Modifier.focusProperties { canFocus = false })
             .padding(
-                horizontal = filletChipPaddingH - filletInset,
-                vertical = filletChipPaddingV - filletInset,
+                horizontal = filletChipPaddingH - DesignTokens.spacingXs,
+                vertical = filletChipPaddingV - DesignTokens.spacingXs,
             ),
         contentAlignment = Alignment.Center,
     ) {

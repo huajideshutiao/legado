@@ -21,7 +21,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.entities.BookSource
@@ -275,7 +274,7 @@ private fun SearchLayoutConfigDialog(
         },
         cancelButton = AlertButton(text = stringResource(Res.string.cancel)),
     ) {
-        Column(Modifier.padding(horizontal = DesignTokens.spacingDefault, vertical = 8.dp)) {
+        Column(Modifier.padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingDefault)) {
             // 第一行: explore_style 标签 + 普通/视频 下拉 (对照原 Spinner sp_item_style)
             Row(
                 Modifier.fillMaxWidth(),
@@ -284,7 +283,7 @@ private fun SearchLayoutConfigDialog(
                 Text(
                     stringResource(Res.string.explore_style),
                     color = colors.primaryText,
-                    modifier = Modifier.padding(end = 8.dp),
+                    modifier = Modifier.padding(end = DesignTokens.spacingDefault),
                 )
                 LayoutStyleDropdown(
                     options = styles,
@@ -297,7 +296,7 @@ private fun SearchLayoutConfigDialog(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(top = 8.dp),
+                    .padding(top = DesignTokens.spacingDefault),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -307,7 +306,7 @@ private fun SearchLayoutConfigDialog(
                 Box(
                     Modifier
                         .weight(1f)
-                        .padding(horizontal = 8.dp),
+                        .padding(horizontal = DesignTokens.spacingDefault),
                     contentAlignment = Alignment.Center,
                 ) {
                     AppSlider(
@@ -320,7 +319,7 @@ private fun SearchLayoutConfigDialog(
                     selectedCols.toString(),
                     color = colors.primaryText,
                     fontSize = 16.sp,
-                    modifier = Modifier.padding(start = 4.dp),
+                    modifier = Modifier.padding(start = DesignTokens.spacingXs),
                 )
             }
         }
@@ -340,7 +339,7 @@ private fun LayoutStyleDropdown(
         Row(
             Modifier
                 .clickable { expanded = true }
-                .padding(horizontal = 4.dp, vertical = 4.dp),
+                .padding(horizontal = DesignTokens.spacingXs, vertical = DesignTokens.spacingXs),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(

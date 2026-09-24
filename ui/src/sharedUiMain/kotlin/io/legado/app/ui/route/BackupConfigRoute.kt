@@ -21,7 +21,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
@@ -44,6 +43,7 @@ import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.config.BackupConfigScreen
 import io.legado.app.ui.config.BackupConfigScreenModel
 import io.legado.app.ui.config.BackupConfigUiEvent
@@ -437,9 +437,9 @@ fun BackupConfigRoute(
                                     BackupConfigShared.ignoreConfig[keys[index]] = it
                                 },
                             )
-                            .padding(horizontal = 24.dp, vertical = 8.dp),
+                            .padding(horizontal = DesignTokens.spacingXl, vertical = DesignTokens.spacingDefault),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(DesignTokens.spacingMd),
                     ) {
                         AppCheckbox(
                             checked = checkedStates[index],

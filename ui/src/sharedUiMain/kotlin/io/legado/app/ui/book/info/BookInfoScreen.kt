@@ -365,11 +365,11 @@ private fun PortraitLayout(
                         Spacer(Modifier.height(56.dp)) // actionBarSize
                         if (state.useDevFeat) TopSectionHorizontal(state, coverSlot)
                         else TopSectionVertical(state, coverSlot, land = false)
-                        ActionsRow(state, actions, Modifier.padding(horizontal = 8.dp))
-                        KindsSection(state, actions, Modifier.padding(horizontal = 8.dp))
+                        ActionsRow(state, actions, Modifier.padding(horizontal = DesignTokens.spacingDefault))
+                        KindsSection(state, actions, Modifier.padding(horizontal = DesignTokens.spacingDefault))
                         IntroSection(
                             state, actions, introImageSlot,
-                            Modifier.padding(start = 16.dp, end = 8.dp, bottom = 8.dp),
+                            Modifier.padding(start = DesignTokens.spacingLg, end = DesignTokens.spacingDefault, bottom = DesignTokens.spacingDefault),
                         )
                         // 底部按钮悬浮，滚动内容留出等高空间(原 scrollView bottom padding)
                         Spacer(Modifier.height(64.dp))
@@ -440,12 +440,12 @@ private fun LandscapeLayout(
                     Modifier
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 8.dp),
+                        .padding(horizontal = DesignTokens.spacingDefault),
                 ) {
                     Spacer(Modifier.height(platformStatusBarHeight()))
                     ActionsRow(state, actions, Modifier)
                     KindsSection(state, actions, Modifier)
-                    IntroSection(state, actions, introImageSlot, Modifier.padding(start = 8.dp, bottom = 8.dp))
+                    IntroSection(state, actions, introImageSlot, Modifier.padding(start = DesignTokens.spacingDefault, bottom = DesignTokens.spacingDefault))
                     Spacer(Modifier.height(64.dp))
                     Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
                 }
@@ -599,7 +599,7 @@ private fun CheckMenuItem(text: String, checked: Boolean, onClick: () -> Unit) {
         onClick = onClick,
     ) {
         Text(text, color = colors.primaryText)
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(DesignTokens.spacingMd))
         AppMenuCheckbox(checked = checked)
     }
 }
@@ -617,13 +617,13 @@ private fun TopSectionVertical(
             state, coverSlot, cardBg = !land,
             modifier = Modifier
                 .align(Alignment.CenterHorizontally)
-                .padding(8.dp),
+                .padding(DesignTokens.spacingDefault),
         )
         Column(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = if (land) 16.dp else 8.dp)
-                .padding(bottom = if (land) 8.dp else 0.dp),
+                .padding(horizontal = if (land) DesignTokens.spacingLg else DesignTokens.spacingDefault)
+                .padding(bottom = if (land) DesignTokens.spacingDefault else 0.dp),
         ) {
             NameText(state, TextAlign.Center, if (land) 3 else Int.MAX_VALUE)
             WordCountText(state, TextAlign.Center)
@@ -631,7 +631,7 @@ private fun TopSectionVertical(
                 state,
                 Modifier
                     .align(Alignment.CenterHorizontally)
-                    .padding(vertical = if (land) 3.dp else 4.dp),
+                    .padding(vertical = if (land) 3.dp else DesignTokens.spacingXs),
             )
         }
     }
@@ -643,15 +643,15 @@ private fun TopSectionHorizontal(
     coverSlot: @Composable (Book?, Modifier) -> Unit,
 ) {
     Row(Modifier.fillMaxWidth()) {
-        InfoCover(state, coverSlot, cardBg = true, modifier = Modifier.padding(8.dp))
+        InfoCover(state, coverSlot, cardBg = true, modifier = Modifier.padding(DesignTokens.spacingDefault))
         Column(
             Modifier
                 .weight(1f)
-                .padding(end = 8.dp),
+                .padding(end = DesignTokens.spacingDefault),
         ) {
             NameText(state, TextAlign.Start, Int.MAX_VALUE)
             WordCountText(state, TextAlign.Start)
-            LastedRow(state, Modifier.padding(vertical = 4.dp))
+            LastedRow(state, Modifier.padding(vertical = DesignTokens.spacingXs))
         }
     }
 }
@@ -830,7 +830,7 @@ private fun ActionCell(
     Column(
         modifier
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(vertical = 4.dp),
+            .padding(vertical = DesignTokens.spacingXs),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(rememberPainter(iconKey), null, tint = summary, modifier = Modifier.size(24.dp))
@@ -867,7 +867,7 @@ private fun KindsSection(
         buildKindGroups(state.book?.kind, otherLabel)
     }
     if (groups.isEmpty()) return
-    Column(modifier.padding(bottom = 8.dp)) {
+    Column(modifier.padding(bottom = DesignTokens.spacingDefault)) {
         groups.forEach { (groupName, items) ->
             FlowRow(Modifier.fillMaxWidth()) {
                 if (groups.size > 1 || groupName != otherLabel) {
@@ -1061,7 +1061,7 @@ private fun BottomButtons(
         modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(bottom = 16.dp),
+            .padding(bottom = DesignTokens.spacingLg),
     ) {
         ArcoSolidButton(
             text = rememberString(
@@ -1072,7 +1072,7 @@ private fun BottomButtons(
             textColor = shelfText,
             modifier = Modifier
                 .weight(1f)
-                .padding(start = 16.dp, end = 16.dp),
+                .padding(start = DesignTokens.spacingLg, end = DesignTokens.spacingLg),
         ) { actions.onShelfClick() }
         ArcoSolidButton(
             text = stringResource(Res.string.reading),
@@ -1080,7 +1080,7 @@ private fun BottomButtons(
             textColor = if (ColorUtils.isColorLight(AppTheme.colors.accent.toArgb())) Color.Black else Color.White,
             modifier = Modifier
                 .weight(1f)
-                .padding(end = 16.dp),
+                .padding(end = DesignTokens.spacingLg),
         ) { actions.onReadClick() }
     }
 }

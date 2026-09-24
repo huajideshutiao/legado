@@ -39,6 +39,7 @@ import io.legado.app.ui.compose.component.SelectActionBar
 import io.legado.app.ui.compose.component.dragSelectable
 import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.cancel
 import legado.ui.generated.resources.create
@@ -300,7 +301,7 @@ private fun RuleItemScope.TxtTocRuleItem(
         Modifier
             .fillMaxWidth()
             .longPressDraggableHandle(onDragStopped = { actions.onPersistOrder() })
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingXs),
     ) {
         // 按压整行触发切换选中, 子按钮 (Switch/Edit/More) 自身消费点击不冒泡
         Row(
@@ -324,7 +325,7 @@ private fun RuleItemScope.TxtTocRuleItem(
                 checked = item.enable,
                 onCheckedChange = { actions.onEnableRule(item, it) },
             )
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(DesignTokens.spacingDefault))
             IconButton(onClick = { actions.onEditRule(item) }) {
                 Icon(
                     painter = painterResource(Res.drawable.ic_edit),
@@ -365,7 +366,7 @@ private fun RuleItemScope.TxtTocRuleItem(
                 text = item.example!!,
                 color = colors.secondaryText,
                 fontSize = 12.sp,
-                modifier = Modifier.padding(start = 8.dp),
+                modifier = Modifier.padding(start = DesignTokens.spacingDefault),
             )
         }
     }

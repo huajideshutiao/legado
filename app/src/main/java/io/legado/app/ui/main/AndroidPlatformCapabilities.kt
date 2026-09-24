@@ -118,6 +118,7 @@ import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.platform.rememberStringArray
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.config.ThemeCustomizeDialog
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
@@ -748,9 +749,9 @@ class AndroidPlatformCapabilities(
                                 role = Role.Checkbox,
                                 onValueChange = { deleteFile.value = it },
                             )
-                            .padding(horizontal = 24.dp, vertical = 8.dp),
+                            .padding(horizontal = DesignTokens.spacingXl, vertical = DesignTokens.spacingDefault),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(DesignTokens.spacingMd),
                     ) {
                         AppCheckbox(checked = deleteFile.value, onCheckedChange = null)
                         Text(
@@ -1206,13 +1207,13 @@ class AndroidPlatformCapabilities(
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 8.dp)
+                        .padding(horizontal = DesignTokens.spacingXl, vertical = DesignTokens.spacingDefault)
                 ) {
                     Text(
                         androidAppString("export_file_name"),
                         color = AppTheme.colors.primaryText,
                         fontSize = 14.sp,
-                        modifier = Modifier.padding(bottom = 4.dp),
+                        modifier = Modifier.padding(bottom = DesignTokens.spacingXs),
                     )
                     AppTextField(
                         value = fileNameState.value,
@@ -1225,7 +1226,7 @@ class AndroidPlatformCapabilities(
                         androidAppString("export_type"),
                         color = AppTheme.colors.primaryText,
                         fontSize = 14.sp,
-                        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                        modifier = Modifier.padding(top = DesignTokens.spacingMd, bottom = DesignTokens.spacingXs),
                     )
                     Row(
                         Modifier
@@ -1241,7 +1242,7 @@ class AndroidPlatformCapabilities(
                                         role = Role.RadioButton,
                                         onClick = { typeState.intValue = value },
                                     )
-                                    .padding(top = 4.dp, end = 16.dp, bottom = 4.dp),
+                                    .padding(top = DesignTokens.spacingXs, end = DesignTokens.spacingLg, bottom = DesignTokens.spacingXs),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 AppRadioButton(
@@ -1256,7 +1257,7 @@ class AndroidPlatformCapabilities(
                         androidAppString("export_charset"),
                         color = AppTheme.colors.primaryText,
                         fontSize = 14.sp,
-                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                        modifier = Modifier.padding(top = DesignTokens.spacingDefault, bottom = DesignTokens.spacingXs),
                     )
                     AppAutoCompleteField(
                         value = charsetState.value,
@@ -1273,7 +1274,7 @@ class AndroidPlatformCapabilities(
                                 role = Role.Checkbox,
                                 onValueChange = { noChapterNameState.value = it },
                             )
-                            .padding(vertical = 8.dp),
+                            .padding(vertical = DesignTokens.spacingDefault),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         AppCheckbox(
@@ -1283,7 +1284,7 @@ class AndroidPlatformCapabilities(
                         Text(
                             androidAppString("export_no_chapter_name"),
                             color = AppTheme.colors.primaryText,
-                            modifier = Modifier.padding(start = 8.dp),
+                            modifier = Modifier.padding(start = DesignTokens.spacingDefault),
                         )
                     }
                 }
@@ -1318,12 +1319,12 @@ class AndroidPlatformCapabilities(
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 8.dp)
+                        .padding(horizontal = DesignTokens.spacingXl, vertical = DesignTokens.spacingDefault)
                 ) {
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 4.dp),
+                            .padding(vertical = DesignTokens.spacingXs),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Row(
@@ -1339,14 +1340,14 @@ class AndroidPlatformCapabilities(
                                         if (it) scopeError.value = null
                                     },
                                 )
-                                .padding(vertical = 8.dp),
+                                .padding(vertical = DesignTokens.spacingDefault),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             AppCheckbox(checked = allState.value, onCheckedChange = null)
                             Text(
                                 androidAppString("export_all"),
                                 color = AppTheme.colors.primaryText,
-                                modifier = Modifier.padding(start = 8.dp),
+                                modifier = Modifier.padding(start = DesignTokens.spacingDefault),
                             )
                         }
                         Row(
@@ -1360,14 +1361,14 @@ class AndroidPlatformCapabilities(
                                         allState.value = !it
                                     },
                                 )
-                                .padding(vertical = 8.dp),
+                                .padding(vertical = DesignTokens.spacingDefault),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             AppCheckbox(checked = customState.value, onCheckedChange = null)
                             Text(
                                 androidAppString("custom_export"),
                                 color = AppTheme.colors.primaryText,
-                                modifier = Modifier.padding(start = 8.dp),
+                                modifier = Modifier.padding(start = DesignTokens.spacingDefault),
                             )
                         }
                     }
@@ -1376,7 +1377,7 @@ class AndroidPlatformCapabilities(
                         androidAppString("export_file_name"),
                         color = AppTheme.colors.primaryText,
                         fontSize = 14.sp,
-                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                        modifier = Modifier.padding(top = DesignTokens.spacingDefault, bottom = DesignTokens.spacingXs),
                     )
                     AppTextField(
                         value = fileNameState.value,

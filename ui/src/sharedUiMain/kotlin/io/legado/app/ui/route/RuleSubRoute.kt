@@ -17,7 +17,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.RuleSub
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.association.DeepLinkImportTarget
@@ -221,7 +220,7 @@ private fun RuleSubEditDialog(
                 Text(
                     stringResource(Res.string.book_type),
                     color = colors.accent,
-                    modifier = Modifier.padding(end = 8.dp),
+                    modifier = Modifier.padding(end = DesignTokens.spacingDefault),
                 )
                 Box {
                     Text(
@@ -229,7 +228,7 @@ private fun RuleSubEditDialog(
                         color = colors.primaryText,
                         modifier = Modifier
                             .clickable { expanded = true }
-                            .padding(8.dp),
+                            .padding(DesignTokens.spacingDefault),
                     )
                     AppDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                         (0..5).forEach { t ->

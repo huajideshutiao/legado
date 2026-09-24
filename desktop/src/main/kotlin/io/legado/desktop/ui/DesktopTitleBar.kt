@@ -42,6 +42,7 @@ import androidx.compose.ui.window.WindowState
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.platform.DesktopThemeStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.MainTab
@@ -175,7 +176,7 @@ private fun TitleBarLeftGroup(
             Image(
                 painter = it,
                 contentDescription = null,
-                modifier = Modifier.padding(start = 12.dp, end = 8.dp).size(18.dp),
+                modifier = Modifier.padding(start = DesignTokens.spacingMd, end = DesignTokens.spacingDefault).size(18.dp),
             )
         }
         Text(
@@ -184,7 +185,7 @@ private fun TitleBarLeftGroup(
             fontSize = 12.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(end = 4.dp),
+            modifier = Modifier.padding(end = DesignTokens.spacingXs),
         )
     }
 }

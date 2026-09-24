@@ -26,6 +26,7 @@ import io.legado.app.help.book.isVideo
 import io.legado.app.help.image.ImageBitmapLoader
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 /*
  * BookInfoScreen L3 slot 的 CompositionLocal: 模糊封面背景 + 简介内整宽图。
@@ -146,7 +147,7 @@ fun SharedIntroImage(
                 contentScale = ContentScale.FillWidth,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 4.dp)
+                    .padding(vertical = DesignTokens.spacingXs)
                     .clickable(onClick = onClick),
             )
         }
@@ -155,7 +156,7 @@ fun SharedIntroImage(
         Box(
             Modifier
                 .fillMaxWidth()
-                .padding(vertical = 4.dp)
+                .padding(vertical = DesignTokens.spacingXs)
                 .background(Color(0xFFEEEEEE))
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center,

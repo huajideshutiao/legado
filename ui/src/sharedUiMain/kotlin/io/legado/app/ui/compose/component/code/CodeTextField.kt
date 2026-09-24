@@ -116,6 +116,7 @@ import io.legado.app.ui.compose.component.rememberSyncedTextFieldState
 import io.legado.app.ui.compose.component.toKeyboardActionHandler
 import io.legado.app.ui.compose.platform.rememberImeAnimating
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -808,7 +809,7 @@ fun CodeTextField(
         // showIndicator=false 内嵌形态 (无下划线) 不加, 由宿主容器自行排版
         modifier = modifier.then(
             if (showIndicator) {
-                Modifier.padding(start = 4.dp, end = 4.dp, bottom = 4.dp)
+                Modifier.padding(start = DesignTokens.spacingXs, end = DesignTokens.spacingXs, bottom = DesignTokens.spacingXs)
             } else {
                 Modifier
             }
@@ -1184,7 +1185,7 @@ private fun AutoCompletePopup(
                                 }
                             )
                             .clickable { onSelect(index) }
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                            .padding(horizontal = DesignTokens.spacingMd, vertical = DesignTokens.spacingDefault),
                     )
                 }
             }

@@ -121,7 +121,7 @@ fun AppDetailSeekBar(
         modifier.height(DesignTokens.viewHeightLarge),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(title, color = textColor, maxLines = 1, modifier = Modifier.padding(end = 16.dp))
+        Text(title, color = textColor, maxLines = 1, modifier = Modifier.padding(end = DesignTokens.spacingLg))
         IconButton(onClick = { onChanged((value - 1).coerceIn(min, max)) }, modifier = Modifier.size(24.dp)) {
             Icon(
                 painter = painterResource(Res.drawable.ic_reduce),

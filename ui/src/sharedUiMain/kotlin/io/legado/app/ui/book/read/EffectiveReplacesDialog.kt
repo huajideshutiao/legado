@@ -28,7 +28,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.ui.compose.component.AppDialog
@@ -102,7 +101,7 @@ fun EffectiveReplacesDialog(
             // 原版 isFullHeight = true, 高度固定 0.7 屏高
             modifier = Modifier.appDialogSize(fullHeight = true).padding(
                 start = DesignTokens.spacingDefault,
-                top = 16.dp,
+                top = DesignTokens.spacingLg,
                 end = DesignTokens.spacingDefault,
                 bottom = DesignTokens.spacingDefault,
             ),
@@ -140,7 +139,7 @@ fun EffectiveReplacesDialog(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable { onItemClick(item) }
-                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                    .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingDefault),
                             )
                         }
                     }
@@ -151,7 +150,7 @@ fun EffectiveReplacesDialog(
                             color = colors.secondaryText,
                             modifier = Modifier
                                 .align(Alignment.Center)
-                                .padding(16.dp),
+                                .padding(DesignTokens.spacingLg),
                         )
                     }
                 }

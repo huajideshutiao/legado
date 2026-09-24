@@ -23,7 +23,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.SelectableText
 import io.legado.app.ui.compose.component.AlertButton
@@ -134,7 +133,7 @@ private fun VariableEditDialogContent(
                 text = stringResource(Res.string.variable_comment),
                 color = AppTheme.colors.accent,
                 fontSize = 14.sp,
-                modifier = Modifier.padding(4.dp),
+                modifier = Modifier.padding(DesignTokens.spacingXs),
             )
             // 注释正文 (对照 tv_comment: secondaryText + 默认 14sp + 4dp 四周 padding + textIsSelectable)
             // 去掉固定 120dp 限高: 原版 NestedScrollView wrap_content, 超高才在剩余空间内滚动;
@@ -145,7 +144,7 @@ private fun VariableEditDialogContent(
                 fontSize = 14.sp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(4.dp),
+                    .padding(DesignTokens.spacingXs),
             )
         }
     }

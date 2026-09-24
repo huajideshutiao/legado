@@ -29,6 +29,7 @@ import io.legado.app.help.image.BookImageLoaders
 import io.legado.app.help.image.ImageBitmapLoader
 import io.legado.app.model.blurConfig
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import kotlinx.coroutines.launch
 
 /*
@@ -143,7 +144,7 @@ fun BookInfoIntroImage(
                 contentScale = ContentScale.FillWidth,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 4.dp)
+                    .padding(vertical = DesignTokens.spacingXs)
                     .clickable(onClick = onClick),
             )
         }

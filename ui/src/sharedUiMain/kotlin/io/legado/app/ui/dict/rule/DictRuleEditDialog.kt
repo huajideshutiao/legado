@@ -26,7 +26,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.DictRule
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.component.AppUnderlineTextField
@@ -202,7 +201,7 @@ fun DictRuleEditDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Spacer(Modifier.heightIn(min = 8.dp))
+                Spacer(Modifier.heightIn(min = DesignTokens.spacingDefault))
                 AppUnderlineTextField(
                     value = urlRule,
                     onValueChange = { urlRule = it },
@@ -210,7 +209,7 @@ fun DictRuleEditDialog(
                     singleLine = false,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Spacer(Modifier.heightIn(min = 8.dp))
+                Spacer(Modifier.heightIn(min = DesignTokens.spacingDefault))
                 AppUnderlineTextField(
                     value = showRule,
                     onValueChange = { showRule = it },

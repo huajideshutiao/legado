@@ -131,18 +131,18 @@ fun AutoReadPanel(
         mutableIntStateOf(controller.autoReadSpeed.coerceAtLeast(1))
     }
     Column(
-        Modifier.fillMaxWidth().padding(horizontal = DesignTokens.spacingDefault, vertical = 8.dp)
+        Modifier.fillMaxWidth().padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingDefault)
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 stringResource(Res.string.auto_page_speed),
                 color = colors.primaryText, fontSize = 14.sp,
-                modifier = Modifier.weight(1f).padding(8.dp),
+                modifier = Modifier.weight(1f).padding(DesignTokens.spacingDefault),
             )
             Text(
                 "${speed}s",
                 color = colors.primaryText, fontSize = 14.sp,
-                modifier = Modifier.padding(8.dp),
+                modifier = Modifier.padding(DesignTokens.spacingDefault),
             )
         }
         AppSlider(
@@ -157,7 +157,7 @@ fun AutoReadPanel(
             modifier = Modifier.fillMaxWidth(),
         )
         Row(
-            Modifier.fillMaxWidth().padding(top = 8.dp),
+            Modifier.fillMaxWidth().padding(top = DesignTokens.spacingDefault),
         ) {
             ReadMenuIconButton(
                 "ic_toc",
@@ -211,7 +211,7 @@ private fun ReadMenuIconButton(
             .width(50.dp)
             .heightIn(min = 50.dp)
             .clickable(onClick = onClick)
-            .padding(bottom = 8.dp),
+            .padding(bottom = DesignTokens.spacingDefault),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(
@@ -225,7 +225,7 @@ private fun ReadMenuIconButton(
             color = tint,
             fontSize = 12.sp,
             maxLines = 1,
-            modifier = Modifier.padding(top = 4.dp),
+            modifier = Modifier.padding(top = DesignTokens.spacingXs),
         )
     }
 }

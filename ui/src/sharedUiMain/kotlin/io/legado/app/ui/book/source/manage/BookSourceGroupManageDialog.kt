@@ -95,7 +95,7 @@ fun BookSourceGroupManageDialog(onDismiss: () -> Unit) {
                     Column(
                         Modifier.padding(
                             start = DesignTokens.spacingDefault,
-                            top = 16.dp,
+                            top = DesignTokens.spacingLg,
                             end = DesignTokens.spacingDefault,
                             bottom = DesignTokens.spacingDefault,
                         )
@@ -108,7 +108,7 @@ fun BookSourceGroupManageDialog(onDismiss: () -> Unit) {
                             modifier = Modifier.fillMaxWidth(),
                         )
                         Row(
-                            Modifier.fillMaxWidth().padding(top = 8.dp),
+                            Modifier.fillMaxWidth().padding(top = DesignTokens.spacingDefault),
                             horizontalArrangement = Arrangement.End,
                         ) {
                             AppTextButton(text = stringResource(Res.string.cancel)) {
@@ -132,7 +132,7 @@ fun BookSourceGroupManageDialog(onDismiss: () -> Unit) {
                         items(items = groups, key = { it }) { group ->
                             Row(
                                 Modifier.fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                    .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingMd),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
                                 Text(
@@ -146,14 +146,14 @@ fun BookSourceGroupManageDialog(onDismiss: () -> Unit) {
                                     color = colors.secondaryText,
                                     fontSize = 14.sp,
                                     modifier = Modifier.clickable { editing = group to group }
-                                        .padding(8.dp),
+                                        .padding(DesignTokens.spacingDefault),
                                 )
                                 Text(
                                     text = stringResource(Res.string.delete),
                                     color = colors.secondaryText,
                                     fontSize = 14.sp,
                                     modifier = Modifier.clickable { viewModel.delGroup(group) }
-                                        .padding(8.dp),
+                                        .padding(DesignTokens.spacingDefault),
                                 )
                             }
                         }

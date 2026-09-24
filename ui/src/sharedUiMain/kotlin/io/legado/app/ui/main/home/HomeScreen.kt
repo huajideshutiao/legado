@@ -48,6 +48,7 @@ import io.legado.app.ui.compose.component.rememberResponsiveColumns
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.platformStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 import kotlinx.coroutines.launch
 import legado.ui.generated.resources.Res
@@ -270,7 +271,7 @@ private fun HomeTopBar(
     val colors = AppTheme.colors
     Box(Modifier.fillMaxWidth().then(if (eInk) Modifier else Modifier.platformStatusBarPadding())) {
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(start = 16.dp),
+            Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(start = DesignTokens.spacingLg),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (tabs.size > 1) {
@@ -331,7 +332,7 @@ private fun HomeTabItem(title: String, selected: Boolean, onClick: () -> Unit) {
             // 48dp 对照原版 TabLayout 默认高 (DEFAULT_HEIGHT), 8dp 对照 tabPaddingStart/End
             .heightIn(min = 48.dp)
             .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp),
+            .padding(horizontal = DesignTokens.spacingDefault),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -399,7 +400,7 @@ private fun HomeTabPage(
             columns = rememberResponsiveColumns(2),
             state = gridState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 8.dp),
+            contentPadding = PaddingValues(bottom = DesignTokens.spacingDefault),
         ) {
             sections.forEach { section ->
                 if (section.style == HomeSection.STYLE_INFINITE_GRID) {
@@ -447,7 +448,7 @@ private fun LoadMoreFooter(loading: Boolean, hasMore: Boolean) {
             CircularProgressIndicator(
                 color = colors.accent,
                 strokeWidth = 2.dp,
-                modifier = Modifier.size(36.dp).padding(8.dp),
+                modifier = Modifier.size(36.dp).padding(DesignTokens.spacingDefault),
             )
         }
         // 对照 view_load_more.xml tv_text: 恒占位, 无更多时显示 bottom_line
@@ -457,7 +458,7 @@ private fun LoadMoreFooter(loading: Boolean, hasMore: Boolean) {
             fontSize = 14.sp,
             maxLines = 1,
             textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = DesignTokens.spacingMd),
         )
     }
 }

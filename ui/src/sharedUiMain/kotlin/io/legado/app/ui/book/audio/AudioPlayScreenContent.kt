@@ -245,7 +245,7 @@ fun AudioPlayScreenContent(
                 // 封面尺寸受封面区宽高双重钳制 (桌面窗口可自由缩放, 防向下溢出压住
                 // 进度条/操作区); 竖排时封面还须给歌词让出 COVER_MIN_LRC_HEIGHT。
                 val landscape = maxWidth >= DesignTokens.wideScreenMinWidth
-                val coverTopPad = 16.dp
+                val coverTopPad = DesignTokens.spacingLg
                 // 封面区宽度 (0.35 比例 + 上限 600dp, 用户拍板) — 区内居中显示封面
                 val coverAreaWidth =
                     (maxWidth * 0.35f).coerceAtMost(DesignTokens.audioCoverAreaMaxWidth)
@@ -288,7 +288,7 @@ fun AudioPlayScreenContent(
                                             text = subTitle,
                                             modifier = Modifier.width(coverSize),
                                         )
-                                        Spacer(Modifier.height(16.dp))
+                                        Spacer(Modifier.height(DesignTokens.spacingLg))
                                     }
                                     CoverImage(
                                         coverUrl = coverUrl,
@@ -323,7 +323,7 @@ fun AudioPlayScreenContent(
                                         text = subTitle,
                                         modifier = Modifier.width(coverSize),
                                     )
-                                    Spacer(Modifier.height(16.dp))
+                                    Spacer(Modifier.height(DesignTokens.spacingLg))
                                 }
                                 CoverImage(
                                     coverUrl = coverUrl,
@@ -342,7 +342,7 @@ fun AudioPlayScreenContent(
                             Modifier
                                 .fillMaxWidth()
                                 .weight(1f)
-                                .padding(vertical = 16.dp),
+                                .padding(vertical = DesignTokens.spacingLg),
                         )
                     }
                 }
@@ -353,7 +353,7 @@ fun AudioPlayScreenContent(
                         iconKey = "ic_timer_black_24dp",
                         modifier = Modifier
                             .align(Alignment.TopStart)
-                            .padding(16.dp),
+                            .padding(DesignTokens.spacingLg),
                     )
                 }
                 // 倍速回显标签 (右上; 底色统一 arco_fill_3 跟随主题)
@@ -363,7 +363,7 @@ fun AudioPlayScreenContent(
                         iconKey = null,
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .padding(16.dp),
+                            .padding(DesignTokens.spacingLg),
                     )
                 }
             }
@@ -561,7 +561,7 @@ private fun AudioSongTitle(text: String, modifier: Modifier = Modifier) {
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         textAlign = TextAlign.Center,
-        modifier = modifier.padding(horizontal = 8.dp),
+        modifier = modifier.padding(horizontal = DesignTokens.spacingDefault),
     )
 }
 
@@ -609,7 +609,7 @@ private fun FilletLabel(
     Row(
         modifier
             .background(rememberColor("arco_fill_3"), DesignTokens.shapeDefault)
-            .padding(horizontal = 8.dp),
+            .padding(horizontal = DesignTokens.spacingDefault),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (iconKey != null) {
@@ -643,7 +643,7 @@ private fun ProgressRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = DesignTokens.spacingLg),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -793,7 +793,7 @@ private fun PlayMenu(
             .navigationBarsPadding()
             // 控制排整体透明度 (统一 app 原版 0.7f)
             .alpha(0.7f)
-            .padding(horizontal = 8.dp),
+            .padding(horizontal = DesignTokens.spacingDefault),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // 定时
@@ -828,7 +828,7 @@ private fun PlayMenu(
         Box(contentAlignment = Alignment.Center) {
             Box(
                 Modifier
-                    .padding(12.dp)
+                    .padding(DesignTokens.spacingMd)
                     .size(56.dp)
                     .shadow(6.dp, CircleShape)
                     .clip(CircleShape)

@@ -30,6 +30,7 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.source.SourceLoginDialog
 import io.legado.app.ui.book.source.SourceLoginFormState
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.decodeStringMapOrNull
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.loading
@@ -192,7 +193,7 @@ private fun LoginLoadingPlaceholder() {
             color = AppTheme.colors.accent,
             modifier = Modifier.size(48.dp),
         )
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(DesignTokens.spacingLg))
         Text(loadingText, color = AppTheme.colors.secondaryText)
     }
 }

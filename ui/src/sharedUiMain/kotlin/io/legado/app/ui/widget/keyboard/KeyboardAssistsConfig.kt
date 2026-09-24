@@ -121,7 +121,7 @@ internal fun KeyboardAssistsConfigOverlayContent(overlay: AppOverlay.Dialog, nav
                             showEdit = true
                         }
                         .longPressDraggableHandle(onDragStopped = { persistOrder(items, scope) })
-                        .padding(16.dp),
+                        .padding(DesignTokens.spacingLg),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(

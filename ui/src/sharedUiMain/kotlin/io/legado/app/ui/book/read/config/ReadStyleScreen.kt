@@ -292,7 +292,7 @@ fun ReadStyleScreen(
     ) {
         // 顶部功能小按钮行
         Row(
-            Modifier.fillMaxWidth().padding(top = 16.dp),
+            Modifier.fillMaxWidth().padding(top = DesignTokens.spacingLg),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             SegmentChip(
@@ -335,7 +335,7 @@ fun ReadStyleScreen(
                     listOf(ReadConfigChange.CHAPTER_STYLE, ReadConfigChange.LOAD_CONTENT)
                 )
             },
-            modifier = Modifier.padding(top = 4.dp),
+            modifier = Modifier.padding(top = DesignTokens.spacingXs),
         )
         // 字间距 SeekBar (内部 30-100, 显示 (it-50)/100)
         AppDetailSeekBar(
@@ -381,7 +381,7 @@ fun ReadStyleScreen(
         Text(
             pageAnimStr,
             color = colors.primaryText.copy(alpha = 0.75f), fontSize = 12.sp,
-            modifier = Modifier.padding(bottom = 4.dp),
+            modifier = Modifier.padding(bottom = DesignTokens.spacingXs),
         )
         Row(Modifier.fillMaxWidth()) {
             listOf(
@@ -395,7 +395,7 @@ fun ReadStyleScreen(
                     text = label,
                     checked = pageAnim == anim,
                     textColor = colors.primaryText,
-                    modifier = Modifier.weight(1f).padding(4.dp),
+                    modifier = Modifier.weight(1f).padding(DesignTokens.spacingXs),
                 ) {
                     controller.pageAnim = anim
                     pageAnim = anim
@@ -429,13 +429,13 @@ fun ReadStyleScreen(
                         )
                     )
                 },
-                modifier = Modifier.padding(start = 8.dp, end = 16.dp),
+                modifier = Modifier.padding(start = DesignTokens.spacingDefault, end = DesignTokens.spacingLg),
             )
         }
         // 样式列表 LazyRow
         LazyRow(
             Modifier.fillMaxWidth().padding(bottom = DesignTokens.spacingDefault),
-            contentPadding = PaddingValues(horizontal = 4.dp),
+            contentPadding = PaddingValues(horizontal = DesignTokens.spacingXs),
         ) {
             items(controller.configList.size) { index ->
                 val item = controller.configList[index]
@@ -501,7 +501,7 @@ private fun Divider() {
     Box(
         Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp)
+            .padding(vertical = DesignTokens.spacingDefault)
             .height(0.8.dp)
             .background(AppTheme.colors.secondaryText.copy(alpha = 0.3f)),
     )
@@ -537,7 +537,7 @@ private fun SegmentChip(
             .clip(shape)
             .border(DesignTokens.strokeThin, textColor, shape)
             .combinedClickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingXs),
     )
 }
 
@@ -550,7 +550,7 @@ private fun SegmentChip(
 private fun AddStyleItem(textColor: Color, onClick: () -> Unit) {
     Box(
         Modifier
-            .padding(horizontal = 8.dp)
+            .padding(horizontal = DesignTokens.spacingDefault)
             .size(48.dp)
             .padding(6.dp)
             .clip(CircleShape)

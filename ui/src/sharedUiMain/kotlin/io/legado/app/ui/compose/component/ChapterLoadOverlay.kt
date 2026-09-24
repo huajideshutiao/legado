@@ -18,6 +18,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.model.chapter.ChapterLoadState
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.loading
 import legado.ui.generated.resources.reload
@@ -50,7 +51,7 @@ fun ChapterLoadingOverlay(
             Text(
                 text = stringResource(Res.string.loading),
                 color = Color.White,
-                modifier = Modifier.padding(top = 12.dp),
+                modifier = Modifier.padding(top = DesignTokens.spacingMd),
             )
         }
     }
@@ -74,10 +75,10 @@ fun ChapterErrorOverlay(
                 color = OverlayActionColor,
                 fontSize = 18.sp,
                 modifier = Modifier
-                    .padding(16.dp)
+                    .padding(DesignTokens.spacingLg)
                     .clip(RoundedCornerShape(10.dp))
                     .clickable { onRetry() }
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingDefault),
             )
         }
     }

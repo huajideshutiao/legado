@@ -20,7 +20,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.Fragment
 import io.legado.app.help.i18n.androidAppString
@@ -32,6 +31,7 @@ import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSelectorList
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 /**
  * Compose 版 alert DSL，签名对齐 lib/dialogs 的 alert（供机械替换 import）。
@@ -180,7 +180,7 @@ class AlertBuilder(val context: Context) {
                     .fillMaxWidth()
                     // 左右不叠加额外边距: AppAlertDialogContent 内容槽已给 spacingDefault(8dp),
                     // 输入框与标题/正文同一边界 (再加 24dp 会让字段比正文多缩进 24dp)
-                    .padding(vertical = 8.dp),
+                    .padding(vertical = DesignTokens.spacingDefault),
             )
         }
         return { state.value }
@@ -223,9 +223,9 @@ class AlertBuilder(val context: Context) {
                                 selected = i == selected,
                                 onClick = { selected = i; onClick?.invoke(dialog, i) },
                             )
-                            .padding(horizontal = 24.dp, vertical = 12.dp),
+                            .padding(horizontal = DesignTokens.spacingXl, vertical = DesignTokens.spacingMd),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(DesignTokens.spacingMd),
                     ) {
                         AppRadioButton(
                             selected = i == selected,
@@ -261,9 +261,9 @@ class AlertBuilder(val context: Context) {
                                     onClick(dialog, i, it)
                                 },
                             )
-                            .padding(horizontal = 24.dp, vertical = 8.dp),
+                            .padding(horizontal = DesignTokens.spacingXl, vertical = DesignTokens.spacingDefault),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(DesignTokens.spacingMd),
                     ) {
                         AppCheckbox(checked = checked, onCheckedChange = null)
                         Text(label, color = colors.primaryText, fontSize = 16.sp, modifier = Modifier.weight(1f))

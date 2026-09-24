@@ -24,7 +24,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.Server
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
@@ -143,10 +142,10 @@ fun ServerConfigDialog(
                     )
                     // 原 TYPE spinner 仅 WEBDAV 单项, 退化为固定展示 (与 app 端原版一致)
                     Row(
-                        Modifier.padding(top = 8.dp),
+                        Modifier.padding(top = DesignTokens.spacingDefault),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text("TYPE", color = colors.accent, modifier = Modifier.padding(8.dp))
+                        Text("TYPE", color = colors.accent, modifier = Modifier.padding(DesignTokens.spacingDefault))
                         Text("WEBDAV", color = colors.primaryText)
                     }
                     AppUnderlineTextField(

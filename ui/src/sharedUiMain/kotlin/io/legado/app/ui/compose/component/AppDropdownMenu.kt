@@ -52,6 +52,7 @@ import androidx.compose.ui.window.PopupProperties
 import io.legado.app.ui.compose.platform.BackLayerHandler
 import io.legado.app.ui.compose.platform.LocalOverlayTopInset
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import kotlin.math.max
 import kotlin.math.min
 
@@ -175,7 +176,7 @@ private fun MenuContainer(
         Column(
             modifier = Modifier
                 .then(if (maxHeight != null) Modifier.heightIn(max = maxHeight) else Modifier)
-                .padding(vertical = 8.dp)
+                .padding(vertical = DesignTokens.spacingDefault)
                 .width(IntrinsicSize.Max)
                 .verticalScroll(rememberScrollState()),
         ) {

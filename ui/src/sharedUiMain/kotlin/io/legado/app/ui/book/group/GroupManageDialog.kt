@@ -150,7 +150,7 @@ private fun RuleItemScope.GroupManageItem(
         Modifier
             .fillMaxWidth()
             .longPressDraggableHandle(onDragStopped = onPersistOrder)
-            .padding(8.dp),
+            .padding(DesignTokens.spacingDefault),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -165,14 +165,14 @@ private fun RuleItemScope.GroupManageItem(
             onCheckedChange = onShowChange,
             modifier = Modifier.padding(horizontal = 6.dp),
         )
-        Spacer(Modifier.width(4.dp))
+        Spacer(Modifier.width(DesignTokens.spacingXs))
         Text(
             text = stringResource(Res.string.edit),
             color = colors.secondaryText,
             fontSize = 14.sp,
             modifier = Modifier
                 .clickable(onClick = onEdit)
-                .padding(8.dp),
+                .padding(DesignTokens.spacingDefault),
         )
     }
 }

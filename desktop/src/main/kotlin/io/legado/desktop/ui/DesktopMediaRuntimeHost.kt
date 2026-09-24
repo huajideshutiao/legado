@@ -8,10 +8,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.jvmGetString
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.desktop.media.DesktopMediaRuntime
 
 /**
@@ -52,7 +52,7 @@ fun DesktopMediaRuntimeHost() {
             title = jvmGetString("media_runtime_title"),
             message = jvmGetString("media_runtime_downloading", state.progressText),
             content = {
-                Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                Column(Modifier.fillMaxWidth().padding(top = DesignTokens.spacingDefault)) {
                     LinearProgressIndicator(
                         progress = if (state.totalBytes > 0) state.percent / 100f else 0f,
                         modifier = Modifier.fillMaxWidth(),

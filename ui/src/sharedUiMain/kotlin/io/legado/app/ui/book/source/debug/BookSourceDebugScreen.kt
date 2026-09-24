@@ -42,6 +42,7 @@ import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.linkifyText
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import legado.ui.generated.resources.Res
@@ -222,7 +223,7 @@ fun BookSourceDebugScreen(
                     strokeWidth = 2.dp,
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .padding(8.dp)
+                        .padding(DesignTokens.spacingDefault)
                         .size(36.dp),
                 )
             }
@@ -279,7 +280,7 @@ private fun HelpPanel(state: BookSourceDebugUiState, actions: BookSourceDebugUiA
             .fillMaxWidth()
             .background(colors.background)
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+            .padding(DesignTokens.spacingLg),
     ) {
         HelpLabel(stringResource(Res.string.debug_search_hint))
         Row {

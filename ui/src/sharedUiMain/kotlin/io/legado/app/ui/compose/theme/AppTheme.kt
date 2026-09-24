@@ -96,6 +96,9 @@ object AppTheme {
         val spacingMd: Dp = 12.dp
         val spacingLg: Dp = 16.dp
         val spacingMax: Dp = 20.dp
+        // 项目扩展档: Arco 官方间距体系止于 max(20dp), 此档收纳 24dp 留白
+        // (dialog_*.xml 用 layout_margin/padding 24dp 的形态)
+        val spacingXl: Dp = 24.dp
 
         // 响应式布局断点 (对齐 Android 官方 Window size class / Material 3 断点:
         // Compact <600dp / Medium 600-839dp / Expanded ≥840dp / Large ≥1200dp)。

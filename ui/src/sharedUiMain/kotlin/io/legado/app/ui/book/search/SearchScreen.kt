@@ -449,7 +449,7 @@ private fun CheckMenuItem(text: String, checked: Boolean, onClick: () -> Unit) {
     ) {
         // 固定间距而非 weight: weight 让整行参与测量, 菜单项多时每项都多算一遍
         Text(text, color = colors.primaryText)
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(DesignTokens.spacingMd))
         AppMenuCheckbox(checked = checked)
     }
 }
@@ -490,7 +490,7 @@ private fun ColumnScope.InputHelp(
             fontSize = 14.sp,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(8.dp),
+                .padding(DesignTokens.spacingDefault),
         )
         // 宽屏按参考宽度自动加列: 行/卡片样式 item 在网格格内自适应 (对齐书架 LIST 档 /
         // 阅读记录页 / 发现页 rememberResponsiveColumns 行为), 不再分 LazyColumn 单列分支
@@ -572,7 +572,7 @@ private fun ColumnScope.InputHelp(
                 fontSize = 14.sp,
                 modifier = Modifier
                     .weight(1f)
-                    .padding(8.dp),
+                    .padding(DesignTokens.spacingDefault),
             )
             if (historyKeys.isNotEmpty()) {
                 Text(
@@ -581,7 +581,7 @@ private fun ColumnScope.InputHelp(
                     fontSize = 14.sp,
                     modifier = Modifier
                         .clickable { navCallbacks.onClearHistory() }
-                        .padding(8.dp),
+                        .padding(DesignTokens.spacingDefault),
                 )
             }
         }
@@ -590,7 +590,7 @@ private fun ColumnScope.InputHelp(
                 .weight(1f)
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 8.dp)
+                .padding(horizontal = DesignTokens.spacingDefault)
                 .padding(navPad),
         ) {
             FlowRow(Modifier.fillMaxWidth()) {
@@ -626,7 +626,7 @@ private fun SearchOptionsRow(
                     Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                        .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingXs),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (option.multiSelect) {
@@ -639,7 +639,7 @@ private fun SearchOptionsRow(
                         )
                         option.options.forEach { (label, value) ->
                             if (value in option.selectedValues) {
-                                Spacer(Modifier.width(4.dp))
+                                Spacer(Modifier.width(DesignTokens.spacingXs))
                                 SearchOptionChip(
                                     text = label,
                                     onClick = { dialogOptionName = option.name },
@@ -657,7 +657,7 @@ private fun SearchOptionsRow(
                                 }
                             },
                         )
-                        Spacer(Modifier.width(4.dp))
+                        Spacer(Modifier.width(DesignTokens.spacingXs))
                         option.options.forEach { (label, value) ->
                             SearchOptionChip(
                                 text = label,
@@ -673,7 +673,7 @@ private fun SearchOptionsRow(
                                     }
                                 },
                             )
-                            Spacer(Modifier.width(4.dp))
+                            Spacer(Modifier.width(DesignTokens.spacingXs))
                         }
                     }
                 }
@@ -755,8 +755,8 @@ private fun MultiSelectOptionDialog(
             hint = stringResource(Res.string.search),
             modifier = Modifier.padding(
                 start = DesignTokens.spacingDefault,
-                top = 8.dp,
-                bottom = 4.dp
+                top = DesignTokens.spacingDefault,
+                bottom = DesignTokens.spacingXs
             ),
         )
         LazyColumn(
@@ -775,7 +775,7 @@ private fun MultiSelectOptionDialog(
                         ) { selected ->
                             working = if (selected) working + value else working - value
                         }
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                        .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingXs),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     AppCheckbox(checked = checked, onCheckedChange = null)
@@ -783,7 +783,7 @@ private fun MultiSelectOptionDialog(
                         text = label,
                         color = AppTheme.colors.primaryText,
                         fontSize = 15.sp,
-                        modifier = Modifier.padding(start = 8.dp),
+                        modifier = Modifier.padding(start = DesignTokens.spacingDefault),
                     )
                 }
             }
@@ -927,7 +927,7 @@ private fun SearchListItem(
         Modifier
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(8.dp),
+            .padding(DesignTokens.spacingDefault),
     ) {
         // 视频列表按原 applyCoverHeight 收窄高度，宽度始终由封面比例反算。
         // 高度与书架列表档同源 (shelfCoverHeightDp): 收窄系数只在那里维护
@@ -938,7 +938,7 @@ private fun SearchListItem(
         Column(
             Modifier
                 .weight(1f)
-                .padding(start = 8.dp)
+                .padding(start = DesignTokens.spacingDefault)
                 .heightIn(min = coverHeight.dp),
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
@@ -959,7 +959,7 @@ private fun SearchListItem(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
                         .weight(1f)
-                        .padding(start = 4.dp),
+                        .padding(start = DesignTokens.spacingXs),
                 )
                 // 对照 bv_origin_count: 多源数徽标 (BadgeView, count<=0 自动隐藏)
                 UnreadBadge(originCount, highlight = false)
@@ -1043,7 +1043,7 @@ private fun StartStopFab(
     val tint = if (ColorUtils.isColorLight(colors.accent.toArgb())) Color.Black else Color.White
     Box(
         modifier
-            .padding(16.dp)
+            .padding(DesignTokens.spacingLg)
             .shadow(6.dp, CircleShape)
             .size(32.dp)
             .background(colors.accent, CircleShape)

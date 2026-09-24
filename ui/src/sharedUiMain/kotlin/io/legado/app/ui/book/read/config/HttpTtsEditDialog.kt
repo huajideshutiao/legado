@@ -18,7 +18,6 @@ import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.DialogTitleBar
@@ -173,7 +172,7 @@ fun HttpTtsEditDialog(
             color = colors.fillet,
             modifier = Modifier.appDialogSize(fullHeight = true).padding(
                 start = DesignTokens.spacingDefault,
-                top = 16.dp,
+                top = DesignTokens.spacingLg,
                 end = DesignTokens.spacingDefault,
                 bottom = DesignTokens.spacingDefault,
             ),

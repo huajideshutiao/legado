@@ -84,7 +84,7 @@ fun SimulatedReadingDialog(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 8.dp),
+                    .padding(vertical = DesignTokens.spacingDefault),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -105,7 +105,7 @@ fun SimulatedReadingDialog(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 8.dp),
+                    .padding(vertical = DesignTokens.spacingDefault),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -123,7 +123,7 @@ fun SimulatedReadingDialog(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 8.dp),
+                    .padding(vertical = DesignTokens.spacingDefault),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -191,7 +191,7 @@ fun DownloadDialog(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 8.dp),
+                    .padding(vertical = DesignTokens.spacingDefault),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -209,7 +209,7 @@ fun DownloadDialog(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 8.dp),
+                    .padding(vertical = DesignTokens.spacingDefault),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(

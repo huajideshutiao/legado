@@ -20,7 +20,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppDialog
@@ -160,7 +159,7 @@ private fun RuleItemScope.GroupItem(
             .clickable { onCheckedChange(!checked) }
             // 垂直 padding 去掉: 行高由 M2 Checkbox 48dp 交互区决定 (原版 Material CheckBox
             // 40dp 触摸区 + 8×2 padding ≈ 56dp; 此处去 padding 后 48dp 视觉密度相当)
-            .padding(horizontal = 8.dp),
+            .padding(horizontal = DesignTokens.spacingDefault),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         AppCheckbox(
@@ -174,13 +173,13 @@ private fun RuleItemScope.GroupItem(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(DesignTokens.spacingDefault))
         Text(
             text = stringResource(Res.string.edit),
             color = colors.primaryText,
             modifier = Modifier
                 .clickable(onClick = onEdit)
-                .padding(8.dp),
+                .padding(DesignTokens.spacingDefault),
         )
     }
 }

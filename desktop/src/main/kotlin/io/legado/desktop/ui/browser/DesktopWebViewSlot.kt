@@ -17,13 +17,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
 import io.legado.app.constant.AppLog
 import io.legado.app.help.getUserAgent
 import io.legado.app.ui.browser.WebViewCallbacks
 import io.legado.app.ui.browser.WebViewConfig
 import io.legado.app.ui.browser.WebViewHost
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.browseUrl
 import io.legado.desktop.help.webview.DesktopWebViewEngine
 import io.legado.desktop.help.webview.DesktopWebViewEngines
@@ -134,7 +134,7 @@ private fun EngineWindowSlot(
             ) {
                 Text(
                     "浏览器窗口已关闭",
-                    Modifier.padding(16.dp),
+                    Modifier.padding(DesignTokens.spacingLg),
                     textAlign = TextAlign.Center,
                 )
                 Button(onClick = {
@@ -163,18 +163,18 @@ private fun SystemBrowserFallback(url: String, modifier: Modifier) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Text(hintLabel, Modifier.padding(16.dp))
+            Text(hintLabel, Modifier.padding(DesignTokens.spacingLg))
             if (guide != null) {
                 Text(
                     guide.message,
-                    Modifier.padding(horizontal = 24.dp),
+                    Modifier.padding(horizontal = DesignTokens.spacingXl),
                     textAlign = TextAlign.Center,
                 )
                 val downloadUrl = guide.downloadUrl
                 if (downloadUrl != null) {
                     Button(
                         onClick = { browseUrl(downloadUrl) },
-                        modifier = Modifier.padding(top = 8.dp),
+                        modifier = Modifier.padding(top = DesignTokens.spacingDefault),
                     ) {
                         Text("下载 WebView2 运行时")
                     }
@@ -182,7 +182,7 @@ private fun SystemBrowserFallback(url: String, modifier: Modifier) {
             }
             Button(
                 onClick = { browseUrl(url) },
-                modifier = Modifier.padding(top = 8.dp),
+                modifier = Modifier.padding(top = DesignTokens.spacingDefault),
             ) {
                 Text(openLabel)
             }

@@ -248,7 +248,7 @@ private fun ReplaceGroupManageDialog(
                     Column(
                         Modifier.padding(
                             start = DesignTokens.spacingDefault,
-                            top = 16.dp,
+                            top = DesignTokens.spacingLg,
                             end = DesignTokens.spacingDefault,
                             bottom = DesignTokens.spacingDefault,
                         )
@@ -261,7 +261,7 @@ private fun ReplaceGroupManageDialog(
                             modifier = Modifier.fillMaxWidth(),
                         )
                         Row(
-                            Modifier.fillMaxWidth().padding(top = 8.dp),
+                            Modifier.fillMaxWidth().padding(top = DesignTokens.spacingDefault),
                             horizontalArrangement = Arrangement.End,
                         ) {
                             AppTextButton(text = stringResource(Res.string.cancel)) {
@@ -283,7 +283,7 @@ private fun ReplaceGroupManageDialog(
                         items(items = groups, key = { it }) { group ->
                             Row(
                                 Modifier.fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                    .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingMd),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
                                 Text(
@@ -297,14 +297,14 @@ private fun ReplaceGroupManageDialog(
                                     color = colors.secondaryText,
                                     fontSize = 14.sp,
                                     modifier = Modifier.clickable { editing = group to group }
-                                        .padding(8.dp),
+                                        .padding(DesignTokens.spacingDefault),
                                 )
                                 Text(
                                     text = stringResource(Res.string.delete),
                                     color = colors.secondaryText,
                                     fontSize = 14.sp,
                                     modifier = Modifier.clickable { onDeleteGroup(group) }
-                                        .padding(8.dp),
+                                        .padding(DesignTokens.spacingDefault),
                                 )
                             }
                         }

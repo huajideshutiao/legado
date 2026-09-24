@@ -184,7 +184,7 @@ fun AppSelectorList(items: List<String>, onItemClick: (index: Int) -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { onItemClick(index) }
-                    .padding(horizontal = 24.dp, vertical = 14.dp)
+                    .padding(horizontal = DesignTokens.spacingXl, vertical = 14.dp)
             )
         }
     }

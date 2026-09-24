@@ -138,7 +138,7 @@ fun DefaultCoverGalleryDialogHost(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
-                            .padding(top = 8.dp),
+                            .padding(top = DesignTokens.spacingDefault),
                     ) {
                         items(entries, key = { it.id }) { entry ->
                             DefaultCoverTile(entry = entry) { pendingDelete = entry }
@@ -148,7 +148,7 @@ fun DefaultCoverGalleryDialogHost(
                             Box(
                                 Modifier
                                     .fillMaxWidth()
-                                    .padding(8.dp)
+                                    .padding(DesignTokens.spacingDefault)
                                     .aspectRatio(3f / 4f)
                                     .clip(DesignTokens.shapeDefault)
                                     .clickable(enabled = !adding) {
@@ -221,7 +221,7 @@ private fun DefaultCoverTile(entry: DefaultCoverEntry, onClick: () -> Unit) {
     Box(
         Modifier
             .fillMaxWidth()
-            .padding(8.dp)
+            .padding(DesignTokens.spacingDefault)
             .aspectRatio(3f / 4f)
             .clip(DesignTokens.shapeDefault)
             .background(AppTheme.colors.fillet)

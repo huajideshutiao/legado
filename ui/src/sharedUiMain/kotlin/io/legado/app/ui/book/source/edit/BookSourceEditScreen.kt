@@ -382,13 +382,13 @@ private fun HeaderRow1(state: BookSourceEditState, callbacks: BookSourceEditCall
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(
-            Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            Modifier.padding(horizontal = DesignTokens.spacingMd, vertical = DesignTokens.spacingDefault),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 stringResource(Res.string.book_type),
                 color = colors.primaryText,
-                modifier = Modifier.padding(end = 8.dp),
+                modifier = Modifier.padding(end = DesignTokens.spacingDefault),
             )
             DropdownBox(
                 options = stringArrayResource(Res.array.book_type),
@@ -421,13 +421,13 @@ private fun HeaderRow2(state: BookSourceEditState, callbacks: BookSourceEditCall
             callbacks.onEnabledExploreChange(it)
         }
         Row(
-            Modifier.padding(vertical = 8.dp),
+            Modifier.padding(vertical = DesignTokens.spacingDefault),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 stringResource(Res.string.explore_style),
                 color = colors.primaryText,
-                modifier = Modifier.padding(end = 8.dp),
+                modifier = Modifier.padding(end = DesignTokens.spacingDefault),
             )
             DropdownBox(
                 options = stringArrayResource(Res.array.explore_item_style),
@@ -435,13 +435,13 @@ private fun HeaderRow2(state: BookSourceEditState, callbacks: BookSourceEditCall
             ) { callbacks.onExploreStyleChange(it) }
         }
         Row(
-            Modifier.padding(vertical = 8.dp),
+            Modifier.padding(vertical = DesignTokens.spacingDefault),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 stringResource(Res.string.explore_cols),
                 color = colors.primaryText,
-                modifier = Modifier.padding(end = 8.dp),
+                modifier = Modifier.padding(end = DesignTokens.spacingDefault),
             )
             DropdownBox(
                 options = remember { (0..6).map { it.toString() } },
@@ -456,14 +456,14 @@ private fun HeaderCheckBox(textKey: String, checked: Boolean, onChange: (Boolean
     Row(
         Modifier
             .clickable { onChange(!checked) }
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = DesignTokens.spacingMd, vertical = DesignTokens.spacingDefault),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         AppCheckbox(checked = checked, onCheckedChange = null)
         Text(
             rememberString(textKey),
             color = AppTheme.colors.primaryText,
-            modifier = Modifier.padding(start = 4.dp),
+            modifier = Modifier.padding(start = DesignTokens.spacingXs),
         )
     }
 }
@@ -666,13 +666,13 @@ private fun SpinnerField(entity: EditEntity) {
         Modifier
             .fillMaxWidth()
             .height(DesignTokens.viewHeightXl)
-            .padding(horizontal = 12.dp),
+            .padding(horizontal = DesignTokens.spacingMd),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             rememberString(entity.hint),
             color = colors.primaryText,
-            modifier = Modifier.padding(end = 8.dp),
+            modifier = Modifier.padding(end = DesignTokens.spacingDefault),
         )
         DropdownBox(
             // 选项名可能是资源 key (对照 app 端 getString(R.string.text_default)),
@@ -699,7 +699,7 @@ private fun DropdownBox(
         Row(
             Modifier
                 .clickable { expanded = true }
-                .padding(horizontal = 4.dp, vertical = 4.dp),
+                .padding(horizontal = DesignTokens.spacingXs, vertical = DesignTokens.spacingXs),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(

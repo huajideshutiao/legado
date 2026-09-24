@@ -51,6 +51,7 @@ import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberImeVisible
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flowOn
@@ -217,7 +218,7 @@ private fun AssistKeyRow(
         Modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
-            .padding(4.dp),
+            .padding(DesignTokens.spacingXs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         AppFilletTextButton(
@@ -282,7 +283,7 @@ private fun FindReplacePanel(
             Modifier
                 .fillMaxWidth()
                 .height(35.dp)
-                .padding(end = 8.dp),
+                .padding(end = DesignTokens.spacingDefault),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             PanelAction(
@@ -311,7 +312,7 @@ private fun FindReplacePanel(
                     tint = colors.primaryText,
                     modifier = Modifier
                         .clickable { showMore = true }
-                        .padding(8.dp),
+                        .padding(DesignTokens.spacingDefault),
                 )
                 AppDropdownMenu(expanded = showMore, onDismissRequest = { showMore = false }) {
                     FindOption(stringResource(Res.string.regular_expression), state.useRegex) {
@@ -343,7 +344,7 @@ private fun FindOption(text: String, checked: Boolean, onClick: () -> Unit) {
             color = colors.primaryText,
             modifier = Modifier
                 .weight(1f)
-                .padding(end = 12.dp),
+                .padding(end = DesignTokens.spacingMd),
         )
         AppMenuCheckbox(checked = checked)
     }
@@ -383,7 +384,7 @@ private fun PanelInput(
         Modifier
             .fillMaxWidth()
             .height(45.dp)
-            .padding(horizontal = 8.dp),
+            .padding(horizontal = DesignTokens.spacingDefault),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, color = colors.primaryText)
@@ -396,7 +397,7 @@ private fun PanelInput(
             cursorBrush = SolidColor(colors.accent),
             modifier = textFieldModifier
                 .weight(1f)
-                .padding(start = 8.dp)
+                .padding(start = DesignTokens.spacingDefault)
                 .onFocusChanged { focused = it.isFocused; onFocus(it.isFocused) }
                 // 复刻 EditText 底线形态
                 .drawBehind {

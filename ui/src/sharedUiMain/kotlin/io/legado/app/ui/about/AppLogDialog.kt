@@ -20,7 +20,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import io.legado.app.constant.AppLog
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
@@ -103,7 +102,7 @@ private fun LogItem(
         Modifier
             .fillMaxWidth()
             .clickable(enabled = throwable != null, onClick = onClick)
-            .padding(8.dp),
+            .padding(DesignTokens.spacingDefault),
     ) {
         Text(
             text = formatLogTime(time, tzOffset),

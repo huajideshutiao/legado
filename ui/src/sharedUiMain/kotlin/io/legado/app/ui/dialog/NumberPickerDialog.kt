@@ -172,7 +172,7 @@ fun NumberPickerDialog(
                     .fillMaxWidth()
                     .padding(DesignTokens.spacingLg),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(DesignTokens.spacingDefault),
             ) {
                 // 标题 (对齐项目其他对话框: 左对齐 16sp primaryText)
                 Text(
@@ -181,7 +181,7 @@ fun NumberPickerDialog(
                     fontSize = 16.sp,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 4.dp),
+                        .padding(vertical = DesignTokens.spacingXs),
                 )
                 // [- ] [数字输入框] [ +]: 步进按钮移到数字左右, 输入框居中
                 Row(
@@ -279,7 +279,7 @@ fun NumberPickerDialog(
                         onClick = onDismiss,
                         color = colors.accent,
                     )
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(DesignTokens.spacingDefault))
                     AppTextButton(
                         text = stringResource(Res.string.ok),
                         onClick = {

@@ -37,6 +37,7 @@ import io.legado.app.ui.compose.component.SelectActionBar
 import io.legado.app.ui.compose.component.dragSelectable
 import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.create
 import legado.ui.generated.resources.delete
@@ -309,7 +310,7 @@ private fun RuleItemScope.DictRuleItem(
             .fillMaxWidth()
             .longPressDraggableHandle(onDragStopped = { actions.onPersistOrder() })
             .clickable { actions.onToggleSelected(item, !checked) }
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingXs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         AppCheckbox(
@@ -327,7 +328,7 @@ private fun RuleItemScope.DictRuleItem(
             checked = item.enabled,
             onCheckedChange = { actions.onUpdateRuleEnabled(item, it) },
         )
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(DesignTokens.spacingDefault))
         IconButton(onClick = { actions.onEditRule(item.name) }) {
             Icon(
                 painter = painterResource(Res.drawable.ic_edit),

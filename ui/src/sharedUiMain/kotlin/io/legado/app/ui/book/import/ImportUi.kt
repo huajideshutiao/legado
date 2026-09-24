@@ -92,7 +92,7 @@ fun ImportScaffold(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingDefault),
             )
         }
         ImportRefreshBar(loading)
@@ -113,7 +113,7 @@ fun ImportScaffold(
                     color = colors.secondaryText,
                     modifier = Modifier
                         .align(Alignment.Center)
-                        .padding(16.dp),
+                        .padding(DesignTokens.spacingLg),
                 )
             }
         }
@@ -168,7 +168,7 @@ fun ImportFileRow(
             .fillMaxWidth()
             .height(60.dp)
             .combinedClickable(onLongClick = onLongClick, onClick = onClick)
-            .padding(vertical = 4.dp),
+            .padding(vertical = DesignTokens.spacingXs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(52.dp)) {
@@ -197,7 +197,7 @@ fun ImportFileRow(
         Column(
             Modifier
                 .weight(1f)
-                .padding(start = 4.dp, end = 16.dp),
+                .padding(start = DesignTokens.spacingXs, end = DesignTokens.spacingLg),
             verticalArrangement = Arrangement.Center,
         ) {
             Text(
@@ -222,19 +222,19 @@ fun ImportFileRow(
                             .widthIn(max = 50.dp)
                             .clip(DesignTokens.shapeSm)
                             .background(colors.accent)
-                            .padding(horizontal = 4.dp),
+                            .padding(horizontal = DesignTokens.spacingXs),
                     )
                     Text(
                         text = ConvertUtils.formatFileSize(size),
                         color = colors.secondaryText,
                         fontSize = 14.sp,
-                        modifier = Modifier.padding(start = 16.dp),
+                        modifier = Modifier.padding(start = DesignTokens.spacingLg),
                     )
                     Text(
                         text = AppConst.dateFormat.format(lastModified),
                         color = colors.secondaryText,
                         fontSize = 14.sp,
-                        modifier = Modifier.padding(start = 16.dp),
+                        modifier = Modifier.padding(start = DesignTokens.spacingLg),
                     )
                 }
             }

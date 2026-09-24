@@ -237,7 +237,7 @@ fun ClickActionDialog(
                     .fillMaxWidth()
                     .padding(
                         start = DesignTokens.spacingDefault,
-                        top = 16.dp,
+                        top = DesignTokens.spacingLg,
                         end = DesignTokens.spacingDefault,
                         bottom = DesignTokens.spacingDefault,
                     )
@@ -245,7 +245,7 @@ fun ClickActionDialog(
                         color = translucent,
                         shape = cardShape,
                     )
-                    .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+                    .padding(start = DesignTokens.spacingLg, end = DesignTokens.spacingLg, top = DesignTokens.spacingDefault, bottom = DesignTokens.spacingDefault),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -260,7 +260,7 @@ fun ClickActionDialog(
                     tint = Color.White,
                     modifier = Modifier
                         .clickable(onClick = onDismiss)
-                        .padding(4.dp),
+                        .padding(DesignTokens.spacingXs),
                 )
             }
         }

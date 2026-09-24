@@ -39,6 +39,7 @@ import io.legado.app.model.bakedImagePath
 import io.legado.app.model.ensureBakedImage
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.main.MainActivity
 import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.FileUtils
@@ -96,14 +97,14 @@ open class WelcomeActivity : BaseComposeActivity() {
                                 text = "阅\n读",
                                 color = accent,
                                 fontSize = 49.sp,
-                                modifier = Modifier.padding(start = 8.dp),
+                                modifier = Modifier.padding(start = DesignTokens.spacingDefault),
                             )
                         }
                         Text(
                             text = "享\n受\n美\n好\n时\n光",
                             color = accent,
                             fontSize = 16.sp,
-                            modifier = Modifier.padding(start = 8.dp, top = 60.dp),
+                            modifier = Modifier.padding(start = DesignTokens.spacingDefault, top = 60.dp),
                         )
                     }
                 }

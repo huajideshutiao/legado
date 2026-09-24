@@ -37,6 +37,7 @@ import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.dialog.TextInputDialog
 import io.legado.app.utils.verificationField
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -218,14 +219,14 @@ private fun ExportConfigDialog(
         Column(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 8.dp),
+                .padding(horizontal = DesignTokens.spacingXl, vertical = DesignTokens.spacingDefault),
         ) {
             // 导出文件名 (对照 et_file_name, Variable: name, author)
             Text(
                 jvmGetString("export_file_name"),
                 color = AppTheme.colors.primaryText,
                 fontSize = 14.sp,
-                modifier = Modifier.padding(bottom = 4.dp),
+                modifier = Modifier.padding(bottom = DesignTokens.spacingXs),
             )
             AppTextField(
                 value = fileName,
@@ -238,7 +239,7 @@ private fun ExportConfigDialog(
                 jvmGetString("export_type"),
                 color = AppTheme.colors.primaryText,
                 fontSize = 14.sp,
-                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                modifier = Modifier.padding(top = DesignTokens.spacingMd, bottom = DesignTokens.spacingXs),
             )
             Row(
                 Modifier
@@ -254,11 +255,11 @@ private fun ExportConfigDialog(
                                 role = Role.RadioButton,
                                 onClick = { type = value },
                             )
-                            .padding(top = 4.dp, end = 16.dp, bottom = 4.dp),
+                            .padding(top = DesignTokens.spacingXs, end = DesignTokens.spacingLg, bottom = DesignTokens.spacingXs),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         AppRadioButton(selected = type == value, onClick = null)
-                        Text(label, modifier = Modifier.padding(start = 8.dp))
+                        Text(label, modifier = Modifier.padding(start = DesignTokens.spacingDefault))
                     }
                 }
             }
@@ -267,7 +268,7 @@ private fun ExportConfigDialog(
                 jvmGetString("export_charset"),
                 color = AppTheme.colors.primaryText,
                 fontSize = 14.sp,
-                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                modifier = Modifier.padding(top = DesignTokens.spacingMd, bottom = DesignTokens.spacingXs),
             )
             AppTextField(
                 value = charset,
@@ -284,14 +285,14 @@ private fun ExportConfigDialog(
                         role = Role.Checkbox,
                         onValueChange = { noChapterName = it },
                     )
-                    .padding(vertical = 8.dp),
+                    .padding(vertical = DesignTokens.spacingDefault),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 AppCheckbox(checked = noChapterName, onCheckedChange = null)
                 Text(
                     jvmGetString("export_no_chapter_name"),
                     color = AppTheme.colors.primaryText,
-                    modifier = Modifier.padding(start = 8.dp),
+                    modifier = Modifier.padding(start = DesignTokens.spacingDefault),
                 )
             }
         }
@@ -338,12 +339,12 @@ private fun ExportSectionConfigDialog(
         Column(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 8.dp),
+                .padding(horizontal = DesignTokens.spacingXl, vertical = DesignTokens.spacingDefault),
         ) {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 4.dp),
+                    .padding(vertical = DesignTokens.spacingXs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Row(
@@ -358,14 +359,14 @@ private fun ExportSectionConfigDialog(
                                 if (it) scopeError = null
                             },
                         )
-                        .padding(vertical = 8.dp),
+                        .padding(vertical = DesignTokens.spacingDefault),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     AppCheckbox(checked = all, onCheckedChange = null)
                     Text(
                         jvmGetString("export_all"),
                         color = AppTheme.colors.primaryText,
-                        modifier = Modifier.padding(start = 8.dp),
+                        modifier = Modifier.padding(start = DesignTokens.spacingDefault),
                     )
                 }
                 Row(
@@ -379,14 +380,14 @@ private fun ExportSectionConfigDialog(
                                 all = !it
                             },
                         )
-                        .padding(vertical = 8.dp),
+                        .padding(vertical = DesignTokens.spacingDefault),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     AppCheckbox(checked = custom, onCheckedChange = null)
                     Text(
                         jvmGetString("custom_export"),
                         color = AppTheme.colors.primaryText,
-                        modifier = Modifier.padding(start = 8.dp),
+                        modifier = Modifier.padding(start = DesignTokens.spacingDefault),
                     )
                 }
             }
@@ -395,7 +396,7 @@ private fun ExportSectionConfigDialog(
                 jvmGetString("export_file_name"),
                 color = AppTheme.colors.primaryText,
                 fontSize = 14.sp,
-                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                modifier = Modifier.padding(top = DesignTokens.spacingDefault, bottom = DesignTokens.spacingXs),
             )
             AppTextField(
                 value = fileName,
@@ -504,9 +505,9 @@ private fun OpenUrlConfirmDialog(
         cancelButton = AlertButton(text = "取消") { onDismiss() },
         widthFraction = 0.8f,
     ) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = DesignTokens.spacingXl, vertical = DesignTokens.spacingDefault)) {
             Text("$sourceName 正在请求跳转链接/应用，是否跳转？")
-            Text(request.url, modifier = Modifier.padding(top = 8.dp))
+            Text(request.url, modifier = Modifier.padding(top = DesignTokens.spacingDefault))
             AppTextButton(text = "禁用书源", onClick = {
                 request.sourceKey?.let { key ->
                     scope.launch {

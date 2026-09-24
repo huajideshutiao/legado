@@ -622,7 +622,7 @@ private fun MangaInfoBarOverlay(
         modifier
             .fillMaxWidth()
             // 对照 activity_manga.xml: 高 20dp + marginBottom 16dp; 16dp padding + 控件内 10dp inset
-            .padding(bottom = 16.dp)
+            .padding(bottom = DesignTokens.spacingLg)
             .height(20.dp)
             .padding(horizontal = 26.dp),
     ) {
@@ -814,7 +814,7 @@ private fun MangaMenuTopBar(
             .fillMaxWidth()
             .background(colors.bottomBackground)
             .platformStatusBarPadding()
-            .padding(horizontal = 8.dp),
+            .padding(horizontal = DesignTokens.spacingDefault),
     ) {
         // 整行点击打开书籍详情 (对照 app 端 toolbar click → openBookInfoActivity)
         Row(
@@ -970,7 +970,7 @@ private fun OverflowCheckItem(text: String, checked: Boolean, onClick: () -> Uni
         Text(
             text,
             color = AppTheme.colors.menuText,
-            modifier = Modifier.weight(1f).padding(end = 12.dp),
+            modifier = Modifier.weight(1f).padding(end = DesignTokens.spacingMd),
         )
         AppMenuCheckbox(checked = checked)
     }
@@ -999,7 +999,7 @@ private fun MangaMenuBottomBar(
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingMd),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             ChapterNavText(
@@ -1033,9 +1033,9 @@ private fun ChapterNavText(text: String, color: Color, onClick: () -> Unit) {
         fontSize = 14.sp,
         maxLines = 1,
         modifier = Modifier
-            .padding(horizontal = 12.dp)
+            .padding(horizontal = DesignTokens.spacingMd)
             .clickable { onClick() }
-            .padding(vertical = 12.dp),
+            .padding(vertical = DesignTokens.spacingMd),
     )
 }
 
@@ -1157,7 +1157,7 @@ private fun LazyItemScope.MangaPageCell(
                         modifier = Modifier
                             .clip(RoundedCornerShape(10.dp))
                             .clickable { retryTick++ }
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                            .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingDefault),
                     )
                 }
             }

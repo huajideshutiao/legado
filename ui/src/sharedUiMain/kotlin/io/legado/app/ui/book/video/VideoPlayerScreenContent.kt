@@ -413,13 +413,13 @@ fun VideoControlsOverlay(
                     onDragStateChange = onSeekDragStateChange,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp)
+                        .padding(horizontal = DesignTokens.spacingDefault)
                         .height(25.dp),
                 )
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(start = 16.dp, end = 4.dp, bottom = 4.dp),
+                        .padding(start = DesignTokens.spacingLg, end = DesignTokens.spacingXs, bottom = DesignTokens.spacingXs),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     // 当前位置 / 总时长
@@ -501,7 +501,7 @@ fun VideoCenterControls(
     Row(
         modifier,
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(DesignTokens.spacingMd),
     ) {
         VideoCircleIconButton(
             painter = painterResource(Res.drawable.ic_skip_previous),
@@ -730,7 +730,7 @@ fun SpeedButton(
             modifier = Modifier
                 .clip(DesignTokens.shapeSm)
                 .clickable { expanded = true }
-                .padding(12.dp),
+                .padding(DesignTokens.spacingMd),
         )
         AppDropdownMenu(
             expanded = expanded,
@@ -782,7 +782,7 @@ fun ResolutionButton(
         modifier = Modifier
             .clip(DesignTokens.shapeSm)
             .clickable { showDialog = true }
-            .padding(12.dp),
+            .padding(DesignTokens.spacingMd),
     )
     if (showDialog) {
         AlertDialog(
@@ -808,7 +808,7 @@ fun ResolutionButton(
                                     },
                                 ),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(DesignTokens.spacingMd),
                         ) {
                             AppRadioButton(
                                 selected = index == currentResolutionIndex,
@@ -883,7 +883,7 @@ fun VideoGestureFeedbackText(
         fontSize = 24.sp,
         modifier = modifier
             .background(rememberColor("arco_fill_3"), DesignTokens.shapeDefault)
-            .padding(horizontal = 16.dp, vertical = 4.dp),
+            .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingXs),
     )
 }
 
@@ -1076,7 +1076,7 @@ fun VideoPlayerHostContainer(
                         },
                         modifier = Modifier
                             .align(Alignment.CenterStart)
-                            .padding(start = 16.dp),
+                            .padding(start = DesignTokens.spacingLg),
                     )
                 },
                 isSystemFullScreen = systemFullScreen,
@@ -1100,7 +1100,7 @@ fun VideoPlayerHostContainer(
                 },
                 modifier = Modifier
                     .align(Alignment.CenterStart)
-                    .padding(start = 16.dp),
+                    .padding(start = DesignTokens.spacingLg),
             )
         }
 
@@ -1117,7 +1117,7 @@ fun VideoPlayerHostContainer(
                 text = it,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(top = 16.dp),
+                    .padding(top = DesignTokens.spacingLg),
             )
         }
 
@@ -1133,7 +1133,7 @@ fun VideoPlayerHostContainer(
                 },
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(top = 8.dp, end = 8.dp),
+                    .padding(top = DesignTokens.spacingDefault, end = DesignTokens.spacingDefault),
             ) {
                 Icon(
                     painter = painterResource(Res.drawable.ic_fullscreen_exit),

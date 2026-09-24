@@ -32,7 +32,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.BookSource
 import io.legado.app.ui.compose.component.AppDialog
@@ -92,7 +91,7 @@ fun SourcePickerDialog(
             color = colors.fillet,
             modifier = Modifier.appDialogSize(fullHeight = true).padding(
                 start = DesignTokens.spacingDefault,
-                top = 16.dp,
+                top = DesignTokens.spacingLg,
                 end = DesignTokens.spacingDefault,
                 bottom = DesignTokens.spacingDefault,
             ),
@@ -102,7 +101,7 @@ fun SourcePickerDialog(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = DesignTokens.spacingDefault, vertical = 12.dp),
+                        .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingMd),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     IconButton(onClick = onDismiss) {
@@ -184,7 +183,7 @@ private fun SourceRow(
         Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingMd),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(

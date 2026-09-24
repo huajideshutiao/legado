@@ -18,7 +18,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.DefaultLifecycleObserver
@@ -59,6 +58,7 @@ import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.compose.dialogs.selector
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.reader.ReaderTextActionMenu
 import io.legado.app.ui.reader.ReaderTextActions
@@ -759,12 +759,12 @@ private class AndroidReaderMenuState(
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .padding(16.dp)
+                        .padding(DesignTokens.spacingLg)
                 ) {
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 8.dp),
+                            .padding(vertical = DesignTokens.spacingDefault),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
@@ -781,14 +781,14 @@ private class AndroidReaderMenuState(
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 8.dp),
+                            .padding(vertical = DesignTokens.spacingDefault),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
                             androidAppString("start_from"),
                             color = colors.primaryText,
                             fontSize = 16.sp,
-                            modifier = Modifier.padding(end = 8.dp),
+                            modifier = Modifier.padding(end = DesignTokens.spacingDefault),
                         )
                         Text(
                             text = dateState.value.ifEmpty { "Select date" },
@@ -812,13 +812,13 @@ private class AndroidReaderMenuState(
                                         ld,
                                     ).show()
                                 }
-                                .padding(vertical = 8.dp),
+                                .padding(vertical = DesignTokens.spacingDefault),
                         )
                     }
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 8.dp),
+                            .padding(vertical = DesignTokens.spacingDefault),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
@@ -831,7 +831,7 @@ private class AndroidReaderMenuState(
                             onValueChange = { startState.value = it },
                             modifier = Modifier
                                 .weight(1f)
-                                .padding(horizontal = 4.dp),
+                                .padding(horizontal = DesignTokens.spacingXs),
                         )
                         Text(
                             androidAppString("daily_chapters"),
@@ -843,7 +843,7 @@ private class AndroidReaderMenuState(
                             onValueChange = { numState.value = it },
                             modifier = Modifier
                                 .weight(1f)
-                                .padding(start = 4.dp),
+                                .padding(start = DesignTokens.spacingXs),
                         )
                     }
                 }
@@ -1030,19 +1030,19 @@ private class AndroidReaderMenuState(
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .padding(16.dp)
+                        .padding(DesignTokens.spacingLg)
                 ) {
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 8.dp),
+                            .padding(vertical = DesignTokens.spacingDefault),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
                             androidAppString("start"),
                             color = colors.primaryText,
                             fontSize = 16.sp,
-                            modifier = Modifier.padding(end = 8.dp),
+                            modifier = Modifier.padding(end = DesignTokens.spacingDefault),
                         )
                         AppNumberField(
                             value = startState.value,
@@ -1053,7 +1053,7 @@ private class AndroidReaderMenuState(
                             androidAppString("end"),
                             color = colors.primaryText,
                             fontSize = 16.sp,
-                            modifier = Modifier.padding(horizontal = 8.dp),
+                            modifier = Modifier.padding(horizontal = DesignTokens.spacingDefault),
                         )
                         AppNumberField(
                             value = endState.value,
@@ -1086,7 +1086,7 @@ private class AndroidReaderMenuState(
                     values = AppConst.charsets,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
+                        .padding(DesignTokens.spacingLg),
                 )
             }
             okButton {

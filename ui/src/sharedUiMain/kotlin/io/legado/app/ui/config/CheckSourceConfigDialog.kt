@@ -16,7 +16,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.PreferenceProviders
@@ -97,13 +96,13 @@ fun CheckSourceConfigDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = DesignTokens.spacingDefault)
-                        .padding(top = 8.dp),
+                        .padding(top = DesignTokens.spacingDefault),
                 )
                 Text(
                     text = stringResource(Res.string.check_source_item),
                     color = AppTheme.colors.accent,
                     fontSize = 14.sp,
-                    modifier = Modifier.padding(start = DesignTokens.spacingDefault, top = 8.dp),
+                    modifier = Modifier.padding(start = DesignTokens.spacingDefault, top = DesignTokens.spacingDefault),
                 )
                 Row(
                     Modifier

@@ -22,7 +22,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.ui.compose.component.AppTitleBar
@@ -161,7 +160,7 @@ private fun GroupHeader(text: String) {
             .background(colors.background)
             .height(DesignTokens.viewHeightDefault)
             .wrapContentHeight(Alignment.CenterVertically)
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = DesignTokens.spacingLg),
     )
 }
 
@@ -180,7 +179,7 @@ private fun BookmarkItem(
                 onClick = { actions.openBookmark(item) },
                 onLongClick = { actions.editBookmark(item, pos) },
             )
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingDefault),
     ) {
         Text(
             text = item.chapterName,
@@ -190,7 +189,7 @@ private fun BookmarkItem(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(4.dp),
+                .padding(DesignTokens.spacingXs),
         )
         if (item.bookText.isNotEmpty()) {
             Text(
@@ -201,7 +200,7 @@ private fun BookmarkItem(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(4.dp),
+                    .padding(DesignTokens.spacingXs),
             )
         }
         if (item.content.isNotEmpty()) {
@@ -213,7 +212,7 @@ private fun BookmarkItem(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(4.dp),
+                    .padding(DesignTokens.spacingXs),
             )
         }
     }

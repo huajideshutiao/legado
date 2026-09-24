@@ -28,7 +28,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.TxtTocRule
 import io.legado.app.help.toast.Toasters
@@ -214,7 +213,7 @@ fun TxtTocRuleEditDialog(
                     .verticalScroll(rememberScrollState())
                     .padding(
                         start = DesignTokens.spacingDefault,
-                        top = 16.dp,
+                        top = DesignTokens.spacingLg,
                         end = DesignTokens.spacingDefault,
                         bottom = DesignTokens.spacingDefault,
                     ),
@@ -226,7 +225,7 @@ fun TxtTocRuleEditDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Spacer(Modifier.heightIn(min = 8.dp))
+                Spacer(Modifier.heightIn(min = DesignTokens.spacingDefault))
                 AppUnderlineTextField(
                     value = ruleContent,
                     onValueChange = { ruleContent = it },
@@ -234,7 +233,7 @@ fun TxtTocRuleEditDialog(
                     singleLine = false,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Spacer(Modifier.heightIn(min = 8.dp))
+                Spacer(Modifier.heightIn(min = DesignTokens.spacingDefault))
                 AppUnderlineTextField(
                     value = example,
                     onValueChange = { example = it },

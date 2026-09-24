@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.ic_more_vert
 import legado.ui.generated.resources.more_menu
@@ -66,7 +67,7 @@ fun SelectActionBar(
             .background(if (hasBgImage) Color.Transparent else colors.bottomBackground)
             // 背景先铺满 (含手势条区) 再避让: 顺序颠倒背景就到不了手势条下
             .navigationBarsPadding()
-            .padding(start = 16.dp, top = 8.dp, end = 8.dp, bottom = 8.dp),
+            .padding(start = DesignTokens.spacingLg, top = DesignTokens.spacingDefault, end = DesignTokens.spacingDefault, bottom = DesignTokens.spacingDefault),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val tpl = if (isSelectAll) "select_cancel_count" else "select_all_count"
@@ -84,13 +85,13 @@ fun SelectActionBar(
             text = stringResource(Res.string.revert_selection),
             enabled = enabled,
             // 对齐原版 xml: 按钮带 4dp margin (arco_spacing_xs)
-            modifier = Modifier.padding(start = 4.dp),
+            modifier = Modifier.padding(start = DesignTokens.spacingXs),
             onClick = onRevertSelection,
         )
         AppOutlinedButton(
             text = mainActionText,
             enabled = enabled,
-            modifier = Modifier.padding(start = 4.dp),
+            modifier = Modifier.padding(start = DesignTokens.spacingXs),
             onClick = onMainAction,
         )
         if (actions.isNotEmpty()) {

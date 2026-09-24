@@ -24,6 +24,7 @@ import io.legado.app.ui.compose.component.rememberResponsiveColumns
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 /**
  * 选集网格 (对照 app 端 VideoPlayScreen.VideoChapterGrid: ChapterListAdapter + GridLayoutManager(3))。
@@ -83,7 +84,7 @@ fun VideoChapterItem(
                 onClick = { if (!isVolume) onClick() },
                 onLongClick = onLongClick,
             )
-            .padding(8.dp),
+            .padding(DesignTokens.spacingDefault),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (chapter != null && chapter.isVip && !chapter.isPay) {
@@ -93,7 +94,7 @@ fun VideoChapterItem(
                 tint = colors.secondaryText,
                 modifier = Modifier
                     .size(24.dp)
-                    .padding(end = 8.dp),
+                    .padding(end = DesignTokens.spacingDefault),
             )
         }
         Column(Modifier.weight(1f)) {
@@ -115,7 +116,7 @@ fun VideoChapterItem(
                             color = colors.secondaryText,
                             fontSize = 12.sp,
                             maxLines = 1,
-                            modifier = Modifier.padding(end = 16.dp),
+                            modifier = Modifier.padding(end = DesignTokens.spacingLg),
                         )
                     }
                     if (showTag) {
@@ -141,7 +142,7 @@ fun VideoChapterItem(
             tint = colors.secondaryText,
             modifier = Modifier
                 .size(24.dp)
-                .padding(4.dp),
+                .padding(DesignTokens.spacingXs),
         )
     }
 }

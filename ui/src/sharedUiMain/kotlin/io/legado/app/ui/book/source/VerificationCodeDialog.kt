@@ -116,7 +116,7 @@ fun VerificationCodeDialog(
                 // 工具栏: 标题 + 源名 + 溢出菜单 (禁用源/删除源, 对照 app 端 VerificationCodeDialog;
                 // 确认仍走底部 okButton)
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = DesignTokens.spacingMd, vertical = DesignTokens.spacingXs),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
@@ -171,7 +171,7 @@ fun VerificationCodeDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(min = 100.dp, max = 200.dp)
-                            .padding(vertical = 8.dp),
+                            .padding(vertical = DesignTokens.spacingDefault),
                         contentAlignment = Alignment.Center,
                     ) {
                         CircularProgressIndicator()
@@ -189,7 +189,7 @@ fun VerificationCodeDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(min = 100.dp, max = 200.dp)
-                            .padding(vertical = 8.dp)
+                            .padding(vertical = DesignTokens.spacingDefault)
                             // 点图放大 (对照原版 setOnClickListener → PhotoDialog): 全屏大图 overlay
                             .clickable {
                                 AppNavigatorProviders.get().showOverlay(
@@ -206,7 +206,7 @@ fun VerificationCodeDialog(
                         text = stringResource(Res.string.captcha_load_failed_hint) + "\n" + url,
                         color = colors.secondaryText,
                         fontSize = 13.sp,
-                        modifier = Modifier.padding(vertical = 8.dp),
+                        modifier = Modifier.padding(vertical = DesignTokens.spacingDefault),
                     )
                 }
                 AppUnderlineTextField(

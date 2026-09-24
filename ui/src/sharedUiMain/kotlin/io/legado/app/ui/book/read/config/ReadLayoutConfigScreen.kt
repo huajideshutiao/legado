@@ -245,7 +245,7 @@ fun ReadLayoutConfigScreen(
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = DesignTokens.spacingDefault)
-            .padding(top = 16.dp)
+            .padding(top = DesignTokens.spacingLg)
             .padding(bottom = DesignTokens.spacingDefault)
     ) {
         // 正文标题 ──────────── [模式▾]
@@ -515,7 +515,7 @@ fun ReadLayoutConfigScreen(
 @Composable
 private fun SectionHeader(text: String, trailing: (@Composable RowScope.() -> Unit)? = null) {
     Row(
-        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        Modifier.fillMaxWidth().padding(vertical = DesignTokens.spacingXs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(text, color = AppTheme.colors.accent, fontSize = 18.sp, modifier = Modifier.weight(1f))
@@ -537,7 +537,7 @@ private fun StatusDropdownButton(
             color = AppTheme.colors.primaryText,
             modifier = Modifier
                 .clickable { expanded = true }
-                .padding(start = 8.dp, top = 4.dp, bottom = 4.dp),
+                .padding(start = DesignTokens.spacingDefault, top = DesignTokens.spacingXs, bottom = DesignTokens.spacingXs),
         )
         AppDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             options.forEach { (text, value) ->
@@ -562,12 +562,12 @@ private fun LineCheckbox(label: String, checked: Boolean, onCheckedChange: (Bool
         label,
         color = AppTheme.colors.primaryText,
         fontSize = 14.sp,
-        modifier = Modifier.padding(start = 8.dp),
+        modifier = Modifier.padding(start = DesignTokens.spacingDefault),
     )
     AppCheckbox(
         checked = checked,
         onCheckedChange = onCheckedChange,
-        modifier = Modifier.padding(start = 4.dp).size(22.dp),
+        modifier = Modifier.padding(start = DesignTokens.spacingXs).size(22.dp),
     )
 }
 
@@ -581,7 +581,7 @@ private fun TipPositionsRow(
     onMiddleClick: () -> Unit,
     onRightClick: () -> Unit,
 ) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+    Row(Modifier.fillMaxWidth().padding(vertical = DesignTokens.spacingXs)) {
         TipPositionCell(stringResource(Res.string.left), left, Modifier.weight(1f), onLeftClick)
         TipPositionCell(stringResource(Res.string.middle), middle, Modifier.weight(1f), onMiddleClick)
         TipPositionCell(stringResource(Res.string.right), right, Modifier.weight(1f), onRightClick)
@@ -596,7 +596,7 @@ private fun TipPositionCell(
     onClick: () -> Unit,
 ) {
     Column(
-        modifier.clickable(onClick = onClick).padding(vertical = 4.dp),
+        modifier.clickable(onClick = onClick).padding(vertical = DesignTokens.spacingXs),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(label, color = AppTheme.colors.secondaryText, fontSize = 12.sp)
@@ -615,12 +615,12 @@ private fun TipRow(label: String, value: String, onClick: () -> Unit) {
         Text(
             text = label,
             color = colors.primaryText,
-            modifier = Modifier.weight(1f).padding(8.dp),
+            modifier = Modifier.weight(1f).padding(DesignTokens.spacingDefault),
         )
         Text(
             text = value,
             color = colors.primaryText,
-            modifier = Modifier.padding(8.dp),
+            modifier = Modifier.padding(DesignTokens.spacingDefault),
         )
     }
 }

@@ -174,7 +174,7 @@ fun GroupEditDialog(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = DesignTokens.spacingDefault, vertical = 16.dp),
+                        .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingLg),
                 ) {
                     // 封面区恒显示 (对照原版 ivCover: 新分组为占位, 编辑态显示 cover)
                     Box(
@@ -200,7 +200,7 @@ fun GroupEditDialog(
                     Column(
                         Modifier
                             .weight(1f)
-                            .padding(start = 8.dp),
+                            .padding(start = DesignTokens.spacingDefault),
                     ) {
                         AppUnderlineTextField(
                             value = groupName,
@@ -217,7 +217,7 @@ fun GroupEditDialog(
                         Row(
                             Modifier
                                 .fillMaxWidth()
-                                .padding(top = 8.dp)
+                                .padding(top = DesignTokens.spacingDefault)
                                 .clickable { enableRefresh = !enableRefresh },
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -238,7 +238,7 @@ fun GroupEditDialog(
                         .fillMaxWidth()
                         .padding(
                             start = DesignTokens.spacingDefault,
-                            top = 4.dp,
+                            top = DesignTokens.spacingXs,
                             end = DesignTokens.spacingDefault,
                             bottom = DesignTokens.spacingDefault,
                         ),
@@ -305,20 +305,20 @@ private fun SortRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(top = 8.dp),
+            .padding(top = DesignTokens.spacingDefault),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = stringResource(Res.string.sort),
             color = colors.accent,
             fontSize = 14.sp,
-            modifier = Modifier.padding(4.dp),
+            modifier = Modifier.padding(DesignTokens.spacingXs),
         )
         Box {
             Row(
                 Modifier
                     .clickable { sortMenu = true }
-                    .padding(4.dp),
+                    .padding(DesignTokens.spacingXs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(

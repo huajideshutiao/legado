@@ -139,7 +139,7 @@ internal fun ShelfCoverBox(
         // 列表档: 高度由 bookshelfCoverHeight 决定, 宽度按封面比例反算
         ShelfCoverSlot.LIST -> Modifier.height(coverHeightDp.dp)
         // 网格档: 宽度填满格子 (左右各 12dp 内边距, 对照原 XML iv_cover match_parent + 12dp margin)
-        ShelfCoverSlot.GRID -> Modifier.fillMaxWidth().padding(start = 12.dp, top = 12.dp, end = 12.dp)
+        ShelfCoverSlot.GRID -> Modifier.fillMaxWidth().padding(start = DesignTokens.spacingMd, top = DesignTokens.spacingMd, end = DesignTokens.spacingMd)
         // 视频档: 宽度填满格子
         ShelfCoverSlot.VIDEO -> Modifier.fillMaxWidth()
     }
@@ -359,7 +359,7 @@ fun ShelfBooksContent(
                 columns = rememberResponsiveColumns(1),
                 state = scroll.list,
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 8.dp),
+                contentPadding = PaddingValues(bottom = DesignTokens.spacingDefault),
             ) {
                 items(items, key = ::shelfItemKey, contentType = ::shelfItemType) { item ->
                     val itemModifier = if (eInk) Modifier else Modifier.animateItem()
@@ -399,7 +399,7 @@ fun ShelfBooksContent(
                 columns = shelfGridCells(spec),
                 state = scroll.grid,
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 8.dp),
+                contentPadding = PaddingValues(bottom = DesignTokens.spacingDefault),
             ) {
                 items(items, key = ::shelfItemKey, contentType = ::shelfItemType) { item ->
                     val itemModifier = if (eInk) Modifier else Modifier.animateItem()
@@ -435,7 +435,7 @@ fun ShelfBooksContent(
                 columns = shelfGridCells(spec),
                 state = scroll.grid,
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 8.dp),
+                contentPadding = PaddingValues(bottom = DesignTokens.spacingDefault),
             ) {
                 items(items, key = ::shelfItemKey, contentType = ::shelfItemType) { item ->
                     val itemModifier = if (eInk) Modifier else Modifier.animateItem()
@@ -660,7 +660,7 @@ fun ShelfListItem(
         modifier
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(8.dp),
+            .padding(DesignTokens.spacingDefault),
     ) {
         ShelfCoverBox(ShelfCoverSlot.LIST, coverHeightDp = coverHeight, listIsVideo = isVideoStyle) { m, isVideoCover ->
             coverSlot(book, m, isVideoCover, coverReloadTick)
@@ -668,7 +668,7 @@ fun ShelfListItem(
         Column(
             Modifier
                 .weight(1f)
-                .padding(start = 8.dp)
+                .padding(start = DesignTokens.spacingDefault)
                 .heightIn(min = coverHeight.dp),
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
@@ -679,7 +679,7 @@ fun ShelfListItem(
                     fontSize = 16.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f).padding(start = 4.dp),
+                    modifier = Modifier.weight(1f).padding(start = DesignTokens.spacingXs),
                 )
                 if (refreshing && !book.isLocal) {
                     CircularProgressIndicator(
@@ -705,7 +705,7 @@ fun ShelfListItem(
                     fontSize = 13.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f).padding(end = 8.dp),
+                    modifier = Modifier.weight(1f).padding(end = DesignTokens.spacingDefault),
                 )
                 if (forceShowUpdateTime ||
                     (showLastUpdateTime && appConfig.showLastUpdateTime && !book.isLocal)
@@ -800,7 +800,7 @@ fun ShelfGridItem(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = DesignTokens.spacingDefault),
             )
         }
         // 徽标/转圈对照原 XML: 约束到 parent 右上角 (bv_unread/rl_loading 均 layout_constraintRight_toRightOf=parent + Top_toTopOf=parent),
@@ -821,7 +821,7 @@ fun ShelfGridItem(
             UnreadBadge(
                 count = unread,
                 highlight = book.lastCheckCount > 0,
-                modifier = Modifier.align(Alignment.TopEnd).padding(top = 4.dp, end = 4.dp),
+                modifier = Modifier.align(Alignment.TopEnd).padding(top = DesignTokens.spacingXs, end = DesignTokens.spacingXs),
             )
         }
     }
@@ -841,7 +841,7 @@ fun ShelfVideoItem(
     Column(
         modifier
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(8.dp),
+            .padding(DesignTokens.spacingDefault),
     ) {
         // 无 cover URL 时仍渲染封面 Box (走占位), 对齐原 View 版无 path 也显示默认封面
         ShelfCoverBox(ShelfCoverSlot.VIDEO) { m, isVideoCover ->
@@ -854,7 +854,7 @@ fun ShelfVideoItem(
             fontWeight = FontWeight.Bold,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 8.dp),
+            modifier = Modifier.padding(top = DesignTokens.spacingDefault),
         )
         // 正则切分 + 净化 / 作者拆分, 别每次重组重算
         val kinds = remember(book.kind, book.wordCount) { book.getKindList() }
@@ -893,7 +893,7 @@ fun GroupListItem(
         modifier
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(8.dp),
+            .padding(DesignTokens.spacingDefault),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ShelfCoverBox(ShelfCoverSlot.LIST, coverHeightDp = coverHeight) { m, isVideoCover ->
@@ -905,7 +905,7 @@ fun GroupListItem(
             fontSize = 16.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f).padding(start = 12.dp),
+            modifier = Modifier.weight(1f).padding(start = DesignTokens.spacingMd),
         )
     }
 }
@@ -935,7 +935,7 @@ fun GroupGridItem(
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = DesignTokens.spacingDefault),
         )
     }
 }
@@ -953,7 +953,7 @@ fun GroupVideoItem(
     Column(
         modifier
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(8.dp),
+            .padding(DesignTokens.spacingDefault),
     ) {
         // 无 cover URL 时仍渲染封面 Box (走占位), 对齐 app 端无 path 也显示默认封面
         ShelfCoverBox(ShelfCoverSlot.VIDEO) { m, isVideoCover ->
@@ -966,7 +966,7 @@ fun GroupVideoItem(
             fontWeight = FontWeight.Bold,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 8.dp),
+            modifier = Modifier.padding(top = DesignTokens.spacingDefault),
         )
     }
 }

@@ -38,6 +38,7 @@ import androidx.compose.ui.window.PopupProperties
 import io.legado.app.constant.AppLog
 import io.legado.app.ui.compose.platform.BackLayerHandler
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.ic_clear_all
 import org.jetbrains.compose.resources.painterResource
@@ -130,7 +131,7 @@ fun AppAutoCompleteField(
                                         onValueChange(item)
                                         expanded = false
                                     }
-                                    .padding(start = 12.dp),
+                                    .padding(start = DesignTokens.spacingMd),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text(
@@ -139,7 +140,7 @@ fun AppAutoCompleteField(
                                     fontSize = 14.sp,
                                     modifier = Modifier
                                         .weight(1f)
-                                        .padding(vertical = 12.dp),
+                                        .padding(vertical = DesignTokens.spacingMd),
                                 )
                                 if (onDelete != null) {
                                     IconButton(onClick = {

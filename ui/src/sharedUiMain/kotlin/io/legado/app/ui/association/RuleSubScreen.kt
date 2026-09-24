@@ -181,7 +181,7 @@ private fun RuleItemScope.RuleSubItem(
             .fillMaxWidth()
             .longPressDraggableHandle(onDragStopped = { onPersistOrder() })
             .clickable { onOpen() }
-            .padding(8.dp),
+            .padding(DesignTokens.spacingDefault),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -197,7 +197,7 @@ private fun RuleItemScope.RuleSubItem(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 TypeBadge(typeName(item.type))
-                Spacer(Modifier.width(4.dp))
+                Spacer(Modifier.width(DesignTokens.spacingXs))
                 Text(
                     text = item.url,
                     color = colors.secondaryText,
@@ -255,7 +255,7 @@ private fun TypeBadge(text: String) {
         modifier = Modifier
             .clip(DesignTokens.shapeSm)
             .background(accent)
-            .padding(horizontal = 4.dp, vertical = 1.dp),
+            .padding(horizontal = DesignTokens.spacingXs, vertical = 1.dp),
     )
 }
 

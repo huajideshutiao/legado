@@ -470,7 +470,7 @@ fun ThemeCustomizeDialog(
                                 value = bgBlur,
                                 max = 25,
                                 onValueChange = { bgBlur = it },
-                                modifier = Modifier.weight(1f).padding(start = 8.dp),
+                                modifier = Modifier.weight(1f).padding(start = DesignTokens.spacingDefault),
                             )
                             Text(
                                 text = bgBlur.toString(),
@@ -487,7 +487,7 @@ fun ThemeCustomizeDialog(
                     ) {
                         Spacer(Modifier.weight(1f))
                         AppTextButton(text = stringResource(Res.string.cancel), onClick = onDismiss)
-                        Spacer(Modifier.width(8.dp))
+                        Spacer(Modifier.width(DesignTokens.spacingDefault))
                         AppTextButton(text = stringResource(Res.string.ok)) {
                             when (mode) {
                                 MODE_EDIT_PREFS -> saveToPrefs()

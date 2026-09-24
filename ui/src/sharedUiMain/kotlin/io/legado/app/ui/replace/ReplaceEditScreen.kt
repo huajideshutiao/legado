@@ -50,6 +50,7 @@ import io.legado.app.ui.compose.component.code.KeyboardToolbar
 import io.legado.app.ui.compose.component.code.KeyboardToolbarState
 import io.legado.app.ui.compose.component.code.insertAtCursor
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.replace.edit.ReplaceEditViewModelShared
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
@@ -257,7 +258,7 @@ fun ReplaceEditScreen(
                 .weight(1f)
                 .fillMaxWidth()
                 .verticalScroll(scrollState)
-                .padding(horizontal = 8.dp),
+                .padding(horizontal = DesignTokens.spacingDefault),
         ) {
             FormField(name, stringResource(Res.string.replace_rule_summary)) { focusedField = it }
             FormField(group, stringResource(Res.string.group)) { focusedField = it }
@@ -386,7 +387,7 @@ private fun UseRegexRow(
             Text(
                 stringResource(Res.string.use_regex),
                 color = colors.primaryText,
-                modifier = Modifier.padding(start = 4.dp),
+                modifier = Modifier.padding(start = DesignTokens.spacingXs),
             )
         }
         IconButton(onClick = onHelp) {
@@ -418,10 +419,10 @@ private fun ScopeCheckRow(
             Text(
                 stringResource(Res.string.scope_title),
                 color = colors.primaryText,
-                modifier = Modifier.padding(start = 4.dp),
+                modifier = Modifier.padding(start = DesignTokens.spacingXs),
             )
         }
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(DesignTokens.spacingMd))
         Row(
             Modifier.clickable { onScopeContentChange(!scopeContent) },
             verticalAlignment = Alignment.CenterVertically,
@@ -430,7 +431,7 @@ private fun ScopeCheckRow(
             Text(
                 stringResource(Res.string.scope_content),
                 color = colors.primaryText,
-                modifier = Modifier.padding(start = 4.dp),
+                modifier = Modifier.padding(start = DesignTokens.spacingXs),
             )
         }
     }

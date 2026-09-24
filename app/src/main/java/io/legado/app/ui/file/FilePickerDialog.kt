@@ -38,6 +38,7 @@ import io.legado.app.ui.compose.component.SelectActionBar
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.file.HandleFileContract.Companion.FILE
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.toastOnUi
@@ -112,7 +113,7 @@ class FilePickerDialog : BaseComposeDialogFragment() {
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(8.dp),
+                    .padding(DesignTokens.spacingDefault),
             )
             Spacer(Modifier.height(2.dp)) // 对照静态 RefreshProgressBar 占位
             Box(
@@ -145,7 +146,7 @@ class FilePickerDialog : BaseComposeDialogFragment() {
                         color = colors.secondaryText,
                         modifier = Modifier
                             .align(Alignment.Center)
-                            .padding(16.dp),
+                            .padding(DesignTokens.spacingLg),
                     )
                 }
             }

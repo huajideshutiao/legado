@@ -94,6 +94,7 @@ import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.platformStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.ui.dialog.TextInputDialog
 import io.legado.app.ui.main.MainScreen
@@ -608,7 +609,7 @@ private fun HomeSectionBlock(
     // 区块身份 (同页多个展示项可能含同一本书, 必须分开配对); tab 已按 tab 分页, 无需入 id
     val blockId = "home-${section.id}"
     // 对照 SectionHolder.root: 每个展示项上下留白 (top default=8 / bottom xs=4)
-    Column(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp)) {
+    Column(Modifier.fillMaxWidth().padding(top = DesignTokens.spacingDefault, bottom = DesignTokens.spacingXs)) {
         HomeSectionTitleRow(section.title, stableOnMoreClick)
         ExploreOptionsRow(options, optionsVersion, stableOnOptionSelected)
         when {
@@ -653,7 +654,7 @@ private fun HomeSectionBlock(
 @Composable
 private fun SectionStateLoading() {
     val colors = AppTheme.colors
-    Box(Modifier.fillMaxWidth().padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxWidth().padding(vertical = DesignTokens.spacingDefault), contentAlignment = Alignment.Center) {
         CircularProgressIndicator(
             color = colors.accent,
             strokeWidth = 2.dp,
@@ -675,7 +676,7 @@ private fun SectionStateText(text: String, onClick: (() -> Unit)? = null) {
         modifier = Modifier
             .fillMaxWidth()
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(vertical = 12.dp),
+            .padding(vertical = DesignTokens.spacingMd),
     )
 }
 
@@ -694,7 +695,7 @@ private fun HomeSectionTitleRow(title: String, onMoreClick: () -> Unit) {
             .fillMaxWidth()
             .height(36.dp)
             .clickable(onClick = onMoreClick)
-            .padding(start = 16.dp, end = 8.dp),
+            .padding(start = DesignTokens.spacingLg, end = DesignTokens.spacingDefault),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -712,7 +713,7 @@ private fun HomeSectionTitleRow(title: String, onMoreClick: () -> Unit) {
             color = colors.secondaryText,
             fontSize = 13.sp,
             maxLines = 1,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            modifier = Modifier.padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingXs),
         )
         Icon(
             painter = painterResource(Res.drawable.ic_arrow_right),
@@ -745,7 +746,7 @@ private fun HomeCoverRow(
             .fillMaxWidth()
             .horizontalScroll(scrollState)
             .horizontalMouseWheel(scrollState)
-            .padding(horizontal = 8.dp),
+            .padding(horizontal = DesignTokens.spacingDefault),
     ) {
         if (isVideoStyle) {
             // 对照原 VideoCoverCardVH.bind: bindVideoCard(coverRatio=VIDEO, isInBookshelf=false,
@@ -777,7 +778,7 @@ private fun HomeCoverRow(
                     Column(
                         Modifier
                             .width(128.dp)
-                            .padding(4.dp)
+                            .padding(DesignTokens.spacingXs)
                             .combinedClickable(
                                 onClick = { onBookClick(book, binding.pageToken) },
                                 onLongClick = { onBookLongClick(book, binding.pageToken) },
@@ -800,7 +801,7 @@ private fun HomeCoverRow(
                             maxLines = 2,
                             minLines = 2,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                            modifier = Modifier.fillMaxWidth().padding(top = DesignTokens.spacingXs),
                         )
                         // 对照 XML tv_author: 10sp 摘要色, 最多 1 行, marginTop 2dp
                         Text(
@@ -826,7 +827,7 @@ private fun HomeRankList(
     onBookLongClick: (SearchBook, String?) -> Unit,
     blockId: String,
 ) {
-    BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+    BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = DesignTokens.spacingDefault)) {
         val isWide = maxWidth >= AppTheme.DesignTokens.wideScreenMinWidth
         if (isWide) {
             val displayBooks = books.take(10)
@@ -840,7 +841,7 @@ private fun HomeRankList(
                         HomeRankItem(index + 1, book, true, onBookClick, onBookLongClick, binding)
                     }
                 }
-                Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                Column(Modifier.weight(1f).padding(start = DesignTokens.spacingDefault)) {
                     rightBooks.forEachIndexed { index, book ->
                         val binding = rememberSharedCoverSourceBinding(book.bookUrl, blockId)
                         HomeRankItem(index + 6, book, true, onBookClick, onBookLongClick, binding)
@@ -888,7 +889,7 @@ private fun HomeFourRow(
             .fillMaxWidth()
             .horizontalScroll(scrollState, flingBehavior = flingBehavior)
             .horizontalMouseWheel(scrollState)
-            .padding(horizontal = 8.dp),
+            .padding(horizontal = DesignTokens.spacingDefault),
     ) {
         columns.forEach { column ->
             Column(Modifier.width(220.dp)) {
@@ -1048,7 +1049,7 @@ private fun HomeRankItem(
                 onClick = { onBookClick(book, coverBinding?.pageToken) },
                 onLongClick = { onBookLongClick(book, coverBinding?.pageToken) },
             )
-            .padding(vertical = 4.dp),
+            .padding(vertical = DesignTokens.spacingXs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (showRank) {
@@ -1068,7 +1069,7 @@ private fun HomeRankItem(
             )
         }
         // 封面固定 70dp 高 (对照 XML iv_cover height=70dp), 恒 NOVEL 比例
-        Box(Modifier.height(70.dp).padding(start = if (showRank) 8.dp else 0.dp)) {
+        Box(Modifier.height(70.dp).padding(start = if (showRank) DesignTokens.spacingDefault else 0.dp)) {
             // 本条目绑定的作用域限定在本封面上 (与点击回调拿到的同一个 token)
             if (coverBinding == null) {
                 LocalBookCoverSlot.current(book.toCoverBook(), Modifier.fillMaxHeight(), false, 0)
@@ -1083,7 +1084,7 @@ private fun HomeRankItem(
                 }
             }
         }
-        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+        Column(Modifier.weight(1f).padding(start = DesignTokens.spacingMd)) {
             Text(
                 text = book.name,
                 color = colors.primaryText,
@@ -1120,7 +1121,7 @@ private fun HomeInfiniteHeader(
     val currentOnMoreClick = rememberUpdatedState(onMoreClick)
     val stableOnMoreClick: () -> Unit = remember { { currentOnMoreClick.value() } }
     // 对照 SectionHolder.root: 无限流头部同样有 top 8 / bottom 4 留白
-    Column(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp)) {
+    Column(Modifier.fillMaxWidth().padding(top = DesignTokens.spacingDefault, bottom = DesignTokens.spacingXs)) {
         HomeSectionTitleRow(section.title, stableOnMoreClick)
         ExploreOptionsRow(options, optionsVersion, stableOnOptionSelected)
     }
@@ -1171,7 +1172,7 @@ private fun HomeInfiniteGridCard(
                         book.toCoverBook(),
                         Modifier
                             .fillMaxWidth()
-                            .padding(12.dp),
+                            .padding(DesignTokens.spacingMd),
                         false,
                         0,
                     )
@@ -1184,7 +1185,7 @@ private fun HomeInfiniteGridCard(
                         textAlign = TextAlign.Center,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 8.dp),
+                            .padding(top = DesignTokens.spacingDefault),
                     )
                 }
             }
@@ -1613,7 +1614,7 @@ private fun MyTabTitleBar(onHelp: () -> Unit) {
     val eInk = LocalEInk.current
     Box(Modifier.fillMaxWidth().then(if (eInk) Modifier else Modifier.platformStatusBarPadding())) {
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = 16.dp),
+            Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = DesignTokens.spacingLg),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(

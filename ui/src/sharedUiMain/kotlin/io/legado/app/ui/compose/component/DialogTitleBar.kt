@@ -19,6 +19,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.back
 import legado.ui.generated.resources.ic_arrow_back
@@ -56,7 +57,7 @@ fun DialogTitleBar(
                 )
             }
         } else {
-            Spacer(Modifier.width(16.dp))
+            Spacer(Modifier.width(DesignTokens.spacingLg))
         }
         Column(
             Modifier

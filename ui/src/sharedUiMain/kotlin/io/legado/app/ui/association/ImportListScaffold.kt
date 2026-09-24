@@ -23,6 +23,7 @@ import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.cancel
 import legado.ui.generated.resources.ok
@@ -71,7 +72,7 @@ fun ImportListScaffold(
                     color = colors.secondaryText,
                     modifier = Modifier
                         .align(Alignment.Center)
-                        .padding(16.dp)
+                        .padding(DesignTokens.spacingLg)
                 )
             } else {
                 FastScrollLazyColumn(
@@ -106,7 +107,7 @@ fun ImportListScaffold(
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp),
+                .padding(horizontal = DesignTokens.spacingDefault),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // 原 app 端用 stringResource(tpl, selectCount, itemCount) 走 Formatter 填充 %1$d/%2$d,
@@ -142,7 +143,7 @@ private fun ImportListItem(
             .fillMaxWidth()
             .clickable { onCheckedChange(!checked) }
             // 对齐 item_source_import.xml 根容器 android:padding=8dp(四周)
-            .padding(horizontal = 8.dp, vertical = 8.dp),
+            .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingDefault),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         AppCheckbox(checked = checked, onCheckedChange = onCheckedChange)
@@ -158,7 +159,7 @@ private fun ImportListItem(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
             )
-            Text(text = state, color = colors.secondaryText, modifier = Modifier.padding(8.dp))
+            Text(text = state, color = colors.secondaryText, modifier = Modifier.padding(DesignTokens.spacingDefault))
         }
         Text(
             text = stringResource(Res.string.open),
@@ -166,9 +167,9 @@ private fun ImportListItem(
             modifier = Modifier
                 // 对齐 item_source_import.xml 的 tv_open marginEnd 12dp;
                 // 排在 clickable 之前, 故不进点击热区(原版 margin 同样在 View 之外)
-                .padding(end = 12.dp)
+                .padding(end = DesignTokens.spacingMd)
                 .clickable(onClick = onOpen)
-                .padding(8.dp),
+                .padding(DesignTokens.spacingDefault),
         )
     }
 }

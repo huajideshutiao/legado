@@ -12,7 +12,6 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.browser.WebViewConfig
 import io.legado.app.ui.compose.component.AppTitleBar
@@ -20,6 +19,7 @@ import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.ic_refresh_black_24dp
 import legado.ui.generated.resources.login
@@ -93,7 +93,7 @@ private fun ContentArea(
                 text = state.error,
                 color = colors.secondaryText,
                 fontSize = 14.sp,
-                modifier = Modifier.padding(16.dp),
+                modifier = Modifier.padding(DesignTokens.spacingLg),
             )
         }
 

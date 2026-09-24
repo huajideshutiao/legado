@@ -270,7 +270,7 @@ internal fun ReviewListBody(
     LazyColumn(
         state = listState,
         modifier = modifier,
-        contentPadding = PaddingValues(bottom = 8.dp),
+        contentPadding = PaddingValues(bottom = DesignTokens.spacingDefault),
     ) {
         if (parentReview != null) {
             // 回复模式: 顶部楼主原评论 + "全部回复·N" 分隔条
@@ -365,7 +365,7 @@ internal fun ListHeader(
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, top = 12.dp, end = 8.dp, bottom = 4.dp),
+            .padding(start = DesignTokens.spacingLg, top = DesignTokens.spacingMd, end = DesignTokens.spacingDefault, bottom = DesignTokens.spacingXs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -380,7 +380,7 @@ internal fun ListHeader(
             Row(
                 Modifier
                     .clickable { sortMenuOpen = true }
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingXs),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
@@ -440,7 +440,7 @@ private fun RepliesHeader(repliesTitleText: String) {
             fontWeight = FontWeight.Bold,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 4.dp),
+                .padding(start = DesignTokens.spacingLg, top = DesignTokens.spacingMd, end = DesignTokens.spacingLg, bottom = DesignTokens.spacingXs),
         )
     }
 }
@@ -480,11 +480,11 @@ internal fun ReviewItem(
                 onLongClick = { onReviewLongClick(item) },
             )
     }
-    Row(rowModifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+    Row(rowModifier.padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingDefault)) {
         avatarSlot(
             item.avatar,
             Modifier
-                .padding(top = 4.dp, end = 12.dp)
+                .padding(top = DesignTokens.spacingXs, end = DesignTokens.spacingMd)
                 .size(36.dp)
                 .clip(CircleShape)
                 .clickable {
@@ -513,7 +513,7 @@ internal fun ReviewItem(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
                         .weight(1f)
-                        .padding(start = 8.dp),
+                        .padding(start = DesignTokens.spacingDefault),
                 )
                 if (!isParent) {
                     Box(contentAlignment = Alignment.Center) {
@@ -583,9 +583,9 @@ internal fun ReviewItem(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 4.dp)
+                        .padding(vertical = DesignTokens.spacingXs)
                         .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(DesignTokens.spacingXs),
                 ) {
                     item.images.forEach { url ->
                         imageSlot(
@@ -600,7 +600,7 @@ internal fun ReviewItem(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(top = 12.dp),
+                    .padding(top = DesignTokens.spacingMd),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -629,7 +629,7 @@ internal fun ReviewItem(
                         .width(50.dp)
                         .height(20.dp)
                         .clickable { onVoteUp(item) }
-                        .padding(horizontal = 8.dp),
+                        .padding(horizontal = DesignTokens.spacingDefault),
                     contentAlignment = Alignment.CenterStart,
                 ) {
                     Text(
@@ -649,7 +649,7 @@ internal fun ReviewItem(
                     // 跟随夜间主题: 已点踩=review_voted(与计数文本同色), 未点踩=secondaryText
                     tint = if (isVotedDown) rememberColor("review_voted") else rememberColor("secondaryText"),
                     modifier = Modifier
-                        .padding(end = 8.dp)
+                        .padding(end = DesignTokens.spacingDefault)
                         .size(20.dp)
                         .clickable { onVoteDown(item) },
                 )
@@ -658,12 +658,12 @@ internal fun ReviewItem(
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .padding(top = 8.dp)
+                        .padding(top = DesignTokens.spacingDefault)
                         .height(DesignTokens.viewHeightLarge)
                         .clip(DesignTokens.shapeDefault)
                         .background(rememberColor("btn_bg"))
                         .clickable { onOpenReplies(item) }
-                        .padding(start = 16.dp),
+                        .padding(start = DesignTokens.spacingLg),
                     contentAlignment = Alignment.CenterStart,
                 ) {
                     Text(
@@ -690,7 +690,7 @@ internal fun LoadMoreFooter(footerLoading: Boolean, footerHasMore: Boolean) {
                 color = AppTheme.colors.accent,
                 strokeWidth = 2.dp,
                 modifier = Modifier
-                    .padding(8.dp)
+                    .padding(DesignTokens.spacingDefault)
                     .size(36.dp),
             )
 
@@ -699,7 +699,7 @@ internal fun LoadMoreFooter(footerLoading: Boolean, footerHasMore: Boolean) {
                 color = rememberColor("secondaryText"),
                 fontSize = 14.sp,
                 maxLines = 1,
-                modifier = Modifier.padding(12.dp),
+                modifier = Modifier.padding(DesignTokens.spacingMd),
             )
         }
     }
@@ -709,10 +709,10 @@ internal fun LoadMoreFooter(footerLoading: Boolean, footerHasMore: Boolean) {
 @Composable
 internal fun InputBar(inputHint: String, onPostClick: () -> Unit) {
     ReviewInputCapsule(
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        contentPadding = PaddingValues(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingDefault),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = DesignTokens.spacingDefault, vertical = 8.dp),
+            .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingDefault),
         onClick = onPostClick,
     ) {
         ReviewInputHint(inputHint, maxLines = 1)

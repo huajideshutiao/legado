@@ -73,6 +73,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.platform.platformNavigationBarPadding
 import io.legado.app.ui.compose.platform.rememberPainter
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 
 /**
@@ -211,7 +212,7 @@ fun SearchMenuOverlay(state: SearchMenuState) {
                     Modifier
                         .fillMaxWidth()
                         .height(36.dp)
-                        .padding(horizontal = 16.dp),
+                        .padding(horizontal = DesignTokens.spacingLg),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
@@ -256,7 +257,7 @@ private fun BottomMenuItemText(
         Modifier
             .width(60.dp)
             .clickable(onClick = onClick)
-            .padding(top = 4.dp, bottom = 8.dp),
+            .padding(top = DesignTokens.spacingXs, bottom = DesignTokens.spacingDefault),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(
@@ -270,7 +271,7 @@ private fun BottomMenuItemText(
             color = tint,
             fontSize = 12.sp,
             maxLines = 1,
-            modifier = Modifier.padding(top = 4.dp),
+            modifier = Modifier.padding(top = DesignTokens.spacingXs),
         )
     }
 }

@@ -192,7 +192,7 @@ fun ColorPickerDialogContent(
         BoxWithConstraints(
             Modifier.padding(
                 horizontal = DesignTokens.spacingDefault,
-                vertical = 8.dp
+                vertical = DesignTokens.spacingDefault
             )
         ) {
             val landscape = maxWidth > maxHeight
@@ -246,7 +246,7 @@ fun ColorPickerDialogContent(
                     fraction = hue / 360f,
                     brush = Brush.horizontalGradient(HueColors),
                     onChange = { hue = (it * 360f).coerceIn(0f, 360f); applyHsv() },
-                    modifier = Modifier.padding(top = 12.dp),
+                    modifier = Modifier.padding(top = DesignTokens.spacingMd),
                 )
                 // Alpha 滑条（可选）
                 if (showAlphaSlider) {
@@ -255,7 +255,7 @@ fun ColorPickerDialogContent(
                         fraction = alpha,
                         brush = Brush.horizontalGradient(listOf(Color.Transparent, opaque)),
                         onChange = { alpha = it; applyHsv() },
-                        modifier = Modifier.padding(top = 8.dp),
+                        modifier = Modifier.padding(top = DesignTokens.spacingDefault),
                     )
                 }
                 // hex 输入
@@ -286,9 +286,9 @@ fun ColorPickerDialogContent(
                 // FlowRow 按行自动换行、高度包裹内容：替换 LazyVerticalGrid 固定 height(120.dp)
                 // (窄屏 3 行以上时底部色格被裁剪, 实测主题定制对话框底部固定色消失)
                 FlowRow(
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = DesignTokens.spacingDefault),
+                    horizontalArrangement = Arrangement.spacedBy(DesignTokens.spacingDefault),
+                    verticalArrangement = Arrangement.spacedBy(DesignTokens.spacingDefault),
                 ) {
                     displayPresets.forEach { preset ->
                         val selected = ColorUtils.stripAlpha(preset) == ColorUtils.stripAlpha(current())
@@ -330,7 +330,7 @@ fun ColorPickerDialogContent(
                             .weight(1f)
                             .fillMaxHeight()
                             .verticalScroll(rememberScrollState())
-                            .padding(start = 16.dp),
+                            .padding(start = DesignTokens.spacingLg),
                     ) { controls() }
                 }
             } else {

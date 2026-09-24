@@ -119,7 +119,7 @@ fun PageKeyDialog(
             color = colors.fillet,
             modifier = Modifier.appDialogSize().padding(
                 start = DesignTokens.spacingDefault,
-                top = 16.dp,
+                top = DesignTokens.spacingLg,
                 end = DesignTokens.spacingDefault,
                 bottom = DesignTokens.spacingDefault,
             ),
@@ -132,8 +132,8 @@ fun PageKeyDialog(
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = DesignTokens.spacingDefault, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                        .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingDefault),
+                    verticalArrangement = Arrangement.spacedBy(DesignTokens.spacingDefault),
                 ) {
                     AppUnderlineTextField(
                         value = prev,

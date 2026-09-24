@@ -14,7 +14,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -49,11 +48,11 @@ fun AboutHeaderCard(onHeaderClick: () -> Unit) {
     Column(
         Modifier
             .fillMaxWidth()
-            .padding(16.dp)
+            .padding(DesignTokens.spacingLg)
             .clip(DesignTokens.shapeDefault)
             .background(colors.bottomBackground)
             .clickable(onClick = onHeaderClick)
-            .padding(16.dp),
+            .padding(DesignTokens.spacingLg),
     ) {
         Text(
             text = stringResource(Res.string.app_name),

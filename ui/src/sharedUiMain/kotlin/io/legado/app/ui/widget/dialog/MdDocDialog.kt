@@ -72,10 +72,10 @@ fun MdDocDialog(title: String, assetPath: String, onDismiss: () -> Unit) {
         ) {
             Column(
                 Modifier.padding(
-                    start = 16.dp,
-                    top = 16.dp,
-                    end = 16.dp,
-                    bottom = 8.dp,
+                    start = DesignTokens.spacingLg,
+                    top = DesignTokens.spacingLg,
+                    end = DesignTokens.spacingLg,
+                    bottom = DesignTokens.spacingDefault,
                 )
             ) {
                 Text(

@@ -51,6 +51,7 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.BookCoverShared.CoverRatio
 import io.legado.app.ui.compose.component.AppScrollTabRow
 import io.legado.app.ui.compose.platform.platformStatusBarPadding
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.OnRouteLifecycle
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
@@ -494,7 +495,7 @@ internal fun BookshelfTopBar(
                 tabCount = groups.size,
                 selectedIndex = selectedIndex,
                 indicatorColor = colors.accent,
-                modifier = Modifier.weight(1f).padding(start = 16.dp),
+                modifier = Modifier.weight(1f).padding(start = DesignTokens.spacingLg),
             ) { index ->
                 val group = groups[index]
                 val title = if (showGroupCount) {
@@ -551,7 +552,7 @@ internal fun RowScope.BookshelfTitleText(title: String) {
         fontSize = 20.sp,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.weight(1f).padding(start = 16.dp),
+        modifier = Modifier.weight(1f).padding(start = DesignTokens.spacingLg),
     )
 }
 
@@ -569,7 +570,7 @@ internal fun GroupTab(
         Modifier
             .heightIn(min = 48.dp)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(horizontal = 8.dp),
+            .padding(horizontal = DesignTokens.spacingDefault),
         contentAlignment = Alignment.Center,
     ) {
         Text(

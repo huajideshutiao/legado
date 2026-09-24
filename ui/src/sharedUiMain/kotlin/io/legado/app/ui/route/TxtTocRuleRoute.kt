@@ -30,7 +30,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
@@ -352,7 +351,7 @@ private fun TxtTocRuleDialogContent(
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp),
+                .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingXs),
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -404,7 +403,7 @@ private fun TxtTocRuleDialogItem(
     Column(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingXs),
     ) {
         Row(
             Modifier
@@ -416,7 +415,7 @@ private fun TxtTocRuleDialogItem(
             Column(
                 Modifier
                     .weight(1f)
-                    .padding(horizontal = 8.dp),
+                    .padding(horizontal = DesignTokens.spacingDefault),
             ) {
                 Text(
                     text = rule.name,
@@ -438,7 +437,7 @@ private fun TxtTocRuleDialogItem(
                 checked = rule.enable,
                 onCheckedChange = onEnableChange,
             )
-            Spacer(Modifier.width(4.dp))
+            Spacer(Modifier.width(DesignTokens.spacingXs))
             IconButton(onClick = onEdit) {
                 Icon(
                     painter = painterResource(Res.drawable.ic_edit),

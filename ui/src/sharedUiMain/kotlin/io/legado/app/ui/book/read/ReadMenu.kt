@@ -840,7 +840,7 @@ private fun ReadMenuTopBar(state: ReadMenuState) {
                             onClick = { state.onChapterViewClick() },
                             onLongClick = { state.onChapterViewLongClick() },
                         )
-                        .padding(horizontal = 16.dp),
+                        .padding(horizontal = DesignTokens.spacingLg),
                 ) {
                     if (state.chapterNameVisible) {
                         Text(
@@ -1017,7 +1017,7 @@ private fun SourceActionButton(state: ReadMenuState) {
     Box {
         Box(
             Modifier
-                .padding(end = 16.dp)
+                .padding(end = DesignTokens.spacingLg)
                 .heightIn(min = 32.dp)
                 .widthIn(max = 120.dp)
                 .clip(DesignTokens.shapeDefault)
@@ -1027,7 +1027,7 @@ private fun SourceActionButton(state: ReadMenuState) {
                     payVisible = state.sourcePayVisible()
                     expanded = true
                 }
-                .padding(horizontal = 12.dp),
+                .padding(horizontal = DesignTokens.spacingMd),
             contentAlignment = Alignment.Center,
         ) {
             Text(
@@ -1080,7 +1080,7 @@ private fun ReadMenuBottom(state: ReadMenuState) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = DesignTokens.spacingLg),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             ReadMenuFab(
@@ -1135,7 +1135,7 @@ private fun ReadMenuBottom(state: ReadMenuState) {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                    .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingXs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 ChapterNavText(
@@ -1209,12 +1209,12 @@ private fun ChapterNavText(
         color = color,
         fontSize = 14.sp,
         modifier = Modifier
-            .padding(horizontal = 12.dp)
+            .padding(horizontal = DesignTokens.spacingMd)
             .clickable(
                 interactionSource = interaction,
                 indication = if (enabled) LocalIndication.current else null,
             ) { if (enabled) onClick() }
-            .padding(vertical = 12.dp),
+            .padding(vertical = DesignTokens.spacingMd),
     )
 }
 
@@ -1231,7 +1231,7 @@ fun ReadMenuFab(
 ) {
     Box(
         modifier
-            .padding(16.dp)
+            .padding(DesignTokens.spacingLg)
             .size(40.dp)
             .shadow(6.dp, CircleShape)
             .clip(CircleShape)
@@ -1261,7 +1261,7 @@ fun BottomMenuItem(
     Column(
         modifier
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(top = 4.dp, bottom = 8.dp),
+            .padding(top = DesignTokens.spacingXs, bottom = DesignTokens.spacingDefault),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(
@@ -1275,7 +1275,7 @@ fun BottomMenuItem(
             color = tint,
             fontSize = 12.sp,
             maxLines = 1,
-            modifier = Modifier.padding(top = 4.dp),
+            modifier = Modifier.padding(top = DesignTokens.spacingXs),
         )
     }
 }

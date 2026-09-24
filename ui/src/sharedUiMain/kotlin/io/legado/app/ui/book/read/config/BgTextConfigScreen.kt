@@ -249,7 +249,7 @@ fun BgTextConfigScreen(
             Text(styleNameStr, color = colors.primaryText, fontSize = 16.sp)
             Text(
                 name, color = colors.secondaryText,
-                modifier = Modifier.padding(horizontal = 8.dp),
+                modifier = Modifier.padding(horizontal = DesignTokens.spacingDefault),
             )
             Icon(
                 painter = painterResource(Res.drawable.ic_edit),
@@ -287,7 +287,7 @@ fun BgTextConfigScreen(
         }
         // 文字颜色 / 背景颜色 / 导入 / 导出 / 删除
         Row(
-            Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            Modifier.fillMaxWidth().padding(vertical = DesignTokens.spacingDefault),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             StrokeTextChip(
@@ -301,7 +301,7 @@ fun BgTextConfigScreen(
                 bgColorStr,
                 textColor = colors.secondaryText,
                 cornerRadius = DesignTokens.radiusDefault,
-                modifier = Modifier.weight(5f).padding(start = 8.dp),
+                modifier = Modifier.weight(5f).padding(start = DesignTokens.spacingDefault),
             ) { showBgColorPicker = true }
             ActionIcon("ic_import", importStr, colors.primaryText) {
                 actions.onImportConfig()
@@ -493,7 +493,7 @@ private fun ActionIcon(
         contentDescription = description,
         tint = tint,
         modifier = Modifier
-            .padding(start = 8.dp)
+            .padding(start = DesignTokens.spacingDefault)
             .size(32.dp)
             .clickable(onClick = onClick),
     )

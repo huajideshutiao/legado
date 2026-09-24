@@ -184,7 +184,7 @@ fun SourceFilterEditDialog(
                     text = fieldsLabel,
                     color = colors.secondaryText,
                     fontSize = 13.sp,
-                    modifier = Modifier.padding(top = 12.dp),
+                    modifier = Modifier.padding(top = DesignTokens.spacingMd),
                 )
                 FieldChecks(
                     fields = fields,
@@ -225,7 +225,7 @@ fun SourceFilterEditDialog(
                     text = cancelText,
                     color = colors.secondaryText,
                 ) { onDismiss() }
-                Spacer(Modifier.width(4.dp))
+                Spacer(Modifier.width(DesignTokens.spacingXs))
                 AppTextButton(
                     text = okText,
                     color = DesignTokens.arcoBlue6,
@@ -293,7 +293,7 @@ private fun ScopeRow(
             .fillMaxWidth()
             .defaultMinSize(minHeight = 40.dp)
             .clickable(onClick = onClick)
-            .padding(vertical = 4.dp),
+            .padding(vertical = DesignTokens.spacingXs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -316,7 +316,7 @@ private fun ScopeRow(
             contentDescription = label,
             tint = colors.secondaryText,
             modifier = Modifier
-                .padding(start = 8.dp)
+                .padding(start = DesignTokens.spacingDefault)
                 .size(24.dp),
         )
     }

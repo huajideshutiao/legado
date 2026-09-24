@@ -173,7 +173,7 @@ fun BookshelfLayoutConfigDialog(onDismiss: () -> Unit) {
                         .fillMaxWidth()
                         .weight(1f, fill = false)
                         .verticalScroll(rememberScrollState())
-                        .padding(horizontal = DesignTokens.spacingDefault, vertical = 8.dp),
+                        .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingDefault),
                 ) {
                     ConfigDropdownRow(
                         label = stringResource(Res.string.group_style),
@@ -207,7 +207,7 @@ fun BookshelfLayoutConfigDialog(onDismiss: () -> Unit) {
                         stringResource(Res.string.view),
                         color = colors.accent,
                         fontSize = 16.sp,
-                        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                        modifier = Modifier.padding(top = DesignTokens.spacingMd, bottom = DesignTokens.spacingXs),
                     )
                     // 列数 (对照原版 sb_column_count 0..6, 固定宽模式隐藏)
                     if (!fixedWidthMode.value) {
@@ -218,7 +218,7 @@ fun BookshelfLayoutConfigDialog(onDismiss: () -> Unit) {
                             Text(
                                 stringResource(Res.string.column_count),
                                 color = colors.primaryText,
-                                modifier = Modifier.padding(end = 8.dp),
+                                modifier = Modifier.padding(end = DesignTokens.spacingDefault),
                             )
                             AppSlider(
                                 value = selectedCols.intValue,
@@ -231,7 +231,7 @@ fun BookshelfLayoutConfigDialog(onDismiss: () -> Unit) {
                                 color = colors.primaryText,
                                 fontSize = 16.sp,
                                 fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                                modifier = Modifier.padding(start = 4.dp),
+                                modifier = Modifier.padding(start = DesignTokens.spacingXs),
                             )
                         }
                     }
@@ -321,7 +321,7 @@ fun BookshelfLayoutConfigDialog(onDismiss: () -> Unit) {
                         stringResource(Res.string.sort),
                         color = colors.accent,
                         fontSize = 16.sp,
-                        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                        modifier = Modifier.padding(top = DesignTokens.spacingMd, bottom = DesignTokens.spacingXs),
                     )
                     Column(Modifier.selectableGroup()) {
                         sortLabelRes.forEachIndexed { i, res ->
@@ -333,7 +333,7 @@ fun BookshelfLayoutConfigDialog(onDismiss: () -> Unit) {
                                         role = Role.RadioButton,
                                         onClick = { bookshelfSort.intValue = i },
                                     )
-                                    .padding(vertical = 4.dp),
+                                    .padding(vertical = DesignTokens.spacingXs),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 AppRadioButton(
@@ -352,12 +352,12 @@ fun BookshelfLayoutConfigDialog(onDismiss: () -> Unit) {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = DesignTokens.spacingDefault, vertical = 8.dp),
+                    .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingDefault),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Spacer(Modifier.weight(1f))
                 AppTextButton(text = stringResource(Res.string.cancel), onClick = onDismiss)
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(DesignTokens.spacingDefault))
                 AppTextButton(text = stringResource(Res.string.ok)) {
                     onDismiss()
                     var notifyMain = false
@@ -457,14 +457,14 @@ fun BottomNavConfigDialog(onDismiss: () -> Unit) {
                         .fillMaxWidth()
                         .weight(1f, fill = false)
                         .verticalScroll(rememberScrollState())
-                        .padding(horizontal = DesignTokens.spacingDefault, vertical = 8.dp),
+                        .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingDefault),
                 ) {
                     Text(
                         stringResource(Res.string.bottom_bar_items_order),
                         color = colors.primaryText,
                         fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                     )
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(DesignTokens.spacingDefault))
                     // 复用 ReorderableLazyListState + LazyRow 实现跟手拖拽排序
                     // vertical=false: 底栏是横向列表 (LazyRow), 方向显式声明 (ohos 手写实现不猜宽高比)
                     val navListState = rememberLazyListState()
@@ -490,7 +490,7 @@ fun BottomNavConfigDialog(onDismiss: () -> Unit) {
                             }
                         }
                     }
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(DesignTokens.spacingDefault))
                     // 高度滑条 (对照 sb_height: 36..80)
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(
@@ -527,7 +527,7 @@ fun BottomNavConfigDialog(onDismiss: () -> Unit) {
                     Text(
                         stringResource(Res.string.bottom_bar_label_mode),
                         color = colors.primaryText,
-                        modifier = Modifier.padding(top = 4.dp),
+                        modifier = Modifier.padding(top = DesignTokens.spacingXs),
                     )
                     Row(
                         Modifier
@@ -549,7 +549,7 @@ fun BottomNavConfigDialog(onDismiss: () -> Unit) {
                                         selected = labelMode.intValue == i,
                                         onClick = { labelMode.intValue = i },
                                     )
-                                    .padding(horizontal = 4.dp, vertical = 4.dp),
+                                    .padding(horizontal = DesignTokens.spacingXs, vertical = DesignTokens.spacingXs),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 AppRadioButton(selected = labelMode.intValue == i, onClick = null)
@@ -561,7 +561,7 @@ fun BottomNavConfigDialog(onDismiss: () -> Unit) {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = DesignTokens.spacingDefault, vertical = 8.dp),
+                    .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingDefault),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 AppTextButton(text = stringResource(Res.string.reset)) {
@@ -569,7 +569,7 @@ fun BottomNavConfigDialog(onDismiss: () -> Unit) {
                 }
                 Spacer(Modifier.weight(1f))
                 AppTextButton(text = stringResource(Res.string.cancel), onClick = onDismiss)
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(DesignTokens.spacingDefault))
                 AppTextButton(text = stringResource(Res.string.ok)) {
                     onDismiss()
                     if (controller.save()) eventBus.emitRecreate()
@@ -694,7 +694,7 @@ private fun RuleItemScope.NavConfigItem(
             .width(cellWidth)
             .longPressDraggableHandle(enabled = true)
             .clickable(enabled = !item.locked, onClick = onToggle)
-            .padding(vertical = 4.dp),
+            .padding(vertical = DesignTokens.spacingXs),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(
@@ -727,7 +727,7 @@ private fun ConfigDropdownRow(
             Row(
                 Modifier
                     .clickable { expanded = true }
-                    .padding(horizontal = 4.dp, vertical = 4.dp),
+                    .padding(horizontal = DesignTokens.spacingXs, vertical = DesignTokens.spacingXs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(

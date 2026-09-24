@@ -202,7 +202,7 @@ private fun CoverItem(
             item,
             Modifier
                 .fillMaxWidth()
-                .padding(12.dp)
+                .padding(DesignTokens.spacingMd)
                 .aspectRatio(3f / 4f)
         )
         // 源名: 对照 tv_name (marginTop=arco_spacing_default(8dp), 12sp, maxLines=2, 居中省略)
@@ -215,8 +215,8 @@ private fun CoverItem(
             textAlign = TextAlign.Center,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp)
-                .padding(top = 8.dp, bottom = 12.dp)
+                .padding(horizontal = DesignTokens.spacingMd)
+                .padding(top = DesignTokens.spacingDefault, bottom = DesignTokens.spacingMd)
         )
     }
 }

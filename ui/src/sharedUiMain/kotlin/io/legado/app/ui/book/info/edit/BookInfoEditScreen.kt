@@ -32,6 +32,7 @@ import io.legado.app.ui.compose.component.AppOutlinedButton
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.action_save
 import legado.ui.generated.resources.author
@@ -152,12 +153,12 @@ fun BookInfoEditScreen(
                 }
             },
         )
-        Row(Modifier.padding(horizontal = 8.dp)) {
+        Row(Modifier.padding(horizontal = DesignTokens.spacingDefault)) {
             coverSlot(state.book, Modifier.width(110.dp))
             Column(
                 Modifier
                     .weight(1f)
-                    .padding(start = 4.dp),
+                    .padding(start = DesignTokens.spacingXs),
             ) {
                 AppUnderlineTextField(
                     value = state.name,
@@ -182,7 +183,7 @@ fun BookInfoEditScreen(
         Column(
             Modifier
                 .verticalScroll(scrollState)
-                .padding(horizontal = 4.dp),
+                .padding(horizontal = DesignTokens.spacingXs),
         ) {
             AppUnderlineTextField(
                 value = state.coverUrl,
@@ -190,13 +191,13 @@ fun BookInfoEditScreen(
                 label = stringResource(Res.string.cover_path),
                 modifier = Modifier.fillMaxWidth(),
             )
-            Row(Modifier.padding(horizontal = 4.dp)) {
+            Row(Modifier.padding(horizontal = DesignTokens.spacingXs)) {
                 AppOutlinedButton(stringResource(Res.string.select_local_image)) {
                     actions.onSelectCover()
                 }
                 AppOutlinedButton(
                     stringResource(Res.string.change_cover_source),
-                    modifier = Modifier.padding(horizontal = 12.dp),
+                    modifier = Modifier.padding(horizontal = DesignTokens.spacingMd),
                 ) {
                     actions.onChangeCoverSource()
                 }
@@ -234,7 +235,7 @@ private fun TypeSelector(
     val types = stringArrayResource(Res.array.book_type)
     var expanded by remember { mutableStateOf(false) }
     Row(
-        Modifier.padding(start = 4.dp),
+        Modifier.padding(start = DesignTokens.spacingXs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -246,7 +247,7 @@ private fun TypeSelector(
             Row(
                 Modifier
                     .clickable { expanded = true }
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingXs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(

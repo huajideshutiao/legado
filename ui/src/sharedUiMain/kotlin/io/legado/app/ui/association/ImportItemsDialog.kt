@@ -21,7 +21,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.DictRule
@@ -219,7 +218,7 @@ fun ImportBookSourceItemsDialog(
                 modifier = Modifier
                     .align(Alignment.CenterVertically)
                     .clickable { showGroupDialog = true }
-                    .padding(horizontal = 8.dp),
+                    .padding(horizontal = DesignTokens.spacingDefault),
             )
             Box {
                 IconButton(onClick = { showMenu = true }) {
@@ -292,7 +291,7 @@ private fun ImportOptionMenuItem(
             Text(
                 text = text,
                 color = AppTheme.colors.primaryText,
-                modifier = Modifier.padding(start = 8.dp),
+                modifier = Modifier.padding(start = DesignTokens.spacingDefault),
             )
         }
     }
@@ -335,7 +334,7 @@ fun ImportReplaceRuleItemsDialog(
                 modifier = Modifier
                     .align(Alignment.CenterVertically)
                     .clickable { showGroupDialog = true }
-                    .padding(horizontal = 8.dp),
+                    .padding(horizontal = DesignTokens.spacingDefault),
             )
         },
     )
@@ -390,7 +389,7 @@ internal fun ImportSourceGroupDialog(
                     Modifier
                         .fillMaxWidth()
                         .clickable { addGroup = !addGroup }
-                        .padding(vertical = 8.dp),
+                        .padding(vertical = DesignTokens.spacingDefault),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
@@ -407,7 +406,7 @@ internal fun ImportSourceGroupDialog(
                     AppSwitch(
                         checked = addGroup,
                         onCheckedChange = null,
-                        modifier = Modifier.padding(start = 8.dp),
+                        modifier = Modifier.padding(start = DesignTokens.spacingDefault),
                     )
                 }
                 // 自动补全输入框: 聚焦/输入时弹已有分组候选下拉 (对照 master editView.setFilterValues)

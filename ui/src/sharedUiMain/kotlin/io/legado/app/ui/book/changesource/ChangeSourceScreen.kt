@@ -257,7 +257,7 @@ fun ChangeSourceBottomBar(
         Modifier
             .fillMaxWidth()
             .height(36.dp)
-            .padding(horizontal = 8.dp),
+            .padding(horizontal = DesignTokens.spacingDefault),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
@@ -265,7 +265,7 @@ fun ChangeSourceBottomBar(
                 .weight(1f)
                 .fillMaxHeight()
                 .clickable(onClick = onDurClick)
-                .padding(horizontal = 8.dp),
+                .padding(horizontal = DesignTokens.spacingDefault),
             contentAlignment = Alignment.CenterStart,
         ) {
             Text(
@@ -327,7 +327,7 @@ fun SearchBookItem(
             Modifier
                 .fillMaxWidth()
                 .combinedClickable(onClick = onClick, onLongClick = { menuExpanded = true })
-                .padding(8.dp),
+                .padding(DesignTokens.spacingDefault),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -357,7 +357,7 @@ fun SearchBookItem(
             Column(
                 Modifier
                     .weight(1f)
-                    .padding(vertical = 4.dp),
+                    .padding(vertical = DesignTokens.spacingXs),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -531,7 +531,7 @@ private fun TocItemRow(chapter: BookChapter, isDur: Boolean, onClick: () -> Unit
             .fillMaxWidth()
             .then(volumeBg)
             .clickable(onClick = onClick)
-            .padding(8.dp),
+            .padding(DesignTokens.spacingDefault),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {

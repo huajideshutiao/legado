@@ -19,7 +19,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppTextButton
@@ -96,7 +95,7 @@ fun CrashLogsDialogContent(
                             },
                             onLongClick = { onShare(item) },
                         )
-                        .padding(8.dp),
+                        .padding(DesignTokens.spacingDefault),
                 )
             }
         }

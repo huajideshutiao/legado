@@ -21,7 +21,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.SourceFilterRule
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.source.SearchBookFilter
@@ -217,7 +216,7 @@ private fun SourceFilterRuleListItem(
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingDefault),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -234,7 +233,7 @@ private fun SourceFilterRuleListItem(
                 onToggleEnabled(it)
             },
         )
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(DesignTokens.spacingDefault))
         IconButton(onClick = onEdit) {
             Icon(
                 painter = painterResource(Res.drawable.ic_edit),
