@@ -19,7 +19,7 @@ object CookieManager {
      * 各端 cookie 存储)。app 端在 App.onCreate 经 registerSharedCookieJarBridge 注册。
      *
      * cookieJarHeader / mergeCookies / mergeCookiesToMap 三个纯函数已下沉 shared
-     * (见 modules/shared/src/commonMain/kotlin/io/legado/app/help/http/CookieUtils.kt),
+     * (见 data/src/commonMain/kotlin/io/legado/app/help/http/CookieUtils.kt),
      * 跨模块同包名合并, 消费方 import 零改动。本 object 仅保留安卓绑定方法。
      *
      * P0-0c: 为 AnalyzeUrl 主体下沉 shared 做前置。

@@ -105,7 +105,7 @@ https://gedoor.github.io/Disclaimer
 ##### Legado 3.0
 
 * [eBook sources rules](https://mgz0227.github.io/The-tutorial-of-Legado/)
-* [Help Documentation](/shared/src/commonMain/composeResources/files/web/help/md/appHelp.md)
+* [Help Documentation](/ui/src/commonMain/composeResources/files/web/help/md/appHelp.md)
 * [web bookshelf](https://github.com/gedoor/legado_web_bookshelf)
 * [web source editor](https://github.com/gedoor/legado_web_source_editor)
 

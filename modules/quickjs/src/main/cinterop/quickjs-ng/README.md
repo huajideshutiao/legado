@@ -4,7 +4,7 @@
 >
 > 这里的每个文件都应当与下表 pin 的上游 commit 逐字节一致。需要定制行为时，按以下优先级选择：
 >
-> 1. **cinterop / JNI wrapper 层**（首选）——在 `shared/src/cinterop/quickjs.def`、
+> 1. **cinterop / JNI wrapper 层**（首选）——在 `data/src/cinterop/quickjs.def`、
 >    `modules/quickjs-android-native/src/main/cpp/` 的 wrapper 里加代码，不碰 C 源码。
 > 2. **编译开关**——在各消费方的 CMakeLists / 编译参数里加 `-D` 宏，不改源码。
 > 3. **改源码**（万不得已，仅限上游 bug）——只有在上游自己的代码有内存安全 / 正确性
@@ -58,14 +58,14 @@
 
 | # | 平台 | 文件 | 引用方式 |
 | --- | --- | --- | --- |
-| 1 | Android / JVM (JNI) | `modules/quickjs-android-native/src/main/cpp/CMakeLists.txt` | `set(QUICKJS_NG_DIR "${LEGADO_PROJECT_ROOT}/shared/src/cinterop/quickjs-ng")` |
-| 2 | 鸿蒙 native (.so) | `ohosApp/entry/src/main/cpp/CMakeLists.txt` | `set(LEGADO_QUICKJS_NG_DIR .../shared/src/cinterop/quickjs-ng)` |
-| 3 | iOS cinterop | `shared/src/cinterop/quickjs.def` + `shared/build.gradle.kts` (`includeDirs`) | `#include "quickjs.h"` + wrapper 函数 |
+| 1 | Android / JVM (JNI) | `modules/quickjs-android-native/src/main/cpp/CMakeLists.txt` | `set(QUICKJS_NG_DIR "${LEGADO_PROJECT_ROOT}/modules/quickjs/src/main/cinterop/quickjs-ng")` |
+| 2 | 鸿蒙 native (.so) | `ohosApp/entry/src/main/cpp/CMakeLists.txt` | `set(LEGADO_QUICKJS_NG_DIR .../modules/quickjs/src/main/cinterop/quickjs-ng)` |
+| 3 | iOS cinterop | `data/src/cinterop/quickjs.def` + `data/build.gradle.kts` (`includeDirs`) | `#include "quickjs.h"` + wrapper 函数 |
 | 4 | 鸿蒙 cinterop | `build-logic/src/ohos/kotlin/io/legado/buildlogic/OhosTargetConventionPlugin.kt` | `includeDirs(File(cinteropDir, "quickjs-ng"))` |
-| 5 | iOS 静态库预编译 | `scripts/build-ios-native.sh` | `QUICKJS_DIR="$ROOT_DIR/shared/src/cinterop/quickjs-ng"` |
+| 5 | iOS 静态库预编译 | `scripts/build-ios-native.sh` | `QUICKJS_DIR="$ROOT_DIR/modules/quickjs/src/main/cinterop/quickjs-ng"` |
 
 上层 Kotlin 消费方（仅供定位，不直接读本目录）：
-`modules/quickjs/`（JVM/Android 引擎）、`shared/src/nativeMain/.../NativeJsEngine.native.kt`（iOS/鸿蒙引擎）。
+`modules/quickjs/`（JVM/Android 引擎）、`data/src/nativeMain/.../NativeJsEngine.native.kt`（iOS/鸿蒙引擎）。
 
 ### 实际参与编译的源文件
 
@@ -97,7 +97,7 @@ curl -sL --ssl-no-revoke \
   "https://raw.githubusercontent.com/quickjs-ng/quickjs/$REF/quickjs.h" \
   -o /tmp/quickjs.h
 # 本地工作树是 CRLF（见下），比对前必须归一化
-tr -d '\r' < shared/src/cinterop/quickjs-ng/quickjs.h > /tmp/local.h
+tr -d '\r' < modules/quickjs/src/main/cinterop/quickjs-ng/quickjs.h > /tmp/local.h
 diff -u /tmp/quickjs.h /tmp/local.h
 ```
 
@@ -126,18 +126,18 @@ diff -u /tmp/quickjs.h /tmp/local.h
 ./gradlew :modules:quickjs-android-native:externalNativeBuildAppDebug
 ./gradlew :modules:quickjs:compileDebugKotlinAndroid
 
-# Desktop / shared-jvm
-./gradlew :shared:compileKotlinJvm
+# Desktop / :ui jvm
+./gradlew :ui:compileKotlinJvm
 
 # iOS（仅 macOS 可跑）
 bash scripts/build-ios-native.sh
-./gradlew :shared:cinteropQuickjsIosArm64
+./gradlew :data:cinteropQuickjsIosArm64
 
 # 鸿蒙（需鸿蒙 SDK）
-./gradlew :shared:cinteropQuickjsLinuxArm64
+./gradlew :data:cinteropQuickjsLinuxArm64
 ```
 
-> 本机只有 Windows，`app` / `desktop` / `shared-jvm` 三条可跑；iOS / 鸿蒙两条须在
+> 本机只有 Windows，`app` / `desktop` / `:ui` jvm 三条可跑；iOS / 鸿蒙两条须在
 > 对应环境验证，结果不可在本机臆测。
 
 ### 4. 更新本文件

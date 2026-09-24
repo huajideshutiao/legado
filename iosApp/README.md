@@ -56,7 +56,7 @@ xcodegen generate
 
 `project.yml` 使用 Kotlin 官方 `embedAndSignAppleFrameworkForXcode` 任务。Xcode 每次构建会根据
 当前 `SDK_NAME`、`ARCHS` 和 Debug/Release 自动选择正确的 Kotlin target，复制 framework 到
-`TARGET_BUILD_DIR` 并完成签名，不再依赖硬编码的 `shared/build/bin/...` 路径。
+`TARGET_BUILD_DIR` 并完成签名，不再依赖硬编码的 `ui/build/bin/...` 路径。
 
 直接在 Xcode 构建即可；如由 Android Studio/IntelliJ 的 iOS 运行配置发起，脚本会通过
 `OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED` 避免重复调用 Gradle。
@@ -85,7 +85,7 @@ iOS 端代码改动 (iosMain/) 在 Windows 上无法编译验证, 但 IDE (Andro
 
 - App: `shutiao.reader`（Debug 构建 `shutiao.reader.debug`，Release 构建 `shutiao.reader.release`，与安卓
   applicationId 对齐）
-- 共享 framework: `io.legado.shared` (shared 模块 namespace)
+- 共享 framework: `io.legado.shared` (:ui 模块 iOS framework baseName)
 
 ## 签名
 
@@ -100,7 +100,7 @@ iOS 端零薄壳架构: `MainViewController.kt` 直接调用 shared `LegadoApp`,
 `RouteContent` 统一分发, 不再维护 `IosNavHost` / `IosBookshelfScreen` / `IosReaderScreen` /
 `IosSearchScreen` / `IosBookInfoScreen` / `IosBookSourceScreen` 等平台薄壳 Composable。
 
-### 内部调用关系 (shared/src/iosMain/.../MainViewController.kt)
+### 内部调用关系 (ui/src/iosMain/.../MainViewController.kt)
 
 ```
 ComposeUIViewController
@@ -113,7 +113,7 @@ ComposeUIViewController
         └── DeepLinkImportHost()  (legado:// deep link 导入)
 ```
 
-### iOS 平台能力 actual 实现 (shared/src/iosMain/)
+### iOS 平台能力 actual 实现 (ui/src/iosMain/)
 
 | 模块                  | 实现                                                                                                            |
 |---------------------|---------------------------------------------------------------------------------------------------------------|
@@ -132,5 +132,5 @@ ComposeUIViewController
 | 其他                  | `IosFilePicker.ios.kt` / `IosImagePicker.ios.kt` / `IosOpenUrlProvider.kt` / `NativeUserAgentProvider.kt` 等   |
 
 > 注: 上述 iOS target 代码在 Windows 上无法编译验证, 真实编译验证必须在 macOS 上进行
-> (`./gradlew :shared:compileKotlinIosArm64`)。UIAlertController/UNNotificationRequest 工厂方法
+> (`./gradlew :ui:compileKotlinIosArm64`)。UIAlertController/UNNotificationRequest 工厂方法
 > 与 NS_OPTIONS 位运算等少数 ObjC 桥接细节如遇编译报错, 按文件内 TODO 注释微调即可。

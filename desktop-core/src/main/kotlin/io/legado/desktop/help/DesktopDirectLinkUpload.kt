@@ -122,7 +122,7 @@ object DesktopDirectLinkUpload : DirectLinkUploadStoreProvider, DirectLinkUpload
     // (与 app 端命名一致)
     private val defaultRulesCache: List<DirectLinkUploadRule> by lazy {
         // 走 DefaultDataResourceProviders 单一数据源
-        // (composeResources/files/defaultData/directLinkUpload.json, Main.kt 已注册桌面实现)
+        // (composeResources/files/defaultData/directLinkUpload.json)
         val json = DefaultDataResourceProviders.get().readResource("directLinkUpload.json")
         GSON.fromJsonArray<DirectLinkUploadRule>(json).getOrThrow()
     }

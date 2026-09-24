@@ -9,7 +9,7 @@ import kotlinx.coroutines.runBlocking
  * 构建 Markdown 查看器完整 HTML (运行时从 composeResources 直读, 零拷贝零重复)。
  *
  * # 单一数据源
- * web 资源唯一数据源在 `shared/src/commonMain/composeResources/files/web/help/`
+ * web 资源唯一数据源在 `ui/src/commonMain/composeResources/files/web/help/`
  * (Android assets / 桌面 classpath / iOS / 鸿蒙四端同一份, 见 [WebAssetSources])。
  * 鸿蒙端 composeResources 打包进 liblegado_shared.so 内嵌资源, Web 组件无法直接按路径访问,
  * 故由本对象把模板 + js/css 内联拼成完整 HTML (经 [LegadoNativeExports.buildMarkdownViewerHtml]

@@ -45,7 +45,7 @@
 -keep,allowoptimization class io.legado.app.model.analyzeRule.AnalyzeRuleCore { *; }
 
 # JS 反射 keep 规则随 :shared 删除已按类归属迁至 core/data/foundation 各自
-# consumer-rules.pro（原 shared/consumer-rules.pro 内容即三者之和）；AGP KMP
+# consumer-rules.pro（按类归属拆到 core/data/foundation 三者）；AGP KMP
 # library 的 consumer rules 发布行为未验证，沿用旧策略由最终 app 显式 include，
 # 保证 R8 混淆/shrink 下书源 JS 按名反射调用的类保活。
 -include ../core/consumer-rules.pro

@@ -64,8 +64,8 @@ import platform.darwin.NSObject
  *
  * # macOS 编译验证
  * ```
- * ./gradlew :shared:compileKotlinIosArm64
- * ./gradlew :shared:compileKotlinIosSimulatorArm64
+ * ./gradlew :data:compileKotlinIosArm64
+ * ./gradlew :data:compileKotlinIosSimulatorArm64
  * ```
  */
 class IosSystemTtsEngine : SystemTtsEngine {

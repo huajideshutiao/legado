@@ -12,7 +12,7 @@ import io.legado.app.help.file.AppFilesDirs
  * Compose 各端必带, 同 DesktopImageOps 的 webp 编码路径)。
  *
  * expect 刻意放 commonMain 而非 sharedUiMain (本符号无 UI 依赖): actual↔expect 跨
- * 自定义中间源集配对在 IDE 有误报史 (见 shared/build.gradle.kts androidMain 源集处
+ * 自定义中间源集配对在 IDE 有误报史 (见 ui/build.gradle.kts androidMain 源集处
  * jvmAndAndroidMain 注释), androidMain↔commonMain 是模板源集间的标准配对, 无此问题。
  *
  * @return 烘焙字节; 解码/编码失败返回 null, 调用方中止添加并提示

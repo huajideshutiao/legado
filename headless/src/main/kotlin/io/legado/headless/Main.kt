@@ -33,7 +33,7 @@ private const val TAG = "legado-headless"
  * .\gradlew :headless:headlessDist (分发包 bin/lib, 资源与 native 内置 jar)。
  *
  * # 依赖与架构
- * - 依赖边界: 依赖 :desktop-core + :shared; headless 经 build.gradle.kts 的 runtimeClasspath
+ * - 依赖边界: 依赖 :desktop-core + :core; headless 经 build.gradle.kts 的 runtimeClasspath
  *   彻底排除了 Compose UI / Skiko / Markdown 等渲染库, 仅保留轻量的 components-resources
  *   用于读取字符串与静态 JSON 资源; jvmGetString 已解耦至纯资源工具层, 避免字节码符号连带加载。
  * - 单实例守卫 (SingleInstanceGuard) 因 java.awt/javax.swing import (bindWindow 窗口前置)

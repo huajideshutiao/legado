@@ -3,17 +3,15 @@ package io.legado.app.help
 import kotlin.concurrent.Volatile
 
 /**
- * DefaultData 默认数据资源读取抽象 (shared commonMain)。
+ * DefaultData 默认数据资源读取抽象 (commonMain)。
  *
  * # 资源单一数据源
  *
- * 默认数据 JSON 唯一数据源在 `shared/src/commonMain/composeResources/files/defaultData/`,
- * 由 compose 资源插件分发到各端产物, 各端注册实现读取:
+ * 默认数据 JSON 唯一数据源在 `ui/src/commonMain/composeResources/files/defaultData/`,
+ * 由 compose 资源插件分发到各端产物, 四端注册同一实现读取:
  *
- * - **Android 端** (app 模块): assets 内 `composeResources/legado.shared.generated.resources/files/defaultData/`
- *   (见 app 端 registerAndroidJsEngines 内注册)。
- * - **桌面 jvm 端** (desktop 模块): classpath 内同前缀路径 (DesktopDefaultDataResourceProvider)。
- * - **iOS/鸿蒙 native 端**: 生成类 `Res.readBytes` (NativeDefaultDataResourceProvider)。
+ * - :ui 的 ComposeResourceDefaultDataProvider (经 composeResources 生成的
+ *   `Res.readBytes` 取数, 打包前缀由资源生成器写进 `Res`, 源码侧不持有该前缀)。
  *
  * 模式参考 [io.legado.app.help.source.SourceCacheProvider] / [io.legado.app.data.AppDatabaseProvider]。
  */

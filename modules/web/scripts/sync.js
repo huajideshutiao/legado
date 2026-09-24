@@ -7,7 +7,7 @@ if (!process.env.GITHUB_ENV) {
   process.exit();
 }
 const LEGADO_ASSETS_WEB_DIR = new URL(
-  "../../../shared/src/commonMain/composeResources/files/web/",
+  "../../../ui/src/commonMain/composeResources/files/web/",
   import.meta.url,
 );
 const VUE_DIST_DIR = new URL("../dist/", import.meta.url);

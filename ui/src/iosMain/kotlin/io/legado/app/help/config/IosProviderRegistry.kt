@@ -25,7 +25,7 @@ import io.legado.app.help.http.registerNativeHttpProvider
 import io.legado.app.help.http.registerSharedCookieJarBridge
 import io.legado.app.help.media.registerIosMediaNotificationController
 import io.legado.app.help.notification.registerIosNotificationProgress
-import io.legado.app.help.registerNativeDefaultDataResourceProvider
+import io.legado.app.help.registerComposeDefaultDataResourceProvider
 import io.legado.app.help.registerNativeDirectLinkUploadProviders
 import io.legado.app.help.registerNativeExploreKindsCacheProvider
 import io.legado.app.help.registerNativeFileCacheProvider
@@ -54,7 +54,7 @@ import io.legado.app.ui.book.manage.registerNativeBookshelfManagePlatform
 import io.legado.app.ui.book.read.page.provider.registerSkiaTextMeasurer
 import io.legado.app.utils.registerIosScreenInfoProvider
 import io.legado.app.web.registerNativeWebServerPlatform
-import io.legado.app.web.utils.registerNativeWebAssetSource
+import io.legado.app.web.utils.registerComposeWebAssetSource
 import io.legado.app.web.utils.registerNativeWebStrings
 import platform.UIKit.UIDevice
 import platform.UIKit.UIScreen
@@ -135,7 +135,7 @@ fun registerIosProviders() {
     ReadBookConfigProviders.register(ReadBookConfigShared(PreferenceProviders.get()))
 
     // 2.6 默认数据 provider (composeResources files/defaultData, 供 DefaultDataShared 装载默认规则)
-    registerNativeDefaultDataResourceProvider()
+    registerComposeDefaultDataResourceProvider()
 
     // 2.7 直链上传配置 provider (Store 落 {filesDir}/directLinkUploadRule.json + Defaults 读默认数据,
     // 须在 AppFilesDirs + DefaultDataResourceProvider 之后; 供备份/恢复与直链上传配置用)
@@ -267,7 +267,7 @@ fun registerIosProviders() {
 
     // 10. Web 服务 provider (WebAssetSource + WebStrings + WebServerPlatform, iOS/鸿蒙共用 Ktor server 壳)
     // 仅注册平台实现, 不启动服务 (WebServerManager.start 由用户操作触发)
-    registerNativeWebAssetSource()
+    registerComposeWebAssetSource()
     registerNativeWebStrings()
     // BookController 图片/阅读状态 provider (/cover /image 直出缓存字节, /deleteBook /saveBookProgress
     // 经 NativeReadBookStateProvider 桥接阅读页挂接的 ReadBookShared)

@@ -219,7 +219,7 @@ android {
 
 // APK 语言目录过滤: APK 只打包 values/ (英文默认) + values-zh/ (简中) +
 // values-zh-rHK/values-zh-rTW (繁体), 排除 4 个小语种目录 (values-es-rES/values-ja-rJP/
-// values-pt-rBR/values-vi)。用户决策小语种暂缓打包; 资源文件本体保留在 shared 全量
+// values-pt-rBR/values-vi)。用户决策小语种暂缓打包; 资源文件本体保留在 :ui 全量
 // (desktop/iOS 资源生成不受影响)。androidResources.localeFilters 只作用于 AAPT 合并的
 // res/ 资源, 管不到 composeResources (它作为 assets 走 merge{Variant}Assets)。
 // 机制: :ui 的 copy*ComposeResourcesToAndroidAssets 只把 composeResources 复制进
@@ -240,9 +240,13 @@ tasks.matching {
             "values-vi",
         )
         outputs.files.forEach { output ->
-            val resourcesRoot = output.resolve("composeResources/legado.ui.generated.resources")
-            excludedLocales.forEach { locale ->
-                resourcesRoot.resolve(locale).deleteRecursively()
+            // 目录名由 compose 资源插件按模块名生成, 不硬编码; 扫描 composeResources 下所有
+            // 插件产物目录逐个清理, 模块切分/改名后无需同步本处
+            val composeResourcesRoot = output.resolve("composeResources")
+            composeResourcesRoot.listFiles().orEmpty().forEach { resourcesRoot ->
+                excludedLocales.forEach { locale ->
+                    resourcesRoot.resolve(locale).deleteRecursively()
+                }
             }
         }
     }

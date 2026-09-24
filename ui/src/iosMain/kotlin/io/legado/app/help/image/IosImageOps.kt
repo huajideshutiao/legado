@@ -48,7 +48,7 @@ import kotlin.math.sin
  *
  * 参考: base64 解码复用 commonMain [Base64Lenient] (容忍 data:image/...;base64, 前缀)。
  * macOS 编译验证 (Windows 无法编译 iOS target):
- * ./gradlew :shared:compileKotlinIosArm64 / compileKotlinIosSimulatorArm64
+ * ./gradlew :ui:compileKotlinIosArm64 / compileKotlinIosSimulatorArm64
  */
 object IosImageOps : ImageOps {
 

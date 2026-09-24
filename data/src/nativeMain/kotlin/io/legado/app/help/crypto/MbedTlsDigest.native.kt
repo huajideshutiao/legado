@@ -92,7 +92,7 @@ internal object MbedTlsDigest {
 /**
  * 纯 Kotlin SHA3 (FIPS 202) — Keccak-f[1600]。
  *
- * 背景: 项目内裁剪版 mbedTLS 3.6.7 (shared/src/cinterop/mbedtls) 只 vendor 了
+ * 背景: 项目内裁剪版 mbedTLS 3.6.7 (data/src/cinterop/mbedtls) 只 vendor 了
  * md5/sha1/sha256/sha512/ripemd160 的 .c, 头文件 sha3.h 在但 sha3.c 未 vendor 且
  * legado_mbedtls_config.h 未开 MBEDTLS_SHA3_C (ohos napi 回落也不支持 SHA3)。
  * 故用纯 Kotlin 实现补齐 SHA3-224/256/384/512 + HMAC-SHA3-*,

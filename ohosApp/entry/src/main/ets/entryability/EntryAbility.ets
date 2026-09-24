@@ -52,7 +52,7 @@ interface WindowCommand {
   orientation?: number;
 }
 
-// ===== 外部启动请求投递串约定 (与 shared/src/ohosMain OhosLaunchRequests 常量逐字对齐) =====
+// ===== 外部启动请求投递串约定 (与 ui/src/ohosMain OhosLaunchRequests 常量逐字对齐) =====
 // 只传一个字符串的 napi 导出 (legado_handle_launch_request) 无法携带整个 Want, 故把 Want.type
 // 拼成 `mime:<type>|<uri>` 前缀形式 (同 `route:` 一样的既有约定), 由 Kotlin 侧解回。
 // 改这三处字面量必须同步改 OhosLaunchRequests, 否则外部投递会静默变成 DeepLink。

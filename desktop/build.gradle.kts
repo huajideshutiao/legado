@@ -26,14 +26,14 @@ fun normalizeJvmNativeArch(rawArch: String): String = when (val arch = rawArch.l
 // ProGuard 瘦身已改用 Compose Desktop 官方集成 (见 compose.desktop.application.buildTypes.
 // release.proguard {}): 官方 release buildType 自动创建 proguardReleaseJars 并接线到
 // packageRelease*/createReleaseDistributable, joinOutputJars=false 逐 jar 输出规避 service 合并坑。
-// 规则文件 desktop/proguard-rules.pro 经 configurationFiles 引用 (含 shared/quickjs consumer-rules)。
+// 规则文件 desktop/proguard-rules.pro 经 configurationFiles 引用 (含 core/data/foundation/quickjs consumer-rules)。
 // 注: 官方默认 ProGuard 7.7.0 不在本地缓存, DSL 已显式 version=7.9.1 对齐可用缓存。
 // 历史: 旧自研 JavaExec proguardDesktop 任务 (单 outjar 合并全部依赖) 已删除 —— 实测 ProGuard
 // 对多 jar 同名 META-INF/services 只保留第一个 jar 的内容 (2026-08-18 最小实验证实 MainDispatcherFactory
 // 被覆盖为 TestMainDispatcherFactory), 官方逐 jar 输出无此问题。
 
 // CPF 的 root metadata 只发布 Android/iOS/OHOS 变体，Desktop JVM 继续使用同基线的
-// JetBrains 平台制品 (与 shared/build.gradle.kts 同款 resolutionStrategy 对齐);
+// JetBrains 平台制品 (与 ui/build.gradle.kts 同款 resolutionStrategy 对齐);
 // 版本从 catalog 读取 (显式索引避免点分歧义), 禁止硬编码
 val isHarmonyMode = providers.gradleProperty("enableOhosTarget").getOrNull() == "true"
 // catalog 经 rootProject 的 VersionCatalogsExtension 访问 (与 build-logic 同款模式)
@@ -746,7 +746,7 @@ compose.desktop {
         //   导致 SwingDispatcherFactory 丢失 → Dispatchers.Main 崩溃)。
         // - obfuscate 默认 false: 书源按类名反射加载, 不混淆 (与自研规则 -dontobfuscate 一致)
         // - 规则文件: 官方 default-compose-desktop-rules.pro 自动附带 + 下方显式追加项目规则
-        //   (含 shared/quickjs consumer-rules, 与自研 proguard-rules.pro 同源)
+        //   (含 core/data/foundation/quickjs consumer-rules, 与自研 proguard-rules.pro 同源)
         // - version 显式 7.9.1: 官方默认 7.7.0 不在本地缓存, 离线构建无法解析 (2026-08-18 实测)
         buildTypes {
             release {

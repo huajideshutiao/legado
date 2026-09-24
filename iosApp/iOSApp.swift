@@ -20,7 +20,7 @@
 //  ## 与 shared 模块的关系
 //
 //  - shared 模块 (Kotlin Multiplatform) 编译产出 `shared.framework`,
-//    路径: `shared/build/bin/iosArm64/debugFramework/shared.framework`
+//    路径: `ui/build/bin/iosArm64/debugFramework/shared.framework`
 //    (或 `iosSimulatorArm64` for 模拟器)
 //  - iosApp 通过 CocoaPods / Framework 依赖引用 shared.framework
 //  - `MainViewController()` 是 shared 模块导出的 Kotlin 函数,
@@ -30,8 +30,8 @@
 //
 //  ```bash
 //  # 1. 编译 shared framework (在项目根目录)
-//  ./gradlew :shared:linkDebugFrameworkIosArm64
-//  ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64
+//  ./gradlew :ui:linkDebugFrameworkIosArm64
+//  ./gradlew :ui:linkDebugFrameworkIosSimulatorArm64
 //
 //  # 2. 用 XcodeGen 生成 .xcodeproj (如使用 project.yml)
 //  brew install xcodegen

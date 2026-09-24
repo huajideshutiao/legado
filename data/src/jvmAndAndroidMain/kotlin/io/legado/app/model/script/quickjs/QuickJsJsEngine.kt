@@ -17,11 +17,11 @@ import kotlin.coroutines.CoroutineContext
  *
  * # 下沉位置
  * 原在 `app/src/main/java/io/legado/app/model/script/quickjs/QuickJsJsEngine.kt`,
- * 桌面端 JS 引擎落地时下沉到 `modules/shared/src/jvmAndAndroidMain`,
+ * 桌面端 JS 引擎落地时下沉到 `data/src/jvmAndAndroidMain`,
  * 让 Android 与桌面 JVM 共用同一份引擎适配层 (复用 `modules:quickjs` KMP 化后的 commonMain API)。
  *
  * 包名 `io.legado.app.model.script.quickjs` 保持不变, app 端所有 import 无需修改,
- * 仅依赖 `modules:shared` 即可访问 (shared/jvmAndAndroidMain api 依赖 `:modules:quickjs`)。
+ * 仅依赖 `:data` 即可访问 (data/jvmAndAndroidMain api 依赖 `:modules:quickjs`)。
  *
  * # 与 rhino 实现 的对应关系
  * 对应 rhino 的 `io.legado.app.model.script.rhino.RhinoJsEngine` (留 app, 不下沉)。

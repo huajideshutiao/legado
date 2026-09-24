@@ -3,7 +3,7 @@ package io.legado.app.utils
 /**
  * KMP 百分比格式化 (替代 `java.util.Locale.US + String.format`)。
  *
- * 背景: `modules/shared/.../TextPage.kt` 原 `formatPercent(value: Double)` 用
+ * 背景: `data/src/commonMain/.../TextPage.kt` 原 `formatPercent(value: Double)` 用
  * `String.format(Locale.US, "%.1f%%", value * 100)` 输出形如 "45.6%" 的进度字符串。
  * `java.util.Locale` 在 Kotlin/Native iOS target 不可用, 阻塞 iOS 编译, 故抽出 expect/actual。
  *

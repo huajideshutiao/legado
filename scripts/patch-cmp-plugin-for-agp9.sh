@@ -7,7 +7,7 @@
 # onVariants, 见 compose-multiplatform PR #5385; fork 未合入)。故把该调用点改写为
 # onVariants(selector(), block), 与官方 >= 8.10 分支一致。
 #
-# 【为何需要本脚本】: 鸿蒙与 Android 共用 :shared, 配置期躲不开 AGP 插件; 而 CMP 的
+# 【为何需要本脚本】: 鸿蒙与 Android 共用同一份共享源码, 配置期躲不开 AGP 插件; 而 CMP 的
 # 资源接线挂在 AGP 插件 id 的回调上 (onAgpApplied), 插件一 apply 就必然执行。ohos 模式
 # 只把 Kotlin/CMP 切到 fork, AGP 留在主线, 形成「fork CMP × 主线 AGP」的错配组合。
 #

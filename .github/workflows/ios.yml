@@ -108,7 +108,7 @@ jobs:
         if: inputs.stage != 'klib'
         uses: actions/cache@v5
         with:
-          path: shared/build/iosNativeLibs
+          path: data/build/iosNativeLibs
           key: ios-native-${{ runner.os }}-${{ hashFiles('modules/quickjs/src/main/cinterop/quickjs-ng/**', 'data/src/cinterop/mbedtls/**', 'scripts/build-ios-native.sh') }}
 
       - name: Build iOS native static libs (quickjs-ng + mbedtls)
@@ -127,8 +127,8 @@ jobs:
         continue-on-error: true
         run: |
           set -x
-          ls -lR shared/build/iosNativeLibs || true
-          for a in $(find shared/build/iosNativeLibs -name '*.a'); do
+          ls -lR data/build/iosNativeLibs || true
+          for a in $(find data/build/iosNativeLibs -name '*.a'); do
             lipo -info "$a" || true
           done
 
@@ -167,7 +167,7 @@ jobs:
             --info --stacktrace --warning-mode all --continue --console=plain 2>&1 \
             | tee "$GITHUB_WORKSPACE/ci-logs/40-link-framework.log"
           echo "===== framework 产物 ====="
-          find shared/build/bin -maxdepth 4 -name "*.framework" -exec ls -ld {} \; || true
+          find ui/build/bin -maxdepth 4 -name "*.framework" -exec ls -ld {} \; || true
 
       # ===== ipa (未签名, 供 SideStore/AltStore/Xcode 自签侧载) =====
       - name: Install XcodeGen
@@ -241,7 +241,7 @@ jobs:
         run: |
           mkdir -p "$GITHUB_WORKSPACE/ci-logs"
           cp -R "$HOME/.konan/kotlin-native-prebuilt"*/konan/konan.properties "$GITHUB_WORKSPACE/ci-logs/" 2>/dev/null || true
-          find "$GITHUB_WORKSPACE/shared/build/reports" -type f 2>/dev/null | head -50 || true
+          find "$GITHUB_WORKSPACE/ui/build/reports" -type f 2>/dev/null | head -50 || true
 
       - name: Upload logs
         if: always()
@@ -250,7 +250,7 @@ jobs:
           name: ios-build-logs
           path: |
             ${{ github.workspace }}/ci-logs/**
-            ${{ github.workspace }}/shared/build/reports/**
+            ${{ github.workspace }}/ui/build/reports/**
           if-no-files-found: ignore
           retention-days: 14
 

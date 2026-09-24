@@ -42,7 +42,7 @@ import platform.darwin.dispatch_get_main_queue
  *
  * # macOS 编译验证 (Windows 无法编译 iOS target)
  * ```
- * ./gradlew :shared:compileKotlinIosArm64
+ * ./gradlew :core:compileKotlinIosArm64
  * ```
  */
 class IosToaster : Toaster {

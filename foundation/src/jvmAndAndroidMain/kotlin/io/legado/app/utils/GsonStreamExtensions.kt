@@ -11,7 +11,7 @@ import java.io.Writer
  * Gson 兼容层: java.io 流式重载, 下沉 shared jvmAndAndroidMain。
  *
  * 纯 Kotlin 部分 (GSON/GSONStrict 别名, toJson(obj), fromJsonObject, fromJsonArray, toJsonElement)
- * 在 modules/shared/src/commonMain/kotlin/io/legado/app/utils/GsonExtensions.kt,
+ * 在 foundation/src/commonMain/kotlin/io/legado/app/utils/GsonExtensions.kt,
  * 调用方 import 路径不变 (io.legado.app.utils.*)。
  *
  * 本文件使用 @file:JvmName("GsonStreamExtensions") 改变生成的 class 文件名,

@@ -7,7 +7,7 @@
 // 只依赖 :desktop-core (无 UI 核心库)。依赖闭包核查:
 // ./gradlew :headless:dependencies --configuration runtimeClasspath
 //
-// 资源策略 (2026-09-06 裁决: 内置): files/ 资源随 shared jvmJar 分发 (classpath 直读);
+// 资源策略 (2026-09-06 裁决: 内置): files/ 资源随 :ui jvmJar 分发 (classpath 直读);
 // quickjs native 库复制进 jar 资源 (copyQuickjsNativeToHeadlessResources), Main 启动时
 // 提取到临时文件 System.load。分发包 headlessDist 只含 bin/ + lib/。
 

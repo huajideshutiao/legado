@@ -46,7 +46,7 @@ import platform.UserNotifications.UNUserNotificationCenter
  *
  * # macOS 编译验证 (Windows 无法编译 iOS target)
  * ```
- * ./gradlew :shared:compileKotlinIosArm64
+ * ./gradlew :core:compileKotlinIosArm64
  * ```
  */
 class IosNotificationProgress : NotificationProgress {

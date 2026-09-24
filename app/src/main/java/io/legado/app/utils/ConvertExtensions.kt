@@ -13,7 +13,7 @@ import android.graphics.drawable.Drawable
  * ConvertExtensions Android 部分 (Bitmap/Drawable/Resources/dpPx/spPx 等 Android 依赖).
  *
  * 纯 Kotlin 部分 (toInt/toFloat/toString/formatFileSize/Int.hexString) 已下沉至
- * modules/shared/src/commonMain/kotlin/io/legado/app/utils/ConvertExtensions.kt.
+ * foundation/src/commonMain/kotlin/io/legado/app/utils/ConvertExtensions.kt.
  *
  * 本文件原 object ConvertUtils 成员中 Android 依赖部分改为 [ConvertUtils] 扩展函数,
  * 调用方式 (`ConvertUtils.toBitmap(...)` 等) 与原一致, 兼容现有调用方。

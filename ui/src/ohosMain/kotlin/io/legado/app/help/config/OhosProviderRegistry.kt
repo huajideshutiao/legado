@@ -59,7 +59,7 @@ import kotlinx.serialization.decodeFromString
 import io.legado.app.ui.book.manage.registerNativeBookshelfManagePlatform
 import io.legado.app.ui.book.read.page.provider.registerSkiaTextMeasurer
 import io.legado.app.web.registerNativeWebServerPlatform
-import io.legado.app.web.utils.registerNativeWebAssetSource
+import io.legado.app.web.utils.registerComposeWebAssetSource
 import io.legado.app.web.utils.registerNativeWebStrings
 import kotlin.concurrent.Volatile
 
@@ -150,7 +150,7 @@ fun registerOhosProviders() {
     // 同步文案; 未注册时 fallback 返回 key 名, 运行期可见为 "no_prev_page" 之类原始 key。
     // 零平台依赖顺序无关, 只须在任何 appString 调用之前)。
     // 注: native 实现依赖 composeResources (legado.ui.generated.resources.Res),
-    // 随 :ui 的 NativeDefaultDataResourceProvider.native.kt 下沉, 由 :ui 侧在
+    // 随 :ui 的 ComposeResourceDefaultDataProvider 下沉, 由 :ui 侧在
     // registerOhosProviders() 之前注册 (见 ui MainOhos.kt)。
     // 1.06 Preference provider (须在 AppLog 宿主之前: 宿主的 recordLog 门直读 PreferenceProviders,
     // 晚注册则这中间的 AppLog.put 全按 recordLog=false 走, 不落盘)
@@ -176,9 +176,8 @@ fun registerOhosProviders() {
     // 2.3.1 阅读配置 provider (readConfig.json / shareReadConfig.json, 供 BackupShared 备份/恢复)
     ReadBookConfigProviders.register(ReadBookConfigShared(PreferenceProviders.get()))
 
-    // 2.4 默认数据 provider (composeResources files/defaultData, 供 DefaultDataShared 装载默认规则)
-    // 注: native 实现依赖 composeResources, 随 :ui 的 NativeDefaultDataResourceProvider.native.kt
-    // 下沉, 由 :ui 侧在 registerOhosProviders() 之前注册 (见 ui MainOhos.kt)。
+    // 2.4 默认数据 provider 由 :ui 侧在 registerOhosProviders() 之前注册
+    // (见 ui MainOhos.kt; core 序列里的 directLinkUpload 依赖它已就绪)
     // 2.4.5 直链上传配置 provider (Store 落 {filesDir}/directLinkUploadRule.json + Defaults 读默认数据,
     // 须在 AppFilesDirs + DefaultDataResourceProvider 之后; 供备份/恢复与直链上传配置用)
     registerNativeDirectLinkUploadProviders()
@@ -328,7 +327,7 @@ fun registerOhosProviders() {
 
     // 9. Web 服务 provider (WebAssetSource + WebStrings + WebServerPlatform, iOS/鸿蒙共用 Ktor server 壳)
     // 仅注册平台实现, 不启动服务 (WebServerManager.start 由用户操作触发)
-    registerNativeWebAssetSource()
+    registerComposeWebAssetSource()
     registerNativeWebStrings()
     // BookController 图片/阅读状态 provider (/cover /image 直出缓存字节, /deleteBook /saveBookProgress
     // 经 NativeReadBookStateProvider 桥接阅读页挂接的 ReadBookShared)

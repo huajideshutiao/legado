@@ -11,8 +11,8 @@ import org.junit.Test
  * 断行 / Phase 1 冷 / Phase 1 热 / Phase 2 共七段分别计时，
  * 供 advance 缓存、Phase 1 并行等优化前后对拍。
  *
- * 单独跑：`gradlew :shared:jvmTest --tests "*LayoutBenchmarkHarness*"`
- * （Android host 变体同名：`gradlew :shared:testDebugUnitTest --tests "*LayoutBenchmarkHarness*"`）
+ * 单独跑：`gradlew :ui:jvmTest --tests "*LayoutBenchmarkHarness*"`
+ * （Android host 变体同名：`gradlew :ui:testDebugUnitTest --tests "*LayoutBenchmarkHarness*"`）
  * 数字走 stdout，项目没配 showStandardStreams，加 `-i` 或读 test-results 的 XML。
  *
  * 注意 1b/1c 会往 [TextMeasurerProviders] 注册工厂且没有反注册 API。

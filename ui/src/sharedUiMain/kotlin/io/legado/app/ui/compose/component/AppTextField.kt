@@ -70,7 +70,7 @@ import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
  * 错误色 = Arco danger (#F53F3F), 直接用 AppTheme.colors 注入 TextFieldDefaults.textFieldColors,
  * 不走 MaterialTheme.colors.primary (取色更明确)。
  *
- * 注意: compose.material (MD2) 在 CMP 1.7+ 标记 deprecated 但保留可用 (见 shared/build.gradle)。
+ * 注意: compose.material (MD2) 在 CMP 1.7+ 标记 deprecated 但保留可用 (见 ui/build.gradle.kts)。
  */
 @OptIn(ExperimentalMaterialApi::class)
 @Composable

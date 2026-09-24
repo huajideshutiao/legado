@@ -3,7 +3,7 @@ package io.legado.app.utils.concurrent
 /**
  * KMP 并发 Set 工厂 (替代 `java.util.concurrent.ConcurrentHashMap.newKeySet()`)。
  *
- * 背景: `modules/shared/.../SearchViewModel.kt` 原 `bookshelf` 集合用
+ * 背景: `ui/src/commonMain/.../SearchViewModel.kt` 原 `bookshelf` 集合用
  * `ConcurrentHashMap.newKeySet()` 创建线程安全 Set, 用于跨线程读写书架 key。
  * `java.util.concurrent.ConcurrentHashMap` 在 Kotlin/Native iOS target 不可用,
  * 阻塞 iOS 编译, 故抽出 expect/actual。

@@ -213,7 +213,7 @@ jobs:
   #   3. 编译 shared .so 并拷入 entry/libs (root build.gradle.kts 的 stageOhosNativeLibraries
   #      一站式完成: link release .so + 拷贝 + 生成头文件):
   #        ./gradlew stageOhosNativeLibraries -PenableOhosTarget=true
-  #      产物 shared/build/bin/ohosArm64/releaseShared/liblegado_shared.so → ohosApp/entry/libs/arm64-v8a/
+  #      产物 ui/build/bin/ohosArm64/releaseShared/liblegado_shared.so → ohosApp/entry/libs/arm64-v8a/
   #   4. 配置签名 (二选一):
   #      a) 调试签名: DevEco Studio 自动生成临时调试证书, 直接 Build → Build Hap(s)/APP(s) 即可
   #      b) 发布签名: 在 ohosApp/build-profile.json5 的 signingConfigs 数组填入 material.storeFile/cert

@@ -13,15 +13,6 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.utils.printOnDebug
 
 /**
- * composeResources 打进 assets 的 defaultData 目录前缀 (含模块限定名, 由插件按模块生成)。
- *
- * 单一数据源在 shared/commonMain/composeResources/files/defaultData/, 前缀不能省
- * (同 [io.legado.app.web.utils.AndroidWebAssetSource] 读 files/web/ 的方式)。
- */
-internal const val DEFAULT_DATA_ASSET_PREFIX =
-    "composeResources/legado.ui.generated.resources/files/defaultData/"
-
-/**
  * 默认数据加载入口 (app 端薄壳)。
  *
  * # 下沉说明
@@ -38,7 +29,8 @@ internal const val DEFAULT_DATA_ASSET_PREFIX =
  * # 资源读取
  *
  * [DefaultDataShared] 通过 [DefaultDataResourceProvider] 接口读取资源, app 端在
- * `App.onCreate` 早期注册实现 (读 composeResources 打进 assets 的 [DEFAULT_DATA_ASSET_PREFIX] 下资源)。
+ * `App.onCreate` 早期注册实现 (:ui 的 ComposeResourceDefaultDataProvider,
+ * 经 composeResources 生成的 Res 取数)。
  *
  * 模式参考 [io.legado.app.help.source.SourceHelp] (shared 下沉 + app 薄壳)。
  */

@@ -36,7 +36,7 @@
 
 ## C 编译路径 (bindings 与目标码分离)
 
-`shared/src/cinterop/mbedtls.def` 只负责生成 Kotlin 绑定 (package `io.legado.app.nativecrypto.mbedtls`)
+`data/src/cinterop/mbedtls.def` 只负责生成 Kotlin 绑定 (package `io.legado.app.nativecrypto.mbedtls`)
 和编译 def 内的 `lg_*` wrapper; `library/*.c` 的目标码各平台单独接线:
 
 - **鸿蒙 (ohosArm64)**: `ohosApp/entry/src/main/cpp/CMakeLists.txt` 把 `library/*.c` (GLOB) 编进
@@ -48,6 +48,6 @@
   Mach-O 动态 framework 链接期不允许悬空符号, 需在 mac 侧补:
   按 target 用 xcrun clang 把 `library/*.c` 编成 `libmbedtls.a`
   (真机 `-target arm64-apple-ios14.0`, 模拟器 `-target arm64-apple-ios14.0-simulator`),
-  然后在 `shared/build.gradle.kts` 的 mbedtls cinterop 块按 target 追加
+  然后在 `data/build.gradle.kts` 的 mbedtls cinterop 块按 target 追加
   `extraOpts("-staticLibrary", "libmbedtls.a", "-libraryPath", "<对应产物目录>")`,
   或在 framework link task 加 linkerOpts 指向 .a。quickjs-ng 的 4 个 .c 需要同样处理。

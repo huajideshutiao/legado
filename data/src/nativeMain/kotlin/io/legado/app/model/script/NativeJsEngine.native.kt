@@ -142,7 +142,7 @@ internal fun qjsEvalUtf8(
  * ohosMain [OhosJsEngine] 逻辑一致, 下沉到 nativeMain, 平台端 typealias 指向本类。
  *
  * 选型: 原 iOS 用 JavaScriptCore、鸿蒙用 JSVM-API (ArkJS/V8), 与 quickjs 行为不一致
- * (ES 特性/错误信息/bytecode), 改 cinterop 直接编译 shared/src/cinterop/quickjs-ng/ 的 C 源码
+ * (ES 特性/错误信息/bytecode), 改 cinterop 直接编译 modules/quickjs/src/main/cinterop/quickjs-ng/ 的 C 源码
  * (单一数据源, iOS/鸿蒙 cinterop 与 Android/Desktop JNI CMake 共用; Kotlin/Native 无 JNI)。
  *
  * 与 [QuickJsJsEngine] 差异: 编译缓存 = quickjs bytecode (JS_Eval + JS_EVAL_FLAG_COMPILE_ONLY +
@@ -152,7 +152,7 @@ internal fun qjsEvalUtf8(
  * JavaAdapter 抛异常; 资源管理 = JS_FreeContext/JS_FreeRuntime。
  *
  * 注册: 宿主启动早期经 registerNativeJsEngines 注册到 [JsEngines]。
- * 编译验证: ./gradlew :shared:compileKotlinIosArm64 / compileKotlinIosSimulatorArm64 /
+ * 编译验证: ./gradlew :data:compileKotlinIosArm64 / compileKotlinIosSimulatorArm64 /
  * compileKotlinLinuxArm64 -PenableOhosTarget=true。
  */
 object NativeJsEngine : JsEngine {

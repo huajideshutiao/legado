@@ -9,7 +9,6 @@ import io.legado.app.data.entities.BookSourceJsExt
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.data.entities.HttpTTSJsExt
 import io.legado.app.help.CacheManager
-import io.legado.app.help.DEFAULT_DATA_ASSET_PREFIX
 import io.legado.app.help.ExploreKindsCacheProvider
 import io.legado.app.help.ExploreKindsCacheProviders
 import io.legado.app.help.JsExtFactory
@@ -23,6 +22,7 @@ import io.legado.app.help.http.CookieStore
 import io.legado.app.help.http.OkHttpProxyClientProvider
 import io.legado.app.help.http.OkHttpProxyClientProviders
 import io.legado.app.help.image.BitmapImageOps
+import io.legado.app.help.registerComposeDefaultDataResourceProvider
 import io.legado.app.help.source.SourceCacheProvider
 import io.legado.app.help.source.SourceCacheProviders
 import io.legado.app.help.source.SourceDebugLogger
@@ -134,20 +134,10 @@ fun registerAndroidJsEngines() {
     OkHttpProxyClientProviders.impl = object : OkHttpProxyClientProvider {
         override fun getProxyClient(proxy: String?) = io.legado.app.help.http.getProxyClient(proxy)
     }
-    // DefaultData 下沉 shared 后, 资源读取走 provider 注入。
+    // DefaultData 资源读取走 provider 注入 (实现是 :ui 的 ComposeResourceDefaultDataProvider,
+    // 经 Res.readBytes 取数, 打包前缀由资源生成器写进 Res)。
     // 必须在 registerAndroidWebBookProviders() 之前注册: appDb lazy 初始化触发 dbCallback.onCreate
-    // 时会访问 DefaultData.keyboardAssists (经 DefaultDataShared 间接读 assets)。
+    // 时会访问 DefaultData.keyboardAssists (经 DefaultDataShared 间接读资源)。
     // 注册时机: App.onCreate 中 registerAndroidJsEngines() 先于 registerAndroidWebBookProviders() 调用。
-    io.legado.app.help.DefaultDataResourceProviders.register(
-        object : io.legado.app.help.DefaultDataResourceProvider {
-            override fun readResource(name: String): String {
-                // 单一数据源在 shared/commonMain/composeResources/files/defaultData/,
-                // 由 compose 资源插件打进 assets (前缀含模块限定名, 同 AndroidWebAssetSource)。
-                return String(
-                    App.instance.assets
-                        .open("$DEFAULT_DATA_ASSET_PREFIX$name").readBytes()
-                )
-            }
-        }
-    )
+    registerComposeDefaultDataResourceProvider()
 }

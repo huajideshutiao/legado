@@ -9,7 +9,7 @@
   统计每个字在所有词组读音中的出现频次取众数, 无词组统计时回落 pinyin_dict 首读音),
   比 pypinyin 单字默认读音更贴近 ICU zh 拼音序 (实测排序位移更小)
 
-输出: shared/src/nativeMain/kotlin/io/legado/app/utils/PinyinTable.native.kt
+输出: foundation/src/nativeMain/kotlin/io/legado/app/utils/PinyinTable.native.kt
 用法: pip install pypinyin && python scripts/gen_pinyin_map.py
 2026-08-04: 改动拼音表请重新生成而非手改。
 """
@@ -18,7 +18,7 @@ import sys
 from pypinyin import lazy_pinyin, Style, phrases_dict, pinyin_dict
 import collections
 
-OUT = "shared/src/nativeMain/kotlin/io/legado/app/utils/PinyinTable.native.kt"
+OUT = "foundation/src/nativeMain/kotlin/io/legado/app/utils/PinyinTable.native.kt"
 
 
 def gb2312_hanzi():

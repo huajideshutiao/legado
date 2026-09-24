@@ -205,19 +205,19 @@ jobs:
 
             - [ ] **Android / JVM (JNI + CMake)** —
                   `./gradlew :modules:quickjs-android-native:externalNativeBuildAppDebug`
-            - [ ] **Desktop / shared-jvm** — `./gradlew :ui:compileKotlinJvm`
+            - [ ] **Desktop / :ui jvm** — `./gradlew :ui:compileKotlinJvm`
             - [ ] **iOS**（需 macOS）— `bash scripts/build-ios-native.sh` 且
-                  `./gradlew :ui:cinteropQuickjsIosArm64`
-            - [ ] **鸿蒙**（需鸿蒙 SDK）— `./gradlew :ui:cinteropQuickjsLinuxArm64`
+                  `./gradlew :data:cinteropQuickjsIosArm64`
+            - [ ] **鸿蒙**（需鸿蒙 SDK）— `./gradlew :data:cinteropQuickjsLinuxArm64`
 
             ## 需人工审查
 
-            - [ ] `shared/src/cinterop/quickjs.def` 的 `qjs_*` wrapper 是否被上游 API 签名变更打断
+            - [ ] `data/src/cinterop/quickjs.def` 的 `qjs_*` wrapper 是否被上游 API 签名变更打断
             - [ ] 是否新增 / 删除了 `.c` 文件 —— 若有，需同步修改 **5 处消费方**的源文件列表：
                   `modules/quickjs-android-native/src/main/cpp/CMakeLists.txt`、
                   `ohosApp/entry/src/main/cpp/CMakeLists.txt`、
-                  `shared/src/cinterop/quickjs.def`、
-                  `build-logic/src/ohos/kotlin/io/legado/buildlogic/OhosTargetConventionPlugin.kt`、
+                  `data/src/cinterop/quickjs.def`、
+                  `data/build.gradle.kts` 的 cinterop 块、
                   `scripts/build-ios-native.sh`
             - [ ] JS 引擎行为回归（书源解析 / bytecode 缓存兼容性）
             - [ ] 更新 `${{ env.VENDOR_DIR }}/README.md` 的「版本」表格 commit sha

@@ -21,20 +21,13 @@ data class WebAssetResponse(
 /**
  * 静态资源回写壳: path -> [WebAssetSource] -> [WebAssetResponse] (bytes + mime)。
  *
- * # 下沉 commonMain (原 jvmAndAndroidMain)
- * 原 jvmAndAndroidMain 实现返回 NanoHTTPD.Response (依赖 NanoHTTPD, Native 端不可用);
- * 改为返回平台无关的 [WebAssetResponse], 各端壳自行转成原生响应:
+ * 返回平台无关的 [WebAssetResponse], 各端壳自行转成原生响应:
  * - NanoHTTPD (jvmAndAndroidMain): newChunkedResponse(OK, mime, ByteArrayInputStream(bytes))
  * - Ktor (nativeMain): call.respondBytes(bytes, ContentType.parse(mime))
  *
  * # 单一数据源
- * web 资源唯一数据源在 `shared/src/commonMain/composeResources/files/web/`, 四端 actual
- * (Android/桌面 JVM/iOS/鸿蒙) 均通过 composeResources [org.jetbrains.compose.resources.Res.readBytes]
- * 读取, 无平台端副本。
- *
- * # 与原 jvmAndAndroidMain 实现的差异
- * - `File.separator` → `/` (原代码统一用 /, 保持不变)
- * - getMimeType 逻辑逐字等价
+ * web 资源唯一数据源在 `ui/src/commonMain/composeResources/files/web/`, 四端
+ * (Android/桌面 JVM/iOS/鸿蒙) 均经 :ui 的 ComposeResourceWebAssetSource 读取, 无平台端副本。
  */
 class AssetsWeb(rootPath: String = "web") {
     private var rootPath = "web"
@@ -46,7 +39,7 @@ class AssetsWeb(rootPath: String = "web") {
     }
 
     suspend fun getResponse(path: String): WebAssetResponse {
-        // 统一用正斜杠: Android AssetManager + JVM ClassLoader + composeResources 均用 / 分隔
+        // 统一用正斜杠: composeResources 资源路径均用 / 分隔
         val fullPath = (rootPath + path).replace("/+".toRegex(), "/")
         val bytes = WebAssetSources.get().read(fullPath)
         return WebAssetResponse(bytes, getMimeType(fullPath))

@@ -30,7 +30,7 @@ import io.legado.app.utils.File
  *   让单元测试与早期骨架可运行; 真实接入鸿蒙原生 `@ohos.file.fs` 后 [registerOhosAppFilesDir]
  *   应先注入有效路径, 本退化路径不再生效
  * - **KSP 生成**: 鸿蒙复用 linuxArm64Main 源集, build.gradle 已配置
- *   `kspLinuxArm64(libs.room.compiler)` (enableOhosTarget=true 时启用, 见 shared/build.gradle 末尾)
+ *   `kspLinuxArm64(libs.room.compiler)` (enableOhosTarget=true 时启用, 见 data/build.gradle.kts 末尾)
  *
  * # Room KMP linuxArm64 支持说明
  * Room KSP 早期不支持 linuxArm64 target (Room 官方限制);

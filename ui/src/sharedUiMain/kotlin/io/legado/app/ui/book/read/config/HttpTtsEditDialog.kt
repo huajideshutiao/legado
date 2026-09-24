@@ -1,6 +1,6 @@
 package io.legado.app.ui.book.read.config
 
-// I18N KEYS (均已注册于 shared/src/commonMain/composeResources/values/strings.xml):
+// I18N KEYS (均已注册于 ui/src/commonMain/composeResources/values/strings.xml):
 //   action_save, login, show_login_header, del_login_header, copy_source,
 //   paste_source, log, help
 // PAINTER KEYS:

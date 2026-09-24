@@ -42,7 +42,7 @@ import kotlin.coroutines.resume
  *
  * macOS 编译验证 (Windows 无法编译 iOS target):
  * ```
- * ./gradlew :shared:compileKotlinIosArm64
+ * ./gradlew :ui:compileKotlinIosArm64
  * ```
  */
 suspend fun pickImage(): NSURL? = suspendCancellableCoroutine { cont ->

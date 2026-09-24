@@ -97,8 +97,8 @@ import io.legado.app.utils.registerAndroidRegexErrorHandler
 import io.legado.app.utils.registerAndroidScreenInfoProvider
 import io.legado.app.utils.removePref
 import io.legado.app.web.registerAndroidWebServerPlatform
-import io.legado.app.web.utils.registerAndroidWebAssetSource
 import io.legado.app.web.utils.registerAndroidWebStrings
+import io.legado.app.web.utils.registerComposeWebAssetSource
 import kotlinx.coroutines.launch
 import java.net.URL
 import java.util.concurrent.TimeUnit
@@ -224,7 +224,7 @@ class App : Application() {
         // - WebStrings: cannot_empty 文案注入 WebSocketServer
         // 须在任何 WebServerManager.start()/stop() 之前注册 (用户触发 Web 服务开关时)
         registerAndroidWebServerPlatform { WebService.serve() }
-        registerAndroidWebAssetSource(instance)
+        registerComposeWebAssetSource()
         registerAndroidWebStrings(androidAppString("cannot_empty"))
         // 注册 AudioPlay 平台 provider (commonMain AudioPlayShared 调用
         // AudioPlayCommanders 派发 Service 命令,

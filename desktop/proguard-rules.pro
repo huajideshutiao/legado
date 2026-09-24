@@ -42,7 +42,7 @@
 }
 
 ############################
-# 项目反射 keep (危险区, 随 shared/quickjs 下沉的规则照搬)
+# 项目反射 keep (危险区, 随业务层下沉的规则照搬)
 ############################
 -include ../core/consumer-rules.pro
 -include ../data/consumer-rules.pro
@@ -56,7 +56,7 @@
 # 均 implements JsExtensionsJvm; extends 在 ProGuard 中同样匹配接口实现类)
 -keep class * extends io.legado.app.help.JsExtensionsJvm { *; }
 
-# 数据实体 (Gson 反射 + Room + JS 访问; shared/consumer-rules.pro 已覆盖
+# 数据实体 (Gson 反射 + Room + JS 访问; data/consumer-rules.pro 已覆盖
 # io.legado.app.data.entities.**, 此处兜底其它包的实体)
 -keep class **.data.entities.** { *; }
 -keep class io.legado.app.model.fileBook.ZipEntry { *; }

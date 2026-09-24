@@ -10,7 +10,7 @@ import androidx.lifecycle.LifecycleService
  * EventBus 观察面扩展 (Android 平台专属)。
  *
  * post 侧 (postEvent/postEventDelay/postEventOrderly) 已下沉到
- * modules/shared/src/commonMain/kotlin/io/legado/app/utils/EventBusExtensions.kt。
+ * foundation/src/commonMain/kotlin/io/legado/app/utils/EventBusExtensions.kt。
  *
  * 注意: 本文件使用 @file:JvmName("EventBusObserveExtensions") 改变生成的 class 文件名,
  * 避免与 shared 模块的 EventBusExtensionsKt.class 同名冲突导致符号遮蔽。

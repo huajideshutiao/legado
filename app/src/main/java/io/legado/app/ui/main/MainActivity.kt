@@ -814,7 +814,7 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
     private suspend fun privacyPolicy(): Boolean {
         if (LocalConfig.privacyPolicyOk) return true
         // privacyPolicy.md 统一存于 shared composeResources files/md (四端共享一份),
-        // 经 WebAssetSources 读 (Android 走 assets, 与关于页 MdDocDialog 同一条通道)
+        // 经 WebAssetSources 读 (四端同一 composeResources 取数路径, 与关于页 MdDocDialog 同源)
         val privacyPolicy = withContext(IO) {
             runCatching {
                 WebAssetSources.get().read("md/privacyPolicy.md").decodeToString()

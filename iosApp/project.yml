@@ -163,7 +163,7 @@ targets:
       base:
         PRODUCT_NAME: legado
         # Kotlin 官方 direct integration 将当前 SDK/架构/构建类型对应的 framework
-        # 复制到 TARGET_BUILD_DIR 并签名，不再硬编码 shared/build/bin 下的变体路径。
+        # 复制到 TARGET_BUILD_DIR 并签名，不再硬编码 ui/build/bin 下的变体路径。
         FRAMEWORK_SEARCH_PATHS:
           - "$(inherited)"
           - "$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)"

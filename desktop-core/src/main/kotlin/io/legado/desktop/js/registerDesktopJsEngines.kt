@@ -22,7 +22,7 @@ import java.nio.file.Paths
  * 1. 注册 JS 图片 API: 注入 [DesktopImageOps] 到 [JsBindingInjector]
  *    (基于 Skia 原生库纯 2D 像素操作, 支持 WebP/JPG/PNG 切片混淆解密, desktop 与 headless 共用);
  * 2. 注册 [QuickJsJsEngine] 到 [JsEngines] 作为 QUICKJS 引擎实现
- *    (QuickJsJsEngine 已下沉到 `modules/shared/src/jvmAndAndroidMain`,
+ *    (QuickJsJsEngine 已下沉到 `data/src/jvmAndAndroidMain`,
  *    委托 `modules:quickjs` 的 commonMain QuickJsEngine API,
  *    Android 端 `JsEnginesAndroid.kt` 也注册同一个 object, 行为完全一致);
  * 3. 注册 [DesktopQuickJsSharedJsScopeProvider] 到 [SharedJsScope]

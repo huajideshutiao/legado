@@ -28,9 +28,9 @@ find_package(compose REQUIRED CONFIG)
 set(LEGADO_SHARED_LIB_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../../../libs/${LEGADO_ABI_DIR}/liblegado_shared.so)
 
 # mbedTLS 3.6 LTS 与 QuickJS-NG 仍由 entry 原生层提供，供 K/N cinterop 未定义符号解析。
-set(LEGADO_MBEDTLS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../shared/src/cinterop/mbedtls)
+set(LEGADO_MBEDTLS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../data/src/cinterop/mbedtls)
 file(GLOB LEGADO_MBEDTLS_SRC ${LEGADO_MBEDTLS_DIR}/library/*.c)
-set(LEGADO_QUICKJS_NG_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../shared/src/cinterop/quickjs-ng)
+set(LEGADO_QUICKJS_NG_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../modules/quickjs/src/main/cinterop/quickjs-ng)
 set(LEGADO_QUICKJS_NG_SRC
     ${LEGADO_QUICKJS_NG_DIR}/quickjs.c
     ${LEGADO_QUICKJS_NG_DIR}/dtoa.c

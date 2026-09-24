@@ -12,7 +12,7 @@ import kotlin.coroutines.CoroutineContext
  * quickjs scope 包装：直接委托 [QuickJsContext]。
  *
  * # 下沉位置
- * 与 [QuickJsJsEngine] 同批从 app 下沉到 `modules/shared/src/jvmAndAndroidMain`,
+ * 与 [QuickJsJsEngine] 同批从 app 下沉到 `data/src/jvmAndAndroidMain`,
  * 让 Android 与桌面 JVM 共用。包名保持 `io.legado.app.model.script.quickjs` 不变,
  * app 端 `QuickJsSharedJsScopeProvider` 等仍可正常 import。
  *

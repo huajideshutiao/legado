@@ -46,7 +46,7 @@ import platform.Security.kSecAttrKeyTypeRSA
  * 所有 CF 对象 (CFData/CFDictionary/CFError) 遵循 Create/Copy 规则: 持有者用完 CFRelease。
  *
  * 注: 本文件涉及大量 cinterop 类型, Windows 无法编译验证, 需在 macOS 跑
- * `:shared:compileKotlinIosArm64` 对拍修正。
+ * `:data:compileKotlinIosArm64` 对拍修正。
  */
 @OptIn(ExperimentalForeignApi::class)
 internal object IosCryptoNative {

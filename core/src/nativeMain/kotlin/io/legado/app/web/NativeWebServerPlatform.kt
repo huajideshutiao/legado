@@ -22,7 +22,7 @@ class NativeWebServerPlatform : KtorWebServerPlatform() {
 /**
  * 注册 [NativeWebServerPlatform] 到 [WebServerPlatforms] (iOS/鸿蒙共用)。
  *
- * 前置依赖: [registerNativeWebAssetSource] + [registerNativeWebStrings]
+ * 前置依赖: [io.legado.app.web.utils.registerComposeWebAssetSource] + [registerNativeWebStrings]
  * (KtorWebServerPlatform.startServers 调 WebStringsProviders.get().cannotEmpty;
  * KtorRouting 调 AssetsWeb.getResponse -> WebAssetSources.get().read)。
  *

@@ -11,7 +11,7 @@ package io.legado.app.help.crypto
  * 行为回退: PCBC 模式 mbedTLS 无原生实现 (MbedTlsCipher 点名抛异常), 移除 krypto
  * 后 iOS 不再支持 PCBC (与鸿蒙端一致); 书源脚本极少使用 PCBC, 属可接受回退。
  *
- * 注意: mbedTLS 目标码需 mac 侧编 libmbedtls.a 链入 (见 shared/src/cinterop/mbedtls/README.md);
+ * 注意: mbedTLS 目标码需 mac 侧编 libmbedtls.a 链入 (见 data/src/cinterop/mbedtls/README.md);
  * 缺 .a 是链接期失败而非运行期。
  *
  * 行为字节级对齐 jvmAndAndroidMain (javax.crypto / hutool)。

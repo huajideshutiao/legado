@@ -36,7 +36,7 @@ import io.legado.app.utils.File
  *
  * # macOS 编译验证 (Windows 无法编译 iOS target)
  * ```
- * ./gradlew :shared:compileKotlinIosArm64
+ * ./gradlew :data:compileKotlinIosArm64
  * ```
  */
 private val activeDelegates = mutableListOf<Any>()

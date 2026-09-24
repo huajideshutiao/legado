@@ -74,7 +74,7 @@ fun registerOhosInteropStage(taskName: String, outputDirName: String): TaskProvi
 val stageNativeInteropForOhos =
     registerOhosInteropStage("stageNativeInteropForOhos", "generated/nativeInterop/ohosArm64Main")
 
-// ============ 鸿蒙 Room 派生三件套 (从 :shared 迁移, 见 shared/build.gradle.kts 注释) ============
+// ============ 鸿蒙 Room 派生三件套 (从 :shared 迁移, 见 foundation/data/core/ui 各模块 build 脚本注释) ============
 abstract class DeriveOhosRoomSchemas : DefaultTask() {
     @get:InputDirectory
     @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -305,7 +305,7 @@ if (enableOhosTarget) {
             compilations.getByName("main").cinterops {
                 create("quickjs") {
                     defFile(file("src/cinterop/quickjs.def"))
-                    // 头文件与 C 源码在 :shared (modules/quickjs 的 CMake 也引用该目录),
+                    // 头文件与 C 源码在 modules/quickjs/src/main/cinterop/quickjs-ng (Android CMake 也引用该目录),
                     // 本模块只编 cinterop 绑定, 链接用预编译 native 库
                     includeDirs(file("${rootProject.projectDir}/modules/quickjs/src/main/cinterop/quickjs-ng"))
                 }
@@ -355,7 +355,7 @@ kotlin {
                 compilations.getByName("main").cinterops {
                     create("quickjs") {
                         defFile(file("src/cinterop/quickjs.def"))
-                        // 头文件与 C 源码在 :shared (modules/quickjs 的 CMake 也引用该目录),
+                        // 头文件与 C 源码在 modules/quickjs/src/main/cinterop/quickjs-ng (Android CMake 也引用该目录),
                         // 本模块只编 cinterop 绑定, 链接用预编译 native 库
                         includeDirs(file("${rootProject.projectDir}/modules/quickjs/src/main/cinterop/quickjs-ng"))
                     }

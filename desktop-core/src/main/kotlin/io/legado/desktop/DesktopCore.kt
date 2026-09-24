@@ -6,7 +6,6 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.BundledDatabaseDriver
 import io.legado.app.data.DesktopAppDatabaseProvider
 import io.legado.app.help.AppWebDavShared
-import io.legado.app.help.DefaultDataResourceProviders
 import io.legado.app.help.RuleBigDataProviders
 import io.legado.app.help.book.BookHelpProviders
 import io.legado.app.help.book.BookHelpShared
@@ -31,6 +30,7 @@ import io.legado.app.help.file.registerDesktopFileDownloader
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.i18n.registerAppStringProvider
 import io.legado.app.help.notification.registerDesktopNotificationProgress
+import io.legado.app.help.registerComposeDefaultDataResourceProvider
 import io.legado.app.help.service.DesktopUpdateBookCallback
 import io.legado.app.help.service.UpdateBookCallbacks
 import io.legado.app.help.service.registerDesktopServiceLauncher
@@ -44,7 +44,7 @@ import io.legado.app.model.fileBook.ZipFileWrapperFactoryProviders
 import io.legado.app.ui.book.changecover.CoverStorageServiceProviders
 import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.web.registerDesktopWebServerPlatform
-import io.legado.app.web.utils.registerDesktopWebAssetSource
+import io.legado.app.web.utils.registerComposeWebAssetSource
 import io.legado.app.web.utils.registerDesktopWebStrings
 import io.legado.desktop.DesktopCore.initDefaultData
 import io.legado.desktop.DesktopCore.initRuntimeEnvironment
@@ -54,7 +54,6 @@ import io.legado.desktop.DesktopCore.startupBackgroundTasks
 import io.legado.desktop.config.registerDesktopConfig
 import io.legado.desktop.data.DesktopAppDbAccessor
 import io.legado.desktop.help.DesktopCrashHandler
-import io.legado.desktop.help.DesktopDefaultDataResourceProvider
 import io.legado.desktop.help.applyDesktopLanguagePref
 import io.legado.desktop.help.book.DesktopBookHelpAccessor
 import io.legado.desktop.help.book.DesktopZipFileWrapperFactory
@@ -268,10 +267,11 @@ object DesktopCore {
         // JS 引擎 provider (JsEngines/SharedJsScope/简繁词典/DesktopImageOps): 任何页面/协程首次 eval 前必然就绪;
         // 注册本身零开销 (native 库在首次 eval 时才加载)。
         registerDesktopJsEngines()
-        // 注册桌面端 DefaultDataResourceProvider: 必须在 AppDatabaseProviders.register 之前
+        // 注册 DefaultDataResourceProvider (:ui 的 ComposeResourceDefaultDataProvider,
+        // 经 Res.readBytes 取数): 必须在 AppDatabaseProviders.register 之前
         // (首次建库 dbCallback.onCreate → DefaultData.keyboardAssists → DefaultDataResourceProviders
         // .get().readResource("keyboardAssists.json")), 否则首次建库时 keyboardAssists 表无默认数据
-        DefaultDataResourceProviders.register(DesktopDefaultDataResourceProvider())
+        registerComposeDefaultDataResourceProvider()
         // 注册桌面端 AppDatabase provider (BundledDatabaseDriver 用 Room.databaseBuilder +
         // BundledSQLiteDriver 构造 AppDatabase, 同一实例经 AppDatabaseProviders 共享)
         val dbDriver = BundledDatabaseDriver()
@@ -367,7 +367,7 @@ object DesktopCore {
             // - WebStrings: 硬编码中文文案 (后续接入 i18n 资源后替换)
             // 须在任何 WebServerManager.start()/stop() 之前注册 (MyScreen Web 服务开关触发时)
             registerDesktopWebServerPlatform()
-            registerDesktopWebAssetSource()
+            registerComposeWebAssetSource()
             registerDesktopWebStrings()
             // 9. CacheBook 回调 (依赖 ServiceLauncher 已注册)
             DesktopCacheBook.registerCallback()

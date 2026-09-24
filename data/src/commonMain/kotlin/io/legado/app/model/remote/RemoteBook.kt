@@ -15,7 +15,7 @@ import io.legado.app.ui.book.import.ImportFileItem
  *
  * # 下沉说明 (app → shared/commonMain)
  * - 原 `@Keep` (androidx.annotation.Keep) 移除: commonMain 沿用项目惯例 (照 CacheManager /
- *   OldRssSource / AnalyzeByJSoup 先例), 反射保活改由 shared/consumer-rules.pro -keep 登记。
+ *   OldRssSource / AnalyzeByJSoup 先例), 反射保活改由 data/consumer-rules.pro -keep 登记。
  * - 原 `appDb.bookDao.hasFile(...)` → `AppDbProviders.get().bookDao.hasFile(...)`
  *   (appDb 顶层 val 在 app 模块, commonMain 经 [AppDbProviders] 注入访问, 照 BookController 先例)。
  * - 原 `runBlocking { bookDao.hasFile(...) }` 在构造函数中调用 (构造函数不能 suspend),

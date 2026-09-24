@@ -84,7 +84,7 @@ import kotlin.native.CName
  * ## 编译要求
  * - Kotlin/Native linuxArm64 target 启用 (`-PenableOhosTarget=true`)
  * - `binaries.sharedLib` 配置输出名为 `legado_shared` 的 .so
- *   (见 modules/shared/build.gradle KP4 段落 TODO 注释)
+ *   (见 ui/build.gradle.kts sharedLib 段落注释)
  * - DevEco Studio 编译 entry 模块时把 .so 一起打包到 HAP
  */
 @OptIn(kotlin.experimental.ExperimentalNativeApi::class)

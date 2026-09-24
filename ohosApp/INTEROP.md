@@ -2,7 +2,7 @@
 
 ## 1. 背景与目标
 
-Legado 项目的 KMP 全平台化任务需要让 CPF `ohosArm64` target 复用 `shared` 中的共享业务代码 (
+Legado 项目的 KMP 全平台化任务需要让 CPF `ohosArm64` target 复用共享模块中的共享业务代码 (
 ChineseUtils / MD5Utils / HTTP / 数据库等)，并由 ArkUI 融合渲染承载 Compose UI。
 
 ArkTS 通过 NAPI 获取 `liblegado_shared.so` 导出的 Compose 控制器和业务 C ABI；`@cpf-kmp-cmp/compose`
@@ -35,7 +35,7 @@ ArkTS 通过 NAPI 获取 `liblegado_shared.so` 导出的 Compose 控制器和业
                              │ C ABI 函数调用
                              ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│  Kotlin/Native 层 (modules/shared/src/ohosMain/.../napi/)       │
+│  Kotlin/Native 层 (ui/src/ohosMain/.../napi/)       │
 │  LegadoNativeExports.kt                                         │
 │                                                                  │
 │    @CName("legado_chinese_t2s")                                  │
@@ -46,7 +46,7 @@ ArkTS 通过 NAPI 获取 `liblegado_shared.so` 导出的 Compose 控制器和业
                              │
                              ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│  共享业务层 (modules/shared/src/commonMain)                     │
+│  共享业务层 (foundation/data/core/ui 的 commonMain)                     │
 │  ChineseUtils / MD5Utils / Ktor / Room / ...                    │
 │  (Android/JVM/iOS/鸿蒙 各端共用同一份实现)                    │
 └─────────────────────────────────────────────────────────────────┘
@@ -54,9 +54,9 @@ ArkTS 通过 NAPI 获取 `liblegado_shared.so` 导出的 Compose 控制器和业
 
 ## 3. 关键文件清单
 
-### 3.1 Kotlin/Native 导出层 (modules/shared)
+### 3.1 Kotlin/Native 导出层 (:ui ohosMain)
 
-- **`modules/shared/src/ohosMain/kotlin/io/legado/app/napi/LegadoNativeExports.kt`**
+- **`ui/src/ohosMain/kotlin/io/legado/app/napi/LegadoNativeExports.kt`**
   - 用 `@CName("legado_xxx")` 注解导出 C ABI 函数
   - 当前导出 6 个函数: chineseT2S / chineseS2T / md5Encode / formatPercentUs / isProvidersRegistered / registerOhosProviders
 
@@ -74,9 +74,9 @@ ArkTS 通过 NAPI 获取 `liblegado_shared.so` 导出的 Compose 控制器和业
 
 ### 3.4 ohosMain 配置 provider stub
 
-- **`modules/shared/src/ohosMain/.../config/OhosPreferenceProvider.kt`** - 文件持久化的 PreferenceProvider stub
-- **`modules/shared/src/nativeMain/.../config/NativeAppConfigAccessor.native.kt`** - AppConfigAccessor 实现 (iOS/鸿蒙共用, 委托 PreferenceProvider, 由 OhosProviderRegistry 注册)
-- **`modules/shared/src/ohosMain/.../config/OhosProviderRegistry.kt`** - 集中注册入口 `registerOhosProviders()`
+- **`core/src/ohosMain/.../config/OhosPreferenceProvider.kt`** - 文件持久化的 PreferenceProvider stub
+- **`core/src/nativeMain/.../config/NativeAppConfigAccessor.native.kt`** - AppConfigAccessor 实现 (iOS/鸿蒙共用, 委托 PreferenceProvider, 由 OhosProviderRegistry 注册)
+- **`ui/src/ohosMain/.../config/OhosProviderRegistry.kt`** - 集中注册入口 `registerOhosProviders()`
 
 ## 4. 编译与运行流程
 
@@ -92,7 +92,7 @@ ArkTS 通过 NAPI 获取 `liblegado_shared.so` 导出的 Compose 控制器和业
 
 Gradle staging 契约包含：
 
-- `liblegado_shared.so`：`:shared:linkDebugSharedOhosArm64` 的 CPF 融合渲染产物。
+- `liblegado_shared.so`：`:ui:linkDebugSharedOhosArm64` 的 CPF 融合渲染产物。
 - K/N 自动生成的 API 头：供 entry NAPI 直接调用 `MainArkUIViewController` 与 Compose 初始化符号。
 - Compose ArkTS/native 运行时：由 `@cpf-kmp-cmp/compose:1.9.2-0.4.0` 提供，不再维护 AntUI XComponent
   桥接库。
@@ -116,7 +116,7 @@ mock 版本。
 1. DevEco Studio 连接鸿蒙模拟器或真机
 2. Run → Run 'entry'
 3. 应用启动后, EntryAbility.onCreate 调用 legado_register_providers()
-4. Index.ets 加载 shared LegadoApp Compose UI, 业务 UI 由 shared 统一渲染
+4. Index.ets 加载 shared LegadoApp Compose UI, 业务 UI 由共享模块统一渲染
 ```
 
 ## 5. 内存与生命周期约定
@@ -191,21 +191,21 @@ mock 版本。
 KP6 已完成鸿蒙端 Room KMP + BundledSQLiteDriver 真实数据库接入, 替代 KP4 时期的 mock 兜底。
 本节记录落地文件清单与关键验证结论 (对应任务 9 的标注要求)。
 
-### 10.1 已落地的 actual 实现文件 (shared/ohosMain)
+### 10.1 已落地的 actual 实现文件 (data/core/ui 的 ohosMain)
 
 | 文件 | 职责 | 真实化状态 |
 | --- | --- | --- |
-| `shared/src/ohosMain/kotlin/io/legado/app/data/OhosDatabaseDriver.kt` | `DatabaseDriverProvider` actual: `Room.databaseBuilder<AppDatabase>` + `BundledSQLiteDriver` 构造真实 Room 数据库, dbPath 默认 `{AppFilesDirs.filesDir}/legado.db` (鸿蒙沙盒) | ✅ 真实实现 |
-| `shared/src/ohosMain/kotlin/io/legado/app/data/OhosAppDatabaseProvider.kt` | `AppDatabaseProvider` actual: 委托 `OhosDatabaseDriver.appDatabase` 暴露 `AppDatabase` 单例 | ✅ 真实实现 |
-| `shared/src/ohosMain/kotlin/io/legado/app/data/OhosAppDbAccessor.kt` | `AppDbAccessor` actual: 转发 14 个 DAO + `registerOhosAppDb(driver)` 便捷注册函数 | ✅ 真实实现 |
-| `shared/src/ohosMain/kotlin/io/legado/app/help/config/OhosProviderRegistry.kt` | `registerOhosProviders()` 中 `DatabaseDriverProviders.register` + `registerOhosAppDb` (含 AppDatabaseProviders + AppDbProviders) | ✅ 已注册 |
+| `data/src/ohosMain/kotlin/io/legado/app/data/OhosDatabaseDriver.kt` | `DatabaseDriverProvider` actual: `Room.databaseBuilder<AppDatabase>` + `BundledSQLiteDriver` 构造真实 Room 数据库, dbPath 默认 `{AppFilesDirs.filesDir}/legado.db` (鸿蒙沙盒) | ✅ 真实实现 |
+| `data/src/ohosMain/kotlin/io/legado/app/data/OhosAppDatabaseProvider.kt` | `AppDatabaseProvider` actual: 委托 `OhosDatabaseDriver.appDatabase` 暴露 `AppDatabase` 单例 | ✅ 真实实现 |
+| `data/src/ohosMain/kotlin/io/legado/app/data/OhosAppDbAccessor.kt` | `AppDbAccessor` actual: 转发 14 个 DAO + `registerOhosAppDb(driver)` 便捷注册函数 | ✅ 真实实现 |
+| `ui/src/ohosMain/kotlin/io/legado/app/help/config/OhosProviderRegistry.kt` | `registerOhosProviders()` 中 `DatabaseDriverProviders.register` + `registerOhosAppDb` (含 AppDatabaseProviders + AppDbProviders) | ✅ 已注册 |
 
 ### 10.2 napi 桥接真实化 (ohosApp)
 
 | 文件 | 真实化状态 |
 | --- | --- |
 | `ohosApp/entry/src/main/cpp/legado_napi.cpp` | `BookshelfList`/`SearchBook`/`LoadChapter`/`ImportBookSource` 通过 dlsym 调用 `legado_bookshelf_list` 等 @CName 符号; dlsym 失败时返回 `"[]"`/`""`/`0` 兜底 (非 mock, 是 .so 未加载时的容错) |
-| `shared/src/ohosMain/kotlin/io/legado/app/napi/LegadoNativeExports.kt` | `legado_bookshelf_list` 等已走 `AppDbProviders.get().bookDao.getBooksByGroup(BookGroup.IdAll)` 真实 DAO 查询, runBlocking 转 suspend |
+| `ui/src/ohosMain/kotlin/io/legado/app/napi/LegadoNativeExports.kt` | `legado_bookshelf_list` 等已走 `AppDbProviders.get().bookDao.getBooksByGroup(BookGroup.IdAll)` 真实 DAO 查询, runBlocking 转 suspend |
 | `ohosApp/entry/src/main/ets/entryability/EntryAbility.ets` | `onCreate` 调用 `legado.registerOhosProviders()` 完成 provider 注入 |
 
 ### 10.3 sqlite-bundled linuxArm64 变体验证结论 (任务 9 核心标注)
