@@ -57,6 +57,7 @@ class HttpConnectionRequest : Connection.Request {
 
     override fun url(url: URL): HttpConnectionRequest = apply { this.url = url }
 
+    @Suppress("TYPEALIAS_EXPANSION_DEPRECATION")
     override fun url(url: String): HttpConnectionRequest = apply {
         this.url = try {
             URL(url)

@@ -107,6 +107,12 @@ open class AnalyzeRuleCore(
         return this
     }
 
+    // java.net.URL(String) 自 JDK 20 弃用 (建议改用 URI#toURL), 但二者不等价:
+    // URI 会按 RFC2396 转义, 对含空格/|/{}/^ 的地址直接抛 IllegalArgumentException,
+    // 而书源地址含这些字符是真实场景 (URL(String) 全部接受)。故保留 URL(String) 语义。
+    // 抑制键是 TYPEALIAS_EXPANSION_DEPRECATION: URL 是 foundation 的 expect 类,
+    // jvm actual 经 typealias 展开到 java.net.URL, 该路径不走 DEPRECATION 键。
+    @Suppress("TYPEALIAS_EXPANSION_DEPRECATION")
     fun setRedirectUrl(url: String): URL? {
         if (url.isDataUrl()) {
             return redirectUrl

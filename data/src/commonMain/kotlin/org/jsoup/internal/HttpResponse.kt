@@ -99,6 +99,7 @@ class HttpResponse(
 
     // --- Base<Response> 接口实现 ---
 
+    @Suppress("TYPEALIAS_EXPANSION_DEPRECATION")
     override fun url(): URL? {
         val str = raw.request.url.toString()
         return try {

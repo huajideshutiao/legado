@@ -245,6 +245,7 @@ class HttpConnection : Connection {
     }
 
     /** 将 data 序列化到 URL query string,同 jsoup serialiseRequestUrl;query 插在 fragment 之前 */
+    @Suppress("TYPEALIAS_EXPANSION_DEPRECATION")
     private fun serializeToUrl(
         origUrl: URL,
         data: Collection<Connection.KeyVal>,
