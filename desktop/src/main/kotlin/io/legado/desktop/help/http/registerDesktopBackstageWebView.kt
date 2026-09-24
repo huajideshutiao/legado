@@ -4,7 +4,7 @@ import io.legado.app.help.http.BackstageWebViewFactory
 import io.legado.app.help.http.BackstageWebViewHandle
 import io.legado.app.help.http.BackstageWebViewProviders
 import io.legado.app.help.http.StrResponse
-import io.legado.app.ui.compose.platform.jvmGetString
+import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.desktop.help.webview.DesktopWebViewEngines
 import io.legado.desktop.help.webview.WebViewFetchRequest
 import okhttp3.Protocol
@@ -52,7 +52,7 @@ private class DesktopBackstageWebViewHandle(
     override suspend fun getStrResponse(): StrResponse {
         val engine = DesktopWebViewEngines.get()
             ?: throw UnsupportedOperationException(
-                jvmGetString("desktop_backstage_webview_unsupported")
+                syncGetString("desktop_backstage_webview_unsupported")
             )
         val result = engine.fetch(request)
         if (!result.redirected) return StrResponse(result.url, result.body)

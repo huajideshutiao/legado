@@ -67,8 +67,7 @@ import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalOverlayTopInset
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.SharedEventBusProvider
-import io.legado.app.ui.compose.platform.jvmGetString
-import io.legado.app.ui.compose.platform.registerComposeStringProviders
+import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.reader.ReaderDictWord
@@ -392,9 +391,6 @@ private fun runDesktopApp() = application {
         // macOS 靠打包期 Info.plist): 异步且不阻塞启动; 放到判定之后是为了不让二次启动去做这个写入
         DesktopUrlProtocol.ensureRegisteredAsync()
         // 阶段0 (日志/字符串/AndroidId/Toast/进度/更新回调/config+语言): 闪屏所需最小集
-        // 闪屏构造 (DesktopSplashScreen → DesktopThemeStoreProvider → 内置主题名) 早于阶段0,
-        // 故字符串通道注册须排在它之前
-        registerComposeStringProviders()
         DesktopCore.registerEarlyProviders()
         val duration = splashScreen.show()
         // 预热 CMP 字符串资源表: 首次取串要走 runBlocking + 资源表初始化, 实测 178~289ms。
@@ -403,7 +399,7 @@ private fun runDesktopApp() = application {
         // getString 路径里没有 withContext(Main), 不会构成"后台持 lazy 锁等 EDT + EDT 等锁"。
         // 起在 applyDesktopLanguagePref (阶段0 已跑完) 之后: 预热与最终语言一致, 不会白跑一份错 locale。
         Thread({
-            runCatching { jvmGetString("app_name") }
+            runCatching { syncGetString("app_name") }
                 .onFailure { AppLog.put("预热 app_name 失败", it) }
         }, "string-res-warm").apply {
             isDaemon = true
@@ -918,7 +914,7 @@ private fun initDesktopRuntimeEnvironment() {
         val exeDir = resDirFile.parentFile?.parentFile ?: resDirFile.parentFile
         File(exeDir, "data")
     } else {
-        // 刻意不调 jvmGetString: 本函数在 main() 第一行路径上, 取一次 CMP 字符串会把整套资源系统
+        // 刻意不调 syncGetString: 本函数在 main() 第一行路径上, 取一次 CMP 字符串会把整套资源系统
         // 同步初始化 —— 实测 (-Xlog:class+load) MainKt 类在 0.075s, 而 DesktopCore 要到 0.536s
         // 才首次出现, 中间 461ms 全耗在这一句日志上; 而 CI 打便携包不传 -Plegado.installType
         // (_desktop.yml 只传 -PappVersion), 等于每个便携用户白付 0.46 秒换一条提示。

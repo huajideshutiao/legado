@@ -7,7 +7,7 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.http.newCallStrResponse
 import io.legado.app.model.script.quickjs.QuickJsSharedJsScopeBase
-import io.legado.app.ui.compose.platform.jvmGetString
+import io.legado.app.ui.compose.platform.syncGetString
 import kotlinx.coroutines.runBlocking
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.CoroutineContext
@@ -49,7 +49,7 @@ object DesktopQuickJsSharedJsScopeProvider : QuickJsSharedJsScopeBase() {
     }
 
     override fun jsLibDownloadFailedException(url: String): Exception =
-        NoStackTraceException(jvmGetString("download_jslib_failed", url))
+        NoStackTraceException(syncGetString("download_jslib_failed", url))
 
     /** eval 失败时把 ScriptException 包装成带 jsLib 定位信息的报错 (app 端无此包装)。 */
     override fun evalJsLibBytecode(

@@ -9,7 +9,7 @@ import io.legado.app.model.audio.AudioPlayAnalyzeRuleFactory
 import io.legado.app.model.audio.AudioPlaySession
 import io.legado.app.model.audio.LyricPublisher
 import io.legado.app.model.audio.NowPlayingSessionHost
-import io.legado.app.ui.compose.platform.jvmGetString
+import io.legado.app.ui.compose.platform.syncGetString
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -63,7 +63,7 @@ class DesktopAudioPlayProvider : NowPlayingSessionHost() {
 
     /** mpv 的报错文案走桌面本地化字符串。 */
     override fun playerErrorMessage(error: Throwable): String =
-        jvmGetString("desktop_audio_play_error", error.message ?: "")
+        syncGetString("desktop_audio_play_error", error.message ?: "")
 
     /** SMTC 首次播放时激活 (幂等)。 */
     override fun onSessionStart() {

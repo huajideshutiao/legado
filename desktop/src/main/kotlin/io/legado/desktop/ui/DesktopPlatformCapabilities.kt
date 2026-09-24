@@ -24,7 +24,7 @@ import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.read.config.FontItem
 import io.legado.app.ui.book.source.BookSourceSort
 import io.legado.app.ui.book.source.manage.BookSourceViewModelShared
-import io.legado.app.ui.compose.platform.jvmGetString
+import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.ui.config.MODE_EDIT_CONFIG
 import io.legado.app.ui.config.MODE_EDIT_PREFS
 import io.legado.app.ui.config.MODE_NEW_CONFIG
@@ -196,7 +196,7 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
                 title = if (sourceName.isBlank()) {
                     "登录"
                 } else {
-                    runCatching { jvmGetString("login_source", sourceName) }
+                    runCatching { syncGetString("login_source", sourceName) }
                         .getOrElse { "登录 $sourceName" }
                 },
                 isLogin = true,
@@ -288,7 +288,7 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
 
     override fun copyToClipboard(text: String) {
         shareText(text)
-        runCatching { Toasters.get().toast(jvmGetString("copy_complete")) }
+        runCatching { Toasters.get().toast(syncGetString("copy_complete")) }
     }
 
     override fun getClipboardText(): String? = runCatching {

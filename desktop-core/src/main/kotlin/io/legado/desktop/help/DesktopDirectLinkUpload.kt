@@ -10,7 +10,7 @@ import io.legado.app.help.DirectLinkUploadStoreProviders
 import io.legado.app.help.ruleFileName
 import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
-import io.legado.app.ui.compose.platform.jvmGetString
+import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.utils.GSON
 import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.fromJsonArray
@@ -70,11 +70,11 @@ object DesktopDirectLinkUpload : DirectLinkUploadStoreProvider, DirectLinkUpload
     ): String {
         val url = rule.uploadUrl
         if (url.isBlank()) {
-            throw NoStackTraceException(jvmGetString("upload_url_not_configured"))
+            throw NoStackTraceException(syncGetString("upload_url_not_configured"))
         }
         val downloadUrlRule = rule.downloadUrlRule
         if (downloadUrlRule.isBlank()) {
-            throw NoStackTraceException(jvmGetString("download_url_rule_not_configured"))
+            throw NoStackTraceException(syncGetString("download_url_rule_not_configured"))
         }
         var mFileName = fileName
         var mFile = file
@@ -112,7 +112,7 @@ object DesktopDirectLinkUpload : DirectLinkUploadStoreProvider, DirectLinkUpload
         return analyzeRule.use {
             val downloadUrl = it.getString(downloadUrlRule)
             if (downloadUrl.isBlank()) {
-                throw NoStackTraceException(jvmGetString("upload_failed_with_body", res.body))
+                throw NoStackTraceException(syncGetString("upload_failed_with_body", res.body))
             }
             downloadUrl
         }

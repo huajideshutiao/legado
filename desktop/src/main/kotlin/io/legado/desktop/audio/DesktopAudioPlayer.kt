@@ -1,7 +1,7 @@
 package io.legado.desktop.audio
 
 import io.legado.app.constant.AppLog
-import io.legado.app.ui.compose.platform.jvmGetString
+import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.desktop.media.DesktopMediaRuntime
 import io.legado.desktop.media.bufferedEndPositionMsOrZero
 import kotlinx.coroutines.CancellationException
@@ -349,7 +349,7 @@ class DesktopAudioPlayer {
         engineError?.let { return null }
         if (!DesktopMediaRuntime.ensureReady()) {
             runtimePending = true
-            engineError = jvmGetString("media_runtime_not_installed")
+            engineError = syncGetString("media_runtime_not_installed")
             AppLog.put("音频播放: 媒体播放组件未就绪, 已转按需下载", tag = "媒体组件")
             return null
         }

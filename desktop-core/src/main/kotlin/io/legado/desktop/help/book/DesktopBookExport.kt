@@ -17,7 +17,7 @@ import io.legado.app.service.ExportBookDeps
 import io.legado.app.service.ExportBookEpubShared
 import io.legado.app.service.ExportBookShared
 import io.legado.app.service.ExportFileHandle
-import io.legado.app.ui.compose.platform.jvmGetString
+import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.utils.postEvent
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -89,9 +89,9 @@ private object DesktopExportBookDeps : ExportBookDeps {
     override fun getTitleReplaceRules(book: Book): List<ReplaceRule> =
         ContentProcessorProviders.get().getTitleReplaceRules(book)
 
-    override fun strImgCover(): String = jvmGetString("img_cover")
+    override fun strImgCover(): String = syncGetString("img_cover")
 
-    override fun strBookIntro(): String = jvmGetString("book_intro")
+    override fun strBookIntro(): String = syncGetString("book_intro")
 
     override fun prepareExportFile(dirPath: String, filename: String): ExportFileHandle {
         val dir = File(dirPath).apply { mkdirs() }
@@ -153,8 +153,8 @@ private object DesktopExportBookDeps : ExportBookDeps {
     override suspend fun exportToWebDav(uri: String, filename: String) =
         AppWebDavShared.exportWebDav(uri, filename)
 
-    override fun strAuthorShow(author: String): String = jvmGetString("author_show", author)
-    override fun strIntroShow(intro: String): String = jvmGetString("intro_show", intro)
+    override fun strAuthorShow(author: String): String = syncGetString("author_show", author)
+    override fun strIntroShow(intro: String): String = syncGetString("intro_show", intro)
 
     override fun postExportEvent(bookUrl: String) {
         postEvent(EventBus.EXPORT_BOOK, bookUrl)

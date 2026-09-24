@@ -58,8 +58,6 @@ import io.legado.app.web.utils.registerComposeWebAssetSource
 import io.legado.app.web.utils.registerNativeWebStrings
 import platform.UIKit.UIDevice
 import platform.UIKit.UIScreen
-import platform.UIKit.UITraitCollection
-import platform.UIKit.UIUserInterfaceStyle
 import kotlin.concurrent.Volatile
 
 @Volatile

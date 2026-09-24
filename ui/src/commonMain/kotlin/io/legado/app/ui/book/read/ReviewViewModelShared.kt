@@ -339,8 +339,8 @@ class ReviewViewModelShared(
  * 段评 ViewModel 平台专属依赖聚合 (对照 [io.legado.app.ui.book.changesource.ChangeBookSourcePlatform] 模式)。
  *
  * actual 平台提供实现:
- * - Android: 走 `context.toastOnUi` + `getString(R.string.xxx)` (或硬编码中文, 与原 app 端一致)
- * - 桌面: 走 `Toasters.get().toast` + `jvmGetString`
+ * - Android: 走 `context.toastOnUi` + 硬编码中文 (与原 app 端一致)
+ * - 桌面: 走 `Toasters.get().toast` + `syncGetString`
  *
  * 文案与 app 端 `ReviewListDialog.ReviewViewModel` 硬编码中文语义一一对应:
  * - [noCurrentBook] ↔ "无当前书籍"

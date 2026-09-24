@@ -6,7 +6,6 @@ import io.legado.app.data.AppDatabaseProviders
 import io.legado.app.help.coroutine.registerJvmDebugState
 import io.legado.app.help.ui.OpenUrlProvider
 import io.legado.app.help.ui.OpenUrlProviders
-import io.legado.app.ui.compose.platform.registerComposeStringProviders
 import io.legado.app.utils.browseUrl
 import io.legado.app.utils.toBrowseUri
 import io.legado.app.web.WebServerManager
@@ -36,7 +35,7 @@ private const val TAG = "legado-headless"
  * # 依赖与架构
  * - 依赖边界: 依赖 :desktop-core + :core; headless 经 build.gradle.kts 的 runtimeClasspath
  *   彻底排除了 Compose UI / Skiko / Markdown 等渲染库, 仅保留轻量的 components-resources
- *   用于读取字符串与静态 JSON 资源; jvmGetString 已解耦至纯资源工具层, 避免字节码符号连带加载。
+ *   用于读取字符串与静态 JSON 资源; syncGetString 已解耦至纯资源工具层, 避免字节码符号连带加载。
  * - 单实例守卫 (SingleInstanceGuard) 因 java.awt/javax.swing import (bindWindow 窗口前置)
  *   留在 :desktop, 本期 headless 不做单实例互斥 —— 同时启动多个实例会争抢同一 SQLite 库,
  *   部署时需自行保证单进程 (systemd/任务计划等幂等拉起方式)。
@@ -75,8 +74,6 @@ fun main(args: Array<String>) {
     startupArgs = args
     // 5. provider 注册: 阶段1 核心 (含 config/数据库/JS 引擎与 Skia 图片栈/HTTP/朗读工厂) —— 与桌面
     //    DesktopCore.registerCoreProviders 完全等价 (JS 图片 API 统一在 registerDesktopJsEngines 注册)
-    //    字符串通道须先于它注册 (本入口无闪屏, 不经过 :desktop 宿主那一步)
-    registerComposeStringProviders()
     DesktopCore.registerCoreProviders()
     // 5.5 本地书导入 + Web 封面/插图: 实现均在 desktop-core, 重能力注入化。
     //     - DesktopFileBookAccessor: 不注入压缩/PDF → txt/epub/cbz(zip) 导入可用,

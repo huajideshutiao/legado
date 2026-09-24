@@ -58,8 +58,7 @@ import kotlinx.coroutines.withContext
  *
  * - **协程 scope**: 由构造函数注入 (desktop = Compose `rememberCoroutineScope`, 与原 desktop VM 一致)
  * - **状态暴露**: 用 [MutableStateFlow] (与 desktop VM 一致), Compose `collectAsState()` 订阅
- * - **字符串 i18n**: shared commonMain 不依赖 jvmGetString (desktop 专属) / R.string (app 专属),
- *   错误消息与日志走硬编码中文 + [AppLog] (参考 `BookController` /
+ * - **字符串 i18n**: 错误消息与日志走硬编码中文 + [AppLog] (参考 `BookController` /
  *   `ReadBookViewModelShared` 模式); 后续如需 i18n 可迁移到 `appString` 通道
  * - **进度持久化**: 用 [io.legado.app.data.dao.BookDao.updateProgress] PATCH 进度字段
  *   (参考 `ReadBookViewModelShared.saveProgress`), 避免整行 update 冲掉后台

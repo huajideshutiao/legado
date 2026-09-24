@@ -19,7 +19,7 @@ import io.legado.app.help.media.RemoteMediaCommand
 import io.legado.app.help.media.SystemMediaControl
 import io.legado.app.model.AudioPlayCommanders
 import io.legado.app.service.ReadAloudControllerShared.ReadAloudState
-import io.legado.app.ui.compose.platform.jvmGetString
+import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.desktop.help.win.ComCtl32
 import io.legado.desktop.help.win.createHiddenMessageWindow
 import io.legado.desktop.help.win.registerMessageWindowClass
@@ -974,7 +974,7 @@ internal object DesktopTaskbarMedia {
 
 
     private fun str(key: String, fallback: String): String =
-        jvmGetString(key).takeIf { it != key } ?: fallback
+        syncGetString(key).takeIf { it != key } ?: fallback
 
     /**
      * 主窗口 HWND (供 DesktopSmtc 绑定 SMTC 会话)。

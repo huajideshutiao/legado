@@ -6,7 +6,7 @@ import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.storage.BackupRestoreHook
 import io.legado.app.help.storage.BackupRestoreHooks
 import io.legado.app.help.toast.Toasters
-import io.legado.app.ui.compose.platform.jvmGetString
+import io.legado.app.ui.compose.platform.syncGetString
 
 /**
  * 桌面端 [BackupRestoreHook]: 备份/恢复的平台收尾环节。
@@ -27,7 +27,7 @@ object DesktopBackupRestoreHook : BackupRestoreHook {
 
     /** 恢复完成提示 (app 端还会切启动图标 + applyDayNight, 桌面端无对应能力)。 */
     override suspend fun onRestoreFinished() {
-        runCatching { Toasters.get().toast(jvmGetString("restore_success")) }
+        runCatching { Toasters.get().toast(syncGetString("restore_success")) }
     }
 
     /** 备份收尾: 上传阅读背景图 (逻辑已下沉 [AppWebDavShared.upBgs], 桌面端直接复用)。 */

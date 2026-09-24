@@ -34,8 +34,8 @@ import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.AppTextField
-import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberPainter
+import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.dialog.TextInputDialog
@@ -209,7 +209,7 @@ private fun ExportConfigDialog(
     var noChapterName by remember { mutableStateOf(request.currentNoChapterName) }
     AppAlertDialog(
         onDismissRequest = onDismiss,
-        title = jvmGetString("export_config"),
+        title = syncGetString("export_config"),
         okButton = AlertButton(text = "确认") {
             request.onConfirm(type, fileName, charset, noChapterName)
             onDismiss()
@@ -223,7 +223,7 @@ private fun ExportConfigDialog(
         ) {
             // 导出文件名 (对照 et_file_name, Variable: name, author)
             Text(
-                jvmGetString("export_file_name"),
+                syncGetString("export_file_name"),
                 color = AppTheme.colors.primaryText,
                 fontSize = 14.sp,
                 modifier = Modifier.padding(bottom = DesignTokens.spacingXs),
@@ -236,7 +236,7 @@ private fun ExportConfigDialog(
             )
             // 导出格式 (对照 rg_export_type)
             Text(
-                jvmGetString("export_type"),
+                syncGetString("export_type"),
                 color = AppTheme.colors.primaryText,
                 fontSize = 14.sp,
                 modifier = Modifier.padding(top = DesignTokens.spacingMd, bottom = DesignTokens.spacingXs),
@@ -265,7 +265,7 @@ private fun ExportConfigDialog(
             }
             // 导出编码 (对照 et_charset)
             Text(
-                jvmGetString("export_charset"),
+                syncGetString("export_charset"),
                 color = AppTheme.colors.primaryText,
                 fontSize = 14.sp,
                 modifier = Modifier.padding(top = DesignTokens.spacingMd, bottom = DesignTokens.spacingXs),
@@ -290,7 +290,7 @@ private fun ExportConfigDialog(
             ) {
                 AppCheckbox(checked = noChapterName, onCheckedChange = null)
                 Text(
-                    jvmGetString("export_no_chapter_name"),
+                    syncGetString("export_no_chapter_name"),
                     color = AppTheme.colors.primaryText,
                     modifier = Modifier.padding(start = DesignTokens.spacingDefault),
                 )
@@ -319,7 +319,7 @@ private fun ExportSectionConfigDialog(
     var fileNameHelper by remember { mutableStateOf("") }
     AppAlertDialog(
         onDismissRequest = onDismiss,
-        title = jvmGetString("select_section_export"),
+        title = syncGetString("select_section_export"),
         okButton = AlertButton(text = "确认") {
             if (all) {
                 request.onConfirm(true, "", 1, fileName)
@@ -327,7 +327,7 @@ private fun ExportSectionConfigDialog(
             } else {
                 val scopeText = scope.trim()
                 if (!verificationField(scopeText)) {
-                    scopeError = jvmGetString("error_scope_input")
+                    scopeError = syncGetString("error_scope_input")
                 } else {
                     request.onConfirm(false, scopeText, size.toIntOrNull() ?: 1, fileName)
                     onDismiss()
@@ -364,7 +364,7 @@ private fun ExportSectionConfigDialog(
                 ) {
                     AppCheckbox(checked = all, onCheckedChange = null)
                     Text(
-                        jvmGetString("export_all"),
+                        syncGetString("export_all"),
                         color = AppTheme.colors.primaryText,
                         modifier = Modifier.padding(start = DesignTokens.spacingDefault),
                     )
@@ -385,7 +385,7 @@ private fun ExportSectionConfigDialog(
                 ) {
                     AppCheckbox(checked = custom, onCheckedChange = null)
                     Text(
-                        jvmGetString("custom_export"),
+                        syncGetString("custom_export"),
                         color = AppTheme.colors.primaryText,
                         modifier = Modifier.padding(start = DesignTokens.spacingDefault),
                     )
@@ -393,7 +393,7 @@ private fun ExportSectionConfigDialog(
             }
             // epub 文件名 JS 规则 (分卷, 对照 ly_et_epub_filename / et_epub_filename)
             Text(
-                jvmGetString("export_file_name"),
+                syncGetString("export_file_name"),
                 color = AppTheme.colors.primaryText,
                 fontSize = 14.sp,
                 modifier = Modifier.padding(top = DesignTokens.spacingDefault, bottom = DesignTokens.spacingXs),
@@ -409,9 +409,9 @@ private fun ExportSectionConfigDialog(
                     IconButton(onClick = {
                         fileNameHelper = if (tryParesExportFileName(fileName)) {
                             request.books.firstOrNull()?.let { book ->
-                                jvmGetString("result_analyzed") + ": " +
+                                syncGetString("result_analyzed") + ": " +
                                     book.getExportFileName("epub", 1, fileName)
-                            } ?: jvmGetString("result_analyzed")
+                            } ?: syncGetString("result_analyzed")
                         } else {
                             "Error"
                         }
@@ -441,7 +441,7 @@ private fun ExportSectionConfigDialog(
                 },
                 enabled = custom,
                 singleLine = true,
-                label = jvmGetString("file_contains_number"),
+                label = syncGetString("file_contains_number"),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -454,7 +454,7 @@ private fun ExportSectionConfigDialog(
                 },
                 enabled = custom,
                 singleLine = true,
-                label = jvmGetString("export_chapter_index"),
+                label = syncGetString("export_chapter_index"),
                 placeholder = "1-5,8,10-18",
                 isError = scopeError != null,
                 errorMessage = scopeError,

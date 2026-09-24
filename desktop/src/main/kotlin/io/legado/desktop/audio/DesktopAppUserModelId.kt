@@ -12,7 +12,7 @@ import com.sun.jna.platform.win32.Ole32
 import com.sun.jna.ptr.PointerByReference
 import io.legado.app.constant.AppLog
 import io.legado.app.help.file.desktopAppRootDir
-import io.legado.app.ui.compose.platform.jvmGetString
+import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.desktop.audio.DesktopAppUserModelId.PKEY_APP_USER_MODEL_ID_PID
 import io.legado.desktop.audio.DesktopAppUserModelId.applyToWindow
 import io.legado.desktop.audio.DesktopAppUserModelId.ensureProcessAppId
@@ -204,7 +204,7 @@ internal object DesktopAppUserModelId {
 
     /** 应用显示名 (媒体卡/任务栏); 字符串表取不到时回落 "Legado"。 */
     private fun displayName(): String {
-        val name = runCatching { jvmGetString("app_name") }.getOrNull()
+        val name = runCatching { syncGetString("app_name") }.getOrNull()
         return name?.takeIf { it.isNotBlank() && it != "app_name" } ?: "Legado"
     }
 

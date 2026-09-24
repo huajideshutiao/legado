@@ -3,7 +3,7 @@ package io.legado.desktop.tts
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.tts.HttpTtsPlayer
 import io.legado.app.help.tts.HttpTtsPlayerListener
-import io.legado.app.ui.compose.platform.jvmGetString
+import io.legado.app.ui.compose.platform.syncGetString
 import okhttp3.Request
 import okhttp3.Response
 import java.io.IOException
@@ -147,7 +147,7 @@ class DesktopHttpTtsPlayer : HttpTtsPlayer {
     override fun prepare() {
         if (released) return
         val theUrl = url ?: run {
-            listener?.onError(jvmGetString("tts_error_prepare_no_url"))
+            listener?.onError(syncGetString("tts_error_prepare_no_url"))
             return
         }
         // 启动后台线程建立 HTTP 连接 + 解析音频格式 + 打开 SourceDataLine
@@ -155,7 +155,7 @@ class DesktopHttpTtsPlayer : HttpTtsPlayer {
             try {
                 prepareInternal(theUrl)
             } catch (e: Exception) {
-                listener?.onError(jvmGetString("tts_error_prepare_exception", e.message))
+                listener?.onError(syncGetString("tts_error_prepare_exception", e.message))
             }
         }, "DesktopHttpTtsPlayer-prepare").apply {
             isDaemon = true
@@ -172,7 +172,7 @@ class DesktopHttpTtsPlayer : HttpTtsPlayer {
             try {
                 sourceDataLine?.start()
             } catch (e: Exception) {
-                listener?.onError(jvmGetString("tts_error_resume_failed", e.message))
+                listener?.onError(syncGetString("tts_error_resume_failed", e.message))
             }
             return
         }
@@ -184,7 +184,7 @@ class DesktopHttpTtsPlayer : HttpTtsPlayer {
                 playbackLoop()
             } catch (e: Exception) {
                 if (!released) {
-                    listener?.onError(jvmGetString("tts_error_play_exception", e.message))
+                    listener?.onError(syncGetString("tts_error_play_exception", e.message))
                 }
             }
         }, "DesktopHttpTtsPlayer-playback").apply {
@@ -273,7 +273,7 @@ class DesktopHttpTtsPlayer : HttpTtsPlayer {
         val resp = try {
             client.newCall(request).execute()
         } catch (e: IOException) {
-            listener?.onError(jvmGetString("tts_error_http_connect_failed", e.message))
+            listener?.onError(syncGetString("tts_error_http_connect_failed", e.message))
             return
         }
         if (!resp.isSuccessful) {
@@ -289,18 +289,18 @@ class DesktopHttpTtsPlayer : HttpTtsPlayer {
 
         // 用 AudioSystem 解析音频格式 (WAV/PCM/AU/AIFF 自动识别; MP3 需 JDK 自带 SPI, 默认不支持)
         val stream = rawInputStream ?: run {
-            listener?.onError(jvmGetString("tts_error_input_stream_null"))
+            listener?.onError(syncGetString("tts_error_input_stream_null"))
             return
         }
         val audioStream: AudioInputStream = try {
             AudioSystem.getAudioInputStream(stream)
         } catch (e: UnsupportedAudioFileException) {
             listener?.onError(
-                jvmGetString("tts_error_unsupported_audio_format", e.message)
+                syncGetString("tts_error_unsupported_audio_format", e.message)
             )
             return
         } catch (e: IOException) {
-            listener?.onError(jvmGetString("tts_error_read_stream_failed", e.message))
+            listener?.onError(syncGetString("tts_error_read_stream_failed", e.message))
             return
         }
         val fmt = audioStream.format
@@ -320,14 +320,14 @@ class DesktopHttpTtsPlayer : HttpTtsPlayer {
         val line: SourceDataLine = try {
             AudioSystem.getLine(info) as SourceDataLine
         } catch (e: LineUnavailableException) {
-            listener?.onError(jvmGetString("tts_error_audio_line_unavailable", e.message))
+            listener?.onError(syncGetString("tts_error_audio_line_unavailable", e.message))
             return
         }
         try {
             line.open(fmt)
             // 不立即 start; 等 play() 调用再 start
         } catch (e: LineUnavailableException) {
-            listener?.onError(jvmGetString("tts_error_open_line_failed", e.message))
+            listener?.onError(syncGetString("tts_error_open_line_failed", e.message))
             return
         }
         synchronized(this) {
@@ -345,18 +345,18 @@ class DesktopHttpTtsPlayer : HttpTtsPlayer {
      */
     private fun playbackLoop() {
         val line = sourceDataLine ?: run {
-            listener?.onError(jvmGetString("tts_error_source_line_not_ready"))
+            listener?.onError(syncGetString("tts_error_source_line_not_ready"))
             return
         }
         val audio = audioInputStream ?: run {
-            listener?.onError(jvmGetString("tts_error_audio_stream_not_ready"))
+            listener?.onError(syncGetString("tts_error_audio_stream_not_ready"))
             return
         }
         // 启动 SourceDataLine (从 pause 恢复时也会调用 play, line 已 open)
         try {
             line.start()
         } catch (e: Exception) {
-            listener?.onError(jvmGetString("tts_error_start_failed", e.message))
+            listener?.onError(syncGetString("tts_error_start_failed", e.message))
             return
         }
         val buffer = ByteArray(BUFFER_SIZE)
@@ -375,7 +375,7 @@ class DesktopHttpTtsPlayer : HttpTtsPlayer {
                 val n = try {
                     audio.read(buffer)
                 } catch (e: IOException) {
-                    listener?.onError(jvmGetString("tts_error_read_stream_interrupted", e.message))
+                    listener?.onError(syncGetString("tts_error_read_stream_interrupted", e.message))
                     break
                 }
                 if (n < 0) {
@@ -394,7 +394,7 @@ class DesktopHttpTtsPlayer : HttpTtsPlayer {
                     try {
                         line.write(buffer, 0, n)
                     } catch (e: Exception) {
-                        listener?.onError(jvmGetString("tts_error_write_line_failed", e.message))
+                        listener?.onError(syncGetString("tts_error_write_line_failed", e.message))
                         break
                     }
                     bytesRead += n.toLong()

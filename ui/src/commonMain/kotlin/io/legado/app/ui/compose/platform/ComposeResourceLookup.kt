@@ -33,8 +33,8 @@ fun findDrawableResource(key: String): DrawableResource? = Res.allDrawableResour
  * 读取后走 AsyncCache, 之后零 IO。语言切换按 locale 路径自动取新语言。
  *
  * 四端宿主启动早期各调用一次, 须早于任何取值调用: Android App.onCreate /
- * desktop Main.runDesktopApp (闪屏构造要取主题名, 比阶段0更早) / headless main /
- * IosProviderRegistry / MainOhos。未注册时两条通道均返回 key 名。
+ * DesktopCore.registerEarlyProviders (桌面与 headless 共用) / IosProviderRegistry / MainOhos。
+ * 未注册时两条通道均返回 key 名。
  */
 fun registerComposeStringProviders() {
     registerSyncStringProvider { key, formatArgs ->
@@ -46,12 +46,4 @@ fun registerComposeStringProviders() {
     }
     registerAppStringProvider { key, args -> syncGetString(key.name, *args) }
 }
-
-/**
- * 桌面 JVM / 无头环境非 @Composable 字符串获取入口 (转发 [syncGetString])。
- *
- * 移至本文件以切断与 [ResourceProvider.jvm.kt] 中 @Composable 方法在同一 class 的字节码
- * 符号绑定, 确保 headless 在排除 Compose UI 依赖后调用本函数不触发 NoClassDefFoundError。
- */
-fun jvmGetString(key: String, vararg formatArgs: Any?): String = syncGetString(key, *formatArgs)
 

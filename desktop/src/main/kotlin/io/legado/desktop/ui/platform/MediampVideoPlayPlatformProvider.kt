@@ -24,7 +24,7 @@ import io.legado.app.ui.book.video.VideoPlayerController
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.desktop.audio.DesktopScreenBrightness
 import io.legado.desktop.audio.DesktopSystemVolume
-import io.legado.app.ui.compose.platform.jvmGetString
+import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.desktop.media.DesktopMediaRuntime
 import io.legado.desktop.media.bufferedEndPositionMsOrZero
 import io.legado.desktop.ui.DesktopWindowChrome
@@ -78,7 +78,7 @@ class MediampVideoPlayPlatformProvider(
         // 不拼到下面的 catch: 那里报的是"引擎初始化失败", 把"还没下载"当成故障报会误导用户。
         if (!DesktopMediaRuntime.ensureReady()) {
             AppLog.put("视频播放: 媒体播放组件未就绪, 已转按需下载", tag = "媒体组件")
-            screenModel.dispatch(VideoPlayUiEvent.ShowError(jvmGetString("media_runtime_not_installed")))
+            screenModel.dispatch(VideoPlayUiEvent.ShowError(syncGetString("media_runtime_not_installed")))
             return EmptyDesktopVideoPlayerController
         }
         return try {

@@ -2,7 +2,7 @@ package io.legado.desktop.image
 
 import io.legado.app.help.image.ImageOps
 import io.legado.app.help.image.ImageRef
-import io.legado.app.ui.compose.platform.jvmGetString
+import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.desktop.image.DesktopImageOps.crop
 import io.legado.desktop.image.DesktopImageOps.encode
 import io.legado.desktop.image.DesktopImageOps.split
@@ -58,7 +58,7 @@ object DesktopImageOps : ImageOps {
                 }
             }
         }.getOrNull()
-            ?: throw IllegalArgumentException(jvmGetString("image_decode_failed_bytes", bytes.size))
+            ?: throw IllegalArgumentException(syncGetString("image_decode_failed_bytes", bytes.size))
         return bitmap.toRef()
     }
 
@@ -73,19 +73,19 @@ object DesktopImageOps : ImageOps {
             "webp" -> EncodedImageFormat.WEBP
             "png" -> EncodedImageFormat.PNG
             "jpg", "jpeg" -> EncodedImageFormat.JPEG
-            else -> throw IllegalArgumentException(jvmGetString("image_encode_unsupported_format", format))
+            else -> throw IllegalArgumentException(syncGetString("image_encode_unsupported_format", format))
         }
         return Image.makeFromBitmap(bitmap).use { image ->
             image.encodeToData(skFormat, quality.coerceIn(0, 100))?.bytes
-                ?: throw IllegalStateException(jvmGetString("image_encode_write_failed", format))
+                ?: throw IllegalStateException(syncGetString("image_encode_write_failed", format))
         }
     }
 
     override fun split(img: ImageRef, rows: Int, cols: Int): List<ImageRef> {
         val bitmap = skiaBitmapOf(img)
-        require(rows > 0 && cols > 0) { jvmGetString("image_split_rows_cols_positive", rows, cols) }
+        require(rows > 0 && cols > 0) { syncGetString("image_split_rows_cols_positive", rows, cols) }
         require(cols <= bitmap.width && rows <= bitmap.height) {
-            jvmGetString("image_split_exceeds_size", bitmap.width, bitmap.height, rows, cols)
+            syncGetString("image_split_exceeds_size", bitmap.width, bitmap.height, rows, cols)
         }
         val cellW = bitmap.width / cols
         val cellH = bitmap.height / rows
@@ -102,11 +102,11 @@ object DesktopImageOps : ImageOps {
 
     override fun stitch(imgs: List<ImageRef>, direction: String): ImageRef {
         val bitmaps = imgs.map { skiaBitmapOf(it) }
-        require(bitmaps.isNotEmpty()) { jvmGetString("image_stitch_imgs_empty") }
+        require(bitmaps.isNotEmpty()) { syncGetString("image_stitch_imgs_empty") }
         val horizontal = when (direction.lowercase()) {
             "h" -> true
             "v" -> false
-            else -> throw IllegalArgumentException(jvmGetString("image_stitch_direction_invalid", direction))
+            else -> throw IllegalArgumentException(syncGetString("image_stitch_direction_invalid", direction))
         }
         val width = if (horizontal) bitmaps.sumOf { it.width } else bitmaps.maxOf { it.width }
         val height = if (horizontal) bitmaps.maxOf { it.height } else bitmaps.sumOf { it.height }
@@ -214,7 +214,7 @@ object DesktopImageOps : ImageOps {
     private fun skiaBitmapOf(ref: Any?): Bitmap {
         val bitmap = (ref as? SkiaBitmapRef)?.bitmap
             ?: throw IllegalArgumentException(
-                jvmGetString("image_ref_type_invalid", ref?.javaClass?.name)
+                syncGetString("image_ref_type_invalid", ref?.javaClass?.name)
             )
         // 已随作用域释放: 明确报错交给脚本, 不让它带着空指针进原生代码把进程打死
         check(!bitmap.isClosed) { "image: 句柄已随本次脚本作用域释放, 不能跨次复用" }

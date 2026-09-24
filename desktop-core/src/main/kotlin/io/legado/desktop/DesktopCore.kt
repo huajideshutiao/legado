@@ -41,6 +41,7 @@ import io.legado.app.help.toast.registerDesktopToaster
 import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.model.fileBook.ZipFileWrapperFactoryProviders
 import io.legado.app.ui.book.changecover.CoverStorageServiceProviders
+import io.legado.app.ui.compose.platform.registerComposeStringProviders
 import io.legado.app.web.registerDesktopWebServerPlatform
 import io.legado.app.web.utils.registerComposeWebAssetSource
 import io.legado.app.web.utils.registerDesktopWebStrings
@@ -196,14 +197,14 @@ object DesktopCore {
      *
      * @return 构造好的 [ReadBookConfigShared] (已注册到 ReadBookConfigProviders;
      *   headless 不消费该返回值, 但注册本身必须执行 (备份格式兼容性补齐))。
-     *
-     * 字符串通道 (syncGetString 与 appString, 同源同一份实现) 不在这里注册: 调用方须先调
-     * registerComposeStringProviders —— 桌面闪屏构造要取主题名, 比本函数更早。
      */
     fun registerEarlyProviders(): ReadBookConfigShared {
         // 注册桌面端 Host 类 provider (启动期最早, 让 shared commonMain 调用 AppLog/appString 时有输出)
         // - AppLogHost: 桥接到 println, 未注册时 AppLog 副作用 (write/toast/debugPrint) 静默 no-op
         registerDesktopAppLogHost()
+        // 字符串通道 (syncGetString 与 appString, 同源同一份实现): 未注册时两者均 fallback
+        // 返回 key 名, 故须先于任何取值调用; 桌面与 headless 两条入口共用本函数
+        registerComposeStringProviders()
         // 注入机器标识到 AndroidIdHolder (对照 app 端 JsEnginesAndroid 注入 ANDROID_ID)。
         // 默认值 "null" 只有 4 字符, BaseSource 登录信息 AES 密钥取前 16 字节会越界被吞,
         // 表现为桌面端书源登录信息无法持久化; 必须在任何 getLoginInfo/putLoginInfo 之前注入

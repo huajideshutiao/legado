@@ -11,7 +11,7 @@ import io.legado.app.model.AudioPlayCommanders
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.service.ReadAloudControllerShared
 import io.legado.app.service.ReadAloudControllerShared.ReadAloudState
-import io.legado.app.ui.compose.platform.jvmGetString
+import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.toReadRoute
 import io.legado.app.utils.FlowBus
@@ -398,9 +398,9 @@ object DesktopMediaTray {
         return titleLine(prefix, aloud?.bookName())
     }
 
-    /** 定时倒计时文案 (jvmGetString 支持 %d 占位符; 缺 key 时兜底)。 */
+    /** 定时倒计时文案 (syncGetString 支持 %d 占位符; 缺 key 时兜底)。 */
     private fun timerText(key: String, minute: Int): String {
-        val s = jvmGetString(key, minute)
+        val s = syncGetString(key, minute)
         return if (s != key) s else "$key $minute"
     }
 
@@ -735,7 +735,7 @@ object DesktopMediaTray {
 
     private fun appName(): String = str("app_name", "阅读")
 
-    /** shared composeResources 缺 key 时 jvmGetString 原样返回 key, 用中文兜底。 */
+    /** shared composeResources 缺 key 时 syncGetString 原样返回 key, 用中文兜底。 */
     private fun str(key: String, fallback: String): String =
-        jvmGetString(key).takeIf { it != key } ?: fallback
+        syncGetString(key).takeIf { it != key } ?: fallback
 }
