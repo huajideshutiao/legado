@@ -34,7 +34,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
@@ -534,7 +533,7 @@ internal fun BookshelfTopBarContainer(
         Row(
             Modifier
                 .fillMaxWidth()
-                .heightIn(min = 48.dp),
+                .heightIn(min = DesignTokens.viewHeightXl),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             content()
@@ -568,7 +567,7 @@ internal fun GroupTab(
     val colors = AppTheme.colors
     Box(
         Modifier
-            .heightIn(min = 48.dp)
+            .heightIn(min = DesignTokens.viewHeightXl)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = DesignTokens.spacingDefault),
         contentAlignment = Alignment.Center,

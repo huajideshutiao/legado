@@ -1614,7 +1614,7 @@ private fun MyTabTitleBar(onHelp: () -> Unit) {
     val eInk = LocalEInk.current
     Box(Modifier.fillMaxWidth().then(if (eInk) Modifier else Modifier.platformStatusBarPadding())) {
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = DesignTokens.spacingLg),
+            Modifier.fillMaxWidth().heightIn(min = DesignTokens.viewHeightMax).padding(start = DesignTokens.spacingLg),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(

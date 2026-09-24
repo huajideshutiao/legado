@@ -291,7 +291,7 @@ private fun ScopeRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .defaultMinSize(minHeight = 40.dp)
+            .defaultMinSize(minHeight = DesignTokens.viewHeightLarge)
             .clickable(onClick = onClick)
             .padding(vertical = DesignTokens.spacingXs),
         verticalAlignment = Alignment.CenterVertically,

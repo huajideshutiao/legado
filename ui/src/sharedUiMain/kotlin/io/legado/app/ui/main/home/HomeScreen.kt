@@ -271,7 +271,7 @@ private fun HomeTopBar(
     val colors = AppTheme.colors
     Box(Modifier.fillMaxWidth().then(if (eInk) Modifier else Modifier.platformStatusBarPadding())) {
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(start = DesignTokens.spacingLg),
+            Modifier.fillMaxWidth().heightIn(min = DesignTokens.viewHeightXl).padding(start = DesignTokens.spacingLg),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (tabs.size > 1) {
@@ -330,7 +330,7 @@ private fun HomeTabItem(title: String, selected: Boolean, onClick: () -> Unit) {
     Box(
         Modifier
             // 48dp 对照原版 TabLayout 默认高 (DEFAULT_HEIGHT), 8dp 对照 tabPaddingStart/End
-            .heightIn(min = 48.dp)
+            .heightIn(min = DesignTokens.viewHeightXl)
             .clickable(onClick = onClick)
             .padding(horizontal = DesignTokens.spacingDefault),
         contentAlignment = Alignment.Center,

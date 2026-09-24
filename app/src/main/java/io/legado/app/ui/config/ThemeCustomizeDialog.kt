@@ -282,7 +282,7 @@ class ThemeCustomizeDialog : BaseComposeDialogFragment() {
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 48.dp)
+                            .heightIn(min = DesignTokens.viewHeightXl)
                             .clickable {
                                 selectImage.launch {
                                     requestCode = requestCodeBg
@@ -320,7 +320,7 @@ class ThemeCustomizeDialog : BaseComposeDialogFragment() {
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 48.dp),
+                            .heightIn(min = DesignTokens.viewHeightXl),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
@@ -379,7 +379,7 @@ class ThemeCustomizeDialog : BaseComposeDialogFragment() {
         Row(
             Modifier
                 .fillMaxWidth()
-                .heightIn(min = 48.dp)
+                .heightIn(min = DesignTokens.viewHeightXl)
                 .clickable(onClick = onClick),
             verticalAlignment = Alignment.CenterVertically,
         ) {

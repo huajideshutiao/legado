@@ -639,7 +639,7 @@ private fun ExploreTitleBar(
     Box(Modifier.fillMaxWidth().then(if (eInk) Modifier else Modifier.platformStatusBarPadding())) {
         Row(
             // 有返回箭头时 IconButton 自带 48dp 宽度, 去掉 12dp 起始留白
-            Modifier.fillMaxWidth().heightIn(min = 56.dp)
+            Modifier.fillMaxWidth().heightIn(min = DesignTokens.viewHeightMax)
                 .padding(start = if (onBack == null) DesignTokens.spacingMd else 0.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

@@ -16,7 +16,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -45,7 +44,7 @@ fun DialogTitleBar(
             .fillMaxWidth()
             .background(colors.bottomBackground)
             // 56dp 对照原 TitleBar/Toolbar minHeight=actionBarSize
-            .heightIn(min = 56.dp),
+            .heightIn(min = DesignTokens.viewHeightMax),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (onBack != null) {

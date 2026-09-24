@@ -762,7 +762,7 @@ private fun ConfigSwitchRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .heightIn(min = 48.dp),
+            .heightIn(min = DesignTokens.viewHeightXl),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, color = AppTheme.colors.primaryText, modifier = Modifier.weight(1f))

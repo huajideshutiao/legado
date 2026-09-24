@@ -21,7 +21,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import io.legado.app.constant.EventBus
 import io.legado.app.help.config.ThemeConfigData
 import io.legado.app.help.config.ThemeConfigProviders
@@ -208,7 +207,7 @@ private fun ThemeListItem(
     Row(
         Modifier
             .fillMaxWidth()
-            .heightIn(min = 40.dp)
+            .heightIn(min = DesignTokens.viewHeightLarge)
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick,

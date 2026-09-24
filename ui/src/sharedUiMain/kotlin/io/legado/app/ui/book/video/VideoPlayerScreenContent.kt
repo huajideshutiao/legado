@@ -311,7 +311,7 @@ fun VideoTitleBar(
             Box(
                 Modifier
                     .weight(1f)
-                    .heightIn(min = 56.dp)
+                    .heightIn(min = DesignTokens.viewHeightMax)
                     .clickable { onTitleClick() },
                 contentAlignment = Alignment.CenterStart,
             ) {

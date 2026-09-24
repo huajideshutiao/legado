@@ -24,7 +24,6 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.rememberSyncedTextFieldState
 import io.legado.app.ui.compose.platform.rememberColor
@@ -115,7 +114,7 @@ private fun ReviewPostInputField(
 ) {
     ReviewInputCapsule(
         contentPadding = PaddingValues(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingMd),
-        modifier = modifier.heightIn(min = 40.dp),
+        modifier = modifier.heightIn(min = DesignTokens.viewHeightLarge),
     ) {
         if (value.isEmpty()) {
             ReviewInputHint(hint)

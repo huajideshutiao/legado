@@ -752,7 +752,7 @@ private fun ReadMenuTopBar(state: ReadMenuState) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .heightIn(min = 48.dp)
+                .heightIn(min = DesignTokens.viewHeightXl)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -1018,7 +1018,7 @@ private fun SourceActionButton(state: ReadMenuState) {
         Box(
             Modifier
                 .padding(end = DesignTokens.spacingLg)
-                .heightIn(min = 32.dp)
+                .heightIn(min = DesignTokens.viewHeightDefault)
                 .widthIn(max = 120.dp)
                 .clip(DesignTokens.shapeDefault)
                 .background(AppTheme.colors.accent)

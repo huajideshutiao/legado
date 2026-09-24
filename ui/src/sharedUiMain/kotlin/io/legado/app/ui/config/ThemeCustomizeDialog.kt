@@ -428,7 +428,7 @@ fun ThemeCustomizeDialog(
                         Row(
                             Modifier
                                 .fillMaxWidth()
-                                .heightIn(min = 48.dp)
+                                .heightIn(min = DesignTokens.viewHeightXl)
                                 .clickable(onClick = { pickBgImage() }),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -553,7 +553,7 @@ private fun ColorRow(label: String, color: Int, onClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
-            .heightIn(min = 48.dp)
+            .heightIn(min = DesignTokens.viewHeightXl)
             .clickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
     ) {

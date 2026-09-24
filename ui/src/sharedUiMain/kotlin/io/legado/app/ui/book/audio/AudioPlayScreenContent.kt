@@ -446,7 +446,7 @@ private fun AudioTitleBar(
         Modifier
             .fillMaxWidth()
             .platformStatusBarPadding()
-            .heightIn(min = 56.dp),
+            .heightIn(min = DesignTokens.viewHeightMax),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onBack) {

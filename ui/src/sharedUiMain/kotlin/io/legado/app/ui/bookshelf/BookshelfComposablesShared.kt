@@ -492,7 +492,7 @@ fun BookshelfTopBar(content: @Composable RowScope.() -> Unit) {
     Box(Modifier.fillMaxWidth().then(if (eInk) Modifier else Modifier.platformStatusBarPadding())) {
         Row(
             // 56dp 对照原 TitleBar/Toolbar minHeight=actionBarSize
-            Modifier.fillMaxWidth().heightIn(min = 56.dp),
+            Modifier.fillMaxWidth().heightIn(min = DesignTokens.viewHeightMax),
             verticalAlignment = Alignment.CenterVertically,
             content = content,
         )

@@ -29,7 +29,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
@@ -266,7 +265,7 @@ private fun ScopeTitleBar(
             .fillMaxWidth()
             .background(colors.bottomBackground)
             // 56dp 对照原 TitleBar minHeight=actionBarSize
-            .heightIn(min = 56.dp),
+            .heightIn(min = DesignTokens.viewHeightMax),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (!groupMode && showScreen) {
