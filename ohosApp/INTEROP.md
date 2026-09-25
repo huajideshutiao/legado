@@ -121,6 +121,21 @@ mock 版本。
 
 ## 5. 内存与生命周期约定
 
+### 5.0 应用图标
+
+分层图标 (`AppScope/resources/base/media/app_icon_layered.json` 引用的
+`app_icon_background.png` / `app_icon_foreground.png`, 288x288) 由
+`scripts/GenerateOhosIcons.kt` 从 `app/src/main/res/drawable/` 的 Android 矢量图渲染,
+矢量→SVG 的公共实现在 `scripts/VectorIconCommon.kt` (与 iOS 脚本共用)。
+
+图标资源基本不改: 只有换 launcher 图标或改 `drawable/ic_launcher*.xml` 里的矢量时,
+才需要按脚本头部注释的命令手工重跑一次, 重跑后把两张 PNG 一并提交。脚本是备用工具,
+没有 Gradle/hvigor 调用点, 不会随构建自动跑。
+
+注: `module.json5` 的 `startWindowIcon` 也指向 `app_icon_foreground.png`, 但启动窗口图
+不做分层图那中央 2/3 裁切而是整图显示, 前景层内容只占层空间中央一小块 —— 启动图要改
+观感须另出一张内容铺满的图, 不是改脚本缩放。
+
 ### 5.1 字符串传递 (ArkTS ↔ Kotlin)
 
 - **ArkTS → C**: napi_get_value_string_utf8 拷贝到 napi 层 buf, 由 napi 层管理生命周期

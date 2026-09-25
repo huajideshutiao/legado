@@ -32,6 +32,9 @@ ohosApp/entry/src/main/cpp/include/arm64-v8a/
 # CMP 插件字节码补丁产物（scripts/patch-cmp-plugin-for-agp9.sh 生成, 可由脚本重建）
 build-logic/libs/
 
+# 图标生成脚本的编译输出（scripts/Generate*Icons.kt 手工跑时的临时 classes 目录）
+/scripts/*-icons-out/
+
 # OHOS/DevEco 构建缓存与本地依赖
 .hvigor/
 oh_modules/
