@@ -265,6 +265,7 @@ fun ExploreShowRoute(
                 when {
                     book.isVideo -> navigator.push(AppRoute.VideoPlay(book.toRouteRef()))
                     book.isRss -> navigator.push(AppRoute.ReadRss(book.toRouteRef()))
+                    // 音频书直达播放页 (与书架 startActivityForBook 分流一致)
                     book.isAudio -> navigator.push(
                         AppRoute.AudioPlay(book.toRouteRef()),
                         sharedToken = sharedToken,

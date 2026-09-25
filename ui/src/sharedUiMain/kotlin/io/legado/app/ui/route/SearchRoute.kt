@@ -116,7 +116,7 @@ fun SearchRoute(
             // 对照 SearchActivity.onBookClick + showBookInfo:
             // - 不在书架补 notShelf type
             // - bookUrl 含 "::" 是探索结果, 按 book.origin 查 BookSource 后跳 ExploreShow
-            // - longClick || !devFeat 直接进详情; 否则按 isVideo/isRss/默认 分流
+            // - longClick || !devFeat 直接进详情; 否则按 isVideo/isRss/isAudio/默认 分流
             override fun onBookClick(
                 book: BaseBook,
                 longClick: Boolean,
@@ -158,6 +158,7 @@ fun SearchRoute(
                 when {
                     book.isVideo -> navigator.push(AppRoute.VideoPlay(ref))
                     book.isRss -> navigator.push(AppRoute.ReadRss(ref))
+                    // 音频书直达播放页 (与书架 startActivityForBook 分流一致)
                     book.isAudio -> navigator.push(
                         AppRoute.AudioPlay(ref),
                         sharedToken = sharedToken,
