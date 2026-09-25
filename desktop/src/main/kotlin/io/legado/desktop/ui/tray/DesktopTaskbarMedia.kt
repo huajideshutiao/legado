@@ -112,10 +112,17 @@ internal object DesktopTaskbarMedia {
     private const val ILC_COLOR32 = 0x20
 
     /**
-     * 按钮图标尺寸。Win11 任务栏 thumbbar 按 24px 渲染 (100% DPI),
-     * 给 16px 会被放大导致字形发虚 (demo 逐尺寸实测: 16 糊, 24 清晰)。
+     * 按钮图标边长 (物理像素) —— 取系统图标度量 SM_CXICON。
+     *
+     * 官方文档 (ITaskbarList3::ThumbBarSetImageList) 要求 thumbbar 按钮图像
+     * "must be 32-bit and of dimensions GetSystemMetrics(SM_CXICON) x GetSystemMetrics(SM_CYICON)"，
+     * 并要求 "Images suitable for use with high-dpi displays"。
+     *
+     * 任务栏再把它绘进 SM_CXSMICON 大小的槽位 (本机 Win11 26200 / 125% DPI 实测: 槽位 20x20,
+     * SM_CXICON=40), 两者在 100%/125%/150% 各档位都是 2:1, 下采样无混叠。
      */
-    private const val ICON_SIZE = 24
+    private val ICON_SIZE: Int
+        get() = User32.INSTANCE.GetSystemMetrics(WinUser.SM_CXICON)
 
     // 缩略图按钮图标索引 (ImageList 添加顺序)
     private const val ICON_PREV = 0
@@ -742,9 +749,12 @@ internal object DesktopTaskbarMedia {
         imageList?.let { return it }
         synchronized(this) {
             imageList?.let { return it }
+            // 列表尺寸与图标绘制尺寸必须同源: 两次 GetSystemMetrics 之间 DPI 若变化,
+            // 会出现列表与图标尺寸错配 (任务栏裁剪/留白)
+            val iconSize = ICON_SIZE
             // 列表标志与 Add 的掩码必须自洽 (ILC_MASK ⇔ 传 hbmMask), 否则任务栏渲染异常
             val himl = ComCtl32.INSTANCE
-                .ImageList_Create(ICON_SIZE, ICON_SIZE, ILC_COLOR32 or ILC_MASK, 5, 0)
+                .ImageList_Create(iconSize, iconSize, ILC_COLOR32 or ILC_MASK, 5, 0)
                 ?: run {
                     AppLog.put("任务栏按钮图标: ImageList_Create 失败")
                     return null
@@ -757,7 +767,7 @@ internal object DesktopTaskbarMedia {
                 val bitmaps = mutableListOf<Pair<WinDef.HBITMAP, WinDef.HBITMAP>>()
                 try {
                     for (glyph in glyphs) {
-                        val (hbm, hbmMask) = ICON_SIZE.createThumbBitmap(glyph)
+                        val (hbm, hbmMask) = iconSize.createThumbBitmap(glyph)
                             ?: error("createThumbBitmap 失败 glyph=$glyph")
                         bitmaps += hbm to hbmMask
                         // ImageList_Add 复制位图入列, 返回后即可释放 GDI 对象
