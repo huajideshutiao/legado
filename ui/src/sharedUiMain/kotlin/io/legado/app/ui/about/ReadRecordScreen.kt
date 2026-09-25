@@ -56,6 +56,7 @@ import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.FastScrollLazyVerticalGrid
+import io.legado.app.ui.compose.component.listItemFocus
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.component.effectiveColumns
 import io.legado.app.ui.compose.component.rememberResponsiveColumns
@@ -647,6 +648,7 @@ private fun RecordRow(
     }
     Row(
         Modifier
+            .listItemFocus()
             .fillMaxWidth()
             .combinedClickable(
                 onClick = { actions.openBook(item) },

@@ -191,7 +191,9 @@ fun AppSearchField(
                 } else {
                     null
                 },
-                modifier = textFieldModifier.fillMaxWidth(),
+                modifier = textFieldModifier
+                    .fillMaxWidth()
+                    .singleLineVerticalKeyGuard(true),
             )
         }
         if (value.isNotEmpty()) {

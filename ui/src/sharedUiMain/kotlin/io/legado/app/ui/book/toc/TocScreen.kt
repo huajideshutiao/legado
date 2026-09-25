@@ -60,6 +60,7 @@ import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.component.FastScrollLazyVerticalGrid
 import io.legado.app.ui.compose.component.OverflowMenu
+import io.legado.app.ui.compose.component.pagerPageFocus
 import io.legado.app.ui.compose.component.rememberResponsiveColumns
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
@@ -233,7 +234,9 @@ fun TocScreen(
             beyondViewportPageCount = 1,
             userScrollEnabled = !eInk,
         ) { page ->
-            if (page == 0) ChapterListPage(state, actions) else BookmarkPage(state, actions)
+            Box(Modifier.fillMaxSize().pagerPageFocus(pagerState, page)) {
+                if (page == 0) ChapterListPage(state, actions) else BookmarkPage(state, actions)
+            }
         }
     }
 }

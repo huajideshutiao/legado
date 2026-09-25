@@ -48,6 +48,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
@@ -113,8 +114,8 @@ fun AppFilletTextButton(
     onClick: (() -> Unit)? = null,
 ) {
     val isDark = AppTheme.colors.isDark
-    // btn_bg: light @color/btn_bg #100e0e0e / night #14e0e0e0
-    val normalBg = if (isDark) Color(0x14e0e0e0) else Color(0x100e0e0e)
+    // 复用 btn_bg 色板键 (light @color/btn_bg #100e0e0e / night #14e0e0e0), 不再本地硬编码
+    val normalBg = rememberColor("btn_bg")
     // 按压: 恢复 Arco 化之前的 btn_bg_press_2 (light #20000000 / night #20ffffff,
     // 半透明加深/提亮一档, 壁纸页保持镂空; Arco 化换成的 arco_fill_3 不透明实色在壁纸场景跳变)
     val pressedBg = if (isDark) Color(0x20ffffff) else Color(0x20000000)
@@ -126,6 +127,7 @@ fun AppFilletTextButton(
             .padding(DesignTokens.spacingXs)
             .clip(DesignTokens.shapeDefault)
             .background(if (pressed) pressedBg else normalBg)
+            .then(if (focusable) Modifier else Modifier.focusProperties { canFocus = false })
             .then(
                 if (onClick != null || onLongClick != null) Modifier.combinedClickable(
                     interactionSource = interaction,
@@ -134,7 +136,6 @@ fun AppFilletTextButton(
                     onLongClick = onLongClick,
                 ) else Modifier
             )
-            .then(if (focusable) Modifier else Modifier.focusProperties { canFocus = false })
             .padding(
                 horizontal = filletChipPaddingH - DesignTokens.spacingXs,
                 vertical = filletChipPaddingV - DesignTokens.spacingXs,

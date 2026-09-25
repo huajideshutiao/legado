@@ -32,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
@@ -39,6 +40,7 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
@@ -68,6 +70,7 @@ import io.legado.app.ui.bookshelf.toCoverBook
 import io.legado.app.ui.browser.WebViewSheetContent
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppSelectorDialog
+import io.legado.app.ui.compose.component.directionKeyFocusNavigation
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.PlatformBackHandler
@@ -292,6 +295,7 @@ fun LegadoApp(
         // ActiveParent(后代持焦) 与 Inactive(无人持焦) 需靠转移推断 —— 后代持焦后焦点被清
         // (路由出栈销毁输入框等) 时收回根焦点, 否则 ESC 会再次失效。
         val rootFocusRequester = remember { FocusRequester() }
+        val focusManager = LocalFocusManager.current
         var rootFocusOwner by remember { mutableStateOf("none") } // none|root|descendant
         LaunchedEffect(Unit) { runCatching { rootFocusRequester.requestFocus() } }
         CompositionLocalProvider(
@@ -328,6 +332,9 @@ fun LegadoApp(
                     onBack = { performBack(navigator) },
                     onRefresh = { runCatching { navigator.refreshCurrent() }.getOrDefault(false) },
                 )
+                // 方向键焦点导航 (桌面端 RootNodeOwner 只认 Tab/Center/Back, 四方向键补齐),
+                // 实现与对话框内容根共用: 见 ListItemFocus.directionKeyFocusNavigation
+                .directionKeyFocusNavigation(focusManager)
         ) {
             // 栈内页面保持在同一 Composition 中，返回时直接复用 remember/Effect/协程和节点树。
             // 非顶层页面移出可见区域，出栈后才真正离开 Composition 并释放资源。
@@ -421,6 +428,12 @@ fun LegadoApp(
                 Box(
                     Modifier
                         .fillMaxSize()
+                        // 本页不是栈顶: 已被移出屏幕, 但仍留在 Compose 焦点树里, 焦点搜索只看
+                        // isPlaced/canFocus 而不看图层位移与 alpha, 会命中这些不可见页的焦点目标。
+                        // 原版被压栈 Activity 的 window 不可见即不接键盘事件, 这里补上同一语义。
+                        .then(
+                            if (entry.id == stackTopId) Modifier else Modifier.focusProperties { canFocus = false }
+                        )
                         .graphicsLayer {
                             val transform = sampleTransform(size.width)
                             if (transform != null) {

@@ -90,6 +90,7 @@ import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.component.ExploreOptionsRow
 import io.legado.app.ui.compose.component.horizontalMouseWheel
+import io.legado.app.ui.compose.component.listItemFocus
 import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.platformStatusBarPadding
@@ -777,6 +778,7 @@ private fun HomeCoverRow(
                 CompositionLocalProvider(LocalSharedCoverBinding provides binding) {
                     Column(
                         Modifier
+                            .listItemFocus()
                             .width(128.dp)
                             .padding(DesignTokens.spacingXs)
                             .combinedClickable(
@@ -1044,6 +1046,7 @@ private fun HomeRankItem(
     val colors = AppTheme.colors
     Row(
         Modifier
+            .listItemFocus()
             .fillMaxWidth()
             .combinedClickable(
                 onClick = { onBookClick(book, coverBinding?.pageToken) },
@@ -1145,49 +1148,52 @@ private fun HomeInfiniteGridCard(
     val currentOnBookLongClick = rememberUpdatedState(onBookLongClick)
     val stableOnBookLongClick: () -> Unit =
         remember { { currentOnBookLongClick.value(binding.pageToken) } }
-    Box(
-        modifier = Modifier.fillMaxWidth().combinedClickable(
-            onClick = stableOnBookClick,
-            onLongClick = stableOnBookLongClick,
-        ),
-    ) {
-        CompositionLocalProvider(LocalSharedCoverBinding provides binding) {
-            if (coverVideo) {
-                // 对照原版 coverVideo 无限流 → VideoExploreShowAdapter: 视频卡占满格宽
-                ShelfVideoItem(
-                    book = book.toCoverBook(),
-                    coverReloadTick = 0,
-                    onClick = stableOnBookClick,
-                    onLongClick = stableOnBookLongClick,
-                    modifier = Modifier.fillMaxWidth(),
-                    coverSlot = { b, m, isVideoCover, tick ->
-                        LocalBookCoverSlot.current(b, m, isVideoCover, tick)
-                    },
+    CompositionLocalProvider(LocalSharedCoverBinding provides binding) {
+        if (coverVideo) {
+            // 对照原版 coverVideo 无限流 → VideoExploreShowAdapter: 视频卡占满格宽。
+            // 本格焦点由这张卡自己承担
+            ShelfVideoItem(
+                book = book.toCoverBook(),
+                coverReloadTick = 0,
+                onClick = stableOnBookClick,
+                onLongClick = stableOnBookLongClick,
+                modifier = Modifier.fillMaxWidth(),
+                coverSlot = { b, m, isVideoCover, tick ->
+                    LocalBookCoverSlot.current(b, m, isVideoCover, tick)
+                },
+            )
+        } else {
+            // 对照原版非视频无限流 → GridExploreShowAdapter (item_bookshelf_grid 根布局)
+            Column(
+                Modifier
+                    .listItemFocus()
+                    .fillMaxWidth()
+                    .combinedClickable(
+                        onClick = stableOnBookClick,
+                        onLongClick = stableOnBookLongClick,
+                    ),
+            ) {
+                // 对照 item_bookshelf_grid.xml: 封面四边 12dp margin, 高按 NOVEL 3:4 由宽度
+                // 反推 (原版 iv_cover wrap_content + coverRatio=NOVEL), 不读书架封面高度配置
+                LocalBookCoverSlot.current(
+                    book.toCoverBook(),
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(DesignTokens.spacingMd),
+                    false,
+                    0,
                 )
-            } else {
-                Column(Modifier.fillMaxWidth()) {
-                    // 对照 item_bookshelf_grid.xml: 封面四边 12dp margin, 高按 NOVEL 3:4 由宽度
-                    // 反推 (原版 iv_cover wrap_content + coverRatio=NOVEL), 不读书架封面高度配置
-                    LocalBookCoverSlot.current(
-                        book.toCoverBook(),
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(DesignTokens.spacingMd),
-                        false,
-                        0,
-                    )
-                    Text(
-                        text = book.name,
-                        color = colors.primaryText,
-                        fontSize = 12.sp,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = DesignTokens.spacingDefault),
-                    )
-                }
+                Text(
+                    text = book.name,
+                    color = colors.primaryText,
+                    fontSize = 12.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = DesignTokens.spacingDefault),
+                )
             }
         }
     }

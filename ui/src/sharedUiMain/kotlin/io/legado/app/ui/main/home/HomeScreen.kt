@@ -42,6 +42,7 @@ import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.ui.compose.component.AppScrollTabRow
 import io.legado.app.ui.compose.component.FastScrollLazyVerticalGrid
 import io.legado.app.ui.compose.component.PullToRefreshDefaults
+import io.legado.app.ui.compose.component.pagerPageFocus
 import io.legado.app.ui.compose.component.pullToRefresh
 import io.legado.app.ui.compose.component.rememberPullToRefreshState
 import io.legado.app.ui.compose.component.rememberResponsiveColumns
@@ -245,14 +246,16 @@ fun HomeScreen(
                 userScrollEnabled = !eInk,
             ) { page ->
                 tabs.getOrNull(page)?.let { tab ->
-                    HomeTabPage(
-                        state = state,
-                        tabTitle = tab.title,
-                        actions = actions,
-                        sectionBlockSlot = stableSectionBlockSlot,
-                        infiniteHeaderSlot = stableInfiniteHeaderSlot,
-                        infiniteGridCardSlot = stableInfiniteGridCardSlot,
-                    )
+                    Box(Modifier.fillMaxSize().pagerPageFocus(pagerState, page)) {
+                        HomeTabPage(
+                            state = state,
+                            tabTitle = tab.title,
+                            actions = actions,
+                            sectionBlockSlot = stableSectionBlockSlot,
+                            infiniteHeaderSlot = stableInfiniteHeaderSlot,
+                            infiniteGridCardSlot = stableInfiniteGridCardSlot,
+                        )
+                    }
                 }
             }
         }

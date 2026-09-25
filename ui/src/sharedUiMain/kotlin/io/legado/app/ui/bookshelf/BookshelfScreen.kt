@@ -49,6 +49,7 @@ import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.BookCoverShared.CoverRatio
 import io.legado.app.ui.compose.component.AppScrollTabRow
+import io.legado.app.ui.compose.component.pagerPageFocus
 import io.legado.app.ui.compose.platform.platformStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.OnRouteLifecycle
@@ -325,21 +326,23 @@ fun BookshelfScreen(
                 key = { index -> groups.getOrNull(index)?.groupId ?: index.toLong() },
             ) { page ->
                 val group = groups.getOrNull(page) ?: return@HorizontalPager
-                GroupBooksPage(
-                    group = group,
-                    spec = layoutSpec,
-                    externalScrollState = scrollState,
-                    initialGroupId = initialGroupId,
-                    scrollStates = pageScrollStates,
-                    viewModel = viewModel,
-                    configTick = configTick,
-                    books = booksCache[group.groupId],
-                    onBookClick = stableOnBookClick,
-                    onBookLongClick = stableOnBookLongClick,
-                    bookCoverSlot = bookCoverSlot,
-                    groupCoverSlot = groupCoverSlot,
-                    onRefresh = stableOnRefresh,
-                )
+                Box(Modifier.fillMaxSize().pagerPageFocus(pagerState, page)) {
+                    GroupBooksPage(
+                        group = group,
+                        spec = layoutSpec,
+                        externalScrollState = scrollState,
+                        initialGroupId = initialGroupId,
+                        scrollStates = pageScrollStates,
+                        viewModel = viewModel,
+                        configTick = configTick,
+                        books = booksCache[group.groupId],
+                        onBookClick = stableOnBookClick,
+                        onBookLongClick = stableOnBookLongClick,
+                        bookCoverSlot = bookCoverSlot,
+                        groupCoverSlot = groupCoverSlot,
+                        onRefresh = stableOnRefresh,
+                    )
+                }
             }
         }
     }

@@ -51,6 +51,7 @@ import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.AppUnderlineTextField
+import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberNavigationBarPaddingValues
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -403,7 +404,7 @@ private fun FilletText(text: String, isBottomBackground: Boolean) {
     if (text.isEmpty()) return
     val colors = AppTheme.colors
     val textColor = if (isBottomBackground) prefTextColors(true).first else colors.secondaryText
-    val btnBg = if (colors.isDark) Color(0x14e0e0e0) else Color(0x100e0e0e)
+    val btnBg = rememberColor("btn_bg")
     Box(
         Modifier
             // 复刻 selector_fillet_btn_bg 的 4dp inset：底色内缩，外围留白不变

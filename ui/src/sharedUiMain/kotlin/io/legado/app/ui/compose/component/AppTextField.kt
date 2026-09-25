@@ -36,6 +36,11 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.takeOrElse
@@ -288,6 +293,7 @@ private fun <T : Any> AppTextFieldCore(
             modifier = Modifier
                 .fillMaxWidth()
                 .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+                .singleLineVerticalKeyGuard(singleLine)
                 .indicatorLine(enabled, isError, interactionSource, colors)
                 // 最小高度内容推导 (对齐 CodeTextField): 单行字段贴合内容, 消除 56dp 死区
                 .defaultMinSize(
@@ -464,6 +470,21 @@ internal fun appTextSelectionColors(): TextSelectionColors = TextSelectionColors
     handleColor = AppTheme.colors.accent,
     backgroundColor = AppTheme.colors.accent.copy(alpha = 0.4f),
 )
+
+/**
+ * 单行字段的上下键守卫: 单行 ↑/↓ 不改光标 selection, TextField 不消费,
+ * 事件会冒泡到根方向键导航把焦点移出输入框, 故在隧道阶段直接消费;
+ * 多行字段 ↑/↓ 移光标被 TextField 消费, 不拦。
+ */
+internal fun Modifier.singleLineVerticalKeyGuard(enabled: Boolean): Modifier =
+    if (enabled) {
+        onPreviewKeyEvent { event ->
+            event.type == KeyEventType.KeyDown &&
+                (event.key == Key.DirectionUp || event.key == Key.DirectionDown)
+        }
+    } else {
+        this
+    }
 
 /** 两个重载共享的容器: 下划线输入框 + 线下错误文案 */
 @Composable

@@ -31,6 +31,7 @@ import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
+import io.legado.app.ui.compose.component.listItemFocus
 import io.legado.app.ui.compose.component.rememberResponsiveColumns
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -194,6 +195,7 @@ private fun CoverItem(
 ) {
     Column(
         Modifier
+            .listItemFocus()
             .fillMaxWidth()
             .clickable(onClick = onClick)
     ) {

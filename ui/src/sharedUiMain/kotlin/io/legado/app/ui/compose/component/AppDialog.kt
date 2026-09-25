@@ -45,6 +45,7 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
@@ -165,7 +166,11 @@ fun AppDialog(
         Dialog(
             onDismissRequest = onDismissRequest,
             properties = properties,
-            content = { WithWindowTextMenu { content() } },
+            content = {
+                WithWindowTextMenu {
+                    Box(Modifier.directionKeyFocusNavigation(LocalFocusManager.current)) { content() }
+                }
+            },
         )
         return
     }
@@ -208,7 +213,9 @@ fun AppDialog(
             // 平台外点关闭天然可用。顶部 inset 条带虽归入层内不响应外点, 但恰是 Windows
             // native 控制条的物理覆盖区, 本就点不到; 移动端 inset=0 零影响
             Box(
-                Modifier.then(if (topInset > 0.dp) Modifier.padding(top = topInset) else Modifier),
+                Modifier
+                    .directionKeyFocusNavigation(LocalFocusManager.current)
+                    .then(if (topInset > 0.dp) Modifier.padding(top = topInset) else Modifier),
             ) {
                 Box(
                     Modifier.graphicsLayer {
@@ -649,7 +656,7 @@ private fun BottomSheetScaffold(
     heightPx: Int? = null,
     content: @Composable () -> Unit,
 ) {
-    Box(Modifier.fillMaxSize()) {
+    Box(Modifier.fillMaxSize().directionKeyFocusNavigation(LocalFocusManager.current)) {
         // 透明点击层: 铺满全窗, 点击关闭 sheet (铺满后 dismissOnClickOutside 不触发)
         Box(
             Modifier

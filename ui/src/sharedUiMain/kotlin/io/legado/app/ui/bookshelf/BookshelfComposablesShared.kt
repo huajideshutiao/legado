@@ -49,6 +49,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.ui.compose.component.FastScrollLazyVerticalGrid
+import io.legado.app.ui.compose.component.listItemFocus
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.component.PullToRefreshDefaults
 import io.legado.app.ui.compose.component.pullToRefresh
@@ -658,6 +659,7 @@ fun ShelfListItem(
     val refreshing = book.bookUrl in refreshingUrls
     Row(
         modifier
+            .listItemFocus()
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(DesignTokens.spacingDefault),
@@ -786,7 +788,7 @@ fun ShelfGridItem(
     val colors = AppTheme.colors
     val appConfig = remember { AppConfigProviders.get() }
     val refreshing = book.bookUrl in refreshingUrls
-    Box(modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)) {
+    Box(modifier.listItemFocus().combinedClickable(onClick = onClick, onLongClick = onLongClick)) {
         Column(Modifier.fillMaxWidth()) {
             // 封面 Box: 宽度填满 (减 12dp 左右内边距), 对照原 XML iv_cover match_parent + 12dp margin
             // 无 cover URL 时仍渲染封面 Box (走占位), 对齐原 View 版无 path 也显示默认封面
@@ -840,6 +842,7 @@ fun ShelfVideoItem(
     val colors = AppTheme.colors
     Column(
         modifier
+            .listItemFocus()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(DesignTokens.spacingDefault),
     ) {
@@ -891,6 +894,7 @@ fun GroupListItem(
     val coverHeight = remember(coverReloadTick, isVideoStyle) { shelfCoverHeightDp(isVideoStyle) }
     Row(
         modifier
+            .listItemFocus()
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(DesignTokens.spacingDefault),
@@ -922,6 +926,7 @@ fun GroupGridItem(
     val colors = AppTheme.colors
     Column(
         modifier
+            .listItemFocus()
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
@@ -952,6 +957,7 @@ fun GroupVideoItem(
     val colors = AppTheme.colors
     Column(
         modifier
+            .listItemFocus()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(DesignTokens.spacingDefault),
     ) {

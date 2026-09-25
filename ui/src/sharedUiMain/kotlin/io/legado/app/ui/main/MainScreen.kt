@@ -41,6 +41,7 @@ package io.legado.app.ui.main
  * ResourceProvider key 访问, 见 MainBottomBar.kt 顶部注释清单。
  */
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -59,6 +60,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import io.legado.app.constant.BottomNavTag
+import io.legado.app.ui.compose.component.pagerPageFocus
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.launch
@@ -158,12 +160,14 @@ fun MainScreen(
             key = { i -> visibleTags[i] },
             modifier = modifier,
         ) { page ->
-            when (visibleTags[page]) {
-                BottomNavTag.HOME -> homeTab()
-                // style 切换由 BookshelfTab 内部 key(style) 重建（旧 adapter POSITION_NONE 语义）
-                BottomNavTag.BOOKSHELF -> bookshelfTab()
-                BottomNavTag.DISCOVERY -> exploreTab()
-                else -> myTab()
+            Box(Modifier.fillMaxSize().pagerPageFocus(pagerState, page)) {
+                when (visibleTags[page]) {
+                    BottomNavTag.HOME -> homeTab()
+                    // style 切换由 BookshelfTab 内部 key(style) 重建（旧 adapter POSITION_NONE 语义）
+                    BottomNavTag.BOOKSHELF -> bookshelfTab()
+                    BottomNavTag.DISCOVERY -> exploreTab()
+                    else -> myTab()
+                }
             }
         }
     }

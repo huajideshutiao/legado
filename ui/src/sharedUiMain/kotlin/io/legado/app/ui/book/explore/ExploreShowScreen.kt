@@ -49,6 +49,7 @@ import io.legado.app.ui.root.LocalSharedCoverBinding
 import io.legado.app.ui.root.rememberSharedCoverSourceBinding
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.FastScrollLazyVerticalGrid
+import io.legado.app.ui.compose.component.listItemFocus
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.component.rememberResponsiveColumns
 import io.legado.app.ui.compose.platform.rememberPainter
@@ -479,6 +480,7 @@ private fun ExploreListItem(
     val coverHeight = shelfCoverHeightDp(isVideoStyle)
     Row(
         Modifier
+            .listItemFocus()
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(DesignTokens.spacingDefault),
@@ -583,7 +585,7 @@ private fun ExploreGridItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
-    Box(Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)) {
+    Box(Modifier.listItemFocus().combinedClickable(onClick = onClick, onLongClick = onLongClick)) {
         Column(Modifier.fillMaxWidth()) {
             coverSlot(
                 book,

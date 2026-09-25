@@ -61,6 +61,7 @@ import io.legado.app.ui.compose.component.AppFilletTextButton
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.GridPackLayout
 import io.legado.app.ui.compose.component.estimateGridHeight
+import io.legado.app.ui.compose.component.listItemFocus
 import io.legado.app.ui.compose.component.toGridPackSpec
 import io.legado.app.ui.compose.platform.rememberNavigationBarPaddingValues
 import io.legado.app.ui.compose.platform.platformStatusBarPadding
@@ -439,8 +440,16 @@ private fun ExploreSourceItem(
         label = "exploreArrow",
     )
 
-    // 对照 item_explore_source.xml: 外层 paddingTop=4dp (arco_spacing_xs)
-    Column(Modifier.fillMaxWidth().padding(top = DesignTokens.spacingXs)) {
+    // 对照 item_explore_source.xml: 外层 paddingTop=4dp (arco_spacing_xs)。
+    // 原版根 LinearLayout 才是 bg_item_focused_on_tv 的宿主 (含下方分类展开区), 而 ll_title
+    // 另有一层 bg_find_book_group 叠在它上面; 点击则挂在 ll_title 上 (原 ExploreAdapter 对
+    // llTitle 设 setOnClickListener), 故焦点在根、点击在内层 Row。
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .listItemFocus()
+            .padding(top = DesignTokens.spacingXs),
+    ) {
         // ll_title: bg_find_book_group (transparent10 填充+8dp 圆角) + padding 8dp
         // 外层 Box 承载下拉菜单: DropdownMenu 锚点取本 Box 左上角, 复刻原 PopupMenu(view=llTitle) 左侧弹出
         Box {

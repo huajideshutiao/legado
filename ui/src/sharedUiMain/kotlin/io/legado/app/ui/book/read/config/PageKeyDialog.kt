@@ -28,7 +28,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
@@ -42,6 +41,7 @@ import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.keyToPageKeyCode
+import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.ui.generated.resources.Res
@@ -208,7 +208,7 @@ private fun appendCapturedKey(current: String, event: KeyEvent): String? {
 }
 
 /**
- * 原版 selector_fillet_btn_bg 方块按钮: arco_radius_default 8dp 圆角 + btn_bg(#100e0e0e) 实底
+ * 原版 selector_fillet_btn_bg 方块按钮: arco_radius_default 8dp 圆角 + btn_bg 实底
  * + primaryText 居中; 高度 48dp (arco_view_height_xl), 点击区随 modifier 均分。
  */
 @Composable
@@ -222,7 +222,7 @@ private fun FilletButton(
         modifier
             .height(48.dp)
             .clip(DesignTokens.shapeDefault)
-            .background(Color(0x100E0E0E))
+            .background(rememberColor("btn_bg"))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
