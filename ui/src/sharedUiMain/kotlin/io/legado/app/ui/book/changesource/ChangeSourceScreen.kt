@@ -52,6 +52,7 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppRadioButton
+import io.legado.app.ui.compose.component.listItemFocus
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.component.OverflowMenu
@@ -326,6 +327,7 @@ fun SearchBookItem(
         Row(
             Modifier
                 .fillMaxWidth()
+                .listItemFocus()
                 .combinedClickable(onClick = onClick, onLongClick = { menuExpanded = true })
                 .padding(DesignTokens.spacingDefault),
             verticalAlignment = Alignment.CenterVertically,

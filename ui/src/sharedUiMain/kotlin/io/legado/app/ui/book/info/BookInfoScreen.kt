@@ -68,6 +68,7 @@ import io.legado.app.help.book.isWebFile
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppFilletTextButton
 import io.legado.app.ui.compose.component.AppMenuCheckbox
+import io.legado.app.ui.compose.component.listItemFocus
 import io.legado.app.ui.compose.component.PullToRefreshDefaults
 import io.legado.app.ui.compose.component.filletChipPaddingH
 import io.legado.app.ui.compose.component.filletChipPaddingV
@@ -733,6 +734,7 @@ private fun InfoCover(
                     if (cardBg) Modifier.background(AppTheme.colors.bottomBackground)
                     else Modifier
                 )
+                .listItemFocus()
                 .combinedClickable(
                     onClick = { actions.onCoverClick() },
                     onLongClick = { actions.onCoverLongClick() },

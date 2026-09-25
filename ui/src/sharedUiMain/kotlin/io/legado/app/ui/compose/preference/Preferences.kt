@@ -50,6 +50,7 @@ import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppSwitch
+import io.legado.app.ui.compose.component.listItemFocus
 import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberNavigationBarPaddingValues
@@ -358,10 +359,11 @@ internal fun PreferenceRow(
 ) {
     val (titleColor, summaryColor) = prefTextColors(isBottomBackground)
     val clickModifier = if ((onClick != null || onLongClick != null) && enabled) {
-        Modifier.combinedClickable(
-            onClick = { onClick?.invoke() },
-            onLongClick = onLongClick,
-        )
+        Modifier.listItemFocus()
+            .combinedClickable(
+                onClick = { onClick?.invoke() },
+                onLongClick = onLongClick,
+            )
     } else Modifier
     Row(
         Modifier

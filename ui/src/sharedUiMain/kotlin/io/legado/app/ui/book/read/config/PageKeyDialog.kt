@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppUnderlineTextField
+import io.legado.app.ui.compose.component.listItemFocus
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.keyToPageKeyCode
@@ -223,6 +224,7 @@ private fun FilletButton(
             .height(48.dp)
             .clip(DesignTokens.shapeDefault)
             .background(rememberColor("btn_bg"))
+            .listItemFocus()
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {

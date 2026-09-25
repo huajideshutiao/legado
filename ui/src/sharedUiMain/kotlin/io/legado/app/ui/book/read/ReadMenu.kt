@@ -113,6 +113,7 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppSlider
+import io.legado.app.ui.compose.component.listItemFocus
 import io.legado.app.ui.compose.platform.BackLayerHandler
 import io.legado.app.ui.compose.platform.platformNavigationBarPadding
 import io.legado.app.ui.compose.platform.platformStatusBarPadding
@@ -1236,6 +1237,7 @@ fun ReadMenuFab(
             .shadow(6.dp, CircleShape)
             .clip(CircleShape)
             .background(bg)
+            .listItemFocus()
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {

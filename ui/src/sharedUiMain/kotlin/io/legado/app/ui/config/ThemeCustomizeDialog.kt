@@ -49,6 +49,7 @@ import io.legado.app.model.commitBackgroundImage
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppRadioButton
+import io.legado.app.ui.compose.component.listItemFocus
 import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.AppUnderlineTextField
@@ -554,6 +555,7 @@ private fun ColorRow(label: String, color: Int, onClick: () -> Unit) {
         Modifier
             .fillMaxWidth()
             .heightIn(min = DesignTokens.viewHeightXl)
+            .listItemFocus()
             .clickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
     ) {
