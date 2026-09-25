@@ -62,7 +62,7 @@ class ExoPlayerAudioPlayController(
     override fun stop() = exoPlayer.stop()
     override fun seekTo(position: Long) = exoPlayer.seekTo(position)
     override fun setPlaybackSpeed(speed: Float) = exoPlayer.setPlaybackSpeed(speed)
-    override fun prepare() = exoPlayer.prepare()
+    override suspend fun prepare() = exoPlayer.prepare()
     override fun release() = exoPlayer.release()
 
     // region Player.Listener -> AudioPlayControllerListener 适配

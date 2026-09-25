@@ -25,6 +25,7 @@ import io.legado.app.utils.KS_JSON
 import kotlin.concurrent.Volatile
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -33,6 +34,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
 
 /**
@@ -118,17 +120,22 @@ class OhosAudioPlayCommander : NowPlayingSessionHost() {
 
     // ===== 流播 / 预下载回退 =====
 
-    /** 流播: 直链 + 请求头交桥侧 MediaSource, 免整段预下载 */
-    private fun startStreaming(mediaUrl: String, headers: Map<String, String>) {
+    /**
+     * 流播: 直链 + 请求头交桥侧 MediaSource, 免整段预下载。
+     *
+     * 挂起直到装载落定 —— 与桌面端同语义: 装载的所有权在调用方 (会话的起播 job) 上,
+     * 会话终结/换章取消 job 时 await 随之作废, 不会留下"没人认领但仍会出声"的装载。
+     */
+    private suspend fun startStreaming(mediaUrl: String, headers: Map<String, String>) {
         streaming = true
         avController.setStreamSource(mediaUrl, headers, startPosMs)
-        avController.prepare()
         // 旧版桥不认识 setSourceUrl 时既无 onReady 也无 onError, 靠超时回退
         streamWatchdog?.cancel()
         streamWatchdog = scope.launch {
             delay(STREAM_PREPARE_TIMEOUT_MS)
             if (streaming) fallbackToDownload("流播准备超时")
         }
+        avController.prepare()
     }
 
     /** 清理流播相关状态 (换章/销毁时调用) */
@@ -279,6 +286,14 @@ private class OhosAvAudioPlayController : AudioPlayController, OhosNativeBridge.
 
     @Volatile private var listenerRegistered = false
 
+    /**
+     * 本次装载的就绪信号: [prepare] await 它, 由 onReady/onError 事件唤醒。
+     *
+     * 调用方协程被取消时 await 随之取消 ([readySignal] 置空), 引擎由调用方
+     * ([AudioPlaySession] 会话终结/换章) 显式 stop —— 与桌面端同语义。
+     */
+    @Volatile private var readySignal: CompletableDeferred<Unit>? = null
+
     override var playWhenReady = false
 
     override val isPlaying: Boolean get() = playing
@@ -338,23 +353,39 @@ private class OhosAvAudioPlayController : AudioPlayController, OhosNativeBridge.
         state = AudioPlayController.STATE_IDLE
     }
 
-    override fun prepare() {
+    /**
+     * 装载媒体并挂起至就绪; 完成后由 onPlaybackStateChanged 通知。
+     *
+     * 挂起至装载落定 (onReady/onError), 随调用方协程取消 —— 装载的所有权归会话的起播 job,
+     * 会话终结/换章时在途装载一并作废 (与桌面端 DesktopAudioPlayer.prepare 同语义)。
+     * 就绪信号带超时兑底: 桥既不回 onReady 也不回 onError 时不能永久挂住会话 job。
+     */
+    override suspend fun prepare() {
         // ets 侧 setSource/setSourceUrl 内部完成 设源 + 创建 AVPlayer + prepare, 就绪回推 onReady
         val url = sourceUrl
-        if (url != null) {
-            state = AudioPlayController.STATE_BUFFERING
-            sendCommand(
-                MediaCommand(
-                    action = "setSourceUrl",
-                    url = url,
-                    headers = sourceHeaders.takeIf { it.isNotEmpty() },
-                )
-            )
-            return
-        }
-        val path = sourcePath ?: return
+        val path = sourcePath
+        if (url == null && path == null) return
         state = AudioPlayController.STATE_BUFFERING
-        sendCommand(MediaCommand(action = "setSource", path = path))
+        val signal = CompletableDeferred<Unit>()
+        readySignal = signal
+        try {
+            if (url != null) {
+                sendCommand(
+                    MediaCommand(
+                        action = "setSourceUrl",
+                        url = url,
+                        headers = sourceHeaders.takeIf { it.isNotEmpty() },
+                    )
+                )
+            } else {
+                sendCommand(MediaCommand(action = "setSource", path = path!!))
+            }
+            // 超时后照旧返回: 就绪与否由事件驱动 (与未挂起前一致), 只是不再永久占住会话 job
+            withTimeoutOrNull(PREPARE_TIMEOUT_MS) { signal.await() }
+        } finally {
+            // 流播超时回退预下载时会并发发起下一轮 prepare, 不得清掉它新设的信号
+            if (readySignal === signal) readySignal = null
+        }
     }
 
     override fun play() {
@@ -423,6 +454,7 @@ private class OhosAvAudioPlayController : AudioPlayController, OhosNativeBridge.
                 }
                 state = AudioPlayController.STATE_READY
                 if (playWhenReady) play()
+                readySignal?.complete(Unit)
                 listener?.onPlaybackStateChanged(AudioPlayController.STATE_READY)
             }
 
@@ -434,6 +466,8 @@ private class OhosAvAudioPlayController : AudioPlayController, OhosNativeBridge.
 
             "onError" -> {
                 playing = false
+                // 唤醒装载 await (正常完成: 错误照旧经 listener 上报, 不走异常路径以免改变重试/回退语义)
+                readySignal?.complete(Unit)
                 listener?.onPlayerError(RuntimeException(event.message ?: "AVPlayer error"))
             }
 
@@ -489,6 +523,11 @@ private class OhosAvAudioPlayController : AudioPlayController, OhosNativeBridge.
         val cachedDuration: Long? = null,
         val position: Long? = null,
     )
+
+    private companion object {
+        /** 装载 await 兑底超时: 桥既不回 onReady 也不回 onError 时不能永久占住会话的起播 job */
+        private const val PREPARE_TIMEOUT_MS = 30_000L
+    }
 }
 
 /** [AudioPlayAnalyzeRuleFactory] 的鸿蒙实现: 经 [AnalyzeRuleFactories] 创建 (同 desktop) */

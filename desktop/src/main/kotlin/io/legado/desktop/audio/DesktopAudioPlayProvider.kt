@@ -14,6 +14,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 /**
  * 桌面端 AudioPlay 宿主 (对应 app 端 AudioPlayService 的平台部分)。
@@ -57,6 +58,9 @@ class DesktopAudioPlayProvider : NowPlayingSessionHost() {
             chapter = AudioPlayShared.durChapter,
             coroutineContext = currentCoroutineContext(),
         ).resolveMedia()
+        // 解析直链要走书源 JS 与网络, 期间可能已被取消 (退出播放页/切章): 取消后不该再动引擎,
+        // 否则会白建一个引擎实例 (未装媒体组件时还会弹出下载确认)
+        currentCoroutineContext().ensureActive()
         controller.setSource(mediaUrl, headers, positionMs.toLong())
         controller.prepare()
     }

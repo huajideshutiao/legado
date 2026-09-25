@@ -377,6 +377,8 @@ class AudioPlaySession(private val host: AudioPlaySessionHost) :
         // 并传给外观同步, 避免首次播控同步读到旧进度
         manager.onSeekTo(position)
         host.onSessionSync(positionMs = position.toLong())
+        // await 装载完成: 装载的所有权在本起播 job 上, 会话终结/换章时随之取消,
+        // 引擎不会留下"无人认领但仍在出声"的装载 (见 DesktopAudioPlayController.prepare 注释)
         host.startPlayback(playUrl, position)
     }
 
@@ -384,64 +386,81 @@ class AudioPlaySession(private val host: AudioPlaySessionHost) :
 
     // region AudioPlayControllerListener (引擎状态回调)
 
+    /**
+     * 会话已终结时丢弃引擎回调。
+     *
+     * 引擎回调可能晚于 [endSession] 到达 (引擎自己的线程/队列上还排着回调)。这种回调若放行,
+     * 轻则把共享播放状态写成 PLAY 让界面以为还在播 (界面据此跳过重新起播, 表现为"控制不了"),
+     * 重则经 [AudioPlayManager.refreshChapter] / `next()` 重新拉流, 把已经终结的会话复活并
+     * 再次出声。故终结后一律不再处理。
+     */
+    private fun handleEngineCallback(block: () -> Unit) {
+        if (!isRunning) return
+        block()
+    }
+
     override fun onPlaybackStateChanged(state: Int) {
-        when (state) {
-            AudioPlayController.STATE_IDLE,
-            AudioPlayController.STATE_BUFFERING -> Unit
+        handleEngineCallback {
+            when (state) {
+                AudioPlayController.STATE_IDLE,
+                AudioPlayController.STATE_BUFFERING -> Unit
 
-            AudioPlayController.STATE_READY -> {
-                hasRefreshedOnPlayError = false
-                host.onPlaybackReady()
-                postEvent(EventBus.AUDIO_LOADING, false)
-                // 倍速重设: AVPlayer 的 play() 会把 rate 打回 1, mpv 换引擎实例后也回 1x
-                host.controller.setPlaybackSpeed(playSpeed)
-                postEvent(EventBus.AUDIO_SPEED, playSpeed)
-                AudioPlayShared.status =
-                    if (host.controller.playWhenReady) Status.PLAY else Status.PAUSE
-                postEvent(EventBus.AUDIO_STATE, AudioPlayShared.status)
-                val duration = host.controller.duration
-                // 流式资源就绪时 duration 可能还未知 (0 / Media3 的 TIME_UNSET), 写下去会把
-                // chapter.end 冲坏; 播放中变已知后由 upPlayProgress 心跳补发
-                if (duration > 0) {
-                    postEvent(EventBus.AUDIO_SIZE, duration.toInt())
-                    AudioPlayShared.saveDurChapter(duration)
+                AudioPlayController.STATE_READY -> {
+                    hasRefreshedOnPlayError = false
+                    host.onPlaybackReady()
+                    postEvent(EventBus.AUDIO_LOADING, false)
+                    // 倍速重设: AVPlayer 的 play() 会把 rate 打回 1, mpv 换引擎实例后也回 1x
+                    host.controller.setPlaybackSpeed(playSpeed)
+                    postEvent(EventBus.AUDIO_SPEED, playSpeed)
+                    AudioPlayShared.status =
+                        if (host.controller.playWhenReady) Status.PLAY else Status.PAUSE
+                    postEvent(EventBus.AUDIO_STATE, AudioPlayShared.status)
+                    val duration = host.controller.duration
+                    // 流式资源就绪时 duration 可能还未知 (0 / Media3 的 TIME_UNSET), 写下去会把
+                    // chapter.end 冲坏; 播放中变已知后由 upPlayProgress 心跳补发
+                    if (duration > 0) {
+                        postEvent(EventBus.AUDIO_SIZE, duration.toInt())
+                        AudioPlayShared.saveDurChapter(duration)
+                    }
+                    manager.upPlayProgress()
+                    host.onSessionSync()
                 }
-                manager.upPlayProgress()
-                host.onSessionSync()
-            }
 
-            AudioPlayController.STATE_ENDED -> {
-                manager.cancelProgressJob()
-                manager.clearPendingSeek()
-                AudioPlayShared.playPositionChanged(host.controller.duration.toInt())
-                if (!AudioPlayShared.next()) {
-                    isPaused = true
-                    ReadTimeRecorder.end(ReadTimeRecorder.Source.AUDIO)
-                    stopPlay()
+                AudioPlayController.STATE_ENDED -> {
+                    manager.cancelProgressJob()
+                    manager.clearPendingSeek()
+                    AudioPlayShared.playPositionChanged(host.controller.duration.toInt())
+                    if (!AudioPlayShared.next()) {
+                        isPaused = true
+                        ReadTimeRecorder.end(ReadTimeRecorder.Source.AUDIO)
+                        stopPlay()
+                    }
                 }
             }
         }
     }
 
     override fun onPlayerError(error: Throwable) {
-        if (host.onPlayerErrorIntercept(error)) return
-        if (!hasRefreshedOnPlayError) {
-            // 首错静默: 直链多半过期了, 清掉 resourceUrl 重新解析一次
-            hasRefreshedOnPlayError = true
-            manager.refreshChapter()
-            return
+        handleEngineCallback {
+            if (host.onPlayerErrorIntercept(error)) return@handleEngineCallback
+            if (!hasRefreshedOnPlayError) {
+                // 首错静默: 直链多半过期了, 清掉 resourceUrl 重新解析一次
+                hasRefreshedOnPlayError = true
+                manager.refreshChapter()
+                return@handleEngineCallback
+            }
+            manager.cancelProgressJob()
+            isPaused = true
+            // 对照 app 原版 onPlayerError: 只落 STOP + 提示, 不终结会话 —— 通知与播控卡片留着,
+            // 用户可以再按播放重试
+            AudioPlayShared.status = Status.STOP
+            postEvent(EventBus.AUDIO_STATE, Status.STOP)
+            postEvent(EventBus.AUDIO_LOADING, false)
+            host.onSessionSync()
+            val message = host.playerErrorMessage(error)
+            AppLog.put(message, error)
+            host.toast(message)
         }
-        manager.cancelProgressJob()
-        isPaused = true
-        // 对照 app 原版 onPlayerError: 只落 STOP + 提示, 不终结会话 —— 通知与播控卡片留着,
-        // 用户可以再按播放重试
-        AudioPlayShared.status = Status.STOP
-        postEvent(EventBus.AUDIO_STATE, Status.STOP)
-        postEvent(EventBus.AUDIO_LOADING, false)
-        host.onSessionSync()
-        val message = host.playerErrorMessage(error)
-        AppLog.put(message, error)
-        host.toast(message)
     }
 
     // endregion

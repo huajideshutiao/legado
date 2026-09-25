@@ -19,10 +19,12 @@ import io.legado.app.model.audio.LyricPublisher
 import io.legado.app.model.audio.NowPlayingSessionHost
 import io.legado.app.help.media.maxLoadedTimeRangeEndMs
 import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.withTimeoutOrNull
 import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerItem
 import platform.AVFoundation.AVPlayerItemDidPlayToEndTimeNotification
@@ -97,6 +99,14 @@ private class IosAvAudioPlayController : AudioPlayController {
     private var failObserver: Any? = null
     private var statusObserver: AvPlayerItemStatusObserver? = null
 
+    /**
+     * 本次装载的就绪信号: [prepare] await 它, 由 onReady/onFailed 唤醒。
+     *
+     * 调用方协程被取消时 await 随之取消 ([readySignal] 置空), 引擎由调用方
+     * ([AudioPlaySession] 会话终结/换章) 显式 stop —— 与桌面端同语义。
+     */
+    private var readySignal: CompletableDeferred<Unit>? = null
+
     /** 当前倍速; AVPlayer.play() 会把 rate 复位为 1, 播放中变速/起播都要重设 rate */
     private var speed = 1f
 
@@ -157,24 +167,42 @@ private class IosAvAudioPlayController : AudioPlayController {
         registerItemObservers(newItem)
     }
 
-    override fun prepare() {
+    /**
+     * 装载媒体并挂起至就绪; 完成后由 onPlaybackStateChanged 通知。
+     *
+     * 挂起至装载落定 (onReady/onFailed), 随调用方协程取消 —— 装载的所有权归会话的起播 job,
+     * 会话终结/换章时在途装载一并作废 (与桌面端 DesktopAudioPlayer.prepare 同语义)。
+     * 就绪信号带超时兑底: AVPlayer 既不就绪也不失败时不能永久挂住会话 job。
+     */
+    override suspend fun prepare() {
         val watchedItem = item ?: return
         state = AudioPlayController.STATE_BUFFERING
         statusObserver?.dispose()
+        val signal = CompletableDeferred<Unit>()
+        readySignal = signal
         val observer = AvPlayerItemStatusObserver(
             item = watchedItem,
             onReady = {
                 statusObserver = null
                 onItemReady()
+                signal.complete(Unit)
             },
             onFailed = { message ->
                 statusObserver = null
                 state = AudioPlayController.STATE_IDLE
+                // 唤醒装载 await (正常完成: 错误照旧经 listener 上报)
+                signal.complete(Unit)
                 listener?.onPlayerError(RuntimeException(message))
             },
         )
         statusObserver = observer
         observer.start()
+        try {
+            // 超时后照旧返回: 就绪与否由事件驱动, 只是不再永久占住会话 job
+            withTimeoutOrNull(PREPARE_TIMEOUT_MS) { signal.await() }
+        } finally {
+            if (readySignal === signal) readySignal = null
+        }
     }
 
     /** 就绪: 先 seek 起播位置, playWhenReady 则起播, 再回调 STATE_READY */
@@ -267,6 +295,9 @@ private class IosAvAudioPlayController : AudioPlayController {
     private companion object {
         /** AVURLAsset options 的 HTTP headers key (非公开常量, 见 setSource 注释) */
         private const val AV_HTTP_HEADER_FIELDS_KEY = "AVURLAssetHTTPHeaderFieldsKey"
+
+        /** 装载 await 兑底超时: AVPlayer 既不就绪也不失败时不能永久占住会话的起播 job */
+        private const val PREPARE_TIMEOUT_MS = 30_000L
     }
 }
 

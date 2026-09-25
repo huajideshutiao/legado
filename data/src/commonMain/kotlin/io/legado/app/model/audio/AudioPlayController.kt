@@ -68,8 +68,13 @@ interface AudioPlayController {
     /** 设置播放速率 (1.0 = 正常速度)。 */
     fun setPlaybackSpeed(speed: Float)
 
-    /** 准备播放 (缓冲首帧), 完成后触发 [AudioPlayControllerListener.onPlaybackStateChanged]。 */
-    fun prepare()
+    /**
+     * 准备播放 (装载媒体), 完成后触发 [AudioPlayControllerListener.onPlaybackStateChanged]。
+     *
+     * 挂起直到装载落定, 且随调用方协程取消 —— 装载的所有权归会话的起播 job, 会话终结
+     * (或换章) 时在途装载随之作废, 不会留下"无人认领但仍在出声"的引擎。
+     */
+    suspend fun prepare()
 
     /** 释放底层资源。 */
     fun release()
