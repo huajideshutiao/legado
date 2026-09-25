@@ -325,8 +325,11 @@ fun ChangeChapterSourceContent(
         // 对照 Dialog.deleteSource 第 325-332 行
         override fun onDelete(book: SearchBook) {
             viewModel.del(book)
-            if (state.curBookUrl == book.bookUrl) {
-                state.book?.let { oldBook ->
+            val curBook = state.book
+            val isCurBook = (curBook == null || curBook.origin == book.origin) &&
+                state.curBookUrl == book.bookUrl
+            if (isCurBook) {
+                curBook?.let { oldBook ->
                     viewModel.autoChangeSource(oldBook.type) { b, toc, source ->
                         onSourceChanged(source, b, toc)
                     }

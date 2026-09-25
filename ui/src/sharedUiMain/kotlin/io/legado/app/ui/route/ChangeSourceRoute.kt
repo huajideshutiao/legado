@@ -287,7 +287,9 @@ fun ChangeSourceContent(
     fun deleteSource(searchBook: SearchBook) {
         viewModel.del(searchBook)
         val currentState = screenModel.state.value
-        if (currentState.curBookUrl == searchBook.bookUrl) {
+        val isCurBook = (currentState.book == null || currentState.book?.origin == searchBook.origin) &&
+            currentState.curBookUrl == searchBook.bookUrl
+        if (isCurBook) {
             val oldBookType = currentState.book?.type
             viewModel.autoChangeSource(oldBookType) { newBook, toc, source ->
                 onSourceChanged(source, newBook, toc)
@@ -317,7 +319,9 @@ fun ChangeSourceContent(
 
         override fun onItemClick(book: SearchBook) {
             // 对照 app 端 SearchBookItem onClick: if (book.bookUrl != curBookUrl) changeTo(book)
-            if (book.bookUrl != screenModel.state.value.curBookUrl) {
+            val isCurBook = (screenModel.state.value.book == null || screenModel.state.value.book?.origin == book.origin) &&
+                book.bookUrl == screenModel.state.value.curBookUrl
+            if (!isCurBook) {
                 changeTo(book)
             }
         }

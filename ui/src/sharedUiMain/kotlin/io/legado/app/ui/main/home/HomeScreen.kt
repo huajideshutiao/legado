@@ -412,7 +412,7 @@ private fun HomeTabPage(
                     }
                     items(
                         state.sectionBooks[homeSectionKey(tabTitle, section.id)] ?: emptyList(),
-                        key = { "g_${it.bookUrl}" },
+                        key = { "g_${section.id}_${it.origin}_${it.bookUrl}" },
                     ) { book ->
                         infiniteGridCardSlot(tabTitle, section, book)
                     }

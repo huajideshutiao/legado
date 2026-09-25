@@ -162,7 +162,7 @@ fun ChangeCoverDialog(
                         .fillMaxWidth()
                         .weight(1f),
                 ) {
-                    items(items, key = { it.bookUrl }) { item ->
+                    items(items, key = { "${it.origin}|${it.bookUrl}|${it.coverUrl}" }) { item ->
                         CoverItem(item, coverSlot = coverSlot) {
                             // 由回调携带结果并关闭 Overlay，避免结果关闭后再次 dismiss 同一实例
                             onCoverSelected(item.coverUrl ?: "")

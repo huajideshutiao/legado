@@ -50,7 +50,7 @@ fun VideoChapterGrid(
         state = gridState,
         modifier = modifier,
     ) {
-        itemsIndexed(chapters, key = { _, chapter -> chapter.url }) { index, chapter ->
+        itemsIndexed(chapters, key = { _, chapter -> "${chapter.bookUrl}#${chapter.index}" }) { index, chapter ->
             VideoChapterItem(
                 title = displayTitles.getOrElse(index) { chapter.title },
                 isCurrent = chapter.index == durIndex,

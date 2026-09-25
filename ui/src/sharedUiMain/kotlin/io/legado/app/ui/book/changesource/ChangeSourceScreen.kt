@@ -319,7 +319,7 @@ fun SearchBookItem(
     onDelete: () -> Unit,
 ) {
     val colors = AppTheme.colors
-    var score by remember(book.bookUrl) { mutableIntStateOf(getScore()) }
+    var score by remember(book.origin, book.bookUrl) { mutableIntStateOf(getScore()) }
     var menuExpanded by remember { mutableStateOf(false) }
     // 预取格式化串: rememberString 是 @Composable, 不能在 lambda 里调
     val strRespondTime = stringResource(Res.string.respondTime)
@@ -759,11 +759,11 @@ fun ChangeSourceScreen(
                 .weight(1f)
                 .fillMaxWidth(),
         ) {
-            items(state.sources, key = { it.bookUrl }) { searchBook ->
+            items(state.sources, key = { "${it.origin}|${it.bookUrl}" }) { searchBook ->
                 // 对照 app 端 Dialog.Content 第 228-242 行 SearchBookItem 完整回调
                 SearchBookItem(
                     book = searchBook,
-                    isCurSource = searchBook.bookUrl == state.curBookUrl,
+                    isCurSource = (state.book == null || searchBook.origin == state.book?.origin) && searchBook.bookUrl == state.curBookUrl,
                     loadWordCount = state.loadWordCount,
                     getScore = { itemActions.getScore(searchBook) },
                     setScore = { itemActions.setScore(searchBook, it) },
@@ -779,7 +779,9 @@ fun ChangeSourceScreen(
         ChangeSourceBottomBar(
             durText = state.durText,
             onDurClick = {
-                val index = state.sources.indexOfFirst { it.bookUrl == state.curBookUrl }
+                val index = state.sources.indexOfFirst {
+                    (state.book == null || it.origin == state.book?.origin) && it.bookUrl == state.curBookUrl
+                }
                 if (index >= 0) scope.launch { listState.scrollToItem(index) }
             },
             onTop = { scope.launch { listState.scrollToItem(0) } },
