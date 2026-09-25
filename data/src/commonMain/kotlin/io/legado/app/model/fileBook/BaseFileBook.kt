@@ -16,11 +16,12 @@ import io.legado.app.utils.InputStream
  * 扩展函数或实现类成员方式提供 (app 端: BaseFileBookExt.kt 扩展函数; desktop:
  * FileBook 下沉后成员方法)。
  *
- * 实现类对照:
- * - [CbzFile]: CBZ/ZIP 漫画解析 (commonMain, 本任务下沉)
- * - TextFile: TXT 本地书解析 (jvmAndAndroidMain, 已下沉)
- * - FileBook: 文件导入总入口 (app 端, 待并行子代理下沉)
- * - EpubFile: EPUB 解析 (待下沉)
+ * 实现类对照 (源集以实际文件为准):
+ * - [CbzFile]: CBZ/ZIP 漫画解析 (commonMain, 四端共用)
+ * - [io.legado.app.model.fileBook.TextFile]: TXT 本地书解析 (各端: jvmAndAndroidMain / nativeMain)
+ * - [io.legado.app.model.fileBook.EpubFile]: EPUB 解析 (jvmAndAndroidMain epublib / nativeMain 自实现)
+ * - `PdfFile` / `DesktopPdfFile`: PDF 解析 (app 系统 PdfRenderer / 桌面 PDFBox;
+ *   iOS/鸿蒙尚未实现, 走 [NativeFileBookAccessor] 的 UnsupportedFileBook)
  *
  * 模式参考 app 端原 `interface BaseFileBook`, 仅剥离 Android 依赖默认方法。
  */

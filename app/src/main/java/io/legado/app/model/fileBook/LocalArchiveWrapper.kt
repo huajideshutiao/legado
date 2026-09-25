@@ -3,11 +3,9 @@ package io.legado.app.model.fileBook
 import android.os.ParcelFileDescriptor
 import android.system.Os
 import android.system.OsConstants
+import io.legado.app.utils.InputStream
 import io.legado.app.utils.compress.LibArchiveUtils
 import java.io.ByteArrayInputStream
-import java.io.InputStream
-import java.util.Collections
-import java.util.Enumeration
 
 class LocalArchiveWrapper(private val pfd: ParcelFileDescriptor) : ZipFileWrapper {
     private var entriesMap: Map<String, ZipEntry>? = null
@@ -29,8 +27,7 @@ class LocalArchiveWrapper(private val pfd: ParcelFileDescriptor) : ZipFileWrappe
         return data?.let { ByteArrayInputStream(it) }
     }
 
-    override fun entries(): Enumeration<out ZipEntry> =
-        Collections.enumeration(getEntriesMap().values)
+    override fun entries(): List<ZipEntry> = getEntriesMap().values.toList()
 
     override fun close() {}
 }

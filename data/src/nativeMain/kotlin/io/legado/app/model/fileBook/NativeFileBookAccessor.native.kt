@@ -15,6 +15,7 @@ import io.legado.app.help.book.getRemoteUrl
 import io.legado.app.help.book.isArchive
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isImage
+import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isPdf
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.file.AppFilesDirs
@@ -58,11 +59,19 @@ class NativeFileBookAccessor : FileBookAccessor {
     }
 
     override fun getHandler(book: Book): BaseFileBook {
-        // 对齐 app 端 FileBook 分派: EPUB→EpubFile, TXT(else 兜底)→TextFile(TextFileCore);
-        // pdf/cbz 解析器未下沉, 仍抛明确异常
+        // 逐字对齐 app 端 FileBookAccessorImpl.getHandler (即 archive 原版 Book.getHandler):
+        // isPdf -> PdfFile / isEpub -> EpubFile /
+        // isLocal && (originName 以 .cbz 结尾 || (originName 以 .zip 结尾 && isImage)) -> CbzFile /
+        // else -> TextFile。
+        // 注意 .cbz 分支不要求 isImage —— 导入时已由 importLocalFile 按后缀置为 image 类型,
+        // 但已入库的旧书 type 可能缺失, 按原版以后缀为准才不会误落 TextFile。
+        // PDF 解析器在 native 端仍未下沉 (iOS 待接 CoreGraphics, 鸿蒙无渲染 API),
+        // 故 isPdf 分支暂走 UnsupportedFileBook 抛明确异常。
+        val originName = book.originName.lowercase()
         return when {
+            book.isPdf -> UnsupportedFileBook
             book.isEpub -> EpubFile
-            book.isPdf || book.isImage -> UnsupportedFileBook
+            book.isLocal && (originName.endsWith(".cbz") || originName.endsWith(".zip") && book.isImage) -> CbzFile
             else -> TextFile
         }
     }
@@ -433,4 +442,8 @@ private fun unsupportedFormatException(fileName: String): NoStackTraceException 
  */
 fun registerNativeFileBookAccessor() {
     FileBookProviders.register(NativeFileBookAccessor())
+    // CbzFile 读 cbz 容器走工厂 (与 app/桌面同模式); native 实现用 commonMain RemoteZipCore
+    // 做纯 Kotlin zip 解析。必须与 FileBookProviders 同时就绪: 否则打开 cbz 书时
+    // ZipFileWrapperFactoryProviders.get() 抛未注册异常
+    ZipFileWrapperFactoryProviders.register(NativeZipFileWrapperFactory())
 }

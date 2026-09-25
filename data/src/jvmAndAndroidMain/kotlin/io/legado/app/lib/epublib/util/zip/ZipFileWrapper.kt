@@ -3,6 +3,7 @@ package io.legado.app.lib.epublib.util.zip
 import io.legado.app.model.fileBook.RemoteZipWrapper
 import java.io.IOException
 import java.io.InputStream
+import java.util.Collections
 import java.util.Enumeration
 import java.util.zip.ZipFile
 
@@ -41,7 +42,9 @@ class ZipFileWrapper(private val zipFile: Any) {
     fun entries(): Enumeration<*>? = when (zipFile) {
         is ZipFile -> zipFile.entries()
         is AndroidZipFileReader -> zipFile.entries()
-        is RemoteZipWrapper -> zipFile.entries()
+        // RemoteZipWrapper.entries() 已改为返回 List (契约下沉 commonMain 时去掉了
+        // java.util.Enumeration); 本类面向 epublib 保持 Enumeration 表面, 在此适配。
+        is RemoteZipWrapper -> Collections.enumeration(zipFile.entries())
         else -> null
     }
 

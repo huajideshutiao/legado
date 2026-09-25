@@ -41,12 +41,12 @@ import java.nio.charset.Charset
  *   android actual 用 BitmapFactory, jvm actual 用 ImageIO
  * - **本地文件打开**: 封装到 [LocalEpubResource] expect class, android actual 用
  *   ParcelFileDescriptor + `AndroidZipFile` (零拷贝随机访问), jvm actual 直接用 `java.util.zip.ZipFile`
- * - **远程文件**: 走跨平台的 [RemoteZipWrapper] (jvmAndAndroidMain), 无需 expect/actual
+ * - **远程文件**: 走跨平台的 [RemoteZipWrapper] (commonMain), 无需 expect/actual
  * - **AppWebDav.authorization**: 替换为 [AppWebDavShared.authorization] (commonMain 等价物)
  *
  * # 为何在 jvmAndAndroidMain 而非 commonMain
  * 本文件依赖 [epublib](`io.legado.app.lib.epublib.*`, jvmAndAndroidMain) + [RemoteZipWrapper]
- * (jvmAndAndroidMain) + `java.io.File`/`java.net.URI`/`java.nio.charset.Charset` (JVM 专属),
+ * (commonMain) + `java.io.File`/`java.net.URI`/`java.nio.charset.Charset` (JVM 专属),
  * 这些在 commonMain 不可见。iOS/鸿蒙 epub 支持待 epublib 全平台化后再迁移到 commonMain。
  *
  * expect/actual 声明见 [EpubFilePlatform.kt](commonMain/.../EpubFilePlatform.kt)。

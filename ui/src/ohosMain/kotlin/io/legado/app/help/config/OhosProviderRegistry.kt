@@ -250,7 +250,8 @@ fun registerOhosProviders() {
     // 音频页封面/模糊背景/书架封面此前因未注册恒占位)
     registerOhosBookImageLoader()
 
-    // 6.6 本地书 accessor (FileBookProviders: epub 走 nativeMain EpubFile, txt/pdf/cbz 明确抛异常)
+    // 6.6 本地书 accessor + cbz 容器工厂 (FileBookProviders: epub 走 nativeMain EpubFile,
+    // cbz 走 commonMain CbzFile + NativeZipFileWrapperFactory, pdf 仍明确抛异常)
     // 须在 BookStorage/LocalBookLocator/BitmapProviders 之后, 任何 FileBook 调用之前
     registerNativeFileBookAccessor()
 

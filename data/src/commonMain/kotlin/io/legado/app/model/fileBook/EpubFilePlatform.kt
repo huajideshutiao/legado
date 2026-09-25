@@ -10,7 +10,7 @@ import io.legado.app.data.entities.Book
  * `AndroidZipFile(pfd, name)` 打开本地 epub, 依赖 `android.graphics.BitmapFactory`/
  * `Bitmap.compress` 处理封面图片。这些 API 在 desktop/jvm 端不存在, 需按平台 actual 拆分。
  *
- * remote (webDav/http) 路径已用跨平台的 `RemoteZipWrapper` (jvmAndAndroidMain) + `RangedSource`,
+ * remote (webDav/http) 路径已用跨平台的 `RemoteZipWrapper` (commonMain) + `RangedSource`,
  * 不需要 expect/actual; 仅本地路径与 Bitmap 编解码走平台 actual。
  *
  * # 设计

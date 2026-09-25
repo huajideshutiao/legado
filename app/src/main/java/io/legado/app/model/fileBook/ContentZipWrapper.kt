@@ -4,9 +4,8 @@ import android.os.ParcelFileDescriptor
 import android.system.Os
 import android.system.OsConstants
 import io.legado.app.constant.AppLog
+import io.legado.app.utils.InputStream
 import java.io.EOFException
-import java.io.InputStream
-import java.util.Collections
 import java.util.zip.Inflater
 import java.util.zip.InflaterInputStream
 import java.util.zip.ZipException
@@ -122,7 +121,7 @@ class ContentZipWrapper(private val pfd: ParcelFileDescriptor) : ZipFileWrapper 
         }
     }
 
-    override fun entries() = Collections.enumeration(readEntries().values)
+    override fun entries(): List<ZipEntry> = readEntries().values.toList()
 
     override fun close() {}
 
