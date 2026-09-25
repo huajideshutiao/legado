@@ -1,0 +1,3 @@
+/* App 显示名 (对照 app 端 res/values-zh-rTW/strings.xml 的 app_name) */
+"CFBundleDisplayName" = "閱讀";
+"CFBundleName" = "閱讀";

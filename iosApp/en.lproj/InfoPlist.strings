@@ -1,0 +1,3 @@
+/* App 显示名 (对照 app 端 res/values/strings.xml 的 app_name) */
+"CFBundleDisplayName" = "Legado";
+"CFBundleName" = "Legado";
