@@ -7,8 +7,10 @@
     <!-- App 元信息 -->
     <key>CFBundleDevelopmentRegion</key>
     <string>$(DEVELOPMENT_LANGUAGE)</string>
+    <!-- 显示名的真值在各 <lang>.lproj/InfoPlist.strings (CFBundleDisplayName);
+         本值只是缺本地化资源时的兜底, 对照 app 端 res/values/strings.xml 的 app_name。 -->
     <key>CFBundleDisplayName</key>
-    <string>legado</string>
+    <string>Legado</string>
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleIdentifier</key>
@@ -109,13 +111,16 @@
         </dict>
     </array>
 
-    <!-- 外部视频投递入口 (对照 Android FileAssociationProvider 的 VIEW/SEND + video/* intent-filter):
+    <!-- 文档类型投递入口 (对照 Android AssociationActivity 的 VIEW intent-filter):
          让 legado 出现在"用其他应用打开 / 分享到"候选里。
-         entry 1 用可确证的公开 UTI (public.movie 总类 + mp4/ts/mov/avi 具体类);
-         entry 2 用 CFBundleTypeExtensions 兜底 mkv/webm/flv/m3u8 等查不到可确证公开 UTI 的扩展名,
-         扩展名集合与 commonMain AppPattern.videoFileRegex 逐一对齐。
+         entry 1 视频: 可确证的公开 UTI (public.movie 总类 + 4 个具体电影类);
+         entry 2 视频: CFBundleTypeExtensions 兜底 mkv/webm/flv/m3u8 等查不到可确证公开 UTI 的扩展名;
+         entry 3/4 文档: 同理 —— txt/json/epub 走公开 UTI (public.plain-text / public.json /
+                         org.idpf.epub-container), cbz 查不到可确证标识符, 走扩展名兜底;
+         entry 5/6: pdf → com.adobe.pdf, zip → public.zip-archive (Apple System-Declared UTI 表).
+         扩展名集合与 commonMain AppPattern.videoFileRegex 及 Android 端 pathPattern 清单逐一对齐。
          投递链: iOSApp.swift onOpenURL → shared handleIosLaunchRequest → LaunchRequest.ImportFile
-         → LegadoApp 嗅探视频 → AppRoute.VideoPlay(VideoPlayTarget.Direct)。
+         → FileAssociationDispatch 按扩展名分流 (书籍/压缩包/JSON 导入; 可播视频改推播放页直投态)。
          ⚠️ 本段与 project.yml 双写: xcodegen generate 会用 project.yml 重写本文件 -->
     <key>CFBundleDocumentTypes</key>
     <array>
@@ -152,6 +157,68 @@
                 <string>avi</string>
                 <string>ts</string>
                 <string>m3u8</string>
+            </array>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Text Document</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.plain-text</string>
+                <string>public.json</string>
+            </array>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Ebook</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>org.idpf.epub-container</string>
+            </array>
+            <key>CFBundleTypeExtensions</key>
+            <array>
+                <string>txt</string>
+                <string>json</string>
+                <string>epub</string>
+                <string>cbz</string>
+            </array>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>PDF Document</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>com.adobe.pdf</string>
+            </array>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Archive</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.zip-archive</string>
+            </array>
+            <key>CFBundleTypeExtensions</key>
+            <array>
+                <string>zip</string>
+                <string>rar</string>
+                <string>7z</string>
             </array>
         </dict>
     </array>

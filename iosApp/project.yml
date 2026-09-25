@@ -21,6 +21,12 @@ options:
   deploymentTarget:
     iOS: "14.0"
   developmentLanguage: zh-Hans
+  # iOS 显示名的本地化在 InfoPlist.strings 里 (CFBundleDisplayName), 不在 Info.plist:
+  # 每个 <lang>.lproj/InfoPlist.strings 一份, 系统按当前语言挑。本工程已备
+  # en / zh-Hans / zh-Hant / zh-Hant-HK 四份 (对照 app 端 res/values* 的 app_name)。
+  # useBaseInternationalization=false: 本工程无 Base.lproj 资源, 关掉避免在
+  # knownRegions 里多出一个用不上的 Base。
+  useBaseInternationalization: false
 
 settings:
   base:
@@ -44,7 +50,10 @@ targets:
     info:
       path: Info.plist
       properties:
-        CFBundleDisplayName: legado
+        # 显示名的真值在各 <lang>.lproj/InfoPlist.strings (CFBundleDisplayName)。
+        # 这里的字面量是缺本地化资源时的兜底, 对照 app 端 res/values/strings.xml 的
+        # app_name (英文态)。改显示名要同时改那四份 InfoPlist.strings。
+        CFBundleDisplayName: Legado
         # 版本号与安卓端对齐 (app/build.gradle.kts versionName/versionCode):
         # 由根工程 syncIosVersion 任务按 git 提交数 + GMT+8 构建时刻自动写入,
         # xcodegen generate 会用它重写 Info.plist (与本文件双写关系)。
@@ -95,15 +104,24 @@ targets:
             CFBundleURLSchemes:
               - legado
               - yuedu
-        # 外部视频投递入口 (对照 Android FileAssociationProvider 的 VIEW/SEND + video/* intent-filter):
+        # 文档类型投递入口 (对照 Android AssociationActivity 的 VIEW intent-filter):
         # 让 legado 出现在"用其他应用打开 / 分享到"候选里, 打开后由 iOSApp.swift onOpenURL →
-        # shared handleIosLaunchRequest → LaunchRequest.ImportFile → LegadoApp 嗅探视频 →
-        # AppRoute.VideoPlay(VideoPlayTarget.Direct)。
-        # 为什么两条 entry: 只声明自己确证的 UTI (public.movie 总类 + 4 个具体电影类),
+        # shared handleIosLaunchRequest → LaunchRequest.ImportFile → FileAssociationDispatch
+        # 按扩展名分流 (书籍/压缩包/JSON 导入; 可播视频改推播放页直投态)。
+        #
+        # 条目 1 视频: 只声明可确证的公开 UTI —— public.movie 总类 + 四个具体电影类;
         # mkv/webm/flv/m3u8 在 iOS 公开 UTI 表里查不到可确证的标识符 (本机无 macOS 可核,
         # 且 UTI 注册表在系统 LaunchServices 里, 不随 Kotlin platform klib 提供),
-        # 按"不凭空造 UTI"的约定改用 CFBundleTypeExtensions 兜底, 扩展名集合与
-        # commonMain AppPattern.videoFileRegex (mp4|mkv|mov|webm|flv|avi|ts|m3u8) 逐一对齐。
+        # 按"不凭空造 UTI"的约定改用 CFBundleTypeExtensions 兜底。
+        # 条目 2 文档: 与条目 1 同理 —— txt/json/pdf/zip/epub 的公开 UTI 已逐条核实
+        # (public.plain-text / public.json / com.adobe.pdf / public.zip-archive /
+        # org.idpf.epub-container, 见 Apple System-Declared Uniform Type Identifiers 与
+        # UTType 文档的 "The identifier for this type is ..."; epub 的 UTI 与同仓
+        # ui/src/iosMain IosPlatformServices.toUtis 已用的 org.idpf.epub-container 同值),
+        # cbz 查不到可确证的公开标识符, 一并走扩展名。
+        # 扩展名集合与 commonMain AppPattern.videoFileRegex 及 Android 端
+        # AssociationActivity 的 pathPattern 清单逐一对齐, 少一个就是"系统交给我们、
+        # 自己不认"。
         # ⚠️ 本段与 Info.plist 双写 (xcodegen generate 会用本段重写 Info.plist)
         CFBundleDocumentTypes:
           - CFBundleTypeName: Movie
@@ -127,6 +145,36 @@ targets:
               - avi
               - ts
               - m3u8
+          - CFBundleTypeName: Text Document
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.plain-text
+              - public.json
+          - CFBundleTypeName: Ebook
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - org.idpf.epub-container
+            CFBundleTypeExtensions:
+              - txt
+              - json
+              - epub
+              - cbz
+          - CFBundleTypeName: PDF Document
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - com.adobe.pdf
+          - CFBundleTypeName: Archive
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.zip-archive
+            CFBundleTypeExtensions:
+              - zip
+              - rar
+              - 7z
         # 应用图标与交替图标 (换桌面图标, 对照 Android Launcher1/4/5):
         # 主图标 AppIcon.png (默认), 交替图标 Icon1/Icon4/Icon5.png, 经
         # UIApplication.setAlternateIconName 切换 (见 shared IosPlatformCapabilities.changeLauncherIcon)。
