@@ -39,7 +39,7 @@ const commits = gitCommits();
 const mode = buildMode();
 const now = gmt8();
 const bundleName = 'shutiao.reader' + (mode === 'release' ? '.release' : '.debug');
-const versionName = '3.' + pad(now.getUTCFullYear() % 100) + pad(now.getUTCMonth() + 1) +
+const versionName = '3.' + pad(now.getUTCFullYear() % 100) + '.' + pad(now.getUTCMonth() + 1) +
   pad(now.getUTCDate()) + pad(now.getUTCHours());
 
 export default {
