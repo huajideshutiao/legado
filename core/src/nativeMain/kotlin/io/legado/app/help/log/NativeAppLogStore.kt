@@ -1,5 +1,6 @@
 package io.legado.app.help.log
 
+import io.legado.app.help.crash.NativeCrashLogWriter
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.utils.File
 import io.legado.app.utils.systemCurrentTimeMillis
@@ -45,41 +46,57 @@ object NativeAppLogStore {
 }
 
 /**
- * 崩溃日志存储: 列出/读取/清空 `{filesDir}/logs` 下的 appLog-*.txt。
+ * 崩溃日志存储: 汇总两类文件供两端 `CrashLogProvider` 读取。
+ *
+ * - `{filesDir}/logs/crash/crash-*.log` —— 真正的崩溃现场, 由 [io.legado.app.help.crash.NativeCrashLogWriter]
+ *   经未捕获异常钩子 / 信号处理器落盘 (不受"记录日志"开关门控, 默认就在写)
+ * - `{filesDir}/logs/appLog-*.txt` —— 运行日志, 由 [NativeAppLogStore] 在 recordLog 开启时落盘
  *
  * 对照 app 端 AndroidCrashLogProvider / desktop DesktopCrashLogProvider 的接口语义
- * (CrashViewModel.initData/readFile/clearCrashLog), native 两端日志即崩溃日志来源
- * (由 [NativeAppLogStore] 在 recordLog 开启时落盘)。
+ * (CrashViewModel.initData/readFile/clearCrashLog)。
  */
 object NativeCrashLogs {
 
-    /** 日志目录 (filesDir 计算 getter, 晚注入也自愈)。 */
+    /** 运行日志目录 (filesDir 计算 getter, 晚注入也自愈)。 */
     internal val logDir: String get() = AppFilesDirs.get().filesDir + "/logs"
 
-    /** 单个日志文件绝对路径 (供分享用)。 */
-    fun logPath(name: String): String = "$logDir/$name"
+    /** 单个日志文件绝对路径 (供分享用)。按前缀分流到崩溃目录或运行日志目录。 */
+    fun logPath(name: String): String =
+        if (isCrashFile(name)) NativeCrashLogWriter.crashPath(name) else "$logDir/$name"
 
-    /** 列出崩溃日志文件名 (appLog-*.txt, 按修改时间倒序)。 */
+    /** 列出日志文件名 (崩溃日志 + 运行日志, 按修改时间倒序)。 */
     fun listLogs(): List<String> {
         val dir = File(logDir)
-        if (!dir.isDirectory) return emptyList()
-        return dir.listFiles { it.isFile && it.name.startsWith("appLog-") && it.name.endsWith(".txt") }
-            ?.sortedByDescending { it.lastModified() }
-            ?.map { it.name }
-            ?: emptyList()
+        val appLogs = if (dir.isDirectory) {
+            dir.listFiles { it.isFile && it.name.startsWith(APP_LOG_PREFIX) && it.name.endsWith(".txt") }
+                ?.sortedByDescending { it.lastModified() }
+                ?.map { it.name }
+                .orEmpty()
+        } else {
+            emptyList()
+        }
+        // 崩溃日志排在前: 排查现场时它才是要看的那一份
+        return NativeCrashLogWriter.listCrashLogs() + appLogs
     }
 
     /** 读取单个日志文件内容; 不存在返回 null。 */
     fun readLog(name: String): String? {
-        val file = File(File(logDir), name)
+        if (isCrashFile(name)) return NativeCrashLogWriter.readCrashLog(name)
+        val file = File(logDir, name)
         return if (file.isFile) runCatching { file.readText() }.getOrNull() else null
     }
 
-    /** 清空所有 appLog-*.txt。 */
+    /** 清空所有日志文件 (两类都清)。 */
     fun clearLogs() {
+        NativeCrashLogWriter.clearCrashLogs()
         val dir = File(logDir)
         if (!dir.isDirectory) return
-        dir.listFiles { it.isFile && it.name.startsWith("appLog-") && it.name.endsWith(".txt") }
+        dir.listFiles { it.isFile && it.name.startsWith(APP_LOG_PREFIX) && it.name.endsWith(".txt") }
             ?.forEach { it.delete() }
     }
+
+    private fun isCrashFile(name: String): Boolean =
+        name.startsWith(NativeCrashLogWriter.FILE_PREFIX)
+
+    private const val APP_LOG_PREFIX = "appLog-"
 }

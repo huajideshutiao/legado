@@ -14,6 +14,8 @@ import io.legado.app.help.storage.registerNativeBackupRestoreHook
 import io.legado.app.help.book.registerNativeBookImageStorage
 import io.legado.app.help.book.registerNativeContentProcessorAccessor
 import io.legado.app.help.book.registerNativeLocalBookLocator
+import io.legado.app.help.crash.OhosCrashHandler
+import io.legado.app.help.crash.refreshNativeCrashLogPaths
 import io.legado.app.help.file.registerOhosAppFilesDir
 import io.legado.app.help.log.registerNativeAppLogHost
 import io.legado.app.help.file.registerNativeFileDownloader
@@ -134,6 +136,10 @@ fun registerOhosProviders() {
     // 0. 主线程 id 捕获 (任何 JS eval / webView 调用之前, EntryAbility.onCreate 在主线程执行本函数)
     registerOhosMainThread()
 
+    // 0.1 崩溃捕获 (未捕获异常钩子 + 信号处理器) 必须在最前: 本函数内任一 provider 注册抛异常
+    // 都会中断整条链, 而后面未注册的 provider 后续会硬崩 —— 捕获装在链首才能留下现场
+    OhosCrashHandler.install()
+
     // 0.5 屏幕尺寸 provider (sharedUiMain AppDialogSizes 兜底取 ScreenInfoProviders.get(),
     // 未注册时 error 导致所有对话框崩溃; 数据由 EntryAbility.onWindowStageCreate 经
     // legado.registerScreenSize 注入, 未注入时回退默认尺寸)
@@ -141,6 +147,9 @@ fun registerOhosProviders() {
 
     // 1. 文件系统目录 (其他 provider 持久化依赖)
     registerOhosAppFilesDir()
+
+    // 1.01 崩溃日志落盘路径补齐 (崩溃捕获装在链首时只有回退路径, 文件目录一就绪重建一次)
+    refreshNativeCrashLogPaths()
 
     // 1.05 napi 桥 + Toaster (须在 AppLog 宿主之前: AppLog.put(toast = true) 的 toast 出口走
     // Toasters, 晚注册则初始化期的提示直接抛; OhosToaster 仅依赖 OhosNativeBridge)

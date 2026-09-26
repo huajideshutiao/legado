@@ -11,6 +11,8 @@ import io.legado.app.help.book.registerNativeBookStorage
 import io.legado.app.help.storage.registerNativeDataStorage
 import io.legado.app.help.book.registerNativeLocalBookLocator
 import io.legado.app.help.book.registerNativeContentProcessorAccessor
+import io.legado.app.help.crash.IosCrashHandler
+import io.legado.app.help.crash.refreshNativeCrashLogPaths
 import io.legado.app.help.file.registerIosAppFilesDir
 import io.legado.app.help.file.registerNativeFileDownloader
 import io.legado.app.help.http.registerIosBackstageWebView
@@ -100,8 +102,16 @@ fun registerIosProviders() {
     if (providersRegistered) return
     providersRegistered = true
 
+    // 0. 崩溃捕获 (未捕获异常钩子 + 信号处理器) 必须在最前: 本函数内任一 provider 注册抛异常
+    // 都会中断整条链, 而后面未注册的 provider (如 ScreenInfoProviders) 后续会硬崩 ——
+    // 捕获装在链首才能留下现场
+    IosCrashHandler.install()
+
     // 1. 文件系统目录 (其他 provider 持久化依赖)
     registerIosAppFilesDir()
+
+    // 1.01 崩溃日志落盘路径补齐 (崩溃捕获装在链首时只有回退路径, 文件目录一就绪重建一次)
+    refreshNativeCrashLogPaths()
 
     // 1.05 字符串 provider (syncGetString 与 appString 两条同步通道: model/help 层异常、
     // 翻页边界提示、Toaster 按钮文案等; 未注册时两条通道均返回 key 名, 运行期可见为
