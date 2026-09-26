@@ -40,3 +40,7 @@ build-logic/libs/
 oh_modules/
 /.workbuddy-ai/
 /.pi
+
+# JVM 崩溃现场 (hs_err_pid*.log) 与 JIT 重放日志 (replay_pid*.log)
+hs_err_pid*.log
+replay_pid*.log
