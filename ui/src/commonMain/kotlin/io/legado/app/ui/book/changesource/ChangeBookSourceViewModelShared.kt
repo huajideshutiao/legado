@@ -24,6 +24,8 @@ import io.legado.app.utils.mapParallel
 import io.legado.app.utils.mapParallelSafe
 import io.legado.app.utils.onEachIndexed
 import io.legado.app.utils.systemCurrentTimeMillis
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -45,6 +47,7 @@ import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlin.math.min
 
@@ -61,6 +64,10 @@ import kotlin.math.min
  * searchGroup 读写 (SharedPreferences, AppConfigAccessor 未含这些字段); BookHelp.getDurChapter
  * 与 ContentProcessor.getContent (重 Android 依赖) 留 app 端; SourceConfig 评分 3 方法已下沉
  * (走 PreferenceProviders), 仍经 platform 注入保持聚合一致; toastOnUi Context 专属。
+ *
+ * 与 app 端的一处语义差异: 同一本书再次进入换源页时复用上次会话已搜到的结果与目录缓存
+ * (原版每次点"换源"都新建 Fragment + ViewModel, 结果与 tocMap/bookMap 必然全丢, 从 0 重搜;
+ * 而搜索结果只由书名 + 作者决定, 与当前书源无关), 见 [ChangeSourceSessionCache]。
  *
  * 设计: 组合委托; 换源与章节换源两 Route (ChangeSourceRoute/ChangeChapterSourceRoute)
  * 直接实例化本类, 本类不接收 Bundle——原 app 端 ChangeBookSourceViewModel/
@@ -144,6 +151,13 @@ class ChangeBookSourceViewModelShared(
     /** 当前搜索使用的书源列表 (startSearch 时填充)。 */
     private var bookSources = arrayListOf<BookSource>()
 
+    /**
+     * 待装载的上次搜索会话 (initData 从 [ChangeSourceSessionCache] 取, 订阅 searchDataFlow 时消费一次)。
+     *
+     * 不在 initData 里直接装载: 装载必须发生在 searchDataFlow 订阅时, 否则订阅方拿不到首帧结果。
+     */
+    private var pendingSession: ChangeSourceSession? = null
+
     /** 当前搜索使用的书源总数 (app 端 Dialog 显示进度用)。 */
     val totalSourceCount: Int
         get() = bookSources.size
@@ -205,7 +219,7 @@ class ChangeBookSourceViewModelShared(
      *
      * - `callbackFlow` 内创建 [SourceCallback] 接收搜索结果 (searchSuccess / upAdapter),
      *   每 add 一条立即 trySend 当前 searchBooks;
-     * - 启动时先按 screenKey 过滤一遍已存在结果 (screen 切换后重新订阅场景);
+     * - 订阅时先装载上次会话 (书源集合未变动时), 再按 screenKey 过滤一遍已存在结果;
      * - 若 searchBooks 为空则启动 startSearch;
      * - `awaitClose { searchCallback = null }` 在订阅取消时清理回调;
      * - `map { 排序 }` 在 IO 调度器上对 searchBooks 排序后 emit。
@@ -232,6 +246,17 @@ class ChangeBookSourceViewModelShared(
 
         }
 
+        // 装载上次会话: 同一本书再次进入换源页时, 直接复用已搜到的结果与目录缓存
+        val session = pendingSession
+        pendingSession = null
+        if (session != null && session.searchBooks.isNotEmpty() && sessionSourceSetUnchanged(session)) {
+            bookSources.addAll(session.bookSources)
+            searchBooks.addAll(session.searchBooks)
+            tocMap.putAll(session.tocMap)
+            bookMap.putAll(session.bookMap)
+            tocMapChapterCount = session.tocMapChapterCount
+        }
+
         // 订阅时先按当前 screenKey 过滤已存在结果 (对照原 callbackFlow 启动块)
         searchBooks.removeAll {
             (if (platform.changeSourceCheckAuthor) it.author != author
@@ -241,7 +266,7 @@ class ChangeBookSourceViewModelShared(
         }
         trySend(searchBooks)
 
-        // 若结果为空则启动搜索 (首次进入场景)
+        // 结果为空则启动搜索 (首次进入 / 书源集合已变动的场景)
         if (searchBooks.isEmpty()) {
             startSearch()
         }
@@ -278,6 +303,7 @@ class ChangeBookSourceViewModelShared(
         this.author = author
         this.fromReadBookActivity = fromReadBookActivity
         this.oldBook = oldBook
+        pendingSession = ChangeSourceSessionCache.take(name, author)
     }
 
     /**
@@ -359,20 +385,46 @@ class ChangeBookSourceViewModelShared(
             bookMap.clear()
             tocMapChapterCount = 0
             _changeSourceProgress.value = 0 to ""
-            val searchGroup = platform.searchGroup
-            if (searchGroup.isBlank()) {
-                bookSources.addAll(appDb.bookSourceDao.allEnabled())
-            } else {
-                val sources = appDb.bookSourceDao.getEnabledByGroup(searchGroup)
-                if (sources.isEmpty()) {
-                    platform.searchGroup = ""
-                    bookSources.addAll(appDb.bookSourceDao.allEnabled())
-                } else {
-                    bookSources.addAll(sources)
-                }
-            }
+            bookSources.addAll(loadSearchSources())
             initSearchPool()
             search()
+        }
+    }
+
+    /**
+     * 取本次搜索使用的启用书源 (对照原 `startSearch` 内联分支)。
+     *
+     * searchGroup 为空取全部启用源; 分组取不到源时写回空分组并回退全部启用源。
+     * [startSearch] 与 [sessionSourceSetUnchanged] 共用, 保证复用判据与实际搜索用的源集合同口径。
+     */
+    private suspend fun loadSearchSources(): List<BookSource> {
+        val searchGroup = platform.searchGroup
+        if (searchGroup.isBlank()) return appDb.bookSourceDao.allEnabled()
+        val sources = appDb.bookSourceDao.getEnabledByGroup(searchGroup)
+        if (sources.isNotEmpty()) return sources
+        platform.searchGroup = ""
+        return appDb.bookSourceDao.allEnabled()
+    }
+
+    /**
+     * 上次会话用的书源集合与当前启用书源是否一致 (启用/禁用/删除/换分组后不再复用旧结果)。
+     *
+     * 判定失败按“不可复用”处理并记日志: 复用只是省重搜的优化, 判定环节出错不能把换源页整个
+     * 拖挂, 降级重搜与原版行为一致。查库走 [IoDispatcher], 本函数在 searchDataFlow 的订阅上下文
+     * (UI 调度器) 执行。
+     */
+    private suspend fun sessionSourceSetUnchanged(session: ChangeSourceSession): Boolean {
+        return try {
+            withContext(IoDispatcher) {
+                val current = loadSearchSources()
+                val currentUrls = current.mapTo(HashSet()) { it.bookSourceUrl }
+                currentUrls.size == session.bookSources.size &&
+                    session.bookSources.all { it.bookSourceUrl in currentUrls }
+            }
+        } catch (t: Throwable) {
+            if (t is CancellationException) throw t
+            AppLog.put("换源会话复用判定出错\n${t.message}", t)
+            false
         }
     }
 
@@ -900,10 +952,31 @@ class ChangeBookSourceViewModelShared(
     /**
      * 释放资源 (对照原 `onCleared`)。
      *
-     * app 端 ViewModel.onCleared 调用, 关闭 searchPool。
+     * app 端 ViewModel.onCleared 调用: 先存本次会话供下次进入复用, 再关闭 searchPool。
      */
     fun onCleared() {
+        saveSession()
         searchPool?.closeIfCloseable()
+    }
+
+    /**
+     * 存本次搜索会话 (结果 + 书源列表 + tocMap/bookMap) 到 [ChangeSourceSessionCache]。
+     *
+     * 一条源都没搜过时直接返回: 这种退出 (打开即关) 不该把上一本/上一轮的可用结果清掉。
+     */
+    private fun saveSession() {
+        if (bookSources.isEmpty() && searchBooks.isEmpty()) return
+        ChangeSourceSessionCache.put(
+            ChangeSourceSession(
+                name = name,
+                author = author,
+                bookSources = bookSources.toList(),
+                searchBooks = searchBooks.toList(),
+                tocMap = tocMap.toMap(),
+                bookMap = bookMap.toMap(),
+                tocMapChapterCount = tocMapChapterCount,
+            )
+        )
     }
 
     /**
@@ -919,6 +992,50 @@ class ChangeBookSourceViewModelShared(
 
     }
 
+}
+
+/**
+ * 一次换源搜索会话 (换源页退出时留存, 同一本书再次进入时复用)。
+ *
+ * 承载 [ChangeBookSourceViewModelShared] 的全部跨订阅状态: 搜索结果 + 当时用的书源列表
+ * (复用前要确认集合未变) + 目录/详情缓存 (避免选中源后再拉一次目录)。
+ */
+private data class ChangeSourceSession(
+    val name: String,
+    val author: String,
+    val bookSources: List<BookSource>,
+    val searchBooks: List<SearchBook>,
+    val tocMap: Map<String, List<BookChapter>>,
+    val bookMap: Map<String, Book>,
+    val tocMapChapterCount: Int,
+)
+
+/**
+ * 换源搜索会话单槽缓存 (跨换源页实例存活)。
+ *
+ * 换源页每次点"换源"都是新的 ViewModel, 原版因此每次都从 0 重搜全部书源 (1300 源搜到 500
+ * 才等到结果, 换个源就得重来); 而搜索结果只由书名 + 作者决定, 与当前书源无关, 故按
+ * 书名 + 作者留存最近一次会话供复用。
+ *
+ * 只留最近一次 (内存开销与单次会话相同, 不随书累积), 换书/搜索即覆盖;
+ * 启用书源集合变动后旧结果作废 (由 [ChangeBookSourceViewModelShared.sessionSourceSetUnchanged]
+ * 在复用前判定), 用户点刷新/停止仍会重新搜索。
+ */
+private object ChangeSourceSessionCache {
+
+    private val lock = SynchronizedObject()
+    private var session: ChangeSourceSession? = null
+
+    /** 取出与 (name, author) 匹配的会话; 不匹配返回 null 且保留原会话 (换书后又回到原书仍可复用)。 */
+    fun take(name: String, author: String): ChangeSourceSession? = synchronized(lock) {
+        session?.takeIf { it.name == name && it.author == author }
+    }
+
+    fun put(newSession: ChangeSourceSession) {
+        synchronized(lock) {
+            session = newSession
+        }
+    }
 }
 
 /**
