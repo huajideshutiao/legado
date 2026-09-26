@@ -105,6 +105,18 @@ export interface LegadoNativeBridge {
    */
   registerCacheDir(path: string): void;
 
+  // ===== 应用版本名注入 (ArkTS → Kotlin 同步推送, 同 FileDir 模式) =====
+  /**
+   * 注入应用版本名 (EntryAbility.onCreate 调用)。
+   *
+   * 版本号写在 app.json5 且由 hvigorfile.ts 在构建阶段覆写为 "3.yy.MMddHH", 只有运行期读
+   * 应用包信息才能拿到真实值; Kotlin/Native 无读取应用包信息的 API, 故由 ArkTS 读
+   * bundleManager.getBundleInfoForSelfSync().versionName 后注入, 供关于页显示/复制。
+   *
+   * @param versionName 应用版本名, 如 '3.26.092614'
+   */
+  registerAppVersion(versionName: string): void;
+
   // ===== 屏幕尺寸注入 (ArkTS → Kotlin 同步推送, 同 FileDir 模式) =====
   /**
    * 注入显示物理像素尺寸 (EntryAbility.onWindowStageCreate 中 loadContent 之前调用)。

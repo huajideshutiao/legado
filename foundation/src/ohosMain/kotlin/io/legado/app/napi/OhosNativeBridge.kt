@@ -242,6 +242,33 @@ object OhosNativeBridge {
     /** 读取已注入的 cacheDir 路径, 未注入返回 null。 */
     fun getCacheDir(): String? = synchronized(lock) { cacheDirPath }
 
+    // ===== 应用版本名注入 (ArkTS → Kotlin 同步推送, 同 FileDir 模式) =====
+
+    /**
+     * 应用版本名 (ArkTS EntryAbility.onCreate 调 [registerAppVersionFn] 注入)。
+     *
+     * # 为何需要桥接
+     * 鸿蒙的版本号只存在于 app.json5, 且会被 hvigorfile.ts 的 overrides.appOpt 在构建阶段
+     * 覆写 (版本号与构建时刻绑定, 静态文件里是占位值)。Kotlin/Native 侧无读取应用包信息的
+     * API, 故由 ArkTS 读 [bundleManager.getBundleInfoForSelfSync] 后经 @CName 注入。
+     *
+     * # 降级策略
+     * 未注入 (null) 时 [io.legado.app.ui.OhosPlatformCapabilities.getAppVersionName] 返回 null,
+     * 关于页版本号条目退化为空 summary (与 iOS/桌面端未注入时的处理一致, 不崩)。
+     */
+    @Volatile
+    private var appVersionName: String? = null
+
+    /** 注入应用版本名 (由 @CName legado_register_app_version 调用)。 */
+    fun registerAppVersionFn(versionName: String) {
+        synchronized(lock) {
+            appVersionName = versionName
+        }
+    }
+
+    /** 读取已注入的应用版本名, 未注入返回 null。 */
+    fun getAppVersionName(): String? = synchronized(lock) { appVersionName }
+
     // ===== 屏幕尺寸注入 (ArkTS → Kotlin 同步推送, 同 FileDir 模式) =====
 
     /**

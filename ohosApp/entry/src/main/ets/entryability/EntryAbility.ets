@@ -3,6 +3,7 @@ import type AbilityConstant from '@ohos.app.ability.AbilityConstant';
 import type Want from '@ohos.app.ability.Want';
 import type { Configuration } from '@ohos.app.ability.Configuration';
 import ConfigurationConstant from '@ohos.app.ability.ConfigurationConstant';
+import { bundleManager } from '@kit.AbilityKit';
 import type window from '@ohos.window';
 import display from '@ohos.display';
 import notificationManager from '@ohos.notificationManager';
@@ -134,6 +135,17 @@ export default class EntryAbility extends UIAbility {
       console.info('[Legado] ohos sandbox dirs injected: filesDir=' + this.context.filesDir);
     } catch (e) {
       console.error('[Legado] registerFileDir/CacheDir failed: ' + JSON.stringify(e));
+    }
+
+    // 注入应用版本名 (供关于页显示与复制)。版本号写在 app.json5, 且由 hvigorfile.ts 在构建阶段
+    // 覆写为 "3.yy.MMddHH", 只有运行期读应用包信息才能拿到真实值 (静态文件里是占位值)。
+    // getBundleInfoForSelfSync 取自身 BundleInfo, versionName 即 app.json5 的 versionName 字段。
+    try {
+      const bundleInfo = bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT);
+      legado.registerAppVersion(bundleInfo.versionName);
+      console.info('[Legado] app version injected: ' + bundleInfo.versionName);
+    } catch (e) {
+      console.error('[Legado] registerAppVersion failed: ' + JSON.stringify(e));
     }
 
     // KP8+: 初始化 System 桥接处理器 (注入 UIAbilityContext 供 handleOpenUrl 调 startAbility)。

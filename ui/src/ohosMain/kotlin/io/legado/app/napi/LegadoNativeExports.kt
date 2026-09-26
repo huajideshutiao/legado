@@ -392,6 +392,27 @@ object LegadoNativeExports {
     }
 
     /**
+     * 注入应用版本名 (ArkTS EntryAbility.onCreate 调用)。
+     *
+     * 调用链: `ArkTS EntryAbility` → `legado.registerAppVersion(name)` →
+     * napi (legado_napi.cpp RegisterAppVersion) → dlsym("legado_register_app_version") →
+     * 本函数 → [OhosNativeBridge.registerAppVersionFn]。
+     *
+     * # 为何由 ArkTS 侧读
+     * 版本号在 app.json5 且构建阶段被 hvigorfile.ts 覆写, Kotlin/Native 无读取应用包信息的
+     * API, 只能由 ArkTS 读 [bundleManager.getBundleInfoForSelfSync] 后注入 (同 FileDir 模式)。
+     *
+     * # 跨语言传递
+     * 单一版本名字符串直接传 (同 registerFileDir, 无需 JSON 包装)。
+     *
+     * @param versionName 应用版本名 (如 `3.26.092614`, 与安卓端 versionName 同源)
+     */
+    @CName("legado_register_app_version")
+    fun registerAppVersion(versionName: CPointer<ByteVar>) {
+        OhosNativeBridge.registerAppVersionFn(versionName.toKString())
+    }
+
+    /**
      * 注入显示物理像素尺寸 (ArkTS EntryAbility.onWindowStageCreate 调用)。
      *
      * 调用链: `ArkTS EntryAbility` → `legado.registerScreenSize(w, h)` →

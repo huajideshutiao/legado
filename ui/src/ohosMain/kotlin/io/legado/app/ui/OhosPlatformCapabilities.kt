@@ -75,6 +75,15 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
     override fun getClipboardText(): String? = readFromClipboard()
 
     /**
+     * 应用版本名 (对照 app 端 AppConst.appInfo.versionName)。
+     *
+     * 鸿蒙版本号在 app.json5 且由 hvigorfile.ts 在构建阶段覆写, Kotlin/Native 无读取应用包信息的
+     * API, 故由 ArkTS 启动时经 [OhosNativeBridge.registerAppVersionFn] 注入; 未注入返回 null,
+     * 关于页版本号条目退化为空 summary。
+     */
+    override fun getAppVersionName(): String? = OhosNativeBridge.getAppVersionName()
+
+    /**
      * 导出分发「上传 URL」: 走 nativeMain 下沉的 [upLoadToDirectLink] (对照 app 端
      * `DirectLinkUpload.upLoad`)。失败路径也必须回调 (传 null) —— 导出对话框的防重复
      * 点击标志靠这一次回调解开, 不回调就是整个对话框永久点不动。

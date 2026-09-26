@@ -26,6 +26,9 @@
  * - registerFileDir(path: string): void     → legado_register_file_dir(const char*) (注入 filesDir)
  * - registerCacheDir(path: string): void    → legado_register_cache_dir(const char*) (注入 cacheDir)
  *
+ * 应用版本名注入 (ArkTS → Kotlin 同步推送, 同 FileDir 模式):
+ * - registerAppVersion(name: string): void  → legado_register_app_version(const char*) (注入版本名)
+ *
  * legado:// deep link 投递 (ArkTS → Kotlin 同步推送, 无回调):
  * - handleDeepLink(uri: string): boolean    → legado_handle_deep_link(const char*) -> int
  *                                            (Kotlin LegadoDeepLinkHandler 解析后写 pending, Compose 侧消费)
@@ -126,6 +129,9 @@ static legado_str_int_fn g_import_booksource = nullptr;
 // dlsym 加载的函数指针 - FileDir/CacheDir 路径注入 (KP7+ 新增, ArkTS → Kotlin 同步推送)
 static legado_cstr_void_fn g_register_file_dir = nullptr;
 static legado_cstr_void_fn g_register_cache_dir = nullptr;
+
+// dlsym 加载的函数指针 - 应用版本名注入 (ArkTS → Kotlin 同步推送, 同 FileDir 模式)
+static legado_cstr_void_fn g_register_app_version = nullptr;
 
 // dlsym 加载的函数指针 - 屏幕尺寸注入 (ArkTS → Kotlin 同步推送, 同 FileDir 模式)
 static legado_int_int_void_fn g_register_screen_size = nullptr;
@@ -280,6 +286,9 @@ static bool load_legado_shared() {
     // 解析 @CName 导出符号 - FileDir/CacheDir 路径注入 (KP7+ 新增)
     g_register_file_dir = (legado_cstr_void_fn)dlsym(g_legado_so, "legado_register_file_dir");
     g_register_cache_dir = (legado_cstr_void_fn)dlsym(g_legado_so, "legado_register_cache_dir");
+
+    // 解析 @CName 导出符号 - 应用版本名注入
+    g_register_app_version = (legado_cstr_void_fn)dlsym(g_legado_so, "legado_register_app_version");
 
     // 解析 @CName 导出符号 - 屏幕尺寸注入
     g_register_screen_size = (legado_int_int_void_fn) dlsym(g_legado_so, "legado_register_screen_size");
@@ -624,6 +633,29 @@ static napi_value RegisterCacheDir(napi_env env, napi_callback_info info) {
 
     if (load_legado_shared() && g_register_cache_dir != nullptr) {
         g_register_cache_dir(buf);
+    }
+    delete[] buf;
+
+    napi_value ret;
+    napi_get_undefined(env, &ret);
+    return ret;
+}
+
+// napi 包装: registerAppVersion(name: string): void  注入应用版本名 (ArkTS → Kotlin)
+// 调用方: EntryAbility.onCreate (读 bundleManager.getBundleInfoForSelfSync().versionName),
+// 供关于页显示/复制版本号; Kotlin/Native 无读取应用包信息的 API, 只能由 ArkTS 注入。
+static napi_value RegisterAppVersion(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+
+    size_t str_len = 0;
+    napi_get_value_string_utf8(env, args[0], nullptr, 0, &str_len);
+    char* buf = new char[str_len + 1];
+    napi_get_value_string_utf8(env, args[0], buf, str_len + 1, &str_len);
+
+    if (load_legado_shared() && g_register_app_version != nullptr) {
+        g_register_app_version(buf);
     }
     delete[] buf;
 
@@ -1948,6 +1980,8 @@ androidx_compose_ui_arkui_init(env, exports
         // FileDir/CacheDir 路径注入 (KP7+ 新增, ArkTS → Kotlin 同步推送)
         {"registerFileDir", nullptr, RegisterFileDir, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"registerCacheDir", nullptr, RegisterCacheDir, nullptr, nullptr, nullptr, napi_default, nullptr},
+        // 应用版本名注入 (ArkTS → Kotlin 同步推送, 同 FileDir 模式)
+        {"registerAppVersion", nullptr, RegisterAppVersion, nullptr, nullptr, nullptr, napi_default, nullptr},
             // 屏幕尺寸注入 (ArkTS → Kotlin 同步推送, 同 FileDir 模式)
             {"registerScreenSize", nullptr, RegisterScreenSize, nullptr, nullptr, nullptr, napi_default, nullptr},
         // legado:// deep link 投递 (ArkTS → Kotlin 同步推送, 返回是否已识别)

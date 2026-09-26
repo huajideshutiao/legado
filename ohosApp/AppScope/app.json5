@@ -7,7 +7,8 @@
     "bundleName": "shutiao.reader.debug",
     "vendor": "legado",
     // 与安卓端对齐 (app/build.gradle.kts): versionCode = 10000 + git 提交数,
-    // versionName = "3." + 构建时刻 yy.MMddHH。安卓端每次构建动态刷新, 鸿蒙端为静态值, 需手动同步。
+    // versionName = "3." + 构建时刻 yy.MMddHH。两者均由 hvigorfile.ts 在配置阶段动态覆盖,
+    // 此处静态值仅为通过 schema 校验与离线回退, 不是运行期实际版本号。
     "versionCode": 17376,
     "versionName": "3.26.081614",
     "icon": "$media:app_icon_layered",
