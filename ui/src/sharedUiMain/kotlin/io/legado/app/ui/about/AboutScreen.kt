@@ -11,6 +11,7 @@ import legado.ui.generated.resources.contributors
 import legado.ui.generated.resources.contributors_summary
 import legado.ui.generated.resources.crash_log
 import legado.ui.generated.resources.create_heap_dump
+import legado.ui.generated.resources.current_version
 import legado.ui.generated.resources.disclaimer
 import legado.ui.generated.resources.donate_qrcode
 import legado.ui.generated.resources.join_telegram_group
@@ -18,12 +19,11 @@ import legado.ui.generated.resources.license
 import legado.ui.generated.resources.other
 import legado.ui.generated.resources.privacy_policy
 import legado.ui.generated.resources.save_log
-import legado.ui.generated.resources.update_log
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * 关于页 (迁 about.xml)。逐条对齐原条目/key/点击行为。
- * qqGroup 原 isPreferenceVisible=false 恒隐藏，故不渲染；update_log 仅显版本 summary、无点击。
+ * 关于页 (迁 about.xml)。条目与 key 逐条对齐。
+ * qqGroup 原 isPreferenceVisible=false 恒隐藏，故不渲染。
  *
  * 下沉 shared/sharedUiMain: stringResource(R.string.xxx) → stringResource(Res.string.xxx),
  * 与 app 端原包名/类名一致, app/desktop 端共用。
@@ -46,7 +46,7 @@ fun AboutScreen(
     val titleContributors = stringResource(Res.string.contributors)
     val summaryContributors = stringResource(Res.string.contributors_summary)
     val titleTelegram = stringResource(Res.string.join_telegram_group)
-    val titleUpdateLog = stringResource(Res.string.update_log)
+    val titleCurrentVersion = stringResource(Res.string.current_version)
     val titleCheckUpdate = stringResource(Res.string.check_update)
     val titleOther = stringResource(Res.string.other)
     val titleCrashLog = stringResource(Res.string.crash_log)
@@ -68,8 +68,9 @@ fun AboutScreen(
             onClick = { actions.onOpenUrl(state.telegramGroupUrl) },
         )
         preference(
-            title = titleUpdateLog,
-            summary = state.updateLogSummary,
+            title = titleCurrentVersion,
+            summary = state.versionSummary,
+            onClick = { actions.onCopyVersion() },
         )
         if (state.showCheckUpdate) {
             preference(

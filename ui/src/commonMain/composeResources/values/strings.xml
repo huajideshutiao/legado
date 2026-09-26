@@ -352,7 +352,7 @@
     <string name="contributors">Contributors</string>
     <string name="contributors_summary">gedoor,Invinciblelee,Xwite etc. Checking in github for details</string>
     <string name="join_telegram_group">Join Telegram group</string>
-    <string name="update_log">What\'s new</string>
+    <string name="current_version">Current version</string>
     <string name="crash_log">Crash log</string>
     <string name="save_log">Save logs</string>
     <string name="create_heap_dump">Create heap dump</string>

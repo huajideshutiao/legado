@@ -352,7 +352,7 @@
     <string name="contributors">开发人员</string>
     <string name="contributors_summary">gedoor、Invinciblelee 和 Xwite 等，详情请在 GitHub 中查看</string>
     <string name="join_telegram_group">加入 Telegram 群</string>
-    <string name="update_log">更新日志</string>
+    <string name="current_version">当前版本</string>
     <string name="crash_log">崩溃日志</string>
     <string name="save_log">保存日志</string>
     <string name="create_heap_dump">创建堆转储</string>

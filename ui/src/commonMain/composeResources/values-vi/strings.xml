@@ -30,7 +30,7 @@
     <string name="out_favorites">Chưa yêu thích</string>
     <string name="all">Tất cả</string>
     <string name="last_read">Lần đọc cuối</string>
-    <string name="update_log">Nhật ký cập nhật</string>
+    <string name="current_version">Phiên bản hiện tại</string>
     <string name="bookshelf_empty">Tủ sách vẫn còn trống. Hãy tìm sách hoặc thêm từ mục khám phá!</string>
     <string name="action_download">Tải xuống</string>
     <string name="layout_list">Danh sách</string>

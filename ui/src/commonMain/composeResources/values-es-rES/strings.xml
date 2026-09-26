@@ -31,7 +31,7 @@
     <string name="out_favorites">No está en Favoritos</string>
     <string name="all">Todo</string>
     <string name="last_read">Última lectura</string>
-    <string name="update_log">Novedades</string>
+    <string name="current_version">Versión actual</string>
     <string name="bookshelf_empty">La estantería está vacía. ¡Busque libros o añádalos desde una fuente pública!</string>
     <string name="action_download">Descargar</string>
     <string name="layout_list">Lista</string>

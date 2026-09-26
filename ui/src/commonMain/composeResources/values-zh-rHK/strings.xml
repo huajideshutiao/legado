@@ -29,7 +29,7 @@
     <string name="out_favorites">未收藏</string>
     <string name="all">全部</string>
     <string name="last_read">最後閲讀</string>
-    <string name="update_log">更新日誌</string>
+    <string name="current_version">當前版本</string>
     <string name="bookshelf_empty">書架還空著，先去搜索書籍或從發現裏添加吧！</string>
     <string name="action_download">下載</string>
     <string name="layout_list">列表</string>

@@ -31,7 +31,7 @@
     <string name="all">All</string>
     <string name="custom_export_section">カスタムEPUBエクスポートの章</string>
     <string name="last_read">Last reading</string>
-    <string name="update_log">What\'s new</string>
+    <string name="current_version">現在のバージョン</string>
     <string name="bookshelf_empty">The bookshelf is still empty. Search for books or add them from discovery! \n if you use it for the first time, please open legado.top get help!</string>
     <string name="action_download">Download</string>
     <string name="layout_list">List</string>

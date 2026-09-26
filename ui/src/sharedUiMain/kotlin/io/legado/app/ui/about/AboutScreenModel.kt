@@ -15,14 +15,16 @@ import kotlinx.coroutines.flow.asStateFlow
  *
  * 平台资源 (版本号/URL) 由宿主 Activity/桌面端解析后推入 [AboutScreenModel.updateState]。
  *
- * @param updateLogSummary  更新日志条目 summary (如 "版本 3.25.070226")
+ * @param versionSummary   当前版本条目 summary (如 "版本 3.25.070226")
+ * @param appVersion       版本号原文 (条目点击复制的内容; 取不到版本号时为空串)
  * @param contributorsUrl   贡献者页面 URL (平台各异: Android 读 R.string, 桌面端硬编码)
  * @param telegramGroupUrl  Telegram 群链接 (平台各异)
  * @param showCheckUpdate   是否显示"检查更新"入口 (未接入更新能力的端隐藏)
  * @param checkingUpdate    正在检查更新 (入口置灰)
  */
 data class AboutUiState(
-    val updateLogSummary: String = "",
+    val versionSummary: String = "",
+    val appVersion: String = "",
     val contributorsUrl: String = "",
     val telegramGroupUrl: String = "",
     val showCheckUpdate: Boolean = true,
@@ -36,6 +38,7 @@ data class AboutUiState(
  * 由宿主实现, shared 端不直接持有 Android Context / FileDoc / CrashHandler。
  *
  * - [onShare]: 顶栏分享按钮 (替代原 Activity 内 `share(...)`)
+ * - [onCopyVersion]: 复制当前版本号
  * - [onOpenUrl]: 打开外链 (贡献者 / Telegram, URL 由 state 传入)
  * - [onCheckUpdate]: 检查更新
  * - [onShowCrashLogs]: 显示崩溃日志
@@ -46,6 +49,7 @@ data class AboutUiState(
  */
 interface AboutUiActions {
     fun onShare()
+    fun onCopyVersion()
     fun onOpenUrl(url: String)
     fun onCheckUpdate()
     fun onShowCrashLogs()
