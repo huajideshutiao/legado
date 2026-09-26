@@ -54,9 +54,7 @@
 //
 
 import SwiftUI
-import shared  // Kotlin Multiplatform shared framework (deep link 入口)
-
-private typealias URL = Foundation.URL
+import shared  // Kotlin Multiplatform shared framework (Kotlin 侧入口与 provider 注册)
 
 /// 外部 URI 投递闸门 (deep link / 文档打开 的全部系统投递入口都汇到 `handle`)。
 ///
@@ -89,10 +87,10 @@ private enum ExternalUriIngress {
     /// 真机上 “同一地址二次到达的间隔” 就是“系统到底走一条还是两条”的唯一证据。
     private static var lastKey: String?
     private static var lastAt: TimeInterval = 0
-    private static var scopedURLs: [URL] = []
+    private static var scopedURLs: [Foundation.URL] = []
 
     /// 系统投递一条外部 URI。两条通道都投递时两条都路由, 重复层由 shared 抹。
-    static func handle(_ url: URL) {
+    static func handle(_ url: Foundation.URL) {
         let now = ProcessInfo.processInfo.systemUptime
         let key = dedupeKey(url)
         let gap: TimeInterval = key == lastKey ? now - lastAt : -1
@@ -106,12 +104,12 @@ private enum ExternalUriIngress {
 
     /// 去重键: file URL 取标准化路径 —— 同一个文件在不同投递路径下可能给出
     /// percent-encoding 大小写不同的写法, 用 absoluteString 比会漏认成两条。
-    private static func dedupeKey(_ url: URL) -> String {
+    private static func dedupeKey(_ url: Foundation.URL) -> String {
         url.isFileURL ? "file:" + url.standardizedFileURL.path : "uri:" + url.absoluteString
     }
 
     /// 按 scheme 分流到 shared 的两个入口。
-    private static func route(_ url: URL, uri: String) {
+    private static func route(_ url: Foundation.URL, uri: String) {
         let scheme = url.scheme?.lowercased() ?? ""
         if scheme == "legado" || scheme == "yuedu" {
             // 既有深链导入链 (commonMain LegadoDeepLinkHandler), 行为零变更
@@ -139,13 +137,13 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        // commonMain 业务 provider 注册 (数据库/prefs/HTTP/JS 引擎等), 进程级一次。
-        // 对照 Android App.onCreate / desktop main; 必须先于下面的后台任务注册与
-        // Compose 场景创建 (BG 冷启动唤起也经本方法, 故后台路径同样拿到 provider)。
+        // commonMain 业务 provider 注册 (数据库/prefs/HTTP/JS 引擎等) + 缓存书籍后台续跑
+        // 注册 (退后台收尾窗口 + BGProcessingTask 链式续约, 见 core iosMain
+        // help/service/IosBackgroundTasks.kt), 进程级一次。对照 Android App.onCreate /
+        // desktop main; 必须先于 Compose 场景创建 (BG 冷启动唤起也经本方法, 故后台路径
+        // 同样拿到 provider)。BGTaskScheduler 的注册必须在 didFinishLaunching 返回前完成,
+        // 故后台任务注册收在 registerIosProviders 内部而非 Swift 侧另起一行。
         IosProviderRegistryKt.registerIosProviders()
-        // 缓存书籍的后台续跑 (退后台收尾窗口 + BGProcessingTask 链式续约),
-        // 实现见 shared iosMain help/service/IosBackgroundTasks.kt
-        IosBackgroundTasksKt.registerIosBackgroundTasks()
         return true
     }
 
@@ -157,7 +155,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     /// **不在这里做时间窗抑制**。详见闸门自述。
     func application(
         _ application: UIApplication,
-        open url: URL,
+        open url: Foundation.URL,
         options: [UIApplication.OpenURLOptionsKey: Any] = [:]
     ) -> Bool {
         ExternalUriIngress.handle(url)

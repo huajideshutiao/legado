@@ -49,7 +49,8 @@ import platform.UIKit.UIBackgroundTaskInvalid
  *    继续下载; 到期没干完就再提交一次 (链式续约)。回前台时取消挂起的请求。
  *
  * 注册时机: [BGTaskScheduler.registerForTaskWithIdentifier] 必须在 didFinishLaunching 返回前
- * 调用, 由 iosApp/iOSApp.swift 的 AppDelegate 调 [registerIosBackgroundTasks] 完成。
+ * 调用, 由 iOS 宿主 didFinishLaunching 内的 [io.legado.app.help.config.registerIosProviders]
+ * 调 [registerIosBackgroundTasks] 完成。
  */
 object IosBackgroundTasks {
 
@@ -277,8 +278,9 @@ object IosBackgroundTasks {
 }
 
 /**
- * Swift 宿主入口: 必须在 `application(_:didFinishLaunchingWithOptions:)` 返回前调用
- * (BGTaskScheduler 的注册时机硬约束), 见 iosApp/iOSApp.swift 的 AppDelegate。
+ * 宿主入口: 必须在 `application(_:didFinishLaunchingWithOptions:)` 返回前调用
+ * (BGTaskScheduler 的注册时机硬约束), 由 [io.legado.app.help.config.registerIosProviders]
+ * 在宿主启动链上调用。
  */
 fun registerIosBackgroundTasks() {
     IosBackgroundTasks.register()

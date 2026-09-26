@@ -30,6 +30,7 @@ import io.legado.app.help.registerNativeDirectLinkUploadProviders
 import io.legado.app.help.registerNativeExploreKindsCacheProvider
 import io.legado.app.help.registerNativeFileCacheProvider
 import io.legado.app.help.registerNativeSourceCacheProvider
+import io.legado.app.help.service.registerIosBackgroundTasks
 import io.legado.app.help.service.registerIosServiceLauncher
 import io.legado.app.help.service.registerNativeUpdateBookCallback
 import io.legado.app.help.source.registerNativeSourceHelpAccessor
@@ -66,7 +67,8 @@ private var providersRegistered = false
 /**
  * iOS 宿主启动早期的统一 provider 注册入口。
  *
- * 调用方: Compose 入口 MainViewController (组合期) 与 BG 唤起时的 IosBackgroundTasks 补注册。
+ * 调用方: iOS 宿主 `application(_:didFinishLaunchingWithOptions:)` (见 iosApp/iOSApp.swift 的
+ * AppDelegate; BGTaskScheduler 注册也挂在本函数末尾, 同一条启动链)。
  * 只认第一次调用: 重复注册会换掉 prefs/AppConfig/Room 实例, 旧实例的 pref 与系统深色监听
  * 留在全局表里不摘 (见 NativeSystemTheme.listeners / PreferenceChangeNotifier)。
  *
@@ -274,4 +276,10 @@ fun registerIosProviders() {
     // 经 NativeReadBookStateProvider 桥接阅读页挂接的 ReadBookShared)
     registerNativeBookControllerProviders()
     registerNativeWebServerPlatform()
+
+    // 缓存书籍后台续跑 (退后台收尾窗口 + BGProcessingTask 链式续约, 实现见 core iosMain
+    // help/service/IosBackgroundTasks.kt)。BGTaskScheduler 的 registerForTaskWithIdentifier
+    // 必须在 didFinishLaunching 返回前调用 (Apple 硬约束), 本函数由 iOS 宿主在该钩子内调用,
+    // 置于全部 provider 注册之后。
+    registerIosBackgroundTasks()
 }
