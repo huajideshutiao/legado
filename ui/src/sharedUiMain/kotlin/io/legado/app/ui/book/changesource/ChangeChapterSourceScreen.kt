@@ -200,7 +200,7 @@ fun ChangeChapterSourceScreen(
                     items(state.sources, key = { "${it.origin}|${it.bookUrl}" }) { book ->
                         SearchBookItem(
                             book = book,
-                            isCurSource = (state.book == null || book.origin == state.book?.origin) && book.bookUrl == state.curBookUrl,
+                            isCurSource = (state.book == null || book.origin == state.book.origin) && book.bookUrl == state.curBookUrl,
                             loadWordCount = state.loadWordCount,
                             getScore = { itemActions.getScore(book) },
                             setScore = { itemActions.setScore(book, it) },
@@ -217,7 +217,7 @@ fun ChangeChapterSourceScreen(
                     durText = state.book?.originName ?: "",
                     onDurClick = {
                         val index = state.sources.indexOfFirst {
-                            (state.book == null || it.origin == state.book?.origin) && it.bookUrl == state.curBookUrl
+                            (state.book == null || it.origin == state.book.origin) && it.bookUrl == state.curBookUrl
                         }
                         if (index >= 0) scope.launch {
                             listState.scrollToItem(index, with(density) { -60.dp.roundToPx() })

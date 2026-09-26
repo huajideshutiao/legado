@@ -369,6 +369,7 @@ object NativeJsEngine : JsEngine {
             ?: error("NativeJsEngine.evalInSubScope requires NativeJsScope, got ${scope::class}")
         val nativeCompiled = compiled as? NativeJsCompiledScript
             ?: error("NativeJsEngine.evalInSubScope requires NativeJsCompiledScript, got ${compiled::class}")
+        val nativeCtx = nativeScope.ctx!!
         // 同步 dangerousApi (native 上语义为 no-op, 保留字段对齐)
         nativeScope.dangerousApi = bindings.dangerousApi
         val prevScope = threadLocalScope.value
@@ -380,22 +381,22 @@ object NativeJsEngine : JsEngine {
             // 快照 handle 数: eval 后释放本次注入新增的 handle (对齐 JVM releaseNewHandles)
             val handleSnapshot = nativeScope.handles.size
             // 构造 kvs (须在压栈后: toJsValue 的 JsExtensionsCommon/BookLike 分支依赖 threadLocalScope)
-            val kvs = buildBindingKvsValues(nativeScope.ctx!!, bindings)
+            val kvs = buildBindingKvsValues(nativeCtx, bindings)
             try {
                 // 进入子 scope: JS_Call 值参数压栈 bindings (免字符串 eval)
-                enterBindingsWithValues(nativeScope.ctx!!, kvs)
+                enterBindingsWithValues(nativeCtx, kvs)
                 return try {
                     // bytecode 优先, 读回失败 fallback 源码 (evalCompiledInContext 内部处理)
                     evalCompiledInContext(nativeCompiled, nativeScope)
                 } finally {
                     // 退出子 scope: 弹栈 bindings (即使中途异常也要弹栈)
-                    evalInternal(nativeScope.ctx!!, "__exitBindings()", "<exitBindings>", checkException = false)
+                    evalInternal(nativeCtx, "__exitBindings()", "<exitBindings>", checkException = false)
                     // 释放本次注入新增的 handle (防共享 topScope 长期膨胀)
                     releaseNewHandles(nativeScope, handleSnapshot)
                 }
             } finally {
                 // 释放 kvs 转换的 JSValue 引用 (JS_Call 不转移 argv 所有权, JS 侧已持有引用)
-                for ((_, v) in kvs) JS_FreeValue(nativeScope.ctx!!, v)
+                for ((_, v) in kvs) JS_FreeValue(nativeCtx, v)
             }
         } finally {
             nativeScope.recursiveCount--
@@ -960,8 +961,7 @@ object NativeJsEngine : JsEngine {
     private fun mapToJsObject(ctx: CPointer<JSContext>, map: Map<String, Any?>): CValue<JSValue> {
         val obj = JS_NewObject(ctx)
         memScoped {
-            for ((k, v) in map) {
-                val keyStr = k as? String ?: continue
+            for ((keyStr, v) in map) {
                 val jsV = toJsValue(ctx, v) ?: continue
                 // JS_SetPropertyStr 转移 jsV 所有权, 不需要 JS_FreeValue(jsV)
                 JS_SetPropertyStr(ctx, obj, keyStr, jsV)

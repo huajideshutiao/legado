@@ -763,7 +763,7 @@ fun ChangeSourceScreen(
                 // 对照 app 端 Dialog.Content 第 228-242 行 SearchBookItem 完整回调
                 SearchBookItem(
                     book = searchBook,
-                    isCurSource = (state.book == null || searchBook.origin == state.book?.origin) && searchBook.bookUrl == state.curBookUrl,
+                    isCurSource = (state.book == null || searchBook.origin == state.book.origin) && searchBook.bookUrl == state.curBookUrl,
                     loadWordCount = state.loadWordCount,
                     getScore = { itemActions.getScore(searchBook) },
                     setScore = { itemActions.setScore(searchBook, it) },
@@ -780,7 +780,7 @@ fun ChangeSourceScreen(
             durText = state.durText,
             onDurClick = {
                 val index = state.sources.indexOfFirst {
-                    (state.book == null || it.origin == state.book?.origin) && it.bookUrl == state.curBookUrl
+                    (state.book == null || it.origin == state.book.origin) && it.bookUrl == state.curBookUrl
                 }
                 if (index >= 0) scope.launch { listState.scrollToItem(index) }
             },

@@ -261,9 +261,9 @@ object NativeJsExtensionsBridge {
         val ctxNotNull = ctx ?: return jsUndefined()
         if (argc < 3 || argv == null) return jsUndefined()
         try {
-            val handle = qjs_ValueGetFloat64(argv!![0L].readValue()).toLong()
-            val methodId = qjs_ValueGetInt(argv!![1L].readValue())
-            val argsArray = argv!![2L].readValue()
+            val handle = qjs_ValueGetFloat64(argv[0L].readValue()).toLong()
+            val methodId = qjs_ValueGetInt(argv[1L].readValue())
+            val argsArray = argv[2L].readValue()
             val obj = getObject(handle) ?: return jsUndefined()
             return dispatch(ctxNotNull, obj, methodId, argsArray)
         } catch (t: Throwable) {
@@ -775,11 +775,11 @@ object NativeJsExtensionsBridge {
 
             // ============ BaseSource 对象方法 (1600-1699, getSource() 返回对象) ============
             // getKey/getTag/getSourceType/getLoginJs 已由 KSP 生成表接管; 1604 特例: getHeaderMap
-            // 推断返回 HashMap 无法归类生成 (名单内, 手写 JSON + null 传播);
+            // 推断返回 HashMap 无法归类生成 (名单内, 手写 JSON);
             // 1605/1606/1608/1609 为属性 getter 方法化 (阶段 3 E5 属性遍历接管)
             obj is BaseSource && methodId == 1604 -> {
-                // getHeaderMap() → JSON 对象 (null → JS null)
-                obj.getHeaderMap()?.let { stringToJsValue(ctx, GSON.toJson(it)) } ?: jsNull()
+                // getHeaderMap() → JSON 对象 (返回类型非空, 无 null 分支)
+                stringToJsValue(ctx, GSON.toJson(obj.getHeaderMap()))
             }
 
             obj is BaseSource && methodId == 1605 -> stringToJsValue(ctx, obj.loginUrl)

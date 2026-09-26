@@ -287,7 +287,7 @@ fun ChangeSourceContent(
     fun deleteSource(searchBook: SearchBook) {
         viewModel.del(searchBook)
         val currentState = screenModel.state.value
-        val isCurBook = (currentState.book == null || currentState.book?.origin == searchBook.origin) &&
+        val isCurBook = (currentState.book == null || currentState.book.origin == searchBook.origin) &&
             currentState.curBookUrl == searchBook.bookUrl
         if (isCurBook) {
             val oldBookType = currentState.book?.type
