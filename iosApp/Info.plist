@@ -54,9 +54,22 @@
         <string>UIInterfaceOrientationLandscapeRight</string>
     </array>
 
-    <!-- 启动屏 (iOS 14+ 用 Storyboard, 这里给空配置让系统默认) -->
-    <key>UILaunchStoryboardName</key>
-    <string></string>
+    <!-- 启动屏: 官方 CMP 模板用 UILaunchScreen 空字典 (系统默认启动屏)。
+         不用 UILaunchStoryboardName —— 空字符串会被系统当成"去找一个叫空名字的 storyboard"。
+         ⚠️ 本文件与 project.yml 双写: xcodegen generate 会用 project.yml 重写本文件 -->
+    <key>UILaunchScreen</key>
+    <dict/>
+
+    <!-- 只允许 iPhone/iPad 设备 (官方 CMP 模板同项) -->
+    <key>LSRequiresIPhoneOS</key>
+    <true/>
+
+    <!-- 场景声明: SwiftUI App 生命周期需要它显式声明不支持多场景 (官方模板同项) -->
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <false/>
+    </dict>
 
     <!-- App 安全区域: Compose Multiplatform 自处理 safeArea, 让窗口铺满 -->
     <key>UIRequiresFullScreen</key>
