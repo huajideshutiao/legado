@@ -208,6 +208,11 @@ val syncIosVersion = tasks.register("syncIosVersion") {
     description =
         "Sync iOS CFBundleShortVersionString/CFBundleVersion with Android versionName/versionCode."
     // versionCode/versionName 经 providers.exec 与 BuildTimestampValueSource 纳入配置缓存输入指纹
+    // shallow clone 下 git rev-list --count 恒为 1 (versionCode 会静默算成 10001),
+    // 实际拦截在 doLast 里做: 只有本任务失败, 不影响 shallow 环境跑其他任务
+    val isShallowRepo = providers.exec {
+        commandLine("git", "rev-parse", "--is-shallow-repository")
+    }.standardOutput.asText.get().trim() == "true"
     val commits = providers.exec {
         commandLine("git", "rev-list", "HEAD", "--count")
     }.standardOutput.asText.get().trim().toInt()
@@ -218,6 +223,11 @@ val syncIosVersion = tasks.register("syncIosVersion") {
     val projectYml = rootProject.file("iosApp/project.yml")
     val infoPlist = rootProject.file("iosApp/Info.plist")
     doLast {
+        // 取不到真实提交数就停: 静默产出假 versionCode 比构建失败更贵 (产物看不出新旧)
+        check(!isShallowRepo) {
+            "syncIosVersion 需要完整 git 历史 (git rev-list HEAD --count), 当前是 shallow clone; " +
+                "调用方 checkout 必须带 fetch-depth: 0"
+        }
         fun rewrite(path: File, transform: (String) -> String) {
             val updated = transform(path.readText())
             if (updated != path.readText()) path.writeText(updated)
@@ -239,6 +249,20 @@ val syncIosVersion = tasks.register("syncIosVersion") {
                 Regex("(<key>CFBundleVersion</key>\\s*<string>)[^<]*(</string>)"),
                 "$1$versionCode$2",
             )
+        }
+        // 写回后立即回读校验: 写入被沙箱/权限静默拦下时不能继续用旧值出包
+        fun readBack(path: File, pattern: String): String? =
+            Regex(pattern).find(path.readText())?.groupValues?.get(1)
+        val ymlShort = readBack(projectYml, "CFBundleShortVersionString:\\s*\"([^\"]*)\"")
+        val ymlCode = readBack(projectYml, "CFBundleVersion:\\s*\"([^\"]*)\"")
+        val plistShort = readBack(infoPlist, "<key>CFBundleShortVersionString</key>\\s*<string>([^<]*)</string>")
+        val plistCode = readBack(infoPlist, "<key>CFBundleVersion</key>\\s*<string>([^<]*)</string>")
+        check(
+            ymlShort == versionName && ymlCode == "$versionCode" &&
+                plistShort == versionName && plistCode == "$versionCode"
+        ) {
+            "iOS 版本号写入未生效: project.yml=$ymlShort/$ymlCode, Info.plist=$plistShort/$plistCode, " +
+                "期望=$versionName/$versionCode"
         }
         logger.lifecycle("iOS version synced: versionName=$versionName, versionCode=$versionCode")
     }

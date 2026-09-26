@@ -45,6 +45,10 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v5
+        with:
+          # syncIosVersion 用 git rev-list HEAD --count 算 versionCode,
+          # shallow 下恒为 1 (与 test.yml 同款取版本方式, 两边必须一致)
+          fetch-depth: 0
 
       - name: Set version
         id: ver
@@ -175,6 +179,15 @@ jobs:
         continue-on-error: true
         run: brew install xcodegen
 
+      # 必须在 xcodegen generate 之前把版本号落进 project.yml/Info.plist。
+      # 不能只靠 iosApp 的 preBuildScript: 该阶段与 ProcessInfoPlistFile 并发,
+      # 写入落在 plist 处理之后, 产物里仍是 project.yml 里的占位值。
+      # 传 -PappVersion 用上游算好的版本号, 保证 bundle 版本 = ipa 文件名 = 安卓 versionName。
+      - name: Sync iOS version
+        id: syncver
+        if: inputs.stage == 'ipa'
+        run: ./gradlew syncIosVersion -PappVersion=${{ steps.ver.outputs.version }} --console=plain
+
       - name: Generate Xcode project
         if: inputs.stage == 'ipa'
         continue-on-error: true
@@ -203,7 +216,8 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             DEVELOPMENT_TEAM="" \
-            PROVISIONING_PROFILE_SPECIFIER="" 2>&1 \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            LEGADO_APP_VERSION="${{ steps.ver.outputs.version }}" 2>&1 \
             | tee "$GITHUB_WORKSPACE/ci-logs/60-archive.log"
 
       - name: Package unsigned IPA
@@ -266,6 +280,7 @@ jobs:
           }
           echo "## iOS build (stage=${{ inputs.stage }}) 结果" >> $GITHUB_STEP_SUMMARY
           report "native static libs" "${{ steps.native.outcome || 'skipped' }}"
+          report "sync iOS version" "${{ steps.syncver.outcome || 'skipped' }}"
           report "compile klib" "${{ steps.klib.outcome || 'skipped' }}"
           report "link framework" "${{ steps.link.outcome || 'skipped' }}"
           report "xcodebuild archive" "${{ steps.archive.outcome || 'skipped' }}"

@@ -55,8 +55,10 @@ targets:
         # app_name (英文态)。改显示名要同时改那四份 InfoPlist.strings。
         CFBundleDisplayName: Legado
         # 版本号与安卓端对齐 (app/build.gradle.kts versionName/versionCode):
-        # 由根工程 syncIosVersion 任务按 git 提交数 + GMT+8 构建时刻自动写入,
-        # xcodegen generate 会用它重写 Info.plist (与本文件双写关系)。
+        # 真值由根工程 syncIosVersion 任务按 git 提交数 + GMT+8 构建时刻写入。
+        # 下面两个值是缺任务写入时的占位 (xcodegen 会用它重写 Info.plist),
+        # 不删的理由: 删掉后 xcodegen 退回它自己的默认值 1.0/1, 更难识别。
+        # 看到这个占位值就说明 syncIosVersion 没跑成功。
         CFBundleShortVersionString: "3.26.081614"
         CFBundleVersion: "17376"
         # 状态栏 (Compose Multiplatform 自管理)
@@ -237,7 +239,9 @@ targets:
           #!/bin/bash
           set -e
           cd "$SRCROOT/.."
-          ./gradlew syncIosVersion --quiet
+          # LEGADO_APP_VERSION 由 CI 的 xcodebuild 以用户定义构建设置传入 (与 ipa 文件名同源);
+          # IDE 直编没有它, 回退到任务自己按构建时刻生成。
+          ./gradlew syncIosVersion ${LEGADO_APP_VERSION:+-PappVersion=$LEGADO_APP_VERSION} --quiet
         name: Sync iOS version with Android
         basedOnDependencyAnalysis: false
       - script: |
