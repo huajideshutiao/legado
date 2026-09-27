@@ -825,4 +825,6 @@
     <string name="media_runtime_downloading">メディア再生コンポーネントをダウンロード中：%1$s</string>
     <string name="media_runtime_download_failed">メディア再生コンポーネントのダウンロードに失敗しました：%1$s</string>
     <string name="media_runtime_not_installed">メディア再生コンポーネントがインストールされていません</string>
+    <string name="json_tree">ツリー表示</string>
+    <string name="source_text">元のテキスト</string>
 </resources>

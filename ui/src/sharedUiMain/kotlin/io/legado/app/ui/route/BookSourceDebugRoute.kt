@@ -212,6 +212,9 @@ fun BookSourceDebugRoute(
             title = title,
             content = content,
             onDismiss = { srcDialog = null },
+            // 源码就是各阶段的原始响应体 (state 10/20/30/40/50 存 body): JSON 源是 JSON,
+            // HTML 源是 HTML。TextDialog 内部只在能解析成 JSON 时才建树视图按钮。
+            allowJsonTree = true,
         )
     }
 

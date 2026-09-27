@@ -1,14 +1,23 @@
 package io.legado.app.ui.widget.dialog
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.sp
+import com.sebastianneubauer.jsontree.JsonTree
+import com.sebastianneubauer.jsontree.defaultDarkColors
+import com.sebastianneubauer.jsontree.defaultLightColors
+import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.SelectableText
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
@@ -18,10 +27,14 @@ import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.PlatformCapabilityProviders
+import kotlinx.serialization.json.Json
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.cancel
+import legado.ui.generated.resources.copied_to_clipboard
 import legado.ui.generated.resources.copy
+import legado.ui.generated.resources.json_tree
 import legado.ui.generated.resources.ok
+import legado.ui.generated.resources.source_text
 import legado.ui.generated.resources.text_too_large
 import org.jetbrains.compose.resources.stringResource
 
@@ -44,18 +57,29 @@ private const val MAX_TEXT_LENGTH = 32 * 1024
  * @param title 标题栏文案 (原版取文件名 / "Log" / "html" / "ERROR")
  * @param content 正文, 超过 [MAX_TEXT_LENGTH] 截断并追加提示 (对齐原版"数据太大"分支)
  * @param onDismiss 关闭 (返回箭头 / 点击对话框外部 / 取消 / 确定 四处同一回调, 原版无按钮语义区分)
+ * @param allowJsonTree 正文为合法 JSON 时是否提供树形视图切换 (书源调试的源码就是原始响应体,
+ * 可能是 JSON 也可能是 HTML; 默认关, 仅源码查看处开启)
  */
 @Composable
 fun TextDialog(
     title: String,
     content: String,
     onDismiss: () -> Unit,
+    allowJsonTree: Boolean = false,
 ) {
     val colors = AppTheme.colors
     val okText = stringResource(Res.string.ok)
     val cancelText = stringResource(Res.string.cancel)
     val copyText = stringResource(Res.string.copy)
     val tooLargeText = stringResource(Res.string.text_too_large)
+    val treeText = stringResource(Res.string.json_tree)
+    val sourceText = stringResource(Res.string.source_text)
+    val copiedText = stringResource(Res.string.copied_to_clipboard)
+    // 只有真正能解析成 JSON 时才提供树视图 (HTML 响应体解析会抛异常, 不建按钮)
+    val isJson = remember(allowJsonTree, content) {
+        allowJsonTree && runCatching { Json.parseToJsonElement(content) }.isSuccess
+    }
+    var treeMode by remember { mutableStateOf(false) }
 
     AppDialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
         Surface(
@@ -74,15 +98,31 @@ fun TextDialog(
                 } else {
                     content
                 }
-                SelectableText(
-                    text = displayText,
-                    color = colors.secondaryText,
-                    fontSize = 15.sp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .padding(horizontal = DesignTokens.spacingDefault),
-                )
+                if (treeMode) {
+                    JsonTree(
+                        json = content,
+                        onLoading = {},
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        colors = if (colors.isDark) defaultDarkColors else defaultLightColors,
+                        contentPadding = PaddingValues(horizontal = DesignTokens.spacingDefault),
+                        onItemLongClick = { path ->
+                            PlatformCapabilityProviders.get().copyToClipboard(path)
+                            Toasters.get().toast(copiedText)
+                        },
+                    )
+                } else {
+                    SelectableText(
+                        text = displayText,
+                        color = colors.secondaryText,
+                        fontSize = 15.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .padding(horizontal = DesignTokens.spacingDefault),
+                    )
+                }
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -91,6 +131,12 @@ fun TextDialog(
                 ) {
                     AppTextButton(text = copyText) {
                         PlatformCapabilityProviders.get().copyToClipboard(content)
+                    }
+                    if (isJson) {
+                        AppTextButton(
+                            text = if (treeMode) sourceText else treeText,
+                            color = colors.accent,
+                        ) { treeMode = !treeMode }
                     }
                     Spacer(Modifier.weight(1f))
                     AppTextButton(text = cancelText, color = colors.secondaryText) { onDismiss() }

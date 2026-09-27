@@ -909,4 +909,6 @@
     <string name="media_runtime_downloading">Đang tải thành phần phát phương tiện: %1$s</string>
     <string name="media_runtime_download_failed">Tải thành phần phát phương tiện thất bại: %1$s</string>
     <string name="media_runtime_not_installed">Chưa cài đặt thành phần phát phương tiện</string>
+    <string name="json_tree">Dạng cây</string>
+    <string name="source_text">Văn bản gốc</string>
 </resources>

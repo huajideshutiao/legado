@@ -1716,4 +1716,6 @@ Windows: winget install shinchiro.mpv 或 scoop install mpv,
     <string name="media_runtime_downloading">正在下载媒体播放组件：%1$s</string>
     <string name="media_runtime_download_failed">媒体播放组件下载失败：%1$s</string>
     <string name="media_runtime_not_installed">未安装媒体播放组件</string>
+    <string name="json_tree">树形视图</string>
+    <string name="source_text">原文</string>
 </resources>

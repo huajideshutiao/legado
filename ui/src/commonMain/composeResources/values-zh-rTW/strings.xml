@@ -1022,4 +1022,6 @@
     <string name="media_runtime_downloading">正在下載媒體播放元件：%1$s</string>
     <string name="media_runtime_download_failed">媒體播放元件下載失敗：%1$s</string>
     <string name="media_runtime_not_installed">未安裝媒體播放元件</string>
+    <string name="json_tree">樹狀檢視</string>
+    <string name="source_text">原文</string>
 </resources>

@@ -1648,4 +1648,6 @@
     <string name="media_runtime_downloading">Downloading the media playback component: %1$s</string>
     <string name="media_runtime_download_failed">Failed to download the media playback component: %1$s</string>
     <string name="media_runtime_not_installed">Media playback component is not installed</string>
+    <string name="json_tree">JSON tree</string>
+    <string name="source_text">Source</string>
 </resources>

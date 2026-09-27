@@ -913,4 +913,6 @@
     <string name="media_runtime_downloading">Descargando el componente de reproducción multimedia: %1$s</string>
     <string name="media_runtime_download_failed">No se pudo descargar el componente de reproducción multimedia: %1$s</string>
     <string name="media_runtime_not_installed">El componente de reproducción multimedia no está instalado</string>
+    <string name="json_tree">Vista de árbol</string>
+    <string name="source_text">Texto original</string>
 </resources>
