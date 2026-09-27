@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
@@ -197,17 +198,20 @@ fun BookSourceDebugScreen(
             actions = { DebugActions(actions) },
         )
         Box(Modifier.fillMaxSize()) {
-            // 调试日志流：逐项 SelectionContainer + Text
-            // - Text 内 LinkAnnotation.Url 自动处理短按打开链接
-            // - 逐项 SelectionContainer 负责长按选择文本，桌面鼠标更稳定
-            // - 二者手势时长不同（tap vs long-press），不冲突
-            LazyColumn(
-                Modifier.fillMaxSize(),
-                contentPadding = WindowInsets.navigationBars.asPaddingValues(),
-            ) {
-                items(state.logs) { item ->
-                    val annotated = remember(item) { linkifyText(item, colors.accent) }
-                    SelectionContainer {
+            // 调试日志流：SelectionContainer 包住整个列表, 选区可跨可见日志行延伸
+            // (滚出屏幕未组合的行不参与复制/全选, SelectionContainer 官方语义)
+            // - Text 内 LinkAnnotation.Url 短按打开链接, 与长按选择手势不冲突
+            // 日志列表双态复用同一 LazyListState: 帮助面板展开时不包 SelectionContainer,
+            // 被面板遮住的行不再参与拖选/全选
+            val logListState = rememberLazyListState()
+            @Composable fun LogList() {
+                LazyColumn(
+                    Modifier.fillMaxSize(),
+                    state = logListState,
+                    contentPadding = WindowInsets.navigationBars.asPaddingValues(),
+                ) {
+                    items(state.logs) { item ->
+                        val annotated = remember(item) { linkifyText(item, colors.accent) }
                         Text(
                             text = annotated,
                             color = logTextColor,
@@ -215,6 +219,13 @@ fun BookSourceDebugScreen(
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
+                }
+            }
+            if (state.helpVisible) {
+                LogList()
+            } else {
+                SelectionContainer {
+                    LogList()
                 }
             }
             if (state.loading) {

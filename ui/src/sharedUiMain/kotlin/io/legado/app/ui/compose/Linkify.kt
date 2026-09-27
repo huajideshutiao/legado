@@ -14,7 +14,7 @@ import io.legado.app.utils.findLinkifyMatches
  * 复刻 Linkify.WEB_URLS：用 LinkAnnotation.Url 标注纯文本中的网址片段。
  *
  * Text / ClickableText 组件内置处理 LinkAnnotation.Url 的点击打开（LocalUriHandler），
- * 逐项 SelectionContainer 负责长按选择，与短按链接不冲突（手势时长不同）。
+ * SelectionContainer 负责长按选择，与短按链接不冲突（手势时长不同）。
  *
  * URL 查找与清洗逻辑在 [findLinkifyMatches] (commonMain, 可单测)：
  * 不吞书源 `,{...}` 请求规格、HTML 尖括号/引号包裹、尾部标点等噪声。

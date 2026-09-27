@@ -6,6 +6,7 @@ package io.legado.app.ui.about
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -65,13 +66,15 @@ fun AppLogDialogContent(
                 AppTextButton(text = stringResource(Res.string.clear), onClick = AppLog::clear)
             },
         )
-        LazyColumn(
+        SelectionContainer(
             Modifier
                 .weight(1f)
                 .fillMaxWidth(),
         ) {
-            itemsIndexed(logs) { _, item ->
-                LogItem(item) { stackTraceItem = item }
+            LazyColumn(Modifier.fillMaxSize()) {
+                itemsIndexed(logs) { _, item ->
+                    LogItem(item) { stackTraceItem = item }
+                }
             }
         }
     }
@@ -108,12 +111,10 @@ private fun LogItem(
             text = formatLogTime(time, tzOffset),
             color = colors.primaryText,
         )
-        SelectionContainer {
-            Text(
-                text = remember(message, colors.accent) { linkifyText(message, colors.accent) },
-                color = colors.primaryText,
-            )
-        }
+        Text(
+            text = remember(message, colors.accent) { linkifyText(message, colors.accent) },
+            color = colors.primaryText,
+        )
     }
 }
 
