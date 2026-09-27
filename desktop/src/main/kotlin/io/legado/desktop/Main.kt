@@ -415,7 +415,8 @@ private fun runDesktopApp() = application {
     // Windows: 设置进程级 AppUserModelID + 保证开始菜单快捷方式身份注册 (SMTC 媒体卡
     // 应用名来源; :desktop:run/java -jar 无安装注册时按官方文档自建快捷方式)。
     // 须在 AppString provider 注册之后 (快捷方式文件名取 app_name 显示名),
-    // 且必须在首窗口创建前 (MSDN: SetCurrentProcessExplicitAppUserModelID 须先于 UI)。
+    // 且须在首个有任务栏按钮的窗口 (Compose 主窗口) 创建前设置;
+    // 闪屏是无任务栏按钮的 JWindow, 不受此约束。
     DesktopAppUserModelId.ensureProcessAppId()
     // 注册桌面端 ScreenInfoProvider (Toolkit.getDefaultToolkit().screenSize),
     // 供 shared commonMain 经 ScreenInfoProviders.get() 读屏幕尺寸; 无依赖, 同步注册
@@ -525,10 +526,11 @@ private fun runDesktopApp() = application {
     // classpath 资源加载: 手动 Skia 解码 + BitmapPainter
     val iconPainter = remember {
         runCatching {
-            Thread.currentThread().contextClassLoader
-                ?.getResourceAsStream("icon.png")?.use { decodeBytesSampled(it.readBytes(), 0) }
+            // 本 composable 在 EDT 上执行, 线程 contextClassLoader 不可靠, 统一走应用类加载器
+            desktopAppClassLoader
+                .getResourceAsStream("icon.png")?.use { decodeBytesSampled(it.readBytes(), 0) }
                 ?.let { BitmapPainter(it) }
-        }.getOrNull()
+        }.onFailure { AppLog.put("任务栏图标加载失败", it) }.getOrNull()
     }
     // AppNavigator: 零薄壳导航唯一状态源 (替代旧 DesktopApp 的 20+ 并行状态字段)
     val navigator = remember { AppNavigator(AppRoute.Main()) }

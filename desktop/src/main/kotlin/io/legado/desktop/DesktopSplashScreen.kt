@@ -7,6 +7,7 @@ import io.legado.app.help.config.resolveImagePath
 import io.legado.app.help.image.decodeBytesSampled
 import io.legado.app.model.bakedImagePath
 import io.legado.app.model.ensureBakedImage
+import io.legado.desktop.desktopAppClassLoader
 import io.legado.app.ui.compose.platform.DesktopThemeStoreProvider
 import java.awt.Color
 import java.awt.Dimension
@@ -241,8 +242,8 @@ class DesktopSplashScreen(
         private val tintedIcon: BufferedImage? by lazy {
             runCatching {
                 // 与 app 端共用同一份 icon_read_book.png (desktop sourceSets 挂载 drawable-nodpi)
-                val decoded = Thread.currentThread().contextClassLoader
-                    ?.getResourceAsStream("icon_read_book.png")
+                val decoded = desktopAppClassLoader
+                    .getResourceAsStream("icon_read_book.png")
                     ?.use { decodeBytesSampled(it.readBytes(), 0) }?.toAwtImage()
                 decoded?.let { tintImage(it, accentColor) }
             }.getOrNull()

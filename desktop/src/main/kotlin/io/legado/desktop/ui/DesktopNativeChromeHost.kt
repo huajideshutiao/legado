@@ -37,6 +37,7 @@ import io.legado.app.help.image.decodeBytesSampled
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.platform.DesktopThemeStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.desktop.desktopAppClassLoader
 import io.legado.desktop.ui.tray.DesktopTaskbarDwm
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
@@ -148,8 +149,8 @@ fun DesktopNativeChromeHost(
     // 应用图标: 与窗口图标同源 (desktop/src/main/resources/icon.png)
     val appIcon = remember {
         runCatching {
-            Thread.currentThread().contextClassLoader
-                ?.getResourceAsStream("icon.png")?.use { decodeBytesSampled(it.readBytes(), 0) }
+            desktopAppClassLoader
+                .getResourceAsStream("icon.png")?.use { decodeBytesSampled(it.readBytes(), 0) }
                 ?.toAwtImage()
         }.getOrNull()
     }

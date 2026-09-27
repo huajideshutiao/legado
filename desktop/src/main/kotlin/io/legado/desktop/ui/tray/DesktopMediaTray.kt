@@ -3,6 +3,7 @@ package io.legado.desktop.ui.tray
 import androidx.compose.ui.graphics.toAwtImage
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
+import io.legado.desktop.desktopAppClassLoader
 import io.legado.app.constant.Status
 import io.legado.app.help.image.decodeBytesSampled
 import io.legado.app.help.toast.DesktopTrayNotifier
@@ -695,8 +696,8 @@ object DesktopMediaTray {
         val width = trayPixels(transform?.scaleX)
         val height = trayPixels(transform?.scaleY)
         val raw = runCatching {
-            Thread.currentThread().contextClassLoader
-                ?.getResourceAsStream("icon.png")?.use { decodeBytesSampled(it.readBytes(), 0) }
+            desktopAppClassLoader
+                .getResourceAsStream("icon.png")?.use { decodeBytesSampled(it.readBytes(), 0) }
                 ?.toAwtImage()
         }.getOrNull() ?: return BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
         return scaleHighQuality(raw, width, height)

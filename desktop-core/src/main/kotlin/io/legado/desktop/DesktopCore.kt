@@ -519,3 +519,13 @@ object DesktopCore {
         return if (entries == null) !dir.isDirectory else entries.isEmpty()
     }
 }
+
+/**
+ * 应用类加载器: classpath 资源加载一律经它, 与执行线程无关。
+ *
+ * 线程的 Thread.contextClassLoader 继承自构造线程, 而 AWT 全局环境 (AppContext/EDT) 首次
+ * 初始化时会把触发线程当时的 contextClassLoader 捕获为全局值 (JDK sun.awt.AppContext 构造器);
+ * 启动预热与主线程赛跑首次 AWT 初始化, 赢家不定, 该值在线程间不可靠。
+ * 读取 classpath 资源的场景 (窗口/任务栏/托盘/闪屏图标) 必须走本加载器。
+ */
+val desktopAppClassLoader: ClassLoader = DesktopCore::class.java.classLoader

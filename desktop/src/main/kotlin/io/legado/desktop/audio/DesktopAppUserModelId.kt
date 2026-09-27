@@ -16,6 +16,7 @@ import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.desktop.audio.DesktopAppUserModelId.PKEY_APP_USER_MODEL_ID_PID
 import io.legado.desktop.audio.DesktopAppUserModelId.applyToWindow
 import io.legado.desktop.audio.DesktopAppUserModelId.ensureProcessAppId
+import io.legado.desktop.desktopAppClassLoader
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.Canvas
 import org.jetbrains.skia.ColorAlphaType
@@ -222,8 +223,14 @@ internal object DesktopAppUserModelId {
             if (!startMenu.isDirectory) return
             val lnk = File(startMenu, "${displayName()}.lnk")
             if (lnk.exists()) return
-            createShortcut(lnk, ensureIconFile(), appId)
-            AppLog.put("已创建开始菜单快捷方式: ${lnk.absolutePath}")
+            // 图标生成失败时不创建: 快捷方式是长期持久物, 带病落地会被上方的存在性短路
+            // 永久固化; 每次启动幂等重试, 成功才落地
+            val iconPath = ensureIconFile() ?: run {
+                AppLog.put("应用图标生成失败, 跳过开始菜单快捷方式创建")
+                return
+            }
+            val ok = createShortcut(lnk, iconPath, appId)
+            if (ok) AppLog.put("已创建开始菜单快捷方式: ${lnk.absolutePath}")
         }.onFailure {
             AppLog.put("创建开始菜单快捷方式失败", it)
         }
@@ -233,7 +240,7 @@ internal object DesktopAppUserModelId {
     private fun ensureIconFile(): String? {
         val ico = File(desktopAppRootDir(), "icon.ico")
         if (ico.exists()) return ico.absolutePath
-        val rawBytes = Thread.currentThread().contextClassLoader?.getResourceAsStream("icon.png")
+        val rawBytes = desktopAppClassLoader.getResourceAsStream("icon.png")
             ?.use { it.readBytes() }
             ?: return null
         val size = 256
@@ -291,15 +298,25 @@ internal object DesktopAppUserModelId {
         u32(22) // data offset
         out.write(pngBytes)
         ico.parentFile?.mkdirs()
-        FileOutputStream(ico).use { it.write(out.toByteArray()) }
+        // 先落临时文件再替换: 直写中断留下的半截 ICO 会被"存在即复用"短路永久固化
+        val tmp = File(ico.parentFile, "${ico.name}.tmp")
+        FileOutputStream(tmp).use { it.write(out.toByteArray()) }
+        java.nio.file.Files.move(
+            tmp.toPath(),
+            ico.toPath(),
+            java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+        )
         return ico.absolutePath
     }
 
-    /** IShellLink + IPropertyStore(AUMID) + IPersistFile 创建快捷方式 (对照 MSDN 示例的 C 流程)。 */
-    private fun createShortcut(lnk: File, iconPath: String?, appId: String) {
+    /** IShellLink + IPropertyStore(AUMID) + IPersistFile 创建快捷方式 (对照 MSDN 示例的 C 流程)。失败路径均记日志并返回 false, 保证失败不落地可重试。 */
+    private fun createShortcut(lnk: File, iconPath: String?, appId: String): Boolean {
         val initHr = Ole32.INSTANCE.CoInitializeEx(Pointer.NULL, Ole32.COINIT_APARTMENTTHREADED)
             .toInt()
-        if (initHr != 0 && initHr != 1) return
+        if (initHr != 0 && initHr != 1) {
+            AppLog.put("创建开始菜单快捷方式失败: CoInitializeEx hr=$initHr")
+            return false
+        }
         try {
             val pp = PointerByReference()
             val hr = Ole32.INSTANCE.CoCreateInstance(
@@ -309,7 +326,10 @@ internal object DesktopAppUserModelId {
                 IID_ISHELLLINKW,
                 pp,
             ).toInt()
-            if (hr != 0 || pp.value == null) return
+            if (hr != 0 || pp.value == null) {
+                AppLog.put("创建开始菜单快捷方式失败: CoCreateInstance hr=$hr")
+                return false
+            }
             val link = pp.value
             try {
                 vtbl(link, SLOT_SHELLLINK_SET_PATH, WString(javaExePath()))
@@ -317,7 +337,7 @@ internal object DesktopAppUserModelId {
                 if (!iconPath.isNullOrBlank()) {
                     vtbl(link, SLOT_SHELLLINK_SET_ICON_LOCATION, WString(iconPath), 0)
                 }
-                // 快捷方式的 System.AppUserModel.ID 属性
+                // 快捷方式的 System.AppUserModel.ID 属性; 写不进去就不落地 (.lnk 会被存在性短路固化)
                 val pstore = PointerByReference()
                 if (queryInterface(link, IID_IPROPERTYSTORE, pstore) == 0 && pstore.value != null) {
                     try {
@@ -326,6 +346,9 @@ internal object DesktopAppUserModelId {
                     } finally {
                         vtbl(pstore.value, SLOT_RELEASE)
                     }
+                } else {
+                    AppLog.put("创建开始菜单快捷方式失败: QueryInterface IPropertyStore 失败, AUMID 未写入")
+                    return false
                 }
                 // IPersistFile::Save(path, TRUE)
                 val pf = PointerByReference()
@@ -335,7 +358,11 @@ internal object DesktopAppUserModelId {
                     } finally {
                         vtbl(pf.value, SLOT_RELEASE)
                     }
+                } else {
+                    AppLog.put("创建开始菜单快捷方式失败: QueryInterface IPersistFile 失败, .lnk 未落地")
+                    return false
                 }
+                return true
             } finally {
                 vtbl(link, SLOT_RELEASE)
             }
