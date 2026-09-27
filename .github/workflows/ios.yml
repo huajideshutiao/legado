@@ -1,6 +1,7 @@
 name: iOS Build
 
-# ⚠️ 手动触发不挂 push/PR: macOS runner 计费是 Linux 的 10 倍。
+# ⚠️ 手动触发不挂 push/PR: macOS runner 排队久 (标准 runner 在 public 仓库不计费,
+# 但每次 push 都占一个 macOS 槽位会拖慢其它构建)。
 # stage 控制深度, 调试 YAML/脚本语法时用 klib 即可, 不必每次跑完整 ipa。
 # 另经 workflow_call 被 release.yml 调用 (stage=ipa), 正式/Beta Release 的 IPA 只有这一份实现。
 # 写 Release 的手动入口位于 release.yml 的 ios-beta 模式；本 reusable workflow 始终只读。
@@ -8,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       stage:
-        description: '构建深度: klib=只编 Kotlin iOS klib / link=编静态库+链接 framework / ipa=完整出未签名 ipa'
+        description: '构建深度: klib=只编 Kotlin iOS klib / link=编静态库+链接 framework / ipa=完整出未签名 ipa / sim=模拟器冒烟 (启动判存活 + 抓崩溃日志 + 截图)'
         required: true
         default: 'klib'
         type: choice
@@ -16,6 +17,7 @@ on:
           - klib
           - link
           - ipa
+          - sim
   workflow_call:
     inputs:
       stage:
@@ -151,7 +153,15 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          ./gradlew :ui:compileKotlinIosArm64 \
+          # sim 档最终 link 的是模拟器 framework, 编真机 klib 是纯浪费 (实测白烧 3m32s);
+          # 目标随档位切换, 顺带让编译错误在正确的 target 上尽早暴露。
+          # klib 档保持真机 target: 那一档的用途是语法/类型校验, 与最终产物无关。
+          if [ "${{ inputs.stage }}" = "sim" ]; then
+            TARGET=":ui:compileKotlinIosSimulatorArm64"
+          else
+            TARGET=":ui:compileKotlinIosArm64"
+          fi
+          ./gradlew "$TARGET" \
             --info --stacktrace --warning-mode all --continue --console=plain 2>&1 \
             | tee "$GITHUB_WORKSPACE/ci-logs/30-compile-klib.log"
 
@@ -163,6 +173,11 @@ jobs:
           set -o pipefail
           if [ "${{ inputs.stage }}" = "ipa" ]; then
             TASK=":ui:linkReleaseFrameworkIosArm64"
+          elif [ "${{ inputs.stage }}" = "sim" ]; then
+            # 模拟器只能跑同架构: 本仓只注册了 iosArm64/iosSimulatorArm64,
+            # 没有 iosX64, 故 sim 档必须用 arm64 模拟器 runner (macos-latest 已是 arm64)
+            # 用 Release 而非 Debug: 用户装的就是 Release 包, 崩溃形态要能在同档复现
+            TASK=":ui:linkDebugFrameworkIosSimulatorArm64"
           else
             TASK=":ui:linkDebugFrameworkIosArm64"
           fi
@@ -175,7 +190,7 @@ jobs:
 
       # ===== ipa (未签名, 供 SideStore/AltStore/Xcode 自签侧载) =====
       - name: Install XcodeGen
-        if: inputs.stage == 'ipa'
+        if: inputs.stage == 'ipa' || inputs.stage == 'sim'
         continue-on-error: true
         run: brew install xcodegen
 
@@ -185,11 +200,11 @@ jobs:
       # 传 -PappVersion 用上游算好的版本号, 保证 bundle 版本 = ipa 文件名 = 安卓 versionName。
       - name: Sync iOS version
         id: syncver
-        if: inputs.stage == 'ipa'
+        if: inputs.stage == 'ipa' || inputs.stage == 'sim'
         run: ./gradlew syncIosVersion -PappVersion=${{ steps.ver.outputs.version }} --console=plain
 
       - name: Generate Xcode project
-        if: inputs.stage == 'ipa'
+        if: inputs.stage == 'ipa' || inputs.stage == 'sim'
         continue-on-error: true
         working-directory: iosApp/
         run: |
@@ -239,6 +254,175 @@ jobs:
           ls -lh *.ipa
           unzip -l *.ipa | head -30
 
+      # ===== sim (模拟器冒烟: 启动判存活 + 抓崩溃日志 + 截图) =====
+      # 为何值得跑: 真机侧载包“点开闪一下就没了”在 CI 里无法复现,
+      # 模拟器至少能回答“能不能起来”与“崩在哪”—— 起了不能证明真机不崩 (签名/Metal/运行时初始化差异),
+      # 但崩了就是真 bug 且日志直接可读。产物里的崩溃日志正是崩溃捕获链的自检。
+      - name: Boot iOS simulator
+        id: boot
+        if: inputs.stage == 'sim'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          mkdir -p "$GITHUB_WORKSPACE/sim-artifacts"
+          {
+            # runner 预装 iOS 26.5/26.4/26.2 三套 runtime; 取当前最高一套, 避免写死设备名
+            RUNTIME="$(xcrun simctl list runtimes --json \
+              | python3 -c 'import json,sys; rs=[r for r in json.load(sys.stdin)["runtimes"] if r.get("isAvailable") and r["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS")]; rs.sort(key=lambda r: [int(x) for x in r["version"].split(".")]); print(rs[-1]["identifier"])')"
+            echo "runtime=$RUNTIME"
+            DEVICE_TYPE="$(xcrun simctl list devicetypes --json \
+              | python3 -c 'import json,sys; ds=json.load(sys.stdin)["devicetypes"]; print(next(d["identifier"] for d in ds if d["name"]=="iPhone 17"))')"
+            echo "deviceType=$DEVICE_TYPE"
+            UDID="$(xcrun simctl create legado-smoke "$DEVICE_TYPE" "$RUNTIME")"
+            echo "udid=$UDID" >> $GITHUB_OUTPUT
+            echo "runtime=$RUNTIME" >> $GITHUB_OUTPUT
+            xcrun simctl boot "$UDID"
+            # bootstatus 等开机完成; 不加 -b 时未开机设备会直接报错
+            xcrun simctl bootstatus "$UDID" -b
+            xcrun simctl list devices | grep -i legado-smoke || true
+          } 2>&1 | tee "$GITHUB_WORKSPACE/sim-artifacts/10-boot.log"
+
+      - name: Build for simulator
+        id: simbuild
+        if: inputs.stage == 'sim'
+        continue-on-error: true
+        working-directory: iosApp/
+        run: |
+          set -o pipefail
+          # build (不是 archive): 模拟器要的是 iphonesimulator SDK 下的 .app,
+          # 且必须走这条链让 xcodebuild 自己生成 UIRequiredDeviceCapabilities ——
+          # 真机 archive 里那一项是 [arm64], 直接装进模拟器会对不上。
+          # 用 Debug 而非 Release: Release 下 xcodebuild 会传 ARCHS="arm64 x86_64",
+          # 而本仓只注册了 iosArm64/iosSimulatorArm64 (无 iosX64), Gradle 的
+          # syncComposeResourcesForIos 会直接报 Unknown iOS simulator arch: 'x86_64'。
+          # Debug 能过是因为 ONLY_ACTIVE_ARCH 只编 arm64。
+          xcodebuild build \
+            -project iosApp.xcodeproj \
+            -scheme iosApp \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,id=${{ steps.boot.outputs.udid }}" \
+            -derivedDataPath build/simdd \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            LEGADO_APP_VERSION="${{ steps.ver.outputs.version }}" 2>&1 \
+            | tee "$GITHUB_WORKSPACE/sim-artifacts/20-xcodebuild.log"
+          APP="$(find build/simdd/Build/Products -maxdepth 2 -name '*.app' | head -1)"
+          test -n "$APP"
+          # 转绝对路径: 本步 cwd 是 iosApp/, 而 install 步在仓库根目录执行 ——
+          # 相对路径会在那里解析成不存在的路径 (实测 lstat .../legado/build/simdd/... failed)
+          APP="$(cd "$(dirname "$APP")" && pwd)/$(basename "$APP")"
+          echo "app=$APP" >> $GITHUB_OUTPUT
+          # 记下实际 bundle id (Debug 配置是 shutiao.reader.debug), 后面 install/launch 都用它
+          BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")"
+          echo "bundleId=$BUNDLE_ID" >> $GITHUB_OUTPUT
+          echo "bundleId=$BUNDLE_ID app=$APP"
+          # 模拟器产物必须带 LC_BUILD_VERSION platform=iOSSimulator, 否则装不上。
+          # 这一步同时会暴露“链错 framework 架构”这类问题 (真机 framework 装进模拟器必失败)。
+          # tee -a 追加: xcodebuild 那句 | tee 只盖住了它自己那一段, 不追加就会把上面全冲掉
+          {
+            echo "===== 产物信息 ====="
+            otool -l "$APP/legado" | grep -A4 LC_BUILD_VERSION || true
+            file "$APP/legado" "$APP/Frameworks/shared.framework/shared" || true
+          } 2>&1 | tee -a "$GITHUB_WORKSPACE/sim-artifacts/20-xcodebuild.log"
+
+      - name: Install and launch app
+        id: launch
+        if: inputs.stage == 'sim' && steps.simbuild.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          UDID="${{ steps.boot.outputs.udid }}"
+          APP="${{ steps.simbuild.outputs.app }}"
+          BUNDLE_ID="${{ steps.simbuild.outputs.bundleId }}"
+          OUT="$GITHUB_WORKSPACE/sim-artifacts"
+          {
+            xcrun simctl install "$UDID" "$APP"
+            # launch 成功只代表进程起来了, 随后退出也返回 0, 故存活判定看下面的 pid 检查。
+            # 输出形如 "shutiao.reader.debug: 12345", pid 就是判定依据。
+            LAUNCH_OUT="$(xcrun simctl launch "$UDID" "$BUNDLE_ID" 2>&1 || true)"
+            echo "$LAUNCH_OUT"
+            PID="$(echo "$LAUNCH_OUT" | sed -n 's/.*: \([0-9][0-9]*\)$/\1/p')"
+            echo "pid=$PID"
+            # 启动屏与首帧: 两个时间点截图, 能区分“没起来”与“起来了但白屏”
+            sleep 5
+            xcrun simctl io "$UDID" screenshot "$OUT/30-launch-5s.png" || true
+            sleep 10
+            xcrun simctl io "$UDID" screenshot "$OUT/31-launch-15s.png" || true
+            echo "===== 存活检查 (15s) ====="
+            # 判定依据取 launchctl 列表里的 bundle id (应用进程的 label 含包名)。
+            # 取不到列表时报 UNKNOWN 而不是 DEAD —— 不能把“查不到”当成“已闪退”报给用户。
+            LAUNCHCTL="$(xcrun simctl spawn "$UDID" launchctl list 2>/dev/null || true)"
+            printf '%s\n' "$LAUNCHCTL" > "$OUT/39-launchctl.txt"
+            if [ -z "$LAUNCHCTL" ]; then
+              echo "UNKNOWN: 取不到 launchctl 列表, 无法判定存活 (看 39-launchctl.txt 与截图)" \
+                | tee "$OUT/40-alive.txt"
+            elif printf '%s\n' "$LAUNCHCTL" | grep -qF "$BUNDLE_ID"; then
+              echo "ALIVE: $BUNDLE_ID (pid ${PID:-?}) 启动后 15s 仍在运行" | tee "$OUT/40-alive.txt"
+            else
+              echo "DEAD: $BUNDLE_ID (pid ${PID:-?}) 启动后 15s 已退出 (疑似闪退)" | tee "$OUT/40-alive.txt"
+            fi
+          } 2>&1 | tee "$OUT/32-install-launch.log"
+
+      - name: Collect simulator crash logs
+        id: simcrash
+        if: inputs.stage == 'sim' && steps.simbuild.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          UDID="${{ steps.boot.outputs.udid }}"
+          BUNDLE_ID="${{ steps.simbuild.outputs.bundleId }}"
+          OUT="$GITHUB_WORKSPACE/sim-artifacts"
+          mkdir -p "$OUT/app-container" "$OUT/system-crash"
+          {
+            # ① 应用沙盒: 崩溃捕获链 (Documents/logs/crash) 是否真的落了盘 —— 本轮改动的自检点
+            if CONTAINER="$(xcrun simctl get_app_container "$UDID" "$BUNDLE_ID" data 2>/dev/null)"; then
+              echo "container=$CONTAINER"
+              find "$CONTAINER" -maxdepth 4 -type d \( -name crash -o -name logs \) || true
+              cp -R "$CONTAINER/Documents/logs" "$OUT/app-container/" 2>/dev/null || true
+              cp -R "$CONTAINER/Library/logs" "$OUT/app-container/" 2>/dev/null || true
+            else
+              echo "取不到容器 (应用可能未安装成功)"
+            fi
+            # ② 系统层: 模拟器也有 .ips (主机 ~/Library/Logs/DiagnosticReports)
+            ls -lt "$HOME/Library/Logs/DiagnosticReports" 2>/dev/null | head -20 || true
+            for f in "$HOME"/Library/Logs/DiagnosticReports/*.ips; do
+              [ -f "$f" ] || continue
+              case "$(basename "$f")" in
+                *legado*|*iosApp*|*shared*) cp "$f" "$OUT/system-crash/" ;;
+              esac
+            done
+            # ③ 模拟器内 syslog (启动期断言/异常会落到这里)
+            xcrun simctl spawn "$UDID" log show --last 5m --style compact \
+              --predicate "processImagePath CONTAINS \"$BUNDLE_ID\" OR senderImagePath CONTAINS \"legado\"" \
+              > "$OUT/50-sim-syslog.txt" 2>&1 || true
+            wc -l "$OUT/50-sim-syslog.txt" || true
+          } 2>&1 | tee "$OUT/41-collect-crash.log"
+          echo "===== 产物清单 ====="
+          find "$OUT" -type f | sort
+
+      - name: Shutdown simulator
+        if: always() && inputs.stage == 'sim'
+        continue-on-error: true
+        run: |
+          UDID="${{ steps.boot.outputs.udid }}"
+          [ -n "$UDID" ] && xcrun simctl shutdown "$UDID" || true
+          [ -n "$UDID" ] && xcrun simctl delete "$UDID" || true
+
+      - name: Upload simulator artifacts
+        if: always() && inputs.stage == 'sim'
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-sim-smoke
+          path: |
+            ${{ github.workspace }}/sim-artifacts/**
+            ${{ github.workspace }}/ci-logs/**
+          if-no-files-found: warn
+
       - name: Upload IPA artifact
         if: inputs.stage == 'ipa'
         uses: actions/upload-artifact@v6
@@ -285,6 +469,17 @@ jobs:
           report "link framework" "${{ steps.link.outcome || 'skipped' }}"
           report "xcodebuild archive" "${{ steps.archive.outcome || 'skipped' }}"
           report "package ipa" "${{ steps.ipa.outcome || 'skipped' }}"
+          report "sim boot" "${{ steps.boot.outcome || 'skipped' }}"
+          report "sim build" "${{ steps.simbuild.outcome || 'skipped' }}"
+          report "sim install+launch" "${{ steps.launch.outcome || 'skipped' }}"
+          report "sim collect crash" "${{ steps.simcrash.outcome || 'skipped' }}"
+          if [ "${{ inputs.stage }}" = "sim" ]; then
+            # 存活判定是 sim 档的唯一结论, 必须进 summary: 否则要翻 artifact 才知道结果
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 模拟器存活判定" >> $GITHUB_STEP_SUMMARY
+            cat "$GITHUB_WORKSPACE/sim-artifacts/40-alive.txt" >> $GITHUB_STEP_SUMMARY 2>/dev/null \
+              || echo "(未生成, 看 sim install+launch 是否失败)" >> $GITHUB_STEP_SUMMARY
+          fi
           if [ "$FAILED" = "1" ]; then
             echo "有步骤失败, 详见 ios-build-logs artifact"
             exit 1
