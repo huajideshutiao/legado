@@ -950,6 +950,17 @@ class ChangeBookSourceViewModelShared(
     }
 
     /**
+     * 整书换源落地后调用: 本会话归属改写为新书。
+     *
+     * 落库的新书继承新源解析的书名/作者, 下次进入换源页按新书键取会话;
+     * 会话键以本类 name/author 字段为准, [onCleared] 存会话即按改写后的键落槽。
+     */
+    fun updateSessionOwner(book: Book) {
+        name = book.name
+        author = book.author
+    }
+
+    /**
      * 释放资源 (对照原 `onCleared`)。
      *
      * app 端 ViewModel.onCleared 调用: 先存本次会话供下次进入复用, 再关闭 searchPool。

@@ -331,6 +331,7 @@ fun ChangeChapterSourceContent(
             if (isCurBook) {
                 curBook?.let { oldBook ->
                     viewModel.autoChangeSource(oldBook.type) { b, toc, source ->
+                        viewModel.updateSessionOwner(b)
                         onSourceChanged(source, b, toc)
                     }
                 }

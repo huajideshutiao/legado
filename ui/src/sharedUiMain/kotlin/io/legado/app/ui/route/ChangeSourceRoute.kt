@@ -256,6 +256,7 @@ fun ChangeSourceContent(
             onSuccess = { toc, source ->
                 showWaitDialog = false
                 tocCoroutine = null
+                viewModel.updateSessionOwner(targetBook)
                 onSourceChanged(source, targetBook, toc)
             },
             onError = { e ->
@@ -292,6 +293,7 @@ fun ChangeSourceContent(
         if (isCurBook) {
             val oldBookType = currentState.book?.type
             viewModel.autoChangeSource(oldBookType) { newBook, toc, source ->
+                viewModel.updateSessionOwner(newBook)
                 onSourceChanged(source, newBook, toc)
             }
         }
