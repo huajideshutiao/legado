@@ -1,6 +1,6 @@
 // :foundation —— 基础工具层 (从 :shared 切分, 依赖单向最底层)。
 //
-// 职责: 纯工具与零业务依赖的移植库 (utils/exception/constant/format/lib + rjpath)。
+// 职责: 纯工具与零业务依赖的移植库 (utils/exception/constant/format/lib)。
 // 不含 Room/Compose/网络抽象; org/jsoup 移植因依赖 help/http 的网络抽象归 :data。
 plugins {
     id("legado.kmp.library")
@@ -42,6 +42,8 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.atomicfu)
                 implementation(libs.kotlinx.serialization.json)
+                // 消费方 (data/ui) 直接 import RJPath 构造查询, rjpath 以 api 传递
+                api(project(":modules:rjpath"))
                 // JsoupExtensions/HtmlFormatter 等直接用 ksoup (org/jsoup 移植在 :data)。
                 // 标准 ksoup 无 ohosArm64 klib 而 ksoup-ohos 只有 ohosArm64 target, 两者都
                 // 不能进 commonMain; 由 OhosTargetConventionPlugin 在 ohos 配置上把标准 ksoup

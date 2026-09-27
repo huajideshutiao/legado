@@ -389,6 +389,7 @@ kotlin {
                 implementation(libs.kotlin.stdlib)
                 api(project(":foundation"))
                 api(project(":modules:js-api"))
+                implementation(project(":modules:rjpath"))
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.atomicfu)
                 api(libs.okio)

@@ -147,6 +147,7 @@ kotlin {
                 implementation(libs.kotlin.stdlib)
                 api(project(":foundation"))
                 api(project(":data"))
+                implementation(project(":modules:rjpath"))
                 api(project(":core"))
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.atomicfu)

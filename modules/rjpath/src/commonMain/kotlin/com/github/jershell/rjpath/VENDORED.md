@@ -9,6 +9,7 @@
 | 对应 commit | `d38d43ac4086fcf2a4e83e514d5f133c975c6cb5`（2025-04-09，"Initial commit with all features"） |
 | 复制的文件 | `RJPath.kt` `RJPathOptions.kt` `RegexMatchMode.kt` `SelectorParser.kt` `expressions.kt` `functions.kt` `selectors.kt` `types.kt` |
 | 为何内嵌而非依赖坐标 | 上游**从未向 Maven Central 发布过任何制品**（实测 `search.maven.org` 命中 0），无坐标可引；且需支持 Android / 桌面 JVM / iOS native / 鸿蒙 ohos 全编译目标 |
+| 所在模块 | `:modules:rjpath`（原置于 `:foundation` 的源码树内，为免第三方源码与本项目代码混杂而移出） |
 
 ## 本地改动清单（相对上游 commit `d38d43a`）
 
