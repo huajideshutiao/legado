@@ -1,11 +1,21 @@
 package io.legado.app.ui.book.video
 
 import android.annotation.SuppressLint
+import android.app.PendingIntent
+import android.app.PictureInPictureParams
+import android.app.RemoteAction
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import android.content.res.Resources
+import android.graphics.drawable.Icon
 import android.media.AudioManager
 import android.net.Uri
+import android.os.Build
+import android.util.Rational
+import androidx.annotation.DrawableRes
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -25,6 +35,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.ByteArrayDataSource
 import androidx.media3.datasource.DataSource
@@ -36,6 +47,7 @@ import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.UnrecognizedInputFormatException
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
@@ -46,15 +58,181 @@ import io.legado.app.utils.toggleSystemBar
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlin.math.ceil
+import kotlin.math.floor
 
 class AndroidVideoPlayPlatformProvider(
     private val activity: MainActivity,
 ) : VideoPlayPlatformProvider {
 
+    companion object {
+        /** 宽高比端点向内取整的刻度 (万分位足够表达系统区间端点, 又不至于溢出 Int) */
+        private const val RATIO_SCALE = 10000
+
+        /**
+         * 系统允许的画中画宽高比闭区间 (framework-res 的
+         * `config_pictureInPictureMin/MaxAspectRatio`, AOSP config.xml 默认 0.41841004184 / 2.39)。
+         * 系统资源按名取不到时按 `PictureInPictureParams.Builder.setAspectRatio` KDoc 写明的
+         * 公开契约 2.39:1 ~ 1:2.39 收敛。
+         */
+        private val pipAspectRatioBounds: Pair<Float, Float> by lazy {
+            val res = Resources.getSystem()
+            val minId = res.getIdentifier(
+                "config_pictureInPictureMinAspectRatio", "dimen", "android"
+            )
+            val maxId = res.getIdentifier(
+                "config_pictureInPictureMaxAspectRatio", "dimen", "android"
+            )
+            if (minId != 0 && maxId != 0) {
+                res.getFloat(minId) to res.getFloat(maxId)
+            } else {
+                0.41841004184f to 2.39f
+            }
+        }
+
+        /** 小窗内遥控 RemoteAction (上一章/播放暂停/下一章) → 广播 → [MainActivity.pipControlReceiver] 的协议常量 */
+        const val ACTION_MEDIA_CONTROL = "io.legado.app.pip.MEDIA_CONTROL"
+        const val EXTRA_CONTROL_TYPE = "pip_control_type"
+        const val CONTROL_PLAY = 1
+        const val CONTROL_PAUSE = 2
+        const val CONTROL_PREV = 3
+        const val CONTROL_NEXT = 4
+    }
+
     override fun createController(
         screenModel: VideoPlayScreenModel,
         onPlaybackEnded: () -> Unit,
     ): VideoPlayerController = AndroidVideoPlayerController(activity, screenModel, onPlaybackEnded)
+
+    /** 画中画真实态 (Activity 回调驱动, Compose 可观察); 展开/关闭小窗后翻回 false。 */
+    internal var isInPip: Boolean by mutableStateOf(false)
+        private set
+
+    /** 进入小窗时的视频控制器 (RemoteAction 命令路由与参数刷新用); 下次进入时覆盖,
+     *  页面退出后残留的是已 release 的实例 (仅剩快照字段, 不再持媒体), 无需主动清理。 */
+    private var activeController: AndroidVideoPlayerController? = null
+
+    /** [MainActivity.onPictureInPictureModeChanged] 转发入口。 */
+    internal fun onPipModeChanged(isInPip: Boolean) {
+        this.isInPip = isInPip
+    }
+
+    @Composable
+    override fun rememberIsInPictureInPicture(): Boolean? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) isInPip else null
+
+    override fun enterPictureInPicture(controller: VideoPlayerController?) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val c = controller as? AndroidVideoPlayerController
+        activeController = c
+        activity.enterPictureInPictureMode(buildPipParams(c))
+    }
+
+    /** 播放态/视频比例变化时刷新小窗参数 (RemoteAction 图标随播放态切换); 非小窗态是 no-op。 */
+    internal fun refreshPipParams(controller: AndroidVideoPlayerController) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || !isInPip) return
+        val playing = controller.playback.value.isPlaying
+        val size = controller.videoSize
+        // 去重: publishPlayback 在 seek/缓冲等高频路径也会调, 同参重复 set 系统参数纯浪费 IPC
+        if (playing == lastPipPlaying && size.width == lastPipWidth && size.height == lastPipHeight
+            && controller.pipTitle == lastPipTitle
+        ) return
+        lastPipPlaying = playing
+        lastPipWidth = size.width
+        lastPipHeight = size.height
+        lastPipTitle = controller.pipTitle
+        activity.setPictureInPictureParams(buildPipParams(controller))
+    }
+
+    private var lastPipPlaying = false
+    private var lastPipWidth = 0
+    private var lastPipHeight = 0
+    private var lastPipTitle: String? = null
+
+    /** 小窗 RemoteAction 命令 ([MainActivity.pipControlReceiver] 转发) */
+    internal fun onPipControl(controlType: Int) {
+        when (controlType) {
+            CONTROL_PREV -> activeController?.prevChapter()
+            CONTROL_PLAY -> activeController?.playPause()
+            CONTROL_PAUSE -> activeController?.pause()
+            CONTROL_NEXT -> activeController?.nextChapter()
+        }
+    }
+
+    /** [MainActivity.onStop] 转发, 官方 PiP 指南钦定模式 (视频只在可见时播放):
+     *  activity 完全不可见即暂停, 不区分来源。小窗挂在前台期间 activity 只 pause
+     *  不 stop, 小窗播放不受影响; 关小窗/按 home/切后台都落到这里。 */
+    internal fun onActivityStopped() {
+        activeController?.pause()
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun buildPipParams(controller: AndroidVideoPlayerController?): PictureInPictureParams {
+        val playing = controller?.playback?.value?.isPlaying == true
+        return PictureInPictureParams.Builder()
+            .setAspectRatio(pipAspectRatio(controller))
+            .setActions(buildRemoteActions(playing))
+            .apply {
+                // 小窗头部标题与视频页标题栏同源 (API 33+ 才有该展示位, 低版本不设置)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    controller?.pipTitle?.takeIf { it.isNotEmpty() }?.let { setTitle(it) }
+                }
+            }
+            .build()
+    }
+
+    /** 小窗遥控三键 (官方 RemoteActions + 广播模式): 上一章/下一章恒显, 中键图标按播放态二选一 */
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun buildRemoteActions(playing: Boolean): List<RemoteAction> {
+        fun controlAction(@DrawableRes iconRes: Int, titleRes: Int, controlType: Int): RemoteAction {
+            val pendingIntent = PendingIntent.getBroadcast(
+                activity,
+                controlType,
+                Intent(ACTION_MEDIA_CONTROL)
+                    .putExtra(EXTRA_CONTROL_TYPE, controlType)
+                    .setPackage(activity.packageName),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            val title = activity.getString(titleRes)
+            return RemoteAction(
+                Icon.createWithResource(activity, iconRes),
+                title,
+                title,
+                pendingIntent,
+            )
+        }
+        return listOf(
+            controlAction(R.drawable.ic_skip_previous, R.string.pip_prev_chapter, CONTROL_PREV),
+            if (playing) {
+                controlAction(R.drawable.ic_pause_24dp, R.string.pip_pause, CONTROL_PAUSE)
+            } else {
+                controlAction(R.drawable.ic_play_24dp, R.string.pip_play, CONTROL_PLAY)
+            },
+            controlAction(R.drawable.ic_skip_next, R.string.pip_next_chapter, CONTROL_NEXT),
+        )
+    }
+
+    /**
+     * 当前媒体宽高比; 未出画面/纯音频流 (0x0) 按布局默认 16:9 (media3 VideoSize.UNKNOWN 规格如此)。
+     *
+     * 媒体比例超出系统允许区间时按区间端点收敛: 系统在
+     * `ActivityClientController.ensureValidPictureInPictureActivityParams` 里用
+     * `PinnedTaskController.isValidPictureInPictureAspectRatio` (min <= ratio <= max) 校验,
+     * 越界抛 `IllegalArgumentException("Aspect ratio is too extreme")`。
+     */
+    private fun pipAspectRatio(controller: VideoPlayerController?): Rational {
+        val size = (controller as? AndroidVideoPlayerController)?.videoSize ?: VideoSize.UNKNOWN
+        if (size.width <= 0 || size.height <= 0) return Rational(16, 9)
+        val ratio = size.width.toFloat() / size.height
+        val (minRatio, maxRatio) = pipAspectRatioBounds
+        return when {
+            // 端点按 RATIO_SCALE 向内取整: 直接取整可能落到区间外 (min 0.41841004184 截断成
+            // 0.4184 就小于下界), 收敛值必须仍在闭区间内
+            ratio > maxRatio -> Rational(floor(maxRatio * RATIO_SCALE).toInt(), RATIO_SCALE)
+            ratio < minRatio -> Rational(ceil(minRatio * RATIO_SCALE).toInt(), RATIO_SCALE)
+            else -> Rational(size.width, size.height)
+        }
+    }
 
     // media3 UnstableApi: PlayerView 控制接口 (setShowBuffering/resizeMode 等)。
     @androidx.annotation.OptIn(markerClass = [UnstableApi::class])
@@ -184,13 +362,17 @@ class AndroidVideoPlayPlatformProvider(
 }
 
 @SuppressLint("UnsafeOptInUsageError")
-private class AndroidVideoPlayerController(
+internal class AndroidVideoPlayerController(
     activity: MainActivity,
     private var screenModel: VideoPlayScreenModel,
     private val onPlaybackEnded: () -> Unit,
 ) : VideoPlayerController {
     val player: ExoPlayer = ExoPlayerHelper.createHttpExoPlayer(activity)
     private var bound = false
+
+    /** 当前媒体视频尺寸 (PiP 宽高比声明用); 未出画面/纯音频为 UNKNOWN。 */
+    var videoSize: VideoSize = VideoSize.UNKNOWN
+        private set
 
     /** 播放态快照流 (回显唯一数据源, 见共享层 [PlaybackSnapshot]): 共享层现取,
      *  本端不再拿 onPlayerState 回灌页面状态。 */
@@ -217,6 +399,8 @@ private class AndroidVideoPlayerController(
             ended = p.playbackState == Player.STATE_ENDED,
             idle = p.playbackState == Player.STATE_IDLE,
         )
+        // 小窗内播放/暂停钮图标随播放态刷新 (内部自判是否在画中画, 否则 no-op)
+        (screenModel.platform as? AndroidVideoPlayPlatformProvider)?.refreshPipParams(this)
     }
 
     private val listener = object : Player.Listener {
@@ -241,6 +425,13 @@ private class AndroidVideoPlayerController(
 
         override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
             publishPlayback()
+        }
+
+        override fun onVideoSizeChanged(videoSize: VideoSize) {
+            this@AndroidVideoPlayerController.videoSize = videoSize
+            // 画中画中自动连播跨比例章节时同步刷新系统小窗 (内部自判是否在 PiP, 否则 no-op)
+            (screenModel.platform as? AndroidVideoPlayPlatformProvider)
+                ?.refreshPipParams(this@AndroidVideoPlayerController)
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -388,6 +579,19 @@ private class AndroidVideoPlayerController(
     override val positionMs: Long get() = player.currentPosition.coerceAtLeast(0L)
     override val durationMs: Long get() = player.duration.coerceAtLeast(0L)
     override val bufferedMs: Long get() = player.bufferedPosition.coerceAtLeast(0L)
+
+    /** 小窗标题 (与视频页标题栏同源的 bookName): 切章/换源后随参数刷新。 */
+    val pipTitle: String
+        get() = screenModel.state.value.bookName
+
+    fun prevChapter() {
+        screenModel.onPrevChapter()
+    }
+
+    fun nextChapter() {
+        screenModel.onNextChapter()
+    }
+
     override fun playPause() {
         if (player.isPlaying) player.pause()
         else if (player.playbackState == Player.STATE_ENDED) {

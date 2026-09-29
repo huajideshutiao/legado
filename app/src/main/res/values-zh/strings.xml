@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">阅读</string>
+    <string name="pip_play">播放</string>
+    <string name="pip_pause">暂停</string>
+    <string name="pip_prev_chapter">上一章</string>
+    <string name="pip_next_chapter">下一章</string>
 </resources>

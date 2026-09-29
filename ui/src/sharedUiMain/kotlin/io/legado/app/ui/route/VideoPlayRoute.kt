@@ -193,6 +193,8 @@ fun VideoPlayRoute(
     // 否则 ESC 退过窗口全屏后页面仍自认为全屏、多吞一次返回
     val systemFullScreen = screenModel.platform?.rememberSystemFullScreen()
         ?: state.isSystemFullScreen
+    // 画中画真实态 (支持的端): 小窗内标题栏/选集网格同全屏一样整体隐藏, 只留画面
+    val isPip = screenModel.platform?.rememberIsInPictureInPicture() == true
 
     // 返回栈由导航器统一管理; 对照 Activity onBackPressedDispatcher 返回逻辑
     // (系统级全屏与窗口内全屏互斥: 当前是哪种全屏就退哪种, 退全屏后下次 ESC 才 pop)
@@ -320,8 +322,8 @@ fun VideoPlayRoute(
             }
         },
         onTitleClick = onTitleClick,
-        // 系统级全屏同样隐藏标题栏与选集网格 (两者视觉上都需要视频占满)
-        isFullScreen = state.isFullScreen || systemFullScreen,
+        // 系统级全屏与画中画同样隐藏标题栏与选集网格 (两者视觉上都需要视频占满)
+        isFullScreen = state.isFullScreen || systemFullScreen || isPip,
         chapters = state.chapters,
         displayTitles = state.displayTitles,
         countWords = countWords,

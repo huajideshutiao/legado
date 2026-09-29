@@ -1,6 +1,11 @@
 package io.legado.app.ui.main
 
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.content.res.Configuration
+import androidx.core.content.ContextCompat
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
@@ -131,6 +136,19 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
     private var exitTime: Long = 0
     private val EXIT_INTERVAL = 2000L
     private val exportBookPathKey = "exportBookPath"
+
+    /** 视频画中画 provider: PiP 模式切换回调由此转发到共享层渲染状态。 */
+    private var videoPlayProvider: AndroidVideoPlayPlatformProvider? = null
+
+    /** 画中画小窗内遥控 RemoteAction 的广播接收 (onCreate 注册, onDestroy 注销) */
+    private val pipControlReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != AndroidVideoPlayPlatformProvider.ACTION_MEDIA_CONTROL) return
+            videoPlayProvider?.onPipControl(
+                intent.getIntExtra(AndroidVideoPlayPlatformProvider.EXTRA_CONTROL_TYPE, 0)
+            )
+        }
+    }
 
     /** 换封面源回调暂存: 由 [AndroidPlatformCapabilities.showChangeCoverDialog] 写入,
      *  ChangeCoverDialog 触发 [coverChangeTo] 时消费。 */
@@ -608,7 +626,16 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
         ReaderPlatformProviders.register(readerPlatform)
         AudioPlayPlatformProviders.register(SharedAudioPlayPlatformProvider)
         MangaReaderScreenModel.Providers.register(AndroidMangaReaderPlatform)
-        VideoPlayPlatformProviders.register(AndroidVideoPlayPlatformProvider(this))
+        videoPlayProvider = AndroidVideoPlayPlatformProvider(this)
+            .also { VideoPlayPlatformProviders.register(it) }
+        // 小窗内播放/暂停钮的广播通道 (系统 RemoteAction 触发); setPackage 限定自身,
+        // 否则 NOT_EXPORTED receiver 收不到隐式广播
+        ContextCompat.registerReceiver(
+            this,
+            pipControlReceiver,
+            IntentFilter(AndroidVideoPlayPlatformProvider.ACTION_MEDIA_CONTROL),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
         // 排版度量走真实字形（对照 TextStyleProvider.getPaints 的 contentPaint）
         TextMeasurerProviders.register { textSizePx, letterSpacingPx, fontPath, weight ->
             AndroidTextMeasurer(TextPaint().apply {
@@ -648,6 +675,16 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
         super.onNewIntent(intent)
         // warm launch: singleTask 复用已运行实例, 新 VIEW intent 经 onNewIntent 派发
         handleExternalIntent(intent, isNewIntent = true)
+    }
+
+    // 进入/退出系统画中画 (API 26+, 仅在 PiP 模式变化时回调): 两参重载自 API 26 才有,
+    // 低版本永不触发, 无需版本门控。只转发平台态, 渲染分切换由共享层读 provider 状态完成。
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration,
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        videoPlayProvider?.onPipModeChanged(isInPictureInPictureMode)
     }
 
     /**
@@ -756,6 +793,11 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
     override fun onResume() {
         super.onResume()
         AppForegroundState.set(true)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // 按系统真实态校正画中画标志: 关闭小窗的 onPictureInPictureModeChanged(false)
+            // 在部分场景不送达/迟到, 残留 true 会让视频页停在“纯画面”渲染, 控制器全部不显示
+            videoPlayProvider?.onPipModeChanged(isInPictureInPictureMode)
+        }
     }
 
     override fun onPause() {
@@ -766,6 +808,9 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
     override fun onStop() {
         super.onStop()
         viewModel.isActivityVisible = false
+        // 官方 PiP 指南钦定模式 (视频只在可见时播放): onStop 即暂停,
+        // 无需判断是否处于/离开画中画。
+        videoPlayProvider?.onActivityStopped()
         if (isFinishing) {
             // 退出应用时取消刷新任务, 避免弹出通知
             viewModel.cancelRefreshJobs()
@@ -915,6 +960,7 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
 
     override fun onDestroy() {
         super.onDestroy()
+        unregisterReceiver(pipControlReceiver)
         if (!BuildConfig.DEBUG) {
             Backup.autoBack(this)
         }

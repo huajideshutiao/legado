@@ -252,6 +252,7 @@
             android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
             android:exported="true"
             android:launchMode="singleTask"
+            android:supportsPictureInPicture="true"
             android:windowSoftInputMode="adjustResize">
             <!-- S Pen 远程操作: 注册到主界面使其全局可用, trigger_key 经系统转 KeyEvent 派发 -->
             <intent-filter>

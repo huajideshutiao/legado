@@ -573,7 +573,7 @@ val LocalPlatformCapabilities = staticCompositionLocalOf<PlatformCapabilities> {
     PlatformCapabilityProviders.get()
 }
 
-// 窗口策略应用: 委托 PlatformServices 的 window/keyboard 各 setter (pictureInPicture 暂无统一接口, 跳过)
+// 窗口策略应用: 委托 PlatformServices 的 window/keyboard 各 setter
 private fun applyWindowPolicy(policy: WindowPolicy) {
     val services = PlatformServiceProviders.get()
     val wc = services.window

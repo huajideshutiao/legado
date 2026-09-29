@@ -22,7 +22,6 @@ data class WindowPolicy(
      * (实测 HyperOS 把 unspecified 归一成 adjustPan)。
      */
     val softInput: SoftInputPolicy = SoftInputPolicy.Resize,
-    val pictureInPicture: Boolean = false,
 )
 
 /** 路由 → WindowPolicy 映射。各 Route 自带默认策略，平台可覆盖。 */
@@ -43,7 +42,6 @@ object WindowPolicies {
         keepScreenOn = true,
         // 原版 VideoPlayActivity 不强制横屏, 由用户在播放页手动切换; 这里默认不锁方向
         orientation = OrientationPolicy.Unspecified,
-        pictureInPicture = true
     )
     val AudioPlay = WindowPolicy(
         // 原版 AudioPlayActivity 继承 VMBaseActivity 默认 fullScreen=true:

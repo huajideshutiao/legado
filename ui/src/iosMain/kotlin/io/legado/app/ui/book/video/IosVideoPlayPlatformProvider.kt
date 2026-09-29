@@ -4,12 +4,16 @@ package io.legado.app.ui.book.video
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitView
+import io.legado.app.constant.AppLog
 import io.legado.app.help.http.cookieJarHeader
 import io.legado.app.help.media.AvPlayerBufferingObserver
 import io.legado.app.help.media.AvPlayerItemStatusObserver
@@ -17,13 +21,24 @@ import io.legado.app.help.media.maxLoadedTimeRangeEndMs
 import io.legado.app.ui.IosStatusBarHiddenKey
 import io.legado.app.ui.IosStatusBarHiddenNotification
 import io.legado.app.utils.hasPlayableScheme
+import kotlinx.cinterop.CValue
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.ObjCObjectVar
+import kotlinx.cinterop.OverrideInit
+import kotlinx.cinterop.alloc
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.ptr
+import kotlinx.cinterop.value
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import platform.AVFAudio.AVAudioSession
+import platform.AVFAudio.AVAudioSessionCategoryOptionMixWithOthers
+import platform.AVFAudio.AVAudioSessionCategoryPlayback
 import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerItem
+import platform.AVFoundation.AVPlayerLayer
 import platform.AVFoundation.AVPlayerItemDidPlayToEndTimeNotification
 import platform.AVFoundation.AVPlayerItemFailedToPlayToEndTimeNotification
 import platform.AVFoundation.AVURLAsset
@@ -37,16 +52,28 @@ import platform.AVFoundation.seekToTime
 import platform.AVFoundation.setRate
 import platform.AVFoundation.setVolume
 import platform.AVFoundation.volume
-import platform.AVKit.AVPlayerViewController
+import platform.AVKit.AVPictureInPictureController
+import platform.AVKit.AVPictureInPictureControllerDelegateProtocol
+import platform.CoreGraphics.CGRectMake
 import platform.CoreMedia.CMTimeGetSeconds
 import platform.CoreMedia.CMTimeMake
+import platform.Foundation.NSError
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSURL
+import platform.UIKit.UIColor
 import platform.UIKit.UIScreen
+import platform.UIKit.UIView
 
-// iOS 视频播放平台能力: AVPlayer 播控, AVPlayerViewController 仅渲染 (纯视频流)
+// iOS 视频播放平台能力: AVPlayer 播控, 自管 AVPlayerLayer 纯画面渲染 (系统控制条不显示),
+// AVPictureInPictureController 提供系统画中画 (控制栏手动入口)
 object IosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
+
+    /** 画中画真实态 (AVPictureInPictureControllerDelegate 回调驱动, Compose 可观察)。 */
+    internal var pipActive: Boolean by mutableStateOf(false)
+
+    /** 当前页面渲染面创建的画中画控制器 (单视频页, 以最新写入者为准)。 */
+    internal var pipController: AVPictureInPictureController? = null
 
     override fun createController(
         screenModel: VideoPlayScreenModel,
@@ -73,11 +100,28 @@ object IosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
         // 换章不换实例, 本来就不需重绑。UIKitView 的 update 槽拿走了这一份: 它只在本组合体
         // 重组时才跑, 而捕获的 iosController 是稳定引用 → 几乎不会重跑, 靠它绑会漏绑新实例→黑屏。
         val playback by iosController.playback.collectAsState()
-        // AVPlayerViewController: 只出画面 (showsPlaybackControls=false), 系统控制条不显示
-        val avpvc = remember { AVPlayerViewController() }
+        // 纯画面渲染面: 自管 AVPlayerLayer (系统画中画必须持有一个稳定的 AVPlayerLayer 引用,
+        // AVPlayerViewController 的 view 层类型系统不承诺能转出 playerLayer)
+        val playerLayerView = remember { PlayerLayerView(CGRectMake(0.0, 0.0, 100.0, 100.0)) }
+        // 画中画控制器: delegate 系统侧是弱引用, 必须由本组合强持有;
+        // canStartPictureInPictureAutomaticallyFromInline 保持默认 false, 画中画只走控制栏手动入口
+        val pipDelegate = remember { IosPipDelegate() }
+        val pipController = remember {
+            AVPictureInPictureController(playerLayer = playerLayerView.playerLayer).apply {
+                delegate = pipDelegate
+            }
+        }
+        DisposableEffect(pipController) {
+            this@IosVideoPlayPlatformProvider.pipController = pipController
+            onDispose { this@IosVideoPlayPlatformProvider.pipController = null }
+        }
 
         LaunchedEffect(url, headers) {
             if (url != null) {
+                // AVPlayer 声画与画中画的会话前提: playback 类别 (对齐 Android 端视频不处理
+                // 音频焦点的混音语义, 带 MixWithOthers 不打断并行的听书/朗读);
+                // 缺它画中画/锁屏会被系统挂起。幂等, 每次装载重设无副作用
+                activatePlaybackSession()
                 iosController.loadUrl(url, headers.orEmpty())
             } else {
                 // 切章/刷新把源置 null 只是"没有新源"的数据状态, 不是命令:
@@ -88,15 +132,11 @@ object IosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
 
         // 装载状态一变就重绑当前 AVPlayer (实例在 loadUrl 里创建 / release 里被放掉)
         LaunchedEffect(playback) {
-            avpvc.player = iosController.player
+            playerLayerView.playerLayer.player = iosController.player
         }
 
         UIKitView(
-            factory = {
-                avpvc.apply {
-                    showsPlaybackControls = false
-                }.view
-            },
+            factory = { playerLayerView },
             modifier = modifier.fillMaxSize(),
         )
     }
@@ -136,6 +176,38 @@ object IosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
      */
     @Composable
     override fun rememberSystemFullScreen(): Boolean? = null
+
+    /** 系统不支持画中画 (老机型) 返回 null, 控制栏不渲染画中画钮。 */
+    @Composable
+    override fun rememberIsInPictureInPicture(): Boolean? =
+        if (AVPictureInPictureController.isPictureInPictureSupported()) pipActive else null
+
+    override fun enterPictureInPicture(controller: VideoPlayerController?) {
+        val pip = pipController ?: return
+        // layer 尚无可显示画面 (isPictureInPicturePossible=false) 时 start 由系统拒绝,
+        // 走 delegate failedToStart 落日志, 不额外建 KVO 状态机
+        pip.startPictureInPicture()
+    }
+
+    /** 视频 AVPlayer 声画与画中画的会话前提: playback + MixWithOthers (失败落日志不阻断播放)。 */
+    private fun activatePlaybackSession() {
+        val session = AVAudioSession.sharedInstance()
+        memScoped {
+            val err = alloc<ObjCObjectVar<NSError?>>()
+            if (!session.setCategory(
+                    AVAudioSessionCategoryPlayback,
+                    withOptions = AVAudioSessionCategoryOptionMixWithOthers,
+                    error = err.ptr,
+                )
+            ) {
+                AppLog.put("iOS 视频音频会话设置类别失败: ${err.value?.localizedDescription}")
+                return
+            }
+            if (!session.setActive(true, error = err.ptr)) {
+                AppLog.put("iOS 视频音频会话激活失败: ${err.value?.localizedDescription}")
+            }
+        }
+    }
 
     override fun applyFullscreen(enabled: Boolean) {
         setStatusBarHidden(enabled)
@@ -585,5 +657,41 @@ class IosVideoPlayerController(
          * IosAudioPlayCommander.ios.kt。
          */
         const val AV_URL_ASSET_HTTP_HEADER_FIELDS_KEY = "AVURLAssetHTTPHeaderFieldsKey"
+    }
+}
+
+/** 纯画面渲染视图: 挂 AVPlayerLayer 子层的 UIView, 布局变化时同步层尺寸。 */
+@OptIn(ExperimentalForeignApi::class)
+private class PlayerLayerView : UIView {
+    val playerLayer = AVPlayerLayer()
+
+    @OverrideInit
+    constructor(frame: CValue<CGRect>) : super(frame = frame) {
+        layer().addSublayer(playerLayer)
+        backgroundColor = UIColor.blackColor
+    }
+
+    override fun layoutSubviews() {
+        super.layoutSubviews()
+        playerLayer.setFrame(bounds())
+    }
+}
+
+/** 画中画生命周期回调 → 共享层平台真实态 ([IosVideoPlayPlatformProvider.pipActive]) 与日志。 */
+private class IosPipDelegate : NSObject(), AVPictureInPictureControllerDelegateProtocol {
+    override fun pictureInPictureControllerDidStartPictureInPicture(pictureInPictureController: AVPictureInPictureController) {
+        IosVideoPlayPlatformProvider.pipActive = true
+    }
+
+    override fun pictureInPictureControllerDidStopPictureInPicture(pictureInPictureController: AVPictureInPictureController) {
+        IosVideoPlayPlatformProvider.pipActive = false
+    }
+
+    override fun pictureInPictureController(
+        pictureInPictureController: AVPictureInPictureController,
+        failedToStartPictureInPictureWithError: NSError,
+    ) {
+        IosVideoPlayPlatformProvider.pipActive = false
+        AppLog.put("iOS 画中画启动失败: ${failedToStartPictureInPictureWithError.localizedDescription}")
     }
 }

@@ -9,11 +9,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.interop.ArkUIView2
 import androidx.compose.ui.napi.js
 import androidx.compose.runtime.remember
+import io.legado.app.help.toast.Toasters
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.utils.KS_JSON
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -148,6 +151,17 @@ object OhosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
      */
     @Composable
     override fun rememberSystemFullScreen(): Boolean? = null
+
+    /** 画中画真实态 (ArkTS PiPWindow stateChange 事件驱动, Compose 可观察)。 */
+    internal var pipActive: Boolean by mutableStateOf(false)
+
+    @Composable
+    override fun rememberIsInPictureInPicture(): Boolean? = pipActive
+
+    /** 经 media 命令通道请求 ArkTS 拉起画中画 (PiPWindow); 失败由 onPipStateChanged 事件回 toast。 */
+    override fun enterPictureInPicture(controller: VideoPlayerController?) {
+        (controller as? OhosVideoPlayerController)?.enterPictureInPicture()
+    }
 }
 
 /**
@@ -309,6 +323,8 @@ class OhosVideoPlayerController(
         if (!listenerRegistered) {
             OhosNativeBridge.setMediaEventListener(OhosNativeBridge.PLAYER_ID_VIDEO_BOOK, this)
             listenerRegistered = true
+            // 进页清残留: 上一页异常退出时 PiP 事件可能被 loadedUrl 守卫拦掉未落 false
+            OhosVideoPlayPlatformProvider.pipActive = false
         }
     }
 
@@ -462,6 +478,9 @@ class OhosVideoPlayerController(
             OhosNativeBridge.setWindowBrightness(-1f)
             brightness = -1f
         }
+        // 页面销毁: PiP 小窗若还挂着必须收起 (ArkTS 侧 handleRelease 同步 stopPiP),
+        // 事件通道 (loadedUrl 守卫已拦掉排队事件) 不再回 true, 这里同步落真实态防残留
+        OhosVideoPlayPlatformProvider.pipActive = false
         sendCommand(MediaCommand(action = "release"))
         if (listenerRegistered) {
             OhosNativeBridge.setMediaEventListener(OhosNativeBridge.PLAYER_ID_VIDEO_BOOK, null)
@@ -555,6 +574,13 @@ class OhosVideoPlayerController(
 
             "onDuration" -> event.duration?.let { cachedDuration = it }
             "onPosition" -> event.position?.let { cachedPosition = it }
+
+            "onPipStateChanged" -> {
+                // 画中画窗口态由 ArkTS PiPWindow stateChange 推来; isPip 缺省视为 false
+                OhosVideoPlayPlatformProvider.pipActive = event.isPip == true
+                event.message?.let { Toasters.get().toast(it) }
+                return
+            }
             "onPlaying" -> {
                 playing = true
                 ended = false
@@ -582,6 +608,11 @@ class OhosVideoPlayerController(
                 stamped
             )
         )
+    }
+
+    /** 经 media 命令通道请求 ArkTS 拉起画中画 (PiPWindow, 见 MediaBridgeHandler.startVideoPip)。 */
+    internal fun enterPictureInPicture() {
+        sendCommand(MediaCommand(action = "enterPictureInPicture"))
     }
 
     /**
@@ -614,6 +645,8 @@ class OhosVideoPlayerController(
         val duration: Long? = null,
         val cachedDuration: Long? = null,
         val position: Long? = null,
+        // 仅 onPipStateChanged: true/false = 当前是否在画中画窗口; 带非空 message = 失败提示
+        val isPip: Boolean? = null,
     )
 }
 

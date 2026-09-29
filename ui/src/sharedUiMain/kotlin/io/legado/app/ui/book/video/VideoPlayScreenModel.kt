@@ -196,6 +196,23 @@ interface VideoPlayPlatformProvider {
     fun rememberSystemFullScreen(): Boolean? = null
 
     /**
+     * 请求进入系统画中画（控制栏画中画钮，手动入口；退出永远由用户在系统小窗上操作）。
+     * [controller] 供平台取当前媒体宽高比（Android 需显式声明宽高比，iOS/鸿蒙系统自动适配）。
+     * 平台不支持（桌面）或系统版本不支持（Android API<26）时走默认空实现 —— 按钮显隐由
+     * [rememberIsInPictureInPicture] 是否返回 null 决定，正常走不到这里。
+     */
+    fun enterPictureInPicture(controller: VideoPlayerController?) {}
+
+    /**
+     * 平台「画中画」真实态（可选）。
+     * - null = 该端不支持画中画（控制栏不渲染画中画钮）
+     * - true/false = 当前是否处于系统画中画窗口：共享层据此只渲染纯画面，隐藏手势/控制栏等一切覆盖层
+     * （与 [rememberSystemFullScreen] 同一模式：平台真实态，页面不自存副本）。
+     */
+    @Composable
+    fun rememberIsInPictureInPicture(): Boolean? = null
+
+    /**
      * 该平台是否有可用的"系统返回"通道 (返回键 / 滑动返回 / 桌面 ESC 统一返回链),
      * 取平台能力 [io.legado.app.ui.root.PlatformCapabilities.supportsSystemBack]。
      * 无返回通道的端 (iOS): 视频页一经全屏就把顶栏隐掉, 而"窗口内全屏"的退出口只在顶栏菜单里
@@ -443,6 +460,11 @@ class VideoPlayScreenModel : ScreenModel {
     fun onSeekBack() = controller?.seekBack() ?: Unit
     fun onSeekForward() = controller?.seekForward() ?: Unit
 
+    /** 进入系统画中画（控制栏画中画钮）：平台能力，委托 [VideoPlayPlatformProvider.enterPictureInPicture] */
+    fun onEnterPictureInPicture() {
+        platform?.enterPictureInPicture(controller)
+    }
+
     // ---- 菜单动作 (对照 Activity onCompatOptionsItemSelected / VideoTitleActions) ----
 
     /** 刷新当前章节 (对照 Activity refreshChapter: pause + viewModel.refreshChapter) */
@@ -623,9 +645,13 @@ class VideoPlayScreenModel : ScreenModel {
      *
      * 由宿主 [io.legado.app.ui.route.VideoPlayRoute] 的活跃期回调调用, [onCleared] 兜底
      * (防回调未触发)。先取播放器真实位置保存, 再释放 controller (位置读取后才有意义)。
+     *
+     * [force] =无视 [exited] 幂等屏障 (仅 onCleared 用): 画中画窗口期活跃期回调已保存过
+     * 一次, 而视频在小窗里继续播, 那份位置已过期 —— 兜底必须再存一次最新位置;
+     * controller 在本调用之后才释放, 读到的是真实进度。
      */
-    fun onExit() {
-        if (exited) return
+    fun onExit(force: Boolean = false) {
+        if (exited && !force) return
         exited = true
         val c = controller
         val pos = c?.positionMs ?: 0L
@@ -647,8 +673,8 @@ class VideoPlayScreenModel : ScreenModel {
     override fun onCleared() {
         // 对照原版 VideoPlayActivity.onDestroy: 立即结束阅读计时 (不等 end 的延迟结算)
         ReadTimeRecorder.endImmediately(ReadTimeRecorder.Source.VIDEO)
-        // 先保存进度 (controller 释放前取真实位置; onExit 已执行则跳过)
-        runCatching { onExit() }
+        // 先保存进度 (controller 释放前取真实位置): 画中画窗口期播放的进度只在这次兜底落库
+        runCatching { onExit(force = true) }
         // 再释放播放器 (对照 app onDestroy: player.release)
         controller?.release()
         platform?.applyFullscreen(false)

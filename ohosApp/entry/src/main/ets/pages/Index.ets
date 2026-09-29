@@ -13,7 +13,7 @@ import {
 } from '../bridge/MarkdownBridgeHandler';
 import { initKeyboardBridge } from '../bridge/KeyboardBridgeHandler';
 import { initSystemBridgeUiContext } from '../bridge/SystemBridgeHandler';
-import { setVideoSurfaceId } from '../bridge/MediaBridgeHandler';
+import { setVideoSurfaceId, setVideoPipSurfaceController } from '../bridge/MediaBridgeHandler';
 
 const DOMAIN: number = 0x0000;
 
@@ -29,6 +29,8 @@ function LegadoVideoSurfaceBuilder(param: object) {
   XComponent({ id: 'legadoVideoSurface', type: XComponentType.SURFACE, controller: videoSurfaceController })
     .onLoad((): void => {
       setVideoSurfaceId(videoSurfaceController.getXComponentSurfaceId());
+      // controller 一并注入画中画通道 (PiPWindow.create 的 componentController 复用本 XComponent 的 surface)
+      setVideoPipSurfaceController(videoSurfaceController);
     })
     .width('100%')
     .height('100%')

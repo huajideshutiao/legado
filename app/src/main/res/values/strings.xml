@@ -2,4 +2,8 @@
      读不到 Compose Resources), 故应用名保留 xml。其余文案一律走 shared composeResources。 -->
 <resources>
     <string name="app_name">Legado</string>
+    <string name="pip_play">Play</string>
+    <string name="pip_pause">Pause</string>
+    <string name="pip_prev_chapter">Previous chapter</string>
+    <string name="pip_next_chapter">Next chapter</string>
 </resources>

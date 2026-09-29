@@ -1,4 +1,5 @@
 import media from '@ohos.multimedia.media';
+import PiPWindow from '@ohos.PiPWindow';
 import fs from '@ohos.file.fs';
 import avSession from '@ohos.multimedia.avsession';
 import backgroundTaskManager from '@ohos.resourceschedule.backgroundTaskManager';
@@ -119,6 +120,21 @@ let lastMetadataKey: string = '';
 // 先于 AVPlayer 创建时暂存, 创建 videoBook 播放器时再绑定)
 let videoSurfaceId: string | null = null;
 
+// ===== 视频画中画 (PiPWindow, 仅 videoBook 播放器使用) =====
+// PiP 窗口复用页面 XComponent 的 surface: componentController 传 Index.ets 的
+// videoSurfaceController (模块级单例, onLoad 时经 setVideoPipSurfaceController 注入),
+// 系统把该 XComponent 的 surface 转移进小窗, AVPlayer 继续写同一 surfaceId 无需重绑。
+let videoPipSurfaceController: XComponentController | undefined = undefined;
+let videoPipController: PiPWindow.PiPController | undefined = undefined;
+
+/**
+ * 注入视频画面 XComponent 的 controller (Index.ets XComponent.onLoad 时调用),
+ * 画中画拉起时作为 PiPConfiguration.componentController 交给系统。
+ */
+export function setVideoPipSurfaceController(controller: XComponentController): void {
+  videoPipSurfaceController = controller;
+}
+
 /** 本地事件监听项: listener + 关注的 playerId (null = 全收)。 */
 class LocalListenerEntry {
   listener: (eventJson: string) => void;
@@ -182,6 +198,8 @@ interface MediaEventPayload {
   cachedDuration?: number;
   position?: number;
   command?: string; // 播控指令: play / pause / stop / next / previous / seek
+  /** 仅 onPipStateChanged: true/false = 当前是否在画中画窗口; 非空 message = 失败提示 */
+  isPip?: boolean;
 }
 
 /**
@@ -272,6 +290,11 @@ export function handleMediaCommand(commandJson: string): void {
     case 'clearNowPlaying':
       handleClearNowPlaying().catch((err: Error) => {
         console.error('[MediaBridge] clearNowPlaying failed: ' + (err.message ?? String(err)));
+      });
+      break;
+    case 'enterPictureInPicture':
+      startVideoPip().catch((err: Error) => {
+        console.error('[MediaBridge] enterPictureInPicture failed: ' + (err.message ?? String(err)));
       });
       break;
     case 'release':
@@ -507,8 +530,75 @@ function mapSpeed(rate: number): media.PlaybackSpeed {
 
 // ===== release =====
 function handleRelease(id: string): void {
+  if (id === PLAYER_ID_VIDEO) {
+    // 页面销毁/播放器释放: PiP 小窗必须先收 (否则小窗挂着即将销毁的 surface)
+    stopVideoPip();
+  }
   releasePlayer(id).catch((err: Error) => {
     console.error('[MediaBridge] release failed: ' + (err.message ?? String(err)));
+  });
+}
+
+// ===== 视频画中画 =====
+
+/**
+ * 拉起 videoBook 的画中画小窗 (PiPWindow, 模板 VIDEO_PLAY)。
+ *
+ * 前置: 页面 XComponent 已 onLoad (controller 已注入) 且媒体会话 context 已就绪;
+ * 失败 (设备不支持 / 系统拒绝) 经 onPipStateChanged 事件带回 message, Kotlin 侧 toast。
+ * 小窗系统控制条的 play/pause 请求经 controlPanelActionEvent 直接驱动 videoBook 播放器。
+ */
+async function startVideoPip(): Promise<void> {
+  if (abilityContext == undefined || videoPipSurfaceController == undefined) {
+    emitEvent(PLAYER_ID_VIDEO, {
+      event: 'onPipStateChanged', isPip: false,
+      message: '画中画不可用: 视频画面未就绪'
+    });
+    return;
+  }
+  try {
+    if (videoPipController == undefined) {
+      videoPipController = await PiPWindow.create({
+        context: abilityContext,
+        componentController: videoPipSurfaceController,
+        templateType: PiPWindow.PiPTemplateType.VIDEO_PLAY,
+      });
+      videoPipController.on('stateChange', (state: PiPWindow.PiPState, reason: string) => {
+        console.info('[MediaBridge] videoPip stateChange: ' + state + ' reason=' + reason);
+        // ABOUT_TO_START/STARTED = 在小窗; ABOUT_TO_STOP/STOPPED/ABOUT_TO_RESTORE = 已退出
+        // (ABOUT_TO_RESTORE 时小窗即将消失, 页面提前恢复全量渲染)
+        const isPip = state === PiPWindow.PiPState.ABOUT_TO_START || state === PiPWindow.PiPState.STARTED;
+        emitEvent(PLAYER_ID_VIDEO, { event: 'onPipStateChanged', isPip: isPip });
+      });
+      videoPipController.on('controlPanelActionEvent', (event: PiPWindow.PiPActionEventType, status?: number) => {
+        if (event === 'playbackStateChanged') {
+          if (status === 0) {
+            handlePause(PLAYER_ID_VIDEO);
+          } else {
+            handlePlay(PLAYER_ID_VIDEO);
+          }
+        }
+      });
+    }
+    await videoPipController.startPiP();
+  } catch (e) {
+    const err = e as Error;
+    videoPipController = undefined;
+    emitEvent(PLAYER_ID_VIDEO, {
+      event: 'onPipStateChanged', isPip: false,
+      message: '画中画启动失败: ' + (err.message ?? String(e))
+    });
+  }
+}
+
+/** 收起画中画小窗 (页面销毁/播放器释放时调用; 未拉起过是 no-op)。 */
+function stopVideoPip(): void {
+  const pip = videoPipController;
+  if (pip == undefined) {
+    return;
+  }
+  pip.stopPiP().catch((err: Error) => {
+    console.error('[MediaBridge] videoPip stop failed: ' + (err.message ?? String(err)));
   });
 }
 
