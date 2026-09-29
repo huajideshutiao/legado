@@ -33,7 +33,10 @@ class AnalyzeByXPath(doc: Any) {
             html1 = "<table>${html1}</table>"
         }
         kotlin.runCatching {
-            if (html1.trim().startsWith("<?xml", true)) {
+            // 跳过首部空白匹配 XML 声明, 不为判定复制整串
+            var start = 0
+            while (start < html1.length && html1[start].isWhitespace()) start++
+            if (html1.regionMatches(start, "<?xml", 0, 5, true)) {
                 return Ksoup.parse(html1, parser = Parser.xmlParser())
             }
         }
