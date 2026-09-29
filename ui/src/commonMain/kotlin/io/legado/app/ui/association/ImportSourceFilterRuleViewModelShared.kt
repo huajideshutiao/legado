@@ -11,6 +11,7 @@ import io.legado.app.help.http.decompressed
 import io.legado.app.help.http.newCallResponseBody
 import io.legado.app.help.http.text
 import io.legado.app.help.source.SearchBookFilter
+import io.legado.app.ui.readImportPayload
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
@@ -34,7 +35,7 @@ import kotlinx.coroutines.flow.asSharedFlow
  * 刷新内存缓存; importAwait 分支 isAbsUrl/isJsonArray/isJsonObject;
  * URL 以 `#requestWithoutUA` 结尾时截断并设 `User-Agent: null` 头。
  *
- * Android 专属依赖替换: Uri 读取留 app 端 (app 端 import 先判 isUri 读文本再转发);
+ * Android 专属依赖替换: file:// 载荷读取由本类入口 import 内部处理 (读文本后递归);
  * okHttpClient → [OkHttpClientProviders.get]; SearchBookFilter.reload() 已下沉直接复用;
  * MutableLiveData → [MutableSharedFlow] (replay=1)。
  *
@@ -121,9 +122,8 @@ class ImportSourceFilterRuleViewModelShared(
      *
      * # 实现细节保持
      *
-     * - **Uri 分支留 app 端**: app 端 `ImportSourceFilterRuleViewModel.import(text)` 先检查
-     *   `mText.isUri()`, 是 Uri 则读取文本后转发到本类, 否则直接转发到本类。
-     *   本类仅处理纯文本 (URL/JSON) 分支。
+     * - **输入契约**: source 必须是纯 URL 或 JSON 文本; file:// 地址载荷由
+     *   [DeepLinkImportTarget.startImport] 读出文本后传入, 本类不做 Uri 解析。
      * - 调 [importAwait] 处理 isAbsUrl / isJsonArray / isJsonObject 分支;
      * - `onError`: 推送 `_errorState.tryEmit("ImportError:${localizedMessage}")`
      *   + `AppLog.put(...)` (替代 `errorLiveData.postValue(...)`, 行为等价);
@@ -132,11 +132,11 @@ class ImportSourceFilterRuleViewModelShared(
      *
      * 业务在 IO 跑, 回调在 mainDispatcher 跑 (与 BaseViewModel.execute 默认值一致)。
      *
-     * @param text 纯文本 (URL / JSON), Uri 路径已由 app 端预处理
+     * @param text 纯文本 (URL / JSON) 或 file:// 载荷 (由本类入口读成文本)
      */
     fun import(text: String) {
         Coroutine.async(scope = scope) {
-            importAwait(text.trim())
+            importAwait(readImportPayload(text).trim())
         }.onError {
             _errorState.tryEmit("ImportError:${it.message}")
             AppLog.put("ImportError:${it.message}", it)
@@ -156,8 +156,8 @@ class ImportSourceFilterRuleViewModelShared(
      * - isJsonObject: 用 `GSON.fromJsonObject<SourceFilterRule>(text).getOrThrow()` 解析单对象;
      * - else: 抛 `NoStackTraceException("格式不对")` (与 app 端原逻辑完全一致)。
      *
-     * 注: 原 app 端有 `text.isUri()` 分支 (`text.toUri().readText(appCtx)` 后递归),
-     * commonMain 不可用, 已留 app 端 `ImportSourceFilterRuleViewModel.import` 入口预处理。
+     * file:// 载荷在本类入口读成本地文本后递归 (对齐原 app 端 `text.isUri()` 分支语义),
+     * 读取失败按 `NoStackTraceException` 上抛, 不静默降级。
      */
     private suspend fun importAwait(text: String) {
         when {

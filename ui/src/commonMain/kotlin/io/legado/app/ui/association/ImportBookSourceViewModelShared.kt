@@ -17,6 +17,7 @@ import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.http.decompressed
 import io.legado.app.help.http.newCallResponseBody
 import io.legado.app.help.source.SourceHelp
+import io.legado.app.ui.readImportPayload
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
@@ -41,7 +42,7 @@ import kotlinx.serialization.json.JsonPrimitive
  * 可下沉多端复用。DAO 走 [AppDbProviders.get].bookSourceDao; `execute{...}` 链式回调
  * 下沉为直接调 [Coroutine.async] (业务 IO / 回调 mainDispatcher, 行为等价)。
  *
- * Android 专属依赖替换: Uri 读取留 app 端 (app 端 importSource 先判 isUri 读文本/字节再转发);
+ * Android 专属依赖替换: file:// 载荷读取由本类入口 importSource 内部处理 (读文本后递归);
  * okHttpClient → [OkHttpClientProviders.get]; AppConfig.importKeepXxx →
  * [AppConfigProviders.get]; ContentProcessor.upReplaceRules() → [ContentProcessorProviders.get];
  * R.string 文案 → 直接抛 `NoStackTraceException("格式不对")`;
@@ -183,9 +184,8 @@ class ImportBookSourceViewModelShared(
      *
      * # 实现细节保持
      *
-     * - **Uri 分支留 app 端**: app 端 `ImportBookSourceViewModel.importSource(text)`
-     *   先检查 `mText.isUri()`, 是 Uri 则读取 inputStream 文本后转发到本类,
-     *   否则直接转发到本类。本类仅处理纯文本 (URL/JSON) 分支。
+     * - **输入契约**: source 必须是纯 URL 或 JSON 文本; file:// 地址载荷由
+     *   [DeepLinkImportTarget.startImport] 读出文本后传入, 本类不做 Uri 解析。
      * - isAbsUrl: 走 [importSourceUrl] 网络请求 (OkHttpClientProviders + newCallResponseBody);
      * - isJsonObject && contains("sourceUrls"): RJPath 解析 sourceUrls 数组, 逐 URL 调 [importSourceUrl];
      * - isJsonObject || isJsonArray: 走 [importFromJson] 本地 JSON 解析;
@@ -197,11 +197,11 @@ class ImportBookSourceViewModelShared(
      *
      * 业务在 IO 跑, 回调在 mainDispatcher 跑 (与 BaseViewModel.execute 默认值一致)。
      *
-     * @param text 纯文本 (URL / JSON / sourceUrls JSON), Uri 路径已由 app 端预处理
+     * @param text 纯文本 (URL / JSON / sourceUrls JSON) 或 file:// 载荷 (由本类入口读成文本)
      */
     fun importSource(text: String) {
         Coroutine.async(scope = scope) {
-            val mText = text.trim()
+            val mText = readImportPayload(text).trim()
             when {
                 mText.isAbsUrl() -> importSourceUrl(mText)
 

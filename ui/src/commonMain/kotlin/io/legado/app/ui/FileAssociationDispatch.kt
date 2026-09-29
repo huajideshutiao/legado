@@ -3,7 +3,9 @@ package io.legado.app.ui
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.entities.Book
+import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.archive.ArchiveProviders
+import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.association.DeepLinkImportRequest
@@ -48,7 +50,7 @@ object FileAssociationDispatch {
      * 需要单独定 (各端 `deCompress` 本身**不按扩展名过滤**, 过滤就在下面这一行)。
      */
     fun dispatch(filePath: String) {
-        val path = filePath.toLocalPath()
+        val path = filePath.toLocalFilePath()
         val fileName = path.fileName()
         // 压缩包: 先解压再逐个分发 (对照 app 端 archive 分支)
         if (fileName.matches(AppPattern.archiveFileRegex)) {
@@ -153,79 +155,102 @@ object FileAssociationDispatch {
         AppNavigatorProviders.getOrNull()?.push(book.toReadRoute())
     }
 
-    /**
-     * 将文件路径或 file:// URL 转为本地绝对路径。
-     * - 支持标准 RFC 8089 file: URI (file:///..., file://localhost/..., file:/...)
-     * - 支持 Windows UNC 网络路径 (file://server/share/...)
-     * - 补全 URL percent-decoding (如 %20、中文等 UTF-8 编码路径)
-     * - Windows 盘符前导斜杠剥离 (如 /C:/... → C:/...)
-     */
-    private fun String.toLocalPath(): String {
-        if (!startsWith("file:", ignoreCase = true)) return this
-        val rawAfterScheme = substring(5).percentDecode()
-        val path = when {
-            rawAfterScheme.startsWith("///") || rawAfterScheme.startsWith("\\\\\\") ->
-                rawAfterScheme.substring(2)
+    private fun String.fileName(): String = substringAfterLast('/').substringAfterLast('\\')
+}
 
-            rawAfterScheme.startsWith("//") || rawAfterScheme.startsWith("\\\\") -> {
-                val slashIdx = rawAfterScheme.indexOfAny(charArrayOf('/', '\\'), startIndex = 2)
-                if (slashIdx < 0) {
-                    rawAfterScheme.substring(2)
-                } else {
-                    val authority = rawAfterScheme.substring(2, slashIdx)
-                    val rest = rawAfterScheme.substring(slashIdx)
-                    if (authority.isEmpty() || authority.equals("localhost", ignoreCase = true)) {
-                        rest
-                    } else {
-                        "//$authority$rest"
-                    }
-                }
-            }
-
-            else -> rawAfterScheme
-        }
-        return if (path.length >= 3 &&
-            (path[0] == '/' || path[0] == '\\') &&
-            (path[1] in 'a'..'z' || path[1] in 'A'..'Z') &&
-            path[2] == ':' &&
-            (path.length == 3 || path[3] == '/' || path[3] == '\\')
-        ) {
-            path.substring(1)
-        } else {
-            path
+/**
+ * 文件路径或 file:// 载荷 → 待导入文本。
+ *
+ * 导入入口 (Import*ViewModelShared 的 importSource/import) 拿到的可能是 URL、纯 JSON 文本,
+ * 也可能是 `file://` 地址 (外部打开/深链/在线导入框粘贴路径)。本函数把地址读成本地文本,
+ * 对齐原 app 端 `text.isUri() -> text.toUri().readText(appCtx)` 的兜底语义:
+ * - 非 `file:` 开头 → 原样返回, 不进 IO;
+ * - `file:` 开头 → 读文本后返回, 读失败抛 [NoStackTraceException] (带路径与原异常信息),
+ *   由调用方 onError 推到错误流, 用户能看到是哪个文件读不了。
+ *
+ * 调用方 (各 VM 的 importSource/import) 均在 IO 调度器上执行, 本函数不切线程。
+ */
+fun readImportPayload(text: String): String =
+    if (!text.startsWith("file:", ignoreCase = true)) text
+    else {
+        val path = text.toLocalFilePath()
+        try {
+            BackupFileOps.readText(path)
+        } catch (e: Exception) {
+            throw NoStackTraceException("文件读取失败: $path (${e.message})")
         }
     }
 
-    private fun String.percentDecode(): String {
-        if (!contains('%')) return this
-        val sb = StringBuilder(length)
-        val byteBuf = ArrayList<Byte>()
-        fun flushBytes() {
-            if (byteBuf.isNotEmpty()) {
-                sb.append(byteBuf.toByteArray().decodeToString())
-                byteBuf.clear()
+/**
+ * 将文件路径或 file:// URL 转为本地绝对路径。
+ * - 支持标准 RFC 8089 file: URI (file:///..., file://localhost/..., file:/...)
+ * - 支持 Windows UNC 网络路径 (file://server/share/...)
+ * - 补全 URL percent-decoding (如 %20、中文等 UTF-8 编码路径)
+ * - Windows 盘符前导斜杠剥离 (如 /C:/... → C:/...)
+ */
+fun String.toLocalFilePath(): String {
+    if (!startsWith("file:", ignoreCase = true)) return this
+    val rawAfterScheme = substring(5).percentDecode()
+    val path = when {
+        rawAfterScheme.startsWith("///") || rawAfterScheme.startsWith("\\\\\\") ->
+            rawAfterScheme.substring(2)
+
+        rawAfterScheme.startsWith("//") || rawAfterScheme.startsWith("\\\\") -> {
+            val slashIdx = rawAfterScheme.indexOfAny(charArrayOf('/', '\\'), startIndex = 2)
+            if (slashIdx < 0) {
+                rawAfterScheme.substring(2)
+            } else {
+                val authority = rawAfterScheme.substring(2, slashIdx)
+                val rest = rawAfterScheme.substring(slashIdx)
+                if (authority.isEmpty() || authority.equals("localhost", ignoreCase = true)) {
+                    rest
+                } else {
+                    "//$authority$rest"
+                }
             }
         }
 
-        var i = 0
-        while (i < length) {
-            val c = this[i]
-            if (c == '%' && i + 2 < length) {
-                val hi = this[i + 1].digitToIntOrNull(16)
-                val lo = this[i + 2].digitToIntOrNull(16)
-                if (hi != null && lo != null) {
-                    byteBuf.add(((hi shl 4) or lo).toByte())
-                    i += 3
-                    continue
-                }
+        else -> rawAfterScheme
+    }
+    return if (path.length >= 3 &&
+        (path[0] == '/' || path[0] == '\\') &&
+        (path[1] in 'a'..'z' || path[1] in 'A'..'Z') &&
+        path[2] == ':' &&
+        (path.length == 3 || path[3] == '/' || path[3] == '\\')
+    ) {
+        path.substring(1)
+    } else {
+        path
+    }
+}
+
+private fun String.percentDecode(): String {
+    if (!contains('%')) return this
+    val sb = StringBuilder(length)
+    val byteBuf = ArrayList<Byte>()
+    fun flushBytes() {
+        if (byteBuf.isNotEmpty()) {
+            sb.append(byteBuf.toByteArray().decodeToString())
+            byteBuf.clear()
+        }
+    }
+
+    var i = 0
+    while (i < length) {
+        val c = this[i]
+        if (c == '%' && i + 2 < length) {
+            val hi = this[i + 1].digitToIntOrNull(16)
+            val lo = this[i + 2].digitToIntOrNull(16)
+            if (hi != null && lo != null) {
+                byteBuf.add(((hi shl 4) or lo).toByte())
+                i += 3
+                continue
             }
-            flushBytes()
-            sb.append(c)
-            i++
         }
         flushBytes()
-        return sb.toString()
+        sb.append(c)
+        i++
     }
-
-    private fun String.fileName(): String = substringAfterLast('/').substringAfterLast('\\')
+    flushBytes()
+    return sb.toString()
 }

@@ -46,7 +46,12 @@ class DeepLinkImportTarget private constructor(
     val replaceRuleVm: ImportReplaceRuleViewModelShared? = null,
 ) {
 
-    /** 触发下载 → 解析 → 与本地库比对 (与手动网络导入同一条链)。 */
+    /**
+     * 触发下载 → 解析 → 与本地库比对 (与手动网络导入同一条链)。
+     *
+     * 载荷 (URL / 纯 JSON 文本 / `file://` 地址) 原样交给导入 VM: 各 Import*ViewModelShared
+     * 入口统一经 `readImportPayload` 处理 file:// 读取, 本类不再重复判地址。
+     */
     fun startImport(src: String) = startImportFn(src)
 
     companion object {

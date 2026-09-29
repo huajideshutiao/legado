@@ -131,12 +131,12 @@ class FileAssociationFragment(private val isShellHost: Boolean = false) : Fragme
     }
 
     /**
-     * 文件 JSON 导入成功 (深链在线导入已统一走 shared [LegadoDeepLinkHandler],
-     * 此处仅剩 importJson 的文件导入分支; 类型映射在 BaseAssociationViewModel 复用
-     * shared JsonType.toDeepLinkImportType, 不再有第二份 when)。
+     * 文件 JSON 导入成功。深链在线导入已统一走 shared [LegadoDeepLinkHandler],
+     * 此处仅剩 importJson 的文件导入分支; 载荷是已读出的 JSON 全文, 导入对话框
+     * 经 DeepLinkImportTarget 直接喂给 Import*ViewModelShared 解析。
      */
-    private fun handleSuccess(it: Pair<DeepLinkImportType, Uri>) {
-        showImportDialog(it.first, it.second.toString())
+    private fun handleSuccess(it: Pair<DeepLinkImportType, String>) {
+        showImportDialog(it.first, it.second)
     }
 
     /**

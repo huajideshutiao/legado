@@ -8,8 +8,8 @@ import io.legado.app.utils.inputStream
 
 abstract class BaseAssociationViewModel(application: Application) : BaseViewModel(application) {
 
-    /** 导入成功信号: 已识别的导入类型 + 源 (Uri 或纯 JSON 文本)。 */
-    val successLive = MutableLiveData<Pair<DeepLinkImportType, Uri>>()
+    /** 导入成功信号: 已识别的导入类型 + 已读出的源文本 (JSON 全文, 供导入 VM 直接解析)。 */
+    val successLive = MutableLiveData<Pair<DeepLinkImportType, String>>()
     val errorLive = MutableLiveData<String>()
 
     fun importJson(uri: Uri) {
@@ -25,7 +25,8 @@ abstract class BaseAssociationViewModel(application: Application) : BaseViewMode
             errorLive.postValue("格式不对")
             return
         }
-        successLive.postValue(type to uri)
+        // 源文本直接随信号传递: 导入 VM 只接受 URL/JSON 文本, 再传 Uri 会被当纯文本判成格式不对
+        successLive.postValue(type to text)
     }
 
 }
