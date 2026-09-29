@@ -40,8 +40,8 @@ fun registerNativeSourceProviders() {
 
 /** 桥接 commonMain [Debug] 单例 (与 app/desktop 端实现一致)。 */
 private object NativeSourceDebugLogger : SourceDebugLogger {
-    override fun log(key: String, msg: String, print: Boolean, state: Int) {
-        Debug.log(key, msg, print = print, state = state)
+    override fun log(key: String, msg: String, print: Boolean, state: Int, showTime: Boolean) {
+        Debug.log(key, msg, print = print, state = state, showTime = showTime)
     }
 
     override fun log(msg: String) {

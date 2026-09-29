@@ -77,8 +77,8 @@ private fun desktopRuleBigDataDir(): String {
  * (webBook 编排层 / 书源调试) 会因 NPE 被 runCatching 吞掉, 表现为调试日志缺失。
  */
 private object DesktopSourceDebugLogger : SourceDebugLogger {
-    override fun log(key: String, msg: String, print: Boolean, state: Int) {
-        Debug.log(key, msg, print = print, state = state)
+    override fun log(key: String, msg: String, print: Boolean, state: Int, showTime: Boolean) {
+        Debug.log(key, msg, print = print, state = state, showTime = showTime)
     }
 
     override fun log(msg: String) {

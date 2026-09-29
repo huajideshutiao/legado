@@ -31,8 +31,15 @@ interface SourceDebugLogger {
      * @param print 是否输出到 UI 调试回调 (默认 true, 对应 Debug.log 的 print);
      *        false 时 impl 仍执行 Log.d/isChecking 等副作用, 但跳过 callback 输出
      * @param state 日志状态码 (默认 1, 对应 Debug.log 的 state)
+     * @param showTime 是否给消息加耗时前缀 (默认 true, 对应 Debug.log 的 showTime)
      */
-    fun log(key: String, msg: String, print: Boolean = true, state: Int = 1)
+    fun log(
+        key: String,
+        msg: String,
+        print: Boolean = true,
+        state: Int = 1,
+        showTime: Boolean = true,
+    )
 
     /** 隐式 debugSource 路径(对应 Debug.log(msg))。默认走 log(null, msg, 1)。 */
     fun log(msg: String) {

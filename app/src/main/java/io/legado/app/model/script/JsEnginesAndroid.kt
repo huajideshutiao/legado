@@ -96,8 +96,8 @@ fun registerAndroidJsEngines() {
         )
     }
     SourceDebugLoggers.impl = object : SourceDebugLogger {
-        override fun log(key: String, msg: String, print: Boolean, state: Int) =
-            Debug.log(key, msg, print = print, state = state)
+        override fun log(key: String, msg: String, print: Boolean, state: Int, showTime: Boolean) =
+            Debug.log(key, msg, print = print, state = state, showTime = showTime)
 
         override fun log(msg: String) = Debug.log(msg)
     }
