@@ -73,17 +73,27 @@
 ## 上游复活时如何合并
 
 以 `v2.8.0` 为基线比对。第 1–3、6 项是删改，第 4 项是资源搬迁，第 5 项是新增能力。
-升级上游时先看其是否已自带路径能力与 `onItemLongClick`：若已有，第 5 项应改为取上游实现；
+升级上游时先看其是否已自带路径能力与条目菜单槽位：若已有，第 5 项应改为取上游实现；
 第 1–4、6 项则需逐条重做（上游若已把 diff 拆成独立制品、或已改用 md2，可相应删除本地改动）。
 
 ## 本地修改 (偏离上游 v2.8.0)
 
-- `JsonTree` 新增 `onItemLongClick: (JsonTreeItem) -> Unit` 与 `onItemContextMenu: (JsonTreeItem) -> Unit`:
-  行级长按/右键回调, 长按不再被文本选择手势抢占; 回传同一 `JsonTreeItem` (path/key/value/quotedValue/窗口坐标),
-  供宿主弹出复制菜单; 括号行不可点。
-- `JsonTreeItem` 为本地新增公开数据类。
-- 树列表的 `SelectionContainer` 已移除: 上游用它支撑鼠标拖选行文本, 但触屏/桌面长按会被文本选择手势消费,
-  行级 `combinedClickable.onLongClick` 拿不到事件; 移除后长按回到行级手势, 鼠标拖选文本随之取消。
+- `JsonTree` 新增 `itemMenu` 内容槽: 条目长按/右键在行内锚定 material `DropdownMenu` 弹出宿主菜单,
+  定位 (行下优先/放不下翻行上/窗口收边) 与进出场动画由 DropdownMenu 官方实现; 长按不再被文本选择
+  手势抢占; 括号行不可点。
+- `JsonTree` 新增 `showRowIndication: Boolean = true`: 行按压反馈是否显示 `LocalIndication`
+  (material 涟漪); 宿主在 E-Ink 设备上传 `false` (无灰阶过渡, 涟漪留残影)。走
+  `combinedClickable(interactionSource = null, indication = …)` 重载, 两者均为 foundation 快路径。
+- `JsonTreeItem` 为本地新增公开数据类, 新增 `subtreeElement` 字段: 对象/数组条目回传解析产物的子树
+  引用 (按节点 path 从 `Ready.jsonElement` 下钻, 与树同源零拷贝), 原始值条目为 `null`; 供宿主菜单
+  "查看"直通子树建树, 不经 JSONPath 回查 (回查对少数键名无解, 见第 5 节)。
+- `JsonTreeParserState.Ready` 保留解析产物根节点 `jsonElement` (原实现转树后丢弃), 渲染期多驻留一份
+  解析产物对象图; `JsonTree` 新增 `jsonElement` 入参, 非空时跳过解析直接建树 (子树直通零重解析)。
+- 条目行菜单锚定到行内容起点 (`offset = DpOffset(indent, 0.dp)`), 越出窗口右缘由 `DropdownMenu`
+  官方定位器内收; 右键开菜单由行内 `pointerInput` 判 `isSecondaryPressed`, 主键长按由
+  `combinedClickable` 上报 (触摸不置按钮位, 故不能按按钮位判定主键长按)。
+- 原始值条目 (Primitive) 行 `fillMaxWidth`: 整行可长按/右键, 与折叠条目行一致。
+- 树视图无文本选择能力: 本仓未引入 `SelectionContainer` (上游 v2.8.0 亦无), 行级手势即唯一入口。
 - `JsonTreeParser` 改用宽松解析实例 (lenient + 注释 + 尾逗号): 手写 JSON 常带这些宽松语法,
   与宿主全仓导入口径一致, 否则合法 (宽松) JSON 的树视图静默空白。
 - 删除 `search/` 包 (`JsonTreeSearch.kt`/`SearchState.kt`) 与 `JsonTree` 的 `searchState` 参数:

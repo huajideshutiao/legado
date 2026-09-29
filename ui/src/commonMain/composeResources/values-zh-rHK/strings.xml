@@ -1037,6 +1037,7 @@
     <string name="media_runtime_not_installed">未安裝媒體播放組件</string>
     <string name="json_tree">樹狀檢視</string>
     <string name="source_text">原文</string>
+    <string name="json_tree_parse_failed">JSON 樹解析失敗: %1$s</string>
     <string name="source_toolbox">書源工具箱</string>
     <string name="toolbox_stage_general">通用</string>
     <string name="toolbox_stage_search">搜尋</string>
@@ -1059,4 +1060,5 @@
     <string name="copy_value">複製值</string>
     <string name="copy_key_value">複製鍵值對</string>
     <string name="copy_json_path">複製 JSONPath</string>
+    <string name="view_value">檢視</string>
 </resources>

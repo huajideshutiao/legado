@@ -21,6 +21,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 
 /**
  * 宽松解析口径: 手写 JSON 常带尾逗号与注释, 与宿主全仓导入口径 (lenient + 注释 + 尾逗号) 同容错。
@@ -34,6 +35,11 @@ private val lenientJson = Json {
 
 internal class JsonTreeParser(
     private val json: String,
+    /**
+     * 已解析的根节点: 非空时跳过 [json] 的解析直接建树 (如宿主持有多棵解析产物的子树直通场景);
+     * 空时从 [json] 解析。
+     */
+    private val jsonElement: JsonElement? = null,
     private val defaultDispatcher: CoroutineDispatcher,
     private val mainDispatcher: CoroutineDispatcher,
 ) {
@@ -42,7 +48,7 @@ internal class JsonTreeParser(
 
     suspend fun init(initialState: TreeState) = withContext(defaultDispatcher) {
         val parsingState = runCatching {
-            Parsed(lenientJson.parseToJsonElement(json))
+            Parsed(jsonElement ?: lenientJson.parseToJsonElement(json))
         }.getOrElse { throwable ->
             Error(throwable)
         }
@@ -58,7 +64,8 @@ internal class JsonTreeParser(
                             key = null,
                             isLastItem = true,
                             parentType = ParentType.NONE
-                        ).toList()
+                        ).toList(),
+                    jsonElement = parsingState.jsonElement,
                 )
             }
             is Error -> parsingState
@@ -96,7 +103,7 @@ internal class JsonTreeParser(
         }
 
         withContext(mainDispatcher) {
-            parserState.value = state.copy(list = newList)
+            parserState.value = Ready(list = newList, jsonElement = state.jsonElement)
         }
     }
 

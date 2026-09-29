@@ -13,14 +13,21 @@ import io.legado.app.constant.AppPattern
 fun String?.isDataUrl() =
     this?.startsWith("data:") ?: false
 
+/**
+ * 取首尾非空白字符, 不分配整串副本 (对应判定只需要首尾两个字符, 不必 trim 出中间串)。
+ * 全空白或无字符时返回 null。
+ */
+private fun String.firstLastNonWhitespace(): Pair<Char, Char>? {
+    var start = 0
+    var end = length - 1
+    while (start <= end && this[start].isWhitespace()) start++
+    while (end >= start && this[end].isWhitespace()) end--
+    return if (start > end) null else this[start] to this[end]
+}
+
 fun String?.isJson(): Boolean =
-    this?.run {
-        val str = this.trim()
-        when {
-            str.startsWith("{") && str.endsWith("}") -> true
-            str.startsWith("[") && str.endsWith("]") -> true
-            else -> false
-        }
+    this?.firstLastNonWhitespace()?.let { (first, last) ->
+        (first == '{' && last == '}') || (first == '[' && last == ']')
     } ?: false
 
 fun String?.isXml(): Boolean =
@@ -61,16 +68,10 @@ fun String?.isAbsUrl() =
     } ?: false
 
 fun String?.isJsonObject(): Boolean =
-    this?.run {
-        val str = this.trim()
-        str.startsWith("{") && str.endsWith("}")
-    } ?: false
+    this?.firstLastNonWhitespace()?.let { (first, last) -> first == '{' && last == '}' } ?: false
 
 fun String?.isJsonArray(): Boolean =
-    this?.run {
-        val str = this.trim()
-        str.startsWith("[") && str.endsWith("]")
-    } ?: false
+    this?.firstLastNonWhitespace()?.let { (first, last) -> first == '[' && last == ']' } ?: false
 
 fun String?.isTrue(nullIsTrue: Boolean = false): Boolean {
     if (this.isNullOrBlank() || this == "null") {

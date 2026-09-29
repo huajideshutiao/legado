@@ -201,6 +201,25 @@ internal fun JsonTreeElement.toList(): List<JsonTreeElement> {
 }
 
 /**
+ * 按 [JsonTreeElement.path] 同源路径段下钻取子树。渲染树与解析产物同一来源同一路径累积规则,
+ * 树节点在本函数的返回值不应为 null, 碰不到即数据不变量已被破坏。
+ */
+internal fun JsonElement.subtreeAt(path: List<PathSegment>): JsonElement {
+    var current = this
+    for (segment in path) {
+        current = when (segment) {
+            is PathSegment.Key ->
+                (current as? JsonObject)?.get(segment.name)
+                    ?: error("Missing key '${segment.name}' in subtree")
+            is PathSegment.Index ->
+                (current as? JsonArray)?.getOrNull(segment.idx)
+                    ?: error("Missing index ${segment.idx} in subtree")
+        }
+    }
+    return current
+}
+
+/**
  * Converts a [JsonElement] to a [JsonTreeElement].
  */
 internal fun JsonElement.toJsonTreeElement(

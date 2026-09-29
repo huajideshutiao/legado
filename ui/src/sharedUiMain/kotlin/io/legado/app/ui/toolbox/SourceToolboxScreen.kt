@@ -5,7 +5,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -33,15 +32,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.sebastianneubauer.jsontree.JsonTree
 import com.sebastianneubauer.jsontree.JsonTreeItem
 import com.sebastianneubauer.jsontree.defaultDarkColors
 import com.sebastianneubauer.jsontree.defaultLightColors
@@ -59,7 +54,7 @@ import io.legado.app.ui.compose.component.code.CodeSearchHighlightState
 import io.legado.app.ui.compose.component.code.CodeTextField
 import io.legado.app.ui.compose.component.code.KeyboardToolbar
 import io.legado.app.ui.compose.component.code.KeyboardToolbarState
-import io.legado.app.ui.compose.component.code.JsonPathMenu
+import io.legado.app.ui.compose.component.code.JsonTreePane
 import io.legado.app.ui.compose.component.code.rememberCodeEditorState
 import io.legado.app.ui.compose.component.code.rememberFullCodeSyntax
 import io.legado.app.ui.compose.theme.AppTheme
@@ -85,7 +80,6 @@ import legado.ui.generated.resources.toolbox_stage_general
 import legado.ui.generated.resources.toolbox_stage_search
 import legado.ui.generated.resources.toolbox_stage_toc
 import legado.ui.generated.resources.toolbox_url_hint
-import kotlin.math.roundToInt
 import org.jetbrains.compose.resources.stringResource
 
 interface SourceToolboxUiActions {
@@ -108,9 +102,11 @@ fun SourceToolboxScreen(
     actions: SourceToolboxUiActions,
 ) {
     val colors = AppTheme.colors
-    // 全文查看: title to content (响应全文 / 结果项共用)
+    // 全文查看: title / content / 已解析 JSON 根 (树视图直通用, 文本查看场景为 null)
     var fullText by remember { mutableStateOf<Pair<String, String>?>(null) }
     var showSourcePicker by remember { mutableStateOf(false) }
+    // 响应区树视图的聚焦栈与原始值文本视图 (就地聚焦, 不新开窗口)
+    var focusStack by remember { mutableStateOf<List<JsonTreeItem>>(emptyList()) }
     // 键盘辅助条 + 活跃编辑器 (书源编辑同款: 聚焦字段登记, 辅助键/撤销/重做/查找都作用于它)
     val keyboardState = remember { KeyboardToolbarState() }
     val searchHighlight = remember { CodeSearchHighlightState() }
@@ -135,7 +131,10 @@ fun SourceToolboxScreen(
                     SourceStageHeader(state, actions) { showSourcePicker = true }
                     Row(Modifier.weight(1f).fillMaxWidth()) {
                         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                            RequestPane(state, actions, activeEditor, searchHighlight, showFullText)
+                            RequestPane(
+                                state, actions, activeEditor, searchHighlight, showFullText,
+                                focusStack, { focusStack = it },
+                            )
                             Spacer(Modifier.heightIn(min = DesignTokens.spacingLg))
                         }
                         Spacer(Modifier.width(DesignTokens.spacingMd))
@@ -148,7 +147,10 @@ fun SourceToolboxScreen(
             } else {
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                     SourceStageHeader(state, actions) { showSourcePicker = true }
-                    RequestPane(state, actions, activeEditor, searchHighlight, showFullText)
+                    RequestPane(
+                        state, actions, activeEditor, searchHighlight, showFullText,
+                        focusStack, { focusStack = it },
+                    )
                     InputSection(state, actions, activeEditor, searchHighlight, showFullText)
                     Spacer(Modifier.heightIn(min = DesignTokens.spacingLg))
                 }
@@ -243,6 +245,8 @@ private fun RequestPane(
     activeEditor: MutableState<CodeEditorState?>,
     searchHighlight: CodeSearchHighlightState,
     showFullText: (String, String) -> Unit,
+    focusStack: List<JsonTreeItem>,
+    onFocusStackChange: (List<JsonTreeItem>) -> Unit,
 ) {
     val colors = AppTheme.colors
     val editMaxLine = remember { AppConfigProviders.get().sourceEditMaxLine }
@@ -311,13 +315,20 @@ private fun RequestPane(
             )
         }
     }
-    ResponseSection(state, showFullText)
+    ResponseSection(
+        state = state,
+        showFullText = showFullText,
+        focusStack = focusStack,
+        onFocusStackChange = onFocusStackChange,
+    )
 }
 
 @Composable
 private fun ResponseSection(
     state: ToolboxUiState,
     showFullText: (String, String) -> Unit,
+    focusStack: List<JsonTreeItem>,
+    onFocusStackChange: (List<JsonTreeItem>) -> Unit,
 ) {
     val colors = AppTheme.colors
     if (state.resCode == 0 && state.resError == null) return
@@ -334,44 +345,34 @@ private fun ResponseSection(
         return
     }
     if (state.resTreeMode) {
-        var jsonPathMenu by remember { mutableStateOf<JsonTreeItem?>(null) }
-        var boxOrigin by remember { mutableStateOf(IntOffset.Zero) }
         var treeError by remember(state.resBody) { mutableStateOf<Throwable?>(null) }
-        Box(
-            modifier = Modifier
+        // 换响应后聚焦栈失效 (旧聚焦指向上一份文档的节点), 就地复位
+        LaunchedEffect(state.resBody) {
+            onFocusStackChange(emptyList())
+        }
+        // "查看": 对象/数组就地聚焦到该节点, 原始值就地显示值文本 (面包屑均照常可退回)
+        JsonTreePane(
+            json = state.resBody,
+            focusStack = focusStack,
+            onFocusStackChange = onFocusStackChange,
+            rootLabel = responseTitle,
+            modifier = Modifier.fillMaxWidth(),
+            treeModifier = Modifier
                 .fillMaxWidth()
-                .onGloballyPositioned { p ->
-                    val pos = p.positionInWindow()
-                    boxOrigin = IntOffset(pos.x.roundToInt(), pos.y.roundToInt())
-                },
-        ) {
-            JsonTree(
-                json = state.resBody,
-                onLoading = {},
-                onError = { treeError = it },
+                .heightIn(max = 320.dp),
+            colors = if (colors.isDark) defaultDarkColors else defaultLightColors,
+            contentPadding = PaddingValues(horizontal = DesignTokens.spacingXs),
+            onError = { treeError = it },
+        )
+        treeError?.let { err ->
+            SelectableText(
+                text = err.toString(),
+                color = colors.secondaryText,
+                fontSize = 13.sp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 320.dp),
-                colors = if (colors.isDark) defaultDarkColors else defaultLightColors,
-                contentPadding = PaddingValues(horizontal = DesignTokens.spacingXs),
-                onItemLongClick = { item ->
-                    jsonPathMenu = item
-                },
-                onItemContextMenu = { item ->
-                    jsonPathMenu = item
-                },
+                    .padding(vertical = DesignTokens.spacingXs),
             )
-            treeError?.let { err ->
-                SelectableText(
-                    text = err.toString(),
-                    color = colors.secondaryText,
-                    fontSize = 13.sp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = DesignTokens.spacingXs),
-                )
-            }
-            JsonPathMenu(jsonPathMenu, boxOrigin) { jsonPathMenu = null }
         }
     } else {
         Text(

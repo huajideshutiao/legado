@@ -1651,6 +1651,7 @@
     <string name="media_runtime_not_installed">Media playback component is not installed</string>
     <string name="json_tree">JSON tree</string>
     <string name="source_text">Source</string>
+    <string name="json_tree_parse_failed">Failed to parse JSON tree: %1$s</string>
     <string name="source_toolbox">Source toolbox</string>
     <string name="toolbox_stage_general">General</string>
     <string name="toolbox_stage_search">Search</string>
@@ -1673,4 +1674,5 @@
     <string name="copy_value">Copy value</string>
     <string name="copy_key_value">Copy key-value pair</string>
     <string name="copy_json_path">Copy JSONPath</string>
+    <string name="view_value">View</string>
 </resources>

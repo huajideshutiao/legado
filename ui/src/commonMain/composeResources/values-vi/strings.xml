@@ -912,6 +912,7 @@
     <string name="media_runtime_not_installed">Chưa cài đặt thành phần phát phương tiện</string>
     <string name="json_tree">Dạng cây</string>
     <string name="source_text">Văn bản gốc</string>
+    <string name="json_tree_parse_failed">Không thể phân tích cây JSON: %1$s</string>
     <string name="source_toolbox">Công cụ nguồn sách</string>
     <string name="toolbox_stage_general">Chung</string>
     <string name="toolbox_stage_search">Tìm kiếm</string>
@@ -934,4 +935,5 @@
     <string name="copy_value">Sao chép giá trị</string>
     <string name="copy_key_value">Sao chép cặp khóa-giá trị</string>
     <string name="copy_json_path">Sao chép JSONPath</string>
+    <string name="view_value">Xem</string>
 </resources>
