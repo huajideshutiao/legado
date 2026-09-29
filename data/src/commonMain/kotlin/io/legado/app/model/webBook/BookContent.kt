@@ -57,7 +57,7 @@ object BookContent {
             appString(AppStringKey.error_get_web_content, baseUrl)
         )
         SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "≡获取成功:${baseUrl}")
-        SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, body, state = 40)
+        SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, body, state = 40, showTime = false)
         val mNextChapterUrl = if (nextChapterUrl.isNullOrEmpty()) {
             AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, bookChapter.index + 1)?.url
         } else {

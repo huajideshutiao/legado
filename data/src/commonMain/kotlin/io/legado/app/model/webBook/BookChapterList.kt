@@ -54,7 +54,7 @@ object BookChapterList {
         )
         val chapterList = ArrayList<BookChapter>()
         SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "≡获取成功:${baseUrl}")
-        SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, body, state = 30)
+        SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, body, state = 30, showTime = false)
         val tocRule = bookSource.tocRule
         val nextUrlList = arrayListOf(redirectUrl)
         val (listRule, reverse) = WebBookRuleUtils.parseRulePrefix(tocRule.chapterList)

@@ -42,7 +42,7 @@ object BookInfo {
             appString(AppStringKey.error_get_web_content, baseUrl)
         )
         SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "≡获取成功:${baseUrl}")
-        SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, body, state = 20)
+        SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, body, state = 20, showTime = false)
         val analyzeRule = AnalyzeRuleFactories.create(book, bookSource)
         analyzeRule.setContent(body).setBaseUrl(baseUrl)
         analyzeRule.setRedirectUrl(redirectUrl)

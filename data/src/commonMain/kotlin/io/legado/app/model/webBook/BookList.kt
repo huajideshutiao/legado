@@ -52,7 +52,7 @@ object BookList {
         )
         val bookList = ArrayList<SearchBook>()
         SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "≡获取成功:${analyzeUrl.ruleUrl}")
-        SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, body, state = 10)
+        SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, body, state = 10, showTime = false)
         val analyzeRule = AnalyzeRuleFactories.create(ruleData, bookSource)
         analyzeRule.setContent(body).setBaseUrl(baseUrl)
         analyzeRule.setRedirectUrl(baseUrl)

@@ -40,7 +40,7 @@ object BookReview {
     ): ReviewPage {
         body ?: throw NoStackTraceException("段评内容为空")
         SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "≡获取段评成功:${redirectUrl}")
-        SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, body, state = 50)
+        SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, body, state = 50, showTime = false)
         val list = arrayListOf<Review>()
         val analyzeRule = AnalyzeRuleFactories.create(book, bookSource)
         analyzeRule.setContent(body)
