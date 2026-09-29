@@ -33,6 +33,7 @@ import io.legado.app.ui.route.RuleSubRoute
 import io.legado.app.ui.route.SearchContentRoute
 import io.legado.app.ui.route.SearchRoute
 import io.legado.app.ui.route.SourceFilterRuleRoute
+import io.legado.app.ui.route.SourceToolboxRoute
 import io.legado.app.ui.route.ThemeConfigRoute
 import io.legado.app.ui.route.TocRoute
 import io.legado.app.ui.route.TxtTocRuleRoute
@@ -148,6 +149,11 @@ fun RouteContent(
 
         is AppRoute.ReadRecord -> {
             ReadRecordRoute(entry, navigator, screenModelStore)
+            true
+        }
+
+        is AppRoute.SourceToolbox -> {
+            SourceToolboxRoute(entry, navigator, screenModelStore)
             true
         }
 

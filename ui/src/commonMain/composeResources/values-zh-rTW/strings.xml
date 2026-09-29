@@ -587,6 +587,7 @@
     <string name="open_in_browser">瀏覽器打開</string>
     <string name="copy_url">複製url</string>
     <string name="full_screen">全屏</string>
+    <string name="picture_in_picture">子母畫面</string>
     <string name="open_fun">打開方式</string>
     <string name="use_browser_open">是否使用外部瀏覽器打開？</string>
     <string name="open">打開</string>
@@ -1024,4 +1025,26 @@
     <string name="media_runtime_not_installed">未安裝媒體播放元件</string>
     <string name="json_tree">樹狀檢視</string>
     <string name="source_text">原文</string>
+    <string name="source_toolbox">書源工具箱</string>
+    <string name="toolbox_stage_general">通用</string>
+    <string name="toolbox_stage_search">搜尋</string>
+    <string name="toolbox_stage_explore">發現</string>
+    <string name="toolbox_stage_detail">詳情</string>
+    <string name="toolbox_stage_toc">目錄</string>
+    <string name="toolbox_stage_content">正文</string>
+    <string name="toolbox_url_hint">URL(支援書源語法)</string>
+    <string name="toolbox_request">請求</string>
+    <string name="toolbox_run">執行</string>
+    <string name="toolbox_action_text">文字</string>
+    <string name="toolbox_action_text_list">字串列表</string>
+    <string name="toolbox_action_elements">元素列表</string>
+    <string name="toolbox_source_none">未指定書源</string>
+    <string name="toolbox_response">回應</string>
+    <string name="toolbox_no_response">尚未請求, 請先請求一次</string>
+    <string name="toolbox_source_cleared">已清除所選書源</string>
+    <string name="toolbox_input_hint">規則或 JS</string>
+    <string name="copy_key">複製鍵</string>
+    <string name="copy_value">複製值</string>
+    <string name="copy_key_value">複製鍵值對</string>
+    <string name="copy_json_path">複製 JSONPath</string>
 </resources>

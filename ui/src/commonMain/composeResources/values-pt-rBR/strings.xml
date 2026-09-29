@@ -569,6 +569,7 @@
     <string name="open_in_browser">浏览器打开</string>
     <string name="copy_url">拷贝url</string>
     <string name="full_screen">全屏</string>
+    <string name="picture_in_picture">画中画</string>
     <string name="open_fun">打开方式</string>
     <string name="use_browser_open">是否使用外部浏览器打开?</string>
     <string name="open">打开</string>
@@ -915,4 +916,26 @@
     <string name="media_runtime_not_installed">O componente de reprodução de mídia não está instalado</string>
     <string name="json_tree">Visualização em árvore</string>
     <string name="source_text">Texto original</string>
+    <string name="source_toolbox">Ferramentas de fonte</string>
+    <string name="toolbox_stage_general">Geral</string>
+    <string name="toolbox_stage_search">Buscar</string>
+    <string name="toolbox_stage_explore">Explorar</string>
+    <string name="toolbox_stage_detail">Detalhes</string>
+    <string name="toolbox_stage_toc">Sumário</string>
+    <string name="toolbox_stage_content">Conteúdo</string>
+    <string name="toolbox_url_hint">URL (sintaxe de fonte)</string>
+    <string name="toolbox_request">Solicitar</string>
+    <string name="toolbox_run">Executar</string>
+    <string name="toolbox_action_text">Texto</string>
+    <string name="toolbox_action_text_list">Lista de textos</string>
+    <string name="toolbox_action_elements">Lista de elementos</string>
+    <string name="toolbox_source_none">Nenhuma fonte selecionada</string>
+    <string name="toolbox_response">Resposta</string>
+    <string name="toolbox_no_response">Ainda sem resposta. Solicite primeiro.</string>
+    <string name="toolbox_source_cleared">Fonte desmarcada.</string>
+    <string name="toolbox_input_hint">Regra ou JS</string>
+    <string name="copy_key">Copiar chave</string>
+    <string name="copy_value">Copiar valor</string>
+    <string name="copy_key_value">Copiar chave e valor</string>
+    <string name="copy_json_path">Copiar JSONPath</string>
 </resources>

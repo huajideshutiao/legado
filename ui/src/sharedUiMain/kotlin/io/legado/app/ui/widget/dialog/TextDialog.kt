@@ -1,6 +1,7 @@
 package io.legado.app.ui.widget.dialog
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,24 +14,28 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
 import com.sebastianneubauer.jsontree.JsonTree
+import com.sebastianneubauer.jsontree.JsonTreeItem
 import com.sebastianneubauer.jsontree.defaultDarkColors
 import com.sebastianneubauer.jsontree.defaultLightColors
-import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.SelectableText
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.component.code.JsonPathMenu
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.PlatformCapabilityProviders
-import kotlinx.serialization.json.Json
+import io.legado.app.utils.KS_JSON
 import legado.ui.generated.resources.Res
+import kotlin.math.roundToInt
 import legado.ui.generated.resources.cancel
-import legado.ui.generated.resources.copied_to_clipboard
 import legado.ui.generated.resources.copy
 import legado.ui.generated.resources.json_tree
 import legado.ui.generated.resources.ok
@@ -74,10 +79,10 @@ fun TextDialog(
     val tooLargeText = stringResource(Res.string.text_too_large)
     val treeText = stringResource(Res.string.json_tree)
     val sourceText = stringResource(Res.string.source_text)
-    val copiedText = stringResource(Res.string.copied_to_clipboard)
-    // 只有真正能解析成 JSON 时才提供树视图 (HTML 响应体解析会抛异常, 不建按钮)
+    // 只有真正能解析成 JSON 时才提供树视图 (HTML 响应体解析会抛异常, 不建按钮);
+    // 解析口径与全仓导入一致取 KS_JSON, 手写 JSON 的尾逗号/注释不挡树视图
     val isJson = remember(allowJsonTree, content) {
-        allowJsonTree && runCatching { Json.parseToJsonElement(content) }.isSuccess
+        allowJsonTree && runCatching { KS_JSON.parseToJsonElement(content) }.isSuccess
     }
     var treeMode by remember { mutableStateOf(false) }
 
@@ -99,19 +104,32 @@ fun TextDialog(
                     content
                 }
                 if (treeMode) {
-                    JsonTree(
-                        json = content,
-                        onLoading = {},
+                    var jsonPathMenu by remember { mutableStateOf<JsonTreeItem?>(null) }
+                    var boxOrigin by remember { mutableStateOf(IntOffset.Zero) }
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(1f),
-                        colors = if (colors.isDark) defaultDarkColors else defaultLightColors,
-                        contentPadding = PaddingValues(horizontal = DesignTokens.spacingDefault),
-                        onItemLongClick = { path ->
-                            PlatformCapabilityProviders.get().copyToClipboard(path)
-                            Toasters.get().toast(copiedText)
-                        },
-                    )
+                            .weight(1f)
+                            .onGloballyPositioned { p ->
+                                val pos = p.positionInWindow()
+                                boxOrigin = IntOffset(pos.x.roundToInt(), pos.y.roundToInt())
+                            },
+                    ) {
+                        JsonTree(
+                            json = content,
+                            onLoading = {},
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = if (colors.isDark) defaultDarkColors else defaultLightColors,
+                            contentPadding = PaddingValues(horizontal = DesignTokens.spacingDefault),
+                            onItemLongClick = { item ->
+                                jsonPathMenu = item
+                            },
+                            onItemContextMenu = { item ->
+                                jsonPathMenu = item
+                            },
+                        )
+                        JsonPathMenu(jsonPathMenu, boxOrigin) { jsonPathMenu = null }
+                    }
                 } else {
                     SelectableText(
                         text = displayText,

@@ -1241,6 +1241,7 @@
     <string name="font_scale_summary">font scale:%.1f</string>
     <string name="font_weight_text">N/B/L</string>
     <string name="full_screen">full screen</string>
+    <string name="picture_in_picture">picture in picture</string>
     <string name="import_default_rule">Import default rules</string>
     <string name="upload_url">upload url</string>
     <string name="is_compress">Compressed or not</string>
@@ -1650,4 +1651,26 @@
     <string name="media_runtime_not_installed">Media playback component is not installed</string>
     <string name="json_tree">JSON tree</string>
     <string name="source_text">Source</string>
+    <string name="source_toolbox">Source toolbox</string>
+    <string name="toolbox_stage_general">General</string>
+    <string name="toolbox_stage_search">Search</string>
+    <string name="toolbox_stage_explore">Discover</string>
+    <string name="toolbox_stage_detail">Detail</string>
+    <string name="toolbox_stage_toc">Toc</string>
+    <string name="toolbox_stage_content">Content</string>
+    <string name="toolbox_url_hint">URL (supports source syntax)</string>
+    <string name="toolbox_request">Request</string>
+    <string name="toolbox_run">Run</string>
+    <string name="toolbox_action_text">Text</string>
+    <string name="toolbox_action_text_list">Text list</string>
+    <string name="toolbox_action_elements">Elements</string>
+    <string name="toolbox_source_none">No source selected</string>
+    <string name="toolbox_response">Response</string>
+    <string name="toolbox_no_response">No response yet. Request first.</string>
+    <string name="toolbox_source_cleared">Source selection cleared.</string>
+    <string name="toolbox_input_hint">Rule or JS code</string>
+    <string name="copy_key">Copy key</string>
+    <string name="copy_value">Copy value</string>
+    <string name="copy_key_value">Copy key-value pair</string>
+    <string name="copy_json_path">Copy JSONPath</string>
 </resources>

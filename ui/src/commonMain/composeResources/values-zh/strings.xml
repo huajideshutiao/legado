@@ -1309,6 +1309,7 @@ Windows: winget install shinchiro.mpv 或 scoop install mpv,
     <string name="font_scale_summary">当前字体大小：%.1f</string>
     <string name="font_weight_text">中/粗/细</string>
     <string name="full_screen">全屏</string>
+    <string name="picture_in_picture">画中画</string>
     <string name="import_default_rule">导入默认规则</string>
     <string name="upload_url">上传 URL</string>
     <string name="is_compress">是否压缩</string>
@@ -1718,4 +1719,26 @@ Windows: winget install shinchiro.mpv 或 scoop install mpv,
     <string name="media_runtime_not_installed">未安装媒体播放组件</string>
     <string name="json_tree">树形视图</string>
     <string name="source_text">原文</string>
+    <string name="source_toolbox">书源工具箱</string>
+    <string name="toolbox_stage_general">通用</string>
+    <string name="toolbox_stage_search">搜索</string>
+    <string name="toolbox_stage_explore">发现</string>
+    <string name="toolbox_stage_detail">详情</string>
+    <string name="toolbox_stage_toc">目录</string>
+    <string name="toolbox_stage_content">正文</string>
+    <string name="toolbox_url_hint">URL(支持书源语法)</string>
+    <string name="toolbox_request">请求</string>
+    <string name="toolbox_run">运行</string>
+    <string name="toolbox_action_text">文本</string>
+    <string name="toolbox_action_text_list">字符串列表</string>
+    <string name="toolbox_action_elements">元素列表</string>
+    <string name="toolbox_source_none">未指定书源</string>
+    <string name="toolbox_response">响应</string>
+    <string name="toolbox_no_response">尚未请求, 请先请求一次</string>
+    <string name="toolbox_source_cleared">已清除所选书源</string>
+    <string name="toolbox_input_hint">规则或 JS 代码</string>
+    <string name="copy_key">复制键</string>
+    <string name="copy_value">复制值</string>
+    <string name="copy_key_value">复制键值对</string>
+    <string name="copy_json_path">复制 JSONPath</string>
 </resources>

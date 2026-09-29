@@ -574,6 +574,7 @@
     <string name="open_in_browser">mở trong trình duyệt</string>
     <string name="copy_url">sao chép url</string>
     <string name="full_screen">toàn màn hình</string>
+    <string name="picture_in_picture">hình trong hình</string>
     <string name="open_fun">chức năng mở</string>
     <string name="use_browser_open">Có mở bằng trình duyệt bên ngoài không?</string>
     <string name="open">mở</string>
@@ -911,4 +912,26 @@
     <string name="media_runtime_not_installed">Chưa cài đặt thành phần phát phương tiện</string>
     <string name="json_tree">Dạng cây</string>
     <string name="source_text">Văn bản gốc</string>
+    <string name="source_toolbox">Công cụ nguồn sách</string>
+    <string name="toolbox_stage_general">Chung</string>
+    <string name="toolbox_stage_search">Tìm kiếm</string>
+    <string name="toolbox_stage_explore">Khám phá</string>
+    <string name="toolbox_stage_detail">Chi tiết</string>
+    <string name="toolbox_stage_toc">Mục lục</string>
+    <string name="toolbox_stage_content">Nội dung</string>
+    <string name="toolbox_url_hint">URL (hỗ trợ cú pháp nguồn)</string>
+    <string name="toolbox_request">Yêu cầu</string>
+    <string name="toolbox_run">Chạy</string>
+    <string name="toolbox_action_text">Văn bản</string>
+    <string name="toolbox_action_text_list">Danh sách văn bản</string>
+    <string name="toolbox_action_elements">Danh sách phần tử</string>
+    <string name="toolbox_source_none">Chưa chọn nguồn</string>
+    <string name="toolbox_response">Phản hồi</string>
+    <string name="toolbox_no_response">Chưa có phản hồi, hãy yêu cầu trước.</string>
+    <string name="toolbox_source_cleared">Đã bỏ chọn nguồn.</string>
+    <string name="toolbox_input_hint">Quy tắc hoặc JS</string>
+    <string name="copy_key">Sao chép khóa</string>
+    <string name="copy_value">Sao chép giá trị</string>
+    <string name="copy_key_value">Sao chép cặp khóa-giá trị</string>
+    <string name="copy_json_path">Sao chép JSONPath</string>
 </resources>

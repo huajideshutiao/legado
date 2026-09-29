@@ -915,4 +915,26 @@
     <string name="media_runtime_not_installed">El componente de reproducción multimedia no está instalado</string>
     <string name="json_tree">Vista de árbol</string>
     <string name="source_text">Texto original</string>
+    <string name="source_toolbox">Herramientas de fuente</string>
+    <string name="toolbox_stage_general">General</string>
+    <string name="toolbox_stage_search">Buscar</string>
+    <string name="toolbox_stage_explore">Descubrir</string>
+    <string name="toolbox_stage_detail">Detalles</string>
+    <string name="toolbox_stage_toc">Índice</string>
+    <string name="toolbox_stage_content">Contenido</string>
+    <string name="toolbox_url_hint">URL (sintaxis de fuente)</string>
+    <string name="toolbox_request">Solicitar</string>
+    <string name="toolbox_run">Ejecutar</string>
+    <string name="toolbox_action_text">Texto</string>
+    <string name="toolbox_action_text_list">Lista de textos</string>
+    <string name="toolbox_action_elements">Lista de elementos</string>
+    <string name="toolbox_source_none">Ninguna fuente seleccionada</string>
+    <string name="toolbox_response">Respuesta</string>
+    <string name="toolbox_no_response">Aún sin respuesta. Solicite primero.</string>
+    <string name="toolbox_source_cleared">Fuente deseleccionada.</string>
+    <string name="toolbox_input_hint">Regla o JS</string>
+    <string name="copy_key">Copiar clave</string>
+    <string name="copy_value">Copiar valor</string>
+    <string name="copy_key_value">Copiar clave y valor</string>
+    <string name="copy_json_path">Copiar JSONPath</string>
 </resources>

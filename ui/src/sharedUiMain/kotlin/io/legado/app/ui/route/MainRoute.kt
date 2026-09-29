@@ -1580,6 +1580,7 @@ private fun MyTabContent(navigator: AppNavigator) {
             onRuleSubManage = { navigator.push(AppRoute.RuleSub) },
             onBookmark = { navigator.push(AppRoute.Bookmark()) },
             onReadRecord = { navigator.push(AppRoute.ReadRecord) },
+            onSourceToolbox = { navigator.push(AppRoute.SourceToolbox) },
             onAbout = { navigator.push(AppRoute.About) },
         )
     }

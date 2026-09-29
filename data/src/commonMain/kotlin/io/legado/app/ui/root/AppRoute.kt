@@ -235,6 +235,11 @@ sealed interface AppRoute {
     @SerialName("read_record")
     data object ReadRecord : AppRoute
 
+    // 书源工具箱: 请求特殊格式 URL + 按阶段绑定书源环境跑规则/JS, 编写书源的调试工作台
+    @Serializable
+    @SerialName("source_toolbox")
+    data object SourceToolbox : AppRoute
+
     @Serializable
     @SerialName("backup_config")
     data object BackupConfig : AppRoute

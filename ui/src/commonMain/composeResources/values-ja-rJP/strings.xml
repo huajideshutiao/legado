@@ -827,4 +827,26 @@
     <string name="media_runtime_not_installed">メディア再生コンポーネントがインストールされていません</string>
     <string name="json_tree">ツリー表示</string>
     <string name="source_text">元のテキスト</string>
+    <string name="source_toolbox">ソースツールボックス</string>
+    <string name="toolbox_stage_general">一般</string>
+    <string name="toolbox_stage_search">検索</string>
+    <string name="toolbox_stage_explore">発見</string>
+    <string name="toolbox_stage_detail">詳細</string>
+    <string name="toolbox_stage_toc">目次</string>
+    <string name="toolbox_stage_content">本文</string>
+    <string name="toolbox_url_hint">URL(ソース構文対応)</string>
+    <string name="toolbox_request">リクエスト</string>
+    <string name="toolbox_run">実行</string>
+    <string name="toolbox_action_text">テキスト</string>
+    <string name="toolbox_action_text_list">テキストリスト</string>
+    <string name="toolbox_action_elements">要素リスト</string>
+    <string name="toolbox_source_none">ソース未選択</string>
+    <string name="toolbox_response">レスポンス</string>
+    <string name="toolbox_no_response">まだレスポンスがありません。先にリクエストしてください。</string>
+    <string name="toolbox_source_cleared">書籍ソースの選択を解除しました</string>
+    <string name="toolbox_input_hint">ルールまたは JS</string>
+    <string name="copy_key">キーをコピー</string>
+    <string name="copy_value">値をコピー</string>
+    <string name="copy_key_value">キーと値をコピー</string>
+    <string name="copy_json_path">JSONPath をコピー</string>
 </resources>

@@ -56,6 +56,9 @@ fun Modifier.horizontalMouseWheel(scrollState: ScrollState): Modifier {
                 val change = event.changes.firstOrNull() ?: continue
                 val delta = if (change.scrollDelta.y != 0f) change.scrollDelta.y else change.scrollDelta.x
                 if (delta == 0f) continue
+                // 到头不吞事件, 放行给父级 (嵌在可竖滚页面里滚轮继续滚页面)
+                if (delta > 0f && !scrollState.canScrollForward) continue
+                if (delta < 0f && !scrollState.canScrollBackward) continue
                 val viewportW = scrollState.viewportSize.toFloat()
                 if (viewportW > 0f) {
                     scrollChannel.trySend(delta * viewportW / 20f * 3f)

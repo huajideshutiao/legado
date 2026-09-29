@@ -47,6 +47,7 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppFilletTextButton
 import io.legado.app.ui.compose.component.AppMenuCheckbox
+import io.legado.app.ui.compose.component.horizontalMouseWheel
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberImeVisible
 import io.legado.app.ui.compose.platform.rememberPainter
@@ -214,10 +215,12 @@ private fun AssistKeyRow(
             AppLog.put("键盘帮助组件获取数据失败\n${it.message}", it)
         }.flowOn(IoDispatcher).collect { value = it }
     }
+    val assistScrollState = rememberScrollState()
     Row(
         Modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
+            .horizontalScroll(assistScrollState)
+            .horizontalMouseWheel(assistScrollState)
             .padding(DesignTokens.spacingXs),
         verticalAlignment = Alignment.CenterVertically,
     ) {

@@ -17,6 +17,7 @@ import legado.ui.generated.resources.book_source_manage_desc
 import legado.ui.generated.resources.bookmark
 import legado.ui.generated.resources.dict_rule
 import legado.ui.generated.resources.ic_bookmark
+import legado.ui.generated.resources.ic_bug_report
 import legado.ui.generated.resources.ic_cfg_about
 import legado.ui.generated.resources.ic_cfg_backup
 import legado.ui.generated.resources.ic_cfg_other
@@ -34,6 +35,7 @@ import legado.ui.generated.resources.read_record
 import legado.ui.generated.resources.replace_purify
 import legado.ui.generated.resources.rule_subscription
 import legado.ui.generated.resources.source_filter_rule
+import legado.ui.generated.resources.source_toolbox
 import legado.ui.generated.resources.theme_mode
 import legado.ui.generated.resources.theme_mode_v
 import legado.ui.generated.resources.theme_setting
@@ -69,6 +71,7 @@ import org.jetbrains.compose.resources.stringResource
  * - `ic_import`           规则订阅
  * - `ic_bookmark`         书签
  * - `ic_history`          阅读记录（已注册, 复用）
+ * - `ic_bug_report`       书源工具箱（复用）
  * - `ic_cfg_about`        关于
  *
  * ### String key (string)
@@ -82,7 +85,7 @@ import org.jetbrains.compose.resources.stringResource
  * - `replace_purify` / `source_filter_rule` / `txt_toc_rule`
  * - `dict_rule` / `rule_subscription`
  * - `other`                     分类标题
- * - `bookmark` / `read_record` / `about`
+ * - `bookmark` / `read_record` / `source_toolbox` / `about`
  *
  * ### StringArray key (string-array)
  * - `theme_mode`        主题模式名（系统/亮/暗/E-Ink）
@@ -108,6 +111,7 @@ fun MyConfigScreen(
     onRuleSubManage: () -> Unit,
     onBookmark: () -> Unit,
     onReadRecord: () -> Unit,
+    onSourceToolbox: () -> Unit,
     onAbout: () -> Unit,
 ) {
     val themeModeEntries = stringArrayResource(Res.array.theme_mode)
@@ -131,6 +135,7 @@ fun MyConfigScreen(
     val titleOther = stringResource(Res.string.other)
     val titleBookmark = stringResource(Res.string.bookmark)
     val titleReadRecord = stringResource(Res.string.read_record)
+    val titleSourceToolbox = stringResource(Res.string.source_toolbox)
     val titleAbout = stringResource(Res.string.about)
 
     // rememberPainter 是 @Composable，须在此层取值，不能在 LazyListScope 构建 lambda 内调用
@@ -145,6 +150,7 @@ fun MyConfigScreen(
     val iconImport = painterResource(Res.drawable.ic_import)
     val iconBookmark = painterResource(Res.drawable.ic_bookmark)
     val iconHistory = painterResource(Res.drawable.ic_history)
+    val iconToolbox = painterResource(Res.drawable.ic_bug_report)
     val iconAbout = painterResource(Res.drawable.ic_cfg_about)
 
     AppTheme {
@@ -229,6 +235,11 @@ fun MyConfigScreen(
                 title = titleReadRecord,
                 icon = iconHistory,
                 onClick = onReadRecord,
+            )
+            preference(
+                title = titleSourceToolbox,
+                icon = iconToolbox,
+                onClick = onSourceToolbox,
             )
             preference(
                 title = titleAbout,

@@ -60,13 +60,16 @@ import org.jetbrains.compose.resources.stringResource
  * - 溢出菜单可设置批量换源间隔。
  *
  * 数据加载与延迟持久化由调用方负责，组件只维护查询和弹窗状态。
+ *
+ * @param showDelayMenu 是否展示溢出菜单中的换源间隔设置；仅换源语义需要，纯选源场景关掉。
  */
 @Composable
 fun SourcePickerDialog(
     sources: List<BookSource>,
-    initialDelay: Int,
+    initialDelay: Int = 0,
     onSourceSelected: (BookSource) -> Unit,
-    onDelayChange: (Int) -> Unit,
+    onDelayChange: (Int) -> Unit = {},
+    showDelayMenu: Boolean = true,
     onDismiss: () -> Unit,
 ) {
     val colors = AppTheme.colors
@@ -119,12 +122,14 @@ fun SourcePickerDialog(
                         maxLines = 1,
                         modifier = Modifier.weight(1f),
                     )
-                    OverflowMenu { dismiss ->
-                        DropdownMenuItem(onClick = {
-                            dismiss()
-                            showDelayPicker = true
-                        }) {
-                            Text(stringResource(Res.string.change_source_delay))
+                    if (showDelayMenu) {
+                        OverflowMenu { dismiss ->
+                            DropdownMenuItem(onClick = {
+                                dismiss()
+                                showDelayPicker = true
+                            }) {
+                                Text(stringResource(Res.string.change_source_delay))
+                            }
                         }
                     }
                 }

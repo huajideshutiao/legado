@@ -73,6 +73,7 @@ fun MyConfigRoute(
             onRuleSubManage = { navigator.push(AppRoute.RuleSub) },
             onBookmark = { navigator.push(AppRoute.Bookmark()) },
             onReadRecord = { navigator.push(AppRoute.ReadRecord) },
+            onSourceToolbox = { navigator.push(AppRoute.SourceToolbox) },
             onAbout = { navigator.push(AppRoute.About) },
             // 原版 pref_main.xml 无 RSS 条目, 订阅入口在主界面底栏 tab, 此处不渲染
         )
