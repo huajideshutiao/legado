@@ -82,18 +82,21 @@ jobs:
             gradle-buildcache-${{ runner.os }}-
 
       - name: Release Apk Sign
-        # ⚠️ 安全提示: 签名库 .github/workflows/legado.jks 直接提交在仓库里, 且口令
-        # (gedoor_legado) 明文硬编码在下方 sed 中 —— 任何人 clone 即可签出「看起来官方」的包。
-        # 这是上游 gedoor/legado 的历史做法, 本 fork 沿用。beta 测试包用它尚可接受,
-        # 但不应与 release.yml 的正式签名 (走 RELEASE_KEY_STORE secret) 混用。
-        # 建议 (需用户拍板, 未擅自改动): 改为 secrets 注入, 或明确它只是「公开测试密钥」。
+        # 测试发布与 release.yml 正式发布统一使用同一正式签名密钥 (RELEASE_KEY_STORE secret 注入,
+        # 注入方式与 release.yml 逐字同源), beta 包与正式包可直接互相覆盖安装。
+        env:
+          RS_FILE: ${{ secrets.RELEASE_KEY_STORE }}
+          RS_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RS_KEY_PASS: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          RS_STORE_PASS: ${{ secrets.RELEASE_STORE_PASSWORD }}
         run: |
           echo "给apk增加签名"
-          cp $GITHUB_WORKSPACE/.github/workflows/legado.jks $GITHUB_WORKSPACE/app/legado.jks
-          sed '$a\RELEASE_STORE_FILE=./legado.jks'          $GITHUB_WORKSPACE/gradle.properties -i
-          sed '$a\RELEASE_KEY_ALIAS=legado'                 $GITHUB_WORKSPACE/gradle.properties -i
-          sed '$a\RELEASE_STORE_PASSWORD=gedoor_legado'     $GITHUB_WORKSPACE/gradle.properties -i
-          sed '$a\RELEASE_KEY_PASSWORD=gedoor_legado'       $GITHUB_WORKSPACE/gradle.properties -i
+          echo -e "\n" >> gradle.properties
+          echo RELEASE_KEY_ALIAS="$RS_ALIAS" >> gradle.properties
+          echo RELEASE_KEY_PASSWORD="$RS_KEY_PASS" >> gradle.properties
+          echo RELEASE_STORE_PASSWORD="$RS_STORE_PASS" >> gradle.properties
+          echo RELEASE_STORE_FILE='./key.jks' >> gradle.properties
+          echo "$RS_FILE" | python3 -c "import sys,base64; sys.stdout.buffer.write(base64.b64decode(sys.stdin.read().strip()))" > $GITHUB_WORKSPACE/app/key.jks
 
       - name: Build Release (原包名)
         run: |
