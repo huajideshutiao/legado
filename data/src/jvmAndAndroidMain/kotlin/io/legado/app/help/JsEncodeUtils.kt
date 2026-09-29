@@ -2,11 +2,11 @@ package io.legado.app.help
 
 import cn.hutool.crypto.digest.DigestUtil
 import cn.hutool.crypto.digest.HMac
-import cn.hutool.crypto.symmetric.SymmetricCrypto
 import io.legado.app.help.crypto.AsymmetricCrypto
 import io.legado.app.help.crypto.AsymmetricCryptoAndroid
 import io.legado.app.help.crypto.Sign
 import io.legado.app.help.crypto.SignAndroid
+import io.legado.app.help.crypto.SymmetricCrypto
 import io.legado.app.help.crypto.SymmetricCryptoAndroid
 import io.legado.app.utils.Base64Lenient
 import io.legado.app.utils.MD5Utils
@@ -15,7 +15,7 @@ import io.legado.app.utils.MD5Utils
 /**
  * js加解密扩展类, 在js中通过java变量调用
  * 添加方法，请更新文档/legado/app/src/main/assets/help/JsHelp.md
- * 牵 app crypto 包的 createSymmetricCrypto/createAsymmetricCrypto/createSign 在 JsEncodeUtilsAndroid
+ * 牵 app crypto 包的 createSymmetricCrypto/createAsymmetricCrypto/createSign 在 [JsCryptoProviderJvm]
  *
  * KMP actual interface: 纯 abstract (与 commonMain expect 的 abstract modality 对齐)。
  * 默认实现 (hutool + Base64Lenient) 移至 [JsEncodeUtilsDefaults] interface,
@@ -78,15 +78,11 @@ actual interface JsEncodeUtils {
  *
  * KMP 限制: actual interface 成员 modality 必须与 expect 一致 (abstract), 不能带方法体;
  * 故将默认实现下沉到独立的 Defaults interface, 由调用方多继承注入:
- * - 各调用方 (BookSourceJsExt/AnalyzeRule 等) : JsEncodeUtilsDefaults (替代原 `: JsEncodeUtils`)
+ * - [JsCryptoProviderJvm] (JS 加解密面的平台实现入口)
  * - jvmAndAndroidTest `object : JsEncodeUtilsDefaults {}` (替代原 `object : JsEncodeUtils {}`)
  *
- * 行为零变化: 6 个方法体原样搬迁自原 actual interface, 仅 host 类型变化。
- *
- * 加密工厂 (createSymmetricCrypto/createAsymmetricCrypto/createSign) 原在 app/desktop 四处重复
- * (app 端 JsEncodeUtilsAndroid 与 DesktopJsExtensions/DesktopAnalyzeRule/DesktopAnalyzeUrl, 已删),
- * 统一下沉至此 (实现类 AsymmetricCryptoAndroid/SignAndroid/SymmetricCryptoAndroid
- * 与 hutool 返回类型同源集可见)。nativeMain 各有同名接口, 互不影响。
+ * 加密工厂 (createSymmetricCrypto/createAsymmetricCrypto/createSign) 在 [JsCryptoProviderJvm]
+ * (实现类 AsymmetricCryptoAndroid/SignAndroid/SymmetricCryptoAndroid 与 hutool 返回类型同源集可见)。
  */
 @Suppress("unused")
 interface JsEncodeUtilsDefaults : JsEncodeUtils {
@@ -119,62 +115,34 @@ interface JsEncodeUtilsDefaults : JsEncodeUtils {
         return Base64Lenient.encodeToString(HMac(algorithm, key.toByteArray()).digest(data))
     }
 
-    //******************对称加密解密************************//
+}
 
-    /**
-     * 在js中这样使用
-     * java.createSymmetricCrypto(transformation, key, iv).decrypt(data)
-     * java.createSymmetricCrypto(transformation, key, iv).decryptStr(data)
-     * java.createSymmetricCrypto(transformation, key, iv).encrypt(data)
-     * java.createSymmetricCrypto(transformation, key, iv).encryptBase64(data)
-     * java.createSymmetricCrypto(transformation, key, iv).encryptHex(data)
-     */
+/**
+ * JS 加解密面 (commonMain [JsCryptoProvider]) 的 jvmAndAndroid 实现。
+ * 摘要/HMAC 复用 [JsEncodeUtilsDefaults]; 工厂返回 commonMain crypto 接口
+ * (SymmetricCryptoAndroid 等实现类同时实现 commonMain 接口, 跨端引用透明)。
+ *
+ * key 为 null 时 hutool 使用随机密钥; iv 非空时 hutool setIv 原地设置后返回自身。
+ */
+object JsCryptoProviderJvm : JsCryptoProvider, JsEncodeUtilsDefaults {
 
-    /* 调用SymmetricCrypto key为null时使用随机密钥*/
-    fun createSymmetricCrypto(
+    override fun createSymmetricCrypto(
         transformation: String,
         key: ByteArray?,
         iv: ByteArray?
     ): SymmetricCrypto {
-        val symmetricCrypto = SymmetricCryptoAndroid(transformation, key)
-        return if (iv != null && iv.isNotEmpty()) symmetricCrypto.setIv(iv) else symmetricCrypto
+        val crypto = SymmetricCryptoAndroid(transformation, key)
+        if (iv != null && iv.isNotEmpty()) crypto.setIv(iv)
+        return crypto
     }
 
-    fun createSymmetricCrypto(
-        transformation: String,
-        key: ByteArray
-    ): SymmetricCrypto {
-        return createSymmetricCrypto(transformation, key, null)
-    }
-
-    fun createSymmetricCrypto(
-        transformation: String,
-        key: String
-    ): SymmetricCrypto {
-        return createSymmetricCrypto(transformation, key, null)
-    }
-
-    fun createSymmetricCrypto(
-        transformation: String,
-        key: String,
-        iv: String?
-    ): SymmetricCrypto {
-        return createSymmetricCrypto(
-            transformation, key.encodeToByteArray(), iv?.encodeToByteArray()
-        )
-    }
-
-    //******************非对称加密解密************************//
-
-    /* keys都为null时使用随机密钥 */
-    fun createAsymmetricCrypto(
+    override fun createAsymmetricCrypto(
         transformation: String
     ): AsymmetricCrypto {
         return AsymmetricCryptoAndroid(transformation)
     }
 
-    //******************签名************************//
-    fun createSign(
+    override fun createSign(
         algorithm: String
     ): Sign {
         return SignAndroid(algorithm)

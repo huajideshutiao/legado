@@ -4,9 +4,10 @@ import io.legado.app.data.entities.BaseSource
 import kotlin.concurrent.Volatile
 
 /**
- * AnalyzeRule 实例工厂: shared webBook 编排层直接 new [AnalyzeRuleCore] 会缺失平台端 JS 扩展面
- * (JsEncodeUtils 摘要/加解密工厂、jsoup get/head/post 等), 书源 JS 调 java.md5Encode 报 not a function。
- * 各端启动早期注册返回平台薄子类 (app AnalyzeRule / desktop DesktopAnalyzeRule) 的工厂恢复完整面。
+ * AnalyzeRule 实例工厂: shared webBook 编排层直接 new [AnalyzeRuleCore] 会缺失平台端的规则 override
+ * (app 端 AnalyzeRule / desktop 端 DesktopAnalyzeRule 的 refreshTocUrl 等)。
+ * JS 扩展面 (ajax/get/head/post/加解密) 由 [JsExtensionsCommon] 默认实现承载, 不依赖平台子类。
+ * 各端启动早期注册返回平台薄子类的工厂。
  */
 fun interface AnalyzeRuleFactory {
     fun create(

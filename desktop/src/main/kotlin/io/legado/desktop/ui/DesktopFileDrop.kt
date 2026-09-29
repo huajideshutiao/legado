@@ -176,7 +176,7 @@ private const val DROP_SCRIM_ALPHA = 0.10f
 /**
  * 拖放载荷 → 文件地址列表。形态 = `File.toURI()`: Windows 为 `file:///D:/x/y.mp4`,
  * POSIX (macOS/Linux) 为 `file:/Users/x/y.mp4` —— 两种 [io.legado.app.ui.FileAssociationDispatch]
- * 的 toLocalPath 都已认 (argv 冷启动那条链就是收的同一形态);
+ * 的 toLocalFilePath 都已认 (argv 冷启动那条链就是收的同一形态);
  * 非文件载荷 / 空载荷 / 取数据抛异常 → null。
  *
  * runCatching 不是可有可无: `DragAndDropEvent.awtTransferable` 对认不出的原生事件直接 `error()`,

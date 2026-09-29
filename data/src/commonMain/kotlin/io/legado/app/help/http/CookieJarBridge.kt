@@ -5,7 +5,7 @@ import kotlin.concurrent.Volatile
 /**
  * ObsoleteUrlFactory 下沉 shared (jvmAndAndroidMain) 后, 无法直接引用 app 端 CookieManager object
  * (CookieManager 依赖 appDb/CacheManager/android.webkit, 整体下沉成本过大)。
- * 采用与 JsExtProviders / AppDbProviders 一致的注入模式: app 端启动时注册实现,
+ * 采用与 JsCryptoProviders / AppDbProviders 一致的注入模式: app 端启动时注册实现,
  * shared 内 ObsoleteUrlFactory 经 [CookieJarBridgeHolder.get] 取得桥接。
  *
  * P0-0c: 为 ObsoleteUrlFactory 下沉 shared 做前置。

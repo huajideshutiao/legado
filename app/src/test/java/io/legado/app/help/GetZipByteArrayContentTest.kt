@@ -44,7 +44,7 @@ class GetZipByteArrayContentTest {
         }
     }
 
-    private val ext = object : JsExtensionsJvm {
+    private val ext = object : JsExtensionsCommon {
         override fun getSource(): BaseSource? = null
     }
 

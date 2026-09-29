@@ -3,16 +3,11 @@ package io.legado.app.model.script
 import android.provider.Settings
 import io.legado.app.App
 import io.legado.app.constant.AndroidIdHolder
-import io.legado.app.data.entities.BaseSource
-import io.legado.app.data.entities.BookSource
-import io.legado.app.data.entities.BookSourceJsExt
-import io.legado.app.data.entities.HttpTTS
-import io.legado.app.data.entities.HttpTTSJsExt
 import io.legado.app.help.CacheManager
 import io.legado.app.help.ExploreKindsCacheProvider
 import io.legado.app.help.ExploreKindsCacheProviders
-import io.legado.app.help.JsExtFactory
-import io.legado.app.help.JsExtProviders
+import io.legado.app.help.JsCryptoProviderJvm
+import io.legado.app.help.JsCryptoProviders
 import io.legado.app.help.RuleBigDataHelp
 import io.legado.app.help.RuleBigDataProviders
 import io.legado.app.help.UserAgentProvider
@@ -106,18 +101,8 @@ fun registerAndroidJsEngines() {
 
         override fun log(msg: String) = Debug.log(msg)
     }
-    // F2: BookSource/HttpTTS 下沉后不再继承 JsExtensions, 通过包装器补回 JS 可见的 JsExtensions 面。
-    // BaseSource.evalJS 注入 bindings["java"]/["source"] 时调用 wrap(this) 取得 BookSourceJsExt/HttpTTSJsExt。
-    JsExtProviders.register(object : JsExtFactory {
-        override fun wrap(source: BaseSource): Any = when (source) {
-            is BookSource -> BookSourceJsExt(source)
-            is HttpTTS -> HttpTTSJsExt(source)
-            // 兜底: 已是 JsExtensions 的对象 (如 AnalyzeUrl/AnalyzeRule, 但它们不继承 BaseSource,
-            // 实际不会命中) 直接返回。未知 BaseSource 子类无 JsExtensions 实现, JS 调用 ajax 等会失败,
-            // 但当前仅 BookSource/HttpTTS 两个 BaseSource 子类, 行为可控。
-            else -> source
-        }
-    })
+    // JS 加解密面 (JsExtensionsCommon 加解密默认方法) 的平台实现注册
+    JsCryptoProviders.register(JsCryptoProviderJvm)
     // F2: BookSource 下沉后访问 ACache.get("explore").getAsString/put(...) 走 provider, 行为不变。
     // exploreKinds() 已下沉到 shared BookSourceExtensionsShared.kt, 写入侧 (JS 解析出 ruleStr 后 put)
     // 与读侧 (getAsString) 均经此 provider 转发到 ACache。

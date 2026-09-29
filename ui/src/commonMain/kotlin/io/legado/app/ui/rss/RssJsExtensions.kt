@@ -59,9 +59,9 @@ class RssJsActions(private val scope: CoroutineScope) : RssJsApi {
 /**
  * RSS 拦截 JS 的 `java` 绑定工厂。
  *
- * 平台差异在于"JS 可见的扩展面"怎么来: JVM 半区 (Android/桌面) 用 `JsExtensionsJvm` 接口默认实现,
+ * 平台差异在于"JS 可见的扩展面"怎么来: JVM 半区 (Android/桌面) 用 JsExtensionsCommon 接口默认实现,
  * native 半区靠 `NativeJsExtensionsBridge` 按 methodId 桥接 [BaseSource] 自身。
- * 故本工厂由各端 actual 提供, 与 [io.legado.app.help.JsExtProviders] 同一套路。
+ * 故本工厂由各端 actual 提供。
  *
  * native 半区的 JS 桥按 methodId 表分派, 表里没有 searchBook/addBook, native actual 用
  * [RssJsApi] 包装类补两个方法 (methodId 1610/1611, iOS/鸿蒙经同一 nativeMain 实现生效),

@@ -211,7 +211,7 @@ fun registerIosProviders() {
     // 6.7 压缩包 provider (zip/cbz, NativeZipCodec + RemoteZipCore; rar/7z 明确抛异常)
     registerNativeArchiveProvider()
 
-    // 7. JS 引擎 provider (IosJsEngine + IosImageOps + SharedJsScope + JsExtFactory), 必须在任何 JS eval 之前
+    // 7. JS 引擎 provider (IosJsEngine + IosImageOps + SharedJsScope + JsCryptoProviders), 必须在任何 JS eval 之前
     // (解除 KP3 P0 阻塞: iOS 端 JS 引擎缺失导致书源规则解析全失效)
     registerNativeJsEngines(IosImageOps)
 

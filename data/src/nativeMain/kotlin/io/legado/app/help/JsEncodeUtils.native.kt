@@ -58,6 +58,7 @@ actual interface JsEncodeUtils {
  * 故将默认实现下沉到独立的 Defaults interface, 由调用方多继承注入。
  *
  * digest/HMAC 委托 [NativeDigestOps]/[NativeHmacOps] (expect object): 纯 mbedTLS 实现 (iOS/鸿蒙),
+ * 加密工厂 (createSymmetricCrypto/createAsymmetricCrypto/createSign) 在 [JsCryptoProviderNative]。
  */
 @Suppress("unused")
 interface JsEncodeUtilsDefaults : JsEncodeUtils {
@@ -88,25 +89,16 @@ interface JsEncodeUtilsDefaults : JsEncodeUtils {
         return Base64Lenient.encodeToString(mac)
     }
 
-    //******************对称加密解密工厂************************//
+}
 
-    /**
-     * native 端工厂: 创建 [NativeSymmetricCrypto] (iOS krypto AES 全模式 / 鸿蒙 napi AES-ECB)。
-     *
-     * 与 [io.legado.app.help.JsEncodeUtilsDefaults.createSymmetricCrypto] 签名与行为对齐:
-     * key==null 用随机密钥, iv 非空时 setIv; 不支持的算法/模式由 [NativeSymmetricCrypto] 构造抛异常降级。
-     *
-     * 返回类型为 commonMain [SymmetricCrypto] interface (跨端引用透明兼容),
-     * 非 app 端 hutool `cn.hutool.crypto.symmetric.SymmetricCrypto` (native 无 hutool)。
-     *
-     * JS 中调用方式:
-     * java.createSymmetricCrypto(transformation, key, iv).decrypt(data)
-     * java.createSymmetricCrypto(transformation, key, iv).decryptStr(data)
-     * java.createSymmetricCrypto(transformation, key, iv).encrypt(data)
-     * java.createSymmetricCrypto(transformation, key, iv).encryptBase64(data)
-     * java.createSymmetricCrypto(transformation, key, iv).encryptHex(data)
-     */
-    fun createSymmetricCrypto(
+/**
+ * JS 加解密面 (commonMain [JsCryptoProvider]) 的 native (iOS/鸿蒙) 实现。
+ * 摘要/HMAC 复用 [JsEncodeUtilsDefaults]; 工厂创建 NativeSymmetricCrypto/NativeAsymmetricCrypto/NativeSign
+ * (mbedTLS 主实现, 异常回落 iOS Security.framework / 鸿蒙 cryptoFramework napi, 见各类注释)。
+ */
+object JsCryptoProviderNative : JsCryptoProvider, JsEncodeUtilsDefaults {
+
+    override fun createSymmetricCrypto(
         transformation: String,
         key: ByteArray?,
         iv: ByteArray?
@@ -115,51 +107,13 @@ interface JsEncodeUtilsDefaults : JsEncodeUtils {
         return if (iv != null && iv.isNotEmpty()) crypto.setIv(iv) else crypto
     }
 
-    fun createSymmetricCrypto(
-        transformation: String,
-        key: ByteArray
-    ): SymmetricCrypto {
-        return createSymmetricCrypto(transformation, key, null)
-    }
-
-    fun createSymmetricCrypto(
-        transformation: String,
-        key: String
-    ): SymmetricCrypto {
-        return createSymmetricCrypto(transformation, key, null)
-    }
-
-    fun createSymmetricCrypto(
-        transformation: String,
-        key: String,
-        iv: String?
-    ): SymmetricCrypto {
-        return createSymmetricCrypto(
-            transformation, key.encodeToByteArray(), iv?.encodeToByteArray()
-        )
-    }
-
-    //******************非对称加密解密工厂************************//
-
-    /**
-     * native 端工厂: 创建 [NativeAsymmetricCrypto] (两端均 mbedTLS 主实现,
-     * 异常回落 iOS Security.framework / 鸿蒙 cryptoFramework napi, 见类注释)。
-     * 与 [io.legado.app.help.JsEncodeUtilsDefaults.createAsymmetricCrypto] 签名对齐。
-     */
-    fun createAsymmetricCrypto(
+    override fun createAsymmetricCrypto(
         transformation: String
     ): AsymmetricCrypto {
         return NativeAsymmetricCrypto(transformation)
     }
 
-    //******************签名工厂************************//
-
-    /**
-     * native 端工厂: 创建 [NativeSign] (两端均 mbedTLS 主实现,
-     * 异常回落 iOS Security.framework / 鸿蒙 cryptoFramework napi, 见类注释)。
-     * 与 [io.legado.app.help.JsEncodeUtilsDefaults.createSign] 签名对齐。
-     */
-    fun createSign(
+    override fun createSign(
         algorithm: String
     ): Sign {
         return NativeSign(algorithm)

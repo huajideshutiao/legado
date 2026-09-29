@@ -1,8 +1,7 @@
 package io.legado.app.model.script
 
-import io.legado.app.data.entities.BaseSource
-import io.legado.app.help.JsExtFactory
-import io.legado.app.help.JsExtProviders
+import io.legado.app.help.JsCryptoProviderNative
+import io.legado.app.help.JsCryptoProviders
 import io.legado.app.help.image.ImageOps
 import io.legado.app.model.SharedJsScope
 
@@ -32,10 +31,6 @@ actual fun registerNativeJsEngines(imageOps: ImageOps) {
         }
     }
 
-    // 4. 注册 JsExtFactory: wrap 直返 source (与 desktop DesktopJsExtFactory 一致)。
-    // BaseSource 已实现 JsExtensionsCommon, NativeJsExtensionsBridge 注入 bindings 时直接桥接;
-    // 未注册时 BaseSource.evalJS 第一行 JsExtProviders.get() 即抛, 书源 JS 全废
-    JsExtProviders.register(object : JsExtFactory {
-        override fun wrap(source: BaseSource): Any = source
-    })
+    // 4. 注册 JS 加解密面平台实现 (JsExtensionsCommon 加解密默认方法)
+    JsCryptoProviders.register(JsCryptoProviderNative)
 }

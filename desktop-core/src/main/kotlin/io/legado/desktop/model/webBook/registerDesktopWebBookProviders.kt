@@ -41,7 +41,7 @@ import java.util.concurrent.ConcurrentHashMap
  */
 fun registerDesktopWebBookProviders() {
     // shared webBook 编排层创建 AnalyzeRule 走工厂: 返回 shared jvmMain 的 DesktopAnalyzeRule,
-    // 补全 JsEncodeUtils 面 (md5Encode/createSymmetricCrypto 等) 与 refreshTocUrl
+    // 补全 refreshTocUrl 等桌面端 override (JS 扩展面由 JsExtensionsCommon 默认实现承载)
     registerDesktopAnalyzeRuleFactory()
     BookInfoRefreshers.register(DesktopBookInfoRefresher)
     IntentDataProviders.register(DesktopIntentDataAccessor)

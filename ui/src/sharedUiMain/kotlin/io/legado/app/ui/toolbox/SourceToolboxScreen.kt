@@ -53,7 +53,6 @@ import io.legado.app.ui.compose.component.AppFilletTextButton
 import io.legado.app.ui.compose.component.AppOutlinedButton
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.horizontalMouseWheel
-import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.component.code.CodeEditorSearchTarget
 import io.legado.app.ui.compose.component.code.CodeEditorState
 import io.legado.app.ui.compose.component.code.CodeSearchHighlightState

@@ -19,25 +19,24 @@ import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.isJsonArray
 import io.legado.app.utils.splitNotBlank
+import com.script.jsdispatch.JsApi
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 
 /**
- * F2: BookSource 已下沉到 shared jvmAndAndroidMain, 去掉 JsExtensions 继承。
+ * F2: BookSource 已下沉到 shared jvmAndAndroidMain, JS 可见的 JsExtensions 面由 JsExtensionsCommon
+ * 接口默认实现承载 (ajax/connect/webView/加解密等), evalJS 直接绑定源实例自身。
  *
- * JS 可见的 JsExtensions 面 (ajax/connect/webView/log 等) 由 app 端 [BookSourceJsExt] 包装器补回,
- * 通过 [io.legado.app.help.JsExtProviders] 在 [BaseSource.evalJS] 注入 bindings["java"]/["source"]。
+ * @JsApi: KSP 生成静态分派表 (app 端 jsapi.extraClasses 接线), JS 桥属性/方法访问先查表、miss 落反射。
  *
  * 发现规则缓存原走 app 端 ACache.get("explore").getAsString(...), 下沉后改走
  * [ExploreKindsCacheProviders] provider (app 端注册转发到 ACache, 行为不变)。
- *
- * log 不再 override (原 super<JsExtensions>.log), 走 [BaseSource.log] 默认实现
- * (已对齐 JsExtensions.log 行为, 含 SourceDebugLoggers.impl?.log + AppLog.putDebug)。
  */
 @Suppress("unused")
 @Serializable
 @Entity(tableName = "book_sources")
+@JsApi
 data class BookSource(
     // 地址，包括 http/https
     @PrimaryKey

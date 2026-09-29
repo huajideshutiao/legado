@@ -172,7 +172,11 @@ android {
     // 共存版 _releaseA 后缀 + 分目录输出, 避免两次构建互相覆盖)。
 
     ksp {
-        arg("jsapi.extraClasses", "io.legado.app.data.entities.BaseSource,io.legado.app.help.CacheManager")
+        arg(
+            "jsapi.extraClasses",
+            "io.legado.app.data.entities.BaseSource,io.legado.app.data.entities.BookSource," +
+                "io.legado.app.data.entities.HttpTTS,io.legado.app.help.CacheManager"
+        )
     }
 
     compileOptions {

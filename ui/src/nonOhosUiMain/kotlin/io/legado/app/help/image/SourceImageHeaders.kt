@@ -27,7 +27,7 @@ data class ResolvedSourceRequest(
  *
  * 对齐原版 `AnalyzeUrl(url, source).getGlideUrl()`: 构造 AnalyzeUrl 取解析后的 url 与 headerMap
  * —— 请求头规则 JS 在 AnalyzeUrl 环境执行 (java = AnalyzeUrl 实例, `urlNoQuery`/`url` 可用;
- * 若走 source.getHeaderMap(), java 是书源包装器, 无 urlNoQuery, header 规则里的
+ * 若走 source.getHeaderMap(), java 是书源实例, 无 urlNoQuery, header 规则里的
  * `java.urlNoQuery` 会取到 undefined), cookie 由 AnalyzeUrlCore 的 setCookie 按其 domain 合并
  * (缺 cookie 会让需登录站点的封面 403/裂图)。
  *

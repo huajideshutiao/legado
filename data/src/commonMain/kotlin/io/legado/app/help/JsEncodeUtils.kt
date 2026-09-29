@@ -3,7 +3,8 @@ package io.legado.app.help
 /**
  * js 加解密扩展类，在 js 中通过 java 变量调用。
  * 添加方法，请更新文档 /legado/app/src/main/assets/help/JsHelp.md
- * 牵 app crypto 包的 createSymmetricCrypto/createAsymmetricCrypto/createSign 在 JsEncodeUtilsDefaults (jvmAndAndroidMain)
+ * 牵 app crypto 包的 createSymmetricCrypto/createAsymmetricCrypto/createSign 在
+ * [JsCryptoProvider] (JsCryptoProviderJvm / JsCryptoProviderNative)
  *
  * KMP expect interface：commonMain 仅声明 6 个 abstract 方法（KMP 限制: expect 不允许带方法体）。
  * - 各平台 actual interface 也保持纯 abstract (modality 对齐: expect abstract vs actual abstract)。

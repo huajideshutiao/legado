@@ -22819,17 +22819,11 @@ HSPLio/legado/app/help/IntentDataProviders;-><init>()V
 HSPLio/legado/app/help/IntentDataProviders;->register(Lio/legado/app/help/IntentDataAccessor;)V
 Lio/legado/app/help/JsEncodeUtils;
 Lio/legado/app/help/JsEncodeUtilsDefaults;
-Lio/legado/app/help/JsExtFactory;
-Lio/legado/app/help/JsExtProviders;
-HSPLio/legado/app/help/JsExtProviders;-><clinit>()V
-HSPLio/legado/app/help/JsExtProviders;-><init>()V
-HSPLio/legado/app/help/JsExtProviders;->register(Lio/legado/app/help/JsExtFactory;)V
 Lio/legado/app/help/JsExtensionsCommon;
 HSPLio/legado/app/help/JsExtensionsCommon;-><clinit>()V
 Lio/legado/app/help/JsExtensionsCommon$Companion;
 HSPLio/legado/app/help/JsExtensionsCommon$Companion;-><clinit>()V
 HSPLio/legado/app/help/JsExtensionsCommon$Companion;-><init>()V
-Lio/legado/app/help/JsExtensionsJvm;
 Lio/legado/app/help/LifecycleHelp;
 HSPLio/legado/app/help/LifecycleHelp;-><clinit>()V
 HSPLio/legado/app/help/LifecycleHelp;-><init>()V

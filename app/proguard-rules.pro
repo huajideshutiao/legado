@@ -61,7 +61,11 @@
 ############################
 # 业务：JS 引擎调用的 Java 类
 ############################
--keep class * extends io.legado.app.help.JsExtensionsJvm { *; }
+# 书源 JS 面实现类 (BookSource/HttpTTS/AnalyzeRuleCore/AnalyzeUrlCore/RssJsExtensionsJvm 等):
+# JS 桥经 JavaObjectBridge 按方法名反射调用 (collectMethods 走 clazz.methods, 含接口默认实现
+# 桥方法), 不 keep 时未被 Kotlin 直接调用的成员会被当死代码删除。
+# 注: JS 侧拿到的是运行时实例 (evalJS 绑 this), 类本身由 Kotlin 构造点可达, 故只需保成员。
+-keep class * implements io.legado.app.help.JsExtensionsCommon { *; }
 
 ############################
 # 业务：数据实体（Gson 反射 + Room + JS 访问）

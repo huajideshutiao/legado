@@ -3,7 +3,7 @@
 package io.legado.app.model.script
 
 import com.fleeksoft.ksoup.nodes.Node
-import io.legado.app.help.JsEncodeUtilsDefaults
+import io.legado.app.help.JsCryptoProviders
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.BookChapterLike
@@ -103,7 +103,7 @@ import kotlinx.atomicfu.locks.synchronized
  * # 补齐的方法 (methodId)
  * - 1-99: JsExtensionsCommon 纯函数面 (base64Encode/base64Decode/strToBytes/bytesToStr/hex/encodeURI/htmlFormat/timeFormat/randomUUID/t2s/s2t)
  * - 23-28: 规则引擎核心补齐 (getSource/put/get/evalJS/getString/getStringList, 对齐 JVM @JsApi 分派表)
- * - 100-199: JsEncodeUtilsDefaults 摘要/HMAC 面 (md5Encode/md5Encode16/digestHex/digestBase64Str/HMacHex/HMacBase64)
+ * - 100-199: JsCryptoProviders 摘要/HMAC 面 (md5Encode/md5Encode16/digestHex/digestBase64Str/HMacHex/HMacBase64)
  * - 200-299: 工厂方法 (createSymmetricCrypto/createAsymmetricCrypto/createSign) 返回 handle (Float64)
  * - 1000-1099: SymmetricCrypto 对象方法 (encryptBase64/decryptStr/decrypt/setIv/encrypt/encryptHex)
  * - 1100-1199: AsymmetricCrypto 对象方法 (setPrivateKey/setPublicKey/decrypt/encrypt/decryptStr/encryptHex/encryptBase64)
@@ -131,8 +131,8 @@ import kotlinx.atomicfu.locks.synchronized
  * - 5000+: KSP 生成表 (NativeGeneratedDispatch, JsApiProcessor 按 jsapi.nativeTargets 目标类生成;
  *   dispatch 顶部查表优先, JS 闭包按工厂分区注入 `// @@methods:<factory>@@` 标记处)
  *
- * 注: AnalyzeUrlCore/AnalyzeRuleCore 不实现 JsEncodeUtilsDefaults (JVM 端由 JsExtensionsJvm
- * 多继承注入同接口), 100-199 摘要段对规则类用同源默认实现补全 (encodeDefaultsOf),
+ * 注: AnalyzeUrlCore/AnalyzeRuleCore 不实现 JsEncodeUtilsDefaults (JS 加解密面由 JsExtensionsCommon
+ * 默认方法承载), 100-199 摘要段走 JsCryptoProviders 注册的平台实现,
  * 保证书源 java.md5Encode 等与 Android 端同结果; createSymmetricCrypto 等工厂方法直接调用
  * native 端 [NativeSymmetricCrypto], 不依赖 JsEncodeUtilsDefaults。
  *
@@ -410,11 +410,11 @@ object NativeJsExtensionsBridge {
                 }
             }
 
-            // ============ JsEncodeUtilsDefaults 摘要/HMAC 面 (100-199) ============
-            // AnalyzeRuleCore/AnalyzeUrlCore 不实现 JsEncodeUtilsDefaults (JVM 端由 JsExtensionsJvm
-            // 多继承注入同接口), 规则类走同源默认实现 (NativeRuleEncodeDefaults, 复用 MD5Utils /
-            // NativeDigestOps/NativeHmacOps, 非重写), 保证 java.md5Encode 等与 Android 端同结果
-            methodId in 101..106 -> encodeDefaultsOf(obj)?.let { enc ->
+            // ============ JsCryptoProviders 摘要/HMAC 面 (100-199) ============
+            // 平台实现在 registerNativeJsEngines 注册 (JsCryptoProviderNative, 复用 MD5Utils /
+            // NativeDigestOps/NativeHmacOps), 与 JsExtensionsCommon 默认方法同源, 保证 java.md5Encode 等与 Android 端同结果
+            methodId in 101..106 -> {
+                val enc = JsCryptoProviders.get()
                 when (methodId) {
                     101 -> stringToJsValue(ctx, enc.md5Encode(args.getString(0)))
                     102 -> stringToJsValue(ctx, enc.md5Encode16(args.getString(0)))
@@ -424,7 +424,7 @@ object NativeJsExtensionsBridge {
                     106 -> stringToJsValue(ctx, enc.HMacBase64(args.getString(0), args.getString(1), args.getString(2)))
                     else -> jsUndefined()
                 }
-            } ?: jsUndefined()
+            }
 
             // ============ 工厂方法 (200-299) → 返回 handle (Float64) ============
             obj is JsExtensionsCommon && methodId == 201 -> {
@@ -834,7 +834,7 @@ function __createJavaObj(handle) {
     obj.strToBytes = function(str) { return __nativeDispatch(handle, 3, [str]); };
     obj.bytesToStr = function(bytes) { return __nativeDispatch(handle, 4, bytes); };
     obj.encodeURI = function(str) { return __nativeDispatch(handle, 7, [str]); };
-    // JsEncodeUtilsDefaults 摘要/HMAC 面 (100-199)
+    // JsCryptoProviders 摘要/HMAC 面 (100-199)
     obj.md5Encode = function(str) { return __nativeDispatch(handle, 101, [str]); };
     obj.md5Encode16 = function(str) { return __nativeDispatch(handle, 102, [str]); };
     obj.digestHex = function(data, algorithm) { return __nativeDispatch(handle, 103, [data, algorithm]); };
@@ -1195,20 +1195,6 @@ function __createJsUrlObj(handle) {
     }
 
     // ============ 规则引擎核心方法 (AnalyzeRuleCore / AnalyzeUrlCore 共用, [X4] 补齐) ============
-
-    /**
-     * 摘要/HMAC 默认实现解析: 实现 JsEncodeUtilsDefaults 的对象直接用;
-     * AnalyzeRuleCore/AnalyzeUrlCore (规则路径 java binding) 不实现该接口, JVM 端由
-     * JsExtensionsJvm 多继承注入, native 端用同源默认实现补全 (逻辑复用, 非重写)。
-     */
-    private fun encodeDefaultsOf(obj: Any): JsEncodeUtilsDefaults? = when (obj) {
-        is JsEncodeUtilsDefaults -> obj
-        is AnalyzeRuleCore, is AnalyzeUrlCore -> NativeRuleEncodeDefaults
-        else -> null
-    }
-
-    /** nativeMain [JsEncodeUtilsDefaults] 默认实现实例 (MD5Utils + NativeDigestOps/NativeHmacOps)。 */
-    private object NativeRuleEncodeDefaults : JsEncodeUtilsDefaults
 
     private fun Any.corePut(key: String, value: String): String = when (this) {
         is AnalyzeRuleCore -> put(key, value)

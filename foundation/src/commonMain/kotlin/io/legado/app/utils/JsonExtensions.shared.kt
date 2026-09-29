@@ -13,9 +13,6 @@ import kotlinx.serialization.json.jsonObject
 
 private val json = Json { ignoreUnknownKeys = true }
 
-val jsonPath: Json
-    get() = json
-
 fun parseJsonElement(text: String): JsonElement = json.parseToJsonElement(text)
 
 fun JsonElement.readString(path: String): String? {

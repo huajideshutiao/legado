@@ -60,7 +60,7 @@ import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * AnalyzeUrl 主体: 纯 JVM 逻辑, 无 android-only 依赖。
- * app 端 [AnalyzeUrl] 继承本类并实现 [io.legado.app.help.JsExtensionsJvm],
+ * app 端 [AnalyzeUrl] 继承本类,
  * 添加 android-only 方法 (getGlideUrl/getMediaItem)。
  *
  * KSP @JsApi 分派表由 app 端 AnalyzeUrl 生成, 通过 getAllFunctions() 继承链

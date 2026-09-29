@@ -4,19 +4,18 @@ import androidx.room3.ColumnInfo
 import androidx.room3.Entity
 import androidx.room3.PrimaryKey
 import io.legado.app.utils.systemCurrentTimeMillis
+import com.script.jsdispatch.JsApi
 import kotlinx.serialization.Serializable
 
 /**
- * F2: HttpTTS 已下沉到 shared jvmAndAndroidMain, 去掉 JsExtensions 继承。
+ * F2: HttpTTS 已下沉到 shared jvmAndAndroidMain, JS 可见的 JsExtensions 面由 JsExtensionsCommon
+ * 接口默认实现承载, evalJS 直接绑定源实例自身。
  *
- * JS 可见的 JsExtensions 面由 app 端 [HttpTTSJsExt] 包装器补回,
- * 通过 [io.legado.app.help.JsExtProviders] 在 [BaseSource.evalJS] 注入 bindings。
- *
- * log 不再 override (原 super<JsExtensions>.log), 走 [BaseSource.log] 默认实现
- * (已对齐 JsExtensions.log 行为)。
+ * @JsApi: KSP 生成静态分派表 (app 端 jsapi.extraClasses 接线), JS 桥属性/方法访问先查表、miss 落反射。
  */
 @Serializable
 @Entity(tableName = "httpTTS")
+@JsApi
 data class HttpTTS(
     @PrimaryKey
     val id: Long = systemCurrentTimeMillis(),

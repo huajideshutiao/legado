@@ -6,13 +6,12 @@ import com.script.jsdispatch.JsApi
 import io.legado.app.constant.AppConst
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.BookChapterLike
-import io.legado.app.help.JsExtensionsJvm
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
 
 /**
- * AnalyzeUrl app 端实现: 继承 shared 的 [AnalyzeUrlCore] 并实现 [JsExtensionsJvm],
+ * AnalyzeUrl app 端实现: 继承 shared 的 [AnalyzeUrlCore],
  * 添加 android-only 方法 (getMediaItem)。
  *
  * KSP @JsApi 分派表由本类生成, 通过 getAllFunctions() 继承链
@@ -39,7 +38,7 @@ class AnalyzeUrl(
 ) : AnalyzeUrlCore(
     rawUrl, baseUrl, source, ruleData, chapter, readTimeout, callTimeout,
     coroutineContext, headerMapF, hasLoginHeader, selectedOptions, variables
-), JsExtensionsJvm {
+) {
 
     companion object {
         fun AnalyzeUrl.getMediaItem(): MediaItem {

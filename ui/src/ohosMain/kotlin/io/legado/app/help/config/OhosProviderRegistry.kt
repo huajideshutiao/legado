@@ -238,7 +238,7 @@ fun registerOhosProviders() {
     // 5.7 压缩包 provider (zip/cbz, NativeZipCodec + RemoteZipCore; rar/7z 明确抛异常)
     registerNativeArchiveProvider()
 
-    // 6. JS 引擎 provider (OhosJsEngine + OhosImageOps + SharedJsScope + JsExtFactory), 必须在任何 JS eval 之前
+    // 6. JS 引擎 provider (OhosJsEngine + OhosImageOps + SharedJsScope + JsCryptoProviders), 必须在任何 JS eval 之前
     // (解除 KP4 P0 阻塞: 鸿蒙端 JS 引擎缺失导致书源规则解析全失效)
     registerNativeJsEngines(OhosImageOps)
 

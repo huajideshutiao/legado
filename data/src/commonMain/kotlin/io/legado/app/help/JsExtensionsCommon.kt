@@ -9,6 +9,9 @@ import io.legado.app.constant.dateFormat
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.archive.ArchiveProviders
+import io.legado.app.help.crypto.AsymmetricCrypto
+import io.legado.app.help.crypto.Sign
+import io.legado.app.help.crypto.SymmetricCrypto
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.ConcurrentRateLimiter
 import io.legado.app.help.coroutine.IoDispatcher
@@ -213,10 +216,104 @@ interface JsExtensionsCommon {
 
     /**
      * 当前书源/订阅源, 由实现端注入。
-     * app 端 JsExtensions 子类(BookSource/HttpTTS 包装器/RssJsExtensions)已 override。
-     * commonMain 的 AnalyzeUrlCore/AnalyzeRuleCore/BaseSource 也已 override。
+     * commonMain 的 AnalyzeUrlCore/AnalyzeRuleCore/BaseSource 已 override。
      */
     fun getSource(): BaseSource?
+
+    //****************** 加解密 (平台实现经 JsCryptoProviders 注册) ******************//
+
+    fun md5Encode(str: String): String {
+        return JsCryptoProviders.get().md5Encode(str)
+    }
+
+    fun md5Encode16(str: String): String {
+        return JsCryptoProviders.get().md5Encode16(str)
+    }
+
+    /**
+     * 生成摘要，并转为 16 进制字符串
+     */
+    fun digestHex(data: String, algorithm: String): String {
+        return JsCryptoProviders.get().digestHex(data, algorithm)
+    }
+
+    /**
+     * 生成摘要，并转为 Base64 字符串
+     */
+    fun digestBase64Str(data: String, algorithm: String): String {
+        return JsCryptoProviders.get().digestBase64Str(data, algorithm)
+    }
+
+    /**
+     * 生成散列消息鉴别码，并转为 16 进制字符串
+     */
+    @Suppress("FunctionName")
+    fun HMacHex(data: String, algorithm: String, key: String): String {
+        return JsCryptoProviders.get().HMacHex(data, algorithm, key)
+    }
+
+    /**
+     * 生成散列消息鉴别码，并转为 Base64 字符串
+     */
+    @Suppress("FunctionName")
+    fun HMacBase64(data: String, algorithm: String, key: String): String {
+        return JsCryptoProviders.get().HMacBase64(data, algorithm, key)
+    }
+
+    /**
+     * 在js中这样使用
+     * java.createSymmetricCrypto(transformation, key, iv).decrypt(data)
+     * java.createSymmetricCrypto(transformation, key, iv).decryptStr(data)
+     * java.createSymmetricCrypto(transformation, key, iv).encrypt(data)
+     * java.createSymmetricCrypto(transformation, key, iv).encryptBase64(data)
+     * java.createSymmetricCrypto(transformation, key, iv).encryptHex(data)
+     */
+
+    /* 调用SymmetricCrypto key为null时使用随机密钥*/
+    fun createSymmetricCrypto(
+        transformation: String,
+        key: ByteArray?,
+        iv: ByteArray?
+    ): SymmetricCrypto {
+        return JsCryptoProviders.get().createSymmetricCrypto(transformation, key, iv)
+    }
+
+    fun createSymmetricCrypto(
+        transformation: String,
+        key: ByteArray
+    ): SymmetricCrypto {
+        return createSymmetricCrypto(transformation, key, null)
+    }
+
+    fun createSymmetricCrypto(
+        transformation: String,
+        key: String
+    ): SymmetricCrypto {
+        return createSymmetricCrypto(transformation, key, null)
+    }
+
+    fun createSymmetricCrypto(
+        transformation: String,
+        key: String,
+        iv: String?
+    ): SymmetricCrypto {
+        return createSymmetricCrypto(
+            transformation, key.encodeToByteArray(), iv?.encodeToByteArray()
+        )
+    }
+
+    /* keys都为null时使用随机密钥 */
+    fun createAsymmetricCrypto(
+        transformation: String
+    ): AsymmetricCrypto {
+        return JsCryptoProviders.get().createAsymmetricCrypto(transformation)
+    }
+
+    fun createSign(
+        algorithm: String
+    ): Sign {
+        return JsCryptoProviders.get().createSign(algorithm)
+    }
 
     //****************** P1: webView 系列 (从 app JsExtensions 下沉) ******************//
 
@@ -401,8 +498,7 @@ interface JsExtensionsCommon {
     /**
      * js实现重定向拦截,网络访问get
      *
-     * (从 jvmAndAndroidMain JsExtensionsJvm 下沉, 函数体逐行等价; 唯一平台差异:
-     * sslContext 入参经 [JsExtensionsPlatform.unsafeSslContext] 门面, native 端为 null 不走 unsafe SSL)
+     * (sslContext 入参经 [JsExtensionsPlatform.unsafeSslContext] 门面, native 端为 null 不走 unsafe SSL)
      */
     fun get(urlStr: String, headers: Map<String, String>): Connection.Response {
         val requestHeaders = if (getSource()?.enabledCookieJar == true) {

@@ -35,7 +35,7 @@ import kotlin.coroutines.EmptyCoroutineContext
 
 /**
  * AnalyzeRule 主体: 纯 JVM 逻辑, 无 android-only 依赖。
- * app 端 [AnalyzeRule] 继承本类并实现 [io.legado.app.help.JsExtensionsJvm],
+ * app 端 [AnalyzeRule] 继承本类,
  * 添加 android-only 方法 (refreshTocUrl override)。
  *
  * KSP @JsApi 分派表由 app 端 AnalyzeRule 生成, 通过 getAllFunctions() 继承链

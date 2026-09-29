@@ -5,7 +5,6 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.androidId
 import io.legado.app.data.entities.rule.RowUi
-import io.legado.app.help.JsExtProviders
 import io.legado.app.help.JsExtensionsCommon
 import io.legado.app.help.JsExtensionsPlatform
 import io.legado.app.help.UserAgentProviders
@@ -73,11 +72,10 @@ interface BaseSource : JsExtensionsCommon {
     fun getSourceType(): Int
 
     /**
-     * F2: 行为对齐 app 端 JsExtensions.log, 保证 BookSource/HttpTTS 下沉后去掉
+     * 行为对齐 app 端 JsExtensions.log, 保证 BookSource/HttpTTS 下沉后去掉
      * `override fun log(msg) = super<JsExtensions>.log(msg)` 仍能将调试日志推到
-     * SourceDebugLoggers (Debug 面板)。原 JsExtensions.log 还含 jsContextOrNull?.ensureActive(),
-     * 但 BaseSource.log 在非 JS 上下文也会被调用 (如 getHeaderMap 内部 log), 不能假设有 JS context,
-     * 故不引入 ensureActive; JS 调用 source.log(...) 时仍走包装器 JsExtensions.log 默认实现 (含 ensureActive)。
+     * SourceDebugLoggers (Debug 面板)。本实现不引入 jsContextOrNull?.ensureActive():
+     * 本方法在非 JS 上下文也会被调用 (如 getHeaderMap 内部 log), 不能假设有 JS context。
      */
     override fun log(msg: Any?): Any? {
         val msgStr = msg.toString()
@@ -304,13 +302,9 @@ interface BaseSource : JsExtensionsCommon {
     fun evalJS(jsStr: String, bindingsConfig: JsBindings.() -> Unit = {}): Any? {
         // 空字符串早返回，避免不必要的编译执行开销
         if (jsStr.isBlank()) return null
-        // F2: BookSource/HttpTTS 下沉后不再继承 JsExtensions, 注入包装器 (BookSourceJsExt/HttpTTSJsExt)
-        // 让 JS 调用 source.ajax(...) 等方法时通过 JsExtensionsJsDispatcher 分派。
-        // AnalyzeUrl/AnalyzeRule 等本就实现 JsExtensions 的对象, wrap() 兜底返回原对象。
-        val jsBinding = JsExtProviders.get().wrap(this)
         val bindings = buildScriptBindings { bindings ->
-            bindings["java"] = jsBinding
-            bindings["source"] = jsBinding
+            bindings["java"] = this
+            bindings["source"] = this
             bindings["baseUrl"] = getKey()
             bindings["cookie"] = SourceNetworkProviders.impl?.asBinding()
             bindings["cache"] = SourceCacheProviders.impl?.asBinding()

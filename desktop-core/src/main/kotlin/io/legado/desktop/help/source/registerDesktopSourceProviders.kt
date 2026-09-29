@@ -12,7 +12,8 @@ import io.legado.app.help.UserAgentProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.http.SharedCookieStore
-import io.legado.app.help.registerDesktopJsExtFactory
+import io.legado.app.help.JsCryptoProviderJvm
+import io.legado.app.help.JsCryptoProviders
 import io.legado.app.help.source.SourceCacheProvider
 import io.legado.app.help.source.SourceCacheProviders
 import io.legado.app.help.source.SourceDebugLogger
@@ -28,7 +29,7 @@ import java.io.File
  * 桌面端 source 扩展 provider 注册入口。
  *
  * 对应 app 端 `registerAndroidJsEngines` 中桥接 app 单例 (CacheManager / CookieStore /
- * Debug / RuleBigDataHelp / ACache / JsExtProviders / UserAgentProviders) 的部分,
+ * Debug / RuleBigDataHelp / ACache / JsCryptoProviders / UserAgentProviders) 的部分,
  * 桌面端复用同名下沉件 (CacheManager/RuleBigDataShared/ACacheBase 均已在 shared),
  * 仅注入桌面路径, 与 app 端一样持久化, 重启不丢。
  *
@@ -38,7 +39,7 @@ import java.io.File
  * - [SourceCacheProviders]: 委托 shared [CacheManager] (cacheDao 持久层 + LruCache 内存层)
  * - [SourceNetworkProviders]: 桥接 commonMain SharedCookieStore (Room 持久化, 与 CookieJar 同源)
  * - [ExploreKindsCacheProviders]: [ACacheBase] 子类 + 桌面 cacheDir/explore (对齐 ACache.get("explore"))
- * - JsExtProviders: 走 shared jvmMain 的 [registerDesktopJsExtFactory] (BookSource/HttpTTS 包装器)
+ * - JsCryptoProviders: shared jvmAndAndroidMain 的 [JsCryptoProviderJvm] (hutool 摘要/HMAC + 加密工厂)
  * - [UserAgentProviders]: 读 "userAgent" 配置, 兜底桌面 Chrome UA (与 app AppConfig.userAgent 对齐)
  *
  * 注册时机: desktop main 入口 registerSecondaryProviders, 在
@@ -52,7 +53,7 @@ fun registerDesktopSourceProviders() {
     SourceCacheProviders.impl = DesktopSourceCacheProvider
     SourceNetworkProviders.impl = DesktopSourceNetworkProvider
     ExploreKindsCacheProviders.impl = DesktopExploreKindsCacheProvider
-    registerDesktopJsExtFactory()
+    JsCryptoProviders.register(JsCryptoProviderJvm)
     UserAgentProviders.impl = desktopUserAgentProvider
 }
 
