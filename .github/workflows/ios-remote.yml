@@ -208,8 +208,6 @@ jobs:
           sudo "$KICKSTART" -configure -clientopts -setvncpw -vncpw "$VNC_PASSWORD"
           sudo "$KICKSTART" -activate
           sudo "$KICKSTART" -restart -agent -console
-          # 兜底: 若客户端走 macOS 账号登录窗口而不是单密码模式, 用 runner 账号 + 同一密码
-          sudo dscl . -passwd /Users/runner "$VNC_PASSWORD"
           # 分辨率固定 1080p, VNC 画面不跳; 该工具只在 VMware 虚机上存在, 没有就跳过
           if [ -x "/Library/Application Support/VMware Tools/vmware-resolutionSet" ]; then
             sudo "/Library/Application Support/VMware Tools/vmware-resolutionSet" 1920 1080 || true
