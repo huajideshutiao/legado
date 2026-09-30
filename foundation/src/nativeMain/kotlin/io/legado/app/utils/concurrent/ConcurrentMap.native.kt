@@ -4,11 +4,26 @@ import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 
 /**
+ * entries 迭代面的快照条目: 独立持有 key-value 内容, 与原 map 的任何内部结构无关联。
+ */
+private class SnapshotEntry<K, V>(
+    override val key: K,
+    override var value: V
+) : MutableMap.MutableEntry<K, V>
+
+/**
  * `newConcurrentMap` 的 iOS/鸿蒙 actual 实现 (nativeMain 中间源集共用)。
  *
  * Kotlin/Native 无 `java.util.concurrent.ConcurrentHashMap`, 用 atomicfu
  * [SynchronizedObject] + `synchronized` 包一层, 读写全部进同一把锁, 实现真线程安全;
- * 迭代面 (keys/values/entries) 返回快照副本, 避免边遍历边增删时抛并发修改异常。
+ * 迭代面 (keys/values/entries) 返回快照副本, 对齐 JVM 端 ConcurrentHashMap 的
+ * 弱一致迭代契约 (遍历不抛并发修改异常, 看到的是创建迭代器时点的状态);
+ * 快照集合与原 map 无关联, 对快照的结构修改不写回原 map。
+ *
+ * entries 必须逐条拷贝成 [SnapshotEntry] (内容快照): Kotlin/Native stdlib 的
+ * HashMap.EntryRef 在取值时校验原 map 的结构修改计数 (fail-fast), EntryRef 引用
+ * 即使装进新集合也仍与原 map 耦合, 原 map 在遍历期间被其他线程增删依然会抛
+ * ConcurrentModificationException。
  *
  * 前提说明: IoDispatcher 的 native actual 是 Dispatchers.Default (真多线程池,
  * 见 ThreadPoolDispatchers.native.kt), 调用方 (CacheBookShared/ReadBookShared 等)
@@ -29,7 +44,9 @@ actual fun <K, V> newConcurrentMap(): MutableMap<K, V> {
         override val values: MutableCollection<V>
             get() = synchronized(lock) { delegate.values.toMutableList() }
         override val entries: MutableSet<MutableMap.MutableEntry<K, V>>
-            get() = synchronized(lock) { delegate.entries.toMutableSet() }
+            get() = synchronized(lock) {
+                delegate.entries.mapTo(LinkedHashSet()) { SnapshotEntry(it.key, it.value) }
+            }
         override fun put(key: K, value: V): V? = synchronized(lock) { delegate.put(key, value) }
         override fun remove(key: K): V? = synchronized(lock) { delegate.remove(key) }
         override fun putAll(from: Map<out K, V>) = synchronized(lock) { delegate.putAll(from) }

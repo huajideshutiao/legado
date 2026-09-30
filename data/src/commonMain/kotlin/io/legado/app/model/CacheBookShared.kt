@@ -10,6 +10,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.ConcurrentException
 import io.legado.app.help.book.BookHelpProviders
 import io.legado.app.help.book.BookStorageProviders
+import io.legado.app.help.casUpdate
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.CompositeCoroutine
 import io.legado.app.help.coroutine.Coroutine
@@ -23,6 +24,7 @@ import io.legado.app.utils.concurrent.newConcurrentMap
 import io.legado.app.utils.concurrent.newConcurrentSet
 import io.legado.app.utils.onEachParallel
 import io.legado.app.utils.postEvent
+import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
@@ -70,8 +72,18 @@ object CacheBookShared {
     /** KMP 互斥锁 (替代 @Synchronized, Native 端 @Synchronized 无效) */
     private val lock = SynchronizedObject()
 
-    /** 按 bookUrl 索引的下载模型 map (对照 app 端 CacheBook.cacheBookMap) */
-    val cacheBookMap = newConcurrentMap<String, CacheBookModelShared>()
+    /**
+     * 按 bookUrl 索引的下载模型 map (对照 app 端 CacheBook.cacheBookMap)。
+     *
+     * 读多写少 (写仅发生在书籍任务建立/移除, 书籍量级) 且调度循环每秒全量遍历:
+     * 写侧在 [cacheBookMapRef] 上复制新 map CAS 发布, 读与遍历取当前快照 —— 零锁、
+     * 零分配, 快照发布后不再变更, 遍历天然不抛并发修改异常 (对齐原版
+     * ConcurrentHashMap 的弱一致迭代语义)。外部调用方仅做 get/isEmpty/keys 只读访问。
+     */
+    val cacheBookMap: Map<String, CacheBookModelShared>
+        get() = cacheBookMapRef.value
+
+    private val cacheBookMapRef = atomic<Map<String, CacheBookModelShared>>(emptyMap())
 
     /**
      * 工作状态控制 (对照 app 端 CacheBook.workingState)。
@@ -143,7 +155,7 @@ object CacheBookShared {
             return cacheBook
         }
         cacheBook = CacheBookModelShared(bookSource, book)
-        cacheBookMap[book.bookUrl] = cacheBook
+        cacheBookMapRef.casUpdate { it + (book.bookUrl to cacheBook) }
         return cacheBook
     }
 
@@ -160,7 +172,7 @@ object CacheBookShared {
     /** 清理所有下载任务 + 清空 map (对照 app 端 CacheBook.close) */
     fun close() {
         cacheBookMap.forEach { it.value.stop() }
-        cacheBookMap.clear()
+        cacheBookMapRef.casUpdate { emptyMap() }
         successDownloadSet.clear()
         errorDownloadMap.clear()
     }
@@ -346,7 +358,7 @@ object CacheBookShared {
                     waitDownloadSet.add(i)
                 }
             }
-            cacheBookMap[book.bookUrl] = this
+            cacheBookMapRef.casUpdate { it + (book.bookUrl to this) }
             isLoading = false
             postEvent(EventBus.UP_DOWNLOAD, book.bookUrl)
         }
@@ -413,10 +425,10 @@ object CacheBookShared {
         }
 
         private fun onFinally() = synchronized(lock) {
-            if (waitDownloadSet.isEmpty() && onDownloadSet.isEmpty() && retryingCount == 0 &&
-                cacheBookMap[book.bookUrl] === this
-            ) {
-                cacheBookMap.remove(book.bookUrl)
+            if (waitDownloadSet.isEmpty() && onDownloadSet.isEmpty() && retryingCount == 0) {
+                cacheBookMapRef.casUpdate { cur ->
+                    if (cur[book.bookUrl] === this) cur - book.bookUrl else cur
+                }
             }
             postEvent(EventBus.UP_DOWNLOAD, book.bookUrl)
         }
@@ -444,10 +456,10 @@ object CacheBookShared {
             val chapterIndex = synchronized(lock) {
                 val idx = waitDownloadSet.firstOrNull()
                 if (idx == null) {
-                    if (!isLoading && onDownloadSet.isEmpty() && retryingCount == 0 &&
-                        cacheBookMap[book.bookUrl] === this
-                    ) {
-                        cacheBookMap.remove(book.bookUrl)
+                    if (!isLoading && onDownloadSet.isEmpty() && retryingCount == 0) {
+                        cacheBookMapRef.casUpdate { cur ->
+                            if (cur[book.bookUrl] === this) cur - book.bookUrl else cur
+                        }
                     }
                     return
                 }
