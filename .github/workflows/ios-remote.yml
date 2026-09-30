@@ -223,11 +223,17 @@ jobs:
             echo "::error::缺少 secret NGROK_AUTH_TOKEN。到 https://dashboard.ngrok.com/get-started/your-authtoken 复制 authtoken, 仓库 Settings → Secrets → Actions → New repository secret 新增: Name=NGROK_AUTH_TOKEN"
             exit 1
           fi
-          brew install novnc websockify
-          NOVNC_DIR="$(brew --prefix)/share/novnc"
+          # noVNC 与 websockify 均不经 Homebrew (homebrew-core 无这两个 formula):
+          # noVNC 官方 release 不发布资产, 分发物是 tag 源码归档; websockify 走 PyPI 纯
+          # Python wheel, venv 内安装 (PEP 668 仅拦 venv 之外的解释器), numpy 可选故 --no-deps
+          curl -sSL -o /tmp/novnc.tar.gz https://github.com/novnc/noVNC/archive/refs/tags/v1.7.0.tar.gz
+          tar -xzf /tmp/novnc.tar.gz -C /tmp
+          NOVNC_DIR=/tmp/noVNC-1.7.0
           test -f "$NOVNC_DIR/vnc.html"
+          python3 -m venv /tmp/wsenv
+          /tmp/wsenv/bin/pip install --quiet --no-deps websockify
           # 单端口同时发网页和 WebSocket, 浏览器一个地址全搞定
-          nohup websockify --web="$NOVNC_DIR" 6080 localhost:5900 \
+          nohup /tmp/wsenv/bin/websockify --web "$NOVNC_DIR" 6080 localhost:5900 \
             > "$GITHUB_WORKSPACE/sim-artifacts/16-websockify.log" 2>&1 &
           sleep 2
           curl -sSL -o ngrok.zip https://ngrok-agent.s3.amazonaws.com/ngrok-v3-stable-darwin-arm64.zip
