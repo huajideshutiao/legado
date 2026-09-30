@@ -1,0 +1,329 @@
+name: iOS Remote
+
+# 交互式远程会话: 模拟器装好 app 后开屏幕共享, websockify 把 VNC 包成网页
+# (noVNC), ngrok 隧道打出去, 人在 Windows 上浏览器直接打开页面操作 (远程点点点),
+# 无需装任何客户端。
+# 用途边界: 调试本仓库自己的 iOS 应用 (GitHub Actions 条款允许的开发/测试用途,
+# 单一许可用户访问); 会话时长由触发参数限定, 用完 Cancel 即回收, 禁止当常驻
+# 远程桌面高频长挂。
+# 安全: VNC 密码只放 secret (VNC_PASSWORD), 严禁打进任何日志/summary ——
+# public 仓库的 job log 与 summary 任何人都可见。连接地址本身写 summary。
+on:
+  workflow_dispatch:
+    inputs:
+      session_minutes:
+        description: '会话保持时长(分钟), 到点自动结束; 点完可提前 Cancel run'
+        required: true
+        default: '60'
+        type: choice
+        options:
+          - '30'
+          - '60'
+          - '90'
+          - '120'
+          - '180'
+
+concurrency:
+  group: ios-remote-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  remote:
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # syncIosVersion 用 git rev-list HEAD --count 算 versionCode,
+          # shallow 下恒为 1 (与 ios.yml 同款取版本方式, 两边必须一致)
+          fetch-depth: 0
+
+      - name: Set version
+        id: ver
+        run: |
+          v="$(TZ=Asia/Shanghai date +3.%y.%m%d%H%M)"
+          echo "version=$v" >> $GITHUB_OUTPUT
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: 21
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+      - name: Gradle build-cache 共享
+        # 与 ios.yml 同 key: 命中其留下的 build-cache, 减少重复编译 shared
+        uses: actions/cache@v5
+        with:
+          path: ~/.gradle/caches/build-cache-1
+          key: gradle-buildcache-${{ runner.os }}-${{ github.ref_name }}
+          restore-keys: |
+            gradle-buildcache-${{ runner.os }}-
+      - name: Cache Kotlin/Native toolchain
+        uses: actions/cache@v5
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+          restore-keys: konan-${{ runner.os }}-
+      - name: Cache iOS native static libs
+        id: cache-native
+        uses: actions/cache@v5
+        with:
+          path: data/build/iosNativeLibs
+          key: ios-native-${{ runner.os }}-${{ hashFiles('modules/quickjs/src/main/cinterop/quickjs-ng/**', 'data/src/cinterop/mbedtls/**', 'scripts/build-ios-native.sh') }}
+
+      - name: Build iOS native static libs (quickjs-ng + mbedtls)
+        id: native
+        if: steps.cache-native.outputs.cache-hit != 'true'
+        run: |
+          set -o pipefail
+          mkdir -p "$GITHUB_WORKSPACE/ci-logs"
+          chmod +x scripts/build-ios-native.sh
+          ./scripts/build-ios-native.sh ios_arm64 ios_simulator_arm64 2>&1 \
+            | tee "$GITHUB_WORKSPACE/ci-logs/10-build-ios-native.log"
+
+      - name: Verify static libs
+        run: |
+          set -x
+          mkdir -p "$GITHUB_WORKSPACE/ci-logs"
+          ls -lR data/build/iosNativeLibs || true
+
+      - name: Sync iOS version
+        run: ./gradlew syncIosVersion -PappVersion=${{ steps.ver.outputs.version }} --console=plain
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: iosApp/
+        run: |
+          set -o pipefail
+          mkdir -p "$GITHUB_WORKSPACE/ci-logs"
+          xcodegen generate 2>&1 | tee "$GITHUB_WORKSPACE/ci-logs/50-xcodegen.log"
+
+      # ===== 模拟器: 创建 → 启动 → 构建 → 安装 → 打开窗口 =====
+      - name: Boot iOS simulator
+        id: boot
+        run: |
+          set -o pipefail
+          mkdir -p "$GITHUB_WORKSPACE/sim-artifacts"
+          {
+            # runner 预装多套 iOS runtime; 取当前最高一套, 避免写死设备名
+            RUNTIME="$(xcrun simctl list runtimes --json \
+              | python3 -c 'import json,sys; rs=[r for r in json.load(sys.stdin)["runtimes"] if r.get("isAvailable") and r["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS")]; rs.sort(key=lambda r: [int(x) for x in r["version"].split(".")]); print(rs[-1]["identifier"])')"
+            echo "runtime=$RUNTIME"
+            DEVICE_TYPE="$(xcrun simctl list devicetypes --json \
+              | python3 -c 'import json,sys; ds=json.load(sys.stdin)["devicetypes"]; print(next(d["identifier"] for d in ds if d["name"]=="iPhone 17"))')"
+            echo "deviceType=$DEVICE_TYPE"
+            UDID="$(xcrun simctl create legado-remote "$DEVICE_TYPE" "$RUNTIME")"
+            echo "udid=$UDID" >> $GITHUB_OUTPUT
+            echo "runtime=$RUNTIME" >> $GITHUB_OUTPUT
+            xcrun simctl boot "$UDID"
+            xcrun simctl bootstatus "$UDID" -b
+            xcrun simctl list devices | grep -i legado-remote || true
+          } 2>&1 | tee "$GITHUB_WORKSPACE/sim-artifacts/10-boot.log"
+
+      - name: Build for simulator
+        id: simbuild
+        working-directory: iosApp/
+        run: |
+          set -o pipefail
+          # build (不是 archive): 模拟器要的是 iphonesimulator SDK 下的 .app,
+          # 且必须走这条链让 xcodebuild 自己生成 UIRequiredDeviceCapabilities。
+          # 用 Debug 而非 Release: 本仓只注册了 iosArm64/iosSimulatorArm64 (无 iosX64),
+          # Release 下 xcodebuild 会传 ARCHS="arm64 x86_64",
+          # Gradle 的 syncComposeResourcesForIos 会直接报 Unknown iOS simulator arch;
+          # Debug 能过是因为 ONLY_ACTIVE_ARCH 只编 arm64。
+          xcodebuild build \
+            -project iosApp.xcodeproj \
+            -scheme iosApp \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,id=${{ steps.boot.outputs.udid }}" \
+            -derivedDataPath build/simdd \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            LEGADO_APP_VERSION="${{ steps.ver.outputs.version }}" 2>&1 \
+            | tee "$GITHUB_WORKSPACE/sim-artifacts/20-xcodebuild.log"
+          APP="$(find build/simdd/Build/Products -maxdepth 2 -name '*.app' | head -1)"
+          test -n "$APP"
+          # 转绝对路径: 本步 cwd 是 iosApp/, install 步在仓库根目录执行
+          APP="$(cd "$(dirname "$APP")" && pwd)/$(basename "$APP")"
+          echo "app=$APP" >> $GITHUB_OUTPUT
+          BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")"
+          echo "bundleId=$BUNDLE_ID" >> $GITHUB_OUTPUT
+          echo "bundleId=$BUNDLE_ID"
+          {
+            echo "===== 产物信息 ====="
+            otool -l "$APP/legado" | grep -A4 LC_BUILD_VERSION || true
+            file "$APP/legado" "$APP/Frameworks/shared.framework/shared" || true
+          } 2>&1 | tee -a "$GITHUB_WORKSPACE/sim-artifacts/20-xcodebuild.log"
+
+      - name: Install and launch app
+        id: launch
+        run: |
+          set -o pipefail
+          UDID="${{ steps.boot.outputs.udid }}"
+          APP="${{ steps.simbuild.outputs.app }}"
+          BUNDLE_ID="${{ steps.simbuild.outputs.bundleId }}"
+          OUT="$GITHUB_WORKSPACE/sim-artifacts"
+          {
+            xcrun simctl install "$UDID" "$APP"
+            LAUNCH_OUT="$(xcrun simctl launch "$UDID" "$BUNDLE_ID" 2>&1 || true)"
+            echo "$LAUNCH_OUT"
+            PID="$(echo "$LAUNCH_OUT" | sed -n 's/.*: \([0-9][0-9]*\)$/\1/p')"
+            sleep 5
+            xcrun simctl io "$UDID" screenshot "$OUT/30-launch-5s.png" || true
+            # 把模拟器窗口显示在 runner 桌面上, VNC 连进来直接看到已运行的应用
+            open -a Simulator --args -CurrentDeviceUDID "$UDID"
+            sleep 5
+            xcrun simctl io "$UDID" screenshot "$OUT/31-simulator-window.png" || true
+            echo "app pid=${PID:-?}; 若上一步截图为空/白屏, 连上 VNC 后手动点图标重启应用即可"
+          } 2>&1 | tee "$OUT/32-install-launch.log"
+
+      # ===== 交互通道: VNC + 隧道 =====
+      - name: Enable screen sharing (VNC)
+        id: vnc
+        env:
+          VNC_PASSWORD: ${{ secrets.VNC_PASSWORD }}
+        run: |
+          set -o pipefail
+          KICKSTART=/System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart
+          if [ -z "$VNC_PASSWORD" ]; then
+            echo "::error::缺少 secret VNC_PASSWORD。到仓库 Settings → Secrets and variables → Actions → New repository secret 新增: Name=VNC_PASSWORD, 值=你自定义的强密码 (VNC 客户端连接时输入)"
+            exit 1
+          fi
+          # 标准单密码 VNC (legacy 模式): noVNC 网页连接时弹密码框输该密码
+          sudo "$KICKSTART" -configure -allowAccessFor -allUsers -privs -all
+          sudo "$KICKSTART" -configure -clientopts -setvnclegacy -vnclegacy yes
+          sudo "$KICKSTART" -configure -clientopts -setvncpw -vncpw "$VNC_PASSWORD"
+          sudo "$KICKSTART" -activate
+          sudo "$KICKSTART" -restart -agent -console
+          # 兜底: 若客户端走 macOS 账号登录窗口而不是单密码模式, 用 runner 账号 + 同一密码
+          sudo dscl . -passwd /Users/runner "$VNC_PASSWORD"
+          # 分辨率固定 1080p, VNC 画面不跳; 该工具只在 VMware 虚机上存在, 没有就跳过
+          if [ -x "/Library/Application Support/VMware Tools/vmware-resolutionSet" ]; then
+            sudo "/Library/Application Support/VMware Tools/vmware-resolutionSet" 1920 1080 || true
+          fi
+
+      - name: Start noVNC web tunnel
+        id: ngrok
+        env:
+          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+        run: |
+          set -o pipefail
+          if [ -z "$NGROK_AUTH_TOKEN" ]; then
+            echo "::error::缺少 secret NGROK_AUTH_TOKEN。到 https://dashboard.ngrok.com/get-started/your-authtoken 复制 authtoken, 仓库 Settings → Secrets → Actions → New repository secret 新增: Name=NGROK_AUTH_TOKEN"
+            exit 1
+          fi
+          brew install novnc websockify
+          NOVNC_DIR="$(brew --prefix)/share/novnc"
+          test -f "$NOVNC_DIR/vnc.html"
+          # 单端口同时发网页和 WebSocket, 浏览器一个地址全搞定
+          nohup websockify --web="$NOVNC_DIR" 6080 localhost:5900 \
+            > "$GITHUB_WORKSPACE/sim-artifacts/16-websockify.log" 2>&1 &
+          sleep 2
+          curl -sSL -o ngrok.zip https://ngrok-agent.s3.amazonaws.com/ngrok-v3-stable-darwin-arm64.zip
+          unzip -o ngrok.zip ngrok
+          chmod +x ngrok
+          ./ngrok config add-authtoken "$NGROK_AUTH_TOKEN" >/dev/null
+          nohup ./ngrok http 6080 --log stdout > "$GITHUB_WORKSPACE/sim-artifacts/15-ngrok.log" 2>&1 &
+          # 等隧道建立, 从本地 API 拿公网地址
+          URL=""
+          for i in $(seq 1 20); do
+            URL="$(curl -s http://127.0.0.1:4040/api/tunnels \
+              | python3 -c 'import json,sys; ts=json.load(sys.stdin)["tunnels"]; print(next((t["public_url"] for t in ts if t["public_url"].startswith("http")), ""))' 2>/dev/null || true)"
+            [ -n "$URL" ] && break
+            sleep 2
+          done
+          if [ -z "$URL" ]; then
+            echo "::error::ngrok 隧道未建立, 看 artifact 里 15-ngrok.log (常见原因: authtoken 无效 / 免费账号已有另一条在线隧道)"
+            tail -20 "$GITHUB_WORKSPACE/sim-artifacts/15-ngrok.log" || true
+            exit 1
+          fi
+          BASE="${URL/#http:\/\//https:\/\/}"
+          PAGE="$BASE/vnc.html?autoconnect=1"
+          echo "page=$PAGE" >> $GITHUB_OUTPUT
+          {
+            echo "## iOS 远程会话已就绪"
+            echo ""
+            echo "### 浏览器直接打开: $PAGE"
+            echo ""
+            echo "- 弹出密码框时输入仓库 secret \`VNC_PASSWORD\`"
+            echo "- 首次访问若出现 ngrok 警告页, 点 Visit Site 进入"
+            echo "- 模拟器已安装并启动应用; 应用若已退出, 在模拟器里点图标重启即可"
+            echo "- 会话最长 ${{ inputs.session_minutes }} 分钟, 到点自动结束; 提前结束请直接 Cancel 本 workflow run"
+            echo "- 会话结束后 runner 销毁, 本地址即失效; 每次触发地址都会变"
+          } >> $GITHUB_STEP_SUMMARY
+
+      - name: Keep session alive
+        id: keepalive
+        run: |
+          # 心跳输出便于确认会话仍在线; 到点后 job 正常结束, runner 即回收销毁
+          TOTAL=$(( ${{ inputs.session_minutes }} * 60 ))
+          ELAPSED=0
+          while [ "$ELAPSED" -lt "$TOTAL" ]; do
+            STEP=300
+            REMAIN=$(( TOTAL - ELAPSED ))
+            [ "$REMAIN" -lt "$STEP" ] && STEP=$REMAIN
+            sleep "$STEP"
+            ELAPSED=$(( ELAPSED + STEP ))
+            echo "会话已保持 $((ELAPSED/60)) 分钟, 剩余 $(( (TOTAL-ELAPSED)/60 )) 分钟"
+          done
+          echo "会话时长用尽, 本次远程会话结束"
+
+      # ===== 收尾: 会话留档 (崩溃日志/截图), Cancel 时也尽力收集 =====
+      - name: Collect session artifacts
+        if: always()
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          UDID="${{ steps.boot.outputs.udid }}"
+          BUNDLE_ID="${{ steps.simbuild.outputs.bundleId }}"
+          OUT="$GITHUB_WORKSPACE/sim-artifacts"
+          mkdir -p "$OUT/app-container" "$OUT/system-crash"
+          {
+            xcrun simctl io "$UDID" screenshot "$OUT/90-end.png" || true
+            screencapture -x "$OUT/91-desktop-end.png" || true
+            if CONTAINER="$(xcrun simctl get_app_container "$UDID" "$BUNDLE_ID" data 2>/dev/null)"; then
+              cp -R "$CONTAINER/Documents/logs" "$OUT/app-container/" 2>/dev/null || true
+              cp -R "$CONTAINER/Library/logs" "$OUT/app-container/" 2>/dev/null || true
+            fi
+            for f in "$HOME"/Library/Logs/DiagnosticReports/*.ips; do
+              [ -f "$f" ] || continue
+              case "$(basename "$f")" in
+                *legado*|*iosApp*|*shared*) cp "$f" "$OUT/system-crash/" ;;
+              esac
+            done
+            xcrun simctl spawn "$UDID" log show --last 30m --style compact \
+              --predicate "processImagePath CONTAINS \"$BUNDLE_ID\" OR senderImagePath CONTAINS \"legado\"" \
+              > "$OUT/95-sim-syslog.txt" 2>&1 || true
+          } 2>&1 | tee "$OUT/96-collect.log"
+
+      - name: Shutdown simulator
+        if: always()
+        continue-on-error: true
+        run: |
+          UDID="${{ steps.boot.outputs.udid }}"
+          [ -n "$UDID" ] && xcrun simctl shutdown "$UDID" || true
+          [ -n "$UDID" ] && xcrun simctl delete "$UDID" || true
+
+      - name: Upload session artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-remote-session
+          path: |
+            ${{ github.workspace }}/sim-artifacts/**
+            ${{ github.workspace }}/ci-logs/**
+          if-no-files-found: warn
+          retention-days: 3
