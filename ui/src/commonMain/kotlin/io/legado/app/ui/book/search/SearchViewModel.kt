@@ -17,10 +17,10 @@ import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.concurrent.newConcurrentSet
 import io.legado.app.utils.systemCurrentTimeMillis
 import io.legado.app.utils.throttleLatest
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -47,8 +47,7 @@ import kotlinx.coroutines.launch
  * 替换 Android 专属依赖:
  * - `androidx.lifecycle.LiveData / MutableLiveData / asLiveData` → 纯状态用 `MutableStateFlow`,
  *   事件 (结果列表 / 搜索结束) 用 `MutableSharedFlow(replay=1)` 对齐 postValue 的"每次都投递"
- * - `viewModelScope` → 构造参数 [scope] (默认 [screenModelScope], 带异常兜底),
- *   宿主可注入生命周期 scope (桌面端窗口 scope / app 端 viewModelScope)
+ * - `viewModelScope` → 自管 [screenModelScope] (带异常兜底),
  * - `BaseViewModel.execute { ... }.onError { ... }` → `scope.launch { ... }` + try/catch
  *   (Coroutine 容器仍可用, 但 StateFlow 已无观察者调度需求, 直接 launch 更直接)
  * - `appDb.searchKeywordDao` (app 端单例) → `AppDbProviders.get().searchKeywordDao`
@@ -59,12 +58,12 @@ import kotlinx.coroutines.launch
  * SearchModel 自身已下沉 commonMain (走 `AppConfigProviders` / `AppDbProviders`),
  * 本 VM 仅作状态编排与回调适配。
  *
- * @param scope 持有所有协程的 scope, 宿主关闭时调用 [close] 释放。
+ * 宿主关闭时调用 [close] 释放所有协程。
  */
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
-class SearchViewModel(
-    private val scope: CoroutineScope = screenModelScope("搜索"),
-) {
+class SearchViewModel {
+
+    private val scope = screenModelScope("搜索")
 
     /** 搜索范围 (持久化于 AppConfig)。 */
     val searchScope = SearchScope(AppConfigProviders.get().searchScope)
@@ -162,6 +161,7 @@ class SearchViewModel(
     // ---- 内部 ----
 
     private var searchID = 0L
+    private var searchCommandJob: Job? = null
     private var filteredCount = 0
     private var booksFlowJob: Job? = null
     private var searchBooksThrottleJob: Job? = null
@@ -404,10 +404,14 @@ class SearchViewModel(
      * @param resetOptions 是否重置搜索选项 (单源搜索声明的可选项)。
      */
     fun search(key: String, resetOptions: Boolean = true) {
-        scope.launch {
+        if (key.isEmpty() && (_isSearching.value || searchKey.isEmpty())) return
+        searchCommandJob?.cancel()
+        _isSearching.value = true
+        searchCommandJob = scope.launch {
             if ((searchKey == key) || key.isNotEmpty()) {
                 searchModel.cancelSearch()
-                searchID = systemCurrentTimeMillis()
+                _isSearching.value = true
+                searchID++
                 _searchBooks.tryEmit(emptyList())
                 restartSearchBooksCollector()
                 searchKey = key
@@ -418,6 +422,7 @@ class SearchViewModel(
                 }
             }
             if (searchKey.isEmpty()) {
+                _isSearching.value = false
                 return@launch
             }
             searchModel.search(searchID, searchKey)
@@ -425,7 +430,10 @@ class SearchViewModel(
     }
 
     /** 停止搜索。 */
-    fun stop() = searchModel.cancelSearch()
+    fun stop() {
+        searchCommandJob?.cancel()
+        searchModel.cancelSearch()
+    }
 
     /** 暂停搜索 (生命周期 onPause)。 */
     fun pause() = searchModel.pause()
@@ -521,5 +529,6 @@ class SearchViewModel(
     /** 释放资源 (Activity destroy / Composable onDispose)。 */
     fun close() {
         searchModel.close()
+        scope.cancel()
     }
 }

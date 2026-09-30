@@ -66,6 +66,8 @@ class ChapterPreDownloader(
 ) {
     private val semaphore = Semaphore(PRE_DOWNLOAD_CONCURRENCY)
     private var task: Job? = null
+    private var lastWindow: Triple<Int, Int, Int>? = null
+    private var generation = 0
 
     /** 已确认有缓存的章节 (原版 `downloadedChapters`)。 */
     val downloadedChapters = mutableSetOf<Int>()
@@ -92,19 +94,24 @@ class ChapterPreDownloader(
     }
 
     /**
-     * 触发一轮预下载 (原版 `preDownload`): 每次先作废上一轮。
+     * 触发一轮预下载。同一章节窗口仍在扫描时合并重复触发, 切章时作废上一轮。
      */
     fun preDownload() {
         if (isLocalBook()) return
+        val num = preDownloadNum()
+        if (num < PRE_DOWNLOAD_MIN_ENABLED) {
+            scope.launch { upToc(false) }
+            return
+        }
+        val window = Triple(durChapterIndex(), num, chapterSize())
+        if (lastWindow == window) return
+        lastWindow = window
+        val request = ++generation
         scope.launch {
-            val num = preDownloadNum()
-            if (num < PRE_DOWNLOAD_MIN_ENABLED) {
-                upToc(false)
-                return@launch
-            }
+            if (request != generation) return@launch
             task?.cancel()
             task = downloadScope.launch {
-                val durIndex = durChapterIndex()
+                val durIndex = window.first
                 // 正向预下载 (dur±1 由三章窗口装载负责, 故从 +2 起)
                 launch {
                     val maxIndex = min(durIndex + num, chapterSize())
@@ -122,6 +129,8 @@ class ChapterPreDownloader(
                     }
                 }
             }
+            task?.join()
+            if (request == generation) lastWindow = null
         }
     }
 
@@ -132,6 +141,8 @@ class ChapterPreDownloader(
      * 或「下一章加载失败」时离开阅读页也不取消, 预下载继续跑到跑完。
      */
     fun cancel() {
+        lastWindow = null
+        generation++
         task?.cancel()
         downloadScope.coroutineContext.cancelChildren()
     }
