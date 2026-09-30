@@ -6,13 +6,12 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'release=完整正式发布；ios-beta=仅构建 iOS 并追加到 beta'
+        description: 'release=完整正式发布'
         required: true
         default: 'release'
         type: choice
         options:
           - release
-          - ios-beta
 
 # 定时/手动触发时, 同一分支只跑一个实例, 取消旧实例避免重复 Release
 concurrency:
@@ -149,39 +148,22 @@ jobs:
     with:
       version: ${{ needs.prepare.outputs.version }}
 
-  # ===== iOS IPA (未签名) =====
-  # 实现在 ios.yml (与手动触发同一份): 预编 quickjs-ng/mbedtls 静态库 → link release framework →
-  # xcodegen 生成工程 → xcodebuild archive (全程关签名) → 按 Payload/ 规范打未签名 ipa。
-  # 未签名是刻意的: 本项目不上架 App Store, ipa 供 SideStore/AltStore/Xcode 自签侧载, 不碰签名 secrets。
-  # ios-beta 模式: ios.yml 只读构建 artifact，本 job 经 _publish.yml 的统一 beta 锁追加上传；
-  # 正式模式: IPA 与 APK/桌面产物一起发布到版本 Release。
-  ios:
-    needs: prepare
-    if: ${{ needs.prepare.outputs.sign || (github.event_name == 'workflow_dispatch' && inputs.mode == 'ios-beta') }}
-    # reusable iOS 构建严格保持 contents:read；写权限只存在于下方统一 publish job。
-    permissions:
-      contents: read
-    uses: ./.github/workflows/ios.yml
-    with:
-      stage: ipa
-      version: ${{ needs.prepare.outputs.version }}
-
   # ===== 鸿蒙 =====
   # CI 不构建 (CPF 工具链在私有 Nexus 不可达 + 无 API 24 SDK 公开渠道)。
   # 查证结论与本地构建步骤见 test.yml 末尾注释块; .so/HAP 需随 Release 发布时本地手动上传。
 
-  # ===== 统一发布正式 Release / 手动 iOS beta =====
+  # ===== 统一发布正式 Release (iOS 不在本流水线: 手动触发 ios.yml 自产出包) =====
   publish:
-    needs: [ prepare, build, desktop, ios ]
-    # ios-beta 模式只要求 iOS 成功；正式模式仍以 Android 成功为发布前提。
-    # always() 让 publish 在正式模式的可选桌面/iOS失败后仍可发布已有产物；分支条件仍要求关键 job 成功。
-    if: ${{ always() && ((github.event_name == 'workflow_dispatch' && inputs.mode == 'ios-beta' && needs.ios.result == 'success') || ((github.event_name != 'workflow_dispatch' || inputs.mode == 'release') && needs.build.result == 'success')) }}
+    needs: [ prepare, build, desktop ]
+    # 正式模式以 Android 成功为发布前提。
+    # always() 让 publish 在可选桌面失败后仍可发布已有产物；条件仍要求关键 job 成功。
+    if: ${{ always() && ((github.event_name != 'workflow_dispatch' || inputs.mode == 'release') && needs.build.result == 'success') }}
     permissions:
       contents: write
     uses: ./.github/workflows/_publish.yml
     with:
-      tag: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'ios-beta' && 'beta' || needs.prepare.outputs.version }}
-      artifact-name-pattern: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'ios-beta' && 'ios-ipa-unsigned' || '*' }}
+      tag: ${{ needs.prepare.outputs.version }}
+      artifact-name-pattern: '*'
       name: ${{ needs.prepare.outputs.version }}
-      prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'ios-beta' }}
+      prerelease: false
 

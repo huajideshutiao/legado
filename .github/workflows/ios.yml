@@ -3,13 +3,14 @@ name: iOS Build
 # ⚠️ 手动触发不挂 push/PR: macOS runner 排队久 (标准 runner 在 public 仓库不计费,
 # 但每次 push 都占一个 macOS 槽位会拖慢其它构建)。
 # stage 控制深度, 调试 YAML/脚本语法时用 klib 即可, 不必每次跑完整 ipa。
-# 另经 workflow_call 被 release.yml 调用 (stage=ipa), 正式/Beta Release 的 IPA 只有这一份实现。
-# 写 Release 的手动入口位于 release.yml 的 ios-beta 模式；本 reusable workflow 始终只读。
+# iOS 不进 release.yml 流水线: 手动 dispatch 本 workflow, 产物由自带 publish job
+# 追加到 multiplatform-test 测试 Release (删旧 iOS 资产再传新), 供真机侧载与
+# ios-remote 拉取; reusable 调用 (workflow_call) 只产 artifact, 永不写 Release。
 on:
   workflow_dispatch:
     inputs:
       stage:
-        description: '构建深度: klib=只编 Kotlin iOS klib / link=编静态库+链接 framework / ipa=完整出未签名 ipa'
+        description: '构建深度: klib=只编 Kotlin iOS klib / link=编静态库+链接 framework / ipa=完整出未签名 ipa / simulator=出模拟器构建包'
         required: true
         default: 'klib'
         type: choice
@@ -17,10 +18,11 @@ on:
           - klib
           - link
           - ipa
+          - simulator
   workflow_call:
     inputs:
       stage:
-        description: '构建深度: klib / link / ipa'
+        description: '构建深度: klib / link / ipa / simulator'
         required: false
         default: 'ipa'
         type: string
@@ -33,7 +35,8 @@ on:
 # 组名不能用 github.workflow: 被调用时它是调用方的工作流名, 会和调用方自己的
 # concurrency group 撞成死锁 (调用方占着组, 被调用 job 排队等同一个组)。
 concurrency:
-  group: ios-build-${{ github.ref }}
+  # 组按 stage 拆分: 并行发起 ipa 与 simulator 两条构建腿时互不取消
+  group: ios-build-${{ github.ref }}-${{ inputs.stage }}
   cancel-in-progress: true
 
 permissions:
@@ -159,7 +162,8 @@ jobs:
 
       - name: Link shared framework
         id: link
-        if: inputs.stage != 'klib'
+        # stage=simulator 的 framework 由 xcodebuild 内部 Gradle 链接, 真机 framework 无用
+        if: inputs.stage != 'klib' && inputs.stage != 'simulator'
         continue-on-error: true
         run: |
           set -o pipefail
@@ -177,7 +181,7 @@ jobs:
 
       # ===== ipa (未签名, 供 SideStore/AltStore/Xcode 自签侧载) =====
       - name: Install XcodeGen
-        if: inputs.stage == 'ipa'
+        if: inputs.stage == 'ipa' || inputs.stage == 'simulator'
         continue-on-error: true
         run: brew install xcodegen
 
@@ -187,16 +191,70 @@ jobs:
       # 传 -PappVersion 用上游算好的版本号, 保证 bundle 版本 = ipa 文件名 = 安卓 versionName。
       - name: Sync iOS version
         id: syncver
-        if: inputs.stage == 'ipa'
+        if: inputs.stage == 'ipa' || inputs.stage == 'simulator'
         run: ./gradlew syncIosVersion -PappVersion=${{ steps.ver.outputs.version }} --console=plain
 
       - name: Generate Xcode project
-        if: inputs.stage == 'ipa'
+        if: inputs.stage == 'ipa' || inputs.stage == 'simulator'
         continue-on-error: true
         working-directory: iosApp/
         run: |
           set -o pipefail
           xcodegen generate 2>&1 | tee "$GITHUB_WORKSPACE/ci-logs/50-xcodegen.log"
+
+      # ===== 模拟器包 (stage=simulator, 供 multiplatform-test 与 ios-remote) =====
+      - name: Build for simulator
+        id: simbuild
+        if: inputs.stage == 'simulator'
+        continue-on-error: true
+        working-directory: iosApp/
+        run: |
+          set -o pipefail
+          # build (不是 archive): 模拟器要的是 iphonesimulator SDK 下的 .app。
+          # Debug 配置: 本仓只注册了 iosArm64/iosSimulatorArm64 (无 iosX64), Release 下
+          # xcodebuild 传 ARCHS="arm64 x86_64", Gradle 的 syncComposeResourcesForIos
+          # 直接报 Unknown iOS simulator arch; generic destination 无 active arch,
+          # 故显式钉 ARCHS=arm64, 不依赖 ONLY_ACTIVE_ARCH 的默认值。
+          xcodebuild build \
+            -project iosApp.xcodeproj \
+            -scheme iosApp \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/simdd \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=YES \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            LEGADO_APP_VERSION="${{ steps.ver.outputs.version }}" 2>&1 \
+            | tee "$GITHUB_WORKSPACE/ci-logs/70-xcodebuild-sim.log"
+
+      - name: Package simulator zip
+        id: simzip
+        if: inputs.stage == 'simulator'
+        continue-on-error: true
+        working-directory: iosApp/
+        run: |
+          set -ex
+          APPS_DIR=build/simdd/Build/Products/Debug-iphonesimulator
+          APP_PATH="$(find "$APPS_DIR" -maxdepth 1 -name '*.app' | head -1)"
+          test -n "$APP_PATH"
+          cd "$APPS_DIR"
+          zip -qry "$GITHUB_WORKSPACE/iosApp/build/legado-${{ steps.ver.outputs.version }}-ios-simulator.zip" "$(basename "$APP_PATH")"
+          ls -lh "$GITHUB_WORKSPACE/iosApp/build/"*-ios-simulator.zip
+
+      - name: Upload simulator artifact
+        if: inputs.stage == 'simulator'
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-simulator
+          path: ${{ github.workspace }}/iosApp/build/*-ios-simulator.zip
+          # 模拟器包是 multiplatform-test 的发布契约; 缺失或上传失败必须让工作流失败。
+          if-no-files-found: error
 
       - name: Archive (unsigned)
         id: archive
@@ -287,7 +345,23 @@ jobs:
           report "link framework" "${{ steps.link.outcome || 'skipped' }}"
           report "xcodebuild archive" "${{ steps.archive.outcome || 'skipped' }}"
           report "package ipa" "${{ steps.ipa.outcome || 'skipped' }}"
+          report "simulator build" "${{ steps.simbuild.outcome || 'skipped' }}"
+          report "package simulator" "${{ steps.simzip.outcome || 'skipped' }}"
           if [ "$FAILED" = "1" ]; then
             echo "有步骤失败, 详见 ios-build-logs artifact"
             exit 1
           fi
+
+  # 手动构建完成后把产物追加到 multiplatform-test 测试 Release (删旧 iOS 资产再传新);
+  # klib/link 是调试档无产物, 不发布; reusable 调用 (workflow_call) 永不写 Release。
+  publish-multiplatform-test:
+    needs: ios
+    if: ${{ github.event_name == 'workflow_dispatch' && (inputs.stage == 'ipa' || inputs.stage == 'simulator') }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/_publish.yml
+    with:
+      tag: multiplatform-test
+      artifact-name-pattern: ${{ inputs.stage == 'simulator' && 'ios-simulator' || 'ios-ipa-unsigned' }}
+      name: multiplatform-test
+      prerelease: true

@@ -7,7 +7,7 @@ on:
   workflow_call:
     inputs:
       tag:
-        description: 'Release tag; test.yml 固定 beta, release.yml 用版本号'
+        description: 'Release tag; test.yml 固定 beta, release.yml 正式用版本号、ios.yml 手动发布用 multiplatform-test'
         required: true
         type: string
       artifact-name-pattern:
@@ -53,8 +53,13 @@ jobs:
             exit 1
           fi
 
+      - name: Exclude simulator builds from formal release
+        # 模拟器包只进 multiplatform-test 测试 Release, 正式发布剔除
+        if: inputs.artifact-name-pattern == '*'
+        run: rm -fv artifacts/*-ios-simulator.zip
+
       - name: Delete Old Release
-        # 正式发布保持重建语义；手动 iOS beta 只能追加 IPA，不能删除其他 beta 资产。
+        # 正式发布保持重建语义；iOS 手动发布只追加 multiplatform-test 的 iOS 资产，不删除其他资产。
         if: inputs.artifact-name-pattern == '*'
         continue-on-error: true
         run: gh release delete "${{ inputs.tag }}" -y --cleanup-tag --repo ${{ github.repository }}
@@ -75,19 +80,32 @@ jobs:
           removeArtifacts: true
           artifacts: "artifacts/*.apk,artifacts/*.msi,artifacts/*.zip,artifacts/*.deb,artifacts/*.rpm,artifacts/*.dmg,artifacts/*.ipa"
 
-      - name: Append iOS IPA to beta
+      - name: Append iOS assets to multiplatform-test
         if: inputs.artifact-name-pattern != '*'
         run: |
           shopt -s nullglob
-          files=(artifacts/*.ipa)
+          files=(artifacts/*.ipa artifacts/*-ios-simulator.zip)
           if [ "${#files[@]}" -eq 0 ]; then
-            echo "::error::Downloaded artifact contains no IPA"
+            echo "::error::Downloaded artifact contains no IPA or simulator zip"
             exit 1
           fi
           gh release view "${{ inputs.tag }}" --repo "$GH_REPO" >/dev/null 2>&1 || \
             gh release create "${{ inputs.tag }}" --repo "$GH_REPO" --prerelease \
               --title "${{ inputs.name }}" \
-              --notes "iOS 未签名 ipa (SideStore/AltStore 自签侧载)"
+              --notes "iOS 未签名 ipa (SideStore/AltStore 自签侧载) 与模拟器构建包"
+          # 每个类别只保留最新一套: 对本次上传的每个文件, 先删掉 Release 上该类别旧资产
+          # (ipa 与模拟器包互不影响, 手动发模拟器包不会动真机 ipa)
+          for f in "${files[@]}"; do
+            case "$(basename "$f")" in
+              *.ipa) SUF="-ios-unsigned.ipa" ;;
+              *) SUF="-ios-simulator.zip" ;;
+            esac
+            gh api "repos/$GH_REPO/releases/tags/${{ inputs.tag }}" \
+              --jq ".assets[] | select(.name | endswith(\"$SUF\")) | .id" \
+              | while read -r id; do
+                  [ -n "$id" ] && gh api -X DELETE "repos/$GH_REPO/releases/assets/$id"
+                done
+          done
           gh release upload "${{ inputs.tag }}" "${files[@]}" --repo "$GH_REPO" --clobber
         env:
           GH_TOKEN: ${{ github.token }}

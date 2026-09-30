@@ -3,6 +3,8 @@ name: iOS Remote
 # 交互式远程会话: 模拟器装好 app 后开屏幕共享, websockify 把 VNC 包成网页
 # (noVNC), ngrok 隧道打出去, 人在 Windows 上浏览器直接打开页面操作 (远程点点点),
 # 无需装任何客户端。
+# 应用包: 取 multiplatform-test Release 的 legado-*-ios-simulator.zip (由 release.yml
+# ios-beta 模式经 ios.yml 产出); 触发本 workflow 前必须先发包, 否则拉取直接报错退出。
 # 用途边界: 调试本仓库自己的 iOS 应用 (GitHub Actions 条款允许的开发/测试用途,
 # 单一许可用户访问); 会话时长由触发参数限定, 用完 Cancel 即回收, 禁止当常驻
 # 远程桌面高频长挂。
@@ -37,76 +39,34 @@ jobs:
       contents: read
     timeout-minutes: 360
     steps:
-      - uses: actions/checkout@v5
-        with:
-          # syncIosVersion 用 git rev-list HEAD --count 算 versionCode,
-          # shallow 下恒为 1 (与 ios.yml 同款取版本方式, 两边必须一致)
-          fetch-depth: 0
-
-      - name: Set version
-        id: ver
-        run: |
-          v="$(TZ=Asia/Shanghai date +3.%y.%m%d%H%M)"
-          echo "version=$v" >> $GITHUB_OUTPUT
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v5
-        with:
-          distribution: 'temurin'
-          java-version: 21
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v5
-      - name: Gradle build-cache 共享
-        # 与 ios.yml 同 key: 命中其留下的 build-cache, 减少重复编译 shared
-        uses: actions/cache@v5
-        with:
-          path: ~/.gradle/caches/build-cache-1
-          key: gradle-buildcache-${{ runner.os }}-${{ github.ref_name }}
-          restore-keys: |
-            gradle-buildcache-${{ runner.os }}-
-      - name: Cache Kotlin/Native toolchain
-        uses: actions/cache@v5
-        with:
-          path: ~/.konan
-          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
-          restore-keys: konan-${{ runner.os }}-
-      - name: Cache iOS native static libs
-        id: cache-native
-        uses: actions/cache@v5
-        with:
-          path: data/build/iosNativeLibs
-          key: ios-native-${{ runner.os }}-${{ hashFiles('modules/quickjs/src/main/cinterop/quickjs-ng/**', 'data/src/cinterop/mbedtls/**', 'scripts/build-ios-native.sh') }}
-
-      - name: Build iOS native static libs (quickjs-ng + mbedtls)
-        id: native
-        if: steps.cache-native.outputs.cache-hit != 'true'
+      - name: Download simulator build
+        id: simdl
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -o pipefail
-          mkdir -p "$GITHUB_WORKSPACE/ci-logs"
-          chmod +x scripts/build-ios-native.sh
-          ./scripts/build-ios-native.sh ios_arm64 ios_simulator_arm64 2>&1 \
-            | tee "$GITHUB_WORKSPACE/ci-logs/10-build-ios-native.log"
+          # 资产名带版本号 (3.%y.%m%d%H%M), 字典序最大即最新一套
+          ASSET="$(gh release view multiplatform-test --repo "$GITHUB_REPOSITORY" --json assets \
+            --jq '[.assets[].name | select(endswith("-ios-simulator.zip"))] | sort | last // empty')"
+          if [ -z "$ASSET" ]; then
+            echo "::error::multiplatform-test Release 没有 ios-simulator 资产, 先跑 release.yml (ios-beta) 发包"
+            exit 1
+          fi
+          echo "asset=$ASSET"
+          rm -rf /tmp/simapp && mkdir -p /tmp/simapp/x
+          gh release download multiplatform-test --repo "$GITHUB_REPOSITORY" --pattern "$ASSET" --dir /tmp/simapp
+          unzip -q "/tmp/simapp/$ASSET" -d /tmp/simapp/x
+          APP="$(find /tmp/simapp/x -maxdepth 3 -name '*.app' | head -1)"
+          test -n "$APP"
+          APP="$(cd "$(dirname "$APP")" && pwd)/$(basename "$APP")"
+          BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")"
+          {
+            echo "app=$APP"
+            echo "bundleId=$BUNDLE_ID"
+          } >> "$GITHUB_OUTPUT"
+          echo "bundleId=$BUNDLE_ID"
 
-      - name: Verify static libs
-        run: |
-          set -x
-          mkdir -p "$GITHUB_WORKSPACE/ci-logs"
-          ls -lR data/build/iosNativeLibs || true
-
-      - name: Sync iOS version
-        run: ./gradlew syncIosVersion -PappVersion=${{ steps.ver.outputs.version }} --console=plain
-
-      - name: Install XcodeGen
-        run: brew install xcodegen
-
-      - name: Generate Xcode project
-        working-directory: iosApp/
-        run: |
-          set -o pipefail
-          mkdir -p "$GITHUB_WORKSPACE/ci-logs"
-          xcodegen generate 2>&1 | tee "$GITHUB_WORKSPACE/ci-logs/50-xcodegen.log"
-
-      # ===== 模拟器: 创建 → 启动 → 构建 → 安装 → 打开窗口 =====
+      # ===== 模拟器: 创建 → 启动 → 安装 → 打开窗口 =====
       - name: Boot iOS simulator
         id: boot
         run: |
@@ -128,53 +88,13 @@ jobs:
             xcrun simctl list devices | grep -i legado-remote || true
           } 2>&1 | tee "$GITHUB_WORKSPACE/sim-artifacts/10-boot.log"
 
-      - name: Build for simulator
-        id: simbuild
-        working-directory: iosApp/
-        run: |
-          set -o pipefail
-          # build (不是 archive): 模拟器要的是 iphonesimulator SDK 下的 .app,
-          # 且必须走这条链让 xcodebuild 自己生成 UIRequiredDeviceCapabilities。
-          # 用 Debug 而非 Release: 本仓只注册了 iosArm64/iosSimulatorArm64 (无 iosX64),
-          # Release 下 xcodebuild 会传 ARCHS="arm64 x86_64",
-          # Gradle 的 syncComposeResourcesForIos 会直接报 Unknown iOS simulator arch;
-          # Debug 能过是因为 ONLY_ACTIVE_ARCH 只编 arm64。
-          xcodebuild build \
-            -project iosApp.xcodeproj \
-            -scheme iosApp \
-            -configuration Debug \
-            -sdk iphonesimulator \
-            -destination "platform=iOS Simulator,id=${{ steps.boot.outputs.udid }}" \
-            -derivedDataPath build/simdd \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            DEVELOPMENT_TEAM="" \
-            PROVISIONING_PROFILE_SPECIFIER="" \
-            LEGADO_APP_VERSION="${{ steps.ver.outputs.version }}" 2>&1 \
-            | tee "$GITHUB_WORKSPACE/sim-artifacts/20-xcodebuild.log"
-          APP="$(find build/simdd/Build/Products -maxdepth 2 -name '*.app' | head -1)"
-          test -n "$APP"
-          # 转绝对路径: 本步 cwd 是 iosApp/, install 步在仓库根目录执行
-          APP="$(cd "$(dirname "$APP")" && pwd)/$(basename "$APP")"
-          echo "app=$APP" >> $GITHUB_OUTPUT
-          BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")"
-          echo "bundleId=$BUNDLE_ID" >> $GITHUB_OUTPUT
-          echo "bundleId=$BUNDLE_ID"
-          {
-            echo "===== 产物信息 ====="
-            otool -l "$APP/legado" | grep -A4 LC_BUILD_VERSION || true
-            file "$APP/legado" "$APP/Frameworks/shared.framework/shared" || true
-          } 2>&1 | tee -a "$GITHUB_WORKSPACE/sim-artifacts/20-xcodebuild.log"
-
       - name: Install and launch app
         id: launch
         run: |
           set -o pipefail
           UDID="${{ steps.boot.outputs.udid }}"
-          APP="${{ steps.simbuild.outputs.app }}"
-          BUNDLE_ID="${{ steps.simbuild.outputs.bundleId }}"
+          APP="${{ steps.simdl.outputs.app }}"
+          BUNDLE_ID="${{ steps.simdl.outputs.bundleId }}"
           OUT="$GITHUB_WORKSPACE/sim-artifacts"
           {
             xcrun simctl install "$UDID" "$APP"
@@ -292,7 +212,7 @@ jobs:
         run: |
           set -o pipefail
           UDID="${{ steps.boot.outputs.udid }}"
-          BUNDLE_ID="${{ steps.simbuild.outputs.bundleId }}"
+          BUNDLE_ID="${{ steps.simdl.outputs.bundleId }}"
           OUT="$GITHUB_WORKSPACE/sim-artifacts"
           mkdir -p "$OUT/app-container" "$OUT/system-crash"
           {
@@ -328,6 +248,5 @@ jobs:
           name: ios-remote-session
           path: |
             ${{ github.workspace }}/sim-artifacts/**
-            ${{ github.workspace }}/ci-logs/**
           if-no-files-found: warn
           retention-days: 3
