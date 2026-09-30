@@ -5,11 +5,24 @@ import kotlinx.atomicfu.locks.synchronized
 
 /**
  * entries 迭代面的快照条目: 独立持有 key-value 内容, 与原 map 的任何内部结构无关联。
+ *
+ * CPF fork 工具链 (kotlin-ohos) 的 override 检查不接受 var 属性桥接 MutableEntry,
+ * [setValue] 必须显式实现, 契约同标准库: 返回旧值。
  */
 private class SnapshotEntry<K, V>(
     override val key: K,
-    override var value: V
-) : MutableMap.MutableEntry<K, V>
+    value: V
+) : MutableMap.MutableEntry<K, V> {
+    private var current: V = value
+
+    override val value: V get() = current
+
+    override fun setValue(newValue: V): V {
+        val old = current
+        current = newValue
+        return old
+    }
+}
 
 /**
  * `newConcurrentMap` 的 iOS/鸿蒙 actual 实现 (nativeMain 中间源集共用)。
