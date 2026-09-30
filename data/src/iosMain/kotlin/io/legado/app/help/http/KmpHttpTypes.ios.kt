@@ -81,7 +81,8 @@ import okio.use
  * - 协议枚举: Ktor 不暴露 Protocol 概念, [KmpResponseBuilder.protocol] 入参被忽略,
  *   [KmpResponse.networkResponse] / [priorResponse] / [isRedirect] 等少数成员为占位
  * - 超时: [KmpHttpClientBuilder.build] 默认 connect/read/call 均 15s (对齐 Android HttpHelper
- *   connect/read/call 15s), 规则显式 timeout 优先;
+ *   connect/read/call 15s), 规则显式 read/call timeout 优先; Darwin 引擎不支持独立连接
+ *   超时 (Ktor 官方 HttpTimeout 引擎限制表), 连接挂起由 call timeout 总超时兜底;
  * - 拦截器: [KmpRequest.prepareForSend] 在请求发出前等价执行 Android app 拦截器逻辑
  *   (UA 注入 / Keep-Alive / Cache-Control / Accept-Encoding / CookieJar 标记移除 + CookieJarBridge),
  *   发送失败重试一次 (对齐 retryOnConnectionFailure); gzip/deflate 响应经 okio 透明解压
@@ -176,9 +177,11 @@ actual class KmpHttpClient {
 /**
  * nativeMain 端 [KmpHttpClientBuilder] 实现: 累积 timeout 配置, [build] 时构造 Ktor [HttpClient]。
  *
- * 超时统一走 Ktor [HttpTimeout] 插件 (跨引擎标准 API, 实际行为由 Darwin engine 决定):
+ * 超时统一走 Ktor [HttpTimeout] 插件 (跨引擎标准 API; 按 Ktor 官方 HttpTimeout 引擎限制表,
+ * Darwin 仅支持 Request/Socket 两项超时):
  * - `requestTimeoutMillis` 对应 OkHttp callTimeout (整个请求周期上限);
- * - `connectTimeoutMillis` 对应 OkHttp connectTimeout;
+ * - `connectTimeoutMillis` 在 Darwin 引擎不支持独立设置, 赋值无效, 连接挂起由
+ *   `requestTimeoutMillis` 总超时兜底;
  * - `socketTimeoutMillis` 对应 OkHttp readTimeout (两次数据包之间最大间隔);
  * - writeTimeout 不在此处单独配置。
  *
@@ -232,7 +235,8 @@ actual class KmpHttpClientBuilder actual constructor() {
             install(BodyProgress)
             // 超时走 Ktor HttpTimeout 插件:
             // - requestTimeoutMillis 对应 OkHttp callTimeout (整个请求周期上限: 发请求到收响应)
-            // - connectTimeoutMillis 对应 OkHttp connectTimeout (Android 默认 15s)
+            // - connectTimeoutMillis: Darwin 引擎不支持独立连接超时 (Ktor 官方 HttpTimeout
+            //   引擎限制表), 此赋值在 iOS 无效, 连接挂起由 requestTimeoutMillis 总超时兜底
             // - socketTimeoutMillis 对应 OkHttp readTimeout (两次数据包之间最大间隔);
             //   writeTimeout 不在此处单独配置
             install(HttpTimeout) {
