@@ -133,6 +133,17 @@ object JavaObjectBridge {
     private val NO_RESULT = Any()
 
     /**
+     * JS 侧禁写的安全成员 (属性名 + 对应 setter 方法名)。
+     *
+     * enableDangerousApi 是 dangerousApi 授权的唯一载体 (eval 入口按它快照黑名单放行),
+     * JS 可写即书源可一行代码自我提权绕过用户授权;授权只能来自书源 JSON 与编辑页 UI,
+     * 与 dangerousApi 开关状态无关, 一律拒绝。
+     */
+    private val jsWriteBlockedNames = hashSetOf("enableDangerousApi", "setEnableDangerousApi")
+
+    internal fun isJsWriteBlocked(name: String): Boolean = name in jsWriteBlockedNames
+
+    /**
      * [getJavaPropertyRaw] 返回值哨兵。native trap 用 IsSameObject 与全局引用比对,
      * 免掉原先 `Array<Any?>{fieldValue, fieldExists, hasMethod}` 的数组分配 + Boolean 装箱
      * (getPropertyInfo 每次属性访问都跑一遍, 是热路径分配大头之一)。
@@ -370,6 +381,9 @@ object JavaObjectBridge {
         dangerousApi: Boolean
     ): Any? {
         val obj = getObject(objHandle) ?: return null
+        if (isJsWriteBlocked(methodName)) {
+            throw IllegalStateException("Cannot call protected method '$methodName' from JS")
+        }
         if (!JsSecurityPolicy.isObjectVisible(obj, dangerousApi)) return null
         if (!JsSecurityPolicy.isMethodVisible(obj.javaClass.name, methodName, dangerousApi)) {
             return null
@@ -1116,6 +1130,9 @@ object JavaObjectBridge {
         value: Any?,
         dangerousApi: Boolean
     ): Boolean {
+        if (isJsWriteBlocked(fieldName)) {
+            throw IllegalStateException("Cannot set protected property '$fieldName' from JS")
+        }
         if (!JsSecurityPolicy.isObjectVisible(obj, dangerousApi)) return false
         val javaValue = unwrapHandleValue(value)
         if (setCollectionField(obj, fieldName, javaValue)) return true
@@ -1181,6 +1198,9 @@ object JavaObjectBridge {
         args: Array<Any?>,
         dangerousApi: Boolean
     ): Any? {
+        if (isJsWriteBlocked(methodName)) {
+            throw IllegalStateException("Cannot call protected method '$methodName' from JS")
+        }
         if (!JsSecurityPolicy.isObjectVisible(obj, dangerousApi)) return null
         // 对齐 rhino NativeJavaClass: obj 是 Class 对象时, 用其表示的类查找静态方法,
         // 而非 Class 类本身。例: Bitmap.Config.values() → obj 是 Bitmap$Config Class 对象,
@@ -1549,6 +1569,9 @@ object JavaObjectBridge {
         dangerousApi: Boolean
     ): Boolean {
         val obj = getObject(objHandle) ?: return false
+        if (isJsWriteBlocked(fieldName)) {
+            throw IllegalStateException("Cannot set protected property '$fieldName' from JS")
+        }
         if (!JsSecurityPolicy.isObjectVisible(obj, dangerousApi)) return false
         // Map/List 特判: 对齐 rhino FEATURE_ENABLE_JAVA_MAP_ACCESS
         if (setCollectionField(obj, fieldName, value)) return true

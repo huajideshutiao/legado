@@ -540,7 +540,7 @@ object NativeJsPropertyBridge {
         methodId == 3003 -> (obj as? BaseSource)?.let { b -> b.loginUi = toNullableString(args.getOrNull(0)); jsUndefined() }
         methodId == 3004 -> (obj as? BaseSource)?.let { b -> b.header = toNullableString(args.getOrNull(0)); jsUndefined() }
         methodId == 3005 -> (obj as? BaseSource)?.let { b -> b.enabledCookieJar = args.getOrNull(0) as? Boolean; jsUndefined() }
-        methodId == 3006 -> (obj as? BaseSource)?.let { b -> b.enableDangerousApi = args.getOrNull(0) as? Boolean; jsUndefined() }
+        methodId == 3006 -> jsUndefined() // enableDangerousApi 对 JS 只读 (dangerousApi 授权只能来自书源 JSON/编辑页)
         methodId == 3007 -> (obj as? BaseSource)?.let { b -> b.jsLib = toNullableString(args.getOrNull(0)); jsUndefined() }
 
         // ============ AnalyzeUrlCore 面 (3102/3106/3108) ============
