@@ -12,7 +12,7 @@ import kotlinx.atomicfu.locks.synchronized
  * 桌面端注册 [io.legado.desktop.http.DesktopHttpProvider] (okhttp3.OkHttpClient), Android 端注册
  * app 端 okHttpClient 单例 (含 Cronet/Glide/cookieJar)。两端 target 都没有 OkHttp 变体
  * (OkHttp 仅发布 common + android + jvm), 但 KmpHttpTypes.ios.kt / KmpHttpTypes.ohos.kt 已包装出
- * 等价的 [KmpHttpClient] (iOS: Ktor 3.1.0 CIO engine; 鸿蒙: napi 桥接 @ohos.net.http, 经
+ * 等价的 [KmpHttpClient] (iOS: Ktor Darwin engine; 鸿蒙: napi 桥接 @ohos.net.http, 经
  * OhosNativeBridge.invokeHttpSync dispatch 到 ArkTS 主线程)。本类把它注册到两个容器,
  * 让 commonMain 的 [AnalyzeUrlCore] / BookCover / OkHttpUtils 等取到可用客户端。
  *
@@ -33,7 +33,7 @@ import kotlinx.atomicfu.locks.synchronized
 class NativeHttpProvider : OkHttpClientProvider, OkHttpProxyClientProvider {
 
     /**
-     * [KmpHttpClient] 单例 (iOS Ktor CIO engine / 鸿蒙 @ohos.net.http napi 桥接)。
+     * [KmpHttpClient] 单例 (iOS Ktor Darwin engine / 鸿蒙 @ohos.net.http napi 桥接)。
      *
      * lazy 构造: 首次访问时调 [KmpHttpClientBuilder.build]。
      * 与桌面端 `DesktopHttpProvider.okHttpClient` by lazy 行为一致。
@@ -49,8 +49,8 @@ class NativeHttpProvider : OkHttpClientProvider, OkHttpProxyClientProvider {
     /**
      * 取代理客户端 — 解析代理串并构造代理客户端 (与 Android HttpHelper.getProxyClient 同正则/语义)。
      *
-     * - http/https 代理: 经 [buildNativeProxyClient] 走各端引擎 (iOS Ktor CIO 的 CONNECT 隧道 +
-     *   Proxy-Authorization 头预置; 鸿蒙 @ohos.net.http HttpProxy, API 12+ 原生带账号密码);
+     * - http/https 代理: 经 [buildNativeProxyClient] 走各端实现 (iOS Darwin engine; 鸿蒙
+     *   @ohos.net.http HttpProxy, API 12+ 原生带账号密码);
      * - socks4/socks5: 两端引擎都不支持 SOCKS, 回退主 client 直连
      *   (与 Android 行为差异: Android 会构造 SOCKS 代理, 已说明)。
      *

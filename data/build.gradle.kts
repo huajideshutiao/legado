@@ -446,7 +446,7 @@ kotlin {
                 dependencies {
                     implementation(libs.androidx.sqlite.framework)
                     implementation(libs.ktor.client.core)
-                    implementation(libs.ktor.client.cio)
+                    implementation(libs.ktor.client.darwin)
                 }
                 // 非 mac: nskeyvalueobserving cinterop (需 Xcode sysroot) 无法生成,
                 // KVO 观察器 (依赖其协议类型) 排除, 由 iosWindowsCheckMain 源根的

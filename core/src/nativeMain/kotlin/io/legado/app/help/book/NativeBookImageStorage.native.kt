@@ -1,7 +1,6 @@
 package io.legado.app.help.book
 
 import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsBytes
 import io.ktor.http.isSuccess
@@ -97,7 +96,7 @@ class NativeBookImageStorage(
                 try {
                     // 已存在跳过 (与 Android BookHelp.saveImage 内 isImageExist 短路对齐)
                     if (isImageExist(book, chapter, url)) return@async true
-                    val client = HttpClient(CIO)
+                    val client = HttpClient()
                     try {
                         val response = client.get(url)
                         if (!response.status.isSuccess()) {

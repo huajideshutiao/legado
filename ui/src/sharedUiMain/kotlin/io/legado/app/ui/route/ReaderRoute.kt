@@ -1105,12 +1105,15 @@ fun ReaderRoute(
                         } else {
                             // 与原版一致: 输入为章节号, CacheBook 下标从 0 起 (start-1/end-1),
                             // 结束章节 clamp 到 lastChapterIndex (原版在 CacheBookService.addDownloadData 内)
-                            cacheBook.addDownload(
-                                (start - 1).coerceAtLeast(0),
-                                end - 1
-                            )
-                            scope.launch(IoDispatcher) {
-                                CacheBookShared.startProcessJob()
+                            val startIndex = start.coerceAtLeast(1) - 1
+                            val endIndex = (end.coerceAtLeast(0) - 1).coerceAtMost(book.lastChapterIndex)
+                            if (startIndex > endIndex) {
+                                Toasters.get().toast("离线缓存章节范围无效")
+                            } else {
+                                cacheBook.addDownload(startIndex, endIndex)
+                                scope.launch(IoDispatcher) {
+                                    CacheBookShared.startProcessJob()
+                                }
                             }
                         }
                     },

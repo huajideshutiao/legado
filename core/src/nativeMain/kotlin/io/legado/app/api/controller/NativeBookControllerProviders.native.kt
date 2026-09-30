@@ -1,7 +1,6 @@
 package io.legado.app.api.controller
 
 import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsBytes
 import io.ktor.http.isSuccess
@@ -55,7 +54,7 @@ object NativeImageControllerProvider : ImageControllerProvider {
     }.getOrNull()
 
     private suspend fun downloadBytes(url: String): ByteArray? {
-        val client = HttpClient(CIO)
+        val client = HttpClient()
         return try {
             val response = client.get(url)
             if (response.status.isSuccess()) response.bodyAsBytes() else null

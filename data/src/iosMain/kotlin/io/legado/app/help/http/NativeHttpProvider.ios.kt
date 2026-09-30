@@ -1,8 +1,7 @@
 package io.legado.app.help.http
 
 /**
- * iOS actual: Ktor CIO engine 的 http/https 代理 (认证经 Proxy-Authorization 头预置,
- * 见 [KmpHttpClientBuilder.proxy])。
+ * iOS actual: 使用 Ktor Darwin engine 构造客户端 (见 [KmpHttpClientBuilder.build])。
  */
 internal actual fun buildNativeProxyClient(
     host: String,

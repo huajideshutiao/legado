@@ -1,5 +1,6 @@
 package io.legado.app.model.webBook
 
+import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
@@ -138,7 +139,7 @@ object BookContent {
                 for (urlStr in contentData.second) {
                     emit(urlStr)
                 }
-            }.mapAsync(AppConfigProviders.get().threadCount) { urlStr ->
+            }.mapAsync(minOf(AppConfigProviders.get().threadCount, AppConst.MAX_THREAD)) { urlStr ->
                 val analyzeUrl = AnalyzeUrlFactories.create(
                     rawUrl = urlStr,
                     source = bookSource,

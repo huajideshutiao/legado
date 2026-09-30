@@ -15,7 +15,7 @@ import platform.Foundation.NSFileManager
  * iOS 系统已提供 SQLite，使用 `sqlite-framework` 的 [NativeSQLiteDriver] 直接接入，
  * 不再把另一份 SQLite 静态库链接进 framework。
  * - **数据库路径**: 默认 `{AppFilesDirs.filesDir}/legado.db` (沙盒 Documents 目录下, 持久化)
- * - **查询协程上下文**: [Dispatchers.IO] (iOS 上 Ktor CIO + Dispatchers.IO 可用)
+ * - **查询协程上下文**: [Dispatchers.IO] (iOS 上 Ktor Darwin + Dispatchers.IO 可用)
  * - **迁移策略**: 与 Android 端同源 —— 仅 v1..79 旧库破坏性重建, 80..83 手写 Migration +
  *   83..87 走 @Database autoMigrations, 无迁移路径时让 Room 显式抛错而非静默清库
  *

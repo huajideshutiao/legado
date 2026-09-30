@@ -42,7 +42,7 @@ import kotlinx.atomicfu.locks.synchronized
  * # 设计
  * - 本地文件: [LocalBookLocators] 解析 bookUrl → 本地路径 → [kotlin.io.File.readBytes]
  *   → [EpubParser.parse] → [EpubBook] (内存模型)
- * - 远程文件 (webDav/http): 复用 nativeMain WebDav actual (Ktor CIO) 下载到本地缓存文件,
+ * - 远程文件 (webDav/http): 复用 nativeMain WebDav actual (iOS 用 Darwin、鸿蒙用 CIO) 下载到本地缓存文件,
  *   再走 [EpubParser.parse] 解析 (与 jvm 端 RemoteZipWrapper 按需加载不同, native 端全量下载)
  * - 封面图片: [BitmapProviders] (iOS/鸿蒙已注册各自实现) 解码压缩为 JPEG 写入文件;
  *   封面路径统一走 [FileBook.getCoverPath] 门面 (md5Encode16, 与全端一致)
@@ -150,7 +150,7 @@ class EpubFile(var book: Book) {
     /**
      * 远程 epub (webDav/http) 加载。
      *
-     * 复用 nativeMain WebDav actual (Ktor CIO) 下载远程 epub 到本地缓存文件,
+     * 复用 nativeMain WebDav actual (iOS 用 Darwin、鸿蒙用 CIO) 下载远程 epub 到本地缓存文件,
      * 后续打开复用缓存避免重复下载; 解析仍走 commonMain [EpubParser]。
      *
      * 与 jvmAndAndroidMain 差异: jvm 端用 RemoteZipWrapper 按需 Range 读取 (不全量下载),

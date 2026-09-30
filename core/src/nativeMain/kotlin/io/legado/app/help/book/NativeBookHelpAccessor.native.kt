@@ -1,10 +1,12 @@
 package io.legado.app.help.book
 
+import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.utils.MD5Utils
+import io.legado.app.utils.postEvent
 
 /**
  * iOS/鸿蒙 (Native target) 共用 [BookHelpAccessor] 实现:
@@ -22,8 +24,9 @@ import io.legado.app.utils.MD5Utils
  * 行为完全一致 (均委托 `BookStorageProviders.get().saveText` 写文本缓存):
  * - app 端 `saveContent` 委托 `BookHelp.saveContent`, 内部做 saveText + saveImages
  *   + postEvent(EventBus.SAVE_CONTENT)
- * - Native 端无 EventBus (Android 专属) / 无图片下载能力 (iOS UIImage / 鸿蒙 @ohos.multimedia.image
- *   桥接未下沉到 BookHelpAccessor), 仅委托 `BookStorageProviders.get().saveText` 写文本缓存,
+ * - Native 端无图片下载能力 (iOS UIImage / 鸿蒙 @ohos.multimedia.image
+ *   桥接未下沉到 BookHelpAccessor), 委托 `BookStorageProviders.get().saveText` 写文本缓存,
+ *   成功落盘后发出 SAVE_CONTENT 供管理页和目录页更新缓存状态,
  *   与桌面端阅读流 (ReadBookViewModelShared.loadChapter → BookStorageProviders.get().getContent) 对齐
  *
  * # bookSource 参数
@@ -50,6 +53,9 @@ class NativeBookHelpAccessor : BookHelpAccessor {
     ) {
         // bookSource 在 Native 端忽略: 不下载图片, 仅落盘文本
         BookStorageProviders.get().saveText(book, bookChapter, content)
+        if (BookStorageProviders.get().hasContent(book, bookChapter)) {
+            postEvent(EventBus.SAVE_CONTENT, Pair(book, bookChapter))
+        }
     }
 
     /**

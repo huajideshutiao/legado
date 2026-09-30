@@ -13,7 +13,7 @@ import kotlin.time.Duration
  *
  * 本文件把 commonMain 中用到的 okhttp3.* 类型抽象为 Kmp* 命名:
  * - jvmAndAndroidMain: 用 `actual typealias Kmp* = okhttp3.*` (行为零 diff, 类型完全等价);
- * - iOS/鸿蒙: nativeMain 用 Ktor CIO engine 包装的真实实现 (运行时可用)。
+ * - iOS: iosMain 用 Ktor Darwin engine 实现; 鸿蒙: ohosMain 用 @ohos.net.http 实现。
  *
  * ## 命名约定
  * - 接口类: `KmpInterceptor` / `KmpInterceptorChain` / `KmpCallback` (OkHttp 对应 interface);

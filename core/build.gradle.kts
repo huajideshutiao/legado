@@ -93,7 +93,7 @@ kotlin {
                 dependsOn(nativeMain!!)
                 dependencies {
                     implementation(libs.ktor.client.core)
-                    implementation(libs.ktor.client.cio)
+                    implementation(libs.ktor.client.darwin)
                     implementation(libs.coil3.network.ktor3)
                 }
             }

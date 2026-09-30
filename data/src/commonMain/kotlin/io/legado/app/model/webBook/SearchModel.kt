@@ -100,7 +100,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
                 }
             }.onStart {
                 callBack.onSearchStart()
-            }.mapParallelSafe(threadCount, bookSources.size) { bookSource ->
+            }.mapParallelSafe(min(threadCount, AppConst.MAX_THREAD), bookSources.size) { bookSource ->
                 withTimeout(timeLimit) {
                     val page = WebBook.getBookListAwait(
                         bookSource, searchKey, searchPage,
@@ -150,54 +150,47 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
             val equalData = arrayListOf<SearchBook>()
             val containsData = arrayListOf<SearchBook>()
             val otherData = arrayListOf<SearchBook>()
+            val equalIndex = HashMap<Pair<String, String>, SearchBook>()
+            val containsIndex = HashMap<Pair<String, String>, SearchBook>()
+            val otherIndex = HashMap<Pair<String, String>, SearchBook>()
+            fun addOrMerge(
+                books: MutableList<SearchBook>,
+                index: MutableMap<Pair<String, String>, SearchBook>,
+                book: SearchBook,
+            ) {
+                val key = book.name to book.author
+                val existing = index[key]
+                if (existing == null) {
+                    books.add(book)
+                    index[key] = book
+                } else {
+                    existing.addOrigin(book.origin)
+                }
+            }
             copyData.forEach {
                 currentCoroutineContext().ensureActive()
                 if ((it.name == searchKey) || (it.author == searchKey)) {
                     equalData.add(it)
+                    val key = it.name to it.author
+                    if (key !in equalIndex) equalIndex[key] = it
                 } else if (it.name.contains(searchKey) || it.author.contains(searchKey)) {
                     containsData.add(it)
+                    val key = it.name to it.author
+                    if (key !in containsIndex) containsIndex[key] = it
                 } else {
                     otherData.add(it)
+                    val key = it.name to it.author
+                    if (key !in otherIndex) otherIndex[key] = it
                 }
             }
             newDataS.forEach { nBook ->
                 currentCoroutineContext().ensureActive()
                 if ((nBook.name == searchKey) || (nBook.author == searchKey)) {
-                    var hasSame = false
-                    equalData.forEach { pBook ->
-                        currentCoroutineContext().ensureActive()
-                        if ((pBook.name == nBook.name) && (pBook.author == nBook.author)) {
-                            pBook.addOrigin(nBook.origin)
-                            hasSame = true
-                        }
-                    }
-                    if (!hasSame) {
-                        equalData.add(nBook)
-                    }
+                    addOrMerge(equalData, equalIndex, nBook)
                 } else if (nBook.name.contains(searchKey) || nBook.author.contains(searchKey)) {
-                    var hasSame = false
-                    containsData.forEach { pBook ->
-                        currentCoroutineContext().ensureActive()
-                        if ((pBook.name == nBook.name) && (pBook.author == nBook.author)) {
-                            pBook.addOrigin(nBook.origin)
-                            hasSame = true
-                        }
-                    }
-                    if (!hasSame) {
-                        containsData.add(nBook)
-                    }
+                    addOrMerge(containsData, containsIndex, nBook)
                 } else if (!precision) {
-                    var hasSame = false
-                    otherData.forEach { pBook ->
-                        currentCoroutineContext().ensureActive()
-                        if ((pBook.name == nBook.name) && (pBook.author == nBook.author)) {
-                            pBook.addOrigin(nBook.origin)
-                            hasSame = true
-                        }
-                    }
-                    if (!hasSame) {
-                        otherData.add(nBook)
-                    }
+                    addOrMerge(otherData, otherIndex, nBook)
                 }
             }
             currentCoroutineContext().ensureActive()
