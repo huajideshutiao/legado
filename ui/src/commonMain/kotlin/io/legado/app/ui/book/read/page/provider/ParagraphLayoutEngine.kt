@@ -174,8 +174,11 @@ data class ParagraphLineMetrics(
  * 当用户调整行间距、段间距、上下边距或翻页动画参数时，X 轴折行数据完全不变，
  * 缓存命中率达到 100%，直接跳过文字测量与中文避头尾断行计算。
  *
- * 热路径（每段一次 get/put）不进锁：表用 [newConcurrentMap]（jvm/android actual 是
- * ConcurrentHashMap，读无锁）。不做 LRU 淘汰——缓存价值在「同一章重排 100% 命中」，
+ * 访问模式（每段一次 get/put）与并发域：VM 单实例缓存，多章排版任务在
+ * ChapterLoadingGuard 的 scope（screenModelScope 默认 Dispatchers.Default）上并行执行，
+ * 表被多线程并发读写，表必须用并发容器；jvm/android 是 ConcurrentHashMap 读无锁，
+ * native 端 actual 每操作进实例锁（短临界区 O(1)）。
+ * 不做 LRU 淘汰——缓存价值在「同一章重排 100% 命中」，
  * 不在精确的最近最少使用顺序，装满就整表清空。
  *
  * @param maxSize 容量上限（段落数，默认 1000 段），超出即整表清空
