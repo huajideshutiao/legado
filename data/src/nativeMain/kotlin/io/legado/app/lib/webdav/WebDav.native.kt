@@ -14,7 +14,6 @@ import io.legado.app.utils.findNS
 import io.legado.app.utils.findNSPrefix
 import io.legado.app.utils.toInputStream
 import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -54,7 +53,7 @@ import okio.Path.Companion.toPath
  *
  * 详见 commonMain/kotlin/io/legado/app/lib/webdav/WebDav.kt expect 注释。
  *
- * - Ktor Client + CIO 引擎 (纯 Kotlin, iOS/鸿蒙均可用), 替代 OkHttp
+ * - Ktor Client 使用各目标配置的引擎 (iOS Darwin、鸿蒙 CIO), 替代 OkHttp
  * - PROPFIND/MKCOL/PUT/DELETE/GET 用 Ktor `HttpMethod` 自定义实现
  * - XML 解析用 ksoup (commonMain 已有依赖, 与 jvmAndAndroidMain 一致)
  * - lastModify 用纯 Kotlin RFC 1123 解析 (替代 java.time.ZonedDateTime / iOS NSDateFormatter)
@@ -73,8 +72,7 @@ import okio.Path.Companion.toPath
  * - Auth header 在每个请求手动添加 (与 jvmAndAndroidMain 的 Interceptor 行为对齐),
  *   不依赖 Ktor Auth 插件 (避免 realm 过滤等差异)
  *
- * 注: Ktor 3.1.0 CIO 已发布 iosArm64/iosX64/iosSimulatorArm64 与 linuxArm64 变体,
- * nativeMain (iOS/鸿蒙共用) 可直接使用。
+ * nativeMain 是 iOS/鸿蒙共用源集; 引擎依赖分别配置在 iosMain 和 ohosMain。
  */
 @Suppress("unused", "MemberVisibilityCanBePrivate")
 actual open class WebDav actual constructor(
@@ -128,7 +126,7 @@ actual open class WebDav actual constructor(
     // HttpClient 复用: 构造时创建一次, 不依赖 Ktor Auth 插件 (避免 realm 过滤等差异)
     // 每个 request 手动加 `authorization.name: authorization.data` header, 与 jvmAndAndroidMain Interceptor 行为对齐
     private val webDavClient: HttpClient by lazy {
-        HttpClient(CIO)
+        HttpClient()
     }
 
     /**

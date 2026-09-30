@@ -19,7 +19,7 @@ import kotlin.time.Duration.Companion.milliseconds
  * 与 jvm 的差异 (仅平台 API 替换):
  * - [urlEncodeForm]: form 编码规则同 URLEncoder (空格 '+', 其余 %XX), 按 charset 取字节;
  * - [buildPlatformClient]: 无 connectTimeout 等价配置 (builder 默认 15s), 重定向默认不跟随
- *   (Ktor CIO / @ohos.net.http 均不自动重定向; jsoup 链上显式 followRedirects 由调用方控制,
+ *   (Ktor Darwin / @ohos.net.http 均不自动重定向; jsoup 链上显式 followRedirects 由调用方控制,
  *   get/head/post 恒传 false, 与 native 默认一致), SSL 走系统信任库 (无 unsafe 模式,
  *   与整个 native HTTP 栈一致), 每次请求派生新 client (Ktor/ohos client 较重, 已知取舍);
  * - [buildMultipartBody]: 手动拼字节 (与 okhttp3.MultipartBody 结构对齐), 流字段全量读入内存;

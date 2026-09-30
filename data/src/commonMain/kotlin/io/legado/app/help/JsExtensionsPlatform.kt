@@ -63,7 +63,7 @@ expect object JsExtensionsPlatform {
      * jsoup 层忽略证书校验所需的 SSL 上下文 (JVM 专属类型, 以 Any? 透传)。
      *
      * - jvmAndAndroid: [io.legado.app.help.http.SSLHelper.unsafeSslContext] (真实 SSLContext, 信任全部证书);
-     * - iOS/鸿蒙: null —— Ktor CIO / @ohos.net.http 均走系统信任库, 无 unsafe 模式
+     * - iOS/鸿蒙: null —— Ktor Darwin / @ohos.net.http 均走系统信任库, 无 unsafe 模式
      *   (与整个 native HTTP 栈行为一致, 已知平台缺口, 见 NativeHttpProvider 注释)。
      */
     fun unsafeSslContext(): Any?

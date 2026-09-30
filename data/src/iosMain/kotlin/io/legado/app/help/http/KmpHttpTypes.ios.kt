@@ -9,7 +9,7 @@ import io.legado.app.utils.InputStream
 import io.legado.app.utils.toInputStream
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.ProxyBuilder
-import io.ktor.client.engine.cio.CIO
+import io.ktor.client.engine.darwin.Darwin
 import io.ktor.client.engine.http
 import io.ktor.client.network.sockets.ConnectTimeoutException
 import io.ktor.client.network.sockets.InterruptedIOException
@@ -51,10 +51,9 @@ import okio.buffer
 import okio.use
 
 /**
- * OkHttp 跨平台抽象层 nativeMain Actual 实现 (基于 Ktor 3.1.0 CIO engine)。
+ * OkHttp 跨平台抽象层 iOS actual 实现 (基于 Ktor Darwin engine)。
  *
- * 由 iosMain / ohosMain 共用 (nativeMain 中间源集下沉, 原 iosMain/ohosMain actual 完全一致,
- * 仅 Ios/Ohos 类前缀差异, 统一改为 Native 前缀)。
+ * OHOS 在 ohosMain 有独立 actual 实现；nativeMain 仅共享其余平台代码。
  *
  * 详见 commonMain/kotlin/io/legado/app/help/http/KmpHttpTypes.kt expect 注释。
  *
@@ -62,8 +61,7 @@ import okio.use
  * iOS/鸿蒙 target 没有 OkHttp 5.3.2 变体 (OkHttp 仅发布 common + android + jvm),
  * 故所有 Kmp* 类型在 nativeMain 用真实 class/interface 包装 Ktor HttpClient 实现:
  *
- * - [KmpHttpClient] 内部持有 [HttpClient] (CIO engine, 纯 Kotlin 跨平台,
- *   iOS iosArm64/iosX64/iosSimulatorArm64 与鸿蒙 linuxArm64 变体均已发布),
+ * - iOS 的 [KmpHttpClient] 内部持有 [HttpClient] (Darwin engine),
  *   `newCall` 把 [KmpRequest] 转为 [HttpRequestBuilder] 并委托 Ktor 发起请求;
  * - [KmpRequest] / [KmpResponse] / [KmpResponseBody] 等是数据载体类, 不直接暴露 Ktor 类型;
  * - [KmpCall.enqueue] 用协程 [CoroutineScope] 包裹 Ktor 的 suspend 调用, 完成后回调 [KmpCallback];
@@ -83,13 +81,12 @@ import okio.use
  * - 协议枚举: Ktor 不暴露 Protocol 概念, [KmpResponseBuilder.protocol] 入参被忽略,
  *   [KmpResponse.networkResponse] / [priorResponse] / [isRedirect] 等少数成员为占位
  * - 超时: [KmpHttpClientBuilder.build] 默认 connect/read/call 均 15s (对齐 Android HttpHelper
- *   connect/read/write/call 15s; CIO 无 writeTimeout 等价物), 规则显式 timeout 优先;
+ *   connect/read/call 15s), 规则显式 timeout 优先;
  * - 拦截器: [KmpRequest.prepareForSend] 在请求发出前等价执行 Android app 拦截器逻辑
  *   (UA 注入 / Keep-Alive / Cache-Control / Accept-Encoding / CookieJar 标记移除 + CookieJarBridge),
  *   发送失败重试一次 (对齐 retryOnConnectionFailure); gzip/deflate 响应经 okio 透明解压
- *   (对齐 DecompressInterceptor; TLS connectionSpecs 无法在 CIO 等价配置, 走系统信任库)
- * - 代理: 支持 http/https 代理 (含基础认证, 经 Proxy-Authorization 请求头, Ktor CIO CONNECT 会透传);
- *   Ktor CIO 不支持 SOCKS 代理 (引擎忽略), 回退主 client 直连
+ *   (对齐 DecompressInterceptor; TLS 使用 iOS 系统信任库)
+ * - 代理: 配置交给 Darwin engine 处理；此实现没有添加额外代理兼容层
  *
  * ## 编译期作用
  * 让 commonMain 中的 OkHttpUtils/DecompressInterceptor/AnalyzeUrlCore/StrResponse 等
@@ -109,7 +106,7 @@ actual interface KmpInterceptorChain {
 
 // region HttpClient / Builder —— 用 Ktor HttpClient 包装
 /**
- * nativeMain 端 [KmpHttpClient] 实现: 内部持有 Ktor [HttpClient] (CIO engine)。
+ * iOS 端 [KmpHttpClient] 实现: 内部持有 Ktor [HttpClient] (Darwin engine)。
  *
  * - [newCall] 创建 [NativeKmpCall], 持有 [KmpRequest] 与 [HttpClient] 引用;
  * - [newBuilder] 返回新 [KmpHttpClientBuilder], 复制现有配置 (timeout 等)。
@@ -179,11 +176,11 @@ actual class KmpHttpClient {
 /**
  * nativeMain 端 [KmpHttpClientBuilder] 实现: 累积 timeout 配置, [build] 时构造 Ktor [HttpClient]。
  *
- * 超时统一走 Ktor [HttpTimeout] 插件 (跨引擎标准 API, CIO 引擎会读取配置):
+ * 超时统一走 Ktor [HttpTimeout] 插件 (跨引擎标准 API, 实际行为由 Darwin engine 决定):
  * - `requestTimeoutMillis` 对应 OkHttp callTimeout (整个请求周期上限);
  * - `connectTimeoutMillis` 对应 OkHttp connectTimeout;
  * - `socketTimeoutMillis` 对应 OkHttp readTimeout (两次数据包之间最大间隔);
- * - writeTimeout 在 CIO 无等价物 (尽力而为, 已说明)。
+ * - writeTimeout 不在此处单独配置。
  *
  * 默认值与 Android HttpHelper 对齐 (connect/read/write/call 均 15s):
  * 0 = 未显式配置 → 默认 15s; AnalyzeUrlCore 规则显式 timeout 时经 setter 覆盖优先。
@@ -207,10 +204,7 @@ actual class KmpHttpClientBuilder actual constructor() {
     }
 
     /**
-     * 配置 HTTP 代理 (仅 http/https; Ktor CIO 引擎不支持 SOCKS, 见 NativeHttpProvider)。
-     *
-     * 认证: CIO 无 CONNECT 级认证 API, 由 [KmpHttpClient.proxyAuthHeader] 在请求上携带
-     * Proxy-Authorization 头 (Ktor CIO startTunnel 会把该头透传到 CONNECT 隧道)。
+     * 记录 HTTP 代理配置，实际支持情况由 Darwin engine 决定。
      */
     internal fun proxy(
         host: String,
@@ -232,16 +226,15 @@ actual class KmpHttpClientBuilder actual constructor() {
             if (readTimeoutMillis > 0) readTimeoutMillis else DEFAULT_TIMEOUT_MS
         val effectiveCallTimeout =
             if (callTimeoutMillis > 0) callTimeoutMillis else DEFAULT_TIMEOUT_MS
-        val client = HttpClient(CIO) {
+        val client = HttpClient(Darwin) {
             // 下载进度: BodyProgress 插件在响应通道上逐字节上报 (NativeKmpCall 经 onDownload 注册,
             // 漫画页下载进度/转圈环心消费, 对照 desktop okhttp ProgressResponseBody 拦截器)
             install(BodyProgress)
-            // 超时走 HttpTimeout 插件 (CIO 引擎经 HttpTimeoutCapability 读取
-            // connectTimeoutMillis/socketTimeoutMillis 并应用到连接/读写):
+            // 超时走 Ktor HttpTimeout 插件:
             // - requestTimeoutMillis 对应 OkHttp callTimeout (整个请求周期上限: 发请求到收响应)
             // - connectTimeoutMillis 对应 OkHttp connectTimeout (Android 默认 15s)
             // - socketTimeoutMillis 对应 OkHttp readTimeout (两次数据包之间最大间隔);
-            //   CIO 无 writeTimeout 等价物 (尽力而为)
+            //   writeTimeout 不在此处单独配置
             install(HttpTimeout) {
                 requestTimeoutMillis = effectiveCallTimeout
                 connectTimeoutMillis = DEFAULT_TIMEOUT_MS
@@ -253,9 +246,7 @@ actual class KmpHttpClientBuilder actual constructor() {
                 }
             }
         }
-        // 代理基础认证: CIO CONNECT 请求会透传请求头的 Proxy-Authorization (见 Ktor CIO startTunnel);
-        // 注意该头也会随请求到达目标站 (CIO 无法只对 CONNECT 附加, 尽力而为, 与 OkHttp
-        // ProxyAuthenticator 407 挑战式认证行为不同)
+        // 构造代理认证头; 实际代理行为由 Darwin engine 决定。
         val authHeader = if (!proxyUsername.isNullOrEmpty() && !proxyPassword.isNullOrEmpty()) {
             "Basic " + Base64.encode("$proxyUsername:$proxyPassword".encodeToByteArray())
         } else null

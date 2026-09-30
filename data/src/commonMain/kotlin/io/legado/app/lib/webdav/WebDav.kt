@@ -7,7 +7,7 @@ import kotlin.coroutines.cancellation.CancellationException
  * WebDav 客户端 expect 声明。
  *
  * - jvmAndAndroidMain actual: 基于 OkHttp 的原实现, 行为零变化
- * - nativeMain actual (iosMain/ohosMain 共用): 基于 Ktor CIO 的真实实现,
+ * - nativeMain actual (iosMain/ohosMain 共用): 基于 Ktor Client 的真实实现 (iOS Darwin、鸿蒙 CIO),
  *   PROPFIND/MKCOL/PUT/DELETE/GET/Range 全可用
  *
  * **KMP 化说明**:

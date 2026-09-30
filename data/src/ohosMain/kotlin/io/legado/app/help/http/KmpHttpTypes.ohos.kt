@@ -39,7 +39,7 @@ import kotlin.time.Duration
  *   body 字节经 httpCallback 第三参数 ArrayBuffer 裸传 (不经 base64, 二进制保真)
  *
  * ## 与 nativeMain (iosMain) 的差异
- * - iosMain 用 Ktor HttpClient (CIO engine, 纯 Kotlin 协程发起请求);
+ * - iosMain 用 Ktor HttpClient (Darwin engine, 通过 NSURLSession 发起请求);
  * - ohosMain 用 @ohos.net.http (ArkTS API, 经 napi tsfn 跨线程 dispatch)。
  */
 

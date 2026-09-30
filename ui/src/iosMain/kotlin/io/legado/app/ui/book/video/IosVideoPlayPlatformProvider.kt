@@ -24,7 +24,7 @@ import io.legado.app.utils.hasPlayableScheme
 import kotlinx.cinterop.CValue
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCObjectVar
-import kotlinx.cinterop.OverrideInit
+import kotlinx.cinterop.ObjCObjectBase.OverrideInit
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
@@ -36,6 +36,7 @@ import kotlinx.coroutines.flow.update
 import platform.AVFAudio.AVAudioSession
 import platform.AVFAudio.AVAudioSessionCategoryOptionMixWithOthers
 import platform.AVFAudio.AVAudioSessionCategoryPlayback
+import platform.AVFAudio.setActive
 import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerItem
 import platform.AVFoundation.AVPlayerLayer
@@ -54,10 +55,12 @@ import platform.AVFoundation.setVolume
 import platform.AVFoundation.volume
 import platform.AVKit.AVPictureInPictureController
 import platform.AVKit.AVPictureInPictureControllerDelegateProtocol
+import platform.CoreGraphics.CGRect
 import platform.CoreGraphics.CGRectMake
 import platform.CoreMedia.CMTimeGetSeconds
 import platform.CoreMedia.CMTimeMake
 import platform.Foundation.NSError
+import platform.darwin.NSObject
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSURL
