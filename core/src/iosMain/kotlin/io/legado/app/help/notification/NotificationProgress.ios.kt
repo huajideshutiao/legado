@@ -2,7 +2,7 @@
 
 package io.legado.app.help.notification
 
-import platform.Foundation.NSLog
+import io.legado.app.help.log.iosConsoleLog
 import platform.Foundation.NSError
 import platform.UserNotifications.UNAuthorizationOptionAlert
 import platform.UserNotifications.UNAuthorizationOptionSound
@@ -28,7 +28,7 @@ import platform.UserNotifications.UNUserNotificationCenter
  *   removePendingNotificationRequestsWithIdentifiers (移除待发送的, 防止 trigger 延迟)
  * - 进度文本拼接: "content (progress/max)" 或 "content" (max<=0 时), 与 desktop 端
  *   [io.legado.app.help.notification.DesktopNotificationProgress] 一致
- * - 失败兜底: 任意步骤异常 (权限未授权 / 通知 center 不可用) 退化为 [NSLog], 保留原日志降级行为
+ * - 失败兜底: 任意步骤异常 (权限未授权 / 通知 center 不可用) 退化为 NSLog, 保留原日志降级行为
  *
  * # 注意
  * - iOS 本地通知需用户授权 (首次 showProgress 前 registerIosNotificationProgress 已请求权限);
@@ -76,12 +76,12 @@ class IosNotificationProgress : NotificationProgress {
             // addNotificationRequest 尾部 completionHandler 可 trailing lambda; error 非 nil 表示添加失败
             center.addNotificationRequest(request) { error ->
                 if (error != null) {
-                    NSLog("[ios-notification] add request error: %@", error.localizedDescription)
+                    iosConsoleLog("[ios-notification] add request error: ${error.localizedDescription}")
                 }
             }
         }.onFailure {
-            // 退化: NSLog 输出系统日志 (与原 NSLog 降级实现一致)
-            NSLog("[ios-notification] %@ | %@", title, progressText)
+            // 退化: NSLog 输出系统日志
+            iosConsoleLog("[ios-notification] $title | $progressText")
         }
     }
 
@@ -92,9 +92,9 @@ class IosNotificationProgress : NotificationProgress {
             center.removeDeliveredNotificationsWithIdentifiers(listOf(NOTIFICATION_ID))
             center.removePendingNotificationRequestsWithIdentifiers(listOf(NOTIFICATION_ID))
         }.onFailure {
-            NSLog("[ios-notification] cancel failed (fallback)")
+            iosConsoleLog("[ios-notification] cancel failed (fallback)")
         }
-        NSLog("[ios-notification] cancel")
+        iosConsoleLog("[ios-notification] cancel")
     }
 
     companion object {
@@ -122,13 +122,13 @@ fun registerIosNotificationProgress() {
             UNAuthorizationOptionAlert or UNAuthorizationOptionSound,
         ) { granted, error ->
             if (error != null) {
-                NSLog("[ios-notification] auth error: %@", error.localizedDescription)
+                iosConsoleLog("[ios-notification] auth error: ${error.localizedDescription}")
             } else if (!granted) {
-                NSLog("[ios-notification] user denied notification authorization")
+                iosConsoleLog("[ios-notification] user denied notification authorization")
             }
         }
     }.onFailure {
-        NSLog("[ios-notification] requestAuthorization failed: %@", it.toString())
+        iosConsoleLog("[ios-notification] requestAuthorization failed: $it")
     }
     NotificationProgresses.register(IosNotificationProgress())
 }

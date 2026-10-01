@@ -2,9 +2,9 @@
 
 package io.legado.app.help.toast
 
+import io.legado.app.help.log.iosConsoleLog
 import io.legado.app.help.topMostViewController
 import io.legado.app.ui.compose.platform.syncGetString
-import platform.Foundation.NSLog
 import platform.UIKit.UIAlertAction
 import platform.UIKit.UIAlertActionStyleDefault
 import platform.UIKit.UIAlertController
@@ -22,7 +22,7 @@ import platform.darwin.dispatch_get_main_queue
  * # 设计要点
  * - 调用线程不限: 用 [dispatch_async] 切到主线程 (UIKit present 必须主线程)
  * - 降级到 NSLog: 当拿不到 root vc / 已有 modal 在 present / present 失败时,
- *   退化为 [NSLog] 输出系统日志 (保留原 NSLog 降级能力, 与 desktop 无 SystemTray 时退化为记日志一致)
+ *   退化为 NSLog 输出系统日志 (保留原 NSLog 降级能力, 与 desktop 无 SystemTray 时退化为记日志一致)
  * - 防重入: 若当前已有 presentedViewController, 不再叠加 alert (避免 UI 阻塞), 走 NSLog 兜底
  * - 短/长: UIAlertController 无"短/长"概念, toastLong 仅在 NSLog 兜底时加 `[LONG]` 区分
  *   (与 desktop 端 TrayIcon 无短长概念一致)
@@ -56,7 +56,7 @@ class IosToaster : Toaster {
     }
 
     /**
-     * 显示消息: 切到主线程用 [UIAlertController] present, 失败退化 [NSLog]。
+     * 显示消息: 切到主线程用 [UIAlertController] present, 失败退化 NSLog。
      */
     private fun showToast(message: String, isLong: Boolean) {
         // 切到主线程: UIKit present 必须主线程 (dispatch_async 非阻塞, 调用立即返回)
@@ -94,10 +94,10 @@ class IosToaster : Toaster {
         }
     }
 
-    /** NSLog 降级兜底 (与原 P0 NSLog 实现一致, 用 %@ 避免 % 被解释为格式符)。 */
+    /** NSLog 降级兜底: 整串输出 (约束见 [iosConsoleLog])。 */
     private fun logFallback(message: String, isLong: Boolean) {
         val tag = if (isLong) "[ios-toast-long]" else "[ios-toast]"
-        NSLog("%@ %@", tag, message)
+        iosConsoleLog("$tag $message")
     }
 }
 
