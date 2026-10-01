@@ -1,5 +1,7 @@
 import picker from '@ohos.file.picker';
 import fs from '@ohos.file.fs';
+import fileShare from '@ohos.fileshare';
+import fileUri from '@ohos.file.fileuri';
 import common from '@ohos.app.ability.common';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { BusinessError } from '@ohos.base';
@@ -20,7 +22,7 @@ import { arrayBufferToBase64, base64ToArrayBuffer } from './BridgeCodec';
  * {
  *   "requestId": <number>,
  *   "action": "pickDocuments" | "pickDocumentContent" | "pickImages" | "pickDirectory"
- *             | "saveDocument" | "saveImageToAlbum",
+ *             | "activateDirectoryPermissions" | "saveDocument" | "saveImageToAlbum",
  *   "payload": "<JSON string, action-specific>"
  * }
  *
@@ -50,10 +52,17 @@ import { arrayBufferToBase64, base64ToArrayBuffer } from './BridgeCodec';
  * - pickDocumentContent 成功: `{ ok: true, data: "<base64>" }`
  * - pickImages 成功: `{ ok: true, uris: ["<uri1>", "<uri2>", ...] }`
  * - pickImages 用户取消: `{ ok: true, cancelled: true }`
- * - pickDirectory 成功: `{ ok: true, uris: ["<dirUri>"] }`
+ * - pickDirectory 成功 (2in1/Tablet): `{ ok: true, uris: ["<dirUri>"], paths: ["<沙箱路径>"] }`
+ *   paths 为 fileUri.FileUri(uri).path 官方转换结果 (与 uris 一一对应);
+ *   授权已持久化 (persistPermission READ_MODE, select 只授临时只读权限),
+ *   持久化失败 → `{ ok: false, code, error, policyErrors? }`, 不返回路径
+ * - pickDirectory 成功 (Phone): `{ ok: true, uris: ["<父目录 URI>"] }` (无 paths, 原行为)
  * - pickDirectory 用户取消: `{ ok: true, cancelled: true }`
  * - saveImageToAlbum 成功: `{ ok: true, uris: ["<图库资源 URI>"] }`
- * - 失败: `{ ok: false, error: "<string>" }`
+ * - activateDirectoryPermissions 成功: `{ ok: true, uris: [已激活的 uri] }`
+ * - activateDirectoryPermissions 部分失败: `{ ok: false, code: 13900001,
+ *   policyErrors: [{uri, code, message}], uris: [成功子集] }`
+ * - 失败: `{ ok: false, code?: <BusinessError.code>, error: "<string>" }`
  *
  * # UTI → 后缀映射
  * KMP 调用方 (对照 iOS pickDocuments) 传入 iOS UTI 字符串 (如 "public.json"),
@@ -79,6 +88,22 @@ interface FilePickerResponse extends BridgeResponse {
   uris?: string[];
   cancelled?: boolean;
   data?: string;
+  // pickDirectory: 与 uris 一一对应的沙箱路径 (fileUri.FileUri(uri).path 官方转换; Phone 分支不转换)
+  paths?: string[];
+  // BusinessError.code (801=Capability not supported, 13900001=Operation not permitted 等)
+  code?: number;
+  // 13900001 部分失败明细 (fileShare.PolicyErrorResult: uri/code/message)
+  policyErrors?: PolicyErrorItem[];
+}
+
+interface PolicyErrorItem {
+  uri: string;
+  code: number;
+  message: string;
+}
+
+interface ActivatePermissionsPayload {
+  uris: string[];
 }
 
 interface PickDocumentsPayload {
@@ -158,6 +183,7 @@ async function handleAction(req: BridgeRequest): Promise<FilePickerResponse> {
     case 'pickDocumentContent': return await handlePickDocumentContent(req.payload ?? '');
     case 'pickImages': return await handlePickImages(req.payload ?? '');
     case 'pickDirectory': return await handlePickDirectory(req.payload ?? '');
+    case 'activateDirectoryPermissions': return await handleActivateDirectoryPermissions(req.payload ?? '');
     case 'saveDocument': return await handleSaveDocument(req.payload ?? '');
     case 'saveImageToAlbum': return await handleSaveImageToAlbum(req.payload ?? '');
     default: return { ok: false, error: 'unknown action: ' + req.action };
@@ -271,6 +297,12 @@ async function handlePickImages(payload: string): Promise<FilePickerResponse> {
   }
 }
 
+// FolderSelection: 选目录能力 (2in1/Tablet); FolderAuthorization: 授权持久化能力
+// (fileShare.persistPermission/activatePermission, 官方 file-persistPermission.md
+// 指定用 canIUse 检测该 syscap)
+const FOLDER_SELECTION_SYSCAP = 'SystemCapability.FileManagement.UserFileService.FolderSelection';
+const FOLDER_AUTHORIZATION_SYSCAP = 'SystemCapability.FileManagement.AppFileService.FolderAuthorization';
+
 // ===== pickDirectory: 选目录 (2in1/Tablet) 或 选文件取父目录 (Phone) =====
 //
 // 目录选择是 2in1/Tablet 能力 (syscap UserFileService.FolderSelection),
@@ -279,24 +311,29 @@ async function handlePickImages(payload: string): Promise<FilePickerResponse> {
 // Phone 降级为“选该目录下的任一文件, 取其父目录”: 用户仍能指定导入目录,
 // 空目录需先放入一个文件才能选中。
 async function handlePickDirectory(payload: string): Promise<FilePickerResponse> {
-  if (canIUse('SystemCapability.FileManagement.UserFileService.FolderSelection')) {
+  if (canIUse(FOLDER_SELECTION_SYSCAP)) {
     return await pickDirectoryNative();
   }
   return await pickDirectoryViaFileParent();
 }
 
-/** 2in1/Tablet: 原生选目录 (selectMode=FOLDER)。 */
+/**
+ * 2in1/Tablet: 原生选目录 (selectMode=FOLDER) + 授权持久化。
+ *
+ * select 返回的 URI 只有临时只读权限 (官方 select-user-file.md, 重启/退后台失效),
+ * 选完目录后立即 fileShare.persistPermission 只持久化 READ_MODE; 持久化失败即本次
+ * 选择失败 (ok:false, 不返回路径 —— 不允许"本次临时可读"被当长期可读)。
+ * 重启后由 Kotlin 侧经 activateDirectoryPermissions 按需激活。
+ */
 async function pickDirectoryNative(): Promise<FilePickerResponse> {
-  if (!canIUse('SystemCapability.FileManagement.UserFileService.FolderSelection')) {
+  if (!canIUse(FOLDER_SELECTION_SYSCAP)) {
     return await pickDirectoryViaFileParent();
   }
-  // 不传 fileSuffixFilters (允许用户导航文件系统选择目录), maxSelectNumber=1 限定单选
+  // 不传 fileSuffixFilters (允许用户导航文件系统选择目录), maxSelectNumber=1 限定单选;
+  // 必须显式选目录模式, 默认 FILE 会选文件而非目录
   const documentSelectOptions = new picker.DocumentSelectOptions();
   documentSelectOptions.maxSelectNumber = 1;
-  // 必须显式选目录模式, 默认 FILE 会选文件而非目录
-  if (canIUse('SystemCapability.FileManagement.UserFileService.FolderSelection')) {
-    documentSelectOptions.selectMode = picker.DocumentSelectMode.FOLDER;
-  }
+  documentSelectOptions.selectMode = picker.DocumentSelectMode.FOLDER;
   const documentViewPicker = new picker.DocumentViewPicker();
   try {
     const uris: string[] = await documentViewPicker.select(documentSelectOptions);
@@ -304,8 +341,7 @@ async function pickDirectoryNative(): Promise<FilePickerResponse> {
       // select 返回空数组视为取消 (理论上不会发生, 取消会抛异常)
       return { ok: true, cancelled: true };
     }
-    // maxSelectNumber=1, 取首个作为目录 URI (uris 数组中仅 1 个元素)
-    return { ok: true, uris: [uris[0]] };
+    return await persistAndConvert(uris[0]);
   } catch (e) {
     // 用户取消: 与 handlePickDocuments 一致, 识别取消码返回 cancelled: true
     if (isUserCancelled(e)) {
@@ -317,7 +353,45 @@ async function pickDirectoryNative(): Promise<FilePickerResponse> {
 }
 
 /**
- * Phone: 选一个文件, 取其父目录作为导入根目录。
+ * 选定目录后: 持久化 (READ_MODE, 失败即本次选择失败) → fileUri 官方转换沙箱路径。
+ * 转换不做路径校验 (官方约定), 可访问性由 Kotlin 侧真实检查。
+ */
+async function persistAndConvert(dirUri: string): Promise<FilePickerResponse> {
+  if (!canIUse(FOLDER_AUTHORIZATION_SYSCAP)) {
+    return { ok: false, code: 801, error: 'FolderAuthorization not supported on this device' };
+  }
+  // 只持久化 select 实际授予的 READ_MODE (超出临时授权范围的 mode 会被拒)
+  const policy: fileShare.PolicyInfo = {
+    uri: dirUri,
+    operationMode: fileShare.OperationMode.READ_MODE,
+  };
+  try {
+    await fileShare.persistPermission([policy]);
+  } catch (e) {
+    const err = e as BusinessError<Array<fileShare.PolicyErrorResult>>;
+    if (err.code === 13900001 && err.data) {
+      return {
+        ok: false,
+        code: err.code,
+        policyErrors: err.data.map(d => ({ uri: d.uri, code: d.code, message: String(d.message ?? '') })),
+        error: err.message ?? String(e),
+      };
+    }
+    return { ok: false, code: err.code, error: err.message ?? String(e) };
+  }
+  // URI → 沙箱路径: fileUri.FileUri(uri).path 是官方转换 API (系统约定字符串替换,
+  // 不做路径校验, 不保证可访问), 可访问性由 Kotlin 侧真实检查
+  try {
+    const path: string = new fileUri.FileUri(dirUri).path;
+    return { ok: true, uris: [dirUri], paths: [path] };
+  } catch (e) {
+    const err = e as BusinessError;
+    return { ok: false, code: err.code, error: err.message ?? String(e) };
+  }
+}
+
+/**
+ * Phone: 选一个文件, 取其父目录作为导入根目录 (原行为, 不做持久化/激活/路径转换)。
  *
  * 文件选择 (selectMode 保持默认 FILE) 的 syscap 是基础 UserFileService, 手机可用。
  * URI 形如 file://docs/storage/Users/currentUser/Documents/books/novel.txt,
@@ -347,6 +421,44 @@ async function pickDirectoryViaFileParent(): Promise<FilePickerResponse> {
 }
 
 /**
+ * 激活已持久化的目录授权 (重启后按需调用, 官方 file-persistPermission.md:
+ * 持久化授权存系统数据库, 应用/设备重启后须 activatePermission 才能使用)。
+ *
+ * 部分失败 (13900001) 时 policyErrors 携带逐条失败明细 (fileShare.PolicyErrorResult),
+ * 响应 uris 返回成功子集, 由 Kotlin 侧区分处理。
+ */
+async function handleActivateDirectoryPermissions(payload: string): Promise<FilePickerResponse> {
+  const p = JSON.parse(payload) as ActivatePermissionsPayload;
+  if (p.uris == null || p.uris.length === 0) {
+    return { ok: false, error: 'no uris to activate' };
+  }
+  if (!canIUse(FOLDER_AUTHORIZATION_SYSCAP)) {
+    return { ok: false, code: 801, error: 'FolderAuthorization not supported on this device' };
+  }
+  const policies: fileShare.PolicyInfo[] = p.uris.map(uri => ({
+    uri: uri,
+    // 与持久化同策略: select 只授 READ_MODE
+    operationMode: fileShare.OperationMode.READ_MODE,
+  }));
+  try {
+    await fileShare.activatePermission(policies);
+    return { ok: true, uris: p.uris };
+  } catch (e) {
+    const err = e as BusinessError<Array<fileShare.PolicyErrorResult>>;
+    if (err.code === 13900001 && err.data) {
+      const failed = new Set<string>(err.data.map(d => d.uri));
+      return {
+        ok: false,
+        code: err.code,
+        policyErrors: err.data.map(d => ({ uri: d.uri, code: d.code, message: String(d.message ?? '') })),
+        uris: p.uris.filter(u => !failed.has(u)),
+      };
+    }
+    return { ok: false, code: err.code, error: err.message ?? String(e) };
+  }
+}
+
+/**
  * 取文件 URI 的父目录 URI (去掉最后一段路径)。
  *
  * 只按 '/' 分段, 不解析 file:// authority: 父目录 URI 仍交给下游 fileIo 按同一 URI 方案访问,
@@ -354,12 +466,12 @@ async function pickDirectoryViaFileParent(): Promise<FilePickerResponse> {
  *
  * @returns 父目录 URI; URI 无可去尾段时返回 null
  */
-function parentUriOf(fileUri: string): string | null {
-  const idx = fileUri.lastIndexOf('/');
+function parentUriOf(uri: string): string | null {
+  const idx = uri.lastIndexOf('/');
   if (idx <= 0) {
     return null;
   }
-  const parent = fileUri.substring(0, idx);
+  const parent = uri.substring(0, idx);
   // file://docs (仅剩 scheme+authority) 不是可用目录
   return parent.includes('://') && parent.indexOf('/', parent.indexOf('://') + 3) < 0 ? null : parent;
 }

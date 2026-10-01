@@ -1,5 +1,6 @@
 package io.legado.app.help.file
 
+import io.legado.app.constant.AppLog
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.utils.KS_JSON
 import kotlinx.serialization.Serializable
@@ -165,24 +166,65 @@ fun saveImageToAlbum(extension: String, bytes: ByteArray): Boolean {
 /**
  * 选择目录 (对照 iOS pickDirectory / desktop FileDialogs.pickDirectory)。
  *
- * 2in1/Tablet 用 DocumentViewPicker 原生选目录; Phone 无该能力 (官方设备 syscap 清单
- * 无 FolderSelection), 由 ArkTS 侧降级为“选一个文件取父目录”, 返回值同形。
- * 调用方需通过 @ohos.file.fs 或 security-scoped 访问 URI 对应目录。
+ * 2in1/Tablet (FolderSelection syscap): DocumentViewPicker 原生选目录, 选完立即
+ * fileShare.persistPermission 持久化 (select 只授临时只读权限, 仅持久化 READ_MODE),
+ * 持久化/路径转换失败即本次选择失败 (返回 null, 不放行临时可读的路径);
+ * fileUri.FileUri(uri).path 官方转换出 POSIX 路径。
+ * Phone (无 FolderSelection syscap): ArkTS 降级“选一个文件取父目录”返回原 URI
+ * (path 为 null), 由调用方按原折回规则处理。
  *
- * @return 选中目录 URI, 用户取消或桥接未就绪返回 null
+ * @return 选中目录 (uri + 转换路径); 用户取消/桥未就绪/持久化或转换失败返回 null
  */
-fun pickDirectory(): String? {
+fun pickDirectory(): OhosPickedDirectory? {
     // 桥接未就绪: 降级返回 null
     if (!OhosNativeBridge.isFilePickerBridgeReady()) return null
 
     val payload = KS_JSON.encodeToString(PickDirectoryPayload())
     val resultJson = OhosNativeBridge.invokeFilePickerSync("pickDirectory", payload) ?: return null
     val resp = runCatching { KS_JSON.decodeFromString(FilePickerResponse.serializer(), resultJson) }.getOrNull()
-    if (resp == null || !resp.ok) return null
+        ?: return null
+    if (!resp.ok) {
+        val detail = resp.policyErrors.orEmpty()
+            .joinToString { "policyCode=${it.code} uri=${it.uri}" }
+        AppLog.put("选择目录失败 errCode=${resp.code ?: 0} ${resp.error ?: ""} $detail")
+        return null
+    }
     // 用户取消: 返回 null
     if (resp.cancelled == true) return null
-    // maxSelectNumber=1, 取首个 URI 作为目录 URI
-    return resp.uris?.firstOrNull()
+    // maxSelectNumber=1, 取首个 URI; Phone 分支无 paths (path=null)
+    val uri = resp.uris?.firstOrNull() ?: return null
+    return OhosPickedDirectory(uri = uri, path = resp.paths?.firstOrNull())
+}
+
+/**
+ * 激活已持久化的目录授权 (重启后按需调用)。
+ *
+ * ArkTS 侧调 fileShare.activatePermission (需 FolderAuthorization syscap +
+ * ohos.permission.FILE_ACCESS_PERSIST, READ_MODE 与持久化同策略); 设备无该能力时返回
+ * code=801; 13900001 部分失败时 [ActivatePermissionsResult.activatedUris] 为成功子集,
+ * [ActivatePermissionsResult.policyErrors] 为逐条失败明细 (含 policyCode)。
+ *
+ * @param uris 已持久化的目录授权 URI 列表 (上限 500)
+ */
+fun activateDirectoryPermissions(uris: List<String>): ActivatePermissionsResult {
+    if (!OhosNativeBridge.isFilePickerBridgeReady()) {
+        return ActivatePermissionsResult(ok = false, code = 0, message = "filePicker 桥未就绪")
+    }
+    val payload = KS_JSON.encodeToString(ActivatePermissionsPayload(uris = uris))
+    val resultJson = OhosNativeBridge.invokeFilePickerSync("activateDirectoryPermissions", payload)
+        ?: return ActivatePermissionsResult(ok = false, code = 0, message = "桥调用超时或 tsfn 调用异常")
+    val resp = runCatching { KS_JSON.decodeFromString(FilePickerResponse.serializer(), resultJson) }.getOrNull()
+        ?: return ActivatePermissionsResult(ok = false, code = 0, message = "响应解析失败: $resultJson")
+    if (!resp.ok) {
+        return ActivatePermissionsResult(
+            ok = false,
+            code = resp.code ?: 0,
+            message = resp.error,
+            policyErrors = resp.policyErrors.orEmpty(),
+            activatedUris = resp.uris.orEmpty(),
+        )
+    }
+    return ActivatePermissionsResult(ok = true, activatedUris = resp.uris.orEmpty())
 }
 
 // ===== 跨语言 payload / response (与 ArkTS FilePickerBridgeHandler.ets JSON 协议对齐) =====
@@ -225,6 +267,42 @@ private data class SaveImageToAlbumPayload(
 @Serializable
 private class PickDirectoryPayload
 
+/** activateDirectoryPermissions 请求 payload (Kotlin → ArkTS)。 */
+@Serializable
+private data class ActivatePermissionsPayload(
+    val uris: List<String>,
+)
+
+/** 选中的目录 (pickDirectory 返回)。 */
+data class OhosPickedDirectory(
+    /** 目录授权 URI (file://docs/...)。 */
+    val uri: String,
+    /** fileUri.FileUri 官方转换出的 POSIX 路径; Phone 降级分支未转换, 为 null。 */
+    val path: String?,
+)
+
+/** fileShare.PolicyErrorResult (授权策略失败的 URI 明细)。 */
+@Serializable
+data class OhosPolicyError(
+    val uri: String,
+    /** PolicyErrorCode: 1=PERSISTENCE_FORBIDDEN 2=INVALID_MODE 3=INVALID_PATH 4=PERMISSION_NOT_PERSISTED。 */
+    val code: Int,
+    val message: String?,
+)
+
+/** activateDirectoryPermissions 结果。 */
+data class ActivatePermissionsResult(
+    /** 全部成功 (13900001 部分失败时为 false, 成功子集在 [activatedUris])。 */
+    val ok: Boolean,
+    /** BusinessError.code (801=设备无 FolderAuthorization 能力, 13900001=部分失败)。 */
+    val code: Int = 0,
+    val message: String? = null,
+    /** 逐条失败明细 (13900001 时非空)。 */
+    val policyErrors: List<OhosPolicyError> = emptyList(),
+    /** 成功激活的 URI 子集 (ok=true 时等于请求全集)。 */
+    val activatedUris: List<String> = emptyList(),
+)
+
 /**
  * FilePicker 响应 (ArkTS → Kotlin)。
  *
@@ -233,8 +311,13 @@ private class PickDirectoryPayload
  * - pickDocumentContent 成功: [ok]=true, [data]=base64 编码字节
  * - pickImages 成功: [ok]=true, [uris]=选中图片 URI 列表
  * - pickImages 用户取消: [ok]=true, [cancelled]=true
- * - pickDirectory 成功: [ok]=true, [uris]=[单个目录 URI]
+ * - pickDirectory 成功 (2in1/Tablet): [ok]=true, [uris]=[单个目录 URI], [paths]=[转换路径]
+ * - pickDirectory 成功 (Phone): [ok]=true, [uris]=[父目录 URI] (无 paths)
+ * - pickDirectory 持久化/转换失败: [ok]=false, [code]/[error]/[policyErrors]=失败明细
  * - pickDirectory 用户取消: [ok]=true, [cancelled]=true
+ * - activateDirectoryPermissions 成功: [ok]=true, [uris]=[已激活的 uri]
+ * - activateDirectoryPermissions 部分失败: [ok]=false, [code]=13900001,
+ *   [policyErrors]=失败明细, [uris]=[成功子集]
  * - saveDocument 成功: [ok]=true, [uris]=[目标文件 URI]
  * - saveDocument 用户取消: [ok]=true, [cancelled]=true
  * - saveImageToAlbum 成功: [ok]=true
@@ -247,4 +330,10 @@ private data class FilePickerResponse(
     val cancelled: Boolean? = null,
     val data: String? = null,
     val error: String? = null,
+    // pickDirectory: 与 uris 一一对应的沙箱路径 (ArkTS fileUri.FileUri(uri).path 官方转换; Phone 分支不转换)
+    val paths: List<String>? = null,
+    // BusinessError.code (801/13900001 等)
+    val code: Int? = null,
+    // 13900001 部分失败明细 (PolicyErrorResult)
+    val policyErrors: List<OhosPolicyError>? = null,
 )

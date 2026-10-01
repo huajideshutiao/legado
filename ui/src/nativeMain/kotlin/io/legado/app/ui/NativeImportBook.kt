@@ -14,6 +14,7 @@ import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.toReadRoute
 import io.legado.app.utils.AlphanumComparator
 import io.legado.app.utils.File
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -31,13 +32,28 @@ class NativeImportFile(
     override val isUpDir: Boolean = false,
     override var isOnBookShelf: Boolean = false,
 ) : ImportFileItem {
+    // 目录属性/大小/时间都是文件系统调用: 外部目录需在 security-scoped 授权内取
+    // (一次租约取齐三项, 不逐字段起停)
+    private val meta: LocalFileMeta = if (isUpDir) LocalFileMeta(true, 0L, 0L) else
+        withLocalDirAccess(file.path) {
+            val dir = file.isDirectory
+            LocalFileMeta(dir, if (dir) 0L else file.length(), file.lastModified())
+        }
+
     override val name: String = if (isUpDir) ".." else file.name
-    override val isDir: Boolean = isUpDir || file.isDirectory
-    override val size: Long = if (file.isDirectory) 0L else file.length()
-    override val lastModified: Long = file.lastModified()
+    override val isDir: Boolean = meta.isDir
+    override val size: Long = meta.size
+    override val lastModified: Long = meta.lastModified
     override val tag: String = file.name.substringAfterLast(".")
     override val itemKey: Any = file.absolutePath
 }
+
+/** [NativeImportFile] 构造时一次性取齐的文件元数据。 */
+internal data class LocalFileMeta(
+    val isDir: Boolean,
+    val size: Long,
+    val lastModified: Long,
+)
 
 /**
  * iOS/鸿蒙本地书导入状态 (对照 app 端 `ImportBookActivity` + `ImportBookViewModel`,
@@ -47,15 +63,15 @@ class NativeImportFile(
  * - **无 SAF**: 目录遍历直接用 nativeMain okio [File] (listFiles/walkTopDown), 不做
  *   DocumentFile 抽象 —— iOS/鸿蒙选目录入口 (UIDocumentPicker / DocumentViewPicker)
  *   把选中目录归一成 POSIX 路径后调 [setRoot];
- * - **沙盒语义**: desktop 上架只引用原文件路径, 移动端外部目录无持久授权
- *   (iOS security-scoped URL 重启失效 / 鸿蒙 picker URI 跨会话不可靠), 故上架前把
- *   普通书文件**复制**进 `{filesDir}/books`, bookUrl 指向沙盒内副本, 保证重启后仍可读;
+ * - **沙盒语义**: desktop 上架只引用原文件路径, 移动端把普通书文件**复制**进
+ *   `{filesDir}/books`, bookUrl 指向沙盒内副本, 保证重启后仍可读
+ *   (iOS 阅读经 [IosSecurityScopedStorage] 租约后, 外部目录引用才成为可能, 但导入链保持复制语义不变);
  * - **压缩包**: 无压缩包内选章阅读 UI, openReader 走 [FileAssociationDispatch]
  *   的直接导入链 (对照 Android startRead 的 onArchiveFileClick 分支, 平台能力上限)。
  *
  * # 平台限制 (不假装与 Android 等价)
- * - iOS 只能浏览用户经 UIDocumentPicker 显式授权的目录 (Open 模式, security-scoped),
- *   且授权不跨重启 —— 冷启动后 [init] 不恢复上次目录, 需重新选择 (restoreLast=false);
+ * - iOS 只能浏览用户经 UIDocumentPicker 显式授权的目录 (Open 模式, security-scoped);
+ *   目录授权经 minimal bookmark 持久化, 冷启动由 IosPlatformCapabilities.initImportBookData 恢复;
  * - 鸿蒙目录经 picker URI 归一为 POSIX 路径, 能否直接读取决于桥接层对 `file://docs`
  *   前缀的折回 (与备份路径同一约定), 桥接未就绪时降级返回 null。
  */
@@ -90,8 +106,9 @@ object NativeImportBook {
     /**
      * 初始化导入页状态。
      *
-     * @param restoreLast 是否恢复上次目录; iOS 传 false —— security-scoped URL 跨重启
-     *   不可恢复, 冷启动一律让用户重新选择 (苹果平台能力上限)。
+     * @param restoreLast 是否从 prefs 恢复上次目录。iOS 传 false: 上次导入目录的授权经
+     *   minimal bookmark 由 IosPlatformCapabilities.initImportBookData 另行恢复 (不走 prefs 路径);
+     *   鸿蒙传 true (picker 归一化路径直接可读)。
      */
     fun init(restoreLast: Boolean = true) {
         // 排序预存值 (对照 shared 路由读 AppConfig.localBookImportSort 展示勾选项;
@@ -103,7 +120,7 @@ object NativeImportBook {
             return
         }
         val last = if (restoreLast) prefs.getString(KEY_IMPORT_BOOK_PATH, "") else ""
-        if (last.isNotEmpty() && File(last).isDirectory) {
+        if (last.isNotEmpty() && canReadDirectory(File(last))) {
             setRoot(last)
         } else {
             _emptyMsgVisible.value = true
@@ -122,9 +139,22 @@ object NativeImportBook {
     /** 进入子目录 (对照 Android nextDoc)。 */
     fun enterDir(item: ImportFileItem) {
         val file = (item as? NativeImportFile)?.file ?: return
-        if (!file.isDirectory) return
-        subDirs.add(file)
-        reload()
+        val parent = currentDir()
+        scope.launch {
+            if (!canReadDirectory(file) || currentDir() != parent) return@launch
+            subDirs.add(file)
+            reload()
+        }
+    }
+
+    private fun canReadDirectory(file: File): Boolean = try {
+        withLocalDirAccess(file.path) { file.isDirectory }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        AppLog.put("访问导入目录失败: ${file.path}\n${e.message}", e)
+        Toasters.get().toast("无法访问目录: ${file.name}\n${e.message}")
+        false
     }
 
     /** 返回上级; 已在根目录返回 false (对照 Android goBackDir)。 */
@@ -170,9 +200,12 @@ object NativeImportBook {
     /** 深度受限收集书籍/压缩包文件 (目录不含书架文件, 直接递归)。 */
     private fun collectBookFiles(dir: File, depth: Int, out: MutableList<File>) {
         if (depth <= 0) return
-        val children = dir.listFiles() ?: return
+        // 每层目录单独取一次授权租约 (递归中不嵌套持有多层 scope)
+        val children = withLocalDirAccess(dir.path) {
+            dir.listFiles()?.toList().orEmpty()
+        }
         for (child in children) {
-            if (child.isDirectory) {
+            if (withLocalDirAccess(child.path) { child.isDirectory }) {
                 collectBookFiles(child, depth - 1, out)
             } else if (FileBook.isBookFile(child.name)
                 || AppPattern.archiveFileRegex.matches(child.name)
@@ -198,10 +231,12 @@ object NativeImportBook {
             _path.value = (listOf(rootDir!!.name) + subDirs.map { it.name })
                 .joinToString("/") + "/"
             val children = runCatching {
-                dir.listFiles()?.filter {
-                    it.isDirectory || FileBook.isBookFile(it.name) ||
-                        AppPattern.archiveFileRegex.matches(it.name)
-                } ?: emptyList()
+                withLocalDirAccess(dir.path) {
+                    dir.listFiles()?.filter {
+                        it.isDirectory || FileBook.isBookFile(it.name) ||
+                            AppPattern.archiveFileRegex.matches(it.name)
+                    } ?: emptyList()
+                }
             }.getOrElse {
                 AppLog.put("读取本地书目录失败\n${it.message}", it)
                 emptyList()
@@ -229,9 +264,20 @@ object NativeImportBook {
             1 -> compareBy({ !it.isDir }, { -it.size })
             else -> compareBy { !it.isDir }
         }.then(compareBy(AlphanumComparator) { it.name })
+        var unreadableCount = 0
         val list = files.asSequence()
             .filter { skipFilter || it.name.contains(filterKey) }
-            .map { NativeImportFile(it, isOnBookShelf = names.contains(it.name)) }
+            .mapNotNull { file ->
+                try {
+                    NativeImportFile(file, isOnBookShelf = names.contains(file.name))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    unreadableCount++
+                    AppLog.put("读取导入文件属性失败: ${file.path}\n${e.message}", e)
+                    null
+                }
+            }
             .sortedWith(comparator)
             .toMutableList<ImportFileItem>()
         if (withUpDir) {
@@ -239,6 +285,9 @@ object NativeImportBook {
         }
         _items.value = list
         _emptyMsgVisible.value = list.isEmpty()
+        if (unreadableCount > 0) {
+            Toasters.get().toast("有 $unreadableCount 个文件已消失或无法访问")
+        }
     }
 
     /** 上架选中条目 (对照 ImportBookViewModel.addToBookshelf)。 */
@@ -278,7 +327,18 @@ object NativeImportBook {
         val file = (item as? NativeImportFile)?.file ?: return
         val fileName = file.name
         if (fileName.matches(AppPattern.archiveFileRegex)) {
-            FileAssociationDispatch.dispatch(file.path)
+            // 外部压缩包的解压/导入全程包在授权租约内 (deCompress 直接读原文件;
+            // 解出后的书籍文件已落沙盒, 由后续链路自行处理)
+            scope.launch {
+                try {
+                    withLocalDirAccess(file.path) { FileAssociationDispatch.dispatch(file.path) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    AppLog.put("打开压缩包失败: ${file.path}\n${e.message}", e)
+                    Toasters.get().toast("无法打开压缩包: ${file.name}\n${e.message}")
+                }
+            }
             return
         }
         scope.launch {
@@ -297,13 +357,14 @@ object NativeImportBook {
     /**
      * 复制书文件到沙盒 books 目录 (对齐 NativeFileBookAccessor.booksDir)。
      * 同名直接覆盖 (与 FileBook 重复导入的覆写语义一致); 源已在目标目录则跳过。
+     * 源文件读取 (外部目录) 包在授权租约内, 复制完即释放。
      */
     private fun sandboxCopy(src: File): File {
         val dir = File(AppFilesDirs.get().filesDir, "books")
         dir.mkdirs()
         val dest = File(dir, src.name)
         if (dest.absolutePath != src.absolutePath) {
-            src.copyTo(dest, overwrite = true)
+            withLocalDirAccess(src.path) { src.copyTo(dest, overwrite = true) }
         }
         return dest
     }

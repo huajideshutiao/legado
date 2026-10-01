@@ -1,5 +1,6 @@
 package io.legado.app.utils
 
+import okio.FileHandle
 import okio.FileSystem
 import okio.Path
 import okio.Path.Companion.toPath
@@ -265,3 +266,107 @@ actual fun Throwable.isSecurityException(): Boolean =
     this is io.legado.app.exception.SecurityException
 
 actual fun String.platformIntern(): String = this
+
+/**
+ * [File] 只读输入流, 对应 JVM 端 `kotlin.io.File.inputStream()`。
+ *
+ * 调用契约: 调用方负责 [InputStream.close]; 流关闭后再调用 read/skip/available 抛
+ * [IllegalStateException]。
+ *
+ * 打开失败抛 okio [okio.IOException] —— 本机文件系统实现 (PosixFileSystem) 只在
+ * `ENOENT` 时抛 [okio.FileNotFoundException], 其余 errno (如权限不足 `EACCES`)
+ * 抛普通 [okio.IOException]。
+ */
+fun File.inputStream(): InputStream = FileInputStream(path)
+
+/**
+ * 基于 okio [FileHandle] 的文件输入流。
+ *
+ * [io.legado.app.model.fileBook.TextFileCore] 依赖 [available] 算读取窗口、
+ * [skip] 定位章节起点, 故需按位置读取并已知文件总长。
+ *
+ * # 语义
+ * - [read]: 返回实际读到的字节数; 到文件末尾返回 -1; `len == 0` 返回 0;
+ *   `off`/`len` 越界抛 [IndexOutOfBoundsException]
+ * - [available]: 文件总长 - 当前位置
+ * - [skip]: 只推进读取位置, 不分配内存; 返回实际跳过量 (至多到文件末尾)
+ * - [close]: 释放句柄, 可重复调用
+ */
+private class FileInputStream(
+    path: String,
+) : InputStream() {
+
+    private val handle: FileHandle
+
+    /** 文件总字节数 (打开时取一次)。 */
+    private val size: Long
+
+    init {
+        // 句柄打开后 size() 可能失败; 失败时关闭已打开的句柄并保留原异常
+        val opened = FileSystem.SYSTEM.openReadOnly(path.toPath())
+        try {
+            size = opened.size()
+        } catch (e: Throwable) {
+            try {
+                opened.close()
+            } catch (closeException: Throwable) {
+                e.addSuppressed(closeException)
+            }
+            throw e
+        }
+        handle = opened
+    }
+
+    /** 当前读取位置 (字节偏移)。 */
+    private var position: Long = 0L
+
+    private var closed = false
+
+    /** [read] 单字节读的复用缓冲区 (流非线程安全)。 */
+    private val oneByte = ByteArray(1)
+
+    override fun read(): Int {
+        val one = oneByte
+        return if (read(one, 0, 1) < 0) -1 else one[0].toInt() and 0xff
+    }
+
+    override fun read(b: ByteArray, off: Int, len: Int): Int {
+        checkOpen()
+        if (off < 0 || len < 0 || off > b.size - len) {
+            throw IndexOutOfBoundsException("offset=$off length=$len size=${b.size}")
+        }
+        if (len == 0) return 0
+        val read = handle.read(position, b, off, len)
+        if (read > 0) position += read
+        return read
+    }
+
+    override fun skip(n: Long): Long {
+        checkOpen()
+        if (n <= 0) return 0
+        val skipped = minOf(n, size - position)
+        if (skipped <= 0) return 0
+        position += skipped
+        return skipped
+    }
+
+    override fun available(): Int {
+        checkOpen()
+        val remaining = size - position
+        return when {
+            remaining <= 0 -> 0
+            remaining > Int.MAX_VALUE -> Int.MAX_VALUE
+            else -> remaining.toInt()
+        }
+    }
+
+    override fun close() {
+        if (closed) return
+        closed = true
+        handle.close()
+    }
+
+    private fun checkOpen() {
+        check(!closed) { "Stream closed" }
+    }
+}

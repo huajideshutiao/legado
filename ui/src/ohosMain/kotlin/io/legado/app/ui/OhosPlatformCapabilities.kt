@@ -8,6 +8,7 @@ import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.file.OhosDirAuthorizations
 import io.legado.app.help.copyToClipboard as copyTextToClipboard
 import io.legado.app.help.readFromClipboard
 import io.legado.app.help.openURL
@@ -113,9 +114,20 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
 
     // ===== 书籍详情页 =====
 
-    // 本地书文件字节数 (bookUrl 形如 file:///path, 鸿蒙沙盒为 POSIX 路径, 去 scheme 即可)
+    // 本地书文件字节数 (bookUrl 形如 file:///path, 鸿蒙沙盒为 POSIX 路径, 去 scheme 即可);
+    // bookUrl 可能指向用户授权目录内的原文件 (阅读重定位后不复制), 先激活授权再取属性
     override suspend fun localBookFileSize(bookUrl: String): Long = withContext(IoDispatcher) {
-        runCatching { File(bookUrl.removePrefix("file://")).length() }.getOrDefault(0L)
+        val path = bookUrl.removePrefix("file://")
+        OhosDirAuthorizations.ensureActivatedFor(path)
+        File(path).length()
+    }
+
+    // 阅读重定位 (ReaderScreenModel.relocateLocalBook) 传入的 dirUri 是选目录返回的 POSIX 路径:
+    // 先激活授权再走 NativePlatformCapabilities 的 depth 0/1 扫描, 返回保持 file:// 前缀 bookUrl;
+    // 激活失败抛 SecurityException (带 errCode/policyCode), 不吞成文件不存在
+    override fun findBookFileInDir(dirUri: String, fileName: String): String? {
+        OhosDirAuthorizations.ensureActivatedFor(dirUri)
+        return super<NativePlatformCapabilities>.findBookFileInDir(dirUri, fileName)
     }
 
     // ===== 书架管理: 导出开关 =====
@@ -185,8 +197,9 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
         NativeImportBook.emptyMsgVisible
 
     // 对照 Android onPickFolder / selectFolder.launch;
-    // 复用 OhosPlatformServices.pickDirectory (DocumentViewPicker → 折回 POSIX 路径),
-    // 桥接未就绪或用户取消返回 null 时保持原目录不动
+    // 复用 OhosPlatformServices.pickDirectory (DocumentViewPicker 选目录 + 授权持久化 +
+    // fileUri 官方转换, 记入授权表供重启后激活), 桥接未就绪/用户取消/目录不可访问时
+    // 返回 null 保持原目录不动
     override fun pickImportFolder() {
         scope.launch {
             val path = services.files.pickDirectory() ?: return@launch

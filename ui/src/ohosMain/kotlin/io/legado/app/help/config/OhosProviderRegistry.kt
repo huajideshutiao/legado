@@ -47,7 +47,7 @@ import io.legado.app.ui.compose.platform.registerComposeStringProviders
 import io.legado.app.help.ui.registerOhosOpenUrlProvider
 import io.legado.app.help.ui.registerNativeUserAgentProvider
 import io.legado.app.model.fileBook.BitmapProviders
-import io.legado.app.model.fileBook.registerNativeFileBookAccessor
+import io.legado.app.model.fileBook.registerOhosFileBookAccessor
 import io.legado.app.model.registerNativeCacheBookCallback
 import io.legado.app.model.registerOhosAudioPlayCommanders
 import io.legado.app.model.registerOhosReadBookPlatform
@@ -261,8 +261,9 @@ fun registerOhosProviders() {
 
     // 6.6 本地书 accessor + cbz 容器工厂 (FileBookProviders: epub 走 nativeMain EpubFile,
     // cbz 走 commonMain CbzFile + NativeZipFileWrapperFactory, pdf 仍明确抛异常)
-    // 须在 BookStorage/LocalBookLocator/BitmapProviders 之后, 任何 FileBook 调用之前
-    registerNativeFileBookAccessor()
+    // 须在 BookStorage/LocalBookLocator/BitmapProviders 之后, 任何 FileBook 调用之前;
+    // 鸿蒙注册目录授权装饰器 (外部授权目录的读取/属性/删原文件先激活再委托 native 实现)
+    registerOhosFileBookAccessor()
 
     // 7. TTS 引擎 provider (OhosSystemTtsEngine, napi 桥接 @ohos.textToSpeech), 在 JsEngines 之后
     // (与 desktop Main.kt 中 `TtsEngineProvider.register(DesktopSystemTtsEngine())` 位置一致)
