@@ -229,6 +229,8 @@ fun ReaderRoute(
     // Looper.myQueue().addIdleHandler 把 loadContent 推迟到视图测量完成后执行）。
     // book 在路由组合期内固定（remember(route)），用一次性标志保证只 init 一次，
     // 后续 textAreaSize 变化（窗口 resize）不重复 initBook。
+    // initBook 只做状态落位与装载登记 (整段跑在可取消任务内), 正文装载/本地文件检查/云进度
+    // 都在该任务里执行, 组合期的 UI 线程不做 DB/文件 IO。
     var bookInitialized by remember { mutableStateOf(false) }
     LaunchedEffect(textAreaSize) {
         if (textAreaSize == null || bookInitialized) return@LaunchedEffect
@@ -526,15 +528,21 @@ fun ReaderRoute(
 
     // 本地书文件无权限/缺失 → 弹选目录对话框重新定位文件 (对照 app 端 BaseReadBookActivity
     // 的 permissionDenialLiveData 观察者 → selectBookFolderResult)。
+    // 请求带唯一身份与书籍归属: 初态无请求 (不弹框); 同一时刻只允许一个选择器,
+    // 结果按请求 id 采用 (旧结果不覆盖同书的新请求, 也不落到换书后的新书)。
     LaunchedEffect(screenModel) {
-        screenModel.viewModel.permissionDenialState.collect {
-            val curBook = screenModel.currentBook ?: return@collect
-            PlatformCapabilityProviders.get().pickBookTreeUri { uri ->
-                if (uri == null) {
-                    Toasters.get().toast("没有权限访问")
-                } else {
-                    screenModel.relocateLocalBook(curBook, uri)
-                }
+        screenModel.viewModel.permissionDenialState.collect { request ->
+            if (request == null) return@collect
+            // 同一时刻只允许一个选择器; 过期请求 (换书/被同 code 的新失败取代) 不弹框。
+            // 选择结果由 VM 按请求 id 采用, 过期结果不覆盖同书的新请求
+            val resolution = screenModel.viewModel.awaitPermissionDenialResolution(request.id)
+                ?: return@collect
+            val book = screenModel.viewModel.acceptPermissionDenial(request.id)
+                ?: return@collect
+            if (resolution.dirUri == null) {
+                Toasters.get().toast("没有权限访问")
+            } else {
+                screenModel.relocateLocalBook(book, resolution.dirUri)
             }
         }
     }
@@ -1093,7 +1101,11 @@ fun ReaderRoute(
                             // 从 SINGLE 切出会恢复滚动，两个方向都得重建翻页委托。原版只在
                             // `imageStyle == SINGLE` 时调 upPageAnim，切出时委托会停在覆盖不回滚动，此处不对齐。
                             ReadBookEvents.postConfig(ReadConfigChange.PAGE_ANIM)
-                            screenModel.viewModel.loadChapter(screenModel.viewModel.durChapterIndex.value)
+                            // 对照原版 menu_image_style → ReadBook.loadContent(false): 保偏移
+                            screenModel.viewModel.loadChapter(
+                                screenModel.viewModel.durChapterIndex.value,
+                                keepScrollOffset = true,
+                            )
                         }
                     },
                     onDismiss = { screenModel.clearDialogEvent() },

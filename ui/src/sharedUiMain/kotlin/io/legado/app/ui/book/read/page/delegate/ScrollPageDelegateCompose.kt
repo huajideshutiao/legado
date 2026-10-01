@@ -208,8 +208,6 @@ class ScrollPageDelegateCompose(
                         viewModel.updateScrollOffset(0)
                         return false
                     }
-                    // 传切章后的当前章号: 标记只对该章的装载完成生效
-                    viewModel.markScrollCrossingPending(viewModel.durChapterIndex.value)
                 }
                 // 页切换与偏移折算同一同步块: 绘制帧读到的新页+新偏移恒自洽
                 syncRenderPages()
@@ -234,8 +232,6 @@ class ScrollPageDelegateCompose(
                         viewModel.updateScrollOffset((-h).toInt())
                         return false
                     }
-                    // 传切章后的当前章号: 标记只对该章的装载完成生效
-                    viewModel.markScrollCrossingPending(viewModel.durChapterIndex.value)
                 }
                 // 同上: 页切换与偏移折算同一同步块
                 syncRenderPages()

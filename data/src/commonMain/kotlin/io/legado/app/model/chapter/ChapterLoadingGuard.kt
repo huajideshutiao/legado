@@ -21,7 +21,9 @@ import kotlin.coroutines.CoroutineContext
  * # 能力
  * - [tryAdd] / [release]: 同章不并发装载 (原版 `addLoading` / `removeLoading`)。
  * - [launch]: 以 index 记账启动装载任务, **同章新任务取消并替换旧任务**。
+ * - [launchIfNoJob]: 该章没有登记任务时才启动 (重排类入口), 查与启原子。
  * - [launchIfIdle]: 抢到装载权才启动, 该章已在装载则放弃本次调用。
+ * - [currentJob] / [isCurrentJob]: 任务身份查询。
  * - [cancelOutside]: 切章后取消三章窗口外的在途任务。
  *
  * # 两种启动语义
@@ -67,6 +69,12 @@ class ChapterLoadingGuard(
         loadingChapters.add(index)
         true
     }
+
+    /**
+     * 第 [index] 章当前登记的任务 (无则 null): 任务从登记到结束全程可查,
+     * 含装载标记已释放、仍在排版/收尾的阶段。
+     */
+    fun currentJob(index: Int): Job? = synchronized(lock) { jobs[index] }
 
     /**
      * [job] 是否仍是第 [index] 章当前登记的装载任务。
@@ -119,6 +127,32 @@ class ChapterLoadingGuard(
         }
         // cancel 出锁再做, 见类注释的锁纪律
         expired?.cancel()
+        job.invokeOnCompletion {
+            synchronized(lock) {
+                if (jobs[index] === job) {
+                    jobs.remove(index)
+                    loadingChapters.remove(index)
+                }
+            }
+        }
+        job.start()
+        return job
+    }
+
+    /**
+     * 第 [index] 章没有登记任务时才启动 (重排类入口): 检查与登记在同一锁内,
+     * 不留"先查后 launch"把在途任务替换掉的窗口; 已有任务则不启动并返回 null。
+     */
+    fun launchIfNoJob(index: Int, block: suspend CoroutineScope.() -> Unit): Job? {
+        val job = scope.launch(GuardedChapter(index), CoroutineStart.LAZY, block)
+        val acquired = synchronized(lock) {
+            if (jobs.containsKey(index)) false else { jobs[index] = job; true }
+        }
+        if (!acquired) {
+            // LAZY 任务未 start, cancel 只是丢弃壳子, block 不会执行
+            job.cancel()
+            return null
+        }
         job.invokeOnCompletion {
             synchronized(lock) {
                 if (jobs[index] === job) {
