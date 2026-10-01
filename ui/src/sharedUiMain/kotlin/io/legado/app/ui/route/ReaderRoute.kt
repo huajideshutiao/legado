@@ -524,6 +524,21 @@ fun ReaderRoute(
     }
     // endregion
 
+    // 本地书文件无权限/缺失 → 弹选目录对话框重新定位文件 (对照 app 端 BaseReadBookActivity
+    // 的 permissionDenialLiveData 观察者 → selectBookFolderResult)。
+    LaunchedEffect(screenModel) {
+        screenModel.viewModel.permissionDenialState.collect {
+            val curBook = screenModel.currentBook ?: return@collect
+            PlatformCapabilityProviders.get().pickBookTreeUri { uri ->
+                if (uri == null) {
+                    Toasters.get().toast("没有权限访问")
+                } else {
+                    screenModel.relocateLocalBook(curBook, uri)
+                }
+            }
+        }
+    }
+
     // 云进度同步确认对话框 (对照 app 端 ReadBookActivity.sureNewProgress)
     var syncProgress by remember { mutableStateOf<BookProgress?>(null) }
     LaunchedEffect(screenModel) {

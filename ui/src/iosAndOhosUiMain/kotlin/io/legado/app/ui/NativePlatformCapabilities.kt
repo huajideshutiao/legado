@@ -18,6 +18,8 @@ import io.legado.app.ui.root.SharedPlatformCapabilities
 import io.legado.app.utils.GSON
 import io.legado.app.utils.toJson
 import kotlinx.coroutines.launch
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /**
  * iOS 与鸿蒙实现逐字相同、但与桌面不同的那部分 [SharedPlatformCapabilities]。
@@ -75,6 +77,25 @@ interface NativePlatformCapabilities : SharedPlatformCapabilities {
         capabilityScope.launch {
             onSelected(PlatformServiceProviders.get().files.pickDirectory())
         }
+    }
+
+    // iOS/鸿蒙的选目录返回沙箱路径 (普通路径, 非 Android 的 SAF 树 URI)。
+    // native 端的 io.legado.app.utils.File 无文件操作能力, 目录列举走 okio FileSystem
+    // (与 foundation 的 native File actual 同一实现)。
+    // 返回格式必须与 importBook 写入的 bookUrl 一致 ("file://" + 绝对路径), 否则
+    // NativeFileBookAccessor.resolveLocalFile 解析不到。
+    override fun findBookFileInDir(dirUri: String, fileName: String): String? {
+        val fs = FileSystem.SYSTEM
+        val dir = dirUri.toPath()
+        if (fs.metadataOrNull(dir)?.isDirectory != true) return null
+        val direct = dir / fileName
+        if (fs.metadataOrNull(direct)?.isRegularFile == true) return "file://${direct}"
+        return fs.listOrNull(dir)
+            ?.filter { fs.metadataOrNull(it)?.isDirectory == true }
+            ?.firstNotNullOfOrNull { sub ->
+                (sub / fileName).takeIf { fs.metadataOrNull(it)?.isRegularFile == true }
+            }
+            ?.let { "file://$it" }
     }
 }
 

@@ -32,6 +32,7 @@ import io.legado.app.model.ReadBookPlatforms
 import io.legado.app.model.ReadBookShared
 import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
+import io.legado.app.model.fileBook.FileBookProviders
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.book.read.ReaderPlatformProviders.getOrNull
 import io.legado.app.ui.book.read.ReaderPlatformProviders.register
@@ -48,10 +49,12 @@ import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.formatTimeOfDay
 import io.legado.app.utils.isAbsUrl
+import io.legado.app.utils.isSecurityException
 import io.legado.app.utils.isTrue
 import io.legado.app.utils.mapParallelSafe
 import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.systemCurrentTimeMillis
+import okio.FileNotFoundException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -647,6 +650,10 @@ class ReaderScreenModel(
     fun initBook(book: Book, chapterIndex: Int?, chapterPos: Int? = null) {
         val isSameBook = readBook.book.value?.bookUrl == book.bookUrl
         readBook.loadBook(book)
+        // 对照原版 initBook 的 checkLocalBookFileExist: 本地书文件打不开时给出提示,
+        // 权限类异常额外发权限拒绝事件 (宿主弹选目录对话框)。原版在 upBook 之后、loadContent
+        // 之前判, 此处同样先判再装载, 避免把必然失败的装载也跑一遍
+        if (book.isLocal && !checkLocalBookFileExist(book)) return
         // 对照原版 applyBookmarkPosition: 带跳转目标且目标位置与当前进度不同时, 先存
         // 跳转前进度快照再跳 (返回键可恢复跳转前进度; 位置相同/无定位参数的重装不触发,
         // 如模拟追读 initBook(book, book.durChapterIndex))
@@ -669,6 +676,57 @@ class ReaderScreenModel(
         // 对照原版 initBook: 非本地书且无书源时自动换源, 不再静默失败
         if (!book.isLocal && readBook.bookSource.value == null) {
             autoChangeSource(book.name, book.author)
+        }
+    }
+
+    /**
+     * 本地书文件可打开性检查 (对照原版 ReadBookViewModel.checkLocalBookFileExist)。
+     *
+     * 失败时置消息页并把权限类异常上报为权限拒绝事件 —— 宿主据此弹选目录对话框
+     * (原版 `BaseReadBookActivity` 的 permissionDenialLiveData 观察者)。
+     */
+    private fun checkLocalBookFileExist(book: Book): Boolean {
+        return try {
+            FileBookProviders.get().getBookInputStream(book).close()
+            true
+        } catch (e: Throwable) {
+            readBook.upMsg("打开本地书籍出错: ${e.message}")
+            if (e.isSecurityException() || e is FileNotFoundException) {
+                viewModel.postPermissionDenial(0)
+            }
+            false
+        }
+    }
+
+    /**
+     * 本地书权限失效/文件被移动后, 在用户重新选定的目录里找回文件并重载目录。
+     *
+     * 对照 app 端 `BaseReadBookActivity` 的 `selectBookFolderResult` 回调:
+     * 按 `book.originName` 在所选目录里找到文件 → 改 `book.bookUrl` → 落库 → 重载目录。
+     * 找不到/未选中时给出与原版同口径的提示。
+     *
+     * @param book 需要重新定位的本地书 (调用方传阅读器现行书籍)
+     * @param dirUri 用户选定的目录 ([PlatformCapabilities.findBookFileInDir] 的入参形态)
+     */
+    fun relocateLocalBook(book: Book, dirUri: String) {
+        scope.launch {
+            val newUrl = PlatformCapabilityProviders.get().findBookFileInDir(dirUri, book.originName)
+            if (newUrl == null) {
+                readBook.upMsg("找不到文件")
+                return@launch
+            }
+            val oldUrl = book.bookUrl
+            book.bookUrl = newUrl
+            // 主键变了, 按 bookUrl 的 update 会匹配不到旧行, 必须删旧插新 (对照原版 book.save)
+            runCatching {
+                val dao = AppDbProviders.get().bookDao
+                if (dao.has(oldUrl)) dao.replace(book.copy(bookUrl = oldUrl), book)
+                else dao.insert(book)
+            }.onFailure {
+                AppLog.put("重新定位本地书失败\n${it.message}", it)
+            }
+            // 书 url 变更后旧目录/缓存全失效: [loadChapterList] 内已清当前章缓存并重载滑窗
+            viewModel.loadChapterList(book)
         }
     }
 
