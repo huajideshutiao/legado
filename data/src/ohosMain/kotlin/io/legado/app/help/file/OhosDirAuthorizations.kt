@@ -60,8 +60,8 @@ object OhosDirAuthorizations {
         if (result.ok && uri in result.activatedUris) return
         val detail = result.policyErrors.firstOrNull { it.uri == uri }
         val policyCode = detail?.code ?: 0
-        val message = "目录授权激活失败 (errCode=${result.code} policyCode=$policyCode)"
-            + (detail?.message ?: result.message)?.let { " $it" }.orEmpty()
+        val message = "目录授权激活失败 (errCode=${result.code} policyCode=$policyCode)" +
+            (detail?.message ?: result.message)?.let { " $it" }.orEmpty()
         AppLog.put("$message uri=$uri")
         if (result.code == 201 || result.code == 801 || detail != null) {
             throw SecurityException(message)

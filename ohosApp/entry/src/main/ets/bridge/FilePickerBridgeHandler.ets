@@ -373,7 +373,7 @@ async function persistAndConvert(dirUri: string): Promise<FilePickerResponse> {
       return {
         ok: false,
         code: err.code,
-        policyErrors: err.data.map(d => ({ uri: d.uri, code: d.code, message: String(d.message ?? '') })),
+        policyErrors: err.data.map((d): PolicyErrorItem => ({ uri: d.uri, code: d.code, message: String(d.message ?? '') })),
         error: err.message ?? String(e),
       };
     }
@@ -435,7 +435,7 @@ async function handleActivateDirectoryPermissions(payload: string): Promise<File
   if (!canIUse(FOLDER_AUTHORIZATION_SYSCAP)) {
     return { ok: false, code: 801, error: 'FolderAuthorization not supported on this device' };
   }
-  const policies: fileShare.PolicyInfo[] = p.uris.map(uri => ({
+  const policies: fileShare.PolicyInfo[] = p.uris.map((uri): fileShare.PolicyInfo => ({
     uri: uri,
     // 与持久化同策略: select 只授 READ_MODE
     operationMode: fileShare.OperationMode.READ_MODE,
@@ -450,7 +450,7 @@ async function handleActivateDirectoryPermissions(payload: string): Promise<File
       return {
         ok: false,
         code: err.code,
-        policyErrors: err.data.map(d => ({ uri: d.uri, code: d.code, message: String(d.message ?? '') })),
+        policyErrors: err.data.map((d): PolicyErrorItem => ({ uri: d.uri, code: d.code, message: String(d.message ?? '') })),
         uris: p.uris.filter(u => !failed.has(u)),
       };
     }
