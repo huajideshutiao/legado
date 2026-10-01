@@ -363,7 +363,7 @@ private fun ChapterListPage(state: TocUiState, actions: TocUiActions) {
                 )
             }
         }
-        ChapterInfoBar(state, actions, listState, display.size)
+        ChapterInfoBar(state, actions, listState, display)
     }
 }
 
@@ -477,7 +477,7 @@ private fun ChapterInfoBar(
     state: TocUiState,
     actions: TocUiActions,
     listState: LazyGridState,
-    itemCount: Int,
+    display: List<BookChapter>,
 ) {
     val colors = AppTheme.colors
     val scope = rememberCoroutineScope()
@@ -512,9 +512,9 @@ private fun ChapterInfoBar(
                 .height(36.dp)
                 .clickable {
                     scope.launch {
-                        if (itemCount > 0) {
-                            listState.scrollToItem(state.durChapterIndex.coerceIn(0, itemCount - 1))
-                        }
+                        // 按章节号定位而非下标: 卷折叠后 display 会过滤掉卷内章节, 下标与章节号不等
+                        val target = display.indexOfFirst { it.index == state.durChapterIndex }
+                        if (target >= 0) listState.scrollToItem(target)
                     }
                 }
                 .padding(horizontal = DesignTokens.spacingLg)
@@ -531,7 +531,7 @@ private fun ChapterInfoBar(
             )
         }
         IconButton(
-            onClick = { scope.launch { if (itemCount > 0) listState.scrollToItem(itemCount - 1) } },
+            onClick = { scope.launch { if (display.isNotEmpty()) listState.scrollToItem(display.lastIndex) } },
             modifier = Modifier.size(36.dp),
         ) {
             Icon(
