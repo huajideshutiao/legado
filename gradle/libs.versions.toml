@@ -82,6 +82,8 @@ uiautomator = "2.4.0"
 # ===== 网络栈 =====
 okhttp = "5.4.0"
 okio = "3.18.1"
+kmp-zip = "0.12.1"
+epub4kmp = "0.3.0"
 ktor = "3.5.2"
 cronet = "143.7445.0"
 coil3 = "3.4.0"
@@ -200,6 +202,8 @@ androidx-uiautomator = { module = "androidx.test.uiautomator:uiautomator", versi
 # ===== 网络栈 =====
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
+kmp-zip-okio = { module = "no.synth:kmp-zip-okio", version.ref = "kmp-zip" }
+epub4kmp-core = { module = "com.darkrockstudios:epub4kmp-core", version.ref = "epub4kmp" }
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 ktor-client-cio = { module = "io.ktor:ktor-client-cio", version.ref = "ktor" }
 ktor-client-darwin = { module = "io.ktor:ktor-client-darwin", version.ref = "ktor" }

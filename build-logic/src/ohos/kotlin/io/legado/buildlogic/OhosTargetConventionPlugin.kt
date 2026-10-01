@@ -33,6 +33,10 @@ class OhosTargetConventionPlugin : Plugin<Project> {
                     resolutionStrategy.dependencySubstitution {
                         substitute(module("com.fleeksoft.ksoup:ksoup"))
                             .using(project(":modules:ksoup-ohos"))
+                        substitute(module("com.darkrockstudios:epub4kmp-core"))
+                            .using(project(":modules:epub4kmp-ohos"))
+                        substitute(module("no.synth:kmp-zip-okio"))
+                            .using(project(":modules:epub4kmp-ohos"))
                     }
                 }
             }

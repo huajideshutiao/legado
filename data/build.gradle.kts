@@ -399,6 +399,7 @@ kotlin {
                 // 不能进 commonMain; 由 OhosTargetConventionPlugin 在 ohos 配置上把标准 ksoup
                 // 替换为 :modules:ksoup-ohos, 其余平台照常解析标准 ksoup。
                 implementation(libs.ksoup)
+                implementation(libs.epub4kmp.core)
                 implementation(libs.kotlinx.serialization.json)
             }
         }

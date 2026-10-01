@@ -8,6 +8,8 @@ import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.AppWebDavShared
+import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.copyToClipboard as copyTextToClipboard
 import io.legado.app.help.readFromClipboard
 import io.legado.app.help.openURL
@@ -29,6 +31,10 @@ import io.legado.app.utils.toJson
 import io.legado.app.web.WebServerManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -51,6 +57,7 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
     private val appDb get() = AppDbProviders.get()
     private val prefs get() = PreferenceProviders.get()
     private val services get() = PlatformServiceProviders.get()
+    private var exportBooksJob: Job? = null
 
     // 鸿蒙由系统统一管理应用生命周期, 无 Activity.finish 等价物;
     // 退出经 OhosNativeBridge.exitApplication → window tsfn → ArkTS UIAbilityContext.terminateSelf()
@@ -119,6 +126,62 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
     }
 
     // ===== 书架管理: 导出开关 =====
+
+    override fun exportAllBooks(books: List<Book>) {
+        if (books.isEmpty()) {
+            Toasters.get().toast("书籍不能为空")
+            return
+        }
+        if (exportBooksJob?.isActive == true) {
+            Toasters.get().toast("书籍正在导出")
+            return
+        }
+        exportBooksJob = scope.launch {
+            val exportDir = File(AppFilesDirs.get().filesDir, "export")
+            if (!exportDir.isDirectory && !exportDir.mkdirs()) {
+                Toasters.get().toast("无法创建导出目录")
+                return@launch
+            }
+            val files = mutableListOf<File>()
+            val failures = mutableListOf<String>()
+            val usedPaths = mutableSetOf<String>()
+            val exportType = prefs.getInt(PreferKey.exportType, 0)
+            books.forEach { book ->
+                try {
+                    currentCoroutineContext().ensureActive()
+                    val file = NativeBookExporter.exportBookFile(book, exportDir, usedPaths, exportType)
+                    files.add(file)
+                    if (prefs.getBoolean(PreferKey.exportToWebDav, false)) {
+                        AppWebDavShared.exportWebDav(file.absolutePath, file.name)
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    failures.add("${book.name}：${e.message ?: "未知错误"}")
+                    AppLog.put("导出书籍失败：${book.name}\n${e.message}", e)
+                }
+            }
+            if (files.size == 1) {
+                val file = files.single()
+                services.sharing.shareFile(file.absolutePath, when (file.name.substringAfterLast('.').lowercase()) {
+                    "epub" -> "application/epub+zip"
+                    "cbz" -> "application/vnd.comicbook+zip"
+                    else -> "text/plain"
+                })
+            } else if (files.isNotEmpty()) {
+                Toasters.get().toast("已导出 ${files.size} 本书到 ${exportDir.absolutePath}")
+            }
+            if (failures.isNotEmpty()) {
+                Toasters.get().toast("${failures.size} 本书导出失败：${failures.take(2).joinToString()}")
+            }
+        }
+    }
+
+    override fun selectExportFolder(books: List<Book>) = exportAllBooks(books)
+
+    override fun showExportConfig() {
+        AppNavigatorProviders.get().showOverlay(AppOverlay.Dialog("book_export_format"))
+    }
 
     // ===== 书架管理: 导出 JSON =====
 

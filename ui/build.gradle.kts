@@ -194,6 +194,10 @@ kotlin {
             maybeCreate("iosAndOhosUiMain").apply {
                 dependsOn(sharedUiMain)
                 dependsOn(skikoUiMain)
+                dependencies {
+                    implementation(libs.epub4kmp.core)
+                    implementation(libs.kmp.zip.okio)
+                }
             }
         } else null
 

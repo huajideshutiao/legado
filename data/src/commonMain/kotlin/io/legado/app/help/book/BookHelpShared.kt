@@ -259,14 +259,13 @@ object BookHelpShared {
     /**
      * 读取章节正文 (对照 app 端 `BookHelp.getContent`)。
      *
-     * 缓存文件存在则直接返回 (空文件视为无内容返回 null, 不回退本地解析);
-     * 无缓存且为本地书时走 [FileBook] 解析, epub 结果顺带写回缓存。
+     * 优先读取非空缓存；无有效缓存且为本地书时解析原文件，epub 结果顺带写回缓存。
      */
     fun getContent(book: Book, chapter: BookChapter): String? {
         val storage = BookStorageProviders.get()
         val cached = storage.readCacheFile(book, chapter.getFileName())
-        if (cached != null) {
-            return cached.ifEmpty { null }
+        if (!cached.isNullOrEmpty()) {
+            return cached
         }
         if (book.isLocal) {
             val string = FileBook.getContent(book, chapter)

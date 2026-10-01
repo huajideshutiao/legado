@@ -92,7 +92,7 @@ import kotlinx.coroutines.withContext
  *   `moveToPrevPage`：正文经 ContentProcessor 完整处理链后由 [SimpleChapterLayout] 排版，
  *   三章滑窗（prev/cur/next TextChapterShared）与 durChapterPos 位移均已按原版语义下沉。
  * - 用 [AppDbProviders.get].bookChapterDao 读章节列表，与 app 端 `appDb.bookChapterDao` 等价。
- * - 用 [BookStorageProviders.get].getContent 读本地章节缓存正文，与 app 端
+ * - 用 [BookHelpShared.getContent] 读取缓存或解析本地书原文件，与 app 端
  *   `BookHelp.getContent` 等价；桌面端需在 Main.kt 注册 `JvmBookStorage`。
  *
  * 持有 [pageDelegate] 引用：[PageDelegateShared] 接口（commonMain 平台无关 API），
@@ -528,7 +528,7 @@ class ReadBookViewModelShared(
             }
             val book = readBook.bookValue ?: return null
             val chapter = readBook.chapterListValue?.getOrNull(chapterIndex) ?: return null
-            return BookStorageProviders.get().getContent(book, chapter)
+            return BookHelpShared.getContent(book, chapter)
         }
 
         override fun moveToChapter(chapterIndex: Int) {
@@ -693,7 +693,7 @@ class ReadBookViewModelShared(
             // 不会掐断网络目录拉取。未入架书目录不落库，拉取被取消会致 chapterSize 滞留 0、
             // loadContent 越界静默 return → 永久"加载数据中"；对照原版时序：目录 await 就绪后才 loadContent。
             val book = readBook.book.value ?: return@launch
-            val chapterList = ensureChapterListLoaded()
+            val chapterList = loadDirectoryForReading() ?: return@launch
 
             if (chapterList.getOrNull(index) == null) {
                 // 章节序号越界：显示占位页
@@ -766,6 +766,16 @@ class ReadBookViewModelShared(
         val list = fetchChapterListFromSource(book, readBook.bookSource.value)
         readBook.updateChapterList(list)
         return list
+    }
+
+    private suspend fun loadDirectoryForReading(): List<BookChapter>? = try {
+        ensureChapterListLoaded()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        AppLog.put("加载目录失败\n${e.message}", e)
+        showMessageChapter("加载目录失败\n${e.message}", readBook.durChapterIndex.value, readBook.chapterSize)
+        null
     }
 
     /**
@@ -853,7 +863,7 @@ class ReadBookViewModelShared(
         // 对照原版时序：loadContent 调用前目录必已由 loadChapterList await 就绪。
         val book = readBook.book.value ?: return
         if (readBook.chapterList.value.firstOrNull()?.bookUrl != book.bookUrl) {
-            val list = ensureChapterListLoaded()
+            val list = loadDirectoryForReading() ?: return
             if (list.isEmpty()) {
                 showMessageChapter("无章节内容", index, 0)
                 return
@@ -874,7 +884,7 @@ class ReadBookViewModelShared(
             val countDeferred = startReviewCountFetchAsync(book, chapter)
             // 正文缓存读取是同步文件 IO (JvmBookStorage.readAllBytes, MB 级), 必须切 IO 线程
             val cached = withContext(IoDispatcher) {
-                BookStorageProviders.get().getContent(book, chapter)
+                BookHelpShared.getContent(book, chapter)
             }
             val content = cached ?: downloadAwait(book, chapter)
             // 原版在 contentLoadFinish 入口先 removeLoading；先释放守卫，确保段评迟到触发的重排

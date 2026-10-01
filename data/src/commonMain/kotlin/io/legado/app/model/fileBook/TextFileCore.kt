@@ -71,7 +71,10 @@ internal class TextFileCore(var book: Book) {
                 val length = bis.read(buffer)
                 if (length == -1) throw EmptyFileException("Unexpected Empty Txt File")
                 if (book.charset.isNullOrBlank() || modified) {
-                    book.charset = EncodingDetect.getEncode(buffer.copyOf(length))
+                    val sample = buffer.copyOf(length)
+                    book.charset = EncodingDetect.getEncode(
+                        if (length == buffer.size) completeTxtEncodingSample(sample) else sample
+                    )
                 }
                 charset = textCharsetCodec(book.charset ?: "UTF-8")
                 if (book.tocUrl.isBlank() || modified) {
@@ -465,6 +468,25 @@ internal class TextFileCore(var book: Book) {
         return rules
     }
 
+}
+
+/** The fixed-size detection block may end inside a UTF-8 character. */
+internal fun completeTxtEncodingSample(bytes: ByteArray): ByteArray {
+    try {
+        bytes.decodeToString(throwOnInvalidSequence = true)
+        return bytes
+    } catch (_: CharacterCodingException) {
+        for (trim in 1..3) {
+            if (bytes.size <= trim) break
+            try {
+                bytes.decodeToString(endIndex = bytes.size - trim, throwOnInvalidSequence = true)
+                return bytes.copyOf(bytes.size - trim)
+            } catch (_: CharacterCodingException) {
+                // Only a valid UTF-8 prefix is trimmed; other encodings stay intact.
+            }
+        }
+        return bytes
+    }
 }
 
 /** 等价 kotlin.io.use (expect InputStream 未实现 Closeable): 异常路径 close 失败挂 suppressed。 */

@@ -7,6 +7,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.PreferKey
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.getSummaryShared
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.storage.BackupFileOps
@@ -19,12 +21,28 @@ import io.legado.app.utils.encodeStringMap
 import io.legado.app.utils.isAbsUrl
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.export
+import legado.ui.generated.resources.export_config
 import legado.ui.generated.resources.export_success
 import legado.ui.generated.resources.ok
 import legado.ui.generated.resources.path
 import legado.ui.generated.resources.save_to_file
 import legado.ui.generated.resources.upload_url
 import org.jetbrains.compose.resources.stringResource
+
+/** Native bookshelf export format selection. */
+@Composable
+internal fun BookExportFormatDialogContent(overlay: AppOverlay.Dialog, navigator: AppNavigator) {
+    AppAlertDialog(
+        title = stringResource(Res.string.export_config),
+        onDismissRequest = { navigator.dismissOverlay(overlay.key) },
+        content = {
+            AppSelectorList(items = listOf("TXT", "EPUB")) { index ->
+                PreferenceProviders.get().putInt(PreferKey.exportType, index)
+                navigator.dismissOverlay(overlay.key)
+            }
+        },
+    )
+}
 
 /**
  * 导出分发 Overlay (key="exportDispatch") + 导出成功 Overlay (key="exportSuccess")。
