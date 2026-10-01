@@ -3,9 +3,10 @@ name: iOS Build
 # ⚠️ 手动触发不挂 push/PR: macOS runner 排队久 (标准 runner 在 public 仓库不计费,
 # 但每次 push 都占一个 macOS 槽位会拖慢其它构建)。
 # stage 控制深度, 调试 YAML/脚本语法时用 klib 即可, 不必每次跑完整 ipa。
-# iOS 不进 release.yml 流水线: 手动 dispatch 本 workflow, 产物由自带 publish job
-# 追加到 multiplatform-test 测试 Release (删旧 iOS 资产再传新), 供真机侧载与
-# ios-remote 拉取; reusable 调用 (workflow_call) 只产 artifact, 永不写 Release。
+# iOS 不进 release.yml 流水线: 手动 dispatch 本 workflow, 产物由自带 publish job 发布到
+# multiplatform-test 测试 Release (真机 ipa 发包时重建 Release 使提交与排位刷到最新,
+# 模拟器包只追加), 供真机侧载与 ios-remote 拉取; reusable 调用 (workflow_call) 只产
+# artifact, 永不写 Release。
 on:
   workflow_dispatch:
     inputs:
@@ -352,7 +353,8 @@ jobs:
             exit 1
           fi
 
-  # 手动构建完成后把产物追加到 multiplatform-test 测试 Release (删旧 iOS 资产再传新);
+  # 手动构建完成后发布到 multiplatform-test 测试 Release: 真机 ipa 重建 Release
+  # (提交与排位刷到最新, 旧资产清空), 模拟器包只追加不动既有资产;
   # klib/link 是调试档无产物, 不发布; reusable 调用 (workflow_call) 永不写 Release。
   publish-multiplatform-test:
     needs: ios
@@ -364,4 +366,3 @@ jobs:
       tag: multiplatform-test
       artifact-name-pattern: ${{ inputs.stage == 'simulator' && 'ios-simulator' || 'ios-ipa-unsigned' }}
       name: multiplatform-test
-      prerelease: true
