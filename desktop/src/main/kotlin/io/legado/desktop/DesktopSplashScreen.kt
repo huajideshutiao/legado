@@ -146,10 +146,11 @@ class DesktopSplashScreen(
         // upBackgroundImage), 先展示主题纯色闪屏, 由后台线程现场重烘焙+解码后回填重绘
         var bgImage: BufferedImage? = null
         val bakedPath = bgImagePath?.let { bakedImagePath(it) }
-        val bakedFile = bakedPath?.let { java.io.File(it) }
-        val bakedExists = bakedFile?.exists() == true
+        // 产物存在与否只看这一个变量: 以前另存 bakedExists 再与 bakedFile 双重判空,
+        // 两者同源, 编译期即能推出第二个条件恒真 (warning: Condition is always 'true')
+        val bakedFile = bakedPath?.let { java.io.File(it) }?.takeIf { it.exists() }
 
-        if (bakedExists && bakedFile != null) {
+        if (bakedFile != null) {
             // 常态: 产物在, 直接采样解码 (与 Android 端一致, 快速)
             bgImage = runCatching {
                 decodeBytesSampled(bakedFile.readBytes(), 0)?.toAwtImage()
@@ -170,7 +171,7 @@ class DesktopSplashScreen(
         window.contentPane.add(content)
         content.bounds = java.awt.Rectangle(0, 0, width, height)
 
-        if (bgImagePath != null && !bakedExists) {
+        if (bgImagePath != null && bakedFile == null) {
             // 冷路径 (缓存被清/跨端同步首启): 后台重烘焙 + 解码, 不卡首帧
             Thread({
                 runCatching {
