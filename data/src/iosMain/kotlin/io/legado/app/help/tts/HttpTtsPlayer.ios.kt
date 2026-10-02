@@ -165,7 +165,6 @@ class IosHttpTtsPlayer : HttpTtsPlayer {
         item = newItem
         // 先创建空播放器，在 prepareItem 注册观察器后再关联媒体项。
         player = AVPlayer()
-        AppLog.put("iOS HTTP TTS：播放器已创建，generation=$requestGeneration，fileURL=${url.startsWith("file:")}，status=${newItem.status}")
 
         // 注册播放结束监听
         registerEndObserver(newItem)
@@ -189,13 +188,11 @@ class IosHttpTtsPlayer : HttpTtsPlayer {
             val file = File(AppFilesDirs.get().cacheDir, "httpTTS/ios-${Random.nextLong()}.mp3")
             var adopted = false
             try {
-                AppLog.put("iOS HTTP TTS：请求音频，引擎=${request.config.name}")
                 withContext(Dispatchers.IO) {
                     val response = HttpTtsRequest.audioResponse(
                         request.config, request.text, request.speechRate, currentCoroutineContext(),
                     )
                     try {
-                        AppLog.put("iOS HTTP TTS：响应 ${response.code}，类型=${response.header("Content-Type")}")
                         check(file.parentFile?.mkdirs() == true) { "无法创建 TTS 缓存目录" }
                         val input = response.body.byteStream()
                         try {
@@ -220,7 +217,6 @@ class IosHttpTtsPlayer : HttpTtsPlayer {
                 if (generation != requestGeneration) return@launch
                 audioFile = file
                 adopted = true
-                AppLog.put("iOS HTTP TTS：音频下载完成，${file.length()} 字节")
                 loadUrl(NSURL.fileURLWithPath(file.path).absoluteString!!, emptyMap())
                 prepareItem()
             } catch (error: CancellationException) {
@@ -259,7 +255,6 @@ class IosHttpTtsPlayer : HttpTtsPlayer {
             statusObserver?.dispose()
             statusObserver = null
             if (message == null) {
-                AppLog.put("iOS HTTP TTS：音频准备完成")
                 callback?.onReady()
             } else {
                 player?.pause()
@@ -267,20 +262,13 @@ class IosHttpTtsPlayer : HttpTtsPlayer {
                 callback?.onError(message)
             }
         }
-        AppLog.put("iOS HTTP TTS：开始准备，generation=$generation，status=${target.status}，listener=${callback != null}")
         val observer = AvPlayerItemStatusObserver(
             item = target,
             onReady = {
-                onMain {
-                    AppLog.put("iOS HTTP TTS：就绪回调，generation=$generation，currentGeneration=$requestGeneration，sameItem=${item === target}，listener=${callback != null}")
-                    complete(null)
-                }
+                onMain { complete(null) }
             },
             onFailed = { message ->
-                onMain {
-                    AppLog.put("iOS HTTP TTS：失败回调，generation=$generation，currentGeneration=$requestGeneration，sameItem=${item === target}，错误=$message")
-                    complete(message)
-                }
+                onMain { complete(message) }
             },
         )
         statusObserver = observer
@@ -310,9 +298,7 @@ class IosHttpTtsPlayer : HttpTtsPlayer {
     }
 
     override fun play() = onMain {
-        AppLog.put("iOS HTTP TTS：调用 play，generation=$requestGeneration，player=${player != null}，status=${item?.status}，rate=${player?.rate()}")
         player?.play()
-        AppLog.put("iOS HTTP TTS：play 返回，rate=${player?.rate()}，timeControlStatus=${player?.timeControlStatus()}，错误=${player?.error?.localizedDescription}")
     }
 
     override fun pause() = onMain {
@@ -368,7 +354,6 @@ class IosHttpTtsPlayer : HttpTtsPlayer {
      * 释放当前 player/item/observer, 不清空 url/headers (供 setUrl 切换源时复用)。
      */
     private fun releaseCurrent() {
-        AppLog.put("iOS HTTP TTS：释放当前播放，generation=$requestGeneration，player=${player != null}")
         requestGeneration++
         downloadJob?.cancel()
         downloadJob = null

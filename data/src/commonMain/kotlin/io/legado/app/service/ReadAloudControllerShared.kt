@@ -1,6 +1,5 @@
 package io.legado.app.service
 
-import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.HttpTTS
@@ -217,11 +216,8 @@ class ReadAloudControllerShared(
      */
     private fun httpTtsProgressListener(token: Long) = object : HttpTtsPlayerListener {
         override fun onReady() {
-            AppLog.put("HTTP TTS：控制器收到就绪回调，state=${_state.value}，token=$token，activeToken=$activePlaybackToken，player=${httpTtsPlayer != null}")
             if (_state.value == ReadAloudState.PLAYING && token == activePlaybackToken) {
                 httpTtsPlayer?.play()
-            } else {
-                AppLog.put("HTTP TTS：控制器跳过播放，状态或播放令牌不匹配")
             }
         }
 

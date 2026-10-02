@@ -2,7 +2,6 @@
 
 package io.legado.app.help.media
 
-import io.legado.app.constant.AppLog
 import io.legado.app.platform.kvo.LegadoKeyValueObservingProtocol
 import kotlinx.cinterop.COpaquePointer
 import kotlinx.cinterop.objcPtr
@@ -30,20 +29,17 @@ class AvPlayerItemStatusObserver(
     fun start() {
         if (observing) return
         observing = true
-        AppLog.put("iOS 播放器 KVO：开始监听，status=${item.status}")
         item.addObserver(
             observer = this,
             forKeyPath = STATUS_KEY,
             options = NSKeyValueObservingOptionInitial or NSKeyValueObservingOptionNew,
             context = null,
         )
-        AppLog.put("iOS 播放器 KVO：注册返回，observing=$observing，status=${item.status}")
     }
 
     fun dispose() {
         if (!observing) return
         observing = false
-        AppLog.put("iOS 播放器 KVO：移除监听，status=${item.status}")
         item.removeObserver(this, forKeyPath = STATUS_KEY)
     }
 
@@ -55,9 +51,7 @@ class AvPlayerItemStatusObserver(
     ) {
         // KVO 的对象经过 ObjC -> Kotlin 桥接，按原生对象地址校验身份。
         val sameItem = (ofObject as? AVPlayerItem)?.objcPtr() == item.objcPtr()
-        AppLog.put("iOS 播放器 KVO：回调，keyPath=$keyPath，observing=$observing，sameItem=$sameItem，status=${item.status}，主线程=${platform.Foundation.NSThread.isMainThread}")
         if (!observing || keyPath != STATUS_KEY || !sameItem) {
-            AppLog.put("iOS 播放器 KVO：回调被过滤")
             return
         }
         // 与 start/dispose 及播放器生命周期在主线程串行，防止迟到回调重复通知。
