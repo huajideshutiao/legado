@@ -163,6 +163,9 @@ fun ReadViewComposable(
 ) {
     val prevTextPage by viewModel.prevTextPage.collectAsState()
     val curTextPage by viewModel.curTextPage.collectAsState()
+    // 本页所属书籍名 (页眉 tip 用): 取自本页 viewModel, 不再读全局活动阅读单例
+    val bookName by viewModel.book.collectAsState()
+    val currentBookName = bookName?.name.orEmpty()
     val nextTextPage by viewModel.nextTextPage.collectAsState()
     val nextPlusTextPage by viewModel.nextPlusTextPage.collectAsState()
     // 段评气泡就地补丁等页内容原地变更版本号：自增时强制 Canvas 重绘（见 PageContentCanvas.drawTick）
@@ -378,6 +381,7 @@ fun ReadViewComposable(
                 modifier = Modifier.fillMaxSize(),
                 batteryLevel = batteryLevel,
                 clockText = clockText,
+                bookName = currentBookName,
                 drawTick = pageDrawTick,
                 selection = selection,
                 ttsHighlight = ttsHighlight,
@@ -396,6 +400,7 @@ fun ReadViewComposable(
                             modifier = Modifier.fillMaxSize(),
                             batteryLevel = batteryLevel,
                             clockText = clockText,
+                            bookName = currentBookName,
                             onClick = onClick,
                             drawTick = pageDrawTick,
                             selection = selection,
@@ -419,6 +424,7 @@ fun ReadViewComposable(
                         modifier = Modifier.fillMaxSize(),
                         batteryLevel = batteryLevel,
                         clockText = clockText,
+                        bookName = currentBookName,
                         onClick = onClick,
                         drawTick = pageDrawTick,
                         selection = selection,
@@ -436,6 +442,7 @@ fun ReadViewComposable(
                             modifier = Modifier.fillMaxSize(),
                             batteryLevel = batteryLevel,
                             clockText = clockText,
+                            bookName = currentBookName,
                             onClick = onClick,
                             drawTick = pageDrawTick,
                             selection = selection,
@@ -459,6 +466,7 @@ fun ReadViewComposable(
                     pageHeightPx = pageHeightPx,
                     batteryLevel = batteryLevel,
                     clockText = clockText,
+                    bookName = currentBookName,
                     onClick = onClick,
                     drawTick = pageDrawTick,
                     selection = selection,
@@ -1087,6 +1095,7 @@ private fun AutoPageRevealOverlay(
     pageHeightPx: Float,
     batteryLevel: Int,
     clockText: String,
+    bookName: String,
     onClick: (TextColumn?) -> Unit,
     drawTick: Int,
     selection: PageSelectionState? = null,
@@ -1118,6 +1127,7 @@ private fun AutoPageRevealOverlay(
                     modifier = Modifier.fillMaxSize(),
                     batteryLevel = batteryLevel,
                     clockText = clockText,
+                    bookName = bookName,
                     onClick = onClick,
                     drawTick = drawTick,
                     selection = selection,
