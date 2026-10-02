@@ -187,7 +187,7 @@ fun SourceToolboxScreen(
             title = title,
             content = content,
             onDismiss = { fullText = null },
-            allowJsonTree = true,
+            allowTree = true,
         )
     }
 }

@@ -23,15 +23,20 @@ import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.component.code.HtmlNode
+import io.legado.app.ui.compose.component.code.HtmlTreePane
 import io.legado.app.ui.compose.component.code.JsonTreePane
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.utils.isJson
+import io.legado.app.utils.isXml
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.cancel
 import legado.ui.generated.resources.copy
+import legado.ui.generated.resources.html_tree
+import legado.ui.generated.resources.html_tree_parse_failed
 import legado.ui.generated.resources.json_tree
 import legado.ui.generated.resources.json_tree_parse_failed
 import legado.ui.generated.resources.ok
@@ -58,15 +63,16 @@ private const val MAX_TEXT_LENGTH = 32 * 1024
  * @param title 标题栏文案 (原版取文件名 / "Log" / "html" / "ERROR")
  * @param content 正文, 超过 [MAX_TEXT_LENGTH] 截断并追加提示 (对齐原版"数据太大"分支)
  * @param onDismiss 关闭 (返回箭头 / 点击对话框外部 / 取消 / 确定 四处同一回调, 原版无按钮语义区分)
- * @param allowJsonTree 正文形如 JSON (首尾字符配对预判) 时是否提供树形视图切换 (书源调试的
- * 源码就是原始响应体, 可能是 JSON 也可能是 HTML; 默认关, 仅源码查看处开启)
+ * @param allowTree 正文形如 JSON/HTML (首尾字符配对预判) 时是否提供树形视图切换 (书源调试的
+ * 源码就是原始响应体, 可能是 JSON 也可能是 HTML; 默认关, 仅源码查看处开启)。两种树按内容
+ * 互斥分派, 不并存
  */
 @Composable
 fun TextDialog(
     title: String,
     content: String,
     onDismiss: () -> Unit,
-    allowJsonTree: Boolean = false,
+    allowTree: Boolean = false,
 ) {
     val colors = AppTheme.colors
     val okText = stringResource(Res.string.ok)
@@ -74,19 +80,28 @@ fun TextDialog(
     val copyText = stringResource(Res.string.copy)
     val tooLargeText = stringResource(Res.string.text_too_large)
     val treeText = stringResource(Res.string.json_tree)
+    val htmlTreeText = stringResource(Res.string.html_tree)
     val sourceText = stringResource(Res.string.source_text)
-    // 树按钮显隐按首尾字符预判 (isJson 原位判断, 大响应体零解析成本): 首尾配对即出
-    // 按钮, 不做合法性解析; 首尾配对但内容非法的误判可接受, 误判切树由树区错误文本
-    // 兜底
-    val isJson = remember(allowJsonTree, content) {
-        allowJsonTree && content.isJson()
+    // 树按钮显隐按首尾字符预判 (isJson/isXml 原位判断, 大响应体零解析成本): 首尾配对即出
+    // 按钮, 不做合法性解析。非法 JSON 的误判切树由树区错误文本兜底; ksoup 对任意输入
+    // 几乎不抛错, 误判的 HTML 会渲染成规范化后的树而非报错, 属可接受的展示
+    val isJson = remember(allowTree, content) {
+        allowTree && content.isJson()
+    }
+    // HTML 与 JSON 首字符互斥 (「 / <), 同一内容只会出一种树
+    val isHtml = remember(allowTree, content, isJson) {
+        allowTree && !isJson && content.isXml()
     }
     var treeMode by remember { mutableStateOf(false) }
     // 聚焦栈: 条目菜单"查看"把树就地聚焦到该节点, 面包屑逐级退回 (不新开窗口, 故无叠层)
     var focusStack by remember { mutableStateOf<List<JsonTreeItem>>(emptyList()) }
-    // 换正文后聚焦栈失效 (旧聚焦指向上一份文档的节点), 就地复位
+    var htmlFocusStack by remember { mutableStateOf<List<HtmlNode.Element>>(emptyList()) }
+    // 换正文后聚焦栈失效 (旧聚焦指向上一份文档的节点), 就地复位;
+    // 正文变为非 JSON 非 HTML 时退出树模式, 否则用户困在伪树视图且无按钮可退
     LaunchedEffect(content) {
         focusStack = emptyList()
+        htmlFocusStack = emptyList()
+        if (!isJson && !isHtml) treeMode = false
     }
 
     AppDialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
@@ -107,25 +122,43 @@ fun TextDialog(
                     content
                 }
                 if (treeMode) {
-                    // 首尾配对预判可能误判非法 JSON: 树解析失败时树区改显错误文本, 不留空白
+                    // 首尾配对预判可能误判非法 JSON/HTML: 树解析失败时树区改显错误文本, 不留空白
                     var treeError by remember(content) { mutableStateOf<Throwable?>(null) }
                     if (treeError == null) {
-                        JsonTreePane(
-                            json = content,
-                            focusStack = focusStack,
-                            onFocusStackChange = { focusStack = it },
-                            rootLabel = title,
-                            modifier = Modifier.fillMaxWidth().weight(1f),
-                            treeModifier = Modifier.fillMaxWidth(),
-                            colors = if (colors.isDark) defaultDarkColors else defaultLightColors,
-                            contentPadding = PaddingValues(horizontal = DesignTokens.spacingDefault),
-                            onError = { treeError = it },
-                        )
+                        if (isJson) {
+                            JsonTreePane(
+                                json = content,
+                                focusStack = focusStack,
+                                onFocusStackChange = { focusStack = it },
+                                rootLabel = title,
+                                modifier = Modifier.fillMaxWidth().weight(1f),
+                                treeModifier = Modifier.fillMaxWidth(),
+                                colors = if (colors.isDark) defaultDarkColors else defaultLightColors,
+                                contentPadding = PaddingValues(horizontal = DesignTokens.spacingDefault),
+                                onError = { treeError = it },
+                            )
+                        } else {
+                            HtmlTreePane(
+                                html = content,
+                                focusStack = htmlFocusStack,
+                                onFocusStackChange = { htmlFocusStack = it },
+                                rootLabel = title,
+                                modifier = Modifier.fillMaxWidth().weight(1f),
+                                treeModifier = Modifier.fillMaxWidth(),
+                                colors = if (colors.isDark) defaultDarkColors else defaultLightColors,
+                                contentPadding = PaddingValues(horizontal = DesignTokens.spacingDefault),
+                                onError = { treeError = it },
+                            )
+                        }
                     }
                     treeError?.let { error ->
                         SelectableText(
                             text = stringResource(
-                                Res.string.json_tree_parse_failed,
+                                if (isJson) {
+                                    Res.string.json_tree_parse_failed
+                                } else {
+                                    Res.string.html_tree_parse_failed
+                                },
                                 error.message ?: error.toString(),
                             ),
                             color = colors.secondaryText,
@@ -154,21 +187,28 @@ fun TextDialog(
                     verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                 ) {
                     AppTextButton(text = copyText) {
-                        // 复制当前所见: 原始值/聚焦子树/整份正文
-                        val focused = focusStack.lastOrNull()
-                        val toCopy = focused
-                            ?.let { it.subtreeElement?.toString() ?: it.value.orEmpty() }
-                            ?: content
+                        // 复制当前所见: JSON 树取原始值/聚焦子树, HTML 树取聚焦元素 outerHtml,
+                        // 其余取整份正文
+                        val toCopy = when {
+                            isJson && treeMode -> focusStack.lastOrNull()
+                                ?.let { it.subtreeElement?.toString() ?: it.value.orEmpty() }
+                                ?: content
+                            isHtml && treeMode -> htmlFocusStack.lastOrNull()
+                                ?.ksoupElement?.outerHtml()
+                                ?: content
+                            else -> content
+                        }
                         PlatformCapabilityProviders.get().copyToClipboard(toCopy)
                     }
-                    if (isJson) {
+                    if (isJson || isHtml || treeMode) {
                         AppTextButton(
-                            text = if (treeMode) sourceText else treeText,
+                            text = if (treeMode) sourceText else if (isJson) treeText else htmlTreeText,
                             color = colors.accent,
                         ) {
                             // 切回文本视图时同时退出聚焦: 文本区显示整份正文, 复制也按整份正文
                             // 取值, 否则会出现"屏幕是全文、复制到的却是聚焦子树"
                             focusStack = emptyList()
+                            htmlFocusStack = emptyList()
                             treeMode = !treeMode
                         }
                     }

@@ -1718,6 +1718,11 @@ Windows: winget install shinchiro.mpv 或 scoop install mpv,
     <string name="media_runtime_download_failed">媒体播放组件下载失败：%1$s</string>
     <string name="media_runtime_not_installed">未安装媒体播放组件</string>
     <string name="json_tree">树形视图</string>
+    <string name="html_tree">HTML 树</string>
+    <string name="html_tree_parse_failed">HTML 树解析失败: %1$s</string>
+    <string name="copy_outer_html">复制 outerHTML</string>
+    <string name="copy_inner_html">复制 innerHTML</string>
+    <string name="copy_css_selector">复制 CSS 选择器</string>
     <string name="source_text">原文</string>
     <string name="json_tree_parse_failed">JSON 树解析失败: %1$s</string>
     <string name="source_toolbox">书源工具箱</string>

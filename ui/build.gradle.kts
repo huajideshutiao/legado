@@ -286,6 +286,8 @@ kotlin {
                 implementation(libs.junit)
                 implementation(libs.jetbrains.kotlin.test)
                 implementation(libs.kotlin.reflect)
+                // HtmlTree/JsonPathChain 测试直接构造 JsonElement/JsonObject
+                implementation(libs.kotlinx.serialization.json)
             }
         }
         matching { it.name == "androidHostTest" }.configureEach {
