@@ -6,6 +6,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.casUpdate
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.service.UpdateBookCallback
@@ -14,6 +15,7 @@ import io.legado.app.help.service.UpdateBookShared
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.cnCompare
+import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
@@ -149,8 +151,13 @@ class BookshelfViewModel {
      * 各分组书籍流订阅 jobs (对齐原版 fragment 各自订阅语义: pager 组合中的分组页
      * 当前 + 相邻各 1, 即最多 3 个分组各自持有 Room 流, 数据持续实时)。
      * 切换分组不取消其他流, 页离开组合/书架失活时才取消。
+     *
+     * 不可变快照 + CAS 发布: 主线程 (订阅开关/切组/排序重启) 与流 job 的 finally
+     * 摘除跨线程并发读写, 裸 mutableMapOf 会抛 ConcurrentModificationException (#19)。
+     * 读侧一次 volatile 取值即返回; 条目上界为组合中的分组页数 (最多 3), 写侧复制成本可忽略。
+     * 取消 job 一律在临界区外做, CAS 环内只改表。
      */
-    private val booksFlowJobs = mutableMapOf<Long, Job>()
+    private val booksFlowJobs = atomic<Map<Long, Job>>(emptyMap())
 
     /** 组合中的分组页登记 (UI DisposableEffect 维护), 失活→激活时据此恢复全部订阅 */
     private val composedGroupIds = mutableSetOf<Long>()
@@ -222,8 +229,8 @@ class BookshelfViewModel {
         } else {
             bookGroupsJob?.cancel()
             bookGroupsJob = null
-            booksFlowJobs.values.forEach { it.cancel() }
-            booksFlowJobs.clear()
+            // 先整体摘除再取消: 取消会同步跑 job 的 finally 摘除, 先摘除保证返回时登记已清空
+            booksFlowJobs.getAndSet(emptyMap()).values.forEach { it.cancel() }
         }
     }
 
@@ -259,7 +266,7 @@ class BookshelfViewModel {
      */
     @OptIn(FlowPreview::class)
     private fun startGroupFlow(groupId: Long) {
-        if (booksFlowJobs.containsKey(groupId)) return
+        if (booksFlowJobs.value.containsKey(groupId)) return
         val isCurrent = groupId == _currentGroupId.value
         val job = scope.launch {
             try {
@@ -284,13 +291,14 @@ class BookshelfViewModel {
                 }
             } finally {
                 // 只移除自己: 取消后重启 (UP_BOOKSHELF/upSort/selectGroup) 可能已注册新 job,
-                // 旧 job 的 finally 若直接 remove 会误删新 job 的登记, 导致流失联后重复订阅
-                if (booksFlowJobs[groupId] === coroutineContext[Job]) {
-                    booksFlowJobs.remove(groupId)
+                // 旧 job 的 finally 若直接移除会误删新 job 的登记, 导致流失联后重复订阅
+                val self = coroutineContext[Job]
+                booksFlowJobs.casUpdate { cur ->
+                    if (cur[groupId] === self) cur - groupId else cur
                 }
             }
         }
-        booksFlowJobs[groupId] = job
+        booksFlowJobs.casUpdate { it + (groupId to job) }
     }
 
     /** 分组书籍流发射回调: 回填缓存, 触发自动更新, 当前分组同步 [_books] (去重由
@@ -323,7 +331,14 @@ class BookshelfViewModel {
 
     /** 取消指定分组流 (页离开组合/排序重启前), 缓存快照保留 */
     fun releaseGroupFlow(groupId: Long) {
-        booksFlowJobs.remove(groupId)?.cancel()
+        detachGroupJob(groupId)?.cancel()
+    }
+
+    /** 摘除指定分组的订阅登记并返回其 job (取消由调用方在临界区外做) */
+    private fun detachGroupJob(groupId: Long): Job? {
+        val job = booksFlowJobs.value[groupId] ?: return null
+        booksFlowJobs.casUpdate { cur -> if (cur[groupId] === job) cur - groupId else cur }
+        return job
     }
 
     /**
@@ -387,8 +402,8 @@ class BookshelfViewModel {
         val previous = _currentGroupId.value
         _currentGroupId.value = groupId
         _books.value = booksCache.value[groupId].orEmpty()
-        booksFlowJobs.remove(previous)?.cancel()
-        booksFlowJobs.remove(groupId)?.cancel()
+        detachGroupJob(previous)?.cancel()
+        detachGroupJob(groupId)?.cancel()
         // 不可见时不订阅 (对照原版切到非 RESUMED 后不收集), 恢复时由 setBookshelfActive 重订
         ensureGroupFlow(groupId)
     }
@@ -449,9 +464,9 @@ class BookshelfViewModel {
         // 全量重绑, 已实例化 fragment 均 upRecyclerData 重订阅)。
         // 经 ensureGroupFlow 而非直接 startGroupFlow: 不可见时不订阅 (对齐原版非 RESUMED
         // 不收集), 恢复时由 setBookshelfActive 重订
-        (composedGroupIds + _currentGroupId.value).forEach {
-            booksFlowJobs.remove(it)?.cancel()
-            ensureGroupFlow(it)
+        (composedGroupIds + _currentGroupId.value).forEach { id ->
+            detachGroupJob(id)?.cancel()
+            ensureGroupFlow(id)
         }
         FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
     }
