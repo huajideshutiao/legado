@@ -9,6 +9,11 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
+import io.legado.app.data.entities.HttpTTS
+import io.legado.app.help.tts.IosReadAloudHost
+import io.legado.app.service.defaultTtsEngineConfig
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppOverlay
 import io.legado.app.help.book.toShelfJsonMap
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
@@ -77,6 +82,19 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override val capabilityScope: CoroutineScope get() = scope
+
+    override fun showHttpTtsEditDialog(engine: HttpTTS?) {
+        AppNavigatorProviders.get().showOverlay(
+            AppOverlay.Dialog("httpTtsEdit", payload = engine?.id?.toString())
+        )
+    }
+
+    override fun onHttpTtsEdited(engine: HttpTTS) {
+        if (IosReadAloudHost.isRun && defaultTtsEngineConfig() == engine.id.toString()) {
+            // 正在播放则重载；暂停时记录重建位置，继续朗读才启用新配置。
+            IosReadAloudHost.play(play = !IosReadAloudHost.isPause)
+        }
+    }
 
     // iOS 无物理/手势返回键, PlatformBackHandler 是 no-op → 无系统返回通道,
     // 页面内的子状态需自带可见退出口。

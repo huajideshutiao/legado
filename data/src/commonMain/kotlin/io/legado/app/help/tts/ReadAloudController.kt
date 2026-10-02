@@ -3,7 +3,6 @@ package io.legado.app.help.tts
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
-import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import kotlin.concurrent.Volatile
 
 /**
@@ -156,11 +155,8 @@ class ReadAloudController(
     }
 
     /**
-     * HttpTTS 路径: [AnalyzeUrlCore] 求值源 url 模板（注入 speakText/speakSpeed 变量, 含源级
-     * headers/cookie）得到 url+headers → setUrl → prepare, onReady 后经 listener 触发 play。
-     *
-     * 与原版差异: 原版先经 getSpeakStream 下载音频文件再播（POST/body 源也支持）,
-     * 这里把求值后的 url 直连平台播放器, POST 型源由各平台下载路径自行兜底。
+     * 把完整配置、文本和语速经 setRequest 交给平台，prepare 后由 onReady 触发 play。
+     * iOS 与 Android 共用音频请求逻辑后播放本地副本。
      */
     private fun playHttpTts(player: HttpTtsPlayer, text: String) {
         val config = httpTtsConfig ?: run {
@@ -169,14 +165,8 @@ class ReadAloudController(
         }
         val speakText = text.replace(AppPattern.notReadAloudRegex, "")
         runCatching {
-            AnalyzeUrlFactories.create(
-                config.url,
-                source = config,
-                readTimeout = HttpTtsRequest.READ_TIMEOUT_MS,
-                variables = HttpTtsRequest.speakVariables(speakText, speechRate),
-            )
-        }.onSuccess { analyzeUrl ->
-            player.setUrl(analyzeUrl.url, analyzeUrl.headerMap)
+            player.setRequest(config, speakText, speechRate)
+        }.onSuccess {
             player.prepare()
         }.onFailure {
             onError("HttpTTS url 求值失败: ${it.message}")

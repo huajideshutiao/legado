@@ -188,6 +188,9 @@ interface PlatformCapabilities {
     /** 弹出 HttpTTS 引擎新增/编辑对话框 (对照 app 端 HttpTtsEditDialog, engine=null 新增) */
     fun showHttpTtsEditDialog(engine: HttpTTS?) = unsupported("编辑 TTS 引擎")
 
+    /** 保存引擎后刷新平台正在使用的朗读配置。 */
+    fun onHttpTtsEdited(engine: HttpTTS) = Unit
+
     // 触摸滑动阈值 (对照 app 端 ViewConfiguration.get(ctx).scaledTouchSlop), 默认 0
     fun getScaledTouchSlop(): Int = 0
 

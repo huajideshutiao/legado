@@ -1,7 +1,14 @@
 package io.legado.app.help.tts
 
 import io.legado.app.constant.AppConst
+import io.legado.app.data.entities.HttpTTS
+import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.http.KmpResponse
+import io.legado.app.help.http.header
+import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.utils.MD5Utils
+import kotlinx.coroutines.ensureActive
+import kotlin.coroutines.CoroutineContext
 
 /**
  * HttpTTS 请求的纯参数拼装/响应校验/缓存 key/熔断计数,从 HttpReadAloudService 平移。
@@ -18,6 +25,48 @@ object HttpTtsRequest {
             AppConst.JsVarName.SPEAK_TEXT to speakText,
             AppConst.JsVarName.SPEAK_SPEED to speakSpeed,
         )
+    }
+
+    /** Android 和 iOS 共用的音频请求：执行完整规则，而不是把原始 URL 交给播放器。 */
+    suspend fun audioResponse(
+        config: HttpTTS,
+        text: String,
+        speechRate: Int,
+        context: CoroutineContext,
+        factory: HttpTtsAnalyzeUrlFactory = HttpTtsAnalyzeUrlFactory { url, source, timeout, ctx, variables ->
+            AnalyzeUrlFactories.create(
+                url, source = source, readTimeout = timeout,
+                coroutineContext = ctx, variables = variables,
+            )
+        },
+    ): KmpResponse {
+        val request = factory.create(
+            config.url, config, READ_TIMEOUT_MS, context, speakVariables(text, speechRate),
+        )
+        var response = request.getResponseAwait()
+        try {
+            context.ensureActive()
+            config.loginCheckJs?.takeIf { it.isNotBlank() }?.let {
+                val checked = request.evalJS(it, response) as KmpResponse
+                response = checked
+            }
+            if (response.code !in 200..299) {
+                throw NoStackTraceException(
+                    "TTS服务器返回 HTTP ${response.code}：${response.body.string().take(500)}",
+                )
+            }
+            when (checkContentType(response.header("Content-Type"), config.contentType)) {
+                ContentTypeVerdict.ERROR_BODY -> throw NoStackTraceException(response.body.string())
+                ContentTypeVerdict.ERROR_MISMATCH ->
+                    throw NoStackTraceException("TTS服务器返回错误：" + response.body.string())
+                ContentTypeVerdict.OK -> Unit
+            }
+            context.ensureActive()
+            return response
+        } catch (error: Throwable) {
+            response.close()
+            throw error
+        }
     }
 
     /** Content-Type 校验结果 */
