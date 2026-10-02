@@ -188,6 +188,9 @@ interface PlatformCapabilities {
     /** 弹出 HttpTTS 引擎新增/编辑对话框 (对照 app 端 HttpTtsEditDialog, engine=null 新增) */
     fun showHttpTtsEditDialog(engine: HttpTTS?) = unsupported("编辑 TTS 引擎")
 
+    /** 保存引擎后刷新平台正在使用的朗读配置。 */
+    fun onHttpTtsEdited(engine: HttpTTS) = Unit
+
     // 触摸滑动阈值 (对照 app 端 ViewConfiguration.get(ctx).scaledTouchSlop), 默认 0
     fun getScaledTouchSlop(): Int = 0
 
@@ -608,6 +611,18 @@ interface PlatformCapabilities {
 
     /** SAF 选书籍目录 (对照 app 端 localBookTreeSelect.launch DIR_SYS), 选中后回调 onSelected(uri) */
     fun pickBookTreeUri(onSelected: (String?) -> Unit) = unsupported("选择书籍目录")
+
+    /**
+     * 在指定目录里按文件名找回本地书, 返回新的 bookUrl (找不到返回 null)。
+     *
+     * 对照 app 端 `BaseReadBookActivity` 的 `FileDoc.fromUri(uri, true).find(book.originName)`:
+     * 本地书权限失效/文件被移动后, 用户重新选定书籍目录, 靠本方法把文件重新定位到。
+     * Android 端是 SAF 树 URI (需逐层列举), 其余端是普通路径 (直接拼接后判存在)。
+     *
+     * @param dirUri [pickBookTreeUri] 回传的目录标识
+     * @param fileName 目标文件名 (调用方传 `book.originName`)
+     */
+    fun findBookFileInDir(dirUri: String, fileName: String): String? = null
 
     /** 显示校验设置 Dialog (对照 app 端 showDialogFragment<CheckSourceConfig>), dismiss 后回调 onDismiss */
     fun showCheckSourceConfigDialog(onDismiss: () -> Unit = {}) = unsupported("书源校验设置")

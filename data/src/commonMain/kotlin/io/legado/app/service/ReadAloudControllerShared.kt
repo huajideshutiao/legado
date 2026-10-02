@@ -1,19 +1,18 @@
 package io.legado.app.service
 
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.tts.HttpTtsPlayer
 import io.legado.app.help.tts.HttpTtsPlayerListener
-import io.legado.app.help.tts.HttpTtsRequest
 import io.legado.app.help.tts.ReadAloudQueue
 import io.legado.app.help.tts.SystemTtsEngine
 import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.help.tts.TtsProgressListener
 import io.legado.app.help.tts.TtsProgressListenerToken
 import io.legado.app.model.ActiveReadBookRegistry
-import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.channels.BufferOverflow
@@ -218,8 +217,11 @@ class ReadAloudControllerShared(
      */
     private fun httpTtsProgressListener(token: Long) = object : HttpTtsPlayerListener {
         override fun onReady() {
+            AppLog.put("HTTP TTS：控制器收到就绪回调，state=${_state.value}，token=$token，activeToken=$activePlaybackToken，player=${httpTtsPlayer != null}")
             if (_state.value == ReadAloudState.PLAYING && token == activePlaybackToken) {
                 httpTtsPlayer?.play()
+            } else {
+                AppLog.put("HTTP TTS：控制器跳过播放，状态或播放令牌不匹配")
             }
         }
 
@@ -618,12 +620,8 @@ class ReadAloudControllerShared(
     /**
      * HttpTTS 路径播放当前段。
      *
-     * 对标 [io.legado.app.help.tts.ReadAloudController.playHttpTts]:
-     * [AnalyzeUrlFactories.create] 求值源 url 模板 (注入 speakText/speakSpeed 变量,
-     * 含源级 headers/cookie) 得到 url+headers → setUrl → prepare, onReady 后经
+     * 完整源配置及 speakText/speakSpeed 经 setRequest 交给平台，prepare 后经
      * [httpTtsProgressListener] 触发 play。
-     *
-     * POST/body 型源首版接受降级 (只支持 GET 流式, 由各平台 actual 兜底)。
      */
     /** 请求代次；异步 URL 求值完成时只允许当前代次提交给播放器。 */
     private var requestGeneration = 0L
@@ -642,17 +640,14 @@ class ReadAloudControllerShared(
         }
         val speakText = text.replace(AppPattern.notReadAloudRegex, "")
         runCatching {
-            AnalyzeUrlFactories.create(
-                config.url,
-                source = config,
-                readTimeout = HttpTtsRequest.READ_TIMEOUT_MS,
-                variables = HttpTtsRequest.speakVariables(speakText, httpTtsSpeechRate),
-            )
-        }.onSuccess { analyzeUrl ->
+            if (generation != requestGeneration || _state.value != ReadAloudState.PLAYING) {
+                return
+            }
+            player.setRequest(config, speakText, httpTtsSpeechRate)
+        }.onSuccess {
             if (generation != requestGeneration || _state.value != ReadAloudState.PLAYING) {
                 return@onSuccess
             }
-            player.setUrl(analyzeUrl.url, analyzeUrl.headerMap)
             player.prepare()
         }.onFailure {
             if (generation != requestGeneration) return@onFailure

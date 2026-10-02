@@ -84,7 +84,7 @@ expect interface Closeable {
  */
 expect fun ByteArray.toInputStream(): InputStream
 
-/** java.lang.SecurityException 判定 (native 无此类型, actual 恒 false)。 */
+/** java.lang.SecurityException 判定 (native 无此类型, actual 判自有同名类型)。 */
 expect fun Throwable.isSecurityException(): Boolean
 
 /** String.intern() 门面 (JVM 驻留常量池省内存; native actual 原样返回)。 */

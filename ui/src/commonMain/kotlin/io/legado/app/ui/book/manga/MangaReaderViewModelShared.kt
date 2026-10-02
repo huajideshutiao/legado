@@ -48,6 +48,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
@@ -176,6 +177,26 @@ class MangaReaderViewModelShared(
      */
     private val _loadState = MutableStateFlow<ChapterLoadState>(ChapterLoadState.Loading)
     val loadState: StateFlow<ChapterLoadState> = _loadState.asStateFlow()
+
+    /**
+     * 内容重建身份号: [upContent] 每发布一次新内容自增。
+     *
+     * 供 UI 判定"这份内容是不是新的一份"。不能改用内容实例本身 —— [MangaContent] 与
+     * [MangaPage] 都是 data class, 内容层 effect 以它为 key 时走 equals (`GapComposer.kt:842`):
+     * 目录点当前章重载三章后逐元素相等, effect 不重启, 定位请求无人消费 (视口不动)。
+     */
+    private val _contentEpoch = MutableStateFlow(0)
+    val contentEpoch: StateFlow<Int> = _contentEpoch.asStateFlow()
+
+    /**
+     * 装载代际: [clearMangaChapter] 每次换代自增。
+     *
+     * 定位请求发出时记录当时代际, 内容发布时标注当前代际 (同一快照写入 [MangaContent]):
+     * 消费端据此拒绝旧代批次 —— combine 异步收集窗口内新请求可能先落在旧 items 上,
+     * 靠内容自身代际识别, 不靠另读当前 book 冒充。
+     */
+    private val _generation = MutableStateFlow(0)
+    val generation: Int get() = _generation.value
     // endregion
 
     // region 内部状态 (对应 app 端 ReadMangaViewModel 字段)
@@ -223,7 +244,7 @@ class MangaReaderViewModelShared(
         hasContent = { chapter ->
             _book.value?.let { BookStorageProviders.get().hasContent(it, chapter) } == true
         },
-        download = { chapter, semaphore -> download(downloadScope, chapter, semaphore) },
+        download = { chapter, semaphore -> download(downloadScope, chapter, semaphore, _generation.value) },
     )
 
     /** 目录自动更新 (与文字模式共用实现)。 */
@@ -385,6 +406,9 @@ class MangaReaderViewModelShared(
         prevMangaChapter = null
         curMangaChapter = null
         nextMangaChapter = null
+        // 换代自增 (内容保持已发布批次, 原版旧内容在加载覆盖层下可见): 已发布批次的代际
+        // 落后于新请求, 消费端凭内容自身代际拒绝旧批, 不靠清空 items 修时序
+        _generation.update { it + 1 }
     }
 
     /**
@@ -426,6 +450,8 @@ class MangaReaderViewModelShared(
      * 经 [loadGuard] 记账: 同章新任务取消并替换旧任务, 窗口外的在途任务切章时被取消。
      */
     private fun loadContent(index: Int) {
+        // 任务发起代际: 回调结果以此与 [contentLoadFinish] 对账, 换代后的旧回调不得冒充新代发布
+        val generation = _generation.value
         // launchIfIdle (不做同章替换): 本任务只负责启动下载 (download 内部的
         // Coroutine.async 跑在独立 downloadScope 上, 不随本任务取消), 装载标记必须
         // 活到 [contentLoadFinish] 回调 —— 原版同款 (removeLoading 只在 contentLoadFinish 入口)
@@ -444,10 +470,10 @@ class MangaReaderViewModelShared(
                     }
                 val cached = BookStorageProviders.get().getContent(book, chapter)
                 if (cached != null) {
-                    contentLoadFinish(chapter, cached)
+                    contentLoadFinish(chapter, cached, generation = generation)
                     handedOff = true
                 } else {
-                    download(downloadScope, chapter)
+                    download(downloadScope, chapter, generation = generation)
                     handedOff = true
                 }
             } catch (e: CancellationException) {
@@ -478,12 +504,20 @@ class MangaReaderViewModelShared(
         content: String?,
         errorMsg: String = "加载内容失败",
         canceled: Boolean = false,
+        generation: Int,
     ) {
         loadGuard.release(chapter.index)
         if (canceled) return
-        when (chapterWindowSlotOf(chapter.index, _durChapterIndex.value)) {
-            null -> return
-
+        // 异书结果 (换源前的在途下载/缓存): 不得进入当前书的窗口, 更不得混入新批次
+        if (chapter.bookUrl != _book.value?.bookUrl) return
+        val slot = chapterWindowSlotOf(chapter.index, _durChapterIndex.value) ?: return
+        if (generation != _generation.value) {
+            // 旧代回调: 结果按发起代际作废, 不得标成新代发布, 也不得把旧错误打到新一轮加载态;
+            // 该章仍在当前窗口内, 按当前代际补装 (标记已释放, launchIfIdle 可接管)
+            loadContent(chapter.index)
+            return
+        }
+        when (slot) {
             ChapterWindowSlot.CUR -> {
                 if (content == null) {
                     _loadState.value = ChapterLoadState.Error(errorMsg)
@@ -534,6 +568,9 @@ class MangaReaderViewModelShared(
      * coerce durChapterPos 到 cur 章节范围内。
      */
     fun buildMangaContent(): MangaContent {
+        // 先取代际再读章节: 与 clearMangaChapter 竞态时, 旧章节只会被标旧代 (消费端拒绝),
+        // 反序则会把旧章节标成新代冒充新批
+        val generation = _generation.value
         val items = arrayListOf<BaseMangaPage>()
         var pos = 0
         var curFinish = false
@@ -559,7 +596,12 @@ class MangaReaderViewModelShared(
             nextFinish = true
             items.addAll(it.pages)
         }
-        return MangaContent(pos, items, curFinish, nextFinish)
+        // 归属来自产出 items 的同一份章节快照 (三代同书, 异书结果已在 contentLoadFinish 拒收)
+        val bookUrl = curMangaChapter?.chapter?.bookUrl
+            ?: prevMangaChapter?.chapter?.bookUrl
+            ?: nextMangaChapter?.chapter?.bookUrl
+            ?: ""
+        return MangaContent(bookUrl, generation, pos, items, curFinish, nextFinish)
     }
 
     /**
@@ -712,11 +754,13 @@ class MangaReaderViewModelShared(
 
     /**
      * 用户确认同步云端进度 (原版 ReadMangaActivity.sureNewProgress okButton → viewModel.setProgress)：
-     * 清事件 replay 缓存后按云端进度跳转 (setProgress 自带越界/未变守卫)。
+     * 清事件 replay 缓存后按云端进度跳转。
+     *
+     * @return 同 [setProgress]: false 表示进度被守卫拒绝, 调用方不得发定位请求
      */
-    fun confirmSyncProgress(progress: BookProgress) {
+    fun confirmSyncProgress(progress: BookProgress): Boolean {
         ReadBookEvents.clearNewProgressConfirm()
-        setProgress(progress)
+        return setProgress(progress)
     }
 
     /** 用户取消同步云端进度：仅清事件 replay 缓存，避免 UI 重建时重复弹窗。 */
@@ -740,22 +784,23 @@ class MangaReaderViewModelShared(
         scope: CoroutineScope,
         chapter: BookChapter,
         semaphore: Semaphore? = null,
+        generation: Int,
     ) {
         val book = _book.value ?: return loadGuard.releaseNow(chapter.index)
         val bookSource = _bookSource.value
         if (bookSource != null) {
             downloadNetworkContent(bookSource, scope, chapter, book, semaphore, success = { content ->
                 preDownloader.markDownloaded(chapter.index)
-                contentLoadFinish(chapter, content)
+                contentLoadFinish(chapter, content, generation = generation)
             }, error = {
                 preDownloader.markFailed(chapter.index)
-                contentLoadFinish(chapter, null)
+                contentLoadFinish(chapter, null, generation = generation)
             }, cancel = {
-                contentLoadFinish(chapter, null, canceled = true)
+                contentLoadFinish(chapter, null, canceled = true, generation = generation)
             })
         } else {
             // contentLoadFinish 是 suspend, download 非 suspend, 借 scope 启动
-            scope.launch { contentLoadFinish(chapter, null, "加载内容失败 没有书源") }
+            scope.launch { contentLoadFinish(chapter, null, "加载内容失败 没有书源", generation = generation) }
         }
     }
 
@@ -852,9 +897,13 @@ class MangaReaderViewModelShared(
      * 设置阅读进度 (对应 app 端 ReadMangaViewModel.setProgress)。
      *
      * 进度变化时刷新 durChapterIndex/durChapterPos, 同章仅刷 pos, 跨章重载内容。
+     * 章号守卫收口为合法区间: 原版只判上界, 负数同样通过 —— 那会写入非法章号,
+     * 且调用方 (云进度确认) 据此发出的定位请求永远无人消费。
+     *
+     * @return true = 进度已被接受; false = 章号越界或位置未变, 调用方不得据此发定位请求
      */
-    fun setProgress(progress: BookProgress) {
-        if (progress.durChapterIndex < chapterSize &&
+    fun setProgress(progress: BookProgress): Boolean {
+        if (progress.durChapterIndex in 0 until chapterSize &&
             (_durChapterIndex.value != progress.durChapterIndex ||
                 _durChapterPos.value != progress.durChapterPos)
         ) {
@@ -868,20 +917,28 @@ class MangaReaderViewModelShared(
                 loadContent()
             }
             saveRead()
+            return true
         }
+        return false
     }
 
     /**
      * 打开指定章节 (对应 app 端 ReadMangaViewModel.openChapter)。
+     *
+     * 章号守卫收口为合法区间: 原版只判上界, 负数同样通过 (会写入非法章号并让定位请求悬空)。
+     *
+     * @return true = 已切到目标章 (调用方可按新章发定位请求); false = 章号越界被拒绝
      */
-    fun openChapter(index: Int, durChapterPos: Int = 0) {
-        if (index < chapterSize) {
+    fun openChapter(index: Int, durChapterPos: Int = 0): Boolean {
+        if (index in 0 until chapterSize) {
             _loadState.value = ChapterLoadState.Loading
             _durChapterIndex.value = index
             _durChapterPos.value = durChapterPos * (if (durChapterPos < 0) -1 else 1)
             saveRead()
             loadContent()
+            return true
         }
+        return false
     }
 
     /**
@@ -889,13 +946,17 @@ class MangaReaderViewModelShared(
      *
      * 删除当前章缓存后重新加载。
      */
-    fun refreshContentDur(book: Book) {
+    fun refreshContentDur(book: Book, onReloading: () -> Unit = {}) {
         scope.launch {
             runCatching {
                 resolveChapter(book, _durChapterIndex.value)
                     ?.let { chapter ->
                         BookStorageProviders.get().delContent(book, chapter)
-                        openChapter(_durChapterIndex.value, _durChapterPos.value)
+                        if (openChapter(_durChapterIndex.value, _durChapterPos.value)) {
+                            // 换代边界之后才回调: 定位请求必须在清空发布之后发出, 否则请求会在
+                            // 异步清空前的旧批次上被消费 (对照 initData 的 success 回调模式)
+                            onReloading()
+                        }
                     }
             }
         }
@@ -982,6 +1043,7 @@ class MangaReaderViewModelShared(
     private fun upContent() {
         val content = buildMangaContent()
         _mangaContent.value = content
+        _contentEpoch.value++
         // 对照原版 ReadMangaActivity.upContent: 仅当前章加载完成 (curFinish) 才收起整页
         // loading; 无条件收起会在当前章未就绪时提前暴露空白列表
         // (如 setProgress 同章刷新时 cur 尚未加载完成)

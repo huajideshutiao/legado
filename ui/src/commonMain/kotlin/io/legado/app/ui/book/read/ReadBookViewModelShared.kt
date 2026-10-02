@@ -62,7 +62,9 @@ import io.legado.app.ui.book.read.page.provider.SimpleChapterLayout
 import io.legado.app.ui.book.read.page.provider.SimpleTextMeasurer
 import io.legado.app.ui.book.read.page.provider.TextMeasurerProviders
 import io.legado.app.ui.book.searchContent.SearchResult
+import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.screenModelScope
+import io.legado.app.utils.isSecurityException
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
@@ -75,10 +77,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import okio.FileNotFoundException
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -107,6 +113,91 @@ import kotlinx.coroutines.withContext
 
 /** 高度-only 排版变化去抖窗口（ms），对照原版 ChapterProvider.upViewSize 的 postDelayed(300)。 */
 private const val LAYOUT_HEIGHT_DEBOUNCE_MS = 300L
+
+/**
+ * 权限拒绝事件载荷 (对照 app 端 `ReadBookViewModel.permissionDenialLiveData` 的 Int 值)。
+ *
+ * @param id 唯一身份: 每次 [ReadBookViewModelShared.postPermissionDenial] 递增; 宿主据此判定
+ *   "手上的请求是否仍是最新那条", 同一 code 的后续失败因此仍是新请求, 不被值去重吞掉
+ * @param code 原版 code (0 = 打开本地书文件失败, 1 = 本地书目录拉取失败)
+ * @param bookUrl 失败书籍的归属: 宿主只在它仍是当前书时处理
+ */
+data class PermissionDenialRequest(val id: Long, val code: Int, val bookUrl: String)
+
+/**
+ * 权限请求的处理结果 (选目录返回)。
+ *
+ * @param dirUri 用户选定的目录标识; null = 用户取消 (原版 alert 取消分支)
+ */
+data class PermissionDenialResolution(val dirUri: String?)
+
+/**
+ * 选目录结果能否采用: 请求仍是最新那条 (已被同 code 的新失败取代时不采用), 且书籍仍是当前书。
+ *
+ * 纯函数形态供回归测试直接覆盖; 生产消费方是 [ReadBookViewModelShared.acceptPermissionDenial]。
+ */
+internal fun PermissionDenialRequest.canAccept(
+    current: PermissionDenialRequest?,
+    currentBookUrl: String?,
+): Boolean = current?.id == id && currentBookUrl == bookUrl
+
+/**
+ * 本地书文件可打开性检查的门 (对照原版 `checkLocalBookFileExist` 每次 initBook 执行一次)。
+ *
+ * 检查内部是整书/解压级 IO (native 端接口 readBytes, 并可能解压或同步 WebDAV 下载),
+ * 三章滑窗并发布局/预载会同时到达 [checkOnce]: 同一本书同一时刻只有一轮检查在跑
+ * ([round] 单飞), 并发到达共享该轮结果 —— 成功全过, 失败只上报一次权限请求;
+ * 成功才备忘 ([checkedBookUrl]), 失败不记忆, 之后的新装载开新一轮重新检查。
+ */
+internal class LocalFileCheckGate {
+
+    private class Round(val bookUrl: String) {
+        val result = CompletableDeferred<Boolean>()
+    }
+
+    private val lock = SynchronizedObject()
+    private var checkedBookUrl: String? = null
+    private var round: Round? = null
+
+    /** @return true = 文件可打开 (本轮通过或此前已通过); false = 检查失败 */
+    suspend fun checkOnce(bookUrl: String, check: suspend () -> Boolean): Boolean {
+        var owner = false
+        val current = synchronized(lock) {
+            if (checkedBookUrl == bookUrl) return true
+            round?.takeIf { it.bookUrl == bookUrl } ?: Round(bookUrl).also {
+                round = it
+                owner = true
+            }
+        }
+        if (!owner) return current.result.await()
+        val outcome = try {
+            check()
+        } catch (e: Throwable) {
+            synchronized(lock) { if (round === current) round = null }
+            current.result.completeExceptionally(e)
+            throw e
+        }
+        synchronized(lock) {
+            if (round === current) {
+                round = null
+                if (outcome) checkedBookUrl = bookUrl
+            }
+        }
+        current.result.complete(outcome)
+        return outcome
+    }
+
+    /**
+     * 作废备忘与在途轮 (切书时调用; 重新授权会改 bookUrl, 备忘按 bookUrl 键控天然失效,
+     * 迟到的旧书成功写入不会命中新书)。
+     */
+    fun reset() {
+        synchronized(lock) {
+            checkedBookUrl = null
+            round = null
+        }
+    }
+}
 
 class ReadBookViewModelShared(
     private val readBook: ReadBookShared,
@@ -201,50 +292,119 @@ class ReadBookViewModelShared(
      */
     var pageDelegate: PageDelegateShared? = null
 
-    // region 搜索 / 初始化 / 权限状态流 (对照 app 端 ReadBookViewModel 同名字段, 用 StateFlow 替代 LiveData)
-    /** 权限拒绝事件 (对照 app 端 permissionDenialLiveData, KMP 用 StateFlow 替代 LiveData) */
-    private val _permissionDenial = MutableStateFlow(0)
-    val permissionDenialState: StateFlow<Int> = _permissionDenial.asStateFlow()
+    // region 初始化 / 权限状态流 (对照 app 端 ReadBookViewModel 同名字段, 用 StateFlow 替代 LiveData)
+    /**
+     * 权限拒绝事件 (对照 app 端 `permissionDenialLiveData`)。
+     *
+     * 无请求时为 null: 原版 LiveData 无初值, 只有真正 postValue 才触发观察者; 用带初值 0 的
+     * StateFlow 表达"无请求"会被值去重吞掉 (postPermissionDenial(0) 与初值相等即不发),
+     * 且重订阅会把旧值当新请求重放。
+     */
+    private val _permissionDenial = MutableStateFlow<PermissionDenialRequest?>(null)
+    val permissionDenialState: StateFlow<PermissionDenialRequest?> = _permissionDenial.asStateFlow()
 
-    /** 初始化完成标志 (对照 app 端 isInitFinishFlow) */
-    private val _isInitFinish = MutableStateFlow(false)
-    val isInitFinishFlow: StateFlow<Boolean> = _isInitFinish.asStateFlow()
-    var isInitFinish: Boolean
-        get() = _isInitFinish.value
-        set(value) {
-            _isInitFinish.value = value
+    /** 权限请求身份序号 (对照原版 LiveData 每次 postValue 都是新事件, 值相同也通知) */
+    private var permissionDenialSeq = 0L
+
+    /**
+     * 正在等用户选目录的实际在途选择器 (VM 持有, 不随等待者取消而消失;
+     * 底层平台选目器无法编程取消, 只有它自己的回调能关掉这一轮)。
+     */
+    private class ActivePicker(val requestId: Long) {
+        val result = CompletableDeferred<String?>()
+    }
+
+    /** 在途选择器 (同一时刻至多一个); 由 [syncLock] 保护。 */
+    private var activePicker: ActivePicker? = null
+
+    /** 选择器互斥: 打开/等待/收取一轮占用; 新请求排队, 不会并发拉起两个选择器。 */
+    private val pickerMutex = Mutex()
+
+    /**
+     * 权限拒绝事件入口 (对照 app 端 permissionDenialLiveData.postValue)。
+     *
+     * 序号递增与发布在同一把锁内: 两个协程同时报错时, 序号小的后发布会把序号大的盖掉,
+     * 宿主看到旧请求而新请求丢失。
+     *
+     * @param code 原版 code (0 = 打开本地书文件失败, 1 = 本地书目录拉取失败)
+     * @param book 失败书籍: 必须由失败路径传入 —— 读 `readBook.book` 会把旧书的失败
+     *   (切书前发起的目录拉取) 标成新书归属
+     */
+    fun postPermissionDenial(code: Int, book: Book) {
+        synchronized(syncLock) {
+            val id = ++permissionDenialSeq
+            _permissionDenial.value = PermissionDenialRequest(id, code, book.bookUrl)
         }
+    }
 
-    /** 内容搜索关键字 (对照 app 端 searchContentQueryFlow) */
-    private val _searchContentQuery = MutableStateFlow("")
-    val searchContentQueryFlow: StateFlow<String> = _searchContentQuery.asStateFlow()
-    var searchContentQuery: String
-        get() = _searchContentQuery.value
-        set(value) {
-            _searchContentQuery.value = value
+    /**
+     * 等用户为 [id] 这条请求选目录 (挂起直到选定或取消)。
+     *
+     * 实际在途选择器由 VM ([activePicker]) 持有: 等待者被取消 (宿主 LaunchedEffect 随组合
+     * 重启) 不冒充选择器已关闭, 重订阅在 [pickerMutex] 内接回同一个在途选择器;
+     * 选择器在途时后到的新请求在锁上排队, 选择器收尾后依次拉起。
+     *
+     * 返回 null = 本次调用不该处理: 请求已过期 (被新失败取代/换书) —— 过期请求按 id 清掉。
+     */
+    suspend fun awaitPermissionDenialResolution(id: Long): PermissionDenialResolution? {
+        pickerMutex.withLock {
+            while (true) {
+                var toStart: ActivePicker? = null
+                val picker = synchronized(syncLock) {
+                    val request = _permissionDenial.value
+                    if (request == null || request.id != id) return null
+                    if (!request.canAccept(request, readBook.book.value?.bookUrl)) {
+                        _permissionDenial.value = null
+                        return null
+                    }
+                    activePicker ?: ActivePicker(id).also {
+                        activePicker = it
+                        toStart = it
+                    }
+                }
+                // 平台回调可同步执行；不能在 Native 锁内启动选择器。
+                toStart?.let { started ->
+                    try {
+                        PlatformCapabilityProviders.get().pickBookTreeUri { uri ->
+                            started.result.complete(uri)
+                        }
+                    } catch (e: Throwable) {
+                        synchronized(syncLock) { if (activePicker === started) activePicker = null }
+                        started.result.completeExceptionally(e)
+                        throw e
+                    }
+                }
+                val uri = picker.result.await()
+                // 等待者取消时保留实际选择器及其结果，重订阅继续等待或领取。
+                synchronized(syncLock) { if (activePicker === picker) activePicker = null }
+                if (picker.requestId == id) return PermissionDenialResolution(uri)
+                // 旧选择器确已结束，下一轮才允许为新请求打开选择器。
+            }
         }
+    }
 
-    /** 章内搜索结果列表 (对照 app 端 searchResultListFlow) */
-    private val _searchResultList = MutableStateFlow<List<SearchResult>?>(null)
-    val searchResultListFlow: StateFlow<List<SearchResult>?> = _searchResultList.asStateFlow()
-    var searchResultList: List<SearchResult>?
-        get() = _searchResultList.value
-        set(value) {
-            _searchResultList.value = value
+    /**
+     * 采用选目录结果并消费该请求 (对照原版 LiveData 的一次性事件语义)。
+     *
+     * 只采用仍是最新那条、且书籍仍是当前书的结果: 选目录期间同 code 又失败一次时旧结果作废,
+     * 且不会消费掉新请求 (新请求仍等用户处理)。
+     *
+     * @return 结果归属的书籍; null = 结果已过期, 调用方不做任何处理
+     */
+    fun acceptPermissionDenial(id: Long): Book? {
+        return synchronized(syncLock) {
+            val request = _permissionDenial.value
+            val book = readBook.book.value
+            // 已被同 code 的新失败取代: 这条结果作废, 不动新请求
+            if (request == null || request.id != id) return@synchronized null
+            // 归属已变 (换书/关书): 请求已死, 按 id 清掉, 结果不落到新书
+            if (!request.canAccept(request, book?.bookUrl)) {
+                _permissionDenial.value = null
+                return@synchronized null
+            }
+            _permissionDenial.value = null
+            book
         }
-
-    /** 当前搜索结果索引 (对照 app 端 searchResultIndexFlow) */
-    private val _searchResultIndex = MutableStateFlow(0)
-    val searchResultIndexFlow: StateFlow<Int> = _searchResultIndex.asStateFlow()
-    var searchResultIndex: Int
-        get() = _searchResultIndex.value
-        set(value) {
-            _searchResultIndex.value = value
-        }
-
-    /** 权限拒绝事件入口 (供平台 actual 在文件权限异常时调用, 对照 app 端 permissionDenialLiveData.postValue) */
-    fun postPermissionDenial(code: Int) {
-        _permissionDenial.value = code
     }
     // endregion
 
@@ -269,6 +429,9 @@ class ReadBookViewModelShared(
 
     /** 目录拉取失败标志：失败后不自动重试（对照原版失败后需手动"更新目录"），成功/切书时清除。 */
     private var directoryLoadFailed = false
+
+    /** 本地书文件可打开性检查门 (每书一次, 见 [LocalFileCheckGate])。 */
+    private val localFileCheckGate = LocalFileCheckGate()
 
     // 替代原 @Synchronized 的 this 监视器 (kotlin.jvm.Synchronized 无 common 变体且 native 无效)
     private val syncLock = SynchronizedObject()
@@ -429,32 +592,6 @@ class ReadBookViewModelShared(
         _scrollOffset.value = 0
     }
 
-    /**
-     * 滚动模式连续滚动跨章标记: [ScrollPageDelegateCompose.applyScrollDelta] 越过章节边界
-     * 切章后置位, 该章正文装载完成 ([contentLoadFinish]) 时消费。
-     *
-     * 目的: 滚动中越过边界进入未装载章节时显示占位页, 章节装载完成若把滚动偏移重置为 0
-     * 会从章首跳变 (对照原版 moveToNextChapter → loadContent(resetPageOffset = false) 保留偏移);
-     * 消费本标记时 [applyCurChapterPages] 保留偏移, 其余装载路径 (打开书/菜单跳章) 照旧归零。
-     */
-    private var scrollCrossingLoadPending = false
-
-    /** 滚动跨章后置位 (ScrollPageDelegateCompose 章节边界折算时调用) */
-    fun markScrollCrossingPending() {
-        scrollCrossingLoadPending = true
-    }
-
-    /** 消费滚动跨章标记: 章节装载完成时读取, true = 本次装载由滚动连续跨章触发 */
-    fun consumeScrollCrossingPending(): Boolean {
-        val v = scrollCrossingLoadPending
-        scrollCrossingLoadPending = false
-        return v
-    }
-
-    /** 清除滚动跨章标记 (显式跳章/跳页/打开书时, 防止残留标记导致误保留偏移) */
-    private fun clearScrollCrossingPending() {
-        scrollCrossingLoadPending = false
-    }
     // endregion
 
     /**
@@ -462,7 +599,6 @@ class ReadBookViewModelShared(
      * 进度条 page 模式松手后按页索引跳转, 跨章时由排版层自动接续。
      */
     fun skipToPage(index: Int) {
-        clearScrollCrossingPending()
         resetScrollOffset()
         readBook.skipToPage(index)
         // 对照原版 skipToPage → curPageChanged → preDownload (页位变化即刷新预下载窗口)
@@ -532,7 +668,10 @@ class ReadBookViewModelShared(
         }
 
         override fun moveToChapter(chapterIndex: Int) {
-            if (readBook.durChapterIndexValue != chapterIndex) loadChapter(chapterIndex)
+            // 对照原版朗读推进 → moveToNextChapter/PrevChapter → loadContent(resetPageOffset = false): 保偏移
+            if (readBook.durChapterIndexValue != chapterIndex) {
+                loadChapter(chapterIndex, keepScrollOffset = true)
+            }
         }
 
         override fun moveToNextPage() {
@@ -620,16 +759,10 @@ class ReadBookViewModelShared(
             intArrayOf(index)
         }
         for (i in relayoutWindow) {
-            val cached = processedContentCache[i]
-            if (cached != null) {
-                // 复用已处理内容，只重排版
-                loadGuard.launch(i) {
-                    relayoutFromCache(i, cached)
-                }
-            } else {
-                loadGuard.launch(i) {
-                    loadContent(i)
-                }
+            // 缓存命中与否在执行时再判定: 重排可能在缓存被清 (清缓存/切书) 后才轮到
+            launchRelayout(i) {
+                val cached = processedContentCache[i]
+                if (cached != null) relayoutFromCache(i, cached) else loadContent(i)
             }
         }
     }
@@ -647,29 +780,43 @@ class ReadBookViewModelShared(
                 BookStorageProviders.get().delContent(book, chapter)
             }
             readBook.clearTextChapter()
+            // 对照原版 refreshContentDur → ReadBook.loadContent(resetPageOffset = false): 保偏移
             loadContent(index)
         }
     }
 
     /**
      * 打开章节（对照 app 端 `ReadBook.openChapter` + `loadContent(resetPageOffset)`）：
-     * 读章节列表 / 解析书源，跳章时清三章滑窗并重置进度，随后装载当前章并异步预载前后章。
+     * 读章节列表 / 解析书源，跳章时清三章滑窗并落位，随后装载当前章并异步预载前后章。
      * 正文经 ContentProcessor 完整处理链后排版，详见 [contentLoadFinish]。
      *
      * @param chapterPos 章内字符位置; null=跳章归零、同章不动。带位置的入口 (书签/云进度/朗读定位)
-     *   必须由本参数传入: 装载是异步的, 调用方在前后自行写 durChapterPos 都会被跳章分支清零
-     * @param keepScrollOffset true=装载完成后保留滚动偏移 (对照原版 loadContent(resetPageOffset=false),
-     *   用于编辑保存/重置后刷新阅读器: 置位滚动跨章标记, applyCurChapterPages 以 resetOffset=false
-     *   归位, 滚动模式不回到章首; 其余显式装载路径默认 false 归零)
+     *   由本参数传入, 跳章分支在装载前落位 (对照原版 openChapter 先写 durChapterPos 再 loadContent)
+     * @param keepScrollOffset 本次装载是否保留滚动偏移: 同章重载/重排/编辑保存/段评重载传 true
+     *   (对照原版 `loadContent(index)` 的 `resetPageOffset = false`); 跳章/跳进度/目录更新传 false
      */
-    override fun loadChapter(index: Int, chapterPos: Int?, keepScrollOffset: Boolean) {
-        // 显式装载（打开书/菜单跳章）清零滚动跨章标记，防止残留标记导致后续装载误保留偏移;
-        // keepScrollOffset=true 时反向置位, 使本次装载排版完成保留滚动偏移
-        if (keepScrollOffset) {
-            markScrollCrossingPending()
-        } else {
-            clearScrollCrossingPending()
-        }
+    override fun loadChapter(
+        index: Int,
+        chapterPos: Int?,
+        keepScrollOffset: Boolean,
+    ) = loadChapterInternal(index, chapterPos, keepScrollOffset, success = null)
+
+    /**
+     * 装载单章并执行本次装载专属的完成动作（[loadChapter] 与 [openChapter] 的同一入口）。
+     *
+     * 完成动作只在本任务真装载完目标章、且仍是该章当前登记任务时执行（对照原版把 success 与
+     * resetPageOffset 绑在本次装载任务上）；任务被替换/取消/失败时动作随之失效，
+     * 不需要任何跨任务簿记。
+     *
+     * @param keepScrollOffset 本次装载是否保留滚动偏移 (对照原版 `resetPageOffset`)
+     * @param success 目标章排版完成回调 (对照原版 `openChapter` 的 success)
+     */
+    private fun loadChapterInternal(
+        index: Int,
+        chapterPos: Int?,
+        keepScrollOffset: Boolean,
+        success: (() -> Unit)?,
+    ) {
         val currentBookUrl = readBook.book.value?.bookUrl
         if (reviewCountBookUrl != currentBookUrl) {
             loadGuard.clear()
@@ -677,6 +824,7 @@ class ReadBookViewModelShared(
             directoryLoadingJob?.cancel()
             directoryLoadFailed = false
             reviewCountBookUrl = currentBookUrl
+            localFileCheckGate.reset()
             paragraphLayoutCache.clear()
         }
         // 书籍切换时清空已处理内容缓存
@@ -717,8 +865,37 @@ class ReadBookViewModelShared(
             // 4. 当前章优先装载，前后章异步预载（对照 app 端 loadContent 三章同载）;
             //    前后章属预下载范畴: preDownloadNum=0 时不预载, 翻章走 moveToNext/PrevChapter
             //    按需装载 (2026-08-29 用户拍板, 偏离原版三章同载)
-            loadContent(index)
+            loadContent(
+                index = index,
+                keepScrollOffset = keepScrollOffset,
+                success = success,
+            )
             loadNeighborChapters(index)
+        }
+    }
+
+    /**
+     * 本地书文件可打开性检查 (对照原版 ReadBookViewModel.checkLocalBookFileExist)。
+     *
+     * 失败时置消息页并把权限类异常上报为权限拒绝事件 (宿主据此弹选目录对话框)。
+     * 内部是整书/解压级 IO (native 端接口 readBytes, 并可能解压或同步 WebDAV 下载),
+     * 故由装载任务在 IO 线程上调用 (对照原版 initBook 在 `execute` 的 IO 协程内检查)。
+     */
+    private fun checkLocalBookFileExist(book: Book): Boolean {
+        return try {
+            FileBookProviders.get().getBookInputStream(book).close()
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            // 失败归属校验: 检查是整书级 IO, 期间切书/关书后旧书的失败不得污染当前阅读状态
+            if (readBook.book.value?.bookUrl == book.bookUrl) {
+                readBook.upMsg("打开本地书籍出错: ${e.message}")
+                if (e.isSecurityException() || e is FileNotFoundException) {
+                    postPermissionDenial(0, book)
+                }
+            }
+            false
         }
     }
 
@@ -744,16 +921,39 @@ class ReadBookViewModelShared(
      * @param includeNeighbors true = 无条件带前后章（目录重解析/清整书缓存后整窗重载用：
      *   缓存已清空，前后章留着旧排版会与新目录/新缓存不一致）；false = 受
      *   [neighborLoadEnabled] 门控
+     * @param keepScrollOffset 是否保留滚动偏移；目录更新必须传 false（对照原版
+     *   `onChapterListUpdated → loadContent(true)`）
      */
-    private fun loadChapterWindow(center: Int, includeNeighbors: Boolean = false) {
+    private fun loadChapterWindow(
+        center: Int,
+        includeNeighbors: Boolean = false,
+        keepScrollOffset: Boolean = true,
+    ) {
         if (includeNeighbors) {
             for (index in chapterWindowIndices(center)) {
-                loadGuard.launch(index) { loadContent(index) }
+                loadGuard.launch(index) { loadContent(index, keepScrollOffset = keepScrollOffset) }
             }
             return
         }
-        loadGuard.launch(center) { loadContent(center) }
+        loadGuard.launch(center) { loadContent(center, keepScrollOffset = keepScrollOffset) }
         loadNeighborChapters(center)
+    }
+
+    /**
+     * 重排类入口启动装载：该章有在途任务（含装载标记已释放、仍在排版/收尾的）时不抢跑,
+     * 等它收尾后补一轮。在途装载的 [layoutUntilCurrent] 版本环会吸收最新配置并保活它的
+     * 完成回调, 排版不能被重排掐断; 重排也不能因在途而静默丢失。
+     */
+    private fun launchRelayout(index: Int, block: suspend CoroutineScope.() -> Unit) {
+        val running = loadGuard.currentJob(index)
+        if (running == null) {
+            loadGuard.launchIfNoJob(index, block)
+            return
+        }
+        scope.launch {
+            running.join()
+            loadGuard.launchIfNoJob(index, block)
+        }
     }
 
     /**
@@ -761,9 +961,19 @@ class ReadBookViewModelShared(
      * 未加入书架的书只更新内存章节表，不落库（与原版 inBookshelf 守卫一致，也避免外键失败）。
      */
     private suspend fun loadChapterListFromSource(book: Book): List<BookChapter> {
-        // 核心逻辑提取为顶层 [fetchChapterListFromSource] (供音频/RSS 等复用), 此处保留
-        // readBook.updateChapterList 成员写入
-        val list = fetchChapterListFromSource(book, readBook.bookSource.value)
+        // 本地书目录拉取直接走 [BookChapterLoader.fetchFromSource] (保留异常):
+        // 顶层 [fetchChapterListFromSource] 把异常吞成空列表, 而本地书的权限/文件缺失
+        // 必须能上报权限拒绝事件 (对照原版 loadChapterListAwait 的本地书失败分支)。
+        val list = try {
+            BookChapterLoader.fetchFromSource(book, readBook.bookSource.value, runPreUpdateJs = true)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (book.isLocal && (e.isSecurityException() || e is FileNotFoundException)) {
+                postPermissionDenial(1, book)
+            }
+            emptyList()
+        }
         readBook.updateChapterList(list)
         return list
     }
@@ -830,7 +1040,21 @@ class ReadBookViewModelShared(
         val job = synchronized(syncLock) {
             directoryLoadingJob?.let { return it }
             val newJob = scope.launch {
-                val list = fetchChapterListFromSource(book, readBook.bookSource.value)
+                // 本地书目录拉取必须能上报权限拒绝事件: 顶层 [fetchChapterListFromSource] 把异常
+                // 吞成空列表, 这里直接走 [BookChapterLoader.fetchFromSource] 保留异常
+                // (对照原版 loadChapterListAwait 的本地书失败分支)。
+                val list = try {
+                    BookChapterLoader.fetchFromSource(
+                        book, readBook.bookSource.value, runPreUpdateJs = true,
+                    )
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    if (book.isLocal && (e.isSecurityException() || e is FileNotFoundException)) {
+                        postPermissionDenial(1, book)
+                    }
+                    emptyList()
+                }
                 if (readBook.book.value?.bookUrl == book.bookUrl) {
                     readBook.updateChapterList(list)
                 }
@@ -852,10 +1076,24 @@ class ReadBookViewModelShared(
      * 装载单章正文并按滑窗归位（对照 app 端 `ReadBook.loadContentAwait`）：
      * 缓存未命中经 [downloadAwait] 联网，失败文案与原版一致作为正文排版展示。
      *
+     * 本次装载的语义全部由入参随任务传递（对照原版把 `resetPageOffset` 与 `success` 作为
+     * `loadContent` 的实参绑在这一次调用上），不做任何跨任务簿记：
+     * 任务被同章新任务替换/取消/失败时，这些意图随之失效。
+     *
      * @param silent true = 段评迟到后的双缓冲静默重载：不先刷"加载数据中…"占位页，
      *   当前章保持旧排版直到新排版就绪再原子替换
+     * @param keepScrollOffset 本次装载是否保留滚动偏移; 默认保留（对照原版
+     *   `ReadBook.loadContent(index)` 的 `resetPageOffset = false` —— 编辑保存/重排/段评
+     *   重载/滚动跨章都走这条默认路径）。只有目录更新后的整窗重载传 false（对照原版
+     *   `onChapterListUpdated → loadContent(true)`，标题/分页整体变化，偏移必须归零）
+     * @param success 目标章排版完成回调（对照原版 `ReadBook.openChapter` 的 success）
      */
-    private suspend fun loadContent(index: Int, silent: Boolean = false) {
+    private suspend fun loadContent(
+        index: Int,
+        silent: Boolean = false,
+        keepScrollOffset: Boolean = true,
+        success: (() -> Unit)? = null,
+    ) {
         if (index < 0) return
         // 目录未就绪时先确保：打开初期 relayout 的同章替换会取消 loadChapter 主任务
         //（其中含网络目录拉取），重载任务在此补上目录前置，避免未入架书（目录不落库）
@@ -871,7 +1109,12 @@ class ReadBookViewModelShared(
         }
         if (index >= readBook.chapterSize) return
         if (!isInChapterWindow(index, readBook.durChapterIndex.value)) return
+        // 该章已在装载中则本次跳过 (对照原版 `addLoading` 守卫): 同章重载/重排/预载不会
+        // 掐断在途装载, 在途装载的完成回调照常触发; 要替换在途装载必须走 [loadGuard.launch]
+        // (同章新任务取消旧任务, 旧任务的完成回调随之作废)
         if (!loadGuard.tryAdd(index)) return
+        // 本次装载的任务身份: 排版完成动作只认它 (对照原版 success 挂在本次装载任务上)
+        val loadJob = currentCoroutineContext()[Job]
         // 当前章未装载：先刷新页面流，展示"加载数据中…"占位（对照原版 moveToNextChapter /
         // openChapter 的 upContent 后 pageFactory 无章兜底页；msg 优先，不覆盖消息页）。
         // 装载完成后由 contentLoadFinish → applyCurChapterPages 替换为正文。
@@ -879,6 +1122,17 @@ class ReadBookViewModelShared(
             syncPageFlows()
         }
         try {
+            // 本地书文件可打开性检查 (对照原版 ReadBookViewModel.checkLocalBookFileExist):
+            // 接口会解压整书或同步拉取 WebDAV, 必须在装载任务内、切到 IO 线程做 (不能在组合期
+            // 同步执行); [localFileCheckGate] 串行化并发到达的三章装载, 每本书只做一次。
+            // 放在装载任务内而非初始化: 初始重排替换掉装载任务时, 接手的那次装载同样会检查,
+            // 不存在绕过; 检查失败时下一次装载会重新检查 (文件可能已被找回)
+            if (book.isLocal && !localFileCheckGate.checkOnce(book.bookUrl) {
+                    withContext(IoDispatcher) { checkLocalBookFileExist(book) }
+                }
+            ) {
+                return
+            }
             val chapter = resolveChapter(book, index, readBook.chapterList.value) ?: return
             // 与 app ReadBook.loadContent 一致：正文 IO 前先并行启动段评数请求，正文缓存命中也不阻塞。
             val countDeferred = startReviewCountFetchAsync(book, chapter)
@@ -887,10 +1141,21 @@ class ReadBookViewModelShared(
                 BookHelpShared.getContent(book, chapter)
             }
             val content = cached ?: downloadAwait(book, chapter)
+            // 本次装载已被同章新任务替换 (带完成动作的跳章): 旧装载不得把内容刷进滑窗,
+            // 也不得触发它自己的完成动作
+            if (!loadGuard.isCurrentJob(index, loadJob)) return
             // 原版在 contentLoadFinish 入口先 removeLoading；先释放守卫，确保段评迟到触发的重排
             // 可以立即重新加载同章，不会被本次 finally 尚未执行的 loading 标记挡住。
             loadGuard.release(index)
-            contentLoadFinish(book, chapter, content, countDeferred)
+            contentLoadFinish(
+                book = book,
+                chapter = chapter,
+                content = content,
+                countDeferred = countDeferred,
+                keepScrollOffset = keepScrollOffset,
+                success = success,
+                loadJob = loadJob,
+            )
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -990,7 +1255,7 @@ class ReadBookViewModelShared(
 
             // 2. 双缓冲静默切换机制：消除 clearTextChapter() 调用（避免白屏与视觉闪烁），
             // 在后台协程中完成新 TextChapter 的排版加载，排版完成后原子替换 curChapter / curTextChapter
-            loadGuard.launch(chapter.index) {
+            launchRelayout(chapter.index) {
                 val cached = processedContentCache[chapter.index]
                 if (cached != null) {
                     val updated = cached.copy(reviewCountMap = map)
@@ -1021,6 +1286,28 @@ class ReadBookViewModelShared(
     }
 
     /**
+     * 排版版本环：排版是挂起过程（图片解析可等待网络），期间排版配置可能变化、
+     * 任务可能被同章新任务替换、书籍可能切换。提交前统一核对三件事：
+     * 任务身份（被跳章/新装载替换 → 返回 null 作废，排版结果与完成回调都不再属于本轮）、
+     * 书籍归属（切书后旧书排版不得进滑窗）、排版版本（配置在排版期间变化 → 弃稿，
+     * 以最新配置重排，已取内容与完成回调保活），配置收敛即提交。
+     */
+    private suspend fun layoutUntilCurrent(
+        index: Int,
+        book: Book,
+        loadJob: Job?,
+        layout: suspend (LayoutConfig) -> TextChapterShared,
+    ): TextChapterShared? {
+        while (true) {
+            val config = _layoutConfig.value
+            val textChapter = layout(config)
+            if (!loadGuard.isCurrentJob(index, loadJob)) return null
+            if (readBook.book.value?.bookUrl != book.bookUrl) return null
+            if (_layoutConfig.value == config) return textChapter
+        }
+    }
+
+    /**
      * 排版并按滑窗 offset 归位（对照 app 端 `contentLoadFinish` + `processContent`：
      * ContentProcessor 替换净化 / 简繁转换 / 重新分段 / 去重复标题 → 排版 → offset -1/0/+1 三分支）。
      */
@@ -1029,6 +1316,9 @@ class ReadBookViewModelShared(
         chapter: BookChapter,
         content: String,
         countDeferred: Deferred<Map<Int, Int>?>? = null,
+        keepScrollOffset: Boolean = true,
+        success: (() -> Unit)? = null,
+        loadJob: Job? = null,
     ) {
         if (!isInChapterWindow(chapter.index, readBook.durChapterIndex.value)) return
         val processor = ContentProcessorProviders.get()
@@ -1052,24 +1342,25 @@ class ReadBookViewModelShared(
         val imageResolver = ImageResolverProviders.createOrNull(
             book, chapter, readBook.bookSource.value,
         )
-        val pages = buildLayout().layout(
-            displayTitle = displayTitle,
-            contents = bookContent.textList,
-            chapterIndex = chapter.index,
-            chapterSize = readBook.chapterSize,
-            reviewCountMap = reviewCountMap,
-            parsedParagraphs = parsedParagraphs,
-            imageResolver = imageResolver,
-            imageStyle = book.config.imageStyle,
-        )
-        val textChapter = TextChapterShared(
-            chapterIndex = chapter.index,
-            pages = pages,
-            reviewCountApplied = reviewCountMap != null,
-            effectiveReplaceRules = bookContent.effectiveReplaceRules,
-            sameTitleRemoved = bookContent.sameTitleRemoved,
-        )
-        pages.forEach { it.textChapter = textChapter }
+        val textChapter = layoutUntilCurrent(chapter.index, book, loadJob) { config ->
+            val pages = buildLayout(config).layout(
+                displayTitle = displayTitle,
+                contents = bookContent.textList,
+                chapterIndex = chapter.index,
+                chapterSize = readBook.chapterSize,
+                reviewCountMap = reviewCountMap,
+                parsedParagraphs = parsedParagraphs,
+                imageResolver = imageResolver,
+                imageStyle = book.config.imageStyle,
+            )
+            TextChapterShared(
+                chapterIndex = chapter.index,
+                pages = pages,
+                reviewCountApplied = reviewCountMap != null,
+                effectiveReplaceRules = bookContent.effectiveReplaceRules,
+                sameTitleRemoved = bookContent.sameTitleRemoved,
+            ).also { created -> pages.forEach { it.textChapter = created } }
+        } ?: return
         // 缓存已处理内容，视口变化时只重排版
         processedContentCache[chapter.index] = ProcessedChapterContent(
             chapter = chapter,
@@ -1087,13 +1378,18 @@ class ReadBookViewModelShared(
             null -> return
 
             ChapterWindowSlot.CUR -> {
-                // 滚动模式连续跨章装载：保留滚动偏移（对照原版 moveToNextChapter →
-                // loadContent(resetPageOffset = false)，避免占位页被正文替换时从章首跳变）；
-                // 其余装载路径（打开书/菜单跳章/重排）照旧归零
-                val crossing = consumeScrollCrossingPending()
                 readBook.updateTextChapter(0, textChapter)
-                applyCurChapterPages(textChapter, resetOffset = !crossing)
+                // 偏移语义来自本次装载的入参 (对照原版 resetPageOffset 是 loadContent 的实参):
+                // 保偏移 = 同章重载/重排/编辑保存/滚动跨章接手占位页; 该章已预载/已排版时
+                // 不经过装载, 因此不存在跨任务残留
+                applyCurChapterPages(textChapter, resetOffset = !keepScrollOffset)
                 scheduleReviewRelayoutIfNeeded(countDeferred, chapter, textChapter)
+                // 完成回调属于本次装载 (对照原版 contentLoadFinish 的 job.onSuccess):
+                // 该章装载失败/被替换/取消时任务不存在, 回调自然不执行, 也不会留给其它装载。
+                // 排版期间被同章新任务替换时, 这里再按任务身份拦一次
+                if (success != null && loadGuard.isCurrentJob(chapter.index, loadJob)) {
+                    success()
+                }
             }
 
             ChapterWindowSlot.PREV, ChapterWindowSlot.NEXT -> {
@@ -1110,7 +1406,7 @@ class ReadBookViewModelShared(
      * 复用 imageResolver（其内部 sizes 缓存避免重复网络请求）。
      *
      * @param silent true = 段评迟到后的双缓冲静默重排：排完原子替换并保留滚动偏移与阅读位置；
-     *   false = 视口变化的纯 UI 重排：偏移归零且不触发 preDownload（避免网络请求/JS执行）
+     *   false = 视口变化的纯 UI 重排：保留滚动偏移且不触发 preDownload（避免网络请求/JS执行）
      */
     private suspend fun relayoutFromCache(
         index: Int,
@@ -1119,24 +1415,26 @@ class ReadBookViewModelShared(
     ) {
         if (!isInChapterWindow(index, readBook.durChapterIndex.value)) return
         val book = readBook.book.value ?: return
-        val pages = buildLayout().layout(
-            displayTitle = cached.displayTitle,
-            contents = cached.textList,
-            chapterIndex = index,
-            chapterSize = readBook.chapterSize,
-            reviewCountMap = cached.reviewCountMap,
-            parsedParagraphs = cached.parsedParagraphs,
-            imageResolver = cached.imageResolver,
-            imageStyle = book.config.imageStyle,
-        )
-        val textChapter = TextChapterShared(
-            chapterIndex = index,
-            pages = pages,
-            reviewCountApplied = cached.reviewCountMap != null,
-            effectiveReplaceRules = cached.effectiveReplaceRules,
-            sameTitleRemoved = cached.sameTitleRemoved,
-        )
-        pages.forEach { it.textChapter = textChapter }
+        val loadJob = currentCoroutineContext()[Job]
+        val textChapter = layoutUntilCurrent(index, book, loadJob) { config ->
+            val pages = buildLayout(config).layout(
+                displayTitle = cached.displayTitle,
+                contents = cached.textList,
+                chapterIndex = index,
+                chapterSize = readBook.chapterSize,
+                reviewCountMap = cached.reviewCountMap,
+                parsedParagraphs = cached.parsedParagraphs,
+                imageResolver = cached.imageResolver,
+                imageStyle = book.config.imageStyle,
+            )
+            TextChapterShared(
+                chapterIndex = index,
+                pages = pages,
+                reviewCountApplied = cached.reviewCountMap != null,
+                effectiveReplaceRules = cached.effectiveReplaceRules,
+                sameTitleRemoved = cached.sameTitleRemoved,
+            ).also { created -> pages.forEach { it.textChapter = created } }
+        } ?: return
         val durIndex = readBook.durChapterIndex.value
         when (chapterWindowSlotOf(index, durIndex)) {
             null -> return
@@ -1146,11 +1444,10 @@ class ReadBookViewModelShared(
                 if (silent) {
                     applyCurChapterPages(textChapter, resetOffset = false)
                 } else {
-                    // 纯 UI 重排：只更新页状态，不触发 preDownload（避免网络请求/JS执行）
+                    // 视口/样式重排 (对照原版 upStyle → loadContent(resetPageOffset = false)):
+                    // 保留滚动偏移与页位, 只更新页状态, 不触发 preDownload (避免网络请求/JS执行)
                     pageList.clear()
                     pageList.addAll(textChapter.pages)
-                    // 重排后行几何整体变化，滚动偏移归零 (对照旧 LOAD_CONTENT → resetPageOffset)
-                    resetScrollOffset()
                     if (readBook.durChapterPos.value == Int.MAX_VALUE) {
                         readBook.updateDurChapterPos(textChapter.lastReadLength)
                     }
@@ -1206,16 +1503,20 @@ class ReadBookViewModelShared(
             readBook.slideTextChaptersNext()
             val newCur = readBook.curTextChapter.value
             if (newCur != null) {
-                // 滚动切章: 默认不归零滚动偏移 (offset 连续折算在 applyScrollDelta), 对照原版 toFirst=false;
-                // 方向键切章 (resetOffset=true) 归零, 新章从第一页顶部开始
+                // 该章已排版, 本次没有装载: 只按入口语义处理偏移, 不留任何待办
                 applyCurChapterPages(newCur, resetOffset = resetOffset)
-            }
-            if (newCur == null) {
-                // 当前章未装载：立即刷新三页流展示"加载数据中…"占位（对照原版
-                // moveToNextChapter 的 upContent 后 pageFactory 无章兜底页），
-                // 装载完成由 contentLoadFinish 替换为正文
+            } else {
+                // 当前章未装载: 先铺"加载数据中…"占位, 再由本次装载替换。
+                // 默认 (resetOffset=false) 滚动模式偏移由手势路径同帧折算, 装载完成不得归零
+                // (对照原版 moveToNextChapter → loadContent(resetPageOffset = false));
+                // 方向键切章 (resetOffset=true) 必须真归零
                 syncPageFlows()
-                loadGuard.launch(curIndex + 1) { loadContent(curIndex + 1) }
+                loadChapterInternal(
+                    index = curIndex + 1,
+                    chapterPos = null,
+                    keepScrollOffset = !resetOffset,
+                    success = null,
+                )
             }
             // 后二章预载属预下载范畴: preDownloadNum=0 时不预载 (按需装载只保留上面的新当前章)
             if (neighborLoadEnabled()) {
@@ -1278,15 +1579,19 @@ class ReadBookViewModelShared(
             readBook.slideTextChaptersPrev()
             val newCur = readBook.curTextChapter.value
             if (newCur != null) {
-                // 滚动切章: 默认不归零滚动偏移 (offset 连续折算在 applyScrollDelta), 对照原版 toFirst=false;
-                // 方向键切章 (resetOffset=true) 归零, 新章从第一页顶部开始
+                // 该章已排版, 本次没有装载: 只按入口语义处理偏移, 不留任何待办
                 applyCurChapterPages(newCur, resetOffset = resetOffset)
-            }
-            if (newCur == null) {
-                // 当前章未装载：立即刷新三页流展示"加载数据中…"占位（对照原版
-                // moveToPrevChapter 的 upContent 后 pageFactory 无章兜底页）
+            } else {
+                // 当前章未装载: 铺占位后由本次装载替换, 理由同 moveToNextChapter。
+                // 位置随装载传入 (对照原版 moveToPrevChapter 先写 durChapterPos 再 loadContent):
+                // toLast 时 prevPos 可能是 Int.MAX_VALUE 哨兵, 排版完成后自然落到末页
                 syncPageFlows()
-                loadGuard.launch(curIndex - 1) { loadContent(curIndex - 1) }
+                loadChapterInternal(
+                    index = curIndex - 1,
+                    chapterPos = prevPos,
+                    keepScrollOffset = !resetOffset,
+                    success = null,
+                )
             }
             // 前二章预载属预下载范畴: preDownloadNum=0 时不预载 (同 moveToNextChapter)
             if (neighborLoadEnabled()) {
@@ -1382,8 +1687,8 @@ class ReadBookViewModelShared(
      * 带进度的跳转一律走本方法：只有本路径会排版并回填三章滑窗。
      *
      * 原版 setProgress：赋 index/pos + clearTextChapter + loadContent(resetPageOffset=true)，
-     * 无 saveRead。故不借 loadChapter 的 chapterPos 落位 (跳章分支会 saveRead、同章分支不清
-     * 滑窗)：这里自行成对写 index/pos，让 loadChapter 只当同章重载
+     * 无 saveRead。故自行成对写 index/pos 后走 loadChapter (index 已变, 不触发跳章分支的
+     * 清滑窗/saveRead), 并显式要求归零滚动偏移
      *
      * @return false = 越界或进度未变, 未发生跳转
      */
@@ -1395,7 +1700,8 @@ class ReadBookViewModelShared(
         readBook.clearTextChapter()
         readBook.updateDurChapterIndex(progress.durChapterIndex)
         readBook.updateDurChapterPos(progress.durChapterPos)
-        loadChapter(progress.durChapterIndex)
+        // 对照原版 setProgress → loadContent(resetPageOffset = true): 跳进度归零滚动偏移
+        loadChapter(progress.durChapterIndex, keepScrollOffset = false)
         return true
     }
 
@@ -1570,16 +1876,20 @@ class ReadBookViewModelShared(
      *
      * 定位行语义: durChapterPos = line.chapterPosition, readAloud(startPos =
      * line.pagePosition) → 服务端 readAloudNumber = getReadLength(durPageIndex) + startPos
-     * = 该行章节位置。跨章时 openChapter 跳章, 排版完成后经 [applyCurChapterPages]
-     * 触发延迟朗读 (对照原版 openChapter success 回调时机); 无可视行回落当前进度。
+     * = 该行章节位置。跨章时 openChapter 跳章并在装载前落位, 排版完成后触发延迟朗读
+     * (对照原版 openChapter success 回调时机); 无可视行回落当前进度。
      */
     fun readAloudFromVisibleStart() {
         val pos = getReadAloudPos()
         if (pos != null) {
             val (index, line) = pos
             if (readBook.durChapterIndex.value != index) {
-                pendingReadAloudStart = line.pagePosition
-                openChapter(index, line.chapterPosition)
+                // 跨章: 起点随 openChapter 的完成回调携带 (对照原版 ReadBookActivity:975
+                // 的 `openChapter(index, pos, false) { readAloud(startPos) }`),
+                // 只在目标章真正排版完成时触发 —— 装载失败/被替换时不会落到占位页上朗读
+                openChapter(index, line.chapterPosition) {
+                    readBook.readAloud(startPos = line.pagePosition)
+                }
             } else {
                 readBook.updateDurChapterPos(line.chapterPosition)
                 readBook.readAloud(startPos = line.pagePosition)
@@ -1588,9 +1898,6 @@ class ReadBookViewModelShared(
             readBook.readAloud()
         }
     }
-
-    /** 跨章朗读起点: 目标章排版完成待触发的页内偏移 (对照原版 openChapter success 时机) */
-    private var pendingReadAloudStart: Int? = null
 
     /**
      * 清除朗读高亮 (对照 app 端 ALOUD_STATE STOP/PAUSE 分支:
@@ -1645,7 +1952,9 @@ class ReadBookViewModelShared(
                 // 当前章已清空时直接展示"加载数据中…"占位
                 readBook.upMsg(null)
                 val index = readBook.durChapterIndex.value
-                loadChapterWindow(index)
+                // 目录更新属于原版 onChapterListUpdated → loadContent(resetPageOffset = true):
+                // 章节边界/标题可能整体变化, 滚动偏移必须归零
+                loadChapterWindow(index, keepScrollOffset = false)
             }
         }
     }
@@ -1662,7 +1971,8 @@ class ReadBookViewModelShared(
             ContentProcessorProviders.get().upReplaceRules()
             val book = readBook.book.value ?: return@launch
             val index = readBook.durChapterIndex.value
-            // 清已处理内容缓存, 强制重新走 ContentProcessor 链路 (含新替换规则)
+            // 清已处理内容缓存, 强制重新走 ContentProcessor 链路 (含新替换规则);
+            // 对照原版 replaceRuleChanged → ReadBook.loadContent(resetPageOffset = false): 保偏移
             processedContentCache.remove(index)
             readBook.clearTextChapter()
             loadGuard.launch(index) { loadContent(index) }
@@ -1708,6 +2018,7 @@ class ReadBookViewModelShared(
         val book = readBook.book.value ?: return
         val durIndex = readBook.durChapterIndex.value
         if (readBook.curTextChapter.value == null) {
+            // 对照原版 loadOrUpContent → loadContent 默认 resetPageOffset=false: 保偏移
             loadGuard.launch(durIndex) { loadContent(durIndex) }
         }
         // 前后章属预下载范畴: preDownloadNum=0 时不补载 (同 ReadBookShared.loadOrUpContent 口径)
@@ -1731,14 +2042,17 @@ class ReadBookViewModelShared(
      *
      * @param index 章节序号
      * @param durChapterPos 章内字符位置 (默认 0 = 章首)
-     * @param success 加载启动回调 (与 app 端 success 时机差异: app 端在 loadContent 完成后触发,
-     *   shared 端 loadChapter 是 fire-and-forget, 这里在编排启动后立即触发, 供 UI 刷新菜单状态)
+     * @param success 目标章**排版完成**回调 (对照原版 `ReadBook.openChapter` 的 success,
+     *   经 `contentLoadFinish` 的当前章分支触发)。装载失败/被替换时不会触发。
      */
     fun openChapter(index: Int, durChapterPos: Int = 0, success: (() -> Unit)? = null) {
         if (index !in 0 until readBook.chapterSize) return
-        loadChapter(index, chapterPos = durChapterPos)
-        success?.invoke()
+        // 对照原版 openChapter 的无条件 `durChapterPos = durChapterPos`: 同章时也落位
+        // (装载分支只在跳章时写位置, 同章重载会保留旧 durChapterPos)
+        readBook.updateDurChapterPos(durChapterPos)
+        loadChapterInternal(index, durChapterPos, keepScrollOffset = false, success = success)
     }
+
 
     /**
      * 从书架删除当前书 (对照 app 端 ReadBookViewModel.removeFromBookshelf + Book.delete 扩展)。
@@ -1786,7 +2100,7 @@ class ReadBookViewModelShared(
             for (i in durIndex..chapterList.lastIndex) {
                 storage.delContent(book, chapterList[i])
             }
-            // 清当前章已处理内容缓存 + 重载 (对照 app 端 ReadBook.loadContent(false))
+            // 清当前章已处理内容缓存 + 重载 (对照 app 端 ReadBook.loadContent(false), 保偏移)
             processedContentCache.remove(durIndex)
             readBook.clearTextChapter()
             loadGuard.launch(durIndex) { loadContent(durIndex) }
@@ -1805,7 +2119,7 @@ class ReadBookViewModelShared(
             val chapter = resolveChapter(book, durIndex, readBook.chapterList.value)
                 ?: return@launch
             BookHelpShared.saveContent(book, chapter, content)
-            // 清当前章已处理内容缓存 + 重载 (对照 app 端 ReadBook.loadContent(durChapterIndex, resetPageOffset=false))
+            // 清当前章已处理内容缓存 + 重载 (对照 app 端 ReadBook.loadContent(durChapterIndex, resetPageOffset=false), 保偏移)
             processedContentCache.remove(durIndex)
             readBook.clearTextChapter()
             loadGuard.launch(durIndex) { loadContent(durIndex) }
@@ -1827,7 +2141,7 @@ class ReadBookViewModelShared(
                 ?: return@launch
             // 翻转去重标记 (对照 app 端 BookHelp.setRemoveSameTitle(book, chapter, !sameTitleRemoved))
             BookHelpShared.setRemoveSameTitleMarker(book, chapter, !textChapter.sameTitleRemoved)
-            // 清当前章已处理内容缓存 + 重载 (对照 app 端 ReadBook.loadContent(durChapterIndex))
+            // 清当前章已处理内容缓存 + 重载 (对照 app 端 ReadBook.loadContent(durChapterIndex), 保偏移)
             processedContentCache.remove(durIndex)
             readBook.clearTextChapter()
             loadGuard.launch(durIndex) { loadContent(durIndex) }
@@ -1842,8 +2156,8 @@ class ReadBookViewModelShared(
      * 度量器取 [TextMeasurerProviders] 注册的平台真实字形实现（四端都注册 SkiaTextMeasurer）；
      * [SimpleTextMeasurer] 等宽近似只在未注册时兜底（实际只有单测环境）。
      */
-    private fun buildLayout(): SimpleChapterLayout {
-        val cfg = _layoutConfig.value
+    private fun buildLayout(config: LayoutConfig): SimpleChapterLayout {
+        val cfg = config
         val measurer = TextMeasurerProviders
             .createOrNull(
                 cfg.textSizePx, cfg.letterSpacingPx, cfg.textFontPath, cfg.contentWeight,
@@ -1940,11 +2254,8 @@ class ReadBookViewModelShared(
             // 切章/重排/刷新后滚动偏移归零 (对照旧 upContent(resetPageOffset=true) → resetPageOffset)
             resetScrollOffset()
         }
-        // 跨章朗读起点: 目标章排版完成即触发 (对照原版 openChapter success 回调时机)
-        pendingReadAloudStart?.let { startPos ->
-            pendingReadAloudStart = null
-            readBook.readAloud(startPos = startPos)
-        }
+        // 跨章朗读起点已随 openChapter 的完成回调携带 (见 [readAloudFromVisibleStart]),
+        // 无需在此消费待办标记
         // toLast 且上一章未预载时的 Int.MAX_VALUE 哨兵：落到末页后归一为该页页首
         if (readBook.durChapterPos.value == Int.MAX_VALUE) {
             readBook.updateDurChapterPos(textChapter.lastReadLength)
@@ -2134,8 +2445,9 @@ class ReadBookViewModelShared(
             readBook.upMsg(null)
             val index = readBook.durChapterIndex.value
             // 目录重解析/清整书缓存后整窗重载: 不受 preDownloadNum 门控 (缓存已清空,
-            // 前后章留着旧排版会与新目录/新缓存不一致)
-            loadChapterWindow(index, includeNeighbors = true)
+            // 前后章留着旧排版会与新目录/新缓存不一致);
+            // 归零滚动偏移 (对照原版 onChapterListUpdated → loadContent(true))
+            loadChapterWindow(index, includeNeighbors = true, keepScrollOffset = false)
         }
     }
 
@@ -2153,9 +2465,9 @@ class ReadBookViewModelShared(
             processedContentCache.clear()
             readBook.clearTextChapter()
             val index = readBook.durChapterIndex.value
-            // 目录重解析/清整书缓存后整窗重载: 不受 preDownloadNum 门控 (缓存已清空,
-            // 前后章留着旧排版会与新目录/新缓存不一致)
-            loadChapterWindow(index, includeNeighbors = true)
+            // 整窗重载: 不受 preDownloadNum 门控 (缓存已清空, 前后章留着旧排版会与新缓存不一致);
+            // 对照原版 refreshContentAll → ReadBook.loadContent(false): 保偏移
+            loadChapterWindow(index, includeNeighbors = true, keepScrollOffset = true)
         }
     }
 
@@ -2172,7 +2484,8 @@ class ReadBookViewModelShared(
             ContentProcessorProviders.get().upReplaceRules()
             // 只 PATCH 阅读配置列; 整行 update 会冲掉后台 updateToc 写入的目录/元数据
             AppDbProviders.get().bookDao.updateReadConfig(book.bookUrl, book.config)
-            loadChapter(readBook.durChapterIndex.value)
+            // 对照原版 replaceRuleChanged → loadContent(resetPageOffset = false): 保偏移
+            loadChapter(readBook.durChapterIndex.value, keepScrollOffset = true)
         }
     }
 
@@ -2185,7 +2498,8 @@ class ReadBookViewModelShared(
         scope.launch {
             // 只 PATCH 阅读配置列; 整行 update 会冲掉后台 updateToc 写入的目录/元数据
             AppDbProviders.get().bookDao.updateReadConfig(book.bookUrl, book.config)
-            loadChapter(readBook.durChapterIndex.value)
+            // 对照原版 menu_re_segment → ReadBook.loadContent(false): 保偏移
+            loadChapter(readBook.durChapterIndex.value, keepScrollOffset = true)
         }
     }
 

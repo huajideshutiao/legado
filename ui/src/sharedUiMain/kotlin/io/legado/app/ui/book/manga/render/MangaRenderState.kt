@@ -60,6 +60,10 @@ class MangaRenderState {
     val listState = LazyListState()
 
     var items by mutableStateOf<List<BaseMangaPage>>(emptyList())
+    /** [items] 所属内容批次的归属书籍 (同一组合赋值): 定位生效一刻核对请求是否仍与内容同源 */
+    var contentBookUrl by mutableStateOf("")
+    /** [items] 所属内容批次的装载代际 (同一组合赋值), 与 [contentBookUrl] 配套核对 */
+    var contentGeneration by mutableStateOf(0)
     var horizontal by mutableStateOf(false)
     var colorFilterConfig by mutableStateOf(MangaColorFilterConfig())
     var grayEnabled by mutableStateOf(false)
@@ -312,34 +316,20 @@ class MangaRenderState {
 
     /** 待应用的定位请求：由组合内 LaunchedEffect 在新 items 组合落定后执行 */
     class PendingScroll(
-        val index: Int,
-        /** 条目顶部相对视口顶的偏移 (对照 LazyListState.scrollToItem 的 scrollOffset) */
-        val scrollOffset: Int = 0,
+        /** 生效一刻按当前 [items] 解析目标下标 (null = 放弃本次登记, 不回执) */
+        val resolve: () -> Int?,
         val onApplied: (() -> Unit)? = null,
     )
 
     var pendingScroll by mutableStateOf<PendingScroll?>(null)
 
     /**
-     * 等待跳转定位中 (初次打开/菜单切章/目录选章/重载)。
-     *
-     * 只表达"这轮内容就绪后需要定位到 contentPos", 由内容层置位、[scrollToPosition] 的请求
-     * 生效后由渲染层清除。**不要**用它门控居中页上报: 它在 LaunchedEffect 里置位, 而桌面端
-     * 同一帧 layout 先于 effect 执行, 上报会早于置位 —— 上报的抑制改由 [MangaRenderLayer]
-     * 内的 "items 引用变化那次只刷基线" 完成。
+     * 登记定位 (原 scrollToPositionWithOffset)；[onApplied] 在定位生效后回调。
+     * 下标不在此刻固化: [resolve] 在渲染层生效一刻按活列表重新解析, 避免"登记后 items 重建
+     * (前章插入/移除), 裸下标被新列表错误解释"的漂移。
      */
-    var awaitingJump by mutableStateOf(true)
-
-    /**
-     * 定位到条目(原 scrollToPositionWithOffset)；onApplied 在定位生效后回调。
-     * [scrollOffset] 为条目顶部相对视口顶的偏移，用于 items 重建后按原视口位置恢复。
-     */
-    fun scrollToPosition(
-        index: Int,
-        scrollOffset: Int = 0,
-        onApplied: (() -> Unit)? = null,
-    ) {
-        pendingScroll = PendingScroll(index, scrollOffset, onApplied)
+    fun scrollToPosition(resolve: () -> Int?, onApplied: (() -> Unit)? = null) {
+        pendingScroll = PendingScroll(resolve, onApplied)
     }
 
     private fun viewportMainAxisSize(): Int {

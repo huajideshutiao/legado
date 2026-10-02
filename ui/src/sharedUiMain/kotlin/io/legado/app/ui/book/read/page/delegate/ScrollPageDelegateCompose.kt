@@ -208,7 +208,6 @@ class ScrollPageDelegateCompose(
                         viewModel.updateScrollOffset(0)
                         return false
                     }
-                    viewModel.markScrollCrossingPending()
                 }
                 // 页切换与偏移折算同一同步块: 绘制帧读到的新页+新偏移恒自洽
                 syncRenderPages()
@@ -233,7 +232,6 @@ class ScrollPageDelegateCompose(
                         viewModel.updateScrollOffset((-h).toInt())
                         return false
                     }
-                    viewModel.markScrollCrossingPending()
                 }
                 // 同上: 页切换与偏移折算同一同步块
                 syncRenderPages()

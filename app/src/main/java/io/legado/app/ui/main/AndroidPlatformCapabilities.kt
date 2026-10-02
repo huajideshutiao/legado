@@ -1829,6 +1829,13 @@ class AndroidPlatformCapabilities(
         activity.launchBookTreeUriPicker()
     }
 
+    // 对照 app 端 BaseReadBookActivity 的 FileDoc.fromUri(uri, true).find(book.originName):
+    // SAF 目录逐层列举, 一层找不到再进子目录找 (与 FileDoc.find(depth) 同语义)
+    override fun findBookFileInDir(dirUri: String, fileName: String): String? {
+        val dir = runCatching { FileDoc.fromUri(dirUri.toUri(), true) }.getOrNull() ?: return null
+        return dir.find(fileName, depth = 1)?.uri?.toString()
+    }
+
     // 对照 OtherConfigHost.onCheckSource: showDialogFragment<CheckSourceConfig>
     // 迁 Compose Overlay: 原 CheckSourceConfig() Fragment 已由
     // shared OverlayContentHost 的 "check_source_config" key 接管

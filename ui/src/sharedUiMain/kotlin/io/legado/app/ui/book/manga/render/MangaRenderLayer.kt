@@ -129,13 +129,23 @@ fun MangaRenderLayer(
     val pendingScroll = state.pendingScroll
     LaunchedEffect(pendingScroll) {
         if (pendingScroll != null) {
-            val max = (state.items.size - 1).coerceAtLeast(0)
-            state.listState.scrollToItem(
-                pendingScroll.index.coerceIn(0, max),
-                pendingScroll.scrollOffset,
-            )
-            // 视口已落到目标位置, 本轮定位需求完成
-            state.awaitingJump = false
+            // 生效一刻才解析 (解析器内核对归属与代际): 登记后可能换书/换批, 旧目标不得
+            // 跨批次操作新列表; 解析不出则丢弃本次登记且不回执, 由消费方等下一轮重新登记
+            val index = pendingScroll.resolve()
+            if (index == null) {
+                state.pendingScroll = null
+                return@LaunchedEffect
+            }
+            val items = state.items
+            val max = (items.size - 1).coerceAtLeast(0)
+            state.listState.scrollToItem(index.coerceIn(0, max))
+            if (state.items !== items) {
+                // 挂起滚动期间换批 (前章插入/换代): 本次定位作用于已失效快照, 不回执,
+                // 请求保留待消费方按新批次重新登记
+                state.pendingScroll = null
+                return@LaunchedEffect
+            }
+            // 滚动已生效且快照未变: 置空并回执 (onApplied), 消费方据此清空请求
             state.pendingScroll = null
             pendingScroll.onApplied?.invoke()
         }

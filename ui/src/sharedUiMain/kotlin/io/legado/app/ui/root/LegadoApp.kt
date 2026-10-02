@@ -761,6 +761,7 @@ private fun DialogOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavig
         "bookVariable" -> BookVariableOverlayDialogContent(overlay, navigator)
         "change_cover" -> ChangeCoverDialogContent(overlay, navigator)
         "app_log" -> AppLogOverlayDialogContent(overlay, navigator)
+        "httpTtsEdit" -> HttpTtsEditOverlayDialogContent(overlay, navigator)
 
         // java.copy 确认对话框 (完整文本在 IntentData, payload 只带 key, 见 CopyConfirmDialog.kt)
         "copy_confirm" -> CopyConfirmOverlayDialogContent(overlay, navigator)

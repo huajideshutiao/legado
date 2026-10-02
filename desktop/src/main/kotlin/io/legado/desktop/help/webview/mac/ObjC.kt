@@ -57,7 +57,9 @@ internal object ObjC {
     private lateinit var objcLib: LibObjC
 
     interface LibObjC : Library {
-        fun objc_msgSend(receiver: Pointer?, selector: Pointer?, vararg args: Any?): Pointer
+        // 返回类型必须可空: ObjC 的 nil 返回是常态 (如异常对象上的 UTF8String), JNA 此时给的是
+        // Java null。声明成非空类型会让 Kotlin 把调用点的判空当死代码报 warning, 同时隐藏真实契约。
+        fun objc_msgSend(receiver: Pointer?, selector: Pointer?, vararg args: Any?): Pointer?
         fun objc_msgSendInt(receiver: Pointer?, selector: Pointer?, vararg args: Any?): Int
         fun objc_msgSendLong(receiver: Pointer?, selector: Pointer?, vararg args: Any?): Long
         fun objc_msgSendDouble(receiver: Pointer?, selector: Pointer?, vararg args: Any?): Double

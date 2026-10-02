@@ -135,19 +135,12 @@ fun ContentEditDialog(
 
     // 标题本地 state: 重命名成功后由回调更新, chapterName 参数变化 (外部重载) 时重新同步
     var titleState by remember(chapterName) { mutableStateOf(chapterName) }
-    LaunchedEffect(chapterName) {
-        titleState = chapterName
-    }
     // 标题编辑子对话框开关 (原版 titleBar.toolbar 点击 → alert 编辑标题)
     var showTitleEdit by remember { mutableStateOf(false) }
     var titleEditState by remember { mutableStateOf(titleState) }
 
     // 本地编辑 state: content 参数变化时 (如 reset 后调用方更新 content) 重新初始化
     var contentState by remember(content) { mutableStateOf(content) }
-    // content 参数变化时同步 state (用于 onReset 后调用方更新 content 触发重组)
-    LaunchedEffect(content) {
-        contentState = content
-    }
 
     // 异步加载态 (对齐原版 loadStateLiveData + rlLoading): 传入 contentLoader 时进入加载态,
     // 加载中正文区显示转圈覆盖输入框, 完成前不展示可编辑内容。

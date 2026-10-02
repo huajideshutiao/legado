@@ -5,11 +5,9 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.HttpTTS
-import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.coroutine.printStackTraceOnDebug
-import io.legado.app.help.http.KmpResponse
-import io.legado.app.help.http.header
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
+import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.model.script.JsEngines
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.MD5Utils
@@ -49,6 +47,17 @@ interface HttpTtsPlayer {
 
     /** 设置播放源 URL 及请求头。 */
     fun setUrl(url: String, headers: Map<String, String>)
+
+    /** 保留完整引擎配置；需要下载音频的平台可处理 POST、编码和登录校验。 */
+    fun setRequest(config: HttpTTS, text: String, speechRate: Int) {
+        val request = AnalyzeUrlFactories.create(
+            config.url,
+            source = config,
+            readTimeout = HttpTtsRequest.READ_TIMEOUT_MS,
+            variables = HttpTtsRequest.speakVariables(text, speechRate),
+        )
+        setUrl(request.url, request.headerMap)
+    }
 
     /** 准备播放（缓冲首帧）,完成后触发 [HttpTtsPlayerListener.onReady]。 */
     fun prepare()
@@ -264,32 +273,9 @@ class HttpTtsDownloadScheduler(
     ): InputStream? {
         while (true) {
             try {
-                val analyzeUrl = analyzeUrlFactory.create(
-                    httpTts.url,
-                    httpTts,
-                    HttpTtsRequest.READ_TIMEOUT_MS,
-                    coroutineContext,
-                    HttpTtsRequest.speakVariables(speakText, speechRate),
+                val response = HttpTtsRequest.audioResponse(
+                    httpTts, speakText, speechRate, coroutineContext, analyzeUrlFactory,
                 )
-                var response = analyzeUrl.getResponseAwait()
-                coroutineContext.ensureActive()
-                val checkJs = httpTts.loginCheckJs
-                if (checkJs?.isNotBlank() == true) {
-                    response = analyzeUrl.evalJS(checkJs, response) as KmpResponse
-                }
-                when (HttpTtsRequest.checkContentType(
-                    response.header("Content-Type"),
-                    httpTts.contentType,
-                )) {
-                    HttpTtsRequest.ContentTypeVerdict.ERROR_BODY ->
-                        throw NoStackTraceException(response.body.string())
-
-                    HttpTtsRequest.ContentTypeVerdict.ERROR_MISMATCH ->
-                        throw NoStackTraceException("TTS服务器返回错误：" + response.body.string())
-
-                    HttpTtsRequest.ContentTypeVerdict.OK -> Unit
-                }
-                coroutineContext.ensureActive()
                 response.body.byteStream().let { stream ->
                     downloadErrorBreaker.reset()
                     return stream

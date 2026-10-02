@@ -75,6 +75,7 @@ import io.legado.app.ui.compose.platform.readerDirectionalKeys
 import io.legado.app.ui.compose.platform.rememberCustomPageKeys
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import kotlin.math.abs
 import kotlinx.coroutines.flow.first
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.back
@@ -123,8 +124,8 @@ private val mangaMenuKey = listOf(AppShortcut(Key.Menu))
  * @param bookName 书名（标题栏标题, 对照 app 端 MangaMenu.title）
  * @param chapterTitle 章节名（底部信息条用, 原版标题栏不显示章节名）
  * @param items 当前 prev/cur/next 三章合并后的页列表 (含章节转场 ReaderLoading)
- * @param contentPos 内容定位下标 (对照 app 端 buildMangaContent().pos)
  * @param curFinish 当前章是否已加载完成 (对照 app 端 MangaContent.curFinish)
+ * @param positionRequest 一次性定位请求 (初始打开/菜单切章/目录选章/书签跳转/重载/云进度/换源)
  * @param book 当前书籍 (图片加载/预加载用)
  * @param bookSource 当前书源 (图片加载/预加载用)
  * @param curChapterIndex 当前章节序号 (0-based)
@@ -166,7 +167,6 @@ fun MangaReaderScreenContent(
     bookName: String,
     chapterTitle: String,
     items: List<BaseMangaPage>,
-    contentPos: Int,
     curFinish: Boolean,
     book: Book?,
     bookSource: BookSource?,
@@ -175,8 +175,14 @@ fun MangaReaderScreenContent(
     horizontal: Boolean,
     autoPageSpeed: Int,
     loadState: ChapterLoadState,
-    /** 菜单/目录切章的显式跳转信号 (见 ScreenModel.dispatch 的 jumpTick 自增) */
-    jumpTick: Int = 0,
+    /** 一次性定位请求 (初始打开/菜单切章/目录选章/书签跳转/重载/云进度/换源发出) */
+    positionRequest: MangaPositionRequest? = null,
+    /** 内容重建身份号 (每次发布新内容自增); 内容层用它判断"新内容到了, 该消费请求了" */
+    contentEpoch: Int = 0,
+    /** items 所属内容批次的归属书籍 (同一快照): 消费定位请求时与请求核对 */
+    contentBookUrl: String = "",
+    /** items 所属内容批次的装载代际 (同一快照): 请求只消费不早于自身代际的批次 */
+    contentGeneration: Int = 0,
     batteryLevel: Int = -1,
     systemTime: String = "",
     currentPage: Int = 0,
@@ -200,6 +206,8 @@ fun MangaReaderScreenContent(
     onPrevPage: (() -> Unit)? = null,
     onNextPage: (() -> Unit)? = null,
     onCenterItemChanged: (BaseMangaPage, Boolean) -> Unit = { _, _ -> },
+    /** 定位请求已被消费 (回调状态持有者清空请求, 对照官方 UI 事件"消费后回报"口径) */
+    onPositionRequestConsumed: (MangaPositionRequest) -> Unit = {},
     onSeekToPage: (Int) -> Unit = {},
     onRetry: () -> Unit,
     onRefresh: () -> Unit = {},
@@ -267,12 +275,14 @@ fun MangaReaderScreenContent(
             firstHorizontal = false
             return@LaunchedEffect
         }
-        val center = renderState.centerItemIndex()
-        if (center >= 0) renderState.scrollToPosition(center)
+        // 生效一刻取活列表的中心页 (登记后 items 可能重建, 裸下标会被新列表错误解释)
+        renderState.scrollToPosition(resolve = { renderState.centerItemIndex().takeIf { it >= 0 } })
     }
     // 速度下限 1: 对照 app 端 showNumberPickerDialog(min=1); 0 会让定时翻页退化成空转
     renderState.autoSpeed = autoPageSpeed.coerceAtLeast(1)
     renderState.items = items
+    renderState.contentBookUrl = contentBookUrl
+    renderState.contentGeneration = contentGeneration
     renderState.book = book
     renderState.bookSource = bookSource
     renderState.colorFilterConfig = colorFilterConfig
@@ -437,27 +447,43 @@ fun MangaReaderScreenContent(
         renderState.setAutoScrollEnabled(autoPageEnabled && !horizontal)
     }
 
-    // 初始/切章定位 (对照 app 端 upContent: loadingViewVisible && curFinish 时 scrollToPosition)。
-    // shared VM 在 upContent 内已把 loading 置回 false, 故用 renderState.awaitingJump 记住
-    // "这轮加载需要定位" (居中页上报的抑制由渲染层的 items 基线负责, 不靠这个标记)
-    LaunchedEffect(loading) { if (loading) renderState.awaitingJump = true }
-    // 菜单/目录切章同 loading 一样置位: 预载下一章时 loading 的 true→false 在 VM 同步
-    // 调用内合并, UI 观察不到脉冲, 必须靠显式 jumpTick (见 ScreenModel.dispatch 注释)
-    LaunchedEffect(jumpTick) { if (jumpTick > 0) renderState.awaitingJump = true }
-    // 重构 (对齐原版 upContent): 仅"跳转"场景 (初始打开/菜单切章/重载) 定位到内容位置;
-    // 其余 items 变化 (滚动跨章/预载头部插入等结构性重建) 保持 LazyList 滚动位置,
-    // 滚动连续性由列表自身位置保持 + 中心页上报 (onCenterItemChanged) 驱动。
-    // 删除原 key 锚点恢复机制 (按 key 钉视口): 与原版行为不符, 且与中心上报/跨章
-    // 判定互相干扰 (曾导致切章不更新/弹回旧章/闪烁)。
-    LaunchedEffect(items, curFinish) {
-        if (!curFinish || items.isEmpty()) return@LaunchedEffect
-        if (renderState.awaitingJump) {
-            // 标记不在这里清: 由渲染层在定位真正生效时清 (提前清会放开居中页上报,
-            // 旧滚动位置那一帧的相邻章条目就会触发跨章 —— 目录选章跳到隔壁章的来源)
-            renderState.scrollToPosition(contentPos) {
+    // 内容就绪后消费定位请求 (对照 app 端 upContent: submitList 回调里 scrollToPositionWithOffset)。
+    // key 全部用身份而非内容:
+    // - contentEpoch 每发布一批新内容自增 (items 不行 —— 列表元素是 data class, 重载后逐元素
+    //   相等时 Compose 的 key 判等成立 (GapComposer.kt:842) → effect 不重启 → 定位无人消费);
+    // - positionRequest 每次新请求 id 单调自增, 使"请求晚于内容到达"(初始化/换源回填等异步路径)
+    //   也能立即重启消费, 不必依赖"请求必先于内容"的时序;
+    // - curFinish 保证内容真的可用 (setProgress 同章刷新等路径会发布 cur 未就绪的部分批次)。
+    // 无请求时直接退出: 滚动跨章/预下载带来的内容重建不得重定位 (滚动连续性由列表自身位置
+    // 保持 + 中心页上报驱动, 对齐原版"仅 loading 可见时定位"的语义)。
+    // 请求与内容同源闭环: 消费判定核对**内容自身快照**的书籍归属与装载代际 (不另读当前
+    // book, combine 异步滞后窗口内旧批不冒充新批) → 登记时不下标固化 → 渲染层生效一刻
+    // 按活列表与归属重解析 → 真滚动生效且快照未换批才回执, 过期/被顶替的请求不回执。
+    LaunchedEffect(contentEpoch, positionRequest, curFinish) {
+        val request = positionRequest ?: return@LaunchedEffect
+        when (jumpResolutionFor(request, contentBookUrl, contentGeneration, items, curFinish)) {
+            MangaJumpResolution.Apply -> renderState.scrollToPosition(
+                // 生效一刻重核对归属与代际, 再按活列表重解析: 登记到生效之间可能换书/换批
+                // (前章插入/移除), 目标失效则返回 null, 等下一轮内容重新登记
+                resolve = {
+                    if (renderState.contentBookUrl == request.bookUrl &&
+                        renderState.contentGeneration >= request.generation
+                    ) {
+                        jumpIndexFor(request, renderState.items)
+                    } else {
+                        null
+                    }
+                },
+            ) {
                 // 初始定位不触发停稳回调, 手动装填首个当前页的 GIF
                 renderState.syncGifAutoNextForCurrentPage()
+                // 真滚动生效后身份回执
+                onPositionRequestConsumed(request)
             }
+            // 目标章未进内容/内容未就绪/旧代批次: 保留请求, 等下一轮内容身份变化再消费
+            MangaJumpResolution.Wait -> Unit
+            // 书籍归属不符 (换书/换源后的遗留请求): 作废清除, 不滚动
+            MangaJumpResolution.Stale -> onPositionRequestConsumed(request)
         }
     }
 
@@ -536,19 +562,84 @@ fun MangaReaderScreenContent(
             onOpenReview = onOpenReview,
             onPrevChapter = onPrevChapter,
             onNextChapter = onNextChapter,
-            // 对照 app 端 MangaSeekBar + skipToPage: 拖动中即定位到本章该页
+            // 对照 app 端 MangaSeekBar + skipToPage: 拖动中即定位到本章该页。
+            // 生效一刻按活列表重解析 (同定位请求: 登记后 items 重建不漂移)
             onSeekPage = { index ->
-                val itemPos = items.indexOfFirst {
-                    it.chapterIndex == curChapterIndex && it.index == index
-                }
-                if (itemPos > -1) {
-                    renderState.scrollToPosition(itemPos)
-                    onSeekToPage(index)
-                }
+                renderState.scrollToPosition(resolve = {
+                    renderState.items.indexOfFirst {
+                        it.chapterIndex == curChapterIndex && it.index == index
+                    }.takeIf { it > -1 }
+                })
+                onSeekToPage(index)
             },
             onDismiss = { menuVisible = false },
         )
     }
+}
+
+/** 定位请求消费判定结果 (纯逻辑, 供回归测试)。 */
+internal sealed interface MangaJumpResolution {
+    /** 请求与当前内容同书且代际相当、目标章在内: 可登记定位 (生效一刻还会重核对)。 */
+    data object Apply : MangaJumpResolution
+
+    /** 目标章未进内容/内容未就绪/批次代际落后: 保留请求, 等下一轮内容身份变化。 */
+    data object Wait : MangaJumpResolution
+
+    /** 书籍归属不符 (换书/换源后的遗留请求): 作废清除, 不滚动。 */
+    data object Stale : MangaJumpResolution
+}
+
+/**
+ * 定位请求消费判定: 请求必须与**内容自身快照**同书且不落后于请求代际才可消费
+ * (纯逻辑, 供回归测试)。
+ *
+ * - 同书: 与批次自身 [contentBookUrl] 核对, 异书遗留请求作废;
+ * - 同代: 批次 [contentGeneration] 落后于请求即为旧代 (新请求先于 combine 发射落到旧
+ *   items 上的滞后窗口), 保留请求等新批; 目标章未进 items 同样保留。
+ */
+internal fun jumpResolutionFor(
+    request: MangaPositionRequest,
+    contentBookUrl: String,
+    contentGeneration: Int,
+    items: List<BaseMangaPage>,
+    curFinish: Boolean,
+): MangaJumpResolution = when {
+    contentBookUrl.isEmpty() -> MangaJumpResolution.Wait
+    request.bookUrl != contentBookUrl -> MangaJumpResolution.Stale
+    contentGeneration < request.generation -> MangaJumpResolution.Wait
+    !curFinish || items.isEmpty() -> MangaJumpResolution.Wait
+    jumpIndexFor(request, items) == null -> MangaJumpResolution.Wait
+    else -> MangaJumpResolution.Apply
+}
+
+/**
+ * 定位请求对应的 items 下标; 目标章尚未进入列表时返回 null (本轮不消费, 等内容到达)。
+ *
+ * 页号按目标章的**真实图片数**归一: 取绝对值 (停在章末的进度用负数编码, 见
+ * [MangaReaderViewModelShared.saveRead]) 后夹到 `[0, imageCount-1]`, 与原版
+ * `buildMangaContent` 的 `durChapterPos.coerceIn(0, imageCount - 1)` 同口径 —— 保存位置/
+ * 书签超过换章后新章节的页数时落在末图, 不是首页。零图片的卷章只有标题条目, 定位该标题。
+ */
+internal fun jumpIndexFor(request: MangaPositionRequest, items: List<BaseMangaPage>): Int? {
+    var chapterStart = -1
+    var firstImage = -1
+    var imageCount = 0
+    for (i in items.indices) {
+        val item = items[i]
+        if (item.chapterIndex != request.chapterIndex) continue
+        if (chapterStart < 0) chapterStart = i
+        if (item is MangaPage) {
+            if (firstImage < 0) firstImage = i
+            imageCount++
+        }
+    }
+    if (chapterStart < 0) return null
+    if (firstImage < 0) return chapterStart
+    val page = abs(request.page).coerceIn(0, imageCount - 1)
+    val exact = items.indexOfFirst {
+        it is MangaPage && it.chapterIndex == request.chapterIndex && it.index == page
+    }
+    return if (exact >= 0) exact else firstImage
 }
 
 /** 点击落点 → 动作值, 对照 app 端 [io.legado.app.ui.book.read.config.ClickArea] 的 3x3 分区 */

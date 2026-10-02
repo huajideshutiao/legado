@@ -25,6 +25,7 @@ import io.legado.app.model.analyzeRule.CustomUrl
 import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.MD5Utils
+import io.legado.app.utils.inputStream
 import io.legado.app.utils.toInputStream
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
@@ -77,8 +78,9 @@ class NativeFileBookAccessor : FileBookAccessor {
     }
 
     override fun getBookInputStream(book: Book): InputStream {
-        val file = resolveLocalFile(book.bookUrl)
-        return file.readBytes().toInputStream()
+        // 流式打开 (不整书读入内存); 调用方负责 close。
+        // 打开失败抛 okio IOException 族 (ENOENT 为 FileNotFoundException, 其余含权限不足为普通 IOException)。
+        return resolveLocalFile(book.bookUrl).inputStream()
     }
 
     override fun getLastModified(book: Book): Result<Long> {
@@ -375,8 +377,9 @@ class NativeFileBookAccessor : FileBookAccessor {
         }
     }
 
-    /** 解析 bookUrl 为 [File] (与 NativeLocalBookLocator.parseLocalPath 剥离规则一致)。 */
-    private fun resolveLocalFile(bookUrl: String): File {
+    /** 解析 bookUrl 为 [File] (与 NativeLocalBookLocator.parseLocalPath 剥离规则一致);
+     *  internal 供同模块 iOS 授权装饰器取文件路径包租约。 */
+    internal fun resolveLocalFile(bookUrl: String): File {
         val path = when {
             bookUrl.startsWith("file:") -> {
                 val afterScheme = bookUrl.substringAfter("file://")

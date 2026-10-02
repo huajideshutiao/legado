@@ -43,6 +43,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.concurrent.Volatile
+import kotlin.math.abs
 
 /** 正文 <img> src 提取 (对照 app 端 BookHelp.flowImages: 同一解析器 + 跳过空 src)。 */
 private fun sharedFlowImages(content: String): Flow<String> =
@@ -202,12 +203,16 @@ class MangaReaderScreenModel : ScreenModel {
         // 必须走 update{} 原子读改写: scope 是 Dispatchers.Default 线程池, 本收集器与
         // errorMsg/durChapterPos 两个收集器、以及 UI 线程的 dispatch() 直写并发操作同一个
         // _state。原来 `_state.value = <combine 内 copy 出的快照>` 是非原子读改写, 会整字段
-        // 丢更新 —— 丢掉 jumpTick 就是"目录选章/上一章下一章点了不跳"(jumpTick 是切章唯一
-        // 存活信号, 见下方 dispatch 注释), 丢掉 horizontal 就是"翻页后横竖模式跳回"。
+        // 丢更新 (丢掉 horizontal 就是"翻页后横竖模式跳回")。
+        // contentEpoch 必须参与本次发射: 它是「内容确实重建了」的身份信号 (身份而非内容,
+        // 见 MangaReaderViewModelShared.contentEpoch)。内容层据此重启定位 effect —— 光靠
+        // items 不行, 列表是 data class 实例, 新旧逐元素相等时 Compose 的 key 判等成立,
+        // effect 不重启, 定位请求就永远没人消费。
         combine(
-            shared.book, shared.durChapter, shared.mangaContent,
+            shared.book, shared.durChapter,
+            combine(shared.mangaContent, shared.contentEpoch) { content, epoch -> content to epoch },
             shared.durChapterIndex, shared.loadState,
-        ) { book, durChapter, mangaContent, durChapterIndex, loadState ->
+        ) { book, durChapter, (mangaContent, contentEpoch), durChapterIndex, loadState ->
             // VM 侧的值在发射时刻取好, 不留到 update{} 里读 (update 失败重试会重复读)
             val imageCount = shared.currentImageCount
             val chapterSize = shared.chapterSize
@@ -220,7 +225,6 @@ class MangaReaderScreenModel : ScreenModel {
                     bookName = book?.name ?: "",
                     chapterTitle = durChapter?.title ?: "",
                     items = items,
-                    contentPos = mangaContent?.pos ?: 0,
                     curFinish = mangaContent?.curFinish == true,
                     curChapterIndex = durChapterIndex,
                     chapterSize = chapterSize,
@@ -228,13 +232,16 @@ class MangaReaderScreenModel : ScreenModel {
                     pageCount = imageCount,
                     loadState = loadState,
                     hasReview = hasReview,
+                    contentEpoch = contentEpoch,
+                    contentBookUrl = mangaContent?.bookUrl.orEmpty(),
+                    contentGeneration = mangaContent?.generation ?: 0,
                 )
             }
             merge
         }.onEach { merge -> _state.update(merge) }.launchIn(scope)
 
         // 章内页码/进度 → state: 独立增量写, 翻页 (durChapterPos 发射) 不覆盖
-        // horizontal/jumpTick 等直写字段 (原 3 级 combine 链 stage-2 丢弃 stage-1 输出,
+        // horizontal/positionRequest 等直写字段 (原 3 级 combine 链 stage-2 丢弃 stage-1 输出,
         // 导致 items/bookName 永不更新; 此处拆链修复)
         scope.launch {
             shared.durChapterPos.collect { pos ->
@@ -332,6 +339,8 @@ class MangaReaderScreenModel : ScreenModel {
                 IntentData.book = newBook
                 // 目录先进内存: 未入书架的书没落库, 少了这步会再回源拉一次目录
                 shared.onSourceChanged(newBook, toc, source)
+                // 换源后内容整体重建, 按迁移后的进度重新定位 (对照原版换源后回到原阅读位置)
+                requestCurrentPosition()
             }.onFailure {
                 AppLog.put("换源失败\n$it", it, true)
             }
@@ -467,42 +476,97 @@ class MangaReaderScreenModel : ScreenModel {
     private fun formatTime(): String =
         formatTimeOfDay(systemCurrentTimeMillis())
 
+    /**
+     * 发布一次性定位请求 (第 [chapterIndex] 章第 [page] 页)。
+     *
+     * 每次调用都产生**身份不同**的新请求 (id 基于 [MangaReaderUiState.lastRequestId] 单调自增,
+     * 经 update 的 CAS 保证并发下单调; 消费清空后不复位, 旧回执永远撞不上新请求), 内容层
+     * effect 以请求对象为 key, 因此"再点一次当前章"也能重启定位 —— 目标位置与是否重复无关,
+     * 只与"这是一次新请求"有关 (只带位置不带身份的 key 会因逐字段相等被 Compose 判为未变,
+     * 定位静默丢失)。请求携带发出时的书籍归属, 换书/换源后遗留请求不得被新内容消费。
+     */
+    private fun requestJumpTo(chapterIndex: Int, page: Int) {
+        val book = shared.book.value ?: return
+        _state.update {
+            it.withJumpRequest(chapterIndex, page, book.bookUrl, shared.generation)
+        }
+    }
+
+    /**
+     * 按 shared 当前进度发定位请求 (重载/刷新/换源等"内容重建后回到原位置"的场景)。
+     *
+     * 页号取绝对值: 停在章末的进度用负数编码 (见 [MangaReaderViewModelShared.saveRead]),
+     * 定位只需要章内位置。
+     */
+    private fun requestCurrentPosition() {
+        requestJumpTo(
+            shared.durChapterIndex.value,
+            abs(shared.durChapterPos.value),
+        )
+    }
+
+    /**
+     * 内容层已消费定位请求 (对照官方 UI 事件口径: 消费后回报状态持有者清空, 否则下一轮内容
+     * 重建会把视口拉回旧目标)。按 id 比对: 回报的是过期请求时不清新请求 (id 单调, 不复位)。
+     */
+    fun onPositionRequestConsumed(request: MangaPositionRequest) {
+        _state.update { it.withRequestReceipt(request) }
+    }
+
     fun dispatch(event: MangaReaderUiEvent) {
         when (event) {
             is MangaReaderUiEvent.Init -> {
                 // shared.initData 从 IntentData.book 取书
                 IntentData.book = event.book
-                // 对照 app 端 applyBookmarkPosition: chapterIndex>=0 时跳转到指定章节位置
+                // 对照 app 端 applyBookmarkPosition: chapterIndex>=0 时跳转到指定章节位置。
+                // 定位请求在初始化成功后才发: 此刻 shared.book 已是从库里装载的权威进度,
+                // 用路由快照 (BookRef) 的 dur 字段会因快照过期定到错章
                 shared.initData(
                     overrideIndex = event.chapterIndex ?: -1,
                     overridePos = event.chapterPos ?: 0,
+                    success = {
+                        val book = shared.book.value
+                        if (book != null) {
+                            requestJumpTo(book.durChapterIndex, abs(book.durChapterPos))
+                        }
+                    },
                 )
             }
-            // toFirst=true: 对照 Activity 点击区域 action 3/4, 用户主动切章跳首页+显示 loading
-            // jumpTick 必须先于 shared 调用自增: 下一章已预载时 moveToNextChapter(true)
-            // 在同一个同步调用内把 loading 置 true 又经 upContent 置回 false, 合并后 UI
-            // 观察不到 loading 脉冲 → 只靠 loading 置位 awaitingJump 会丢失"菜单切章
-            // 需跳转"信号, 锚点逻辑把视口钉在旧章页 (旧章页仍在新 items 的 prev 段),
-            // 表现为"切章不更新/图片旧"。先自增让 jumpTick 与切章后的新 items 落在
-            // 同一次状态发射里, 切章后 items 变化即触发内容定位跳转。
+            // toFirst=true: 对照 Activity 点击区域 action 3/4, 用户主动切章跳首页+显示 loading。
+            // 定位请求只在切章真的被接受后发: moveToNextChapter 按 simulatedChapterSize
+            // (模拟追读解锁上界) 判定, 与 chapterSize 无关 —— 先发请求再调用会让被拒绝的
+            // 切章仍执行定位, 出现“UI 越过解锁限制而 VM 仍在原章”的错位。
+            // 接受后回读 durChapterIndex: 请求与真正生效的那一章同源 (方法内同步更新)。
             MangaReaderUiEvent.NextChapter -> {
-                _state.update { it.copy(jumpTick = it.jumpTick + 1) }
-                shared.moveToNextChapter(true)
+                if (shared.moveToNextChapter(true)) {
+                    requestJumpTo(shared.durChapterIndex.value, 0)
+                }
             }
 
             MangaReaderUiEvent.PrevChapter -> {
-                _state.update { it.copy(jumpTick = it.jumpTick + 1) }
-                shared.moveToPrevChapter(true)
+                if (shared.moveToPrevChapter(true)) {
+                    requestJumpTo(shared.durChapterIndex.value, 0)
+                }
             }
 
             is MangaReaderUiEvent.OpenChapter -> {
-                _state.update { it.copy(jumpTick = it.jumpTick + 1) }
-                shared.openChapter(event.index, event.position)
+                // 越界章号被 openChapter 拒绝时不发请求: 悬空请求会在下一批内容重建时
+                // 落到别的章上 (请求与书籍/内容批次同源的前提是它确实对应一次切章)
+                if (shared.openChapter(event.index, event.position)) {
+                    requestJumpTo(shared.durChapterIndex.value, shared.durChapterPos.value)
+                }
             }
-            // 对照 app 端 tvRetry 点击: 先隐藏重试页再重新加载
-            MangaReaderUiEvent.Retry -> shared.loadOrUpContent()
-            // 刷新当前章: 删缓存后重载 (对照 app 端 MangaMenuAction.REFRESH)
-            MangaReaderUiEvent.Refresh -> currentBook?.let { shared.refreshContentDur(it) }
+            // 对照 app 端 tvRetry 点击: 先隐藏重试页再重新加载 (重载后回到原位置)
+            MangaReaderUiEvent.Retry -> {
+                requestCurrentPosition()
+                shared.loadOrUpContent()
+            }
+            // 刷新当前章: 删缓存后重载 (对照 app 端 MangaMenuAction.REFRESH)。
+            // 定位请求在重载边界 (openChapter 清空发布) 之后才发: 刷新目标是当前章, 请求若先发
+            // 会在异步清空前的旧批次上被立即消费, 新批次到达后反而无人定位。
+            MangaReaderUiEvent.Refresh -> currentBook?.let {
+                shared.refreshContentDur(it) { requestCurrentPosition() }
+            }
             // 换源回填: migrateTo + 落库 + 装载新源/目录 (对照原版 BaseReadViewModel.changeTo)
             is MangaReaderUiEvent.ChangeSource -> changeTo(event.source, event.book, event.toc)
         }
@@ -518,7 +582,12 @@ class MangaReaderScreenModel : ScreenModel {
     fun loadOrUpContent() = shared.loadOrUpContent()
 
     /** 用户确认同步云端进度 (对照 app 端 ReadMangaActivity.sureNewProgress okButton → viewModel.setProgress) */
-    fun confirmSyncProgress(progress: BookProgress) = shared.confirmSyncProgress(progress)
+    fun confirmSyncProgress(progress: BookProgress) {
+        // 守卫拒绝 (章号越界/位置未变) 时不发定位请求: 该请求对应的章并未生效
+        if (shared.confirmSyncProgress(progress)) {
+            requestJumpTo(progress.durChapterIndex, abs(progress.durChapterPos))
+        }
+    }
 
     /** 用户取消同步云端进度 (对照 app 端 noButton) */
     fun dismissSyncProgress() = shared.dismissSyncProgress()
@@ -535,12 +604,54 @@ class MangaReaderScreenModel : ScreenModel {
     }
 }
 
+/**
+ * 一次性定位请求: 第 [chapterIndex] 章第 [page] 页, [id] 表达身份。
+ *
+ * [id] 不可省: 内容层 effect 以本对象为 key, 而 Compose 的 `remember(key)` 走 equals
+ * (`GapComposer.kt:842`), 只带目标位置的话"再点一次当前章"的新请求与上一轮逐字段相等,
+ * effect 不重启, 定位静默丢失 (漫画目录点当前章不跳的病根)。
+ */
+data class MangaPositionRequest(
+    val id: Int,
+    /** 发出时的书籍归属 (bookUrl): 消费方与内容自身快照核对, 异书请求作废 */
+    val bookUrl: String,
+    /** 发出时的装载代际: 内容批次代际落后于它即不可消费 (combine 异步滞后窗口的旧批) */
+    val generation: Int,
+    val chapterIndex: Int,
+    val page: Int,
+)
+
+/** 发布定位请求的纯规则 (供回归测试): id 单调自增且不随消费复位, 请求携带书籍与代际归属。 */
+internal fun MangaReaderUiState.withJumpRequest(
+    chapterIndex: Int,
+    page: Int,
+    bookUrl: String,
+    generation: Int,
+): MangaReaderUiState {
+    val id = lastRequestId + 1
+    return copy(
+        lastRequestId = id,
+        positionRequest = MangaPositionRequest(
+            id = id,
+            bookUrl = bookUrl,
+            generation = generation,
+            chapterIndex = chapterIndex,
+            page = page,
+        ),
+    )
+}
+
+/** 消费回执的纯规则 (供回归测试): 仅当前请求 (id 匹配) 被清, 过期回执不动新请求。 */
+internal fun MangaReaderUiState.withRequestReceipt(
+    receipt: MangaPositionRequest,
+): MangaReaderUiState =
+    if (positionRequest?.id == receipt.id) copy(positionRequest = null) else this
+
 /** 漫画阅读页 UI 状态, 字段对齐 [MangaReaderScreenContent] 入参。 */
 data class MangaReaderUiState(
     val bookName: String = "",
     val chapterTitle: String = "",
     val items: List<BaseMangaPage> = emptyList(),
-    val contentPos: Int = 0,
     val curFinish: Boolean = false,
     val curChapterIndex: Int = 0,
     val chapterSize: Int = 0,
@@ -548,8 +659,16 @@ data class MangaReaderUiState(
     val autoPageSpeed: Int = 0,
     /** 章节装载状态 (空闲/加载中/失败, 单一状态源: shared VM 的 loadState 直传) */
     val loadState: ChapterLoadState = ChapterLoadState.Idle,
-    /** 显式"需要跳转到内容位置"信号 (菜单/目录切章时自增, 见 dispatch) */
-    val jumpTick: Int = 0,
+    /** 一次性定位请求 (初始打开/菜单切章/目录选章/书签跳转/刷新/云进度/换源发出) */
+    val positionRequest: MangaPositionRequest? = null,
+    /** 已发出的最后一个请求 id (单调真源): 与 positionRequest 分开持有, 消费清空后不复位 */
+    val lastRequestId: Int = 0,
+    /** items 所属内容批次的归属书籍 (同一快照): 消费定位请求时与请求核对, 空串 = 尚无批次 */
+    val contentBookUrl: String = "",
+    /** items 所属内容批次的装载代际 (同一快照): 请求只消费不早于自身代际的批次 */
+    val contentGeneration: Int = 0,
+    /** 内容重建身份号 (shared 每次发布新内容自增); 内容层用它判断"新内容到了, 该消费请求了" */
+    val contentEpoch: Int = 0,
     val currentPage: Int = 0,
     val pageCount: Int = 0,
     val progressPercent: String = "0.0%",

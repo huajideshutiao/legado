@@ -49,6 +49,13 @@
       },
       {
         "name": "ohos.permission.KEEP_BACKGROUND_RUNNING"
+      },
+      // 目录授权持久化 (fileShare.persistPermission/activatePermission, system_grant
+      // 安装即授予; 本机 SDK PermissionDefinitions.json: availableLevel=normal,
+      // provisionEnable=true): 2in1/平板上选书籍/备份目录后持久化临时授权, 重启后激活复用。
+      // 仅具备 FolderAuthorization syscap 的设备实际执行 (ArkTS 侧 canIUse 检测)
+      {
+        "name": "ohos.permission.FILE_ACCESS_PERSIST"
       }
     ],
     "abilities": [

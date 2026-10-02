@@ -59,7 +59,7 @@ jobs:
         run: rm -fv artifacts/*-ios-simulator.zip
 
       - name: Delete Old Release
-        # 正式发布保持重建语义；iOS 手动发布只追加 multiplatform-test 的 iOS 资产，不删除其他资产。
+        # 正式发布保持重建语义；iOS 手动发布不走这里，在下方单独重建 multiplatform-test。
         if: inputs.artifact-name-pattern == '*'
         continue-on-error: true
         run: gh release delete "${{ inputs.tag }}" -y --cleanup-tag --repo ${{ github.repository }}
@@ -80,7 +80,7 @@ jobs:
           removeArtifacts: true
           artifacts: "artifacts/*.apk,artifacts/*.msi,artifacts/*.zip,artifacts/*.deb,artifacts/*.rpm,artifacts/*.dmg,artifacts/*.ipa"
 
-      - name: Append iOS assets to multiplatform-test
+      - name: Publish iOS assets to multiplatform-test
         if: inputs.artifact-name-pattern != '*'
         run: |
           shopt -s nullglob
@@ -89,24 +89,23 @@ jobs:
             echo "::error::Downloaded artifact contains no IPA or simulator zip"
             exit 1
           fi
-          gh release view "${{ inputs.tag }}" --repo "$GH_REPO" >/dev/null 2>&1 || \
-            gh release create "${{ inputs.tag }}" --repo "$GH_REPO" --prerelease \
-              --title "${{ inputs.name }}" \
-              --notes "iOS 未签名 ipa (SideStore/AltStore 自签侧载) 与模拟器构建包"
-          # 每个类别只保留最新一套: 对本次上传的每个文件, 先删掉 Release 上该类别旧资产
-          # (ipa 与模拟器包互不影响, 手动发模拟器包不会动真机 ipa)
-          for f in "${files[@]}"; do
-            case "$(basename "$f")" in
-              *.ipa) SUF="-ios-unsigned.ipa" ;;
-              *) SUF="-ios-simulator.zip" ;;
-            esac
-            gh api "repos/$GH_REPO/releases/tags/${{ inputs.tag }}" \
-              --jq ".assets[] | select(.name | endswith(\"$SUF\")) | .id" \
-              | while read -r id; do
-                  [ -n "$id" ] && gh api -X DELETE "repos/$GH_REPO/releases/assets/$id"
-                done
-          done
-          gh release upload "${{ inputs.tag }}" "${files[@]}" --repo "$GH_REPO" --clobber
+          TAG="${{ inputs.tag }}"
+          if [ "${{ inputs.artifact-name-pattern }}" = "ios-ipa-unsigned" ]; then
+            # 真机 ipa 发包: 删除 Release+tag 重建, tag 指向触发时 HEAD, 提交与排位都刷到最新;
+            # 重建清空全部旧资产 (模拟器包与手动上传的 hap 需重新上传), 正文原样写回
+            BODY="$(gh release view "$TAG" --repo "$GH_REPO" --json body --jq .body 2>/dev/null || true)"
+            [ -n "$BODY" ] || BODY="iOS 未签名 ipa (SideStore/AltStore 自签侧载) 与模拟器构建包"
+            gh release delete "$TAG" -y --cleanup-tag --repo "$GH_REPO" || true
+            gh release create "$TAG" --target "${{ github.sha }}" --repo "$GH_REPO" \
+              --title "${{ inputs.name }}" --notes "$BODY"
+          else
+            # 模拟器包发包: 只上传不动 Release 与既有资产 (ios-remote 按资产名排序取最新)
+            gh release view "$TAG" --repo "$GH_REPO" >/dev/null 2>&1 || \
+              gh release create "$TAG" --repo "$GH_REPO" \
+                --title "${{ inputs.name }}" \
+                --notes "iOS 未签名 ipa (SideStore/AltStore 自签侧载) 与模拟器构建包"
+          fi
+          gh release upload "$TAG" "${files[@]}" --repo "$GH_REPO" --clobber
         env:
           GH_TOKEN: ${{ github.token }}
           # 本 workflow 无 checkout；显式绑定调用方仓库，禁止 gh 从当前目录猜测目标。

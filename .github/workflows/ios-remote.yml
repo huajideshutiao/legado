@@ -1,5 +1,14 @@
 name: iOS Remote
 
+# 交互式远程会话: 模拟器装好 app 后开原生屏幕共享, websockify 把 VNC 包成网页
+# (noVNC), Cloudflare Quick Tunnel 打出去, 人在 Windows 上浏览器直接打开页面操作
+# (远程点点点), 无需装任何客户端。
+# 应用包: 取 multiplatform-test Release 的 legado-*-ios-simulator.zip (由 ios.yml
+# stage=simulator 产出并发布); 触发本 workflow 前必须先发包, 否则拉取直接报错退出。
+# 用途边界: 调试本仓库自己的 iOS 应用 (GitHub Actions 条款允许的开发/测试用途,
+# 单一许可用户访问); 会话时长由触发参数限定, 用完 Cancel 即回收。
+# 安全: VNC 密码固定 12345678 且明写在本文件 —— public 仓库任何人都能读到,
+# 只用于这种用完即弃的调试会话。
 on:
   workflow_dispatch:
     inputs:
@@ -23,49 +32,98 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Download & Install App
+      # 屏幕共享只在 console 用户的 GUI 会话里能注入键鼠: 会话停在 loginwindow 或已
+      # 锁屏时 VNC 看得到画面却点不动, 而 hosted runner 上无法在 job 内恢复 (解锁需
+      # 账号密码, 重启 GUI 会话会连 runner 一起杀掉), 故直接失败退出。
+      - name: Check GUI session
+        run: |
+          set -o pipefail
+          CONSOLE_USER="$(scutil <<< 'show State:/Users/ConsoleUser' | awk '/Name :/ { print $3 }')"
+          LOCKED="$(/usr/libexec/PlistBuddy -c 'print :IOConsoleUsers:0:CGSSessionScreenIsLocked' /dev/stdin 2>/dev/null <<< "$(ioreg -n Root -d1 -a)" || true)"
+          {
+            echo "### GUI 会话状态"
+            echo ""
+            echo "- console 用户: ${CONSOLE_USER:-<空>}"
+            echo "- 屏幕已锁定: ${LOCKED:-false}"
+            echo "- 自动登录用户: $(defaults read /Library/Preferences/com.apple.loginwindow autoLoginUser 2>/dev/null || echo '<未配置>')"
+            echo "- FileVault: $(fdesetup status 2>/dev/null || echo '<未知>')"
+            echo ""
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+          if [ -z "$CONSOLE_USER" ] || [ "$CONSOLE_USER" = "loginwindow" ]; then
+            echo "::error::GUI 会话停在登录窗口, VNC 只能看画面不能操作; hosted runner 上无法在 job 内登录桌面, 请重跑本 workflow"
+            exit 1
+          fi
+          if [ "$LOCKED" = "true" ]; then
+            echo "::error::GUI 会话已锁屏, VNC 只能看画面不能操作; hosted runner 上无法在 job 内解锁, 请重跑本 workflow"
+            exit 1
+          fi
+
+          # 防会话期间锁屏: 屏保偏好按 ByHost 存储, 必须写真实 console 用户的家目录
+          sudo -u "$CONSOLE_USER" defaults -currentHost write com.apple.screensaver idleTime -int 0
+          sudo -u "$CONSOLE_USER" defaults -currentHost write com.apple.screensaver askForPassword -int 0
+          # 立即锁屏开关 (Apple com.apple.loginwindow 载荷键), 挡住误触触发的锁屏
+          sudo defaults write /Library/Preferences/com.apple.loginwindow DisableScreenLockImmediate -bool true
+          sudo systemsetup -setcomputersleep Never -setdisplaysleep Never
+          nohup caffeinate -dimsu >/dev/null 2>&1 &
+
+      - name: Download & install simulator app
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -o pipefail
-          # 防 console 锁屏: 锁屏需随机密码解锁, VNC 无法进入; console 登录用户为 Anka 虚拟化账户, 两者都写
-          for U in anka Anka runner; do
-            if id "$U" >/dev/null 2>&1; then
-              sudo -u "$U" defaults -currentHost write com.apple.screensaver idleTime -int 0
-              sudo -u "$U" defaults -currentHost write com.apple.screensaver askForPassword -int 0
-            fi
-          done
-          sudo systemsetup -setcomputersleep Never -setdisplaysleep Never
-          nohup caffeinate -dimsu >/dev/null 2>&1 &
           ASSET="$(gh release view multiplatform-test --repo "$GITHUB_REPOSITORY" --json assets \
             --jq '[.assets[].name | select(endswith("-ios-simulator.zip"))] | sort | last // empty')"
           if [ -z "$ASSET" ]; then
-            echo "::error::multiplatform-test 没有找到模拟器资产"
+            echo "::error::multiplatform-test Release 没有 ios-simulator 资产, 先跑 ios.yml (stage=simulator) 发包"
             exit 1
           fi
           rm -rf /tmp/simapp && mkdir -p /tmp/simapp/x
           gh release download multiplatform-test --repo "$GITHUB_REPOSITORY" --pattern "$ASSET" --dir /tmp/simapp
           unzip -q "/tmp/simapp/$ASSET" -d /tmp/simapp/x
           APP="$(find /tmp/simapp/x -name '*.app' | head -1)"
+          if [ -z "$APP" ]; then
+            echo "::error::$ASSET 里没有 .app"
+            exit 1
+          fi
           BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")"
-          UDID="$(xcrun simctl list devices 'iOS' available | grep -m1 'iPhone' | awk -F '[()]' '{print $2}')"
+
+          UDID="$(xcrun simctl list devices 'iOS' available | grep -m1 'iPhone' | awk -F '[()]' '{print $2}' || true)"
+          if [ -z "$UDID" ]; then
+            echo "::error::runner 镜像里没有可用的 iPhone 模拟器设备"
+            exit 1
+          fi
           xcrun simctl boot "$UDID" || true
           xcrun simctl bootstatus "$UDID" -b > /dev/null
           xcrun simctl install "$UDID" "$APP"
           xcrun simctl launch "$UDID" "$BUNDLE_ID" || true
           open -a Simulator --args -CurrentDeviceUDID "$UDID"
+          if ! pgrep -x Simulator > /dev/null; then
+            echo "::error::Simulator 窗口未启动"
+            exit 1
+          fi
+          echo "已装 $ASSET 到 $UDID (bundle id $BUNDLE_ID)"
 
+      # macos-26 镜像未给屏幕共享服务录屏/事件注入/辅助功能授权, 致 VNC 黑屏且无法操作;
+      # 按 actions/runner-images#9529 实证运行时写入系统 TCC.db。
+      # 具名列 INSERT: access 表在 macOS 14+ 增了 pid/pid_version/boot_uuid/last_reminded,
+      # 位置式 VALUES 会随列数变化写错列。
       - name: Enable Screen Sharing
         run: |
-          # macos-26 镜像未给屏幕共享服务录屏/事件注入/辅助功能授权, 致 VNC 黑屏且无法操作; 按 actions/runner-images#9529 实证运行时写入系统 TCC.db
+          set -o pipefail
           DB="/Library/Application Support/com.apple.TCC/TCC.db"
-          for C in "'com.apple.screensharing.agent',0" "'/System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/MacOS/ARDAgent',1"; do
-            for S in kTCCServiceScreenCapture kTCCServicePostEvent kTCCServiceAccessibility; do
-              sudo sqlite3 "$DB" "INSERT OR REPLACE INTO access VALUES('$S',$C,2,4,1,NULL,NULL,0,'UNUSED',NULL,0,1708076718,NULL,NULL,'UNUSED',1708076718);"
+          COLS="service,client,client_type,auth_value,auth_reason,auth_version,csreq,policy_id,indirect_object_identifier_type,indirect_object_identifier,indirect_object_code_identity,flags,last_modified"
+          # client_type: 0=bundle id, 1=绝对路径; auth_value 2=允许, auth_reason 4=用户设置
+          for CLIENT in "com.apple.screensharing.agent|0" "/System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/MacOS/ARDAgent|1"; do
+            NAME="${CLIENT%|*}"
+            TYPE="${CLIENT##*|}"
+            for SVC in kTCCServiceScreenCapture kTCCServicePostEvent kTCCServiceAccessibility; do
+              sudo sqlite3 "$DB" "INSERT OR REPLACE INTO access($COLS) VALUES('$SVC','$NAME',$TYPE,2,4,1,NULL,NULL,0,'UNUSED',NULL,0,$(date +%s));"
             done
           done
           sudo sqlite3 "$DB" "SELECT service,client,auth_value FROM access WHERE client LIKE '%screensharing%' OR client LIKE '%ARDAgent%';"
           sudo killall tccd
+
           # 兜底: ARD 认证走系统账号, 新建用户设初始密码无需旧密码 (fastmac configure.sh 验证做法)
           sudo dscl . -create /Users/vncuser
           sudo dscl . -create /Users/vncuser UserShell /bin/bash
@@ -79,25 +137,88 @@ jobs:
             -clientopts -setvnclegacy -vnclegacy yes -setvncpw -vncpw "12345678" \
             -restart -agent -console
 
+          for _ in $(seq 1 15); do
+            sudo lsof -nP -iTCP:5900 -sTCP:LISTEN > /dev/null 2>&1 && break
+            sleep 2
+          done
+          if ! sudo lsof -nP -iTCP:5900 -sTCP:LISTEN; then
+            echo "::error::屏幕共享未在 5900 监听"
+            exit 1
+          fi
+
+          # 打印 5900 广播的安全类型: 2=VNC 单密码, 30=ARD 系统账号认证
+          if ! python3 -c 'import socket,sys; s=socket.create_connection(("127.0.0.1",5900),10); s.settimeout(15); s.recv(12); s.sendall(b"RFB 003.008\n"); n=s.recv(1)[0]; t=list(s.recv(n)); s.close(); print("Server security types:",t); sys.exit(0 if 2 in t else 1)'; then
+            echo "::error::5900 未广播单密码认证(安全类型 2), noVNC 连接会索要用户名"
+            exit 1
+          fi
+
       # 隧道守护与保活合一: cloudflared 崩溃自动重启, 新域名实时打到本步骤日志(网页实时可见)
       - name: Start noVNC, Tunnel & Keep Alive
         run: |
+          set -o pipefail
           git clone --depth 1 https://github.com/novnc/noVNC.git /tmp/noVNC
-          # 强制纯 VNC 密码认证: 新版 noVNC 按服务器偏好会优先选 ARD 系统账号认证
+          if [ ! -f /tmp/noVNC/vnc.html ]; then
+            echo "::error::noVNC 克隆失败, 缺 vnc.html"
+            exit 1
+          fi
+          # noVNC 支持 Apple 的 ARD 认证(安全类型 30), 按服务器广播顺序会优先选中它并索要
+          # 用户名; 本会话只配了单密码认证, 从客户端能力列表里摘掉 ARD
           sed -i '' '/securityTypeARD,/d' /tmp/noVNC/core/rfb.js
-          nohup /tmp/noVNC/utils/novnc_proxy --vnc 127.0.0.1:5900 --listen 6080 >/dev/null 2>&1 &
+          if grep -q "securityTypeARD," /tmp/noVNC/core/rfb.js; then
+            echo "::error::noVNC 的 ARD 认证未被屏蔽, 连接会索要用户名"
+            exit 1
+          fi
+
+          pipx install websockify
+          WSK="$(command -v websockify || echo "$HOME/.local/bin/websockify")"
+          if [ ! -x "$WSK" ]; then
+            echo "::error::websockify 安装失败"
+            exit 1
+          fi
+          nohup "$WSK" --web /tmp/noVNC 6080 127.0.0.1:5900 > /tmp/websockify.log 2>&1 &
+          for _ in $(seq 1 15); do
+            curl -sf -o /dev/null "http://127.0.0.1:6080/vnc.html" && break
+            sleep 2
+          done
+          if ! curl -sf -o /dev/null "http://127.0.0.1:6080/vnc.html"; then
+            echo "::error::noVNC 未在 6080 就绪"
+            cat /tmp/websockify.log
+            exit 1
+          fi
+
           brew install cloudflared
-          END=$(( $(date +%s) + ${{ github.event.inputs.duration_hours }} * 3600 ))
+          END=$(( $(date +%s) + ${{ inputs.duration_hours }} * 3600 ))
+          TUNNEL_OK=0
           while [ "$(date +%s)" -lt "$END" ]; do
-            if ! pgrep -f "cloudflared tunnel" >/dev/null; then
+            if ! pgrep -f "cloudflared tunnel" > /dev/null; then
               nohup cloudflared tunnel --protocol http2 --url http://127.0.0.1:6080 > /tmp/cf.log 2>&1 &
-              for i in $(seq 1 30); do
+              URL=""
+              for _ in $(seq 1 30); do
                 URL="$(grep -oE 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' /tmp/cf.log | head -1 || true)"
                 [ -n "$URL" ] && break
                 sleep 1
               done
-              # 密码不入 URL: GitHub 对 password= 参数打码致复制失效; resize=scale 根治画面不缩放
-              [ -n "$URL" ] && echo "直连网址: $URL/vnc.html?autoconnect=true&resize=scale (VNC 密码 12345678)"
+              if [ -z "$URL" ]; then
+                cat /tmp/cf.log
+                # 首次就没隧道域名: 再等下去只会白占几小时 runner, 直接失败
+                if [ "$TUNNEL_OK" = "0" ]; then
+                  echo "::error::cloudflared 未取得隧道域名"
+                  exit 1
+                fi
+                echo "::error::cloudflared 重连未取得隧道域名"
+              else
+                TUNNEL_OK=1
+                # 密码不入 URL: GitHub 对 password= 参数打码致复制失效; resize=scale 根治画面不缩放
+                echo "直连网址: $URL/vnc.html?autoconnect=true&resize=scale (VNC 密码 12345678)"
+                {
+                  echo "### 直连网址"
+                  echo ""
+                  echo "- 网页: $URL/vnc.html?autoconnect=true&resize=scale"
+                  echo "- VNC 密码: 12345678"
+                  echo "- 会话截止: $(date -r "$END" '+%Y-%m-%d %H:%M:%S %Z')"
+                  echo ""
+                } >> "$GITHUB_STEP_SUMMARY"
+              fi
             fi
             sleep 20
           done

@@ -15,6 +15,7 @@ import io.legado.app.help.book.tryParesExportFileName
 import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.file.AppFilesDirs
+import io.legado.app.help.file.desktopStoredLocalRef
 import io.legado.app.help.source.SourceVerificationHelpShared
 import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.help.toast.Toasters
@@ -707,6 +708,19 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
 
     override fun pickBookTreeUri(onSelected: (String?) -> Unit) {
         scope.launch { onSelected(FileDialogs.pickDirectory("选择书籍目录")?.absolutePath) }
+    }
+
+    // 桌面端目录是普通路径: 先查选定目录本身, 再查一层子目录 (与 Android 端 SAF 查找同语义)。
+    // bookUrl 经 desktopStoredLocalRef 生成 (数据根下存相对引用, 外部文件存 file: URI),
+    // 与 importBook 写入的形态一致, 否则 JvmLocalBookLocator 解析不到。
+    override fun findBookFileInDir(dirUri: String, fileName: String): String? {
+        val dir = File(dirUri).takeIf { it.isDirectory } ?: return null
+        File(dir, fileName).takeIf { it.isFile }?.let { return desktopStoredLocalRef(it) }
+        return dir.listFiles { f -> f.isDirectory }
+            ?.asSequence()
+            ?.mapNotNull { sub -> File(sub, fileName).takeIf { it.isFile } }
+            ?.firstOrNull()
+            ?.let { desktopStoredLocalRef(it) }
     }
 
     // 书源校验设置 / 直链上传配置: shared 已有对话框实现, 与 app 端同走 overlay

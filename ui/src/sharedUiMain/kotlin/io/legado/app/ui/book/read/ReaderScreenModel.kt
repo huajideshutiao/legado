@@ -67,6 +67,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onEmpty
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -300,6 +301,9 @@ class ReaderScreenModel(
 
     private val readBook = ReadBookShared()
     val menuController: ReadMenuController by lazy { menuControllerFactory(this) }
+
+    /** 进行中的 [initBook] 任务: 后到的初始化取消先到的, 只有当前任务有权提交结果。 */
+    private var initBookJob: Job? = null
 
     val viewModel: ReadBookViewModelShared = ReadBookViewModelShared(
         readBook = readBook,
@@ -553,6 +557,7 @@ class ReaderScreenModel(
             searchJumpJob?.cancel()
             searchJumpJob = scope.launch {
                 viewModel.loadChapter(searchResult.chapterIndex, null, false)
+                // 对照原版 skipToSearch: 跳章时 durChapterPos 归零 (原版 openChapter 默认 0)
                 // 排版产物回填滑窗后才有 pages 可定位 (装载失败的占位章同样带本章号, 不会干等)
                 viewModel.curTextChapter.first { it?.chapterIndex == searchResult.chapterIndex }
                 withContext(mainDispatcher) { jumpToPosition(searchResult) }
@@ -645,30 +650,74 @@ class ReaderScreenModel(
      * - 无书源时自动换源（而非静默失败）
      */
     fun initBook(book: Book, chapterIndex: Int?, chapterPos: Int? = null) {
-        val isSameBook = readBook.book.value?.bookUrl == book.bookUrl
-        readBook.loadBook(book)
-        // 对照原版 applyBookmarkPosition: 带跳转目标且目标位置与当前进度不同时, 先存
-        // 跳转前进度快照再跳 (返回键可恢复跳转前进度; 位置相同/无定位参数的重装不触发,
-        // 如模拟追读 initBook(book, book.durChapterIndex))
-        if (chapterIndex != null &&
-            (readBook.durChapterIndexValue != chapterIndex ||
-                (chapterPos != null && readBook.durChapterPosValue != chapterPos))
-        ) {
-            readBook.saveCurrentBookProgress()
+        // 整段在可取消任务内按序执行: [ReadBookShared.loadBook] 读章节总数会同步查库,
+        // 组合期直接调用会在 UI 线程上做 DB IO (对照原版 initData 在 execute 的 IO 协程内)。
+        // 顺序不变: 装载书籍状态 → 存跳转前进度快照 → 装载目标章 → 云进度/自动换源。
+        // 本地书文件可打开性检查随装载下沉到 [ReadBookViewModelShared.loadChapter]
+        // (对照原版 checkLocalBookFileExist 在 execute 的 IO 协程内、loadContent 之前执行)。
+        // 后到的初始化作废先到的 (loadBook 是同步 IO 不响应取消, 各提交点 ensureActive 兑现),
+        // 只有当前任务有权落装载/进度/换源。
+        initBookJob?.cancel()
+        initBookJob = scope.launch(IoDispatcher) {
+            val isSameBook = readBook.book.value?.bookUrl == book.bookUrl
+            readBook.loadBook(book)
+            ensureActive()
+            // 对照原版 applyBookmarkPosition: 带跳转目标且目标位置与当前进度不同时, 先存
+            // 跳转前进度快照再跳 (返回键可恢复跳转前进度; 位置相同/无定位参数的重装不触发,
+            // 如模拟追读 initBook(book, book.durChapterIndex))
+            if (chapterIndex != null &&
+                (readBook.durChapterIndexValue != chapterIndex ||
+                    (chapterPos != null && readBook.durChapterPosValue != chapterPos))
+            ) {
+                readBook.saveCurrentBookProgress()
+            }
+            // 对照 app 端 applyBookmarkPosition: chapterIndex 有效时跳转到指定 chapterPos。
+            // 位置随 loadChapter 传入, 由装载任务在装载前落位 (对照原版先写 durChapterPos 再 loadContent)
+            viewModel.loadChapter(
+                chapterIndex ?: book.durChapterIndex,
+                chapterPos = chapterPos?.takeIf { chapterIndex != null },
+                keepScrollOffset = false,
+            )
+            ensureActive()
+            // 对照原版 initBook: 打开书即同步云进度 (原版每次 initBook 都 syncProgress,
+            // 仅同书 + 朗读运行中跳过; 书签跳转等入口同样触发, 与原版 chapterChanged 之外的行为一致)
+            viewModel.syncProgressOnBookOpen(book, isSameBook)
+            // 对照原版 initBook: 非本地书且无书源时自动换源, 不再静默失败
+            if (!book.isLocal && readBook.bookSource.value == null) {
+                autoChangeSource(book.name, book.author)
+            }
         }
-        // 对照 app 端 applyBookmarkPosition: chapterIndex 有效时跳转到指定 chapterPos。
-        // 位置必须随 loadChapter 传入, 装载是异步的, 在外面写 durChapterPos 会被跳章分支清零
-        viewModel.loadChapter(
-            chapterIndex ?: book.durChapterIndex,
-            chapterPos = chapterPos?.takeIf { chapterIndex != null },
-            keepScrollOffset = false,
-        )
-        // 对照原版 initBook: 打开书即同步云进度 (原版每次 initBook 都 syncProgress,
-        // 仅同书 + 朗读运行中跳过; 书签跳转等入口同样触发, 与原版 chapterChanged 之外的行为一致)
-        viewModel.syncProgressOnBookOpen(book, isSameBook)
-        // 对照原版 initBook: 非本地书且无书源时自动换源, 不再静默失败
-        if (!book.isLocal && readBook.bookSource.value == null) {
-            autoChangeSource(book.name, book.author)
+    }
+
+    /**
+     * 本地书权限失效/文件被移动后, 在用户重新选定的目录里找回文件并重载目录。
+     *
+     * 对照 app 端 `BaseReadBookActivity` 的 `selectBookFolderResult` 回调:
+     * 按 `book.originName` 在所选目录里找到文件 → 改 `book.bookUrl` → 落库 → 重载目录。
+     * 找不到/未选中时给出与原版同口径的提示。
+     *
+     * @param book 需要重新定位的本地书 (调用方传阅读器现行书籍)
+     * @param dirUri 用户选定的目录 ([PlatformCapabilities.findBookFileInDir] 的入参形态)
+     */
+    fun relocateLocalBook(book: Book, dirUri: String) {
+        scope.launch {
+            val newUrl = PlatformCapabilityProviders.get().findBookFileInDir(dirUri, book.originName)
+            if (newUrl == null) {
+                readBook.upMsg("找不到文件")
+                return@launch
+            }
+            val oldUrl = book.bookUrl
+            book.bookUrl = newUrl
+            // 主键变了, 按 bookUrl 的 update 会匹配不到旧行, 必须删旧插新 (对照原版 book.save)
+            runCatching {
+                val dao = AppDbProviders.get().bookDao
+                if (dao.has(oldUrl)) dao.replace(book.copy(bookUrl = oldUrl), book)
+                else dao.insert(book)
+            }.onFailure {
+                AppLog.put("重新定位本地书失败\n${it.message}", it)
+            }
+            // 书 url 变更后旧目录/缓存全失效: [loadChapterList] 内已清当前章缓存并重载滑窗
+            viewModel.loadChapterList(book)
         }
     }
 
@@ -824,8 +873,9 @@ class ReaderScreenModel(
      * 供 Toc/书签结果回传后调用。
      */
     fun openChapter(index: Int, pos: Int? = null) {
-        // 位置必须随 loadChapter 传入, 装载是异步的, 在外面写 durChapterPos 会被跳章分支清零
-        viewModel.loadChapter(index, chapterPos = pos, keepScrollOffset = false)
+        // 走 VM.openChapter (对照原版 ReadBookActivity 的 viewModel.openChapter): 跳章位置
+        // 与装载一起进 VM, 由装载任务在装载前落位; 直调 loadChapter 会丢这条语义
+        viewModel.openChapter(index, durChapterPos = pos ?: 0)
     }
 
     override fun onPreRemoved() {

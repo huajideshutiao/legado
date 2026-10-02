@@ -17,6 +17,11 @@ import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
+import io.legado.app.data.entities.HttpTTS
+import io.legado.app.help.tts.IosReadAloudHost
+import io.legado.app.service.defaultTtsEngineConfig
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppOverlay
 import io.legado.app.help.book.toShelfJsonMap
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
@@ -45,6 +50,7 @@ import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.File
 import io.legado.app.utils.GSON
 import io.legado.app.utils.HtmlFormatter
+import io.legado.app.utils.IosSecurityScopedStorage
 import io.legado.app.utils.onEachParallel
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toJson
@@ -71,7 +77,6 @@ import okio.buffer
 import okio.use
 import platform.Foundation.NSBundle
 import platform.Foundation.NSDate
-import platform.Foundation.NSURL
 import platform.Foundation.dateWithTimeIntervalSince1970
 import platform.UIKit.UIAlertAction
 import platform.UIKit.UIAlertActionStyleCancel
@@ -98,6 +103,19 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
 
     override val capabilityScope: CoroutineScope get() = scope
 
+    override fun showHttpTtsEditDialog(engine: HttpTTS?) {
+        AppNavigatorProviders.get().showOverlay(
+            AppOverlay.Dialog("httpTtsEdit", payload = engine?.id?.toString())
+        )
+    }
+
+    override fun onHttpTtsEdited(engine: HttpTTS) {
+        if (IosReadAloudHost.isRun && defaultTtsEngineConfig() == engine.id.toString()) {
+            // 正在播放则重载；暂停时记录重建位置，继续朗读才启用新配置。
+            IosReadAloudHost.play(play = !IosReadAloudHost.isPause)
+        }
+    }
+
     // iOS 无物理/手势返回键, PlatformBackHandler 是 no-op → 无系统返回通道,
     // 页面内的子状态需自带可见退出口。
     override val supportsSystemBack: Boolean get() = false
@@ -107,12 +125,6 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
 
     /** 书源分组增删改 (shared 下沉件)。 */
     private val bookSourceViewModel by lazy { BookSourceViewModelShared(scope) }
-
-    /**
-     * 导入根目录的 security-scoped URL (UIDocumentPicker Open 模式选出的目录)。
-     * 持有 NSURL 引用 + 保持 startAccessing 才能访问目录内容; 换目录时释放旧 scope。
-     */
-    private var importRootUrl: NSURL? = null
 
     // iOS 由系统统一管理应用生命周期, 无 Activity.finish 等价物
     override fun exitApplication() = Unit
@@ -190,7 +202,13 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
 
     // ===== 导入本地书 (状态与扫描见 NativeImportBook, 与鸿蒙共用) =====
 
-    override fun initImportBookData() = NativeImportBook.init(restoreLast = false)
+    // 上次导入目录的授权经 minimal bookmark 恢复 (security-scoped URL 现在可跨启动解析),
+    // 恢复失败则保持原行为: 等用户在导入页重新选目录 (restoreLast=false)
+    override fun initImportBookData() {
+        val restored = IosSecurityScopedStorage.restoreImportRootPath()
+        NativeImportBook.init(restoreLast = false)
+        restored?.let { NativeImportBook.setRoot(it) }
+    }
 
     override fun importBookItems(): StateFlow<List<ImportFileItem>> = NativeImportBook.items
     override fun importBookPath(): StateFlow<String?> = NativeImportBook.path
@@ -200,22 +218,43 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
 
     // 对照 Android onPickFolder / selectFolder.launch。
     // 不用 IosFilePickerService.pickDirectory (只返回 path, 会丢 security-scoped URL):
-    // 这里直接拿 NSURL 并 startAccessingSecurityScopedResource, 否则读取授权目录内容会失败
-    // (iOS Open 模式选出的目录必须持有 scope 才能访问, 权限随应用会话有效)。
+    // 这里直接拿 NSURL 交授权表, 否则读取授权目录内容会失败
     override fun pickImportFolder() {
         scope.launch {
             val url = pickDirectoryDocument() ?: return@launch
-            val path = url.path ?: return@launch
-            // 换目录时释放上一目录的 scope, 保持有界
-            importRootUrl?.stopAccessingSecurityScopedResource()
-            importRootUrl = url
-            // 返回 false = 无需 scope (如应用沙盒内目录), 忽略即可
-            url.startAccessingSecurityScopedResource()
+            // 授权表负责: 释放上一目录 scope → 起新 scope → 落 bookmark (换目录不留悬空授权)
+            val path = IosSecurityScopedStorage.setImportRoot(url) ?: return@launch
             NativeImportBook.setRoot(path)
         }
     }
 
     override fun scanImportFolder() = NativeImportBook.scan()
+
+    // ===== 书籍目录授权 (对照 app 端 SAF: OtherConfigHost.localBookTreeSelect / BaseReadBookActivity.selectBookFolderResult) =====
+
+    /**
+     * 选书籍目录: 直接拿 UIDocumentPicker(Open) 的 security-scoped NSURL, 不经过只回 path 的
+     * [PlatformServices.FilePickerService] —— 普通路径在下次访问时拿不回授权。
+     * 选中后存 minimal bookmark 集合 (可跨启动), 回调仍传目录路径 (与其余端同一契约)。
+     */
+    override fun pickBookTreeUri(onSelected: (String?) -> Unit) {
+        scope.launch {
+            val url = pickDirectoryDocument()
+            if (url == null) {
+                onSelected(null)
+                return@launch
+            }
+            val path = IosSecurityScopedStorage.addBookTree(url)
+            onSelected(path)
+        }
+    }
+
+    /**
+     * 在已授权目录里按文件名找回本地书 (对照原版 `FileDoc.find(book.originName)` 默认 depth=0:
+     * 只查所选目录, 与 app 端一致); 返回 `file://` + 绝对路径, 与导入写入的 bookUrl 同格式。
+     */
+    override fun findBookFileInDir(dirUri: String, fileName: String): String? =
+        IosSecurityScopedStorage.findBookFileInTree(dirUri, fileName)
 
     // 对照 Android alertImportFileName: 复用现有 UIAlertController 文本输入弹窗
     // (presentTextInput), 允许清空 = 恢复默认文件名解析。预设值存 PreferKey.bookImportFileName。
@@ -284,9 +323,12 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
 
     // ===== 书籍详情页 =====
 
-    // 本地书文件字节数 (bookUrl 形如 file:///path, iOS 沙盒为 POSIX 路径, 去 scheme 即可)
+    // 本地书文件字节数: 外部目录下的书籍文件走 security-scoped 授权读取属性
+    // (bookUrl 形如 file:///path; 沙盒内文件无需授权)
     override suspend fun localBookFileSize(bookUrl: String): Long = withContext(Dispatchers.IO) {
-        runCatching { File(bookUrl.removePrefix("file://")).length() }.getOrDefault(0L)
+        val path = bookUrl.removePrefix("file://")
+        runCatching { IosSecurityScopedStorage.withAccess(path) { File(it).length() } }
+            .getOrDefault(0L)
     }
 
     // ===== 书架管理: 导出开关 =====

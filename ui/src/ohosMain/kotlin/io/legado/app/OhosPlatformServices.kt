@@ -1,10 +1,12 @@
 package io.legado.app
 
+import io.legado.app.constant.AppLog
 import io.legado.app.help.copyToClipboard
 import io.legado.app.help.file.AppFilesDirs
+import io.legado.app.help.file.OhosDirAuthorizations
 import io.legado.app.help.file.pickDocumentContent
 import io.legado.app.help.file.pickDocuments
-import io.legado.app.help.file.pickDirectory as pickDirectoryDocument
+import io.legado.app.help.file.pickDirectory as pickDirectoryPolicy
 import io.legado.app.help.file.saveImageToAlbum
 import io.legado.app.help.log.NativeCrashLogs
 import io.legado.app.help.openURL
@@ -355,7 +357,26 @@ private object OhosFilePickerService : FilePickerService {
         true
     }.getOrDefault(false)
 
-    override fun pickDirectory(): String? = pickDirectoryDocument()?.toSandboxPath()
+    // 选目录: Tablet (path 非空) 为已持久化授权 + 官方转换的路径, 验证可访问后记入授权表;
+    // Phone (path 为 null) 保持原折回规则, 不做持久化/激活/可读性过滤
+    override fun pickDirectory(): String? {
+        val picked = pickDirectoryPolicy() ?: return null
+        val path = picked.path ?: return picked.uri.toLegacySandboxPath()
+        // 官方转换不校验可访问性: 此刻临时授权在, 目录仍不可读即真实失败, 不假成功
+        if (!File(path).isDirectory) {
+            AppLog.put("选中目录不可访问 path=$path")
+            return null
+        }
+        OhosDirAuthorizations.remember(picked.uri, path)
+        return path
+    }
+
+    /** Phone 降级分支的 picker URI 折回 (原折回规则: docs 授权体去前缀即挂载点路径)。 */
+    private fun String.toLegacySandboxPath(): String = when {
+        startsWith("file://docs") -> removePrefix("file://docs")
+        startsWith("file://") -> removePrefix("file://")
+        else -> this
+    }
 
     // 物化副本清理 (对照 Android discardPickedFile): 只删 cacheDir/filePicker 下自建临时文件,
     // 用户原文件不碰; 不清理则反复换壁纸在缓存里累积原图副本
@@ -378,16 +399,6 @@ private object OhosFilePickerService : FilePickerService {
         target.writeBytes(bytes)
         target.path
     }.getOrNull()
-
-    /**
-     * 目录无内容可读回, 只能把 picker URI 折回 POSIX 路径:
-     * docs 授权体 `file://docs/storage/...` 去掉前缀即挂载点真实路径, 其他 scheme 原样透传。
-     */
-    private fun String.toSandboxPath(): String = when {
-        startsWith("file://docs") -> removePrefix("file://docs")
-        startsWith("file://") -> removePrefix("file://")
-        else -> this
-    }
 }
 
 // FileFilter 扩展名 → UTI (桥接层按 iOS UTI 风格取值, ArkTS FilePickerBridgeHandler 再映射到 MIME)
