@@ -399,7 +399,6 @@ kotlin {
                 // 不能进 commonMain; 由 OhosTargetConventionPlugin 在 ohos 配置上把标准 ksoup
                 // 替换为 :modules:ksoup-ohos, 其余平台照常解析标准 ksoup。
                 implementation(libs.ksoup)
-                implementation(libs.epub4kmp.core)
                 implementation(libs.kotlinx.serialization.json)
             }
         }
@@ -437,6 +436,9 @@ kotlin {
                     implementation(libs.ktor.server.core)
                     implementation(libs.ktor.server.cio)
                     implementation(libs.ktor.server.websockets)
+                    // EpubParser 全链只被 nativeMain 消费: 依赖声明在此, Android/desktop
+                    // 不解析; ohos 配置经 OhosTargetConventionPlugin 替换为 :modules:epub4kmp-ohos
+                    implementation(libs.epub4kmp.core)
                 }
             }
         } else null
@@ -524,6 +526,26 @@ kotlin {
         }
         jvmTest {
             dependsOn(jvmAndAndroidTest)
+        }
+        // native 端测试 (iOS/鸿蒙): EpubParser 已下沉 nativeMain, jvmAndAndroidTest 看不到它
+        // (epub4kmp 只在 nativeMain 声明), 故解析器用例放这里。仅 enableIosTarget/Ohos 时存在。
+        // 注意: 不能 dependsOn(nativeMain) —— main 树与 test 树不可互接 (KGP 报
+        // "Invalid Source Set Dependency Across Trees"), 测试编译经叶子目标关联到主源集,
+        // 故此处只接 commonTest。本仓 applyDefaultHierarchyTemplate=false, 叶子测试源集须手工接。
+        if (enableIosTarget || enableOhosTarget) {
+            val nativeTest = maybeCreate("nativeTest").apply {
+                dependsOn(commonTest.get())
+                dependencies {
+                    implementation(libs.jetbrains.kotlin.test)
+                }
+            }
+            if (enableIosTarget) {
+                maybeCreate("iosArm64Test").dependsOn(nativeTest)
+                maybeCreate("iosSimulatorArm64Test").dependsOn(nativeTest)
+            }
+            if (enableOhosTarget) {
+                maybeCreate("ohosArm64Test").dependsOn(nativeTest)
+            }
         }
     }
 }

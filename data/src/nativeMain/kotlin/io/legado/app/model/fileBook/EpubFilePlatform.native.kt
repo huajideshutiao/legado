@@ -13,7 +13,7 @@ actual fun resolveStoredLocalPath(path: String): String = path
  * [EpubFilePlatform] 的 Native (iOS/ohos) actual 实现 (stub 降级)。
  *
  * 本 expect/actual 仅服务 jvmAndAndroid 端 epublib 路径; native 端 epub 解析走
- * nativeMain [EpubFile] (commonMain EpubParser + BitmapProviders), 不经这些 stub。
+ * nativeMain [EpubFile] (nativeMain EpubParser + BitmapProviders), 不经这些 stub。
  */
 
 actual class LocalEpubResource actual constructor(book: Book) {

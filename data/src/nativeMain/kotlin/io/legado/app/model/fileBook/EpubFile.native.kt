@@ -33,7 +33,7 @@ import kotlinx.atomicfu.locks.synchronized
  * # 背景
  * jvmAndAndroidMain 端 [EpubFile] 依赖 `io.legado.app.lib.epublib.*` (JVM-only,
  * 内部用 java.xml.parsers / java.util.zip), iOS/鸿蒙 (Kotlin/Native) 不可见。
- * 本文件用 commonMain 下沉的 [EpubParser] (纯 Kotlin + Ksoup + [unzipEpubEntries] expect/actual)
+ * 本文件用 [EpubParser] (纯 Kotlin + Ksoup, nativeMain) 解析
  * 实现 EPUB 2.0 / 3.0 解析 (原 ohosMain EpubFile.ohos.kt 上移到 nativeMain, iOS 端同时受益)。
  *
  * # 设计
@@ -48,7 +48,7 @@ import kotlinx.atomicfu.locks.synchronized
  *   [EpubBook] / [EpubResource] / [EpubChapter]
  *
  * # 与 jvmAndAndroidMain [EpubFile] 的差异
- * - 无 epublib 依赖 (改用 [EpubParser] commonMain 纯 Kotlin 解析器)
+ * - 无 epublib 依赖 (改用 [EpubParser] 纯 Kotlin 解析器)
  * - 无 RemoteZipWrapper 按需加载 (native 端用 WebDav 全量下载到缓存文件, 详见 [readEpubRemote])
  * - 图片 src 路径解析用 [EpubParser.resolvePath] (纯路径规范化) 替代 java.net.URI.resolve
  * - charset 固定 UTF-8 (EPUB 标准要求 XHTML 为 UTF-8; jvm 端 mCharset 仅为兼容异常文件)
@@ -145,7 +145,7 @@ class EpubFile(var book: Book) {
      * 远程 epub (webDav/http) 加载。
      *
      * 复用 nativeMain WebDav actual (iOS 用 Darwin、鸿蒙用 CIO) 下载远程 epub 到本地缓存文件,
-     * 后续打开复用缓存避免重复下载; 解析仍走 commonMain [EpubParser]。
+     * 后续打开复用缓存避免重复下载; 解析仍走 [EpubParser]。
      *
      * 与 jvmAndAndroidMain 差异: jvm 端用 RemoteZipWrapper 按需 Range 读取 (不全量下载),
      * native 端未下沉 RemoteZipWrapper (依赖 epublib), 此处全量下载到缓存文件。

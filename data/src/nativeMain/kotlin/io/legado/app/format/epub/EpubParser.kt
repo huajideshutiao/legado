@@ -17,15 +17,11 @@ import io.documentnode.epub4kmp.epub.EpubReader
  * 正文章节切分交给 EpubContentReader。鸿蒙使用同版本源码重编译模块。
  * 远程 EPUB 由调用方下载到本地后读取；不支持 DRM 或多 rendition。
  */
-/**
- * 解压 epub 字节流为 zip 内 entry 名 → 字节内容 Map。
- *
- * expect/actual: nativeMain 委托 [io.legado.app.help.storage.NativeZipCodec.unzipToMap]
- * (纯 Kotlin inflate + ZIP 格式解析); jvmAndAndroidMain 用 `java.util.zip.ZipInputStream`。
- */
-internal expect fun unzipEpubEntries(zipData: ByteArray): Map<String, ByteArray>
-
 object EpubParser {
+
+    /** URI scheme 前缀 (RFC 3986 scheme = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." ))。
+     *  文件级常量: resolvePath 被正文里的每个 <img> 调用, 不能每次现编译正则。 */
+    private val URI_SCHEME_REGEX = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*:")
 
     /**
      * 解析 epub 字节流为 [EpubBook]。
@@ -135,19 +131,6 @@ object EpubParser {
         return decodeHref(fullPath)
     }
 
-    /** 读取 <metadata> 下的 Dublin Core 元素。 */
-    private fun readMetadata(opfDoc: Document): EpubMetadata {
-        val metadataEl = opfDoc.elementsByLocalName("metadata").firstOrNull()
-            ?: return EpubMetadata()
-        return EpubMetadata(
-            titles = metadataEl.elementsByLocalName("title").map { it.text().trim() }.filter { it.isNotEmpty() },
-            authors = metadataEl.elementsByLocalName("creator").map { it.text().trim() }.filter { it.isNotEmpty() },
-            descriptions = metadataEl.elementsByLocalName("description").map { it.text().trim() }.filter { it.isNotEmpty() },
-            publishers = metadataEl.elementsByLocalName("publisher").map { it.text().trim() }.filter { it.isNotEmpty() },
-            language = metadataEl.elementsByLocalName("language").firstOrNull()?.text()?.trim()?.takeIf { it.isNotEmpty() },
-        )
-    }
-
     /**
      * 读取 <manifest><item> 列表, 构造 href → [EpubResource] Map。
      *
@@ -173,21 +156,6 @@ object EpubParser {
                 properties = properties,
                 data = data,
             )
-        }
-        return result
-    }
-
-    /** 读取 <spine><itemref idref> 列表, 按 idref 顺序从 [resources] 取出 [EpubResource]。 */
-    private fun readSpine(opfDoc: Document, resources: Map<String, EpubResource>): List<EpubResource> {
-        val spineEl = opfDoc.elementsByLocalName("spine").firstOrNull()
-            ?: return resources.values.filter { it.mediaType == "application/xhtml+xml" }
-                .sortedBy { it.href.lowercase() }
-        val result = ArrayList<EpubResource>()
-        for (itemref in spineEl.elementsByLocalName("itemref")) {
-            val idref = itemref.attr("idref").ifBlank { continue }
-            // manifest item id 即 resource id; 按 id 查找
-            val resource = resources.values.firstOrNull { it.id == idref } ?: continue
-            result.add(resource)
         }
         return result
     }
@@ -321,6 +289,7 @@ object EpubParser {
             if (li.localName() != "li") continue
             // Only direct children: a volume must not steal a descendant's chapter link.
             val label = li.children().firstOrNull { it.localName() in listOf("a", "span") }
+                ?: findNestedLabel(li)
                 ?: continue
             val title = label.text().trim()
             val href = label.attr("href")
@@ -339,6 +308,16 @@ object EpubParser {
             ))
         }
         return result
+    }
+
+    /** 直接子级无 a/span 时向内层非 ol 容器递归找标题 (如 li>div>h3>a), 不伸入嵌套 <ol>。 */
+    private fun findNestedLabel(li: Element): Element? {
+        for (child in li.children()) {
+            if (child.localName() == "ol") continue
+            if (child.localName() in listOf("a", "span")) return child
+            findNestedLabel(child)?.let { return it }
+        }
+        return null
     }
 
     /** 解析 epub2 NCX <navMap><navPoint> 为层级目录。 */
@@ -385,7 +364,7 @@ object EpubParser {
      * @return 规范化后的绝对路径 (如 "OEBPS/chapter1.xhtml" 或 "images/cover.png")
      */
     internal fun resolvePath(base: String, relative: String): String {
-        if (Regex("^[a-zA-Z][a-zA-Z0-9+.-]*:").containsMatchIn(relative) || relative.startsWith("//")) {
+        if (URI_SCHEME_REGEX.containsMatchIn(relative) || relative.startsWith("//")) {
             return relative
         }
         val path = relative.substringBefore('#').substringBefore('?')
@@ -450,7 +429,7 @@ object EpubParser {
 }
 
 /**
- * EPUB 书籍数据模型 (commonMain 纯 Kotlin, 无平台依赖)。
+ * EPUB 书籍数据模型 (纯 Kotlin, 无平台依赖)。
  *
  * 与 jvmAndAndroidMain [io.legado.app.lib.epublib.domain.EpubBook] 字段对齐 (子集),
  * 供 [EpubParser] 输出 / ohosMain [io.legado.app.model.fileBook.EpubFile] 消费。

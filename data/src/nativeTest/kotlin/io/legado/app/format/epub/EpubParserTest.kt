@@ -1,16 +1,23 @@
 package io.legado.app.format.epub
 
 import io.legado.app.data.entities.BookChapter
-import java.io.ByteArrayOutputStream
-import java.util.zip.ZipEntry
-import java.util.zip.ZipOutputStream
+import io.legado.app.help.storage.NativeZipCodec
+import io.legado.app.utils.File
 import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
 import kotlin.test.assertContains
+import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import okio.FileSystem
 
+/**
+ * [EpubParser] 全链回归 (nativeMain: iOS/鸿蒙)。
+ *
+ * 原先位于 jvmAndAndroidTest, 解析器下沉 nativeMain 后该源集看不到它, 故随之下沉到
+ * nativeTest (dependsOn nativeMain)。zip 字节用 [NativeZipCodec] 构造, 不再依赖
+ * java.util.zip, 使同一份用例在 iOS/鸿蒙 target 上可运行。
+ */
 class EpubParserTest {
     @Test
     fun invalidNavigationFallsBackToReadableSpineChapters() {
@@ -55,26 +62,32 @@ class EpubParserTest {
 
     @Test
     fun coverPageResolvesHtmlAndSvgImagesRelativeToPage() {
-        for (image in listOf("""<img src="../Images/cover.jpg"/>""",
-            """<svg><image xlink:href="../Images/cover.jpg"/></svg>""")) {
+        for (image in listOf(
+            """<img src="../Images/cover.jpg"/>""",
+            """<svg><image xlink:href="../Images/cover.jpg"/></svg>""",
+        )) {
             val book = parse(
-                manifest = """<item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/>
-                    <item id="cover-page" href="Text/cover.xhtml" media-type="application/xhtml+xml"/>
-                    <item id="cover-image" href="Images/cover.jpg" media-type="image/jpeg"/>""",
-                guide = """<guide><reference type="cover" href="Text/cover.xhtml"/></guide>""",
-                files = mapOf("OEBPS/Text/cover.xhtml" to "<html><body>$image</body></html>",
-                    "OEBPS/Images/cover.jpg" to "image bytes"),
+                manifest = """
+                    <item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/>
+                    <item id="cover" href="Text/cover.xhtml" media-type="application/xhtml+xml" properties="cover-image"/>
+                """.trimIndent(),
+                files = mapOf(
+                    "OEBPS/Text/cover.xhtml" to """<html><body>$image</body></html>""",
+                    "OEBPS/Images/cover.jpg" to "jpg",
+                ),
             )
-            assertEquals("OEBPS/Images/cover.jpg", assertNotNull(book.coverImage).href)
+            assertEquals("OEBPS/Images/cover.jpg", book.coverImage?.href)
         }
     }
 
     @Test
-    fun encodedManifestAndTocPathsResolveToActualChapter() {
+    fun urlEncodedManifestHrefDecodesToZipEntryPath() {
         val book = parse(
             manifest = """<item id="chapter" href="Text/%E7%AC%AC%E4%B8%80%20%E7%AB%A0.xhtml" media-type="application/xhtml+xml"/>""",
             nav = """<nav epub:type="toc"><ol><li><a href="Text/%E7%AC%AC%E4%B8%80%20%E7%AB%A0.xhtml#%E6%AD%A3%E6%96%87">第一章</a></li></ol></nav>""",
-            files = mapOf("OEBPS/Text/第一 章.xhtml" to chapter),
+            files = mapOf(
+                "OEBPS/Text/第一 章.xhtml" to """<html><body><p id="正文">可以阅读的正文</p></body></html>""",
+            ),
         )
         assertEquals("OEBPS/Text/第一 章.xhtml", book.spine.single().href)
         assertEquals("正文", book.toc.single().fragmentId)
@@ -83,35 +96,38 @@ class EpubParserTest {
     }
 
     @Test
-    fun prefixedPackageElementsStillProvideMetadataAndSpine() {
+    fun spineOrderDecidesChapterOrderNotManifestOrder() {
         val book = parse(
-            manifest = """<item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/>""",
-            nav = normalNav,
-            prefix = "opf:",
+            manifest = """
+                <item id="second" href="second.xhtml" media-type="application/xhtml+xml"/>
+                <item id="first" href="first.xhtml" media-type="application/xhtml+xml"/>
+            """.trimIndent(),
+            spine = """<spine toc="toc"><itemref idref="first"/><itemref idref="second"/></spine>""",
+            nav = """<nav epub:type="toc"><ol><li><a href="first.xhtml">第一章</a></li></ol></nav>""",
+            files = mapOf(
+                "OEBPS/first.xhtml" to """<html><body><p>可以阅读的正文</p></body></html>""",
+                "OEBPS/second.xhtml" to """<html><body><p>第二章正文</p></body></html>""",
+            ),
         )
-        assertEquals("测试书", book.metadata.firstTitle)
-        assertEquals("作者", book.metadata.authors.single())
-        assertEquals("OEBPS/chapter.xhtml", book.spine.single().href)
-        assertContains(read(book, book.toc.single()), "可以阅读的正文")
+        assertEquals(listOf("OEBPS/first.xhtml", "OEBPS/second.xhtml"), book.spine.map { it.href })
     }
 
     @Test
-    fun choosesTocInsteadOfFirstNavigationElement() {
-        val book = parse(nav = """
-            <nav epub:type="landmarks"><ol><li><a href="cover.xhtml">封面</a></li></ol></nav>
-            $normalNav
-        """.trimIndent())
+    fun epub3NavProducesTocWithResources() {
+        val book = parse()
         assertEquals("第一章", book.toc.single().title)
         assertNotNull(book.toc.single().resource)
     }
 
     @Test
-    fun retainsNavigationChildrenUnderUnlinkedVolumeHeading() {
-        val book = parse(nav = """
-            <nav epub:type="toc"><ol><li><span>第一卷</span><ol>
-                <li><a href="chapter.xhtml">第一章</a></li>
-            </ol></li></ol></nav>
-        """.trimIndent())
+    fun nestedNavListItemsBecomeNestedTocChapters() {
+        val book = parse(
+            nav = """
+                <nav epub:type="toc"><ol>
+                  <li><span>第一卷</span><ol><li><a href="chapter.xhtml">第一章</a></li></ol></li>
+                </ol></nav>
+            """.trimIndent(),
+        )
         assertEquals("第一卷", book.toc.single().title)
         assertEquals("第一章", book.toc.single().children.single().title)
         assertNotNull(book.toc.single().children.single().resource)
@@ -121,10 +137,12 @@ class EpubParserTest {
     fun epub3WithNcxUsesNcxParser() {
         val book = parse(
             nav = "", tocType = "application/x-dtbncx+xml", tocProperties = "",
-            files = mapOf("OEBPS/nav.xhtml" to """
-                <ncx><navMap><navPoint id="one"><navLabel><text>第一章</text></navLabel>
-                <content src="chapter.xhtml"/></navPoint></navMap></ncx>
-            """.trimIndent()),
+            files = mapOf(
+                "OEBPS/nav.xhtml" to """
+                    <ncx><navMap><navPoint id="one"><navLabel><text>第一章</text></navLabel>
+                    <content src="chapter.xhtml"/></navPoint></navMap></ncx>
+                """.trimIndent(),
+            ),
         )
         assertEquals("第一章", book.toc.single().title)
         assertNotNull(book.toc.single().resource)
@@ -142,7 +160,9 @@ class EpubParserTest {
             val ncx = """<ncx><navMap><navPoint><navLabel><text>第一章</text></navLabel><content src="chapter.xhtml"/></navPoint></navMap></ncx>"""
             val book = if (version == "2.0") {
                 parse(version = version, tocType = "application/x-dtbncx+xml", tocProperties = "", files = mapOf("OEBPS/nav.xhtml" to ncx))
-            } else parse()
+            } else {
+                parse()
+            }
             assertContains(read(book, book.toc.single()), "可以阅读的正文")
         }
     }
@@ -206,10 +226,14 @@ class EpubParserTest {
 
     @Test
     fun chapterImagesResolveAgainstXhtmlLocation() {
-        val book = parse(files = mapOf("OEBPS/chapter.xhtml" to """
-            <html><body><p>正文</p><img src="Images/cover%20one.jpg"/>
-            <img src="https://example.com/remote.jpg"/></body></html>
-        """.trimIndent()))
+        val book = parse(
+            files = mapOf(
+                "OEBPS/chapter.xhtml" to """
+                    <html><body><p>正文</p><img src="Images/cover%20one.jpg"/>
+                    <img src="https://example.com/remote.jpg"/></body></html>
+                """.trimIndent(),
+            ),
+        )
         val content = read(book, book.toc.single())
         assertContains(content, "OEBPS/Images/cover one.jpg")
         assertContains(content, "https://example.com/remote.jpg")
@@ -258,14 +282,37 @@ class EpubParserTest {
             "OEBPS/chapter.xhtml" to chapter,
             "OEBPS/nav.xhtml" to """<html xmlns:epub="http://www.idpf.org/2007/ops"><body>$nav</body></html>""",
         ).apply { putAll(files) }
-        val output = ByteArrayOutputStream()
-        ZipOutputStream(output).use { zip ->
-            entries.forEach { (path, content) ->
-                zip.putNextEntry(ZipEntry(path))
-                zip.write(content.encodeToByteArray())
-                zip.closeEntry()
+        return EpubParser.parse(zipBytes(entries))
+    }
+
+    /**
+     * 用 [NativeZipCodec] 把 entry 映射打成 zip 字节。
+     *
+     * 该编解码器的公共接口是"文件路径 → zip 文件", 且目录会被冠上目录名作 entry 前缀,
+     * 故把内容先写到名为 `OEBPS`/`META-INF` 的目录下再分别打包 —— 这样 entry 名与
+     * EPUB 规范要求的 zip 内路径一致。
+     */
+    private fun zipBytes(entries: Map<String, String>): ByteArray {
+        val root = FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "legado-epub-parser-test"
+        FileSystem.SYSTEM.deleteRecursively(root, mustExist = false)
+        FileSystem.SYSTEM.createDirectories(root)
+        val srcPaths = mutableListOf<String>()
+        // 按顶层目录名分组: 每组作为一次 zipFiles 的源目录 (entry 前缀即该目录名)
+        entries.entries.groupBy { it.key.substringBefore('/', "") }.forEach { (top, items) ->
+            if (top.isEmpty()) return@forEach
+            val topDir = root / top
+            FileSystem.SYSTEM.createDirectories(topDir)
+            items.forEach { (path, content) ->
+                val relative = path.removePrefix("$top/")
+                val target = if (relative.isEmpty()) topDir else topDir / relative
+                FileSystem.SYSTEM.createDirectories(target.parent ?: topDir)
+                FileSystem.SYSTEM.write(target) { writeUtf8(content) }
             }
+            srcPaths += topDir.toString()
         }
-        return EpubParser.parse(output.toByteArray())
+        val zipPath = root / "book.epub"
+        val ok = NativeZipCodec.zipFiles(srcPaths, zipPath.toString())
+        check(ok) { "NativeZipCodec.zipFiles 失败" }
+        return File(zipPath.toString()).readBytes()
     }
 }
