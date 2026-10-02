@@ -21,6 +21,18 @@ dependencies {
 }
 
 val generatedSources = layout.buildDirectory.dir("generated/epubSources")
+
+/**
+ * 各上游 sources jar 解包后实际被挂载的源根 (prefix → 目录名)。
+ * 挂载 (kotlin.srcDir) 与解包产物校验共用本清单, 避免两处各写一份而漏检。
+ */
+val unpackedSourceRoots: Map<String, List<String>> = mapOf(
+    "epub4kmp-core-" to listOf("commonMain"),
+    "core-" to listOf("commonMain", "commonDomMain", "nativeMain"),
+    "kmp-zip-0" to listOf("commonMain", "commonNonJvmMain", "nativeMain", "linuxMain", "pureKotlinCryptoMain"),
+    "kmp-zip-okio-" to listOf("commonMain", "nativeMain"),
+)
+
 val unpackSources = tasks.register<Sync>("unpackEpubSources") {
     into(generatedSources)
     fun archive(prefix: String, vararg roots: String) {
@@ -29,10 +41,7 @@ val unpackSources = tasks.register<Sync>("unpackEpubSources") {
             into(prefix)
         }
     }
-    archive("epub4kmp-core-", "commonMain")
-    archive("core-", "commonMain", "commonDomMain", "nativeMain")
-    archive("kmp-zip-0", "commonMain", "commonNonJvmMain", "nativeMain", "linuxMain", "pureKotlinCryptoMain")
-    archive("kmp-zip-okio-", "commonMain", "nativeMain")
+    unpackedSourceRoots.forEach { (prefix, roots) -> archive(prefix, *roots.toTypedArray()) }
     // CPF provides POSIX; the SDK zlib is bound locally rather than platform.zlib.
     filesMatching("**/*.kt") {
         filter { line -> line.replace("import platform.zlib.", "import no.synth.kmpzip.zlib.") }
@@ -40,6 +49,14 @@ val unpackSources = tasks.register<Sync>("unpackEpubSources") {
     // Only Date uses kotlinx-datetime. Instant's ISO form provides the same UTC date
     // without introducing another library lacking an OHOS variant.
     doLast {
+        // 产物校验: 任一源根缺失说明上游 sources jar 改名/变结构, 显式失败而非静默产出缺源集的空壳
+        unpackedSourceRoots.forEach { (prefix, roots) ->
+            roots.forEach { root ->
+                check(generatedSources.get().dir("$prefix/$root").asFile.isDirectory) {
+                    "unpackEpubSources: $prefix/$root 源码目录缺失, 上游 sources jar 结构可能已变化"
+                }
+            }
+        }
         val date = generatedSources.get().file(
             "epub4kmp-core-/commonMain/io/documentnode/epub4kmp/domain/Date.kt"
         ).asFile
@@ -60,8 +77,10 @@ kotlin {
     }
     sourceSets {
         val commonMain = getByName("commonMain")
-        listOf("epub4kmp-core-", "core-", "kmp-zip-0", "kmp-zip-okio-").forEach { library ->
-            commonMain.kotlin.srcDir(generatedSources.map { it.dir("$library/commonMain") })
+        unpackedSourceRoots.forEach { (prefix, roots) ->
+            roots.forEach { root ->
+                commonMain.kotlin.srcDir(generatedSources.map { it.dir("$prefix/$root") })
+            }
         }
         val ohosMain = maybeCreate("ohosMain").apply {
             dependsOn(commonMain)
