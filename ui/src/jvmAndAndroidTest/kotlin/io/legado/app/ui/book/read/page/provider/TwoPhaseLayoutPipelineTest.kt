@@ -389,12 +389,14 @@ class TwoPhaseLayoutPipelineTest {
      */
     @Test
     fun `中西间距恰在断行处时行尾空白清理`() {
-        val paragraph = bodyParagraph("甲乙丙丁戊A", visibleWidth = 53)
+        // 输入末行需实质字符 ≥2 ("A汉"): 单孤字会触发 fixOrphanLastLine 把"戊"下移,
+        // 与本用例要验证的行尾空白清理语义冲突 (原输入 "甲乙丙丁戊A" 自落地起必红)
+        val paragraph = bodyParagraph("甲乙丙丁戊A汉", visibleWidth = 53)
         assertEquals(2, paragraph.lines.size)
         val line0 = paragraph.lines[0]
         val line1 = paragraph.lines[1]
         assertEquals("甲乙丙丁戊", line0.text)
-        assertEquals("A", line1.text)
+        assertEquals("A汉", line1.text)
         assertEquals(50f, line0.desiredWidth, 0.001f)
         assertEquals(listOf(10f, 10f, 10f, 10f, 10f), line0.widths)
     }
