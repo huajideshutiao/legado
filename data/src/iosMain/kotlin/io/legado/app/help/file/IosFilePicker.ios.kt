@@ -55,7 +55,9 @@ suspend fun pickDocuments(
 ): List<NSURL>? = suspendCancellableCoroutine { block ->
     // 持有 picker 引用, 供协程取消时 dismiss (dispatch_async 异步, picker 在主线程块内才创建)
     var pickerRef: UIDocumentPickerViewController? = null
+    var delegateRef: DocumentPickerDelegate? = null
     dispatch_async(dispatch_get_main_queue()) {
+        if (!block.isActive) return@dispatch_async
         val vc = topMostViewController()
         if (vc == null) {
             // 拿不到 root vc: 直接返回 null (调用方自行降级处理)
@@ -74,13 +76,14 @@ suspend fun pickDocuments(
         val delegate = DocumentPickerDelegate(
             onPick = { urls ->
                 holder.firstOrNull()?.let { activeDelegates.remove(it) }
-                block.resume(urls)
+                if (block.isActive) block.resume(urls)
             },
             onCancel = {
                 holder.firstOrNull()?.let { activeDelegates.remove(it) }
-                block.resume(null)
+                if (block.isActive) block.resume(null)
             },
         )
+        delegateRef = delegate
         holder.add(delegate)
         activeDelegates.add(delegate)
         picker.delegate = delegate
@@ -89,6 +92,7 @@ suspend fun pickDocuments(
     // 协程取消: dismiss 已 present 的 picker (pickerRef 可能为 null, 表示主线程块尚未执行)
     block.invokeOnCancellation {
         dispatch_async(dispatch_get_main_queue()) {
+            delegateRef?.let { activeDelegates.remove(it) }
             pickerRef?.dismissViewControllerAnimated(true, completion = null)
         }
     }
@@ -128,7 +132,9 @@ fun pickDocumentContent(url: NSURL): ByteArray? {
  */
 suspend fun pickDirectory(): NSURL? = suspendCancellableCoroutine { block ->
     var pickerRef: UIDocumentPickerViewController? = null
+    var delegateRef: DocumentPickerDelegate? = null
     dispatch_async(dispatch_get_main_queue()) {
+        if (!block.isActive) return@dispatch_async
         val vc = topMostViewController()
         if (vc == null) {
             block.resume(null)
@@ -145,13 +151,14 @@ suspend fun pickDirectory(): NSURL? = suspendCancellableCoroutine { block ->
         val delegate = DocumentPickerDelegate(
             onPick = { urls ->
                 holder.firstOrNull()?.let { activeDelegates.remove(it) }
-                block.resume(urls.firstOrNull())
+                if (block.isActive) block.resume(urls.firstOrNull())
             },
             onCancel = {
                 holder.firstOrNull()?.let { activeDelegates.remove(it) }
-                block.resume(null)
+                if (block.isActive) block.resume(null)
             },
         )
+        delegateRef = delegate
         holder.add(delegate)
         activeDelegates.add(delegate)
         picker.delegate = delegate
@@ -159,6 +166,7 @@ suspend fun pickDirectory(): NSURL? = suspendCancellableCoroutine { block ->
     }
     block.invokeOnCancellation {
         dispatch_async(dispatch_get_main_queue()) {
+            delegateRef?.let { activeDelegates.remove(it) }
             pickerRef?.dismissViewControllerAnimated(true, completion = null)
         }
     }
@@ -194,10 +202,12 @@ suspend fun exportFile(fileName: String, bytes: ByteArray): Boolean {
     // 2. 弹系统保存器 (结构照抄 pickDocuments: 主线程 present + activeDelegates 强引用 + 取消 dismiss)
     val saved = suspendCancellableCoroutine<Boolean> { block ->
         var pickerRef: UIDocumentPickerViewController? = null
+        var delegateRef: DocumentPickerDelegate? = null
         dispatch_async(dispatch_get_main_queue()) {
+            if (!block.isActive) return@dispatch_async
             val vc = topMostViewController()
             if (vc == null) {
-                block.resume(false)
+                if (block.isActive) block.resume(false)
                 return@dispatch_async
             }
             val srcUrl = NSURL.fileURLWithPath(tmpFile.path)
@@ -208,13 +218,14 @@ suspend fun exportFile(fileName: String, bytes: ByteArray): Boolean {
                 // 导出完成: 系统回传目标 URL, 内容不再关心, 只取"成功"语义
                 onPick = {
                     holder.firstOrNull()?.let { activeDelegates.remove(it) }
-                    block.resume(true)
+                    if (block.isActive) block.resume(true)
                 },
                 onCancel = {
                     holder.firstOrNull()?.let { activeDelegates.remove(it) }
-                    block.resume(false)
+                    if (block.isActive) block.resume(false)
                 },
             )
+            delegateRef = delegate
             holder.add(delegate)
             activeDelegates.add(delegate)
             picker.delegate = delegate
@@ -222,6 +233,7 @@ suspend fun exportFile(fileName: String, bytes: ByteArray): Boolean {
         }
         block.invokeOnCancellation {
             dispatch_async(dispatch_get_main_queue()) {
+                delegateRef?.let { activeDelegates.remove(it) }
                 pickerRef?.dismissViewControllerAnimated(true, completion = null)
             }
         }
@@ -243,15 +255,21 @@ private class DocumentPickerDelegate(
     private val onCancel: () -> Unit,
 ) : NSObject(), UIDocumentPickerDelegateProtocol {
 
+    private var completed = false
+
     override fun documentPicker(
         controller: UIDocumentPickerViewController,
         didPickDocumentsAtURLs: List<*>,
     ) {
+        if (completed) return
+        completed = true
         @Suppress("UNCHECKED_CAST")
         onPick(didPickDocumentsAtURLs as List<NSURL>)
     }
 
     override fun documentPickerWasCancelled(controller: UIDocumentPickerViewController) {
+        if (completed) return
+        completed = true
         onCancel()
     }
 }

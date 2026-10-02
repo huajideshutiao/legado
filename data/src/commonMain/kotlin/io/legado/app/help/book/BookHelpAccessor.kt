@@ -98,16 +98,15 @@ interface BookHelpAccessor {
     fun hasImageContent(book: Book, bookChapter: BookChapter): Boolean = false
 
     /**
-     * 读取已缓存章节正文 (对应 BookHelp.getContent)。
+     * 读取章节缓存或解析本地书原文件 (对应 BookHelp.getContent)。
      *
-     * 默认委托 [io.legado.app.help.book.BookStorageProviders.get().getContent],
-     * app 端 WebBookProvidersImpl override 委托 BookHelp.getContent (行为一致,
-     * 内部同样走缓存文件读取, 仅多一层 BookHelp 间接)。
+     * 默认委托 [BookHelpShared.getContent]，让阅读、朗读和导出使用同一读取链路。
+     * app 端 WebBookProvidersImpl override 委托 BookHelp.getContent。
      *
-     * 返回 null 表示未缓存或文件为空。
+     * 返回 null 表示没有可用内容。
      */
     fun getContent(book: Book, bookChapter: BookChapter): String? =
-        BookStorageProviders.get().getContent(book, bookChapter)
+        BookHelpShared.getContent(book, bookChapter)
 
     /**
      * 书籍缓存目录路径 (对应 app 端 `BookHelp.cachePath`)。

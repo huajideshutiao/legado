@@ -4,40 +4,18 @@ import com.fleeksoft.ksoup.Ksoup
 import com.fleeksoft.ksoup.nodes.Document
 import com.fleeksoft.ksoup.nodes.Element
 import com.fleeksoft.ksoup.parser.Parser
+import io.documentnode.epub4kmp.domain.Resource
+import io.documentnode.epub4kmp.domain.Resources
+import io.documentnode.epub4kmp.domain.TOCReference
+import io.documentnode.epub4kmp.epub.EpubReader
 
 /**
- * 纯 Kotlin EPUB 解析器 (commonMain, 无 native 依赖)。
+ * iOS/鸿蒙的 EPUB4KMP 读取适配层。
  *
- * # 背景
- * jvmAndAndroidMain 端 [io.legado.app.model.fileBook.EpubFile] 依赖
- * [io.legado.app.lib.epublib.*] (JVM-only, 内部用 java.xml.parsers / java.util.zip),
- * iOS/鸿蒙 (Kotlin/Native) 不可见。本解析器用纯 Kotlin + [Ksoup] (KMP XML/HTML 解析)
- * + [unzipEpubEntries] (expect/actual, native 委托 [io.legado.app.help.storage.NativeZipCodec],
- * jvm 用 java.util.zip) 实现 EPUB 2.0 / 3.0 解析, 解除 iOS/鸿蒙端 epub 支持 stub 限制。
- *
- * # 解析流程
- * 1. [unzipEpubEntries] 解压 epub 字节 → Map<path, ByteArray>
- * 2. 解析 `META-INF/container.xml` → 找到 OPF 路径 (rootfile@full-path)
- * 3. [Ksoup] XML 解析 OPF:
- *    a) [readMetadata]: <metadata> 下 dc:title/dc:creator/dc:description/dc:language
- *    b) [readManifest]: <manifest><item id, href, media-type> → [EpubResource] 集合
- *    c) [readSpine]: <spine><itemref idref> → 阅读顺序
- *    d) [findCoverImage]: <meta name="cover"> / <item properties="cover-image"> / <guide reference type="cover">
- * 4. [findTocResource]: epub3 <item properties="nav">; epub2 <spine toc="ncx-id">
- * 5. [readToc]:
- *    a) epub3 nav: <nav epub:type="toc"><ol><li><a href>
- *    b) epub2 NCX: <navMap><navPoint><navLabel><text>, <content src>
- * 6. 组装 [EpubBook]
- *
- * # 路径解析
- * OPF/NCX 内的 href 是相对路径 (相对 OPF/NCX 自身位置), 需 [resolvePath] 规范化为
- * zip 内绝对路径 (POSIX 风格, "/" 分隔)。与 epublib PackageDocumentReader.resolvePath
- * 行为对齐 (不做 URL 编解码, 因 zip entry 名恒为字面路径)。
- *
- * # 局限
- * - 不支持加密 epub (DRM)
- * - 不支持 SVG cover / 多 rendition
- * - 远程 epub 需调用方先下载为 ByteArray 再传入 (本解析器只处理本地字节)
+ * 解压后由 EpubReader 解析 OPF 元数据、spine 和 NCX，再映射到 Legado 模型。
+ * 保留 EPUB 3 nav、cover-image、URI 路径和缺失命名空间的兼容处理；
+ * 正文章节切分交给 EpubContentReader。鸿蒙使用同版本源码重编译模块。
+ * 远程 EPUB 由调用方下载到本地后读取；不支持 DRM 或多 rendition。
  */
 /**
  * 解压 epub 字节流为 zip 内 entry 名 → 字节内容 Map。
@@ -63,17 +41,77 @@ object EpubParser {
             ?: throw IllegalStateException("EpubParser: OPF not found at $opfPath")
         val opfDoc = Ksoup.parse(opfBytes.decodeToString(), parser = Parser.xmlParser())
 
-        val version = opfDoc.getElementsByTag("package").firstOrNull()
+        val version = opfDoc.elementsByLocalName("package").firstOrNull()
             ?.attr("version") ?: "2.0"
-        val metadata = readMetadata(opfDoc)
         val resources = readManifest(opfDoc, opfPath, entries)
-        val spine = readSpine(opfDoc, resources)
-        val coverImage = findCoverImage(opfDoc, opfPath, resources)
+        val normalizedEntries = entries.mapValues { (href, bytes) ->
+            // The previous reader tolerated OPF/NCX documents missing their
+            // default namespace; EPUB4KMP's DOM lookup requires it.
+            if (href == opfPath || resources[href]?.mediaType == "application/x-dtbncx+xml") {
+                val doc = Ksoup.parse(bytes.decodeToString(), parser = Parser.xmlParser())
+                val root = doc.children().firstOrNull()
+                if (root != null && !root.hasAttr("xmlns") && !root.tagName().contains(':')) {
+                    root.attr("xmlns", if (href == opfPath) "http://www.idpf.org/2007/opf"
+                        else "http://www.daisy.org/z3986/2005/ncx/")
+                    doc.outerHtml().encodeToByteArray()
+                } else bytes
+            } else bytes
+        }
+        val archiveResources = Resources().apply {
+            normalizedEntries.forEach { (href, bytes) -> add(Resource(bytes, href)) }
+            // EPUB4KMP looks up decoded manifest hrefs without collapsing dot
+            // segments. Supply aliases before it makes paths relative to OPF.
+            val opfDir = opfPath.substringBeforeLast('/', "")
+            for (item in opfDoc.elementsByLocalName("manifest").firstOrNull()
+                ?.elementsByLocalName("item").orEmpty()) {
+                val href = item.attr("href")
+                val resolved = resolvePath(opfPath, href)
+                val bytes = normalizedEntries[resolved] ?: continue
+                val decoded = decodeHref(href)
+                val alias = if (opfDir.isEmpty()) decoded else "$opfDir/$decoded"
+                if (alias != resolved) add(Resource(bytes, alias))
+            }
+        }
+        val parsed = EpubReader().readEpub(archiveResources)
+        check(parsed.opfResource != null) { "EpubParser: package document could not be read" }
+        // EPUB4KMP exposes paths relative to OPF; Legado uses ZIP entry paths.
+        fun resource(href: String?): EpubResource? = href?.let {
+            resources[resolvePath(opfPath, it)]
+        }
+        val metadata = parsed.metadata.let {
+            EpubMetadata(
+                titles = it.getTitles(),
+                authors = it.getAuthors().map { author ->
+                    listOf(author.firstname, author.lastname).filter(String::isNotBlank).joinToString(" ")
+                },
+                descriptions = it.getDescriptions(),
+                publishers = it.getPublishers(),
+                language = it.language,
+            )
+        }
+        val spine = parsed.spine.getSpineReferences().mapNotNull { resource(it.resource?.href) }
+        check(spine.isNotEmpty()) { "EpubParser: no readable spine resources" }
+        val coverImage = coverImageResource(findCoverImage(opfDoc, opfPath, resources), resources)
+            ?: coverImageResource(resource(parsed.coverImage?.href), resources)
+            ?: coverImageResource(resource(parsed.coverPage?.href), resources)
         val tocResource = findTocResource(opfDoc, resources, version)
-        val toc = if (tocResource != null) {
-            readToc(tocResource, resources, version)
+        fun chapter(ref: TOCReference): EpubChapter {
+            val res = resource(ref.resource?.href)
+            val fragment = ref.fragmentId?.let(::decodeHref)
+            return EpubChapter(
+                title = ref.title.orEmpty(),
+                completeHref = res?.href.orEmpty() + (fragment?.let { "#$it" } ?: ""),
+                fragmentId = fragment,
+                resource = res,
+                children = ref.children.map(::chapter),
+            )
+        }
+        // 0.3.0 reads NCX but not EPUB 3 nav documents. Keep the nav compatibility
+        // layer (including unlinked volume headings) above the library's parser.
+        val toc = if (tocResource?.mediaType == "application/xhtml+xml") {
+            readToc(tocResource, resources)
         } else {
-            emptyList()
+            parsed.tableOfContents.getTocReferences().map(::chapter)
         }
 
         return EpubBook(
@@ -92,21 +130,21 @@ object EpubParser {
         val containerBytes = entries["META-INF/container.xml"] ?: return null
         val doc = Ksoup.parse(containerBytes.decodeToString(), parser = Parser.xmlParser())
         // <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
-        val rootFile = doc.getElementsByTag("rootfile").firstOrNull() ?: return null
+        val rootFile = doc.elementsByLocalName("rootfile").firstOrNull() ?: return null
         val fullPath = rootFile.attr("full-path").ifBlank { return null }
-        return fullPath
+        return decodeHref(fullPath)
     }
 
     /** 读取 <metadata> 下的 Dublin Core 元素。 */
     private fun readMetadata(opfDoc: Document): EpubMetadata {
-        val metadataEl = opfDoc.getElementsByTag("metadata").firstOrNull()
+        val metadataEl = opfDoc.elementsByLocalName("metadata").firstOrNull()
             ?: return EpubMetadata()
         return EpubMetadata(
-            titles = metadataEl.getElementsByTag("dc:title").map { it.text().trim() }.filter { it.isNotEmpty() },
-            authors = metadataEl.getElementsByTag("dc:creator").map { it.text().trim() }.filter { it.isNotEmpty() },
-            descriptions = metadataEl.getElementsByTag("dc:description").map { it.text().trim() }.filter { it.isNotEmpty() },
-            publishers = metadataEl.getElementsByTag("dc:publisher").map { it.text().trim() }.filter { it.isNotEmpty() },
-            language = metadataEl.getElementsByTag("dc:language").firstOrNull()?.text()?.trim()?.takeIf { it.isNotEmpty() },
+            titles = metadataEl.elementsByLocalName("title").map { it.text().trim() }.filter { it.isNotEmpty() },
+            authors = metadataEl.elementsByLocalName("creator").map { it.text().trim() }.filter { it.isNotEmpty() },
+            descriptions = metadataEl.elementsByLocalName("description").map { it.text().trim() }.filter { it.isNotEmpty() },
+            publishers = metadataEl.elementsByLocalName("publisher").map { it.text().trim() }.filter { it.isNotEmpty() },
+            language = metadataEl.elementsByLocalName("language").firstOrNull()?.text()?.trim()?.takeIf { it.isNotEmpty() },
         )
     }
 
@@ -119,9 +157,9 @@ object EpubParser {
     private fun readManifest(
         opfDoc: Document, opfPath: String, entries: Map<String, ByteArray>
     ): Map<String, EpubResource> {
-        val manifestEl = opfDoc.getElementsByTag("manifest").firstOrNull() ?: return emptyMap()
+        val manifestEl = opfDoc.elementsByLocalName("manifest").firstOrNull() ?: return emptyMap()
         val result = LinkedHashMap<String, EpubResource>()
-        for (item in manifestEl.getElementsByTag("item")) {
+        for (item in manifestEl.elementsByLocalName("item")) {
             val id = item.attr("id").ifBlank { continue }
             val href = item.attr("href").ifBlank { continue }
             val mediaType = item.attr("media-type").ifBlank { null }
@@ -141,9 +179,11 @@ object EpubParser {
 
     /** 读取 <spine><itemref idref> 列表, 按 idref 顺序从 [resources] 取出 [EpubResource]。 */
     private fun readSpine(opfDoc: Document, resources: Map<String, EpubResource>): List<EpubResource> {
-        val spineEl = opfDoc.getElementsByTag("spine").firstOrNull() ?: return emptyList()
+        val spineEl = opfDoc.elementsByLocalName("spine").firstOrNull()
+            ?: return resources.values.filter { it.mediaType == "application/xhtml+xml" }
+                .sortedBy { it.href.lowercase() }
         val result = ArrayList<EpubResource>()
-        for (itemref in spineEl.getElementsByTag("itemref")) {
+        for (itemref in spineEl.elementsByLocalName("itemref")) {
             val idref = itemref.attr("idref").ifBlank { continue }
             // manifest item id 即 resource id; 按 id 查找
             val resource = resources.values.firstOrNull { it.id == idref } ?: continue
@@ -165,14 +205,14 @@ object EpubParser {
     ): EpubResource? {
         // 1. epub3 cover-image properties
         for (res in resources.values) {
-            if (res.properties != null && res.properties.contains("cover-image")) {
+            if (res.hasProperty("cover-image")) {
                 return res
             }
         }
         // 2. epub2 meta name="cover" content="id"
-        val metadataEl = opfDoc.getElementsByTag("metadata").firstOrNull()
+        val metadataEl = opfDoc.elementsByLocalName("metadata").firstOrNull()
         if (metadataEl != null) {
-            for (meta in metadataEl.getElementsByTag("meta")) {
+            for (meta in metadataEl.elementsByLocalName("meta")) {
                 if (meta.attr("name") == "cover") {
                     val coverId = meta.attr("content").ifBlank { continue }
                     return resources.values.firstOrNull { it.id == coverId }
@@ -180,15 +220,34 @@ object EpubParser {
             }
         }
         // 3. guide reference type="cover"
-        val guideEl = opfDoc.getElementsByTag("guide").firstOrNull()
+        val guideEl = opfDoc.elementsByLocalName("guide").firstOrNull()
         if (guideEl != null) {
-            for (ref in guideEl.getElementsByTag("reference")) {
+            for (ref in guideEl.elementsByLocalName("reference")) {
                 if (ref.attr("type").equals("cover", ignoreCase = true) == true) {
                     val href = ref.attr("href").ifBlank { continue }
                     val resolved = resolvePath(opfPath, href)
                     return resources[resolved]
                 }
             }
+        }
+        return null
+    }
+
+    /** A guide/meta cover may reference an XHTML wrapper rather than an image. */
+    private fun coverImageResource(
+        candidate: EpubResource?, resources: Map<String, EpubResource>
+    ): EpubResource? {
+        candidate ?: return null
+        if (candidate.mediaType?.startsWith("image/") == true) return candidate
+        val doc = Ksoup.parse(candidate.data.decodeToString(), parser = Parser.xmlParser())
+        for (element in doc.getAllElements()) {
+            val href = when (element.localName()) {
+                "img" -> element.attr("src")
+                "image" -> element.attr("href").ifBlank { element.attr("xlink:href") }
+                else -> continue
+            }
+            val image = resources[resolvePath(candidate.href, href).substringBefore('#')]
+            if (image?.mediaType?.startsWith("image/") == true) return image
         }
         return null
     }
@@ -206,13 +265,13 @@ object EpubParser {
         // 1. epub3 nav properties
         if (version.startsWith("3.")) {
             for (res in resources.values) {
-                if (res.properties != null && res.properties.contains("nav")) {
+                if (res.hasProperty("nav")) {
                     return res
                 }
             }
         }
         // 2. epub2 spine toc 属性 → manifest item id
-        val spineEl = opfDoc.getElementsByTag("spine").firstOrNull()
+        val spineEl = opfDoc.elementsByLocalName("spine").firstOrNull()
         val tocId = spineEl?.attr("toc")?.ifBlank { null }
         if (tocId != null) {
             resources.values.firstOrNull { it.id == tocId }?.let { return it }
@@ -228,14 +287,15 @@ object EpubParser {
      * - epub2 NCX: <navMap><navPoint><navLabel><text>title</text></navLabel><content src="..."/></navPoint></navMap>
      */
     private fun readToc(
-        tocResource: EpubResource, resources: Map<String, EpubResource>, version: String
+        tocResource: EpubResource, resources: Map<String, EpubResource>
     ): List<EpubChapter> {
         val xml = tocResource.data.decodeToString()
         val doc = Ksoup.parse(xml, parser = Parser.xmlParser())
-        return if (version.startsWith("3.")) {
-            readNavToc(doc, tocResource.href, resources)
-        } else {
+        // EPUB 3 may also use NCX, so inspect the navigation document.
+        return if (doc.elementsByLocalName("navMap").isNotEmpty()) {
             readNcxToc(doc, tocResource.href, resources)
+        } else {
+            readNavToc(doc, tocResource.href, resources)
         }
     }
 
@@ -244,8 +304,11 @@ object EpubParser {
         doc: Document, tocHref: String, resources: Map<String, EpubResource>
     ): List<EpubChapter> {
         // 找 <nav epub:type="toc"> 或 <nav> (兜底)
-        val navEl = doc.getElementsByTag("nav").firstOrNull() ?: return emptyList()
-        val olEl = navEl.getElementsByTag("ol").firstOrNull() ?: return emptyList()
+        val navs = doc.elementsByLocalName("nav")
+        val navEl = navs.firstOrNull { nav ->
+            nav.attr("epub:type").split(Regex("\\s+")).contains("toc")
+        } ?: navs.firstOrNull { !it.hasAttr("epub:type") } ?: return emptyList()
+        val olEl = navEl.children().firstOrNull { it.localName() == "ol" } ?: return emptyList()
         return readNavListItems(olEl, tocHref, resources)
     }
 
@@ -255,14 +318,16 @@ object EpubParser {
     ): List<EpubChapter> {
         val result = ArrayList<EpubChapter>()
         for (li in olEl.children()) {
-            if (li.tagName() != "li") continue
-            val a = li.getElementsByTag("a").firstOrNull() ?: continue
-            val title = a.text().trim().ifBlank { "" }
-            val href = a.attr("href").ifBlank { continue }
-            val resolved = resolvePath(tocHref, href)
+            if (li.localName() != "li") continue
+            // Only direct children: a volume must not steal a descendant's chapter link.
+            val label = li.children().firstOrNull { it.localName() in listOf("a", "span") }
+                ?: continue
+            val title = label.text().trim()
+            val href = label.attr("href")
+            val resolved = if (href.isNotBlank()) resolvePath(tocHref, href) else ""
             val (pathHref, fragmentId) = splitFragment(resolved)
             val resource = resources[pathHref]
-            val children = li.getElementsByTag("ol").firstOrNull()?.let {
+            val children = li.children().firstOrNull { it.localName() == "ol" }?.let {
                 readNavListItems(it, tocHref, resources)
             } ?: emptyList()
             result.add(EpubChapter(
@@ -280,7 +345,7 @@ object EpubParser {
     private fun readNcxToc(
         doc: Document, tocHref: String, resources: Map<String, EpubResource>
     ): List<EpubChapter> {
-        val navMap = doc.getElementsByTag("navMap").firstOrNull() ?: return emptyList()
+        val navMap = doc.elementsByLocalName("navMap").firstOrNull() ?: return emptyList()
         return readNcxNavPoints(navMap, tocHref, resources)
     }
 
@@ -291,11 +356,11 @@ object EpubParser {
         val result = ArrayList<EpubChapter>()
         // 直接子 navPoint (避免递归到孙子)
         for (navPoint in parent.children()) {
-            if (navPoint.tagName() != "navPoint") continue
-            val labelEl = navPoint.getElementsByTag("navLabel").firstOrNull()
-            val textEl = labelEl?.getElementsByTag("text")?.firstOrNull()
+            if (navPoint.localName() != "navPoint") continue
+            val labelEl = navPoint.elementsByLocalName("navLabel").firstOrNull()
+            val textEl = labelEl?.elementsByLocalName("text")?.firstOrNull()
             val title = textEl?.text()?.trim()?.ifBlank { null } ?: ""
-            val contentEl = navPoint.getElementsByTag("content").firstOrNull() ?: continue
+            val contentEl = navPoint.elementsByLocalName("content").firstOrNull() ?: continue
             val src = contentEl.attr("src").ifBlank { continue }
             val resolved = resolvePath(tocHref, src)
             val (pathHref, fragmentId) = splitFragment(resolved)
@@ -320,28 +385,67 @@ object EpubParser {
      * @return 规范化后的绝对路径 (如 "OEBPS/chapter1.xhtml" 或 "images/cover.png")
      */
     internal fun resolvePath(base: String, relative: String): String {
-        if (relative.startsWith("/")) return relative.removePrefix("/")
-        val baseDir = base.substringBeforeLast("/", "")
-        val parts = if (baseDir.isEmpty()) {
-            relative.split("/").toMutableList()
+        if (Regex("^[a-zA-Z][a-zA-Z0-9+.-]*:").containsMatchIn(relative) || relative.startsWith("//")) {
+            return relative
+        }
+        val path = relative.substringBefore('#').substringBefore('?')
+        val fragment = relative.substringAfter('#', "").takeIf { '#' in relative }
+        val resolved = if (path.isEmpty()) {
+            base.substringBefore('#')
         } else {
-            (baseDir.split("/") + relative.split("/")).toMutableList()
-        }
-        val result = mutableListOf<String>()
-        for (part in parts) {
-            when {
-                part.isEmpty() || part == "." -> { /* skip */ }
-                part == ".." -> if (result.isNotEmpty()) result.removeAt(result.lastIndex)
-                else -> result.add(part)
+            val decoded = decodeHref(path)
+            val baseDir = base.substringBefore('#').substringBeforeLast("/", "")
+            val parts = if (decoded.startsWith("/") || baseDir.isEmpty()) {
+                decoded.split("/")
+            } else {
+                baseDir.split("/") + decoded.split("/")
             }
+            val result = mutableListOf<String>()
+            for (part in parts) {
+                when (part) {
+                    "", "." -> Unit
+                    ".." -> if (result.isNotEmpty()) result.removeAt(result.lastIndex)
+                    else -> result.add(part)
+                }
+            }
+            result.joinToString("/")
         }
-        return result.joinToString("/")
+        return resolved + (fragment?.let { "#$it" } ?: "")
     }
+
+    /** Decode URI escapes without treating a literal '+' as a space. */
+    internal fun decodeHref(href: String): String = buildString {
+        var i = 0
+        while (i < href.length) {
+            if (href[i] != '%' || i + 2 >= href.length ||
+                href[i + 1].digitToIntOrNull(16) == null || href[i + 2].digitToIntOrNull(16) == null
+            ) {
+                append(href[i++])
+                continue
+            }
+            val bytes = mutableListOf<Byte>()
+            while (i + 2 < href.length && href[i] == '%') {
+                val high = href[i + 1].digitToIntOrNull(16) ?: break
+                val low = href[i + 2].digitToIntOrNull(16) ?: break
+                bytes.add(((high shl 4) or low).toByte())
+                i += 3
+            }
+            append(bytes.toByteArray().decodeToString())
+        }
+    }
+
+    private fun Element.localName(): String = tagName().substringAfter(':')
+
+    private fun Element.elementsByLocalName(name: String): List<Element> =
+        getAllElements().filter { it.localName() == name }
+
+    private fun EpubResource.hasProperty(property: String): Boolean =
+        properties?.split(Regex("\\s+"))?.contains(property) == true
 
     /** 把 href 拆分为 (path, fragmentId), fragmentId 为 null 表示无 #fragment。 */
     internal fun splitFragment(href: String): Pair<String, String?> {
         val idx = href.indexOf('#')
-        return if (idx < 0) href to null else href.substring(0, idx) to href.substring(idx + 1)
+        return if (idx < 0) href to null else href.substring(0, idx) to decodeHref(href.substring(idx + 1))
     }
 }
 

@@ -1,0 +1,3 @@
+headers = zlib.h
+package = no.synth.kmpzip.zlib
+linkerOpts = -lz

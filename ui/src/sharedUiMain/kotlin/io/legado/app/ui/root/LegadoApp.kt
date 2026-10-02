@@ -820,6 +820,7 @@ private fun DialogOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavig
 
         // 按文件名导入 js 编辑框 (对照 app 端 alertImportFileName, 鸿蒙命令式文本输入宿主缺失时经此弹窗)
         "import_file_name" -> ImportFileNameOverlayDialogContent(overlay, navigator)
+        "book_export_format" -> BookExportFormatDialogContent(overlay, navigator)
 
         // 字典规则
         "dictRuleEdit" -> DictRuleEditDialogContent(overlay, navigator)
