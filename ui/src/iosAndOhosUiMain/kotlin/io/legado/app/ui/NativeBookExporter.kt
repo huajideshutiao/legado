@@ -1,5 +1,6 @@
 package io.legado.app.ui
 
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
@@ -79,12 +80,16 @@ internal object NativeBookExporter {
                 val includeTitle = !prefs.getBoolean(PreferKey.exportNoChapterName, false)
                 chapters.forEach { chapter ->
                     currentCoroutineContext().ensureActive()
-                    val content = BookHelpProviders.get().getContent(book, chapter)
-                        ?: if (chapter.isVolume) "" else "null"
+                    val rawContent = BookHelpProviders.get().getContent(book, chapter)
+                    // 缺章写空正文并留痕 (对齐 ExportBookEpubShared.missingChapterContent):
+                    // 写 "null" 字面量会让导出成品在阅读器里显示“正文=null”
+                    if (rawContent == null && !chapter.isVolume) {
+                        AppLog.put("导出: 章节正文为空, 已写空正文 (${book.name} / ${chapter.title})")
+                    }
                     val processed = ContentProcessorProviders.get().getBookContent(
                         book = book,
                         chapter = chapter.copy(isVip = false),
-                        content = content,
+                        content = rawContent ?: "",
                         includeTitle = includeTitle,
                         useReplace = useReplace,
                         chineseConvert = false,

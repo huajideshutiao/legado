@@ -1,6 +1,7 @@
 package io.legado.app.service
 
 import io.legado.app.constant.AppConst
+import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -64,7 +65,8 @@ class ExportBookContentShared(private val deps: ExportBookContentDeps) {
     /**
      * 处理单章正文 (BookHelp.getContent + ContentProcessor.getContent)。
      *
-     * - 读取已缓存正文 (BookHelp.getContent), volume 取 "" 否则 "null"
+     * - 读取已缓存正文 (BookHelp.getContent); 缺失时写空正文 (不再写 "null" 字面量,
+     *   否则导出成品在阅读器里显示"正文=null")
      * - ContentProcessor 处理 (不导出 vip 标识, 是否含标题由
      *   [ExportBookContentDeps.exportNoChapterName] 决定, 不做简繁/重排)
      * - 返回 "\n\n" + 处理后正文
@@ -77,11 +79,16 @@ class ExportBookContentShared(private val deps: ExportBookContentDeps) {
         useReplace: Boolean
     ): String {
         val content = BookHelpProviders.get().getContent(book, chapter)
+        // 缺章写空正文并留痕 (对齐 ExportBookEpubShared.missingChapterContent):
+        // 写 "null" 字面量会让导出成品在阅读器里显示“正文=null”
+        if (content == null && !chapter.isVolume) {
+            AppLog.put("导出: 章节正文为空, 已写空正文 (${book.name} / ${chapter.title})")
+        }
         val content1 = deps.processContent(
             book,
             // 不导出vip标识
             chapter.apply { isVip = false },
-            content ?: if (chapter.isVolume) "" else "null",
+            content ?: "",
             includeTitle = !deps.exportNoChapterName,
             useReplace = useReplace,
             chineseConvert = false,

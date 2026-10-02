@@ -236,6 +236,8 @@ suspend fun exportFile(fileName: String, bytes: ByteArray): Boolean {
                 delegateRef?.let { activeDelegates.remove(it) }
                 pickerRef?.dismissViewControllerAnimated(true, completion = null)
             }
+            // 协程被取消时函数体中断, 走不到下方正常收尾的临时文件清理, 在此补删
+            runCatching { tmpFile.delete() }
         }
     }
 
