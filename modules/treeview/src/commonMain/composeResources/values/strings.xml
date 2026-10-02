@@ -2,5 +2,5 @@
 <resources>
     <!-- 折叠状态下显示的子项数量。上游用 plurals (item/items), 中文无单复数差异,
          这里统一为普通 string, 由调用方以 %1$d 填入数量。 -->
-    <string name="jsontree_collapsable_items"> %1$d items </string>
+    <string name="treeview_collapsable_items"> %1$d items </string>
 </resources>

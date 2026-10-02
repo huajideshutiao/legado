@@ -9,8 +9,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.sebastianneubauer.jsontree.TreeColors
-import com.sebastianneubauer.jsontree.defaultLightColors
+import io.legado.treeview.TreeColors
+import io.legado.treeview.defaultLightColors
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
 

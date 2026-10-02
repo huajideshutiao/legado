@@ -1,4 +1,4 @@
-package com.sebastianneubauer.jsontree
+package io.legado.treeview
 
 /**
  * The initial state for the json tree before any user interaction.

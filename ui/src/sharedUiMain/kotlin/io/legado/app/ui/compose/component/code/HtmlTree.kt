@@ -12,19 +12,13 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.times
 import com.fleeksoft.ksoup.Ksoup
 import com.fleeksoft.ksoup.nodes.Comment
@@ -32,10 +26,12 @@ import com.fleeksoft.ksoup.nodes.DataNode
 import com.fleeksoft.ksoup.nodes.DocumentType
 import com.fleeksoft.ksoup.nodes.Element as KsoupElement
 import com.fleeksoft.ksoup.nodes.TextNode
-import com.sebastianneubauer.jsontree.TreeColors
-import com.sebastianneubauer.jsontree.TreeRow
-import com.sebastianneubauer.jsontree.generated.resources.Res as JsontreeRes
-import com.sebastianneubauer.jsontree.generated.resources.jsontree_arrow_right
+import io.legado.treeview.TreeColors
+import io.legado.treeview.TreeRow
+import io.legado.treeview.TreeRowIndentStep
+import io.legado.treeview.TreeRowMaxIndentLevel
+import io.legado.treeview.generated.resources.Res as TreeviewRes
+import io.legado.treeview.generated.resources.treeview_arrow_right
 import org.jetbrains.compose.resources.vectorResource
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -43,7 +39,7 @@ import kotlinx.coroutines.withContext
 import androidx.compose.runtime.withFrameNanos
 
 /**
- * HTML 树行模型: 与 JSON 树 (vendored jsontree) 同一交互形态, 数据源是 ksoup 解析的 DOM。
+ * HTML 树行模型: 与 JSON 树 (treeview 库) 同一交互形态, 数据源是 ksoup 解析的 DOM。
  *
  * [Element] 是唯一的可折叠行 (可聚焦子树), 其余是叶子行。构建期已跳过纯空白文本节点
  * (DevTools 同口径); [Element.ksoupElement] 持 ksoup 原节点引用, 供菜单直取
@@ -62,7 +58,7 @@ sealed class HtmlNode {
         val classNames: List<String>,
         /** HTML 规范 void 元素 (br/img/... 无闭合标签) */
         val isVoid: Boolean,
-        /** 唯一子节点是文本时的内联紧凑显示 (DevTools 同款: <p>text</p> 单行, 不可折叠) */
+        /** 唯一子节点是文本时的内联显示 (DevTools 同款: <p>text</p> 不单独占行, 不可折叠) */
         val inlineText: String?,
         /** 同名兄弟中的 1-based 序号 (nth-of-type 用), 构建期预存 */
         val position: Int,
@@ -89,15 +85,14 @@ sealed class HtmlNode {
     class Text(
         override val id: Long,
         override val level: Int,
-        /** 折叠连续空白并截断的预览 */
-        val preview: String,
-        /** 原样全文 (菜单"复制文本"取值) */
+        /** 原样全文, 行内直接渲染 (软换行, 不截断) */
         val fullText: String,
     ) : HtmlNode()
 
     class Comment(
         override val id: Long,
         override val level: Int,
+        /** 折叠连续空白后的单行内容 */
         val preview: String,
         val full: String,
     ) : HtmlNode()
@@ -232,16 +227,16 @@ internal fun flatten(roots: List<HtmlNode>, expanded: Set<Long>): List<HtmlNode>
 
 private const val PREVIEW_LIMIT = 120
 
-/** HTML 规范 void 元素 (无闭合标签) */
-private val VOID_ELEMENTS = setOf(
-    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr",
-)
-
 /** raw text 元素 (内容是 DataNode 而非 TextNode, ksoup dataTags 同源): 内容不内联, 保持可展开 */
 private val RAW_TEXT_TAGS = setOf("script", "style", "xmp", "iframe", "noembed", "noframes")
 
+/** 连续空白 (含换行) 折叠为单空格: 内联元素行与注释行用, 避免行盒被原始换行撑开 */
+private val WHITESPACE_REGEX = Regex("\\s+")
+
+private fun collapseWhitespace(raw: String): String = raw.replace(WHITESPACE_REGEX, " ").trim()
+
 private fun previewOf(raw: String): String {
-    val collapsed = raw.replace(Regex("\\s+"), " ").trim()
+    val collapsed = collapseWhitespace(raw)
     return if (collapsed.length > PREVIEW_LIMIT) {
         collapsed.take(PREVIEW_LIMIT) + "…"
     } else {
@@ -264,9 +259,11 @@ internal fun buildTreeRoots(document: KsoupElement): List<HtmlNode> {
         sameNameSiblings: Int,
     ): HtmlNode.Element {
         val id = nextId++
+        // ksoup 的 childNodes() 每次调用都整表拷贝一份, 故只取一次同时用于预扫描与遍历
+        val allChildNodes = element.childNodes()
         // 同名兄弟定位一次预扫描 (每层一次): 若每个子元素各自重扫兄弟列表,
         // 宽节点 (单父下数千同标签) 会退化为 O(fanout²)
-        val childElements = element.childNodes().filterIsInstance<KsoupElement>()
+        val childElements = allChildNodes.filterIsInstance<KsoupElement>()
         val sameTotals = HashMap<String, Int>()
         for (child in childElements) {
             sameTotals.merge(child.tagName(), 1, Int::plus)
@@ -280,7 +277,7 @@ internal fun buildTreeRoots(document: KsoupElement): List<HtmlNode> {
             positions[i] = seen
         }
         var elementCursor = 0
-        val children = element.childNodes().mapNotNull { child ->
+        val children = allChildNodes.mapNotNull { child ->
             when (child) {
                 is KsoupElement -> {
                     val childElement = childElements[elementCursor++]
@@ -298,7 +295,6 @@ internal fun buildTreeRoots(document: KsoupElement): List<HtmlNode> {
                         HtmlNode.Text(
                             id = nextId++,
                             level = level + 1,
-                            preview = previewOf(child.getWholeText()),
                             fullText = child.getWholeText(),
                         )
                     }
@@ -314,7 +310,6 @@ internal fun buildTreeRoots(document: KsoupElement): List<HtmlNode> {
                         HtmlNode.Text(
                             id = nextId++,
                             level = level + 1,
-                            preview = if (raw.length > PREVIEW_LIMIT) raw.take(PREVIEW_LIMIT) + "…" else raw,
                             fullText = raw,
                         )
                     }
@@ -332,7 +327,7 @@ internal fun buildTreeRoots(document: KsoupElement): List<HtmlNode> {
         // raw text 元素 (script/style...) 的内容不内联, 保持可折叠展开看到全文 (DevTools 同款)
         val inlineText = (children.singleOrNull() as? HtmlNode.Text)
             ?.takeIf { element.tagName() !in RAW_TEXT_TAGS }
-            ?.let { previewOf(it.fullText) }
+            ?.let { collapseWhitespace(it.fullText) }
         val effectiveChildren = if (inlineText != null) emptyList() else children
         val wrapper = HtmlNode.Element(
             id = id,
@@ -341,7 +336,10 @@ internal fun buildTreeRoots(document: KsoupElement): List<HtmlNode> {
             tagName = element.tagName(),
             idAttr = element.id().takeIf { it.isNotEmpty() },
             classNames = element.classNames().toList(),
-            isVoid = element.tagName() in VOID_ELEMENTS,
+            // void 判定用 ksoup 自己的 Tag.isEmpty() (基于 TagSet.voidTags), 不另维护标签表:
+            // 手写副本比 ksoup 少 frame/keygen/command/device/basefont/bgsound/menuitem/param 8 个,
+            // 那些元素会被渲染成 "<param></param>" 形态 (多一个假闭合标签)
+            isVoid = element.tag().isEmpty(),
             inlineText = inlineText,
             position = position,
             sameNameSiblings = sameNameSiblings,
@@ -371,7 +369,7 @@ internal fun buildTreeRoots(document: KsoupElement): List<HtmlNode> {
 }
 
 /**
- * HTML 树视图: 折叠展开 + 行富文本 + 长按/右键菜单, 形态对齐 vendored jsontree 的 JsonTree。
+ * HTML 树视图: 折叠展开 + 行富文本 + 长按/右键菜单, 形态对齐 treeview 库的 JsonTree。
  *
  * @param html 原始 HTML 文本 (解析一次, 展开/聚焦只重压平)
  * @param displayRoot 聚焦根; null = 整份文档
@@ -393,7 +391,7 @@ internal fun HtmlTree(
     onError: (Throwable) -> Unit = {},
 ) {
     val parser = remember(html) { HtmlTreeParser(html) }
-    val toggleIcon = vectorResource(JsontreeRes.drawable.jsontree_arrow_right)
+    val toggleIcon = vectorResource(TreeviewRes.drawable.treeview_arrow_right)
 
     LaunchedEffect(parser) {
         parser.init()
@@ -463,18 +461,20 @@ private fun HtmlRow(
         buildHtmlRowText(node, colors, isExpanded)
     }
     // 聚焦后子树行 level 仍带全文档层级, 缩进按显示根的层级归零; coerce 防
-    // 参数/状态跨帧错位时负 padding 崩溃 (displayRootLevel 已与行列表同快照, 双保险)
+    // 参数/状态跨帧错位时负 padding 崩溃 (displayRootLevel 已与行列表同快照, 双保险);
+    // 深层级缩进封顶 (TreeRowMaxIndentLevel), 避免窄屏上剩余文本宽度变负
     val depth = (node.level - (displayRootLevel ?: 0)).coerceAtLeast(0)
-    val indent = depth * iconSize
+        .coerceAtMost(TreeRowMaxIndentLevel)
+    val indent = depth * TreeRowIndentStep
     TreeRow(
         indent = indent,
+        guides = depth,
+        guideColor = colors.indexColor,
         icon = if ((node as? HtmlNode.Element)?.isCollapsible == true) icon else null,
         iconSize = iconSize,
         iconTint = colors.iconColor,
         iconRotationDegrees = if (isExpanded) 90f else 0f,
         text = text,
-        // 与 JSON 树 (jsontree DefaultNodeTextStyle) 同字号同字重, 两种树视觉一致
-        textStyle = TextStyle(fontWeight = FontWeight.Medium, fontSize = 12.sp),
         showRowIndication = showRowIndication,
         onClick = onClick,
         // DevTools 语义: 闭合标签行无菜单
@@ -483,17 +483,6 @@ private fun HtmlRow(
         } else {
             null
         },
-        modifier = Modifier.drawBehind {
-            // 缩进参考线 (DevTools guides): 每层一条, 对齐该层内容起点
-            val step = iconSize.toPx()
-            for (i in 0 until depth) {
-                val x = i * step + step / 2
-                drawLine(colors.indexColor, Offset(x, 0f), Offset(x, size.height), strokeWidth = 1f)
-            }
-        },
-        // 行内长路径截断, 完整内容靠菜单复制
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
     )
 }
 
@@ -531,7 +520,8 @@ private fun buildHtmlRowText(
         }
         is HtmlNode.EndTag -> appendEndTag(node.element, colors)
         is HtmlNode.Text -> {
-            withStyle(SpanStyle(color = colors.stringValueColor)) { append(node.preview) }
+            // 文本行不可展开, 故显示完整正文而非折叠预览; 行内超长截断由 TreeRow 统一控制。
+            withStyle(SpanStyle(color = colors.stringValueColor)) { append(node.fullText) }
         }
         is HtmlNode.Comment -> {
             withStyle(SpanStyle(color = colors.indexColor)) {
@@ -548,8 +538,13 @@ private fun AnnotatedString.Builder.appendStartTag(node: HtmlNode.Element, color
     withStyle(SpanStyle(color = colors.symbolColor)) { append("<") }
     withStyle(SpanStyle(color = colors.keyColor)) { append(node.tagName) }
     node.ksoupElement.attributes().asList().forEach { attr ->
-        withStyle(SpanStyle(color = colors.symbolColor)) { append(" ${attr.key}=") }
-        withStyle(SpanStyle(color = colors.stringValueColor)) { append("\"${attr.value}\"") }
+        withStyle(SpanStyle(color = colors.symbolColor)) {
+            // 无值属性 (如 <input disabled>) 渲染成裸 key, 不加 ="" (DevTools 同口径)
+            append(if (attr.hasDeclaredValue()) " ${attr.key}=" else " ${attr.key}")
+        }
+        if (attr.hasDeclaredValue()) {
+            withStyle(SpanStyle(color = colors.stringValueColor)) { append("\"${attr.value}\"") }
+        }
     }
 }
 

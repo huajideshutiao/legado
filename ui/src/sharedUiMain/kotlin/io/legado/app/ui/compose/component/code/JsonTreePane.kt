@@ -12,10 +12,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.sebastianneubauer.jsontree.JsonTree
-import com.sebastianneubauer.jsontree.JsonTreeItem
-import com.sebastianneubauer.jsontree.TreeColors
-import com.sebastianneubauer.jsontree.defaultLightColors
+import io.legado.treeview.JsonTree
+import io.legado.treeview.JsonTreeItem
+import io.legado.treeview.TreeColors
+import io.legado.treeview.defaultLightColors
 import io.legado.app.ui.compose.SelectableText
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
@@ -108,12 +108,14 @@ fun JsonTreePane(
             val segmentPaths = remember(segments) {
                 List(segments.size) { i -> joinJsonPathPrefix(segments.take(i + 1)) }
             }
-            val enabledLabels = remember(segments, segmentPaths, jsonRoot.value) {
-                segmentPaths.mapIndexed { index, prefix ->
-                    focusStack.any { it.path == prefix } ||
-                            (jsonRoot.value != null &&
-                                    buildJsonPathChain(jsonRoot.value, segments.take(index + 1)) != null)
-                }
+            // jsonRoot 是整份解析产物, 不入 remember 键: JsonObject.equals 是整树深比较,
+            // 入键会让每次重组都遍历整棵树。只读 jsonRoot.value 即建立订阅, 根本身到达后
+            // 本行随重组重算; 单次成本是按路径逐层下钻 (O(段数)), 无需缓存。
+            val root = jsonRoot.value
+            val enabledLabels = segmentPaths.mapIndexed { index, prefix ->
+                focusStack.any { it.path == prefix } ||
+                        (root != null &&
+                                buildJsonPathChain(root, segments.take(index + 1)) != null)
             }
             TreeBreadcrumb(
                 rootLabel = rootLabel,

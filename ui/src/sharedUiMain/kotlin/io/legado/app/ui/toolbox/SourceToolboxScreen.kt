@@ -37,9 +37,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.sebastianneubauer.jsontree.JsonTreeItem
-import com.sebastianneubauer.jsontree.defaultDarkColors
-import com.sebastianneubauer.jsontree.defaultLightColors
+import io.legado.treeview.JsonTreeItem
+import io.legado.treeview.defaultDarkColors
+import io.legado.treeview.defaultLightColors
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.ui.book.manage.SourcePickerDialog
@@ -61,7 +61,6 @@ import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.widget.dialog.TextDialog
 import legado.ui.generated.resources.Res
-import legado.ui.generated.resources.json_tree
 import legado.ui.generated.resources.result
 import legado.ui.generated.resources.source_text
 import legado.ui.generated.resources.source_toolbox
@@ -80,6 +79,7 @@ import legado.ui.generated.resources.toolbox_stage_general
 import legado.ui.generated.resources.toolbox_stage_search
 import legado.ui.generated.resources.toolbox_stage_toc
 import legado.ui.generated.resources.toolbox_url_hint
+import legado.ui.generated.resources.tree_view
 import org.jetbrains.compose.resources.stringResource
 
 interface SourceToolboxUiActions {
@@ -298,7 +298,7 @@ private fun RequestPane(
             if (state.resIsJson) {
                 Spacer(Modifier.width(DesignTokens.spacingMd))
                 AppOutlinedButton(
-                    stringResource(if (state.resTreeMode) Res.string.source_text else Res.string.json_tree),
+                    stringResource(if (state.resTreeMode) Res.string.source_text else Res.string.tree_view),
                 ) { actions.onTreeMode(!state.resTreeMode) }
             }
             val resBodySize = remember(state.resBody) { formatBodySize(state.resBody.encodeToByteArray().size) }

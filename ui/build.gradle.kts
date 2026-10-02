@@ -172,7 +172,7 @@ kotlin {
                 implementation(libs.compose.lifecycle.runtime.multiplatform)
                 // JSON 树形展示 (vendored, 含长按取 JSONPath)。声明在本源集: JsonTree 的公开签名
                 // 引用 Compose 类型 (Modifier/PaddingValues/TextStyle 等), commonMain 无 Compose 依赖。
-                implementation(project(":modules:jsontree"))
+                implementation(project(":modules:treeview"))
             }
         }
         // 鸿蒙无变体三方库隔离层 (与 :shared 同款)

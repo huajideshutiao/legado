@@ -1,22 +1,21 @@
-package com.sebastianneubauer.jsontree
+package io.legado.treeview
 
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
-import com.sebastianneubauer.jsontree.JsonTreeElement.Collapsable.Array
-import com.sebastianneubauer.jsontree.JsonTreeElement.Collapsable.Object
-import com.sebastianneubauer.jsontree.JsonTreeElement.EndBracket
-import com.sebastianneubauer.jsontree.JsonTreeElement.ParentType
-import com.sebastianneubauer.jsontree.JsonTreeElement.Primitive
-import com.sebastianneubauer.jsontree.JsonTreeParserState.Loading
-import com.sebastianneubauer.jsontree.JsonTreeParserState.Parsing.Error
-import com.sebastianneubauer.jsontree.JsonTreeParserState.Parsing.Parsed
-import com.sebastianneubauer.jsontree.JsonTreeParserState.Ready
-import com.sebastianneubauer.jsontree.util.Expansion
-import com.sebastianneubauer.jsontree.util.IdGenerator
-import com.sebastianneubauer.jsontree.util.collapse
-import com.sebastianneubauer.jsontree.util.expand
-import com.sebastianneubauer.jsontree.util.toJsonTreeElement
-import com.sebastianneubauer.jsontree.util.toList
+import io.legado.treeview.JsonTreeElement.Collapsable.Array
+import io.legado.treeview.JsonTreeElement.Collapsable.Object
+import io.legado.treeview.JsonTreeElement.EndBracket
+import io.legado.treeview.JsonTreeElement.ParentType
+import io.legado.treeview.JsonTreeElement.Primitive
+import io.legado.treeview.JsonTreeParserState.Loading
+import io.legado.treeview.JsonTreeParserState.Parsing.Error
+import io.legado.treeview.JsonTreeParserState.Ready
+import io.legado.treeview.util.Expansion
+import io.legado.treeview.util.IdGenerator
+import io.legado.treeview.util.collapse
+import io.legado.treeview.util.expand
+import io.legado.treeview.util.toJsonTreeElement
+import io.legado.treeview.util.toList
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.ExperimentalSerializationApi
@@ -47,28 +46,24 @@ internal class JsonTreeParser(
     val state: State<JsonTreeParserState> = parserState
 
     suspend fun init(initialState: TreeState) = withContext(defaultDispatcher) {
-        val parsingState = runCatching {
-            Parsed(jsonElement ?: lenientJson.parseToJsonElement(json))
+        // 解析与建树整段兜底: 建树含 O(n·depth) 的路径构造, 超深/超大文档可能 OOM/StackOverflow,
+        // 漏到协程外会直接冒到平台默认异常处理器 (Android 崩)。宿主已有 onError 展示通道。
+        val state = runCatching {
+            val element = jsonElement ?: lenientJson.parseToJsonElement(json)
+            Ready(
+                list = element
+                    .toJsonTreeElement(
+                        idGenerator = IdGenerator(),
+                        state = initialState,
+                        level = 0,
+                        key = null,
+                        isLastItem = true,
+                        parentType = ParentType.NONE
+                    ).toList(),
+                jsonElement = element,
+            )
         }.getOrElse { throwable ->
             Error(throwable)
-        }
-
-        val state = when (parsingState) {
-            is Parsed -> {
-                Ready(
-                    list = parsingState.jsonElement
-                        .toJsonTreeElement(
-                            idGenerator = IdGenerator(),
-                            state = initialState,
-                            level = 0,
-                            key = null,
-                            isLastItem = true,
-                            parentType = ParentType.NONE
-                        ).toList(),
-                    jsonElement = parsingState.jsonElement,
-                )
-            }
-            is Error -> parsingState
         }
 
         withContext(mainDispatcher) {

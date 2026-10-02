@@ -825,9 +825,13 @@
     <string name="media_runtime_downloading">メディア再生コンポーネントをダウンロード中：%1$s</string>
     <string name="media_runtime_download_failed">メディア再生コンポーネントのダウンロードに失敗しました：%1$s</string>
     <string name="media_runtime_not_installed">メディア再生コンポーネントがインストールされていません</string>
-    <string name="json_tree">ツリー表示</string>
+    <string name="tree_view">ツリー表示</string>
     <string name="source_text">元のテキスト</string>
     <string name="json_tree_parse_failed">JSON ツリーの解析に失敗しました: %1$s</string>
+    <string name="html_tree_parse_failed">HTML ツリーの解析に失敗しました: %1$s</string>
+    <string name="copy_outer_html">outerHTML をコピー</string>
+    <string name="copy_inner_html">innerHTML をコピー</string>
+    <string name="copy_css_selector">CSS セレクターをコピー</string>
     <string name="source_toolbox">ソースツールボックス</string>
     <string name="toolbox_stage_general">一般</string>
     <string name="toolbox_stage_search">検索</string>

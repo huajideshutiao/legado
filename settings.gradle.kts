@@ -68,7 +68,7 @@ include(":modules:quickjs-android-native")
 include(":modules:quickjs-processor")
 // 内嵌第三方库 (vendored) 的独立承载模块, 不混进本项目源码树
 include(":modules:rjpath")
-include(":modules:jsontree")
+include(":modules:treeview")
 // :shared 按职能切分后的共享子模块 (依赖单向: foundation <- data <- core <- ui)
 include(":foundation")
 include(":data")

@@ -1,4 +1,4 @@
-package com.sebastianneubauer.jsontree
+package io.legado.treeview
 
 import androidx.compose.ui.graphics.Color
 

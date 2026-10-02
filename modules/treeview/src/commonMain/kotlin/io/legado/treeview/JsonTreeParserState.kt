@@ -1,4 +1,4 @@
-package com.sebastianneubauer.jsontree
+package io.legado.treeview
 
 import androidx.compose.runtime.Immutable
 import kotlinx.serialization.json.JsonElement
@@ -23,7 +23,6 @@ internal sealed interface JsonTreeParserState {
     ) : JsonTreeParserState
 
     sealed interface Parsing : JsonTreeParserState {
-        data class Parsed(val jsonElement: JsonElement) : Parsing
         data class Error(val throwable: Throwable) : Parsing
     }
 }

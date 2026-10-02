@@ -1,4 +1,4 @@
-package com.sebastianneubauer.jsontree
+package io.legado.treeview
 
 internal enum class CollapsableType {
     OBJECT,

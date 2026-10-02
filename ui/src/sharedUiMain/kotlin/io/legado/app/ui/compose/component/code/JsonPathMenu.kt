@@ -3,7 +3,7 @@ package io.legado.app.ui.compose.component.code
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
-import com.sebastianneubauer.jsontree.JsonTreeItem
+import io.legado.treeview.JsonTreeItem
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import kotlinx.serialization.json.JsonPrimitive
@@ -18,7 +18,7 @@ import org.jetbrains.compose.resources.stringResource
 
 /**
  * JSON 树条目菜单内容: 查看 / 复制键 / 复制值 / 复制键值对 / 复制 JSONPath, 长按与右键共用。
- * 由 [com.sebastianneubauer.jsontree.JsonTree] 的条目行内 DropdownMenu 承载 (本组合只渲染菜单项,
+ * 由 [io.legado.treeview.JsonTree] 的条目行内 DropdownMenu 承载 (本组合只渲染菜单项,
  * 弹出定位与进出场动画是 DropdownMenu 官方实现)。
  *
  * 无键 (根条目) 时"复制键""复制键值对"置灰, 无值 (折叠头行) 时"复制值""复制键值对"置灰,

@@ -1,15 +1,13 @@
-package com.sebastianneubauer.jsontree
+package io.legado.treeview
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.LocalTextStyle
-import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -19,16 +17,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.times
-import com.sebastianneubauer.jsontree.toJsonPath
-import com.sebastianneubauer.jsontree.util.subtreeAt
-import com.sebastianneubauer.jsontree.util.rememberCollapsableText
-import com.sebastianneubauer.jsontree.util.rememberPrimitiveText
-import com.sebastianneubauer.jsontree.generated.resources.Res
-import com.sebastianneubauer.jsontree.generated.resources.jsontree_arrow_right
+import io.legado.treeview.toJsonPath
+import io.legado.treeview.util.subtreeAt
+import io.legado.treeview.util.rememberCollapsableText
+import io.legado.treeview.util.rememberPrimitiveText
+import io.legado.treeview.generated.resources.Res
+import io.legado.treeview.generated.resources.treeview_arrow_right
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
@@ -108,7 +109,7 @@ public fun JsonTree(
     initialState: TreeState = TreeState.FIRST_ITEM_EXPANDED,
     contentPadding: PaddingValues = PaddingValues(0.dp),
     colors: TreeColors = defaultLightColors,
-    icon: ImageVector = vectorResource(Res.drawable.jsontree_arrow_right),
+    icon: ImageVector = vectorResource(Res.drawable.treeview_arrow_right),
     iconSize: Dp = 20.dp,
     textStyle: TextStyle = LocalTextStyle.current,
     showIndices: Boolean = false,
@@ -174,7 +175,6 @@ public fun JsonTree(
         }
         is JsonTreeParserState.Loading -> onLoading()
         is JsonTreeParserState.Parsing.Error -> onError(state.throwable)
-        is JsonTreeParserState.Parsing.Parsed -> error("Unexpected state $state")
     }
 }
 
@@ -198,7 +198,7 @@ private fun JsonTreeList(
 
     LazyColumn(
         state = lazyListState,
-        contentPadding = contentPadding
+        contentPadding = contentPadding,
     ) {
         itemsIndexed(items, key = { _, item -> item.id }) { index, item ->
             // 路径文本随层级增长, 每行只算一次 (原先三个分支各算一次且每次重组重算)
@@ -225,8 +225,10 @@ private fun JsonTreeList(
                         indent = if (index == 0 || index == items.lastIndex) {
                             0.dp
                         } else {
-                            item.level * iconSize
+                            minOf(item.level, TreeRowMaxIndentLevel) * TreeRowIndentStep
                         },
+                        guides = minOf(item.level, TreeRowMaxIndentLevel),
+                        guideColor = colors.indexColor,
                         colors = colors,
                         textStyle = textStyle,
                         icon = icon,
@@ -258,8 +260,10 @@ private fun JsonTreeList(
                         indent = if (index == 0 || index == items.lastIndex) {
                             0.dp
                         } else {
-                            item.level * iconSize
+                            minOf(item.level, TreeRowMaxIndentLevel) * TreeRowIndentStep
                         },
+                        guides = minOf(item.level, TreeRowMaxIndentLevel),
+                        guideColor = colors.indexColor,
                         colors = colors,
                         textStyle = textStyle,
                         icon = icon,
@@ -283,10 +287,13 @@ private fun JsonTreeList(
                         parentType = item.parentType
                     )
 
-                    // quotedValue 需为可直接粘贴的合法 JSON 字面量: 值内容经 JSON 转义规则处理
-                    val quotedValue = when (item.type) {
-                        JsonTreeElement.Primitive.Type.STRING -> JsonPrimitive(item.value).toString()
-                        else -> item.value
+                    // quotedValue 需为可直接粘贴的合法 JSON 字面量: 值内容经 JSON 转义规则处理。
+                    // remember 缓存: 否则每行每次重组都重新构造字符串 (含完整 printQuoted 转义)
+                    val quotedValue = remember(item.value, item.type) {
+                        when (item.type) {
+                            JsonTreeElement.Primitive.Type.STRING -> JsonPrimitive(item.value).toString()
+                            else -> item.value
+                        }
                     }
 
                     Primitive(
@@ -295,8 +302,10 @@ private fun JsonTreeList(
                         indent = if (index == 0 || index == items.lastIndex) {
                             0.dp
                         } else {
-                            (item.level * iconSize) + iconSize
+                            minOf(item.level, TreeRowMaxIndentLevel) * TreeRowIndentStep
                         },
+                        guides = minOf(item.level, TreeRowMaxIndentLevel),
+                        guideColor = colors.indexColor,
                         path = path,
                         key = item.key,
                         value = item.value,
@@ -309,14 +318,16 @@ private fun JsonTreeList(
                 is JsonTreeElement.EndBracket -> {
                     Bracket(
                         type = item.type,
+                        isLastItem = item.isLastItem,
                         colors = colors,
                         textStyle = textStyle,
                         indent = if (index == 0 || index == items.lastIndex) {
                             iconSize
                         } else {
-                            (item.level * iconSize) + iconSize
+                            (minOf(item.level, TreeRowMaxIndentLevel) * TreeRowIndentStep) + iconSize
                         },
-                        isLastItem = item.isLastItem
+                        guides = minOf(item.level, TreeRowMaxIndentLevel),
+                        guideColor = colors.indexColor
                     )
                 }
             }
@@ -341,9 +352,13 @@ private fun Collapsable(
     showRowIndication: Boolean,
     onClick: () -> Unit,
     subtreeElement: () -> JsonElement?,
+    guides: Int,
+    guideColor: Color,
 ) {
     TreeRow(
         indent = indent,
+        guides = guides,
+        guideColor = guideColor,
         icon = icon,
         iconSize = iconSize,
         iconTint = colors.iconColor,
@@ -375,9 +390,13 @@ private fun Primitive(
     itemMenu: (@Composable ColumnScope.(JsonTreeItem, () -> Unit) -> Unit)?,
     showRowIndication: Boolean,
     iconSize: Dp,
+    guides: Int,
+    guideColor: Color,
 ) {
     TreeRow(
         indent = indent,
+        guides = guides,
+        guideColor = guideColor,
         icon = null,
         iconSize = iconSize,
         iconTint = Color.Unspecified,
@@ -402,15 +421,31 @@ private fun Bracket(
     type: JsonTreeElement.EndBracket.Type,
     isLastItem: Boolean,
     indent: Dp,
+    guides: Int,
+    guideColor: Color,
     colors: TreeColors,
     textStyle: TextStyle,
 ) {
     val closingBracket = if (type == JsonTreeElement.EndBracket.Type.OBJECT) "}" else "]"
 
-    Text(
-        modifier = Modifier.padding(start = indent),
-        text = if (!isLastItem) "$closingBracket," else closingBracket,
-        color = colors.symbolColor,
-        style = textStyle
+    TreeRow(
+        indent = indent,
+        guides = guides,
+        guideColor = guideColor,
+        icon = null,
+        iconSize = TreeRowIndentStep,
+        iconTint = Color.Unspecified,
+        iconRotationDegrees = 0F,
+        // 闭合括号与其它符号同色 (委托 TreeRow 后不再有 color 参数, 只能靠 SpanStyle 上色)
+        text = buildAnnotatedString {
+            withStyle(SpanStyle(color = colors.symbolColor)) {
+                append(if (!isLastItem) "$closingBracket," else closingBracket)
+            }
+        },
+        textStyle = textStyle,
+        showRowIndication = false,
+        onClick = {},
+        menu = null,
+        iconSpace = false,
     )
 }

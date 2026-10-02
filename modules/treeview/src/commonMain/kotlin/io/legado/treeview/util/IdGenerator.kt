@@ -1,4 +1,4 @@
-package com.sebastianneubauer.jsontree.util
+package io.legado.treeview.util
 
 import kotlin.concurrent.atomics.AtomicInt
 import kotlin.concurrent.atomics.ExperimentalAtomicApi

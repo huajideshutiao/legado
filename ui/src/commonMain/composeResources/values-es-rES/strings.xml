@@ -913,9 +913,13 @@
     <string name="media_runtime_downloading">Descargando el componente de reproducción multimedia: %1$s</string>
     <string name="media_runtime_download_failed">No se pudo descargar el componente de reproducción multimedia: %1$s</string>
     <string name="media_runtime_not_installed">El componente de reproducción multimedia no está instalado</string>
-    <string name="json_tree">Vista de árbol</string>
+    <string name="tree_view">Vista de árbol</string>
     <string name="source_text">Texto original</string>
     <string name="json_tree_parse_failed">No se pudo analizar el árbol JSON: %1$s</string>
+    <string name="html_tree_parse_failed">No se pudo analizar el árbol HTML: %1$s</string>
+    <string name="copy_outer_html">Copiar outerHTML</string>
+    <string name="copy_inner_html">Copiar innerHTML</string>
+    <string name="copy_css_selector">Copiar selector CSS</string>
     <string name="source_toolbox">Herramientas de fuente</string>
     <string name="toolbox_stage_general">General</string>
     <string name="toolbox_stage_search">Buscar</string>

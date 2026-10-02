@@ -1,15 +1,15 @@
-package com.sebastianneubauer.jsontree.util
+package io.legado.treeview.util
 
-import com.sebastianneubauer.jsontree.JsonTreeElement
-import com.sebastianneubauer.jsontree.JsonTreeElement.Collapsable.Array
-import com.sebastianneubauer.jsontree.JsonTreeElement.Collapsable.Object
-import com.sebastianneubauer.jsontree.JsonTreeElement.EndBracket
-import com.sebastianneubauer.jsontree.JsonTreeElement.ParentType
-import com.sebastianneubauer.jsontree.JsonTreeElement.Primitive
-import com.sebastianneubauer.jsontree.JsonTreeElement.Primitive.Type
-import com.sebastianneubauer.jsontree.PathSegment
-import com.sebastianneubauer.jsontree.TreeState
-import com.sebastianneubauer.jsontree.endBracket
+import io.legado.treeview.JsonTreeElement
+import io.legado.treeview.JsonTreeElement.Collapsable.Array
+import io.legado.treeview.JsonTreeElement.Collapsable.Object
+import io.legado.treeview.JsonTreeElement.EndBracket
+import io.legado.treeview.JsonTreeElement.ParentType
+import io.legado.treeview.JsonTreeElement.Primitive
+import io.legado.treeview.JsonTreeElement.Primitive.Type
+import io.legado.treeview.PathSegment
+import io.legado.treeview.TreeState
+import io.legado.treeview.endBracket
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -35,11 +35,6 @@ internal enum class Expansion {
     None,
 
     /**
-     * All children are expanded.
-     */
-    All,
-
-    /**
      * Only children without siblings are expanded.
      */
     SingleOnly
@@ -49,8 +44,6 @@ internal enum class Expansion {
  * Expands a JsonTreeElement and its children depending on which [expansion] is chosen.
  *
  * `Expansion.None` -> Children will not be expanded.
- *
- * `Expansion.All` -> Children will be expanded recursively.
  *
  * `Expansion.SingleOnly` -> Only children without siblings will be expanded.
  */
@@ -62,7 +55,6 @@ internal fun JsonTreeElement.expand(
             state = TreeState.EXPANDED,
             children = when (expansion) {
                 Expansion.None -> children
-                Expansion.All -> children.expandChildren(singleChildrenOnly = false)
                 Expansion.SingleOnly -> children.expandChildren(singleChildrenOnly = true)
             }
         )
@@ -71,7 +63,6 @@ internal fun JsonTreeElement.expand(
             state = TreeState.EXPANDED,
             children = when (expansion) {
                 Expansion.None -> children
-                Expansion.All -> children.expandChildren(singleChildrenOnly = false)
                 Expansion.SingleOnly -> children.expandChildren(singleChildrenOnly = true)
             }
         )

@@ -910,9 +910,13 @@
     <string name="media_runtime_downloading">Đang tải thành phần phát phương tiện: %1$s</string>
     <string name="media_runtime_download_failed">Tải thành phần phát phương tiện thất bại: %1$s</string>
     <string name="media_runtime_not_installed">Chưa cài đặt thành phần phát phương tiện</string>
-    <string name="json_tree">Dạng cây</string>
+    <string name="tree_view">Dạng cây</string>
     <string name="source_text">Văn bản gốc</string>
     <string name="json_tree_parse_failed">Không thể phân tích cây JSON: %1$s</string>
+    <string name="html_tree_parse_failed">Không thể phân tích cây HTML: %1$s</string>
+    <string name="copy_outer_html">Sao chép outerHTML</string>
+    <string name="copy_inner_html">Sao chép innerHTML</string>
+    <string name="copy_css_selector">Sao chép bộ chọn CSS</string>
     <string name="source_toolbox">Công cụ nguồn sách</string>
     <string name="toolbox_stage_general">Chung</string>
     <string name="toolbox_stage_search">Tìm kiếm</string>

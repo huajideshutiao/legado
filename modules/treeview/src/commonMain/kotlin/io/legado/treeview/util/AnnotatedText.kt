@@ -1,4 +1,4 @@
-package com.sebastianneubauer.jsontree.util
+package io.legado.treeview.util
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -6,13 +6,13 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
-import com.sebastianneubauer.jsontree.CollapsableType
-import com.sebastianneubauer.jsontree.JsonTreeElement.Primitive.Type
-import com.sebastianneubauer.jsontree.JsonTreeElement.ParentType
-import com.sebastianneubauer.jsontree.TreeColors
-import com.sebastianneubauer.jsontree.TreeState
-import com.sebastianneubauer.jsontree.generated.resources.Res
-import com.sebastianneubauer.jsontree.generated.resources.jsontree_collapsable_items
+import io.legado.treeview.CollapsableType
+import io.legado.treeview.JsonTreeElement.Primitive.Type
+import io.legado.treeview.JsonTreeElement.ParentType
+import io.legado.treeview.TreeColors
+import io.legado.treeview.TreeState
+import io.legado.treeview.generated.resources.Res
+import io.legado.treeview.generated.resources.treeview_collapsable_items
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -27,7 +27,7 @@ internal fun rememberCollapsableText(
     showItemCount: Boolean,
     parentType: ParentType,
 ): AnnotatedString {
-    val itemCount = stringResource(Res.string.jsontree_collapsable_items, childItemCount)
+    val itemCount = stringResource(Res.string.treeview_collapsable_items, childItemCount)
 
     return remember(
         type,
@@ -125,7 +125,6 @@ internal fun rememberPrimitiveText(
                 }
             }
 
-            val keyOffset = this.length
             val valueColor = when(type) {
                 Type.STRING -> colors.stringValueColor
                 Type.BOOLEAN -> colors.booleanValueColor

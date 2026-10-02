@@ -15,9 +15,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.sp
-import com.sebastianneubauer.jsontree.JsonTreeItem
-import com.sebastianneubauer.jsontree.defaultDarkColors
-import com.sebastianneubauer.jsontree.defaultLightColors
+import io.legado.treeview.JsonTreeItem
+import io.legado.treeview.defaultDarkColors
+import io.legado.treeview.defaultLightColors
 import io.legado.app.ui.compose.SelectableText
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
@@ -35,13 +35,12 @@ import io.legado.app.utils.isXml
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.cancel
 import legado.ui.generated.resources.copy
-import legado.ui.generated.resources.html_tree
 import legado.ui.generated.resources.html_tree_parse_failed
-import legado.ui.generated.resources.json_tree
 import legado.ui.generated.resources.json_tree_parse_failed
 import legado.ui.generated.resources.ok
 import legado.ui.generated.resources.source_text
 import legado.ui.generated.resources.text_too_large
+import legado.ui.generated.resources.tree_view
 import org.jetbrains.compose.resources.stringResource
 
 private const val MAX_TEXT_LENGTH = 32 * 1024
@@ -79,8 +78,7 @@ fun TextDialog(
     val cancelText = stringResource(Res.string.cancel)
     val copyText = stringResource(Res.string.copy)
     val tooLargeText = stringResource(Res.string.text_too_large)
-    val treeText = stringResource(Res.string.json_tree)
-    val htmlTreeText = stringResource(Res.string.html_tree)
+    val treeViewText = stringResource(Res.string.tree_view)
     val sourceText = stringResource(Res.string.source_text)
     // 树按钮显隐按首尾字符预判 (isJson/isXml 原位判断, 大响应体零解析成本): 首尾配对即出
     // 按钮, 不做合法性解析。非法 JSON 的误判切树由树区错误文本兜底; ksoup 对任意输入
@@ -94,13 +92,11 @@ fun TextDialog(
     }
     var treeMode by remember { mutableStateOf(false) }
     // 聚焦栈: 条目菜单"查看"把树就地聚焦到该节点, 面包屑逐级退回 (不新开窗口, 故无叠层)
-    var focusStack by remember { mutableStateOf<List<JsonTreeItem>>(emptyList()) }
-    var htmlFocusStack by remember { mutableStateOf<List<HtmlNode.Element>>(emptyList()) }
-    // 换正文后聚焦栈失效 (旧聚焦指向上一份文档的节点), 就地复位;
+    // 键含 content: 换正文当帧即复位, 否则树会先以旧文档的聚焦节点组合出一帧
+    var focusStack by remember(content) { mutableStateOf<List<JsonTreeItem>>(emptyList()) }
+    var htmlFocusStack by remember(content) { mutableStateOf<List<HtmlNode.Element>>(emptyList()) }
     // 正文变为非 JSON 非 HTML 时退出树模式, 否则用户困在伪树视图且无按钮可退
     LaunchedEffect(content) {
-        focusStack = emptyList()
-        htmlFocusStack = emptyList()
         if (!isJson && !isHtml) treeMode = false
     }
 
@@ -202,7 +198,7 @@ fun TextDialog(
                     }
                     if (isJson || isHtml || treeMode) {
                         AppTextButton(
-                            text = if (treeMode) sourceText else if (isJson) treeText else htmlTreeText,
+                            text = if (treeMode) sourceText else treeViewText,
                             color = colors.accent,
                         ) {
                             // 切回文本视图时同时退出聚焦: 文本区显示整份正文, 复制也按整份正文

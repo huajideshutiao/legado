@@ -1023,9 +1023,13 @@
     <string name="media_runtime_downloading">正在下載媒體播放元件：%1$s</string>
     <string name="media_runtime_download_failed">媒體播放元件下載失敗：%1$s</string>
     <string name="media_runtime_not_installed">未安裝媒體播放元件</string>
-    <string name="json_tree">樹狀檢視</string>
+    <string name="tree_view">樹狀檢視</string>
     <string name="source_text">原文</string>
     <string name="json_tree_parse_failed">JSON 樹解析失敗: %1$s</string>
+    <string name="html_tree_parse_failed">HTML 樹解析失敗: %1$s</string>
+    <string name="copy_outer_html">複製 outerHTML</string>
+    <string name="copy_inner_html">複製 innerHTML</string>
+    <string name="copy_css_selector">複製 CSS 選擇器</string>
     <string name="source_toolbox">書源工具箱</string>
     <string name="toolbox_stage_general">通用</string>
     <string name="toolbox_stage_search">搜尋</string>
