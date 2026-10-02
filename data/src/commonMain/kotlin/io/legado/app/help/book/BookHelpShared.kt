@@ -269,7 +269,8 @@ object BookHelpShared {
         }
         if (book.isLocal) {
             val string = FileBook.getContent(book, chapter)
-            if (string != null && book.isEpub) {
+            // 错误文本是 getContent 的兜底返回而非正文, 缓存会把失败固化 (须清缓存才能恢复)
+            if (string != null && book.isEpub && !string.startsWith(FileBook.CONTENT_ERROR_PREFIX)) {
                 storage.saveText(book, chapter, string)
             }
             return string

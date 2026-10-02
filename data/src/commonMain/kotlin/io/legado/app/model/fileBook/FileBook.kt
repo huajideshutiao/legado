@@ -51,6 +51,9 @@ import io.legado.app.utils.systemCurrentTimeMillis
  */
 object FileBook : BaseFileBook {
 
+    /** [getContent] 失败时的兜底文本前缀; 缓存写入方据此排除, 错误文本不得固化进章节缓存。 */
+    const val CONTENT_ERROR_PREFIX = "获取本地书籍内容失败"
+
     private val accessor get() = FileBookProviders.get()
 
     fun Book.getHandler(): BaseFileBook = accessor.getHandler(this)
@@ -86,7 +89,7 @@ object FileBook : BaseFileBook {
         return try {
             book.getHandler().getContent(book, chapter)
         } catch (e: Exception) {
-            "获取本地书籍内容失败\n${e.message}".also { AppLog.put(it, e) }
+            "$CONTENT_ERROR_PREFIX\n${e.message}".also { AppLog.put(it, e) }
         }
     }
 
