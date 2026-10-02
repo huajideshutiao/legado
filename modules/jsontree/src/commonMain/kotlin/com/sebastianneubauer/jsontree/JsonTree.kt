@@ -1,39 +1,26 @@
 package com.sebastianneubauer.jsontree
 
-import androidx.compose.foundation.LocalIndication
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material.DropdownMenu
-import androidx.compose.material.Icon
 import androidx.compose.material.LocalTextStyle
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.isSecondaryPressed
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.times
 import com.sebastianneubauer.jsontree.toJsonPath
@@ -108,6 +95,9 @@ public class JsonTreeItem(
  * @param pathPrefix JSONPath of the root node of [jsonElement] (`"$"` for a whole document).
  * Prepended to every item path, so a subtree rendered on its own still reports and copies
  * paths relative to the original document.
+ * @param onRootParsed Called on the main thread after the whole document was parsed from [json]
+ * (not on subtree-pass-through renders), with the parsed root. Hosts use it to drill into any
+ * path later (e.g. breadcrumb focus jumps) without re-parsing.
  */
 @Composable
 public fun JsonTree(
@@ -129,6 +119,7 @@ public fun JsonTree(
     itemMenu: (@Composable ColumnScope.(JsonTreeItem, () -> Unit) -> Unit)? = null,
     showRowIndication: Boolean = true,
     pathPrefix: String = "$",
+    onRootParsed: ((JsonElement) -> Unit)? = null,
 ) {
     val coroutineScope = rememberCoroutineScope()
 
@@ -145,6 +136,13 @@ public fun JsonTree(
 
     LaunchedEffect(jsonParser, initialState) {
         jsonParser.init(initialState)
+        // 仅整文档解析时回调根 (子树直通渲染时 jsonElement 非空, 不回调),
+        // 供宿主对任意前缀路径下钻 (面包屑聚焦跳转), 零重复解析
+        if (jsonElement == null) {
+            (jsonParser.state.value as? JsonTreeParserState.Ready)?.let { state ->
+                onRootParsed?.invoke(state.jsonElement)
+            }
+        }
     }
 
     when (val state = jsonParser.state.value) {
@@ -305,6 +303,7 @@ private fun JsonTreeList(
                         quotedValue = quotedValue,
                         itemMenu = itemMenu,
                         showRowIndication = showRowIndication,
+                        iconSize = iconSize,
                     )
                 }
                 is JsonTreeElement.EndBracket -> {
@@ -343,55 +342,25 @@ private fun Collapsable(
     onClick: () -> Unit,
     subtreeElement: () -> JsonElement?,
 ) {
-    val menuExpanded = remember { mutableStateOf(false) }
-    val indication = if (showRowIndication) LocalIndication.current else null
-    Box {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                // 桌面右键开菜单; 主键长按由 combinedClickable 上报
-                .pointerInput(Unit) {
-                    awaitPointerEventScope {
-                        while (true) {
-                            val event = awaitPointerEvent()
-                            if (event.type != PointerEventType.Press) continue
-                            if (event.buttons.isSecondaryPressed) menuExpanded.value = true
-                        }
-                    }
-                }
-                .padding(start = indent)
-                .combinedClickable(
-                    interactionSource = null,
-                    indication = indication,
-                    onLongClick = { menuExpanded.value = true },
-                    onClick = onClick
-                ),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                modifier = Modifier
-                    .size(iconSize)
-                    .graphicsLayer(rotationZ = if (state == TreeState.COLLAPSED) 0F else 90F),
-                imageVector = icon,
-                tint = colors.iconColor,
-                contentDescription = null
-            )
-
-            Text(text = text, style = textStyle)
-        }
-        if (menuExpanded.value && itemMenu != null) {
-            DropdownMenu(
-                expanded = true,
-                onDismissRequest = { menuExpanded.value = false },
-                // 菜单左缘对齐行内容起点 (缩进之后); 越出窗口右缘由官方定位器内收
-                offset = DpOffset(indent, 0.dp),
-            ) {
-                itemMenu(JsonTreeItem(path, key, value, quotedValue, subtreeElement())) {
-                    menuExpanded.value = false
-                }
+    TreeRow(
+        indent = indent,
+        icon = icon,
+        iconSize = iconSize,
+        iconTint = colors.iconColor,
+        iconRotationDegrees = if (state == TreeState.COLLAPSED) 0F else 90F,
+        text = text,
+        textStyle = textStyle,
+        showRowIndication = showRowIndication,
+        onClick = onClick,
+        // payload 构造在菜单组合期执行: subtreeElement 的下钻只在菜单打开时发生 (惰性保持)
+        menu = if (itemMenu != null) {
+            { dismiss ->
+                itemMenu(JsonTreeItem(path, key, value, quotedValue, subtreeElement()), dismiss)
             }
-        }
-    }
+        } else {
+            null
+        },
+    )
 }
 
 @Composable
@@ -405,45 +374,27 @@ private fun Primitive(
     quotedValue: String? = null,
     itemMenu: (@Composable ColumnScope.(JsonTreeItem, () -> Unit) -> Unit)?,
     showRowIndication: Boolean,
+    iconSize: Dp,
 ) {
-    val menuExpanded = remember { mutableStateOf(false) }
-    val indication = if (showRowIndication) LocalIndication.current else null
-    Box {
-        Text(
-            modifier = Modifier
-                .fillMaxWidth()
-                // 桌面右键开菜单; 主键长按由 combinedClickable 上报
-                .pointerInput(Unit) {
-                    awaitPointerEventScope {
-                        while (true) {
-                            val event = awaitPointerEvent()
-                            if (event.type != PointerEventType.Press) continue
-                            if (event.buttons.isSecondaryPressed) menuExpanded.value = true
-                        }
-                    }
-                }
-                .padding(start = indent)
-                .combinedClickable(
-                    interactionSource = null,
-                    indication = indication,
-                    onLongClick = { menuExpanded.value = true },
-                    onClick = {}
-                ),
-            text = text,
-            style = textStyle
-        )
-        if (menuExpanded.value && itemMenu != null) {
-            DropdownMenu(
-                expanded = true,
-                onDismissRequest = { menuExpanded.value = false },
-                offset = DpOffset(indent, 0.dp),
-            ) {
-                itemMenu(JsonTreeItem(path, key, value, quotedValue)) {
-                    menuExpanded.value = false
-                }
-            }
-        }
-    }
+    TreeRow(
+        indent = indent,
+        icon = null,
+        iconSize = iconSize,
+        iconTint = Color.Unspecified,
+        iconRotationDegrees = 0F,
+        text = text,
+        textStyle = textStyle,
+        showRowIndication = showRowIndication,
+        // 原始值行无主键动作, 仅长按/右键菜单
+        onClick = {},
+        // 上游行为: 原始值行无图标占位, 文本直接从缩进起点排
+        iconSpace = false,
+        menu = if (itemMenu != null) {
+            { dismiss -> itemMenu(JsonTreeItem(path, key, value, quotedValue), dismiss) }
+        } else {
+            null
+        },
+    )
 }
 
 @Composable

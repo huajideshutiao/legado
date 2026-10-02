@@ -103,3 +103,10 @@
   `util/AnnotatedText.kt`: `rememberCollapsableText`/`rememberPrimitiveText` 的 remember 键补全
   (`type`/`childItemCount`/`isLastItem`/`parentType`), 同槽位复用时不再渲染陈旧文本。
 - 第 5 节 `toJsonPath()` 的标定能力不变; 长按回调签名以本清单为准。
+- `JsonTree` 新增 `onRootParsed: ((JsonElement) -> Unit)? = null`: 仅整文档从文本解析完成时
+  （子树直通渲染不回调）在主线程回传解析产物根, 供宿主对任意前缀路径下钻（面包屑聚焦跳转），
+  零重复解析。
+- 新增公开组件 `TreeRow`（泛型折叠/叶子行容器: 缩进+折叠图标静态旋转角+行文本+长按/右键
+  行内锚定菜单, 菜单内容惰性组合）, `Collapsable`/`Primitive` 改为委托它（渲染行为不变:
+  原始值行无图标占位由 `iconSpace = false` 保持）; 宿主的 HTML 树行（:ui HtmlTree）复用同一
+  组件, 消除两套交互骨架重复。
