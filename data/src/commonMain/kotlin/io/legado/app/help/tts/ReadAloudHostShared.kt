@@ -7,6 +7,8 @@ import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.media.ReadAloudRemoteHost
 import io.legado.app.help.media.SleepTimer
 import io.legado.app.model.ActiveReadAloudHostPorts
+import io.legado.app.model.ActiveReadBookRegistry
+import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.service.ReadAloudChapterDataPort
 import io.legado.app.service.ReadAloudChapterPlan
 import io.legado.app.service.ReadAloudControllerShared
@@ -66,6 +68,23 @@ abstract class ReadAloudHostShared(
 
     /** 朗读控制器 (进程内单例, 首次访问时建)。 */
     val controller: ReadAloudControllerShared by lazy { createController() }
+
+    /**
+     * 最近一次已知的书名快照。
+     *
+     * 朗读不依赖阅读页存活: 阅读页销毁后 [ActiveReadBookRegistry] 已置空, 此时
+     * 从托盘/播控中心 pause→resume 会把会话切到空书名 pending 且无人补名
+     * (听书时长从此不再计入)。故在每次拿到非空书名时留快照, 供无阅读页时回退。
+     */
+    @Volatile
+    private var lastBookName: String = ""
+
+    /** 当前朗读书名: 活动阅读实例优先, 无阅读页时回退到上次非空快照。 */
+    private fun currentBookName(): String {
+        ActiveReadBookRegistry.current?.bookValue?.name?.takeIf { it.isNotEmpty() }
+            ?.let { return it }
+        return lastBookName
+    }
 
     /** 对应 app 端 `BaseReadAloudService.isRun`。 */
     override val isRun: Boolean
@@ -181,13 +200,13 @@ abstract class ReadAloudHostShared(
 
     // region 内部实现
 
-    /** 定时关闭: 到点暂停朗读, 与原版 BaseReadAloudService 的 SleepTimer 同语义。 */
+    /** 定时关闭: 到点终止朗读, 与原版 BaseReadAloudService 的 SleepTimer 同语义。 */
     private val sleepTimer by lazy {
         SleepTimer(
             scope = scope,
             postMinute = { ports.positionPublisher.publishTimer(it) },
             isPaused = { isPause },
-            onTimeout = { pause() },
+            onTimeout = { stop() },
         )
     }
 
@@ -311,16 +330,23 @@ abstract class ReadAloudHostShared(
     private fun onStateChanged(state: ReadAloudState) {
         when (state) {
             ReadAloudState.PLAYING -> {
+                // 本类平台无 BaseReadAloudService, 朗读计时由状态广播承担,
+                // 语义对齐 app 端: PLAYING=start / PAUSED=end / 终态=endImmediately
+                val bookName = currentBookName()
+                lastBookName = bookName
+                ReadTimeRecorder.start(ReadTimeRecorder.Source.READ_ALOUD, bookName)
                 ports.positionPublisher.publishState(Status.PLAY)
                 ports.mediaControl.sync(isPlaying = true)
             }
 
             ReadAloudState.PAUSED -> {
+                ReadTimeRecorder.end(ReadTimeRecorder.Source.READ_ALOUD)
                 ports.positionPublisher.publishState(Status.PAUSE)
                 ports.mediaControl.sync(isPlaying = false)
             }
 
             ReadAloudState.STOPPED, ReadAloudState.COMPLETED, ReadAloudState.ERROR -> {
+                ReadTimeRecorder.endImmediately(ReadTimeRecorder.Source.READ_ALOUD)
                 ports.positionPublisher.publishState(Status.STOP)
                 ports.mediaControl.release()
             }
