@@ -861,6 +861,7 @@
     <string name="clear_cache_success">成功清理缓存</string>
     <string name="export_bookmark_json">导出书签 JSON</string>
     <string name="export_success">导出成功</string>
+    <string name="share_card_truncated">内容过长，图片已截断</string>
     <string name="export_bookmark_md">导出书签 Markdown</string>
     <string name="no_book">没有书籍</string>
     <string name="non_null_name_url">名称和 URL 不能为空</string>

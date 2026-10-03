@@ -1,5 +1,6 @@
 package io.legado.app.ui.book.bookmark
 
+import androidx.compose.ui.graphics.ImageBitmap
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.ThreadSafeDateFormat
 import io.legado.app.data.AppDbProviders
@@ -44,6 +45,45 @@ object BookmarkExporter {
         val exportedAt = systemCurrentTimeMillis()
         export(fileName) {
             buildMd(loadBookmarks(bookName, bookAuthor), exportedAt)
+        }
+    }
+
+    /**
+     * 导出书签分享卡片 PNG: 位图 → PNG 编码 → 平台图片保存通道, 文件名对齐全本书签页
+     * 导出惯例 (bookmark-书名-时间戳.png)。
+     *
+     * 渲染由调用方完成 (预览对话框经 GraphicsLayer 录制 [BookmarkShareCard], 预览与
+     * 烘焙共用同一 Composable), 本入口只负责编码与落盘。不走 files.saveFile: Android 端
+     * 它返回 content:// Uri (SAF) 而 common 层无字节写入通道 (BackupFileOps 仅有
+     * writeText), 故用 saveImageBytes —— 四端已验证的图片字节保存通道
+     * (对照图片查看器长按保存: true=写入成功 / false=写入失败 / null=用户取消)。
+     *
+     * @return 是否已保存 (用户取消返回 false 且静默, 不 toast)
+     */
+    suspend fun exportImage(bookmark: Bookmark, image: ImageBitmap): Boolean {
+        return try {
+            val fileName = "bookmark-${bookmark.bookName}-${
+                ThreadSafeDateFormat("yyMMddHHmmss").format(systemCurrentTimeMillis())
+            }.png"
+            val bytes = withContext(IoDispatcher) { image.encodePngBytes() }
+            when (withContext(IoDispatcher) {
+                PlatformServiceProviders.get().files.saveImageBytes(fileName, bytes)
+            }) {
+                true -> {
+                    Toasters.get().toast("导出成功")
+                    true
+                }
+                null -> false
+                else -> {
+                    AppLog.put("导出失败\n写入失败", null, true)
+                    false
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            AppLog.put("导出失败\n${e.message}", e, true)
+            false
         }
     }
 

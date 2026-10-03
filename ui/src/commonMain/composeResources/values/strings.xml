@@ -859,6 +859,7 @@
     <string name="clear_cache_success">Cache cleared</string>
     <string name="export_bookmark_json">Export bookmarks as JSON</string>
     <string name="export_success">export success</string>
+    <string name="share_card_truncated">Content too long, image truncated</string>
     <string name="export_bookmark_md">Export bookmarks as Markdown</string>
     <string name="no_book">No books</string>
     <string name="non_null_name_url">name and URL cannot be empty</string>
