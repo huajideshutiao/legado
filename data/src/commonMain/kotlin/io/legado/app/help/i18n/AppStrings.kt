@@ -40,6 +40,9 @@ enum class AppStringKey {
     toc_updateing,
     error_load_toc,
 
+    // 划线：跨章选区无单章区间可存
+    underline_cross_chapter_unsupported,
+
     // AppWebDav 授权失败
     webdav_application_authorization_error,
 

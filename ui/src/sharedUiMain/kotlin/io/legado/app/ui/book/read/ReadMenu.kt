@@ -155,7 +155,7 @@ enum class ReadMenuAction {
     REFRESH, REFRESH_DUR, REFRESH_AFTER, REFRESH_ALL,
     DOWNLOAD, TOC_REGEX, SET_CHARSET,
     ADD_BOOKMARK, EDIT_CONTENT, SYNC_PROGRESS, SIMULATED_READING,
-    ENABLE_REPLACE, SAME_TITLE_REMOVED, RE_SEGMENT, REVIEW,
+    ENABLE_REPLACE, KEYWORD_HIGHLIGHT, SAME_TITLE_REMOVED, RE_SEGMENT, REVIEW,
     DEL_RUBY_TAG, DEL_H_TAG, IMAGE_STYLE, UPDATE_TOC, LOG, HELP,
 }
 
@@ -498,6 +498,10 @@ open class BaseReadMenuState(
             }
 
             ReadMenuAction.ENABLE_REPLACE -> screenModel.viewModel.toggleUseReplaceRule()
+            ReadMenuAction.KEYWORD_HIGHLIGHT -> {
+                hide()
+                navigator.push(AppRoute.KeywordHighlight)
+            }
             ReadMenuAction.SAME_TITLE_REMOVED -> screenModel.viewModel.reverseRemoveSameTitle()
             ReadMenuAction.RE_SEGMENT -> screenModel.viewModel.toggleReSegment()
             ReadMenuAction.IMAGE_STYLE -> screenModel.postDialogEvent(ReaderDialogEvent.ImageStyle)
@@ -964,6 +968,7 @@ private fun TopOverflowMenu(state: ReadMenuState, tint: Color) {
             OverflowCheckItem("replace_rule_title", menu.enableReplaceChecked) {
                 click(ReadMenuAction.ENABLE_REPLACE)
             }
+            OverflowItem("keyword_highlight") { click(ReadMenuAction.KEYWORD_HIGHLIGHT) }
             OverflowCheckItem("same_title_removed", menu.sameTitleRemovedChecked) {
                 click(ReadMenuAction.SAME_TITLE_REMOVED)
             }

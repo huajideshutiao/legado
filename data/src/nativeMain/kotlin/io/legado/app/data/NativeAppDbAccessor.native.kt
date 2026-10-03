@@ -14,6 +14,7 @@ import io.legado.app.data.dao.ReadRecordDao
 import io.legado.app.data.dao.ReplaceRuleDao
 import io.legado.app.data.dao.RuleSubDao
 import io.legado.app.data.dao.SearchKeywordDao
+import io.legado.app.data.dao.KeywordHighlightDao
 import io.legado.app.data.dao.ServerDao
 import io.legado.app.data.dao.SourceFilterRuleDao
 import io.legado.app.data.dao.TxtTocRuleDao
@@ -56,6 +57,7 @@ class NativeAppDbAccessor : AppDbAccessor {
     override val bookChapterDao: BookChapterDao get() = appDb.bookChapterDao
     // BookInfoViewModelShared.loadGroup 用 (查询分组名)
     override val bookGroupDao: BookGroupDao get() = appDb.bookGroupDao
+    override val keywordHighlightDao: KeywordHighlightDao get() = appDb.keywordHighlightDao
     override val replaceRuleDao: ReplaceRuleDao get() = appDb.replaceRuleDao
     override val txtTocRuleDao: TxtTocRuleDao get() = appDb.txtTocRuleDao
     override val dictRuleDao: DictRuleDao get() = appDb.dictRuleDao

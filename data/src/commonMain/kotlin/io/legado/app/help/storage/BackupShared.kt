@@ -96,10 +96,11 @@ object BackupShared {
             return base + BackupFileOps.separator + ZIP_FILE_NAME
         }
 
-    /** 备份时需要导出的所有文件名 (与原版 backupFileNames 逐项一致, 19 个)。 */
+    /** 备份时需要导出的所有文件名 (与原版 backupFileNames 逐项一致 + KMP 期新增的 keywordHighlight.json, 共 20 个)。 */
     private val backupFileNames: Array<String> = arrayOf(
         "bookshelf.json",
         "bookmark.json",
+        "keywordHighlight.json",
         "bookGroup.json",
         "bookSource.json",
         "replaceRule.json",
@@ -233,6 +234,7 @@ object BackupShared {
             // 1. DAO 数据导出 (与原版顺序一致)
             writeListToJson(appDb.bookDao.all(), "bookshelf.json")
             writeListToJson(appDb.bookmarkDao.all().sortedByLocalizedOrder(), "bookmark.json")
+            writeListToJson(appDb.keywordHighlightDao.all(), "keywordHighlight.json")
             writeListToJson(appDb.bookGroupDao.all(), "bookGroup.json")
             writeListToJson(appDb.bookSourceDao.all(), "bookSource.json")
             writeListToJson(appDb.replaceRuleDao.all(), "replaceRule.json")

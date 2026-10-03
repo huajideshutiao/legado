@@ -2,6 +2,10 @@ package io.legado.app.ui.book.bookmark
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -16,14 +20,21 @@ import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.Bookmark
+import io.legado.app.ui.book.read.page.overlay.HighlightPalette
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.component.OverflowMenu
@@ -33,6 +44,9 @@ import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.all_bookmark
 import legado.ui.generated.resources.export
 import legado.ui.generated.resources.export_md
+import legado.ui.generated.resources.ic_share
+import legado.ui.generated.resources.share
+import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
 // ===== state / actions =====
@@ -129,6 +143,8 @@ private fun BookmarkList(state: AllBookmarkUiState, actions: AllBookmarkUiAction
         out
     }
     val navPad = WindowInsets.navigationBars.asPaddingValues()
+    // 分享卡片对话框态放本层: 条目回收不会销毁弹出的对话框
+    var shareBookmark by remember { mutableStateOf<Bookmark?>(null) }
     FastScrollLazyColumn(
         state = rememberLazyListState(),
         modifier = Modifier.fillMaxSize(),
@@ -139,9 +155,12 @@ private fun BookmarkList(state: AllBookmarkUiState, actions: AllBookmarkUiAction
                 GroupHeader("${key.first}(${key.second})")
             }
             itemsIndexed(items, key = { _, iv -> iv.value.time }) { _, iv ->
-                BookmarkItem(actions, iv.value, iv.index)
+                BookmarkItem(actions, iv.value, iv.index, onShareImage = { shareBookmark = iv.value })
             }
         }
+    }
+    shareBookmark?.let { bookmark ->
+        BookmarkShareCardDialog(bookmark = bookmark, onDismiss = { shareBookmark = null })
     }
 }
 
@@ -164,14 +183,16 @@ private fun GroupHeader(text: String) {
     )
 }
 
-/** 单条书签：点击跳转/长按编辑，章节名 + 原文 + 摘要(空则隐藏) */
+/** 单条书签/批注：点击跳转/长按编辑；批注条目带色档圆点；行尾分享图片入口 */
 @Composable
 private fun BookmarkItem(
     actions: AllBookmarkUiActions,
     item: Bookmark,
     pos: Int,
+    onShareImage: () -> Unit,
 ) {
     val colors = AppTheme.colors
+    val isUnderline = item.type == Bookmark.TYPE_UNDERLINE
     Column(
         Modifier
             .fillMaxWidth()
@@ -181,16 +202,35 @@ private fun BookmarkItem(
             )
             .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingDefault),
     ) {
-        Text(
-            text = item.chapterName,
-            color = colors.primaryText,
-            fontSize = 14.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(DesignTokens.spacingXs),
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (isUnderline) {
+                Box(
+                    Modifier
+                        .padding(end = DesignTokens.spacingXs)
+                        .size(10.dp)
+                        .background(HighlightPalette.colorOf(item.colorIndex), CircleShape),
+                )
+            }
+            Text(
+                text = item.chapterName,
+                color = colors.primaryText,
+                fontSize = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(DesignTokens.spacingXs),
+            )
+            // 分享图片: 弹书签分享卡片预览对话框 (预览即所得, 保存走 BookmarkExporter.exportImage)
+            IconButton(onClick = onShareImage) {
+                Icon(
+                    painter = painterResource(Res.drawable.ic_share),
+                    contentDescription = stringResource(Res.string.share),
+                    tint = colors.secondaryText,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
         if (item.bookText.isNotEmpty()) {
             Text(
                 text = item.bookText,

@@ -185,6 +185,7 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
         textActions = ReaderTextActions(
             onReplace = screenModel.replaceTextCallback(),
             onBookmark = screenModel.bookmarkTextCallback(),
+            onUnderline = screenModel.underlineTextCallback(),
             onReadAloud = screenModel.readAloudTextCallback(),
             onSearchContent = screenModel.searchContentTextCallback(),
         )

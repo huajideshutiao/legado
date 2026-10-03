@@ -3,6 +3,7 @@ package io.legado.app.ui.book.read
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Rect
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Status
@@ -20,6 +21,8 @@ import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.book.changeSourceTo
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.i18n.AppStringKey
+import io.legado.app.help.i18n.appString
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.coroutine.mainDispatcher
@@ -975,6 +978,96 @@ class ReaderScreenModel(
         }
         postDialogEvent(ReaderDialogEvent.AddBookmark(bookmark))
     }
+
+    /**
+     * 划线回调：以选区折算的章内区间存 Bookmark(type = 1), 色档默认 0 档。
+     *
+     * 偏移与原文同源 ([PageSelectionState.selectedChapterRange] 同一账本遍历), 口径同
+     * TextLine.chapterPosition (净化/替换/简繁后的排版输入文本); 章号取区间自身所属章
+     * (滚动模式下选区可含下一章页, 与当前阅读章不一定同章); 回显由 ChapterHighlightState
+     * 重锚投影, 跳转无需额外处理。不弹编辑框 (对照 menu_bookmark 的差异面);
+     * 菜单收尾 (关菜单 + 取消选择) 由 ReaderTextActionMenu 的 entry(onFinally) 统一完成。
+     *
+     * 跨章选区无单章区间可存, 折算返回 null, 此处提示用户后放弃本次划线。
+     */
+    fun underlineTextCallback(): (String) -> Unit = onUnderline@{ _ ->
+        val book = viewModel.book.value ?: return@onUnderline
+        val range = selection.selectedChapterRange()
+        if (range == null) {
+            Toasters.get().toast(appString(AppStringKey.underline_cross_chapter_unsupported))
+            return@onUnderline
+        }
+        scope.launch {
+            val bookmark = Bookmark(bookName = book.name, bookAuthor = book.author).apply {
+                chapterIndex = range.chapterIndex
+                chapterPos = range.start
+                endPos = range.endExclusive
+                chapterName = chapterTitleOf(range.chapterIndex)
+                bookText = range.text
+                type = Bookmark.TYPE_UNDERLINE
+                colorIndex = 0
+            }
+            runCatching { AppDbProviders.get().bookmarkDao.insert(bookmark) }
+                .onFailure { AppLog.put("保存划线失败\n${it.message}", it) }
+        }
+    }
+
+    /** 章号对应的目录标题 (目录未装载或越界时为空串, 与划线书签的章名落库口径一致) */
+    private fun chapterTitleOf(chapterIndex: Int): String =
+        viewModel.chapterList.value.getOrNull(chapterIndex)?.title ?: ""
+
+    // region 划线批注气泡 (轻点命中划线区域弹出, 操作完成即关闭)
+
+    /**
+     * 划线批注气泡状态 (null = 不显示)。快照式: 弹出时定格命中实体与锚点矩形,
+     * 编辑/换色/删除都以此快照的 bookmark.time 为目标 (time 是主键, 恒可定位)。
+     */
+    var underlineBubble by mutableStateOf<UnderlineBubbleState?>(null)
+        private set
+
+    /** 轻点命中已划线区域 (ReadViewComposable.onTapAt 命中分发回调): 弹气泡 */
+    fun onUnderlineTap(bookmark: Bookmark, anchor: Rect) {
+        underlineBubble = UnderlineBubbleState(bookmark, anchor)
+    }
+
+    fun dismissUnderlineBubble() {
+        underlineBubble = null
+    }
+
+    /**
+     * 换色/编辑/删除均直接 PATCH 落 BookmarkDao, 回显由 ChapterHighlightState
+     * 订阅的 DAO flow 自动刷新; 操作完成即关气泡 (拍板)。
+     */
+    fun changeUnderlineColor(colorIndex: Int) {
+        val bubble = underlineBubble ?: return
+        underlineBubble = null
+        scope.launch {
+            runCatching {
+                AppDbProviders.get().bookmarkDao.updateColorIndex(bubble.bookmark.time, colorIndex)
+            }.onFailure { AppLog.put("划线换色失败\n${it.message}", it) }
+        }
+    }
+
+    fun saveUnderlineNote(content: String) {
+        val bubble = underlineBubble ?: return
+        underlineBubble = null
+        scope.launch {
+            runCatching {
+                AppDbProviders.get().bookmarkDao.updateContent(bubble.bookmark.time, content)
+            }.onFailure { AppLog.put("保存批注失败\n${it.message}", it) }
+        }
+    }
+
+    fun deleteUnderline() {
+        val bubble = underlineBubble ?: return
+        underlineBubble = null
+        scope.launch {
+            runCatching { AppDbProviders.get().bookmarkDao.delete(bubble.bookmark) }
+                .onFailure { AppLog.put("删除划线失败\n${it.message}", it) }
+        }
+    }
+
+    // endregion
 
     /**
      * 全文搜索回调（对照原版 menu_search_content）：设置搜索词后走既有搜索路由。

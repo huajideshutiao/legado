@@ -1682,4 +1682,19 @@
     <string name="copy_key_value">Copy key-value pair</string>
     <string name="copy_json_path">Copy JSONPath</string>
     <string name="view_value">View</string>
+
+    <!-- 划线回显 (Bookmark.type=1) 与关键词高亮 -->
+    <string name="underline">Underline</string>
+    <string name="keyword_highlight">Keyword Highlights</string>
+    <string name="keyword_highlight_empty">No keyword highlights yet</string>
+    <string name="keyword_highlight_add">Add Keyword Highlight</string>
+    <string name="keyword">Keyword</string>
+    <string name="keyword_highlight_underline">Underline</string>
+    <string name="keyword_highlight_scope">Scope, optional book name or source URL</string>
+    <string name="keyword_highlight_scope_all">All books</string>
+    <string name="keyword_highlight_scope_limited">Limited to %1$d item(s)</string>
+
+    <!-- 划线批注气泡 -->
+    <string name="underline_note">Note</string>
+    <string name="underline_note_add">Add note</string>
 </resources>

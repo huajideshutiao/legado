@@ -11,7 +11,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.unit.IntSize
+import io.legado.app.data.entities.Bookmark
 import io.legado.app.ui.book.read.page.LocalReaderTextMeasurer
 import io.legado.app.ui.book.read.page.PageSelectionState
 import io.legado.app.ui.book.read.page.ReadViewComposable
@@ -64,6 +66,12 @@ interface ReaderUiActions {
      * （对照旧 ReadView.CallBack.showTextActionMenu；默认空实现，未接入的平台忽略）
      */
     fun onTextSelection(text: String, anchorX: Float, anchorY: Float) {}
+
+    /**
+     * 轻点命中已划线区域 (用户拍板: 短路默认单击行为弹批注气泡): 携带划线实体与
+     * 气泡锚点矩形 (全窗坐标, 锚定命中划线的首个投影色块矩形)。默认空实现。
+     */
+    fun onUnderlineTap(bookmark: Bookmark, anchor: Rect) {}
 
     /**
      * 同步关闭浮动文本操作菜单（对照原版 ReadView ACTION_DOWN → textActionMenu.dismiss()
@@ -137,6 +145,7 @@ fun ReaderScreen(
                 // 点按取消选择等手势分支：同步关平台浮动菜单（对照原版 ACTION_DOWN →
                 // textActionMenu.dismiss 同步语义，避免事件链异步延迟的"闪一下再消失"）
                 onDismissSelectionMenu = { actions.onDismissTextActionMenu() },
+                onUnderlineTap = { bookmark, anchor -> actions.onUnderlineTap(bookmark, anchor) },
                 // 菜单可见让位判定含搜索菜单（对照原版 menuLayoutIsVisible =
                 // readMenu.isVisible || searchMenu.isVisible）
                 menuVisible = { state.menuState.isVisible || state.searchMenuState.rootVisible },

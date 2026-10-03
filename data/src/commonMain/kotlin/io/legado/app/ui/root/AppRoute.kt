@@ -202,6 +202,11 @@ sealed interface AppRoute {
     @SerialName("source_filter_rule")
     data object SourceFilterRule : AppRoute
 
+    // 关键词高亮管理 (全局规则, 阅读页顶栏溢出菜单进入)
+    @Serializable
+    @SerialName("keyword_highlight")
+    data object KeywordHighlight : AppRoute
+
     @Serializable
     @SerialName("rule_sub")
     data object RuleSub : AppRoute

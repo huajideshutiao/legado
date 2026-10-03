@@ -2,6 +2,7 @@ package io.legado.app.ui.book.read.page.overlay
 
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
+import androidx.compose.ui.geometry.Rect
 
 /**
  * 搜索命中范围（不可变外部状态，使用章节正文的半开字符区间）。
@@ -14,6 +15,28 @@ data class SearchHighlightOverlay(
     val chapterIndex: Int,
     val start: Int,
     val endExclusive: Int,
+)
+
+/**
+ * 静态章内区间高亮 (划线回显 / 关键词命中共用的 overlay 状态, 不可变)。
+ *
+ * 与 [SearchHighlightOverlay] 同一字符账本 (每个 TextColumn 消耗 charData.length,
+ * 非文字列消耗 1), 章内偏移口径同 `TextLine.chapterPosition`。
+ *
+ * @param chapterIndex 章节序号
+ * @param start 章内起始字符偏移 (含)
+ * @param endExclusive 章内结束字符偏移 (不含)
+ * @param colorIndex 色档索引 (见 HighlightPalette)
+ * @param underline true = 背景色块之外在命中行行底补同色下划线 (关键词规则项)
+ * @param underlineId 来源划线 Bookmark.time (点击命中后反查实体用); 关键词命中恒 0
+ */
+data class HighlightOverlay(
+    val chapterIndex: Int,
+    val start: Int,
+    val endExclusive: Int,
+    val colorIndex: Int = 0,
+    val underline: Boolean = false,
+    val underlineId: Long = 0,
 )
 
 /**
@@ -191,5 +214,80 @@ object PageOverlayProjector {
                 )
             }
         }
+    }
+
+    /**
+     * 静态区间高亮投影 (章内字符区间维度, 算法同 [projectSearchResult]): 命中范围与当前页
+     * 求交后逐行折算到文字列，连续命中列合并为矩形；同一区间自然可投影到涉及的所有页面。
+     * 消息占位页的页内偏移与章内账本不同源，不投影。
+     */
+    inline fun projectHighlight(
+        textPage: TextPage,
+        highlight: HighlightOverlay,
+        emit: (left: Float, top: Float, right: Float, bottom: Float, lineIndex: Int) -> Unit,
+    ) {
+        if (textPage.isMsgPage) return
+        if (highlight.endExclusive <= highlight.start) return
+        val range = SearchHighlightOverlay(
+            chapterIndex = highlight.chapterIndex,
+            start = highlight.start,
+            endExclusive = highlight.endExclusive,
+        )
+        val lines = textPage.lines
+        for (lineIndex in lines.indices) {
+            val line = lines[lineIndex]
+            val columns = line.columns
+            var chapterPos = line.chapterPosition
+            var runStart = -1
+            var runEnd = -1
+            for (colIdx in columns.indices) {
+                val column = columns[colIdx]
+                val length = if (column is TextColumn) column.charData.length else 1
+                val columnEnd = chapterPos + length
+                val hit = column is TextColumn && isSearchRangeHit(
+                    textPage = textPage,
+                    highlight = range,
+                    start = chapterPos,
+                    endExclusive = columnEnd,
+                )
+                if (hit) {
+                    if (runStart < 0) runStart = colIdx
+                    runEnd = colIdx
+                } else if (runStart >= 0) {
+                    emit(
+                        columns[runStart].start,
+                        line.lineTop,
+                        columns[runEnd].end,
+                        line.lineBottom,
+                        lineIndex,
+                    )
+                    runStart = -1
+                    runEnd = -1
+                }
+                chapterPos = columnEnd
+            }
+            if (runStart >= 0) {
+                emit(
+                    columns[runStart].start,
+                    line.lineTop,
+                    columns[runEnd].end,
+                    line.lineBottom,
+                    lineIndex,
+                )
+            }
+        }
+    }
+
+    /**
+     * 命中划线的页内锚定矩形 (首个投影矩形): 点击划线弹批注气泡时, 气泡锚点取该矩形
+     * (与绘制同走 [projectHighlight] 投影, 锚点即所见色块)。无投影 (区间为空/消息页) 返回 null。
+     */
+    fun projectHighlightAnchorRect(textPage: TextPage, highlight: HighlightOverlay): Rect? {
+        if (textPage.isMsgPage) return null
+        var anchor: Rect? = null
+        projectHighlight(textPage, highlight) { l, t, r, b, _ ->
+            if (anchor == null) anchor = Rect(l, t, r, b)
+        }
+        return anchor
     }
 }

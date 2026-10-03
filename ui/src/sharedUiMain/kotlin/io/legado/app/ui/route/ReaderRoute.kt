@@ -12,6 +12,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.Lifecycle
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
@@ -46,6 +47,7 @@ import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadBookViewModelShared
 import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.book.read.ReadMenuAction
+import io.legado.app.data.entities.Bookmark
 import io.legado.app.ui.book.read.ReaderDialogEvent
 import io.legado.app.ui.book.read.ReaderPlatformProviders
 import io.legado.app.ui.book.read.ReaderScreen
@@ -53,6 +55,7 @@ import io.legado.app.ui.book.read.ReaderScreenModel
 import io.legado.app.ui.book.read.ReaderScreenModelRegistry
 import io.legado.app.ui.book.read.ReaderUiActions
 import io.legado.app.ui.book.read.ReaderUiState
+import io.legado.app.ui.book.read.UnderlineNoteBubbleHost
 import io.legado.app.ui.book.read.SimulatedReadingDialog
 import io.legado.app.ui.book.read.config.AutoReadActions
 import io.legado.app.ui.book.read.config.AutoReadController
@@ -263,6 +266,10 @@ fun ReaderRoute(
 
             override fun onTextSelection(text: String, anchorX: Float, anchorY: Float) {
                 provider.onTextSelected(screenModel, text, anchorX, anchorY)
+            }
+
+            override fun onUnderlineTap(bookmark: Bookmark, anchor: Rect) {
+                screenModel.onUnderlineTap(bookmark, anchor)
             }
 
             // 点按取消选择等手势分支：同步关平台浮动菜单（对照原版 ACTION_DOWN →
@@ -494,6 +501,15 @@ fun ReaderRoute(
         actions = actions,
         focusRequester = keyFocusRequester,
         onTextAreaMeasured = { textAreaSize = it },
+    )
+
+    // 划线批注气泡 (轻点已划线区域弹出; 编辑/换色/删除直接落 DAO, 回显经 flow 自动刷新)
+    UnderlineNoteBubbleHost(
+        state = screenModel.underlineBubble,
+        onDismiss = { screenModel.dismissUnderlineBubble() },
+        onEditConfirm = { content -> screenModel.saveUnderlineNote(content) },
+        onColorChange = { colorIndex -> screenModel.changeUnderlineColor(colorIndex) },
+        onDelete = { screenModel.deleteUnderline() },
     )
 
     // region ReadBookEvents 订阅 (对照 app 端 ReadBookActivity.observeLiveBus 的 ReadBookEvents 收集)

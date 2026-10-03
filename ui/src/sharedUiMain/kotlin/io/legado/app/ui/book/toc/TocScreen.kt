@@ -38,6 +38,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -47,6 +49,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.Book
@@ -54,6 +57,8 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.book.isLocalTxt
 import io.legado.app.help.book.simulatedTotalChapterNum
+import io.legado.app.ui.book.bookmark.BookmarkShareCardDialog
+import io.legado.app.ui.book.read.page.overlay.HighlightPalette
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTitleBar
@@ -74,6 +79,7 @@ import legado.ui.generated.resources.bookmark
 import legado.ui.generated.resources.chapter_list
 import legado.ui.generated.resources.export
 import legado.ui.generated.resources.export_md
+import legado.ui.generated.resources.share
 import legado.ui.generated.resources.go_to_bottom
 import legado.ui.generated.resources.go_to_top
 import legado.ui.generated.resources.ic_arrow_drop_down
@@ -81,6 +87,7 @@ import legado.ui.generated.resources.ic_arrow_drop_up
 import legado.ui.generated.resources.ic_check
 import legado.ui.generated.resources.ic_lock_outline
 import legado.ui.generated.resources.ic_outline_cloud_24
+import legado.ui.generated.resources.ic_share
 import legado.ui.generated.resources.load_word_count
 import legado.ui.generated.resources.log
 import legado.ui.generated.resources.reverse_toc
@@ -572,6 +579,8 @@ private fun BookmarkPage(state: TocUiState, actions: TocUiActions) {
         }
     }
     val navPad = WindowInsets.navigationBars.asPaddingValues()
+    // 分享卡片对话框态放本层: 条目回收不会销毁弹出的对话框
+    var shareBookmark by remember { mutableStateOf<Bookmark?>(null) }
     FastScrollLazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
@@ -582,8 +591,11 @@ private fun BookmarkPage(state: TocUiState, actions: TocUiActions) {
         ),
     ) {
         items(bookmarks, key = { it.time }) { item ->
-            BookmarkItem(actions, item)
+            BookmarkItem(actions, item, onShareImage = { shareBookmark = item })
         }
+    }
+    shareBookmark?.let { bookmark ->
+        BookmarkShareCardDialog(bookmark = bookmark, onDismiss = { shareBookmark = null })
     }
 }
 
@@ -592,8 +604,10 @@ private fun BookmarkPage(state: TocUiState, actions: TocUiActions) {
 private fun BookmarkItem(
     actions: TocUiActions,
     item: Bookmark,
+    onShareImage: () -> Unit,
 ) {
     val colors = AppTheme.colors
+    val isUnderline = item.type == Bookmark.TYPE_UNDERLINE
     Column(
         Modifier
             .fillMaxWidth()
@@ -605,16 +619,36 @@ private fun BookmarkItem(
             )
             .padding(vertical = DesignTokens.spacingDefault),
     ) {
-        Text(
-            text = item.chapterName,
-            color = colors.primaryText,
-            fontSize = 14.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(DesignTokens.spacingXs),
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // 划线条目带色档视觉标识 (与正文回显色块同源)
+            if (isUnderline) {
+                Box(
+                    Modifier
+                        .padding(end = DesignTokens.spacingXs)
+                        .size(10.dp)
+                        .background(HighlightPalette.colorOf(item.colorIndex), CircleShape),
+                )
+            }
+            Text(
+                text = item.chapterName,
+                color = colors.primaryText,
+                fontSize = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(DesignTokens.spacingXs),
+            )
+            // 分享图片: 弹书签分享卡片预览对话框 (预览即所得, 保存走 BookmarkExporter.exportImage)
+            IconButton(onClick = onShareImage) {
+                Icon(
+                    painter = painterResource(Res.drawable.ic_share),
+                    contentDescription = stringResource(Res.string.share),
+                    tint = colors.secondaryText,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
         if (item.bookText.isNotEmpty()) {
             Text(
                 text = item.bookText,

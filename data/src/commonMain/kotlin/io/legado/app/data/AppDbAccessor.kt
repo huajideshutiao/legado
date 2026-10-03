@@ -10,6 +10,7 @@ import io.legado.app.data.dao.CookieDao
 import io.legado.app.data.dao.DictRuleDao
 import io.legado.app.data.dao.HttpTTSDao
 import io.legado.app.data.dao.KeyboardAssistsDao
+import io.legado.app.data.dao.KeywordHighlightDao
 import io.legado.app.data.dao.ReadRecordDao
 import io.legado.app.data.dao.ReplaceRuleDao
 import io.legado.app.data.dao.RuleSubDao
@@ -48,6 +49,9 @@ interface AppDbAccessor {
     val bookChapterDao: BookChapterDao
     /** 书架分组 DAO (BookInfoViewModelShared.loadGroup / BookshelfViewModel 用)。 */
     val bookGroupDao: BookGroupDao
+
+    /** 关键词高亮 DAO (备份/恢复 keywordHighlight.json 用)。 */
+    val keywordHighlightDao: KeywordHighlightDao
     val replaceRuleDao: ReplaceRuleDao
     val readRecordDao: ReadRecordDao
     val serverDao: ServerDao

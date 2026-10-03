@@ -84,6 +84,7 @@ object WebBookProvidersImpl :
     override val bookChapterDao get() = appDb.bookChapterDao
     // BookInfoViewModelShared.loadGroup 用 (查询分组名)
     override val bookGroupDao get() = appDb.bookGroupDao
+    override val keywordHighlightDao get() = appDb.keywordHighlightDao
     override val replaceRuleDao get() = appDb.replaceRuleDao
     override val readRecordDao get() = appDb.readRecordDao
     override val serverDao get() = appDb.serverDao

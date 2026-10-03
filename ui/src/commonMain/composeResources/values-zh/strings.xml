@@ -1750,4 +1750,19 @@ Windows: winget install shinchiro.mpv 或 scoop install mpv,
     <string name="copy_key_value">复制键值对</string>
     <string name="copy_json_path">复制 JSONPath</string>
     <string name="view_value">查看</string>
+
+    <!-- 划线回显 (Bookmark.type=1) 与关键词高亮 -->
+    <string name="underline">划线</string>
+    <string name="keyword_highlight">关键词高亮</string>
+    <string name="keyword_highlight_empty">暂无关键词高亮</string>
+    <string name="keyword_highlight_add">添加关键词高亮</string>
+    <string name="keyword">关键词</string>
+    <string name="keyword_highlight_underline">下划线</string>
+    <string name="keyword_highlight_scope">作用范围，选填书名或者书源 URL</string>
+    <string name="keyword_highlight_scope_all">全局</string>
+    <string name="keyword_highlight_scope_limited">限定 %1$d 项</string>
+
+    <!-- 划线批注气泡 -->
+    <string name="underline_note">批注</string>
+    <string name="underline_note_add">添加批注</string>
 </resources>

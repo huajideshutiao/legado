@@ -74,6 +74,23 @@ interface SelectionPageSource {
 }
 
 /**
+ * 选区折算结果。
+ *
+ * @param chapterIndex 区间所属章序号 (取起止锚点页的 TextPage.chapterIndex)。滚动模式下
+ *   选区页空间含下一章页, 不能拿"当前阅读章"当区间章号
+ * @param start 章内起始字符偏移 (含, 账本口径同 [SearchHighlightOverlay]/TextLine.chapterPosition)
+ * @param endExclusive 章内结束字符偏移 (不含)
+ * @param text 与区间同一账本重建的选区原文 (每个 TextColumn 消耗 charData.length,
+ *   非文字列消耗 1, 段尾行含换行); 存档作为划线重锚依据
+ */
+data class ChapterSelectionRange(
+    val chapterIndex: Int,
+    val start: Int,
+    val endExclusive: Int,
+    val text: String,
+)
+
+/**
  * 页内文字选择状态机（Compose 阅读层版）。
  *
  * 对照 app 端 View 链的职责划分：
@@ -634,6 +651,63 @@ class PageSelectionState {
             }
         }
         return sb.toString()
+    }
+
+    /**
+     * 选区折算为章内半开区间 + 同账本原文 (长按划线存档用)。
+     *
+     * 不直接用 [selectedText] 的产物存档: 后者对"起点在行尾之后"(columnIndex ==
+     * columns.size) 的折行行会虚插换行 (段尾补换行分支不区分 isParagraphEnd), 与章内
+     * 账本不符, 会使重锚的 startsWith 原位校验必然失败。本方法把段尾 "\n" 当作
+     * 行尾后的虚拟列一并遍历, 偏移与原文严格同源。
+     *
+     * 起止任一无效, 或选区锚定的页实例已被换 (静默重排/相邻章装载) 时返回 null, 调用方放弃本次存档。
+     * 起止锚点页不属于同一章 (滚动模式跨章拖选) 时同样返回 null: 区间只描述单章账本,
+     * 跨章无区间可存, 由调用方提示用户。
+     */
+    fun selectedChapterRange(): ChapterSelectionRange? {
+        val s = start
+        val e = end
+        if (!s.isValid || !e.isValid) return null
+        if (e.compareTo(s) < 0) return null
+        val sb = StringBuilder()
+        var chapterIndex = -1
+        var chapterStart = -1
+        var chapterEnd = -1
+        for (pagePos in s.pagePos..e.pagePos) {
+            val page = anchorPages.getOrNull(pagePos) ?: return null
+            if (chapterIndex < 0) chapterIndex = page.chapterIndex
+            else if (page.chapterIndex != chapterIndex) return null
+            for (lineIndex in page.lines.indices) {
+                val line = page.lines[lineIndex]
+                val columns = line.columns
+                var chapterPos = line.chapterPosition
+                // 段尾行的 "\n" 占一个账本字符位, 视作 columns.size 处长度 1 的虚拟列
+                for (columnIndex in 0..columns.size) {
+                    val isParagraphBreak = columnIndex == columns.size && line.isParagraphEnd
+                    if (!isParagraphBreak && columnIndex == columns.size) continue
+                    val columnLength = if (isParagraphBreak) 1 else {
+                        val column = columns[columnIndex]
+                        if (column is TextColumn) column.charData.length else 1
+                    }
+                    val columnEnd = chapterPos + columnLength
+                    val pos = PageSelPos(pagePos, lineIndex, columnIndex)
+                    if (pos.compareTo(s) >= 0 && pos.compareTo(e) <= 0) {
+                        if (chapterStart < 0) chapterStart = chapterPos
+                        chapterEnd = columnEnd
+                        if (isParagraphBreak) {
+                            sb.append('\n')
+                        } else {
+                            val column = columns[columnIndex]
+                            if (column is TextColumn) sb.append(column.charData) else sb.append(' ')
+                        }
+                    }
+                    chapterPos = columnEnd
+                }
+            }
+        }
+        if (chapterStart < 0 || chapterEnd <= chapterStart) return null
+        return ChapterSelectionRange(chapterIndex, chapterStart, chapterEnd, sb.toString())
     }
 
     // endregion

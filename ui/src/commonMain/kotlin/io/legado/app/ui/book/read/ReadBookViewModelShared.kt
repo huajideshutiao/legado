@@ -8,6 +8,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
+import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.IntentData
@@ -52,6 +53,7 @@ import io.legado.app.ui.book.read.page.entities.TextLine
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import io.legado.app.ui.book.read.page.entities.tryPatchReviewCounts
+import io.legado.app.ui.book.read.page.overlay.HighlightOverlay
 import io.legado.app.ui.book.read.page.overlay.TTSHighlightOverlay
 import io.legado.app.ui.book.read.page.provider.ChapterContentParserShared
 import io.legado.app.ui.book.read.page.provider.ImageResolver
@@ -208,6 +210,32 @@ class ReadBookViewModelShared(
     private val _layoutConfig = MutableStateFlow(layoutConfig)
     val layoutConfig: StateFlow<LayoutConfig> = _layoutConfig.asStateFlow()
 
+    /**
+     * 页内容原地变更版本号（段评气泡就地补丁等对 TextPage/TextLine 的原地修改）。
+     *
+     * 修改不改变 data class 相等性，StateFlow 去重后不会重发，Compose 侧 Canvas
+     * 不会重绘。订阅者（PageViewComposable/PageContentCanvas）消费本值强制重绘，
+     * 对照 app 端 `upContent` 后的 invalidate 路径。章内高亮重算也用它作失效判据
+     * （就地补丁不换章实例，只顺移行偏移）。
+     */
+    private val _pageContentVersion = MutableStateFlow(0)
+    val pageContentVersion: StateFlow<Int> get() = _pageContentVersion
+
+    /** 页内容原地变更后自增，触发 Compose 阅读页重绘（段评气泡就地补丁等）。 */
+    fun bumpPageContentVersion() {
+        _pageContentVersion.value++
+    }
+
+    /**
+     * 章内静态高亮 (划线回显 + 关键词命中): 随三章滑窗排版与 DAO 数据流重算,
+     * 绘制侧经 [PageOverlayProjector.projectHighlight] 逐页投影。
+     */
+    private val chapterHighlightState = ChapterHighlightState(scope, readBook, _pageContentVersion)
+    val chapterHighlights: StateFlow<List<HighlightOverlay>> = chapterHighlightState.overlays
+
+    /** 当前书划线实体 (type=1): 点击命中经 overlay.underlineId 反查实体, 批注气泡用 */
+    val underlineBookmarks: StateFlow<List<Bookmark>> = chapterHighlightState.underlineBookmarks
+
     // region 页面状态流：外部只读 StateFlow，适配 Compose 重组
     private val _curTextPage = MutableStateFlow<TextPage?>(null)
     val curTextPage: StateFlow<TextPage?> = _curTextPage.asStateFlow()
@@ -226,21 +254,6 @@ class ReadBookViewModelShared(
      */
     private val _nextPlusTextPage = MutableStateFlow<TextPage?>(null)
     val nextPlusTextPage: StateFlow<TextPage?> = _nextPlusTextPage.asStateFlow()
-
-    /**
-     * 页内容原地变更版本号（段评气泡就地补丁等对 TextPage/TextLine 的原地修改）。
-     *
-     * 修改不改变 data class 相等性，StateFlow 去重后不会重发，Compose 侧 Canvas
-     * 不会重绘。订阅者（PageViewComposable/PageContentCanvas）消费本值强制重绘，
-     * 对照 app 端 `upContent` 后的 invalidate 路径。
-     */
-    private val _pageContentVersion = MutableStateFlow(0)
-    val pageContentVersion: StateFlow<Int> get() = _pageContentVersion
-
-    /** 页内容原地变更后自增，触发 Compose 阅读页重绘（段评气泡就地补丁等）。 */
-    fun bumpPageContentVersion() {
-        _pageContentVersion.value++
-    }
 
     /**
      * 朗读高亮位置（章节序号 + 章内字符位置），null = 无高亮。
@@ -684,6 +697,7 @@ class ReadBookViewModelShared(
     init {
         ActiveReadBookRegistry.attachViewModel(this)
         ActiveReadAloudHostPorts.attach(readAloudOwner)
+        chapterHighlightState.start()
     }
 
     /**

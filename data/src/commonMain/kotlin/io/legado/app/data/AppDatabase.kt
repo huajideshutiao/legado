@@ -17,6 +17,7 @@ import io.legado.app.data.dao.CookieDao
 import io.legado.app.data.dao.DictRuleDao
 import io.legado.app.data.dao.HttpTTSDao
 import io.legado.app.data.dao.KeyboardAssistsDao
+import io.legado.app.data.dao.KeywordHighlightDao
 import io.legado.app.data.dao.ReadRecordDao
 import io.legado.app.data.dao.ReplaceRuleDao
 import io.legado.app.data.dao.RuleSubDao
@@ -35,6 +36,7 @@ import io.legado.app.data.entities.Cookie
 import io.legado.app.data.entities.DictRule
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.data.entities.KeyboardAssist
+import io.legado.app.data.entities.KeywordHighlight
 import io.legado.app.data.entities.ReadRecord
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.data.entities.RuleSub
@@ -52,20 +54,21 @@ import io.legado.app.data.entities.TxtTocRule
  *   (官方 room3 的 migrate 是 suspend, 鸿蒙 CPF fork 不是)
  */
 @Database(
-    version = 87,
+    version = 88,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         ReplaceRule::class, SearchKeyword::class, Cookie::class,
         Bookmark::class, TxtTocRule::class, ReadRecord::class,
         HttpTTS::class, Cache::class,
         RuleSub::class, DictRule::class, KeyboardAssist::class, Server::class,
-        SourceFilterRule::class],
+        SourceFilterRule::class, KeywordHighlight::class],
     views = [BookSourcePart::class],
     autoMigrations = [
         AutoMigration(from = 83, to = 84),
         AutoMigration(from = 84, to = 85, spec = Migration84To85::class),
         AutoMigration(from = 85, to = 86),
         AutoMigration(from = 86, to = 87),
+        AutoMigration(from = 87, to = 88),
     ]
 )
 // DATABASE 作用域注册 Book.Converters: iOS/ohos KSP 处理 BookChapter.ForeignKey 跨实体解析时,
@@ -95,6 +98,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val ruleSubDao: RuleSubDao
     abstract val dictRuleDao: DictRuleDao
     abstract val keyboardAssistsDao: KeyboardAssistsDao
+    abstract val keywordHighlightDao: KeywordHighlightDao
     abstract val serverDao: ServerDao
     abstract val sourceFilterRuleDao: SourceFilterRuleDao
 

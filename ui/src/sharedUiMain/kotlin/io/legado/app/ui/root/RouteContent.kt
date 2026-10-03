@@ -30,6 +30,7 @@ import io.legado.app.ui.route.ReplaceEditRoute
 import io.legado.app.ui.route.ReplaceRuleRoute
 import io.legado.app.ui.route.ReviewListRoute
 import io.legado.app.ui.route.RuleSubRoute
+import io.legado.app.ui.route.KeywordHighlightRoute
 import io.legado.app.ui.route.SearchContentRoute
 import io.legado.app.ui.route.SearchRoute
 import io.legado.app.ui.route.SourceFilterRuleRoute
@@ -189,6 +190,11 @@ fun RouteContent(
 
         is AppRoute.SourceFilterRule -> {
             SourceFilterRuleRoute(entry, navigator, screenModelStore)
+            true
+        }
+
+        is AppRoute.KeywordHighlight -> {
+            KeywordHighlightRoute(entry, navigator, screenModelStore)
             true
         }
 

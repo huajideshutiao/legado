@@ -30,6 +30,8 @@ import io.legado.app.ui.book.read.page.entities.column.BaseColumn
 import io.legado.app.ui.book.read.page.entities.column.ImageColumn
 import io.legado.app.ui.book.read.page.entities.column.ReviewColumn
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
+import io.legado.app.ui.book.read.page.overlay.HighlightOverlay
+import io.legado.app.ui.book.read.page.overlay.HighlightPalette
 import io.legado.app.ui.book.read.page.overlay.PageOverlayProjector
 import io.legado.app.ui.book.read.page.overlay.SearchHighlightOverlay
 import io.legado.app.ui.book.read.page.overlay.TTSHighlightOverlay
@@ -80,6 +82,7 @@ fun PageContentCanvas(
     selection: PageSelectionState? = null,
     ttsHighlight: TTSHighlightOverlay? = null,
     searchHighlight: SearchHighlightOverlay? = null,
+    chapterHighlights: List<HighlightOverlay> = emptyList(),
     pagePos: Int = 0,
 ) {
     val textMeasurer: TextMeasurer = rememberReaderTextMeasurer()
@@ -122,6 +125,7 @@ fun PageContentCanvas(
             selection = selection,
             ttsHighlight = ttsHighlight,
             searchHighlight = searchHighlight,
+            chapterHighlights = chapterHighlights,
             pagePos = pagePos,
         )
     }
@@ -419,6 +423,7 @@ internal fun DrawScope.drawPageContent(
     selection: PageSelectionState? = null,
     ttsHighlight: TTSHighlightOverlay? = null,
     searchHighlight: SearchHighlightOverlay? = null,
+    chapterHighlights: List<HighlightOverlay> = emptyList(),
     pagePos: Int = 0,
 ) {
     if (offsetY == 0f) {
@@ -430,6 +435,7 @@ internal fun DrawScope.drawPageContent(
             selection,
             ttsHighlight,
             searchHighlight,
+            chapterHighlights,
             pagePos
         )
     } else {
@@ -442,6 +448,7 @@ internal fun DrawScope.drawPageContent(
                 selection,
                 ttsHighlight,
                 searchHighlight,
+                chapterHighlights,
                 pagePos
             )
         }
@@ -459,6 +466,7 @@ private fun DrawScope.drawPageContentInner(
     selection: PageSelectionState? = null,
     ttsHighlight: TTSHighlightOverlay? = null,
     searchHighlight: SearchHighlightOverlay? = null,
+    chapterHighlights: List<HighlightOverlay> = emptyList(),
     pagePos: Int = 0,
 ) {
     // 1. 基础不可变内容层（文字、图片、段评气泡、基础下划线、朗读/搜索高亮文字色）
@@ -466,7 +474,7 @@ private fun DrawScope.drawPageContentInner(
     drawBasePageContent(textPage, style, layoutCache, failedImage, ttsLines, searchHighlight)
 
     // 2. 独立叠加绘制层（Overlay 几何投影高亮）
-    drawOverlayLayers(textPage, style, selection, searchHighlight, pagePos)
+    drawOverlayLayers(textPage, style, selection, searchHighlight, chapterHighlights, pagePos)
 }
 
 /**
@@ -573,6 +581,7 @@ private fun DrawScope.drawOverlayLayers(
     style: ReaderDrawStyle,
     selection: PageSelectionState? = null,
     searchHighlight: SearchHighlightOverlay? = null,
+    chapterHighlights: List<HighlightOverlay> = emptyList(),
     pagePos: Int = 0,
 ) {
     // 1. 绘制手势选择状态机投影（拖拽热路径：边投影边画，零 List/矩形对象分配）
@@ -583,7 +592,28 @@ private fun DrawScope.drawOverlayLayers(
         }
     }
 
-    // 2. 搜索命中是外部章内区间；每页独立求交，跨页结果自然覆盖所有涉及页面
+    // 2. 划线回显与关键词命中：外部章内区间，每页独立求交，跨页/分行自然覆盖；
+    //    下划线标志在命中行行底补一条同色线。置于搜索命中之前绘制，搜索样式优先
+    if (chapterHighlights.isNotEmpty()) {
+        val lineWidth = 1.dp.toPx()
+        for (highlight in chapterHighlights) {
+            if (highlight.chapterIndex != textPage.chapterIndex) continue
+            val highlightColor = HighlightPalette.colorOf(highlight.colorIndex)
+            PageOverlayProjector.projectHighlight(textPage, highlight) { l, t, r, b, lineIndex ->
+                drawRect(color = highlightColor, topLeft = Offset(l, t), size = Size(r - l, b - t))
+                if (highlight.underline) {
+                    drawLine(
+                        color = highlightColor.copy(alpha = 1f),
+                        start = Offset(l, b - lineWidth / 2f),
+                        end = Offset(r, b - lineWidth / 2f),
+                        strokeWidth = lineWidth,
+                    )
+                }
+            }
+        }
+    }
+
+    // 3. 搜索命中是外部章内区间；每页独立求交，跨页结果自然覆盖所有涉及页面
     if (searchHighlight != null) {
         val searchColor = style.searchColor
         PageOverlayProjector.projectSearchResult(textPage, searchHighlight) { l, t, r, b, _ ->

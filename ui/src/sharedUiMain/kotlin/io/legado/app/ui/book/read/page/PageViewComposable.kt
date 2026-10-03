@@ -47,6 +47,7 @@ import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.book.read.page.delegate.ScrollPageDelegateCompose
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
+import io.legado.app.ui.book.read.page.overlay.HighlightOverlay
 import io.legado.app.ui.book.read.page.overlay.TTSHighlightOverlay
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.readerSystemBarPadding
@@ -113,6 +114,7 @@ fun PageViewComposable(
     drawTick: Int = 0,
     selection: PageSelectionState? = null,
     ttsHighlight: TTSHighlightOverlay? = null,
+    chapterHighlights: List<HighlightOverlay> = emptyList(),
     pagePos: Int = 0,
     onHeaderMeasured: ((Int) -> Unit)? = null,
     onFooterMeasured: ((Int) -> Unit)? = null,
@@ -234,6 +236,7 @@ fun PageViewComposable(
                             selection = selection,
                             ttsHighlight = ttsHighlight,
                             searchHighlight = selection?.searchHighlight,
+                            chapterHighlights = chapterHighlights,
                             pagePos = pagePos,
                         )
                     }
@@ -738,6 +741,7 @@ fun ScrollPageView(
     drawTick: Int = 0,
     selection: PageSelectionState? = null,
     ttsHighlight: TTSHighlightOverlay? = null,
+    chapterHighlights: List<HighlightOverlay> = emptyList(),
     onHeaderMeasured: ((Int) -> Unit)? = null,
     onFooterMeasured: ((Int) -> Unit)? = null,
     onTextAreaMeasured: ((IntSize) -> Unit)? = null,
@@ -896,6 +900,7 @@ fun ScrollPageView(
                                 // 绘制期读取 searchHighlight state：变化只失效本 Canvas；
                                 // updateSearchHighlight 不再同时递增 selection.tick。
                                 searchHighlight = selection?.searchHighlight,
+                                chapterHighlights = chapterHighlights,
                                 pagePos = i,
                             )
                             offsetY += page.height

@@ -10,6 +10,7 @@ import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.DictRule
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.data.entities.KeyboardAssist
+import io.legado.app.data.entities.KeywordHighlight
 import io.legado.app.data.entities.OldRssSource
 import io.legado.app.data.entities.ReadRecord
 import io.legado.app.data.entities.ReplaceRule
@@ -152,6 +153,9 @@ object RestoreShared {
             }
             fileToListT<Bookmark>(path, "bookmark.json")?.let {
                 appDb.bookmarkDao.insert(*it.toTypedArray())
+            }
+            fileToListT<KeywordHighlight>(path, "keywordHighlight.json")?.let {
+                appDb.keywordHighlightDao.insert(*it.toTypedArray())
             }
             fileToListT<BookGroup>(path, "bookGroup.json")?.let {
                 appDb.bookGroupDao.insert(*it.toTypedArray())
