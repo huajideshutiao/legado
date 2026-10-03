@@ -36,6 +36,8 @@ sealed interface ThemeConfigUiEvent {
     object ThemeList : ThemeConfigUiEvent
     object CustomizeDayTheme : ThemeConfigUiEvent
     object CustomizeNightTheme : ThemeConfigUiEvent
+    object MonetColorExtract : ThemeConfigUiEvent
+
     object FontScale : ThemeConfigUiEvent
     object SourceEditMaxLine : ThemeConfigUiEvent
 }
@@ -56,6 +58,7 @@ class ThemeConfigScreenModel(
     private val onThemeList: () -> Unit,
     private val onCustomizeDayTheme: () -> Unit,
     private val onCustomizeNightTheme: () -> Unit,
+    private val onMonetColorExtract: () -> Unit,
     private val onFontScale: () -> Unit,
     private val onSourceEditMaxLine: () -> Unit,
 ) : ScreenModel {
@@ -74,6 +77,7 @@ class ThemeConfigScreenModel(
             ThemeConfigUiEvent.ThemeList -> onThemeList()
             ThemeConfigUiEvent.CustomizeDayTheme -> onCustomizeDayTheme()
             ThemeConfigUiEvent.CustomizeNightTheme -> onCustomizeNightTheme()
+            ThemeConfigUiEvent.MonetColorExtract -> onMonetColorExtract()
             ThemeConfigUiEvent.FontScale -> onFontScale()
             ThemeConfigUiEvent.SourceEditMaxLine -> onSourceEditMaxLine()
         }

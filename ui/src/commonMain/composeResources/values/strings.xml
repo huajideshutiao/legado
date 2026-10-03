@@ -378,6 +378,8 @@
     <string name="cover_show_name_summary">Book title shown on cover</string>
     <string name="customize_day_theme">Customize day theme</string>
     <string name="customize_night_theme">Customize night theme</string>
+    <string name="monet_color_extract">Monet color extraction</string>
+    <string name="monet_color_extract_failed">Could not read wallpaper colors</string>
     <string name="dark_theme">Dark mode</string>
     <string name="default_cover">Default cover</string>
     <string name="default_home_page">Default HomePage</string>

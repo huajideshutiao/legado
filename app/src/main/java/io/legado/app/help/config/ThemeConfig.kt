@@ -16,6 +16,7 @@ import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Theme
 import io.legado.app.help.i18n.androidAppString
+import io.legado.app.lib.theme.MonetColorExtract
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.model.deleteImageIfUnreferenced
 import io.legado.app.utils.BitmapUtils
@@ -153,6 +154,9 @@ object ThemeConfig {
 
     /** 保存指定模式的自定义主题;bgImage 为空清除背景图 */
     fun saveCustomTheme(context: Context, isNight: Boolean, theme: CustomTheme) = with(context) {
+        // 手动改色接管:若莫奈跟随壁纸开着,先拆机关 (注销监听+开关落 false),
+        // 否则壁纸一变残留回调会把刚保存的颜色拽回壁纸色
+        MonetColorExtract.abandonFollowIfActive(this)
         val primaryKey = if (isNight) PreferKey.cNPrimary else PreferKey.cPrimary
         val accentKey = if (isNight) PreferKey.cNAccent else PreferKey.cAccent
         val bgKey = if (isNight) PreferKey.cNBackground else PreferKey.cBackground
@@ -201,6 +205,8 @@ object ThemeConfig {
      * 应用内置默认主题：清 6 个 pref → applyTheme 走 XML 实时读取
      */
     fun applyBuiltin(context: Context, isNight: Boolean) {
+        // 选预设接管:拆莫奈跟随机关 (同 saveCustomTheme, 残留壁纸回调不得拽回壁纸色)
+        MonetColorExtract.abandonFollowIfActive(context)
         if (isNight) {
             context.removePref(PreferKey.cNAccent)
             context.removePref(PreferKey.cNBackground)
@@ -388,6 +394,8 @@ object ThemeConfig {
     }
 
     fun applyConfig(context: Context, config: Config) {
+        // 选预设接管:拆莫奈跟随机关 (同 saveCustomTheme, 残留壁纸回调不得拽回壁纸色)
+        MonetColorExtract.abandonFollowIfActive(context)
         try {
             applyConfigToPrefs(context, config)
             AppConfig.isNightTheme = config.isNightTheme

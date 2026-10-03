@@ -71,7 +71,8 @@ import org.jetbrains.compose.resources.stringResource
  * fontScale 用 [NumberPickerDialog] 实现 (对照 app 端 showNumberPicker);
  * onSearchLayout 已在 shared 用 [SearchLayoutConfigDialog] 重建 (对照 ThemeConfigHost.configSearch);
  * onBookshelfLayout/onBottomNavConfig/onThemeList/onCustomizeDayTheme/onCustomizeNightTheme
- * 通过 [PlatformCapabilityProviders] 注入各端实现 (app 端 ThemeConfigHost 已实现, 其他端按需 override)。
+ * 通过 [PlatformCapabilityProviders] 注入各端实现 (app 端 ThemeConfigHost 已实现, 其他端按需 override);
+ * 莫奈取色同走平台能力 (Android 端 MonetColorExtract 实现), 显隐另加 eInk 门。
  */
 @Composable
 fun ThemeConfigRoute(
@@ -111,6 +112,9 @@ fun ThemeConfigRoute(
             onCustomizeNightTheme = {
                 PlatformCapabilityProviders.get().showCustomizeNightThemeDialog()
             },
+            onMonetColorExtract = {
+                PlatformCapabilityProviders.get().applyMonetColorFromWallpaper()
+            },
             onFontScale = { showFontScalePicker = true },
             onSourceEditMaxLine = { showSourceEditMaxLinePicker = true },
         )
@@ -138,6 +142,11 @@ fun ThemeConfigRoute(
         }
     }
 
+    // 莫奈取色显隐: 平台能力门 (Android 12+; 其他端能力默认 false 隐藏) +
+    // eInk 门 (对齐 AppTheme 读取层判定: isEInkMode 时读取层强制白底黑字, 取色无意义)
+    val monetColorExtractSupported = PlatformCapabilityProviders.get().monetColorExtractSupported &&
+        !appConfig.isEInkMode
+
     Column(Modifier.fillMaxSize()) {
         AppTitleBar(
             title = titleStr,
@@ -153,6 +162,7 @@ fun ThemeConfigRoute(
             onThemeList = { screenModel.dispatch(ThemeConfigUiEvent.ThemeList) },
             onCustomizeDayTheme = { screenModel.dispatch(ThemeConfigUiEvent.CustomizeDayTheme) },
             onCustomizeNightTheme = { screenModel.dispatch(ThemeConfigUiEvent.CustomizeNightTheme) },
+            onMonetColorExtract = { screenModel.dispatch(ThemeConfigUiEvent.MonetColorExtract) },
             onFontScale = { screenModel.dispatch(ThemeConfigUiEvent.FontScale) },
             sourceEditMaxLineSummary = state.sourceEditMaxLineSummary,
             onSourceEditMaxLine = { screenModel.dispatch(ThemeConfigUiEvent.SourceEditMaxLine) },
@@ -160,6 +170,8 @@ fun ThemeConfigRoute(
             // setAlternateIconName 实现; 桌面/鸿蒙无平台机制 → 该行隐藏)
             iconChangeSupported = PlatformCapabilityProviders.get().launcherIconChangeSupported,
             onIconChange = { PlatformCapabilityProviders.get().changeLauncherIcon(it) },
+            // 莫奈取色: 平台能力注入 + eInk 隐藏 (见上方 monetColorExtractSupported)
+            monetColorExtractSupported = monetColorExtractSupported,
         )
     }
 

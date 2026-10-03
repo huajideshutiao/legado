@@ -45,6 +45,7 @@ import io.legado.app.help.config.ThemeConfig.applyDayNightInit
 import io.legado.app.help.config.migrateLegacyHomeSp
 import io.legado.app.help.config.registerAndroidLocalConfigStore
 import io.legado.app.help.config.registerAndroidPreferenceProvider
+import io.legado.app.lib.theme.MonetColorExtract
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.registerAndroidDebugState
 import io.legado.app.help.file.registerAndroidAppFilesDir
@@ -247,6 +248,9 @@ class App : Application() {
         // app 端通过 callback 把下载完成事件回放到活动阅读实例)
         CacheBook.registerCallback()
         registerAndroidPreferenceProvider()
+        // 莫奈取色自动跟随:开关仍开着则冷启动补挂壁纸颜色监听 (只挂监听不派生, 8 键已持久化);
+        // 必须在 registerAndroidPreferenceProvider 之后 (恢复判定读跟随开关 pref)
+        MonetColorExtract.restoreListenerIfNeeded(this)
         // 旧版 SP 主页设置/收藏迁移 (e8b2c5837d 改存 filesDir JSON 后旧数据弃读, 见 LegacyHomeSpMigration);
         // 须在 registerAndroidAppFilesDir (onCreate 早段) 之后、Home 首次 load 之前
         migrateLegacyHomeSp(defaultSharedPreferences)

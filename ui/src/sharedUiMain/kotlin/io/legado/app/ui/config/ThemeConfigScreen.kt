@@ -23,6 +23,8 @@ import legado.ui.generated.resources.customize_night_theme
 import legado.ui.generated.resources.font_scale
 import legado.ui.generated.resources.icon_names
 import legado.ui.generated.resources.icons
+import legado.ui.generated.resources.monet_color_extract
+import legado.ui.generated.resources.monet_color_extract_failed
 import legado.ui.generated.resources.search_layout
 import legado.ui.generated.resources.source_edit_text_max_line
 import legado.ui.generated.resources.theme_list
@@ -34,6 +36,8 @@ import org.jetbrains.compose.resources.stringResource
 
 /**
  * 主题设置页（迁 pref_config_theme.xml）。逐条对齐原条目顺序/key/默认值。
+ * 唯一新增为莫奈取色组 (无原版对应): 一键取色 + 自动跟随壁纸开关, 平台能力注入,
+ * 仅 Android 12+ 非 eInk 显示 ([monetColorExtractSupported] 门, 同换图标的平台过滤模式)。
  * 换图标 launcherIcon 写 prefs 后经 [onIconChange] 回调宿主 (ThemeConfigRoute 委托
  * PlatformCapabilities.changeLauncherIcon → Android LauncherIconHelp / iOS setAlternateIconName);
  * [iconChangeSupported] 为 false 的端 (桌面/鸿蒙无平台机制) 隐藏"换图标"项 (对照 MoreConfig
@@ -58,7 +62,11 @@ fun ThemeConfigScreen(
     onThemeList: () -> Unit,
     onCustomizeDayTheme: () -> Unit,
     onCustomizeNightTheme: () -> Unit,
+    /** 莫奈取色点击回调 (Android 12+ 一键取壁纸主色派生日/夜主题色, 取色即默认跟随壁纸变化) */
+    onMonetColorExtract: () -> Unit,
     onFontScale: () -> Unit,
+    /** 平台是否支持莫奈取色 (false 时隐藏“莫奈取色”项; 同 [iconChangeSupported] 平台过滤) */
+    monetColorExtractSupported: Boolean = false,
     /** 源编辑框最大行数 summary (动态: 格式化后的当前值) */
     sourceEditMaxLineSummary: String,
     /** 源编辑框最大行数点击回调 (弹 NumberPicker) */
@@ -92,6 +100,7 @@ fun ThemeConfigScreen(
     val summaryThemeList = stringResource(Res.string.theme_list_summary)
     val titleCustomizeDay = stringResource(Res.string.customize_day_theme)
     val titleCustomizeNight = stringResource(Res.string.customize_night_theme)
+    val titleMonetColorExtract = stringResource(Res.string.monet_color_extract)
     val titleFontScale = stringResource(Res.string.font_scale)
     val titleSourceEditMaxLine = stringResource(Res.string.source_edit_text_max_line)
 
@@ -151,6 +160,12 @@ fun ThemeConfigScreen(
                 title = titleCustomizeNight,
                 onClick = onCustomizeNightTheme,
             )
+            if (monetColorExtractSupported) {
+                preference(
+                    title = titleMonetColorExtract,
+                    onClick = onMonetColorExtract,
+                )
+            }
             preference(
                 title = titleFontScale,
                 summary = fontScaleSummary,

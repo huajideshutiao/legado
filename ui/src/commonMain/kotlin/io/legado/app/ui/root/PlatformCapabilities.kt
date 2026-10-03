@@ -595,6 +595,18 @@ interface PlatformCapabilities {
     /** 显示自定义夜间主题对话框 (对照 ThemeCustomizeDialog.editPrefs(true)) */
     fun showCustomizeNightThemeDialog() = unsupported("自定义夜间主题")
 
+    // 莫奈取色平台能力: 依赖 Android 12+ 壁纸取色 API + material-color-utilities (仅 app 端在
+    // classpath), 其他端无实现, 与弹窗类能力一样默认 unsupported + 入口按 [monetColorExtractSupported] 隐藏
+    /** 平台是否支持莫奈取色 (决定主题设置页“莫奈取色”项显隐; Android 12+ 才为 true) */
+    val monetColorExtractSupported: Boolean get() = false
+
+    /**
+     * 一键取当前系统壁纸主色作种子, 派生日/夜两组色板写入 8 个主题色 pref 并走既有刷新管线
+     * 生效 (对照 ThemeCustomizeDialog.saveToPrefs 的写键+applyThemeMode)。壁纸取不到时 toast
+     * 提示且不改任何状态。
+     */
+    fun applyMonetColorFromWallpaper() = unsupported("莫奈取色")
+
     // 换桌面图标平台能力 (对照 app 端 LauncherIconHelp.changeIcon: 多 LAUNCHER 组件运行时切换)。
     // Android 端 setComponentEnabledSetting 实现; iOS 端 setAlternateIconName 实现;
     // 桌面/鸿蒙无对应平台机制, 默认 unsupported + 设置项按 [launcherIconChangeSupported] 隐藏。

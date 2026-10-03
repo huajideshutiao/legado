@@ -173,6 +173,9 @@ object PreferKey {
     const val cNBBackground = "colorBottomBackgroundNight"
     const val bgImageN = "backgroundImageNight"
     const val bgImageNBlurring = "backgroundImageNightBlurring"
+
+    // 莫奈取色自动跟随壁纸开关 (Android 12+): 行为模式开关, 非主题色/背景图载荷, 不入 themePrefKeys
+    const val monetWallpaperFollow = "monetWallpaperFollow"
     const val showReadTitleAddition = "showReadTitleAddition"
     const val contentSelectSpeakMod = "contentReadAloudMod"
 

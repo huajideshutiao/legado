@@ -83,13 +83,16 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.toShelfJsonMap
+import io.legado.app.constant.PreferKey
 import io.legado.app.help.book.toggleBookshelfCore
 import io.legado.app.help.book.tryParesExportFileName
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.i18n.androidAppString
+import io.legado.app.lib.theme.MonetColorExtract
 import io.legado.app.model.BookCover
 import io.legado.app.model.CheckSource
 import io.legado.app.model.Debug
@@ -1745,6 +1748,18 @@ class AndroidPlatformCapabilities(
     // 对照 ThemeConfigFragment: "customizeNightTheme" -> ThemeCustomizeDialog.editPrefs(true)
     override fun showCustomizeNightThemeDialog() {
         activity.showDialogFragment(ThemeCustomizeDialog.editPrefs(true))
+    }
+
+    // 莫奈取色: 壁纸取色 API 仅 Android 12+ (S=31) 提供; eInk 显隐门在 ThemeConfigRoute
+    // (对齐 AppTheme 读取层判定, 本端不再重复判断)
+    override val monetColorExtractSupported: Boolean
+        get() = MonetColorExtract.isSupported()
+
+    // 一键取当前壁纸主色派生日/夜主题色; 取不到时 toast 且不改任何状态 (含主题 pref/刷新)
+    override fun applyMonetColorFromWallpaper() {
+        MonetColorExtract.applyFromWallpaper(activity) {
+            activity.toastOnUi(androidAppString("monet_color_extract_failed"))
+        }
     }
 
     // 换桌面图标 (对照 master ThemeConfigFragment: launcherIcon -> LauncherIconHelp.changeIcon):

@@ -378,6 +378,8 @@
     <string name="cover_show_name_summary">封面上显示书名</string>
     <string name="customize_day_theme">自定义白天主题</string>
     <string name="customize_night_theme">自定义夜间主题</string>
+    <string name="monet_color_extract">莫奈取色</string>
+    <string name="monet_color_extract_failed">未能获取壁纸颜色</string>
     <string name="dark_theme">深色模式</string>
     <string name="default_cover">默认封面</string>
     <string name="default_home_page">默认主页</string>
