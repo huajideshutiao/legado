@@ -7,30 +7,23 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import io.legado.app.constant.AppLog
 import io.legado.app.constant.ThreadSafeDateFormat
 import io.legado.app.data.AppDbProviders
-import io.legado.app.data.dao.sortedByLocalizedOrder
 import io.legado.app.data.entities.Bookmark
-import io.legado.app.help.coroutine.IoDispatcher
-import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.bookmark.AllBookmarkScreen
 import io.legado.app.ui.book.bookmark.AllBookmarkScreenModel
 import io.legado.app.ui.book.bookmark.AllBookmarkUiActions
 import io.legado.app.ui.book.bookmark.BookmarkDialog
+import io.legado.app.ui.book.bookmark.BookmarkExporter
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
-import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.asBook
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.systemCurrentTimeMillis
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.no_book
 import org.jetbrains.compose.resources.getString
@@ -40,7 +33,7 @@ import org.jetbrains.compose.resources.getString
  *
  * 复用 shared [AllBookmarkScreen] + [AllBookmarkScreenModel];
  * 平台专属逻辑 (导出文件选择器/书签编辑弹窗) 经 [AllBookmarkUiActions] 桥接:
- * 导出走 [PlatformServiceProviders] 文件选择器 + [BackupFileOps], 编辑弹窗用 shared [BookmarkDialog]。
+ * 导出走共用 [BookmarkExporter] (文件选择器 + 写文件), 编辑弹窗用 shared [BookmarkDialog]。
  */
 @Composable
 fun BookmarkRoute(
@@ -64,77 +57,30 @@ fun BookmarkRoute(
                 navigator.pop()
             }
 
-            // 导出书签 JSON (对照 AllBookmarkViewModel.exportBookmark: 平台文件选择器 + BackupFileOps)
+            // 导出书签 JSON (对照 AllBookmarkViewModel.exportBookmark), 文件名带时间戳
             // 按书过滤时仅导出该书书签 (对照 TocRoute.exportBookmark 用 getByBook)
-            // scope 是 rememberCoroutineScope (主线程调度), 选择器与写文件都得切 IO
             override fun export() {
                 scope.launch {
-                    val files = PlatformServiceProviders.get().files
-                    val dao = AppDbProviders.get().bookmarkDao
-                    try {
-                        val fileName = "bookmark-${
+                    BookmarkExporter.exportJson(
+                        fileName = "bookmark-${
                             ThreadSafeDateFormat("yyMMddHHmmss").format(systemCurrentTimeMillis())
-                        }.json"
-                        val path = withContext(IoDispatcher) {
-                            files.saveFile(fileName)
-                        } ?: return@launch
-                        withContext(IoDispatcher) {
-                            val bookmarks = if (book != null) {
-                                dao.getByBook(book.name, book.author)
-                            } else {
-                                dao.all().sortedByLocalizedOrder()
-                            }
-                            BackupFileOps.writeText(path, Json.encodeToString(bookmarks))
-                        }
-                        Toasters.get().toast("导出成功")
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Throwable) {
-                        AppLog.put("导出失败\n${e.message}", e, true)
-                    }
+                        }.json",
+                        bookName = book?.name,
+                        bookAuthor = book?.author,
+                    )
                 }
             }
 
-            // 导出书签 Markdown (对照 AllBookmarkViewModel.exportBookmarkMd: 按书分组)
-            // 按书过滤时仅导出该书书签
+            // 导出书签 Markdown (对照 AllBookmarkViewModel.exportBookmarkMd), 文件名带时间戳
             override fun exportMd() {
                 scope.launch {
-                    val files = PlatformServiceProviders.get().files
-                    val dao = AppDbProviders.get().bookmarkDao
-                    try {
-                        val fileName = "bookmark-${
+                    BookmarkExporter.exportMd(
+                        fileName = "bookmark-${
                             ThreadSafeDateFormat("yyMMddHHmmss").format(systemCurrentTimeMillis())
-                        }.md"
-                        val path = withContext(IoDispatcher) {
-                            files.saveFile(fileName)
-                        } ?: return@launch
-                        withContext(IoDispatcher) {
-                            val bookmarks = if (book != null) {
-                                dao.getByBook(book.name, book.author)
-                            } else {
-                                dao.all().sortedByLocalizedOrder()
-                            }
-                            val sb = StringBuilder()
-                            var name = ""
-                            var author = ""
-                            bookmarks.forEach {
-                                if (it.bookName != name && it.bookAuthor != author) {
-                                    name = it.bookName
-                                    author = it.bookAuthor
-                                    sb.append("## ${it.bookName} ${it.bookAuthor}\n\n")
-                                }
-                                sb.append("#### ${it.chapterName}\n\n")
-                                sb.append("###### 原文\n ${it.bookText}\n\n")
-                                sb.append("###### 摘要\n ${it.content}\n\n")
-                            }
-                            BackupFileOps.writeText(path, sb.toString())
-                        }
-                        Toasters.get().toast("导出成功")
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Throwable) {
-                        AppLog.put("导出失败\n${e.message}", e, true)
-                    }
+                        }.md",
+                        bookName = book?.name,
+                        bookAuthor = book?.author,
+                    )
                 }
             }
 

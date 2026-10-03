@@ -11,7 +11,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
@@ -19,11 +18,9 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.isNotShelf
-import io.legado.app.help.coroutine.IoDispatcher
-import io.legado.app.help.storage.BackupFileOps
-import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
+import io.legado.app.ui.book.bookmark.BookmarkExporter
 import io.legado.app.ui.book.toc.TocScreen
 import io.legado.app.ui.book.toc.TocScreenModel
 import io.legado.app.ui.book.toc.TocUiActions
@@ -35,17 +32,13 @@ import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
-import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.OnRouteLifecycle
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.asBook
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.FlowBus
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
 
 /**
  * 目录页 shared 路由入口。
@@ -259,25 +252,11 @@ fun TocContent(
             override fun exportBookmark() {
                 val curBook = screenModel.state.value.book ?: return
                 scope.launch {
-                    val files = PlatformServiceProviders.get().files
-                    val bookmarkDao = AppDbProviders.get().bookmarkDao
-                    try {
-                        val path = withContext(IoDispatcher) {
-                            files.saveFile(
-                                "bookmark-${curBook.name} ${curBook.author}.json"
-                            )
-                        } ?: return@launch
-                        withContext(IoDispatcher) {
-                            val bookmarks = bookmarkDao
-                                .getByBook(curBook.name, curBook.author)
-                            BackupFileOps.writeText(path, Json.encodeToString(bookmarks))
-                        }
-                        Toasters.get().toast("导出成功")
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Throwable) {
-                        AppLog.put("导出失败\n${e.message}", e, true)
-                    }
+                    BookmarkExporter.exportJson(
+                        fileName = "bookmark-${curBook.name} ${curBook.author}.json",
+                        bookName = curBook.name,
+                        bookAuthor = curBook.author,
+                    )
                 }
             }
 
@@ -285,31 +264,11 @@ fun TocContent(
             override fun exportBookmarkMd() {
                 val curBook = screenModel.state.value.book ?: return
                 scope.launch {
-                    val files = PlatformServiceProviders.get().files
-                    val bookmarkDao = AppDbProviders.get().bookmarkDao
-                    try {
-                        val path = withContext(IoDispatcher) {
-                            files.saveFile(
-                                "bookmark-${curBook.name} ${curBook.author}.md"
-                            )
-                        } ?: return@launch
-                        withContext(IoDispatcher) {
-                            val sb = StringBuilder()
-                            sb.append("## ${curBook.name} ${curBook.author}\n\n")
-                            bookmarkDao
-                                .getByBook(curBook.name, curBook.author).forEach {
-                                    sb.append("#### ${it.chapterName}\n\n")
-                                    sb.append("###### 原文\n ${it.bookText}\n\n")
-                                    sb.append("###### 摘要\n ${it.content}\n\n")
-                                }
-                            BackupFileOps.writeText(path, sb.toString())
-                        }
-                        Toasters.get().toast("导出成功")
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Throwable) {
-                        AppLog.put("导出失败\n${e.message}", e, true)
-                    }
+                    BookmarkExporter.exportMd(
+                        fileName = "bookmark-${curBook.name} ${curBook.author}.md",
+                        bookName = curBook.name,
+                        bookAuthor = curBook.author,
+                    )
                 }
             }
 
