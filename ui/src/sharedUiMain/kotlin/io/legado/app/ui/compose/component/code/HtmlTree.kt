@@ -266,7 +266,9 @@ internal fun buildTreeRoots(document: KsoupElement): List<HtmlNode> {
         val childElements = allChildNodes.filterIsInstance<KsoupElement>()
         val sameTotals = HashMap<String, Int>()
         for (child in childElements) {
-            sameTotals.merge(child.tagName(), 1, Int::plus)
+            // commonMain 无 JVM 的 MutableMap.merge, 用通用写法
+            val tag = child.tagName()
+            sameTotals[tag] = (sameTotals[tag] ?: 0) + 1
         }
         val sameSeen = HashMap<String, Int>()
         val positions = IntArray(childElements.size)
