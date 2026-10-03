@@ -175,7 +175,7 @@ class App : Application() {
         BookImageStorageProviders.register(AndroidBookImageStorage)
         LocalBookLocators.register(AndroidLocalBookLocator())
         // 注册 RegexErrorHandler (longToastOnUi/saveCrashInfo2File/restart),
-        // 供 shared jvmAndAndroidMain 的 RegexReplacerImpl 在替换超时分支调用;
+        // 供 shared androidMain 的 AndroidRegexReplacer 在替换超时分支调用;
         // 须在 registerAndroidWebBookProviders 之前 (任何 RegexReplacers.get().replace 之前)
         registerAndroidRegexErrorHandler()
         // 注册 AppUpdateEnvironment (平台/版本号/渠道/ABI), 供 shared AppUpdateManager 检查更新;

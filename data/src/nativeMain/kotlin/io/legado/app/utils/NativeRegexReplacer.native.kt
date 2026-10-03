@@ -17,7 +17,10 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /**
- * 带超时检测的正则替换 native (iOS/鸿蒙) 实现, 逐语义对照 jvmAndAndroidMain [RegexReplacerImpl]。
+ * 带超时检测的正则替换 native (iOS/鸿蒙) 实现。
+ *
+ * 超时/重启骨架与 [io.legado.app.utils.AndroidRegexReplacer] 同型 (协程看门狗, 输入不包装),
+ * 替换本体走 Kotlin common [Regex] (java.util.regex.Matcher 在 K/N 不可用)。
  *
  * # 与 jvm 版差异 (java.util.regex.Matcher 在 K/N 不可用)
  * - 非 JS 替换: `Regex.replace(source, replacement)` 替代 Matcher.appendReplacement 循环,
@@ -26,6 +29,17 @@ import kotlin.coroutines.resumeWithException
  *   按字面量插入 (等价 Matcher.quoteReplacement); 共享 scope + 预编译 + 逐匹配 injectBindings
  *   与 jvm 版完全一致, JS 求值走已注册的 [JsEngines] (NativeJsEngine/quickjs);
  * - 超时/重启骨架 (Coroutine.async + select/onTimeout + RegexErrorHandlers) 与 jvm 版一致。
+ *
+ * # 已知字符类差异 (未对齐, 有意保留)
+ *
+ * Kotlin/Native stdlib 的 `\w` 定义为 `[a-zA-Z0-9_]` (ASCII-only, 见 stdlib
+ * nativeWasmMain/text/regex/AbstractCharClass.kt 的 CachedWord), 不含中文; 而 Android 侧 ICU
+ * 的 `\w` 含中文。净化规则大量使用 `[^\n\w…]{4,}` 这类“非文字符号串”写法, 故 iOS/鸿蒙上
+ * 与桌面修复前行为一致: 整段中文可能被判为符号串而误替换。
+ *
+ * JVM 侧经 `Pattern.UNICODE_CHARACTER_CLASS` 补齐了 ICU 语义, native 侧无法等价补齐
+ * (Kotlin common [RegexOption] 只提供 IGNORE_CASE/MULTILINE/LITERAL/UNIX_LINES, 无 Unicode
+ * 字符类开关), 需改写 pattern 文本才能对齐, 成本较高, 暂不处理。
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 object NativeRegexReplacer : RegexReplacer {

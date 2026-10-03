@@ -341,6 +341,17 @@ kotlin {
         namespace = "io.legado.data"
         compileSdk = 37
         minSdk = 24
+        // 真机测试源集 (androidDeviceTest)。jvmAndAndroidTest 只在 JVM 上跑,
+        // 而 libcore 的 java.util.regex.Matcher 与 JDK 语义不同 (reset 里 input.toString()),
+        // 依赖平台正则语义的用例必须落到设备上跑。
+        withDeviceTest {
+            instrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        }
+        // hutool-crypto 与 hutool-core 都带 META-INF/INDEX.LIST, 设备测试打包时重复
+        // (主 APK 侧由 :app 的 packaging 块处理, 库模块的设备测试 APK 需自带)
+        packaging {
+            resources.excludes.add("META-INF/INDEX.LIST")
+        }
     }
 
     if (enableIosTarget) {
@@ -526,6 +537,13 @@ kotlin {
         }
         jvmTest {
             dependsOn(jvmAndAndroidTest)
+        }
+        // 真机测试: 正则语义依赖 libcore (与 JDK 不同), jvmAndAndroidTest 在 JVM 上跑不到,
+        // 故设备侧用例单独落 androidDeviceTest (withDeviceTest 已在 android {} 中启用)。
+        // 用 maybeCreate: KMP Android 插件不为 deviceTest 生成 Kotlin DSL 类型化访问器。
+        maybeCreate("androidDeviceTest").dependencies {
+            implementation(libs.junit)
+            implementation(libs.bundles.androidTest)
         }
         // native 端测试 (iOS/鸿蒙): EpubParser 已下沉 nativeMain, jvmAndAndroidTest 看不到它
         // (epub4kmp 只在 nativeMain 声明), 故解析器用例放这里。仅 enableIosTarget/Ohos 时存在。

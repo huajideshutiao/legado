@@ -18,7 +18,7 @@ import kotlin.system.exitProcess
  * - [saveCrashInfo] → [AppLog.put] (桌面无 CrashHandler 落盘, 走统一日志通道)
  * - [restartApp] → 共享的 [launchRestartProcess] (与切语言重启同一实现) 后退出进程
  *
- * 在 desktop Main.kt 经 [registerDesktopRegexErrorHandler] 注入, 供 shared RegexReplacerImpl 在
+ * 在 desktop Main.kt 经 [registerDesktopRegexErrorHandler] 注入, 供 shared JvmRegexReplacer 在
  * 正则替换超时分支调用。须在任何 webBook 编排层触发 RegexReplacers.get().replace 之前注册。
  */
 private object DesktopRegexErrorHandler : RegexErrorHandler {

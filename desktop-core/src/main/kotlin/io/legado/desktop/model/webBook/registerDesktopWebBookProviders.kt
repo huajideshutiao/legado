@@ -18,7 +18,7 @@ import io.legado.app.model.analyzeRule.registerDesktopAnalyzeRuleFactory
 import io.legado.app.model.webBook.BookInfoRefresher
 import io.legado.app.model.webBook.BookInfoRefreshers
 import io.legado.app.model.webBook.WebBook
-import io.legado.app.utils.RegexReplacerImpl
+import io.legado.app.utils.JvmRegexReplacer
 import io.legado.app.utils.RegexReplacers
 import kotlinx.coroutines.runBlocking
 import java.lang.ref.WeakReference
@@ -31,7 +31,7 @@ import java.util.concurrent.ConcurrentHashMap
  * - [BookInfoRefreshers]: 桥接 [WebBook.getBookInfoAwait] (已下沉 shared commonMain, 可直接调用)
  * - [IntentDataProviders]: 桥接 shared [IntentData] 单例 (跨调用临时数据容器)
  * - [ContentProcessorProviders]: 复用 commonMain 的 [ContentProcessorShared] (替换规则 / 简繁 / 段落重排 / 去重标题)
- * - [RegexReplacers]: 复用 shared jvmAndAndroidMain 的 [RegexReplacerImpl] (超时检测 + @js: 求值)
+ * - [RegexReplacers]: 复用 shared jvmAndAndroidMain 的 [JvmRegexReplacer] (超时检测 + @js: 求值)
  *
  * 已注册项 (Main.kt 中已注册): AppDbProviders / AppConfigProviders / BookHelpProviders /
  * SourceHelpAccessors / ThemeConfigProviders / AppDatabaseProviders / OkHttpClientProviders。
@@ -48,7 +48,7 @@ fun registerDesktopWebBookProviders() {
     ContentProcessorProviders.register(DesktopContentProcessorAccessor)
     // 与 app 端一致直接注册 shared 实现: 桌面端已注册 QuickJs 引擎与 RegexErrorHandler,
     // 超时检测与 @js: 替换规则均可用
-    RegexReplacers.register(RegexReplacerImpl)
+    RegexReplacers.register(JvmRegexReplacer)
     // 注: Web 服务封面/插图 provider (DesktopImageControllerProvider) 由 desktop Main.kt /
     // headless Main.kt 独立注册。
     // 注册 Web 服务阅读状态桥 (commonMain ActiveReadBookStateProvider 读 ActiveReadBookRegistry,

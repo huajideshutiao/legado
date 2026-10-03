@@ -371,7 +371,7 @@ object DesktopCore {
             DesktopCacheBook.registerCallback()
             // 10. Source 扩展 provider (依赖 PreferenceProviders, in-memory 实现)
             registerDesktopSourceProviders()
-            // 10b. 正则替换错误处理 provider (供 shared RegexReplacerImpl / JsExtensionsCommon 调用,
+            // 10b. 正则替换错误处理 provider (供 shared JvmRegexReplacer / JsExtensionsCommon 调用,
             //      必须在 WebBook 编排层 + JS 引擎首次 eval 之前注册);
             //      压缩文件解压 provider (DesktopArchiveProvider → junrar/commons-compress) 留 :desktop
             registerDesktopRegexErrorHandler()
