@@ -1,5 +1,4 @@
 import org.gradle.api.tasks.Sync
-import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 
 plugins {
     id("legado.kmp.native.library")
@@ -42,24 +41,20 @@ val unpackSources = tasks.register<Sync>("unpackEpubSources") {
         }
     }
     unpackedSourceRoots.forEach { (prefix, roots) -> archive(prefix, *roots.toTypedArray()) }
-    // CPF provides POSIX; the SDK zlib is bound locally rather than platform.zlib.
-    filesMatching("**/*.kt") {
-        filter { line -> line.replace("import platform.zlib.", "import no.synth.kmpzip.zlib.") }
-    }
     // Only Date uses kotlinx-datetime. Instant's ISO form provides the same UTC date
     // without introducing another library lacking an OHOS variant.
+    // 校验值先解析成可序列化局部量再进 doLast: 闭包引用脚本对象会破坏配置缓存存储。
+    val rootsToVerify: List<Pair<String, String>> =
+        unpackedSourceRoots.flatMap { (prefix, roots) -> roots.map { prefix to it } }
+    val dateRelPath = "epub4kmp-core-/commonMain/io/documentnode/epub4kmp/domain/Date.kt"
     doLast {
         // 产物校验: 任一源根缺失说明上游 sources jar 改名/变结构, 显式失败而非静默产出缺源集的空壳
-        unpackedSourceRoots.forEach { (prefix, roots) ->
-            roots.forEach { root ->
-                check(generatedSources.get().dir("$prefix/$root").asFile.isDirectory) {
-                    "unpackEpubSources: $prefix/$root 源码目录缺失, 上游 sources jar 结构可能已变化"
-                }
+        rootsToVerify.forEach { (prefix, root) ->
+            check(File(destinationDir, "$prefix/$root").isDirectory) {
+                "unpackEpubSources: $prefix/$root 源码目录缺失, 上游 sources jar 结构可能已变化"
             }
         }
-        val date = generatedSources.get().file(
-            "epub4kmp-core-/commonMain/io/documentnode/epub4kmp/domain/Date.kt"
-        ).asFile
+        val date = File(destinationDir, dateRelPath)
         date.writeText(date.readText()
             .replace(Regex("(?m)^import kotlinx\\.datetime.*\\n"), "")
             .replace(Regex("    constructor\\(date: LocalDate[^\\n]*\\n"), "")
@@ -68,34 +63,41 @@ val unpackSources = tasks.register<Sync>("unpackEpubSources") {
 }
 
 kotlin {
+    // zlib 绑定用 K/N 自带 platform.zlib (含 -lz linkerOpts): 自建 cinterop 与预导入
+    // platform PCH 重复, struct/函数会被静默去重只剩宏与 typedef, 编译期才报 Unresolved。
     this::class.java.getMethod("ohosArm64").invoke(this)
-    targets.withType<KotlinNativeTarget>().configureEach {
-        compilations.getByName("main").cinterops.create("epubZlib") {
-            defFile(file("src/cinterop/zlib.def"))
-        }
-        binaries.all { linkerOpts("-lz") }
-    }
     sourceSets {
+        // 每个 .kt 只能属于一个 fragment (-Xfragment-sources 校验), native 根挂 ohosMain
+        // 后经 dependsOn 传递给下游编译, 严禁在 commonMain 重复挂载。
         val commonMain = getByName("commonMain")
-        unpackedSourceRoots.forEach { (prefix, roots) ->
-            roots.forEach { root ->
-                commonMain.kotlin.srcDir(generatedSources.map { it.dir("$prefix/$root") })
-            }
+        unpackedSourceRoots.keys.forEach { prefix ->
+            commonMain.kotlin.srcDir(generatedSources.map { it.dir("$prefix/commonMain") })
         }
         val ohosMain = maybeCreate("ohosMain").apply {
             dependsOn(commonMain)
             listOf(
                 "core-/commonDomMain", "core-/nativeMain",
                 "kmp-zip-0/commonNonJvmMain", "kmp-zip-0/nativeMain",
-                "kmp-zip-0/linuxMain", "kmp-zip-0/pureKotlinCryptoMain",
+                "kmp-zip-0/pureKotlinCryptoMain",
                 "kmp-zip-okio-/nativeMain",
             ).forEach { root -> kotlin.srcDir(generatedSources.map { it.dir(root) }) }
         }
-        maybeCreate("ohosArm64Main").dependsOn(ohosMain)
+        // kmp-zip 的 zlibCrc32Update expect 在 nativeMain、actual 在 linuxMain,
+        // 上游为父子源集; 平铺同 fragment 会报 expect/actual 同模块冲突, 故 linux 独立下游 fragment。
+        val kmpZipLinux = maybeCreate("kmpZipLinuxMain").apply {
+            dependsOn(ohosMain)
+            kotlin.srcDir(generatedSources.map { it.dir("kmp-zip-0/linuxMain") })
+        }
+        maybeCreate("ohosArm64Main").apply {
+            dependsOn(ohosMain)
+            dependsOn(kmpZipLinux)
+        }
         all {
             languageSettings.optIn("kotlin.time.ExperimentalTime")
             languageSettings.optIn("kotlin.uuid.ExperimentalUuidApi")
             languageSettings.optIn("nl.adaptivity.xmlutil.ExperimentalXmlUtilApi")
+            languageSettings.optIn("nl.adaptivity.xmlutil.XmlUtilInternal")
+            languageSettings.optIn("nl.adaptivity.xmlutil.XmlUtilDeprecatedInternal")
         }
     }
 }
