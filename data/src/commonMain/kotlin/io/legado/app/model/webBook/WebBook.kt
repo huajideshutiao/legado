@@ -52,6 +52,16 @@ object WebBook {
         onUrlResolved: ((AnalyzeUrlCore) -> Unit)? = null,
         selectedOptions: Map<String, String>? = null,
     ): BookListPage {
+        // 漫画插件源无规则可解析, 命中即转交委派 (搜索只走 isSearch 路径)
+        if (isSearch) {
+            MangaSourceDelegates.getOrNull()?.takeIf { it.handles(bookSource) }?.let {
+                return it.getBookListAwait(bookSource, key, page ?: 1)
+            }
+            // 视频插件源同构转交 (bookSourceType=video 虚拟行)
+            VideoSourceDelegates.getOrNull()?.takeIf { it.handles(bookSource) }?.let {
+                return it.getBookListAwait(bookSource, key, page ?: 1)
+            }
+        }
         var url = key
         if (isSearch) {
             if (bookSource.searchUrl.isNullOrBlank()) throw NoStackTraceException("搜索url不能为空")
@@ -94,6 +104,12 @@ object WebBook {
         book: Book,
         canReName: Boolean = true,
     ): Book {
+        MangaSourceDelegates.getOrNull()?.takeIf { it.handles(bookSource) }?.let {
+            return it.getBookInfoAwait(bookSource, book, canReName)
+        }
+        VideoSourceDelegates.getOrNull()?.takeIf { it.handles(bookSource) }?.let {
+            return it.getBookInfoAwait(bookSource, book, canReName)
+        }
         if (!book.infoHtml.isNullOrEmpty()) {
             BookInfo.analyzeBookInfo(
                 bookSource = bookSource,
@@ -175,6 +191,13 @@ object WebBook {
         book: Book,
         runPerJs: Boolean = false
     ): Result<List<BookChapter>> {
+        // 守卫在 runPreUpdateJs 之前: 虚拟插件源无 JS/规则, 目录直接由委派映射
+        MangaSourceDelegates.getOrNull()?.takeIf { it.handles(bookSource) }?.let {
+            return it.getChapterListAwait(bookSource, book)
+        }
+        VideoSourceDelegates.getOrNull()?.takeIf { it.handles(bookSource) }?.let {
+            return it.getChapterListAwait(bookSource, book)
+        }
         return runCatching {
             if (runPerJs) {
                 runPreUpdateJs(bookSource, book).getOrThrow()
@@ -231,6 +254,12 @@ object WebBook {
         nextChapterUrl: String? = null,
         needSave: Boolean = true
     ): String {
+        MangaSourceDelegates.getOrNull()?.takeIf { it.handles(bookSource) }?.let {
+            return it.getContentAwait(bookSource, book, bookChapter)
+        }
+        VideoSourceDelegates.getOrNull()?.takeIf { it.handles(bookSource) }?.let {
+            return it.getContentAwait(bookSource, book, bookChapter)
+        }
         if (bookSource.contentRule.content.isNullOrEmpty()) {
             SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "⇒正文规则为空,使用章节链接:${bookChapter.url}")
             return bookChapter.url

@@ -92,6 +92,16 @@ abstract class HttpSource : CatalogueSource {
     open suspend fun getImageUrl(page: Page): String =
         imageUrlParse(client.newCall(imageUrlRequest(page)).awaitSuccess())
 
+    /**
+     * 经扩展自身 client 下载图片（Mihon source-api 契约面）。扩展在 client 上挂的
+     * OkHttp 拦截器（禁漫图片分割重排等）由此生效; 宿主图片加载链路经
+     * MangaPluginImageFetcher 委托本方法取字节。
+     *
+     * existingSize 为上游断点续传语义, legado 缓存链为整字节缓存, 忽略。
+     */
+    open suspend fun getImage(page: Page, existingSize: Long = 0L): Response =
+        client.newCall(imageRequest(page)).awaitSuccess()
+
     // ---- 1.4 辅助方法面 (弃用语义, 与 Mihon source-api 一致) ----
 
     protected open fun popularMangaRequest(page: Int): Request = throw UnsupportedOperationException()

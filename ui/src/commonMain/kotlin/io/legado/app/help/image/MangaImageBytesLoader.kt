@@ -6,6 +6,8 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.help.FileUtilsCommon
 import io.legado.app.help.book.BookImageStorageProviders
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.image.MangaPluginImageFetcherProviders
+import io.legado.app.help.image.PluginImageUrl
 import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.script.runScriptWithContext
@@ -52,6 +54,21 @@ object MangaImageBytesLoader {
                 storage.saveImage(book, chapter, imageUrl, embedded)
                 return embedded
             }
+        }
+        // 插件源图片: 内部协议形态 tachiyomi-img://<sourceId>/<urlencode(原始URL)>,
+        // 下载委托扩展自身 client (MangaPluginImageFetcher), 扩展拦截器 (禁漫图片
+        // 分割重排等) 在官方通道内生效; 缓存 key 与正文 src 同为内部形态 (稳定)。
+        PluginImageUrl.parse(imageUrl)?.let { (sourceId, encodedUrl) ->
+            val fetcher = MangaPluginImageFetcherProviders.getOrNull()
+                ?: throw ImageLoadException("插件源图片仅 Android 端支持: $imageUrl")
+            val bytes = fetcher.fetchImage(sourceId, encodedUrl)
+                ?: throw ImageLoadException("插件源图片下载失败: $imageUrl")
+            val decodedBytes = runScriptWithContext {
+                ImageUtils.decode(imageUrl, bytes, isCover = false, bookSource, book)
+            } ?: throw ImageLoadException("图片解码失败: $imageUrl")
+            // 先写磁盘 (同步), 再返回。避免协程持有 decodedBytes 导致 OOM
+            storage.saveImage(book, chapter, imageUrl, decodedBytes)
+            return decodedBytes
         }
         val bytes = AnalyzeUrlFactories.create(
             rawUrl = imageUrl, source = bookSource, coroutineContext = coroutineContext

@@ -6,6 +6,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
+import io.legado.app.data.entities.VirtualPluginSourcePrefix
 import io.legado.app.help.IntentData
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.fileBook.FileBook
@@ -41,6 +42,7 @@ object BookChapterLoader {
         book: Book,
         runPreUpdateJs: Boolean = false,
         isSearchBook: Boolean = false,
+        forceReload: Boolean = false,
     ): BookLoadResult {
         if (book.isRss) {
             book.tocUrl = book.bookUrl
@@ -90,7 +92,7 @@ object BookChapterLoader {
             }
         }
 
-        val chapters = loadChapterList(book, source, runPreUpdateJs)
+        val chapters = loadChapterList(book, source, runPreUpdateJs, forceReload)
 
         return BookLoadResult(
             book = book,
@@ -106,23 +108,28 @@ object BookChapterLoader {
         book: Book,
         source: BookSource? = null,
         runPreUpdateJs: Boolean = false,
+        forceReload: Boolean = false,
     ): List<BookChapter> {
         // 1. 内存交接 (IntentData)
-        val handoff = IntentData.chapterList?.takeIf { it.firstOrNull()?.bookUrl == book.bookUrl }
-        if (!handoff.isNullOrEmpty()) {
-            return handoff
+        if (!forceReload) {
+            val handoff = IntentData.chapterList?.takeIf { it.firstOrNull()?.bookUrl == book.bookUrl }
+            if (!handoff.isNullOrEmpty()) {
+                return handoff
+            }
         }
 
         // 2. 本地数据库 (DB 优先)
-        val dbList = runCatching {
-            withContext(IoDispatcher) {
-                AppDbProviders.get().bookChapterDao.getChapterList(book.bookUrl)
+        if (!forceReload) {
+            val dbList = runCatching {
+                withContext(IoDispatcher) {
+                    AppDbProviders.get().bookChapterDao.getChapterList(book.bookUrl)
+                }
+            }.onFailure {
+                AppLog.put("读取本地目录失败\n${it.message}", it)
+            }.getOrNull()
+            if (!dbList.isNullOrEmpty()) {
+                return dbList
             }
-        }.onFailure {
-            AppLog.put("读取本地目录失败\n${it.message}", it)
-        }.getOrNull()
-        if (!dbList.isNullOrEmpty()) {
-            return dbList
         }
 
         // 3. 回源拉取与落库
@@ -148,7 +155,7 @@ object BookChapterLoader {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            AppLog.put("获取目录失败\n${e.message}", e)
+            AppLog.put(tocFailMessage(source, e), e)
             throw e
         }
 
@@ -171,5 +178,20 @@ object BookChapterLoader {
         }
 
         return list
+    }
+
+    /** 目录失败日志唯一记录点: 三类插件委派透传 failure 不再各自记录, 在此按源身份分流文案。 */
+    private fun tocFailMessage(source: BookSource?, e: Exception): String {
+        val name = source?.bookSourceName.orEmpty()
+        val url = source?.bookSourceUrl.orEmpty()
+        return when {
+            url.startsWith(VirtualPluginSourcePrefix.TACHIYOMI) ->
+                "获取tachiyomi插件 $name 的书籍目录失败\n${e.message}"
+
+            url.startsWith(VirtualPluginSourcePrefix.TVBOX) ->
+                "获取TVBox源 $name 的书籍目录失败\n${e.message}"
+
+            else -> "获取目录失败\n${e.message}"
+        }
     }
 }

@@ -41,10 +41,14 @@ import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.ActiveReadBookStateProvider
 import io.legado.app.model.AudioPlay
 import io.legado.app.model.Debug
+import io.legado.app.model.anime.VideoSourceDelegateImpl
 import io.legado.app.model.fileBook.BitmapProviderImpl
 import io.legado.app.model.fileBook.BitmapProviders
 import io.legado.app.model.fileBook.ZipFileWrapperFactoryImpl
 import io.legado.app.model.fileBook.ZipFileWrapperFactoryProviders
+import io.legado.app.model.manga.MangaSourceDelegateImpl
+import io.legado.app.model.webBook.MangaSourceDelegates
+import io.legado.app.model.webBook.VideoSourceDelegates
 import io.legado.app.utils.RegexReplacer
 import io.legado.app.utils.RegexReplacers
 import io.legado.app.utils.isNightMode
@@ -540,4 +544,8 @@ fun registerAndroidWebBookProviders() {
     // BookController 下沉新增: 注册 ReadBookStateProvider (commonMain 实现读 ActiveReadBookRegistry,
     // 与 desktop/iOS/鸿蒙同一份, 供 BookController.deleteBook/saveBookProgress)
     ReadBookStateProviders.register(ActiveReadBookStateProvider)
+    // 漫画插件源取数委派 (虚拟 BookSource 行命中时由 WebBook 四路守卫转交)
+    MangaSourceDelegates.register(MangaSourceDelegateImpl)
+    // 视频插件源取数委派 (bookSourceType=video 虚拟行命中时转交)
+    VideoSourceDelegates.register(VideoSourceDelegateImpl)
 }

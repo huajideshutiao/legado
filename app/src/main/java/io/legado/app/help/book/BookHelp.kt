@@ -13,6 +13,8 @@ import io.legado.app.help.book.BookHelp.clearCacheExtra
 import io.legado.app.help.book.BookHelp.clearInvalidCache
 import io.legado.app.help.book.BookHelp.getCacheFile
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.image.MangaPluginImageFetcherProviders
+import io.legado.app.help.image.PluginImageUrl
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.ui.book.read.page.provider.ChapterContentParserShared
@@ -174,10 +176,15 @@ object BookHelp {
             if (isImageExist(book, src)) {
                 return
             }
-            val analyzeUrl = AnalyzeUrl(
+            // 插件源图片: 内部协议形态 → 委托扩展自身 client (拦截器还原), 与
+            // MangaImageBytesLoader 插件分支同构; 失败抛异常走下方统一 catch
+            val bytes = PluginImageUrl.parse(src)?.let { (sourceId, encodedUrl) ->
+                MangaPluginImageFetcherProviders.getOrNull()
+                    ?.fetchImage(sourceId, encodedUrl)
+                    ?: throw RuntimeException("插件源图片下载失败: $src")
+            } ?: AnalyzeUrl(
                 src, source = bookSource, coroutineContext = currentCoroutineContext()
-            )
-            val bytes = analyzeUrl.getByteArrayAwait()
+            ).getByteArrayAwait()
             //某些图片被加密，需要进一步解密
             runScriptWithContext {
                 ImageUtils.decode(
