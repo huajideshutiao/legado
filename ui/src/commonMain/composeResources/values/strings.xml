@@ -866,8 +866,8 @@
     <string name="resolution">resolution</string>
     <string name="video_line">Line</string>
     <string name="reload">Reload</string>
-    <string name="manga_extension">Manga extensions</string>
-    <string name="manga_extension_desc">Install and manage manga plugins</string>
+    <string name="manga_extension">Tachiyomi extensions</string>
+    <string name="manga_extension_desc">Install and manage Tachiyomi manga and video extensions</string>
     <string name="manga_extension_repos">Plugin repos</string>
     <string name="manga_extension_add_repo">Add repo</string>
     <string name="manga_extension_repo_url">Repo URL</string>
@@ -885,6 +885,7 @@
     <string name="manga_extension_kind_video">Video</string>
     <string name="manga_extension_pref_empty">This extension has no configurable options</string>
     <string name="manga_extension_pref_error">Failed to load extension settings. See app log for details</string>
+    <string name="manga_extension_kind_manga">Manga</string>
     <string name="manga_search_filters">Filters</string>
     <string name="manga_color_filter">Color filter</string>
     <string name="contrast">Contrast</string>
@@ -1720,7 +1721,7 @@
     <string name="underline_note_add">Add note</string>
 
     <!-- TVBox 影视源管理页 -->
-    <string name="tvbox">TVBox video sources</string>
+    <string name="tvbox">TVBox sources</string>
     <string name="tvbox_desc">Manage TVBox source configs and sites</string>
     <string name="tvbox_add_source">Add config source</string>
     <string name="tvbox_no_source">No config source. Tap + to add a TVBox config URL</string>
@@ -1734,6 +1735,7 @@
     <string name="tvbox_jar_ready">Ready</string>
     <string name="tvbox_jar_failed">Failed</string>
     <string name="tvbox_jar_sites">Sites: %1$s</string>
+    <string name="tvbox_usage_tip">Added sites enter the book source list as virtual sources. Search titles from the global search page and play through the existing video path - no extra entry. Some links need web parsing and may fail to play.</string>
     <string name="tvbox_unsupported">Unsupported</string>
     <string name="tvbox_remove_source_confirm">Remove this config source? Its virtual book sources will be deleted.</string>
     <string name="tvbox_loading">Loading config...</string>
