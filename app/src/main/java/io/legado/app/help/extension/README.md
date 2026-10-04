@@ -32,3 +32,15 @@
 ## 备份/恢复
 
 扩展数据以 JSON 字符串偏好持久化（`ExtensionPrefs` 三个自持键：仓库列表、已信任签名、启用源状态），随 config.json 自动进出备份；恢复收尾钩子在 `help/storage/Backup.kt`（onRestoreFinished → MangaExtensionManager.onRestoreFinished）。私有扩展 APK 本体不进备份，恢复后按仓库列表重装。
+
+## 已接入的生态与测试状态
+
+- 漫画：keiyoushi（index.pb 主格式）；视频：yuzono/anime-repo（min.json）——同契约的其他仓库（Komikku/TachiyomiSY/Kohi-den 等）加 URL 即可。
+- TVBox/FongMi 影视源（spider jar + 配置 json）：见 `help/tvbox/` 与 `model/tvbox/`，壳类面 FQCN 在 `com/github/catvod/`；实测 gaotianliuyun/gao 配置全链路可播。
+- 测试记分板：JVM 单测 10/10；desktop 加载测试 2/2（dex2jar，`desktop/src/test/.../JvmExtensionLoaderTest`）；真机远程全链路（索引→下载→安装→加载→搜索/详情/目录/正文图片/TVBox 全链路）——TvBox 2/2、卸载 1/1 通过；漫画全链路与 iyf 视频链路受真机网络与第三方源自身行为影响（TLS 握手中断 / 扩展内 lazy NPE），测试样本均为远程运行时获取、不进仓库。
+
+## 已知遗留（生态扩展）
+
+- TVBox：JS(type 1)/Python(type 2) spider 未接（JS API 面与 quickjs 现成桥不同，需另建）；parse=1 网页嗅探（可复用宿主的 WebView 验证基础设施 + spider 的 isVideoFormat/manualVideoCheck 钩子）；本地代理 9978 与部分站点 socks5 代理；fastjson 未引入（旧 jar 会 NCDFE，CVE 风险）；旧壳 SpiderReq/SpiderUrl（依赖 rxhttp）；生产入口未接（TvBoxManager.init 幂等就绪）。
+- Kotatsu parsers（1000+ 源，maven 直依赖即可接入，社区 fork 活跃）：未启动。
+- 真机链路：Comic Fury 全链路在部分网络下 TLS 被中断（环境因素）；iyf 搜索期扩展内 lazy NPE（需对照其源码定位）。

@@ -75,6 +75,14 @@
 -keep class io.legado.app.model.fileBook.ZipImageCache { *; }
 
 ############################
+# 业务：TVBox spider jar 运行时类路径供给
+############################
+# spider jar 经 DexClassLoader 双亲委派按类名解析宿主类, 宿主源码对 zxing 零引用,
+# 不 keep 会被 R8 整库裁光, jar 内 Init 二维码任务在 release 包必然 NoClassDefFoundError。
+# zxing core 为纯 Java 直调库 (无反射/无服务发现), jar 用法覆盖面不可预判, 全量保留。
+-keep class com.google.zxing.** { *; }
+
+############################
 # 异常类型：保留类名以便堆栈和反射查找
 ############################
 -keepnames class * extends java.lang.Throwable
