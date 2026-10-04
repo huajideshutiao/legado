@@ -35,7 +35,7 @@ class BookSourceCheckTest {
     @Before
     fun setup() {
         // 取数据库里第一个书源 (按 customOrder 升序)
-        val sources = appDb.bookSourceDao.all
+        val sources = runBlocking { appDb.bookSourceDao.all() }
         assertFalse("数据库里没有书源,请先导入书源", sources.isEmpty())
         source = sources.first()
         println("==== 测试书源: ${source.bookSourceName} (${source.bookSourceUrl}) ====")
