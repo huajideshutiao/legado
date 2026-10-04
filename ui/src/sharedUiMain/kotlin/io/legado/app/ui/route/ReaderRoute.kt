@@ -10,10 +10,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.lifecycle.Lifecycle
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
@@ -325,7 +329,7 @@ fun ReaderRoute(
 
     // region 阅读页快捷键 (对照 app 端 ReadBookKeyHandler.onKeyDown)
     // 栈内页面全部留在组合中, 故非栈顶时必须失效, 否则目录/换源等子页里按方向键会翻背景的书;
-    // 翻页键与 Ctrl+滚轮字号调整在菜单可见时不响应 (避免菜单滚动被阅读页消费)
+    // 翻页键在菜单可见时不响应 (避免菜单滚动被阅读页消费)
     // 栈顶判定改为响应式: collectAsState 订阅 backStack, 栈变化驱动重组刷新下方消费点;
     // 旧写法 lambda 读 .value 不订阅 StateFlow, AppBackHandler 的 enabled 会停在过期值
     val backStack by navigator.backStack.collectAsState()
@@ -496,9 +500,42 @@ fun ReaderRoute(
     }
     // endregion
 
+    // pointerInput(Unit) 长驻协程不随重组重启, 栈顶判定经 State 间接读拿最新值
+    // (同 ReadViewComposable latestXxx 惯例)
+    val latestIsTopEntry by rememberUpdatedState(isTopEntry)
+    // 鼠标滚轮翻页: 仅上下滚动模式消费为连续滚动 (scrollBy: 行级滚动 + 页边界折算,
+    // 滚过页底自动切页, 与拖拽滚动同一套折算互不干扰), 左右翻页模式不消费 (保持拖拽翻页);
+    // 菜单可见时不消费, 让位菜单内列表滚动; 非栈顶不消费, 对齐上方快捷键 enabled 守卫
+    // (目录/换源等子页半透明区域滚轮会命中下层阅读页)。
     ReaderScreen(
         state = state,
         actions = actions,
+        modifier = Modifier.pointerInput(Unit) {
+            awaitPointerEventScope {
+                while (true) {
+                    val event = awaitPointerEvent()
+                    if (event.type != PointerEventType.Scroll) continue
+                    val change = event.changes.firstOrNull() ?: continue
+                    val delta = change.scrollDelta.y
+                    if (delta == 0f) continue
+                    if (!latestIsTopEntry || screenModel.menuState.isVisible) continue
+                    val scrollDelegate =
+                        screenModel.viewModel.pageDelegate as? ScrollPageDelegateCompose
+                    if (scrollDelegate != null) {
+                        // CMP 的 scrollDelta 是格数 (preciseWheelRotation 直接透传,
+                        // Windows 一格 = 1.0, 非像素) —— 按像素假设倍率会全部失效;
+                        // 一格 = 视口 1/4 (4 格滚一页, 用户实测拍板的速度), 高精度滚轮
+                        // (preciseWheelRotation 小数) 自然细分; 方向 -delta 用户实测确认
+                        val viewportH =
+                            (screenModel.viewModel.curTextPage.value?.visibleHeight ?: 0).toFloat()
+                        scrollDelegate.scrollBy(
+                            if (viewportH > 0f) -delta * viewportH / 4f else -delta * 300f
+                        )
+                        change.consume()
+                    }
+                }
+            }
+        },
         focusRequester = keyFocusRequester,
         onTextAreaMeasured = { textAreaSize = it },
     )
