@@ -76,6 +76,7 @@ import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.group.GroupEditDialog
 import io.legado.app.ui.book.group.GroupManageDialog
 import io.legado.app.ui.book.group.GroupViewModelShared
+import io.legado.app.ui.book.manga.extension.MangaExtensionServiceProviders
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.bookshelf.BookshelfActionsCallbacks
 import io.legado.app.ui.bookshelf.BookshelfAddViewModelShared
@@ -1549,6 +1550,8 @@ private fun ExploreTabContent(
 @Composable
 private fun MyTabContent(navigator: AppNavigator) {
     val caps = LocalPlatformCapabilities.current
+    // 漫画插件服务同判空模式 (tab 与 push 路由两侧一致)
+    val mangaExtensionService = MangaExtensionServiceProviders.getOrNull()
     val webServiceDesc = stringResource(Res.string.web_service_desc)
     // Web 服务地址: 空串=未运行 (对照原版 observeEvent<String>(WEB_SERVICE) 后回读 hostAddress)
     val webServiceAddress by caps.webServiceAddress.collectAsState()
@@ -1573,6 +1576,17 @@ private fun MyTabContent(navigator: AppNavigator) {
             onWebDavSetting = { navigator.push(AppRoute.BackupConfig) },
             onOtherSetting = { navigator.push(AppRoute.OtherConfig) },
             onBookSourceManage = { navigator.push(AppRoute.BookSourceManage) },
+            onMangaExtensionManage = mangaExtensionService?.let { svc ->
+                {
+                    svc.init()
+                    navigator.push(AppRoute.MangaExtension)
+                }
+            },
+                {
+                    svc.init()
+                    navigator.push(AppRoute.TvBox)
+                }
+            },
             onReplaceManage = { navigator.push(AppRoute.ReplaceRule) },
             onSourceFilterRuleManage = { navigator.push(AppRoute.SourceFilterRule) },
             onTxtTocRuleManage = { navigator.push(AppRoute.TxtTocRule) },

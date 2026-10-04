@@ -59,6 +59,7 @@ import io.legado.app.help.storage.Backup
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.fileBook.FileBook
+import io.legado.app.model.manga.AndroidMangaExtensionPlatform
 import io.legado.app.receiver.MediaButtonReceiver
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.service.ExportBookService
@@ -76,6 +77,7 @@ import io.legado.app.ui.book.info.LocalBlurCoverBgSlot
 import io.legado.app.ui.book.info.LocalIntroImageSlot
 import io.legado.app.ui.book.manga.AndroidMangaReaderPlatform
 import io.legado.app.ui.book.manga.MangaReaderScreenModel
+import io.legado.app.ui.book.manga.extension.MangaExtensionServiceProviders
 import io.legado.app.ui.book.read.AndroidReaderPlatformProvider
 import io.legado.app.ui.book.read.ReaderPlatformProviders
 import io.legado.app.ui.book.read.ReaderScreenModelRegistry
@@ -626,6 +628,8 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
         ReaderPlatformProviders.register(readerPlatform)
         AudioPlayPlatformProviders.register(SharedAudioPlayPlatformProvider)
         MangaReaderScreenModel.Providers.register(AndroidMangaReaderPlatform)
+        // 漫画插件服务 (管理页/搜索筛选条; 桥接 MangaExtensionManager, 仅 Android)
+        MangaExtensionServiceProviders.register(AndroidMangaExtensionPlatform(applicationContext))
         videoPlayProvider = AndroidVideoPlayPlatformProvider(this)
             .also { VideoPlayPlatformProviders.register(it) }
         // 小窗内播放/暂停钮的广播通道 (系统 RemoteAction 触发); setPackage 限定自身,

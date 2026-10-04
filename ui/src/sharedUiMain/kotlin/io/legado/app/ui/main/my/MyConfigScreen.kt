@@ -27,7 +27,10 @@ import legado.ui.generated.resources.ic_cfg_theme
 import legado.ui.generated.resources.ic_cfg_web
 import legado.ui.generated.resources.ic_history
 import legado.ui.generated.resources.ic_import
+import legado.ui.generated.resources.ic_extension
 import legado.ui.generated.resources.ic_translate
+import legado.ui.generated.resources.manga_extension
+import legado.ui.generated.resources.manga_extension_desc
 import legado.ui.generated.resources.other
 import legado.ui.generated.resources.other_setting
 import legado.ui.generated.resources.outline_filter_alt_24
@@ -113,6 +116,8 @@ fun MyConfigScreen(
     onReadRecord: () -> Unit,
     onSourceToolbox: () -> Unit,
     onAbout: () -> Unit,
+    // 漫画插件管理 (MangaExtensionService 未注册端 null, 条目隐藏)
+    onMangaExtensionManage: (() -> Unit)? = null,
 ) {
     val themeModeEntries = stringArrayResource(Res.array.theme_mode)
     val themeModeValues = stringArrayResource(Res.array.theme_mode_v)
@@ -137,6 +142,8 @@ fun MyConfigScreen(
     val titleReadRecord = stringResource(Res.string.read_record)
     val titleSourceToolbox = stringResource(Res.string.source_toolbox)
     val titleAbout = stringResource(Res.string.about)
+    val titleMangaExtension = stringResource(Res.string.manga_extension)
+    val summaryMangaExtension = stringResource(Res.string.manga_extension_desc)
 
     // rememberPainter 是 @Composable，须在此层取值，不能在 LazyListScope 构建 lambda 内调用
     val iconTheme = painterResource(Res.drawable.ic_cfg_theme)
@@ -151,6 +158,7 @@ fun MyConfigScreen(
     val iconBookmark = painterResource(Res.drawable.ic_bookmark)
     val iconHistory = painterResource(Res.drawable.ic_history)
     val iconToolbox = painterResource(Res.drawable.ic_bug_report)
+    val iconExtension = painterResource(Res.drawable.ic_extension)
     val iconAbout = painterResource(Res.drawable.ic_cfg_about)
 
     AppTheme {
@@ -199,6 +207,14 @@ fun MyConfigScreen(
                 icon = iconSource,
                 onClick = onBookSourceManage,
             )
+            if (onMangaExtensionManage != null) {
+                preference(
+                    title = titleMangaExtension,
+                    summary = summaryMangaExtension,
+                    icon = iconExtension,
+                    onClick = { onMangaExtensionManage.invoke() },
+                )
+            }
             preference(
                 title = titleReplacePurify,
                 icon = iconReplace,

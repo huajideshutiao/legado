@@ -19,6 +19,8 @@ import io.legado.app.ui.route.DictRuleRoute
 import io.legado.app.ui.route.ExploreShowRoute
 import io.legado.app.ui.route.ImportBookRoute
 import io.legado.app.ui.route.MainRoute
+import io.legado.app.ui.route.MangaExtensionReposRoute
+import io.legado.app.ui.route.MangaExtensionRoute
 import io.legado.app.ui.route.MangaReaderRoute
 import io.legado.app.ui.route.MyConfigRoute
 import io.legado.app.ui.route.OtherConfigRoute
@@ -89,6 +91,16 @@ fun RouteContent(
 
         is AppRoute.BookSourceManage -> {
             BookSourceManageRoute(entry, navigator, screenModelStore)
+            true
+        }
+
+        is AppRoute.MangaExtension -> {
+            MangaExtensionRoute(entry, navigator, screenModelStore)
+            true
+        }
+
+        is AppRoute.MangaExtensionRepos -> {
+            MangaExtensionReposRoute(entry, navigator, screenModelStore)
             true
         }
 

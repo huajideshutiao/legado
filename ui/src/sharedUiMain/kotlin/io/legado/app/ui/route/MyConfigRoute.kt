@@ -3,6 +3,7 @@ package io.legado.app.ui.route
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -11,6 +12,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.component.AppTitleBar
+import io.legado.app.ui.book.manga.extension.MangaExtensionServiceProviders
 import io.legado.app.ui.main.my.MyConfigScreen
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
@@ -41,6 +43,10 @@ fun MyConfigRoute(
     screenModelStore: ScreenModelStore,
 ) {
     val caps = PlatformCapabilityProviders.get()
+    // 漫画插件服务: 未注册端 (desktop 等) 为 null, 入口隐藏且不触发 init
+    val mangaExtensionService = MangaExtensionServiceProviders.getOrNull()
+    // 首入口预热 (幂等): 提前装载已装插件/同步虚拟书源, 插件管理页自身 init 为冗余兜底
+    LaunchedEffect(Unit) { mangaExtensionService?.init() }
     val webServiceDesc = stringResource(Res.string.web_service_desc)
     // Web 服务地址: 空串=未运行 (对照原版 observeEvent<String>(WEB_SERVICE) 后回读 hostAddress)
     val webServiceAddress by caps.webServiceAddress.collectAsState()
@@ -66,6 +72,12 @@ fun MyConfigRoute(
             onWebDavSetting = { navigator.push(AppRoute.BackupConfig) },
             onOtherSetting = { navigator.push(AppRoute.OtherConfig) },
             onBookSourceManage = { navigator.push(AppRoute.BookSourceManage) },
+            onMangaExtensionManage = mangaExtensionService?.let { svc ->
+                {
+                    svc.init()
+                    navigator.push(AppRoute.MangaExtension)
+                }
+            },
             onReplaceManage = { navigator.push(AppRoute.ReplaceRule) },
             onSourceFilterRuleManage = { navigator.push(AppRoute.SourceFilterRule) },
             onTxtTocRuleManage = { navigator.push(AppRoute.TxtTocRule) },

@@ -66,6 +66,7 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.SearchKeyword
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.model.webBook.ExploreOption
+import io.legado.app.ui.book.manga.extension.MangaSearchFilterRow
 import io.legado.app.ui.bookshelf.KindLabels
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.root.LocalSharedCoverBinding
@@ -324,6 +325,12 @@ fun SearchScreen(
                         options = viewModel.searchOptions,
                         version = searchOptionsVersion,
                         onOptionChanged = { viewModel.search(viewModel.searchKey, resetOptions = false) },
+                    )
+                    // 漫画插件源筛选条 (范围内无插件源时为零行; 服务未注册端同样)
+                    MangaSearchFilterRow(
+                        searchScope = viewModel.searchScope,
+                        scopeVersion = scopeVersion,
+                        onFiltersChanged = { viewModel.search(viewModel.searchKey, resetOptions = false) },
                     )
                     ResultArea(
                         viewModel = viewModel,
