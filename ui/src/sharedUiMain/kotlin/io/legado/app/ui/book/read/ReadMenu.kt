@@ -646,7 +646,7 @@ open class BaseReadMenuState(
         title = book?.name
         val curChapter = screenModel.currentChapter
         chapterName = curChapter?.title
-        chapterUrl = curChapter?.url
+        chapterUrl = book?.let { curChapter?.getAbsoluteURL(it) }
         chapterNameVisible = !chapterName.isNullOrEmpty()
         chapterUrlVisible = !chapterUrl.isNullOrEmpty() && book?.isLocal == false
         prevEnabled = screenModel.viewModel.canMoveToPrevChapter()
