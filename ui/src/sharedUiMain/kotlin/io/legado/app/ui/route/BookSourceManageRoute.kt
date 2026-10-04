@@ -23,6 +23,7 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.model.Debug
 import io.legado.app.ui.association.ImportBookSourceItemsDialog
 import io.legado.app.ui.association.ImportBookSourceViewModelShared
+import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.book.source.BookSourceListCallbacks
 import io.legado.app.ui.book.source.BookSourceListScreen
 import io.legado.app.ui.book.source.SourceFilter
@@ -255,12 +256,7 @@ fun BookSourceManageRoute(
             onToggleSortDesc = { screenModel.dispatch(BookSourceUiEvent.ToggleSortDesc) },
             onToggleGroupByDomain = { screenModel.dispatch(BookSourceUiEvent.ToggleGroupByDomain) },
             onToggle = { item, checked ->
-                screenModel.dispatch(
-                    BookSourceUiEvent.Toggle(
-                        item,
-                        checked
-                    )
-                )
+                screenModel.dispatch(BookSourceUiEvent.Toggle(item, checked))
             },
             onSelectAll = { screenModel.dispatch(BookSourceUiEvent.SelectAll(it)) },
             onRevertSelection = { screenModel.dispatch(BookSourceUiEvent.RevertSelection) },
@@ -290,11 +286,17 @@ fun BookSourceManageRoute(
             },
             onToTop = { screenModel.dispatch(BookSourceUiEvent.ToTop(it)) },
             onToBottom = { screenModel.dispatch(BookSourceUiEvent.ToBottom(it)) },
-            onSearchBook = { navigator.push(AppRoute.Search()) },
-            onDebug = { part -> navigator.push(AppRoute.BookSourceDebug(part.bookSourceUrl)) },
+            // 对齐原版 searchBook: 带 SearchScope(part) 源范围进搜索页
+            onSearchBook = { part ->
+                navigator.push(AppRoute.Search(searchScope = SearchScope(part).toString()))
+            },
+            onDebug = { part ->
+                navigator.push(AppRoute.BookSourceDebug(part.bookSourceUrl))
+            },
             onLogin = { part ->
                 // 统一登录入口 (对照原 BookSourceAdapter: getBookSource()?.showLoginDialog()):
-                // 源对象由 showSourceLogin 内部按 url 查库, URL 登录直开全屏 WebView
+                // 源对象由 showSourceLogin 内部按 url 查库, URL 登录直开全屏 WebView;
+                // 插件虚拟源在 dispatchSourceLogin 内部分流: 登录 = 归属扩展自带设置
                 showSourceLogin(part.bookSourceUrl)
             },
             onDel = { delTarget = it },

@@ -74,7 +74,9 @@ class BookSourceScreenModel(
         hostMap.getOrPut(origin) { NetworkUtils.getSubDomainOrNull(origin) ?: "#" }
 
     fun selection(): List<BookSourcePart> =
-        _state.value.sources.filter { _state.value.selected.contains(it.bookSourceUrl) }
+        _state.value.sources.filter {
+            _state.value.selected.contains(it.bookSourceUrl)
+        }
 
     private fun observeGroups() {
         groupsJob?.cancel()
@@ -220,10 +222,9 @@ class BookSourceScreenModel(
             }
 
             is BookSourceUiEvent.SelectAll -> {
+                val selectable = _state.value.sources.map { it.bookSourceUrl }.toSet()
                 _state.value = _state.value.copy(
-                    selected = if (event.all) {
-                        _state.value.sources.map { it.bookSourceUrl }.toSet()
-                    } else emptySet()
+                    selected = if (event.all) selectable else emptySet()
                 )
             }
 
@@ -240,22 +241,24 @@ class BookSourceScreenModel(
                 if (positions.isNotEmpty()) {
                     val range = positions.min()..positions.max()
                     _state.value = _state.value.copy(
-                        selected = _state.value.selected + range.map { sources[it].bookSourceUrl }
+                        selected = _state.value.selected +
+                            range.map { sources[it].bookSourceUrl }
                     )
                 }
             }
 
             is BookSourceUiEvent.Move -> {
-                val list = _state.value.sources.toMutableList()
+                val moved = _state.value.sources.toMutableList()
                     .apply { add(event.to, removeAt(event.from)) }
-                _state.value = _state.value.copy(sources = list)
+                _state.value = _state.value.copy(sources = moved)
             }
 
             BookSourceUiEvent.PersistOrder -> {
                 val ascending = _state.value.sortAscending
-                val items = _state.value.sources.mapIndexed { index, part ->
-                    part.copy(customOrder = if (ascending) index else -index)
-                }
+                val items = _state.value.sources
+                    .mapIndexed { index, part ->
+                        part.copy(customOrder = if (ascending) index else -index)
+                    }
                 resetSortCache()
                 scope.launch(IoDispatcher) { appDb.bookSourceDao.upOrder(items) }
             }
@@ -267,9 +270,8 @@ class BookSourceScreenModel(
             }
 
             BookSourceUiEvent.DelSelection -> {
-                val selection = selection()
                 scope.launch(IoDispatcher) {
-                    SourceHelp.deleteBookSourceParts(selection)
+                    SourceHelp.deleteBookSourceParts(selection())
                 }
             }
 

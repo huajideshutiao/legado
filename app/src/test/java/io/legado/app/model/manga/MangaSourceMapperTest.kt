@@ -14,15 +14,15 @@ class MangaSourceMapperTest {
     fun `sourceUrl 与 sourceId 双向往返`() {
         val id = 6289731484943315811L
         val url = MangaSourceMapper.sourceUrlOf(id)
-        assertEquals("manga-plugin://6289731484943315811", url)
+        assertEquals("tachiyomi://6289731484943315811", url)
         assertEquals(id, MangaSourceMapper.sourceIdOf(url))
     }
 
     @Test
     fun `sourceIdOf 非插件前缀与非法 id 返回 null`() {
         assertNull(MangaSourceMapper.sourceIdOf("https://example.com"))
-        assertNull(MangaSourceMapper.sourceIdOf("manga-plugin://"))
-        assertNull(MangaSourceMapper.sourceIdOf("manga-plugin://abc"))
+        assertNull(MangaSourceMapper.sourceIdOf("tachiyomi://"))
+        assertNull(MangaSourceMapper.sourceIdOf("tachiyomi://abc"))
     }
 
     @Test

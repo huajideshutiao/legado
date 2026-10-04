@@ -385,6 +385,7 @@ private fun RuleItemScope.BookSourceItem(
 ) {
     val colors = AppTheme.colors
     var showMenu by remember { mutableStateOf(false) }
+    // 插件虚拟源 (漫画/视频/TVBox): 菜单/选中/拖拽/编辑按普通源处理, 登录直达归属扩展自带设置
     val isFinalMessage = debugMsg.contains(finalMessageRegex)
     val showProgress = isChecking && debugMsg.isNotEmpty() && !isFinalMessage
     // 对照原版 upCheckSourceMessage: 校验已停止而本源没有终态文案时强制补终态
@@ -535,6 +536,8 @@ private fun BookSourceItemMenu(
 ) {
     val colors = AppTheme.colors
     AppDropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        // 登录可见性回归原版机制 (hasLoginUrl); 虚拟行由同步逻辑把可配置扩展包名写进 loginUrl,
+        // 登录动作直达扩展设置
         if (sort == BookSourceSort.Default) {
             DropdownMenuItem(onClick = { onDismiss(); callbacks.onToTop(item) }) {
                 Text(strToTop, color = colors.primaryText)

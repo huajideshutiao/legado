@@ -8,6 +8,7 @@ import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.SearchBook
+import io.legado.app.data.entities.VirtualPluginSourcePrefix
 import io.legado.app.utils.KS_JSON
 import kotlinx.serialization.encodeToString
 import java.net.URLDecoder
@@ -17,15 +18,17 @@ import java.net.URLEncoder
  * Aniyomi 插件模型 → legado 数据实体映射 (与漫画侧 MangaSourceMapper 同构)。
  *
  * 身份约定 (书架归属与缓存键的稳定性依赖它, 不可随意变更):
- * - 虚拟书源 URL: `anime-plugin://<source.id>` (source.id 为插件源唯一 Long);
- * - Book.bookUrl: `anime-plugin://<source.id>/<urlencode(anime.url)>`, 详情/目录/取数
+ * - 虚拟书源 URL: `tachiyomi://<source.id>` (source.id 为插件源唯一 Long;
+ *   前缀单一事实来源为 [VirtualPluginSourcePrefix.TACHIYOMI], 与漫画插件源共用,
+ *   两者靠 bookSourceType 区分: 漫画=image / 视频=video);
+ * - Book.bookUrl: `tachiyomi://<source.id>/<urlencode(anime.url)>`, 详情/目录/取数
  *   均由它反解出插件侧 anime.url;
  * - 虚拟 BookSource 行 bookSourceType=[BookSourceType.video], Book.type=[BookType.video],
  *   使整条链路复用视频播放管线。
  */
 object AnimeSourceMapper {
 
-    const val SOURCE_URL_PREFIX = "anime-plugin://"
+    const val SOURCE_URL_PREFIX = VirtualPluginSourcePrefix.TACHIYOMI
 
     fun sourceUrlOf(sourceId: Long): String = "$SOURCE_URL_PREFIX$sourceId"
 
@@ -117,7 +120,7 @@ fun Video.toPlayableContent(): String? {
 
 /** 可播内容展示名 (多视频 `标题::内容` 行的标题段)。 */
 fun Video.playableTitle(): String =
-    videoTitle.ifBlank { quality }.replace("::", "").ifBlank { "默认" }
+    videoTitle.replace("::", "").ifBlank { "默认" }
 
 /** 由虚拟书源 URL + 插件侧 anime.url 构成 Book.bookUrl。 */
 private fun SAnime.toBookUrl(originUrl: String): String =

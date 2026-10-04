@@ -21,7 +21,8 @@ import kotlinx.serialization.builtins.serializer
  * 每个已装载插件源落一行 bookSourceType=[BookSourceType.video] 的虚拟 [BookSource],
  * 使其自动进入书源管理/搜索范围/换源; URL 身份为 [AnimeSourceMapper.SOURCE_URL_PREFIX]
  * + source.id, 请求头 (AnimeHttpSource.headers) JSON 序列化进 header 字段供防盗链注入。
- * 取数不走规则解析 (WebBook 四路守卫转交 VideoSourceDelegateImpl), 行内规则字段恒为空。
+ * 取数不走规则解析 (WebBook 四路守卫转交 VideoSourceDelegateImpl), 行内规则字段恒为空
+ * (仅 exploreUrl 写固定发现分类, 非规则字段)。
  *
  * 与漫画侧的差异: 虚拟行同步由 [MangaExtensionManager.loadExtensions] 直接触发
  * (漫画侧由 MainActivity 注册的 AndroidMangaExtensionPlatform 监听, 视频 UI 入口未建)。
@@ -29,7 +30,23 @@ import kotlinx.serialization.builtins.serializer
 object AnimePluginSources {
 
     /** 书源管理页分组名 (插件源统一挂该组)。 */
-    const val GROUP_NAME = "视频插件"
+    const val GROUP_NAME = "Tachiyomi 视频插件"
+
+    /** 发现分类 url 段: 热门 (对应 [AnimeSource.getPopularAnime])。 */
+    const val EXPLORE_URL_POPULAR = "popular"
+
+    /** 发现分类 url 段: 最新 (对应 [AnimeSource.getLatestUpdates]; supportsLatest=false 的源会抛)。 */
+    const val EXPLORE_URL_LATEST = "latest"
+
+    /**
+     * 虚拟行 exploreUrl: 换行分隔的 `标题::url` 列表。
+     *
+     * 形态与漫画侧 [MangaPluginSources.EXPLORE_URL] 一致, 由 shared 层
+     * `BookSourceExtensionsShared.exploreKinds()` 的换行分支解析; url 段原样作为 key
+     * 传入 `WebBook.getBookListAwait(..., isSearch = false)`, 即
+     * [VideoSourceDelegateImpl.getExploreAwait] 的 url 入参。
+     */
+    const val EXPLORE_URL = "热门::$EXPLORE_URL_POPULAR\n最新::$EXPLORE_URL_LATEST"
 
     /** 由插件源构造虚拟 BookSource 行 (不落库)。 */
     fun buildVirtualSource(source: AnimeSource, pkgName: String?): BookSource = BookSource(
@@ -38,7 +55,8 @@ object AnimePluginSources {
         bookSourceGroup = GROUP_NAME,
         bookSourceType = BookSourceType.video,
         enabled = true,
-        enabledExplore = false,
+        enabledExplore = true,
+        exploreUrl = EXPLORE_URL,
         header = headerJsonOf(source),
         bookSourceComment = listOfNotNull(
             "Aniyomi 视频插件源",

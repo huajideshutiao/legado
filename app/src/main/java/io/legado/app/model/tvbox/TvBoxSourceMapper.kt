@@ -1,5 +1,6 @@
 package io.legado.app.model.tvbox
 
+import io.legado.app.data.entities.VirtualPluginSourcePrefix
 import java.net.URLDecoder
 import java.net.URLEncoder
 
@@ -12,7 +13,11 @@ import java.net.URLEncoder
  */
 object TvBoxSourceMapper {
 
-    const val SOURCE_URL_PREFIX = "tvbox://"
+    /**
+     * 前缀取自 [VirtualPluginSourcePrefix] 单一事实来源 (ui 层书源守卫同表判定),
+     * 不写裸字面量 —— 否则将来改前缀时管理页守卫会静默失配。
+     */
+    const val SOURCE_URL_PREFIX = VirtualPluginSourcePrefix.TVBOX
 
     fun siteUrlOf(siteKey: String): String = "$SOURCE_URL_PREFIX$siteKey"
 
