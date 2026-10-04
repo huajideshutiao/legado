@@ -119,6 +119,21 @@ json = "20260814"
 # ===== 桌面 JVM 专属 =====
 jna = "5.19.1"
 
+# ===== 桌面扩展加载 (APK 安装包解析 / dex→jar 字节码转换) =====
+# 坐标经 Suwayomi-Server 实证; 2026-10-04 逐一核对远端仓库元数据:
+# - dex2jar (de.femtopedia fork): Maven Central 最新即 2.4.38 (dex-translator/dex-tools 同版发布)
+# - apk-parser: 2.6.10 即最终版 (2019-11 后未再发版), Central 在售
+# - apksig: Maven Central 停在 2.3.0 (2017), 8.x/9.x 只发布在 Google Maven;
+#   settings.gradle.kts 已配 google(), 9.4.0 与项目 AGP 9.4.1 同代 (9.4.1 也在售)
+# - asm: Dex2Jar 2.4.38 的 POM 传递 asm-tree/asm-util/asm-commons 9.10.1,
+#   asm-tree 再传递 asm:asm:9.10.1, Gradle 冲突消解 (最新版胜出) 会把显式钉的
+#   更低版本静默抬到 9.10.1 —— 故直接钉 Dex2Jar 2.4.38 POM 实际配套的 9.10.1
+#   (任务书给的 9.9.1 对 2.4.38 不成立, 详见桌面扩展加载汇报)
+dex2jar = "2.4.38"
+asm = "9.10.1"
+apkParser = "2.6.10"
+apksig = "9.4.0"
+
 # ===== UI 组件 =====
 reorderable = "3.1.0"
 
@@ -253,6 +268,13 @@ json = { module = "org.json:json", version.ref = "json" }
 # ===== 桌面 JVM 专属 =====
 jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
 jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
+
+# ===== 桌面扩展加载 =====
+dex-translator = { module = "de.femtopedia.dex2jar:dex-translator", version.ref = "dex2jar" }
+dex-tools = { module = "de.femtopedia.dex2jar:dex-tools", version.ref = "dex2jar" }
+asm = { module = "org.ow2.asm:asm", version.ref = "asm" }
+apk-parser = { module = "net.dongliu:apk-parser", version.ref = "apkParser" }
+apksig = { module = "com.android.tools.build:apksig", version.ref = "apksig" }
 
 # ===== 测试 =====
 junit = { module = "junit:junit", version.ref = "junit" }
