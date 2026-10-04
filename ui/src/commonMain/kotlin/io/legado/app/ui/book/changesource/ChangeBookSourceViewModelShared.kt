@@ -378,6 +378,8 @@ class ChangeBookSourceViewModelShared(
     fun startSearch() {
         Coroutine.async(scope) {
             stopSearch()
+            // 开始全新搜索即作废旧会话: 避免旧会话被单槽钉住与新结果双份叠放
+            ChangeSourceSessionCache.clear()
             if (searchBooks.isNotEmpty()) searchBooks.clear()
             searchCallback?.upAdapter()
             bookSources.clear()
@@ -437,6 +439,7 @@ class ChangeBookSourceViewModelShared(
     fun startSearch(origin: String) {
         Coroutine.async(scope) {
             stopSearch()
+            ChangeSourceSessionCache.clear()
             bookSources.clear()
             tocMap.clear()
             bookMap.clear()
@@ -1045,6 +1048,13 @@ private object ChangeSourceSessionCache {
     fun put(newSession: ChangeSourceSession) {
         synchronized(lock) {
             session = newSession
+        }
+    }
+
+    /** 释放当前会话 (开始新搜索时调用, 避免旧会话与新搜索结果双份叠放)。 */
+    fun clear() {
+        synchronized(lock) {
+            session = null
         }
     }
 }
