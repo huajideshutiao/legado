@@ -85,6 +85,7 @@ import io.legado.app.model.registerAndroidRealScreen
 import io.legado.app.model.script.JsEngines
 import io.legado.app.model.script.registerAndroidJsEngines
 import io.legado.app.model.webBook.registerAndroidBookInfoRefresher
+import io.legado.app.model.tvbox.TvBoxManager
 import io.legado.app.model.webBook.registerAndroidWebBookProviders
 import io.legado.app.service.WebService
 import io.legado.app.ui.book.changesource.registerAndroidChangeBookSourcePlatform
@@ -203,6 +204,10 @@ class App : Application() {
         // 须在 CookieStoreProvider 之后 (bridge 通过 CookieStoreProviders.get() 间接访问存储)
         registerSharedCookieJarBridge()
         registerAndroidWebBookProviders()
+        // TVBox 影视源宿主: 幂等 init (重载已持久化配置) + 视频取数委派组合包裹;
+        // 必须排在 registerAndroidWebBookProviders 之后 —— 委派注册表单实现覆盖语义,
+        // 早注册会被它的 VideoSourceDelegates.register 整体盖掉
+        TvBoxManager.init(this)
         // 注册 Coil3 BookImageLoader (Compose 图片加载, 替代 Glide 迁移批 1 共享面接线)
         // 依赖 OkHttpClientProviders (上一步 registerAndroidWebBookProviders 已注册),
         // ImageLoader 内部 lazy 构建故注册本身不触发网络栈初始化

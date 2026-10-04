@@ -1068,4 +1068,24 @@
     <string name="copy_key_value">複製鍵值對</string>
     <string name="copy_json_path">複製 JSONPath</string>
     <string name="view_value">檢視</string>
+
+    <!-- TVBox 影视源管理页 -->
+    <string name="tvbox">影視源(TVBox)</string>
+    <string name="tvbox_desc">管理 TVBox 影視源設定與站點</string>
+    <string name="tvbox_add_source">新增設定來源</string>
+    <string name="tvbox_no_source">暫無設定來源，點右上角 + 填入 TVBox 設定網址</string>
+    <string name="tvbox_sites">站點</string>
+    <string name="tvbox_no_site">暫無站點</string>
+    <string name="tvbox_searchable">可搜尋</string>
+    <string name="tvbox_filterable">可篩選</string>
+    <string name="tvbox_jars">Spider 腳本套件</string>
+    <string name="tvbox_jar_idle">未下載</string>
+    <string name="tvbox_jar_loading">下載載入中</string>
+    <string name="tvbox_jar_ready">已就緒</string>
+    <string name="tvbox_jar_failed">載入失敗</string>
+    <string name="tvbox_jar_sites">站點數 %1$s</string>
+    <string name="tvbox_unsupported">暫不支援</string>
+    <string name="tvbox_remove_source_confirm">刪除該設定來源？其虛擬書源列會一併清除。</string>
+    <string name="tvbox_loading">正在拉取設定…</string>
+    <string name="tvbox_delete_source">刪除來源</string>
 </resources>

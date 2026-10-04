@@ -28,6 +28,7 @@ import legado.ui.generated.resources.ic_cfg_web
 import legado.ui.generated.resources.ic_history
 import legado.ui.generated.resources.ic_import
 import legado.ui.generated.resources.ic_extension
+import legado.ui.generated.resources.ic_layout_video
 import legado.ui.generated.resources.ic_translate
 import legado.ui.generated.resources.manga_extension
 import legado.ui.generated.resources.manga_extension_desc
@@ -43,6 +44,8 @@ import legado.ui.generated.resources.theme_mode
 import legado.ui.generated.resources.theme_mode_v
 import legado.ui.generated.resources.theme_setting
 import legado.ui.generated.resources.theme_setting_s
+import legado.ui.generated.resources.tvbox
+import legado.ui.generated.resources.tvbox_desc
 import legado.ui.generated.resources.txt_toc_rule
 import legado.ui.generated.resources.web_dav_set_import_old
 import legado.ui.generated.resources.web_service
@@ -118,6 +121,8 @@ fun MyConfigScreen(
     onAbout: () -> Unit,
     // 漫画插件管理 (MangaExtensionService 未注册端 null, 条目隐藏)
     onMangaExtensionManage: (() -> Unit)? = null,
+    // 影视源 TVBox 管理 (TvBoxService 未注册端 null, 条目隐藏)
+    onTvBoxManage: (() -> Unit)? = null,
 ) {
     val themeModeEntries = stringArrayResource(Res.array.theme_mode)
     val themeModeValues = stringArrayResource(Res.array.theme_mode_v)
@@ -144,6 +149,8 @@ fun MyConfigScreen(
     val titleAbout = stringResource(Res.string.about)
     val titleMangaExtension = stringResource(Res.string.manga_extension)
     val summaryMangaExtension = stringResource(Res.string.manga_extension_desc)
+    val titleTvBox = stringResource(Res.string.tvbox)
+    val summaryTvBox = stringResource(Res.string.tvbox_desc)
 
     // rememberPainter 是 @Composable，须在此层取值，不能在 LazyListScope 构建 lambda 内调用
     val iconTheme = painterResource(Res.drawable.ic_cfg_theme)
@@ -159,6 +166,7 @@ fun MyConfigScreen(
     val iconHistory = painterResource(Res.drawable.ic_history)
     val iconToolbox = painterResource(Res.drawable.ic_bug_report)
     val iconExtension = painterResource(Res.drawable.ic_extension)
+    val iconVideo = painterResource(Res.drawable.ic_layout_video)
     val iconAbout = painterResource(Res.drawable.ic_cfg_about)
 
     AppTheme {
@@ -213,6 +221,14 @@ fun MyConfigScreen(
                     summary = summaryMangaExtension,
                     icon = iconExtension,
                     onClick = { onMangaExtensionManage.invoke() },
+                )
+            }
+            if (onTvBoxManage != null) {
+                preference(
+                    title = titleTvBox,
+                    summary = summaryTvBox,
+                    icon = iconVideo,
+                    onClick = { onTvBoxManage.invoke() },
                 )
             }
             preference(

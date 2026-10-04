@@ -48,6 +48,11 @@ sealed interface AppRoute {
     @SerialName("manga_extension")
     data object MangaExtension : AppRoute
 
+    // TVBox 影视源管理 (站点以虚拟书源行进入书源体系; 服务未注册端入口隐藏)
+    @Serializable
+    @SerialName("tvbox")
+    data object TvBox : AppRoute
+
     @Serializable
     @SerialName("manga_extension_repos")
     data object MangaExtensionRepos : AppRoute

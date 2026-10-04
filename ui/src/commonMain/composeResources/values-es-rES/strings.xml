@@ -958,4 +958,24 @@
     <string name="copy_key_value">Copiar clave y valor</string>
     <string name="copy_json_path">Copiar JSONPath</string>
     <string name="view_value">Ver</string>
+
+    <!-- TVBox 影视源管理页 -->
+    <string name="tvbox">Fuentes de video TVBox</string>
+    <string name="tvbox_desc">Gestionar configuraciones y sitios de TVBox</string>
+    <string name="tvbox_add_source">Anadir fuente de configuracion</string>
+    <string name="tvbox_no_source">Sin fuentes. Toca + para anadir una URL de configuracion TVBox</string>
+    <string name="tvbox_sites">Sitios</string>
+    <string name="tvbox_no_site">Sin sitios</string>
+    <string name="tvbox_searchable">Buscable</string>
+    <string name="tvbox_filterable">Filtrable</string>
+    <string name="tvbox_jars">Jars Spider</string>
+    <string name="tvbox_jar_idle">Sin descargar</string>
+    <string name="tvbox_jar_loading">Cargando...</string>
+    <string name="tvbox_jar_ready">Listo</string>
+    <string name="tvbox_jar_failed">Error</string>
+    <string name="tvbox_jar_sites">Sitios: %1$s</string>
+    <string name="tvbox_unsupported">No compatible</string>
+    <string name="tvbox_remove_source_confirm">Eliminar esta fuente? Sus fuentes virtuales se borraran.</string>
+    <string name="tvbox_loading">Cargando configuracion...</string>
+    <string name="tvbox_delete_source">Eliminar fuente</string>
 </resources>

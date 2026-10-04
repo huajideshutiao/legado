@@ -23,7 +23,9 @@ data class TvBoxSite(
     val playUrl: String,
     val searchable: Boolean,
     val filterable: Boolean,
+    /** 上游配置 schema 字段, 宿主暂未消费 (保留以维持解析面完整)。 */
     val quickSearch: Boolean,
+    /** 上游配置 schema 字段, 宿主暂未消费。 */
     val timeoutSeconds: Int?,
     val header: Map<String, String>,
 ) {
@@ -35,6 +37,13 @@ data class TvBoxSite(
      * 只有 api 形态能可靠区分 jar class / js 文件 / CMS 接口。
      */
     val isJsSpider: Boolean get() = api.contains(".js")
+
+    /**
+     * Python spider 站点 (FongMi BaseLoader.isPy 同语义: api.contains(".py")),
+     * 判定次序须在 .js/CMS 之前。本项目无 python 运行时, 只做准入排除:
+     * 若放行到 CMS 分支, py 源码文本会被当 JSON 解析而炸出难排查的 JSONException。
+     */
+    val isPySpider: Boolean get() = api.contains(".py")
 
     /** type=0 苹果 CMS 直连: api 即接口根 URL (无 jar, 走宿主侧 CmsSpider)。 */
     val isCmsApi: Boolean get() = api.startsWith("http")

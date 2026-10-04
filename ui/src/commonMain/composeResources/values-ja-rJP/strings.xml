@@ -870,4 +870,24 @@
     <string name="copy_key_value">キーと値をコピー</string>
     <string name="copy_json_path">JSONPath をコピー</string>
     <string name="view_value">表示</string>
+
+    <!-- TVBox 影视源管理页 -->
+    <string name="tvbox">TVBox 動画ソース</string>
+    <string name="tvbox_desc">TVBox の設定とサイトを管理</string>
+    <string name="tvbox_add_source">設定元を追加</string>
+    <string name="tvbox_no_source">設定元がありません。右上の + から TVBox 設定 URL を入力</string>
+    <string name="tvbox_sites">サイト</string>
+    <string name="tvbox_no_site">サイトなし</string>
+    <string name="tvbox_searchable">検索可</string>
+    <string name="tvbox_filterable">絞り込み可</string>
+    <string name="tvbox_jars">Spider ジャー</string>
+    <string name="tvbox_jar_idle">未ダウンロード</string>
+    <string name="tvbox_jar_loading">読込中</string>
+    <string name="tvbox_jar_ready">利用可</string>
+    <string name="tvbox_jar_failed">失敗</string>
+    <string name="tvbox_jar_sites">サイト数: %1$s</string>
+    <string name="tvbox_unsupported">非対応</string>
+    <string name="tvbox_remove_source_confirm">この設定元を削除しますか？仮想ソースも削除されます。</string>
+    <string name="tvbox_loading">設定を読込中...</string>
+    <string name="tvbox_delete_source">設定元を削除</string>
 </resources>

@@ -1712,4 +1712,24 @@
     <!-- 划线批注气泡 -->
     <string name="underline_note">Note</string>
     <string name="underline_note_add">Add note</string>
+
+    <!-- TVBox 影视源管理页 -->
+    <string name="tvbox">TVBox video sources</string>
+    <string name="tvbox_desc">Manage TVBox source configs and sites</string>
+    <string name="tvbox_add_source">Add config source</string>
+    <string name="tvbox_no_source">No config source. Tap + to add a TVBox config URL</string>
+    <string name="tvbox_sites">Sites</string>
+    <string name="tvbox_no_site">No sites</string>
+    <string name="tvbox_searchable">Searchable</string>
+    <string name="tvbox_filterable">Filterable</string>
+    <string name="tvbox_jars">Spider jars</string>
+    <string name="tvbox_jar_idle">Not downloaded</string>
+    <string name="tvbox_jar_loading">Loading...</string>
+    <string name="tvbox_jar_ready">Ready</string>
+    <string name="tvbox_jar_failed">Failed</string>
+    <string name="tvbox_jar_sites">Sites: %1$s</string>
+    <string name="tvbox_unsupported">Unsupported</string>
+    <string name="tvbox_remove_source_confirm">Remove this config source? Its virtual book sources will be deleted.</string>
+    <string name="tvbox_loading">Loading config...</string>
+    <string name="tvbox_delete_source">Remove source</string>
 </resources>

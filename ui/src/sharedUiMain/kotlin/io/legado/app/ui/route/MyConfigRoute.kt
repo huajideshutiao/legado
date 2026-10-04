@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.book.manga.extension.MangaExtensionServiceProviders
+import io.legado.app.ui.book.tvbox.TvBoxServiceProviders
 import io.legado.app.ui.main.my.MyConfigScreen
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
@@ -45,6 +46,8 @@ fun MyConfigRoute(
     val caps = PlatformCapabilityProviders.get()
     // 漫画插件服务: 未注册端 (desktop 等) 为 null, 入口隐藏且不触发 init
     val mangaExtensionService = MangaExtensionServiceProviders.getOrNull()
+    // 影视源服务同上: 未注册端入口隐藏
+    val tvBoxService = TvBoxServiceProviders.getOrNull()
     // 首入口预热 (幂等): 提前装载已装插件/同步虚拟书源, 插件管理页自身 init 为冗余兜底
     LaunchedEffect(Unit) { mangaExtensionService?.init() }
     val webServiceDesc = stringResource(Res.string.web_service_desc)
@@ -76,6 +79,12 @@ fun MyConfigRoute(
                 {
                     svc.init()
                     navigator.push(AppRoute.MangaExtension)
+                }
+            },
+            onTvBoxManage = tvBoxService?.let { svc ->
+                {
+                    svc.init()
+                    navigator.push(AppRoute.TvBox)
                 }
             },
             onReplaceManage = { navigator.push(AppRoute.ReplaceRule) },

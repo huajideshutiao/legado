@@ -110,6 +110,7 @@ import io.legado.app.ui.main.home.HomeScreenModel
 import io.legado.app.ui.main.home.HomeSectionManageDialog
 import io.legado.app.ui.main.home.HomeTabManageDialog
 import io.legado.app.ui.main.home.homeSectionKey
+import io.legado.app.ui.book.tvbox.TvBoxServiceProviders
 import io.legado.app.ui.main.my.MyConfigScreen
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
@@ -1550,8 +1551,12 @@ private fun ExploreTabContent(
 @Composable
 private fun MyTabContent(navigator: AppNavigator) {
     val caps = LocalPlatformCapabilities.current
+    // 影视源服务: 未注册端为 null, 条目隐藏 (Android 的「我的」tab 与 MyConfigRoute
+    // 共用同一份 MyConfigScreen, 判空模式两边一致)
+    val tvBoxService = TvBoxServiceProviders.getOrNull()
     // 漫画插件服务同判空模式 (tab 与 push 路由两侧一致)
     val mangaExtensionService = MangaExtensionServiceProviders.getOrNull()
+    LaunchedEffect(Unit) { tvBoxService?.init() }
     val webServiceDesc = stringResource(Res.string.web_service_desc)
     // Web 服务地址: 空串=未运行 (对照原版 observeEvent<String>(WEB_SERVICE) 后回读 hostAddress)
     val webServiceAddress by caps.webServiceAddress.collectAsState()
@@ -1582,6 +1587,7 @@ private fun MyTabContent(navigator: AppNavigator) {
                     navigator.push(AppRoute.MangaExtension)
                 }
             },
+            onTvBoxManage = tvBoxService?.let { svc ->
                 {
                     svc.init()
                     navigator.push(AppRoute.TvBox)

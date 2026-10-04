@@ -955,4 +955,24 @@
     <string name="copy_key_value">Sao chép cặp khóa-giá trị</string>
     <string name="copy_json_path">Sao chép JSONPath</string>
     <string name="view_value">Xem</string>
+
+    <!-- TVBox 影视源管理页 -->
+    <string name="tvbox">Nguon video TVBox</string>
+    <string name="tvbox_desc">Quan ly cau hinh va trang TVBox</string>
+    <string name="tvbox_add_source">Them nguon cau hinh</string>
+    <string name="tvbox_no_source">Chua co nguon. Nhan + de them URL cau hinh TVBox</string>
+    <string name="tvbox_sites">Trang</string>
+    <string name="tvbox_no_site">Khong co trang</string>
+    <string name="tvbox_searchable">Tim duoc</string>
+    <string name="tvbox_filterable">Loc duoc</string>
+    <string name="tvbox_jars">Spider jar</string>
+    <string name="tvbox_jar_idle">Chua tai</string>
+    <string name="tvbox_jar_loading">Dang tai</string>
+    <string name="tvbox_jar_ready">San sang</string>
+    <string name="tvbox_jar_failed">That bai</string>
+    <string name="tvbox_jar_sites">Trang: %1$s</string>
+    <string name="tvbox_unsupported">Khong ho tro</string>
+    <string name="tvbox_remove_source_confirm">Xoa nguon cau hinh nay? Cac nguon sach ao se bi xoa theo.</string>
+    <string name="tvbox_loading">Dang tai cau hinh...</string>
+    <string name="tvbox_delete_source">Xoa nguon</string>
 </resources>

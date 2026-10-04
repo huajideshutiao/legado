@@ -1780,4 +1780,24 @@ Windows: winget install shinchiro.mpv 或 scoop install mpv,
     <!-- 划线批注气泡 -->
     <string name="underline_note">批注</string>
     <string name="underline_note_add">添加批注</string>
+
+    <!-- TVBox 影视源管理页 -->
+    <string name="tvbox">影视源(TVBox)</string>
+    <string name="tvbox_desc">管理 TVBox 影视源配置与站点</string>
+    <string name="tvbox_add_source">添加配置来源</string>
+    <string name="tvbox_no_source">暂无配置来源，点右上角 + 填入 TVBox 配置地址</string>
+    <string name="tvbox_sites">站点</string>
+    <string name="tvbox_no_site">暂无站点</string>
+    <string name="tvbox_searchable">可搜索</string>
+    <string name="tvbox_filterable">可筛选</string>
+    <string name="tvbox_jars">Spider 脚本包</string>
+    <string name="tvbox_jar_idle">未下载</string>
+    <string name="tvbox_jar_loading">下载装载中</string>
+    <string name="tvbox_jar_ready">已就绪</string>
+    <string name="tvbox_jar_failed">装载失败</string>
+    <string name="tvbox_jar_sites">站点数 %1$s</string>
+    <string name="tvbox_unsupported">暂不支持</string>
+    <string name="tvbox_remove_source_confirm">删除该配置来源？其虚拟书源行会一并清理。</string>
+    <string name="tvbox_loading">正在拉取配置…</string>
+    <string name="tvbox_delete_source">删除来源</string>
 </resources>

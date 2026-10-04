@@ -22,7 +22,16 @@ import kotlinx.serialization.encodeToString
 object TvBoxPluginSources {
 
     /** 书源管理页分组名。 */
-    const val GROUP_NAME = "TVBox源"
+    const val GROUP_NAME = "TVBox 源"
+
+    /**
+     * 发现页分类规则 (换行形态, 每行 `标题::url`)。
+     *
+     * 依据 `data/.../help/source/BookSourceExtensionsShared.kt:111-115`: 非 JSON 时按
+     * `(&&|\n)+` 切行再按 `::` 拆 title/url。填了 exploreUrl 才会被
+     * `BookSourceDao` 的 `hasExploreUrl = 1` 过滤命中 (书源管理页的发现开关据此显隐)。
+     */
+    private const val EXPLORE_URL = "推荐::popular"
 
     /** 由站点构造虚拟 BookSource 行 (不落库)。 */
     fun buildVirtualSource(site: TvBoxSite, globalSpider: String): BookSource = BookSource(
@@ -31,7 +40,8 @@ object TvBoxPluginSources {
         bookSourceGroup = GROUP_NAME,
         bookSourceType = BookSourceType.video,
         enabled = true,
-        enabledExplore = false,
+        enabledExplore = true,
+        exploreUrl = EXPLORE_URL,
         header = headerJsonOf(site),
         bookSourceComment = listOf(
             "TVBox 站点",
@@ -44,34 +54,46 @@ object TvBoxPluginSources {
     /**
      * 与当前配置同步虚拟行: 站点在配置中 upsert (保留用户 enabled/customOrder),
      * 已移除/非 csp_ 的行删除。
+     *
+     * [disabledSiteKeys] 是用户在 TVBox 管理页关闭 (未添加) 的站点 key 集合:
+     * 它们不落行, 且其虚拟 URL 不在 upsert 的 `urls` 集合内 → 被 stale 判定删除。
+     * 这正是期望行为 (关闭 == 删行, 书源界面随之不再显示); 重新打开时由
+     * [TvBoxManager.setSiteAdded] 单独重建该行。
      */
-    suspend fun sync(config: TvBoxConfig) = withContext(IoDispatcher) {
-        runCatching {
-            val dao = AppDbProviders.get().bookSourceDao
-            val sites = config.sites.filter { it.isJarSpider || it.isCmsApi || it.isJsSpider }
-            val urls = sites.mapTo(HashSet()) { TvBoxSourceMapper.siteUrlOf(it.key) }
-            val existing = dao.getByGroup(GROUP_NAME)
-                .filter { it.bookSourceType == BookSourceType.video }
-            val stale = existing.filter { it.bookSourceUrl !in urls }
-            if (stale.isNotEmpty()) dao.deleteIn(stale.map { it.bookSourceUrl })
-            for (site in sites) {
-                val url = TvBoxSourceMapper.siteUrlOf(site.key)
-                val fresh = buildVirtualSource(site, config.spider)
-                val old = dao.getBookSource(url)
-                if (old == null) {
-                    dao.insert(fresh)
-                } else if (old.bookSourceName != fresh.bookSourceName ||
-                    old.header != fresh.header
-                ) {
-                    old.bookSourceName = fresh.bookSourceName
-                    old.header = fresh.header
-                    dao.update(old)
+    suspend fun sync(config: TvBoxConfig, disabledSiteKeys: Set<String> = emptySet()) =
+        withContext(IoDispatcher) {
+            runCatching {
+                val dao = AppDbProviders.get().bookSourceDao
+                val sites = config.sites.filter {
+                    // .py 站点无 python 运行时不可取数, 不落虚拟行 (与 hasVirtualRow/kindOf 口径一致)
+                    !it.isPySpider &&
+                        (it.isJarSpider || it.isCmsApi || it.isJsSpider) && it.key !in disabledSiteKeys
                 }
+                val urls = sites.mapTo(HashSet()) { TvBoxSourceMapper.siteUrlOf(it.key) }
+                val existing = dao.getByGroup(GROUP_NAME)
+                    .filter { it.bookSourceType == BookSourceType.video }
+                val stale = existing.filter { it.bookSourceUrl !in urls }
+                if (stale.isNotEmpty()) dao.deleteIn(stale.map { it.bookSourceUrl })
+                for (site in sites) {
+                    val url = TvBoxSourceMapper.siteUrlOf(site.key)
+                    val fresh = buildVirtualSource(site, config.spider)
+                    val old = dao.getBookSource(url)
+                    if (old == null) {
+                        dao.insert(fresh)
+                    } else if (old.bookSourceName != fresh.bookSourceName ||
+                        old.header != fresh.header
+                    ) {
+                        // 只同步名称/请求头这类规则面; enabled/enabledExplore/exploreUrl
+                        // 均不在同步面内 (前者归书源界面管, 后者只在新建行时写入)。
+                        old.bookSourceName = fresh.bookSourceName
+                        old.header = fresh.header
+                        dao.update(old)
+                    }
+                }
+            }.onFailure {
+                AppLog.put("TVBox 虚拟书源同步失败", it)
             }
-        }.onFailure {
-            AppLog.put("TVBox 虚拟书源同步失败", it)
         }
-    }
 
     /** 清理本组全部虚拟行 (配置清除时使用)。 */
     suspend fun removeAll() = withContext(IoDispatcher) {

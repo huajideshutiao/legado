@@ -38,6 +38,7 @@ import io.legado.app.ui.route.SearchRoute
 import io.legado.app.ui.route.SourceFilterRuleRoute
 import io.legado.app.ui.route.SourceToolboxRoute
 import io.legado.app.ui.route.ThemeConfigRoute
+import io.legado.app.ui.route.TvBoxRoute
 import io.legado.app.ui.route.TocRoute
 import io.legado.app.ui.route.TxtTocRuleRoute
 import io.legado.app.ui.route.VideoPlayRoute
@@ -222,6 +223,11 @@ fun RouteContent(
 
         is AppRoute.TxtTocRule -> {
             TxtTocRuleRoute(entry, navigator, screenModelStore)
+            true
+        }
+
+        is AppRoute.TvBox -> {
+            TvBoxRoute(entry, navigator, screenModelStore)
             true
         }
 

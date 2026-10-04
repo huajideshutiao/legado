@@ -4,6 +4,7 @@ import android.content.Context
 import com.github.catvod.Init
 import com.github.catvod.crawler.Spider
 import io.legado.app.constant.AppLog
+import io.legado.app.data.AppDbProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.tvbox.TvBoxConfig
 import io.legado.app.help.tvbox.TvBoxCmsSpider
@@ -11,7 +12,10 @@ import io.legado.app.help.tvbox.TvBoxJarLoader
 import io.legado.app.help.tvbox.TvBoxJsSpiderLoader
 import io.legado.app.help.tvbox.TvBoxSite
 import io.legado.app.model.webBook.VideoSourceDelegates
+import io.legado.app.utils.GSON
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
 import java.io.File
 
 /**
@@ -34,10 +38,18 @@ object TvBoxManager {
     var config: TvBoxConfig? = null
         private set
 
+    /**
+     * "未添加"站点集合的内存镜像 (磁盘真源是 filesDir/tvbox/sites.json)。
+     * [sync] 与 [setSiteAdded] 都要读它, 故不每次走磁盘 I/O。
+     */
+    @Volatile
+    private var disabledSitesCache: Set<String> = emptySet()
+
     fun init(context: Context) {
         appContext = context.applicationContext
         Init.set(appContext)
         registerDelegateRouter()
+        disabledSitesCache = readDisabledSites()
         val dir = File(context.filesDir, "tvbox")
         val file = File(dir, "config.json")
         if (file.isFile) {
@@ -67,7 +79,7 @@ object TvBoxManager {
         File(dir, "config.json").writeText(json)
         File(dir, "config_url.txt").writeText(baseUrl.orEmpty())
         config = parsed
-        TvBoxPluginSources.sync(parsed)
+        TvBoxPluginSources.sync(parsed, disabledSitesCache)
         parsed
     }
 
@@ -79,6 +91,33 @@ object TvBoxManager {
     }
 
     fun siteOf(siteKey: String): TvBoxSite? = config?.sites?.firstOrNull { it.key == siteKey }
+
+    /**
+     * 站点"已添加"开关 (TVBox 管理页的开关): 决定是否落虚拟 BookSource 行,
+     * 即该站点是否在书源界面显示。是否参与搜索由书源界面的 enabled 开关管理,
+     * 此处刻意不写它 (责任边界分离)。
+     *
+     * [added] = false 记入关闭集合并删除该虚拟行 (关闭 == 删行);
+     * [added] = true 从集合移除并按当前配置重建该行 (行已存在则不重复插)。
+     */
+    suspend fun setSiteAdded(siteKey: String, added: Boolean) = withContext(IoDispatcher) {
+        if (appContext == null) error("TvBoxManager.init 未调用")
+        val disabled = disabledSitesCache.toMutableSet()
+        if (added) disabled.remove(siteKey) else disabled.add(siteKey)
+        writeDisabledSites(disabled)
+        disabledSitesCache = disabled.toSet()
+        val dao = AppDbProviders.get().bookSourceDao
+        val url = TvBoxSourceMapper.siteUrlOf(siteKey)
+        if (!added) {
+            dao.deleteIn(listOf(url))
+            return@withContext
+        }
+        val cfg = config ?: return@withContext
+        val site = cfg.sites.firstOrNull { it.key == siteKey } ?: return@withContext
+        if (dao.getBookSource(url) == null) {
+            dao.insert(TvBoxPluginSources.buildVirtualSource(site, cfg.spider))
+        }
+    }
 
     /** 解析站点并取 Spider (jar 缺失/站点非 csp_ 时抛出, 委派层收敛为取数错误)。 */
     suspend fun spiderFor(siteKey: String): Pair<TvBoxSite, Spider> = withContext(IoDispatcher) {
@@ -95,6 +134,12 @@ object TvBoxManager {
             // JS 必须排在 CMS 之前: api 解析后是绝对 http URL (如 .../cat/js/x.js),
             // 只看 "http 开头" 会把 JS 站点误判成 CMS 直连站。
             //
+            // Python Spider: api 指向 .py (FongMi BaseLoader.isPy 同语义), 判定须在 .js/CMS 之前。
+            // 本项目无 python 运行时, 如实报错 —— 决不能落进下方 CMS 分支: py 源码里
+            // "import" 开头的文本会被 CMS 侧当 JSON 解析, 炸出与真实原因无关的 JSONException。
+            if (site.isPySpider) {
+                error("TVBox 站点为 Python spider (.py), 本轮不支持: ${site.name} (${site.api})")
+            }
             // JS Spider: api 指向 .js 模块 (FongMi BaseLoader.isJs 同语义), 无需 jar
             if (site.isJsSpider) {
                 val loader = jsLoader ?: error("TvBoxManager.init 未调用")
@@ -120,7 +165,35 @@ object TvBoxManager {
         TvBoxJarLoader.clear()
         jsLoader?.destroyAll()
         config = null
+        // 关闭集合与配置同生命周期: 站点 key 只在所属配置里有意义, 换配置后旧 key 会误关
+        // 新配置的同名站点, 故随配置一并清 (磁盘 sites.json 同时删)
+        disabledSitesCache = emptySet()
+        disabledSitesFile()?.let { runCatching { it.delete() } }
         // 磁盘配置一并清除: 仅清内存会下次启动 init 重放 (removeSource 等调用方不再需要先 setConfig 兜底)
         appContext?.let { ctx -> runCatching { File(File(ctx.filesDir, "tvbox"), "config.json").delete() } }
     }
+
+    // ===== 站点"未添加"集合 (filesDir/tvbox/sites.json; 脏 JSON 退化为空集) =====
+
+    private fun readDisabledSites(): Set<String> {
+        val file = disabledSitesFile() ?: return emptySet()
+        if (!file.isFile) return emptySet()
+        return runCatching {
+            GSON.decodeFromString(disabledSitesSerializer, file.readText())
+        }.onFailure { AppLog.put("TVBox 站点关闭集合读取失败", it) }
+            .getOrNull().orEmpty().toSet()
+    }
+
+    private fun writeDisabledSites(keys: Set<String>) {
+        val file = disabledSitesFile() ?: return
+        runCatching {
+            file.parentFile?.mkdirs()
+            file.writeText(GSON.encodeToString(disabledSitesSerializer, keys.toList()))
+        }.onFailure { AppLog.put("TVBox 站点关闭集合写入失败", it) }
+    }
+
+    private fun disabledSitesFile(): File? =
+        appContext?.let { File(it.filesDir, "tvbox/sites.json") }
+
+    private val disabledSitesSerializer = ListSerializer(String.serializer())
 }
