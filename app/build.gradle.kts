@@ -321,6 +321,13 @@ dependencies {
 
     implementation(libs.ksoup)
     implementation(libs.kotlinx.serialization.json)
+    // 扩展(compileOnly kotlinx-serialization-json-okio)运行时委派宿主, 官方宿主 serialization bundle 同含此工件
+    implementation(libs.kotlinx.serialization.json.okio)
+    // keiyoushi index.pb (Mihon index_v2) 声明式解析; 与 json 同版本
+    implementation(libs.kotlinx.serialization.protobuf)
+
+    // 漫画扩展 (eu.kanade.tachiyomi.*) 兼容层的 Injekt 绑定 (fork 含 uy.kohesive.injekt.api 包面, 见 catalog 注释)
+    implementation(libs.injekt.core)
     implementation(project(":ui"))
     implementation(project(":modules:quickjs"))
     ksp(project(":modules:quickjs-processor"))

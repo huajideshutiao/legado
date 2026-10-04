@@ -1,0 +1,6 @@
+// Copyright The Mihon Authors. Apache-2.0.
+package eu.kanade.tachiyomi.network
+
+fun interface ProgressListener {
+    fun update(bytesRead: Long, contentLength: Long, done: Boolean)
+}

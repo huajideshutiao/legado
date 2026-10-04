@@ -130,6 +130,8 @@ class App : Application() {
         registerAndroidDebugState(this)
         // 注册 shared 模块的 ApplicationContext, 供 commonMain 的 stringRes(resId) 使用
         registerSharedAppContext(this)
+        // 注册漫画扩展 (eu.kanade.tachiyomi.*) 兼容层运行时绑定 (Injekt: Application/Json/NetworkHelper)
+        eu.kanade.tachiyomi.registerExtensionCompat(this)
         // 注册图片加载失败兜底图字节 (image_loading_error.png 单点持于 :ui composeResources)
         ImageErrorBytesProviders.register {
             runBlocking { Res.readBytes("drawable/image_loading_error.png") }

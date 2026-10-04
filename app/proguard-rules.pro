@@ -110,6 +110,17 @@
 # Jsoup / RE2J
 ############################
 -keep class org.jsoup.** { *; }
+
+############################
+# 扩展动态加载面：Tachiyomi/Aniyomi 扩展按 compileOnly 引用这些库，运行时委派宿主 PathClassLoader；
+# 宿主自身不可达的类/成员会被 R8 裁剪，扩展调用即 NoSuchMethodError。
+# 对齐官方宿主 aniyomi app/proguard-rules.pro 的 "Keep common dependencies used in extensions" 段。
+############################
+-keep,allowoptimization class kotlin.** { public protected *; }
+-keep,allowoptimization class kotlinx.coroutines.** { public protected *; }
+-keep,allowoptimization class kotlinx.serialization.** { public protected *; }
+-keep,allowoptimization class okio.** { public protected *; }
+-keep,allowoptimization class uy.kohesive.injekt.** { public protected *; }
 -dontwarn org.jspecify.annotations.NullMarked
 -keep class com.google.re2j.** { *; }
 -dontwarn com.google.re2j.**

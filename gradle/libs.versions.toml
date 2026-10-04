@@ -125,6 +125,11 @@ reorderable = "3.1.0"
 # ===== 测试 =====
 junit = "4.13.2"
 
+# ===== 漫画扩展 (eu.kanade.tachiyomi.*) 兼容层 =====
+# keiyoushi 扩展二进制绑定 null2264 fork 的 Injekt API (含 uy.kohesive.injekt.api 包与 Injekt object);
+# Maven Central 的 uy.kohesive.injekt:injekt-core:1.16.1 无该包面 (实测 jar), 不可用
+injekt-core = "4135455a2a"
+
 [libraries]
 # ===== 构建工具链 =====
 foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "cmp" }
@@ -160,6 +165,9 @@ kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutine
 kotlinx-coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "coroutines" }
 kotlinx-atomicfu = { module = "org.jetbrains.kotlinx:atomicfu", version.ref = "atomicfu" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
+# 扩展按 compileOnly 引用 kotlinx.serialization.json.okio 包, 运行时委派宿主, 官方宿主 serialization bundle 同含此工件
+kotlinx-serialization-json-okio = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json-okio", version.ref = "kotlinxSerializationJson" }
+kotlinx-serialization-protobuf = { module = "org.jetbrains.kotlinx:kotlinx-serialization-protobuf", version.ref = "kotlinxSerializationJson" }
 jetbrains-kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test" }
 runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "cmp" }
 slf4j-nop = { module = "org.slf4j:slf4j-nop", version.ref = "slf4jNop" }
@@ -248,6 +256,9 @@ jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
 
 # ===== 测试 =====
 junit = { module = "junit:junit", version.ref = "junit" }
+
+# ===== 漫画扩展兼容层 =====
+injekt-core = { module = "com.github.null2264.injekt:injekt-core", version.ref = "injekt-core" }
 
 [bundles]
 coroutines = ["kotlinx-coroutines-core", "kotlinx-coroutines-android"]
