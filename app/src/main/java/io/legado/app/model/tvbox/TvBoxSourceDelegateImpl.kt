@@ -61,6 +61,71 @@ object TvBoxSourceDelegateImpl : VideoSourceDelegate {
             spider.searchContent(key, false, page.toString())
         }
         val root = parseResult(json)
+        bookListPageOf(bookSource, siteKey, root, page)
+    }
+
+    /**
+     * 发现取数 (对应 WebBook.getBookListAwait 的 isSearch=false 路径)。
+     *
+     * TVBox 的"发现"语义是**站点首页推荐**, 不是搜索。按虚拟行 exploreUrl 里的 url 分派:
+     * - `popular` → spider 的 `homeVideoContent()` (FongMi homeVod), 无 list 时退 `homeContent(false)`;
+     * - `latest` → 同源取最新: TVBox 无独立"最新"接口, 以 `homeContent` 的 `class[0].type_id`
+     *   走 `categoryContent(tid, pg, filter=false)` 第 1 页 (CMS/jar 同款分类页首屏即最新);
+     *   站点无 class 时如实报错, 不伪造数据。
+     *
+     * 未知 url 一律报错 (而非静默回空), 让发现页把失败原因显示出来。
+     */
+    override suspend fun getExploreAwait(
+        bookSource: BookSource,
+        url: String,
+        page: Int,
+    ): BookListPage = withContext(IoDispatcher) {
+        val siteKey = TvBoxSourceMapper.siteKeyOf(bookSource.bookSourceUrl)
+        val (_, spider) = TvBoxManager.spiderFor(siteKey)
+        val root = when (url.trim().ifBlank { "popular" }) {
+            "popular" -> explorePopular(spider)
+            "latest" -> exploreLatest(spider, page)
+            else -> error("TVBox 站点不支持的发现分类: $url (可用: popular/latest)")
+        }
+        bookListPageOf(bookSource, siteKey, root, page)
+    }
+
+    /**
+     * 首页推荐: `homeVideoContent()` (FongMi homeVod) 优先, 无 list 时退 `homeContent(false)`。
+     * 两个面生态 spider 常只实现其一 (cat 系给 homeContent 的 class+list, drpy2 系给 homeVod)。
+     */
+    private fun explorePopular(spider: Spider): JSONObject {
+        val homeVod = runCatching { spider.homeVideoContent() }.getOrNull()
+        parseResultOrNull(homeVod)?.takeIf { (it.optJSONArray("list")?.length() ?: 0) > 0 }
+            ?.let { return it }
+        return parseResult(spider.homeContent(false))
+    }
+
+    /**
+     * 同源取最新: TVBox 无独立"最新"接口, 用首页第一个分类 (`class[0].type_id`) 的分类页。
+     * 无 class 即该 spider 不提供可定位的列表页, 如实抛错。
+     */
+    private fun exploreLatest(spider: Spider, page: Int): JSONObject {
+        val home = parseResult(spider.homeContent(false))
+        val tid = home.optJSONArray("class")
+            ?.optJSONObject(0)?.optString("type_id")?.trim()
+            .orEmpty()
+        check(tid.isNotEmpty()) { "TVBox 站点无分类(class)可定位最新, 不支持 latest 发现" }
+        return parseResult(
+            spider.categoryContent(tid, page.coerceAtLeast(1).toString(), false, HashMap()),
+        )
+    }
+
+    /**
+     * Spider 列表结果 → [BookListPage]: 逐项映射 vod_id/vod_name/vod_pic/vod_remarks。
+     * 搜索与发现共用 (两路响应结构同为 `{list:[Vod], pagecount?}`)。
+     */
+    private fun bookListPageOf(
+        bookSource: BookSource,
+        siteKey: String,
+        root: JSONObject,
+        page: Int,
+    ): BookListPage {
         val items = root.optJSONArray("list") ?: org.json.JSONArray()
         val books = ArrayList<SearchBook>(items.length())
         for (i in 0 until items.length()) {
@@ -82,13 +147,13 @@ object TvBoxSourceDelegateImpl : VideoSourceDelegate {
                 ),
             )
         }
-        // pagecount 缺失时以本页有数据作为"还有下一页"的近似 (生态多数搜索接口无总页数)
+        // pagecount 缺失时以本页有数据作为"还有下一页"的近似 (生态多数列表接口无总页数)
         val hasNextPage = if (root.has("pagecount")) {
             page < root.optInt("pagecount", page)
         } else {
             books.isNotEmpty()
         }
-        BookListPage(books, hasNextPage)
+        return BookListPage(books, hasNextPage)
     }
 
     override suspend fun getBookInfoAwait(
@@ -363,6 +428,12 @@ object TvBoxSourceDelegateImpl : VideoSourceDelegate {
                 e,
             )
         }
+    }
+
+    /** 容错解析: 空串/非法 JSON 一律 null (用于"某一路可选接口没给数据"的探测)。 */
+    private fun parseResultOrNull(json: String?): JSONObject? {
+        if (json.isNullOrBlank()) return null
+        return runCatching { JSONObject(json.trim()) }.getOrNull()
     }
 
     /** playerContent.header 可为对象或 JSON 字符串, 值一律取字符串形态。 */

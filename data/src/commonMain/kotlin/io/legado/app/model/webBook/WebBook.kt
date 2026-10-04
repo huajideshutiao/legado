@@ -52,7 +52,7 @@ object WebBook {
         onUrlResolved: ((AnalyzeUrlCore) -> Unit)? = null,
         selectedOptions: Map<String, String>? = null,
     ): BookListPage {
-        // 漫画插件源无规则可解析, 命中即转交委派 (搜索只走 isSearch 路径)
+        // 漫画插件源无规则可解析, 命中即转交委派 (搜索走 isSearch=true, 发现走 isSearch=false)
         if (isSearch) {
             MangaSourceDelegates.getOrNull()?.takeIf { it.handles(bookSource) }?.let {
                 return it.getBookListAwait(bookSource, key, page ?: 1)
@@ -60,6 +60,14 @@ object WebBook {
             // 视频插件源同构转交 (bookSourceType=video 虚拟行)
             VideoSourceDelegates.getOrNull()?.takeIf { it.handles(bookSource) }?.let {
                 return it.getBookListAwait(bookSource, key, page ?: 1)
+            }
+        } else {
+            // 发现路径: 此处 key 即 exploreUrl 分类的 url 段, 交委派自行分派取数面
+            MangaSourceDelegates.getOrNull()?.takeIf { it.handles(bookSource) }?.let {
+                return it.getExploreAwait(bookSource, key, page ?: 1)
+            }
+            VideoSourceDelegates.getOrNull()?.takeIf { it.handles(bookSource) }?.let {
+                return it.getExploreAwait(bookSource, key, page ?: 1)
             }
         }
         var url = key

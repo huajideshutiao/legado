@@ -31,6 +31,18 @@ interface MangaSourceDelegate {
     ): BookListPage
 
     /**
+     * 插件源发现取数 (对应 WebBook.getBookListAwait 的 isSearch=false 路径)。
+     *
+     * [url] 为虚拟源 exploreUrl 中某个发现分类的 url 段 (形如 `popular`/`latest`),
+     * 由实现自行分派到插件源对应取数面; 无法识别的值应显式报错而非静默返回空。
+     */
+    suspend fun getExploreAwait(
+        bookSource: BookSource,
+        url: String,
+        page: Int,
+    ): BookListPage
+
+    /**
      * 插件源书籍详情 (对应 WebBook.getBookInfoAwait; 字段写回 [book] 并返回)。
      */
     suspend fun getBookInfoAwait(

@@ -31,6 +31,16 @@ class TvBoxVideoSourceDelegateRouter(
             ?: error("无视频取数委派处理: ${bookSource.bookSourceUrl}")
     }
 
+    override suspend fun getExploreAwait(
+        bookSource: BookSource,
+        url: String,
+        page: Int,
+    ): BookListPage = when {
+        tvBox.handles(bookSource) -> tvBox.getExploreAwait(bookSource, url, page)
+        else -> existing?.getExploreAwait(bookSource, url, page)
+            ?: error("无视频取数委派处理: ${bookSource.bookSourceUrl}")
+    }
+
     override suspend fun getBookInfoAwait(
         bookSource: BookSource,
         book: Book,

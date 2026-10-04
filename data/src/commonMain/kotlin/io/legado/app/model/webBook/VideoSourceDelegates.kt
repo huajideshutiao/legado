@@ -9,7 +9,8 @@ import kotlin.concurrent.Volatile
 /**
  * 视频插件源 (虚拟 BookSource) 的四路取数委派契约, 形状对齐 [MangaSourceDelegate]。
  *
- * 插件源以 bookSourceType=video 的虚拟 [BookSource] 行落地 (anime-plugin:// 前缀 URL),
+ * 插件源以 bookSourceType=video 的虚拟 [BookSource] 行落地 (tachiyomi:// 前缀 URL,
+ * 与漫画插件源同前缀, 靠 bookSourceType 区分),
  * [WebBook] 四个取数方法入口经 [getOrNull] 守卫把命中行转交本实现, 其余书源链路零感知;
  * 宿主 (app 端) 实现并经 [register] 注册, 未注册或 [handles] 不命中时走原规则解析链。
  */
@@ -22,6 +23,18 @@ interface VideoSourceDelegate {
     suspend fun getBookListAwait(
         bookSource: BookSource,
         key: String,
+        page: Int,
+    ): BookListPage
+
+    /**
+     * 插件源发现取数 (对应 WebBook.getBookListAwait 的 isSearch=false 路径)。
+     *
+     * [url] 为虚拟源 exploreUrl 中某个发现分类的 url 段 (形如 `popular`/`latest`),
+     * 由实现自行分派到插件源对应取数面; 无法识别的值应显式报错而非静默返回空。
+     */
+    suspend fun getExploreAwait(
+        bookSource: BookSource,
+        url: String,
         page: Int,
     ): BookListPage
 
