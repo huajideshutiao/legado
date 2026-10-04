@@ -864,6 +864,7 @@
     <string name="no_book">No books</string>
     <string name="non_null_name_url">name and URL cannot be empty</string>
     <string name="resolution">resolution</string>
+    <string name="video_line">Line</string>
     <string name="reload">Reload</string>
     <string name="manga_extension">Manga extensions</string>
     <string name="manga_extension_desc">Install and manage manga plugins</string>
@@ -875,10 +876,15 @@
     <string name="manga_extension_untrusted_desc">This extension failed signature verification. Trust its signature to load its sources?</string>
     <string name="manga_extension_uninstall_confirm">Uninstall this extension?</string>
     <string name="manga_extension_install">Install</string>
+    <string name="manga_extension_available">Available</string>
     <string name="manga_extension_update">Update</string>
     <string name="manga_extension_uninstall">Uninstall</string>
     <string name="manga_extension_empty">No extensions yet</string>
     <string name="manga_extension_languages">Languages</string>
+    <string name="manga_extension_setting">Settings</string>
+    <string name="manga_extension_kind_video">Video</string>
+    <string name="manga_extension_pref_empty">This extension has no configurable options</string>
+    <string name="manga_extension_pref_error">Failed to load extension settings. See app log for details</string>
     <string name="manga_search_filters">Filters</string>
     <string name="manga_color_filter">Color filter</string>
     <string name="contrast">Contrast</string>

@@ -24,6 +24,7 @@ fun MangaExtensionRoute(
         MangaExtensionScreenModel()
     }
     val state by screenModel.state.collectAsState()
+    val prefDialog by screenModel.prefDialog.collectAsState()
 
     MangaExtensionScreen(
         state = state,
@@ -38,5 +39,9 @@ fun MangaExtensionRoute(
         selectedLanguages = screenModel.selectedLanguages,
         onToggleLanguage = screenModel::toggleLanguage,
         onClearLanguages = screenModel::clearLanguages,
+        prefDialog = prefDialog,
+        onOpenPrefDialog = screenModel::openPrefDialog,
+        onSetPreference = screenModel::setPreference,
+        onDismissPrefDialog = screenModel::dismissPrefDialog,
     )
 }

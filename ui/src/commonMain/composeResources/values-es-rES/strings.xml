@@ -823,6 +823,9 @@
     <string name="manga_extension_uninstall">Desinstalar</string>
     <string name="manga_extension_empty">Aún no hay extensiones</string>
     <string name="manga_extension_languages">Idiomas</string>
+    <string name="manga_extension_setting">Ajustes</string>
+    <string name="manga_extension_kind_video">Vídeo</string>
+    <string name="manga_extension_pref_empty">Esta extensión no tiene opciones configurables</string>
     <string name="manga_search_filters">Filtros</string>
     <string name="manga_color_filter">滤镜</string>
     <string name="hide_manga_title">隐藏漫画列表标题</string>

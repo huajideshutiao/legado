@@ -25,7 +25,11 @@ interface MangaExtensionService {
     /** 插件管理页状态 (已装/未装载/可用/仓库/安装进度)。 */
     val state: StateFlow<MangaExtensionUiState>
 
-    /** 刷新仓库并重拉可用插件列表 (对照 findAvailableExtensions)。 */
+    /**
+     * 刷新仓库并重拉可用插件列表 (对照 findAvailableExtensions)。
+     * 实现应在执行期间把 [MangaExtensionUiState.refreshing] 置 true (不得复用 loading:
+     * combine 重建 state 会把它覆盖回 false), 完成/异常后置 false。
+     */
     suspend fun refresh()
 
     /** 检查更新, 返回有更新的插件名列表 (对照 checkForUpdates)。 */
@@ -66,10 +70,38 @@ interface MangaExtensionService {
      * 返回实例与取数委派搜索时使用的是同一份, 回填即生效。
      */
     suspend fun getFilterList(bookSourceUrl: String): FilterList?
+
+    /**
+     * 该插件是否提供自带配置界面 (源实例实现 `eu.kanade.tachiyomi.source.ConfigurableSource`
+     * 或 `eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource`)。
+     * 未装载出源 (NotLoaded) 与未安装 (Available) 恒为 false —— 配置契约只能从活实例上取。
+     */
+    fun isConfigurable(pkgName: String): Boolean = false
+
+    /**
+     * 读取插件自带配置项快照: 平台侧构造 shim `PreferenceScreen`、调
+     * `setupPreferenceScreen(screen)`、再按插件自身 SharedPreferences 回填当前值,
+     * 最终转成跨层数据类 [MangaPrefItem] (UI 层不引用 androidx.preference shim)。
+     * 未实现配置契约返回空表。
+     */
+    suspend fun buildPreferenceItems(pkgName: String): List<MangaPrefItem> = emptyList()
+
+    /**
+     * 写入单个配置项, 落插件自身 SharedPreferences (`source_<sourceId>`, 与扩展侧
+     * `keiyoushi.utils.getPreferencesLazy` 同契约), 扩展下次读取即生效。
+     */
+    suspend fun setPreferenceValue(pkgName: String, key: String, value: MangaPrefValue) {}
 }
 
 /** 插件内容分级 (与插件宿主 ContentWarning 对齐)。 */
 enum class MangaContentWarning { SAFE, MIXED, NSFW }
+
+/**
+ * 插件类型: 漫画 (Tachiyomi/Mihon 系) / 视频 (Aniyomi 系)。
+ * 已装载条目按 `Loaded.animeSources` 是否非空判定 (装载器已按源实例类型分流);
+ * 未装载条目按仓库 kind; 可用条目按所属仓库 kind。
+ */
+enum class MangaExtensionKind { MANGA, VIDEO }
 
 /** 已装/未装载/可用插件的 UI 快照 (与插件宿主实体解耦, 平台接口只暴露本文件类型)。 */
 data class MangaExtensionItem(
@@ -89,6 +121,16 @@ data class MangaExtensionItem(
     val sourceCount: Int = 0,
     /** 未装载原因描述 (Untrusted/Unsigned/Failed...), 已装载为 null */
     val notLoadedReason: String? = null,
+    /**
+     * 插件图标 URL (仓库索引 `Available.iconUrl`)。
+     * 可用条目直接取自身条目; 已装/未装载条目按同 pkgName 在仓库索引里反查回填
+     * (已装实体不带 iconUrl), 索引无该包时 null。
+     */
+    val iconUrl: String? = null,
+    /** 插件类型 (漫画/视频), 见 [MangaExtensionKind]。 */
+    val kind: MangaExtensionKind = MangaExtensionKind.MANGA,
+    /** 是否提供自带配置界面 (ConfigurableSource/ConfigurableAnimeSource), 仅已装载条目可能为 true。 */
+    val isConfigurable: Boolean = false,
 )
 
 /** 插件仓库的 UI 快照。 */
@@ -117,6 +159,13 @@ data class MangaExtensionUiState(
     val available: List<MangaExtensionItem> = emptyList(),
     val repos: List<MangaRepoItem> = emptyList(),
     val installSteps: Map<String, MangaInstallState> = emptyMap(),
+    /**
+     * 刷新仓库索引中 (点右上角刷新按钮后置位)。
+     * 与首屏加载 [loading] 分开持有: 平台 combine 每次发射都会重建整个 state,
+     * 若复用 [loading] 会被 combine 立即覆盖回 false (本字段由独立 StateFlow 参与 combine,
+     * 故不会被覆盖)。整页转圈由 `loading || refreshing` 取或呈现。
+     */
+    val refreshing: Boolean = false,
 )
 
 object MangaExtensionServiceProviders {

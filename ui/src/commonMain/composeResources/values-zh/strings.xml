@@ -866,6 +866,7 @@
     <string name="no_book">没有书籍</string>
     <string name="non_null_name_url">名称和 URL 不能为空</string>
     <string name="resolution">分辨率</string>
+    <string name="video_line">线路</string>
     <string name="reload">重新加载</string>
     <string name="manga_extension">漫画插件</string>
     <string name="manga_extension_desc">安装与管理漫画插件</string>
@@ -877,10 +878,15 @@
     <string name="manga_extension_untrusted_desc">该插件签名校验未通过，信任后才能装载其源。是否信任？</string>
     <string name="manga_extension_uninstall_confirm">确定卸载该插件？</string>
     <string name="manga_extension_install">安装</string>
+    <string name="manga_extension_available">未安装</string>
     <string name="manga_extension_update">更新</string>
     <string name="manga_extension_uninstall">卸载</string>
     <string name="manga_extension_empty">暂无插件</string>
     <string name="manga_extension_languages">语言</string>
+    <string name="manga_extension_setting">设置</string>
+    <string name="manga_extension_kind_video">视频</string>
+    <string name="manga_extension_pref_empty">该插件没有可配置项</string>
+    <string name="manga_extension_pref_error">插件设置读取失败，详情见应用日志</string>
     <string name="manga_search_filters">筛选</string>
     <string name="manga_color_filter">滤镜</string>
     <string name="contrast">对比度</string>
