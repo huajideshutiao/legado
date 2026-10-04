@@ -63,6 +63,8 @@ internal object GtkLibs {
             gdk = load("libgdk-3.so.0", Gdk3::class.java)
             webkit = load(webkitPath, WebKit4_1::class.java)
             jsc = load("libjavascriptcoregtk-4.1.so.0", JSCore::class.java)
+            // libsoup3 是 webkit2gtk-4.1 的依赖 (必在), 用于读写请求头; 单独失败不影响引擎
+            soup = runCatching { load("libsoup-3.0.so.0", Soup3::class.java) }.getOrNull()
             loaded = true
             true
         }.onFailure { e ->
@@ -85,6 +87,10 @@ internal object GtkLibs {
     lateinit var webkit: WebKit4_1
         private set
     lateinit var jsc: JSCore
+        private set
+
+    /** libsoup3 绑定; 加载失败为 null (请求头读写退化为空, 不影响导航/嗅探)。 */
+    var soup: Soup3? = null
         private set
 
     /** GError 输出参数 (所有 finish/异步函数共用)。读 [message] 后应 [Glib.g_error_free]。 */
@@ -368,6 +374,35 @@ internal object GtkLibs {
         // --- WebKitWebResource ---
         fun webkit_web_resource_get_uri(resource: Pointer): String?
 
+        // --- WebKitURIRequest (请求头读写 / 带 headerMap 导航) ---
+        fun webkit_uri_request_new(uri: String): Pointer
+        fun webkit_uri_request_get_uri(request: Pointer): String?
+        fun webkit_uri_request_set_uri(request: Pointer, uri: String)
+
+        /** 返回 SoupMessageHeaders* (owned by request, 勿 unref); 非 HTTP 请求返回 null。 */
+        fun webkit_uri_request_get_http_headers(request: Pointer): Pointer?
+
+        /** 带请求头导航 (对照 Android `WebView.loadUrl(url, headerMap)`)。 */
+        fun webkit_web_view_load_request(view: Pointer, request: Pointer)
+
+        // --- 证书错误放行 (等价 Android SslErrorHandler.proceed) ---
+        /** 忽略 host 上该证书的后续 TLS 错误; since 2.6, webkit2gtk-4.1 全系列可用。 */
+        fun webkit_web_context_allow_tls_certificate_for_host(
+            context: Pointer,
+            certificate: Pointer,
+            host: String,
+        )
+
+        // --- WebKitSettings (WebSettings 等价项) ---
+        /** mediaPlaybackRequiresUserGesture=false 的等价项 (默认已 false, 显式对齐)。 */
+        fun webkit_settings_set_media_playback_requires_user_gesture(
+            settings: Pointer,
+            enabled: Int,
+        )
+
+        /** blockNetworkImage=true 的等价项: auto-load-images=false。 */
+        fun webkit_settings_set_auto_load_images(settings: Pointer, enabled: Int)
+
         // --- WebKitJavascriptResult (2.40 起 opaque) ---
         fun webkit_javascript_result_get_js_value(result: Pointer): Pointer
 
@@ -377,6 +412,30 @@ internal object GtkLibs {
 
     interface AsyncReadyCallback : Callback {
         fun invoke(source: Pointer?, res: Pointer, userData: Pointer?)
+    }
+
+    // ==================== libsoup 3 (libsoup-3.0.so.0) ====================
+
+    /**
+     * libsoup3 请求头读写 (只绑最老稳定符号)。
+     * `webkit_uri_request_get_http_headers` 返回的 SoupMessageHeaders 由 request 拥有,
+     * 不需 unref; 写入用 replace/append 直接改其内容。
+     */
+    interface Soup3 : Library {
+        fun soup_message_headers_get_one(headers: Pointer, name: String): String?
+        fun soup_message_headers_get_list(headers: Pointer, name: String): String?
+        fun soup_message_headers_replace(headers: Pointer, name: String, value: String)
+        fun soup_message_headers_append(headers: Pointer, name: String, value: String)
+        fun soup_message_headers_foreach(
+            headers: Pointer,
+            func: SoupHeadersForeachFunc,
+            userData: Pointer?,
+        )
+    }
+
+    /** soup_message_headers_foreach 回调: (const char* name, const char* value, gpointer user_data) */
+    interface SoupHeadersForeachFunc : Callback {
+        fun invoke(name: String?, value: String?, userData: Pointer?)
     }
 
     // ==================== JavaScriptCoreGTK (libjavascriptcoregtk-4.1.so.0) ====================
@@ -395,6 +454,22 @@ internal object GtkLibs {
     /** WebKitWebView::resource-load-started (WebKitWebView*, WebKitWebResource*, WebKitURIRequest*, gpointer) */
     interface ResourceLoadStartedCallback : Callback {
         fun invoke(view: Pointer, resource: Pointer, request: Pointer, userData: Pointer?)
+    }
+
+    /**
+     * WebKitWebView::load-failed-with-tls-errors
+     * (WebKitWebView*, gchar* failing_uri, GTlsCertificate*, GTlsCertificateFlags, gpointer) → gboolean。
+     * 返回 TRUE 表示已处理 (不再发 load-failed); 回调内调
+     * webkit_web_context_allow_tls_certificate_for_host 即可放行。
+     */
+    interface TlsErrorCallback : Callback {
+        fun invoke(
+            view: Pointer,
+            failingUri: String?,
+            certificate: Pointer?,
+            errors: Int,
+            userData: Pointer?,
+        ): Int
     }
 
     /** GObject notify::* (GObject*, GParamSpec*, gpointer) */

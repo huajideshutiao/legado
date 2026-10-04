@@ -72,8 +72,12 @@ internal class GtkSession private constructor(
     /** uri 变化回调 (GTK 线程), 用于 overrideUrlRegex 嗅探。 */
     var onUriChanged: ((String) -> Unit)? = null
 
-    /** 子资源加载开始回调 (GTK 线程), 用于 sourceRegex 嗅探。 */
-    var onResourceStarted: ((String) -> Unit)? = null
+    /**
+     * 子资源加载开始回调 (GTK 线程), 用于 sourceRegex 嗅探。
+     * [headers] 为惰性读取器 —— 仅命中时引擎才调, 避免对每个子资源都遍历 soup 头表。
+     * 读取器仅在信号回调同步执行期间有效。
+     */
+    var onResourceStarted: ((url: String, headers: () -> Map<String, String>) -> Unit)? = null
 
     /** 窗口关闭回调 (用户点 X / 页面 window.close()/destroy), 触发句柄 close 语义。 */
     var onClosed: (() -> Unit)? = null
@@ -114,8 +118,65 @@ internal class GtkSession private constructor(
         ) {
             val uri = runCatching { GtkLibs.webkit.webkit_web_resource_get_uri(resource) }
                 .getOrNull()
-            if (!uri.isNullOrBlank()) onResourceStarted?.invoke(uri)
+            // 仅嗅探路径才读请求头 (惰性: 命中时才读)
+            val callback = onResourceStarted ?: return
+            if (!uri.isNullOrBlank()) {
+                callback(uri) { readRequestHeaders(request) }
+            }
         }
+    }
+
+    /**
+     * 证书错误放行: WebKitWebView::load-failed-with-tls-errors 回调内调
+     * webkit_web_context_allow_tls_certificate_for_host, 等价 Android `SslErrorHandler.proceed()`。
+     * 返回 TRUE 表示已处理 (不再发 load-failed)。
+     */
+    private val tlsErrorCb = object : GtkLibs.TlsErrorCallback {
+        override fun invoke(
+            view: Pointer,
+            failingUri: String?,
+            certificate: Pointer?,
+            errors: Int,
+            userData: Pointer?,
+        ): Int {
+            if (certificate == null || failingUri.isNullOrBlank()) return 0
+            val context = runCatching { GtkLibs.webkit.webkit_web_view_get_context(view) }
+                .getOrElse {
+                    runCatching { GtkLibs.webkit.webkit_web_view_get_web_context(view) }.getOrNull()
+                } ?: return 0
+            val host = runCatching {
+                java.net.URI(failingUri).host
+            }.getOrNull()?.takeIf { it.isNotBlank() } ?: return 0
+            return runCatching {
+                GtkLibs.webkit.webkit_web_context_allow_tls_certificate_for_host(
+                    context, certificate, host
+                )
+                1
+            }.getOrDefault(0)
+        }
+    }
+
+    /**
+     * 读取 WebKitURIRequest 实际发出的请求头 (含 Referer/Cookie/User-Agent), 对应 Android
+     * `WebResourceRequest.requestHeaders`。libsoup 未加载或非 HTTP 请求时返回空 Map。
+     * 必须在 GTK 线程调用 (仅从信号回调内调用)。
+     */
+    private fun readRequestHeaders(request: Pointer?): Map<String, String> {
+        val soup = GtkLibs.soup ?: return emptyMap()
+        val headers = runCatching {
+            GtkLibs.webkit.webkit_uri_request_get_http_headers(request ?: return emptyMap())
+        }.getOrNull() ?: return emptyMap()
+        val result = LinkedHashMap<String, String>()
+        val cb = object : GtkLibs.SoupHeadersForeachFunc {
+            override fun invoke(name: String?, value: String?, userData: Pointer?) {
+                if (!name.isNullOrBlank() && value != null) {
+                    // 同名多头 (如多 Cookie) 拼接, 与 soup get_list 语义一致
+                    result[name] = result[name]?.let { "$it, $value" } ?: value
+                }
+            }
+        }
+        runCatching { soup.soup_message_headers_foreach(headers, cb, null) }
+        return result
     }
 
     private val closeCb = object : GtkLibs.WebViewCloseCallback {
@@ -198,6 +259,12 @@ internal class GtkSession private constructor(
                 session.resourceStartedCb,
                 null
             )
+            // 证书错误放行 (等价 Android SslErrorHandler.proceed); 旧版无此信号时无害
+            runCatching {
+                GtkLibs.gobject.g_signal_connect(
+                    view, "load-failed-with-tls-errors", session.tlsErrorCb, null
+                )
+            }
             GtkLibs.gobject.g_signal_connect(view, "close", session.closeCb, null)
             GtkLibs.gobject.g_signal_connect(window, "delete-event", session.deleteEventCb, null)
             GtkLibs.gobject.g_signal_connect(window, "destroy", session.destroyCb, null)
@@ -237,14 +304,69 @@ internal class GtkSession private constructor(
         GtkLibs.webkit.webkit_settings_set_user_agent(settings, userAgent)
     }
 
+    /**
+     * WebSettings 等价项 (对照 Android `TvBoxSniffer.createWebView` 的 settings):
+     * - `mediaPlaybackRequiresUserGesture=false` → webkit_settings_set_media_playback_requires_user_gesture(0)
+     *   (WebKitGTK 默认已是 false, 显式设置以对齐语义);
+     * - `blockNetworkImage=true` → webkit_settings_set_auto_load_images(0)。
+     *
+     * 说明: `mixedContentMode=ALWAYS_ALLOW` 在 webkit2gtk-4.1 无等价 API ——
+     * WebKitGTK 自 2.42 起已移除 mixed-content 开关并一律阻断混合内容 (官方 "Proposal: Remove
+     * mixed content handling settings"), 不可实现; `setAcceptThirdPartyCookies` 也无对应 API
+     * (WebKitGTK 默认接受第三方 cookie, 等价默认值)。
+     */
+    fun applySnifferSettings() {
+        val settings = GtkLibs.webkit.webkit_web_view_get_settings(view)
+        runCatching {
+            GtkLibs.webkit.webkit_settings_set_media_playback_requires_user_gesture(settings, 0)
+        }
+        runCatching { GtkLibs.webkit.webkit_settings_set_auto_load_images(settings, 0) }
+    }
+
     /** 对应 app 端 load(): 先对齐 UA (按 UA 绑定的 cookie 换到 HTTP 侧才有效), html 优先, 否则加载 url。 */
     fun start(request: WebViewFetchRequest) {
         setUserAgent(request.headerMap.getUserAgent())
         val html = request.html
         when {
             !html.isNullOrEmpty() -> loadHtml(html, request.url)
-            !request.url.isNullOrEmpty() -> loadUri(request.url)
+            !request.url.isNullOrEmpty() -> loadUriWithHeaders(request.url, request.headerMap)
             else -> throw NoStackTraceException("url 与 html 不能同时为空")
+        }
+    }
+
+    /**
+     * 携带全量 [headers] 导航 (对照 Android `WebView.loadUrl(url, headerMap)`):
+     * 构造 WebKitURIRequest, 经 webkit_uri_request_get_http_headers 取 SoupMessageHeaders
+     * 后逐项 replace 写入。libsoup 不可用或构造失败时退回普通 [loadUri]。
+     */
+    fun loadUriWithHeaders(uri: String, headers: Map<String, String>?) {
+        if (headers.isNullOrEmpty()) {
+            loadUri(uri)
+            return
+        }
+        val soup = GtkLibs.soup
+        if (soup == null) {
+            loadUri(uri)
+            return
+        }
+        val request = runCatching { GtkLibs.webkit.webkit_uri_request_new(uri) }.getOrNull()
+        if (request == null) {
+            loadUri(uri)
+            return
+        }
+        try {
+            val messageHeaders = GtkLibs.webkit.webkit_uri_request_get_http_headers(request)
+            if (messageHeaders == null) {
+                loadUri(uri)
+                return
+            }
+            headers.forEach { (name, value) ->
+                runCatching { soup.soup_message_headers_replace(messageHeaders, name, value) }
+            }
+            GtkLibs.webkit.webkit_web_view_load_request(view, request)
+        } finally {
+            // load_request 不接管 request 所有权 (transfer none), 自己 unref
+            runCatching { GtkLibs.gobject.g_object_unref(request) }
         }
     }
 

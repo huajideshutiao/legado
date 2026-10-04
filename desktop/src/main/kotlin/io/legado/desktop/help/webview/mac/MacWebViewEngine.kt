@@ -54,6 +54,46 @@ import java.util.concurrent.atomic.AtomicReference
  * - cookie 注入/回收走 WKHTTPCookieStore (block API, 主线程发起 + 协程挂起等待);
  * - 可见窗口带 AppKit 工具栏, 行为对照 Windows WebView2Toolbar。
  * 抓取主循环 / 常量在 [DesktopWebViewEngineBase], 这里只留 WKWebView 差异。
+ *
+ * # TVBox 网页嗅探迁移所需能力评估 (2026-10, 本轮仅出方案不实现)
+ *
+ * Android `TvBoxSniffer` 依赖 `shouldInterceptRequest` 的请求头/响应替换/证书放行/WebSettings。
+ * 对照 WKWebView (macOS):
+ *
+ * 1. **请求头读取 (WebView 实际发出的 Referer/Cookie/UA)** — 不可做。
+ *    WKWebView 不向宿主暴露子资源请求 (`WKNavigationDelegate` 只给主框架导航),
+ *    `WKURLSchemeHandler` 仅接管自定义 scheme, 对 http/https **不生效** (官方文档:
+ *    https://developer.apple.com/documentation/webkit/wkurlschemehandler)。
+ *    JS hook 能拿到 `fetch`/XHR 的 URL, 但**拿不到浏览器自设的 Referer/User-Agent**,
+ *    也无法读 HttpOnly Cookie。故 [playHeaders] 在 mac 上只能靠 UA=宿主 UA + Referer=解析页 兜底。
+ *    可能的降级: 用 `WKWebViewConfiguration.setURLSchemeHandler` 只接管一个自建 scheme 不现实;
+ *    或改用 `WKWebView` 私有 API `_setCustomUserAgent` 仅能定 UA。
+ *
+ * 2. **响应替换 (吞广告/命中请求)** — 不可做。
+ *    WKWebView 无公开的子资源拦截/响应改写 API (无 `shouldInterceptRequest` 等价物),
+ *    `WKURLSchemeHandler` 对 http/https 无效。降级方案: 嗅探语义退化为
+ *    「JS hook + performance 轮询发现即返回」(当前 [runSniffer] 已如此),
+ *    命中后**无法阻止**资源继续加载, 也无法吞广告请求。
+ *
+ * 3. **证书错误放行** — 可做。
+ *    实现 `WKNavigationDelegate` 的
+ *    `webView:didReceiveAuthenticationChallenge:completionHandler:`, 对
+ *    `NSURLAuthenticationMethodServerTrust` 回 `NSURLSessionAuthChallengeUseCredential` +
+ *    `[NSURLCredential credentialForTrust:challenge.protectionSpace.serverTrust]`,
+ *    等价 `SslErrorHandler.proceed()`。查证:
+ *    https://developer.apple.com/documentation/webkit/wknavigationdelegate/webview(_:didreceive:completionhandler:)
+ *    现有 [MacSession] 的 delegate 只注册了 `webView:didFinishNavigation:` 与
+ *    `webView:didFailNavigation:withError:`, 新增一个方法签名即可 (ObjC.newDelegateClass 支持多方法)。
+ *
+ * 4. **WebSettings 等价项** — 部分可做。
+ *    - `mediaPlaybackRequiresUserGesture=false` → `WKWebViewConfiguration.mediaTypesRequiringUserActionForPlayback`
+ *      设为 `WKAudiovisualMediaTypeNone` (值 0)。查证:
+ *      https://developer.apple.com/documentation/webkit/wkwebviewconfiguration/mediatypesrequiringuseractionforplayback
+ *      需在 [MacSession.create] 构造 configuration 时设置 (创建后只读)。
+ *    - `blockNetworkImage` / `mixedContentMode` / `setAcceptThirdPartyCookies` — WKWebView 无公开等价 API。
+ *
+ * 结论: mac 可补齐 3 (证书) 与 4 的 autoplay 一项; 1/2 为平台硬限制, TVBox 嗅探在 mac 上
+ * 应降级为「JS hook 发现即返回 + 无法防盗链头/无法吞广告」, 并在调用方按 `engine.id` 分支处理。
  */
 internal object MacWebViewEngine : DesktopWebViewEngineBase() {
 

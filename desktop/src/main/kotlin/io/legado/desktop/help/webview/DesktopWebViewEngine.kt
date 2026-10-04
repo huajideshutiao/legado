@@ -72,11 +72,15 @@ data class WebViewFetchRequest(
  * @param url 最终地址 (跟随重定向后)
  * @param body 网页源码; 嗅探模式 (sourceRegex/overrideUrlRegex) 下为命中的资源地址
  * @param redirected 是否发生过重定向, 对应 app 端 `isRedirect` (决定 StrResponse 是否带 priorResponse)
+ * @param headers 嗅探命中时 WebView 实际发出的防盗链头 (User-Agent/Referer/Cookie),
+ *   对应 Android `TvBoxSniffer.playHeaders` 提取的三项; 非嗅探路径为空 Map。
+ *   (2026-10 为 TVBox 网页嗅探迁移新增, 默认空 Map, 不影响既有调用方。)
  */
 class WebViewFetchResult(
     val url: String,
     val body: String,
     val redirected: Boolean,
+    val headers: Map<String, String> = emptyMap(),
 )
 
 /**

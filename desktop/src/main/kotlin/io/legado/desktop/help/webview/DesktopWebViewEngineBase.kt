@@ -2,6 +2,7 @@ package io.legado.desktop.help.webview
 
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.UserAgentProviders
 import io.legado.app.help.http.CookieStoreProviders
 import io.legado.app.utils.NetworkUtils
 import io.legado.desktop.help.webview.DesktopWebViewEngineBase.Companion.COOKIE_TIMEOUT_MS
@@ -96,6 +97,36 @@ internal abstract class DesktopWebViewEngineBase : DesktopWebViewEngine {
     /** 嗅探结果: 命中地址作为 body, 原 url 为空时兜底用命中地址。 */
     protected fun snifferResult(request: WebViewFetchRequest, hitUrl: String): WebViewFetchResult =
         WebViewFetchResult(request.url ?: hitUrl, hitUrl, false)
+
+    /**
+     * 从 WebView 实际发出的请求头里挑出防盗链三项 (User-Agent/Referer/Cookie),
+     * 对应 Android `TvBoxSniffer.playHeaders`: 缺失则回退 UA=宿主 UA、Referer=当前解析页。
+     * 仅在嗅探命中时调用。
+     *
+     * @param requestHeaders WebView 实际发出的请求头 (大小写不敏感), 拿不到时传空
+     * @param page 当前解析页地址 (Referer 兜底)
+     */
+    protected fun playHeaders(
+        requestHeaders: Map<String, String>,
+        page: String?,
+    ): Map<String, String> {
+        val headers = linkedMapOf<String, String>()
+        val lower = requestHeaders.entries.associate { it.key.lowercase() to it.value }
+        lower["user-agent"]?.takeIf { it.isNotBlank() }?.let { headers["User-Agent"] = it }
+        lower["referer"]?.takeIf { it.isNotBlank() }?.let { headers["Referer"] = it }
+        lower["cookie"]?.takeIf { it.isNotBlank() }?.let { headers["Cookie"] = it }
+        if (!headers.containsKey("User-Agent")) headers["User-Agent"] = UserAgentProviders.get()
+        if (!headers.containsKey("Referer") && !page.isNullOrBlank()) headers["Referer"] = page
+        return headers
+    }
+
+    /** 嗅探命中且带上了防盗链头的结果。 */
+    protected fun snifferResult(
+        request: WebViewFetchRequest,
+        hitUrl: String,
+        headers: Map<String, String>,
+    ): WebViewFetchResult =
+        WebViewFetchResult(request.url ?: hitUrl, hitUrl, false, headers)
 
     /** app 端在 onPageStarted 延时注入 JS, 嗅探这里等页面就绪后补一次。 */
     protected fun injectJsOnPageReady(request: WebViewFetchRequest, inject: (String) -> Unit) {

@@ -132,7 +132,7 @@ internal object LinuxWebViewEngine : DesktopWebViewEngineBase() {
         session: GtkSession,
         request: WebViewFetchRequest,
     ): WebViewFetchResult {
-        val hit = CompletableDeferred<String>()
+        val hit = CompletableDeferred<Pair<String, Map<String, String>>>()
         val (overrideRegex, sourceRegex) = snifferRegexes(request)
         // cookie 注入同 runHtml: 嗅探也是真实导航, 命中前页面已按请求携带登录态
         injectWebViewCookies(request.url, platformLabel) { domain, cookie ->
@@ -140,10 +140,10 @@ internal object LinuxWebViewEngine : DesktopWebViewEngineBase() {
         }
         GtkLoop.await {
             session.onUriChanged = { uri ->
-                if (overrideRegex?.matches(uri) == true) hit.complete(uri)
+                if (overrideRegex?.matches(uri) == true) hit.complete(uri to emptyMap())
             }
-            session.onResourceStarted = { uri ->
-                if (sourceRegex?.matches(uri) == true) hit.complete(uri)
+            session.onResourceStarted = { uri, headers ->
+                if (sourceRegex?.matches(uri) == true) hit.complete(uri to headers())
             }
             session.onLoadChanged = { _, event ->
                 if (event == WEBKIT_LOAD_FINISHED) {
@@ -151,11 +151,13 @@ internal object LinuxWebViewEngine : DesktopWebViewEngineBase() {
                     injectJsOnPageReady(request) { session.executeScript(it) }
                 }
             }
+            // WebSettings 等价项 (自动起播/禁图), 对照 app 端 TvBoxSniffer.createWebView
+            session.applySnifferSettings()
             session.start(request)
         }
-        val resultUrl = withTimeoutOrNull(AppConst.timeLimit) { hit.await() }
+        val (resultUrl, headers) = withTimeoutOrNull(AppConst.timeLimit) { hit.await() }
             ?: throw NoStackTraceException("资源嗅探超时")
-        return snifferResult(request, resultUrl)
+        return snifferResult(request, resultUrl, playHeaders(headers, request.url))
     }
 
     /**
