@@ -144,6 +144,30 @@ class QuickJsContext(
     private val nativeCleanup: NativeCleanup
 
     /**
+     * 本 ctx 的计时器注册表 (setTimeout/setInterval 等)。
+     *
+     * 懒加载: 不注册计时器的 ctx 不创建 [ReentrantLock]/Condition (零额外开销)。
+     * 回调只在 JS 线程由 [QuickJsAsync.settle] 触发。close 时 [cancelAll] 释放
+     * 回调函数句柄并取消 Android 主线程 Handler 唤醒回调。
+     */
+    val timerManager: JsTimerManager by lazy {
+        timerManagerInit = true
+        JsTimerManager(this)
+    }
+
+    /** 计时器注册表是否已初始化 (close 时避免无计时器 ctx 无谓创建)。 */
+    private var timerManagerInit = false
+
+    /**
+     * JS 求值嵌套深度 (eval/nativeCall 边界进入时 +1, 退出时 -1)。
+     *
+     * [QuickJsAsync.settle] 只在深度为 1 (最外层求值边界) 时泵送微任务,
+     * 避免 JS->Java->JS 重入中途泵送造成微任务乱序。ctx 单线程使用, 无需同步。
+     */
+    @Volatile
+    var jsDepth: Int = 0
+
+    /**
      * 检查协程是否已取消，对应 RhinoContext.ensureActive()。
      * 在 binding handler 中由业务层 ([JsExtensions]) 调用。
      */
@@ -166,6 +190,10 @@ class QuickJsContext(
         // 清空身份去重映射, 让强引用尽早断开 (句柄本体由 releaseScope 统一释放)。
         // 即使 cleanupOnce 已被守护线程跑过, 重复 clear 也无副作用。
         identityHandles.clear()
+        // 计时器: 释放回调函数句柄 + 取消 Android 主线程 Handler 唤醒回调。
+        // 显式 close 路径在此处理; GC 路径由 releaseByCtx 统一释放句柄 + 弱引用
+        // 唤醒回调自灭, 无需取消。
+        if (timerManagerInit) timerManager.cancelAll()
         // 显式触发 native 释放; 已被 phantom 兜底执行过时是 no-op。
         nativeCleanup.cleanupOnce()
     }

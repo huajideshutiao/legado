@@ -223,6 +223,14 @@ jobject JniValueConvert::toJavaObject(JSContext *ctx, JNIEnv *env, JSValue value
         env->DeleteLocalRef(arrayListCls);
         return list;
     }
+    // JS Promise -> 句柄 (Long)。
+    // 必须在 plain object 分支之前: Promise 无自有可枚举属性, 否则会被转成空 NativeObject,
+    // 宿主 (QuickJsAsync.settleAndUnwrap) 就无法识别 promise 并泵送后再读 resolved 值。
+    if (JS_IsPromise(value)) {
+        JSValue dup = JS_DupValue(ctx, value);
+        int64_t handle = JsHandleTable::instance().store(ctx, dup);
+        return env->CallStaticObjectMethod(g_LongCls, g_LongValueOf, (jlong) handle);
+    }
     // JS Error 对象 -> NativeObject (对齐 rhino NativeError, 不转 Throwable)
     //
     // 设计: JS Error 作为返回值/参数时, 转成 NativeObject (含 message/name/stack),

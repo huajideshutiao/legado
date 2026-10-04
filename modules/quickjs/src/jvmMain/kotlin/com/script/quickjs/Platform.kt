@@ -74,6 +74,14 @@ actual fun loadLegadoQuickJsNative() {
     )
 }
 
+// ============ 计时器平台唤醒 (桌面 JVM) ============
+
+// JVM 端无需外部唤醒: awaitUntilDeadline 的 awaitNanos 会按 deadline 超时自醒,
+// 新计时器注册/取消时 JsTimerManager.schedule/clear 已 signalAll。
+actual fun platformScheduleTimerWake(tm: JsTimerManager, deadlineMs: Long) = Unit
+
+actual fun platformCancelAllTimerWakes(tm: JsTimerManager) = Unit
+
 /** 主机操作系统对应的 native 库文件名。 */
 private fun jvmNativeLibName(): String {
     val osName = System.getProperty("os.name").lowercase()

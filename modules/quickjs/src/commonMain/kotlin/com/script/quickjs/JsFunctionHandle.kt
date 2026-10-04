@@ -50,18 +50,31 @@ class JsFunctionHandle private constructor(
             // 设置 ThreadLocalContext, 让 binding handler 能访问到当前 ctx
             // (JavaAdapter 回调可能来自非 JS 执行线程, 需要确保 ThreadLocal 有效)
             val ctx = QuickJsContext.threadLocalContext.get()
+            val owner = if (ctx?.ctxPtr == ctxPtr) ctx else findOwnerCtx()
             val previousCtx = if (ctx?.ctxPtr == ctxPtr) null else run {
                 // 当前线程没有 context 或不是本 handle 对应的 ctx,
                 // 需要临时设置 (用于 binding handler 调用)
-                val ownerCtx = findOwnerCtx()
-                if (ownerCtx != null) {
+                if (owner != null) {
                     val prev = QuickJsContext.threadLocalContext.get()
-                    QuickJsContext.threadLocalContext.set(ownerCtx)
+                    QuickJsContext.threadLocalContext.set(owner)
                     prev
                 } else null
             }
             try {
-                QuickJsNative.nativeEval(ctxPtr, jsCode)
+                val depth = owner ?: ctx
+                if (depth != null) depth.jsDepth++
+                try {
+                    val result = QuickJsNative.nativeEval(ctxPtr, jsCode)
+                    // JavaAdapter 回调边界: 只泵送微任务/触发到期计时器, 不阻塞等待
+                    // (回调可能来自 UI 线程; 结果 Promise 依赖的计时器由后续 eval 边界 settle)。
+                    // 仅最外层边界 (jsDepth==1) 泵送, 避免 JS->Java->JS 重入中途乱序。
+                    if (depth != null && depth.jsDepth == 1) {
+                        QuickJsAsync.settle(depth, awaitResult = false)
+                    }
+                    result
+                } finally {
+                    if (depth != null) depth.jsDepth--
+                }
             } finally {
                 if (previousCtx != null) {
                     QuickJsContext.threadLocalContext.set(previousCtx)

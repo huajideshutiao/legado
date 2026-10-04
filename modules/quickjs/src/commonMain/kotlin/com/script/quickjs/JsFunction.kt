@@ -49,7 +49,15 @@ class JsFunction(
                     QuickJsNative.nativeSetDangerousApi(ctxPtr, dangerousApi)
                     context.lastSyncedDangerousApi = dangerousApi
                 }
-                QuickJsNative.nativeEval(ctxPtr, jsCode)
+                context.jsDepth++
+                try {
+                    val result = QuickJsNative.nativeEval(ctxPtr, jsCode)
+                    // 最外层求值边界才泵送微任务 (jsDepth==1), 避免 JS->Java->JS
+                    // 重入中途泵送造成微任务乱序; 嵌套调用由外层边界统一 settle
+                    return if (context.jsDepth == 1) QuickJsAsync.settleAndUnwrap(context, result) else result
+                } finally {
+                    context.jsDepth--
+                }
             } finally {
                 QuickJsContext.threadLocalContext.set(previous)
             }

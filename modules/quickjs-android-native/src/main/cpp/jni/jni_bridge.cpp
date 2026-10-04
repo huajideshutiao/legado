@@ -137,6 +137,101 @@ Java_com_script_quickjs_QuickJsNative_nativeEval(JNIEnv *env, jobject clazz,
     return ret;
 }
 
+// ============ Promise 泵送 (async/await 微任务链) ============
+//
+// 设计: 引擎自身不泵送 job (quickjs-ng 只提供 JS_EnqueueJob / JS_ExecutePendingJob),
+// 泵送是宿主职责。宿主 (Kotlin QuickJsAsync.settle) 在每次 JS 求值边界后循环调用
+// nativePumpJobs, 把 async/await 产生的微任务链同步 settle, 再读取 Promise 结果。
+
+// 泵送所有 pending job 直到耗尽。
+// @return JNI_TRUE = 至少执行过一个 job, JNI_FALSE = 无 pending job (已耗尽)
+// @throws JsNativeException job 抛错 (可观测, 不静默吞掉)
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_script_quickjs_QuickJsNative_nativePumpJobs(JNIEnv *env, jobject clazz,
+                                                     jlong ctxPtr) {
+    if (!ctxPtr) return JNI_FALSE;
+    auto *ctx = (JSContext *) ctxPtr;
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    // job 会执行 JS, 跨线程使用 ctx 时栈检查需基于当前线程 (同 nativeEval)
+    JS_UpdateStackTop(rt);
+    bool ran = false;
+    for (;;) {
+        JSContext *jobCtx = nullptr;
+        int ret = JS_ExecutePendingJob(rt, &jobCtx);
+        if (ret < 0) {
+            // job 抛错: ctx 异常 slot 已设, 取出转 JsNativeException 上抛,
+            // 让宿主把 promise 链错误报出来 (不静默)。jobCtx 为空只可能发生在
+            // job 列表为空 (ret==0) 的路径, 异常路径必非空。
+            JSContext *excCtx = jobCtx ? jobCtx : ctx;
+            JSValue exc = JS_GetException(excCtx);
+            throwJsNativeException(excCtx, env, exc, "Promise job threw");
+            JS_FreeValue(excCtx, exc);
+            return JNI_FALSE;
+        }
+        if (ret == 0) break;   // 无更多 job
+        ran = true;
+    }
+    return ran ? JNI_TRUE : JNI_FALSE;
+}
+
+// 检查句柄是否 Promise 对象。
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_script_quickjs_QuickJsNative_nativeIsPromise(JNIEnv *env, jobject clazz,
+                                                      jlong ctxPtr, jlong handle) {
+    if (!ctxPtr || !handle) return JNI_FALSE;
+    JSValue val = JsHandleTable::instance().get(handle);
+    if (JS_IsNull(val)) return JNI_FALSE;
+    return JS_IsPromise(val) ? JNI_TRUE : JNI_FALSE;
+}
+
+// Promise 状态: -1 非 promise, 0 pending, 1 fulfilled, 2 rejected。
+extern "C" JNIEXPORT jint JNICALL
+Java_com_script_quickjs_QuickJsNative_nativePromiseState(JNIEnv *env, jobject clazz,
+                                                         jlong ctxPtr, jlong handle) {
+    if (!ctxPtr || !handle) return -1;
+    auto *ctx = (JSContext *) ctxPtr;
+    JSValue val = JsHandleTable::instance().get(handle);
+    if (JS_IsNull(val)) return -1;
+    if (!JS_IsPromise(val)) return -1;
+    return (jint) JS_PromiseState(ctx, val);
+}
+
+// 读取已 settle 的 Promise 结果 (宿主 pump 完微任务后调用)。
+// @return fulfilled -> resolved 值 (基本类型 / 句柄 / 解包的 Java 对象)
+//         rejected -> 抛 JsNativeException (拒绝原因, 可观测)
+//         pending  -> null (宿主自行处理: 保留句柄等待后续 pump)
+extern "C" JNIEXPORT jobject JNICALL
+Java_com_script_quickjs_QuickJsNative_nativePromiseResult(JNIEnv *env, jobject clazz,
+                                                          jlong ctxPtr, jlong handle) {
+    if (!ctxPtr || !handle) return nullptr;
+    auto *ctx = (JSContext *) ctxPtr;
+    JSValue promise = JsHandleTable::instance().get(handle);
+    if (JS_IsNull(promise)) return nullptr;
+    if (!JS_IsPromise(promise)) return nullptr;
+    JSPromiseStateEnum state = JS_PromiseState(ctx, promise);
+    if (state != JS_PROMISE_FULFILLED && state != JS_PROMISE_REJECTED) return nullptr;
+    // JS_PromiseResult 返回 dup, 调用方负责 FreeValue
+    JSValue result = JS_PromiseResult(ctx, promise);
+    if (state == JS_PROMISE_REJECTED) {
+        // 拒绝: 抛出拒绝原因 (Error 带 stack), 对齐 JS 引擎错误可观测原则
+        throwJsNativeException(ctx, env, result, "Promise rejected");
+        JS_FreeValue(ctx, result);
+        return nullptr;
+    }
+    jobject ret = JniValueConvert::toJavaObject(ctx, env, result);
+    JS_FreeValue(ctx, result);
+    return ret;
+}
+
+// 查询句柄所属 ctx (供 Kotlin 侧从 handle 反查 QuickJsContext, 如 JsSamAdapter 泵送)。
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_script_quickjs_QuickJsNative_nativeGetHandleCtx(JNIEnv *env, jobject clazz,
+                                                         jlong handle) {
+    if (!handle) return 0;
+    JSContext *ctx = JsHandleTable::instance().getCtx(handle);
+    return (jlong) ctx;
+}
+
 // ============ 句柄管理 ============
 
 extern "C" JNIEXPORT void JNICALL

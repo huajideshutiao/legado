@@ -125,7 +125,8 @@ object QuickJsEngine {
             try {
                 syncDangerousApiIfNeeded(scope)
                 val result = QuickJsNative.nativeEval(scope.ctxPtr, js)
-                unwrapReturnValue(result)
+                // 泵送微任务: async/await 的 job 链在此 settle, Promise 结果先泵送再读取
+                QuickJsAsync.settleAndUnwrap(scope, result)
             } catch (e: JsNativeException) {
                 // 保留 cause: JsNativeException 的 Java/JNI 调用栈用于区分 JS 脚本问题
                 // 与引擎桥接问题 (JS 报错看 message/fileName/lineNumber, 引擎问题看 cause 栈)
@@ -171,7 +172,8 @@ object QuickJsEngine {
             try {
                 syncDangerousApiIfNeeded(scope)
                 val result = QuickJsNative.nativeEvalBytecode(scope.ctxPtr, bytecode)
-                unwrapReturnValue(result)
+                // 泵送微任务: 与 [eval] 一致, Promise 结果先泵送再读取
+                QuickJsAsync.settleAndUnwrap(scope, result)
             } catch (e: JsNativeException) {
                 // 保留 cause, 见 [eval] 同位置注释
                 throw ScriptException(e.message, e, e.fileName, e.lineNumber, e.columnNumber)
@@ -431,22 +433,6 @@ object QuickJsEngine {
     }
 
     /**
-     * 解包 JS 返回值,对应 RhinoScriptEngine.unwrapReturnValue。
-     *
-     * JS 返回的 JavaObject (native JavaObjectClass 实例) 解包为原始 Java 对象,
-     * 其他类型原样返回。
-     *
-     * 注意: 与旧版不同, 不再依赖 __java_handle__ 字段。
-     * native 层 toJavaObject 已对 JavaObjectClass 实例做解包 (返回原始 jobject),
-     * 但 basic 类型 (String/Number/Boolean) 直接返回, 不需要解包。
-     * 此方法保留兼容性, 实际 native 层已处理大部分解包, 这里只处理边界情况。
-     */
-    private fun unwrapReturnValue(result: Any?): Any? {
-        // native 层 toJavaObject 已对 JavaObject 解包为原始 Java 对象, 这里直接返回
-        return result
-    }
-
-    /**
      * 创建 native JSRuntime + JSContext 并注入 bootstrap + 注册 binding。
      *
      * 优先用预编译 bytecode,避免每次重新解析 bootstrap 源码 (~6KB)。
@@ -668,6 +654,7 @@ object QuickJsEngine {
         }
         scope.allowScriptRun = true
         scope.recursiveCount++
+        scope.jsDepth++
         try {
             scope.checkRecursive()
             return block()
@@ -675,6 +662,7 @@ object QuickJsEngine {
             scope.coroutineContext = previousCoroutineContext
             scope.allowScriptRun = previousAllowScriptRun
             scope.recursiveCount--
+            scope.jsDepth--
             QuickJsContext.threadLocalContext.set(previousThreadContext)
         }
     }
@@ -705,7 +693,9 @@ object QuickJsEngine {
             "__newJavaAdapter",
             "__registerJsFunctionNative",
             "__wrapJavaHandle",
-            "__getDangerousApi"
+            "__getDangerousApi",
+            "__setTimer",
+            "__clearTimer"
         )
         QuickJsNative.nativeDefineBindings(ctxPtr, bindings)
     }

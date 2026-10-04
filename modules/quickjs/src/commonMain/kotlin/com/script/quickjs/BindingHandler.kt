@@ -156,6 +156,34 @@ object BindingHandler {
                 else JavaObjectBridge.getObject(handle)
             }
 
+            // ============ 计时器 (setTimeout/setInterval, 宿主泵送协约) ============
+
+            "__setTimer" -> {
+                val fnHandle = (args.getOrNull(0) as? Number)?.toLong() ?: return 0L
+                val delayMs = (args.getOrNull(1) as? Number)?.toLong() ?: 0L
+                val jsArgs = unwrapArgsList(args.getOrNull(2))
+                val repeat = (args.getOrNull(3) as? Boolean) ?: false
+                val ctx = QuickJsContext.threadLocalContext.get()
+                if (ctx == null) {
+                    logQuickJsWarn(TAG, "__setTimer: no QuickJsContext in current thread")
+                    0L
+                } else {
+                    ctx.timerManager.schedule(fnHandle, jsArgs, delayMs, repeat)
+                }
+            }
+
+            "__clearTimer" -> {
+                val id = (args.getOrNull(0) as? Number)?.toLong() ?: return false
+                val ctx = QuickJsContext.threadLocalContext.get()
+                if (ctx == null) {
+                    logQuickJsWarn(TAG, "__clearTimer: no QuickJsContext in current thread")
+                    false
+                } else {
+                    ctx.timerManager.clear(id)
+                    true
+                }
+            }
+
             else -> {
                 logQuickJsWarn(TAG, "Unknown binding: $name")
                 null

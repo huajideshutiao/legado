@@ -26,6 +26,7 @@ package com.script.quickjs
  * - `__registerJsFunctionNative(jsObjectExpr, dangerousApi): Long`
  * - `__wrapJavaHandle(handle): Any?`
  * - `__getDangerousApi(): Boolean` (native 层直接从 ctx opaque 读取, 不走 Kotlin BindingHandler)
+ * - `__setTimer(fn, delay, args, repeat): Long` / `__clearTimer(id): Boolean` (计时器, 见下方)
  */
 object JsBootstrap {
 
@@ -266,6 +267,37 @@ function JavaAdapter(superClass, implementation) {
         throw new Error('Failed to create JavaAdapter');
     }
     return adapter;
+}
+
+// ============ 计时器 (setTimeout/setInterval, 宿主泵送协约) ============
+//
+// 外部约束: quickjs-ng 引擎不提供事件循环, 计时器回调只在宿主泵送 (QuickJsAsync.settle)
+// 时于 JS 线程触发: 求值返回 Promise (显式 await 计时器) 时阻塞等待到点;
+// 无 Promise 等待时, 已注册计时器保留到下一次 settle。
+// 语义对齐 quickjs-libc std timer 子集: 回调参数仅保证基本类型 (对象/函数参数
+// 经 binding 往返退化为句柄数字, 已知限制)。
+function setTimeout() {
+    var fn = arguments[0];
+    var delay = arguments[1];
+    var args = Array.prototype.slice.call(arguments, 2);
+    if (typeof fn !== 'function') return 0;
+    return __setTimer(fn, delay, args, false);
+}
+
+function clearTimeout(id) {
+    return __clearTimer(id);
+}
+
+function setInterval() {
+    var fn = arguments[0];
+    var delay = arguments[1];
+    var args = Array.prototype.slice.call(arguments, 2);
+    if (typeof fn !== 'function') return 0;
+    return __setTimer(fn, delay, args, true);
+}
+
+function clearInterval(id) {
+    return __clearTimer(id);
 }
 
 // __getDangerousApi 由 QuickJsNative.nativeDefineBinding 注册为 native binding, 从 ctx opaque 读值,

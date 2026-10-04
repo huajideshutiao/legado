@@ -50,7 +50,23 @@ class JsSamAdapter(private val jsFunctionHandle: Long) : InvocationHandler {
         // 不 catch JsNativeException (对齐"不吞异常"原则, 见 project_memory):
         // 异常传播到 jsMethodCallable 的 ExceptionCheck 分支, 由 JavaObjectClass::wrap
         // 包装为 JS 异常供 JS try-catch 捕获
-        return QuickJsNative.nativeCallJsHandle(jsFunctionHandle, args ?: emptyArray())
+        val ctxPtr = QuickJsNative.nativeGetHandleCtx(jsFunctionHandle)
+        val ctx = if (ctxPtr != 0L) QuickJsContext.findByCtxPtr(ctxPtr) else null
+        if (ctx == null) {
+            return QuickJsNative.nativeCallJsHandle(jsFunctionHandle, args ?: emptyArray())
+        }
+        ctx.jsDepth++
+        try {
+            val result = QuickJsNative.nativeCallJsHandle(jsFunctionHandle, args ?: emptyArray())
+            // 回调边界: 仅最外层 (jsDepth==1, 独立于 JS 求值栈) 泵送微任务/触发到期
+            // 计时器, 不阻塞等待; 嵌套 (JS->Java->JS 重入) 时跳过, 由外层求值边界统一 settle。
+            if (ctx.jsDepth == 1) {
+                QuickJsAsync.settle(ctx, awaitResult = false)
+            }
+            return result
+        } finally {
+            ctx.jsDepth--
+        }
     }
 
     companion object {

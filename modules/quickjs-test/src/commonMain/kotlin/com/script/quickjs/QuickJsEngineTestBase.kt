@@ -1573,4 +1573,190 @@ abstract class QuickJsEngineTestBase {
         assertEquals('x', s[8])
         assertEquals('\uD800', s[9])
     }
+
+    // ============ async/await 微任务泵送 (宿主泵送 pending job) ============
+
+    /**
+     * async 函数求值后, 同步微任务链 (await 0) 必须被宿主泵送 settle,
+     * 求值返回 Promise 时先泵送再读 resolved 值。
+     */
+    @Test
+    fun testAsyncAwaitMicrotaskSettles() {
+        val result = QuickJsEngine.eval("(async function(){ await 0; return 42 })()")
+        assertEquals(42, (result as Number).toInt())
+    }
+
+    /** 无 await 的 async 函数: 立即 fulfilled, 同样读取 resolved 值。 */
+    @Test
+    fun testAsyncFunctionWithoutAwait() {
+        val result = QuickJsEngine.eval("(async function(){ return 'hello' })()")
+        assertEquals("hello", result.toString())
+    }
+
+    /** 纯 Promise 链 (无 async): 泵送 reaction job 后返回最终值。 */
+    @Test
+    fun testPromiseChainSettles() {
+        val result = QuickJsEngine.eval(
+            "Promise.resolve(1).then(x => x + 1).then(x => x * 10)"
+        )
+        assertEquals(20, (result as Number).toInt())
+    }
+
+    /** 多级 await + then 混合链。 */
+    @Test
+    fun testAsyncAwaitMixedChain() {
+        val result = QuickJsEngine.eval(
+            "(async function(){ " +
+                "let a = await Promise.resolve(5); " +
+                "let b = await (a + 3); " +
+                "return Promise.resolve(b).then(x => x * 2); " +
+                "})()"
+        )
+        assertEquals(16, (result as Number).toInt())
+    }
+
+    /** await 抛错可捕获: JS 侧 catch 后返回捕获结果 (不向外抛)。 */
+    @Test
+    fun testAwaitRejectionCaughtByJs() {
+        val result = QuickJsEngine.eval(
+            "(async function(){ " +
+                "try { await (async function(){ throw new Error('boom') })() } " +
+                "catch (e) { return 'caught:' + e.message } " +
+                "})()"
+        )
+        assertEquals("caught:boom", result.toString())
+    }
+
+    /**
+     * 未被 JS 捕获的 Promise 拒绝: 必须可观测 (抛 ScriptException, 不静默吞掉)。
+     * eval 返回被拒绝的 Promise 时, 拒绝原因作为异常上抛。
+     */
+    @Test
+    fun testUnhandledRejectionObservable() {
+        var thrown: Throwable? = null
+        try {
+            QuickJsEngine.eval(
+                "(async function(){ await (async function(){ throw new Error('boom') })() })()"
+            )
+        } catch (t: Throwable) {
+            thrown = t
+        }
+        assertTrue("expected ScriptException, got null", thrown is ScriptException)
+        assertTrue(
+            "message should contain rejection reason, got: ${thrown?.message}",
+            thrown?.message?.contains("boom") == true
+        )
+    }
+
+    /** 拒绝链中的错误透传到宿主: 非 Error 抛出值 (字符串) 也可观测。 */
+    @Test
+    fun testRejectedNonErrorValueObservable() {
+        var thrown: Throwable? = null
+        try {
+            QuickJsEngine.eval(
+                "(async function(){ await (async function(){ throw 'plain-string-error' })() })()"
+            )
+        } catch (t: Throwable) {
+            thrown = t
+        }
+        assertTrue("expected ScriptException, got null", thrown is ScriptException)
+        assertTrue(
+            "message should contain thrown value, got: ${thrown?.message}",
+            thrown?.message?.contains("plain-string-error") == true
+        )
+    }
+
+    /** 微任务副作用在同步求值后立即可见 (泵送发生在本 eval 边界内, 共享 scope 下跨 eval 可见)。 */
+    @Test
+    fun testMicrotaskSideEffectVisibleAfterEval() {
+        val scope = QuickJsEngine.getRuntimeScope(ScriptBindings())
+        try {
+            QuickJsEngine.eval(
+                "globalThis.__side = 0; " +
+                    "Promise.resolve().then(() => { globalThis.__side = 7; }); " +
+                    "undefined",
+                scope,
+                null
+            )
+            val result = QuickJsEngine.eval("globalThis.__side", scope, null)
+            assertEquals(7, (result as Number).toInt())
+        } finally {
+            scope.close()
+        }
+    }
+
+    // ============ setTimeout/clearTimeout/setInterval (宿主泵送计时器) ============
+
+    /** Promise 依赖的 setTimeout 计时器: settle 时阻塞等待到点并触发回调。 */
+    @Test
+    fun testSetTimeoutSettlesPromise() {
+        val result = QuickJsEngine.eval(
+            "new Promise(r => setTimeout(() => r('t'), 50))"
+        )
+        assertEquals("t", result.toString())
+    }
+
+    /** setTimeout 带参数透传 (基本类型)。 */
+    @Test
+    fun testSetTimeoutWithArgs() {
+        val result = QuickJsEngine.eval(
+            "new Promise(r => setTimeout((a, b) => r(a + b), 30, 'x', 'y'))"
+        )
+        assertEquals("xy", result.toString())
+    }
+
+    /** clearTimeout 取消后不再触发, 由后续计时器 resolve。 */
+    @Test
+    fun testClearTimeoutPreventsFiring() {
+        val result = QuickJsEngine.eval(
+            "new Promise((resolve, reject) => { " +
+                "var id = setTimeout(() => reject(new Error('fired')), 10); " +
+                "clearTimeout(id); " +
+                "setTimeout(() => resolve('cleared'), 50); " +
+                "})"
+        )
+        assertEquals("cleared", result.toString())
+    }
+
+    /** setInterval 重复触发 N 次后 clearInterval。 */
+    @Test
+    fun testSetIntervalFiresRepeatedly() {
+        val result = QuickJsEngine.eval(
+            "new Promise(r => { " +
+                "var n = 0; " +
+                "var id = setInterval(() => { n++; if (n >= 3) { clearInterval(id); r(n); } }, 10); " +
+                "})"
+        )
+        assertEquals(3, (result as Number).toInt())
+    }
+
+    /** 计时器回调抛错必须可观测 (不静默): 从宿主 eval 上抛。 */
+    @Test
+    fun testTimerCallbackErrorObservable() {
+        var thrown: Throwable? = null
+        try {
+            QuickJsEngine.eval(
+                "new Promise((resolve) => setTimeout(() => { throw new Error('timer-boom') }, 20))"
+            )
+        } catch (t: Throwable) {
+            thrown = t
+        }
+        assertTrue("expected ScriptException, got null", thrown is ScriptException)
+        assertTrue(
+            "message should contain timer error, got: ${thrown?.message}",
+            thrown?.message?.contains("timer-boom") == true
+        )
+    }
+
+    /** async/await + setTimeout 组合: await 计时器后继续执行。 */
+    @Test
+    fun testAsyncAwaitWithSetTimeout() {
+        val result = QuickJsEngine.eval(
+            "(async function(){ " +
+                "var v = await new Promise(r => setTimeout(() => r('async-t'), 50)); " +
+                "return v + '!'; " +
+                "})()"
+        )
+        assertEquals("async-t!", result.toString())
+    }
 }

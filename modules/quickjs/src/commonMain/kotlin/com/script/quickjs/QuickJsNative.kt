@@ -57,6 +57,38 @@ object QuickJsNative {
      */
     external fun nativeEval(ctxPtr: Long, code: String): Any?
 
+    // ============ Promise 泵送 (async/await 微任务链) ============
+
+    /**
+     * 泵送所有 pending job 直到耗尽 (JS_ExecutePendingJob 循环)。
+     *
+     * 引擎自身不泵送 job, 泵送是宿主职责: [QuickJsAsync.settle] 在每次 JS 求值边界后调用。
+     *
+     * @return true = 至少执行过一个 job; false = 无 pending job
+     * @throws JsNativeException job 抛错 (错误可观测, 不静默吞掉)
+     */
+    external fun nativePumpJobs(ctxPtr: Long): Boolean
+
+    /** 检查句柄是否 Promise 对象。 */
+    external fun nativeIsPromise(ctxPtr: Long, handle: Long): Boolean
+
+    /**
+     * Promise 状态:
+     *   -1 = 非 promise, 0 = pending, 1 = fulfilled, 2 = rejected
+     */
+    external fun nativePromiseState(ctxPtr: Long, handle: Long): Int
+
+    /**
+     * 读取已 settle 的 Promise 结果。
+     *
+     * @return fulfilled -> resolved 值; pending -> null (调用方保留句柄等待后续 pump)
+     * @throws JsNativeException rejected -> 拒绝原因 (可观测)
+     */
+    external fun nativePromiseResult(ctxPtr: Long, handle: Long): Any?
+
+    /** 查询句柄所属 ctxPtr (供从 handle 反查 QuickJsContext 用)。 */
+    external fun nativeGetHandleCtx(handle: Long): Long
+
     // ============ 句柄管理 ============
 
     /** 释放 JSValue 句柄。 */
