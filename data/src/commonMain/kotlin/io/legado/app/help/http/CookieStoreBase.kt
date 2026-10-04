@@ -174,5 +174,5 @@ abstract class CookieStoreBase : CookieManagerInterface {
     protected open fun getSessionCookie(domain: String): String? = null
 
     /** 移除 url 所属域名中指定 key 的 cookie (app 端委托 `CookieManager.removeCookie(url, key)`)。默认 no-op。 */
-    protected open fun removeCookie(url: String, key: String) {}
+    open fun removeCookie(url: String, key: String) {}
 }

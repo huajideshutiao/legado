@@ -29,6 +29,22 @@ interface DesktopWebViewEngine {
      */
     suspend fun fetch(request: WebViewFetchRequest): WebViewFetchResult
 
+    /**
+     * 无头 Cloudflare 挑战求解 (离屏, 复用同一浏览器会话; 语义对照 Android
+     * CloudflareInterceptor.resolveWithWebView, 30s 挑战窗由本方法超时保证):
+     * 注入 CookieStore 既有 cookie → 加载 url (UA 按 headerMap 对齐) → 每
+     * [delayTimeMs] 轮询浏览器 cookie (原生 cookie API, 含 HttpOnly), [isSolved]
+     * 命中即返回命中时该 url 的完整 cookie 串; 超过 [timeoutMs] 抛异常。
+     * 挑战页自动重导航属正常流程, 不得中断轮询。
+     */
+    suspend fun awaitChallengeCookies(
+        url: String,
+        headerMap: Map<String, String>?,
+        delayTimeMs: Long = 1000L,
+        timeoutMs: Long,
+        isSolved: (cookies: String) -> Boolean,
+    ): String
+
     /** 打开可见浏览器窗口 (登录 / 网页验证), 失败返回 null 由调用方回退系统浏览器。 */
     fun openWindow(request: WebViewWindowRequest): WebViewWindowHandle?
 }

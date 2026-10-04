@@ -124,6 +124,39 @@ internal object WindowsWebViewEngine : DesktopWebViewEngineBase() {
         }
     }
 
+    /**
+     * 无头 CF 挑战求解: 复用 fetch 的会话创建/注入/导航路径, 主循环改为原生
+     * cookie 轮询 (cf_clearance 含 HttpOnly 时 document.cookie 读不到),
+     * 超时窗在本方法 withTimeout 保证 (不受 fetch 的 AppConst.timeLimit 限制)。
+     */
+    override suspend fun awaitChallengeCookies(
+        url: String,
+        headerMap: Map<String, String>?,
+        delayTimeMs: Long,
+        timeoutMs: Long,
+        isSolved: (cookies: String) -> Boolean,
+    ): String {
+        val instance = WebView2Instance.create(
+            visible = false,
+            title = "legado-cloudflare",
+            sniffResources = false,
+        ) ?: throw NoStackTraceException("WebView2 实例创建失败")
+        try {
+            return withTimeout<String>(timeoutMs) {
+                start(instance, WebViewFetchRequest(url = url, headerMap = headerMap, delayTime = delayTimeMs))
+                while (true) {
+                    delay(delayTimeMs)
+                    val cookies = runCatching { instance.cookies(url, COOKIE_TIMEOUT_MS) }.getOrNull()
+                        ?: continue
+                    if (isSolved(cookies)) return@withTimeout cookies
+                }
+                error("unreachable")
+            }
+        } finally {
+            instance.close()
+        }
+    }
+
     override fun openWindow(request: WebViewWindowRequest): WebViewWindowHandle? {
         if (!isAvailable()) return null
         val handle = WebView2WindowHandle(request)

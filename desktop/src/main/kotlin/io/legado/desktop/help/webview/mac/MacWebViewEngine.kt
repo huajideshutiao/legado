@@ -188,6 +188,41 @@ internal object MacWebViewEngine : DesktopWebViewEngineBase() {
         throw NoStackTraceException("资源嗅探超时")
     }
 
+    /**
+     * 无头 CF 挑战求解: 复用 runHtml 的注入/导航路径, 主循环改为原生 cookie 轮询
+     * (WKHTTPCookieStorage, 含 HttpOnly; MacSession.cookies 无 url 参数, 返回共享存储
+     * 全量串, 由 isSolved 按内容判定), 超时窗在本方法 withTimeout 保证
+     * (不受 fetch 的 AppConst.timeLimit 限制)。
+     */
+    override suspend fun awaitChallengeCookies(
+        url: String,
+        headerMap: Map<String, String>?,
+        delayTimeMs: Long,
+        timeoutMs: Long,
+        isSolved: (cookies: String) -> Boolean,
+    ): String {
+        if (!isAvailable()) throw NoStackTraceException("WKWebView 引擎不可用")
+        val session = CocoaLoop.await { MacSession.create(visible = false, sniff = false) }
+            ?: throw NoStackTraceException("WKWebView 会话创建失败")
+        try {
+            return withTimeout<String>(timeoutMs) {
+                val request = WebViewFetchRequest(url = url, headerMap = headerMap, delayTime = delayTimeMs)
+                injectWebViewCookies(request.url, platformLabel) { domain, cookie ->
+                    session.addCookies(domain, cookie, COOKIE_TIMEOUT_MS)
+                }
+                CocoaLoop.await { session.start(request) }
+                while (true) {
+                    delay(delayTimeMs)
+                    val cookies = session.cookies(COOKIE_TIMEOUT_MS) ?: continue
+                    if (isSolved(cookies)) return@withTimeout cookies
+                }
+                error("unreachable")
+            }
+        } finally {
+            CocoaLoop.post { session.destroy() }
+        }
+    }
+
     override fun openWindow(request: WebViewWindowRequest): WebViewWindowHandle? {
         if (!isAvailable()) return null
         val handle = MacWindowHandle(request)

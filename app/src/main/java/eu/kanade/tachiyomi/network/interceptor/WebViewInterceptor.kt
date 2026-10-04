@@ -1,6 +1,8 @@
 // Copyright The Mihon Authors. Apache-2.0.
 // 移植自 mihon core/common .../network/interceptor/WebViewInterceptor.kt;
 // MR.strings toast 换为 AppLog, DeviceUtil 判定内联
+// 挑战状态机 (触发判定/per-host 去重/重发) 收在共享基类 ChallengeInterceptorBase,
+// 本类只提供 WebView 求解通道 (可用性/预热/请求头过滤/创建)。
 package eu.kanade.tachiyomi.network.interceptor
 
 import android.content.Context
@@ -12,9 +14,7 @@ import io.legado.app.help.http.WebViewUtil
 import io.legado.app.help.http.setDefaultSettings
 import io.legado.app.help.http.setUserAgent
 import okhttp3.Headers
-import okhttp3.Interceptor
 import okhttp3.Request
-import okhttp3.Response
 import java.util.Locale
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit
 abstract class WebViewInterceptor(
     private val context: Context,
     private val defaultUserAgentProvider: () -> String,
-) : Interceptor {
+) : ChallengeInterceptorBase() {
 
     // 预热 WebView (首次 WebSettings.getDefaultUserAgent 很慢, 提前到首个挑战请求之外);
     // MIUI / Samsung(API 31) 预热可崩溃 chromium#1279562, 跳过仅损失首次挑战速度
@@ -41,25 +41,14 @@ abstract class WebViewInterceptor(
         }
     }
 
-    abstract fun shouldIntercept(response: Response): Boolean
+    override fun isEngineAvailable(): Boolean = WebViewUtil.supportsWebView(context)
 
-    abstract fun intercept(chain: Interceptor.Chain, request: Request, response: Response): Response
+    override fun onEngineUnavailable() {
+        AppLog.put("WebView 不可用, 无法通过 Cloudflare 挑战")
+    }
 
-    override fun intercept(chain: Interceptor.Chain): Response {
-        val request = chain.request()
-        val response = chain.proceed(request)
-        if (!shouldIntercept(response)) {
-            return response
-        }
-
-        if (!WebViewUtil.supportsWebView(context)) {
-            // 上游为 information_webview_required toast; 宿主无 moko 资源, 只记日志
-            AppLog.put("WebView 不可用, 无法通过 Cloudflare 挑战")
-            return response
-        }
+    override fun prepareEngine() {
         initWebView
-
-        return intercept(chain, request, response)
     }
 
     fun parseHeaders(headers: Headers): Map<String, String> {

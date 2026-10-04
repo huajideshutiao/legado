@@ -90,7 +90,9 @@ import io.legado.desktop.help.DesktopUrlProtocol
 import io.legado.desktop.help.SingleInstanceGuard
 import io.legado.desktop.help.archive.DesktopArchiveCodec
 import io.legado.desktop.help.book.DesktopBitmapProvider
+import io.legado.desktop.help.http.DesktopWebViewChallengeEngine
 import io.legado.desktop.help.http.registerDesktopBackstageWebView
+import io.legado.desktop.http.DesktopChallengeEngines
 import io.legado.desktop.help.registerDesktopArchiveProvider
 import io.legado.desktop.help.registerDesktopScreenInfoProvider
 import io.legado.desktop.help.source.registerDesktopVerificationUiProvider
@@ -392,6 +394,9 @@ private fun runDesktopApp() = application {
         DesktopUrlProtocol.ensureRegisteredAsync()
         // 阶段0 (日志/字符串/AndroidId/Toast/进度/更新回调/config+语言): 闪屏所需最小集
         DesktopCore.registerEarlyProviders()
+        // CF 挑战求解引擎 (书源栈 DesktopHttpProvider.okHttpClient 首次访问时按本注册与否
+        // 决定是否挂 DesktopCloudflareInterceptor, 故必须早于阶段1 的任何 HTTP 访问)
+        DesktopChallengeEngines.register(DesktopWebViewChallengeEngine())
         val duration = splashScreen.show()
         // 预热 CMP 字符串资源表: 首次取串要走 runBlocking + 资源表初始化, 实测 178~289ms。
         // 放后台线程而不是主线程: 同步预热虽然落在"闪屏可见期", 但占的是主线程, 直接拖后首帧。

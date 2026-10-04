@@ -122,6 +122,9 @@ internal expect fun buildNativeProxyClient(
  * - HttpClients (HttpClient 接口) 在 commonMain 中暂无调用方, 不注册;
  * - CookieJarBridge (cookieJarHeader 桥接) 经 registerSharedCookieJarBridge 注册 commonMain
  *   SharedCookieJarBridge (在 registerIosProviders / registerOhosProviders 中调用)。
+ *
+ * 能力范围: 本栈不挂 Cloudflare 挑战拦截 (只有 Android 与桌面挂), 两端遇到挑战把挑战响应
+ * 交回调用方, 由用户在登录窗人工完成。
  */
 fun registerNativeHttpProvider() {
     val provider = NativeHttpProvider()

@@ -633,6 +633,10 @@ internal class NativeKmpCall(
      * 3. 发送失败重试一次 (对齐 OkHttp retryOnConnectionFailure=true; 超时/取消不重试);
      * 4. 响应回写 CookieJarBridge.saveResponse (启用 cookieJar 时, 对齐 Android 拦截器)。
      *
+     * 注: 本栈没有 Cloudflare 挑战拦截 (Android / 桌面才挂
+     * `eu.kanade.tachiyomi.network.interceptor.ChallengeInterceptorBase`),
+     * 遇到挑战按原版行为把挑战响应交回调用方。
+     *
      * 返回的 [KmpResponse] 在构造时已读取 body 到内存缓存 (见 [KmpResponse] 构造函数)。
      */
     private suspend fun executeKtor(): KmpResponse {

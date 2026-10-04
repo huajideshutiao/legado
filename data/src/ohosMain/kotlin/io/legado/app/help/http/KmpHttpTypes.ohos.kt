@@ -483,7 +483,10 @@ internal class OhosKmpCall(
 
     override fun execute(): KmpResponse {
         // 应用层拦截器等价逻辑 (UA 注入 / Keep-Alive / Cache-Control / Accept-Encoding 不上行 /
-        // CookieJar 标记移除 + CookieJarBridge.loadRequest), 与 iOS nativeMain 实现一致
+        // CookieJar 标记移除 + CookieJarBridge.loadRequest), 与 iOS nativeMain 实现一致。
+        // 本栈不挂 Cloudflare 挑战拦截 (Android / 桌面才挂
+        // eu.kanade.tachiyomi.network.interceptor.ChallengeInterceptorBase),
+        // 遇到挑战按原版行为把挑战响应交回调用方。
         val enableCookieJar = request.header(cookieJarHeader) != null
         val prepared = request.prepareForSend()
         val response = try {

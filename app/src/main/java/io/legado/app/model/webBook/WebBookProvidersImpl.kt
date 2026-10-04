@@ -2,6 +2,9 @@ package io.legado.app.model.webBook
 
 import androidx.room3.immediateTransaction
 import androidx.room3.useWriterConnection
+import eu.kanade.tachiyomi.network.AndroidCookieJar
+import eu.kanade.tachiyomi.network.interceptor.ChallengeCookieResolver
+import eu.kanade.tachiyomi.network.interceptor.CloudflareInterceptor
 import io.legado.app.App
 import io.legado.app.api.controller.BookControllerImageProviderImpl
 import io.legado.app.api.controller.ImageControllerProviders
@@ -16,6 +19,7 @@ import io.legado.app.help.AppCacheManager
 import io.legado.app.help.IntentData
 import io.legado.app.help.IntentDataAccessor
 import io.legado.app.help.IntentDataProviders
+import io.legado.app.help.UserAgentProviders
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.BookHelpAccessor
 import io.legado.app.help.book.BookHelpProviders
@@ -30,6 +34,8 @@ import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.config.ThemeConfigData
 import io.legado.app.help.config.ThemeConfigProvider
 import io.legado.app.help.config.ThemeConfigProviders
+import io.legado.app.help.http.CookieStore
+import io.legado.app.help.http.KmpHttpClient
 import io.legado.app.help.http.OkHttpClientProvider
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.source.SourceHelpAccessor
@@ -54,6 +60,8 @@ import io.legado.app.utils.RegexReplacers
 import io.legado.app.utils.isNightMode
 import io.legado.app.utils.replace
 import io.legado.app.utils.sysConfiguration
+import okhttp3.Cookie
+import okhttp3.HttpUrl
 
 /**
  * webBook 编排层下沉配套 provider 安卓实现。
@@ -414,7 +422,22 @@ object WebBookProvidersImpl :
     ): String = source.replace(regex, replacement, timeout)
 
     // ---- OkHttpClientProvider ----
-    override val okHttpClient get() = io.legado.app.help.http.okHttpClient
+    // 书源栈 (SharedCookieJarBridge/CookieStore 体系) 加挂 CF 挑战拦截器 (决策 1a):
+    // - 前插 index 0: 挑战成功重发 chain.proceed 重新过 shared HttpHelper 的 cookie bridge
+    //   拦截器, loadRequest 从 CookieStore 合入新解 cf_clearance (mergeCookies 后参覆盖);
+    // - 独立拦截器实例: host 去重锁与兼容层 (NetworkHelper.client) 互不串味;
+    // - 代理链 getProxyClient 未挂 (遗留, 书源代理场景挑战不可解)。
+    override val okHttpClient: KmpHttpClient by lazy {
+        io.legado.app.help.http.okHttpClient.newBuilder()
+            .apply { interceptors().addAll(0, listOf(bookSourceCloudflareInterceptor)) }
+            .build()
+    }
+
+    private val bookSourceCloudflareInterceptor by lazy {
+        CloudflareInterceptor(App.instance, BookSourceChallengeCookieResolver()) {
+            UserAgentProviders.get()
+        }
+    }
 
     // ---- SourceHelpAccessor ----
     // 桥接活动阅读页/AudioPlay/SourceConfig/AppCacheManager, 供 shared SourceHelp 走 provider 间接调用
@@ -548,4 +571,26 @@ fun registerAndroidWebBookProviders() {
     MangaSourceDelegates.register(MangaSourceDelegateImpl)
     // 视频插件源取数委派 (bookSourceType=video 虚拟行命中时转交)
     VideoSourceDelegates.register(VideoSourceDelegateImpl)
+}
+
+/**
+ * 书源栈 CF 挑战 cookie 能力适配 (SharedCookieJarBridge/CookieStore 体系, 无 OkHttp CookieJar):
+ * - get: 挑战期间 cookie 由 WebView 落地 android.webkit.CookieManager, 必须从 webkit 读,
+ *   CookieStore 只在挑战成功后经 CloudflareInterceptor.replaceCookie 回写时才有新值;
+ * - remove: webkit 过期旧值, 并同步清 CookieStore/session 同名 cookie, 避免旧 cf_clearance
+ *   在挑战窗口内被其它书源请求反复带上 403。
+ */
+private class BookSourceChallengeCookieResolver : ChallengeCookieResolver {
+
+    private val webkitCookieJar = AndroidCookieJar()
+
+    override fun get(url: HttpUrl): List<Cookie> = webkitCookieJar.get(url)
+
+    override fun remove(url: HttpUrl, cookieNames: List<String>?, maxAge: Int): Int {
+        val removed = webkitCookieJar.remove(url, cookieNames, maxAge)
+        cookieNames?.forEach {
+            runCatching { CookieStore.removeCookie(url.toString(), it) }
+        }
+        return removed
+    }
 }
