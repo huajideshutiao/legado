@@ -333,6 +333,10 @@ dependencies {
     ksp(project(":modules:quickjs-processor"))
 
     implementation(libs.okhttp)
+    // TVBox spider jar 的壳面 (com.github.catvod.utils.Json / bean.Header 及 jar 自带 Gson 调用)
+    implementation(libs.gson)
+    // jar 级 Init 后台任务 (配置中心二维码) 引用 zxing, FongMi 宿主同样内置
+    implementation("com.google.zxing:core:3.5.3")
     implementation(libs.okio)
     implementation(libs.play.services.cronet)
     implementation(libs.cronet.api)

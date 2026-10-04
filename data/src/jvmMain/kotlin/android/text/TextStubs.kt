@@ -5,13 +5,15 @@ import android.graphics.Paint
 
 object Html
 
-class Layout {
+open class Layout {
 
     enum class Alignment
 }
 
 class Spanned
 
-class StaticLayout
+// StaticLayout extends Layout 对齐 Android 真实类层次: 扩展自带 Cloudflare 拦截器的字节码
+// 引用两者赋值关系, JVM 类验证按 stub 层次校验, 层次不符即 VerifyError
+class StaticLayout : Layout()
 
 class TextPaint : Paint()

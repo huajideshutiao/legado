@@ -81,6 +81,7 @@ uiautomator = "2.4.0"
 
 # ===== 网络栈 =====
 okhttp = "5.4.0"
+gson = "2.11.0"
 okio = "3.18.1"
 kmp-zip = "0.12.1"
 epub4kmp = "0.3.0"
@@ -224,6 +225,7 @@ androidx-uiautomator = { module = "androidx.test.uiautomator:uiautomator", versi
 
 # ===== 网络栈 =====
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
 okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
 kmp-zip-okio = { module = "no.synth:kmp-zip-okio", version.ref = "kmp-zip" }
 epub4kmp-core = { module = "com.darkrockstudios:epub4kmp-core", version.ref = "epub4kmp" }
