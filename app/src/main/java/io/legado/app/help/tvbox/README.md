@@ -75,11 +75,24 @@ JS spider 由同包兄弟模块 `TvBoxJsBridge` / `TvBoxJsSpiderLoader` 负责�
 - **替代路径**：这类站点用 legado 自己的**视频书源 JS 规则**表达即可 —— 同样是 JS，且直接跑在
   宿主的规则引擎上，不需要移植 TVBox 的 JS API 面，也不用为 Python 另引一套运行时。
 
+## 解析站 type≠0 形态（已实现）
+
+`parses[]` 的 `type` 语义（查证自 FongMi `ParseJob.doInBackground` + 原版 `ParseBean` 注释）：
+
+- **type=0 普通嗅探**：WebView 加载 `url + 播放页` 嗅出真实地址（见上节）。
+- **type=1 json API**：HTTP 请求 `url + 播放页`，按返回 JSON 结构提取直链（根 `url` 或 `data.url`），
+  响应里的 UA/Referer/Cookie 作为防盗链头一并带回；有效性判据对齐 FongMi `checkResult`（url 过短视为无直链）。
+- **type=2 Json 扩展 / type=3 聚合**：收集全体解析项（`name→extUrl()` / `name→{type,ext,url}`），
+  反射调用站点 jar 内 `com.github.catvod.parser.Json{url}` / `Mix{url}` 静态 `parse(...)`（
+  FongMi `JarLoader.jsonExt/jsonExtMix` 同语义）；结果若仍标 `parse/jx=1` 则下钻 WebView 嗅探。
+  **JS spider 站点无 jar 侧解析类，该形态如实失败**（FongMi 同样走 jarLoader）。
+
+取播委派 `TvBoxSourceDelegateImpl.sniffContent` 按 type 依次尝试（json API 快 → 网页嗅探 → 聚合），首个成功即用。
+
 ## 已知遗留
 
-- `parses[]` 里 type≠0（json / Json 扩展 / 聚合）的解析形态未实现：它们走的是「HTTP 请求一个 json 接口」
-  而非「给 WebView 一个 URL」，属另一个面；type=0 之外的项在 `TvBoxParse.fromJson` 里照常解析出来，
-  由 `pickWebSniff` 过滤掉。
 - 嗅探依赖系统 WebView 可用性（对齐 `io.legado.app.help.http.WebViewUtil.supportsWebView` 的同类前提）；
   CF 挑战需要人工交互的页面无法静默嗅出，会超时失败。
+- type=2/3 聚合依赖站点 jar 内 `com.github.catvod.parser.*` 解析类：只有 JAR spider 站点且其 jar 携带
+  该类时可用；JS/Python/CMS 站点不适用（如实报错）。
 - 宿主侧改动集中在 `help/tvbox/` 与 `model/tvbox/`，生产入口由 `TvBoxManager.init()` 幂等挂载。

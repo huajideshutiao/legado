@@ -9,8 +9,9 @@ import org.json.JSONObject
  * {"spider":"<jar url>;md5;<md5>","sites":[{"key","name","type","api","ext","jar",
  *   "searchable","filterable","quickSearch","timeout","header","playUrl",...}]}
  *
- * type: 0=CMS 直连 api (本轮不支持), 3=JAR Spider (api 以 csp_ 开头), 1/2=JS/Python (遗留)。
- * 站点未声明 jar 时回退全局 spider 字段 (FongMi Site.objectFrom 同语义)。
+ * 站点形态由 api 判定 (不依赖 type): csp_=JAR Spider, 含 .js=JS Spider, http=CMS 直连。
+ * type 字段在生态里只标识数据格式 (0=xml CMS, 1=json CMS, 3=spider), 与引擎选择无关
+ * (FongMi BaseLoader.getSpider 亦只看 api)。站点未声明 jar 时回退全局 spider 字段。
  */
 data class TvBoxSite(
     val key: String,
@@ -27,6 +28,13 @@ data class TvBoxSite(
     val header: Map<String, String>,
 ) {
     val isJarSpider: Boolean get() = api.startsWith("csp_")
+
+    /**
+     * JS Spider: api 指向 .js (FongMi BaseLoader.isJs 同语义: api.contains(".js")),
+     * 站点类型不参与判定 —— 生态里 type=1 (JSON CMS) 与 type=3 (spider) 混用,
+     * 只有 api 形态能可靠区分 jar class / js 文件 / CMS 接口。
+     */
+    val isJsSpider: Boolean get() = api.contains(".js")
 
     /** type=0 苹果 CMS 直连: api 即接口根 URL (无 jar, 走宿主侧 CmsSpider)。 */
     val isCmsApi: Boolean get() = api.startsWith("http")
@@ -84,6 +92,16 @@ data class TvBoxSite(
 data class TvBoxConfig(
     val spider: String,
     val sites: List<TvBoxSite>,
+    /**
+     * 顶层 `parses[]` 解析站清单 (jxs), 供 parse=1 网页嗅探拼解析页;
+     * 见 [TvBoxParse]。多数配置都有该数组, 缺失时为空表 (退化为直接嗅探播放页本身)。
+     */
+    val parses: List<TvBoxParse> = emptyList(),
+    /**
+     * 配置拉取地址 (可为 null/空): JS spider 的 api 常是 "./cat/js/x.js",
+     * 运行时按它解析模块 URL (FongMi UrlUtil.convert + Module.fetch 同语义)。
+     */
+    val baseUrl: String = "",
 ) {
     companion object {
 
@@ -103,13 +121,30 @@ data class TvBoxConfig(
                 val obj = sitesJson?.optJSONObject(i) ?: continue
                 TvBoxSite.fromJson(obj)?.let(sites::add)
             }
-            if (baseUrl == null) return TvBoxConfig(spider = spider, sites = sites)
+            val parses = parseParses(root.optJSONArray("parses"))
+            if (baseUrl == null) return TvBoxConfig(spider = spider, sites = sites, parses = parses)
             return TvBoxConfig(
                 spider = resolveRelative(spider, baseUrl),
                 sites = sites.map {
-                    it.copy(jar = resolveRelative(it.jar, baseUrl), ext = resolveRelative(it.ext, baseUrl))
+                    it.copy(
+                        jar = resolveRelative(it.jar, baseUrl),
+                        ext = resolveRelative(it.ext, baseUrl),
+                        api = resolveRelative(it.api, baseUrl),
+                    )
                 },
+                parses = parses.map { it.copy(url = resolveRelative(it.url, baseUrl)) },
+                baseUrl = baseUrl,
             )
+        }
+
+        /** 解析站清单; 单条坏数据跳过不影响其余 (第三方配置的 parses 常有残缺项)。 */
+        private fun parseParses(array: JSONArray?): List<TvBoxParse> {
+            val list = ArrayList<TvBoxParse>(array?.length() ?: 0)
+            for (i in 0 until (array?.length() ?: 0)) {
+                val obj = array?.optJSONObject(i) ?: continue
+                runCatching { TvBoxParse.fromJson(obj) }.getOrNull()?.let(list::add)
+            }
+            return list
         }
 
         /**

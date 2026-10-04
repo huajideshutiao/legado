@@ -1,5 +1,6 @@
 package io.legado.app.model.tvbox
 
+import com.github.catvod.crawler.Spider
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
@@ -8,10 +9,18 @@ import io.legado.app.data.entities.BookListPage
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.tvbox.TvBoxParse
 import io.legado.app.help.tvbox.TvBoxSite
+import io.legado.app.help.tvbox.TvBoxSniffer
+import io.legado.app.help.tvbox.TvBoxSniffResult
+import io.legado.app.help.tvbox.TvBoxVideoPredicate
+import io.legado.app.help.tvbox.pickAggregate
+import io.legado.app.help.tvbox.pickJsonApi
+import io.legado.app.help.tvbox.pickWebSniff
 import io.legado.app.model.webBook.BookChapterList
 import io.legado.app.model.webBook.VideoSourceDelegate
 import io.legado.app.utils.KS_JSON
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import org.json.JSONObject
@@ -23,10 +32,17 @@ import org.json.JSONObject
  * vod_play_from/vod_play_url 按 "$$$" 配对拆行、"#" 拆集 (集名$id, tag 存线路 flag);
  * 取播 → 逐线 playerContent 拿直链, 多线路拼 legado 多行 `线路名::内容` 语义 —— 换线路
  * 即播放器换分辨率入口 (本质是换 URL, 进度由播放器保留), 直链行拼 `url,{"headers":{…}}`。
+ * 全线路均非直链 (parse=1 / jx=1 / .html 播放页) 时退 [TvBoxSniffer] 网页嗅探出真实媒体地址。
  *
- * parse=1 (网页嗅探)、CMS 直连站点与本地代理为遗留豁口。
+ * 本地代理 9978 与本轮未实现 (理由见 help/tvbox/README.md); CMS 直连站点已支持。
  */
 object TvBoxSourceDelegateImpl : VideoSourceDelegate {
+
+    /** 取播时最多动用几次网页嗅探 (每次一个 WebView, 逐个串行)。 */
+    private const val MAX_SNIFF_TRIES = 2
+
+    /** 解析站/播放页的查询参数形态: `?url=http…` 或 `?v=http…` (允许 URL 编码后的 https%3A)。 */
+    private val PAGE_QUERY_PARAM = Regex("[?&](?:url|v)=https?")
 
     override fun handles(bookSource: BookSource): Boolean =
         bookSource.bookSourceUrl.startsWith(TvBoxSourceMapper.SOURCE_URL_PREFIX)
@@ -82,8 +98,14 @@ object TvBoxSourceDelegateImpl : VideoSourceDelegate {
     ): Book = withContext(IoDispatcher) {
         val siteKey = TvBoxSourceMapper.siteKeyOf(bookSource.bookSourceUrl)
         val vod = detailVod(siteKey, book.bookUrl)
-        if (canReName || book.name.isBlank()) book.name = vod.optString("vod_name").trim()
-        if (canReName || book.author.isBlank()) book.author = vod.optString("vod_actor").trim()
+        // 空值不覆盖 (原版 BookInfo.kt 同语义): 不少站点详情不返回 vod_name/vod_actor
+        // (比特/立播/原创 实测均为空), 无条件赋值会把搜索结果里已有的正确书名清掉。
+        vod.optString("vod_name").trim().takeIf { it.isNotEmpty() }?.let {
+            if (canReName || book.name.isBlank()) book.name = it
+        }
+        vod.optString("vod_actor").trim().takeIf { it.isNotEmpty() }?.let {
+            if (canReName || book.author.isBlank()) book.author = it
+        }
         book.kind = listOf(
             vod.optString("vod_class").trim(),
             vod.optString("vod_remarks").trim(),
@@ -174,35 +196,150 @@ object TvBoxSourceDelegateImpl : VideoSourceDelegate {
             if (!target.isNullOrBlank()) candidates += flag to target
         }
 
-        val resolved = candidates.mapNotNull { (flag, id) ->
-            runCatching {
-                val p = parseResult(spider.playerContent(flag, id, emptyList()))
-                val u = p.optString("url").trim()
-                if (p.optInt("parse", 0) != 0 || !u.startsWith("http")) return@mapNotNull null
-                var playUrl = u
-                if (site.playUrl.isNotBlank() && !playUrl.startsWith("http")) {
-                    playUrl = site.playUrl + playUrl
-                }
-                val headers = headerOf(p)
-                val content = if (headers.isEmpty()) {
-                    playUrl
-                } else {
-                    // legado 原生链接参数语法: AnalyzeUrlCore 会拆出并合并进 headerMap
-                    playUrl + "," + KS_JSON.encodeToString<Map<String, Map<String, String>>>(
-                        mapOf("headers" to headers),
-                    )
-                }
-                flag.replace("::", "") to content
-            }.getOrNull()
+        // 先按原语义收直链: 多线路一次拿全 (换线路=换 URL), 无 WebView 开销
+        val direct = candidates.mapNotNull { (flag, id) ->
+            runCatching { directContent(site, spider, flag, id) }.getOrNull()
         }
-        check(resolved.isNotEmpty()) {
-            "TVBox 各线路均无直链 (parse=1 网页解析为遗留豁口): ${book.name} ${bookChapter.title}"
+        if (direct.isNotEmpty()) {
+            return@withContext if (direct.size == 1) {
+                direct[0].second
+            } else {
+                direct.joinToString("\n") { (flag, content) -> "$flag::$content" }
+            }
         }
-        if (resolved.size == 1) {
-            resolved[0].second
+        // 全线路都拿不到直链 → 逐个网页嗅探, 首个成功即用。嗅探较重 (每次一个 WebView + 超时),
+        // 故只试前两条: 同一站点的线路通常同属一类页面 (一起成功或一起失败), 全量试只会拖时间。
+        val parses = TvBoxManager.config?.parses.orEmpty()
+        val sniffFailures = ArrayList<String>()
+        for ((flag, id) in candidates.take(MAX_SNIFF_TRIES)) {
+            val content = runCatching { sniffContent(site, spider, flag, id, parses) }
+                .onFailure { e -> sniffFailures += "$flag: ${e.message}" }
+                .getOrNull() ?: continue
+            return@withContext content
+        }
+        error(
+            "TVBox 全线路均无直链且网页嗅探失败: ${book.name} ${bookChapter.title}\n" +
+                sniffFailures.joinToString("\n"),
+        )
+    }
+
+    /**
+     * 单线路的直链内容串; 非直链返回 null 交由 [sniffContent]。
+     *
+     * 直链判据比旧实现严了一层: 排除 .html 播放页与解析站形态 (`?url=http`), 它们是
+     * spider 忘了标 parse=1 的播放页 —— 直投 ExoPlayer 只会拿到一段 HTML 报错。
+     * 无扩展名的兜底 URL 仍按旧语义当直链 (部分站点直链确实不带后缀, 不能误伤)。
+     */
+    private fun directContent(
+        site: TvBoxSite,
+        spider: Spider,
+        flag: String,
+        id: String,
+    ): Pair<String, String>? {
+        val p = parseResult(spider.playerContent(flag, id, emptyList()))
+        val playUrl = playUrlOf(p, site)
+        if (needsParse(p) || isPlayPage(playUrl) || !playUrl.startsWith("http")) return null
+        return flag.replace("::", "") to contentOf(playUrl, headerOf(p))
+    }
+
+    /**
+     * 单线路非直链取播: 按解析配置 type 分支取真实媒体地址 (FongMi ParseJob.doInBackground 同语义):
+     * type=1 json API (纯 HTTP, 快) → type=0 WebView 嗅探 → type=2/3 jar 聚合类; 首个成功即用。
+     */
+    private suspend fun sniffContent(
+        site: TvBoxSite,
+        spider: Spider,
+        flag: String,
+        id: String,
+        parses: List<TvBoxParse>,
+    ): String {
+        val p = parseResult(spider.playerContent(flag, id, emptyList()))
+        val videoPage = playUrlOf(p, site)
+        val headers = headerOf(p)
+        var lastError: Throwable? = null
+        // 本地 suspend 函数: 嗅探/解析 API 均为挂起调用, 逐个形态串行尝试
+        suspend fun attempt(block: suspend () -> TvBoxSniffResult): String? = try {
+            val result = block()
+            contentOf(result.url, headers + result.headers)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            lastError = e
+            null
+        }
+
+        // FongMi ParseJob 的 type=1 分支加载的是 `parse.getUrl() + 播放页`, json API 请求它取直链
+        parses.pickJsonApi(flag)?.let { json ->
+            attempt { TvBoxSniffer.parseJsonApi(json, videoPage, headers) }?.let { return it }
+        }
+        // FongMi ParseJob 的 type=0 分支加载的是 `parse.getUrl() + 播放页`, 即先把站点/全局
+        // jxs 拼在前面; 没有适用 jxs 时退回直接加载播放页 (CMS 站的 .html 播放值常属此类)。
+        val page = parses.pickWebSniff(flag)?.pageOf(videoPage) ?: videoPage
+        check(page.startsWith("http")) { "播放页地址非 http(s), 无法嗅探: $page" }
+        attempt {
+            TvBoxSniffer.sniff(page, headers, videoChecker = videoPredicateOf(spider))
+        }?.let { return it }
+        // type=2/3 走 jar 内聚合解析类; JS spider 站点无 jar, 此步如实失败
+        parses.pickAggregate()?.let { agg ->
+            attempt {
+                TvBoxSniffer.parseJsonAggregate(
+                    parse = agg,
+                    allParses = parses,
+                    flag = flag,
+                    playUrl = videoPage,
+                    spider = spider,
+                    headers = headers,
+                    videoChecker = videoPredicateOf(spider),
+                )
+            }?.let { return it }
+        }
+        error(
+            "TVBox 解析站全形态失败 (json API/网页嗅探/聚合): ${lastError?.message ?: "无适用解析配置"}",
+        )
+    }
+
+    /** 结果指向的播放地址: playUrl 作前缀 + url (FongMi Result.getRealUrl() 同语义)。 */
+    private fun playUrlOf(root: JSONObject, site: TvBoxSite): String {
+        val url = root.optString("url").trim()
+        if (url.startsWith("http")) return url
+        val prefix = root.optString("playUrl").trim().ifBlank { site.playUrl }
+        return if (prefix.isBlank()) url else prefix + url
+    }
+
+    /**
+     * 需要网页解析的标记: `parse=1` 或 `jx=1` (FongMi `bean/Result.needParse()` 逐字同义),
+     * 部分站点只写 jx 不写 parse。
+     */
+    private fun needsParse(root: JSONObject): Boolean =
+        root.optInt("parse", 0) != 0 || root.optInt("jx", 0) != 0
+
+    /**
+     * 肉眼可辨的网页形态 (判据刻意保守, 只排除确定是页面的地址):
+     * .html 播放页, 以及解析站形态 `?url=http` / `?v=http` (允许编码后的 https%3A)。
+     */
+    private fun isPlayPage(url: String): Boolean {
+        if (PAGE_QUERY_PARAM.containsMatchIn(url)) return true
+        val path = runCatching { java.net.URI(url).path }.getOrNull().orEmpty().lowercase()
+        return path.endsWith(".html") || path.endsWith(".htm") || path.endsWith(".shtml")
+    }
+
+    /**
+     * 视频地址判据: spider 声明 `manualVideoCheck()` 时改用它自己的 `isVideoFormat()`
+     * (FongMi `CustomWebView.isVideoFormat()` 的 spider 委托分支), 否则用 URL 形态判据。
+     */
+    private fun videoPredicateOf(spider: Spider): TvBoxVideoPredicate =
+        if (runCatching { spider.manualVideoCheck() }.getOrDefault(false)) {
+            TvBoxVideoPredicate { url -> runCatching { spider.isVideoFormat(url) }.getOrDefault(false) }
         } else {
-            resolved.joinToString("\n") { (flag, content) -> "$flag::$content" }
+            TvBoxVideoPredicate.Sniffer
         }
+
+    /** 拼 legado 内容串: `url` 或 `url,{"headers":{…}}` (AnalyzeUrlCore 拆出并入 headerMap)。 */
+    private fun contentOf(url: String, headers: Map<String, String>): String {
+        if (headers.isEmpty()) return url
+        return url + "," + KS_JSON.encodeToString<Map<String, Map<String, String>>>(
+            mapOf("headers" to headers),
+        )
     }
 
     /** 详情取数公共路径: bookUrl 反解 vod_id → detailContent → list[0]。 */

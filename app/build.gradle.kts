@@ -275,6 +275,8 @@ androidComponents {
 
 dependencies {
     testImplementation(libs.junit)
+    // JVM 单测解析 TvBox json/聚合返回体需要真实 org.json (android.jar 的 org.json 在单测里是 stub)
+    testImplementation(libs.json)
     androidTestImplementation(libs.bundles.androidTest)
 
     implementation(libs.kotlin.stdlib)

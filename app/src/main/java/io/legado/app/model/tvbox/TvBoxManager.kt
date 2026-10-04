@@ -8,6 +8,7 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.tvbox.TvBoxConfig
 import io.legado.app.help.tvbox.TvBoxCmsSpider
 import io.legado.app.help.tvbox.TvBoxJarLoader
+import io.legado.app.help.tvbox.TvBoxJsSpiderLoader
 import io.legado.app.help.tvbox.TvBoxSite
 import io.legado.app.model.webBook.VideoSourceDelegates
 import kotlinx.coroutines.withContext
@@ -24,6 +25,10 @@ import java.io.File
 object TvBoxManager {
 
     private var appContext: Context? = null
+
+    /** JS spider 装载器 (站点 api 含 .js; 与 JAR 装载器互斥, 各自缓存)。 */
+    private val jsLoader: TvBoxJsSpiderLoader?
+        get() = appContext?.let { TvBoxJsSpiderLoader(it) }
 
     @Volatile
     var config: TvBoxConfig? = null
@@ -86,7 +91,18 @@ object TvBoxManager {
     suspend fun spiderFor(site: TvBoxSite, globalSpider: String): Pair<TvBoxSite, Spider> =
         withContext(IoDispatcher) {
             val context = appContext ?: error("TvBoxManager.init 未调用")
-            // type=0 苹果 CMS 直连站: api 即接口根 URL, 无 jar, 走宿主侧 CmsSpider
+            // 判定次序与 FongMi BaseLoader.getSpider 一致: .py → .js → csp_ → null。
+            // JS 必须排在 CMS 之前: api 解析后是绝对 http URL (如 .../cat/js/x.js),
+            // 只看 "http 开头" 会把 JS 站点误判成 CMS 直连站。
+            //
+            // JS Spider: api 指向 .js 模块 (FongMi BaseLoader.isJs 同语义), 无需 jar
+            if (site.isJsSpider) {
+                val loader = jsLoader ?: error("TvBoxManager.init 未调用")
+                val spider = loader.getSpider(site, config?.baseUrl.orEmpty())
+                spider.siteKey = site.key
+                return@withContext site to spider
+            }
+            // type=0/1 苹果 CMS 直连站: api 即接口根 URL, 无 jar, 走宿主侧 CmsSpider
             if (site.isCmsApi) {
                 val spider = TvBoxCmsSpider(site)
                 spider.siteKey = site.key
@@ -102,6 +118,7 @@ object TvBoxManager {
 
     fun clear() {
         TvBoxJarLoader.clear()
+        jsLoader?.destroyAll()
         config = null
         // 磁盘配置一并清除: 仅清内存会下次启动 init 重放 (removeSource 等调用方不再需要先 setConfig 兜底)
         appContext?.let { ctx -> runCatching { File(File(ctx.filesDir, "tvbox"), "config.json").delete() } }

@@ -14,7 +14,7 @@ import kotlinx.serialization.encodeToString
 /**
  * TVBox 站点 → 虚拟 BookSource 行注册表 (与 AnimePluginSources 同构)。
  *
- * 仅 api 为 csp_ 前缀的 JAR Spider 与 http 开头的苹果 CMS 直连站点落行
+ * 仅 api 为 csp_ 前缀的 JAR Spider、含 .js 的 JS Spider 与 http 开头的苹果 CMS 直连站点落行
  * (bookSourceType=video), 使其进入书源
  * 管理与搜索范围; 取数不走规则解析 (四路守卫经 VideoSourceDelegates 转交
  * TvBoxSourceDelegateImpl), 行内规则字段恒为空。
@@ -48,7 +48,7 @@ object TvBoxPluginSources {
     suspend fun sync(config: TvBoxConfig) = withContext(IoDispatcher) {
         runCatching {
             val dao = AppDbProviders.get().bookSourceDao
-            val sites = config.sites.filter { it.isJarSpider || it.isCmsApi }
+            val sites = config.sites.filter { it.isJarSpider || it.isCmsApi || it.isJsSpider }
             val urls = sites.mapTo(HashSet()) { TvBoxSourceMapper.siteUrlOf(it.key) }
             val existing = dao.getByGroup(GROUP_NAME)
                 .filter { it.bookSourceType == BookSourceType.video }
