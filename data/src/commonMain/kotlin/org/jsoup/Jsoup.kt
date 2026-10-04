@@ -3,10 +3,12 @@
 package org.jsoup
 
 import com.fleeksoft.ksoup.Ksoup
-import com.fleeksoft.ksoup.nodes.Document
 import io.legado.app.help.http.KmpHttpClient
 import io.legado.app.utils.URL
 import org.jsoup.internal.HttpConnection
+import org.jsoup.nodes.Document
+import org.jsoup.nodes.asFacadeDocument
+import org.jsoup.parser.Parser
 
 /**
  * jsoup 兼容层入口
@@ -48,6 +50,10 @@ expect object Jsoup {
 
     fun parse(html: String, baseUri: String): Document
 
+    fun parse(html: String, parser: Parser): Document
+
+    fun parse(html: String, baseUri: String, parser: Parser): Document
+
     fun parseBodyFragment(bodyHtml: String): Document
 
     fun parseBodyFragment(bodyHtml: String, baseUri: String): Document
@@ -61,11 +67,19 @@ internal fun jsoupConnect(url: URL): Connection = HttpConnection().url(url)
 
 internal fun jsoupNewSession(): Connection = HttpConnection()
 
-internal fun jsoupParse(html: String): Document = Ksoup.parse(html)
+internal fun jsoupParse(html: String): Document = asFacadeDocument(Ksoup.parse(html))
 
-internal fun jsoupParse(html: String, baseUri: String): Document = Ksoup.parse(html, baseUri)
+internal fun jsoupParse(html: String, baseUri: String): Document =
+    asFacadeDocument(Ksoup.parse(html, baseUri))
 
-internal fun jsoupParseBodyFragment(bodyHtml: String): Document = Ksoup.parseBodyFragment(bodyHtml)
+internal fun jsoupParse(html: String, parser: Parser): Document =
+    asFacadeDocument(Ksoup.parse(html, parser.ksoupParser))
+
+internal fun jsoupParse(html: String, baseUri: String, parser: Parser): Document =
+    asFacadeDocument(Ksoup.parse(html, parser.ksoupParser, baseUri))
+
+internal fun jsoupParseBodyFragment(bodyHtml: String): Document =
+    asFacadeDocument(Ksoup.parseBodyFragment(bodyHtml))
 
 internal fun jsoupParseBodyFragment(bodyHtml: String, baseUri: String): Document =
-    Ksoup.parseBodyFragment(bodyHtml, baseUri)
+    asFacadeDocument(Ksoup.parseBodyFragment(bodyHtml, baseUri))

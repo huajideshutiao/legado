@@ -3,7 +3,7 @@ package org.jsoup.select
 import com.fleeksoft.ksoup.nodes.Element
 import com.fleeksoft.ksoup.nodes.Node
 import com.fleeksoft.ksoup.nodes.TextNode
-import com.fleeksoft.ksoup.select.Elements
+import com.fleeksoft.ksoup.select.Elements as KsElements
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.utils.scan.BalanceScan
 import kotlin.reflect.KClass
@@ -20,9 +20,9 @@ class XPathEvaluator {
             return evaluator.eval(xpath, element)
         }
 
-        fun evaluateElements(xpath: String, element: Element): Elements {
+        fun evaluateElements(xpath: String, element: Element): KsElements {
             val result = evaluate(xpath, element)
-            return Elements(result.filterIsInstance<Element>())
+            return KsElements(result.filterIsInstance<Element>())
         }
     }
 
@@ -638,15 +638,15 @@ sealed class PathPart {
 }
 
 // Extension function for Element to support selectXpath
-fun Element.selectXpath(xpath: String): Elements {
+fun Element.selectXpath(xpath: String): KsElements {
     return XPathEvaluator.evaluateElements(xpath, this)
 }
 
 // KClass 版（原 java.lang.Class 版泄漏 JVM 类型, commonMain 不可用）。
 // type 仅用于筛节点种类, 现仅 AnalyzeByXPath 以 Element/Node 调用, 结果最终只保留 Element。
-fun <T : Node> Element.selectXpath(xpath: String, type: KClass<T>): Elements {
+fun <T : Node> Element.selectXpath(xpath: String, type: KClass<T>): KsElements {
     val result = XPathEvaluator.evaluate(xpath, this)
-    val elements = Elements()
+    val elements = KsElements()
     result.forEach { node ->
         if (node is Element && type.isInstance(node)) {
             elements.add(node)

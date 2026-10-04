@@ -6,6 +6,7 @@ import io.legado.app.help.http.KmpHttpClient
 import io.legado.app.help.http.KmpRequest
 import io.legado.app.help.http.KmpRequestBody
 import io.legado.app.help.http.KmpRequestBuilder
+import io.legado.app.help.http.KmpResponse
 import io.legado.app.help.http.toKmpMediaType
 import io.legado.app.help.http.toKmpRequestBody
 import io.legado.app.utils.InputStream
@@ -13,6 +14,7 @@ import io.legado.app.utils.URL
 import io.legado.app.utils.randomUUIDString
 import io.legado.app.utils.textCharsetCodec
 import io.legado.app.utils.urlQuery
+import okio.Buffer
 import org.jsoup.Connection
 import org.jsoup.Connection.Method
 import org.jsoup.HttpStatusException
@@ -39,6 +41,7 @@ import org.jsoup.Jsoup
 class HttpConnection : Connection {
 
     private val requestDelegate = HttpConnectionRequest()
+
 
     override fun url(url: URL): Connection = apply { requestDelegate.url(url) }
     override fun url(url: String): Connection = apply { requestDelegate.url(url) }
@@ -144,9 +147,39 @@ class HttpConnection : Connection {
             )
         }
 
-        val resp = HttpResponse(okResponse, requestDelegate)
+        // 对齐 jsoup execute 语义:返回前读完 body(maxBodySize 截断, 0=不限)并关闭连接,
+        // 响应头与 Content-Type 元信息在关闭后仍可读
+        val bodyBytes = decompressBody(
+            readBodyBytes(okResponse, requestDelegate.maxBodySize()),
+            okResponse.headers("Content-Encoding").firstOrNull()?.lowercase(),
+        )
+        val resp = HttpResponse(okResponse, requestDelegate, bodyBytes)
         requestDelegate.response = resp
         return resp
+    }
+
+    private fun readBodyBytes(response: KmpResponse, maxBodySize: Int): ByteArray {
+        val stream = response.body.byteStream()
+        try {
+            val buffer = ByteArray(BODY_BUFFER_SIZE)
+            val out = Buffer()
+            var remaining = maxBodySize
+            while (true) {
+                val read = stream.read(buffer)
+                if (read == -1) break
+                if (maxBodySize == 0) {
+                    out.write(buffer, 0, read)
+                } else {
+                    val toWrite = minOf(read, remaining)
+                    out.write(buffer, 0, toWrite)
+                    remaining -= toWrite
+                    if (remaining == 0) break
+                }
+            }
+            return out.readByteArray()
+        } finally {
+            response.close()
+        }
     }
 
     /** 平台门面: jvm 复刻原 buildOkClient (共享 client newBuilder 派生/裸建 + SSL 配置), native 走 Kmp builder */
@@ -286,6 +319,9 @@ class HttpConnection : Connection {
     }
 
     companion object {
+        /** body 流式读取缓冲, 与 jsoup DataUtil 同款 0x20000 */
+        private const val BODY_BUFFER_SIZE = 0x20000
+
         fun connect(url: String): Connection = HttpConnection().url(url)
 
         fun connect(url: URL): Connection = HttpConnection().url(url)

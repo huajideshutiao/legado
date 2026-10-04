@@ -3,7 +3,6 @@
 package org.jsoup.internal
 
 import com.fleeksoft.ksoup.Ksoup
-import com.fleeksoft.ksoup.nodes.Document
 import io.legado.app.help.http.KmpResponse
 import io.legado.app.help.http.charsetName
 import io.legado.app.help.http.header
@@ -11,9 +10,10 @@ import io.legado.app.utils.InputStream
 import io.legado.app.utils.URL
 import io.legado.app.utils.textCharsetCodec
 import io.legado.app.utils.toInputStream
-import okio.IOException
 import org.jsoup.Connection
 import org.jsoup.Connection.Method
+import org.jsoup.nodes.Document
+import org.jsoup.nodes.asFacadeDocument
 
 /**
  * [Connection.Response] 的实现。
@@ -26,8 +26,8 @@ import org.jsoup.Connection.Method
  * - [url] 获取最终 URL
  * - [parse] 用 ksoup 解析为 Document
  *
- * body 首次访问会缓冲到内存,后续 [body]/[bodyAsBytes]/[parse] 共享同一份缓冲,
- * 与 jsoup 1.22 `bufferUp` 之后的语义一致。
+ * body 在 execute() 返回前按 maxBodySize 截断读完并关闭连接 (与 jsoup execute 语义一致),
+ * body()/bodyAsBytes()/parse() 共享同一份缓冲。
  *
  * 平台差异: gzip/deflate 解压与 charset 解码经 [HttpPlatform]/[charsetName] 门面
  * (jvm 与原实现逐行等价;native 的 ios 端 Ktor 层已透明解压,ohos 端手动解压)。
@@ -35,10 +35,11 @@ import org.jsoup.Connection.Method
 class HttpResponse(
     private val raw: KmpResponse,
     private val request: Connection.Request,
+    prefetchedBytes: ByteArray,
 ) : Connection.Response {
 
-    /** 缓冲后的 body 字节,null 表示尚未读取 */
-    private var bodyBytes: ByteArray? = null
+    /** execute() 预读的 body 字节 (maxBodySize 截断后, 已按 Content-Encoding 解压) */
+    private val bodyBytes: ByteArray = prefetchedBytes
 
     /** 显式覆盖的 charset,null 表示用响应头自动检测 */
     private var overrideCharset: String? = null
@@ -74,27 +75,23 @@ class HttpResponse(
     override fun contentType(): String? = raw.header("Content-Type")
 
     override fun parse(): Document {
-        ensureBuffered()
-        return Ksoup.parse(body(), url()?.toString() ?: "")
+        return asFacadeDocument(Ksoup.parse(body(), url()?.toString() ?: ""))
     }
 
     override fun body(): String {
-        ensureBuffered()
-        return decodeBody(bodyBytes!!)
+        return decodeBody(bodyBytes)
     }
 
     override fun bodyAsBytes(): ByteArray {
-        ensureBuffered()
-        return bodyBytes!!.copyOf()
+        return bodyBytes.copyOf()
     }
 
-    override fun readFully(): HttpResponse = apply { ensureBuffered() }
+    override fun readFully(): HttpResponse = this
 
-    override fun bufferUp(): HttpResponse = apply { ensureBuffered() }
+    override fun bufferUp(): HttpResponse = this
 
     override fun bodyStream(): InputStream {
-        ensureBuffered()
-        return bodyBytes!!.toInputStream()
+        return bodyBytes.toInputStream()
     }
 
     // --- Base<Response> 接口实现 ---
@@ -158,26 +155,6 @@ class HttpResponse(
     override fun cookies(): Map<String, String> = responseCookies.toMap()
 
     // --- 内部 ---
-
-    /**
-     * 读取并缓冲 body 字节。多次调用幂等。
-     *
-     * OkHttp (jvm) 只在自己注入 Accept-Encoding 时透明解压;调用方手动设置该头时
-     * 拿到的是原始压缩字节,这里按 Content-Encoding 补解压,同 jsoup。
-     * (native: ios 端 KmpResponse 构造时已透明解压且头未剥离,ohos 端 @ohos.net.http
-     * 不透明解压 — 两端差异由 [decompressBody] 门面分端处理)
-     */
-    private fun ensureBuffered() {
-        if (bodyBytes != null) return
-        val bytes = try {
-            val rawBytes = raw.body.bytes()
-            decompressBody(rawBytes, raw.header("Content-Encoding")?.lowercase())
-        } catch (e: IOException) {
-            // jvm: 包装为 UncheckedIOException (与原实现一致); native: 原样抛出
-            throw uncheckedIoException(e)
-        }
-        bodyBytes = bytes
-    }
 
     /**
      * 解码 body:优先 [overrideCharset],其次响应 body 的 charset,再次从 HTML meta 解析,

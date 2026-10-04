@@ -2,10 +2,10 @@
 
 package org.jsoup
 
-import com.fleeksoft.ksoup.nodes.Document
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.URL
 import org.jsoup.internal.HttpConnection
+import org.jsoup.nodes.Document
 
 /**
  * jsoup 兼容层 Connection 接口
@@ -145,6 +145,12 @@ interface Connection {
     fun cookie(name: String, value: String): Connection
     fun cookies(cookies: Map<String, String>): Connection
     fun postDataCharset(charset: String): Connection
+
+    /** 执行 GET 请求并解析响应 (对齐 jsoup Connection#get) */
+    fun get(): Document = method(Method.GET).execute().parse()
+
+    /** 执行 POST 请求并解析响应 (对齐 jsoup Connection#post) */
+    fun post(): Document = method(Method.POST).execute().parse()
 
     /** 执行请求,返回 [Response] */
     fun execute(): Response
