@@ -339,8 +339,7 @@ fun VideoTitleBar(
  * @param visible 控制层显隐 (单击视频区切换)
  * @param playing 当前在播 (true 画暂停条 / false 画播放三角; 语义由调用方按原版
  *   media3 `shouldShowPlayButton` 算好传入)
- * @param hasMultiResolution 是否多分辨率源 (假 = 不画分辨率钮; 单一直链源点开只会是空列表)
- * @param isTvBoxSource 是否 TVBox 源 (分辨率列表实为线路列表, 对话框标题显示"线路")
+ * @param hasMultiResolution 是否多分辨率/清晰度档 (假 = 不画分辨率钮; 单一直链源点开只会是空列表)
  * @param onPopupVisibleChange 层内弹层 (倍速下拉 / 分辨率对话框) 显隐上报，
  *   调用方据此抑制控制栏自动隐藏 (否则淡出会把弹层一并销毁)
  */
@@ -352,7 +351,6 @@ fun VideoControlsOverlay(
     durationMs: Long,
     playbackSpeed: Float,
     hasMultiResolution: Boolean,
-    isTvBoxSource: Boolean = false,
     resolutions: List<VideoResolution>,
     currentResolutionIndex: Int,
     onPlayPause: () -> Unit,
@@ -456,8 +454,6 @@ fun VideoControlsOverlay(
                             currentResolutionIndex = currentResolutionIndex,
                             onSwitchResolution = onSwitchResolution,
                             onVisibleChange = onPopupVisibleChange,
-                            titleText = if (isTvBoxSource) stringResource(Res.string.video_line)
-                            else stringResource(Res.string.resolution),
                         )
                     }
                     // 画中画钮 (手动入口; 退出由用户在系统小窗上操作), 排在系统级全屏钮左侧
@@ -750,7 +746,7 @@ fun SpeedButton(
             modifier = Modifier
                 .clip(DesignTokens.shapeSm)
                 .clickable { expanded = true }
-                .padding(DesignTokens.spacingMd),
+                .padding(DesignTokens.spacingDefault),
         )
         AppDropdownMenu(
             expanded = expanded,
@@ -778,7 +774,7 @@ fun SpeedButton(
 }
 
 /**
- * 分辨率钮 (显示当前分辨率名, 点击弹 AlertDialog 单选; TVBox 源语义为线路切换, 标题传"线路")。
+ * 档位选择钮 (显示当前档名, 点击弹 AlertDialog 单选; 传"线路"标题即线路钮, 复用同一交互)。
  */
 @Composable
 fun ResolutionButton(
@@ -803,7 +799,7 @@ fun ResolutionButton(
         modifier = Modifier
             .clip(DesignTokens.shapeSm)
             .clickable { showDialog = true }
-            .padding(DesignTokens.spacingMd),
+            .padding(DesignTokens.spacingDefault),
     )
     if (showDialog) {
         AlertDialog(
@@ -1074,7 +1070,6 @@ fun VideoPlayerHostContainer(
                 bufferedMs = bufferedMs,
                 playbackSpeed = playback.speed,
                 hasMultiResolution = uiState.hasMultiResolution,
-                isTvBoxSource = uiState.isTvBoxSource,
                 resolutions = uiState.resolutions,
                 currentResolutionIndex = uiState.currentResolutionIndex,
                 onPlayPause = screenModel::onPlayPause,
@@ -1105,9 +1100,10 @@ fun VideoPlayerHostContainer(
                             screenModel.setLocked(true)
                             screenModel.onToggleControls()
                         },
+                        // 右上角: 与中央五钮错开 (CenterStart 时会压住最左的上一章钮)
                         modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .padding(start = DesignTokens.spacingLg),
+                            .align(Alignment.TopEnd)
+                            .padding(end = DesignTokens.spacingLg, top = DesignTokens.spacingLg),
                     )
                 },
                 isSystemFullScreen = systemFullScreen,

@@ -60,14 +60,30 @@ object ExoPlayerHelper {
         }
         val builder = MediaItem.Builder().setUri(formatUrl)
         when {
-            // 显式格式覆盖优先 (FongMi PlaySpec.format 同语义): 格式重试时强设 mimeType
+            // 显式格式覆盖优先 (FongMi PlaySpec.format 同语义): 源声明媒体类型 (spider 的
+            // format 字段) 与格式重试都落在这里
             format != null -> builder.setMimeType(format)
             contentType == C.CONTENT_TYPE_HLS -> builder.setMimeType(MimeTypes.APPLICATION_M3U8)
             contentType == C.CONTENT_TYPE_DASH -> builder.setMimeType(MimeTypes.APPLICATION_MPD)
             contentType == C.CONTENT_TYPE_SS -> builder.setMimeType(MimeTypes.APPLICATION_SS)
+            // query 参数值以 .m3u8/.mpd 结尾: 代理类地址 (getQyM3u8?url=xxx.m3u8) 的源地址
+            // 挂在 query 上, inferContentType 只看路径末段探不到
+            queryMimeOf(url)?.let { builder.setMimeType(it) } != null -> {}
             else -> {}
         }
         return builder.build()
+    }
+
+    /** query 参数值结尾的媒体后缀信号 (源地址被代理整个挂在 query 上, 如 getQyM3u8?url=xxx.m3u8);
+     *  inferContentType 只看路径末段探不到这类信号。无则 null。 */
+    private fun queryMimeOf(url: String): String? {
+        val uri = url.substringBefore(SPLIT_TAG).toUri()
+        val values = uri.queryParameterNames.mapNotNull { uri.getQueryParameter(it)?.lowercase() }
+        return when {
+            values.any { it.endsWith(".mpd") } -> MimeTypes.APPLICATION_MPD
+            values.any { it.endsWith(".m3u8") } -> MimeTypes.APPLICATION_M3U8
+            else -> null
+        }
     }
 
     /**
@@ -197,13 +213,24 @@ object ExoPlayerHelper {
         /** 已学成的"源 → 请求头"; 只在本播放器实例内共享 ( ConcurrentHashMap 防加载线程抢 )。 */
         private val headersByOrigin = ConcurrentHashMap<String, Map<String, String>>()
 
+        /**
+         * 首请求学到的源站头, 作为本播放器的子请求兑底: DASH 的分片 BaseURL 常指与
+         * manifest 不同的 CDN 域名 (B 站 upos/mcdn), 按 origin 查不到已学成的头。
+         * 实测 B 站 DASH 分片无 UA+Referer 即 403 (裸请求/仅 UA 均 403, 带头 206)。
+         * 跟随最新一次装载覆盖 (换源/换清晰度后旧头不得带去新源)。
+         */
+        @Volatile
+        private var fallbackHeaders: Map<String, String> = emptyMap()
+
         override fun resolveDataSpec(dataSpec: DataSpec): DataSpec {
             val raw = dataSpec.uri.toString()
             val tagAt = raw.indexOf(SPLIT_TAG)
             if (tagAt < 0) {
-                // 子请求 (分片 / 二级清单 / 缓存未命中重开): 按源继承已学成的头
+                // 子请求 (分片 / 二级清单 / 缓存未命中重开): 按源继承已学成的头,
+                // 未命中 (分片 CDN 与 manifest 不同源) 退首请求兑底头
                 val origin = raw.originOf() ?: return dataSpec
-                val inherited = headersByOrigin[origin] ?: return dataSpec
+                val inherited = headersByOrigin[origin] ?: fallbackHeaders
+                if (inherited.isEmpty()) return dataSpec
                 return dataSpec.withRequestHeaders(inherited)
             }
             val url = raw.substring(0, tagAt)
@@ -218,6 +245,7 @@ object ExoPlayerHelper {
                 if (headersByOrigin.size > MAX_HEADER_ORIGINS) headersByOrigin.clear()
                 headersByOrigin[origin] = headers
             }
+            fallbackHeaders = headers
             val resolved = dataSpec.withUri(url.toUri())
             // 空 header 不写: 得把上游可能已带的头原样留着
             return if (headers.isEmpty()) resolved else resolved.withRequestHeaders(headers)

@@ -5,6 +5,7 @@ import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.VirtualPluginSourcePrefix
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookChapterLoader
 import io.legado.app.help.book.ContentProcessorProviders
@@ -13,6 +14,8 @@ import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.ActiveReadBookRegistry
+import io.legado.app.ui.book.video.buildChapterDisplayList
+import io.legado.app.ui.book.video.defaultCollapsedVolumes
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.postEvent
@@ -166,15 +169,27 @@ class TocScreenModel(
 
     private fun setChapterList(list: List<BookChapter>) {
         val dur = _state.value.durChapterIndex
+        // 委派源 (Tachiyomi/TVBox 插件虚拟源) 目录默认只展开当前章所在分组;
+        // 普通书/EPUB 保持全展开 (原版行为, 不因卷机制突变)
+        val collapsed = if (_state.value.book?.origin?.let { origin ->
+                VirtualPluginSourcePrefix.ALL.any { origin.startsWith(it) }
+            } == true
+        ) {
+            defaultCollapsedVolumes(list, dur)
+        } else {
+            emptySet()
+        }
+        // 滚动定位基于收合后的显示列表, 否则收起的分组会令 scrollPos 越位
+        val display = buildChapterDisplayList(list, collapsed)
         var scrollPos = 0
-        for ((position, chapter) in list.withIndex()) {
+        for ((position, chapter) in display.withIndex()) {
             if (chapter.index >= dur) break
             scrollPos = position
         }
         _state.update {
             it.copy(
                 chapters = list,
-                collapsedVolumes = emptySet(),
+                collapsedVolumes = collapsed,
                 chapterScroll = TocScrollCmd(scrollPos, it.chapterScroll.tick + 1),
             )
         }

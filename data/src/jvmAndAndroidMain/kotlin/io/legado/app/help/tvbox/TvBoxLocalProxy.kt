@@ -6,12 +6,16 @@ import io.legado.app.constant.AppLog
 import java.io.InputStream
 
 /**
- * TVBox 本地代理 (FongMi Server/Nano + process/Proxy 同构): 监听 /proxy,
+ * TVBox 本地代理 (FongMi Server/Nano + process/Proxy 同构): 监听 /proxy 与 /file,
  * jar/JS spider 构造的 `http://127.0.0.1:{port}/proxy?do=…` 播放与资源链路由此进站。
  *
  * 分发语义对齐 FongMi BaseLoader.proxy, 由调用方注入 dispatcher (解耦 model 层):
  * 带 siteKey → 按站点 key 找 Spider 实例; 否则交 jar 自带
  * com.github.catvod.spider.Proxy.proxy(Map) 静态方法 (do 值由 jar 自己定义, 如 B站的 "bili")。
+ *
+ * `/file/` 对齐 FongMi server/process/Local.java: 把 `Path.local()` 下的本地文件
+ * 当 HTTP 资源回给 spider (生态配置里已有 `http://127.0.0.1:9978/file/TV/x.txt` 形态的
+ * ext, 如 csp_FourKHDR/csp_Hdh)。
  *
  * 端口自 9978 起逐个尝试 (FongMi Server.start 同语义), 成功后回填 catvod Proxy 与
  * [TvBoxJsProxy] 两侧, 此后 spider 构造的代理地址才可达。
@@ -64,6 +68,14 @@ object TvBoxLocalProxy {
 
         override fun serve(session: IHTTPSession): NanoHTTPD.Response {
             val uri = session.uri.orEmpty().trim()
+            if (uri == FILE_PATH || uri.startsWith("$FILE_PATH/")) {
+                return try {
+                    fileResponse(uri)
+                } catch (e: Throwable) {
+                    AppLog.put("$TAG: /file 服务失败: ${e.message}")
+                    plain(NanoHTTPD.Response.Status.NOT_FOUND, e.message ?: e.toString())
+                }
+            }
             if (!uri.startsWith("/proxy")) {
                 return plain(NanoHTTPD.Response.Status.NOT_FOUND, "TVBox proxy: unsupported path $uri")
             }
@@ -120,5 +132,29 @@ object TvBoxLocalProxy {
 
         private fun plain(status: NanoHTTPD.Response.Status, text: String): NanoHTTPD.Response =
             NanoHTTPD.newFixedLengthResponse(status, NanoHTTPD.MIME_PLAINTEXT, text)
+
+        /**
+         * `/file/<path>` → 本地文件响应 (FongMi `Local.getFile` 同语义)。
+         *
+         * 路径按 [com.github.catvod.utils.Path.local] 解析 (FongMi 同源: 先试 root 下, 不存在再按
+         * 原路径), 只服务文件 (目录列表是 FongMi 的 WebDAV/文件管理面, spider 取数链路不需要),
+         * 目录请求如实 404。目录不存在/不可读同样如实报错, 不静默回空。
+         */
+        private fun fileResponse(uri: String): NanoHTTPD.Response {
+            val path = java.net.URLDecoder.decode(uri.removePrefix(FILE_PATH), "UTF-8")
+            val file = com.github.catvod.utils.Path.local(path)
+            if (!file.isFile) {
+                throw java.io.FileNotFoundException("File not found: $path")
+            }
+            return NanoHTTPD.newFixedLengthResponse(
+                NanoHTTPD.Response.Status.OK,
+                NanoHTTPD.getMimeTypeForFile(path),
+                java.io.FileInputStream(file),
+                file.length(),
+            )
+        }
     }
+
+    /** FongMi `server/process/Local.FILE` 同值。 */
+    private const val FILE_PATH = "/file"
 }

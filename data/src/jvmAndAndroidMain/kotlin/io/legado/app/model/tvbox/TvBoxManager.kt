@@ -61,11 +61,13 @@ object TvBoxManager {
         val dir = tvBoxDir()
         val file = File(dir, "config.json")
         if (file.isFile) {
+            // 先起本地服务再解析配置: 配置里的 file:///proxy:// 协议头在解析期就要换成
+            // 真实端口地址 (com.github.catvod.Proxy.getPort), 顺序颠倒会拿到 -1
+            TvBoxLocalProxy.start { proxyDispatch(it) }
             val baseUrl = File(dir, "config_url.txt").takeIf { it.isFile }?.readText()?.trim()
             runCatching { config = TvBoxConfig.parse(file.readText(), baseUrl) }
                 .onFailure { AppLog.put("TVBox 配置重载失败", it) }
         }
-        if (config != null) TvBoxLocalProxy.start { proxyDispatch(it) }
     }
 
     /**
@@ -81,14 +83,15 @@ object TvBoxManager {
 
     /** 设置配置 (json 原文), 持久化并同步虚拟书源行; [baseUrl] 用于相对路径解析。 */
     suspend fun setConfig(json: String, baseUrl: String? = null): TvBoxConfig = withContext(IoDispatcher) {
-        val parsed = TvBoxConfig.parse(json, baseUrl)
         val dir = tvBoxDir()
         dir.mkdirs()
         File(dir, "config.json").writeText(json)
         File(dir, "config_url.txt").writeText(baseUrl.orEmpty())
+        // 与 init 同序: 先起本地服务, 配置解析期的 file:///proxy:// 才能拿到真实端口
+        TvBoxLocalProxy.start { proxyDispatch(it) }
+        val parsed = TvBoxConfig.parse(json, baseUrl)
         config = parsed
         TvBoxPluginSources.sync(parsed, disabledSitesCache)
-        TvBoxLocalProxy.start { proxyDispatch(it) }
         parsed
     }
 

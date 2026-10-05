@@ -9,7 +9,6 @@ import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.VideoResolution
 import io.legado.app.data.entities.VideoSource
 import io.legado.app.data.entities.VirtualPluginSourcePrefix
-import io.legado.app.data.entities.VirtualPluginVars
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.book.BookChapterLoader
 import io.legado.app.help.book.isLocal
@@ -155,8 +154,9 @@ class VideoPlayViewModelShared(
     val videoSource: StateFlow<VideoSource?> = _videoSource.asStateFlow()
 
     private val _resolutions = MutableStateFlow<List<VideoResolution>>(emptyList())
-    /** 分辨率列表 (空 = 单一直链或未加载) */
+    /** 分辨率列表 (空 = 单一直链或未加载); TVBox 时 = 当前线路的清晰度档 */
     val resolutions: StateFlow<List<VideoResolution>> = _resolutions.asStateFlow()
+
 
     /**
      * 当前分辨率索引 (切换分辨率时更新)。
@@ -419,16 +419,31 @@ class VideoPlayViewModelShared(
                 // StateFlow 写入线程安全, withContext 返回后 finally 在主线程落 loadState。
                 withContext(IoDispatcher) {
                     // 内存目录优先, 库兜底 (实现已收敛至 resolveChapter, 四模式共用)
-                    val chapter = resolveChapter(book, index, chapters) ?: run {
+                    var chapterIndex = index
+                    var chapter = resolveChapter(book, chapterIndex, chapters) ?: run {
                         if (loadGuard.isCurrentJob(index, currentJob)) {
                             _loadState.value = ChapterLoadState.Error("章节不存在: $index")
                         }
                         return@withContext
                     }
+                    // 卷头 (TVBox 线路分组头) 不可播: 恢复播放位置等入口可能落在卷头上,
+                    // 顺延到本线路下一可播集 (与 nextPlayable 跳卷口径一致)
+                    if (chapter.isVolume) {
+                        val next = chapters.nextPlayable(chapterIndex + 1, +1)
+                        if (next == null || !loadGuard.isCurrentJob(index, currentJob)) {
+                            if (loadGuard.isCurrentJob(index, currentJob)) {
+                                _loadState.value = ChapterLoadState.Error("分组无剧集: ${chapter.title}")
+                            }
+                            return@withContext
+                        }
+                        chapterIndex = next.index
+                        chapter = next
+                        _curChapterIndex.value = chapterIndex
+                    }
                     _curChapterTitle.value = chapter.title
 
                     // 拉章节内容 (needSave=false: 视频内容是 URL 字符串非文件, 不写本地缓存)
-                    val nextChapterUrl = chapters.getOrNull(index + 1)?.url
+                    val nextChapterUrl = chapters.nextPlayable(chapterIndex + 1, +1)?.url
                     val content = runCatching {
                         if (book.isLocal) {
                             chapter.url
@@ -476,21 +491,21 @@ class VideoPlayViewModelShared(
                         preloader.preload(
                             book = book,
                             chapters = chapters,
-                            centerIndex = index,
+                            centerIndex = chapterIndex,
                             inBookshelf = !book.isNotShelf,
                         ) { target ->
                             WebBook.getContentAwait(
                                 source,
                                 book,
                                 target,
-                                chapters.getOrNull(target.index + 1)?.url,
+                                chapters.nextPlayable(target.index + 1, +1)?.url,
                                 needSave = false
                             )
                         }
                     }
                     // 持久化阅读进度
                     if (persistProgress) {
-                        saveRead(index)
+                        saveRead(chapterIndex)
                     }
                     // 播到目录尾部时检查新章 (四模式共用 [ChapterTocUpdater]; 原版音视频没有此步,
                     // 追更书播到末章就停, 属缺陷)
@@ -564,7 +579,7 @@ class VideoPlayViewModelShared(
             _videoSource.value = videoSource
             _resolutions.value = videoSource.resolutions
             _currentResolutionIndex.value = videoSource.defaultIndex
-            val resolution = videoSource.getResolution()
+            val resolution = _resolutions.value.getOrNull(_currentResolutionIndex.value)
             if (resolution == null) {
                 // defaultIndex 越界等坏配置: 不得静默回 Idle (那是“纯黑且连重试入口都没有”)
                 _loadState.value = ChapterLoadState.Error(
@@ -577,7 +592,7 @@ class VideoPlayViewModelShared(
             _videoUrl.value = AnalyzeUrlFactories.create(
                 rawUrl = resolution.url,
                 source = source,
-                headerMapF = videoSource.headers,
+                headerMapF = resolution.headers.ifEmpty { videoSource.headers },
             )
         } else {
             // 直接 URL / 内存 m3u8
@@ -601,11 +616,8 @@ class VideoPlayViewModelShared(
     }
 
     /**
-     * 切换分辨率 (对照 desktop `VideoPlayerViewModel.switchResolution` /
-     * app `VideoPlayActivity.switchResolution`)。
-     *
-     * TVBox 源的分辨率列表即线路列表 (getContentAwait 拼多行 `线路名::直链`),
-     * 切换时同步把目录切到所选线路 (见 [maybeSwitchTvBoxLine])。
+     * 切换清晰度 (对照 desktop `VideoPlayerViewModel.switchResolution` /
+     * app `VideoPlayActivity.switchResolution`): 当前流列表内换档, 不回源不重跑取数。
      *
      * 加载中切档: 先取消在途装载 (真取消) 并把加载态归 Idle, 起播等待改由播放器
      * isBuffering 口径表达 (与 [prepareDirectReload] 同一先例); 续播位置以在途装载
@@ -614,13 +626,38 @@ class VideoPlayViewModelShared(
      * 注: app 端切换分辨率会重建 ExoPlayer 并 seekTo 原位置; desktop 端因播放库不同,
      * 本 VM 只更新 [videoUrl] State, UI 层订阅后自行处理播放器重建与 seek。
      *
-     * @param index 分辨率索引 (0-based)
+     * @param index 清晰度索引 (0-based)
      * @param seekPositionMs 切换后跳转到的位置 (毫秒, 0 = 从头播)。与 [_videoUrl] 同拍写入，
      *   渲染层订阅新 url 时从 [startPositionMs] 取到它就是它。
      */
     fun switchResolution(index: Int, seekPositionMs: Long = 0L) {
         val source = _videoSource.value ?: return
         val resolution = source.getResolution(index) ?: return
+        val startMs = cancelInFlightLoad(seekPositionMs)
+        _currentResolutionIndex.value = index
+        _startPositionMs.value = startMs
+        _videoUrl.value = AnalyzeUrlFactories.create(
+            rawUrl = resolution.url,
+            // 本地书无书源 (loadChapter 对 null source 已明确容忍), 此处不得提前 return:
+            // 上一版 `curBookSource ?: return` 使本地多分辨率书点清晰度完全无反应
+            source = curBookSource,
+            headerMapF = resolution.headers.ifEmpty { source.headers },
+        )
+    }
+
+    /** 下一个可播章节 (跳过卷头: isVolume 是 TVBox 线路分组头, 不可播); 无可播返回 null。 */
+    private fun List<BookChapter>.nextPlayable(fromIndex: Int, step: Int): BookChapter? {
+        var index = fromIndex
+        while (index in indices) {
+            val chapter = get(index)
+            if (!chapter.isVolume) return chapter
+            index += step
+        }
+        return null
+    }
+
+    /** 加载中切档的前置: 取消在途装载并把加载态归 Idle (真取消), 返回续播位置 (毫秒)。 */
+    private fun cancelInFlightLoad(seekPositionMs: Long): Long {
         // 加载中切档必须在写状态源前取消在途装载, 否则其解析完成时会写 _videoUrl
         // 把刚选的档覆盖回默认档 (loadGuard.clear 为真取消; 被取消任务的 finally 因
         // isCurrentJob 不成立不会来改写加载态)
@@ -631,55 +668,7 @@ class VideoPlayViewModelShared(
         }
         val startMs = if (loading) pendingSeekMs.coerceAtLeast(0L) else seekPositionMs
         pendingSeekMs = 0L
-        _currentResolutionIndex.value = index
-        _startPositionMs.value = startMs
-        _videoUrl.value = AnalyzeUrlFactories.create(
-            rawUrl = resolution.url,
-            // 本地书无书源 (loadChapter 对 null source 已明确容忍), 此处不得提前 return:
-            // 上一版 `curBookSource ?: return` 使本地多分辨率书点清晰度完全无反应
-            source = curBookSource,
-            headerMapF = source.headers,
-        )
-        maybeSwitchTvBoxLine(index, startMs)
-    }
-
-    /**
-     * TVBox 线路切换: 分辨率列表即线路列表, 换 URL 后同步把目录切到所选线路。
-     *
-     * 线路选择存 [VirtualPluginVars.TVBOX_LINE], 强制回源重拉目录后按集名/序号定位回
-     * 当前集并持久化进度 —— 不重新 [loadChapter], 播放器已在播新线路直链, 目录只是跟随刷新。
-     */
-    /** 切线路目录重拉的在途任务 (连点串行化: 新请求 cancel 旧请求, 防旧目录晚到覆盖新选择)。 */
-    private var lineSwitchJob: Job? = null
-
-    private fun maybeSwitchTvBoxLine(index: Int, seekPositionMs: Long) {
-        val source = curBookSource ?: return
-        if (!source.bookSourceUrl.startsWith(VirtualPluginSourcePrefix.TVBOX)) return
-        val book = curBook ?: return
-        val lineName = _videoSource.value?.resolutions?.getOrNull(index)?.name?.trim().orEmpty()
-        if (lineName.isEmpty()) return
-        val currentTitle = chapterList?.getOrNull(_curChapterIndex.value)?.title.orEmpty()
-        val fallbackIndex = _curChapterIndex.value
-        book.variableMap[VirtualPluginVars.TVBOX_LINE] = lineName
-        book.variable = encodeStringMap(book.variableMap)
-        // 连点串行化: cancel 上一轮重拉 (用户已改选), 避免旧线路目录晚到覆盖新选择
-        lineSwitchJob?.cancel()
-        lineSwitchJob = scope.launch {
-            val result = runCatching { BookChapterLoader.upBook(book, forceReload = true) }
-                .onFailure {
-                    if (it is CancellationException) throw it
-                    AppLog.put("切换线路重拉目录失败 ${book.name}\n${it.message}", it)
-                }.getOrNull() ?: return@launch
-            if (result.chapterList.isEmpty()) return@launch
-            chapterList = result.chapterList
-            _chapterSize.value = result.chapterList.size
-            val newIndex = result.chapterList
-                .indexOfFirst { it.title == currentTitle && currentTitle.isNotEmpty() }
-                .takeIf { it >= 0 }
-                ?: fallbackIndex.coerceIn(0, result.chapterList.lastIndex)
-            _curChapterIndex.value = newIndex
-            saveRead(newIndex, seekPositionMs)
-        }
+        return startMs
     }
 
     /**
@@ -778,7 +767,10 @@ class VideoPlayViewModelShared(
         val size = _chapterSize.value
         if (isDirect) return false
         if (cur >= size - 1) return false
-        loadChapter(cur + 1)
+        // 卷头 (TVBox 线路分组头) 不可播: 连播跳到下一个可播章节 (目录未在内存时按序号直取, 行为同旧版)
+        val next = chapterList?.nextPlayable(cur + 1, +1)?.index ?: (cur + 1).takeIf { it < size }
+        if (next == null) return false
+        loadChapter(next)
         return true
     }
 
@@ -794,7 +786,9 @@ class VideoPlayViewModelShared(
         if (isDirect) return false
         val cur = _curChapterIndex.value
         if (cur <= 0) return false
-        loadChapter(cur - 1)
+        val prev = chapterList?.nextPlayable(cur - 1, -1)?.index ?: (cur - 1).takeIf { it >= 0 }
+        if (prev == null) return false
+        loadChapter(prev)
         return true
     }
 

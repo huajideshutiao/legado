@@ -6,7 +6,6 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.VideoResolution
-import io.legado.app.data.entities.VirtualPluginSourcePrefix
 import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfigProviders
@@ -314,8 +313,6 @@ class VideoPlayScreenModel : ScreenModel {
                     resolutions = resolutions,
                     currentResolutionIndex = currentIndex,
                     hasMultiResolution = resolutions.size > 1,
-                    isTvBoxSource = shared.curBookSource?.bookSourceUrl
-                        ?.startsWith(VirtualPluginSourcePrefix.TVBOX) == true,
                 )
             }
             merge
@@ -625,11 +622,12 @@ class VideoPlayScreenModel : ScreenModel {
         _state.update { it.copy(pendingBookmark = null) }
     }
 
-    /** 分辨率切换 (对照 Activity switchResolution: 重建播放器 + seekTo 原位置)。
+    /** 清晰度切换 (对照 Activity switchResolution: 重建播放器 + seekTo 原位置)。
      *  位置从控制器现取: 上一版不传位置 → 切清晰度必从片头重播 */
     fun onSwitchResolution(index: Int) {
         shared.switchResolution(index, seekPositionMs = controller?.positionMs ?: 0L)
     }
+
 
     /** 当前倍速 (键盘长按前快照用): 直读控制器快照, 不在 UiState 里缓存副本 */
     fun currentSpeed(): Float = controller?.playback?.value?.speed ?: 1f
@@ -706,9 +704,7 @@ data class VideoPlayUiState(
     val isSystemFullScreen: Boolean = false,
     /** 是否多分辨率源 (控制分辨率钮显隐) */
     val hasMultiResolution: Boolean = false,
-    /** 是否 TVBox 源 (分辨率列表实为线路列表, 对话框标题显示"线路") */
-    val isTvBoxSource: Boolean = false,
-    /** 分辨率列表 */
+    /** 分辨率/清晰度档列表 (TVBox 时 = 当前线路的清晰度档) */
     val resolutions: List<VideoResolution> = emptyList(),
     /** 当前分辨率索引 */
     val currentResolutionIndex: Int = 0,

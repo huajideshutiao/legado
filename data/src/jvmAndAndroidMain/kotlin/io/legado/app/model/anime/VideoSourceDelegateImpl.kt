@@ -108,7 +108,9 @@ object VideoSourceDelegateImpl : VideoSourceDelegate {
         val chapterList = update.episodes.mapIndexed { index, episode ->
             episode.toBookChapter(book, index)
         }
-        // 与规则链同构: updateBook 负责 reverse/index/totalChapterNum 等目录簿记
+        // 与规则链同构: updateBook 负责 reverse/index/totalChapterNum 等目录簿记。
+        // 目录不预反转, 走 updateBook 默认反转 (仅 TVBox 卷头需正序簿记才预反转, 动画无卷头);
+        // reverseToc=true 时保持插件返回顺序, 与小说"目录倒序"语义一致
         BookChapterList.updateBook(book, chapterList)
     }.onFailure {
         if (it is CancellationException) throw it

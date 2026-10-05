@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.ui.book.video.buildChapterDisplayList
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.book.isLocalTxt
 import io.legado.app.help.book.simulatedTotalChapterNum
@@ -325,7 +326,7 @@ private fun TocActions(state: TocUiState, actions: TocUiActions, page: Int) {
 private fun ChapterListPage(state: TocUiState, actions: TocUiActions) {
     val listState = rememberLazyGridState()
     val display by remember(state.chapters, state.collapsedVolumes) {
-        derivedStateOf { buildDisplayList(state.chapters, state.collapsedVolumes) }
+        derivedStateOf { buildChapterDisplayList(state.chapters, state.collapsedVolumes) }
     }
     val scroll = state.chapterScroll
     LaunchedEffect(scroll) {
@@ -551,21 +552,6 @@ private fun ChapterInfoBar(
 }
 
 /** 卷折叠：隐藏被折叠卷名到下一卷名之间的章节 */
-private fun buildDisplayList(all: List<BookChapter>, collapsed: Set<Int>): List<BookChapter> {
-    if (collapsed.isEmpty()) return all
-    val out = ArrayList<BookChapter>(all.size)
-    var hide = false
-    for (item in all) {
-        if (item.isVolume) {
-            hide = item.index in collapsed
-            out.add(item)
-        } else if (!hide) {
-            out.add(item)
-        }
-    }
-    return out
-}
-
 // ===== 书签页 =====
 
 @Composable

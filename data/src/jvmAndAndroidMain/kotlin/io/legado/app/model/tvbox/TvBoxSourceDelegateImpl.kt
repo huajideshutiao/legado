@@ -1,14 +1,16 @@
 package io.legado.app.model.tvbox
 
 import com.github.catvod.crawler.Spider
-import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookListPage
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
+import io.legado.app.data.entities.VideoResolution
+import io.legado.app.data.entities.VideoSource
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.toast.Toasters
 import io.legado.app.help.tvbox.TvBoxParse
 import io.legado.app.help.tvbox.TvBoxSite
 import io.legado.app.help.tvbox.TvBoxSniffer
@@ -19,8 +21,12 @@ import io.legado.app.help.tvbox.pickJsonApi
 import io.legado.app.help.tvbox.pickWebSniff
 import io.legado.app.model.webBook.BookChapterList
 import io.legado.app.model.webBook.VideoSourceDelegate
+import io.legado.app.utils.GSON
 import io.legado.app.utils.KS_JSON
+import io.legado.app.utils.toJson
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import org.json.JSONArray
@@ -31,19 +37,20 @@ import org.json.JSONObject
  *
  * 搜索 → spider.searchContent; 详情 → detailContent; 目录 → detailContent 的
  * vod_play_from/vod_play_url 按 "$$$" 配对拆行、"#" 拆集 (集名$id, tag 存线路 flag);
- * 取播 → 逐线 playerContent 拿直链, 多线路拼 legado 多行 `线路名::内容` 语义 —— 换线路
- * 即播放器换分辨率入口 (本质是换 URL, 进度由播放器保留), 直链行拼 `url,{"headers":{…}}`。
+ * 取播 → 本线路 playerContent 拿直链, 多清晰度输出 VideoSource JSON; 直链行拼
+ * `url,{"headers":{…}}`。
  * 全线路均非直链 (parse=1 / jx=1 / .html 播放页) 时退 [TvBoxSniffer] 网页嗅探出真实媒体地址。
  *
  * 本地代理 9978 由 TvBoxManager 随配置装载自动起停 (Android/桌面同一链路, 见 help/tvbox/README.md)。
  */
 object TvBoxSourceDelegateImpl : VideoSourceDelegate {
 
-    /** 取播时最多动用几次网页嗅探 (每次一个 WebView, 逐个串行)。 */
-    private const val MAX_SNIFF_TRIES = 2
-
     /** 解析站/播放页的查询参数形态: `?url=http…` 或 `?v=http…` (允许 URL 编码后的 https%3A)。 */
     private val PAGE_QUERY_PARAM = Regex("[?&](?:url|v)=https?")
+
+    /** FongMi `Vod.isFolder`: `"folder".equals(vod_tag) || cate != null`。 */
+    private fun JSONObject.isFolderVod(): Boolean =
+        optString("vod_tag").trim() == "folder" || (has("cate") && !isNull("cate"))
 
     override fun handles(bookSource: BookSource): Boolean =
         bookSource.bookSourceUrl.startsWith(TvBoxSourceMapper.SOURCE_URL_PREFIX)
@@ -54,14 +61,14 @@ object TvBoxSourceDelegateImpl : VideoSourceDelegate {
         page: Int,
     ): BookListPage = withContext(IoDispatcher) {
         val siteKey = TvBoxSourceMapper.siteKeyOf(bookSource.bookSourceUrl)
-        val (_, spider) = TvBoxManager.spiderFor(siteKey)
+        val (site, spider) = TvBoxManager.spiderFor(siteKey)
         // 翻页走三参签名 (FongMi 以 String pg 承载页码); 未实现翻页的 spider 返回空串
         val json = if (page <= 1) {
             spider.searchContent(key, false)
         } else {
             spider.searchContent(key, false, page.toString())
         }
-        val root = parseResult(json)
+        val root = parseResult(json, site)
         bookListPageOf(bookSource, siteKey, root, page)
     }
 
@@ -82,44 +89,80 @@ object TvBoxSourceDelegateImpl : VideoSourceDelegate {
         page: Int,
     ): BookListPage = withContext(IoDispatcher) {
         val siteKey = TvBoxSourceMapper.siteKeyOf(bookSource.bookSourceUrl)
-        val (_, spider) = TvBoxManager.spiderFor(siteKey)
-        val root = when (url.trim().ifBlank { "popular" }) {
-            "popular" -> explorePopular(spider)
-            "latest" -> exploreLatest(spider, page)
-            else -> error("TVBox 站点不支持的发现分类: $url (可用: popular/latest)")
+        val (site, spider) = TvBoxManager.spiderFor(siteKey)
+        val segment = url.trim().ifBlank { "popular" }
+        // 动作段: 执行 spider.action 并提示结果, 返回空页 (该条目不是分类, 无可列内容)
+        if (TvBoxSourceMapper.isActionSegment(segment)) {
+            return@withContext runSiteAction(spider, TvBoxSourceMapper.actionOfSegment(segment))
+        }
+        val root = when (segment) {
+            "popular" -> explorePopular(site, spider)
+            "latest" -> exploreLatest(site, spider, page)
+            // folder 条目与普通分类同构: 段就是分类 id (FongMi openFolder 走 categoryContent)
+            else -> parseResult(
+                spider.categoryContent(segment, page.coerceAtLeast(1).toString(), false, HashMap()),
+                site,
+            )
         }
         bookListPageOf(bookSource, siteKey, root, page)
+    }
+
+    /**
+     * 执行站点动作 (FongMi `SiteApi.action` 同语义): 取 spider 返回 JSON 的 `msg` 弹提示,
+     * 返回空页使发现页不展示任何条目。
+     *
+     * FongMi 只把 `msg` 弹给用户 (`TypeFragment.getAction().observe(... Notify.show(result.getMsg()))`),
+     * 且 `code != 0` 时 `Result.getMsg()` 返回空串 (即失败不弹) —— 此处照搬该判定。
+     */
+    private fun runSiteAction(spider: Spider, action: String): BookListPage {
+        val json = spider.action(action)
+        val root = parseResultOrNull(json)
+        if (root != null && root.optInt("code", 0) == 0) {
+            val msg = root.optString("msg").trim()
+            if (msg.isNotEmpty()) runCatching { Toasters.get().toast(msg) }
+        }
+        return BookListPage(ArrayList(), false)
     }
 
     /**
      * 首页推荐: `homeVideoContent()` (FongMi homeVod) 优先, 无 list 时退 `homeContent(false)`。
      * 两个面生态 spider 常只实现其一 (cat 系给 homeContent 的 class+list, drpy2 系给 homeVod)。
      */
-    private fun explorePopular(spider: Spider): JSONObject {
+    private fun explorePopular(site: TvBoxSite, spider: Spider): JSONObject {
         val homeVod = runCatching { spider.homeVideoContent() }.getOrNull()
         parseResultOrNull(homeVod)?.takeIf { (it.optJSONArray("list")?.length() ?: 0) > 0 }
             ?.let { return it }
-        return parseResult(spider.homeContent(false))
+        return parseResult(spider.homeContent(false), site)
     }
 
     /**
      * 同源取最新: TVBox 无独立"最新"接口, 用首页第一个分类 (`class[0].type_id`) 的分类页。
      * 无 class 即该 spider 不提供可定位的列表页, 如实抛错。
      */
-    private fun exploreLatest(spider: Spider, page: Int): JSONObject {
-        val home = parseResult(spider.homeContent(false))
+    private fun exploreLatest(site: TvBoxSite, spider: Spider, page: Int): JSONObject {
+        val home = parseResult(spider.homeContent(false), site)
         val tid = home.optJSONArray("class")
             ?.optJSONObject(0)?.optString("type_id")?.trim()
             .orEmpty()
         check(tid.isNotEmpty()) { "TVBox 站点无分类(class)可定位最新, 不支持 latest 发现" }
         return parseResult(
             spider.categoryContent(tid, page.coerceAtLeast(1).toString(), false, HashMap()),
+            site,
         )
     }
 
     /**
      * Spider 列表结果 → [BookListPage]: 逐项映射 vod_id/vod_name/vod_pic/vod_remarks。
      * 搜索与发现共用 (两路响应结构同为 `{list:[Vod], pagecount?}`)。
+     *
+     * 两类非视频条目按 FongMi 语义改写成 `"::"` 伪 URL (点击即进发现页, 不当视频打开):
+     * - `action` 非空 (FongMi `Vod.isAction`, 扫码登录/刷新 token 类) → [TvBoxSourceMapper.actionBookUrlOf];
+     * - FongMi `Vod.isFolder` (`vod_tag == "folder"` 或 `cate` 非 null, 子分类) →
+     *   [TvBoxSourceMapper.folderBookUrlOf]。
+     * 两者判定次序与 FongMi `TypeFragment.onItemClick` 一致: action 优先于 folder。
+     *
+     * `cate` 在 FongMi 里只被 `Vod.isFolder()` 消费 (其 land/circle/ratio 无任何调用点,
+     * `Vod.getStyle()` 走的是平铺字段), 故此处也只当 folder 标记用, 不解析样式。
      */
     private fun bookListPageOf(
         bookSource: BookSource,
@@ -134,7 +177,12 @@ object TvBoxSourceDelegateImpl : VideoSourceDelegate {
             val vodId = item.optString("vod_id").trim()
             val name = item.optString("vod_name").trim()
             if (vodId.isEmpty() || name.isEmpty()) continue
-            val bookUrl = TvBoxSourceMapper.bookUrlOf(siteKey, vodId)
+            val action = item.optString("action").trim()
+            val bookUrl = when {
+                action.isNotEmpty() -> TvBoxSourceMapper.actionBookUrlOf(name, action)
+                item.isFolderVod() -> TvBoxSourceMapper.folderBookUrlOf(name, vodId)
+                else -> TvBoxSourceMapper.bookUrlOf(siteKey, vodId)
+            }
             books.add(
                 SearchBook(
                     bookUrl = bookUrl,
@@ -189,12 +237,28 @@ object TvBoxSourceDelegateImpl : VideoSourceDelegate {
         withContext(IoDispatcher) {
             val siteKey = TvBoxSourceMapper.siteKeyOf(bookSource.bookSourceUrl)
             val vod = detailVod(siteKey, book.bookUrl)
-            // 多线路 vod_play_from/vod_play_url 以 "$$$" 一一配对, 线内 "#分隔", 集内 "集名$id"
+            // TVBox 分流模型: vod_play_from/vod_play_url 按 "$$$" 一一配对, 每条线路是一套
+            // 平行剧集目录。全线路展开进目录, 线路名作卷级分组头 (isVolume, 目录页/选集网格
+            // 可收合): 选集即选线路, 换线路=换章节。
             val flags = vod.optString("vod_play_from").split("$$$")
-            val lines = vod.optString("vod_play_url").split("$$$")
+            val playLines = vod.optString("vod_play_url").split("$$$")
+            val lineFlags = flags.map { it.trim() }.filter { it.isNotEmpty() }
+            val multiLine = lineFlags.size > 1
             val chapters = ArrayList<BookChapter>()
-            for ((flagIndex, flag) in flags.withIndex()) {
-                val line = lines.getOrNull(flagIndex) ?: continue
+            for (lineFlag in lineFlags) {
+                val lineIndex = flags.indexOfFirst { it.trim() == lineFlag }
+                val line = playLines.getOrNull(lineIndex).orEmpty()
+                if (multiLine) {
+                    chapters.add(
+                        BookChapter(
+                            bookUrl = book.bookUrl,
+                            url = "tvbox-line://$lineFlag",
+                            title = lineFlag,
+                            index = chapters.size,
+                            isVolume = true,
+                        ),
+                    )
+                }
                 for (entry in line.split("#")) {
                     val trimmed = entry.trim()
                     if (trimmed.isEmpty()) continue
@@ -207,18 +271,23 @@ object TvBoxSourceDelegateImpl : VideoSourceDelegate {
                             url = id,
                             title = name.ifBlank { id },
                             index = chapters.size,
-                            tag = flag.trim().ifBlank { null },
+                            tag = lineFlag.ifBlank { null },
                         ),
                     )
                 }
             }
-            check(chapters.isNotEmpty()) { "TVBox 站点无剧集数据: ${vod.optString("vod_name")}" }
-            // 与规则链同构: updateBook 负责 reverse/index/totalChapterNum 等目录簿记
-            BookChapterList.updateBook(book, chapters)
+            check(chapters.size > if (multiLine) lineFlags.size else 0) {
+                "TVBox 站点无剧集数据: ${vod.optString("vod_name")}"
+            }
+            // 与规则链同构: updateBook 负责 reverse/index/totalChapterNum 等目录簿记。
+            // updateBook 契约输入=新章在前 (小说接口方向, 默认 reverse 成正序); 委派目录
+            // 天然正序 (线路卷头→剧集), 预反转一次让默认 reverse 恢复正序; reverseToc=true
+            // 时保持"新章在前"即倒序显示, 与小说"目录倒序"语义一致
+            BookChapterList.updateBook(book, chapters.asReversed())
         }
     }.onFailure {
         if (it is kotlinx.coroutines.CancellationException) throw it
-        AppLog.put("获取 TVBox 目录失败 ${bookSource.bookSourceName}", it)
+        currentCoroutineContext().ensureActive()
     }
 
     override suspend fun getContentAwait(
@@ -228,99 +297,74 @@ object TvBoxSourceDelegateImpl : VideoSourceDelegate {
     ): String = withContext(IoDispatcher) {
         val siteKey = TvBoxSourceMapper.siteKeyOf(bookSource.bookSourceUrl)
         val (site, spider) = TvBoxManager.spiderFor(siteKey)
-        // 换线路走播放器多分辨率入口 (同一集的线路切换本质是换 URL, 进度由播放器保留):
-        // 重取详情拿各线路集表, 当前线路优先, 同名集 (缺则同序号) 定位各线路对应集,
-        // 逐线 playerContent, 仅直链 (parse=0) 入列表, 拼 legado 多行 `线路名::内容` 语义。
-        val vodId = TvBoxSourceMapper.vodIdOf(book.bookUrl, siteKey)
-            ?: error("无法从 bookUrl 反解 TVBox vod_id: ${book.bookUrl}")
-        val vod = parseResult(spider.detailContent(listOf(vodId)))
-            .optJSONArray("list")?.optJSONObject(0)
-            ?: error("TVBox 详情无数据: ${book.bookUrl}")
-        val flags = vod.optString("vod_play_from").split("$$$")
-        val playUrlLines = vod.optString("vod_play_url").split("$$$")
-        val lineEpisodes = flags.mapIndexed { index, flag ->
-            flag.trim() to (playUrlLines.getOrNull(index).orEmpty().split("#"))
-                .mapNotNull { entry ->
-                    val trimmed = entry.trim()
-                    if (trimmed.isEmpty()) null
-                    else trimmed.substringBefore('$').trim() to trimmed.substringAfter('$', trimmed).trim()
-                }
-        }
-        val currentFlag = bookChapter.tag.orEmpty()
-        val currentList = lineEpisodes.firstOrNull { it.first == currentFlag }?.second
-            ?: lineEpisodes.firstOrNull()?.second
-            ?: emptyList()
-        val currentIndex = currentList.indexOfFirst { it.second == bookChapter.url }.takeIf { it >= 0 } ?: 0
-        val currentName = currentList.getOrNull(currentIndex)?.first.orEmpty()
-
-        val candidates = ArrayList<Pair<String, String>>()
-        candidates += currentFlag to bookChapter.url
-        for ((flag, episodes) in lineEpisodes) {
-            if (flag.isEmpty() || flag == currentFlag) continue
-            val target = episodes.firstOrNull { it.first == currentName && currentName.isNotEmpty() }?.second
-                ?: episodes.getOrNull(currentIndex)?.second
-            if (!target.isNullOrBlank()) candidates += flag to target
-        }
-
+        // 章节自带线路归属 (目录卷级分组, tag=线路名):
+        // 取数即本章线路的本集 → 多档数组全收 → VideoSource JSON (resolutions=清晰度档,
+        // 播放器内切换); 非直链走解析/嗅探链路 (单链内容串)。
+        check(!bookChapter.isVolume) { "分组标题不可播放: ${bookChapter.title}" }
+        // 线路名恒随目录落在章节 tag 上 (getChapterListAwait 卷级分组), 取数无需二次 detailContent
+        val flag = bookChapter.tag.orEmpty()
+        check(flag.isNotEmpty()) { "TVBox 站点无线路数据: ${book.name}" }
         val parses = TvBoxManager.config?.parses.orEmpty()
-        // 先按原语义收直链: 多线路一次拿全 (换线路=换 URL), 无 WebView 开销
-        val direct = candidates.mapNotNull { (flag, id) ->
-            runCatching { directContent(site, spider, flag, id, parses) }.getOrNull()
+        // vipFlags 对齐 FongMi SiteApi.playerContent 的 VodConfig.get().getFlags()
+        val vipFlags = TvBoxManager.config?.flags.orEmpty()
+        val p = parseResult(spider.playerContent(flag, bookChapter.url, vipFlags), site)
+        val playUrl = playUrlOf(p, site)
+        // 空地址与"非直链"是两回事: 前者站点没给任何可取内容, 后者有页可嗅探/解析;
+        // 混进嗅探链会把"站点没数据"误报成"无法嗅探", 排查时被带偏。
+        check(playUrl.isNotEmpty()) { "TVBox 站点未返回播放地址: ${site.name} ($flag)" }
+        if (!needsParse(p, flag, parses) && !isPlayPage(playUrl) && playUrl.startsWith("http")) {
+            return@withContext GSON.toJson(VideoSource(resolutions = qualitiesOf(p, site)))
         }
-        if (direct.isNotEmpty()) {
-            return@withContext if (direct.size == 1) {
-                direct[0].second
-            } else {
-                direct.joinToString("\n") { (flag, content) -> "$flag::$content" }
-            }
-        }
-        // 全线路都拿不到直链 → 逐个网页嗅探, 首个成功即用。嗅探较重 (每次一个 WebView + 超时),
-        // 故只试前两条: 同一站点的线路通常同属一类页面 (一起成功或一起失败), 全量试只会拖时间。
-        val sniffFailures = ArrayList<String>()
-        for ((flag, id) in candidates.take(MAX_SNIFF_TRIES)) {
-            val content = runCatching { sniffContent(site, spider, flag, id, parses) }
-                .onFailure { e -> sniffFailures += "$flag: ${e.message}" }
-                .getOrNull() ?: continue
-            return@withContext content
-        }
-        error(
-            "TVBox 全线路均无直链且网页嗅探失败: ${book.name} ${bookChapter.title}\n" +
-                sniffFailures.joinToString("\n"),
-        )
+        // 嗅探复用本次 playerContent 结果: 同一 flag/id 重调一次既多一次站点请求 (jar 侧实测
+        // 单站 16~28s), 对一次性 token 类 spider 还会因第二次调用拿到不同结果而失败
+        return@withContext sniffContent(site, spider, p, flag, parses)
     }
 
     /**
-     * 单线路的直链内容串; 非直链返回 null 交由 [sniffContent]。
-     *
-     * 直链判据比旧实现严了一层: 排除 .html 播放页与解析站形态 (`?url=http`), 它们是
-     * spider 忘了标 parse=1 的播放页 —— 直投 ExoPlayer 只会拿到一段 HTML 报错。
-     * 无扩展名的兜底 URL 仍按旧语义当直链 (部分站点直链确实不带后缀, 不能误伤)。
+     * playerContent 结果 → 本线路清晰度档: url 为多档数组串取全部 [名,址] 对, 单链取「默认」一档;
+     * 档共享该次取数的请求头 (FongMi getRealUrl 同语义: playUrl 解析前缀恒拼在档址前)。
      */
-    private fun directContent(
-        site: TvBoxSite,
-        spider: Spider,
-        flag: String,
-        id: String,
-        parses: List<TvBoxParse>,
-    ): Pair<String, String>? {
-        val p = parseResult(spider.playerContent(flag, id, emptyList()))
-        val playUrl = playUrlOf(p, site)
-        if (needsParse(p, flag, parses) || isPlayPage(playUrl) || !playUrl.startsWith("http")) return null
-        return flag.replace("::", "") to contentOf(playUrl, headerOf(p))
+    private fun qualitiesOf(root: JSONObject, site: TvBoxSite): List<VideoResolution> {
+        val headers = headerOf(root)
+        val prefix = root.optString("playUrl").trim().ifBlank { site.playUrl }
+        val raw = root.optString("url").trim()
+        val arr = if (raw.startsWith("[")) runCatching { JSONArray(raw) }.getOrNull() else null
+        if (arr != null) {
+            val qualities = ArrayList<VideoResolution>()
+            var index = 0
+            while (index + 1 < arr.length()) {
+                val url = arr.optString(index + 1)
+                if (url.startsWith("http")) {
+                    qualities.add(VideoResolution(name = arr.optString(index), url = prefix + url, headers = headers))
+                }
+                index += 2
+            }
+            if (qualities.isNotEmpty()) return qualities
+        }
+        val url = playUrlOf(root, site)
+        return if (url.startsWith("http")) {
+            listOf(VideoResolution(name = "默认", url = url, headers = headers))
+        } else {
+            emptyList()
+        }
     }
 
     /**
      * 单线路非直链取播: 按解析配置 type 分支取真实媒体地址 (FongMi ParseJob.doInBackground 同语义):
      * type=1 json API (纯 HTTP, 快) → type=0 WebView 嗅探 → type=2/3 jar 聚合类; 首个成功即用。
+     *
+     * @param p 本次取播的 playerContent 结果 (调用方已调, 本函数不重调 spider):
+     *   FongMi `SiteApi.playerContent` 也是一次取数一个 Result 贯穿解析全程,
+     *   重调既多一次站点请求, 也会让一次性 token 类 spider 的第二次调用失败。
+     *   播放页与请求头均从它取 ([playUrlOf] / [headerOf])。
      */
     private suspend fun sniffContent(
         site: TvBoxSite,
         spider: Spider,
+        p: JSONObject,
         flag: String,
-        id: String,
         parses: List<TvBoxParse>,
     ): String {
-        val p = parseResult(spider.playerContent(flag, id, emptyList()))
         val videoPage = playUrlOf(p, site)
         val headers = headerOf(p)
         var lastError: Throwable? = null
