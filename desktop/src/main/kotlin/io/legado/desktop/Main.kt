@@ -43,6 +43,7 @@ import io.legado.app.help.image.registerJvmBookImageLoader
 import io.legado.app.help.image.registerReaderImageResolver
 import io.legado.app.help.storage.BackupShared
 import io.legado.app.help.toast.DesktopTrayNotifier
+import io.legado.app.help.tvbox.TvBoxSniffPlatforms
 import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.model.fileBook.BitmapProviders
 import io.legado.app.ui.FileAssociationDispatch
@@ -97,6 +98,7 @@ import io.legado.desktop.http.DesktopChallengeEngines
 import io.legado.desktop.help.registerDesktopArchiveProvider
 import io.legado.desktop.help.registerDesktopScreenInfoProvider
 import io.legado.desktop.help.source.registerDesktopVerificationUiProvider
+import io.legado.desktop.help.tvbox.DesktopTvBoxSniffer
 import io.legado.desktop.help.tts.DesktopReadAloudHost
 import io.legado.desktop.help.ui.registerDesktopOpenUrlProvider
 import io.legado.desktop.extension.DesktopMangaExtensionHost
@@ -399,6 +401,10 @@ private fun runDesktopApp() = application {
         // CF 挑战求解引擎 (书源栈 DesktopHttpProvider.okHttpClient 首次访问时按本注册与否
         // 决定是否挂 DesktopCloudflareInterceptor, 故必须早于阶段1 的任何 HTTP 访问)
         DesktopChallengeEngines.register(DesktopWebViewChallengeEngine())
+        // TVBox parse=1 网页嗅探 (对照 app 端 App.kt 的 TvBoxSniffPlatforms.register
+        // (AndroidTvBoxSniffer)): DesktopTvBoxSniffer 走 DesktopWebViewEngines (JNA, 只在
+        // :desktop), 引擎全不可用的机器在嗅探时如实报错, 直链与 json 解析不受影响
+        TvBoxSniffPlatforms.register(DesktopTvBoxSniffer)
         val duration = splashScreen.show()
         // 预热 CMP 字符串资源表: 首次取串要走 runBlocking + 资源表初始化, 实测 178~289ms。
         // 放后台线程而不是主线程: 同步预热虽然落在"闪屏可见期", 但占的是主线程, 直接拖后首帧。

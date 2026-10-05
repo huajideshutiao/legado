@@ -6,8 +6,9 @@ import kotlin.concurrent.Volatile
  * TVBox 网页嗅探平台钩子 (jvmAndAndroidMain 共用契约)。
  *
  * 嗅探要加载解析页并拦截其子资源请求找真实媒体地址: Android 走系统 WebView
- * (app 模块 AndroidTvBoxSniffer), 桌面端走 DesktopWebViewEngine 属后续任务,
- * 未注册平台的 [TvBoxSniffer.sniff] 如实报错 (不影响直链取播与 type=1 json 解析)。
+ * (app 模块 AndroidTvBoxSniffer), 桌面端走 DesktopWebViewEngine (desktop 模块
+ * DesktopTvBoxSniffer, 引擎全不可用时如实报错), 未注册平台的 [TvBoxSniffer.sniff]
+ * 如实报错 (不影响直链取播与 type=1 json 解析)。
  */
 fun interface TvBoxSniffPlatform {
 

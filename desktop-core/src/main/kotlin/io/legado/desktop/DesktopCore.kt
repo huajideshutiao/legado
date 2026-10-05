@@ -403,7 +403,8 @@ object DesktopCore {
             // 11d. TVBox 影视源宿主 (jar 经 JVM URLClassLoader + 壳类, JS 经 QuickJS;
             //      配置/站点开关落 {dataRoot}/files/tvbox, 目录布局与 Android filesDir/tvbox 一致)。
             //      须在 registerDesktopWebBookProviders 之后 (委派注册表单实现覆盖语义,
-            //      TVBox 要包裹既有委派); 嗅探引擎接入属后续任务, 直链与 json 解析不受影响
+            //      TVBox 要包裹既有委派); 网页嗅探经 DesktopTvBoxSniffer (:desktop Main.kt 注册,
+            //      走 DesktopWebViewEngine), 引擎缺失时嗅探报错, 直链与 json 解析不受影响
             registerDesktopTvBoxProviders()
             // 11b. JS 扩展回调 provider (UserAgent, 供 JsExtensionsCommon 回调,
             //      必须在 JS 引擎首次 eval 之前注册); OpenUrl 确认框 provider (DesktopDialogs) 留 :desktop

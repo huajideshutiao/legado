@@ -13,8 +13,8 @@ import org.json.JSONObject
  *   `isUseParse()`, `player/parse/ParseJob.doInBackground()` 的 type=0 分支;
  * - type=1 json API 与 type=2/3 jar 聚合是纯 HTTP/反射, 直接在本对象实现;
  * - type=0 网页嗅探要加载页面并拦子资源, 依赖平台 WebView 引擎, 经 [TvBoxSniffPlatforms]
- *   分发 (Android=app 模块 AndroidTvBoxSniffer 的 headless WebView; 桌面端引擎接入属
- *   后续任务, 未注册时如实报错)。
+ *   分发 (Android=app 模块 AndroidTvBoxSniffer 的 headless WebView, 桌面端=desktop 模块
+ *   DesktopTvBoxSniffer 的 DesktopWebViewEngine; 未注册时如实报错)。
  *
  * 取播委派 [TvBoxSourceDelegateImpl.getContentAwait] 的顺序: 先收直连线路 (无 WebView
  * 开销), 全线路都拿不到直链时才逐条走嗅探。
