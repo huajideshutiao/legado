@@ -10,6 +10,7 @@ import io.legado.app.help.tvbox.TvBoxConfig
 import io.legado.app.help.tvbox.TvBoxCmsSpider
 import io.legado.app.help.tvbox.TvBoxJarLoader
 import io.legado.app.help.tvbox.TvBoxJsSpiderLoader
+import io.legado.app.help.tvbox.TvBoxLocalProxy
 import io.legado.app.help.tvbox.TvBoxSite
 import io.legado.app.model.webBook.VideoSourceDelegates
 import io.legado.app.utils.GSON
@@ -57,6 +58,7 @@ object TvBoxManager {
             runCatching { config = TvBoxConfig.parse(file.readText(), baseUrl) }
                 .onFailure { AppLog.put("TVBox 配置重载失败", it) }
         }
+        if (config != null) TvBoxLocalProxy.start { proxyDispatch(it) }
     }
 
     /**
@@ -80,6 +82,7 @@ object TvBoxManager {
         File(dir, "config_url.txt").writeText(baseUrl.orEmpty())
         config = parsed
         TvBoxPluginSources.sync(parsed, disabledSitesCache)
+        TvBoxLocalProxy.start { proxyDispatch(it) }
         parsed
     }
 
@@ -91,6 +94,19 @@ object TvBoxManager {
     }
 
     fun siteOf(siteKey: String): TvBoxSite? = config?.sites?.firstOrNull { it.key == siteKey }
+
+    /** /proxy 请求分发 (FongMi BaseLoader.proxy 同语义): 带 siteKey 按站点 key 找 Spider
+     *  实例 (jar/JS 统一), 否则交 jar 自带静态 Proxy 方法 (do 值由 jar 自定义, 如 "bili")。 */
+    fun proxyDispatch(params: Map<String, String>): Array<Any?>? {
+        params["siteKey"]?.let { key ->
+            TvBoxJarLoader.spiderBySiteKey(key)?.let { return it.proxy(params) }
+            val cfg = config ?: return null
+            val site = cfg.sites.firstOrNull { it.key == key } ?: return null
+            if (!site.isJsSpider) return null
+            return jsLoader?.getSpider(site, cfg.baseUrl)?.proxy(params)
+        }
+        return TvBoxJarLoader.proxyDispatch(params)
+    }
 
     /**
      * 站点"已添加"开关 (TVBox 管理页的开关): 决定是否落虚拟 BookSource 行,
@@ -162,6 +178,7 @@ object TvBoxManager {
         }
 
     fun clear() {
+        TvBoxLocalProxy.stop()
         TvBoxJarLoader.clear()
         jsLoader?.destroyAll()
         config = null

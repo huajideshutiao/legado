@@ -41,6 +41,6 @@
 
 ## 已知遗留（生态扩展）
 
-- TVBox：JS(type 1)/Python(type 2) spider 未接（JS API 面与 quickjs 现成桥不同，需另建）；parse=1 网页嗅探（可复用宿主的 WebView 验证基础设施 + spider 的 isVideoFormat/manualVideoCheck 钩子）；本地代理 9978 与部分站点 socks5 代理；fastjson 未引入（旧 jar 会 NCDFE，CVE 风险）；旧壳 SpiderReq/SpiderUrl（依赖 rxhttp）；生产入口未接（TvBoxManager.init 幂等就绪）。
+- TVBox：Python(type 2) spider 未接；parse=1 网页嗅探已实现（Android WebView，桌面嗅探引擎属后续任务，直链与 json 解析不受影响）；本地代理 9978 已接（TvBoxLocalProxy，两端同链路，见 help/tvbox/README.md），部分站点 socks5 外发代理宿主不代跑；fastjson 未引入（旧 jar 会 NCDFE，CVE 风险）；旧壳 SpiderReq/SpiderUrl（依赖 rxhttp）；生产入口已接（Android App.onCreate / 桌面 DesktopCore 均注册平台钩子并调 TvBoxManager.init）。
 - Kotatsu parsers（1000+ 源，maven 直依赖即可接入，社区 fork 活跃）：未启动。
 - 真机链路：Comic Fury 全链路在部分网络下 TLS 被中断（环境因素）；iyf 搜索期扩展内 lazy NPE（需对照其源码定位）。

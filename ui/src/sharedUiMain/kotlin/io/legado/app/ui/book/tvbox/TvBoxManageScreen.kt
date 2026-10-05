@@ -71,7 +71,7 @@ private val ErrorColor = Color(0xFFF53F3F)
 private val TagColor = Color(0x14607D8B)
 
 /**
- * 影视源 (TVBox) 管理页 (shared, app 端入口; 服务未注册端入口隐藏不会进入)。
+ * 影视源 (TVBox) 管理页 (shared, 已注册 TvBoxService 的端有入口; 未注册端隐藏不会进入)。
  *
  * 自上而下: 使用说明 → 配置来源 (增删/切换/刷新) → Spider jar 下载状态 →
  * 站点列表 (类型/可搜索/可筛选标记 + 已添加开关; 开关落虚拟书源行的存在与否,

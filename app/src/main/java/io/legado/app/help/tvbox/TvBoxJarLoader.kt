@@ -8,9 +8,11 @@ import com.github.catvod.crawler.Spider
 import com.github.catvod.net.OkHttp
 import com.github.catvod.utils.Crypto
 import com.github.catvod.utils.Path
+import io.legado.app.constant.AppLog
 import io.legado.app.help.extension.util.ExtensionLoader
 import okhttp3.Request
 import java.io.File
+import java.lang.reflect.Method
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -33,6 +35,13 @@ internal object TvBoxJarLoader {
     private val loaders = ConcurrentHashMap<String, DexClassLoader>()
     private val spiders = ConcurrentHashMap<String, Spider>()
     private val locks = ConcurrentHashMap<String, Any>()
+
+    /** jar 自带静态 Proxy 的 proxy(Map) 方法缓存 (FongMi JarLoader.methods 同语义), 按 jarKey 索引。 */
+    private val methods = ConcurrentHashMap<String, Method>()
+
+    /** 最近实例化站点所属的 jar (FongMi JarLoader.recent 同语义, proxy 分发优先走它)。 */
+    @Volatile
+    private var recent: String? = null
 
     /** 仅预载 jar 不实例化站点 (减少首开卡顿场景用)。 */
     fun loadJar(context: Context, jarSpec: String) {
@@ -63,9 +72,40 @@ internal object TvBoxJarLoader {
             val spider = cls.getDeclaredConstructor().newInstance() as Spider
             spider.siteKey = site.key
             spider.init(context, site.ext)
+            recent = jarKey
             spiders[spKey] = spider
             return spider
         }
+    }
+
+    /** 按站点 key 取已实例化的 Spider (key 形态 "jarKey#siteKey")。 */
+    fun spiderBySiteKey(key: String): Spider? =
+        spiders.entries.firstOrNull { it.key.endsWith("#$key") }?.value
+
+    /** /proxy 分发到 jar 自带静态 Proxy (FongMi JarLoader.proxy 同语义: recent 优先, 其余兜底, 首个非空即用)。 */
+    fun proxyDispatch(params: Map<String, String>): Array<Any?>? {
+        val primary = recent?.let { methods[it] }
+        proxyInvoke(primary, params)?.let { return it }
+        for ((jarKey, method) in methods) {
+            if (jarKey == recent) continue
+            proxyInvoke(method, params)?.let { return it }
+        }
+        return null
+    }
+
+    // jar 契约保证返回 Object[]{code, mime, stream[, headers]}, 反射 erased 形态只能不检查转换
+    @Suppress("UNCHECKED_CAST")
+    private fun proxyInvoke(method: Method?, params: Map<String, String>): Array<Any?>? =
+        runCatching { method?.invoke(null, params) as? Array<Any?> }
+            .onFailure { AppLog.put("TVBox jar 静态 Proxy 调用失败", it) }
+            .getOrNull()
+
+    /** 缓存 jar 自带 com.github.catvod.spider.Proxy 的 proxy(Map) 静态方法 (不存在则跳过, FongMi invokeProxy 同语义)。 */
+    private fun invokeJarProxy(loader: DexClassLoader, jarKey: String) {
+        runCatching {
+            methods[jarKey] = loader.loadClass("com.github.catvod.spider.Proxy")
+                .getMethod("proxy", Map::class.java)
+        }.onFailure { AppLog.put("TVBox jar 无自带静态 Proxy, do 分发不可用: ${it.message}") }
     }
 
     /** 销毁全部 Spider 并清缓存 (换配置/退出场景)。 */
@@ -73,6 +113,8 @@ internal object TvBoxJarLoader {
         spiders.values.forEach { runCatching { it.destroy() } }
         spiders.clear()
         loaders.clear()
+        methods.clear()
+        recent = null
         locks.clear()
     }
 
@@ -109,6 +151,7 @@ internal object TvBoxJarLoader {
                 context.classLoader,
             )
             invokeJarInit(loader, context)
+            invokeJarProxy(loader, jarKey)
             loaders[jarKey] = loader
             return loader
         }

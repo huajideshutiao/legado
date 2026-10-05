@@ -6,9 +6,10 @@ import kotlin.concurrent.Volatile
 /**
  * TVBox 影视源管理能力暴露 (平台接口, 模式同 MangaExtensionService 与其 Providers)。
  *
- * 接口只依赖 shared/ui 层数据类型, 不感知 TvBoxManager (app 端) 与 jar 装载实现
- * (DexClassLoader 仅 Android 可用); app 端经 [TvBoxServiceProviders.register] 注册,
- * getOrNull()==null 的平台 (desktop 等) 隐藏「我的」页入口。
+ * 接口只依赖 shared/ui 层数据类型, 不感知 TvBoxManager 与 jar 装载实现 (平台差异经
+ * [io.legado.app.help.tvbox.TvBoxPlatforms] 注入: Android=DexClassLoader, 桌面=URLClassLoader);
+ * app 端 MainActivity 与桌面端 DesktopCore 都经 [TvBoxServiceProviders.register] 注册,
+ * getOrNull()==null 的未注册平台隐藏「我的」页入口。
  *
  * 站点以虚拟 BookSource 行 (bookSourceType=video) 进入书源体系后, 取数走 WebBook 的
  * VideoSourceDelegates 委派, 搜索/详情/书内播放复用既有路径 —— 本接口刻意不提供
@@ -123,6 +124,6 @@ object TvBoxServiceProviders {
         this.impl = impl
     }
 
-    /** 未注册端 (desktop 等) 返回 null, UI 据此隐藏入口。 */
+    /** 未注册端返回 null, UI 据此隐藏入口。 */
     fun getOrNull(): TvBoxService? = impl
 }

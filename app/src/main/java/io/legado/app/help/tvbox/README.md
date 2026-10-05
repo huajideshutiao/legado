@@ -1,17 +1,19 @@
 # TVBox / FongMi 影视源接入（宿主侧）
 
-壳类面 FQCN 在 `app/src/main/java/com/github/catvod/`（`Spider` / `OkHttp` / `Proxy` / `Init` / `bean` / `utils`），
+壳类面 FQCN 在 `data/src/jvmAndAndroidMain/kotlin/com/github/catvod/`（`Spider` / `OkHttp` / `Proxy` / `Init` / `bean` / `utils`），
 便于社区 spider jar 以原 FQCN 直接调宿主。
 
-- 配置/装载/站点面：`app/src/main/java/io/legado/app/help/tvbox/`
+- 配置/装载/站点面：`data/src/jvmAndAndroidMain/kotlin/io/legado/app/help/tvbox/`
   - `TvBoxConfig.kt` — 配置 json（`sites[]` / `spider` / `parses[]`）解析，相对路径按 `baseUrl` 折算
   - `TvBoxJarLoader.kt` — dex/jar spider 的类装载与缓存
   - `TvBoxCmsSpider.kt` — 苹果 CMS 直连站（api 为 http 根 URL，无 jar）的宿主实现
+  - `TvBoxLocalProxy.kt` — 本地代理 9978（见下节）
+  - `TvBoxPlatform.kt` — 平台差异（上下文/assets/类加载器）注入契约
   - `TvBoxSniffer.kt` — **parse=1 网页嗅探**（见下）
   - `TvBoxJsBridge.kt` / `TvBoxJsSpiderLoader.kt` — JS spider（同包并行开发的兄弟模块）
-- 取数委派：`app/src/main/java/io/legado/app/model/tvbox/`
+- 取数委派：`data/src/jvmAndAndroidMain/kotlin/io/legado/app/model/tvbox/`
   - `TvBoxSourceDelegateImpl` — 搜索/详情/目录/取播；取播失败到兜底时调 `TvBoxSniffer`
-  - `TvBoxManager` — 配置拉取、虚拟书源行同步、委派挂载
+  - `TvBoxManager` — 配置拉取、虚拟书源行同步、委派挂载、本地代理起停
 - 真机测试：`app/src/androidTest/java/io/legado/app/help/tvbox/`
 
 ## parse=1 网页嗅探（已实现）
@@ -39,28 +41,31 @@ TVBox 站点的 `playerContent` 可能回的不是视频直链，而是**播放�
 取播委派 `TvBoxSourceDelegateImpl.getContentAwait` 的顺序是：**先收直连线路**（无 WebView 开销，
 多线路仍按 `线路名::内容` 拼行），全线路都拿不到直链时才逐条走嗅探（最多 2 条），首个成功即用。
 
-## 未实现：本地 HTTP 代理 9978 与 proxy 转发
+## 本地 HTTP 代理 9978 与 proxy 转发（已实现）
 
-**理由一句话**：TVBox/FongMi 那层本地代理是为「把已嗅到的地址暴露成一个 URL 交给**外部**播放器自己去拉流」
-存在的；本仓库嗅探在进程内完成，真实 m3u8/mp4 直接交给宿主自己的 ExoPlayer 管线，中间没有跨进程播放器，
-因此没有中转需求 —— 起一个 9978 只会凭空多一段环路和多一套攻击面。
+`TvBoxLocalProxy`（同包）以 NanoHTTPD 壳监听 `/proxy`，端口自 9978 逐个尝试至 9998
+（FongMi `Server.start` 同语义），成功后回填 `com.github.catvod.Proxy` 与 `TvBoxJsProxy`
+两侧端口接线 —— 此后 jar/JS spider 构造的 `http://127.0.0.1:{port}/proxy?do=…` 才可达。
 
-具体不搬运的组件（均属上述中转形态）：
+- 起停由 `TvBoxManager` 随配置装载自动驱动：init 重载已有配置、setConfig 导入新配置时
+  `start`（幂等），clear 时 `stop`；分发语义对齐 FongMi `BaseLoader.proxy`：带 siteKey
+  按站点 key 找 Spider 实例，否则交 jar 自带 `com.github.catvod.spider.Proxy.proxy(Map)`
+  静态方法（do 值由 jar 自己定义，如 B 站的 "bili"）。
+- Android 与桌面同一链路：桌面端 `DesktopTvBoxHostPlatform` 以 URLClassLoader（父加载器为
+  应用类加载器）直载 jar，壳类由宿主 classpath 提供（parent-first），`Proxy.set` 回填的
+  端口对 jar 侧直接可见。
 
-- 本地 HTTP 服务（FongMi `app/.../server/Server` 起 NanoHTTPD 占 9978；`com.github.catvod.Proxy`
-  作地址提供）
+不需要的组件（对应能力已改为进程内实现，不经 9978）：
+
 - 静态 iframe 解析页服务（FongMi `server/process/Parse` 渲染 `app/src/main/assets/parse.html`；
   原版 `q215613905/TVBoxOS` `util/parser/SuperParse.loadHtml` 同款 HTML + `proxy://go=SuperParse&...`）
-- `Spider.proxy(Map)` 的宿主转发服务（FongMi `server/process/Proxy` → `BaseLoader.get().proxy(...)`）
+  —— type=1 json API 由 `TvBoxParse` 进程内直取，type=0 嗅探由 `TvBoxSniffer` 进程内完成。
 
-连带的两点取舍：
+连带取舍：
 
-- `com.github.catvod.Proxy` 壳类保留，但 `getPort()` 恒为 -1：那是给 jar 内代码看的既有签名，
-  保持存在比让 jar 因 `NoClassDefFoundError` 崩掉好，语义上它就是「宿主不提供代理」。
 - 站点 `ext` 里的代理串（如 `socks5 127.0.0.1:10172`）按生态语义**原样透传给 spider**：那是
-  spider 自己的私有配置，由它自己决定怎么用；宿主不代跑代理、不解释它。（因此个别站点
-  —— 实测 Gaoqing / ddys / wo4k —— 取不到数据时，缺口在它们的 spider 依赖宿主代理服务，
-  补齐就得上面的中转层，代价/收益不成立。）
+  spider 自己的私有配置，由它自己决定怎么用；宿主不代跑代理、不解释它。个别站点因此取不到
+  数据时，缺口在 spider 侧的外发代理，与 9978 链路无关。
 
 ## 未实现：JS / Python spider
 

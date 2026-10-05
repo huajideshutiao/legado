@@ -319,7 +319,7 @@ fun interface TvBoxJsSourceFetcher {
 }
 
 /**
- * 本地代理地址供应点: 与并行代理 (TvBoxLocalProxy) 的接线口。
+ * 本地代理地址供应点: 由 [TvBoxLocalProxy.start] 接线。
  * 未接线时返回空串, JS 侧 getProxy/js2Proxy 得到空值 (解析页链路走遗留豁口, 不影响直链)。
  */
 object TvBoxJsProxy {
@@ -327,9 +327,9 @@ object TvBoxJsProxy {
     var port: Int = 0
 
     @Volatile
-    var urlProvider: (() -> String)? = null
+    var urlProvider: ((Boolean) -> String)? = null
 
-    fun url(isLocal: Boolean): String = urlProvider?.invoke().orEmpty()
+    fun url(isLocal: Boolean): String = urlProvider?.invoke(isLocal).orEmpty()
 }
 
 /** JS local.* 的持久化 (对齐 FongMi method/Local: 站点级 k/v 存 SharedPreferences)。 */

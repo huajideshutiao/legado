@@ -23,6 +23,7 @@ import io.legado.app.utils.KS_JSON
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -34,7 +35,7 @@ import org.json.JSONObject
  * 即播放器换分辨率入口 (本质是换 URL, 进度由播放器保留), 直链行拼 `url,{"headers":{…}}`。
  * 全线路均非直链 (parse=1 / jx=1 / .html 播放页) 时退 [TvBoxSniffer] 网页嗅探出真实媒体地址。
  *
- * 本地代理 9978 与本轮未实现 (理由见 help/tvbox/README.md); CMS 直连站点已支持。
+ * 本地代理 9978 由 TvBoxManager 随配置装载自动起停 (Android/桌面同一链路, 见 help/tvbox/README.md)。
  */
 object TvBoxSourceDelegateImpl : VideoSourceDelegate {
 
@@ -261,9 +262,10 @@ object TvBoxSourceDelegateImpl : VideoSourceDelegate {
             if (!target.isNullOrBlank()) candidates += flag to target
         }
 
+        val parses = TvBoxManager.config?.parses.orEmpty()
         // 先按原语义收直链: 多线路一次拿全 (换线路=换 URL), 无 WebView 开销
         val direct = candidates.mapNotNull { (flag, id) ->
-            runCatching { directContent(site, spider, flag, id) }.getOrNull()
+            runCatching { directContent(site, spider, flag, id, parses) }.getOrNull()
         }
         if (direct.isNotEmpty()) {
             return@withContext if (direct.size == 1) {
@@ -274,7 +276,6 @@ object TvBoxSourceDelegateImpl : VideoSourceDelegate {
         }
         // 全线路都拿不到直链 → 逐个网页嗅探, 首个成功即用。嗅探较重 (每次一个 WebView + 超时),
         // 故只试前两条: 同一站点的线路通常同属一类页面 (一起成功或一起失败), 全量试只会拖时间。
-        val parses = TvBoxManager.config?.parses.orEmpty()
         val sniffFailures = ArrayList<String>()
         for ((flag, id) in candidates.take(MAX_SNIFF_TRIES)) {
             val content = runCatching { sniffContent(site, spider, flag, id, parses) }
@@ -300,10 +301,11 @@ object TvBoxSourceDelegateImpl : VideoSourceDelegate {
         spider: Spider,
         flag: String,
         id: String,
+        parses: List<TvBoxParse>,
     ): Pair<String, String>? {
         val p = parseResult(spider.playerContent(flag, id, emptyList()))
         val playUrl = playUrlOf(p, site)
-        if (needsParse(p) || isPlayPage(playUrl) || !playUrl.startsWith("http")) return null
+        if (needsParse(p, flag, parses) || isPlayPage(playUrl) || !playUrl.startsWith("http")) return null
         return flag.replace("::", "") to contentOf(playUrl, headerOf(p))
     }
 
@@ -363,30 +365,54 @@ object TvBoxSourceDelegateImpl : VideoSourceDelegate {
         )
     }
 
-    /** 结果指向的播放地址: playUrl 作前缀 + url (FongMi Result.getRealUrl() 同语义)。 */
+    /** 结果指向的播放地址: playUrl 作前缀 + url (FongMi Result.getRealUrl() 同语义);
+     *  url 为多清晰度数组串时取第一路地址 (形态对齐 FongMi bean/Video: ["名","址",…], 按清晰度降序)。 */
     private fun playUrlOf(root: JSONObject, site: TvBoxSite): String {
         val url = root.optString("url").trim()
+        if (url.startsWith("[")) return firstQualityUrl(url)
         if (url.startsWith("http")) return url
         val prefix = root.optString("playUrl").trim().ifBlank { site.playUrl }
         return if (prefix.isBlank()) url else prefix + url
     }
 
+    /** 多清晰度数组 `[名,址,名,址…]` 取首个 http 地址; 解析失败/无地址退回原文。 */
+    private fun firstQualityUrl(raw: String): String {
+        val arr = runCatching { JSONArray(raw) }.getOrNull() ?: return raw
+        for (i in 0 until arr.length() - 1 step 2) {
+            val candidate = arr.optString(i + 1)
+            if (candidate.startsWith("http")) return candidate
+        }
+        return raw
+    }
+
     /**
-     * 需要网页解析的标记: `parse=1` 或 `jx=1` (FongMi `bean/Result.needParse()` 逐字同义),
-     * 部分站点只写 jx 不写 parse。
+     * 需要解析的判定 (FongMi `bean/Result.isUseParse()` 同语义, 刻意非 needParse()):
+     * 配置无解析项时恒直连; playUrl 解析站前缀为空且线路命中解析 flags, 或 `jx=1`。
+     * 注意 `parse=1` 单独存在不触发解析 —— jar 常对自有代理媒体地址 (proxy?do=…) 标 parse=1,
+     * 按 needParse() 处理会把它误送网页嗅探。
      */
-    private fun needsParse(root: JSONObject): Boolean =
-        root.optInt("parse", 0) != 0 || root.optInt("jx", 0) != 0
+    private fun needsParse(root: JSONObject, flag: String, parses: List<TvBoxParse>): Boolean {
+        if (parses.isEmpty()) return false
+        if (root.optInt("jx", 0) != 0) return true
+        val parsePrefix = root.optString("playUrl").trim()
+        return parsePrefix.isEmpty() && parses.any { flag in it.flags }
+    }
 
     /**
      * 肉眼可辨的网页形态 (判据刻意保守, 只排除确定是页面的地址):
      * .html 播放页, 以及解析站形态 `?url=http` / `?v=http` (允许编码后的 https%3A)。
+     * jar 本地代理地址 (proxy?do=…) 是 jar 已处理好的媒体资源, 永不作为网页嗅探对象。
      */
     private fun isPlayPage(url: String): Boolean {
+        if (url.startsWith(proxyUrlPrefix())) return false
         if (PAGE_QUERY_PARAM.containsMatchIn(url)) return true
         val path = runCatching { java.net.URI(url).path }.getOrNull().orEmpty().lowercase()
         return path.endsWith(".html") || path.endsWith(".htm") || path.endsWith(".shtml")
     }
+
+    /** jar 本地代理地址前缀 (与 com.github.catvod.Proxy.getUrl 同构)。 */
+    private fun proxyUrlPrefix(): String =
+        "http://127.0.0.1:" + com.github.catvod.Proxy.getPort() + "/proxy"
 
     /**
      * 视频地址判据: spider 声明 `manualVideoCheck()` 时改用它自己的 `isVideoFormat()`
