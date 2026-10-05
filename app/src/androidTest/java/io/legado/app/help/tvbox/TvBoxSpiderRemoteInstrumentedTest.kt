@@ -61,7 +61,7 @@ class TvBoxSpiderRemoteInstrumentedTest {
 
     /** 加载全部可达配置 (js.json 与 0827.json 各自挂不同 jar, 装载器按站点 jar 分流)。 */
     private suspend fun loadConfigs(): List<TvBoxConfig> {
-        TvBoxManager.init(context)
+        TvBoxManager.init()
         val configs = ArrayList<TvBoxConfig>()
         val failures = ArrayList<String>()
         for (url in CONFIG_URLS) {

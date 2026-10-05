@@ -9,8 +9,7 @@ import kotlinx.coroutines.launch
 /**
  * 影视源 (TVBox) 管理页 ScreenModel。
  *
- * 状态真源是平台服务 [TvBoxServiceProviders] 的 [TvBoxUiState] (app 端由
- * AndroidTvBoxPlatform 桥接 TvBoxManager); 本类只做动作转发与首入口 init (幂等)。
+ * 状态真源是平台服务 [TvBoxServiceProviders] 的 [TvBoxUiState] (由 JvmTvBoxPlatform 桥接 TvBoxManager); 本类只做动作转发与首入口 init (幂等)。
  * 服务未注册端「我的」页入口已隐藏, state 兜底空流仅为防御。
  */
 class TvBoxScreenModel : ScreenModel {

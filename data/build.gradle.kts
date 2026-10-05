@@ -327,6 +327,8 @@ private val sharedLibs = extensions.getByType<VersionCatalogsExtension>().named(
 fun KotlinDependencyHandler.sharedJvmAndroidDeps() {
     api(sharedLibs.findLibrary("quick-chinese-transfer-core").get())
     implementation(sharedLibs.findLibrary("hutool-crypto").get())
+    // TVBox catvod 壳类 (bean/utils) 的 Gson 反序列化; 版本与 app 模块声明一致
+    implementation(sharedLibs.findLibrary("gson").get())
     api(project(":modules:quickjs"))
     api(sharedLibs.findLibrary("okhttp").get())
     implementation(sharedLibs.findLibrary("coil3-network-okhttp").get())
@@ -443,6 +445,8 @@ kotlin {
                 implementation(libs.androidx.sqlite.bundled)
                 // EpubFilePlatform.jvm 的 Skia 图片编码 (与 desktop-core 同款 skiko-awt)
                 implementation("org.jetbrains.skiko:skiko-awt:0.144.6")
+                // TVBox 配置/站点解析用 org.json (Android 走 SDK 内置, JVM 走同名构件)
+                implementation(sharedLibs.findLibrary("json").get())
             }
         }
         val nativeMain = if (enableIosTarget || enableOhosTarget) {

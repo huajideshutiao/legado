@@ -73,7 +73,7 @@ class TvBoxSnifferInstrumentedTest {
 
     /** 拉一个可达的远程配置; 失败明细随消息输出。 */
     private suspend fun loadConfig(): TvBoxConfig {
-        TvBoxManager.init(context)
+        TvBoxManager.init()
         val failures = ArrayList<String>()
         for (url in CONFIG_URLS) {
             val config = try {

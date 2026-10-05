@@ -45,7 +45,7 @@ class TvBoxJsSpiderRemoteInstrumentedTest {
 
     @Test
     fun jsSpiderChain_realHomeSearchDetailPlayer() = runBlocking {
-        TvBoxManager.init(context)
+        TvBoxManager.init()
         val config = loadConfig()
         val failures = ArrayList<String>()
         for (api in candidateApis) {

@@ -8,6 +8,7 @@ import io.legado.app.data.entities.BookListPage
 import io.legado.app.data.entities.BookSource
 import io.legado.app.model.webBook.VideoSourceDelegates
 import io.legado.app.model.webBook.WebBook
+import io.legado.app.ui.book.tvbox.JvmTvBoxPlatform
 import io.legado.app.ui.book.tvbox.TvBoxServiceProviders
 import io.legado.app.ui.book.tvbox.TvBoxSiteItem
 import io.legado.app.ui.book.tvbox.TvBoxSiteKind
@@ -32,14 +33,14 @@ import org.junit.runner.RunWith
  * 候选站点按形态排序逐个扫描 (JAR → CMS → JS), 首个取数成功者即判成功 —— 社区站点漂移快,
  * 单个站点失败不算回归。
  *
- * 锚点选择: 断言管理页的状态真源 [AndroidTvBoxPlatform.state] 与落库的书源行, 而不是像素 ——
+ * 锚点选择: 断言管理页的状态真源 [JvmTvBoxPlatform.state] 与落库的书源行, 而不是像素 ——
  * 同一份状态也是 [io.legado.app.ui.book.tvbox.TvBoxScreenModel] 的唯一数据源。
  */
 @RunWith(AndroidJUnit4::class)
 class TvBoxUiWiringInstrumentedTest {
 
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
-    private val platform = AndroidTvBoxPlatform(context)
+    private val platform = JvmTvBoxPlatform()
 
     @Test
     fun tvBoxManage_fullLoopImportToggleSearchCleanup() = runBlocking {

@@ -62,7 +62,6 @@ import io.legado.app.model.fileBook.FileBook
 import io.legado.app.help.extension.AndroidMangaExtensionHost
 import io.legado.app.help.extension.MangaExtensionHostProviders
 import io.legado.app.model.manga.AndroidMangaExtensionPlatform
-import io.legado.app.model.tvbox.AndroidTvBoxPlatform
 import io.legado.app.receiver.MediaButtonReceiver
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.service.ExportBookService
@@ -82,6 +81,7 @@ import io.legado.app.ui.book.manga.AndroidMangaReaderPlatform
 import io.legado.app.ui.book.manga.MangaReaderScreenModel
 import io.legado.app.ui.book.manga.extension.MangaExtensionServiceProviders
 import io.legado.app.ui.book.read.AndroidReaderPlatformProvider
+import io.legado.app.ui.book.tvbox.JvmTvBoxPlatform
 import io.legado.app.ui.book.tvbox.TvBoxServiceProviders
 import io.legado.app.ui.book.read.ReaderPlatformProviders
 import io.legado.app.ui.book.read.ReaderScreenModelRegistry
@@ -636,8 +636,9 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
         // 平台面经 MangaExtensionHostProviders 注入 PackageManager 装载/安装/广播)
         MangaExtensionHostProviders.register(AndroidMangaExtensionHost(applicationContext))
         MangaExtensionServiceProviders.register(AndroidMangaExtensionPlatform(applicationContext))
-        // 影视源服务 (管理页; 桥接 TvBoxManager, 仅 Android —— jar 装载依赖 DexClassLoader)
-        TvBoxServiceProviders.register(AndroidTvBoxPlatform(applicationContext))
+        // 影视源服务 (管理页; 桥接 TvBoxManager, jvmAndAndroidMain 实现 Android/桌面共用,
+        // 平台差异经 TvBoxPlatforms 钩子注入)
+        TvBoxServiceProviders.register(JvmTvBoxPlatform())
         videoPlayProvider = AndroidVideoPlayPlatformProvider(this)
             .also { VideoPlayPlatformProviders.register(it) }
         // 小窗内播放/暂停钮的广播通道 (系统 RemoteAction 触发); setPackage 限定自身,
