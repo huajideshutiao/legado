@@ -78,7 +78,7 @@ import io.legado.app.model.BookCoverShared
 import io.legado.app.model.CacheBook
 import io.legado.app.model.fileBook.registerAndroidFileBookProviders
 import io.legado.app.model.fileBook.registerEpubApplicationContext
-import io.legado.app.model.manga.AndroidMangaPluginImageFetcher
+import io.legado.app.model.manga.JvmMangaPluginImageFetcher
 import io.legado.app.model.registerAndroidAudioPlayProviders
 import io.legado.app.model.registerAndroidReadBookPlatform
 import io.legado.app.model.registerAndroidRealScreen
@@ -183,8 +183,8 @@ class App : Application() {
         // 注册插件源图片获取 (commonMain MangaImageBytesLoader 的插件源分支经
         // MangaPluginImageFetcherProviders 委托扩展自身 client 下载图片, 扩展拦截器
         // — 禁漫图片分割重排等 — 才能生效); 须在 MangaExtensionManager 源注册表
-        // 可用之后, 图片加载首次触发之前
-        MangaPluginImageFetcherProviders.register(AndroidMangaPluginImageFetcher())
+        // 可用之后, 图片加载首次触发之前 (实现 JVM+Android 共用, 桌面端同构注册)
+        MangaPluginImageFetcherProviders.register(JvmMangaPluginImageFetcher())
         // 注册 RegexErrorHandler (longToastOnUi/saveCrashInfo2File/restart),
         // 供 shared androidMain 的 AndroidRegexReplacer 在替换超时分支调用;
         // 须在 registerAndroidWebBookProviders 之前 (任何 RegexReplacers.get().replace 之前)

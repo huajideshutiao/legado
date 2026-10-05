@@ -320,7 +320,7 @@ internal object ExtensionLoader {
         if (signatures.isEmpty()) {
             AppLog.put("扩展未签名: $pkgName")
             return notLoaded(MangaExtension.NotLoaded.Reason.Unsigned, libVersion)
-        } else if (!TrustHelper.isTrusted(pkgInfo, signatures)) {
+        } else if (!TrustHelper.isTrusted(pkgName, versionCode, signatures)) {
             AppLog.put("扩展签名未受信任: $pkgName")
             return notLoaded(MangaExtension.NotLoaded.Reason.Untrusted(signatures.last()), libVersion)
         }

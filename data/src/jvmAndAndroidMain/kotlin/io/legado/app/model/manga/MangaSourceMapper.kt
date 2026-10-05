@@ -10,7 +10,6 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.VirtualPluginSourcePrefix
 import io.legado.app.help.image.PluginImageUrl
-import io.legado.app.utils.NetworkUtils
 import java.net.URLDecoder
 import java.net.URLEncoder
 

@@ -59,6 +59,8 @@ import io.legado.app.help.storage.Backup
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.fileBook.FileBook
+import io.legado.app.help.extension.AndroidMangaExtensionHost
+import io.legado.app.help.extension.MangaExtensionHostProviders
 import io.legado.app.model.manga.AndroidMangaExtensionPlatform
 import io.legado.app.model.tvbox.AndroidTvBoxPlatform
 import io.legado.app.receiver.MediaButtonReceiver
@@ -630,7 +632,9 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
         ReaderPlatformProviders.register(readerPlatform)
         AudioPlayPlatformProviders.register(SharedAudioPlayPlatformProvider)
         MangaReaderScreenModel.Providers.register(AndroidMangaReaderPlatform)
-        // 漫画插件服务 (管理页/搜索筛选条; 桥接 MangaExtensionManager, 仅 Android)
+        // 漫画插件服务 (管理页/搜索筛选条; 状态组装已下沉 ui 层 SharedMangaExtensionPlatform,
+        // 平台面经 MangaExtensionHostProviders 注入 PackageManager 装载/安装/广播)
+        MangaExtensionHostProviders.register(AndroidMangaExtensionHost(applicationContext))
         MangaExtensionServiceProviders.register(AndroidMangaExtensionPlatform(applicationContext))
         // 影视源服务 (管理页; 桥接 TvBoxManager, 仅 Android —— jar 装载依赖 DexClassLoader)
         TvBoxServiceProviders.register(AndroidTvBoxPlatform(applicationContext))

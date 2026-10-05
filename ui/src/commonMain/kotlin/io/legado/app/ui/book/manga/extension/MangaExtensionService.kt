@@ -50,9 +50,6 @@ interface MangaExtensionService {
     /** 信任未签名校验通过的插件 (按包名, 未信任确认弹窗确认后调用)。 */
     fun trust(pkgName: String)
 
-    /** 当前展示语言过滤 (空集=全部; 持久化于插件偏好, 随备份进出)。 */
-    val selectedLanguages: Set<String>
-
     /** 设置展示语言过滤并触发可用列表重算。 */
     fun setLanguages(languages: Set<String>)
 
@@ -157,6 +154,10 @@ data class MangaExtensionUiState(
     /** 已装但未装载出源 (未信任/被过滤/失败...), 卸载/信任操作对其生效 */
     val notLoaded: List<MangaExtensionItem> = emptyList(),
     val available: List<MangaExtensionItem> = emptyList(),
+    /** 可用插件的语言全集 (未按语言筛选, 语言 chips 数据源恒完整)。 */
+    val availableLanguages: Set<String> = emptySet(),
+    /** 当前语言筛选 (空集=全部, 单选语义; 语言 chips 选中态与可用列表过滤同源)。 */
+    val selectedLanguages: Set<String> = emptySet(),
     val repos: List<MangaRepoItem> = emptyList(),
     val installSteps: Map<String, MangaInstallState> = emptyMap(),
     /**

@@ -81,7 +81,8 @@ private val NsfwBadgeColor = Color(0xFFF53F3F)
 /**
  * 漫画插件管理页 (shared, app + 桌面共用; 服务未注册端入口隐藏不会进入)。
  *
- * 语言筛选条常驻标题栏下方 (仅多语言时展示)。列表分区自上而下: 未信任 (确认后
+ * 语言筛选条常驻标题栏下方 (仅多语言时展示, 单选语义: 点选只留该语言, 再点同语言
+ * 无动作, 点「全部」回到全部; chips 数据源恒为未筛选全集, 不随筛选隐藏)。列表分区自上而下: 未信任 (确认后
  * 信任) → 未装载原因 (直接展示) → 可更新 → 已装 (按语言分组) → 可用。安装/更新
  * 进度经 state.installSteps 呈现, 进行中点动作钮为取消。仓库入口 (六边形设置图标)
  * 收进标题栏。
@@ -97,9 +98,8 @@ fun MangaExtensionScreen(
     onUninstall: (String) -> Unit,
     onTrust: (String) -> Unit,
     onRefresh: () -> Unit,
-    selectedLanguages: Set<String>,
-    onToggleLanguage: (String) -> Unit,
-    onClearLanguages: () -> Unit,
+    /** 单选语言筛选, null=全部 (清空筛选)。 */
+    onSelectLanguage: (String?) -> Unit,
     /** 插件自带配置对话框状态 (null=未打开); 平台未实现配置契约时恒 null。 */
     prefDialog: MangaPrefDialogState? = null,
     onOpenPrefDialog: (String) -> Unit = {},
@@ -121,11 +121,6 @@ fun MangaExtensionScreen(
     val availableText = stringResource(Res.string.manga_extension_available)
     val languagesTitle = stringResource(Res.string.manga_extension_languages)
     val settingText = stringResource(Res.string.manga_extension_setting)
-
-    // 语言筛选 chips (点选即生效, 「全部」即清空), 仅存在多语言时展示筛选条
-    val availableLangs = remember(state.available) {
-        state.available.mapTo(sortedSetOf("all")) { it.lang ?: "all" }
-    }
 
     // 确认弹窗待操作包名 (信任/卸载共用各自弹窗)
     var pendingTrustPkg by remember { mutableStateOf<String?>(null) }
@@ -152,16 +147,23 @@ fun MangaExtensionScreen(
                 }
             },
         )
-        if (availableLangs.size > 1) {
+        // 语言筛选 chips: 单选语义 (点选只留该语言, 再点同语言无动作, 点「全部」回到全部),
+        // 数据源恒为未筛选全集, 不随筛选隐藏 (仅多语言时展示)
+        if (state.availableLanguages.size > 1) {
             AppChipRow {
                 AppChipRowTitle(text = languagesTitle)
-                availableLangs.forEach { lang ->
-                    val selected = (lang == "all" && selectedLanguages.isEmpty()) || lang in selectedLanguages
+                state.availableLanguages.forEach { lang ->
+                    val selected =
+                        (lang == "all" && state.selectedLanguages.isEmpty()) || lang in state.selectedLanguages
                     AppChipRowOption(
                         text = lang,
                         selected = selected,
                         onClick = {
-                            if (lang == "all") onClearLanguages() else onToggleLanguage(lang)
+                            when {
+                                lang in state.selectedLanguages -> Unit
+                                lang == "all" -> onSelectLanguage(null)
+                                else -> onSelectLanguage(lang)
+                            }
                         },
                     )
                 }

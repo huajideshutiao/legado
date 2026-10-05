@@ -14,9 +14,11 @@ import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.online.HttpSource
 import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
+import io.legado.app.help.extension.AndroidMangaExtensionHost
 import io.legado.app.help.extension.model.InstallStep
 import io.legado.app.help.extension.model.MangaExtension
 import io.legado.app.help.extension.util.ExtensionLoader
+import io.legado.app.help.extension.MangaExtensionHostProviders
 import io.legado.app.constant.BookSourceType
 import io.legado.app.model.anime.AnimePluginSources
 import io.legado.app.model.anime.AnimeSourceMapper
@@ -43,7 +45,8 @@ class MangaExtensionRemoteInstrumentedTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
     private suspend fun installRemote(name: String): Pair<MangaExtension.Loaded, io.legado.app.data.entities.BookSource> {
-        MangaExtensionManager.init(context)
+        MangaExtensionHostProviders.register(AndroidMangaExtensionHost(context))
+        MangaExtensionManager.init()
         MangaExtensionManager.findAvailableExtensions()
         val target = MangaExtensionManager.availableExtensions.value
             .firstOrNull { it.name.equals(name, ignoreCase = true) }

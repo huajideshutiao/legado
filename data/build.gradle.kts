@@ -332,6 +332,8 @@ fun KotlinDependencyHandler.sharedJvmAndroidDeps() {
     implementation(sharedLibs.findLibrary("coil3-network-okhttp").get())
     implementation(sharedLibs.findLibrary("nanohttpd-nanohttpd").get())
     implementation(sharedLibs.findLibrary("nanohttpd-websocket").get())
+    // Mihon index.pb (index_v2) 仓库索引解析 (help.extension.repo.RepoHelper)
+    implementation(sharedLibs.findLibrary("kotlinx-serialization-protobuf").get())
     // keiyoushi 扩展兼容层 (eu.kanade.tachiyomi.*) 的 DI; 扩展 dex 运行时按宿主 classpath 解析 Injekt,
     // 桌面端加载器亦需, 故 api (catalog 注释: fork 含 uy.kohesive.injekt.api 包面)
     api(sharedLibs.findLibrary("injekt-core").get())

@@ -122,18 +122,12 @@ class MangaExtensionScreenModel : ScreenModel {
         service?.trust(pkgName)
     }
 
-    val selectedLanguages: Set<String> = service?.selectedLanguages ?: emptySet()
-
     fun setLanguages(languages: Set<String>) {
         service?.setLanguages(languages)
     }
 
-    fun toggleLanguage(language: String) {
-        val current = service?.selectedLanguages ?: return
-        setLanguages(if (language in current) current - language else current + language)
-    }
-
-    fun clearLanguages() {
-        setLanguages(emptySet())
+    /** 单选语言筛选: null=全部 (空集), 其余=仅保留该语言; 语言 chips 点选转发。 */
+    fun selectLanguage(language: String?) {
+        setLanguages(language?.let { setOf(it) } ?: emptySet())
     }
 }
