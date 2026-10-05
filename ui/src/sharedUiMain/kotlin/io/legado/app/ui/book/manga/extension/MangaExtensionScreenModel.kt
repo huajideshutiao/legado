@@ -9,17 +9,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * 插件自带配置对话框状态: 打开即 loading, 平台读完 shim PreferenceScreen 后回填 [items]。
- */
-data class MangaPrefDialogState(
-    val pkgName: String,
-    val loading: Boolean = true,
-    /** 平台读取配置失败 (区别于"确无配置项"), UI 显示错误文案而非空表 */
-    val failed: Boolean = false,
-    val items: List<MangaPrefItem> = emptyList(),
-)
-
-/**
  * 漫画插件管理页 ScreenModel。
  *
  * 状态真源是平台服务 [MangaExtensionServiceProviders] 的 [MangaExtensionUiState]

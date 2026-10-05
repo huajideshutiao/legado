@@ -3,7 +3,9 @@ package io.legado.app.help
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.BaseSource
+import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.isVirtualPluginSource
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.root.AppNavigatorProviders
@@ -97,6 +99,19 @@ private fun dispatchSourceLogin(
     book: BaseBook?,
     chapter: BookChapter?,
 ) {
+    if (source is BookSource && source.isVirtualPluginSource()) {
+        // 插件虚拟源: 登录 = 直接弹归属扩展自带设置对话框 (行 loginUrl 存包名, 仅可配置
+        // 扩展写入), 覆盖书源列表/发现页/详情页/阅读器全部登录入口, 不进插件管理页
+        source.loginUrl?.let { pkg ->
+            AppNavigatorProviders.get().showOverlay(
+                AppOverlay.Dialog(
+                    key = "extensionPref",
+                    payload = pkg,
+                )
+            )
+        }
+        return
+    }
     if (source.loginUi.isNullOrEmpty()) {
         // URL 登录: 原版 startActivity<WebViewActivity> { url/title/sourceName/sourceOrigin/
         // sourceType/isLogin }, 标题栏文案与源标识全程带着走

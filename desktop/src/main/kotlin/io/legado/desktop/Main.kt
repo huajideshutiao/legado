@@ -38,6 +38,7 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.registerJvmDebugState
 import io.legado.app.help.file.desktopResolveStoredRef
 import io.legado.app.help.extension.MangaExtensionHostProviders
+import io.legado.app.help.extension.MangaExtensionManager
 import io.legado.app.help.image.decodeBytesSampled
 import io.legado.app.help.image.registerJvmBookImageLoader
 import io.legado.app.help.image.registerReaderImageResolver
@@ -500,8 +501,11 @@ private fun runDesktopApp() = application {
     MangaReaderScreenModel.Providers.register(DesktopMangaReaderPlatform)
     VideoPlayPlatformProviders.register(MediampVideoPlayPlatformProvider(windowHandle))
     // 漫画插件宿主 (扩展目录扫描 + dex2jar 装载; 兼容层 Injekt 绑定/取数委派/图片获取/
-    // 管理页服务已在 DesktopCore.registerRestProviders 同步注册, 装载由管理页 UI 首入口触发)
+    // 管理页服务已在 DesktopCore.registerRestProviders 同步注册)
     MangaExtensionHostProviders.register(DesktopMangaExtensionHost())
+    // 启动即装载扩展注册表 (后台异步): 虚拟行同步/登录标记/取数委派依赖注册表内存态,
+    // 不能等首次进插件管理页才装载 (Android/桌面同语义)
+    MangaExtensionManager.init()
 
     // ==================== 阶段2: 显示窗口 ====================
     // 启动闪屏已在阶段0 后、阶段1 重注册前显示 (见上方 splashScreen / 阶段1 块):

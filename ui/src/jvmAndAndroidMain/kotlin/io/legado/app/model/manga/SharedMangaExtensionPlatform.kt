@@ -9,6 +9,7 @@ import io.legado.app.help.extension.model.MangaExtension
 import io.legado.app.help.extension.MangaExtensionManager
 import io.legado.app.help.extension.model.MangaExtensionRepo
 import io.legado.app.help.extension.model.RepoKind
+import io.legado.app.model.plugin.pluginInstalledOf
 import io.legado.app.ui.book.manga.extension.MangaContentWarning
 import io.legado.app.ui.book.manga.extension.MangaExtensionItem
 import io.legado.app.ui.book.manga.extension.MangaExtensionKind
@@ -104,7 +105,7 @@ open class SharedMangaExtensionPlatform(
                 available = available
                     .filter { langs.isEmpty() || it.lang in langs || "all" in langs }
                     .map { it.toItem() },
-                availableLanguages = available.mapTo(sortedSetOf("all")) { it.lang ?: "all" },
+                availableLanguages = available.mapTo(sortedSetOf("all")) { it.lang },
                 selectedLanguages = langs,
                 repos = repos.map { MangaRepoItem(it.name, it.indexUrl, it.signingKeyFingerprint) },
                 installSteps = steps,
@@ -143,7 +144,7 @@ open class SharedMangaExtensionPlatform(
     }
 
     override fun update(pkgName: String) {
-        val extension = MangaPluginSources.installedOf(pkgName) ?: return
+        val extension = pluginInstalledOf(pkgName) ?: return
         collectInstallStep(pkgName, MangaExtensionManager.updateExtension(extension))
     }
 
@@ -153,7 +154,7 @@ open class SharedMangaExtensionPlatform(
     }
 
     override fun uninstall(pkgName: String) {
-        val extension = MangaPluginSources.installedOf(pkgName) ?: return
+        val extension = pluginInstalledOf(pkgName) ?: return
         MangaExtensionManager.uninstallExtension(extension)
     }
 

@@ -756,6 +756,9 @@ private fun DialogOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavig
         "photo" -> PhotoOverlayDialogContent(overlay, navigator)
         "group_select" -> GroupSelectDialogContent(overlay, navigator)
         "sourceLogin" -> SourceLoginOverlayContent(overlay, navigator)
+        // 插件虚拟源登录直达: 单扩展自带设置弹窗 (payload=归属扩展包名, 见
+        // ExtensionPrefOverlayDialog.kt; 不进插件管理页)
+        "extensionPref" -> ExtensionPrefOverlayContent(overlay, navigator)
         // 源/书变量编辑 (对照原版 VariableDialog; payload 携带实体, 见 VariableOverlayDialog.kt)
         "sourceVariable" -> SourceVariableOverlayDialogContent(overlay, navigator)
         "bookVariable" -> BookVariableOverlayDialogContent(overlay, navigator)

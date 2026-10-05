@@ -61,6 +61,7 @@ import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.help.extension.AndroidMangaExtensionHost
 import io.legado.app.help.extension.MangaExtensionHostProviders
+import io.legado.app.help.extension.MangaExtensionManager
 import io.legado.app.model.manga.AndroidMangaExtensionPlatform
 import io.legado.app.receiver.MediaButtonReceiver
 import io.legado.app.service.BaseReadAloudService
@@ -636,6 +637,9 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
         // 平台面经 MangaExtensionHostProviders 注入 PackageManager 装载/安装/广播)
         MangaExtensionHostProviders.register(AndroidMangaExtensionHost(applicationContext))
         MangaExtensionServiceProviders.register(AndroidMangaExtensionPlatform(applicationContext))
+        // 启动即装载扩展注册表 (后台异步): 虚拟行同步/登录标记/取数委派都依赖注册表内存态,
+        // 不能等首次进插件管理页才装载 (2026-10-05 用户拍板回归启动装载)
+        MangaExtensionManager.init()
         // 影视源服务 (管理页; 桥接 TvBoxManager, jvmAndAndroidMain 实现 Android/桌面共用,
         // 平台差异经 TvBoxPlatforms 钩子注入)
         TvBoxServiceProviders.register(JvmTvBoxPlatform())

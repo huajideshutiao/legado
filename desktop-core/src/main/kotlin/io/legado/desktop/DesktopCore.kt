@@ -304,8 +304,7 @@ object DesktopCore {
         //     WebBookProvidersImpl 委派注册 + MainActivity 插件服务注册):
         //     - 兼容层 Injekt 绑定必须先于任何扩展类加载 (keiyoushi.utils 顶层属性 <clinit> Injekt.get)
         //     - 委派/图片获取为无状态注册; 服务是「我的」页入口显隐判据, 同步注册保证首组合可见;
-        //       装载由管理页 UI 首入口触发 (宿主 DesktopMangaExtensionHost 在 :desktop Main.kt 注册,
-        //       headless 无装载能力)
+        //       装载由启动 init (桌面 Main.kt 宿主注册后触发) 驱动, headless 无宿主时静默跳过
         registerDesktopExtensionCompat()
         MangaSourceDelegates.register(MangaSourceDelegateImpl)
         VideoSourceDelegates.register(VideoSourceDelegateImpl)
