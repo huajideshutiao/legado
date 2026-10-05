@@ -3,9 +3,9 @@ package io.legado.app.ui.book.manga.extension
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -42,11 +41,14 @@ import io.legado.app.help.image.BookImageLoaders
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppCheckbox
-import io.legado.app.ui.compose.component.AppFilletTextButton
+import io.legado.app.ui.compose.component.AppChipRow
+import io.legado.app.ui.compose.component.AppChipRowOption
+import io.legado.app.ui.compose.component.AppChipRowTitle
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.component.AppTitleBar
+import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.ui.generated.resources.Res
@@ -151,28 +153,17 @@ fun MangaExtensionScreen(
             },
         )
         if (availableLangs.size > 1) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                AppFilletTextButton(
-                    text = languagesTitle,
-                    bold = true,
-                )
-                Spacer(Modifier.width(8.dp))
+            AppChipRow {
+                AppChipRowTitle(text = languagesTitle)
                 availableLangs.forEach { lang ->
                     val selected = (lang == "all" && selectedLanguages.isEmpty()) || lang in selectedLanguages
-                    AppFilletTextButton(
-                        text = if (selected) "✓ $lang" else lang,
-                        bold = selected,
+                    AppChipRowOption(
+                        text = lang,
+                        selected = selected,
                         onClick = {
                             if (lang == "all") onClearLanguages() else onToggleLanguage(lang)
                         },
                     )
-                    Spacer(Modifier.width(8.dp))
                 }
             }
         }
@@ -196,7 +187,7 @@ fun MangaExtensionScreen(
                 Text(emptyText, color = colors.secondaryText)
             }
         } else {
-            LazyColumn(Modifier.fillMaxSize()) {
+            FastScrollLazyColumn(Modifier.fillMaxSize()) {
                 if (untrusted.isNotEmpty()) {
                     item(key = "sec_untrusted") { SectionHeader(untrustedTitle) }
                     items(untrusted, key = { "u_${it.pkgName}" }) { item ->
@@ -647,8 +638,9 @@ private fun ExtensionPrefDialog(
 }
 
 /**
- * 配置项单行: 标题/摘要在上、当前值或控件在下 (左右排会因长摘要与长值互相挤压),
- * 整行可点, 点击按 [MangaPrefItem.value] 类型分派编辑/选择, 开关可额外直接拨动。
+ * 配置项单行: 开关行标题/摘要居左、开关居右; 其余类型标题/摘要在上、当前值或控件在下
+ * (长摘要与长值左右排会互相挤压)。整行可点, 点击按 [MangaPrefItem.value] 类型分派
+ * 编辑/选择, 开关行点击即切换、也可直接拨动。
  */
 @Composable
 private fun PrefItemRow(
@@ -663,19 +655,8 @@ private fun PrefItemRow(
     val enabled = item.writable
     val summary = item.displaySummary()
 
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clickable(enabled = enabled) {
-                when (val v = item.value) {
-                    is MangaPrefValue.Flag -> onToggleFlag(!v.value)
-                    is MangaPrefValue.Choice -> choiceExpanded = true
-                    is MangaPrefValue.MultiChoice -> onEditMulti()
-                    is MangaPrefValue.Text -> onEditText(v.value)
-                }
-            }
-            .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingDefault),
-    ) {
+    // 标题 + 摘要 (开关行居左, 其余行居上, 同一段渲染)
+    val header: @Composable ColumnScope.() -> Unit = {
         Text(
             text = item.title,
             color = colors.primaryText,
@@ -684,14 +665,42 @@ private fun PrefItemRow(
         summary?.takeIf { it.isNotBlank() }?.let {
             Text(text = it, color = colors.secondaryText, fontSize = 12.sp)
         }
-        when (val value = item.value) {
-            is MangaPrefValue.Flag -> AppSwitch(
-                checked = value.value,
+    }
+
+    val flag = item.value as? MangaPrefValue.Flag
+    if (flag != null) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable(enabled = enabled) { onToggleFlag(!flag.value) }
+                .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingDefault),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f), content = header)
+            Spacer(Modifier.width(DesignTokens.spacingMd))
+            AppSwitch(
+                checked = flag.value,
                 onCheckedChange = onToggleFlag,
                 enabled = enabled,
-                modifier = Modifier.padding(top = DesignTokens.spacingXs),
             )
-
+        }
+        return
+    }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled) {
+                when (val v = item.value) {
+                    is MangaPrefValue.Choice -> choiceExpanded = true
+                    is MangaPrefValue.MultiChoice -> onEditMulti()
+                    is MangaPrefValue.Text -> onEditText(v.value)
+                    else -> {}
+                }
+            }
+            .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingDefault),
+    ) {
+        header()
+        when (val value = item.value) {
             is MangaPrefValue.Choice -> {
                 Text(
                     text = item.selectedEntryText() ?: value.value,

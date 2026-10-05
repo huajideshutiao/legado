@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.CircularProgressIndicator
@@ -36,6 +35,7 @@ import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.component.AppTitleBar
+import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.theme.AppTheme
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.add
@@ -132,7 +132,7 @@ fun TvBoxManageScreen(
                 }
             },
         )
-        LazyColumn(Modifier.fillMaxSize()) {
+        FastScrollLazyColumn(Modifier.fillMaxSize()) {
             if (state.loading) {
                 item(key = "loading") {
                     Row(

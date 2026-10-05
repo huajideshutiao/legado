@@ -1,25 +1,17 @@
 package io.legado.app.ui.book.manga.extension
 
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import eu.kanade.tachiyomi.source.model.FilterList
 import io.legado.app.data.entities.BookSource
 import io.legado.app.ui.book.search.SearchScope
-import io.legado.app.ui.compose.component.AppFilletTextButton
-import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.compose.component.AppChipRow
+import io.legado.app.ui.compose.component.AppChipRowOption
+import io.legado.app.ui.compose.component.AppChipRowTitle
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.manga_search_filters
 import org.jetbrains.compose.resources.stringResource
@@ -30,7 +22,7 @@ import org.jetbrains.compose.resources.stringResource
  * 在当前搜索范围内识别插件源 (虚拟 BookSource 行), 有则逐源渲染一颗 chip;
  * 点开 [MangaFilterDialog] 直接回填 Filter 状态 (与取数委派同一实例), 关闭即触发
  * onFiltersChanged 重搜。无插件源/服务未注册端渲染为零行。
- * 行内边距与 chip 间距对齐 SearchOptionsRow (spacingDefault/spacingXs + fillet 自带 inset)。
+ * chip 行样式 (行边距/间距/选中态) 收拢在共享 AppChipRow。
  */
 @Composable
 fun MangaSearchFilterRow(
@@ -51,22 +43,10 @@ fun MangaSearchFilterRow(
     var openSource by remember { mutableStateOf<BookSource?>(null) }
     var openFilters by remember { mutableStateOf<FilterList?>(null) }
 
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingXs),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // 标题 chip (对齐 SearchOptionChip 标题: 0.8 粗体)
-        AppFilletTextButton(
-            text = stringResource(Res.string.manga_search_filters),
-            alpha = 0.8f,
-            bold = true,
-        )
+    AppChipRow {
+        AppChipRowTitle(text = stringResource(Res.string.manga_search_filters))
         pluginSources.forEach { source ->
-            Spacer(Modifier.width(DesignTokens.spacingXs))
-            AppFilletTextButton(
+            AppChipRowOption(
                 text = source.bookSourceName,
                 onClick = { openSource = source },
             )

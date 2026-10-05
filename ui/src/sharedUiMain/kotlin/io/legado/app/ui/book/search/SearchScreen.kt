@@ -3,7 +3,6 @@ package io.legado.app.ui.book.search
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -82,6 +81,9 @@ import io.legado.app.ui.bookshelf.toCoverBook
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppCheckbox
+import io.legado.app.ui.compose.component.AppChipRow
+import io.legado.app.ui.compose.component.AppChipRowOption
+import io.legado.app.ui.compose.component.AppChipRowTitle
 import io.legado.app.ui.compose.component.AppFilletTextButton
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppSearchField
@@ -630,34 +632,25 @@ private fun SearchOptionsRow(
     Column(Modifier.fillMaxWidth()) {
         options.forEach { option ->
             key(option.name) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingXs),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+                AppChipRow {
                     if (option.multiSelect) {
                         // 对齐原版 setUpExploreOptions 多选: title + 已选 chip,
                         // 任一 chip 点击均打开多选对话框 (整行点击区域)
-                        SearchOptionChip(
+                        AppChipRowTitle(
                             text = option.name,
-                            bold = true,
                             onClick = { dialogOptionName = option.name },
                         )
                         option.options.forEach { (label, value) ->
                             if (value in option.selectedValues) {
-                                Spacer(Modifier.width(DesignTokens.spacingXs))
-                                SearchOptionChip(
+                                AppChipRowOption(
                                     text = label,
                                     onClick = { dialogOptionName = option.name },
                                 )
                             }
                         }
                     } else {
-                        SearchOptionChip(
+                        AppChipRowTitle(
                             text = option.name,
-                            bold = true,
                             onClick = {
                                 if (option.resetToDefault()) {
                                     localVersion++
@@ -665,9 +658,8 @@ private fun SearchOptionsRow(
                                 }
                             },
                         )
-                        Spacer(Modifier.width(DesignTokens.spacingXs))
                         option.options.forEach { (label, value) ->
-                            SearchOptionChip(
+                            AppChipRowOption(
                                 text = label,
                                 selected = option.selectedValue == value,
                                 onClick = {
@@ -681,7 +673,6 @@ private fun SearchOptionsRow(
                                     }
                                 },
                             )
-                            Spacer(Modifier.width(DesignTokens.spacingXs))
                         }
                     }
                 }
@@ -703,26 +694,6 @@ private fun SearchOptionsRow(
             },
         )
     }
-}
-
-/**
- * 搜索选项 chip: 收拢到共享 [AppFilletTextButton] (对应原版 setUpExploreOptions 的
- * item_fillet_text + selector_fillet_btn_bg)。标题加粗+0.8 透明, 选中项全亮, 未选中半透明
- * (alpha 作用于整颗 chip 含背景, 对齐原版 setUpExploreOptions 语义)。
- */
-@Composable
-private fun SearchOptionChip(
-    text: String,
-    bold: Boolean = false,
-    selected: Boolean = true,
-    onClick: () -> Unit,
-) {
-    AppFilletTextButton(
-        text = text,
-        alpha = if (bold) 0.8f else if (selected) 1f else 0.5f,
-        bold = bold,
-        onClick = onClick,
-    )
 }
 
 @Composable

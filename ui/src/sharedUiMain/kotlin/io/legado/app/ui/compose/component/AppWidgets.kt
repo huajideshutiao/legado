@@ -98,7 +98,7 @@ internal val filletChipPaddingV = DesignTokens.spacingMd
  * activity_source_debug) 在 Compose 下统一收拢到本组件：基础样式 (字色/内边距/背景/圆角/字号)
  * 一律组件内定，调用点不传；只有语义差异走参数：
  * - [alpha]/[bold]：对齐 setUpExploreOptions 标题 chip 与搜索选项的 0.8/1.0/0.5 语义
- *   (KindChip 组名 label、SearchOptionChip 选中/未选中、ExploreOptionsRow 标题)
+ *   (AppChipRow 标题/选项、ExploreOptionsRow 标题)
  * - [onLongClick]：收藏/历史词长按删除等
  * - [onClick] 为 null 时纯展示不可点 (书籍详情分类组名 label)
  * - [focusable] 为 false 时桌面端不抢输入法焦点 (书源调试 HelpPanel 场景)

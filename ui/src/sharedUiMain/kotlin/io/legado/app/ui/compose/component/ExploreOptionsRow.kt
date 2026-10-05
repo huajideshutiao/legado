@@ -1,11 +1,9 @@
 package io.legado.app.ui.compose.component
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -18,7 +16,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalDensity
@@ -32,8 +29,7 @@ import legado.ui.generated.resources.ok
 import legado.ui.generated.resources.search
 import org.jetbrains.compose.resources.stringResource
 
-// chip 透明度: 对照 app 端 ExploreOptionView ALPHA_TITLE / ALPHA_SELECTED / ALPHA_UNSELECTED
-private const val OPTION_ALPHA_TITLE = 0.8f
+// chip 透明度: 对照 app 端 ExploreOptionView ALPHA_SELECTED / ALPHA_UNSELECTED (标题 0.8 收拢在 AppChipRowTitle)
 private const val OPTION_ALPHA_SELECTED = 1.0f
 private const val OPTION_ALPHA_UNSELECTED = 0.5f
 
@@ -72,42 +68,31 @@ fun ExploreOptionsRow(
     Column(Modifier.fillMaxWidth()) {
         rows.forEach { (option, selectedValues, selectedValue) ->
             key(option.name) {
-                val rowScrollState = rememberScrollState()
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rowScrollState)
-                        .horizontalMouseWheel(rowScrollState)
-                        // 多选整行可点 (对照 bindMultiSelect 的 row.setOnClickListener, 扩大点击区)
-                        .then(
-                            if (option.multiSelect) {
-                                Modifier.clickable { dialogOptionName = option.name }
-                            } else {
-                                Modifier
-                            }
-                        )
-                        .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingXs),
-                    verticalAlignment = Alignment.CenterVertically,
+                AppChipRow(
+                    // 多选整行可点 (对照 bindMultiSelect 的 row.setOnClickListener, 扩大点击区)
+                    modifier = if (option.multiSelect) {
+                        Modifier.clickable { dialogOptionName = option.name }
+                    } else {
+                        Modifier
+                    },
                 ) {
                     if (option.multiSelect) {
                         // 标题 chip 与已选 chip 行为一致 (都开对话框), 对照 addTitleChip(onClick = null)
-                        AppFilletTextButton(
+                        AppChipRowTitle(
                             text = option.name,
-                            modifier = Modifier.alpha(OPTION_ALPHA_TITLE),
                             onClick = { dialogOptionName = option.name },
                         )
                         option.options.forEach { (label, value) ->
                             if (value in selectedValues) {
-                                AppFilletTextButton(
+                                AppChipRowOption(
                                     text = label,
                                     onClick = { dialogOptionName = option.name },
                                 )
                             }
                         }
                     } else {
-                        AppFilletTextButton(
+                        AppChipRowTitle(
                             text = option.name,
-                            modifier = Modifier.alpha(OPTION_ALPHA_TITLE),
                             onClick = {
                                 if (option.resetToDefault()) {
                                     revision++
@@ -116,15 +101,9 @@ fun ExploreOptionsRow(
                             },
                         )
                         option.options.forEach { (label, value) ->
-                            AppFilletTextButton(
+                            AppChipRowOption(
                                 text = label,
-                                modifier = Modifier.alpha(
-                                    if (selectedValue == value) {
-                                        OPTION_ALPHA_SELECTED
-                                    } else {
-                                        OPTION_ALPHA_UNSELECTED
-                                    }
-                                ),
+                                selected = selectedValue == value,
                                 onClick = {
                                     if (option.selectedValue != value) {
                                         option.selectedValue = value
