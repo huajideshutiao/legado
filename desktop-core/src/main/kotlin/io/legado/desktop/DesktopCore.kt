@@ -28,6 +28,7 @@ import io.legado.app.help.file.desktopResolveStoredRef
 import io.legado.app.help.file.registerDesktopAppFilesDir
 import io.legado.app.help.file.registerDesktopFileDownloader
 import io.legado.app.help.http.OkHttpClientProviders
+import io.legado.app.help.image.MangaPluginImageFetcherProviders
 import io.legado.app.help.notification.registerDesktopNotificationProgress
 import io.legado.app.help.registerComposeDefaultDataResourceProvider
 import io.legado.app.help.service.DesktopUpdateBookCallback
@@ -39,8 +40,15 @@ import io.legado.app.help.storage.BackupShared
 import io.legado.app.help.storage.registerJvmDataStorage
 import io.legado.app.help.toast.registerDesktopToaster
 import io.legado.app.help.tts.TtsEngineProvider
+import io.legado.app.model.anime.VideoSourceDelegateImpl
 import io.legado.app.model.fileBook.ZipFileWrapperFactoryProviders
+import io.legado.app.model.manga.JvmMangaPluginImageFetcher
+import io.legado.app.model.webBook.MangaSourceDelegates
+import io.legado.app.model.webBook.VideoSourceDelegates
+import io.legado.app.model.manga.MangaSourceDelegateImpl
+import io.legado.app.model.manga.SharedMangaExtensionPlatform
 import io.legado.app.ui.book.changecover.CoverStorageServiceProviders
+import io.legado.app.ui.book.manga.extension.MangaExtensionServiceProviders
 import io.legado.app.ui.compose.platform.registerComposeStringProviders
 import io.legado.app.web.registerDesktopWebServerPlatform
 import io.legado.app.web.utils.registerComposeWebAssetSource
@@ -70,6 +78,7 @@ import io.legado.desktop.help.registerDesktopRegexErrorHandler
 import io.legado.desktop.help.source.DesktopSourceHelpAccessor
 import io.legado.desktop.help.source.registerDesktopSourceProviders
 import io.legado.desktop.help.storage.registerDesktopBackupRestoreHook
+import io.legado.desktop.extension.registerDesktopExtensionCompat
 import io.legado.desktop.help.ui.registerDesktopUserAgentProvider
 import io.legado.desktop.http.registerDesktopHttpProvider
 import io.legado.desktop.js.registerDesktopJsEngines
@@ -288,6 +297,17 @@ object DesktopCore {
         registerDesktopReadBookPlatform()
         // 封面选图持久化 (对齐 Android 原版 externalFiles/covers, 落桌面应用数据根目录 covers/)
         CoverStorageServiceProviders.register(DesktopCoverStorageService())
+        // 14. Tachiyomi 漫画插件栈 (对照 app 端 App.onCreate registerExtensionCompat +
+        //     WebBookProvidersImpl 委派注册 + MainActivity 插件服务注册):
+        //     - 兼容层 Injekt 绑定必须先于任何扩展类加载 (keiyoushi.utils 顶层属性 <clinit> Injekt.get)
+        //     - 委派/图片获取为无状态注册; 服务是「我的」页入口显隐判据, 同步注册保证首组合可见;
+        //       装载由管理页 UI 首入口触发 (宿主 DesktopMangaExtensionHost 在 :desktop Main.kt 注册,
+        //       headless 无装载能力)
+        registerDesktopExtensionCompat()
+        MangaSourceDelegates.register(MangaSourceDelegateImpl)
+        VideoSourceDelegates.register(VideoSourceDelegateImpl)
+        MangaPluginImageFetcherProviders.register(JvmMangaPluginImageFetcher())
+        MangaExtensionServiceProviders.register(SharedMangaExtensionPlatform())
         // Room 开库预热 (与首帧组合并行; 上一轮我误删了它, 实测把 273ms 开库成本又退回主链路上)。
         // 实测: 注册 provider 只要 1~2ms, 真正开库 (加载 sqliteJni 原生库 + 建/打开 db 与 -wal/-shm
         // + Room schema 校验 + InvalidationTracker 启动) 要 224~282ms, 而它拖到首次 DAO 访问 ——

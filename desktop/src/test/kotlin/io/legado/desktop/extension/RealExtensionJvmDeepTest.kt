@@ -31,6 +31,7 @@ import uy.kohesive.injekt.api.addSingleton
 import uy.kohesive.injekt.api.addSingletonFactory
 import java.io.File
 import java.util.concurrent.TimeUnit
+import java.util.zip.ZipFile
 
 class RealExtensionJvmDeepTest {
 
@@ -271,6 +272,31 @@ class RealExtensionJvmDeepTest {
                 t.printStackTrace()
                 throw t
             }
+        }
+    }
+
+    @Test
+    fun `jinmantiantang 接收者构造还原类强制初始化通过 JVM 校验`() {
+        // dex 里 NEW 类型与构造器 owner 不一致的调用点 (如 <clinit> 里 new-instance g0 +
+        // invoke-direct Object.<init>) 是 dex2jar 产出坏字节码的必现处 —— HotSpot 验证
+        // 抛 VerifyError, 仅在类首次初始化时暴露, 业务请求断言覆盖不到
+        val apk = localOrCached(
+            null,
+            """tachiyomi-zh\.jinmantiantang.*\.apk""",
+        ) { keiyoushiApkUrl("tachiyomi-zh\\.jinmantiantang") }
+        val ext = load(apk)
+        assertEquals(JINMAN_PKG, ext.pkgName)
+        val targets = ZipFile(apk).use { zip ->
+            zip.entries().asSequence()
+                .filter { !it.isDirectory && Regex("""classes\d*\.dex""").matches(it.name.substringAfterLast('/')) }
+                .sortedBy { it.name }
+                .map { zip.getInputStream(it).use { input -> input.readBytes() } }
+                .flatMap { CtorSiteFixer.affectedClasses(it) }
+                .toSet()
+        }
+        assertTrue("样本应含接收者构造还原类, 实得 $targets", targets.isNotEmpty())
+        targets.forEach { name ->
+            Class.forName(name, true, ext.classLoader)
         }
     }
 

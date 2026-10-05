@@ -1,9 +1,10 @@
-// dex2jar 2.4.38 对 R8 新版"接收者类构造器"模式 (new-instance Xt; invoke-direct Lk;.<init>
-// —— 具体类无自有 <init>, ART 按接收者实际类解析构造器) 的转换缺陷修复: ir 的 NewTransformer
-// 用 invoke 的 owner (抽象基类) 而非 NEW 的具体类型生成 NewExpr, 产出 new AbstractClass(),
-// JVM 上抛 InstantiationError。本修复以 dex 指令序为基准还原各构造器调用点的具体类型:
-// 重写 jar 的 NEW/INVOKESPECIAL, 并给缺失 <init> 的具体类合成转发构造器 (JVM 校验要求
-// <init> 与接收者同类, 仅指向基类构造器无法通过校验)。
+// dex2jar 2.4.38 对 R8"接收者类构造器"模式 (new-instance Xt; invoke-direct Lk;.<init> ——
+// 具体类无自有 <init> 或调用直接写祖先名如 java/lang/Object, ART 按接收者实际类沿父链解析
+// 构造器) 的转换缺陷修复: ir 的 NewTransformer 一律用 invoke 的 owner 而非 NEW 的具体类型
+// 生成 NewExpr, 产出 new AbstractClass()/new Object() —— JVM 上分别抛 InstantiationError/
+// VerifyError (如 g0.<clinit> 里 new Object() 存进 g0 字段)。本修复以 dex 指令序为基准还原
+// 各构造器调用点的具体类型: 重写 jar 的 NEW/INVOKESPECIAL, 并给缺失 <init> 的具体类合成
+// 转发构造器 (JVM 校验要求 <init> 与接收者同类, 仅指向祖先构造器无法通过校验)。
 package io.legado.desktop.extension
 
 import com.googlecode.d2j.reader.DexFileReader
@@ -18,49 +19,28 @@ import org.objectweb.asm.ClassWriter
 import org.objectweb.asm.MethodVisitor
 import org.objectweb.asm.Opcodes
 import org.objectweb.asm.Type
-import java.lang.reflect.Modifier
 import java.io.ByteArrayOutputStream
 import java.io.File
-import java.util.zip.GZIPInputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 
 internal object CtorSiteFixer {
 
-    private const val ACC_ABSTRACT = 0x0400
-
     /** dex 类型名 → JVM 内部名 ("Lt;" → "t"; dex2jar dontSanitizeNames 下 jar 与 dex 同名)。 */
     private fun toInternal(type: String): String =
         type.removePrefix("L").removeSuffix(";").replace('.', '/')
 
     /**
-     * 宿主 abstract 类缓存: compileOnly 类 (Filter$Text 等 shim/source-api 类) 不在扩展 dex 里,
-     * dex 扫描收不到它们的 abstract 标志; 这些类的构造调用点同样产出 new AbstractClass(),
-     * 必须并入修复判定, 否则扩展调用即 InstantiationError。判定走宿主 classpath 反射, 结果缓存。
+     * dex 构造器调用点 (NEW 类型与构造器 owner 不同, 即"接收者解析"模式): owner=dex 写的
+     * 构造器类, concrete=NEW 的接收者具体类, ctorDesc=构造器描述, newOrdinal=方法内
+     * new-instance 指令序 (jar 侧按同序 NEW 配对, 同方法内混有同 owner 名正常构造点时不错位)。
      */
-    private val hostAbstractCache = HashMap<String, Boolean>()
+    private data class CtorSite(val owner: String, val concrete: String, val ctorDesc: String, val newOrdinal: Int)
 
-    private fun isHostAbstract(internalName: String): Boolean = synchronized(hostAbstractCache) {
-        hostAbstractCache.getOrPut(internalName) {
-            runCatching {
-                Modifier.isAbstract(
-                    Class.forName(internalName.replace('/', '.'), false, CtorSiteFixer::class.java.classLoader).modifiers,
-                )
-            }.getOrDefault(false)
-        }
-    }
-
-    /** dex 构造器调用点: owner=被调的抽象构造器类, concrete=NEW 的接收者具体类, ctorDesc=构造器描述。 */
-    private data class CtorSite(val owner: String, val concrete: String, val ctorDesc: String)
-
-    /**
-     * dex 扫描: key = "类内部名::方法名::desc" → 方法内按序的构造器调用点。
-     * 以 new-instance 落寄存器 + invoke-direct 首参取寄存器 配对。
-     */
+    /** dex 扫描: key = "类内部名::方法名::desc" → 方法内按 new-instance 序记录的异常构造调用点。 */
     private fun collectDexCtorSites(dexBytes: ByteArray): Map<String, List<CtorSite>> {
         val records = HashMap<String, MutableList<CtorSite>>()
-        val abstractClasses = HashSet<String>()
 
         DexFileReader(dexBytes).accept(object : DexFileVisitor() {
             override fun visit(
@@ -70,20 +50,18 @@ internal object CtorSiteFixer {
                 interfaceNames: Array<out String>,
             ): DexClassVisitor? {
                 val internal = toInternal(className)
-                if (accessFlags and ACC_ABSTRACT != 0) {
-                    abstractClasses.add(internal)
-                }
                 return object : DexClassVisitor() {
                     override fun visitMethod(accessFlags: Int, method: com.googlecode.d2j.Method): DexMethodVisitor? {
-                        val name = method.name
-                        val desc = method.desc
-                        val key = "$internal::$name::$desc"
-                        val newTypes = HashMap<Int, String>()
+                        val key = "$internal::${method.name}::${method.desc}"
+                        val newTypes = HashMap<Int, Pair<String, Int>>()
                         return object : DexMethodVisitor() {
                             override fun visitCode(): DexCodeVisitor = object : DexCodeVisitor() {
+                                var newOrdinal = 0
+
                                 override fun visitTypeStmt(op: Op, a: Int, b: Int, type: String) {
                                     if (op == Op.NEW_INSTANCE) {
-                                        newTypes[a] = toInternal(type)
+                                        newTypes[a] = toInternal(type) to newOrdinal
+                                        newOrdinal++
                                     }
                                 }
 
@@ -94,11 +72,13 @@ internal object CtorSiteFixer {
                                 ) {
                                     if (op == Op.INVOKE_DIRECT || op == Op.INVOKE_DIRECT_RANGE) {
                                         val receiver = args.firstOrNull() ?: return
-                                        val newType = newTypes[receiver] ?: return
+                                        val (newType, ordinal) = newTypes[receiver] ?: return
                                         val owner = toInternal(method.owner)
-                                        if (newType != owner && (owner in abstractClasses || isHostAbstract(owner))) {
+                                        // owner 与 NEW 类型一致是正常构造; 不一致即接收者解析模式,
+                                        // dex2jar 一律丢弃 NEW 类型按 owner 产出, 必须还原
+                                        if (newType != owner) {
                                             records.getOrPut(key) { mutableListOf() }
-                                                .add(CtorSite(owner, newType, method.desc))
+                                                .add(CtorSite(owner, newType, method.desc, ordinal))
                                         }
                                     }
                                 }
@@ -111,13 +91,16 @@ internal object CtorSiteFixer {
         return records
     }
 
+    /** dex 中需要还原构造调用点的具体类内部名集合 (强制 <clinit> 回归与诊断用)。 */
+    internal fun affectedClasses(dexBytes: ByteArray): Set<String> =
+        collectDexCtorSites(dexBytes).values.flatten().map { it.concrete }.toSet()
+
     /** 就地修复 dex2jar 产物 jar; 无需修复的调用点时不重写。 */
     fun fix(jarFile: File, dexBytes: ByteArray) {
         val records = collectDexCtorSites(dexBytes)
         if (records.isEmpty()) return
 
         val existingCtors = HashMap<String, MutableSet<String>>()
-        val superNames = HashMap<String, String>()
 
         // dex2jar 产物是 zip; ClassReader 吃的是单个类字节码, 先按 entry 拆开、两遍扫描后重打包
         val entries = LinkedHashMap<String, ByteArray>().also { map ->
@@ -130,22 +113,11 @@ internal object CtorSiteFixer {
             }
         }
 
-        // pass1: 收集每个类的 super 与已有 <init> (仅扫描, 不产出)
+        // pass1: 收集每个类已有的 <init> (仅扫描, 不产出)
         entries.values.forEach { bytes ->
             if (!bytes.isClassFile()) return@forEach
             val reader = ClassReader(bytes)
             reader.accept(object : ClassVisitor(Opcodes.ASM9) {
-                override fun visit(
-                    version: Int,
-                    access: Int,
-                    name: String,
-                    signature: String?,
-                    superName: String,
-                    interfaces: Array<out String>,
-                ) {
-                    superNames[name] = superName
-                }
-
                 override fun visitMethod(
                     access: Int,
                     name: String,
@@ -173,7 +145,7 @@ internal object CtorSiteFixer {
                         runCatching { super.getCommonSuperClass(type1, type2) }.getOrDefault("java/lang/Object")
                 }
                 reader.accept(
-                    FixingClassVisitor(writer, reader.className, records, existingCtors, superNames),
+                    FixingClassVisitor(writer, reader.className, records, existingCtors),
                     ClassReader.EXPAND_FRAMES,
                 )
                 writer.toByteArray()
@@ -201,7 +173,6 @@ internal object CtorSiteFixer {
         private val className: String,
         private val records: Map<String, List<CtorSite>>,
         private val existingCtors: MutableMap<String, MutableSet<String>>,
-        private val superNames: Map<String, String>,
     ) : ClassVisitor(Opcodes.ASM9, classWriter) {
 
         private val injectors = mutableListOf<() -> Unit>()
@@ -218,18 +189,22 @@ internal object CtorSiteFixer {
             if (record.isNullOrEmpty()) {
                 return superVisitor
             }
-            // 该方法的调用点修复: 按 owner 分组, 以 dex 序还原每个 NEW 的具体类型
-            val byOwner = record.groupBy({ it.owner }, { it.concrete })
-            val counters = HashMap<String, Int>()
-            var lastNew: Pair<String, String>? = null // (抽象 owner, 映射后的具体类)
+            // 按 dex new-instance 序配对 jar 的 NEW (dex2jar 指令保序 1:1); type==owner 双保险,
+            // 序漂移时退化为漏修而非错修。嵌套 NEW (外层构造参数里 new 内层) 依次覆盖 pending,
+            // 各自的 <init> 调用按最近 pending 消费。
+            val sitesByOrdinal = record.associateBy { it.newOrdinal }
+            var newOrdinal = 0
+            var pending: CtorSite? = null
             return object : MethodVisitor(Opcodes.ASM9, superVisitor) {
                 override fun visitTypeInsn(opcode: Int, type: String) {
-                    if (opcode == Opcodes.NEW && type in byOwner) {
-                        val ordinal = counters.merge(type, 1, Int::plus) ?: 1
-                        val concrete = byOwner.getValue(type)[ordinal - 1]
-                        lastNew = type to concrete
-                        super.visitTypeInsn(opcode, concrete)
-                        return
+                    if (opcode == Opcodes.NEW) {
+                        val site = sitesByOrdinal[newOrdinal]
+                        newOrdinal++
+                        if (site != null && type == site.owner) {
+                            pending = site
+                            super.visitTypeInsn(opcode, site.concrete)
+                            return
+                        }
                     }
                     super.visitTypeInsn(opcode, type)
                 }
@@ -241,10 +216,10 @@ internal object CtorSiteFixer {
                     desc: String,
                     isInterface: Boolean,
                 ) {
-                    val pending = lastNew
-                    if (opcode == Opcodes.INVOKESPECIAL && name == "<init>" && pending != null && owner == pending.first) {
-                        super.visitMethodInsn(opcode, pending.second, name, desc, isInterface)
-                        lastNew = null
+                    val site = pending
+                    if (opcode == Opcodes.INVOKESPECIAL && name == "<init>" && site != null && owner == site.owner) {
+                        super.visitMethodInsn(opcode, site.concrete, name, desc, isInterface)
+                        pending = null
                         return
                     }
                     super.visitMethodInsn(opcode, owner, name, desc, isInterface)
@@ -254,14 +229,13 @@ internal object CtorSiteFixer {
 
         override fun visitEnd() {
             // 合成缺失的转发构造器: X.<init>(ctorDesc) { aload_0; (压参) invokespecial owner.<init>(ctorDesc); return }
-            // 反查: 本类作为 concrete 出现的全部 (ctorDesc, superOwner) 组合
+            // owner 是 dex 构造调用的解析目标 (接收者沿父链第一个匹配 <init>), 必为 X 的祖先
             val ctors = existingCtors[className] ?: HashSet<String>().also { existingCtors[className] = it }
             records.values.flatten()
                 .filter { it.concrete == className }
                 .distinctBy { it.owner to it.ctorDesc }
                 .forEach { site ->
-                    val superOf = superNames[className]
-                    if (superOf == site.owner && site.ctorDesc !in ctors) {
+                    if (site.ctorDesc !in ctors) {
                         injectConstructor(site.owner, site.ctorDesc)
                         ctors.add(site.ctorDesc)
                     }

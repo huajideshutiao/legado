@@ -37,6 +37,7 @@ import io.legado.app.help.config.ReadConfigProviders
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.registerJvmDebugState
 import io.legado.app.help.file.desktopResolveStoredRef
+import io.legado.app.help.extension.MangaExtensionHostProviders
 import io.legado.app.help.image.decodeBytesSampled
 import io.legado.app.help.image.registerJvmBookImageLoader
 import io.legado.app.help.image.registerReaderImageResolver
@@ -98,6 +99,7 @@ import io.legado.desktop.help.registerDesktopScreenInfoProvider
 import io.legado.desktop.help.source.registerDesktopVerificationUiProvider
 import io.legado.desktop.help.tts.DesktopReadAloudHost
 import io.legado.desktop.help.ui.registerDesktopOpenUrlProvider
+import io.legado.desktop.extension.DesktopMangaExtensionHost
 import io.legado.desktop.model.fileBook.DesktopPdfFile
 import io.legado.desktop.model.fileBook.registerDesktopFileBookAccessor
 import io.legado.desktop.model.webBook.DesktopImageControllerProvider
@@ -491,6 +493,9 @@ private fun runDesktopApp() = application {
     AudioPlayPlatformProviders.register(SharedAudioPlayPlatformProvider)
     MangaReaderScreenModel.Providers.register(DesktopMangaReaderPlatform)
     VideoPlayPlatformProviders.register(MediampVideoPlayPlatformProvider(windowHandle))
+    // 漫画插件宿主 (扩展目录扫描 + dex2jar 装载; 兼容层 Injekt 绑定/取数委派/图片获取/
+    // 管理页服务已在 DesktopCore.registerRestProviders 同步注册, 装载由管理页 UI 首入口触发)
+    MangaExtensionHostProviders.register(DesktopMangaExtensionHost())
 
     // ==================== 阶段2: 显示窗口 ====================
     // 启动闪屏已在阶段0 后、阶段1 重注册前显示 (见上方 splashScreen / 阶段1 块):

@@ -27,7 +27,7 @@ import kotlin.concurrent.Volatile
  * 与 Android 版差异: 无 interactive 提前中止与 WebView 过旧检测 (引擎无对应桥),
  * 需人工交互的挑战靠 30s 超时放弃, 语义等效。
  */
-class DesktopCloudflareInterceptor : Interceptor {
+open class DesktopCloudflareInterceptor : Interceptor {
 
     // 同 host 挑战去重: 并发 403 只允许一个请求开引擎解挑战, 其余排队复用结果
     private val hostStates = ConcurrentHashMap<String, HostChallengeState>()
