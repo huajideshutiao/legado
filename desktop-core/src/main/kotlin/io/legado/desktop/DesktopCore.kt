@@ -79,6 +79,7 @@ import io.legado.desktop.help.source.DesktopSourceHelpAccessor
 import io.legado.desktop.help.source.registerDesktopSourceProviders
 import io.legado.desktop.help.storage.registerDesktopBackupRestoreHook
 import io.legado.desktop.extension.registerDesktopExtensionCompat
+import io.legado.desktop.help.tvbox.registerDesktopTvBoxProviders
 import io.legado.desktop.help.ui.registerDesktopUserAgentProvider
 import io.legado.desktop.http.registerDesktopHttpProvider
 import io.legado.desktop.js.registerDesktopJsEngines
@@ -399,6 +400,11 @@ object DesktopCore {
             //     Web 服务封面/插图 provider (DesktopImageControllerProvider)
             //     由 desktop Main.kt / headless Main.kt 注册
             registerDesktopWebBookProviders()
+            // 11d. TVBox 影视源宿主 (jar 经 JVM URLClassLoader + 壳类, JS 经 QuickJS;
+            //      配置/站点开关落 {dataRoot}/files/tvbox, 目录布局与 Android filesDir/tvbox 一致)。
+            //      须在 registerDesktopWebBookProviders 之后 (委派注册表单实现覆盖语义,
+            //      TVBox 要包裹既有委派); 嗅探引擎接入属后续任务, 直链与 json 解析不受影响
+            registerDesktopTvBoxProviders()
             // 11b. JS 扩展回调 provider (UserAgent, 供 JsExtensionsCommon 回调,
             //      必须在 JS 引擎首次 eval 之前注册); OpenUrl 确认框 provider (DesktopDialogs) 留 :desktop
             registerDesktopUserAgentProvider()
