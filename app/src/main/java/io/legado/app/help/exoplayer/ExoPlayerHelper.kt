@@ -7,6 +7,7 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.TrackSelectionParameters.AudioOffloadPreferences
 import androidx.media3.common.util.Util
 import androidx.media3.database.StandaloneDatabaseProvider
@@ -45,7 +46,7 @@ object ExoPlayerHelper {
     /** [VideoHeaderResolver] 里"源 → 请求头"的最大条数: 超了就清 (一个播放器不会真连几十上百个源)。 */
     private const val MAX_HEADER_ORIGINS = 32
 
-    fun createMediaItem(url: String, headers: Map<String, String>): MediaItem {
+    fun createMediaItem(url: String, headers: Map<String, String>, format: String? = null): MediaItem {
         val realUri = url.toUri()
         val contentType = Util.inferContentType(realUri)
         // header 仍靠 URI 尾巴上的 SPLIT_TAG 运到 DataSource 侧 (media3 1.10.1 的 MediaItem
@@ -58,13 +59,33 @@ object ExoPlayerHelper {
             url
         }
         val builder = MediaItem.Builder().setUri(formatUrl)
-        when (contentType) {
-            C.CONTENT_TYPE_HLS -> builder.setMimeType(MimeTypes.APPLICATION_M3U8)
-            C.CONTENT_TYPE_DASH -> builder.setMimeType(MimeTypes.APPLICATION_MPD)
-            C.CONTENT_TYPE_SS -> builder.setMimeType(MimeTypes.APPLICATION_SS)
+        when {
+            // 显式格式覆盖优先 (FongMi PlaySpec.format 同语义): 格式重试时强设 mimeType
+            format != null -> builder.setMimeType(format)
+            contentType == C.CONTENT_TYPE_HLS -> builder.setMimeType(MimeTypes.APPLICATION_M3U8)
+            contentType == C.CONTENT_TYPE_DASH -> builder.setMimeType(MimeTypes.APPLICATION_MPD)
+            contentType == C.CONTENT_TYPE_SS -> builder.setMimeType(MimeTypes.APPLICATION_SS)
             else -> {}
         }
         return builder.build()
+    }
+
+    /**
+     * 播放错误码 → 重试格式 (FongMi ExoUtil.getMimeType 同语义): 无扩展名的 jar 代理地址
+     * (proxy?do=m3u8 / type=mpd) 首装按 progressive 解析失败后, 按错误码换 mimeType 重试。
+     */
+    fun retryMimeType(errorCode: Int): String? = when (errorCode) {
+        PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+        PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+        PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
+        -> MimeTypes.APPLICATION_M3U8
+
+        PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED,
+        PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED,
+        // media3 MimeTypes 无 APPLICATION_OCTET_STREAM 常量, 字面量同义 (FongMi ExoUtil 同值)
+        -> "application/octet-stream"
+
+        else -> null
     }
 
     /**

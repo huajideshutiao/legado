@@ -385,6 +385,13 @@ internal class AndroidVideoPlayerController(
      *  否则同链接重试 (refreshChapter 重新 emit 同一 url) 会被守卫拦掉。 */
     private var loadedUrl: String? = null
 
+    /** 格式重试覆盖 (FongMi PlaySpec.format 同语义): 无扩展名的 jar 代理地址
+     *  (proxy?do=m3u8 / type=mpd) progressive 首装失败后按错误码换 mimeType 重装。 */
+    private var formatOverride: String? = null
+
+    /** 当前媒体请求头快照 (格式重试重装时复用; [updateSource] 换地址时刷新)。 */
+    private var lastHeaders: Map<String, String> = emptyMap()
+
     /** 从播放器现值映射一份快照并发射 (media3 各回调都在状态变更之后触发, 直读 player 即可)。 */
     private fun publishPlayback(p: Player = player) {
         _playback.value = PlaybackSnapshot(
@@ -435,6 +442,22 @@ internal class AndroidVideoPlayerController(
         }
 
         override fun onPlayerError(error: PlaybackException) {
+            // 对齐 FongMi ExoPlayerEngine.handleError → retryFormat: jar 代理地址无扩展名,
+            // progressive 首装失败后按错误码换 mimeType 重装续播; 同格式只重一次
+            // (原版同错误码会反复 setFormat 成环, 属明显缺陷不复刻, 重试仍败则走下方上报)。
+            val retryFormat = ExoPlayerHelper.retryMimeType(error.errorCode)
+            if (loadedUrl != null && retryFormat != null && retryFormat != formatOverride) {
+                formatOverride = retryFormat
+                loadedUrl?.let {
+                    player.setMediaItem(
+                        ExoPlayerHelper.createMediaItem(it, lastHeaders, retryFormat),
+                        player.currentPosition.coerceAtLeast(0L),
+                    )
+                }
+                player.prepare()
+                player.play()
+                return
+            }
             // 对齐 iOS handlePlayError: 先清 loadedUrl 守卫, 自动重试 (refreshChapter 重新
             // emit 同 URL) 才能放行重载
             loadedUrl = null
@@ -494,6 +517,8 @@ internal class AndroidVideoPlayerController(
                 && player.playbackState != Player.STATE_IDLE
                 && !player.playWhenReady
         loadedUrl = analyzeUrl.url
+        lastHeaders = analyzeUrl.headerMap
+        formatOverride = null
         // 直链判定用 shared 的同一份判据 (http/https/file/content): 上一版只判 http 开头,
         // 外部投来的本地视频 (file:// 与 content://) 会掉进下面的内存 m3u8 清单分支 ——
         // 拿一条文件 URI 去建 HlsMediaSource, 观感就是进页黑屏报错。
@@ -501,7 +526,8 @@ internal class AndroidVideoPlayerController(
             player.setMediaItem(
                 ExoPlayerHelper.createMediaItem(
                     analyzeUrl.url,
-                    analyzeUrl.headerMap
+                    analyzeUrl.headerMap,
+                    formatOverride,
                 )
             )
         } else {
@@ -554,6 +580,7 @@ internal class AndroidVideoPlayerController(
      */
     override fun stop() {
         loadedUrl = null
+        formatOverride = null
         player.pause()
         player.clearMediaItems()
         publishPlayback()
