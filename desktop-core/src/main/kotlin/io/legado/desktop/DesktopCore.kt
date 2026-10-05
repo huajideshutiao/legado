@@ -1,5 +1,6 @@
 package io.legado.desktop
 
+import android.content.Context
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDatabaseProviders
 import io.legado.app.data.AppDbProviders
@@ -47,6 +48,7 @@ import io.legado.app.model.webBook.MangaSourceDelegates
 import io.legado.app.model.webBook.VideoSourceDelegates
 import io.legado.app.model.manga.MangaSourceDelegateImpl
 import io.legado.app.model.manga.SharedMangaExtensionPlatform
+import io.legado.app.model.manga.SharedMangaSourceConfig
 import io.legado.app.ui.book.changecover.CoverStorageServiceProviders
 import io.legado.app.ui.book.manga.extension.MangaExtensionServiceProviders
 import io.legado.app.ui.compose.platform.registerComposeStringProviders
@@ -308,7 +310,7 @@ object DesktopCore {
         MangaSourceDelegates.register(MangaSourceDelegateImpl)
         VideoSourceDelegates.register(VideoSourceDelegateImpl)
         MangaPluginImageFetcherProviders.register(JvmMangaPluginImageFetcher())
-        MangaExtensionServiceProviders.register(SharedMangaExtensionPlatform())
+        MangaExtensionServiceProviders.register(SharedMangaExtensionPlatform(SharedMangaSourceConfig(Context())))
         // Room 开库预热 (与首帧组合并行; 上一轮我误删了它, 实测把 273ms 开库成本又退回主链路上)。
         // 实测: 注册 provider 只要 1~2ms, 真正开库 (加载 sqliteJni 原生库 + 建/打开 db 与 -wal/-shm
         // + Room schema 校验 + InvalidationTracker 启动) 要 224~282ms, 而它拖到首次 DAO 访问 ——

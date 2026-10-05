@@ -36,11 +36,12 @@ import java.util.concurrent.atomic.AtomicBoolean
  * 装载编排由管理器直连, 平台差异收敛在 MangaExtensionHost)。
  *
  * [config] 承载插件自带配置页 (androidx.preference shim + 平台偏好) 的平台桥:
- * Android 端注入 app 模块实现, 桌面端不注入 → isConfigurable 恒 false,
- * 「设置」入口隐藏 (桌面配置页降级, 不阻塞主功能)。
+ * JVM+Android 共用实现 [SharedMangaSourceConfig], app 端经 AndroidMangaExtensionPlatform、
+ * desktop 端经 DesktopCore 启动序列注入; 未注入端 (iOS/鸿蒙) isConfigurable 恒 false,
+ * 「设置」入口隐藏。
  *
  * 注册时机对照: app 端 MainActivity.initializePlatform 一行注册; desktop 端
- * Main.kt 启动序列注册; 未注册端 (iOS/鸿蒙) UI 隐藏入口。
+ * DesktopCore 启动序列注册; 未注册端 (iOS/鸿蒙) UI 隐藏入口。
  */
 open class SharedMangaExtensionPlatform(
     private val config: MangaExtensionConfig? = null,
