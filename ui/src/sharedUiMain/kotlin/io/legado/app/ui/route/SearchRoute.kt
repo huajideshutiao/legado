@@ -17,6 +17,7 @@ import io.legado.app.constant.BookType
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.isAudio
@@ -169,6 +170,11 @@ fun SearchRoute(
 
             override fun onManageBookSources() {
                 navigator.push(AppRoute.BookSourceManage)
+            }
+
+            // 按源分类区块标题: 进单源搜索结果页 (发现 show 界面, 数据走搜索 url)
+            override fun onSourceSectionClick(source: BookSource, keyword: String) {
+                navigator.push(AppRoute.SourceSearchShow(source, keyword))
             }
 
             override fun onAlertSearchScope() {

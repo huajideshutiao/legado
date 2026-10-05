@@ -87,11 +87,13 @@ fun ExploreShowRoute(
     val errorTitle = stringResource(Res.string.error)
     val retryText = stringResource(Res.string.retry)
 
-    // 标题初始化 (对照原 Activity intent exploreName / discovery; ByUrl 变体 extra 可为空)
-    // route 由 RouteContent 保证只分派 ExploreShow 两变体, else 分支不可达 (穷尽性占位)
+    // 标题初始化 (对照原 Activity intent exploreName / discovery; ByUrl 变体 extra 可为空;
+    // SourceSearchShow 用源名)
+    // route 由 RouteContent 保证只分派三变体, else 分支不可达 (穷尽性占位)
     val title = when (route) {
         is AppRoute.ExploreShow -> route.title
         is AppRoute.ExploreShowByUrl -> route.title.orEmpty()
+        is AppRoute.SourceSearchShow -> route.source.bookSourceName
         else -> ""
     }
     LaunchedEffect(title) {
@@ -110,7 +112,9 @@ fun ExploreShowRoute(
                 route.exploreUrl,
                 route.sourceUrl
             )
-            // 不可达 (RouteContent 仅分派两变体); 占位保证 when 穷尽
+            // 搜索模式: 数据走书源 searchUrl 搜索规则
+            is AppRoute.SourceSearchShow -> vm.initDataSearch(route.source, route.keyword)
+            // 不可达 (RouteContent 仅分派三变体); 占位保证 when 穷尽
             else -> Unit
         }
     }

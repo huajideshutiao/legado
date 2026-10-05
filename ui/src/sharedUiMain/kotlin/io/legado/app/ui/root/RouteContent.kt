@@ -134,6 +134,11 @@ fun RouteContent(
             true
         }
 
+        is AppRoute.SourceSearchShow -> {
+            ExploreShowRoute(entry, navigator, screenModelStore)
+            true
+        }
+
         is AppRoute.ImportBook -> {
             ImportBookRoute(entry, navigator, screenModelStore)
             true

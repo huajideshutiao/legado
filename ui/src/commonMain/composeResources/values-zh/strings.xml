@@ -233,6 +233,9 @@
     <string name="search_content">全文搜索</string>
     <string name="search_content_size">搜索结果</string>
     <string name="search_layout">搜索布局</string>
+    <string name="search_style_mode">布局模式</string>
+    <string name="search_style_by_book">按书聚簇</string>
+    <string name="search_style_by_source">按源分类</string>
     <string name="searchHistory">搜索历史</string>
     <string name="source_filter_rule">屏蔽规则</string>
     <string name="start">开始</string>
@@ -887,7 +890,6 @@
     <string name="manga_extension_kind_video">视频</string>
     <string name="manga_extension_pref_empty">该插件没有可配置项</string>
     <string name="manga_extension_pref_error">插件设置读取失败，详情见应用日志</string>
-    <string name="manga_extension_kind_manga">漫画</string>
     <string name="manga_search_filters">筛选</string>
     <string name="manga_color_filter">滤镜</string>
     <string name="contrast">对比度</string>
@@ -1803,7 +1805,6 @@ Windows: winget install shinchiro.mpv 或 scoop install mpv,
     <string name="tvbox_jar_ready">已就绪</string>
     <string name="tvbox_jar_failed">装载失败</string>
     <string name="tvbox_jar_sites">站点数 %1$s</string>
-    <string name="tvbox_usage_tip">已添加的站点会以虚拟书源身份进入书源体系：在搜索页直接搜索片名，打开后沿既有视频播放路径播放，无需额外入口。部分线路需网页解析，遇到无法播放属已知遗留。</string>
     <string name="tvbox_unsupported">暂不支持</string>
     <string name="tvbox_remove_source_confirm">删除该配置来源？其虚拟书源行会一并清理。</string>
     <string name="tvbox_loading">正在拉取配置…</string>

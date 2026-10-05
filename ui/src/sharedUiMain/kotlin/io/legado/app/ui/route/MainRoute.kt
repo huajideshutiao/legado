@@ -109,6 +109,8 @@ import io.legado.app.ui.main.home.HomeScreen
 import io.legado.app.ui.main.home.HomeScreenModel
 import io.legado.app.ui.main.home.HomeSectionManageDialog
 import io.legado.app.ui.main.home.HomeTabManageDialog
+import io.legado.app.ui.main.home.SectionCoverRow
+import io.legado.app.ui.main.home.SectionTitleRow
 import io.legado.app.ui.main.home.homeSectionKey
 import io.legado.app.ui.book.tvbox.TvBoxServiceProviders
 import io.legado.app.ui.main.my.MyConfigScreen
@@ -570,13 +572,18 @@ private fun openHomeBook(
     }
 }
 
-/** 对照 sectionCallback.onMoreClick: 按 section 的 sourceUrl 取书源后跳 ExploreShow */
+/** 对照 sectionCallback.onMoreClick: 按 section 的 sourceUrl 取书源后跳 ExploreShow (搜索类展示项跳搜索模式) */
 private suspend fun openExploreShow(section: HomeSection, navigator: AppNavigator) {
     val source = withContext(IoDispatcher) {
         AppDbProviders.get().bookSourceDao.getBookSource(section.sourceUrl)
     }
     if (source != null) {
-        navigator.push(AppRoute.ExploreShow(source, section.exploreName, section.exploreUrl))
+        val searchKey = section.searchKey
+        if (searchKey != null) {
+            navigator.push(AppRoute.SourceSearchShow(source, searchKey))
+        } else {
+            navigator.push(AppRoute.ExploreShow(source, section.exploreName, section.exploreUrl))
+        }
     } else {
         Toasters.get().toast("Source not found")
     }
@@ -613,7 +620,7 @@ private fun HomeSectionBlock(
     val blockId = "home-${section.id}"
     // 对照 SectionHolder.root: 每个展示项上下留白 (top default=8 / bottom xs=4)
     Column(Modifier.fillMaxWidth().padding(top = DesignTokens.spacingDefault, bottom = DesignTokens.spacingXs)) {
-        HomeSectionTitleRow(section.title, stableOnMoreClick)
+        SectionTitleRow(section.title, stableOnMoreClick)
         ExploreOptionsRow(options, optionsVersion, stableOnOptionSelected)
         when {
             error -> SectionStateText(
@@ -637,7 +644,7 @@ private fun HomeSectionBlock(
 
                 // 对照 HomeSectionAdapter: COVER_ROW 走封面行, 未知样式回落排行榜
                 HomeSection.STYLE_COVER_ROW ->
-                    HomeCoverRow(books, stableOnBookClick, stableOnBookLongClick, section.coverVideo, blockId)
+                    SectionCoverRow(books, stableOnBookClick, stableOnBookLongClick, section.coverVideo, blockId)
 
                 else -> HomeRankList(books, stableOnBookClick, stableOnBookLongClick, blockId)
             }
@@ -686,142 +693,6 @@ private fun SectionStateText(text: String, onClick: (() -> Unit)? = null) {
 /** 对照 HomeSectionAdapter.RANK_LIMIT: 排行榜样式仅展示前 N 名 */
 private const val HOME_RANK_LIMIT = 5
 
-/**
- * 展示项标题行 (对照 view_home_section_title.xml: 高 36dp, paddingStart 16 / paddingEnd 8,
- * 标题 16sp 加粗 + "更多" 13sp 摘要色 + 16dp 右箭头, 整行可点)。
- */
-@Composable
-private fun HomeSectionTitleRow(title: String, onMoreClick: () -> Unit) {
-    val colors = AppTheme.colors
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .height(36.dp)
-            .clickable(onClick = onMoreClick)
-            .padding(start = DesignTokens.spacingLg, end = DesignTokens.spacingDefault),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = title,
-            color = colors.primaryText,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        // 对照 view_home_section_title.xml 的 tv_more + iv_arrow (13sp 摘要色 + 16dp 箭头)
-        Text(
-            text = stringResource(Res.string.home_more),
-            color = colors.secondaryText,
-            fontSize = 13.sp,
-            maxLines = 1,
-            modifier = Modifier.padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingXs),
-        )
-        Icon(
-            painter = painterResource(Res.drawable.ic_arrow_right),
-            contentDescription = stringResource(Res.string.home_more),
-            tint = colors.secondaryText,
-            modifier = Modifier.size(16.dp),
-        )
-    }
-}
-
-/**
- * 横向封面行 (对照 CoverCardAdapter): 封面 + 书名, 横向滚动。
- *
- * isVideoStyle=true (section.coverVideo) 时对照原版 CoverCardAdapter 的
- * VideoCoverCardVH: 复用 item_explore_video 视频卡 (shared [ShelfVideoItem]),
- * 卡片宽 220dp (原版把 match_parent 根布局改为固定 220dp 才能在横向滚动里排布),
- * 封面按 VIDEO(16:9) 比例由宽度反推高度, 加粗标题 + 分类 + 作者, 无徽标。
- */
-@Composable
-private fun HomeCoverRow(
-    books: List<SearchBook>,
-    onBookClick: (SearchBook, String?) -> Unit,
-    onBookLongClick: (SearchBook, String?) -> Unit,
-    isVideoStyle: Boolean,
-    blockId: String,
-) {
-    val scrollState = rememberScrollState()
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .horizontalScroll(scrollState)
-            .horizontalMouseWheel(scrollState)
-            .padding(horizontal = DesignTokens.spacingDefault),
-    ) {
-        if (isVideoStyle) {
-            // 对照原 VideoCoverCardVH.bind: bindVideoCard(coverRatio=VIDEO, isInBookshelf=false,
-            // showBookshelfBadge=false); 封面走 LocalBookCoverSlot (与书架/探索页一致)
-            books.forEach { book ->
-                // 共享配对身份按条目下发 (被点的封面 = 出发端, token 由页面+区块+条目派生)
-                val binding = rememberSharedCoverSourceBinding(book.bookUrl, blockId)
-                CompositionLocalProvider(LocalSharedCoverBinding provides binding) {
-                    ShelfVideoItem(
-                        book = book.toCoverBook(),
-                        coverReloadTick = 0,
-                        onClick = { onBookClick(book, binding.pageToken) },
-                        onLongClick = { onBookLongClick(book, binding.pageToken) },
-                        modifier = Modifier.width(220.dp),
-                        coverSlot = { b, m, isVideoCover, tick ->
-                            LocalBookCoverSlot.current(b, m, isVideoCover, tick)
-                        },
-                    )
-                }
-            }
-        } else {
-            val colors = AppTheme.colors
-            // 对照 item_home_cover_card.xml + CoverCardVH.bind: 封面 120×160dp (高 160dp 由
-            // 封面组件按 NOVEL 3:4 反推宽 120dp), item 总宽 128 = 120 + 两侧 4dp padding
-            books.forEach { book ->
-                // 共享配对身份按条目下发 (同上)
-                val binding = rememberSharedCoverSourceBinding(book.bookUrl, blockId)
-                CompositionLocalProvider(LocalSharedCoverBinding provides binding) {
-                    Column(
-                        Modifier
-                            .listItemFocus()
-                            .width(128.dp)
-                            .padding(DesignTokens.spacingXs)
-                            .combinedClickable(
-                                onClick = { onBookClick(book, binding.pageToken) },
-                                onLongClick = { onBookLongClick(book, binding.pageToken) },
-                            ),
-                    ) {
-                        // 封面: 走 LocalBookCoverSlot (与书架/探索页一致)
-                        LocalBookCoverSlot.current(
-                            book.toCoverBook(),
-                            Modifier
-                                .width(120.dp)
-                                .height(160.dp),
-                            false,
-                            0,
-                        )
-                        // 对照 XML tv_name: 12sp 最多 2 行 (minLines=2 保持卡片等高)
-                        Text(
-                            text = book.name,
-                            color = colors.primaryText,
-                            fontSize = 12.sp,
-                            maxLines = 2,
-                            minLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.fillMaxWidth().padding(top = DesignTokens.spacingXs),
-                        )
-                        // 对照 XML tv_author: 10sp 摘要色, 最多 1 行, marginTop 2dp
-                        Text(
-                            text = book.getRealAuthor(),
-                            color = colors.secondaryText,
-                            fontSize = 10.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
 
 /** 排行榜列 (对照 RankBookAdapter showRank=true): 序号 + 封面 + 书名/作者, 窄屏单列5项 / 宽屏(>=600dp)双列10项 */
 @Composable
@@ -1127,7 +998,7 @@ private fun HomeInfiniteHeader(
     val stableOnMoreClick: () -> Unit = remember { { currentOnMoreClick.value() } }
     // 对照 SectionHolder.root: 无限流头部同样有 top 8 / bottom 4 留白
     Column(Modifier.fillMaxWidth().padding(top = DesignTokens.spacingDefault, bottom = DesignTokens.spacingXs)) {
-        HomeSectionTitleRow(section.title, stableOnMoreClick)
+        SectionTitleRow(section.title, stableOnMoreClick)
         ExploreOptionsRow(options, optionsVersion, stableOnOptionSelected)
     }
 }
@@ -1427,19 +1298,25 @@ private fun ExploreTabContent(
             }
 
             // 对照 ExploreTabState.openPinned: 查 DB 取 source 后跳 ExploreShow; 失败 toast
+            // 搜索类收藏 (searchKey 非空) 跳单源搜索结果页 (固定词)
             override fun onOpenPinned(pin: PinnedExplore) {
                 scope.launch {
                     val source = withContext(IoDispatcher) {
                         AppDbProviders.get().bookSourceDao.getBookSource(pin.sourceUrl)
                     }
                     if (source != null) {
-                        navigator.push(
-                            AppRoute.ExploreShow(
-                                source,
-                                pin.categoryName,
-                                pin.categoryUrl
+                        val searchKey = pin.searchKey
+                        if (searchKey != null) {
+                            navigator.push(AppRoute.SourceSearchShow(source, searchKey))
+                        } else {
+                            navigator.push(
+                                AppRoute.ExploreShow(
+                                    source,
+                                    pin.categoryName,
+                                    pin.categoryUrl
+                                )
                             )
-                        )
+                        }
                     } else {
                         Toasters.get().toast("Source not found")
                     }

@@ -233,6 +233,9 @@
     <string name="search_content">Search content</string>
     <string name="search_content_size">search result</string>
     <string name="search_layout">Search layout</string>
+    <string name="search_style_mode">Layout mode</string>
+    <string name="search_style_by_book">Group by book</string>
+    <string name="search_style_by_source">Group by source</string>
     <string name="searchHistory">Search history</string>
     <string name="source_filter_rule">Block rules</string>
     <string name="start">Start</string>
@@ -885,7 +888,6 @@
     <string name="manga_extension_kind_video">Video</string>
     <string name="manga_extension_pref_empty">This extension has no configurable options</string>
     <string name="manga_extension_pref_error">Failed to load extension settings. See app log for details</string>
-    <string name="manga_extension_kind_manga">Manga</string>
     <string name="manga_search_filters">Filters</string>
     <string name="manga_color_filter">Color filter</string>
     <string name="contrast">Contrast</string>
@@ -1735,7 +1737,6 @@
     <string name="tvbox_jar_ready">Ready</string>
     <string name="tvbox_jar_failed">Failed</string>
     <string name="tvbox_jar_sites">Sites: %1$s</string>
-    <string name="tvbox_usage_tip">Added sites enter the book source list as virtual sources. Search titles from the global search page and play through the existing video path - no extra entry. Some links need web parsing and may fail to play.</string>
     <string name="tvbox_unsupported">Unsupported</string>
     <string name="tvbox_remove_source_confirm">Remove this config source? Its virtual book sources will be deleted.</string>
     <string name="tvbox_loading">Loading config...</string>

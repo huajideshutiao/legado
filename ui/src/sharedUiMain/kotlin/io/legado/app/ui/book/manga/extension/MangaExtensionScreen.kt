@@ -735,6 +735,8 @@ private fun PrefItemRow(
                 fontSize = 14.sp,
                 modifier = Modifier.padding(top = DesignTokens.spacingXs),
             )
+
+            else -> {}
         }
     }
 }

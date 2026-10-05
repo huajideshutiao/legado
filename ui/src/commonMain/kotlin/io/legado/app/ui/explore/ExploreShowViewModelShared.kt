@@ -132,6 +132,16 @@ class ExploreShowViewModelShared(
     var exploreName: String? = null
         private set
 
+    /**
+     * 搜索模式 (AppRoute.SourceSearchShow 入口): 数据走书源 searchUrl 搜索规则
+     * (isSearch=true, key=[searchKeyword]), 与发现模式的 explore 规则区分;
+     * 布局/翻页/收藏等其余机制与发现模式同源。
+     */
+    private var isSearchMode = false
+
+    /** 搜索模式的搜索词 (WebBook isSearch=true 时作为 key 传入)。 */
+    private var searchKeyword: String? = null
+
     /** URL 解析出的参数 chip 列表 (可被 onUrlResolved 回调追加)。 */
     val exploreOptions = mutableListOf<ExploreOption>()
 
@@ -238,6 +248,30 @@ class ExploreShowViewModelShared(
     }
 
     /**
+     * 初始化数据 (搜索模式重载, AppRoute.SourceSearchShow 入口)。
+     *
+     * 与发现模式差异: [explore] 走搜索规则 (isSearch=true); [rawExploreUrl] 存书源
+     * searchUrl (收藏 PinnedExplore.categoryUrl 的标识); [exploreName] 存搜索词
+     * (收藏分类名)。
+     */
+    fun initDataSearch(source: BookSource, keyword: String) {
+        scope.launch(IoDispatcher) {
+            isSearchMode = true
+            searchKeyword = keyword
+            rawExploreUrl = source.searchUrl
+            exploreName = keyword
+            bookSource = source
+            parseExploreOptions()
+            _sourceReadyFlow.tryEmit(Unit)
+            if (exploreOptions.isNotEmpty()) {
+                _optionsReadyFlow.tryEmit(Unit)
+            }
+            _upStarFlow.value = isFavorite()
+            explore()
+        }
+    }
+
+    /**
      * 当前发现是否已收藏 (对照原 isFavorite)。
      *
      * 按 sourceUrl + rawExploreUrl 在 [PinnedExploreHelp.getPinnedExplores] 中查找。
@@ -245,8 +279,10 @@ class ExploreShowViewModelShared(
     fun isFavorite(): Boolean {
         val sourceUrl = bookSource?.bookSourceUrl ?: return false
         val url = rawExploreUrl ?: return false
+        // searchKey 维度参与匹配: 搜索类收藏与发现类收藏的 categoryUrl 同源时不互混
+        val searchKey = if (isSearchMode) searchKeyword else null
         val favorites = PinnedExploreHelp.getPinnedExplores()
-        return favorites.any { it.sourceUrl == sourceUrl && it.categoryUrl == url }
+        return favorites.any { it.sourceUrl == sourceUrl && it.categoryUrl == url && it.searchKey == searchKey }
     }
 
     /**
@@ -259,9 +295,12 @@ class ExploreShowViewModelShared(
         val sourceName = bookSource?.bookSourceName ?: return
         val categoryName = exploreName ?: return
         val categoryUrl = rawExploreUrl ?: return
+        val searchKey = if (isSearchMode) searchKeyword else null
 
         val favorites = PinnedExploreHelp.getPinnedExplores()
-        val existing = favorites.find { it.sourceUrl == sourceUrl && it.categoryUrl == categoryUrl }
+        val existing = favorites.find {
+            it.sourceUrl == sourceUrl && it.categoryUrl == categoryUrl && it.searchKey == searchKey
+        }
         if (existing != null) {
             PinnedExploreHelp.removePinnedExplore(existing)
         } else {
@@ -270,7 +309,8 @@ class ExploreShowViewModelShared(
                     sourceUrl,
                     sourceName,
                     categoryName,
-                    categoryUrl
+                    categoryUrl,
+                    searchKey
                 )
             )
         }
@@ -317,15 +357,20 @@ class ExploreShowViewModelShared(
      */
     fun explore(resetPage: Boolean = false) {
         val source = bookSource ?: return
-        val url = rawExploreUrl ?: return
         if (resetPage) {
             page = 1
             books.clear()
         }
         val selectedOptions = exploreOptions.associate { it.name to it.resolvedValue }
+        // 搜索模式 key=搜索词 (WebBook 内部 url 取 searchUrl + 注入 KEY 变量), 发现模式 key=exploreUrl
+        val key = if (isSearchMode) {
+            searchKeyword ?: return
+        } else {
+            rawExploreUrl ?: return
+        }
         Coroutine.async(scope) {
             getBookListAwait(
-                source, url, page, isSearch = false,
+                source, key, page, isSearch = isSearchMode,
                 onUrlResolved = { analyzeUrl: AnalyzeUrlCore ->
                     val oldSize = exploreOptions.size
                     mergeOptions(parseExploreOptionsFromUrl(analyzeUrl.ruleUrl))

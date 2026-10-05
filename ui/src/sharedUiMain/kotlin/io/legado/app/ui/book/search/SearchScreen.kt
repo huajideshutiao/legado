@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -65,6 +66,10 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.SearchKeyword
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.model.webBook.ExploreOption
+import io.legado.app.model.webBook.SEARCH_LAYOUT_SOURCE_GROUP
+import io.legado.app.model.webBook.SourceSearchGroup
+import io.legado.app.ui.main.home.SectionCoverRow
+import io.legado.app.ui.main.home.SectionTitleRow
 import io.legado.app.ui.book.manga.extension.MangaSearchFilterRow
 import io.legado.app.ui.bookshelf.KindLabels
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
@@ -134,6 +139,9 @@ interface SearchNavCallbacks {
     /** 点击书籍 (补 notShelf type 后进详情, 宿主实现跳转); [sharedToken] = 被点封面自签的共享配对 token。 */
     fun onBookClick(book: BaseBook, longClick: Boolean = false, sharedToken: String? = null)
 
+    /** 按源分类区块标题点击: 进单源搜索结果页 (发现 show 界面, 数据走 [source] 的搜索 url)。 */
+    fun onSourceSectionClick(source: BookSource, keyword: String)
+
     /** 进入书源管理页。 */
     fun onManageBookSources()
 
@@ -163,6 +171,7 @@ interface SearchNavCallbacks {
 object NoOpSearchNavCallbacks : SearchNavCallbacks {
     override fun onBack() {}
     override fun onBookClick(book: BaseBook, longClick: Boolean, sharedToken: String?) {}
+    override fun onSourceSectionClick(source: BookSource, keyword: String) {}
     override fun onManageBookSources() {}
     override fun onAlertSearchScope() {}
     override fun onShowSourceFilterRule() {}
@@ -232,6 +241,7 @@ fun SearchScreen(
     val historyKeys by viewModel.historyKeys.collectAsState()
     val bookshelfBooks by viewModel.bookshelfBooks.collectAsState()
     val resultBooks by viewModel.searchBooks.collectAsState(initial = emptyList())
+    val searchGroups by viewModel.searchGroups.collectAsState(initial = emptyList<SourceSearchGroup>())
     val isSearching by viewModel.isSearching.collectAsState()
     val hasMore by viewModel.hasMore.collectAsState()
     val focusEpoch by viewModel.focusEpoch.collectAsState()
@@ -242,9 +252,12 @@ fun SearchScreen(
 
     val searchOptionsVersion by viewModel.searchOptionsVersion.collectAsState()
 
-    // 搜索布局: 低 4 位=列数 (0/1 单列; 2..6 N 列网格), bit 4 (0x10)=视频标志
+    // 搜索布局: 低 3 位=列数 (0/1 单列; 2..6 N 列网格), bit 4 (0x10)=视频标志,
+    // bit 5 (0x20)=按源分类 (结果区按源分区块; 视频位在区块内生效)。列数位在按源分类下
+    // 不参与渲染, 但仍随布局写回保存 —— 对话框据此记住上次聚簇列数, 切回聚簇不再丢成单列。
     val searchStyle = AppConfigProviders.get().searchLayout
-    val styleCols = BookSource.exploreStyleCols(searchStyle)
+    val isSourceGroupLayout = searchStyle and SEARCH_LAYOUT_SOURCE_GROUP != 0
+    val styleCols = if (isSourceGroupLayout) 0 else BookSource.exploreStyleCols(searchStyle)
     val styleIsVideo = BookSource.exploreStyleIsVideo(searchStyle)
     val spanCount = if (styleCols <= 1) 1 else styleCols
 
@@ -338,6 +351,8 @@ fun SearchScreen(
                         viewModel = viewModel,
                         navCallbacks = navCallbacks,
                         books = resultBooks,
+                        groups = searchGroups,
+                        isSourceGroupLayout = isSourceGroupLayout,
                         spanCount = spanCount,
                         styleIsVideo = styleIsVideo,
                         styleCols = styleCols,
@@ -777,6 +792,8 @@ private fun ColumnScope.ResultArea(
     viewModel: SearchViewModel,
     navCallbacks: SearchNavCallbacks,
     books: List<SearchBook>,
+    groups: List<SourceSearchGroup>,
+    isSourceGroupLayout: Boolean,
     spanCount: Int,
     styleIsVideo: Boolean,
     styleCols: Int,
@@ -784,6 +801,10 @@ private fun ColumnScope.ResultArea(
     coverSlot: @Composable (SearchBook, Modifier, isVideoCover: Boolean) -> Unit,
 ) {
     @Suppress("UNUSED_EXPRESSION") bookshelfVersion // 书架增删时重组刷新绿点
+    if (isSourceGroupLayout) {
+        SourceGroupResultArea(viewModel, navCallbacks, groups, styleIsVideo, coverSlot)
+        return
+    }
     // 统一响应式网格: 列数 0/1 走行样式 item, 宽屏经 rememberResponsiveColumns(1) 自动加列
     // (对齐书架 LIST 档 / 阅读记录页 / 发现页), 不再分 LazyColumn 单列分支
     val state = rememberLazyGridState()
@@ -879,6 +900,72 @@ private fun ColumnScope.ResultArea(
                 }
             }
         }
+    }
+}
+
+// ===== 结果区 (按源分类布局) =====
+
+/**
+ * 按源分类结果区: 一个书源一个区块 (源名标题行 + 该源结果横向封面行),
+ * 视觉同主页展示项区块 (SectionTitleRow + SectionCoverRow); 组顺序 = 源完成顺序。
+ * 标题行整行可点 → 单源搜索结果页 (AppRoute.SourceSearchShow, 发现 show 界面 + 搜索 url)。
+ */
+@Composable
+private fun ColumnScope.SourceGroupResultArea(
+    viewModel: SearchViewModel,
+    navCallbacks: SearchNavCallbacks,
+    groups: List<SourceSearchGroup>,
+    styleIsVideo: Boolean,
+    coverSlot: @Composable (SearchBook, Modifier, isVideoCover: Boolean) -> Unit,
+) {
+    val state = rememberLazyListState()
+    // 触底续搜 (同聚簇分支: 对齐原 canScrollVertically(1)==false -> scrollToBottom)
+    LaunchedEffect(state) {
+        snapshotFlow { state.layoutInfo.totalItemsCount to state.canScrollForward }
+            .distinctUntilChanged()
+            .collect { (count, forward) ->
+                if (count > 0 && !forward) viewModel.scrollToBottom()
+            }
+    }
+    LazyColumn(
+        state = state,
+        modifier = Modifier
+            .fillMaxWidth()
+            .weight(1f),
+    ) {
+        items(groups, key = { it.source.bookSourceUrl }) { group ->
+            SourceSection(viewModel, navCallbacks, group, styleIsVideo, coverSlot)
+        }
+    }
+}
+
+@Composable
+private fun SourceSection(
+    viewModel: SearchViewModel,
+    navCallbacks: SearchNavCallbacks,
+    group: SourceSearchGroup,
+    styleIsVideo: Boolean,
+    coverSlot: @Composable (SearchBook, Modifier, isVideoCover: Boolean) -> Unit,
+) {
+    // 区块留白对照主页展示项 (SectionHolder.root: top default=8 / bottom xs=4)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = DesignTokens.spacingDefault, bottom = DesignTokens.spacingXs),
+    ) {
+        SectionTitleRow(group.source.bookSourceName) {
+            navCallbacks.onSourceSectionClick(group.source, viewModel.searchKey)
+        }
+        // 横向行: 视频位跟搜索布局 (同 home 区块视频封面卡); 封面渲染走与聚簇模式
+        // 同款 coverSlot (书架命中分流缓存区)
+        SectionCoverRow(
+            books = group.books,
+            onBookClick = { book, token -> navCallbacks.onBookClick(book, sharedToken = token) },
+            onBookLongClick = { book, token -> navCallbacks.onBookClick(book, true, token) },
+            isVideoStyle = styleIsVideo,
+            blockId = "search-source-${group.source.bookSourceUrl}",
+            coverSlot = coverSlot,
+        )
     }
 }
 

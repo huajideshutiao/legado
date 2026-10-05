@@ -80,6 +80,18 @@ sealed interface AppRoute {
         val exploreUrl: String? = null,
     ) : AppRoute
 
+    /**
+     * 单源搜索结果页 (搜索界面"按源分类"布局的二级页): 复用发现 show 界面,
+     * 但数据走 [BookSource.searchUrl] 搜索规则 (isSearch=true, key=[keyword]),
+     * 与 [ExploreShow] (explore 规则) 区分。
+     */
+    @Serializable
+    @SerialName("source_search_show")
+    data class SourceSearchShow(
+        val source: BookSource,
+        val keyword: String,
+    ) : AppRoute
+
     @Serializable
     @SerialName("my_config")
     data object MyConfig : AppRoute

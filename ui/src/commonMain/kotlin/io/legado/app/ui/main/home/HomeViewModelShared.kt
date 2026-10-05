@@ -164,12 +164,14 @@ class HomeViewModelShared(
                 _sectionErrorChangedFlow.tryEmit(tabTitle to section.id)
                 return@async
             }
-            // 与 ExploreShowViewModel.explore 一致: 把 resolvedValue 通过 selectedOptions 传出
+            // 与 ExploreShowViewModel.explore 一致: 把 resolvedValue 通过 selectedOptions 传出;
+            // 搜索类展示项 (searchKey 非空) 走搜索模式 (WebBook 内部 url 取 searchUrl, key=搜索词)
             val selectedOptions = state.sectionOptionsMap[section.id]
                 ?.takeIf { it.isNotEmpty() }
                 ?.associate { it.name to it.resolvedValue }
             val result = getBookListAwait(
-                source, section.exploreUrl, 1, isSearch = false,
+                source, section.searchKey ?: section.exploreUrl, 1,
+                isSearch = section.searchKey != null,
                 selectedOptions = selectedOptions
             )
             state.sectionBooksMap[section.id] = result.books
@@ -211,12 +213,13 @@ class HomeViewModelShared(
         Coroutine.async(scope) {
             val source = appDb.bookSourceDao.getBookSource(section.sourceUrl)
                 ?: return@async
-            // 与 ExploreShowViewModel.explore 一致: 把 resolvedValue 通过 selectedOptions 传出
+            // 搜索类展示项走搜索模式 (翻页同源 {{page}} 模板)
             val selectedOptions = state.sectionOptionsMap[section.id]
                 ?.takeIf { it.isNotEmpty() }
                 ?.associate { it.name to it.resolvedValue }
             val result = getBookListAwait(
-                source, section.exploreUrl, state.infinitePage, isSearch = false,
+                source, section.searchKey ?: section.exploreUrl, state.infinitePage,
+                isSearch = section.searchKey != null,
                 selectedOptions = selectedOptions
             )
             result.books.forEach { b -> state.infiniteBookMap.getOrPut(b.bookUrl) { b } }

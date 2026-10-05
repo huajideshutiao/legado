@@ -102,6 +102,7 @@ fun HomeSectionEditDialog(
     var selectedSource by remember(editing) { mutableStateOf<BookSource?>(null) }
     var selectedExploreUrl by remember(editing) { mutableStateOf(editing?.exploreUrl) }
     var selectedExploreName by remember(editing) { mutableStateOf(editing?.exploreName) }
+    var selectedSearchKey by remember(editing) { mutableStateOf(editing?.searchKey) }
     var pinnedExplores by remember { mutableStateOf<List<PinnedExplore>>(emptyList()) }
 
     // 三个选择器各自的候选项 (非空即展示对应选择弹窗)
@@ -170,6 +171,7 @@ fun HomeSectionEditDialog(
             style = style,
             sortOrder = editing?.sortOrder ?: HomeTabHelpShared.getSections(tabTitle).size,
             coverVideo = coverVideo,
+            searchKey = selectedSearchKey,
         )
         if (newSection.style == HomeSection.STYLE_INFINITE_GRID) {
             val existingInfinite = HomeTabHelpShared.getSections(tabTitle)
@@ -388,6 +390,7 @@ fun HomeSectionEditDialog(
                 selectedSource = source
                 selectedExploreUrl = fav.categoryUrl
                 selectedExploreName = fav.categoryName
+                selectedSearchKey = fav.searchKey
             }
         }
     }
@@ -407,6 +410,7 @@ fun HomeSectionEditDialog(
                 // 换源后分类必须重选 (对照原版 pickSource 清空 exploreUrl/Name)
                 selectedExploreUrl = null
                 selectedExploreName = null
+                selectedSearchKey = null
             }
         }
     }
@@ -420,6 +424,7 @@ fun HomeSectionEditDialog(
             categoryOptions = null
             selectedExploreUrl = kind.url
             selectedExploreName = kind.title
+            selectedSearchKey = null
         }
     }
 }

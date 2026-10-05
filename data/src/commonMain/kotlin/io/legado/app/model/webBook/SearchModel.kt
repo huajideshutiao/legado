@@ -30,6 +30,18 @@ import kotlinx.coroutines.withTimeout
 import kotlin.math.min
 
 /**
+ * 按源分组的搜索结果 (搜索界面"按源分类"布局用): 一个书源一个组,
+ * 组内为该源已搜到的全部书目, 组顺序 = 源完成顺序。
+ */
+data class SourceSearchGroup(
+    val source: BookSource,
+    val books: List<SearchBook>,
+)
+
+/** searchLayout (AppConfig) 的"按源分类"布局标志位; 低 3 位列数 / bit4 视频位仅聚簇布局使用。 */
+const val SEARCH_LAYOUT_SOURCE_GROUP = 0x20
+
+/**
  * 搜索编排层。
  *
  * 下沉说明:
@@ -47,6 +59,13 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
     private var searchKey: String = ""
     private var bookSources = emptyList<BookSource>()
     private var searchBooks = arrayListOf<SearchBook>()
+
+    /**
+     * 按源分组的原始结果 (key=sourceUrl): 聚合列表 [searchBooks] 之外并行维护,
+     * 同一批 SearchBook 对象引用, 无复制开销。
+     */
+    private val searchGroupBooks = LinkedHashMap<String, MutableList<SearchBook>>()
+    private val searchGroupSources = HashMap<String, BookSource>()
     private var searchJob: Job? = null
     private var workingState = MutableStateFlow(true)
 
@@ -69,6 +88,8 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
                 close()
             }
             searchBooks.clear()
+            searchGroupBooks.clear()
+            searchGroupSources.clear()
             bookSources = callBack.getSearchScope().getBookSources()
             exhaustedSources.clear()
             if (bookSources.isEmpty()) {
@@ -133,8 +154,10 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
                 // 多书源聚合：任一家声称还有下一页，整体就还有
                 hasMore = hasMore || page.hasNextPage
                 mergeItems(items, precision)
+                mergeGroup(source, items)
                 currentCoroutineContext().ensureActive()
                 callBack.onSearchSuccess(searchBooks)
+                callBack.onSearchGroupsChanged(groupSnapshot())
             }.onCompletion {
                 if (it == null) callBack.onSearchFinish(searchBooks.isEmpty(), hasMore)
             }.catch {
@@ -204,6 +227,30 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
         }
     }
 
+    /**
+     * 新源首次出现按完成顺序入组, 翻页追加到已有组尾; 零结果源不入组 (与聚簇列表只显有书的语义一致)。
+     *
+     * 按 bookUrl 去重: 劣质源翻页会重复返回上一页的书, 不去重分组横向行会出现重复封面卡。
+     */
+    private fun mergeGroup(source: BookSource, items: List<SearchBook>) {
+        if (items.isEmpty()) return
+        val group = searchGroupBooks.getOrPut(source.bookSourceUrl) { arrayListOf() }
+        val seen = group.mapTo(HashSet()) { it.bookUrl }
+        items.forEach {
+            if (seen.add(it.bookUrl)) group.add(it)
+        }
+        searchGroupSources[source.bookSourceUrl] = source
+    }
+
+    /** 组顺序 = 源完成顺序 (LinkedHashMap 插入序); 发射快照, UI 不持有内部可变结构 */
+    private fun groupSnapshot(): List<SourceSearchGroup> =
+        searchGroupBooks.map { (url, books) ->
+            SourceSearchGroup(
+                searchGroupSources.getValue(url),
+                books.toList(),
+            )
+        }
+
     fun pause() {
         workingState.value = false
     }
@@ -228,6 +275,9 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
         fun getSearchScope(): SearchScope
         fun onSearchStart()
         fun onSearchSuccess(searchBooks: List<SearchBook>)
+
+        /** 按源分组结果更新 (每源每页完成后全量发射; 默认空实现: Web API 等仅关心聚合列表的实现方不受影响) */
+        fun onSearchGroupsChanged(groups: List<SourceSearchGroup>) {}
         fun onSearchFinish(isEmpty: Boolean, hasMore: Boolean)
         fun onSearchCancel(exception: Throwable? = null)
         fun onSearchOptionsResolved(options: List<ExploreOption>)

@@ -835,7 +835,6 @@
     <string name="manga_extension_empty">暫無外掛</string>
     <string name="manga_extension_languages">語言</string>
     <string name="manga_extension_setting">設定</string>
-    <string name="manga_extension_kind_manga">漫畫</string>
     <string name="manga_extension_kind_video">影片</string>
     <string name="manga_extension_pref_empty">此外掛沒有可設定項目</string>
     <string name="manga_search_filters">篩選</string>
@@ -885,6 +884,9 @@
     <string name="explore_style_normal">普通</string>
     <string name="explore_cols">列數</string>
     <string name="search_layout">搜索佈局</string>
+    <string name="search_style_mode">佈局模式</string>
+    <string name="search_style_by_book">按書聚簇</string>
+    <string name="search_style_by_source">按源分類</string>
     <string name="explore_style_video">影片</string>
     <string name="rule_review_list">段評列表 (reviewList)</string>
     <string name="rule_review_count">章節評論數規則 (reviewCountRule)</string>

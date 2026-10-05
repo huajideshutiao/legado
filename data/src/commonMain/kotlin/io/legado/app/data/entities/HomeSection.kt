@@ -13,7 +13,9 @@ data class HomeSection(
     val style: Int,
     val sortOrder: Int = 0,
     /** 封面比例：false=小说(3:4)，true=视频(16:9) */
-    val coverVideo: Boolean = false
+    val coverVideo: Boolean = false,
+    /** 非空 = 搜索类展示项 (exploreUrl 存书源 searchUrl, 加载走搜索模式 key=searchKey, 与发现类同链路分流) */
+    val searchKey: String? = null
 ) {
     companion object {
         const val STYLE_COVER_ROW = 0

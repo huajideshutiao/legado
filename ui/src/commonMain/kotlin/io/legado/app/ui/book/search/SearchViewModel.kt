@@ -13,6 +13,7 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.model.webBook.SearchModel
+import io.legado.app.model.webBook.SourceSearchGroup
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.concurrent.newConcurrentSet
 import io.legado.app.utils.systemCurrentTimeMillis
@@ -90,6 +91,13 @@ class SearchViewModel {
         extraBufferCapacity = 64,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
+
+    /**
+     * 按源分组的搜索结果 ("按源分类"布局用, 组顺序 = 源完成顺序)。
+     * 同 [searchBooks] 的事件语义: 每源每页完成后全量发射一次。
+     */
+    private val _searchGroups = signalFlow<List<SourceSearchGroup>>()
+    val searchGroups: SharedFlow<List<SourceSearchGroup>> = _searchGroups.asSharedFlow()
 
     private val _hasMore = MutableStateFlow(true)
     val hasMore = _hasMore.asStateFlow()
@@ -187,6 +195,10 @@ class SearchViewModel {
 
         override fun onSearchSuccess(searchBooks: List<SearchBook>) {
             searchBooksSource.tryEmit(searchBooks)
+        }
+
+        override fun onSearchGroupsChanged(groups: List<SourceSearchGroup>) {
+            _searchGroups.tryEmit(groups)
         }
 
         override fun onSearchFinish(isEmpty: Boolean, hasMore: Boolean) {
@@ -413,6 +425,7 @@ class SearchViewModel {
                 _isSearching.value = true
                 searchID++
                 _searchBooks.tryEmit(emptyList())
+                _searchGroups.tryEmit(emptyList())
                 restartSearchBooksCollector()
                 searchKey = key
                 _hasMore.value = true
