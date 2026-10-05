@@ -70,9 +70,14 @@ data class PlaybackSnapshot(
     val isBuffering: Boolean = false,
     /** 当前倍速（驱动倍速钮文字与档位高亮）。 */
     val speed: Float = 1f,
-    /** 已播到末尾（对应 media3 `STATE_ENDED`）。 */
+    /**
+     * 已播到末尾（对应 media3 `STATE_ENDED` **且播放列表仍有媒体**）。
+     *
+     * 不能只看 `STATE_ENDED`: media3 把"播放列表被清空"（切章卸载旧媒体）也报成它,
+     * 而那是"没有媒体可播"不是"播完"。
+     */
     val ended: Boolean = false,
-    /** 尚未装载任何媒体（对应 media3 `STATE_IDLE`）。 */
+    /** 尚未装载任何媒体（对应 media3 `STATE_IDLE`，或播放列表已空）。 */
     val idle: Boolean = true,
 ) {
     /**

@@ -577,11 +577,20 @@ internal class AndroidVideoPlayerController(
      * 停止并卸载当前媒体 (共享层 videoUrl 置 null = 章节重新加载中/刷新, 见
      * [VideoPlayerController.stop]): 不显式停的话切章时上一章画面与声音会一直响到新章解析完。
      * 必须同步清 [loadedUrl] 守卫, 否则同链接重试会被当成「已在播」跳过。
+     *
+     * 先 [Player.stop] 再 clearMediaItems, 顺序不能反: 清空播放列表在 media3 眼里等同"没有媒体
+     * 可播", 会被报成 STATE_ENDED, 监听器据此当成"播完"再推进一章 (点选集播下一集、点下一章
+     * 跳一章都是它)。先 stop() 把状态落到 IDLE, media3 就不会再把空列表遮罩成 ENDED
+     * (removeMediaItemsInternal 对 STATE_IDLE 提前跳过); 保留清空列表这一步, 是为了让
+     * 位置/时长读数归 0 —— 另外三端卸载后位置都读 0 (桌面 resetSideFlowsToIdle / 鸿蒙
+     * cachedPosition / iOS 摘掉 item), 共享层保存进度的屏障也按这个口径判 ("媒体已卸载时
+     * 读到的 0 不是真实进度")。只用 stop() 会保留位置读数 (官方契约: does not reset the
+     * playback position), 切章后立刻退出会把上一章的位置写成新章进度。
      */
     override fun stop() {
         loadedUrl = null
         formatOverride = null
-        player.pause()
+        player.stop()
         player.clearMediaItems()
         publishPlayback()
     }
