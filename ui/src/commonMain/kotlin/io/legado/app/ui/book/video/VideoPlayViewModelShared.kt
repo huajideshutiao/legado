@@ -8,6 +8,8 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.VideoResolution
 import io.legado.app.data.entities.VideoSource
+import io.legado.app.data.entities.VirtualPluginSourcePrefix
+import io.legado.app.data.entities.VirtualPluginVars
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.book.BookChapterLoader
 import io.legado.app.help.book.isLocal
@@ -26,6 +28,7 @@ import io.legado.app.model.chapter.updateResourceUrl
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.root.VideoPlayTarget
 import io.legado.app.ui.root.screenModelScope
+import io.legado.app.utils.encodeStringMap
 import io.legado.app.utils.hasPlayableScheme
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.systemCurrentTimeMillis
@@ -599,6 +602,9 @@ class VideoPlayViewModelShared(
      * 切换分辨率 (对照 desktop `VideoPlayerViewModel.switchResolution` /
      * app `VideoPlayActivity.switchResolution`)。
      *
+     * TVBox 源的分辨率列表即线路列表 (getContentAwait 拼多行 `线路名::直链`),
+     * 切换时同步把目录切到所选线路 (见 [maybeSwitchTvBoxLine])。
+     *
      * 注: app 端切换分辨率会重建 ExoPlayer 并 seekTo 原位置; desktop 端因播放库不同,
      * 本 VM 只更新 [videoUrl] State, UI 层订阅后自行处理播放器重建与 seek。
      *
@@ -618,6 +624,46 @@ class VideoPlayViewModelShared(
             source = curBookSource,
             headerMapF = source.headers,
         )
+        maybeSwitchTvBoxLine(index, seekPositionMs)
+    }
+
+    /**
+     * TVBox 线路切换: 分辨率列表即线路列表, 换 URL 后同步把目录切到所选线路。
+     *
+     * 线路选择存 [VirtualPluginVars.TVBOX_LINE], 强制回源重拉目录后按集名/序号定位回
+     * 当前集并持久化进度 —— 不重新 [loadChapter], 播放器已在播新线路直链, 目录只是跟随刷新。
+     */
+    /** 切线路目录重拉的在途任务 (连点串行化: 新请求 cancel 旧请求, 防旧目录晚到覆盖新选择)。 */
+    private var lineSwitchJob: Job? = null
+
+    private fun maybeSwitchTvBoxLine(index: Int, seekPositionMs: Long) {
+        val source = curBookSource ?: return
+        if (!source.bookSourceUrl.startsWith(VirtualPluginSourcePrefix.TVBOX)) return
+        val book = curBook ?: return
+        val lineName = _videoSource.value?.resolutions?.getOrNull(index)?.name?.trim().orEmpty()
+        if (lineName.isEmpty()) return
+        val currentTitle = chapterList?.getOrNull(_curChapterIndex.value)?.title.orEmpty()
+        val fallbackIndex = _curChapterIndex.value
+        book.variableMap[VirtualPluginVars.TVBOX_LINE] = lineName
+        book.variable = encodeStringMap(book.variableMap)
+        // 连点串行化: cancel 上一轮重拉 (用户已改选), 避免旧线路目录晚到覆盖新选择
+        lineSwitchJob?.cancel()
+        lineSwitchJob = scope.launch {
+            val result = runCatching { BookChapterLoader.upBook(book, forceReload = true) }
+                .onFailure {
+                    if (it is CancellationException) throw it
+                    AppLog.put("切换线路重拉目录失败 ${book.name}\n${it.message}", it)
+                }.getOrNull() ?: return@launch
+            if (result.chapterList.isEmpty()) return@launch
+            chapterList = result.chapterList
+            _chapterSize.value = result.chapterList.size
+            val newIndex = result.chapterList
+                .indexOfFirst { it.title == currentTitle && currentTitle.isNotEmpty() }
+                .takeIf { it >= 0 }
+                ?: fallbackIndex.coerceIn(0, result.chapterList.lastIndex)
+            _curChapterIndex.value = newIndex
+            saveRead(newIndex, seekPositionMs)
+        }
     }
 
     /**

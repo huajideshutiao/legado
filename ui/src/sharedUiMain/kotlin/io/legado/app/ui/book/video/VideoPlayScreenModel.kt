@@ -6,6 +6,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.VideoResolution
+import io.legado.app.data.entities.VirtualPluginSourcePrefix
 import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfigProviders
@@ -313,6 +314,8 @@ class VideoPlayScreenModel : ScreenModel {
                     resolutions = resolutions,
                     currentResolutionIndex = currentIndex,
                     hasMultiResolution = resolutions.size > 1,
+                    isTvBoxSource = shared.curBookSource?.bookSourceUrl
+                        ?.startsWith(VirtualPluginSourcePrefix.TVBOX) == true,
                 )
             }
             merge
@@ -703,6 +706,8 @@ data class VideoPlayUiState(
     val isSystemFullScreen: Boolean = false,
     /** 是否多分辨率源 (控制分辨率钮显隐) */
     val hasMultiResolution: Boolean = false,
+    /** 是否 TVBox 源 (分辨率列表实为线路列表, 对话框标题显示"线路") */
+    val isTvBoxSource: Boolean = false,
     /** 分辨率列表 */
     val resolutions: List<VideoResolution> = emptyList(),
     /** 当前分辨率索引 */

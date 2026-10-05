@@ -73,6 +73,7 @@ import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.format
+import legado.ui.generated.resources.video_line
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.cancel
 import legado.ui.generated.resources.full_screen
@@ -339,6 +340,7 @@ fun VideoTitleBar(
  * @param playing 当前在播 (true 画暂停条 / false 画播放三角; 语义由调用方按原版
  *   media3 `shouldShowPlayButton` 算好传入)
  * @param hasMultiResolution 是否多分辨率源 (假 = 不画分辨率钮; 单一直链源点开只会是空列表)
+ * @param isTvBoxSource 是否 TVBox 源 (分辨率列表实为线路列表, 对话框标题显示"线路")
  * @param onPopupVisibleChange 层内弹层 (倍速下拉 / 分辨率对话框) 显隐上报，
  *   调用方据此抑制控制栏自动隐藏 (否则淡出会把弹层一并销毁)
  */
@@ -350,6 +352,7 @@ fun VideoControlsOverlay(
     durationMs: Long,
     playbackSpeed: Float,
     hasMultiResolution: Boolean,
+    isTvBoxSource: Boolean = false,
     resolutions: List<VideoResolution>,
     currentResolutionIndex: Int,
     onPlayPause: () -> Unit,
@@ -453,6 +456,8 @@ fun VideoControlsOverlay(
                             currentResolutionIndex = currentResolutionIndex,
                             onSwitchResolution = onSwitchResolution,
                             onVisibleChange = onPopupVisibleChange,
+                            titleText = if (isTvBoxSource) stringResource(Res.string.video_line)
+                            else stringResource(Res.string.resolution),
                         )
                     }
                     // 画中画钮 (手动入口; 退出由用户在系统小窗上操作), 排在系统级全屏钮左侧
@@ -773,7 +778,7 @@ fun SpeedButton(
 }
 
 /**
- * 分辨率钮 (显示当前分辨率名, 点击弹 AlertDialog 单选)。
+ * 分辨率钮 (显示当前分辨率名, 点击弹 AlertDialog 单选; TVBox 源语义为线路切换, 标题传"线路")。
  */
 @Composable
 fun ResolutionButton(
@@ -781,6 +786,7 @@ fun ResolutionButton(
     currentResolutionIndex: Int,
     onSwitchResolution: (Int) -> Unit,
     onVisibleChange: (Boolean) -> Unit = {},
+    titleText: String = stringResource(Res.string.resolution),
 ) {
     var showDialog by remember { mutableStateOf(false) }
     LaunchedEffect(showDialog) { onVisibleChange(showDialog) }
@@ -802,7 +808,7 @@ fun ResolutionButton(
     if (showDialog) {
         AlertDialog(
             onDismissRequest = { showDialog = false },
-            title = { Text(stringResource(Res.string.resolution)) },
+            title = { Text(titleText) },
             text = {
                 // 单选列表 (对照 app 端 VideoPlayActivity.showResolutionDialog 的 singleChoiceItems 交互;
                 // 条目不叠加额外 padding, 最小高度取主题 viewHeightLarge)
@@ -1067,6 +1073,7 @@ fun VideoPlayerHostContainer(
                 bufferedMs = bufferedMs,
                 playbackSpeed = playback.speed,
                 hasMultiResolution = uiState.hasMultiResolution,
+                isTvBoxSource = uiState.isTvBoxSource,
                 resolutions = uiState.resolutions,
                 currentResolutionIndex = uiState.currentResolutionIndex,
                 onPlayPause = screenModel::onPlayPause,
