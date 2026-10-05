@@ -33,6 +33,7 @@ import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 /**
  * 选集网格 (对照 app 端 VideoPlayScreen.VideoChapterGrid: ChapterListAdapter + GridLayoutManager(3))。
+ * 基准列数 2 (原版 3, 窄屏过挤)。
  */
 @Composable
 fun VideoChapterGrid(
@@ -56,7 +57,7 @@ fun VideoChapterGrid(
         }
     }
     FastScrollLazyVerticalGrid(
-        columns = rememberResponsiveColumns(3),
+        columns = rememberResponsiveColumns(2),
         state = gridState,
         modifier = modifier,
     ) {
