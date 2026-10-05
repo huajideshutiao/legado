@@ -275,15 +275,10 @@ dependencies {
 
     // ===== 桌面扩展加载 (extension loader 依赖, 坐标经 Suwayomi-Server 实证) =====
     // APK 安装包解析链: manifest 二进制 XML (apk-parser) + v1/v2/v3 签名校验 (apksig,
-    // 8.x/9.x 只发布在 Google Maven, settings 已配 google(); Central 停在 2.3.0) +
-    // dex→java 字节码转换 (dex2jar femtopedia fork: dex-translator 核心 + dex-tools CLI 入口)。
-    // asm: dex2jar 2.4.38 的 POM 传递 asm-tree/-util/-commons 9.10.1, 显式声明同版避免混版。
-    // :desktop 是终端应用模块 (无下游消费者), 一律 implementation, 不需要 api 外泄。
+    // 8.x/9.x 只发布在 Google Maven, settings 已配 google(); Central 停在 2.3.0)。
+    // dex→jar 转换 (dex2jar/asm) 归 DexJarConverter 所在的 :desktop-core 声明。
     implementation(libs.apk.parser)
     implementation(libs.apksig)
-    implementation(libs.dex.translator)
-    implementation(libs.dex.tools)
-    implementation(libs.asm)
 
     // 测试: WebView2 消息泵/环境/窗口创建闭环验证 (修复"startBrowser 首次调用打不开")
     testImplementation(libs.junit)

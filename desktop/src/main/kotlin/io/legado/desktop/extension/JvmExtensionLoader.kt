@@ -6,15 +6,13 @@
 // fork 保持 com.googlecode.d2j 包名; net.dongliu:apk-parser 还原 AXML)。
 package io.legado.desktop.extension
 
-import com.googlecode.d2j.dex.Dex2jar
-import com.googlecode.d2j.reader.MultiDexFileReader
-import com.googlecode.dex2jar.tools.BaksmaliBaseDexExceptionHandler
 import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
 import eu.kanade.tachiyomi.animesource.AnimeSource
 import eu.kanade.tachiyomi.animesource.AnimeSourceFactory
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceFactory
+import io.legado.desktop.help.dex.DexJarConverter
 import java.io.File
 import java.net.URLClassLoader
 import java.util.zip.ZipFile
@@ -84,8 +82,6 @@ object JvmExtensionLoader {
 
     /** 视频扩展受支持的扩展库版本 (Aniyomi 整数系)。 */
     private val ANIME_SUPPORTED_LIB_VERSIONS = listOf(14.0, 15.0, 16.0, 17.0)
-
-    private val DEX_ENTRY_REGEX = Regex("""classes\d*\.dex""")
 
     /**
      * 加载单个扩展 APK。
@@ -271,14 +267,13 @@ object JvmExtensionLoader {
     }
 
     /**
-     * dex → jar, 参数面取自 Suwayomi-Server PackageTools.dex2jar (Dex2jarCmd 官方命令行同源);
-     * 多 dex APK 每个 dex 条目各产一个 jar。
+     * dex → jar; 多 dex APK 每个 dex 条目各产一个 jar (转换参数面见 DexJarConverter.convertDex)。
      */
     private fun dex2jar(apkFile: File, outputDir: File, baseName: String): List<File> {
         outputDir.mkdirs()
         val dexBytes = ZipFile(apkFile).use { zip ->
             zip.entries().asSequence()
-                .filter { !it.isDirectory && DEX_ENTRY_REGEX.matches(it.name.substringAfterLast('/')) }
+                .filter { !it.isDirectory && DexJarConverter.DEX_ENTRY_REGEX.matches(it.name.substringAfterLast('/')) }
                 .sortedBy { it.name }
                 .map { zip.getInputStream(it).use { input -> input.readBytes() } }
                 .toList()
@@ -286,22 +281,7 @@ object JvmExtensionLoader {
         check(dexBytes.isNotEmpty()) { "APK 内无 classes.dex: ${apkFile.name}" }
         return dexBytes.mapIndexed { index, bytes ->
             val jarFile = File(outputDir, "$baseName${if (index == 0) "" else "-dex$index"}.jar")
-            val reader = MultiDexFileReader.open(bytes)
-            Dex2jar.from(reader)
-                .withExceptionHandler(BaksmaliBaseDexExceptionHandler())
-                .reUseReg(false)
-                .topoLogicalSort()
-                .skipDebug(true)
-                .optimizeSynchronized(false)
-                .printIR(false)
-                .noCode(false)
-                .skipExceptions(false)
-                .dontSanitizeNames(true)
-                .computeFrames(true)
-                .to(jarFile.toPath())
-            check(jarFile.isFile) { "dex2jar 未产出 jar: ${jarFile.path}" }
-            // R8 接收者类构造器模式还原 (见 CtorSiteFixer 注释)
-            CtorSiteFixer.fix(jarFile, bytes)
+            DexJarConverter.convertDex(bytes, jarFile)
             jarFile
         }
     }

@@ -5,7 +5,7 @@
 // VerifyError (如 g0.<clinit> 里 new Object() 存进 g0 字段)。本修复以 dex 指令序为基准还原
 // 各构造器调用点的具体类型: 重写 jar 的 NEW/INVOKESPECIAL, 并给缺失 <init> 的具体类合成
 // 转发构造器 (JVM 校验要求 <init> 与接收者同类, 仅指向祖先构造器无法通过校验)。
-package io.legado.desktop.extension
+package io.legado.desktop.help.dex
 
 import com.googlecode.d2j.reader.DexFileReader
 import com.googlecode.d2j.reader.Op
@@ -25,7 +25,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 
-internal object CtorSiteFixer {
+object CtorSiteFixer {
 
     /** dex 类型名 → JVM 内部名 ("Lt;" → "t"; dex2jar dontSanitizeNames 下 jar 与 dex 同名)。 */
     private fun toInternal(type: String): String =

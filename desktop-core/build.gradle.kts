@@ -28,4 +28,10 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     // 桌面端无 UI Skia 图形引擎 (DesktopImageOps 依赖, 纯 2D 位图与切片重排, 无 Compose UI)
     implementation("org.jetbrains.skiko:skiko-awt:0.144.6")
+
+    // ===== dex→java 字节码转换 (TVBox spider jar 与漫画扩展共用 DexJarConverter; 坐标经
+    // Suwayomi-Server 实证, 与 :desktop 同款) =====
+    implementation(libs.dex.translator)
+    implementation(libs.dex.tools)
+    implementation(libs.asm)
 }

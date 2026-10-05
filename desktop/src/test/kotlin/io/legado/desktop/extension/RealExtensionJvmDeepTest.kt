@@ -29,6 +29,7 @@ import org.junit.Test
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingleton
 import uy.kohesive.injekt.api.addSingletonFactory
+import io.legado.desktop.help.dex.CtorSiteFixer
 import java.io.File
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipFile
