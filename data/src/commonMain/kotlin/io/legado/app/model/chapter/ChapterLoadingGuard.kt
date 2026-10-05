@@ -35,7 +35,8 @@ import kotlin.coroutines.CoroutineContext
  *   却会让新任务被旧任务留下的标记挡住而空跑, 最终谁都不再释放, 永久堵死该章。
  *
  * # 锁纪律
- * 锁内只做纯内存的容器读写, `cancel()` / `launch()` 一律出锁执行 ——
+ * 锁内只做纯内存的容器读写 (以及 [withCurrentJob] 的纯内存状态提交),
+ * `cancel()` / `launch()` 一律出锁执行 ——
  * atomicfu 的锁在 Native 端不可重入, 锁内 cancel 会同线程直跑 `invokeOnCompletion`
  * 处理器, 而处理器要取同一把锁, 即死锁。
  *
@@ -84,6 +85,18 @@ class ChapterLoadingGuard(
      */
     fun isCurrentJob(index: Int, job: Job?): Boolean =
         synchronized(lock) { job != null && jobs[index] === job }
+
+    /**
+     * [job] 仍是第 [index] 章当前登记的任务时, 在守卫锁内执行 [block] 并返回其结果, 否则返回 null。
+     *
+     * 供装载任务在写共享状态前做原子轮次校验: 校验与写入在同一把锁内, [clear] / [launch]
+     * 的作废写不可能插在两者之间 (分开写时窗口虽小, 但晚到写入会把切档后的新选择覆盖回去)。
+     * [block] 内不得挂起、不得回调本类方法 (atomicfu 锁在 Native 端不可重入)。
+     */
+    fun <T> withCurrentJob(index: Int, job: Job?, block: () -> T): T? =
+        synchronized(lock) {
+            if (job == null || jobs[index] !== job) null else block()
+        }
 
     /**
      * 释放装载标记。

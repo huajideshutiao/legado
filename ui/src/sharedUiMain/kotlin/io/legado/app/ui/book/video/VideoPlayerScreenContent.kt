@@ -1063,10 +1063,11 @@ fun VideoPlayerHostContainer(
             loadingIndicator = { VideoBufferingIndicator() },
         )
 
-        // 4. 控制层 (加载/错误态不叠; 锁定态/画中画隐藏)
+        // 4. 控制层 (错误态不叠; 锁定态/画中画隐藏; 加载中也允许唤出 —— 小窗/分辨率线路
+        //    钮要在等装载时可用, 自动隐藏计时在加载期本就停着, 控制层不会闪隐)
         if (!uiState.isLocked && !isPip) {
             VideoControlsOverlay(
-                visible = uiState.controlsVisible && error == null && !showLoading,
+                visible = uiState.controlsVisible && error == null,
                 playing = playingIconShown,
                 positionMs = positionMs,
                 durationMs = durationMs,

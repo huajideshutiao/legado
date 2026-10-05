@@ -398,13 +398,11 @@ class VideoPlayViewModelShared(
             _loadState.value = ChapterLoadState.Error("章节列表为空")
             return
         }
-        // 标记加载中, 清空旧视频源 (清空只是「没有新源」的数据状态, 停旧媒体由
-        // 渲染层观察 null 后调 controller.stop() 完成 —— 不清会让上一章一直响到新章解析完)
+        // 标记加载中, 清空旧视频地址 (清空只是「没有新源」的数据状态, 停旧媒体由
+        // 渲染层观察 null 后调 controller.stop() 完成 —— 不清会让上一章一直响到新章解析完)。
+        // 分辨率三件套不清空: 加载中控制层的分辨率/线路钮要靠上一轮列表保持可用
         _loadState.value = ChapterLoadState.Loading
         _videoUrl.value = null
-        _videoSource.value = null
-        _resolutions.value = emptyList()
-        _currentResolutionIndex.value = 0
         pendingSeekMs = seekPositionMs
         _curChapterIndex.value = index
         _curChapterTitle.value = chapters.getOrNull(index)?.title.orEmpty()
@@ -467,8 +465,12 @@ class VideoPlayViewModelShared(
                     if (!book.isLocal) {
                         chapter.updateResourceUrl(content, inBookshelf = !book.isNotShelf)
                     }
-                    // 解析视频源 (复用同包工具函数)
-                    parseVideoContent(content, source)
+                    // 解析视频源 (复用同包工具函数)。isCurrentJob 守卫与 finally 同口径:
+                    // 本轮已被切章替换/被加载中切档取消时不得再写 _videoUrl/_resolutions,
+                    // 否则晚到的解析结果会把新一轮的选择覆盖回默认档
+                    if (loadGuard.isCurrentJob(index, currentJob)) {
+                        parseVideoContent(content, source)
+                    }
                     // 当前章就绪后再预解析前后各一章 (对标小说 contentLoadFinish → preDownload 的时机)
                     if (source != null) {
                         preloader.preload(
@@ -605,6 +607,10 @@ class VideoPlayViewModelShared(
      * TVBox 源的分辨率列表即线路列表 (getContentAwait 拼多行 `线路名::直链`),
      * 切换时同步把目录切到所选线路 (见 [maybeSwitchTvBoxLine])。
      *
+     * 加载中切档: 先取消在途装载 (真取消) 并把加载态归 Idle, 起播等待改由播放器
+     * isBuffering 口径表达 (与 [prepareDirectReload] 同一先例); 续播位置以在途装载
+     * 已记的待用点为准 —— 控制器此刻已停, 调用方从控制器现取的位置恒为 0。
+     *
      * 注: app 端切换分辨率会重建 ExoPlayer 并 seekTo 原位置; desktop 端因播放库不同,
      * 本 VM 只更新 [videoUrl] State, UI 层订阅后自行处理播放器重建与 seek。
      *
@@ -615,8 +621,18 @@ class VideoPlayViewModelShared(
     fun switchResolution(index: Int, seekPositionMs: Long = 0L) {
         val source = _videoSource.value ?: return
         val resolution = source.getResolution(index) ?: return
+        // 加载中切档必须在写状态源前取消在途装载, 否则其解析完成时会写 _videoUrl
+        // 把刚选的档覆盖回默认档 (loadGuard.clear 为真取消; 被取消任务的 finally 因
+        // isCurrentJob 不成立不会来改写加载态)
+        val loading = _loadState.value is ChapterLoadState.Loading
+        if (loading) {
+            loadGuard.clear()
+            _loadState.value = ChapterLoadState.Idle
+        }
+        val startMs = if (loading) pendingSeekMs.coerceAtLeast(0L) else seekPositionMs
+        pendingSeekMs = 0L
         _currentResolutionIndex.value = index
-        _startPositionMs.value = seekPositionMs
+        _startPositionMs.value = startMs
         _videoUrl.value = AnalyzeUrlFactories.create(
             rawUrl = resolution.url,
             // 本地书无书源 (loadChapter 对 null source 已明确容忍), 此处不得提前 return:
@@ -624,7 +640,7 @@ class VideoPlayViewModelShared(
             source = curBookSource,
             headerMapF = source.headers,
         )
-        maybeSwitchTvBoxLine(index, seekPositionMs)
+        maybeSwitchTvBoxLine(index, startMs)
     }
 
     /**
