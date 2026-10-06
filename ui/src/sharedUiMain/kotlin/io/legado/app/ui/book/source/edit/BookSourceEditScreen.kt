@@ -403,29 +403,24 @@ private fun HeaderRow1(state: BookSourceEditState, callbacks: BookSourceEditCall
             DropdownBox(
                 options = stringArrayResource(Res.array.book_type),
                 selectedIndex = state.bookSourceTypeIndex,
+                onSelect = callbacks.onBookSourceTypeChange,
                 enabled = state.ruleEditable,
-            ) { callbacks.onBookSourceTypeChange(it) }
+            )
         }
-        HeaderCheckBox("is_enable", state.enabled) {
-            callbacks.onEnabledChange(it)
-        }
+        HeaderCheckBox("is_enable", state.enabled, onChange = callbacks.onEnabledChange)
         HeaderCheckBox(
             "auto_save_cookie",
             state.enabledCookieJar,
+            onChange = callbacks.onEnabledCookieJarChange,
             enabled = state.ruleEditable,
-        ) {
-            callbacks.onEnabledCookieJarChange(it)
-        }
+        )
         HeaderCheckBox(
             "enable_dangerous_api",
             state.enableDangerousApi,
+            onChange = callbacks.onEnableDangerousApiClick,
             enabled = state.ruleEditable,
-        ) {
-            callbacks.onEnableDangerousApiClick(it)
-        }
-        HeaderCheckBox("enable_review", state.enabledReview, enabled = state.ruleEditable) {
-            callbacks.onEnabledReviewChange(it)
-        }
+        )
+        HeaderCheckBox("enable_review", state.enabledReview, onChange = callbacks.onEnabledReviewChange, enabled = state.ruleEditable)
     }
 }
 
@@ -438,9 +433,7 @@ private fun HeaderRow2(state: BookSourceEditState, callbacks: BookSourceEditCall
             .horizontalScroll(rememberScrollState()),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        HeaderCheckBox("discovery", state.enabledExplore) {
-            callbacks.onEnabledExploreChange(it)
-        }
+        HeaderCheckBox("discovery", state.enabledExplore, onChange = callbacks.onEnabledExploreChange)
         Row(
             Modifier.padding(vertical = DesignTokens.spacingDefault),
             verticalAlignment = Alignment.CenterVertically,
@@ -453,7 +446,8 @@ private fun HeaderRow2(state: BookSourceEditState, callbacks: BookSourceEditCall
             DropdownBox(
                 options = stringArrayResource(Res.array.explore_item_style),
                 selectedIndex = state.exploreStyleIndex,
-            ) { callbacks.onExploreStyleChange(it) }
+                onSelect = callbacks.onExploreStyleChange,
+            )
         }
         Row(
             Modifier.padding(vertical = DesignTokens.spacingDefault),
@@ -467,7 +461,8 @@ private fun HeaderRow2(state: BookSourceEditState, callbacks: BookSourceEditCall
             DropdownBox(
                 options = remember { (0..6).map { it.toString() } },
                 selectedIndex = state.exploreColsIndex,
-            ) { callbacks.onExploreColsChange(it) }
+                onSelect = callbacks.onExploreColsChange,
+            )
         }
     }
 }
@@ -710,10 +705,11 @@ private fun SpinnerField(entity: EditEntity) {
             // 非 key 的字面值 (FULL/TEXT/SINGLE) 由 rememberString 原样返回
             options = selections.map { rememberString(it.first) },
             selectedIndex = selectedIndex,
-        ) { i ->
-            selectedIndex = i
-            entity.value = selections.getOrNull(i)?.second
-        }
+            onSelect = { i ->
+                selectedIndex = i
+                entity.value = selections.getOrNull(i)?.second
+            },
+        )
     }
 }
 
