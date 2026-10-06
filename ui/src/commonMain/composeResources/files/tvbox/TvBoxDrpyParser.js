@@ -9,6 +9,8 @@
  *   名与解析语义原样保留; 差异仅: urljoin 换宿主 joinUrl, jsonpath 面 (pj*)
  *   不在 defaultParser 契约内未搬, cheerio 经 __M.require 惰性取源
  *   (assets://js/lib/cheerio.min.js, 与 drpy2 的 import 共用同一模块缓存)。
+ * - 差异: 上游 pdfh/pdfa 的 PARSE_CACHE 缓存段只写不读 (doc 仍每次全量 load),
+ *   已删除该段与随之失效的 PARSE_CACHE/pdfa_doc 等字段, 解析语义不变。
  */
 
 var __drpyCheerio = null;
@@ -20,8 +22,6 @@ function __drpyCheerioLib() {
     return __drpyCheerio;
 }
 
-// 解析缓存开关
-const PARSE_CACHE = true; // 解析缓存
 // 不自动加eq下标索引的选择器
 const NOADD_INDEX = ':eq|:lt|:gt|:first|:last|:not|:even|:odd|:has|:contains|:matches|:empty|^body$|^#'; // 不自动加eq下标索引
 // 需要自动urljoin的属性
@@ -40,10 +40,6 @@ class Jsoup {
      */
     constructor(MY_URL = '') {
         this.MY_URL = MY_URL;
-        this.pdfh_html = '';
-        this.pdfa_html = '';
-        this.pdfh_doc = null;
-        this.pdfa_doc = null;
     }
 
     /**
@@ -197,12 +193,6 @@ class Jsoup {
         parse = this.parseHikerToJq(parse);
 
         const doc = __drpyCheerioLib().load(html);
-        if (PARSE_CACHE) {
-            if (this.pdfa_html !== html) {
-                this.pdfa_html = html;
-                this.pdfa_doc = doc;
-            }
-        }
 
         const parses = parse.split(' ');
         let ret = null;
@@ -229,12 +219,6 @@ class Jsoup {
         if (!html || !parse) return '';
 
         const doc = __drpyCheerioLib().load(html);
-        if (typeof PARSE_CACHE !== 'undefined' && PARSE_CACHE) {
-            if (this.pdfa_html !== html) {
-                this.pdfa_html = html;
-                this.pdfa_doc = doc;
-            }
-        }
 
         // 处理特殊解析规则
         if (parse === 'body&&Text' || parse === 'Text') {

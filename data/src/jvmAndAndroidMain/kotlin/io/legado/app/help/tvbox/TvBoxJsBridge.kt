@@ -3,7 +3,6 @@ package io.legado.app.help.tvbox
 import android.util.Base64
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
-import io.legado.app.constant.AppLog
 import io.legado.app.utils.NetworkUtils
 import okhttp3.FormBody
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -45,39 +44,33 @@ class TvBoxJsBridge internal constructor(
     @Suppress("unused")
     fun call(method: String, jsonArgs: String): String {
         val args = jsonArgsArgs(jsonArgs)
-        return try {
-            when (method) {
-                "req" -> req(args.arg(0), args.arg(1))
-                "fetch" -> fetcher.fetch(args.arg(0), args.arg(1))
-                "joinUrl" -> joinUrl(args.arg(0), args.arg(1))
-                "md5" -> com.github.catvod.utils.Crypto.md5(args.arg(0))
-                "aes" -> crypto("aes", args)
-                "des" -> crypto("des", args)
-                "rsa" -> rsaX(args)
-                "getProxy" -> getProxy(args.arg(0) == "1")
-                "getPort" -> TvBoxJsProxy.port.toString()
-                "js2Proxy" -> js2Proxy(args)
-                "s2t" -> args.arg(0)
-                "t2s" -> args.arg(0)
-                "localGet" -> TvBoxJsLocal.get(args.arg(0), args.arg(1))
-                "localSet" -> {
-                    TvBoxJsLocal.set(args.arg(0), args.arg(1), args.arg(2))
-                    ""
-                }
-                "localDelete" -> {
-                    TvBoxJsLocal.delete(args.arg(0), args.arg(1))
-                    ""
-                }
-                "log" -> {
-                    log(args.arg(0))
-                    ""
-                }
-                else -> throw UnsupportedOperationException("TVBox JS 宿主未实现: $method")
+        return when (method) {
+            "req" -> req(args.arg(0), args.arg(1))
+            "fetch" -> fetcher.fetch(args.arg(0), args.arg(1))
+            "joinUrl" -> joinUrl(args.arg(0), args.arg(1))
+            "md5" -> com.github.catvod.utils.Crypto.md5(args.arg(0))
+            "aes" -> crypto("aes", args)
+            "des" -> crypto("des", args)
+            "rsa" -> rsaX(args)
+            "getProxy" -> getProxy(args.arg(0) == "1")
+            "getPort" -> TvBoxJsProxy.port.toString()
+            "js2Proxy" -> js2Proxy(args)
+            "s2t" -> args.arg(0)
+            "t2s" -> args.arg(0)
+            "localGet" -> TvBoxJsLocal.get(args.arg(0), args.arg(1))
+            "localSet" -> {
+                TvBoxJsLocal.set(args.arg(0), args.arg(1), args.arg(2))
+                ""
             }
-        } catch (t: Throwable) {
-            if (t is UnsupportedOperationException) throw t
-            AppLog.put("TVBox JS 宿主调用失败 $method", t)
-            throw t
+            "localDelete" -> {
+                TvBoxJsLocal.delete(args.arg(0), args.arg(1))
+                ""
+            }
+            "log" -> {
+                log(args.arg(0))
+                ""
+            }
+            else -> throw UnsupportedOperationException("TVBox JS 宿主未实现: $method")
         }
     }
 
@@ -281,7 +274,6 @@ class TvBoxJsBridge internal constructor(
     private fun log(message: String) {
         val line = message.replace('\n', ' ').take(2000)
         android.util.Log.d("TvBoxJs", line)
-        AppLog.put("TVBox JS: $line")
     }
 
     private fun jsonArgsArgs(json: String): JsonArgs {

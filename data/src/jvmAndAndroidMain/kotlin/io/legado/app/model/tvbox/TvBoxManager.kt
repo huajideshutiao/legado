@@ -230,9 +230,9 @@ object TvBoxManager {
             // 关闭集合与配置同生命周期: 站点 key 只在所属配置里有意义, 换配置后旧 key 会误关
             // 新配置的同名站点, 故随配置一并清 (磁盘 sites.json 同时删)
             disabledSitesCache = emptySet()
-            runCatching { File(tvBoxDir(), "sites.json").delete() }
+            File(tvBoxDir(), "sites.json").delete()
             // 磁盘配置一并清除: 仅清内存会下次启动 init 重放 (removeSource 等调用方不再需要先 setConfig 兜底)
-            runCatching { File(tvBoxDir(), "config.json").delete() }
+            File(tvBoxDir(), "config.json").delete()
         }
     }
 

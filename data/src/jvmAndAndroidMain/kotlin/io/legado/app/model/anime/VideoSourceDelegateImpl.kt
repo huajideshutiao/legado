@@ -40,8 +40,6 @@ object VideoSourceDelegateImpl : PluginSourceDelegate {
     override fun tocFailMessage(bookSource: BookSource, e: Exception): String =
         "获取tachiyomi插件 ${bookSource.bookSourceName} 的书籍目录失败\n${e.message}"
 
-    override fun collapseVolumesByDefault(bookSource: BookSource): Boolean = true
-
     override suspend fun getBookListAwait(
         bookSource: BookSource,
         key: String,

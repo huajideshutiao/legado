@@ -9,6 +9,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.VideoResolution
 import io.legado.app.data.entities.VideoSource
+import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
 import io.legado.app.help.tvbox.TvBoxParse
@@ -42,7 +43,8 @@ import org.json.JSONObject
  * vod_play_from/vod_play_url 按 "$$$" 配对拆行、"#" 拆集 (集名$id, tag 存线路 flag);
  * 取播 → 本线路 playerContent 拿直链, 多清晰度输出 VideoSource JSON; 直链行拼
  * `url,{"headers":{…}}`。
- * 全线路均非直链 (parse=1 / jx=1 / .html 播放页) 时退 [TvBoxSniffer] 网页嗅探出真实媒体地址。
+ * 全线路均非直链 (parse=1 / jx=1 / 网页播放页: `.html` 或外网无媒体信号地址, 见 [isPlayPage])
+ * 时退 [TvBoxSniffer] 网页嗅探出真实媒体地址。
  *
  * 本地代理 9978 由 TvBoxManager 随配置装载自动起停 (Android/桌面同一链路, 见 help/tvbox/README.md)。
  */
@@ -58,7 +60,28 @@ object TvBoxSourceDelegateImpl : PluginSourceDelegate {
     override fun tocFailMessage(bookSource: BookSource, e: Exception): String =
         "获取TVBox源 ${bookSource.bookSourceName} 的书籍目录失败\n${e.message}"
 
-    override fun collapseVolumesByDefault(bookSource: BookSource): Boolean = true
+    /**
+     * 发现分类: 站点首页 class 数组 (type_id/type_name), "推荐" 置顶 (对应 getExploreAwait
+     * 的 popular 段)。分类是 spider 运行时数据, 不写进 exploreUrl 字段; 取数结果由
+     * exploreKinds() 落盘缓存 (每站首次进发现页抓一次)。
+     */
+    override suspend fun getExploreKinds(bookSource: BookSource): List<ExploreKind>? =
+        withContext(IoDispatcher) {
+            val siteKey = TvBoxSourceMapper.siteKeyOf(bookSource.bookSourceUrl)
+            val (site, spider) = TvBoxManager.spiderFor(siteKey)
+            val home = parseResult(spider.homeContent(true), site)
+            val classes = home.optJSONArray("class") ?: JSONArray()
+            val kinds = ArrayList<ExploreKind>(classes.length() + 1)
+            kinds += ExploreKind(title = "推荐", url = "popular")
+            for (i in 0 until classes.length()) {
+                val item = classes.optJSONObject(i) ?: continue
+                val typeId = item.optString("type_id").trim()
+                val name = item.optString("type_name").trim()
+                if (typeId.isEmpty() || name.isEmpty()) continue
+                kinds += ExploreKind(title = name, url = typeId)
+            }
+            kinds
+        }
 
     override suspend fun getBookListAwait(
         bookSource: BookSource,
@@ -168,6 +191,10 @@ object TvBoxSourceDelegateImpl : PluginSourceDelegate {
      *   [TvBoxSourceMapper.folderBookUrlOf]。
      * 两者判定次序与 FongMi `TypeFragment.onItemClick` 一致: action 优先于 folder。
      *
+     * 另一类非视频条目直接丢弃: 换源指令伪 vod_id (含 `tvbox://`, FongMi DetailActivity 的
+     * 跨站跳转, 站「看球」列表即此形态) —— legado 按站点拆虚拟书源、无换源面, 进种子
+     * 只会在详情阶段空数据报错。
+     *
      * `cate` 在 FongMi 里只被 `Vod.isFolder()` 消费 (其 land/circle/ratio 无任何调用点,
      * `Vod.getStyle()` 走的是平铺字段), 故此处也只当 folder 标记用, 不解析样式。
      */
@@ -188,6 +215,11 @@ object TvBoxSourceDelegateImpl : PluginSourceDelegate {
             val bookUrl = when {
                 action.isNotEmpty() -> TvBoxSourceMapper.actionBookUrlOf(name, action)
                 item.isFolderVod() -> TvBoxSourceMapper.folderBookUrlOf(name, vodId)
+                // tvbox:// 伪 vod_id 是换源指令 (站「看球」列表项形如
+                // "tvbox://看球/http%3A%2F%2Fwww.88kanqiu.us"), 不是本站可取数视频;
+                // legado 无换源面, 条目丢弃不进种子, 否则 detailContent 空详情报
+                // "TVBox 详情无数据: tvbox://…"。
+                vodId.contains("tvbox://") -> continue
                 else -> TvBoxSourceMapper.bookUrlOf(siteKey, vodId)
             }
             books.add(
@@ -334,10 +366,13 @@ object TvBoxSourceDelegateImpl : PluginSourceDelegate {
 
     /**
      * playerContent 结果 → 本线路清晰度档: url 为多档数组串取全部 [名,址] 对, 单链取「默认」一档;
-     * 档共享该次取数的请求头 (FongMi getRealUrl 同语义: playUrl 解析前缀恒拼在档址前)。
+     * 档共享该次取数的请求头 (FongMi getRealUrl 同语义: playUrl 解析前缀恒拼在档址前)
+     * 与源声明的媒体类型 (FongMi PlaySpec.format 同语义: playerContent 的 format 字段,
+     * BiliGuard 等 DASH 源返回 application/dash+xml)。
      */
     private fun qualitiesOf(root: JSONObject, site: TvBoxSite): List<VideoResolution> {
         val headers = headerOf(root)
+        val mime = root.optString("format").trim()
         val prefix = root.optString("playUrl").trim().ifBlank { site.playUrl }
         val raw = root.optString("url").trim()
         val arr = if (raw.startsWith("[")) runCatching { JSONArray(raw) }.getOrNull() else null
@@ -347,7 +382,7 @@ object TvBoxSourceDelegateImpl : PluginSourceDelegate {
             while (index + 1 < arr.length()) {
                 val url = arr.optString(index + 1)
                 if (url.startsWith("http")) {
-                    qualities.add(VideoResolution(name = arr.optString(index), url = prefix + url, headers = headers))
+                    qualities.add(VideoResolution(name = arr.optString(index), url = prefix + url, headers = headers, mime = mime))
                 }
                 index += 2
             }
@@ -355,7 +390,7 @@ object TvBoxSourceDelegateImpl : PluginSourceDelegate {
         }
         val url = playUrlOf(root, site)
         return if (url.startsWith("http")) {
-            listOf(VideoResolution(name = "默认", url = url, headers = headers))
+            listOf(VideoResolution(name = "默认", url = url, headers = headers, mime = mime))
         } else {
             emptyList()
         }
@@ -481,13 +516,27 @@ object TvBoxSourceDelegateImpl : PluginSourceDelegate {
     }
 
     /**
-     * 肉眼可辨的网页形态: `.html/.htm/.shtml` 路径或带参直链之外的解析站形态
-     * (`?url=http` / `?v=http`), 判据见 [isParsePageUrl]。
-     * jar 本地代理地址 (proxy?do=…) 是 jar 已处理好的媒体资源, 永不作为网页嗅探对象。
+     * 网页播放页判定 (直链 vs 嗅探分界; 真机 fty.json 48 站排查扩展)。
+     *
+     * 恒直链:
+     * - 本地地址 ([isLocalHostAddress]): jar 本地代理 (proxy?do=…) 是 jar 已处理好的
+     *   媒体资源, 永不作网页嗅探对象;
+     * - 带媒体信号的地址 ([hasMediaSignal])。
+     *
+     * 判嗅探:
+     * - 既有肉眼形态: `.html/.htm/.shtml` 路径或带参直链之外的解析站形态
+     *   (`?url=http` / `?v=http`), 判据见 [isParsePageUrl];
+     * - 兜底: 外网 http(s) 地址路径与 query 均无任何媒体信号 → 视为播放页送嗅探。
+     *   依据是媒体后缀判定取反: 直链必带媒体信号 (CDN 直链后缀或 type=m3u8 类媒体参数
+     *   二者居一), 网页播放页两样皆无 —— 真机实测 3 站 playerContent 返回 parse=0 且
+     *   url 为网页地址被旧判定误放行直链 (Dm84 → hhjx.hhplayer.com/?url=<hex> 解析页;
+     *   虎牙/斗鱼 drpy2 js 源 → m.huya.com/<房间号> 等直播房间页)。不用域名白名单
+     *   (特例适配被禁), 也不用直播类源特征 (站点配置字段不可靠) 做特判。
      */
     private fun isPlayPage(url: String): Boolean {
-        if (url.startsWith(proxyUrlPrefix())) return false
-        return isParsePageUrl(url)
+        if (isLocalHostAddress(url)) return false
+        if (isParsePageUrl(url)) return true
+        return url.startsWith("http") && !hasMediaSignal(url)
     }
 
     /** 剧集 url 入目录前按线路名加前缀 (与 `tvbox-line://` 卷头同族): 跨线路同 id 集靠它不被去重。 */
@@ -499,9 +548,54 @@ object TvBoxSourceDelegateImpl : PluginSourceDelegate {
 
     private const val EPISODE_SCHEME = "tvbox-ep://"
 
-    /** jar 本地代理地址前缀 (与 com.github.catvod.Proxy.getUrl 同构)。 */
-    private fun proxyUrlPrefix(): String =
-        "http://127.0.0.1:" + com.github.catvod.Proxy.getPort() + "/proxy"
+    /**
+     * 播放页兜底判定用的媒体扩展名表: AndroidX Media3 `Util.inferContentType` 的
+     * mpd/m3u8/ism 与常见流式后缀并集, 覆盖 [TvBoxSniffer.MEDIA_EXTENSIONS] 全集
+     * (嗅探面仍以 TvBoxSniffer 自身的表为准, 此处是判定直链用的只读副本);
+     * hls/dash 不是文件扩展名, 仅供 query 类型参数值 (type=hls) 比对。
+     */
+    private val MEDIA_STREAM_EXTENSIONS = listOf(
+        "m3u8", "mpd", "ism", "isml", "mp4", "mkv", "flv", "ts", "m4s", "m4v", "mov",
+        "webm", "avi", "mpg", "mpeg", "wmv", "3gp",
+        "mp3", "m4a", "aac", "flac", "ogg", "opus", "wav",
+        "hls", "dash",
+    )
+
+    /**
+     * URL 是否带媒体信号 (直链的宽松面, 命中任一即不进嗅探; 纯字符串判定):
+     * - 字节系 CDN 无后缀直链路径 `video/tos` (对齐 TvBoxSniffer SNIFFER 的同名特例)
+     *   与 udpxy 组播代理路径 `/udp/`;
+     * - 路径末段以媒体扩展名结尾 (带参 CDN 直链很常见, query 不参与此项);
+     * - query 任一参数值为媒体扩展名 (`type=mpd` / `do=m3u8`) 或以 `.媒体扩展名` 结尾
+     *   (`url=…/x.m3u8`, 编码形态 `…%2Fx.m3u8` 同样命中)。
+     */
+    private fun hasMediaSignal(url: String): Boolean {
+        val lower = url.lowercase()
+        if (lower.contains("video/tos") || lower.contains("/udp/")) return true
+        val file = lower.substringBefore('?').substringBefore('#').substringAfterLast('/')
+        if (MEDIA_STREAM_EXTENSIONS.any { file.endsWith(".$it") }) return true
+        val query = lower.substringAfter('?', "").substringBefore('#')
+        return query.split('&').any { param ->
+            val value = param.substringAfter('=', "")
+            MEDIA_STREAM_EXTENSIONS.any { value == it || value.endsWith(".$it") }
+        }
+    }
+
+    /**
+     * http(s) 地址是否指向本机 (host 为 127.0.0.1/localhost/[::1])。旧实现只认
+     * `127.0.0.1:<Proxy端口>/proxy` 前缀, 端口漂移或 localhost 写法会漏判而误入嗅探。
+     */
+    private fun isLocalHostAddress(url: String): Boolean {
+        if (!url.startsWith("http")) return false
+        val authority = url.substringAfter("://", "").substringBefore('/')
+        if (authority.isEmpty()) return false
+        val host = if (authority.startsWith("[")) {
+            authority.substringAfter('[').substringBefore(']')
+        } else {
+            authority.substringBefore(':')
+        }.lowercase()
+        return host == "127.0.0.1" || host == "localhost" || host == "::1"
+    }
 
     /**
      * 视频地址判据: spider 声明 `manualVideoCheck()` 时改用它自己的 `isVideoFormat()`

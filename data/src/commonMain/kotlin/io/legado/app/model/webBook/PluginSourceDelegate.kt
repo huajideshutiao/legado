@@ -4,6 +4,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookListPage
 import io.legado.app.data.entities.BookSource
+import io.legado.app.data.entities.rule.ExploreKind
 import kotlin.concurrent.Volatile
 
 /**
@@ -68,10 +69,13 @@ interface PluginSourceDelegate {
     fun tocFailMessage(bookSource: BookSource, e: Exception): String? = null
 
     /**
-     * 该源目录是否默认只展开当前卷 (收起其余卷)。虚拟源目录由委派合成 (TVBox 线路为卷级
-     * 分组头), 目录页据此决定初始折叠; 普通书由规则链解析, 保持全展开。
+     * 发现分类 (对应 BookSource.exploreKinds)。
+     *
+     * 返回 null = 本实现不接管分类 (走源自身 exploreUrl 规则解析); 返回列表 = 直接作为该书源
+     * 分类 (站点分类是 spider 运行时数据, 无法写进 exploreUrl 字段)。结果由 exploreKinds()
+     * 与源规则解析共用同一份磁盘缓存。
      */
-    fun collapseVolumesByDefault(bookSource: BookSource): Boolean = false
+    suspend fun getExploreKinds(bookSource: BookSource): List<ExploreKind>? = null
 }
 
 /**
