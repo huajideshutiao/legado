@@ -150,8 +150,11 @@ fun BookSourceEditScreen(
             Unit
         }
     }
-    // 仅本屏注册, 离屏自动注销: 别处长按选词不会多出这一项
-    TextToolbarFindReplaceEffect(findReplaceAction)
+    // 仅本屏注册, 离屏自动注销: 别处长按选词不会多出这一项; 虚拟源不注册 —— 查找替换
+    // 直改编辑器状态, 会绕过字段 readOnly
+    if (!state.isVirtualSource) {
+        TextToolbarFindReplaceEffect(findReplaceAction)
+    }
     // 对齐原版 BookSourceEditActivity 的 onBackPressedDispatcher → keyboardTool.tryConsumeBack():
     // 键盘已收起而查找面板仍开时, 返回键先收面板并清查找态, 不退出页面
     AppBackHandler(enabled = keyboardState.canConsumeBack) {
@@ -226,18 +229,21 @@ fun BookSourceEditScreen(
             onEditorActive = stableOnEditorActive,
             modifier = Modifier.weight(1f),
         )
-        KeyboardToolbar(
-            state = keyboardState,
-            onSendText = { activeEditor.value?.insertAtCursor(it) },
-            onUndo = { activeEditor.value?.undo() },
-            onRedo = { activeEditor.value?.redo() },
-            onShowConfig = onShowKeyboardConfig,
-            target = {
-                activeEditor.value?.let {
-                    CodeEditorSearchTarget(it, searchHighlight) { focusManager.clearFocus() }
-                }
-            },
-        )
+        // 虚拟源隐藏编辑辅助条: 辅助键插入/撤销/重做/查找替换全部直改编辑器状态, 绕过 readOnly
+        if (!state.isVirtualSource) {
+            KeyboardToolbar(
+                state = keyboardState,
+                onSendText = { activeEditor.value?.insertAtCursor(it) },
+                onUndo = { activeEditor.value?.undo() },
+                onRedo = { activeEditor.value?.redo() },
+                onShowConfig = onShowKeyboardConfig,
+                target = {
+                    activeEditor.value?.let {
+                        CodeEditorSearchTarget(it, searchHighlight) { focusManager.clearFocus() }
+                    }
+                },
+            )
+        }
     }
 }
 
@@ -263,6 +269,10 @@ class BookSourceEditState {
     var exploreStyleIndex by mutableIntStateOf(0)
     var exploreColsIndex by mutableIntStateOf(0)
     var currentTab by mutableIntStateOf(0)
+
+    /** 当前源是否为插件虚拟源 (前缀判定唯一出处: data 层 isVirtualPluginSource)。
+     *  虚拟源页面降级只读: 规则字段 readOnly、规则 tab 隐藏、头部规则类开关冻结、编辑辅助条隐藏 */
+    var isVirtualSource by mutableStateOf(false)
 
     /** upSourceView 重建实体列表后自增, 驱动表单区整体重建 */
     var sourceVersion by mutableIntStateOf(0)
@@ -393,16 +403,27 @@ private fun HeaderRow1(state: BookSourceEditState, callbacks: BookSourceEditCall
             DropdownBox(
                 options = stringArrayResource(Res.array.book_type),
                 selectedIndex = state.bookSourceTypeIndex,
+                enabled = !state.isVirtualSource,
             ) { callbacks.onBookSourceTypeChange(it) }
         }
-        HeaderCheckBox("is_enable", state.enabled) { callbacks.onEnabledChange(it) }
-        HeaderCheckBox("auto_save_cookie", state.enabledCookieJar) {
+        HeaderCheckBox("is_enable", state.enabled) {
+            callbacks.onEnabledChange(it)
+        }
+        HeaderCheckBox(
+            "auto_save_cookie",
+            state.enabledCookieJar,
+            enabled = !state.isVirtualSource,
+        ) {
             callbacks.onEnabledCookieJarChange(it)
         }
-        HeaderCheckBox("enable_dangerous_api", state.enableDangerousApi) {
+        HeaderCheckBox(
+            "enable_dangerous_api",
+            state.enableDangerousApi,
+            enabled = !state.isVirtualSource,
+        ) {
             callbacks.onEnableDangerousApiClick(it)
         }
-        HeaderCheckBox("enable_review", state.enabledReview) {
+        HeaderCheckBox("enable_review", state.enabledReview, enabled = !state.isVirtualSource) {
             callbacks.onEnabledReviewChange(it)
         }
     }
@@ -452,17 +473,22 @@ private fun HeaderRow2(state: BookSourceEditState, callbacks: BookSourceEditCall
 }
 
 @Composable
-private fun HeaderCheckBox(textKey: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+private fun HeaderCheckBox(
+    textKey: String,
+    checked: Boolean,
+    onChange: (Boolean) -> Unit,
+    enabled: Boolean = true,
+) {
     Row(
         Modifier
-            .clickable { onChange(!checked) }
+            .clickable(enabled = enabled) { onChange(!checked) }
             .padding(horizontal = DesignTokens.spacingMd, vertical = DesignTokens.spacingDefault),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         AppCheckbox(checked = checked, onCheckedChange = null)
         Text(
             rememberString(textKey),
-            color = AppTheme.colors.primaryText,
+            color = if (enabled) AppTheme.colors.primaryText else AppTheme.colors.secondaryText,
             modifier = Modifier.padding(start = DesignTokens.spacingXs),
         )
     }
@@ -477,6 +503,8 @@ private fun TabBar(state: BookSourceEditState, callbacks: BookSourceEditCallback
             .height(DesignTokens.viewHeightLarge)
     ) {
         tabTitles.forEachIndexed { i, key ->
+            // 虚拟源只读查看: 规则 tab (搜索/发现/详情/目录/正文/段评) 全隐藏, 仅保留基本信息
+            if (state.isVirtualSource && i != 0) return@forEachIndexed
             val selected = state.currentTab == i
             Box(
                 Modifier
@@ -556,6 +584,7 @@ private fun EditFields(
                         fieldId = fieldId,
                         entity = entity,
                         editor = editor,
+                        readOnly = state.isVirtualSource,
                         syntax = syntax,
                         activeState = activeEditorState,
                         searchHighlight = searchHighlight,
@@ -574,6 +603,7 @@ private fun CodeField(
     fieldId: String,
     entity: EditEntity,
     editor: CodeEditorState,
+    readOnly: Boolean,
     syntax: CodeSyntaxScheme,
     activeState: State<CodeEditorState?>,
     searchHighlight: CodeSearchHighlightState,
@@ -616,6 +646,7 @@ private fun CodeField(
         maxLines = editMaxLine,
         // 对照原版 CodeView: EditText 默认 16sp (原版未设 textSize)
         fontSize = 16.sp,
+        readOnly = readOnly,
         // 查找高亮只叠加在聚焦字段上 (原版查找作用于 lastActiveCodeView)
         searchHighlight = if (isActive) searchHighlight else null,
         modifier = Modifier
@@ -692,19 +723,20 @@ private fun DropdownBox(
     options: List<String>,
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
+    enabled: Boolean = true,
 ) {
     val colors = AppTheme.colors
     var expanded by remember { mutableStateOf(false) }
     Box {
         Row(
             Modifier
-                .clickable { expanded = true }
+                .clickable(enabled = enabled) { expanded = true }
                 .padding(horizontal = DesignTokens.spacingXs, vertical = DesignTokens.spacingXs),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 options.getOrElse(selectedIndex) { "" },
-                color = colors.primaryText,
+                color = if (enabled) colors.primaryText else colors.secondaryText,
                 fontSize = 14.sp,
             )
             Icon(
