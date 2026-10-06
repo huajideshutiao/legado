@@ -28,8 +28,8 @@ import io.legado.app.utils.ScreenInfoProviders
 val LocalDialogAnchorSize = compositionLocalOf<IntSize?> { null }
 
 /**
- * 对话框尺寸: 宽 = 0.9 倍且上限 800dp, 全高模式高 = 0.7 屏高。
- * app 端宿主 BaseComposeDialogFragment/ComposeDialog 已同步为 0.7, 两侧一致。
+ * 对话框尺寸: 宽 = 0.9 倍且上限 800dp, 全高模式高 = 0.8 锚点高。
+ * app 端宿主 BaseComposeDialogFragment/ComposeDialog 已同步为 0.8, 两侧一致。
  *
  * 基准取 [LocalDialogAnchorSize] (桌面 = 主窗口, 移动端 = 屏幕)。
  * 不 remember: 两次乘法 + coerce 极轻, 每次重组重算才能跟随窗口 resize。
@@ -47,7 +47,7 @@ object AppDialogSizes {
     }
 
     /**
-     * 全高模式高度: 锚点高 * [DesignTokens.dialogHeightFraction] (全局统一 0.7 屏高, 用户 2026-08-20 拍板)。
+     * 全高模式高度: 锚点高 * [DesignTokens.dialogHeightFraction] (全局统一 0.8 锚点高)。
      */
     @Composable
     fun fullHeight(): Dp {
@@ -57,7 +57,7 @@ object AppDialogSizes {
     }
 
     /**
-     * M2 AlertDialog 正文滚动区高度上限: 全高 0.7 锚点高 - 标题/按钮/间距 (约 180dp),
+     * M2 AlertDialog 正文滚动区高度上限: 全高 0.8 锚点高 - 标题/按钮/间距 (约 180dp),
      * 保证按钮行不被裁切; 下限 120dp 防极矮窗口下 heightIn 取负。
      */
     @Composable
