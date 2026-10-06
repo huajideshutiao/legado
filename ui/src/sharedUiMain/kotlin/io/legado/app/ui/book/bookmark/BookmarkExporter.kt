@@ -62,9 +62,11 @@ object BookmarkExporter {
      */
     suspend fun exportImage(bookmark: Bookmark, image: ImageBitmap): Boolean {
         return try {
-            val fileName = "bookmark-${bookmark.bookName}-${
-                ThreadSafeDateFormat("yyMMddHHmmss").format(systemCurrentTimeMillis())
-            }.png"
+            val fileName = sanitizeFileName(
+                "bookmark-${bookmark.bookName}-${
+                    ThreadSafeDateFormat("yyMMddHHmmss").format(systemCurrentTimeMillis())
+                }.png"
+            )
             val bytes = withContext(IoDispatcher) { image.encodePngBytes() }
             when (withContext(IoDispatcher) {
                 PlatformServiceProviders.get().files.saveImageBytes(fileName, bytes)
@@ -75,23 +77,26 @@ object BookmarkExporter {
                 }
                 null -> false
                 else -> {
-                    AppLog.put("导出失败\n写入失败", null, true)
+                    Toasters.get().toast("导出失败\n写入失败")
+                    AppLog.put("导出失败\n写入失败", null)
                     false
                 }
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
-            AppLog.put("导出失败\n${e.message}", e, true)
+            Toasters.get().toast("导出失败\n${e.message}")
+            AppLog.put("导出失败\n${e.message}", e)
             false
         }
     }
 
-    /** 文件选择器取目标路径 (用户取消返回 null 静默结束), 写入成功 toast, 失败记 AppLog。 */
+    /** 文件选择器取目标路径 (用户取消返回 null 静默结束), 写入成功 toast, 失败 toast + 记 AppLog。 */
     private suspend fun export(fileName: String, content: suspend () -> String) {
         try {
             val files = PlatformServiceProviders.get().files
-            val path = withContext(IoDispatcher) { files.saveFile(fileName) } ?: return
+            val path = withContext(IoDispatcher) { files.saveFile(sanitizeFileName(fileName)) }
+                ?: return
             withContext(IoDispatcher) {
                 BackupFileOps.writeText(path, content())
             }
@@ -99,7 +104,8 @@ object BookmarkExporter {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
-            AppLog.put("导出失败\n${e.message}", e, true)
+            Toasters.get().toast("导出失败\n${e.message}")
+            AppLog.put("导出失败\n${e.message}", e)
         }
     }
 
@@ -116,22 +122,24 @@ object BookmarkExporter {
     /**
      * 组装 Markdown: 依赖输入已按书/章节排序 (SQL 序), 章节组与条目保持输入序,
      * 章节名取组内首条。
+     *
+     * 书名/章名/笔记先做行内转义: 原文里的 `#` 会让标题层级塌陷, 换行会把标题截断。
      */
     private fun buildMd(bookmarks: List<Bookmark>, exportedAt: Long): String {
         val sb = StringBuilder()
         val exportTime = dateFormat.format(exportedAt)
         bookmarks.groupBy { it.bookName to it.bookAuthor }.forEach { (book, bookBookmarks) ->
-            sb.append("## ${book.first} ${book.second}\n\n")
+            sb.append("## ${escapeMdInline(book.first)} ${escapeMdInline(book.second)}\n\n")
             sb.append("导出时间：$exportTime · 共 ${bookBookmarks.size} 条书签\n\n")
             bookBookmarks.groupBy { it.chapterIndex }.forEach { (_, chapterBookmarks) ->
-                sb.append("### ${chapterBookmarks.first().chapterName}\n\n")
+                sb.append("### ${escapeMdInline(chapterBookmarks.first().chapterName)}\n\n")
                 chapterBookmarks.forEach { bookmark ->
                     if (bookmark.bookText.isNotBlank()) {
                         sb.append(bookmark.bookText.lines().joinToString("\n") { "> $it" })
                         sb.append("\n\n")
                     }
                     if (bookmark.content.isNotBlank()) {
-                        sb.append("**笔记**：${bookmark.content}\n\n")
+                        sb.append("**笔记**：${escapeMdInline(bookmark.content)}\n\n")
                     }
                     sb.append("创建于 ${dateFormat.format(bookmark.time)}\n\n")
                 }
@@ -139,4 +147,29 @@ object BookmarkExporter {
         }
         return sb.toString()
     }
+
+    /**
+     * 行内文本 Markdown 转义: 换行折成空格 (`#` + 换行会把标题截断); `#` 与行内强调/
+     * 链接/代码/表格字符加反斜杠。只在行首有语义的字符 (如 `-`、`1.`) 不转义, 避免导出文本里满是反斜杠。
+     */
+    private fun escapeMdInline(text: String): String = buildString(text.length) {
+        text.forEach { c ->
+            when (c) {
+                '\\', '`', '*', '_', '{', '}', '[', ']', '<', '>', '|', '#', '~' -> {
+                    append('\\')
+                    append(c)
+                }
+
+                '\n', '\r' -> append(' ')
+                else -> append(c)
+            }
+        }
+    }
+
+    /**
+     * 文件名消毒: 书名/作者可能含 `/ \ : * ? " < > |` 等各端文件系统非法字符,
+     * 拼进导出文件名会让保存静默失败 (SAF/文件选择器直接拒绝)。
+     */
+    private fun sanitizeFileName(fileName: String): String =
+        fileName.replace(Regex("""[\\/:*?"<>|\r\n\t]"""), "_")
 }
