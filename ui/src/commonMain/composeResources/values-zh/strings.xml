@@ -869,7 +869,6 @@
     <string name="no_book">没有书籍</string>
     <string name="non_null_name_url">名称和 URL 不能为空</string>
     <string name="resolution">分辨率</string>
-    <string name="video_line">线路</string>
     <string name="reload">重新加载</string>
     <string name="manga_extension">Tachiyomi 插件</string>
     <string name="manga_extension_desc">安装与管理 Tachiyomi 漫画/视频插件</string>

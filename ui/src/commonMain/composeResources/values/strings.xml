@@ -867,7 +867,6 @@
     <string name="no_book">No books</string>
     <string name="non_null_name_url">name and URL cannot be empty</string>
     <string name="resolution">resolution</string>
-    <string name="video_line">Line</string>
     <string name="reload">Reload</string>
     <string name="manga_extension">Tachiyomi extensions</string>
     <string name="manga_extension_desc">Install and manage Tachiyomi manga and video extensions</string>

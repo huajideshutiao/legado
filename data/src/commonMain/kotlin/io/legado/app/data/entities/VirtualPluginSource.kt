@@ -48,11 +48,6 @@ object VirtualPluginSourcePrefix {
 fun BookSource.isVirtualPluginSource(): Boolean =
     VirtualPluginSourcePrefix.ALL.any { bookSourceUrl.startsWith(it) }
 
-/** 插件虚拟源的运行时变量 key (存于 [Book.variableMap])。 */
-object VirtualPluginVars {
-
-}
-
 /** 该书源列表投影是否为插件虚拟源 (漫画 / 视频 / TVBox)。 */
 fun BookSourcePart.isVirtualPluginSource(): Boolean =
     VirtualPluginSourcePrefix.ALL.any { bookSourceUrl.startsWith(it) }
