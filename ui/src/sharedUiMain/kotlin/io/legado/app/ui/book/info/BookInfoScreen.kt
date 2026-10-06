@@ -615,7 +615,7 @@ private fun TopSectionVertical(
 ) {
     Column(Modifier.fillMaxWidth()) {
         InfoCover(
-            state, coverSlot, cardBg = !land,
+            state, coverSlot,
             modifier = Modifier
                 .align(Alignment.CenterHorizontally)
                 .padding(DesignTokens.spacingDefault),
@@ -644,7 +644,7 @@ private fun TopSectionHorizontal(
     coverSlot: @Composable (Book?, Modifier) -> Unit,
 ) {
     Row(Modifier.fillMaxWidth()) {
-        InfoCover(state, coverSlot, cardBg = true, modifier = Modifier.padding(DesignTokens.spacingDefault))
+        InfoCover(state, coverSlot, modifier = Modifier.padding(DesignTokens.spacingDefault))
         Column(
             Modifier
                 .weight(1f)
@@ -714,7 +714,6 @@ private fun LastedRow(state: BookInfoUiState, modifier: Modifier) {
 private fun InfoCover(
     state: BookInfoUiState,
     coverSlot: @Composable (Book?, Modifier) -> Unit,
-    cardBg: Boolean,
     modifier: Modifier,
 ) {
     val actions = LocalBookInfoActions.current
@@ -730,10 +729,6 @@ private fun InfoCover(
                 .height(144.dp)
                 .aspectRatio(coverRatio, matchHeightConstraintsFirst = true)
                 .clip(DesignTokens.shapeSm)
-                .then(
-                    if (cardBg) Modifier.background(AppTheme.colors.bottomBackground)
-                    else Modifier
-                )
                 .listItemFocus()
                 .combinedClickable(
                     onClick = { actions.onCoverClick() },
