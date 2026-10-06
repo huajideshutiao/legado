@@ -81,7 +81,7 @@ interface SelectionPageSource {
  * @param start 章内起始字符偏移 (含, 账本口径同 [SearchHighlightOverlay]/TextLine.chapterPosition)
  * @param endExclusive 章内结束字符偏移 (不含)
  * @param text 与区间同一账本重建的选区原文 (每个 TextColumn 消耗 charData.length,
- *   非文字列消耗 1, 段尾行含换行); 存档作为划线重锚依据
+ *   非文字列消耗 1, 段尾行含换行); 存档作为批注重锚依据
  */
 data class ChapterSelectionRange(
     val chapterIndex: Int,
@@ -654,7 +654,7 @@ class PageSelectionState {
     }
 
     /**
-     * 选区折算为章内半开区间 + 同账本原文 (长按划线存档用)。
+     * 选区折算为章内半开区间 + 同账本原文 (长按批注存档用)。
      *
      * 不直接用 [selectedText] 的产物存档: 后者对"起点在行尾之后"(columnIndex ==
      * columns.size) 的折行行会虚插换行 (段尾补换行分支不区分 isParagraphEnd), 与章内

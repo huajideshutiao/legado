@@ -507,10 +507,7 @@ open class BaseReadMenuState(
                 screenModel.viewModel.toggleUseReplaceRule()
                 upTopMenu()
             }
-            ReadMenuAction.KEYWORD_HIGHLIGHT -> {
-                hide()
-                navigator.push(AppRoute.KeywordHighlight)
-            }
+            ReadMenuAction.KEYWORD_HIGHLIGHT -> navigator.push(AppRoute.KeywordHighlight)
             ReadMenuAction.SAME_TITLE_REMOVED -> screenModel.viewModel.reverseRemoveSameTitle()
             ReadMenuAction.RE_SEGMENT -> {
                 screenModel.viewModel.toggleReSegment()

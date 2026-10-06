@@ -23,10 +23,10 @@ data class KeywordHighlight(
     val id: Long = 0,
     /** 匹配关键词(字面量, 阶段一); [pattern] 启用后此字段仅作显示名 */
     val word: String = "",
-    /** 色档索引(见阅读层 HighlightPalette) */
-    val colorIndex: Int = 0,
-    /** true = 半透明背景之外在行底补一条同色下划线 */
-    val underline: Boolean = false,
+    /** 上色颜色 (ARGB, 0x50 半透明色块); null = 不上色 (默认) */
+    val color: Int? = null,
+    /** 线型 (阅读层 HighlightLineStyle): 0 无线, 1 下划线 (默认), 2 波浪线, 3 删除线 */
+    val lineStyle: Int = 1,
     val isEnabled: Boolean = true,
     /** 列表展示与匹配先后顺序, 新增取 maxOrder+1 */
     val sortOrder: Int = 0,

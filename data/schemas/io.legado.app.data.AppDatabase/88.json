@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 88,
-    "identityHash": "1f1bbb58c7f7d213536b8b0f05fbaf3b",
+    "identityHash": "f661c9a6331f6472c89b226888a78316",
     "entities": [
       {
         "tableName": "books",
@@ -735,7 +735,7 @@
       },
       {
         "tableName": "bookmarks",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`time` INTEGER NOT NULL, `bookName` TEXT NOT NULL, `bookAuthor` TEXT NOT NULL, `chapterIndex` INTEGER NOT NULL, `chapterPos` INTEGER NOT NULL, `chapterName` TEXT NOT NULL, `bookText` TEXT NOT NULL, `content` TEXT NOT NULL, `type` INTEGER NOT NULL DEFAULT 0, `endPos` INTEGER NOT NULL DEFAULT 0, `colorIndex` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`time`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`time` INTEGER NOT NULL, `bookName` TEXT NOT NULL, `bookAuthor` TEXT NOT NULL, `chapterIndex` INTEGER NOT NULL, `chapterPos` INTEGER NOT NULL, `chapterName` TEXT NOT NULL, `bookText` TEXT NOT NULL, `content` TEXT NOT NULL, `type` INTEGER NOT NULL DEFAULT 0, `endPos` INTEGER NOT NULL DEFAULT 0, `color` INTEGER DEFAULT 0, `lineStyle` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`time`))",
         "fields": [
           {
             "fieldPath": "time",
@@ -800,8 +800,14 @@
             "defaultValue": "0"
           },
           {
-            "fieldPath": "colorIndex",
-            "columnName": "colorIndex",
+            "fieldPath": "color",
+            "columnName": "color",
+            "affinity": "INTEGER",
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "lineStyle",
+            "columnName": "lineStyle",
             "affinity": "INTEGER",
             "notNull": true,
             "defaultValue": "0"
@@ -1276,7 +1282,7 @@
       },
       {
         "tableName": "keywordHighlights",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `word` TEXT NOT NULL, `colorIndex` INTEGER NOT NULL, `underline` INTEGER NOT NULL, `isEnabled` INTEGER NOT NULL, `sortOrder` INTEGER NOT NULL, `pattern` TEXT NOT NULL, `isRegex` INTEGER NOT NULL, `scope` TEXT, `excludeScope` TEXT)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `word` TEXT NOT NULL, `color` INTEGER, `lineStyle` INTEGER NOT NULL, `isEnabled` INTEGER NOT NULL, `sortOrder` INTEGER NOT NULL, `pattern` TEXT NOT NULL, `isRegex` INTEGER NOT NULL, `scope` TEXT, `excludeScope` TEXT)",
         "fields": [
           {
             "fieldPath": "id",
@@ -1291,14 +1297,13 @@
             "notNull": true
           },
           {
-            "fieldPath": "colorIndex",
-            "columnName": "colorIndex",
-            "affinity": "INTEGER",
-            "notNull": true
+            "fieldPath": "color",
+            "columnName": "color",
+            "affinity": "INTEGER"
           },
           {
-            "fieldPath": "underline",
-            "columnName": "underline",
+            "fieldPath": "lineStyle",
+            "columnName": "lineStyle",
             "affinity": "INTEGER",
             "notNull": true
           },
@@ -1353,7 +1358,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '1f1bbb58c7f7d213536b8b0f05fbaf3b')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'f661c9a6331f6472c89b226888a78316')"
     ]
   }
 }

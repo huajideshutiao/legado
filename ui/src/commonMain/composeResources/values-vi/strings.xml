@@ -983,4 +983,6 @@
     <string name="tvbox_remove_source_confirm">Xoa nguon cau hinh nay? Cac nguon sach ao se bi xoa theo.</string>
     <string name="tvbox_loading">Dang tai cau hinh...</string>
     <string name="tvbox_delete_source">Xoa nguon</string>
+    <string name="underline_cross_chapter_unsupported">Ghi chu chi ho tro vung chon trong cung mot chuong</string>
+    <string name="keyword_highlight_exclude_scope">Pham vi loai tru, tuy chon ten sach hoac URL nguon</string>
 </resources>

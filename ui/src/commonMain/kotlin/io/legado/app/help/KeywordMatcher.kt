@@ -14,21 +14,21 @@ package io.legado.app.help
  */
 object KeywordMatcher {
 
-    /** 一条命中: 章内半开区间 [start, endExclusive) + 来源规则 + 色档 + 下划线标志 */
+    /** 一条命中: 章内半开区间 [start, endExclusive) + 来源规则 + 上色/线型 */
     data class Match(
         val start: Int,
         val endExclusive: Int,
         val ruleId: Long,
-        val colorIndex: Int,
-        val underline: Boolean,
+        val color: Int?,
+        val lineStyle: Int,
     )
 
     /** 由实体映射而来的纯规则 (与存储解耦, 便于测试与后续正则升级) */
     data class Rule(
         val id: Long,
         val word: String,
-        val colorIndex: Int,
-        val underline: Boolean,
+        val color: Int?,
+        val lineStyle: Int,
     )
 
     /** 逐规则不重叠推进: 每次命中后从命中终点继续搜, 同词重叠处只取靠前一处 */
@@ -42,7 +42,7 @@ object KeywordMatcher {
             while (from <= text.length) {
                 val index = text.indexOf(word, from)
                 if (index < 0) break
-                out.add(Match(index, index + word.length, rule.id, rule.colorIndex, rule.underline))
+                out.add(Match(index, index + word.length, rule.id, rule.color, rule.lineStyle))
                 from = index + word.length
             }
         }

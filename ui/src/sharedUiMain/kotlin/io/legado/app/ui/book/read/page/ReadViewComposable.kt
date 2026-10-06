@@ -177,7 +177,7 @@ fun ReadViewComposable(
     val pageDrawTick by viewModel.pageContentVersion.collectAsState()
     // 朗读高亮位置（章节 + 章内字符位置）：声明式参数，绘制期折算成各页高亮行区间
     val ttsHighlight by viewModel.ttsHighlight.collectAsState()
-    // 章内静态高亮（划线回显 + 关键词命中）：随章窗排版与 DAO 数据流重算, 逐页绘制期投影
+    // 章内静态高亮（批注回显 + 关键词命中）：随章窗排版与 DAO 数据流重算, 逐页绘制期投影
     val chapterHighlights by viewModel.chapterHighlights.collectAsState()
     // 按 ReadBookConfig.pageAnim 取翻页委托，配置变更时重建（对照原版 ReadView.upPageAnim）
     val composeDelegate = rememberPageDelegate(viewModel)
@@ -297,7 +297,7 @@ fun ReadViewComposable(
         val latestMandatoryGestureBoundPx by rememberUpdatedState(mandatoryGestureBoundPx)
         // 页眉实测高（rememberUpdatedState：手势长驻协程不随重组重启，经 State 间接读）
         val latestHeaderTipPx by rememberUpdatedState(headerTipMeasured)
-        // 划线批注气泡回调 (rememberUpdatedState: onTapAt lambda 内间接读, 同上)
+        // 批注气泡回调 (rememberUpdatedState: onTapAt lambda 内间接读, 同上)
         val latestOnUnderlineTap by rememberUpdatedState(onUnderlineTap)
 
         // 手势长驻协程（pointerInput）不随重组重启，经 rememberUpdatedState 间接读保证
@@ -329,7 +329,7 @@ fun ReadViewComposable(
             ) {
                 return@onTapAt
             }
-            // 划线批注气泡 (用户拍板): 轻点已划线区域弹批注气泡并短路默认单击行为,
+            // 批注气泡 (用户拍板): 轻点已批注区域弹气泡并短路默认单击行为,
             // 未命中走原九宫格逻辑。放在列级点击之后 (图片/段评列优先消费)、
             // 九宫格分区之前
             if (dispatchUnderlineTap(
@@ -1070,13 +1070,13 @@ private fun hitColumn(
 }
 
 /**
- * 划线批注气泡的命中分发 (用户拍板: 轻点已划线区域弹批注气泡, 短路默认单击行为)。
+ * 批注气泡的命中分发 (用户拍板: 轻点已批注区域弹气泡, 短路默认单击行为)。
  *
  * 复用 [hitColumn] 三页命中与 TextLine.chapterPosition 账本 (列起点偏移, 每个
  * TextColumn 消耗 charData.length、非文字列消耗 1), 与绘制侧 projectHighlight
- * 同一区间口径; 点击列与任一划线 overlay (underlineId > 0) 相交即命中:
+ * 同一区间口径; 点击列与任一批注 overlay (underlineId > 0) 相交即命中:
  * - 实体经 overlay.underlineId 在 viewModel.underlineBookmarks 同步反查;
- * - 锚点 = 该划线在命中页的首个投影矩形 (projectHighlightAnchorRect, 与所见色块
+ * - 锚点 = 该批注在命中页的首个投影矩形 (projectHighlightAnchorRect, 与所见色块
  *   同源) 折算全窗坐标 (页内 y + 页相对偏移 + 状态栏 + 页眉, 对齐选区菜单锚链路)。
  *
  * @param x/y 正文区坐标 (调用方已减状态栏 + 页眉折算)
@@ -1106,14 +1106,14 @@ private fun dispatchUnderlineTap(
         columnStart += length
     }
     if (columnLength <= 0) return false
-    // 与本章划线区间求交 (相交口径同 projectHighlight 的 isSearchRangeHit)
+    // 与本章批注区间求交 (相交口径同 projectHighlight 的 isSearchRangeHit)
     val underline = viewModel.chapterHighlights.value.firstOrNull {
         it.underlineId > 0 && it.chapterIndex == hit.page.chapterIndex &&
             columnStart < it.endExclusive && columnStart + columnLength > it.start
     } ?: return false
     val bookmark = viewModel.underlineBookmarks.value
         .firstOrNull { it.time == underline.underlineId } ?: return false
-    // 锚点: 命中划线在命中页的首个投影矩形 → 全窗坐标 (仅 y 叠相对偏移/状态栏/页眉)
+    // 锚点: 命中批注在命中页的首个投影矩形 → 全窗坐标 (仅 y 叠相对偏移/状态栏/页眉)
     val rect = PageOverlayProjector.projectHighlightAnchorRect(hit.page, underline) ?: return false
     val anchor = Rect(
         rect.left,

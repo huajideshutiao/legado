@@ -898,4 +898,6 @@
     <string name="tvbox_remove_source_confirm">この設定元を削除しますか？仮想ソースも削除されます。</string>
     <string name="tvbox_loading">設定を読込中...</string>
     <string name="tvbox_delete_source">設定元を削除</string>
+    <string name="underline_cross_chapter_unsupported">注釈は同一章内の選択にのみ対応します</string>
+    <string name="keyword_highlight_exclude_scope">除外範囲（任意、書名または書源 URL）</string>
 </resources>

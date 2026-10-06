@@ -1,16 +1,11 @@
 package io.legado.app.ui.book.keyword
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
@@ -20,10 +15,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.KeywordHighlight
-import io.legado.app.ui.book.read.page.overlay.HighlightPalette
+import io.legado.app.ui.book.read.page.overlay.DefaultHighlightColor
+import io.legado.app.ui.book.read.page.overlay.HighlightStyleButton
+import io.legado.app.ui.book.read.page.overlay.HighlightLineStyleRow
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppSwitch
@@ -36,18 +32,20 @@ import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.cancel
 import legado.ui.generated.resources.delete
+import legado.ui.generated.resources.highlight_color
+import legado.ui.generated.resources.highlight_colored
+import legado.ui.generated.resources.highlight_style
 import legado.ui.generated.resources.keyword
 import legado.ui.generated.resources.keyword_highlight_add
 import legado.ui.generated.resources.keyword_highlight_exclude_scope
 import legado.ui.generated.resources.keyword_highlight_scope
-import legado.ui.generated.resources.keyword_highlight_underline
 import legado.ui.generated.resources.ok
 import org.jetbrains.compose.resources.stringResource
 
 /**
  * 关键词高亮编辑对话框 (新增/编辑共用, 纯 Composable + 回调, 对齐 BookmarkDialog 形态)。
  *
- * 编辑字段 = 关键词 + 作用范围 + 色档 + 下划线开关; pattern/isRegex 为正则升级预埋列,
+ * 编辑字段 = 关键词 + 作用范围 + 高亮颜色 + 呈现样式; pattern/isRegex 为正则升级预埋列,
  * 第一阶段不暴露编辑入口。
  *
  * @param rule 新增传空 id 实例; 确定时以 copy 回传新实例, 调用方负责入库
@@ -65,7 +63,9 @@ fun KeywordHighlightEditDialog(
     val wordLabel = stringResource(Res.string.keyword)
     val scopeLabel = stringResource(Res.string.keyword_highlight_scope)
     val excludeScopeLabel = stringResource(Res.string.keyword_highlight_exclude_scope)
-    val underlineLabel = stringResource(Res.string.keyword_highlight_underline)
+    val colorLabel = stringResource(Res.string.highlight_color)
+    val coloredLabel = stringResource(Res.string.highlight_colored)
+    val styleLabel = stringResource(Res.string.highlight_style)
     val deleteText = stringResource(Res.string.delete)
     val cancelText = stringResource(Res.string.cancel)
     val okText = stringResource(Res.string.ok)
@@ -73,8 +73,8 @@ fun KeywordHighlightEditDialog(
     var word by remember { mutableStateOf(rule.word) }
     var scope by remember { mutableStateOf(rule.scope.orEmpty()) }
     var excludeScope by remember { mutableStateOf(rule.excludeScope.orEmpty()) }
-    var colorIndex by remember { mutableStateOf(rule.colorIndex) }
-    var underline by remember { mutableStateOf(rule.underline) }
+    var color by remember { mutableStateOf(rule.color) }
+    var lineStyle by remember { mutableStateOf(rule.lineStyle) }
 
     AppDialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
         Surface(
@@ -119,34 +119,46 @@ fun KeywordHighlightEditDialog(
                     )
 
                     Spacer(Modifier.size(DesignTokens.spacingDefault))
-                    // 色档选择: 五档圆点, 选中项描边 (色值与回显同源 HighlightPalette)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        repeat(HighlightPalette.SIZE) { index ->
-                            val selected = index == colorIndex
-                            Box(
-                                Modifier
-                                    .padding(end = DesignTokens.spacingDefault)
-                                    .size(24.dp)
-                                    .background(HighlightPalette.colorOf(index), CircleShape)
-                                    .border(
-                                        width = if (selected) 2.dp else 0.dp,
-                                        color = colors.accent,
-                                        shape = CircleShape,
-                                    )
-                                    .clickable { colorIndex = index },
-                            )
-                        }
-                    }
-
-                    Spacer(Modifier.size(DesignTokens.spacingDefault))
+                    // 高亮颜色: 当前色圆点, 点击弹取色盘 (confirm 统一压 0x50 半透明; 与批注气泡同一选择件)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = underlineLabel,
+                            text = colorLabel,
                             color = colors.primaryText,
                             fontSize = 15.sp,
                             modifier = Modifier.weight(1f),
                         )
-                        AppSwitch(checked = underline, onCheckedChange = { underline = it })
+                        HighlightStyleButton(color = color, onColorPicked = { color = it })
+                    }
+
+                    Spacer(Modifier.size(DesignTokens.spacingDefault))
+                    // 上色: 关 = 不画色块 (color 存 null), 只剩线型
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = coloredLabel,
+                            color = colors.primaryText,
+                            fontSize = 15.sp,
+                            modifier = Modifier.weight(1f),
+                        )
+                        AppSwitch(
+                            checked = color != null,
+                            onCheckedChange = { on -> color = if (on) (color ?: DefaultHighlightColor) else null },
+                        )
+                    }
+
+                    Spacer(Modifier.size(DesignTokens.spacingDefault))
+                    // 线型: 无/下划线/波浪线/删除线 (与批注气泡同一选择件)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = styleLabel,
+                            color = colors.primaryText,
+                            fontSize = 15.sp,
+                            modifier = Modifier.weight(1f),
+                        )
+                        HighlightLineStyleRow(
+                            selected = lineStyle,
+                            onLineStyleChange = { lineStyle = it },
+                            modifier = Modifier.weight(1f),
+                        )
                     }
                 }
 
@@ -169,8 +181,8 @@ fun KeywordHighlightEditDialog(
                         onConfirm(
                             rule.copy(
                                 word = word0,
-                                colorIndex = colorIndex,
-                                underline = underline,
+                                color = color,
+                                lineStyle = lineStyle,
                                 scope = scope,
                                 excludeScope = excludeScope,
                             )

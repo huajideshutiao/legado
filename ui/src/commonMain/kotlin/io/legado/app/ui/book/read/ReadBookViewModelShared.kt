@@ -229,13 +229,13 @@ class ReadBookViewModelShared(
     }
 
     /**
-     * 章内静态高亮 (划线回显 + 关键词命中): 随三章滑窗排版与 DAO 数据流重算,
+     * 章内静态高亮 (批注回显 + 关键词命中): 随三章滑窗排版与 DAO 数据流重算,
      * 绘制侧经 [PageOverlayProjector.projectHighlight] 逐页投影。
      */
     private val chapterHighlightState = ChapterHighlightState(scope, readBook, _pageContentVersion)
     val chapterHighlights: StateFlow<List<HighlightOverlay>> = chapterHighlightState.overlays
 
-    /** 当前书划线实体 (type=1): 点击命中经 overlay.underlineId 反查实体, 批注气泡用 */
+    /** 当前书批注实体 (type=1): 点击命中经 overlay.underlineId 反查实体, 批注气泡用 */
     val underlineBookmarks: StateFlow<List<Bookmark>> = chapterHighlightState.underlineBookmarks
 
     // region 页面状态流：外部只读 StateFlow，适配 Compose 重组

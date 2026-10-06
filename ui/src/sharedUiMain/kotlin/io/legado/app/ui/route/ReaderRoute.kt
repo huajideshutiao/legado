@@ -537,12 +537,13 @@ fun ReaderRoute(
         onTextAreaMeasured = { textAreaSize = it },
     )
 
-    // 划线批注气泡 (轻点已划线区域弹出; 编辑/换色/删除直接落 DAO, 回显经 flow 自动刷新)
+    // 批注气泡 (轻点命中批注区域弹出; 长按菜单创建后也自动弹出; 编辑/换色/换样式/删除直接落 DAO, 回显经 flow 自动刷新)
     UnderlineNoteBubbleHost(
         state = screenModel.underlineBubble,
         onDismiss = { screenModel.dismissUnderlineBubble() },
-        onEditConfirm = { content -> screenModel.saveUnderlineNote(content) },
-        onColorChange = { colorIndex -> screenModel.changeUnderlineColor(colorIndex) },
+        onNoteConfirm = { content -> screenModel.saveUnderlineNote(content) },
+        onColorChange = { color -> screenModel.changeUnderlineColor(color) },
+        onLineStyleChange = { lineStyle -> screenModel.changeUnderlineLineStyle(lineStyle) },
         onDelete = { screenModel.deleteUnderline() },
     )
 

@@ -18,17 +18,17 @@ import kotlinx.coroutines.launch
 import kotlin.concurrent.Volatile
 
 /**
- * 阅读页章内静态高亮状态源 (划线回显 + 关键词命中, 共用一套 HighlightOverlay 输出)。
+ * 阅读页章内静态高亮状态源 (批注回显 + 关键词命中, 共用一套 HighlightOverlay 输出)。
  *
  * 刷新时机 = 三章滑窗内任一章节 (重) 排版或高亮数据变更:
  * - 章节实例变换来自 [ReadBookShared] 的 prev/cur/next TextChapterShared StateFlow
  *   (StateFlow 按实例去重): 章节切换 / 视口重排 / 替换规则刷新 / 段评迟到重排均会换实例;
  * - 段评迟到重排走章内就地补丁时不换实例，靠 [contentVersion] 变更唤醒重算；
- * - 书籍切换后重订阅书签 (type=1 划线) 与关键词规则 (启用项) 的 DAO flow;
- * - 每章重算 = 章文本从页文本账本重建 (净化/替换/简繁后的排版输入文本) → 划线重锚 +
+ * - 书籍切换后重订阅书签 (type=1 批注) 与关键词规则 (启用项) 的 DAO flow;
+ * - 每章重算 = 章文本从页文本账本重建 (净化/替换/简繁后的排版输入文本) → 批注重锚 +
  *   关键词匹配, 即"每章匹配一次, 随排版缓存生命周期"。
  *
- * 重算按章缓存: 章实例引用 + 本章文本长度 + 规则表 + 本章划线全等则直接复用上次结果，
+ * 重算按章缓存: 章实例引用 + 本章文本长度 + 规则表 + 本章批注全等则直接复用上次结果，
  * 三窗中只有变化的章重算。
  */
 class ChapterHighlightState(
@@ -47,9 +47,9 @@ class ChapterHighlightState(
     val overlays: StateFlow<List<HighlightOverlay>> = _overlays.asStateFlow()
 
     /**
-     * 单章重算缓存：章实例引用 + 本章文本长度 + 输入（规则表 / 本章划线）全等才复用。
+     * 单章重算缓存：章实例引用 + 本章文本长度 + 输入（规则表 / 本章批注）全等才复用。
      * 字体/视口变化与章内容重排都会换新章实例；段评就地补丁只插入字符（不换实例），
-     * 靠文本长度变化失效；关键词规则与划线变更走输入相等性。
+     * 靠文本长度变化失效；关键词规则与批注变更走输入相等性。
      */
     private class ChapterCache(
         val chapter: TextChapterShared,
@@ -68,7 +68,7 @@ class ChapterHighlightState(
     private var cache: Map<Int, ChapterCache> = emptyMap()
 
     /**
-     * 当前书的划线实体列表 (type=1): 点击命中经 overlay.underlineId (= Bookmark.time)
+     * 当前书的批注实体列表 (type=1): 点击命中经 overlay.underlineId (= Bookmark.time)
      * 在此同步反查实体, 供气泡展示批注与编辑/换色/删除。
      */
     private val _underlineBookmarks = MutableStateFlow<List<Bookmark>>(emptyList())
@@ -120,7 +120,7 @@ class ChapterHighlightState(
             cache = emptyMap()
             return emptyList()
         }
-        val rules = keywords.map { KeywordMatcher.Rule(it.id, it.word, it.colorIndex, it.underline) }
+        val rules = keywords.map { KeywordMatcher.Rule(it.id, it.word, it.color, it.lineStyle) }
         val previous = cache
         val next = HashMap<Int, ChapterCache>()
         val out = ArrayList<HighlightOverlay>()
@@ -172,7 +172,8 @@ class ChapterHighlightState(
                     chapterIndex = chapterIndex,
                     start = anchor.start,
                     endExclusive = anchor.endExclusive,
-                    colorIndex = bookmark.colorIndex,
+                    color = bookmark.color,
+                    lineStyle = bookmark.lineStyle,
                     underlineId = bookmark.time,
                 )
             )
@@ -183,8 +184,8 @@ class ChapterHighlightState(
                     chapterIndex = chapterIndex,
                     start = match.start,
                     endExclusive = match.endExclusive,
-                    colorIndex = match.colorIndex,
-                    underline = match.underline,
+                    color = match.color,
+                    lineStyle = match.lineStyle,
                 )
             )
         }

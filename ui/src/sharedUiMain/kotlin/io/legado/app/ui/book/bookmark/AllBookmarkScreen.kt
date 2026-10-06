@@ -34,7 +34,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.Bookmark
-import io.legado.app.ui.book.read.page.overlay.HighlightPalette
+import androidx.compose.ui.graphics.Color
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.component.OverflowMenu
@@ -183,7 +183,7 @@ private fun GroupHeader(text: String) {
     )
 }
 
-/** 单条书签/批注：点击跳转/长按编辑；批注条目带色档圆点；行尾分享图片入口 */
+/** 单条书签/批注：点击跳转/长按编辑；批注条目带颜色圆点；行尾分享图片入口 */
 @Composable
 private fun BookmarkItem(
     actions: AllBookmarkUiActions,
@@ -204,12 +204,15 @@ private fun BookmarkItem(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (isUnderline) {
-                Box(
-                    Modifier
-                        .padding(end = DesignTokens.spacingXs)
-                        .size(10.dp)
-                        .background(HighlightPalette.colorOf(item.colorIndex), CircleShape),
-                )
+                // 不上色 (color=null) 的批注无色块可标
+                item.color?.let { color ->
+                    Box(
+                        Modifier
+                            .padding(end = DesignTokens.spacingXs)
+                            .size(10.dp)
+                            .background(Color(color), CircleShape),
+                    )
+                }
             }
             Text(
                 text = item.chapterName,

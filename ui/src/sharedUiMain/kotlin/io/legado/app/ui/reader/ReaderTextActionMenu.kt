@@ -19,7 +19,7 @@ import legado.ui.generated.resources.read_aloud
 import legado.ui.generated.resources.replace
 import legado.ui.generated.resources.search_content
 import legado.ui.generated.resources.share
-import legado.ui.generated.resources.underline
+import legado.ui.generated.resources.underline_note
 import org.jetbrains.compose.resources.stringResource
 
 /** 平台附加菜单项 (Android: 系统注册的 ACTION_PROCESS_TEXT 应用; 其余端无等价机制)。 */
@@ -49,7 +49,7 @@ fun readerMenuAnchor(x: Float, y: Float): Rect = Rect(x - 20f, y - 20f, x + 20f,
 class ReaderTextActions(
     val onReplace: (String) -> Unit,
     val onBookmark: (String) -> Unit,
-    val onUnderline: (String) -> Unit,
+    val onUnderline: (text: String, anchor: Rect) -> Unit,
     val onReadAloud: (String) -> Unit,
     val onSearchContent: (String) -> Unit,
 )
@@ -101,7 +101,7 @@ fun ReaderTextActionMenu(
     val replaceText = stringResource(Res.string.replace)
     val copyText = stringResource(Res.string.copy)
     val bookmarkText = stringResource(Res.string.bookmark)
-    val underlineText = stringResource(Res.string.underline)
+    val underlineText = stringResource(Res.string.underline_note)
     val readAloudText = stringResource(Res.string.read_aloud)
     val dictText = stringResource(Res.string.lookup_word)
     val searchContentText = stringResource(Res.string.search_content)
@@ -120,7 +120,8 @@ fun ReaderTextActionMenu(
                 add(entry(replaceText, actions.onReplace))
                 add(entry(copyText) { PlatformCapabilityProviders.get().copyToClipboard(it) })
                 add(entry(bookmarkText, actions.onBookmark))
-                add(entry(underlineText, actions.onUnderline))
+                // 批注: 锚点用菜单自身锚定的选区起点方区, 创建成功后弹批注气泡进入输入态
+                add(entry(underlineText) { text -> actions.onUnderline(text, req.anchor) })
                 add(entry(readAloudText, actions.onReadAloud))
                 add(entry(dictText) { ReaderDictWord.show(it) })
                 add(entry(searchContentText, actions.onSearchContent))

@@ -10,6 +10,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
@@ -31,7 +32,7 @@ import io.legado.app.ui.book.read.page.entities.column.ImageColumn
 import io.legado.app.ui.book.read.page.entities.column.ReviewColumn
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import io.legado.app.ui.book.read.page.overlay.HighlightOverlay
-import io.legado.app.ui.book.read.page.overlay.HighlightPalette
+import io.legado.app.ui.book.read.page.overlay.HighlightLineStyle
 import io.legado.app.ui.book.read.page.overlay.PageOverlayProjector
 import io.legado.app.ui.book.read.page.overlay.SearchHighlightOverlay
 import io.legado.app.ui.book.read.page.overlay.TTSHighlightOverlay
@@ -406,7 +407,7 @@ internal fun ensureTextLayoutCache(
  *
  * 采用分层绘制架构：
  * 1. 基础不可变文字/图片/段评层：[drawBasePageContent]（朗读高亮只在此层换文字色）
- * 2. Overlay 叠加层（选区、划线/关键词、搜索高亮）：[drawOverlayLayers]
+ * 2. Overlay 叠加层（选区、批注/关键词、搜索高亮）：[drawOverlayLayers]
  *
  * @param offsetY 整页垂直平移量（px）：滚动模式单画布三页连排用，对照原版
  *   `drawPage(canvas, relativeOffset)` 的页间偏移；0 时不套 translate 零开销
@@ -471,7 +472,15 @@ private fun DrawScope.drawPageContentInner(
 ) {
     // 1. 基础不可变内容层（文字、图片、段评气泡、基础下划线、朗读/搜索高亮文字色）
     val ttsLines = ttsHighlight?.let { PageOverlayProjector.projectTTS(textPage, it) } ?: IntRange.EMPTY
-    drawBasePageContent(textPage, style, layoutCache, failedImage, ttsLines, searchHighlight)
+    drawBasePageContent(
+        textPage,
+        style,
+        layoutCache,
+        failedImage,
+        ttsLines,
+        searchHighlight,
+        chapterHighlights,
+    )
 
     // 2. 独立叠加绘制层（Overlay 几何投影高亮）
     drawOverlayLayers(textPage, style, selection, searchHighlight, chapterHighlights, pagePos)
@@ -483,6 +492,8 @@ private fun DrawScope.drawPageContentInner(
  *
  * @param ttsLines 朗读高亮行索引闭区间（[IntRange.EMPTY] = 本页无朗读高亮）：
  *   命中行只换文字色，不画任何矩形（对照 app 端 isReadAloud 行标志的视觉）
+ * @param chapterHighlights 批注/关键词命中区间：E-Ink 下本层承担其"字形色 + 行底下划线"
+ *   （低 alpha 色块在灰阶屏不可读），由 [drawOverlayLayers] 跳过色块绘制
  */
 private fun DrawScope.drawBasePageContent(
     textPage: TextPage,
@@ -491,6 +502,7 @@ private fun DrawScope.drawBasePageContent(
     failedImage: ImageBitmap?,
     ttsLines: IntRange,
     searchHighlight: SearchHighlightOverlay?,
+    chapterHighlights: List<HighlightOverlay>,
 ) {
     // 基线折算/字间距补偿/字符享元 TextLayoutResult 均已在 [TextLayoutCache] 构建时缓存,
     // 每帧只重放绘制 (drawText(layoutResult, topLeft = Offset(x, y)) 零 measure)。
@@ -508,18 +520,25 @@ private fun DrawScope.drawBasePageContent(
                 is TextColumn -> {
                     val cached = layoutCache.textLayout(column)
                     if (cached != null) {
+                        val columnStart = textLine.chapterPosition + columnChapterOffset
+                        val columnEnd = columnStart + column.charData.length
                         val isSearchHit = searchHighlight?.let {
                             PageOverlayProjector.isSearchRangeHit(
                                 textPage = textPage,
                                 highlight = it,
-                                start = textLine.chapterPosition + columnChapterOffset,
-                                endExclusive = textLine.chapterPosition + columnChapterOffset + column.charData.length,
+                                start = columnStart,
+                                endExclusive = columnEnd,
                             )
                         } == true
+                        // E-Ink: 低 alpha 色块在灰阶屏对比度差, 命中列复用搜索命中的字形色策略
+                        val isEInkHighlightHit = style.isEInk && chapterHighlights.any {
+                            it.chapterIndex == textPage.chapterIndex &&
+                                columnStart < it.endExclusive && columnEnd > it.start
+                        }
                         drawTextColumn(
                             column = column,
                             layout = cached,
-                            textColor = if (isReadAloud || isSearchHit) {
+                            textColor = if (isReadAloud || isSearchHit || isEInkHighlightHit) {
                                 style.accentColor
                             } else {
                                 style.textColor
@@ -554,11 +573,18 @@ private fun DrawScope.drawBasePageContent(
                 endExclusive = textLine.chapterPosition + textLine.charSize,
             )
         } == true
-        // 墨水屏模式下的朗读/搜索下划线（与 app 端 TextLine.drawTextLine 的 isEInkMode 分支一致）
-        if (style.isEInk && (isReadAloud || hasSearchResult)) {
+        // E-Ink: 关键词/批注命中行与朗读/搜索命中同款行底下划线 (与 app 端
+        // TextLine.drawTextLine 的 isEInkMode 分支一致); 命中列字形色取
+        // style.accentColor, E-Ink 主题下与正文同色 (读的是下划线这个可见信号)
+        val hasHighlightResult = style.isEInk && chapterHighlights.any {
+            it.chapterIndex == textPage.chapterIndex &&
+                textLine.chapterPosition < it.endExclusive &&
+                textLine.chapterPosition + textLine.charSize > it.start
+        }
+        if (style.isEInk && (isReadAloud || hasSearchResult || hasHighlightResult)) {
             drawLineUnderline(
                 textLine.lineStart + textLine.indentWidth, textLine.lineEnd,
-                lineTop + lineHeight - underlineWidth, style.textColor, underlineWidth
+                lineTop + lineHeight - underlineWidth, style.textColor, underlineWidth,
             )
         }
         // 配置项下划线（与 app 端 ReadBookConfig.underline → drawUnderline 一致，图片行不画）
@@ -571,11 +597,40 @@ private fun DrawScope.drawBasePageContent(
     }
 }
 
+/** 波浪线：固定波长/振幅的二次贝塞尔拟合正弦，线色取高亮色不透明档 */
+private fun DrawScope.drawWavyLine(
+    left: Float,
+    right: Float,
+    bottom: Float,
+    color: Color,
+    lineWidth: Float,
+) {
+    if (right <= left) return
+    val wavelength = 12f
+    val amplitude = 3f
+    val path = Path()
+    path.moveTo(left, bottom)
+    var x = left
+    var dir = 1f
+    while (x < right) {
+        val mid = minOf(x + wavelength / 2f, right)
+        val end = minOf(x + wavelength, right)
+        path.quadraticTo(mid, bottom + dir * amplitude, end, bottom)
+        x = end
+        dir = -dir
+    }
+    drawPath(path, color, style = Stroke(width = lineWidth))
+}
+
 /**
  * 绘制 Overlay 叠加层（全部几何都由 [PageOverlayProjector] 投影，本层只负责涂色）：
- * 1. [PageSelectionState] 交互选区（长按划选、手柄拖拽、搜索跳转选区）
- * 2. 划线回显与关键词命中（chapterHighlights）
- * 3. 排版产物自带的搜索命中标记（选区取消后仍留在搜索态的高亮）
+ * 1. 批注回显与关键词命中（chapterHighlights）
+ * 2. 排版产物自带的搜索命中标记（选区取消后仍留在搜索态的高亮）
+ * 3. [PageSelectionState] 交互选区（长按划选、手柄拖拽、搜索跳转选区）
+ *
+ * 绘制序即层序：选区最后绘制，覆盖在关键词/批注/搜索之上（提交信息声明的"选区最上"）。
+ * E-Ink 下关键词/批注不画色块（灰阶屏对比度差），其字形色与行底下划线由
+ * [drawBasePageContent] 承担。
  */
 private fun DrawScope.drawOverlayLayers(
     textPage: TextPage,
@@ -585,28 +640,34 @@ private fun DrawScope.drawOverlayLayers(
     chapterHighlights: List<HighlightOverlay> = emptyList(),
     pagePos: Int = 0,
 ) {
-    // 1. 绘制手势选择状态机投影（拖拽热路径：边投影边画，零 List/矩形对象分配）
-    if (selection != null && selection.isActive) {
-        val selectedColor = style.selectedColor
-        PageOverlayProjector.projectSelectionState(textPage, selection, pagePos) { l, t, r, b, _ ->
-            drawRect(color = selectedColor, topLeft = Offset(l, t), size = Size(r - l, b - t))
-        }
-    }
-
-    // 2. 划线回显与关键词命中：外部章内区间，每页独立求交，跨页/分行自然覆盖；
-    //    下划线标志在命中行行底补一条同色线。置于搜索命中之前绘制，搜索样式优先
-    if (chapterHighlights.isNotEmpty()) {
+    // 1. 批注回显与关键词命中：外部章内区间，每页独立求交，跨页/分行自然覆盖；
+    //    上色画背景色块，线条样式取同色不透明实/波浪/删除线；置于搜索命中之前绘制，
+    //    搜索样式优先
+    if (chapterHighlights.isNotEmpty() && !style.isEInk) {
         val lineWidth = 1.dp.toPx()
         for (highlight in chapterHighlights) {
             if (highlight.chapterIndex != textPage.chapterIndex) continue
-            val highlightColor = HighlightPalette.colorOf(highlight.colorIndex)
+            // 上色: 半透明色块; 线: 所选色不透明档, 不上色时取主题 accent (与 E-Ink 命中信号同源)
+            val blockColor = highlight.color?.let(::Color)
+            val lineColor = highlight.color?.let { Color(it).copy(alpha = 1f) } ?: style.accentColor
             PageOverlayProjector.projectHighlight(textPage, highlight) { l, t, r, b, lineIndex ->
-                drawRect(color = highlightColor, topLeft = Offset(l, t), size = Size(r - l, b - t))
-                if (highlight.underline) {
-                    drawLine(
-                        color = highlightColor.copy(alpha = 1f),
+                blockColor?.let {
+                    drawRect(color = it, topLeft = Offset(l, t), size = Size(r - l, b - t))
+                }
+                when (highlight.lineStyle) {
+                    HighlightLineStyle.UNDERLINE -> drawLine(
+                        color = lineColor,
                         start = Offset(l, b - lineWidth / 2f),
                         end = Offset(r, b - lineWidth / 2f),
+                        strokeWidth = lineWidth,
+                    )
+
+                    HighlightLineStyle.WAVY -> drawWavyLine(l, r, b - lineWidth, lineColor, lineWidth)
+
+                    HighlightLineStyle.STRIKETHROUGH -> drawLine(
+                        color = lineColor,
+                        start = Offset(l, (t + b) / 2f),
+                        end = Offset(r, (t + b) / 2f),
                         strokeWidth = lineWidth,
                     )
                 }
@@ -614,11 +675,20 @@ private fun DrawScope.drawOverlayLayers(
         }
     }
 
-    // 3. 搜索命中是外部章内区间；每页独立求交，跨页结果自然覆盖所有涉及页面
+    // 2. 搜索命中是外部章内区间；每页独立求交，跨页结果自然覆盖所有涉及页面
     if (searchHighlight != null) {
         val searchColor = style.searchColor
         PageOverlayProjector.projectSearchResult(textPage, searchHighlight) { l, t, r, b, _ ->
             drawRect(color = searchColor, topLeft = Offset(l, t), size = Size(r - l, b - t))
+        }
+    }
+
+    // 3. 绘制手势选择状态机投影（拖拽热路径：边投影边画，零 List/矩形对象分配）；
+    //    最后绘制 = 最上层，选中含关键词/批注的正文时选区底色不被其覆盖
+    if (selection != null && selection.isActive) {
+        val selectedColor = style.selectedColor
+        PageOverlayProjector.projectSelectionState(textPage, selection, pagePos) { l, t, r, b, _ ->
+            drawRect(color = selectedColor, topLeft = Offset(l, t), size = Size(r - l, b - t))
         }
     }
 }

@@ -1,10 +1,8 @@
 package io.legado.app.ui.book.read
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,16 +11,21 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,74 +34,80 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.Bookmark
-import io.legado.app.ui.book.read.page.overlay.HighlightPalette
-import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.book.read.page.overlay.DefaultHighlightColor
+import io.legado.app.ui.book.read.page.overlay.HighlightStyleButton
+import io.legado.app.ui.book.read.page.overlay.HighlightLineStyleRow
 import io.legado.app.ui.compose.component.AlertButton
-import io.legado.app.ui.compose.component.AppDialog
-import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppPopup
-import io.legado.app.ui.compose.component.AppTextButton
-import io.legado.app.ui.compose.component.AppUnderlineTextField
-import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.component.appDialogSize
+import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.platform.LocalOverlayTopInset
 import io.legado.app.ui.compose.platform.OverlayInsetGap
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.ui.generated.resources.Res
-import legado.ui.generated.resources.bookmark_note
 import legado.ui.generated.resources.cancel
 import legado.ui.generated.resources.delete
-import legado.ui.generated.resources.edit
+import legado.ui.generated.resources.highlight_colored
 import legado.ui.generated.resources.ok
 import legado.ui.generated.resources.sure_del
-import legado.ui.generated.resources.underline_note
 import legado.ui.generated.resources.underline_note_add
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.max
 import kotlin.math.roundToInt
 
 /**
- * 划线批注气泡状态快照。
+ * 批注气泡状态快照。
  *
- * @param bookmark 命中的划线实体 (type=1); 批注内容即 [Bookmark.content], 不渲染原文
- * @param anchor 气泡锚点矩形 (全窗坐标 = 命中划线的首个投影色块矩形, 与回显所见同源)
+ * @param bookmark 命中的批注实体 (type=1); 批注内容即 [Bookmark.content], 不渲染原文
+ * @param anchor 气泡锚点矩形 (全窗坐标; 轻点命中 = 命中批注的首个投影色块矩形,
+ *   长按菜单创建 = 选区起点方区, 与浮动菜单同源)
+ * @param startEditing true = 弹出即进入批注输入态 (长按菜单点"批注"创建后自动弹出)
  */
 data class UnderlineBubbleState(
     val bookmark: Bookmark,
     val anchor: Rect,
+    val startEditing: Boolean = false,
 )
 
 /**
- * 划线批注气泡宿主: 挂在阅读路由组合根, state 为 null 时零组合。
+ * 批注气泡宿主: 挂在阅读路由组合根, state 为 null 时零组合。
  *
  * 拍板形态 (用户明确要求回避正文原文摘要):
- * - 内容区只显示批注 ([Bookmark.content]); 为空显示"添加批注"空态, 不展示划线原文;
- * - 操作区 = 换色 (5 档色点, 与回显同源 HighlightPalette) + 编辑批注 + 删除划线;
- * - 锚定命中划线的投影色块矩形, 优先锚下方弹出, 下方放不下翻转上方, 出屏按边距 clamp;
+ * - 内容区只显示批注 ([Bookmark.content]); 为空显示"添加批注"空态, 点击内容区即原地
+ *   进入输入 (IME 完成键提交, 不弹对话框), 不展示原文;
+ * - 操作区 = 上色开关 + 选色 (取色盘, color 可空) + 线型 (与回显同源 HighlightLineStyle)
+ *   + 删除;
+ * - 锚定命中批注的投影色块矩形, 优先锚下方弹出, 下方放不下翻转上方, 出屏按边距 clamp;
  * - 轻量模态: 气泡存在期间点击任意空白即关闭 (捕获层), 操作完成由调用方关气泡。
  */
 @Composable
 fun UnderlineNoteBubbleHost(
     state: UnderlineBubbleState?,
     onDismiss: () -> Unit,
-    onEditConfirm: (String) -> Unit,
-    onColorChange: (Int) -> Unit,
+    onNoteConfirm: (String) -> Unit,
+    onColorChange: (Int?) -> Unit,
+    onLineStyleChange: (Int) -> Unit,
     onDelete: () -> Unit,
 ) {
     state ?: return
-    var showEdit by remember(state) { mutableStateOf(false) }
+    var editing by remember(state) { mutableStateOf(state.startEditing) }
     var showDeleteConfirm by remember(state) { mutableStateOf(false) }
 
     val density = LocalDensity.current
@@ -123,8 +132,11 @@ fun UnderlineNoteBubbleHost(
         ) {
             UnderlineBubbleCard(
                 state = state,
-                onEdit = { showEdit = true },
+                editing = editing,
+                onStartEdit = { editing = true },
+                onNoteConfirm = onNoteConfirm,
                 onColorChange = onColorChange,
+                onLineStyleChange = onLineStyleChange,
                 onDelete = { showDeleteConfirm = true },
                 modifier = Modifier
                     .offset { offset }
@@ -134,16 +146,6 @@ fun UnderlineNoteBubbleHost(
         }
     }
 
-    if (showEdit) {
-        UnderlineNoteEditDialog(
-            bookmark = state.bookmark,
-            onConfirm = { content ->
-                showEdit = false
-                onEditConfirm(content)
-            },
-            onDismiss = { showEdit = false },
-        )
-    }
     if (showDeleteConfirm) {
         AppAlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
@@ -188,12 +190,15 @@ private fun calculateBubbleOffset(
     return IntOffset(x, y)
 }
 
-/** 气泡卡片: 内容区 (批注/空态) + 分隔线 + 操作区 (5 色点 + 编辑/删除) */
+/** 气泡卡片: 内容区 (批注/空态/内联输入) + 分隔线 + 操作区 (上色/选色 + 线型 + 删除) */
 @Composable
 private fun UnderlineBubbleCard(
     state: UnderlineBubbleState,
-    onEdit: () -> Unit,
-    onColorChange: (Int) -> Unit,
+    editing: Boolean,
+    onStartEdit: () -> Unit,
+    onNoteConfirm: (String) -> Unit,
+    onColorChange: (Int?) -> Unit,
+    onLineStyleChange: (Int) -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -208,26 +213,37 @@ private fun UnderlineBubbleCard(
             .pointerInput(Unit) { detectTapGestures { } },
     ) {
         Column(Modifier.padding(DesignTokens.spacingDefault)) {
-            val content = state.bookmark.content
-            if (content.isBlank()) {
-                // 空态: 只提示可添加批注, 不渲染划线原文 (拍板要求回避原文摘要)
-                Text(
-                    text = stringResource(Res.string.underline_note_add),
-                    color = colors.secondaryText,
-                    fontSize = 14.sp,
-                    modifier = Modifier.fillMaxWidth(),
+            if (editing) {
+                UnderlineNoteEditor(
+                    initial = state.bookmark.content,
+                    onConfirm = onNoteConfirm,
                 )
             } else {
-                Text(
-                    text = content,
-                    color = colors.primaryText,
-                    fontSize = 14.sp,
-                    lineHeight = 22.sp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 160.dp)
-                        .verticalScroll(rememberScrollState()),
-                )
+                val content = state.bookmark.content
+                if (content.isBlank()) {
+                    // 空态: 只提示可添加批注, 点击即进入内联输入, 不展示原文 (拍板要求回避原文摘要)
+                    Text(
+                        text = stringResource(Res.string.underline_note_add),
+                        color = colors.secondaryText,
+                        fontSize = 14.sp,
+                        lineHeight = 22.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(onClick = onStartEdit),
+                    )
+                } else {
+                    Text(
+                        text = content,
+                        color = colors.primaryText,
+                        fontSize = 14.sp,
+                        lineHeight = 22.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 160.dp)
+                            .verticalScroll(rememberScrollState())
+                            .clickable(onClick = onStartEdit),
+                    )
+                }
             }
 
             Spacer(Modifier.size(DesignTokens.spacingDefault))
@@ -242,89 +258,76 @@ private fun UnderlineBubbleCard(
             Row(
                 Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                // 换色: 5 档色点, 选中项 accent 描边 (色值与回显同源 HighlightPalette)
-                repeat(HighlightPalette.SIZE) { index ->
-                    val selected = index == state.bookmark.colorIndex
-                    Box(
-                        Modifier
-                            .size(20.dp)
-                            .clip(CircleShape)
-                            .background(HighlightPalette.colorOf(index))
-                            .border(
-                                width = if (selected) 2.dp else 0.dp,
-                                color = colors.accent,
-                                shape = CircleShape,
-                            )
-                            .clickable { onColorChange(index) },
-                    )
-                }
+                // 上色开关: 关 = color 存 null (不画色块, 只剩线型); 开 = 无色时取默认黄
+                Text(
+                    text = stringResource(Res.string.highlight_colored),
+                    color = colors.primaryText,
+                    fontSize = 14.sp,
+                )
+                Spacer(Modifier.width(DesignTokens.spacingXs))
+                AppSwitch(
+                    checked = state.bookmark.color != null,
+                    onCheckedChange = { on ->
+                        onColorChange(if (on) (state.bookmark.color ?: DefaultHighlightColor) else null)
+                    },
+                )
                 Spacer(Modifier.weight(1f))
-                AppTextButton(
-                    text = stringResource(Res.string.edit),
-                    color = DesignTokens.arcoBlue6,
-                ) { onEdit() }
-                AppTextButton(
+                // 选色: 当前色圆点 (无色空心), 点击弹取色盘 (色值与回显同源)
+                HighlightStyleButton(color = state.bookmark.color, onColorPicked = onColorChange)
+                Text(
                     text = stringResource(Res.string.delete),
                     color = DesignTokens.arcoBlue6,
-                ) { onDelete() }
+                    fontSize = 14.sp,
+                    modifier = Modifier
+                        .clip(DesignTokens.shapeDefault)
+                        .clickable { onDelete() }
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                )
             }
+            Spacer(Modifier.size(DesignTokens.spacingXs))
+
+            // 线型: 与回显同源 HighlightLineStyle, 改动即 PATCH 落库
+            HighlightLineStyleRow(
+                selected = state.bookmark.lineStyle,
+                onLineStyleChange = onLineStyleChange,
+            )
         }
     }
 }
 
 /**
- * 批注编辑弹层: 单字段编辑 [Bookmark.content] (轻量输入层, 对齐 BookmarkDialog 形态)。
- *
- * 不复用 [io.legado.app.ui.book.bookmark.BookmarkDialog]: 那是书签编辑框, 同时编辑
- * 原文 bookText 与备注双字段——批注场景只需 content, 且原文是重锚依据, 不应经气泡修改。
+ * 批注内联输入: 纯文本形态无下划线 (与 NumberPickerDialog 同款 foundation BasicTextField
+ * state 版), IME 完成键提交, 清空提交即视为清空批注。
  */
 @Composable
-private fun UnderlineNoteEditDialog(
-    bookmark: Bookmark,
+private fun UnderlineNoteEditor(
+    initial: String,
     onConfirm: (String) -> Unit,
-    onDismiss: () -> Unit,
 ) {
     val colors = AppTheme.colors
-    val titleText = stringResource(Res.string.underline_note)
-    val noteLabel = stringResource(Res.string.bookmark_note)
-    val cancelText = stringResource(Res.string.cancel)
-    val okText = stringResource(Res.string.ok)
-    var content by remember { mutableStateOf(bookmark.content) }
-
-    AppDialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
-        Surface(
-            shape = DesignTokens.dialogShape,
-            color = colors.fillet,
-            modifier = Modifier.appDialogSize(),
-        ) {
-            Column(Modifier.fillMaxWidth()) {
-                DialogTitleBar(title = titleText, onBack = onDismiss)
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = DesignTokens.spacingDefault),
-                ) {
-                    AppUnderlineTextField(
-                        value = content,
-                        onValueChange = { content = it },
-                        label = noteLabel,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = DesignTokens.spacingDefault),
-                ) {
-                    Spacer(Modifier.weight(1f))
-                    AppTextButton(text = cancelText, color = colors.secondaryText) { onDismiss() }
-                    AppTextButton(text = okText, color = DesignTokens.arcoBlue6) {
-                        onConfirm(content.trim())
-                    }
-                }
-            }
-        }
+    val state = remember { TextFieldState(initial) }
+    val focusRequester = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    // 进入即聚焦输入框 + 弹键盘 (对照 ReviewPostScreen: etInput.requestFocus() +
+    // stateAlwaysVisible 语义)
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+        keyboard?.show()
     }
+    BasicTextField(
+        state = state,
+        modifier = Modifier
+            .fillMaxWidth()
+            .focusRequester(focusRequester),
+        lineLimits = TextFieldLineLimits.MultiLine(1, 5),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+        onKeyboardAction = { onConfirm(state.text.toString().trim()) },
+        textStyle = TextStyle(
+            fontSize = 14.sp,
+            lineHeight = 22.sp,
+            color = colors.primaryText,
+        ),
+        cursorBrush = SolidColor(colors.accent),
+    )
 }

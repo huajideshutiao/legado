@@ -18,7 +18,17 @@ data class SearchHighlightOverlay(
 )
 
 /**
- * 静态章内区间高亮 (划线回显 / 关键词命中共用的 overlay 状态, 不可变)。
+ * 高亮线型 (上色由 color 可空独立表达, 线型互斥): 0 无线, 1 下划线, 2 波浪线, 3 删除线。
+ */
+object HighlightLineStyle {
+    const val NONE = 0
+    const val UNDERLINE = 1
+    const val WAVY = 2
+    const val STRIKETHROUGH = 3
+}
+
+/**
+ * 静态章内区间高亮 (批注回显 / 关键词命中共用的 overlay 状态, 不可变)。
  *
  * 与 [SearchHighlightOverlay] 同一字符账本 (每个 TextColumn 消耗 charData.length,
  * 非文字列消耗 1), 章内偏移口径同 `TextLine.chapterPosition`。
@@ -26,16 +36,16 @@ data class SearchHighlightOverlay(
  * @param chapterIndex 章节序号
  * @param start 章内起始字符偏移 (含)
  * @param endExclusive 章内结束字符偏移 (不含)
- * @param colorIndex 色档索引 (见 HighlightPalette)
- * @param underline true = 背景色块之外在命中行行底补同色下划线 (关键词规则项)
- * @param underlineId 来源划线 Bookmark.time (点击命中后反查实体用); 关键词命中恒 0
+ * @param color 上色颜色 (ARGB, 0x50 半透明色块); null = 不上色 (默认), 此时线取主题 accent 色
+ * @param lineStyle 线型 (见 [HighlightLineStyle]), 默认下划线
+ * @param underlineId 来源批注 Bookmark.time (点击命中后反查实体用); 关键词命中恒 0
  */
 data class HighlightOverlay(
     val chapterIndex: Int,
     val start: Int,
     val endExclusive: Int,
-    val colorIndex: Int = 0,
-    val underline: Boolean = false,
+    val color: Int? = null,
+    val lineStyle: Int = HighlightLineStyle.UNDERLINE,
     val underlineId: Long = 0,
 )
 
@@ -235,7 +245,7 @@ object PageOverlayProjector {
     }
 
     /**
-     * 命中划线的页内锚定矩形 (首个投影矩形): 点击划线弹批注气泡时, 气泡锚点取该矩形
+     * 命中批注的页内锚定矩形 (首个投影矩形): 轻点批注弹气泡时, 气泡锚点取该矩形
      * (与绘制同走 [projectHighlight] 投影, 锚点即所见色块)。无投影 (区间为空/消息页) 返回 null。
      */
     fun projectHighlightAnchorRect(textPage: TextPage, highlight: HighlightOverlay): Rect? {

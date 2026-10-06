@@ -980,17 +980,18 @@ class ReaderScreenModel(
     }
 
     /**
-     * 划线回调：以选区折算的章内区间存 Bookmark(type = 1), 色档默认 0 档。
+     * 批注回调：以选区折算的章内区间存 Bookmark(type = 1)，成功后即弹批注气泡进入输入态
+     * (拍板：长按菜单点"批注"一步到位；锚点用浮动菜单自身的选区起点方区，全窗坐标)。
      *
      * 偏移与原文同源 ([PageSelectionState.selectedChapterRange] 同一账本遍历), 口径同
      * TextLine.chapterPosition (净化/替换/简繁后的排版输入文本); 章号取区间自身所属章
      * (滚动模式下选区可含下一章页, 与当前阅读章不一定同章); 回显由 ChapterHighlightState
-     * 重锚投影, 跳转无需额外处理。不弹编辑框 (对照 menu_bookmark 的差异面);
-     * 菜单收尾 (关菜单 + 取消选择) 由 ReaderTextActionMenu 的 entry(onFinally) 统一完成。
+     * 重锚投影, 跳转无需额外处理。菜单收尾 (关菜单 + 取消选择) 由 ReaderTextActionMenu
+     * 的 entry(onFinally) 统一完成。
      *
-     * 跨章选区无单章区间可存, 折算返回 null, 此处提示用户后放弃本次划线。
+     * 跨章选区无单章区间可存, 折算返回 null, 此处提示用户后放弃本次批注。
      */
-    fun underlineTextCallback(): (String) -> Unit = onUnderline@{ _ ->
+    fun underlineTextCallback(): (text: String, anchor: Rect) -> Unit = onUnderline@{ _, anchor ->
         val book = viewModel.book.value ?: return@onUnderline
         val range = selection.selectedChapterRange()
         if (range == null) {
@@ -1005,27 +1006,29 @@ class ReaderScreenModel(
                 chapterName = chapterTitleOf(range.chapterIndex)
                 bookText = range.text
                 type = Bookmark.TYPE_UNDERLINE
-                colorIndex = 0
             }
             runCatching { AppDbProviders.get().bookmarkDao.insert(bookmark) }
-                .onFailure { AppLog.put("保存划线失败\n${it.message}", it) }
+                .onSuccess {
+                    underlineBubble = UnderlineBubbleState(bookmark, anchor, startEditing = true)
+                }
+                .onFailure { AppLog.put("保存批注失败\n${it.message}", it) }
         }
     }
 
-    /** 章号对应的目录标题 (目录未装载或越界时为空串, 与划线书签的章名落库口径一致) */
+    /** 章号对应的目录标题 (目录未装载或越界时为空串, 与批注书签的章名落库口径一致) */
     private fun chapterTitleOf(chapterIndex: Int): String =
         viewModel.chapterList.value.getOrNull(chapterIndex)?.title ?: ""
 
-    // region 划线批注气泡 (轻点命中划线区域弹出, 操作完成即关闭)
+    // region 批注气泡 (轻点命中批注区域弹出, 长按菜单创建后也自动弹出; 操作完成即关闭)
 
     /**
-     * 划线批注气泡状态 (null = 不显示)。快照式: 弹出时定格命中实体与锚点矩形,
-     * 编辑/换色/删除都以此快照的 bookmark.time 为目标 (time 是主键, 恒可定位)。
+     * 批注气泡状态 (null = 不显示)。快照式: 弹出时定格命中实体与锚点矩形,
+     * 编辑/换色/上色/换线型/删除都以此快照的 bookmark.time 为目标 (time 是主键, 恒可定位)。
      */
     var underlineBubble by mutableStateOf<UnderlineBubbleState?>(null)
         private set
 
-    /** 轻点命中已划线区域 (ReadViewComposable.onTapAt 命中分发回调): 弹气泡 */
+    /** 轻点命中已批注区域 (ReadViewComposable.onTapAt 命中分发回调): 弹气泡 */
     fun onUnderlineTap(bookmark: Bookmark, anchor: Rect) {
         underlineBubble = UnderlineBubbleState(bookmark, anchor)
     }
@@ -1035,16 +1038,26 @@ class ReaderScreenModel(
     }
 
     /**
-     * 换色/编辑/删除均直接 PATCH 落 BookmarkDao, 回显由 ChapterHighlightState
+     * 换色/上色/换线型/编辑/删除均直接 PATCH 落 BookmarkDao, 回显由 ChapterHighlightState
      * 订阅的 DAO flow 自动刷新; 操作完成即关气泡 (拍板)。
      */
-    fun changeUnderlineColor(colorIndex: Int) {
+    fun changeUnderlineColor(color: Int?) {
         val bubble = underlineBubble ?: return
         underlineBubble = null
         scope.launch {
             runCatching {
-                AppDbProviders.get().bookmarkDao.updateColorIndex(bubble.bookmark.time, colorIndex)
-            }.onFailure { AppLog.put("划线换色失败\n${it.message}", it) }
+                AppDbProviders.get().bookmarkDao.updateColor(bubble.bookmark.time, color)
+            }.onFailure { AppLog.put("批注换色失败\n${it.message}", it) }
+        }
+    }
+
+    fun changeUnderlineLineStyle(lineStyle: Int) {
+        val bubble = underlineBubble ?: return
+        underlineBubble = null
+        scope.launch {
+            runCatching {
+                AppDbProviders.get().bookmarkDao.updateLineStyle(bubble.bookmark.time, lineStyle)
+            }.onFailure { AppLog.put("批注换线型失败\n${it.message}", it) }
         }
     }
 
@@ -1063,7 +1076,7 @@ class ReaderScreenModel(
         underlineBubble = null
         scope.launch {
             runCatching { AppDbProviders.get().bookmarkDao.delete(bubble.bookmark) }
-                .onFailure { AppLog.put("删除划线失败\n${it.message}", it) }
+                .onFailure { AppLog.put("删除批注失败\n${it.message}", it) }
         }
     }
 

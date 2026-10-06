@@ -34,7 +34,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.KeywordHighlight
-import io.legado.app.ui.book.read.page.overlay.HighlightPalette
+import androidx.compose.ui.graphics.Color
+import io.legado.app.ui.book.read.page.overlay.HighlightLineStyle
+import io.legado.app.ui.book.read.page.overlay.DefaultHighlightColor
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppDropdownMenu
@@ -62,7 +64,7 @@ import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * 关键词高亮列表页 (划线/关键词高亮共用色档表 HighlightPalette 的管理端)。
+ * 关键词高亮列表页。
  *
  * UI 形态对齐源过滤规则/替换规则等列表管理页惯例: 标题栏 + 列表 + 单条开关/编辑/删除;
  * 规则量级小, 不引入批量选择与拖拽排序 (sortOrder 仅控制新增排队与匹配次序)。
@@ -162,11 +164,11 @@ private fun KeywordHighlightItem(
             .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingDefault),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // 色档视觉标识 (与管理页选色/回显色块同源)
+        // 颜色视觉标识 (与管理页选色/回显同源)
         Box(
             Modifier
                 .size(12.dp)
-                .background(HighlightPalette.colorOf(rule.colorIndex), CircleShape),
+                .background(Color(rule.color ?: DefaultHighlightColor), CircleShape),
         )
         Spacer(Modifier.width(DesignTokens.spacingDefault))
         // 副标题: 作用范围摘要 (全局 / 限定 N 项), 形态对齐列表项主副标题惯例
@@ -177,7 +179,11 @@ private fun KeywordHighlightItem(
                 fontSize = 15.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                textDecoration = if (rule.underline) TextDecoration.Underline else null,
+                textDecoration = when (rule.lineStyle) {
+                    HighlightLineStyle.UNDERLINE, HighlightLineStyle.WAVY -> TextDecoration.Underline
+                    HighlightLineStyle.STRIKETHROUGH -> TextDecoration.LineThrough
+                    else -> null
+                },
             )
             Text(
                 text = scopeSummary(rule),

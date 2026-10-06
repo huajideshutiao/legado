@@ -46,7 +46,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.shape.CircleShape
@@ -59,7 +58,7 @@ import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.book.isLocalTxt
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.ui.book.bookmark.BookmarkShareCardDialog
-import io.legado.app.ui.book.read.page.overlay.HighlightPalette
+import androidx.compose.ui.graphics.Color
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTitleBar
@@ -606,14 +605,17 @@ private fun BookmarkItem(
             .padding(vertical = DesignTokens.spacingDefault),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // 划线条目带色档视觉标识 (与正文回显色块同源)
+            // 批注条目带颜色视觉标识 (与正文回显同源)
             if (isUnderline) {
-                Box(
-                    Modifier
-                        .padding(end = DesignTokens.spacingXs)
-                        .size(10.dp)
-                        .background(HighlightPalette.colorOf(item.colorIndex), CircleShape),
-                )
+                // 不上色 (color=null) 的批注无色块可标
+                item.color?.let { color ->
+                    Box(
+                        Modifier
+                            .padding(end = DesignTokens.spacingXs)
+                            .size(10.dp)
+                            .background(Color(color), CircleShape),
+                    )
+                }
             }
             Text(
                 text = item.chapterName,

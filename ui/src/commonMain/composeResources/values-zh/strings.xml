@@ -867,7 +867,6 @@
     <string name="clear_cache_success">成功清理缓存</string>
     <string name="export_bookmark_json">导出书签 JSON</string>
     <string name="export_success">导出成功</string>
-    <string name="share_card_truncated">内容过长，图片已截断</string>
     <string name="export_bookmark_md">导出书签 Markdown</string>
     <string name="no_book">没有书籍</string>
     <string name="non_null_name_url">名称和 URL 不能为空</string>
@@ -1782,20 +1781,25 @@ Windows: winget install shinchiro.mpv 或 scoop install mpv,
     <string name="copy_json_path">复制 JSONPath</string>
     <string name="view_value">查看</string>
 
-    <!-- 划线回显 (Bookmark.type=1) 与关键词高亮 -->
-    <string name="underline">划线</string>
+    <!-- 批注回显 (Bookmark.type=1) 与关键词高亮 -->
     <string name="keyword_highlight">关键词高亮</string>
     <string name="keyword_highlight_empty">暂无关键词高亮</string>
     <string name="keyword_highlight_add">添加关键词高亮</string>
     <string name="keyword">关键词</string>
-    <string name="keyword_highlight_underline">下划线</string>
     <string name="keyword_highlight_scope">作用范围，选填书名或者书源 URL</string>
     <string name="keyword_highlight_scope_all">全局</string>
     <string name="keyword_highlight_scope_limited">限定 %1$d 项</string>
 
-    <!-- 划线批注气泡 -->
+    <!-- 批注气泡与呈现样式 (批注/关键词高亮共用) -->
     <string name="underline_note">批注</string>
     <string name="underline_note_add">添加批注</string>
+    <string name="highlight_color">高亮颜色</string>
+    <string name="highlight_colored">上色</string>
+    <string name="highlight_style">线型</string>
+    <string name="highlight_style_none">无</string>
+    <string name="highlight_style_underline">下划线</string>
+    <string name="highlight_style_wavy">波浪线</string>
+    <string name="highlight_style_strikethrough">删除线</string>
 
     <!-- TVBox 影视源管理页 -->
     <string name="tvbox">TVBox 源</string>
@@ -1816,4 +1820,6 @@ Windows: winget install shinchiro.mpv 或 scoop install mpv,
     <string name="tvbox_remove_source_confirm">删除该配置来源？其虚拟书源行会一并清理。</string>
     <string name="tvbox_loading">正在拉取配置…</string>
     <string name="tvbox_delete_source">删除来源</string>
+    <string name="underline_cross_chapter_unsupported">批注仅支持单章内选区</string>
+    <string name="keyword_highlight_exclude_scope">排除范围，选填书名或者书源 URL</string>
 </resources>
