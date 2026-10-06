@@ -5,6 +5,7 @@ import io.legado.app.constant.BookSourceType
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.source.clearExploreKindsCache
 import io.legado.app.help.tvbox.TvBoxConfig
 import io.legado.app.help.tvbox.TvBoxSite
 import io.legado.app.utils.GSON
@@ -25,13 +26,11 @@ object TvBoxPluginSources {
     const val GROUP_NAME = "TVBox 源"
 
     /**
-     * 发现页分类规则 (换行形态, 每行 `标题::url`)。
-     *
-     * 依据 `data/.../help/source/BookSourceExtensionsShared.kt:111-115`: 非 JSON 时按
-     * `(&&|\n)+` 切行再按 `::` 拆 title/url。填了 exploreUrl 才会被
-     * `BookSourceDao` 的 `hasExploreUrl = 1` 过滤命中 (书源管理页的发现开关据此显隐)。
+     * 发现能力标记 (非规则)。分类由 [TvBoxSourceDelegateImpl.getExploreKinds] 运行时枚举
+     * (站点 class 数组), 经 BookSource.exploreKinds() 落盘缓存; 本字段只承担
+     * `BookSourceDao` 的 `hasExploreUrl = 1` 过滤 (书源管理页的发现开关据此显隐)。
      */
-    private const val EXPLORE_URL = "推荐::popular"
+    private const val EXPLORE_URL = "@delegate"
 
     /** 由站点构造虚拟 BookSource 行 (不落库)。 */
     fun buildVirtualSource(site: TvBoxSite, globalSpider: String): BookSource = BookSource(
@@ -86,11 +85,13 @@ object TvBoxPluginSources {
                         old.header != fresh.header
                     ) {
                         // 只同步名称/请求头这类规则面; enabled/enabledExplore/exploreUrl
-                        // 均不在同步面内 (前者归书源界面管, 后者只在新建行时写入)。
+                        // 均不在同步面内 (前者归书源界面管, 后者恒为 @js 占位规则)。
                         old.bookSourceName = fresh.bookSourceName
                         old.header = fresh.header
                         dao.update(old)
                     }
+                    // 分类枚举结果有磁盘缓存: 配置重导入即重置, 下次进发现页重新枚举
+                    runCatching { (old ?: fresh).clearExploreKindsCache() }
                 }
             }.onFailure {
                 AppLog.put("TVBox 虚拟书源同步失败", it)

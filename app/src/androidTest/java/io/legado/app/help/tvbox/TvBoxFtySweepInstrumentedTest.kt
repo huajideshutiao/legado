@@ -10,6 +10,7 @@ import io.legado.app.model.tvbox.TvBoxPluginSources
 import io.legado.app.model.tvbox.TvBoxSourceDelegateImpl
 import io.legado.app.model.tvbox.TvBoxSourceMapper
 import io.legado.app.model.webBook.WebBook
+import io.legado.app.help.source.exploreKinds
 import io.legado.app.help.tvbox.TvBoxSite
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
@@ -188,6 +189,121 @@ class TvBoxFtySweepInstrumentedTest {
 
     private data class Attempt(val stage: String, val detail: String?, val ok: Boolean = false)
 
+    /**
+     * 搜索/发现两维专项扫测 (真机排查用, 非回归断言):
+     *
+     * 每站并行上报 searchable 站点的搜索命中数 (searchCount)、发现·推荐命中数 (popularCount)、
+     * 分类数 (classCount) 与首个分类页条目数 (firstClassCount), 及各自错误 (searchErr 等)。
+     * 用途: 定位「发现不可用」是站点死亡、spider 取数空, 还是虚拟行只挂 popular 单一取数面。
+     */
+    @Test
+    fun sweepSearchExplore() {
+        TvBoxManager.init()
+        val config = runBlocking { TvBoxManager.setConfigFromUrl(CONFIG_URL) }
+        assertTrue("fty.json 无站点", config.sites.isNotEmpty())
+
+        val outFile = File(context.filesDir, "tvbox/sweep_se.jsonl").apply {
+            parentFile?.mkdirs()
+            writeText("")
+        }
+        val sites = config.sites
+        val pool = Executors.newCachedThreadPool()
+        val gate = Semaphore(parallelism)
+        val started = System.currentTimeMillis()
+        try {
+            val futures = sites.map { site ->
+                gate.acquire()
+                pool.submit(Callable {
+                    val item = try {
+                        sweepSearchExploreOne(site)
+                    } finally {
+                        gate.release()
+                    }
+                    val line = item.toString()
+                    synchronized(outFile) { outFile.appendText(line + "\n") }
+                    println("[TvBoxSE] " + line)
+                    item
+                })
+            }
+            for ((index, future) in futures.withIndex()) {
+                try {
+                    future.get(perSiteTimeoutMs, TimeUnit.MILLISECONDS)
+                } catch (e: TimeoutException) {
+                    val line = baseItem(sites[index]).put("stage", "TIMEOUT")
+                        .put("detail", "单站点超过 ${perSiteTimeoutMs}ms").toString()
+                    synchronized(outFile) { outFile.appendText(line + "\n") }
+                    println("[TvBoxSE] " + line)
+                }
+            }
+        } finally {
+            pool.shutdownNow()
+        }
+        val lines = outFile.readLines().mapNotNull { runCatching { JSONObject(it) }.getOrNull() }
+        val searchOk = lines.count { (it.optInt("searchCount", -1)) > 0 || it.optInt("searchCountAlt", -1) > 0 }
+        val popularOk = lines.count { it.optInt("popularCount", -1) > 0 }
+        val classExploreOk = lines.count { it.optInt("classExploreCount", -1) > 0 }
+        val kindOk = lines.count { it.optInt("kindCount", 0) > 1 }
+        println("[TvBoxSE] SUMMARY total=${sites.size} searchOk=$searchOk popularOk=$popularOk " +
+            "classExploreOk=$classExploreOk kindOk=$kindOk elapsedMs=${System.currentTimeMillis() - started}")
+    }
+
+    /** 单站点搜索/发现/分类三维探测 (不取播, 与 sweepFtySites 的播链互补)。 */
+    private fun sweepSearchExploreOne(site: TvBoxSite): JSONObject {
+        val item = baseItem(site).put("searchable", site.searchable)
+        val bookSource = runBlocking {
+            TvBoxPluginSources.sync(TvBoxManager.config!!)
+            AppDbProviders.get().bookSourceDao.getBookSource(TvBoxSourceMapper.siteUrlOf(site.key))
+        } ?: return item.put("stage", "NO_ROW")
+        // 搜索面: searchable 站点走真实用户路径 (WebBook → 委派 → spider.searchContent);
+        // 空结果补第二关键词重试, 区分「站点搜索坏」与「关键词在该站无命中」
+        if (site.searchable) {
+            runCatching { runBlocking { WebBook.getBookListAwait(bookSource, SEARCH_KEY, 1) } }
+                .onSuccess { item.put("searchCount", it.books.size) }
+                .onFailure { item.put("searchErr", describe(it).take(200)) }
+            if (item.optInt("searchCount", -1) == 0) {
+                runCatching { runBlocking { WebBook.getBookListAwait(bookSource, SEARCH_KEY_ALT, 1) } }
+                    .onSuccess { if (it.books.isNotEmpty()) item.put("searchCountAlt", it.books.size) }
+                    .onFailure { if (!item.has("searchErr")) item.put("searchErrAlt", describe(it).take(200)) }
+            }
+        }
+        // 发现面: 真实用户发现页入口 "推荐"(popular) → homeVideoContent/homeContent
+        runCatching { runBlocking { TvBoxSourceDelegateImpl.getExploreAwait(bookSource, "popular", 1) } }
+            .onSuccess { item.put("popularCount", it.books.size) }
+            .onFailure { item.put("popularErr", describe(it).take(200)) }
+        // 分类面·app 层: exploreKinds() 走取数委派惰性枚举 + 既有磁盘缓存 (与发现页同源);
+        // 分类 kind 段走委派 (与用户点分类卡同路径)
+        runCatching { runBlocking { bookSource.exploreKinds() } }
+            .onSuccess { kinds ->
+                item.put("kindCount", kinds.size)
+                val classKind = kinds.firstOrNull { !it.url.isNullOrBlank() && it.url != "popular" }
+                if (classKind != null) {
+                    runCatching {
+                        runBlocking { TvBoxSourceDelegateImpl.getExploreAwait(bookSource, classKind.url!!, 1) }
+                    }
+                        .onSuccess { item.put("classExploreCount", it.books.size) }
+                        .onFailure { item.put("classExploreErr", describe(it).take(200)) }
+                }
+            }
+            .onFailure { item.put("kindErr", describe(it).take(200)) }
+        // 分类面: spider 层分类数与首个分类页条目数 (定位「有分类无推荐」的站点)
+        runCatching {
+            val spider = runBlocking {
+                TvBoxManager.spiderFor(site, TvBoxManager.config?.spider.orEmpty()).second
+            }
+            val home = JSONObject(spider.homeContent(true))
+            val classes = home.optJSONArray("class") ?: org.json.JSONArray()
+            item.put("classCount", classes.length())
+            val tid = classes.optJSONObject(0)?.optString("type_id")?.trim().orEmpty()
+            if (tid.isNotEmpty()) {
+                val list = runCatching {
+                    JSONObject(spider.categoryContent(tid, "1", false, HashMap())).optJSONArray("list")
+                }.getOrNull()
+                item.put("firstClassCount", list?.length() ?: 0)
+            }
+        }.onFailure { item.put("classErr", describe(it).take(200)) }
+        return item
+    }
+
     private fun baseItem(site: TvBoxSite): JSONObject = JSONObject()
         .put("key", site.key)
         .put("name", site.name)
@@ -279,5 +395,6 @@ class TvBoxFtySweepInstrumentedTest {
         private const val CONFIG_URL =
             "https://gh-proxy.com/https://raw.githubusercontent.com/qist/tvbox/master/fty.json"
         private const val SEARCH_KEY = "爱"
+        private const val SEARCH_KEY_ALT = "我的"
     }
 }
