@@ -481,9 +481,7 @@ class VideoPlayViewModelShared(
                     // 解析视频源 (复用同包工具函数)。isCurrentJob 守卫与 finally 同口径:
                     // 本轮已被切章替换/被加载中切档取消时不得再写 _videoUrl/_resolutions,
                     // 否则晚到的解析结果会把新一轮的选择覆盖回默认档
-                    if (loadGuard.isCurrentJob(index, currentJob)) {
-                        parseVideoContent(content, source)
-                    }
+                    parseVideoContent(content, source, index, currentJob)
                     // 当前章就绪后再预解析前后各一章 (对标小说 contentLoadFinish → preDownload 的时机)
                     if (source != null) {
                         preloader.preload(
@@ -548,6 +546,19 @@ class VideoPlayViewModelShared(
     }
 
     /**
+     * 一次解析的产物 (不碰共享状态): 在守卫锁外算好, 提交时再整体写入。
+     *
+     * [error] 非 null = 解析出了坏配置, 只写三个状态源 + 加载错误, 不换 url。
+     */
+    private class ParsedVideo(
+        val videoSource: VideoSource?,
+        val resolutions: List<VideoResolution>,
+        val resolutionIndex: Int,
+        val url: AnalyzeUrlCore? = null,
+        val error: String? = null,
+    )
+
+    /**
      * 解析视频源内容 (对照 desktop `VideoPlayerViewModel.parseVideoContent` /
      * app `VideoViewModel.parseVideoContent`)。
      *
@@ -560,57 +571,78 @@ class VideoPlayViewModelShared(
      *    - 其他: 当作内存 m3u8 内容, 用 fakeUrl `https://example.com/memory.m3u8` 作 Referer
      *    - `#BASE:` 前缀: 提取真正的 Referer (前缀行), 余下为 m3u8 内容
      *
-     * 解析算法委托同包 [parseVideoSource] + [extractVideoUrlAndReferer] (已下沉工具函数),
-     * 此处仅做平台无关的 StateFlow 推送与 [AnalyzeUrlCore] 构造。
+     * 解析算法委托同包 [parseVideoSource] + [extractVideoUrlAndReferer] (已下沉工具函数);
+     * 解析在守卫锁外完成, 状态写入整体放在 [ChapterLoadingGuard.withCurrentJob] 内 ——
+     * 校验与写入同锁, 切章/加载中切档的作废写不会插在"校验通过 → 写入"之间, 否则晚到的
+     * 解析结果会把用户刚选的清晰度覆盖回默认档。
      *
      * @param content 章节正文 (JSON / `name::url\n` 多行 / URL / m3u8 内容)
      * @param source 书源 (AnalyzeUrlCore 构造用)
+     * @param index 本章序号 (守卫轮次校验用)
+     * @param currentJob 本装载任务的 Job (守卫轮次校验用)
      */
-    private fun parseVideoContent(content: String, source: BookSource?) {
-        val videoSource = parseVideoSource(content)
-
-        if (videoSource != null && videoSource.resolutions.isNotEmpty()) {
-            // 多分辨率源: 取默认分辨率 URL。
+    private fun parseVideoContent(content: String, source: BookSource?, index: Int, currentJob: Job?) {
+        // 早退省一次无谓解析 (权威校验在提交时再做一次, 见下)
+        if (!loadGuard.isCurrentJob(index, currentJob)) return
+        val parsed = buildParsedVideo(content, source)
+        loadGuard.withCurrentJob(index, currentJob) {
+            if (parsed.error != null) {
+                _videoSource.value = parsed.videoSource
+                _resolutions.value = parsed.resolutions
+                _currentResolutionIndex.value = parsed.resolutionIndex
+                _loadState.value = ChapterLoadState.Error(parsed.error)
+                return@withCurrentJob
+            }
             // 写序必须先改状态源再发 url: 上一版把 currentResolutionIndex 排在两个 flow
             // 之后且它根本不是状态源, 收集器抢跑时只能读到刚被 loadChapter 重置的 0
             // → defaultIndex>0 的源「钮显示第 1 档、实际播第 N 档」。
-            _videoSource.value = videoSource
-            _resolutions.value = videoSource.resolutions
-            _currentResolutionIndex.value = videoSource.defaultIndex
-            val resolution = _resolutions.value.getOrNull(_currentResolutionIndex.value)
+            _videoSource.value = parsed.videoSource
+            _resolutions.value = parsed.resolutions
+            _currentResolutionIndex.value = parsed.resolutionIndex
+            _startPositionMs.value = pendingSeekMs
+            pendingSeekMs = 0L
+            _videoUrl.value = parsed.url
+        }
+    }
+
+    /** 纯解析 (不碰共享状态): JSON / `name::url` 多分辨率 → 默认档 URL; 否则直链 / 内存 m3u8。 */
+    private fun buildParsedVideo(content: String, source: BookSource?): ParsedVideo {
+        val videoSource = parseVideoSource(content)
+        if (videoSource != null && videoSource.resolutions.isNotEmpty()) {
+            val resolution = videoSource.resolutions.getOrNull(videoSource.defaultIndex)
             if (resolution == null) {
                 // defaultIndex 越界等坏配置: 不得静默回 Idle (那是“纯黑且连重试入口都没有”)
-                _loadState.value = ChapterLoadState.Error(
-                    "视频源分辨率配置错误 (defaultIndex=${videoSource.defaultIndex})"
+                return ParsedVideo(
+                    videoSource = videoSource,
+                    resolutions = videoSource.resolutions,
+                    resolutionIndex = videoSource.defaultIndex,
+                    error = "视频源分辨率配置错误 (defaultIndex=${videoSource.defaultIndex})",
                 )
-                return
             }
-            _startPositionMs.value = pendingSeekMs
-            pendingSeekMs = 0L
-            _videoUrl.value = AnalyzeUrlFactories.create(
-                rawUrl = resolution.url,
-                source = source,
-                headerMapF = resolution.headers.ifEmpty { videoSource.headers },
+            return ParsedVideo(
+                videoSource = videoSource,
+                resolutions = videoSource.resolutions,
+                resolutionIndex = videoSource.defaultIndex,
+                url = AnalyzeUrlFactories.create(
+                    rawUrl = resolution.url,
+                    source = source,
+                    headerMapF = resolution.headers.ifEmpty { videoSource.headers },
+                ),
             )
+        }
+        // 直接 URL / 内存 m3u8
+        val url = if (content.hasPlayableScheme()) {
+            // 可播直链: 用 AnalyzeUrlCore 包装 (带书源 header / cookie / charset)
+            AnalyzeUrlFactories.create(rawUrl = content, source = source)
         } else {
-            // 直接 URL / 内存 m3u8
-            _videoSource.value = null
-            _resolutions.value = emptyList()
-            _currentResolutionIndex.value = 0
-            _startPositionMs.value = pendingSeekMs
-            pendingSeekMs = 0L
-            _videoUrl.value = if (content.hasPlayableScheme()) {
-                // 可播直链: 用 AnalyzeUrlCore 包装 (带书源 header / cookie / charset)
-                AnalyzeUrlFactories.create(rawUrl = content, source = source)
-            } else {
-                // 内存 m3u8: 保留 fakeUrl + Referer 语义, 供 UI 层播放库接入时复用
-                val (videoUrl, fakeUrl) = extractVideoUrlAndReferer(content)
-                AnalyzeUrlFactories.create("").apply {
-                    url = videoUrl
-                    headerMap["Referer"] = fakeUrl
-                }
+            // 内存 m3u8: 保留 fakeUrl + Referer 语义, 供 UI 层播放库接入时复用
+            val (videoUrl, fakeUrl) = extractVideoUrlAndReferer(content)
+            AnalyzeUrlFactories.create("").apply {
+                url = videoUrl
+                headerMap["Referer"] = fakeUrl
             }
         }
+        return ParsedVideo(videoSource = null, resolutions = emptyList(), resolutionIndex = 0, url = url)
     }
 
     /**

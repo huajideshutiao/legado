@@ -382,12 +382,27 @@ internal class AndroidVideoPlayerController(
     /** 已加载的 url: 页面转场会重建 RenderSurface 组合, LaunchedEffect(videoUrl.collect)
      *  随之重启并被 StateFlow 补发同值, 守卫避免重复 setMediaItem+prepare 从头重播
      *  (对齐桌面 startedUrl / iOS / ohos loadedUrl 模式)。[stop] 必须同步清掉它,
-     *  否则同链接重试 (refreshChapter 重新 emit 同一 url) 会被守卫拦掉。 */
+     *  内存 m3u8 清单分支这里存的是清单文本 (同址去重仍用得上), 它**不是可播 URI**,
+     *  不能拿去重装媒体 —— 见 [playableUrl]。 */
     private var loadedUrl: String? = null
 
-    /** 格式重试覆盖 (FongMi PlaySpec.format 同语义): 无扩展名的 jar 代理地址
-     *  (proxy?do=m3u8 / type=mpd) progressive 首装失败后按错误码换 mimeType 重装。 */
-    private var formatOverride: String? = null
+    /**
+     * 本次装载对应的章号; 错误回调用它与当前章号比对, 不一致 = 旧章晚到错误, 直接丢弃
+     * (否则会把"刷新"落到刚切到的新章上, 新章白多跑一轮装载)。
+     */
+    private var loadedChapterIndex: Int = -1
+
+    /**
+     * 可播 URI (直链 / 本地地址); 内存 m3u8 清单分支为 null。
+     *
+     * 格式重试要拿地址重建 MediaItem, 而内存分支的 [loadedUrl] 存的是清单文本, 拿去重建
+     * 必失败并坠入格式重环 —— 所以格式重试只对 [playableUrl] 非空时生效 (与 [updateSource]
+     * 的 `hasPlayableScheme()` 分流同口径)。
+     */
+    private var playableUrl: String? = null
+
+    /** 本次装载已试过的格式覆盖: 同一格式不重装第二次, 交替错误码下硬性截断。 */
+    private val triedFormats = mutableSetOf<String>()
 
     /** 当前媒体请求头快照 (格式重试重装时复用; [updateSource] 换地址时刷新)。 */
     private var lastHeaders: Map<String, String> = emptyMap()
@@ -425,6 +440,9 @@ internal class AndroidVideoPlayerController(
             // onPlaybackStateChanged: STATE_READY → hasRefreshedOnPlayError = false;
             // 链接不可用时永不 READY, 同章节只自动重试一次, 不再无限循环)
             if (playbackState == Player.STATE_READY) {
+                // 重试预算随播放成功重置 (与 resetRetryOnPlayError 同口径): 已试格式清空只发生在
+                // 真正 READY 之后, 坏流永远到不了这里 → 交替错误码仍被硬性截断
+                triedFormats.clear()
                 screenModel.shared.resetRetryOnPlayError()
             }
             if (playbackState == Player.STATE_ENDED) onPlaybackEnded()
@@ -442,25 +460,36 @@ internal class AndroidVideoPlayerController(
         }
 
         override fun onPlayerError(error: PlaybackException) {
+            // 旧章晚到错误 (装载已被切章/取消作废) 直接丢弃: 否则 retryOnPlayError 会按
+            // 新章 index 重拉, 把刚启动的新章装载取消并重跑一轮 (格式重试也可能拿新媒体验
+            // 验旧错误码)。
+            if (loadedChapterIndex != screenModel.shared.curChapterIndex.value) {
+                return
+            }
             // 对齐 FongMi ExoPlayerEngine.handleError → retryFormat: jar 代理地址无扩展名,
-            // progressive 首装失败后按错误码换 mimeType 重装续播; 同格式只重一次
+            // progressive 首装失败后按错误码换 mimeType 重装续播; 同一格式只重一次
             // (原版同错误码会反复 setFormat 成环, 属明显缺陷不复刻, 重试仍败则走下方上报)。
+            // 换格式只对"可播 URI"成立: 内存 m3u8 分支的 [loadedUrl] 是清单文本, 拿它
+            // setMediaItem 必失败并坠入换格式环 (见 [playableUrl])。
+            val retryUrl = playableUrl
             val retryFormat = ExoPlayerHelper.retryMimeType(error.errorCode)
-            if (loadedUrl != null && retryFormat != null && retryFormat != formatOverride) {
-                formatOverride = retryFormat
-                loadedUrl?.let {
-                    player.setMediaItem(
-                        ExoPlayerHelper.createMediaItem(it, lastHeaders, retryFormat),
-                        player.currentPosition.coerceAtLeast(0L),
-                    )
-                }
+            if (retryUrl != null && retryFormat != null && triedFormats.add(retryFormat)) {
+                // 复用本次装载的暂停意图位: 用户暂停中遇错重装同一条媒体, 不得被强制起播
+                // (对照 [updateSource] 的 keepPaused 口径; 出错进 IDLE 也不清意图位)
+                val keepPaused = !player.playWhenReady
+                player.setMediaItem(
+                    ExoPlayerHelper.createMediaItem(retryUrl, lastHeaders, retryFormat),
+                    player.currentPosition.coerceAtLeast(0L),
+                )
                 player.prepare()
-                player.play()
+                if (!keepPaused) player.play()
+                publishPlayback()
                 return
             }
             // 对齐 iOS handlePlayError: 先清 loadedUrl 守卫, 自动重试 (refreshChapter 重新
             // emit 同 URL) 才能放行重载
             loadedUrl = null
+            playableUrl = null
             val retried = screenModel.shared.retryOnPlayError(
                 seekPositionMs = player.currentPosition.coerceAtLeast(0L),
             )
@@ -518,19 +547,23 @@ internal class AndroidVideoPlayerController(
                 && !player.playWhenReady
         loadedUrl = analyzeUrl.url
         lastHeaders = analyzeUrl.headerMap
-        formatOverride = null
+        triedFormats.clear()
+        loadedChapterIndex = screenModel.shared.curChapterIndex.value
         // 直链判定用 shared 的同一份判据 (http/https/file/content): 上一版只判 http 开头,
         // 外部投来的本地视频 (file:// 与 content://) 会掉进下面的内存 m3u8 清单分支 ——
         // 拿一条文件 URI 去建 HlsMediaSource, 观感就是进页黑屏报错。
         if (analyzeUrl.url.hasPlayableScheme()) {
+            playableUrl = analyzeUrl.url
             player.setMediaItem(
                 ExoPlayerHelper.createMediaItem(
                     analyzeUrl.url,
                     analyzeUrl.headerMap,
-                    formatOverride,
+                    currentResolutionMime(),
                 )
             )
         } else {
+            // 内存 m3u8 清单文本不是可播 URI: 标记为 null, 格式重试不得拿清单文本重建媒体
+            playableUrl = null
             val fakeUrl = analyzeUrl.headerMap["Referer"]
             val dataSourceFactory = DataSource.Factory {
                 object : DataSource {
@@ -574,6 +607,16 @@ internal class AndroidVideoPlayerController(
     }
 
     /**
+     * 当前清晰度档的源声明媒体类型 (TVBox format 透传, FongMi PlaySpec.format 同语义);
+     * 无则 null 走 URL 形态推断。读 videoSource/currentResolutionIndex 的时序安全依赖
+     * shared 写序: 两者均先于 videoUrl 写入, updateSource 由 videoUrl 订阅触发时已就位。
+     */
+    private fun currentResolutionMime(): String? =
+        screenModel.shared.videoSource.value?.getResolution(
+            screenModel.shared.currentResolutionIndex.value,
+        )?.mime?.takeIf { it.isNotBlank() }
+
+    /**
      * 停止并卸载当前媒体 (共享层 videoUrl 置 null = 章节重新加载中/刷新, 见
      * [VideoPlayerController.stop]): 不显式停的话切章时上一章画面与声音会一直响到新章解析完。
      * 必须同步清 [loadedUrl] 守卫, 否则同链接重试会被当成「已在播」跳过。
@@ -589,7 +632,9 @@ internal class AndroidVideoPlayerController(
      */
     override fun stop() {
         loadedUrl = null
-        formatOverride = null
+        playableUrl = null
+        triedFormats.clear()
+        loadedChapterIndex = -1
         player.stop()
         player.clearMediaItems()
         publishPlayback()
