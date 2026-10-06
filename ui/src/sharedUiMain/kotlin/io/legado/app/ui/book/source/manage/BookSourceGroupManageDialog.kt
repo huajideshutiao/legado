@@ -128,7 +128,7 @@ fun BookSourceGroupManageDialog(onDismiss: () -> Unit) {
                         }
                     }
                 } else {
-                    LazyColumn(Modifier.heightIn(max = 400.dp)) {
+                    LazyColumn(Modifier.heightIn(max = AppDialogSizes.textAreaMaxHeight())) {
                         items(items = groups, key = { it }) { group ->
                             Row(
                                 Modifier.fillMaxWidth()

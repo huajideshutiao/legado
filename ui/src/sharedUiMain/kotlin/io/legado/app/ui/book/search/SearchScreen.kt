@@ -90,6 +90,7 @@ import io.legado.app.ui.compose.component.AppChipRow
 import io.legado.app.ui.compose.component.AppChipRowOption
 import io.legado.app.ui.compose.component.AppChipRowTitle
 import io.legado.app.ui.compose.component.AppFilletTextButton
+import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTitleBar
@@ -756,7 +757,7 @@ private fun MultiSelectOptionDialog(
         LazyColumn(
             Modifier
                 .fillMaxWidth()
-                .heightIn(max = 400.dp),
+                .heightIn(max = AppDialogSizes.textAreaMaxHeight()),
         ) {
             items(visibleOptions) { (label, value) ->
                 val checked = value in working

@@ -143,7 +143,7 @@ fun ServersDialog(
                     },
                 )
                 LazyColumn(
-                    modifier = Modifier.heightIn(max = 400.dp),
+                    modifier = Modifier.heightIn(max = AppDialogSizes.textAreaMaxHeight()),
                 ) {
                     items(items = servers, key = { it.id }) { item ->
                         ServerItem(
