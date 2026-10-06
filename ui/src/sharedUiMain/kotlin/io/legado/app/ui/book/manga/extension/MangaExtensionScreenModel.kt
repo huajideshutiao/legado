@@ -85,6 +85,21 @@ class MangaExtensionScreenModel : ScreenModel {
         }
     }
 
+    /** 执行偏好动作 (扩展侧 onPreferenceChange/Click 回调), 完成后重读配置刷新弹窗。 */
+    fun runPreferenceAction(item: MangaPrefItem) {
+        val svc = service ?: return
+        val pkgName = _prefDialog.value?.pkgName ?: return
+        val action = item.action ?: return
+        scope.launch {
+            svc.runPreferenceAction(pkgName, item.index, action)
+            // 动作可能联动改值 (变更回调返回 true), 重读刷新弹窗当前值
+            val items = svc.buildPreferenceItems(pkgName)
+            _prefDialog.update { current ->
+                if (current?.pkgName == pkgName) current.copy(items = items) else current
+            }
+        }
+    }
+
     fun dismissPrefDialog() {
         _prefDialog.value = null
     }

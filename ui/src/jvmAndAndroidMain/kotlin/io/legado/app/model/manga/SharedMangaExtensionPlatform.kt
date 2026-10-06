@@ -17,6 +17,7 @@ import io.legado.app.ui.book.manga.extension.MangaExtensionService
 import io.legado.app.ui.book.manga.extension.MangaExtensionUiState
 import io.legado.app.ui.book.manga.extension.MangaInstallState
 import io.legado.app.ui.book.manga.extension.MangaNotLoadedReason
+import io.legado.app.ui.book.manga.extension.MangaPrefAction
 import io.legado.app.ui.book.manga.extension.MangaPrefItem
 import io.legado.app.ui.book.manga.extension.MangaPrefValue
 import io.legado.app.ui.book.manga.extension.MangaRepoItem
@@ -60,6 +61,12 @@ open class SharedMangaExtensionPlatform(
         suspend fun buildPreferenceItems(pkgName: String): List<MangaPrefItem>
 
         suspend fun setPreferenceValue(pkgName: String, key: String, value: MangaPrefValue)
+
+        suspend fun runPreferenceAction(
+            pkgName: String,
+            index: Int,
+            action: MangaPrefAction,
+        )
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -200,6 +207,14 @@ open class SharedMangaExtensionPlatform(
 
     override suspend fun setPreferenceValue(pkgName: String, key: String, value: MangaPrefValue) {
         config?.setPreferenceValue(pkgName, key, value)
+    }
+
+    override suspend fun runPreferenceAction(
+        pkgName: String,
+        index: Int,
+        action: MangaPrefAction,
+    ) {
+        config?.runPreferenceAction(pkgName, index, action)
     }
 
     // endregion

@@ -16,10 +16,20 @@ open class Preference {
     var visible: Boolean = true
     var defaultValue: Any? = null
 
+    /** 宿主侧存下的变更监听 (插件挂的动作回调; 空实现改为真存, 供配置动作通道执行)。 */
+    @JvmField
+    var onPreferenceChangeListener: OnPreferenceChangeListener? = null
+
+    /** 宿主侧存下的点击监听 (同上)。 */
+    @JvmField
+    var onPreferenceClickListener: OnPreferenceClickListener? = null
+
     fun setOnPreferenceChangeListener(onPreferenceChangeListener: OnPreferenceChangeListener) {
+        this.onPreferenceChangeListener = onPreferenceChangeListener
     }
 
     fun setOnPreferenceClickListener(onPreferenceClickListener: OnPreferenceClickListener) {
+        this.onPreferenceClickListener = onPreferenceClickListener
     }
 
     interface OnPreferenceChangeListener {

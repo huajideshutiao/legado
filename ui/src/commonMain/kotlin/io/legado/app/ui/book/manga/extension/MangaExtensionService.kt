@@ -85,6 +85,18 @@ interface MangaExtensionService {
      * `keiyoushi.utils.getPreferencesLazy` 同契约), 扩展下次读取即生效。
      */
     suspend fun setPreferenceValue(pkgName: String, key: String, value: MangaPrefValue) {}
+
+    /**
+     * 执行偏好动作 (扩展挂的 onPreferenceChange/onPreferenceClickListener, 典型如
+     * 「立即签到」动作开关): 按 [MangaPrefItem.index] 定位 shim Preference 并触发回调。
+     * 变更型动作回调返回 true 才会落值/更新 UI, false 表示扩展拦截 (动作完成但状态不变)。
+     * 未实现动作通道时静默无操作。
+     */
+    suspend fun runPreferenceAction(
+        pkgName: String,
+        index: Int,
+        action: MangaPrefAction,
+    ) {}
 }
 
 /** 插件内容分级 (与插件宿主 ContentWarning 对齐)。 */

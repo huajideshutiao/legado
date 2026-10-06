@@ -66,6 +66,7 @@ internal fun ExtensionPrefDialog(
     dialog: MangaPrefDialogState,
     settingText: String,
     onSetPreference: (String, MangaPrefValue) -> Unit,
+    onRunAction: (MangaPrefItem) -> Unit = {},
     onDismiss: () -> Unit,
 ) {
     val colors = AppTheme.colors
@@ -126,6 +127,7 @@ internal fun ExtensionPrefDialog(
                             item.key?.let { editing = it to current }
                         },
                         onEditMulti = { multiSelect = item },
+                        onRunAction = onRunAction,
                     )
                 }
             }
@@ -205,6 +207,7 @@ internal fun PrefItemRow(
     onPickChoice: (String) -> Unit,
     onEditText: (String) -> Unit,
     onEditMulti: () -> Unit,
+    onRunAction: (MangaPrefItem) -> Unit = {},
 ) {
     val colors = AppTheme.colors
     var choiceExpanded by remember(item.key) { mutableStateOf(false) }
@@ -225,10 +228,15 @@ internal fun PrefItemRow(
 
     val flag = item.value as? MangaPrefValue.Flag
     if (flag != null) {
+        // 动作开关 (如「立即签到」): 点击触发扩展回调, 不由宿主直接写值;
+        // 回调返回 true 才经平台落值, false 保持原值 (扩展拦截, 动作型开关常态)
+        val hasAction = item.action != null
         Row(
             Modifier
                 .fillMaxWidth()
-                .clickable(enabled = enabled) { onToggleFlag(!flag.value) }
+                .clickable(enabled = enabled) {
+                    if (hasAction) onRunAction(item) else onToggleFlag(!flag.value)
+                }
                 .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingDefault),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -236,7 +244,9 @@ internal fun PrefItemRow(
             Spacer(Modifier.width(DesignTokens.spacingMd))
             AppSwitch(
                 checked = flag.value,
-                onCheckedChange = onToggleFlag,
+                onCheckedChange = {
+                    if (hasAction) onRunAction(item) else onToggleFlag(it)
+                },
                 enabled = enabled,
             )
         }
@@ -246,11 +256,15 @@ internal fun PrefItemRow(
         Modifier
             .fillMaxWidth()
             .clickable(enabled = enabled) {
-                when (val v = item.value) {
-                    is MangaPrefValue.Choice -> choiceExpanded = true
-                    is MangaPrefValue.MultiChoice -> onEditMulti()
-                    is MangaPrefValue.Text -> onEditText(v.value)
-                    else -> {}
+                // 点击动作优先 (如「刷新镜像列表」型按钮偏好); 其余按值类型分派编辑
+                when (item.action) {
+                    is MangaPrefAction.Click -> onRunAction(item)
+                    else -> when (val v = item.value) {
+                        is MangaPrefValue.Choice -> choiceExpanded = true
+                        is MangaPrefValue.MultiChoice -> onEditMulti()
+                        is MangaPrefValue.Text -> onEditText(v.value)
+                        else -> {}
+                    }
                 }
             }
             .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingDefault),

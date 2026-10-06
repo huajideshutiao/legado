@@ -89,6 +89,12 @@ object MangaExtensionManager {
                 refreshStatuses()
                 loadExtensionsLocked()
             }
+            // 无缓存索引时自动拉取一次: 首次进入/缓存被清后列表不再空白, 无需手动刷新;
+            // 拉取失败静默 (已有缓存时仍可展示, 失败由手动刷新兜底)
+            if (_availableExtensionsFlow.value.isEmpty()) {
+                runCatching { findAvailableExtensions() }
+                    .onFailure { if (it is CancellationException) throw it }
+            }
         }
     }
 

@@ -70,6 +70,23 @@ internal fun ExtensionPrefOverlayContent(overlay: AppOverlay.Dialog, navigator: 
                     .onFailure { state = MangaPrefDialogState(pkgName, loading = false, failed = true) }
             }
         },
+        onRunAction = { item ->
+            val action = item.action ?: return@ExtensionPrefDialog
+            scope.launch {
+                val svc = service ?: return@launch
+                runCatching { svc.runPreferenceAction(pkgName, item.index, action) }
+                    .onFailure {
+                        state = MangaPrefDialogState(pkgName, loading = false, failed = true)
+                        return@launch
+                    }
+                // 动作可能联动改值 (变更回调返回 true), 重读刷新弹窗当前值
+                runCatching { svc.buildPreferenceItems(pkgName) }
+                    .onSuccess { items ->
+                        state = MangaPrefDialogState(pkgName, loading = false, items = items)
+                    }
+                    .onFailure { state = MangaPrefDialogState(pkgName, loading = false, failed = true) }
+            }
+        },
         onDismiss = { navigator.dismissOverlay(overlay.key) },
     )
 }

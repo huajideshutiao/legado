@@ -99,6 +99,7 @@ fun MangaExtensionScreen(
     prefDialog: MangaPrefDialogState? = null,
     onOpenPrefDialog: (String) -> Unit = {},
     onSetPreference: (String, MangaPrefValue) -> Unit = { _, _ -> },
+    onRunPreferenceAction: (MangaPrefItem) -> Unit = {},
     onDismissPrefDialog: () -> Unit = {},
 ) {
     val colors = AppTheme.colors
@@ -319,6 +320,7 @@ fun MangaExtensionScreen(
             dialog = dialog,
             settingText = settingText,
             onSetPreference = onSetPreference,
+            onRunAction = onRunPreferenceAction,
             onDismiss = onDismissPrefDialog,
         )
     }

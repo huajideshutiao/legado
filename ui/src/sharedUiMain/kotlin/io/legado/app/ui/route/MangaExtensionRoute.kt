@@ -40,6 +40,7 @@ fun MangaExtensionRoute(
         prefDialog = prefDialog,
         onOpenPrefDialog = screenModel::openPrefDialog,
         onSetPreference = screenModel::setPreference,
+        onRunPreferenceAction = screenModel::runPreferenceAction,
         onDismissPrefDialog = screenModel::dismissPrefDialog,
     )
 }
