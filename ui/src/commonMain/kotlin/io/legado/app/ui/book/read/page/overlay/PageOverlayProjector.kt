@@ -227,55 +227,11 @@ object PageOverlayProjector {
         emit: (left: Float, top: Float, right: Float, bottom: Float, lineIndex: Int) -> Unit,
     ) {
         if (textPage.isMsgPage) return
-        if (highlight.endExclusive <= highlight.start) return
-        val range = SearchHighlightOverlay(
-            chapterIndex = highlight.chapterIndex,
-            start = highlight.start,
-            endExclusive = highlight.endExclusive,
+        projectSearchResult(
+            textPage,
+            SearchHighlightOverlay(highlight.chapterIndex, highlight.start, highlight.endExclusive),
+            emit,
         )
-        val lines = textPage.lines
-        for (lineIndex in lines.indices) {
-            val line = lines[lineIndex]
-            val columns = line.columns
-            var chapterPos = line.chapterPosition
-            var runStart = -1
-            var runEnd = -1
-            for (colIdx in columns.indices) {
-                val column = columns[colIdx]
-                val length = if (column is TextColumn) column.charData.length else 1
-                val columnEnd = chapterPos + length
-                val hit = column is TextColumn && isSearchRangeHit(
-                    textPage = textPage,
-                    highlight = range,
-                    start = chapterPos,
-                    endExclusive = columnEnd,
-                )
-                if (hit) {
-                    if (runStart < 0) runStart = colIdx
-                    runEnd = colIdx
-                } else if (runStart >= 0) {
-                    emit(
-                        columns[runStart].start,
-                        line.lineTop,
-                        columns[runEnd].end,
-                        line.lineBottom,
-                        lineIndex,
-                    )
-                    runStart = -1
-                    runEnd = -1
-                }
-                chapterPos = columnEnd
-            }
-            if (runStart >= 0) {
-                emit(
-                    columns[runStart].start,
-                    line.lineTop,
-                    columns[runEnd].end,
-                    line.lineBottom,
-                    lineIndex,
-                )
-            }
-        }
     }
 
     /**

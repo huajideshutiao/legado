@@ -1,7 +1,6 @@
 package io.legado.app.ui.book.read
 
 import io.legado.app.data.AppDbProviders
-import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.KeywordHighlight
 import io.legado.app.help.HighlightAnchor

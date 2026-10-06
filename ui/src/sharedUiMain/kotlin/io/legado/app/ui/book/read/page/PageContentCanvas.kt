@@ -406,7 +406,7 @@ internal fun ensureTextLayoutCache(
  *
  * 采用分层绘制架构：
  * 1. 基础不可变文字/图片/段评层：[drawBasePageContent]（朗读高亮只在此层换文字色）
- * 2. Overlay 叠加层（选区、搜索高亮）：[drawOverlayLayers]
+ * 2. Overlay 叠加层（选区、划线/关键词、搜索高亮）：[drawOverlayLayers]
  *
  * @param offsetY 整页垂直平移量（px）：滚动模式单画布三页连排用，对照原版
  *   `drawPage(canvas, relativeOffset)` 的页间偏移；0 时不套 translate 零开销
@@ -574,7 +574,8 @@ private fun DrawScope.drawBasePageContent(
 /**
  * 绘制 Overlay 叠加层（全部几何都由 [PageOverlayProjector] 投影，本层只负责涂色）：
  * 1. [PageSelectionState] 交互选区（长按划选、手柄拖拽、搜索跳转选区）
- * 2. 排版产物自带的搜索命中标记（选区取消后仍留在搜索态的高亮）
+ * 2. 划线回显与关键词命中（chapterHighlights）
+ * 3. 排版产物自带的搜索命中标记（选区取消后仍留在搜索态的高亮）
  */
 private fun DrawScope.drawOverlayLayers(
     textPage: TextPage,

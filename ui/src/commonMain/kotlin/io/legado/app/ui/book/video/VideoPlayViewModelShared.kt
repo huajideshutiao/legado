@@ -8,7 +8,6 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.VideoResolution
 import io.legado.app.data.entities.VideoSource
-import io.legado.app.data.entities.VirtualPluginSourcePrefix
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.book.BookChapterLoader
 import io.legado.app.help.book.isLocal
@@ -27,7 +26,6 @@ import io.legado.app.model.chapter.updateResourceUrl
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.root.VideoPlayTarget
 import io.legado.app.ui.root.screenModelScope
-import io.legado.app.utils.encodeStringMap
 import io.legado.app.utils.hasPlayableScheme
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.systemCurrentTimeMillis

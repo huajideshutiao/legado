@@ -73,7 +73,6 @@ import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.format
-import legado.ui.generated.resources.video_line
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.cancel
 import legado.ui.generated.resources.full_screen
@@ -1060,7 +1059,7 @@ fun VideoPlayerHostContainer(
         )
 
         // 4. 控制层 (错误态不叠; 锁定态/画中画隐藏; 加载中也允许唤出 —— 小窗/分辨率线路
-        //    钮要在等装载时可用, 自动隐藏计时在加载期本就停着, 控制层不会闪隐)
+        //    钮要在等装载时可用; 加载期 isBuffering 恒真, 自动隐藏计时照常运行, 5s 后仍会自动隐藏)
         if (!uiState.isLocked && !isPip) {
             VideoControlsOverlay(
                 visible = uiState.controlsVisible && error == null,

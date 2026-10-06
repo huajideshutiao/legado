@@ -98,8 +98,8 @@ import org.jetbrains.compose.resources.stringResource
  *     弹窗态由 HomeScreenModel 持有, MainRoute 渲染
  *   - HomeViewModel.kt / HomeTabState: 依赖 appDb + HomeTabHelp + LiveData + activity, L3
  *     (HomeTabState 实现 HomeUiActions 桥接); HomeEvents.kt 已下沉 commonMain
- *   - SectionTitleRow: 留在 app HomeSectionComposables.kt (仅该文件使用, 含
- *     R.drawable.ic_arrow_right + R.string.home_more)
+ *   - SectionTitleRow: 已下沉 ui HomeSectionWidgets.kt (仅该文件使用, 含
+ *     ic_arrow_right + home_more, 均走 composeResources)
  */
 
 /**

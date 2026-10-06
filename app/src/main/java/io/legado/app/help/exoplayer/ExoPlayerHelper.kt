@@ -89,6 +89,7 @@ object ExoPlayerHelper {
     /**
      * 播放错误码 → 重试格式 (FongMi ExoUtil.getMimeType 同语义): 无扩展名的 jar 代理地址
      * (proxy?do=m3u8 / type=mpd) 首装按 progressive 解析失败后, 按错误码换 mimeType 重试。
+     * manifest 错误档强设 application/octet-stream (非清空): 对 .m3u8 后缀地址, 清空会被重新推断回 HLS。
      */
     fun retryMimeType(errorCode: Int): String? = when (errorCode) {
         PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,

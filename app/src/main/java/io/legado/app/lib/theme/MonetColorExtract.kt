@@ -40,7 +40,7 @@ object MonetColorExtract {
 
     private val dynamicColors = MaterialDynamicColors()
 
-    /** 壁纸取色 API (getWallpaperColors / OnColorsChangedListener 注册) 仅 Android 12+ (S=31) 可用。 */
+    /** 壁纸取色入口的产品门控: 两 API 自 API 27 提供, 本类按产品决策限定 S(12)+ 启用。 */
     fun isSupported(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
     /**
