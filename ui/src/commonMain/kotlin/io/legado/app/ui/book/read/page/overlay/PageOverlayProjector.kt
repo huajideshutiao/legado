@@ -179,9 +179,36 @@ object PageOverlayProjector {
         textPage: TextPage,
         highlight: SearchHighlightOverlay,
         emit: (left: Float, top: Float, right: Float, bottom: Float, lineIndex: Int) -> Unit,
+    ) = projectSearchResult(
+        textPage = textPage,
+        chapterIndex = highlight.chapterIndex,
+        start = highlight.start,
+        endExclusive = highlight.endExclusive,
+        emit = emit,
+    )
+
+    /**
+     * [projectSearchResult] 的标量入参形态：绘制热路径逐帧按章内区间调用，不构造包装对象。
+     *
+     * 页级预过滤：本页字符区间 [首行 chapterPosition, 末行末字符) 与命中区间不相交直接返回，
+     * 命中在其他页的高亮不再逐列扫描本页。区间口径与 [isSearchRangeHit] 同源（章内半开区间），
+     * 故早退不改变可见结果。
+     */
+    inline fun projectSearchResult(
+        textPage: TextPage,
+        chapterIndex: Int,
+        start: Int,
+        endExclusive: Int,
+        emit: (left: Float, top: Float, right: Float, bottom: Float, lineIndex: Int) -> Unit,
     ) {
-        if (highlight.endExclusive <= highlight.start) return
+        if (endExclusive <= start) return
+        if (textPage.chapterIndex != chapterIndex) return
         val lines = textPage.lines
+        if (lines.isEmpty()) return
+        val pageStart = lines[0].chapterPosition
+        val lastLine = lines[lines.size - 1]
+        val pageEndExclusive = lastLine.chapterPosition + lastLine.charSize
+        if (start >= pageEndExclusive || endExclusive <= pageStart) return
         for (lineIndex in lines.indices) {
             val line = lines[lineIndex]
             val columns = line.columns
@@ -192,12 +219,8 @@ object PageOverlayProjector {
                 val column = columns[colIdx]
                 val length = if (column is TextColumn) column.charData.length else 1
                 val columnEnd = chapterPos + length
-                val hit = column is TextColumn && isSearchRangeHit(
-                    textPage = textPage,
-                    highlight = highlight,
-                    start = chapterPos,
-                    endExclusive = columnEnd,
-                )
+                val hit = column is TextColumn && columnEnd > chapterPos &&
+                    start < columnEnd && endExclusive > chapterPos
                 if (hit) {
                     if (runStart < 0) runStart = colIdx
                     runEnd = colIdx
@@ -230,6 +253,9 @@ object PageOverlayProjector {
      * 静态区间高亮投影 (章内字符区间维度, 算法同 [projectSearchResult]): 命中范围与当前页
      * 求交后逐行折算到文字列，连续命中列合并为矩形；同一区间自然可投影到涉及的所有页面。
      * 消息占位页的页内偏移与章内账本不同源，不投影。
+     *
+     * 绘制热路径逐帧调用，走 [projectSearchResult] 的标量入参形态：不构造包装对象，
+     * 页级预过滤在投影内部完成。
      */
     inline fun projectHighlight(
         textPage: TextPage,
@@ -238,9 +264,11 @@ object PageOverlayProjector {
     ) {
         if (textPage.isMsgPage) return
         projectSearchResult(
-            textPage,
-            SearchHighlightOverlay(highlight.chapterIndex, highlight.start, highlight.endExclusive),
-            emit,
+            textPage = textPage,
+            chapterIndex = highlight.chapterIndex,
+            start = highlight.start,
+            endExclusive = highlight.endExclusive,
+            emit = emit,
         )
     }
 
