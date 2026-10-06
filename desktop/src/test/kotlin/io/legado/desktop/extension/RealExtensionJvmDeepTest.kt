@@ -22,6 +22,8 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import io.legado.desktop.TestNetwork
+import io.legado.desktop.help.dex.CtorSiteFixer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.BeforeClass
@@ -29,7 +31,6 @@ import org.junit.Test
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingleton
 import uy.kohesive.injekt.api.addSingletonFactory
-import io.legado.desktop.help.dex.CtorSiteFixer
 import java.io.File
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipFile
@@ -80,11 +81,13 @@ class RealExtensionJvmDeepTest {
             .readTimeout(120, TimeUnit.SECONDS)
             .build()
 
-        private fun getBytes(url: String): ByteArray =
-            http.newCall(Request.Builder().url(url).build()).execute().use { response ->
+        private fun getBytes(url: String): ByteArray {
+            TestNetwork.requireSamples(url)
+            return http.newCall(Request.Builder().url(url).build()).execute().use { response ->
                 check(response.isSuccessful) { "HTTP ${response.code}: $url" }
                 response.body.bytes()
             }
+        }
 
         private fun gunzipIfGzipped(bytes: ByteArray): ByteArray =
             if (bytes.size >= 2 && bytes[0] == 0x1f.toByte() && bytes[1] == 0x8b.toByte()) {

@@ -53,6 +53,11 @@ import legado.ui.generated.resources.manga_extension_empty
 import legado.ui.generated.resources.manga_extension_install
 import legado.ui.generated.resources.manga_extension_kind_video
 import legado.ui.generated.resources.manga_extension_languages
+import legado.ui.generated.resources.manga_extension_not_loaded_failed
+import legado.ui.generated.resources.manga_extension_not_loaded_filtered
+import legado.ui.generated.resources.manga_extension_not_loaded_malformed
+import legado.ui.generated.resources.manga_extension_not_loaded_unsigned
+import legado.ui.generated.resources.manga_extension_not_loaded_unsupported_lib
 import legado.ui.generated.resources.manga_extension_repos
 import legado.ui.generated.resources.manga_extension_setting
 import legado.ui.generated.resources.manga_extension_trust
@@ -377,7 +382,7 @@ private fun ExtensionRow(
             )
             item.notLoadedReason?.let { reason ->
                 Text(
-                    text = reason,
+                    text = reason.toText(item.notLoadedDetail),
                     fontSize = 12.sp,
                     color = NsfwBadgeColor,
                 )
@@ -439,6 +444,18 @@ private fun VideoBadge() {
             fontWeight = FontWeight.Bold,
         )
     }
+}
+
+/** 未装载原因文案 (资源在 8 语言 strings.xml; FAILED 拼装载器原始消息)。 */
+@Composable
+private fun MangaNotLoadedReason.toText(detail: String?): String = when (this) {
+    MangaNotLoadedReason.FILTERED -> stringResource(Res.string.manga_extension_not_loaded_filtered)
+    MangaNotLoadedReason.UNSIGNED -> stringResource(Res.string.manga_extension_not_loaded_unsigned)
+    MangaNotLoadedReason.UNSUPPORTED_LIB_VERSION ->
+        stringResource(Res.string.manga_extension_not_loaded_unsupported_lib)
+    MangaNotLoadedReason.MALFORMED -> stringResource(Res.string.manga_extension_not_loaded_malformed)
+    MangaNotLoadedReason.FAILED ->
+        stringResource(Res.string.manga_extension_not_loaded_failed, detail.orEmpty())
 }
 
 /** NSFW 角标 (内容分级 MIXED/NSFW 均展示, 与插件宿主 ContentWarning 对齐)。 */

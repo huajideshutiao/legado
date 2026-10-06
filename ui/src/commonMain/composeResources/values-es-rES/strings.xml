@@ -817,6 +817,11 @@
     <string name="manga_extension_trust">Confiar</string>
     <string name="manga_extension_untrusted">Extensiones no confiables</string>
     <string name="manga_extension_untrusted_desc">La verificación de firma falló. Confía en la firma para cargar sus fuentes. ¿Confiar?</string>
+    <string name="manga_extension_not_loaded_filtered">Bloqueado por el filtro de clasificación de contenido</string>
+    <string name="manga_extension_not_loaded_unsigned">La extensión no tiene una firma válida</string>
+    <string name="manga_extension_not_loaded_unsupported_lib">Versión de la biblioteca de extensión no compatible</string>
+    <string name="manga_extension_not_loaded_malformed">Faltan los metadatos de la extensión</string>
+    <string name="manga_extension_not_loaded_failed">Error al cargar: %1$s</string>
     <string name="manga_extension_uninstall_confirm">¿Desinstalar esta extensión?</string>
     <string name="manga_extension_install">Instalar</string>
     <string name="manga_extension_update">Actualizar</string>

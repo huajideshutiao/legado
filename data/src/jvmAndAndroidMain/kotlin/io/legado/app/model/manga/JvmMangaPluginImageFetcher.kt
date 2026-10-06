@@ -4,6 +4,7 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
 import io.legado.app.help.extension.MangaExtensionManager
 import io.legado.app.help.image.MangaPluginImageFetcher
+import kotlinx.coroutines.CancellationException
 import java.net.URLDecoder
 
 /**
@@ -22,7 +23,10 @@ class JvmMangaPluginImageFetcher : MangaPluginImageFetcher {
         val imageUrl = runCatching { URLDecoder.decode(encodedImageUrl, "UTF-8") }
             .getOrNull() ?: return null
         val page = Page(0, url = imageUrl, imageUrl = imageUrl)
-        val response = runCatching { source.getImage(page) }.getOrNull() ?: return null
+        // 取消不得被改写成"取图失败" (调用方会当作扩展下载失败上报)
+        val response = runCatching { source.getImage(page) }
+            .onFailure { if (it is CancellationException) throw it }
+            .getOrNull() ?: return null
         return try {
             response.body.byteStream().readBytes()
         } finally {

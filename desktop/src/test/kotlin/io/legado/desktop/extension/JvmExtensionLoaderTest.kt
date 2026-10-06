@@ -15,6 +15,7 @@ import eu.kanade.tachiyomi.network.interceptor.UncaughtExceptionInterceptor
 import eu.kanade.tachiyomi.network.interceptor.UserAgentInterceptor
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.online.HttpSource
+import io.legado.desktop.TestNetwork
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -71,11 +72,13 @@ class JvmExtensionLoaderTest {
             .readTimeout(120, TimeUnit.SECONDS)
             .build()
 
-        private fun getBytes(url: String): ByteArray =
-            http.newCall(Request.Builder().url(url).build()).execute().use { response ->
+        private fun getBytes(url: String): ByteArray {
+            TestNetwork.requireSamples(url)
+            return http.newCall(Request.Builder().url(url).build()).execute().use { response ->
                 check(response.isSuccessful) { "HTTP ${response.code}: $url" }
                 response.body.bytes()
             }
+        }
 
         private fun gunzipIfGzipped(bytes: ByteArray): ByteArray =
             if (bytes.size >= 2 && bytes[0] == 0x1f.toByte() && bytes[1] == 0x8b.toByte()) {

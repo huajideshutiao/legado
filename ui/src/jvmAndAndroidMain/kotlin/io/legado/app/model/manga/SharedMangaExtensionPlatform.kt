@@ -16,6 +16,7 @@ import io.legado.app.ui.book.manga.extension.MangaExtensionKind
 import io.legado.app.ui.book.manga.extension.MangaExtensionService
 import io.legado.app.ui.book.manga.extension.MangaExtensionUiState
 import io.legado.app.ui.book.manga.extension.MangaInstallState
+import io.legado.app.ui.book.manga.extension.MangaNotLoadedReason
 import io.legado.app.ui.book.manga.extension.MangaPrefItem
 import io.legado.app.ui.book.manga.extension.MangaPrefValue
 import io.legado.app.ui.book.manga.extension.MangaRepoItem
@@ -28,6 +29,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
@@ -66,9 +68,8 @@ open class SharedMangaExtensionPlatform(
     private val _state = MutableStateFlow(MangaExtensionUiState(loading = true))
     override val state = _state.asStateFlow()
 
-    /** checkForUpdates 结果 (Manager 返回插件 name 列表), 并入条目 hasUpdate。 */
-    @Volatile
-    private var updatedNames: Set<String> = emptySet()
+    /** checkForUpdates 结果 (Manager 返回插件 name 列表), 并入条目 hasUpdate; 装成即剔除。 */
+    private val updatedNames = MutableStateFlow<Set<String>>(emptySet())
 
     private val installSteps = MutableStateFlow<Map<String, MangaInstallState>>(emptyMap())
 
@@ -81,15 +82,22 @@ open class SharedMangaExtensionPlatform(
 
     private val languages = MutableStateFlow(ExtensionPrefs.getSelectedLanguages())
 
+    /** 辅助输入四元组 (kotlinx.coroutines 强类型 combine 最多 5 路, 主 combine 已占 4 路流)。 */
+    private data class AuxState(
+        val languages: Set<String>,
+        val installSteps: Map<String, MangaInstallState>,
+        val refreshing: Boolean,
+        val updatedNames: Set<String>,
+    )
+
     override fun init() {
         if (!inited.compareAndSet(false, true)) return
         MangaExtensionManager.init()
 
-        // kotlinx.coroutines 只有 2..5 元的强类型 combine, 故把 languages/installSteps/refreshing
-        // 先合成三元组, 主 combine 保持 5 路 (refreshing 作为三元组一员仍参与主 combine 重建,
-        // 不会被其它路发射覆盖)。
-        val aux = combine(languages, installSteps, refreshing) { langs, steps, isRefreshing ->
-            Triple(langs, steps, isRefreshing)
+        // updatedNames 必须作为 combine 输入: checkForUpdates 在 Manager 发射完状态之后才写它,
+        // 不参与 combine 就没有重算触发, 条目 hasUpdate 不会刷新。
+        val aux = combine(languages, installSteps, refreshing, updatedNames) { langs, steps, isRefreshing, updated ->
+            AuxState(langs, steps, isRefreshing, updated)
         }
         combine(
             MangaExtensionManager.loadedExtensions,
@@ -97,19 +105,22 @@ open class SharedMangaExtensionPlatform(
             MangaExtensionManager.availableExtensions,
             MangaExtensionManager.repos,
             aux,
-        ) { loaded, notLoaded, available, repos, (langs, steps, isRefreshing) ->
+        ) { loaded, notLoaded, available, repos, auxState ->
             MangaExtensionUiState(
                 loading = false,
-                installed = loaded.values.map { it.toItem() },
+                installed = loaded.values.map { it.toItem(auxState.updatedNames) },
                 notLoaded = notLoaded.values.map { it.toItem() },
                 available = available
-                    .filter { langs.isEmpty() || it.lang in langs || "all" in langs }
+                    .filter {
+                        auxState.languages.isEmpty() ||
+                            it.lang in auxState.languages || "all" in auxState.languages
+                    }
                     .map { it.toItem() },
                 availableLanguages = available.mapTo(sortedSetOf("all")) { it.lang },
-                selectedLanguages = langs,
+                selectedLanguages = auxState.languages,
                 repos = repos.map { MangaRepoItem(it.name, it.indexUrl, it.signingKeyFingerprint) },
-                installSteps = steps,
-                refreshing = isRefreshing,
+                installSteps = auxState.installSteps,
+                refreshing = auxState.refreshing,
             )
         }.onEach { _state.value = it }.launchIn(scope)
     }
@@ -133,7 +144,7 @@ open class SharedMangaExtensionPlatform(
 
     override suspend fun checkForUpdates(): List<String> {
         val names = MangaExtensionManager.checkForUpdates()
-        updatedNames = names.toSet()
+        updatedNames.value = names.toSet()
         return names
     }
 
@@ -150,7 +161,7 @@ open class SharedMangaExtensionPlatform(
 
     override fun cancelInstall(pkgName: String) {
         MangaExtensionManager.cancelInstallUpdateExtension(pkgName)
-        installSteps.value = installSteps.value - pkgName
+        installSteps.update { it - pkgName }
     }
 
     override fun uninstall(pkgName: String) {
@@ -205,12 +216,25 @@ open class SharedMangaExtensionPlatform(
                     InstallStep.Installed -> MangaInstallState.INSTALLED
                     is InstallStep.Error -> MangaInstallState.ERROR
                 }
-                installSteps.value = installSteps.value + (pkgName to mapped)
+                installSteps.update { it + (pkgName to mapped) }
+                if (step is InstallStep.Installed) {
+                    // 装成即从"有更新"名单剔除: hasUpdate 的 OR 分支否则会一直标可更新
+                    removeUpdatedMark(pkgName)
+                }
             }
         }
     }
 
-    private fun MangaExtension.Loaded.toItem() = MangaExtensionItem(
+    /** 按包名反查插件展示名并剔出"有更新"名单 (Manager 的 checkForUpdates 按 name 返回)。 */
+    private fun removeUpdatedMark(pkgName: String) {
+        val name = MangaExtensionManager.loadedExtensions.value[pkgName]?.name
+            ?: MangaExtensionManager.notLoadedExtensions.value[pkgName]?.name
+            ?: MangaExtensionManager.availableExtensions.value.firstOrNull { it.pkgName == pkgName }?.name
+            ?: return
+        updatedNames.update { it - name }
+    }
+
+    private fun MangaExtension.Loaded.toItem(updatedNames: Set<String>) = MangaExtensionItem(
         pkgName = pkgName,
         name = name,
         versionName = versionName,
@@ -243,7 +267,8 @@ open class SharedMangaExtensionPlatform(
         isInstalled = true,
         hasUpdate = hasUpdate,
         isUntrusted = reason is MangaExtension.NotLoaded.Reason.Untrusted,
-        notLoadedReason = reason.toText(),
+        notLoadedReason = reason.toUiReason(),
+        notLoadedDetail = (reason as? MangaExtension.NotLoaded.Reason.Failed)?.message,
         iconUrl = iconUrlOf(pkgName),
         // 未装载出源, 只能按仓库 kind 判定 (repo 可能为 null, 兜底看包名约定)
         kind = kindOf(repo, pkgName),
@@ -292,12 +317,13 @@ open class SharedMangaExtensionPlatform(
         ContentWarning.NSFW -> MangaContentWarning.NSFW
     }
 
-    private fun MangaExtension.NotLoaded.Reason.toText(): String? = when (this) {
+    /** 未装载原因 → UI 枚举 (文案由 Composable 按语言资源渲染; Untrusted 单列一区不展示原因)。 */
+    private fun MangaExtension.NotLoaded.Reason.toUiReason(): MangaNotLoadedReason? = when (this) {
         is MangaExtension.NotLoaded.Reason.Untrusted -> null
-        MangaExtension.NotLoaded.Reason.Filtered -> "被内容分级过滤设置屏蔽"
-        MangaExtension.NotLoaded.Reason.Unsigned -> "插件无有效签名"
-        MangaExtension.NotLoaded.Reason.UnsupportedLibVersion -> "扩展库版本不受支持"
-        MangaExtension.NotLoaded.Reason.Malformed -> "插件元数据缺失"
-        is MangaExtension.NotLoaded.Reason.Failed -> "加载失败: $message"
+        MangaExtension.NotLoaded.Reason.Filtered -> MangaNotLoadedReason.FILTERED
+        MangaExtension.NotLoaded.Reason.Unsigned -> MangaNotLoadedReason.UNSIGNED
+        MangaExtension.NotLoaded.Reason.UnsupportedLibVersion -> MangaNotLoadedReason.UNSUPPORTED_LIB_VERSION
+        MangaExtension.NotLoaded.Reason.Malformed -> MangaNotLoadedReason.MALFORMED
+        is MangaExtension.NotLoaded.Reason.Failed -> MangaNotLoadedReason.FAILED
     }
 }

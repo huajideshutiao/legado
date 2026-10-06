@@ -879,6 +879,11 @@
     <string name="manga_extension_trust">Trust</string>
     <string name="manga_extension_untrusted">Untrusted extensions</string>
     <string name="manga_extension_untrusted_desc">This extension failed signature verification. Trust its signature to load its sources?</string>
+    <string name="manga_extension_not_loaded_filtered">Blocked by the content rating filter</string>
+    <string name="manga_extension_not_loaded_unsigned">Extension has no valid signature</string>
+    <string name="manga_extension_not_loaded_unsupported_lib">Extension library version is not supported</string>
+    <string name="manga_extension_not_loaded_malformed">Extension metadata is missing</string>
+    <string name="manga_extension_not_loaded_failed">Load failed: %1$s</string>
     <string name="manga_extension_uninstall_confirm">Uninstall this extension?</string>
     <string name="manga_extension_install">Install</string>
     <string name="manga_extension_available">Available</string>

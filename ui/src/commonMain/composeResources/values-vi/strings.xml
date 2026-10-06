@@ -817,6 +817,11 @@
     <string name="manga_extension_trust">Tin cậy</string>
     <string name="manga_extension_untrusted">Tiện ích chưa tin cậy</string>
     <string name="manga_extension_untrusted_desc">Xác minh chữ ký thất bại. Cần tin cậy chữ ký để tải nguồn. Tin cậy?</string>
+    <string name="manga_extension_not_loaded_filtered">Bị chặn bởi bộ lọc phân loại nội dung</string>
+    <string name="manga_extension_not_loaded_unsigned">Tiện ích không có chữ ký hợp lệ</string>
+    <string name="manga_extension_not_loaded_unsupported_lib">Phiên bản thư viện tiện ích không được hỗ trợ</string>
+    <string name="manga_extension_not_loaded_malformed">Thiếu siêu dữ liệu tiện ích</string>
+    <string name="manga_extension_not_loaded_failed">Tải thất bại: %1$s</string>
     <string name="manga_extension_uninstall_confirm">Gỡ cài đặt tiện ích này?</string>
     <string name="manga_extension_install">Cài đặt</string>
     <string name="manga_extension_update">Cập nhật</string>

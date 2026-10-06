@@ -817,6 +817,11 @@
     <string name="manga_extension_trust">信頼</string>
     <string name="manga_extension_untrusted">未信頼の拡張</string>
     <string name="manga_extension_untrusted_desc">署名の検証に失敗しました。ソースを読み込むには署名を信頼する必要があります。信頼しますか？</string>
+    <string name="manga_extension_not_loaded_filtered">コンテンツレーティングフィルターによりブロック</string>
+    <string name="manga_extension_not_loaded_unsigned">拡張機能に有効な署名がありません</string>
+    <string name="manga_extension_not_loaded_unsupported_lib">拡張ライブラリのバージョンに対応していません</string>
+    <string name="manga_extension_not_loaded_malformed">拡張機能のメタデータがありません</string>
+    <string name="manga_extension_not_loaded_failed">読み込みに失敗しました: %1$s</string>
     <string name="manga_extension_uninstall_confirm">この拡張をアンインストールしますか？</string>
     <string name="manga_extension_install">インストール</string>
     <string name="manga_extension_update">更新</string>

@@ -881,6 +881,11 @@
     <string name="manga_extension_trust">信任</string>
     <string name="manga_extension_untrusted">未信任插件</string>
     <string name="manga_extension_untrusted_desc">该插件签名校验未通过，信任后才能装载其源。是否信任？</string>
+    <string name="manga_extension_not_loaded_filtered">被内容分级过滤设置屏蔽</string>
+    <string name="manga_extension_not_loaded_unsigned">插件无有效签名</string>
+    <string name="manga_extension_not_loaded_unsupported_lib">扩展库版本不受支持</string>
+    <string name="manga_extension_not_loaded_malformed">插件元数据缺失</string>
+    <string name="manga_extension_not_loaded_failed">加载失败: %1$s</string>
     <string name="manga_extension_uninstall_confirm">确定卸载该插件？</string>
     <string name="manga_extension_install">安装</string>
     <string name="manga_extension_available">未安装</string>

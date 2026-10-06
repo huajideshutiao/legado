@@ -18,6 +18,17 @@ class AndroidMangaExtensionHost(context: Context) : MangaExtensionHost {
     private val appContext = context.applicationContext
     private val installer by lazy { ExtensionInstaller(appContext) }
 
+    companion object {
+        @Volatile
+        private var instance: AndroidMangaExtensionHost? = null
+
+        /** 进程级单例: 安装任务表需跨 Activity 重建保持, 否则进行中的安装无法取消。 */
+        fun get(context: Context): AndroidMangaExtensionHost =
+            instance ?: synchronized(this) {
+                instance ?: AndroidMangaExtensionHost(context.applicationContext).also { instance = it }
+            }
+    }
+
     override fun onInitialized() {
         ExtensionInstallReceiver(appContext) { MangaExtensionManager.reloadExtensions() }.register()
     }
@@ -27,7 +38,7 @@ class AndroidMangaExtensionHost(context: Context) : MangaExtensionHost {
     ): List<MangaExtension.Installed> = ExtensionLoader.loadExtensions(appContext, alreadyLoaded)
 
     override fun install(extension: MangaExtension.Available): Flow<InstallStep> {
-        return installer.downloadAndInstall(extension)
+        return installer.install(extension)
     }
 
     override fun cancelInstall(pkgName: String) {

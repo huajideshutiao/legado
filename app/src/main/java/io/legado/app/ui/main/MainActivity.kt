@@ -635,8 +635,10 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
         MangaReaderScreenModel.Providers.register(AndroidMangaReaderPlatform)
         // 漫画插件服务 (管理页/搜索筛选条; 状态组装已下沉 ui 层 SharedMangaExtensionPlatform,
         // 平台面经 MangaExtensionHostProviders 注入 PackageManager 装载/安装/广播)
-        MangaExtensionHostProviders.register(AndroidMangaExtensionHost(applicationContext))
-        MangaExtensionServiceProviders.register(AndroidMangaExtensionPlatform(applicationContext))
+        // 进程级单例 (只持 applicationContext): Activity 重建不得新建, 否则旧实例的
+        // 状态流收集器与进行中的安装任务会成为孤儿
+        MangaExtensionHostProviders.register(AndroidMangaExtensionHost.get(applicationContext))
+        MangaExtensionServiceProviders.register(AndroidMangaExtensionPlatform.get(applicationContext))
         // 启动即装载扩展注册表 (后台异步): 虚拟行同步/登录标记/取数委派都依赖注册表内存态,
         // 不能等首次进插件管理页才装载 (2026-10-05 用户拍板回归启动装载)
         MangaExtensionManager.init()

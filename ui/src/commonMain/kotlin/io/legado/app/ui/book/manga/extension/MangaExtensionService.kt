@@ -100,6 +100,15 @@ enum class MangaContentWarning { SAFE, MIXED, NSFW }
  */
 enum class MangaExtensionKind { MANGA, VIDEO }
 
+/** 未装载原因 (与插件宿主 NotLoaded.Reason 对齐; 文案由 Composable 按语言资源渲染)。 */
+enum class MangaNotLoadedReason {
+    FILTERED,
+    UNSIGNED,
+    UNSUPPORTED_LIB_VERSION,
+    MALFORMED,
+    FAILED,
+}
+
 /** 已装/未装载/可用插件的 UI 快照 (与插件宿主实体解耦, 平台接口只暴露本文件类型)。 */
 data class MangaExtensionItem(
     val pkgName: String,
@@ -116,8 +125,10 @@ data class MangaExtensionItem(
     val isObsolete: Boolean = false,
     /** 已装载出的源数量 (未装载=0) */
     val sourceCount: Int = 0,
-    /** 未装载原因描述 (Untrusted/Unsigned/Failed...), 已装载为 null */
-    val notLoadedReason: String? = null,
+    /** 未装载原因 (已装载为 null; Untrusted 单列一区不展示原因) */
+    val notLoadedReason: MangaNotLoadedReason? = null,
+    /** [MangaNotLoadedReason.FAILED] 的装载器原始消息 */
+    val notLoadedDetail: String? = null,
     /**
      * 插件图标 URL (仓库索引 `Available.iconUrl`)。
      * 可用条目直接取自身条目; 已装/未装载条目按同 pkgName 在仓库索引里反查回填

@@ -1,22 +1,21 @@
 package io.legado.app.help.extension
 
-import android.content.Context
-import android.graphics.drawable.Drawable
 import eu.kanade.tachiyomi.animesource.AnimeSource
+import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
+import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.Source
-import io.legado.app.App
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.coroutine.IoDispatcher
-import io.legado.app.help.extension.installer.ExtensionInstaller
 import io.legado.app.help.extension.model.InstallStep
 import io.legado.app.help.extension.model.MangaExtension
 import io.legado.app.help.extension.model.MangaExtensionRepo
 import io.legado.app.help.extension.repo.RepoHelper
 import io.legado.app.help.extension.trust.TrustHelper
-import io.legado.app.help.extension.util.ExtensionInstallReceiver
-import io.legado.app.help.extension.util.ExtensionLoader
 import io.legado.app.model.anime.AnimePluginSources
+import io.legado.app.model.manga.MangaPluginFilterCache
+import io.legado.app.model.manga.MangaPluginSources
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -39,6 +38,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * 扩展数据全部以 JSON 字符串偏好持久化 (见 [ExtensionPrefs]), 自动随备份进出;
  * 恢复完成后调 [onRestoreFinished] 重载内存态。
+ *
+ * 平台相关面 (枚举装载/安装/卸载/广播监听) 经 [MangaExtensionHostProviders] 注入:
+ * Android 端 PackageManager + 私有扩展文件, 桌面端扩展目录扫描 + JvmExtensionLoader。
  */
 object MangaExtensionManager {
 
@@ -58,13 +60,6 @@ object MangaExtensionManager {
     private val initialized = CompletableDeferred<Unit>()
     private val scope = CoroutineScope(SupervisorJob() + IoDispatcher)
 
-    @Volatile
-    private var appContextRef: Context? = null
-
-    private var installReceiver: ExtensionInstallReceiver? = null
-    private val installer by lazy { ExtensionInstaller(context) }
-    private val iconMap = HashMap<String, Drawable>()
-
     private val _loadedExtensionsFlow = MutableStateFlow<Map<String, MangaExtension.Loaded>>(emptyMap())
     private val _notLoadedExtensionsFlow = MutableStateFlow<Map<String, MangaExtension.NotLoaded>>(emptyMap())
     private val _availableExtensionsFlow = MutableStateFlow<List<MangaExtension.Available>>(emptyList())
@@ -80,24 +75,22 @@ object MangaExtensionManager {
     val animeSources: StateFlow<List<RegisteredAnimeSource>> = _animeSourcesFlow
 
     /** UI 首入口触发; 重复调用无副作用。 */
-    fun init(context: Context) {
+    fun init() {
         if (!started.compareAndSet(false, true)) return
-        val appContext = context.applicationContext
-        appContextRef = appContext
         _reposFlow.value = ExtensionPrefs.getRepos()
-        ExtensionInstallReceiver(appContext) { reloadExtensions() }
-            .also { installReceiver = it }
-            .register()
+        // 平台初始化收尾 (Android 注册安装事件广播, 维持"扩展 UI 首入口才装广播"时序;
+        // 平台未注册时静默跳过, 装载阶段按同样语义兜底)
+        runCatching { MangaExtensionHostProviders.getOrNull()?.onInitialized() }
+            .onFailure { AppLog.put("扩展宿主初始化失败", it) }
         scope.launch {
-            // 索引缓存仅加速首屏, 随后可被 findAvailableExtensions 覆盖
-            _availableExtensionsFlow.value = RepoHelper.loadCachedIndex()
-            refreshStatuses()
-            loadExtensions()
+            reloadMutex.withLock {
+                // 索引缓存仅加速首屏, 随后可被 findAvailableExtensions 覆盖
+                _availableExtensionsFlow.value = RepoHelper.loadCachedIndex()
+                refreshStatuses()
+                loadExtensionsLocked()
+            }
         }
     }
-
-    private val context: Context
-        get() = appContextRef ?: App.instance
 
     private suspend fun awaitInitialized(): Boolean {
         if (!started.get()) return false
@@ -155,6 +148,17 @@ object MangaExtensionManager {
         ExtensionPrefs.setSourceEnabled(sourceId, enabled)
     }
 
+    /** 包名首个已装载源实例 (漫画源优先, 视频源次之); 未装载出源返回 null。 */
+    fun firstSourceOf(pkgName: String): Any? =
+        _sourcesFlow.value.firstOrNull { it.pkgName == pkgName }?.source
+            ?: _animeSourcesFlow.value.firstOrNull { it.pkgName == pkgName }?.source
+
+    /** 该扩展包是否提供自带配置界面 (包首个已装载源实现 Configurable* 契约)。 */
+    fun isPkgConfigurable(pkgName: String): Boolean {
+        val source = firstSourceOf(pkgName) ?: return false
+        return source is ConfigurableSource || source is ConfigurableAnimeSource
+    }
+
     fun getRepos(): List<MangaExtensionRepo> = _reposFlow.value
 
     fun isSourceEnabled(sourceId: Long): Boolean = ExtensionPrefs.isSourceEnabled(sourceId)
@@ -169,17 +173,38 @@ object MangaExtensionManager {
 
     private val reloadMutex = Mutex()
 
-    /**
-     * 整表重扫 (安装事件广播与信任变更后的入口)。互斥串行: 重扫进行中再触发
-     * 排队执行, 防止旧扫描结果覆盖新扫描。
-     */
-    fun reloadExtensions() {
-        scope.launch { reloadMutex.withLock { loadExtensions() } }
+    /** 上一轮装载源 id 集合 (识别卸载, 失效对应筛选缓存)。 */
+    @Volatile
+    private var lastSyncedSourceIds: Set<Long> = emptySet()
+
+    private fun invalidateRemovedFilterCaches(currentIds: Set<Long>) {
+        lastSyncedSourceIds.forEach { id -> if (id !in currentIds) MangaPluginFilterCache.clear(id) }
+        lastSyncedSourceIds = currentIds
     }
 
+    /**
+     * 整表重扫 (安装事件与信任变更后的入口)。
+     */
+    fun reloadExtensions() {
+        scope.launch { loadExtensions() }
+    }
+
+    /**
+     * 装载入口 (互斥串行): 装载进行中再触发排队执行, 防止旧扫描结果覆盖新扫描;
+     * 桌面端 dex2jar 产物落盘也靠本互斥不并发互踩。首轮装载与备份恢复与重扫走同一把锁。
+     */
     private suspend fun loadExtensions() {
+        reloadMutex.withLock { loadExtensionsLocked() }
+    }
+
+    private suspend fun loadExtensionsLocked() {
         try {
-            val extensions = ExtensionLoader.loadExtensions(context, _loadedExtensionsFlow.value)
+            val host = MangaExtensionHostProviders.getOrNull()
+                ?: run {
+                    AppLog.put("扩展宿主未注册 (MangaExtensionHostProviders), 跳过装载")
+                    return
+                }
+            val extensions = host.loadExtensions(_loadedExtensionsFlow.value)
             _loadedExtensionsFlow.value = extensions
                 .filterIsInstance<MangaExtension.Loaded>()
                 .associateBy { it.pkgName }
@@ -192,28 +217,28 @@ object MangaExtensionManager {
             _animeSourcesFlow.value = _loadedExtensionsFlow.value.values
                 .flatMap { ext -> ext.animeSources.map { RegisteredAnimeSource(it, ext.pkgName) } }
                 .distinctBy { it.source.id }
-            // 视频插件虚拟书源行随注册表同步 (漫画侧由 AndroidMangaExtensionPlatform 监听,
-            // 视频无 UI 入口, 由本处直连触发; 漫画侧同步不受影响)
+            // 插件虚拟书源行随注册表同步 (漫画/视频同构直连, 不依赖扩展管理页 UI 首入口:
+            // 书源页的登录标记/分组/排序值都落在行上, 必须每次装载注册表后即刷新)
+            runCatching { MangaPluginSources.sync(_sourcesFlow.value) }
+                .onFailure {
+                    if (it is CancellationException) throw it
+                    AppLog.put("漫画插件源虚拟行同步失败", it)
+                }
             runCatching { AnimePluginSources.sync(_animeSourcesFlow.value) }
-                .onFailure { AppLog.put("视频插件源虚拟行同步失败", it) }
-            refreshStatuses()
-            iconMap.keys.retainAll(
-                _loadedExtensionsFlow.value.keys + _notLoadedExtensionsFlow.value.keys
+                .onFailure {
+                    if (it is CancellationException) throw it
+                    AppLog.put("视频插件源虚拟行同步失败", it)
+                }
+            invalidateRemovedFilterCaches(
+                _sourcesFlow.value.mapTo(HashSet()) { it.source.id }
             )
+            refreshStatuses()
         } catch (e: Throwable) {
+            if (e is CancellationException) throw e
             AppLog.put("漫画扩展加载失败", e)
         } finally {
             initialized.complete(Unit)
         }
-    }
-
-    fun getIcon(pkgName: String): Drawable? {
-        iconMap[pkgName]?.let { return it }
-        val pkgInfo = ExtensionLoader.getExtensionPackageInfoFromPkgName(context, pkgName) ?: return null
-        val appInfo = pkgInfo.applicationInfo ?: return null
-        return runCatching { appInfo.loadIcon(context.packageManager) }
-            .getOrNull()
-            ?.also { iconMap[pkgName] = it }
     }
 
     // endregion
@@ -221,26 +246,20 @@ object MangaExtensionManager {
     // region 安装 / 更新 / 卸载
 
     fun installExtension(extension: MangaExtension.Available): Flow<InstallStep> {
-        return installer.downloadAndInstall(extension)
+        return MangaExtensionHostProviders.getOrNull()?.install(extension) ?: emptyFlow()
     }
 
     fun updateExtension(extension: MangaExtension.Installed): Flow<InstallStep> {
         val update = extension.findUpdate(_availableExtensionsFlow.value) ?: return emptyFlow()
-        return installer.downloadAndInstall(update)
+        return installExtension(update)
     }
 
     fun cancelInstallUpdateExtension(pkgName: String) {
-        installer.cancelInstall(pkgName)
+        MangaExtensionHostProviders.getOrNull()?.cancelInstall(pkgName)
     }
 
     fun uninstallExtension(extension: MangaExtension.Installed) {
-        if (extension.isShared) {
-            // 共享扩展经系统卸载界面, 完成后由系统广播触发整表重扫
-            installer.uninstallSharedApk(extension.pkgName)
-        } else {
-            ExtensionLoader.uninstallPrivateExtension(context, extension.pkgName)
-            reloadExtensions()
-        }
+        MangaExtensionHostProviders.getOrNull()?.uninstall(extension)
     }
 
     // endregion
@@ -280,9 +299,12 @@ object MangaExtensionManager {
             ExtensionPrefs.addUserRepo(repo)
             _reposFlow.value = ExtensionPrefs.getRepos()
             // 后台拉取新仓库索引, 不阻塞添加结果
-            scope.launch { runCatching { findAvailableExtensions() } }
+            scope.launch {
+                runCatching { findAvailableExtensions() }
+                    .onFailure { if (it is CancellationException) throw it }
+            }
             repo
-        }
+        }.onFailure { if (it is CancellationException) throw it }
     }
 
     fun removeRepo(indexUrl: String) {
@@ -312,6 +334,7 @@ object MangaExtensionManager {
         val failures = mutableListOf<Throwable>()
         val listings = results.flatMap { (repo, result) ->
             result.getOrElse { e ->
+                if (e is CancellationException) throw e
                 failures += e
                 AppLog.put("扩展仓库拉取失败: ${repo.name}", e)
                 emptyList()
@@ -340,6 +363,7 @@ object MangaExtensionManager {
         try {
             findAvailableExtensions()
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             AppLog.put("扩展更新检查失败", e)
             return emptyList()
         }
@@ -357,9 +381,11 @@ object MangaExtensionManager {
      */
     suspend fun onRestoreFinished() {
         if (!started.get()) return
-        _reposFlow.value = ExtensionPrefs.getRepos()
-        _availableExtensionsFlow.value = RepoHelper.loadCachedIndex()
-        loadExtensions()
+        reloadMutex.withLock {
+            _reposFlow.value = ExtensionPrefs.getRepos()
+            _availableExtensionsFlow.value = RepoHelper.loadCachedIndex()
+            loadExtensionsLocked()
+        }
     }
 
     /**

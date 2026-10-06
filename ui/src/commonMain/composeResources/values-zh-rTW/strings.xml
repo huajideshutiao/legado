@@ -835,6 +835,11 @@
     <string name="manga_extension_trust">信任</string>
     <string name="manga_extension_untrusted">未信任外掛</string>
     <string name="manga_extension_untrusted_desc">此外掛簽章校驗未通過，信任後才能載入其來源。是否信任？</string>
+    <string name="manga_extension_not_loaded_filtered">被內容分級過濾設定封鎖</string>
+    <string name="manga_extension_not_loaded_unsigned">外掛無有效簽章</string>
+    <string name="manga_extension_not_loaded_unsupported_lib">擴充庫版本不受支援</string>
+    <string name="manga_extension_not_loaded_malformed">外掛中繼資料缺失</string>
+    <string name="manga_extension_not_loaded_failed">載入失敗: %1$s</string>
     <string name="manga_extension_uninstall_confirm">確定解除安裝此外掛？</string>
     <string name="manga_extension_install">安裝</string>
     <string name="manga_extension_update">更新</string>

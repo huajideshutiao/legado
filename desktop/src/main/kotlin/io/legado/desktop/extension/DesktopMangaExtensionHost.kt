@@ -3,23 +3,18 @@ package io.legado.desktop.extension
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.extension.ExtensionApkInfo
+import io.legado.app.help.extension.ExtensionInstallScaffold
 import io.legado.app.help.extension.MangaExtensionHost
 import io.legado.app.help.extension.MangaExtensionManager
 import io.legado.app.help.extension.model.ContentWarning as ModelContentWarning
 import io.legado.app.help.extension.model.InstallStep
 import io.legado.app.help.extension.model.MangaExtension
+import io.legado.app.help.extension.requireValidExtensionPackageName
 import io.legado.app.help.extension.trust.TrustHelper
 import io.legado.app.help.file.desktopAppRootDir
-import io.legado.app.help.http.okHttpClient
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
-import okhttp3.Request
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
@@ -39,8 +34,6 @@ fun desktopMangaExtensionDir(): File = File(desktopAppRootDir(), "extensions")
 class DesktopMangaExtensionHost(
     private val extDir: File = desktopMangaExtensionDir(),
 ) : MangaExtensionHost {
-
-    private val installJobs = ConcurrentHashMap<String, Job>()
 
     /** 装载缓存: pkgName → (apk 标记, JvmExtension.Loaded)。 */
     private val loadCache = ConcurrentHashMap<String, CachedLoad>()
@@ -194,108 +187,64 @@ class DesktopMangaExtensionHost(
 
     // region 安装 / 更新 / 卸载
 
-    override fun install(extension: MangaExtension.Available): Flow<InstallStep> {
-        installJobs[extension.pkgName]?.cancel()
-        return flow {
-            val job = currentCoroutineContext()[Job] ?: error("安装流程必须在协程中收集")
-            installJobs[extension.pkgName] = job
-            val tmpFile = File(extDir, "${extension.pkgName}.apk.part")
-            try {
-                emit(InstallStep.Downloading)
-                download(extension.apkUrl, tmpFile) { progress -> emit(InstallStep.Progress(progress)) }
-                currentCoroutineContext().ensureActive()
+    /**
+     * 安装骨架的桌面平台面: 元信息经 AXML 解析 + apksig 提取, 落盘到扩展目录
+     * (无安装广播, 落盘后直接触发整表重扫)。
+     */
+    private val installer = object : ExtensionInstallScaffold() {
 
-                emit(InstallStep.Installing)
-                installApkFile(tmpFile)
+        override fun tempFile(pkgName: String): File =
+            File(extDir, "$pkgName.$APK_EXTENSION.part")
 
-                emit(InstallStep.Installed)
-                // 无安装广播: 落盘后直接触发整表重扫 (Android 走私有扩展安装广播)
-                MangaExtensionManager.reloadExtensions()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                emit(InstallStep.Error(e.message))
-            } finally {
-                installJobs.remove(extension.pkgName, job)
-                tmpFile.delete()
+        override fun readApkInfo(file: File): ExtensionApkInfo? {
+            val manifest = runCatching { ApkManifestReader.read(file) }.getOrNull() ?: return null
+            return ExtensionApkInfo(
+                pkgName = manifest.packageName,
+                versionCode = manifest.versionCode,
+                isExtension = manifest.reqFeatures.any {
+                    it == EXTENSION_FEATURE || it == ANIME_EXTENSION_FEATURE
+                },
+                signatures = runCatching { ApkSignatures.sha256HexList(file) }.getOrDefault(emptyList()),
+            )
+        }
+
+        override fun readInstalledInfo(pkgName: String): ExtensionApkInfo? {
+            val target = File(extDir, "$pkgName.$APK_EXTENSION")
+            if (!target.isFile) return null
+            return readApkInfo(target)
+        }
+
+        override fun placeApk(file: File, info: ExtensionApkInfo, replaced: Boolean) {
+            val target = File(extDir, "${info.pkgName}.$APK_EXTENSION")
+            extDir.mkdirs()
+            if (!file.renameTo(target)) {
+                file.copyTo(target, overwrite = true)
+                file.delete()
             }
-        }.flowOn(IoDispatcher)
+        }
+
+        override fun onInstalled(pkgName: String) {
+            // 无安装广播: 落盘后直接触发整表重扫 (Android 走私有扩展安装广播)
+            MangaExtensionManager.reloadExtensions()
+        }
     }
 
+    override fun install(extension: MangaExtension.Available): Flow<InstallStep> =
+        installer.install(extension)
+
     override fun cancelInstall(pkgName: String) {
-        installJobs[pkgName]?.cancel()
+        installer.cancelInstall(pkgName)
     }
 
     override fun uninstall(extension: MangaExtension.Installed) {
         // 桌面无共享扩展形态: 一律扩展目录内文件
+        requireValidExtensionPackageName(extension.pkgName)
         val file = File(extDir, "${extension.pkgName}.$APK_EXTENSION")
         if (file.isFile && file.delete()) {
             loadCache.remove(extension.pkgName)?.loaded?.classLoader?.let { loader ->
                 runCatching { loader.close() }
             }
             MangaExtensionManager.reloadExtensions()
-        }
-    }
-
-    /**
-     * 下载落地的 apk 校验后落为扩展文件 (对齐 Android installPrivateExtensionFile:
-     * feature 识别 / 不允许降级 / 签名一致)。
-     */
-    private fun installApkFile(file: File) {
-        val manifest = runCatching { ApkManifestReader.read(file) }
-            .getOrElse { throw NoStackTraceException("安装包无法解析: ${file.nameWithoutExtension}") }
-        check(
-            manifest.reqFeatures.any {
-                it == EXTENSION_FEATURE || it == ANIME_EXTENSION_FEATURE
-            }
-        ) { "${manifest.packageName} 不是扩展" }
-
-        val target = File(extDir, "${manifest.packageName}.$APK_EXTENSION")
-        if (target.isFile) {
-            val current = ApkManifestReader.read(target)
-            check(manifest.versionCode >= current.versionCode) { "不允许降级安装" }
-            val signatures = runCatching { ApkSignatures.sha256HexList(file) }.getOrDefault(emptyList())
-            val currentSignatures = runCatching { ApkSignatures.sha256HexList(target) }.getOrDefault(emptyList())
-            check(signatures.isNotEmpty() && signatures.containsAll(currentSignatures)) {
-                "与已安装扩展签名不一致"
-            }
-        }
-
-        extDir.mkdirs()
-        if (!file.renameTo(target)) {
-            file.copyTo(target, overwrite = true)
-            file.delete()
-        }
-    }
-
-    private suspend fun download(url: String, target: File, onProgress: suspend (Int) -> Unit) {
-        val request = Request.Builder().url(url).build()
-        okHttpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                throw NoStackTraceException("下载失败 HTTP ${response.code}: $url")
-            }
-            val body = response.body
-            val total = body.contentLength()
-            body.byteStream().use { input ->
-                target.outputStream().use { output ->
-                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                    var lastProgress = -1
-                    var written = 0L
-                    while (true) {
-                        val read = input.read(buffer)
-                        if (read == -1) break
-                        output.write(buffer, 0, read)
-                        written += read
-                        if (total > 0) {
-                            val progress = ((written * 100) / total).toInt()
-                            if (progress != lastProgress) {
-                                lastProgress = progress
-                                onProgress(progress)
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 
@@ -317,7 +266,5 @@ class DesktopMangaExtensionHost(
         // JvmExtensionLoader 内部按同一契约识别)
         private const val EXTENSION_FEATURE = "tachiyomi.extension"
         private const val ANIME_EXTENSION_FEATURE = "tachiyomi.animeextension"
-
-        private const val DEFAULT_BUFFER_SIZE = 8 * 1024
     }
 }

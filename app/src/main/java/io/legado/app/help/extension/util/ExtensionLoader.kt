@@ -13,9 +13,13 @@ import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceFactory
 import io.legado.app.constant.AppLog
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.extension.ExtensionApkInfo
+import io.legado.app.help.extension.isValidExtensionPackageName
 import io.legado.app.help.extension.model.ContentWarning
 import io.legado.app.help.extension.model.MangaExtension
+import io.legado.app.help.extension.requireValidExtensionPackageName
 import io.legado.app.help.extension.trust.TrustHelper
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -70,26 +74,30 @@ internal object ExtensionLoader {
     private fun getPrivateExtensionDir(context: Context) = File(context.filesDir, "exts")
 
     /**
-     * 将下载/导入的扩展 apk 落为私有扩展文件。校验失败抛异常, 由调用方提示。
+     * 扩展安装包元信息 (覆盖校验面)。Android 侧由 PackageManager 查询, 与桌面端的
+     * ApkManifestReader + ApkSignatures 同口径 (包名/versionCode/签名 SHA-256 小写 hex)。
      */
-    fun installPrivateExtensionFile(context: Context, file: File, extension: PackageInfo) {
-        check(isPackageAnExtension(extension)) { "${extension.packageName} 不是扩展" }
-        val currentExtension = getExtensionPackageInfoFromPkgName(context, extension.packageName)
+    fun archiveApkInfo(context: Context, file: File): ExtensionApkInfo? =
+        getArchivePackageInfo(context, file)?.toInstallInfo()
 
-        if (currentExtension != null) {
-            check(
-                PackageInfoCompat.getLongVersionCode(extension) >=
-                    PackageInfoCompat.getLongVersionCode(currentExtension),
-            ) { "不允许降级安装" }
+    /** 已安装同包扩展的元信息 (共享版/私有版按 versionCode 取高者); 未安装返回 null。 */
+    fun installedApkInfo(context: Context, pkgName: String): ExtensionApkInfo? =
+        getExtensionPackageInfoFromPkgName(context, pkgName)?.toInstallInfo()
 
-            val extensionSignatures = getSignatures(extension)
-            check(!extensionSignatures.isNullOrEmpty()) { "扩展未签名" }
-            check(extensionSignatures.containsAll(getSignatures(currentExtension)!!)) {
-                "与已安装扩展签名不一致"
-            }
-        }
+    private fun PackageInfo.toInstallInfo() = ExtensionApkInfo(
+        pkgName = packageName,
+        versionCode = PackageInfoCompat.getLongVersionCode(this),
+        isExtension = isPackageAnExtension(this),
+        signatures = getSignatures(this).orEmpty(),
+    )
 
-        val target = File(getPrivateExtensionDir(context), "${extension.packageName}.$PRIVATE_EXTENSION_EXTENSION")
+    /**
+     * 将已通过 `checkExtensionInstallable` 校验的扩展 apk 落为私有扩展文件
+     * (Android 14+ 只读), 并按新增/覆盖通知重扫。
+     */
+    fun installPrivateExtensionFile(context: Context, file: File, pkgName: String, replaced: Boolean) {
+        requireValidExtensionPackageName(pkgName)
+        val target = File(getPrivateExtensionDir(context), "$pkgName.$PRIVATE_EXTENSION_EXTENSION")
         try {
             target.delete()
             file.copyAndSetReadOnlyTo(target)
@@ -97,14 +105,15 @@ internal object ExtensionLoader {
             target.delete()
             throw e
         }
-        if (currentExtension != null) {
-            ExtensionInstallReceiver.notifyReplaced(context, extension.packageName)
+        if (replaced) {
+            ExtensionInstallReceiver.notifyReplaced(context, pkgName)
         } else {
-            ExtensionInstallReceiver.notifyAdded(context, extension.packageName)
+            ExtensionInstallReceiver.notifyAdded(context, pkgName)
         }
     }
 
     fun uninstallPrivateExtension(context: Context, pkgName: String) {
+        requireValidExtensionPackageName(pkgName)
         if (File(getPrivateExtensionDir(context), "$pkgName.$PRIVATE_EXTENSION_EXTENSION").delete()) {
             ExtensionInstallReceiver.notifyRemoved(context, pkgName)
         }
@@ -193,6 +202,8 @@ internal object ExtensionLoader {
     }
 
     fun getExtensionPackageInfoFromPkgName(context: Context, pkgName: String): PackageInfo? {
+        // 包名参与私有扩展文件路径拼接, 非法包名直接视为不存在
+        if (!isValidExtensionPackageName(pkgName)) return null
         val privateExtensionFile = File(getPrivateExtensionDir(context), "$pkgName.$PRIVATE_EXTENSION_EXTENSION")
         val privatePkg = if (privateExtensionFile.isFile) {
             context.packageManager.getPackageArchiveInfo(privateExtensionFile.absolutePath, PACKAGE_FLAGS)
@@ -226,6 +237,7 @@ internal object ExtensionLoader {
         return try {
             loadExtension(context, extensionInfo, alreadyLoaded)
         } catch (e: Throwable) {
+            if (e is CancellationException) throw e
             val pkgInfo = extensionInfo.packageInfo
             AppLog.put("扩展加载出错: ${pkgInfo.packageName}", e)
             MangaExtension.NotLoaded(

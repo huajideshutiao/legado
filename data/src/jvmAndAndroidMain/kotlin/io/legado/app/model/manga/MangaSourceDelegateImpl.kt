@@ -128,8 +128,10 @@ object MangaSourceDelegateImpl : MangaSourceDelegate {
         val pages = source.getPageList(sChapter)
         val content = with(MangaSourceMapper) {
             pages.toImgContent(sourceId = source.id) { page ->
-                // 延迟解析型插件源: imageUrl 未给时回退 HttpSource.getImageUrl (可抛, 逐页容错)
-                runCatching { (source as? HttpSource)?.getImageUrl(page) }.getOrNull()
+                // 延迟解析型插件源: imageUrl 未给时回退 HttpSource.getImageUrl (可抛, 逐页容错; 取消照常上抛)
+                runCatching { (source as? HttpSource)?.getImageUrl(page) }
+                    .onFailure { if (it is CancellationException) throw it }
+                    .getOrNull()
             }
         }
         if (content.isBlank()) {

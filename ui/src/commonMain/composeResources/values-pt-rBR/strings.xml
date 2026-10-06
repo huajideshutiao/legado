@@ -818,6 +818,11 @@
     <string name="manga_extension_trust">Confiar</string>
     <string name="manga_extension_untrusted">Extensões não confiáveis</string>
     <string name="manga_extension_untrusted_desc">A verificação da assinatura falhou. Confie na assinatura para carregar as fontes. Confiar?</string>
+    <string name="manga_extension_not_loaded_filtered">Bloqueado pelo filtro de classificação de conteúdo</string>
+    <string name="manga_extension_not_loaded_unsigned">A extensão não tem uma assinatura válida</string>
+    <string name="manga_extension_not_loaded_unsupported_lib">Versão da biblioteca de extensão não suportada</string>
+    <string name="manga_extension_not_loaded_malformed">Metadados da extensão ausentes</string>
+    <string name="manga_extension_not_loaded_failed">Falha ao carregar: %1$s</string>
     <string name="manga_extension_uninstall_confirm">Desinstalar esta extensão?</string>
     <string name="manga_extension_install">Instalar</string>
     <string name="manga_extension_update">Atualizar</string>

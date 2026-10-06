@@ -86,9 +86,10 @@ public class Elements : ArrayList<Element> {
 
     public fun last(): Element? = this@Elements.lastOrNull()
 
+    /** 对齐 jsoup Elements#eq(int) 语义: 取列表第 index 个元素组成新列表, 越界返回空列表。 */
     public fun eq(index: Int): Elements {
         val result = Elements()
-        if (index in indices) add(get(index))
+        if (index in indices) result.add(get(index))
         return result
     }
 

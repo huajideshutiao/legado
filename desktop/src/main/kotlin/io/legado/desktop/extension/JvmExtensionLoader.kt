@@ -12,6 +12,8 @@ import eu.kanade.tachiyomi.animesource.AnimeSourceFactory
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceFactory
+import io.legado.app.help.extension.isValidExtensionPackageName
+import io.legado.app.help.extension.safeExtensionFileNameSegment
 import io.legado.desktop.help.dex.DexJarConverter
 import java.io.File
 import java.net.URLClassLoader
@@ -109,6 +111,11 @@ object JvmExtensionLoader {
             stackTrace = stackTrace,
         )
 
+        // 包名直接参与 dex2jar 产物文件路径拼接: 非法包名不装载 (含路径分隔/上跳序列)
+        if (!isValidExtensionPackageName(pkgName)) {
+            return notLoaded(JvmExtension.Reason.Malformed, "非法扩展包名: $pkgName")
+        }
+
         // 两 feature 不会同时声明, 视频键优先判定 (与 Android 端 extensionKindOf 一致)
         val kind = when {
             ANIME_EXTENSION_FEATURE in manifest.reqFeatures -> ExtensionKind.ANIME
@@ -172,7 +179,7 @@ object JvmExtensionLoader {
         // APK → dex → jar (Suwayomi PackageTools.dex2jar 同参数面; fork 的 open 无多 dex 重载,
         // 多 dex 各转一个 jar, 一并进 classloader)
         val jarFiles = try {
-            dex2jar(apkFile, jarOutputDir, "${pkgName}-v${manifest.versionName}")
+            dex2jar(apkFile, jarOutputDir, "$pkgName-v${safeExtensionFileNameSegment(versionName)}")
         } catch (e: Exception) {
             return notLoaded(
                 JvmExtension.Reason.Failed,
@@ -281,7 +288,8 @@ object JvmExtensionLoader {
         check(dexBytes.isNotEmpty()) { "APK 内无 classes.dex: ${apkFile.name}" }
         return dexBytes.mapIndexed { index, bytes ->
             val jarFile = File(outputDir, "$baseName${if (index == 0) "" else "-dex$index"}.jar")
-            DexJarConverter.convertDex(bytes, jarFile)
+            // 原子落地: 同包重扫/双开桌面实例不会写出半个 jar
+            DexJarConverter.convertDexAtomically(bytes, jarFile)
             jarFile
         }
     }
