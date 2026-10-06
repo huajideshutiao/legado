@@ -4,6 +4,7 @@ import android.util.Base64
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import io.legado.app.constant.AppLog
+import io.legado.app.utils.NetworkUtils
 import okhttp3.FormBody
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
@@ -14,7 +15,6 @@ import okhttp3.Response
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
-import java.net.URI
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
@@ -105,11 +105,8 @@ class TvBoxJsBridge internal constructor(
         }
         val headers = headersOf(options.opt("headers"))
         val method = options.optString("method").ifBlank { "get" }.lowercase(Locale.ROOT)
-        val body = when {
-            method == "post" -> postBody(options, headers)
-            method == "header" -> null
-            else -> null
-        }
+        // post/put 共用请求体构造 (FongMi bean/Req: body 与 method 无关)
+        val body = if (method == "post" || method == "put") requestBody(options, headers) else null
         val builder = Request.Builder().url(url).apply {
             headers.forEach { (k, v) -> header(k, v) }
         }
@@ -162,7 +159,7 @@ class TvBoxJsBridge internal constructor(
         return Charsets.UTF_8
     }
 
-    private fun postBody(options: JSONObject, headers: Map<String, String>): RequestBody? {
+    private fun requestBody(options: JSONObject, headers: Map<String, String>): RequestBody? {
         val data = options.opt("data")
         val postType = options.optString("postType").ifBlank { "json" }
         val raw = options.optString("body")
@@ -224,10 +221,8 @@ class TvBoxJsBridge internal constructor(
 
     // ============ 其余全局函数 ============
 
-    private fun joinUrl(parent: String, child: String): String {
-        if (child.startsWith("http")) return child
-        return runCatching { URI(parent).resolve(child).toString() }.getOrElse { child }
-    }
+    private fun joinUrl(parent: String, child: String): String =
+        NetworkUtils.getAbsoluteURL(parent, child)
 
     /**
      * aesX/desX/rsaX: 参数面 (mode, encrypt, input, inBase64, key, iv, outBase64)

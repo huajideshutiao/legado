@@ -81,6 +81,10 @@
 # 不 keep 会被 R8 整库裁光, jar 内 Init 二维码任务在 release 包必然 NoClassDefFoundError。
 # zxing core 为纯 Java 直调库 (无反射/无服务发现), jar 用法覆盖面不可预判, 全量保留。
 -keep class com.google.zxing.** { *; }
+# com.github.catvod.* 是 spider jar 的类路径契约面 (壳类/工具/网络, 签名须与 FongMi catvod 一致),
+# 宿主源码只引用少数接线点, 其余成员仅被 jar 直调; 与 zxing 同款论证: 纯 Java 直调面,
+# jar 用法覆盖面不可预判, 不 keep 会被 R8 整库裁光 (release 包 init/取数期 NoClassDefFoundError)。
+-keep class com.github.catvod.** { *; }
 
 ############################
 # 异常类型：保留类名以便堆栈和反射查找

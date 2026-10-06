@@ -51,9 +51,14 @@ fun VideoChapterGrid(
     var collapsed by remember(chapters) { mutableStateOf(defaultCollapsedVolumes(chapters, durIndex)) }
     val display = remember(chapters, collapsed) { buildChapterDisplayList(chapters, collapsed) }
     LaunchedEffect(display, durIndex) {
-        if (display.isNotEmpty()) {
-            val position = display.indexOfFirst { it.index == durIndex }
-            gridState.scrollToItem(position.coerceAtLeast(0))
+        if (display.isEmpty()) return@LaunchedEffect
+        val position = display.indexOfFirst { it.index == durIndex }
+        if (position >= 0) {
+            gridState.scrollToItem(position)
+        } else {
+            // 当前集被收进折叠卷: 定位到所属卷头, 而不是跳回第 0 项 (未命中即保持现位)
+            val volumePos = display.indexOfLast { it.isVolume && it.index <= durIndex }
+            if (volumePos >= 0) gridState.scrollToItem(volumePos)
         }
     }
     FastScrollLazyVerticalGrid(

@@ -8,6 +8,8 @@ import com.github.catvod.utils.Util
  */
 object Proxy {
 
+    /** 端口在 NanoHTTPD 工作线程 (jar 内 getPort / proxyUrlPrefix) 与写入线程间传递, 须 volatile。 */
+    @Volatile
     private var port = -1
 
     @JvmStatic

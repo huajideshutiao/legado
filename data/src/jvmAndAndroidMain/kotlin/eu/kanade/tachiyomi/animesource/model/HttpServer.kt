@@ -6,19 +6,17 @@ package eu.kanade.tachiyomi.animesource.model
 open class HttpServer {
 
     val url: String
-        get() = "http://localhost:$listeningPort"
+        get() = PLACEHOLDER_URL
 
     @Volatile
     private var isRunning = false
-
-    private val listeningPort: Int = PLACEHOLDER_PORT
 
     fun isRunning(): Boolean {
         return isRunning
     }
 
     fun start() {
-        isRunning = false
+        isRunning = true
     }
 
     fun stop() {
@@ -27,6 +25,5 @@ open class HttpServer {
 
     companion object {
         const val PLACEHOLDER_URL = "http://localhost:1"
-        private const val PLACEHOLDER_PORT = 0
     }
 }

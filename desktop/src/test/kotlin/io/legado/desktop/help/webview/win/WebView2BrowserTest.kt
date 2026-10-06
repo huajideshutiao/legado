@@ -45,7 +45,8 @@ class WebView2BrowserTest {
     /** 进程内首次调用: 消息泵未启动时必须能拉起线程并创建环境 + 无头实例。 */
     @Test
     fun a_firstCallCreatesEnvironmentAndInstance() = runBlocking {
-        val env = WebView2Environment.get()
+        // 无头实例用无头环境 (insecure=true)
+        val env = WebView2Environment.get(insecure = true)
         assumeTrue("本机未安装 WebView2 Runtime, 跳过", env != null)
         val instance = WebView2Instance.create(visible = false, title = "legado-test")
         assertNotNull("首次调用 (消息泵未启动) 必须能创建 WebView2 实例", instance)
@@ -83,16 +84,17 @@ class WebView2BrowserTest {
     /** 环境缓存: 多次调用返回同一环境 (pending 清理不能破坏缓存)。 */
     @Test
     fun c_environmentIsCachedAcrossCalls() = runBlocking {
-        val env1 = WebView2Environment.get()
+        val env1 = WebView2Environment.get(insecure = true)
         assumeTrue("本机未安装 WebView2 Runtime, 跳过", env1 != null)
-        val env2 = WebView2Environment.get()
+        val env2 = WebView2Environment.get(insecure = true)
         assertEquals("环境必须进程级复用", env1, env2)
     }
 
     /** 可见窗口 (startBrowser 实际路径): 带工具栏创建成功后可导航。 */
     @Test
     fun d_visibleWindowCreatesWithToolbarAndNavigates() = runBlocking {
-        val env = WebView2Environment.get()
+        // 可见窗口用安全环境 (insecure=false), 与 create(visible=true) 一致
+        val env = WebView2Environment.get(insecure = false)
         assumeTrue("本机未安装 WebView2 Runtime, 跳过", env != null)
         val instance = WebView2Instance.create(
             visible = true,
@@ -121,7 +123,7 @@ class WebView2BrowserTest {
     /** 导航失败检测: IsSuccess=false 必须触发 onNavigationFailed (错误页/白屏修复)。 */
     @Test
     fun e_navigationFailureTriggersCallback() = runBlocking {
-        val env = WebView2Environment.get()
+        val env = WebView2Environment.get(insecure = true)
         assumeTrue("本机未安装 WebView2 Runtime, 跳过", env != null)
         val instance = WebView2Instance.create(visible = false, title = "legado-fail-test")
         assertNotNull(instance)

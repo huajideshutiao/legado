@@ -39,42 +39,63 @@ private val IID_ICORE_WEBVIEW2_14 = Guid.GUID("6DAA4F10-4A90-4753-8898-77C5DF534
 private const val CREATE_TIMEOUT_MS = 20_000L
 
 /**
- * 进程级共享的 ICoreWebView2Environment。
+ * 进程级 ICoreWebView2Environment, 按用途各一个实例。
  *
- * 一个 userDataFolder 同时只能被一个环境持有, 故全进程只建一次; cookie/localStorage 落
- * `{cacheDir}/webview2`, 与 app 端 android.webkit 进程级 CookieManager 的"跨调用持久"语义一致。
+ * 同一 userDataFolder 挂不同 options 的第二个环境会创建失败 (WebView2 约束), 故两个用途
+ * 各用独立目录; 浏览器 cookie 仍经 CookieStore 注入/回收闭环跨用途共享 (与 Android 上
+ * WebView 与 OkHttp 两套 cookie 存储的桥接同构)。
  */
 internal object WebView2Environment {
 
-    @Volatile
-    private var environment: Pointer? = null
+    /** 无头抓取/嗅探用途: 放行 mixed content + autoplay (对齐 Android BackstageWebView/嗅探 WebView)。 */
+    private const val INSECURE_DIR = "webview2"
 
-    private var pending: CompletableDeferred<Pointer?>? = null
+    /** 可见窗口 (登录/校验) 用途: 默认安全设置 (对齐 Android WebViewActivity)。 */
+    private const val SECURE_DIR = "webview2-window"
 
-    /** 取(或懒创建)环境; runtime 不可用或创建失败返回 null。任意线程可调。 */
-    suspend fun get(): Pointer? {
-        environment?.let { return it }
-        val deferred = synchronized(this) {
-            environment?.let { return it }
-            pending ?: CompletableDeferred<Pointer?>().also {
-                pending = it
-                startCreate(it)
+    private class Slot {
+        @Volatile
+        var environment: Pointer? = null
+
+        @Volatile
+        var pending: CompletableDeferred<Pointer?>? = null
+    }
+
+    private val insecureSlot = Slot()
+
+    private val secureSlot = Slot()
+
+    /**
+     * 取(或懒创建)指定用途的环境; runtime 不可用或创建失败返回 null。任意线程可调。
+     *
+     * @param insecure 无头抓取/嗅探用途传 true (开 mixed content/autoplay 放行); 可见窗口传 false。
+     */
+    suspend fun get(insecure: Boolean): Pointer? {
+        val slot = if (insecure) insecureSlot else secureSlot
+        slot.environment?.let { return it }
+        val deferred = synchronized(slot) {
+            slot.environment?.let { return it }
+            slot.pending ?: CompletableDeferred<Pointer?>().also {
+                slot.pending = it
+                startCreate(it, insecure)
             }
         }
         val env = withTimeoutOrNull(CREATE_TIMEOUT_MS) { deferred.await() }
-        synchronized(this) {
-            if (env != null) environment = env
+        synchronized(slot) {
+            if (env != null) slot.environment = env
             // 无论成败都清 pending: 失败/超时后复用同一个已结束的 deferred 会让
             // 后续所有调用立刻拿到 null, 进程内永远无法重试 (必须重启才恢复)
-            pending = null
+            slot.pending = null
         }
         if (env == null) {
-            AppLog.put("WebView2 环境创建失败或超时 (${CREATE_TIMEOUT_MS}ms), 内嵌浏览器不可用")
+            AppLog.put(
+                "WebView2 环境创建失败或超时 (${CREATE_TIMEOUT_MS}ms, insecure=$insecure), 内嵌浏览器不可用"
+            )
         }
         return env
     }
 
-    private fun startCreate(deferred: CompletableDeferred<Pointer?>) {
+    private fun startCreate(deferred: CompletableDeferred<Pointer?>, insecure: Boolean) {
         WebView2Loop.post {
             val runtime = WebView2Runtime.detect()
             if (runtime == null) {
@@ -94,33 +115,37 @@ internal object WebView2Environment {
                 }
             })
 
-            val userDataDir = File(AppFilesDirs.get().cacheDir, "webview2")
+            val userDataDir = File(AppFilesDirs.get().cacheDir, if (insecure) INSECURE_DIR else SECURE_DIR)
                 .apply { mkdirs() }.absolutePath
-            // mixed content / autoplay 放行 (对照 Android mixedContentMode=ALWAYS_ALLOW 与
-            // mediaPlaybackRequiresUserGesture=false): WebView2 无对应设置项, 唯一等价途径
-            // 是环境级浏览器参数。同时把 TargetCompatibleBrowserVersion 给值, 否则该属性
-            // 为 NULL 会 E_INVALIDARG。
-            val options = Wv2EnvironmentOptions(
-                additionalBrowserArguments = MIXED_CONTENT_BROWSER_ARGS,
-                targetCompatibleBrowserVersion = runtime.version,
-            )
+            // 无头抓取/嗅探才给 mixed content / autoplay 放行参数 (对照 Android
+            // mixedContentMode=ALWAYS_ALLOW 与 mediaPlaybackRequiresUserGesture=false):
+            // WebView2 无对应设置项, 环境级浏览器参数是唯一等价途径。同时把
+            // TargetCompatibleBrowserVersion 给值, 否则该属性为 NULL 会 E_INVALIDARG。
+            val options = if (insecure) {
+                Wv2EnvironmentOptions(
+                    additionalBrowserArguments = MIXED_CONTENT_BROWSER_ARGS,
+                    targetCompatibleBrowserVersion = runtime.version,
+                )
+            } else {
+                null
+            }
             val handler = newHandler()
             var hr = runtime.createEnvironment.invokeInt(
                 arrayOf(
                     1, // 上游 loader 固定传 true
                     WebView2Runtime.RUNTIME_TYPE_INSTALLED,
                     wide(userDataDir),
-                    options.pointer,
+                    options?.pointer,
                     handler.pointer,
                 )
             )
             // runtime 已 AddRef 过 options (若有); 归还创建方那一份
-            options.disown()
+            options?.disown()
             handler.disown()
             // 兜底: 自定义 options 同步失败时退回原先的 null options 路径, 保证
             // "至少能建环境" (只是拿不到 mixed content/autoplay 放行)。
             // 用全新 handler: 失败路径上 runtime 可能已释放旧 handler, 不能重用。
-            if (hr != S_OK) {
+            if (hr != S_OK && options != null) {
                 AppLog.put(
                     "WebView2 带浏览器参数的环境创建失败 (HRESULT=${hex(hr)}), 退回默认参数重试"
                 )
@@ -146,8 +171,12 @@ internal object WebView2Environment {
 
 private fun hex(value: Int) = "0x" + value.toUInt().toString(16)
 
+/** 头名/头值是否含 CR/LF (拼原始请求头串时必须剔除, 否则可绕过边界注入任意头)。 */
+private fun String.hasCrLf(): Boolean = any { it == '\r' || it == '\n' }
+
 /**
- * WebView2 环境级浏览器参数, 对齐 Android `TvBoxSniffer.createWebView` 的 settings:
+ * WebView2 环境级浏览器参数, 只给无头抓取/嗅探用途的环境 (见 [WebView2Environment.get]),
+ * 对齐 Android `BackstageWebView` / `TvBoxSniffer.createWebView` 的 settings:
  * - `--allow-running-insecure-content` ↔ `mixedContentMode = ALWAYS_ALLOW`
  *   (WebView2 无 mixedContentMode 设置项, 环境级开关是唯一等价途径);
  * - `--autoplay-policy=no-user-gesture-required` ↔ `mediaPlaybackRequiresUserGesture = false`
@@ -238,8 +267,11 @@ internal class WebView2Instance private constructor(
             return@post
         }
         try {
-            // headers 参数是 CRLF 分隔的原始请求头串 (官方 IDL CreateWebResourceRequest 语义)
-            val raw = headers.entries.joinToString("\r\n") { "${it.key}: ${it.value}" }
+            // headers 参数是 CRLF 分隔的原始请求头串 (官方 IDL CreateWebResourceRequest 语义);
+            // 头名/头值里的 CRLF 会让 raw 越出边界注入任意导航请求头 (配置来源不可信)
+            val raw = headers.entries
+                .filter { (key, value) -> !key.hasCrLf() && !value.hasCrLf() }
+                .joinToString("\r\n") { "${it.key}: ${it.value}" }
             val created = PointerByReference()
             val hr = vtbl(
                 environment2, Wv2.ENV2_CREATE_WEB_RESOURCE_REQUEST,
@@ -467,7 +499,6 @@ internal class WebView2Instance private constructor(
 
         // 资源嗅探才装: 全量拦截每个子请求开销不小, 非 sourceRegex 场景不需要
         if (!sniffResources) {
-            bindServerCertificateError()
             return
         }
         vtbl(webview, Wv2.WV_ADD_WEB_RESOURCE_REQUESTED_FILTER, wide("*"), Wv2.RESOURCE_CONTEXT_ALL)
@@ -497,8 +528,6 @@ internal class WebView2Instance private constructor(
         })
         vtbl(webview, Wv2.WV_ADD_WEB_RESOURCE_REQUESTED, resource.pointer, token)
         resource.disown()
-
-        bindServerCertificateError()
     }
 
     /**
@@ -647,7 +676,8 @@ internal class WebView2Instance private constructor(
      *
      * 注意: WebView2 的 ICoreWebView2Settings/2/3/4 没有 mixedContentMode /
      * blockNetworkImage / acceptThirdPartyCookies 的等价开关 —— mixed content 只能经
-     * 环境级 `--allow-running-insecure-content` 浏览器参数 (见 [WebView2Environment]),
+     * 环境级 `--allow-running-insecure-content` 浏览器参数 (只给无头抓取/嗅探环境,
+     * 见 [WebView2Environment.get]),
      * 图片拦截/第三方 cookie 在 WebView2 侧无对应 API (如需拦截图片可经 WebResourceRequested
      * 返回空响应实现, 但那属于嗅探路径, 不在此默认设置)。 */
     private fun applyDefaultSettings() {
@@ -680,7 +710,10 @@ internal class WebView2Instance private constructor(
             sniffResources: Boolean = false,
             toolbarSpec: WebView2ToolbarSpec? = null,
         ): WebView2Instance? {
-            val environment = WebView2Environment.get() ?: return null
+            // 放行项只给无头抓取/嗅探实例 (Android 同为 BackstageWebView/嗅探 WebView 开,
+            // 可见的登录/校验窗口用默认设置); 两个用途各用一个环境, userDataFolder 不同
+            val insecure = !visible
+            val environment = WebView2Environment.get(insecure) ?: return null
             val deferred = CompletableDeferred<Pair<WinDef.HWND, Pointer>?>()
             WebView2Loop.post {
                 val hwnd = runCatching {
@@ -745,9 +778,13 @@ internal class WebView2Instance private constructor(
                     } else null
                     applyLayout()
                     applyDefaultSettings()
-                    // 解析页自动起播: 放行 AUTOPLAY 权限请求
-                    // (等价 Android mediaPlaybackRequiresUserGesture=false)
-                    bindAutoplayPermission()
+                    if (insecure) {
+                        // 解析页自动起播: 放行 AUTOPLAY 权限请求
+                        // (等价 Android mediaPlaybackRequiresUserGesture=false)
+                        bindAutoplayPermission()
+                        // 证书错误放行: 等价 Android SslErrorHandler.proceed()
+                        bindServerCertificateError()
+                    }
                     bindEvents(sniffResources)
                     WebView2Loop.hookWindow(hwnd) { message, wParam, lParam ->
                         val t = toolbar

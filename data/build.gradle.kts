@@ -332,6 +332,9 @@ fun KotlinDependencyHandler.sharedJvmAndroidDeps() {
     api(project(":modules:quickjs"))
     api(sharedLibs.findLibrary("okhttp").get())
     implementation(sharedLibs.findLibrary("coil3-network-okhttp").get())
+    // catvod 壳类 (com.github.catvod.net.OkHttp) 的 ArrayMap 契约面; 原先靠 coil3 传递引入,
+    // 上游 Coil 变更即编译断裂, 显式声明与 app 同版本
+    implementation(sharedLibs.findLibrary("androidx-collection").get())
     implementation(sharedLibs.findLibrary("nanohttpd-nanohttpd").get())
     implementation(sharedLibs.findLibrary("nanohttpd-websocket").get())
     // Mihon index.pb (index_v2) 仓库索引解析 (help.extension.repo.RepoHelper)

@@ -5,6 +5,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.tvbox.TvBoxConfig
+import io.legado.app.help.tvbox.TvBoxLocalProxy
 import io.legado.app.help.tvbox.TvBoxSite
 import io.legado.app.model.tvbox.TvBoxManager
 import io.legado.app.model.tvbox.TvBoxPluginSources
@@ -23,6 +24,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -52,9 +54,8 @@ class JvmTvBoxPlatform : TvBoxService {
     override val state: StateFlow<TvBoxUiState> = _state.asStateFlow()
 
     // 状态真源 (写路径分散在 IO / Default 线程, JVM 跨线程可见性靠 volatile;
-    // 地图的大小写更新是整体赋值, 不是原地改, 故无复合写竞争)
-    @Volatile
-    private var jarProbes: Map<String, TvBoxJarItem> = emptyMap()
+    // jarProbes 是并发写地图: 每个 probe 只改自己那条, 用 ConcurrentHashMap 免读-改-写丢更新)
+    private val jarProbes = ConcurrentHashMap<String, TvBoxJarItem>()
 
     /**
      * 当前库中实际存在的虚拟书源 URL 集合 (DAO flow 回填)。
@@ -71,10 +72,16 @@ class JvmTvBoxPlatform : TvBoxService {
     @Volatile
     private var loading = false
 
+    /** 配置来源列表的内存镜像 (磁盘真源 sources.json; 写路径全在 importLock 内)。 */
+    @Volatile
+    private var sourcesCache: List<String> = emptyList()
+
+    @Volatile
+    private var sourcesLoaded = false
+
     override fun init() {
         if (!inited.compareAndSet(false, true)) return
         TvBoxManager.init()
-        activeSource = readActiveSource()
         scope.launch {
             AppDbProviders.get().bookSourceDao.flowAll().collect { rows ->
                 existingRows = rows.asSequence()
@@ -84,11 +91,19 @@ class JvmTvBoxPlatform : TvBoxService {
                 emitState()
             }
         }
+        scope.launch {
+            // 启动重载是磁盘 IO + 端口 bind, 由 TvBoxManager 在后台执行; 完成后补一次状态刷新
+            TvBoxManager.awaitLoaded()
+            activeSource = readActiveSource()
+            importLock.withLock { ensureSourcesLoaded() }
+            emitState()
+        }
         emitState()
     }
 
     override suspend fun importConfig(url: String): Result<Unit> = withContext(IoDispatcher) {
         importLock.withLock {
+            ensureSourcesLoaded()
             val trimmed = url.trim()
             loading = true
             emitState()
@@ -102,7 +117,7 @@ class JvmTvBoxPlatform : TvBoxService {
                 addSource(trimmed)
                 activeSource = trimmed
                 lastError = null
-                jarProbes = emptyMap()
+                jarProbes.clear()
             }.onFailure { lastError = describeFailure(it, trimmed) }
             loading = false
             emitState()
@@ -119,6 +134,7 @@ class JvmTvBoxPlatform : TvBoxService {
 
     override suspend fun removeSource(url: String): Result<Unit> = withContext(IoDispatcher) {
         importLock.withLock {
+            ensureSourcesLoaded()
             writeSources(readSources().filterNot { it == url })
             if (url != activeSource) {
                 emitState()
@@ -131,14 +147,15 @@ class JvmTvBoxPlatform : TvBoxService {
                 TvBoxManager.clear()
             }.onFailure { lastError = describeFailure(it, url) }
             activeSource = null
-            jarProbes = emptyMap()
+            jarProbes.clear()
             emitState()
             result
         }
     }
 
     override suspend fun activateSource(url: String): Result<Unit> {
-        if (url == activeSource) return Result.success(Unit)
+        // 已激活但配置为空 (启动重载失败/配置被清) 时不能短路, 否则用户点该来源永远无动作
+        if (url == activeSource && TvBoxManager.config != null) return Result.success(Unit)
         return importConfig(url)
     }
 
@@ -159,8 +176,8 @@ class JvmTvBoxPlatform : TvBoxService {
         val config = TvBoxManager.config ?: return
         val jars = config.jars()
         if (jars.isEmpty()) return
-        jarProbes = jars.associateBy { it.spec }
-            .mapValues { (_, item) -> item.copy(status = TvBoxJarStatus.LOADING, message = null) }
+        jarProbes.clear()
+        jars.forEach { jarProbes[it.spec] = it.copy(status = TvBoxJarStatus.LOADING, message = null) }
         emitState()
         for (jar in jars) {
             val site = config.sites.firstOrNull {
@@ -170,8 +187,8 @@ class JvmTvBoxPlatform : TvBoxService {
                 val outcome = runCatching {
                     withContext(IoDispatcher) { TvBoxManager.spiderFor(site, config.spider) }
                 }
-                jarProbes = jarProbes.toMutableMap().apply {
-                    this[jar.spec] = TvBoxJarItem(
+                jarProbes.compute(jar.spec) { _, _ ->
+                    TvBoxJarItem(
                         spec = jar.spec,
                         status = if (outcome.isSuccess) TvBoxJarStatus.READY else TvBoxJarStatus.FAILED,
                         message = outcome.exceptionOrNull()?.let { rootMessage(it) },
@@ -216,28 +233,33 @@ class JvmTvBoxPlatform : TvBoxService {
      */
     private fun emitState() {
         val config = TvBoxManager.config
+        val sites = config?.sites.orEmpty().map { site ->
+            TvBoxSiteItem(
+                key = site.key,
+                name = site.name.ifBlank { site.key },
+                kind = kindOf(site),
+                api = site.api,
+                searchable = site.searchable,
+                filterable = site.filterable,
+                supported = hasVirtualRow(site),
+                added = TvBoxSourceMapper.siteUrlOf(site.key) in existingRows,
+                jar = site.effectiveJar(config?.spider.orEmpty())
+                    .takeIf { it.isNotBlank() && kindOf(site) == TvBoxSiteKind.JAR },
+            )
+        }
         _state.value = TvBoxUiState(
             loading = loading,
             sources = readSources().ifEmpty { listOfNotNull(activeSource) },
             activeSource = if (config?.sites?.isNotEmpty() == true) activeSource else null,
-            sites = config?.sites.orEmpty().map { site ->
-                TvBoxSiteItem(
-                    key = site.key,
-                    name = site.name.ifBlank { site.key },
-                    kind = kindOf(site),
-                    api = site.api,
-                    searchable = site.searchable,
-                    filterable = site.filterable,
-                    supported = hasVirtualRow(site),
-                    added = TvBoxSourceMapper.siteUrlOf(site.key) in existingRows,
-                    jar = site.effectiveJar(config!!.spider)
-                        .takeIf { it.isNotBlank() && kindOf(site) == TvBoxSiteKind.JAR },
-                )
-            },
+            sites = sites,
             jars = config?.jars()?.map(::probeOf) ?: emptyList(),
-            error = lastError,
+            error = stateError(),
         )
     }
+
+    /** 管理页错误位: 导入/装载错误优先, 其次是本地代理启动失败 (代理不起则 proxy/file 型站点全不可用)。 */
+    private fun stateError(): String? = lastError
+        ?: "TVBox 本地代理启动失败, 端口 9978-9998 均不可用".takeIf { TvBoxLocalProxy.startFailed }
 
     /** jar 清单 (配置中去重的 jar 规格串 + 挂靠站点数); JS/CMS 站点无 jar, 不进本表。 */
     private fun TvBoxConfig.jars(): List<TvBoxJarItem> {
@@ -259,18 +281,28 @@ class JvmTvBoxPlatform : TvBoxService {
 
     /** 取异常链最深层消息 (TVBox/网络异常多为包装层 nesting, 根因才有诊断价值)。 */
     private fun rootMessage(t: Throwable): String =
-        generateSequence(t) { it.cause }.last().message ?: t::class.simpleName.orEmpty()
+        generateSequence(t) { it.cause }.take(16).last().message ?: t::class.simpleName.orEmpty()
 
     // ===== 平台自持的配置来源列表 (filesDir/tvbox/sources.json; 脏 JSON 退化为空表) =====
 
     private fun addSource(url: String) {
-        val sources = readSources().toMutableList()
+        val sources = sourcesCache.toMutableList()
         sources.removeAll { it == url }
         sources.add(0, url)
         writeSources(sources)
     }
 
-    private fun readSources(): List<String> {
+    /** 装载来源列表到内存 (调用方须持 importLock): 避免与首次写入竞态。 */
+    private fun ensureSourcesLoaded() {
+        if (sourcesLoaded) return
+        sourcesCache = readSourcesFromDisk()
+        sourcesLoaded = true
+    }
+
+    /** 来源列表内存镜像读: 磁盘只在装载/写入时碰。 */
+    private fun readSources(): List<String> = sourcesCache
+
+    private fun readSourcesFromDisk(): List<String> {
         val file = sourcesFile()
         if (!file.isFile) return emptyList()
         return runCatching {
@@ -280,6 +312,7 @@ class JvmTvBoxPlatform : TvBoxService {
     }
 
     private fun writeSources(sources: List<String>) {
+        sourcesCache = sources
         runCatching {
             val file = sourcesFile()
             file.parentFile?.mkdirs()

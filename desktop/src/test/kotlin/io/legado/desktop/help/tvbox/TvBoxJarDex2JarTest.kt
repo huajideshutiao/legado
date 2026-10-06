@@ -6,6 +6,7 @@
 // fan.txt 型 "so 加密壳" 只验证转换层; 运行期解密依赖 Android native so, 桌面端不可用。
 package io.legado.desktop.help.tvbox
 
+import io.legado.desktop.TestNetwork
 import io.legado.desktop.help.dex.DexJarConverter
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -35,6 +36,7 @@ class TvBoxJarDex2JarTest {
         private fun sample(name: String): File {
             val target = File(cacheDir, "tvbox-$name")
             if (!target.isFile || target.length() == 0L) {
+                TestNetwork.requireSamples("TVBox 样本 $name")
                 http.newCall(Request.Builder().url(QIST_JAR_BASE + name).build()).execute().use { response ->
                     check(response.isSuccessful) { "HTTP ${response.code}: ${QIST_JAR_BASE}$name" }
                     target.writeBytes(response.body.bytes())

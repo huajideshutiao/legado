@@ -16,6 +16,7 @@ import io.legado.app.help.tvbox.TvBoxSite
 import io.legado.app.help.tvbox.TvBoxSniffer
 import io.legado.app.help.tvbox.TvBoxSniffResult
 import io.legado.app.help.tvbox.TvBoxVideoPredicate
+import io.legado.app.help.tvbox.isParsePageUrl
 import io.legado.app.help.tvbox.pickAggregate
 import io.legado.app.help.tvbox.pickJsonApi
 import io.legado.app.help.tvbox.pickWebSniff
@@ -25,9 +26,11 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.toJson
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.encodeToString
 import org.json.JSONArray
 import org.json.JSONObject
@@ -44,9 +47,6 @@ import org.json.JSONObject
  * 本地代理 9978 由 TvBoxManager 随配置装载自动起停 (Android/桌面同一链路, 见 help/tvbox/README.md)。
  */
 object TvBoxSourceDelegateImpl : VideoSourceDelegate {
-
-    /** 解析站/播放页的查询参数形态: `?url=http…` 或 `?v=http…` (允许 URL 编码后的 https%3A)。 */
-    private val PAGE_QUERY_PARAM = Regex("[?&](?:url|v)=https?")
 
     /** FongMi `Vod.isFolder`: `"folder".equals(vod_tag) || cate != null`。 */
     private fun JSONObject.isFolderVod(): Boolean =
@@ -68,6 +68,8 @@ object TvBoxSourceDelegateImpl : VideoSourceDelegate {
         } else {
             spider.searchContent(key, false, page.toString())
         }
+        // 生态约定: 无命中时 jar 返回空串/空白, 不是错误 (仅非空非法 JSON 才抛错)
+        if (json.isNullOrBlank()) return@withContext BookListPage(ArrayList(), false)
         val root = parseResult(json, site)
         bookListPageOf(bookSource, siteKey, root, page)
     }
@@ -242,12 +244,15 @@ object TvBoxSourceDelegateImpl : VideoSourceDelegate {
             // 可收合): 选集即选线路, 换线路=换章节。
             val flags = vod.optString("vod_play_from").split("$$$")
             val playLines = vod.optString("vod_play_url").split("$$$")
-            val lineFlags = flags.map { it.trim() }.filter { it.isNotEmpty() }
-            val multiLine = lineFlags.size > 1
+            // 按位配对 (FongMi 同语义): 同名线路在生态配置里常见 (如 qq$$$m3u8$$$qq),
+            // 按名字反查索引会把第二条并到第一条, 导致整线剧集丢失/首线重复输出。
+            val lines = flags.mapIndexedNotNull { index, flag ->
+                val name = flag.trim()
+                if (name.isEmpty()) null else name to playLines.getOrNull(index).orEmpty()
+            }
+            val multiLine = lines.size > 1
             val chapters = ArrayList<BookChapter>()
-            for (lineFlag in lineFlags) {
-                val lineIndex = flags.indexOfFirst { it.trim() == lineFlag }
-                val line = playLines.getOrNull(lineIndex).orEmpty()
+            for ((lineFlag, line) in lines) {
                 if (multiLine) {
                     chapters.add(
                         BookChapter(
@@ -268,7 +273,9 @@ object TvBoxSourceDelegateImpl : VideoSourceDelegate {
                     chapters.add(
                         BookChapter(
                             bookUrl = book.bookUrl,
-                            url = id,
+                            // 跨线路同 id 集靠线路前缀区分: BookChapterList.updateBook 按 url 去重,
+                            // 裸 id 会被静默吞掉 (取播时剥回裸 id)
+                            url = episodeUrlOf(lineFlag, id),
                             title = name.ifBlank { id },
                             index = chapters.size,
                             tag = lineFlag.ifBlank { null },
@@ -276,7 +283,7 @@ object TvBoxSourceDelegateImpl : VideoSourceDelegate {
                     )
                 }
             }
-            check(chapters.size > if (multiLine) lineFlags.size else 0) {
+            check(chapters.size > if (multiLine) lines.size else 0) {
                 "TVBox 站点无剧集数据: ${vod.optString("vod_name")}"
             }
             // 与规则链同构: updateBook 负责 reverse/index/totalChapterNum 等目录簿记。
@@ -307,7 +314,7 @@ object TvBoxSourceDelegateImpl : VideoSourceDelegate {
         val parses = TvBoxManager.config?.parses.orEmpty()
         // vipFlags 对齐 FongMi SiteApi.playerContent 的 VodConfig.get().getFlags()
         val vipFlags = TvBoxManager.config?.flags.orEmpty()
-        val p = parseResult(spider.playerContent(flag, bookChapter.url, vipFlags), site)
+        val p = parseResult(spider.playerContent(flag, episodeIdOf(flag, bookChapter.url), vipFlags), site)
         val playUrl = playUrlOf(p, site)
         // 空地址与"非直链"是两回事: 前者站点没给任何可取内容, 后者有页可嗅探/解析;
         // 混进嗅探链会把"站点没数据"误报成"无法嗅探", 排查时被带偏。
@@ -368,10 +375,20 @@ object TvBoxSourceDelegateImpl : VideoSourceDelegate {
         val videoPage = playUrlOf(p, site)
         val headers = headerOf(p)
         var lastError: Throwable? = null
+        val startedAt = System.currentTimeMillis()
+        // 总预算按剩余下传: 各段独立超时叠加最坏可达分钟级 (json 30s + 嗅探 30s×≤4 页 + 聚合)
+        fun remainingMs(): Long =
+            (TvBoxSniffer.TOTAL_TIMEOUT_MS - (System.currentTimeMillis() - startedAt)).coerceAtLeast(1L)
+
         // 本地 suspend 函数: 嗅探/解析 API 均为挂起调用, 逐个形态串行尝试
-        suspend fun attempt(block: suspend () -> TvBoxSniffResult): String? = try {
-            val result = block()
+        suspend fun attempt(block: suspend (Long) -> TvBoxSniffResult): String? = try {
+            val budget = remainingMs()
+            val result = withTimeout(budget) { block(budget) }
             contentOf(result.url, headers + result.headers)
+        } catch (e: TimeoutCancellationException) {
+            // 预算耗尽: 记为普通失败, 不让调用方把它当协程取消静默吞掉
+            lastError = e
+            null
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
@@ -387,8 +404,13 @@ object TvBoxSourceDelegateImpl : VideoSourceDelegate {
         // jxs 拼在前面; 没有适用 jxs 时退回直接加载播放页 (CMS 站的 .html 播放值常属此类)。
         val page = parses.pickWebSniff(flag)?.pageOf(videoPage) ?: videoPage
         check(page.startsWith("http")) { "播放页地址非 http(s), 无法嗅探: $page" }
-        attempt {
-            TvBoxSniffer.sniff(page, headers, videoChecker = videoPredicateOf(spider))
+        attempt { budget ->
+            TvBoxSniffer.sniff(
+                page,
+                headers,
+                timeoutMs = minOf(budget, TvBoxSniffer.DEFAULT_TIMEOUT_MS),
+                videoChecker = videoPredicateOf(spider),
+            )
         }?.let { return it }
         // type=2/3 走 jar 内聚合解析类; JS spider 站点无 jar, 此步如实失败
         parses.pickAggregate()?.let { agg ->
@@ -404,18 +426,29 @@ object TvBoxSourceDelegateImpl : VideoSourceDelegate {
                 )
             }?.let { return it }
         }
+        if (remainingMs() <= 1L) {
+            error(
+                "TVBox 解析链超过总预算 ${TvBoxSniffer.TOTAL_TIMEOUT_MS}ms " +
+                    "(json API/网页嗅探/聚合): ${site.name}",
+            )
+        }
         error(
             "TVBox 解析站全形态失败 (json API/网页嗅探/聚合): ${lastError?.message ?: "无适用解析配置"}",
         )
     }
 
-    /** 结果指向的播放地址: playUrl 作前缀 + url (FongMi Result.getRealUrl() 同语义);
-     *  url 为多清晰度数组串时取第一路地址 (形态对齐 FongMi bean/Video: ["名","址",…], 按清晰度降序)。 */
+    /**
+     * 结果指向的播放地址: playUrl 作前缀 + url (FongMi Result.getRealUrl() 同语义);
+     * url 为多清晰度数组串时取第一路地址 (形态对齐 FongMi bean/Video: ["名","址",…], 按清晰度降序),
+     * 且与 [qualitiesOf] 主路径同口径拼上解析前缀。 */
     private fun playUrlOf(root: JSONObject, site: TvBoxSite): String {
-        val url = root.optString("url").trim()
-        if (url.startsWith("[")) return firstQualityUrl(url)
-        if (url.startsWith("http")) return url
         val prefix = root.optString("playUrl").trim().ifBlank { site.playUrl }
+        val url = root.optString("url").trim()
+        if (url.startsWith("[")) {
+            val first = firstQualityUrl(url)
+            return if (first.startsWith("http") && prefix.isNotEmpty()) prefix + first else first
+        }
+        if (url.startsWith("http")) return url
         return if (prefix.isBlank()) url else prefix + url
     }
 
@@ -443,16 +476,23 @@ object TvBoxSourceDelegateImpl : VideoSourceDelegate {
     }
 
     /**
-     * 肉眼可辨的网页形态 (判据刻意保守, 只排除确定是页面的地址):
-     * .html 播放页, 以及解析站形态 `?url=http` / `?v=http` (允许编码后的 https%3A)。
+     * 肉眼可辨的网页形态: `.html/.htm/.shtml` 路径或带参直链之外的解析站形态
+     * (`?url=http` / `?v=http`), 判据见 [isParsePageUrl]。
      * jar 本地代理地址 (proxy?do=…) 是 jar 已处理好的媒体资源, 永不作为网页嗅探对象。
      */
     private fun isPlayPage(url: String): Boolean {
         if (url.startsWith(proxyUrlPrefix())) return false
-        if (PAGE_QUERY_PARAM.containsMatchIn(url)) return true
-        val path = runCatching { java.net.URI(url).path }.getOrNull().orEmpty().lowercase()
-        return path.endsWith(".html") || path.endsWith(".htm") || path.endsWith(".shtml")
+        return isParsePageUrl(url)
     }
+
+    /** 剧集 url 入目录前按线路名加前缀 (与 `tvbox-line://` 卷头同族): 跨线路同 id 集靠它不被去重。 */
+    private fun episodeUrlOf(lineFlag: String, id: String): String = "$EPISODE_SCHEME$lineFlag/$id"
+
+    /** 取播时剥回裸 id (FongMi `playerContent` 第二参即 vod_play_url 的原值)。 */
+    private fun episodeIdOf(lineFlag: String, url: String): String =
+        url.removePrefix("$EPISODE_SCHEME$lineFlag/")
+
+    private const val EPISODE_SCHEME = "tvbox-ep://"
 
     /** jar 本地代理地址前缀 (与 com.github.catvod.Proxy.getUrl 同构)。 */
     private fun proxyUrlPrefix(): String =

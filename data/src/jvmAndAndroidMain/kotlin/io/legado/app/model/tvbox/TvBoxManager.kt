@@ -15,10 +15,20 @@ import io.legado.app.help.tvbox.TvBoxSite
 import io.legado.app.help.tvbox.TvBoxPlatforms
 import io.legado.app.model.webBook.VideoSourceDelegates
 import io.legado.app.utils.GSON
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import java.io.File
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * TVBox 宿主编排: 配置拉取/持久化/解析, spider jar 装载入口, 虚拟书源行同步。
@@ -38,6 +48,16 @@ object TvBoxManager {
     /** JS spider 装载器 (站点 api 含 .js; 与 JAR 装载器互斥, 各自缓存)。 */
     private val jsLoader = TvBoxJsSpiderLoader()
 
+    /** 磁盘配置装载与写入的串行锁: setConfig/clear/setSiteAdded 与启动重载互斥。 */
+    private val configLock = Mutex()
+
+    private val scope = CoroutineScope(SupervisorJob() + IoDispatcher)
+
+    private val loadStarted = AtomicBoolean(false)
+
+    @Volatile
+    private var loadJob: Job? = null
+
     @Volatile
     var config: TvBoxConfig? = null
         private set
@@ -52,22 +72,36 @@ object TvBoxManager {
     @Volatile
     private var inited = false
 
+    /**
+     * 注册面 (同步): 平台上下文 + 取数委派挂载 —— 任何取数入口的前置, 必须同步完成。
+     * 磁盘读与本地服务 bind 属冷启动 IO 面, 交给后台协程; [awaitLoaded] 标记装载完成。
+     */
     fun init() {
         val platform = TvBoxPlatforms.get()
         Init.set(platform.appContext)
         inited = true
         registerDelegateRouter()
+        if (loadStarted.compareAndSet(false, true)) {
+            loadJob = scope.launch { configLock.withLock { loadPersistedConfig() } }
+        }
+    }
+
+    /** 等待启动重载完成 (取数入口用它避免读到未被装载的中间态; 未调用 init 时立即返回)。 */
+    suspend fun awaitLoaded() {
+        loadJob?.join()
+    }
+
+    private suspend fun loadPersistedConfig() {
         disabledSitesCache = readDisabledSites()
         val dir = tvBoxDir()
         val file = File(dir, "config.json")
-        if (file.isFile) {
-            // 先起本地服务再解析配置: 配置里的 file:///proxy:// 协议头在解析期就要换成
-            // 真实端口地址 (com.github.catvod.Proxy.getPort), 顺序颠倒会拿到 -1
-            TvBoxLocalProxy.start { proxyDispatch(it) }
-            val baseUrl = File(dir, "config_url.txt").takeIf { it.isFile }?.readText()?.trim()
-            runCatching { config = TvBoxConfig.parse(file.readText(), baseUrl) }
-                .onFailure { AppLog.put("TVBox 配置重载失败", it) }
-        }
+        if (!file.isFile) return
+        // 先起本地服务再解析配置: 配置里的 file:///proxy:// 协议头在解析期就要换成
+        // 真实端口地址 (com.github.catvod.Proxy.getPort), 顺序颠倒会拿到 -1
+        if (!TvBoxLocalProxy.start { proxyDispatch(it) }) return
+        val baseUrl = File(dir, "config_url.txt").takeIf { it.isFile }?.readText()?.trim()
+        runCatching { config = TvBoxConfig.parse(file.readText(), baseUrl) }
+            .onFailure { AppLog.put("TVBox 配置重载失败", it) }
     }
 
     /**
@@ -83,16 +117,20 @@ object TvBoxManager {
 
     /** 设置配置 (json 原文), 持久化并同步虚拟书源行; [baseUrl] 用于相对路径解析。 */
     suspend fun setConfig(json: String, baseUrl: String? = null): TvBoxConfig = withContext(IoDispatcher) {
-        val dir = tvBoxDir()
-        dir.mkdirs()
-        File(dir, "config.json").writeText(json)
-        File(dir, "config_url.txt").writeText(baseUrl.orEmpty())
-        // 与 init 同序: 先起本地服务, 配置解析期的 file:///proxy:// 才能拿到真实端口
-        TvBoxLocalProxy.start { proxyDispatch(it) }
-        val parsed = TvBoxConfig.parse(json, baseUrl)
-        config = parsed
-        TvBoxPluginSources.sync(parsed, disabledSitesCache)
-        parsed
+        configLock.withLock {
+            check(TvBoxLocalProxy.start { proxyDispatch(it) }) {
+                "TVBox 本地代理启动失败, 端口 9978-9998 均不可用, 配置无法导入"
+            }
+            // 解析成功后才落盘: 非法 JSON 覆写磁盘会让下次冷启动整体静默失效
+            val parsed = TvBoxConfig.parse(json, baseUrl)
+            val dir = tvBoxDir()
+            dir.mkdirs()
+            writeTextAtomically(File(dir, "config.json"), json)
+            writeTextAtomically(File(dir, "config_url.txt"), baseUrl.orEmpty())
+            config = parsed
+            TvBoxPluginSources.sync(parsed, disabledSitesCache)
+            parsed
+        }
     }
 
     /** 从 URL 拉取配置 (走壳 OkHttp, 信任全部证书, 与 jar 内请求环境一致)。 */
@@ -127,25 +165,28 @@ object TvBoxManager {
      */
     suspend fun setSiteAdded(siteKey: String, added: Boolean) = withContext(IoDispatcher) {
         check(inited) { "TvBoxManager.init 未调用" }
-        val disabled = disabledSitesCache.toMutableSet()
-        if (added) disabled.remove(siteKey) else disabled.add(siteKey)
-        writeDisabledSites(disabled)
-        disabledSitesCache = disabled.toSet()
-        val dao = AppDbProviders.get().bookSourceDao
-        val url = TvBoxSourceMapper.siteUrlOf(siteKey)
-        if (!added) {
-            dao.deleteIn(listOf(url))
-            return@withContext
-        }
-        val cfg = config ?: return@withContext
-        val site = cfg.sites.firstOrNull { it.key == siteKey } ?: return@withContext
-        if (dao.getBookSource(url) == null) {
-            dao.insert(TvBoxPluginSources.buildVirtualSource(site, cfg.spider))
+        configLock.withLock {
+            val disabled = disabledSitesCache.toMutableSet()
+            if (added) disabled.remove(siteKey) else disabled.add(siteKey)
+            writeDisabledSites(disabled)
+            disabledSitesCache = disabled.toSet()
+            val dao = AppDbProviders.get().bookSourceDao
+            val url = TvBoxSourceMapper.siteUrlOf(siteKey)
+            if (!added) {
+                dao.deleteIn(listOf(url))
+                return@withLock
+            }
+            val cfg = config ?: return@withLock
+            val site = cfg.sites.firstOrNull { it.key == siteKey } ?: return@withLock
+            if (dao.getBookSource(url) == null) {
+                dao.insert(TvBoxPluginSources.buildVirtualSource(site, cfg.spider))
+            }
         }
     }
 
     /** 解析站点并取 Spider (jar 缺失/站点非 csp_ 时抛出, 委派层收敛为取数错误)。 */
     suspend fun spiderFor(siteKey: String): Pair<TvBoxSite, Spider> = withContext(IoDispatcher) {
+        awaitLoaded()
         val cfg = config ?: error("TVBox 配置未加载")
         val site = siteOf(siteKey) ?: error("TVBox 站点不存在: $siteKey")
         spiderFor(site, cfg.spider)
@@ -184,17 +225,37 @@ object TvBoxManager {
             site to spider
         }
 
-    fun clear() {
-        TvBoxLocalProxy.stop()
-        TvBoxJarLoader.clear()
-        jsLoader.destroyAll()
-        config = null
-        // 关闭集合与配置同生命周期: 站点 key 只在所属配置里有意义, 换配置后旧 key 会误关
-        // 新配置的同名站点, 故随配置一并清 (磁盘 sites.json 同时删)
-        disabledSitesCache = emptySet()
-        runCatching { File(tvBoxDir(), "sites.json").delete() }
-        // 磁盘配置一并清除: 仅清内存会下次启动 init 重放 (removeSource 等调用方不再需要先 setConfig 兜底)
-        runCatching { File(tvBoxDir(), "config.json").delete() }
+    suspend fun clear() {
+        configLock.withLock {
+            TvBoxLocalProxy.stop()
+            TvBoxJarLoader.clear()
+            jsLoader.destroyAll()
+            config = null
+            // 关闭集合与配置同生命周期: 站点 key 只在所属配置里有意义, 换配置后旧 key 会误关
+            // 新配置的同名站点, 故随配置一并清 (磁盘 sites.json 同时删)
+            disabledSitesCache = emptySet()
+            runCatching { File(tvBoxDir(), "sites.json").delete() }
+            // 磁盘配置一并清除: 仅清内存会下次启动 init 重放 (removeSource 等调用方不再需要先 setConfig 兜底)
+            runCatching { File(tvBoxDir(), "config.json").delete() }
+        }
+    }
+
+    /** 配置落盘走临时文件 + 重命名: 半写文件会让下次冷启动解析失败而整体失效。 */
+    private fun writeTextAtomically(file: File, text: String) {
+        val tmp = File(file.parentFile, file.name + ".tmp")
+        try {
+            tmp.writeText(text)
+            Files.move(
+                tmp.toPath(),
+                file.toPath(),
+                StandardCopyOption.REPLACE_EXISTING,
+                StandardCopyOption.ATOMIC_MOVE,
+            )
+        } catch (e: AtomicMoveNotSupportedException) {
+            Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        } finally {
+            if (tmp.exists()) tmp.delete()
+        }
     }
 
     // ===== 站点"未添加"集合 (filesDir/tvbox/sites.json; 脏 JSON 退化为空集) =====

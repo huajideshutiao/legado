@@ -1,5 +1,6 @@
 package io.legado.app.help.tvbox
 
+import android.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -23,6 +24,13 @@ object TvBoxSniffer {
 
     /** 单次嗅探的默认超时; 超出即视为失败, 避免解析页无限挂住取播链路。 */
     const val DEFAULT_TIMEOUT_MS = 30_000L
+
+    /**
+     * 单次取播解析链 (type=1 json API → 网页嗅探下钻 → type=2/3 jar 聚合) 的总预算。
+     * 各段独立超时叠加最坏可达分钟级, 总预算把整链收敃到一个可等待的上界;
+     * 各段拿到的超时取剩余预算与 [DEFAULT_TIMEOUT_MS] 的较小值。
+     */
+    const val TOTAL_TIMEOUT_MS = 120_000L
 
     /** 内嵌播放器页的下钻深度上限; 到顶后不再往下套娃。 */
     const val MAX_DEPTH = 3
@@ -140,7 +148,8 @@ object TvBoxSniffer {
                 }
             }
         } catch (e: Exception) {
-            val root = generateSequence<Throwable>(e) { it.cause }.last()
+            // take(16) 防 cause 成环时无限展开 (a↔b 互指)
+            val root = generateSequence<Throwable>(e) { it.cause }.take(16).last()
             error("调用聚合解析类 $className 失败: ${root.message}")
         }
     }
@@ -295,25 +304,67 @@ public fun mixJxs(parses: List<TvBoxParse>): Map<String, Map<String, String>> {
     return map
 }
 
-/** Android Base64(URL_SAFE|NO_WRAP) 的 JVM 等价编码 (FongMi Util.base64 URL_SAFE)。 */
+/** Android Base64(URL_SAFE|NO_WRAP) 编码 (FongMi Util.base64 URL_SAFE)。
+ *  minSdk 24 下 java.util.Base64 要 API 26 才有, 故走 android.util.Base64。 */
 private fun base64Url(text: String): String =
-    java.util.Base64.getUrlEncoder().encodeToString(text.toByteArray(Charsets.UTF_8))
+    Base64.encodeToString(text.toByteArray(Charsets.UTF_8), Base64.URL_SAFE or Base64.NO_WRAP)
+
+/** 媒体扩展名表 (与 [SNIFFER] 同源): 路径段命中即视为媒体文件。 */
+public val MEDIA_EXTENSIONS: List<String> = listOf("m3u8", "mp4", "mkv", "flv", "mp3", "m4a", "aac", "mpd")
 
 /** 视频地址形态正则: FongMi `utils/Sniffer.SNIFFER`。 */
 private val SNIFFER = Regex(
-    "https?://[^\\s]{12,}\\.(?:m3u8|mp4|mkv|flv|mp3|m4a|aac|mpd)(?:\\?.*)?" +
+    "https?://[^\\s]{12,}\\.(?:${MEDIA_EXTENSIONS.joinToString("|")})(?:\\?.*)?" +
         "|https?://.*?video/tos[^\\s]*|rtmp:[^\\s]+",
 )
 
 /**
+ * URL 自身路径段是否为媒体扩展名 (忽略大小写, query/fragment 不参与判定)。
+ * 路径带媒体扩展名是直链的最强信号: query 里的 `?url=`/`?v=` 不得盖过它。
+ */
+public fun isMediaPath(url: String): Boolean {
+    val file = url.substringBefore('?').substringBefore('#').substringAfterLast('/').lowercase()
+    return MEDIA_EXTENSIONS.any { file.endsWith(".$it") }
+}
+
+/**
+ * 解析站/播放页形态判据: 路径段带媒体扩展名的地址恒为媒体直链 (带参 CDN 直链很常见),
+ * 其余形态下 `.html/.htm/.shtml` 路径或 `?url=http`/`?v=http` 参数视为播放页。
+ * 纯函数 (无平台依赖)。
+ */
+public fun isParsePageUrl(url: String): Boolean {
+    if (isMediaPath(url)) return false
+    val path = url.substringBefore('?').substringBefore('#').lowercase()
+    if (path.endsWith(".html") || path.endsWith(".htm") || path.endsWith(".shtml")) return true
+    return url.contains("url=http") || url.contains("v=http")
+}
+
+/**
  * 视频地址形态过滤 (FongMi `Sniffer.isVideoFormat()` 的纯 URL 面, 无 rule 配置部分):
- * 明显的非视频形态 (`url=http` / `v=http` / `.html`) 直接排除 —— 解析页的 URL 参数里
- * 往往带着真实播放页且常常是 .html, 不排除会把解析页自己误判成视频。
+ * 解析页形态 ([isParsePageUrl]) 直接排除 —— 解析页的 URL 参数里往往带着真实播放页
+ * 且常常是 .html, 不排除会把解析页自己误判成视频。
  * 纯函数 (无平台依赖), JVM 单测直接覆盖。
  */
 public fun isVideoUrl(url: String): Boolean {
-    if (url.contains("url=http") || url.contains("v=http") || url.contains(".html")) return false
+    if (isParsePageUrl(url)) return false
     return SNIFFER.containsMatchIn(url)
+}
+
+/** 广告/统计域名表 (无 rule 配置时的兜底; Android 拦截与桌面嗅探正则共用一份)。 */
+public val TVBOX_AD_HOSTS: List<String> = listOf(
+    "doubleclick.net",
+    "googlesyndication.com",
+    "google-analytics.com",
+    "googletagmanager.com",
+    "adnxs.com",
+    "scorecardresearch.com",
+    "advertising.com",
+)
+
+/** host 是否命中广告/统计域 (精确域或其子域)。 */
+public fun isTvBoxAdHost(host: String?): Boolean {
+    if (host.isNullOrBlank()) return false
+    return TVBOX_AD_HOSTS.any { host == it || host.endsWith(".$it") }
 }
 
 /** 视频地址判据: 默认 [TvBoxVideoPredicate.Sniffer] 走 URL 形态; spider 侧 `manualVideoCheck()` 可换实现。 */

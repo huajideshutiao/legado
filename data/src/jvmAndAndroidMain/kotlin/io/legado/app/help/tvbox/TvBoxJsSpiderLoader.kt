@@ -10,11 +10,16 @@ import com.script.quickjs.QuickJsEngine
 import com.script.quickjs.ScriptBindings
 import io.legado.app.constant.AppLog
 import io.legado.app.help.file.AppFilesDirs
+import io.legado.app.utils.NetworkUtils
 import org.json.JSONArray
 import org.json.JSONObject
 import okhttp3.Request
 import java.io.File
+import java.util.concurrent.Callable
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * TVBox JS spider 装载与运行时 (type=1/type=3 且 api 指向 .js 的站点)。
@@ -28,15 +33,18 @@ import java.util.concurrent.ConcurrentHashMap
  * 3. require(站点 api) 取 spider 模块, 按 `__jsEvalReturn` / `default` 两步解析导出面;
  * 4. init(cfg) 回调 (cfg = {stype, skey, ext}), 之后按 Spider 四路签名转发调用。
  *
- * 线程模型: QuickJS ctx 线程独占。当前无站点级串行化, 调用方若可能跨线程并发
- * 访问同一站点 ctx, 需自行保证不并发 (已知缺口)。
+ * 线程模型: QuickJS ctx 线程独占, 由 [TvBoxJsSpider] 的站点级单线程执行器保证 ——
+ * 同站点的并发调用 (取播与嗅探) 在 JS 侧串行化, 调用方无需自行避并发。
  *
  * 平台面: 目录走 [AppFilesDirs] (Android=filesDir/cacheDir, 桌面=~/.legado 等),
- * 引导脚本经 [TvBoxPlatforms] 注入 (Android=assets, 桌面=classpath 资源)。
+ * 引导脚本经 [TvBoxHostAssetProviders] 注入 (composeResources 单一数据源, 两端无平台副本)。
  */
 class TvBoxJsSpiderLoader {
 
     private val spiders = ConcurrentHashMap<String, TvBoxJsSpider>()
+
+    /** 按站点 key 的实例化锁 (与 TvBoxJarLoader 同款): 不用 key.intern() (任意 key 驻留常量池)。 */
+    private val locks = ConcurrentHashMap<String, Any>()
 
     /** 仅预载 (下载 spider + 依赖模块), 不实例化回调。 */
     /**
@@ -47,7 +55,8 @@ class TvBoxJsSpiderLoader {
         Init.set(TvBoxPlatforms.get().appContext)
         val cacheKey = site.key + "@" + Crypto.md5(site.api + "|" + baseUrl)
         spiders[cacheKey]?.let { return it }
-        synchronized(cacheKey.intern()) {
+        val lock = locks.computeIfAbsent(cacheKey) { Any() }
+        synchronized(lock) {
             spiders[cacheKey]?.let { return it }
             val spider = TvBoxJsSpider(site, baseUrl)
             spider.init(TvBoxPlatforms.get().appContext, site.ext)
@@ -59,6 +68,7 @@ class TvBoxJsSpiderLoader {
     fun destroyAll() {
         spiders.values.forEach { runCatching { it.destroy() } }
         spiders.clear()
+        locks.clear()
     }
 
     companion object {
@@ -84,17 +94,33 @@ class TvBoxJsSpiderLoader {
          * 不随包分发 (理由见 [TvBoxJsSpider.fetchSource] KDoc)。首次用到时按
          * `REMOTE_ASSET_BASE + <相对路径>` 下载并落缓存目录。
          *
-         * 来源依据 (实测可达, FongMi/TV `fongmi` 分支 quickjs 模块):
+         * 来源依据 (实测可达, FongMi/TV `fongmi` 分支 quickjs 模块, 已钉到 [REMOTE_ASSET_COMMIT] 提交):
          * `quickjs/src/main/assets/js/lib/` 下的 cat.js / cheerio.min.js / crypto-js.js /
          * gbk.js / http.js / similarity.js / spider.js 与宿主 `assets://js/lib/` 下同名同路径。
          *
          * 直连 GitHub 在国内网络常不可达, 故按序尝试 [assetUrlsOf] 里的镜像
-         * (ghproxy / jsDelivr, 实测与源站同字节); 全部失败才如实报错。
+         * (ghproxy / jsDelivr, 实测与源站同字节); 内容 md5 不符即换下一个镜像, 全部失败才如实报错。
          *
          * 可见性为 internal (非 private): 同文件的 [TvBoxJsSpider] 取源时也要拼 URL。
          */
+        internal const val REMOTE_ASSET_COMMIT = "c616c0aa3613e87529791587a9f71b78c278c991"
+
         internal const val REMOTE_ASSET_REPO =
-            "FongMi/TV/fongmi/quickjs/src/main/assets/"
+            "FongMi/TV/$REMOTE_ASSET_COMMIT/quickjs/src/main/assets/"
+
+        /**
+         * 可从镜像下载的依赖模块清单 (相对 assets 根 → 钉住的提交下的内容 md5)。
+         * 表外路径一律拒绝下载: 无校验基准的远程内容不得进 eval。
+         */
+        internal val ASSET_MD5: Map<String, String> = mapOf(
+            "js/lib/cat.js" to "ce5c0ecf92f7507c3b65c1ecbc167f95",
+            "js/lib/cheerio.min.js" to "f4f72962fb5d6e15d4e32b39c02056f0",
+            "js/lib/crypto-js.js" to "0290d675a485e70ff76879e17ecec46a",
+            "js/lib/gbk.js" to "d5a05799eeeceb81cadd77e80f2807c8",
+            "js/lib/http.js" to "b129d2ae9828694104b7b575588903e5",
+            "js/lib/similarity.js" to "e5f3fe2ba5423aa0598508e2f6968dd4",
+            "js/lib/spider.js" to "36ac57a8f42dea81bb3428b850e3d2da",
+        )
 
         /**
          * jsDelivr gh 路径前缀 (与 [REMOTE_ASSET_REPO] 同源, 路径形态不同)。
@@ -126,112 +152,158 @@ class TvBoxJsSpider internal constructor(
     private val baseUrl: String,
 ) : Spider() {
 
-    private val scope: QuickJsContext
-    private val bridge: TvBoxJsBridge
-    private val spiderExpr: String
+    /**
+     * 站点级单线程执行器: QuickJS ctx 线程独占 (生态契约 = 单站点单线程),
+     * 同站点的取播与嗅探并发时不会再同时进 native ctx (SIGSEGV / JS 状态腐坏)。
+     */
+    private val jsThreadRef = AtomicReference<Thread>()
+    private val jsExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "tvbox-js-${site.key}").also {
+            it.isDaemon = true
+            jsThreadRef.set(it)
+        }
+    }
+
+    private lateinit var scope: QuickJsContext
+    private lateinit var bridge: TvBoxJsBridge
+    private lateinit var spiderExpr: String
 
     /** 导出面是否为 cat 系 (`__jsEvalReturn`): 决定 [init] 的入参形态, 见 [init]。 */
     private var isCat = false
-    private val methods = HashMap<String, Boolean>()
+    private val methods = ConcurrentHashMap<String, Boolean>()
 
     init {
-        val fetcher = TvBoxJsSourceFetcher { name, base -> fetchSource(name, base) }
-        bridge = TvBoxJsBridge(fetcher, site.key, site.type)
-        val bindings = ScriptBindings().apply {
-            dangerousApi = true
-            put(HOST_KEY_HOST, bridge)
-            put("__hostBaseUrl", baseUrl)
-            put("__hostSiteKey", site.key)
-            put("__hostSiteType", site.type)
+        runSerial {
+            val fetcher = TvBoxJsSourceFetcher { name, base -> fetchSource(name, base) }
+            bridge = TvBoxJsBridge(fetcher, site.key, site.type)
+            val bindings = ScriptBindings().apply {
+                dangerousApi = true
+                put(HOST_KEY_HOST, bridge)
+                put("__hostBaseUrl", baseUrl)
+                put("__hostSiteKey", site.key)
+                put("__hostSiteType", site.type)
+            }
+            scope = QuickJsEngine.getRuntimeScope(bindings)
+            try {
+                evaluate(readHostAsset(TvBoxJsSpiderLoader.MODULE_LOADER_JS))
+                evaluate(readHostAsset(TvBoxJsSpiderLoader.HOST_API_JS))
+                evaluate(readHostAsset(TvBoxJsSpiderLoader.DRPY_PARSER_JS))
+                evaluate("__M.setHost(__hostBridge__); __M.setBase(__hostBaseUrl);")
+                spiderExpr = resolveSpiderExpr(site.api)
+            } catch (t: Throwable) {
+                runCatching { scope.close() }
+                throw t
+            }
         }
-        scope = QuickJsEngine.getRuntimeScope(bindings)
-        try {
-            evaluate(readHostAsset(TvBoxJsSpiderLoader.MODULE_LOADER_JS))
-            evaluate(readHostAsset(TvBoxJsSpiderLoader.HOST_API_JS))
-            evaluate(readHostAsset(TvBoxJsSpiderLoader.DRPY_PARSER_JS))
-            evaluate("__M.setHost(__hostBridge__); __M.setBase(__hostBaseUrl);")
-            spiderExpr = resolveSpiderExpr(site.api)
-        } catch (t: Throwable) {
-            runCatching { scope.close() }
-            throw t
+    }
+
+    /**
+     * 串行执行 JS 块: 已在 JS 线程时直接跑 (重入, 不会自锁), 否则提交并等待结果。
+     * 异常拆壳原样抛出, 调用方的 runCatching 语义不变。
+     */
+    private fun <T> runSerial(block: () -> T): T {
+        if (Thread.currentThread() === jsThreadRef.get()) return block()
+        val future = jsExecutor.submit(Callable { block() })
+        return try {
+            future.get()
+        } catch (e: ExecutionException) {
+            throw e.cause ?: e
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw e
         }
     }
 
     override fun init(context: android.content.Context?, extend: String?) {
-        // 入参形态按导出面分流 (FongMi quickjs Spider.getExt 同语义):
-        // - cat 系 (__jsEvalReturn) 收 {stype,skey,ext} 包装对象;
-        // - drpy2 系收 ext 原文 —— 它把入参当规则体 (`rule = ext`), 收包装对象会得到
-        //   空 host 而取不到任何数据 (drpy2 站点实测卡在无种子)。
-        if (!isCat) {
-            callRaw("init", if (!extend.isNullOrEmpty() && isJsonObject(extend)) JSONObject(extend) else extend)
-            return
+        runSerial {
+            // 入参形态按导出面分流 (FongMi quickjs Spider.getExt 同语义):
+            // - cat 系 (__jsEvalReturn) 收 {stype,skey,ext} 包装对象;
+            // - drpy2 系收 ext 原文 —— 它把入参当规则体 (`rule = ext`), 收包装对象会得到
+            //   空 host 而取不到任何数据 (drpy2 站点实测卡在无种子)。
+            val rawExt: Any? =
+                if (!extend.isNullOrEmpty() && isJsonObject(extend)) JSONObject(extend) else extend
+            if (!isCat) {
+                callRaw("init", rawExt)
+            } else {
+                val cfg = JSONObject()
+                    .put("stype", site.type)
+                    .put("skey", site.key)
+                cfg.put("ext", rawExt)
+                callRaw("init", cfg)
+            }
+            Unit
         }
-        val cfg = JSONObject()
-            .put("stype", site.type)
-            .put("skey", site.key)
-        cfg.put("ext", if (!extend.isNullOrEmpty() && isJsonObject(extend)) JSONObject(extend) else extend)
-        callRaw("init", cfg)
     }
 
-    override fun homeContent(filter: Boolean): String = call("home", filter) ?: ""
+    override fun homeContent(filter: Boolean): String = runSerial { call("home", filter) ?: "" }
 
-    override fun homeVideoContent(): String = call("homeVod") ?: ""
+    override fun homeVideoContent(): String = runSerial { call("homeVod") ?: "" }
 
     override fun categoryContent(
         tid: String?,
         pg: String?,
         filter: Boolean,
         extend: HashMap<String, String>?,
-    ): String = call("category", tid, pg, filter, JSONObject(extend ?: HashMap<String, String>())) ?: ""
+    ): String = runSerial {
+        call("category", tid, pg, filter, JSONObject(extend ?: HashMap<String, String>())) ?: ""
+    }
 
-    override fun detailContent(ids: List<String>?): String =
+    override fun detailContent(ids: List<String>?): String = runSerial {
         call("detail", ids.orEmpty().firstOrNull().orEmpty()) ?: ""
+    }
 
-    override fun searchContent(key: String?, quick: Boolean): String = call("search", key, quick) ?: ""
+    override fun searchContent(key: String?, quick: Boolean): String =
+        runSerial { call("search", key, quick) ?: "" }
 
     override fun searchContent(key: String?, quick: Boolean, pg: String?): String =
-        call("search", key, quick, pg) ?: ""
+        runSerial { call("search", key, quick, pg) ?: "" }
 
     override fun playerContent(flag: String?, id: String?, vipFlags: List<String>?): String =
-        call("play", flag, id, JSONArray(vipFlags ?: emptyList<String>())) ?: ""
+        runSerial { call("play", flag, id, JSONArray(vipFlags ?: emptyList<String>())) ?: "" }
 
-    override fun liveContent(url: String?): String = call("live", url) ?: ""
+    override fun liveContent(url: String?): String = runSerial { call("live", url) ?: "" }
 
-    override fun manualVideoCheck(): Boolean = callRaw("sniffer").isTrue()
+    override fun manualVideoCheck(): Boolean = runSerial { callRaw("sniffer").isTrue() }
 
-    override fun isVideoFormat(url: String?): Boolean = callRaw("isVideo", url).isTrue()
+    override fun isVideoFormat(url: String?): Boolean = runSerial { callRaw("isVideo", url).isTrue() }
 
-    override fun action(action: String?): String? = call("action", action)
+    override fun action(action: String?): String? = runSerial { call("action", action) }
 
     /**
      * proxy 面 (FongMi proxy1): JS 返回 [code, type, content, headers?, base64?]。
      * 本轮只落宿主侧解析, 返回 [code, type, stream, headers] 供代理/播放链路使用。
      */
-    override fun proxy(params: Map<String, String>?): Array<Any?>? {
-        val raw = callRaw("proxy", JSONObject(params as Map<*, *>)) ?: return null
-        val array = runCatching { JSONArray(raw.toString()) }.getOrNull() ?: return null
-        val code = array.optInt(0, 200)
-        val type = array.optString(1, "application/octet-stream")
-        val content = array.opt(2)?.toString().orEmpty()
-        val base64 = array.length() > 4 && array.optInt(4) == 1
-        val bytes = if (base64) {
-            Base64.decode(content, Base64.DEFAULT)
+    override fun proxy(params: Map<String, String>?): Array<Any?>? = runSerial {
+        val args: Map<*, *> = params ?: emptyMap<String, String>()
+        val raw = callRaw("proxy", JSONObject(args))
+        val array = raw?.let { runCatching { JSONArray(it.toString()) }.getOrNull() }
+        if (array == null) {
+            null
         } else {
-            content.toByteArray()
-        }
-        val headers = if (array.length() > 3) {
-            runCatching { JSONObject(array.optString(3)) }.getOrNull()?.let { obj ->
-                LinkedHashMap<String, String>().apply {
-                    for (key in obj.keys()) put(key, obj.opt(key)?.toString().orEmpty())
-                }
+            val code = array.optInt(0, 200)
+            val type = array.optString(1, "application/octet-stream")
+            val content = array.opt(2)?.toString().orEmpty()
+            val base64 = array.length() > 4 && array.optInt(4) == 1
+            val bytes = if (base64) {
+                Base64.decode(content, Base64.DEFAULT)
+            } else {
+                content.toByteArray()
             }
-        } else null
-        return arrayOf<Any?>(code, type, java.io.ByteArrayInputStream(bytes), headers)
+            val headers = if (array.length() > 3) {
+                runCatching { JSONObject(array.optString(3)) }.getOrNull()?.let { obj ->
+                    LinkedHashMap<String, String>().apply {
+                        for (key in obj.keys()) put(key, obj.opt(key)?.toString().orEmpty())
+                    }
+                }
+            } else null
+            arrayOf<Any?>(code, type, java.io.ByteArrayInputStream(bytes), headers)
+        }
     }
 
     override fun destroy() {
-        runCatching { call("destroy") }
-        runCatching { scope.close() }
+        runCatching { runSerial { call("destroy") } }
+        runCatching { runSerial { scope.close() } }
+        jsExecutor.shutdown()
     }
 
     // ============ JS 调用桥 ============
@@ -329,7 +401,8 @@ class TvBoxJsSpider internal constructor(
     /**
      * 模块取源 (阻塞):
      * - `assets://<path>` → **宿主自带引导资源** (FongMi/TV 语义: `assets://js/lib/x.js`
-     *   即随包 `js/lib/x.js`)。宿主未随包时按需下载, 见 [fetchAsset];
+     *   即随包 `js/lib/x.js`; 本仓库宿主资源唯一落点为 composeResources
+     *   `files/tvbox/`, 经 [TvBoxHostAssetProviders] 读)。宿主未随包时按需下载, 见 [fetchAsset];
      * - http(s) → 壳 OkHttp (信任全部证书, 与 jar 内请求环境一致), 落缓存目录 tvbox/js;
      * - lib/x.js (裸路径) → 相对配置基准解析 (FongMi Module/UriUtil 同语义);
      * - file:// 或裸路径 → 本地文件。
@@ -380,17 +453,26 @@ class TvBoxJsSpider internal constructor(
     private fun fetchAsset(path: String): String {
         if (path.isBlank()) return ""
         runCatching { readHostAsset(path) }.getOrNull()?.let { return it }
+        val expectedMd5 = TvBoxJsSpiderLoader.ASSET_MD5[path]
+        if (expectedMd5 == null) {
+            AppLog.put("TVBox JS 依赖模块不在信任清单内, 拒绝远程下载: $path")
+            return ""
+        }
         var lastError: String? = null
         for (url in assetUrlsOf(path)) {
             val cached = cachedFile(url)
-            cachedJs(cached)?.let { return it }
+            cachedVerifiedJs(cached, expectedMd5)?.let { return it }
             val body = runCatching {
                 OkHttp.client().newCall(Request.Builder().url(url).build()).execute().use { resp ->
                     if (!resp.isSuccessful) "" else resp.body.string()
                 }
             }.onFailure { lastError = "${it::class.simpleName}: ${it.message} ($url)" }
                 .getOrDefault("")
-            if (!looksLikeJs(body)) continue
+            // 镜像内容必须与钉住提交下的 md5 一致: 不符即换下一个镜像 (防镜像篡改)
+            if (Crypto.md5(body) != expectedMd5) {
+                lastError = "md5 不符 ($url)"
+                continue
+            }
             runCatching {
                 cached.parentFile?.mkdirs()
                 cached.writeText(body)
@@ -398,7 +480,7 @@ class TvBoxJsSpider internal constructor(
             return body
         }
         AppLog.put(
-            "TVBox JS 依赖模块获取失败 (宿主资源无且全部镜像不可用): $path" +
+            "TVBox JS 依赖模块获取失败 (宿主资源无且全部镜像不可用/校验不过): $path" +
                 (lastError?.let { "\n$it" } ?: "")
         )
         return ""
@@ -416,17 +498,18 @@ class TvBoxJsSpider internal constructor(
         "https://cdn.jsdelivr.net/gh/${TvBoxJsSpiderLoader.REMOTE_ASSET_JSDELIVR_REPO}$path",
     )
 
-    /**
-     * 缓存命中取源: 命中且内容仍像 JS 才用, 否则当未命中重下。
-     *
-     * 外部约束 (勿改): 旧版本把 404 正文 ("404: Not Found", 14 字节) 当 JS 缓存进
-     * `cacheDir/tvbox/js`, 升级后仅改下载判定不足以自愈 —— 毒缓存会一直命中。
-     * 故读取侧也要过同一形态判据, 命中脏文件即丢弃重下。
-     */
+    /** 缓存命中取源: 命中且内容仍像 JS 才用, 否则当未命中重下 (错误页/半写内容不得进 eval)。 */
     private fun cachedJs(file: File): String? {
         if (!file.isFile || file.length() <= 0) return null
         val text = runCatching { file.readText() }.getOrNull() ?: return null
         return text.takeIf { looksLikeJs(it) }
+    }
+
+    /** 信任清单内模块的缓存命中: 内容 md5 必须与钉住提交下的记录一致, 不符视为未命中。 */
+    private fun cachedVerifiedJs(file: File, expectedMd5: String): String? {
+        if (!file.isFile || file.length() <= 0) return null
+        if (Crypto.md5(file) != expectedMd5) return null
+        return runCatching { file.readText() }.getOrNull()
     }
 
     private fun cachedFile(url: String): File =
@@ -449,7 +532,7 @@ class TvBoxJsSpider internal constructor(
         if (raw.startsWith("http")) return raw
         if (raw.startsWith("file://")) return raw
         if (base.isBlank()) return raw
-        return runCatching { java.net.URI(base).resolve(raw).toString() }.getOrDefault(raw)
+        return NetworkUtils.getAbsoluteURL(base, raw)
     }
 
     companion object {
@@ -461,9 +544,13 @@ class TvBoxJsSpider internal constructor(
     }
 }
 
-/** 读宿主自带引导脚本 (Android=assets, 桌面=classpath 资源); 缺失时抛错, 避免静默空运行时。 */
+/**
+ * 读宿主自带引导脚本 (composeResources 单一数据源, 见 [TvBoxHostAssetProviders]);
+ * 缺失时抛错, 避免静默空运行时。
+ */
 internal fun readHostAsset(assetPath: String): String {
-    val text = TvBoxPlatforms.get().readHostAsset(assetPath)
+    val provider = TvBoxHostAssetProviders.get()
+    val text = runCatching { provider.read(assetPath) }.getOrNull()
     check(!text.isNullOrBlank()) { "TVBox JS 引导脚本缺失: $assetPath" }
     return text
 }

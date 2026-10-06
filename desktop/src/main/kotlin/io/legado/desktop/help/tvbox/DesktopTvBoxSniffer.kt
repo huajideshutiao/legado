@@ -2,12 +2,15 @@ package io.legado.desktop.help.tvbox
 
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.UserAgentProviders
+import io.legado.app.help.tvbox.MEDIA_EXTENSIONS
+import io.legado.app.help.tvbox.TVBOX_AD_HOSTS
 import io.legado.app.help.tvbox.TvBoxSniffPlatform
 import io.legado.app.help.tvbox.TvBoxSniffResult
 import io.legado.app.help.tvbox.TvBoxSniffer
 import io.legado.app.help.tvbox.TvBoxVideoPredicate
 import io.legado.desktop.help.webview.DesktopWebViewEngine
 import io.legado.desktop.help.webview.DesktopWebViewEngines
+import io.legado.desktop.help.webview.SniffTimeoutException
 import io.legado.desktop.help.webview.WebViewFetchResult
 import io.legado.desktop.help.webview.WebViewFetchRequest
 import kotlinx.coroutines.TimeoutCancellationException
@@ -95,12 +98,9 @@ object DesktopTvBoxSniffer : TvBoxSniffPlatform {
             }
         } catch (e: TimeoutCancellationException) {
             throw NoStackTraceException("TVBox 解析页嗅探超时: $page")
-        } catch (e: NoStackTraceException) {
-            // WebKitGTK/WKWebView 资源嗅探的引擎内部上限先到期时的超时文案归一
-            if (e.message?.contains("超时") == true) {
-                throw NoStackTraceException("TVBox 解析页嗅探超时: $page")
-            }
-            throw e
+        } catch (e: SniffTimeoutException) {
+            // 引擎内部上限 (AppConst.timeLimit) 先到期: 按类型归一, 不做文案匹配
+            throw NoStackTraceException("TVBox 解析页嗅探超时: $page")
         }
     }
 
@@ -115,16 +115,28 @@ object DesktopTvBoxSniffer : TvBoxSniffPlatform {
 
     /**
      * 单轮嗅探的子资源过滤正则 (引擎按全串匹配消费): 视频形态 (isVideoUrl 同源) 或
-     * 内嵌播放器页 (FongMi CustomWebView.PLAYER = player.*http), 解析页自身排除 ——
-     * WebKitGTK resource-load-started 与 WebView2 WebResourceRequested 均含主框架资源,
-     * 不排除会把解析页自己当命中 (Android INNER_PLAYER 分支的 resourceUrl != page 同义)。
+     * 内嵌播放器页 (FongMi CustomWebView.PLAYER = player.*http), 解析页自身与
+     * 广告/统计域排除 —— WebKitGTK resource-load-started 与 WebView2 WebResourceRequested
+     * 均含主框架资源, 不排除会把解析页自己当命中 (Android INNER_PLAYER 分支的 resourceUrl != page 同义);
+     * 广告域在预筛层就排除, 与 Android `isAd` 先于视频判据同序 (否则前贴广告视频会被取播)。
+     *
+     * 媒体扩展名在路径段内 (不在 query) 的地址直接放行: 带参 CDN 直链不得被解析站规则误杀。
      */
     private fun sniffSourceRegex(page: String): String {
         val pageGuard = "(?!" + Regex.escape(page) + ")"
+        val adGuard = "(?!" + adHostPattern() + ")"
+        val mediaExt = MEDIA_EXTENSIONS.joinToString("|")
+        val mediaPath = """https?://[^?\s]{12,}\.(?:$mediaExt)(?:\?[^\s]*)?"""
         val video = """(?!.*url=http)(?!.*v=http)(?!.*\.html)""" +
-            """(?:https?://[^\s]{12,}\.(?:m3u8|mp4|mkv|flv|mp3|m4a|aac|mpd).*|https?://.*video/tos.*)"""
+            """(?:https?://[^\s]{12,}\.(?:$mediaExt).*|https?://.*video/tos.*)"""
         val inner = """.*player.*https?://.*"""
-        return "$pageGuard(?:$video|$inner)"
+        return "$pageGuard$adGuard(?:$mediaPath|$video|$inner)"
+    }
+
+    /** 广告/统计域 URL 的负向先行断言 (域名表与 Android `isTvBoxAdHost` 共用一份)。 */
+    private fun adHostPattern(): String {
+        val hosts = TVBOX_AD_HOSTS.joinToString("|") { Regex.escape(it) }
+        return """https?://(?:[^/?#]*\.)?(?:$hosts)(?::\d+)?(?:[/?#]|$)"""
     }
 
     /** 内嵌播放器页判据: FongMi `CustomWebView.PLAYER` = `player.*https?://`。 */

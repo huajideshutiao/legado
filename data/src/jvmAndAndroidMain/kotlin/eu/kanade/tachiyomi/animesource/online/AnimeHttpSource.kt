@@ -18,7 +18,10 @@ import eu.kanade.tachiyomi.animesource.model.ThumbnailInfo
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.NetworkHelper
+import eu.kanade.tachiyomi.network.await
 import eu.kanade.tachiyomi.network.awaitSuccess
+import io.legado.app.help.coroutine.IoDispatcher
+import kotlinx.coroutines.withContext
 import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -27,6 +30,9 @@ import uy.kohesive.injekt.injectLazy
 import java.net.URI
 import java.net.URISyntaxException
 import java.security.MessageDigest
+
+/** 瓦片解码长边上限 (与 ui 层 decodeBytesSampled 的 2048 默认口径一致)。 */
+private const val IMAGE_TILE_MAX_DIM = 2048
 
 // lib 14(request/parse 辅助方法)与 lib 16/17(Hoster 系、seasonList 系)suspend 契约并集;
 // 上游 master 的 rx fetch*/awaitSingle 桥改为 suspend 直连 request/parse (与漫画侧 HttpSource 同构)
@@ -113,9 +119,29 @@ abstract class AnimeHttpSource : AnimeCatalogueSource {
     open suspend fun getVideoThumbnails(video: Video): ThumbnailInfo? = null
 
     open suspend fun getImageTile(url: String): Bitmap? {
-        return client.newCall(GET(url, headers)).execute().body.byteStream().use {
-            BitmapFactory.decodeStream(it)
+        // 响应体读取与解码都是阻塞 IO: 一律在 IO 派发器上做, 调用线程不阻塞
+        val bytes = client.newCall(GET(url, headers)).await().use { response ->
+            withContext(IoDispatcher) { response.body.byteStream().use { it.readBytes() } }
         }
+        return withContext(IoDispatcher) { decodeImageTile(bytes) }
+    }
+
+    /** 两段解码: 先只读尺寸算 inSampleSize, 再按采样率解出 (瓦片无需整幅分辨率)。 */
+    private fun decodeImageTile(bytes: ByteArray): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = tileSampleSize(bounds.outWidth, bounds.outHeight)
+        }
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+    }
+
+    private fun tileSampleSize(width: Int, height: Int): Int {
+        var sample = 1
+        while (maxOf(width, height) / sample > IMAGE_TILE_MAX_DIM) {
+            sample *= 2
+        }
+        return sample
     }
 
     // ---- lib 14 弃用语义的 suspend 主方法 (扩展直接 override 的入口) ----

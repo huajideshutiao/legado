@@ -8,6 +8,7 @@ import io.legado.app.utils.browseUrl
 import io.legado.desktop.help.webview.DesktopWebViewEngineBase
 import io.legado.desktop.help.webview.DesktopWebViewWindowHandleBase
 import io.legado.desktop.help.webview.NavigationState
+import io.legado.desktop.help.webview.SniffTimeoutException
 import io.legado.desktop.help.webview.ToolbarAction
 import io.legado.desktop.help.webview.WebViewFetchRequest
 import io.legado.desktop.help.webview.WebViewFetchResult
@@ -156,7 +157,7 @@ internal object LinuxWebViewEngine : DesktopWebViewEngineBase() {
             session.start(request)
         }
         val (resultUrl, headers) = withTimeoutOrNull(AppConst.timeLimit) { hit.await() }
-            ?: throw NoStackTraceException("资源嗅探超时")
+            ?: throw SniffTimeoutException("资源嗅探超时")
         return snifferResult(request, resultUrl, playHeaders(headers, request.url))
     }
 

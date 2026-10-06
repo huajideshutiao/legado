@@ -64,12 +64,32 @@ data class TvBoxSite(
                 ext = extStringOf(obj.opt("ext")),
                 jar = obj.optString("jar").trim(),
                 playUrl = obj.optString("playUrl").trim(),
-                searchable = obj.optBoolean("searchable", true),
-                filterable = obj.optBoolean("filterable", true),
-                quickSearch = obj.optBoolean("quickSearch", true),
+                searchable = flagOf(obj, "searchable", default = true),
+                filterable = flagOf(obj, "filterable", default = true),
+                quickSearch = flagOf(obj, "quickSearch", default = true),
                 timeoutSeconds = obj.optInt("timeout", 0).takeIf { it > 0 },
                 header = headerOf(obj.opt("header")),
             )
+        }
+
+        /**
+         * 生态布尔字段取值归一: `0/1` 数字与 `"0"/"1"/"true"/"false"` 字符串都收
+         * (org.json 的 optBoolean 对数字与 `"0"`/`"1"` 串一律落默认值, 会把
+         * `"searchable":0` 的站点误当成可搜); 缺失/其余形态回 [default]。
+         */
+        private fun flagOf(obj: JSONObject, key: String, default: Boolean): Boolean {
+            if (!obj.has(key)) return default
+            return when (val raw = obj.opt(key)) {
+                null, JSONObject.NULL -> default
+                is Boolean -> raw
+                is Number -> raw.toInt() != 0
+                is String -> when (raw.trim().lowercase()) {
+                    "1", "true" -> true
+                    "0", "false", "" -> false
+                    else -> default
+                }
+                else -> default
+            }
         }
 
         /** ext 可为字符串/对象/数组, spider 侧一律取其字符串形态 (FongMi ExtAdapter 同语义)。 */
@@ -188,7 +208,7 @@ data class TvBoxConfig(
          *   (jar/JS spider 用它在配置里预置代理地址)。
          *
          * 端口取 [com.github.catvod.Proxy.getPort] (本地服务已起时为正), 故调用方必须先起服务。
-         * 未起的 -1 会原样进 URL —— 那是配置装载顺序错误, 不是本函数能兜的。
+         * 未起时如实报错: 换出的 `127.0.0.1:-1` 是死地址, 静默产出会让取数失败无法归因。
          * 逐 `$$$` 段处理: ext 可能是 `./lib/token.json$$$https://site/$$$null` 形态。
          */
         private fun convertSpec(spec: String): String {
@@ -198,7 +218,9 @@ data class TvBoxConfig(
 
         private fun convertSegment(segment: String): String {
             val trimmed = segment.trim()
-            val base = "http://127.0.0.1:" + com.github.catvod.Proxy.getPort()
+            val port = com.github.catvod.Proxy.getPort()
+            check(port > 0) { "TVBox 本地代理未就绪 (port=$port), 无法折算 file:///proxy:// 地址" }
+            val base = "http://127.0.0.1:$port"
             return when {
                 trimmed.startsWith(FILE_SCHEME) ->
                     base + "/file/" + encodePath(trimmed.removePrefix(FILE_SCHEME))

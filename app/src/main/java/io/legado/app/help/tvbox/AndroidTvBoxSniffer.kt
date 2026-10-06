@@ -77,15 +77,24 @@ object AndroidTvBoxSniffer : TvBoxSniffPlatform {
         videoChecker: TvBoxVideoPredicate,
     ): Turn = suspendCancellableCoroutine { cont ->
         var webView: WebView? = null
+        var timeoutTask: Runnable? = null
+        val torn = AtomicBoolean(false)
         val teardown = {
-            runCatching {
-                webView?.apply {
-                    stopLoading()
-                    loadUrl(BLANK)
-                    destroy()
+            // webkit 拦截回调线程、超时与协程取消都会走到这里: WebView 只能在主线程销毁
+            if (torn.compareAndSet(false, true)) {
+                timeoutTask?.let { mainHandler.removeCallbacks(it) }
+                val view = webView
+                webView = null
+                if (view != null) {
+                    mainHandler.post {
+                        runCatching {
+                            view.stopLoading()
+                            view.loadUrl(BLANK)
+                            view.destroy()
+                        }
+                    }
                 }
             }
-            webView = null
             Unit
         }
         val gate = Gate(cont, teardown)
@@ -96,7 +105,11 @@ object AndroidTvBoxSniffer : TvBoxSniffPlatform {
             gate.fail(created.exceptionOrNull()!!)
             return@suspendCancellableCoroutine
         }
-        mainHandler.postDelayed({ gate.timeout(page) }, timeoutMs)
+        // 退出播放 (协程被取消) 时立即销毁 WebView, 不靠 30s 超时兜底
+        cont.invokeOnCancellation { teardown() }
+        val task = Runnable { gate.timeout(page) }
+        timeoutTask = task
+        mainHandler.postDelayed(task, timeoutMs)
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
         webView?.loadUrl(page, headers)
     }
@@ -214,7 +227,7 @@ object AndroidTvBoxSniffer : TvBoxSniffPlatform {
         private fun inspect(request: WebResourceRequest): WebResourceResponse? {
             val resourceUrl = request.url.toString()
             if (!resourceUrl.startsWith("http")) return null
-            if (isAd(request.url.host)) return emptyResponse()
+            if (isTvBoxAdHost(request.url.host)) return emptyResponse()
             if (videoChecker.isVideoFormat(resourceUrl)) {
                 gate.video(resourceUrl, playHeaders(request, page))
                 return emptyResponse()
@@ -248,27 +261,10 @@ object AndroidTvBoxSniffer : TvBoxSniffPlatform {
         return headers
     }
 
-    /** 广告/统计域: 这些域的请求常抢在视频之前抵达, 且形态上也可能命中视频判据。 */
-    private fun isAd(host: String?): Boolean {
-        if (host.isNullOrBlank()) return false
-        return AD_HOSTS.any { host == it || host.endsWith(".$it") }
-    }
-
     private fun emptyResponse() = WebResourceResponse(
         "text/plain",
         "utf-8",
         ByteArrayInputStream(ByteArray(0)),
-    )
-
-    /** 广告/统计域名表 (无 rule 配置时的兜底)。 */
-    private val AD_HOSTS = listOf(
-        "doubleclick.net",
-        "googlesyndication.com",
-        "google-analytics.com",
-        "googletagmanager.com",
-        "adnxs.com",
-        "scorecardresearch.com",
-        "advertising.com",
     )
 
     /** 内嵌播放器页判据: FongMi `CustomWebView.PLAYER` = `player.*https?://`。 */

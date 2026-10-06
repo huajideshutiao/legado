@@ -12,6 +12,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
+import java.util.concurrent.atomic.AtomicLong
 
 object DexJarConverter {
 
@@ -25,16 +26,28 @@ object DexJarConverter {
      * 原文件未比产物新 (mtime) 时复用。
      */
     fun jvmJarFor(dexContainer: File): File {
-        val bytes = dexContainer.readBytes()
-        if (!isDexFile(bytes) && !isZipFile(bytes)) return dexContainer
         val output = File(dexContainer.parentFile, "${dexContainer.nameWithoutExtension}-d2j.jar")
-        if (isDexFile(bytes)) {
+        val header = readHeader(dexContainer)
+        if (!isDexFile(header) && !isZipFile(header)) return dexContainer
+        // 先查产物缓存再读源: 命中时不必全量读源容器 (桌面扩展装载每次都走这里)
+        if (isCached(output, dexContainer)) return output
+        val bytes = dexContainer.readBytes()
+        if (isDexFile(header)) {
             return produce(output, dexContainer) { tmp -> convertDex(bytes, tmp) }
         }
         val (dexEntries, otherEntries) = readZipSplit(bytes)
         if (dexEntries.isEmpty()) return dexContainer
         return produce(output, dexContainer) { tmp -> mergeToJar(dexEntries, otherEntries, tmp) }
     }
+
+    /** 只读容器头部 4 字节 (dex/zip 魔数足够); 不足 4 字节返回空数组。 */
+    private fun readHeader(file: File): ByteArray = runCatching {
+        file.inputStream().use { it.readNBytes(4) }
+    }.getOrDefault(ByteArray(0))
+
+    /** 产物缓存判定: 存在、非空且不比源旧。 */
+    private fun isCached(output: File, source: File): Boolean =
+        output.isFile && output.length() > 0 && output.lastModified() >= source.lastModified()
 
     /**
      * 单 dex → JVM jar (参数面取自 Suwayomi-Server PackageTools.dex2jar, Dex2jarCmd 官方
@@ -57,6 +70,29 @@ object DexJarConverter {
         check(jarFile.isFile) { "dex2jar 未产出 jar: ${jarFile.path}" }
         CtorSiteFixer.fix(jarFile, dexBytes)
     }
+
+    /** 单 dex → jar 原子落地 (tmp + rename): 同产物并发/双开桌面实例不会读到半个 jar。 */
+    fun convertDexAtomically(dexBytes: ByteArray, jarFile: File) {
+        val dir = jarFile.parentFile ?: error("产物目录不可用: ${jarFile.path}")
+        dir.mkdirs()
+        val tmp = newTempFile(dir, jarFile.name)
+        try {
+            convertDex(dexBytes, tmp)
+            if (!tmp.renameTo(jarFile)) {
+                tmp.copyTo(jarFile, overwrite = true)
+                tmp.delete()
+            }
+        } finally {
+            if (tmp.isFile) tmp.delete()
+        }
+    }
+
+    /** 进程内唯一临时名: 固定名在同产物并发/双开桌面实例时会被交叉写坏。 */
+    private val processId: Long by lazy { ProcessHandle.current().pid() }
+    private val tempSeq = AtomicLong()
+
+    private fun newTempFile(dir: File, baseName: String): File =
+        File(dir, "$baseName.${processId}-${tempSeq.incrementAndGet()}.tmp")
 
     private fun isDexFile(bytes: ByteArray): Boolean =
         bytes.size >= 4 && bytes[0] == 0x64.toByte() && bytes[1] == 0x65.toByte() &&
@@ -96,7 +132,7 @@ object DexJarConverter {
     ) {
         val merged = LinkedHashMap<String, ByteArray>()
         dexEntries.values.forEachIndexed { index, dexBytes ->
-            val part = File(output.parentFile, "${output.name}.$index.part")
+            val part = newTempFile(output.parentFile, "${output.name}.$index")
             try {
                 convertDex(dexBytes, part)
                 readZip(part).forEach { (name, bytes) -> merged.putIfAbsent(name, bytes) }
@@ -110,8 +146,8 @@ object DexJarConverter {
 
     /** 产物缓存判定 + 临时文件原子落地; 转换异常不残留半成品 (缓存住失败产物)。 */
     private fun produce(output: File, source: File, generate: (File) -> Unit): File {
-        if (output.isFile && output.length() > 0 && output.lastModified() >= source.lastModified()) return output
-        val tmp = File(output.parentFile, output.name + ".tmp")
+        if (isCached(output, source)) return output
+        val tmp = newTempFile(output.parentFile, output.name)
         try {
             generate(tmp)
             if (!tmp.renameTo(output)) {

@@ -9,8 +9,9 @@ import kotlin.concurrent.Volatile
  *
  * - [appContext]: jar 契约里的 android.content.Context (Android=应用上下文, 桌面=jvmMain
  *   stub 实例), 供 Init.set 与 jar 内 Init.context() / Spider.init(context, ext) 使用;
- * - [readHostAsset]: 宿主自带引导脚本 (Android=assets, 桌面=classpath 资源);
  * - [newJarClassLoader]: spider jar 类加载器 (Android=DexClassLoader, 桌面=URLClassLoader)。
+ *
+ * 引导脚本读取不在此钩子内: 已统一走 composeResources 单一数据源, 见 [TvBoxHostAssetProviders]。
  *
  * Android 端由 app 模块 AndroidTvBoxHostPlatform 注册 (App.onCreate), 桌面端由
  * desktop-core DesktopTvBoxHostPlatform 注册 (DesktopCore.registerDesktopTvBoxProviders)。
@@ -19,9 +20,6 @@ interface TvBoxPlatform {
 
     /** jar 契约上下文 (Init.set / spider.init 的入参; jar 内经 Init.context() 回取)。 */
     val appContext: Context
-
-    /** 读宿主自带引导脚本 (assets 路径形态, 如 "tvbox/TvBoxJsApi.js"); 缺失返回 null。 */
-    fun readHostAsset(path: String): String?
 
     /** 为已就位的 jar 文件新建类加载器 (父加载器与 odex 目录由平台自决)。 */
     fun newJarClassLoader(jarFile: File): ClassLoader

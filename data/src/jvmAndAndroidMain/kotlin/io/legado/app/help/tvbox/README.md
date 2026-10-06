@@ -8,7 +8,8 @@
   - `TvBoxJarLoader.kt` — dex/jar spider 的类装载与缓存
   - `TvBoxCmsSpider.kt` — 苹果 CMS 直连站（api 为 http 根 URL，无 jar）的宿主实现
   - `TvBoxLocalProxy.kt` — 本地代理 9978（见下节）
-  - `TvBoxPlatform.kt` — 平台差异（上下文/assets/类加载器）注入契约
+  - `TvBoxPlatform.kt` — 平台差异（上下文/类加载器）注入契约
+  - `TvBoxHostAssetProvider.kt` — 引导脚本读取契约（实现在 :ui，composeResources 单一数据源）
   - `TvBoxSniffer.kt` — **parse=1 网页嗅探**（见下）
   - `TvBoxJsBridge.kt` / `TvBoxJsSpiderLoader.kt` — JS spider（同包并行开发的兄弟模块）
 - 取数委派：`data/src/jvmAndAndroidMain/kotlin/io/legado/app/model/tvbox/`

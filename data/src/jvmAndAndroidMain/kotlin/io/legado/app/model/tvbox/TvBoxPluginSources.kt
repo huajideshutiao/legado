@@ -39,7 +39,9 @@ object TvBoxPluginSources {
         bookSourceName = site.name.ifBlank { site.key },
         bookSourceGroup = GROUP_NAME,
         bookSourceType = BookSourceType.video,
-        enabled = true,
+        // 初始启用态随站点 searchable (FongMi 语义: searchable=0 的站点不参与搜索);
+        // 行建立后归书源界面的开关管, sync 不覆写用户的选择。
+        enabled = site.searchable,
         enabledExplore = true,
         exploreUrl = EXPLORE_URL,
         header = headerJsonOf(site),

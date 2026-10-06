@@ -3,6 +3,7 @@ package io.legado.app.help.tvbox
 import com.github.catvod.Proxy
 import fi.iki.elonen.NanoHTTPD
 import io.legado.app.constant.AppLog
+import java.io.File
 import java.io.InputStream
 
 /**
@@ -29,10 +30,15 @@ object TvBoxLocalProxy {
     @Volatile
     private var nano: ProxyNano? = null
 
-    /** 起本地代理并回填两侧端口接线; 幂等 (已起直接返回)。 */
+    /** 本地代理是否已启动失败 (全部端口不可用): 此时所有 proxy/file 型站点取数都不可用, 管理页据此提示。 */
+    @Volatile
+    var startFailed: Boolean = false
+        private set
+
+    /** 起本地代理并回填两侧端口接线; 幂等 (已起直接返回 true)。启动失败如实返回 false。 */
     @Synchronized
-    fun start(dispatcher: (Map<String, String>) -> Array<Any?>?) {
-        if (nano != null) return
+    fun start(dispatcher: (Map<String, String>) -> Array<Any?>?): Boolean {
+        if (nano != null) return true
         for (port in PORT_FIRST..PORT_LAST) {
             val server = ProxyNano(port, dispatcher)
             try {
@@ -45,10 +51,13 @@ object TvBoxLocalProxy {
             Proxy.set(port)
             TvBoxJsProxy.port = port
             TvBoxJsProxy.urlProvider = { local -> Proxy.getUrl(local) }
+            startFailed = false
             AppLog.put("$TAG: 本地代理已启动 :$port")
-            return
+            return true
         }
+        startFailed = true
         AppLog.put("$TAG: 启动失败, $PORT_FIRST..$PORT_LAST 均不可用")
+        return false
     }
 
     /** 停本地代理并复位端口接线 (配置清除场景; 未起时静默)。 */
@@ -59,6 +68,7 @@ object TvBoxLocalProxy {
         Proxy.set(-1)
         TvBoxJsProxy.port = 0
         TvBoxJsProxy.urlProvider = null
+        startFailed = false
     }
 
     private class ProxyNano(
@@ -81,6 +91,11 @@ object TvBoxLocalProxy {
             }
             return try {
                 responseOf(dispatcher(paramsOf(session)))
+            } catch (e: NanoHTTPD.ResponseException) {
+                // 解析请求体失败等协议级错误: 如实回给客户端 (对照 NanoHTTPD 默认 serve),
+                // 不外抛也不吞掉 —— 外抛会让 ClientHandler 静默关闭连接, 客户端看不到原因
+                AppLog.put("$TAG: /proxy 请求体解析失败: ${e.message}")
+                plain(e.status, e.message ?: e.toString())
             } catch (e: Throwable) {
                 AppLog.put("$TAG: /proxy 分发失败: ${e.message}")
                 plain(NanoHTTPD.Response.Status.INTERNAL_ERROR, e.message ?: e.toString())
@@ -96,7 +111,9 @@ object TvBoxLocalProxy {
             params.putAll(session.headers)
             if (session.method == NanoHTTPD.Method.POST) {
                 val files = HashMap<String, String>()
-                runCatching { session.parseBody(files) }
+                // parseBody 必须无条件调用: 它负责消费请求体 (NanoHTTPD keep-alive 契约);
+                // 解析失败由 serve 如实回给客户端, 不吞掉后继续分发空参数
+                session.parseBody(files)
                 params.putAll(files)
             }
             return params
@@ -108,17 +125,23 @@ object TvBoxLocalProxy {
             if (rs.isNullOrEmpty()) return plain(NanoHTTPD.Response.Status.INTERNAL_ERROR, "Invalid proxy response")
             (rs[0] as? NanoHTTPD.Response)?.let { return it }
             if (rs.size < 3) return plain(NanoHTTPD.Response.Status.INTERNAL_ERROR, "Invalid proxy response")
-            val response = NanoHTTPD.newChunkedResponse(
-                statusOf(rs[0] as Int),
-                rs[1] as String,
-                rs[2] as InputStream,
-            )
-            if (rs.size > 3 && rs[3] != null) {
-                for ((key, value) in rs[3] as Map<*, *>) {
-                    response.addHeader(key.toString(), value.toString())
+            return try {
+                val response = NanoHTTPD.newChunkedResponse(
+                    statusOf(rs[0] as Int),
+                    rs[1] as String,
+                    rs[2] as InputStream,
+                )
+                if (rs.size > 3 && rs[3] != null) {
+                    for ((key, value) in rs[3] as Map<*, *>) {
+                        response.addHeader(key.toString(), value.toString())
+                    }
                 }
+                response
+            } catch (t: Throwable) {
+                // jar 交来的响应流在形态异常时无人接管: 不关会每次请求泄漏一个 fd
+                runCatching { (rs[2] as? InputStream)?.close() }
+                throw t
             }
-            return response
         }
 
         private fun statusOf(code: Int): NanoHTTPD.Response.IStatus {
@@ -139,10 +162,17 @@ object TvBoxLocalProxy {
          * 路径按 [com.github.catvod.utils.Path.local] 解析 (FongMi 同源: 先试 root 下, 不存在再按
          * 原路径), 只服务文件 (目录列表是 FongMi 的 WebDAV/文件管理面, spider 取数链路不需要),
          * 目录请求如实 404。目录不存在/不可读同样如实报错, 不静默回空。
+         *
+         * 访问边界: 端点无鉴权且监听全部网卡, 只服务 TV 目录子树内的文件
+         * (生态 `file://TV/...` 全落在这里), canonicalPath 归一后出界一律 404。
          */
         private fun fileResponse(uri: String): NanoHTTPD.Response {
             val path = java.net.URLDecoder.decode(uri.removePrefix(FILE_PATH), "UTF-8")
             val file = com.github.catvod.utils.Path.local(path)
+            val tvRoot = com.github.catvod.utils.Path.tv().canonicalFile
+            if (file != tvRoot && !file.path.startsWith(tvRoot.path + File.separator)) {
+                throw java.io.FileNotFoundException("File out of TV root: $path")
+            }
             if (!file.isFile) {
                 throw java.io.FileNotFoundException("File not found: $path")
             }

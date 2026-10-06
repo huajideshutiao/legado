@@ -20,6 +20,8 @@ import java.util.logging.Logger
  * TVBox 壳文件路径工具: 方法面/语义逐字对齐 FongMi catvod 模块的 utils.Path
  * (jar 内常以 Path.jar/Path.local/Path.read/Path.create 等直调, FQCN 与方法签名必须一致)。
  *
+ * [local] 的返回值经 canonicalPath 归一 (消除 `..` 段与符号链接), /file 端点据此限定可服务子树。
+ *
  * 与 FongMi 的唯一差异: Logger 输出换为 JUL; root()/cache()/files() 依赖的
  * Environment/Init.context() 在桌面端由 :data jvmMain 的 android.* stub 落到 AppFilesDirs
  * (Android 端走真实框架, 行为不变)。
@@ -131,7 +133,7 @@ object Path {
     fun local(path: String): File {
         val cleaned = path.replace("file:/", "")
         val file = File(root(), cleaned)
-        return if (file.exists()) file else File(cleaned)
+        return (if (file.exists()) file else File(cleaned)).canonicalFile
     }
 
     @JvmStatic
