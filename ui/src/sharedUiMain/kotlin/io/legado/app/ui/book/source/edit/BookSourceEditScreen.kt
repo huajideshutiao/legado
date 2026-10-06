@@ -150,9 +150,9 @@ fun BookSourceEditScreen(
             Unit
         }
     }
-    // 仅本屏注册, 离屏自动注销: 别处长按选词不会多出这一项; 虚拟源不注册 —— 查找替换
+    // 仅本屏注册, 离屏自动注销: 别处长按选词不会多出这一项; 只读源不注册 —— 查找替换
     // 直改编辑器状态, 会绕过字段 readOnly
-    if (!state.isVirtualSource) {
+    if (state.ruleEditable) {
         TextToolbarFindReplaceEffect(findReplaceAction)
     }
     // 对齐原版 BookSourceEditActivity 的 onBackPressedDispatcher → keyboardTool.tryConsumeBack():
@@ -229,8 +229,8 @@ fun BookSourceEditScreen(
             onEditorActive = stableOnEditorActive,
             modifier = Modifier.weight(1f),
         )
-        // 虚拟源隐藏编辑辅助条: 辅助键插入/撤销/重做/查找替换全部直改编辑器状态, 绕过 readOnly
-        if (!state.isVirtualSource) {
+        // 只读源隐藏编辑辅助条: 辅助键插入/撤销/重做/查找替换全部直改编辑器状态, 绕过 readOnly
+        if (state.ruleEditable) {
             KeyboardToolbar(
                 state = keyboardState,
                 onSendText = { activeEditor.value?.insertAtCursor(it) },
@@ -270,9 +270,9 @@ class BookSourceEditState {
     var exploreColsIndex by mutableIntStateOf(0)
     var currentTab by mutableIntStateOf(0)
 
-    /** 当前源是否为插件虚拟源 (前缀判定唯一出处: data 层 isVirtualPluginSource)。
-     *  虚拟源页面降级只读: 规则字段 readOnly、规则 tab 隐藏、头部规则类开关冻结、编辑辅助条隐藏 */
-    var isVirtualSource by mutableStateOf(false)
+    /** 规则字段是否可编辑 (判定唯一出处: data 层 BookSource.ruleEditable)。
+     *  不可编辑时页面降级只读: 规则字段 readOnly、规则 tab 隐藏、头部规则类开关冻结、编辑辅助条隐藏 */
+    var ruleEditable by mutableStateOf(true)
 
     /** upSourceView 重建实体列表后自增, 驱动表单区整体重建 */
     var sourceVersion by mutableIntStateOf(0)
@@ -403,7 +403,7 @@ private fun HeaderRow1(state: BookSourceEditState, callbacks: BookSourceEditCall
             DropdownBox(
                 options = stringArrayResource(Res.array.book_type),
                 selectedIndex = state.bookSourceTypeIndex,
-                enabled = !state.isVirtualSource,
+                enabled = state.ruleEditable,
             ) { callbacks.onBookSourceTypeChange(it) }
         }
         HeaderCheckBox("is_enable", state.enabled) {
@@ -412,18 +412,18 @@ private fun HeaderRow1(state: BookSourceEditState, callbacks: BookSourceEditCall
         HeaderCheckBox(
             "auto_save_cookie",
             state.enabledCookieJar,
-            enabled = !state.isVirtualSource,
+            enabled = state.ruleEditable,
         ) {
             callbacks.onEnabledCookieJarChange(it)
         }
         HeaderCheckBox(
             "enable_dangerous_api",
             state.enableDangerousApi,
-            enabled = !state.isVirtualSource,
+            enabled = state.ruleEditable,
         ) {
             callbacks.onEnableDangerousApiClick(it)
         }
-        HeaderCheckBox("enable_review", state.enabledReview, enabled = !state.isVirtualSource) {
+        HeaderCheckBox("enable_review", state.enabledReview, enabled = state.ruleEditable) {
             callbacks.onEnabledReviewChange(it)
         }
     }
@@ -503,8 +503,8 @@ private fun TabBar(state: BookSourceEditState, callbacks: BookSourceEditCallback
             .height(DesignTokens.viewHeightLarge)
     ) {
         tabTitles.forEachIndexed { i, key ->
-            // 虚拟源只读查看: 规则 tab (搜索/发现/详情/目录/正文/段评) 全隐藏, 仅保留基本信息
-            if (state.isVirtualSource && i != 0) return@forEachIndexed
+            // 只读源查看: 规则 tab (搜索/发现/详情/目录/正文/段评) 全隐藏, 仅保留基本信息
+            if (!state.ruleEditable && i != 0) return@forEachIndexed
             val selected = state.currentTab == i
             Box(
                 Modifier
@@ -584,7 +584,7 @@ private fun EditFields(
                         fieldId = fieldId,
                         entity = entity,
                         editor = editor,
-                        readOnly = state.isVirtualSource,
+                        readOnly = !state.ruleEditable,
                         syntax = syntax,
                         activeState = activeEditorState,
                         searchHighlight = searchHighlight,

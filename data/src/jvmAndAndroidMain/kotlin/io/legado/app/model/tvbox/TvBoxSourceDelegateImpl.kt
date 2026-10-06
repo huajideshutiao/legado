@@ -21,7 +21,7 @@ import io.legado.app.help.tvbox.pickAggregate
 import io.legado.app.help.tvbox.pickJsonApi
 import io.legado.app.help.tvbox.pickWebSniff
 import io.legado.app.model.webBook.BookChapterList
-import io.legado.app.model.webBook.VideoSourceDelegate
+import io.legado.app.model.webBook.PluginSourceDelegate
 import io.legado.app.utils.GSON
 import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.toJson
@@ -36,7 +36,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * TVBox 站点取数委派 (data 层 VideoSourceDelegate 的宿主实现, 与 VideoSourceDelegateImpl 同构):
+ * TVBox 站点取数委派 (data 层 [PluginSourceDelegate] 的 TVBox 源实现, 与 VideoSourceDelegateImpl 同构):
  *
  * 搜索 → spider.searchContent; 详情 → detailContent; 目录 → detailContent 的
  * vod_play_from/vod_play_url 按 "$$$" 配对拆行、"#" 拆集 (集名$id, tag 存线路 flag);
@@ -46,7 +46,7 @@ import org.json.JSONObject
  *
  * 本地代理 9978 由 TvBoxManager 随配置装载自动起停 (Android/桌面同一链路, 见 help/tvbox/README.md)。
  */
-object TvBoxSourceDelegateImpl : VideoSourceDelegate {
+object TvBoxSourceDelegateImpl : PluginSourceDelegate {
 
     /** FongMi `Vod.isFolder`: `"folder".equals(vod_tag) || cate != null`。 */
     private fun JSONObject.isFolderVod(): Boolean =
@@ -54,6 +54,11 @@ object TvBoxSourceDelegateImpl : VideoSourceDelegate {
 
     override fun handles(bookSource: BookSource): Boolean =
         bookSource.bookSourceUrl.startsWith(TvBoxSourceMapper.SOURCE_URL_PREFIX)
+
+    override fun tocFailMessage(bookSource: BookSource, e: Exception): String =
+        "获取TVBox源 ${bookSource.bookSourceName} 的书籍目录失败\n${e.message}"
+
+    override fun collapseVolumesByDefault(bookSource: BookSource): Boolean = true
 
     override suspend fun getBookListAwait(
         bookSource: BookSource,

@@ -52,23 +52,11 @@ object WebBook {
         onUrlResolved: ((AnalyzeUrlCore) -> Unit)? = null,
         selectedOptions: Map<String, String>? = null,
     ): BookListPage {
-        // 漫画插件源无规则可解析, 命中即转交委派 (搜索走 isSearch=true, 发现走 isSearch=false)
-        if (isSearch) {
-            MangaSourceDelegates.getOrNull()?.takeIf { it.handles(bookSource) }?.let {
-                return it.getBookListAwait(bookSource, key, page ?: 1)
-            }
-            // 视频插件源同构转交 (bookSourceType=video 虚拟行)
-            VideoSourceDelegates.getOrNull()?.takeIf { it.handles(bookSource) }?.let {
-                return it.getBookListAwait(bookSource, key, page ?: 1)
-            }
-        } else {
-            // 发现路径: 此处 key 即 exploreUrl 分类的 url 段, 交委派自行分派取数面
-            MangaSourceDelegates.getOrNull()?.takeIf { it.handles(bookSource) }?.let {
-                return it.getExploreAwait(bookSource, key, page ?: 1)
-            }
-            VideoSourceDelegates.getOrNull()?.takeIf { it.handles(bookSource) }?.let {
-                return it.getExploreAwait(bookSource, key, page ?: 1)
-            }
+        // 插件虚拟源无规则可解析, 命中即转交委派 (搜索走 isSearch=true, 发现走 isSearch=false;
+        // 发现路径的 key 即 exploreUrl 分类的 url 段, 交委派自行分派取数面)
+        PluginSourceDelegates.resolve(bookSource)?.let { delegate ->
+            return if (isSearch) delegate.getBookListAwait(bookSource, key, page ?: 1)
+            else delegate.getExploreAwait(bookSource, key, page ?: 1)
         }
         var url = key
         if (isSearch) {
@@ -112,10 +100,7 @@ object WebBook {
         book: Book,
         canReName: Boolean = true,
     ): Book {
-        MangaSourceDelegates.getOrNull()?.takeIf { it.handles(bookSource) }?.let {
-            return it.getBookInfoAwait(bookSource, book, canReName)
-        }
-        VideoSourceDelegates.getOrNull()?.takeIf { it.handles(bookSource) }?.let {
+        PluginSourceDelegates.resolve(bookSource)?.let {
             return it.getBookInfoAwait(bookSource, book, canReName)
         }
         if (!book.infoHtml.isNullOrEmpty()) {
@@ -200,10 +185,7 @@ object WebBook {
         runPerJs: Boolean = false
     ): Result<List<BookChapter>> {
         // 守卫在 runPreUpdateJs 之前: 虚拟插件源无 JS/规则, 目录直接由委派映射
-        MangaSourceDelegates.getOrNull()?.takeIf { it.handles(bookSource) }?.let {
-            return it.getChapterListAwait(bookSource, book)
-        }
-        VideoSourceDelegates.getOrNull()?.takeIf { it.handles(bookSource) }?.let {
+        PluginSourceDelegates.resolve(bookSource)?.let {
             return it.getChapterListAwait(bookSource, book)
         }
         return runCatching {
@@ -262,10 +244,7 @@ object WebBook {
         nextChapterUrl: String? = null,
         needSave: Boolean = true
     ): String {
-        MangaSourceDelegates.getOrNull()?.takeIf { it.handles(bookSource) }?.let {
-            return it.getContentAwait(bookSource, book, bookChapter)
-        }
-        VideoSourceDelegates.getOrNull()?.takeIf { it.handles(bookSource) }?.let {
+        PluginSourceDelegates.resolve(bookSource)?.let {
             return it.getContentAwait(bookSource, book, bookChapter)
         }
         if (bookSource.contentRule.content.isNullOrEmpty()) {

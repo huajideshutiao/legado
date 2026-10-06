@@ -16,14 +16,14 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.extension.MangaExtensionManager
 import io.legado.app.model.webBook.BookChapterList
-import io.legado.app.model.webBook.VideoSourceDelegate
+import io.legado.app.model.webBook.PluginSourceDelegate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
 /**
- * 视频插件源取数委派实现 (data 层 VideoSourceDelegate 的宿主实现, 与漫画侧
- * MangaSourceDelegateImpl 同构)。
+ * 视频插件源取数委派实现 (data 层 [PluginSourceDelegate] 的视频源实现; 与漫画侧
+ * [MangaSourceDelegateImpl] 同构)。
  *
  * 经 MangaExtensionManager 解析插件视频源实例后, 四路取数调 animesource API
  * (getSearchAnime/getAnimeEpisodeUpdate/getVideoList), 再经 AnimeSourceMapper 映射回
@@ -31,11 +31,16 @@ import kotlinx.coroutines.ensureActive
  * 正文返回 `videoUrl,{"headers":{…}}` 链接参数串或多行 `标题::内容` (多分辨率),
  * 由现有 parseVideoContent 链解析进播放器。
  */
-object VideoSourceDelegateImpl : VideoSourceDelegate {
+object VideoSourceDelegateImpl : PluginSourceDelegate {
 
     override fun handles(bookSource: BookSource): Boolean =
         bookSource.bookSourceType == BookSourceType.video &&
             bookSource.bookSourceUrl.startsWith(AnimeSourceMapper.SOURCE_URL_PREFIX)
+
+    override fun tocFailMessage(bookSource: BookSource, e: Exception): String =
+        "获取tachiyomi插件 ${bookSource.bookSourceName} 的书籍目录失败\n${e.message}"
+
+    override fun collapseVolumesByDefault(bookSource: BookSource): Boolean = true
 
     override suspend fun getBookListAwait(
         bookSource: BookSource,

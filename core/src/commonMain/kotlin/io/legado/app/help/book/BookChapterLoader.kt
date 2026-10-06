@@ -6,10 +6,10 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
-import io.legado.app.data.entities.VirtualPluginSourcePrefix
 import io.legado.app.help.IntentData
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.fileBook.FileBook
+import io.legado.app.model.webBook.PluginSourceDelegates
 import io.legado.app.model.webBook.WebBook
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
@@ -180,18 +180,11 @@ object BookChapterLoader {
         return list
     }
 
-    /** 目录失败日志唯一记录点: 三类插件委派透传 failure 不再各自记录, 在此按源身份分流文案。 */
+    /** 目录失败日志唯一记录点: 委派源由委派给出带来源标识的文案, 其余用通用文案。 */
     private fun tocFailMessage(source: BookSource?, e: Exception): String {
-        val name = source?.bookSourceName.orEmpty()
-        val url = source?.bookSourceUrl.orEmpty()
-        return when {
-            url.startsWith(VirtualPluginSourcePrefix.TACHIYOMI) ->
-                "获取tachiyomi插件 $name 的书籍目录失败\n${e.message}"
-
-            url.startsWith(VirtualPluginSourcePrefix.TVBOX) ->
-                "获取TVBox源 $name 的书籍目录失败\n${e.message}"
-
-            else -> "获取目录失败\n${e.message}"
+        if (source != null) {
+            PluginSourceDelegates.resolve(source)?.tocFailMessage(source, e)?.let { return it }
         }
+        return "获取目录失败\n${e.message}"
     }
 }

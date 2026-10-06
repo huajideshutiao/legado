@@ -44,8 +44,7 @@ import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.model.anime.VideoSourceDelegateImpl
 import io.legado.app.model.fileBook.ZipFileWrapperFactoryProviders
 import io.legado.app.model.manga.JvmMangaPluginImageFetcher
-import io.legado.app.model.webBook.MangaSourceDelegates
-import io.legado.app.model.webBook.VideoSourceDelegates
+import io.legado.app.model.webBook.PluginSourceDelegates
 import io.legado.app.model.manga.MangaSourceDelegateImpl
 import io.legado.app.model.manga.SharedMangaExtensionPlatform
 import io.legado.app.model.manga.SharedMangaSourceConfig
@@ -306,8 +305,8 @@ object DesktopCore {
         //     - 委派/图片获取为无状态注册; 服务是「我的」页入口显隐判据, 同步注册保证首组合可见;
         //       装载由启动 init (桌面 Main.kt 宿主注册后触发) 驱动, headless 无宿主时静默跳过
         registerDesktopExtensionCompat()
-        MangaSourceDelegates.register(MangaSourceDelegateImpl)
-        VideoSourceDelegates.register(VideoSourceDelegateImpl)
+        PluginSourceDelegates.register(MangaSourceDelegateImpl)
+        PluginSourceDelegates.register(VideoSourceDelegateImpl)
         MangaPluginImageFetcherProviders.register(JvmMangaPluginImageFetcher())
         MangaExtensionServiceProviders.register(SharedMangaExtensionPlatform(SharedMangaSourceConfig(Context())))
         // Room 开库预热 (与首帧组合并行; 上一轮我误删了它, 实测把 273ms 开库成本又退回主链路上)。

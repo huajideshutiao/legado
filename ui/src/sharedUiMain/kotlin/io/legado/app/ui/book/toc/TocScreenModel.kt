@@ -5,7 +5,6 @@ import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
-import io.legado.app.data.entities.VirtualPluginSourcePrefix
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookChapterLoader
 import io.legado.app.help.book.ContentProcessorProviders
@@ -169,16 +168,8 @@ class TocScreenModel(
 
     private fun setChapterList(list: List<BookChapter>) {
         val dur = _state.value.durChapterIndex
-        // 委派源 (Tachiyomi/TVBox 插件虚拟源) 目录默认只展开当前章所在分组;
-        // 普通书/EPUB 保持全展开 (原版行为, 不因卷机制突变)
-        val collapsed = if (_state.value.book?.origin?.let { origin ->
-                VirtualPluginSourcePrefix.ALL.any { origin.startsWith(it) }
-            } == true
-        ) {
-            defaultCollapsedVolumes(list, dur)
-        } else {
-            emptySet()
-        }
+        // 目录含卷分组时默认只展开当前章所在分组 (无卷书返回空集, 列表全展开)
+        val collapsed = defaultCollapsedVolumes(list, dur)
         // 滚动定位基于收合后的显示列表, 否则收起的分组会令 scrollPos 越位
         val display = buildChapterDisplayList(list, collapsed)
         var scrollPos = 0

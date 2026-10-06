@@ -51,3 +51,12 @@ fun BookSource.isVirtualPluginSource(): Boolean =
 /** 该书源列表投影是否为插件虚拟源 (漫画 / 视频 / TVBox)。 */
 fun BookSourcePart.isVirtualPluginSource(): Boolean =
     VirtualPluginSourcePrefix.ALL.any { bookSourceUrl.startsWith(it) }
+
+/**
+ * 该书源的规则字段是否可编辑。
+ *
+ * 插件虚拟源行内规则字段恒空 (取数由委派接管), 书源编辑页据此降级只读: 规则字段 readOnly、
+ * 规则 tab 隐藏、头部规则类开关冻结、编辑辅助条隐藏。
+ */
+val BookSource.ruleEditable: Boolean
+    get() = !isVirtualPluginSource()

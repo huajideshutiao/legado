@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import eu.kanade.tachiyomi.source.model.FilterList
 import io.legado.app.constant.BookSourceType
 import io.legado.app.data.entities.BookSource
+import io.legado.app.data.entities.isVirtualPluginSource
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.compose.component.AppChipRow
 import io.legado.app.ui.compose.component.AppChipRowOption
@@ -41,7 +42,7 @@ fun MangaSearchFilterRow(
             .onFailure { if (it is CancellationException) throw it }
             .getOrDefault(emptyList())
         pluginSources = sources.filter {
-            it.bookSourceType == BookSourceType.image && service.isPluginSource(it.bookSourceUrl)
+            it.bookSourceType == BookSourceType.image && it.isVirtualPluginSource()
         }
     }
     if (pluginSources.isEmpty()) return

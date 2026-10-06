@@ -184,9 +184,6 @@ open class SharedMangaExtensionPlatform(
         MangaExtensionManager.findAvailableExtensions()
     }
 
-    override fun isPluginSource(bookSourceUrl: String): Boolean =
-        bookSourceUrl.startsWith(MangaSourceMapper.SOURCE_URL_PREFIX)
-
     override suspend fun getFilterList(bookSourceUrl: String): FilterList? {
         val sourceId = MangaSourceMapper.sourceIdOf(bookSourceUrl) ?: return null
         val source = MangaExtensionManager.getSource(sourceId) ?: return null

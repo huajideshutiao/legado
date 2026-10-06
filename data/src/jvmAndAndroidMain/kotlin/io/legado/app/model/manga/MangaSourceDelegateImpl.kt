@@ -8,7 +8,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookListPage
 import io.legado.app.help.extension.MangaExtensionManager
 import io.legado.app.model.webBook.BookChapterList
-import io.legado.app.model.webBook.MangaSourceDelegate
+import io.legado.app.model.webBook.PluginSourceDelegate
 import io.legado.app.data.entities.SearchBook
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.MangasPage
@@ -19,18 +19,23 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
 /**
- * 漫画插件源取数委派实现 (data 层 MangaSourceDelegate 的宿主实现)。
+ * 漫画插件源取数委派实现 (data 层 [PluginSourceDelegate] 的漫画源实现)。
  *
  * 经 MangaExtensionManager 解析插件源实例后, 四路取数直接调 Mihon source-api 的
  * suspend 契约 (getSearchManga/getMangaUpdate/getPageList), 再经 MangaSourceMapper
  * 映射回 Book/BookChapter/`<img src>` 正文, 复用现有搜索/详情/目录/漫画阅读器管线。
  * 筛选器状态取自 MangaPluginFilterCache (与搜索页 UI 同一份实例)。
  */
-object MangaSourceDelegateImpl : MangaSourceDelegate {
+object MangaSourceDelegateImpl : PluginSourceDelegate {
 
     override fun handles(bookSource: BookSource): Boolean =
         bookSource.bookSourceType == BookSourceType.image &&
             bookSource.bookSourceUrl.startsWith(MangaSourceMapper.SOURCE_URL_PREFIX)
+
+    override fun tocFailMessage(bookSource: BookSource, e: Exception): String =
+        "获取tachiyomi插件 ${bookSource.bookSourceName} 的书籍目录失败\n${e.message}"
+
+    override fun collapseVolumesByDefault(bookSource: BookSource): Boolean = true
 
     override suspend fun getBookListAwait(
         bookSource: BookSource,

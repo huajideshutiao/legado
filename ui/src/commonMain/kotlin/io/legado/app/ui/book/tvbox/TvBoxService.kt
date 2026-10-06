@@ -12,7 +12,7 @@ import kotlin.concurrent.Volatile
  * getOrNull()==null 的未注册平台隐藏「我的」页入口。
  *
  * 站点以虚拟 BookSource 行 (bookSourceType=video) 进入书源体系后, 取数走 WebBook 的
- * VideoSourceDelegates 委派, 搜索/详情/书内播放复用既有路径 —— 本接口刻意不提供
+ * PluginSourceDelegates 委派, 搜索/详情/书内播放复用既有路径 —— 本接口刻意不提供
  * 独立搜索/播放入口 (用户走既有链路: 搜索页 → 书籍详情 → 视频播放页)。
  */
 interface TvBoxService {

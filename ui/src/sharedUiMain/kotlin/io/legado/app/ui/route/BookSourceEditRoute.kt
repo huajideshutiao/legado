@@ -10,7 +10,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.TextRange
 import io.legado.app.constant.BookSourceType
 import io.legado.app.data.entities.BookSource
-import io.legado.app.data.entities.isVirtualPluginSource
+import io.legado.app.data.entities.ruleEditable
 import io.legado.app.help.IntentData
 import io.legado.app.help.config.HelpVersion
 import io.legado.app.help.config.LocalConfigKeys
@@ -369,10 +369,10 @@ private fun bookSourceTypeToIndex(type: Int): Int = when (type) {
 // 从 BookSource 同步 header 表单状态 (对照 app 端 upSourceView header 部分)
 // 实体列表由 ScreenModel.upSourceView 重建, 这里仅同步 editState 的 header 字段 + sourceVersion++
 private fun applySourceToEditState(bs: BookSource, editState: BookSourceEditState) {
-    // 插件虚拟源判定唯一出处: data 层前缀判定; Init 与粘贴源两条刷表单路径都过这里
-    editState.isVirtualSource = bs.isVirtualPluginSource()
-    // 粘贴源可在非首 tab 触发: 虚拟源只剩基本信息 tab, 当前 tab 一并归位
-    if (editState.isVirtualSource) editState.currentTab = 0
+    // 规则字段可编辑判定唯一出处: data 层 BookSource.ruleEditable; Init 与粘贴源两条刷表单路径都过这里
+    editState.ruleEditable = bs.ruleEditable
+    // 粘贴源可在非首 tab 触发: 只读源只剩基本信息 tab, 当前 tab 一并归位
+    if (!editState.ruleEditable) editState.currentTab = 0
     editState.bookSourceTypeIndex = bookSourceTypeToIndex(bs.bookSourceType)
     editState.enabled = bs.enabled
     editState.enabledCookieJar = bs.enabledCookieJar == true

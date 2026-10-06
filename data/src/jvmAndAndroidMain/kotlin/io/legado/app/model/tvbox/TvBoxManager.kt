@@ -13,7 +13,7 @@ import io.legado.app.help.tvbox.TvBoxJsSpiderLoader
 import io.legado.app.help.tvbox.TvBoxLocalProxy
 import io.legado.app.help.tvbox.TvBoxSite
 import io.legado.app.help.tvbox.TvBoxPlatforms
-import io.legado.app.model.webBook.VideoSourceDelegates
+import io.legado.app.model.webBook.PluginSourceDelegates
 import io.legado.app.utils.GSON
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -33,8 +33,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * TVBox 宿主编排: 配置拉取/持久化/解析, spider jar 装载入口, 虚拟书源行同步。
  *
- * 视频取数委派经 [registerDelegateRouter] 以组合方式挂进 [VideoSourceDelegates]
- * (该注册表为单实现覆盖语义, 故包裹既有委派而非替换, 漫画/视频插件链路零感知)。
+ * TVBox 取数委派经 [registerDelegate] 挂进 [PluginSourceDelegates] (与漫画/视频插件委派并列)。
  *
  * 平台差异 (目录/上下文/类加载器/引导脚本) 经 [TvBoxPlatforms] 注入:
  * Android 端 App.onCreate 注册 AndroidTvBoxHostPlatform, 桌面端 DesktopCore
@@ -80,7 +79,7 @@ object TvBoxManager {
         val platform = TvBoxPlatforms.get()
         Init.set(platform.appContext)
         inited = true
-        registerDelegateRouter()
+        registerDelegate()
         if (loadStarted.compareAndSet(false, true)) {
             loadJob = scope.launch { configLock.withLock { loadPersistedConfig() } }
         }
@@ -105,14 +104,11 @@ object TvBoxManager {
     }
 
     /**
-     * 以组合方式注册视频取数委派: tvbox:// 行转 TvBoxSourceDelegateImpl,
-     * 其余沿用注册时既有的委派实现 (通常为 AnimePlugin 的 VideoSourceDelegateImpl;
-     * 桌面端无既有委派时 existing 为 null)。幂等; 须在 WebBook 编排层注册完成后调用。
+     * 注册 TVBox 取数委派: `tvbox://` 行由 [TvBoxSourceDelegateImpl] 处理。与漫画/视频
+     * 插件委派并列注册 (各实现身份互斥, 顺序无关), 重复调用幂等。
      */
-    fun registerDelegateRouter() {
-        val current = VideoSourceDelegates.getOrNull()
-        if (current is TvBoxVideoSourceDelegateRouter) return
-        VideoSourceDelegates.register(TvBoxVideoSourceDelegateRouter(current, TvBoxSourceDelegateImpl))
+    fun registerDelegate() {
+        PluginSourceDelegates.register(TvBoxSourceDelegateImpl)
     }
 
     /** 设置配置 (json 原文), 持久化并同步虚拟书源行; [baseUrl] 用于相对路径解析。 */

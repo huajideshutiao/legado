@@ -7,11 +7,11 @@ import kotlin.concurrent.Volatile
 /**
  * 漫画插件管理能力暴露 (平台接口, 模式同 MangaReaderScreenModel.Platform + Providers)。
  *
- * 接口只依赖 shared/ui 层数据类型, 不感知插件宿主实现 (DexClassLoader 装载仅 Android 可用);
- * app 端经 [MangaExtensionServiceProviders.register] 注册 (桥接 MangaExtensionManager),
- * getOrNull()==null 的平台 (desktop 等) 隐藏「我的」页入口, 未来可实现补齐。
+ * 接口只依赖 shared/ui 层数据类型, 不感知插件宿主实现 (APK/DEX 装载仅 JVM 可用);
+ * 由 Android (AndroidMangaExtensionPlatform) 与桌面 (SharedMangaExtensionPlatform) 经
+ * [MangaExtensionServiceProviders.register] 注册; 未注册端 getOrNull()==null, 「我的」页入口隐藏。
  *
- * 插件源以虚拟 BookSource 行进入书源体系后, 取数走 WebBook 的 MangaSourceDelegates 委派;
+ * 插件源以虚拟 BookSource 行进入书源体系后, 取数走 WebBook 的 PluginSourceDelegates 委派;
  * 本接口另暴露插件源的筛选器访问, 供搜索页筛选条与委派共享同一份 Filter 状态。
  */
 interface MangaExtensionService {
@@ -58,9 +58,6 @@ interface MangaExtensionService {
 
     /** 删除插件仓库 (按仓库索引地址 indexUrl)。 */
     suspend fun removeRepo(indexUrl: String)
-
-    /** 该书源 URL 是否为插件漫画源 (搜索页筛选条显隐 + 委派识别)。 */
-    fun isPluginSource(bookSourceUrl: String): Boolean
 
     /**
      * 插件源当前筛选器 (带 UI 可回填的可变状态; 非插件源返回 null)。

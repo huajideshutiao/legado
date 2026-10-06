@@ -43,7 +43,7 @@ sealed interface AppRoute {
     @SerialName("book_source")
     data object BookSourceManage : AppRoute
 
-    // 漫画插件管理 (取数走 MangaSourceDelegates 委派; 服务未注册端入口隐藏)
+    // 漫画插件管理 (取数走 PluginSourceDelegates 委派; 服务未注册端入口隐藏)
     @Serializable
     @SerialName("manga_extension")
     data object MangaExtension : AppRoute

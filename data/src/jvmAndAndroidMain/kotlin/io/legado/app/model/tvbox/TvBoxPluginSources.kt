@@ -17,7 +17,7 @@ import kotlinx.serialization.encodeToString
  *
  * 仅 api 为 csp_ 前缀的 JAR Spider、含 .js 的 JS Spider 与 http 开头的苹果 CMS 直连站点落行
  * (bookSourceType=video), 使其进入书源
- * 管理与搜索范围; 取数不走规则解析 (四路守卫经 VideoSourceDelegates 转交
+ * 管理与搜索范围; 取数不走规则解析 (四路守卫经 PluginSourceDelegates 转交
  * TvBoxSourceDelegateImpl), 行内规则字段恒为空。
  */
 object TvBoxPluginSources {

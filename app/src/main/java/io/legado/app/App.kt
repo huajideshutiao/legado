@@ -210,9 +210,8 @@ class App : Application() {
         registerSharedCookieJarBridge()
         registerAndroidWebBookProviders()
         // TVBox 影视源宿主: 平台钩子 (jar 类加载/上下文) 与网页嗅探 (WebView)
-        // 先注册, 再幂等 init (重载已持久化配置) + 视频取数委派组合包裹;
-        // 必须排在 registerAndroidWebBookProviders 之后 —— 委派注册表单实现覆盖语义,
-        // 早注册会被它的 VideoSourceDelegates.register 整体盖掉
+        // 先注册, 再幂等 init (重载已持久化配置 + 注册 TVBox 取数委派; 与漫画/视频插件
+        // 委派并列, 各实现身份互斥, 与注册顺序无关)
         TvBoxPlatforms.register(AndroidTvBoxHostPlatform(this))
         // TVBox JS 引导脚本走 composeResources 单一数据源 (与 DefaultData 同款 provider 注入)
         registerComposeTvBoxAssetProvider()

@@ -6,7 +6,7 @@ import io.legado.app.constant.BookSourceType
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookListPage
 import io.legado.app.data.entities.BookSource
-import io.legado.app.model.webBook.VideoSourceDelegates
+import io.legado.app.model.webBook.PluginSourceDelegates
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.book.tvbox.JvmTvBoxPlatform
 import io.legado.app.ui.book.tvbox.TvBoxServiceProviders
@@ -45,14 +45,11 @@ class TvBoxUiWiringInstrumentedTest {
     @Test
     fun tvBoxManage_fullLoopImportToggleSearchCleanup() = runBlocking {
         platform.init()
-        // 1. 生产入口: App.onCreate 的 TvBoxManager.init 已把组合委派挂进 VideoSourceDelegates。
-        //    VideoSourceDelegates 是单实现覆盖注册表, init 必须排在 registerAndroidWebBookProviders
-        //    之后, 本断言就是那道顺序的有效凭证。
-        val delegates = VideoSourceDelegates.getOrNull()
-        assertNotNull("视频取数委派未注册", delegates)
+        // 1. 生产入口: App.onCreate 的 TvBoxManager.init 已把 TVBox 委派注册进 PluginSourceDelegates
+        //    (与漫画/视频插件委派并列; 各实现身份互斥, 注册顺序不影响命中)。
         assertTrue(
-            "视频取数委派未走到 TVBox 组合路由: ${delegates?.javaClass?.name}",
-            delegates is TvBoxVideoSourceDelegateRouter,
+            "TVBox 取数委派未注册",
+            PluginSourceDelegates.registered().any { it === TvBoxSourceDelegateImpl },
         )
         // 「我的」页入口的门槛: 服务已注册 (仅 Android 端), 未注册端 getOrNull()=null → 入口隐藏
         TvBoxServiceProviders.register(platform)
