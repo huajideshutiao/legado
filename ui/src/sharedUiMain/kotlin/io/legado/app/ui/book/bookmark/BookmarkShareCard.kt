@@ -35,7 +35,6 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 import io.legado.app.constant.ThreadSafeDateFormat
 import io.legado.app.data.entities.Bookmark
-import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppTextButton
@@ -48,17 +47,17 @@ import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.cancel
 import legado.ui.generated.resources.save_image_as
 import legado.ui.generated.resources.share
-import legado.ui.generated.resources.share_card_truncated
 import org.jetbrains.compose.resources.stringResource
 
 /** 导出位图宽度下限: 低于此宽度(如桌面 1x 密度)按倍率放大录制, 预览显示尺寸不变 */
 private const val MinExportWidthPx = 1080
 
 /**
- * 导出位图高度上限: 超长原文/笔记的 1080×N 位图会大到 OOM 或超 GPU 最大渲染目标
- * (4096 是常见硬件下限, 1080×4096 ARGB 约 17MB)。超出时截断到上限并提示。
+ * 原文+笔记合计字数上限, 超限按各自长度比例截断加省略号。
+ * 卡片高度与导出位图尺寸随内容量无上界 (OOM/超 GPU 渲染上限), 限字即有界,
+ * 预览与导出共用同一份渲染, 截断预览可见。
  */
-private const val MaxExportHeightPx = 4096
+private const val MaxTextChars = 500
 
 /** 底部水印透明度 (规格: secondaryText 半透明) */
 private const val WatermarkAlpha = 0.4f
@@ -84,6 +83,16 @@ fun BookmarkShareCard(
     modifier: Modifier = Modifier,
 ) {
     val colors = AppTheme.colors
+    // 超限按各自长度比例分配配额, 截断段加省略号; 配额 0 时仅保留省略号
+    var bodyText = bookmark.bookText
+    var noteText = bookmark.content
+    val totalChars = bodyText.length + noteText.length
+    if (totalChars > MaxTextChars) {
+        val bodyQuota = MaxTextChars * bodyText.length / totalChars
+        val noteQuota = MaxTextChars - bodyQuota
+        if (bodyText.length > bodyQuota) bodyText = bodyText.take(bodyQuota).trimEnd() + "…"
+        if (noteText.length > noteQuota) noteText = noteText.take(noteQuota).trimEnd() + "…"
+    }
     Surface(
         shape = DesignTokens.shapeLg,
         color = colors.background,
@@ -109,7 +118,7 @@ fun BookmarkShareCard(
             }
 
             // 原文区: 左侧 accent 竖线 + 逐段展示 (行距比正文宽松)
-            if (bookmark.bookText.isNotBlank()) {
+            if (bodyText.isNotBlank()) {
                 Spacer(Modifier.height(DesignTokens.spacingLg))
                 Row(Modifier.height(IntrinsicSize.Min)) {
                     Box(
@@ -120,7 +129,7 @@ fun BookmarkShareCard(
                     )
                     Spacer(Modifier.width(DesignTokens.spacingMd))
                     Column {
-                        bookmark.bookText.lines()
+                        bodyText.lines()
                             .filter { it.isNotBlank() }
                             .forEachIndexed { index, line ->
                                 if (index > 0) Spacer(Modifier.height(DesignTokens.spacingMd))
@@ -136,7 +145,7 @@ fun BookmarkShareCard(
             }
 
             // 笔记区
-            if (bookmark.content.isNotBlank()) {
+            if (noteText.isNotBlank()) {
                 Spacer(Modifier.height(DesignTokens.spacingLg))
                 Box(
                     Modifier
@@ -153,7 +162,7 @@ fun BookmarkShareCard(
                 )
                 Spacer(Modifier.height(DesignTokens.spacingXs))
                 Text(
-                    text = bookmark.content,
+                    text = noteText,
                     color = colors.primaryText,
                     fontSize = 15.sp,
                     lineHeight = 24.sp,
@@ -202,10 +211,6 @@ fun BookmarkShareCardDialog(
     val layer = rememberGraphicsLayer()
     val scope = rememberCoroutineScope()
     var exporting by remember { mutableStateOf(false) }
-    // 录制高度是否超上限 (导出图被截断): 只在点击保存时读, 不入快照状态
-    // (draw 阶段不能写 Compose 状态)
-    val truncated = remember { BooleanArray(1) }
-    val truncatedHint = stringResource(Res.string.share_card_truncated)
 
     AppDialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
         Surface(
@@ -230,15 +235,10 @@ fun BookmarkShareCardDialog(
                             .fillMaxWidth()
                             .drawWithContent {
                             val exportScale = max(1f, MinExportWidthPx / size.width)
-                            // 录制高度封顶: 超长笔记/原文不截断就是 1080×N 的巨型位图
-                            // (OOM 或超 GPU 最大渲染目标), 截断时提示用户
-                            val fullHeight = (size.height * exportScale).roundToInt()
-                            val recordHeight = fullHeight.coerceAtMost(MaxExportHeightPx)
-                            truncated[0] = fullHeight > MaxExportHeightPx
                             layer.record(
                                 size = IntSize(
                                     (size.width * exportScale).roundToInt(),
-                                    recordHeight,
+                                    (size.height * exportScale).roundToInt(),
                                 ),
                             ) {
                                 scale(exportScale, Offset.Zero) { this@drawWithContent.drawContent() }
@@ -269,7 +269,6 @@ fun BookmarkShareCardDialog(
                             try {
                                 val image = layer.toImageBitmap()
                                 if (BookmarkExporter.exportImage(bookmark, image)) {
-                                    if (truncated[0]) Toasters.get().toast(truncatedHint)
                                     onDismiss()
                                 }
                             } finally {
