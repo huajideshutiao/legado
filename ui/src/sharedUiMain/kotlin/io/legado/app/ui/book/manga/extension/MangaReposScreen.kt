@@ -81,7 +81,7 @@ class MangaReposScreenModel(
 
     fun removeRepo(indexUrl: String) {
         val svc = service ?: return
-        scope.launch { runCatching { svc.removeRepo(indexUrl) } }
+        scope.launch { svc.removeRepo(indexUrl) }
     }
 }
 

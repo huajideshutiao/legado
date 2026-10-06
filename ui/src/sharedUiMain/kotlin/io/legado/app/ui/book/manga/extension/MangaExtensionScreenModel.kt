@@ -30,7 +30,7 @@ class MangaExtensionScreenModel : ScreenModel {
         service?.state ?: MutableStateFlow(MangaExtensionUiState())
 
     /**
-     * 刷新仓库并重拉可用插件列表 (失败静默, 仓库页有专门反馈)。
+     * 刷新仓库并重拉可用插件列表 (逐仓库失败由平台层记日志; 仓库页有专门反馈)。
      *
      * 整页转圈**不在这里**置位: 平台实现的 `refresh()` 会把独立的 refreshing 流置 true,
      * 经 combine 进入 [MangaExtensionUiState.refreshing] (combine 每路输入都保留当前值,
@@ -38,7 +38,7 @@ class MangaExtensionScreenModel : ScreenModel {
      */
     fun refresh() {
         val svc = service ?: return
-        scope.launch { runCatching { svc.refresh() } }
+        scope.launch { svc.refresh() }
     }
 
     // region 插件自带配置 (ConfigurableSource)
@@ -73,15 +73,12 @@ class MangaExtensionScreenModel : ScreenModel {
         val svc = service ?: return
         val pkgName = _prefDialog.value?.pkgName ?: return
         scope.launch {
-            runCatching { svc.setPreferenceValue(pkgName, key, value) }
-                .onSuccess {
-                    runCatching { svc.buildPreferenceItems(pkgName) }
-                        .onSuccess { items ->
-                            _prefDialog.update { current ->
-                                if (current?.pkgName == pkgName) current.copy(items = items) else current
-                            }
-                        }
-                }
+            svc.setPreferenceValue(pkgName, key, value)
+            // 写后重读刷新弹窗当前值
+            val items = svc.buildPreferenceItems(pkgName)
+            _prefDialog.update { current ->
+                if (current?.pkgName == pkgName) current.copy(items = items) else current
+            }
         }
     }
 

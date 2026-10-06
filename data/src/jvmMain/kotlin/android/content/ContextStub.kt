@@ -10,7 +10,7 @@ import java.io.File
 open class Context {
 
     open fun getSharedPreferences(name: String?, mode: Int): SharedPreferences =
-        SharedPrefsStub(name)
+        SharedPrefsStub.of(name)
 
     /** TVBox 壳类 Path.cache()/files() 走这里; 归一到 AppFilesDirs 的对应目录。 */
     open fun getCacheDir(): File = File(AppFilesDirs.get().cacheDir)

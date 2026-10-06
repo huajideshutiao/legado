@@ -12,6 +12,7 @@ import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.extension.MangaExtensionManager
+import io.legado.app.lib.theme.MonetColorExtract
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.createFileIfNotExist
 import io.legado.app.utils.delete
@@ -20,6 +21,7 @@ import io.legado.app.utils.find
 import io.legado.app.utils.getFile
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.openOutputStream
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -139,6 +141,11 @@ object AndroidBackupRestoreHook : BackupRestoreHook {
     override suspend fun onRestoreFinished() {
         // 偏好已被恢复覆盖, 漫画扩展的仓库/信任/启用表需同步重载内存态
         MangaExtensionManager.onRestoreFinished()
+        // 莫奈跟随开关也已被覆盖: 同轮把进程内壁纸监听注册态对齐到新 pref,
+        // 否则残留监听会在壁纸变化时把恢复后的主题色拽回壁纸色
+        withContext(Dispatchers.Main) {
+            MonetColorExtract.syncFollowAfterRestore(App.instance)
+        }
         Restore.onRestoreFinished()
     }
 }
