@@ -1,11 +1,14 @@
 // Copyright The Mihon Authors. Apache-2.0.
 // 移植自 mihon core/common .../network/interceptor/CloudflareInterceptor.kt (main);
-// 差异: toast 换 AppLog, 新增同 host 并发挑战去重排队, 挑战成功后 cookie 回写宿主 CookieStore
+// 差异: toast 换 AppLog, 挑战状态机 (同 host 去重/挑战窗口/重发) 收在共享基类
+// ChallengeInterceptorBase (Android 与桌面同一份), 本类只提供 WebView 求解通道。
+//
+// 覆盖范围: 仅 Android (本模块) 与桌面 (:desktop-core) 挂 CF 自动解挑战; iOS / 鸿蒙的共享
+// HTTP 栈没有本拦截器, 遇到挑战仍按原版行为把挑战响应交回调用方。
 package eu.kanade.tachiyomi.network.interceptor
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.os.SystemClock
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
@@ -16,20 +19,11 @@ import androidx.core.content.ContextCompat
 import io.legado.app.constant.AppLog
 import io.legado.app.help.http.CookieStore
 import io.legado.app.help.http.isOutdated
-import okhttp3.Cookie
+import okhttp3.CookieJar
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
-import okhttp3.Interceptor
 import okhttp3.Request
-import okhttp3.Response
-import java.io.IOException
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.locks.ReentrantLock
-import kotlin.concurrent.Volatile
-
-// ChallengeCookieResolver 已下沉 data 模块 (eu.kanade.tachiyomi.network.interceptor), 本文件引用不变。
 
 class CloudflareInterceptor(
     private val context: Context,
@@ -39,66 +33,33 @@ class CloudflareInterceptor(
 
     private val executor = ContextCompat.getMainExecutor(context)
 
-    // 同 host 挑战去重: 并发 403 只允许一个请求开 WebView 解挑战, 其余排队复用结果
-    // (mihon main 无此处理, 每个请求各开一个 WebView; 宿主书源抓取并发量大, 需去重)
-    private val hostStates = ConcurrentHashMap<String, HostChallengeState>()
+    /**
+     * 解出的 cookie 能否随重发请求带上。
+     *
+     * [cookieResolver] 是宿主 OkHttp CookieJar (插件栈 client 自带 AndroidCookieJar) 时,
+     * OkHttp 自己会把 webkit CookieManager 里的新 cf_clearance 合进重发请求; 书源栈的
+     * BookSourceChallengeCookieResolver 且 client 无 CookieJar, cookie 只在请求带
+     * CookieJar 伪头时由 cookie bridge 合入 —— 未启用 cookie 的书源解了也带不上。
+     */
+    override fun canCarrySolvedCookies(request: Request): Boolean =
+        cookieResolver is CookieJar || super.canCarrySolvedCookies(request)
 
-    override fun shouldIntercept(response: Response): Boolean {
-        // cf-mitigated: challenge 是 Cloudflare 官方挑战检测方式
-        // https://developers.cloudflare.com/cloudflare-challenges/challenge-types/challenge-pages/detect-response/
-        return response.header("cf-mitigated") == "challenge" && response.header("Server") in SERVER_CHECK
+    override fun oldClearance(request: Request): String? =
+        cookieResolver.get(request.url)
+            .firstOrNull { it.name == COOKIE_CLEARANCE }
+            ?.value
+
+    override fun clearClearance(request: Request) {
+        cookieResolver.remove(request.url, COOKIE_NAMES, 0)
     }
 
-    override fun intercept(
-        chain: Interceptor.Chain,
-        request: Request,
-        response: Response,
-    ): Response {
-        val state = hostStates.computeIfAbsent(request.url.host) { HostChallengeState() }
-        // 本请求遭遇挑战的时刻, 用于区分排队可复用的解与更早轮次的旧解
-        val challengeStart = SystemClock.elapsedRealtime()
-
-        response.close()
-        try {
-            // 超过挑战等待上限仍未拿到锁, 视同绕过失败 (排队者不再重复开 WebView)
-            if (!state.lock.tryLock(CHALLENGE_WAIT_SECONDS, TimeUnit.SECONDS)) {
-                throw CloudflareBypassException()
-            }
-            try {
-                if (state.lastAttemptEnd >= challengeStart) {
-                    // 本次挑战窗口内已有请求完成解挑战, 直接复用其结果:
-                    // 成功 → 带新 cookie 重发; 失败 → 同样抛异常, 避免排队者串行重试
-                    if (!state.lastSolveOk) {
-                        throw CloudflareBypassException()
-                    }
-                } else {
-                    val oldCookie = cookieResolver.get(request.url)
-                        .firstOrNull { it.name == "cf_clearance" }
-                    cookieResolver.remove(request.url, COOKIE_NAMES, 0)
-                    try {
-                        resolveWithWebView(request, oldCookie)
-                        state.lastSolveOk = true
-                        syncCookiesToHostStore(request.url)
-                    } finally {
-                        state.lastAttemptEnd = SystemClock.elapsedRealtime()
-                    }
-                }
-            } finally {
-                state.lock.unlock()
-            }
-
-            return chain.proceed(request)
-        }
-        // OkHttp 的 enqueue 只处理 IOException, 统一包装避免崩溃整个 app
-        catch (e: CloudflareBypassException) {
-            throw IOException(CLOUDFLARE_BYPASS_FAILURE_MESSAGE, e)
-        } catch (e: Exception) {
-            throw IOException(e)
-        }
+    override fun solve(request: Request, oldClearance: String?) {
+        resolveWithWebView(request, oldClearance)
+        syncCookiesToHostStore(request.url)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun resolveWithWebView(originalRequest: Request, oldCookie: Cookie?) {
+    private fun resolveWithWebView(originalRequest: Request, oldClearance: String?) {
         // OkHttp 不支持异步拦截器, 需锁住当前线程直至 WebView 解出挑战
         val latch = CountDownLatch(1)
 
@@ -130,8 +91,8 @@ class CloudflareInterceptor(
                 override fun onPageFinished(view: WebView, url: String) {
                     fun isCloudFlareBypassed(): Boolean {
                         return cookieResolver.get(origRequestUrl.toHttpUrl())
-                            .firstOrNull { it.name == "cf_clearance" }
-                            .let { it != null && it != oldCookie }
+                            .firstOrNull { it.name == COOKIE_CLEARANCE }
+                            .let { it != null && it.value != oldClearance }
                     }
 
                     if (isCloudFlareBypassed()) {
@@ -219,27 +180,4 @@ class CloudflareInterceptor(
     }
 }
 
-// 与上游 awaitFor30Seconds 对齐, 排队锁的上限留出余量
-private const val CHALLENGE_WAIT_SECONDS = 35L
-
-private val SERVER_CHECK = arrayOf("cloudflare-nginx", "cloudflare")
 private val COOKIE_NAMES = listOf("cf_clearance")
-
-// 上游为 MR.strings.information_cloudflare_bypass_failure; 宿主无 moko 资源
-private const val CLOUDFLARE_BYPASS_FAILURE_MESSAGE = "Failed to bypass Cloudflare challenge"
-
-private class CloudflareBypassException : Exception()
-
-private class HostChallengeState {
-
-    /** 公平锁: 先触发挑战的请求先解 */
-    val lock = ReentrantLock(true)
-
-    /** 最近一次解挑战尝试结束时刻 (elapsedRealtime); 请求以它判定排队结果是否属于本次挑战窗口 */
-    @Volatile
-    var lastAttemptEnd = Long.MIN_VALUE
-
-    /** 最近一次解挑战是否成功 */
-    @Volatile
-    var lastSolveOk = false
-}
