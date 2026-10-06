@@ -164,6 +164,9 @@
     <string name="use_regex">Using Regex</string>
     <string name="add_replace_rule">New replacement</string>
     <string name="sure_del">Are you sure to delete it?</string>
+    <string name="chapter_jump_confirm">Chapter Jump Confirmation</string>
+    <string name="chapter_jump_confirm_msg">Are you sure you want to skip to another chapter?</string>
+    <string name="same_title_removed_none">No duplicate titles found</string>
     <string name="draw">Warning</string>
     <string name="timeout_millisecond">Timed out milliseconds</string>
     <string name="respondTime">respondTime: %1$d ms</string>

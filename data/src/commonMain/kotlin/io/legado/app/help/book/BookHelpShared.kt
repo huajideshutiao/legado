@@ -243,6 +243,14 @@ object BookHelpShared {
     }
 
     /**
+     * 该书去重内存缓存是否已含该章文件名 (对照 app 端 `ContentProcessor.removeSameTitleCache.contains`)。
+     * 实例未入注册表时按未缓存处理。
+     */
+    fun isRemoveSameTitleCached(book: Book, chapter: BookChapter): Boolean =
+        removeSameTitleCacheRegistry[book.name + book.origin]
+            ?.contains(chapter.getFileName("nr")) == true
+
+    /**
      * 保存章节正文并通知阅读页 (对照 app 端 `BookHelp.saveContent`)。
      *
      * 失败只记日志不抛出, 与 app 端一致。

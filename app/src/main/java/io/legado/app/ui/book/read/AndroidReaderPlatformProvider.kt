@@ -1,6 +1,5 @@
 package io.legado.app.ui.book.read
 
-import android.app.DatePickerDialog
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -27,15 +26,6 @@ import io.legado.app.App
 import io.legado.app.BuildConfig
 import io.legado.app.constant.AppConst
 import io.legado.app.data.appDb
-import io.legado.app.data.entities.Book
-import io.legado.app.data.entities.Bookmark
-import io.legado.app.data.entities.localDateNow
-import io.legado.app.data.entities.localDateOf
-import io.legado.app.data.entities.localDateParseOrNull
-import io.legado.app.data.entities.toYearMonthDay
-import io.legado.app.help.AppWebDav
-import io.legado.app.help.book.BookHelp
-import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalTxt
@@ -45,7 +35,6 @@ import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.i18n.androidAppString
-import io.legado.app.help.showSourceLogin
 import io.legado.app.help.storage.Backup
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.model.CacheBook
@@ -53,8 +42,6 @@ import io.legado.app.model.ReadAloud
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.book.read.page.AutoPagerCompose
 import io.legado.app.ui.compose.component.AppAutoCompleteField
-import io.legado.app.ui.compose.component.AppNumberField
-import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.compose.dialogs.selector
 import io.legado.app.ui.compose.theme.AppTheme
@@ -65,18 +52,13 @@ import io.legado.app.ui.reader.ReaderTextActions
 import io.legado.app.ui.reader.ReaderTextSelectionRequest
 import io.legado.app.ui.reader.readerMenuAnchor
 import io.legado.app.ui.root.AppNavigator
-import io.legado.app.ui.root.AppNavigatorProviders
-import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
-import io.legado.app.ui.root.RouteResults
-import io.legado.app.ui.route.encodeReviewListDialogPayload
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class AndroidReaderPlatformProvider(
     private val activity: MainActivity,
@@ -478,34 +460,6 @@ private class AndroidReaderMenuState(
         hasBgImage = hasBgImageByPath(ThemeConfig.curBgImagePath)
     }
 
-    // 书源操作按钮 (对照 app 端 ReadMenu.runMenuIn sourceAction 赋值)
-    override fun upSourceAction() {
-        val book = screenModel.viewModel.book.value
-        val source = screenModel.viewModel.bookSource.value
-        sourceActionText = source?.bookSourceName ?: androidAppString("book_source")
-        sourceActionVisible = book?.let { !it.isLocal } ?: false
-    }
-
-    // 顶栏菜单可见/勾选状态 (对照 app 端 ReadMenu.upTopMenu)
-    override fun upTopMenu() {
-        val book = screenModel.viewModel.book.value ?: return
-        topMenu.onLine = !book.isLocal
-        topMenu.isLocalTxt = book.isLocalTxt
-        topMenu.isEpub = book.isEpub
-        topMenu.enableReplaceChecked = book.getUseReplaceRule()
-        topMenu.reSegmentChecked = book.config.reSegment
-        topMenu.delRubyChecked = book.config.delTag and Book.rubyTag == Book.rubyTag
-        topMenu.delHChecked = book.config.delTag and Book.hTag == Book.hTag
-        // 去重勾选态 (对照原版 onMenuOpened → menu_same_title_removed.isChecked)
-        topMenu.sameTitleRemovedChecked =
-            screenModel.viewModel.curTextChapter.value?.sameTitleRemoved == true
-        // 云进度同步可见性 (对照原版 onMenuOpened: ReadBook.inBookshelf && AppWebDav.isOk)
-        topMenu.syncProgressVisible = !book.isNotShelf && AppWebDav.isOk
-    }
-
-    override fun onTransitionIdle(shown: Boolean) = Unit
-    override fun onBgClick() = hide()
-
     // 章节链接点击: 浏览器或内置 WebView (对照 app 端 ReadMenu.onChapterViewClick)
     override fun onChapterViewClick() {
         val book = screenModel.viewModel.book.value ?: return
@@ -536,354 +490,8 @@ private class AndroidReaderMenuState(
         }
     }
 
-    // 溢出菜单展开时刷新动态项 (对照 app 端 ReadMenu.onOverflowOpened)
-    override fun onOverflowOpened() {
-        screenModel.updateSourceMenu()
-    }
-
-    override fun sourceLoginVisible(): Boolean = screenModel.sourceLoginVisible()
-
-    // 购买按钮显示条件已下沉 ReaderScreenModel.sourcePayVisible (对照原版 ReadMenu)
-    override fun sourcePayVisible(): Boolean = screenModel.sourcePayVisible()
-
-    override fun onSourceAction(action: SourceAction) {
-        when (action) {
-            SourceAction.LOGIN -> {
-                val source = screenModel.viewModel.bookSource.value ?: return
-                // 统一登录入口 (shared): Android 端 URL 登录仍弹 Overlay 对话框 (与原行为一致),
-                // 带上当前书与当前章 (对照原版 showLogin 预置 IntentData)
-                showSourceLogin(
-                    source.getKey(),
-                    source,
-                    screenModel.currentBook,
-                    screenModel.currentChapter,
-                )
-            }
-
-            SourceAction.EDIT_SOURCE -> {
-                val origin = screenModel.viewModel.book.value?.origin ?: return
-                navigator.push(AppRoute.BookSourceEdit(origin), RouteResults.BOOK_SOURCE_EDIT)
-            }
-
-            SourceAction.DISABLE_SOURCE -> screenModel.viewModel.disableSource()
-
-            // 购买当前章: 确认弹窗由 ReaderRoute ChapterPay 渲染, 确认后执行书源 payAction JS
-            // (对照原版 ReadMenu menu_chapter_pay -> payAction)
-            SourceAction.CHAPTER_PAY ->
-                screenModel.postDialogEvent(ReaderDialogEvent.ChapterPay)
-
-            // 源/书变量编辑 (对照原版 ReadMenu showSourceVariableDialog/showBookVariableDialog)
-            SourceAction.SET_SOURCE_VARIABLE -> screenModel.showSourceVariableDialog()
-            SourceAction.SET_BOOK_VARIABLE -> screenModel.showBookVariableDialog()
-        }
-    }
-
-    override fun onTopMenuAction(action: ReadMenuAction) {
-        when (action) {
-            ReadMenuAction.CHANGE_SOURCE,
-            ReadMenuAction.BOOK_CHANGE_SOURCE -> {
-                hide()
-                screenModel.postDialogEvent(ReaderDialogEvent.ChangeSource)
-            }
-
-            ReadMenuAction.CHAPTER_CHANGE_SOURCE -> {
-                hide()
-                screenModel.postDialogEvent(ReaderDialogEvent.ChangeChapterSource)
-            }
-
-            ReadMenuAction.DOWNLOAD -> showDownloadDialog()
-            ReadMenuAction.SET_CHARSET -> showCharsetConfig()
-
-            ReadMenuAction.ADD_BOOKMARK -> {
-                val book = screenModel.viewModel.book.value ?: return
-                val page = screenModel.viewModel.curTextPage.value
-                val bookmark = Bookmark(bookName = book.name, bookAuthor = book.author).apply {
-                    chapterIndex = screenModel.viewModel.durChapterIndex.value
-                    chapterPos = screenModel.viewModel.durChapterPos.value
-                    chapterName = page?.title ?: screenModel.currentChapter?.title ?: ""
-                    bookText = page?.text?.trim() ?: ""
-                }
-                hide()
-                screenModel.postDialogEvent(ReaderDialogEvent.AddBookmark(bookmark))
-            }
-
-            ReadMenuAction.EDIT_CONTENT -> {
-                hide()
-                screenModel.postDialogEvent(ReaderDialogEvent.EditContent)
-            }
-
-            ReadMenuAction.LOG -> {
-                hide()
-                screenModel.postDialogEvent(ReaderDialogEvent.Log)
-            }
-
-            // ===== 溢出菜单动作 (对照原版 ReadBookActivity.menuHandler.onMenuAction) =====
-
-            // 模拟阅读: 开关 + 起始日期 + 起始章节/每日章数 (对照原版 showSimulatedReading)
-            ReadMenuAction.SIMULATED_READING -> showSimulatedReading()
-
-            // 启用替换: 翻转 useReplaceRule + 刷新替换规则缓存 (对照原版 changeReplaceRuleState)
-            ReadMenuAction.ENABLE_REPLACE -> {
-                val book = screenModel.viewModel.book.value ?: return
-                book.config.useReplaceRule = !book.getUseReplaceRule()
-                upTopMenu()
-                activity.lifecycleScope.launch(IO) {
-                    runCatching {
-                        ContentProcessor.get(book).upReplaceRules()
-                        // 只 PATCH 阅读配置列; 整行 update 会冲掉后台 updateToc 写入的目录/元数据
-                        appDb.bookDao.updateReadConfig(book.bookUrl, book.config)
-                    }
-                    // 对照原版 ReadBook.loadContent(resetPageOffset = false): 同章重载保留进度
-                    screenModel.viewModel.loadChapter(screenModel.viewModel.durChapterIndex.value)
-                }
-            }
-
-            // 去重: 无重复标题可去时提示, 然后翻转当前章去重标记 (对照原版 menu_same_title_removed)
-            ReadMenuAction.SAME_TITLE_REMOVED -> {
-                val vm = screenModel.viewModel
-                val book = vm.book.value ?: return
-                val textChapter = vm.curTextChapter.value ?: return
-                val removeSameTitle = !textChapter.sameTitleRemoved
-                activity.lifecycleScope.launch(IO) {
-                    // 原版取 curTextChapter.chapter, 这里 TextChapterShared 不带 BookChapter,
-                    // 内存目录取不到就查库兜底 (放 IO, 主线程 runBlocking 会卡 UI)
-                    val chapter = vm.chapterList.value.getOrNull(textChapter.chapterIndex)
-                        ?: appDb.bookChapterDao.getChapter(book.bookUrl, textChapter.chapterIndex)
-                        ?: return@launch
-                    // toast 有条件, 翻转无条件 (对照原版 toast 在 book?.let 块内, 翻转在块外)
-                    if (removeSameTitle
-                        && !ContentProcessor.get(book).removeSameTitleCache
-                            .contains(chapter.getFileName("nr"))
-                    ) {
-                        activity.toastOnUi("未找到可移除的重复标题")
-                    }
-                    BookHelp.setRemoveSameTitle(book, chapter, removeSameTitle)
-                    vm.loadChapter(textChapter.chapterIndex)
-                }
-            }
-
-            // 重新分段: 翻转 reSegment (对照原版 menu_re_segment)
-            ReadMenuAction.RE_SEGMENT -> {
-                val book = screenModel.viewModel.book.value ?: return
-                book.config.reSegment = !book.config.reSegment
-                upTopMenu()
-                activity.lifecycleScope.launch(IO) {
-                    // 只 PATCH 阅读配置列; 整行 update 会冲掉后台 updateToc 写入的目录/元数据
-                    appDb.bookDao.updateReadConfig(book.bookUrl, book.config)
-                    screenModel.viewModel.loadChapter(screenModel.viewModel.durChapterIndex.value)
-                }
-            }
-
-            // 图片样式: 4 项选择器, 单选样式后重载 (对照原版 menu_image_style;
-            // 样式变化影响 `ReadBook.pageAnim()` 降级结果, 需重建翻页委托)
-            ReadMenuAction.IMAGE_STYLE -> {
-                val imgStyles = arrayListOf(
-                    Book.imgStyleDefault, Book.imgStyleFull, Book.imgStyleText, Book.imgStyleSingle
-                )
-                activity.selector(androidAppString("image_style"), imgStyles) { _, index ->
-                    val imageStyle = imgStyles[index]
-                    val book = screenModel.viewModel.book.value ?: return@selector
-                    book.config.imageStyle = imageStyle
-                    activity.lifecycleScope.launch(IO) {
-                        // 只 PATCH 阅读配置列; 整行 update 会冲掉后台 updateToc 写入的目录/元数据
-                        appDb.bookDao.updateReadConfig(book.bookUrl, book.config)
-                        // 切入 SINGLE 会把滚动降为覆盖, 从 SINGLE 切出会恢复滚动——两个方向都得
-                        // 重建委托。原版只在 SINGLE 分支调 upPageAnim, 切出时委托停在覆盖不回滚动。
-                        ReadBookEvents.postConfig(ReadConfigChange.PAGE_ANIM)
-                        screenModel.viewModel.loadChapter(screenModel.viewModel.durChapterIndex.value)
-                    }
-                }
-            }
-
-            // 更新目录: 清解析缓存后回源重拉目录 (对照原版 menu_update_toc)
-            ReadMenuAction.UPDATE_TOC -> screenModel.viewModel.updateToc()
-
-            // 云进度: 手动同步, 上传成功/已同步 toast (对照原版 menu_sync_progress)
-            ReadMenuAction.SYNC_PROGRESS -> screenModel.viewModel.syncProgressManual(
-                uploadSuccessAction = { activity.toastOnUi(androidAppString("upload_book_success")) },
-                syncSuccessAction = { activity.toastOnUi(androidAppString("sync_book_progress_success")) },
-            )
-
-            // 段评: 章节级评论对话框 (对照原版 menu_review → viewModel.openCommentDialog);
-            // ReviewListDialog 已下沉 shared: 经 review_list Overlay 弹底部弹窗
-            ReadMenuAction.REVIEW -> {
-                val book = screenModel.viewModel.book.value ?: return
-                val chapter = screenModel.currentChapter
-                if (chapter != null) {
-                    hide()
-                    AppNavigatorProviders.get().showOverlay(
-                        AppOverlay.Dialog(
-                            key = "review_list",
-                            payload = encodeReviewListDialogPayload(book, chapter, 0),
-                        )
-                    )
-                }
-            }
-
-            // 帮助 (对照原版 menu_help → showHelp("readMenuHelp"))
-            ReadMenuAction.HELP -> activity.showHelp("readMenuHelp")
-
-            // epub 去除 ruby/h 标签: 全章清缓存重载 (对照原版 menu_del_ruby_tag / menu_del_h_tag)
-            ReadMenuAction.DEL_RUBY_TAG -> toggleDelTag(Book.rubyTag)
-            ReadMenuAction.DEL_H_TAG -> toggleDelTag(Book.hTag)
-
-            else -> Unit
-        }
-    }
-
-    /** 翻转去除标签配置并全章重载 (对照原版 DEL_RUBY_TAG/DEL_H_TAG 分支) */
-    private fun toggleDelTag(tag: Long) {
-        val book = screenModel.viewModel.book.value ?: return
-        if (book.config.delTag and tag == tag) {
-            book.config.delTag = book.config.delTag and tag.inv()
-        } else {
-            book.config.delTag = book.config.delTag or tag
-        }
-        upTopMenu()
-        activity.lifecycleScope.launch(IO) {
-            // 只 PATCH 阅读配置列; 整行 update 会冲掉后台 updateToc 写入的目录/元数据
-            appDb.bookDao.updateReadConfig(book.bookUrl, book.config)
-            screenModel.viewModel.refreshContentAll()
-        }
-    }
-
-    /** 模拟阅读配置弹窗 (对照原版 BaseReadBookActivity.showSimulatedReading) */
-    private fun showSimulatedReading() {
-        val book = screenModel.viewModel.book.value ?: return
-        val enabledState = mutableStateOf(book.config.readSimulating)
-        val startState = mutableStateOf(book.getStartChapter().toString())
-        val numState = mutableStateOf(book.config.dailyChapters.toString())
-        val dateState = mutableStateOf(book.getStartDate()?.toString().orEmpty())
-        activity.alert(androidAppString("simulated_reading")) {
-            customView {
-                val colors = AppTheme.colors
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(DesignTokens.spacingLg)
-                ) {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = DesignTokens.spacingDefault),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            androidAppString("switch_on"),
-                            color = colors.primaryText,
-                            fontSize = 16.sp,
-                            modifier = Modifier.weight(1f),
-                        )
-                        AppSwitch(
-                            checked = enabledState.value,
-                            onCheckedChange = { enabledState.value = it },
-                        )
-                    }
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = DesignTokens.spacingDefault),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            androidAppString("start_from"),
-                            color = colors.primaryText,
-                            fontSize = 16.sp,
-                            modifier = Modifier.padding(end = DesignTokens.spacingDefault),
-                        )
-                        Text(
-                            text = dateState.value.ifEmpty { "Select date" },
-                            color = if (dateState.value.isEmpty()) colors.secondaryText
-                            else colors.primaryText,
-                            fontSize = 16.sp,
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable {
-                                    val localStartDate = localDateParseOrNull(dateState.value)
-                                        ?: localDateNow()
-                                    val (ly, lm, ld) = localStartDate.toYearMonthDay()
-                                    DatePickerDialog(
-                                        activity,
-                                        { _, yy, mm, dayOfMonth ->
-                                            dateState.value =
-                                                localDateOf(yy, mm + 1, dayOfMonth).toString()
-                                        },
-                                        ly,
-                                        lm - 1,
-                                        ld,
-                                    ).show()
-                                }
-                                .padding(vertical = DesignTokens.spacingDefault),
-                        )
-                    }
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = DesignTokens.spacingDefault),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            androidAppString("start_chapter"),
-                            color = colors.primaryText,
-                            fontSize = 16.sp,
-                        )
-                        AppNumberField(
-                            value = startState.value,
-                            onValueChange = { startState.value = it },
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(horizontal = DesignTokens.spacingXs),
-                        )
-                        Text(
-                            androidAppString("daily_chapters"),
-                            color = colors.primaryText,
-                            fontSize = 16.sp,
-                        )
-                        AppNumberField(
-                            value = numState.value,
-                            onValueChange = { numState.value = it },
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(start = DesignTokens.spacingXs),
-                        )
-                    }
-                }
-            }
-            okButton {
-                // 日期来自 DatePicker, 只会是 formatDate 产物或空 (空=今天)
-                book.config.startDate =
-                    localDateParseOrNull(dateState.value) ?: localDateNow()
-                book.config.dailyChapters = numState.value.intOr(book.totalChapterNum)
-                book.config.startChapter = startState.value.intOr(0)
-                book.config.readSimulating = enabledState.value
-                // 对照原版 book.save() + viewModel.initData: 落库并重装使模拟章节总数生效
-                activity.lifecycleScope.launch {
-                    // 只 PATCH 阅读配置列; 整行 update 会冲掉后台 updateToc 写入的目录/元数据
-                    withContext(IO) {
-                        appDb.bookDao.updateReadConfig(book.bookUrl, book.config)
-                    }
-                    screenModel.initBook(book, book.durChapterIndex)
-                }
-            }
-            cancelButton()
-        }
-    }
-
-    private fun String.intOr(default: Int): Int = toIntOrNull() ?: default
-
-    override fun onSeekDragStart() = Unit
-
-    override fun onSeekStop(progress: Int) {
-        // 推导逻辑下沉 shared (page 跳页 / chapter 首次弹确认后跳章 + confirmSkipToChapter 标志),
-        // 平台槽只负责弹确认框, 与桌面端同源
-        screenModel.onSeekStop(progress) { onConfirm ->
-            activity.alert("章节跳转确认", "确定要跳转章节吗？") {
-                yesButton { onConfirm() }
-                noButton { }
-                onCancelled { }
-            }
-        }
-    }
+    // onTopMenuAction/upSourceAction/upTopMenu/onSourceAction/onSeekStop 等与父类同实现或
+    // 已由 shared 对话框承接, 全部统一走父类 (含 KEYWORD_HIGHLIGHT: 收菜单后进关键词高亮管理页)
 
     // 自动翻页: 切换状态 + 停止朗读 (对照 app 端 ReadBookActivity.autoPage)
     override fun clickAutoPage() {
@@ -1020,84 +628,6 @@ private class AndroidReaderMenuState(
         }
     }
 
-    // 离线缓存弹窗 (对照原版 BaseReadBookActivity.showDownloadDialog → CacheBook.start)
-    private fun showDownloadDialog() {
-        val book = screenModel.viewModel.book.value ?: return
-        val startState = mutableStateOf((book.durChapterIndex + 1).toString())
-        val endState = mutableStateOf(book.totalChapterNum.toString())
-        activity.alert(androidAppString("offline_cache")) {
-            customView {
-                val colors = AppTheme.colors
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(DesignTokens.spacingLg)
-                ) {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = DesignTokens.spacingDefault),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            androidAppString("start"),
-                            color = colors.primaryText,
-                            fontSize = 16.sp,
-                            modifier = Modifier.padding(end = DesignTokens.spacingDefault),
-                        )
-                        AppNumberField(
-                            value = startState.value,
-                            onValueChange = { startState.value = it },
-                            modifier = Modifier.weight(1f),
-                        )
-                        Text(
-                            androidAppString("end"),
-                            color = colors.primaryText,
-                            fontSize = 16.sp,
-                            modifier = Modifier.padding(horizontal = DesignTokens.spacingDefault),
-                        )
-                        AppNumberField(
-                            value = endState.value,
-                            onValueChange = { endState.value = it },
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                }
-            }
-            okButton {
-                val start = startState.value.intOr(0)
-                val end = endState.value.intOr(book.totalChapterNum)
-                // 与原版一致: 输入为章节号, CacheBook 下标从 0 起 (start-1/end-1)
-                CacheBook.start(activity, book, start - 1, end - 1)
-            }
-            cancelButton()
-        }
-    }
 
-    // 设置编码弹窗 (对照原版 BaseReadBookActivity.showCharsetConfig → ReadBook.setCharset)
-    private fun showCharsetConfig() {
-        val book = screenModel.viewModel.book.value ?: return
-        val charsetState = mutableStateOf(book.charset.orEmpty())
-        activity.alert(androidAppString("set_charset")) {
-            customView {
-                AppAutoCompleteField(
-                    value = charsetState.value,
-                    onValueChange = { charsetState.value = it },
-                    label = "charset",
-                    values = AppConst.charsets,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(DesignTokens.spacingLg),
-                )
-            }
-            okButton {
-                charsetState.value.takeIf { it.isNotBlank() }?.let {
-                    // 走 shared 阅读器实例 setCharset (app 端 ReadBook 单例与阅读器非同一实例)
-                    screenModel.viewModel.setCharset(it)
-                }
-            }
-            cancelButton()
-        }
-    }
 }
 

@@ -1125,17 +1125,11 @@ class ReaderScreenModel(
     /**
      * 进度条抬手跳转（对照 app 端 ReadMenu.onSeekStop）：
      * - `progressBarBehavior == "page"`: 直接按页跳转 [ReadBookViewModelShared.skipToPage]
-     * - 否则: 首次弹「章节跳转确认」（由平台弹, 经 [showConfirm] 回调用例回调确认后的指令）,
-     *   确认后存跳转前进度快照再跳章（返回键可恢复）; 已确认过则直接跳。
-     *
-     * 平台 `ReadMenuState.onSeekStop(progress)` 调用本方法, 只负责弹确认框:
-     * ```
-     * override fun onSeekStop(progress: Int) {
-     *     screenModel.onSeekStop(progress) { onConfirm -> 弹确认框; 确认时 onConfirm() }
-     * }
-     * ```
+     * - 否则: 首次弹「章节跳转确认」（由 [ReaderDialogEvent.ChapterJumpConfirm] 经 Route 层
+     *   渲染四端通用对话框, 确认走 [confirmChapterJump]）; 已确认过则直接跳。
+     *   平台 `ReadMenuState.onSeekStop(progress)` 调用本方法。
      */
-    fun onSeekStop(progress: Int, showConfirm: ((onConfirm: () -> Unit) -> Unit)) {
+    fun onSeekStop(progress: Int) {
         val behavior = PreferenceProviders.get()
             .getString(PreferKey.progressBarBehavior, "page")
         when (behavior) {
@@ -1149,14 +1143,18 @@ class ReaderScreenModel(
                     saveCurrentBookProgress()
                     viewModel.loadChapter(progress, null, false)
                 } else {
-                    showConfirm {
-                        confirmSkipToChapter = true
-                        saveCurrentBookProgress()
-                        viewModel.loadChapter(progress, null, false)
-                    }
+                    postDialogEvent(ReaderDialogEvent.ChapterJumpConfirm(progress))
                 }
             }
         }
+    }
+
+    /** 确认跳章 (ChapterJumpConfirm 确认回调): 记住选择 + 存跳转前快照 + 跳章 */
+    fun confirmChapterJump(progress: Int) {
+        clearDialogEvent()
+        confirmSkipToChapter = true
+        saveCurrentBookProgress()
+        viewModel.loadChapter(progress, null, false)
     }
 
     // endregion
@@ -1223,6 +1221,10 @@ sealed interface ReaderDialogEvent {
 
     /** 文本编码选择器 (对照原版 menu_set_charset → showCharsetConfig) */
     data object SetCharset : ReaderDialogEvent
+
+    /** 章节跳转确认 (对照原版 ReadMenu onStopTrackingTouch "chapter" 分支首次拖动的 alert:
+     *  确定=记住选择并存跳转前快照后跳章, 取消/关闭=复位进度条不跳) */
+    data class ChapterJumpConfirm(val progress: Int) : ReaderDialogEvent
 }
 
 /** 选中文字朗读用的一次性引擎: OneShotTts 每 new 一个都会在共享引擎上再套一层进度监听, 故单实例。 */

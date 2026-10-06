@@ -16,6 +16,8 @@ import io.legado.app.help.book.BookChapterLoader
 import io.legado.app.help.book.BookHelpShared
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.ContentProcessorProviders
+import io.legado.app.help.toast.Toasters
+import io.legado.app.ui.compose.platform.syncGetString
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isLocal
@@ -2153,6 +2155,12 @@ class ReadBookViewModelShared(
             val durIndex = readBook.durChapterIndex.value
             val chapter = resolveChapter(book, durIndex, readBook.chapterList.value)
                 ?: return@launch
+            // 对照原版 menu_same_title_removed: 首次去重前先提示 "未找到可移除的重复标题"
+            if (!textChapter.sameTitleRemoved &&
+                !BookHelpShared.isRemoveSameTitleCached(book, chapter)
+            ) {
+                Toasters.get().toast(syncGetString("same_title_removed_none"))
+            }
             // 翻转去重标记 (对照 app 端 BookHelp.setRemoveSameTitle(book, chapter, !sameTitleRemoved))
             BookHelpShared.setRemoveSameTitleMarker(book, chapter, !textChapter.sameTitleRemoved)
             // 清当前章已处理内容缓存 + 重载 (对照 app 端 ReadBook.loadContent(durChapterIndex), 保偏移)

@@ -164,6 +164,9 @@
     <string name="use_regex">使用正则表达式</string>
     <string name="add_replace_rule">新建替换</string>
     <string name="sure_del">是否确认删除？</string>
+    <string name="chapter_jump_confirm">章节跳转确认</string>
+    <string name="chapter_jump_confirm_msg">确定要跳转章节吗？</string>
+    <string name="same_title_removed_none">未找到可移除的重复标题</string>
     <string name="draw">提醒</string>
     <string name="timeout_millisecond">超时毫秒数</string>
     <string name="respondTime">响应时间：%1$d ms</string>

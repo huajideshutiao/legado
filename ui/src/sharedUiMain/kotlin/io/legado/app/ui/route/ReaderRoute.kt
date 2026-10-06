@@ -98,6 +98,8 @@ import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.add_to_bookshelf
 import legado.ui.generated.resources.cancel
 import legado.ui.generated.resources.chapter_pay
+import legado.ui.generated.resources.chapter_jump_confirm
+import legado.ui.generated.resources.chapter_jump_confirm_msg
 import legado.ui.generated.resources.check_add_bookshelf
 import legado.ui.generated.resources.cloud_progress_exceeds_current
 import legado.ui.generated.resources.draw
@@ -495,7 +497,8 @@ fun ReaderRoute(
     val latestIsTopEntry by rememberUpdatedState(isTopEntry)
     // 鼠标滚轮翻页: 仅上下滚动模式消费为连续滚动 (scrollBy: 行级滚动 + 页边界折算,
     // 滚过页底自动切页, 与拖拽滚动同一套折算互不干扰), 左右翻页模式不消费 (保持拖拽翻页);
-    // 菜单可见时不消费, 让位菜单内列表滚动; 非栈顶不消费, 对齐上方快捷键 enabled 守卫
+    // 菜单可见时不消费, 让位菜单内列表滚动 (判定口径同 ReaderScreen 的 menuVisible:
+    // 主菜单或搜索菜单根容器任一可见即让位); 非栈顶不消费, 对齐上方快捷键 enabled 守卫
     // (目录/换源等子页半透明区域滚轮会命中下层阅读页)。
     ReaderScreen(
         state = state,
@@ -508,7 +511,11 @@ fun ReaderRoute(
                     val change = event.changes.firstOrNull() ?: continue
                     val delta = change.scrollDelta.y
                     if (delta == 0f) continue
-                    if (!latestIsTopEntry || screenModel.menuState.isVisible) continue
+                    if (!latestIsTopEntry || screenModel.menuState.isVisible ||
+                        screenModel.searchMenuState.rootVisible
+                    ) {
+                        continue
+                    }
                     val scrollDelegate =
                         screenModel.viewModel.pageDelegate as? ScrollPageDelegateCompose
                     if (scrollDelegate != null) {
@@ -1209,6 +1216,26 @@ fun ReaderRoute(
             } else {
                 LaunchedEffect(screenModel) { screenModel.clearDialogEvent() }
             }
+        }
+
+        // 章节跳转确认 (对照原版 ReadMenu onStopTrackingTouch "chapter" 分支首次拖动的 alert:
+        // 确定=记住选择并存跳转前快照后跳章, 取消/关闭=复位进度条不跳)
+        is ReaderDialogEvent.ChapterJumpConfirm -> {
+            AppAlertDialog(
+                onDismissRequest = {
+                    screenModel.clearDialogEvent()
+                    screenModel.menuState.upSeekBar()
+                },
+                title = stringResource(Res.string.chapter_jump_confirm),
+                message = stringResource(Res.string.chapter_jump_confirm_msg),
+                okButton = AlertButton(stringResource(Res.string.yes)) {
+                    screenModel.confirmChapterJump(event.progress)
+                },
+                cancelButton = AlertButton(stringResource(Res.string.no)) {
+                    screenModel.clearDialogEvent()
+                    screenModel.menuState.upSeekBar()
+                },
+            )
         }
 
         null -> Unit
