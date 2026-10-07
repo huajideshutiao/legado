@@ -140,7 +140,19 @@
 -keep,allowoptimization class kotlinx.serialization.** { public protected *; }
 -keep,allowoptimization class okio.** { public protected *; }
 -keep,allowoptimization class uy.kohesive.injekt.** { public protected *; }
+# injekt 的 fullType<T>() 在调用点内联出 FullTypeReference 的匿名子类, 构造经
+# javaClass.genericSuperclass 反射取泛型实参; R8 仅在 keep 规则匹配到的类上保留 Signature 属性,
+# 子类被优化/合并即丢失泛型父类信息, 反射退化为裸 Class, release 包启动即
+# IllegalArgumentException: TypeReference constructed without actual type information
+# (规则与 keiyoushi 扩展源 common/proguard-rules.pro 逐字一致)。
+-keep class * extends uy.kohesive.injekt.api.FullTypeReference
 -dontwarn org.jspecify.annotations.NullMarked
+
+############################
+# Gson TypeToken (object : TypeToken<...>() {} 同款反射契约, 规则取自 Gson 官方 README)
+############################
+-keep,allowobfuscation,allowshrinking class com.google.gson.reflect.TypeToken
+-keep,allowobfuscation,allowshrinking class * extends com.google.gson.reflect.TypeToken
 -keep class com.google.re2j.** { *; }
 -dontwarn com.google.re2j.**
 
