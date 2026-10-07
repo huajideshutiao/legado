@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
+import io.legado.app.model.webBook.PluginFilterSession
 import io.legado.app.ui.bookshelf.KindLabels
 import io.legado.app.ui.bookshelf.shelfCoverHeightDp
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -151,6 +152,7 @@ private sealed interface ExplorePreloadSignal {
  * - [bookshelfVersion]: 书架增删时递增驱动重组刷新绿点/徽标
  * - [optionsVersion]: 参数 chip 结构变化时递增驱动 optionsRowSlot 重组重绑
  * - [scrollTopEpoch]: 标题栏点击回顶信号, >0 时触发列表 animateScrollToItem(0)
+ * - [pluginFilterSource]: 插件源筛选入口目标 (非插件源为 null), 驱动 [PluginExploreFilterRow]
  */
 data class ExploreShowUiState(
     val title: String,
@@ -167,6 +169,18 @@ data class ExploreShowUiState(
     val scrollTopEpoch: Int,
     val footerLoading: Boolean,
     val footerText: String?,
+    val pluginFilterSource: PluginFilterSource? = null,
+    /** 筛选分类页的会话筛选实例 (漫画 [io.legado.app.model.webBook.MangaFilterSession] /
+     * 视频 [io.legado.app.model.webBook.AnimeFilterSession], 随页面销毁)。 */
+    val pluginExploreFilters: PluginFilterSession? = null,
+)
+
+/**
+ * 插件源筛选入口目标 (仅"筛选"分类页推送): 源 url 供取筛选会话, 源名供 chip 文案。
+ */
+data class PluginFilterSource(
+    val sourceUrl: String,
+    val sourceName: String,
 )
 
 /**
@@ -218,6 +232,11 @@ interface ExploreShowUiActions {
 
     /** 参数 chip 变化 (宿主清空 books + 重新 explore) */
     fun onExploreOptionChanged()
+
+    /**
+     * 筛选重置 (筛选对话框重置按钮): 宿主换新默认会话实例、同步 UiState 并重载第 1 页, 仍停留筛选面。
+     */
+    fun onPluginFiltersReset() {}
 }
 
 /**
@@ -265,6 +284,13 @@ fun ExploreShowScreen(
             actions = { ExploreActions(state, actions) },
         )
         optionsRowSlot()
+        // 插件源筛选入口 (仅"筛选"分类页; 会话实例挂 VM 随页面销毁, 不持久化)
+        PluginExploreFilterRow(
+            target = state.pluginFilterSource,
+            filters = state.pluginExploreFilters,
+            onFiltersApplied = actions::onExploreOptionChanged,
+            onResetFilters = actions::onPluginFiltersReset,
+        )
         ResultArea(state, actions, videoItemSlot, coverSlot, Modifier.weight(1f))
     }
 }

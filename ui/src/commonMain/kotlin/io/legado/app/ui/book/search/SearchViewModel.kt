@@ -1,19 +1,24 @@
 package io.legado.app.ui.book.search
 
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.BookSourceType
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.SearchKeyword
+import io.legado.app.data.entities.isTachiyomiPluginSource
 import io.legado.app.help.book.BookFilter
 import io.legado.app.help.book.incrementalFilter
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.webBook.ExploreOption
+import io.legado.app.model.webBook.PluginFilterSession
 import io.legado.app.model.webBook.SearchModel
 import io.legado.app.model.webBook.SourceSearchGroup
+import io.legado.app.ui.book.manga.extension.MangaExtensionServiceProviders
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.concurrent.newConcurrentMap
 import io.legado.app.utils.concurrent.newConcurrentSet
@@ -137,6 +142,42 @@ class SearchViewModel {
     /** 区块内选项 chip 变化: 只重搜该源 (其余源结果不动)。 */
     fun onSourceOptionChanged(sourceUrl: String) {
         searchModel.restartSource(sourceUrl)
+    }
+
+    /**
+     * 页面会话的插件源筛选实例 (key=bookSourceUrl): 同一实例同时供筛选 UI 与取数委派使用,
+     * 随本 VM (页面) 销毁即丢, 不经任何全局缓存 (对齐 Mihon 筛选随浏览页 VM 生命周期)。
+     */
+    private val pluginFilterSessions = newConcurrentMap<String, PluginFilterSession>()
+
+    /** 已探测确认不声明筛选器的插件源 (免得每次重组重复新建默认实例) */
+    private val noFilterPluginSources = newConcurrentSet<String>()
+
+    /** 取/建该源筛选会话; 非插件源或未声明筛选器的源返回 null (不出筛选入口)。 */
+    suspend fun ensurePluginFilterSession(source: BookSource): PluginFilterSession? {
+        if (!source.isTachiyomiPluginSource()) return null
+        val url = source.bookSourceUrl
+        pluginFilterSessions[url]?.let { return it }
+        if (url in noFilterPluginSources) return null
+        val service = MangaExtensionServiceProviders.getOrNull() ?: return null
+        val session = when (source.bookSourceType) {
+            BookSourceType.image -> service.createMangaFilterSession(url)
+            BookSourceType.video -> service.createAnimeFilterSession(url)
+            else -> null
+        }
+        if (session == null || session.isEmpty) {
+            noFilterPluginSources.add(url)
+            return null
+        }
+        pluginFilterSessions[url] = session
+        return session
+    }
+
+    /** 重置为源默认筛选 (新建会话替换旧实例), 返回新会话供 UI 回填。 */
+    suspend fun resetPluginFilterSession(source: BookSource): PluginFilterSession? {
+        pluginFilterSessions.remove(source.bookSourceUrl)
+        noFilterPluginSources.remove(source.bookSourceUrl)
+        return ensurePluginFilterSession(source)
     }
 
     /**
@@ -265,6 +306,9 @@ class SearchViewModel {
 
         override fun getSearchOptions(sourceUrl: String): List<ExploreOption> =
             sourceSearchOptions[sourceUrl] ?: emptyList()
+
+        override suspend fun getPluginFilters(source: BookSource): PluginFilterSession? =
+            ensurePluginFilterSession(source)
     })
 
     init {

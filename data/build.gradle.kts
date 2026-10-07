@@ -342,9 +342,6 @@ fun KotlinDependencyHandler.sharedJvmAndroidDeps() {
     // keiyoushi 扩展兼容层 (eu.kanade.tachiyomi.*) 的 DI; 扩展 dex 运行时按宿主 classpath 解析 Injekt,
     // 桌面端加载器亦需, 故 api (catalog 注释: fork 含 uy.kohesive.injekt.api 包面)
     api(sharedLibs.findLibrary("injekt-core").get())
-    // 兼容层 AnimeFilterList 的 @Stable 注解 (org.jetbrains.compose.runtime:runtime 多平台构件,
-    // app/desktop 本就携带, 此处仅为 :data 编译可见)
-    implementation(sharedLibs.findLibrary("runtime").get())
 }
 
 kotlin {
@@ -424,6 +421,9 @@ kotlin {
                 // 替换为 :modules:ksoup-ohos, 其余平台照常解析标准 ksoup。
                 implementation(libs.ksoup)
                 implementation(libs.kotlinx.serialization.json)
+                // 兼容层 AnimeFilterList 的 @Stable 注解 (org.jetbrains.compose.runtime:runtime 多平台构件,
+                // 各端 UI 本就携带, 此处仅为 :data commonMain 编译可见)
+                implementation(sharedLibs.findLibrary("runtime").get())
             }
         }
         // 实体源码 src/roomEntitiesMain/kotlin 直接挂 commonMain (与 :shared 同款:

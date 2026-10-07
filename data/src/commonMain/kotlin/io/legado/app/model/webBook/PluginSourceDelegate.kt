@@ -23,23 +23,33 @@ interface PluginSourceDelegate {
     /** 该书源是否由本委派处理 (虚拟行身份判定: 类型 + URL 前缀)。 */
     fun handles(bookSource: BookSource): Boolean
 
-    /** 插件源搜索 (对应 WebBook.getBookListAwait, isSearch=true; page 从 1 起)。 */
+    /**
+     * 插件源搜索 (对应 WebBook.getBookListAwait, isSearch=true; page 从 1 起)。
+     *
+     * [filters] 为页面会话筛选实例 (页面创建、随页面销毁, 不持久化); 未传 (无筛选 UI 的调用方)
+     * 时用源默认筛选。
+     */
     suspend fun getBookListAwait(
         bookSource: BookSource,
         key: String,
         page: Int,
+        filters: PluginFilterSession? = null,
     ): BookListPage
 
     /**
      * 插件源发现取数 (对应 WebBook.getBookListAwait 的 isSearch=false 路径)。
      *
-     * [url] 为虚拟源 exploreUrl 中某个发现分类的 url 段 (形如 `popular`/`latest`),
+     * [url] 为虚拟源 exploreUrl 中某个发现分类的 url 段 (形如 `popular`/`latest`/`filter`),
      * 由实现自行分派到插件源对应取数面; 无法识别的值应显式报错而非静默返回空。
+     *
+     * [filters] 为筛选分类页的会话筛选实例 (页面创建、随页面销毁, 不持久化);
+     * 筛选分类面必然携带对应契约的会话实例, 缺失即报错 (不静默取无筛选数据)。
      */
     suspend fun getExploreAwait(
         bookSource: BookSource,
         url: String,
         page: Int,
+        filters: PluginFilterSession? = null,
     ): BookListPage
 
     /** 插件源书籍详情 (对应 WebBook.getBookInfoAwait; 字段写回 [book] 并返回)。 */

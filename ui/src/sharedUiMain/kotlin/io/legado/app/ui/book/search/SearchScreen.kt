@@ -348,10 +348,13 @@ fun SearchScreen(
                             onOptionChanged = { viewModel.search(viewModel.searchKey, resetOptions = false) },
                         )
                     }
-                    // 插件源筛选条 (漫画/视频, 范围内无插件源时为零行; 服务未注册端同样)
+                    // 插件源筛选条 (漫画/视频, 范围内无插件源时为零行; 服务未注册端同样);
+                    // 会话实例由本页 VM 持有, 随页面销毁即丢
                     PluginSearchFilterRow(
                         searchScope = viewModel.searchScope,
                         scopeVersion = scopeVersion,
+                        ensureFilterSession = { viewModel.ensurePluginFilterSession(it) },
+                        resetFilterSession = { viewModel.resetPluginFilterSession(it) },
                         onFiltersChanged = { viewModel.search(viewModel.searchKey, resetOptions = false) },
                     )
                     ResultArea(

@@ -1,6 +1,7 @@
 package io.legado.app.ui.book.explore
 
 import io.legado.app.data.entities.SearchBook
+import io.legado.app.model.webBook.PluginFilterSession
 import io.legado.app.ui.root.ScreenModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -61,6 +62,10 @@ class ExploreShowScreenModel : ScreenModel {
 
             ExploreShowUiEvent.ScrollTopBump -> _state.update {
                 it.copy(scrollTopEpoch = it.scrollTopEpoch + 1)
+            }
+
+            is ExploreShowUiEvent.PluginFilterSourceChanged -> _state.update {
+                it.copy(pluginFilterSource = event.source, pluginExploreFilters = event.filters)
             }
         }
     }
@@ -146,4 +151,13 @@ sealed interface ExploreShowUiEvent {
 
     /** 标题栏点击回顶信号 */
     object ScrollTopBump : ExploreShowUiEvent
+
+    /**
+     * 插件源筛选入口目标就绪 (initData 判定书源为漫画/视频插件源后推送; 非插件源推 null)。
+     * [filters] 为筛选分类页的会话筛选实例 (重置时随新实例更新)。
+     */
+    data class PluginFilterSourceChanged(
+        val source: PluginFilterSource?,
+        val filters: PluginFilterSession?,
+    ) : ExploreShowUiEvent
 }

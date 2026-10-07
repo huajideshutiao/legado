@@ -51,12 +51,14 @@ object WebBook {
         isSearch: Boolean = true,
         onUrlResolved: ((AnalyzeUrlCore) -> Unit)? = null,
         selectedOptions: Map<String, String>? = null,
+        pluginFilters: PluginFilterSession? = null,
     ): BookListPage {
         // 插件虚拟源无规则可解析, 命中即转交委派 (搜索走 isSearch=true, 发现走 isSearch=false;
-        // 发现路径的 key 即 exploreUrl 分类的 url 段, 交委派自行分派取数面)
+        // 发现路径的 key 即 exploreUrl 分类的 url 段, 交委派自行分派取数面;
+        // pluginFilters 是页面会话筛选实例, 两条路径均透传)
         PluginSourceDelegates.resolve(bookSource)?.let { delegate ->
-            return if (isSearch) delegate.getBookListAwait(bookSource, key, page ?: 1)
-            else delegate.getExploreAwait(bookSource, key, page ?: 1)
+            return if (isSearch) delegate.getBookListAwait(bookSource, key, page ?: 1, pluginFilters)
+            else delegate.getExploreAwait(bookSource, key, page ?: 1, pluginFilters)
         }
         var url = key
         if (isSearch) {

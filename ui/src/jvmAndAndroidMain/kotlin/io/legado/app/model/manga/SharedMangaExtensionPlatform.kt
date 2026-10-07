@@ -1,6 +1,5 @@
 package io.legado.app.model.manga
 
-import eu.kanade.tachiyomi.source.model.FilterList
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.extension.model.ContentWarning
 import io.legado.app.help.extension.ExtensionPrefs
@@ -9,7 +8,10 @@ import io.legado.app.help.extension.model.MangaExtension
 import io.legado.app.help.extension.MangaExtensionManager
 import io.legado.app.help.extension.model.MangaExtensionRepo
 import io.legado.app.help.extension.model.RepoKind
+import io.legado.app.model.anime.AnimeSourceMapper
 import io.legado.app.model.plugin.pluginInstalledOf
+import io.legado.app.model.webBook.AnimeFilterSession
+import io.legado.app.model.webBook.MangaFilterSession
 import io.legado.app.ui.book.manga.extension.MangaContentWarning
 import io.legado.app.ui.book.manga.extension.MangaExtensionItem
 import io.legado.app.ui.book.manga.extension.MangaExtensionKind
@@ -191,10 +193,16 @@ open class SharedMangaExtensionPlatform(
         MangaExtensionManager.findAvailableExtensions()
     }
 
-    override suspend fun getFilterList(bookSourceUrl: String): FilterList? {
+    override suspend fun createMangaFilterSession(bookSourceUrl: String): MangaFilterSession? {
         val sourceId = MangaSourceMapper.sourceIdOf(bookSourceUrl) ?: return null
         val source = MangaExtensionManager.getSource(sourceId) ?: return null
-        return MangaPluginFilterCache.getOrCreate(source)
+        return MangaFilterSession(source.getFilterList())
+    }
+
+    override suspend fun createAnimeFilterSession(bookSourceUrl: String): AnimeFilterSession? {
+        val sourceId = AnimeSourceMapper.sourceIdOf(bookSourceUrl) ?: return null
+        val source = MangaExtensionManager.getAnimeSource(sourceId) ?: return null
+        return AnimeFilterSession(source.getFilterList())
     }
 
     // region 插件自带配置 (ConfigurableSource/ConfigurableAnimeSource)

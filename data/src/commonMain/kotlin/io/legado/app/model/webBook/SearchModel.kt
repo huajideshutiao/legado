@@ -176,6 +176,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
                             }
                         },
                         selectedOptions = sourceSelectedOptions(bookSource.bookSourceUrl),
+                        pluginFilters = callBack.getPluginFilters(bookSource),
                     )
                     SourcePageResult(bookSource, generation, bookListPage)
                 }
@@ -269,6 +270,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
                                 author.contains(searchKey)
                         },
                         selectedOptions = sourceSelectedOptions(sourceUrl),
+                        pluginFilters = callBack.getPluginFilters(source),
                     )
                 }
                 if (searchId != mSearchId) return@launch
@@ -406,6 +408,12 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
 
         /** 取某源已声明选项的当前选择态 (默认空: 不支持选项注入的实现方) */
         fun getSearchOptions(sourceUrl: String): List<ExploreOption> = emptyList()
+
+        /**
+         * 取该源页面会话筛选实例 (默认 null: 无筛选 UI 的调用方, 委派按源默认筛选取数)。
+         * 实现方持有实例并在会话内复用, 使筛选 UI 与取数共用同一份; 不经全局缓存。
+         */
+        suspend fun getPluginFilters(source: BookSource): PluginFilterSession? = null
         fun onFiltered(count: Int) {}
     }
 

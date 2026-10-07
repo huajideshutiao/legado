@@ -20,6 +20,7 @@ import io.legado.app.ui.book.explore.ExploreShowScreen
 import io.legado.app.ui.book.explore.ExploreShowScreenModel
 import io.legado.app.ui.book.explore.ExploreShowUiActions
 import io.legado.app.ui.book.explore.ExploreShowUiEvent
+import io.legado.app.ui.book.explore.PluginFilterSource
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.bookshelf.ShelfVideoItem
@@ -38,6 +39,7 @@ import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.ui.root.toRouteRef
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.bottom_line
 import legado.ui.generated.resources.empty
@@ -77,7 +79,8 @@ fun ExploreShowRoute(
     // VM 创建 (组合委托, 对照 app 端 ExploreShowViewModel)
     val vmScope = remember { screenModelScope("发现列表") }
     val vm = remember(vmScope) { ExploreShowViewModelShared(vmScope) }
-    // VM 作用域挂"在栈期间" (STARTED): 对照原版 Activity 存活期, 出栈才取消
+    // VM 作用域挂"在栈期间" (STARTED): 对照原版 Activity 存活期, 出栈才取消。
+    // 筛选实例挂 VM (页面会话) 随页面销毁自然丢弃, 无需退出清理。
     OnRouteLifecycle(onLeave = { vmScope.cancel() })
 
     // footer 文案 (对照 Activity getString(R.string.empty / bottom_line / error_load_msg))
@@ -157,6 +160,16 @@ fun ExploreShowRoute(
             // 菜单"书源登录"显隐: 书源带登录入口 (loginUrl/loginUi 非空, 对照原 hasLoginUrl)
             screenModel.dispatch(
                 ExploreShowUiEvent.LoginAvailabilityChanged(vm.bookSource?.hasLogin() == true)
+            )
+            // 插件源筛选入口目标 (仅"筛选"分类页推送; 非插件源/其余分类推 null 隐藏);
+            // filters 为 VM 会话实例 (initData 创建, 随页面销毁, 不持久化)
+            screenModel.dispatch(
+                ExploreShowUiEvent.PluginFilterSourceChanged(
+                    vm.bookSource
+                        ?.takeIf { vm.isPluginFilterKind }
+                        ?.let { PluginFilterSource(it.bookSourceUrl, it.bookSourceName) },
+                    vm.pluginExploreFilters,
+                )
             )
         }
     }
@@ -290,6 +303,21 @@ fun ExploreShowRoute(
             override fun onExploreOptionChanged() {
                 screenModel.dispatch(ExploreShowUiEvent.ClearBooks)
                 vm.explore(true)
+            }
+
+            // 筛选重置: 换新默认会话实例并同步 UiState, 重载第 1 页 (仍停留筛选面)
+            override fun onPluginFiltersReset() {
+                vmScope.launch {
+                    val session = vm.resetPluginExploreFilters() ?: return@launch
+                    screenModel.dispatch(
+                        ExploreShowUiEvent.PluginFilterSourceChanged(
+                            screenModel.state.value.pluginFilterSource,
+                            session,
+                        )
+                    )
+                    screenModel.dispatch(ExploreShowUiEvent.ClearBooks)
+                    vm.explore(true)
+                }
             }
         }
     }

@@ -48,6 +48,34 @@ object VirtualPluginSourcePrefix {
 fun BookSource.isVirtualPluginSource(): Boolean =
     VirtualPluginSourcePrefix.ALL.any { bookSourceUrl.startsWith(it) }
 
+/**
+ * 该书源是否为 Tachiyomi/Aniyomi 系插件虚拟源 (漫画 + 视频; TVBox 不属此类)。
+ *
+ * 与三个委派 `handles()` 的「前缀 + [BookSource.bookSourceType]」双条件一致: TVBox 源同为
+ * [io.legado.app.constant.BookSourceType.video] 类型, 只按类型判定会把 TVBox 混进插件能力面。
+ */
+fun BookSource.isTachiyomiPluginSource(): Boolean =
+    bookSourceUrl.startsWith(VirtualPluginSourcePrefix.TACHIYOMI)
+
+/**
+ * 插件源虚拟行 exploreUrl 的分类 url 段 (shared 层判定用, 四端可见)。
+ *
+ * 漫画 ([io.legado.app.model.manga.MangaPluginSources]) 与视频
+ * ([io.legado.app.model.anime.AnimePluginSources]) 的同名常量均引用此处取值;
+ * 筛选段仅源声明了筛选器时才写入虚拟行 (对齐 Mihon 仅 filters 非空才显示 Filter chip)。
+ */
+object PluginExploreKindUrl {
+
+    /** 热门 (对应插件源 getPopularManga/getPopularAnime)。 */
+    const val POPULAR = "popular"
+
+    /** 最新 (对应插件源 getLatestUpdates/getLatestAnime; 不支持时源侧抛)。 */
+    const val LATEST = "latest"
+
+    /** 筛选浏览 (空关键词 + 源筛选器取数, 对应 Mihon FilterSheet 应用后的搜索面)。 */
+    const val FILTER = "filter"
+}
+
 /** 该书源列表投影是否为插件虚拟源 (漫画 / 视频 / TVBox)。 */
 fun BookSourcePart.isVirtualPluginSource(): Boolean =
     VirtualPluginSourcePrefix.ALL.any { bookSourceUrl.startsWith(it) }

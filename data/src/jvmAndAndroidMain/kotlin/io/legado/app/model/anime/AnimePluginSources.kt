@@ -4,6 +4,7 @@ import eu.kanade.tachiyomi.animesource.AnimeSource
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import io.legado.app.constant.BookSourceType
 import io.legado.app.data.entities.BookSource
+import io.legado.app.data.entities.PluginExploreKindUrl
 import io.legado.app.help.extension.MangaExtensionManager
 import io.legado.app.model.plugin.PluginVirtualBookSourceTable
 
@@ -25,27 +26,41 @@ object AnimePluginSources {
     const val GROUP_NAME = "Tachiyomi 视频插件"
 
     /** 发现分类 url 段: 热门 (对应 [AnimeSource.getPopularAnime])。 */
-    const val EXPLORE_URL_POPULAR = "popular"
+    const val EXPLORE_URL_POPULAR = PluginExploreKindUrl.POPULAR
 
     /** 发现分类 url 段: 最新 (对应 [AnimeSource.getLatestUpdates]; supportsLatest=false 的源会抛)。 */
-    const val EXPLORE_URL_LATEST = "latest"
+    const val EXPLORE_URL_LATEST = PluginExploreKindUrl.LATEST
+
+    /** 发现分类 url 段: 筛选浏览 (空关键词 + 源筛选器, 对应 Mihon FilterSheet 应用后的搜索面)。 */
+    const val EXPLORE_URL_FILTER = PluginExploreKindUrl.FILTER
+
+    /** 基础发现分类 (热门/最新, 所有源恒有)。 */
+    private const val EXPLORE_URL_BASE = "热门::$EXPLORE_URL_POPULAR\n最新::$EXPLORE_URL_LATEST"
+
+    /** 含筛选段的完整发现分类 (源声明了筛选器时用, 对齐 Mihon 仅 filters 非空才显示 Filter chip)。 */
+    private const val EXPLORE_URL_WITH_FILTER =
+        "$EXPLORE_URL_BASE\n筛选::$EXPLORE_URL_FILTER"
 
     /**
-     * 虚拟行 exploreUrl: 换行分隔的 `标题::url` 列表。
-     *
-     * 形态与漫画侧 [io.legado.app.model.manga.MangaPluginSources.EXPLORE_URL] 一致, 由 shared 层
+     * 虚拟行 exploreUrl: 换行分隔的 `标题::url` 列表, 按源筛选器有无定制
+     * (无筛选器的源不出"筛选"入口)。形态与漫画侧一致, 由 shared 层
      * `BookSourceExtensionsShared.exploreKinds()` 的换行分支解析; url 段原样作为 key
      * 传入 `WebBook.getBookListAwait(..., isSearch = false)`, 即
      * [VideoSourceDelegateImpl.getExploreAwait] 的 url 入参。
      */
-    const val EXPLORE_URL = "热门::$EXPLORE_URL_POPULAR\n最新::$EXPLORE_URL_LATEST"
+    fun exploreUrlOf(source: AnimeSource): String =
+        if (runCatching { source.getFilterList() }.getOrNull().isNullOrEmpty()) {
+            EXPLORE_URL_BASE
+        } else {
+            EXPLORE_URL_WITH_FILTER
+        }
 
     private val table = PluginVirtualBookSourceTable<AnimeSource>(
         groupName = GROUP_NAME,
         bookSourceType = BookSourceType.video,
         kindLabel = "Aniyomi 视频插件源",
         logTag = "视频插件",
-        exploreUrl = EXPLORE_URL,
+        exploreUrl = EXPLORE_URL_BASE,
         headersOf = { (it as? AnimeHttpSource)?.headers?.toMap() },
     )
 
@@ -57,6 +72,7 @@ object AnimePluginSources {
                 pkgName = pkgName,
                 source = source,
                 name = source.name,
+                exploreUrlOverride = exploreUrlOf(source),
             )
         )
 
@@ -72,6 +88,7 @@ object AnimePluginSources {
                     pkgName = reg.pkgName,
                     source = reg.source,
                     name = reg.source.name,
+                    exploreUrlOverride = exploreUrlOf(reg.source),
                 )
             }
         )

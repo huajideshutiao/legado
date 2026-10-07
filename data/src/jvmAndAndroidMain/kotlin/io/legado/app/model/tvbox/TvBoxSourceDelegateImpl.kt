@@ -22,6 +22,7 @@ import io.legado.app.help.tvbox.pickAggregate
 import io.legado.app.help.tvbox.pickJsonApi
 import io.legado.app.help.tvbox.pickWebSniff
 import io.legado.app.model.webBook.BookChapterList
+import io.legado.app.model.webBook.PluginFilterSession
 import io.legado.app.model.webBook.PluginSourceDelegate
 import io.legado.app.utils.GSON
 import io.legado.app.utils.KS_JSON
@@ -87,6 +88,7 @@ object TvBoxSourceDelegateImpl : PluginSourceDelegate {
         bookSource: BookSource,
         key: String,
         page: Int,
+        filters: PluginFilterSession?,
     ): BookListPage = withContext(IoDispatcher) {
         val siteKey = TvBoxSourceMapper.siteKeyOf(bookSource.bookSourceUrl)
         val (site, spider) = TvBoxManager.spiderFor(siteKey)
@@ -117,6 +119,8 @@ object TvBoxSourceDelegateImpl : PluginSourceDelegate {
         bookSource: BookSource,
         url: String,
         page: Int,
+        // TVBox 站点无筛选契约 (spider 不接收筛选器), 会话实例仅 tachiyomi:// 插件源使用
+        filters: PluginFilterSession?,
     ): BookListPage = withContext(IoDispatcher) {
         val siteKey = TvBoxSourceMapper.siteKeyOf(bookSource.bookSourceUrl)
         val (site, spider) = TvBoxManager.spiderFor(siteKey)

@@ -30,12 +30,14 @@ internal class PluginVirtualBookSourceTable<SRC>(
     private val headersOf: (SRC) -> Map<String, String>?,
 ) {
 
-    /** 待同步行: url 身份 + 归属扩展包名 (可空) + 源实例 + 显示名。 */
+    /** 待同步行: url 身份 + 归属扩展包名 (可空) + 源实例 + 显示名 + 发现分类覆写 (可空)。 */
     data class Row<SRC>(
         val url: String,
         val pkgName: String?,
         val source: SRC,
         val name: String,
+        /** 覆写默认 [exploreUrl] (如漫画/视频按源筛选器有无追加"筛选"分类段); null 用默认。 */
+        val exploreUrlOverride: String? = null,
     )
 
     /**
@@ -50,7 +52,7 @@ internal class PluginVirtualBookSourceTable<SRC>(
         bookSourceType = bookSourceType,
         enabled = true,
         enabledExplore = true,
-        exploreUrl = exploreUrl,
+        exploreUrl = row.exploreUrlOverride ?: exploreUrl,
         header = headerJsonOf(row.source),
         loginUrl = row.pkgName?.takeIf { MangaExtensionManager.isPkgConfigurable(it) },
         bookSourceComment = listOfNotNull(
@@ -80,11 +82,13 @@ internal class PluginVirtualBookSourceTable<SRC>(
                     dao.insert(fresh)
                 } else if (old.bookSourceName != fresh.bookSourceName ||
                     old.loginUrl != fresh.loginUrl ||
+                    old.exploreUrl != fresh.exploreUrl ||
                     !headerSuperset(old.header, fresh.header)
                 ) {
                     old.bookSourceName = fresh.bookSourceName
                     old.loginUrl = fresh.loginUrl
                     old.header = fresh.header
+                    old.exploreUrl = fresh.exploreUrl
                     dao.update(old)
                 }
             }

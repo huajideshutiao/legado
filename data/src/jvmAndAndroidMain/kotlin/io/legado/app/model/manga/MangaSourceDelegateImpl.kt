@@ -1,5 +1,6 @@
 package io.legado.app.model.manga
 
+import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.online.HttpSource
 import io.legado.app.constant.BookSourceType
 import io.legado.app.data.entities.Book
@@ -8,6 +9,8 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookListPage
 import io.legado.app.help.extension.MangaExtensionManager
 import io.legado.app.model.webBook.BookChapterList
+import io.legado.app.model.webBook.MangaFilterSession
+import io.legado.app.model.webBook.PluginFilterSession
 import io.legado.app.model.webBook.PluginSourceDelegate
 import io.legado.app.data.entities.SearchBook
 import eu.kanade.tachiyomi.source.Source
@@ -24,7 +27,8 @@ import kotlinx.coroutines.ensureActive
  * 经 MangaExtensionManager 解析插件源实例后, 四路取数直接调 Mihon source-api 的
  * suspend 契约 (getSearchManga/getMangaUpdate/getPageList), 再经 MangaSourceMapper
  * 映射回 Book/BookChapter/`<img src>` 正文, 复用现有搜索/详情/目录/漫画阅读器管线。
- * 筛选器状态取自 MangaPluginFilterCache (与搜索页 UI 同一份实例)。
+ * 筛选器实例统一由页面 (VM) 创建并经 WebBook 透传 (页面会话, 不持久化): 搜索面未带时
+ * 用源默认筛选, 筛选分类面缺失即报错。
  */
 object MangaSourceDelegateImpl : PluginSourceDelegate {
 
@@ -39,9 +43,10 @@ object MangaSourceDelegateImpl : PluginSourceDelegate {
         bookSource: BookSource,
         key: String,
         page: Int,
+        filters: PluginFilterSession?,
     ): BookListPage {
         val source = resolveSource(bookSource)
-        val mangasPage = source.getSearchManga(page, key, MangaPluginFilterCache.getOrCreate(source))
+        val mangasPage = source.getSearchManga(page, key, filters.toMangaFilterList(source))
         return mangasPage.toBookListPage(bookSource)
     }
 
@@ -49,15 +54,34 @@ object MangaSourceDelegateImpl : PluginSourceDelegate {
         bookSource: BookSource,
         url: String,
         page: Int,
+        filters: PluginFilterSession?,
     ): BookListPage {
         val source = resolveSource(bookSource)
-        // 虚拟源 exploreUrl 的分类 url 段 → 插件源对应取数面 (未知值显式报错, 不静默返回空)
+        // 虚拟源 exploreUrl 的分类 url 段 → 插件源对应取数面 (未知值显式报错, 不静默返回空)。
+        // 筛选段 = Mihon FilterSheet 应用后的搜索面: 空关键词 + 页面会话筛选实例
+        // (WebBook 透传, 随页面销毁); 仅声明了筛选器的源才有该分类。
         val mangasPage = when (url) {
             MangaPluginSources.EXPLORE_URL_POPULAR -> source.getPopularManga(page)
             MangaPluginSources.EXPLORE_URL_LATEST -> source.getLatestUpdates(page)
+            MangaPluginSources.EXPLORE_URL_FILTER -> {
+                val session = filters as? MangaFilterSession
+                    ?: throw IllegalArgumentException("漫画插件源筛选分类未携带筛选会话实例")
+                source.getSearchManga(page, "", session.filters)
+            }
             else -> throw IllegalStateException("未知的漫画插件发现分类: $url")
         }
         return mangasPage.toBookListPage(bookSource)
+    }
+
+    /**
+     * 会话实例 → 取数用筛选器: 未带会话的调用方 (web API 等无筛选 UI) 用源默认筛选
+     * (与 Mihon `state.filters` 恒为 `source.getFilterList()` 同语义);
+     * 会话类型不符即报错, 不静默取无筛选数据。
+     */
+    private fun PluginFilterSession?.toMangaFilterList(source: Source): FilterList = when (this) {
+        null -> source.getFilterList()
+        is MangaFilterSession -> filters
+        else -> throw IllegalArgumentException("漫画插件源收到不匹配的筛选会话实例")
     }
 
     /** MangasPage → BookListPage (搜索与发现共用同一映射)。 */

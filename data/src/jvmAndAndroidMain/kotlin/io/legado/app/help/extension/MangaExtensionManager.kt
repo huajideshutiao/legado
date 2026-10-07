@@ -13,7 +13,6 @@ import io.legado.app.help.extension.model.MangaExtensionRepo
 import io.legado.app.help.extension.repo.RepoHelper
 import io.legado.app.help.extension.trust.TrustHelper
 import io.legado.app.model.anime.AnimePluginSources
-import io.legado.app.model.manga.MangaPluginFilterCache
 import io.legado.app.model.manga.MangaPluginSources
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -179,15 +178,6 @@ object MangaExtensionManager {
 
     private val reloadMutex = Mutex()
 
-    /** 上一轮装载源 id 集合 (识别卸载, 失效对应筛选缓存)。 */
-    @Volatile
-    private var lastSyncedSourceIds: Set<Long> = emptySet()
-
-    private fun invalidateRemovedFilterCaches(currentIds: Set<Long>) {
-        lastSyncedSourceIds.forEach { id -> if (id !in currentIds) MangaPluginFilterCache.clear(id) }
-        lastSyncedSourceIds = currentIds
-    }
-
     /**
      * 整表重扫 (安装事件与信任变更后的入口)。
      */
@@ -235,9 +225,6 @@ object MangaExtensionManager {
                     if (it is CancellationException) throw it
                     AppLog.put("视频插件源虚拟行同步失败", it)
                 }
-            invalidateRemovedFilterCaches(
-                _sourcesFlow.value.mapTo(HashSet()) { it.source.id }
-            )
             refreshStatuses()
         } catch (e: Throwable) {
             if (e is CancellationException) throw e

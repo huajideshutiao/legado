@@ -25,8 +25,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import eu.kanade.tachiyomi.source.model.Filter
-import eu.kanade.tachiyomi.source.model.FilterList
+import eu.kanade.tachiyomi.animesource.model.AnimeFilter
+import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppCheckbox
@@ -40,28 +40,29 @@ import legado.ui.generated.resources.reset
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * 漫画插件源筛选器对话框 (搜索页/发现页筛选入口点开弹出), 复用项目标准 alert 样式。
+ * 视频插件源筛选器对话框 (搜索页/发现页筛选入口点开弹出; 与 [MangaFilterDialog] 同构,
+ * AnimeFilter 与 Filter 是上游平行的两份契约)。
  *
- * Filter 对象非 snapshot state: 回填直接改 [Filter.state] (Mihon 约定, 与取数委派
- * 共享同一实例), UI 刷新由本地 version 计数器驱动; 任一项被改动即置 changed, 关闭时随
+ * AnimeFilter 对象非 snapshot state: 回填直接改 [AnimeFilter.state] (Aniyomi 约定, 与取数
+ * 委派共享同一实例), UI 刷新由本地 version 计数器驱动; 任一项被改动即置 changed, 关闭时随
  * [onDismiss] 上报 (发现页据此标记筛选已应用 → 热门/最新取数切搜索面)。Group 递归缩进,
  * Select/Sort 选值复用 [AppSelectorDialog], TriState 三态循环 (忽略→含→排除);
  * 重置按钮 (Mihon FilterSheet 同款) 由调用方重建默认实例后经参数回填。
  */
 @Composable
-fun MangaFilterDialog(
+fun AnimeFilterDialog(
     sourceName: String,
-    filterList: FilterList,
+    filterList: AnimeFilterList,
     onDismiss: (changed: Boolean) -> Unit,
     onReset: () -> Unit,
 ) {
-    // Filter.state 是普通 var, 改后须手动触发重组 (对照 SearchOptionsRow 的 localVersion)
+    // AnimeFilter.state 是普通 var, 改后须手动触发重组 (对照 MangaFilterDialog 的 version)
     var version by remember { mutableIntStateOf(0) }
     // 应用标记: filterList 实例被重置替换时归零
     var changed by remember(filterList) { mutableStateOf(false) }
     // 待选值弹窗: 双槽分别承载 Select(单选索引) 与 Sort(排序项), 关闭即清
-    var selectFilter by remember { mutableStateOf<Filter.Select<*>?>(null) }
-    var sortFilter by remember { mutableStateOf<Filter.Sort?>(null) }
+    var selectFilter by remember { mutableStateOf<AnimeFilter.Select<*>?>(null) }
+    var sortFilter by remember { mutableStateOf<AnimeFilter.Sort?>(null) }
 
     AppAlertDialog(
         onDismissRequest = { onDismiss(changed) },
@@ -79,7 +80,7 @@ fun MangaFilterDialog(
                 .heightIn(max = AppDialogSizes.textAreaMaxHeight()),
         ) {
             itemsIndexed(filterList) { _, filter ->
-                FilterItem(
+                AnimeFilterItem(
                     filter = filter,
                     depth = 0,
                     onChanged = {
@@ -114,7 +115,7 @@ fun MangaFilterDialog(
             title = filter.name,
             items = filter.values.toList(),
             onItemSelected = { index ->
-                filter.state = Filter.Sort.Selection(index, filter.state?.ascending ?: true)
+                filter.state = AnimeFilter.Sort.Selection(index, filter.state?.ascending ?: true)
                 changed = true
                 version++
             },
@@ -122,24 +123,24 @@ fun MangaFilterDialog(
     }
 }
 
-/** 单个 Filter 条目渲染 (Group 递归缩进)。 */
+/** 单个 AnimeFilter 条目渲染 (Group 递归缩进; 结构对照 MangaFilterDialog.FilterItem)。 */
 @Composable
-private fun FilterItem(
-    filter: Filter<*>,
+private fun AnimeFilterItem(
+    filter: AnimeFilter<*>,
     depth: Int,
     onChanged: () -> Unit,
-    onOpenSelect: (Filter.Select<*>) -> Unit,
-    onOpenSort: (Filter.Sort) -> Unit,
+    onOpenSelect: (AnimeFilter.Select<*>) -> Unit,
+    onOpenSort: (AnimeFilter.Sort) -> Unit,
 ) {
     when (filter) {
-        is Filter.Header -> Text(
+        is AnimeFilter.Header -> Text(
             text = filter.name,
             fontSize = 13.sp,
             color = AppTheme.colors.secondaryText,
             modifier = filterIndent(depth).padding(top = DesignTokens.spacingDefault),
         )
 
-        is Filter.Separator -> Column(
+        is AnimeFilter.Separator -> Column(
             modifier = filterIndent(depth).padding(vertical = DesignTokens.spacingDefault),
         ) {
             Box(
@@ -158,7 +159,7 @@ private fun FilterItem(
             }
         }
 
-        is Filter.Group<*> -> FilterGroup(
+        is AnimeFilter.Group<*> -> AnimeFilterGroup(
             filter = filter,
             depth = depth,
             onChanged = onChanged,
@@ -166,7 +167,7 @@ private fun FilterItem(
             onOpenSort = onOpenSort,
         )
 
-        is Filter.Sort -> FilterRow(
+        is AnimeFilter.Sort -> FilterRow(
             name = filter.name,
             valueText = filter.state?.let { selection ->
                 filter.values.getOrNull(selection.index) +
@@ -183,7 +184,7 @@ private fun FilterItem(
                         .clickable {
                             val current = filter.state
                             filter.state = if (current == null) {
-                                Filter.Sort.Selection(0, false)
+                                AnimeFilter.Sort.Selection(0, false)
                             } else {
                                 current.copy(ascending = !current.ascending)
                             }
@@ -194,14 +195,14 @@ private fun FilterItem(
             },
         )
 
-        is Filter.Select<*> -> FilterRow(
+        is AnimeFilter.Select<*> -> FilterRow(
             name = filter.name,
             valueText = filter.values.getOrNull(filter.state)?.toString().orEmpty(),
             indent = filterIndent(depth),
             onClick = { onOpenSelect(filter) },
         )
 
-        is Filter.Text -> Column(filterIndent(depth).padding(vertical = DesignTokens.spacingXs)) {
+        is AnimeFilter.Text -> Column(filterIndent(depth).padding(vertical = DesignTokens.spacingXs)) {
             Text(
                 text = filter.name,
                 fontSize = 14.sp,
@@ -218,11 +219,11 @@ private fun FilterItem(
             )
         }
 
-        is Filter.TriState -> FilterRow(
+        is AnimeFilter.TriState -> FilterRow(
             name = filter.name,
             valueText = when (filter.state) {
-                Filter.TriState.STATE_INCLUDE -> "✓"
-                Filter.TriState.STATE_EXCLUDE -> "✗"
+                AnimeFilter.TriState.STATE_INCLUDE -> "✓"
+                AnimeFilter.TriState.STATE_EXCLUDE -> "✗"
                 else -> "—"
             },
             indent = filterIndent(depth),
@@ -233,7 +234,7 @@ private fun FilterItem(
             },
         )
 
-        is Filter.CheckBox -> Row(
+        is AnimeFilter.CheckBox -> Row(
             modifier = filterIndent(depth)
                 .fillMaxWidth()
                 .toggleable(
@@ -263,18 +264,18 @@ private fun FilterItem(
     }
 }
 
-/** Group: 标题行点按折叠/展开, 子项逐级缩进 (缩进统一由 [filterIndent] 负责, 不叠加)。 */
+/** Group: 标题行点按折叠/展开, 子项逐级缩进 (结构对照 MangaFilterDialog.FilterGroup)。 */
 @Composable
-private fun FilterGroup(
-    filter: Filter.Group<*>,
+private fun AnimeFilterGroup(
+    filter: AnimeFilter.Group<*>,
     depth: Int,
     onChanged: () -> Unit,
-    onOpenSelect: (Filter.Select<*>) -> Unit,
-    onOpenSort: (Filter.Sort) -> Unit,
+    onOpenSelect: (AnimeFilter.Select<*>) -> Unit,
+    onOpenSort: (AnimeFilter.Sort) -> Unit,
 ) {
     var expanded by remember(filter) { mutableStateOf(true) }
     val children = filter.state
-        .filterIsInstance<Filter<*>>()
+        .filterIsInstance<AnimeFilter<*>>()
         .orEmpty()
     Column(Modifier.fillMaxWidth()) {
         Row(
@@ -298,7 +299,7 @@ private fun FilterGroup(
         }
         if (expanded) {
             children.forEach { child ->
-                FilterItem(
+                AnimeFilterItem(
                     filter = child,
                     depth = depth + 1,
                     onChanged = onChanged,
@@ -307,45 +308,5 @@ private fun FilterGroup(
                 )
             }
         }
-    }
-}
-
-/** 条目缩进: 每级 [DesignTokens.spacingLg], 两侧对齐 alert 正文行 (漫画/视频筛选对话框共用)。 */
-internal fun filterIndent(depth: Int): Modifier = Modifier.padding(
-    start = DesignTokens.spacingLg + DesignTokens.spacingLg * depth,
-    end = DesignTokens.spacingLg,
-)
-
-/** 通用取值行: 名称 + 当前值 (点按整行触发), 尾部可选附加控件 (漫画/视频筛选对话框共用)。 */
-@Composable
-internal fun FilterRow(
-    name: String,
-    valueText: String,
-    indent: Modifier,
-    valueBold: Boolean = false,
-    onClick: () -> Unit,
-    trailing: (@Composable () -> Unit)? = null,
-) {
-    val colors = AppTheme.colors
-    Row(
-        modifier = indent
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = DesignTokens.spacingDefault),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = name,
-            fontSize = 15.sp,
-            color = colors.primaryText,
-            modifier = Modifier.weight(1f),
-        )
-        Text(
-            text = valueText,
-            fontSize = 14.sp,
-            fontWeight = if (valueBold) FontWeight.Bold else null,
-            color = if (valueBold) colors.accent else colors.secondaryText,
-        )
-        trailing?.invoke()
     }
 }

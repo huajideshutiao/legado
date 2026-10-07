@@ -1,6 +1,7 @@
 package io.legado.app.ui.book.manga.extension
 
-import eu.kanade.tachiyomi.source.model.FilterList
+import io.legado.app.model.webBook.AnimeFilterSession
+import io.legado.app.model.webBook.MangaFilterSession
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.concurrent.Volatile
 
@@ -12,7 +13,7 @@ import kotlin.concurrent.Volatile
  * [MangaExtensionServiceProviders.register] 注册; 未注册端 getOrNull()==null, 「我的」页入口隐藏。
  *
  * 插件源以虚拟 BookSource 行进入书源体系后, 取数走 WebBook 的 PluginSourceDelegates 委派;
- * 本接口另暴露插件源的筛选器访问, 供搜索页筛选条与委派共享同一份 Filter 状态。
+ * 本接口另暴露插件源筛选会话的新建入口 (实例由页面持有并经取数链透传, 不经缓存)。
  */
 interface MangaExtensionService {
 
@@ -60,10 +61,15 @@ interface MangaExtensionService {
     suspend fun removeRepo(indexUrl: String)
 
     /**
-     * 插件源当前筛选器 (带 UI 可回填的可变状态; 非插件源返回 null)。
-     * 返回实例与取数委派搜索时使用的是同一份, 回填即生效。
+     * 新建一份漫画插件源的默认筛选会话 (非漫画插件源返回 null)。
+     *
+     * 筛选状态不持久化: 实例由页面 (VM) 创建持有、经取数链透传, 随页面销毁即丢,
+     * 不经任何全局缓存; 重置 = 再调一次本方法换新默认实例 (对齐 Mihon resetFilters)。
      */
-    suspend fun getFilterList(bookSourceUrl: String): FilterList?
+    suspend fun createMangaFilterSession(bookSourceUrl: String): MangaFilterSession? = null
+
+    /** 新建一份视频插件源的默认筛选会话 (同 [createMangaFilterSession])。 */
+    suspend fun createAnimeFilterSession(bookSourceUrl: String): AnimeFilterSession? = null
 
     /**
      * 该插件是否提供自带配置界面 (源实例实现 `eu.kanade.tachiyomi.source.ConfigurableSource`
