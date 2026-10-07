@@ -37,9 +37,8 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.help.image.BookImageLoaders
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
-import io.legado.app.ui.compose.component.AppChipRow
-import io.legado.app.ui.compose.component.AppChipRowOption
-import io.legado.app.ui.compose.component.AppChipRowTitle
+import io.legado.app.ui.compose.component.AppChoiceField
+import io.legado.app.ui.compose.component.AppChoiceRowGroup
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.FastScrollLazyColumn
@@ -99,9 +98,10 @@ private const val NsfwLabel = "NSFW"
  *
  * 标题栏搜索图标点开后标题位换成搜索框 (再点图标/系统返回关闭), 匹配扩展名、源名、
  * 源 id 与源站点 (忽略大小写, 逗号分隔多个子串按"或"匹配; 对齐 Mihon searchQueryPredicate)。
- * 筛选条紧贴标题栏下方: 语言 (仅多语言时展示) + 类型 + 内容分级, 均为单选语义 (点选只留该项,
- * 再点同项无动作, 点「全部」回到不过滤); 三路只过滤「可用」列表并持久化
- * (对齐 Mihon enabledLanguages 只作用于可用扩展)。列表分区自上而下: 未信任 (确认后
+ * 筛选条紧贴标题栏下方: 语言 (仅多语言时展示) / 类型 / 内容分级统一按选项数裁决 (选项数 > 4
+ * 出 chip 行, 否则并排下拉并显示当前档位), 三路均为单选语义 (选中即当前档位, 再选同档无动作,
+ * 选「全部」回到不过滤); 只过滤「可用」列表并持久化 (对齐 Mihon enabledLanguages 只作用于可用扩展)。
+ * 列表分区自上而下: 未信任 (确认后
  * 信任) → 未装载原因 (直接展示) → 可更新 → 已装 (按语言分组) → 可用。条目尾部动作全部为
  * 图标 (设置/打开网站/安装/更新/卸载/信任; 打开网站仅未安装的可用条目), 安装/更新
  * 进度经 state.installSteps 呈现, 进行中点取消图标。条目标题显示**源名** (中文站点扩展名多为
@@ -225,53 +225,72 @@ fun MangaExtensionScreen(
                 }
             },
         )
-        // 筛选条: 语言独占一行 (仅多语言时展示); 类型与内容分级另起一行, 一律单选语义
-        if (state.availableLanguages.size > 1) {
-            AppChipRow {
-                AppChipRowTitle(text = languagesTitle)
-                state.availableLanguages.forEach { lang ->
-                    val selected =
-                        (lang == "all" && state.selectedLanguages.isEmpty()) || lang in state.selectedLanguages
-                    AppChipRowOption(
-                        text = if (lang == "all") allText else lang,
-                        selected = selected,
-                        onClick = {
-                            when {
-                                lang in state.selectedLanguages -> Unit
-                                lang == "all" -> onSelectLanguage(null)
-                                else -> onSelectLanguage(lang)
-                            }
-                        },
+        // 筛选条: 语言 (仅多语言时展示) / 类型 / 内容分级统一按选项数裁决
+        // (选项数 > 4 出 chip 行, 否则下拉并排)
+        AppChoiceRowGroup(
+            buildList {
+                if (state.availableLanguages.size > 1) {
+                    // "all" 恒在首位: 下拉用下标表达"全部", 不能依赖语言码的字典序
+                    // (af/ar 等排在 "all" 之前会顶掉它)。已选但已不在可用列表的语言补到末尾,
+                    // 让下拉如实显示当前过滤值而不是回退成"全部"。
+                    val chosen = state.selectedLanguages.firstOrNull()
+                    val languages = buildList {
+                        add("all")
+                        state.availableLanguages.forEach { if (it != "all") add(it) }
+                        if (chosen != null && chosen != "all" && chosen !in this) add(chosen)
+                    }
+                    add(
+                        AppChoiceField(
+                            title = languagesTitle,
+                            options = languages.map { if (it == "all") allText else it },
+                            selectedIndex = languages.indexOf(chosen ?: "all"),
+                            onSelect = { index ->
+                                val lang = languages[index]
+                                when {
+                                    lang in state.selectedLanguages -> Unit
+                                    lang == "all" -> onSelectLanguage(null)
+                                    else -> onSelectLanguage(lang)
+                                }
+                            },
+                        ),
                     )
                 }
-            }
-        }
-        AppChipRow {
-            AppChipRowTitle(text = kindTitle)
-            MangaExtensionKindFilter.entries.forEach { filter ->
-                AppChipRowOption(
-                    text = when (filter) {
-                        MangaExtensionKindFilter.ALL -> allText
-                        MangaExtensionKindFilter.MANGA -> kindMangaText
-                        MangaExtensionKindFilter.VIDEO -> kindVideoText
-                    },
-                    selected = state.kindFilter == filter,
-                    onClick = { if (state.kindFilter != filter) onSelectKind(filter) },
+                add(
+                    AppChoiceField(
+                        title = kindTitle,
+                        options = MangaExtensionKindFilter.entries.map { filter ->
+                            when (filter) {
+                                MangaExtensionKindFilter.ALL -> allText
+                                MangaExtensionKindFilter.MANGA -> kindMangaText
+                                MangaExtensionKindFilter.VIDEO -> kindVideoText
+                            }
+                        },
+                        selectedIndex = state.kindFilter.ordinal,
+                        onSelect = { index ->
+                            val filter = MangaExtensionKindFilter.entries[index]
+                            if (filter != state.kindFilter) onSelectKind(filter)
+                        },
+                    ),
                 )
-            }
-            AppChipRowTitle(text = contentTitle)
-            MangaContentFilter.entries.forEach { filter ->
-                AppChipRowOption(
-                    text = when (filter) {
-                        MangaContentFilter.ALL -> allText
-                        MangaContentFilter.SAFE -> contentSafeText
-                        MangaContentFilter.NSFW -> NsfwLabel
-                    },
-                    selected = state.contentFilter == filter,
-                    onClick = { if (state.contentFilter != filter) onSelectContent(filter) },
+                add(
+                    AppChoiceField(
+                        title = contentTitle,
+                        options = MangaContentFilter.entries.map { filter ->
+                            when (filter) {
+                                MangaContentFilter.ALL -> allText
+                                MangaContentFilter.SAFE -> contentSafeText
+                                MangaContentFilter.NSFW -> NsfwLabel
+                            }
+                        },
+                        selectedIndex = state.contentFilter.ordinal,
+                        onSelect = { index ->
+                            val filter = MangaContentFilter.entries[index]
+                            if (filter != state.contentFilter) onSelectContent(filter)
+                        },
+                    ),
                 )
-            }
-        }
+            },
+        )
         // 搜索匹配 (扩展名/源名/源站点/源 id); 搜索框为空时恒真 (过滤取防抖后的查询)
         val matchesQuery = remember(searchFilterQuery) { extensionSearchMatcher(searchFilterQuery.orEmpty()) }
         val untrusted = state.notLoaded.filter { it.isUntrusted && matchesQuery(it) }

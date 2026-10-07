@@ -173,13 +173,6 @@ class SearchViewModel {
         return session
     }
 
-    /** 重置为源默认筛选 (新建会话替换旧实例), 返回新会话供 UI 回填。 */
-    suspend fun resetPluginFilterSession(source: BookSource): PluginFilterSession? {
-        pluginFilterSessions.remove(source.bookSourceUrl)
-        noFilterPluginSources.remove(source.bookSourceUrl)
-        return ensurePluginFilterSession(source)
-    }
-
     /**
      * 按源隔离的搜索 URL 声明可选项 (key=bookSourceUrl)。
      * 同源每轮只回调一次 (串行), 异源并发但异 key, 无锁安全;

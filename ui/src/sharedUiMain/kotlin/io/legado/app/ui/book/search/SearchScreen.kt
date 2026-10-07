@@ -26,7 +26,6 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.DropdownMenuItem
@@ -55,7 +54,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -83,14 +81,7 @@ import io.legado.app.ui.bookshelf.ShelfVideoItem
 import io.legado.app.ui.bookshelf.shelfCoverHeightDp
 import io.legado.app.ui.bookshelf.UnreadBadge
 import io.legado.app.ui.bookshelf.toCoverBook
-import io.legado.app.ui.compose.component.AlertButton
-import io.legado.app.ui.compose.component.AppAlertDialog
-import io.legado.app.ui.compose.component.AppCheckbox
-import io.legado.app.ui.compose.component.AppChipRow
-import io.legado.app.ui.compose.component.AppChipRowOption
-import io.legado.app.ui.compose.component.AppChipRowTitle
 import io.legado.app.ui.compose.component.AppFilletTextButton
-import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.ExploreOptionsRow
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppSearchField
@@ -195,8 +186,8 @@ object NoOpSearchNavCallbacks : SearchNavCallbacks {
  * - `WindowInsets.navigationBars.asPaddingValues()` → `rememberNavigationBarPaddingValues()` (跨平台导航栏 padding)
  * - `ShelfCover` (原 app 专属) → [coverSlot] / [shelfCoverSlot] 注入, 未传时取 [LocalBookCoverSlot]
  * - `KindLabels` / `UnreadBadge` (app 专属) → 复用书架 shared 版同名组件
- * - `binding.llFilter.setUpExploreOptions` (单源搜索选项 chip) → [SearchOptionsRow]
- *   (含多选 chip 的搜索过滤对话框, 对照 ExploreOptionView.showMultiSelectDialog)
+ * - `binding.llFilter.setUpExploreOptions` (单源搜索选项 chip) → [ExploreOptionsRow]
+ *   (与发现页参数行共用同一实现)
  * - `VideoExploreShowAdapter` / `ItemExploreVideoBinding.bindVideoCard` (视频卡) →
  *   书架 shared 版同名组件 [ShelfVideoItem]
  *
@@ -342,19 +333,20 @@ fun SearchScreen(
                 } else {
                     // 聚簇布局顶部选项行 (单源搜索): 按源分类布局下选项在各源区块内显示, 不重复
                     if (!isSourceGroupLayout) {
-                        SearchOptionsRow(
+                        ExploreOptionsRow(
                             options = topSearchOptions,
-                            version = searchOptionsVersion,
-                            onOptionChanged = { viewModel.search(viewModel.searchKey, resetOptions = false) },
+                            optionsVersion = searchOptionsVersion,
+                            onOptionSelected = {
+                                viewModel.search(viewModel.searchKey, resetOptions = false)
+                            },
                         )
                     }
-                    // 插件源筛选条 (漫画/视频, 范围内无插件源时为零行; 服务未注册端同样);
+                    // 插件源筛选面板 (漫画/视频, 范围内无插件源时为零行; 服务未注册端同样);
                     // 会话实例由本页 VM 持有, 随页面销毁即丢
                     PluginSearchFilterRow(
                         searchScope = viewModel.searchScope,
                         scopeVersion = scopeVersion,
                         ensureFilterSession = { viewModel.ensurePluginFilterSession(it) },
-                        resetFilterSession = { viewModel.resetPluginFilterSession(it) },
                         onFiltersChanged = { viewModel.search(viewModel.searchKey, resetOptions = false) },
                     )
                     ResultArea(
@@ -634,160 +626,6 @@ private fun ColumnScope.InputHelp(
                         text = keyword.word,
                         onLongClick = { viewModel.deleteHistory(keyword) },
                         onClick = { viewModel.searchHistory(keyword.word) },
-                    )
-                }
-            }
-        }
-    }
-}
-
-// ===== 单源搜索选项 =====
-
-@Composable
-private fun SearchOptionsRow(
-    options: List<ExploreOption>,
-    version: Int,
-    onOptionChanged: () -> Unit,
-) {
-    if (options.isEmpty()) return
-    var localVersion by remember { mutableIntStateOf(0) }
-    var dialogOptionName by remember { mutableStateOf<String?>(null) }
-    @Suppress("UNUSED_EXPRESSION") version
-    localVersion
-    Column(Modifier.fillMaxWidth()) {
-        options.forEach { option ->
-            key(option.name) {
-                AppChipRow {
-                    if (option.multiSelect) {
-                        // 对齐原版 setUpExploreOptions 多选: title + 已选 chip,
-                        // 任一 chip 点击均打开多选对话框 (整行点击区域)
-                        AppChipRowTitle(
-                            text = option.name,
-                            onClick = { dialogOptionName = option.name },
-                        )
-                        option.options.forEach { (label, value) ->
-                            if (value in option.selectedValues) {
-                                AppChipRowOption(
-                                    text = label,
-                                    onClick = { dialogOptionName = option.name },
-                                )
-                            }
-                        }
-                    } else {
-                        AppChipRowTitle(
-                            text = option.name,
-                            onClick = {
-                                if (option.resetToDefault()) {
-                                    localVersion++
-                                    onOptionChanged()
-                                }
-                            },
-                        )
-                        option.options.forEach { (label, value) ->
-                            AppChipRowOption(
-                                text = label,
-                                selected = option.selectedValue == value,
-                                onClick = {
-                                    val changed = if (option.selectedValue == value) false else {
-                                        option.selectedValue = value
-                                        true
-                                    }
-                                    if (changed) {
-                                        localVersion++
-                                        onOptionChanged()
-                                    }
-                                },
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-    options.firstOrNull { it.multiSelect && it.name == dialogOptionName }?.let { option ->
-        MultiSelectOptionDialog(
-            option = option,
-            onDismiss = { dialogOptionName = null },
-            onConfirm = { selectedValues ->
-                if (selectedValues != option.selectedValues) {
-                    option.selectedValues.clear()
-                    option.selectedValues.addAll(selectedValues)
-                    localVersion++
-                    onOptionChanged()
-                }
-                dialogOptionName = null
-            },
-        )
-    }
-}
-
-@Composable
-private fun MultiSelectOptionDialog(
-    option: ExploreOption,
-    onDismiss: () -> Unit,
-    onConfirm: (Set<String>) -> Unit,
-) {
-    var query by remember(option) { mutableStateOf("") }
-    var working by remember(option) { mutableStateOf(option.selectedValues.toSet()) }
-    val visibleOptions = remember(option, query) {
-        val filter = query.trim()
-        if (filter.isEmpty()) {
-            option.options
-        } else {
-            option.options.filter { (label, value) ->
-                label.contains(filter, ignoreCase = true) ||
-                    value.contains(filter, ignoreCase = true)
-            }
-        }
-    }
-    AppAlertDialog(
-        onDismissRequest = onDismiss,
-        title = option.name,
-        neutralButton = AlertButton(stringResource(Res.string.clear), dismissOnClick = false) {
-            working = emptySet()
-        },
-        cancelButton = AlertButton(stringResource(Res.string.cancel)),
-        okButton = AlertButton(
-            text = stringResource(Res.string.ok),
-            dismissOnClick = false,
-            onClick = { onConfirm(working) },
-        ),
-    ) {
-        AppSearchField(
-            value = query,
-            onValueChange = { query = it },
-            hint = stringResource(Res.string.search),
-            modifier = Modifier.padding(
-                start = DesignTokens.spacingDefault,
-                top = DesignTokens.spacingDefault,
-                bottom = DesignTokens.spacingXs
-            ),
-        )
-        LazyColumn(
-            Modifier
-                .fillMaxWidth()
-                .heightIn(max = AppDialogSizes.textAreaMaxHeight()),
-        ) {
-            items(visibleOptions) { (label, value) ->
-                val checked = value in working
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .toggleable(
-                            value = checked,
-                            role = Role.Checkbox,
-                        ) { selected ->
-                            working = if (selected) working + value else working - value
-                        }
-                        .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingXs),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    AppCheckbox(checked = checked, onCheckedChange = null)
-                    Text(
-                        text = label,
-                        color = AppTheme.colors.primaryText,
-                        fontSize = 15.sp,
-                        modifier = Modifier.padding(start = DesignTokens.spacingDefault),
                     )
                 }
             }

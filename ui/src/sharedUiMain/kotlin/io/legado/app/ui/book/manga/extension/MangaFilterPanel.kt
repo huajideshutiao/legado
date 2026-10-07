@@ -7,13 +7,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -21,89 +19,49 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
-import io.legado.app.ui.compose.component.AppAlertDialog
-import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppCheckbox
-import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.AppChoiceField
+import io.legado.app.ui.compose.component.AppChoiceRowGroup
 import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import legado.ui.generated.resources.Res
-import legado.ui.generated.resources.reset
-import org.jetbrains.compose.resources.stringResource
 
 /**
- * 漫画插件源筛选器对话框 (搜索页/发现页筛选入口点开弹出), 复用项目标准 alert 样式。
+ * 漫画插件源筛选面板 (内联, 不经对话框)。
  *
- * Filter 对象非 snapshot state: 回填直接改 [Filter.state] (Mihon 约定, 与取数委派
- * 共享同一实例), UI 刷新由本地 version 计数器驱动; 任一项被改动即置 changed, 关闭时随
- * [onDismiss] 上报 (发现页据此标记筛选已应用 → 热门/最新取数切搜索面)。Group 递归缩进,
- * Select/Sort 选值复用 [AppSelectorDialog], TriState 三态循环 (忽略→含→排除);
- * 重置按钮 (Mihon FilterSheet 同款) 由调用方重建默认实例后经参数回填。
+ * 相邻的 Select 聚为一段交给 [AppChoiceRowGroup] 按选项数裁决 (选项数 > 4 出 chip 行, 否则下拉
+ * 并排); Group 递归缩进并可折叠; 其余条目沿用取值行/输入框/勾选行。Filter 对象非 snapshot state:
+ * 回填直接改 [Filter.state] (Mihon 约定, 与取数委派共享同一实例), UI 刷新由本地 version 计数器
+ * 驱动; 改动即回调 [onChanged] (宿主随即重取数), 文本框输入期间只刷新显示、失焦或键盘完成才回调,
+ * 免得逐字触发取数。
  */
 @Composable
-fun MangaFilterDialog(
-    sourceName: String,
+fun MangaFilterPanel(
     filterList: FilterList,
-    onDismiss: (changed: Boolean) -> Unit,
-    onReset: () -> Unit,
+    onChanged: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    // Filter.state 是普通 var, 改后须手动触发重组 (对照 SearchOptionsRow 的 localVersion)
     var version by remember { mutableIntStateOf(0) }
-    // 应用标记: filterList 实例被重置替换时归零
-    var changed by remember(filterList) { mutableStateOf(false) }
-    // 待选值弹窗: 双槽分别承载 Select(单选索引) 与 Sort(排序项), 关闭即清
-    var selectFilter by remember { mutableStateOf<Filter.Select<*>?>(null) }
     var sortFilter by remember { mutableStateOf<Filter.Sort?>(null) }
-
-    AppAlertDialog(
-        onDismissRequest = { onDismiss(changed) },
-        title = sourceName,
-        neutralButton = AlertButton(
-            text = stringResource(Res.string.reset),
-            dismissOnClick = false,
-            onClick = onReset,
-        ),
-    ) {
-        @Suppress("UNUSED_EXPRESSION") version
-        LazyColumn(
-            Modifier
-                .fillMaxWidth()
-                .heightIn(max = AppDialogSizes.textAreaMaxHeight()),
-        ) {
-            itemsIndexed(filterList) { _, filter ->
-                FilterItem(
-                    filter = filter,
-                    depth = 0,
-                    onChanged = {
-                        changed = true
-                        version++
-                    },
-                    onOpenSelect = { selectFilter = it },
-                    onOpenSort = { sortFilter = it },
-                )
-            }
-        }
-    }
-
-    // Select 单选弹窗 (values[state] 为当前项, 选中回填索引)
-    selectFilter?.let { filter ->
-        AppSelectorDialog(
-            onDismissRequest = { selectFilter = null },
-            title = filter.name,
-            items = filter.values.map { it.toString() },
-            onItemSelected = { index ->
-                filter.state = index
-                changed = true
+    @Suppress("UNUSED_EXPRESSION") version
+    Column(modifier.fillMaxWidth()) {
+        FilterPanelItems(
+            filters = filterList.toList(),
+            depth = 0,
+            onChanged = {
                 version++
+                onChanged()
             },
+            onDraft = { version++ },
+            onOpenSort = { sortFilter = it },
         )
     }
 
@@ -115,20 +73,83 @@ fun MangaFilterDialog(
             items = filter.values.toList(),
             onItemSelected = { index ->
                 filter.state = Filter.Sort.Selection(index, filter.state?.ascending ?: true)
-                changed = true
                 version++
+                onChanged()
             },
         )
     }
 }
 
-/** 单个 Filter 条目渲染 (Group 递归缩进)。 */
+/** 面板节点: 相邻 Select 合并为一段 (段内由 [AppChoiceRowGroup] 裁决 chip / 下拉), 其余条目逐项。 */
+private sealed interface FilterNode {
+    class Selections(val items: List<Filter.Select<*>>) : FilterNode
+    class Single(val filter: Filter<*>) : FilterNode
+}
+
+private fun buildFilterNodes(filters: List<Filter<*>>): List<FilterNode> {
+    val nodes = ArrayList<FilterNode>()
+    var selections = ArrayList<Filter.Select<*>>()
+    fun flush() {
+        if (selections.isNotEmpty()) {
+            nodes.add(FilterNode.Selections(selections))
+            selections = ArrayList()
+        }
+    }
+    filters.forEach { filter ->
+        if (filter is Filter.Select<*>) {
+            selections.add(filter)
+        } else {
+            flush()
+            nodes.add(FilterNode.Single(filter))
+        }
+    }
+    flush()
+    return nodes
+}
+
+@Composable
+private fun FilterPanelItems(
+    filters: List<Filter<*>>,
+    depth: Int,
+    onChanged: () -> Unit,
+    onDraft: () -> Unit,
+    onOpenSort: (Filter.Sort) -> Unit,
+) {
+    buildFilterNodes(filters).forEach { node ->
+        when (node) {
+            is FilterNode.Selections -> AppChoiceRowGroup(
+                modifier = filterIndent(depth),
+                fields = node.items.map { filter ->
+                    AppChoiceField(
+                        title = filter.name,
+                        options = filter.values.map { it.toString() },
+                        selectedIndex = filter.state,
+                        onSelect = { index ->
+                            filter.state = index
+                            onChanged()
+                        },
+                    )
+                },
+            )
+
+            is FilterNode.Single -> FilterItem(
+                filter = node.filter,
+                depth = depth,
+                onChanged = onChanged,
+                onDraft = onDraft,
+                onOpenSort = onOpenSort,
+            )
+        }
+    }
+}
+
+/** 单个条目渲染 (Group 递归; Select 由 [FilterPanelItems] 聚段渲染, 不落到这里)。 */
 @Composable
 private fun FilterItem(
     filter: Filter<*>,
     depth: Int,
     onChanged: () -> Unit,
-    onOpenSelect: (Filter.Select<*>) -> Unit,
+    onDraft: () -> Unit,
     onOpenSort: (Filter.Sort) -> Unit,
 ) {
     when (filter) {
@@ -162,7 +183,7 @@ private fun FilterItem(
             filter = filter,
             depth = depth,
             onChanged = onChanged,
-            onOpenSelect = onOpenSelect,
+            onDraft = onDraft,
             onOpenSort = onOpenSort,
         )
 
@@ -194,14 +215,14 @@ private fun FilterItem(
             },
         )
 
-        is Filter.Select<*> -> FilterRow(
-            name = filter.name,
-            valueText = filter.values.getOrNull(filter.state)?.toString().orEmpty(),
-            indent = filterIndent(depth),
-            onClick = { onOpenSelect(filter) },
-        )
+        is Filter.Select<*> -> Unit
 
         is Filter.Text -> Column(filterIndent(depth).padding(vertical = DesignTokens.spacingXs)) {
+            var dirty by remember(filter) { mutableStateOf(false) }
+            // 输入期间只刷显示不取数; 失焦/IME 完成/离开组合时提交, 免得改完直接切页丢掉输入
+            DisposableEffect(filter) {
+                onDispose { if (dirty) onChanged() }
+            }
             Text(
                 text = filter.name,
                 fontSize = 14.sp,
@@ -211,10 +232,26 @@ private fun FilterItem(
                 value = filter.state,
                 onValueChange = {
                     filter.state = it
-                    onChanged()
+                    dirty = true
+                    onDraft()
                 },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+                keyboardActions = KeyboardActions(
+                    onDone = {
+                        if (dirty) {
+                            dirty = false
+                            onChanged()
+                        }
+                    }
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged { focusState ->
+                        if (!focusState.isFocused && dirty) {
+                            dirty = false
+                            onChanged()
+                        }
+                    },
             )
         }
 
@@ -269,7 +306,7 @@ private fun FilterGroup(
     filter: Filter.Group<*>,
     depth: Int,
     onChanged: () -> Unit,
-    onOpenSelect: (Filter.Select<*>) -> Unit,
+    onDraft: () -> Unit,
     onOpenSort: (Filter.Sort) -> Unit,
 ) {
     var expanded by remember(filter) { mutableStateOf(true) }
@@ -297,55 +334,13 @@ private fun FilterGroup(
             )
         }
         if (expanded) {
-            children.forEach { child ->
-                FilterItem(
-                    filter = child,
-                    depth = depth + 1,
-                    onChanged = onChanged,
-                    onOpenSelect = onOpenSelect,
-                    onOpenSort = onOpenSort,
-                )
-            }
+            FilterPanelItems(
+                filters = children,
+                depth = depth + 1,
+                onChanged = onChanged,
+                onDraft = onDraft,
+                onOpenSort = onOpenSort,
+            )
         }
-    }
-}
-
-/** 条目缩进: 每级 [DesignTokens.spacingLg], 两侧对齐 alert 正文行 (漫画/视频筛选对话框共用)。 */
-internal fun filterIndent(depth: Int): Modifier = Modifier.padding(
-    start = DesignTokens.spacingLg + DesignTokens.spacingLg * depth,
-    end = DesignTokens.spacingLg,
-)
-
-/** 通用取值行: 名称 + 当前值 (点按整行触发), 尾部可选附加控件 (漫画/视频筛选对话框共用)。 */
-@Composable
-internal fun FilterRow(
-    name: String,
-    valueText: String,
-    indent: Modifier,
-    valueBold: Boolean = false,
-    onClick: () -> Unit,
-    trailing: (@Composable () -> Unit)? = null,
-) {
-    val colors = AppTheme.colors
-    Row(
-        modifier = indent
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = DesignTokens.spacingDefault),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = name,
-            fontSize = 15.sp,
-            color = colors.primaryText,
-            modifier = Modifier.weight(1f),
-        )
-        Text(
-            text = valueText,
-            fontSize = 14.sp,
-            fontWeight = if (valueBold) FontWeight.Bold else null,
-            color = if (valueBold) colors.accent else colors.secondaryText,
-        )
-        trailing?.invoke()
     }
 }

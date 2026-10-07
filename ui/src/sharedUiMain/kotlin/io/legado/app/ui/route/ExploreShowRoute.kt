@@ -304,21 +304,6 @@ fun ExploreShowRoute(
                 screenModel.dispatch(ExploreShowUiEvent.ClearBooks)
                 vm.explore(true)
             }
-
-            // 筛选重置: 换新默认会话实例并同步 UiState, 重载第 1 页 (仍停留筛选面)
-            override fun onPluginFiltersReset() {
-                vmScope.launch {
-                    val session = vm.resetPluginExploreFilters() ?: return@launch
-                    screenModel.dispatch(
-                        ExploreShowUiEvent.PluginFilterSourceChanged(
-                            screenModel.state.value.pluginFilterSource,
-                            session,
-                        )
-                    )
-                    screenModel.dispatch(ExploreShowUiEvent.ClearBooks)
-                    vm.explore(true)
-                }
-            }
         }
     }
 

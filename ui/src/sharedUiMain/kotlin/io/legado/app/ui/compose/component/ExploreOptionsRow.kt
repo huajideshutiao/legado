@@ -1,55 +1,27 @@
 package io.legado.app.ui.compose.component
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalWindowInfo
 import io.legado.app.model.webBook.ExploreOption
-import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import legado.ui.generated.resources.Res
-import legado.ui.generated.resources.cancel
-import legado.ui.generated.resources.clear
-import legado.ui.generated.resources.ok
-import legado.ui.generated.resources.search
-import org.jetbrains.compose.resources.stringResource
-
-// chip 透明度: 对照 app 端 ExploreOptionView ALPHA_SELECTED / ALPHA_UNSELECTED (标题 0.8 收拢在 AppChipRowTitle)
-private const val OPTION_ALPHA_SELECTED = 1.0f
-private const val OPTION_ALPHA_UNSELECTED = 0.5f
-
-/** 单行渲染快照: live [ExploreOption] (供点击就地改) + 选中态快照 (供 alpha 渲染)。 */
-private data class OptionRowSnapshot(
-    val option: ExploreOption,
-    val selectedValues: Set<String>,
-    val selectedValue: String,
-)
 
 /**
- * 发现参数 chip 行 (下沉 app 端 `ExploreOptionView.setUpExploreOptions`)。
+ * 参数筛选行 (下沉 app 端 `ExploreOptionView.setUpExploreOptions`)。
  *
- * 主页展示项 (HomeSectionAdapter.updateOptions) 与发现结果页 (ExploreShowActivity) 共用同一
- * 视图, 故两处都消费本组件。每个 [ExploreOption] 一行 (标题 chip + 选项 chip, 横向滚动):
- * 单选点 chip 即切, 点标题 chip 重置默认; 多选只显示已选 chip, 整行点击开
- * [MultiSelectOptionDialog] (带搜索, 确定才写回)。任意变化调 [onOptionSelected]。
+ * 主页展示项 (HomeSectionAdapter.updateOptions)、发现结果页 (ExploreShowActivity) 与搜索页单源
+ * 搜索选项共用同一视图, 故三处都消费本组件。每个 [ExploreOption] 一行, 选项交给
+ * [AppChoiceRowGroup] / [AppMultiChoiceRowGroup] 统一裁决 (选项数 > 4 出横向滚动 chip 行, 否则
+ * 下拉并排); 单选行的标题可点重置默认 (对齐原版点标题 chip 重置), 菜单热区占标题以外整行,
+ * 多选行点 chip / 下拉项即切。任意变化调 [onOptionSelected]。
  *
  * [ExploreOption] 的 selectedValue / selectedValues 是普通可变字段, 不被 Compose 跟踪;
- * 点击后 bump 本地 revision 重取快照刷新 alpha。
+ * 点击后 bump 本地 revision 重取快照刷新选中态。
  *
  * @param optionsVersion 结构变化信号 (新解析出 options 时 bump)
  */
@@ -61,149 +33,56 @@ fun ExploreOptionsRow(
 ) {
     if (options.isEmpty()) return
     var revision by remember { mutableIntStateOf(0) }
-    var dialogOptionName by remember { mutableStateOf<String?>(null) }
-    val rows = remember(options, optionsVersion, revision) {
-        options.map { OptionRowSnapshot(it, it.selectedValues.toSet(), it.selectedValue) }
-    }
+    @Suppress("UNUSED_EXPRESSION") optionsVersion
     Column(Modifier.fillMaxWidth()) {
-        rows.forEach { (option, selectedValues, selectedValue) ->
+        options.forEach { option ->
             key(option.name) {
-                AppChipRow(
-                    // 多选整行可点 (对照 bindMultiSelect 的 row.setOnClickListener, 扩大点击区)
-                    modifier = if (option.multiSelect) {
-                        Modifier.clickable { dialogOptionName = option.name }
-                    } else {
-                        Modifier
-                    },
-                ) {
-                    if (option.multiSelect) {
-                        // 标题 chip 与已选 chip 行为一致 (都开对话框), 对照 addTitleChip(onClick = null)
-                        AppChipRowTitle(
-                            text = option.name,
-                            onClick = { dialogOptionName = option.name },
-                        )
-                        option.options.forEach { (label, value) ->
-                            if (value in selectedValues) {
-                                AppChipRowOption(
-                                    text = label,
-                                    onClick = { dialogOptionName = option.name },
-                                )
-                            }
-                        }
-                    } else {
-                        AppChipRowTitle(
-                            text = option.name,
-                            onClick = {
-                                if (option.resetToDefault()) {
-                                    revision++
-                                    onOptionSelected()
-                                }
-                            },
-                        )
-                        option.options.forEach { (label, value) ->
-                            AppChipRowOption(
-                                text = label,
-                                selected = selectedValue == value,
-                                onClick = {
-                                    if (option.selectedValue != value) {
-                                        option.selectedValue = value
-                                        revision++
-                                        onOptionSelected()
-                                    }
-                                },
-                            )
-                        }
-                    }
+                @Suppress("UNUSED_EXPRESSION") revision
+                val onChanged = {
+                    revision++
+                    onOptionSelected()
+                }
+                if (option.multiSelect) {
+                    AppMultiChoiceRowGroup(
+                        fields = listOf(option.toMultiChoiceField(onChanged)),
+                    )
+                } else {
+                    AppChoiceRowGroup(
+                        fields = listOf(option.toChoiceField(onChanged)),
+                    )
                 }
             }
         }
     }
-    options.firstOrNull { it.multiSelect && it.name == dialogOptionName }?.let { option ->
-        MultiSelectOptionDialog(
-            option = option,
-            onDismiss = { dialogOptionName = null },
-            onChanged = {
-                revision++
-                onOptionSelected()
-            },
-        )
-    }
 }
 
-/**
- * 多选参数对话框 (对照 `ExploreOptionView.showMultiSelectDialog`): 搜索框 + tag chip 网格 +
- * 确定/清除/取消。working 是副本, 确定才写回; 清除直接清空真实选择并立即回调。
- */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun MultiSelectOptionDialog(
-    option: ExploreOption,
-    onDismiss: () -> Unit,
-    onChanged: () -> Unit,
-) {
-    var query by remember(option) { mutableStateOf("") }
-    var working by remember(option) { mutableStateOf(option.selectedValues.toSet()) }
-    val visibleOptions = remember(option, query) {
-        val filter = query.trim()
-        if (filter.isEmpty()) {
-            option.options
+private fun ExploreOption.toChoiceField(onChanged: () -> Unit) = AppChoiceField(
+    title = name,
+    options = options.map { it.first },
+    selectedIndex = options.indexOfFirst { it.second == selectedValue },
+    onSelect = { index ->
+        val value = options[index].second
+        if (selectedValue != value) {
+            selectedValue = value
+            onChanged()
+        }
+    },
+    onReset = {
+        if (resetToDefault()) onChanged()
+    },
+)
+
+private fun ExploreOption.toMultiChoiceField(onChanged: () -> Unit) = AppMultiChoiceField(
+    title = name,
+    options = options.map { it.first },
+    selectedIndexes = options.indices.filter { options[it].second in selectedValues }.toSet(),
+    onToggle = { index ->
+        val value = options[index].second
+        if (value in selectedValues) {
+            selectedValues.remove(value)
         } else {
-            option.options.filter { (label, value) ->
-                label.contains(filter, ignoreCase = true) ||
-                    value.contains(filter, ignoreCase = true)
-            }
+            selectedValues.add(value)
         }
-    }
-    // 固定半屏高 (对照原 displayMetrics.heightPixels / 2)
-    val containerHeight = LocalWindowInfo.current.containerSize.height
-    val density = LocalDensity.current
-    val listHeight = remember(containerHeight, density) {
-        with(density) { (containerHeight / 2).toDp() }
-    }
-    AppAlertDialog(
-        onDismissRequest = onDismiss,
-        title = option.name,
-        neutralButton = AlertButton(stringResource(Res.string.clear)) {
-            if (option.selectedValues.isNotEmpty()) {
-                option.selectedValues.clear()
-                onChanged()
-            }
-        },
-        cancelButton = AlertButton(stringResource(Res.string.cancel)),
-        okButton = AlertButton(stringResource(Res.string.ok)) {
-            if (working != option.selectedValues) {
-                option.selectedValues.clear()
-                option.selectedValues.addAll(working)
-                onChanged()
-            }
-        },
-    ) {
-        AppSearchField(
-            value = query,
-            onValueChange = { query = it },
-            hint = stringResource(Res.string.search),
-            modifier = Modifier.padding(
-                start = DesignTokens.spacingDefault,
-                top = DesignTokens.spacingDefault,
-                bottom = DesignTokens.spacingXs
-            ),
-        )
-        FlowRow(
-            Modifier
-                .height(listHeight)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingXs),
-        ) {
-            visibleOptions.forEach { (label, value) ->
-                val selected = value in working
-                AppFilletTextButton(
-                    text = label,
-                    modifier = Modifier.alpha(
-                        if (selected) OPTION_ALPHA_SELECTED else OPTION_ALPHA_UNSELECTED
-                    ),
-                    onClick = { working = if (selected) working - value else working + value },
-                )
-            }
-        }
-    }
-}
+        onChanged()
+    },
+)

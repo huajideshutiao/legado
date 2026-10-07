@@ -141,7 +141,7 @@ class ExploreShowViewModelShared(
     /**
      * 筛选分类页的会话筛选实例 (漫画 [MangaFilterSession] / 视频 [AnimeFilterSession]; 仅本页会话内
      * 有效, VM 随页面销毁即丢, 不持久化)。由 [createPluginExploreFilters] 在 initData 创建,
-     * 经 [explore] 透传取数委派; 筛选对话框回填即改实例, 重置即换新默认实例。
+     * 经 [explore] 透传取数委派; 筛选面板改动即改实例。
      */
     var pluginExploreFilters: PluginFilterSession? = null
         private set
@@ -350,14 +350,6 @@ class ExploreShowViewModelShared(
         if (!isPluginFilterKind) return
         val source = bookSource ?: return
         pluginExploreFilters = createPluginFilterSession(source)
-    }
-
-    /** 重置到源默认筛选: 换新会话实例并返回 (源不可用/服务未注册返回 null, 保留原实例)。 */
-    suspend fun resetPluginExploreFilters(): PluginFilterSession? {
-        val source = bookSource ?: return null
-        val session = createPluginFilterSession(source) ?: return null
-        pluginExploreFilters = session
-        return session
     }
 
     private suspend fun createPluginFilterSession(source: BookSource): PluginFilterSession? {

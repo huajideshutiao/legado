@@ -232,11 +232,6 @@ interface ExploreShowUiActions {
 
     /** 参数 chip 变化 (宿主清空 books + 重新 explore) */
     fun onExploreOptionChanged()
-
-    /**
-     * 筛选重置 (筛选对话框重置按钮): 宿主换新默认会话实例、同步 UiState 并重载第 1 页, 仍停留筛选面。
-     */
-    fun onPluginFiltersReset() {}
 }
 
 /**
@@ -284,12 +279,11 @@ fun ExploreShowScreen(
             actions = { ExploreActions(state, actions) },
         )
         optionsRowSlot()
-        // 插件源筛选入口 (仅"筛选"分类页; 会话实例挂 VM 随页面销毁, 不持久化)
+        // 插件源筛选面板 (仅"筛选"分类页; 会话实例挂 VM 随页面销毁, 不持久化)
         PluginExploreFilterRow(
             target = state.pluginFilterSource,
             filters = state.pluginExploreFilters,
             onFiltersApplied = actions::onExploreOptionChanged,
-            onResetFilters = actions::onPluginFiltersReset,
         )
         ResultArea(state, actions, videoItemSlot, coverSlot, Modifier.weight(1f))
     }

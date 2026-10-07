@@ -7,13 +7,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -21,90 +19,50 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import eu.kanade.tachiyomi.animesource.model.AnimeFilter
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
-import io.legado.app.ui.compose.component.AppAlertDialog
-import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppCheckbox
-import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.AppChoiceField
+import io.legado.app.ui.compose.component.AppChoiceRowGroup
 import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import legado.ui.generated.resources.Res
-import legado.ui.generated.resources.reset
-import org.jetbrains.compose.resources.stringResource
 
 /**
- * 视频插件源筛选器对话框 (搜索页/发现页筛选入口点开弹出; 与 [MangaFilterDialog] 同构,
- * AnimeFilter 与 Filter 是上游平行的两份契约)。
+ * 视频插件源筛选面板 (内联, 不经对话框; 与 [MangaFilterPanel] 同构, AnimeFilter 与 Filter 是上游
+ * 平行的两份契约)。
  *
- * AnimeFilter 对象非 snapshot state: 回填直接改 [AnimeFilter.state] (Aniyomi 约定, 与取数
- * 委派共享同一实例), UI 刷新由本地 version 计数器驱动; 任一项被改动即置 changed, 关闭时随
- * [onDismiss] 上报 (发现页据此标记筛选已应用 → 热门/最新取数切搜索面)。Group 递归缩进,
- * Select/Sort 选值复用 [AppSelectorDialog], TriState 三态循环 (忽略→含→排除);
- * 重置按钮 (Mihon FilterSheet 同款) 由调用方重建默认实例后经参数回填。
+ * 相邻的 Select 聚为一段交给 [AppChoiceRowGroup] 按选项数裁决 (选项数 > 4 出 chip 行, 否则下拉
+ * 并排); Group 递归缩进并可折叠; 其余条目沿用取值行/输入框/勾选行。AnimeFilter 对象非 snapshot
+ * state: 回填直接改 [AnimeFilter.state] (Aniyomi 约定, 与取数委派共享同一实例), UI 刷新由本地
+ * version 计数器驱动; 改动即回调 [onChanged] (宿主随即重取数), 文本框输入期间只刷新显示、失焦或
+ * 键盘完成才回调, 免得逐字触发取数。
  */
 @Composable
-fun AnimeFilterDialog(
-    sourceName: String,
+fun AnimeFilterPanel(
     filterList: AnimeFilterList,
-    onDismiss: (changed: Boolean) -> Unit,
-    onReset: () -> Unit,
+    onChanged: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    // AnimeFilter.state 是普通 var, 改后须手动触发重组 (对照 MangaFilterDialog 的 version)
     var version by remember { mutableIntStateOf(0) }
-    // 应用标记: filterList 实例被重置替换时归零
-    var changed by remember(filterList) { mutableStateOf(false) }
-    // 待选值弹窗: 双槽分别承载 Select(单选索引) 与 Sort(排序项), 关闭即清
-    var selectFilter by remember { mutableStateOf<AnimeFilter.Select<*>?>(null) }
     var sortFilter by remember { mutableStateOf<AnimeFilter.Sort?>(null) }
-
-    AppAlertDialog(
-        onDismissRequest = { onDismiss(changed) },
-        title = sourceName,
-        neutralButton = AlertButton(
-            text = stringResource(Res.string.reset),
-            dismissOnClick = false,
-            onClick = onReset,
-        ),
-    ) {
-        @Suppress("UNUSED_EXPRESSION") version
-        LazyColumn(
-            Modifier
-                .fillMaxWidth()
-                .heightIn(max = AppDialogSizes.textAreaMaxHeight()),
-        ) {
-            itemsIndexed(filterList) { _, filter ->
-                AnimeFilterItem(
-                    filter = filter,
-                    depth = 0,
-                    onChanged = {
-                        changed = true
-                        version++
-                    },
-                    onOpenSelect = { selectFilter = it },
-                    onOpenSort = { sortFilter = it },
-                )
-            }
-        }
-    }
-
-    // Select 单选弹窗 (values[state] 为当前项, 选中回填索引)
-    selectFilter?.let { filter ->
-        AppSelectorDialog(
-            onDismissRequest = { selectFilter = null },
-            title = filter.name,
-            items = filter.values.map { it.toString() },
-            onItemSelected = { index ->
-                filter.state = index
-                changed = true
+    @Suppress("UNUSED_EXPRESSION") version
+    Column(modifier.fillMaxWidth()) {
+        AnimeFilterPanelItems(
+            filters = filterList.toList(),
+            depth = 0,
+            onChanged = {
                 version++
+                onChanged()
             },
+            onDraft = { version++ },
+            onOpenSort = { sortFilter = it },
         )
     }
 
@@ -116,20 +74,83 @@ fun AnimeFilterDialog(
             items = filter.values.toList(),
             onItemSelected = { index ->
                 filter.state = AnimeFilter.Sort.Selection(index, filter.state?.ascending ?: true)
-                changed = true
                 version++
+                onChanged()
             },
         )
     }
 }
 
-/** 单个 AnimeFilter 条目渲染 (Group 递归缩进; 结构对照 MangaFilterDialog.FilterItem)。 */
+/** 面板节点: 相邻 Select 合并为一段 (段内由 [AppChoiceRowGroup] 裁决 chip / 下拉), 其余条目逐项。 */
+private sealed interface AnimeFilterNode {
+    class Selections(val items: List<AnimeFilter.Select<*>>) : AnimeFilterNode
+    class Single(val filter: AnimeFilter<*>) : AnimeFilterNode
+}
+
+private fun buildAnimeFilterNodes(filters: List<AnimeFilter<*>>): List<AnimeFilterNode> {
+    val nodes = ArrayList<AnimeFilterNode>()
+    var selections = ArrayList<AnimeFilter.Select<*>>()
+    fun flush() {
+        if (selections.isNotEmpty()) {
+            nodes.add(AnimeFilterNode.Selections(selections))
+            selections = ArrayList()
+        }
+    }
+    filters.forEach { filter ->
+        if (filter is AnimeFilter.Select<*>) {
+            selections.add(filter)
+        } else {
+            flush()
+            nodes.add(AnimeFilterNode.Single(filter))
+        }
+    }
+    flush()
+    return nodes
+}
+
+@Composable
+private fun AnimeFilterPanelItems(
+    filters: List<AnimeFilter<*>>,
+    depth: Int,
+    onChanged: () -> Unit,
+    onDraft: () -> Unit,
+    onOpenSort: (AnimeFilter.Sort) -> Unit,
+) {
+    buildAnimeFilterNodes(filters).forEach { node ->
+        when (node) {
+            is AnimeFilterNode.Selections -> AppChoiceRowGroup(
+                modifier = filterIndent(depth),
+                fields = node.items.map { filter ->
+                    AppChoiceField(
+                        title = filter.name,
+                        options = filter.values.map { it.toString() },
+                        selectedIndex = filter.state,
+                        onSelect = { index ->
+                            filter.state = index
+                            onChanged()
+                        },
+                    )
+                },
+            )
+
+            is AnimeFilterNode.Single -> AnimeFilterItem(
+                filter = node.filter,
+                depth = depth,
+                onChanged = onChanged,
+                onDraft = onDraft,
+                onOpenSort = onOpenSort,
+            )
+        }
+    }
+}
+
+/** 单个条目渲染 (Group 递归; Select 由 [AnimeFilterPanelItems] 聚段渲染, 不落到这里)。 */
 @Composable
 private fun AnimeFilterItem(
     filter: AnimeFilter<*>,
     depth: Int,
     onChanged: () -> Unit,
-    onOpenSelect: (AnimeFilter.Select<*>) -> Unit,
+    onDraft: () -> Unit,
     onOpenSort: (AnimeFilter.Sort) -> Unit,
 ) {
     when (filter) {
@@ -163,7 +184,7 @@ private fun AnimeFilterItem(
             filter = filter,
             depth = depth,
             onChanged = onChanged,
-            onOpenSelect = onOpenSelect,
+            onDraft = onDraft,
             onOpenSort = onOpenSort,
         )
 
@@ -195,14 +216,14 @@ private fun AnimeFilterItem(
             },
         )
 
-        is AnimeFilter.Select<*> -> FilterRow(
-            name = filter.name,
-            valueText = filter.values.getOrNull(filter.state)?.toString().orEmpty(),
-            indent = filterIndent(depth),
-            onClick = { onOpenSelect(filter) },
-        )
+        is AnimeFilter.Select<*> -> Unit
 
         is AnimeFilter.Text -> Column(filterIndent(depth).padding(vertical = DesignTokens.spacingXs)) {
+            var dirty by remember(filter) { mutableStateOf(false) }
+            // 输入期间只刷显示不取数; 失焦/IME 完成/离开组合时提交, 免得改完直接切页丢掉输入
+            DisposableEffect(filter) {
+                onDispose { if (dirty) onChanged() }
+            }
             Text(
                 text = filter.name,
                 fontSize = 14.sp,
@@ -212,10 +233,26 @@ private fun AnimeFilterItem(
                 value = filter.state,
                 onValueChange = {
                     filter.state = it
-                    onChanged()
+                    dirty = true
+                    onDraft()
                 },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+                keyboardActions = KeyboardActions(
+                    onDone = {
+                        if (dirty) {
+                            dirty = false
+                            onChanged()
+                        }
+                    }
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged { focusState ->
+                        if (!focusState.isFocused && dirty) {
+                            dirty = false
+                            onChanged()
+                        }
+                    },
             )
         }
 
@@ -264,13 +301,13 @@ private fun AnimeFilterItem(
     }
 }
 
-/** Group: 标题行点按折叠/展开, 子项逐级缩进 (结构对照 MangaFilterDialog.FilterGroup)。 */
+/** Group: 标题行点按折叠/展开, 子项逐级缩进 (缩进统一由 [filterIndent] 负责, 不叠加)。 */
 @Composable
 private fun AnimeFilterGroup(
     filter: AnimeFilter.Group<*>,
     depth: Int,
     onChanged: () -> Unit,
-    onOpenSelect: (AnimeFilter.Select<*>) -> Unit,
+    onDraft: () -> Unit,
     onOpenSort: (AnimeFilter.Sort) -> Unit,
 ) {
     var expanded by remember(filter) { mutableStateOf(true) }
@@ -298,15 +335,13 @@ private fun AnimeFilterGroup(
             )
         }
         if (expanded) {
-            children.forEach { child ->
-                AnimeFilterItem(
-                    filter = child,
-                    depth = depth + 1,
-                    onChanged = onChanged,
-                    onOpenSelect = onOpenSelect,
-                    onOpenSort = onOpenSort,
-                )
-            }
+            AnimeFilterPanelItems(
+                filters = children,
+                depth = depth + 1,
+                onChanged = onChanged,
+                onDraft = onDraft,
+                onOpenSort = onOpenSort,
+            )
         }
     }
 }
