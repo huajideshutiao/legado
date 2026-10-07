@@ -294,8 +294,17 @@ private fun SourceRow(
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (active) {
+            Text(
+                text = "✓",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = colors.primaryText,
+            )
+            Spacer(Modifier.width(4.dp))
+        }
         Text(
-            text = if (active) "✓ $url" else url,
+            text = url,
             fontSize = 13.sp,
             fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
             color = if (active) colors.primaryText else colors.secondaryText,
