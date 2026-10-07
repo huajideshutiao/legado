@@ -209,3 +209,8 @@
 -dontwarn com.github.weisj.**
 # kotlinx.coroutines.debug AgentPremain 引用 android 注解
 -dontwarn android.annotation.**
+# apk-parser 证书 CMS 校验引用可选 bouncycastle, dex2jar (d2j-jasmin/d2j-smali)
+# 传递的 antlr-runtime DOTTreeGenerator 引用可选 stringtemplate; 桌面端均未引入,
+# 引用点功能不可达, 缺类会被 shrink 裁除
+-dontwarn org.bouncycastle.**
+-dontwarn org.antlr.stringtemplate.**
