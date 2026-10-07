@@ -20,6 +20,13 @@ open class Context {
     /** 桌面无应用对象层级, 返回自身 (壳类与 jar 内透传用法拿到可用实例)。 */
     open fun getApplicationContext(): Context = this
 
+    /** 桌面无 Android 包名, 扩展构建 UA/做包名校验时拿到与宿主一致的等价包名。 */
+    open fun getPackageName(): String = "io.legado.app"
+
+    /** 桌面无 Activity 跳转面 (扩展的"打开网页"型动作在此为空操作)。 */
+    open fun startActivity(intent: Intent) {
+    }
+
     companion object {
         const val MODE_PRIVATE = 0
     }

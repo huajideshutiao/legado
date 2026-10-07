@@ -22,6 +22,7 @@ object Base64 {
 
     private const val LINE_LENGTH = 76
 
+    @JvmStatic
     fun encode(input: ByteArray, flags: Int = DEFAULT): ByteArray {
         var encoder = if (flags and URL_SAFE != 0) {
             java.util.Base64.getUrlEncoder()
@@ -46,9 +47,11 @@ object Base64 {
         return text.toByteArray(Charsets.US_ASCII)
     }
 
+    @JvmStatic
     fun encodeToString(input: ByteArray, flags: Int = DEFAULT): String =
         String(encode(input, flags), Charsets.US_ASCII)
 
+    @JvmStatic
     fun decode(str: String, flags: Int = DEFAULT): ByteArray {
         // URL_SAFE 输入把字母表归一回标准字母表; MIME 解码器宽容处理空白/缺补位
         val normalized = if (flags and URL_SAFE != 0) str.replace('-', '+').replace('_', '/') else str
@@ -61,36 +64,43 @@ object Log {
 
     private val logger = Logger.getLogger("AndroidLog")
 
+    @JvmStatic
     fun d(tag: String, msg: String): Int {
         logger.fine("[$tag] $msg")
         return 0
     }
 
+    @JvmStatic
     fun d(tag: String, msg: String, tr: Throwable?): Int {
         logger.fine("[$tag] $msg\n${tr?.toString().orEmpty()}")
         return 0
     }
 
+    @JvmStatic
     fun e(tag: String, msg: String): Int {
         logger.severe("[$tag] $msg")
         return 0
     }
 
+    @JvmStatic
     fun e(tag: String, msg: String, tr: Throwable?): Int {
         logger.severe("[$tag] $msg\n${tr?.toString().orEmpty()}")
         return 0
     }
 
+    @JvmStatic
     fun i(tag: String, msg: String): Int {
         logger.info("[$tag] $msg")
         return 0
     }
 
+    @JvmStatic
     fun w(tag: String, msg: String): Int {
         logger.warning("[$tag] $msg")
         return 0
     }
 
+    @JvmStatic
     fun v(tag: String, msg: String): Int {
         logger.finest("[$tag] $msg")
         return 0

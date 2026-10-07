@@ -186,6 +186,16 @@
 -dontwarn java.lang.invoke.StringConcatFactory
 
 ############################
+# 扩展/jar 运行时引用的宿主 API 面：扩展 APK 按 eu.kanade.tachiyomi.*
+# 以 compileOnly 编译，这些类型仅在扩展 dex 中被引用，R8 静态不可见，
+# 缺 keep 即被收缩/合并出 dex，扩展加载即 ClassNotFound（规则对齐 Mihon 官方 proguard-rules.pro）
+############################
+-keep,allowoptimization class eu.kanade.** { *; }
+-keep,allowoptimization class androidx.preference.** { public protected *; }
+# okhttp3 子包: 上方只有单星 okhttp3.*, 不含 okhttp3.internal 等子包
+-keep,allowoptimization class okhttp3.** { public protected *; }
+
+############################
 # @file:JvmName 合成类跨模块引用加固（顶级 Kotlin 函数宿主类）
 ############################
 -keep class io.legado.app.utils.GsonStreamExtensions { *; }

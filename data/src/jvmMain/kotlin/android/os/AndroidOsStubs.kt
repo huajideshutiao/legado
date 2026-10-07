@@ -12,8 +12,10 @@ import java.io.File
  */
 object Environment {
 
+    @JvmStatic
     fun getExternalStorageDirectory(): File = File(AppFilesDirs.get().filesDir)
 
+    @JvmStatic
     fun getExternalStorageState(): String = "mounted"
 }
 

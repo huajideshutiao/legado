@@ -12,6 +12,7 @@ class ErrnoException(functionName: String?, errno: Int) : Exception("$functionNa
 object Os {
 
     /** 对齐 rename(2) 语义: 目标已存在时失败, 不静默覆盖。 */
+    @JvmStatic
     fun rename(oldPath: String?, newPath: String?) {
         val source = java.nio.file.Paths.get(oldPath.orEmpty())
         val target = java.nio.file.Paths.get(newPath.orEmpty())

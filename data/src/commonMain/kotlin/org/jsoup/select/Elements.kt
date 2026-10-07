@@ -3,6 +3,7 @@
 package org.jsoup.select
 
 import com.fleeksoft.ksoup.select.Elements as KsElements
+import org.jsoup.internal.ElementsBase
 import org.jsoup.nodes.Element
 import org.jsoup.nodes.Node
 import org.jsoup.nodes.asFacadeElement
@@ -11,17 +12,22 @@ import org.jsoup.nodes.asFacadeElements
 /**
  * jsoup 兼容层 Elements 门面。
  *
- * 聚合方法 (attr/text/html/...) 委托底层 [KsElements] 实现同语义。原先继承 ArrayList<Element>
- * 以对齐 jsoup 字节码, 但 native stdlib 的 ArrayList 是 final, ios/ohos 编不过; 改为
- * MutableList 接口委托, 扩展 jar/dex 的调用面走 List 接口不受影响 (类描述符不再是
- * java.util.ArrayList 子类)。
+ * 聚合方法 (attr/text/html/...) 委托底层 [KsElements] 实现同语义; 存储与集合语义由 [ElementsBase]
+ * 提供 —— 该基类在 jvmAndAndroid 上是 `java.util.ArrayList` 子类, 与扩展编译期宿主 jsoup 的
+ * `Elements extends ArrayList<Element>` 层次一致, 构造签名对齐 jsoup:
+ * `()` / `(int)` / `(Collection)` / `(List)` / `(Element...)`。
  */
-public class Elements(private val delegate: MutableList<Element> = ArrayList()) :
-    MutableList<Element> by delegate {
+public class Elements : ElementsBase<Element> {
 
-    public constructor(initialCapacity: Int) : this(ArrayList<Element>(initialCapacity))
+    public constructor() : super()
 
-    public constructor(elements: Collection<Element>) : this(ArrayList<Element>(elements))
+    public constructor(initialCapacity: Int) : super(initialCapacity)
+
+    public constructor(elements: Collection<Element>) : super(elements)
+
+    public constructor(elements: List<Element>) : super(elements)
+
+    public constructor(vararg elements: Element) : super(*elements)
 
     private fun toKsElements(): KsElements =
         KsElements().apply { for (element in this@Elements) add(element.ksoupElement) }

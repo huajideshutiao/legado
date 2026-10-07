@@ -5,12 +5,15 @@ package android.text
 /** android.text.TextUtils 的 JVM 等价 (壳类只用到 isEmpty / join 两面)。 */
 object TextUtils {
 
+    @JvmStatic
     fun isEmpty(str: CharSequence?): Boolean = str == null || str.length == 0
 
     /** 对齐 Android TextUtils.join(CharSequence, Iterable): null 元素输出空串。 */
+    @JvmStatic
     fun join(delimiter: CharSequence, tokens: Iterable<*>): String =
         tokens.joinTo(StringBuilder(), delimiter) { it?.toString().orEmpty() }.toString()
 
+    @JvmStatic
     fun join(delimiter: CharSequence, array: Array<*>): String =
         array.joinTo(StringBuilder(), delimiter) { it?.toString().orEmpty() }.toString()
 }
