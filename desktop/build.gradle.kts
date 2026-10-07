@@ -282,6 +282,8 @@ dependencies {
 
     // 测试: WebView2 消息泵/环境/窗口创建闭环验证 (修复"startBrowser 首次调用打不开")
     testImplementation(libs.junit)
+    // 扫站排查用例直接构造/解析 TVBox 站点结果 JSON (与 :data jvm 侧同源构件)
+    testImplementation(libs.json)
     // Compose UI 测试 (compose.desktop.uiTestJUnit4 已弃用转 error, 直接声明同版本坐标;
     // 版本跟 composeMultiplatform 走, 与插件展开值一致)
     testImplementation(
@@ -289,6 +291,45 @@ dependencies {
             ohosVersion(if (isHarmonyMode) "composeMultiplatform-ohos" else "cmp")
         }"
     )
+}
+
+// 测试 JVM 读的是自身的系统属性: 命令行 -D / 环境变量只到 Gradle 进程, 不转发则测试里
+// 一律读到默认值 (TestNetwork 联网闸门静默 skip, 扫测参数静默失效)。需转发的键集中登记。
+val forwardedTestProps = listOf(
+    "legado.networkTests",
+    "legado.debug",
+    "legado.desktop.debug",
+    "legado.tvbox.sweep.configUrl",
+    "legado.tvbox.sweep.sites",
+    "legado.tvbox.sweep.parallelism",
+    "legado.tvbox.sweep.timeoutMs",
+    "legado.tvbox.sweep.searchKeys",
+)
+
+/** `legado.networkTests` → `LEGADO_NETWORK_TESTS` (与环境变量形式的闸门开关同名)。 */
+fun envNameOfProperty(key: String): String = key
+    .replace('.', '_')
+    .replace(Regex("([a-z0-9])([A-Z])"), "$1_$2")
+    .uppercase()
+
+tasks.withType<Test>().configureEach {
+    // 取值在 doFirst 里落进测试 JVM (systemProperty 不保证解包 Provider 值),
+    // 同时以 inputs.property 入任务输入, 配置缓存下随 -D/环境变化重算。
+    // 三项都未设时统一收成空串 (inputs.property 要求每个键都有值)。
+    val props = forwardedTestProps.associateWith { key ->
+        providers.systemProperty(key)
+            .orElse(providers.environmentVariable(envNameOfProperty(key)))
+            .orElse("")
+    }
+    props.forEach { (key, provider) -> inputs.property(key, provider) }
+    doFirst {
+        props.forEach { (key, provider) ->
+            provider.get().ifEmpty { return@forEach }
+            systemProperty(key, provider.get())
+        }
+    }
+    // 全站扫测多路并行, 单站点大响应 JSON 解析峰值高于默认 512m
+    maxHeapSize = "2g"
 }
 
 // Compose Desktop 统一配置入口 (mainClass + nativeDistributions)
