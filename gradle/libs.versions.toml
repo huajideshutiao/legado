@@ -8,6 +8,10 @@ ksp = "2.3.11"
 
 # ===== Compose Multiplatform (Android/桌面共用基线) =====
 cmp = "1.11.1"
+# 官方 CMP 版本 (与 cmp 非鸿蒙值同源): 鸿蒙模式 settings 把 cmp 切到 CPF fork (无 jvm 变体),
+# 而引用 compose runtime 注解的 commonMain 代码 (:data AnimeFilterList 的 @Stable) 需要
+# android/jvm 变体齐全的官方构件; ohos 配置由 OhosTargetConventionPlugin 替换为 fork 版
+composeMultiplatform-jvm = "1.11.1"
 # 0.41.0 对 CMP 1.10 编译 (Kotlin 2.3.21, iosArm64 klib abi 2.3.0), 与本项目工具链兼容。
 # 2026-09-19 实测 0.44.0/0.45.0: 其自身 klib 已恢复 Kotlin 2.3 可消费, 但 0.43+ 的
 # markdown-renderer-coil3 强制 coil3 >= 3.5.0 (runtime 依赖), 而 coil 3.5.0/3.6.0 的
@@ -186,6 +190,7 @@ kotlinx-serialization-json-okio = { module = "org.jetbrains.kotlinx:kotlinx-seri
 kotlinx-serialization-protobuf = { module = "org.jetbrains.kotlinx:kotlinx-serialization-protobuf", version.ref = "kotlinxSerializationJson" }
 jetbrains-kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test" }
 runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "cmp" }
+runtime-jvm = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "composeMultiplatform-jvm" }
 slf4j-nop = { module = "org.slf4j:slf4j-nop", version.ref = "slf4jNop" }
 
 # ===== AndroidX / Google 官方库 =====

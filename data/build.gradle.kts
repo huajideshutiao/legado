@@ -421,9 +421,10 @@ kotlin {
                 // 替换为 :modules:ksoup-ohos, 其余平台照常解析标准 ksoup。
                 implementation(libs.ksoup)
                 implementation(libs.kotlinx.serialization.json)
-                // 兼容层 AnimeFilterList 的 @Stable 注解 (org.jetbrains.compose.runtime:runtime 多平台构件,
-                // 各端 UI 本就携带, 此处仅为 :data commonMain 编译可见)
-                implementation(sharedLibs.findLibrary("runtime").get())
+                // 兼容层 AnimeFilterList 的 @Stable 注解: 引官方 CMP runtime (jvm/android 变体齐全,
+                // 鸿蒙模式 cmp 被切 fork 后无 jvm 变体会挂全 target 解析); ohos 配置由
+                // OhosTargetConventionPlugin 替换为 fork 版构件
+                implementation(sharedLibs.findLibrary("runtime-jvm").get())
             }
         }
         // 实体源码 src/roomEntitiesMain/kotlin 直接挂 commonMain (与 :shared 同款:
