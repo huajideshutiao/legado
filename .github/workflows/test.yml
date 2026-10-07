@@ -150,9 +150,11 @@ jobs:
       - name: Build ReleaseA (共存)
         # -PcoexistBuild=true 一并决定 applicationIdSuffix (.releaseA) 与 APK 名后缀 (_releaseA);
         # 后者是应用内更新识别渠道变体的依据 (AppReleaseInfo), 也让两个变体产物不互相覆盖
+        # -x lintVitalAppRelease: 共存版与原包名同一份源码、同一个工作区, lint 只看源码与依赖,
+        # 两遍结论相同; 实测该 lint 单次 2~11 分钟 (安卓构建耗时的一半以上), 不重复跑
         run: |
           echo "开始${{ env.product }}共存构建"
-          ./gradlew assemble${{ env.product }}release -PappVersion=$VERSION -PcoexistBuild=true $GRADLE_ARGS
+          ./gradlew assemble${{ env.product }}release -PappVersion=$VERSION -PcoexistBuild=true -x lintVitalAppRelease $GRADLE_ARGS
           echo "收集共存版APK"
           find app/build/outputs/renamed-apks -name "*.apk" -exec mv {} apk/ \;
 
