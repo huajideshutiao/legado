@@ -27,6 +27,9 @@ import io.legado.app.ui.book.source.SourceUiEventBridgeHost
 import io.legado.app.ui.book.video.IosVideoPlayPlatformProvider
 import io.legado.app.ui.book.video.VideoPlayPlatformProviders
 import io.legado.app.ui.association.DeepLinkImportHost
+import io.legado.app.ui.about.preferenceUpVersionStore
+import io.legado.app.ui.about.upVersion
+import io.legado.app.ui.about.versionNameToVersionCode
 import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
@@ -113,6 +116,18 @@ fun MainViewController(): UIViewController {
                             navigator = navigator,
                             screenModelStore = screenModelStore,
                         )
+                        // 升级更新日志 (对照原版 MainActivity.upVersion): 首启弹帮助, 升级弹更新日志;
+                        // iOS 无构建类型感知, isDebug 恒 false (对齐 release 行为);
+                        // 版本名取不到时不推进版本号, 下次启动再判
+                        LaunchedEffect(Unit) {
+                            IosPlatformCapabilities.getAppVersionName()?.let { versionName ->
+                                upVersion(
+                                    versionNameToVersionCode(versionName),
+                                    isDebug = false,
+                                    preferenceUpVersionStore(),
+                                )
+                            }
+                        }
                     }
                     // 书源 UI 事件桥: 订阅 SOURCE_UI_REQUEST, 承接 JS 的 showLoginDialog/
                     // showSourceVariableDialog 弹窗 (对照 desktop Main.kt line 391)

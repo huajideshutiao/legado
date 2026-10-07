@@ -335,6 +335,7 @@
     <string name="all_source">全部書源</string>
     <string name="cannot_empty">輸入不能為空</string>
     <string name="change_icon_summary">切換軟體顯示在桌面的圖示</string>
+    <string name="update_log">更新日誌</string>
     <string name="help">幫助</string>
     <string name="my">我的</string>
     <string name="reading">閱讀</string>

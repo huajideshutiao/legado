@@ -328,6 +328,7 @@
     <string name="all_source">Todas as fontes</string>
     <string name="cannot_empty">O conteúdo de entrada não pode estar vazio</string>
     <string name="change_icon_summary">Alternar o ícone do software exibido na área de trabalho</string>
+    <string name="update_log">Novidades</string>
     <string name="help">Ajuda</string>
     <string name="my">Minhas</string>
     <string name="reading">Leituras</string>

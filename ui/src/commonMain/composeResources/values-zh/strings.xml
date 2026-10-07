@@ -35,6 +35,7 @@
     <string name="import_local">本地导入</string>
     <string name="import_on_line">网络导入</string>
     <string name="group_sources_by_domain">按域名分组显示</string>
+    <string name="update_log">更新日志</string>
     <string name="help">帮助</string>
     <string name="edit">编辑</string>
     <string name="to_top">置顶</string>

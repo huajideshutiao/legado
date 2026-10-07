@@ -66,7 +66,9 @@ import io.legado.app.model.manga.AndroidMangaExtensionPlatform
 import io.legado.app.receiver.MediaButtonReceiver
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.service.ExportBookService
+import io.legado.app.ui.about.UpVersionStore
 import io.legado.app.ui.about.checkUpdateAndPrompt
+import io.legado.app.ui.about.upVersion
 import io.legado.app.ui.association.DeepLinkImportHost
 import io.legado.app.ui.association.LegadoDeepLink
 import io.legado.app.ui.association.LegadoDeepLinkHandler
@@ -126,7 +128,6 @@ import io.legado.app.utils.toastOnUi
 import io.legado.app.web.utils.WebAssetSources
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Dispatchers.IO
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -843,8 +844,21 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
         lifecycleScope.launch {
             //隐私协议
             if (!privacyPolicy()) return@launch
-            //版本更新
-            upVersion()
+            //版本更新 (首启弹帮助, 升级弹更新日志; versionCode 写回 LocalConfig
+            //供 DefaultData.upVersion 做默认数据版本推进判断)
+            upVersion(
+                AppConst.appInfo.versionCode,
+                BuildConfig.DEBUG,
+                object : UpVersionStore {
+                    override fun getSavedVersionCode(): Long = LocalConfig.versionCode
+
+                    override fun saveVersionCode(versionCode: Long) {
+                        LocalConfig.versionCode = versionCode
+                    }
+
+                    override fun consumeFirstOpen(): Boolean = LocalConfig.isFirstOpenApp
+                },
+            )
             //设置本地密码
             setLocalPassword()
             notifyAppCrash()
@@ -897,23 +911,6 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
                     if (block.isActive) block.resume(false)
                 }
             }
-        }
-    }
-
-    /**
-     * 版本更新日志
-     * 帮助文档对话框已下沉 shared (HelpDialog): 经 help Overlay 读 appHelp.md 渲染,
-     * 等待 Overlay 关闭后继续 (对照原版 TextDialog setOnDismissListener 语义)
-     */
-    private suspend fun upVersion() {
-        if (LocalConfig.versionCode == AppConst.appInfo.versionCode) return
-        LocalConfig.versionCode = AppConst.appInfo.versionCode
-        if (!LocalConfig.isFirstOpenApp) return
-        // 挂起等待首帧 navigator 注册就绪, 避免早于首帧组合静默跳过
-        val navigator = AppNavigatorProviders.awaitNavigator()
-        navigator.showOverlay(AppOverlay.Dialog(key = "help", payload = "appHelp"))
-        navigator.overlays.first { list ->
-            list.none { it.key == "help" }
         }
     }
 

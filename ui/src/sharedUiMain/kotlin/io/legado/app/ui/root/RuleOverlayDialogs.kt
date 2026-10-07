@@ -41,9 +41,11 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.ui.generated.resources.Res
+import legado.ui.generated.resources.help
 import legado.ui.generated.resources.import_dict_rule
 import legado.ui.generated.resources.import_source_filter_rule
 import legado.ui.generated.resources.import_txt_toc_rule
+import legado.ui.generated.resources.update_log
 import legado.ui.generated.resources.wrong_format
 import org.jetbrains.compose.resources.stringResource
 
@@ -168,18 +170,34 @@ internal fun SourceFilterRuleListDialogContent(
     )
 }
 
-// 帮助文档 (key="help" 时 payload 为 md 文件名; key="dictRuleHelp" 为固定文档)
+// 帮助文档 (key="help" 时 payload 为 md 文件名; key="dictRuleHelp" 为固定文档;
+// key="updateLog" 为升级更新日志, 标题"更新日志")
 @Composable
 internal fun HelpDialogContent(
     overlay: AppOverlay.Dialog,
     navigator: AppNavigator,
     fileName: String,
+    title: String = stringResource(Res.string.help),
 ) {
     if (fileName.isEmpty()) {
         LaunchedEffect(overlay.key) { navigator.dismissOverlay(overlay.key) }
         return
     }
-    HelpDialog(fileName) { navigator.dismissOverlay(overlay.key) }
+    HelpDialog(fileName, title = title) { navigator.dismissOverlay(overlay.key) }
+}
+
+/** 升级更新日志 (key="updateLog", 对照原版 upVersion updateLog 分支)。 */
+@Composable
+internal fun UpdateLogOverlayDialogContent(
+    overlay: AppOverlay.Dialog,
+    navigator: AppNavigator,
+) {
+    HelpDialogContent(
+        overlay = overlay,
+        navigator = navigator,
+        fileName = "updateLog",
+        title = stringResource(Res.string.update_log),
+    )
 }
 
 /** 规则导入类型: 归一化三种 Import*ViewModelShared 的入口方法与列表适配器差异。 */

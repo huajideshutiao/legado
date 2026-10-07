@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.window.ComposeArkUIViewController
@@ -14,6 +15,9 @@ import io.legado.app.help.registerComposeDefaultDataResourceProvider
 import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.browser.OhosWebViewSlot
 import io.legado.app.ui.OhosPlatformCapabilities
+import io.legado.app.ui.about.preferenceUpVersionStore
+import io.legado.app.ui.about.upVersion
+import io.legado.app.ui.about.versionNameToVersionCode
 import io.legado.app.ui.book.audio.AudioPlayPlatformProviders
 import io.legado.app.ui.book.audio.SharedAudioPlayPlatformProvider
 import io.legado.app.ui.book.manga.MangaReaderScreenModel
@@ -115,6 +119,18 @@ fun MainOhos() {
                         navigator = navigator,
                         screenModelStore = screenModelStore,
                     )
+                    // 升级更新日志 (对照原版 MainActivity.upVersion): 首启弹帮助, 升级弹更新日志;
+                    // 鸿蒙无构建类型感知, isDebug 恒 false (对齐 release 行为);
+                    // 版本名未注入 (ArkTS 注入时机竞态) 时不推进版本号, 下次启动再判
+                    LaunchedEffect(Unit) {
+                        OhosPlatformCapabilities.getAppVersionName()?.let { versionName ->
+                            upVersion(
+                                versionNameToVersionCode(versionName),
+                                isDebug = false,
+                                preferenceUpVersionStore(),
+                            )
+                        }
+                    }
                     // legado:// deep link 导入宿主
                     DeepLinkImportHost()
                 }

@@ -330,6 +330,7 @@
     <string name="all_source">Tất cả nguồn</string>
     <string name="cannot_empty">Nội dung nhập không được để trống</string>
     <string name="change_icon_summary">Chuyển đổi biểu tượng phần mềm hiển thị trên màn hình chính</string>
+    <string name="update_log">Nhật ký cập nhật</string>
     <string name="help">Trợ giúp</string>
     <string name="my">Của tôi</string>
     <string name="reading">Đọc</string>

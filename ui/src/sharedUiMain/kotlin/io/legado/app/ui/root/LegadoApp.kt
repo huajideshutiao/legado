@@ -780,6 +780,9 @@ private fun DialogOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavig
         "help" -> HelpDialogContent(overlay, navigator, overlay.payload.orEmpty())
         "dictRuleHelp" -> HelpDialogContent(overlay, navigator, "dictRuleHelp")
 
+        // 升级更新日志 (对照原版 upVersion updateLog 分支)
+        "updateLog" -> UpdateLogOverlayDialogContent(overlay, navigator)
+
         // 崩溃日志 (对照 app 端 CrashLogsDialog Fragment)
         "crash_logs" -> CrashLogsOverlayDialogContent(overlay, navigator)
 

@@ -75,6 +75,8 @@ import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.reader.ReaderDictWord
 import io.legado.app.ui.reader.ReaderImageActionMenu
+import io.legado.app.ui.about.preferenceUpVersionStore
+import io.legado.app.ui.about.upVersion
 import io.legado.app.ui.root.AppFontScaleScope
 import io.legado.app.ui.root.AppForegroundState
 import io.legado.app.ui.root.AppNavigator
@@ -97,6 +99,7 @@ import io.legado.desktop.help.http.DesktopWebViewChallengeEngine
 import io.legado.desktop.help.http.registerDesktopBackstageWebView
 import io.legado.desktop.http.DesktopChallengeEngines
 import io.legado.desktop.help.registerDesktopArchiveProvider
+import io.legado.desktop.constant.DesktopAppInfo
 import io.legado.desktop.help.registerDesktopScreenInfoProvider
 import io.legado.desktop.help.source.registerDesktopVerificationUiProvider
 import io.legado.desktop.help.tvbox.DesktopTvBoxSniffer
@@ -708,6 +711,15 @@ private fun runDesktopApp() = application {
         // 用 withContext(Dispatchers.Default) 在后台线程执行, 避免阻塞 UI 线程
         LaunchedEffect(Unit) {
             registerSecondaryProviders()
+        }
+        // 升级更新日志 (对照原版 MainActivity.upVersion): 首启弹帮助, 升级弹更新日志;
+        // debug 判定与 registerJvmDebugState 同源 (run 任务注入 -Dlegado.debug=true)
+        LaunchedEffect(Unit) {
+            upVersion(
+                DesktopAppInfo.versionCode.toLong(),
+                System.getProperty("legado.debug")?.toBoolean() == true,
+                preferenceUpVersionStore(),
+            )
         }
         // 文件关联分发: 队列在 main() 就可能有值 (argv 冷启动), 这里等首帧组合完成
         // (navigator 已注册) 再消费; 解压/读文件是阻塞 IO, 切 IO 线程

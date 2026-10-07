@@ -330,6 +330,7 @@
     <string name="all_source">Todas las fuentes</string>
     <string name="cannot_empty">El contenido introducido no puede estar vacío</string>
     <string name="change_icon_summary">Cambie el icono de software que se muestra en el escritorio</string>
+    <string name="update_log">Novedades</string>
     <string name="help">Ayuda</string>
     <string name="my">Mío</string>
     <string name="reading">Lecturas</string>

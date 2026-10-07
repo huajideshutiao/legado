@@ -330,6 +330,7 @@
     <string name="all_source">All Sources</string>
     <string name="cannot_empty">The input content cannot be empty</string>
     <string name="change_icon_summary">Switch the software icon displayed on the desktop</string>
+    <string name="update_log">更新履歴</string>
     <string name="help">Help</string>
     <string name="my">Me</string>
     <string name="reading">Read</string>
