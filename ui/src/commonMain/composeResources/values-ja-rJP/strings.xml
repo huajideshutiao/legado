@@ -901,4 +901,6 @@
     <string name="tvbox_delete_source">設定元を削除</string>
     <string name="underline_cross_chapter_unsupported">注釈は同一章内の選択にのみ対応します</string>
     <string name="keyword_highlight_exclude_scope">除外範囲（任意、書名または書源 URL）</string>
+    <string name="video_lock">ロック</string>
+    <string name="video_unlock">ロック解除</string>
 </resources>

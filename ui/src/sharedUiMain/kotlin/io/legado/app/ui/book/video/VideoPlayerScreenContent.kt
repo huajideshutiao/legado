@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -89,6 +90,8 @@ import legado.ui.generated.resources.picture_in_picture
 import legado.ui.generated.resources.play
 import legado.ui.generated.resources.previous_chapter
 import legado.ui.generated.resources.resolution
+import legado.ui.generated.resources.video_lock
+import legado.ui.generated.resources.video_unlock
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.abs
@@ -915,6 +918,25 @@ fun VideoBufferingIndicator(
     )
 }
 
+/** 锁钮直径 (停靠位计算与 [VideoLockToggle] 尺寸共用一处)。 */
+private val VideoLockToggleSize: Dp = 48.dp
+
+/** 中央五钮行高 (最高的一颗是 64dp 的播放/暂停钮, 见 [PlayPauseButton])。 */
+private val VideoCenterControlsHeight: Dp = 64.dp
+
+/** 锁钮纵向停靠位: 中央五钮正上方留一条间距。控制层内的解锁钮与锁定态共用同一处。 */
+private val VideoLockDockOffsetY: Dp =
+    -(VideoCenterControlsHeight / 2 + DesignTokens.spacingLg + VideoLockToggleSize / 2)
+
+/**
+ * 锁钮停靠位: 横向贴右侧 (边距同控制层的起始边距), 纵向见 [VideoLockDockOffsetY]。
+ * 控制层内的解锁钮与锁定态共用同一处, 避免点锁后图标跳位。
+ */
+private fun BoxScope.videoLockDock(): Modifier = Modifier
+    .align(Alignment.CenterEnd)
+    .padding(end = DesignTokens.spacingLg)
+    .offset(y = VideoLockDockOffsetY)
+
 /** 锁定/解锁钮 (原 app/desktop 两份完全相同的 private 实现, 收拢为共享实现)。 */
 @Composable
 fun VideoLockToggle(
@@ -924,7 +946,7 @@ fun VideoLockToggle(
 ) {
     Box(
         modifier
-            .size(48.dp)
+            .size(VideoLockToggleSize)
             .clip(CircleShape)
             .clickable { onClick() },
         contentAlignment = Alignment.Center,
@@ -933,7 +955,9 @@ fun VideoLockToggle(
             painter = rememberPainter("ic_lock_outline"),
             // 无 contentDescription 时读屏/无障碍下是一颗无声钮 (上一版如此)，而锁定态
             // 画面上只剩这一颗无底色、半透明的小钮，必须给它可读的名字
-            contentDescription = stringResource(if (locked) Res.string.play else Res.string.pause),
+            contentDescription = stringResource(
+                if (locked) Res.string.video_unlock else Res.string.video_lock
+            ),
             tint = Color.White.copy(alpha = if (locked) 0.5f else 1f),
             modifier = Modifier.size(32.dp),
         )
@@ -1030,6 +1054,9 @@ fun VideoPlayerHostContainer(
     // (playWhenReady) + IDLE/ENDED 决定, 刻意不用 isPlaying, 否则缓冲卡顿那一瞬图标会
     // 从暂停条跳成播放三角 (原版不会), 用户以为按坏了
     val playingIconShown = !playback.showPlayIcon
+    // 无系统返回通道的平台 (iOS): 全屏期间右上角常驻退出全屏钮
+    val exitFullScreenButtonShown = !platform.supportsSystemBack &&
+        (uiState.isFullScreen || systemFullScreen) && !isPip
 
     Box(
         modifier
@@ -1099,10 +1126,8 @@ fun VideoPlayerHostContainer(
                             screenModel.setLocked(true)
                             screenModel.onToggleControls()
                         },
-                        // 右上角: 与中央五钮错开 (CenterStart 时会压住最左的上一章钮)
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(end = DesignTokens.spacingLg, top = DesignTokens.spacingLg),
+                        // 与锁定态的小锁钮同一停靠位 (见 [videoLockDock])
+                        modifier = videoLockDock(),
                     )
                 },
                 isSystemFullScreen = systemFullScreen,
@@ -1126,9 +1151,7 @@ fun VideoPlayerHostContainer(
                     // 上一版不回滚 → 解锁后必须再点一次画面才出控件
                     if (!screenModel.state.value.controlsVisible) screenModel.onToggleControls()
                 },
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .padding(start = DesignTokens.spacingLg),
+                modifier = videoLockDock(),
             )
         }
 
@@ -1153,7 +1176,7 @@ fun VideoPlayerHostContainer(
         // 顶栏在全屏时被整体隐藏, 而退全屏/开菜单的唯一入口在顶栏里, 叠上 iOS 的
         // PlatformBackHandler 是 no-op → 原本“进得去退不出, 连菜单都打不开”。
         // 不随控制栏自动隐藏 (它就是为控制栏也收起时准备的)。
-        if (!platform.supportsSystemBack && (uiState.isFullScreen || systemFullScreen) && !isPip) {
+        if (exitFullScreenButtonShown) {
             IconButton(
                 onClick = {
                     if (systemFullScreen) screenModel.setSystemFullScreen(false)

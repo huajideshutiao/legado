@@ -990,4 +990,6 @@
     <string name="tvbox_delete_source">Remover fonte</string>
     <string name="underline_cross_chapter_unsupported">As anotacoes so aceitam selecao dentro de um mesmo capitulo</string>
     <string name="keyword_highlight_exclude_scope">Intervalo de exclusao, nome do livro ou URL da fonte opcional</string>
+    <string name="video_lock">Bloquear</string>
+    <string name="video_unlock">Desbloquear</string>
 </resources>

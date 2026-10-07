@@ -1102,4 +1102,6 @@
     <string name="tvbox_delete_source">刪除來源</string>
     <string name="underline_cross_chapter_unsupported">批註僅支援單章內選取範圍</string>
     <string name="keyword_highlight_exclude_scope">排除範圍，選填書名或者書源 URL</string>
+    <string name="video_lock">鎖定</string>
+    <string name="video_unlock">解鎖</string>
 </resources>

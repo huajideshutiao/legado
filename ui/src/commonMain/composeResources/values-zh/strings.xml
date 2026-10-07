@@ -1823,4 +1823,6 @@ Windows: winget install shinchiro.mpv 或 scoop install mpv,
     <string name="tvbox_delete_source">删除来源</string>
     <string name="underline_cross_chapter_unsupported">批注仅支持单章内选区</string>
     <string name="keyword_highlight_exclude_scope">排除范围，选填书名或者书源 URL</string>
+    <string name="video_lock">锁定</string>
+    <string name="video_unlock">解锁</string>
 </resources>

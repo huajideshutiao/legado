@@ -1755,4 +1755,6 @@
     <string name="tvbox_delete_source">Remove source</string>
     <string name="underline_cross_chapter_unsupported">Note is limited to a single chapter</string>
     <string name="keyword_highlight_exclude_scope">Exclude range, optional book name or source URL</string>
+    <string name="video_lock">Lock</string>
+    <string name="video_unlock">Unlock</string>
 </resources>

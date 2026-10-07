@@ -986,4 +986,6 @@
     <string name="tvbox_delete_source">Xoa nguon</string>
     <string name="underline_cross_chapter_unsupported">Ghi chu chi ho tro vung chon trong cung mot chuong</string>
     <string name="keyword_highlight_exclude_scope">Pham vi loai tru, tuy chon ten sach hoac URL nguon</string>
+    <string name="video_lock">Khóa</string>
+    <string name="video_unlock">Mở khóa</string>
 </resources>
