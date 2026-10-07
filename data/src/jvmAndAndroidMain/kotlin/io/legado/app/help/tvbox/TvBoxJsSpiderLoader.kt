@@ -423,18 +423,34 @@ class TvBoxJsSpider internal constructor(
         // 当 JS 缓存后会在 eval 期炸出与真实原因无关的语法错 (drpy2 系站点实测)。
         val body = OkHttp.client().newCall(Request.Builder().url(resolved).build())
             .execute().use { resp ->
-                if (!resp.isSuccessful) return ""
+                if (!resp.isSuccessful) {
+                    return moduleFetchFailure(resolved, "HTTP ${resp.code} ${resp.message}")
+                }
                 resp.body.string()
             }
         // 200 也可能是防盗链/登录页 HTML; 拿到的不是 JS 就当缺失,
         // 否则下游会抛 "Unexpected token '<'" 这类与真实原因无关的装载错误。
-        if (!looksLikeJs(body)) return ""
+        if (!looksLikeJs(body)) {
+            return moduleFetchFailure(
+                resolved,
+                "响应不是 JS (前 120 字: ${body.trimStart().take(120).replace(Regex("\\s+"), " ")})",
+            )
+        }
         runCatching {
             cached.parentFile?.mkdirs()
             cached.writeText(body)
         }
         return body
     }
+
+    /**
+     * 模块取源失败: 回带失败原因的标记串, 由 `__M.require` 转成带原因的 JS 错误。
+     *
+     * 不能回空串: `require` 拿到空串只能报 `tvbox js module not found: <url>`,
+     * 把"上游 403 / 防盗链 HTML / 404"一律压成"模块不存在", 排查时分不清宿主取数失败与站点真死。
+     */
+    private fun moduleFetchFailure(url: String, reason: String): String =
+        TvBoxJsSpider.MODULE_FETCH_ERROR_PREFIX + "$url → " + reason.replace(Regex("\\s+"), " ")
 
     /**
      * 宿主引导资源取源: 随包资源优先, 缺失时按 [assetUrlsOf] 逐个镜像
@@ -447,8 +463,8 @@ class TvBoxJsSpider internal constructor(
      * 镜像逐个尝试的理由: 直连 GitHub 在国内网络常不可达; 缓存 key 取实际命中的 URL,
      * 不同镜像各存一份互不干扰。
      *
-     * 全部镜像都拿不到时返回空串: 下游 `require` 会抛 `tvbox js module not found: <path>`
-     * 使装载失败可观测 (不静默返回空模块)。
+     * 全部镜像都拿不到时回带原因的失败标记 (由 `__M.require` 转成带原因的 JS 错误,
+     * 不静默返回空模块)。
      */
     private fun fetchAsset(path: String): String {
         if (path.isBlank()) return ""
@@ -456,7 +472,7 @@ class TvBoxJsSpider internal constructor(
         val expectedMd5 = TvBoxJsSpiderLoader.ASSET_MD5[path]
         if (expectedMd5 == null) {
             AppLog.put("TVBox JS 依赖模块不在信任清单内, 拒绝远程下载: $path")
-            return ""
+            return moduleFetchFailure(path, "不在宿主信任清单内, 拒绝远程下载")
         }
         var lastError: String? = null
         for (url in assetUrlsOf(path)) {
@@ -483,7 +499,7 @@ class TvBoxJsSpider internal constructor(
             "TVBox JS 依赖模块获取失败 (宿主资源无且全部镜像不可用/校验不过): $path" +
                 (lastError?.let { "\n$it" } ?: "")
         )
-        return ""
+        return moduleFetchFailure(path, "宿主无且镜像不可用/校验不过${lastError?.let { " ($it)" }.orEmpty()}")
     }
 
     /**
@@ -538,6 +554,12 @@ class TvBoxJsSpider internal constructor(
     companion object {
         /** 宿主对象在 JS 侧的注入键 (与 TvBoxJsApi.js 的 __M.setHost 参数一致)。 */
         internal const val HOST_KEY_HOST = "__hostBridge__"
+
+        /**
+         * 模块取源失败的标记前缀 (宿主→JS 约定, 与随包 assets `tvbox/TvBoxJsModuleLoader.js`
+         * 内同名常量成对改动)。
+         */
+        internal const val MODULE_FETCH_ERROR_PREFIX = "\u0000tvbox-module-fetch-error\u0000"
 
         /** 宿主资源协议头 (FongMi/TV `assets://` 语义: 随包资源, 非远端)。 */
         private const val ASSETS_SCHEME = "assets://"

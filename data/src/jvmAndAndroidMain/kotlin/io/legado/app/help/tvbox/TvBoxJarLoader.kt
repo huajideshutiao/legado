@@ -27,6 +27,7 @@ import java.util.concurrent.ConcurrentHashMap
 internal object TvBoxJarLoader {
 
     private const val JAR_INIT_CLASS = "com.github.catvod.spider.Init"
+    private const val JAR_PROXY_CLASS = "com.github.catvod.spider.Proxy"
     private const val SPIDER_PACKAGE = "com.github.catvod.spider."
 
     private val loaders = ConcurrentHashMap<String, ClassLoader>()
@@ -42,7 +43,8 @@ internal object TvBoxJarLoader {
 
     /**
      * 实例化站点 Spider; api 非 csp_ 前缀返回 null (JS/Python/CMS 站点不走本装载器)。
-     * 装载/实例化异常原样抛出, 由委派层收敛为取数错误。
+     * 缺依赖类的 LinkageError 收敛为带类名的可读错误 (见 [jarLinkageFailure]), 其余异常原样抛出,
+     * 由委派层收敛为取数错误。
      */
     fun getSpider(site: TvBoxSite, jarSpec: String): Spider? {
         Init.set(TvBoxPlatforms.get().appContext)
@@ -55,15 +57,21 @@ internal object TvBoxJarLoader {
             spiders[spKey]?.let { return it }
             val loader = loaderFor(jarSpec)
             val name = site.api.removePrefix("csp_")
-            val cls = try {
-                loader.loadClass(SPIDER_PACKAGE + name)
-            } catch (_: ClassNotFoundException) {
-                // 生态外 jar 可能用全限定类名, 兜底直查
-                loader.loadClass(name)
+            val spider = try {
+                val cls = try {
+                    loader.loadClass(SPIDER_PACKAGE + name)
+                } catch (_: ClassNotFoundException) {
+                    // 生态外 jar 可能用全限定类名, 兜底直查
+                    loader.loadClass(name)
+                }
+                val instance = cls.getDeclaredConstructor().newInstance() as Spider
+                instance.siteKey = site.key
+                instance.init(TvBoxPlatforms.get().appContext, site.ext)
+                instance
+            } catch (e: LinkageError) {
+                // 缺依赖类/字节码坏/native 链接失败: 收敛成带类名的可读错误 (Error 族裸穿会淹没原因)
+                jarLinkageFailure("TVBox spider 装载失败 (${site.name} / csp_$name)", e)
             }
-            val spider = cls.getDeclaredConstructor().newInstance() as Spider
-            spider.siteKey = site.key
-            spider.init(TvBoxPlatforms.get().appContext, site.ext)
             recent = jarKey
             spiders[spKey] = spider
             return spider
@@ -92,12 +100,19 @@ internal object TvBoxJarLoader {
             .onFailure { AppLog.put("TVBox jar 静态 Proxy 调用失败", it) }
             .getOrNull()
 
-    /** 缓存 jar 自带 com.github.catvod.spider.Proxy 的 proxy(Map) 静态方法 (不存在则跳过, FongMi invokeProxy 同语义)。 */
+    /** 缓存 jar 自带 com.github.catvod.spider.Proxy 的 proxy(Map) 静态方法 (FongMi invokeProxy 同语义)。 */
     private fun invokeJarProxy(loader: ClassLoader, jarKey: String) {
-        runCatching {
-            methods[jarKey] = loader.loadClass("com.github.catvod.spider.Proxy")
+        try {
+            methods[jarKey] = loader.loadClass(JAR_PROXY_CLASS)
                 .getMethod("proxy", Map::class.java)
-        }.onFailure { AppLog.put("TVBox jar 无自带静态 Proxy, do 分发不可用: ${it.message}") }
+        } catch (e: ClassNotFoundException) {
+            AppLog.put("TVBox jar 无自带静态 Proxy, do 分发不可用: ${e.message}")
+        } catch (e: NoSuchMethodException) {
+            AppLog.put("TVBox jar 静态 Proxy 缺 proxy(Map) 方法, do 分发不可用: ${e.message}")
+        } catch (e: Throwable) {
+            // 类存在但链接/初始化失败: 与"没有该能力"不是一回事, 必须留痕 (对齐 FongMi 的 printStackTrace)
+            AppLog.put("TVBox jar 静态 Proxy 装载失败 (类存在但链接/初始化出错), do 分发不可用", e)
+        }
     }
 
     /** 销毁全部 Spider 并清缓存 (换配置/退出场景)。 */
@@ -172,12 +187,25 @@ internal object TvBoxJarLoader {
         }
     }
 
-    /** 生态惯例: jar 携带自初始化类时在装载后回调 (存在才调, 缺失不视为错误)。 */
+    /**
+     * 生态惯例: jar 携带自初始化类时在装载后回调。
+     *
+     * "带了 Init 类/init 方法才调"是契约面, 缺失不视为错误也不留痕; 但 `init` 真的抛了
+     * 就必须留痕 —— 静默吞掉会让 jar 初始化没生效这件事拖到很久以后以无关形态 (如空指针) 爆发
+     * (对齐 FongMi JarLoader.invokeInit 的 `catch (Throwable) e.printStackTrace()` 行为,
+     * 差异只在走 AppLog 而非控制台)。
+     */
     private fun invokeJarInit(loader: ClassLoader) {
-        runCatching {
+        try {
             val clz = loader.loadClass(JAR_INIT_CLASS)
             clz.getMethod("init", android.content.Context::class.java)
                 .invoke(clz, TvBoxPlatforms.get().appContext)
+        } catch (_: ClassNotFoundException) {
+            // jar 不带 Init 类
+        } catch (_: NoSuchMethodException) {
+            // jar 带 Init 类但无 init(Context) 方法
+        } catch (e: Throwable) {
+            AppLog.put("TVBox jar 自带 Init.init 调用失败 (jar 自定义初始化未生效)", e)
         }
     }
 

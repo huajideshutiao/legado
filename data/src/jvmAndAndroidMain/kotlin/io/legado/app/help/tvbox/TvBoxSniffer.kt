@@ -133,6 +133,8 @@ object TvBoxSniffer {
         } catch (e: ClassNotFoundException) {
             // JS spider 站点无 jar 侧解析类, 聚合解析不可用 (FongMi 同语义, 如实失败)
             error("站点 jar 无聚合解析类 $className (${e.message})")
+        } catch (e: LinkageError) {
+            jarLinkageFailure("站点 jar 聚合解析类 $className 不可用", e)
         }
         return try {
             when (parse.type) {
@@ -151,6 +153,8 @@ object TvBoxSniffer {
             // take(16) 防 cause 成环时无限展开 (a↔b 互指)
             val root = generateSequence<Throwable>(e) { it.cause }.take(16).last()
             error("调用聚合解析类 $className 失败: ${root.message}")
+        } catch (e: LinkageError) {
+            jarLinkageFailure("调用聚合解析类 $className", e)
         }
     }
 }

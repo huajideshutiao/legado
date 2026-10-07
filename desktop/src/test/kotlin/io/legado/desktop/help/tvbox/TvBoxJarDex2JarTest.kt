@@ -6,12 +6,17 @@
 // fan.txt 型 "so 加密壳" 只验证转换层; 运行期解密依赖 Android native so, 桌面端不可用。
 package io.legado.desktop.help.tvbox
 
+import io.legado.app.constant.AppLog
+import io.legado.app.help.tvbox.TvBoxSite
+import io.legado.app.model.tvbox.TvBoxManager
 import io.legado.desktop.TestNetwork
 import io.legado.desktop.help.dex.DexJarConverter
+import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
+import org.junit.BeforeClass
 import org.junit.Test
 import java.io.File
 import java.net.URLClassLoader
@@ -21,6 +26,10 @@ import java.util.zip.ZipFile
 class TvBoxJarDex2JarTest {
 
     companion object {
+
+        @JvmStatic
+        @BeforeClass
+        fun bootDesktopRuntime() = TvBoxTestRuntime.bootstrap()
 
         private const val QIST_JAR_BASE = "https://raw.githubusercontent.com/qist/tvbox/master/jar/"
         private const val TOP98_JAR = "top98_1.jar"
@@ -78,5 +87,45 @@ class TvBoxJarDex2JarTest {
         val jar = DexJarConverter.jvmJarFor(src)
         assertNotEquals("dex 容器应被转换成新产物", src, jar)
         assertClassesResolvable(jar)
+    }
+
+    /**
+     * 壳 jar 在桌面端的失败必须留痕且点出真实根因。
+     *
+     * 生态壳 jar 的自初始化 (com.github.catvod.spider.Init.init) 走 native 解密链, 引用 ART 专属类
+     * (dalvik.system.DexClassLoader) 与 Android native so ⇒ 桌面 JVM 链接期即失败; 该失败原先被静默
+     * 吞掉, 站点拖到很久以后才以与真因无关的形态 (壳 jar 自身 catch 对 null cause 调 getMessage 的
+     * NPE) 爆出。断言留痕条目存在, 且其根因是"类缺失"而非壳 jar 的 NPE (日志比界面错误更接近真相)。
+     */
+    @Test
+    fun `壳 jar 初始化失败留痕且根因是类缺失而非壳自身 NPE`() {
+        val jar = sample(FAN_TXT)
+        AppLog.clear()
+        val site = TvBoxSite(
+            key = "guard-probe",
+            name = "guard-probe",
+            type = 3,
+            api = "csp_Tingshu275Guard",
+            ext = "",
+            jar = "",
+            playUrl = "",
+            searchable = true,
+            filterable = true,
+            quickSearch = false,
+            timeoutSeconds = null,
+            header = emptyMap(),
+        )
+        val error = runCatching {
+            runBlocking { TvBoxManager.spiderFor(site, "file://${jar.absolutePath}") }
+        }.exceptionOrNull()
+        assertTrue("壳 jar 在桌面端应装载失败", error != null)
+
+        val logged = AppLog.logs.firstOrNull { it.second.contains("Init.init 调用失败") }
+        assertTrue("Init 初始化失败必须留痕, 实际日志: ${AppLog.logs.map { it.second }}", logged != null)
+        val root = generateSequence<Throwable>(logged!!.third) { it.cause }.last()
+        assertTrue(
+            "留痕根因应是缺失类 (ClassNotFound/NoClassDefFound), 实际: $root",
+            root is ClassNotFoundException || root is NoClassDefFoundError,
+        )
     }
 }

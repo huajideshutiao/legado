@@ -64,6 +64,13 @@ var __M = (function () {
     }
 
     /**
+     * 宿主模块取源失败的标记前缀: 宿主把失败原因拼在标记后回传 (与 data 层
+     * TvBoxJsSpiderLoader/TvBoxJsSpider 的 MODULE_FETCH_ERROR_PREFIX 成对改动)。
+     * 空串只能表达"模块不存在", 得把 403/防盗链 HTML 这类宿主侧取数失败带出来。
+     */
+    var FETCH_ERROR_PREFIX = '\u0000tvbox-module-fetch-error\u0000';
+
+    /**
      * 相对路径按 base 归一 (无 URL 类依赖, 手撸 './' 与 '../')。
      * 生态里的裸路径 (如 'lib/drpy2.min.js') 同样是相对基准的, 故一律按 base 解析,
      * 只有带协议头的 (http/https/assets/file) 视为绝对。
@@ -254,6 +261,9 @@ var __M = (function () {
         if (cache[key]) return cache[key];
         var src = modules[key];
         if (src == null) src = fetchSource(key);
+        if (src != null && src.indexOf(FETCH_ERROR_PREFIX) === 0) {
+            throw new Error('tvbox js module fetch failed: ' + src.substring(FETCH_ERROR_PREFIX.length));
+        }
         if (src == null || src === '') throw new Error('tvbox js module not found: ' + key);
         var exports = {};
         exports.__defaultOf = defaultOf;
