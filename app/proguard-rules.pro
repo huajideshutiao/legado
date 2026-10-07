@@ -92,6 +92,9 @@
 # 宿主源码只引用少数接线点, 其余成员仅被 jar 直调; 纯 Java 直调面, jar 用法覆盖面不可预判,
 # 不 keep 会被 R8 整库裁光 (release 包 init/取数期 NoClassDefFoundError)。
 -keep class com.github.catvod.** { *; }
+# com.google.gson.** 同为 spider jar 运行时契约 (FongMi catvod 以 api 暴露 gson,
+# 生态 jar 可直调), 混淆改名后 jar 按 FQCN 链接即断。
+-keep class com.google.gson.** { *; }
 
 ############################
 # 异常类型：保留类名以便堆栈和反射查找
