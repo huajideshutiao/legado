@@ -52,12 +52,14 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
       - name: Gradle build-cache 共享
-        # 各 job 跑在独立 runner 上, 按 (OS, 分支) 共享 build-cache, 减少重复编译 shared 等公共模块
+        # key 必须每次运行唯一: GitHub 对已存在的 key 跳过保存, 固定 key 会让缓存自首次写入后永久冻结;
+        # 取用走 restore-keys 前缀 (同 OS 同分支最近一次), 各端 runner 共享同一份缓存
         uses: actions/cache@v5
         with:
           path: ~/.gradle/caches/build-cache-1
-          key: gradle-buildcache-${{ runner.os }}-${{ github.ref_name }}
+          key: gradle-buildcache-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
           restore-keys: |
+            gradle-buildcache-${{ runner.os }}-${{ github.ref_name }}-
             gradle-buildcache-${{ runner.os }}-
 
       - name: Install Linux packaging deps

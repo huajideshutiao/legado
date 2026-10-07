@@ -72,12 +72,14 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
       - name: Gradle build-cache 共享
-        # 按 (OS, 分支) 共享 build-cache, 减少与桌面 macOS 腿重复编译 shared
+        # key 必须每次运行唯一: GitHub 对已存在的 key 跳过保存, 固定 key 会让缓存自首次写入后永久冻结;
+        # 取用走 restore-keys 前缀 (同 OS 同分支最近一次), 与桌面 macOS 腿共享同一份缓存
         uses: actions/cache@v5
         with:
           path: ~/.gradle/caches/build-cache-1
-          key: gradle-buildcache-${{ runner.os }}-${{ github.ref_name }}
+          key: gradle-buildcache-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
           restore-keys: |
+            gradle-buildcache-${{ runner.os }}-${{ github.ref_name }}-
             gradle-buildcache-${{ runner.os }}-
 
       # ===== 环境诊断: 一次跑完就能定位环境类问题, 避免为查 SDK 路径再开一轮 =====
