@@ -1,9 +1,11 @@
 package io.legado.app.help.tvbox
 
 import android.util.Base64
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import io.legado.app.utils.NetworkUtils
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import okhttp3.FormBody
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
@@ -196,11 +198,14 @@ class TvBoxJsBridge internal constructor(
             }
             is Map<*, *> -> raw.forEach { (k, v) -> map[k.toString()] = v?.toString() }
             else -> runCatching {
-                Gson().fromJson<Map<String, Any?>>(
-                    raw.toString(),
-                    object : TypeToken<Map<String, Any?>>() {}.type,
-                )
-            }.getOrNull()?.let { it.forEach { (k, v) -> map[k] = v?.toString() } }
+                Json.parseToJsonElement(raw.toString()).jsonObject
+            }.getOrNull()?.forEach { (key, value) ->
+                map[key] = when (value) {
+                    is JsonNull -> null
+                    is JsonPrimitive -> value.content
+                    else -> value.toString()
+                }
+            }
         }
         return map
     }
