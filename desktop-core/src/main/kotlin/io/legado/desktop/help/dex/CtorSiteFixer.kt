@@ -92,7 +92,7 @@ object CtorSiteFixer {
     }
 
     /** dex 中需要还原构造调用点的具体类内部名集合 (强制 <clinit> 回归与诊断用)。 */
-    internal fun affectedClasses(dexBytes: ByteArray): Set<String> =
+    fun affectedClasses(dexBytes: ByteArray): Set<String> =
         collectDexCtorSites(dexBytes).values.flatten().map { it.concrete }.toSet()
 
     /** 就地修复 dex2jar 产物 jar; 无需修复的调用点时不重写。 */
