@@ -11,16 +11,17 @@ import org.jsoup.nodes.asFacadeElements
 /**
  * jsoup 兼容层 Elements 门面。
  *
- * 对齐 jsoup: 继承 ArrayList<Element> (kotlin.collections.ArrayList 在 JVM 即 java.util.ArrayList,
- * 类描述符与真实 jsoup 一致), 聚合方法 (attr/text/html/...) 委托底层 [KsElements] 实现同语义。
+ * 聚合方法 (attr/text/html/...) 委托底层 [KsElements] 实现同语义。原先继承 ArrayList<Element>
+ * 以对齐 jsoup 字节码, 但 native stdlib 的 ArrayList 是 final, ios/ohos 编不过; 改为
+ * MutableList 接口委托, 扩展 jar/dex 的调用面走 List 接口不受影响 (类描述符不再是
+ * java.util.ArrayList 子类)。
  */
-public class Elements : ArrayList<Element> {
+public class Elements(private val delegate: MutableList<Element> = ArrayList()) :
+    MutableList<Element> by delegate {
 
-    public constructor() : super()
+    public constructor(initialCapacity: Int) : this(ArrayList<Element>(initialCapacity))
 
-    public constructor(initialCapacity: Int) : super(initialCapacity)
-
-    public constructor(elements: Collection<Element>) : super(elements)
+    public constructor(elements: Collection<Element>) : this(ArrayList<Element>(elements))
 
     private fun toKsElements(): KsElements =
         KsElements().apply { for (element in this@Elements) add(element.ksoupElement) }

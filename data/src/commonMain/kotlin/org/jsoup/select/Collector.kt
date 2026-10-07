@@ -2,14 +2,9 @@
 
 package org.jsoup.select
 
-import com.fleeksoft.ksoup.select.Collector as KsCollector
 import org.jsoup.nodes.Element
-import org.jsoup.nodes.asFacadeElement
 
-/** jsoup 兼容层 Collector 门面,委托底层 [KsCollector] */
-public object Collector {
-
-    @JvmStatic
-    public fun findFirst(evaluator: Evaluator, root: Element): Element? =
-        KsCollector.findFirst(evaluator.ksoupEvaluator, root.ksoupElement)?.let { asFacadeElement(it) }
+/** jsoup 兼容层 Collector 门面; expect/actual 分端实现 (JVM 侧挂 @JvmStatic 静态桥) */
+public expect object Collector {
+    public fun findFirst(evaluator: Evaluator, root: Element): Element?
 }
