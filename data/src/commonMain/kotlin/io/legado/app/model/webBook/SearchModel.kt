@@ -153,8 +153,8 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
                 }
                 // 多书源聚合：任一家声称还有下一页，整体就还有
                 hasMore = hasMore || page.hasNextPage
-                mergeItems(items, precision)
                 mergeGroup(source, items)
+                rebuildAggregate(precision)
                 currentCoroutineContext().ensureActive()
                 callBack.onSearchSuccess(searchBooks)
                 callBack.onSearchGroupsChanged(groupSnapshot())
@@ -167,64 +167,51 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
         }
     }
 
-    private suspend fun mergeItems(newDataS: List<SearchBook>, precision: Boolean) {
-        if (newDataS.isNotEmpty()) {
-            val copyData = ArrayList(searchBooks)
-            val equalData = arrayListOf<SearchBook>()
-            val containsData = arrayListOf<SearchBook>()
-            val otherData = arrayListOf<SearchBook>()
-            val equalIndex = HashMap<Pair<String, String>, SearchBook>()
-            val containsIndex = HashMap<Pair<String, String>, SearchBook>()
-            val otherIndex = HashMap<Pair<String, String>, SearchBook>()
-            fun addOrMerge(
-                books: MutableList<SearchBook>,
-                index: MutableMap<Pair<String, String>, SearchBook>,
-                book: SearchBook,
-            ) {
-                val key = book.name to book.author
-                val existing = index[key]
-                if (existing == null) {
-                    books.add(book)
-                    index[key] = book
-                } else {
-                    existing.addOrigin(book.origin)
-                }
+    /**
+     * 从按源分组数据全量重建聚合列表 (聚合是分组的纯派生视图, 单源变更后重建即自动一致):
+     * 分级/聚合/排序语义与原增量版逐字一致 —— (name,author) 同书聚合 origins、
+     * equal 组按 origins 数降序、contains 组次之、other 组仅非精准时追加;
+     * 组序=源完成序、组内按到达序, 遍历序即原增量维护下的全局到达序, 输出顺序不变。
+     */
+    private fun rebuildAggregate(precision: Boolean) {
+        val equalData = arrayListOf<SearchBook>()
+        val containsData = arrayListOf<SearchBook>()
+        val otherData = arrayListOf<SearchBook>()
+        val equalIndex = HashMap<Pair<String, String>, SearchBook>()
+        val containsIndex = HashMap<Pair<String, String>, SearchBook>()
+        val otherIndex = HashMap<Pair<String, String>, SearchBook>()
+        fun addOrMerge(
+            books: MutableList<SearchBook>,
+            index: MutableMap<Pair<String, String>, SearchBook>,
+            book: SearchBook,
+        ) {
+            val key = book.name to book.author
+            val existing = index[key]
+            if (existing == null) {
+                books.add(book)
+                index[key] = book
+            } else {
+                existing.addOrigin(book.origin)
             }
-            copyData.forEach {
-                currentCoroutineContext().ensureActive()
-                if ((it.name == searchKey) || (it.author == searchKey)) {
-                    equalData.add(it)
-                    val key = it.name to it.author
-                    if (key !in equalIndex) equalIndex[key] = it
-                } else if (it.name.contains(searchKey) || it.author.contains(searchKey)) {
-                    containsData.add(it)
-                    val key = it.name to it.author
-                    if (key !in containsIndex) containsIndex[key] = it
-                } else {
-                    otherData.add(it)
-                    val key = it.name to it.author
-                    if (key !in otherIndex) otherIndex[key] = it
-                }
-            }
-            newDataS.forEach { nBook ->
-                currentCoroutineContext().ensureActive()
-                if ((nBook.name == searchKey) || (nBook.author == searchKey)) {
-                    addOrMerge(equalData, equalIndex, nBook)
-                } else if (nBook.name.contains(searchKey) || nBook.author.contains(searchKey)) {
-                    addOrMerge(containsData, containsIndex, nBook)
-                } else if (!precision) {
-                    addOrMerge(otherData, otherIndex, nBook)
-                }
-            }
-            currentCoroutineContext().ensureActive()
-            equalData.sortByDescending { it.origins.size }
-            equalData.addAll(containsData.sortedByDescending { it.origins.size })
-            if (!precision) {
-                equalData.addAll(otherData)
-            }
-            currentCoroutineContext().ensureActive()
-            searchBooks = equalData
         }
+        for (books in searchGroupBooks.values) {
+            for (book in books) {
+                if ((book.name == searchKey) || (book.author == searchKey)) {
+                    addOrMerge(equalData, equalIndex, book)
+                } else if (book.name.contains(searchKey) || book.author.contains(searchKey)) {
+                    addOrMerge(containsData, containsIndex, book)
+                } else if (!precision) {
+                    // 精准模式下 other 书与原增量版一致: 不合并 origins, 整组丢弃
+                    addOrMerge(otherData, otherIndex, book)
+                }
+            }
+        }
+        equalData.sortByDescending { it.origins.size }
+        equalData.addAll(containsData.sortedByDescending { it.origins.size })
+        if (!precision) {
+            equalData.addAll(otherData)
+        }
+        searchBooks = equalData
     }
 
     /**
