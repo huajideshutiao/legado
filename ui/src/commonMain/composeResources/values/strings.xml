@@ -893,6 +893,10 @@
     <string name="manga_extension_languages">Languages</string>
     <string name="manga_extension_setting">Settings</string>
     <string name="manga_extension_kind_video">Video</string>
+    <string name="manga_extension_kind_manga">Manga</string>
+    <string name="manga_extension_filter_kind">Type</string>
+    <string name="manga_extension_content_safe">Safe</string>
+    <string name="manga_extension_no_result">No matching extensions</string>
     <string name="manga_extension_pref_empty">This extension has no configurable options</string>
     <string name="manga_extension_pref_error">Failed to load extension settings. See app log for details</string>
     <string name="manga_search_filters">Filters</string>

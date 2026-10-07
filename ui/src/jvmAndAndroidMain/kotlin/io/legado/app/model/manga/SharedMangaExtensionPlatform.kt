@@ -1,5 +1,7 @@
 package io.legado.app.model.manga
 
+import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
+import eu.kanade.tachiyomi.source.online.HttpSource
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.extension.model.ContentWarning
 import io.legado.app.help.extension.ExtensionPrefs
@@ -12,14 +14,16 @@ import io.legado.app.model.anime.AnimeSourceMapper
 import io.legado.app.model.plugin.pluginInstalledOf
 import io.legado.app.model.webBook.AnimeFilterSession
 import io.legado.app.model.webBook.MangaFilterSession
+import io.legado.app.ui.book.manga.extension.MangaContentFilter
 import io.legado.app.ui.book.manga.extension.MangaContentWarning
 import io.legado.app.ui.book.manga.extension.MangaExtensionItem
 import io.legado.app.ui.book.manga.extension.MangaExtensionKind
+import io.legado.app.ui.book.manga.extension.MangaExtensionKindFilter
 import io.legado.app.ui.book.manga.extension.MangaExtensionService
+import io.legado.app.ui.book.manga.extension.MangaExtensionSourceEntry
 import io.legado.app.ui.book.manga.extension.MangaExtensionUiState
 import io.legado.app.ui.book.manga.extension.MangaInstallState
 import io.legado.app.ui.book.manga.extension.MangaNotLoadedReason
-import io.legado.app.ui.book.manga.extension.MangaPrefAction
 import io.legado.app.ui.book.manga.extension.MangaPrefItem
 import io.legado.app.ui.book.manga.extension.MangaPrefValue
 import io.legado.app.ui.book.manga.extension.MangaRepoItem
@@ -30,6 +34,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
@@ -64,11 +69,11 @@ open class SharedMangaExtensionPlatform(
 
         suspend fun setPreferenceValue(pkgName: String, key: String, value: MangaPrefValue)
 
-        suspend fun runPreferenceAction(
-            pkgName: String,
-            index: Int,
-            action: MangaPrefAction,
-        )
+        suspend fun performPreferenceClick(pkgName: String, index: Int)
+
+        suspend fun applyPreferenceChange(pkgName: String, index: Int, newValue: Boolean)
+
+        suspend fun bindEditTextPreference(pkgName: String, index: Int)
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -91,9 +96,20 @@ open class SharedMangaExtensionPlatform(
 
     private val languages = MutableStateFlow(ExtensionPrefs.getSelectedLanguages())
 
+    private val kindFilter = MutableStateFlow(ExtensionPrefs.getKindFilter().toKindFilter())
+
+    private val contentFilter = MutableStateFlow(ExtensionPrefs.getContentFilter().toContentFilter())
+
+    /** 「可用」列表的三路筛选项 (语言/类型/内容分级)。 */
+    private data class Filters(
+        val languages: Set<String>,
+        val kind: MangaExtensionKindFilter,
+        val content: MangaContentFilter,
+    )
+
     /** 辅助输入四元组 (kotlinx.coroutines 强类型 combine 最多 5 路, 主 combine 已占 4 路流)。 */
     private data class AuxState(
-        val languages: Set<String>,
+        val filters: Filters,
         val installSteps: Map<String, MangaInstallState>,
         val refreshing: Boolean,
         val updatedNames: Set<String>,
@@ -103,10 +119,23 @@ open class SharedMangaExtensionPlatform(
         if (!inited.compareAndSet(false, true)) return
         MangaExtensionManager.init()
 
+        // 恢复备份会把偏好整份换掉: 内存里的三路筛选跟着重读, 否则旧筛选继续生效,
+        // 且用户下一次操作会把恢复后的值覆盖回去。
+        MangaExtensionManager.restoreGeneration.drop(1)
+            .onEach {
+                languages.value = ExtensionPrefs.getSelectedLanguages()
+                kindFilter.value = ExtensionPrefs.getKindFilter().toKindFilter()
+                contentFilter.value = ExtensionPrefs.getContentFilter().toContentFilter()
+            }
+            .launchIn(scope)
+
         // updatedNames 必须作为 combine 输入: checkForUpdates 在 Manager 发射完状态之后才写它,
         // 不参与 combine 就没有重算触发, 条目 hasUpdate 不会刷新。
-        val aux = combine(languages, installSteps, refreshing, updatedNames) { langs, steps, isRefreshing, updated ->
-            AuxState(langs, steps, isRefreshing, updated)
+        val filters = combine(languages, kindFilter, contentFilter) { langs, kind, content ->
+            Filters(langs, kind, content)
+        }
+        val aux = combine(filters, installSteps, refreshing, updatedNames) { filterState, steps, isRefreshing, updated ->
+            AuxState(filterState, steps, isRefreshing, updated)
         }
         combine(
             MangaExtensionManager.loadedExtensions,
@@ -120,13 +149,12 @@ open class SharedMangaExtensionPlatform(
                 installed = loaded.values.map { it.toItem(auxState.updatedNames) },
                 notLoaded = notLoaded.values.map { it.toItem() },
                 available = available
-                    .filter {
-                        auxState.languages.isEmpty() ||
-                            it.lang in auxState.languages || "all" in auxState.languages
-                    }
+                    .filter { it.matches(auxState.filters) }
                     .map { it.toItem() },
                 availableLanguages = available.mapTo(sortedSetOf("all")) { it.lang },
-                selectedLanguages = auxState.languages,
+                selectedLanguages = auxState.filters.languages,
+                kindFilter = auxState.filters.kind,
+                contentFilter = auxState.filters.content,
                 repos = repos.map { MangaRepoItem(it.name, it.indexUrl, it.signingKeyFingerprint) },
                 installSteps = auxState.installSteps,
                 refreshing = auxState.refreshing,
@@ -149,6 +177,16 @@ open class SharedMangaExtensionPlatform(
     override fun setLanguages(languages: Set<String>) {
         this.languages.value = languages
         ExtensionPrefs.setSelectedLanguages(languages)
+    }
+
+    override fun setKindFilter(filter: MangaExtensionKindFilter) {
+        kindFilter.value = filter
+        ExtensionPrefs.setKindFilter(filter.takeIf { it != MangaExtensionKindFilter.ALL }?.name)
+    }
+
+    override fun setContentFilter(filter: MangaContentFilter) {
+        contentFilter.value = filter
+        ExtensionPrefs.setContentFilter(filter.takeIf { it != MangaContentFilter.ALL }?.name)
     }
 
     override suspend fun checkForUpdates(): List<String> {
@@ -217,12 +255,16 @@ open class SharedMangaExtensionPlatform(
         config?.setPreferenceValue(pkgName, key, value)
     }
 
-    override suspend fun runPreferenceAction(
-        pkgName: String,
-        index: Int,
-        action: MangaPrefAction,
-    ) {
-        config?.runPreferenceAction(pkgName, index, action)
+    override suspend fun performPreferenceClick(pkgName: String, index: Int) {
+        config?.performPreferenceClick(pkgName, index)
+    }
+
+    override suspend fun applyPreferenceChange(pkgName: String, index: Int, newValue: Boolean) {
+        config?.applyPreferenceChange(pkgName, index, newValue)
+    }
+
+    override suspend fun bindEditTextPreference(pkgName: String, index: Int) {
+        config?.bindEditTextPreference(pkgName, index)
     }
 
     // endregion
@@ -261,7 +303,26 @@ open class SharedMangaExtensionPlatform(
         versionCode = versionCode,
         lang = lang,
         contentWarning = contentWarning.toUi(),
-        isNsfw = contentWarning == ContentWarning.NSFW,
+        sources = buildList {
+            this@toItem.sources.forEach { source ->
+                add(
+                    MangaExtensionSourceEntry(
+                        id = source.id,
+                        name = source.name,
+                        homeUrl = (source as? HttpSource)?.getHomeUrl().orEmpty(),
+                    )
+                )
+            }
+            animeSources.forEach { source ->
+                add(
+                    MangaExtensionSourceEntry(
+                        id = source.id,
+                        name = source.name,
+                        homeUrl = (source as? AnimeHttpSource)?.getHomeUrl().orEmpty(),
+                    )
+                )
+            }
+        },
         isInstalled = true,
         hasUpdate = hasUpdate || name in updatedNames,
         isObsolete = isObsolete,
@@ -283,7 +344,6 @@ open class SharedMangaExtensionPlatform(
         versionCode = versionCode,
         lang = lang,
         contentWarning = contentWarning.toUi(),
-        isNsfw = contentWarning == ContentWarning.NSFW,
         isInstalled = true,
         hasUpdate = hasUpdate,
         isUntrusted = reason is MangaExtension.NotLoaded.Reason.Untrusted,
@@ -301,18 +361,48 @@ open class SharedMangaExtensionPlatform(
         versionCode = versionCode,
         lang = lang,
         contentWarning = contentWarning.toUi(),
-        isNsfw = contentWarning == ContentWarning.NSFW,
+        sources = sources.map { source ->
+            MangaExtensionSourceEntry(id = source.id, name = source.name, homeUrl = source.baseUrl)
+        },
         isInstalled = false,
         sourceCount = sources.size,
         iconUrl = iconUrl.takeIf { it.isNotBlank() },
         // 索引条目的 sources 字段漫画/视频同形 (都落 Available.sources), 无法据此区分;
         // 唯一可靠依据是条目所属仓库的 kind (yuzono/anime-repo = ANIME)
-        kind = if (repo.kind == RepoKind.ANIME) {
-            MangaExtensionKind.VIDEO
-        } else {
-            MangaExtensionKind.MANGA
-        },
+        kind = kindOf(repo),
     )
+
+    /**
+     * 「可用」列表筛选: 语言 (空集=全部) + 类型 + 内容分级 (NSFW 档含 MIXED, 与列表
+     * 角标同判定)。
+     */
+    private fun MangaExtension.Available.matches(filters: Filters): Boolean {
+        val languageOk = filters.languages.isEmpty() ||
+            lang in filters.languages ||
+            "all" in filters.languages
+        val kindOk = when (filters.kind) {
+            MangaExtensionKindFilter.ALL -> true
+            MangaExtensionKindFilter.MANGA -> kindOf(repo) == MangaExtensionKind.MANGA
+            MangaExtensionKindFilter.VIDEO -> kindOf(repo) == MangaExtensionKind.VIDEO
+        }
+        val contentOk = when (filters.content) {
+            MangaContentFilter.ALL -> true
+            MangaContentFilter.SAFE -> contentWarning == ContentWarning.SAFE
+            MangaContentFilter.NSFW -> contentWarning != ContentWarning.SAFE
+        }
+        return languageOk && kindOk && contentOk
+    }
+
+    /** 偏好里的档位名 → UI 枚举 (未知/缺省=不过滤)。 */
+    private fun String?.toKindFilter(): MangaExtensionKindFilter =
+        MangaExtensionKindFilter.entries.find { it.name == this } ?: MangaExtensionKindFilter.ALL
+
+    private fun String?.toContentFilter(): MangaContentFilter =
+        MangaContentFilter.entries.find { it.name == this } ?: MangaContentFilter.ALL
+
+    /** 仓库 kind → 插件类型 (可用条目的类型唯一依据)。 */
+    private fun kindOf(repo: MangaExtensionRepo): MangaExtensionKind =
+        if (repo.kind == RepoKind.ANIME) MangaExtensionKind.VIDEO else MangaExtensionKind.MANGA
 
     /** 已装/未装载条目的图标: 从仓库索引同 pkgName 条目反查 (已装实体不带 iconUrl)。 */
     private fun iconUrlOf(pkgName: String): String? =
@@ -326,7 +416,7 @@ open class SharedMangaExtensionPlatform(
      * 包名约定 (`eu.kanade.tachiyomi.animeextension.<lang>.<name>`) 兜底。
      */
     private fun kindOf(repo: MangaExtensionRepo?, pkgName: String): MangaExtensionKind = when {
-        repo?.kind == RepoKind.ANIME -> MangaExtensionKind.VIDEO
+        repo != null -> kindOf(repo)
         pkgName.contains("animeextension") -> MangaExtensionKind.VIDEO
         else -> MangaExtensionKind.MANGA
     }

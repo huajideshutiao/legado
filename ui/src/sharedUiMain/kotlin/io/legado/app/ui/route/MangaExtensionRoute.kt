@@ -25,6 +25,8 @@ fun MangaExtensionRoute(
     }
     val state by screenModel.state.collectAsState()
     val prefDialog by screenModel.prefDialog.collectAsState()
+    val searchQuery by screenModel.searchQuery.collectAsState()
+    val searchFilterQuery by screenModel.searchFilterQuery.collectAsState()
 
     MangaExtensionScreen(
         state = state,
@@ -37,10 +39,17 @@ fun MangaExtensionRoute(
         onTrust = screenModel::trust,
         onRefresh = screenModel::refresh,
         onSelectLanguage = screenModel::selectLanguage,
+        onSelectKind = screenModel::selectKind,
+        onSelectContent = screenModel::selectContent,
+        searchQuery = searchQuery,
+        searchFilterQuery = searchFilterQuery,
+        onSearchQueryChange = screenModel::setSearchQuery,
         prefDialog = prefDialog,
         onOpenPrefDialog = screenModel::openPrefDialog,
         onSetPreference = screenModel::setPreference,
-        onRunPreferenceAction = screenModel::runPreferenceAction,
+        onPreferenceClick = screenModel::performPreferenceClick,
+        onPreferenceChange = screenModel::applyPreferenceChange,
+        onBindEditText = screenModel::bindEditTextPreference,
         onDismissPrefDialog = screenModel::dismissPrefDialog,
     )
 }

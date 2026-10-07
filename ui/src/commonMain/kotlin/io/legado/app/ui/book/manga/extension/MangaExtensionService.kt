@@ -54,6 +54,12 @@ interface MangaExtensionService {
     /** 设置展示语言过滤并触发可用列表重算。 */
     fun setLanguages(languages: Set<String>)
 
+    /** 设置插件类型过滤 (只作用「可用」列表, 与语言过滤同域) 并持久化。 */
+    fun setKindFilter(filter: MangaExtensionKindFilter)
+
+    /** 设置内容分级过滤 (同 [setKindFilter]) 并持久化。 */
+    fun setContentFilter(filter: MangaContentFilter)
+
     /** 添加插件仓库 (名称与指纹由仓库索引元数据带回)。 */
     suspend fun addRepo(url: String): Result<MangaRepoItem>
 
@@ -87,22 +93,30 @@ interface MangaExtensionService {
     suspend fun buildPreferenceItems(pkgName: String): List<MangaPrefItem> = emptyList()
 
     /**
-     * 写入单个配置项, 落插件自身 SharedPreferences (`source_<sourceId>`, 与扩展侧
-     * `keiyoushi.utils.getPreferencesLazy` 同契约), 扩展下次读取即生效。
+     * 写入单个配置项 (对齐 androidx `Persistable.setXxx()`): 经 shim 的 `setText/setValue/setValues`
+     * 落插件自身 SharedPreferences (`source_<sourceId>`, 与扩展侧 `keiyoushi.utils.getPreferencesLazy`
+     * 同契约), 扩展下次读取即生效。
      */
     suspend fun setPreferenceValue(pkgName: String, key: String, value: MangaPrefValue) {}
 
     /**
-     * 执行偏好动作 (扩展挂的 onPreferenceChange/onPreferenceClickListener, 典型如
-     * 「立即签到」动作开关): 按 [MangaPrefItem.index] 定位 shim Preference 并触发回调。
-     * 变更型动作回调返回 true 才会落值/更新 UI, false 表示扩展拦截 (动作完成但状态不变)。
-     * 未实现动作通道时静默无操作。
+     * 点击配置项 (对齐 androidx `Preference.performClick()`): 扩展挂的 `OnPreferenceClickListener`
+     * 返回 true 即消费, 否则走默认 `onClick()` (开关类即切换)。按 [MangaPrefItem.index] 定位 shim 实例。
+     * 未实现配置契约时静默无操作。
      */
-    suspend fun runPreferenceAction(
-        pkgName: String,
-        index: Int,
-        action: MangaPrefAction,
-    ) {}
+    suspend fun performPreferenceClick(pkgName: String, index: Int) {}
+
+    /**
+     * 开关类配置项切到 [newValue] (对齐 androidx `TwoStatePreference`): `callChangeListener(newValue)`
+     * 通过才 `setChecked` (含持久化), 未挂监听视为通过。
+     */
+    suspend fun applyPreferenceChange(pkgName: String, index: Int, newValue: Boolean) {}
+
+    /**
+     * 输入框绑定 (对齐 androidx `EditTextPreference.OnBindEditTextListener` 的触发时机:
+     * 打开输入对话框时回调一次), 让扩展侧的输入框配置照常执行。
+     */
+    suspend fun bindEditTextPreference(pkgName: String, index: Int) {}
 }
 
 /** 插件内容分级 (与插件宿主 ContentWarning 对齐)。 */
@@ -114,6 +128,23 @@ enum class MangaContentWarning { SAFE, MIXED, NSFW }
  * 未装载条目按仓库 kind; 可用条目按所属仓库 kind。
  */
 enum class MangaExtensionKind { MANGA, VIDEO }
+
+/** 插件类型过滤档位 (只作用「可用」列表; [ALL] 不过滤)。 */
+enum class MangaExtensionKindFilter { ALL, MANGA, VIDEO }
+
+/** 内容分级过滤档位 ([NSFW] 档含 MIXED, 与列表 NSFW 角标同判定; [ALL] 不过滤)。 */
+enum class MangaContentFilter { ALL, SAFE, NSFW }
+
+/**
+ * 插件声明的源条目 (仓库索引的 `sources[]`; 已装载条目取活源实例, 未装载条目为空表)。
+ * 供搜索匹配 (源名/源站点/源 id)、条目显示名与「打开网站」(首个非空 [homeUrl]) 使用。
+ */
+data class MangaExtensionSourceEntry(
+    val id: Long,
+    val name: String,
+    /** 源站点地址 (索引 baseUrl/homeUrl; 活源取 HttpSource.getHomeUrl, 取不到为空串)。 */
+    val homeUrl: String = "",
+)
 
 /** 未装载原因 (与插件宿主 NotLoaded.Reason 对齐; 文案由 Composable 按语言资源渲染)。 */
 enum class MangaNotLoadedReason {
@@ -132,7 +163,8 @@ data class MangaExtensionItem(
     val versionCode: Long,
     val lang: String?,
     val contentWarning: MangaContentWarning,
-    val isNsfw: Boolean,
+    /** 源条目 (已装载=活源实例, 可用=仓库索引, 未装载=空表)。 */
+    val sources: List<MangaExtensionSourceEntry> = emptyList(),
     /** true=已装载出源 / true 表示条目来自已装列表 */
     val isInstalled: Boolean,
     val hasUpdate: Boolean = false,
@@ -154,7 +186,24 @@ data class MangaExtensionItem(
     val kind: MangaExtensionKind = MangaExtensionKind.MANGA,
     /** 是否提供自带配置界面 (ConfigurableSource/ConfigurableAnimeSource), 仅已装载条目可能为 true。 */
     val isConfigurable: Boolean = false,
-)
+) {
+
+    /**
+     * 扩展站点地址 (首个非空源站点)。
+     * 打开网站入口只在拿得到地址时展示 (对齐 Mihon 取扩展首个源 baseUrl); 同一扩展多个源
+     * 通常同站, 首个源缺地址时取后续源。
+     */
+    val websiteUrl: String?
+        get() = sources.firstNotNullOfOrNull { it.homeUrl.takeIf { url -> url.isNotBlank() } }
+
+    /**
+     * 条目显示名: 源名 (扩展声明的第一个源), 无源信息回退扩展名。
+     * 中文站点的扩展名多为拉丁文 (仓库 `tachiyomix.name`, 如 Dm5 / Jinman Tiantang),
+     * 源名 (如 禁漫天堂) 才是用户认得的名字。
+     */
+    val sourceName: String?
+        get() = sources.firstNotNullOfOrNull { it.name.takeIf { name -> name.isNotBlank() } }
+}
 
 /** 插件仓库的 UI 快照。 */
 data class MangaRepoItem(
@@ -184,6 +233,10 @@ data class MangaExtensionUiState(
     val availableLanguages: Set<String> = emptySet(),
     /** 当前语言筛选 (空集=全部, 单选语义; 语言 chips 选中态与可用列表过滤同源)。 */
     val selectedLanguages: Set<String> = emptySet(),
+    /** 当前类型筛选 (只作用「可用」列表, 与语言筛选同域同生命周期)。 */
+    val kindFilter: MangaExtensionKindFilter = MangaExtensionKindFilter.ALL,
+    /** 当前内容分级筛选 (同 [kindFilter])。 */
+    val contentFilter: MangaContentFilter = MangaContentFilter.ALL,
     val repos: List<MangaRepoItem> = emptyList(),
     val installSteps: Map<String, MangaInstallState> = emptyMap(),
     /**

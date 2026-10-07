@@ -7,7 +7,11 @@ package io.legado.app.ui.book.manga.extension
  * - shim 只在 `:data` 的 jvmAndAndroidMain 源集, UI 层要引用它必须把 :data 依赖改成 `api`
  *   (现为 `implementation`), 且 sharedUiMain 是四端共享源码, 鸿蒙/iOS 无该 shim 会编译不过;
  * - 直传 shim 还得把 `Context` (只存在于 Android) 一并跨层, 破坏「接口只依赖 shared 类型」约定。
- * 故平台侧读完 shim 立即降级成以下纯数据, UI 侧只渲染数据 + 回调。
+ * 故平台侧读完 shim 立即降级成以下纯数据, UI 侧只渲染数据 + 上报交互。
+ *
+ * 交互语义全部按 androidx (与 Mihon 的 SourcePreferencesFragment 同源): 点击 → `Preference.performClick()`;
+ * 开关切换 → `callChangeListener(newValue)` 通过才 `setChecked`; 输入框 → 打开对话框时触发
+ * `OnBindEditTextListener`。宿主不另造动作类型。
  */
 
 /** 单个配置项的值 (按控件类型分派, 与 shim 的 String/Boolean/Set&lt;String&gt; 取值面一一对应)。 */
@@ -19,36 +23,15 @@ sealed interface MangaPrefValue {
 }
 
 /**
- * 配置项的宿主侧动作通道: 扩展在 preference 上挂了
- * `setOnPreferenceChangeListener` / `setOnPreferenceClickListener` 的回调
- * (动作型偏好, 典型如「立即签到」: 点击触发一次动作、不持久化状态)。
- * 宿主快照式偏好无法透传 listener, 故把「有动作」这一事实带进 UI 数据层,
- * 点击时经平台 [io.legado.app.model.manga.SharedMangaSourceConfig.runPreferenceAction]
- * 执行扩展回调 (对齐 androidx.preference 语义: change 回调返回 true 才落值)。
- */
-sealed interface MangaPrefAction {
-    /** 点击触发 `OnPreferenceClickListener` (非开关类动作行)。 */
-    data object Click : MangaPrefAction
-
-    /**
-     * 开关切换触发 `OnPreferenceChangeListener`, [value] 为点击后的候选值
-     * (对齐 androidx 的 `newValue`; 回调返回 true 才持久化/更新, false 则 UI 不动)。
-     */
-    data class Toggle(val value: Boolean) : MangaPrefAction
-}
-
-/**
  * 一个可渲染的配置项。
  *
- * @param index 在 `PreferenceScreen.getPreferences()` 列表中的序号; 无 key 的动作项
- *               靠它定位到 shim Preference 实例执行回调, 其余类型仅作展示。
- * @param key 插件偏好键 (`Preference.key`); 为空但有 [action] 时该项仍可点 (动作项),
- *               无 key 且无动作才不可写 (见 [writable])
+ * @param index 在 `PreferenceScreen.getPreferences()` 列表中的序号; 交互按它回传定位 shim 实例
+ * @param key 插件偏好键 (`Preference.key`); 为空表示扩展不持久化该项
  * @param title 标题 (`Preference.title`)
  * @param summary 摘要 (`Preference.summary`); 含 `%s` 占位时由 UI 侧按当前 entry 文本替换
  *                (对齐 shim 里 `summary = "%s"` 的 ListPreference 用法)
  * @param entries/entryValues 列表项的展示文案与取值 (`ListPreference.entries/entryValues`)
- * @param action 扩展挂的回调动作通道 (null=纯数据项, 写入走 [key])
+ * @param enabled `Preference.isEnabled` (禁用项按 androidx 语义不响应交互)
  */
 data class MangaPrefItem(
     val index: Int,
@@ -58,14 +41,8 @@ data class MangaPrefItem(
     val value: MangaPrefValue,
     val entries: List<String> = emptyList(),
     val entryValues: List<String> = emptyList(),
-    val action: MangaPrefAction? = null,
+    val enabled: Boolean = true,
 ) {
-    /**
-     * 是否可交互: 有 key 可写值, 或有动作通道可触发回调。
-     * 动作型偏好 (典型「立即签到」) 无 key 但可点, 不再置灰。
-     */
-    val writable: Boolean get() = !key.isNullOrBlank() || action != null
-
     /**
      * 摘要文案: `%s` 占位替换为当前选中项的 entry 文本 (取不到则替换为当前值),
      * 无占位原样返回。对齐 androidx.preference ListPreference 的 `summary = "%s"` 语义。

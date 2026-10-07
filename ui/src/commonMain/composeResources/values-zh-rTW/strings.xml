@@ -849,6 +849,10 @@
     <string name="manga_extension_languages">語言</string>
     <string name="manga_extension_setting">設定</string>
     <string name="manga_extension_kind_video">影片</string>
+    <string name="manga_extension_kind_manga">漫畫</string>
+    <string name="manga_extension_filter_kind">類型</string>
+    <string name="manga_extension_content_safe">安全</string>
+    <string name="manga_extension_no_result">沒有符合的外掛</string>
     <string name="manga_extension_pref_empty">此外掛沒有可設定項目</string>
     <string name="manga_search_filters">篩選</string>
     <string name="manga_color_filter">濾鏡</string>

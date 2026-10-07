@@ -831,6 +831,10 @@
     <string name="manga_extension_languages">言語</string>
     <string name="manga_extension_setting">設定</string>
     <string name="manga_extension_kind_video">動画</string>
+    <string name="manga_extension_kind_manga">漫画</string>
+    <string name="manga_extension_filter_kind">種類</string>
+    <string name="manga_extension_content_safe">安全</string>
+    <string name="manga_extension_no_result">一致する拡張機能がありません</string>
     <string name="manga_extension_pref_empty">この拡張に設定項目はありません</string>
     <string name="manga_search_filters">フィルター</string>
     <string name="manga_color_filter">滤镜</string>

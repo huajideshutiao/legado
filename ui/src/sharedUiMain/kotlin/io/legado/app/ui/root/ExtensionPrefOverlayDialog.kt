@@ -70,21 +70,41 @@ internal fun ExtensionPrefOverlayContent(overlay: AppOverlay.Dialog, navigator: 
                     .onFailure { state = MangaPrefDialogState(pkgName, loading = false, failed = true) }
             }
         },
-        onRunAction = { item ->
-            val action = item.action ?: return@ExtensionPrefDialog
+        onPreferenceClick = { item ->
             scope.launch {
                 val svc = service ?: return@launch
-                runCatching { svc.runPreferenceAction(pkgName, item.index, action) }
+                runCatching { svc.performPreferenceClick(pkgName, item.index) }
                     .onFailure {
                         state = MangaPrefDialogState(pkgName, loading = false, failed = true)
                         return@launch
                     }
-                // 动作可能联动改值 (变更回调返回 true), 重读刷新弹窗当前值
+                // 点击可能联动改值 (回调返回 true), 重读刷新弹窗当前值
                 runCatching { svc.buildPreferenceItems(pkgName) }
                     .onSuccess { items ->
                         state = MangaPrefDialogState(pkgName, loading = false, items = items)
                     }
                     .onFailure { state = MangaPrefDialogState(pkgName, loading = false, failed = true) }
+            }
+        },
+        onPreferenceChange = { item, newValue ->
+            scope.launch {
+                val svc = service ?: return@launch
+                runCatching { svc.applyPreferenceChange(pkgName, item.index, newValue) }
+                    .onFailure {
+                        state = MangaPrefDialogState(pkgName, loading = false, failed = true)
+                        return@launch
+                    }
+                runCatching { svc.buildPreferenceItems(pkgName) }
+                    .onSuccess { items ->
+                        state = MangaPrefDialogState(pkgName, loading = false, items = items)
+                    }
+                    .onFailure { state = MangaPrefDialogState(pkgName, loading = false, failed = true) }
+            }
+        },
+        onBindEditText = { item ->
+            scope.launch {
+                val svc = service ?: return@launch
+                runCatching { svc.bindEditTextPreference(pkgName, item.index) }
             }
         },
         onDismiss = { navigator.dismissOverlay(overlay.key) },

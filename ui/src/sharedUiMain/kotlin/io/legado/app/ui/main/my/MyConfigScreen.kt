@@ -20,7 +20,7 @@ import legado.ui.generated.resources.ic_bookmark
 import legado.ui.generated.resources.ic_bug_report
 import legado.ui.generated.resources.ic_cfg_about
 import legado.ui.generated.resources.ic_cfg_backup
-import legado.ui.generated.resources.ic_cfg_other
+import legado.ui.generated.resources.ic_other_setting
 import legado.ui.generated.resources.ic_cfg_replace
 import legado.ui.generated.resources.ic_cfg_source
 import legado.ui.generated.resources.ic_cfg_theme
@@ -69,7 +69,7 @@ import org.jetbrains.compose.resources.stringResource
  * - `ic_cfg_theme`        主题/外观（listPreference + preference 共用）
  * - `ic_cfg_backup`       备份/恢复
  * - `ic_cfg_web`          web 服务
- * - `ic_cfg_other`        其它设置入口
+ * - `ic_other_setting`    其它设置入口
  * - `ic_cfg_source`       书源/目录规则
  * - `ic_cfg_replace`      替换净化
  * - `outline_filter_alt_24`  书源过滤
@@ -156,7 +156,7 @@ fun MyConfigScreen(
     val iconTheme = painterResource(Res.drawable.ic_cfg_theme)
     val iconBackup = painterResource(Res.drawable.ic_cfg_backup)
     val iconWeb = painterResource(Res.drawable.ic_cfg_web)
-    val iconOther = painterResource(Res.drawable.ic_cfg_other)
+    val iconOther = painterResource(Res.drawable.ic_other_setting)
     val iconSource = painterResource(Res.drawable.ic_cfg_source)
     val iconReplace = painterResource(Res.drawable.ic_cfg_replace)
     val iconFilter = painterResource(Res.drawable.outline_filter_alt_24)

@@ -2,11 +2,13 @@ package io.legado.app.model.manga
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.widget.EditText
 import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
 import androidx.preference.MultiSelectListPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceScreen
+import androidx.preference.SharedPreferencesDataStore
 import androidx.preference.TwoStatePreference
 import eu.kanade.tachiyomi.animesource.AnimeSource
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
@@ -16,14 +18,15 @@ import io.legado.app.constant.AppLog
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.extension.MangaExtensionManager
 import io.legado.app.model.manga.SharedMangaExtensionPlatform.MangaExtensionConfig
-import io.legado.app.ui.book.manga.extension.MangaPrefAction
 import io.legado.app.ui.book.manga.extension.MangaPrefItem
 import io.legado.app.ui.book.manga.extension.MangaPrefValue
 import kotlinx.coroutines.withContext
 
 /**
- * 插件自带配置的平台桥 (JVM+Android 共用): 构造 shim `PreferenceScreen`、调
- * `setupPreferenceScreen`、按插件自身 SharedPreferences (`source_<sourceId>`) 回填当前值。
+ * 插件自带配置的平台桥 (JVM+Android 共用): 构造 shim `PreferenceScreen`、把扩展偏好
+ * (`source_<sourceId>`) 设为 PreferenceDataStore 并回填当前值; 交互事件按 androidx 语义转发到
+ * shim 实例 (点击 → `performClick()`; 开关切换 → `callChangeListener` + `setChecked`;
+ * 输入框 → `OnBindEditTextListener`), 与 Mihon 的 SourcePreferencesFragment 同口径。
  * app 端经 AndroidMangaExtensionPlatform、desktop 端经 DesktopCore 启动序列注入;
  * 未注入端 (iOS/鸿蒙) 「设置」入口隐藏。
  */
@@ -39,8 +42,11 @@ class SharedMangaSourceConfig(
     override suspend fun buildPreferenceItems(pkgName: String): List<MangaPrefItem> =
         withContext(IoDispatcher) {
             val source = sourceOf(pkgName) ?: return@withContext emptyList()
+            val prefs = sourcePrefsOf(source) ?: return@withContext emptyList()
             // 对齐 keiyoushi stub: 插件 setupPreferenceScreen 首句即 screen.context, shim 必须能提供
             val screen = PreferenceScreen(appContext)
+            // 对齐 Mihon: 扩展偏好文件即值存储, 读写全走 shim 的 persist/getter
+            screen.setPreferenceDataStore(SharedPreferencesDataStore(prefs))
             // 插件 setupPreferenceScreen 抛错 (shim 缺 API/扩展内 NPE 等) 如实上抛:
             // 吞成空表会把"读取失败"伪装成"没有可配置项"
             try {
@@ -53,75 +59,59 @@ class SharedMangaSourceConfig(
                 AppLog.put("插件配置读取失败 $pkgName\n${e.message}", e)
                 throw e
             }
-            val prefs = sourcePrefsOf(source) ?: return@withContext emptyList()
             // shim 的 getPreferences() 是 Kotlin 函数 (非 Java getter), 不合成 `.preferences` 属性,
             // 且其后备字段为 private, 必须走函数调用。
             val preferences = screen.getPreferences()
-            // 动作通道依赖活 Preference 实例 (无 key 项只能按序号定位), 缓存本次构建结果,
-            // 与 [runPreferenceAction] 共享; 下次构建/写入自动覆盖。
+            // 对齐 androidx PreferenceManager.dispatchSetInitialValue: 已持久化的值读回 Preference 实例
+            preferences.forEach { it.dispatchSetInitialValue(prefs) }
+            // 事件通道依赖活 Preference 实例 (无 key 项只能按序号定位), 缓存本次构建结果,
+            // 下次构建/写入自动覆盖。
             prefCache[pkgName] = preferences
-            preferences
-                .filter { it.visible }
-                .mapIndexed { index, it -> it.toPrefItem(prefs, index) }
+            // 交互按下标回传并打在全量表 (prefCache) 上, 故 index 必须是全量序号;
+            // visible 只决定渲染哪些项, 不改变序号。
+            preferences.mapIndexedNotNull { index, item ->
+                if (item.visible) item.toPrefItem(index) else null
+            }
         }
 
     override suspend fun setPreferenceValue(pkgName: String, key: String, value: MangaPrefValue) {
         withContext(IoDispatcher) {
-            val source = sourceOf(pkgName) ?: return@withContext
-            val prefs = sourcePrefsOf(source) ?: return@withContext
-            val editor = prefs.edit()
+            val preference = prefCache[pkgName]?.firstOrNull { it.key == key } ?: return@withContext
+            // 经 shim 的 setter 落值: 持久化规则 (key/持久化开关) 与 androidx 一致
             when (value) {
-                is MangaPrefValue.Text -> editor.putString(key, value.value)
-                is MangaPrefValue.Flag -> editor.putBoolean(key, value.value)
-                is MangaPrefValue.Choice -> editor.putString(key, value.value)
-                is MangaPrefValue.MultiChoice -> editor.putStringSet(key, value.values)
+                is MangaPrefValue.Text -> (preference as? EditTextPreference)?.setText(value.value)
+                is MangaPrefValue.Flag -> (preference as? TwoStatePreference)?.setChecked(value.value)
+                is MangaPrefValue.Choice -> (preference as? ListPreference)?.setValue(value.value)
+                is MangaPrefValue.MultiChoice -> (preference as? MultiSelectListPreference)?.setValues(value.values)
             }
-            editor.apply()
         }
     }
 
-    /** 最近一次构建的 shim Preference 列表 (按 pkgName; 供动作通道按序号定位无 key 项)。 */
-    private val prefCache = HashMap<String, List<Preference>>()
-
-    /**
-     * 执行偏好动作 (对齐 androidx.preference 语义): 按 [index] 定位到上次构建缓存的 shim
-     * Preference, 触发扩展挂的监听回调。
-     *
-     * - [MangaPrefAction.Click]: 调 `onPreferenceClickListener` (返回值约定为已消费, 忽略);
-     * - [MangaPrefAction.Toggle]: 调 `onPreferenceChangeListener(preference, newValue)`,
-     *   返回 true 才按 [MangaPrefValue] 落值并同步 shim 的 `isChecked` (无 key 的项无法
-     *   持久化, 仅同步内存态供重读回显); 返回 false 表示扩展已拦截 (如"立即签到"触发
-     *   一次请求但不改状态), UI 保持原值。
-     */
-    override suspend fun runPreferenceAction(
-        pkgName: String,
-        index: Int,
-        action: MangaPrefAction,
-    ) {
+    override suspend fun performPreferenceClick(pkgName: String, index: Int) {
         withContext(IoDispatcher) {
-            val source = sourceOf(pkgName) ?: return@withContext
-            val prefs = sourcePrefsOf(source) ?: return@withContext
-            val preference = prefCache[pkgName]?.getOrNull(index) ?: return@withContext
-            when (action) {
-                is MangaPrefAction.Click -> {
-                    preference.onPreferenceClickListener?.onPreferenceClick(preference)
-                }
-
-                is MangaPrefAction.Toggle -> {
-                    val accepted = preference.onPreferenceChangeListener
-                        ?.onPreferenceChange(preference, action.value) == true
-                    if (accepted) {
-                        (preference as? TwoStatePreference)?.isChecked = action.value
-                        preference.key?.let { key ->
-                            val editor = prefs.edit()
-                            editor.putBoolean(key, action.value)
-                            editor.apply()
-                        }
-                    }
-                }
-            }
+            prefCache[pkgName]?.getOrNull(index)?.performClick()
         }
     }
+
+    override suspend fun applyPreferenceChange(pkgName: String, index: Int, newValue: Boolean) {
+        withContext(IoDispatcher) {
+            val preference = prefCache[pkgName]?.getOrNull(index) as? TwoStatePreference
+                ?: return@withContext
+            // 对齐 androidx: callChangeListener 通过才落值 (未挂监听视为通过)
+            if (preference.callChangeListener(newValue)) preference.setChecked(newValue)
+        }
+    }
+
+    override suspend fun bindEditTextPreference(pkgName: String, index: Int) {
+        withContext(IoDispatcher) {
+            val preference = prefCache[pkgName]?.getOrNull(index) as? EditTextPreference
+                ?: return@withContext
+            preference.onBindEditTextListener?.onBindEditText(EditText(appContext))
+        }
+    }
+
+    /** 最近一次构建的 shim Preference 列表 (按 pkgName; 交互事件按序号定位到它)。 */
+    private val prefCache = HashMap<String, List<Preference>>()
 
     /**
      * 扩展自身偏好文件: `source_<sourceId>` (对齐 keiyoushi.utils.getPreferencesLazy /
@@ -137,20 +127,36 @@ class SharedMangaSourceConfig(
     }
 
     /**
-     * shim Preference → 跨层 [MangaPrefItem]。当前值优先读插件偏好, 缺失回落到 shim 上的
-     * 声明值 (setDefaultValue/构造时 setChecked 等)。shim 的 getter 在未设置时为 null,
-     * 故所有读取都带默认值。
+     * 对齐 androidx PreferenceManager.dispatchSetInitialValue(): 把已持久化的值读回 Preference
+     * 实例 (只回填有 key 且持久化的项)。值缺失时沿用扩展声明的默认值。
      */
-    private fun Preference.toPrefItem(prefs: SharedPreferences, index: Int): MangaPrefItem {
-        // 动作通道: 挂了点击/变更监听即带出 (有 key 的普通开关也可能带联动 listener,
-        // 点击统一经 runPreferenceAction 执行, 返回 true 才落值, 与 androidx 语义一致)
-        val action = when {
-            onPreferenceClickListener != null -> MangaPrefAction.Click
-            onPreferenceChangeListener != null && this is TwoStatePreference ->
-                MangaPrefAction.Toggle(value = isChecked)
+    private fun Preference.dispatchSetInitialValue(prefs: SharedPreferences) {
+        val preferenceKey = key?.takeIf { isPersistent && it.isNotEmpty() } ?: return
+        when (this) {
+            is TwoStatePreference ->
+                setChecked(prefs.getBoolean(preferenceKey, defaultValue as? Boolean ?: false))
 
-            else -> null
+            is ListPreference ->
+                setValue(prefs.getString(preferenceKey, defaultValue?.toString()))
+
+            is MultiSelectListPreference -> {
+                val stored = prefs.getStringSet(preferenceKey, null)
+                    ?: (defaultValue as? Set<*>)?.map { it.toString() }?.toSet()
+                if (stored != null) setValues(stored)
+            }
+
+            is EditTextPreference ->
+                setText(prefs.getString(preferenceKey, defaultValue?.toString()))
+
+            else -> Unit
         }
+    }
+
+    /**
+     * shim Preference → 跨层 [MangaPrefItem] (当前值已在回填阶段从扩展偏好读入 shim,
+     * 未持久化的项沿用扩展声明值)。列表项的 entries/entryValues 供 UI 渲染选择器。
+     */
+    private fun Preference.toPrefItem(index: Int): MangaPrefItem {
         val entries = when (this) {
             is ListPreference -> this.entries?.map { it.toString() }.orEmpty()
             is MultiSelectListPreference -> this.entries?.map { it.toString() }.orEmpty()
@@ -161,38 +167,21 @@ class SharedMangaSourceConfig(
             is MultiSelectListPreference -> this.entryValues?.map { it.toString() }.orEmpty()
             else -> emptyList()
         }
-        // 回落值优先取 setDefaultValue 的声明值 (对齐 androidx.preference: 多数插件只声明
-        // 默认值不赋现值, 漏声明值会把默认开的开关误显示为关)
         val value: MangaPrefValue = when (this) {
-            is ListPreference -> {
-                val current = key?.let { prefs.getString(it, null) }
-                    ?: defaultValue?.toString() ?: this.value
-                MangaPrefValue.Choice(current ?: entryValues.firstOrNull().orEmpty())
-            }
+            is ListPreference ->
+                MangaPrefValue.Choice(getValue() ?: entryValues.firstOrNull().orEmpty())
 
-            is MultiSelectListPreference -> {
-                val declared = (defaultValue as? Set<*>)?.map { it.toString() }?.toSet()
-                val current = key?.let { prefs.getStringSet(it, null) } ?: declared ?: this.values
-                MangaPrefValue.MultiChoice(current.toSet())
-            }
+            is MultiSelectListPreference ->
+                MangaPrefValue.MultiChoice(getValues())
 
-            is TwoStatePreference -> {
-                val declared = (defaultValue as? Boolean) ?: this.isChecked
-                val current = key?.let { prefs.getBoolean(it, declared) } ?: declared
-                MangaPrefValue.Flag(current)
-            }
+            is TwoStatePreference ->
+                MangaPrefValue.Flag(isChecked())
 
-            is EditTextPreference -> {
-                val current = key?.let { prefs.getString(it, null) }
-                    ?: defaultValue?.toString() ?: this.text
-                MangaPrefValue.Text(current.orEmpty())
-            }
+            is EditTextPreference ->
+                MangaPrefValue.Text(getText().orEmpty())
 
-            else -> {
-                val current = key?.let { prefs.getString(it, defaultValue?.toString()) }
-                    ?: defaultValue?.toString()
-                MangaPrefValue.Text(current.orEmpty())
-            }
+            else ->
+                MangaPrefValue.Text(defaultValue?.toString().orEmpty())
         }
         return MangaPrefItem(
             index = index,
@@ -202,7 +191,7 @@ class SharedMangaSourceConfig(
             value = value,
             entries = entries,
             entryValues = entryValues,
-            action = action,
+            enabled = enabled,
         )
     }
 }

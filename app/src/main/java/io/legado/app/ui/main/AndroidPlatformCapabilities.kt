@@ -366,7 +366,11 @@ class AndroidPlatformCapabilities(
     override fun openWebView(url: String, sourceKey: String, sourceName: String) {
         // 移动端保留内嵌 WebViewRoute 路由语义 (对话框内嵌)
         AppNavigatorProviders.get().push(
-            io.legado.app.ui.root.AppRoute.WebView(url, sourceKey, sourceName)
+            io.legado.app.ui.root.AppRoute.WebView(
+                url = url,
+                sourceKey = sourceKey,
+                sourceName = sourceName,
+            )
         )
     }
 

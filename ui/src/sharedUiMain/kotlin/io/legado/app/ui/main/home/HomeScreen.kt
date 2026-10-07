@@ -58,7 +58,7 @@ import legado.ui.generated.resources.home
 import legado.ui.generated.resources.home_manage
 import legado.ui.generated.resources.home_tab_empty
 import legado.ui.generated.resources.home_tab_manage
-import legado.ui.generated.resources.ic_cfg_other
+import legado.ui.generated.resources.ic_other_setting
 import legado.ui.generated.resources.ic_groups
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
@@ -67,7 +67,7 @@ import org.jetbrains.compose.resources.stringResource
  * 下沉所需资源 key 清单 (供 ResourceProvider 各平台 actual 补全)
  *
  * Painter key (drawable):
- *   - ic_cfg_other     主页"管理展示项"图标
+ *   - ic_other_setting 主页"管理展示项"图标
  *   - ic_groups        主页"管理分组"图标 (ResourceProvider 已支持)
  *
  * String key (string):
@@ -302,7 +302,7 @@ private fun HomeTopBar(
             }
             IconButton(onClick = { actions.openManageSection() }) {
                 Icon(
-                    painter = painterResource(Res.drawable.ic_cfg_other),
+                    painter = painterResource(Res.drawable.ic_other_setting),
                     contentDescription = stringResource(Res.string.home_manage),
                     tint = colors.primaryText,
                 )

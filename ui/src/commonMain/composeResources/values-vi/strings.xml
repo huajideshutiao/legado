@@ -831,6 +831,10 @@
     <string name="manga_extension_languages">Ngôn ngữ</string>
     <string name="manga_extension_setting">Cài đặt</string>
     <string name="manga_extension_kind_video">Video</string>
+    <string name="manga_extension_kind_manga">Manga</string>
+    <string name="manga_extension_filter_kind">Loại</string>
+    <string name="manga_extension_content_safe">An toàn</string>
+    <string name="manga_extension_no_result">Không có tiện ích nào phù hợp</string>
     <string name="manga_extension_pref_empty">Tiện ích này không có mục cài đặt nào</string>
     <string name="manga_search_filters">Bộ lọc</string>
     <string name="manga_color_filter">Bộ lọc</string>

@@ -9,14 +9,14 @@ import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 
 /**
- * 漫画扩展子系统的偏好存取。三个键均以 mangaExtension 前缀自持, 不进 PreferKey
+ * 漫画扩展子系统的偏好存取。各键均以 mangaExtension 前缀自持, 不进 PreferKey
  * 常量表 (零冲突); 值全部是 JSON 字符串, 备份侧 config.json 按 key 全量 dump
  * (纯黑名单), 自动随备份/恢复进出, 恢复后由 MangaExtensionManager.onRestoreFinished()
  * 重载内存态。
  *
  * 存储经 [PreferenceProviders] 平台抽象: Android 端委托 defaultSharedPreferences
  * (与下沉前 App.instance.getPrefString 同一文件, 存量数据无缝延续), 桌面端委托
- * java.util.prefs。public 可见性: 语言过滤读写被 ui 层插件服务消费。
+ * java.util.prefs。public 可见性: 语言/类型/内容过滤读写被 ui 层插件服务消费。
  */
 object ExtensionPrefs {
 
@@ -24,6 +24,8 @@ object ExtensionPrefs {
     private const val KEY_TRUSTED_SIGNATURES = "mangaExtensionTrustedSignatures"
     private const val KEY_SOURCE_ENABLED = "mangaExtensionSourceEnabled"
     private const val KEY_LANGUAGES = "mangaExtensionLanguages"
+    private const val KEY_KIND_FILTER = "mangaExtensionKindFilter"
+    private const val KEY_CONTENT_FILTER = "mangaExtensionContentFilter"
 
     private val repoListSerializer = ListSerializer(MangaExtensionRepo.serializer())
     private val stringSetSerializer = ListSerializer(String.serializer())
@@ -86,6 +88,23 @@ object ExtensionPrefs {
             KEY_LANGUAGES,
             GSON.encodeToString(stringSetSerializer, languages.toList()),
         )
+    }
+
+    /**
+     * 展示类型过滤档位名 (只作用「可用」列表); 空/缺省=不过滤。
+     * 取值域由 ui 层枚举 (MangaExtensionKindFilter) 定义 —— :data 分层不引用 :ui 类型。
+     */
+    fun getKindFilter(): String? = getPrefString(KEY_KIND_FILTER)?.takeIf { it.isNotBlank() }
+
+    fun setKindFilter(name: String?) {
+        putPrefString(KEY_KIND_FILTER, name.orEmpty())
+    }
+
+    /** 内容分级过滤档位名 (同 [getKindFilter])。 */
+    fun getContentFilter(): String? = getPrefString(KEY_CONTENT_FILTER)?.takeIf { it.isNotBlank() }
+
+    fun setContentFilter(name: String?) {
+        putPrefString(KEY_CONTENT_FILTER, name.orEmpty())
     }
 
     /** 源启用表 (稀疏存储, 缺省启用), key 为源 id 的字符串形式。 */

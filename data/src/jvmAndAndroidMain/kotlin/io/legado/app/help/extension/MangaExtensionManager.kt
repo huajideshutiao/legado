@@ -73,6 +73,13 @@ object MangaExtensionManager {
     val sources: StateFlow<List<RegisteredMangaSource>> = _sourcesFlow
     val animeSources: StateFlow<List<RegisteredAnimeSource>> = _animeSourcesFlow
 
+    /**
+     * 备份恢复完成信号 (每次恢复递增)。恢复会把随备份进出的偏好整份换掉, 平台侧持有的三路
+     * 筛选 (语言/类型/内容分级) 据此重读, 否则旧筛选会继续过滤并在下次操作时写回。
+     */
+    private val _restoreGenerationFlow = MutableStateFlow(0)
+    val restoreGeneration: StateFlow<Int> = _restoreGenerationFlow
+
     /** UI 首入口触发; 重复调用无副作用。 */
     fun init() {
         if (!started.compareAndSet(false, true)) return
@@ -379,6 +386,7 @@ object MangaExtensionManager {
             _availableExtensionsFlow.value = RepoHelper.loadCachedIndex()
             loadExtensionsLocked()
         }
+        _restoreGenerationFlow.value++
     }
 
     /**

@@ -55,18 +55,22 @@ data class MangaPrefDialogState(
 /**
  * 插件自带配置弹窗: 渲染平台侧从 shim `PreferenceScreen` 降级来的 [MangaPrefItem] 列表。
  *
- * 配置行整行可点: 开关行点击即切换, 列表行弹单选/复选, 文本行弹二级输入框 (与仓库
- * 页添加仓库同款)。所有写入经 [onSetPreference] 回平台落插件自身 SharedPreferences。
+ * 配置行交互按 androidx: 点击 → [onPreferenceClick] (平台侧 `Preference.performClick()`);
+ * 开关拨动 → [onPreferenceChange] (平台侧 `callChangeListener` + `setChecked`); 文本行打开输入框时
+ * [onBindEditText] (对应 `EditTextPreference.OnBindEditTextListener` 的触发时机)。
+ * 选择/输入完成后的值写入经 [onSetPreference] 回平台 (平台侧走 shim setter, 持久化规则与 androidx 一致)。
  *
  * 管理页行内「设置」入口与虚拟源登录直达 ([io.legado.app.ui.root.ExtensionPrefOverlayContent])
- * 共用本弹窗; 两级输入/复选状态在弹窗内部持有, 调用方只供 [dialog] 快照与写回回调。
+ * 共用本弹窗; 两级输入/复选状态在弹窗内部持有, 调用方只供 [dialog] 快照与回调。
  */
 @Composable
 internal fun ExtensionPrefDialog(
     dialog: MangaPrefDialogState,
     settingText: String,
     onSetPreference: (String, MangaPrefValue) -> Unit,
-    onRunAction: (MangaPrefItem) -> Unit = {},
+    onPreferenceClick: (MangaPrefItem) -> Unit = {},
+    onPreferenceChange: (MangaPrefItem, Boolean) -> Unit = { _, _ -> },
+    onBindEditText: (MangaPrefItem) -> Unit = {},
     onDismiss: () -> Unit,
 ) {
     val colors = AppTheme.colors
@@ -117,9 +121,9 @@ internal fun ExtensionPrefDialog(
                 dialog.items.forEach { item ->
                     PrefItemRow(
                         item = item,
-                        onToggleFlag = { checked ->
-                            item.key?.let { onSetPreference(it, MangaPrefValue.Flag(checked)) }
-                        },
+                        onPreferenceClick = { onPreferenceClick(item) },
+                        onPreferenceChange = { checked -> onPreferenceChange(item, checked) },
+                        onBindEditText = { onBindEditText(item) },
                         onPickChoice = { value ->
                             item.key?.let { onSetPreference(it, MangaPrefValue.Choice(value)) }
                         },
@@ -127,7 +131,6 @@ internal fun ExtensionPrefDialog(
                             item.key?.let { editing = it to current }
                         },
                         onEditMulti = { multiSelect = item },
-                        onRunAction = onRunAction,
                     )
                 }
             }
@@ -140,6 +143,7 @@ internal fun ExtensionPrefDialog(
             onDismissRequest = { editing = null },
             okButton = AlertButton(text = okText) {
                 onSetPreference(key, MangaPrefValue.Text(text))
+                editing = null
             },
             cancelButton = AlertButton(text = cancelText) { editing = null },
         ) {
@@ -197,21 +201,22 @@ internal fun ExtensionPrefDialog(
 
 /**
  * 配置项单行: 开关行标题/摘要居左、开关居右; 其余类型标题/摘要在上、当前值或控件在下
- * (长摘要与长值左右排会互相挤压)。整行可点, 点击按 [MangaPrefItem.value] 类型分派
- * 编辑/选择, 开关行点击即切换、也可直接拨动。
+ * (长摘要与长值左右排会互相挤压)。整行可点, 点击上报 [onPreferenceClick] (平台侧
+ * `performClick()`), 并按值类型打开对应的二级弹窗; 开关拨动上报 [onPreferenceChange]。
  */
 @Composable
 internal fun PrefItemRow(
     item: MangaPrefItem,
-    onToggleFlag: (Boolean) -> Unit,
+    onPreferenceClick: () -> Unit,
+    onPreferenceChange: (Boolean) -> Unit,
+    onBindEditText: () -> Unit,
     onPickChoice: (String) -> Unit,
     onEditText: (String) -> Unit,
     onEditMulti: () -> Unit,
-    onRunAction: (MangaPrefItem) -> Unit = {},
 ) {
     val colors = AppTheme.colors
     var choiceExpanded by remember(item.key) { mutableStateOf(false) }
-    val enabled = item.writable
+    val enabled = item.enabled
     val summary = item.displaySummary()
 
     // 标题 + 摘要 (开关行居左, 其余行居上, 同一段渲染)
@@ -228,15 +233,12 @@ internal fun PrefItemRow(
 
     val flag = item.value as? MangaPrefValue.Flag
     if (flag != null) {
-        // 动作开关 (如「立即签到」): 点击触发扩展回调, 不由宿主直接写值;
-        // 回调返回 true 才经平台落值, false 保持原值 (扩展拦截, 动作型开关常态)
-        val hasAction = item.action != null
+        // 对齐 androidx: 点击行 → onClickListener 或默认 onClick (开关类即切换);
+        // 拨动开关 → callChangeListener(newValue), 通过才落值
         Row(
             Modifier
                 .fillMaxWidth()
-                .clickable(enabled = enabled) {
-                    if (hasAction) onRunAction(item) else onToggleFlag(!flag.value)
-                }
+                .clickable(enabled = enabled) { onPreferenceClick() }
                 .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingDefault),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -244,9 +246,7 @@ internal fun PrefItemRow(
             Spacer(Modifier.width(DesignTokens.spacingMd))
             AppSwitch(
                 checked = flag.value,
-                onCheckedChange = {
-                    if (hasAction) onRunAction(item) else onToggleFlag(it)
-                },
+                onCheckedChange = { checked -> onPreferenceChange(checked) },
                 enabled = enabled,
             )
         }
@@ -256,15 +256,18 @@ internal fun PrefItemRow(
         Modifier
             .fillMaxWidth()
             .clickable(enabled = enabled) {
-                // 点击动作优先 (如「刷新镜像列表」型按钮偏好); 其余按值类型分派编辑
-                when (item.action) {
-                    is MangaPrefAction.Click -> onRunAction(item)
-                    else -> when (val v = item.value) {
-                        is MangaPrefValue.Choice -> choiceExpanded = true
-                        is MangaPrefValue.MultiChoice -> onEditMulti()
-                        is MangaPrefValue.Text -> onEditText(v.value)
-                        else -> {}
+                // 先上报点击 (平台侧 performClick), 再按值类型打开宿主侧的二级弹窗
+                onPreferenceClick()
+                when (val v = item.value) {
+                    is MangaPrefValue.Choice -> choiceExpanded = true
+                    is MangaPrefValue.MultiChoice -> onEditMulti()
+                    is MangaPrefValue.Text -> {
+                        // 输入框对话框绑定时机 = androidx 的 OnBindEditTextListener
+                        onBindEditText()
+                        onEditText(v.value)
                     }
+
+                    else -> {}
                 }
             }
             .padding(horizontal = DesignTokens.spacingLg, vertical = DesignTokens.spacingDefault),

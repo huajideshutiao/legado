@@ -831,6 +831,10 @@
     <string name="manga_extension_languages">Idiomas</string>
     <string name="manga_extension_setting">Ajustes</string>
     <string name="manga_extension_kind_video">Vídeo</string>
+    <string name="manga_extension_kind_manga">Manga</string>
+    <string name="manga_extension_filter_kind">Tipo</string>
+    <string name="manga_extension_content_safe">Seguro</string>
+    <string name="manga_extension_no_result">No hay extensiones coincidentes</string>
     <string name="manga_extension_pref_empty">Esta extensión no tiene opciones configurables</string>
     <string name="manga_search_filters">Filtros</string>
     <string name="manga_color_filter">滤镜</string>
