@@ -3,6 +3,7 @@ package io.legado.app.model.webBook
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppConst.timeLimit
 import io.legado.app.constant.AppLog
+import io.legado.app.data.entities.BookListPage
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.exception.NoStackTraceException
@@ -12,8 +13,12 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.source.SearchBookFilter
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.ui.book.search.SearchScope
+import io.legado.app.utils.concurrent.newConcurrentMap
+import io.legado.app.utils.concurrent.newConcurrentSet
 import io.legado.app.utils.mapParallelSafe
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -26,6 +31,8 @@ import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import kotlin.math.min
 
@@ -36,6 +43,13 @@ import kotlin.math.min
 data class SourceSearchGroup(
     val source: BookSource,
     val books: List<SearchBook>,
+)
+
+/** 单源单页结果: 带发出请求时的结果世代, 供丢弃重搜前发出的过期响应。 */
+private data class SourcePageResult(
+    val source: BookSource,
+    val generation: Int,
+    val page: BookListPage,
 )
 
 /** searchLayout (AppConfig) 的"按源分类"布局标志位; 低 3 位列数 / bit4 视频位仅聚簇布局使用。 */
@@ -55,7 +69,6 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
     val threadCount = AppConfigProviders.get().threadCount
     private var searchPool: kotlinx.coroutines.CoroutineDispatcher? = null
     private var mSearchId = 0L
-    private var searchPage = 1
     private var searchKey: String = ""
     private var bookSources = emptyList<BookSource>()
     private var searchBooks = arrayListOf<SearchBook>()
@@ -66,11 +79,37 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
      */
     private val searchGroupBooks = LinkedHashMap<String, MutableList<SearchBook>>()
     private val searchGroupSources = HashMap<String, BookSource>()
+
+    /**
+     * 源出现顺序 (只增不删, 重搜不清): 分组快照按此序输出, 重搜回填后区块不跳位。
+     * 仅 [resultMutex] 内访问。
+     */
+    private val sourceOrder = ArrayList<String>()
+
     private var searchJob: Job? = null
     private var workingState = MutableStateFlow(true)
 
-    /** 已声明没有下一页的源 url，翻页时直接跳过，避免多发空请求。 */
-    private val exhaustedSources = HashSet<String>()
+    /** 单源重搜任务 (key=sourceUrl): 只取消同源旧任务, 不牵连其他源正在进行的重搜 */
+    private val restartJobs = newConcurrentMap<String, Job>()
+
+    /** 每源结果世代 (重搜 +1): 请求记下发出时的世代, 世代已变的响应 (重搜前发出的旧页) 丢弃 */
+    private val resultGenerations = newConcurrentMap<String, Int>()
+    private val resultMutex = Mutex()
+
+    /** 每源下一页页码 (重搜后该源回到第 2 页; 新搜索清空) */
+    private val nextPages = newConcurrentMap<String, Int>()
+
+    /** 本轮精准开关 (startSearch 时快照, 单源重搜沿用同一值) */
+    private var precision = false
+
+    /** 本轮“任一源还有下一页” (主链与单源重搜共同维护) */
+    private var hasMore = false
+
+    /** 已声明没有下一页的源 url，翻页时直接跳过，避免多发空请求 (主链与单源重搜并发访问) */
+    private val exhaustedSources = newConcurrentSet<String>()
+
+    /** 本轮是否只有一个源 (聚簇布局顶部选项行据此决定是否展示)。 */
+    val isSingleSource: Boolean get() = bookSources.size == 1
 
     private fun initSearchPool(): kotlinx.coroutines.CoroutineDispatcher {
         // 用 limitedParallelism 替代原 Executors.newFixedThreadPool(N).asCoroutineDispatcher()
@@ -90,74 +129,58 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
             searchBooks.clear()
             searchGroupBooks.clear()
             searchGroupSources.clear()
+            sourceOrder.clear()
             bookSources = callBack.getSearchScope().getBookSources()
             exhaustedSources.clear()
+            nextPages.clear()
+            hasMore = false
+            restartJobs.values.forEach { it.cancel() }
+            restartJobs.clear()
             if (bookSources.isEmpty()) {
                 callBack.onSearchCancel(NoStackTraceException("启用书源为空"))
                 return
             }
             mSearchId = searchId
-            searchPage = 1
             searchPool = initSearchPool()
-        } else {
-            searchPage++
         }
         startSearch()
     }
 
     private fun startSearch() {
-        val precision = AppConfigProviders.get().precisionSearch
-        var hasMore = false
+        precision = AppConfigProviders.get().precisionSearch
         val pool = searchPool ?: return
-        val isSingleSource = bookSources.size == 1
-        val selectedOptions = callBack.getSearchOptions().associate { it.name to it.resolvedValue }
         searchJob = scope.launch(pool) {
             flow {
                 bookSources.forEach { source ->
                     if (source.bookSourceUrl !in exhaustedSources) {
-                        emit(source)
+                        emit(source to takeNextPage(source))
                     }
                     workingState.first { it }
                 }
             }.onStart {
                 callBack.onSearchStart()
-            }.mapParallelSafe(min(threadCount, AppConst.MAX_THREAD), bookSources.size) { bookSource ->
+            }.mapParallelSafe(min(threadCount, AppConst.MAX_THREAD), bookSources.size) { (bookSource, page) ->
+                // 世代在请求发出前记下: 请求期间该源被重搜则本页作废 (不混入新结果)
+                val generation = generationOf(bookSource.bookSourceUrl)
                 withTimeout(timeLimit) {
-                    val page = WebBook.getBookListAwait(
-                        bookSource, searchKey, searchPage,
+                    val bookListPage = WebBook.getBookListAwait(
+                        bookSource, searchKey, page,
                         filter = { name, author ->
                             !precision || name.contains(searchKey) ||
                                 author.contains(searchKey)
                         },
-                        onUrlResolved = if (isSingleSource) { analyzeUrl: AnalyzeUrlCore ->
+                        onUrlResolved = { analyzeUrl: AnalyzeUrlCore ->
                             val options = parseExploreOptionsFromUrl(analyzeUrl.ruleUrl)
                             if (options.isNotEmpty()) {
-                                callBack.onSearchOptionsResolved(options)
+                                callBack.onSearchOptionsResolved(bookSource.bookSourceUrl, options)
                             }
-                        } else null,
-                        selectedOptions = selectedOptions,
+                        },
+                        selectedOptions = sourceSelectedOptions(bookSource.bookSourceUrl),
                     )
-                    bookSource to page
+                    SourcePageResult(bookSource, generation, bookListPage)
                 }
-            }.onEach { (source, page) ->
-                val (items, filteredCount) = SearchBookFilter.apply(page.books)
-                if (filteredCount > 0) {
-                    callBack.onFiltered(filteredCount)
-                }
-                for (book in items) {
-                    book.releaseHtmlData()
-                }
-                // 该源这页声明没下一页了，下次翻页就不再请求它
-                if (!page.hasNextPage) {
-                    exhaustedSources.add(source.bookSourceUrl)
-                }
-                // 多书源聚合：任一家声称还有下一页，整体就还有
-                hasMore = hasMore || page.hasNextPage
-                mergeGroup(source, items)
-                rebuildAggregate(precision)
-                currentCoroutineContext().ensureActive()
-                callBack.onSearchSuccess(searchBooks)
-                callBack.onSearchGroupsChanged(groupSnapshot())
+            }.onEach { result ->
+                handlePageResult(result)
             }.onCompletion {
                 if (it == null) callBack.onSearchFinish(searchBooks.isEmpty(), hasMore)
             }.catch {
@@ -165,6 +188,108 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
                 callBack.onSearchCancel(it)
             }.collect()
         }
+    }
+
+    /** 每源请求前实时取该源已选值 (按源隔离, 供 AnalyzeUrlCore 替换 `<name(...)>` 段)。 */
+    private fun sourceSelectedOptions(sourceUrl: String): Map<String, String> =
+        callBack.getSearchOptions(sourceUrl).associate { it.name to it.resolvedValue }
+
+    /** 该源当前结果世代 (未重搜过 = 0)。 */
+    private fun generationOf(sourceUrl: String): Int = resultGenerations[sourceUrl] ?: 0
+
+    /** 取该源下一页页码并自增 (主链按书源顺序发射, 单写者无需加锁)。 */
+    private fun takeNextPage(source: BookSource): Int {
+        val url = source.bookSourceUrl
+        val page = nextPages[url] ?: 1
+        nextPages[url] = page + 1
+        return page
+    }
+
+    /**
+     * 单页结果统一处理 (主链与单源重搜共用): 丢弃过期世代 → 过滤/release/exhausted/hasMore/
+     * 入组/重建聚合/回调。单源重搜协程与主链并发到达, 共享结构访问经 [resultMutex] 互斥。
+     */
+    private suspend fun handlePageResult(result: SourcePageResult) {
+        val source = result.source
+        // 该源在本页请求期间被重搜: 本页属旧筛选/旧选项, 整体丢弃
+        if (result.generation != generationOf(source.bookSourceUrl)) return
+        val (items, filteredCount) = SearchBookFilter.apply(result.page.books)
+        if (filteredCount > 0) {
+            callBack.onFiltered(filteredCount)
+        }
+        for (book in items) {
+            book.releaseHtmlData()
+        }
+        resultMutex.withLock {
+            // 过滤期间又发生重搜, 二次校验
+            if (result.generation != generationOf(source.bookSourceUrl)) return
+            // 该源这页声明没下一页了，下次翻页就不再请求它
+            if (!result.page.hasNextPage) {
+                exhaustedSources.add(source.bookSourceUrl)
+            }
+            // 多书源聚合：任一家声称还有下一页，整体就还有
+            hasMore = hasMore || result.page.hasNextPage
+            mergeGroup(source, items)
+            rebuildAggregate(precision)
+            currentCoroutineContext().ensureActive()
+            callBack.onSearchSuccess(searchBooks)
+            callBack.onSearchGroupsChanged(groupSnapshot())
+        }
+    }
+
+    /**
+     * 单源重搜: 丢弃该源旧结果与在飞旧请求, 只重发该源第 1 页 (沿用当前关键词与该源最新筛选会话),
+     * 其余源的结果与在飞请求不受影响 (任务按源隔离); 主链仍在搜索时不发 onSearchFinish。
+     */
+    fun restartSource(sourceUrl: String) {
+        if (mSearchId == 0L || searchKey.isEmpty()) return
+        val source = bookSources.firstOrNull { it.bookSourceUrl == sourceUrl } ?: return
+        val searchId = mSearchId
+        // 世代 +1: 该源此前发出的请求 (含主链在飞页) 全部作废
+        resultGenerations[sourceUrl] = generationOf(sourceUrl) + 1
+        restartJobs[sourceUrl]?.cancel()
+        val restartJob = scope.launch(searchPool ?: initSearchPool(), start = CoroutineStart.LAZY) {
+            workingState.first { it }
+            resultMutex.withLock {
+                searchGroupBooks.remove(sourceUrl)
+                exhaustedSources.remove(sourceUrl)
+                // 该源回到第 1 页, 后续续页从第 2 页起 (主链页码按源维护, 不再跳页)
+                nextPages[sourceUrl] = 2
+                rebuildAggregate(precision)
+                callBack.onSearchSuccess(searchBooks)
+                callBack.onSearchGroupsChanged(groupSnapshot())
+            }
+            try {
+                val generation = generationOf(sourceUrl)
+                val page = withTimeout(timeLimit) {
+                    WebBook.getBookListAwait(
+                        source, searchKey, 1,
+                        filter = { name, author ->
+                            !precision || name.contains(searchKey) ||
+                                author.contains(searchKey)
+                        },
+                        selectedOptions = sourceSelectedOptions(sourceUrl),
+                    )
+                }
+                if (searchId != mSearchId) return@launch
+                handlePageResult(SourcePageResult(source, generation, page))
+                if (searchJob?.isActive != true) {
+                    callBack.onSearchFinish(searchBooks.isEmpty(), hasMore)
+                }
+            } catch (e: Throwable) {
+                if (searchId != mSearchId) return@launch
+                if (e is CancellationException) throw e
+                AppLog.put("书源搜索出错\n${e.message}", e)
+                callBack.onSearchCancel(e)
+            } finally {
+                // 只清本次任务: 若已被同源新重搜替掉, 不动新任务的登记
+                if (restartJobs[sourceUrl] === currentCoroutineContext()[Job]) {
+                    restartJobs.remove(sourceUrl)
+                }
+            }
+        }
+        restartJobs[sourceUrl] = restartJob
+        restartJob.start()
     }
 
     /**
@@ -221,17 +346,24 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
      */
     private fun mergeGroup(source: BookSource, items: List<SearchBook>) {
         if (items.isEmpty()) return
-        val group = searchGroupBooks.getOrPut(source.bookSourceUrl) { arrayListOf() }
+        val url = source.bookSourceUrl
+        if (url !in searchGroupSources) sourceOrder.add(url)
+        val group = searchGroupBooks.getOrPut(url) { arrayListOf() }
         val seen = group.mapTo(HashSet()) { it.bookUrl }
         items.forEach {
             if (seen.add(it.bookUrl)) group.add(it)
         }
-        searchGroupSources[source.bookSourceUrl] = source
+        searchGroupSources[url] = source
     }
 
-    /** 组顺序 = 源完成顺序 (LinkedHashMap 插入序); 发射快照, UI 不持有内部可变结构 */
+    /**
+     * 组顺序 = 源首次出现顺序 ([sourceOrder] 只增不减); 发射快照, UI 不持有内部可变结构。
+     * 重搜期间该书分组为空 (不入快照), 回填后按原位置回来。
+     */
     private fun groupSnapshot(): List<SourceSearchGroup> =
-        searchGroupBooks.map { (url, books) ->
+        sourceOrder.mapNotNull { url ->
+            val books = searchGroupBooks[url] ?: return@mapNotNull null
+            if (books.isEmpty()) return@mapNotNull null
             SourceSearchGroup(
                 searchGroupSources.getValue(url),
                 books.toList(),
@@ -253,6 +385,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
 
     fun close() {
         searchJob?.cancel()
+        restartJobs.values.forEach { it.cancel() }
         // limitedParallelism 返回的 CoroutineDispatcher 无需 close (复用 Dispatchers.IO)
         searchPool = null
         mSearchId = 0L
@@ -267,8 +400,12 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
         fun onSearchGroupsChanged(groups: List<SourceSearchGroup>) {}
         fun onSearchFinish(isEmpty: Boolean, hasMore: Boolean)
         fun onSearchCancel(exception: Throwable? = null)
-        fun onSearchOptionsResolved(options: List<ExploreOption>)
-        fun getSearchOptions(): List<ExploreOption>
+
+        /** 某源搜索 URL 声明的可选项解析完成 (每源每页都会回调, 同结构重复回调由实现方去重) */
+        fun onSearchOptionsResolved(sourceUrl: String, options: List<ExploreOption>) {}
+
+        /** 取某源已声明选项的当前选择态 (默认空: 不支持选项注入的实现方) */
+        fun getSearchOptions(sourceUrl: String): List<ExploreOption> = emptyList()
         fun onFiltered(count: Int) {}
     }
 

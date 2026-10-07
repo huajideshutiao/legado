@@ -70,7 +70,7 @@ import io.legado.app.model.webBook.SEARCH_LAYOUT_SOURCE_GROUP
 import io.legado.app.model.webBook.SourceSearchGroup
 import io.legado.app.ui.main.home.SectionCoverRow
 import io.legado.app.ui.main.home.SectionTitleRow
-import io.legado.app.ui.book.manga.extension.MangaSearchFilterRow
+import io.legado.app.ui.book.manga.extension.PluginSearchFilterRow
 import io.legado.app.ui.bookshelf.KindLabels
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.root.LocalSharedCoverBinding
@@ -91,6 +91,7 @@ import io.legado.app.ui.compose.component.AppChipRowOption
 import io.legado.app.ui.compose.component.AppChipRowTitle
 import io.legado.app.ui.compose.component.AppFilletTextButton
 import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.ExploreOptionsRow
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTitleBar
@@ -252,6 +253,8 @@ fun SearchScreen(
     val manualStopped by viewModel.manualStopped.collectAsState()
 
     val searchOptionsVersion by viewModel.searchOptionsVersion.collectAsState()
+    // 聚簇顶部选项行快照: 仅单源时非空 (多源选项在各源区块内); 点击直改实例, 版本号驱动重读
+    val topSearchOptions = remember(searchOptionsVersion) { viewModel.getTopOptions() }
 
     // 搜索布局: 低 3 位=列数 (0/1 单列; 2..6 N 列网格), bit 4 (0x10)=视频标志,
     // bit 5 (0x20)=按源分类 (结果区按源分区块; 视频位在区块内生效)。列数位在按源分类下
@@ -337,13 +340,16 @@ fun SearchScreen(
                         shelfCoverSlot = resolvedShelfCoverSlot,
                     )
                 } else {
-                    SearchOptionsRow(
-                        options = viewModel.searchOptions,
-                        version = searchOptionsVersion,
-                        onOptionChanged = { viewModel.search(viewModel.searchKey, resetOptions = false) },
-                    )
-                    // 漫画插件源筛选条 (范围内无插件源时为零行; 服务未注册端同样)
-                    MangaSearchFilterRow(
+                    // 聚簇布局顶部选项行 (单源搜索): 按源分类布局下选项在各源区块内显示, 不重复
+                    if (!isSourceGroupLayout) {
+                        SearchOptionsRow(
+                            options = topSearchOptions,
+                            version = searchOptionsVersion,
+                            onOptionChanged = { viewModel.search(viewModel.searchKey, resetOptions = false) },
+                        )
+                    }
+                    // 插件源筛选条 (漫画/视频, 范围内无插件源时为零行; 服务未注册端同样)
+                    PluginSearchFilterRow(
                         searchScope = viewModel.searchScope,
                         scopeVersion = scopeVersion,
                         onFiltersChanged = { viewModel.search(viewModel.searchKey, resetOptions = false) },
@@ -957,6 +963,16 @@ private fun SourceSection(
         SectionTitleRow(group.source.bookSourceName) {
             navCallbacks.onSourceSectionClick(group.source, viewModel.searchKey)
         }
+        // 该源搜索 url 声明的可配置项 chip 行 (无声明为零行): 点选只重搜该源
+        val optionsVersion by viewModel.searchOptionsVersion.collectAsState()
+        val sourceOptions = remember(group.source.bookSourceUrl, optionsVersion) {
+            viewModel.getSourceOptions(group.source.bookSourceUrl)
+        }
+        ExploreOptionsRow(
+            options = sourceOptions,
+            optionsVersion = optionsVersion,
+            onOptionSelected = { viewModel.onSourceOptionChanged(group.source.bookSourceUrl) },
+        )
         // 横向行: 视频位跟搜索布局 (同 home 区块视频封面卡); 封面渲染走与聚簇模式
         // 同款 coverSlot (书架命中分流缓存区)
         SectionCoverRow(

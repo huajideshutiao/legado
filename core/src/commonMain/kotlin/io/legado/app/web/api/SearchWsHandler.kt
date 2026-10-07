@@ -3,7 +3,6 @@ package io.legado.app.web.api
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
-import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.model.webBook.SearchModel
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.utils.GSON
@@ -84,11 +83,4 @@ class SearchWsHandler(
 
     override fun onSearchCancel(exception: Throwable?) =
         session.close(exception?.toString() ?: searchFinish)
-
-    override fun onSearchOptionsResolved(options: List<ExploreOption>) {
-    }
-
-    override fun getSearchOptions(): List<ExploreOption> {
-        return emptyList()
-    }
 }

@@ -15,6 +15,7 @@ import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.model.webBook.SearchModel
 import io.legado.app.model.webBook.SourceSearchGroup
 import io.legado.app.ui.root.screenModelScope
+import io.legado.app.utils.concurrent.newConcurrentMap
 import io.legado.app.utils.concurrent.newConcurrentSet
 import io.legado.app.utils.systemCurrentTimeMillis
 import io.legado.app.utils.throttleLatest
@@ -117,12 +118,33 @@ class SearchViewModel {
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
 
-    /** searchOptions 结构版本号, UI 监听此变化以重组选项行。 */
+    /** 搜索选项结构版本号, UI 监听此变化以重组选项行。 */
     private val _searchOptionsVersion = MutableStateFlow(0)
     val searchOptionsVersion = _searchOptionsVersion.asStateFlow()
 
-    /** 单源搜索 URL 声明的可选项 (ExploreOption), 多源搜索时为空。 */
-    val searchOptions = mutableListOf<ExploreOption>()
+    /**
+     * 聚簇布局顶部选项行内容: 仅本轮只有一个搜索源时才返回该源选项 (多源不展示, 对齐原版
+     * 只解析单源选项)。选项实例与 [sourceSearchOptions] 同一仞, 点击直改实例。
+     */
+    fun getTopOptions(): List<ExploreOption> =
+        if (searchModel.isSingleSource) sourceSearchOptions.values.firstOrNull().orEmpty()
+        else emptyList()
+
+    /** 按源分类区块选项行: 取该源已声明选项 (无声明为空, UI 零行)。 */
+    fun getSourceOptions(sourceUrl: String): List<ExploreOption> =
+        sourceSearchOptions[sourceUrl] ?: emptyList()
+
+    /** 区块内选项 chip 变化: 只重搜该源 (其余源结果不动)。 */
+    fun onSourceOptionChanged(sourceUrl: String) {
+        searchModel.restartSource(sourceUrl)
+    }
+
+    /**
+     * 按源隔离的搜索 URL 声明可选项 (key=bookSourceUrl)。
+     * 同源每轮只回调一次 (串行), 异源并发但异 key, 无锁安全;
+     * 聚簇顶部行与按源分类区块行都从这里派生。
+     */
+    private val sourceSearchOptions = newConcurrentMap<String, List<ExploreOption>>()
 
     /** 当前搜索关键词 (空字符串表示未开始, 触底续搜时沿用)。 */
     var searchKey: String = ""
@@ -222,26 +244,27 @@ class SearchViewModel {
             }
         }
 
-        override fun onSearchOptionsResolved(options: List<ExploreOption>) {
-            val structureUnchanged = searchOptions.size == options.size &&
-                searchOptions.zip(options).all { (a, b) ->
+        override fun onSearchOptionsResolved(sourceUrl: String, options: List<ExploreOption>) {
+            val existing = sourceSearchOptions[sourceUrl]
+            val structureUnchanged = existing != null && existing.size == options.size &&
+                existing.zip(options).all { (a, b) ->
                     a.name == b.name && a.options == b.options
                 }
             if (structureUnchanged) {
-                // 保留用户已选中的状态，仅在结构变化时通知 UI
+                // 结构未变: 保留原实例 (用户选中态在实例上), UI 无需刷新
                 return
             }
             val merged = options.map { newOpt ->
-                searchOptions.find { it.name == newOpt.name }
-                    ?.let { existing -> newOpt.apply { copySelectionFrom(existing) } }
+                existing?.find { it.name == newOpt.name }
+                    ?.let { old -> newOpt.apply { copySelectionFrom(old) } }
                     ?: newOpt
             }
-            searchOptions.clear()
-            searchOptions.addAll(merged)
+            sourceSearchOptions[sourceUrl] = merged
             _searchOptionsVersion.value++
         }
 
-        override fun getSearchOptions(): List<ExploreOption> = searchOptions
+        override fun getSearchOptions(sourceUrl: String): List<ExploreOption> =
+            sourceSearchOptions[sourceUrl] ?: emptyList()
     })
 
     init {
@@ -429,8 +452,8 @@ class SearchViewModel {
                 restartSearchBooksCollector()
                 searchKey = key
                 _hasMore.value = true
-                if (resetOptions && searchOptions.isNotEmpty()) {
-                    searchOptions.clear()
+                if (resetOptions && sourceSearchOptions.isNotEmpty()) {
+                    sourceSearchOptions.clear()
                     _searchOptionsVersion.value++
                 }
             }
