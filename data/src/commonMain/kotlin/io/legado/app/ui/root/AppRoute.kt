@@ -228,10 +228,10 @@ sealed interface AppRoute {
     @SerialName("source_filter_rule")
     data object SourceFilterRule : AppRoute
 
-    // 关键词高亮管理 (全局规则, 阅读页顶栏溢出菜单进入)
+    // 关键词高亮管理 (规则默认作用范围 = 本书, 故带上阅读页当前书)
     @Serializable
     @SerialName("keyword_highlight")
-    data object KeywordHighlight : AppRoute
+    data class KeywordHighlight(val book: BookRef? = null) : AppRoute
 
     @Serializable
     @SerialName("rule_sub")

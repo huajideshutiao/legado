@@ -13,8 +13,10 @@ import io.legado.app.ui.book.keyword.KeywordHighlightScreenModel
 import io.legado.app.ui.book.keyword.KeywordHighlightUiActions
 import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.root.AppNavigator
+import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
+import io.legado.app.ui.root.asBook
 
 /**
  * AppRoute.KeywordHighlight 路由下沉入口: 桥接 [KeywordHighlightScreenModel] 与
@@ -31,17 +33,20 @@ fun KeywordHighlightRoute(
         KeywordHighlightScreenModel()
     }
     val state by screenModel.state.collectAsState()
+    // 新增规则的默认作用范围 = 本书 (阅读页入口传入的书名; 无书上下文则留空 = 全局)
+    val defaultScope = (entry.route as? AppRoute.KeywordHighlight)?.book?.asBook()?.name
+        ?.takeIf { it.isNotBlank() }
     // null = 关闭; id=0 表示新增 (对照 BookmarkRoute.editingBookmark)
     var editingRule by remember { mutableStateOf<KeywordHighlight?>(null) }
 
-    val actions = remember(screenModel, navigator) {
+    val actions = remember(screenModel, navigator, defaultScope) {
         object : KeywordHighlightUiActions {
             override fun onBack() {
                 navigator.pop()
             }
 
             override fun onAddRule() {
-                editingRule = KeywordHighlight()
+                editingRule = KeywordHighlight(scope = defaultScope)
             }
 
             override fun onEditRule(rule: KeywordHighlight) {
