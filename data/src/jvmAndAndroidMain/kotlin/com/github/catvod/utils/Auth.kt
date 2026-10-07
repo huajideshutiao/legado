@@ -85,7 +85,7 @@ object Auth {
         val params = HashMap<String, String>()
         val matcher = DIGEST.matcher(header.trim())
         while (matcher.find()) {
-            val key = matcher.group(1)
+            val key = matcher.group(1)!!
             val value = if (matcher.group(2) != null) matcher.group(2) else matcher.group(3)
             if (value != null) params[key] = value.trim()
         }

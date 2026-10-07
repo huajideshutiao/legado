@@ -65,12 +65,12 @@ class ResponseInterceptor : Interceptor {
             .build()
 
     private fun deflate(response: Response): Response {
-        val stream: InputStream = InflaterInputStream(response.body!!.byteStream(), Inflater(true))
+        val stream: InputStream = InflaterInputStream(response.body.byteStream(), Inflater(true))
         return response.newBuilder().headers(response.headers).body(getBody(response, stream)).build()
     }
 
     private fun getBody(response: Response, stream: InputStream): ResponseBody = object : ResponseBody() {
-        override fun contentType(): MediaType? = response.body?.contentType()
+        override fun contentType(): MediaType? = response.body.contentType()
 
         override fun contentLength(): Long = -1
 

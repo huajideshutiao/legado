@@ -15,7 +15,6 @@ import okhttp3.Request
 import okhttp3.RequestBody
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
-import java.util.Objects
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
@@ -128,7 +127,7 @@ object OkHttp {
     fun string(url: String): String {
         if (!url.startsWith("http")) return ""
         return try {
-            newCall(url).execute().use { res -> res.body!!.string() }
+            newCall(url).execute().use { res -> res.body.string() }
         } catch (e: Exception) {
             e.printStackTrace()
             ""
@@ -139,7 +138,7 @@ object OkHttp {
     fun string(url: String, headers: Map<String, String>): String {
         if (!url.startsWith("http")) return ""
         return try {
-            newCall(url, headers).execute().use { res -> res.body!!.string() }
+            newCall(url, headers).execute().use { res -> res.body.string() }
         } catch (e: Exception) {
             e.printStackTrace()
             ""
@@ -206,7 +205,7 @@ object OkHttp {
     }
 
     private fun buildUrl(url: String, params: ArrayMap<String, String>): HttpUrl {
-        val builder = Objects.requireNonNull(url.toHttpUrlOrNull())!!.newBuilder()
+        val builder = url.toHttpUrlOrNull()!!.newBuilder()
         for ((key, value) in params) builder.addQueryParameter(key, value)
         return builder.build()
     }

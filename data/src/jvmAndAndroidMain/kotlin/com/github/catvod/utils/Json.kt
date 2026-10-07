@@ -10,11 +10,7 @@ import org.json.JSONObject
 object Json {
 
     @JvmStatic
-    fun parse(json: String): JsonElement = try {
-        JsonParser.parseString(json)
-    } catch (e: Throwable) {
-        JsonParser().parse(json)
-    }
+    fun parse(json: String): JsonElement = JsonParser.parseString(json)
 
     @JvmStatic
     fun isObj(text: String?): Boolean = try {

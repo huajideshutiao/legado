@@ -93,7 +93,7 @@ object Util {
             for (addresses in nif.inetAddresses) {
                 val addr = addresses
                 if (addr.isLoopbackAddress || addr !is Inet4Address) continue
-                return addr.hostAddress
+                return addr.hostAddress ?: ""
             }
         }
         ""

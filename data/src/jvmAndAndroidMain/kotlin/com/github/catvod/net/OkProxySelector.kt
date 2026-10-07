@@ -64,7 +64,7 @@ open class OkProxySelector : ProxySelector() {
         var item = find(uri)
         if (item == null && previous != null && previous.rule != null &&
             previous.generation == generation && proxyList.contains(previous.rule) &&
-            previous.rule!!.getProxies().isNotEmpty() && uri.host != null && "127.0.0.1" != uri.host
+            previous.rule.getProxies().isNotEmpty() && uri.host != null && "127.0.0.1" != uri.host
         ) {
             item = previous.rule
         }

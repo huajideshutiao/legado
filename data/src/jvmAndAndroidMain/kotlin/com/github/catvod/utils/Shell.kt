@@ -16,7 +16,12 @@ object Shell {
     @JvmStatic
     fun exec(command: String): String = try {
         val sb = StringBuilder()
-        val p = Runtime.getRuntime().exec(command)
+        // Runtime.exec(String) 已被 JDK 弃用: 按它的空白分词规则 (StringTokenizer 默认分隔符)
+        // 自行切词后交 ProcessBuilder, 分词与执行语义不变
+        val tokens = command
+            .split(' ', '\t', '\n', '\r', '\u000C')
+            .filter { it.isNotEmpty() }
+        val p = ProcessBuilder(tokens).start()
         val br = BufferedReader(InputStreamReader(p.inputStream))
         while (true) {
             val line = br.readLine() ?: break

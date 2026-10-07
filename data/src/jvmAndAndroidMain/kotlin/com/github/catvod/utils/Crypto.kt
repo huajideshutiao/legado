@@ -61,7 +61,7 @@ object Crypto {
 
     @JvmStatic
     fun newDigest(algorithm: String?): MessageDigest = try {
-        MessageDigest.getInstance(algorithm)
+        MessageDigest.getInstance(algorithm!!)
     } catch (e: NoSuchAlgorithmException) {
         throw IllegalStateException(e)
     }

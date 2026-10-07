@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION") // 兼容层类镜像上游的弃用标注 (面向扩展作者): 宿主仍需引用 legacy 基类本身, 才能按类层级正确分流取数面
+
 package io.legado.app.model.anime
 
 import eu.kanade.tachiyomi.animesource.AnimeSource
@@ -190,7 +192,6 @@ object VideoSourceDelegateImpl : PluginSourceDelegate {
 
     /** v14 面取数: 真实异常如实上抛 (上游无容错), 源侧排序契约照调。 */
     private suspend fun episodeVideos(source: AnimeHttpSource, episode: SEpisode): List<Video> {
-        @Suppress("DEPRECATION") // v14 episode 级契约; 上游弃用但仍是 legacy 扩展的唯一取数面
         val videos = source.getVideoList(episode)
         return source.run { videos.sortVideos() }
     }
