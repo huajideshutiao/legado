@@ -2,7 +2,6 @@ package io.legado.app.ui.config
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,7 +19,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
@@ -47,7 +45,7 @@ import io.legado.app.help.config.AppConfigRanges
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppDropdownMenu
+import io.legado.app.ui.compose.component.AppDropdownField
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.component.AppSwitch
@@ -94,7 +92,6 @@ import legado.ui.generated.resources.fixed_width_mode
 import legado.ui.generated.resources.grid_width_dp
 import legado.ui.generated.resources.group_style
 import legado.ui.generated.resources.home
-import legado.ui.generated.resources.ic_arrow_drop_down
 import legado.ui.generated.resources.my
 import legado.ui.generated.resources.ok
 import legado.ui.generated.resources.reset
@@ -102,7 +99,6 @@ import legado.ui.generated.resources.show_last_update_time
 import legado.ui.generated.resources.show_unread
 import legado.ui.generated.resources.sort
 import legado.ui.generated.resources.view
-import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringArrayResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -175,17 +171,19 @@ fun BookshelfLayoutConfigDialog(onDismiss: () -> Unit) {
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = DesignTokens.spacingDefault, vertical = DesignTokens.spacingDefault),
                 ) {
-                    ConfigDropdownRow(
+                    AppDropdownField(
                         label = stringResource(Res.string.group_style),
                         options = groupStyles,
                         selectedIndex = groupStyle.intValue,
                         onSelect = { groupStyle.intValue = it },
+                        modifier = Modifier.fillMaxWidth(),
                     )
-                    ConfigDropdownRow(
+                    AppDropdownField(
                         label = stringResource(Res.string.explore_style),
                         options = itemStyles,
                         selectedIndex = if (isVideo.value) 1 else 0,
                         onSelect = { isVideo.value = it == 1 },
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     ConfigSwitchRow(stringResource(Res.string.show_unread), showUnread.value) {
                         showUnread.value = it
@@ -708,47 +706,6 @@ private fun RuleItemScope.NavConfigItem(
             color = tint,
             fontSize = 12.sp,
         )
-    }
-}
-
-/** 标签 + 下拉单行 (对照原版 AppCompatSpinner 行) */
-@Composable
-private fun ConfigDropdownRow(
-    label: String,
-    options: List<String>,
-    selectedIndex: Int,
-    onSelect: (Int) -> Unit,
-) {
-    val colors = AppTheme.colors
-    var expanded by remember { mutableStateOf(false) }
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, color = colors.primaryText, modifier = Modifier.weight(1f))
-        Box {
-            Row(
-                Modifier
-                    .clickable { expanded = true }
-                    .padding(horizontal = DesignTokens.spacingXs, vertical = DesignTokens.spacingXs),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    options.getOrElse(selectedIndex) { "" },
-                    color = colors.primaryText,
-                    fontSize = 14.sp,
-                )
-                Icon(
-                    painter = painterResource(Res.drawable.ic_arrow_drop_down),
-                    contentDescription = null,
-                    tint = colors.secondaryText,
-                )
-            }
-            AppDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                options.forEachIndexed { i, item ->
-                    DropdownMenuItem(onClick = { expanded = false; onSelect(i) }) {
-                        Text(item, color = colors.primaryText)
-                    }
-                }
-            }
-        }
     }
 }
 

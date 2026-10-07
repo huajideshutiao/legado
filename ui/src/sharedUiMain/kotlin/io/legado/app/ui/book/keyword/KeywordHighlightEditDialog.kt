@@ -7,22 +7,17 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.Surface
-import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.KeywordHighlight
-import io.legado.app.ui.book.read.page.overlay.DefaultHighlightColor
-import io.legado.app.ui.book.read.page.overlay.HighlightStyleButton
-import io.legado.app.ui.book.read.page.overlay.HighlightLineStyleRow
+import io.legado.app.ui.book.read.page.overlay.HighlightStyleRow
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.AppUnderlineTextField
 import io.legado.app.ui.compose.component.DialogTitleBar
@@ -32,9 +27,6 @@ import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.cancel
 import legado.ui.generated.resources.delete
-import legado.ui.generated.resources.highlight_color
-import legado.ui.generated.resources.highlight_colored
-import legado.ui.generated.resources.highlight_style
 import legado.ui.generated.resources.keyword
 import legado.ui.generated.resources.keyword_highlight_add
 import legado.ui.generated.resources.keyword_highlight_exclude_scope
@@ -45,8 +37,8 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * 关键词高亮编辑对话框 (新增/编辑共用, 纯 Composable + 回调, 对齐 BookmarkDialog 形态)。
  *
- * 编辑字段 = 关键词 + 作用范围 + 高亮颜色 + 呈现样式; pattern/isRegex 为正则升级预埋列,
- * 第一阶段不暴露编辑入口。
+ * 编辑字段 = 关键词 + 作用范围 + 排除范围 + 高亮样式 (取色/上色/线型); pattern/isRegex 为正则
+ * 升级预埋列, 第一阶段不暴露编辑入口。
  *
  * @param rule 新增传空 id 实例; 确定时以 copy 回传新实例, 调用方负责入库
  */
@@ -63,9 +55,6 @@ fun KeywordHighlightEditDialog(
     val wordLabel = stringResource(Res.string.keyword)
     val scopeLabel = stringResource(Res.string.keyword_highlight_scope)
     val excludeScopeLabel = stringResource(Res.string.keyword_highlight_exclude_scope)
-    val colorLabel = stringResource(Res.string.highlight_color)
-    val coloredLabel = stringResource(Res.string.highlight_colored)
-    val styleLabel = stringResource(Res.string.highlight_style)
     val deleteText = stringResource(Res.string.delete)
     val cancelText = stringResource(Res.string.cancel)
     val okText = stringResource(Res.string.ok)
@@ -119,47 +108,15 @@ fun KeywordHighlightEditDialog(
                     )
 
                     Spacer(Modifier.size(DesignTokens.spacingDefault))
-                    // 高亮颜色: 当前色圆点, 点击弹取色盘 (confirm 统一压 0x50 半透明; 与批注气泡同一选择件)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = colorLabel,
-                            color = colors.primaryText,
-                            fontSize = 15.sp,
-                            modifier = Modifier.weight(1f),
-                        )
-                        HighlightStyleButton(color = color, onColorPicked = { color = it })
-                    }
-
-                    Spacer(Modifier.size(DesignTokens.spacingDefault))
-                    // 上色: 关 = 不画色块 (color 存 null), 只剩线型
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = coloredLabel,
-                            color = colors.primaryText,
-                            fontSize = 15.sp,
-                            modifier = Modifier.weight(1f),
-                        )
-                        AppSwitch(
-                            checked = color != null,
-                            onCheckedChange = { on -> color = if (on) (color ?: DefaultHighlightColor) else null },
-                        )
-                    }
-
-                    Spacer(Modifier.size(DesignTokens.spacingDefault))
-                    // 线型: 无/下划线/波浪线/删除线 (与批注气泡同一选择件)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = styleLabel,
-                            color = colors.primaryText,
-                            fontSize = 15.sp,
-                            modifier = Modifier.weight(1f),
-                        )
-                        HighlightLineStyleRow(
-                            selected = lineStyle,
-                            onLineStyleChange = { lineStyle = it },
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
+                    // 高亮样式: 取色圆点 + 上色开关 + 线型下拉 (与批注气泡同一选择件)
+                    HighlightStyleRow(
+                        color = color,
+                        onColorChange = { color = it },
+                        lineStyle = lineStyle,
+                        onLineStyleChange = { lineStyle = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        labelFontSize = 15.sp,
+                    )
                 }
 
                 // 底部按钮栏: 删除(可选) | 弹性间距 | 取消 | 确定

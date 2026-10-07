@@ -69,7 +69,7 @@ interface ReaderUiActions {
 
     /**
      * 轻点命中已批注区域 (用户拍板: 短路默认单击行为弹气泡): 携带批注实体与
-     * 气泡锚点矩形 (全窗坐标, 锚定命中批注的首个投影色块矩形)。默认空实现。
+     * 气泡锚点矩形 (全窗坐标, 锚定命中批注的整段投影并集)。默认空实现。
      */
     fun onUnderlineTap(bookmark: Bookmark, anchor: Rect) {}
 

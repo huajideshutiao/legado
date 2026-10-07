@@ -1797,7 +1797,7 @@ Windows: winget install shinchiro.mpv 或 scoop install mpv,
 
     <!-- 批注气泡与呈现样式 (批注/关键词高亮共用) -->
     <string name="underline_note">批注</string>
-    <string name="underline_note_add">添加批注</string>
+    <string name="underline_note_hint">写点什么</string>
     <string name="highlight_color">高亮颜色</string>
     <string name="highlight_colored">上色</string>
     <string name="highlight_style">线型</string>

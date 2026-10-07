@@ -19,6 +19,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -312,10 +313,19 @@ fun ReaderRoute(
         }
     }
     // 菜单按钮是 clickable，非触摸输入模式下点击会夺焦；收起菜单后要把焦点收回。
+    // 批注气泡是可聚焦浮层 (要收按键与输入法)，它弹出期间活动窗口失焦，收起气泡同样要把焦点收回。
+    // 一并订阅窗口焦点: 失焦期间请求的焦点可能被随后的失焦事件再清一次，回到前台时再收一次兜底。
     // 用 snapshotFlow 而非直接读 isVisible，避免整页跟着菜单动画重组
+    val windowInfo = LocalWindowInfo.current
     LaunchedEffect(screenModel) {
-        snapshotFlow { screenModel.menuState.isVisible }.collect { visible ->
-            if (!visible) runCatching { keyFocusRequester.requestFocus() }
+        snapshotFlow {
+            Triple(
+                windowInfo.isWindowFocused,
+                screenModel.menuState.isVisible,
+                screenModel.underlineBubble != null,
+            )
+        }.collect { (_, visible, bubbleVisible) ->
+            if (!visible && !bubbleVisible) runCatching { keyFocusRequester.requestFocus() }
         }
     }
 

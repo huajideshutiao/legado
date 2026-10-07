@@ -3,6 +3,8 @@ package io.legado.app.ui.book.read.page.overlay
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import androidx.compose.ui.geometry.Rect
+import kotlin.math.max
+import kotlin.math.min
 
 /**
  * 搜索命中范围（不可变外部状态，使用章节正文的半开字符区间）。
@@ -273,15 +275,21 @@ object PageOverlayProjector {
     }
 
     /**
-     * 命中批注的页内锚定矩形 (首个投影矩形): 轻点批注弹气泡时, 气泡锚点取该矩形
-     * (与绘制同走 [projectHighlight] 投影, 锚点即所见色块)。无投影 (区间为空/消息页) 返回 null。
+     * 命中批注的页内锚定矩形 (投影并集): 轻点批注弹气泡时, 气泡锚点取该矩形
+     * (与绘制同走 [projectHighlight] 投影)。取并集而非首个投影矩形 —— 多行批注弹在首行
+     * 下方会盖住批注自身剩下的行。无投影 (区间为空/消息页) 返回 null。
      */
     fun projectHighlightAnchorRect(textPage: TextPage, highlight: HighlightOverlay): Rect? {
         if (textPage.isMsgPage) return null
-        var anchor: Rect? = null
+        var bounds: Rect? = null
         projectHighlight(textPage, highlight) { l, t, r, b, _ ->
-            if (anchor == null) anchor = Rect(l, t, r, b)
+            val cur = bounds
+            bounds = if (cur == null) {
+                Rect(l, t, r, b)
+            } else {
+                Rect(min(cur.left, l), min(cur.top, t), max(cur.right, r), max(cur.bottom, b))
+            }
         }
-        return anchor
+        return bounds
     }
 }

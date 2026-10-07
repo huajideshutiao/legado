@@ -1076,7 +1076,7 @@ private fun hitColumn(
  * TextColumn 消耗 charData.length、非文字列消耗 1), 与绘制侧 projectHighlight
  * 同一区间口径; 点击列与任一批注 overlay (underlineId > 0) 相交即命中:
  * - 实体经 overlay.underlineId 在 viewModel.underlineBookmarks 同步反查;
- * - 锚点 = 该批注在命中页的首个投影矩形 (projectHighlightAnchorRect, 与所见色块
+ * - 锚点 = 该批注在命中页的投影并集 (projectHighlightAnchorRect, 与所见色块
  *   同源) 折算全窗坐标 (页内 y + 页相对偏移 + 状态栏 + 页眉, 对齐选区菜单锚链路)。
  *
  * @param x/y 正文区坐标 (调用方已减状态栏 + 页眉折算)
@@ -1113,7 +1113,7 @@ private fun dispatchUnderlineTap(
     } ?: return false
     val bookmark = viewModel.underlineBookmarks.value
         .firstOrNull { it.time == underline.underlineId } ?: return false
-    // 锚点: 命中批注在命中页的首个投影矩形 → 全窗坐标 (仅 y 叠相对偏移/状态栏/页眉)
+    // 锚点: 命中批注在命中页的整段投影并集 → 全窗坐标 (仅 y 叠相对偏移/状态栏/页眉)
     val rect = PageOverlayProjector.projectHighlightAnchorRect(hit.page, underline) ?: return false
     val anchor = Rect(
         rect.left,

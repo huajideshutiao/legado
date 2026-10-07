@@ -1729,7 +1729,7 @@
 
     <!-- 划线批注气泡 -->
     <string name="underline_note">Note</string>
-    <string name="underline_note_add">Add note</string>
+    <string name="underline_note_hint">Write something</string>
     <string name="highlight_color">Highlight color</string>
     <string name="highlight_colored">Color</string>
     <string name="highlight_style">Line style</string>

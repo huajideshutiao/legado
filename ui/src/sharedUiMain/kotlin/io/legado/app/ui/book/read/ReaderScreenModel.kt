@@ -980,8 +980,8 @@ class ReaderScreenModel(
     }
 
     /**
-     * 批注回调：以选区折算的章内区间存 Bookmark(type = 1)，成功后即弹批注气泡进入输入态
-     * (拍板：长按菜单点"批注"一步到位；锚点用浮动菜单自身的选区起点方区，全窗坐标)。
+     * 批注回调：以选区折算的章内区间存 Bookmark(type = 1)，成功后即弹批注气泡
+     * (锚点用浮动菜单自身的选区起点方区，全窗坐标)。
      *
      * 偏移与原文同源 ([PageSelectionState.selectedChapterRange] 同一账本遍历), 口径同
      * TextLine.chapterPosition (净化/替换/简繁后的排版输入文本); 章号取区间自身所属章
@@ -998,6 +998,7 @@ class ReaderScreenModel(
             Toasters.get().toast(appString(AppStringKey.underline_cross_chapter_unsupported))
             return@onUnderline
         }
+        val bubbleAnchor = underlineBubbleAnchor(anchor)
         scope.launch {
             val bookmark = Bookmark(bookName = book.name, bookAuthor = book.author).apply {
                 chapterIndex = range.chapterIndex
@@ -1009,17 +1010,35 @@ class ReaderScreenModel(
             }
             runCatching { AppDbProviders.get().bookmarkDao.insert(bookmark) }
                 .onSuccess {
-                    underlineBubble = UnderlineBubbleState(bookmark, anchor, startEditing = true)
+                    underlineBubble = UnderlineBubbleState(bookmark, bubbleAnchor)
                 }
                 .onFailure { AppLog.put("保存批注失败\n${it.message}", it) }
         }
+    }
+
+    /**
+     * 气泡锚点: 菜单锚点方区 (按 readerMenuAnchor 取的选区起点 ±20px 方区, 中心即起点行顶)
+     * 下沿补到选区末行行底 —— 只给 40px 方区时气泡会落在本行中间, 压住被选中的字。
+     * 选区几何是正文区坐标, 与窗口坐标同尺度只差一个平移 (方区中心即起点行顶的窗口 y),
+     * 故直接加高度差; 跨页选区 (末行不在起点页) 退化为起点行行底。
+     */
+    private fun underlineBubbleAnchor(menuAnchor: Rect): Rect {
+        val startLineTop = selection.selectionAnchor()?.y ?: return menuAnchor
+        val startLineBottom = selection.startHandleOffset()?.y ?: return menuAnchor
+        val bottom = if (selection.start.pagePos == selection.end.pagePos) {
+            selection.endHandleOffset()?.y ?: startLineBottom
+        } else {
+            startLineBottom
+        }
+        val offsetY = menuAnchor.center.y - startLineTop
+        return menuAnchor.copy(bottom = (offsetY + bottom).coerceAtLeast(menuAnchor.bottom))
     }
 
     /** 章号对应的目录标题 (目录未装载或越界时为空串, 与批注书签的章名落库口径一致) */
     private fun chapterTitleOf(chapterIndex: Int): String =
         viewModel.chapterList.value.getOrNull(chapterIndex)?.title ?: ""
 
-    // region 批注气泡 (轻点命中批注区域弹出, 长按菜单创建后也自动弹出; 操作完成即关闭)
+    // region 批注气泡 (轻点命中批注区域弹出, 长按菜单创建后也自动弹出; 样式/内容改动气泡保持)
 
     /**
      * 批注气泡状态 (null = 不显示)。快照式: 弹出时定格命中实体与锚点矩形,
@@ -1038,12 +1057,13 @@ class ReaderScreenModel(
     }
 
     /**
-     * 换色/上色/换线型/编辑/删除均直接 PATCH 落 BookmarkDao, 回显由 ChapterHighlightState
-     * 订阅的 DAO flow 自动刷新; 操作完成即关气泡 (拍板)。
+     * 换色/上色/换线型/编辑均直接 PATCH 落 BookmarkDao, 回显由 ChapterHighlightState 订阅的
+     * DAO flow 自动刷新; 气泡保持不关 (快照回写新值供气泡自身回显, 可连着改)。
+     * 快照实体与回显 flow 里是同一个实例, 故一律 copy 出新实例, 不原地改 var 字段。
      */
     fun changeUnderlineColor(color: Int?) {
         val bubble = underlineBubble ?: return
-        underlineBubble = null
+        underlineBubble = bubble.copy(bookmark = bubble.bookmark.copy(color = color))
         scope.launch {
             runCatching {
                 AppDbProviders.get().bookmarkDao.updateColor(bubble.bookmark.time, color)
@@ -1053,7 +1073,7 @@ class ReaderScreenModel(
 
     fun changeUnderlineLineStyle(lineStyle: Int) {
         val bubble = underlineBubble ?: return
-        underlineBubble = null
+        underlineBubble = bubble.copy(bookmark = bubble.bookmark.copy(lineStyle = lineStyle))
         scope.launch {
             runCatching {
                 AppDbProviders.get().bookmarkDao.updateLineStyle(bubble.bookmark.time, lineStyle)
@@ -1063,7 +1083,7 @@ class ReaderScreenModel(
 
     fun saveUnderlineNote(content: String) {
         val bubble = underlineBubble ?: return
-        underlineBubble = null
+        underlineBubble = bubble.copy(bookmark = bubble.bookmark.copy(content = content))
         scope.launch {
             runCatching {
                 AppDbProviders.get().bookmarkDao.updateContent(bubble.bookmark.time, content)
