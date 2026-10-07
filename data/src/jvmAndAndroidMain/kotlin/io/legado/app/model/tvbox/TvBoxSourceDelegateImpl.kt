@@ -65,12 +65,21 @@ object TvBoxSourceDelegateImpl : PluginSourceDelegate {
      * 发现分类: 站点首页 class 数组 (type_id/type_name), "推荐" 置顶 (对应 getExploreAwait
      * 的 popular 段)。分类是 spider 运行时数据, 不写进 exploreUrl 字段; 取数结果由
      * exploreKinds() 落盘缓存 (每站首次进发现页抓一次)。
+     *
+     * 首页**空返回**的站点返回空表: 生态里"只做推送/登录/盘搜"这类站点对 homeContent 回空串
+     * (FongMi `SiteApi.homeContent` 同判据: 空返回 = 空 Result), 发现面本就没有可列内容, 不是
+     * 取数故障。合法 JSON 但无 class 仍只列"推荐" (内容可能只在 homeVod, 推荐段另取), 空表
+     * 不落盘缓存, 下次进发现页重抓 (登录后才列 class 的站点能恢复)。返回 null 会把该行交回
+     * exploreUrl 规则面 (虚拟行是 `@delegate` 占位串), 渲染出一颗点不动的伪分类。非空非法
+     * JSON 仍抛错落成 ERROR 分类项供排查。
      */
     override suspend fun getExploreKinds(bookSource: BookSource): List<ExploreKind>? =
         withContext(IoDispatcher) {
             val siteKey = TvBoxSourceMapper.siteKeyOf(bookSource.bookSourceUrl)
             val (site, spider) = TvBoxManager.spiderFor(siteKey)
-            val home = parseResult(spider.homeContent(true), site)
+            val raw = spider.homeContent(true)
+            if (raw.isNullOrBlank()) return@withContext emptyList()
+            val home = parseResult(raw, site)
             val classes = home.optJSONArray("class") ?: JSONArray()
             val kinds = ArrayList<ExploreKind>(classes.length() + 1)
             kinds += ExploreKind(title = "推荐", url = "popular")
@@ -133,7 +142,7 @@ object TvBoxSourceDelegateImpl : PluginSourceDelegate {
             "popular" -> explorePopular(site, spider)
             "latest" -> exploreLatest(site, spider, page)
             // folder 条目与普通分类同构: 段就是分类 id (FongMi openFolder 走 categoryContent)
-            else -> parseResult(
+            else -> parseResultOrEmpty(
                 spider.categoryContent(segment, page.coerceAtLeast(1).toString(), false, HashMap()),
                 site,
             )
@@ -160,13 +169,14 @@ object TvBoxSourceDelegateImpl : PluginSourceDelegate {
 
     /**
      * 首页推荐: `homeVideoContent()` (FongMi homeVod) 优先, 无 list 时退 `homeContent(false)`。
-     * 两个面生态 spider 常只实现其一 (cat 系给 homeContent 的 class+list, drpy2 系给 homeVod)。
+     * 两个面生态 spider 常只实现其一 (cat 系给 homeContent 的 class+list, drpy2 系给 homeVod);
+     * 两路都空返回 (无推荐面站点) 给空结果, 发现页照实显示空列表。
      */
     private fun explorePopular(site: TvBoxSite, spider: Spider): JSONObject {
         val homeVod = runCatching { spider.homeVideoContent() }.getOrNull()
         parseResultOrNull(homeVod)?.takeIf { (it.optJSONArray("list")?.length() ?: 0) > 0 }
             ?.let { return it }
-        return parseResult(spider.homeContent(false), site)
+        return parseResultOrEmpty(spider.homeContent(false), site)
     }
 
     /**
@@ -174,7 +184,7 @@ object TvBoxSourceDelegateImpl : PluginSourceDelegate {
      * 无 class 即该 spider 不提供可定位的列表页, 如实抛错。
      */
     private fun exploreLatest(site: TvBoxSite, spider: Spider, page: Int): JSONObject {
-        val home = parseResult(spider.homeContent(false), site)
+        val home = parseResultOrEmpty(spider.homeContent(false), site)
         val tid = home.optJSONArray("class")
             ?.optJSONObject(0)?.optString("type_id")?.trim()
             .orEmpty()
@@ -647,6 +657,18 @@ object TvBoxSourceDelegateImpl : PluginSourceDelegate {
     private fun parseResultOrNull(json: String?): JSONObject? {
         if (json.isNullOrBlank()) return null
         return runCatching { JSONObject(json.trim()) }.getOrNull()
+    }
+
+    /**
+     * 空返回归一为"该面无数据"(空对象), 非空非法 JSON 仍抛错。
+     *
+     * 生态约定: spider 对"自己没有这个面"的接口回空串/空白 (如推送/盘搜类站点无首页分类),
+     * 这不是故障; 而"返回了非空却不是 JSON"说明 spider 或站点坏了, 静默吞成空内容会让它
+     * 表现成"站点没内容", 排查时被带偏。
+     */
+    private fun parseResultOrEmpty(json: String?, site: TvBoxSite? = null): JSONObject {
+        if (json.isNullOrBlank()) return JSONObject()
+        return parseResult(json, site)
     }
 
     /** playerContent.header 可为对象或 JSON 字符串, 值一律取字符串形态。 */

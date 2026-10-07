@@ -87,6 +87,8 @@ suspend fun BookSource.exploreKinds(): List<ExploreKind> {
     mutex.withLock {
         exploreKindsMap[exploreKindsKey]?.let { return it }
         val kinds = arrayListOf<ExploreKind>()
+        // 委托返回空表时不落缓存: 站点可能要登录后才列分类, 落盘/内存缓存会让发现面永久为空
+        var emptyFromDelegate = false
         withContext(IoDispatcher) {
             kotlin.runCatching {
                 // 插件虚拟源分类由取数委派运行时枚举 (站点分类是 spider 数据, 不写 exploreUrl 规则);
@@ -101,7 +103,10 @@ suspend fun BookSource.exploreKinds(): List<ExploreKind> {
                     }
                     delegate.getExploreKinds(this@exploreKinds)?.let { fromDelegate ->
                         kinds.addAll(fromDelegate)
-                        ExploreKindsCacheProviders.impl?.put(exploreKindsKey, GSON.toJson(fromDelegate))
+                        emptyFromDelegate = fromDelegate.isEmpty()
+                        if (fromDelegate.isNotEmpty()) {
+                            ExploreKindsCacheProviders.impl?.put(exploreKindsKey, GSON.toJson(fromDelegate))
+                        }
                         return@runCatching
                     }
                 }
@@ -163,7 +168,7 @@ suspend fun BookSource.exploreKinds(): List<ExploreKind> {
                 it.printStackTraceOnDebug()
             }
         }
-        exploreKindsMap[exploreKindsKey] = kinds
+        if (!emptyFromDelegate) exploreKindsMap[exploreKindsKey] = kinds
         return kinds
     }
 }
