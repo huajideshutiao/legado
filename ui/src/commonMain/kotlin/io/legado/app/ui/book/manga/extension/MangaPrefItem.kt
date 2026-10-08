@@ -28,8 +28,11 @@ sealed interface MangaPrefValue {
  * @param index 在 `PreferenceScreen.getPreferences()` 列表中的序号; 交互按它回传定位 shim 实例
  * @param key 插件偏好键 (`Preference.key`); 为空表示扩展不持久化该项
  * @param title 标题 (`Preference.title`)
- * @param summary 摘要 (`Preference.summary`); 含 `%s` 占位时由 UI 侧按当前 entry 文本替换
- *                (对齐 shim 里 `summary = "%s"` 的 ListPreference 用法)
+ * @param summary 摘要 (`Preference.summary`)
+ * @param summaryOn/summaryOff 开关项按勾选状态显示的摘要 (`TwoStatePreference.summaryOn/summaryOff`);
+ *              非空时优先于 [summary]
+ * @param entryText 单选题当前值对应的 entry 文案 (`ListPreference.getEntry()`); 当前值不在
+ *              entryValues 中时为 null
  * @param entries/entryValues 列表项的展示文案与取值 (`ListPreference.entries/entryValues`)
  * @param enabled `Preference.isEnabled` (禁用项按 androidx 语义不响应交互)
  */
@@ -39,32 +42,25 @@ data class MangaPrefItem(
     val title: String,
     val summary: String? = null,
     val value: MangaPrefValue,
+    val summaryOn: String? = null,
+    val summaryOff: String? = null,
+    val entryText: String? = null,
     val entries: List<String> = emptyList(),
     val entryValues: List<String> = emptyList(),
     val enabled: Boolean = true,
 ) {
     /**
-     * 摘要文案: `%s` 占位替换为当前选中项的 entry 文本 (取不到则替换为当前值),
-     * 无占位原样返回。对齐 androidx.preference ListPreference 的 `summary = "%s"` 语义。
+     * 行内摘要, 按值类型对齐 androidx `Preference.getSummary()`:
+     * 开关项取当前勾选状态对应的 `summaryOn`/`summaryOff` (为空则回退 [summary]);
+     * 单选题 (ListPreference) 把 [summary] 里的 `%s` 换成 [entryText] (取不到换空串);
+     * 其余类型 (MultiSelectListPreference/EditTextPreference 无摘要格式化) 直接返回 [summary]。
      */
-    fun displaySummary(): String? {
-        val raw = summary ?: return null
-        if (!raw.contains("%s")) return raw
-        return raw.replace("%s", selectedEntryText() ?: "")
-    }
+    fun displaySummary(): String? = when (val v = value) {
+        is MangaPrefValue.Flag ->
+            (if (v.value) summaryOn else summaryOff).takeUnless { it.isNullOrEmpty() } ?: summary
 
-    /** 当前选中项对应的 entry 展示文案 (ListPreference/MultiSelectListPreference 语义)。 */
-    fun selectedEntryText(): String? = when (val v = value) {
-        is MangaPrefValue.Choice -> {
-            val index = entryValues.indexOf(v.value)
-            entries.getOrNull(index) ?: v.value
-        }
+        is MangaPrefValue.Choice -> summary?.replace("%s", entryText ?: "")
 
-        is MangaPrefValue.MultiChoice -> v.values.joinToString(", ") { selected ->
-            val index = entryValues.indexOf(selected)
-            entries.getOrNull(index) ?: selected
-        }
-
-        else -> null
+        is MangaPrefValue.MultiChoice, is MangaPrefValue.Text -> summary
     }
 }

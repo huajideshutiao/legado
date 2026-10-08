@@ -154,7 +154,9 @@ class SharedMangaSourceConfig(
 
     /**
      * shim Preference → 跨层 [MangaPrefItem] (当前值已在回填阶段从扩展偏好读入 shim,
-     * 未持久化的项沿用扩展声明值)。列表项的 entries/entryValues 供 UI 渲染选择器。
+     * 未持久化的项沿用扩展声明值)。列表项的 entries/entryValues 供 UI 渲染选择器;
+     * 摘要所需信息 (ListPreference 的当前 entry 文案、TwoStatePreference 的 summaryOn/Off)
+     * 一并下沉, UI 层不再自行映射取值。
      */
     private fun Preference.toPrefItem(index: Int): MangaPrefItem {
         val entries = when (this) {
@@ -168,8 +170,9 @@ class SharedMangaSourceConfig(
             else -> emptyList()
         }
         val value: MangaPrefValue = when (this) {
+            // 无值即未选中: 不借用首个 entryValue, 对齐 androidx ListPreference 的空 mValue
             is ListPreference ->
-                MangaPrefValue.Choice(getValue() ?: entryValues.firstOrNull().orEmpty())
+                MangaPrefValue.Choice(getValue().orEmpty())
 
             is MultiSelectListPreference ->
                 MangaPrefValue.MultiChoice(getValues())
@@ -189,6 +192,9 @@ class SharedMangaSourceConfig(
             title = title?.toString().orEmpty(),
             summary = summary?.toString(),
             value = value,
+            summaryOn = (this as? TwoStatePreference)?.summaryOn?.toString(),
+            summaryOff = (this as? TwoStatePreference)?.summaryOff?.toString(),
+            entryText = (this as? ListPreference)?.getEntry()?.toString(),
             entries = entries,
             entryValues = entryValues,
             enabled = enabled,
