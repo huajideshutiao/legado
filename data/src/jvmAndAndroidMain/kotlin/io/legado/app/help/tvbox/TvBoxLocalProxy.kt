@@ -52,7 +52,6 @@ object TvBoxLocalProxy {
             TvBoxJsProxy.port = port
             TvBoxJsProxy.urlProvider = { local -> Proxy.getUrl(local) }
             startFailed = false
-            AppLog.put("$TAG: 本地代理已启动 :$port")
             return true
         }
         startFailed = true
