@@ -178,6 +178,10 @@ interface MediaCommand extends BridgeCommand {
   position?: number;
   speed?: number;
   volume?: number;
+  // 视频画面缩放 (与 Kotlin VideoZoom 同口径: scale 倍数, pan 为本轴可平移范围的比例 -1..1)
+  scale?: number;
+  panX?: number;
+  panY?: number;
   // AVSession 元数据与播放状态同步字段
   title?: string;
   artist?: string;
@@ -200,6 +204,15 @@ interface MediaEventPayload {
   command?: string; // 播控指令: play / pause / stop / next / previous / seek
   /** 仅 onPipStateChanged: true/false = 当前是否在画中画窗口; 非空 message = 失败提示 */
   isPip?: boolean;
+  /** 仅 onVideoSizeChange: 视频解码分辨率 (px), 供画面缩放算平移边界 */
+  width?: number;
+  height?: number;
+}
+
+/** 尺寸 (px)。 */
+export interface Size2D {
+  width: number;
+  height: number;
 }
 
 /**
@@ -296,6 +309,9 @@ export function handleMediaCommand(commandJson: string): void {
       startVideoPip().catch((err: Error) => {
         console.error('[MediaBridge] enterPictureInPicture failed: ' + (err.message ?? String(err)));
       });
+      break;
+    case 'setVideoZoom':
+      handleSetVideoZoom(cmd);
       break;
     case 'release':
       handleRelease(id);
@@ -533,6 +549,9 @@ function handleRelease(id: string): void {
   if (id === PLAYER_ID_VIDEO) {
     // 页面销毁/播放器释放: PiP 小窗必须先收 (否则小窗挂着即将销毁的 surface)
     stopVideoPip();
+    // 画面缩放的三个全局键无其它复位时机 (小窗里手势被禁, 退页不再有状态变化):
+    // 不在这里清就会带出页面的残留缩放
+    handleSetVideoZoom({ action: 'setVideoZoom' });
   }
   releasePlayer(id).catch((err: Error) => {
     console.error('[MediaBridge] release failed: ' + (err.message ?? String(err)));
@@ -641,6 +660,13 @@ function registerPlayerEvents(id: string, player: media.AVPlayer): void {
     emitEvent(id, { event: 'onDuration', duration: duration });
   });
 
+  // 解码分辨率变化 (装载完成 / 切清晰度) → 发 onVideoSizeChange
+  // 画面缩放的平移边界取它 (与 Kotlin 手势层同一口径), 缺失时按铺满容器兜底
+  // 回调实参是两个 number (SDK d.ts: OnVideoSizeChangeHandler = (width, height) => void)
+  player.on('videoSizeChange', (width: number, height: number) => {
+    emitEvent(id, { event: 'onVideoSizeChange', width: width, height: height });
+  });
+
   // 播放位置更新 → 发 onPosition (供 Kotlin 缓存 currentPosition getter)
   player.on('timeUpdate', (time: number) => {
     emitEvent(id, { event: 'onPosition', position: time });
@@ -663,6 +689,33 @@ function registerPlayerEvents(id: string, player: media.AVPlayer): void {
       emitEvent(id, { event: 'onCachedDuration', cachedDuration: value });
     }
   });
+}
+
+// ===== 视频画面缩放 (Kotlin → ArkTS) =====
+
+/**
+ * XComponent 是原生 surface 混排节点, Compose 的图层变换作用不到它 —— 画面缩放只能在
+ * ArkTS 侧做。Kotlin 侧把缩放状态经 media 命令通道推来 (与 VideoZoom 同口径: scale 倍数,
+ * pan 为本轴可平移范围的比例 -1..1), 这里写进 AppStorage; Index.ets 的 LegadoVideoSurface
+ * 组件用 @StorageLink 订阅后施加到 XComponent。
+ */
+export const VIDEO_ZOOM_SCALE_KEY: string = 'legadoVideoZoomScale';
+export const VIDEO_ZOOM_PAN_X_KEY: string = 'legadoVideoZoomPanX';
+export const VIDEO_ZOOM_PAN_Y_KEY: string = 'legadoVideoZoomPanY';
+
+function handleSetVideoZoom(cmd: MediaCommand): void {
+  AppStorage.setOrCreate(VIDEO_ZOOM_SCALE_KEY, cmd.scale ?? 1);
+  AppStorage.setOrCreate(VIDEO_ZOOM_PAN_X_KEY, cmd.panX ?? 0);
+  AppStorage.setOrCreate(VIDEO_ZOOM_PAN_Y_KEY, cmd.panY ?? 0);
+}
+
+/** 视频解码分辨率 (px); 未装载 / 未就绪时返回 0 (调用方按铺满容器兜底)。 */
+export function getVideoPixelSize(): Size2D {
+  const player = playerOf(PLAYER_ID_VIDEO);
+  if (player == null) {
+    return { width: 0, height: 0 };
+  }
+  return { width: player.width, height: player.height };
 }
 
 // ===== 内部工具函数 =====

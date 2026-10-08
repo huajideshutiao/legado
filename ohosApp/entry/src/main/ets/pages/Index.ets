@@ -13,7 +13,7 @@ import {
 } from '../bridge/MarkdownBridgeHandler';
 import { initKeyboardBridge } from '../bridge/KeyboardBridgeHandler';
 import { initSystemBridgeUiContext } from '../bridge/SystemBridgeHandler';
-import { setVideoSurfaceId, setVideoPipSurfaceController } from '../bridge/MediaBridgeHandler';
+import { setVideoSurfaceId, setVideoPipSurfaceController, getVideoPixelSize, Size2D } from '../bridge/MediaBridgeHandler';
 
 const DOMAIN: number = 0x0000;
 
@@ -24,16 +24,81 @@ const DOMAIN: number = 0x0000;
 // 绑定到 videoBook AVPlayer (player.surfaceId = surfaceId), 否则视频只能出声没有画面。
 const videoSurfaceController: XComponentController = new XComponentController();
 
-@Builder
-function LegadoVideoSurfaceBuilder(param: object) {
-  XComponent({ id: 'legadoVideoSurface', type: XComponentType.SURFACE, controller: videoSurfaceController })
-    .onLoad((): void => {
-      setVideoSurfaceId(videoSurfaceController.getXComponentSurfaceId());
-      // controller 一并注入画中画通道 (PiPWindow.create 的 componentController 复用本 XComponent 的 surface)
-      setVideoPipSurfaceController(videoSurfaceController);
-    })
+/**
+ * 视频画面 (XComponent surface + 画面缩放)。
+ *
+ * XComponent 是原生 surface 混排节点, Compose 的图层变换作用不到它, 所以缩放只能在本组件做:
+ * Kotlin 侧把手势算出的 VideoZoom 经 media 命令通道推给 MediaBridgeHandler 写进 AppStorage,
+ * 这里用 @StorageLink 订阅。
+ *
+ * - 缩放: scale 以组件中心为锚
+ * - 平移: offset 按“画面 FIT 后的显示尺寸 × 倍数 − 容器”折算成 vp, 与 Kotlin 手势层同一口径
+ * - 外层 Stack 裁剪: 放大后的画面不能盖到选集网格/控制栏以外的区域
+ *
+ * SURFACE 类盯能设置的动态属性以本机 SDK 组件文档为准: 从 API 18 起不支持清单是
+ * background/animation/gesture/clip/align 等, 不含 scale/offset。
+ */
+@Component
+struct LegadoVideoSurface {
+  // 键字面量必与 MediaBridgeHandler.ets 的 VIDEO_ZOOM_*_KEY 一致 (@StorageLink 的键要求字面量)
+  @StorageLink('legadoVideoZoomScale') zoomScale: number = 1;
+  @StorageLink('legadoVideoZoomPanX') panX: number = 0;
+  @StorageLink('legadoVideoZoomPanY') panY: number = 0;
+  @State boxWidth: number = 0;
+  @State boxHeight: number = 0;
+
+  build() {
+    Stack() {
+      XComponent({ id: 'legadoVideoSurface', type: XComponentType.SURFACE, controller: videoSurfaceController })
+        .onLoad((): void => {
+          setVideoSurfaceId(videoSurfaceController.getXComponentSurfaceId());
+          // controller 一并注入画中画通道 (PiPWindow.create 的 componentController 复用本 XComponent 的 surface)
+          setVideoPipSurfaceController(videoSurfaceController);
+        })
+        .onAreaChange((_oldArea: Area, newArea: Area): void => {
+          this.boxWidth = newArea.width as number;
+          this.boxHeight = newArea.height as number;
+        })
+        .width('100%')
+        .height('100%')
+        .scale({ x: this.zoomScale, y: this.zoomScale, centerX: '50%', centerY: '50%' })
+        .offset({ x: this.panOffsetX(), y: this.panOffsetY() })
+    }
     .width('100%')
     .height('100%')
+    .clip(true)
+  }
+
+  /** 画面按宽高比 FIT 进容器的显示尺寸 (vp); 视频尺寸未知时按铺满容器 (同手势层的兜底口径)。 */
+  private fitContent(): Size2D {
+    const size: Size2D = getVideoPixelSize();
+    if (size.width <= 0 || size.height <= 0 || this.boxWidth <= 0 || this.boxHeight <= 0) {
+      return { width: this.boxWidth, height: this.boxHeight };
+    }
+    // px2vp 自 API 18 起弃用 (建议改走 UIContext.px2vp), 但后者需 API 18+ 而本工程兼容 API 12,
+    // 故保留全局函数
+    const videoWidth: number = px2vp(size.width);
+    const videoHeight: number = px2vp(size.height);
+    const fit: number = Math.min(this.boxWidth / videoWidth, this.boxHeight / videoHeight);
+    return { width: videoWidth * fit, height: videoHeight * fit };
+  }
+
+  /** 横向平移量 (vp): 可平移范围 × 位置比例 (-1..1); 画面未超出容器时为 0 (居中)。 */
+  private panOffsetX(): number {
+    const content: Size2D = this.fitContent();
+    return this.panX * Math.max(0, (content.width * this.zoomScale - this.boxWidth) / 2);
+  }
+
+  /** 同 [panOffsetX], 纵向。 */
+  private panOffsetY(): number {
+    const content: Size2D = this.fitContent();
+    return this.panY * Math.max(0, (content.height * this.zoomScale - this.boxHeight) / 2);
+  }
+}
+
+@Builder
+function LegadoVideoSurfaceBuilder(param: object) {
+  LegadoVideoSurface()
 }
 
 // ===== Markdown 查看器 Web 组件 (interop builder) =====

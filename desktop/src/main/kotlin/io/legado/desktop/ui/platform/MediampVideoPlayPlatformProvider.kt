@@ -11,9 +11,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import io.legado.app.constant.AppLog
 import io.legado.app.ui.book.video.PlaybackSnapshot
 import io.legado.app.ui.book.video.VideoGestureController
@@ -21,6 +23,9 @@ import io.legado.app.ui.book.video.VideoPlayPlatformProvider
 import io.legado.app.ui.book.video.VideoPlayScreenModel
 import io.legado.app.ui.book.video.VideoPlayUiEvent
 import io.legado.app.ui.book.video.VideoPlayerController
+import io.legado.app.ui.book.video.VideoZoomHandle
+import io.legado.app.ui.compose.component.zoomMaxPanX
+import io.legado.app.ui.compose.component.zoomMaxPanY
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.desktop.audio.DesktopScreenBrightness
 import io.legado.desktop.audio.DesktopSystemVolume
@@ -147,6 +152,12 @@ class MediampVideoPlayPlatformProvider(
                 writeVolume = { mediampController.postVolume(it) },
                 onToggleControls = screenModel::onToggleControls,
                 onGestureText = screenModel::onGestureText,
+                // 画面缩放: 手势只改共享状态, 由渲染面订阅后写入 mpv 显示参数
+                zoom = VideoZoomHandle(
+                    current = { screenModel.zoom.value },
+                    set = screenModel::onZoomChange,
+                    aspectRatio = { screenModel.videoAspectRatio.value },
+                ),
             )
         }
     }
@@ -333,6 +344,26 @@ class MediampVideoPlayerController(
 
     override val positionMs: Long get() = player.currentPositionMillis.value
     override val durationMs: Long get() = player.mediaProperties.value?.durationMillis ?: 0L
+
+    /**
+     * 上报画面显示比例给共享层 (手势层的可平移范围与质心锚点按它算)。
+     *
+     * 取 mpv `dwidth`/`dheight` = 显示尺寸 (含旋转与变形宽高比), 不是编码尺寸 ——
+     * 后者对旋转/变形源会算错边界。值未变时不重复上报 (调用方在播放态变化时高频触发)。
+     */
+    fun publishVideoAspectRatio(screenModel: VideoPlayScreenModel) {
+        if (released) return
+        val mpv = player.impl as? MPVHandle ?: return
+        val width = mpv.getPropertyInt("dwidth")
+        val height = mpv.getPropertyInt("dheight")
+        val ratio = if (width > 0 && height > 0) width.toFloat() / height else null
+        if (ratio == reportedAspectRatio) return
+        reportedAspectRatio = ratio
+        screenModel.onVideoAspectRatioChanged(ratio)
+    }
+
+    /** 已上报的画面显示比例 (避免每帧查 mpv 属性) */
+    private var reportedAspectRatio: Float? = null
 
     /**
      * 已缓冲到的时间点 (进度条缓冲层用)。
@@ -601,6 +632,15 @@ private fun MediampSurfaceRender(
     val url = videoUrl?.url
     val headers = videoUrl?.headerMap ?: emptyMap()
 
+    // 画面缩放: 手势层只写共享状态。mediamp 把视频帧画进 Compose 场景 (Canvas 绘制 GPU 纹理),
+    // 所以图层变换直接生效 —— 实测 mpv 的 video-scale/video-align 在 vo=libmpv 渲染路径下不改变画面
+    val zoom by screenModel.zoom.collectAsState()
+    val videoAspectRatio by screenModel.videoAspectRatio.collectAsState()
+    // 媒体变化 (装载完成 / 换源 / 视频重配) 后重新上报显示比例: 手势层的边界按它算
+    LaunchedEffect(controller) {
+        controller.playback.collect { controller.publishVideoAspectRatio(screenModel) }
+    }
+
     DisposableEffect(controller) {
         controller.onSurfaceEntered()
         onDispose {
@@ -630,12 +670,26 @@ private fun MediampSurfaceRender(
         modifier
             .fillMaxSize()
             .background(Color.Black)
+            // 放大后的画面不能盖到选集网格/控制栏上 (裁剪必须在变换外层)
+            .clipToBounds()
             .focusRequester(focusRequester)
             .focusable(),
     ) {
+        // 放大的是已经 FIT 好的帧 (对纹理再放大, 无画质增益), 属图层变换的固有代价;
+        // 平移范围按图层实际尺寸与画面比例算, 不取布局约束
         MediampPlayerSurface(
             mediampPlayer = controller.player,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    val scale = zoom.scale.takeIf { it.isFinite() } ?: 1f
+                    val maxPanX = zoomMaxPanX(size.width, size.height, videoAspectRatio, scale)
+                    val maxPanY = zoomMaxPanY(size.width, size.height, videoAspectRatio, scale)
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = zoom.panX * maxPanX
+                    translationY = zoom.panY * maxPanY
+                },
         )
     }
 }

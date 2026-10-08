@@ -32,6 +32,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
 import kotlin.concurrent.Volatile
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * 视频播放页 shared ScreenModel: 适配 [VideoPlayViewModelShared] 各 StateFlow
@@ -90,6 +92,36 @@ data class PlaybackSnapshot(
      */
     val showPlayIcon: Boolean
         get() = !playWhenReady || ended || idle
+}
+
+/**
+ * 画面缩放状态 (双指捏合 / Ctrl+滚轮改写, 渲染层读它应用)。
+ *
+ * @param scale 相对 FIT 显示的画面缩放倍数 ([VideoZoomMinScale]..[VideoZoomMaxScale])
+ * @param panX 画面中心的横向位置, 单位是“本轴可平移范围” (0 = 居中, ±1 = 贴左/右边)
+ * @param panY 同上, 纵向 (0 = 居中, ±1 = 贴上/下边)
+ */
+/** 位移残留容差 (归一化位移): 极轻的捏合会因锚点公式留下远小于它的位移 */
+private const val PanDefaultEpsilon = 0.005f
+
+data class VideoZoom(
+    val scale: Float = 1f,
+    val panX: Float = 0f,
+    val panY: Float = 0f,
+) {
+    /**
+     * 是否为默认视图 (显示值四舍五入为 100% 且未平移)。
+     * 判据必须与控制栏显隐同一口径: 两套标准会让“状态已非默认但界面没有重置入口”的空档复活。
+     * 位移与倍率用同一套容差: 严格要求等于 0 会让极轻的捏合留下微小位移时,
+     * 界面看着是默认视图却常驻一个显示 100% 的重置入口。
+     */
+    val isDefault: Boolean
+        get() = percent == 100 &&
+            abs(panX) <= PanDefaultEpsilon &&
+            abs(panY) <= PanDefaultEpsilon
+
+    /** 显示用缩放百分比 (四舍五入) */
+    val percent: Int get() = (scale * 100f).roundToInt()
 }
 
 /**
@@ -273,6 +305,21 @@ class VideoPlayScreenModel : ScreenModel {
      */
     private val _gestureText = MutableStateFlow<String?>(null)
     val gestureText: StateFlow<String?> = _gestureText.asStateFlow()
+
+    /**
+     * 画面缩放状态 (双指捏合 / Ctrl+滚轮改写, 控制层与渲染层同读这一份)。
+     * 独立 flow 而非并入 [state]: 捏合期间每帧变, 并进主 state 会整页重组。
+     */
+    private val _zoom = MutableStateFlow(VideoZoom())
+    val zoom: StateFlow<VideoZoom> = _zoom.asStateFlow()
+
+    /**
+     * 画面显示宽高比 (宽/高, 已含变形像素比与旋转后的显示尺寸); null = 未就绪。
+     *
+     * 各端在几何变化时上报 (装载完成 / 换分辨率): 手势层的可平移范围与质心锚点都按它算。
+     */
+    private val _videoAspectRatio = MutableStateFlow<Float?>(null)
+    val videoAspectRatio: StateFlow<Float?> = _videoAspectRatio.asStateFlow()
 
     /** onExit 已执行标记: 一次活跃期只保存一次 (释放后位置归零), [onResume] 重开 */
     private var exited = false
@@ -463,11 +510,38 @@ class VideoPlayScreenModel : ScreenModel {
         _gestureText.value = text
     }
 
+    /**
+     * 画面缩放变更 (双指捏合 / Ctrl+滚轮)。
+     *
+     * 传进来的值已经按容器与画面尺寸钳制过 (见 [VideoGestureController]), 这里只兜底倍率范围。
+     */
+    fun onZoomChange(zoom: VideoZoom) {
+        _zoom.value = zoom.copy(
+            scale = zoom.scale.coerceIn(VideoZoomMinScale, VideoZoomMaxScale),
+        )
+    }
+
+    /** 重置画面缩放到默认视图 (重置钮)。 */
+    fun onResetZoom() {
+        if (!_zoom.value.isDefault) _zoom.value = VideoZoom()
+    }
+
+    /** 画面显示比例变化上报 (各端渲染层); 非正或非有限值按未就绪处理。 */
+    fun onVideoAspectRatioChanged(aspectRatio: Float?) {
+        _videoAspectRatio.value = aspectRatio?.takeIf { it.isFinite() && it > 0f }
+    }
+
     fun onSeekBack() = controller?.seekBack() ?: Unit
     fun onSeekForward() = controller?.seekForward() ?: Unit
 
-    /** 进入系统画中画（控制栏画中画钮）：平台能力，委托 [VideoPlayPlatformProvider.enterPictureInPicture] */
+    /**
+     * 进入系统画中画（控制栏画中画钮）：平台能力，委托 [VideoPlayPlatformProvider.enterPictureInPicture]。
+     *
+     * 小窗是等比缩小的“整窗画面”: 放大裁剪的画面进去会变成局部特写, 所以进小窗先回默认视图;
+     * 退出小窗不做任何恢复 —— 一次进出只有这一个缩放动作。
+     */
     fun onEnterPictureInPicture() {
+        onResetZoom()
         platform?.enterPictureInPicture(controller)
     }
 

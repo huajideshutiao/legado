@@ -438,6 +438,7 @@ fun VideoControlsOverlay(
                         ),
                         color = Color.White,
                         fontSize = 14.sp,
+                        maxLines = 1,
                         modifier = Modifier.weight(1f),
                     )
                     SpeedButton(
@@ -970,7 +971,7 @@ fun VideoLockToggle(
  * 平台仅需通过 [VideoPlayPlatformProvider.RenderSurface] 提供纯视频画面 Surface。
  * 全部 UI 覆盖层在此统一编排:
  * 1. 平台原生 Surface (底面)
- * 2. 手势交互层 (单击切控制栏/双击播放暂停/长按倍速/横竖滑动)
+ * 2. 手势交互层 (单击切控制栏/双击播放暂停/长按倍速/横竖滑动/双指缩放/Ctrl+滚轮缩放)
  * 3. 错误占位 / 加载中转圈 (样式统一为主题强调色缓冲圈)
  * 4. 播放控制栏 (中央播放快进快退选集 + 底部进度条/倍速/分辨率/全屏)
  * 5. 锁定/解锁钮 (锁定后隐藏手势与控制栏)
@@ -986,6 +987,8 @@ fun VideoPlayerHostContainer(
 ) {
     val uiState by screenModel.state.collectAsState()
     val gestureText by screenModel.gestureText.collectAsState()
+    // 画面缩放 (双指捏合/Ctrl+滚轮改写): 控制层显示百分比与重置钮, 渲染层订阅后应用到画面
+    val zoom = screenModel.zoom.collectAsState().value
     // 播放态直读控制器快照流 (回显唯一数据源, 见 [PlaybackSnapshot]): 图标 / 倍速 / 缓冲 /
     // 控制栏自动隐藏全部同源。上一版把这些缓存在 UiState 里、靠各端"记得回灌", 结果
     // 桌面/iOS/鸿蒙三端全漏 (按钮恒显示暂停态、控制栏永不自动隐藏), Android 端又因监听器
@@ -1042,7 +1045,9 @@ fun VideoPlayerHostContainer(
         )
     }
     val gestureController = customGestureController ?: defaultGestureController
-
+    // 画面显示比例变化 (装载完成 / 换分辨率): 手势层按新几何把画面位置收敛回边界内
+    val videoAspectRatio by screenModel.videoAspectRatio.collectAsState()
+    LaunchedEffect(videoAspectRatio) { gestureController.onVideoGeometryChanged() }
     val loadState = uiState.loadState
     // 覆盖层之外仍按布尔用 (控制层显隐 / 缓冲圈互斥), 从单一状态源派生
     val error = loadState.errorMessage
@@ -1162,14 +1167,29 @@ fun VideoPlayerHostContainer(
             )
         }
 
-        // 7. 手势反馈文字 (画中画内不渲染)
-        gestureText?.takeIf { !isPip }?.let {
-            VideoGestureFeedbackText(
-                text = it,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = DesignTokens.spacingLg),
-            )
+        // 7. 手势反馈与缩放状态共用一个显示位 (画中画/锁定态不渲染):
+        //    手势进行中显示反馈文字 (长按倍速/音量/亮度/进度/捏合百分比); 无手势时缩放非默认则
+        //    常驻显示当前百分比, 重置入口也放在同一处; 锁屏只留小锁钮, 此处不能被误触重置缩放
+        if (!isPip && !uiState.isLocked) {
+            val feedback = gestureText
+            if (feedback != null) {
+                VideoGestureFeedbackText(
+                    text = feedback,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = DesignTokens.spacingLg),
+                )
+            } else if (!zoom.isDefault) {
+                // 缩放非默认: 百分比文案本身就是重置入口 (点位与长按倍速提示同一处)
+                VideoGestureFeedbackText(
+                    text = "${zoom.percent}%",
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = DesignTokens.spacingLg)
+                        .clip(DesignTokens.shapeSm)
+                        .clickable { screenModel.onResetZoom() },
+                )
+            }
         }
 
         // 8. 无系统返回通道的平台 (iOS): 全屏期间常驻退出入口。

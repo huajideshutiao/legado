@@ -76,20 +76,19 @@ fun Modifier.zoomable(
 
     // 钳制语义对齐 TouchImageView：以 Fit 拟合后的内容尺寸为准，放大超出容器的轴向
     // 边缘贴容器边缘，未超出的轴向保持居中——容器尺寸只在无宽高比信息时兜底
-    fun maxOffsetX(s: Float): Float {
-        val w = size.width.toFloat(); val h = size.height.toFloat()
-        val ar = currentAspectRatio
-        val cw = if (ar != null && ar > 0f && w > 0f && h > 0f)
-            (if (ar > w / h) w else h * ar) else w
-        return ((cw * s - w) / 2f).coerceAtLeast(0f)
-    }
-    fun maxOffsetY(s: Float): Float {
-        val w = size.width.toFloat(); val h = size.height.toFloat()
-        val ar = currentAspectRatio
-        val ch = if (ar != null && ar > 0f && w > 0f && h > 0f)
-            (if (ar > w / h) w / ar else h) else h
-        return ((ch * s - h) / 2f).coerceAtLeast(0f)
-    }
+    // (与视频画面缩放共用同一套公式, 见 zoomMaxPanX/zoomMaxPanY)
+    fun maxOffsetX(s: Float): Float = zoomMaxPanX(
+        width = size.width.toFloat(),
+        height = size.height.toFloat(),
+        aspectRatio = currentAspectRatio,
+        scale = s,
+    )
+    fun maxOffsetY(s: Float): Float = zoomMaxPanY(
+        width = size.width.toFloat(),
+        height = size.height.toFloat(),
+        aspectRatio = currentAspectRatio,
+        scale = s,
+    )
     fun clampX(o: Float, s: Float) = maxOffsetX(s).let { o.coerceIn(-it, it) }
     fun clampY(o: Float, s: Float) = maxOffsetY(s).let { o.coerceIn(-it, it) }
     fun clamp(o: Offset, s: Float) = Offset(clampX(o.x, s), clampY(o.y, s))
@@ -251,3 +250,40 @@ fun Modifier.zoomable(
             translationY = panY
         }
 }
+
+// ---- 缩放/平移边界 (图片查看与视频画面缩放共用) ----
+
+/**
+ * 缩放内容按 [aspectRatio] FIT 进 [width]x[height] 容器后的显示宽度。
+ *
+ * [aspectRatio] 为 null/非正, 或容器尺寸未知时返回容器宽 (按铺满容器处理)。
+ */
+fun zoomFitContentWidth(width: Float, height: Float, aspectRatio: Float?): Float =
+    if (aspectRatio != null && aspectRatio > 0f && width > 0f && height > 0f)
+        (if (aspectRatio > width / height) width else height * aspectRatio) else width
+
+/** 同 [zoomFitContentWidth], 返回 FIT 后的显示高度。 */
+fun zoomFitContentHeight(width: Float, height: Float, aspectRatio: Float?): Float =
+    if (aspectRatio != null && aspectRatio > 0f && width > 0f && height > 0f)
+        (if (aspectRatio > width / height) width / aspectRatio else height) else height
+
+/**
+ * 横向最大平移量 (内容 FIT 后按 [scale] 放大超出容器的部分的一半);
+ * 内容未超出容器时为 0 —— 该轴保持居中, 不允许拖动。
+ */
+fun zoomMaxPanX(
+    width: Float,
+    height: Float,
+    aspectRatio: Float?,
+    scale: Float,
+): Float = ((zoomFitContentWidth(width, height, aspectRatio) * scale - width) / 2f)
+    .coerceAtLeast(0f)
+
+/** 同 [zoomMaxPanX], 纵向。 */
+fun zoomMaxPanY(
+    width: Float,
+    height: Float,
+    aspectRatio: Float?,
+    scale: Float,
+): Float = ((zoomFitContentHeight(width, height, aspectRatio) * scale - height) / 2f)
+    .coerceAtLeast(0f)

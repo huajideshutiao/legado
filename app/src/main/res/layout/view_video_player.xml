@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  视频渲染面。必须 texture_view: 画面缩放由 Compose 图层变换施加, 只有参与 View 合成的渲染面
+  (TextureView) 会跟随; SurfaceView 的内容由系统合成器独立输出, 图层变换对它无效。
+  surface_type 只有 XML 属性, PlayerView 没有对应的运行时 setter。
+
+  其余播放器属性 (useController / resize_mode / show_buffering) 一律在代码里设, 保持单一来源。
+-->
+<androidx.media3.ui.PlayerView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    app:surface_type="texture_view" />

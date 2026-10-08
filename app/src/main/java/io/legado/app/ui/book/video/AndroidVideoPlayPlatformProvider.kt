@@ -9,22 +9,28 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.content.res.Resources
+import android.graphics.Rect
 import android.graphics.drawable.Icon
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.util.Rational
+import android.view.LayoutInflater
+import android.view.TextureView
 import androidx.annotation.DrawableRes
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -51,6 +57,8 @@ import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
+import io.legado.app.ui.compose.component.zoomMaxPanX
+import io.legado.app.ui.compose.component.zoomMaxPanY
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.main.MainActivity
 import io.legado.app.utils.hasPlayableScheme
@@ -112,6 +120,9 @@ class AndroidVideoPlayPlatformProvider(
      *  页面退出后残留的是已 release 的实例 (仅剩快照字段, 不再持媒体), 无需主动清理。 */
     private var activeController: AndroidVideoPlayerController? = null
 
+    /** 视频渲染面引用 (画中画源矩形按它算); 渲染面离开组合时置空 */
+    private var playerView: PlayerView? = null
+
     /** [MainActivity.onPictureInPictureModeChanged] 转发入口。 */
     internal fun onPipModeChanged(isInPip: Boolean) {
         this.isInPip = isInPip
@@ -125,6 +136,7 @@ class AndroidVideoPlayPlatformProvider(
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val c = controller as? AndroidVideoPlayerController
         activeController = c
+        // 系统拒绝 (策略禁用/窗口不可用) 时不额外处理: 进小窗的缩放重置就是一次性的
         activity.enterPictureInPictureMode(buildPipParams(c))
     }
 
@@ -173,12 +185,41 @@ class AndroidVideoPlayPlatformProvider(
             .setAspectRatio(pipAspectRatio(controller))
             .setActions(buildRemoteActions(playing))
             .apply {
+                // 源矩形 = 视频区在窗口中的实际位置与尺寸: 官方指南明确设置它才能让进入画中画
+                // 的转场按这块区域无缝缩放, Android 12+ 对退出画中画同样生效 —— 不设就只能按
+                // 整窗插值, 小窗展开回页时画面跳变
+                pipSourceRect(playerView)?.let { setSourceRectHint(it) }
+                // 无缝缩放保持系统默认 (开): 它是为视频内容准备的; 关掉会让系统在小窗里按新尺寸
+                // 重新呈现内容 —— 小窗里会看到完整界面而不是只有画面
                 // 小窗头部标题与视频页标题栏同源 (API 33+ 才有该展示位, 低版本不设置)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     controller?.pipTitle?.takeIf { it.isNotEmpty() }?.let { setTitle(it) }
                 }
             }
             .build()
+    }
+
+    /**
+     * 视图重排后把最新参数 (含可见区域) 同步给系统; 退出小窗前的重排靠它。非小窗态是 no-op。
+     *
+     * 可见区域取自渲染面的布局位置与尺寸 —— 小窗期缩放恒为默认视图 (进小窗即重置, 退出不恢复),
+     * 图层变换此时是恒等变换, 两者自洽。
+     */
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun refreshPipSourceRect() {
+        val controller = activeController ?: return
+        if (pipSourceRect(playerView) == null) return
+        activity.setPictureInPictureParams(buildPipParams(controller))
+    }
+
+    /** 视频区的窗口坐标矩形; 视图未布局或未在组合时为 null (不设源矩形)。 */
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun pipSourceRect(view: PlayerView?): Rect? {
+        val v = view ?: return null
+        if (v.width <= 0 || v.height <= 0) return null
+        val location = IntArray(2)
+        v.getLocationInWindow(location)
+        return Rect(location[0], location[1], location[0] + v.width, location[1] + v.height)
     }
 
     /** 小窗遥控三键 (官方 RemoteActions + 广播模式): 上一章/下一章恒显, 中键图标按播放态二选一 */
@@ -266,18 +307,53 @@ class AndroidVideoPlayPlatformProvider(
             screenModel.setFullScreen(isLandscape && isPhone)
         }
 
+        // 画面缩放 (共享手势层只写状态): 缩放施加在 Compose 图层上, 与桌面同一机制。
+        // 图层高于媒体库自己的内容帧布局, 不受它的测量与裁剪影响; 图层变换只对参与 View 合成的
+        // 渲染面可见 —— 渲染面必须是纹理视图 (布局资源已声明), 不是时下方显式报错。
+        val zoomState = screenModel.zoom.collectAsState()
+        val videoAspectRatioState = screenModel.videoAspectRatio.collectAsState()
         AndroidView(
             factory = { context ->
-                PlayerView(context).apply {
+                val view = LayoutInflater.from(context)
+                    .inflate(R.layout.view_video_player, null, false) as PlayerView
+                view.apply {
                     useController = false
                     setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                     setBackgroundColor(android.graphics.Color.BLACK)
                     player = androidController.player
+                    this@AndroidVideoPlayPlatformProvider.playerView = this
+                    // 独立合成的渲染面 (SurfaceView) 不参与 View 合成, 图层变换对它无效 ——
+                    // 这种失效必须在日志里可见
+                    if (videoSurfaceView !is TextureView) {
+                        AppLog.put("视频渲染面不是纹理视图, 画面缩放不会生效")
+                    }
+                    // 退出小窗时系统会先把视图层级重排成全屏布局: 官方要求在动画开始前把最新
+                    // 可见区域交给系统, 否则展开动画按过时矩形插值, 画面跳变
+                    addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) refreshPipSourceRect()
+                    }
                 }
             },
-            update = { it.player = androidController.player },
-            modifier = modifier.fillMaxSize(),
+            update = { view -> view.player = androidController.player },
+            modifier = modifier
+                .fillMaxSize()
+                // 放大后的画面不能盖到选集网格/控制栏上 (裁剪必须在变换外层)
+                .clipToBounds()
+                // 状态在图层参数更新阶段读取 (非组合期): 缩放/几何变化只重算图层参数, 不触发重组
+                .graphicsLayer {
+                    val zoom = zoomState.value
+                    val aspectRatio = videoAspectRatioState.value
+                    val scale = zoom.scale.takeIf { it.isFinite() } ?: 1f
+                    // 平移范围与共享手势层同一公式 (内容 FIT 后超出容器的部分)。媒体库对宽高比
+                    // 有 1% 容差 (差异小于它时内容帧就是容器), 这里按严格 FIT 算, 最多偏 0.5%
+                    val maxPanX = zoomMaxPanX(size.width, size.height, aspectRatio, scale)
+                    val maxPanY = zoomMaxPanY(size.width, size.height, aspectRatio, scale)
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = zoom.panX * maxPanX
+                    translationY = zoom.panY * maxPanY
+                },
         )
 
         // videoUrl: 非 null = 装载新源, null = 章节重新加载中 (loadChapter 先清空旧源)
@@ -293,6 +369,10 @@ class AndroidVideoPlayPlatformProvider(
         DisposableEffect(androidController, screenModel) {
             androidController.bind(screenModel)
             onDispose { androidController.unbind() }
+        }
+        // 渲染面引用 (画中画源矩形按它算): 离开组合后置空
+        DisposableEffect(androidController) {
+            onDispose { playerView = null }
         }
     }
 
@@ -342,6 +422,12 @@ class AndroidVideoPlayPlatformProvider(
                 onGestureText = screenModel::onGestureText,
                 volumeMax = maxVolume.toFloat(),
                 volumeStep = 1f,
+                // 画面缩放: 手势只改共享状态, 由渲染层施加到视频面 (见 RenderSurface)
+                zoom = VideoZoomHandle(
+                    current = { screenModel.zoom.value },
+                    set = screenModel::onZoomChange,
+                    aspectRatio = { screenModel.videoAspectRatio.value },
+                ),
             )
         }
     }
@@ -454,6 +540,12 @@ internal class AndroidVideoPlayerController(
 
         override fun onVideoSizeChanged(videoSize: VideoSize) {
             this@AndroidVideoPlayerController.videoSize = videoSize
+            // 画面显示比例 (含变形像素比): 手势层的可平移范围与质心锚点按它算, 变化时共享层重钳位置
+            screenModel.onVideoAspectRatioChanged(
+                if (videoSize.height > 0) {
+                    videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height
+                } else null
+            )
             // 画中画中自动连播跨比例章节时同步刷新系统小窗 (内部自判是否在 PiP, 否则 no-op)
             (screenModel.platform as? AndroidVideoPlayPlatformProvider)
                 ?.refreshPipParams(this@AndroidVideoPlayerController)

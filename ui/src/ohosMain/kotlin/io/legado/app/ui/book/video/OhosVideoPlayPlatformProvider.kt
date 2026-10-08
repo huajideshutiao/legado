@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.interop.ArkUIView2
 import androidx.compose.ui.napi.js
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import io.legado.app.help.toast.Toasters
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.utils.KS_JSON
@@ -61,6 +62,12 @@ object OhosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
         // 只把 url 递给 AVPlayer 就是裸请求 → 403, 观感是"黑屏一下然后报错"
         val headers = videoUrl?.headerMap?.toMap().orEmpty()
         val ohosController = controller as? OhosVideoPlayerController
+
+        // 画面缩放: 以控制器为键 (控制器换实例后也要重发一次), 经 media 命令通道推给 ArkTS 侧 ——
+        // XComponent 是原生 surface 混排节点, Compose 的图层变换作用不到它。
+        LaunchedEffect(ohosController) {
+            snapshotFlow { screenModel.zoom.value }.collect { ohosController?.applyZoom(it) }
+        }
 
         LaunchedEffect(url, headers) {
             if (url != null) {
@@ -115,6 +122,12 @@ object OhosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
                 writeVolume = { ohosController.setVolume(it) },
                 onToggleControls = screenModel::onToggleControls,
                 onGestureText = screenModel::onGestureText,
+                // 画面缩放: 手势只改共享状态, 由渲染面推给 ArkTS 侧施加 (见 RenderSurface)
+                zoom = VideoZoomHandle(
+                    current = { screenModel.zoom.value },
+                    set = screenModel::onZoomChange,
+                    aspectRatio = { screenModel.videoAspectRatio.value },
+                ),
             )
         }
     }
@@ -575,9 +588,20 @@ class OhosVideoPlayerController(
             "onDuration" -> event.duration?.let { cachedDuration = it }
             "onPosition" -> event.position?.let { cachedPosition = it }
 
+            "onVideoSizeChange" -> {
+                // 画面显示比例: 手势层的可平移范围与质心锚点按它算 (变化时共享层重钳位置)
+                screenModel.onVideoAspectRatioChanged(
+                    event.width?.let { width ->
+                        event.height?.let { height -> if (height > 0) width.toFloat() / height else null }
+                    }
+                )
+                return
+            }
+
             "onPipStateChanged" -> {
-                // 画中画窗口态由 ArkTS PiPWindow stateChange 推来; isPip 缺省视为 false
-                OhosVideoPlayPlatformProvider.pipActive = event.isPip == true
+                // 小窗窗口态由 ArkTS PiPWindow stateChange 推来; isPip 缺省视为 false
+                val active = event.isPip == true
+                OhosVideoPlayPlatformProvider.pipActive = active
                 event.message?.let { Toasters.get().toast(it) }
                 return
             }
@@ -616,6 +640,24 @@ class OhosVideoPlayerController(
     }
 
     /**
+     * 视频宽高比 (宽/高); 未装载或未就绪时 null (手势层边界按铺满容器兜底)。
+     */
+    /**
+     * 画面缩放: 经 media 命令通道交给 ArkTS 侧施加到 XComponent —— 混排的 surface 节点不受
+     * Compose 图层变换影响, 缩放只能在 ArkTS 侧做 (见 MediaBridgeHandler.handleSetVideoZoom)。
+     */
+    internal fun applyZoom(zoom: VideoZoom) {
+        sendCommand(
+            MediaCommand(
+                action = "setVideoZoom",
+                scale = zoom.scale,
+                panX = zoom.panX,
+                panY = zoom.panY,
+            )
+        )
+    }
+
+    /**
      * media 命令 (Kotlin → ArkTS, 与 MediaBridgeHandler.ets 的 MediaCommand 接口对齐)。
      *
      * 两条装源通道共用一个结构: `setSourceUrl` 填 [url] + [headers], `setSource` 填 [path]
@@ -635,6 +677,10 @@ class OhosVideoPlayerController(
         val position: Long? = null,
         val speed: Float? = null,
         val volume: Double? = null,
+        // 视频画面缩放 (与共享层 VideoZoom 同口径: scale 倍数, pan 为本轴可平移范围的比例 -1..1)
+        val scale: Float? = null,
+        val panX: Float? = null,
+        val panY: Float? = null,
     )
 
     @Serializable
@@ -647,6 +693,9 @@ class OhosVideoPlayerController(
         val position: Long? = null,
         // 仅 onPipStateChanged: true/false = 当前是否在画中画窗口; 带非空 message = 失败提示
         val isPip: Boolean? = null,
+        // 仅 onVideoSizeChange: 视频解码分辨率 (px)
+        val width: Int? = null,
+        val height: Int? = null,
     )
 }
 
