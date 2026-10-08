@@ -5,33 +5,20 @@ name: iOS Build
 # stage 控制深度, 调试 YAML/脚本语法时用 klib 即可, 不必每次跑完整 ipa。
 # iOS 不进 release.yml 流水线: 手动 dispatch 本 workflow, 产物由自带 publish job 发布到
 # multiplatform-test 测试 Release (真机 ipa 发包时重建 Release 使提交与排位刷到最新,
-# 模拟器包只追加), 供真机侧载与 ios-remote 拉取; reusable 调用 (workflow_call) 只产
-# artifact, 永不写 Release。
+# 模拟器包只追加), 供真机侧载与 ios-remote 拉取。
 on:
   workflow_dispatch:
     inputs:
       stage:
         description: '构建深度: klib=只编 Kotlin iOS klib / link=编静态库+链接 framework / ipa=完整出未签名 ipa / simulator=出模拟器构建包'
         required: true
-        default: 'klib'
+        default: 'ipa'
         type: choice
         options:
           - klib
           - link
           - ipa
           - simulator
-  workflow_call:
-    inputs:
-      stage:
-        description: '构建深度: klib / link / ipa / simulator'
-        required: false
-        default: 'ipa'
-        type: string
-      version:
-        description: '版本号 (用于 ipa 文件名); 留空则按当前时间生成'
-        required: false
-        default: ''
-        type: string
 
 # 组名不能用 github.workflow: 被调用时它是调用方的工作流名, 会和调用方自己的
 # concurrency group 撞成死锁 (调用方占着组, 被调用 job 排队等同一个组)。
@@ -57,7 +44,7 @@ jobs:
 
       - name: Set version
         id: ver
-        # 被 release.yml 调用时用上游 prepare 的版本号, 保证与 APK/桌面包同源
+        # 未传版本号则按当前时间生成
         run: |
           v="${{ inputs.version }}"
           [ -n "$v" ] || v="$(TZ=Asia/Shanghai date +3.%y.%m%d%H%M)"
@@ -357,7 +344,7 @@ jobs:
 
   # 手动构建完成后发布到 multiplatform-test 测试 Release: 真机 ipa 重建 Release
   # (提交与排位刷到最新, 旧资产清空), 模拟器包只追加不动既有资产;
-  # klib/link 是调试档无产物, 不发布; reusable 调用 (workflow_call) 永不写 Release。
+  # klib/link 是调试档无产物, 不发布。
   publish-multiplatform-test:
     needs: ios
     if: ${{ github.event_name == 'workflow_dispatch' && (inputs.stage == 'ipa' || inputs.stage == 'simulator') }}
