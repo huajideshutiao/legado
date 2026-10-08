@@ -409,7 +409,6 @@ fun BookshelfManageRoute(
     groupSelectTarget?.let { target ->
         val groupVm = remember(scope) { GroupViewModelShared(scope) }
         GroupSelectDialog(
-            groups = uiState.groups,
             initialGroupId = selectingGroupId,
             onConfirm = { groupId ->
                 handleGroupSelect(target, groupId, screenModel, scope)

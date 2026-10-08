@@ -93,8 +93,6 @@ import io.legado.app.ui.widget.dialog.PhotoViewOverlayDialog
 import io.legado.app.ui.widget.dialog.decodePhotoOverlayPayload
 import io.legado.app.ui.widget.dialog.photoOverlayTextColor
 import io.legado.app.ui.widget.keyboard.KeyboardAssistsConfigOverlayContent
-import kotlinx.coroutines.flow.conflate
-import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -961,16 +959,9 @@ private fun GroupSelectDialogContent(overlay: AppOverlay.Dialog, navigator: AppN
     val initialGroupId = overlay.payload?.toLongOrNull() ?: 0L
     val scope = rememberCoroutineScope()
     val groupViewModel = remember(scope) { GroupViewModelShared(scope) }
-    var groups by remember { mutableStateOf<List<BookGroup>>(emptyList()) }
     var editingGroup by remember { mutableStateOf<BookGroup?>(null) }
     var addingGroup by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        AppDbProviders.get().bookGroupDao.flowSelect().conflate().flowOn(IoDispatcher).collect {
-            groups = it
-        }
-    }
     GroupSelectDialog(
-        groups = groups,
         initialGroupId = initialGroupId,
         onConfirm = { groupId ->
             navigator.dismissOverlay(
