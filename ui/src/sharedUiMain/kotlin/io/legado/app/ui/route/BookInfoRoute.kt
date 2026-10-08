@@ -28,6 +28,7 @@ import io.legado.app.help.book.isRss
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
+import io.legado.app.help.book.toggleBookshelfCore
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.showSourceLogin
@@ -343,8 +344,11 @@ fun BookInfoRoute(
 
         // 评论: Android 恢复原版 BottomSheet 对话框 (全功能交互+提交), 其余平台回退共享列表页
         override fun onOpenCommentDialog() {
-            if (PlatformCapabilityProviders.get().showReviewListDialog(book, null, -1)) return
-            navigator.push(AppRoute.ReviewList(book.toRouteRef()))
+            // 用刷新后的 state.book (与 setSourceVariable/目录入口同口径),
+            // 不用进页时的路由快照 —— 搜索书进页会被换成库里那本
+            val b = state.book ?: book
+            if (PlatformCapabilityProviders.get().showReviewListDialog(b, null, -1)) return
+            navigator.push(AppRoute.ReviewList(b.toRouteRef()))
         }
 
         // 源变量: 委托平台弹窗 (需 BookSource 对象)
@@ -457,6 +461,8 @@ fun BookInfoRoute(
                     },
                     onWaitDialog = { screenModel.upWaitDialog(it) },
                     onAction = { screenModel.postAction(it) },
+                    // 上架时把已装载的目录一并落库 (对照原 addToBookshelf), 否则进阅读页要回源再拉一次
+                    chapters = screenModel.loadedChapterList,
                 )
         }
 
@@ -549,16 +555,12 @@ fun BookInfoRoute(
                             ?: return@collect
                         val b = screenModel.state.value.book ?: book
                         b.group = groupId
-                        // 在书架: 直接更新; 不在书架且选了非"未分组": 去 notShelf 后入库
-                        // (对照 app 端 addToBookshelf → Book.save)
-                        if (screenModel.state.value.inBookshelf) {
-                            withContext(IoDispatcher) { AppDbProviders.get().bookDao.update(b) }
-                        } else if (groupId > 0) {
+                        // 上架/落库走统一核心 (对照原版 upGroup → viewModel.addToBookshelf):
+                        // 补 order、迁移同名书进度、去 notShelf 后 update/insert、目录入库。
+                        // 上一版在架分支只 update、不在架分支只换 type 位 → 排序与进度不迁移、目录不入库
+                        if (screenModel.state.value.inBookshelf || groupId > 0) {
                             withContext(IoDispatcher) {
-                                b.removeType(BookType.notShelf)
-                                val db = AppDbProviders.get()
-                                if (db.bookDao.has(b.bookUrl)) db.bookDao.update(b)
-                                else db.bookDao.insert(b)
+                                b.toggleBookshelfCore(inBookshelf = false, chapters = screenModel.loadedChapterList)
                             }
                             screenModel.dispatch(BookInfoUiEvent.UpdateBookshelf(true))
                         }

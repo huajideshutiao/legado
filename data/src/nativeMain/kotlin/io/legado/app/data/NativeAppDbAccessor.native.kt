@@ -55,7 +55,7 @@ class NativeAppDbAccessor : AppDbAccessor {
     override val bookDao: BookDao get() = appDb.bookDao
     override val bookSourceDao: BookSourceDao get() = appDb.bookSourceDao
     override val bookChapterDao: BookChapterDao get() = appDb.bookChapterDao
-    // BookInfoViewModelShared.loadGroup 用 (查询分组名)
+    // 详情页读分组名 / 书架分组流用 (bookGroupDao)
     override val bookGroupDao: BookGroupDao get() = appDb.bookGroupDao
     override val keywordHighlightDao: KeywordHighlightDao get() = appDb.keywordHighlightDao
     override val replaceRuleDao: ReplaceRuleDao get() = appDb.replaceRuleDao

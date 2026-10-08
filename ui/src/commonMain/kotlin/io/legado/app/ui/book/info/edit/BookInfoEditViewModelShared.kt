@@ -42,7 +42,7 @@ import kotlinx.coroutines.withContext
  * 改为通过类名匹配 (`e::class.simpleName == "SQLiteConstraintException"`),
  * 行为等价 (Room 抛出的异常类名固定为 `SQLiteConstraintException`)。
  *
- * # 设计选择 (组合委托, 与 BookInfoViewModelShared 一致)
+ * # 设计选择 (组合委托)
  *
  * 不采用 `expect abstract class` 让 app 端子类继承: BaseViewModel 是 AndroidViewModel,
  * commonMain 不可用, Kotlin 单继承会冲突。改用**组合委托**模式:

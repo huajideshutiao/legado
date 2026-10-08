@@ -235,7 +235,12 @@ fun ReaderRoute(
     LaunchedEffect(textAreaSize) {
         if (textAreaSize == null || bookInitialized) return@LaunchedEffect
         bookInitialized = true
-        screenModel.initBook(book, route.chapterIndex, route.chapterPos)
+        screenModel.initBook(
+            book,
+            route.chapterIndex,
+            route.chapterPos,
+            isSearchBook = route.book is BookRef.Search,
+        )
     }
 
     val state = remember(screenModel) {

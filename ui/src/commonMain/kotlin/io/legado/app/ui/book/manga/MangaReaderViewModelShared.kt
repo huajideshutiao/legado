@@ -7,7 +7,6 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.AppWebDavShared
-import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookChapterLoader
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.isLocal
@@ -37,6 +36,8 @@ import io.legado.app.ui.book.manga.entities.MangaContent
 import io.legado.app.ui.book.manga.entities.MangaPage
 import io.legado.app.ui.book.manga.entities.ReaderLoading
 import io.legado.app.ui.book.read.ReadBookEvents
+import io.legado.app.ui.root.BookRef
+import io.legado.app.ui.root.asBook
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.mapIndexed
 import io.legado.app.utils.postEvent
@@ -273,15 +274,17 @@ class MangaReaderViewModelShared(
      * 初始化数据 (对应 app 端 ReadMangaViewModel.initData)。
      *
      * app 端从 Intent 解包 chapterChanged/chapterIndex/chapterPos, shared 版本改为
-     * 参数注入 (actual 平台薄壳解包 Intent 后调用本方法)。book 取值顺序与 app 端
-     * 一致: IntentData.book as? Book ?: _book.value。
+     * 参数注入 (actual 平台薄壳解包 Intent 后调用本方法)。book 取自路由引用 [book],
+     * 在架且来自搜索/发现列表时由装载入口并回库里那本。
      *
+     * @param book 路由持有的书籍引用 (来源信息保留在 [BookRef] 里, 供装载入口做来源对账)
      * @param chapterChanged 是否章节跳转 (对应 intent.getBooleanExtra("chapterChanged"))
      * @param overrideIndex 覆盖章节索引, -1 表示不覆盖 (对应 intent.getIntExtra("chapterIndex", -1))
      * @param overridePos 覆盖章节位置 (对应 intent.getIntExtra("chapterPos", 0))
      * @param success 成功回调 (对应 app 端 onSuccess)
      */
     fun initData(
+        book: BookRef,
         chapterChanged: Boolean = false,
         overrideIndex: Int = -1,
         overridePos: Int = 0,
@@ -289,20 +292,16 @@ class MangaReaderViewModelShared(
     ) {
         scope.launch {
             runCatching {
-                val book = (IntentData.book as? Book) ?: _book.value
-                if (book != null) {
-                    this@MangaReaderViewModelShared.chapterChanged = chapterChanged
-                    val isSameBook = _book.value?.bookUrl == book.bookUrl
-                    upBook(book)
-                    // upBook 结束后 _book 已是 Book, 这里再改 durChapter*, 让 initMangaData 走清缓存分支
-                    if (overrideIndex >= 0) {
-                        _book.value?.durChapterIndex = overrideIndex
-                        _book.value?.durChapterPos = overridePos
-                    }
-                    initManga(_book.value!!, isSameBook)
-                } else {
-                    _loadState.value = ChapterLoadState.Error("没有找到书")
+                val incoming = book.asBook()
+                this@MangaReaderViewModelShared.chapterChanged = chapterChanged
+                val isSameBook = _book.value?.bookUrl == incoming.bookUrl
+                upBook(incoming, isSearchBook = book is BookRef.Search)
+                // upBook 结束后 _book 已是 Book, 这里再改 durChapter*, 让 initMangaData 走清缓存分支
+                if (overrideIndex >= 0) {
+                    _book.value?.durChapterIndex = overrideIndex
+                    _book.value?.durChapterPos = overridePos
                 }
+                initManga(_book.value!!, isSameBook)
             }.onSuccess {
                 success()
             }.onFailure {
@@ -316,12 +315,12 @@ class MangaReaderViewModelShared(
     /**
      * 加载书籍 + 书源 + 章节列表 (对应 app 端 BaseReadViewModel.upBook)。
      *
-     * BaseReadViewModel 重 Android 依赖 (IntentData/source 等), 留 app 端;
-     * 本方法仅保留 manga VM 用到的核心逻辑: 设置 _book, 读 bookSource, 读 chapterList。
+     * @param isSearchBook 书来自搜索/发现列表 (BookRef.Search) → 装载入口做来源对账,
+     *   把在架书的瘦身副本换成库里那本
      */
-    private suspend fun upBook(book: Book) {
+    private suspend fun upBook(book: Book, isSearchBook: Boolean = false) {
         val result = runCatching {
-            BookChapterLoader.upBook(book)
+            BookChapterLoader.upBook(book, isSearchBook = isSearchBook)
         }.onFailure {
             AppLog.put("读取书籍失败\n${it.message}", it)
             _loadState.value = ChapterLoadState.Error("获取目录失败: ${it.message}")

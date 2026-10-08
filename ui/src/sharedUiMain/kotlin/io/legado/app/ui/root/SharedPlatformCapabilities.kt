@@ -104,9 +104,10 @@ interface SharedPlatformCapabilities : PlatformCapabilities {
         onComplete: (Boolean?) -> Unit,
         onWaitDialog: (Boolean) -> Unit,
         onAction: (String) -> Unit,
+        chapters: List<BookChapter>?,
     ) {
         capabilityScope.launch {
-            runCatching { book.toggleBookshelfCore(inBookshelf) }
+            runCatching { book.toggleBookshelfCore(inBookshelf, chapters) }
                 .onSuccess { onComplete(it) }
                 .onFailure {
                     AppLog.put("书架操作失败\n${it.message}", it)

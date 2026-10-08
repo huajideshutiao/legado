@@ -37,7 +37,7 @@ import kotlin.concurrent.Volatile
  * 下沉 SearchModel/SearchScope/SearchBookFilter/SourceHelp 时新增
  * sourceFilterRuleDao/httpTTSDao/cacheDao 3 个 DAO 暴露点。
  *
- * 下沉 BookInfoViewModelShared.loadGroup 时新增 bookGroupDao 暴露点。
+ * 详情页读分组名时新增 bookGroupDao 暴露点。
  *
  * 全部 17 个 DAO 均已暴露: shared 业务代码统一走本接口 (AppDbProviders.get()),
  * AppDatabaseProviders 仅保留给 AppDbAccessor 实现与需要完整 Room API
@@ -47,7 +47,7 @@ interface AppDbAccessor {
     val bookDao: BookDao
     val bookSourceDao: BookSourceDao
     val bookChapterDao: BookChapterDao
-    /** 书架分组 DAO (BookInfoViewModelShared.loadGroup / BookshelfViewModel 用)。 */
+    /** 书架分组 DAO (详情页读分组名 / BookshelfViewModel 用)。 */
     val bookGroupDao: BookGroupDao
 
     /** 关键词高亮 DAO (备份/恢复 keywordHighlight.json 用)。 */

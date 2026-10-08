@@ -253,13 +253,19 @@ interface PlatformCapabilities {
     /** 书籍变量弹窗 (对照 onSetBookVariable) */
     fun showBookVariableDialog(book: Book) = unsupported("编辑书籍变量")
 
-    /** 书架操作: 上架/下架 (对照 onShelfClick, onComplete: null=删除, true=已上架, false=取消) */
+    /**
+     * 书架操作: 上架/下架 (对照 onShelfClick, onComplete: null=删除, true=已上架, false=取消)
+     *
+     * @param chapters 上架时随书落库的目录 (对照原 addToBookshelf 里的
+     *   `chapterListData.value?.let { bookChapterDao.insert(...) }`); null = 调用方无内存目录
+     */
     fun toggleBookshelf(
         book: Book,
         inBookshelf: Boolean,
         onComplete: (Boolean?) -> Unit,
         onWaitDialog: (Boolean) -> Unit = {},
         onAction: (String) -> Unit = {},
+        chapters: List<BookChapter>? = null,
     ) {
         unsupported("书架操作")
     }

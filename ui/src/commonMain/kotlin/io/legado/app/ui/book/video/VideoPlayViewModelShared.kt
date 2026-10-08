@@ -216,23 +216,27 @@ class VideoPlayViewModelShared(
     )
 
     /**
-     * 初始化数据 (对照 desktop `VideoPlayerViewModel.initData` /
-     * app `VideoViewModel.initData`)。
+     * 初始化数据 (对照 archive `VideoViewModel.initData`)。
      *
-     * @param book 待播放的视频书
-     * @param initialChapterIndex 初始章节序号 (通常取 book.durChapterIndex)
-     * @param persistProgress 是否在加载初始章节时持久化进度 (对照 [loadChapter] persistProgress)。
-     *   shared 路由入口若已通过 [applyChapterOverride] 写回 chapterIndex/chapterPos,
-     *   传 false 避免覆盖; app 端经 [initWithExternalChapters] 走 false 同理。
+     * @param book 待播放的视频书 (路由引用物化而来)
+     * @param startChapterIndex 起播章序号, 不写进度 (目录为空时重装用); null = 取 book.durChapterIndex
+     * @param chapterIndexOverride 书签/目录回传的章节定位, -1 不覆盖 (对应原版
+     *   `intent.getIntExtra("chapterIndex", -1)`); 覆盖会写进度, 且在装载对账之后施加 —— 对账可能把书
+     *   换成库里那本, 先覆盖会写在被丢弃的对象上
+     * @param persistProgress 是否在加载初始章节时持久化进度 (对照 [loadChapter] persistProgress)
+     * @param isSearchBook 书来自搜索/发现列表 (BookRef.Search), 供装载入口做来源对账
      */
     suspend fun initData(
         book: Book,
-        initialChapterIndex: Int = book.durChapterIndex,
+        startChapterIndex: Int? = null,
+        chapterIndexOverride: Int = -1,
+        chapterPosOverride: Int = 0,
         persistProgress: Boolean = true,
+        isSearchBook: Boolean = false,
     ) {
         directTarget = null
         val result = runCatching {
-            BookChapterLoader.upBook(book)
+            BookChapterLoader.upBook(book, isSearchBook = isSearchBook)
         }.onFailure {
             AppLog.put("加载书籍失败\n${it.message}", it)
             _loadState.value = ChapterLoadState.Error("加载书籍失败: ${it.message}")
@@ -255,8 +259,16 @@ class VideoPlayViewModelShared(
         // 加载初始章节: 从已存进度恢复起播位置 (对照原版
         // `VideoViewModel.position = curBook.durChapterPos.coerceAtLeast(0)`;
         // 片尾编码 -1 被 coerce 抹成 0 = 从头播)
-        val targetIndex =
-            initialChapterIndex.coerceIn(0, (result.chapterList.size - 1).coerceAtLeast(0))
+        if (chapterIndexOverride >= 0) {
+            // 书签/目录回传的章节定位: 写在已对账的书上 (对照原版 upBook 之后的 override 分支)
+            result.book.durChapterIndex = chapterIndexOverride
+            result.book.durChapterPos = chapterPosOverride
+            saveRead(chapterIndexOverride, chapterPosOverride.toLong())
+        }
+        val targetIndex = (
+            if (chapterIndexOverride >= 0) result.book.durChapterIndex
+            else startChapterIndex ?: result.book.durChapterIndex
+            ).coerceIn(0, (result.chapterList.size - 1).coerceAtLeast(0))
         loadChapter(
             targetIndex,
             persistProgress,
@@ -721,7 +733,11 @@ class VideoPlayViewModelShared(
         val book = curBook
         if (book != null && chapterList.isNullOrEmpty()) {
             scope.launch {
-                initData(book, _curChapterIndex.value, persistProgress)
+                initData(
+                    book,
+                    startChapterIndex = _curChapterIndex.value,
+                    persistProgress = persistProgress,
+                )
             }
             return
         }
@@ -853,12 +869,12 @@ class VideoPlayViewModelShared(
     }
 
     /**
-     * 应用书签/目录回传的章节定位 (对照 app `VideoViewModel.initData` override 分支:
+     * 应用目录回传的章节定位 (对照 app `VideoViewModel.initData` override 分支:
      * curBook.durChapterIndex = overrideIndex; curBook.durChapterPos = overridePos;
      * saveRead(overridePos.toLong()))。
      *
-     * 写回 [curBook] 内存字段 + PATCH books 表,
-     * 供 [VideoPlayScreenModel] ShowBook / TOC 回填调用。
+     * 写回 [curBook] 内存字段 + PATCH books 表。书签/路由带入的定位不走这里 ——
+     * 它们由 [initData] 的 `chapterIndexOverride` 在对账之后统一施加。
      *
      * @param book 当前书籍 (与 [curBook] 同一引用)
      * @param chapterIndex 章节序号

@@ -28,15 +28,20 @@ data class BookLoadResult(
  *
  * 完整还原 archive 分支 [io.legado.app.base.BaseReadViewModel.upBook] 与
  * [io.legado.app.base.BaseReadViewModel.loadChapterList] 的核心流转管线:
- * 1. **书源装载**: 本地书为 null，网络书查 `bookSourceDao`
- * 2. **书籍信息补全**: 若 `tocUrl` 为空或 `totalChapterNum == 0`，回源 `WebBook.getBookInfoAwait` 并在架落库
- * 3. **目录装载**: 内存交接 (`IntentData`) -> 本地数据库 (`bookChapterDao`) -> 回源拉取 (`FileBook` / `WebBook`)
- * 4. **在架落库**: 重新拉取后自动同步更新 `books` 表与 `book_chapters` 表
+ * 1. **来源对账**: 在架且来自搜索/发现列表的书换成库里那本 ([resolveShelfBook])
+ * 2. **书源装载**: 本地书为 null，网络书查 `bookSourceDao`
+ * 3. **书籍信息补全**: `tocUrl` 为空时回源 `WebBook.getBookInfoAwait`, 在架则落库
+ * 4. **目录装载**: 内存交接 (`IntentData`) -> 本地数据库 (`bookChapterDao`) -> 回源拉取 (`FileBook` / `WebBook`)
+ * 5. **在架落库**: 重新拉取后自动同步更新 `books` 表与 `book_chapters` 表
  */
 object BookChapterLoader {
 
     /**
      * 统一装载书籍核心状态 (对应 archive 端 BaseReadViewModel.upBook)。
+     *
+     * @param book 路由/调用方给的书; 在架且 [isSearchBook] 为真时会换成库里那本
+     * @param isSearchBook 书来自搜索/发现列表的瞬态对象 (BookRef.Search); 决定是否做来源对账
+     *   (同名异源标记 notShelf / 同源并回书架那本), 对应 archive 的 `book is SearchBook`
      */
     suspend fun upBook(
         book: Book,
@@ -44,61 +49,108 @@ object BookChapterLoader {
         isSearchBook: Boolean = false,
         forceReload: Boolean = false,
     ): BookLoadResult {
-        if (book.isRss) {
-            book.tocUrl = book.bookUrl
-            book.bookUrl = "data:"
+        // 在架判定取一次, 库查询后再纠正 (archive: inBookshelf = !book.isNotShelf 再按对账结果改)。
+        // 落库门禁必须用它, 不能就地重读 !book.isNotShelf —— 搜索/发现列表的瞬态副本恰好带着
+        // "在架"的 type 位却没有进度/目录, 按它整行 update 会把书架行的进度与元数据抹掉。
+        var inShelf = !book.isNotShelf
+        // 来源对账: 在架且来自搜索/发现列表 → 用库里那本 (archive upBook 的这一步)
+        val curBook = resolveShelfBook(book, isSearchBook)
+        if (curBook.isRss) {
+            curBook.tocUrl = curBook.bookUrl
+            curBook.bookUrl = "data:"
         }
 
-        val source = if (book.isLocal) {
+        val source = if (curBook.isLocal) {
             null
         } else {
             runCatching {
                 withContext(IoDispatcher) {
-                    AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
+                    AppDbProviders.get().bookSourceDao.getBookSource(curBook.origin)
                 }
             }.onFailure {
-                AppLog.put("读取书源失败 ${book.origin}\n${it.message}", it)
+                AppLog.put("读取书源失败 ${curBook.origin}\n${it.message}", it)
             }.getOrNull()
         }
 
-        if (source == null && !book.isLocal) {
-            throw IllegalStateException("书源不存在: ${book.origin}")
+        if (source == null && !curBook.isLocal) {
+            throw IllegalStateException("书源不存在: ${curBook.origin}")
         }
 
-        // 补读书籍详情 (tocUrl 空或 totalChapterNum == 0)
-        if (source != null && (book.tocUrl.isEmpty() || book.totalChapterNum == 0)) {
-            WebBook.getBookInfoAwait(source, book)
+        // 本地书: 从文件重新读详情 (tocUrl/字数/章节数), 对照 archive upBook 的 `FileBook.upBookInfo`
+        if (curBook.isLocal) {
+            withContext(IoDispatcher) { FileBook.upBookInfo(curBook) }
+        }
+
+        // 补读书籍详情 (tocUrl 空, 与 archive 判据一致)
+        var runPreJs = runPreUpdateJs
+        if (source != null && curBook.tocUrl.isEmpty()) {
+            WebBook.getBookInfoAwait(source, curBook)
             if (isSearchBook) {
                 val dbBook = withContext(IoDispatcher) {
                     val dao = AppDbProviders.get().bookDao
-                    dao.getBook(book.bookUrl) ?: dao.getBook(book.name, book.author)
+                    dao.getBook(curBook.bookUrl) ?: dao.getBook(curBook.name, curBook.author)
                 }
                 // 搜索来源的书加载详情后书名可能变化, 同源则并回书架那本, 异源则标记不在书架
-                // (对照 archive loadBookInfo, #3652 #4619 #3149)
-                if (dbBook != null && dbBook.origin == book.origin) {
-                    dbBook.updateTo(book)
+                // (对照 archive loadBookInfo, #3652 #4619 #3149); 两分支都得纠正 inShelf,
+                // 否则落库门禁用的还是进来时那个值
+                if (dbBook != null && dbBook.origin == curBook.origin) {
+                    dbBook.updateTo(curBook)
+                    inShelf = true
                 } else {
-                    book.addType(BookType.notShelf)
+                    curBook.addType(BookType.notShelf)
+                    inShelf = false
                 }
             }
-            if (!book.isNotShelf) {
+            if (inShelf) {
                 runCatching {
                     withContext(IoDispatcher) {
-                        AppDbProviders.get().bookDao.update(book)
+                        // 对照 archive `if (inBookshelf) book.save()`: 去 notShelf 标记 + 有则改无则插
+                        val dao = AppDbProviders.get().bookDao
+                        curBook.removeType(BookType.notShelf)
+                        if (dao.has(curBook.bookUrl)) dao.update(curBook) else dao.insert(curBook)
                     }
                 }.onFailure {
                     AppLog.put("保存书籍信息出错\n${it.message}", it)
                 }
             }
+            // archive 详情分支把 `runPreUpdateJs = inBookshelf` 传给 loadChapterList
+            runPreJs = runPreUpdateJs || inShelf
+        } else {
+            // archive 在 tocUrl 非空/本地书时走 `loadChapterList(book)`, 其 runPreUpdateJs 形参默认 true
+            runPreJs = true
         }
 
-        val chapters = loadChapterList(book, source, runPreUpdateJs, forceReload)
+        // archive 的目录分支: `!inBookshelf || totalChapterNum == 0 → loadChapterList`。
+        // totalChapterNum 为 0 表示目录未装载/已失效, 忽略内存交接与本地库直接回源,
+        // 否则会长期用陈旧目录且该列一直修不回来 (内存交接对未入架书仍优先, 见 loadChapterList)
+        val forceTocReload = forceReload ||
+            (inShelf && !curBook.isLocal && curBook.totalChapterNum == 0)
+        val chapters = loadChapterList(curBook, source, runPreJs, forceTocReload)
 
         return BookLoadResult(
-            book = book,
+            book = curBook,
             source = source,
             chapterList = chapters,
         )
+    }
+
+    /**
+     * 来源对账: 在架且来自搜索/发现列表的书换成库里那本 (对照 archive
+     * `BaseReadViewModel.upBook` 的 `if (inBookshelf && isSearchBook) book = appDb.bookDao
+     * .getBook(bookUrl) ?: getBook(name, author) ?: book`)。
+     *
+     * 规则单一出处: [upBook] 与文本阅读装载都走它。缺这步会拿瞬态副本 (无进度、无
+     * totalChapterNum、tocUrl 空) 去取章/起播, 回源拉一次多余详情, 并把书架行整行覆盖。
+     *
+     * @param isSearchBook 书来自搜索/发现列表 (路由的 BookRef.Search)
+     * @return 库中那本 (bookUrl 不成则按 name+author 找, 都没有则原书)
+     */
+    suspend fun resolveShelfBook(book: Book, isSearchBook: Boolean): Book {
+        if (book.isNotShelf || !isSearchBook) return book
+        return withContext(IoDispatcher) {
+            val dao = AppDbProviders.get().bookDao
+            dao.getBook(book.bookUrl) ?: dao.getBook(book.name, book.author)
+        } ?: book
     }
 
     /**

@@ -36,6 +36,7 @@ import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.OnRouteLifecycle
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.asBook
+import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.FlowBus
 import kotlinx.coroutines.launch
@@ -73,7 +74,9 @@ fun TocRoute(
                     )
                 )
             } else {
-                navigator.push(AppRoute.Reader(route.book, chapterIndex, chapterPos))
+                // 按书类型分流 (对照原版 startReadActivity 的 when(book.isAudio/isVideo/isImage/isRss));
+                // 上一版写死 AppRoute.Reader → RSS/漫画/音视频书会被错开成文本阅读器
+                navigator.push(route.book.toReadRoute(chapterIndex, chapterPos))
             }
         },
         // 目录规则应用由 TocContent 内部完成 (对照原版 TocActivity.upBookAndToc), 路由无额外动作

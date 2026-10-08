@@ -17,6 +17,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.RssToolbarActions
+import io.legado.app.help.book.BookChapterLoader
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
@@ -37,6 +38,7 @@ import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.root.OnRouteLifecycle
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.RouteResultPayload
@@ -78,8 +80,9 @@ fun ReadRssRoute(
     screenModelStore: ScreenModelStore,
 ) {
     val route = entry.route as AppRoute.ReadRss
-    // asBook() 每次 copy() 新实例, remember(route) 固定后 LaunchedEffect(book) 只在换路由时重启
-    val book = remember(route) { route.book.asBook() }
+    // 本地 copy: 装载入口按原版语义对 RSS 书做 url 换位 (bookUrl→"data:"), 不 copy 会改到路由持有的对象。
+    // remember(route) 固定后 LaunchedEffect(book) 只在换路由时重启。
+    val book = remember(route) { route.book.asBook().copy() }
 
     val screenModel = screenModelStore.getOrCreateTyped(entry) { ReadRssScreenModel() }
     val state by screenModel.state.collectAsState()
@@ -89,6 +92,9 @@ fun ReadRssRoute(
     val tts = remember { OneShotTts() }
     // 当前书源: 登录项可见性 + 跳转拦截 JS 都要它
     var source by remember { mutableStateOf<BookSource?>(null) }
+    // 装载对账后的书 (搜索/发现直达的瘦身副本在这里并回库里那本) + 文章列表;
+    // 正文/目录/进度/收藏一律用它对账, 不用路由快照。
+    var readingBook by remember(book) { mutableStateOf(book) }
     // 收藏态: 原版 inBookshelf = !book.isNotShelf
     var inShelf by remember(book) { mutableStateOf(!book.isNotShelf) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
@@ -154,7 +160,26 @@ fun ReadRssRoute(
                 }
             }
         }
-        shared.loadContent(book, book.durChapterIndex)
+        // 装载对账 (对照 archive BaseReadViewModel.upBook): 在架且来自搜索/列表的书并回库里那本、
+        // 补书籍详情、装载文章列表; 缺这步会用瘦身副本按 0 篇取正文并把书架行整行覆盖。
+        val payload = runCatching {
+            BookChapterLoader.upBook(book, isSearchBook = route.book is BookRef.Search)
+        }.onFailure {
+            AppLog.put("装载 RSS 书籍失败\n${it.message}", it)
+        }.getOrNull()
+        if (payload != null) {
+            readingBook = payload.book
+            inShelf = !payload.book.isNotShelf
+            source = payload.source ?: source
+            screenModel.dispatch(
+                ReadRssUiEvent.StarMenuUpdated(
+                    starVisible = true,
+                    inShelf = inShelf,
+                    hasLogin = source?.hasLogin() == true,
+                )
+            )
+        }
+        shared.loadContent(readingBook, readingBook.durChapterIndex)
     }
 
     // 朗读状态 → 菜单文案 (对照原版 upTtsMenu)
@@ -180,7 +205,7 @@ fun ReadRssRoute(
 
     fun removeFromShelf() {
         scope.launch {
-            runCatching { withContext(IoDispatcher) { RssHelp.removeFromBookshelf(book) } }
+            runCatching { withContext(IoDispatcher) { RssHelp.removeFromBookshelf(readingBook) } }
                 .onSuccess {
                     // 同步窗口工具栏星图标 (桌面端直开窗)
                     rssActions.starred = false
@@ -203,7 +228,7 @@ fun ReadRssRoute(
             if (alert) showDeleteConfirm = true else removeFromShelf()
         } else {
             scope.launch {
-                runCatching { withContext(IoDispatcher) { RssHelp.addToBookshelf(book) } }
+                runCatching { withContext(IoDispatcher) { RssHelp.addToBookshelf(readingBook) } }
                     .onSuccess {
                         inShelf = true
                         // 同步窗口工具栏星图标 (桌面端直开窗)
@@ -243,12 +268,19 @@ fun ReadRssRoute(
             },
             onShare = {
                 scope.launch {
-                    val url = state.currArticle?.url ?: book.tocUrl
+                    val url = state.currArticle?.url ?: readingBook.tocUrl
                     PlatformCapabilityProviders.get().shareText(url)
                 }
             },
-            onLogin = { scope.launch { showSourceLogin(book.origin, source) } },
+            onLogin = { scope.launch { showSourceLogin(readingBook.origin, source) } },
         )
+    }
+
+    // 工具栏星图标跟随收藏态: 窗口持有的是首次组合那个对象 (重建会丢失平台挂的 onStarChanged),
+    // 所以同步字段而不重建对象。
+    LaunchedEffect(inShelf) {
+        rssActions.starred = inShelf
+        rssActions.onStarChanged?.invoke(inShelf)
     }
 
     val actions = object : ReadRssUiActions {
@@ -258,7 +290,7 @@ fun ReadRssRoute(
 
         // 刷新: 对照原版 refresh — 有正文规则才重新拉, 否则让 WebView 自己 reload
         override fun onRefresh() {
-            shared.loadContent(book, book.durChapterIndex)
+            shared.loadContent(readingBook, readingBook.durChapterIndex)
         }
 
         override fun onToggleStar() {
@@ -267,7 +299,7 @@ fun ReadRssRoute(
 
         // 分享: 优先当前文章地址, 回退 tocUrl (对照原版 menu_share_it)
         override fun onShare() {
-            val url = state.currArticle?.url ?: book.tocUrl
+            val url = state.currArticle?.url ?: readingBook.tocUrl
             PlatformCapabilityProviders.get().shareText(url)
         }
 

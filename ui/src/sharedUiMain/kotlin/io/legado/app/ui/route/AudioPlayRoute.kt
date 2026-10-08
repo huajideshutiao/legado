@@ -160,7 +160,7 @@ fun AudioPlayRoute(
     // 初始化标题 (对照 viewModel.initData 中 titleData.postValue(book.name) + applyBookmarkPosition)
     LaunchedEffect(book) {
         screenModel.dispatch(
-            AudioPlayUiEvent.Init(book, route.chapterIndex, route.chapterPos)
+            AudioPlayUiEvent.Init(route.book, route.chapterIndex, route.chapterPos)
         )
     }
 

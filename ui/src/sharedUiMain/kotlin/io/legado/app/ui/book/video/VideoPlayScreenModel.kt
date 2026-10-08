@@ -13,9 +13,11 @@ import io.legado.app.help.showSourceLogin
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.model.chapter.ChapterLoadState
+import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.VideoPlayTarget
+import io.legado.app.ui.root.asBook
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.Job
@@ -347,33 +349,32 @@ class VideoPlayScreenModel : ScreenModel {
                 // chapterListData.observe + BaseReadViewModel.upBook 的 inBookshelf = !book.isNotShelf)
                 // 上一版 ShowBook 只写 bookName、从不初始化 inShelf → 从书架进页星恒空心,
                 // 下一次点击又拿陈旧 false 当“不在架”去上架 (空点一下)
+                val snapshot = event.book.asBook()
                 _state.update {
                     it.copy(
-                        bookName = event.book.name,
-                        inShelf = !event.book.isNotShelf,
+                        bookName = snapshot.name,
+                        inShelf = !snapshot.isNotShelf,
                         isDirect = false,
                     )
                 }
                 scope.launch {
-                    val book = event.book
-                    // 只有显式带了章节定位 (书签/目录回传) 才覆盖已存进度 —— 对照原版
-                    // `initData` 的 `if (overrideIndex >= 0)` 门控。上一版无条件
-                    // `chapterPos ?: 0` + applyChapterOverride, 而所有常规入口都不带定位
-                    // → 进页那一瞬就把用户看到一半的 durChapterPos 清零并 PATCH 落库。
-                    // 未覆盖时由 initData 自己从 book.durChapterPos 取恢复位置。
-                    val overrideIndex = event.chapterIndex
-                    if (overrideIndex != null) {
-                        shared.applyChapterOverride(
-                            book, overrideIndex, event.chapterPos ?: 0
-                        )
-                    }
-                    // persistProgress=false: 首次装载不得回写进度 (会把 just 取到的
-                    // durChapterPos 归零), 与原版 initData 一致
+                    // 章节定位 (书签/目录回传) 交给 initData 在装载对账之后施加 ——
+                    // 先写会写在被对账丢弃的瘦身副本上。persistProgress=false: 首次装载
+                    // 不得回写进度 (会把 just 取到的 durChapterPos 归零), 与原版 initData 一致
                     shared.initData(
-                        book,
-                        overrideIndex ?: book.durChapterIndex,
+                        book = snapshot,
+                        chapterIndexOverride = event.chapterIndex ?: -1,
+                        chapterPosOverride = event.chapterPos ?: 0,
                         persistProgress = false,
+                        isSearchBook = event.book is BookRef.Search,
                     )
+                    // 装载对账后以库里那本为准刷新书名/在架态 (路由快照的 type 位不可信:
+                    // 首页展示项进来的未入架书没有 notShelf 标)
+                    shared.curBook?.let { loaded ->
+                        _state.update {
+                            it.copy(bookName = loaded.name, inShelf = !loaded.isNotShelf)
+                        }
+                    }
                 }
             }
 
@@ -540,7 +541,9 @@ class VideoPlayScreenModel : ScreenModel {
                 // 再点又是“删一本不存在的书”
                 val nowInShelf = if (result == null) false else result
                 _state.update { it.copy(inShelf = nowInShelf) }
-            }
+            },
+            // 上架时把已装载的目录一并落库 (对照原 addToBookshelf), 否则进阅读页要回源再拉一次
+            chapters = shared.chapters,
         )
     }
 
@@ -738,7 +741,7 @@ sealed interface VideoPlayUiEvent {
     /** 书籍数据更新 (对齐 VideoPlayActivity.titleText/durChapterIndex 初始化)。
      *  chapterIndex/chapterPos 用于书签/目录回传定位 (对照 AudioPlayUiEvent.Init) */
     data class ShowBook(
-        val book: Book,
+        val book: BookRef,
         val chapterIndex: Int? = null,
         val chapterPos: Int? = null,
     ) : VideoPlayUiEvent

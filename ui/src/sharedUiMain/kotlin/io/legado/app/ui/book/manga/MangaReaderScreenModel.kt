@@ -9,7 +9,6 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.Bookmark
-import io.legado.app.help.IntentData
 import io.legado.app.help.book.changeSourceTo
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.model.chapter.ChapterLoadState
@@ -21,6 +20,7 @@ import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.config.ClickActionConfig
 import io.legado.app.ui.book.read.page.provider.ChapterContentParserShared
 import io.legado.app.ui.book.read.page.readClickActionConfig
+import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.GSON
@@ -336,7 +336,6 @@ class MangaReaderScreenModel : ScreenModel {
         scope.launch {
             runCatching {
                 currentBook?.changeSourceTo(newBook, toc)
-                IntentData.book = newBook
                 // 目录先进内存: 未入书架的书没落库, 少了这步会再回源拉一次目录
                 shared.onSourceChanged(newBook, toc, source)
                 // 换源后内容整体重建, 按迁移后的进度重新定位 (对照原版换源后回到原阅读位置)
@@ -516,12 +515,11 @@ class MangaReaderScreenModel : ScreenModel {
     fun dispatch(event: MangaReaderUiEvent) {
         when (event) {
             is MangaReaderUiEvent.Init -> {
-                // shared.initData 从 IntentData.book 取书
-                IntentData.book = event.book
                 // 对照 app 端 applyBookmarkPosition: chapterIndex>=0 时跳转到指定章节位置。
                 // 定位请求在初始化成功后才发: 此刻 shared.book 已是从库里装载的权威进度,
                 // 用路由快照 (BookRef) 的 dur 字段会因快照过期定到错章
                 shared.initData(
+                    book = event.book,
                     overrideIndex = event.chapterIndex ?: -1,
                     overridePos = event.chapterPos ?: 0,
                     success = {
@@ -692,7 +690,7 @@ sealed interface MangaReaderUiEvent {
      * @param chapterPos 书签跳转目标章节位置, 仅 chapterIndex 非空时生效 (对应 app 端 intent chapterPos)
      */
     data class Init(
-        val book: Book,
+        val book: BookRef,
         val chapterIndex: Int? = null,
         val chapterPos: Int? = null,
     ) : MangaReaderUiEvent

@@ -13,6 +13,7 @@ import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookChapterLoader
+import io.legado.app.help.book.removeType
 import io.legado.app.help.book.BookHelpShared
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.ContentProcessorProviders
@@ -1024,6 +1025,29 @@ class ReadBookViewModelShared(
             readBook.updateBookSource(
                 AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
             )
+        }
+        // 书籍详情补全 (对照 archive upBook → loadBookInfo): tocUrl 为空时目录规则无从解析,
+        // 必须先回源取详情, 再走下面的目录装载; 在架书按 archive 语义落库
+        if (!book.isLocal && book.tocUrl.isEmpty()) {
+            readBook.bookSource.value?.let { source ->
+                runCatching {
+                    WebBook.getBookInfoAwait(source, book)
+                }.onFailure {
+                    AppLog.put("获取书籍信息失败\n${it.message}", it)
+                }.onSuccess {
+                    if (book.isNotShelf) return@onSuccess
+                    runCatching {
+                        withContext(IoDispatcher) {
+                            // 对照 archive `if (inBookshelf) book.save()`: 去 notShelf + 有则改无则插
+                            val dao = AppDbProviders.get().bookDao
+                            book.removeType(BookType.notShelf)
+                            if (dao.has(book.bookUrl)) dao.update(book) else dao.insert(book)
+                        }
+                    }.onFailure {
+                        AppLog.put("保存书籍信息出错\n${it.message}", it)
+                    }
+                }
+            }
         }
         // 库里查目录（在架书路径；未入架书目录不落库，查不到）
         val dbList = AppDbProviders.get().bookChapterDao.getChapterList(book.bookUrl)

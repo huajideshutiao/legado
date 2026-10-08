@@ -14,6 +14,7 @@ import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.book.BookChapterLoader
 import io.legado.app.help.book.BookHelpShared
 import io.legado.app.help.book.BookImageStorageProviders
 import io.legado.app.help.book.BookStorageProviders
@@ -648,11 +649,19 @@ class ReaderScreenModel(
      * 初始化书籍并装载章节（对照 app 端 ReadBookViewModel.initData + applyBookmarkPosition）。
      * chapterIndex + chapterPos 来自书签跳转入口（对照 app 端 intent extra chapterIndex/chapterPos）。
      *
+     * @param isSearchBook 书来自搜索/发现列表 (路由的 BookRef.Search) → 先做来源对账,
+     *   在架时换成库里那本 (对照 archive upBook), 否则进度/阅读配置按瘦身副本取
+     *
      * 装载完成后按原版 initBook 语义补两件事：
      * - 云进度同步（仅同书 + 朗读运行中跳过）
      * - 无书源时自动换源（而非静默失败）
      */
-    fun initBook(book: Book, chapterIndex: Int?, chapterPos: Int? = null) {
+    fun initBook(
+        book: Book,
+        chapterIndex: Int?,
+        chapterPos: Int? = null,
+        isSearchBook: Boolean = false,
+    ) {
         // 整段在可取消任务内按序执行: [ReadBookShared.loadBook] 读章节总数会同步查库,
         // 组合期直接调用会在 UI 线程上做 DB IO (对照原版 initData 在 execute 的 IO 协程内)。
         // 顺序不变: 装载书籍状态 → 存跳转前进度快照 → 装载目标章 → 云进度/自动换源。
@@ -662,8 +671,11 @@ class ReaderScreenModel(
         // 只有当前任务有权落装载/进度/换源。
         initBookJob?.cancel()
         initBookJob = scope.launch(IoDispatcher) {
-            val isSameBook = readBook.book.value?.bookUrl == book.bookUrl
-            readBook.loadBook(book)
+            // 来源对账 (对照 archive BaseReadViewModel.upBook): 在架且来自搜索/发现列表的书
+            // 换成库里那本 —— 否则从第 0 章起读、丢阅读配置, 并把书架行整行覆盖
+            val target = BookChapterLoader.resolveShelfBook(book, isSearchBook)
+            val isSameBook = readBook.book.value?.bookUrl == target.bookUrl
+            readBook.loadBook(target)
             ensureActive()
             // 对照原版 applyBookmarkPosition: 带跳转目标且目标位置与当前进度不同时, 先存
             // 跳转前进度快照再跳 (返回键可恢复跳转前进度; 位置相同/无定位参数的重装不触发,
@@ -677,17 +689,17 @@ class ReaderScreenModel(
             // 对照 app 端 applyBookmarkPosition: chapterIndex 有效时跳转到指定 chapterPos。
             // 位置随 loadChapter 传入, 由装载任务在装载前落位 (对照原版先写 durChapterPos 再 loadContent)
             viewModel.loadChapter(
-                chapterIndex ?: book.durChapterIndex,
+                chapterIndex ?: target.durChapterIndex,
                 chapterPos = chapterPos?.takeIf { chapterIndex != null },
                 keepScrollOffset = false,
             )
             ensureActive()
             // 对照原版 initBook: 打开书即同步云进度 (原版每次 initBook 都 syncProgress,
             // 仅同书 + 朗读运行中跳过; 书签跳转等入口同样触发, 与原版 chapterChanged 之外的行为一致)
-            viewModel.syncProgressOnBookOpen(book, isSameBook)
+            viewModel.syncProgressOnBookOpen(target, isSameBook)
             // 对照原版 initBook: 非本地书且无书源时自动换源, 不再静默失败
-            if (!book.isLocal && readBook.bookSource.value == null) {
-                autoChangeSource(book.name, book.author)
+            if (!target.isLocal && readBook.bookSource.value == null) {
+                autoChangeSource(target.name, target.author)
             }
         }
     }

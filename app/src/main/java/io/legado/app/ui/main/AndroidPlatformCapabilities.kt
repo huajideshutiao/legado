@@ -717,6 +717,7 @@ class AndroidPlatformCapabilities(
         onComplete: (Boolean?) -> Unit,
         onWaitDialog: (Boolean) -> Unit,
         onAction: (String) -> Unit,
+        chapters: List<BookChapter>?,
     ) {
         if (inBookshelf) {
             deleteBook(book, onComplete)
@@ -728,7 +729,7 @@ class AndroidPlatformCapabilities(
             // 与 desktop/iOS/ohos 一致, 避免各端维护多份拷贝
             // onComplete 里调用方要做 pop/dispatch 等 UI 操作, 回主线程 (对照 delBook)
             activity.lifecycleScope.launch(IO) {
-                runCatching { book.toggleBookshelfCore(false) }
+                runCatching { book.toggleBookshelfCore(false, chapters) }
                     .onSuccess { activity.runOnUiThread { onComplete(it) } }
                     .onFailure {
                         AppLog.put("书架操作失败\n${it.message}", it)

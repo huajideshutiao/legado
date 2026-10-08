@@ -16,7 +16,9 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.model.Lrc
+import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.ScreenModel
+import io.legado.app.ui.root.asBook
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.postEvent
@@ -210,14 +212,32 @@ class AudioPlayScreenModel : ScreenModel {
     fun dispatch(event: AudioPlayUiEvent) {
         when (event) {
             is AudioPlayUiEvent.Init -> {
-                // 对照原版 AudioPlayViewModel.initData: upBook(挂起等目录齐) → 设 chapterList
-                // → upData/resetData → if (status == STOP) loadOrUpPlayUrl。
+                // 对照原版 AudioPlayViewModel.initData: upBook(挂起等目录齐, 在架且来自搜索/发现
+                // 列表的书并回库里那本) → 设 chapterList → upData/resetData →
+                // if (status == STOP) loadOrUpPlayUrl。
                 // 目录必须先于 resetData 就位, 否则 upDurChapter 拿不到 durChapter,
                 // AudioPlayManager.loadPlayUrl 会静默 return 而界面死在"数据加载中"。
                 scope.launch {
-                    AudioPlayShared.inBookshelf = !event.book.isNotShelf
-                    val book = event.book
-                    val list = ensureChapterList(book)
+                    val incoming = event.book.asBook()
+                    val payload = runCatching {
+                        withTimeoutOrNull(DIRECTORY_FETCH_TIMEOUT_MS) {
+                            BookChapterLoader.upBook(
+                                incoming,
+                                isSearchBook = event.book is BookRef.Search,
+                            )
+                        }
+                    }.onFailure {
+                        AppLog.put("加载书籍失败\n${it.message}", it)
+                    }.getOrNull()
+                    val book = payload?.book
+                        ?: BookChapterLoader.resolveShelfBook(
+                            incoming,
+                            event.book is BookRef.Search,
+                        )
+                    AudioPlayShared.inBookshelf = !book.isNotShelf
+                    val list = payload?.chapterList.orEmpty()
+                    AudioPlayShared.chapterList = list.ifEmpty { null }
+                    if (list.isNotEmpty()) AudioPlayShared.updateChapterList(list)
                     if (AudioPlayShared.book?.bookUrl == book.bookUrl) {
                         AudioPlayShared.upData(book)
                     } else {
@@ -229,7 +249,7 @@ class AudioPlayScreenModel : ScreenModel {
                     }
                     _state.update {
                         it.copy(
-                            title = event.book.name,
+                            title = book.name,
                             inShelf = AudioPlayShared.inBookshelf,
                             hasReview = AudioPlayShared.bookSource?.reviewRule
                                 ?.reviewUrl.isNullOrBlank() == false,
@@ -336,6 +356,9 @@ class AudioPlayScreenModel : ScreenModel {
      * allowCached 快路径 (只校 bookUrl 就复用), 于是详情页刷新过目录后, 交接表和库都是新的
      * 却永远轮不到 —— 表现为"详情页/目录页看到新目录, 进播放页还是旧的"。
      */
+    /**
+     * 确保目录就绪 (打开目录弹窗前调用; 内存 → 本地库 → 回源), 与装载入口的目录顺序一致。
+     */
     suspend fun ensureChapterList(book: Book): List<BookChapter> {
         val list = withTimeoutOrNull(DIRECTORY_FETCH_TIMEOUT_MS) {
             runCatching {
@@ -412,7 +435,7 @@ data class AudioPlayUiState(
 sealed interface AudioPlayUiEvent {
     /** 初始化书籍 (设置标题, 可携带书签跳转 chapterIndex + chapterPos) */
     data class Init(
-        val book: Book,
+        val book: BookRef,
         val chapterIndex: Int? = null,
         val chapterPos: Int? = null,
     ) : AudioPlayUiEvent

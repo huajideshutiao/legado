@@ -81,7 +81,7 @@ fun MangaReaderRoute(
     // 初始化书籍数据, 透传书签跳转参数 (对照 app 端 applyBookmarkPosition: chapterIndex/chapterPos)
     LaunchedEffect(book) {
         screenModel.dispatch(
-            MangaReaderUiEvent.Init(book, route.chapterIndex, route.chapterPos)
+            MangaReaderUiEvent.Init(route.book, route.chapterIndex, route.chapterPos)
         )
     }
 

@@ -105,7 +105,7 @@ fun VideoPlayRoute(
     LaunchedEffect(book) {
         when (val target = route.playTarget) {
             is VideoPlayTarget.FromBook -> screenModel.dispatch(
-                VideoPlayUiEvent.ShowBook(target.book.asBook(), route.chapterIndex, route.chapterPos)
+                VideoPlayUiEvent.ShowBook(target.book, route.chapterIndex, route.chapterPos)
             )
 
             is VideoPlayTarget.Direct -> screenModel.dispatch(

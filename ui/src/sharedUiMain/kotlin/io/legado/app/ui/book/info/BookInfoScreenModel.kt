@@ -94,11 +94,11 @@ class BookInfoScreenModel(initialBook: Book? = null) : ScreenModel {
     )
     val state: StateFlow<BookInfoUiState> = _state.asStateFlow()
 
-    // 等待对话框显隐 (对照 BookInfoViewModelShared._waitDialogData, webFile 流程的加载指示)
+    // 等待对话框显隐 (原 app 端 waitDialogData, webFile 流程的加载指示)
     private val _waitDialog = MutableStateFlow<Boolean?>(null)
     val waitDialog: StateFlow<Boolean?> = _waitDialog.asStateFlow()
 
-    // 动作事件 (对照 BookInfoViewModelShared._actionLive, webFile 流程的 selectBooksDir 回调)
+    // 动作事件 (原 app 端 actionLive, webFile 流程的 selectBooksDir 回调)
     private val _actionLive = MutableSharedFlow<String>(
         replay = 1,
         extraBufferCapacity = 8,
