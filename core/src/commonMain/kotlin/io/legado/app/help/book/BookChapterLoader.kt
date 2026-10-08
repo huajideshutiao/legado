@@ -185,6 +185,6 @@ object BookChapterLoader {
         if (source != null) {
             PluginSourceDelegates.resolve(source)?.tocFailMessage(source, e)?.let { return it }
         }
-        return "获取目录失败\n${e.localizedMessage}"
+        return "获取目录失败\n${e.message}"
     }
 }
