@@ -23,9 +23,12 @@ fun TvBoxRoute(
         TvBoxScreenModel()
     }
     val state by screenModel.state.collectAsState()
+    // 栈顶订阅: 搜索返回拦截只在影视源页是栈顶时生效 (压栈页面的返回键不被不可见页吞掉)
+    val backStack by navigator.backStack.collectAsState()
 
     TvBoxManageScreen(
         state = state,
+        isTopEntry = backStack.lastOrNull()?.id == entry.id,
         onBack = { navigator.pop() },
         onRefresh = screenModel::refresh,
         onAddSource = screenModel::addConfigSource,

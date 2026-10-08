@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,12 +20,16 @@ import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -32,10 +37,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.FastScrollLazyColumn
+import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.compose.theme.AppTheme
 import legado.ui.generated.resources.Res
 import legado.ui.generated.resources.add
@@ -44,6 +51,8 @@ import legado.ui.generated.resources.confirm
 import legado.ui.generated.resources.delete
 import legado.ui.generated.resources.ic_add
 import legado.ui.generated.resources.ic_refresh_black_24dp
+import legado.ui.generated.resources.ic_search
+import legado.ui.generated.resources.search
 import legado.ui.generated.resources.tvbox
 import legado.ui.generated.resources.tvbox_add_source
 import legado.ui.generated.resources.tvbox_delete_source
@@ -88,6 +97,8 @@ fun TvBoxManageScreen(
     onToggleSite: (String, Boolean) -> Unit,
     onProbeJars: () -> Unit,
     onClearError: () -> Unit,
+    // 本页是否栈顶: 非栈顶时搜索返回拦截失效 (防不可见页吞掉压栈页面的返回键)
+    isTopEntry: Boolean = true,
 ) {
     val colors = AppTheme.colors
     val title = stringResource(Res.string.tvbox)
@@ -107,15 +118,55 @@ fun TvBoxManageScreen(
     val unsupportedText = stringResource(Res.string.tvbox_unsupported)
     val searchableText = stringResource(Res.string.tvbox_searchable)
     val filterableText = stringResource(Res.string.tvbox_filterable)
+    val searchLabel = stringResource(Res.string.search)
 
     var showAddDialog by remember { mutableStateOf(false) }
     var pendingRemoveUrl by remember { mutableStateOf<String?>(null) }
+    // 搜索态与关键词留在页面内: 站点过滤是纯展示行为, 不进 TvBoxUiState
+    var searchMode by rememberSaveable { mutableStateOf(false) }
+    var searchText by rememberSaveable { mutableStateOf("") }
+    val searchFocus = remember { FocusRequester() }
+
+    val visibleSites = if (searchText.isBlank()) {
+        state.sites
+    } else {
+        state.sites.filter { it.name.contains(searchText.trim(), ignoreCase = true) }
+    }
+    // 搜索框占用标题区, 与 ChangeSourceScreen 同一槽位用法
+    val searchTitleSlot: (@Composable RowScope.() -> Unit)? = if (searchMode) {
+        {
+            AppSearchField(
+                value = searchText,
+                onValueChange = { searchText = it },
+                hint = searchLabel,
+                modifier = Modifier.weight(1f),
+                textFieldModifier = Modifier.focusRequester(searchFocus),
+            )
+        }
+    } else null
+
+    // 系统返回键/桌面 ESC 经统一返回链到达此处; 只在搜索态拦截 (先关搜索框), 其余照常出栈
+    AppBackHandler(enabled = searchMode && isTopEntry) {
+        searchText = ""
+        searchMode = false
+    }
 
     Column(Modifier.fillMaxSize()) {
         AppTitleBar(
             title = title,
+            // 标题栏返回箭头恒为出栈: 搜索框是否显示不改变其行为
             onBack = onBack,
+            titleContent = searchTitleSlot,
             actions = {
+                if (!searchMode) {
+                    IconButton(onClick = { searchMode = true }) {
+                        Icon(
+                            painter = painterResource(Res.drawable.ic_search),
+                            contentDescription = searchLabel,
+                            tint = colors.primaryText,
+                        )
+                    }
+                }
                 IconButton(onClick = onRefresh) {
                     Icon(
                         painter = painterResource(Res.drawable.ic_refresh_black_24dp),
@@ -132,6 +183,9 @@ fun TvBoxManageScreen(
                 }
             },
         )
+        if (searchMode) {
+            LaunchedEffect(Unit) { searchFocus.requestFocus() }
+        }
         FastScrollLazyColumn(Modifier.fillMaxSize()) {
             if (state.loading) {
                 item(key = "loading") {
@@ -195,9 +249,9 @@ fun TvBoxManageScreen(
                     JarRow(jar = jar, onRetry = onProbeJars)
                 }
             }
-            if (state.sites.isNotEmpty()) {
+            if (visibleSites.isNotEmpty()) {
                 item(key = "sec_sites") { SectionHeader(sitesTitle) }
-                items(state.sites, key = { "site_${it.key}" }) { site ->
+                items(visibleSites, key = { "site_${it.key}" }) { site ->
                     SiteRow(
                         site = site,
                         onToggle = { onToggleSite(site.key, it) },
