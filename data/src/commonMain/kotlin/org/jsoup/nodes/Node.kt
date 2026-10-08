@@ -20,6 +20,17 @@ import org.jsoup.select.Elements
  */
 public open class Node internal constructor(internal val ksoupNode: KsNode) {
 
+    /**
+     * 外部约束: 门面每次 ([asFacadeNode]/[asFacadeElement]) 都新建实例, 而 jsoup 的 DOM 节点在进程内
+     * 身份唯一, 扩展的 `contains/remove/HashSet` 与 jsoup 的 [Elements.not] 差集都靠节点判等;
+     * 不覆写就会拿两个包装不同实例的对象去比, 过滤静默失效。故按底层 ksoup 节点的引用判等。
+     */
+    final override fun equals(other: Any?): Boolean =
+        this === other || (other is Node && other.ksoupNode === ksoupNode)
+
+    /** 与 [equals] 同源: 同一底层节点的门面哈希必须相同。 */
+    final override fun hashCode(): Int = ksoupNode.hashCode()
+
     public open fun nodeName(): String = ksoupNode.nodeName()
 
     public fun attr(attributeKey: String): String = ksoupNode.attr(attributeKey)
