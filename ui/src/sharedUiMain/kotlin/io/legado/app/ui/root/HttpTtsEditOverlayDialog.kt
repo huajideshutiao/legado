@@ -1,6 +1,7 @@
 package io.legado.app.ui.root
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -70,9 +71,21 @@ private fun HttpTtsEditOverlayForm(overlay: AppOverlay.Dialog, navigator: AppNav
     LaunchedEffect(overlay.payload) {
         vm.initData(overlay.payload?.toLongOrNull(), ::initForm)
     }
-    // URL 登录进入 WebView 路由时隐藏编辑窗口，返回后继续保留未保存的表单。
+    // URL 登录进入 WebView 路由时隐藏编辑窗口，pop 回原栈时恢复，未保存的表单不丢。
+    // 挂起标记同步给 navigator：窗口已隐藏期间返回键不应再作用于它（同
+    // SourceLoginOverlayDialog 的机制）。
     LaunchedEffect(navigator) {
-        navigator.backStack.collect { suspended = it.size > initialStackSize }
+        navigator.backStack.collect { entries ->
+            val newSuspended = entries.size > initialStackSize
+            if (newSuspended != suspended) {
+                suspended = newSuspended
+                navigator.setOverlaySuspended(overlay.key, newSuspended)
+            }
+        }
+    }
+    // Overlay 关闭时清挂起标记，否则 key 留在集合里会让下次同 key 的 Overlay 被误判为挂起
+    DisposableEffect(Unit) {
+        onDispose { navigator.setOverlaySuspended(overlay.key, false) }
     }
     if (source == null || suspended) return
     val dismiss: () -> Unit = { navigator.dismissOverlay(overlay.key) }

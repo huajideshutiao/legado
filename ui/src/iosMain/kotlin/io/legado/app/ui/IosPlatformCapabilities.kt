@@ -106,7 +106,13 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
 
     override fun showHttpTtsEditDialog(engine: HttpTTS?) {
         AppNavigatorProviders.get().showOverlay(
-            AppOverlay.Dialog("httpTtsEdit", payload = engine?.id?.toString())
+            AppOverlay.Dialog(
+                "httpTtsEdit",
+                payload = engine?.id?.toString(),
+                // 表单登录 → push WebView 路由盖住本窗口时保留 Overlay, 由内容自管挂起/恢复
+                // (对照原版 DialogFragment 被新 Activity 盖住仍存活, 返回后表单原样)
+                keepOnPush = true,
+            )
         )
     }
 
