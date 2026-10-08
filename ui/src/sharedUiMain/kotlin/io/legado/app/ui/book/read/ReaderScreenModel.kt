@@ -649,9 +649,10 @@ class ReaderScreenModel(
      * 初始化书籍并装载章节（对照 app 端 ReadBookViewModel.initData + applyBookmarkPosition）。
      * chapterIndex + chapterPos 来自书签跳转入口（对照 app 端 intent extra chapterIndex/chapterPos）。
      *
-     * @param isSearchBook 书来自搜索/发现列表 (路由的 BookRef.Search) → 先做来源对账,
-     *   在架时换成库里那本 (对照 archive upBook), 否则进度/阅读配置按瘦身副本取
+     * @param isSearchBook 书来自搜索/发现列表 (路由的 BookRef.Search) → 装载入口做来源对账,
+     *   在架时换成库里那本 (对照 archive upBook)
      *
+     * 装载 (来源对账 + 详情补全 + 目录) 统一走 [BookChapterLoader.upBook], 与音/视/漫/RSS 同一条链。
      * 装载完成后按原版 initBook 语义补两件事：
      * - 云进度同步（仅同书 + 朗读运行中跳过）
      * - 无书源时自动换源（而非静默失败）
@@ -671,11 +672,23 @@ class ReaderScreenModel(
         // 只有当前任务有权落装载/进度/换源。
         initBookJob?.cancel()
         initBookJob = scope.launch(IoDispatcher) {
-            // 来源对账 (对照 archive BaseReadViewModel.upBook): 在架且来自搜索/发现列表的书
-            // 换成库里那本 —— 否则从第 0 章起读、丢阅读配置, 并把书架行整行覆盖
-            val target = BookChapterLoader.resolveShelfBook(book, isSearchBook)
+            // 装载 (对照 archive BaseReadViewModel.upBook): 在架且来自搜索/发现列表的书换成
+            // 库里那本、tocUrl 空先回源取详情、目录按 内存→库→回源。失败 (书源不存在/网络)
+            // 降级到阅读器自己的目录链: 那里有目录失败态与权限拒绝上报, 会给出真正的原因
+            val loaded = runCatching {
+                BookChapterLoader.upBook(book, isSearchBook = isSearchBook)
+            }.onFailure {
+                AppLog.put("装载书籍失败\n${it.message}", it)
+            }.getOrNull()
+            val target = loaded?.book ?: book
             val isSameBook = readBook.book.value?.bookUrl == target.bookUrl
             readBook.loadBook(target)
+            if (loaded != null) {
+                readBook.updateBookSource(loaded.source)
+                if (loaded.chapterList.isNotEmpty()) {
+                    readBook.updateChapterList(loaded.chapterList)
+                }
+            }
             ensureActive()
             // 对照原版 applyBookmarkPosition: 带跳转目标且目标位置与当前进度不同时, 先存
             // 跳转前进度快照再跳 (返回键可恢复跳转前进度; 位置相同/无定位参数的重装不触发,

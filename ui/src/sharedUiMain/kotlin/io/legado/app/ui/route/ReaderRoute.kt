@@ -85,6 +85,7 @@ import io.legado.app.ui.compose.platform.rememberCustomPageKeys
 import io.legado.app.ui.reader.ReaderDictWord
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.OnRouteLifecycle
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry

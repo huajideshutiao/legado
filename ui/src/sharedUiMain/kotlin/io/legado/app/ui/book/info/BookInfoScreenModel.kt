@@ -125,7 +125,7 @@ class BookInfoScreenModel(initialBook: Book? = null) : ScreenModel {
      * 落地加载是否已开工。放在 ScreenModel 而不是 remember: 模型随路由 entry 存活
      * (ScreenModelStore.retain), 从阅读页/目录页/编辑页返回本页时组合体重建而模型不重建 ——
      * 对照原版 `BookInfoViewModel.initData` 的 `curBook != null → return`, 不重复查库/回源,
-     * 也不再二次执行 rss 书的 tocUrl/bookUrl 换位 (二次执行会把 bookUrl 写成 "data:")。
+     * 也不再二次执行 rss 书的 tocUrl 补位。
      */
     var bootStarted: Boolean = false
 

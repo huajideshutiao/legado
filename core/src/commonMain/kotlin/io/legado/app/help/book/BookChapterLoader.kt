@@ -55,9 +55,12 @@ object BookChapterLoader {
         var inShelf = !book.isNotShelf
         // 来源对账: 在架且来自搜索/发现列表 → 用库里那本 (archive upBook 的这一步)
         val curBook = resolveShelfBook(book, isSearchBook)
-        if (curBook.isRss) {
+        // RSS 书没有"详情页/目录页"之分: 抓取地址就是添加时的 url, tocUrl 空时补上。
+        // 不改 bookUrl —— 它是 books 表主键、也是章节与进度的键: 原版把它换成常量 "data:"
+        // 会让所有 RSS 书挤在同一行/同一章节表上 (后写的 REPLACE 掉先写的), 且 "data:" 在本仓
+        // 另有内联数据 URI 的语义 (isDataUrl/AnalyzeUrl)
+        if (curBook.isRss && curBook.tocUrl.isEmpty()) {
             curBook.tocUrl = curBook.bookUrl
-            curBook.bookUrl = "data:"
         }
 
         val source = if (curBook.isLocal) {

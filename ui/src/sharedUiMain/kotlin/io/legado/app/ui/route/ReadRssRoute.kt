@@ -80,7 +80,7 @@ fun ReadRssRoute(
     screenModelStore: ScreenModelStore,
 ) {
     val route = entry.route as AppRoute.ReadRss
-    // 本地 copy: 装载入口按原版语义对 RSS 书做 url 换位 (bookUrl→"data:"), 不 copy 会改到路由持有的对象。
+    // 本地 copy: 装载入口会补齐 RSS 书的 tocUrl (就地改字段, 不 copy 会改到路由持有的对象)。
     // remember(route) 固定后 LaunchedEffect(book) 只在换路由时重启。
     val book = remember(route) { route.book.asBook().copy() }
 

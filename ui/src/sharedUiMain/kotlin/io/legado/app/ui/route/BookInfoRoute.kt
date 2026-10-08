@@ -118,7 +118,7 @@ fun BookInfoRoute(
     // 一次性守卫放在 ScreenModel.bootStarted (不放在 remember): 从目录页/
     // 阅读页/编辑页 pop 回本页时本页会再组合一次, 只拿 bookUrl 当 key 会让整段
     // 落地加载每次返回都重跑 (多打一次回源); 且工作体在 scope 里 launch, 不归本 effect 管,
-    // 重跑就是并发双跑 + 竞写 bookSource, rss 书还会二次执行 url 换位把 bookUrl 写成 "data:"
+    // 重跑就是并发双跑 + 竞写 bookSource, RSS 书还会二次执行 url 处理
     LaunchedEffect(book.bookUrl) {
         if (screenModel.bootStarted) return@LaunchedEffect
         screenModel.bootStarted = true
@@ -144,16 +144,16 @@ fun BookInfoRoute(
             // 否则标记落在被丢弃对象上且 UI 会误显示书架书为"未在架"
             val curBook =
                 if (isSearchBook && dbBook?.origin == book.origin) dbBook else book
-            // rss 书 url 换位 (对照 upBook)
-            if (curBook.isRss) {
+            // RSS 书: tocUrl 空时补抓取地址 (详情/目录同一地址); 不改 bookUrl ——
+            // 主键换成常量 "data:" 会让多本 RSS 书挤在同一行
+            if (curBook.isRss && curBook.tocUrl.isEmpty()) {
                 curBook.tocUrl = curBook.bookUrl
-                curBook.bookUrl = "data:"
             }
-            // 换实例 (搜索书并回书架那本) 或 rss 原地换过 url: 都要重新展示一次书 —— ShowBook
+            // 换实例 (搜索书并回书架那本) 才要重新展示一次 —— ShowBook
             // 同时带最新章文案模板 (旧实现在此只 bump tick, 文案停在未套模板的初值)。
             // 未换实例的普通书不展示: 构造时的 initialBook 已是同一份快照, 多余 dispatch 只会
             // 整页重组一次 (旧实现它还顺带把 coverTick+1, 即闪封面的又一跳)
-            if (curBook !== book || curBook.isRss) {
+            if (curBook !== book) {
                 screenModel.dispatch(
                     BookInfoUiEvent.ShowBook(curBook, screenModel.lastedTitleOf(curBook))
                 )
