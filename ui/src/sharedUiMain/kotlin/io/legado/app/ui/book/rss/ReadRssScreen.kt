@@ -34,11 +34,12 @@ import org.jetbrains.compose.resources.stringResource
  *
  * Painter key (drawable):
  *   - ic_refresh_black_24dp  (刷新)
+ *   - ic_toc                 (目录)
  *   - ic_star                (已收藏)
  *   - ic_star_border         (未收藏)
  *
  * String key (string):
- *   - refresh / share / read_aloud / aloud_stop / login / open_in_browser
+ *   - refresh / share / read_aloud / aloud_stop / login / open_in_browser / chapter_list
  *   - in_favorites / out_favorites
  *
  * L3 不可下沉项 (由 platformWebViewSlot 注入):
@@ -50,7 +51,7 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * RSS 阅读页 shared Screen, 对照 app 端原 [io.legado.app.ui.book.rss.ReadRssActivity]。
  *
- * 布局: 标题栏(刷新/收藏/溢出菜单) + WebView 内容区。
+ * 布局: 标题栏(刷新/目录/收藏/溢出菜单) + WebView 内容区。
  * 视频全屏时隐藏标题栏 (对照原 CommonWebChromeClient.onShowCustomView 的 llView.invisible)。
  *
  * @param state UI 展示状态
@@ -105,7 +106,10 @@ private fun ContentArea(
 }
 
 /**
- * 标题栏动作区, 对照原版 menu/rss_read.xml。
+ * 标题栏动作区。
+ *
+ * 原版 menu/rss_read.xml 没有目录项; 目录按钮为本项目新增 (位置按用户要求在刷新与收藏之间),
+ * 弹窗复用阅读页的 [io.legado.app.ui.route.TocDialogHost]。其余项对照原版:
  * 刷新(always) + 收藏(仅有书时) + 溢出菜单(分享/朗读/登录/浏览器打开, 登录项仅书源配了登录时)。
  */
 @Composable
@@ -115,6 +119,13 @@ private fun RssActions(state: ReadRssUiState, actions: ReadRssUiActions) {
         Icon(
             painter = painterResource(Res.drawable.ic_refresh_black_24dp),
             contentDescription = stringResource(Res.string.refresh),
+            tint = colors.primaryText,
+        )
+    }
+    IconButton(onClick = actions::onToc) {
+        Icon(
+            painter = rememberPainter("ic_toc"),
+            contentDescription = rememberString("chapter_list"),
             tint = colors.primaryText,
         )
     }

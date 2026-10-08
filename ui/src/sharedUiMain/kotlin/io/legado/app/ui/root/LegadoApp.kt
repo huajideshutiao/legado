@@ -304,7 +304,9 @@ fun LegadoApp(
         ) {
         // 官方共享转场作用域: 页栈与 Overlay 栈都必须在它之内 —— 共享元素的起止位全靠
         // 本作用域根的 lookahead 坐标换算, 跳窗口在 compose-ui 里直接抛
-        // "layouts are not part of the same hierarchy", 故大图查看器不能再走独立 Dialog 窗口
+        // "layouts are not part of the same hierarchy", 故**参与共享转场的**大图查看器
+        // (有源封面配对端点) 必须留在本窗口内的覆盖层; 无配对端点的查看器改由独立对话框
+        // 窗口承载 (见 PhotoViewOverlayDialog), 这样才能盖得住发起它的对话框
         SharedTransitionLayout(Modifier.fillMaxSize()) {
         CompositionLocalProvider(LocalSharedTransitionScope provides this) {
         Box(

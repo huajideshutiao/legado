@@ -153,6 +153,8 @@ fun AppDialog(
     properties: DialogProperties = AppDialogSizes.properties(),
     /** 背景暗化: 原版 BaseDialogFragment 默认保留 dim */
     dim: Boolean = true,
+    /** false = 跳过对话框进入/退出动画 (供满屏自管内容做窗口承载, 如无配对端点的大图查看器) */
+    animate: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     // 顶层覆盖物返回拦截: 对话框打开期间返回键 (桌面端 ESC / 统一链) 优先关闭对话框,
@@ -160,7 +162,7 @@ fun AppDialog(
     // 播退出动画, E-Ink 无动画直接关闭 (对齐 E-Ink 分支 Dialog 直连 onDismissRequest)。
     var dismissing by remember { mutableStateOf(false) }
     BackLayerHandler(enabled = true) {
-        if (AppConfigProviders.get().isEInkMode) onDismissRequest() else dismissing = true
+        if (!animate || AppConfigProviders.get().isEInkMode) onDismissRequest() else dismissing = true
     }
     if (AppConfigProviders.get().isEInkMode) {
         Dialog(
@@ -169,6 +171,31 @@ fun AppDialog(
             content = {
                 WithWindowTextMenu {
                     Box(Modifier.directionKeyFocusNavigation(LocalFocusManager.current)) { content() }
+                }
+            },
+        )
+        return
+    }
+    if (!animate) {
+        // 无动画分支: 满屏自管内容的窗口承载。内容铺满容器并让开顶部平台装饰
+        // ([LocalOverlayTopInset], 桌面端窗口控制条 40dp), 全屏内容坐标系与页面可用区对齐;
+        // 此类调用方自管点击关闭 (dismissOnClickOutside=false), 不依赖平台外点关闭;
+        // 暗度由内容自绘 (需要时仍可 dim=true 补平台 dim)
+        Dialog(
+            onDismissRequest = onDismissRequest,
+            properties = properties,
+            content = {
+                WithWindowTextMenu {
+                    if (dim) PlatformDialogDim()
+                    val topInset = LocalOverlayTopInset.current
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .then(if (topInset > 0.dp) Modifier.padding(top = topInset) else Modifier),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        content()
+                    }
                 }
             },
         )

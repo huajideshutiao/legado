@@ -471,6 +471,21 @@ internal fun photoOverlayTextColor(): Color =
     if (LocalEInk.current) AppTheme.colors.primaryText else Color.White
 
 /**
+ * 满屏查看器的**独立窗口承载**: 各端 actual 让对话框窗口/层铺满整屏并延伸到系统栏之下
+ * (Android: decorFitsSystemWindows=false; 桌面/iOS/鸿蒙: usePlatformDefaultWidth=false +
+ * usePlatformInsets=false), 同时关掉平台自带的暗化 —— 暗度只由查看器自绘一处定义
+ * (PhotoOverlayScrimAlpha), 两处叠加会明显过暗。
+ *
+ * 只在查看器**不参与共享转场** (无配对端点) 时使用: 平台对话框窗口/层恒在主窗口内容之上,
+ * 从段评弹窗/验证码弹窗里点开的大图才盖得住发起它的对话框 (对照原版 showDialogFragment)。
+ */
+@Composable
+internal expect fun PlatformPhotoOverlayDialog(
+    onDismissRequest: () -> Unit,
+    content: @Composable () -> Unit,
+)
+
+/**
  * 全屏大图查看 Overlay: **主窗口内**的全屏覆盖层 (暗底 + 缩放复用 [PhotoDialogContent])。
  *
  * 暗底不是平台对话框窗口的 dim (本层是主窗口内的覆盖层, 没有自己的窗口): 非 E-Ink 自绘
@@ -487,10 +502,13 @@ internal fun photoOverlayTextColor(): Color =
  * (源已隐、副本还没出现)、飞行途中飞 loading、末端跳变 (终态盒按封面宽高比算, 与 p=1 之后的
  * 真实 Fit 布局不同源) 都是结构性的, 补不干净。
  *
- * 为什么必须在主窗口: 官方两端点靠同一棵 layout 树的 lookahead 坐标换算目标位, 独立 Dialog
- * 窗口是另一条 LayoutNode 树 (跨树换算在 compose-ui 里直接抛 "layouts are not part of the
- * same hierarchy")。这也是旧实现要手工减 LocalOverlayTopInset 补坐标、且窗口自身淡入会与
- * 本动画叠加的根因 —— 换成同窗口后这两件事都不存在。
+ * 承载窗口按"本次有没有源封面配对端点"分两种:
+ * - 有配对 (photoToken 非空且共享转场总闸开): 两端点必须同一棵 layout 树 —— 官方靠 lookahead
+ *   坐标换算目标位, 独立 Dialog 窗口是另一条 LayoutNode 树 (跨树换算在 compose-ui 里直接抛
+ *   "layouts are not part of the same hierarchy") —— 故留在主窗口内层;
+ * - 无配对 (段评头像/配图、验证码图、阅读页内联图、简介图等): 没有同树约束, 改用独立对话框
+ *   窗口承载 —— 平台对话框窗口/层恒在主窗口内容之上, 这样才盖得住发起它的对话框
+ *   (对照原版 showDialogFragment(PhotoDialog))。
  *
  * @param src 图片路径 (http(s):// / file:// / 绝对路径 / data URI), 同时作为共享元素的 key
  * @param onDismiss 关闭回调 (返回键 / 单击)
@@ -560,7 +578,8 @@ fun PhotoViewOverlayDialog(
                 snapshotFlow { scope.isTransitionActive }.first { !it }
             }
         }
-        windowController.setLightIconOverlay(false)
+        // 系统栏图标只由主窗口内层路径代管: 独立窗口路径的系统栏归它自己的窗口
+        if (shareable) windowController.setLightIconOverlay(false)
         onDismiss()
     }
 
@@ -594,65 +613,76 @@ fun PhotoViewOverlayDialog(
     // 阅读页内联图没有配对却同样有深色蒙版, E-Ink 的底是主题背景纯色 (白) 则必须留深色图标。
     // 归还只走上面的 onDispose (与原实现同)
     val darkScrim = !eInk && scrimAlpha > 0f
-    LaunchedEffect(darkScrim) {
-        if (darkScrim) windowController.setLightIconOverlay(true)
+    LaunchedEffect(shareable, darkScrim) {
+        // 独立窗口路径的窗口自管自己的系统栏图标, 不动主窗口
+        if (shareable && darkScrim) windowController.setLightIconOverlay(true)
     }
 
-    // 主窗口内的全屏层: 页栈与 Overlay 栈同在 SharedTransitionLayout 内 (见 LegadoApp),
-    // 因此不需要任何跨窗口坐标补偿, 也没有第二层窗口入场动画与飞行叠加
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(
-                (if (eInk) AppTheme.colors.background else Color.Black).copy(alpha = scrimAlpha)
-            )
-            .pointerInput(Unit) {
-                detectTapGestures(onTap = { requestDismiss() })
-            }
-    ) {
-        // 大图端 = "大图↔封面" 共享对的进入/退出端, 进出由 taken 驱动官方 sharedBounds (见
-        // [photoSharedTarget]): 两端内容在同一个动画盒里交叉淡化, 离场那份不会因为"不再报称可见"
-        // 而提前停绘。没有源封面端点 (阅读页内联图 / 验证码图 / 总闸已关) 时本层就是普通全屏图,
-        // 恒显示、不做淡变 —— 与挂不上共享修饰符时的旧行为一致。
-        AnimatedVisibility(
-            visible = taken || !shareable,
-            modifier = Modifier.fillMaxSize(),
-            enter = if (shareable) fadeIn(PhotoSharedContentFade) else EnterTransition.None,
-            exit = if (shareable) fadeOut(PhotoSharedContentFade) else ExitTransition.None,
-            label = "photoViewerSharedTarget",
+    // 查看器本体 (两条承载路径共用): 自绘暗底 + 图片内容 (缩放/单击关闭/长按保存)
+    val viewerLayer: @Composable () -> Unit = {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    (if (eInk) AppTheme.colors.background else Color.Black).copy(alpha = scrimAlpha)
+                )
+                .pointerInput(Unit) {
+                    detectTapGestures(onTap = { requestDismiss() })
+                }
         ) {
-            val viewerVisibilityScope: AnimatedVisibilityScope = this
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .then(
-                        // 没有源封面端点时不挂共享节点 (与源侧“不参与”同一口径)
-                        photoToken?.let {
-                            Modifier.photoSharedTarget(
-                                photoToken = it,
-                                animatedVisibilityScope = viewerVisibilityScope,
-                                // 大图浮在页栈与其它共享元素之上 (飞行途中要盖住页面内容)
-                                zIndexInOverlay = 1f,
-                            )
-                        } ?: Modifier
-                    ),
+            // 大图端 = "大图↔封面" 共享对的进入/退出端, 进出由 taken 驱动官方 sharedBounds (见
+            // [photoSharedTarget]): 两端内容在同一个动画盒里交叉淡化, 离场那份不会因为"不再报称可见"
+            // 而提前停绘。没有源封面端点 (阅读页内联图 / 验证码图 / 总闸已关) 时本层就是普通全屏图,
+            // 恒显示、不做淡变 —— 与挂不上共享修饰符时的旧行为一致。
+            AnimatedVisibility(
+                visible = taken || !shareable,
+                modifier = Modifier.fillMaxSize(),
+                enter = if (shareable) fadeIn(PhotoSharedContentFade) else EnterTransition.None,
+                exit = if (shareable) fadeOut(PhotoSharedContentFade) else ExitTransition.None,
+                label = "photoViewerSharedTarget",
             ) {
-                if (placeholder != null) {
-                    // 前置信息未就绪 (书源身份查询中): 不发起加载, 也不参与飞行 ——
-                    // 有源封面时本层还没接管 (屏幕上仍是封面), 无源封面时这就是查看器自己的
-                    // 暗底 + loading (底色由本层提供, 占位只出文案)
-                    placeholder()
-                } else {
-                    PhotoDialogContent(
-                        loadState = loadState,
-                        modifier = Modifier.fillMaxSize(),
-                        imageModifier = Modifier.fillMaxSize(),
-                        onLongPress = saveImage,
-                        onTap = requestDismiss,
-                    )
+                val viewerVisibilityScope: AnimatedVisibilityScope = this
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .then(
+                            // 没有源封面端点时不挂共享节点 (与源侧“不参与”同一口径)
+                            photoToken?.let {
+                                Modifier.photoSharedTarget(
+                                    photoToken = it,
+                                    animatedVisibilityScope = viewerVisibilityScope,
+                                    // 大图浮在页栈与其它共享元素之上 (飞行途中要盖住页面内容)
+                                    zIndexInOverlay = 1f,
+                                )
+                            } ?: Modifier
+                        ),
+                ) {
+                    if (placeholder != null) {
+                        // 前置信息未就绪 (书源身份查询中): 不发起加载, 也不参与飞行 ——
+                        // 有源封面时本层还没接管 (屏幕上仍是封面), 无源封面时这就是查看器自己的
+                        // 暗底 + loading (底色由本层提供, 占位只出文案)
+                        placeholder()
+                    } else {
+                        PhotoDialogContent(
+                            loadState = loadState,
+                            modifier = Modifier.fillMaxSize(),
+                            imageModifier = Modifier.fillMaxSize(),
+                            onLongPress = saveImage,
+                            onTap = requestDismiss,
+                        )
+                    }
                 }
             }
         }
     }
+
+    if (!shareable) {
+        // 无源封面端点: 没有同树约束, 用独立对话框窗口承载, 才盖得住发起它的对话框
+        // (段评/书评弹窗与验证码弹窗都是平台对话框窗口, 恒在主窗口内容之上)
+        PlatformPhotoOverlayDialog(onDismissRequest = requestDismiss) { viewerLayer() }
+        return
+    }
+    // 有源封面端点: 两端点必须同树, 只能留在主窗口内的覆盖层 (见函数头 KDoc)
+    viewerLayer()
 }
 

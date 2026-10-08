@@ -103,6 +103,10 @@ sealed interface ReadRssUiEvent {
  */
 interface ReadRssUiActions {
     fun onRefresh()
+
+    /** 目录: 弹 [io.legado.app.ui.route.TocDialogHost] (文章列表)。 */
+    fun onToc()
+
     fun onToggleStar()
     fun onShare()
     fun onReadAloud()

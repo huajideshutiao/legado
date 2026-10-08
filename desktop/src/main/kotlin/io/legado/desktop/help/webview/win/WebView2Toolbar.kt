@@ -27,6 +27,8 @@ import io.legado.desktop.help.win.ComCtl32
  * - **菜单无刷新项** (工具栏已有刷新按钮), 仅 浏览器打开/拷贝 URL;
  *   + sourceKey 非空时额外显示 禁用源/删除源 (对照原版 web_view.xml, 2026-08-08);
  * - RSS 模式 (rssActions 非空): 额外显示 收藏/朗读/分享/登录 按钮, 动作回调回 shared。
+ *   目录不入工具栏: 目录弹层是主窗口 Compose 弹层, 会被 RSS 独立窗口遮挡
+ *   (同收藏删除确认弹窗的取舍)。
  *
  * - 按钮: 返回/前进/刷新 (+验证/登录模式"确定") (+RSS 模式 收藏/朗读/分享/登录) + 菜单;
  * - 菜单: 按钮点击 → TrackPopupMenu (AppendMenuW 中文正常, 需先 SetForegroundWindow);

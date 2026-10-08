@@ -108,6 +108,7 @@ interface PlatformCapabilities {
      *
      * 返回 true = 平台已处理 (弹出带 RSS 工具栏的浏览器窗口), 调用方不再渲染 ReadRssScreen
      * 页面外壳 (移动端默认 false, 保持内嵌页面)。窗口工具栏带 收藏/朗读/分享/登录 按钮
+     * (目录不入窗口工具栏: 弹层在主窗口, 会被 RSS 独立窗口遮挡)
      * (动作经 [RssToolbarActions] 回调回 shared), 星收藏态经 [RssToolbarActions.onStarChanged]
      * 反推更新; 窗口被关闭时平台实现负责让 RSS 路由出栈。
      */

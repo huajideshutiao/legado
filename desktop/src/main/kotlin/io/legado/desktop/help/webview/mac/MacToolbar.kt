@@ -20,7 +20,8 @@ import io.legado.desktop.help.webview.mac.ObjC.void
  * - 菜单无刷新项 (工具栏已有刷新按钮), 仅 浏览器打开/拷贝 URL;
  *   + sourceKey 非空时额外显示 禁用源/删除源 (对照原版 web_view.xml, 2026-08-08);
  * - RSS 模式 (rssActions 非空): 额外显示 收藏/朗读/分享/登录 按钮, 动作回调回 shared,
- *   星收藏态经 [setStarred] 由 shared 侧 onStarChanged 反推更新。
+ *   星收藏态经 [setStarred] 由 shared 侧 onStarChanged 反推更新。目录不入工具栏
+ *   (目录弹层是主窗口 Compose 弹层, 会被 RSS 独立窗口遮挡)。
  *
  * 按钮经 target-action 回调 (动态子类); 菜单按钮 action 回调内直接
  * [NSMenu popUpMenuPositioningItem:atLocation:inView:] 弹出 (macOS 10.6+, 左键可用);

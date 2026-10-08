@@ -10,7 +10,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.help.getUserAgent
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.isNotShelf
-import io.legado.app.help.book.removeType
+import io.legado.app.help.book.toggleBookshelfCore
 import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.model.rss.RssHelp.clHtml
 import io.legado.app.model.rss.RssHelp.loadRssContent
@@ -64,25 +64,15 @@ object RssHelp {
 
     /**
      * 收藏 RSS 源 (对照 app 端 BaseReadViewModel.addToBookshelf):
-     * order 置底 + 继承同名书阅读进度 + 清 notShelf 标记后落库。
-     * 无需像 app 端再插 chapterListData。
+     * order 置底 + 继承同名书阅读进度 + 清 notShelf 标记 + 目录入库。
+     *
+     * 上架落在四端共用的 [io.legado.app.help.book.toggleBookshelfCore], 不再另写一份。
+     *
+     * @param chapters 已装载的文章列表 (对照原 addToBookshelf 里的 chapterListData 落库);
+     *   null/空 = 不写章节
      */
-    suspend fun addToBookshelf(book: Book) {
-        if (book.order == 0) {
-            book.order = appDb.bookDao.minOrder() - 1
-        }
-        appDb.bookDao.getBook(book.name, book.author)?.let {
-            book.durChapterIndex = it.durChapterIndex
-            book.durChapterPos = it.durChapterPos
-            book.durChapterTitle = it.durChapterTitle
-        }
-        // 对照 app 端 Book.save(): removeType(notShelf) + insert-or-update
-        book.removeType(BookType.notShelf)
-        if (appDb.bookDao.has(book.bookUrl)) {
-            appDb.bookDao.update(book)
-        } else {
-            appDb.bookDao.insert(book)
-        }
+    suspend fun addToBookshelf(book: Book, chapters: List<BookChapter>? = null) {
+        book.toggleBookshelfCore(inBookshelf = false, chapters = chapters)
     }
 
     /**

@@ -19,7 +19,8 @@ import io.legado.desktop.help.webview.gtk.GtkLibs.GTK_RELIEF_NONE
  * - **菜单仅 浏览器打开/拷贝 URL** (无刷新项, 工具栏已有刷新按钮)
  *   + sourceKey 非空时额外显示 禁用源/删除源 (对照原版 web_view.xml, 2026-08-08);
  * - RSS 模式 (rssActions 非空): 收藏/朗读/分享/登录 按钮, 插在刷新之后、确定之前,
- *   顺序同 Windows; 动作经 [onAction] 回引擎分发。
+ *   顺序同 Windows; 动作经 [onAction] 回引擎分发。目录不入工具栏 (目录弹层是主窗口
+ *   Compose 弹层, 会被 RSS 独立窗口遮挡)。
  *
  * 图标名 (均为 Adwaita 主题提供): go-previous/go-next/view-refresh/gtk-ok/open-menu/
  * starred/non-starred/audio-x-generic/emblem-shared/avatar-default。其中 starred/non-starred

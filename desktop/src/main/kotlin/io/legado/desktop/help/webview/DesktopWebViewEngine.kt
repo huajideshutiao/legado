@@ -118,7 +118,7 @@ class WebViewFetchResult(
  *   WebKitGTK fullscreen-changed 信号), 供 shared 侧 WebViewScreen 隐藏顶栏并把返回键
  *   优先路由到 WebViewHost.exitFullScreen; 引擎无等价事件时不上报, 行为与未接一致
  * @param rssActions RSS 阅读模式 (2026-08-07: RSS 阅读去页面外壳, 收藏/朗读/分享/登录
- *   移入窗口工具栏); 非空时工具栏显示 RSS 按钮组, 动作经 [io.legado.app.help.RssToolbarActions]
+ *   移入窗口工具栏; 目录不入工具栏, 弹层在主窗口会被本窗口遮挡); 非空时工具栏显示 RSS 按钮组, 动作经 [io.legado.app.help.RssToolbarActions]
  *   回调回 shared, 星收藏态经 [io.legado.app.help.RssToolbarActions.onStarChanged] 反推更新
  */
 data class WebViewWindowRequest(
