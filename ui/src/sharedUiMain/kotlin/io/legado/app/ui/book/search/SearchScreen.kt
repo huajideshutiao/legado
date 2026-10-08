@@ -29,7 +29,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.DropdownMenuItem
-import androidx.compose.material.Icon
 import androidx.compose.material.LinearProgressIndicator
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
@@ -46,7 +45,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -69,6 +67,7 @@ import io.legado.app.model.webBook.SourceSearchGroup
 import io.legado.app.ui.main.home.SectionCoverRow
 import io.legado.app.ui.main.home.SectionTitleRow
 import io.legado.app.ui.book.manga.extension.PluginSearchFilterRow
+import io.legado.app.ui.book.read.ReadMenuFab
 import io.legado.app.ui.bookshelf.KindLabels
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.root.LocalSharedCoverBinding
@@ -1000,22 +999,17 @@ private fun StartStopFab(
     if (!visible) return
     val colors = AppTheme.colors
     val tint = if (ColorUtils.isColorLight(colors.accent.toArgb())) Color.Black else Color.White
-    Box(
-        modifier
-            .padding(DesignTokens.spacingLg)
-            .shadow(6.dp, CircleShape)
-            .size(32.dp)
-            .background(colors.accent, CircleShape)
-            .clickable { onClick() },
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            painter = rememberPainter(if (showStop) "ic_stop_black_24dp" else "ic_play_24dp"),
-            contentDescription = stringResource(Res.string.stop),
-            tint = tint,
-            modifier = Modifier.size(24.dp),
-        )
-    }
+    // 尺寸/背景/按压指示复用阅读菜单的 mini FAB (40dp 圆); 按钮在原版未设 focusable,
+    // 故不参与方向键焦点搜索
+    ReadMenuFab(
+        iconKey = if (showStop) "ic_stop_black_24dp" else "ic_play_24dp",
+        contentDescription = stringResource(Res.string.stop),
+        bg = colors.accent,
+        tint = tint,
+        modifier = modifier,
+        focusable = false,
+        onClick = onClick,
+    )
 }
 
 // ===== 搜索结果为空对话框 (对齐原 observeLiveBus searchFinishLiveData) =====

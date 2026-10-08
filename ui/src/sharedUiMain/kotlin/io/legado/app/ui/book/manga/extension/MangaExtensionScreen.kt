@@ -96,7 +96,7 @@ private const val NsfwLabel = "NSFW"
 /**
  * 漫画插件管理页 (shared, app + 桌面共用; 服务未注册端入口隐藏不会进入)。
  *
- * 标题栏搜索图标点开后标题位换成搜索框 (再点图标/系统返回关闭), 匹配扩展名、源名、
+ * 标题栏搜索图标点开后标题位换成搜索框 (搜索态下该图标隐藏, 退出靠系统返回/返回箭头), 匹配扩展名、源名、
  * 源 id 与源站点 (忽略大小写, 逗号分隔多个子串按"或"匹配; 对齐 Mihon searchQueryPredicate)。
  * 筛选条紧贴标题栏下方: 语言 (仅多语言时展示) / 类型 / 内容分级统一按选项数裁决 (选项数 > 4
  * 出 chip 行, 否则并排下拉并显示当前档位), 三路均为单选语义 (选中即当前档位, 再选同档无动作,
@@ -192,22 +192,15 @@ fun MangaExtensionScreen(
                 null
             },
             actions = {
-                IconButton(
-                    onClick = {
-                        onSearchQueryChange(if (searchQuery != null) null else "")
-                    },
-                ) {
-                    Icon(
-                        painter = painterResource(
-                            if (searchQuery != null) {
-                                Res.drawable.ic_baseline_close
-                            } else {
-                                Res.drawable.ic_search
-                            }
-                        ),
-                        contentDescription = searchHint,
-                        tint = colors.primaryText,
-                    )
+                // 搜索态下隐藏入口 (退出由返回箭头/系统返回负责), 不切成关闭图标
+                if (searchQuery == null) {
+                    IconButton(onClick = { onSearchQueryChange("") }) {
+                        Icon(
+                            painter = painterResource(Res.drawable.ic_search),
+                            contentDescription = searchHint,
+                            tint = colors.primaryText,
+                        )
+                    }
                 }
                 IconButton(onClick = onRefresh) {
                     Icon(

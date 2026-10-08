@@ -1247,7 +1247,13 @@ private fun ChapterNavText(
     )
 }
 
-/** 复刻 mini FloatingActionButton：40dp 圆、底栏色底，按压用 Compose 默认指示 */
+/**
+ * 复刻 mini FloatingActionButton：40dp 圆、底栏色底，按压用 Compose 默认指示。
+ *
+ * @param focusable 是否参与方向键/TV 焦点搜索 ([listItemFocus])。阅读菜单与阅读内搜索覆盖层的
+ *   悬浮按钮需要; 搜索页的开始/停止按钮在原版是未设 `android:focusable` 的 Material FAB,
+ *   传 false 保持该行为。
+ */
 @Composable
 fun ReadMenuFab(
     iconKey: String,
@@ -1256,6 +1262,7 @@ fun ReadMenuFab(
     tint: Color,
     modifier: Modifier = Modifier,
     iconModifier: Modifier = Modifier,
+    focusable: Boolean = true,
     onClick: () -> Unit,
 ) {
     Box(
@@ -1265,7 +1272,7 @@ fun ReadMenuFab(
             .shadow(6.dp, CircleShape)
             .clip(CircleShape)
             .background(bg)
-            .listItemFocus()
+            .then(if (focusable) Modifier.listItemFocus() else Modifier)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
