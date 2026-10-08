@@ -58,7 +58,7 @@ object TvBoxSourceDelegateImpl : PluginSourceDelegate {
     override fun handles(bookSource: BookSource): Boolean =
         bookSource.bookSourceUrl.startsWith(TvBoxSourceMapper.SOURCE_URL_PREFIX)
 
-    override fun tocFailMessage(bookSource: BookSource, e: Exception): String =
+    override fun tocFailMessage(bookSource: BookSource, e: Throwable): String =
         "获取TVBox源 ${bookSource.bookSourceName} 的书籍目录失败\n${e.message}"
 
     /**

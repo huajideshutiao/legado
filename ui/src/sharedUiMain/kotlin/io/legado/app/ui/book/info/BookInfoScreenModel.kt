@@ -387,8 +387,7 @@ class BookInfoScreenModel(initialBook: Book? = null) : ScreenModel {
             BookChapterLoader.fetchFromSource(book, bookSource, runPreUpdateJs)
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Throwable) {
-            AppLog.put("获取目录失败\n${e.message}", e)
+        } catch (_: Throwable) {
             Toasters.get().toast(getString(Res.string.error_get_chapter_list))
             emptyList()
         }

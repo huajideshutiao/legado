@@ -76,7 +76,7 @@ interface PluginSourceDelegate {
      * 目录失败日志文案 (带来源标识); 返回 null 时由调用方用通用文案。
      * 委派是虚拟源唯一的来源知识持有者, 失败文案在此给出, 取数管线不判源身份。
      */
-    fun tocFailMessage(bookSource: BookSource, e: Exception): String? = null
+    fun tocFailMessage(bookSource: BookSource, e: Throwable): String? = null
 
     /**
      * 发现分类 (对应 BookSource.exploreKinds)。

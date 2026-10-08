@@ -1256,8 +1256,6 @@ Windows: winget install shinchiro.mpv 或 scoop install mpv,
     <string name="book_source_disabled">已禁用书源</string>
     <string name="import_local_book_failed_log">导入本地书籍失败
 %1$s</string>
-    <string name="get_toc_failed_log">获取目录失败
-%1$s</string>
     <string name="download_remote_book_failed_log">下载远程书籍&lt;%1$s&gt;失败</string>
     <string name="intro_action_failed_log">简介动作执行失败
 %1$s</string>

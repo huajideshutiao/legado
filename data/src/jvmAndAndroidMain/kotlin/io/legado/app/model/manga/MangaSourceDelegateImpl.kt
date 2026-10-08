@@ -36,7 +36,7 @@ object MangaSourceDelegateImpl : PluginSourceDelegate {
         bookSource.bookSourceType == BookSourceType.image &&
             bookSource.bookSourceUrl.startsWith(MangaSourceMapper.SOURCE_URL_PREFIX)
 
-    override fun tocFailMessage(bookSource: BookSource, e: Exception): String =
+    override fun tocFailMessage(bookSource: BookSource, e: Throwable): String =
         "获取tachiyomi插件 ${bookSource.bookSourceName} 的书籍目录失败\n${e.message}"
 
     override suspend fun getBookListAwait(

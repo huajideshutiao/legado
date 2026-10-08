@@ -1196,7 +1196,6 @@
     <string name="download_success">Downloaded</string>
     <string name="book_source_disabled">Book source disabled</string>
     <string name="import_local_book_failed_log">Failed to import local books\n%1$s</string>
-    <string name="get_toc_failed_log">Failed to get the TOC\n%1$s</string>
     <string name="download_remote_book_failed_log">Failed to download remote book &lt;%1$s&gt;</string>
     <string name="intro_action_failed_log">Failed to execute description action\n%1$s</string>
     <string name="pick_image_failed_log">Failed to pick image: cannot get the path</string>

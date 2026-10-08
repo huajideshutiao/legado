@@ -154,7 +154,7 @@ object BookChapterLoader {
             }
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             AppLog.put(tocFailMessage(source, e), e)
             throw e
         }
@@ -181,10 +181,10 @@ object BookChapterLoader {
     }
 
     /** 目录失败日志唯一记录点: 委派源由委派给出带来源标识的文案, 其余用通用文案。 */
-    private fun tocFailMessage(source: BookSource?, e: Exception): String {
+    private fun tocFailMessage(source: BookSource?, e: Throwable): String {
         if (source != null) {
             PluginSourceDelegates.resolve(source)?.tocFailMessage(source, e)?.let { return it }
         }
-        return "获取目录失败\n${e.message}"
+        return "获取目录失败\n${e.localizedMessage}"
     }
 }
