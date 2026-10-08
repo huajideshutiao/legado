@@ -26,7 +26,7 @@ fun PluginFilterEntryRow(
     onApplied: () -> Unit,
     onReset: () -> Unit,
 ) {
-    var dialogOpen by remember { mutableStateOf(false) }
+    var dialogOpen by remember(session) { mutableStateOf(false) }
 
     AppChipRow {
         AppChipRowOption(

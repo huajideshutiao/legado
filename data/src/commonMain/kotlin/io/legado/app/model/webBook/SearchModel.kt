@@ -241,10 +241,13 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
 
     /**
      * 单源重搜: 丢弃该源旧结果与在飞旧请求, 只重发该源第 1 页 (沿用当前关键词与该源最新筛选会话),
-     * 其余源的结果与在飞请求不受影响 (任务按源隔离); 主链仍在搜索时不发 onSearchFinish。
+     * 其余源的结果与在飞请求不受影响 (任务按源隔离)。
+     *
+     * 不要求主链仍在搜索: 用户停止搜索后结果仍展示、区块内筛选/参数入口仍可用, 此时改动该源
+     * 也要能生效 (主链停止时不再发 onSearchFinish, 免得重弹空结果弹窗)。
      */
     fun restartSource(sourceUrl: String) {
-        if (mSearchId == 0L || searchKey.isEmpty()) return
+        if (searchKey.isEmpty()) return
         val source = bookSources.firstOrNull { it.bookSourceUrl == sourceUrl } ?: return
         val searchId = mSearchId
         // 世代 +1: 该源此前发出的请求 (含主链在飞页) 全部作废
@@ -276,7 +279,8 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
                 }
                 if (searchId != mSearchId) return@launch
                 handlePageResult(SourcePageResult(source, generation, page))
-                if (searchJob?.isActive != true) {
+                // 无活跃搜索会话 (用户已停止) 时没有"搜索结束"可发
+                if (searchId != 0L && searchJob?.isActive != true) {
                     callBack.onSearchFinish(searchBooks.isEmpty(), hasMore)
                 }
             } catch (e: Throwable) {

@@ -11,18 +11,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.material.Icon
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -44,20 +37,27 @@ import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
  *
  * [revision] 必须在本函数体内读取: AnimeFilter.state 非 snapshot state, 改动只 bump revision,
  * 若父级把 revision 当普通参数往下传而不读, 子项会被 Compose 判为参数未变而整段跳过 (点了不亮)。
+ *
+ * 每条改动即 [onChanged] (对话框关闭时才据此上报一次)。
+ *
+ * [path] 为条目在筛选树中的下标路径 (如 `0/2/1`): 作 LazyColumn 条目 key 用 —— 默认的
+ * 扁平下标身份在 Group 折叠改变条目数时会整体前移, 使条目内 remember 状态 (下拉展开态等)
+ * 挂到别的筛选器上; 树内路径不受折叠影响。
  */
 internal fun LazyListScope.animeFilterItems(
     filters: List<AnimeFilter<*>>,
     revision: Int,
     expandedGroups: MutableMap<Any, Boolean>,
     depth: Int,
+    path: String,
     onChanged: () -> Unit,
-    onDraft: () -> Unit,
     onOpenSort: (AnimeFilter.Sort) -> Unit,
 ) {
     @Suppress("UNUSED_EXPRESSION") revision
-    buildAnimeFilterNodes(filters).forEach { node ->
+    buildAnimeFilterNodes(filters).forEachIndexed { nodeIndex, node ->
+        val nodeKey = "$path/$nodeIndex"
         when (node) {
-            is AnimeFilterNode.Selections -> item {
+            is AnimeFilterNode.Selections -> item(key = nodeKey) {
                 AppChoiceRowGroup(
                     modifier = filterIndent(depth),
                     fields = node.items.map { filter ->
@@ -79,8 +79,8 @@ internal fun LazyListScope.animeFilterItems(
                 revision = revision,
                 expandedGroups = expandedGroups,
                 depth = depth,
+                itemKey = nodeKey,
                 onChanged = onChanged,
-                onDraft = onDraft,
                 onOpenSort = onOpenSort,
             )
         }
@@ -120,13 +120,13 @@ private fun LazyListScope.animeFilterItem(
     revision: Int,
     expandedGroups: MutableMap<Any, Boolean>,
     depth: Int,
+    itemKey: String,
     onChanged: () -> Unit,
-    onDraft: () -> Unit,
     onOpenSort: (AnimeFilter.Sort) -> Unit,
 ) {
     @Suppress("UNUSED_EXPRESSION") revision
     when (filter) {
-        is AnimeFilter.Header -> item {
+        is AnimeFilter.Header -> item(key = itemKey) {
             Text(
                 text = filter.name,
                 fontSize = 13.sp,
@@ -135,7 +135,7 @@ private fun LazyListScope.animeFilterItem(
             )
         }
 
-        is AnimeFilter.Separator -> item {
+        is AnimeFilter.Separator -> item(key = itemKey) {
             Column(modifier = filterIndent(depth).padding(vertical = DesignTokens.spacingDefault)) {
                 Box(
                     Modifier
@@ -159,12 +159,12 @@ private fun LazyListScope.animeFilterItem(
             revision = revision,
             expandedGroups = expandedGroups,
             depth = depth,
+            itemKey = itemKey,
             onChanged = onChanged,
-            onDraft = onDraft,
             onOpenSort = onOpenSort,
         )
 
-        is AnimeFilter.Sort -> item {
+        is AnimeFilter.Sort -> item(key = itemKey) {
             FilterRow(
                 name = filter.name,
                 valueText = filter.state?.let { selection ->
@@ -196,13 +196,8 @@ private fun LazyListScope.animeFilterItem(
 
         is AnimeFilter.Select<*> -> Unit
 
-        is AnimeFilter.Text -> item {
+        is AnimeFilter.Text -> item(key = itemKey) {
             Column(filterIndent(depth).padding(vertical = DesignTokens.spacingXs)) {
-                var dirty by remember(filter) { mutableStateOf(false) }
-                // 输入期间只刷显示不取数; 失焦/IME 完成/离开组合时提交, 免得改完直接关窗丢掉输入
-                DisposableEffect(filter) {
-                    onDispose { if (dirty) onChanged() }
-                }
                 Text(
                     text = filter.name,
                     fontSize = 14.sp,
@@ -212,31 +207,15 @@ private fun LazyListScope.animeFilterItem(
                     value = filter.state,
                     onValueChange = {
                         filter.state = it
-                        dirty = true
-                        onDraft()
+                        onChanged()
                     },
                     singleLine = true,
-                    keyboardActions = KeyboardActions(
-                        onDone = {
-                            if (dirty) {
-                                dirty = false
-                                onChanged()
-                            }
-                        }
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .onFocusChanged { focusState ->
-                            if (!focusState.isFocused && dirty) {
-                                dirty = false
-                                onChanged()
-                            }
-                        },
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
 
-        is AnimeFilter.TriState -> item {
+        is AnimeFilter.TriState -> item(key = itemKey) {
             FilterRow(
                 name = filter.name,
                 valueText = when (filter.state) {
@@ -253,7 +232,7 @@ private fun LazyListScope.animeFilterItem(
             )
         }
 
-        is AnimeFilter.CheckBox -> item {
+        is AnimeFilter.CheckBox -> item(key = itemKey) {
             Row(
                 modifier = filterIndent(depth)
                     .fillMaxWidth()
@@ -286,15 +265,15 @@ private fun LazyListScope.animeFilterGroup(
     revision: Int,
     expandedGroups: MutableMap<Any, Boolean>,
     depth: Int,
+    itemKey: String,
     onChanged: () -> Unit,
-    onDraft: () -> Unit,
     onOpenSort: (AnimeFilter.Sort) -> Unit,
 ) {
     val expanded = expandedGroups[filter] ?: true
     val children = filter.state
         .filterIsInstance<AnimeFilter<*>>()
         .orEmpty()
-    item {
+    item(key = itemKey) {
         Row(
             filterIndent(depth)
                 .fillMaxWidth()
@@ -324,8 +303,8 @@ private fun LazyListScope.animeFilterGroup(
             revision = revision,
             expandedGroups = expandedGroups,
             depth = depth + 1,
+            path = itemKey,
             onChanged = onChanged,
-            onDraft = onDraft,
             onOpenSort = onOpenSort,
         )
     }

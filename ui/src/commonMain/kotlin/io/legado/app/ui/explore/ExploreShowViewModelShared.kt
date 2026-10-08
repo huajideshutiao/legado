@@ -141,8 +141,7 @@ class ExploreShowViewModelShared(
     /**
      * 筛选分类页的会话筛选实例 (漫画 [MangaFilterSession] / 视频 [AnimeFilterSession]; 仅本页会话内
      * 有效, VM 随页面销毁即丢, 不持久化)。由 [createPluginExploreFilters] 在 initData 创建,
-     * 经 [explore] 透传取数委派; 入口行"重置"换新默认实例, 取数成功后按
-     * [refreshPluginExploreFilters] 重建一次以补齐运行时抓取的选项。
+     * 经 [explore] 透传取数委派; 入口行"重置"或退出重进页面时新建会话。
      */
     var pluginExploreFilters: PluginFilterSession? = null
         private set

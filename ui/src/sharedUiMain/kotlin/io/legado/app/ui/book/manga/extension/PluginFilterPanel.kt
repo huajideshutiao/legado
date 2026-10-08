@@ -36,7 +36,7 @@ import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
  * 对话框高度上限, 条目按需组合。
  *
  * 会话实例由宿主 VM 持有并经取数委派共用 (同一份 Filter 对象承载筛选状态), 面板直接改该实例;
- * 面板内的改动只在关闭对话框时经 [onDismiss] 上报一次 (改多项只重取一次, 对齐原版关闭时应用)。
+ * 面板内每条改动即置位, 关闭对话框时经 [onDismiss] 上报一次 (改多项只重取一次)。
  */
 @Composable
 fun PluginFilterDialog(
@@ -69,8 +69,8 @@ fun PluginFilterDialog(
                     revision = revision,
                     expandedGroups = expandedGroups,
                     depth = 0,
+                    path = "",
                     onChanged = onChanged,
-                    onDraft = { revision++ },
                     onOpenSort = { sortFilter = it },
                 )
 
@@ -79,8 +79,8 @@ fun PluginFilterDialog(
                     revision = revision,
                     expandedGroups = expandedGroups,
                     depth = 0,
+                    path = "",
                     onChanged = onChanged,
-                    onDraft = { revision++ },
                     onOpenSort = { animeSortFilter = it },
                 )
             }
@@ -112,10 +112,12 @@ fun PluginFilterDialog(
     }
 }
 
-/** 条目缩进: 每级 [DesignTokens.spacingLg], 两侧对齐正文行 (漫画/视频筛选面板共用)。 */
+/**
+ * 条目缩进: 只按层级递进 (顶层贴对话框内边距, 每级 +[DesignTokens.spacingLg])。
+ * 左右基础内边距由对话框内容承担 ([AppAlertDialogContent]), 此处不再叠加。
+ */
 internal fun filterIndent(depth: Int): Modifier = Modifier.padding(
-    start = DesignTokens.spacingLg + DesignTokens.spacingLg * depth,
-    end = DesignTokens.spacingLg,
+    start = DesignTokens.spacingLg * depth,
 )
 
 /** 通用取值行: 名称 + 当前值 (点按整行触发), 尾部可选附加控件 (漫画/视频筛选面板共用)。 */
