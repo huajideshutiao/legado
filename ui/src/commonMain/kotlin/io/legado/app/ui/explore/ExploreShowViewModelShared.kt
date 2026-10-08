@@ -141,10 +141,15 @@ class ExploreShowViewModelShared(
     /**
      * 筛选分类页的会话筛选实例 (漫画 [MangaFilterSession] / 视频 [AnimeFilterSession]; 仅本页会话内
      * 有效, VM 随页面销毁即丢, 不持久化)。由 [createPluginExploreFilters] 在 initData 创建,
-     * 经 [explore] 透传取数委派; 筛选面板改动即改实例。
+     * 经 [explore] 透传取数委派; 入口行"重置"换新默认实例, 取数成功后按
+     * [refreshPluginExploreFilters] 重建一次以补齐运行时抓取的选项。
      */
     var pluginExploreFilters: PluginFilterSession? = null
         private set
+
+    /** 筛选会话版本 (每次替换实例 +1): 面板据此重组 (结构相等的两份实例否则会被 Compose 跳过)。 */
+    private val _pluginFiltersVersion = MutableStateFlow(0)
+    val pluginFiltersVersion: StateFlow<Int> = _pluginFiltersVersion.asStateFlow()
 
     /** 原始发现 URL (含参数 chip, 解析后填入 [exploreOptions])。 */
     private var rawExploreUrl: String? = null
@@ -350,6 +355,23 @@ class ExploreShowViewModelShared(
         if (!isPluginFilterKind) return
         val source = bookSource ?: return
         pluginExploreFilters = createPluginFilterSession(source)
+        _pluginFiltersVersion.value++
+    }
+
+    /**
+     * 重置到源默认筛选: 换新会话实例并返回 (源不可用/服务未注册返回 null, 保留原实例)。
+     * 入口行"重置"调用, 调用方换实例后重载第 1 页。
+     *
+     * 部分扩展的档位靠首次请求的拦截器异步抓站点表单写入插件偏好, 抓取完成前 getFilterList 只
+     * 返回兜底档位 (如 hanime1 的「發佈年份/發佈月份」仅「全部」); 重置与退出重进页面都会重新
+     * 新建会话 (见 [createPluginExploreFilters]), 据那时已就绪的档位刷新。
+     */
+    suspend fun resetPluginExploreFilters(): PluginFilterSession? {
+        val source = bookSource ?: return null
+        val session = createPluginFilterSession(source) ?: return null
+        pluginExploreFilters = session
+        _pluginFiltersVersion.value++
+        return session
     }
 
     private suspend fun createPluginFilterSession(source: BookSource): PluginFilterSession? {

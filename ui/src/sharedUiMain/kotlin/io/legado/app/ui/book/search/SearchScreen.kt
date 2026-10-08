@@ -244,8 +244,11 @@ fun SearchScreen(
     val manualStopped by viewModel.manualStopped.collectAsState()
 
     val searchOptionsVersion by viewModel.searchOptionsVersion.collectAsState()
+    val pluginFiltersVersion by viewModel.pluginFiltersVersion.collectAsState()
     // 聚簇顶部选项行快照: 仅单源时非空 (多源选项在各源区块内); 点击直改实例, 版本号驱动重读
     val topSearchOptions = remember(searchOptionsVersion) { viewModel.getTopOptions() }
+    // 本轮搜索源快照: 单源聚簇顶部筛选入口据此取源 (多源聚簇不展示筛选)
+    val searchSources by viewModel.searchSources.collectAsState()
 
     // 搜索布局: 低 3 位=列数 (0/1 单列; 2..6 N 列网格), bit 4 (0x10)=视频标志,
     // bit 5 (0x20)=按源分类 (结果区按源分区块; 视频位在区块内生效)。列数位在按源分类下
@@ -341,14 +344,18 @@ fun SearchScreen(
                             },
                         )
                     }
-                    // 插件源筛选面板 (漫画/视频, 范围内无插件源时为零行; 服务未注册端同样);
-                    // 会话实例由本页 VM 持有, 随页面销毁即丢
-                    PluginSearchFilterRow(
-                        searchScope = viewModel.searchScope,
-                        scopeVersion = scopeVersion,
-                        ensureFilterSession = { viewModel.ensurePluginFilterSession(it) },
-                        onFiltersChanged = { viewModel.search(viewModel.searchKey, resetOptions = false) },
-                    )
+                    // 插件源筛选入口: 仅聚簇布局且本轮只有一个源时在顶部; 多源聚簇不展示
+                    // (按源分类布局下入口在各源区块内)。会话实例由本页 VM 持有, 随页面销毁即丢。
+                    if (!isSourceGroupLayout) {
+                        PluginSearchFilterRow(
+                            source = searchSources.singleOrNull(),
+                            sessionVersion = pluginFiltersVersion,
+                            getSession = viewModel::getPluginFilterSession,
+                            ensureFilterSession = { viewModel.ensurePluginFilterSession(it) },
+                            onFiltersChanged = { source -> viewModel.restartSourceSearch(source) },
+                            onResetFilters = { source -> viewModel.resetSourceFilters(source) },
+                        )
+                    }
                     ResultArea(
                         viewModel = viewModel,
                         navCallbacks = navCallbacks,
@@ -359,6 +366,7 @@ fun SearchScreen(
                         styleIsVideo = styleIsVideo,
                         styleCols = styleCols,
                         bookshelfVersion = bookshelfVersion,
+                        pluginFiltersVersion = pluginFiltersVersion,
                         coverSlot = resolvedCoverSlot,
                     )
                 }
@@ -646,11 +654,19 @@ private fun ColumnScope.ResultArea(
     styleIsVideo: Boolean,
     styleCols: Int,
     bookshelfVersion: Int,
+    pluginFiltersVersion: Int,
     coverSlot: @Composable (SearchBook, Modifier, isVideoCover: Boolean) -> Unit,
 ) {
     @Suppress("UNUSED_EXPRESSION") bookshelfVersion // 书架增删时重组刷新绿点
     if (isSourceGroupLayout) {
-        SourceGroupResultArea(viewModel, navCallbacks, groups, styleIsVideo, coverSlot)
+        SourceGroupResultArea(
+            viewModel,
+            navCallbacks,
+            groups,
+            styleIsVideo,
+            pluginFiltersVersion,
+            coverSlot,
+        )
         return
     }
     // 统一响应式网格: 列数 0/1 走行样式 item, 宽屏经 rememberResponsiveColumns(1) 自动加列
@@ -764,6 +780,7 @@ private fun ColumnScope.SourceGroupResultArea(
     navCallbacks: SearchNavCallbacks,
     groups: List<SourceSearchGroup>,
     styleIsVideo: Boolean,
+    pluginFiltersVersion: Int,
     coverSlot: @Composable (SearchBook, Modifier, isVideoCover: Boolean) -> Unit,
 ) {
     val state = rememberLazyListState()
@@ -782,7 +799,14 @@ private fun ColumnScope.SourceGroupResultArea(
             .weight(1f),
     ) {
         items(groups, key = { it.source.bookSourceUrl }) { group ->
-            SourceSection(viewModel, navCallbacks, group, styleIsVideo, coverSlot)
+            SourceSection(
+                viewModel,
+                navCallbacks,
+                group,
+                styleIsVideo,
+                pluginFiltersVersion,
+                coverSlot,
+            )
         }
     }
 }
@@ -793,6 +817,7 @@ private fun SourceSection(
     navCallbacks: SearchNavCallbacks,
     group: SourceSearchGroup,
     styleIsVideo: Boolean,
+    pluginFiltersVersion: Int,
     coverSlot: @Composable (SearchBook, Modifier, isVideoCover: Boolean) -> Unit,
 ) {
     // 区块留白对照主页展示项 (SectionHolder.root: top default=8 / bottom xs=4)
@@ -804,6 +829,15 @@ private fun SourceSection(
         SectionTitleRow(group.source.bookSourceName) {
             navCallbacks.onSourceSectionClick(group.source, viewModel.searchKey)
         }
+        // 插件源筛选入口 (仅插件源声明了筛选器时一行): 紧跟源标题, 在参数选项行之上
+        PluginSearchFilterRow(
+            source = group.source,
+            sessionVersion = pluginFiltersVersion,
+            getSession = viewModel::getPluginFilterSession,
+            ensureFilterSession = { viewModel.ensurePluginFilterSession(it) },
+            onFiltersChanged = { viewModel.restartSourceSearch(it) },
+            onResetFilters = { viewModel.resetSourceFilters(it) },
+        )
         // 该源搜索 url 声明的可配置项 chip 行 (无声明为零行): 点选只重搜该源
         val optionsVersion by viewModel.searchOptionsVersion.collectAsState()
         val sourceOptions = remember(group.source.bookSourceUrl, optionsVersion) {

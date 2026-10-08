@@ -3,43 +3,111 @@ package io.legado.app.ui.book.manga.extension
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import eu.kanade.tachiyomi.animesource.model.AnimeFilter
+import eu.kanade.tachiyomi.source.model.Filter
 import io.legado.app.model.webBook.AnimeFilterSession
 import io.legado.app.model.webBook.MangaFilterSession
 import io.legado.app.model.webBook.PluginFilterSession
+import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 /**
- * 插件源筛选面板 (搜索页选项行之下 / 发现筛选分页), 直接内联, 不经对话框。
+ * 插件源筛选对话框 (发现页/搜索页入口行点开)。
  *
- * 会话实例由宿主 VM 持有并经取数委派共用 (同一份 Filter 对象承载筛选状态), 任一项改动即回调
- * [onChanged] 触发宿主重取数。漫画 ([MangaFilterSession]) 与视频 ([AnimeFilterSession]) 是上游
- * 平行的两份 Filter 契约, 两份面板结构同构、仅条目类型不同, 故这里只做分派。
+ * 选项多的源 (如 hanime1 的標籤分类) 内联会把结果区挤没, 故收进对话框: 内容走 LazyColumn +
+ * 对话框高度上限, 条目按需组合。
+ *
+ * 会话实例由宿主 VM 持有并经取数委派共用 (同一份 Filter 对象承载筛选状态), 面板直接改该实例;
+ * 面板内的改动只在关闭对话框时经 [onDismiss] 上报一次 (改多项只重取一次, 对齐原版关闭时应用)。
  */
 @Composable
-fun PluginFilterPanel(
+fun PluginFilterDialog(
     session: PluginFilterSession,
-    onChanged: () -> Unit,
-    modifier: Modifier = Modifier,
+    onDismiss: (changed: Boolean) -> Unit,
 ) {
-    when (session) {
-        is MangaFilterSession -> MangaFilterPanel(
-            filterList = session.filters,
-            onChanged = onChanged,
-            modifier = modifier,
-        )
+    // Filter 对象非 snapshot state: 改后须手动触发重组 (revision 由各条目自行读取)
+    var revision by remember(session) { mutableIntStateOf(0) }
+    // 应用标记: 会话被重置替换时归零
+    var changed by remember(session) { mutableStateOf(false) }
+    // Group 展开态 (key=Group 实例, 会话更换即重建)
+    val expandedGroups = remember(session) { mutableStateMapOf<Any, Boolean>() }
+    var sortFilter by remember(session) { mutableStateOf<Filter.Sort?>(null) }
+    var animeSortFilter by remember(session) { mutableStateOf<AnimeFilter.Sort?>(null) }
 
-        is AnimeFilterSession -> AnimeFilterPanel(
-            filterList = session.filters,
-            onChanged = onChanged,
-            modifier = modifier,
+    val onChanged: () -> Unit = {
+        changed = true
+        revision++
+    }
+
+    AppAlertDialog(onDismissRequest = { onDismiss(changed) }) {
+        LazyColumn(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(max = AppDialogSizes.textAreaMaxHeight()),
+        ) {
+            when (session) {
+                is MangaFilterSession -> mangaFilterItems(
+                    filters = session.filters.toList(),
+                    revision = revision,
+                    expandedGroups = expandedGroups,
+                    depth = 0,
+                    onChanged = onChanged,
+                    onDraft = { revision++ },
+                    onOpenSort = { sortFilter = it },
+                )
+
+                is AnimeFilterSession -> animeFilterItems(
+                    filters = session.filters.toList(),
+                    revision = revision,
+                    expandedGroups = expandedGroups,
+                    depth = 0,
+                    onChanged = onChanged,
+                    onDraft = { revision++ },
+                    onOpenSort = { animeSortFilter = it },
+                )
+            }
+        }
+    }
+
+    // Sort 排序弹窗: 选排序键, 升降序由行内按钮切换 (state 可为 null, 默认升序)
+    sortFilter?.let { filter ->
+        AppSelectorDialog(
+            onDismissRequest = { sortFilter = null },
+            title = filter.name,
+            items = filter.values.toList(),
+            onItemSelected = { index ->
+                filter.state = Filter.Sort.Selection(index, filter.state?.ascending ?: true)
+                onChanged()
+            },
+        )
+    }
+    animeSortFilter?.let { filter ->
+        AppSelectorDialog(
+            onDismissRequest = { animeSortFilter = null },
+            title = filter.name,
+            items = filter.values.toList(),
+            onItemSelected = { index ->
+                filter.state = AnimeFilter.Sort.Selection(index, filter.state?.ascending ?: true)
+                onChanged()
+            },
         )
     }
 }

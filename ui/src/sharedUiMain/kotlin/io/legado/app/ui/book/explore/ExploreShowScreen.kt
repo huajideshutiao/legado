@@ -232,6 +232,11 @@ interface ExploreShowUiActions {
 
     /** 参数 chip 变化 (宿主清空 books + 重新 explore) */
     fun onExploreOptionChanged()
+
+    /**
+     * 筛选重置 (入口行"重置"): 宿主换新默认会话实例、同步 UiState 并重载第 1 页, 仍停留筛选面。
+     */
+    fun onPluginFiltersReset() {}
 }
 
 /**
@@ -284,6 +289,7 @@ fun ExploreShowScreen(
             target = state.pluginFilterSource,
             filters = state.pluginExploreFilters,
             onFiltersApplied = actions::onExploreOptionChanged,
+            onResetFilters = actions::onPluginFiltersReset,
         )
         ResultArea(state, actions, videoItemSlot, coverSlot, Modifier.weight(1f))
     }

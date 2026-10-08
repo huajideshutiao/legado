@@ -131,6 +131,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
             searchGroupSources.clear()
             sourceOrder.clear()
             bookSources = callBack.getSearchScope().getBookSources()
+            callBack.onSearchSourcesResolved(bookSources)
             exhaustedSources.clear()
             nextPages.clear()
             hasMore = false
@@ -414,6 +415,10 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
          * 实现方持有实例并在会话内复用, 使筛选 UI 与取数共用同一份; 不经全局缓存。
          */
         suspend fun getPluginFilters(source: BookSource): PluginFilterSession? = null
+
+        /** 本轮搜索源列表就绪 (在 [search] 里与 [bookSources] 同时赋值)。 */
+        fun onSearchSourcesResolved(sources: List<BookSource>) {}
+
         fun onFiltered(count: Int) {}
     }
 

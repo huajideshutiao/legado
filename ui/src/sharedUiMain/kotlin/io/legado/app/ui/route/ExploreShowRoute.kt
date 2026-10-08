@@ -161,8 +161,12 @@ fun ExploreShowRoute(
             screenModel.dispatch(
                 ExploreShowUiEvent.LoginAvailabilityChanged(vm.bookSource?.hasLogin() == true)
             )
-            // 插件源筛选入口目标 (仅"筛选"分类页推送; 非插件源/其余分类推 null 隐藏);
-            // filters 为 VM 会话实例 (initData 创建, 随页面销毁, 不持久化)
+        }
+    }
+    // 筛选入口目标与实例 (实例被替换时同样重发): 仅"筛选"分类页推源, 其余分类/非插件源推 null;
+    // 实例缺失 (服务未注册/未声明筛选器) 时推 null 实例, 入口行零行。
+    LaunchedEffect(vm) {
+        vm.pluginFiltersVersion.collect {
             screenModel.dispatch(
                 ExploreShowUiEvent.PluginFilterSourceChanged(
                     vm.bookSource
@@ -303,6 +307,15 @@ fun ExploreShowRoute(
             override fun onExploreOptionChanged() {
                 screenModel.dispatch(ExploreShowUiEvent.ClearBooks)
                 vm.explore(true)
+            }
+
+            // 入口行"重置": 换新默认会话实例 (实例经 pluginFiltersVersion 重新下发) 后重载第 1 页
+            override fun onPluginFiltersReset() {
+                vmScope.launch {
+                    vm.resetPluginExploreFilters()
+                    screenModel.dispatch(ExploreShowUiEvent.ClearBooks)
+                    vm.explore(true)
+                }
             }
         }
     }

@@ -144,6 +144,19 @@ class SearchViewModel {
         searchModel.restartSource(sourceUrl)
     }
 
+    /** 重搜指定源 (筛选改动后调用, 其余源结果不动)。 */
+    fun restartSourceSearch(source: BookSource) {
+        searchModel.restartSource(source.bookSourceUrl)
+    }
+
+    /** 重置指定源筛选会话为源默认并重搜该源 (入口行"重置")。 */
+    fun resetSourceFilters(source: BookSource) {
+        scope.launch {
+            resetPluginFilterSession(source)
+            searchModel.restartSource(source.bookSourceUrl)
+        }
+    }
+
     /**
      * 页面会话的插件源筛选实例 (key=bookSourceUrl): 同一实例同时供筛选 UI 与取数委派使用,
      * 随本 VM (页面) 销毁即丢, 不经任何全局缓存 (对齐 Mihon 筛选随浏览页 VM 生命周期)。
@@ -152,6 +165,21 @@ class SearchViewModel {
 
     /** 已探测确认不声明筛选器的插件源 (免得每次重组重复新建默认实例) */
     private val noFilterPluginSources = newConcurrentSet<String>()
+
+    /** 筛选会话建立/替换版本 (面板据此重读实例)。 */
+    private val _pluginFiltersVersion = MutableStateFlow(0)
+    val pluginFiltersVersion = _pluginFiltersVersion.asStateFlow()
+
+    /** 取该源已建立的筛选会话; 未建立返回 null (UI 据此触发就地建立)。 */
+    fun getPluginFilterSession(sourceUrl: String): PluginFilterSession? =
+        pluginFilterSessions[sourceUrl]
+
+    /**
+     * 本轮搜索源列表 (搜索开始时随 [SearchModel] 重建)。
+     * 聚簇布局的单源顶部筛选入口与"是否只搜一个源"判定都从这里派生。
+     */
+    private val _searchSources = MutableStateFlow<List<BookSource>>(emptyList())
+    val searchSources = _searchSources.asStateFlow()
 
     /** 取/建该源筛选会话; 非插件源或未声明筛选器的源返回 null (不出筛选入口)。 */
     suspend fun ensurePluginFilterSession(source: BookSource): PluginFilterSession? {
@@ -170,6 +198,18 @@ class SearchViewModel {
             return null
         }
         pluginFilterSessions[url] = session
+        return session
+    }
+
+    /**
+     * 重置该源筛选会话为源默认 (新建实例替换), 返回新会话供 UI 回填。
+     * 入口行"重置"调用; 调用方随后重搜该源。
+     */
+    suspend fun resetPluginFilterSession(source: BookSource): PluginFilterSession? {
+        pluginFilterSessions.remove(source.bookSourceUrl)
+        noFilterPluginSources.remove(source.bookSourceUrl)
+        val session = ensurePluginFilterSession(source)
+        _pluginFiltersVersion.value++
         return session
     }
 
@@ -302,6 +342,10 @@ class SearchViewModel {
 
         override suspend fun getPluginFilters(source: BookSource): PluginFilterSession? =
             ensurePluginFilterSession(source)
+
+        override fun onSearchSourcesResolved(sources: List<BookSource>) {
+            _searchSources.value = sources
+        }
     })
 
     init {
