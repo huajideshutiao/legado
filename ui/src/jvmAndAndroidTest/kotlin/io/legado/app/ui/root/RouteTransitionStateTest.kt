@@ -127,6 +127,20 @@ class RouteTransitionStateTest {
     }
 
     @Test
+    fun `settled segment roles hide every non top page`() {
+        val a = entry(1)
+        val b = entry(2)
+        val c = entry(3)
+        val settled = segment(listOf(a, b, c), listOf(a, b, c))
+
+        // 静止态没有让位/进场: 非栈顶页不参与本段 (移出屏幕 + alpha=0 + clip),
+        // 否则倒数第二页拿 OldPage, 仍铺在屏幕上并抢走栈顶页空白处的指针事件
+        assertEquals(TransitionRole.NewPage, settled.roleOf(c))
+        assertNull(settled.roleOf(a))
+        assertNull(settled.roleOf(b))
+    }
+
+    @Test
     fun `resolve returns null when settled`() {
         val a = entry(1)
         val state = RouteTransitionState(listOf(a))

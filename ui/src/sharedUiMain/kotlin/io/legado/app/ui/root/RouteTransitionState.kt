@@ -77,9 +77,15 @@ data class RouteTransitionSegment(
      *
      * 角色是段轨迹的属性, 与播放方向无关: 倒放只是进度沿同一段轨迹倒走, 正放/倒放必须共用
      * 同一份角色, 倒放首帧才与正放当前帧位移严格连续 (反例与后果见类 KDoc)。
+     *
+     * 静止态 (两端相等) 没有"让位/进场"可言: 非栈顶页一律返回 null。否则 [slidingIds] 会把
+     * 倒数第二页判成 OldPage, 而该角色在静止态 (进度 1f) 只左移 [RouteTransitionSpec.oldPageShiftFraction]
+     * 且不淡出 (Android 端 oldPageFadeOut=false) —— 被盖页仍铺在屏幕左侧并参与命中测试, 与
+     * [displayEntries] 承诺的"移出屏幕 + alpha=0 + clip"不符。
      */
     fun roleOf(entry: RouteEntry): TransitionRole? {
         val isTarget = entry.id == to.lastOrNull()?.id
+        if (from == to) return if (isTarget) TransitionRole.NewPage else null
         val isSliding = entry.id in slidingIds
         return when {
             isTarget -> if (forward) TransitionRole.NewPage else TransitionRole.TargetPage
