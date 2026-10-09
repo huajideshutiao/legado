@@ -219,9 +219,11 @@ targets:
         # (Apple: "You can, optionally, internationalize a quick action title by employing
         # your app's InfoPlist.strings file", 键名 = 这里写的占位串)。
         # 三项的 route 均对应 shared 已有的 NavigateTo 分支 (LegadoApp.handleLaunchRequest:
-        # "last_read" 开最近阅读, 书架/朗读不带 route 或走 action 分支)。
-        # 只能静态声明: iOS 端无 Android 那样的"带 extra 的快捷方式 intent", 故
-        # readAloud 的 action=readAloud 语义无法用本键表达 (详见测试报告"需 Kotlin 侧补"段)。
+        # "last_read" 开最近阅读, "read_aloud" 直接朗读; 书架项不带 route, 开 App 即完成——
+        # 对照 app 端 ShortCuts.buildBookShelfShortCutInfo 的 intent 不带任何 extra)。
+        # 只能静态声明: iOS 端无 Android 那样的"带 extra 的快捷方式 intent", 故 readAloud 的
+        # action=readAloud 语义用 route 表达 (与 app 端 intent 的 route extra 同一形制),
+        # 由共享 HeadlessReadAloud.startFromShortcut() 承接。
         # ⚠️ 本段与 Info.plist 双写 (xcodegen generate 用本段重写 Info.plist)
         UIApplicationShortcutItems:
           - UIApplicationShortcutItemType: bookshelf
@@ -235,6 +237,8 @@ targets:
           - UIApplicationShortcutItemType: readAloud
             UIApplicationShortcutItemIconType: UIApplicationShortcutIconTypeAudio
             UIApplicationShortcutItemTitle: legado.shortcut.read_aloud
+            UIApplicationShortcutItemUserInfo:
+              route: read_aloud
         # 应用图标与交替图标 (换桌面图标, 对照 Android Launcher1/4/5):
         # 主图标 AppIcon.png (默认), 交替图标 Icon1/Icon4/Icon5.png, 经
         # UIApplication.setAlternateIconName 切换 (见 shared IosPlatformCapabilities.changeLauncherIcon)。

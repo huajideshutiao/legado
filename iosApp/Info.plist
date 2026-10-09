@@ -272,9 +272,10 @@
          (Apple: "You can, optionally, internationalize a quick action title by employing
          your app's InfoPlist.strings file", 键名 = 这里写的占位串)。
          三项的 route 均对应 shared 已有的 NavigateTo 分支 (LegadoApp.handleLaunchRequest:
-         "last_read" 开最近阅读, 书架/朗读不带 route 或走 action 分支)。
-         只能静态声明: iOS 端无 Android 那样的"带 extra 的快捷方式 intent", 故
-         readAloud 的 action=readAloud 语义无法用本键表达。
+         "last_read" 开最近阅读, "read_aloud" 直接朗读; 书架项不带 route, 开 App 即完成)。
+         只能静态声明: iOS 端无 Android 那样的"带 extra 的快捷方式 intent", 故 readAloud 的
+         action=readAloud 语义用 route 表达 (与 app 端 intent 的 route extra 同一形制),
+         由共享 HeadlessReadAloud.startFromShortcut() 承接。
          ⚠️ 本文件与 project.yml 双写: xcodegen generate 会用 project.yml 重写本文件 -->
     <key>UIApplicationShortcutItems</key>
     <array>
@@ -306,6 +307,11 @@
             <string>UIApplicationShortcutIconTypeAudio</string>
             <key>UIApplicationShortcutItemTitle</key>
             <string>legado.shortcut.read_aloud</string>
+            <key>UIApplicationShortcutItemUserInfo</key>
+            <dict>
+                <key>route</key>
+                <string>read_aloud</string>
+            </dict>
         </dict>
     </array>
 

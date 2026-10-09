@@ -30,13 +30,11 @@
   //   与 iOS 端同款做法 (iosApp/project.yml 的 bookshelf 项刻意不带 route)。
   // - readAloud: 原版 = **直接开始朗读** (ShortCuts 给 AssociationActivity 塞
   //   action=readAloud → AssociationActivity.initIntent → MediaButtonReceiver.readAloud
-  //   (appCtx, false))。
-  //   ⚠️ 如实记录: 本端与共享层**没有**对应的可复用入口 —— 共享朗读宿主 ReadAloudHostShared
-  //   需要活动阅读页 attach 的 ports (见 data/src/commonMain .../tts/ReadAloudHostShared.kt),
-  //   冷启动/后台状态下没有可用的"从外部直接开始朗读"通路 (iOS 端同样没实现, 其静态项也不带
-  //   route)。故这里**不放任何假 route** (放一个不存在的路由名只会静默变成
-  //   LegadoApp 的 `else -> Unit`, 看起来接好了其实是死的): 这一项现在等同"打开应用",
-  //   待共享层补出"外部直接开始朗读"入口后再接线。
+  //   (appCtx, false))。故这里带裸路由名 read_aloud —— 由共享层补出的
+  //   HeadlessReadAloud.startFromShortcut() 承接 (分支顺序逐条对照原版 readAloud 的那份:
+  //   朗读在跑→暂停继续 / 有声书在跑→暂停继续 / 音频页在→交页面 / 阅读页在→交页面 /
+  //   都没有→从最近阅读的书无头准备正文并起朗读, **不打开阅读页**; 见 LegadoApp 的
+  //   NavigateTo "read_aloud" 分支)。
   //
   // bundleName 缺省 (官方 schema 中 bundleName/moduleName/abilityName 均可缺省, 见上; 这里只去掉
   // 会随构建变体变的那个, moduleName/abilityName 是稳定静态值, 留着指代更明确):
@@ -69,7 +67,10 @@
       "wants": [
         {
           "moduleName": "entry",
-          "abilityName": "EntryAbility"
+          "abilityName": "EntryAbility",
+          "parameters": {
+            "route": "read_aloud"
+          }
         }
       ]
     },

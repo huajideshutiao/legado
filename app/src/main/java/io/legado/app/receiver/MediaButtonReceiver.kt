@@ -7,11 +7,11 @@ import android.view.KeyEvent
 import io.legado.app.constant.EventBus
 import io.legado.app.help.LifecycleHelp
 import io.legado.app.help.config.AppConfig
-import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.AudioPlay
 import io.legado.app.model.ReadAloud
 import io.legado.app.service.AudioPlayService
 import io.legado.app.service.BaseReadAloudService
+import io.legado.app.ui.book.read.HeadlessReadAloud
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppRoute
@@ -124,14 +124,10 @@ class MediaButtonReceiver : BroadcastReceiver() {
 
                 else -> if (AppConfig.mediaButtonOnExit || LifecycleHelp.activitySize() > 0 || !isMediaKey) {
                     ReadAloud.upReadAloudClass()
-                    // 阅读页已挂接 (前台或后台驻留) 时按活动实例开播
-                    val readBook = ActiveReadBookRegistry.current
-                    if (readBook?.bookValue != null) {
-                        readBook.readAloud()
-                    }
-                    // 无活动阅读页时的"直接朗读上次读的书"暂缺: 原实现靠 app 端 ReadBook 单例
-                    // 自建 TextChapter (0×0 视口, 产物无效), 该排版通路已删; 无界面朗读需要
-                    // 独立的无头朗读宿主, 设计待定
+                    // 无活动阅读页时从最近阅读的书无头准备正文并起朗读 (对照原版 else 分支的
+                    // lastReadBook → initData + clearTextChapter + loadContent{readAloud}, 不打开阅读页);
+                    // 阅读实例已挂接时由它接手开播/交页面切换
+                    HeadlessReadAloud.start()
                 }
             }
         }
