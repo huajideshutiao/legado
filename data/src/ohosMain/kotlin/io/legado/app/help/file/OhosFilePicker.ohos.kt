@@ -167,8 +167,8 @@ fun saveImageToAlbum(extension: String, bytes: ByteArray): Boolean {
  * 选择目录 (对照 iOS pickDirectory / desktop FileDialogs.pickDirectory)。
  *
  * 2in1/Tablet (FolderSelection syscap): DocumentViewPicker 原生选目录, 选完立即
- * fileShare.persistPermission 持久化 (select 只授临时只读权限, 仅持久化 READ_MODE),
- * 持久化/路径转换失败即本次选择失败 (返回 null, 不放行临时可读的路径);
+ * fileShare.persistPermission 持久化 (读写模式, 官方《授权持久化》: Picker 选文件或文件夹得到的是
+ * "临时读写权限"), 持久化/路径转换失败即本次选择失败 (返回 null, 不放行临时可读的路径);
  * fileUri.FileUri(uri).path 官方转换出 POSIX 路径。
  * Phone (无 FolderSelection syscap): ArkTS 降级“选一个文件取父目录”返回原 URI
  * (path 为 null), 由调用方按原折回规则处理。
@@ -200,7 +200,7 @@ fun pickDirectory(): OhosPickedDirectory? {
  * 激活已持久化的目录授权 (重启后按需调用)。
  *
  * ArkTS 侧调 fileShare.activatePermission (需 FolderAuthorization syscap +
- * ohos.permission.FILE_ACCESS_PERSIST, READ_MODE 与持久化同策略); 设备无该能力时返回
+ * ohos.permission.FILE_ACCESS_PERSIST, 与持久化同策略的读写模式); 设备无该能力时返回
  * code=801; 13900001 部分失败时 [ActivatePermissionsResult.activatedUris] 为成功子集,
  * [ActivatePermissionsResult.policyErrors] 为逐条失败明细 (含 policyCode)。
  *

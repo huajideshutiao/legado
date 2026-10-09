@@ -54,8 +54,8 @@ import { arrayBufferToBase64, base64ToArrayBuffer } from './BridgeCodec';
  * - pickImages 用户取消: `{ ok: true, cancelled: true }`
  * - pickDirectory 成功 (2in1/Tablet): `{ ok: true, uris: ["<dirUri>"], paths: ["<沙箱路径>"] }`
  *   paths 为 fileUri.FileUri(uri).path 官方转换结果 (与 uris 一一对应);
- *   授权已持久化 (persistPermission READ_MODE, select 只授临时只读权限),
- *   持久化失败 → `{ ok: false, code, error, policyErrors? }`, 不返回路径
+ *   授权已持久化 (persistPermission READ_MODE | WRITE_MODE), 持久化失败 →
+ *   `{ ok: false, code, error, policyErrors? }`, 不返回路径
  * - pickDirectory 成功 (Phone): `{ ok: true, uris: ["<父目录 URI>"] }` (无 paths, 原行为)
  * - pickDirectory 用户取消: `{ ok: true, cancelled: true }`
  * - saveImageToAlbum 成功: `{ ok: true, uris: ["<图库资源 URI>"] }`
@@ -320,9 +320,9 @@ async function handlePickDirectory(payload: string): Promise<FilePickerResponse>
 /**
  * 2in1/Tablet: 原生选目录 (selectMode=FOLDER) + 授权持久化。
  *
- * select 返回的 URI 只有临时只读权限 (官方 select-user-file.md, 重启/退后台失效),
- * 选完目录后立即 fileShare.persistPermission 只持久化 READ_MODE; 持久化失败即本次
- * 选择失败 (ok:false, 不返回路径 —— 不允许"本次临时可读"被当长期可读)。
+ * select 返回的 URI 只有临时授权 (官方 select-user-file.md: "待退出应用后台后，获取的临时权限
+ * 就会失效"), 选完目录后立即 fileShare.persistPermission 持久化读写模式; 持久化失败即本次
+ * 选择失败 (ok:false, 不返回路径 —— 不允许"本次临时授权"被当长期授权)。
  * 重启后由 Kotlin 侧经 activateDirectoryPermissions 按需激活。
  */
 async function pickDirectoryNative(): Promise<FilePickerResponse> {
@@ -353,17 +353,22 @@ async function pickDirectoryNative(): Promise<FilePickerResponse> {
 }
 
 /**
- * 选定目录后: 持久化 (READ_MODE, 失败即本次选择失败) → fileUri 官方转换沙箱路径。
+ * 选定目录后: 持久化 (READ_MODE | WRITE_MODE, 失败即本次选择失败) → fileUri 官方转换沙箱路径。
  * 转换不做路径校验 (官方约定), 可访问性由 Kotlin 侧真实检查。
+ *
+ * 该选择器被多个入口共用 (书籍保存位置/导入目录/备份路径/导出目录/图片保存目录), 其中备份、
+ * 导出、书籍保存、图片保存都要往选定目录里写文件; 官方《授权持久化》写明 Picker 选文件或文件夹
+ * 得到的授权是"临时读写权限", PolicyInfo.operationMode 可组合 READ_MODE | WRITE_MODE
+ * (@ohos.fileshare.d.ts 的取值说明同), 故按读写一起持久化 —— 只持久化 READ_MODE 会让
+ * 重启后激活到只读, 之后的写入被拒。
  */
 async function persistAndConvert(dirUri: string): Promise<FilePickerResponse> {
   if (!canIUse(FOLDER_AUTHORIZATION_SYSCAP)) {
     return { ok: false, code: 801, error: 'FolderAuthorization not supported on this device' };
   }
-  // 只持久化 select 实际授予的 READ_MODE (超出临时授权范围的 mode 会被拒)
   const policy: fileShare.PolicyInfo = {
     uri: dirUri,
-    operationMode: fileShare.OperationMode.READ_MODE,
+    operationMode: fileShare.OperationMode.READ_MODE | fileShare.OperationMode.WRITE_MODE,
   };
   try {
     await fileShare.persistPermission([policy]);
@@ -437,8 +442,8 @@ async function handleActivateDirectoryPermissions(payload: string): Promise<File
   }
   const policies: fileShare.PolicyInfo[] = p.uris.map((uri): fileShare.PolicyInfo => ({
     uri: uri,
-    // 与持久化同策略: select 只授 READ_MODE
-    operationMode: fileShare.OperationMode.READ_MODE,
+    // 与持久化同策略 (读写): 激活只到读权限时, 写入选定目录的入口仍会被拒
+    operationMode: fileShare.OperationMode.READ_MODE | fileShare.OperationMode.WRITE_MODE,
   }));
   try {
     await fileShare.activatePermission(policies);

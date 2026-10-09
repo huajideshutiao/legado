@@ -9,8 +9,8 @@ import io.legado.app.help.archive.registerNativeArchiveProvider
 import io.legado.app.help.book.registerNativeBookHelpAccessor
 import io.legado.app.help.book.registerNativeBookStorage
 import io.legado.app.help.openURL
-import io.legado.app.help.storage.registerNativeDataStorage
 import io.legado.app.help.storage.registerNativeBackupRestoreHook
+import io.legado.app.help.storage.registerOhosDataStorage
 import io.legado.app.help.book.registerNativeBookImageStorage
 import io.legado.app.help.book.registerNativeContentProcessorAccessor
 import io.legado.app.help.book.registerNativeLocalBookLocator
@@ -213,7 +213,7 @@ fun registerOhosProviders() {
     // 4. 书籍缓存 provider (BookStorage + BookHelp, 依赖 AppFilesDirs)
     // 与 desktop Main.kt 中 `BookStorageProviders.register + BookHelpProviders.register` 顺序对齐
     // DataStorage 须最先: BookStorage 的 rootPath 取自 chapterCacheDir
-    registerNativeDataStorage()
+    registerOhosDataStorage()
     registerNativeBookStorage()
     registerNativeBookImageStorage()
     registerNativeLocalBookLocator()

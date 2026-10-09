@@ -276,6 +276,8 @@ class AppNavigator(
             val activeIds = backStack.value.mapTo(mutableSetOf()) { it.id }
             (previousIds - activeIds).forEach { removedId ->
                 targetedResults.remove(removedId)?.close()
+                // 出栈页的刷新处理器一并摘掉 (与 pop 同款清理)
+                refreshHandlers.remove(removedId)
             }
             overlayBackStack.clear()
         }

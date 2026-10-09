@@ -679,7 +679,7 @@ fun Intent.videoDirectTarget(): VideoPlayTarget.Direct? {
                 videoTargetOfUri(stream, mimeIsVideo)
             } else {
                 // 分享的是纯文本: 只有整条就是一个可播地址 (结尾 .m3u8/.mp4 等) 才截给播放页,
-                // 否则保持原语义 (ProcessText → 搜索), 不得把书名/普通文案当链接去播
+                // 否则保持原语义 (交 ProcessText 分流), 不得把书名/普通文案当链接去播
                 getStringExtra(Intent.EXTRA_TEXT)?.trim()
                     ?.takeIf { it.hasPlayableScheme() }
                     ?.let { VideoDirect.targetFor(it, mimeIsVideo) }

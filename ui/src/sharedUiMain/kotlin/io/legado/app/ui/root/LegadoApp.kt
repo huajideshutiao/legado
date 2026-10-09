@@ -54,7 +54,9 @@ import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.about.CrashLogItem
 import io.legado.app.ui.about.CrashLogsDialog
 import io.legado.app.ui.about.UpdateDialogOverlayContent
+import io.legado.app.ui.association.DeepLinkImportRequest
 import io.legado.app.ui.association.DeepLinkImportType
+import io.legado.app.ui.association.LegadoDeepLinkHandler
 import io.legado.app.ui.association.OpenUrlConfirmOverlayContent
 import io.legado.app.ui.book.changecover.ChangeCoverDialog
 import io.legado.app.ui.book.changecover.ChangeCoverPlatformProviders
@@ -62,6 +64,7 @@ import io.legado.app.ui.book.changecover.ChangeCoverViewModelShared
 import io.legado.app.ui.book.group.GroupEditDialog
 import io.legado.app.ui.book.group.GroupSelectDialog
 import io.legado.app.ui.book.group.GroupViewModelShared
+import io.legado.app.ui.book.read.HeadlessReadAloud
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.book.read.readerAutoPageActive
@@ -673,9 +676,21 @@ private suspend fun handleLaunchRequest(
             )
         )
 
-        is LaunchRequest.ProcessText -> navigator.push(
-            AppRoute.Search(key = request.text, submit = true)
-        )
+        // 分享/处理文本 (判据见 [shareTextTarget], 全端同一份):
+        // - 文本空白: 不打开任何页面, 也不提示
+        // - 整段文本是链接: 当书籍地址走 legado://addToBookshelf 的导入链 —— 复用其既有消费点
+        //   ([LegadoDeepLinkHandler] → 深链导入宿主 → AddToBookshelfShared.add), 不在端侧另写加书逻辑
+        // - 其余: 整段文本送搜索页
+        is LaunchRequest.ProcessText -> when (shareTextTarget(request.text)) {
+            ShareTextTarget.NOTHING -> Unit
+
+            ShareTextTarget.ADD_TO_BOOKSHELF -> LegadoDeepLinkHandler.enqueue(
+                DeepLinkImportRequest(DeepLinkImportType.ADD_TO_BOOKSHELF, request.text)
+            )
+
+            ShareTextTarget.SEARCH ->
+                navigator.push(AppRoute.Search(key = request.text, submit = true))
+        }
 
         // 外部投来的文件: 视频直接进播放页 (不是“书”, 不得先去导入页转一手),
         // 其余走导入书籍流程
@@ -711,6 +726,12 @@ private suspend fun handleLaunchRequest(
                 if (book != null) navigator.push(book.toReadRoute())
                 else navigator.push(AppRoute.Main(MainTab.BOOKSHELF))
             }
+
+            // 直接朗读: 朗读快捷方式 (iOS 主屏快捷项 / 鸿蒙桌面快捷方式 → route:read_aloud)
+            // → 原版 ShortCuts 的 readAloud 快捷方式 (AssociationActivity 读 action extra →
+            // MediaButtonReceiver.readAloud(appCtx, false)): 朗读/有声书在跑就暂停继续, 阅读页在
+            // 就交页面切换, 都没有才从最近阅读的书无头准备正文并起朗读 (不打开阅读页)
+            "read_aloud" -> HeadlessReadAloud.startFromShortcut()
 
             // 音频通知点击 → 打开当前播放书籍的音频界面 (对齐 origin activityPendingIntent<AudioPlayActivity>:
             // 直接用内存 AudioPlay.book 进音频页, 不依赖 DB 解析; bookUrl 仅作冷启动兜底)

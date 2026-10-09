@@ -47,6 +47,10 @@ sealed interface LaunchRequest {
         val chapterPos: Int? = null,
     ) : LaunchRequest
 
+    /**
+     * 选中文本 / 分享纯文本 (原版 `AssociationActivity.dispose()` 的唯一载荷):
+     * 空白什么都不做, 整段是链接则当书籍地址添加, 否则进搜索页 —— 判据见 [shareTextTarget]。
+     */
     @Serializable
     data class ProcessText(val text: String) : LaunchRequest
 
@@ -100,6 +104,35 @@ sealed interface LaunchRequest {
  */
 fun navigateToRoute(routeName: String?, bookUrl: String? = null): LaunchRequest.NavigateTo? =
     routeName?.takeIf { it.isNotEmpty() }?.let { LaunchRequest.NavigateTo(it, bookUrl) }
+
+/**
+ * 分享/处理文本的去向 —— 全端唯一判据, 只此一份: 各端入口只负责原样投递文本
+ * ([LaunchRequest.ProcessText]), 端侧要直达路由时按本判据取 [ShareTextTarget.SEARCH];
+ * 消费侧见 LegadoApp 的启动请求分发, 不得各自另立判据。
+ *
+ * `http.+` 口径逐字取自原版 `AssociationActivity.dispose()`, 但作用对象是**整段文本**
+ * (原版是 `text.split("\\s")` 后逐 token 判); 原版整串命中只把一级入口带回前台且从不使用该链接,
+ * 此处按用户拍板改为整段命中即把该链接当书籍地址添加。
+ */
+enum class ShareTextTarget {
+    /** 文本空白: 原版 `finish()` 后直接 return —— 不打开任何页面, 也不提示。 */
+    NOTHING,
+
+    /** 整段文本匹配 `http.+`: 当书籍地址走 legado://addToBookshelf 的导入链 (抓详情进详情页)。 */
+    ADD_TO_BOOKSHELF,
+
+    /** 其余: 整段文本送搜索页。 */
+    SEARCH,
+}
+
+fun shareTextTarget(text: String): ShareTextTarget = when {
+    text.isBlank() -> ShareTextTarget.NOTHING
+    text.matches(HTTP_LINK) -> ShareTextTarget.ADD_TO_BOOKSHELF
+    else -> ShareTextTarget.SEARCH
+}
+
+/** 整段匹配口径取自原版 `AssociationActivity.dispose()` 的 `url.matches("http.+".toRegex())`。 */
+private val HTTP_LINK = Regex("http.+")
 
 /**
  * 外部请求事件总线 (各端投递侧 → 共享 UI 消费侧)。

@@ -114,6 +114,8 @@ import io.legado.app.ui.root.LegadoApp
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.ScreenModelStore
+import io.legado.app.ui.root.ShareTextTarget
+import io.legado.app.ui.root.shareTextTarget
 import io.legado.app.ui.widget.dialog.encodePhotoOverlayPayload
 import io.legado.app.utils.ACache
 import io.legado.app.utils.FileUtils
@@ -713,7 +715,8 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
      * 解析外部 Intent (DeepLink / 文件关联 / PROCESS_TEXT / 直达入口) 并投递到 shared:
      * - legado:// / yuedu:// → [LegadoDeepLinkHandler] → DeepLinkImportHost 弹导入对话框
      * - file:// / content:// / app:// → [LaunchRequest.ImportFile] → 导入书籍
-     * - PROCESS_TEXT / SEND → [LaunchRequest.ProcessText] → 搜索
+     * - PROCESS_TEXT / SEND → [LaunchRequest.ProcessText] (空白什么都不做, 整段是链接则当书籍地址
+     *   添加, 其余搜索)
      * - search/explore-show alias → [LaunchRequest.OpenRoute] 直达 (书架不进导航栈)
      *
      * 一律投 [LaunchRequestBus] (无限队列, UI 未就绪自然排队), 不再有第二条通路。
@@ -752,7 +755,8 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
      * - SearchActivity alias (key/searchScope/submit extra)
      * - ExploreShowActivity alias (exploreName/exploreUrl/sourceUrl extra, 查源下沉路由内)
      * - 视频直投 (content/file/http(s) 可播地址 → 播放页, 排在书籍导入之前)
-     * - 文件关联 / PROCESS_TEXT / SEND
+     * - 文件关联 / PROCESS_TEXT / SEND (分享/处理文本里只要不落搜索就不在此定路由: 空白什么都不做、
+     *   整段是链接则当书籍地址添加, 两者都交 [LaunchRequest.ProcessText] 由 shared 统一处置)
      *
      * 书籍类直达 (透明壳深链 / 文件关联打开书籍) 不在此: 它们的载荷是内存对象,
      * 由投递方直接构造 [LaunchRequest.OpenRoute] 带引用进队列, 不经 Intent 与全局槽。
@@ -789,18 +793,21 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
                 }
             }
 
+            // 分享/处理文本只有落搜索页的才在此定路由 (判据见 shared [shareTextTarget], 不在此另立):
+            // 整段是链接的当书籍地址添加、空白文本什么都不做, 两者都让请求落回下面的
+            // [LaunchRequest.ProcessText] 由 shared 统一处置, 不是多压一层搜索页。
             Intent.ACTION_PROCESS_TEXT ->
-                intent.getStringExtra(Intent.EXTRA_PROCESS_TEXT)?.let {
-                    AppRoute.Search(key = it, submit = true)
-                }
+                intent.getStringExtra(Intent.EXTRA_PROCESS_TEXT)
+                    ?.takeIf { shareTextTarget(it) == ShareTextTarget.SEARCH }
+                    ?.let { AppRoute.Search(key = it, submit = true) }
 
             Intent.ACTION_SEND -> {
                 @Suppress("DEPRECATION")
                 intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)?.let {
                     AppRoute.ImportBook(it.toString())
-                } ?: intent.getStringExtra(Intent.EXTRA_TEXT)?.let {
-                    AppRoute.Search(key = it, submit = true)
-                }
+                } ?: intent.getStringExtra(Intent.EXTRA_TEXT)
+                    ?.takeIf { shareTextTarget(it) == ShareTextTarget.SEARCH }
+                    ?.let { AppRoute.Search(key = it, submit = true) }
             }
 
             else -> null

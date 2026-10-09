@@ -86,8 +86,8 @@ const LAUNCH_MIME_SEPARATOR: string = '|';
 
 // ===== 系统分享接收串约定 (与 ui/src/ohosMain OhosLaunchRequests 的 TEXT_PREFIX 逐字对齐) =====
 // 分享进来的文本可能含任意字符 (也可能本身就是带 scheme 的地址/legado 深链), 与普通 uri 无法区分,
-// 故按已有 `route:` / `mime:` 同一路数用 `text:` 前缀显式标记, 由 Kotlin 侧解回 (认不出来就按
-// "处理文本"进搜索页, 对照 Android ACTION_SEND EXTRA_TEXT → ProcessTextActivity → 搜索页)。
+// 故按已有 `route:` / `mime:` 同一路数用 `text:` 前缀显式标记, 由 Kotlin 侧解回 (含链接 token 的
+// 文本回主界面, 其余进搜索页 —— 分流在 shared 侧统一处置, 对照原版 AssociationActivity.dispose)。
 const SHARE_TEXT_PREFIX: string = 'text:';
 
 /** 系统分享投递的 action (与 module.json5 share skill 声明的 actions 字面量一致)。 */

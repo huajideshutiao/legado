@@ -235,20 +235,11 @@ object OhosLaunchRequests {
         if (value.startsWith(TEXT_PREFIX)) {
             // 系统分享进来的文本 (ArkTS EntryAbility.handleSharedData 打的前缀): 文本可能含任意
             // 字符, 与普通 uri 无法区分, 故按已有 route:/mime: 同一路数显式标记。
-            //
-            // 分流逐字对照原版 `AssociationActivity.dispose()` (SEND / PROCESS_TEXT + text/plain
-            // 的唯一入口): 文本按空白切成 token, 只要有一个 token 整串匹配 `http.+` 就
-            // **进主界面(不搜索)** (`startActivity<MainActivity>()`); 一个都没有才把整段文本
-            // 送搜索页 (`SearchActivity.start(this, text)`)。
-            // 旧写法是"文本能当 uri 解就进 uri 链路, 否则 ProcessText" —— 既不合原版, 还会把
-            // 带链接的分享文本丢进 WebView 而不是主界面。
+            // 整段是链接当书籍地址添加 / 其余进搜索页的分流在 [LaunchRequest.ProcessText] 的消费方
+            // 统一处置 (判据见 shared shareTextTarget), 各端入口只负责原样投递文本。
             val text = value.removePrefix(TEXT_PREFIX)
             if (text.isEmpty()) return null
-            return if (hasHttpLink(text)) {
-                LaunchRequest.OpenRoute(AppRoute.Main())
-            } else {
-                LaunchRequest.ProcessText(text)
-            }
+            return LaunchRequest.ProcessText(text)
         }
         val hint = extractMimeHint(value)
         val address = hint?.second ?: value
@@ -284,16 +275,6 @@ object OhosLaunchRequests {
     /** 投递到 [LaunchRequestBus]; 队列已关闭返回 false。 */
     fun post(request: LaunchRequest): Boolean =
         runCatching { LaunchRequestBus.dispatch(request) }.isSuccess
-
-    /**
-     * 文本里是否有整串匹配 `http.+` 的 token —— 逐字对照原版 `AssociationActivity.dispose()`
-     * 的判据 (`text.split("\\s".toRegex())` 后逐 token `url.matches("http.+".toRegex())`)。
-     */
-    private fun hasHttpLink(text: String): Boolean =
-        text.split(WHITESPACE).any { it.matches(HTTP_LINK) }
-
-    private val WHITESPACE = Regex("\\s")
-    private val HTTP_LINK = Regex("http.+")
 
     /**
      * 解出同串捎带的 MIME 提示 (`mime:<type>|<address>`); 不是该形态返回 null。

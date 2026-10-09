@@ -335,9 +335,17 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
 
     // ===== 书架管理: 导出开关 =====
 
+    // 导出书籍正文, 直接写进有效导出目录 (用户选过 → 偏好键; 鸿蒙无惯例目录, 见
+    // OhosDataStorage.defaultBookExportDir —— 应用沙盒对文件管理器不可见, 写进去用户找不着),
+    // 不经系统分享面板 (对照 app 端 ExportBookService 的落盘语义)
     override fun exportAllBooks(books: List<Book>) {
         if (books.isEmpty()) {
             Toasters.get().toast("书籍不能为空")
+            return
+        }
+        // 三分支同上, 未选过目录时先选 (对照 BookshelfManageActivity.exportAll)
+        if (effectiveBookExportDir() == null) {
+            selectExportFolder(books)
             return
         }
         if (exportBooksJob?.isActive == true) {
@@ -345,28 +353,31 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
             return
         }
         exportBooksJob = scope.launch {
-            // 导出目录取"用户选过的偏好键, 否则平台惯例目录" (三分支与备份路径同一形制,
-            // 见 DataStorage.defaultBookExportDir)。鸿蒙的惯例目录非 null (NativeDataStorage
-            // 覆盖为 filesDir/export), 落点与改动前一致
-            val exportDirPath = effectiveBookExportDir() ?: run {
-                // 到得了这里只可能是 DataStorage provider 未注册; 不另猜一个路径
-                Toasters.get().toast("无法创建导出目录")
-                return@launch
-            }
+            val exportDirPath = effectiveBookExportDir() ?: return@launch
             val exportDir = File(exportDirPath)
-            if (!exportDir.isDirectory && !exportDir.mkdirs()) {
+            val usable = try {
+                // 选定目录在沙盒外: 写入前先激活其持久化目录授权, 再确保目录存在
+                OhosDirAuthorizations.ensureActivatedFor(exportDirPath)
+                exportDir.isDirectory || exportDir.mkdirs()
+            } catch (e: Exception) {
+                AppLog.put("导出目录不可用\n${e.message}", e)
+                prefs.remove(PreferKey.bookExportPath)
+                Toasters.get().toast("导出目录不可用，请重新选择")
+                return@launch
+            }
+            if (!usable) {
                 Toasters.get().toast("无法创建导出目录")
                 return@launch
             }
-            val files = mutableListOf<File>()
             val failures = mutableListOf<String>()
             val usedPaths = mutableSetOf<String>()
             val exportType = prefs.getInt(PreferKey.exportType, 0)
+            var exported = 0
             books.forEach { book ->
                 try {
                     currentCoroutineContext().ensureActive()
                     val file = NativeBookExporter.exportBookFile(book, exportDir, usedPaths, exportType)
-                    files.add(file)
+                    exported++
                     if (prefs.getBoolean(PreferKey.exportToWebDav, false)) {
                         AppWebDavShared.exportWebDav(file.absolutePath, file.name)
                     }
@@ -377,15 +388,8 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
                     AppLog.put("导出书籍失败：${book.name}\n${e.message}", e)
                 }
             }
-            if (files.size == 1) {
-                val file = files.single()
-                services.sharing.shareFile(file.absolutePath, when (file.name.substringAfterLast('.').lowercase()) {
-                    "epub" -> "application/epub+zip"
-                    "cbz" -> "application/vnd.comicbook+zip"
-                    else -> "text/plain"
-                })
-            } else if (files.isNotEmpty()) {
-                Toasters.get().toast("已导出 ${files.size} 本书到 ${exportDir.absolutePath}")
+            if (exported > 0) {
+                Toasters.get().toast("已导出 $exported 本书到 ${exportDir.absolutePath}")
             }
             if (failures.isNotEmpty()) {
                 Toasters.get().toast("${failures.size} 本书导出失败：${failures.take(2).joinToString()}")
@@ -393,7 +397,19 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
         }
     }
 
-    override fun selectExportFolder(books: List<Book>) = exportAllBooks(books)
+    /**
+     * 选择导出文件夹 (对照 BookshelfManageActivity.selectExportFolder 与 exportDir 回调):
+     * 复用 [PlatformServiceProviders] 的目录选择器选一个用户可见的公共目录
+     * (DocumentViewPicker + 授权持久化写模式 + 官方转换路径 + 记入授权表供重启后激活),
+     * 选中后记偏好键 [PreferKey.bookExportPath], 有选中书籍则直接导出。
+     */
+    override fun selectExportFolder(books: List<Book>) {
+        scope.launch {
+            val path = services.files.pickDirectory() ?: return@launch
+            prefs.putString(PreferKey.bookExportPath, path)
+            if (books.isNotEmpty()) exportAllBooks(books)
+        }
+    }
 
     override fun showExportConfig() {
         AppNavigatorProviders.get().showOverlay(AppOverlay.Dialog("book_export_format"))

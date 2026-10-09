@@ -52,7 +52,7 @@ import platform.Foundation.create
  */
 object IosSecurityScopedStorage {
 
-    /** 书籍目录 bookmark 集合的 NSUserDefaults key (值为 base64 bookmark 字符串数组)。 */
+    /** 用户授权目录 bookmark 集合的 NSUserDefaults key (值为 base64 bookmark 字符串数组)。 */
     private const val BOOK_TREE_BOOKMARKS_KEY = "iosBookTreeBookmarks"
 
     /** 导入根目录 bookmark 的 NSUserDefaults key (单值: 导入浏览器只服务一个根目录)。 */
@@ -92,7 +92,10 @@ object IosSecurityScopedStorage {
     // ===== 授权集合 =====
 
     /**
-     * 记录用户新选的书籍目录: 起 scope → 建 minimal bookmark → 并入集合 → 停 scope。
+     * 记录用户新选的目录: 起 scope → 建 minimal bookmark → 并入集合 → 停 scope。
+     *
+     * 书籍目录与导出目录共用本入口 —— 两者都是用户为读写书籍文件而授权的目录,
+     * 同属一个授权集合 (集合成员一律可按路径取租约, 不区分当初为什么而选)。
      *
      * 同一目录重复选择时替换旧条目 (按规范化路径判身份), 集合内其余目录不受影响。
      *

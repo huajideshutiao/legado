@@ -9,11 +9,12 @@ import kotlin.concurrent.Volatile
  * 应用存储路径集中 provider: 调用方只问"要哪类目录", 不问"落在哪"。
  *
  * 目录分两层: **应用私有数据** (数据库/缓存/封面/背景/字体) 落在应用数据根目录;
- * **用户可见产物** (导出书籍/规则 json 落 [userExportDir], 备份 zip 落 [defaultBackupDir])
- * 按平台惯例落在系统目录 (桌面=桌面/文档), 用户拿得到。
+ * **用户产物** (导出书籍/规则 json 落 [userExportDir], 备份 zip 落 [defaultBackupDir])
+ * 优先按平台惯例落在用户找得到的位置 (桌面=桌面/文档, iOS=Documents), 鸿蒙无用户可见的
+ * 应用目录, 导出书籍由用户经目录选择器自选公共目录 ([defaultBookExportDir] 为 null)。
  *
  * 各端路径映射见实现 (Android `AndroidDataStorage` / 桌面 [JvmDataStorage] /
- * iOS+鸿蒙 `NativeDataStorage`)。一律返回绝对路径字符串, 不保证目录已创建。
+ * iOS [NativeDataStorage] / 鸿蒙 `OhosDataStorage`)。一律返回绝对路径字符串, 不保证目录已创建。
  */
 interface DataStorage {
 
@@ -44,10 +45,11 @@ interface DataStorage {
     val backupDir: String
 
     /**
-     * 用户可见产物根目录: 导出的书籍 / 书源与替换规则 json 的落地位置。
+     * 导出产物根目录: 书源与替换规则 json 的落地位置。
      *
-     * 默认实现回退到 `filesDir/export` (iOS/鸿蒙: filesDir 本身就是用户经"文件"App
-     * 可见的沙盒 Documents); 桌面覆盖为系统桌面下的 `legado`, Android 为公共文档目录。
+     * 默认实现回退到 `filesDir/export` (iOS: filesDir 本身就是用户经"文件"App
+     * 可见的沙盒 Documents; 鸿蒙: 沙盒不可见, 仅供应用内部消费);
+     * 桌面覆盖为系统桌面下的 `legado`, Android 为公共文档目录。
      */
     val userExportDir: String
         get() = AppFilesDirs.get().filesDir.trimEnd('/', '\\') +
@@ -70,8 +72,9 @@ interface DataStorage {
      * 导出书籍默认落地目录 (用户未在"书架管理 → 选择导出文件夹"里指定时的落点),
      * 默认 [bookExportDir]。
      *
-     * 返回 null 表示该平台必须由用户先选目录 (Android 需 SAF 授权的 content:// 目录),
-     * 调用方应改为拉起目录选择器。语义与 [defaultBackupDir] 完全一致:
+     * 返回 null 表示该平台必须由用户先选目录 (Android 需 SAF 授权的 content:// 目录;
+     * 鸿蒙的应用沙盒对文件管理器不可见, 导出产物必须落用户选定的可见目录)。
+     * 语义与 [defaultBackupDir] 完全一致:
      * 用户已选则以用户选择为准, 未选则用本默认值 (不写 pref、不打扰用户),
      * 本默认值为 null 才拉起目录选择器 —— 取值顺序见 [effectiveBookExportDir]。
      */
@@ -122,8 +125,9 @@ object DataStorageProviders {
  *
  * 1. 用户选过 (书架管理 → 选择导出文件夹, [PreferKey.bookExportPath]) → 用选定目录;
  * 2. 未选过但平台有惯例导出目录 ([DataStorage.defaultBookExportDir]) → 用惯例目录,
- *    不写偏好、不打扰用户;
- * 3. 都没有 (Android: 写公共目录要 SAF 授权, 惯例目录为 null) → 返回 null,
+ *    不写偏好、不打扰用户 (iOS 的 Documents/export 对用户可见, 属于这一支);
+ * 3. 都没有 (Android: 写公共目录要 SAF 授权; 鸿蒙: 应用沙盒对文件管理器不可见,
+ *    两端惯例目录均为 null) → 返回 null,
  *    调用方应改为拉起目录选择器, 选中后写 [PreferKey.bookExportPath] 再继续。
  *
  * 只负责取出"目录标识", 不做路径解析: Android 端选过的值是 SAF `content://` 树引用,

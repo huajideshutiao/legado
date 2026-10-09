@@ -53,6 +53,7 @@ import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.File
 import io.legado.app.utils.GSON
 import io.legado.app.utils.HtmlFormatter
+import io.legado.app.utils.IosSecurityScopeLease
 import io.legado.app.utils.IosSecurityScopedStorage
 import io.legado.app.utils.onEachParallel
 import io.legado.app.utils.postEvent
@@ -513,9 +514,17 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
 
     // ===== 书架管理: 导出 JSON =====
 
+    // 导出书籍正文, 直接写进有效导出目录 (用户选过 → 偏好键, 否则惯例目录
+    // Documents/export —— iOS 的 Documents 经"文件"App 可见, 用户自己就能找到),
+    // 不经系统分享面板 (对照 app 端 ExportBookService 的落盘语义)
     override fun exportAllBooks(books: List<Book>) {
         if (books.isEmpty()) {
             Toasters.get().toast("书籍不能为空")
+            return
+        }
+        // 三分支同上, 未选过且无惯例目录时先选目录 (对照 BookshelfManageActivity.exportAll)
+        if (effectiveBookExportDir() == null) {
+            selectExportFolder(books)
             return
         }
         if (exportBooksJob?.isActive == true) {
@@ -523,59 +532,101 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
             return
         }
         exportBooksJob = scope.launch {
-            val files = mutableListOf<NSURL>()
+            val (exportDir, lease) = openExportDir() ?: return@launch
             val failures = mutableListOf<String>()
             val usedPaths = mutableSetOf<String>()
             val exportType = prefs.getInt(PreferKey.exportType, 0)
-            // 导出目录取"用户选过的偏好键, 否则平台惯例目录" (三分支与备份路径同一形制,
-            // 见 DataStorage.defaultBookExportDir)。iOS 的惯例目录非 null (NativeDataStorage
-            // 覆盖为 filesDir/export), 落点与改动前一致
-            val exportDirPath = effectiveBookExportDir() ?: run {
-                // 到得了这里只可能是 DataStorage provider 未注册; 不另猜一个路径
-                Toasters.get().toast("无法创建导出目录")
-                return@launch
-            }
-            val exportDir = File(exportDirPath)
-            if (!exportDir.isDirectory && !exportDir.mkdirs()) {
-                Toasters.get().toast("无法创建导出目录")
-                return@launch
-            }
-            books.forEach { book ->
-                try {
-                    currentCoroutineContext().ensureActive()
-                    val file = NativeBookExporter.exportBookFile(book, exportDir, usedPaths, exportType)
-                    files.add(NSURL.fileURLWithPath(file.absolutePath))
-                    if (prefs.getBoolean(PreferKey.exportToWebDav, false)) {
-                        AppWebDavShared.exportWebDav(file.absolutePath, file.name)
+            var exported = 0
+            try {
+                books.forEach { book ->
+                    try {
+                        currentCoroutineContext().ensureActive()
+                        val file = NativeBookExporter.exportBookFile(book, exportDir, usedPaths, exportType)
+                        exported++
+                        if (prefs.getBoolean(PreferKey.exportToWebDav, false)) {
+                            AppWebDavShared.exportWebDav(file.absolutePath, file.name)
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        failures.add("${book.name}：${e.message ?: "未知错误"}")
+                        AppLog.put("导出书籍失败：${book.name}\n${e.message}", e)
                     }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    failures.add("${book.name}：${e.message ?: "未知错误"}")
-                    AppLog.put("导出书籍失败：${book.name}\n${e.message}", e)
                 }
+            } finally {
+                lease.close()
             }
-            if (files.isNotEmpty()) {
-                presentShareSheet(files)
-            } else if (failures.isNotEmpty()) {
+            if (exported > 0) {
+                Toasters.get().toast("已导出 $exported 本书到 ${exportDir.absolutePath}")
+            }
+            if (failures.isNotEmpty()) {
                 Toasters.get().toast("${failures.size} 本书导出失败：${failures.take(2).joinToString()}")
             }
-            if (files.isNotEmpty() && failures.isNotEmpty()) {
+            if (exported > 0 && failures.isNotEmpty()) {
                 AppLog.put("部分书籍导出失败：${failures.joinToString()}")
             }
         }
     }
 
+    /**
+     * 选择导出文件夹 (对照 BookshelfManageActivity.selectExportFolder 与 exportDir 回调):
+     * 选定目录存 security-scoped bookmark 并记偏好键 [PreferKey.bookExportPath];
+     * 开了自定义导出 (且导出类型为 epub) 先弹章节配置, 否则立即导出。
+     *
+     * 与 [pickBookTreeUri] 同一入口 ([pickDirectoryDocument]) + 同一授权表
+     * ([IosSecurityScopedStorage]) —— 都不经只回路径的 `FilePickerService.pickDirectory`,
+     * 否则下次访问拿不回授权。
+     */
     override fun selectExportFolder(books: List<Book>) {
-        if (books.isEmpty()) {
-            Toasters.get().toast("选中书籍后，在系统分享面板中选择保存位置")
-        } else if (prefs.getBoolean(PreferKey.enableCustomExport, false)
-            && prefs.getInt(PreferKey.exportType, 0) == 1
-        ) {
-            showExportSectionConfig("", books)
-        } else {
-            exportAllBooks(books)
+        scope.launch {
+            val url = pickDirectoryDocument() ?: return@launch
+            val path = IosSecurityScopedStorage.addBookTree(url) ?: run {
+                Toasters.get().toast("无法保存导出目录的访问授权")
+                return@launch
+            }
+            prefs.putString(PreferKey.bookExportPath, path)
+            if (books.isEmpty()) return@launch
+            if (prefs.getBoolean(PreferKey.enableCustomExport, false) &&
+                prefs.getInt(PreferKey.exportType, 0) == 1
+            ) {
+                showExportSectionConfig(path, books)
+            } else {
+                exportAllBooks(books)
+            }
         }
+    }
+
+    /**
+     * 打开有效导出目录: 取 security-scoped 授权租约 + 确保目录存在, 供整段导出持有。
+     *
+     * 用户选定的目录在应用容器之外, 直接按 POSIX 路径写入会因缺 security scope 失败;
+     * 写入新建文件与 [io.legado.app.model.fileBook.IosAuthorizedFileBookAccessor] 的落盘入口
+     * 同模式 —— 直接持 [IosSecurityScopedStorage.acquireLease] 而不走 NSFileCoordinator
+     * (协调器会对尚不存在的目标路径报错); 沙盒内的惯例目录无需 scope, 租约为空操作。
+     *
+     * 授权已失效 (用户在系统里撤销/换过目录) 时清掉偏好键, 下次导出重新让用户选目录
+     * (与图片保存目录写入失败即忘掉记忆目录同一处理)。
+     *
+     * @return 目录与租约 (调用方必须在 finally 里 [IosSecurityScopeLease.close]);
+     *   已提示并返回 null 表示本次不能导出
+     */
+    private fun openExportDir(): Pair<File, IosSecurityScopeLease>? {
+        val path = effectiveBookExportDir() ?: return null
+        val lease = try {
+            IosSecurityScopedStorage.acquireLease(path)
+        } catch (e: Exception) {
+            prefs.remove(PreferKey.bookExportPath)
+            AppLog.put("导出目录不可用, 已清除记忆目录\n${e.message}", e)
+            Toasters.get().toast("导出目录不可用，请重新选择")
+            return null
+        }
+        val dir = File(path)
+        if (!dir.isDirectory && !dir.mkdirs()) {
+            lease.close()
+            Toasters.get().toast("无法创建导出目录")
+            return null
+        }
+        return dir to lease
     }
 
     override fun showExportSectionConfig(path: String, books: List<Book>) {
@@ -626,49 +677,47 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
             return
         }
         exportBooksJob = this.scope.launch {
-            val files = mutableListOf<NSURL>()
+            // 与 exportAllBooks 同一份导出目录判定与授权租约 (用户偏好键 → 平台惯例目录)
+            val (exportDir, lease) = openExportDir() ?: return@launch
             val failures = mutableListOf<String>()
             val usedPaths = mutableSetOf<String>()
-            // 与 exportAllBooks 同一份导出目录判定 (用户偏好键 → 平台惯例目录)
-            val exportDirPath = effectiveBookExportDir() ?: run {
-                Toasters.get().toast("无法创建导出目录")
-                return@launch
-            }
-            val exportDir = File(exportDirPath)
-            if (!exportDir.isDirectory && !exportDir.mkdirs()) {
-                Toasters.get().toast("无法创建导出目录")
-                return@launch
-            }
-            books.forEach { book ->
-                try {
-                    currentCoroutineContext().ensureActive()
-                    val bookFiles = if (book.isImage) {
-                        listOf(NativeBookExporter.exportBookFile(book, exportDir, usedPaths, 1))
-                    } else {
-                        val chapters = appDb.bookChapterDao.getChapterList(book.bookUrl)
-                        val selected = chapters.filterIndexed { index, _ -> index in scope }
-                        if (selected.isEmpty()) error("章节范围内没有章节")
-                        selected.chunked(size).mapIndexed { index, part ->
-                            NativeBookExporter.exportBookFile(
-                                book, exportDir, usedPaths, 1, part,
-                                book.getExportFileName("epub", index + 1),
-                            )
+            var exported = 0
+            try {
+                books.forEach { book ->
+                    try {
+                        currentCoroutineContext().ensureActive()
+                        val bookFiles = if (book.isImage) {
+                            listOf(NativeBookExporter.exportBookFile(book, exportDir, usedPaths, 1))
+                        } else {
+                            val chapters = appDb.bookChapterDao.getChapterList(book.bookUrl)
+                            val selected = chapters.filterIndexed { index, _ -> index in scope }
+                            if (selected.isEmpty()) error("章节范围内没有章节")
+                            selected.chunked(size).mapIndexed { index, part ->
+                                NativeBookExporter.exportBookFile(
+                                    book, exportDir, usedPaths, 1, part,
+                                    book.getExportFileName("epub", index + 1),
+                                )
+                            }
                         }
-                    }
-                    bookFiles.forEach { file ->
-                        files.add(NSURL.fileURLWithPath(file.absolutePath))
-                        if (prefs.getBoolean(PreferKey.exportToWebDav, false)) {
-                            AppWebDavShared.exportWebDav(file.absolutePath, file.name)
+                        bookFiles.forEach { file ->
+                            exported++
+                            if (prefs.getBoolean(PreferKey.exportToWebDav, false)) {
+                                AppWebDavShared.exportWebDav(file.absolutePath, file.name)
+                            }
                         }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        failures.add("${book.name}：${e.message ?: "未知错误"}")
+                        AppLog.put("导出书籍失败：${book.name}\n${e.message}", e)
                     }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    failures.add("${book.name}：${e.message ?: "未知错误"}")
-                    AppLog.put("导出书籍失败：${book.name}\n${e.message}", e)
                 }
+            } finally {
+                lease.close()
             }
-            if (files.isNotEmpty()) presentShareSheet(files)
+            if (exported > 0) {
+                Toasters.get().toast("已导出 $exported 份到 ${exportDir.absolutePath}")
+            }
             if (failures.isNotEmpty()) Toasters.get().toast("${failures.size} 本书导出失败：${failures.take(2).joinToString()}")
         }
     }

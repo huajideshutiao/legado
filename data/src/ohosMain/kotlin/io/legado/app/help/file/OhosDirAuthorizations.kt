@@ -14,8 +14,9 @@ import okio.Path.Companion.toPath
 /**
  * 鸿蒙目录授权表。
  *
- * Picker select 返回的 URI 只有临时只读权限 (重启/退后台失效), 选目录时 ArkTS 侧已
- * persistPermission 持久化 (READ_MODE); 本表按官方要求在应用侧持久化 URI↔路径映射,
+ * Picker select 返回的 URI 只有临时权限 (重启/退后台失效), 选目录时 ArkTS 侧已
+ * persistPermission 持久化 (读写模式 —— 备份/导出/书籍保存/图片保存这些入口都要往选定
+ * 目录里写); 本表按官方要求在应用侧持久化 URI↔路径映射,
  * 文件访问入口经 [ensureActivatedFor] 按需 activatePermission 激活 —— 持久化授权存系统
  * 数据库, 重启后须激活才能访问, 官方要求按需激活不要全量激活。
  *
