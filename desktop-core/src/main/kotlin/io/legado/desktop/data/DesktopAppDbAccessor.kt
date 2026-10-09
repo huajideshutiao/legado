@@ -1,10 +1,9 @@
 package io.legado.desktop.data
 
-import androidx.room3.immediateTransaction
-import androidx.room3.useWriterConnection
 import io.legado.app.data.AppDatabase
 import io.legado.app.data.AppDatabaseProviders
 import io.legado.app.data.AppDbAccessor
+import io.legado.app.data.runInImmediateTransaction
 
 /**
  * 桌面端 [AppDbAccessor] 实现: 委托 [AppDatabaseProviders.get].appDb 的全部 17 个 DAO
@@ -20,7 +19,8 @@ import io.legado.app.data.AppDbAccessor
  * - app 端 `runInTransaction` 走 `RoomDatabase.runInTransaction(Runnable)` (Android Room
  *   非 suspend API, 直接阻塞当前线程)
  * - KMP Room 的事务入口只有 suspend 的 `useWriterConnection` + `immediateTransaction`,
- *   故 suspend 版本走真事务, 非 suspend 版本只能直通 (见方法注释)
+ *   故 suspend 版本走真事务, 非 suspend 版本只能直通 (见方法注释);
+ *   那两行下沉在 commonMain [runInImmediateTransaction], 与 native 端复用同一函数
  *
  * # DAO 成员清单 (与 AppDbAccessor 接口一致)
  * bookDao / bookSourceDao / bookChapterDao / replaceRuleDao / readRecordDao /
@@ -69,12 +69,10 @@ class DesktopAppDbAccessor : AppDbAccessor {
     override val keyboardAssistsDao get() = appDb.keyboardAssistsDao
 
     // ---- AppDbAccessor 事务 ----
-    // suspend 版本走 Room KMP 真事务: useWriterConnection 把写连接放进协程上下文
-    // (ConnectionElement), block 内的 suspend DAO 会复用同一连接加入事务;
-    // immediateTransaction 对应 BEGIN IMMEDIATE, 抛异常自动回滚。
+    // suspend 版本走 Room KMP 真事务: 复用 commonMain 下沉的 [runInImmediateTransaction]
+    // (useWriterConnection 把写连接放进协程上下文, block 内的 suspend DAO 会复用同一连接
+    // 加入事务; immediateTransaction 对应 BEGIN IMMEDIATE, 抛异常自动回滚)。与 native 端同一实现。
     override suspend fun <R> runInTransactionSuspending(block: suspend () -> R): R {
-        return appDb.useWriterConnection { transactor ->
-            transactor.immediateTransaction { block() }
-        }
+        return appDb.runInImmediateTransaction(block)
     }
 }

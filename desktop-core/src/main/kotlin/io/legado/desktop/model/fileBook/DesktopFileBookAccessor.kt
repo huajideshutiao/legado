@@ -335,6 +335,25 @@ class DesktopFileBookAccessor(
     override fun saveBookFileFromPath(filePath: String, fileName: String): String =
         saveBookFile(File(filePath).inputStream(), fileName)
 
+    /**
+     * 流式保存 WebDav 远端书籍文件 ("下载到本地" / "刷新远端更新" 链路)。
+     *
+     * desktop 无 SAF: 交给既有的 [WebDav.downloadTo] (savedPath, replaceExisting)
+     * 边下边写 `{desktopAppRootDir}/books/{fileName}`, 返回引用形式与
+     * [saveBookFile] (inputStream 重载) 一致 ([desktopStoredLocalRef]);
+     * 传输中途失败删净残缺文件 (不留半截书)。
+     */
+    override suspend fun saveBookFileFromWebDav(webDav: WebDav, fileName: String): String {
+        val file = File(booksDir, fileName)
+        try {
+            webDav.downloadTo(file.absolutePath, true)
+        } catch (e: Throwable) {
+            kotlin.runCatching { file.delete() }
+            throw e
+        }
+        return desktopStoredLocalRef(file)
+    }
+
     override fun downloadRemoteBook(book: Book): Boolean {
         // app 端走 SAF + FileDoc; desktop 走 saveBookFile(str) + importFromArchive + bookDao.update
         val webDavUrl = book.getRemoteUrl()

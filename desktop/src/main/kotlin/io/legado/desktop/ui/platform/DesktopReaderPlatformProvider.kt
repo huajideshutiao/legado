@@ -77,10 +77,12 @@ import kotlin.concurrent.Volatile
  * - 顶/底栏菜单 UI 由 shared [io.legado.app.ui.book.read.ReadMenuOverlay] 渲染, 此处只持有状态
  * - 导航回调 (clickCatalog/clickSearch/clickFont/clickSetting 等) 经 [AppNavigator] 跳 shared Route
  * - 章节导航 (clickPre/clickNext/onSeekStop) 委托 [ReaderScreenModel.viewModel]
+ * - ReadAloud (朗读): app 端走 ReadAloud + BaseReadAloudService, desktop 无 Service, 改由
+ *   [DesktopReadAloudHost] 驱动 ReadAloudControllerShared; 长按弹共享朗读控制面板。
+ *   朗读宿主是进程级媒体会话, 退出阅读页不停朗读; Windows 下的后台/系统播控由
+ *   desktop.audio.DesktopSmtc (SMTC 卡片) 与 desktop.ui.tray.DesktopTaskbarMedia (任务栏媒体控件) 承接
  *
  * # 不实现 (与 app 端差异)
- * - ReadAloud (朗读): app 端走 ReadAloud + BaseReadAloudService, desktop 无 Service,
- *   改由 [DesktopReadAloudHost] 驱动 ReadAloudControllerShared; 长按弹共享朗读控制面板
  * - ThemeConfig.applyDayNight: app 端切夜间主题后调 Activity 重启 UI, desktop 经
  *   [io.legado.app.help.config.ThemeConfigProviders] (FileThemeConfigProvider.applyDayNight)
  *   写 ThemeStore 色 + themeMode 并 emit RECREATE, AppTheme 重组重读新色

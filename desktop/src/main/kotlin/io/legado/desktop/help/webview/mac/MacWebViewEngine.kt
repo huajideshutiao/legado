@@ -6,6 +6,7 @@ import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.getUserAgent
+import io.legado.app.help.http.WebViewSnifferScripts
 import io.legado.app.help.toast.Toasters
 import io.legado.app.utils.browseUrl
 import io.legado.desktop.help.webview.DesktopWebViewEngineBase
@@ -52,6 +53,8 @@ import java.util.concurrent.atomic.AtomicReference
  *   document-start 注入 JS hook (fetch/XHR) + performance entries 轮询兜底静态资源;
  *   overrideUrlRegex 走导航完成地址。命中语义为"轮询发现即返回" (比 Android 拦截语义滞后
  *   一个轮询周期, 且无法阻止资源加载), KDoc 注明差异;
+ *   两段脚本 ([WebViewSnifferScripts.SNIFF_HOOK_JS] / [WebViewSnifferScripts.SNIFF_COLLECT_JS])
+ *   已上移 commonMain, 与 iOS 端 `IosBackstageWebView` 共用同一份;
  * - cookie 注入/回收走 WKHTTPCookieStore (block API, 主线程发起 + 协程挂起等待);
  * - 可见窗口带 AppKit 工具栏, 行为对照 Windows WebView2Toolbar。
  * 抓取主循环 / 常量在 [DesktopWebViewEngineBase], 这里只留 WKWebView 差异。
@@ -103,29 +106,6 @@ internal object MacWebViewEngine : DesktopWebViewEngineBase() {
     override val platformLabel = PLATFORM_LABEL
 
     private const val SNIFF_INTERVAL_MS = 500L
-
-    /** document-start 注入的嗅探 hook: 捕获 fetch/XHR 的 URL。 */
-    internal const val SNIFF_HOOK_JS = """
-        (function(){
-          if (window.__legadoSniff) return;
-          window.__legadoSniff = [];
-          var p = function(u){ try{ if(u) window.__legadoSniff.push(String(u)); }catch(e){} };
-          try{ var f = window.fetch; if (f) window.fetch = function(){
-            try{ p(arguments[0] && (arguments[0].url || arguments[0])); }catch(e){}
-            return f.apply(this, arguments); }; }catch(e){}
-          try{ var o = XMLHttpRequest.prototype.open; XMLHttpRequest.prototype.open = function(m,u){
-            try{ p(u); }catch(e){} return o.apply(this, arguments); }; }catch(e){}
-        })();
-    """
-
-    /** 轮询取全部嗅探到的 URL (hook 结果 + performance entries 兜底静态资源), JSON 数组。 */
-    private const val SNIFF_COLLECT_JS = """
-        (function(){try{
-          var a = (window.__legadoSniff || []).concat(
-            performance.getEntriesByType('resource').map(function(e){ return e.name; }));
-          return JSON.stringify(a);
-        }catch(e){ return '[]'; }})()
-    """
 
     @Volatile
     private var probed = false
@@ -209,7 +189,7 @@ internal object MacWebViewEngine : DesktopWebViewEngineBase() {
 
         val deadline = System.currentTimeMillis() + AppConst.timeLimit
         while (System.currentTimeMillis() < deadline) {
-            val body = session.evaluateJavascript(SNIFF_COLLECT_JS) ?: ""
+            val body = session.evaluateJavascript(WebViewSnifferScripts.SNIFF_COLLECT_JS) ?: ""
             runCatching {
                 val urls = Json.parseToJsonElement(body).jsonArray
                 for (element in urls) {
@@ -318,7 +298,7 @@ internal class MacSession private constructor(
             ptr(
                 script,
                 "initWithSource:injectionTime:forMainFrameOnly:",
-                ns(MacWebViewEngine.SNIFF_HOOK_JS),
+                ns(WebViewSnifferScripts.SNIFF_HOOK_JS),
                 0L, // WKUserScriptInjectionTimeAtDocumentStart
                 1L, // forMainFrameOnly
             )!!

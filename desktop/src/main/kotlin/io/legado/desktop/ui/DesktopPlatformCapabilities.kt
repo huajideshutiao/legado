@@ -1,6 +1,7 @@
 package io.legado.desktop.ui
 
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.BookType
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.SourceType
 import io.legado.app.data.AppDbProviders
@@ -16,12 +17,15 @@ import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.file.desktopStoredLocalRef
+import io.legado.app.help.file.desktopAppRootDir
 import io.legado.app.help.source.SourceVerificationHelpShared
 import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.Debug
+import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.FileAssociationDispatch
 import io.legado.app.ui.book.import.ImportFileItem
+import io.legado.app.ui.book.info.WebFileImportShared
 import io.legado.app.ui.book.read.config.FontItem
 import io.legado.app.ui.book.source.BookSourceSort
 import io.legado.app.ui.book.source.manage.BookSourceViewModelShared
@@ -46,6 +50,7 @@ import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.GSON
 import io.legado.app.utils.browseUrl
 import io.legado.app.utils.compress.ZipUtils
+import io.legado.app.utils.openFileWithSystem
 import io.legado.app.utils.toJson
 import io.legado.desktop.constant.DesktopAppInfo
 import io.legado.desktop.help.DesktopCrashLogDirs
@@ -73,6 +78,7 @@ import java.awt.datatransfer.StringSelection
 import java.io.File
 import java.lang.management.ManagementFactory
 import java.net.URI
+import java.nio.file.Paths
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.management.ObjectName
 
@@ -348,13 +354,6 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
         appDb.bookDao.getBook(bookUrl)?.toRouteRef()
 
     // 书架布局 / 底栏配置: shared Compose 对话框 (BookshelfNavConfigDialogs.kt)
-    override fun showBookshelfLayoutDialog() {
-        AppNavigatorProviders.get().showOverlay(AppOverlay.Dialog("bookshelf_layout"))
-    }
-
-    override fun showBottomNavConfigDialog() {
-        AppNavigatorProviders.get().showOverlay(AppOverlay.Dialog("bottom_nav_config"))
-    }
 
     override fun showThemeCustomizeDialog(configIndex: Int?, isNight: Boolean) {
         val mode = if (configIndex == null) MODE_NEW_CONFIG else MODE_EDIT_CONFIG
@@ -401,9 +400,6 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
 
     // 崩溃日志: 与 app 端同走 shared OverlayContentHost 的 "crash_logs" key
     // (数据源 = DesktopPlatformServices.crashLogs, 写入方见 DesktopCrashHandler)
-    override fun showCrashLogs() {
-        AppNavigatorProviders.get().showOverlay(AppOverlay.Dialog("crash_logs"))
-    }
 
     // 对照 app 端 saveLog: 打包 logs + crash + heapDump 成 logs.zip 落到用户可见目录
     // (app 端落 SAF 备份目录, 桌面端落 userExportDir; 桌面无 logcat 可 dump)
@@ -488,6 +484,167 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     // 本地书文件字节数 (对照 app 端 FileDoc.fromFile(bookUrl).size; bookUrl 形如 file:///path)
     override suspend fun localBookFileSize(bookUrl: String): Long = withContext(Dispatchers.IO) {
         runCatching { resolveLocalFile(bookUrl).length() }.getOrDefault(0L)
+    }
+
+    // 对照 BookInfoViewModel.downloadToLocal: 业务已共享 (FileBook.downloadRemoteBook)
+    override fun downloadBookToLocal(book: Book, success: (() -> Unit)?) {
+        scope.launch {
+            runCatching { FileBook.downloadRemoteBook(book) }
+                .onSuccess {
+                    withContext(Dispatchers.Main) {
+                        Toasters.get().toast("下载成功")
+                        success?.invoke()
+                    }
+                }
+                .onFailure { AppLog.put("下载远程书籍<${book.name}>失败", it, true) }
+        }
+    }
+
+    // 对照 BookInfoActivity.onReadClick isWebFile 分支 + showWebFileDownloadAlert:
+    // 直链书点"阅读"先选一个下载项, 再下载导入并跳阅读
+    override fun handleWebFileRead(
+        book: Book,
+        onWaitDialog: (Boolean) -> Unit,
+        onAction: (String) -> Unit,
+        onSuccess: ((Book) -> Unit)?,
+    ) {
+        scope.launch {
+            // 对照 BaseReadViewModel.loadWebFile: 本地书无书源, 其余按 origin 查源
+            val source = if (book.origin != BookType.localTag) {
+                appDb.bookSourceDao.getBookSource(book.origin)
+            } else null
+            // 构建 webFile 列表的平台无关段已下沉 WebFileImportShared (同 BaseReadViewModel.loadWebFile)
+            val webFiles = WebFileImportShared.buildWebFiles(book, source)
+            withContext(Dispatchers.Main) {
+                if (webFiles.isEmpty()) {
+                    Toasters.get().toast("Unexpected webFileData")
+                    return@withContext
+                }
+                showWebFileDownloadAlert(book, webFiles, onWaitDialog, onAction, onSuccess)
+            }
+        }
+    }
+
+    // 对照 BookInfoActivity.showWebFileDownloadAlert: 下载项选择框 (桌面端走
+    // DesktopDialogRequest.SelectList, 与 app 端 activity.selector 同语义)
+    private fun showWebFileDownloadAlert(
+        book: Book,
+        webFiles: List<FileBook.WebFile>,
+        onWaitDialog: (Boolean) -> Unit,
+        onAction: (String) -> Unit,
+        onSuccess: ((Book) -> Unit)?,
+    ) {
+        DesktopDialogs.show(
+            DesktopDialogRequest.SelectList(
+                title = syncGetString("download_and_import_file"),
+                items = webFiles.map { it.name },
+            ) { index ->
+                val webFile = index?.let { webFiles.getOrNull(it) } ?: return@SelectList
+                when {
+                    webFile.isSupported ->
+                        importWebFile(book, webFile, onWaitDialog, onAction) { onSuccess?.invoke(it) }
+
+                    webFile.isSupportDecompress ->
+                        downloadWebFile(book, webFile, onWaitDialog, onAction) { path ->
+                            getArchiveFilesName(path) { fileNames ->
+                                if (fileNames.size == 1) {
+                                    importBookFromArchive(
+                                        path,
+                                        fileNames[0],
+                                        book,
+                                        onWaitDialog
+                                    ) { onSuccess?.invoke(it) }
+                                } else {
+                                    showDecompressFileImportAlert(
+                                        path,
+                                        fileNames,
+                                        book,
+                                        onWaitDialog,
+                                        onSuccess
+                                    )
+                                }
+                            }
+                        }
+
+                    else -> showUnsupportedWebFileAlert(book, webFile, onWaitDialog, onAction)
+                }
+            }
+        )
+    }
+
+    // 对照 BookInfoActivity.showDecompressFileImportAlert: 压缩包内选书
+    private fun showDecompressFileImportAlert(
+        archiveFilePath: String,
+        fileNames: List<String>,
+        book: Book,
+        onWaitDialog: (Boolean) -> Unit,
+        onSuccess: ((Book) -> Unit)?,
+    ) {
+        if (fileNames.isEmpty()) {
+            Toasters.get().toast(syncGetString("unsupport_archivefile_entry"))
+            return
+        }
+        DesktopDialogs.show(
+            DesktopDialogRequest.SelectList(
+                title = syncGetString("import_select_book"),
+                items = fileNames,
+            ) { index ->
+                val name = index?.let { fileNames.getOrNull(it) } ?: return@SelectList
+                importBookFromArchive(archiveFilePath, name, book, onWaitDialog) {
+                    onSuccess?.invoke(it)
+                }
+            }
+        )
+    }
+
+    // 对照 app 端 showWebFileDownloadAlert 的 open_fun 分支: 不支持的格式下载后交系统程序打开
+    // (桌面等价的 openFileUri 通道 = openFileWithSystem, 与 ServiceLauncher 同一出口)
+    private fun showUnsupportedWebFileAlert(
+        book: Book,
+        webFile: FileBook.WebFile,
+        onWaitDialog: (Boolean) -> Unit,
+        onAction: (String) -> Unit,
+    ) {
+        DesktopDialogs.show(
+            DesktopDialogRequest.Confirm(
+                title = syncGetString("draw"),
+                message = syncGetString("file_not_supported", webFile.name),
+                okText = syncGetString("open_fun"),
+                noText = syncGetString("cancel"),
+                onOk = {
+                    downloadWebFile(book, webFile, onWaitDialog, onAction) { path ->
+                        openFileWithSystem(path)
+                    }
+                },
+                onNo = {},
+            )
+        )
+    }
+
+    // 对照 RemoteBookActivity.startRead 的 archive 分支: 在书籍保存目录里找已下载的压缩包,
+    // 找到就交文件关联分发链 (与 NativeImportBook.openReader 同口径: 桌面无压缩包内选章 UI,
+    // 走 FileAssociationDispatch 的直接导入链), 没找到就弹确认框由调用方重新下载后重试
+    override fun startReadRemoteArchive(fileName: String, onNeedDownload: () -> Unit) {
+        scope.launch {
+            // 与 DesktopFileBookAccessor 的书籍保存目录同源 ({desktopAppRootDir}/books)
+            val path = Paths.get(desktopAppRootDir(), "books", fileName).toString()
+            if (File(path).isFile) {
+                FileAssociationDispatch.dispatch(path)
+                return@launch
+            }
+            withContext(Dispatchers.Main) {
+                DesktopDialogs.show(
+                    DesktopDialogRequest.Confirm(
+                        title = syncGetString("draw"),
+                        message = syncGetString("archive_not_found"),
+                        okText = syncGetString("ok"),
+                        noText = syncGetString("cancel"),
+                        onOk = { onNeedDownload() },
+                        onNo = {},
+                    )
+                )
+            }
+        }
     }
 
     // ===== 书架管理: 导出 =====
@@ -744,11 +901,6 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
         navigator.showOverlay(AppOverlay.Dialog("check_source_config"))
     }
 
-    override fun showDirectLinkUploadConfigDialog() {
-        AppNavigatorProviders.get()
-            .showOverlay(AppOverlay.Dialog("direct_link_upload_config"))
-    }
-
     /**
      * 清理内嵌浏览器数据 (对照 app 端 clearWebViewData 删 webview 私有目录)。
      *
@@ -777,6 +929,8 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
      *
      * 桌面端无 SAF, fontFolder 恒为真实路径; 内置目录取 DataStorage.fontsDir
      * (对应 app 端 externalFiles/font)。
+     * 不走 shared 版: 本端返回 [java.io.File.absolutePath] (相对 pref 也会解析成绝对路径),
+     * shared 版返回 okio 列目录得到的路径串, 两者未逐字等价。
      */
     override suspend fun scanFontItems(): List<FontItem> = withContext(Dispatchers.IO) {
         val fontRegex = Regex("(?i).*\\.[ot]tf")

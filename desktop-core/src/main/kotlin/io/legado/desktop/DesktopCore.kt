@@ -6,23 +6,18 @@ import io.legado.app.data.AppDatabaseProviders
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.BundledDatabaseDriver
 import io.legado.app.data.DesktopAppDatabaseProvider
-import io.legado.app.help.AppWebDavShared
-import io.legado.app.help.RuleBigDataProviders
+import io.legado.app.help.AppVersionProvider
+import io.legado.app.help.AppVersionProviders
+import io.legado.app.help.StartupMaintenanceShared
 import io.legado.app.help.book.BookHelpProviders
-import io.legado.app.help.book.BookHelpShared
 import io.legado.app.help.book.BookImageStorageProviders
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.JvmBookImageStorage
 import io.legado.app.help.book.JvmBookStorage
 import io.legado.app.help.book.JvmLocalBookLocator
 import io.legado.app.help.book.LocalBookLocators
-import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.OLD_COVERS_REF_SEGMENT
-import io.legado.app.help.config.LocalConfigKeys
-import io.legado.app.help.config.PreferenceProviders
-import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ReadBookConfigShared
-import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.file.desktopAppRootDir
 import io.legado.app.help.file.desktopResolveStoredRef
@@ -37,7 +32,6 @@ import io.legado.app.help.service.UpdateBookCallbacks
 import io.legado.app.help.service.registerDesktopServiceLauncher
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.source.SourceHelpAccessors
-import io.legado.app.help.storage.BackupShared
 import io.legado.app.help.storage.registerJvmDataStorage
 import io.legado.app.help.toast.registerDesktopToaster
 import io.legado.app.help.tts.TtsEngineProvider
@@ -60,6 +54,7 @@ import io.legado.desktop.DesktopCore.registerCoreProviders
 import io.legado.desktop.DesktopCore.registerSecondaryCoreProviders
 import io.legado.desktop.DesktopCore.startupBackgroundTasks
 import io.legado.desktop.config.registerDesktopConfig
+import io.legado.desktop.constant.DesktopAppInfo
 import io.legado.desktop.data.DesktopAppDbAccessor
 import io.legado.desktop.help.DesktopCrashHandler
 import io.legado.desktop.help.applyDesktopLanguagePref
@@ -93,7 +88,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
 import java.io.File
-import java.util.concurrent.TimeUnit
 
 private const val TAG = "legado-desktop"
 
@@ -210,6 +204,11 @@ object DesktopCore {
      *   headless 不消费该返回值, 但注册本身必须执行 (备份格式兼容性补齐))。
      */
     fun registerEarlyProviders(): ReadBookConfigShared {
+        // 注册当前版本号 provider (供下沉的启动期默认数据补齐按版本推进; 桌面端取
+        // DesktopAppInfo.versionCode, 与下沉前 DesktopDefaultDataInit 内的取值同源)
+        AppVersionProviders.register(object : AppVersionProvider {
+            override val versionCode: Long get() = DesktopAppInfo.versionCode.toLong()
+        })
         // 注册桌面端 Host 类 provider (启动期最早, 让 shared commonMain 调用 AppLog/appString 时有输出)
         // - AppLogHost: 桥接到 println, 未注册时 AppLog 副作用 (write/toast/debugPrint) 静默 no-op
         registerDesktopAppLogHost()
@@ -424,8 +423,13 @@ object DesktopCore {
     /**
      * 阶段3 尾部: 启动期异步任务 (对照 app 端 App.kt onCreate 的 Coroutine.async 块)。
      *
-     * 与 :desktop registerSecondaryProviders 尾部逐行等价; [initDefaultData] 单独暴露,
-     * 供只想要默认数据补齐的入口复用 (headless 与桌面共用同一时序: 注册完成后调用本函数)。
+     * 四项维护动作的编排本体已下沉 :data commonMain ([StartupMaintenanceShared]), 本函数只负责
+     * "注册完成后按同一天序调用" —— 与 :desktop registerSecondaryProviders 尾部逐行等价;
+     * [initDefaultData] 单独暴露, 供只想要默认数据补齐的入口复用。
+     *
+     * 注: "云端有新备份"提示 ([StartupMaintenanceShared.checkNewWebDavBackup]) 不在本函数: 它的
+     * 确认框渠道 DesktopDialogs 在 :desktop 模块内 (本模块看不到), 且本函数也被无 UI 的
+     * :headless 入口调用。桌面端的接线在 :desktop 的 DesktopDialogHost (启动首帧自取)。
      */
     suspend fun startupBackgroundTasks() {
         withContext(Dispatchers.Default) {
@@ -439,45 +443,24 @@ object DesktopCore {
                 }
             }
             // LogUtils.init 为 Android 专属, desktop 用 registerDesktopAppLogHost 替代
-            // 对照 app 端 App.kt:144 DefaultData.upVersion() + dbCallback.onCreate 预置数据:
+            // 对照 app 端 App.kt DefaultData.upVersion() + dbCallback.onCreate 预置数据:
             // 桌面端 Room KMP 无 Callback, 首启/升级的默认数据统一在这里幂等补齐
+            // (编排已下沉 StartupMaintenanceShared, 四端共用同一份)
             initDesktopDefaultData()
             // 15b. 旧数据封面引用修复: 绝对路径改存 oldCovers/ 相对引用 (幂等)
             Coroutine.async { repairLegacyStoredCoverRefs() }
             // 16. 启动期缓存清理 + WebDav 进度同步
-            // (对照 app 端 App.kt onCreate 的两个 Coroutine.async 块:
+            // (对照 app 端 App.onCreate 的两个 Coroutine.async 块:
             //  - 缓存清理: 距上次清理超过 1 天才执行, 清 cacheDao 过期条目 + 无效书籍缓存 +
-            //    备份/阅读背景/主题背景缓存;
-            //  - 进度同步: syncBookProgress 开启时从 WebDav 拉取所有书籍进度写回本地)
+            //    备份/阅读背景/主题背景缓存; 节流 key 是专用的 lastCacheCleanup, 见下沉件说明;
+            //  - 进度同步: syncBookProgress 开启时确保 WebDav 认证后拉取所有书籍进度写回本地)
+            // cacheExtraMayHaveWork=false: 桌面/headless 注册的 BookHelpAccessor.clearCacheExtra
+            // 是空实现, 故"书架空 + 缓存目录空"可安全早退 (与下沉前 hasInvalidCacheWork 的判据等价)
             Coroutine.async {
-                val prefs = PreferenceProviders.get()
-                // 节流读专用的 lastCacheCleanup: 原写法读 lastBackup, 但那个 key 只在用户真备份/恢复
-                // 时写入, 从不备份的用户恒为 0 → 条件恒成立 → 每次启动都全跑一遍清理族
-                val lastCleanup = prefs.getLong(LocalConfigKeys.lastCacheCleanup, 0L)
-                if (lastCleanup + TimeUnit.DAYS.toMillis(1) < System.currentTimeMillis()) {
-                    runCatching {
-                        AppDbProviders.get().cacheDao.clearDeadline(System.currentTimeMillis())
-                        // 书架无书且缓存目录无残留时 clearInvalidCache 必然空转: 它删的就是
-                        // "书架之外的 book_cache / ruleData 子目录", 三者全空则无物可删
-                        if (hasInvalidCacheWork()) {
-                            BookHelpShared.clearInvalidCache()
-                        }
-                        BackupShared.clearCache()
-                        ReadBookConfigProviders.get().clearBgAndCache()
-                        ThemeConfigProviders.get().clearBg()
-                    }.onSuccess {
-                        // 只在整段跑完才写时间戳: 中途抛错就不写, 下次启动重试,
-                        // 否则一次失败会被当成"今天已经清过"静默节流掉
-                        prefs.putLong(LocalConfigKeys.lastCacheCleanup, System.currentTimeMillis())
-                    }.onFailure {
-                        AppLog.put("启动期缓存清理失败\n${it.message}", it)
-                    }
-                }
+                StartupMaintenanceShared.clearInvalidCacheIfDue(cacheExtraMayHaveWork = false)
             }
             Coroutine.async {
-                if (AppConfigProviders.get().syncBookProgress) {
-                    AppWebDavShared.downloadAllBookProgress()
-                }
+                StartupMaintenanceShared.syncBookProgressOnStartup()
             }
         }
     }
@@ -514,37 +497,11 @@ object DesktopCore {
     /**
      * 首启 / 升级时的默认数据补齐 (对照 app 端 DefaultData.upVersion + dbCallback.onCreate):
      * 预置书架分组 / 键盘助手 / httpTTS / txtTocRule / dictRule, 幂等可重复调用。
+     *
+     * 编排本体已下沉 :data commonMain ([StartupMaintenanceShared.initDefaultData]), 本函数保留
+     * 桌面命名以便 headless 与桌面两条入口继续复用同一时机。
      */
     suspend fun initDefaultData() = initDesktopDefaultData()
-
-    /**
-     * [BookHelpShared.clearInvalidCache] 是否还有活可干 (调用点早退判据)。
-     *
-     * 判据必须比被它省掉的活便宜: 1 条 COUNT(*) + 2 次单层目录 list, 换掉
-     * "全表读 name/bookUrl + book_cache 子目录逐个扫描 + ruleData 子目录逐个扫描"。
-     *
-     * 不漏清的依据: clearInvalidCache 共四步 —— ①② 按书架删 book_cache 失效目录与漫画超量淘汰
-     * (根目录空 → 无可删对象), ③ 按书架删 RuleBigData 大变量目录 (impl 未注册时本来就是 no-op),
-     * ④ clearCacheExtra (桌面/headless 共用的 DesktopBookHelpAccessor 为空实现)。
-     * 书架 0 行 + ①③ 两类目录都空时四步全为空转, 故本判定与原行为等价。
-     */
-    private suspend fun hasInvalidCacheWork(): Boolean {
-        if (AppDbProviders.get().bookDao.allBookCount() > 0) return true
-        if (!dirAbsentOrEmpty(File(BookStorageProviders.get().rootPath))) return true
-        val ruleDirs = RuleBigDataProviders.impl?.listBookDataDirs().orEmpty()
-        return ruleDirs.any { !dirAbsentOrEmpty(File(it)) }
-    }
-
-    /**
-     * 单层目录是否"不存在或为空" (只 list 一层, 不递归)。
-     *
-     * File.list() 在"是目录但读目录出错"时也返回 null, 这种情况按非空处理让清理照原样跑,
-     * 不用空判掩盖 IO 错误造成漏清。
-     */
-    private fun dirAbsentOrEmpty(dir: File): Boolean {
-        val entries = dir.list()
-        return if (entries == null) !dir.isDirectory else entries.isEmpty()
-    }
 }
 
 /**

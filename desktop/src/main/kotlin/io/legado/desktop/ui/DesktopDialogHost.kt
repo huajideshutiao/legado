@@ -12,6 +12,7 @@ import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -24,7 +25,10 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
+import io.legado.app.help.AppWebDavShared
+import io.legado.app.help.StartupMaintenanceShared
 import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.tryParesExportFileName
 import io.legado.app.help.source.SourceHelp
@@ -32,6 +36,7 @@ import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppRadioButton
+import io.legado.app.ui.compose.component.AppSelectorList
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.platform.rememberPainter
@@ -40,10 +45,13 @@ import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.dialog.TextInputDialog
 import io.legado.app.utils.verificationField
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 桌面端命令式对话框请求 (非 Composable 上下文 → Compose 弹窗)。
@@ -76,6 +84,18 @@ sealed interface DesktopDialogRequest {
         val noText: String,
         val onOk: () -> Unit,
         val onNo: () -> Unit,
+    ) : DesktopDialogRequest
+
+    /**
+     * 列表选择 (标题 + 候选项, 回传选中下标)。
+     *
+     * 对照 app 端 `activity.selector(...)` 与 iOS 端 `presentSelectList`:
+     * 选中回传下标, 取消 (点弹窗外 / ESC) 回传 null ("未选择")。
+     */
+    data class SelectList(
+        val title: String,
+        val items: List<String>,
+        val onSelected: (Int?) -> Unit,
     ) : DesktopDialogRequest
 
     /**
@@ -144,6 +164,51 @@ object DesktopDialogs {
 @Composable
 fun DesktopDialogHost() {
     val request by DesktopDialogs.request.collectAsState()
+    // 恢复动作的作用域: 确认框的 onOk 在点按回调里执行 (不在本组合的协程里),
+    // 而恢复是网络 + 解压 + 写库的阻塞 IO, 必须留在 IO 线程
+    val restoreScope = rememberCoroutineScope()
+    // 启动期“云端有新备份”提示 (对照 app 端 MainActivity.backupSync): 判定下沉在
+    // StartupMaintenanceShared, 提示/恢复用本端已有的 DesktopDialogRequest.Confirm。
+    // 挂在对话框宿主上 (而不是 DesktopCore.startupBackgroundTasks): DesktopDialogs 在 :desktop
+    // 模块内, :desktop-core 看不到它 (依赖方向 :desktop → :desktop-core), 且
+    // DesktopCore.startupBackgroundTasks 也被无 UI 的 :headless 入口调用 (那里无人消费弹框)。
+    LaunchedEffect(Unit) {
+        val result = withContext(Dispatchers.IO) {
+            // 判定前先补认证: checkNewWebDavBackup → lastBackUp 首行是 authorization ?: return,
+            // 而本端 Authorization 只有 syncBookProgressOnStartup / 备份页调过 upConfig 后才有
+            // (这里与启动任务并发, 不先补一次就可能拿到 null 而恒判无新备份)
+            if (AppWebDavShared.authorization == null) {
+                runCatching { AppWebDavShared.upConfig() }
+                    .onFailure { AppLog.put("启动期 WebDav 认证失败\n${it.message}", it) }
+            }
+            StartupMaintenanceShared.checkNewWebDavBackup()
+        }
+        // 只在本函数内部回写过“已提示过的时间戳”且云端确实更新时才弹; 用户拒绝不会重复弹
+        val newBackup = result as? StartupMaintenanceShared.NewBackupCheckResult.NewBackup
+            ?: return@LaunchedEffect
+        DesktopDialogs.show(
+            DesktopDialogRequest.Confirm(
+                // 标题/正文文案键与 app 端同源 (restore / webdav_after_local_restore_confirm)
+                title = syncGetString("restore"),
+                message = syncGetString("webdav_after_local_restore_confirm"),
+                okText = syncGetString("ok"),
+                noText = syncGetString("cancel"),
+                onOk = {
+                    // 恢复走共享恢复入口 (与 app 端 MainViewModel.restoreWebDav → AppWebDav.restoreWebDav 同一个)
+                    restoreScope.launch {
+                        try {
+                            withContext(Dispatchers.IO) { AppWebDavShared.restoreWebDav(newBackup.name) }
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            AppLog.put("WebDav恢复出错\n${e.message}", e)
+                        }
+                    }
+                },
+                onNo = {},
+            )
+        )
+    }
     when (val current = request) {
         null -> Unit
 
@@ -175,6 +240,23 @@ fun DesktopDialogHost() {
                 DesktopDialogs.dismiss()
             },
         )
+
+        is DesktopDialogRequest.SelectList -> AppAlertDialog(
+            // 取消与 app 端 selector 同口径: 回传"未选择" (点弹窗外/ESC 走平台关闭)
+            onDismissRequest = {
+                current.onSelected(null)
+                DesktopDialogs.dismiss()
+            },
+            title = current.title,
+            widthFraction = 0.8f,
+        ) {
+            AppSelectorList(items = current.items) { index ->
+                // 先出队再回传: 回调里可能紧接着推下一个选择框 (压缩包内选书 / 不支持格式确认),
+                // 单槽队列下后 dismiss 会把新请求一起清掉
+                DesktopDialogs.dismiss()
+                current.onSelected(index)
+            }
+        }
 
         is DesktopDialogRequest.OpenUrlConfirm -> OpenUrlConfirmDialog(
             request = current,
