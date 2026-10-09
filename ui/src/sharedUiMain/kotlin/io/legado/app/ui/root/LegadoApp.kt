@@ -206,6 +206,11 @@ fun LegadoApp(
                     // keepLight 计时管理），桌面/移动端按 keepLight 直接驱动平台常亮
                     keepScreenOn = readerKeepScreenOnPolicy() || readerAutoPageActive,
                 )
+            } else if (route is AppRoute.MangaReader) {
+                // 漫画页跟随"屏幕方向"设置 (对照原版 ReadMangaActivity 继承 BaseReadActivity 的
+                // setOrientation: 同样把 AppConfig.screenOrientation 的 "0"~"4" 映射成系统方向)。
+                // 只覆盖方向, 其余字段 (fullscreen/keepScreenOn/systemBars) 沿用 WindowPolicies.Manga。
+                WindowPolicies.Manga.copy(orientation = readerOrientationPolicy())
             } else {
                 WindowPolicies.forRoute(route)
             }
@@ -236,6 +241,11 @@ fun LegadoApp(
                     orientation = readerOrientationPolicy(),
                     keepScreenOn = readerKeepScreenOnPolicy() || readerAutoPageActive,
                 )
+            } else if (route is AppRoute.MangaReader) {
+                // 漫画页跟随"屏幕方向"设置 (对照原版 ReadMangaActivity 继承 BaseReadActivity 的
+                // setOrientation: 同样把 AppConfig.screenOrientation 的 "0"~"4" 映射成系统方向)。
+                // 只覆盖方向, 其余字段 (fullscreen/keepScreenOn/systemBars) 沿用 WindowPolicies.Manga。
+                WindowPolicies.Manga.copy(orientation = readerOrientationPolicy())
             } else {
                 route?.let { WindowPolicies.forRoute(it) } ?: WindowPolicies.Default
             }

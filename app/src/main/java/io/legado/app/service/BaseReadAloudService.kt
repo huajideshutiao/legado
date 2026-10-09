@@ -30,6 +30,8 @@ import io.legado.app.help.media.AudioFocusController
 import io.legado.app.help.media.BecomingNoisyReceiver
 import io.legado.app.help.media.MediaPlaybackLock
 import io.legado.app.help.media.MediaPlaybackNotification
+import io.legado.app.help.media.PhoneCallPauseHandler
+import io.legado.app.help.media.PhoneCallState
 import io.legado.app.help.media.SleepTimer
 import io.legado.app.help.tts.ReadAloudQueue
 import io.legado.app.lib.permission.Permissions
@@ -132,7 +134,17 @@ abstract class BaseReadAloudService : BaseService() {
 
     internal var textChapter: TextChapterShared? = null
     internal var pageIndex = 0
-    private var needResumeOnCallStateIdle = false
+
+    /**
+     * 来电三态状态机 (日志文案/恢复标记语义与下沉前逐字一致)。
+     *
+     * 平台监听器的注册/注销仍由本类负责 (系统权限与生命周期是 Android 专属)。
+     */
+    private val phoneCallHandler = PhoneCallPauseHandler(
+        isPaused = { pause },
+        onPause = { pauseReadAloud() },
+        onResume = { resumeReadAloud() },
+    )
     private var registeredPhoneStateListener = false
     private var upNotificationJob: Coroutine<*>? = null
     private var chapterWatchJob: Job? = null
@@ -600,26 +612,13 @@ abstract class BaseReadAloudService : BaseService() {
     inner class ReadAloudPhoneStateListener : PhoneStateListener() {
         override fun onCallStateChanged(state: Int, phoneNumber: String?) {
             super.onCallStateChanged(state, phoneNumber)
-            when (state) {
-                TelephonyManager.CALL_STATE_IDLE -> {
-                    if (needResumeOnCallStateIdle) {
-                        AppLog.put("来电结束,继续朗读")
-                        resumeReadAloud()
-                    } else AppLog.put("来电结束")
+            phoneCallHandler.onCallStateChanged(
+                when (state) {
+                    TelephonyManager.CALL_STATE_IDLE -> PhoneCallState.Idle
+                    TelephonyManager.CALL_STATE_RINGING -> PhoneCallState.Ringing
+                    else -> PhoneCallState.OffHook
                 }
-
-                TelephonyManager.CALL_STATE_RINGING -> {
-                    if (!pause) {
-                        AppLog.put("来电响铃,暂停朗读")
-                        needResumeOnCallStateIdle = true
-                        pauseReadAloud()
-                    } else AppLog.put("来电响铃")
-                }
-
-                TelephonyManager.CALL_STATE_OFFHOOK -> {
-                    AppLog.put("来电接听,不做处理")
-                }
-            }
+            )
         }
     }
 

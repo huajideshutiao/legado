@@ -13,7 +13,6 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.text.TextPaint
-import android.text.format.DateUtils
 import android.view.WindowManager
 import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
@@ -44,7 +43,7 @@ import io.legado.app.constant.IntentAction
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.appInfo
 import io.legado.app.data.entities.Book
-import io.legado.app.help.AppWebDav
+import io.legado.app.help.StartupMaintenanceShared
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
@@ -959,19 +958,18 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
      * 备份同步
      */
     private fun backupSync() {
-        if (!AppConfig.autoCheckNewBackup) {
-            return
-        }
         lifecycleScope.launch {
-            val lastBackupFile =
-                withContext(IO) { AppWebDav.lastBackUp().getOrNull() } ?: return@launch
-            if (lastBackupFile.lastModify - LocalConfig.lastBackup > DateUtils.MINUTE_IN_MILLIS) {
-                LocalConfig.lastBackup = lastBackupFile.lastModify
-                alert(androidAppString("restore"), androidAppString("webdav_after_local_restore_confirm")) {
-                    cancelButton()
-                    okButton {
-                        viewModel.restoreWebDav(lastBackupFile.displayName)
-                    }
+            // 判定与"已提示过的最新云端备份时间"回写已下沉 :data commonMain (StartupMaintenanceShared),
+            // 四端共用一份; 开关 autoCheckNewBackup 也在下沉件内判。lastBackUp 走网络,
+            // 下沉件自身不切线程, 故仍必须留在 IO
+            val result = withContext(IO) { StartupMaintenanceShared.checkNewWebDavBackup() }
+            if (result !is StartupMaintenanceShared.NewBackupCheckResult.NewBackup) {
+                return@launch
+            }
+            alert(androidAppString("restore"), androidAppString("webdav_after_local_restore_confirm")) {
+                cancelButton()
+                okButton {
+                    viewModel.restoreWebDav(result.name)
                 }
             }
         }

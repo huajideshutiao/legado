@@ -66,22 +66,20 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.HttpTTS
-import io.legado.app.data.entities.Review
 import io.legado.app.exception.InvalidBooksDirException
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.CrashHandler
 import io.legado.app.help.DirectLinkUpload
-import io.legado.app.help.IntentData
 import io.legado.app.help.IntentHelp
 import io.legado.app.help.LauncherIconHelp
+import io.legado.app.help.book.BookChapterLoader
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.delBookCore
 import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.getRemoteUrl
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isWebFile
-import io.legado.app.help.book.removeType
 import io.legado.app.help.book.toShelfJsonMap
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.book.toggleBookshelfCore
@@ -96,15 +94,13 @@ import io.legado.app.lib.theme.MonetColorExtract
 import io.legado.app.model.BookCover
 import io.legado.app.model.CheckSource
 import io.legado.app.model.Debug
-import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.fileBook.importFromArchive
-import io.legado.app.model.fileBook.importLocalFile
-import io.legado.app.model.fileBook.saveBookFile
 import io.legado.app.service.WebService
 import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.import.local.ImportBook
 import io.legado.app.ui.book.import.local.ImportBookViewModel
+import io.legado.app.ui.book.info.WebFileImportShared
 import io.legado.app.ui.book.read.config.FontItem
 import io.legado.app.ui.book.read.config.HttpTtsEditDialog
 import io.legado.app.ui.book.source.BookSourceSort
@@ -128,21 +124,19 @@ import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.DialogTransitionSpec
-import io.legado.app.ui.root.PlatformCapabilities
 import io.legado.app.ui.root.RouteTransitionSpec
+import io.legado.app.ui.root.SharedPlatformCapabilities
 import io.legado.app.ui.root.TransitionEasing
 import io.legado.app.ui.root.encodeBookVariableOverlayPayload
 import io.legado.app.ui.root.encodeSourceVariableOverlayPayload
 import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.root.toRouteRef
-import io.legado.app.ui.route.encodeReviewListDialogPayload
 import io.legado.app.utils.ACache
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.RealPathUtil
-import io.legado.app.utils.UrlUtil
 import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.createFileIfNotExist
 import io.legado.app.utils.createFolderIfNotExist
@@ -170,9 +164,9 @@ import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.verificationField
 import io.legado.app.utils.writeToOutputStream
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -181,7 +175,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -193,12 +186,6 @@ import java.io.File
 import java.io.FileOutputStream
 
 /**
- * 等 Overlay 结果的超时上限: 取消关闭对话框不回传结果, 无超时则协程永久挂起。
- * 10 分钟对"挑封面/选文件"这类用户操作足够宽裕, 又能保证泄漏有界。
- */
-private const val OVERLAY_RESULT_TIMEOUT_MS = 10 * 60 * 1000L
-
-/**
  * 澎湃 OS activity 转场插值器参数 (miui-services.jar
  * `AppTransitionInjector$ActivityTranstionInterpolator`, 由 createActivityOpenCloseTransition
  * 以 response=0.8 / damping=0.95 构造)。
@@ -208,7 +195,11 @@ private val MiuiActivityTransitionEasing =
 
 class AndroidPlatformCapabilities(
     private val activity: MainActivity,
-) : PlatformCapabilities {
+) : SharedPlatformCapabilities {
+
+    /** 对照 app 端 Activity 的 lifecycleScope (随 Activity 销毁取消)。 */
+    override val capabilityScope: CoroutineScope
+        get() = activity.lifecycleScope
 
     // 导入书籍: 复用 ImportBookViewModel 维护 rootDoc/subDocs 状态 (对照 ImportBookActivity)
     // 经 ViewModelProvider 绑定 activity ViewModelStore, lifecycle 由 activity 管理
@@ -455,64 +446,8 @@ class AndroidPlatformCapabilities(
         if (enabled) WebService.start(activity) else WebService.stop(activity)
     }
 
-    // 对照 BookInfoEditActivity.onChangeCoverSource + coverChangeTo
-    // 迁 Compose Overlay: 原 showDialogFragment(ChangeCoverDialog) 已由
-    // shared OverlayContentHost 的 "change_cover" key 接管 (payload="name\nauthor")
-    // 结果回调: overlayResults 返回 RouteResultPayload.ChangeCover(coverUrl)
-    override fun showChangeCoverDialog(book: Book, onCoverSelected: (String) -> Unit) {
-        val navigator = AppNavigatorProviders.get()
-        // 不带 IO: showOverlay 是 UI 操作, 必须主线程 (lifecycleScope 默认 Main.immediate),
-        // 同时保证"先入栈再收结果", 不会漏掉结果
-        activity.lifecycleScope.launch {
-            navigator.showOverlay(
-                AppOverlay.Dialog(
-                    "change_cover",
-                    payload = "${book.name}\n${book.author}"
-                )
-            )
-            // 等 Overlay 结果返回 (RouteResultPayload.ChangeCover);
-            // 用户取消关闭对话框时 payload=None 不 emit (见 AppNavigator.pop), first{} 会
-            // 永久挂起并把闭包留到 Activity 销毁, 故加超时兜底, 超时按"用户取消"处理
-            val result = withTimeoutOrNull(OVERLAY_RESULT_TIMEOUT_MS) {
-                navigator.overlayResults.first { it.key == "change_cover" }
-            }
-            val payload = result?.payload
-            if (payload is io.legado.app.ui.root.RouteResultPayload.ChangeCover) {
-                onCoverSelected(payload.coverUrl)
-            }
-        }
-    }
-
-    // 评论: 经 shared Overlay 弹段评/书评列表 (对照 app 端 ReviewListDialog BottomSheetDialogFragment;
-    // shared ReviewListDialogHost 用 AppBottomSheetDialog 还原底部弹窗语义, payload 编码见 ReviewListDialogHost.kt)
-    override fun showReviewListDialog(
-        book: Book,
-        chapter: BookChapter?,
-        paragraphIndex: Int,
-        parentReview: Review?,
-    ): Boolean {
-        AppNavigatorProviders.get().showOverlay(
-            AppOverlay.Dialog(
-                key = "review_list",
-                payload = encodeReviewListDialogPayload(book, chapter, paragraphIndex, parentReview),
-            )
-        )
-        return true
-    }
-
-    // 迁 Compose Overlay: 原 app 端 DefaultCoverGalleryDialog Fragment 已随封面统一删除,
-    // 与其他端一致走 shared DefaultCoverGalleryDialogHost (payload "1"=夜间, 其余=日间)
-    override fun showDefaultCoverGallery(isNight: Boolean) {
-        val navigator = AppNavigatorProviders.get()
-        activity.lifecycleScope.launch {
-            navigator.showOverlay(
-                AppOverlay.Dialog(
-                    key = "default_cover_gallery",
-                    payload = if (isNight) "1" else "0",
-                )
-            )
-        }
-    }
+    // 换封面源 / 段评列表 / 默认封面图集: 走 shared Overlay (与桌面/iOS/鸿蒙同一实现,
+    // 见 SharedPlatformCapabilities)
 
     // 图集列表缓存已下沉 BookCoverShared (raw 串记忆化自动失效), 仅需清 Drawable 解码缓存
     override fun refreshDefaultCover() {
@@ -688,14 +623,6 @@ class AndroidPlatformCapabilities(
     // 对照 ImportBookActivity.onItemClick isUpDir 分支 / goBackDir
     override fun goBackImportDir() {
         goBackDir()
-    }
-
-    // 对照原版 AboutFragment "crashLog" 分支 / showDialogFragment<CrashLogsDialog>
-    // 迁 Compose Overlay: 原 showDialogFragment<CrashLogsDialog>() 已由
-    // shared OverlayContentHost 的 "crash_logs" key 接管 (CrashLogsOverlayDialogContent
-    // 通过 CrashLogProvider 提供数据/读文件/清空/分享)
-    override fun showCrashLogs() {
-        AppNavigatorProviders.get().showOverlay(AppOverlay.Dialog("crash_logs"))
     }
 
     // 对照原版 AboutFragment.saveLog
@@ -918,7 +845,8 @@ class AndroidPlatformCapabilities(
             val source = if (book.origin != BookType.localTag) {
                 appDb.bookSourceDao.getBookSource(book.origin)
             } else null
-            val webFiles = buildWebFiles(book, source)
+            // 构建 webFile 列表的平台无关段已下沉 WebFileImportShared (同 BaseReadViewModel.loadWebFile)
+            val webFiles = WebFileImportShared.buildWebFiles(book, source)
             activity.runOnUiThread {
                 if (webFiles.isEmpty()) {
                     activity.toastOnUi("Unexpected webFileData")
@@ -926,22 +854,6 @@ class AndroidPlatformCapabilities(
                 }
                 showWebFileDownloadAlert(book, webFiles, source, onWaitDialog, onAction, onSuccess)
             }
-        }
-    }
-
-    // 对照 BaseReadViewModel.loadWebFile
-    private suspend fun buildWebFiles(
-        book: Book, source: BookSource?
-    ): List<FileBook.WebFile> {
-        val urls = book.downloadUrls ?: return emptyList()
-        val fileNameNoExtension = if (book.author.isBlank()) book.name
-        else "${book.name} 作者：${book.author}"
-        return urls.map {
-            val analyzeUrl =
-                AnalyzeUrl(it, source = source, coroutineContext = currentCoroutineContext())
-            val mFileName = UrlUtil.getFileName(analyzeUrl.url, analyzeUrl.headerMap)
-                ?: "$fileNameNoExtension.${analyzeUrl.type}"
-            FileBook.WebFile(it, mFileName)
         }
     }
 
@@ -1029,12 +941,14 @@ class AndroidPlatformCapabilities(
         activity.lifecycleScope.launch(IO) {
             try {
                 activity.runOnUiThread { onWaitDialog(true) }
-                val source = appDb.bookSourceDao.getBookSource(book.origin)
-                val fileName = book.getExportFileName(webFile.suffix)
-                val uri = FileBook.saveBookFile(webFile.url, fileName, source)
-                val localBook = FileBook.importLocalFile(uri)
-                val merged = FileBook.mergeBook(localBook, book)
-                loadChapterListAndSave(merged)
+                // 平台无关段 (取源 / 下载保存 / 导入本地 / 合并) 已下沉 WebFileImportShared;
+                // 目录落库统一走 BookChapterLoader.fetchFromSource (与阅读页同一条链),
+                // 不再另写一份"取目录 + 落库"
+                val merged = WebFileImportShared.importWebFile(book, webFile)
+                BookChapterLoader.fetchFromSource(
+                    merged,
+                    WebFileImportShared.bookSourceOf(merged),
+                )
                 activity.runOnUiThread { success?.invoke(merged) }
             } catch (e: Throwable) {
                 when (e) {
@@ -1061,10 +975,9 @@ class AndroidPlatformCapabilities(
         activity.lifecycleScope.launch(IO) {
             try {
                 activity.runOnUiThread { onWaitDialog(true) }
-                val source = appDb.bookSourceDao.getBookSource(book.origin)
-                val fileName = book.getExportFileName(webFile.suffix)
-                val uri = FileBook.saveBookFile(webFile.url, fileName, source)
-                activity.runOnUiThread { success?.invoke(uri.toString()) }
+                // 平台无关段 (取源 / 下载保存) 已下沉 WebFileImportShared
+                val path = WebFileImportShared.downloadWebFile(book, webFile)
+                activity.runOnUiThread { success?.invoke(path) }
             } catch (e: Throwable) {
                 when (e) {
                     is InvalidBooksDirException -> activity.runOnUiThread {
@@ -1083,9 +996,8 @@ class AndroidPlatformCapabilities(
     override fun getArchiveFilesName(archiveFilePath: String, onSuccess: (List<String>) -> Unit) {
         activity.lifecycleScope.launch(IO) {
             try {
-                val names = ArchiveUtils.getArchiveFilesName(archiveFilePath.toUri()) {
-                    AppPattern.bookFileRegex.matches(it)
-                }
+                // 后缀校验 + 书籍条目过滤 + 读失败返空列表的平台无关段已下沉 WebFileImportShared
+                val names = WebFileImportShared.getArchiveFilesName(archiveFilePath)
                 activity.runOnUiThread { onSuccess.invoke(names) }
             } catch (e: Throwable) {
                 AppLog.put("getArchiveEntriesName Error:\n${e.localizedMessage}", e, true)
@@ -1104,14 +1016,17 @@ class AndroidPlatformCapabilities(
         activity.lifecycleScope.launch(IO) {
             try {
                 activity.runOnUiThread { onWaitDialog(true) }
-                val suffix = archiveEntryName.substringAfterLast(".")
-                val saveFileName = book.getExportFileName(suffix)
-                val books = FileBook.importFromArchive(archiveFilePath, saveFileName) {
-                    it.contains(archiveEntryName)
-                }
-                val imported = books.first()
-                val merged = FileBook.mergeBook(imported, book)
-                loadChapterListAndSave(merged)
+                // 平台无关段 (按条目名导入 + 合并) 已下沉 WebFileImportShared;
+                // 目录落库统一走 BookChapterLoader.fetchFromSource (与阅读页同一条链)
+                val merged = WebFileImportShared.importBookFromArchive(
+                    archiveFilePath,
+                    archiveEntryName,
+                    book,
+                )
+                BookChapterLoader.fetchFromSource(
+                    merged,
+                    WebFileImportShared.bookSourceOf(merged),
+                )
                 activity.runOnUiThread { success?.invoke(merged) }
             } catch (e: Throwable) {
                 AppLog.put("importArchiveBook Error\n${e.localizedMessage}", e, true)
@@ -1138,27 +1053,6 @@ class AndroidPlatformCapabilities(
         }
     }
 
-    // 对照 BaseReadViewModel.loadChapterList (本地书分支): FileBook.getChapterList + 入库
-    private suspend fun loadChapterListAndSave(book: Book) {
-        try {
-            val chapters = FileBook.getChapterList(book)
-            IntentData.chapterList = chapters
-            IntentData.book = book
-            book.removeType(BookType.notShelf)
-            // 先落书再删旧目录 (对照原版 loadChapterList: update(book) → delByBook → insert);
-            // 反序会让并发读书在删章后 update 前看到空目录
-            if (appDb.bookDao.has(book.bookUrl)) {
-                appDb.bookDao.update(book)
-            } else {
-                appDb.bookDao.insert(book)
-            }
-            appDb.bookChapterDao.delByBook(book.bookUrl)
-            appDb.bookChapterDao.insert(*chapters.toTypedArray())
-        } catch (e: Throwable) {
-            AppLog.put("LoadChapterListError\n${e.localizedMessage}", e, true)
-        }
-    }
-
     // 对照 BookInfoActivity.upWordCount 内 FileDoc.fromFile(book.bookUrl).size
     override suspend fun localBookFileSize(bookUrl: String): Long = withContext(IO) {
         FileDoc.fromFile(bookUrl).size
@@ -1179,29 +1073,8 @@ class AndroidPlatformCapabilities(
 
     // ===== 书架管理平台能力: 对照 BookshelfManageActivity 同名方法/状态 =====
 
-    // 对照 BookshelfManageActivity.exportUseReplace (AppConfig 读取)
-    override fun exportUseReplace(): Boolean = AppConfig.exportUseReplace
-
     // 对照 BookshelfManageActivity.enableCustomExportChecked
     override fun enableCustomExport(): Boolean = AppConfig.enableCustomExport
-
-    // 对照 BookshelfManageActivity.exportToWebDav
-    override fun exportToWebDav(): Boolean = AppConfig.exportToWebDav
-
-    // 对照 BookshelfManageActivity.toggleEnableReplace
-    override fun toggleExportUseReplace() {
-        AppConfig.exportUseReplace = !AppConfig.exportUseReplace
-    }
-
-    // 对照 BookshelfManageActivity.toggleCustomExport
-    override fun toggleCustomExport() {
-        AppConfig.enableCustomExport = !AppConfig.enableCustomExport
-    }
-
-    // 对照 BookshelfManageActivity.toggleExportWebDav
-    override fun toggleExportWebDav() {
-        AppConfig.exportToWebDav = !AppConfig.exportToWebDav
-    }
 
     // 对照 BookshelfManageActivity.showExportConfig: 导出配置对话框
     // (文件名/导出类型 txt|epub/字符集/不导出章节名, 复刻 dialog_export_config.xml)
@@ -1587,10 +1460,7 @@ class AndroidPlatformCapabilities(
 
     // ===== 书源管理平台能力: 对照 BookSourceActivity 同名方法 =====
 
-    // 对照 BookSourceActivity.addBookSource: 新建书源走导航 push BookSourceEdit (sourceUrl 空串表新建)
-    override fun addBookSource() {
-        AppNavigatorProviders.get().push(AppRoute.BookSourceEdit(""))
-    }
+    // 新建书源 / 变量弹窗 / 主题列表: 走 shared 实现 (见 SharedPlatformCapabilities)
 
     // 对照 BookSourceActivity.cancelCheckSource (CheckSource.stop + Debug.finishChecking)
     override fun cancelCheckSource() {
@@ -1711,27 +1581,7 @@ class AndroidPlatformCapabilities(
 
     // ===== 书源编辑平台能力: 对照 BookSourceEditActivity 同名方法 =====
 
-    // 对照 BookSourceEditActivity.setSourceVariable / source.showSourceVariableDialog (route 已先 save);
-    // VariableDialog 已下沉 shared: 经 sourceVariable Overlay 弹出
-    override fun showBookSourceVariableDialog(source: BookSource) {
-        AppNavigatorProviders.get().showOverlay(
-            AppOverlay.Dialog(
-                key = "sourceVariable",
-                payload = encodeSourceVariableOverlayPayload(source),
-            )
-        )
-    }
-
     // ===== 主题设置弹窗平台能力: 对照 ThemeConfigFragment 同名方法 =====
-
-    // 对照 ThemeConfigFragment: "themeList" -> ThemeListDialog().show(childFragmentManager, "themeList")
-// ThemeListDialog 应用主题后内部已 postEvent(RECREATE) 刷新, 无需额外处理
-// 迁 Compose Overlay: 原 showDialogFragment(ThemeListDialog()) 已由
-// shared OverlayContentHost 的 "theme_list" key 接管 (ThemeListOverlayDialogContent
-// 通过 ThemeConfigProviders 获取数据, 编辑/新建委托 showThemeCustomizeDialog)
-    override fun showThemeListDialog() {
-        AppNavigatorProviders.get().showOverlay(AppOverlay.Dialog("theme_list"))
-    }
 
     // 主题自定义编辑 (对照 ThemeCustomizeDialog.editConfig / newConfig)
 // 仍走 Fragment (ThemeCustomizeDialog 未下沉 shared)
@@ -1826,19 +1676,10 @@ class AndroidPlatformCapabilities(
         ComponentName(App.instance, "io.legado.app.ui.association.ProcessTextActivity")
     }
 
-    // 底栏业务状态/UI 统一由 shared controller 托管，Android 仅负责 Overlay 宿主适配。
-    override fun showBottomNavConfigDialog() {
-        AppNavigatorProviders.get().showOverlay(AppOverlay.Dialog("bottom_nav_config"))
-    }
-
-    // 书架布局配置: 走 shared overlay (与桌面/iOS/鸿蒙同一实现, 含快速滚动条等全部开关)
-    override fun showBookshelfLayoutDialog() {
-        AppNavigatorProviders.get().showOverlay(AppOverlay.Dialog("bookshelf_layout"))
-    }
-
     // ===== 其它设置平台能力: 对照 OtherConfigHost 同名方法 =====
 
     // 对照 OtherConfigHost.alertLocalPassword okButton: LocalConfig.password = getText()
+    // 写的是 "local" SP 文件 (备份加密口令与 default SP 分文件存放)
     override fun setLocalPassword(password: String?) {
         LocalConfig.password = password
     }
@@ -1854,30 +1695,6 @@ class AndroidPlatformCapabilities(
     override fun findBookFileInDir(dirUri: String, fileName: String): String? {
         val dir = runCatching { FileDoc.fromUri(dirUri.toUri(), true) }.getOrNull() ?: return null
         return dir.find(fileName, depth = 1)?.uri?.toString()
-    }
-
-    // 对照 OtherConfigHost.onCheckSource: showDialogFragment<CheckSourceConfig>
-    // 迁 Compose Overlay: 原 CheckSourceConfig() Fragment 已由
-    // shared OverlayContentHost 的 "check_source_config" key 接管
-    // onDismiss 回调: 监听 overlays 列表中 "check_source_config" 被移除
-    override fun showCheckSourceConfigDialog(onDismiss: () -> Unit) {
-        val navigator = AppNavigatorProviders.get()
-        // 先同步入栈 (showOverlay 是 UI 操作), 再等它从栈中移除即可:
-        // 原先在 IO 协程里先等"出现"再等"移除", 若对话框在协程被调度前就已关闭,
-        // 等"出现"永不满足, onDismiss 丢失且协程挂到 Activity 销毁
-        navigator.showOverlay(AppOverlay.Dialog("check_source_config"))
-        activity.lifecycleScope.launch {
-            navigator.overlays.first { it.none { o -> o.key == "check_source_config" } }
-            onDismiss()
-        }
-    }
-
-    // 对照 OtherConfigHost.onUploadRule: showDialogFragment<DirectLinkUploadConfig>
-    // 迁 Compose Overlay: 原 showDialogFragment<DirectLinkUploadConfig>() 已由
-    // shared OverlayContentHost 的 "direct_link_upload_config" key 接管
-    override fun showDirectLinkUploadConfigDialog() {
-        AppNavigatorProviders.get()
-            .showOverlay(AppOverlay.Dialog("direct_link_upload_config"))
     }
 
     // 对照 ConfigViewModel.clearWebViewData: 删 webview 目录 + toast + delay + restart

@@ -292,7 +292,7 @@ fun OtherConfigScreen(
                 )
             }
             // 忽略音频焦点: 桌面 (DesktopSmtc) 与鸿蒙 (OhosMediaNotificationController)
-            // 的 setAudioFocus 是空实现, 拨了等于没拨
+            // 的 setAudioFocus 是空实现 (鸿蒙的申请/归还由 AVPlayer 自动做), 拨了等于没拨
             if (showAudioFocus) {
                 switchPreference(
                     prefKey = PreferKey.ignoreAudioFocus,

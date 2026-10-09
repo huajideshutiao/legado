@@ -6,18 +6,16 @@ import android.media.AudioManager
 import androidx.media.AudioFocusRequestCompat
 import androidx.media.AudioManagerCompat
 import io.legado.app.audioManager
-import io.legado.app.constant.AppLog
 import io.legado.app.help.MediaHelp
 import io.legado.app.help.config.AppConfig
 
 /**
- * 音频焦点状态机:
- * - LOSS:永久丢失 -> 暂停并放弃焦点
- * - LOSS_TRANSIENT:短暂丢失 -> 暂停但不放弃,焦点恢复时自动 resume
- * - LOSS_TRANSIENT_CAN_DUCK:仅压低音量场景,不处理
- * - GAIN:恢复焦点,若先前是 transient 暂停则触发 resume
+ * Android 音频焦点壳: 状态机在 commonMain [AudioFocusHandler], 本类只做平台两件事 ——
+ * 申请/归还 `AudioFocusRequestCompat`, 以及把 `AudioManager.AUDIOFOCUS_*` 常量翻译成
+ * [AudioFocusChange]。
  *
- * [AppConfig.ignoreAudioFocus] 开启时 request 直接返回 true 且回调全部跳过。
+ * [AppConfig.ignoreAudioFocus] 开启时 request 直接返回 true (不申请系统焦点), 事件回调也由
+ * 状态机自行跳过 —— 与下沉前逐字一致。
  */
 class AudioFocusController(
     private val logTag: String,
@@ -30,11 +28,16 @@ class AudioFocusController(
         MediaHelp.buildAudioFocusRequestCompat(this)
     }
 
-    private var needResumeOnGain = false
+    private val handler = AudioFocusHandler(
+        logTag = logTag,
+        isPaused = isPaused,
+        onPause = onPause,
+        onResume = onResume,
+    )
 
     fun request(): Boolean {
         if (AppConfig.ignoreAudioFocus) return true
-        needResumeOnGain = false
+        handler.onRequest()
         return MediaHelp.requestFocus(focusRequest)
     }
 
@@ -43,37 +46,17 @@ class AudioFocusController(
     }
 
     override fun onAudioFocusChange(focusChange: Int) {
-        if (AppConfig.ignoreAudioFocus) {
-            AppLog.put("忽略音频焦点处理($logTag)")
-            return
-        }
-        when (focusChange) {
-            AudioManager.AUDIOFOCUS_GAIN -> {
-                if (needResumeOnGain) {
-                    AppLog.put("音频焦点获得,继续($logTag)")
-                    needResumeOnGain = false
-                    onResume()
-                } else {
-                    AppLog.put("音频焦点获得($logTag)")
-                }
-            }
+        handler.onFocusChange(
+            when (focusChange) {
+                AudioManager.AUDIOFOCUS_GAIN -> AudioFocusChange.Gain
+                AudioManager.AUDIOFOCUS_LOSS -> AudioFocusChange.Loss
+                AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> AudioFocusChange.LossTransient
+                AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK ->
+                    AudioFocusChange.LossTransientCanDuck
 
-            AudioManager.AUDIOFOCUS_LOSS -> {
-                AppLog.put("音频焦点丢失,暂停($logTag)")
-                onPause(true)
+                // 未知常量: 不下沉件, 保持"无动作" (原 when 无 else 分支, 同样无动作)
+                else -> return
             }
-
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
-                AppLog.put("音频焦点暂时丢失,暂停($logTag)")
-                if (!isPaused()) {
-                    needResumeOnGain = true
-                    onPause(false)
-                }
-            }
-
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-                AppLog.put("音频焦点短暂丢失,不做处理($logTag)")
-            }
-        }
+        )
     }
 }

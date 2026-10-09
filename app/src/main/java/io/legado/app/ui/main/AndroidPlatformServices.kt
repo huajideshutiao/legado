@@ -47,6 +47,7 @@ import io.legado.app.ui.root.SystemBarsPolicy
 import io.legado.app.ui.root.VideoPlayTarget
 import io.legado.app.ui.root.WindowController
 import io.legado.app.ui.root.importImageSetFile
+import io.legado.app.ui.root.navigateToRoute
 import io.legado.app.ui.video.VideoDirect
 import io.legado.app.utils.ActivityResultLauncherAwait
 import io.legado.app.utils.FileDoc
@@ -586,11 +587,8 @@ internal const val EXPLORE_SHOW_ALIAS = "io.legado.app.ui.book.explore.ExploreSh
 
 fun Intent.toLaunchRequest(): LaunchRequest? {
     // 通知/外部入口携带 route extra: 转为 NavigateTo 请求 (bookUrl 一并携带供冷启动兜底)
-    getStringExtra("route")?.let {
-        return LaunchRequest.NavigateTo(
-            routeName = it,
-            bookUrl = getStringExtra("bookUrl"),
-        )
+    navigateToRoute(getStringExtra("route"), getStringExtra("bookUrl"))?.let {
+        return it
     }
     // 搜索界面 alias 入口 (对照 master SearchActivity.receiptIntent: key/searchScope/submit extra;
     // manifest activity-alias .ui.book.search.SearchActivity 指向本 Activity; 仅 alias 组件名命中

@@ -393,9 +393,10 @@ interface PlatformCapabilities {
     /**
      * 是否能抢系统音频焦点 (其他设置里"忽略音频焦点"条目 gate)。
      *
-     * Android 走 AudioFocusController, iOS 走 AVAudioSession 类别;
-     * 桌面 (DesktopSmtc.setAudioFocus = Unit) 与鸿蒙 (OhosMediaNotificationController
-     * .setAudioFocus = Unit) 无焦点模型, 拨了等于没拨。
+     * Android 走 AudioFocusController 申请/归还焦点, iOS 走 AVAudioSession 类别;
+     * 鸿蒙的申请/归还由 AVPlayer 按 StreamUsage 自动完成 (setAudioFocus 是空实现),
+     * 仅事件回调经 AVPlayer.on('audioInterrupt') 接入同一状态机;
+     * 桌面 (DesktopSmtc.setAudioFocus = Unit) 同样无申请/归还能力, 拨了等于没拨。
      */
     val audioFocusSupported: Boolean get() = false
 

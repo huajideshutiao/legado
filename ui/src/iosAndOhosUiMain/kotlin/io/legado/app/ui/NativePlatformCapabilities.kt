@@ -1,11 +1,20 @@
 package io.legado.app.ui
 
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
+import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSourcePart
+import io.legado.app.data.entities.HttpTTS
+import io.legado.app.help.AppWebDavShared
+import io.legado.app.help.DirectLinkUploadRule
 import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.coroutine.mainDispatcher
 import io.legado.app.help.toast.Toasters
+import io.legado.app.help.upLoadToDirectLink
+import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.source.BookSourceSort
 import io.legado.app.ui.config.MODE_EDIT_CONFIG
 import io.legado.app.ui.config.MODE_EDIT_PREFS
@@ -18,6 +27,7 @@ import io.legado.app.ui.root.SharedPlatformCapabilities
 import io.legado.app.utils.GSON
 import io.legado.app.utils.toJson
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okio.FileSystem
 import okio.Path.Companion.toPath
 
@@ -37,6 +47,70 @@ interface NativePlatformCapabilities : SharedPlatformCapabilities {
 
     override fun enableCustomExport(): Boolean =
         PreferenceProviders.get().getBoolean(PreferKey.enableCustomExport, false)
+
+    // 对照 ReadAloudConfigDialog 的"+"按钮/行编辑: showDialogFragment(HttpTtsEditDialog)
+    // 迁 Compose Overlay: shared OverlayContentHost 的 "httpTtsEdit" key 接管
+    // (payload = 引擎 id, null 表新增)
+    override fun showHttpTtsEditDialog(engine: HttpTTS?) {
+        AppNavigatorProviders.get().showOverlay(
+            AppOverlay.Dialog(
+                "httpTtsEdit",
+                payload = engine?.id?.toString(),
+                // 表单登录 → push WebView 路由盖住本窗口时保留 Overlay, 由内容自管挂起/恢复
+                // (对照原版 DialogFragment 被新 Activity 盖住仍存活, 返回后表单原样)
+                keepOnPush = true,
+            )
+        )
+    }
+
+    // 直链上传规则页的"测试"按钮: 用表单里尚未保存的规则跑一次真实上传
+    override fun testDirectLinkUpload(
+        rule: DirectLinkUploadRule,
+        onSuccess: (String) -> Unit,
+        onError: (String) -> Unit,
+    ) {
+        capabilityScope.launch {
+            runCatching { upLoadToDirectLink("test.json", "{}", "application/json", rule) }
+                .onSuccess { result -> withContext(mainDispatcher) { onSuccess(result) } }
+                .onFailure { error ->
+                    withContext(mainDispatcher) {
+                        onError(error.message ?: error.toString())
+                    }
+                }
+        }
+    }
+
+    // 对照 BookInfoViewModel.uploadBook: 上传本地书籍文件到 WebDav books/ 子目录
+    override fun uploadBook(book: Book, success: (() -> Unit)?) {
+        capabilityScope.launch {
+            runCatching {
+                // 与 AppWebDavShared.exportWebDav 同款惰性认证: native 端无 AppWebDav init 块
+                if (AppWebDavShared.authorization == null) AppWebDavShared.upConfig()
+                withContext(IoDispatcher) { AppWebDavShared.uploadBook(book) }
+            }.onSuccess {
+                withContext(mainDispatcher) {
+                    Toasters.get().toast("上传成功")
+                    success?.invoke()
+                }
+            }.onFailure { error ->
+                withContext(mainDispatcher) { Toasters.get().toast(error.message ?: error.toString()) }
+            }
+        }
+    }
+
+    // 对照 BookInfoViewModel.downloadToLocal
+    override fun downloadBookToLocal(book: Book, success: (() -> Unit)?) {
+        capabilityScope.launch {
+            runCatching { withContext(IoDispatcher) { FileBook.downloadRemoteBook(book) } }
+                .onSuccess {
+                    withContext(mainDispatcher) {
+                        Toasters.get().toast("下载成功")
+                        success?.invoke()
+                    }
+                }
+                .onFailure { AppLog.put("下载远程书籍<${book.name}>失败", it, true) }
+        }
+    }
 
     override fun getDeleteBookOriginal(): Boolean =
         PreferenceProviders.get().getBoolean(LocalConfigKeys.deleteBookOriginal, false)

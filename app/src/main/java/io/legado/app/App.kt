@@ -11,18 +11,22 @@ import android.content.res.Configuration
 import android.os.Build
 import kotlinx.coroutines.runBlocking
 import io.legado.app.base.AppContextWrapper
+import io.legado.app.constant.AppConst
+import io.legado.app.constant.appInfo
 import io.legado.app.constant.AppConst.channelIdDownload
 import io.legado.app.constant.AppConst.channelIdReadAloud
 import io.legado.app.constant.AppConst.channelIdWeb
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.registerAndroidAppLogHost
-import io.legado.app.data.appDb
 import io.legado.app.model.ImageErrorBytesProviders
+import io.legado.app.help.AppVersionProvider
+import io.legado.app.help.AppVersionProviders
 import legado.ui.generated.resources.Res
 import io.legado.app.help.AppFreezeMonitor
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.CrashHandler
 import io.legado.app.help.DefaultData
+import io.legado.app.help.StartupMaintenanceShared
 import io.legado.app.help.DispatchersMonitor
 import io.legado.app.help.LifecycleHelp
 import io.legado.app.help.archive.AndroidArchiveProvider
@@ -30,16 +34,12 @@ import io.legado.app.help.archive.ArchiveProviders
 import io.legado.app.help.book.AndroidBookImageStorage
 import io.legado.app.help.book.AndroidBookStorage
 import io.legado.app.help.book.AndroidLocalBookLocator
-import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.BookImageStorageProviders
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.config.LocalConfig
-import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ReadBookConfigShared
-import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.config.ThemeConfig.applyDayNight
 import io.legado.app.help.config.ThemeConfig.applyDayNightInit
 import io.legado.app.help.config.migrateLegacyHomeSp
@@ -64,7 +64,6 @@ import io.legado.app.help.registerAndroidFileCacheProvider
 import io.legado.app.help.service.UpdateBookCallbacks
 import io.legado.app.help.service.registerAndroidServiceLauncher
 import io.legado.app.help.source.SourceHelp
-import io.legado.app.help.storage.Backup
 import io.legado.app.help.storage.registerAndroidBackupRestoreHook
 import io.legado.app.help.storage.registerAndroidPasswordProvider
 import io.legado.app.help.toast.registerAndroidToaster
@@ -110,7 +109,6 @@ import io.legado.app.web.utils.registerAndroidWebStrings
 import io.legado.app.web.utils.registerComposeWebAssetSource
 import kotlinx.coroutines.launch
 import java.net.URL
-import java.util.concurrent.TimeUnit
 
 class App : Application() {
 
@@ -278,6 +276,11 @@ class App : Application() {
         // 须在 registerAndroidAppFilesDir (onCreate 早段) 之后、Home 首次 load 之前
         migrateLegacyHomeSp(defaultSharedPreferences)
         registerAndroidDirectLinkUploadProviders()
+        // 注册当前版本号 provider (供下沉的启动期默认数据补齐按版本推进; 取 PackageManager 的
+        // longVersionCode, 与 DefaultData.upVersion 的原判断基准同源)
+        AppVersionProviders.register(object : AppVersionProvider {
+            override val versionCode: Long get() = AppConst.appInfo.versionCode
+        })
         // 注册 help 引导版本标记存储 (委托 "local" prefs, 与原版 LocalConfig 同存储)
         registerAndroidLocalConfigStore()
         // 注册备份/恢复的 Android 钩子 (SAF 复制解压 / config.xml 旧格式 / 主题与图标刷新)
@@ -302,6 +305,11 @@ class App : Application() {
             createNotificationChannels()
             // 原在 ReaderProvider.onCreate, 但那早于 Application.onCreate, 取多语言文案会崩
             io.legado.app.api.ShortCuts.buildShortCuts(this@App)
+            // 默认数据补齐 (app 端薄壳 DefaultData.upVersion → 下沉件 StartupMaintenanceShared):
+            // 预置分组/键盘助手按版本号推进补一次 + httpTTS/txtTocRule/dictRule 按各资源 key 门控,
+            // **导入成功才推进**版本 key。原实现走 LocalConfig.needUpXxx, 其底层 isLastVersion 在返回
+            // "需要导入"前就把版本号写回, 一旦那次导入抛异常, 两扇门都已关, 默认朗读引擎/目录规则/
+            // 字典规则就永远补不上 (用户表现为新装后它们一直为空); 该缺陷已随下沉修掉。
             DefaultData.upVersion()
             // Arco: 清理旧版本遗留的 barElevation 偏好值（elevation 已移除）
             instance.removePref(PreferKey.barElevation)
@@ -332,21 +340,22 @@ class App : Application() {
             )
         }
         Coroutine.async {
-            if (LocalConfig.lastBackup + TimeUnit.DAYS.toMillis(1) < System.currentTimeMillis()) {
-                appDb.cacheDao.clearDeadline(System.currentTimeMillis())
-                BookHelp.clearInvalidCache()
-                Backup.clearCache()
-                ReadBookConfig.clearBgAndCache()
-                ThemeConfig.clearBg()
-            }
+            // 启动期缓存清理: 距上次不足 1 天直接返回; 节流 key 是专用的 lastCacheCleanup,
+            // 不再复用 lastBackup —— 后者只在真备份/恢复时才写, 从不备份的用户恒为 0,
+            // 拿它当门控会让清理族每次启动都全跑。
+            // cacheExtraMayHaveWork=true: app 端的 clearCacheExtra 会真删压缩临时目录与草稿 json,
+            // 那些文件与书架/缓存目录无关, 不能拿"书架空 + 目录空"把它们一起跳过。
+            StartupMaintenanceShared.clearInvalidCacheIfDue(cacheExtraMayHaveWork = true)
         }
         Coroutine.async {
             //调整排序序号
             SourceHelp.adjustSortNumber()
-            //同步阅读记录
-            if (AppConfig.syncBookProgress) {
-                AppWebDav.downloadAllBookProgress()
-            }
+            //同步阅读记录 (下沉件: 先显式确保 WebDav 认证再拉, 认证不成则干净地不拉)
+            // 认证入口传 app 端的 AppWebDav.upConfig: 它在共享认证之外还会初始化 Android 专属的
+            // defaultBookWebDav (远端书封面/正文读取依赖它, 为空时会报 "Unexpected defaultBookWebDav")
+            StartupMaintenanceShared.syncBookProgressOnStartup(
+                ensureAuthorization = { AppWebDav.upConfig() },
+            )
         }
     }
 

@@ -181,7 +181,10 @@ interface ReaderPlatformProvider {
      * 朗读控制桥：驱动长按朗读弹出的共享面板
      * [io.legado.app.ui.book.read.config.ReadAloudDialog]。
      *
-     * 返回 null 表示该端没有朗读实现，路由不弹面板（iOS/鸿蒙）。
+     * 四端 (app/desktop/iOS/鸿蒙) 都已实现本方法, 各自把面板动作落到本端朗读宿主
+     * (AndroidReadAloudControls / DesktopReadAloudControls / IosReadAloudControls /
+     * OhosReadAloudControls); 返回 null 只出现在未覆写本方法 (接口默认实现) 的平台上,
+     * 此时路由不弹面板、直接销事件。
      */
     fun readAloudControls(
         navigator: io.legado.app.ui.root.AppNavigator,
