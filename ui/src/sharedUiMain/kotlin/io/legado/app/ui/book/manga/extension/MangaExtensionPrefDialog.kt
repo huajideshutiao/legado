@@ -96,7 +96,7 @@ internal fun ExtensionPrefDialog(
                     .padding(DesignTokens.spacingXl),
                 contentAlignment = Alignment.Center,
             ) {
-                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                CircularProgressIndicator(modifier = Modifier.size(24.dp))
             }
 
             dialog.failed -> Text(

@@ -696,7 +696,6 @@ private fun ExtensionStepAction(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(16.dp),
-                    strokeWidth = 2.dp,
                 )
                 IconActionButton(
                     icon = Res.drawable.ic_baseline_close,

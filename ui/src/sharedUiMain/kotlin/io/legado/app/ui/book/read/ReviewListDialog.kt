@@ -688,7 +688,6 @@ internal fun LoadMoreFooter(footerLoading: Boolean, footerHasMore: Boolean) {
         when {
             footerLoading -> CircularProgressIndicator(
                 color = AppTheme.colors.accent,
-                strokeWidth = 2.dp,
                 modifier = Modifier
                     .padding(DesignTokens.spacingDefault)
                     .size(36.dp),

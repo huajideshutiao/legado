@@ -478,7 +478,6 @@ private fun ExploreSourceItem(
                     // 原 rotate_loading: 20dp、trackThickness 1dp、marginEnd 4dp
                     CircularProgressIndicator(
                         color = colors.accent,
-                        strokeWidth = 1.dp,
                         modifier = Modifier.padding(end = DesignTokens.spacingXs).size(20.dp),
                     )
                 }

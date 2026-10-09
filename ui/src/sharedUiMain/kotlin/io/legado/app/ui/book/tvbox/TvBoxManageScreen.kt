@@ -195,7 +195,7 @@ fun TvBoxManageScreen(
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        CircularProgressIndicator(Modifier.height(16.dp).width(16.dp), strokeWidth = 2.dp)
+                        CircularProgressIndicator(Modifier.height(16.dp).width(16.dp))
                         Spacer(Modifier.width(8.dp))
                         Text(loadingText, fontSize = 13.sp, color = colors.secondaryText)
                     }
@@ -421,7 +421,6 @@ private fun JarRow(jar: TvBoxJarItem, onRetry: () -> Unit) {
                 Spacer(Modifier.width(8.dp))
                 CircularProgressIndicator(
                     Modifier.height(14.dp).width(14.dp),
-                    strokeWidth = 2.dp,
                 )
             }
         }

@@ -509,7 +509,6 @@ private fun RuleItemScope.BookSourceItem(
                 if (showProgress) {
                     CircularProgressIndicator(
                         color = colors.accent,
-                        strokeWidth = 2.dp,
                         modifier = Modifier.size(16.dp),
                     )
                 }
@@ -586,7 +585,6 @@ private fun CheckSourceProgress(msg: String, onCancel: () -> Unit) {
     ) {
         CircularProgressIndicator(
             color = colors.accent,
-            strokeWidth = 2.dp,
             modifier = Modifier.size(18.dp),
         )
         Text(

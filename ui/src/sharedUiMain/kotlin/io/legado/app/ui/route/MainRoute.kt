@@ -667,7 +667,6 @@ private fun SectionStateLoading() {
     Box(Modifier.fillMaxWidth().padding(vertical = DesignTokens.spacingDefault), contentAlignment = Alignment.Center) {
         CircularProgressIndicator(
             color = colors.accent,
-            strokeWidth = 2.dp,
             modifier = Modifier.size(36.dp),
         )
     }

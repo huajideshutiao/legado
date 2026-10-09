@@ -1234,7 +1234,6 @@ private fun LazyItemScope.MangaPageCell(
                 if (load == MangaCellState.LOADING) {
                     CircularProgressIndicator(
                         color = Color.White,
-                        strokeWidth = 4.dp,
                         backgroundColor = Color.Transparent,
                         modifier = Modifier.size(48.dp),
                     )

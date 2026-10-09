@@ -463,7 +463,6 @@ private fun LoadMoreFooter(state: ExploreShowUiState, actions: ExploreShowUiActi
         if (state.footerLoading) {
             CircularProgressIndicator(
                 color = colors.accent,
-                strokeWidth = 2.dp,
                 modifier = Modifier
                     .padding(DesignTokens.spacingDefault)
                     .size(36.dp),

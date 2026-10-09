@@ -450,7 +450,6 @@ private fun LoadMoreFooter(loading: Boolean, hasMore: Boolean) {
         if (loading) {
             CircularProgressIndicator(
                 color = colors.accent,
-                strokeWidth = 2.dp,
                 modifier = Modifier.size(36.dp).padding(DesignTokens.spacingDefault),
             )
         }

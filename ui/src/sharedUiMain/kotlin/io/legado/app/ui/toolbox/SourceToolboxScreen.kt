@@ -289,7 +289,6 @@ private fun RequestPane(
             Spacer(Modifier.width(DesignTokens.spacingMd))
             CircularProgressIndicator(
                 modifier = Modifier.size(18.dp),
-                strokeWidth = 2.dp,
                 color = colors.accent,
             )
         }

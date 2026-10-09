@@ -231,7 +231,6 @@ fun BookSourceDebugScreen(
             if (state.loading) {
                 CircularProgressIndicator(
                     color = colors.accent,
-                    strokeWidth = 2.dp,
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .padding(DesignTokens.spacingDefault)

@@ -31,7 +31,7 @@ import org.jetbrains.compose.resources.stringResource
  *
  * UI 逐项对齐原版 (严禁改变样式):
  * - 容器: Row padding 顶 16dp / 左右底 8dp, 垂直居中, 水平居中
- * - 指示器: CircularProgressIndicator size=30dp, color=accent, strokeWidth=2dp
+ * - 指示器: CircularProgressIndicator size=30dp, color=accent
  * - 间距: Spacer width=8dp
  * - 文本: message, color=primaryText
  *
@@ -52,7 +52,6 @@ fun WaitDialogContent(
         CircularProgressIndicator(
             modifier = Modifier.size(30.dp),
             color = colors.accent,
-            strokeWidth = 2.dp,
         )
         Spacer(Modifier.width(DesignTokens.spacingDefault))
         Text(message, color = colors.primaryText)

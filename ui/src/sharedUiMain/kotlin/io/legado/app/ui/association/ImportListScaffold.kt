@@ -100,7 +100,6 @@ fun ImportListScaffold(
                         .align(Alignment.Center)
                         .size(36.dp),
                     color = colors.accent,
-                    strokeWidth = 2.dp,
                 )
             }
         }

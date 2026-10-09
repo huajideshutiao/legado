@@ -45,7 +45,6 @@ fun ChapterLoadingOverlay(
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator(
                 color = Color.White,
-                strokeWidth = 4.dp,
                 modifier = Modifier.size(48.dp),
             )
             Text(

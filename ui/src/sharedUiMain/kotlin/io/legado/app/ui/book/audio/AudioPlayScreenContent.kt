@@ -847,7 +847,6 @@ private fun PlayMenu(
                 // 64dp 视图 - 4dp stroke = 60dp 圈环, 内缘贴 56dp 按钮外缘
                 CircularProgressIndicator(
                     color = accentColor,
-                    strokeWidth = 4.dp,
                     modifier = Modifier.size(64.dp),
                 )
             }

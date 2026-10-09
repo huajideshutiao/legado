@@ -164,11 +164,15 @@ object TvBoxLocalProxy {
          *
          * 访问边界: 端点无鉴权且监听全部网卡, 只服务 TV 目录子树内的文件
          * (生态 `file://TV/...` 全落在这里), canonicalPath 归一后出界一律 404。
+         *
+         * 这里只**读**根目录 TV, 不走 `Path.tv()`: 后者是 FongMi 侧带 mkdir 语义的入口,
+         * 借它取路径会让从没用过 file 形态站点的用户被凭空建出一个空的根目录 TV 目录。
+         * 目录不存在时下面的 isFile 如实 404, 语义不变。
          */
         private fun fileResponse(uri: String): NanoHTTPD.Response {
             val path = java.net.URLDecoder.decode(uri.removePrefix(FILE_PATH), "UTF-8")
             val file = com.github.catvod.utils.Path.local(path)
-            val tvRoot = com.github.catvod.utils.Path.tv().canonicalFile
+            val tvRoot = File(com.github.catvod.utils.Path.root(), "TV").canonicalFile
             if (file != tvRoot && !file.path.startsWith(tvRoot.path + File.separator)) {
                 throw java.io.FileNotFoundException("File out of TV root: $path")
             }
