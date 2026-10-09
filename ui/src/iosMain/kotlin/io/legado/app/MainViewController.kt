@@ -54,6 +54,7 @@ import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.web.startIosNetworkMonitor
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
 import platform.UIKit.UIViewController
 

@@ -3,6 +3,10 @@
     {
       "name": "EntryAbility_label",
       "value": "閱讀"
-    }
+    },
+    // 桌面快捷方式文案 (与 Android composeResources values-zh-rTW 的 bookshelf/last_read/read_aloud 一致)
+    { "name": "shortcut_bookshelf", "value": "書架" },
+    { "name": "shortcut_last_read", "value": "最後閱讀" },
+    { "name": "shortcut_read_aloud", "value": "朗讀" }
   ]
 }

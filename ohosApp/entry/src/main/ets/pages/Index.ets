@@ -5,7 +5,24 @@ import { registerComposeInteropBuilder } from '@cpf-kmp-cmp/compose/src/main/ets
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import webview from '@ohos.web.webview';
 import legado from 'liblegado_napi.so';
-import { initWebViewBridge, handlePageEnd, handleErrorReceive, handleInterceptRequest } from '../bridge/WebViewBridgeHandler';
+import {
+  initWebViewBridge,
+  handlePageEnd,
+  handleErrorReceive,
+  handleInterceptRequest,
+  // 前台 Web (可见 Web 组件) 页面事件入口 —— 由 Index.ets 的 LegadoForegroundWeb 组件调用;
+  // 命令入口 handleForegroundWebRequest 不在此调用, 它是 EntryAbility 注册的 tsfn 回调实参
+  // (legado.registerWebControllerCallback), 见交付报告的「需在 EntryAbility 侧补的清单」。
+  initForegroundWebBridge,
+  handleForegroundPageEnd,
+  handleForegroundTitleReceive,
+  handleForegroundProgressChange,
+  handleForegroundErrorReceive,
+  handleForegroundWindowExit,
+  handleForegroundUrlChanged,
+  handleForegroundFullScreenEnter,
+  handleForegroundFullScreenExit
+} from '../bridge/WebViewBridgeHandler';
 import {
   initMarkdownBridge,
   handlePageBegin as handleMarkdownPageBegin,
@@ -13,6 +30,7 @@ import {
 } from '../bridge/MarkdownBridgeHandler';
 import { initKeyboardBridge } from '../bridge/KeyboardBridgeHandler';
 import { initSystemBridgeUiContext } from '../bridge/SystemBridgeHandler';
+import { initSysDialogBridgeUiContext } from '../bridge/SysDialogBridgeHandler';
 import { setVideoSurfaceId, setVideoPipSurfaceController, getVideoPixelSize, Size2D } from '../bridge/MediaBridgeHandler';
 
 const DOMAIN: number = 0x0000;
@@ -127,6 +145,85 @@ function LegadoMarkdownWebBuilder(param: object) {
     })
 }
 
+// ===== 前台 Web 组件 (interop builder) =====
+// K/N OhosWebViewSlot 的 ArkUIView2(name="legadoForegroundWeb") 混排到 Compose 层级时由 CPF
+// 调用本 builder, 在 Compose 槽位内创建**可见** Web 组件 (WebViewRoute/ReadRssRoute/登录 Overlay
+// 的承载; 与本文件底部那个隐藏 Web 组件的"后台抓取"链相互独立)。
+// 范式与视频 surface / Markdown 查看器完全相同 (ArkUIView2 + registerComposeInteropBuilder),
+// 未注册时该 interop 节点为空 (前台 Web 不可用, 仅显示 Kotlin 侧占位文本)。
+//
+// controller 为模块级单例: 单个前台 Web 实例 (屏幕内同一时刻只有一个前台网页).
+// 加载配置由 WebViewBridgeHandler 的 show 命令下发 (此处只做宽视口首帧兼容).
+const foregroundWebController: webview.WebviewController = new webview.WebviewController();
+
+@Component
+struct LegadoForegroundWeb {
+  // 宽视口: metaViewport/overviewModeAccess 是 Web 组件的**静态属性** (只能 build 里设),
+  // 而 show 命令里的 wideViewPort 是动态值, 故经 AppStorage 中转
+  // (WebViewBridgeHandler.applyViewportSettings 写, 此处 @StorageLink 订阅 → 重渲染就地更新).
+  // 键字面量必与 WebViewBridgeHandler.FOREGROUND_WIDE_VIEWPORT_KEY 一致 (@StorageLink 要求字面量)。
+  @StorageLink('legadoForegroundWebWideViewPort') wideViewPort: boolean = false;
+
+  aboutToAppear(): void {
+    // controller 注入 + 结果/事件回送函数接线 (回送经 legado.webControllerCallback 到 KMP)。
+    // 注入时机晚于 tsfn 回调注册是安全的: 早到的 show 命令由 handler 缓存, 待本组件挂载后补执行。
+    initForegroundWebBridge(foregroundWebController, (requestId: number, resultJson: string): void => {
+      legado.webControllerCallback(requestId, resultJson);
+    });
+  }
+
+  build() {
+    Web({ src: 'about:blank', controller: foregroundWebController })
+      .width('100%')
+      .height('100%')
+      // 可见网页的通用设置: 对齐 app 端 WebViewUtil.applyCommonSettings
+      // (javaScriptEnabled / mixedContentMode=ALWAYS_ALLOW / domStorageEnabled / builtInZoomControls
+      //  · displayZoomControls=false)。后两项没有对应属性, 由 zoomAccess(true) + 双指缩放覆盖。
+      .javaScriptAccess(true)
+      .mixedMode(MixedMode.All)
+      .domStorageAccess(true)
+      .zoomAccess(true)
+      // 宽视口开关 (show 命令经 AppStorage 驱动; false 时退回默认布局)
+      .metaViewport(this.wideViewPort)
+      .overviewModeAccess(this.wideViewPort)
+      // 白底: 可见网页按常规底色绘制 (对齐 Android WebView 默认背景)
+      .backgroundColor(Color.White)
+      .onPageEnd((event: OnPageEndEvent): void => {
+        handleForegroundPageEnd(event.url);
+      })
+      .onTitleReceive((event: OnTitleReceiveEvent): void => {
+        handleForegroundTitleReceive(event.title);
+      })
+      .onProgressChange((event: OnProgressChangeEvent): void => {
+        handleForegroundProgressChange(event.newProgress);
+      })
+      .onErrorReceive((event: OnErrorReceiveEvent): void => {
+        handleForegroundErrorReceive(event.error.getErrorInfo());
+      })
+      // 页面要求关窗 (window.close / target=_blank 未开新窗): 回传 onCloseWindow 由路由关页面
+      .onWindowExit((): void => {
+        handleForegroundWindowExit();
+      })
+      // HTML5 视频全屏: 记下句柄, 供 exitFullScreen 命令 (路由返回键链) 退出
+      .onFullScreenEnter((event: FullScreenEnterEvent): void => {
+        handleForegroundFullScreenEnter(event.handler);
+      })
+      .onFullScreenExit((): void => {
+        handleForegroundFullScreenExit();
+      })
+      // 主框架导航/重载完成 (含页面内跳转): 回传 onUrlChanged, 与 Android WebViewClient 在
+      // onPageFinished 后同步 URL 同口径 (页面内跳转后菜单取最新链接)
+      .onRefreshAccessedHistory((event: OnRefreshAccessedHistoryEvent): void => {
+        handleForegroundUrlChanged(event.url);
+      })
+  }
+}
+
+@Builder
+function LegadoForegroundWebBuilder(param: object) {
+  LegadoForegroundWeb()
+}
+
 /**
  * Legado 鸿蒙 Compose 入口。
  *
@@ -136,6 +233,10 @@ function LegadoMarkdownWebBuilder(param: object) {
  * 隐藏 Web 组件: 书源 webView/webViewGetSource 规则的后台抓取承载 (K/N 无法实例化
  * ArkUI Web 组件, 由本页挂载一个隐藏 Web + WebviewController, WebViewBridgeHandler 驱动,
  * 见 bridge/WebViewBridgeHandler.ets)。
+ *
+ * 前台 Web 组件: 用户可见的网页窗口承载 (书源登录/网页验证回传/RSS 网页阅读/内嵌浏览器),
+ * 由 Kotlin OhosWebViewSlot 经 ArkUIView2(name="legadoForegroundWeb") 混排, 对应的 interop
+ * builder (`LegadoForegroundWebBuilder`) 在本页注册; 组件本身在 Compose 槽位内创建。
  */
 @Entry
 @Component
@@ -172,6 +273,14 @@ struct Index {
       } catch (e) {
         hilog.warn(DOMAIN, 'LegadoCompose', 'initSystemBridgeUiContext failed (toast unavailable): %{public}s', JSON.stringify(e));
       }
+      // 系统对话框桥: 注入 UIContext (UIContext.getPromptAction().showDialog 需要), 供
+      // 候选列表 / 是-否确认框使用 (KMP 侧经 window tsfn 发请求, 见 SysDialogBridgeHandler)。
+      // 独立 try: 失败不应阻断 Compose 控制器创建 (仅对话框不可用, 调用方按未选择降级)。
+      try {
+        initSysDialogBridgeUiContext(this.getUIContext());
+      } catch (e) {
+        hilog.warn(DOMAIN, 'LegadoCompose', 'initSysDialogBridgeUiContext failed (dialog unavailable): %{public}s', JSON.stringify(e));
+      }
       // 视频画面 surface builder 注册 (K/N ArkUIView2(name="legadoVideoSurface") 混排 XComponent 的入口;
       // 未注册时该 interop 节点为空, 视频只能出声。注册 key 与 OhosVideoPlayPlatformProvider.
       // ARKUI_BUILDER_VIDEO_SURFACE 字面量一致)。
@@ -188,6 +297,15 @@ struct Index {
         registerComposeInteropBuilder('legadoMarkdownWeb', LegadoMarkdownWebBuilder);
       } catch (e) {
         hilog.warn(DOMAIN, 'LegadoCompose', 'registerComposeInteropBuilder failed (markdown web unavailable): %{public}s', JSON.stringify(e));
+      }
+      // 前台 Web 组件 builder 注册 (K/N OhosWebViewSlot 的 ArkUIView2(name="legadoForegroundWeb")
+      // 混排入口, 可见 Web 组件在 Compose 槽位内创建; 未注册时该 interop 节点为空, 前台网页窗口
+      // (书源登录/验证回传/RSS 网页阅读/内嵌浏览器) 只显示 Kotlin 侧占位文本)。
+      // 注册 key 与 OhosWebViewStub.kt ARKUI_BUILDER_FOREGROUND_WEB 字面量一致。
+      try {
+        registerComposeInteropBuilder('legadoForegroundWeb', LegadoForegroundWebBuilder);
+      } catch (e) {
+        hilog.warn(DOMAIN, 'LegadoCompose', 'registerComposeInteropBuilder failed (foreground web unavailable): %{public}s', JSON.stringify(e));
       }
       this.controller = legado.MainArkUIViewController();
       if (!this.controller) {

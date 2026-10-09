@@ -15,6 +15,7 @@ import io.legado.app.model.analyzeRule.CustomUrl
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.fileBook.FileBookProviders
 import kotlinx.coroutines.currentCoroutineContext
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * webFile 下载导入的平台无关部分 (四端共用)。
@@ -97,7 +98,7 @@ object WebFileImportShared {
      * 再只取书籍文件 (底层要求 filter 非 null, 传 null 会恒返回空列表)。
      * 读失败已由 provider 记日志并返回空列表, 调用方据此弹“不支持的压缩包条目”。
      */
-    @Throws(IllegalArgumentException::class)
+    @Throws(IllegalArgumentException::class, CancellationException::class)
     suspend fun getArchiveFilesName(archivePath: String): List<String> {
         // 对照 app 端 ArchiveUtils.checkArchive: 后缀不是压缩包就报错
         val fileName = archivePath.substringAfterLast('/').substringAfterLast('\\')

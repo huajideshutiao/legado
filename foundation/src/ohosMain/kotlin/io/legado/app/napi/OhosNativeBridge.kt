@@ -1157,6 +1157,84 @@ object OhosNativeBridge {
     /** 检查 window 桥是否已就绪 (tsfn 已注入)。 */
     fun isWindowBridgeReady(): Boolean = synchronized(lock) { windowTsfn != null }
 
+    // ===== Dialog 同步桥 (请求复用 window tsfn, 结果复用 platformEvent, 不新增 napi 符号) =====
+    // 系统对话框 (带标题的候选列表 / 是-否确认框) 只能由 ArkTS 调 @ohos.promptAction 弹出
+    // (无 NDK C 接口), 而 KMP 侧需要拿到用户选择, 故是"请求-响应"型桥。本仓既有的两条通道
+    // 正好覆盖两个方向, 复用之, 不另建 C++ tsfn + @CName 回调:
+    //
+    // 请求侧 (Kotlin → ArkTS): 复用 window tsfn (同 exitApplication 的复用先例),
+    //   WindowCommand(action = "showDialog", payload = DialogBridgeRequest JSON);
+    //   ArkTS 侧 EntryAbility 的 window callback 把 payload 交给 SysDialogBridgeHandler。
+    // 结果侧 (ArkTS → Kotlin): 复用统一平台事件通道 legado.platformEvent
+    //   (OhosPlatformEventChannel type="dialogResult", 同 colorMode/audioDeviceChange 等
+    //   后加事件走同一 napi 入口的先例), 回到本 object 的 [onDialogResult]。
+    //
+    // 为什么不直接照 Image/FilePicker 那样新建独立 tsfn + 回调符号: 那需要同步改
+    // ohosApp/entry/src/main/cpp/legado_napi.cpp 与 cpp/types/liblegado_napi/Index.d.ts,
+    // 二者都不在本模块的文件域内 (本模块只许改 foundation/ui 的 ohosMain 与 ohosApp 的 ets/profile)。
+    // 桥未就绪 (window tsfn 未注册) 时 [invokeDialogSync] 返回 null, 调用方按"未选择"降级。
+
+    /** 待响应的 dialog 同步请求 Map<requestId, CompletableDeferred<resultJson>>。 */
+    private val dialogPendingRequests = mutableMapOf<Long, CompletableDeferred<String>>()
+
+    /** dialog 请求自增 ID (原子性由 [lock] 保护)。 */
+    private var dialogRequestCounter = 0L
+
+    /**
+     * 弹系统对话框并阻塞等待用户选择 (对照 Android AlertDialog / iOS UIAlertController)。
+     *
+     * @param action 对话框形态: "select" (带标题的候选列表) / "confirm" (是-否确认框)
+     * @param payloadJson 形态参数 JSON (由调用方序列化):
+     *   - select: `{"title":"...","items":["a","b"]}`
+     *   - confirm: `{"title":"...","message":"...","confirmText":"...","cancelText":"..."}`
+     * @param timeoutMs 超时毫秒 (默认 60s: 用户可能长时间思考; 对齐 filePicker/permission 的交互超时)
+     * @return ArkTS 返回的结果 JSON (`{ok,index}` / `{ok,confirmed}` / `{ok,cancelled}` / `{ok:false,error}`);
+     *         桥未就绪或超时返回 null (调用方按"未选择"降级)
+     */
+    fun invokeDialogSync(action: String, payloadJson: String, timeoutMs: Long = 60000L): String? {
+        val requestId = synchronized(lock) { ++dialogRequestCounter }
+        val deferred = CompletableDeferred<String>()
+        synchronized(lock) { dialogPendingRequests[requestId] = deferred }
+
+        val requestJson = KS_JSON.encodeToString(
+            DialogBridgeRequest(requestId = requestId, action = action, payload = payloadJson)
+        )
+        // 复用 window tsfn: 与 Window/FilePicker 等同模式, 未注册直接降级 (不空等超时)
+        val tsfn = synchronized(lock) { windowTsfn }
+        if (tsfn == null) {
+            synchronized(lock) { dialogPendingRequests.remove(requestId) }
+            return null
+        }
+        val commandJson = KS_JSON.encodeToString(
+            WindowCommand(action = "showDialog", payload = requestJson)
+        )
+        runCatching { tsfn(commandJson) }.onFailure {
+            synchronized(lock) { dialogPendingRequests.remove(requestId) }
+            return null
+        }
+
+        // 阻塞等待 ArkTS 回调 (业务线程阻塞, ArkTS 主线程回调 complete, 不同线程无死锁)
+        val result = runBlocking { withTimeoutOrNull(timeoutMs) { deferred.await() } }
+        synchronized(lock) { dialogPendingRequests.remove(requestId) }
+        return result
+    }
+
+    /**
+     * dialog 结果回调 (由 [io.legado.app.napi.OhosPlatformEventChannel] 的 "dialogResult" 事件调用)。
+     * ArkTS SysDialogBridgeHandler 弹出系统对话框拿到用户选择后, 经 legado.platformEvent 回送结果
+     * JSON, 唤醒 [invokeDialogSync] 中阻塞的 CompletableDeferred。
+     *
+     * @param requestId 对应 [invokeDialogSync] 生成的请求 ID
+     * @param resultJson 结果 JSON (含 ok/index 或 ok/confirmed 或 ok/cancelled 字段)
+     */
+    fun onDialogResult(requestId: Long, resultJson: String) {
+        val deferred = synchronized(lock) { dialogPendingRequests.remove(requestId) }
+        deferred?.complete(resultJson)
+    }
+
+    /** 检查 dialog 桥是否已就绪 (请求走 window tsfn, 故与 [isWindowBridgeReady] 同判据)。 */
+    fun isDialogBridgeReady(): Boolean = isWindowBridgeReady()
+
     // ===== FilePicker 同步桥 (tsfn + callback, KP8+, 同 Image/Crypto/Http 模式) =====
     // 文件选择 (pickDocuments/pickDocumentContent) 是同步接口, 但 ArkTS @ohos.file.picker.DocumentViewPicker
     // 与 @ohos.file.fs 只能通过 napi 桥接异步调用。采用与 Image 完全一致的
@@ -1828,6 +1906,14 @@ object OhosNativeBridge {
         val url: String? = null,
     )
 
+    /** dialog 桥请求 payload (Kotlin → ArkTS, 同 ImageBridgeRequest 结构, action=select/confirm)。 */
+    @Serializable
+    private data class DialogBridgeRequest(
+        val requestId: Long,
+        val action: String,
+        val payload: String,
+    )
+
     /** filePicker 桥请求 payload (Kotlin → ArkTS, 同 ImageBridgeRequest 结构, action=pickDocuments/pickDocumentContent)。 */
     @Serializable
     private data class FilePickerBridgeRequest(
@@ -1901,13 +1987,21 @@ object OhosNativeBridge {
         val sourceType: Int = 0,
     )
 
-    /** window 命令 payload (Kotlin → ArkTS, 全屏/常亮/方向/系统栏, fire-and-forget)。 */
+    /**
+     * window 命令 payload (Kotlin → ArkTS, 全屏/常亮/方向/系统栏, fire-and-forget)。
+     *
+     * [payload] 供复用本通道的非窗口命令携带自己的请求 JSON: 目前只有
+     * action="showDialog" (系统对话框桥, 内层为 [DialogBridgeRequest], 见 [invokeDialogSync])。
+     */
     @Serializable
     private data class WindowCommand(
         val action: String,
         val enabled: Boolean? = null,
         val orientation: Int? = null,
         val brightness: Float? = null,
+        // 长文本/结构化命令的内层载荷 (如系统对话框桥的请求 JSON);
+        // 与 ArkTS 侧 WindowCommand 的同名字段对应
+        val payload: String? = null,
     )
 
     /** TTS 命令 payload (Kotlin → ArkTS, createEngine/speak/pause/resume/stop/shutdown)。 */

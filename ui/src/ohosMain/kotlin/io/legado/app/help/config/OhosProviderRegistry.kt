@@ -18,6 +18,7 @@ import io.legado.app.help.crash.OhosCrashHandler
 import io.legado.app.help.crash.refreshNativeCrashLogPaths
 import io.legado.app.help.file.registerOhosAppFilesDir
 import io.legado.app.help.log.registerNativeAppLogHost
+import io.legado.app.help.regex.registerNativeRegexErrorHandler
 import io.legado.app.help.file.registerNativeFileDownloader
 import io.legado.app.help.image.NativeBitmapProvider
 import io.legado.app.help.image.OhosImageOps
@@ -172,6 +173,10 @@ fun registerOhosProviders() {
     // 须在 AppFilesDirs 之后 (日志目录从 filesDir 派生)、任何 AppLog.put 之前)
     registerNativeAppLogHost()
 
+    // 1.15 正则替换超时处理器 (超时提示走 Toasters, 崩溃落盘走 NativeCrashLogWriter;
+    // 须在 Toaster/AppLog/AppFilesDirs 之后、registerNativeWebBookProviders() 之前)
+    registerNativeRegexErrorHandler()
+
     // 2. 配置 provider (AppConfigAccessor 委托 1.06 已注册的 PreferenceProvider)
     registerNativeAppConfigAccessor()
 
@@ -275,8 +280,8 @@ fun registerOhosProviders() {
     registerNativeFileDownloader()
     // 8.5 通知进度 (走 1.05 已注册的 napi 桥; Toaster 与桥本身同因已前置到 1.05)
     registerOhosNotificationProgress()
-    // 8.6 UpdateBook callback 须在 Toaster + NotificationProgress 之后 (本 callback 委托这两个 provider)、
-    // ServiceLauncher 之前 (NativeServiceLauncher.updateBookShared lazy 构造时取 UpdateBookCallbacks.getDefault)
+    // 8.6 UpdateBook callback 须在 Toaster + NotificationProgress 之后 (本 callback 委托这两个 provider);
+    // 消费方在懒构造更新引擎时取 UpdateBookCallbacks.getDefault, 故须先于其创建
     // KP8+: 已下沉到 nativeMain (NativeUpdateBookCallback 真实化, 桥接 NotificationProgresses + Toasters)
     registerNativeUpdateBookCallback()
     // CacheBook callback 须在 ServiceLauncher 之前 (缓存流程未注册时 CacheBookCallbacks.get() 直接 error)

@@ -556,6 +556,36 @@ export interface LegadoNativeBridge {
    */
   webViewCallback(requestId: number, result: string, bodyRaw: string): void;
 
+  // ===== 前台 Web 控制器 tsfn 回调注册 + ArkTS → Kotlin 结果/事件回调 (可见 Web 组件, 单 JSON 协议) =====
+
+  /**
+   * 注册前台 Web 控制器回调 (KMP → ArkTS 跨线程 dispatch, Compose WebView slot 命令)。
+   *
+   * 与 [registerWebViewCallback] (后台隐藏 Web 抓取, 混合协议) 相互独立: 本链服务可见 Web 组件
+   * (WebViewRoute/ReadRssRoute/登录 Overlay), C++ 侧创建 napi_threadsafe_function 包装 [callback],
+   * 并通过 @CName legado_register_web_controller_fn 把 dispatch 函数指针注入 Kotlin
+   * OhosVisibleWebViewBridge。此后 KMP 调 show/hide/loadUrl/runJavaScript/getCookies/canGoBack
+   * 等命令时, 单 JSON 字符串跨线程 dispatch 到此 [callback]。
+   *
+   * @param callback 接收单 JSON 请求 `{ requestId, action, payload: '<JSON>' }`;
+   *   action: 'show' | 'hide' | 'loadUrl' | 'runJavaScript' | 'getCookies' | 'canGoBack' |
+   *   'getUrl' | 'goBack' | 'reload' | 'exitFullScreen'
+   */
+  registerWebControllerCallback(callback: (json: string) => void): void;
+
+  /**
+   * 前台 Web 结果/事件回调 (ArkTS → Kotlin, 单 JSON 协议)。
+   *
+   * ArkTS 完成前台 Web 命令后回送结果 (requestId > 0, 唤醒 Kotlin 等待方); 页面主动事件
+   * (onPageFinished/onUrlChanged/onReceivedTitle/onProgressChanged/onCloseWindow) 用
+   * requestId = 0 推送。
+   *
+   * @param requestId >0 = 命令响应 (与 Kotlin 生成 requestId 对应); 0 = 主动页面事件
+   * @param result 结果/事件 JSON: `{ ok, result?, cookie?, canGoBack?, url?, error?, event?,
+   *   title?, progress? }`
+   */
+  webControllerCallback(requestId: number, result: string): void;
+
   // ===== Markdown 查看器 tsfn 回调注册 + ArkTS → Kotlin 事件回调 (composeResources 直读 Web 渲染) =====
 
   /**

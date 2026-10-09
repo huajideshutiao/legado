@@ -4,10 +4,15 @@ package io.legado.app.napi
 
 import io.legado.app.help.config.NativeSystemTheme
 import io.legado.app.help.glide.progress.OnProgressListener
+import io.legado.app.help.media.AudioFocusChange
+import io.legado.app.help.media.PhoneCallState
+import io.legado.app.help.media.SystemMediaControl
 import io.legado.app.help.storage.BackupShared
+import io.legado.app.help.tts.OhosReadAloudHost
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.ui.root.AppForegroundState
 import io.legado.app.utils.KS_JSON
+import io.legado.app.web.refreshOhosWebServerAddresses
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.serialization.Serializable
@@ -27,6 +32,19 @@ import kotlinx.serialization.Serializable
  *   → [OhosAppLifecycle]
  * - 系统深浅色: `{ "type":"colorMode", "isDark":true|false }`
  *   → [NativeSystemTheme] (「主题模式=跟随系统」档的唯一来源)
+ * - 音频设备变化: `{ "type":"audioDeviceChange", "disconnected":true }`
+ *   → [SystemMediaControl.onAudioBecomingNoisy] (拔耳机/蓝牙断开自动暂停)
+ * - 音频焦点: `{ "type":"audioFocusChange", "change":"gain"|"loss"|"lossTransient"|"lossTransientCanDuck" }`
+ *   → [SystemMediaControl.onAudioFocusChange] (AVPlayer 的 audioInterrupt 事件)
+ * - 电话状态: `{ "type":"callStateChange", "state":"idle"|"ringing"|"offHook" }`
+ *   → `OhosReadAloudHost.onPhoneCallState` (来电暂停朗读)
+ * - 网络可用: `{ "type":"networkAvailable" }`
+ *   → `io.legado.app.web.refreshOhosWebServerAddresses` (刷新 Web 服务地址)
+ * - 系统对话框结果: `{ "type":"dialogResult", "requestId":3, "dialogResult":"{...}" }`
+ *   → [OhosNativeBridge.onDialogResult] (系统对话框桥的响应侧, 见 [OhosNativeBridge.invokeDialogSync])
+ *
+ * 后四类是同一次扩展加上的 (媒体/电话/网络), 仍走同一个 napi 入口与同一个解析器;
+ * dialogResult 是系统对话框桥的响应侧 (请求侧复用 window tsfn), 同样走本入口。
  *
  * # 线程
  * 事件由 ArkTS 主线程经 napi → @CName 直推 (同 mediaEvent/ttsEvent 模式), 无跨线程
@@ -194,6 +212,38 @@ internal object OhosPlatformEventChannel {
             }
 
             "colorMode" -> NativeSystemTheme.update(payload.isDark)
+
+            // 音频输出设备变化 (拔耳机/蓝牙断开) → 暂停当前出声的一方
+            "audioDeviceChange" -> if (payload.disconnected) {
+                SystemMediaControl.onAudioBecomingNoisy()
+            }
+
+            // 音频焦点/打断四档 (与 Android AUDIOFOCUS_* 一一对应)
+            "audioFocusChange" -> when (payload.change) {
+                "gain" -> SystemMediaControl.onAudioFocusChange(AudioFocusChange.Gain)
+                "loss" -> SystemMediaControl.onAudioFocusChange(AudioFocusChange.Loss)
+                "lossTransient" -> SystemMediaControl.onAudioFocusChange(AudioFocusChange.LossTransient)
+                "lossTransientCanDuck" ->
+                    SystemMediaControl.onAudioFocusChange(AudioFocusChange.LossTransientCanDuck)
+            }
+
+            // 网络可用 (ArkTS @ohos.net.connection netAvailable) → 重算 Web 服务地址。
+            // 服务没开时共享侧是 no-op, 故与 Android "只在 Service 存活期监听" 观感一致。
+            "networkAvailable" -> refreshOhosWebServerAddresses()
+
+            // 电话状态三态 → 朗读宿主 (门槛与恢复语义都在共享件里)
+            "callStateChange" -> when (payload.state) {
+                "idle" -> OhosReadAloudHost.onPhoneCallState(PhoneCallState.Idle)
+                "ringing" -> OhosReadAloudHost.onPhoneCallState(PhoneCallState.Ringing)
+                "offHook" -> OhosReadAloudHost.onPhoneCallState(PhoneCallState.OffHook)
+            }
+
+            // 系统对话框用户选择 (SysDialogBridgeHandler → EntryAbility window callback →
+            // emitDialogResult) → 唤醒 OhosNativeBridge.invokeDialogSync 阻塞中的请求方
+            "dialogResult" -> OhosNativeBridge.onDialogResult(
+                requestId = payload.requestId,
+                resultJson = payload.dialogResult.orEmpty(),
+            )
         }
     }
 }
@@ -201,13 +251,19 @@ internal object OhosPlatformEventChannel {
 /**
  * 统一平台事件载荷 (Kotlin 侧唯一一份定义, 与 ArkTS PlatformEventBridge.ets 对齐)。
  *
- * @param type 事件类型: "httpProgress" | "lifecycle" | "colorMode"
+ * @param type 事件类型: "httpProgress" | "lifecycle" | "colorMode" |
+ *   "audioDeviceChange" | "audioFocusChange" | "callStateChange" | "networkAvailable" | "dialogResult"
  * @param url httpProgress: 请求 url (与 addListener 的 url 对应)
  * @param bytesReceived httpProgress: 已接收字节数
  * @param totalBytes httpProgress: 总字节数 (<=0 表示未知, 如分块传输无 Content-Length)
  * @param isComplete httpProgress: 终态 (请求成功/失败/取消, 之后无该 url 的后续事件)
  * @param event lifecycle: "onForeground" | "onBackground"
  * @param isDark colorMode: 系统是否深色
+ * @param disconnected audioDeviceChange: true = 当前输出设备已断开
+ * @param change audioFocusChange: "gain" | "loss" | "lossTransient" | "lossTransientCanDuck"
+ * @param state callStateChange: "idle" | "ringing" | "offHook"
+ * @param requestId dialogResult: 对应 [OhosNativeBridge.invokeDialogSync] 生成的请求 ID
+ * @param dialogResult dialogResult: 系统对话框结果 JSON (`{ok,index}` / `{ok,confirmed}` / `{ok,cancelled}`)
  */
 @Serializable
 internal data class OhosPlatformEventPayload(
@@ -218,4 +274,9 @@ internal data class OhosPlatformEventPayload(
     val isComplete: Boolean = false,
     val event: String? = null,
     val isDark: Boolean = false,
+    val disconnected: Boolean = false,
+    val change: String? = null,
+    val state: String? = null,
+    val requestId: Long = 0L,
+    val dialogResult: String? = null,
 )

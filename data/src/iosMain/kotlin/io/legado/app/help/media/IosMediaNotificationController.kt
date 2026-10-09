@@ -301,7 +301,7 @@ private fun registerIosAudioSessionObservers() {
 }
 
 /** 从通知 userInfo 取数值 (NSNumber 与 Kotlin 装箱数值两种形态都接)。 */
-private fun NSNotification.intValue(key: String): Int? = when (val value = userInfo?.get(key)) {
+private fun NSNotification.intValue(key: String?): Int? = when (val value = key?.let { userInfo?.get(it) }) {
     is NSNumber -> value.intValue
     is Int -> value
     is Long -> value.toInt()

@@ -36,7 +36,7 @@ private object IosCallObserverDelegate : NSObject(), CXCallObserverDelegateProto
 
     /** 挂上观察者 (宿主启动早期调用一次; ARC 持有 delegate, 故本对象是单例)。 */
     fun register() {
-        observer.setDelegate(this)
+        observer.setDelegate(this, null)
     }
 
     override fun callObserver(callObserver: CXCallObserver, callChanged: CXCall) {

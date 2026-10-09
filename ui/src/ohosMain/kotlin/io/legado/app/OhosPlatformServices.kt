@@ -22,6 +22,7 @@ import io.legado.app.ui.root.FilePickerService
 import io.legado.app.ui.root.KeyboardController
 import io.legado.app.ui.root.LaunchRequest
 import io.legado.app.ui.root.LaunchRequestBus
+import io.legado.app.ui.root.navigateToRoute
 import io.legado.app.ui.root.MediaService
 import io.legado.app.ui.root.NotificationService
 import io.legado.app.ui.root.OrientationPolicy
@@ -216,7 +217,8 @@ object OhosPlatformServices : PlatformServices {
  *
  * ArkTS 侧 Want 无法跨 napi 传对象, 约定只传 `want.uri`; 通知点击等携带路由的场景
  * 约定前缀 `route:`; Want 带了 MIME (`want.type`) 时约定 `mime:<type>|<uri>` 同串捎带
- * (两种前缀都只存在于本对象与 ArkTS EntryAbility 之间, napi 导出签名不变)。
+ * (两种前缀都只存在于本对象与 ArkTS EntryAbility 之间, napi 导出签名不变);
+ * 系统分享进来的文本由 ArkTS 宿主加 `text:` 前缀 (文本可能含任意字符, 也与普通 uri 无法区分)。
  * 由 [io.legado.app.napi.LegadoNativeExports.handleLaunchRequest] 调用。
  */
 object OhosLaunchRequests {
@@ -226,8 +228,19 @@ object OhosLaunchRequests {
         val value = uri.trim()
         if (value.isEmpty()) return null
         if (value.startsWith(ROUTE_PREFIX)) {
-            return value.removePrefix(ROUTE_PREFIX).takeIf { it.isNotEmpty() }
-                ?.let(LaunchRequest::NavigateTo)
+            return navigateToRoute(value.removePrefix(ROUTE_PREFIX))
+        }
+        if (value.startsWith(TEXT_PREFIX)) {
+            // 系统分享进来的文本 (ArkTS EntryAbility.handleSharedData 打的前缀): 文本可能含任意
+            // 字符, 与普通 uri 无法区分, 故按已有 route:/mime: 同一路数显式标记。
+            // 内容本身是一条地址/深链时仍走原有链路 (分享 legado:// 链接要拿去导入, 不是拿去
+            // 搜索), 认不出来才当"处理文本" (对照 Android ACTION_SEND EXTRA_TEXT →
+            // ProcessTextActivity → 搜索页; iOS 侧对认不出的文本是丢弃, 此处按安卓口径)。
+            val text = value.removePrefix(TEXT_PREFIX)
+            if (text.isEmpty()) return null
+            // 内容以 "text:" 开头时直接当纯文本, 不再递归 (否则本前缀会无限套下去)
+            if (text.startsWith(TEXT_PREFIX)) return LaunchRequest.ProcessText(text)
+            return parse(text) ?: LaunchRequest.ProcessText(text)
         }
         val hint = extractMimeHint(value)
         val address = hint?.second ?: value
@@ -282,6 +295,7 @@ object OhosLaunchRequests {
     private const val ROUTE_PREFIX = "route:"
     private const val MIME_PREFIX = "mime:"
     private const val MIME_SEPARATOR = '|'
+    private const val TEXT_PREFIX = "text:"
 }
 
 /** 权限请求 payload (Kotlin → ArkTS)。 */

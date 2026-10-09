@@ -14,7 +14,7 @@ import notificationManager from '@ohos.notificationManager';
 import legado from 'liblegado_napi.so';
 // KP8+ Image/Media 桥接处理器 (ArkTS 侧 PixelMap/AVPlayer 真实实现)
 import { handleImageRequest } from '../bridge/ImageBridgeHandler';
-import { initMediaBridge, handleMediaCommand } from '../bridge/MediaBridgeHandler';
+import { initMediaBridge, handleMediaCommand, buildLaunchWantAgent } from '../bridge/MediaBridgeHandler';
 import { initTtsBridge, handleTtsCommand } from '../bridge/TtsBridgeHandler';
 import { handleCryptoRequest } from '../bridge/CryptoBridgeHandler';
 import { handleHttpRequest } from '../bridge/HttpBridgeHandler';
@@ -23,14 +23,17 @@ import { initPasteboardBridge, handlePasteboardRequest } from '../bridge/Pastebo
 import { handleNetworkRequest } from '../bridge/NetworkBridgeHandler';
 import { handleTextCodecRequest } from '../bridge/TextCodecBridgeHandler';
 // 后台 WebView 桥接处理器 (隐藏 Web 组件 + runJavaScript 取源码, 书源 webView 规则)
-import { handleWebViewRequest } from '../bridge/WebViewBridgeHandler';
+import { handleWebViewRequest, handleForegroundWebRequest } from '../bridge/WebViewBridgeHandler';
 // Markdown 查看器桥接处理器 (composeResources 直读内联的 Web 页面 + marked/hljs 渲染, KMP MarkdownContent)
 import { handleMarkdownRequest } from '../bridge/MarkdownBridgeHandler';
 // KP8+ System 桥接处理器 (ArkTS 侧 promptAction.showToast + context.startAbility 真实实现)
 import { initSystemBridge, handleShowToast, handleOpenUrl } from '../bridge/SystemBridgeHandler';
 import { handleBatteryRequest } from '../bridge/BatteryBridgeHandler';
-import { initPlatformEvent, emitAppLifecycle, emitColorMode } from '../bridge/PlatformEventBridge';
+import { initPlatformEvent, emitAppLifecycle, emitColorMode, emitDialogResult } from '../bridge/PlatformEventBridge';
 import { initShareBridge, handleShareRequest } from '../bridge/SystemShareBridgeHandler';
+import { handleDialogRequest } from '../bridge/SysDialogBridgeHandler';
+import { installSystemEventSources } from '../bridge/SystemEventSources';
+import { systemShare } from '@kit.ShareKit';
 import { handleKeyboardCommand } from '../bridge/KeyboardBridgeHandler';
 import { initPermissionBridge, handlePermissionRequest } from '../bridge/PermissionBridgeHandler';
 
@@ -46,11 +49,31 @@ interface NotificationPayload {
   max?: number;
 }
 
+/**
+ * 通知 id → 点击后的目标路由 (逐字对齐 app 端各通知 contentIntent 里的 route extra)。
+ *
+ * 本 tsfn 通道只能传 id 与文本, 无法携带路由, 故用 id 作细分判据 (与 Kotlin
+ * NotificationId 常量、以及 iOS IosNotificationService.routeOf 同一张表)。id 或路由串
+ * 改了必须同步改; 无对应页面的 id 返回 undefined (只拉起应用)。
+ */
+const NOTIFICATION_ROUTES: Map<number, string> = new Map<number, string>([
+  [101, 'route:last_read'],          // NotificationId.ReadAloudService
+  [102, 'route:audio_play'],         // NotificationId.AudioPlayService
+  [104, 'route:bookshelf_manage'],   // NotificationId.ExportBookService
+  [107, 'route:book_source_manage'], // NotificationId.CheckSourceService
+]);
+
+function routeOfNotification(id: number): string | undefined {
+  return NOTIFICATION_ROUTES.get(id);
+}
+
 /** 窗口策略命令 payload (与 OhosNativeBridge.kt WindowCommand 对齐)。 */
 interface WindowCommand {
-  action: string;  // 'setFullScreenLayout' | 'setKeepScreenOn' | 'setPreferredOrientation' | 'setSystemBarEnable'
+  action: string;  // 'setFullScreenLayout' | 'setKeepScreenOn' | 'setPreferredOrientation' | 'setSystemBarEnable' | 'exitApplication' | 'showDialog'
   enabled?: boolean;
   orientation?: number;
+  /** 'showDialog' 专用: 系统对话框桥请求 JSON (OhosNativeBridge.DialogBridgeRequest)。 */
+  payload?: string;
 }
 
 // ===== 外部启动请求投递串约定 (与 ui/src/ohosMain OhosLaunchRequests 常量逐字对齐) =====
@@ -60,6 +83,40 @@ interface WindowCommand {
 const LAUNCH_ROUTE_PREFIX: string = 'route:';
 const LAUNCH_MIME_PREFIX: string = 'mime:';
 const LAUNCH_MIME_SEPARATOR: string = '|';
+
+// ===== 系统分享接收串约定 (与 ui/src/ohosMain OhosLaunchRequests 的 TEXT_PREFIX 逐字对齐) =====
+// 分享进来的文本可能含任意字符 (也可能本身就是带 scheme 的地址/legado 深链), 与普通 uri 无法区分,
+// 故按已有 `route:` / `mime:` 同一路数用 `text:` 前缀显式标记, 由 Kotlin 侧解回 (认不出来就按
+// "处理文本"进搜索页, 对照 Android ACTION_SEND EXTRA_TEXT → ProcessTextActivity → 搜索页)。
+const SHARE_TEXT_PREFIX: string = 'text:';
+
+/** 系统分享投递的 action (与 module.json5 share skill 声明的 actions 字面量一致)。 */
+const SHARE_ACTION: string = 'ohos.want.action.sendData';
+
+/**
+ * 按 UTD 判定为"文本类"的记录 (字面量取自 module.json5 share skill 声明的同一组 UTD,
+ * 即本机 SDK @ohos.data.uniformTypeDescriptor.d.ts 的 TEXT/PLAIN_TEXT/HTML/HYPERLINK)。
+ */
+const SHARE_TEXT_UTDS: string[] = ['general.text', 'general.plain-text', 'general.html', 'general.hyperlink'];
+
+/**
+ * 分享记录 → 外部启动请求串 (交 legado.handleLaunchRequest → OhosLaunchRequests.parse)。
+ *
+ * - 文本类 UTD: 取 content 加 `text:` 前缀 (内容为空时退回 uri);
+ * - 其余 (文件/图片/视频等): 取 uri (即 file:// 授权体地址), 使分享进来的文件走既有导入分发;
+ * - 两者都空: 空串 (调用方跳过该记录)。
+ */
+function toLaunchRequestFromSharedRecord(record: systemShare.SharedRecord): string {
+  const uri: string = record.uri ?? '';
+  const content: string = record.content ?? '';
+  if (SHARE_TEXT_UTDS.includes(record.utd)) {
+    return content.length > 0 ? SHARE_TEXT_PREFIX + content : uri;
+  }
+  if (uri.length > 0) {
+    return uri;
+  }
+  return content.length > 0 ? SHARE_TEXT_PREFIX + content : '';
+}
 
 /**
  * 把 Want.type 拼成 `mime:<type>|<uri>` 投递串 (不带或形态不对时原样返回 uri)。
@@ -183,6 +240,13 @@ export default class EntryAbility extends UIAbility {
       emitColorMode(isDark);
     }, '[Legado] system colorMode injected', '[Legado] emitColorMode failed: ');
 
+    // 系统事件源: 来电状态 (telephony.observer) + 网络可用 (net.connection)
+    // 两者都经 PlatformEventBridge 同一通道回送 Kotlin (OhosPlatformEventChannel 按 type 分发),
+    // 与 mediaEvent 同方向。须在 initPlatformEvent 之后 (通道未注入时事件被 warn 降级丢弃)。
+    registerSafely((): void => {
+      installSystemEventSources();
+    }, '[Legado] system event sources installed (callState/netAvailable)', '[Legado] installSystemEventSources failed: ');
+
     // KP7+: 注册 Toast/Notification tsfn 回调 (KMP → ArkTS 跨线程 dispatch)。
     // C++ 侧 (legado_napi.cpp RegisterToastCallback) 创建 napi_threadsafe_function 包装此回调,
     // 并通过 @CName legado_register_toast_fn/legado_register_notification_fn 把 dispatch 函数指针
@@ -224,6 +288,14 @@ export default class EntryAbility extends UIAbility {
                 progressValue: Math.max(0, Math.min(100, Math.round(progress / max * 100)))
               }
             };
+          }
+          // 点击通知拉起应用。本通道只能传 id 与文本, 无法携带路由, 故按 [NOTIFICATION_ROUTES]
+          // 映射到 app 端各通知 contentIntent 的同名 route 串。
+          // 未挂 wantAgent 时由系统默认行为拉起 (与改动前一致)。
+          try {
+            request.wantAgent = await buildLaunchWantAgent(this.context, routeOfNotification(payload.id));
+          } catch (e) {
+            console.error('[Legado] notification wantAgent failed: ' + JSON.stringify(e));
           }
           notificationManager.publish(request);
         } catch (e) {
@@ -382,6 +454,20 @@ export default class EntryAbility extends UIAbility {
       });
     }, '[Legado] webView tsfn callback registered via napi', '[Legado] registerWebViewCallback failed: ');
 
+    // 前台 Web 控制器 tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 单 JSON 协议)
+    // KMP OhosWebViewControllerBridge → OhosNativeBridge.invokeWebControllerSync 发前台 WebView
+    // 命令 (show/hide/load/reload/eval/hitTest 等), dispatch 到 ArkTS 侧 WebViewBridgeHandler
+    // 的 handleForegroundWebRequest (操作 Index.ets 挂载的前台 Web 组件),
+    // 完成后调 legado.webControllerCallback(requestId, resultJson) 回送结果唤醒 KMP 侧
+    // CompletableDeferred。未注册时 KMP 侧 isReady 恒为 false, 前台 Web 只显示占位文字。
+    registerSafely((): void => {
+      legado.registerWebControllerCallback((json: string): void => {
+        handleForegroundWebRequest(json, (requestId: number, resultJson: string): void => {
+          legado.webControllerCallback(requestId, resultJson);
+        });
+      });
+    }, '[Legado] webController tsfn callback registered via napi', '[Legado] registerWebControllerCallback failed: ');
+
     // Markdown 查看器 tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 同 Toast 模式 fire-and-forget)
     // KMP MarkdownContent (ArkUIView2 混排的 Web 组件) → OhosNativeBridge.sendMarkdown
     // 发渲染请求 { content, isDark, fontSize }, dispatch 到 ArkTS 侧 MarkdownBridgeHandler,
@@ -476,6 +562,10 @@ export default class EntryAbility extends UIAbility {
   private handleDeepLink(want: Want): void {
     const uri: string = want.uri ?? '';
     if (uri.length === 0) {
+      // 系统分享投递的数据不在 want.uri 里 (纯文本分享根本没有 uri, 文件分享的数据在
+      // systemShare 的 SharedData 中), 故此处补解析 (对照 iOS 宿主回调 handleIosLaunchRequest
+      // 的入口位置; 鸿蒙侧对应入口 = OhosLaunchRequests)。非分享 want 由 action 判定直接返回。
+      this.handleSharedData(want);
       return;
     }
     if (uri.startsWith('legado://') || uri.startsWith('yuedu://')) {
@@ -495,6 +585,47 @@ export default class EntryAbility extends UIAbility {
     } catch (e) {
       console.error('[Legado] handleLaunchRequest failed: ' + JSON.stringify(e) + ', uri=' + uri);
     }
+  }
+
+  /**
+   * 解析系统分享投递过来的数据 (文件/文本) 并交给既有外部启动请求链。
+   *
+   * # 为什么需要单独一条路
+   * module.json5 的 share skill 只负责"声明可接分享", 而分享投递的载荷不在 want.uri 里 ——
+   * 文本分享根本无 uri, 文件分享的数据在 systemShare.getSharedData 的 SharedData 记录中。
+   * 宿主入口侧不解析就毫无反应 (之前的状态), 故在此把每条记录转成既有投递串,
+   * 交 legado.handleLaunchRequest (@CName legado_handle_launch_request →
+   * OhosLaunchRequests.parse → LaunchRequestBus), 使分享进来的文件走既有导入分发
+   * (对照 iOS 宿主调 handleIosLaunchRequest 的位置与分工)。
+   *
+   * # 与 want.uri 链的分工
+   * 只在 want.uri 为空时调用 (handleDeepLink 的空 uri 分支): 带 uri 的 want (文件关联) 已由
+   * 原链路投递, 此处再解一次会对同一文件重复投递。
+   *
+   * @param want 本次启动/热启动的 Want (action 非分享时直接返回, 不调 getSharedData)
+   */
+  private handleSharedData(want: Want): void {
+    if (want.action !== SHARE_ACTION) {
+      return;
+    }
+    systemShare.getSharedData(want).then((data: systemShare.SharedData): void => {
+      const records: systemShare.SharedRecord[] = data.getRecords();
+      for (const record of records) {
+        const request: string = toLaunchRequestFromSharedRecord(record);
+        if (request.length === 0) {
+          continue;
+        }
+        try {
+          const handled: boolean = legado.handleLaunchRequest(request);
+          console.info('[Legado] share data dispatched: handled=' + handled + ', request=' + request);
+        } catch (e) {
+          console.error('[Legado] handleLaunchRequest (share) failed: ' + JSON.stringify(e) + ', request=' + request);
+        }
+      }
+    }).catch((err: Error): void => {
+      // 非分享 want 或解析失败 (BusinessError 1003703001) 走到这里: 不影响其它启动路径
+      console.error('[Legado] getSharedData failed: ' + JSON.stringify(err));
+    });
   }
 
   onConfigurationUpdate(newConfig: Configuration): void {
@@ -576,6 +707,15 @@ export default class EntryAbility extends UIAbility {
                   } catch (e) {
                     console.error('[Legado] window callback terminateSelf failed: ' + JSON.stringify(e));
                   }
+                  break;
+                case 'showDialog':
+                  // 系统对话框桥 (KMP → ArkTS 跨线程 dispatch, 复用本通道避免新增独立 tsfn;
+                  // 同 exitApplication 的复用先例)。payload 是 OhosNativeBridge.DialogBridgeRequest
+                  // JSON, 交 SysDialogBridgeHandler 弹系统提示对话框 (候选列表 / 是-否确认框),
+                  // 用户选择后经 legado.platformEvent (type='dialogResult') 回送 KMP。
+                  handleDialogRequest(cmd.payload ?? '', (requestId: number, resultJson: string): void => {
+                    emitDialogResult(requestId, resultJson);
+                  });
                   break;
                 default:
                   console.warn('[Legado] window callback unknown action: ' + cmd.action);

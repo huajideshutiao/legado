@@ -39,7 +39,6 @@ import kotlinx.coroutines.withContext
 import kotlin.coroutines.EmptyCoroutineContext
 import io.legado.app.utils.File
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.SendChannel

@@ -1,11 +1,18 @@
 import media from '@ohos.multimedia.media';
+import audio from '@ohos.multimedia.audio';
 import PiPWindow from '@ohos.PiPWindow';
 import fs from '@ohos.file.fs';
 import avSession from '@ohos.multimedia.avsession';
 import backgroundTaskManager from '@ohos.resourceschedule.backgroundTaskManager';
 import wantAgent, { WantAgent } from '@ohos.app.ability.wantAgent';
 import common from '@ohos.app.ability.common';
+import type Want from '@ohos.app.ability.Want';
 import { BridgeCommand, parseBridgeCommand } from './BridgeDispatch';
+import {
+  emitPlatformEvent,
+  AudioDeviceChangeEvent,
+  AudioFocusChangeEvent,
+} from './PlatformEventBridge';
 
 /**
  * ArkTS 侧媒体播放与播控中心处理器 (KP8+)。
@@ -57,6 +64,11 @@ import { BridgeCommand, parseBridgeCommand } from './BridgeDispatch';
  *   "position": <number?>,     // onPosition / seek 指令的位置 (毫秒)
  *   "command": "<string?>"     // onCommand: play|pause|stop|next|previous|seek
  * }
+ *
+ * ## 平台事件 (ArkTS → Kotlin, via legado.platformEvent, 非本模块的 mediaEvent)
+ * 音频设备变化与音频打断不经 mediaEvent, 而是 PlatformEventBridge 的统一通道:
+ * `{ type: 'audioDeviceChange', disconnected: true }` /
+ * `{ type: 'audioFocusChange', change: 'gain'|'loss'|'lossTransient'|'lossTransientCanDuck' }`
  *
  * # AVPlayer 状态机
  * idle → (设源) → initialized → (prepare) → prepared → (play) → playing ↔ paused
@@ -112,6 +124,16 @@ let avSessionPending: Promise<avSession.AVSession | undefined> | undefined;
 // 长时后台任务状态 + 启停中的 Promise (同上, 避免并发重复启停)
 let isContinuousTaskRunning: boolean = false;
 let continuousTaskPending: Promise<void> | undefined;
+
+// 音频设备变化监听是否已安装 (拔耳机/蓝牙断开 → 暂停播放)
+let routingMonitorInstalled: boolean = false;
+
+/**
+ * 音频播控卡片点击后的目标路由 (与 app 端音频通知的 route extra 逐字一致)。
+ *
+ * 只在播控卡片用: 长时任务的保活拉起不带它 (保活不应改变用户当前页面)。
+ */
+const AUDIO_PLAY_ROUTE: string = 'route:audio_play';
 
 // 已下发的卡片元数据指纹 (相同就跳过 setAVMetadata, 对照 app 端 loadCover 的 lastCoverUrl 短路)
 let lastMetadataKey: string = '';
@@ -224,6 +246,9 @@ export interface Size2D {
 export function initMediaBridge(callback: MediaEventCallback, context: common.UIAbilityContext): void {
   eventCallback = callback;
   abilityContext = context;
+  installAudioRoutingMonitor().catch((err: Error) => {
+    console.error('[MediaBridge] installAudioRoutingMonitor failed: ' + (err.message ?? String(err)));
+  });
 }
 
 /**
@@ -621,8 +646,111 @@ function stopVideoPip(): void {
   });
 }
 
+// ===== 音频设备变化与音频焦点事件源 =====
+
+/**
+ * `audio.InterruptHint` → Kotlin 侧四档焦点事件串 (与 Android AUDIOFOCUS_* 对应表同上)。
+ *
+ * 返回 null = 该档在 Android 侧无对应语义, 不派发 (不得硬安到某个档上)。
+ */
+function mapInterruptHint(hint: audio.InterruptHint): string | null {
+  switch (hint) {
+    // 系统让出焦点: 对应 AUDIOFOCUS_GAIN (短暂丢失后的恢复)
+    case audio.InterruptHint.INTERRUPT_HINT_RESUME:
+    case audio.InterruptHint.INTERRUPT_HINT_UNDUCK:
+      return 'gain';
+    // 暂停但不丢焦点: 对应 AUDIOFOCUS_LOSS_TRANSIENT
+    case audio.InterruptHint.INTERRUPT_HINT_PAUSE:
+      return 'lossTransient';
+    // 仅压低音量: 对应 AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK
+    case audio.InterruptHint.INTERRUPT_HINT_DUCK:
+      return 'lossTransientCanDuck';
+    default:
+      // STOP / MUTE / UNMUTE / NONE: Android 侧无对应档, 不派发
+      return null;
+  }
+}
+
+/**
+ * 安装音频设备变化监听 (拔耳机 / 蓝牙音频设备断开 → 暂停当前出声的一方)。
+ *
+ * 对照 Android `ACTION_AUDIO_BECOMING_NOISY` 与 iOS
+ * `AVAudioSessionRouteChangeReasonOldDeviceUnavailable`。
+ *
+ * # 为何只看"输出设备减少"
+ * `DeviceChangeAction` 只给 `type` (CONNECT/DISCONNECT) 与当前设备列表, 没有"哪个设备刚掉"。
+ * 而拔耳机与插耳机都走 DISCONNECT (切换输出设备时旧设备也是 DISCONNECT), 故不能只看
+ * type —— 那会把"插上耳机"也当成断开。判据用"断开后输出侧还剩什么":
+ * 只剩听筒/扬声器这类内置扬声器即视为音频离开了外接设备 (蓝牙断开后系统会回扬声器),
+ * 还有其它外接输出 (如音箱) 则不动。
+ *
+ * # 已知覆盖缺口 (如实报告)
+ * 系统 TTS (`@kit.CoreSpeechKit` textToSpeech) 不走 AVPlayer, 不经本文件的播放器事件;
+ * 但设备断开是全局音频路由事件, 与播放器无关, 所以本监听对系统 TTS 也生效。
+ * 反之 `audioInterrupt` 挂在 AVPlayer 上, 只覆盖有声书/HttpTTS/视频书。
+ */
+async function installAudioRoutingMonitor(): Promise<void> {
+  if (routingMonitorInstalled) {
+    return;
+  }
+  routingMonitorInstalled = true;
+  try {
+    const manager = audio.getAudioManager().getRoutingManager();
+    // 带 DeviceFlag 的重载 (仅监听输入/输出设备变化): 不带 flag 的旧重载 d.ts 标 deprecated
+    manager.on('deviceChange', audio.DeviceFlag.OUTPUT_DEVICES_FLAG,
+      (action: audio.DeviceChangeAction) => {
+      if (action.type !== audio.DeviceChangeType.DISCONNECT) {
+        return;
+      }
+      const hasExternalOutput: boolean = action.deviceDescriptors
+        .some((d: Readonly<audio.AudioDeviceDescriptor>) =>
+          d.deviceRole === audio.DeviceRole.OUTPUT_DEVICE &&
+          d.deviceType !== audio.DeviceType.EARPIECE &&
+          d.deviceType !== audio.DeviceType.SPEAKER);
+      if (hasExternalOutput) {
+        return;
+      }
+      const payload: AudioDeviceChangeEvent = { type: 'audioDeviceChange', disconnected: true };
+      emitPlatformEvent(payload);
+    });
+    console.info('[MediaBridge] audio deviceChange listener installed');
+  } catch (e) {
+    console.error('[MediaBridge] install audio deviceChange failed: ' + JSON.stringify(e));
+  }
+}
+
+/** 释放设备变化监听 (应用退出; 幂等)。 */
+function removeAudioRoutingMonitor(): void {
+  if (!routingMonitorInstalled) {
+    return;
+  }
+  routingMonitorInstalled = false;
+  try {
+    audio.getAudioManager().getRoutingManager()
+      .off('deviceChange', audio.DeviceFlag.OUTPUT_DEVICES_FLAG);
+  } catch (e) {
+    console.error('[MediaBridge] remove audio deviceChange failed: ' + JSON.stringify(e));
+  }
+}
+
 // ===== AVPlayer 事件注册 =====
 function registerPlayerEvents(id: string, player: media.AVPlayer): void {
+  // 音频打断 (系统/其它应用抢焦点) → 统一平台事件通道, Kotlin 侧落在 SystemMediaControl
+  // 的四档状态机上。只对有声书与 HttpTTS 两个音频实例有意义; 语义映射逐档对齐 Android
+  // AudioManager.AUDIOFOCUS_* (RESUME→gain / PAUSE→lossTransient / DUCK→canDuck /
+  // UNDUCK→gain), STOP/MUTE 等无 Android 对应档, 不派发 (不静默降级成别的档)。
+  if (id === PLAYER_ID_AUDIO_BOOK || id === PLAYER_ID_HTTP_TTS) {
+    player.on('audioInterrupt', (info: audio.InterruptEvent) => {
+      const change: string | null = mapInterruptHint(info.hintType);
+      if (change == null) {
+        console.info('[MediaBridge] audioInterrupt 未映射: id=' + id + ' hint=' + info.hintType);
+        return;
+      }
+      const payload: AudioFocusChangeEvent = { type: 'audioFocusChange', change: change };
+      emitPlatformEvent(payload);
+    });
+  }
+
   // 状态变化 → 转换为 Kotlin 侧事件
   player.on('stateChange', (state: string, reason: media.StateChangeReason) => {
     console.info('[MediaBridge] stateChange: id=' + id + ' state=' + state + ' reason=' + reason);
@@ -821,9 +949,10 @@ async function createAvSession(): Promise<avSession.AVSession | undefined> {
   try {
     const session = await avSession.createAVSession(context, 'LegadoAudioSession', 'audio');
     registerAvSessionCallbacks(session);
-    // 点击播控卡片拉起应用 (对照 app 端通知的 contentIntent)
+    // 点击播控卡片拉起应用并直达音频页 (对照 app 端音频通知的 contentIntent:
+    // 那里 putExtra("route", "audio_play"), 这里走同一条 route: 前缀约定)
     try {
-      await session.setLaunchAbility(await buildLaunchWantAgent(context));
+      await session.setLaunchAbility(await buildLaunchWantAgent(context, AUDIO_PLAY_ROUTE));
     } catch (e) {
       console.error('[MediaBridge] setLaunchAbility failed: ' + (e as Error).message);
     }
@@ -837,13 +966,30 @@ async function createAvSession(): Promise<avSession.AVSession | undefined> {
   }
 }
 
-/** 拉起本 Ability 的 WantAgent (播控卡片点击 + 长时任务共用)。 */
-async function buildLaunchWantAgent(context: common.UIAbilityContext): Promise<WantAgent> {
+/**
+ * 拉起本 Ability 的 WantAgent (播控卡片点击 / 长时任务 / 通知点击共用)。
+ *
+ * 本函数导出于本模块: EntryAbility 的通知回调需要它给 NotificationRequest.wantAgent
+ * 挂跳转目标 (对照 app 端通知的 contentIntent), 与播控卡片/长时任务共用同一份构建逻辑。
+ *
+ * @param uri 非空时写进 Want.uri。播控卡片传 `route:audio_play` —— 与 app 端音频通知
+ *   contentIntent 的 route extra 同一个串, 点击后由 EntryAbility.handleDeepLink 走
+ *   `legado.handleLaunchRequest` → `OhosLaunchRequests.parse` 解回 `NavigateTo("audio_play")`
+ *   (不需要新增任何协议); 长时任务不传 (保活拉起不应改变用户当前页面)。
+ */
+export async function buildLaunchWantAgent(
+  context: common.UIAbilityContext,
+  uri?: string
+): Promise<WantAgent> {
+  const want: Want = {
+    bundleName: context.abilityInfo.bundleName,
+    abilityName: context.abilityInfo.name
+  };
+  if (uri !== undefined && uri.length > 0) {
+    want.uri = uri;
+  }
   const wantAgentInfo: wantAgent.WantAgentInfo = {
-    wants: [{
-      bundleName: context.abilityInfo.bundleName,
-      abilityName: context.abilityInfo.name
-    }],
+    wants: [want],
     operationType: wantAgent.OperationType.START_ABILITY,
     requestCode: 0,
     wantAgentFlags: [wantAgent.WantAgentFlags.UPDATE_PRESENT_FLAG]

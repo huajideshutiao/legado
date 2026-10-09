@@ -3,6 +3,9 @@
     {
       "name": "EntryAbility_label",
       "value": "阅读"
-    }
+    },
+    { "name": "shortcut_bookshelf", "value": "书架" },
+    { "name": "shortcut_last_read", "value": "最近阅读" },
+    { "name": "shortcut_read_aloud", "value": "朗读" }
   ]
 }

@@ -1,0 +1,74 @@
+{
+  // 静态桌面快捷方式 (长按应用图标弹出)。
+  // 对照 Android app/src/main/java/io/legado/app/api/ShortCuts.kt 的三项:
+  //   lastRead → 最近阅读 / readAloud → 直接朗读 / bookshelf → 书架;
+  // Android 走 ShortcutManagerCompat.setDynamicShortcuts (动态注册), 鸿蒙只支持这份静态配置。
+  //
+  // 字段依据: OpenHarmony docs module-configuration-file.md「表10 shortcuts标签说明」
+  // (shortcutId 不可缺省; label/icon/visible/wants 可缺省; icon 资源官方建议透明图层 450*450px)
+  // 与「表11 wants标签说明」(bundleName/moduleName/abilityName 均可缺省)。
+  // label 用 $string 资源索引 (schema 的 label pattern: ^[$]string:[0-9a-zA-Z_.]+),
+  // 对应文案定义在 entry/src/main/resources/*/element/string.json。
+  // icon 复用 AppScope 既有的 app_icon_foreground ($media 资源跨模块可见); 它是 288*288 的
+  // 前景图层, 未达官方推荐的 450*450 (本次不新增图片资源, 如后续要按规范补齐再换)。
+  //
+  // 三项都只拉起 EntryAbility: 短链路上的跳转目标由 wants.parameters 里的既有约定前缀承载
+  // (KMP 侧 ui/src/ohosMain OhosLaunchRequests 认 `route:` 前缀, 见 module.json5 里
+  // 的同一组字面量注释), 与 Android 端 ShortCuts.kt 用 intent extra("route"/"action")
+  // 表达"打开哪个页面"是同一思路。parameters 的值必须是字符串 (module.json5 里 metadata
+  // 与 shortcuts.json 的 schema 都只允许 string), 故这里放整串而非嵌套 JSON。
+  //
+  // bundleName 缺省 (官方 schema 中 bundleName/moduleName/abilityName 均可缺省, 见上; 这里只去掉
+  // 会随构建变体变的那个, moduleName/abilityName 是稳定静态值, 留着指代更明确):
+  // 本工程实际包名由 ohosApp/hvigorfile.ts 的 appOpt 在构建期按 buildMode 覆盖
+  // (debug → shutiao.reader.debug, release → shutiao.reader.release), 而这份 profile 里的字符串
+  // 不参与该覆盖 —— 写死任一变体都会在另一个变体上指向不存在的包 (快捷方式失效)。
+  // 故这里**不写死任一构建变体**: 缺省后由系统按当前应用的包名解析 (与本 Ability 同模块的
+  // wants 本就无需自报身份)。本机 SDK 与官方配置文档中**未查证**到 profile 文件里可用的
+  // 包名占位符 (搜 ${application. 无命中), 所以也没有"用占位符写死"这个选项。
+  // 待真机验证: 缺省 bundleName 后桌面快捷方式在 debug 与 release 两个包上是否都能拉起。
+  "shortcuts": [
+    {
+      "shortcutId": "lastRead",
+      "label": "$string:shortcut_last_read",
+      "icon": "$media:app_icon_foreground",
+      "wants": [
+        {
+          "moduleName": "entry",
+          "abilityName": "EntryAbility",
+          "parameters": {
+            "route": "route:last_read"
+          }
+        }
+      ]
+    },
+    {
+      "shortcutId": "readAloud",
+      "label": "$string:shortcut_read_aloud",
+      "icon": "$media:app_icon_foreground",
+      "wants": [
+        {
+          "moduleName": "entry",
+          "abilityName": "EntryAbility",
+          "parameters": {
+            "route": "route:readAloud"
+          }
+        }
+      ]
+    },
+    {
+      "shortcutId": "bookshelf",
+      "label": "$string:shortcut_bookshelf",
+      "icon": "$media:app_icon_foreground",
+      "wants": [
+        {
+          "moduleName": "entry",
+          "abilityName": "EntryAbility",
+          "parameters": {
+            "route": "route:bookshelf"
+          }
+        }
+      ]
+    }
+  ]
+}

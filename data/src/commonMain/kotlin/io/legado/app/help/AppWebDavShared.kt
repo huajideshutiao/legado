@@ -363,7 +363,7 @@ object AppWebDavShared {
      *   否则会误传到默认坚果云)
      * @return 远端不存在时为 null
      */
-    @Throws(NoStackTraceException::class)
+    @Throws(NoStackTraceException::class, CancellationException::class)
     suspend fun getRemoteBook(
         remoteBookUrl: String,
         auth: Authorization? = authorization,

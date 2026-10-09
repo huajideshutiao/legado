@@ -11,6 +11,12 @@
  * - HTTP 下载进度: { type: 'httpProgress', url, bytesReceived, totalBytes, isComplete }
  * - 应用生命周期: { type: 'lifecycle', event: 'onForeground' | 'onBackground' }
  * - 系统深浅色: { type: 'colorMode', isDark }
+ * - 音频设备变化: { type: 'audioDeviceChange', disconnected }
+ * - 音频焦点: { type: 'audioFocusChange', change: 'gain' | 'loss' | 'lossTransient' | 'lossTransientCanDuck' }
+ * - 电话状态: { type: 'callStateChange', state: 'idle' | 'ringing' | 'offHook' }
+ * - 系统对话框结果: { type: 'dialogResult', requestId, dialogResult } (系统对话框桥的响应侧)
+ *
+ * 后加的三类经 [emitPlatformEvent] 走同一通道 (不再各建一套回送函数)。
  *
  * # 线程
  * 回调在调用线程同步执行 (ArkTS 主线程 / @ohos.net.http 事件线程), 与 mediaEvent 同语义;
@@ -115,5 +121,87 @@ export function emitColorMode(isDark: boolean): void {
     eventCallback(JSON.stringify(payload));
   } catch (e) {
     console.error('[PlatformEvent] colorMode emit failed: ' + JSON.stringify(e));
+  }
+}
+
+/** 系统对话框结果事件载荷 (与 Kotlin OhosPlatformEventPayload 对齐, type=dialogResult)。 */
+export interface DialogResultEvent {
+  type: string;         // 'dialogResult'
+  requestId: number;    // 对应 Kotlin OhosNativeBridge.invokeDialogSync 的请求 ID
+  dialogResult: string; // 对话框结果 JSON ({ok,index} / {ok,confirmed} / {ok,cancelled} / {ok:false,error})
+}
+
+/**
+ * 推送系统对话框结果 (SysDialogBridgeHandler 拿到用户选择后, 经 EntryAbility 的 window callback 回送)。
+ *
+ * 系统对话框的请求侧复用 window tsfn (OhosNativeBridge.WindowCommand action="showDialog"),
+ * 结果侧走本统一通道 (Kotlin OhosPlatformEventChannel type="dialogResult" →
+ * OhosNativeBridge.onDialogResult), 唤醒 invokeDialogSync 阻塞中的请求方。
+ *
+ * @param requestId 请求 ID (与 Kotlin 生成的一致)
+ * @param resultJson 对话框结果 JSON (由 SysDialogBridgeHandler 产出)
+ */
+export function emitDialogResult(requestId: number, resultJson: string): void {
+  if (eventCallback == null) {
+    console.warn('[PlatformEvent] callback not set, dialogResult event dropped: ' + requestId);
+    return;
+  }
+  const payload: DialogResultEvent = { type: 'dialogResult', requestId, dialogResult: resultJson };
+  try {
+    eventCallback(JSON.stringify(payload));
+  } catch (e) {
+    console.error('[PlatformEvent] dialogResult emit failed: ' + JSON.stringify(e) + ', requestId=' + requestId);
+  }
+}
+
+/** 音频设备变化事件载荷 (与 Kotlin OhosPlatformEventPayload 对齐, type=audioDeviceChange)。 */
+export interface AudioDeviceChangeEvent {
+  type: string;          // 'audioDeviceChange'
+  disconnected: boolean;
+}
+
+/** 音频焦点事件载荷 (与 Kotlin OhosPlatformEventPayload 对齐, type=audioFocusChange)。 */
+export interface AudioFocusChangeEvent {
+  type: string;          // 'audioFocusChange'
+  change: string;        // 'gain' | 'loss' | 'lossTransient' | 'lossTransientCanDuck'
+}
+
+/** 电话状态事件载荷 (与 Kotlin OhosPlatformEventPayload 对齐, type=callStateChange)。 */
+export interface PhoneCallStateEvent {
+  type: string;          // 'callStateChange'
+  state: string;         // 'idle' | 'ringing' | 'offHook'
+}
+
+/** 网络可用事件载荷 (与 Kotlin OhosPlatformEventPayload 对齐, type=networkAvailable)。 */
+export interface NetworkAvailableEvent {
+  type: string;          // 'networkAvailable'
+}
+
+/** 后加的平台事件载荷集合 (共用 [emitPlatformEvent])。 */
+export type ExtraPlatformEvent =
+  AudioDeviceChangeEvent | AudioFocusChangeEvent | PhoneCallStateEvent | NetworkAvailableEvent;
+
+/**
+ * 推送一条后加类型的平台事件 (媒体设备变化/音频焦点/电话状态/网络可用)。
+ *
+ * 为什么不让调用方各自建模块级回送函数: 事件回送回调只有本模块持有, 各功能模块
+ * (MediaBridgeHandler 的音频设备断开/音频打断、SystemEventSources 的电话与网络) 只需
+ * 构造自己的载荷对象, 序列化与降级日志统一在这里, 与 [emitHttpProgress] /
+ * [emitAppLifecycle] / [emitColorMode] 三个专用函数同语义。
+ *
+ * 协议: Kotlin 侧 OhosPlatformEventPayload 按 `type` 分发, 未知字段与未知 type 均被忽略
+ * (KS_JSON ignoreUnknownKeys), 故新增事件类型向后兼容。
+ *
+ * @param payload 事件载荷对象 (必带 type 字段)
+ */
+export function emitPlatformEvent(payload: ExtraPlatformEvent): void {
+  if (eventCallback == null) {
+    console.warn('[PlatformEvent] callback not set, event dropped: ' + JSON.stringify(payload));
+    return;
+  }
+  try {
+    eventCallback(JSON.stringify(payload));
+  } catch (e) {
+    console.error('[PlatformEvent] emit failed: ' + JSON.stringify(e));
   }
 }

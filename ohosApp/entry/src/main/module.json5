@@ -14,6 +14,12 @@
     "pages": "$profile:main_pages",
     // 图片菜单"保存到相册"所需权限 (user_grant, 运行时经 abilityAccessCtrl 申请,
     // 见 Index.ets saveImageToGallery; photoAccessHelper.createAsset 写入图库需要)
+    // 注: 不声明 ohos.permission.NOTIFICATION —— 本机 SDK 的 permissions.d.ts 权限联合类型与
+    // toolchains/lib/PermissionDefinitions.json (735 条) 中都**不存在**该权限, 只有 11 个
+    // 名称含 NOTIFICATION 的其它权限 (均非它); @ohos.notificationManager.d.ts 里
+    // requestEnableNotification/isNotificationEnabled/publish 也均无 @permission 标注。
+    // KMP 侧 core/src/ohosMain NotificationProgress.ohos.kt 类注释里"需声明该权限"的说法
+    // 与本机 SDK 不符, 不要据此添加不存在的权限名 (会导致校验/安装失败)。
     "requestPermissions": [
       {
         "name": "ohos.permission.WRITE_IMAGEVIDEO",
@@ -56,6 +62,14 @@
       // 仅具备 FolderAuthorization syscap 的设备实际执行 (ArkTS 侧 canIUse 检测)
       {
         "name": "ohos.permission.FILE_ACCESS_PERSIST"
+      },
+      // 来电状态监听 (system_grant, normal 级; 本机 SDK PermissionDefinitions.json 中
+      // availableLevel=normal, provisionEnable=true): 朗读中来电自动暂停、
+      // 结束后继续 (对照 Android 的 READ_PHONE_STATE + LISTEN_CALL_STATE)。
+      // @ohos.telephony.observer.d.ts 的 on('callStateChange') 本身未标 @permission,
+      // 但取号码/需受限号码时报错需要它, 故按常规惯例申报 (安装即授予, 不弹窗)。
+      {
+        "name": "ohos.permission.GET_TELEPHONY_STATE"
       }
     ],
     "abilities": [
@@ -68,6 +82,10 @@
         "startWindowIcon": "$media:app_icon_foreground",
         "startWindowBackground": "$color:start_window_background",
         "exported": true,
+        // 长时任务类型与实现一致: 全仓只有 MediaBridgeHandler.ets 的 switchBackgroundTask
+        // 调 backgroundTaskManager.startBackgroundRunning, 且只传 BackgroundMode.AUDIO_PLAYBACK
+        // (缓存/更新书籍、Web 服务均未走长时任务), 故只声明 audioPlayback 不加其它类型。
+        // 该 API 的 @permission 为 ohos.permission.KEEP_BACKGROUND_RUNNING (已在上面声明)。
         "backgroundModes": [
           "audioPlayback"
         ],
@@ -150,6 +168,60 @@
                 "type": "application/vnd.apple.mpegurl"
               }
             ]
+          },
+          // 接收其它应用分享的文本/链接: 对照 Android AndroidManifest.xml 里
+          // ProcessTextActivity(activity-alias) 的 action.SEND + action.PROCESS_TEXT intent-filter。
+          // action 与 uris 写法取自官方「应用内处理分享内容」文档 (目标应用解析分享数据):
+          // actions 配 ohos.want.action.sendData, uris 穷举支持的 UTD —— 该文档明确说明
+          // "scheme为预留字段，在此处不生效" (故这里 scheme=file 仅为满足本机 SDK 的
+          // skills.uris[] schema: toolchains/modulecheck/module.json 的 anyOf 第一支 required:["scheme"]),
+          // 实际匹配按 utd。UTD 字面量取自本机 SDK @ohos.data.uniformTypeDescriptor.d.ts
+          // (TEXT='general.text' / PLAIN_TEXT='general.plain-text' / HTML='general.html' / HYPERLINK='general.hyperlink')。
+          // 不配 entities: 官方分享接收示例只给 actions+uris, 本机 SDK 也无法确认系统分享会带
+          // entity.system.browsable, 多声明一个不会被满足的 required entity 反而可能匹配不上。
+          // 注: 纯文本分享不带 want.uri, 而 EntryAbility.handleDeepLink 只处理非空 want.uri
+          // (uri.length===0 直接 return), 也不读 systemShare.getSharedData —— 收下这份数据还需
+          // 另一代理在 ets/** 侧补解析, 本次只做声明。
+          {
+            "actions": [
+              "ohos.want.action.sendData"
+            ],
+            "uris": [
+              {
+                "scheme": "file",
+                "utd": "general.text",
+                "maxFileSupported": 1
+              },
+              {
+                "scheme": "file",
+                "utd": "general.plain-text",
+                "maxFileSupported": 1
+              },
+              {
+                "scheme": "file",
+                "utd": "general.html",
+                "maxFileSupported": 1
+              },
+              {
+                "scheme": "file",
+                "utd": "general.hyperlink",
+                "maxFileSupported": 1
+              }
+            ]
+          }
+        ],
+        // 静态桌面快捷方式 (长按应用图标弹出), 对照 Android ShortCuts.kt 的三项
+        // (书架 / 最近阅读 / 直接朗读; Android 用 ShortcutManagerCompat.setDynamicShortcuts
+        // 动态注册, 鸿蒙只支持静态声明)。
+        // metadata 的 name 必须用 ohos.ability.shortcuts、resource 指向 profile 配置 —— 依据:
+        // module-configuration-file.md「shortcuts标签」节 "name：指定shortcuts的名称，使用
+        // ohos.ability.shortcuts作为shortcuts信息的标识" 及其示例 (metadata 挂在 abilities 条目下)。
+        // 资源名 shortcuts_config 与文件 resources/base/profile/shortcuts_config.json 同名
+        // ($profile: 按 profile 目录下文件名匹配)。
+        "metadata": [
+          {
+            "name": "ohos.ability.shortcuts",
+            "resource": "$profile:shortcuts_config"
           }
         ]
       }

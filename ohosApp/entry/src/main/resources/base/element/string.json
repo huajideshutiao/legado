@@ -29,6 +29,12 @@
     {
       "name": "permission_read_pasteboard_reason",
       "value": "用于书源与替换规则编辑页从剪贴板粘贴内容"
-    }
+    },
+    {
+      "name": "shortcut_bookshelf",
+      "value": "书架"
+    },
+    { "name": "shortcut_last_read", "value": "最近阅读" },
+    { "name": "shortcut_read_aloud", "value": "朗读" }
   ]
 }
