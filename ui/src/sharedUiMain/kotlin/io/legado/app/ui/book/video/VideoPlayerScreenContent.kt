@@ -45,8 +45,10 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -95,6 +97,7 @@ import legado.ui.generated.resources.video_unlock
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.abs
+import kotlinx.coroutines.launch
 
 /**
  * 手机 vs 宽屏断点: 容器宽 < DesignTokens.wideScreenMinWidth 视为手机 (宽边判定, 对齐音频页
@@ -996,8 +999,16 @@ fun VideoPlayerHostContainer(
     val playback by controller.playback.collectAsState()
     // 画中画平台真实态: null = 端不支持 (控制栏不画画中画钮); true = 已在系统小窗,
     // 小窗内只留纯画面 (手势/控制栏/锁定等一切覆盖层都交还给系统交互), false = 页面正常渲染。
+    // 进入请求期 (按下画中画钮到系统确认之间): 同样按小窗语义渲染, 系统过渡期间窗口里
+    // 只有视频 —— 平台真实态要到系统动画结束后才翻 true (见 [VideoPlayScreenModel.pipEntering])
+    val pipEntering by screenModel.pipEntering.collectAsState()
+    val pipEnterScope = rememberCoroutineScope()
     val pipState = platform.rememberIsInPictureInPicture()
-    val isPip = pipState == true
+    // 平台态一旦可用就说明系统已接管 (进入成功 / 已退出): 请求期到此结束
+    LaunchedEffect(pipState) {
+        if (pipState != null) screenModel.onPictureInPictureRequestSettled()
+    }
+    val isPip = pipState == true || pipEntering
     // 系统级全屏以平台真实态为准: 桌面真全屏由窗口决定 (ESC / 标题栏 / 原生控制条三条入口
     // 都会改窗口全屏), 页面自存副本必然分叉成"按一次 ESC 只退一半"; 全屏切换失败的平台上
     // 该值恒 false, 页面就不会按全屏渲染。无窗口全屏概念的端返回 null → 沿用页面意图标志。
@@ -1141,7 +1152,16 @@ fun VideoPlayerHostContainer(
                 },
                 showSystemFullScreenButton = true,
                 showPictureInPictureButton = pipState != null,
-                onEnterPictureInPicture = screenModel::onEnterPictureInPicture,
+                // 先进"只有画面"的渲染态并等它落两帧, 再请求系统进入: 系统过渡用的就是那一
+                // 帧, 否则它拿到的是带标题栏与选集的整页界面, 收小窗时先露出那片亮色页底
+                onEnterPictureInPicture = {
+                    screenModel.onEnterPictureInPicture()
+                    pipEnterScope.launch {
+                        withFrameNanos { }
+                        withFrameNanos { }
+                        screenModel.requestEnterPictureInPicture()
+                    }
+                },
                 modifier = Modifier.fillMaxSize(),
             )
         }

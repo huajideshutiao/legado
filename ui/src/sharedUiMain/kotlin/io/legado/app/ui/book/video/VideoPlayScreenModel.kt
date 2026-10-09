@@ -239,8 +239,9 @@ interface VideoPlayPlatformProvider {
      * [controller] 供平台取当前媒体宽高比（Android 需显式声明宽高比，iOS/鸿蒙系统自动适配）。
      * 平台不支持（桌面）或系统版本不支持（Android API<26）时走默认空实现 —— 按钮显隐由
      * [rememberIsInPictureInPicture] 是否返回 null 决定，正常走不到这里。
+     * 返回是否已向系统请求进入: 系统拒绝时共享层据此结束请求期 (见 [onEnterPictureInPicture])。
      */
-    fun enterPictureInPicture(controller: VideoPlayerController?) {}
+    fun enterPictureInPicture(controller: VideoPlayerController?): Boolean = false
 
     /**
      * 平台「画中画」真实态（可选）。
@@ -283,6 +284,17 @@ class VideoPlayScreenModel : ScreenModel {
 
     val shared = VideoPlayViewModelShared(scope = scope)
     val platform = VideoPlayPlatformProviders.getOrNull()
+
+    /**
+     * 进入小窗的请求期 (按下画中画钮到系统确认之间)。
+     *
+     * 平台真实态要到系统进入动画结束后才翻 true (Android 的进入回调 / iOS 的启动完成回调 /
+     * 鸿蒙的窗口状态事件), 只按它收起覆盖层, 系统过渡期间窗口里就是带着标题栏与选集的整页界面,
+     * 缩小到小窗时先露出的就是那片页底 (视频页所在窗口底色为亮色, 观感即白屏)。请求期内先按
+     * 小窗语义渲染, 系统过渡拿到的最小画面里只有视频。
+     */
+    private val _pipEntering = MutableStateFlow(false)
+    val pipEntering: StateFlow<Boolean> = _pipEntering.asStateFlow()
 
     /**
      * 播控器。不写成 val: 桌面端媒体播放组件是首次进本页才按需下载的, 构造期可能还没装好,
@@ -542,7 +554,20 @@ class VideoPlayScreenModel : ScreenModel {
      */
     fun onEnterPictureInPicture() {
         onResetZoom()
-        platform?.enterPictureInPicture(controller)
+        _pipEntering.value = true
+    }
+
+    /**
+     * 界面已按小窗语义绘制完成后真正请求系统进入 (调用方先等过两帧, 见画中画钮)。
+     * 系统拒绝时立刻结束请求期, 页面回到常规渲染。
+     */
+    fun requestEnterPictureInPicture() {
+        if (platform?.enterPictureInPicture(controller) != true) onPictureInPictureRequestSettled()
+    }
+
+    /** 请求期结束 (系统确认进入 / 拒绝 / 退出小窗): 此后视觉态只由平台真实态决定。 */
+    fun onPictureInPictureRequestSettled() {
+        _pipEntering.value = false
     }
 
     // ---- 菜单动作 (对照 Activity onCompatOptionsItemSelected / VideoTitleActions) ----

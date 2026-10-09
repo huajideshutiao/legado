@@ -224,15 +224,17 @@ object IosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
     override fun rememberIsInPictureInPicture(): Boolean? =
         if (AVPictureInPictureController.isPictureInPictureSupported()) pipActive else null
 
-    override fun enterPictureInPicture(controller: VideoPlayerController?) {
+    override fun enterPictureInPicture(controller: VideoPlayerController?): Boolean {
         // 小窗要完整画面: 先同步把层变换复位再启动 —— 只改状态得等下一帧落层, 系统可能
         // 已把放大裁剪的首帧抽进小窗
         playerLayerView?.applyZoom(1.0, 0.0, 0.0)
         // 渲染面未就绪 (无小窗控制器) 时没有可放的小窗
-        val pip = pipController ?: return
-        // layer 尚无可显示画面 (isPictureInPicturePossible=false) 时 start 由系统拒绝,
-        // 走 delegate failedToStart 回滚并落日志, 不额外建 KVO 状态机
+        val pip = pipController ?: return false
+        // layer 尚无可显示画面时 start 会被系统拒 (走 delegate failedToStart 回滚并落日志),
+        // 先判可起性回 false: 共享层据此结束请求期, 页面回常规渲染
+        if (!pip.pictureInPicturePossible) return false
         pip.startPictureInPicture()
+        return true
     }
 
     /** 视频 AVPlayer 声画与画中画的会话前提: playback + MixWithOthers (失败落日志不阻断播放)。 */

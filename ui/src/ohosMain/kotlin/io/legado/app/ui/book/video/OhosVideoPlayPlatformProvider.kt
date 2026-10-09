@@ -172,8 +172,10 @@ object OhosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
     override fun rememberIsInPictureInPicture(): Boolean? = pipActive
 
     /** 经 media 命令通道请求 ArkTS 拉起画中画 (PiPWindow); 失败由 onPipStateChanged 事件回 toast。 */
-    override fun enterPictureInPicture(controller: VideoPlayerController?) {
-        (controller as? OhosVideoPlayerController)?.enterPictureInPicture()
+    override fun enterPictureInPicture(controller: VideoPlayerController?): Boolean {
+        val c = controller as? OhosVideoPlayerController ?: return false
+        c.enterPictureInPicture()
+        return true
     }
 }
 
@@ -602,6 +604,8 @@ class OhosVideoPlayerController(
                 // 小窗窗口态由 ArkTS PiPWindow stateChange 推来; isPip 缺省视为 false
                 val active = event.isPip == true
                 OhosVideoPlayPlatformProvider.pipActive = active
+                // 拉起失败 (toast 文案随事件来) 或已退出小窗: 结束请求期, 页面回常规渲染
+                screenModel.onPictureInPictureRequestSettled()
                 event.message?.let { Toasters.get().toast(it) }
                 return
             }

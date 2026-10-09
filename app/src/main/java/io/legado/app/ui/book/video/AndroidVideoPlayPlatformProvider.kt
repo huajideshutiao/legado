@@ -134,12 +134,12 @@ class AndroidVideoPlayPlatformProvider(
     override fun rememberIsInPictureInPicture(): Boolean? =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) isInPip else null
 
-    override fun enterPictureInPicture(controller: VideoPlayerController?) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+    override fun enterPictureInPicture(controller: VideoPlayerController?): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
         val c = controller as? AndroidVideoPlayerController
         activeController = c
-        // 系统拒绝 (策略禁用/窗口不可用) 时不额外处理: 进小窗的缩放重置就是一次性的
-        activity.enterPictureInPictureMode(buildPipParams(c))
+        // 系统拒绝 (策略禁用/窗口不可用) 回 false: 共享层据此结束请求期, 页面回到常规渲染
+        return activity.enterPictureInPictureMode(buildPipParams(c))
     }
 
     /** 播放态/视频比例变化时刷新小窗参数 (RemoteAction 图标随播放态切换); 非小窗态是 no-op。 */
