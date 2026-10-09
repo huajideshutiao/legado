@@ -76,7 +76,7 @@ private suspend fun handleWsSession(
     wsSession: WebSocketServerSession,
     handlerFactory: (WsSession) -> WsHandler,
 ) {
-    // 拉起 Service 续命 (app 端) / no-op (iOS/鸿蒙端), 对齐 NanoWSD WebSocketServer.openWebSocket
+    // 拉起 Service 续命 (app 端) / no-op (鸿蒙端), 对齐 NanoWSD WebSocketServer.openWebSocket
     WebServerManager.serve()
     val ktorSession = KtorWsSession(wsSession)
     val handler = handlerFactory(ktorSession)

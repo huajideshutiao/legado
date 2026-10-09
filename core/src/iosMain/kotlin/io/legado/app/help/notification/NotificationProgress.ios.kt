@@ -4,13 +4,26 @@ package io.legado.app.help.notification
 
 import io.legado.app.constant.EventBus
 import io.legado.app.help.log.iosConsoleLog
+import io.legado.app.ui.root.AppForegroundState
 import io.legado.app.utils.postEvent
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import platform.Foundation.NSError
 import platform.UserNotifications.UNAuthorizationOptionAlert
 import platform.UserNotifications.UNAuthorizationOptionSound
 import platform.UserNotifications.UNMutableNotificationContent
 import platform.UserNotifications.UNNotificationRequest
 import platform.UserNotifications.UNUserNotificationCenter
+
+/**
+ * 可见性订阅作用域 (进程级一次, 与通知 provider 同寿)。
+ */
+private val visibilityScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
 /**
  * [NotificationProgress] 的 iOS 真实实现 (KP4)。
@@ -26,6 +39,9 @@ import platform.UserNotifications.UNUserNotificationCenter
  * - 通知 ID: 固定 [NOTIFICATION_ID] ("legado-progress"), 复用同一条通知 (覆盖式更新, 与 Android 通知 ID 一致)
  * - 取消动作: 通知挂 [IosNotificationCategories.UpdateBook] 分类, 该分类带一个"取消"按钮
  *   (对照 app 端该通知上的 IntentAction.stop 动作, 处理见 [cancelIosUpdateBookRefresh])
+ * - 可见性: 应用可见时不呈现通知、不可见时按最近一次进度恢复 (对照 app 端
+ *   MainActivity.onStart/onStop → MainViewModel.updateUpdateNotification); 可见性取共享层唯一真源
+ *   [AppForegroundState.isForeground]
  * - showProgress: 创建 [UNMutableNotificationContent] (title + body=进度文本 + 分类) + [UNNotificationRequest]
  *   (trigger=null 立即触发), add 到 center; 失败退化 NSLog
  * - cancel: removeDeliveredNotificationsWithIdentifiers (移除已展示的通知) +
@@ -55,18 +71,66 @@ import platform.UserNotifications.UNUserNotificationCenter
  */
 class IosNotificationProgress : NotificationProgress {
 
+    /** 状态锁: 进度事件在引擎回调线程上到达, 可见性变化在订阅协程线程上到达。 */
+    private val lock = SynchronizedObject()
+
+    /** 应用是否可见 (对照原版 MainViewModel.isActivityVisible: 可见时不呈现进度通知)。 */
+    private var appVisible = true
+
+    /** 最近一次进度: 可见性变化时据它恢复通知 (对照原版按当前计数重发同一条通知)。 */
+    private var lastProgress: ProgressSnapshot? = null
+
     override fun showProgress(title: String, content: String, progress: Int, max: Int) {
+        val snapshot = ProgressSnapshot(title, content, progress, max)
+        val visible = synchronized(lock) {
+            lastProgress = snapshot
+            appVisible
+        }
+        if (visible) {
+            // 可见时不呈现 (对照原版 updateUpdateNotification 的 isActivityVisible 分支: 撤掉通知)
+            cancelIosProgressNotification()
+            return
+        }
+        publish(snapshot)
+    }
+
+    override fun cancel() {
+        // 任务结束: 清掉留存进度, 之后可见性变化不再恢复通知 (对照原版无任务时不 startService)
+        synchronized(lock) { lastProgress = null }
+        cancelIosProgressNotification()
+        iosConsoleLog("[ios-notification] cancel")
+    }
+
+    /**
+     * 应用可见性变化 (对照原版 MainActivity.onStart/onStop → updateUpdateNotification):
+     * 可见→撤掉通知、不可见→按最近一次进度恢复。订阅见 [registerIosNotificationProgress]。
+     */
+    internal fun setAppVisible(visible: Boolean) {
+        val snapshot = synchronized(lock) {
+            appVisible = visible
+            lastProgress
+        }
+        if (visible || snapshot == null) {
+            // 可见即撤掉 (顺带收掉上个进程残留的已展示通知); 无留存进度则无可恢复
+            cancelIosProgressNotification()
+            return
+        }
+        publish(snapshot)
+    }
+
+    /** 发送/覆盖本条通知 (失败退化 NSLog, 保留原日志降级行为)。 */
+    private fun publish(snapshot: ProgressSnapshot) {
         // 拼接进度文本: "content (progress/max)" 或 "content" (与 desktop 端 DesktopNotificationProgress 一致)
-        val progressText = if (max > 0) {
-            "$content ($progress/$max)"
+        val progressText = if (snapshot.max > 0) {
+            "${snapshot.content} (${snapshot.progress}/${snapshot.max})"
         } else {
-            content
+            snapshot.content
         }
         // 真实通知: runCatching 包裹, 失败退化 NSLog (保留原日志降级行为)
         runCatching {
             val center = UNUserNotificationCenter.currentNotificationCenter()
             val contentObj = UNMutableNotificationContent().apply {
-                setTitle(title)
+                setTitle(snapshot.title)
                 setBody(progressText)
                 // 分类提供"取消"按钮 (须先经 IosNotificationPublisher.installCategories 注册)
                 setCategoryIdentifier(IosNotificationCategories.UpdateBook)
@@ -87,14 +151,17 @@ class IosNotificationProgress : NotificationProgress {
             }
         }.onFailure {
             // 退化: NSLog 输出系统日志
-            iosConsoleLog("[ios-notification] $title | $progressText")
+            iosConsoleLog("[ios-notification] ${snapshot.title} | $progressText")
         }
     }
 
-    override fun cancel() {
-        cancelIosProgressNotification()
-        iosConsoleLog("[ios-notification] cancel")
-    }
+    /** 最近一次进度的快照 (可见性变化时重发用)。 */
+    private data class ProgressSnapshot(
+        val title: String,
+        val content: String,
+        val progress: Int,
+        val max: Int,
+    )
 
     companion object {
         /** 固定通知标识 (复用同一条通知, 与 Android 通知 ID 概念一致)。 */
@@ -157,5 +224,13 @@ fun registerIosNotificationProgress() {
     }.onFailure {
         iosConsoleLog("[ios-notification] requestAuthorization failed: $it")
     }
-    NotificationProgresses.register(IosNotificationProgress())
+    val impl = IosNotificationProgress()
+    NotificationProgresses.register(impl)
+    // 可见性变化立刻刷新通知 (对照原版 MainActivity.onStart/onStop → updateUpdateNotification):
+    // 可见性取共享层唯一真源 [AppForegroundState.isForeground] (iOS 由 IosBackgroundTasks 挂的
+    // UIApplication 前后台通知置位)。StateFlow 首值即当前态 (启动时为可见), 启动那一次会收掉
+    // 上个进程残留的已展示通知 (iOS 无前台服务, 进程死亡不带走通知)。
+    AppForegroundState.isForeground
+        .onEach { visible -> impl.setAppVisible(visible) }
+        .launchIn(visibilityScope)
 }

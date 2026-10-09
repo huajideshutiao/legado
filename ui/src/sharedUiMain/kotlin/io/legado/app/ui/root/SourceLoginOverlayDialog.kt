@@ -71,7 +71,7 @@ internal fun SourceLoginOverlayContent(overlay: AppOverlay.Dialog, navigator: Ap
         }
     }
     val params = remember(overlay.payload) { parseSourceLoginPayload(overlay.payload) }
-    // Overlay 关闭 (dismiss / popTo / resetRoot 清栈) 时清理挂起标记, 并唤醒阻塞在
+    // Overlay 关闭 (dismiss / 路由导航关对话框) 时清理挂起标记, 并唤醒阻塞在
     // source.showLoginDialog() 上的 JS 线程 (sourceUrl 即源 key)
     DisposableEffect(Unit) {
         onDispose {

@@ -474,9 +474,6 @@ kotlin {
                     *nativeInteropSourcePatterns.toTypedArray(),
                 )
                 dependencies {
-                    implementation(libs.ktor.server.core)
-                    implementation(libs.ktor.server.cio)
-                    implementation(libs.ktor.server.websockets)
                     // EpubParser 全链只被 nativeMain 消费: 依赖声明在此, Android/desktop
                     // 不解析; ohos 配置经 OhosTargetConventionPlugin 替换为 :modules:epub4kmp-ohos
                     implementation(libs.epub4kmp.core)

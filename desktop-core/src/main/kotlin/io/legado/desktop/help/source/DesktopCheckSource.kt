@@ -29,8 +29,9 @@ import kotlin.math.min
  * 桌面端书源校验调度 (对照 app 端 `CheckSourceService.check`)。
  *
  * 桌面端无 Android Service, 用协程 + [onEachParallel] 限流并发跑
- * [CheckSourceShared.checkSource] (业务全流程已下沉), 进度经
- * [EventBus.CHECK_SOURCE] / [EventBus.CHECK_SOURCE_DONE] 通知 UI。
+ * [CheckSourceShared.checkSource] (业务全流程已下沉), 进度既发事件 ([EventBus.CHECK_SOURCE] /
+ * [EventBus.CHECK_SOURCE_DONE]) 通知 UI, 也留在 [lastProgress] 供托盘呈现取用 (对照 app 端
+ * CheckSourceService 的通知正文)。
  *
  * 线程模型对照原版 CheckSourceService: 固定线程池 `min(threadCount, MAX_THREAD)`
  * (原版 searchCoroutine), 校验是网络阻塞调用, 不能占 Dispatchers.Default 的 CPU 池。
@@ -39,6 +40,16 @@ object DesktopCheckSource {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var checkJob: Job? = null
+
+    /**
+     * 最近一次进度 (书源名, 已完成, 总数); null = 本轮校验已结束。
+     *
+     * 供后台任务呈现取与 app 端通知同源的进度文案 (对照 app 端 `CheckSourceService.notificationMsg`
+     * 与 iOS 端 `IosCheckSource.lastProgress`)。
+     */
+    @Volatile
+    var lastProgress: Triple<String, Int, Int>? = null
+        private set
 
     fun start(selection: List<BookSourcePart>) {
         if (checkJob?.isActive == true) {
@@ -52,7 +63,11 @@ object DesktopCheckSource {
         // 对照原版 searchCoroutine: 池大小钳到 MAX_THREAD, 跑完随 job 关闭释放线程
         val checkPool = newFixedThreadPoolDispatcher(min(threadCount, AppConst.MAX_THREAD))
         var finishCount = 0
+        // 初始帧 (对照 app 端 CheckSourceService.check 的 onStart 分支: 尚无书源名)，
+        // 与 iOS 端 IosCheckSource 同一时序；先落进度再入队, 保证首个事件到达时进度已可取
+        lastProgress = Triple("", 0, ids.size)
         checkJob = scope.launch(checkPool) {
+            postEvent(EventBus.CHECK_SOURCE, "0/${ids.size}")
             flow<BookSource> {
                 for (origin in ids) {
                     appDb.bookSourceDao.getBookSource(origin)?.let { emit(it) }
@@ -61,11 +76,13 @@ object DesktopCheckSource {
                 CheckSourceShared.checkSource(it)
             }.onEach { source ->
                 finishCount++
+                lastProgress = Triple(source.bookSourceName, finishCount, ids.size)
                 postEvent(EventBus.CHECK_SOURCE, "${source.bookSourceName} $finishCount/${ids.size}")
                 DesktopTaskbar.show(finishCount, ids.size)
                 appDb.bookSourceDao.update(source)
             }.onCompletion {
                 // 对照 CheckSourceService.onDestroy
+                lastProgress = null
                 DesktopTaskbar.clear()
                 Debug.finishChecking()
                 postEvent(EventBus.CHECK_SOURCE_DONE, 0)
@@ -80,6 +97,7 @@ object DesktopCheckSource {
     fun stop() {
         checkJob?.cancel()
         checkJob = null
+        lastProgress = null
         Debug.finishChecking()
         postEvent(EventBus.CHECK_SOURCE_DONE, 0)
     }

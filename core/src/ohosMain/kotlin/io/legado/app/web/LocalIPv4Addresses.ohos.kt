@@ -15,9 +15,14 @@ import platform.linux.ifaddrs
 import platform.posix.AF_INET
 import platform.posix.sockaddr_in
 
-/** [localIPv4Addresses] 的鸿蒙 actual: getifaddrs/ifaddrs 在 linux target 属 platform.linux。 */
+/**
+ * 枚举本机 IPv4 非回环地址 (对齐 app 端 NetworkUtils.getLocalIPAddress 的筛选口径)。
+ *
+ * 鸿蒙无 java.net.NetworkInterface, 改用 posix getifaddrs (在 linux target 属 platform.linux);
+ * 失败或无网卡时回落 127.0.0.1。
+ */
 @OptIn(ExperimentalForeignApi::class)
-internal actual fun localIPv4Addresses(): List<String> = memScoped {
+internal fun localIPv4Addresses(): List<String> = memScoped {
     val addresses = mutableListOf<String>()
     val ifap = alloc<CPointerVar<ifaddrs>>()
     if (getifaddrs(ifap.ptr) != 0) return listOf(LOOPBACK)

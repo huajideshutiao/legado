@@ -37,7 +37,7 @@ data class RouteTransitionSegment(
     /** 本段被推入的页面 (倒放时就是要退回屏幕右侧的那几页)。 */
     val retreating: List<RouteEntry> get() = to.filterNot { t -> from.any { it.id == t.id } }
 
-    /** 本段被弹出的页面 (pop 单个 / popTo 多个 / replace 被换掉的那页)。 */
+    /** 本段被弹出的页面 (pop 单个 / replace 被换掉的那页)。 */
     val dropped: List<RouteEntry> get() = from.filterNot { f -> to.any { it.id == f.id } }
 
     /**

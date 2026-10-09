@@ -3,6 +3,7 @@
 package io.legado.app.napi
 
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.NotificationId
 import io.legado.app.help.config.NativeSystemTheme
 import io.legado.app.help.glide.progress.OnProgressListener
 import io.legado.app.help.media.AudioFocusChange
@@ -47,8 +48,8 @@ import kotlinx.serialization.Serializable
  *   → [OhosNativeBridge.onDialogResult] (系统对话框桥的响应侧, 见 [OhosNativeBridge.invokeDialogSync])
  * - 通知按钮点击: `{ "type":"notificationAction", "notificationId":104, "action":"stop" }`
  *   → [io.legado.app.ui.OhosPlatformCapabilities.onNotificationAction] (通知 actionButtons 的点击侧)
- * - 长时任务取消: `{ "type":"continuousTaskCancel", "reason":3 }`
- *   → 停掉 Web 服务 (长时任务已取消 = 服务不再被保活)
+ * - 长时任务取消: `{ "type":"continuousTaskCancel", "reason":3, "notificationId":105 }`
+ *   → 被取消方是 Web 服务时停掉它 (长时任务已取消 = 服务不再被保活)
  *
  * 后四类是同一次扩展加上的 (媒体/电话/网络), 仍走同一个 napi 入口与同一个解析器;
  * dialogResult 是系统对话框桥的响应侧 (请求侧复用 window tsfn), 同样走本入口。
@@ -258,12 +259,15 @@ internal object OhosPlatformEventChannel {
                 action = payload.action.orEmpty(),
             )
 
-            // 长时任务被系统/用户取消 (删除长时任务通知等) → 服务已无法保活, 停掉它
-            // (对照 app 端 WebService 收到 IntentAction.stop 的 stopSelf; 由 ArkTS 侧
-            // registerContinuousTaskCancelListener → emitPlatformEvent 回送)
+            // 长时任务被系统/用户取消 (删除长时任务通知、系统一致性校验判定不合规等)。被取消方的
+            // 业务通知 id 在 notificationId 里: 只有 Web 服务那种"靠长时任务存活"的业务要停掉自己
+            // (对照 app 端 WebService 收到 IntentAction.stop 的 stopSelf); 缓存/更新/导出等业务继续跑,
+            // 只是本轮不再保活 (ArkTS 仲裁器已按接入规范抑制立即重申请)
             "continuousTaskCancel" -> {
-                AppLog.putDebug("长时任务已取消, 停止 Web 服务 reason=${payload.reason}", tag = "ohos-background-task")
-                if (WebServerManager.isRun) {
+                AppLog.put(
+                    "长时任务已取消, 业务通知 id=${payload.notificationId} reason=${payload.reason}"
+                )
+                if (payload.notificationId == NotificationId.WebService && WebServerManager.isRun) {
                     OhosPlatformCapabilities.setWebService(false)
                 }
             }
@@ -288,7 +292,8 @@ internal object OhosPlatformEventChannel {
  * @param state callStateChange: "idle" | "ringing" | "offHook"
  * @param requestId dialogResult: 对应 [OhosNativeBridge.invokeDialogSync] 生成的请求 ID
  * @param dialogResult dialogResult: 系统对话框结果 JSON (`{ok,index}` / `{ok,confirmed}` / `{ok,cancelled}`)
- * @param notificationId notificationAction: 通知 id (与 ArkTS NOTIFICATION_ROUTES、[io.legado.app.constant.NotificationId] 同一张 id 表)
+ * @param notificationId notificationAction: 通知 id (与 ArkTS NOTIFICATION_ROUTES、[io.legado.app.constant.NotificationId] 同一张 id 表);
+ *   continuousTaskCancel: 被取消方的业务通知 id
  * @param action notificationAction: 按钮动作标识 (原版 `addAction` 的 pendingIntent action, 如 "stop")
  * @param reason continuousTaskCancel: 长时任务取消原因 (ArkTS backgroundTaskManager.ContinuousTaskCancelReason 原值)
  */

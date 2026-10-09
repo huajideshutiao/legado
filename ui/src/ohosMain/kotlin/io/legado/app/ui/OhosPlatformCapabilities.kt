@@ -360,6 +360,11 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
      * 进行中带“取消”按钮 (对照原版 `addAction`, 动作字面量 [IntentAction.stop]), 点是后由宿主
      * 经统一平台事件通道回传到 [onNotificationAction]; 结束态 (finish=true) 不带按钮。
      *
+     * 不申请长时任务保活 (鸿蒙长时任务"使用场景"表里无可用类型): 导出是本地生成文件, 既非
+     * `dataTransfer` 的"非托管形式的上传、下载", 也没有确定进度 (原版这条通知只有文本摘要:
+     * "导出逐本串行、进度为文本摘要而非单一确定总量"), 满足不了该类型"必须持续更新进度且
+     * 更新通知必须为实况窗"的硬要求; `taskKeeping` (计算任务) 有设备/ACL 门槛。
+     *
      * @param finish true = 结束态 (对照原版该分支的 `setOngoing(false)` + `setAutoCancel(true)`)
      */
     private fun upExportNotification(finish: Boolean = false) {

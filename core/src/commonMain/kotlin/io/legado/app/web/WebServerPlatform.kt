@@ -8,7 +8,7 @@ import kotlin.concurrent.Volatile
  * # 背景
  * app 端 [io.legado.app.service.WebService] 是 Android Service, 持有 HttpServer(NanoHTTPD) +
  * WebSocketServer(NanoWSD); 桌面端无 Service 概念, 复用同一套 NanoHTTPD 壳直接起服务。
- * iOS/鸿蒙共用 nativeMain [KtorWebServerPlatform] (Ktor embeddedServer CIO)。
+ * 鸿蒙端 [KtorWebServerPlatform] (Ktor embeddedServer CIO)。
  * 启停/端口/状态 (isRun/hostAddress) 等纯逻辑上移至
  * [WebServerManager], 本接口只承接平台相关的「起/停服务器 + 枚举本机 IP + keepalive」三件事。
  *
@@ -57,7 +57,8 @@ data class WebServerStartResult(
  * 未注册时调用 [get] 抛 [IllegalStateException]。
  *
  * 安卓端调用 `registerAndroidWebServerPlatform(context, cannotEmptyResId)` (见 androidMain),
- * 桌面端调用 `registerDesktopWebServerPlatform()` (见 jvmMain)。
+ * 桌面端调用 `registerDesktopWebServerPlatform()` (见 jvmMain),
+ * 鸿蒙端调用 `registerNativeWebServerPlatform()` (见 ohosMain)。
  *
  * 模式参考 [io.legado.app.help.service.ServiceLaunchers]。
  */
@@ -74,6 +75,15 @@ object WebServerPlatforms {
     /** 获取已注册实现, 未注册抛出 IllegalStateException。 */
     fun get(): WebServerPlatform =
         impl ?: error("WebServerPlatforms not registered; call registerAndroidWebServerPlatform() or registerDesktopWebServerPlatform() first")
+
+    /**
+     * 获取已注册实现; 未注册返回 null。
+     *
+     * 供「本端有没有 Web 服务」的能力门禁判定 (未注册实现 = 该端不提供该服务),
+     * 与 [io.legado.app.ui.book.manga.extension.MangaExtensionServiceProviders.getOrNull]
+     * 同一判空模式。
+     */
+    fun getOrNull(): WebServerPlatform? = impl
 
     /** 仅测试场景: 清空注册 (生产代码勿调用)。 */
     fun reset() {

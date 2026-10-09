@@ -61,7 +61,6 @@ import io.legado.app.utils.onEachParallel
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toJson
 import io.legado.app.utils.textCharsetCodec
-import io.legado.app.web.WebServerManager
 import kotlin.concurrent.Volatile
 import kotlinx.cinterop.useContents
 import kotlinx.coroutines.CoroutineScope
@@ -329,7 +328,14 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
     override fun isTablet(): Boolean =
         UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad
 
-    // ===== Web 服务 (WebServerManager + NativeWebServerPlatform 已在 registerIosProviders 注册) =====
+    // ===== Web 服务 =====
+
+    /**
+     * iOS 无 Web 服务 (没有后台常驻能力, 服务只能在前台期间存活), 「我的」页的开关按能力门禁
+     * 隐藏 (见 `WebServerPlatforms.getOrNull` 判定)。本覆写兜住"开关之外仍被调用"的路径:
+     * iOS 未注册 [io.legado.app.web.WebServerPlatforms] 实现, 落到共享基类会抛错被静默记日志。
+     */
+    override fun setWebService(enabled: Boolean) = unsupported("网络服务")
 
     // ===== 关于页 =====
 

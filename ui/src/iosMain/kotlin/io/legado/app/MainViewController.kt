@@ -52,7 +52,6 @@ import io.legado.app.ui.root.LegadoApp
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.ScreenModelStore
-import io.legado.app.web.startIosNetworkMonitor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
@@ -80,9 +79,6 @@ fun MainViewController(): UIViewController {
     // 通知点击处理 (解出 userInfo 里的路由 → LaunchRequestBus 导航)。
     // 须在 UI 首帧之前挂上: 冷启动时用户点通知, 系统可能在首帧前就派发 response。
     IosNotificationPublisher.installDelegate()
-    // 网络变化监听 (对照 Android NetworkChangedListener): 网来了就重算 Web 服务地址。
-    // 进程级挂一次, 幂等; 真正改状态在共享层, 服务没开时是 no-op。
-    startIosNetworkMonitor()
     // 当前版本号 provider (供启动期默认数据补齐按版本推进; iOS 无 PackageManager,
     // 取 CFBundleShortVersionString 经 versionNameToVersionCode 解析 —— 与下方 "更新日志" 弹窗
     // 用的是同一个版本指纹, 保证两边对"当前是哪个版本"的口径一致)。

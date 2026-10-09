@@ -76,15 +76,10 @@ kotlin {
                 implementation("org.jetbrains.skiko:skiko-awt:0.144.6")
             }
         }
-        // iOS+鸿蒙 非 UI 公共层 (help/web 的 native 实现)
+        // iOS+鸿蒙 非 UI 公共层 (help 的 native 实现)
         val nativeMain = if (enableIosTarget || enableOhosTarget) {
             maybeCreate("nativeMain").apply {
                 dependsOn(commonMain.get())
-                dependencies {
-                    implementation(libs.ktor.server.core)
-                    implementation(libs.ktor.server.cio)
-                    implementation(libs.ktor.server.websockets)
-                }
             }
         } else null
 
@@ -112,6 +107,10 @@ kotlin {
                 dependencies {
                     implementation(libs.ktor.client.core)
                     implementation(libs.ktor.client.cio)
+                    // Web 服务 (Ktor server CIO 壳) 只在鸿蒙编译: iOS 不提供 Web 服务
+                    implementation(libs.ktor.server.core)
+                    implementation(libs.ktor.server.cio)
+                    implementation(libs.ktor.server.websockets)
                 }
             }
             // KGP 不会自动把 ohosArm64Main 连到自定义的 ohosMain, 必须显式 dependsOn

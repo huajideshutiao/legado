@@ -13,8 +13,6 @@ class OverlayBackStack(
     private val _overlays: MutableStateFlow<List<AppOverlay>> = MutableStateFlow(initialOverlays)
     val overlays: StateFlow<List<AppOverlay>> = _overlays.asStateFlow()
 
-    val size: Int get() = _overlays.value.size
-
     fun peek(): AppOverlay? = _overlays.value.lastOrNull()
 
     fun show(overlay: AppOverlay) {
@@ -43,9 +41,5 @@ class OverlayBackStack(
         if (!isTopDismissibleOnBack()) return false
         _overlays.value = _overlays.value.dropLast(1)
         return true
-    }
-
-    fun clear() {
-        _overlays.value = emptyList()
     }
 }

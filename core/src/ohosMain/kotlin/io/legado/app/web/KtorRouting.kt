@@ -70,7 +70,7 @@ fun Application.configureHttpRouting(assetsWeb: AssetsWeb) {
 
 /** 处理单次 API/静态资源请求 (对齐 HttpServer.serve try 块)。 */
 private suspend fun handleApiCall(call: ApplicationCall, assetsWeb: AssetsWeb) {
-    // 拉起 Service 续命 (app 端) / no-op (桌面/iOS/鸿蒙端)
+    // 拉起 Service 续命 (app 端) / no-op (桌面/鸿蒙端)
     WebServerManager.serve()
     val origin = call.request.headers["origin"]
     val startAt = systemCurrentTimeMillis()

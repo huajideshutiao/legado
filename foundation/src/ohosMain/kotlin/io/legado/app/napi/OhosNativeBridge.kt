@@ -179,8 +179,10 @@ object OhosNativeBridge {
      *   `{notificationId, action}` 的 Want (同按钮), 回传路径与按钮一致; 缺省 (null) 时点击仍走
      *   id→route 表
      * @param continuousTask 长时任务类型配置项 (module.json5 的 backgroundModes 项, 如
-     *   "multiDeviceConnection"): 非空时 ArkTS 侧在发布通知后申请同名长时任务 (鸿蒙无前台服务,
-     *   不申请则进程退后台会被挂起), 取消时须同步传 [stopContinuousTask]; 缺省不申请
+     *   "multiDeviceConnection" / "dataTransfer"): 非空时 ArkTS 侧在发布通知后交长时任务仲裁器
+     *   申请同名长时任务 (鸿蒙无前台服务, 不申请则进程退后台会被挂起; 音频/朗读在播放时仲裁器
+     *   会降级为只发通知), 取消时须同步传 [stopContinuousTask]; **缺省 = 本业务当前不要长时任务**
+     *   (已申请过的会被释放, 如缓存的"缓存完成"那一条)
      */
     fun showNotification(
         id: Int,
@@ -222,7 +224,7 @@ object OhosNativeBridge {
      * 取消通知。未注册 tsfn 时丢弃 (见 [dispatchTsfn])。
      *
      * @param id 通知 id (与 showNotification 传入的 id 一致)
-     * @param stopContinuousTask 该通知背靠长时任务时传 true: ArkTS 侧一并取消长时任务
+     * @param stopContinuousTask 该通知背靠长时任务时传 true: ArkTS 侧交仲裁器一并释放长时任务
      *   (对照 app 端 WebService 的 `stopSelf()` 同时停掉前台服务与其常驻通知); 缺省不动长时任务
      */
     fun cancelNotification(id: Int, stopContinuousTask: Boolean = false) {

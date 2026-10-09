@@ -13,15 +13,15 @@ import io.legado.app.web.utils.WebStringsProviders
 import kotlin.concurrent.Volatile
 
 /**
- * [WebServerPlatform] 的 iOS / 鸿蒙 (nativeMain) 共用基类 (Ktor server CIO 壳)。
+ * [WebServerPlatform] 的鸿蒙基类 (Ktor server CIO 壳)。
  *
  * 对齐 [JvmWebServerPlatform] 的设计: HTTP server(=port) + WebSocket server(=port+1) 双服务器,
- * [serve] 留给子类 (iOS/鸿蒙均 no-op)。
+ * [serve] 留给子类 (鸿蒙 no-op)。
  *
  * # 与 [JvmWebServerPlatform] 的差异
- * - HTTP 壳: NanoHTTPD → Ktor embeddedServer(CIO) (CIO 3.1.0 发布 iosArm64/linuxArm64 变体)
+ * - HTTP 壳: NanoHTTPD → Ktor embeddedServer(CIO)
  * - WebSocket 壳: NanoWSD → Ktor embeddedServer(CIO) + WebSockets 插件
- * - IP 枚举: java.net.InetAddress → [localIPv4Addresses] (posix getifaddrs, 各端 actual)
+ * - IP 枚举: java.net.InetAddress → [localIPv4Addresses] (posix getifaddrs)
  *
  * # 保真红线
  * - startServers 逐字对齐 WebService.upWebServer 的 try/catch 兜底
@@ -80,15 +80,6 @@ abstract class KtorWebServerPlatform : WebServerPlatform {
         wsEngine = null
     }
 }
-
-/**
- * 枚举本机 IPv4 非回环地址 (对齐 app 端 NetworkUtils.getLocalIPAddress 的筛选口径)。
- *
- * Native 端无 java.net.NetworkInterface, 改用 posix getifaddrs; 失败或无网卡时回落 127.0.0.1。
- * getifaddrs/ifaddrs 在 iOS 属 platform.darwin, 在鸿蒙 (linux) 属 platform.linux, 无公共导入,
- * 故拆成 expect/actual。
- */
-internal expect fun localIPv4Addresses(): List<String>
 
 internal const val LOOPBACK = "127.0.0.1"
 

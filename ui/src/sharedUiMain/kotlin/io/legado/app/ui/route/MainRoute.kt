@@ -138,6 +138,7 @@ import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.systemCurrentTimeMillis
+import io.legado.app.web.WebServerPlatforms
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.conflate
@@ -1432,6 +1433,8 @@ private fun MyTabContent(navigator: AppNavigator) {
     val tvBoxService = TvBoxServiceProviders.getOrNull()
     // 漫画插件服务同判空模式 (tab 与 push 路由两侧一致)
     val mangaExtensionService = MangaExtensionServiceProviders.getOrNull()
+    // 网络服务: 未注册 WebServerPlatform 的端 (iOS) 无此服务, 开关条目隐藏
+    val webServiceSupported = WebServerPlatforms.getOrNull() != null
     LaunchedEffect(Unit) { tvBoxService?.init() }
     val webServiceDesc = stringResource(Res.string.web_service_desc)
     // Web 服务地址: 空串=未运行 (对照原版 observeEvent<String>(WEB_SERVICE) 后回读 hostAddress)
@@ -1448,6 +1451,7 @@ private fun MyTabContent(navigator: AppNavigator) {
         MyConfigScreen(
             webServiceChecked = webServiceAddress.isNotEmpty(),
             webServiceSummary = webServiceSummary,
+            showWebService = webServiceSupported,
             onThemeModeChange = {
                 PlatformCapabilityProviders.get().applyDayNight()
             },

@@ -123,6 +123,8 @@ fun MyConfigScreen(
     onMangaExtensionManage: (() -> Unit)? = null,
     // 影视源 TVBox 管理 (TvBoxService 未注册端 null, 条目隐藏)
     onTvBoxManage: (() -> Unit)? = null,
+    // 网络服务开关是否显示 (未注册 WebServerPlatform 的端没有该服务, 条目隐藏)
+    showWebService: Boolean = false,
 ) {
     val themeModeEntries = stringArrayResource(Res.array.theme_mode)
     val themeModeValues = stringArrayResource(Res.array.theme_mode_v)
@@ -192,16 +194,19 @@ fun MyConfigScreen(
                 icon = iconBackup,
                 onClick = onWebDavSetting,
             )
-            switchPreference(
-                prefKey = PreferKey.webService,
-                title = titleWebService,
-                summary = webServiceSummary,
-                defaultValue = false,
-                icon = iconWeb,
-                onCheckedChange = onWebServiceChange,
-                onLongClick = onWebServiceLongClick,
-                checked = webServiceChecked,
-            )
+            // 网络服务开关: 只在注册了 WebServerPlatform 的端显示 (未注册端拨了无效)
+            if (showWebService) {
+                switchPreference(
+                    prefKey = PreferKey.webService,
+                    title = titleWebService,
+                    summary = webServiceSummary,
+                    defaultValue = false,
+                    icon = iconWeb,
+                    onCheckedChange = onWebServiceChange,
+                    onLongClick = onWebServiceLongClick,
+                    checked = webServiceChecked,
+                )
+            }
             preference(
                 title = titleOtherSetting,
                 icon = iconOther,

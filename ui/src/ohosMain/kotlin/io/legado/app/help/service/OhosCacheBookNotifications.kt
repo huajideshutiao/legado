@@ -36,6 +36,21 @@ import kotlinx.coroutines.flow.onEach
  */
 internal object OhosCacheBookNotifications {
 
+    /**
+     * 缓存书籍的长时任务类型 (module.json5 的 backgroundModes 项, 必须与之逐字一致)。
+     *
+     * 选 `dataTransfer` 的依据 (长时任务文档"使用场景"表): "非托管形式的上传、下载, 如在浏览器
+     * 后台上传或下载数据" —— 缓存就是非托管(不交 @ohos.request)的持续下载, 且进度确定
+     * ([CacheBookShared.downloadProgress] 的 完成/总数)。该类型的额外硬要求: "在数据传输时,
+     * 应用需要更新进度, 如果进度长时间 (首次更新超过 10 分钟) 未更新, 数据传输的长时任务会被取消。
+     * 更新进度的通知类型必须为实况窗" —— 由 ArkTS 侧把每次进度写进系统代理创建的那条实况窗通知
+     * (见 ContinuousTaskArbiter.publishTransferProgress; 首次更新在申请的同一次调用里完成)。
+     *
+     * ⚠ 平台还有吞吐要求 (官方 FAQ: 上传+下载速度持续 60 秒低于 16kB/s 会杀掉长时任务),
+     * 书源慢到该量级时保活会丢 —— 丢的只是保活, 下载本身继续跑。
+     */
+    const val CONTINUOUS_TASK_MODE = "dataTransfer"
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     /** 状态机锁: 进度事件在调度线程上到达, 服务启停在调用线程上到达, 两者会并发。 */
@@ -139,6 +154,8 @@ internal object OhosCacheBookNotifications {
             buttons = listOf(
                 NotificationButton(text = syncGetString("cancel"), action = IntentAction.stop)
             ),
+            // 长时任务: 保活这条下载 (音频/朗读在播放时由宿主仲裁为不申请, 只发本通知)
+            continuousTask = CONTINUOUS_TASK_MODE,
         )
     }
 

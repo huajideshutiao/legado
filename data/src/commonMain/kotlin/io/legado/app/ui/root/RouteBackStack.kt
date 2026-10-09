@@ -18,8 +18,6 @@ class RouteBackStack(
     )
     val backStack: StateFlow<List<RouteEntry>> = _backStack.asStateFlow()
 
-    val size: Int get() = _backStack.value.size
-
     fun peek(): RouteEntry? = _backStack.value.lastOrNull()
 
     fun push(
@@ -48,24 +46,10 @@ class RouteBackStack(
         return entry.id
     }
 
-    fun resetRoot(route: AppRoute.Main) {
-        _backStack.value = listOf(newEntry(route, resultKey = null))
-    }
-
     fun pop(): Boolean {
         val entries = _backStack.value
         if (entries.size <= 1) return false
         _backStack.value = entries.dropLast(1)
-        return true
-    }
-
-    fun popTo(predicate: (RouteEntry) -> Boolean, inclusive: Boolean = false): Boolean {
-        val entries = _backStack.value
-        val index = entries.indexOfFirst(predicate)
-        if (index < 0) return false
-        val keepCount = if (inclusive) index else index + 1
-        if (keepCount <= 0) return false
-        _backStack.value = entries.take(keepCount)
         return true
     }
 

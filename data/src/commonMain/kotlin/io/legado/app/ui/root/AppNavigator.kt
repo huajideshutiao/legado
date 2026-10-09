@@ -227,16 +227,6 @@ class AppNavigator(
         return entryId
     }
 
-    /** 一级入口切换：清除子页和 Overlay，避免平台自行猜测返回目标。 */
-    fun resetRoot(route: AppRoute.Main) {
-        routeBackStack.resetRoot(route)
-        targetedResults.values.forEach { it.close() }
-        targetedResults.clear()
-        refreshHandlers.clear()
-        targetedResults[currentEntry.id] = Channel(Channel.UNLIMITED)
-        overlayBackStack.clear()
-    }
-
     fun pop(payload: RouteResultPayload = RouteResultPayload.None): Boolean {
         // 无 payload = 返回键语义: 顶层 Overlay 优先关闭 (挂起中的除外, 窗口已隐藏时返回键
         // 应作用于可见的路由层)。带 payload = 路由结果语义, 必须 pop 路由并投递给 push 它的
@@ -265,21 +255,6 @@ class AppNavigator(
                 }
                 _results.tryEmit(result)
             }
-        }
-        return popped
-    }
-
-    fun popTo(entryId: RouteEntryId, inclusive: Boolean = false): Boolean {
-        val previousIds = backStack.value.mapTo(mutableSetOf()) { it.id }
-        val popped = routeBackStack.popTo({ it.id == entryId }, inclusive)
-        if (popped) {
-            val activeIds = backStack.value.mapTo(mutableSetOf()) { it.id }
-            (previousIds - activeIds).forEach { removedId ->
-                targetedResults.remove(removedId)?.close()
-                // 出栈页的刷新处理器一并摘掉 (与 pop 同款清理)
-                refreshHandlers.remove(removedId)
-            }
-            overlayBackStack.clear()
         }
         return popped
     }

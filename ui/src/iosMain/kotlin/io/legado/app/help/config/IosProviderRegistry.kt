@@ -60,9 +60,6 @@ import io.legado.app.ui.book.changesource.registerNativeChangeBookSourcePlatform
 import io.legado.app.ui.book.manage.registerNativeBookshelfManagePlatform
 import io.legado.app.ui.book.read.page.provider.registerSkiaTextMeasurer
 import io.legado.app.utils.registerIosScreenInfoProvider
-import io.legado.app.web.registerNativeWebServerPlatform
-import io.legado.app.web.utils.registerComposeWebAssetSource
-import io.legado.app.web.utils.registerNativeWebStrings
 import platform.UIKit.UIDevice
 import platform.UIKit.UIScreen
 import kotlin.concurrent.Volatile
@@ -294,14 +291,12 @@ fun registerIosProviders() {
     // 返回 null, 排版静默跳过图片 —— 此前两端漏注册, 图片全部不显示)
     registerReaderImageResolver()
 
-    // 10. Web 服务 provider (WebAssetSource + WebStrings + WebServerPlatform, iOS/鸿蒙共用 Ktor server 壳)
-    // 仅注册平台实现, 不启动服务 (WebServerManager.start 由用户操作触发)
-    registerComposeWebAssetSource()
-    registerNativeWebStrings()
-    // BookController 图片/阅读状态 provider (/cover /image 直出缓存字节, /deleteBook /saveBookProgress
-    // 经 NativeReadBookStateProvider 桥接阅读页挂接的 ReadBookShared)
+    // 10. WebApi 用的 BookController provider (ImageController + ReadBookState; /cover /image
+    // 直出缓存字节, /deleteBook /saveBookProgress 经 ActiveReadBookStateProvider 桥接阅读页
+    // 挂接的 ReadBookShared)。iOS 不提供 Web 服务 (无后台常驻能力, 详见 WebServerPlatform 注释),
+    // 但 ReadBookStateProviders 还被 Book.delete 消费 (删除正在阅读的书时清理阅读状态),
+    // 故本注册保留
     registerNativeBookControllerProviders()
-    registerNativeWebServerPlatform()
 
     // 缓存书籍后台续跑 (退后台收尾窗口 + BGProcessingTask 链式续约, 实现见 core iosMain
     // help/service/IosBackgroundTasks.kt)。BGTaskScheduler 的 registerForTaskWithIdentifier

@@ -179,10 +179,11 @@ export interface LegadoNativeBridge {
    *     clickAction?, continuousTask? }`
    *     (ongoing=true 置 isOngoing/tapDismissed=false; alertOnce=true 置 isAlertOnce; buttons 每项
    *     `{ text, action }` 渲染成 actionButtons; clickAction 非空时把点击目标换成携带
-   *     `{notificationId, action}` 的 Want; continuousTask 非空时申请同名长时任务 —— 点击均由宿主
-   *     经 platformEvent type='notificationAction' 回送)
-   *   - CANCEL:  `{ action: 'CANCEL', id, stopContinuousTask? }` (`stopContinuousTask=true` 时一并取消
-   *     长时任务; 长时任务被系统/用户取消时宿主经 platformEvent type='continuousTaskCancel' 回送)
+   *     `{notificationId, action}` 的 Want; continuousTask 非空时交长时任务仲裁器申请同名长时任务
+   *     (缺省 = 本业务当前不要长时任务); 点击均由宿主经 platformEvent type='notificationAction' 回送)
+   *   - CANCEL:  `{ action: 'CANCEL', id, stopContinuousTask? }` (`stopContinuousTask=true` 时交仲裁器
+   *     释放长时任务; 长时任务被系统/用户取消时宿主经 platformEvent type='continuousTaskCancel' 回送,
+   *     带被取消方的业务通知 id)
    *   内部分支调 notificationManager.publish / notificationManager.cancel
    */
   registerNotificationCallback(callback: (json: string) => void): void;

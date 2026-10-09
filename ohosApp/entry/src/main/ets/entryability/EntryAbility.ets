@@ -7,12 +7,17 @@ import { bundleManager } from '@kit.AbilityKit';
 import type window from '@ohos.window';
 import display from '@ohos.display';
 import notificationManager from '@ohos.notificationManager';
-// 长时任务 (Web 服务保活: 申请后系统自行发一条长时任务通知, 见 startWebServiceContinuousTask)
+// 长时任务: 申请/释放统一走仲裁器 (音频绝对优先), 长时任务取消监听是 API 15 接口
 import backgroundTaskManager from '@ohos.resourceschedule.backgroundTaskManager';
-// 长时任务取消监听是 API 15 接口, 低版本设备必须先判 API 版本再注册
 import deviceInfo from '@ohos.deviceInfo';
-import common from '@ohos.app.ability.common';
 import type { WantAgent } from '@ohos.app.ability.wantAgent';
+import {
+  acquireWorkTask,
+  releaseWorkTask,
+  publishTransferProgress,
+  notifySystemCancelled,
+  notifyAbilityDestroyed
+} from '../bridge/ContinuousTaskArbiter';
 // napi 桥接层加载 (鸿蒙编译产物 liblegado_napi.so)
 // 详见 ohosApp/INTEROP.md 与 ohosApp/entry/src/main/cpp/legado_napi.cpp
 // KP5: napi 桥接已就绪 (bookshelfList/searchBook/loadChapter/importBookSource 接入真实 KMP 数据)
@@ -35,7 +40,7 @@ import { handleMarkdownRequest } from '../bridge/MarkdownBridgeHandler';
 // KP8+ System 桥接处理器 (ArkTS 侧 promptAction.showToast + context.startAbility 真实实现)
 import { initSystemBridge, handleShowToast, handleOpenUrl } from '../bridge/SystemBridgeHandler';
 import { handleBatteryRequest } from '../bridge/BatteryBridgeHandler';
-import { initPlatformEvent, emitAppLifecycle, emitColorMode, emitDialogResult, emitPlatformEvent, NotificationActionEvent, ContinuousTaskCancelEvent } from '../bridge/PlatformEventBridge';
+import { initPlatformEvent, emitAppLifecycle, emitColorMode, emitDialogResult, emitPlatformEvent, NotificationActionEvent } from '../bridge/PlatformEventBridge';
 import { initShareBridge, handleShareRequest } from '../bridge/SystemShareBridgeHandler';
 import { handleDialogRequest } from '../bridge/SysDialogBridgeHandler';
 import { installSystemEventSources } from '../bridge/SystemEventSources';
@@ -70,8 +75,9 @@ interface NotificationPayload {
   // 点击通知本体的动作标识 (原版 contentIntent 直达 Service action 的场景, 如 WebService 的
   // "copyHostAddress"); 缺省时点击仍走下方 id→route 表
   clickAction?: string;
-  // 长时任务类型 (module.json5 backgroundModes 的配置项, 如 'multiDeviceConnection'):
-  // 非空时发布通知后申请同名长时任务 (保活), 取消该通知 (stopContinuousTask) 时一并取消
+  // 长时任务类型 (module.json5 backgroundModes 的配置项, 如 'multiDeviceConnection' / 'dataTransfer'):
+  // 非空时发布通知后交仲裁器申请同名长时任务 (保活), 取消该通知 (stopContinuousTask) 时一并取消;
+  // 缺省 = 本业务当前不要长时任务 (如缓存的"缓存完成"那一条), 已申请过的会被释放
   continuousTask?: string;
   // CANCEL 专用: 取消该通知时是否一并取消长时任务 (对照 app 端 WebService 的 stopSelf 同时停前台服务)
   stopContinuousTask?: boolean;
@@ -226,78 +232,18 @@ function dispatchNotificationAction(want: Want): boolean {
   return true;
 }
 
-// ===== 长时任务 (Web 服务保活) =====
+// ===== 长时任务 (后台保活) =====
 // 鸿蒙无 Android 前台服务: 要把进程从后台挂起里拿出来只能申请长时任务, 申请成功后系统会自己
 // 在通知栏发一条与本任务绑定的通知 (长时任务通知的内容不允许修改 —— Background Tasks Kit 接入规范:
-// "不得修改长时任务通知内容"), 故业务通知 (Kotlin 侧发布的那条) 与它是两条; 两者的生死同步:
-// 申请长时任务与发布业务通知在同一分支, 取消业务通知时按 stopContinuousTask 一并取消长时任务。
-// 用户删除长时任务通知时系统自动取消长时任务, 由 [registerContinuousTaskCancelListener] 告知 KMP。
-
-/**
- * 本进程申请的长时任务是否在运行。
- *
- * 同一 UIAbility 在 API<=20 只允许一个长时任务 (与媒体播放的 audioPlayback 长时任务互斥),
- * 重复申请会被系统拒绝, 故先判本标志再申请。
- */
-let webServiceContinuousTaskRunning: boolean = false;
-
-/**
- * 申请 Web 服务长时任务 (对照 app 端 `WebService.startForeground(context)` 需起前台服务保活)。
- *
- * 长时任务通知的点击目标与业务通知一致 (带 notificationId + clickAction 参数, 见
- * [dispatchNotificationAction]); 申请失败 (无权限/已有其它长时任务/类型校验不过) 只记日志:
- * 服务仍可在前台正常使用, 不能因为保活失败就不发通知。
- *
- * @param mode 长时任务类型配置项 (module.json5 的 backgroundModes 项, 必须与之逐字一致)
- * @param notificationId 业务通知 id (回传给 KMP 的标识)
- * @param clickAction 点击长时任务通知要执行的动作 (空串时点击只拉起应用)
- */
-async function startWebServiceContinuousTask(
-  context: common.UIAbilityContext, mode: string, notificationId: number, clickAction: string
-): Promise<void> {
-  if (webServiceContinuousTaskRunning) {
-    return;
-  }
-  try {
-    const wantAgentObj: WantAgent = clickAction.length > 0
-      ? await buildLaunchWantAgent(
-        context, undefined, notificationActionWantParameters(notificationId, clickAction)
-      )
-      : await buildLaunchWantAgent(context);
-    // 长时任务类型以配置项字符串传入 (与 module.json5 的 backgroundModes 项逐字一致)
-    const modes: string[] = [mode];
-    await backgroundTaskManager.startBackgroundRunning(context, modes, wantAgentObj);
-    webServiceContinuousTaskRunning = true;
-    console.info('[Legado] continuous task started, mode=' + mode);
-  } catch (e) {
-    console.error('[Legado] start continuous task failed: ' + JSON.stringify(e) + ', mode=' + mode);
-  }
-}
-
-/**
- * 取消 Web 服务长时任务 (对照 app 端 `WebService.stopSelf()`; 未申请过时 no-op)。
- *
- * 长时任务取消后系统那条通知也随之消失, 与业务通知的取消是同一件事。
- */
-async function stopWebServiceContinuousTask(context: common.UIAbilityContext): Promise<void> {
-  if (!webServiceContinuousTaskRunning) {
-    return;
-  }
-  try {
-    await backgroundTaskManager.stopBackgroundRunning(context);
-    console.info('[Legado] continuous task stopped');
-  } catch (e) {
-    console.error('[Legado] stop continuous task failed: ' + JSON.stringify(e));
-  } finally {
-    webServiceContinuousTaskRunning = false;
-  }
-}
+// "不得修改长时任务通知内容"; 数据传输类型的进度更新是唯一例外), 故业务通知 (Kotlin 侧发的那条)
+// 与它是两条。申请/释放全部交给 [ContinuousTaskArbiter]: 音频/朗读绝对优先, 后台作业在音频播放
+// 期间不申请、音频占据时主动让位 (只影响保活, 业务与业务通知都不动)。
 
 /**
  * 注册长时任务被取消的监听 (用户删除长时任务通知、系统管控取消等)。
  *
- * 系统已取消长时任务 = 服务不再被保活, 故告知 KMP 停服务并撤掉业务通知 (状态一致)。
- * 该接口 @since 15, 本模块 compatibleSdkVersion 为 API 12, 低版本设备上直接调用会报错。
+ * 只做两件事: 把"被取消"告诉仲裁器 (清持有态 + 按接入规范抑制立即重申请 + 回送 KMP 取消事件),
+ * 以及记日志。该接口 @since 15, 本模块 compatibleSdkVersion 为 API 12, 低版本设备上直接调用会报错。
  */
 function registerContinuousTaskCancelListener(): void {
   if (deviceInfo.sdkApiVersion < 15) {
@@ -307,17 +253,8 @@ function registerContinuousTaskCancelListener(): void {
   try {
     backgroundTaskManager.on('continuousTaskCancel',
       (info: backgroundTaskManager.ContinuousTaskCancelInfo): void => {
-        // 只认本服务申请的那条: 同一 UIAbility 下还有媒体播放的 audioPlayback 长时任务
-        if (!webServiceContinuousTaskRunning) {
-          return;
-        }
-        webServiceContinuousTaskRunning = false;
         console.info('[Legado] continuous task cancelled, reason=' + info.reason);
-        const payload: ContinuousTaskCancelEvent = {
-          type: 'continuousTaskCancel',
-          reason: info.reason
-        };
-        emitPlatformEvent(payload);
+        notifySystemCancelled(info.reason);
       });
     console.info('[Legado] continuousTaskCancel listener installed');
   } catch (e) {
@@ -478,9 +415,9 @@ export default class EntryAbility extends UIAbility {
             notificationManager.cancel(payload.id).catch((err: Error): void => {
               console.info('[Legado] notification cancel ignored: ' + JSON.stringify(err) + ', id=' + payload.id);
             });
-            // 该通知背靠长时任务时一并取消 (对照 app 端 WebService 的 stopSelf 同时停前台服务)
+            // 该通知背靠长时任务时一并释放 (对照 app 端 WebService 的 stopSelf 同时停前台服务)
             if (payload.stopContinuousTask === true) {
-              await stopWebServiceContinuousTask(this.context);
+              await releaseWorkTask(this.context, payload.id.toString());
             }
             return;
           }
@@ -542,12 +479,14 @@ export default class EntryAbility extends UIAbility {
           // dispatchNotificationAction); 其余仍按 [NOTIFICATION_ROUTES] 的 route 串跳页。
           // 未挂 wantAgent 时由系统默认行为拉起。
           const clickAction: string | undefined = payload.clickAction;
+          let taskWantAgent: WantAgent | undefined = undefined;
           try {
-            request.wantAgent = clickAction !== undefined && clickAction.length > 0
+            taskWantAgent = clickAction !== undefined && clickAction.length > 0
               ? await buildLaunchWantAgent(
                 this.context, undefined, notificationActionWantParameters(payload.id, clickAction)
               )
               : await buildLaunchWantAgent(this.context, routeOfNotification(payload.id));
+            request.wantAgent = taskWantAgent;
           } catch (e) {
             console.error('[Legado] notification wantAgent failed: ' + JSON.stringify(e));
           }
@@ -556,12 +495,25 @@ export default class EntryAbility extends UIAbility {
           notificationManager.publish(request).catch((err: Error): void => {
             console.error('[Legado] notification publish failed: ' + JSON.stringify(err) + ', id=' + payload.id);
           });
-          // 长时任务: 与业务通知同分支申请 (见 startWebServiceContinuousTask 的说明), 保活失败只记日志
+          // 长时任务: 交仲裁器申请 —— 音频/朗读占着时这里只记录期望、不申请 (降级为只发业务通知),
+          // 音频随后起时仲裁器会把后台作业让出去 (业务与通知都不受影响)。
+          // 不带 continuousTask 的这一条 = 本业务当前不要长时任务 (如缓存的"缓存完成"那一条),
+          // 释放掉即可 (从未申请过的业务是 no-op)
           const continuousTask: string | undefined = payload.continuousTask;
           if (continuousTask !== undefined && continuousTask.length > 0) {
-            await startWebServiceContinuousTask(
-              this.context, continuousTask, payload.id, payload.clickAction ?? ''
+            const holderWantAgent: WantAgent = taskWantAgent != undefined
+              ? taskWantAgent
+              : await buildLaunchWantAgent(this.context);
+            await acquireWorkTask(
+              this.context, payload.id.toString(), continuousTask, holderWantAgent
             );
+            // 数据传输类型还需要写系统那条实况窗进度 (长时任务通知内容不可改, 只有 DATA_TRANSFER
+            // 的进度是平台要求的例外); 未持有 dataTransfer 任务时内部 no-op
+            await publishTransferProgress(
+              payload.title ?? '', payload.content ?? '', payload.progress ?? 0, payload.max ?? 0
+            );
+          } else {
+            await releaseWorkTask(this.context, payload.id.toString());
           }
         } catch (e) {
           console.error('[Legado] notification callback failed: ' + JSON.stringify(e) + ', json=' + json);
@@ -1027,11 +979,11 @@ export default class EntryAbility extends UIAbility {
 
   /**
    * UIAbility 销毁: 长时任务由 UIAbility 申请 (系统文档: stopBackgroundRunning 取消"当前 UIAbility
-   * 下所有长时任务"), Ability 销毁后必须重新申请, 故清掉本进程的记录。
+   * 下所有长时任务"), Ability 销毁后必须重新申请, 故清掉仲裁器的持有态。
    */
   onDestroy(): void {
     console.info('[Legado] EntryAbility.onDestroy');
-    webServiceContinuousTaskRunning = false;
+    notifyAbilityDestroyed();
   }
 
   onForeground(): void {

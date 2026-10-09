@@ -100,6 +100,12 @@ object OhosCheckSource {
      *
      * 事件正文沿用各端既有格式 (与 desktop/鸿蒙 同一串, 共享路由的进度标签按它显示);
      * 通知正文取 app 端同 key 文案 `progress_show` (与 app 端通知正文逐字同源)。
+     *
+     * 不申请长时任务保活: 校验书源是一批 HTTP 请求的**校验** (搜索/详情/目录/正文探测),
+     * 既非上传也非下载 (无持续数据流), 后台模式表里没有一个类型对得上 —— `dataTransfer`
+     * (非托管上传/下载) 的吞吐要求 (官方 FAQ: 速度持续 60 秒低于 16kB/s 即被杀) 与请求-响应型
+     * 流量天然不符, 其余类型 (蓝牙/定位/录音/投屏/通话/星闪) 更不相干, `wifiInteraction` 仅对
+     * 系统应用开放, `taskKeeping` 有设备/ACL 门槛。
      */
     private fun upNotification(name: String, count: Int, total: Int) {
         lastProgress = Triple(name, count, total)

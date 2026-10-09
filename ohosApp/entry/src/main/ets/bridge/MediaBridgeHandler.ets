@@ -3,11 +3,11 @@ import audio from '@ohos.multimedia.audio';
 import PiPWindow from '@ohos.PiPWindow';
 import fs from '@ohos.file.fs';
 import avSession from '@ohos.multimedia.avsession';
-import backgroundTaskManager from '@ohos.resourceschedule.backgroundTaskManager';
 import wantAgent, { WantAgent } from '@ohos.app.ability.wantAgent';
 import common from '@ohos.app.ability.common';
 import type Want from '@ohos.app.ability.Want';
 import { BridgeCommand, parseBridgeCommand } from './BridgeDispatch';
+import { acquireAudioTask, releaseAudioTask } from './ContinuousTaskArbiter';
 import {
   emitPlatformEvent,
   AudioDeviceChangeEvent,
@@ -20,7 +20,9 @@ import {
  * 1. 接收 Kotlin OhosNativeBridge.sendMediaCommand 通过 tsfn dispatch 过来的播放器命令,
  *    调用 @ohos.multimedia.media AVPlayer 执行真实音频播放;
  * 2. 接入 @ohos.multimedia.avsession 媒体会话, 实现系统播控中心、锁屏媒体卡片元数据/进度同步与远程控制响应;
- * 3. 接入 @ohos.resourceschedule.backgroundTaskManager (AUDIO_PLAYBACK) 长时任务, 保障后台播放不被冻结;
+ * 3. 接入长时任务 (AUDIO_PLAYBACK) 保障后台播放不被冻结 —— 申请/释放统一走 [ContinuousTaskArbiter]
+ *    (音频优先级最高: 会抢占占槽的后台作业; 目前会申请长时任务的只有音频与缓存下载/Web 服务,
+ *    导出/校验书源/更新书籍三种业务按官方场景表无可用模式, 不申请保活);
  * 4. AVPlayer 事件与系统播控指令通过 legado.mediaEvent(eventJson) 回送给 Kotlin。
  *
  * # 多实例 (playerId)
@@ -1082,13 +1084,17 @@ async function switchBackgroundTask(
 ): Promise<void> {
   try {
     if (running) {
-      await backgroundTaskManager.startBackgroundRunning(
-        context,
-        backgroundTaskManager.BackgroundMode.AUDIO_PLAYBACK,
-        await buildLaunchWantAgent(context)
-      );
+      // 音频绝对优先: 交仲裁器申请 (它会先把占槽的后台作业让出去);
+      // 没拿到就不置标志, 下次播放事件重试
+      const wantAgentObj: WantAgent = await buildLaunchWantAgent(context);
+      const acquired: boolean = await acquireAudioTask(context, wantAgentObj);
+      if (!acquired) {
+        console.error('[MediaBridge] audio continuous task not acquired');
+        return;
+      }
     } else {
-      await backgroundTaskManager.stopBackgroundRunning(context);
+      // 释放后仲裁器会把仍在期望中的后台作业重新申请回来
+      await releaseAudioTask(context);
     }
     isContinuousTaskRunning = running;
     console.info('[MediaBridge] continuous task running=' + running);

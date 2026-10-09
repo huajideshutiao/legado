@@ -130,6 +130,7 @@ import io.legado.desktop.ui.platform.DesktopReaderPlatformProvider
 import io.legado.desktop.ui.platform.MediampVideoPlayPlatformProvider
 import io.legado.desktop.ui.tray.DesktopMediaTray
 import io.legado.desktop.ui.tray.DesktopTaskbarMedia
+import io.legado.desktop.ui.tray.DesktopTrayTaskNotifications
 import io.legado.desktop.ui.tray.ReadAloudTrayBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -711,6 +712,10 @@ private fun runDesktopApp() = application {
         // 用 withContext(Dispatchers.Default) 在后台线程执行, 避免阻塞 UI 线程
         LaunchedEffect(Unit) {
             registerSecondaryProviders()
+            // 缓存书籍/书源校验两条后台任务的托盘呈现 (对照 app 端 CacheBookService /
+            // CheckSourceService 的常驻通知); 本调用把已注册的缓存启动器包一层服务态镜像,
+            // 故必须排在上面 (启动器在本函数内注册)
+            DesktopTrayTaskNotifications.install()
         }
         // 升级更新日志 (对照原版 MainActivity.upVersion): 首启弹帮助, 升级弹更新日志;
         // debug 判定与 registerJvmDebugState 同源 (run 任务注入 -Dlegado.debug=true)

@@ -16,7 +16,7 @@
  * - 电话状态: { type: 'callStateChange', state: 'idle' | 'ringing' | 'offHook' }
  * - 系统对话框结果: { type: 'dialogResult', requestId, dialogResult } (系统对话框桥的响应侧)
  * - 通知按钮点击: { type: 'notificationAction', notificationId, action }
- * - 长时任务取消: { type: 'continuousTaskCancel', reason }
+ * - 长时任务取消: { type: 'continuousTaskCancel', reason, notificationId }
  *
  * 后加的三类经 [emitPlatformEvent] 走同一通道 (不再各建一套回送函数)。
  *
@@ -188,8 +188,9 @@ export interface NotificationActionEvent {
 
 /** 长时任务取消事件载荷 (与 Kotlin OhosPlatformEventPayload 对齐, type=continuousTaskCancel)。 */
 export interface ContinuousTaskCancelEvent {
-  type: string;  // 'continuousTaskCancel'
-  reason: number; // 取消原因 (backgroundTaskManager.ContinuousTaskCancelReason)
+  type: string;            // 'continuousTaskCancel'
+  reason: number;          // 取消原因 (backgroundTaskManager.ContinuousTaskCancelReason)
+  notificationId: number;  // 被取消方的业务通知 id (0 = 不是本应用申请的那条)
 }
 
 /** 后加的平台事件载荷集合 (共用 [emitPlatformEvent])。 */
