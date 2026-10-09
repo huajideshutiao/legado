@@ -201,24 +201,27 @@ jobs:
             见本次运行的 **Job Summary** 表格（✅ 一致 / 🟡 仅空白 / 🔴 实质差异 / ➕ 新增），
             以及 `Diff against vendored copy` 步骤日志里每个文件的前 80 行 unified diff。
 
-            ## 需人工验证：三端编译（CI 不覆盖 native 编译，必须本地跑）
+            ## 需人工验证：各端编译（CI 不覆盖 native 编译, 必须本地跑）
 
             - [ ] **Android / JVM (JNI + CMake)** —
                   `./gradlew :modules:quickjs-android-native:externalNativeBuildAppDebug`
             - [ ] **Desktop / :ui jvm** — `./gradlew :ui:compileKotlinJvm`
             - [ ] **iOS**（需 macOS）— `bash scripts/build-ios-native.sh` 且
                   `./gradlew :data:cinteropQuickjsIosArm64`
-            - [ ] **鸿蒙**（需鸿蒙 SDK）— `./gradlew :data:cinteropQuickjsLinuxArm64`
+            - [ ] **鸿蒙**（需鸿蒙 SDK）— `./gradlew :data:cinteropQuickjsOhosArm64 -PenableOhosTarget=true`
+                  （目标名是 ohosArm64, 没有 linuxArm64 这个 target; 同仓库
+                   `compileKotlinOhosArm64` / `kspKotlinOhosArm64` 即同一命名法则）
 
             ## 需人工审查
 
             - [ ] `data/src/cinterop/quickjs.def` 的 `qjs_*` wrapper 是否被上游 API 签名变更打断
-            - [ ] 是否新增 / 删除了 `.c` 文件 —— 若有，需同步修改 **5 处消费方**的源文件列表：
-                  `modules/quickjs-android-native/src/main/cpp/CMakeLists.txt`、
-                  `ohosApp/entry/src/main/cpp/CMakeLists.txt`、
-                  `data/src/cinterop/quickjs.def`、
-                  `data/build.gradle.kts` 的 cinterop 块、
-                  `scripts/build-ios-native.sh`
+            - [ ] 是否新增 / 删除了 `.c` 文件 —— 若有，需同步修改列 .c 源文件清单的三处：
+                  `modules/quickjs-android-native/src/main/cpp/CMakeLists.txt`（quickjs 4 个）、
+                  `ohosApp/entry/src/main/cpp/CMakeLists.txt`（quickjs 4 个, mbedtls 走 GLOB）、
+                  `scripts/build-ios-native.sh`（quickjs 4 个 + mbedtls 走 ls）。
+                  另外两处不列源文件、但同样会随上游头文件/API 变动而失效：
+                  `data/src/cinterop/quickjs.def`（headers 与 qjs_* wrapper）、
+                  `data/build.gradle.kts` 的 cinterop 块（defFile 与 includeDirs）。
             - [ ] JS 引擎行为回归（书源解析 / bytecode 缓存兼容性）
             - [ ] 更新 `${{ env.VENDOR_DIR }}/README.md` 的「版本」表格 commit sha
 

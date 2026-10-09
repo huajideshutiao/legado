@@ -25,8 +25,11 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            # Git Bash 下走 .bat: 本仓库 gradlew 的路径转换块只对 cygwin 生效、没有 msys 分支,
-            # 直接跑 sh 版可能 Could not find or load main class
+            # Git Bash 下走 .bat: 沿用原生 Windows 启动路径。注意 gradlew 的路径转换块
+            # 对 cygwin 与 msys 都生效 (uname 的 MSYS*/MINGW* 分支会置 msys, 并与 cygwin
+            # 共用同一个 cygpath 转换分支), 故原「只认 cygwin / 缺 msys 分支」的说法不成立。
+            # 仍选 .bat 是有意保留 (完全绕开 cygpath 转换), 但改用 sh 版是否真会报
+            # Could not find or load main class 未查证。
             gradlew: ./gradlew.bat
             # packagePortableZip 仅 Windows 有 (onlyIf), 复用 createReleaseDistributable
             # 产物 (packageReleaseMsi 上游), 仅打 zip 不经安装器

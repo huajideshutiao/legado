@@ -1,6 +1,7 @@
 name: Publish release
 
-# release.yml / test.yml 共用的发布收口: 等全部构建 job 跑完后下载 artifact, 一次性建 Release。
+# _publish.yml 是全部发布路径共用的收口 (三个调用方: test.yml 出 beta, release.yml 出正式,
+# ios.yml 手动发包到 multiplatform-test): 只读 artifact 目录并一次性建 Release。
 # 单发布者是刻意设计 —— 多 job 各自 allowUpdates 写同一 tag 会撞 already_exists,
 # 且后来者不带 bodyFile 会把更新日志清空 (旧实现靠 omitBodyDuringUpdate 逐处打补丁)。
 on:

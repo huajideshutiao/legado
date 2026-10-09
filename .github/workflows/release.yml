@@ -152,7 +152,9 @@ jobs:
 
   # ===== 鸿蒙 =====
   # CI 不构建 (CPF 工具链在私有 Nexus 不可达 + 无 API 24 SDK 公开渠道)。
-  # 查证结论与本地构建步骤见 test.yml 末尾注释块; .so/HAP 需随 Release 发布时本地手动上传。
+  # 查证结论与本地构建步骤见 test.yml 的鸿蒙注释块; shared 库 (.so + 头文件) 已封装为
+  # scripts/build-ohos-native.sh (本地/自托管 runner 可用)。.so/HAP 需随 Release 发布时
+  # 本地手动上传。
 
   # ===== 统一发布正式 Release (iOS 不在本流水线: 手动触发 ios.yml 自产出包) =====
   publish:

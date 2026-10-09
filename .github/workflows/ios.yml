@@ -2,6 +2,8 @@ name: iOS Build
 
 # ⚠️ 手动触发不挂 push/PR: macOS runner 排队久 (标准 runner 在 public 仓库不计费,
 # 但每次 push 都占一个 macOS 槽位会拖慢其它构建)。
+# 本文件是 iOS 端唯一的编译入口 (从 klib 档到 link/ipa/simulator 全在这里), 需要时手动 dispatch。
+# 改 klib 任务名或 -PenableIosTarget=true 开关时, 只需同步本文件内的 stage 分支。
 # stage 控制深度, 调试 YAML/脚本语法时用 klib 即可, 不必每次跑完整 ipa。
 # iOS 不进 release.yml 流水线: 手动 dispatch 本 workflow, 产物由自带 publish job 发布到
 # multiplatform-test 测试 Release (真机 ipa 发包时重建 Release 使提交与排位刷到最新,
@@ -20,8 +22,9 @@ on:
           - ipa
           - simulator
 
-# 组名不能用 github.workflow: 被调用时它是调用方的工作流名, 会和调用方自己的
-# concurrency group 撞成死锁 (调用方占着组, 被调用 job 排队等同一个组)。
+# 组名不能用 github.workflow: 本文件已无 workflow_call (不被其它工作流调用), 但这个 token
+# 在手动触发时就是本工作流名, 与下面拆 stage 的组名不是一路; 保留按 ref+stage 拆分的显式
+# 组名, 避免将来恢复 workflow_call 时又撞成调用方占组、被调用 job 等同一个组的死锁。
 concurrency:
   # 组按 stage 拆分: 并行发起 ipa 与 simulator 两条构建腿时互不取消
   group: ios-build-${{ github.ref }}-${{ inputs.stage }}
@@ -44,7 +47,7 @@ jobs:
 
       - name: Set version
         id: ver
-        # 未传版本号则按当前时间生成
+        # 手动触发无版本号入参, 恒按当前时间生成 (test.yml/release.yml 那套上游版本号不再传入)
         run: |
           v="${{ inputs.version }}"
           [ -n "$v" ] || v="$(TZ=Asia/Shanghai date +3.%y.%m%d%H%M)"
@@ -145,8 +148,10 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          # klib 档用途是语法/类型校验, 与最终产物无关, 固定真机 target
-          ./gradlew :ui:compileKotlinIosArm64 \
+          # klib 档用途是语法/类型校验, 与最终产物无关, 固定真机 target。
+          # 下面这套 --info/--continue 是手动作业的排查便利; 换 target 时与上面 stage
+          # 输入的可选值同步。
+          ./gradlew :ui:compileKotlinIosArm64 -PenableIosTarget=true \
             --info --stacktrace --warning-mode all --continue --console=plain 2>&1 \
             | tee "$GITHUB_WORKSPACE/ci-logs/30-compile-klib.log"
 

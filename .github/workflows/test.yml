@@ -193,13 +193,12 @@ jobs:
 
   # ===== 桌面三端 MSI/便携zip/DEB/RPM/DMG (与 Android build 并行) =====
   # 实现在 _desktop.yml, 与 release.yml 共用同一份。
-  # iOS 编译/出包在独立的 ios.yml (仅手动触发, release.yml 经 workflow_call 复用):
-  # macOS runner 计费是 Linux 的 10 倍, iOS 链路不适合每次 push 都跑。
   desktop:
     needs: prepare
     uses: ./.github/workflows/_desktop.yml
     with:
       version: ${{ needs.prepare.outputs.version }}
+
   # ===== 鸿蒙 HAP (CI 不构建, 仅本地; 2026-08-19 查证结论) =====
   # 决策: 维持本地构建, CI 不建鸿蒙 job。原因链如下 (均已实测查证):
   #   1. shared .so 需 CPF 工具链: fork 构件仅发布在 maven.eazytec-cloud.com (中国私有 Nexus),
@@ -232,9 +231,15 @@ jobs:
   #      - 未签名: ohosApp/entry/build/default/outputs/default/entry-default-unsigned.hap
   #      - 已签名: ohosApp/entry/build/default/outputs/default/entry-default-signed.hap
   #
+  # 上面第 3 步 (shared .so + 头文件) 已封装为 scripts/build-ohos-native.sh, 本地与
+  # 自托管 runner 均可直接调用: 脚本只做前置检查 + 转调既有的 verifyOhosNativeLibraries
+  # 任务 (dependsOn stageOhosNativeLibraries 并自带产物校验), 不引入任何新的外部服务与密钥。
+  # 产物与 hvigorw 打包步骤的对应关系见该脚本头部注释。
+  #
   # 如未来 CI 想跑 HAP: 需自托管 runner (可访问 eazytec + 预装 API 24 SDK 与签名材料),
   # 加一个 runs-on: [self-hosted, harmonyos] 的 job 跑上面第 5 步并 upload-artifact 即可
   # (华为云镜像下载 commandline-tools 方案对 API 24 工程不适用)。
+  # 本仓库当前没有任何 runs-on: [self-hosted, ...] 的既有 job 可照抄, 上面是唯一配方。
 
   # ===== 统一发布 beta release (全部产物) =====
   # 等 Android + 桌面三端跑完后一次性发布, 把 APK/MSI/portable zip/DEB/RPM/DMG 全挂上去。

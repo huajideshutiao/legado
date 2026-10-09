@@ -51,9 +51,9 @@ jobs:
       - uses: actions/cache@v5
         name: Setup pnpm cache
         with:
-          # 注: modules/web 里只有 package-lock.json (npm), 没有 pnpm-lock.yaml,
-          # 所以这里只能按 package.json 做 key, 且 `pnpm i` 无法用 --frozen-lockfile 锁版本。
-          # 要可复现构建, 应补一个 pnpm-lock.yaml 并改用 pnpm i --frozen-lockfile。
+          # pnpm-lock.yaml 已存在且被 git 跟踪 (modules/web/pnpm-lock.yaml), 具备锁版本条件;
+          # 但 key 只 hash package.json 且下面用 pnpm i (无 --frozen-lockfile), 依赖版本仍可能漂。
+          # 要真正可复现构建: 改成 hashFiles('**/web/pnpm-lock.yaml') + pnpm i --frozen-lockfile。
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/web/package.json') }}
           restore-keys: |
