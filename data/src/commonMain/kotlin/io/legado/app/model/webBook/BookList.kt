@@ -153,7 +153,32 @@ object BookList {
             SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└$raw")
             WebBookRuleUtils.parseBoolean(raw)
         }
-        return BookListPage(bookList, hasNextPage)
+        // 下一页地址规则 (对照原版订阅源列表的下一页规则): 从当前页响应里取链接,
+        // 取到则下一次翻页直接请求它; 未配置/取不到不影响 hasNextPage 与按页码翻页
+        val nextPageUrlRule = bookListRule.nextPageUrl
+        val nextPageUrl = if (nextPageUrlRule.isNullOrBlank()) {
+            null
+        } else {
+            analyzeRule.setContent(body)
+            SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "┌获取下一页地址")
+            val raw = runCatching { analyzeRule.getString(nextPageUrlRule) }.getOrNull()
+            SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└$raw")
+            // 先在原字符串上挡掉空锚点/脚本链接 (各端地址拼接实现不同, 拼完再比会漏)
+            raw?.trim()
+                ?.takeIf {
+                    it.isNotEmpty() &&
+                        !it.startsWith("#") &&
+                        !it.startsWith("javascript:", ignoreCase = true)
+                }
+                ?.let { NetworkUtils.getAbsoluteURL(baseUrl, it) }
+                // 解析出的地址就是本页时视为没有下一页, 否则触底会反复请求同一页且列表不再增长
+                ?.takeIf {
+                    it.isNotEmpty() &&
+                        it.trimEnd('#') != baseUrl.trimEnd('#') &&
+                        it != analyzeUrl.ruleUrl
+                }
+        }
+        return BookListPage(bookList, hasNextPage, nextPageUrl)
     }
 
     @Throws(Exception::class)

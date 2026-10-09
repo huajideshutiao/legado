@@ -24,8 +24,8 @@ class RulePolymorphicSerializerTest {
 
     @Test
     fun `SearchRule 字段数不变保障`() {
-        // 12 字段: checkKeyWord + 11 个 BookListRule override
-        assertEquals(12, SearchRule::class.memberProperties.size,
+        // 13 字段: checkKeyWord + 12 个 BookListRule override (含 nextPageUrl)
+        assertEquals(13, SearchRule::class.memberProperties.size,
             "SearchRule 字段数变了, 请检查 RulePolymorphicSerializer 是否需要更新")
     }
 
@@ -45,8 +45,8 @@ class RulePolymorphicSerializerTest {
 
     @Test
     fun `ExploreRule 字段数不变保障`() {
-        // 11 字段: 11 个 BookListRule override (无 checkKeyWord)
-        assertEquals(11, ExploreRule::class.memberProperties.size,
+        // 12 字段: 12 个 BookListRule override (无 checkKeyWord)
+        assertEquals(12, ExploreRule::class.memberProperties.size,
             "ExploreRule 字段数变了, 请检查 RulePolymorphicSerializer 是否需要更新")
     }
 

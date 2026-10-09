@@ -52,6 +52,8 @@ type BookSource = BaseSource & {
   coverDecodeJs?: string
   // 注释
   bookSourceComment?: string
+  // 源图标
+  bookSourceIcon?: string
   // 自定义变量说明
   variableComment?: string
   // 最后更新时间，用于排序
@@ -101,6 +103,7 @@ type RawBookSource = Omit<
 type SearchRule = {
   checkKeyWord?: string
   hasMoreRule?: string
+  nextPageUrl?: string
   bookList?: string
   name?: string
   author?: string
@@ -115,6 +118,7 @@ type SearchRule = {
 
 type ExploreRule = {
   hasMoreRule?: string
+  nextPageUrl?: string
   bookList?: string
   name?: string
   author?: string

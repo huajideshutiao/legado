@@ -8,4 +8,6 @@ package io.legado.app.data.entities
 data class BookListPage(
     val books: ArrayList<SearchBook>,
     val hasNextPage: Boolean,
+    /**下一页地址 (配置了下一页地址规则且本页解析出链接时非空, 下一次翻页直接请求它) */
+    val nextPageUrl: String? = null,
 )

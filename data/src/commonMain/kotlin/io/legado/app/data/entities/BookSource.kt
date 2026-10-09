@@ -85,6 +85,8 @@ data class BookSource(
     var coverDecodeJs: String? = null,
     // 注释
     var bookSourceComment: String? = null,
+    // 源图标 (旧订阅源导入时带过来; 普通源也可配)
+    var bookSourceIcon: String? = null,
     // 自定义变量说明
     var variableComment: String? = null,
     // 最后更新时间，用于排序
@@ -350,6 +352,7 @@ data class BookSource(
                 && bookSourceType == source.bookSourceType
                 && equal(bookUrlPattern, source.bookUrlPattern)
                 && equal(bookSourceComment, source.bookSourceComment)
+                && equal(bookSourceIcon, source.bookSourceIcon)
                 && customOrder == source.customOrder
                 && enabled == source.enabled
                 && enabledExplore == source.enabledExplore

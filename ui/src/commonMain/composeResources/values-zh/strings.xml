@@ -591,6 +591,7 @@
     <string name="source_name">源名称（sourceName）</string>
     <string name="source_group">源分组（sourceGroup）</string>
     <string name="comment">源注释（sourceComment）</string>
+    <string name="source_icon">图标（bookSourceIcon）</string>
     <string name="login_check_js">登录检查 JS（loginCheckJs）</string>
     <string name="book_url_pattern">书籍 URL 正则（bookUrlPattern）</string>
     <string name="source_http_header">请求头（header）</string>
@@ -607,6 +608,7 @@
     <string name="rule_cover_url">封面规则（coverUrl）</string>
     <string name="r_book_url">详情页 URL 规则（bookUrl）</string>
     <string name="rule_has_more">是否有下一页（hasMoreRule）</string>
+    <string name="rule_next_page_url">下一页地址（nextPageUrl）</string>
     <string name="r_find_url">发现地址规则（url）</string>
     <string name="rule_book_info_init">预处理规则（bookInfoInit）</string>
     <string name="rule_toc_url">目录 URL 规则（tocUrl）</string>

@@ -11,6 +11,9 @@ data class SearchRule(
     var checkKeyWord: String? = null,
     /**是否还有下一页（请求级 JS 规则，result 为整页响应 body）**/
     override var hasMoreRule: String? = null,
+
+    /**下一页地址规则 (从当前页响应里取下一页 URL; 未配置则按页码翻页)**/
+    override var nextPageUrl: String? = null,
     override var bookList: String? = null,
     override var name: String? = null,
     override var author: String? = null,

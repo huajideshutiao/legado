@@ -52,6 +52,7 @@ object WebBook {
         onUrlResolved: ((AnalyzeUrlCore) -> Unit)? = null,
         selectedOptions: Map<String, String>? = null,
         pluginFilters: PluginFilterSession? = null,
+        nextPageUrl: String? = null,
     ): BookListPage {
         // 插件虚拟源无规则可解析, 命中即转交委派 (搜索走 isSearch=true, 发现走 isSearch=false;
         // 发现路径的 key 即 exploreUrl 分类的 url 段, 交委派自行分派取数面;
@@ -65,6 +66,8 @@ object WebBook {
             if (bookSource.searchUrl.isNullOrBlank()) throw NoStackTraceException("搜索url不能为空")
             else url = bookSource.searchUrl!!
         }
+        // 上一页解析出的下一页地址优先 (配置了下一页地址规则的源不再按页码拼地址)
+        if (!nextPageUrl.isNullOrBlank()) url = nextPageUrl
         val ruleData = RuleData()
         val variables = buildMap<AppConst.JsVarName, Any> {
             if (isSearch) put(AppConst.JsVarName.KEY, key)

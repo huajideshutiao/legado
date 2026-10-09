@@ -99,6 +99,9 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
     /** 每源下一页页码 (重搜后该源回到第 2 页; 新搜索清空) */
     private val nextPages = newConcurrentMap<String, Int>()
 
+    /** 每源下一页地址 (上一页解析出时非空, 续页直接请求它; 新搜索清空) */
+    private val nextPageUrls = newConcurrentMap<String, String>()
+
     /** 本轮精准开关 (startSearch 时快照, 单源重搜沿用同一值) */
     private var precision = false
 
@@ -134,6 +137,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
             callBack.onSearchSourcesResolved(bookSources)
             exhaustedSources.clear()
             nextPages.clear()
+            nextPageUrls.clear()
             hasMore = false
             restartJobs.values.forEach { it.cancel() }
             restartJobs.clear()
@@ -166,6 +170,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
                 withTimeout(timeLimit) {
                     val bookListPage = WebBook.getBookListAwait(
                         bookSource, searchKey, page,
+                        nextPageUrl = nextPageUrls[bookSource.bookSourceUrl],
                         filter = { name, author ->
                             !precision || name.contains(searchKey) ||
                                 author.contains(searchKey)
@@ -229,6 +234,13 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
             if (!result.page.hasNextPage) {
                 exhaustedSources.add(source.bookSourceUrl)
             }
+            // 本页解析出的下一页地址: 有则续页直接请求它, 没有则清掉回落到按页码翻页
+            val nextPageUrl = result.page.nextPageUrl
+            if (nextPageUrl.isNullOrBlank()) {
+                nextPageUrls.remove(source.bookSourceUrl)
+            } else {
+                nextPageUrls[source.bookSourceUrl] = nextPageUrl
+            }
             // 多书源聚合：任一家声称还有下一页，整体就还有
             hasMore = hasMore || result.page.hasNextPage
             mergeGroup(source, items)
@@ -260,6 +272,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
                 exhaustedSources.remove(sourceUrl)
                 // 该源回到第 1 页, 后续续页从第 2 页起 (主链页码按源维护, 不再跳页)
                 nextPages[sourceUrl] = 2
+                nextPageUrls.remove(sourceUrl)
                 rebuildAggregate(precision)
                 callBack.onSearchSuccess(searchBooks)
                 callBack.onSearchGroupsChanged(groupSnapshot())

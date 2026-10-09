@@ -29,6 +29,12 @@ export default {
         hint: '描述源作者和状态',
       },
       {
+        title: '源图标',
+        id: 'bookSourceIcon',
+        type: 'String',
+        hint: '源图标的图片地址',
+      },
+      {
         title: '登录地址',
         id: 'loginUrl',
         type: 'String',
@@ -205,6 +211,13 @@ export default {
         type: 'String',
         hint: '选择书籍详情页网址 (规则结果为String类型的url)',
       },
+      {
+        title: '下一页地址',
+        namespace: 'ruleSearch',
+        id: 'nextPageUrl',
+        type: 'String',
+        hint: '从当前页响应里取下一页链接，留空则按页码翻页',
+      },
     ],
   },
   find: {
@@ -278,6 +291,13 @@ export default {
         id: 'bookUrl',
         type: 'String',
         hint: '选择书籍详情页网址 (规则结果为String类型的url)',
+      },
+      {
+        title: '下一页地址',
+        namespace: 'ruleExplore',
+        id: 'nextPageUrl',
+        type: 'String',
+        hint: '从当前页响应里取下一页链接，留空则按页码翻页',
       },
     ],
   },

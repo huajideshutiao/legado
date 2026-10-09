@@ -19,6 +19,7 @@ fun OldRssSource.toBookSource(): BookSource {
     bookSource.bookSourceGroup = sourceGroup
     bookSource.bookSourceType = BookSourceType.rss
     bookSource.bookSourceComment = sourceComment
+    bookSource.bookSourceIcon = sourceIcon.takeIf { it.isNotBlank() }
     bookSource.customOrder = customOrder
     bookSource.enabled = enabled
     bookSource.enabledExplore = true
@@ -42,7 +43,10 @@ fun OldRssSource.toBookSource(): BookSource {
         author = rulePubDate,
         intro = ruleDescription,
         coverUrl = ruleImage,
-        bookUrl = ruleLink
+        bookUrl = ruleLink,
+        // 旧订阅源的列表下一页规则直接搬过来; 值为 PAGE 时表示"用页码翻页",
+        // 本仓由地址模板/page 变量承担, 不作为下一页地址
+        nextPageUrl = ruleNextPage?.trim()?.takeIf { !it.equals("PAGE", ignoreCase = true) }?.takeIf { it.isNotEmpty() },
     )
 
     val mStyle = style ?: ""

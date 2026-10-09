@@ -145,7 +145,7 @@ object NativeJsPropertyBridge {
         1907 -> (obj as? BookSource)?.let { qjs_NewBool(ctx, if (it.enabled) 1 else 0) } // enabled
         1908 -> (obj as? BookSource)?.let { qjs_NewBool(ctx, if (it.enabledExplore) 1 else 0) } // enabledExplore
 
-        // ============ BookSource 实体属性 (1909-1926, source binding 的 BookSource 面) ============
+        // ============ BookSource 实体属性 (1909-1927, source binding 的 BookSource 面) ============
         1909 -> (obj as? BookSource)?.let { qjs_NewBool(ctx, if (it.enabledReview) 1 else 0) } // enabledReview
         1910 -> (obj as? BookSource)?.let { stringToJsValue(ctx, it.loginCheckJs) } // loginCheckJs
         1911 -> (obj as? BookSource)?.let { stringToJsValue(ctx, it.coverDecodeJs) } // coverDecodeJs
@@ -164,10 +164,11 @@ object NativeJsPropertyBridge {
         1924 -> (obj as? BookSource)?.let { stringToJsValue(ctx, it.ruleToc) } // ruleToc
         1925 -> (obj as? BookSource)?.let { stringToJsValue(ctx, it.ruleContent) } // ruleContent
         1926 -> (obj as? BookSource)?.let { stringToJsValue(ctx, it.ruleReview) } // ruleReview
+        1927 -> (obj as? BookSource)?.let { stringToJsValue(ctx, it.bookSourceIcon) } // bookSourceIcon
 
         // ============ BookSource 复杂对象属性 (搜索/详情/目录规则对象等, 嵌套对象无法桥接) ============
-        // 1927 searchRule / 1928 exploreRule / 1929 bookInfoRule / 1930 tocRule / 1931 contentRule /
-        // 1932 reviewRule: JVM 端反射返回 SearchRule 等嵌套对象, native 无嵌套对象桥, 保持 undefined
+        // searchRule / exploreRule / bookInfoRule / tocRule / contentRule / reviewRule:
+        // JVM 端反射返回嵌套规则对象, native 无嵌套对象桥, 保持 undefined
         // (两端不一致, 见报告"未覆盖: 嵌套复杂对象")
         // ============ BaseSource 属性 (2000-2099, source binding) ============
         2001 -> (obj as? BaseSource)?.let { stringToJsValue(ctx, it.concurrentRate) } // concurrentRate
@@ -473,7 +474,7 @@ object NativeJsPropertyBridge {
         methodId == 2815 -> (obj as? BookChapter)?.let { b -> b.endFragmentId = toNullableString(args.getOrNull(0)); jsUndefined() }
         methodId == 2816 -> (obj as? BookChapter)?.let { b -> b.titleMD5 = toNullableString(args.getOrNull(0)); jsUndefined() }
 
-        // ============ BookSource 面 (2901-2926) ============
+        // ============ BookSource 面 (2901-2927) ============
         methodId == 2901 -> (obj as? BookSource)?.let { b ->
             toNullableString(args.getOrNull(0))?.let { b.bookSourceUrl = it }
             jsUndefined()
@@ -533,6 +534,7 @@ object NativeJsPropertyBridge {
         methodId == 2924 -> (obj as? BookSource)?.let { b -> b.ruleToc = toNullableString(args.getOrNull(0)); jsUndefined() }
         methodId == 2925 -> (obj as? BookSource)?.let { b -> b.ruleContent = toNullableString(args.getOrNull(0)); jsUndefined() }
         methodId == 2926 -> (obj as? BookSource)?.let { b -> b.ruleReview = toNullableString(args.getOrNull(0)); jsUndefined() }
+        methodId == 2927 -> (obj as? BookSource)?.let { b -> b.bookSourceIcon = toNullableString(args.getOrNull(0)); jsUndefined() }
 
         // ============ BaseSource 面 (3001-3007) ============
         methodId == 3001 -> (obj as? BaseSource)?.let { b -> b.concurrentRate = toNullableString(args.getOrNull(0)); jsUndefined() }
@@ -638,6 +640,7 @@ function __createBaseSourceObj(handle) {
     Object.defineProperty(obj, "loginCheckJs", { get: function() { return __nativeDispatch(handle, 1910, []); }, set: function(v) { __nativeDispatch(handle, 2910, [v]); } });
     Object.defineProperty(obj, "coverDecodeJs", { get: function() { return __nativeDispatch(handle, 1911, []); }, set: function(v) { __nativeDispatch(handle, 2911, [v]); } });
     Object.defineProperty(obj, "bookSourceComment", { get: function() { return __nativeDispatch(handle, 1912, []); }, set: function(v) { __nativeDispatch(handle, 2912, [v]); } });
+    Object.defineProperty(obj, "bookSourceIcon", { get: function() { return __nativeDispatch(handle, 1927, []); }, set: function(v) { __nativeDispatch(handle, 2927, [v]); } });
     Object.defineProperty(obj, "variableComment", { get: function() { return __nativeDispatch(handle, 1913, []); }, set: function(v) { __nativeDispatch(handle, 2913, [v]); } });
     Object.defineProperty(obj, "lastUpdateTime", { get: function() { return __nativeDispatch(handle, 1914, []); }, set: function(v) { __nativeDispatch(handle, 2914, [v]); } });
     Object.defineProperty(obj, "respondTime", { get: function() { return __nativeDispatch(handle, 1915, []); }, set: function(v) { __nativeDispatch(handle, 2915, [v]); } });

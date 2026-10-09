@@ -160,6 +160,7 @@ class BookSourceEditScreenModel(
                 "bookUrlPattern" -> source.bookUrlPattern = it.text
                 "header" -> source.header = it.text
                 "bookSourceComment" -> source.bookSourceComment = it.text
+                "bookSourceIcon" -> source.bookSourceIcon = it.text
                 "concurrentRate" -> source.concurrentRate = it.text
                 "variableComment" -> source.variableComment = it.text
                 "jsLib" -> source.jsLib = it.text
@@ -179,6 +180,7 @@ class BookSourceEditScreenModel(
                 "coverUrl" -> searchRule.coverUrl = it.text
                 "bookUrl" -> searchRule.bookUrl = it.text
                 "hasMoreRule" -> searchRule.hasMoreRule = it.text
+                "nextPageUrl" -> searchRule.nextPageUrl = it.text
             }
         }
         exploreEntities.forEach {
@@ -194,6 +196,7 @@ class BookSourceEditScreenModel(
                 "coverUrl" -> exploreRule.coverUrl = it.text
                 "bookUrl" -> exploreRule.bookUrl = it.text
                 "hasMoreRule" -> exploreRule.hasMoreRule = it.text
+                "nextPageUrl" -> exploreRule.nextPageUrl = it.text
             }
         }
         infoEntities.forEach {
@@ -294,6 +297,7 @@ class BookSourceEditScreenModel(
             add(EditEntity("bookSourceName", bs.bookSourceName, "source_name"))
             add(EditEntity("bookSourceGroup", bs.bookSourceGroup, "source_group"))
             add(EditEntity("bookSourceComment", bs.bookSourceComment, "comment"))
+            add(EditEntity("bookSourceIcon", bs.bookSourceIcon, "source_icon"))
             add(EditEntity("loginUrl", bs.loginUrl, "login_url"))
             add(EditEntity("loginUi", bs.loginUi, "login_ui"))
             add(EditEntity("loginCheckJs", bs.loginCheckJs, "login_check_js"))
@@ -320,6 +324,7 @@ class BookSourceEditScreenModel(
             add(EditEntity("coverUrl", sr.coverUrl, "rule_cover_url"))
             add(EditEntity("bookUrl", sr.bookUrl, "r_book_url"))
             add(EditEntity("hasMoreRule", sr.hasMoreRule, "rule_has_more"))
+            add(EditEntity("nextPageUrl", sr.nextPageUrl, "rule_next_page_url"))
         }
         // 发现
         val er = bs.exploreRule
@@ -336,6 +341,7 @@ class BookSourceEditScreenModel(
             add(EditEntity("coverUrl", er.coverUrl, "rule_cover_url"))
             add(EditEntity("bookUrl", er.bookUrl, "r_book_url"))
             add(EditEntity("hasMoreRule", er.hasMoreRule, "rule_has_more"))
+            add(EditEntity("nextPageUrl", er.nextPageUrl, "rule_next_page_url"))
         }
         // 详情页
         val ir = bs.bookInfoRule
