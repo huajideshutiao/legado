@@ -116,4 +116,9 @@ object AppDbProviders {
 
     /** 获取已注册实现, 未注册抛出 IllegalStateException。 */
     fun get(): AppDbAccessor = impl ?: error("AppDbProviders not registered")
+
+    /** 注销已注册实现 (宿主/测试收尾)。 */
+    fun unregister() {
+        impl = null
+    }
 }

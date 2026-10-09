@@ -1,20 +1,26 @@
 package io.legado.app.ui.book.read
 
 import io.legado.app.data.entities.Book
+import io.legado.app.data.TempTestDb
+import io.legado.app.data.registerTempTestDb
 import io.legado.app.model.ReadBookShared
 import io.legado.app.ui.root.PlatformCapabilities
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
+import org.junit.AfterClass
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.BeforeClass
 import org.junit.Test
 
 /**
@@ -102,6 +108,27 @@ class PermissionDenialLoopTest {
 
     private val bookA = "file:///a.epub"
 
+    companion object {
+        /**
+         * 权限请求链路的 VM 构造会拉起 [ChapterHighlightState] (它订阅 keywordHighlight DAO flow),
+         * 生产侧 DB 恒已注册; 测试里得自己搭一个 —— 不注册时异常从协程里冒出来, 表现为
+         * "AppDbProviders not registered" 的随机失败。
+         */
+        private lateinit var dbDriver: TempTestDb
+
+        @BeforeClass
+        @JvmStatic
+        fun openDb() {
+            dbDriver = registerTempTestDb("legado-permission-test")
+        }
+
+        @AfterClass
+        @JvmStatic
+        fun closeDb() {
+            dbDriver.close()
+        }
+    }
+
     private fun newVm(
         scope: CoroutineScope,
         book: Book,
@@ -116,7 +143,9 @@ class PermissionDenialLoopTest {
     @Test
     fun `等待者取消后重订阅接回同一个在途选择器`() = runBlocking {
         val book = Book(bookUrl = bookA)
-        val (vm, fake, _) = newVm(this, book)
+        // VM 的常驻订阅跑在独立 Job 上: 并入 runBlocking 会让本任务永不结束
+        val vmScope = CoroutineScope(coroutineContext + SupervisorJob())
+        val (vm, fake, _) = newVm(vmScope, book)
         vm.postPermissionDenial(0, book)
         val id = vm.permissionDenialState.value!!.id
 
@@ -132,12 +161,14 @@ class PermissionDenialLoopTest {
         assertEquals("dir://picked", waiter2.await()?.dirUri)
         assertEquals(book, vm.acceptPermissionDenial(id))
         assertNull(vm.permissionDenialState.value)
+        vmScope.cancel()
     }
 
     @Test
     fun `选择器在途时新请求排队且旧结果作废不消费新请求`() = runBlocking {
         val book = Book(bookUrl = bookA)
-        val (vm, fake, _) = newVm(this, book)
+        val vmScope = CoroutineScope(coroutineContext + SupervisorJob())
+        val (vm, fake, _) = newVm(vmScope, book)
         vm.postPermissionDenial(0, book)
         val id1 = vm.permissionDenialState.value!!.id
 
@@ -159,12 +190,14 @@ class PermissionDenialLoopTest {
         fake.callbacks[1]("dir://picked")
         assertEquals("dir://picked", waiter2.await()?.dirUri)
         assertEquals(book, vm.acceptPermissionDenial(id2))
+        vmScope.cancel()
     }
 
     @Test
     fun `换书后请求清空不再拉起选择器`() = runBlocking {
         val book = Book(bookUrl = bookA)
-        val (vm, fake, readBook) = newVm(this, book)
+        val vmScope = CoroutineScope(coroutineContext + SupervisorJob())
+        val (vm, fake, readBook) = newVm(vmScope, book)
         vm.postPermissionDenial(0, book)
         val id = vm.permissionDenialState.value!!.id
         // 换书: 当前书指向别的 bookUrl
@@ -172,5 +205,6 @@ class PermissionDenialLoopTest {
         assertNull(vm.awaitPermissionDenialResolution(id))
         assertNull(vm.permissionDenialState.value)
         assertEquals(0, fake.callbacks.size)
+        vmScope.cancel()
     }
 }
