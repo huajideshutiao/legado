@@ -51,6 +51,9 @@ class Bundle {
         map[key.orEmpty()] = value
     }
 
+    // JVM 数组元素类型运行时已擦除, 只能按 Array<*> 做外层校验后强转;
+    // 与上方 getStringArrayList 同做法, 且保持返回同一数组实例 (Bundle 语义)
+    @Suppress("UNCHECKED_CAST")
     fun getStringArray(key: String?): Array<String>? = map[key.orEmpty()] as? Array<String>
 
     fun containsKey(key: String?): Boolean = map.containsKey(key.orEmpty())
