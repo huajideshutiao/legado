@@ -5,9 +5,7 @@ package io.legado.app.utils
  *
  * - [isNumeric] 原 [java.util.regex.Pattern] 改用 [Regex] (KMP, 行为一致);
  * - [wordCountFormat] 原 [java.text.DecimalFormat] ("#.#") 走 [createWordCountFormatter] expect,
- *   actual 在 jvmAndAndroidMain 委托 DecimalFormat (保留 HALF_EVEN + 去 末尾 0 语义);
- * - [compress] 原 [java.io.ByteArrayOutputStream] + [java.util.zip.GZIPOutputStream] + Base64
- *   走 [gzipAndBase64Encode] expect, actual 在 jvmAndAndroidMain (含原 close 顺序缺陷, 行为不变)。
+ *   actual 在 jvmAndAndroidMain 委托 DecimalFormat (保留 HALF_EVEN + 去 末尾 0 语义)。
  *
  * 包名/对象名/函数签名不变, 消费方 import 零改动。
  */
@@ -166,18 +164,6 @@ object StringUtils {
         }
 
         return formattedPrefix + suffixPart
-    }
-
-    /**
-     * 压缩字符串
-     */
-    fun compress(str: String): Result<String> {
-        return kotlin.runCatching {
-            if (str.isEmpty()) {
-                return@runCatching str
-            }
-            gzipAndBase64Encode(str)
-        }
     }
 
 }
