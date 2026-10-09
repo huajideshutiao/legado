@@ -272,7 +272,11 @@ private class GtkWindowHandle(
                                     created.cookies(url, DesktopWebViewEngineBase.COOKIE_TIMEOUT_MS)
                                 }
                             }
-                            runCatching { request.onNavigated(url) }
+                            // 只在导航完成时回调: LOAD_COMMITTED 也命中本分支, 提前回调会在
+                            // DOM 就绪前多执行一次; 与 Windows/macOS 引擎的同名回调语义对齐
+                            if (event == WEBKIT_LOAD_FINISHED) {
+                                runCatching { request.onNavigated(url) }
+                            }
                             val toolbar = created.toolbar
                             toolbar?.setLoading(false)
                             if (isLoginChecking()) {

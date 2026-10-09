@@ -1,6 +1,5 @@
 package io.legado.app.ui.association
 
-import com.github.jershell.rjpath.RJPath
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
@@ -19,26 +18,28 @@ import io.legado.app.help.http.newCallResponseBody
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.ui.readImportPayload
 import io.legado.app.utils.GSON
-import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isJsonArray
 import io.legado.app.utils.isJsonObject
-import io.legado.app.utils.parseJsonElement
+import io.legado.app.utils.parseToJsonElementLenient
 import io.legado.app.utils.splitNotBlank
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 /**
  * 导入书源 VM 共享核心 (commonMain)。
  *
  * 对照 app 端 `ImportBookSourceViewModel(app) : BaseViewModel(app)`: 4 个方法
  * (importSelect/importSource/importFromJson/comparisonSource) + private importSourceUrl,
- * 仅依赖 DAO + 协程 + okHttpClient + SourceHelp + ContentProcessor + GSON + RJPath,
+ * 仅依赖 DAO + 协程 + okHttpClient + SourceHelp + ContentProcessor + GSON,
  * 可下沉多端复用。DAO 走 [AppDbProviders.get].bookSourceDao; `execute{...}` 链式回调
  * 下沉为直接调 [Coroutine.async] (业务 IO / 回调 mainDispatcher, 行为等价)。
  *
@@ -187,8 +188,7 @@ class ImportBookSourceViewModelShared(
      * - **输入契约**: source 必须是纯 URL 或 JSON 文本; file:// 地址载荷由
      *   [DeepLinkImportTarget.startImport] 读出文本后传入, 本类不做 Uri 解析。
      * - isAbsUrl: 走 [importSourceUrl] 网络请求 (OkHttpClientProviders + newCallResponseBody);
-     * - isJsonObject && contains("sourceUrls"): RJPath 解析 sourceUrls 数组, 逐 URL 调 [importSourceUrl];
-     * - isJsonObject || isJsonArray: 走 [importFromJson] 本地 JSON 解析;
+     * - isJsonObject || isJsonArray: 走 [importFromJson] 本地 JSON 解析 (含 `sourceUrls` 多地址载荷);
      * - else: 抛 `NoStackTraceException("格式不对")` (替代 `context.getString(R.string.wrong_format)`,
      *   与 shared 端其他下沉 VM 文案一致)。
      * - `onError`: 推送 `_errorState.tryEmit("ImportError:${localizedMessage}")`
@@ -204,14 +204,6 @@ class ImportBookSourceViewModelShared(
             val mText = readImportPayload(text).trim()
             when {
                 mText.isAbsUrl() -> importSourceUrl(mText)
-
-                mText.isJsonObject() && mText.contains("sourceUrls") -> {
-                    val json = parseJsonElement(mText)
-                    RJPath.selector("$.sourceUrls").getAll(json).forEach { element ->
-                        val url = (element as? JsonPrimitive)?.content
-                        url?.let { importSourceUrl(it) }
-                    }
-                }
 
                 mText.isJsonObject() || mText.isJsonArray() -> importFromJson(mText)
                 else -> throw NoStackTraceException("格式不对")
@@ -264,42 +256,76 @@ class ImportBookSourceViewModelShared(
      *
      * # 实现细节保持
      *
-     * - 先判断 `json.contains("bookSourceUrl")` (书源): 数组走 fromJsonArray,
-     *   单对象走 fromJsonObject, 失败抛 `NoStackTraceException("不是书源")`;
-     * - 再判断 `json.contains("sourceUrl")` (旧版 RSS 源): 数组走 fromJsonArray,
-     *   单对象走 fromJsonObject, 解析后调 `OldRssSource.toBookSource()` 转换;
-     * - 其他: 抛 `NoStackTraceException("不是书源")` (与 app 端原逻辑完全一致)。
+     * - 类型按**顶层键**逐条判 (不看整段文本里出现过什么字样): 有 `bookSourceUrl` 键按书源解析,
+     *   有 `sourceUrl` 键按旧版订阅源解析后转书源, 两者都没有则抛 `NoStackTraceException("不是书源")`;
+     * - 判出类型后校验身份键非空 (书源地址 / 订阅源地址), 为空同样抛 "不是书源":
+     *   解析器忽略未知键、实体字段又都有默认值, 缺这道校验会把任意 JSON 落成一条空源;
+     *   (原版只校验数组首条, 这里逐条校验, 修正原版缺口)
+     * - `{"sourceUrls": [...]}` 载荷: 顶层该键为非空字符串数组时逐条 [importSourceUrl],
+     *   其余形态 (缺键/空数组/含非字符串/值非数组) 回落到上面的顶层键判定;
+     *   与旧实现差异: 多地址载荷在"下载内容"与 `file://` 载荷上同样生效 (旧实现只看入口文本),
+     *   且值必须是字符串数组 (旧实现只取字符串值, 值非数组时静默导入 0 条);
+     * - 数组逐条判类型, 混合数组各自处理; 任一条不合格则整批报错且不落库
+     *   (旧实现是校验首条后全量入库, 空地址条目会照旧入座)
+     * - 文本解析走**宽松入口** (注释/尾逗号/单引号/无引号键), 与全仓导入容错口径一致。
      *
-     * 注: GSON.fromJsonArray/fromJsonObject 在 shared 端为 kotlinx-serialization 包装
+     * 注: GSON.fromJsonObject 在 shared 端为 kotlinx-serialization 包装
      * (GsonExtensions.kt), 行为与 app 端 Gson 等价。
      */
-    private fun importFromJson(json: String) {
-        val isArray = json.isJsonArray()
-        when {
-            json.contains("bookSourceUrl") -> {
-                if (isArray) {
-                    allSources.addAll(GSON.fromJsonArray<BookSource>(json).getOrElse {
-                        throw NoStackTraceException("不是书源")
-                    })
-                } else {
-                    allSources.add(GSON.fromJsonObject<BookSource>(json).getOrElse {
-                        throw NoStackTraceException("不是书源")
-                    })
+    private suspend fun importFromJson(json: String) {
+        val element = runCatching { parseToJsonElementLenient(json) }.getOrElse {
+            throw NoStackTraceException("不是书源")
+        }
+        if (element is JsonObject) {
+            val urls = (element["sourceUrls"] as? JsonArray)
+                ?.takeIf { array -> array.all { it is JsonPrimitive && it.isString } }
+                ?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+                ?.filter { it.isNotBlank() }
+            if (!urls.isNullOrEmpty()) {
+                val sizeBefore = allSources.size
+                try {
+                    urls.forEach { importSourceUrl(it) }
+                } catch (e: Throwable) {
+                    while (allSources.size > sizeBefore) {
+                        allSources.removeAt(allSources.size - 1)
+                    }
+                    throw e
                 }
+                return
             }
+        }
+        val items = if (element is JsonArray) element.toList() else listOf(element)
+        if (items.isEmpty()) throw NoStackTraceException("不是书源")
+        // 整批报错时把本次已加入的条目截掉, 避免残留被复用同一实例的后续导入带上
+        val sizeBefore = allSources.size
+        try {
+            items.forEach { item ->
+                val obj = item as? JsonObject ?: throw NoStackTraceException("不是书源")
+                when {
+                    obj.containsKey("bookSourceUrl") -> {
+                        val source = GSON.fromJsonObject<BookSource>(item.toString()).getOrElse {
+                            throw NoStackTraceException("不是书源")
+                        }
+                        if (source.bookSourceUrl.isBlank()) throw NoStackTraceException("不是书源")
+                        allSources.add(source)
+                    }
 
-            json.contains("sourceUrl") -> {
-                if (isArray) {
-                    allSources.addAll(GSON.fromJsonArray<OldRssSource>(json).getOrElse {
-                        throw NoStackTraceException("不是书源")
-                    }.map { it.toBookSource() })
-                } else {
-                    allSources.add(GSON.fromJsonObject<OldRssSource>(json).getOrElse {
-                        throw NoStackTraceException("不是书源")
-                    }.toBookSource())
+                    obj.containsKey("sourceUrl") -> {
+                        val source = GSON.fromJsonObject<OldRssSource>(item.toString()).getOrElse {
+                            throw NoStackTraceException("不是书源")
+                        }
+                        if (source.sourceUrl.isBlank()) throw NoStackTraceException("不是书源")
+                        allSources.add(source.toBookSource())
+                    }
+
+                    else -> throw NoStackTraceException("不是书源")
                 }
             }
-            else -> throw NoStackTraceException("不是书源")
+        } catch (e: Throwable) {
+            while (allSources.size > sizeBefore) {
+                allSources.removeAt(allSources.size - 1)
+            }
+            throw e
         }
     }
 

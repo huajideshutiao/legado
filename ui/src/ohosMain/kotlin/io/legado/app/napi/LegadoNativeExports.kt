@@ -12,6 +12,7 @@ import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.registerOhosProviders
+import io.legado.app.help.source.SourceHelp
 import io.legado.app.ui.association.LegadoDeepLinkHandler
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppRoute
@@ -330,28 +331,35 @@ object LegadoNativeExports {
      *
      * 调用链:
      * 1. 用 [KS_JSON] + [ListSerializer] 反序列化 JSON 为 `List<BookSource>`
-     * 2. `AppDbProviders.get().bookSourceDao.insert(*sources.toTypedArray())` 批量插入
+     * 2. 逐条要求名称与地址非空, 只入库有效条目
      *
-     * 注: 仅支持 JSON 数组格式 `[{"bookSourceUrl":"...","bookSourceName":"...",...}, ...]`,
-     * 与 app 端 ImportBookSourceActivity 的 JSON 导入行为对齐 (简化版, 不去重 / 不变字段)。
+     * 注: 仅支持 JSON 数组格式 `[{"bookSourceUrl":"...","bookSourceName":"...",...}, ...]`。
+     * 校验口径对照安卓端网页接口写入书源 (BookSourceController.saveSources): 名称与地址都非空才入库,
+     * 返回真实入库数量 —— 书源实体字段均带默认值, 缺这道校验会把任意 JSON 落成一条空地址书源。
      *
      * 同步语义: 同 [bookshelfList], 内部 [runBlocking] 转 suspend, napi 层应在 worker 线程调用。
      *
      * 失败兜底: provider 未注册 / JSON 解析异常 / DAO 插入异常时返回 0。
      *
      * @param json 书源 JSON 数组字符串 (UTF-8 C 字符串)
-     * @return 导入数量 (0 表示失败或空数组)
+     * @return 导入数量 (0 表示失败或没有有效条目)
      */
     @CName("legado_import_booksource")
     fun importBookSource(json: CPointer<ByteVar>): Int {
         val jsonStr = json.toKString()
         return runCatching {
             val sources = KS_JSON.decodeFromString(ListSerializer(BookSource.serializer()), jsonStr)
-            if (sources.isEmpty()) return 0
-            runBlocking {
-                AppDbProviders.get().bookSourceDao.insert(*sources.toTypedArray())
+            val valid = sources.filter {
+                it.bookSourceName.isNotBlank() && it.bookSourceUrl.isNotBlank()
             }
-            sources.size
+            if (valid.isEmpty()) return 0
+            runBlocking {
+                valid.forEach {
+                    AppDbProviders.get().bookSourceDao.insert(it)
+                    SourceHelp.evict(it.bookSourceUrl)
+                }
+            }
+            valid.size
         }.getOrNull() ?: 0
     }
 

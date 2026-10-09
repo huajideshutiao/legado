@@ -108,6 +108,10 @@ interface ReadRssUiActions {
     fun onToc()
 
     fun onToggleStar()
+
+    /** 标题栏点击: 进当前书/文章的详情页 (对照本仓文本阅读菜单顶栏与视频播放页顶栏)。 */
+    fun onOpenBookInfo()
+
     fun onShare()
     fun onReadAloud()
     fun onOpenInBrowser()

@@ -2,6 +2,8 @@ package io.legado.app.ui.compose.component
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -63,6 +65,10 @@ fun AppTitleBar(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     titleContent: (@Composable RowScope.() -> Unit)? = null,
+    /** 标题区点击 (非空时标题可点); 对照原阅读页/视频页点标题进详情。
+     *  必须排在 [actions] 之前: 尾随 lambda 绑定最后一个参数, 排在最后会把既有
+     *  `AppTitleBar(...) { ... }` 调用点的 lambda 改绑到本参数。 */
+    onTitleClick: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     val colors = AppTheme.colors
@@ -88,6 +94,18 @@ fun AppTitleBar(
                 )
             }
             Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                val titleModifier = if (onTitleClick != null) {
+                    // 对照视频播放页: 标题区占满整行, 点标题右侧空白也进详情
+                    Modifier
+                        .weight(1f)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onTitleClick,
+                        )
+                } else {
+                    Modifier
+                }
                 if (titleContent != null) {
                     titleContent()
                 } else if (subtitle.isNullOrBlank()) {
@@ -97,9 +115,10 @@ fun AppTitleBar(
                         fontSize = 20.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        modifier = titleModifier,
                     )
                 } else {
-                    Column {
+                    Column(titleModifier) {
                         Text(
                             text = title,
                             color = colors.primaryText,

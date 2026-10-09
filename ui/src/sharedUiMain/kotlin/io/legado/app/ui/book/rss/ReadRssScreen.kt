@@ -70,6 +70,7 @@ fun ReadRssScreen(
                 AppTitleBar(
                     title = state.pageTitle ?: "",
                     onBack = actions::onBack,
+                    onTitleClick = actions::onOpenBookInfo,
                     actions = { RssActions(state, actions) },
                 )
             }

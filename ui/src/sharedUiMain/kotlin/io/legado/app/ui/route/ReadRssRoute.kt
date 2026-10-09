@@ -46,8 +46,10 @@ import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.RouteResultPayload
+import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.asBook
+import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.rss.ReadRssViewModelShared
 import io.legado.app.ui.rss.RssJsActions
 import io.legado.app.ui.rss.createRssJsBinding
@@ -215,6 +217,41 @@ fun ReadRssRoute(
             screenModel.dispatch(ReadRssUiEvent.VideoFullScreenChanged(full))
         }
         callbacks.shouldOverrideUrl = { url -> interceptUrl(url, source, scope) }
+        // 原 ReadRssActivity.onPageFinished: 每次网页加载完成后执行源注入脚本。
+        // 正文分支的脚本已随正文 HTML 内联执行, 这里只补"直接加载网址"分支
+        // (源没写正文规则时, 原版的浮层按钮/网页样式全靠这条通路)。
+        callbacks.onPageFinished = {
+            val config = screenModel.state.value.webConfig
+            val js = source?.contentRule?.webJs
+            if (config != null && config.html.isNullOrEmpty() && !js.isNullOrBlank()) {
+                callbacks.host?.evaluateJavascript(js) { }
+            }
+        }
+    }
+
+    // 详情页结果回传: 在详情页里把本书删掉后返回, 本页不能留在已删除的书上;
+    // 其它情况(上架/下架/改名)刷新在架态, 星标跟着变 (对照 ReaderRoute / VideoPlayRoute 同口径)
+    LaunchedEffect(Unit) {
+        navigator.resultsFor(entry.id).collect { result ->
+            if (result.key != RouteResults.BOOK_INFO) return@collect
+            if (result.payload is RouteResultPayload.Deleted) {
+                navigator.pop(RouteResultPayload.Deleted)
+                return@collect
+            }
+            val dbBook = runCatching {
+                withContext(IoDispatcher) {
+                    AppDbProviders.get().bookDao.getBook(readingBook.bookUrl)
+                }
+            }.getOrNull()
+            inShelf = dbBook != null && !dbBook.isNotShelf
+            screenModel.dispatch(
+                ReadRssUiEvent.StarMenuUpdated(
+                    starVisible = true,
+                    inShelf = inShelf,
+                    hasLogin = source?.hasLogin() == true,
+                )
+            )
+        }
     }
 
     fun removeFromShelf() {
@@ -347,6 +384,14 @@ fun ReadRssRoute(
             toggleStar()
         }
 
+        // 顶栏点击进详情 (对照本仓文本阅读菜单顶栏、视频播放页顶栏; 原版 RSS 阅读页无此入口)
+        override fun onOpenBookInfo() {
+            navigator.push(
+                AppRoute.BookInfo(readingBook.toRouteRef()),
+                resultKey = RouteResults.BOOK_INFO,
+            )
+        }
+
         // 分享: 优先当前文章地址, 回退 tocUrl (对照原版 menu_share_it)
         override fun onShare() {
             val url = state.currArticle?.url ?: readingBook.tocUrl
@@ -394,6 +439,8 @@ fun ReadRssRoute(
                 html = config.html,
                 headerMap = config.headerMap,
                 actions = rssActions,
+                // 直接加载网址分支才需要外部注入; 正文分支的脚本已内联在 HTML 里
+                js = if (config.html.isNullOrEmpty()) source?.contentRule?.webJs else null,
             )
             if (opened) {
                 rssWindowOpened = true

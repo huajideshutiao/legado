@@ -232,6 +232,7 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
         html: String?,
         headerMap: Map<String, String>,
         actions: RssToolbarActions,
+        js: String?,
     ): Boolean {
         val target = url.ifBlank { book.tocUrl }
         val engine = DesktopWebViewEngines.get()
@@ -260,6 +261,14 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
                 sourceType = SourceType.book,
                 sourceName = book.originName,
                 rssActions = actions,
+                // 源注入脚本 (无正文规则、直接加载网址时): 对照原版每次网页加载完成执行,
+                // 窗口引擎在每次导航完成时回调本处, 经窗口句柄执行脚本
+                onNavigated = {
+                    val script = js
+                    if (!script.isNullOrBlank()) {
+                        scope.launch { handle?.evaluateJavascript(script) }
+                    }
+                },
                 onClosed = {
                     // 窗口被关闭 → RSS 路由出栈; 但路由先出栈 (onDetach → close) 触发
                     // 的 close 回调不能再 pop, 否则会误弹 RSS 之下的路由 (reviewer 2026-08-07)

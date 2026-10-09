@@ -111,6 +111,9 @@ interface PlatformCapabilities {
      * (目录不入窗口工具栏: 弹层在主窗口, 会被 RSS 独立窗口遮挡)
      * (动作经 [RssToolbarActions] 回调回 shared), 星收藏态经 [RssToolbarActions.onStarChanged]
      * 反推更新; 窗口被关闭时平台实现负责让 RSS 路由出栈。
+     *
+     * @param js 源注入脚本 (无正文规则、直接加载网址时传入): 原版在每次网页加载完成后执行,
+     *   平台实现应在每次导航完成时执行它 (有正文规则时脚本已随正文 HTML 内联, 传 null)。
      */
     fun openRssReader(
         book: Book,
@@ -119,6 +122,7 @@ interface PlatformCapabilities {
         html: String?,
         headerMap: Map<String, String>,
         actions: RssToolbarActions,
+        js: String? = null,
     ): Boolean = false
 
     /**
