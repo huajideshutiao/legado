@@ -26,6 +26,7 @@ import io.legado.app.model.bakeCoverImageFile
 import io.legado.app.model.bakedImagePath
 import io.legado.app.model.deleteImageIfUnreferenced
 import io.legado.app.notificationManager
+import io.legado.app.ui.book.video.ExternalVideoHandle
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.BrowserService
 import io.legado.app.ui.root.CrashLogProvider
@@ -696,12 +697,17 @@ private fun videoTargetOfUri(uri: Uri, mimeIsVideo: Boolean): VideoPlayTarget.Di
     val address = uri.toString()
     if (!address.hasPlayableScheme()) return null
     val displayName = uri.displayName(App.instance)
-    return VideoDirect.targetFor(
+    val target = VideoDirect.targetFor(
         address = address,
         // DISPLAY_NAME 命中视频后缀 等同于 MIME 命中 (content URI 的末段常不是文件名)
         mimeIsVideo = mimeIsVideo || displayName?.matches(AppPattern.videoFileRegex) == true,
         title = displayName,
-    )
+    ) ?: return null
+    // content:// 地址在此刻打开并持有句柄
+    if (address.startsWith("content://", ignoreCase = true)) {
+        ExternalVideoHandle.hold(App.instance, address)
+    }
+    return target
 }
 
 /**

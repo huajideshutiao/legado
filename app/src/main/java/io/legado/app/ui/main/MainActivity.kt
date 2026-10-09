@@ -734,11 +734,14 @@ class MainActivity : BaseComposeActivity(imageBg = false) {
             }
             return
         }
-        // 创建路径 (组合恒晚于本函数) 且能直接定出路由: 投 asRoot, 由 Content 的取件点
-        // 当初始路由消费 —— 对照 master 各独立 Activity 冷启动直开本页, back 即退
-        val direct = if (isNewIntent) null else directRouteFromIntent(intent)
+        // 能直接定出路由的 intent: 冷启动投 asRoot, 热投递按普通导航 push
+        val direct = directRouteFromIntent(intent)
         LaunchRequestBus.dispatch(
-            if (direct != null) LaunchRequest.OpenRoute(direct, asRoot = true) else request
+            when {
+                direct == null -> request
+                isNewIntent -> LaunchRequest.OpenRoute(direct, asRoot = false)
+                else -> LaunchRequest.OpenRoute(direct, asRoot = true)
+            }
         )
     }
 

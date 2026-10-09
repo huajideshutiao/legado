@@ -50,6 +50,7 @@ import androidx.media3.datasource.TransferListener
 import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.exoplayer.source.UnrecognizedInputFormatException
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
@@ -101,6 +102,7 @@ class AndroidVideoPlayPlatformProvider(
         /** 小窗内遥控 RemoteAction (上一章/播放暂停/下一章) → 广播 → [MainActivity.pipControlReceiver] 的协议常量 */
         const val ACTION_MEDIA_CONTROL = "io.legado.app.pip.MEDIA_CONTROL"
         const val EXTRA_CONTROL_TYPE = "pip_control_type"
+
         const val CONTROL_PLAY = 1
         const val CONTROL_PAUSE = 2
         const val CONTROL_PREV = 3
@@ -200,10 +202,7 @@ class AndroidVideoPlayPlatformProvider(
     }
 
     /**
-     * 视图重排后把最新参数 (含可见区域) 同步给系统; 退出小窗前的重排靠它。非小窗态是 no-op。
-     *
-     * 可见区域取自渲染面的布局位置与尺寸 —— 小窗期缩放恒为默认视图 (进小窗即重置, 退出不恢复),
-     * 图层变换此时是恒等变换, 两者自洽。
+     * 视图重排后把最新参数 (含可见区域) 同步给系统; 非小窗态是 no-op。
      */
     @RequiresApi(Build.VERSION_CODES.O)
     private fun refreshPipSourceRect() {
@@ -362,13 +361,21 @@ class AndroidVideoPlayPlatformProvider(
                 // 清空 url 只是「没有新源」的数据状态, 不是停止命令: 不显式 stop 的话上一章
                 // 画面与声音会一直播到新章解析完 (对照原版 menu_refresh 先 player.pause()
                 // 再 refreshChapter, 切章路径上原版换新 player 天然停了旧的)
-                if (source != null) androidController.updateSource(source)
-                else androidController.stop()
+                if (source == null) {
+                    androidController.stop()
+                    return@collect
+                }
+                androidController.updateSource(source)
             }
         }
         DisposableEffect(androidController, screenModel) {
             androidController.bind(screenModel)
-            onDispose { androidController.unbind() }
+            onDispose {
+                androidController.unbind()
+                // 离开视频页释放外部视频读句柄, 并解除方向锁
+                ExternalVideoHandle.release()
+                releaseFullscreenOrientation()
+            }
         }
         // 渲染面引用 (画中画源矩形按它算): 离开组合后置空
         DisposableEffect(androidController) {
@@ -436,20 +443,24 @@ class AndroidVideoPlayPlatformProvider(
         activity.toggleSystemBar(!enabled)
     }
 
-    // 横屏全屏 (对照原版全屏钮 requestedOrientation 切换): 退出写 UNSPECIFIED 而非 PORTRAIT,
-    // 单 Activity 下方向锁挂在 MainActivity 上, 留锁会随视频页出栈带到全 app
+    // 系统级全屏的方向锁: 进全屏锁横屏, 退全屏锁竖屏
     override fun applySystemFullScreen(enabled: Boolean) {
         activity.requestedOrientation = if (enabled) {
             ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         } else {
-            ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         }
+    }
+
+    /** 离开视频页时解除方向锁。 */
+    internal fun releaseFullscreenOrientation() {
+        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
     }
 }
 
 @SuppressLint("UnsafeOptInUsageError")
 internal class AndroidVideoPlayerController(
-    activity: MainActivity,
+    private val activity: MainActivity,
     private var screenModel: VideoPlayScreenModel,
     private val onPlaybackEnded: () -> Unit,
 ) : VideoPlayerController {
@@ -569,11 +580,10 @@ internal class AndroidVideoPlayerController(
                 // 复用本次装载的暂停意图位: 用户暂停中遇错重装同一条媒体, 不得被强制起播
                 // (对照 [updateSource] 的 keepPaused 口径; 出错进 IDLE 也不清意图位)
                 val keepPaused = !player.playWhenReady
-                player.setMediaItem(
-                    ExoPlayerHelper.createMediaItem(retryUrl, lastHeaders, retryFormat),
-                    player.currentPosition.coerceAtLeast(0L),
-                )
+                val retryPositionMs = player.currentPosition.coerceAtLeast(0L)
+                setPlayableMedia(retryUrl, lastHeaders, retryFormat)
                 player.prepare()
+                if (retryPositionMs > 0L) player.seekTo(retryPositionMs)
                 if (!keepPaused) player.play()
                 publishPlayback()
                 return
@@ -646,13 +656,11 @@ internal class AndroidVideoPlayerController(
         // 拿一条文件 URI 去建 HlsMediaSource, 观感就是进页黑屏报错。
         if (analyzeUrl.url.hasPlayableScheme()) {
             playableUrl = analyzeUrl.url
-            player.setMediaItem(
-                ExoPlayerHelper.createMediaItem(
-                    analyzeUrl.url,
-                    analyzeUrl.headerMap,
-                    currentResolutionMime(),
-                )
-            )
+            // 外部 content:// 视频: 确保持有读句柄, 播它的 dup 副本
+            if (analyzeUrl.url.startsWith("content://", ignoreCase = true)) {
+                ExternalVideoHandle.hold(activity, analyzeUrl.url)
+            }
+            setPlayableMedia(analyzeUrl.url, analyzeUrl.headerMap, currentResolutionMime())
         } else {
             // 内存 m3u8 清单文本不是可播 URI: 标记为 null, 格式重试不得拿清单文本重建媒体
             playableUrl = null
@@ -696,6 +704,22 @@ internal class AndroidVideoPlayerController(
         if (startPositionMs > 0L) player.seekTo(startPositionMs)
         if (!keepPaused) player.play()
         publishPlayback()
+    }
+
+    /**
+     * 装载可播地址: 外部 content:// 视频走持有句柄的数据源, 其余走默认路径。
+     */
+    private fun setPlayableMedia(url: String, headers: Map<String, String>, mime: String?) {
+        val item = ExoPlayerHelper.createMediaItem(url, headers, mime)
+        if (ExternalVideoHandle.holds(url)) {
+            player.setMediaSource(
+                ProgressiveMediaSource.Factory(
+                    DataSource.Factory { ExternalVideoDataSource(url) }
+                ).createMediaSource(item)
+            )
+        } else {
+            player.setMediaItem(item)
+        }
     }
 
     /**
