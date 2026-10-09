@@ -12,12 +12,14 @@ import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.archiveName
+import io.legado.app.help.book.effectiveBookSaveDir
 import io.legado.app.help.book.getRemoteUrl
 import io.legado.app.help.book.isArchive
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isPdf
+import io.legado.app.help.book.requireBookSaveDir
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.OLD_COVERS_REF_SEGMENT
 import io.legado.app.help.file.desktopAppCacheDir
@@ -78,8 +80,10 @@ interface DesktopArchiveSupport {
  *   (commons-compress 限制), 其余格式对齐。headless 不注入 → 压缩包导入/解压显式报错
  * - PDF: 注入 [BaseFileBook] 处理器 (:desktop 为 DesktopPdfFile companion, PDFBox) 替代
  *   app 端 `PdfFile` (android PdfRenderer)。headless 不注入 → PDF 书读取显式报错
- * - 文件保存: 无 SAF, 落 `{desktopAppRootDir}/books`; 落库引用走 [desktopStoredLocalRef]
- *   (数据根下存 `books/` 相对引用, 便携移动程序目录后仍有效; 外部文件存 file: URI)
+ * - 文件保存: 用户已在"书籍保存位置"选过则落选定目录, 未选则落平台默认
+ *   `{desktopAppRootDir}/books` (与 Android 端 `defaultBookTreeUri` 同语义); 落库引用走
+ *   [desktopStoredLocalRef] (数据根下存 `books/` 相对引用, 便携移动程序目录后仍有效;
+ *   外部文件存 file: URI)
  *
  * 模式参考 [io.legado.desktop.help.book.DesktopBookHelpAccessor]。
  */
@@ -96,9 +100,12 @@ class DesktopFileBookAccessor(
     /** 本地书与遗留封面目录: `{desktopAppRootDir}/covers` (删除旧封面等文件操作经 desktopResolveStoredRef 解析)。 */
     private val coversDir: String = Paths.get(desktopAppRootDir(), "covers").toString()
 
-    /** 书籍保存目录: `{desktopAppRootDir}/books` (对齐 app 端 `AppConfig.defaultBookTreeUri`)。 */
-    private val booksDir: File
-        get() = Paths.get(desktopAppRootDir(), "books").toFile().apply { mkdirs() }
+    /**
+     * 有效书籍保存目录 (用户已选 → 选定目录; 未选 → 平台默认 `{desktopAppRootDir}/books`;
+     * 都没有 → 抛原版同款异常, 由调用链的"去设置目录"出口拉起目录选择器)。
+     * 写入前按需创建 (默认目录首次下载时可能还不存在)。
+     */
+    private fun bookSaveDir(): File = File(requireBookSaveDir()).apply { mkdirs() }
 
     /**
      * 本地书提取封面相对引用 (`oldCovers/{md516}.jpg`, 物理目录 `{desktopAppRootDir}/covers`,
@@ -153,10 +160,15 @@ class DesktopFileBookAccessor(
         val path = runCatching { locator.getLocalPath(book) }.getOrNull()
         val file = if (path != null) File(path) else resolveLocalFile(book.bookUrl)
         if (file.isFile) return file.inputStream()
-        val fallback = File(booksDir, book.originName)
-        if (fallback.isFile) {
-            locator.cacheLocalPath(book, fallback.absolutePath)
-            return fallback.inputStream()
+        // 兜底: 在有效书籍保存目录按 originName 查找 (未设置保存位置时跳过, 与原版
+        // getLocalUri 的 `if (!defaultBookDir.isNullOrBlank())` 同口径)
+        val fallbackDir = effectiveBookSaveDir()
+        if (fallbackDir != null) {
+            val fallback = File(fallbackDir, book.originName)
+            if (fallback.isFile) {
+                locator.cacheLocalPath(book, fallback.absolutePath)
+                return fallback.inputStream()
+            }
         }
         return null
     }
@@ -165,7 +177,8 @@ class DesktopFileBookAccessor(
     private fun findArchiveFile(book: Book): File? {
         if (!book.isArchive) return null
         val name = runCatching { book.archiveName }.getOrNull() ?: return null
-        return File(booksDir, name).takeIf { it.isFile }
+        val dir = effectiveBookSaveDir() ?: return null
+        return File(dir, name).takeIf { it.isFile }
     }
 
     override fun getLastModified(book: Book): Result<Long> {
@@ -323,7 +336,7 @@ class DesktopFileBookAccessor(
     }
 
     override fun saveBookFile(inputStream: InputStream, fileName: String): String {
-        // desktop 无 SAF, 用 {desktopAppRootDir}/books + java.io.File (app 端走 defaultBookTreeUri + DocumentFile);
+        // desktop 无 SAF, 用有效书籍保存目录 + java.io.File (app 端走 defaultBookTreeUri + DocumentFile);
         // 返回存储引用: 数据根下存相对引用 (`books/x.epub`, 便携移动后有效), 兼容旧 file: URI
         //
         // 异常口径与 app 端 FileBook.saveBookFile 文件路径分支逐字一致: 写不进去 (目录被删/无写权限/
@@ -331,7 +344,7 @@ class DesktopFileBookAccessor(
         // 好让既有 `Throwable.isSecurityException()` 的调用方 (RemoteBookViewModelShared 的
         // onPermissionDenied / ReaderScreenModel 的权限请求链) 拉起"去设置目录"出口;
         // 原版该分支同样是 `catch (e: Exception)` 包住整段写 (含 copyTo), 故此处不另分类型。
-        val file = File(booksDir, fileName)
+        val file = File(bookSaveDir(), fileName)
         inputStream.use { input ->
             try {
                 file.outputStream().use { output -> input.copyTo(output) }
@@ -352,15 +365,16 @@ class DesktopFileBookAccessor(
      * 流式保存 WebDav 远端书籍文件 ("下载到本地" / "刷新远端更新" 链路)。
      *
      * desktop 无 SAF: 交给既有的 [WebDav.downloadTo] (savedPath, replaceExisting)
-     * 边下边写 `{desktopAppRootDir}/books/{fileName}`, 返回引用形式与
+     * 边下边写有效书籍保存目录下的 `{fileName}` (用户已选 → 选定目录, 未选 →
+     * `{desktopAppRootDir}/books`), 返回引用形式与
      * [saveBookFile] (inputStream 重载) 一致 ([desktopStoredLocalRef]);
      * 传输中途失败删净残缺文件 (不留半截书)。
      *
-     * 异常口径与 app 端对齐: 保存位置不可用 (books 目录不可写) 报权限类提示
+     * 异常口径与 app 端对齐: 保存位置不可用 (目录不可写) 报权限类提示
      * (`SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e")`), 其余异常照旧透传。
      */
     override suspend fun saveBookFileFromWebDav(webDav: WebDav, fileName: String): String {
-        val file = File(booksDir, fileName)
+        val file = File(bookSaveDir(), fileName)
         // 分辨"保存位置不可用"与网络/传输异常: 前者按 app 端文件路径分支的口径给出权限类提示,
         // 后者原样透传。append 模式探测只验"能否打开目标文件写", 不截断已有文件;
         // 与 downloadTo 随后自己打开的是同一个文件, 仍是流式, 不额外读入内存。

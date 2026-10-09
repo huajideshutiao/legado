@@ -102,20 +102,46 @@ const SHARE_TEXT_UTDS: string[] = ['general.text', 'general.plain-text', 'genera
 /**
  * 分享记录 → 外部启动请求串 (交 legado.handleLaunchRequest → OhosLaunchRequests.parse)。
  *
- * - 文本类 UTD: 取 content 加 `text:` 前缀 (内容为空时退回 uri);
- * - 其余 (文件/图片/视频等): 取 uri (即 file:// 授权体地址), 使分享进来的文件走既有导入分发;
- * - 两者都空: 空串 (调用方跳过该记录)。
+ * **只处理文本类 UTD** —— 与 module.json5 里 share skill 的声明面 (只申报 general.text /
+ * plain-text / html / hyperlink) 以及原版 Android 的注册范围 (AndroidManifest 的
+ * ProcessTextActivity alias 只挂 `SEND` + `text/plain`, 文件分享走的是 `ACTION_VIEW` 文件关联)
+ * 严格对齐: 非文本类型 (图片/视频/压缩包…) 系统根本不会投给本 Ability 的 share skill,
+ * 写一条"非文本取 uri → 导入"的分支等于给声明不到的路径留代码 (旧代码就是这样)。
+ *
+ * 文本类记录里 content 为空的情况退回 uri: 那是"文本类 UTD 但载的是一个文件" (如从文件管理器
+ * 分享 .txt), 对应 Android 同一条注册下的 `ACTION_SEND` + `EXTRA_STREAM` → `ImportFile` 分支。
+ *
+ * @returns 空串 = 该记录不可用 (调用方跳过)
  */
 function toLaunchRequestFromSharedRecord(record: systemShare.SharedRecord): string {
-  const uri: string = record.uri ?? '';
+  if (!SHARE_TEXT_UTDS.includes(record.utd)) {
+    return '';
+  }
   const content: string = record.content ?? '';
-  if (SHARE_TEXT_UTDS.includes(record.utd)) {
-    return content.length > 0 ? SHARE_TEXT_PREFIX + content : uri;
+  if (content.length > 0) {
+    return SHARE_TEXT_PREFIX + content;
   }
-  if (uri.length > 0) {
-    return uri;
+  return record.uri ?? '';
+}
+
+/**
+ * 主屏快捷方式的裸路由名 (`shortcuts_config.json` 的 `wants.parameters.route`)。
+ *
+ * 必须单独取: 快捷方式系统把 `wants.parameters` 放进 `want.parameters` (不是 `want.uri`),
+ * 而本 Ability 其余投递口都只看 `want.uri` —— 不读这里就等于"快捷方式怎么配都是死的"。
+ * 值约定为**裸路由名** (与 Android 快捷方式 intent 的 `route` extra、iOS 的
+ * `UIApplicationShortcutItemUserInfo["route"]` 同一形制), 拼上既有的 `route:` 前缀后投给
+ * legado.handleLaunchRequest → OhosLaunchRequests.parse → navigateToRoute。
+ *
+ * @returns 空串 = 本次启动不是带 route 的快捷方式 (或值不是字符串)
+ */
+function routeFromWantParameters(want: Want): string {
+  const params: Record<string, Object> | undefined = want.parameters;
+  if (params === undefined) {
+    return '';
   }
-  return content.length > 0 ? SHARE_TEXT_PREFIX + content : '';
+  const value: Object | undefined = params['route'];
+  return typeof value === 'string' ? value : '';
 }
 
 /**
@@ -547,6 +573,7 @@ export default class EntryAbility extends UIAbility {
    * # 分流 (与 Kotlin LegadoNativeExports.handleDeepLink / handleLaunchRequest 分工对应)
    * - legado:// / yuedu:// 一键导入链接 → legado.handleDeepLink
    *   (@CName legado_handle_deep_link → LegadoDeepLinkHandler 弹勾选导入对话框)
+   * - 主屏快捷方式 (want.uri 为空, 路由在 want.parameters.route) → legado.handleLaunchRequest
    * - 其余非空 URI (文件关联 file:// / 其他 scheme deep link / 通知 route:xxx) →
    *   legado.handleLaunchRequest (@CName legado_handle_launch_request → OhosLaunchRequests
    *   → LaunchRequestBus → Compose LegadoApp 路由导航)。普通启动 want.uri 为空, 跳过。
@@ -562,6 +589,20 @@ export default class EntryAbility extends UIAbility {
   private handleDeepLink(want: Want): void {
     const uri: string = want.uri ?? '';
     if (uri.length === 0) {
+      // 主屏快捷方式: 路由参数在 want.parameters.route (shortcuts_config.json 的
+      // wants.parameters), 不在 want.uri —— 不先把这一支捞出来, 三项快捷方式全都只能
+      // 拉起应用而不会跳转。值按裸路由名约定拼 `route:` 前缀投递 (与通知点击同一条链)。
+      const shortcutRoute: string = routeFromWantParameters(want);
+      if (shortcutRoute.length > 0) {
+        const routeRequest: string = LAUNCH_ROUTE_PREFIX + shortcutRoute;
+        try {
+          const handledRoute: boolean = legado.handleLaunchRequest(routeRequest);
+          console.info('[Legado] shortcut route dispatched: handled=' + handledRoute + ', route=' + shortcutRoute);
+        } catch (e) {
+          console.error('[Legado] shortcut route dispatch failed: ' + JSON.stringify(e) + ', route=' + shortcutRoute);
+        }
+        return;
+      }
       // 系统分享投递的数据不在 want.uri 里 (纯文本分享根本没有 uri, 文件分享的数据在
       // systemShare 的 SharedData 中), 故此处补解析 (对照 iOS 宿主回调 handleIosLaunchRequest
       // 的入口位置; 鸿蒙侧对应入口 = OhosLaunchRequests)。非分享 want 由 action 判定直接返回。

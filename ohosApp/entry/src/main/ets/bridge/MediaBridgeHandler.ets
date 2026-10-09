@@ -651,7 +651,19 @@ function stopVideoPip(): void {
 /**
  * `audio.InterruptHint` → Kotlin 侧四档焦点事件串 (与 Android AUDIOFOCUS_* 对应表同上)。
  *
- * 返回 null = 该档在 Android 侧无对应语义, 不派发 (不得硬安到某个档上)。
+ * 对应关系取自 OpenHarmony 官方《音频焦点》文档对每个 hint 的语义措辞 (逐档对 Android
+ * `AudioManager.OnAudioFocusChangeListener` 的档位):
+ * - RESUME/UNDUCK: "音频流可恢复播放…恢复正常音量" → AUDIOFOCUS_GAIN (`gain`);
+ * - PAUSE: "音频暂停, **暂时**失去音频焦点。后续待焦点可用时, 会再收到 INTERRUPT_HINT_RESUME"
+ *   → AUDIOFOCUS_LOSS_TRANSIENT (`lossTransient`);
+ * - STOP: "音频停止, **彻底**失去音频焦点" → AUDIOFOCUS_LOSS (`loss`) ——
+ *   即 "暂停并放弃焦点" (AudioFocusHandler 的 Loss 分支: onPause(abandonFocus = true));
+ *   这一档早先被当成"Android 侧无对应档"漏掉, 结果是"另一个应用永久抢走焦点"在鸿蒙上
+ *   只被当成临时暂停 (之后还会 auto-resume);
+ * - DUCK: "降低音量播放" → AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK (`lossTransientCanDuck`)。
+ *
+ * 返回 null = 该档在 Android 侧无对应语义, 不派发 (不得硬安到某个档上):
+ * NONE (无提示) 与 MUTE/UNMUTE (API 20 的"静音/取消静音该流", Android 的音频焦点没有这一档)。
  */
 function mapInterruptHint(hint: audio.InterruptHint): string | null {
   switch (hint) {
@@ -659,6 +671,9 @@ function mapInterruptHint(hint: audio.InterruptHint): string | null {
     case audio.InterruptHint.INTERRUPT_HINT_RESUME:
     case audio.InterruptHint.INTERRUPT_HINT_UNDUCK:
       return 'gain';
+    // 停止: 彻底失去焦点 → AUDIOFOCUS_LOSS (永久丢失, 暂停并放弃焦点)
+    case audio.InterruptHint.INTERRUPT_HINT_STOP:
+      return 'loss';
     // 暂停但不丢焦点: 对应 AUDIOFOCUS_LOSS_TRANSIENT
     case audio.InterruptHint.INTERRUPT_HINT_PAUSE:
       return 'lossTransient';
@@ -666,7 +681,7 @@ function mapInterruptHint(hint: audio.InterruptHint): string | null {
     case audio.InterruptHint.INTERRUPT_HINT_DUCK:
       return 'lossTransientCanDuck';
     default:
-      // STOP / MUTE / UNMUTE / NONE: Android 侧无对应档, 不派发
+      // NONE / MUTE / UNMUTE: Android 音频焦点无对应档, 不派发
       return null;
   }
 }
@@ -737,8 +752,8 @@ function removeAudioRoutingMonitor(): void {
 function registerPlayerEvents(id: string, player: media.AVPlayer): void {
   // 音频打断 (系统/其它应用抢焦点) → 统一平台事件通道, Kotlin 侧落在 SystemMediaControl
   // 的四档状态机上。只对有声书与 HttpTTS 两个音频实例有意义; 语义映射逐档对齐 Android
-  // AudioManager.AUDIOFOCUS_* (RESUME→gain / PAUSE→lossTransient / DUCK→canDuck /
-  // UNDUCK→gain), STOP/MUTE 等无 Android 对应档, 不派发 (不静默降级成别的档)。
+  // AudioManager.AUDIOFOCUS_* (RESUME→gain / STOP→loss / PAUSE→lossTransient / DUCK→canDuck /
+  // UNDUCK→gain), 四档齐; NONE/MUTE/UNMUTE 无 Android 对应档, 不派发 (不静默降级成别的档)。
   if (id === PLAYER_ID_AUDIO_BOOK || id === PLAYER_ID_HTTP_TTS) {
     player.on('audioInterrupt', (info: audio.InterruptEvent) => {
       const change: string | null = mapInterruptHint(info.hintType);

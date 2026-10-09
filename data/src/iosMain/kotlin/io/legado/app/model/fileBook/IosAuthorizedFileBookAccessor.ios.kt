@@ -1,8 +1,11 @@
 package io.legado.app.model.fileBook
 
+import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.LocalBookLocators
+import io.legado.app.help.book.requireBookSaveDir
+import io.legado.app.lib.webdav.WebDav
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.IosSecurityScopeLease
 import io.legado.app.utils.IosSecurityScopedStorage
@@ -74,7 +77,10 @@ class IosAuthorizedFileBookAccessor(
         saveFileName: String?,
         filter: ((String) -> Boolean)?
     ): List<Book> {
-        return leaseAround(delegate.resolveLocalFile(archiveFileUri).path) {
+        // 源压缩包 (可能在别的授权目录) 与解出书籍的落地目录 ("书籍保存位置") 都要持租约
+        return withAccesses(
+            listOf(delegate.resolveLocalFile(archiveFileUri).path, requireBookSaveDir())
+        ) {
             delegate.importFromArchive(archiveFileUri, saveFileName, filter)
         }
     }
@@ -90,8 +96,73 @@ class IosAuthorizedFileBookAccessor(
         }
     }
 
+    /**
+     * 保存新书到"有效书籍保存位置" (用户已选 → 选定目录, 未选 → 沙盒默认 `{filesDir}/books`):
+     * 写入前取一次 security-scoped 租约, 写完即释放。
+     *
+     * 直接持租约 ([IosSecurityScopedStorage.acquireLease]) 而不走
+     * [IosSecurityScopedStorage.withAccess] 的 NSFileCoordinator: 新建文件时协调器会对尚不存在的
+     * 目标路径报错, 而这里需要的只是授权本身; 沙盒默认目录无需 scope, 租约为空操作。
+     *
+     * 覆写四个落盘入口 (`saveBookFile` 两个重载 / `saveBookFileFromWebDav` / `downloadRemoteBook`)
+     * 的原因: `by delegate` 只转发未被覆写的方法, delegate 内部再调 `saveBookFile` 不会回到本类,
+     * 故每个能直接触发写入的入口都要单独包一层。
+     */
+    override fun saveBookFile(inputStream: InputStream, fileName: String): String {
+        val lease = IosSecurityScopedStorage.acquireLease(requireBookSaveDir())
+        return try {
+            delegate.saveBookFile(inputStream, fileName)
+        } finally {
+            lease.close()
+        }
+    }
+
+    override suspend fun saveBookFile(
+        str: String,
+        fileName: String,
+        source: BaseSource?
+    ): String {
+        val lease = IosSecurityScopedStorage.acquireLease(requireBookSaveDir())
+        return try {
+            delegate.saveBookFile(str, fileName, source)
+        } finally {
+            lease.close()
+        }
+    }
+
+    override suspend fun saveBookFileFromWebDav(webDav: WebDav, fileName: String): String {
+        val lease = IosSecurityScopedStorage.acquireLease(requireBookSaveDir())
+        return try {
+            delegate.saveBookFileFromWebDav(webDav, fileName)
+        } finally {
+            lease.close()
+        }
+    }
+
+    override fun downloadRemoteBook(book: Book): Boolean {
+        val lease = IosSecurityScopedStorage.acquireLease(requireBookSaveDir())
+        return try {
+            delegate.downloadRemoteBook(book)
+        } finally {
+            lease.close()
+        }
+    }
+
     private fun <T> leaseAround(path: String, write: Boolean = false, block: () -> T): T =
         IosSecurityScopedStorage.withAccess(path, write) { block() }
+
+    /**
+     * 依次在多个路径的 security scope 内执行 [block] (同一授权根重复取租约安全, 沙盒路径自动放行)。
+     * 用于一次操作同时读写多个授权目录 (如从授权目录的压缩包解出书, 落到"书籍保存位置")。
+     */
+    private fun <T> withAccesses(paths: List<String>, block: () -> T): T {
+        var action: () -> T = block
+        for (path in paths.asReversed()) {
+            val inner = action
+            action = { IosSecurityScopedStorage.withAccess(path) { inner() } }
+        }
+        return action()
+    }
 
     /** 本地书文件路径 (非本地书返回 null, 走无授权路径)。 */
     private fun localPath(book: Book): String? {

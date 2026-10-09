@@ -38,4 +38,17 @@ object AndroidDataStorage : DataStorage {
      * 保持原有交互不变 —— 直写公共目录在 Android 11+ 需额外授权, 不能当默认值。
      */
     override val defaultBackupDir: String? get() = null
+
+    /**
+     * 书籍保存位置由用户经 SAF 选 (PreferKey.defaultBookTreeUri), 返回 null 让调用方拉起
+     * 目录选择器, 保持原版交互 —— 直写公共目录在 Android 11+ 需额外授权, 不能当默认值。
+     */
+    override val defaultBookDir: String? get() = null
+
+    /**
+     * 导出目录由用户经 SAF 选 (PreferKey.bookExportPath —— 原版把同一个选择结果记在
+     * ACache "exportBookPath", 现改存偏好), 返回 null 让调用方拉起目录选择器:
+     * 直写公共目录在 Android 11+ 需额外授权, 不能当默认值。
+     */
+    override val defaultBookExportDir: String? get() = null
 }

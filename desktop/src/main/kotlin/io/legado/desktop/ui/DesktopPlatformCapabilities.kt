@@ -11,15 +11,16 @@ import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.DirectLinkUploadRule
 import io.legado.app.help.RssToolbarActions
+import io.legado.app.help.book.effectiveBookSaveDir
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.tryParesExportFileName
 import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.file.desktopStoredLocalRef
-import io.legado.app.help.file.desktopAppRootDir
 import io.legado.app.help.source.SourceVerificationHelpShared
 import io.legado.app.help.storage.DataStorageProviders
+import io.legado.app.help.storage.effectiveBookExportDir
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.Debug
 import io.legado.app.model.fileBook.FileBook
@@ -78,7 +79,6 @@ import java.awt.datatransfer.StringSelection
 import java.io.File
 import java.lang.management.ManagementFactory
 import java.net.URI
-import java.nio.file.Paths
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.management.ObjectName
 
@@ -626,10 +626,12 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     // 走 FileAssociationDispatch 的直接导入链), 没找到就弹确认框由调用方重新下载后重试
     override fun startReadRemoteArchive(fileName: String, onNeedDownload: () -> Unit) {
         scope.launch {
-            // 与 DesktopFileBookAccessor 的书籍保存目录同源 ({desktopAppRootDir}/books)
-            val path = Paths.get(desktopAppRootDir(), "books", fileName).toString()
-            if (File(path).isFile) {
-                FileAssociationDispatch.dispatch(path)
+            // 与 DesktopFileBookAccessor 的有效书籍保存目录同源
+            // (用户已选 → 选定目录; 未选 → 平台默认 {desktopAppRootDir}/books)
+            val dir = effectiveBookSaveDir()
+            val path = dir?.let { File(it, fileName) }
+            if (path != null && path.isFile) {
+                FileAssociationDispatch.dispatch(path.absolutePath)
                 return@launch
             }
             withContext(Dispatchers.Main) {
@@ -677,25 +679,26 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     }
 
     // 导出书籍正文, 格式取导出配置 (0=txt 1=epub, 对照 app 端 AppConfig.exportType;
-    // 图片书自动走 cbz), 目录来自 pref 或现选
+    // 图片书自动走 cbz), 目录取"用户选过的偏好键, 否则平台惯例目录"
+    // (三分支与备份路径同一形制, 见 DataStorage.defaultBookExportDir)
     override fun exportAllBooks(books: List<Book>) {
         if (books.isEmpty()) return
-        val cached = prefs.getString(KEY_EXPORT_BOOK_PATH, "").takeIf { File(it).isDirectory }
-            ?: defaultBookExportDir()
-        if (cached == null) {
+        val dir = effectiveBookExportDir()
+        if (dir == null) {
             selectExportFolder(books)
             return
         }
-        startExport(cached, books)
+        startExport(dir, books)
     }
 
     override fun selectExportFolder(books: List<Book>) {
         scope.launch {
             val dir = FileDialogs.pickDirectory(
                 "选择导出目录",
-                initialDir = defaultBookExportDir()?.let(::File),
+                initialDir = effectiveBookExportDir()?.let(::File),
             ) ?: return@launch
-            prefs.putString(KEY_EXPORT_BOOK_PATH, dir.absolutePath)
+            // 记忆落偏好键 (PreferKey.bookExportPath): 与安卓同一个键、同一套三分支
+            prefs.putString(PreferKey.bookExportPath, dir.absolutePath)
             if (books.isNotEmpty()) {
                 // 对照 app 端 exportDir 回调: 开启自定义导出时先弹章节配置对话框
                 if (enableCustomExport()) {
@@ -706,12 +709,6 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
             }
         }
     }
-
-    /** 用户没选过导出目录时的默认落点 (桌面/legado/books), 创建失败返回 null 走目录选择器。 */
-    private fun defaultBookExportDir(): String? = runCatching {
-        val dir = File(DataStorageProviders.get().bookExportDir)
-        if (dir.isDirectory || dir.mkdirs()) dir.absolutePath else null
-    }.getOrNull()
 
     // 导出配置弹窗 (对照 app 端 showExportConfig / dialog_export_config.xml 全量字段):
     // 导出文件名 JS 规则 / 导出类型 txt|epub / 导出编码 / TXT 不导出章节名
@@ -1031,9 +1028,6 @@ object DesktopPlatformCapabilities : SharedPlatformCapabilities {
     }
 
     // ===== 私有辅助 =====
-
-    /** 上次导出目录 (对照 app 端 ACache "exportBookPath")。 */
-    private const val KEY_EXPORT_BOOK_PATH = "exportBookPath"
 
     private fun resolveLocalFile(bookUrl: String): File = if (bookUrl.startsWith("file:")) {
         // Windows 上 URI.path 是 "/C:/..." 不是合法路径, 必须交给 File(URI) 解析盘符

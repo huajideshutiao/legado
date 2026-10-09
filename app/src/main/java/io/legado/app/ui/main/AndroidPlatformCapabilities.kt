@@ -89,6 +89,7 @@ import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.storage.effectiveBookExportDir
 import io.legado.app.help.i18n.androidAppString
 import io.legado.app.lib.theme.MonetColorExtract
 import io.legado.app.model.BookCover
@@ -131,7 +132,6 @@ import io.legado.app.ui.root.encodeBookVariableOverlayPayload
 import io.legado.app.ui.root.encodeSourceVariableOverlayPayload
 import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.root.toRouteRef
-import io.legado.app.utils.ACache
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
@@ -1400,9 +1400,11 @@ class AndroidPlatformCapabilities(
         }
     }
 
-    // 对照 BookshelfManageActivity.exportAll
+    // 对照 BookshelfManageActivity.exportAll (三分支与备份路径同一形制, 见 DataStorage.defaultBookExportDir:
+    // 已选过 → 用; 未选过且平台有惯例目录 → 用惯例目录; 都没有 → 拉起目录选择器。
+    // 安卓的惯例目录恒为 null —— 写公共目录要 SAF 授权, 不能当默认值)
     override fun exportAllBooks(books: List<Book>) {
-        val path = ACache.get().getAsString("exportBookPath")
+        val path = effectiveBookExportDir()
         if (path.isNullOrEmpty()) {
             selectExportFolder(books)
         } else {
@@ -1451,9 +1453,10 @@ class AndroidPlatformCapabilities(
         }
     }
 
-    // 对照 BookshelfManageActivity.selectExportFolder
+    // 对照 BookshelfManageActivity.selectExportFolder (既有的"选择导出文件夹"入口):
+    // 读同一份偏好键作选择器默认项 (写出选择结果由选择器回调负责, 见 MainActivity 的 exportDir)
     override fun selectExportFolder(books: List<Book>) {
-        val path = ACache.get().getAsString("exportBookPath")
+        val path = PreferenceProviders.get().getString(PreferKey.bookExportPath)
         activity.pendingExportBooks = books
         activity.launchExportFolderPicker(path)
     }

@@ -43,6 +43,15 @@ object PreferKey {
     const val bookshelfGridWidth = "bookshelfGridWidth"
     const val bookshelfSort = "bookshelfSort"
     const val bookExportFileName = "bookExportFileName"
+
+    /**
+     * 用户选定的"导出书籍"落地目录标识 (书架管理 → 选择导出文件夹)。
+     *
+     * Android 端值是 SAF 授权的 `content://` 树引用 (由 ExportBookService / FileDoc 解析);
+     * 桌面/iOS/鸿蒙 是普通绝对路径。语义与 [backupPath] 同形制 (用户指定的写入落地目录),
+     * 取值顺序见 [io.legado.app.help.storage.effectiveBookExportDir]。
+     */
+    const val bookExportPath = "bookExportPath"
     const val bookImportFileName = "bookImportFileName"
     const val episodeExportFileName = "episodeExportFileName"
     const val recordLog = "recordLog"

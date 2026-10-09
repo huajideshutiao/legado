@@ -125,6 +125,15 @@ actual object FileUtilsCommon {
         return dir.listFiles { f -> f.isDirectory }?.map { it.absolutePath } ?: emptyList()
     }
 
+    actual fun isDirAbsentOrEmpty(path: String): Boolean {
+        // 复刻下沉前桌面端 DesktopCore.dirAbsentOrEmpty: 不用空判掩盖 IO 错误。
+        // File.list() 在"不是目录"与"是目录但读目录出错"时都返回 null, 两者靠 isDirectory 区分:
+        // 后者按"非空"处理 (返回 false), 让清理照原样跑。
+        val dir = File(path)
+        val entries = dir.list()
+        return if (entries == null) !dir.isDirectory else entries.isEmpty()
+    }
+
     actual fun getDirSize(path: String): Long {
         val file = File(path)
         if (!file.exists()) return 0L

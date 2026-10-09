@@ -150,16 +150,18 @@ fun MainOhos() {
                     )
                     // 启动期维护 (下沉件 StartupMaintenanceShared, 与 Android/桌面/iOS 同一份):
                     // 默认数据补齐 + 缓存清理 + WebDav 进度同步。必须排在下方"升级更新日志"之前
-                    // —— 那个弹窗自己会写回版本号, 其写回的是另一份存储的 key, 但保持这个顺序
-                    // 与另外三端一致, 避免以后有人把两处合成一份时踩到"弹窗先关门"。
+                    // —— 维护的"这一版要不要补默认数据"与弹窗"这一版要不要展示"读的是**同一份存储的
+                    // 同一个 key** (`appVersionCode`), 而写回它的只有弹窗: 弹窗先跑就会把维护的门关死,
+                    // 那一版要补的预置分组/默认资源就再也补不上了 (与 app 端 App.onCreate 的
+                    // DefaultData.upVersion() 先于 MainActivity 同一时序)。
                     // 异步、不阻塞首帧 (LaunchedEffect 自身就是后台协程)。
                     // 升级更新日志 (对照原版 MainActivity.upVersion): 首启弹帮助, 升级弹更新日志;
                     // 鸿蒙无构建类型感知, isDebug 恒 false (对齐 release 行为);
                     // 版本名未注入 (ArkTS 注入时机竞态) 时不推进版本号, 下次启动再判。
                     //
                     // 启动期维护必须在同一协程内排在弹窗之前: 弹窗会写回 appVersionCode,
-                    // 而维护的预置项补齐也拿这个键当门 —— 两个 LaunchedEffect 并发时谁先写谁关门,
-                    // 结果是预置项可能被永久跳过。Android (onCreate → onPostCreate) 与桌面
+                    // 而维护也拿这个键当门 (两个 LaunchedEffect 并发时谁先写谁关门, 结果是预置项
+                    // 可能被永久跳过)。Android (onCreate → onPostCreate) 与桌面
                     // (注册内含 initDesktopDefaultData → 再 upVersion) 本来就是这个串行序。
                     LaunchedEffect(Unit) {
                         StartupMaintenanceShared.initDefaultData()

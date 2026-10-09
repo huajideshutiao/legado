@@ -20,13 +20,20 @@ import kotlin.time.Duration.Companion.nanoseconds
  * `concurrentMain`/`commonMain`), 故把 actual 放在与 atomicfu concurrent 同级的源集
  * `data/src/concurrentMain/kotlin` (声明见 data/build.gradle.kts 的 `concurrentMain`)。
  *
- * # 运行时行为逐字不变
+ * # 与合并前两份 actual 的关系 (jvm 行为等价, native 是行为修正)
  * - jvm / android: [ParkingSupport] 的 jvm actual 直接转发 `java.util.concurrent.locks.LockSupport`
  *   (`ParkingSupport.currentThreadHandle()` ≡ `Thread.currentThread()`,
  *   `park(nanos.nanoseconds)` ≡ `LockSupport.parkNanos(nanos)`,
  *   `unpark(handle)` ≡ `LockSupport.unpark(thread)`) —— 与下沉前的
- *   `ThreadBridge.jvmAndAndroid.kt` (直接调 LockSupport) 是同一批 JDK 调用;
- * - native (iOS / 鸿蒙): pthread cond 实现, 与下沉前的 `ThreadBridge.native.kt` 逐字相同。
+ *   `ThreadBridge.jvmAndAndroid.kt` (直接调 LockSupport) 是同一批 JDK 调用, 行为不变;
+ * - native (iOS / 鸿蒙): **不是**"与下沉前逐字相同", 而是一次行为修正。合并前那份
+ *   `ThreadBridge.native.kt` 是占位实现 —— `currentThreadMarker()` 返回 `Unit` (无真实线程句柄)、
+ *   `parkThread` 走 `platformSleep` (睡满整轮, 不可提前唤醒)、`unparkThread` 空实现, 即
+ *   "靠轮询超时唤醒"; 现在换成 [ParkingSupport] 的 native actual (pthread cond:
+ *   `pthread_cond_timedwait` + `pthread_cond_signal`, 真实句柄 + 可被 unpark 提前唤醒),
+ *   即与 Android 端原版 `LockSupport` park/unpark 同款语义。调用方
+ *   [SourceVerificationHelpShared] 的轮询循环两种语义下都正确, 改成真 park/unpark 后
+ *   不再白等满一轮超时。
  *
  * # 语义如实记录
  * - [ParkingSupport.park] 允许伪唤醒 (spurious wakeup); 调用方 [SourceVerificationHelpShared]

@@ -12,12 +12,13 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.AppWebDavShared
-import io.legado.app.help.file.AppFilesDirs
+import io.legado.app.help.book.effectiveBookSaveDir
 import io.legado.app.help.file.OhosDirAuthorizations
 import io.legado.app.help.copyToClipboard as copyTextToClipboard
 import io.legado.app.help.readFromClipboard
 import io.legado.app.help.openURL
 import io.legado.app.help.source.OhosCheckSource
+import io.legado.app.help.storage.effectiveBookExportDir
 import io.legado.app.help.toast.Toasters
 import io.legado.app.help.tts.OhosReadAloudHost
 import io.legado.app.help.upLoadToDirectLink
@@ -84,7 +85,9 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
     @Volatile
     private var displayDensity: Float = 0f
 
-    /** 平板判据: 屏幕短边 vp 下限 (对照安卓 `SCREENLAYOUT_SIZE_LARGE` 档 ≈ sw480dp)。 */
+    /**
+     * 平板判据: 屏幕短边 vp 下限 (**近似**安卓 `SCREENLAYOUT_SIZE_LARGE` 档的 sw480dp 级, 不等价)。
+     */
     private const val TABLET_MIN_SMALLEST_WIDTH_VP = 480f
 
     /** 注入当前显示密度 (根组合里读 LocalDensity; 密度变化时重注入, 只接受正值)。 */
@@ -158,11 +161,19 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
     /**
      * 是否平板 (对照 ChapterProvider.upLayout 的 appCtx.isPad, "平板/横屏双页" auto 分支)。
      *
-     * 判据与安卓端同口径: 屏幕短边 vp >= [TABLET_MIN_SMALLEST_WIDTH_VP] (安卓 `Context.isPad`
-     * 的 `screenLayout >= SCREENLAYOUT_SIZE_LARGE` 档, 即 sw480dp 级; 常见手机 360~450vp,
-     * 平板 800vp 起; iOS 端用 UIDevice.userInterfaceIdiom 直接取设备形态)。
+     * 原版判据 (app/.../utils/ContextExtensions.kt 的 `Context.isPad`) 逐字是:
+     * `(resources.configuration.screenLayout and Configuration.SCREENLAYOUT_SIZE_MASK) >=
+     * Configuration.SCREENLAYOUT_SIZE_LARGE` —— 读的是系统给的 screenLayout 尺寸桶。
+     *
+     * ⚠️ **本端是自造近似, 与原判据不等价**: 鸿蒙没有 screenLayout / SCREENLAYOUT_SIZE_LARGE
+     * 对应 API (本机 SDK 无等价枚举, 也没有"系统判定过的大屏档"可取), 只能退而用
+     * "屏幕短边物理像素 ÷ 密度 >= 480vp" 去猜那个桶 (即常见手机 360~450vp / 平板 800vp 起
+     * 的经验分界)。系统桶会照顾厂商的 sw 声明与非矩形屏, 本近似不会; 折叠屏展开、车机这类
+     * 设备上是否与系统桶一致**未在真机验证过**, 需真机核对; 不一致时以本近似为准也只能算
+     * 已知偏差 (iOS/鸿蒙之外的两端不受影响: 安卓走原判据, 桌面继承 shared 默认 false)。
+     *
      * 屏幕尺寸来自既有桥 ([ScreenInfoProviders] / [OhosNativeBridge.getScreenSizePx], 单位物理像素),
-     * 密度由根组合注入 —— 鸿蒙侧没有独立的设备形态桥, 物理像素不除密度就会把高密度手机误判成平板。
+     * 密度由根组合注入 —— 鸿蒙侧没有独立的设备形态桥, 物理像素不除密度会把高密度手机误判成平板。
      * 密度/尺寸任一未就绪时返回 false (按非平板处理, 即不启用双页)。
      */
     override fun isTablet(): Boolean {
@@ -293,15 +304,24 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
     }
 
     // 对照 RemoteBookActivity.startRead 的 archive 分支 + Android startReadRemoteArchive:
-    // 在书籍保存目录里找已下载的压缩包 (目录与 NativeFileBookAccessor 同源 {filesDir}/books),
+    // 在有效书籍保存目录里找已下载的压缩包 (目录与 NativeFileBookAccessor 同源),
     // 找到就交文件关联分发链 (与 NativeImportBook.openReader 同口径走直接导入),
     // 没找到就弹确认框由调用方重新下载后重试。
     override fun startReadRemoteArchive(fileName: String, onNeedDownload: () -> Unit) {
         scope.launch {
-            val path = AppFilesDirs.get().filesDir + "/books/" + fileName
-            if (File(path).exists()) {
-                FileAssociationDispatch.dispatch(path)
-                return@launch
+            // 与 NativeFileBookAccessor 的有效书籍保存目录同源
+            // (用户已选 → 选定目录; 未选 → 平台默认 {filesDir}/books);
+            // 选定目录在沙盒外, 存在性检查同样要先激活既有目录授权
+            val dir = effectiveBookSaveDir()
+            if (dir != null) {
+                val path = "$dir/$fileName"
+                val exists = runCatching {
+                    withLocalDirAccess(path) { File(path).exists() }
+                }.getOrDefault(false)
+                if (exists) {
+                    FileAssociationDispatch.dispatch(path)
+                    return@launch
+                }
             }
             val confirmed = confirm(
                 title = syncGetString("draw"),
@@ -325,7 +345,15 @@ object OhosPlatformCapabilities : NativePlatformCapabilities {
             return
         }
         exportBooksJob = scope.launch {
-            val exportDir = File(AppFilesDirs.get().filesDir, "export")
+            // 导出目录取"用户选过的偏好键, 否则平台惯例目录" (三分支与备份路径同一形制,
+            // 见 DataStorage.defaultBookExportDir)。鸿蒙的惯例目录非 null (NativeDataStorage
+            // 覆盖为 filesDir/export), 落点与改动前一致
+            val exportDirPath = effectiveBookExportDir() ?: run {
+                // 到得了这里只可能是 DataStorage provider 未注册; 不另猜一个路径
+                Toasters.get().toast("无法创建导出目录")
+                return@launch
+            }
+            val exportDir = File(exportDirPath)
             if (!exportDir.isDirectory && !exportDir.mkdirs()) {
                 Toasters.get().toast("无法创建导出目录")
                 return@launch

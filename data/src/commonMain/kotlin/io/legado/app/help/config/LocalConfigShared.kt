@@ -37,11 +37,15 @@ object LocalConfigKeys {
     const val lastBackup = "lastBackup"
 
     /**
-     * 桌面/headless 端「上次执行启动期缓存清理」的时间戳 (毫秒)。
+     * 「上次执行启动期缓存清理」的时间戳 (毫秒), 四端共用
+     * ([io.legado.app.help.StartupMaintenanceShared.clearInvalidCacheIfDue])。
      *
-     * 为什么要单独一个 key 而不是复用 [lastBackup]: lastBackup 只在用户真的执行备份/恢复时才写
-     * (见 DesktopBackupRestoreHook), 从不备份的用户它恒为 0, 拿它当「每天最多清一次」的节流信号
-     * 会让门控每次启动都命中, 清理族天天全跑; 清理必须自己记账。
+     * **原版没有这个键**: 原版 `App.onCreate` 的清理块拿 `LocalConfig.lastBackup` 当"每天最多
+     * 清一次"的节流信号 (逐字: `if (LocalConfig.lastBackup + TimeUnit.DAYS.toMillis(1) <
+     * System.currentTimeMillis())`), 而 lastBackup 的写入方是"用户真的备份/恢复"与"启动时判定到
+     * 云端有更新的备份"(`MainActivity.backupSync`): 从不备份的用户它恒为 0 → 门控每次启动都命中,
+     * 清理族天天全跑; 备份过的用户又会被这条与清理无关的时间戳静默挡住一整天。
+     * 属原版明显缺陷, 不复刻 —— 清理必须自己记账 (详见下沉件 KDoc)。
      */
     const val lastCacheCleanup = "lastCacheCleanup"
 

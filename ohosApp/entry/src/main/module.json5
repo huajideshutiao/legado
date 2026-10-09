@@ -179,9 +179,15 @@
           // (TEXT='general.text' / PLAIN_TEXT='general.plain-text' / HTML='general.html' / HYPERLINK='general.hyperlink')。
           // 不配 entities: 官方分享接收示例只给 actions+uris, 本机 SDK 也无法确认系统分享会带
           // entity.system.browsable, 多声明一个不会被满足的 required entity 反而可能匹配不上。
-          // 注: 纯文本分享不带 want.uri, 而 EntryAbility.handleDeepLink 只处理非空 want.uri
-          // (uri.length===0 直接 return), 也不读 systemShare.getSharedData —— 收下这份数据还需
-          // 另一代理在 ets/** 侧补解析, 本次只做声明。
+          //
+          // # 声明面与消费面严格对齐 (只文本类)
+          // 本 skill 只申报上面四个文本 UTD, 消费侧 EntryAbility.handleSharedData →
+          // toLaunchRequestFromSharedRecord 也只处理这四个 —— 非文本 (图片/视频/压缩包) 分享
+          // 不进本 skill (旧代码里那条"非文本取 uri → 导入"分支因此永远不可达, 已删):
+          // 文件分享的入口是上面那条文件关联 skill (viewData + 具体 type), 与 Android 把
+          // 文件分享放在 ACTION_VIEW 而不是 SEND 注册上同一分工。
+          // 文本类记录 content 为空时退回 uri (文本 UTD 但载的是文件, 如分享 .txt),
+          // 对应 Android 同一条 text/plain 注册下的 ACTION_SEND + EXTRA_STREAM → ImportFile。
           {
             "actions": [
               "ohos.want.action.sendData"
@@ -212,7 +218,7 @@
         ],
         // 静态桌面快捷方式 (长按应用图标弹出), 对照 Android ShortCuts.kt 的三项
         // (书架 / 最近阅读 / 直接朗读; Android 用 ShortcutManagerCompat.setDynamicShortcuts
-        // 动态注册, 鸿蒙只支持静态声明)。
+        // 动态注册, 鸿蒙只支持静态声明)。路由值/语义逐项依据见 $profile:shortcuts_config 的注释。
         // metadata 的 name 必须用 ohos.ability.shortcuts、resource 指向 profile 配置 —— 依据:
         // module-configuration-file.md「shortcuts标签」节 "name：指定shortcuts的名称，使用
         // ohos.ability.shortcuts作为shortcuts信息的标识" 及其示例 (metadata 挂在 abilities 条目下)。

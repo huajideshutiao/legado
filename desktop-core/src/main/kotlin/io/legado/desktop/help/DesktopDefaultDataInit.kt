@@ -8,7 +8,8 @@ import io.legado.app.help.StartupMaintenanceShared
  *
  * # 下沉说明
  *
- * 编排本体 (预置分组补齐 / 键盘助手补齐 / `importOnce` 版本门 / httpTTS / txtTocRule / dictRule)
+ * 编排本体 (预置分组补齐 / 键盘助手补齐 / 资源版本门 `LocalConfigShared.isLastVersion` /
+ * httpTTS / txtTocRule / dictRule)
  * 已上移到 :data commonMain 的 [StartupMaintenanceShared.initDefaultData], 四端共用同一份实现。
  * 原先卡在桌面端无法上移的只有"当前版本号"一个平台值, 现已由
  * [io.legado.app.help.AppVersionProvider] 抽象注入, 桌面端取值源仍是
@@ -18,16 +19,18 @@ import io.legado.app.help.StartupMaintenanceShared
  * 放在桌面核心启动序列里 (`DesktopCore.registerEarlyProviders`, 与其他 provider 同步注册), 而不是
  * 在本函数首次被调时惰性注册, 后者会让"谁先读版本号"变成隐式约定。
  *
- * # 三道设计 (语义与下沉前逐字一致, 详见共享件 KDoc)
+ * # 三道设计 (详见共享件 KDoc)
  *
  * 1. **预置书架分组补齐**: 只在版本号推进时补, 按主键缺啥补啥 (不覆盖用户改动)。
  *    主路径是建库回调 (`BundledDatabaseDriver` 构造时挂的 `AppDatabaseDefaults.onCreate`),
  *    这里只兜"建库回调挂上之前的老库"与"以后新增的预置项"。
  * 2. **键盘助手补齐**: 同门控, 按 (type,key) 逐项补缺。
- * 3. **`importOnce` 版本门**: 各资源版本 key **只在导入成功后**才写回, 导入失败不推进
- *    `appVersionCode`, 下次启动整体重试。
+ * 3. **资源版本门**: 与 app 端 `LocalConfig.needUpXxx` 同一算法 (`LocalConfigShared.isLastVersion`:
+ *    先写回资源版本 key 再返回"需要导入"), 每资源每版本只尝试一次, 那次失败也不重试 (对齐原版)。
  *
- * 前两道判断必须在第三道之前: 第三道末尾才写回 `appVersionCode`, 反过来同一版本内就再也补不上。
+ * 三道整包在**同一个版本门** (`appVersionCode < 当前版本号`) 内; 该键本件只读 —— 写回它的是
+ * 各端"更新日志"弹窗 (桌面见 DesktopCore 启动序列里的 upVersion 调用), 与原版
+ * `App.onCreate` 的 DefaultData.upVersion() 先于 `MainActivity.upVersion()` 同一时序。
  */
 suspend fun initDesktopDefaultData() {
     StartupMaintenanceShared.initDefaultData()

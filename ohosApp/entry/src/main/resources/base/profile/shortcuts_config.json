@@ -12,11 +12,31 @@
   // icon 复用 AppScope 既有的 app_icon_foreground ($media 资源跨模块可见); 它是 288*288 的
   // 前景图层, 未达官方推荐的 450*450 (本次不新增图片资源, 如后续要按规范补齐再换)。
   //
-  // 三项都只拉起 EntryAbility: 短链路上的跳转目标由 wants.parameters 里的既有约定前缀承载
-  // (KMP 侧 ui/src/ohosMain OhosLaunchRequests 认 `route:` 前缀, 见 module.json5 里
-  // 的同一组字面量注释), 与 Android 端 ShortCuts.kt 用 intent extra("route"/"action")
-  // 表达"打开哪个页面"是同一思路。parameters 的值必须是字符串 (module.json5 里 metadata
-  // 与 shortcuts.json 的 schema 都只允许 string), 故这里放整串而非嵌套 JSON。
+  // # wants.parameters 怎么到 KMP 侧 (本次修正的关键)
+  // parameters 由系统放进被拉起 Ability 的 `want.parameters` (本机 SDK 的 shortcut 配置 schema
+  // 逐字: "parameters: Indicates the parameters for the target ability", 值只允许 string),
+  // **不会**变成 want.uri。所以 route 值必须是**裸路由名** (与 Android 快捷方式 intent 的
+  // `route` extra、iOS 的 `UIApplicationShortcutItemUserInfo["route"]` 同一形制),
+  // 由 EntryAbility handleDeepLink 补上 `route:` 前缀投给 legado.handleLaunchRequest
+  // (前缀约定见 ui/src/ohosMain OhosLaunchRequests.ROUTE_PREFIX, 与通知点击同一条链)。
+  // 之前这里写的是带前缀的 "route:last_read", 而 EntryAbility 又完全不读 want.parameters,
+  // 于是三项全是死的 (值给错 + 没人读)。
+  //
+  // # 三项各自的语义 (逐项对照原版)
+  // - lastRead: 原版 = 打开最近阅读书籍 (ShortCuts.buildReadBookShortCutInfo → MainActivity
+  //   路由 extra "last_read" → 共享 NavigateTo 表), 故这里带裸路由名 last_read。
+  // - bookshelf: 原版 = **不带任何 extra** 拉起主界面 (buildBookShelfShortCutInfo 的 intent
+  //   没有任何 extra) —— 故这里**不带 route**, 单纯拉起 EntryAbility 即落在主界面/书架。
+  //   与 iOS 端同款做法 (iosApp/project.yml 的 bookshelf 项刻意不带 route)。
+  // - readAloud: 原版 = **直接开始朗读** (ShortCuts 给 AssociationActivity 塞
+  //   action=readAloud → AssociationActivity.initIntent → MediaButtonReceiver.readAloud
+  //   (appCtx, false))。
+  //   ⚠️ 如实记录: 本端与共享层**没有**对应的可复用入口 —— 共享朗读宿主 ReadAloudHostShared
+  //   需要活动阅读页 attach 的 ports (见 data/src/commonMain .../tts/ReadAloudHostShared.kt),
+  //   冷启动/后台状态下没有可用的"从外部直接开始朗读"通路 (iOS 端同样没实现, 其静态项也不带
+  //   route)。故这里**不放任何假 route** (放一个不存在的路由名只会静默变成
+  //   LegadoApp 的 `else -> Unit`, 看起来接好了其实是死的): 这一项现在等同"打开应用",
+  //   待共享层补出"外部直接开始朗读"入口后再接线。
   //
   // bundleName 缺省 (官方 schema 中 bundleName/moduleName/abilityName 均可缺省, 见上; 这里只去掉
   // 会随构建变体变的那个, moduleName/abilityName 是稳定静态值, 留着指代更明确):
@@ -37,7 +57,7 @@
           "moduleName": "entry",
           "abilityName": "EntryAbility",
           "parameters": {
-            "route": "route:last_read"
+            "route": "last_read"
           }
         }
       ]
@@ -49,10 +69,7 @@
       "wants": [
         {
           "moduleName": "entry",
-          "abilityName": "EntryAbility",
-          "parameters": {
-            "route": "route:readAloud"
-          }
+          "abilityName": "EntryAbility"
         }
       ]
     },
@@ -63,10 +80,7 @@
       "wants": [
         {
           "moduleName": "entry",
-          "abilityName": "EntryAbility",
-          "parameters": {
-            "route": "route:bookshelf"
-          }
+          "abilityName": "EntryAbility"
         }
       ]
     }

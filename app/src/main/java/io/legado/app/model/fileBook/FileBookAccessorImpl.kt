@@ -345,8 +345,10 @@ object FileBookAccessorImpl : FileBookAccessor {
             try {
                 webDav.downloadTo(file.absolutePath, true)
             } catch (e: Throwable) {
-                // 传输中途失败会留下残缺文件; 旧路径 (先读满再写) 失败时不留文件,
-                // 不删干净的话残缺文件会被后续导入当成本地书读入
+                // ⚠️ 这段删除是**对原版的偏离** (不是对齐原版): 原版 `FileBook.downloadRemoteBook`
+                // 走"先读满再整份写", 中途失败时目标文件不会被创建也不留半截, 所以原版没这段清理;
+                // 改成边下边写后中途失败会留下残缺文件, 不删干净的话它会被后续导入当成本地书读入
+                // (原版不存在这个缺陷)。不复刻原版: 留一份能被当书读入的半截文件比多一次 delete 更坏。
                 kotlin.runCatching { file.delete() }
                 throw e
             }

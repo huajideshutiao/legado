@@ -355,7 +355,10 @@ object NativeImportBook {
     }
 
     /**
-     * 复制书文件到沙盒 books 目录 (对齐 NativeFileBookAccessor.booksDir)。
+     * 复制书文件到沙盒 books 目录 (`{filesDir}/books`, 应用私有导入副本,
+     * 与"书籍保存位置"无关 —— 原版 importLocalFile 不复制, 三端外部文件为保住重启后可读
+     * 才落沙盒).
+     *
      * 同名直接覆盖 (与 FileBook 重复导入的覆写语义一致); 源已在目标目录则跳过。
      * 源文件读取 (外部目录) 包在授权租约内, 复制完即释放。
      */

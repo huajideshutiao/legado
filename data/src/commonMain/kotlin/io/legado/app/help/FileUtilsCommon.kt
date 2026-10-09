@@ -96,6 +96,18 @@ expect object FileUtilsCommon {
     fun listSubDirs(path: String): List<String>
 
     /**
+     * 单层目录是否"不存在或为空" (只列一层, 不递归)。
+     *
+     * 与 [listFiles] / [listSubDirs] 的关键差别是**不吞 IO 错误**: 那两个方法把 `list` 返回 null
+     * 一律当空列表, 对"是目录但读目录出错"会误报空目录; 本方法把那种情况当"非空"(返回 false)。
+     *
+     * 语义与下沉前桌面端 `DesktopCore.dirAbsentOrEmpty` 逐字一致 (启动期清理的早退判据专用):
+     * "File.list() 在'是目录但读目录出错'时也返回 null, 这种情况按非空处理让清理照原样跑,
+     * 不用空判掩盖 IO 错误造成漏清"。
+     */
+    fun isDirAbsentOrEmpty(path: String): Boolean
+
+    /**
      * 递归统计目录下所有普通文件的大小总和 (字节); 文件返回自身大小, 不存在返回 0。
      */
     fun getDirSize(path: String): Long

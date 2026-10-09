@@ -17,6 +17,7 @@ import io.legado.app.help.AppWebDavShared.upConfig
 import io.legado.app.help.AppWebDavShared.uploadBookProgress
 import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.help.book.getRemoteUrl
+import io.legado.app.help.book.requireBookSaveDir
 import io.legado.app.model.fileBook.FileBookProviders
 import io.legado.app.model.fileBook.androidSaveRef
 import io.legado.app.model.remote.RemoteBook
@@ -345,7 +346,8 @@ object AppWebDavShared {
     }
 
     /**
-     * 断言已配置书籍保存位置。
+     * 断言存在有效书籍保存位置 ([io.legado.app.help.book.effectiveBookSaveDir] 的三分支:
+     * 用户已选 → 选定目录; 未选但平台有默认目录 → 默认目录; 都没有 → 抛异常)。
      *
      * 对照 app 端 RemoteBookWebDav.downloadRemoteBook 的前置检查:
      * 没设保存位置就下载会落不到地方, 故先报错而不是等着写文件时失败。
@@ -364,19 +366,15 @@ object AppWebDavShared {
      * (本仓库中 NoBooksDirException 的共用等价类型: 四端"去设置目录"发出点匹配的都是它),
      * 文案取原版同一条资源 [AppStringKey.no_books_dir]。
      *
-     * # 平台边界 (如实记录, 未用默认值兜底)
-     * 被判定的 [PreferKey.defaultBookTreeUri] 是 Android SAF 树引用。桌面/iOS/鸿蒙三端的写入
-     * 实现不用它 (固定落 `{数据根}/books` 或 `{filesDir}/books`, 见各端 FileBookAccessor),
-     * 它们只在该偏好为空时报"没设置保存位置" (由"其它设置 → 书籍保存位置"或此处发出的
-     * 选目录动作写入该偏好)。这一层是原版 Android 前置检查的结构 (原版就在
-     * `RemoteBookWebDav.downloadRemoteBook` 里查 `AppConfig.defaultBookTreeUri`), 故保留;
-     * 未改成"按平台判断是否需要该前置"——那是新增平台语义, 偏离原版。
+     * # 平台边界 ("默认目录 + 可为 null" 与备份路径同形制)
+     * 判定的是 [io.legado.app.help.book.effectiveBookSaveDir] 而非裸偏好: Android 的
+     * `defaultBookDir` 为 null (保存位置须经 SAF 授权, 保持原版"必须选"), 未选时照旧报错;
+     * 桌面/iOS/鸿蒙三端有平台惯例默认 books 目录, 未选时用默认目录下载, 不再误报
+     * "没设置保存位置"。Android 端选过的值是 SAF 树引用, 本函数只判非空、不解析路径。
      */
     @Throws(InvalidBooksDirException::class)
     fun checkBookSaveDir() {
-        if (PreferenceProviders.get().getString(PreferKey.defaultBookTreeUri).isEmpty()) {
-            throw InvalidBooksDirException(appString(AppStringKey.no_books_dir))
-        }
+        requireBookSaveDir()
     }
 
     /**

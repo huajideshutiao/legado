@@ -457,7 +457,14 @@ interface PlatformCapabilities {
     /** 切换"导出到 WebDav"开关 (对照 toggleExportWebDav) */
     fun toggleExportWebDav() = unsupported("切换 WebDav 导出")
 
-    /** 选择导出文件夹 (对照 selectExportFolderMenu / selectExportFolder) */
+    /**
+     * 选择导出文件夹 (对照 selectExportFolderMenu / selectExportFolder)。
+     *
+     * 选定结果落偏好键 [io.legado.app.constant.PreferKey.bookExportPath] (原版把同一个选择结果
+     * 存在 ACache "exportBookPath" —— 缓存会被清理动作抹掉, 现改偏好键); 取值顺序
+     * (已选 → 未选且有平台惯例目录 → 都没有才拉本入口) 见
+     * [io.legado.app.help.storage.effectiveBookExportDir]。
+     */
     fun selectExportFolder(books: List<Book>) = unsupported("选择导出目录")
 
     /** 弹出导出配置对话框 (对照 showExportConfig) */

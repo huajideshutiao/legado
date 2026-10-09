@@ -18,6 +18,7 @@ import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isPdf
+import io.legado.app.help.book.requireBookSaveDir
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.lib.webdav.WebDav
@@ -53,8 +54,11 @@ class NativeFileBookAccessor : FileBookAccessor {
     /** 封面缓存目录: `{filesDir}/covers` (对齐 app 端 `externalFiles/covers`)。 */
     private val coversDir: String get() = AppFilesDirs.get().filesDir + "/covers"
 
-    /** 本地书保存目录: `{filesDir}/books` (对齐 desktop `{root}/books`)。 */
-    private val booksDir: String get() = AppFilesDirs.get().filesDir + "/books"
+    /**
+     * 有效书籍保存目录 (用户已选 → 选定目录; 未选 → 平台默认 `{filesDir}/books`;
+     * 都没有 → 抛原版同款异常)。iOS/鸿蒙两端平台默认目录存在, 实际不会走到抛异常。
+     */
+    private fun bookSaveDir(): String = requireBookSaveDir()
 
     /** 合法文件后缀 (与 UrlUtil.fileSuffixRegex 一致, 该 regex 未下沉 commonMain 故此处内联)。 */
     private val fileSuffixRegex = Regex("^[a-z\\d]+$", RegexOption.IGNORE_CASE)
@@ -235,14 +239,18 @@ class NativeFileBookAccessor : FileBookAccessor {
      * 流式保存 WebDav 远端书籍文件 ("下载到本地" / "刷新远端更新" 链路)。
      *
      * native 端无 SAF: 交给既有的 [WebDav.downloadTo] (savedPath, replaceExisting)
-     * 边下边写 `{filesDir}/books/{fileName}` (内部 mkdirs + okio 流式写, 见 WebDav.native.kt),
+     * 边下边写有效书籍保存目录下的 `{fileName}` (用户已选 → 选定目录, 未选 → `{filesDir}/books`;
+     * 内部 mkdirs + okio 流式写, 见 WebDav.native.kt),
      * 不再经 [saveBookFile] (inputStream 重载) 的 `readFully()` 把整份文件读进内存 ——
      * 峰值内存与文件大小无关。
      *
      * replaceExisting=true: 保持 [saveBookFile] (inputStream 重载) 的覆盖写语义
      * (downloadTo 在 replaceExisting=false 且文件已存在时直接返回, 不覆盖)。
-     * 传输中途失败会留下残缺文件, 故失败时删净 (旧路径 "先读满再写" 失败时不留文件;
-     * 不删干净的话残缺文件会被后续导入当成本地书读入)。
+     *
+     * ⚠️ 失败时删净残缺文件是**对原版的偏离** (不是对齐原版): 原版 `FileBook.downloadRemoteBook`
+     * 走"先读满再整份写", 失败时目标文件不会被创建也不留半截, 所以原版没有这段清理; 改成边下边写后
+     * 中途失败会留下半个文件, 不删掉的话它会被后续导入当成本地书读进去 (原版不存在这个缺陷)。
+     * 之所以不复刻原版: 保留一份可被当书读入的半截文件比"多一次 delete"更坏。
      *
      * 异常口径与 app 端一致: 保存位置不可用 (books 目录不可写) 按 app 端文件路径分支的口径
      * 报 `SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e")` (喂给
@@ -251,14 +259,15 @@ class NativeFileBookAccessor : FileBookAccessor {
      * 返回引用形式 (`file://` + 绝对路径) 与 [saveBookFile] (inputStream 重载) 一致。
      */
     override suspend fun saveBookFileFromWebDav(webDav: WebDav, fileName: String): String {
-        val file = File("$booksDir/$fileName")
+        val dir = bookSaveDir()
+        val file = File("$dir/$fileName")
         // 分辨"保存位置不可用"与网络/传输异常: 前者按 app 端 FileBook.saveBookFile 文件路径分支的
         // 口径给出权限类提示, 后者原样透传 (与 desktop 端同一口径)。append 模式探测只验
         // "能否打开目标文件写", 不截断已有文件; native File 无 append 流, 直接用 okio
         // appendingSink (mustExist=false, 目标不存在则新建), 与 downloadTo 随后自己打开的
         // 是同一个文件, 仍是流式。
         try {
-            File(booksDir).mkdirs()
+            File(dir).mkdirs()
             FileSystem.SYSTEM.appendingSink(file.path.toPath()).close()
         } catch (e: Exception) {
             throw SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e").apply {
@@ -268,6 +277,7 @@ class NativeFileBookAccessor : FileBookAccessor {
         try {
             webDav.downloadTo(file.path, true)
         } catch (e: Throwable) {
+            // 对原版的偏离 (见方法 KDoc): 边下边写失败会留半截文件, 删掉它而不是留着被当书读入
             runCatching { file.delete() }
             throw e
         }
@@ -275,16 +285,18 @@ class NativeFileBookAccessor : FileBookAccessor {
     }
 
     override fun saveBookFile(inputStream: InputStream, fileName: String): String {
-        // native 端无 SAF, 写入 {filesDir}/books (app 端走 defaultBookTreeUri + DocumentFile)
+        // native 端无 SAF, 写入有效书籍保存目录 (用户已选 → 选定目录, 未选 → 平台默认
+        // `{filesDir}/books`; app 端走 defaultBookTreeUri + DocumentFile)
         //
         // 异常口径与 app 端 FileBook.saveBookFile 文件路径分支逐字一致: 写不进去 (目录被删/
         // 无写权限/磁盘满) 转 `SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e")`,
         // 让 `Throwable.isSecurityException()` (native actual 匹配 io.legado.app.exception.SecurityException)
         // 的调用方 (RemoteBookViewModelShared 的 onPermissionDenied / ReaderScreenModel 的权限请求链)
         // 拉起"去设置目录"出口; 原版该分支同样 `catch (e: Exception)` 包住整段写。
-        val file = File("$booksDir/$fileName")
+        val dir = bookSaveDir()
+        val file = File("$dir/$fileName")
         try {
-            File(booksDir).mkdirs()
+            File(dir).mkdirs()
             file.writeBytes(inputStream.readFully())
         } catch (e: Exception) {
             throw SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e").apply {

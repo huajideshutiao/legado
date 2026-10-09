@@ -1,9 +1,12 @@
 package io.legado.app.model.fileBook
 
 import io.legado.app.constant.BookType
+import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.LocalBookLocators
+import io.legado.app.help.book.requireBookSaveDir
 import io.legado.app.help.file.OhosDirAuthorizations
+import io.legado.app.lib.webdav.WebDav
 import io.legado.app.utils.InputStream
 
 /**
@@ -39,8 +42,11 @@ class OhosAuthorizedFileBookAccessor(
         saveFileName: String?,
         filter: ((String) -> Boolean)?
     ): List<Book> =
+        // 源压缩包 (可能在别的授权目录) 与解出书籍的落地目录 ("书籍保存位置") 都要激活授权
         withActivation(delegate.resolveLocalFile(archiveFileUri).path) {
-            delegate.importFromArchive(archiveFileUri, saveFileName, filter)
+            withActivation(requireBookSaveDir()) {
+                delegate.importFromArchive(archiveFileUri, saveFileName, filter)
+            }
         }
 
     override fun deleteBook(book: Book, deleteOriginal: Boolean) {
@@ -52,6 +58,38 @@ class OhosAuthorizedFileBookAccessor(
         withActivation(delegate.resolveLocalFile(book.bookUrl).path) {
             delegate.deleteBook(book, deleteOriginal)
         }
+    }
+
+    /**
+     * 保存新书到"有效书籍保存位置" (用户已选 → 选定目录, 未选 → 沙盒默认 `{filesDir}/books`):
+     * 写入前确保目录授权已激活 ([OhosDirAuthorizations.ensureActivatedFor]; 授权是持久态, 激活一次即可)。
+     *
+     * 覆写四个落盘入口 (`saveBookFile` 两个重载 / `saveBookFileFromWebDav` / `downloadRemoteBook`)
+     * 的原因: `by delegate` 只转发未被覆写的方法, delegate 内部再调 `saveBookFile` 不会回到本类,
+     * 故每个能直接触发写入的入口都要单独包一层。
+     */
+    override fun saveBookFile(inputStream: InputStream, fileName: String): String {
+        OhosDirAuthorizations.ensureActivatedFor(requireBookSaveDir())
+        return delegate.saveBookFile(inputStream, fileName)
+    }
+
+    override suspend fun saveBookFile(
+        str: String,
+        fileName: String,
+        source: BaseSource?
+    ): String {
+        OhosDirAuthorizations.ensureActivatedFor(requireBookSaveDir())
+        return delegate.saveBookFile(str, fileName, source)
+    }
+
+    override suspend fun saveBookFileFromWebDav(webDav: WebDav, fileName: String): String {
+        OhosDirAuthorizations.ensureActivatedFor(requireBookSaveDir())
+        return delegate.saveBookFileFromWebDav(webDav, fileName)
+    }
+
+    override fun downloadRemoteBook(book: Book): Boolean {
+        OhosDirAuthorizations.ensureActivatedFor(requireBookSaveDir())
+        return delegate.downloadRemoteBook(book)
     }
 
     private fun <T> withActivation(path: String, block: () -> T): T {

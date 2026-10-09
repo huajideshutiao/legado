@@ -11,8 +11,12 @@ package io.legado.app.help.source
  * - `data/src/concurrentMain/.../ThreadBridge.concurrent.kt` (jvm + android + ios + 鸿蒙 共用):
  *   kotlinx-atomicfu `ParkingSupport` (`currentThreadHandle` / `park(Duration)` / `unpark`),
  *   其 jvm actual 就是 `LockSupport` (`ParkingHandle` = `Thread` typealias,
- *   park→`LockSupport.park/parkNanos`, unpark→`LockSupport.unpark`), native actual 用
- *   pthread cond 实现 —— 与两端原先各自的实现逐字等价
+ *   park→`LockSupport.park/parkNanos`, unpark→`LockSupport.unpark`) —— 与 JVM/Android 原实现
+ *   逐字等价; native actual 用 pthread cond (`pthread_cond_timedwait` / `pthread_cond_signal`)
+ *   实现真 park/unpark, 这是对合并前 native 占位实现的**行为修正** (旧实现是
+ *   `marker = Unit` + `platformSleep` 睡满整轮 + 空 unpark, 靠轮询超时唤醒, 与本节契约里
+ *   "可被 unpark 提前唤醒"不符), 不是"逐字不变" —— 代码方向是向 Android 原版 `LockSupport`
+ *   语义靠拢。
  *
  * 为何不直接放 commonMain: `ParkingSupport` 声明在 atomicfu 的 concurrent 级片段里
  * (jvm/native 都有 actual, js/wasm 没有), 只有 concurrent 级源集才解析得到

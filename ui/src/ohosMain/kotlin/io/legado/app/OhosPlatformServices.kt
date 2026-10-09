@@ -215,8 +215,10 @@ object OhosPlatformServices : PlatformServices {
 /**
  * 鸿蒙外部启动请求解析/投递 (对照 app 端 `Intent.toLaunchRequest`)。
  *
- * ArkTS 侧 Want 无法跨 napi 传对象, 约定只传 `want.uri`; 通知点击等携带路由的场景
- * 约定前缀 `route:`; Want 带了 MIME (`want.type`) 时约定 `mime:<type>|<uri>` 同串捎带
+ * ArkTS 侧 Want 无法跨 napi 传对象, 约定只传 `want.uri`; 通知点击与主屏快捷方式等携带路由的
+ * 场景约定前缀 `route:` (快捷方式的路由在 `want.parameters.route`, 由 EntryAbility 拼上同一前缀
+ * 后投递, 见 shortcuts_config.json 的说明); Want 带了 MIME (`want.type`) 时约定
+ * `mime:<type>|<uri>` 同串捎带
  * (两种前缀都只存在于本对象与 ArkTS EntryAbility 之间, napi 导出签名不变);
  * 系统分享进来的文本由 ArkTS 宿主加 `text:` 前缀 (文本可能含任意字符, 也与普通 uri 无法区分)。
  * 由 [io.legado.app.napi.LegadoNativeExports.handleLaunchRequest] 调用。
@@ -233,14 +235,20 @@ object OhosLaunchRequests {
         if (value.startsWith(TEXT_PREFIX)) {
             // 系统分享进来的文本 (ArkTS EntryAbility.handleSharedData 打的前缀): 文本可能含任意
             // 字符, 与普通 uri 无法区分, 故按已有 route:/mime: 同一路数显式标记。
-            // 内容本身是一条地址/深链时仍走原有链路 (分享 legado:// 链接要拿去导入, 不是拿去
-            // 搜索), 认不出来才当"处理文本" (对照 Android ACTION_SEND EXTRA_TEXT →
-            // ProcessTextActivity → 搜索页; iOS 侧对认不出的文本是丢弃, 此处按安卓口径)。
+            //
+            // 分流逐字对照原版 `AssociationActivity.dispose()` (SEND / PROCESS_TEXT + text/plain
+            // 的唯一入口): 文本按空白切成 token, 只要有一个 token 整串匹配 `http.+` 就
+            // **进主界面(不搜索)** (`startActivity<MainActivity>()`); 一个都没有才把整段文本
+            // 送搜索页 (`SearchActivity.start(this, text)`)。
+            // 旧写法是"文本能当 uri 解就进 uri 链路, 否则 ProcessText" —— 既不合原版, 还会把
+            // 带链接的分享文本丢进 WebView 而不是主界面。
             val text = value.removePrefix(TEXT_PREFIX)
             if (text.isEmpty()) return null
-            // 内容以 "text:" 开头时直接当纯文本, 不再递归 (否则本前缀会无限套下去)
-            if (text.startsWith(TEXT_PREFIX)) return LaunchRequest.ProcessText(text)
-            return parse(text) ?: LaunchRequest.ProcessText(text)
+            return if (hasHttpLink(text)) {
+                LaunchRequest.OpenRoute(AppRoute.Main())
+            } else {
+                LaunchRequest.ProcessText(text)
+            }
         }
         val hint = extractMimeHint(value)
         val address = hint?.second ?: value
@@ -276,6 +284,16 @@ object OhosLaunchRequests {
     /** 投递到 [LaunchRequestBus]; 队列已关闭返回 false。 */
     fun post(request: LaunchRequest): Boolean =
         runCatching { LaunchRequestBus.dispatch(request) }.isSuccess
+
+    /**
+     * 文本里是否有整串匹配 `http.+` 的 token —— 逐字对照原版 `AssociationActivity.dispose()`
+     * 的判据 (`text.split("\\s".toRegex())` 后逐 token `url.matches("http.+".toRegex())`)。
+     */
+    private fun hasHttpLink(text: String): Boolean =
+        text.split(WHITESPACE).any { it.matches(HTTP_LINK) }
+
+    private val WHITESPACE = Regex("\\s")
+    private val HTTP_LINK = Regex("http.+")
 
     /**
      * 解出同串捎带的 MIME 提示 (`mime:<type>|<address>`); 不是该形态返回 null。

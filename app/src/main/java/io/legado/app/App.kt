@@ -306,10 +306,11 @@ class App : Application() {
             // 原在 ReaderProvider.onCreate, 但那早于 Application.onCreate, 取多语言文案会崩
             io.legado.app.api.ShortCuts.buildShortCuts(this@App)
             // 默认数据补齐 (app 端薄壳 DefaultData.upVersion → 下沉件 StartupMaintenanceShared):
-            // 预置分组/键盘助手按版本号推进补一次 + httpTTS/txtTocRule/dictRule 按各资源 key 门控,
-            // **导入成功才推进**版本 key。原实现走 LocalConfig.needUpXxx, 其底层 isLastVersion 在返回
-            // "需要导入"前就把版本号写回, 一旦那次导入抛异常, 两扇门都已关, 默认朗读引擎/目录规则/
-            // 字典规则就永远补不上 (用户表现为新装后它们一直为空); 该缺陷已随下沉修掉。
+            // 三道 (预置分组/键盘助手/三批默认资源) 整包在 `appVersionCode < 当前版本号` 这道版本门内,
+            // 资源侧另按各自版本 key 门控 (`LocalConfig.needUpXxx` → isLastVersion: 先写回版本 key
+            // 再返回"需要导入", 每资源每版本只尝试一次, 那次失败也不重试 —— 与原版一致)。
+            // 版本号本处只读: 写回 appVersionCode 的是 MainActivity.upVersion() 的弹窗。
+            // 排队必须在弹窗之前 (原版 App.onCreate 同样早于 MainActivity)。
             DefaultData.upVersion()
             // Arco: 清理旧版本遗留的 barElevation 偏好值（elevation 已移除）
             instance.removePref(PreferKey.barElevation)

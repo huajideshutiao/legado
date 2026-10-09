@@ -182,6 +182,14 @@ actual object FileUtilsCommon {
         return dir.listFiles()?.filter { it.isDirectory }?.map { it.absolutePath } ?: emptyList()
     }
 
+    actual fun isDirAbsentOrEmpty(path: String): Boolean {
+        // 与 jvm actual 同语义: kotlin.io.File.listFiles() 同样在"不是目录"与"是目录但读目录出错"
+        // 两种情况下都返回 null, 靠 isDirectory 区分 —— 后者按"非空"处理 (返回 false)。
+        val dir = File(path)
+        val entries = dir.listFiles()
+        return if (entries == null) !dir.isDirectory else entries.isEmpty()
+    }
+
     actual fun getDirSize(path: String): Long {
         val file = File(path)
         if (!file.exists()) return 0L

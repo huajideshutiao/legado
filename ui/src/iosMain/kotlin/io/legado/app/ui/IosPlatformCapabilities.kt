@@ -14,6 +14,7 @@ import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.book.BookHelpProviders
 import io.legado.app.help.book.ContentProcessorProviders
+import io.legado.app.help.book.effectiveBookSaveDir
 import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isImage
@@ -26,7 +27,7 @@ import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.file.exportFile
-import io.legado.app.help.file.AppFilesDirs
+import io.legado.app.help.storage.effectiveBookExportDir
 import io.legado.app.help.file.pickDirectory as pickDirectoryDocument
 import io.legado.app.help.openURL
 import io.legado.app.help.copyToClipboard as copyTextToClipboard
@@ -469,11 +470,19 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
     // FileAssociationDispatch 的直接导入链 (平台能力上限, 不假装与 app 端等价)
     override fun startReadRemoteArchive(fileName: String, onNeedDownload: () -> Unit) {
         scope.launch {
-            // 与 NativeFileBookAccessor 的书籍保存目录同源 ({filesDir}/books)
-            val path = AppFilesDirs.get().filesDir + "/books/" + fileName
-            if (File(path).exists()) {
-                FileAssociationDispatch.dispatch(path)
-                return@launch
+            // 与 NativeFileBookAccessor 的有效书籍保存目录同源
+            // (用户已选 → 选定目录; 未选 → 平台默认 {filesDir}/books);
+            // 选定目录在沙盒外, 存在性检查同样要包既有授权租约
+            val dir = effectiveBookSaveDir()
+            if (dir != null) {
+                val path = "$dir/$fileName"
+                val exists = runCatching {
+                    withLocalDirAccess(path) { File(path).exists() }
+                }.getOrDefault(false)
+                if (exists) {
+                    FileAssociationDispatch.dispatch(path)
+                    return@launch
+                }
             }
             withContext(Dispatchers.Main) {
                 val alert = UIAlertController.alertControllerWithTitle(
@@ -518,7 +527,15 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
             val failures = mutableListOf<String>()
             val usedPaths = mutableSetOf<String>()
             val exportType = prefs.getInt(PreferKey.exportType, 0)
-            val exportDir = File(AppFilesDirs.get().filesDir, "export")
+            // 导出目录取"用户选过的偏好键, 否则平台惯例目录" (三分支与备份路径同一形制,
+            // 见 DataStorage.defaultBookExportDir)。iOS 的惯例目录非 null (NativeDataStorage
+            // 覆盖为 filesDir/export), 落点与改动前一致
+            val exportDirPath = effectiveBookExportDir() ?: run {
+                // 到得了这里只可能是 DataStorage provider 未注册; 不另猜一个路径
+                Toasters.get().toast("无法创建导出目录")
+                return@launch
+            }
+            val exportDir = File(exportDirPath)
             if (!exportDir.isDirectory && !exportDir.mkdirs()) {
                 Toasters.get().toast("无法创建导出目录")
                 return@launch
@@ -612,7 +629,12 @@ object IosPlatformCapabilities : NativePlatformCapabilities {
             val files = mutableListOf<NSURL>()
             val failures = mutableListOf<String>()
             val usedPaths = mutableSetOf<String>()
-            val exportDir = File(AppFilesDirs.get().filesDir, "export")
+            // 与 exportAllBooks 同一份导出目录判定 (用户偏好键 → 平台惯例目录)
+            val exportDirPath = effectiveBookExportDir() ?: run {
+                Toasters.get().toast("无法创建导出目录")
+                return@launch
+            }
+            val exportDir = File(exportDirPath)
             if (!exportDir.isDirectory && !exportDir.mkdirs()) {
                 Toasters.get().toast("无法创建导出目录")
                 return@launch

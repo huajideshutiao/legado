@@ -26,7 +26,8 @@ import platform.Foundation.NSFileManager
  *    iOS 的授权层 (`IosSecurityScopedStorage.withAccess` / `withLocalDirAccess`)
  *    会直接判"没有访问权限"并抛错, 导入链读不到;
  * 2. 投给导入链的路径要活到用户在上架页确认那一刻, 所以不能"投完就删"。
- *    搬进沙盒 (落盘复用已有的 [FileBookProviders] `saveBookFile`, 即 `{filesDir}/books/<原文件名>`)
+ *    搬进沙盒 (落盘复用已有的 [FileBookProviders] `saveBookFile`, 即"有效书籍保存位置":
+ *    用户已选 → 选定目录, 未选 → `{filesDir}/books/<原文件名>`)
  *    正好一次解决两件事: 容器里的原件当场清掉 (下次启动不会再导一遍), 沙盒副本供导入链长期使用。
  *    读容器时**不**经 `withLocalDirAccess`: 那层授权是给"用户选的容器外目录"用的,
  *    对自己的共享容器只会误判成越权。
@@ -100,7 +101,8 @@ object IosShareInbox {
      */
     private fun deliver(file: File) {
         val ref = runCatching {
-            // 落盘复用各端 FileBookAccessor 的既有实现 (iOS 实为 {filesDir}/books/<原文件名>,
+            // 落盘复用各端 FileBookAccessor 的既有实现 (iOS 实为"有效书籍保存位置":
+            // 用户已选 → 选定目录, 未选 → `{filesDir}/books/<原文件名>`,
             // 返回 "file://" + 绝对路径), 不另写一份拷贝
             FileBookProviders.get().saveBookFile(file.inputStream(), file.name)
         }.onFailure {

@@ -41,8 +41,11 @@ interface ArchiveProvider {
      * # 必须照原样保留的语义 (调用方依赖, 不是可自由发挥的接口)
      * - **[filter] 为 null 时恒返回空列表**: 底层实现是 `if (filter != null && filter(name))`,
      *   即没有过滤条件就一条都不返回。调用方一律传非 null 过滤条件, 不得为此改判据。
-     * - **读失败返回空列表而非抛异常**: 与 app 端把解码异常吞成 `emptyList()` 同语义,
-     *   调用方据“空列表”弹“不支持的压缩包条目”提示。
+     * - **后缀不是压缩包时抛异常, 不是返回空列表**: 原版 `ArchiveUtils.getArchiveFilesName` 第一行是
+     *   `checkArchive(fileDoc.name)`, 名字不匹配 archiveFileRegex 时抛
+     *   `IllegalArgumentException("Unexpected file suffix")`; `openReadPfd().getOrThrow()` 打不开也抛。
+     *   只有内层 libarchive 解码/遍历异常才被 `catch (e: Exception) { emptyList() }` 吞成空列表,
+     *   调用方据“空列表”弹“不支持的压缩包条目”提示 —— 别把两种失败口径混成一句"读失败返回空列表"。
      *
      * @param archivePath 压缩文件绝对路径
      * @param filter 条目名过滤条件; null 时按上述语义返回空列表

@@ -9,6 +9,7 @@ import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.HelpVersion
 import io.legado.app.help.config.LocalConfigKeys
+import io.legado.app.help.config.LocalConfigShared
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ThemeConfigProviders
@@ -42,8 +43,9 @@ import io.legado.app.utils.systemCurrentTimeMillis
  * # 调用时机
  *
  * 宿主启动早期起一个后台协程调用 (各端写法照抄自己现有的启动期异步块):
- * 全部依赖 provider 均已注册, 且**必须早于各端的升级更新日志弹窗** —— 那个弹窗 (`upVersion`)
- * 自己会写回 `LocalConfigKeys.appVersionCode`, 若先弹窗, 本文件的"版本是否推进"判断就被提前关死。
+ * 全部依赖 provider 均已注册, 且**必须早于各端的升级更新日志弹窗** —— 唯一写回
+ * `LocalConfigKeys.appVersionCode` 的就是那个弹窗 (`upVersion`), 若先弹窗, 本文件的"版本是否推进"
+ * 判断就被提前关死 (与 app 端 `App.onCreate` 的 `DefaultData.upVersion()` 先于 `MainActivity` 同一时序)。
  */
 object StartupMaintenanceShared {
 
@@ -55,18 +57,27 @@ object StartupMaintenanceShared {
      *
      * 幂等, 可重复调用。
      *
-     * 三道门 (语义与下沉前逐字一致, 详见各私有方法):
-     * 1. 预置书架分组: 仅"版本号推进"时补, 且按主键缺啥补啥 (不覆盖用户改动)
-     * 2. 默认键盘助手: 同上, 按 (type,key) 逐项补齐
-     * 3. httpTTS / txtTocRule / dictRule: 按各资源版本 key 独立门控, **导入成功才推进**版本 key
+     * 三道动作整包在**同一个版本门**下 (对照原版 `DefaultData.upVersion()` 的
+     * `if (LocalConfig.versionCode < AppConst.appInfo.versionCode) { ... }`):
+     * 1. 预置书架分组: 按主键缺啥补啥 (不覆盖用户改动)
+     * 2. 默认键盘助手: 按 (type,key) 逐项补齐
+     * 3. httpTTS / txtTocRule / dictRule: 各自再加一层资源版本门
+     *    ([LocalConfigShared.isLastVersion], 与 `LocalConfig.needUpXxx` 同一算法)
      *
-     * 第 1/2 道判断必须在第 3 道之前: 第 3 道末尾才写回 `appVersionCode`, 反过来同一版本内就再也补不上。
+     * # `appVersionCode` 本文件只读, 不写
      *
-     * **第 3 道不拿 `appVersionCode` 当门** —— 各端的"更新日志"弹窗 (`upVersion`) 也会写回同一个
-     * key, 它一旦先跑就把门关死, 资源导入永远不执行。按各资源自己的 key 门控既避开了这个竞态,
-     * 又与"导入成功才推进、失败下次重试"的语义等价 (全部成功时各 key 已到位, 下次自然全部早退)。
+     * 写这个键的只有各端的更新日志弹窗 (`upVersion`: `LocalConfig.versionCode = appInfo.versionCode`);
+     * 原版 `DefaultData.upVersion()` 同样只读它, 只写各资源版本 key。本文件也如此 —— 一旦本文件也写
+     * 这个键, 它就抢在弹窗之前把关卡门的门关死 (弹窗的判据是"已保存版本号 == 当前版本号就 return"),
+     * 这一版的首启帮助/更新日志就不会再弹。
      *
-     * # 存储注入 (getInt/putInt/getLong/putLong)
+     * # 第 3 道失败不重试 (对齐原版)
+     *
+     * [LocalConfigShared.isLastVersion] 在返回"需要导入"之前就把新版本号写进了 key, 故那次导入抛出的
+     * 异常不会让下次启动重试 —— 原版就是这个语义 (每资源每版本只尝试一次): `DefaultData.upVersion`
+     * 的 `Coroutine.async { ... }.onError { it.printOnDebug() }` 只记日志, 版本 key 已经推进。
+     *
+     * # 存储注入 (getInt/putInt/getBoolean/getLong)
      *
      * 版本门涉及的 key 在各端落脚不同: app 端历史上它们全在独立的 `local` 配置里
      * (`LocalConfig.versionCode` / `LocalConfig.needUpXxx`), 桌面/iOS/鸿蒙 则在默认配置。
@@ -80,20 +91,22 @@ object StartupMaintenanceShared {
     suspend fun initDefaultData(
         getInt: (key: String, defValue: Int) -> Int = { k, d -> PreferenceProviders.get().getInt(k, d) },
         putInt: (key: String, value: Int) -> Unit = { k, v -> PreferenceProviders.get().putInt(k, v) },
+        getBoolean: (key: String, defValue: Boolean) -> Boolean =
+            { k, d -> PreferenceProviders.get().getBoolean(k, d) },
         getLong: (key: String, defValue: Long) -> Long = { k, d -> PreferenceProviders.get().getLong(k, d) },
-        putLong: (key: String, value: Long) -> Unit = { k, v -> PreferenceProviders.get().putLong(k, v) },
     ) {
         val currentVersionCode = AppVersionProviders.get().versionCode
         // 版本号取不到 (如鸿蒙 ArkTS 注入与首帧组合的竞态) 视为"版本未推进": 不补预置项、
-        // 不写回版本号、下次启动再判。若当成 0 号版本处理, 会把"当前版本 0"永久写进配置。
+        // 下次启动再判。若当成 0 号版本处理, 会把"当前版本 0"永久写进配置。
         if (currentVersionCode <= 0L) return
 
-        if (getLong(LocalConfigKeys.appVersionCode, 0L) < currentVersionCode) {
-            ensurePresetBookGroups()
-            ensureKeyboardAssists()
-        }
-        // 无条件进: 由各资源版本 key 自行门控 (见方法 KDoc, 不能拿 appVersionCode 当门)
-        upDefaultDataVersion(currentVersionCode, getInt, putInt, putLong)
+        // 版本门 (对照原版 `LocalConfig.versionCode < AppConst.appInfo.versionCode`):
+        // 这一版已经补过就整体跳过。只读不写 —— 写回该键的只有各端的更新日志弹窗。
+        if (getLong(LocalConfigKeys.appVersionCode, 0L) >= currentVersionCode) return
+
+        ensurePresetBookGroups()
+        ensureKeyboardAssists()
+        upDefaultDataVersion(getInt, getBoolean, putInt)
     }
 
     /**
@@ -135,38 +148,34 @@ object StartupMaintenanceShared {
     /**
      * 版本号推进时按各资源版本 key 补齐默认数据 (httpTTS / txt 目录规则 / 字典规则)。
      *
-     * **资源版本 key 只在导入成功后才写回**。原 app 端实现走 `LocalConfig.needUpXxx`, 其底层
-     * `LocalConfigShared.isLastVersion` 在返回"需要导入"之前就把新版本号写进了 key; 一旦那次导入
-     * 抛异常, 版本 key 与 appVersionCode 两扇门都已关闭, 默认 httpTTS / 目录规则 / 字典规则
-     * 就永远补不上 (用户表现为新装后默认朗读引擎与目录规则为空, 且重装前不会自愈)。
-     * 任一项失败就不推进 appVersionCode, 下次启动整体重试。
-     *
-     * # 为什么不拿 `appVersionCode` 当入口门
-     * 各端的"更新日志"弹窗 (`upVersion`) 也会写回同一个 `appVersionCode`。若这里先判断
-     * `appVersionCode < currentVersionCode` 才做事, 弹窗一旦先跑, 这里的导入就永远不执行 ——
-     * 与要修的缺陷同型 (只是把"资源 key 先写回"换成了"版本号先写回")。
-     * 故入口只看各资源自己的 key; `appVersionCode` 仅作为本方法成功后的记账。
+     * 门控与写回逐字对齐原版 `LocalConfig.needUpXxx` → [LocalConfigShared.isLastVersion]:
+     * **先写回资源版本 key, 再返回"需要导入"** —— 每资源每版本只尝试一次, 那一次抛异常也不重试。
      */
     private suspend fun upDefaultDataVersion(
-        currentVersionCode: Long,
         getInt: (key: String, defValue: Int) -> Int,
+        getBoolean: (key: String, defValue: Boolean) -> Boolean,
         putInt: (key: String, value: Int) -> Unit,
-        putLong: (key: String, value: Long) -> Unit,
     ) {
-        var allImported = true
         suspend fun importOnce(
             versionKey: String,
             lastVersion: Int,
             what: String,
             import: suspend () -> Unit,
         ) {
-            if (getInt(versionKey, 0) >= lastVersion) return
-            runCatching { import() }
-                .onSuccess { putInt(versionKey, lastVersion) }
-                .onFailure {
-                    allImported = false
-                    AppLog.put("$what 失败 (不推进版本号, 下次启动重试)", it)
-                }
+            // firstOpenKey 传 null: 与 app 端 `isLastVersion(6, "httpTtsVersion")` 等资源档调用一致
+            // (只有 help 引导那几档才带 firstOpenKey)
+            val isLast = LocalConfigShared.isLastVersion(
+                lastVersion = lastVersion,
+                versionKey = versionKey,
+                getInt = getInt,
+                getBoolean = getBoolean,
+                putInt = putInt,
+            )
+            if (isLast) return
+            runCatching { import() }.onFailure {
+                // isLastVersion 内已写回版本 key, 与原版一致: 这一版不再重试
+                AppLog.put("$what 失败 (资源版本号已推进, 与原版一致不重试)", it)
+            }
         }
 
         importOnce(LocalConfigKeys.httpTtsVersion, HelpVersion.httpTts, "导入默认 httpTTS") {
@@ -178,10 +187,6 @@ object StartupMaintenanceShared {
         importOnce(LocalConfigKeys.needUpDictRule, HelpVersion.dictRule, "导入默认字典规则") {
             DefaultDataShared.importDefaultDictRules()
         }
-        // app 端由"更新日志"弹窗展示后写回, 本共享件就地写回 (各端弹窗只负责展示)
-        if (allImported) {
-            putLong(LocalConfigKeys.appVersionCode, currentVersionCode)
-        }
     }
 
     // =================== 2. 启动期缓存清理 ===================
@@ -189,9 +194,16 @@ object StartupMaintenanceShared {
     /**
      * 启动期缓存清理 (对照 app 端 `App.onCreate` 的清理块)。
      *
-     * 节流: 距上次清理不足 1 天直接返回。节流 key 用 [LocalConfigKeys.lastCacheCleanup] 而**不是**
-     * `lastBackup` —— 后者只在用户真的备份/恢复时才写, 从不备份的用户恒为 0, 拿它当门控会让
-     * 清理族每次启动都全跑 (原 app 端实现即为此写法, 属缺陷, 新代码不再沿用)。
+     * 节流: 距上次清理不足 1 天直接返回。
+     *
+     * 节流 key 用**本仓自造的** [LocalConfigKeys.lastCacheCleanup], **不是**原版那段用的
+     * `LocalConfig.lastBackup` (原版 `app/.../App.kt` 里逐字是
+     * `if (LocalConfig.lastBackup + TimeUnit.DAYS.toMillis(1) < System.currentTimeMillis())`;
+     * 原版全仓无 `lastCacheCleanup` 这个键)。之所以不复用 `lastBackup`:
+     * 1. 它不是"上次清理时间"——写入方是"用户真的备份/恢复"与"启动时判定到云端有更新的备份"
+     *    (`MainActivity.backupSync`)。从不备份的用户它恒为 0 → 节流恒不成立, 清理族每次启动全跑;
+     * 2. 反过来说, 备份过一次之后的一整天里清理会被这条与清理无关的时间戳静默挡住。
+     * 属原版明显缺陷, 不复刻 (但键名与本仓自造事实如实写在 [LocalConfigKeys.lastCacheCleanup])。
      *
      * 五连调全部跑完才记账: 中途抛错不写时间戳, 下次启动重试, 否则一次失败会被当成"今天已经清过"。
      *
@@ -243,13 +255,17 @@ object StartupMaintenanceShared {
     }
 
     /**
-     * 单层目录下是否有子项 (不存在或无子项返回 false)。
+     * 单层目录下是否有子项 (不存在返回 false)。
      *
-     * 只列举一层, 不递归。子目录与普通文件分开列举后取并集: 原实现用 `File.list()` 一次拿全部子项,
-     * 而共享文件门面把"子目录"与"文件"拆成了两个方法。
+     * **"目录存在但读不出来"必须按非空处理**: 共享文件门面 [FileUtilsCommon.listSubDirs] /
+     * [FileUtilsCommon.listFiles] 把 `File.listFiles()` 返回 null (含"是目录但读目录出错")
+     * 一律吞成 `emptyList()`, 拿它们直接判空会把 IO 错误当成"目录为空" → 早退跳过整个清理。
+     * 故这里用保留该区分的 [FileUtilsCommon.isDirAbsentOrEmpty]
+     * (语义与下沉前桌面端 `DesktopCore.dirAbsentOrEmpty` 一致: "File.list() 在'是目录但读目录
+     * 出错'时也返回 null, 这种情况按非空处理让清理照原样跑, 不用空判掩盖 IO 错误造成漏清")。
      */
     private fun dirHasChildren(dirPath: String): Boolean =
-        FileUtilsCommon.listSubDirs(dirPath).isNotEmpty() || FileUtilsCommon.listFiles(dirPath).isNotEmpty()
+        !FileUtilsCommon.isDirAbsentOrEmpty(dirPath)
 
     // =================== 3. 自动检查云端新备份 ===================
 
