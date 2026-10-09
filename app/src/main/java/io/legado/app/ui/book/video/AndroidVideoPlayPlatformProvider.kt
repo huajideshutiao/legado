@@ -407,10 +407,8 @@ class AndroidVideoPlayPlatformProvider(
                         androidController.player.playbackParameters.pitch,
                     )
                 },
-                onPlayPause = {
-                    val p = androidController.player
-                    if (p.isPlaying) p.pause() else p.play()
-                },
+                // 双击/拖动结束续播与控制栏播放钮同源: 播完 (STATE_ENDED) 一律从头重播
+                onPlayPause = { androidController.playPause() },
                 seekTo = { androidController.player.seekTo(it) },
                 readBrightness = {
                     val a = activity.window.attributes
